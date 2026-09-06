@@ -352,6 +352,16 @@ export class SyncStore {
 		);
 		return Number(r.rows[0]?.count ?? 0);
 	}
+	async createEventStream(accountId: string, signal?: AbortSignal): Promise<Response> {
+		const stub = this.bindings.ACCOUNT_COORDINATOR.get(
+			this.bindings.ACCOUNT_COORDINATOR.idFromName(accountId)
+		);
+		const res = await stub.fetch('https://coordinator/events', {
+			signal: (signal ?? null) as any
+		});
+		return res as unknown as Response;
+	}
+
 	async isReady(): Promise<boolean> {
 		try {
 			await execute(this.db, 'SELECT 1');

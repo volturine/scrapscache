@@ -13,6 +13,7 @@ import {
 	syncRoundHasMore,
 	syncControlKeys
 } from '$lib/syncEngine';
+import { SyncEventsClient } from '$lib/syncEventsClient';
 import {
 	attachmentToImage,
 	buildSyncRecords,
@@ -142,6 +143,7 @@ export class SyncStore {
 	// Non-reactive callbacks avoid re-rendering the note grid for cloud feedback.
 	onSyncStart: (() => void) | null = null;
 	onSyncEnd: (() => void) | null = null;
+	onAccountChange: (() => void) | null = null;
 	/** Registered by the central data store so board edits share its debounced sync. */
 	onLocalDataChange: (() => void) | null = null;
 
@@ -209,6 +211,7 @@ export class SyncStore {
 		this.pendingSessions.clear();
 		this.session = null;
 		this.account = account;
+		this.onAccountChange?.();
 	}
 
 	async register(): Promise<{ success: boolean; error?: string }> {
@@ -1091,6 +1094,7 @@ export class SyncStore {
 		this.usage = null;
 		this.session = null;
 		this.saveAccount();
+		this.onAccountChange?.();
 		if (accountId) void this.clearAccountControlPlane(accountId);
 	}
 
@@ -1119,3 +1123,5 @@ export class SyncStore {
 }
 
 export const syncStore = new SyncStore();
+export const syncEventsClient = new SyncEventsClient(syncStore);
+syncStore.onAccountChange = () => syncEventsClient.updateState();

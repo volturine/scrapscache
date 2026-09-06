@@ -125,12 +125,25 @@ export class NotesStore {
 		};
 		if (this.notes.length > 0) this.loaded = true;
 		if (typeof window !== 'undefined') {
+			if ('BroadcastChannel' in window) {
+				this.syncBroadcastChannel = new BroadcastChannel('scrapscache-sync-channel');
+				this.syncBroadcastChannel.onmessage = (event) => {
+					if (event.data?.type === 'local-sync-complete') {
+						void this.rehydrateFromIDB();
+					}
+				};
+			}
 			window.addEventListener('visibilitychange', () => {
 				if (document.visibilityState === 'hidden') this.mirrorToLS();
 			});
 			window.addEventListener('pagehide', () => this.mirrorToLS());
 			window.addEventListener('online', () => {
-				if (this.dirty && syncStore.isLoggedIn) this.scheduleSyncPush(0);
+				if (!syncStore.isLoggedIn) return;
+				if (this.dirty) {
+					this.scheduleSyncPush(0);
+				} else {
+					void this.triggerSync();
+				}
 			});
 		}
 	}
@@ -853,6 +866,7 @@ export class NotesStore {
 	private dirty = false;
 	private syncFlight: Promise<boolean> | null = null;
 	private syncFollowupRequested = false;
+	private syncBroadcastChannel: BroadcastChannel | null = null;
 
 	private scheduleNoteRetry(id: string): void {
 		if (this.noteRetryTimers.has(id)) return;
@@ -1210,6 +1224,20 @@ export class NotesStore {
 		return this.flushSync(true);
 	}
 
+	/**
+	 * Explicit heuristic sync trigger (live nudge from another device,
+	 * network reconnection, tab foregrounding, or local change).
+	 * Bypasses opportunistic time-throttling and coalesces multiple triggers into one sync run.
+	 */
+	triggerSync(): Promise<boolean> {
+		if (!syncStore.isLoggedIn) return Promise.resolve(false);
+		const syncedPromise = this.queueSync(false);
+		syncedPromise.then((synced) => {
+			if (synced) this.lastAutoSyncAt = Date.now();
+		});
+		return syncedPromise;
+	}
+
 	// Auto sync — silent, no UI feedback. Opportunistic pulls (boot, editor
 	// open) are throttled; pending local edits always sync via flushSync.
 	async syncWithCloud(): Promise<boolean> {
@@ -1244,6 +1272,13 @@ export class NotesStore {
 				success = await this.doSync(showProgress);
 				showProgress = false;
 			} while (this.syncFollowupRequested);
+			if (success) {
+				try {
+					this.syncBroadcastChannel?.postMessage({ type: 'local-sync-complete' });
+				} catch {
+					/* ignore BroadcastChannel error */
+				}
+			}
 			return success;
 		})().finally(() => {
 			this.syncFlight = null;

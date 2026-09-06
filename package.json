@@ -46,17 +46,17 @@
 		"format:check": "prettier --check ."
 	},
 	"devDependencies": {
-		"@cloudflare/workers-types": "^5.20260902.1",
-		"@lucide/svelte": "^1.35.0",
+		"@cloudflare/workers-types": "^5.20260903.1",
+		"@lucide/svelte": "^1.40.0",
 		"@sveltejs/adapter-cloudflare": "^7.2.9",
 		"@sveltejs/adapter-node": "^5.5.7",
 		"@sveltejs/kit": "^2.70.3",
 		"@sveltejs/vite-plugin-svelte": "^7.3.0",
 		"@tailwindcss/vite": "^4.3.3",
 		"@testing-library/svelte": "^5.4.2",
-		"@types/node": "^26.4.0",
-		"@types/react": "^18.3.31",
-		"@types/react-dom": "^18.3.7",
+		"@types/node": "^26.4.1",
+		"@types/react": "^19.2.18",
+		"@types/react-dom": "^19.2.7",
 		"@typescript/native": "npm:typescript@7.0.2",
 		"fake-indexeddb": "^6.2.5",
 		"idb": "^8.0.3",
@@ -65,23 +65,23 @@
 		"prettier": "^3.9.6",
 		"prettier-plugin-svelte": "^4.1.1",
 		"simple-git-hooks": "^2.14.0",
-		"svelte": "^5.56.10",
+		"svelte": "^5.57.0",
 		"svelte-check": "^4.7.6",
 		"tailwindcss": "^4.3.3",
-		"typescript": "~6.0.3",
+		"typescript": "~7.0.2",
 		"vite": "^8.2.2",
-		"vitest": "^4.1.11",
-		"wrangler": "^4.127.1"
+		"vitest": "^5.0.0",
+		"wrangler": "^4.129.0"
 	},
 	"dependencies": {
 		"@cipherman/pake-js": "^0.1.1",
-		"@excalidraw/excalidraw": "0.17.6",
-		"@libsql/client": "^0.17.4",
+		"@excalidraw/excalidraw": "0.18.1",
+		"@libsql/client": "^0.18.0",
 		"@noble/ciphers": "^2.4.0",
 		"@noble/curves": "^2.4.0",
 		"@noble/hashes": "^2.3.0",
-		"react": "^18.3.1",
-		"react-dom": "^18.3.1"
+		"react": "^19.2.8",
+		"react-dom": "^19.2.8"
 	},
 	"simple-git-hooks": {
 		"pre-commit": "npx lint-staged"

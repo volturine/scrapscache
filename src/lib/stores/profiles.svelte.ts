@@ -51,13 +51,18 @@ export class ProfileCoordinator {
 				const result = await syncStore.register(name);
 				if (!result.success || !result.profile)
 					return { success: false, error: result.error ?? 'Registration failed' };
-				// First account on device adopts local device notes so they are pushed to cloud;
-				// subsequent accounts start as a clean blank slate.
-				if (isFirstAccount) {
-					await adoptLocalDatasetInto(result.profile.id);
+				try {
+					// First account on device adopts local device notes so they are pushed to cloud;
+					// subsequent accounts start as a clean blank slate.
+					if (isFirstAccount) {
+						await adoptLocalDatasetInto(result.profile.id);
+					}
+					await this.activate(result.profile);
+					return { success: true };
+				} catch (setupErr) {
+					await syncStore.removeProfile(result.profile.id).catch(() => undefined);
+					throw setupErr;
 				}
-				await this.activate(result.profile);
-				return { success: true };
 			});
 			if (!created.success) return created;
 			// Manual sync acquires the same non-reentrant web lock, so it must

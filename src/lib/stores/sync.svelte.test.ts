@@ -1154,4 +1154,65 @@ describe('client sync state machine', () => {
 		expect(result.success, result.error).toBe(true);
 		expect(await idb.getSyncOutboxKeys(pid)).toEqual([]);
 	});
+
+	it('does not create or resurrect any sync accounts on hard refresh or unlinking', async () => {
+		localStorage.clear();
+		const store1 = new SyncStore();
+		await store1.ensureProfilesLoaded();
+		expect(store1.profiles).toEqual([]);
+		expect(store1.isLoggedIn).toBe(false);
+
+		// Create a profile
+		const p1 = {
+			id: 'test-p1',
+			name: 'Test Profile',
+			syncKey: createSyncIdentity().syncKey,
+			createdAt: Date.now()
+		};
+		await store1.addKeyringEntry(p1);
+		store1.activateProfile(p1);
+		expect(store1.isLoggedIn).toBe(true);
+
+		// Simulate hard refresh while logged in
+		const store2 = new SyncStore();
+		await store2.ensureProfilesLoaded();
+		expect(store2.profiles.length).toBe(1);
+		expect(store2.activeProfile?.id).toBe('test-p1');
+
+		// Unlink device
+		await store2.logout();
+		expect(store2.isLoggedIn).toBe(false);
+		expect(store2.profiles).toEqual([]);
+
+		// Simulate hard refresh after unlink: must NOT resurrect or create any new account
+		const store3 = new SyncStore();
+		await store3.ensureProfilesLoaded();
+		expect(store3.profiles).toEqual([]);
+		expect(store3.isLoggedIn).toBe(false);
+		expect(store3.activeProfile).toBeNull();
+	});
+
+	it('purges legacy account keys unconditionally and never recreates removed profiles', async () => {
+		localStorage.clear();
+		const legacyIdentity = createSyncIdentity();
+		localStorage.setItem('scrapscache-sync-account', JSON.stringify(legacyIdentity));
+
+		// First boot adopts legacy account once
+		const store1 = new SyncStore();
+		await store1.ensureProfilesLoaded();
+		expect(store1.profiles.length).toBe(1);
+		expect(store1.profiles[0].syncKey).toBe(legacyIdentity.syncKey);
+		expect(localStorage.getItem('scrapscache-sync-account')).toBeNull();
+
+		// Remove the profile
+		await store1.logout();
+		expect(store1.profiles.length).toBe(0);
+
+		// Subsequent boot (hard refresh): must stay blank slate, no new account created
+		const store2 = new SyncStore();
+		await store2.ensureProfilesLoaded();
+		expect(store2.profiles.length).toBe(0);
+		expect(store2.isLoggedIn).toBe(false);
+		expect(store2.activeProfile).toBeNull();
+	});
 });

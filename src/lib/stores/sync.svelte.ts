@@ -44,12 +44,14 @@ import {
 import { PairingRole, PairingState, type PairingPoll } from '$lib/pairingProtocol';
 import {
 	commitSyncControl,
+	deleteProfileDatabase,
 	deleteSyncState,
 	getOutboxGeneration,
 	getSyncOutboxKeys,
 	getSyncState,
 	markSyncOutbox,
 	namespaceHasData,
+	removeProfileFromLocalStorage,
 	unlinkProfileToNamespace,
 	LOCAL_PROFILE_ID
 } from '$lib/db/idb';
@@ -153,6 +155,11 @@ export class SyncStore {
 	lastError = $state<string | null>(null);
 	progress = $state<SyncProgress | null>(null);
 	usage = $state<SyncUsage | null>(null);
+	readonly syncClientId =
+		typeof crypto !== 'undefined' && crypto.randomUUID
+			? crypto.randomUUID()
+			: Math.random().toString(36).slice(2);
+	syncedCursor = $state<number>(0);
 	/** Saved sync keys on this device; the one matching `account` is active. */
 	profiles = $state<StoredProfile[]>([]);
 	private profilesReady: Promise<void> | null = null;
@@ -202,6 +209,12 @@ export class SyncStore {
 					localStorage.getItem(LS_LEGACY_ACCOUNT_KEY) ??
 					localStorage.getItem(LS_LEGACY_ACCOUNT_OLD);
 				try {
+					localStorage.removeItem(LS_LEGACY_ACCOUNT_KEY);
+					localStorage.removeItem(LS_LEGACY_ACCOUNT_OLD);
+				} catch {
+					/* ignore */
+				}
+				try {
 					const parsed: unknown = rawLegacy ? JSON.parse(rawLegacy) : null;
 					if (isSyncAccount(parsed) && !profiles.some((p) => p.syncKey === parsed.syncKey)) {
 						const adopted: StoredProfile = {
@@ -217,17 +230,14 @@ export class SyncStore {
 					/* unreadable legacy mirror is ignored */
 				}
 				this.profiles = profiles.sort((a, b) => a.createdAt - b.createdAt);
-				if (this.profiles.length) {
-					localStorage.removeItem(LS_LEGACY_ACCOUNT_KEY);
-					localStorage.removeItem(LS_LEGACY_ACCOUNT_OLD);
-				}
 
 				const pointerId = getLastActiveProfileId();
 				const pointed =
-					pointerId != null
+					pointerId != null && pointerId !== LOCAL_PROFILE_ID
 						? (this.profiles.find((entry) => entry.id === pointerId) ?? null)
 						: null;
-				const chosen = pointed ?? pickBootProfile(this.profiles);
+				const chosen =
+					pointerId === LOCAL_PROFILE_ID ? null : (pointed ?? pickBootProfile(this.profiles));
 				if (chosen) {
 					await this.healStrandedLocalData(chosen.id);
 					this.activateProfile(chosen);
@@ -296,6 +306,7 @@ export class SyncStore {
 			return false;
 		}
 		this.profiles = this.profiles.filter((entry) => entry.id !== id);
+		this.clearLegacyAccountStorage();
 		return true;
 	}
 
@@ -330,16 +341,13 @@ export class SyncStore {
 		}
 	}
 
-	private saveAccount(): void {
+	private clearLegacyAccountStorage(): void {
 		if (typeof localStorage === 'undefined') return;
 		try {
-			if (this.account) localStorage.setItem(LS_LEGACY_ACCOUNT_KEY, JSON.stringify(this.account));
-			else {
-				localStorage.removeItem(LS_LEGACY_ACCOUNT_KEY);
-				localStorage.removeItem(LS_LEGACY_ACCOUNT_OLD);
-			}
+			localStorage.removeItem(LS_LEGACY_ACCOUNT_KEY);
+			localStorage.removeItem(LS_LEGACY_ACCOUNT_OLD);
 		} catch (err) {
-			console.error('[sync] could not save account:', err);
+			console.error('[sync] could not clear legacy account storage:', err);
 		}
 	}
 
@@ -360,6 +368,11 @@ export class SyncStore {
 		this.lastError = null;
 		this.progress = null;
 		this.usage = null;
+		this.syncedCursor = 0;
+		const keys = syncControlKeys(identityFromSyncKey(profile.syncKey).accountId);
+		void getSyncState<number>(keys.cursor, profile.id).then((c) => {
+			if (typeof c === 'number') this.syncedCursor = c;
+		});
 		setLastActiveProfileId(profile.id);
 		this.restoreStatus(profile.id);
 	}
@@ -400,7 +413,7 @@ export class SyncStore {
 			};
 			await this.addKeyringEntry(profile);
 			this.activateProfile(profile);
-			this.saveAccount();
+			this.clearLegacyAccountStorage();
 			return { success: true, profile };
 		} catch (err) {
 			return { success: false, error: err instanceof Error ? err.message : 'Network error' };
@@ -615,6 +628,7 @@ export class SyncStore {
 			const accessToken = await this.accessToken(account);
 			const headers = new Headers(init.headers);
 			headers.set('authorization', `Bearer ${accessToken}`);
+			headers.set('x-sync-client-id', this.syncClientId);
 			const response = await fetch(input, { ...init, headers });
 			if (response.status !== 401 || attempt === 1) return response;
 			this.invalidateSession(account.accountId, accessToken);
@@ -667,6 +681,7 @@ export class SyncStore {
 			xhr.timeout = 300_000;
 			xhr.setRequestHeader('Content-Type', 'application/json');
 			xhr.setRequestHeader('Authorization', `Bearer ${accessToken}`);
+			xhr.setRequestHeader('x-sync-client-id', this.syncClientId);
 
 			const showTransfer = indicate && uploadBytes >= 32 * 1024;
 			if (showTransfer) {
@@ -1195,6 +1210,7 @@ export class SyncStore {
 							}))
 						]
 					);
+					this.syncedCursor = cursor;
 					for (const keysAtGeneration of internalAcknowledgements.values()) {
 						for (const key of keysAtGeneration) internallyMarkedOutbox.delete(key);
 					}
@@ -1297,13 +1313,12 @@ export class SyncStore {
 		]);
 	}
 
-	logout(): void {
+	async logout(): Promise<void> {
 		const accountId = this.account?.accountId;
 		const profile = this.activeProfile;
 		if (profile) {
-			void unlinkProfileToNamespace(profile.id, LOCAL_PROFILE_ID).catch((err) =>
-				console.error('[sync] could not unlink profile namespace:', err)
-			);
+			removeProfileFromLocalStorage(profile.id);
+			this.profiles = this.profiles.filter((entry) => entry.id !== profile.id);
 		}
 		this.authenticationGeneration += 1;
 		this.pendingSessions.clear();
@@ -1312,14 +1327,19 @@ export class SyncStore {
 		this.progress = null;
 		this.usage = null;
 		this.session = null;
-		setLastActiveProfileId(null);
-		this.saveAccount();
+		setLastActiveProfileId(LOCAL_PROFILE_ID);
+		this.clearLegacyAccountStorage();
 		this.onAccountChange?.();
 		if (accountId) void this.clearAccountControlPlane(accountId);
-		if (profile) {
-			this.profiles = this.profiles.filter((entry) => entry.id !== profile.id);
-		}
 		this.restoreStatus(LOCAL_PROFILE_ID);
+		if (profile) {
+			try {
+				await unlinkProfileToNamespace(profile.id, LOCAL_PROFILE_ID);
+				await deleteProfileDatabase(profile.id);
+			} catch (err) {
+				console.error('[sync] could not unlink profile namespace:', err);
+			}
+		}
 	}
 
 	async deleteCloudAccount(): Promise<{ success: boolean; error?: string }> {
@@ -1335,7 +1355,7 @@ export class SyncStore {
 					error: typeof data.error === 'string' ? data.error : 'Could not delete synced data'
 				};
 			}
-			this.logout();
+			await this.logout();
 			return { success: true };
 		} catch (error) {
 			return {
@@ -1347,5 +1367,5 @@ export class SyncStore {
 }
 
 export const syncStore = new SyncStore();
-export const syncEventsClient = new SyncEventsClient(syncStore);
+export const syncEventsClient = new SyncEventsClient(syncStore, syncStore.syncClientId);
 syncStore.onAccountChange = () => syncEventsClient.updateState();

@@ -1253,8 +1253,11 @@ export class NotesStore {
 	 * network reconnection, tab foregrounding, or local change).
 	 * Bypasses opportunistic time-throttling and coalesces multiple triggers into one sync run.
 	 */
-	triggerSync(): Promise<boolean> {
+	triggerSync(serverSeq?: number): Promise<boolean> {
 		if (!syncStore.isLoggedIn) return Promise.resolve(false);
+		if (typeof serverSeq === 'number' && serverSeq > 0 && serverSeq <= syncStore.syncedCursor) {
+			return Promise.resolve(true);
+		}
 		const syncedPromise = this.queueSync(false);
 		syncedPromise.then((synced) => {
 			if (synced) this.lastAutoSyncAt = Date.now();

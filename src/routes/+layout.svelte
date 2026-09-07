@@ -58,11 +58,11 @@
 		});
 		const onForeground = () => {
 			if (document.visibilityState === 'hidden') return;
-			if (syncStore.isLoggedIn) void notesStore.triggerSync();
+			if (syncStore.isLoggedIn) void notesStore.syncWithCloud();
 		};
 		document.addEventListener('visibilitychange', onForeground);
-		const stopSyncEvents = syncEventsClient.subscribe(() => {
-			void notesStore.triggerSync();
+		const stopSyncEvents = syncEventsClient.subscribe((seq?: number) => {
+			void notesStore.triggerSync(seq);
 		});
 		const stopReminders = reminderStore.attach(openEditor);
 		void preloadVapidPublicKey();

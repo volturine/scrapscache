@@ -1,14 +1,18 @@
-export type SyncEventListener = (seq: number) => void;
+export type SyncEventListener = (seq: number, senderClientId?: string) => void;
 
 class SyncEventEmitter {
 	private readonly listeners = new Map<string, Set<SyncEventListener>>();
 
-	notify(accountId: string, seq: number): void {
+	notify(accountId: string, seq: number, senderClientId?: string): void {
 		const set = this.listeners.get(accountId);
 		if (!set) return;
 		for (const listener of set) {
 			try {
-				listener(seq);
+				if (senderClientId !== undefined) {
+					listener(seq, senderClientId);
+				} else {
+					listener(seq);
+				}
 			} catch {
 				/* ignore listener error */
 			}

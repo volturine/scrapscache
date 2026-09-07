@@ -12,8 +12,18 @@ export class SyncEventsClient {
 	private backoffMs = 2_000;
 	private readonly listeners = new Set<SyncNudgeListener>();
 	private cleanupDomListeners: (() => void) | null = null;
+	readonly clientId: string;
 
-	constructor(private readonly syncStore: SyncStoreLike) {
+	constructor(
+		private readonly syncStore: SyncStoreLike,
+		clientId?: string
+	) {
+		this.clientId =
+			clientId ??
+			(typeof crypto !== 'undefined' && crypto.randomUUID
+				? crypto.randomUUID()
+				: Math.random().toString(36).slice(2));
+
 		if (typeof window !== 'undefined' && typeof document !== 'undefined') {
 			const onVisibility = () => this.updateState();
 			const onOnline = () => this.updateState();
@@ -94,7 +104,8 @@ export class SyncEventsClient {
 		const signal = this.abortController.signal;
 
 		try {
-			const response = await this.syncStore.authorizedFetch('/api/sync/events', { signal });
+			const url = `/api/sync/events?clientId=${encodeURIComponent(this.clientId)}`;
+			const response = await this.syncStore.authorizedFetch(url, { signal });
 			if (!response.ok || !response.body) {
 				throw new Error(`SSE error: ${response.status}`);
 			}

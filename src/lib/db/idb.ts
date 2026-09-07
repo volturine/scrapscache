@@ -1032,16 +1032,24 @@ export async function deleteProfileDatabase(pid: string): Promise<void> {
 	}
 }
 
+export function removeProfileFromLocalStorage(id: string): void {
+	if (typeof localStorage === 'undefined') return;
+	try {
+		const raw = localStorage.getItem(LS_PROFILES) ?? localStorage.getItem(LS_PROFILES_LEGACY);
+		if (raw) {
+			const parsed = JSON.parse(raw);
+			if (Array.isArray(parsed)) {
+				const next = parsed.filter((p: StoredProfile) => p.id !== id);
+				localStorage.setItem(LS_PROFILES, JSON.stringify(next));
+			}
+		}
+		localStorage.removeItem(`scrapscache-notes-mirror:${id}`);
+		localStorage.removeItem(`scrapscache-labels-mirror:${id}`);
+	} catch {}
+}
+
 export async function deleteStoredProfile(id: string): Promise<void> {
-	if (typeof localStorage !== 'undefined') {
-		const current = await listStoredProfiles();
-		const next = current.filter((p) => p.id !== id);
-		try {
-			localStorage.setItem(LS_PROFILES, JSON.stringify(next));
-			localStorage.removeItem(`scrapscache-notes-mirror:${id}`);
-			localStorage.removeItem(`scrapscache-labels-mirror:${id}`);
-		} catch {}
-	}
+	removeProfileFromLocalStorage(id);
 	await deleteProfileDatabase(id);
 }
 

@@ -349,10 +349,10 @@
 		if (warning) error = friendlyError(warning, 'Some records are still pending');
 	}
 
-	function unlinkDevice() {
+	async function unlinkDevice() {
 		const account = syncStore.account;
 		error = '';
-		syncStore.logout();
+		await syncStore.logout();
 		mode = 'menu';
 		error = '';
 		info = '';
@@ -551,7 +551,7 @@
 				{/if}
 				<button
 					type="button"
-					onclick={unlinkDevice}
+					onclick={() => void unlinkDevice()}
 					disabled={busy}
 					class="scrapscache-button scrapscache-button-destructive w-full text-sm"
 					>Unlink this device</button

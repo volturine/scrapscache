@@ -93,6 +93,7 @@ export function setLastActiveProfileId(id: string | null): void {
 export function pickBootProfile(profiles: StoredProfile[]): StoredProfile | null {
 	if (!profiles.length) return null;
 	const pointer = getLastActiveProfileId();
+	if (pointer === LOCAL_PROFILE_ID) return null;
 	if (pointer) {
 		const pointed = profiles.find((profile) => profile.id === pointer);
 		if (pointed) return pointed;

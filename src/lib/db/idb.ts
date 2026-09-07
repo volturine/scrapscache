@@ -1038,6 +1038,8 @@ export async function deleteStoredProfile(id: string): Promise<void> {
 		const next = current.filter((p) => p.id !== id);
 		try {
 			localStorage.setItem(LS_PROFILES, JSON.stringify(next));
+			localStorage.removeItem(`scrapscache-notes-mirror:${id}`);
+			localStorage.removeItem(`scrapscache-labels-mirror:${id}`);
 		} catch {}
 	}
 	await deleteProfileDatabase(id);

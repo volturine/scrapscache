@@ -31,13 +31,7 @@ export class ProfileCoordinator {
 		return null;
 	}
 
-	private async activate(
-		target: StoredProfile,
-		options: { adoptLocal?: boolean } = {}
-	): Promise<void> {
-		if (options.adoptLocal && !syncStore.activeProfile) {
-			await adoptLocalDatasetInto(target.id);
-		}
+	private async activate(target: StoredProfile): Promise<void> {
 		syncStore.activateProfile(target);
 		await notesStore.reloadForProfile();
 		// Queue the encrypted profile-name record so a fresh key's account learns
@@ -51,14 +45,18 @@ export class ProfileCoordinator {
 		if (blocked) return { success: false, error: blocked };
 		this.switching = true;
 		try {
+			const isFirstAccount = syncStore.profiles.length === 0;
 			const created = await this.exclusive(async () => {
 				await syncStore.waitForOutboxWrites();
 				const result = await syncStore.register(name);
 				if (!result.success || !result.profile)
 					return { success: false, error: result.error ?? 'Registration failed' };
-				// The very first key on a device adopts local no-account data so
-				// registering never looks like data loss; later keys start empty.
-				await this.activate(result.profile, { adoptLocal: !syncStore.activeProfile });
+				// First account on device adopts local device notes so they are pushed to cloud;
+				// subsequent accounts start as a clean blank slate.
+				if (isFirstAccount) {
+					await adoptLocalDatasetInto(result.profile.id);
+				}
+				await this.activate(result.profile);
 				return { success: true };
 			});
 			if (!created.success) return created;
@@ -122,27 +120,16 @@ export class ProfileCoordinator {
 
 	/**
 	 * Activate a sync key received via device pairing.
-	 * Returns 'choice' when this is the first key on the device so the modal
-	 * can ask whether to merge or discard local notes; otherwise the paired
-	 * key's own namespace is activated and its cloud data is pulled.
+	 * Starting from a blank slate locally, it pulls all records from the cloud.
 	 */
-	async receiveLinkedKey(
-		syncKey: string
-	): Promise<{ outcome: 'choice' | 'linked'; error?: string }> {
+	async receiveLinkedKey(syncKey: string): Promise<{ outcome: 'linked'; error?: string }> {
 		const blocked = this.guard(false);
-		if (blocked) return { outcome: 'choice', error: blocked };
+		if (blocked) return { outcome: 'linked', error: blocked };
 		this.switching = true;
 		try {
-			const activated: {
-				outcome: 'choice' | 'linked';
-				error?: string;
-				syncExisting?: boolean;
-			} = await this.exclusive(async () => {
+			const activated = await this.exclusive(async () => {
 				await syncStore.waitForOutboxWrites();
 				let profile = profileForSyncKey(syncStore.profiles, syncKey);
-				// A key this device already holds keeps its namespace and any offline
-				// edits: pairing must never replace it from the relay. Only a brand
-				// new key starts from an empty namespace.
 				const existed = profile != null;
 				if (!profile) {
 					profile = {
@@ -153,34 +140,32 @@ export class ProfileCoordinator {
 					};
 					await syncStore.addKeyringEntry(profile);
 				}
-				if (!syncStore.activeProfile || syncStore.activeProfile.id === profile.id) {
-					// First key on this device: take ownership of any local no-account
-					// data up front, then let the modal ask merge vs discard.
-					if (!syncStore.activeProfile) await adoptLocalDatasetInto(profile.id);
-					await this.activate(profile);
-					return { outcome: 'choice' };
-				}
 				await this.activate(profile);
-				if (existed) return { outcome: 'linked' as const, syncExisting: true };
+				if (existed) {
+					return { success: true, isNew: false };
+				}
+				// Linking an existing sync key starts local as a blank slate and pulls everything from cloud!
 				const synced = await notesStore.replaceWithCloudManual();
 				if (!synced)
 					return {
-						outcome: 'choice',
+						success: false,
 						error: syncStore.lastError ?? 'Could not sync the received profile'
 					};
-				return { outcome: 'linked' };
+				return { success: true, isNew: true };
 			});
-			if (!activated.syncExisting) return activated;
-			const synced = await notesStore.syncWithCloudManual();
-			if (!synced)
-				return {
-					outcome: 'choice',
-					error: syncStore.lastError ?? 'Could not sync the received profile'
-				};
+			if (!activated.success) return { outcome: 'linked', error: activated.error };
+			if (!activated.isNew) {
+				const synced = await notesStore.syncWithCloudManual();
+				if (!synced)
+					return {
+						outcome: 'linked',
+						error: syncStore.lastError ?? 'Could not sync the received profile'
+					};
+			}
 			return { outcome: 'linked' };
 		} catch (err) {
 			return {
-				outcome: 'choice',
+				outcome: 'linked',
 				error: err instanceof Error ? err.message : 'Could not set up the received sync key'
 			};
 		} finally {

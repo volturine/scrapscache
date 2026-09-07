@@ -159,13 +159,17 @@ export class KanbanStore {
 		const remoteTombstones = isScoped
 			? (maybeTombstones ?? {})
 			: (pidOrTombstones as Record<string, number>);
-		const fromLs = this.boardsForSync();
 		const stored = await loadBoardsFromDevice<KanbanBoard[] | undefined>(pid, undefined);
 		const fromIdb = Array.isArray(stored) ? stored : [];
-		const tombstones = { ...this.boardTombstones, ...remoteTombstones };
+		const tombstones = { ...(isScoped ? {} : this.boardTombstones), ...remoteTombstones };
 		this.boardTombstones = tombstones;
-		this.boards = mergeKanbanBoards(fromLs, fromIdb, tombstones);
-		if (!this.boards.length) this.boards = [createKanbanBoard()];
+		if (isScoped && pid !== 'device-local') {
+			this.boards = fromIdb.length > 0 ? fromIdb : [createKanbanBoard()];
+		} else {
+			const fromLs = this.boardsForSync();
+			this.boards = mergeKanbanBoards(fromLs, fromIdb, tombstones);
+			if (!this.boards.length) this.boards = [createKanbanBoard()];
+		}
 		if (!this.boards.some((board) => board.id === this.activeBoardId))
 			this.activeBoardId = this.boards[0].id;
 		const idbById = new Map(fromIdb.map((board) => [board.id, board]));
@@ -173,7 +177,9 @@ export class KanbanStore {
 			const current = idbById.get(board.id);
 			return !current || current.updatedAt < board.updatedAt;
 		});
-		if (recovered.length) this.requestSync(recovered.map((board) => `board:${board.id}`));
+		if (recovered.length && (!isScoped || pid === 'device-local')) {
+			this.requestSync(recovered.map((board) => `board:${board.id}`));
+		}
 		await this.pendingDeviceWrites;
 	}
 

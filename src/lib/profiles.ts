@@ -14,6 +14,12 @@ import {
 	scopedStateKey
 } from '$lib/db/idb';
 import { BOARDS_IDB, BOARD_IDB, LABEL_IDB, NOTE_IDB } from '$lib/syncTombstones';
+import {
+	readNotesMirror,
+	writeNotesMirror,
+	readLabelsMirror,
+	writeLabelsMirror
+} from './noteStorage';
 import type { KanbanBoard } from '$lib/kanban';
 import type { Note } from '$lib/types';
 import type { ScrapsCacheBackup } from '$lib/backup';
@@ -116,8 +122,14 @@ export const LOCAL_PID = LOCAL_PROFILE_ID;
  * Give a freshly created first key ownership of any local no-account data so
  * registering does not look like data loss. Later keys start empty by design.
  */
-export function adoptLocalDatasetInto(pid: string): Promise<void> {
-	return copyProfileNamespace(LOCAL_PID, pid);
+export async function adoptLocalDatasetInto(pid: string): Promise<void> {
+	await copyProfileNamespace(LOCAL_PID, pid);
+	try {
+		const localNotes = readNotesMirror(LOCAL_PID);
+		if (localNotes.length) writeNotesMirror(localNotes, pid);
+		const localLabels = readLabelsMirror(LOCAL_PID);
+		if (localLabels.length) writeLabelsMirror(localLabels, pid);
+	} catch {}
 }
 
 // --- Per-profile exports ----------------------------------------------------

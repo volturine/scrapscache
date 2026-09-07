@@ -21,7 +21,7 @@
 	};
 
 	let { onClose }: { onClose: () => void } = $props();
-	let mode = $state<'menu' | 'register' | 'link' | 'waiting' | 'choice' | 'linked'>(
+	let mode = $state<'menu' | 'register' | 'link' | 'waiting' | 'linked'>(
 		syncStore.isLoggedIn ? 'linked' : 'menu'
 	);
 	let code = $state('');
@@ -32,7 +32,6 @@
 		| 'connect'
 		| 'export'
 		| 'pair'
-		| 'choose'
 		| 'rename'
 		| 'remove'
 		| 'sync'
@@ -58,7 +57,7 @@
 	// Background pulls and outbox retries are intentionally silent. They still
 	// block a dataset handover, but only a sync started from this modal owns its
 	// visible "Syncing" state.
-	const syncing = $derived(operation === 'sync' || operation === 'choose');
+	const syncing = $derived(operation === 'sync');
 	const busy = $derived(operation !== null || notesStore.syncing || profileCoordinator.switching);
 	const handoverBlocked = $derived(notesStore.syncing || profileCoordinator.switching);
 
@@ -236,15 +235,9 @@
 				);
 				return;
 			}
-			if (adopted.outcome === 'choice') {
-				mode = 'choice';
-				error = '';
-				info = '';
-			} else {
-				mode = 'linked';
-				info = 'Paired and synced.';
-				error = '';
-			}
+			mode = 'linked';
+			info = 'Paired and synced.';
+			error = '';
 			return;
 		}
 		if (result.expired || !result.success) {
@@ -272,32 +265,6 @@
 		now = Date.now();
 		mode = 'waiting';
 		void pollLink(result.link);
-	}
-
-	async function choose(merge: boolean) {
-		error = '';
-		info = merge ? 'Merging notes…' : 'Downloading synced notes…';
-		const completed = await runOperation('choose', 'Could not finish setup', async () => {
-			const success = merge
-				? await notesStore.mergeWithCloudManual()
-				: await notesStore.replaceWithCloudManual();
-			if (success) {
-				mode = 'linked';
-				info = merge ? 'Notes merged.' : 'Notes replaced from sync.';
-				error = '';
-				return true;
-			}
-			syncStore.logout();
-			error = friendlyError(
-				syncStore.lastError || notesStore.lastPersistError,
-				'Could not finish setup'
-			);
-			info = '';
-			// Stay on choice so the user can retry without re-linking.
-			if (!merge && !syncStore.isLoggedIn) mode = 'link';
-			return false;
-		});
-		if (completed === undefined) info = '';
 	}
 
 	function startRename(id: string, current: string) {
@@ -922,48 +889,6 @@
 					class="w-full text-sm text-[var(--scrapscache-text-muted)] touch-manipulation"
 					>Cancel</button
 				>
-			</div>
-		{:else if mode === 'choice'}
-			<div class="space-y-3">
-				<h3 class="font-medium">Use this device’s existing notes?</h3>
-				{#if syncStore.progress}
-					{@const progress = syncStore.progress}
-					{@const percent = progressPercent(progress.loadedBytes, progress.totalBytes)}
-					<div
-						class="rounded-[var(--scrapscache-radius-md)] bg-[var(--scrapscache-interactive-hover)] p-3 text-sm"
-					>
-						<div class="mb-1 flex justify-between text-[var(--scrapscache-text-muted)]">
-							<span>{progress.phase === 'upload' ? 'Uploading' : 'Downloading'}</span><span
-								>{formatBytes(progress.loadedBytes)}{progress.totalBytes
-									? ` / ${formatBytes(progress.totalBytes)} (${percent}%)`
-									: ''}</span
-							>
-						</div>
-						<div class="scrapscache-progress-track h-2 overflow-hidden rounded-full">
-							<div
-								class="scrapscache-progress-value h-full rounded-full transition-[width] duration-150"
-								style={`width: ${progress.totalBytes ? percent : 100}%`}
-							></div>
-						</div>
-					</div>
-				{:else if busy}
-					<p class="text-sm text-[var(--scrapscache-text-muted)]">{info || 'Working…'}</p>
-				{/if}
-				<button
-					type="button"
-					onclick={() => void choose(true)}
-					disabled={busy}
-					class="scrapscache-button scrapscache-button-primary w-full px-3 py-3 text-left text-sm font-medium"
-					>Keep and merge local notes</button
-				>
-				<button
-					type="button"
-					onclick={() => void choose(false)}
-					disabled={busy}
-					class="scrapscache-button scrapscache-button-destructive w-full border border-[var(--scrapscache-danger)] px-3 py-3 text-left text-sm font-medium"
-					>Discard local notes and download synced notes</button
-				>
-				{#if error}<p class="text-sm text-[var(--scrapscache-danger)]">{error}</p>{/if}
 			</div>
 		{/if}
 	</div>

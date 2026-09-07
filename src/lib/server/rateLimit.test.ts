@@ -22,6 +22,19 @@ afterEach(() => {
 });
 
 describe('token bucket rate limiter', () => {
+	it('enforces 5-per-hour registration policy', async () => {
+		const db = testDb();
+		const limiter = new TokenBucketLimiter(db);
+		const policy = { capacity: 5, refillWindowMs: 60 * 60 * 1000 };
+		for (let i = 0; i < 5; i++) {
+			expect((await limiter.check('reg-user', policy, 0)).allowed).toBe(true);
+		}
+		expect((await limiter.check('reg-user', policy, 0)).allowed).toBe(false);
+		// After 12 minutes (720_000 ms), 1 token is refilled
+		expect((await limiter.check('reg-user', policy, 720_000)).allowed).toBe(true);
+		expect((await limiter.check('reg-user', policy, 720_000)).allowed).toBe(false);
+	});
+
 	it('limits bursts and refills over time', async () => {
 		const db = testDb();
 		const limiter = new TokenBucketLimiter(db);

@@ -249,7 +249,7 @@ export class SyncStore {
 	 * namespace does, hand the rows over before first paint.
 	 */
 	private async healStrandedLocalData(activePid: string): Promise<void> {
-		if (activePid === LOCAL_PROFILE_ID) return;
+		if (activePid === LOCAL_PROFILE_ID || this.profiles.length !== 1) return;
 		try {
 			const [activeHasData, localHasData] = await Promise.all([
 				namespaceHasData(activePid),

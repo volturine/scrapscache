@@ -182,8 +182,8 @@ export class NotesStore {
 			return;
 		}
 
-		const mirrorNotes = this.notes.length ? this.notes : readNotesMirror();
-		const mirrorLabels = this.labels.length ? this.labels : readLabelsMirror();
+		const mirrorNotes = readNotesMirror(this.pid);
+		const mirrorLabels = readLabelsMirror(this.pid);
 		let dbNotes: Note[] = [];
 		let dbLabels: Label[] = [];
 		let deviceReadFailed = false;
@@ -834,12 +834,16 @@ export class NotesStore {
 		this.lastPersistError = null;
 		resetTombstoneCaches();
 		this.loaded = false;
+		this.notes = [];
+		this.labels = [];
+		this.deletedNoteIds = {};
+		this.deletedLabelIds = {};
 		await this.init();
 	}
 
 	async hardResync() {
-		const mirrorNotes = readNotesMirror();
-		const mirrorLabels = readLabelsMirror();
+		const mirrorNotes = readNotesMirror(this.pid);
+		const mirrorLabels = readLabelsMirror(this.pid);
 		try {
 			const [dbNotes, dbLabels] = await Promise.all([
 				getAllNotesMetadata(this.pid),
@@ -892,13 +896,13 @@ export class NotesStore {
 	}
 
 	private mirrorToLS() {
-		if (!writeNotesMirror(this.notes)) {
+		if (!writeNotesMirror(this.notes, this.pid)) {
 			this.recordPersistenceError(
 				'Could not update the local notes mirror',
 				new Error('localStorage write failed')
 			);
 		}
-		writeLabelsMirror(this.labels);
+		writeLabelsMirror(this.labels, this.pid);
 	}
 
 	private recordPersistenceError(context: string, err: unknown): void {

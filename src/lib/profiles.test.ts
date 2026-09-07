@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Label, Note } from '$lib/types';
+import { readNotesMirror, writeNotesMirror } from './noteStorage';
 import {
 	estimateProfileBytes,
 	getAllLabels,
@@ -131,5 +132,20 @@ describe('keyring boot selection', () => {
 		expect(nextProfileName([first, second])).toBe('Sync key 3');
 		void saveProfile;
 		void loadProfiles;
+	});
+});
+
+describe('profile localStorage mirror isolation', () => {
+	it('scopes mirrors by profile ID without cross-profile leakage', () => {
+		localStorage.clear();
+		const n1 = note('note-p1');
+		const n2 = note('note-p2');
+
+		writeNotesMirror([n1], 'p-one');
+		writeNotesMirror([n2], 'p-two');
+
+		expect(readNotesMirror('p-one').map((n) => n.id)).toEqual(['note-p1']);
+		expect(readNotesMirror('p-two').map((n) => n.id)).toEqual(['note-p2']);
+		expect(readNotesMirror('p-empty')).toEqual([]);
 	});
 });

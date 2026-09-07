@@ -100,6 +100,13 @@
 		const d = new Date(selected);
 		d.setFullYear(next.year, next.month - 1, next.day);
 		selected = d;
+		monthYearOpen = false;
+	}
+
+	function closeCalendarIfDayPicked(event: MouseEvent) {
+		if (event.target instanceof Element && event.target.closest('[data-part="cell-trigger"]')) {
+			monthYearOpen = false;
+		}
 	}
 
 	function setHour(hour: number) {
@@ -175,47 +182,50 @@
 			Pick date & time
 		</div>
 
-		<div class="mb-3 flex items-center">
-			<button
-				type="button"
-				class="icon-btn h-8 w-8 shrink-0 p-2"
-				onclick={() => shiftDay(-1)}
-				aria-label="Previous day"
-			>
-				<ChevronLeft class="h-5 w-5" aria-hidden="true" />
-			</button>
-			<button
-				type="button"
-				class="mx-1 flex min-w-0 flex-1 items-center justify-center rounded-lg px-2 py-1.5 text-sm font-medium text-[var(--scrapscache-text)] {monthYearOpen
-					? 'bg-[var(--scrapscache-bg)]'
-					: ''}"
-				onclick={() => (monthYearOpen = !monthYearOpen)}
-				aria-label="Choose date"
-				aria-expanded={monthYearOpen}
-			>
-				<span class="truncate">{dateLabel}</span>
-			</button>
-			<button
-				type="button"
-				class="icon-btn h-8 w-8 shrink-0 p-2"
-				onclick={() => shiftDay(1)}
-				aria-label="Next day"
-			>
-				<ChevronRight class="h-5 w-5" aria-hidden="true" />
-			</button>
-		</div>
-
 		{#if monthYearOpen}
-			<DatePicker.Root
+			<div
 				class="mb-1 rounded-xl bg-black/[0.03] px-2 py-2 dark:bg-white/[0.04]"
-				inline
-				startOfWeek={1}
-				value={pickerValue}
-				onValueChange={onDateChange}
+				role="presentation"
+				onclick={closeCalendarIfDayPicked}
 			>
-				<DatePickerViews />
-			</DatePicker.Root>
+				<DatePicker.Root
+					inline
+					startOfWeek={1}
+					maxView="day"
+					value={pickerValue}
+					onValueChange={onDateChange}
+				>
+					<DatePickerViews />
+				</DatePicker.Root>
+			</div>
 		{:else}
+			<div class="mb-3 flex items-center">
+				<button
+					type="button"
+					class="icon-btn h-8 w-8 shrink-0 p-2"
+					onclick={() => shiftDay(-1)}
+					aria-label="Previous day"
+				>
+					<ChevronLeft class="h-5 w-5" aria-hidden="true" />
+				</button>
+				<button
+					type="button"
+					class="mx-1 flex min-w-0 flex-1 items-center justify-center rounded-lg px-2 py-1.5 text-sm font-medium text-[var(--scrapscache-text)]"
+					onclick={() => (monthYearOpen = true)}
+					aria-label="Choose date"
+					aria-expanded="false"
+				>
+					<span class="truncate">{dateLabel}</span>
+				</button>
+				<button
+					type="button"
+					class="icon-btn h-8 w-8 shrink-0 p-2"
+					onclick={() => shiftDay(1)}
+					aria-label="Next day"
+				>
+					<ChevronRight class="h-5 w-5" aria-hidden="true" />
+				</button>
+			</div>
 			<div
 				class="flex justify-center gap-1 rounded-xl bg-black/[0.03] px-2 py-1 dark:bg-white/[0.04]"
 			>

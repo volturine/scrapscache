@@ -10,23 +10,26 @@
 		'rounded-full p-1.5 text-[var(--scrapscache-text-muted)] hover:bg-black/5 dark:hover:bg-white/10';
 	const dayBtn =
 		'relative mx-auto flex h-8 w-8 items-center justify-center rounded-full text-sm hover:bg-black/5 dark:hover:bg-white/10 data-[selected]:bg-[var(--scrapscache-accent)] data-[selected]:text-[var(--scrapscache-accent-foreground)] data-[in-range]:bg-[color-mix(in_srgb,var(--scrapscache-accent)_18%,transparent)] data-[today]:font-bold data-[today]:ring-1 data-[today]:ring-[var(--scrapscache-border)] data-[outside-range]:opacity-40';
-	const monthBtn =
-		'flex h-10 w-full items-center justify-center rounded-lg text-sm hover:bg-black/5 dark:hover:bg-white/10 data-[selected]:bg-[var(--scrapscache-accent)] data-[selected]:text-[var(--scrapscache-accent-foreground)]';
+	const monthYearSelect =
+		'min-w-0 rounded-lg border border-[var(--scrapscache-border)] bg-[var(--scrapscache-surface)] px-1.5 py-1 text-sm font-semibold text-[var(--scrapscache-text)] outline-none';
 </script>
 
 <DatePicker.View view="day">
 	<DatePicker.Context>
 		{#snippet render(datePicker)}
-			<DatePicker.ViewControl class="mb-2 flex items-center justify-between">
-				<DatePicker.PrevTrigger class={navBtn} aria-label="Previous month">
-					<ChevronLeft size={16} />
-				</DatePicker.PrevTrigger>
-				<DatePicker.ViewTrigger class="text-sm font-semibold">
-					<DatePicker.RangeText />
-				</DatePicker.ViewTrigger>
-				<DatePicker.NextTrigger class={navBtn} aria-label="Next month">
-					<ChevronRight size={16} />
-				</DatePicker.NextTrigger>
+			<DatePicker.ViewControl class="mb-2 flex items-center justify-between gap-2">
+				<div class="flex min-w-0 flex-1 items-center gap-1.5">
+					<DatePicker.MonthSelect class={monthYearSelect} />
+					<DatePicker.YearSelect class={monthYearSelect} />
+				</div>
+				<div class="flex shrink-0 items-center">
+					<DatePicker.PrevTrigger class={navBtn} aria-label="Previous month">
+						<ChevronLeft size={16} />
+					</DatePicker.PrevTrigger>
+					<DatePicker.NextTrigger class={navBtn} aria-label="Next month">
+						<ChevronRight size={16} />
+					</DatePicker.NextTrigger>
+				</div>
 			</DatePicker.ViewControl>
 			<DatePicker.Table class="w-full table-fixed">
 				<DatePicker.TableHead>
@@ -46,72 +49,6 @@
 									<DatePicker.TableCellTrigger class={dayBtn}>
 										{day.day}
 										{@render dayExtra?.(day)}
-									</DatePicker.TableCellTrigger>
-								</DatePicker.TableCell>
-							{/each}
-						</DatePicker.TableRow>
-					{/each}
-				</DatePicker.TableBody>
-			</DatePicker.Table>
-		{/snippet}
-	</DatePicker.Context>
-</DatePicker.View>
-
-<DatePicker.View view="month">
-	<DatePicker.Context>
-		{#snippet render(datePicker)}
-			<DatePicker.ViewControl class="mb-2 flex items-center justify-between">
-				<DatePicker.PrevTrigger class={navBtn} aria-label="Previous year">
-					<ChevronLeft size={16} />
-				</DatePicker.PrevTrigger>
-				<DatePicker.ViewTrigger class="text-sm font-semibold">
-					<DatePicker.RangeText />
-				</DatePicker.ViewTrigger>
-				<DatePicker.NextTrigger class={navBtn} aria-label="Next year">
-					<ChevronRight size={16} />
-				</DatePicker.NextTrigger>
-			</DatePicker.ViewControl>
-			<DatePicker.Table class="w-full table-fixed">
-				<DatePicker.TableBody>
-					{#each datePicker().getMonthsGrid({ columns: 4, format: 'short' }) as months, row (row)}
-						<DatePicker.TableRow>
-							{#each months as month (month.value)}
-								<DatePicker.TableCell value={month.value}>
-									<DatePicker.TableCellTrigger class={monthBtn}>
-										{month.label}
-									</DatePicker.TableCellTrigger>
-								</DatePicker.TableCell>
-							{/each}
-						</DatePicker.TableRow>
-					{/each}
-				</DatePicker.TableBody>
-			</DatePicker.Table>
-		{/snippet}
-	</DatePicker.Context>
-</DatePicker.View>
-
-<DatePicker.View view="year">
-	<DatePicker.Context>
-		{#snippet render(datePicker)}
-			<DatePicker.ViewControl class="mb-2 flex items-center justify-between">
-				<DatePicker.PrevTrigger class={navBtn} aria-label="Previous decade">
-					<ChevronLeft size={16} />
-				</DatePicker.PrevTrigger>
-				<DatePicker.ViewTrigger class="text-sm font-semibold">
-					<DatePicker.RangeText />
-				</DatePicker.ViewTrigger>
-				<DatePicker.NextTrigger class={navBtn} aria-label="Next decade">
-					<ChevronRight size={16} />
-				</DatePicker.NextTrigger>
-			</DatePicker.ViewControl>
-			<DatePicker.Table class="w-full table-fixed">
-				<DatePicker.TableBody>
-					{#each datePicker().getYearsGrid({ columns: 4 }) as years, row (row)}
-						<DatePicker.TableRow>
-							{#each years as year (year.value)}
-								<DatePicker.TableCell value={year.value}>
-									<DatePicker.TableCellTrigger class={monthBtn}>
-										{year.label}
 									</DatePicker.TableCellTrigger>
 								</DatePicker.TableCell>
 							{/each}

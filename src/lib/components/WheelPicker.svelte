@@ -3,6 +3,8 @@
 
 	const ITEM_H = 36;
 	const VISIBLE = 5;
+	const PAD = Math.floor(VISIBLE / 2);
+	const COPIES = 3;
 
 	let {
 		items,
@@ -32,36 +34,79 @@
 		return i < 0 ? 0 : i;
 	}
 
-	const valueIndex = $derived(indexOf(value));
-	const centerIndex = $derived(scrollIndex ?? valueIndex);
-
-	function optionId(i: number): string {
-		return `${uid}-opt-${i}`;
+	function wrapIndex(visual: number): number {
+		const n = items.length;
+		if (n === 0) return 0;
+		return ((visual % n) + n) % n;
 	}
 
-	function snapTo(index: number) {
-		if (!el) return;
-		const top = index * ITEM_H;
-		if (Math.abs(el.scrollTop - top) < 1) return;
+	function stepValue(from: T, delta: number): T {
+		const n = items.length;
+		if (n === 0) return from;
+		return items[wrapIndex(indexOf(from) + delta)].value;
+	}
+
+	const middleStart = $derived(items.length);
+	const valueIndex = $derived(indexOf(value));
+	const centerIndex = $derived(scrollIndex ?? middleStart + valueIndex);
+	const looped = $derived(
+		Array.from({ length: items.length * COPIES }, (_, visual) => ({
+			visual,
+			item: items[wrapIndex(visual)],
+			primary: visual >= middleStart && visual < middleStart + items.length
+		}))
+	);
+
+	function optionId(logical: number): string {
+		return `${uid}-opt-${logical}`;
+	}
+
+	function copyHeight(): number {
+		return items.length * ITEM_H;
+	}
+
+	function centerFromScroll(scrollTop: number): number {
+		return Math.round(scrollTop / ITEM_H) + PAD;
+	}
+
+	function setScrollTop(top: number) {
+		if (!el || Math.abs(el.scrollTop - top) < 1) return;
+		const alreadyIgnoring = ignoreScroll;
 		ignoreScroll = true;
 		el.scrollTop = top;
+		if (alreadyIgnoring) return;
 		requestAnimationFrame(() => {
 			ignoreScroll = false;
 		});
 	}
 
+	function snapTo(index: number) {
+		setScrollTop((index - PAD) * ITEM_H);
+	}
+
+	function recenter() {
+		if (!el || items.length === 0) return;
+		const copyH = copyHeight();
+		const minTop = (middleStart - PAD) * ITEM_H;
+		const maxTop = (middleStart + items.length - PAD) * ITEM_H;
+		let top = el.scrollTop;
+		while (top < minTop) top += copyH;
+		while (top >= maxTop) top -= copyH;
+		setScrollTop(top);
+	}
+
 	function commitIndex(index: number) {
-		const clamped = Math.max(0, Math.min(items.length - 1, index));
-		const next = items[clamped];
+		const next = items[wrapIndex(index)];
 		if (!next) return;
-		snapTo(clamped);
+		snapTo(middleStart + wrapIndex(index));
 		if (next.value !== value) onChange(next.value);
 		scrollIndex = null;
 	}
 
 	function settle() {
 		if (ignoreScroll || !el) return;
-		commitIndex(Math.round(el.scrollTop / ITEM_H));
+		recenter();
+		commitIndex(centerFromScroll(el.scrollTop));
 	}
 
 	function scheduleSettle() {
@@ -71,24 +116,33 @@
 
 	function handleScroll() {
 		if (!el || ignoreScroll) return;
-		scrollIndex = Math.round(el.scrollTop / ITEM_H);
+		recenter();
+		scrollIndex = centerFromScroll(el.scrollTop);
 		scheduleSettle();
 	}
 
 	function setValue(next: T) {
 		if (next !== value) onChange(next);
-		snapTo(indexOf(next));
+		snapTo(middleStart + indexOf(next));
 	}
 
 	onMount(() => {
 		const node = el;
 		if (!node) return;
-		snapTo(valueIndex);
+		ignoreScroll = true;
+		snapTo(middleStart + valueIndex);
 		const onScroll = () => handleScroll();
 		const onEnd = () => settle();
 		node.addEventListener('scroll', onScroll);
 		node.addEventListener('scrollend', onEnd);
+		const frame = requestAnimationFrame(() => {
+			snapTo(middleStart + valueIndex);
+			requestAnimationFrame(() => {
+				ignoreScroll = false;
+			});
+		});
 		return () => {
+			cancelAnimationFrame(frame);
 			node.removeEventListener('scroll', onScroll);
 			node.removeEventListener('scrollend', onEnd);
 			if (settleTimer) clearTimeout(settleTimer);
@@ -96,13 +150,12 @@
 	});
 
 	function handleKeydown(e: KeyboardEvent) {
-		const idx = indexOf(value);
 		if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
 			e.preventDefault();
-			if (idx > 0) setValue(items[idx - 1].value);
+			setValue(stepValue(value, -1));
 		} else if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
 			e.preventDefault();
-			if (idx < items.length - 1) setValue(items[idx + 1].value);
+			setValue(stepValue(value, 1));
 		} else if (e.key === 'Home') {
 			e.preventDefault();
 			setValue(items[0].value);
@@ -111,10 +164,10 @@
 			setValue(items[items.length - 1].value);
 		} else if (e.key === 'PageUp') {
 			e.preventDefault();
-			setValue(items[Math.max(0, idx - 5)].value);
+			setValue(stepValue(value, -5));
 		} else if (e.key === 'PageDown') {
 			e.preventDefault();
-			setValue(items[Math.min(items.length - 1, idx + 5)].value);
+			setValue(stepValue(value, 5));
 		}
 	}
 
@@ -131,13 +184,6 @@
 		if (dragging) return;
 		setValue(item.value);
 	}
-
-	function handleOptionKeydown(e: KeyboardEvent, item: { value: T }) {
-		if (e.key === 'Enter' || e.key === ' ') {
-			e.preventDefault();
-			selectItem(item);
-		}
-	}
 </script>
 
 <div class="relative {className}" style="height: {ITEM_H * VISIBLE}px">
@@ -151,33 +197,30 @@
 		role="listbox"
 		tabindex="0"
 		aria-label={ariaLabel}
-		aria-activedescendant={optionId(centerIndex)}
+		aria-activedescendant={optionId(wrapIndex(centerIndex))}
 		bind:this={el}
 		onkeydown={handleKeydown}
 		onpointerdown={handlePointerDown}
 		onpointermove={handlePointerMove}
 	>
-		<div style="height: {ITEM_H * 2}px" aria-hidden="true"></div>
-		{#each items as item, i (item.value)}
+		{#each looped as row (row.visual)}
 			<div
-				id={optionId(i)}
-				role="option"
-				tabindex="-1"
-				aria-selected={item.value === value}
+				id={row.primary ? optionId(wrapIndex(row.visual)) : undefined}
+				role={row.primary ? 'option' : undefined}
+				aria-hidden={!row.primary}
+				aria-selected={row.primary ? row.item.value === value : undefined}
 				class="flex cursor-pointer items-center justify-center tabular-nums transition-opacity duration-75
-					{i === centerIndex
+					{row.visual === centerIndex
 					? 'text-base font-semibold text-[var(--scrapscache-text)]'
-					: Math.abs(i - centerIndex) === 1
+					: Math.abs(row.visual - centerIndex) === 1
 						? 'text-sm font-medium text-[var(--scrapscache-text-muted)]'
 						: 'text-sm text-[var(--scrapscache-text-muted)] opacity-40'}"
 				style="height: {ITEM_H}px; scroll-snap-align: center"
-				onclick={() => selectItem(item)}
-				onkeydown={(e) => handleOptionKeydown(e, item)}
+				onclick={() => selectItem(row.item)}
 			>
-				{item.label}
+				{row.item.label}
 			</div>
 		{/each}
-		<div style="height: {ITEM_H * 2}px" aria-hidden="true"></div>
 	</div>
 </div>
 

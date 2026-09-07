@@ -37,7 +37,10 @@ describe('ReminderPicker date and time controls', () => {
 		await fireEvent.click(screen.getByRole('button', { name: 'Choose date' }));
 
 		expect(screen.getByRole('grid')).toBeTruthy();
-		expect(screen.getByRole('button', { name: 'Choose date' }).textContent).toContain('12');
+		expect(screen.getByRole('combobox', { name: 'Select month' })).toBeTruthy();
+		expect(screen.getByRole('combobox', { name: 'Select year' })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: 'Choose date' })).toBeNull();
+		expect(screen.queryByRole('button', { name: 'Previous day' })).toBeNull();
 		expect(screen.queryByRole('listbox', { name: 'Minute' })).toBeNull();
 	});
 
@@ -56,7 +59,34 @@ describe('ReminderPicker date and time controls', () => {
 		await fireEvent.click(screen.getByRole('button', { name: 'Choose date' }));
 		await fireEvent.click(within(screen.getByRole('grid')).getByText('21'));
 
+		expect(screen.queryByRole('grid')).toBeNull();
 		expect(screen.getByRole('button', { name: 'Choose date' }).textContent).toContain('21');
+	});
+
+	it('wraps the hour wheel from 23 to 00', async () => {
+		const late = new Date(2026, 7, 12, 23, 30, 0, 0).getTime();
+		render(ReminderPicker, { props: { reminder: late, onClose: () => {} } });
+
+		await fireEvent.keyDown(screen.getByRole('listbox', { name: 'Hour' }), { key: 'ArrowDown' });
+
+		expect(
+			within(screen.getByRole('listbox', { name: 'Hour' }))
+				.getByRole('option', { name: '00' })
+				.getAttribute('aria-selected')
+		).toBe('true');
+	});
+
+	it('wraps the minute wheel from 00 to 59', async () => {
+		const onHour = new Date(2026, 7, 12, 15, 0, 0, 0).getTime();
+		render(ReminderPicker, { props: { reminder: onHour, onClose: () => {} } });
+
+		await fireEvent.keyDown(screen.getByRole('listbox', { name: 'Minute' }), { key: 'ArrowUp' });
+
+		expect(
+			within(screen.getByRole('listbox', { name: 'Minute' }))
+				.getByRole('option', { name: '59' })
+				.getAttribute('aria-selected')
+		).toBe('true');
 	});
 });
 

@@ -832,6 +832,7 @@ export class NotesStore {
 		this.syncFollowupRequested = false;
 		this.dirty = false;
 		this.lastPersistError = null;
+		syncStore.lastError = null;
 		resetTombstoneCaches();
 		this.loaded = false;
 		this.notes = [];
@@ -912,8 +913,6 @@ export class NotesStore {
 	}
 
 	private syncPushTimer: ReturnType<typeof setTimeout> | null = null;
-	private syncRetryTimer: ReturnType<typeof setTimeout> | null = null;
-	private syncRetryAttempt = 0;
 	private noteRetryTimers = new Map<string, ReturnType<typeof setTimeout>>();
 	private noteRetryAttempts = new Map<string, number>();
 	private dirty = false;
@@ -992,10 +991,6 @@ export class NotesStore {
 	private scheduleSyncPush(delay = 5000) {
 		if (this.syncFlight) this.syncFollowupRequested = true;
 		if (this.syncPushTimer) clearTimeout(this.syncPushTimer);
-		if (this.syncRetryTimer) {
-			clearTimeout(this.syncRetryTimer);
-			this.syncRetryTimer = null;
-		}
 		this.syncPushTimer = setTimeout(() => {
 			this.syncPushTimer = null;
 			if (!this.dirty) return;
@@ -1003,41 +998,14 @@ export class NotesStore {
 		}, delay);
 	}
 
-	private scheduleSyncRetry(): void {
-		if (this.syncRetryTimer || !syncStore.isLoggedIn) return;
-		const delay = Math.min(5 * 60_000, 5_000 * 2 ** this.syncRetryAttempt);
-		this.syncRetryAttempt = Math.min(this.syncRetryAttempt + 1, 6);
-		this.syncRetryTimer = setTimeout(() => {
-			this.syncRetryTimer = null;
-			if (this.dirty && syncStore.isLoggedIn) void this.flushSync();
-		}, delay);
-	}
-
-	private clearSyncRetry(): void {
-		if (this.syncRetryTimer) clearTimeout(this.syncRetryTimer);
-		this.syncRetryTimer = null;
-		this.syncRetryAttempt = 0;
-	}
-
 	flushSync(indicate = false): Promise<boolean> {
 		if (this.syncPushTimer) {
 			clearTimeout(this.syncPushTimer);
 			this.syncPushTimer = null;
 		}
-		if (this.syncRetryTimer) {
-			clearTimeout(this.syncRetryTimer);
-			this.syncRetryTimer = null;
-		}
 		return this.queueSync(indicate).then(async (synced) => {
 			const leftover = synced ? await getSyncOutboxKeys(this.pid).catch(() => []) : [];
-			if (synced && leftover.length === 0) {
-				this.dirty = false;
-				this.clearSyncRetry();
-			} else {
-				this.dirty = true;
-				if (/quota/i.test(syncStore.lastError ?? '')) this.clearSyncRetry();
-				else this.scheduleSyncRetry();
-			}
+			this.dirty = !synced || leftover.length > 0;
 			return synced;
 		});
 	}
@@ -1389,6 +1357,12 @@ export class NotesStore {
 			if (this.attachmentHydrationFailures.size > 0) {
 				syncStore.lastError =
 					'Synced, but some photos could not be prepared for upload. They will retry on the next sync.';
+			} else if (
+				syncStore.lastError ===
+				'Synced, but some photos could not be prepared for upload. They will retry on the next sync.'
+			) {
+				syncStore.lastError = null;
+				this.lastPersistError = null;
 			} else if (!syncStore.lastError) {
 				this.lastPersistError = null;
 			}

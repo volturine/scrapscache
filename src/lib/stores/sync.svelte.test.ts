@@ -1,3 +1,4 @@
+import { saveProfile } from '$lib/profiles';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Note, NoteImage } from '$lib/types';
 import {
@@ -1095,5 +1096,62 @@ describe('client sync state machine', () => {
 		expect(retry.success, retry.error).toBe(true);
 		expect(await idb.getSyncOutboxKeys()).toEqual([]);
 		expect(store.lastSync).toBeGreaterThan(0);
+	});
+	it('clears outbox keys properly for custom profile using profile generation', async () => {
+		const pid = 'custom-profile-1';
+		const { store, account } = createHarness(() => ({
+			success: true,
+			data: emptyData({ cursor: 1, writesAccepted: true })
+		}));
+		await store.ensureProfilesLoaded();
+		const profile = {
+			id: pid,
+			name: 'Custom',
+			syncKey: account.syncKey,
+			createdAt: Date.now()
+		};
+		await store.addKeyringEntry(profile);
+		store.activateProfile(profile);
+		await idb.markSyncOutbox(pid, ['note:custom-1']);
+		expect(await idb.getSyncOutboxKeys(pid)).toEqual(['note:custom-1']);
+
+		const result = await store.sync(
+			[note('custom-1')],
+			[],
+			{},
+			{},
+			[],
+			{},
+			false,
+			false,
+			passthrough
+		);
+
+		expect(result.success, result.error).toBe(true);
+		expect(await idb.getSyncOutboxKeys(pid)).toEqual([]);
+	});
+
+	it('prunes orphan outbox records when catch-up downloads drain', async () => {
+		const pid = 'custom-profile-2';
+		const { store, account } = createHarness(() => ({
+			success: true,
+			data: emptyData({ cursor: 1, writesAccepted: true })
+		}));
+		await store.ensureProfilesLoaded();
+		const profile = {
+			id: pid,
+			name: 'Custom 2',
+			syncKey: account.syncKey,
+			createdAt: Date.now()
+		};
+		await store.addKeyringEntry(profile);
+		store.activateProfile(profile);
+		await idb.markSyncOutbox(pid, ['attachment:non-existent']);
+		expect(await idb.getSyncOutboxKeys(pid)).toEqual(['attachment:non-existent']);
+
+		const result = await store.sync([], [], {}, {}, [], {}, false, false, passthrough);
+
+		expect(result.success, result.error).toBe(true);
+		expect(await idb.getSyncOutboxKeys(pid)).toEqual([]);
 	});
 });

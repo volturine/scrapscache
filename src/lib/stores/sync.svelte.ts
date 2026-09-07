@@ -307,8 +307,9 @@ export class SyncStore {
 
 	async queueOutbox(keys: Iterable<string> = []): Promise<void> {
 		const pendingKeys = [...new Set(keys)];
+		const pid = this.activeProfile?.id ?? LOCAL_PROFILE_ID;
 		const write = this.pendingOutboxWrites.then(async () => {
-			await markSyncOutbox(pendingKeys);
+			await markSyncOutbox(pid, pendingKeys);
 		});
 		this.pendingOutboxWrites = write.catch(() => undefined);
 		await write;
@@ -763,7 +764,7 @@ export class SyncStore {
 			const keys = syncControlKeys(account.accountId);
 			let baseline: Record<string, string> = {};
 			try {
-				const durable = await getSyncState<unknown>(keys.baseline);
+				const durable = await getSyncState<unknown>(keys.baseline, pid);
 				if (durable && typeof durable === 'object' && !Array.isArray(durable))
 					baseline = Object.fromEntries(
 						Object.entries(durable).filter(
@@ -775,11 +776,14 @@ export class SyncStore {
 			}
 			const firstFullUpload = Object.keys(baseline).length === 0;
 			let recordIds =
-				(await getSyncState<Record<string, string>>(keys.recordIds).catch(() => undefined)) ?? {};
+				(await getSyncState<Record<string, string>>(keys.recordIds, pid).catch(() => undefined)) ??
+				{};
 			if (!recordIds || typeof recordIds !== 'object' || Array.isArray(recordIds)) recordIds = {};
-			const outboxSnapshotAt = await getOutboxGeneration();
+			const outboxSnapshotAt = await getOutboxGeneration(pid);
 			let outboxKeys = new Set(await getSyncOutboxKeys(pid).catch(() => []));
-			let cursor = Number((await getSyncState<number>(keys.cursor).catch(() => undefined)) || 0);
+			let cursor = Number(
+				(await getSyncState<number>(keys.cursor, pid).catch(() => undefined)) || 0
+			);
 			if (firstFullUpload && cursor > 0) cursor = 0;
 
 			let mergedNotes = notes,
@@ -1162,6 +1166,11 @@ export class SyncStore {
 				}
 
 				if (downloadsDrained) {
+					for (const key of outboxKeys) {
+						if (!currentKeys.has(key)) {
+							acknowledgedOutbox.add(key);
+						}
+					}
 					const internalAcknowledgements = new Map<number, string[]>();
 					for (const key of acknowledgedOutbox) {
 						const markedAt = internallyMarkedOutbox.get(key);
@@ -1264,25 +1273,27 @@ export class SyncStore {
 	async needsCurrentStateBootstrap(): Promise<boolean> {
 		if (!this.account) return false;
 		const baseline = await getSyncState<Record<string, string>>(
-			syncControlKeys(this.account.accountId).baseline
+			syncControlKeys(this.account.accountId).baseline,
+			this.activePid
 		).catch(() => undefined);
 		return !baseline || Object.keys(baseline).length === 0;
 	}
 
 	async committedRevision(): Promise<number | null> {
 		if (!this.account) return null;
-		const cursor = await getSyncState<number>(syncControlKeys(this.account.accountId).cursor).catch(
-			() => undefined
-		);
+		const cursor = await getSyncState<number>(
+			syncControlKeys(this.account.accountId).cursor,
+			this.activePid
+		).catch(() => undefined);
 		return Number.isSafeInteger(cursor) && Number(cursor) >= 0 ? Number(cursor) : null;
 	}
 
-	async clearAccountControlPlane(accountId: string): Promise<void> {
+	async clearAccountControlPlane(accountId: string, pid: string = this.activePid): Promise<void> {
 		const keys = syncControlKeys(accountId);
 		await Promise.all([
-			deleteSyncState(keys.cursor),
-			deleteSyncState(keys.baseline),
-			deleteSyncState(keys.recordIds)
+			deleteSyncState(keys.cursor, pid),
+			deleteSyncState(keys.baseline, pid),
+			deleteSyncState(keys.recordIds, pid)
 		]);
 	}
 

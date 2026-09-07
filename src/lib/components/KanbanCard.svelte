@@ -208,7 +208,7 @@
 		{/if}
 		{#if note.title}
 			<h3
-				class="mb-1 text-[15px] font-semibold leading-snug tracking-tight text-[var(--scrapscache-text)]"
+				class="mb-1 whitespace-pre-wrap break-words text-[15px] font-semibold leading-snug tracking-tight text-[var(--scrapscache-text)]"
 			>
 				{note.title}
 			</h3>

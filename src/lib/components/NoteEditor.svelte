@@ -424,6 +424,29 @@
 			copyFlashTimer = null;
 		}, 1500);
 	}
+	function autoResizeTitle(node: HTMLTextAreaElement, _value?: string) {
+		const resize = () => {
+			node.style.height = 'auto';
+			if (node.scrollHeight > 0) {
+				node.style.height = `${node.scrollHeight}px`;
+			}
+		};
+		resize();
+		if (typeof requestAnimationFrame !== 'undefined') {
+			requestAnimationFrame(resize);
+		}
+		node.addEventListener('input', resize);
+		window.addEventListener('resize', resize);
+		return {
+			update() {
+				resize();
+			},
+			destroy() {
+				node.removeEventListener('input', resize);
+				window.removeEventListener('resize', resize);
+			}
+		};
+	}
 </script>
 
 <svelte:window
@@ -529,20 +552,21 @@
 						bind:this={editorScroller}
 						class="note-scrollbar-hidden scrollable min-h-0 flex-1 touch-pan-y overflow-y-auto overflow-x-hidden overscroll-contain px-6 pt-4 pb-3"
 					>
-						<input
-							type="text"
+						<textarea
+							use:autoResizeTitle={title}
 							placeholder="Title"
 							bind:value={title}
 							oninput={scheduleCommit}
 							onfocus={exitTaskFocus}
 							onkeydown={(e) => {
-								if (e.key === 'Enter') {
+								if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
 									e.preventDefault();
 									bodyEditor?.focusDefault();
 								}
 							}}
-							class="mb-3 block w-full bg-transparent text-xl font-medium text-[var(--scrapscache-text)] placeholder:text-[var(--scrapscache-text-muted)] outline-none"
-						/>
+							rows="1"
+							class="mb-3 block w-full resize-none overflow-hidden break-words border-none bg-transparent p-0 text-xl font-medium text-[var(--scrapscache-text)] placeholder:text-[var(--scrapscache-text-muted)] outline-none [field-sizing:content]"
+						></textarea>
 
 						<BodyEditor
 							bind:this={bodyEditor}

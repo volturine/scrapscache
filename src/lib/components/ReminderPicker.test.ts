@@ -113,6 +113,20 @@ describe('ReminderPicker remaining time', () => {
 		expect(screen.getByText('Closed-app alerts need Sync on this device.')).toBeTruthy();
 	});
 
+	it('shows cancel next to save after the reminder is edited', async () => {
+		render(ReminderPicker, { props: { reminder, onClose: () => {} } });
+
+		expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
+
+		await fireEvent.click(
+			within(screen.getByRole('listbox', { name: 'Hour' })).getByRole('option', { name: '16' })
+		);
+
+		expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy();
+		expect(screen.getByRole('button', { name: 'Save' })).toBeTruthy();
+	});
+
 	it('updates remaining time when the hour changes', async () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date(2026, 7, 12, 14, 30, 0, 0));

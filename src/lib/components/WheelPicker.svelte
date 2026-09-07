@@ -5,6 +5,8 @@
 	const VISIBLE = 5;
 	const PAD = Math.floor(VISIBLE / 2);
 	const COPIES = 3;
+	const FRICTION = 0.95;
+	const MIN_VEL = 0.03;
 
 	let {
 		items,
@@ -22,12 +24,16 @@
 
 	const uid = $props.id();
 
-	let el = $state<HTMLDivElement | undefined>();
+	let offset = $state(0);
 	let scrollIndex = $state<number | null>(null);
 	let dragging = false;
-	let pointerDown = false;
-	let pointerStartY = 0;
-	let ignoreScroll = false;
+	let pointerId: number | null = null;
+	let startY = 0;
+	let startOffset = 0;
+	let lastY = 0;
+	let lastT = 0;
+	let velocity = 0;
+	let anim = 0;
 	let settleTimer: ReturnType<typeof setTimeout> | undefined;
 
 	function indexOf(next: T): number {
@@ -48,6 +54,8 @@
 	}
 
 	const middleStart = $derived(items.length);
+	const copyH = $derived(items.length * ITEM_H);
+	const minTop = $derived((middleStart - PAD) * ITEM_H);
 	const valueIndex = $derived(indexOf(value));
 	const centerIndex = $derived(scrollIndex ?? middleStart + valueIndex);
 	const looped = $derived(
@@ -62,35 +70,23 @@
 		return `${uid}-opt-${logical}`;
 	}
 
-	function copyHeight(): number {
-		return items.length * ITEM_H;
+	function wrapOffset(px: number): number {
+		if (copyH === 0) return px;
+		let top = px;
+		const span = copyH;
+		while (top < minTop) top += span;
+		while (top >= minTop + span) top -= span;
+		return top;
 	}
 
-	function centerFromScroll(scrollTop: number): number {
-		return Math.round(scrollTop / ITEM_H) + PAD;
-	}
-
-	function setScrollTop(top: number) {
-		if (!el || Math.abs(el.scrollTop - top) < 1) return;
-		ignoreScroll = true;
-		el.scrollTop = top;
-		requestAnimationFrame(() => {
-			ignoreScroll = false;
-		});
+	function applyOffset(px: number) {
+		offset = wrapOffset(px);
+		scrollIndex = Math.round(offset / ITEM_H) + PAD;
 	}
 
 	function snapTo(index: number) {
-		setScrollTop((index - PAD) * ITEM_H);
-	}
-
-	function recenter() {
-		if (!el || items.length === 0) return;
-		const copyH = copyHeight();
-		const minTop = (middleStart - PAD) * ITEM_H;
-		const maxTop = minTop + copyH;
-		const top = el.scrollTop;
-		if (top < minTop) el.scrollTop = top + copyH;
-		else if (top >= maxTop) el.scrollTop = top - copyH;
+		offset = (index - PAD) * ITEM_H;
+		scrollIndex = null;
 	}
 
 	function commitIndex(index: number) {
@@ -98,25 +94,33 @@
 		if (!next) return;
 		snapTo(middleStart + wrapIndex(index));
 		if (next.value !== value) onChange(next.value);
-		scrollIndex = null;
 	}
 
 	function settle() {
-		if (ignoreScroll || pointerDown || !el) return;
-		recenter();
-		commitIndex(centerFromScroll(el.scrollTop));
+		commitIndex(Math.round(offset / ITEM_H) + PAD);
 	}
 
-	function scheduleSettle() {
-		if (settleTimer) clearTimeout(settleTimer);
-		settleTimer = setTimeout(settle, 80);
+	function stopAnim() {
+		if (anim) cancelAnimationFrame(anim);
+		anim = 0;
 	}
 
-	function handleScroll() {
-		if (!el || ignoreScroll) return;
-		recenter();
-		scrollIndex = centerFromScroll(el.scrollTop);
-		if (!pointerDown) scheduleSettle();
+	function inertia() {
+		stopAnim();
+		lastT = 0;
+		const tick = (t: number) => {
+			const dt = lastT ? Math.min(t - lastT, 32) : 16;
+			lastT = t;
+			if (Math.abs(velocity) < MIN_VEL) {
+				anim = 0;
+				settle();
+				return;
+			}
+			applyOffset(offset - velocity * dt);
+			velocity *= FRICTION;
+			anim = requestAnimationFrame(tick);
+		};
+		anim = requestAnimationFrame(tick);
 	}
 
 	function setValue(next: T) {
@@ -125,21 +129,9 @@
 	}
 
 	onMount(() => {
-		const node = el;
-		if (!node) return;
-		ignoreScroll = true;
 		snapTo(middleStart + valueIndex);
-		const onScroll = () => handleScroll();
-		node.addEventListener('scroll', onScroll, { passive: true });
-		const frame = requestAnimationFrame(() => {
-			snapTo(middleStart + valueIndex);
-			requestAnimationFrame(() => {
-				ignoreScroll = false;
-			});
-		});
 		return () => {
-			cancelAnimationFrame(frame);
-			node.removeEventListener('scroll', onScroll);
+			stopAnim();
 			if (settleTimer) clearTimeout(settleTimer);
 		};
 	});
@@ -166,21 +158,51 @@
 		}
 	}
 
+	function handleWheel(node: HTMLElement) {
+		const onWheel = (e: WheelEvent) => {
+			e.preventDefault();
+			stopAnim();
+			applyOffset(offset + e.deltaY);
+			if (settleTimer) clearTimeout(settleTimer);
+			settleTimer = setTimeout(settle, 80);
+		};
+		node.addEventListener('wheel', onWheel, { passive: false });
+		return () => node.removeEventListener('wheel', onWheel);
+	}
+
 	function handlePointerDown(e: PointerEvent) {
-		pointerStartY = e.clientY;
-		dragging = false;
-		pointerDown = true;
+		if (e.button !== 0) return;
+		stopAnim();
 		if (settleTimer) clearTimeout(settleTimer);
+		pointerId = e.pointerId;
+		if (e.currentTarget instanceof HTMLElement) {
+			e.currentTarget.setPointerCapture(e.pointerId);
+		}
+		dragging = false;
+		startY = e.clientY;
+		startOffset = offset;
+		lastY = e.clientY;
+		lastT = performance.now();
+		velocity = 0;
 	}
 
 	function handlePointerMove(e: PointerEvent) {
-		if (Math.abs(e.clientY - pointerStartY) > 6) dragging = true;
+		if (pointerId !== e.pointerId) return;
+		const dy = e.clientY - startY;
+		if (Math.abs(dy) > 6) dragging = true;
+		const now = performance.now();
+		const dt = now - lastT;
+		if (dt > 0) velocity = (e.clientY - lastY) / dt;
+		lastY = e.clientY;
+		lastT = now;
+		applyOffset(startOffset - dy);
 	}
 
-	function handlePointerUp() {
-		if (!pointerDown) return;
-		pointerDown = false;
-		scheduleSettle();
+	function handlePointerUp(e: PointerEvent) {
+		if (pointerId !== e.pointerId) return;
+		pointerId = null;
+		if (dragging) inertia();
+		else settle();
 	}
 
 	function selectItem(item: { value: T }) {
@@ -189,54 +211,53 @@
 	}
 </script>
 
-<svelte:window onpointerup={handlePointerUp} onpointercancel={handlePointerUp} />
-
 <div class="relative {className}" style="height: {ITEM_H * VISIBLE}px">
 	<div
 		class="pointer-events-none absolute inset-x-0 top-1/2 z-0 h-9 -translate-y-1/2 rounded-lg bg-[var(--scrapscache-bg)]"
 		aria-hidden="true"
 	></div>
 	<div
-		class="wheel-picker scrollable absolute inset-0 z-10 overflow-y-auto outline-none"
+		class="wheel-picker absolute inset-0 z-10 overflow-hidden outline-none"
 		style="height: {ITEM_H * VISIBLE}px"
 		role="listbox"
 		tabindex="0"
 		aria-label={ariaLabel}
 		aria-activedescendant={optionId(wrapIndex(centerIndex))}
-		bind:this={el}
+		{@attach handleWheel}
 		onkeydown={handleKeydown}
 		onpointerdown={handlePointerDown}
 		onpointermove={handlePointerMove}
+		onpointerup={handlePointerUp}
+		onpointercancel={handlePointerUp}
 	>
-		{#each looped as row (row.visual)}
-			<div
-				id={row.primary ? optionId(wrapIndex(row.visual)) : undefined}
-				role={row.primary ? 'option' : undefined}
-				aria-hidden={!row.primary}
-				aria-selected={row.primary ? row.item.value === value : undefined}
-				class="flex cursor-pointer items-center justify-center tabular-nums transition-opacity duration-75
-					{row.visual === centerIndex
-					? 'text-base font-semibold text-[var(--scrapscache-text)]'
-					: Math.abs(row.visual - centerIndex) === 1
-						? 'text-sm font-medium text-[var(--scrapscache-text-muted)]'
-						: 'text-sm text-[var(--scrapscache-text-muted)] opacity-40'}"
-				style="height: {ITEM_H}px"
-				onclick={() => selectItem(row.item)}
-			>
-				{row.item.label}
-			</div>
-		{/each}
+		<div class="will-change-transform" style="transform: translate3d(0, {-offset}px, 0)">
+			{#each looped as row (row.visual)}
+				<div
+					id={row.primary ? optionId(wrapIndex(row.visual)) : undefined}
+					role={row.primary ? 'option' : undefined}
+					aria-hidden={!row.primary}
+					aria-selected={row.primary ? row.item.value === value : undefined}
+					class="flex cursor-pointer items-center justify-center tabular-nums
+						{row.visual === centerIndex
+						? 'text-base font-semibold text-[var(--scrapscache-text)]'
+						: Math.abs(row.visual - centerIndex) === 1
+							? 'text-sm font-medium text-[var(--scrapscache-text-muted)]'
+							: 'text-sm text-[var(--scrapscache-text-muted)] opacity-40'}"
+					style="height: {ITEM_H}px"
+					onclick={() => selectItem(row.item)}
+				>
+					{row.item.label}
+				</div>
+			{/each}
+		</div>
 	</div>
 </div>
 
 <style>
 	.wheel-picker {
-		scrollbar-width: none;
-		-ms-overflow-style: none;
-		-webkit-overflow-scrolling: touch;
-		touch-action: pan-y;
-		overflow-anchor: none;
-		overscroll-behavior: contain;
+		touch-action: none;
+		user-select: none;
+		-webkit-user-select: none;
 		-webkit-mask-image: linear-gradient(
 			to bottom,
 			transparent 0%,
@@ -245,9 +266,5 @@
 			transparent 100%
 		);
 		mask-image: linear-gradient(to bottom, transparent 0%, #000 28%, #000 72%, transparent 100%);
-	}
-
-	.wheel-picker::-webkit-scrollbar {
-		display: none;
 	}
 </style>

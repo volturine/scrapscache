@@ -83,11 +83,6 @@
 	const showRemove = $derived(reminder != null);
 	const primaryIsSave = $derived(uiStatus !== 'active');
 
-	function primaryAction() {
-		if (primaryIsSave) save();
-		else onClose();
-	}
-
 	const hours24 = $derived(selected.getHours());
 	const minutes = $derived(selected.getMinutes());
 	const pickerValue = $derived([
@@ -191,7 +186,13 @@
 				role="presentation"
 				onclick={closeCalendarIfDayPicked}
 			>
-				<DatePicker.Root inline startOfWeek={1} value={pickerValue} onValueChange={onDateChange}>
+				<DatePicker.Root
+					inline
+					startOfWeek={1}
+					fixedWeeks
+					value={pickerValue}
+					onValueChange={onDateChange}
+				>
 					<DatePickerViews />
 				</DatePicker.Root>
 			</div>
@@ -264,14 +265,23 @@
 		{:else}
 			<span class="shrink-0" aria-hidden="true"></span>
 		{/if}
-		<button
-			type="button"
-			onclick={primaryAction}
-			class="scrapscache-button min-w-[7.5rem] shrink-0 px-6 py-2.5 text-sm font-medium {primaryIsSave
-				? 'scrapscache-button-primary'
-				: 'scrapscache-button-secondary'}"
-		>
-			{primaryIsSave ? 'Save' : 'Cancel'}
-		</button>
+		<div class="flex shrink-0 items-center gap-2">
+			<button
+				type="button"
+				onclick={onClose}
+				class="scrapscache-button scrapscache-button-secondary min-w-[5.5rem] px-4 py-2.5 text-sm font-medium"
+			>
+				Cancel
+			</button>
+			{#if primaryIsSave}
+				<button
+					type="button"
+					onclick={save}
+					class="scrapscache-button scrapscache-button-primary min-w-[5.5rem] px-4 py-2.5 text-sm font-medium"
+				>
+					Save
+				</button>
+			{/if}
+		</div>
 	</div>
 </div>

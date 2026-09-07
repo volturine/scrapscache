@@ -65,6 +65,7 @@
 		class="w-full"
 		inline
 		startOfWeek={1}
+		fixedWeeks
 		selectionMode="range"
 		value={pickerValue}
 		{onValueChange}

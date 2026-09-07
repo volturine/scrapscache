@@ -1,8 +1,8 @@
 <script lang="ts">
 	import type { NoteImage } from '$lib/types';
-	import { ChevronLeft, ChevronRight, X } from '@lucide/svelte';
-	import { portalToAppFloat } from '$lib/appViewport';
-	import { onDestroy } from 'svelte';
+	import { X } from '@lucide/svelte';
+	import { portalToAppOverlay } from '$lib/appViewport';
+	import { displayImageSrc } from '$lib/imageThumb';
 
 	let {
 		images,
@@ -13,119 +13,125 @@
 	} = $props();
 
 	let touchStartX = 0;
-	let controlsVisible = $state(false);
-	let controlsTimer: ReturnType<typeof setTimeout> | null = null;
-
-	function revealControls() {
-		controlsVisible = true;
-		if (controlsTimer) clearTimeout(controlsTimer);
-		controlsTimer = setTimeout(() => {
-			controlsVisible = false;
-			controlsTimer = null;
-		}, 1800);
-	}
-
-	const portal = portalToAppFloat;
+	const portal = portalToAppOverlay;
+	const current = $derived(activeIndex === null ? null : (images[activeIndex] ?? null));
+	const currentSrc = $derived(current ? current.dataUrl || displayImageSrc(current) : '');
 
 	function close() {
-		if (controlsTimer) clearTimeout(controlsTimer);
-		controlsTimer = null;
-		controlsVisible = false;
 		activeIndex = null;
 	}
 
-	onDestroy(() => {
-		if (controlsTimer) clearTimeout(controlsTimer);
-		controlsTimer = null;
-	});
+	function select(index: number) {
+		activeIndex = index;
+	}
 
 	function move(offset: number) {
 		if (activeIndex === null || images.length < 2) return;
 		activeIndex = (activeIndex + offset + images.length) % images.length;
 	}
 
-	function previous() {
-		move(-1);
-		revealControls();
-	}
-
-	function next() {
-		move(1);
-		revealControls();
-	}
-
 	function handleKey(event: KeyboardEvent) {
-		if (event.key === 'Escape') close();
-		if (event.key === 'ArrowLeft') previous();
-		if (event.key === 'ArrowRight') next();
+		if (activeIndex === null) return;
+		if (event.key === 'Escape') {
+			event.preventDefault();
+			event.stopImmediatePropagation();
+			close();
+			return;
+		}
+		if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+			event.preventDefault();
+			event.stopImmediatePropagation();
+			move(event.key === 'ArrowLeft' ? -1 : 1);
+		}
 	}
 
-	function onTouchStart(event: TouchEvent) {
-		revealControls();
-		touchStartX = event.touches[0]?.clientX ?? 0;
+	function trapKeys(node: HTMLElement) {
+		const onKey = (event: KeyboardEvent) => handleKey(event);
+		window.addEventListener('keydown', onKey, true);
+		return () => window.removeEventListener('keydown', onKey, true);
 	}
 
-	function onTouchEnd(event: TouchEvent) {
-		if (activeIndex === null || images.length < 2) return;
-		const deltaX = (event.changedTouches[0]?.clientX ?? touchStartX) - touchStartX;
-		if (Math.abs(deltaX) < 48) return;
-		move(deltaX < 0 ? 1 : -1);
+	function swipeArea(node: HTMLElement) {
+		const onTouchStart = (event: TouchEvent) => {
+			touchStartX = event.touches[0]?.clientX ?? 0;
+		};
+		const onTouchEnd = (event: TouchEvent) => {
+			if (activeIndex === null || images.length < 2) return;
+			const deltaX = (event.changedTouches[0]?.clientX ?? touchStartX) - touchStartX;
+			if (Math.abs(deltaX) < 48) return;
+			move(deltaX < 0 ? 1 : -1);
+		};
+		node.addEventListener('touchstart', onTouchStart, { passive: true });
+		node.addEventListener('touchend', onTouchEnd, { passive: true });
+		return () => {
+			node.removeEventListener('touchstart', onTouchStart);
+			node.removeEventListener('touchend', onTouchEnd);
+		};
 	}
 </script>
 
-<svelte:window onkeydown={handleKey} />
-
-{#if activeIndex !== null && images[activeIndex]}
-	<div {@attach portal}>
+{#if current}
+	<div
+		{@attach portal}
+		{@attach trapKeys}
+		class="absolute inset-0 z-[80] flex flex-col bg-black"
+		role="dialog"
+		aria-modal="true"
+		aria-label="Photo"
+	>
 		<button
 			type="button"
-			class="fixed inset-0 z-[80] cursor-zoom-out bg-black"
+			class="absolute left-2 top-2 z-10 grid h-11 w-11 place-items-center text-white touch-manipulation"
 			onclick={close}
 			aria-label="Close photo"
-		></button>
-		<button
-			type="button"
-			class="pointer-events-none fixed inset-0 z-[81] flex items-center justify-center"
-			ontouchstart={onTouchStart}
-			ontouchend={onTouchEnd}
-			onclick={revealControls}
-			aria-label="Show photo controls"
 		>
-			<img
-				src={images[activeIndex].dataUrl}
-				alt={images[activeIndex].name ?? 'Photo'}
-				class="pointer-events-auto max-h-full max-w-full select-none object-contain"
-				decoding="async"
-				draggable="false"
-			/>
+			<X class="h-6 w-6 drop-shadow" aria-hidden="true" />
 		</button>
-		{#if controlsVisible}
+		<div class="relative min-h-0 flex-1">
 			<button
 				type="button"
-				class="fixed right-4 top-4 z-[90] grid h-9 w-9 place-items-center rounded-full bg-black/40 text-white backdrop-blur-sm touch-manipulation"
+				class="absolute inset-0 cursor-zoom-out"
 				onclick={close}
 				aria-label="Close photo"
+			></button>
+			<div
+				{@attach swipeArea}
+				class="pointer-events-none relative z-[1] flex h-full items-center justify-center px-4"
 			>
-				<X class="h-5 w-5" aria-hidden="true" />
-			</button>
-			{#if images.length > 1}
-				<button
-					type="button"
-					class="fixed left-3 top-1/2 z-[90] grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full bg-black/40 text-white backdrop-blur-sm touch-manipulation"
-					onclick={previous}
-					aria-label="Previous photo"
-				>
-					<ChevronLeft class="h-5 w-5" aria-hidden="true" />
-				</button>
-				<button
-					type="button"
-					class="fixed right-3 top-1/2 z-[90] grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full bg-black/40 text-white backdrop-blur-sm touch-manipulation"
-					onclick={next}
-					aria-label="Next photo"
-				>
-					<ChevronRight class="h-5 w-5" aria-hidden="true" />
-				</button>
-			{/if}
+				<img
+					src={currentSrc}
+					alt={current.name ?? 'Photo'}
+					class="pointer-events-auto max-h-full max-w-full select-none object-contain"
+					decoding="async"
+					draggable="false"
+				/>
+			</div>
+		</div>
+		{#if images.length > 1}
+			<div
+				class="scrollable relative z-[1] flex shrink-0 gap-2 overflow-x-auto px-4 py-3"
+				aria-label="Photo thumbnails"
+			>
+				{#each images as image, index (image.id)}
+					<button
+						type="button"
+						class="h-14 w-14 shrink-0 overflow-hidden rounded-md touch-manipulation {index ===
+						activeIndex
+							? 'ring-2 ring-white ring-offset-2 ring-offset-black'
+							: 'opacity-60'}"
+						onclick={() => select(index)}
+						aria-label={image.name ?? `Photo ${index + 1}`}
+						aria-current={index === activeIndex ? 'true' : undefined}
+					>
+						<img
+							src={displayImageSrc(image)}
+							alt=""
+							class="h-full w-full object-cover"
+							draggable="false"
+						/>
+					</button>
+				{/each}
+			</div>
 		{/if}
 	</div>
 {/if}

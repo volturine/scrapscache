@@ -15,6 +15,8 @@
 		looksLikePhoto
 	} from '$lib/noteImages';
 	import { displayImageSrc } from '$lib/imageThumb';
+	import { extractHttpUrls } from '$lib/linkPreview';
+	import LinkPreview from './LinkPreview.svelte';
 	import type { ImageQuality } from '$lib/imageOptimize';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { sha256 } from '$lib/syncHash';
@@ -88,6 +90,7 @@
 		imageAttachments.filter((attachment) => !displayImageSrc(attachment))
 	);
 	const files = $derived(images.filter((a) => !isImageAttachment(a) && !isCanvasAttachment(a)));
+	const links = $derived(extractHttpUrls(body));
 	const photoIndexById = $derived(new Map(photos.map((p, i) => [p.id, i])));
 
 	/**
@@ -224,9 +227,16 @@
 		onOpenTags?.();
 	}
 
-	function openPhoto(id: string) {
-		const idx = photoIndexById.get(id);
-		if (idx != null) focusedImageIndex = idx;
+	async function openPhoto(id: string) {
+		if (noteId) {
+			await notesStore.ensureNoteAttachments(noteId);
+			const hydratedNote = notesStore.notes.find((note) => note.id === noteId);
+			if (hydratedNote?.images) {
+				images = mergeHydratedImages(images, hydratedNote.images);
+			}
+		}
+		const idx = photoIndexById.get(id) ?? photos.findIndex((photo) => photo.id === id);
+		if (idx >= 0) focusedImageIndex = idx;
 	}
 
 	async function openFile(file: NoteImage) {
@@ -350,45 +360,6 @@
 	</div>
 {/if}
 
-{#if photos.length > 0 || pendingPhotos.length > 0}
-	<div class="scrollable grid max-h-44 grid-cols-3 gap-2 overflow-y-auto px-3 pb-2 sm:grid-cols-4">
-		{#each photos as img (img.id)}
-			<div class="relative">
-				<button
-					type="button"
-					class="block aspect-square w-full overflow-hidden rounded-lg touch-manipulation"
-					onclick={() => openPhoto(img.id)}
-					aria-label={`Open ${img.name ?? 'photo'}`}
-				>
-					<img
-						src={displayImageSrc(img)}
-						alt={img.name ?? 'Photo'}
-						class="h-full w-full object-cover"
-						loading="lazy"
-						decoding="async"
-						draggable="false"
-					/>
-				</button>
-				<button
-					type="button"
-					class="absolute right-1 top-1 rounded-full bg-black/60 px-1.5 py-0.5 text-xs text-white touch-manipulation"
-					onclick={() => removeAttachment(img.id)}
-					aria-label="Remove photo"
-				>
-					<X class="h-3 w-3" aria-hidden="true" />
-				</button>
-			</div>
-		{/each}
-		{#each pendingPhotos as img (img.id)}
-			<div
-				class="aspect-square animate-pulse rounded-lg bg-black/10 dark:bg-white/10"
-				role="img"
-				aria-label={`Loading ${img.name ?? 'photo'}`}
-			></div>
-		{/each}
-	</div>
-{/if}
-
 {#if files.length > 0}
 	<ul class="scrollable max-h-36 space-y-1.5 overflow-y-auto px-3 pb-2">
 		{#each files as file (file.id)}
@@ -423,6 +394,53 @@
 			</li>
 		{/each}
 	</ul>
+{/if}
+
+{#if links.length > 0}
+	<div class="flex flex-col gap-2 px-3 pb-2" aria-label="Links">
+		{#each links as url (url)}
+			<LinkPreview {url} />
+		{/each}
+	</div>
+{/if}
+
+{#if photos.length > 0 || pendingPhotos.length > 0}
+	<div class="scrollable flex gap-2 overflow-x-auto px-3 pb-2" aria-label="Photos">
+		{#each photos as img (img.id)}
+			<div class="relative shrink-0">
+				<button
+					type="button"
+					class="block h-32 overflow-hidden rounded-lg touch-manipulation"
+					onclick={() => void openPhoto(img.id)}
+					aria-label={`Open ${img.name ?? 'photo'}`}
+				>
+					<img
+						src={displayImageSrc(img)}
+						alt={img.name ?? 'Photo'}
+						class="h-32 w-auto max-w-[15rem] object-cover"
+						loading="lazy"
+						decoding="async"
+						draggable="false"
+					/>
+				</button>
+				<button
+					type="button"
+					class="absolute right-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-full bg-black/60 text-white touch-manipulation"
+					onclick={() => removeAttachment(img.id)}
+					aria-label="Remove photo"
+				>
+					<X class="h-3.5 w-3.5" aria-hidden="true" />
+				</button>
+			</div>
+		{/each}
+		{#each pendingPhotos as img (img.id)}
+			<div
+				class="h-32 w-32 shrink-0 animate-pulse rounded-lg bg-black/10 dark:bg-white/10"
+				role="img"
+				aria-label={`Loading ${img.name ?? 'photo'}`}
+			></div>
+		{/each}
+	</div>
 {/if}
 
 <PhotoFullscreen images={photos} bind:activeIndex={focusedImageIndex} />

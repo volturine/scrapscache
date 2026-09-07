@@ -424,6 +424,20 @@
 			copyFlashTimer = null;
 		}, 1500);
 	}
+	function handleTitleInput(event: Event) {
+		if (title.includes('\n') || title.includes('\r')) {
+			const target = event.target as HTMLTextAreaElement | null;
+			const start = target?.selectionStart ?? 0;
+			const end = target?.selectionEnd ?? 0;
+			title = title.replace(/[\r\n]+/g, ' ');
+			if (target) {
+				target.value = title;
+				target.setSelectionRange(start, end);
+			}
+		}
+		scheduleCommit();
+	}
+
 	function autoResizeTitle(node: HTMLTextAreaElement, _value?: string) {
 		const resize = () => {
 			node.style.height = 'auto';
@@ -556,10 +570,10 @@
 							use:autoResizeTitle={title}
 							placeholder="Title"
 							bind:value={title}
-							oninput={scheduleCommit}
+							oninput={handleTitleInput}
 							onfocus={exitTaskFocus}
 							onkeydown={(e) => {
-								if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+								if (e.key === 'Enter') {
 									e.preventDefault();
 									bodyEditor?.focusDefault();
 								}

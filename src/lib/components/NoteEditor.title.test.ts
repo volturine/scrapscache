@@ -9,7 +9,7 @@ import KanbanCard from './KanbanCard.svelte';
 function note(partial: Partial<Note> = {}): Note {
 	return {
 		id: 'note-1',
-		title: 'Line 1\nLine 2',
+		title: 'A long title that wraps nicely in the interface',
 		body: 'Note body content',
 		color: 'green',
 		pinned: false,
@@ -34,9 +34,9 @@ afterEach(() => {
 	notesStore.labels = [];
 });
 
-describe('Multiline title support', () => {
-	it('renders note title as a multiline textarea in NoteEditor', async () => {
-		notesStore.notes = [note({ title: 'Multiline\nTitle\nTest' })];
+describe('Title wrapping and single-line preservation', () => {
+	it('renders note title as a wrapping auto-resizing textarea in NoteEditor', async () => {
+		notesStore.notes = [note({ title: 'A very long note title that wraps across multiple lines' })];
 		const { container } = render(NoteEditor, {
 			props: { noteId: 'note-1', onClose: () => {} }
 		});
@@ -46,13 +46,13 @@ describe('Multiline title support', () => {
 		) as HTMLTextAreaElement;
 		expect(titleElement).not.toBeNull();
 		expect(titleElement.tagName).toBe('TEXTAREA');
-		expect(titleElement.value).toBe('Multiline\nTitle\nTest');
+		expect(titleElement.value).toBe('A very long note title that wraps across multiple lines');
 		expect(titleElement.getAttribute('rows')).toBe('1');
 		expect(titleElement.className).toContain('resize-none');
 		expect(titleElement.className).toContain('break-words');
 	});
 
-	it('moves to note body on Enter without Shift, but allows newlines on Shift+Enter', async () => {
+	it('moves to note body on Enter and does not insert newlines on Enter or Shift+Enter', async () => {
 		notesStore.notes = [note()];
 		const { container } = render(NoteEditor, {
 			props: { noteId: 'note-1', onClose: () => {} }
@@ -63,7 +63,7 @@ describe('Multiline title support', () => {
 		) as HTMLTextAreaElement;
 		expect(titleElement).not.toBeNull();
 
-		// Enter without Shift -> default prevented to move to body
+		// Enter -> default prevented so newline is never inserted and focus moves to body
 		const enterEvent = new KeyboardEvent('keydown', {
 			key: 'Enter',
 			cancelable: true,
@@ -72,7 +72,7 @@ describe('Multiline title support', () => {
 		titleElement.dispatchEvent(enterEvent);
 		expect(enterEvent.defaultPrevented).toBe(true);
 
-		// Shift+Enter -> default not prevented, allows multiline entry
+		// Shift+Enter -> also default prevented so title remains strictly single line
 		const shiftEnterEvent = new KeyboardEvent('keydown', {
 			key: 'Enter',
 			shiftKey: true,
@@ -80,7 +80,22 @@ describe('Multiline title support', () => {
 			bubbles: true
 		});
 		titleElement.dispatchEvent(shiftEnterEvent);
-		expect(shiftEnterEvent.defaultPrevented).toBe(false);
+		expect(shiftEnterEvent.defaultPrevented).toBe(true);
+	});
+
+	it('replaces pasted or input newlines with spaces to keep title single-line', async () => {
+		notesStore.notes = [note({ title: 'Initial' })];
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+
+		const titleElement = container.querySelector(
+			'textarea[placeholder="Title"]'
+		) as HTMLTextAreaElement;
+		expect(titleElement).not.toBeNull();
+
+		await fireEvent.input(titleElement, { target: { value: 'Line One\nLine Two\r\nLine Three' } });
+		expect(titleElement.value).toBe('Line One Line Two Line Three');
 	});
 
 	it('auto-resizes textarea when content changes', async () => {
@@ -97,25 +112,25 @@ describe('Multiline title support', () => {
 			value: 72
 		});
 
-		await fireEvent.input(titleElement, { target: { value: 'Multiline\nLong\nTitle' } });
+		await fireEvent.input(titleElement, { target: { value: 'A very long wrapped title' } });
 		expect(titleElement.style.height).toBe('72px');
 	});
 
-	it('renders multiline title with whitespace-pre-wrap in NoteCard', () => {
-		const testNote = note({ title: 'Line A\nLine B' });
+	it('renders title with break-words in NoteCard for soft wrapping', () => {
+		const testNote = note({ title: 'VeryLongWordWithoutSpacesWrappingProperly' });
 		const { container } = render(NoteCard, {
 			props: { note: testNote, onOpen: () => {} }
 		});
 
 		const titleEl = container.querySelector('h3');
 		expect(titleEl).not.toBeNull();
-		expect(titleEl?.textContent?.trim()).toBe('Line A\nLine B');
-		expect(titleEl?.className).toContain('whitespace-pre-wrap');
+		expect(titleEl?.textContent?.trim()).toBe('VeryLongWordWithoutSpacesWrappingProperly');
 		expect(titleEl?.className).toContain('break-words');
+		expect(titleEl?.className).not.toContain('whitespace-pre-wrap');
 	});
 
-	it('renders multiline title with whitespace-pre-wrap in KanbanCard', () => {
-		const testNote = note({ title: 'Column Title\nSecond Row' });
+	it('renders title with break-words in KanbanCard for soft wrapping', () => {
+		const testNote = note({ title: 'Column Title Soft Wrapping' });
 		const { container } = render(KanbanCard, {
 			props: {
 				note: testNote,
@@ -127,8 +142,8 @@ describe('Multiline title support', () => {
 
 		const titleEl = container.querySelector('h3');
 		expect(titleEl).not.toBeNull();
-		expect(titleEl?.textContent?.trim()).toBe('Column Title\nSecond Row');
-		expect(titleEl?.className).toContain('whitespace-pre-wrap');
+		expect(titleEl?.textContent?.trim()).toBe('Column Title Soft Wrapping');
 		expect(titleEl?.className).toContain('break-words');
+		expect(titleEl?.className).not.toContain('whitespace-pre-wrap');
 	});
 });

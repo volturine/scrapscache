@@ -226,7 +226,7 @@
 				{@const notes = columnNotes(board, column, visibleNotes)}
 				<section
 					data-kanban-column={column.id}
-					class="w-[min(22rem,calc(100vw-2rem))] shrink-0 rounded-2xl bg-black/[0.035] p-3 dark:bg-white/[0.055]"
+					class="w-[min(calc(var(--note-card-width)+1.5rem),calc(100vw-2rem))] shrink-0 rounded-2xl bg-black/[0.035] p-3 dark:bg-white/[0.055]"
 					aria-label={`${columnName(column)} ${column.labelId === null ? 'Kanban' : 'label'} column`}
 					ondragover={(event) => event.preventDefault()}
 					ondrop={(event) => nativeDrop(event, column.id)}
@@ -378,7 +378,9 @@
 			{/each}
 
 			{#if unusedTags.length > 0}
-				<div class="relative w-[min(22rem,calc(100vw-2rem))] shrink-0 pt-1">
+				<div
+					class="relative w-[min(calc(var(--note-card-width)+1.5rem),calc(100vw-2rem))] shrink-0 pt-1"
+				>
 					<Menu.Root bind:open={tagPickerOpen} positioning={{ placement: 'bottom-start' }}>
 						<Menu.Trigger
 							class="flex w-full items-center justify-between gap-2 rounded-xl border border-dashed border-[var(--scrapscache-border)] bg-transparent px-3 py-2.5 text-left text-sm font-medium text-[var(--scrapscache-text-muted)] outline-none hover:bg-black/[0.035] hover:text-[var(--scrapscache-text)] dark:hover:bg-white/[0.055]"

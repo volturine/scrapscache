@@ -200,15 +200,15 @@
 	onkeydown={(event) => activateOnKeyboard(event, () => onOpen(note.id))}
 	aria-label={`Drag ${note.title || 'untitled note'} to another Kanban column`}
 >
-	<div class="scrollable max-h-[240px] overflow-x-hidden overflow-y-auto p-4">
+	<div class="scrollable max-h-[240px] overflow-x-hidden overflow-y-auto p-3">
 		{#if note.reminder != null}
-			<div class="mb-1.5">
+			<div class="mb-1">
 				<ReminderLabel reminder={note.reminder} variant="inline" />
 			</div>
 		{/if}
 		{#if note.title}
 			<h3
-				class="mb-1.5 break-words text-[15px] font-semibold leading-snug tracking-tight text-[var(--scrapscache-text)]"
+				class="mb-1 break-words text-[15px] font-semibold leading-snug tracking-tight text-[var(--scrapscache-text)]"
 			>
 				{note.title}
 			</h3>
@@ -217,10 +217,10 @@
 	</div>
 
 	{#if labelsForNote.length}
-		<div class="flex flex-wrap gap-1.5 px-4 pb-3.5 pt-1">
+		<div class="flex flex-wrap gap-1 px-3 pb-3 pt-2">
 			{#each labelsForNote as label (label.id)}
 				<span
-					class="rounded-md bg-black/5 px-2 py-0.5 text-[11px] font-medium text-[var(--scrapscache-text-muted)] dark:bg-white/10"
+					class="rounded bg-black/5 px-1.5 py-0.5 text-[10px] font-medium text-[var(--scrapscache-text-muted)] dark:bg-white/10"
 					>{label.name}</span
 				>
 			{/each}

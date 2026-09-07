@@ -53,12 +53,16 @@ async function hydrated(env: Env, rows: EnvelopeRow[]) {
 }
 
 export class AccountCoordinator {
+	private readonly listeners = new Set<(seq: number) => void>();
+
 	constructor(
 		private readonly state: DurableObjectState,
 		private readonly env: Env
 	) {}
 
 	fetch(request: Request): Promise<Response> {
+		const path = new URL(request.url).pathname;
+		if (path === '/events') return Promise.resolve(this.events(request));
 		return this.state.blockConcurrencyWhile(async () => {
 			if (request.method !== 'POST') {
 				return Response.json({ error: 'Not found' }, { status: 404 });
@@ -71,6 +75,33 @@ export class AccountCoordinator {
 				);
 			}
 			return Response.json({ error: 'Not found' }, { status: 404 });
+		});
+	}
+
+	private events(request: Request): Response {
+		const encoder = new TextEncoder();
+		const { readable, writable } = new TransformStream();
+		const writer = writable.getWriter();
+		void writer.write(encoder.encode(': ok\n\n'));
+		const listener = (seq: number) => {
+			void writer.write(encoder.encode(`data: ${JSON.stringify({ seq })}\n\n`)).catch(() => {});
+		};
+		this.listeners.add(listener);
+		const ping = setInterval(() => {
+			void writer.write(encoder.encode(': ping\n\n')).catch(() => {});
+		}, 25_000);
+		const cleanup = () => {
+			clearInterval(ping);
+			this.listeners.delete(listener);
+			void writer.close().catch(() => {});
+		};
+		request.signal?.addEventListener('abort', cleanup);
+		return new Response(readable, {
+			headers: {
+				'Content-Type': 'text/event-stream',
+				'Cache-Control': 'no-cache, no-transform',
+				Connection: 'keep-alive'
+			}
 		});
 	}
 
@@ -329,6 +360,15 @@ export class AccountCoordinator {
 		});
 		await batch(db, statements);
 		await Promise.all(obsoleteObjects.map((key) => this.env.SCRAPSCACHE_ENVELOPES.delete(key)));
+
+		const mutated = acceptedUploads.length > 0 || input.deletions.length > 0;
+		if (mutated) {
+			for (const listener of this.listeners) {
+				try {
+					listener(sequence);
+				} catch {}
+			}
+		}
 
 		return Response.json({
 			cursor: Math.max(input.cursor, sequence),

@@ -113,7 +113,7 @@
 			<div class="block w-full p-3 pb-2 text-left" class:opacity-60={note.trashed}>
 				{#if note.title}
 					<h3
-						class="mb-1 text-[15px] font-semibold leading-snug tracking-tight text-[var(--scrapscache-text)]"
+						class="mb-1 break-words text-[15px] font-semibold leading-snug tracking-tight text-[var(--scrapscache-text)]"
 					>
 						{note.title}
 					</h3>

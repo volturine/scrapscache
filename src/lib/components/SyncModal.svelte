@@ -299,13 +299,7 @@
 			error = friendlyError(result.error, 'Could not switch sync key');
 			return;
 		}
-		mode = 'linked';
-		const name = syncStore.activeProfile?.name ?? 'sync key';
-		if (result.error) {
-			error = friendlyError(result.error, 'Switched profiles, but sync did not finish');
-			return;
-		}
-		info = `Switched to ${name}.`;
+		onClose();
 	}
 
 	async function removeProfile(id: string) {

@@ -40,14 +40,15 @@ describe('SyncModal profile interactions', () => {
 		(notesStore as unknown as { syncFlight: Promise<boolean> | null }).syncFlight = null;
 	});
 
-	it('finishes a switch without leaving either profile stuck', async () => {
+	it('finishes a switch and dismisses the sync screen', async () => {
 		const handover = deferred<{ success: boolean }>();
 		vi.spyOn(profileCoordinator, 'switchTo').mockImplementation(async () => {
 			const result = await handover.promise;
 			syncStore.activateProfile(side);
 			return result;
 		});
-		render(SyncModal, { props: { onClose: vi.fn() } });
+		const onClose = vi.fn();
+		render(SyncModal, { props: { onClose } });
 
 		await fireEvent.click(screen.getByRole('button', { name: 'Switch sync key' }));
 		const target = screen.getByRole('button', { name: 'Switch to Side' }) as HTMLButtonElement;
@@ -56,12 +57,23 @@ describe('SyncModal profile interactions', () => {
 		expect((screen.getByLabelText('Close') as HTMLButtonElement).disabled).toBe(true);
 
 		handover.resolve({ success: true });
-		await waitFor(() => expect(screen.getByText('Switched to Side.')).toBeTruthy());
-		expect((screen.getByLabelText('Close') as HTMLButtonElement).disabled).toBe(false);
+		await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+	});
+
+	it('keeps sync screen open and shows error if switch fails', async () => {
+		vi.spyOn(profileCoordinator, 'switchTo').mockResolvedValueOnce({
+			success: false,
+			error: 'Switch blocked'
+		});
+		const onClose = vi.fn();
+		render(SyncModal, { props: { onClose } });
+
 		await fireEvent.click(screen.getByRole('button', { name: 'Switch sync key' }));
-		expect(
-			(screen.getByRole('button', { name: 'Switch to Main' }) as HTMLButtonElement).disabled
-		).toBe(false);
+		const target = screen.getByRole('button', { name: 'Switch to Side' }) as HTMLButtonElement;
+		await fireEvent.click(target);
+
+		await waitFor(() => expect(screen.getByText('Switch blocked')).toBeTruthy());
+		expect(onClose).not.toHaveBeenCalled();
 	});
 
 	it('releases the UI after an unexpected sync rejection', async () => {

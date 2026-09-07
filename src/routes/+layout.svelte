@@ -2,7 +2,7 @@
 	import '../app.css';
 	import { uiStore, type View } from '$lib/stores/ui.svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
-	import { syncStore } from '$lib/stores/sync.svelte';
+	import { syncStore, syncEventsClient } from '$lib/stores/sync.svelte';
 	import Sidebar from '$lib/components/Sidebar.svelte';
 	import Topbar from '$lib/components/Topbar.svelte';
 	import NoteEditor from '$lib/components/NoteEditor.svelte';
@@ -58,9 +58,12 @@
 		});
 		const onForeground = () => {
 			if (document.visibilityState === 'hidden') return;
-			if (syncStore.isLoggedIn) void notesStore.syncWithCloud();
+			if (syncStore.isLoggedIn) void notesStore.triggerSync();
 		};
 		document.addEventListener('visibilitychange', onForeground);
+		const stopSyncEvents = syncEventsClient.subscribe(() => {
+			void notesStore.triggerSync();
+		});
 		const stopReminders = reminderStore.attach(openEditor);
 		void preloadVapidPublicKey();
 		if ('serviceWorker' in navigator) {
@@ -81,6 +84,7 @@
 			}
 		}
 		return () => {
+			stopSyncEvents();
 			uiStore.viewChangeHandler = null;
 			stopViewport();
 			applyEditorOpen(false);

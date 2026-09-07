@@ -124,7 +124,7 @@ describe('NoteEditor paste photo', () => {
 		const { container } = render(NoteEditor, {
 			props: { noteId: 'note-1', onClose: () => {} }
 		});
-		const titleInput = container.querySelector('input[placeholder="Title"]') as HTMLInputElement;
+		const titleInput = container.querySelector('[placeholder="Title"]') as HTMLElement;
 		expect(titleInput).not.toBeNull();
 
 		const photo = new File(['fake-png-content'], 'pic.webp', { type: 'image/webp' });

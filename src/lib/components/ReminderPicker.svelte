@@ -104,7 +104,10 @@
 	}
 
 	function closeCalendarIfDayPicked(event: MouseEvent) {
-		if (event.target instanceof Element && event.target.closest('[data-part="cell-trigger"]')) {
+		if (
+			event.target instanceof Element &&
+			event.target.closest('[data-part="view"][data-view="day"] [data-part="cell-trigger"]')
+		) {
 			monthYearOpen = false;
 		}
 	}
@@ -188,13 +191,7 @@
 				role="presentation"
 				onclick={closeCalendarIfDayPicked}
 			>
-				<DatePicker.Root
-					inline
-					startOfWeek={1}
-					maxView="day"
-					value={pickerValue}
-					onValueChange={onDateChange}
-				>
+				<DatePicker.Root inline startOfWeek={1} value={pickerValue} onValueChange={onDateChange}>
 					<DatePickerViews />
 				</DatePicker.Root>
 			</div>

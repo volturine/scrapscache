@@ -25,6 +25,7 @@
 	let el = $state<HTMLDivElement | undefined>();
 	let scrollIndex = $state<number | null>(null);
 	let dragging = false;
+	let pointerDown = false;
 	let pointerStartY = 0;
 	let ignoreScroll = false;
 	let settleTimer: ReturnType<typeof setTimeout> | undefined;
@@ -71,10 +72,8 @@
 
 	function setScrollTop(top: number) {
 		if (!el || Math.abs(el.scrollTop - top) < 1) return;
-		const alreadyIgnoring = ignoreScroll;
 		ignoreScroll = true;
 		el.scrollTop = top;
-		if (alreadyIgnoring) return;
 		requestAnimationFrame(() => {
 			ignoreScroll = false;
 		});
@@ -88,11 +87,10 @@
 		if (!el || items.length === 0) return;
 		const copyH = copyHeight();
 		const minTop = (middleStart - PAD) * ITEM_H;
-		const maxTop = (middleStart + items.length - PAD) * ITEM_H;
-		let top = el.scrollTop;
-		while (top < minTop) top += copyH;
-		while (top >= maxTop) top -= copyH;
-		setScrollTop(top);
+		const maxTop = minTop + copyH;
+		const top = el.scrollTop;
+		if (top < minTop) el.scrollTop = top + copyH;
+		else if (top >= maxTop) el.scrollTop = top - copyH;
 	}
 
 	function commitIndex(index: number) {
@@ -104,21 +102,21 @@
 	}
 
 	function settle() {
-		if (ignoreScroll || !el) return;
+		if (ignoreScroll || pointerDown || !el) return;
 		recenter();
 		commitIndex(centerFromScroll(el.scrollTop));
 	}
 
 	function scheduleSettle() {
 		if (settleTimer) clearTimeout(settleTimer);
-		settleTimer = setTimeout(settle, 120);
+		settleTimer = setTimeout(settle, 80);
 	}
 
 	function handleScroll() {
 		if (!el || ignoreScroll) return;
 		recenter();
 		scrollIndex = centerFromScroll(el.scrollTop);
-		scheduleSettle();
+		if (!pointerDown) scheduleSettle();
 	}
 
 	function setValue(next: T) {
@@ -132,9 +130,7 @@
 		ignoreScroll = true;
 		snapTo(middleStart + valueIndex);
 		const onScroll = () => handleScroll();
-		const onEnd = () => settle();
-		node.addEventListener('scroll', onScroll);
-		node.addEventListener('scrollend', onEnd);
+		node.addEventListener('scroll', onScroll, { passive: true });
 		const frame = requestAnimationFrame(() => {
 			snapTo(middleStart + valueIndex);
 			requestAnimationFrame(() => {
@@ -144,7 +140,6 @@
 		return () => {
 			cancelAnimationFrame(frame);
 			node.removeEventListener('scroll', onScroll);
-			node.removeEventListener('scrollend', onEnd);
 			if (settleTimer) clearTimeout(settleTimer);
 		};
 	});
@@ -174,10 +169,18 @@
 	function handlePointerDown(e: PointerEvent) {
 		pointerStartY = e.clientY;
 		dragging = false;
+		pointerDown = true;
+		if (settleTimer) clearTimeout(settleTimer);
 	}
 
 	function handlePointerMove(e: PointerEvent) {
 		if (Math.abs(e.clientY - pointerStartY) > 6) dragging = true;
+	}
+
+	function handlePointerUp() {
+		if (!pointerDown) return;
+		pointerDown = false;
+		scheduleSettle();
 	}
 
 	function selectItem(item: { value: T }) {
@@ -185,6 +188,8 @@
 		setValue(item.value);
 	}
 </script>
+
+<svelte:window onpointerup={handlePointerUp} onpointercancel={handlePointerUp} />
 
 <div class="relative {className}" style="height: {ITEM_H * VISIBLE}px">
 	<div
@@ -215,7 +220,7 @@
 					: Math.abs(row.visual - centerIndex) === 1
 						? 'text-sm font-medium text-[var(--scrapscache-text-muted)]'
 						: 'text-sm text-[var(--scrapscache-text-muted)] opacity-40'}"
-				style="height: {ITEM_H}px; scroll-snap-align: center"
+				style="height: {ITEM_H}px"
 				onclick={() => selectItem(row.item)}
 			>
 				{row.item.label}
@@ -230,7 +235,7 @@
 		-ms-overflow-style: none;
 		-webkit-overflow-scrolling: touch;
 		touch-action: pan-y;
-		scroll-snap-type: y mandatory;
+		overflow-anchor: none;
 		overscroll-behavior: contain;
 		-webkit-mask-image: linear-gradient(
 			to bottom,

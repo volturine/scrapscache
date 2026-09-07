@@ -37,8 +37,7 @@ describe('ReminderPicker date and time controls', () => {
 		await fireEvent.click(screen.getByRole('button', { name: 'Choose date' }));
 
 		expect(screen.getByRole('grid')).toBeTruthy();
-		expect(screen.getByRole('button', { name: 'Select month' })).toBeTruthy();
-		expect(screen.getByRole('button', { name: 'Select year' })).toBeTruthy();
+		expect(screen.getByRole('button', { name: 'Switch to month view' })).toBeTruthy();
 		expect(screen.queryByRole('button', { name: 'Choose date' })).toBeNull();
 		expect(screen.queryByRole('button', { name: 'Previous day' })).toBeNull();
 		expect(screen.queryByRole('listbox', { name: 'Minute' })).toBeNull();
@@ -63,15 +62,17 @@ describe('ReminderPicker date and time controls', () => {
 		expect(screen.getByRole('button', { name: 'Choose date' }).textContent).toContain('21');
 	});
 
-	it('jumps months from the themed month menu', async () => {
+	it('jumps months from the month grid', async () => {
 		render(ReminderPicker, { props: { reminder, onClose: () => {} } });
 
 		await fireEvent.click(screen.getByRole('button', { name: 'Choose date' }));
-		await fireEvent.click(screen.getByRole('button', { name: 'Select month' }));
-		await fireEvent.click(screen.getByRole('menuitem', { name: 'October' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Switch to month view' }));
+		await fireEvent.click(screen.getByText('Oct'));
 
-		expect(screen.getByRole('button', { name: 'Select month' }).textContent).toContain('October');
-		expect(screen.queryByRole('combobox')).toBeNull();
+		expect(screen.getByRole('button', { name: 'Switch to month view' }).textContent).toContain(
+			'October'
+		);
+		expect(screen.getByRole('grid')).toBeTruthy();
 	});
 
 	it('wraps the hour wheel from 23 to 00', async () => {

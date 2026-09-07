@@ -66,7 +66,6 @@
 		inline
 		startOfWeek={1}
 		selectionMode="range"
-		maxView="day"
 		value={pickerValue}
 		{onValueChange}
 		closeOnSelect={false}

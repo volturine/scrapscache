@@ -8,8 +8,8 @@ import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '$lib/serv
 export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	const limited = await getPublicApiLimiter().check(
 		`register:${clientAddress(getClientAddress)}`,
-		// Two immediately, then five tokens per hour.
-		{ capacity: 2, refillWindowMs: 24 * 60 * 1000 }
+		// Five tokens immediately, then refill five tokens per hour (1 token every 12 minutes).
+		{ capacity: 5, refillWindowMs: 60 * 60 * 1000 }
 	);
 	if (!limited.allowed) return rateLimitResponse(limited);
 	let body: { accountId?: unknown; authPublicKey?: unknown; signature?: unknown };

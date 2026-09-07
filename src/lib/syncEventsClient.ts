@@ -10,10 +10,21 @@ export class SyncEventsClient {
 	private active = false;
 	private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 	private backoffMs = 2_000;
+	private connectionGeneration = 0;
 	private readonly listeners = new Set<SyncNudgeListener>();
 	private cleanupDomListeners: (() => void) | null = null;
+	readonly clientId: string;
 
-	constructor(private readonly syncStore: SyncStoreLike) {
+	constructor(
+		private readonly syncStore: SyncStoreLike,
+		clientId?: string
+	) {
+		this.clientId =
+			clientId ??
+			(typeof crypto !== 'undefined' && crypto.randomUUID
+				? crypto.randomUUID()
+				: Math.random().toString(36).slice(2));
+
 		if (typeof window !== 'undefined' && typeof document !== 'undefined') {
 			const onVisibility = () => this.updateState();
 			const onOnline = () => this.updateState();
@@ -60,12 +71,14 @@ export class SyncEventsClient {
 	}
 
 	start(): void {
+		if (this.active) return;
 		this.active = true;
-		void this.connect();
+		this.beginConnection();
 	}
 
 	stop(): void {
 		this.active = false;
+		this.connectionGeneration += 1;
 		if (this.reconnectTimer) {
 			clearTimeout(this.reconnectTimer);
 			this.reconnectTimer = null;
@@ -77,6 +90,11 @@ export class SyncEventsClient {
 		this.backoffMs = 2_000;
 	}
 
+	accountChanged(): void {
+		if (this.active) this.stop();
+		this.updateState();
+	}
+
 	destroy(): void {
 		this.stop();
 		this.listeners.clear();
@@ -86,15 +104,22 @@ export class SyncEventsClient {
 		}
 	}
 
-	private async connect(): Promise<void> {
+	private beginConnection(): void {
+		const generation = ++this.connectionGeneration;
+		void this.connect(generation);
+	}
+
+	private async connect(generation: number): Promise<void> {
 		if (!this.active || !this.syncStore.isLoggedIn) return;
 		if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
 
-		this.abortController = new AbortController();
-		const signal = this.abortController.signal;
+		const controller = new AbortController();
+		this.abortController = controller;
+		const signal = controller.signal;
 
 		try {
-			const response = await this.syncStore.authorizedFetch('/api/sync/events', { signal });
+			const url = `/api/sync/events?clientId=${encodeURIComponent(this.clientId)}`;
+			const response = await this.syncStore.authorizedFetch(url, { signal });
 			if (!response.ok || !response.body) {
 				throw new Error(`SSE error: ${response.status}`);
 			}
@@ -126,7 +151,8 @@ export class SyncEventsClient {
 		} catch {
 			/* abort or network disruption */
 		} finally {
-			this.abortController = null;
+			if (generation !== this.connectionGeneration) return;
+			if (this.abortController === controller) this.abortController = null;
 			const isVisible = typeof document === 'undefined' || document.visibilityState === 'visible';
 			if (this.active && this.syncStore.isLoggedIn && isVisible) {
 				this.scheduleReconnect();
@@ -139,7 +165,7 @@ export class SyncEventsClient {
 		this.reconnectTimer = setTimeout(() => {
 			this.reconnectTimer = null;
 			this.backoffMs = Math.min(this.backoffMs * 1.5, 30_000);
-			void this.connect();
+			this.beginConnection();
 		}, this.backoffMs);
 	}
 }

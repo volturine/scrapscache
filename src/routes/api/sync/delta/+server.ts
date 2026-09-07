@@ -110,6 +110,7 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 				? Math.min(body.limit, 50)
 				: DEFAULT_DOWNLOAD_LIMIT;
 		recordSyncBatch(envelopes.length, deleteSlots.length);
+		const senderClientId = request.headers.get('x-sync-client-id') ?? undefined;
 		try {
 			const store = getSyncStore();
 			const accountLimit = await getPublicApiLimiter().check(`sync-account:${accountId}`, {
@@ -117,7 +118,11 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 				refillWindowMs: 60_000
 			});
 			if (!accountLimit.allowed) return rateLimitResponse(accountLimit);
-			return json(await store.sync(accountId, cursor, envelopes, deleteSlots, limit));
+			const syncResult =
+				senderClientId !== undefined
+					? await store.sync(accountId, cursor, envelopes, deleteSlots, limit, senderClientId)
+					: await store.sync(accountId, cursor, envelopes, deleteSlots, limit);
+			return json(syncResult);
 		} catch (error) {
 			recordSqliteError(error);
 			if (error instanceof SyncQuotaExceededError) {

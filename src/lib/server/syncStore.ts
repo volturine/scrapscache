@@ -221,7 +221,8 @@ export class SyncStore {
 		cursor: number,
 		uploads: OpaqueUpload[],
 		deletions: OpaqueDelete[],
-		downloadLimit = 12
+		downloadLimit = 12,
+		senderClientId?: string
 	): Promise<SyncResult & { usage: UsageRow & { maxBytes: number } }> {
 		await this.db.ready;
 		let resetRevisionCeiling: number | null = null;
@@ -427,7 +428,7 @@ export class SyncStore {
 			await this.discardWakeSnapshotAfter(accountId, resetRevisionCeiling);
 		}
 		if (result.writesAccepted && (uploads.length > 0 || deletions.length > 0)) {
-			syncEventEmitter.notify(accountId, result.cursor);
+			syncEventEmitter.notify(accountId, result.cursor, senderClientId);
 		}
 		return result;
 	}
@@ -841,7 +842,7 @@ export class SyncStore {
 		}
 	}
 
-	createEventStream(accountId: string, signal?: AbortSignal): Response {
+	createEventStream(accountId: string, signal?: AbortSignal, clientId?: string): Response {
 		const encoder = new TextEncoder();
 		let unsubscribe: (() => void) | undefined;
 		let pingInterval: ReturnType<typeof setInterval> | undefined;
@@ -853,7 +854,8 @@ export class SyncStore {
 				} catch {
 					return;
 				}
-				unsubscribe = syncEventEmitter.subscribe(accountId, (seq) => {
+				unsubscribe = syncEventEmitter.subscribe(accountId, (seq, senderClientId) => {
+					if (clientId && senderClientId && clientId === senderClientId) return;
 					try {
 						controller.enqueue(encoder.encode(`data: ${JSON.stringify({ seq })}\n\n`));
 					} catch {

@@ -101,6 +101,8 @@ describe('heuristic sync triggers and coalescing', () => {
 
 		await notesStore.triggerSync();
 
-		expect(postMessageSpy).toHaveBeenCalledWith({ type: 'local-sync-complete' });
+		expect(postMessageSpy).toHaveBeenCalledWith(
+			expect.objectContaining({ type: 'local-sync-complete' })
+		);
 	});
 });

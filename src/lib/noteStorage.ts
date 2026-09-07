@@ -4,6 +4,14 @@ import type { Label, Note, NoteImage } from './types';
 export const NOTES_MIRROR_KEY = 'scrapscache-notes-mirror';
 export const LABELS_MIRROR_KEY = 'scrapscache-labels-mirror';
 
+export function notesMirrorKey(pid?: string): string {
+	return pid && pid !== 'device-local' ? `${NOTES_MIRROR_KEY}:${pid}` : NOTES_MIRROR_KEY;
+}
+
+export function labelsMirrorKey(pid?: string): string {
+	return pid && pid !== 'device-local' ? `${LABELS_MIRROR_KEY}:${pid}` : LABELS_MIRROR_KEY;
+}
+
 type MirroredImage = Omit<NoteImage, 'dataUrl' | 'thumbUrl'>;
 type MirroredNote = Omit<Note, 'images'> & { images?: MirroredImage[] };
 
@@ -69,8 +77,8 @@ function writeJson<T>(key: string, value: T[]): boolean {
 	}
 }
 
-export function readNotesMirror(): Note[] {
-	return readJson<MirroredNote>(NOTES_MIRROR_KEY).map((note) => {
+export function readNotesMirror(pid?: string): Note[] {
+	return readJson<MirroredNote>(notesMirrorKey(pid)).map((note) => {
 		const { images, ...rest } = note;
 		return {
 			...rest,
@@ -86,8 +94,9 @@ export function readNotesMirror(): Note[] {
 export const MIRROR_FALLBACK_LIMIT = 50;
 
 /** True when any mirror write landed; false means the mirror went stale. */
-export function writeNotesMirror(notes: Note[]): boolean {
-	if (writeJson(NOTES_MIRROR_KEY, notes.map(noteForLocalStorage))) return true;
+export function writeNotesMirror(notes: Note[], pid?: string): boolean {
+	const key = notesMirrorKey(pid);
+	if (writeJson(key, notes.map(noteForLocalStorage))) return true;
 	// The full mirror exceeded the quota. Keep crash protection for the most
 	// recent notes — the ones most likely to have unsynced edits — instead of
 	// letting the mirror go entirely stale.
@@ -95,13 +104,21 @@ export function writeNotesMirror(notes: Note[]): boolean {
 		.sort((left, right) => right.updatedAt - left.updatedAt)
 		.slice(0, MIRROR_FALLBACK_LIMIT)
 		.map(noteForLocalStorage);
-	return writeJson(NOTES_MIRROR_KEY, recent);
+	return writeJson(key, recent);
 }
 
-export function readLabelsMirror(): Label[] {
-	return readJson<Label>(LABELS_MIRROR_KEY);
+export function readLabelsMirror(pid?: string): Label[] {
+	return readJson<Label>(labelsMirrorKey(pid));
 }
 
-export function writeLabelsMirror(labels: Label[]): void {
-	writeJson(LABELS_MIRROR_KEY, labels);
+export function writeLabelsMirror(labels: Label[], pid?: string): void {
+	writeJson(labelsMirrorKey(pid), labels);
+}
+
+export function clearNotesMirror(pid?: string): void {
+	if (typeof localStorage === 'undefined') return;
+	try {
+		localStorage.removeItem(notesMirrorKey(pid));
+		localStorage.removeItem(labelsMirrorKey(pid));
+	} catch {}
 }

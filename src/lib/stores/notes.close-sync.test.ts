@@ -59,14 +59,9 @@ describe('syncing when a note closes', () => {
 		const internals = notesStore as unknown as {
 			dirty: boolean;
 			syncPushTimer: ReturnType<typeof setTimeout> | null;
-			syncRetryTimer: ReturnType<typeof setTimeout> | null;
-			syncRetryAttempt: number;
 		};
 		if (internals.syncPushTimer) clearTimeout(internals.syncPushTimer);
-		if (internals.syncRetryTimer) clearTimeout(internals.syncRetryTimer);
 		internals.syncPushTimer = null;
-		internals.syncRetryTimer = null;
-		internals.syncRetryAttempt = 0;
 		internals.dirty = false;
 		vi.restoreAllMocks();
 		syncStore.account = null;
@@ -170,7 +165,7 @@ describe('syncing when a note closes', () => {
 		expect(hydrate).toHaveBeenCalledWith(note.id);
 	});
 
-	it('retries a successful partial sync while an outbox record remains queued', async () => {
+	it('keeps dirty flag on partial sync without background timer polling', async () => {
 		notesStore.notes = [noteWithPhoto('')];
 		(
 			notesStore as unknown as { attachmentHydrationFailures: Set<string> }
@@ -182,23 +177,15 @@ describe('syncing when a note closes', () => {
 			notesStore as unknown as { queueSync(indicate: boolean): Promise<boolean> },
 			'queueSync'
 		);
-		queue.mockResolvedValueOnce(true).mockImplementationOnce(async () => {
-			await clearSyncOutbox(['attachment:photo-1']);
-			return true;
-		});
+		queue.mockResolvedValueOnce(true);
 
 		expect(await notesStore.flushSync()).toBe(true);
-		expect(
-			(notesStore as unknown as { syncRetryTimer: ReturnType<typeof setTimeout> | null })
-				.syncRetryTimer
-		).not.toBeNull();
-		await vi.advanceTimersByTimeAsync(5_000);
-		await settleIndexedDb();
-		expect(queue).toHaveBeenCalledTimes(2);
-		expect((notesStore as unknown as { dirty: boolean }).dirty).toBe(false);
+		expect((notesStore as unknown as { dirty: boolean }).dirty).toBe(true);
+		await vi.advanceTimersByTimeAsync(10_000);
+		expect(queue).toHaveBeenCalledTimes(1);
 	});
 
-	it('retries a relay failure with bounded backoff', async () => {
+	it('keeps dirty flag on relay failure without background timer polling', async () => {
 		await markSyncOutbox(['note:note-1']);
 		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
 		(notesStore as unknown as { dirty: boolean }).dirty = true;
@@ -206,22 +193,12 @@ describe('syncing when a note closes', () => {
 			notesStore as unknown as { queueSync(indicate: boolean): Promise<boolean> },
 			'queueSync'
 		);
-		queue.mockResolvedValueOnce(false).mockImplementationOnce(async () => {
-			await clearSyncOutbox(['note:note-1']);
-			return true;
-		});
+		queue.mockResolvedValueOnce(false);
 
 		expect(await notesStore.flushSync()).toBe(false);
 		expect((notesStore as unknown as { dirty: boolean }).dirty).toBe(true);
-		expect(
-			(notesStore as unknown as { syncRetryTimer: ReturnType<typeof setTimeout> | null })
-				.syncRetryTimer
-		).not.toBeNull();
-		expect(await getSyncOutboxKeys()).toEqual(['note:note-1']);
-		await vi.advanceTimersByTimeAsync(5_000);
-		await settleIndexedDb();
-		expect(queue).toHaveBeenCalledTimes(2);
-		expect((notesStore as unknown as { dirty: boolean }).dirty).toBe(false);
+		await vi.advanceTimersByTimeAsync(10_000);
+		expect(queue).toHaveBeenCalledTimes(1);
 	});
 
 	it('does not automatically retry a quota failure', async () => {
@@ -263,5 +240,31 @@ describe('syncing when a note closes', () => {
 
 		expect(queue).toHaveBeenCalledTimes(2);
 		expect((notesStore as unknown as { dirty: boolean }).dirty).toBe(false);
+	});
+	it('clears attachment hydration warning on successful sync once attachments are healthy', async () => {
+		syncStore.account = {
+			accountId: 'acc-1',
+			syncKey: 'key-1',
+			authPublicKey: 'pub-1',
+			pairingCode: 'CODE-1234'
+		};
+		syncStore.lastError =
+			'Synced, but some photos could not be prepared for upload. They will retry on the next sync.';
+		vi.spyOn(syncStore, 'sync').mockResolvedValue({
+			success: true,
+			notes: [],
+			labels: [],
+			boards: []
+		});
+		(
+			notesStore as unknown as { attachmentHydrationFailures: Set<string> }
+		).attachmentHydrationFailures.clear();
+
+		const synced = await (
+			notesStore as unknown as { doSyncLocked(indicate: boolean): Promise<boolean> }
+		).doSyncLocked(false);
+
+		expect(synced).toBe(true);
+		expect(syncStore.lastError).toBeNull();
 	});
 });

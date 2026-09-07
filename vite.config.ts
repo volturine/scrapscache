@@ -40,7 +40,8 @@ export default defineConfig({
 		}
 	},
 	resolve: {
-		conditions: ['browser']
+		// Excalidraw's index.css export only matches development/production.
+		conditions: ['browser', 'development|production']
 	},
 	test: {
 		include: ['src/**/*.{test,spec}.{js,ts}'],

@@ -126,8 +126,8 @@ export function pickBootProfile(profiles: StoredProfile[]): StoredProfile | null
 export const LOCAL_PID = LOCAL_PROFILE_ID;
 
 /**
- * Give a freshly created first key ownership of any local no-account data so
- * registering does not look like data loss. Later keys start empty by design.
+ * Give a key created from the anonymous workspace ownership of its local data
+ * so registering does not look like data loss.
  */
 export async function adoptLocalDatasetInto(pid: string): Promise<void> {
 	await copyProfileNamespace(LOCAL_PID, pid);

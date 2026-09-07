@@ -12,6 +12,7 @@ import {
 	type StoredProfile
 } from '$lib/profiles';
 import { randomOpaqueId } from '$lib/syncPairing';
+import { LOCAL_PROFILE_ID } from '$lib/db/idb';
 
 export class ProfileCoordinator {
 	/** True while a create/switch/adopt handover is in progress. */
@@ -46,16 +47,16 @@ export class ProfileCoordinator {
 		if (blocked) return { success: false, error: blocked };
 		this.switching = true;
 		try {
-			const isFirstAccount = syncStore.profiles.length === 0;
+			const adoptsLocalDataset = syncStore.activePid === LOCAL_PROFILE_ID;
 			const created = await this.exclusive(async () => {
 				await notesStore.waitForPendingProfileWrites();
 				const result = await syncStore.register(name);
 				if (!result.success || !result.profile)
 					return { success: false, error: result.error ?? 'Registration failed' };
 				try {
-					// First account on device adopts local device notes so they are pushed to cloud;
-					// subsequent accounts start as a clean blank slate.
-					if (isFirstAccount) {
+					// Creating from the anonymous workspace adopts its notes even when other
+					// saved keys remain. Creating from a synced profile starts blank.
+					if (adoptsLocalDataset) {
 						await adoptLocalDatasetInto(result.profile.id);
 					} else {
 						clearNotesMirror(result.profile.id);

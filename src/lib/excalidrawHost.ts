@@ -1,6 +1,7 @@
 import React from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { Excalidraw, exportToCanvas, loadFromBlob } from '@excalidraw/excalidraw';
+import '@excalidraw/excalidraw/index.css';
 import type { ExcalidrawElement } from '@excalidraw/excalidraw/element/types';
 import type { AppState, BinaryFiles, LibraryItems } from '@excalidraw/excalidraw/types';
 import type { CanvasElement, CanvasFile, CanvasScene } from './canvasAttachment';

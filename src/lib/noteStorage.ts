@@ -114,3 +114,11 @@ export function readLabelsMirror(pid?: string): Label[] {
 export function writeLabelsMirror(labels: Label[], pid?: string): void {
 	writeJson(labelsMirrorKey(pid), labels);
 }
+
+export function clearNotesMirror(pid?: string): void {
+	if (typeof localStorage === 'undefined') return;
+	try {
+		localStorage.removeItem(notesMirrorKey(pid));
+		localStorage.removeItem(labelsMirrorKey(pid));
+	} catch {}
+}

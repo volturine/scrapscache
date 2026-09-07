@@ -1,6 +1,7 @@
 // Rune-based notes & labels store. Persists to IndexedDB from explicit write paths.
 import type { Note, Label, NoteColor, NoteField } from '$lib/types';
 import {
+	LOCAL_PROFILE_ID,
 	getAllNotesMetadata,
 	hydrateNoteAttachments,
 	putNote,
@@ -130,8 +131,8 @@ export class NotesStore {
 	onAfterSync: (() => void) | null = null;
 
 	constructor() {
-		this.notes = readNotesMirror();
-		this.labels = readLabelsMirror();
+		this.notes = readNotesMirror(this.pid);
+		this.labels = readLabelsMirror(this.pid);
 		syncStore.onLocalDataChange = () => {
 			this.dirty = true;
 			this.scheduleSyncPush();
@@ -141,7 +142,7 @@ export class NotesStore {
 			if ('BroadcastChannel' in window) {
 				this.syncBroadcastChannel = new BroadcastChannel('scrapscache-sync-channel');
 				this.syncBroadcastChannel.onmessage = (event) => {
-					if (event.data?.type === 'local-sync-complete') {
+					if (event.data?.type === 'local-sync-complete' && event.data?.pid === this.pid) {
 						void this.rehydrateFromIDB();
 					}
 				};
@@ -177,10 +178,6 @@ export class NotesStore {
 	// --- Lifecycle -------------------------------------------------------
 	async init() {
 		await syncStore.ensureProfilesLoaded();
-		if (this.loaded) {
-			await this.rehydrateFromIDB();
-			return;
-		}
 
 		const mirrorNotes = readNotesMirror(this.pid);
 		const mirrorLabels = readLabelsMirror(this.pid);
@@ -213,7 +210,13 @@ export class NotesStore {
 		this.deletedLabelIds = tombstones.labels;
 		await kanbanStore.hydrateFromDevice(this.pid, tombstones.boards);
 
-		if (notes.length === 0 && labels.length === 0 && !seededFlag && !syncStore.isLoggedIn) {
+		if (
+			notes.length === 0 &&
+			labels.length === 0 &&
+			!seededFlag &&
+			!syncStore.isLoggedIn &&
+			this.pid === LOCAL_PROFILE_ID
+		) {
 			localStorage?.setItem('scrapscache-seeded', '1');
 			this.notes = this.seedNotes();
 			this.labels = [];
@@ -248,11 +251,14 @@ export class NotesStore {
 				getAllNotesMetadata(this.pid),
 				getAllLabels(this.pid)
 			]);
-			this.notes = withoutTombstoned(mergeNoteLists(this.notes, dbNotes), this.deletedNoteIds).sort(
-				(a, b) => b.updatedAt - a.updatedAt
-			);
+			const mirrorNotes = readNotesMirror(this.pid);
+			const mirrorLabels = readLabelsMirror(this.pid);
+			this.notes = withoutTombstoned(
+				mergeNoteLists(mirrorNotes, dbNotes),
+				this.deletedNoteIds
+			).sort((a, b) => b.updatedAt - a.updatedAt);
 			this.labels = withoutTombstoned(
-				mergeLabelLists(this.labels, dbLabels),
+				mergeLabelLists(mirrorLabels, dbLabels),
 				this.deletedLabelIds
 			).sort((a, b) => a.name.localeCompare(b.name));
 			this.mirrorToLS();
@@ -1301,7 +1307,7 @@ export class NotesStore {
 			} while (this.syncFollowupRequested);
 			if (success) {
 				try {
-					this.syncBroadcastChannel?.postMessage({ type: 'local-sync-complete' });
+					this.syncBroadcastChannel?.postMessage({ type: 'local-sync-complete', pid: this.pid });
 				} catch {
 					/* ignore BroadcastChannel error */
 				}

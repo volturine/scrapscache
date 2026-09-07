@@ -976,7 +976,7 @@ function isStoredProfile(value: unknown): value is StoredProfile {
 	);
 }
 
-export async function listStoredProfiles(): Promise<StoredProfile[]> {
+export function readStoredProfiles(): StoredProfile[] {
 	if (typeof localStorage === 'undefined') return [];
 	try {
 		const raw = localStorage.getItem(LS_PROFILES) ?? localStorage.getItem(LS_PROFILES_LEGACY);
@@ -987,6 +987,10 @@ export async function listStoredProfiles(): Promise<StoredProfile[]> {
 		// fall back to empty list
 	}
 	return [];
+}
+
+export async function listStoredProfiles(): Promise<StoredProfile[]> {
+	return readStoredProfiles();
 }
 
 export async function putStoredProfile(profile: StoredProfile): Promise<void> {

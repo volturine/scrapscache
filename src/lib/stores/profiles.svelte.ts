@@ -4,6 +4,7 @@
 // sync web lock so no sync flight can interleave with the handover.
 import { syncStore, PROFILE_META_KEY } from './sync.svelte';
 import { notesStore, SYNC_LOCK } from './notes.svelte';
+import { clearNotesMirror } from '$lib/noteStorage';
 import {
 	adoptLocalDatasetInto,
 	nextProfileName,
@@ -56,6 +57,8 @@ export class ProfileCoordinator {
 					// subsequent accounts start as a clean blank slate.
 					if (isFirstAccount) {
 						await adoptLocalDatasetInto(result.profile.id);
+					} else {
+						clearNotesMirror(result.profile.id);
 					}
 					await this.activate(result.profile);
 					return { success: true };

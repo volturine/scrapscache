@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Label, Note } from '$lib/types';
-import { readNotesMirror, writeNotesMirror } from './noteStorage';
+import { readNotesMirror, writeNotesMirror, clearNotesMirror } from './noteStorage';
+import { readProfiles } from './profiles';
 import {
 	estimateProfileBytes,
 	getAllLabels,
@@ -147,5 +148,32 @@ describe('profile localStorage mirror isolation', () => {
 		expect(readNotesMirror('p-one').map((n) => n.id)).toEqual(['note-p1']);
 		expect(readNotesMirror('p-two').map((n) => n.id)).toEqual(['note-p2']);
 		expect(readNotesMirror('p-empty')).toEqual([]);
+	});
+});
+
+describe('readProfiles and clearNotesMirror', () => {
+	it('synchronously loads stored profiles from localStorage', () => {
+		localStorage.clear();
+		expect(readProfiles()).toEqual([]);
+
+		const p1: StoredProfile = { id: 'p-1', name: 'P1', syncKey: 'k1', createdAt: 100 };
+		const p2: StoredProfile = { id: 'p-2', name: 'P2', syncKey: 'k2', createdAt: 50 };
+		localStorage.setItem('scrapscache-sync-profiles', JSON.stringify([p1, p2]));
+
+		const loaded = readProfiles();
+		expect(loaded.map((p) => p.id)).toEqual(['p-2', 'p-1']);
+	});
+
+	it('clearNotesMirror removes only target profile mirrors', () => {
+		localStorage.clear();
+		writeNotesMirror([note('n-1')], 'p-target');
+		writeNotesMirror([note('n-2')], 'p-other');
+
+		expect(readNotesMirror('p-target')).toHaveLength(1);
+		expect(readNotesMirror('p-other')).toHaveLength(1);
+
+		clearNotesMirror('p-target');
+		expect(readNotesMirror('p-target')).toEqual([]);
+		expect(readNotesMirror('p-other')).toHaveLength(1);
 	});
 });

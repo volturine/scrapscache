@@ -4,6 +4,7 @@
 import {
 	deleteStoredProfile,
 	listStoredProfiles,
+	readStoredProfiles,
 	putStoredProfile,
 	LOCAL_PROFILE_ID,
 	copyProfileNamespace,
@@ -31,6 +32,11 @@ const LS_LAST_ACTIVE = 'scrapscache-last-active-profile';
 const LS_LAST_ACTIVE_LEGACY = 'gkc-last-active-profile';
 const LS_LEGACY_ACCOUNT = 'scrapscache-sync-account';
 const LS_LEGACY_ACCOUNT_OLD = 'gkc-sync-account';
+
+export function readProfiles(): StoredProfile[] {
+	const profiles = readStoredProfiles();
+	return profiles.sort((a, b) => a.createdAt - b.createdAt);
+}
 
 export async function loadProfiles(): Promise<StoredProfile[]> {
 	const profiles = await listStoredProfiles();

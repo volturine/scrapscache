@@ -59,6 +59,7 @@ import {
 	adoptLocalDatasetInto,
 	getLastActiveProfileId,
 	loadProfiles,
+	readProfiles,
 	nextProfileName,
 	pickBootProfile,
 	profileForSyncKey,
@@ -178,7 +179,28 @@ export class SyncStore {
 
 	constructor() {
 		if (typeof localStorage === 'undefined') return;
+		this.initFromLocalStorage();
 		void this.ensureProfilesLoaded();
+	}
+
+	private initFromLocalStorage(): void {
+		try {
+			this.profiles = readProfiles();
+			const pointerId = getLastActiveProfileId();
+			const pointed =
+				pointerId != null && pointerId !== LOCAL_PROFILE_ID
+					? (this.profiles.find((entry) => entry.id === pointerId) ?? null)
+					: null;
+			const chosen =
+				pointerId === LOCAL_PROFILE_ID ? null : (pointed ?? pickBootProfile(this.profiles));
+			if (chosen) {
+				this.activateProfile(chosen);
+			} else {
+				this.restoreStatus(LOCAL_PROFILE_ID);
+			}
+		} catch (err) {
+			console.error('[sync] could not restore profiles on boot:', err);
+		}
 	}
 
 	get isLoggedIn(): boolean {
@@ -240,8 +262,10 @@ export class SyncStore {
 					pointerId === LOCAL_PROFILE_ID ? null : (pointed ?? pickBootProfile(this.profiles));
 				if (chosen) {
 					await this.healStrandedLocalData(chosen.id);
-					this.activateProfile(chosen);
-				} else {
+					if (this.activeProfile?.id !== chosen.id) {
+						this.activateProfile(chosen);
+					}
+				} else if (this.activeProfile !== null) {
 					this.restoreStatus(LOCAL_PROFILE_ID);
 				}
 			} catch (err) {

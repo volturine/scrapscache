@@ -1,12 +1,10 @@
 import React from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import ExcalidrawPackage from '@excalidraw/excalidraw/dist/excalidraw.production.min.js';
-import type { ExcalidrawElement } from '@excalidraw/excalidraw/types/element/types';
-import type { AppState, BinaryFiles, LibraryItems } from '@excalidraw/excalidraw/types/types';
+import { Excalidraw, exportToCanvas, loadFromBlob } from '@excalidraw/excalidraw';
+import type { ExcalidrawElement } from '@excalidraw/excalidraw/element/types';
+import type { AppState, BinaryFiles, LibraryItems } from '@excalidraw/excalidraw/types';
 import type { CanvasElement, CanvasFile, CanvasScene } from './canvasAttachment';
 import { loadCanvasLibrary, saveCanvasLibrary } from './canvasLibrary';
-
-const { Excalidraw, exportToCanvas, loadFromBlob } = ExcalidrawPackage;
 
 const THUMBNAIL_WIDTH = 480;
 const THUMBNAIL_HEIGHT = 360;

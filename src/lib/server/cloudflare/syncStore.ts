@@ -1,7 +1,6 @@
 import { ACTIVITY_WINDOWS_DAYS, parseMaxAccountBytes } from '$lib/server/operatorConfig';
 import { batch, execute, type SqlStatement } from './d1';
 import { cloudflareBindings } from './env';
-import { MAX_CLIENT_SYNC_MUTATIONS_PER_REQUEST } from '$lib/syncLimits';
 
 export type EncryptedEnvelope = { seq: number; id: string; ciphertext: string; slot: string };
 export type OpaqueUpload = Omit<EncryptedEnvelope, 'seq'> & { expectedId?: string | null };
@@ -41,7 +40,7 @@ export const WAKE_RETAIN_MS = 86_400_000;
 export const WAKE_CLAIM_LEASE_MS = 60_000;
 export const DELETED_SLOT_GRACE_MS = 14 * 86_400_000;
 /** Keeps D1 parameters and R2 subrequests safely inside Workers limits. */
-export const MAX_SYNC_MUTATIONS_PER_REQUEST = MAX_CLIENT_SYNC_MUTATIONS_PER_REQUEST;
+export const MAX_SYNC_MUTATIONS_PER_REQUEST = 8;
 
 export class SyncQuotaExceededError extends Error {
 	constructor() {

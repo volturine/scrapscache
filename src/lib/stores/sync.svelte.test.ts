@@ -668,39 +668,17 @@ describe('client sync state machine', () => {
 		expect(rebuiltUploads.every((item) => item.expectedId === null)).toBe(true);
 	});
 
-	it('keeps every upload round within the hosted relay mutation limit', async () => {
-		const notes = Array.from({ length: 17 }, (_, index) => note(`note-${index}`));
+	it('splits more than 500 ordinary records into bounded rounds', async () => {
+		const notes = Array.from({ length: 501 }, (_, index) => note(`note-${index}`));
 		const { store, requests } = createHarness((_request, index) => ({
 			success: true,
-			data: emptyData({ cursor: index === 0 ? 0 : index * 8 })
+			data: emptyData({ cursor: index === 0 ? 0 : index === 1 ? 500 : 501 })
 		}));
 
 		const result = await store.sync(notes, [], {}, {}, [], {}, false, false, passthrough);
 
 		expect(result.success, result.error).toBe(true);
-		expect(requests.map((request) => request.envelopes.length)).toEqual([0, 8, 8, 1]);
-		expect(
-			requests.every((request) => request.envelopes.length + request.deleteSlots.length <= 8)
-		).toBe(true);
-	});
-
-	it('shares the hosted relay limit between uploads and deletions', async () => {
-		const notes = Array.from({ length: 9 }, (_, index) => note(`note-${index}`));
-		const { store, account, requests } = createHarness((_request, index) => ({
-			success: true,
-			data: emptyData({ cursor: index })
-		}));
-		await seedControl(account.accountId, {
-			recordIds: { 'attachment:orphan': 'orphan-id' }
-		});
-
-		const result = await store.sync(notes, [], {}, {}, [], {}, false, false, passthrough);
-
-		expect(result.success, result.error).toBe(true);
-		expect(requests.some((request) => request.deleteSlots.length > 0)).toBe(true);
-		expect(
-			requests.every((request) => request.envelopes.length + request.deleteSlots.length <= 8)
-		).toBe(true);
+		expect(requests.map((request) => request.envelopes.length)).toEqual([0, 500, 1]);
 	});
 
 	it('limits attachment bytes to two records per upload round', async () => {

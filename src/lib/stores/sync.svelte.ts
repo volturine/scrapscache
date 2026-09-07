@@ -24,7 +24,6 @@ import {
 	type SyncRecord,
 	type SyncRecordPayload
 } from '$lib/syncRecords';
-import { MAX_CLIENT_SYNC_MUTATIONS_PER_REQUEST } from '$lib/syncLimits';
 import { sha256 } from '$lib/syncHash';
 import {
 	createOneTimePairingCode,
@@ -801,6 +800,7 @@ export class SyncStore {
 		if (indicate) this.onSyncStart?.();
 		try {
 			const ATTACHMENT_UPLOAD_BUDGET = 2;
+			const UPLOAD_RECORD_BUDGET = 500;
 			const DOWNLOAD_LIMIT = 12;
 			const MAX_RESET_RETRIES = 3;
 			let resetRetries = 0;
@@ -899,7 +899,7 @@ export class SyncStore {
 					(record) => record.payload.kind === 'attachment' && !quotaBlockedKeys.has(record.key)
 				);
 				// Notes/labels/boards go before photos so one over-quota image cannot strand text.
-				const recordBudget = quotaSingleUpload ? 1 : MAX_CLIENT_SYNC_MUTATIONS_PER_REQUEST;
+				const recordBudget = quotaSingleUpload ? 1 : UPLOAD_RECORD_BUDGET;
 				const attachBudget = quotaSingleUpload ? 1 : ATTACHMENT_UPLOAD_BUDGET;
 				const outgoing = nonAttachments.length
 					? nonAttachments.slice(0, recordBudget)
@@ -956,9 +956,7 @@ export class SyncStore {
 					tombstones: tombstoneMaps,
 					pullOnly,
 					catchUpComplete: downloadsDrained
-				})
-					.filter((key) => key !== PROFILE_META_KEY)
-					.slice(0, MAX_CLIENT_SYNC_MUTATIONS_PER_REQUEST - outbound.length);
+				}).filter((key) => key !== PROFILE_META_KEY);
 				const deleteSlots = await Promise.all(
 					deletableKeys.map(async (key) => ({
 						id: recordIds[key],

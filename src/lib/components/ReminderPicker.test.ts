@@ -8,10 +8,6 @@ afterEach(() => {
 	vi.useRealTimers();
 });
 
-function monthName(month: number): string {
-	return new Date(2020, month, 1).toLocaleDateString([], { month: 'long' });
-}
-
 describe('ReminderPicker date and time controls', () => {
 	it('shows a 24-hour wheel and per-minute steps', () => {
 		render(ReminderPicker, { props: { reminder, onClose: () => {} } });
@@ -34,62 +30,33 @@ describe('ReminderPicker date and time controls', () => {
 		expect(minuteOptions[30].getAttribute('aria-selected')).toBe('true');
 	});
 
-	it('opens day, month, and year wheels when the date label is pressed', async () => {
+	it('opens a date picker when the date label is pressed', async () => {
 		render(ReminderPicker, { props: { reminder, onClose: () => {} } });
 
-		expect(screen.queryByRole('listbox', { name: 'Month' })).toBeNull();
+		expect(screen.queryByRole('grid')).toBeNull();
 		await fireEvent.click(screen.getByRole('button', { name: 'Choose date' }));
 
-		const dayOptions = screen
-			.getByRole('listbox', { name: 'Day' })
-			.querySelectorAll('[role="option"]');
-		expect(dayOptions).toHaveLength(31);
-		expect(screen.getByRole('option', { name: '12' }).getAttribute('aria-selected')).toBe('true');
-		const monthOptions = screen
-			.getByRole('listbox', { name: 'Month' })
-			.querySelectorAll('[role="option"]');
-		expect(monthOptions).toHaveLength(12);
-		expect(screen.getByRole('option', { name: monthName(7) }).getAttribute('aria-selected')).toBe(
-			'true'
-		);
-		expect(screen.getByRole('listbox', { name: 'Year' })).toBeTruthy();
-		expect(screen.getByRole('option', { name: '2026' }).getAttribute('aria-selected')).toBe('true');
+		expect(screen.getByRole('grid')).toBeTruthy();
+		expect(screen.getByRole('button', { name: 'Choose date' }).textContent).toContain('12');
 		expect(screen.queryByRole('listbox', { name: 'Minute' })).toBeNull();
 	});
 
-	it('keeps day arrows independent of the month/year picker', async () => {
+	it('keeps day arrows independent of the date picker', async () => {
 		render(ReminderPicker, { props: { reminder, onClose: () => {} } });
 
 		await fireEvent.click(screen.getByRole('button', { name: 'Next day' }));
 
 		expect(screen.getByRole('button', { name: 'Choose date' }).textContent).toContain('13');
-		expect(screen.queryByRole('listbox', { name: 'Month' })).toBeNull();
+		expect(screen.queryByRole('grid')).toBeNull();
 	});
 
-	it('applies a tapped month while clamping the day', async () => {
-		const endOfMonth = new Date(2026, 7, 31, 9, 0, 0, 0).getTime();
-		render(ReminderPicker, { props: { reminder: endOfMonth, onClose: () => {} } });
-
-		await fireEvent.click(screen.getByRole('button', { name: 'Choose date' }));
-		await fireEvent.click(screen.getByRole('option', { name: monthName(1) }));
-
-		expect(screen.getByRole('button', { name: 'Choose date' }).textContent).toContain('28');
-		expect(
-			screen.getByRole('listbox', { name: 'Day' }).querySelectorAll('[role="option"]')
-		).toHaveLength(28);
-		expect(screen.getByRole('option', { name: monthName(1) }).getAttribute('aria-selected')).toBe(
-			'true'
-		);
-	});
-
-	it('changes the selected day from the day wheel', async () => {
+	it('changes the selected day from the date picker', async () => {
 		render(ReminderPicker, { props: { reminder, onClose: () => {} } });
 
 		await fireEvent.click(screen.getByRole('button', { name: 'Choose date' }));
-		await fireEvent.click(screen.getByRole('option', { name: '21' }));
+		await fireEvent.click(within(screen.getByRole('grid')).getByText('21'));
 
 		expect(screen.getByRole('button', { name: 'Choose date' }).textContent).toContain('21');
-		expect(screen.getByRole('option', { name: '21' }).getAttribute('aria-selected')).toBe('true');
 	});
 });
 

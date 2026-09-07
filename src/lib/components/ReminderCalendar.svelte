@@ -4,7 +4,9 @@
 </script>
 
 <script lang="ts">
-	import { ChevronLeft, ChevronRight } from '@lucide/svelte';
+	import { DatePicker, type DatePickerValueChangeDetails } from '@ark-ui/svelte/date-picker';
+	import { parseDate, type DateValue } from '@internationalized/date';
+	import DatePickerViews from './DatePickerViews.svelte';
 	import type { Note } from '$lib/types';
 	import { dayKey } from '$lib/utils';
 
@@ -16,22 +18,6 @@
 		selected?: ReminderDayFilter | null;
 	} = $props();
 
-	const WEEKDAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
-	const LONG_PRESS_MS = 450;
-
-	const openedAt = new Date();
-	let today = $state(openedAt);
-	let viewYear = $state(openedAt.getFullYear());
-	let viewMonth = $state(openedAt.getMonth());
-
-	let pressTimer: ReturnType<typeof setTimeout> | null = null;
-	let longPressed = false;
-
-	const monthLabel = $derived(
-		new Date(viewYear, viewMonth, 1).toLocaleDateString([], { month: 'long', year: 'numeric' })
-	);
-	const leadingBlanks = $derived((new Date(viewYear, viewMonth, 1).getDay() + 6) % 7);
-	const daysInMonth = $derived(new Date(viewYear, viewMonth + 1, 0).getDate());
 	const pickingEnd = $derived(selected !== null && selected.to === null);
 	const reminderDays = $derived.by(() => {
 		const counts = new Map<string, number>();
@@ -42,76 +28,32 @@
 		}
 		return counts;
 	});
+	const pickerValue = $derived.by((): DateValue[] => {
+		if (!selected) return [];
+		const from = parseDate(selected.from);
+		if (selected.to == null) return [from];
+		return [from, parseDate(selected.to)];
+	});
 
-	function keyFor(day: number): string {
-		return `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-	}
-
-	function isInRange(key: string): boolean {
-		if (!selected || selected.to === null) return false;
-		return key >= selected.from && key <= selected.to;
-	}
-
-	function isEndpoint(key: string): boolean {
-		if (!selected) return false;
-		return key === selected.from || key === selected.to;
-	}
-
-	function shiftMonth(delta: number) {
-		const next = new Date(viewYear, viewMonth + delta, 1);
-		viewYear = next.getFullYear();
-		viewMonth = next.getMonth();
-	}
-
-	function goToday() {
-		today = new Date();
-		viewYear = today.getFullYear();
-		viewMonth = today.getMonth();
-	}
-
-	function startPress(day: number) {
-		longPressed = false;
-		cancelPress();
-		pressTimer = setTimeout(() => {
-			pressTimer = null;
-			longPressed = true;
-			selected = { from: keyFor(day), to: null };
-		}, LONG_PRESS_MS);
-	}
-
-	function cancelPress() {
-		if (pressTimer !== null) {
-			clearTimeout(pressTimer);
-			pressTimer = null;
-		}
-	}
-
-	function handleClick(day: number) {
-		cancelPress();
-		if (longPressed) {
-			longPressed = false;
-			return;
-		}
-		const key = keyFor(day);
-		if (selected && selected.to === null) {
-			selected =
-				key < selected.from ? { from: key, to: selected.from } : { from: selected.from, to: key };
-			return;
-		}
-		if (selected && selected.from === key && selected.to === key) {
+	function onValueChange(details: DatePickerValueChangeDetails) {
+		const keys = details.value.map((date) => date.toString());
+		if (keys.length === 0) {
 			selected = null;
 			return;
 		}
-		selected = { from: key, to: key };
+		if (keys.length === 1) {
+			selected = { from: keys[0], to: null };
+			return;
+		}
+		selected = { from: keys[0], to: keys[1] };
 	}
 
 	function filterToday() {
-		const key = dayKey(today.getTime());
+		const key = dayKey(Date.now());
 		if (selected && selected.to !== null && key >= selected.from && key <= selected.to) {
 			selected = null;
 			return;
 		}
-		goToday();
 		selected = { from: key, to: key };
 	}
 </script>
@@ -119,77 +61,26 @@
 <div
 	class="reminder-calendar w-full select-none rounded-2xl border border-[var(--scrapscache-border)] bg-[var(--scrapscache-surface)] px-3 py-3"
 >
-	<div class="mb-2 flex items-center justify-between">
-		<button
-			type="button"
-			class="rounded-full p-1.5 text-[var(--scrapscache-text-muted)] hover:bg-black/5 dark:hover:bg-white/10"
-			aria-label="Previous month"
-			onclick={() => shiftMonth(-1)}
-		>
-			<ChevronLeft size={16} />
-		</button>
-		<span class="text-sm font-semibold">{monthLabel}</span>
-		<button
-			type="button"
-			class="rounded-full p-1.5 text-[var(--scrapscache-text-muted)] hover:bg-black/5 dark:hover:bg-white/10"
-			aria-label="Next month"
-			onclick={() => shiftMonth(1)}
-		>
-			<ChevronRight size={16} />
-		</button>
-	</div>
-
-	<div
-		class="grid grid-cols-7 text-center text-xs font-medium text-[var(--scrapscache-text-muted)]"
+	<DatePicker.Root
+		class="w-full"
+		inline
+		startOfWeek={1}
+		selectionMode="range"
+		value={pickerValue}
+		{onValueChange}
+		closeOnSelect={false}
 	>
-		{#each WEEKDAYS as label, i (i)}
-			<span>{label}</span>
-		{/each}
-	</div>
-
-	<div class="mt-1 grid grid-cols-7 gap-y-0.5 text-center text-sm">
-		{#each { length: leadingBlanks } as _, i (i)}
-			<span></span>
-		{/each}
-		{#each { length: daysInMonth } as _, i}
-			{@const day = i + 1}
-			{@const key = keyFor(day)}
-			{@const count = reminderDays.get(key) ?? 0}
-			{@const isToday =
-				viewYear === today.getFullYear() &&
-				viewMonth === today.getMonth() &&
-				day === today.getDate()}
-			{@const endpoint = isEndpoint(key)}
-			<button
-				type="button"
-				class="relative mx-auto flex h-8 w-8 flex-col items-center justify-center rounded-full
-					{endpoint
-					? 'bg-[var(--scrapscache-accent)] text-[var(--scrapscache-accent-foreground)]'
-					: isInRange(key)
-						? 'bg-[color-mix(in_srgb,var(--scrapscache-accent)_18%,transparent)]'
-						: isToday
-							? 'font-bold ring-1 ring-[var(--scrapscache-border)]'
-							: 'hover:bg-black/5 dark:hover:bg-white/10'}"
-				aria-pressed={endpoint}
-				aria-label="{monthLabel} {day}{count ? `, ${count} reminder${count === 1 ? '' : 's'}` : ''}"
-				onpointerdown={() => startPress(day)}
-				onpointerup={cancelPress}
-				onpointerleave={cancelPress}
-				onpointercancel={cancelPress}
-				oncontextmenu={(e) => e.preventDefault()}
-				onclick={() => handleClick(day)}
-			>
-				<span>{day}</span>
+		<DatePickerViews>
+			{#snippet dayExtra(day)}
+				{@const count = reminderDays.get(day.toString()) ?? 0}
 				{#if count > 0}
 					<span
-						class="absolute bottom-1 h-1 w-1 rounded-full {endpoint
-							? 'bg-[var(--scrapscache-accent-foreground)]'
-							: 'bg-[var(--scrapscache-accent)]'}"
+						class="absolute bottom-1 h-1 w-1 rounded-full bg-[var(--scrapscache-accent)] data-[selected]:bg-[var(--scrapscache-accent-foreground)]"
 					></span>
 				{/if}
-			</button>
-		{/each}
-	</div>
+			{/snippet}
+		</DatePickerViews>
+	</DatePicker.Root>
 
 	<div
 		class="mt-2 flex items-center justify-between gap-2 border-t border-[var(--scrapscache-border)] pt-3 text-xs"

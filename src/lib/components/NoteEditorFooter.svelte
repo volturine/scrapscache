@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { Dialog } from '@ark-ui/svelte/dialog';
 	import AttachmentFullscreen from '$lib/components/AttachmentFullscreen.svelte';
 	import CanvasEditor from '$lib/components/CanvasEditor.svelte';
 	import PhotoFullscreen from '$lib/components/PhotoFullscreen.svelte';
@@ -445,61 +446,60 @@
 {/if}
 
 {#if filesAwaitingQuality}
-	<div
-		class="fixed inset-0 z-50 grid place-items-center bg-black/45 p-4"
-		role="presentation"
-		onclick={(event) => {
-			if (event.target === event.currentTarget) filesAwaitingQuality = null;
+	<Dialog.Root
+		open
+		onOpenChange={(details) => {
+			if (!details.open) filesAwaitingQuality = null;
 		}}
+		preventScroll={false}
 	>
-		<div
-			class="scrapscache-dialog w-full max-w-sm p-4 text-[var(--scrapscache-text)]"
-			role="dialog"
-			aria-modal="true"
-			aria-labelledby="photo-quality-title"
-		>
-			<div class="mb-3 flex items-start justify-between gap-3">
-				<div>
-					<h2 id="photo-quality-title" class="text-base font-semibold">Photo quality</h2>
-					<p class="mt-0.5 text-xs text-[var(--scrapscache-text-muted)]">
-						Choose once for {filesAwaitingQuality.length === 1
-							? 'this attachment'
-							: `these ${filesAwaitingQuality.length} attachments`}.
-					</p>
+		<Dialog.Backdrop class="fixed inset-0 z-50 bg-black/45" />
+		<Dialog.Positioner class="fixed inset-0 z-50 grid place-items-center p-4">
+			<Dialog.Content class="scrapscache-dialog w-full max-w-sm p-4 text-[var(--scrapscache-text)]">
+				<div class="mb-3 flex items-start justify-between gap-3">
+					<div>
+						<Dialog.Title id="photo-quality-title" class="text-base font-semibold"
+							>Photo quality</Dialog.Title
+						>
+						<p class="mt-0.5 text-xs text-[var(--scrapscache-text-muted)]">
+							Choose once for {filesAwaitingQuality.length === 1
+								? 'this attachment'
+								: `these ${filesAwaitingQuality.length} attachments`}.
+						</p>
+					</div>
+					<Dialog.CloseTrigger
+						type="button"
+						class="icon-btn h-9 w-9 shrink-0 p-2 touch-manipulation"
+						aria-label="Cancel attachments"
+					>
+						<X class="h-4 w-4" aria-hidden="true" />
+					</Dialog.CloseTrigger>
 				</div>
-				<button
-					type="button"
-					class="icon-btn h-9 w-9 shrink-0 p-2 touch-manipulation"
-					onclick={() => (filesAwaitingQuality = null)}
-					aria-label="Cancel attachments"
-				>
-					<X class="h-4 w-4" aria-hidden="true" />
-				</button>
-			</div>
-			<div class="grid grid-cols-2 gap-2">
-				<button
-					type="button"
-					class="scrapscache-button scrapscache-button-primary min-h-20 px-3 py-3 text-left"
-					onclick={() => chooseImageQuality('compressed')}
-				>
-					<span class="block text-sm font-semibold">Compressed</span>
-					<span class="mt-1 block text-[11px] leading-4 opacity-85">
-						Small file · A4 text stays readable
-					</span>
-				</button>
-				<button
-					type="button"
-					class="scrapscache-button scrapscache-button-secondary min-h-20 px-3 py-3 text-left"
-					onclick={() => chooseImageQuality('hd')}
-				>
-					<span class="block text-sm font-semibold">HD</span>
-					<span class="mt-1 block text-[11px] leading-4 text-[var(--scrapscache-text-muted)]">
-						Sharper image · larger file
-					</span>
-				</button>
-			</div>
-		</div>
-	</div>
+				<div class="grid grid-cols-2 gap-2">
+					<button
+						type="button"
+						class="scrapscache-button scrapscache-button-primary min-h-20 px-3 py-3 text-left"
+						onclick={() => chooseImageQuality('compressed')}
+					>
+						<span class="block text-sm font-semibold">Compressed</span>
+						<span class="mt-1 block text-[11px] leading-4 opacity-85">
+							Small file · A4 text stays readable
+						</span>
+					</button>
+					<button
+						type="button"
+						class="scrapscache-button scrapscache-button-secondary min-h-20 px-3 py-3 text-left"
+						onclick={() => chooseImageQuality('hd')}
+					>
+						<span class="block text-sm font-semibold">HD</span>
+						<span class="mt-1 block text-[11px] leading-4 text-[var(--scrapscache-text-muted)]">
+							Sharper image · larger file
+						</span>
+					</button>
+				</div>
+			</Dialog.Content>
+		</Dialog.Positioner>
+	</Dialog.Root>
 {/if}
 
 <footer

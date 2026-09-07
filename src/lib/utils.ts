@@ -94,7 +94,9 @@ export function reminderTimeForDay(key: string, nowMs = Date.now()): number {
 	const [year, month, day] = key.split('-').map(Number);
 	const reminder = new Date(nowMs);
 	reminder.setHours(reminder.getHours() + 1, 0, 0, 0);
-	reminder.setFullYear(year, month - 1, day);
+	if (Number.isFinite(year) && Number.isFinite(month) && Number.isFinite(day)) {
+		reminder.setFullYear(year, month - 1, day);
+	}
 	return reminder.getTime();
 }
 

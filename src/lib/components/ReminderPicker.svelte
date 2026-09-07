@@ -1,6 +1,9 @@
 <script lang="ts">
 	import { createSubscriber } from 'svelte/reactivity';
+	import { CalendarDate } from '@internationalized/date';
+	import { DatePicker, type DatePickerValueChangeDetails } from '@ark-ui/svelte/date-picker';
 	import WheelPicker from './WheelPicker.svelte';
+	import DatePickerViews from './DatePickerViews.svelte';
 	import { AlarmClock, ChevronLeft, ChevronRight } from '@lucide/svelte';
 	import { requestReminderPermission } from '$lib/reminderNotify';
 	import { ensurePushSubscription } from '$lib/reminderWake';
@@ -16,10 +19,6 @@
 		onApply?: (value: number | null) => void;
 	} = $props();
 
-	const MONTH_ITEMS = Array.from({ length: 12 }, (_, month) => ({
-		value: month,
-		label: new Date(2020, month, 1).toLocaleDateString([], { month: 'long' })
-	}));
 	const HOUR_ITEMS = Array.from({ length: 24 }, (_, hour) => ({
 		value: hour,
 		label: String(hour).padStart(2, '0')
@@ -31,7 +30,7 @@
 
 	// Initialize once from the existing reminder or now+1h default
 	function initDate(ts: number | null): Date {
-		if (ts == null) {
+		if (ts == null || !Number.isFinite(ts)) {
 			const d = new Date();
 			d.setHours(d.getHours() + 1, 0, 0, 0);
 			return d;
@@ -47,19 +46,6 @@
 	function apply(ts: number | null) {
 		onApply?.(ts);
 		onClose();
-	}
-
-	function daysInMonth(year: number, month: number): number {
-		return new Date(year, month + 1, 0).getDate();
-	}
-
-	function setDateParts(parts: { year?: number; month?: number; day?: number }) {
-		const d = new Date(selected);
-		const year = parts.year ?? d.getFullYear();
-		const month = parts.month ?? d.getMonth();
-		const day = parts.day ?? d.getDate();
-		d.setFullYear(year, month, Math.min(day, daysInMonth(year, month)));
-		selected = d;
 	}
 
 	function shiftDay(delta: number) {
@@ -104,26 +90,17 @@
 
 	const hours24 = $derived(selected.getHours());
 	const minutes = $derived(selected.getMinutes());
-	const selectedMonth = $derived(selected.getMonth());
-	const selectedDay = $derived(selected.getDate());
-	const selectedYear = $derived(selected.getFullYear());
-	const dayItems = $derived(
-		Array.from({ length: daysInMonth(selectedYear, selectedMonth) }, (_, index) => ({
-			value: index + 1,
-			label: String(index + 1).padStart(2, '0')
-		}))
-	);
+	const pickerValue = $derived([
+		new CalendarDate(selected.getFullYear(), selected.getMonth() + 1, selected.getDate())
+	]);
 
-	const yearItems = $derived.by(() => {
-		const nowYear = new Date().getFullYear();
-		const start = Math.min(nowYear - 10, selectedYear);
-		const end = Math.max(nowYear + 15, selectedYear);
-		const items: { value: number; label: string }[] = [];
-		for (let year = start; year <= end; year++) {
-			items.push({ value: year, label: String(year) });
-		}
-		return items;
-	});
+	function onDateChange(details: DatePickerValueChangeDetails) {
+		const next = details.value[0];
+		if (!next) return;
+		const d = new Date(selected);
+		d.setFullYear(next.year, next.month - 1, next.day);
+		selected = d;
+	}
 
 	function setHour(hour: number) {
 		const d = new Date(selected);
@@ -229,31 +206,15 @@
 		</div>
 
 		{#if monthYearOpen}
-			<div
-				class="mb-1 flex justify-center gap-2 rounded-xl bg-black/[0.03] px-2 py-1 dark:bg-white/[0.04]"
+			<DatePicker.Root
+				class="mb-1 rounded-xl bg-black/[0.03] px-2 py-2 dark:bg-white/[0.04]"
+				inline
+				startOfWeek={1}
+				value={pickerValue}
+				onValueChange={onDateChange}
 			>
-				<WheelPicker
-					class="w-12"
-					items={dayItems}
-					value={selectedDay}
-					onChange={(day) => setDateParts({ day })}
-					ariaLabel="Day"
-				/>
-				<WheelPicker
-					class="w-[7.75rem]"
-					items={MONTH_ITEMS}
-					value={selectedMonth}
-					onChange={(month) => setDateParts({ month })}
-					ariaLabel="Month"
-				/>
-				<WheelPicker
-					class="w-[4.5rem]"
-					items={yearItems}
-					value={selectedYear}
-					onChange={(year) => setDateParts({ year })}
-					ariaLabel="Year"
-				/>
-			</div>
+				<DatePickerViews />
+			</DatePicker.Root>
 		{:else}
 			<div
 				class="flex justify-center gap-1 rounded-xl bg-black/[0.03] px-2 py-1 dark:bg-white/[0.04]"

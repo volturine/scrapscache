@@ -16,13 +16,15 @@
 		isEncryptedScrapsCacheBackup,
 		type EncryptedScrapsCacheBackup
 	} from '$lib/backupCrypto';
+	import { FileUpload } from '@ark-ui/svelte/file-upload';
+	import { Menu } from '@ark-ui/svelte/menu';
 	import {
 		Cloud,
 		Download,
 		ExternalLink,
 		LayoutGrid,
 		List,
-		Menu,
+		Menu as MenuIcon,
 		Moon,
 		Search,
 		Settings,
@@ -44,7 +46,6 @@
 
 	const { startNewNote, closeNote } = useEditorActions();
 
-	let fileInputEl: HTMLInputElement | null = $state(null);
 	let settingsOpen = $state(false);
 	let syncOpen = $state(false);
 	let importingBackup = $state(false);
@@ -113,10 +114,7 @@
 		}
 	}
 
-	function importBackup(e: Event) {
-		const input = e.currentTarget as HTMLInputElement;
-		const file = input.files?.[0];
-		if (!file) return;
+	function importBackupFile(file: File) {
 		if (importingBackup) return;
 		importingBackup = true;
 		backupImportError = '';
@@ -133,13 +131,11 @@
 				backupImportError = err instanceof Error ? err.message : 'Could not read that backup file.';
 			} finally {
 				importingBackup = false;
-				input.value = '';
 			}
 		};
 		reader.onerror = () => {
 			importingBackup = false;
 			backupImportError = 'Could not read that backup file.';
-			input.value = '';
 		};
 		reader.readAsText(file);
 	}
@@ -150,20 +146,8 @@
 			e.preventDefault();
 			startNewNote();
 		}
-		// Escape closes settings
 		if (e.key === 'Escape') {
 			if (importingBackup) return;
-			settingsOpen = false;
-		}
-	}
-
-	// Close settings when clicking outside the settings dropdown.
-	let settingsContainer: HTMLElement | null = $state(null);
-
-	function handleWindowClick(e: MouseEvent) {
-		if (!settingsOpen || importingBackup) return;
-		const target = e.target as HTMLElement;
-		if (settingsContainer && !settingsContainer.contains(target)) {
 			settingsOpen = false;
 		}
 	}
@@ -180,7 +164,7 @@
 		onclick={() => uiStore.toggleSidebar()}
 		aria-label="Toggle sidebar"
 	>
-		<Menu class="h-5 w-5" aria-hidden="true" />
+		<MenuIcon class="h-5 w-5" aria-hidden="true" />
 	</button>
 
 	<div
@@ -236,19 +220,16 @@
 		{/if}
 	</button>
 
-	<div class="relative" bind:this={settingsContainer}>
-		<button
-			class="icon-btn h-10 w-10 p-2"
-			title="Settings"
-			onclick={() => (settingsOpen = !settingsOpen)}
-			aria-label="Settings"
-		>
+	<Menu.Root
+		bind:open={settingsOpen}
+		positioning={{ placement: 'bottom-end' }}
+		closeOnSelect={false}
+	>
+		<Menu.Trigger class="icon-btn h-10 w-10 p-2" title="Settings" aria-label="Settings">
 			<Settings class="h-5 w-5" aria-hidden="true" />
-		</button>
-		{#if settingsOpen}
-			<div
-				class="absolute right-0 top-12 z-30 w-64 overflow-hidden rounded-lg border border-[var(--scrapscache-border)] bg-[var(--scrapscache-surface)] pt-1 shadow-lg"
-			>
+		</Menu.Trigger>
+		<Menu.Positioner class="z-30">
+			<Menu.Content class="scrapscache-popover w-64 overflow-hidden pt-1">
 				{#if importingBackup}
 					{@const progress = notesStore.backupImportProgress}
 					<div
@@ -273,12 +254,11 @@
 						</div>
 					</div>
 				{:else}
-					<button
-						type="button"
-						onclick={() => {
-							uiStore.toggleDark();
-						}}
-						class="flex h-8 w-full items-center gap-2 px-3 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/5 dark:hover:bg-white/10"
+					<Menu.Item
+						value="theme"
+						closeOnSelect={false}
+						onSelect={() => uiStore.toggleDark()}
+						class="flex h-8 w-full cursor-pointer items-center gap-2 px-3 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/5 dark:hover:bg-white/10"
 					>
 						{#if uiStore.effectiveDark}
 							<Sun class="h-4 w-4 shrink-0" aria-hidden="true" />
@@ -287,53 +267,57 @@
 							<Moon class="h-4 w-4 shrink-0" aria-hidden="true" />
 							Dark mode
 						{/if}
-					</button>
-					<button
-						type="button"
-						onclick={startBackupExport}
+					</Menu.Item>
+					<Menu.Item
+						value="export"
+						onSelect={startBackupExport}
 						class="flex h-8 w-full cursor-pointer items-center gap-2 px-3 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/5 dark:hover:bg-white/10"
 					>
 						<Download class="h-4 w-4 shrink-0" aria-hidden="true" />
 						Export backup
-					</button>
-					<button
-						type="button"
-						onclick={() => fileInputEl?.click()}
-						class="flex h-8 w-full cursor-pointer items-center gap-2 px-3 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/5 dark:hover:bg-white/10"
+					</Menu.Item>
+					<FileUpload.Root
+						accept=".scraps-cache-backup,application/json"
+						maxFiles={1}
+						onFileAccept={(details) => {
+							const file = details.files[0];
+							if (file) importBackupFile(file);
+						}}
 					>
-						<Upload class="h-4 w-4 shrink-0" aria-hidden="true" />
-						Import backup
-					</button>
+						<FileUpload.Trigger
+							class="flex h-8 w-full cursor-pointer items-center gap-2 px-3 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/5 dark:hover:bg-white/10"
+						>
+							<Upload class="h-4 w-4 shrink-0" aria-hidden="true" />
+							Import backup
+						</FileUpload.Trigger>
+						<FileUpload.HiddenInput />
+					</FileUpload.Root>
 					<ReminderNotificationSettings />
-					<div class="border-t border-[var(--scrapscache-border)]"></div>
-					<a
-						href="https://github.com/volturine/scrapscache/issues/new/choose"
-						target="_blank"
-						rel="noreferrer"
-						class="flex h-8 w-full items-center gap-2 px-3 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/5 dark:hover:bg-white/10"
-					>
-						<ExternalLink class="h-4 w-4 shrink-0" aria-hidden="true" />
-						Report an issue
-					</a>
+					<Menu.Separator class="border-t border-[var(--scrapscache-border)]" />
+					<Menu.Item value="issue">
+						{#snippet asChild(props)}
+							<a
+								{...props()}
+								href="https://github.com/volturine/scrapscache/issues/new/choose"
+								target="_blank"
+								rel="noreferrer"
+								class="flex h-8 w-full items-center gap-2 px-3 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/5 dark:hover:bg-white/10"
+							>
+								<ExternalLink class="h-4 w-4 shrink-0" aria-hidden="true" />
+								Report an issue
+							</a>
+						{/snippet}
+					</Menu.Item>
 				{/if}
 				{#if backupImportError}<p class="px-3 pb-2 text-xs text-red-600" role="alert">
 						{backupImportError}
 					</p>{/if}
-			</div>
-		{/if}
-		<!-- Keep the real input inside settingsContainer: its programmatic click must not
-		     be mistaken for an outside click that hides the import progress UI. -->
-		<input
-			bind:this={fileInputEl}
-			type="file"
-			accept=".scraps-cache-backup,application/json"
-			onchange={importBackup}
-			class="hidden"
-		/>
-	</div>
+			</Menu.Content>
+		</Menu.Positioner>
+	</Menu.Root>
 </header>
 
-<svelte:window onkeydown={handleKeydown} onclick={handleWindowClick} />
+<svelte:window onkeydown={handleKeydown} />
 
 {#if syncOpen}
 	<SyncModal

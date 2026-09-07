@@ -18,6 +18,7 @@
 		X,
 		type LucideIcon
 	} from '@lucide/svelte';
+	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { portalToAppOverlay } from '$lib/appViewport';
 	import { pathForView } from '$lib/viewRoutes';
 	import { useEditorActions } from '$lib/editorContext';
@@ -347,60 +348,65 @@
 </aside>
 
 {#if pendingDelete}
-	<div
-		{@attach portalToAppOverlay}
-		class="absolute inset-0 z-[80] flex items-end justify-center bg-black/40 p-4 sm:items-center"
-		role="presentation"
-		data-sidebar-stay-open
-		onclick={(event) => {
-			if (event.target === event.currentTarget) cancelDelete();
-		}}
+	<Dialog.Root
+		open
+		onOpenChange={(details) => !details.open && cancelDelete()}
+		preventScroll={false}
 	>
 		<div
-			class="w-full max-w-sm rounded-2xl border border-[var(--scrapscache-border)] bg-[var(--scrapscache-surface)] p-4 shadow-2xl"
-			role="dialog"
-			tabindex="-1"
-			aria-modal="true"
-			aria-labelledby="label-delete-title"
+			{@attach portalToAppOverlay}
+			class="absolute inset-0 z-[80]"
+			role="presentation"
 			data-sidebar-stay-open
 		>
-			<h2 id="label-delete-title" class="text-base font-semibold text-[var(--scrapscache-text)]">
-				Delete “{pendingDelete.name}”?
-			</h2>
-			<p class="mt-1.5 text-sm leading-snug text-[var(--scrapscache-text-muted)]">
-				{#if (labelCounts.get(pendingDelete.id) ?? 0) > 0}
-					This label is on {labelCounts.get(pendingDelete.id)} note{(labelCounts.get(
-						pendingDelete.id
-					) ?? 0) === 1
-						? ''
-						: 's'}.
-				{:else}
-					No notes currently use this label.
-				{/if}
-			</p>
-			<div class="mt-4 flex flex-col gap-2">
-				<button
-					type="button"
-					onclick={confirmDeleteLabelOnly}
-					class="rounded-xl bg-black/[0.06] px-3 py-2.5 text-sm font-medium text-[var(--scrapscache-text)] transition-colors hover:bg-black/10 dark:bg-white/10 dark:hover:bg-white/15"
+			<Dialog.Backdrop class="absolute inset-0 bg-black/40" />
+			<Dialog.Positioner
+				class="absolute inset-0 flex items-end justify-center p-4 sm:items-center"
+				data-sidebar-stay-open
+			>
+				<Dialog.Content
+					class="w-full max-w-sm rounded-2xl border border-[var(--scrapscache-border)] bg-[var(--scrapscache-surface)] p-4 shadow-2xl"
+					data-sidebar-stay-open
 				>
-					Delete label only
-				</button>
-				<button
-					type="button"
-					onclick={confirmDeleteLabelAndNotes}
-					class="rounded-xl bg-red-600/90 px-3 py-2.5 text-sm font-medium text-white transition-colors hover:bg-red-600"
-				>
-					Delete label and its notes
-				</button>
-				<button
-					type="button"
-					onclick={cancelDelete}
-					class="rounded-xl px-3 py-2.5 text-sm font-medium text-[var(--scrapscache-text-muted)] transition-colors hover:bg-black/5 dark:hover:bg-white/10"
-				>
-					Cancel
-				</button>
-			</div>
+					<Dialog.Title class="text-base font-semibold text-[var(--scrapscache-text)]">
+						Delete “{pendingDelete.name}”?
+					</Dialog.Title>
+					<p class="mt-1.5 text-sm leading-snug text-[var(--scrapscache-text-muted)]">
+						{#if (labelCounts.get(pendingDelete.id) ?? 0) > 0}
+							This label is on {labelCounts.get(pendingDelete.id)} note{(labelCounts.get(
+								pendingDelete.id
+							) ?? 0) === 1
+								? ''
+								: 's'}.
+						{:else}
+							No notes currently use this label.
+						{/if}
+					</p>
+					<div class="mt-4 flex flex-col gap-2">
+						<button
+							type="button"
+							onclick={confirmDeleteLabelOnly}
+							class="rounded-xl bg-black/[0.06] px-3 py-2.5 text-sm font-medium text-[var(--scrapscache-text)] transition-colors hover:bg-black/10 dark:bg-white/10 dark:hover:bg-white/15"
+						>
+							Delete label only
+						</button>
+						<button
+							type="button"
+							onclick={confirmDeleteLabelAndNotes}
+							class="rounded-xl bg-red-600/90 px-3 py-2.5 text-sm font-medium text-white transition-colors hover:bg-red-600"
+						>
+							Delete label and its notes
+						</button>
+						<button
+							type="button"
+							onclick={cancelDelete}
+							class="rounded-xl px-3 py-2.5 text-sm font-medium text-[var(--scrapscache-text-muted)] transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+						>
+							Cancel
+						</button>
+					</div>
+				</Dialog.Content>
+			</Dialog.Positioner>
 		</div>
-	</div>
+	</Dialog.Root>
 {/if}

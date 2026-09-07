@@ -12,6 +12,8 @@
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { kanbanStore } from '$lib/stores/kanban.svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
+	import { Checkbox } from '@ark-ui/svelte/checkbox';
+	import { Menu } from '@ark-ui/svelte/menu';
 	import { ChevronDown, X } from '@lucide/svelte';
 
 	const { openNote } = useEditorActions();
@@ -35,7 +37,6 @@
 	let boardName = $derived(board.name);
 	let backlogFilterOpen = $state(false);
 	let tagPickerOpen = $state(false);
-	let tagPickerRoot: HTMLDivElement | null = $state(null);
 
 	function selectBoard(id: string) {
 		kanbanStore.selectBoard(id);
@@ -76,16 +77,6 @@
 		if (!labelId) return;
 		kanbanStore.addTagColumn(board.id, labelId);
 		tagPickerOpen = false;
-	}
-
-	function onTagPickerPointerDown(event: PointerEvent) {
-		if (!tagPickerOpen) return;
-		if (event.target instanceof Node && tagPickerRoot?.contains(event.target)) return;
-		tagPickerOpen = false;
-	}
-
-	function onTagPickerKeydown(event: KeyboardEvent) {
-		if (event.key === 'Escape') tagPickerOpen = false;
 	}
 
 	function setBacklogMode(mode: BacklogFilterMode) {
@@ -156,11 +147,6 @@
 		}
 	}
 </script>
-
-<svelte:window
-	onpointerdown={tagPickerOpen ? onTagPickerPointerDown : undefined}
-	onkeydown={tagPickerOpen ? onTagPickerKeydown : undefined}
-/>
 
 <div class="pt-4 pb-8">
 	<div class="mb-4 flex flex-wrap items-center gap-2">
@@ -321,27 +307,42 @@
 
 							{#if backlogFilter.mode === BacklogFilterMode.Custom}
 								<div class="ml-1 space-y-1 border-l-2 border-black/10 pl-2 dark:border-white/10">
-									<label
+									<Checkbox.Root
+										checked={backlogFilter.includeUntagged}
+										onCheckedChange={toggleBacklogUntagged}
 										class="flex cursor-pointer items-center gap-2 rounded-lg px-1 py-1 hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
 									>
-										<input
-											type="checkbox"
-											checked={backlogFilter.includeUntagged}
-											onchange={toggleBacklogUntagged}
-										/>
-										<span class="text-[var(--scrapscache-text)]">No labels</span>
-									</label>
+										<Checkbox.Control
+											class="flex h-4 w-4 items-center justify-center rounded border border-[var(--scrapscache-border)] data-[state=checked]:border-[var(--scrapscache-accent)] data-[state=checked]:bg-[var(--scrapscache-accent)]"
+										>
+											<Checkbox.Indicator
+												class="text-[10px] text-[var(--scrapscache-accent-foreground)]"
+												>✓</Checkbox.Indicator
+											>
+										</Checkbox.Control>
+										<Checkbox.Label class="text-[var(--scrapscache-text)]">No labels</Checkbox.Label
+										>
+										<Checkbox.HiddenInput />
+									</Checkbox.Root>
 									{#each backlogFilterTags as label (label.id)}
-										<label
+										<Checkbox.Root
+											checked={backlogFilter.labelIds.includes(label.id)}
+											onCheckedChange={() => toggleBacklogLabel(label.id)}
 											class="flex cursor-pointer items-center gap-2 rounded-lg px-1 py-1 hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
 										>
-											<input
-												type="checkbox"
-												checked={backlogFilter.labelIds.includes(label.id)}
-												onchange={() => toggleBacklogLabel(label.id)}
-											/>
-											<span class="truncate text-[var(--scrapscache-text)]">{label.name}</span>
-										</label>
+											<Checkbox.Control
+												class="flex h-4 w-4 items-center justify-center rounded border border-[var(--scrapscache-border)] data-[state=checked]:border-[var(--scrapscache-accent)] data-[state=checked]:bg-[var(--scrapscache-accent)]"
+											>
+												<Checkbox.Indicator
+													class="text-[10px] text-[var(--scrapscache-accent-foreground)]"
+													>✓</Checkbox.Indicator
+												>
+											</Checkbox.Control>
+											<Checkbox.Label class="truncate text-[var(--scrapscache-text)]"
+												>{label.name}</Checkbox.Label
+											>
+											<Checkbox.HiddenInput />
+										</Checkbox.Root>
 									{/each}
 									{#if backlogFilterTags.length === 0}
 										<p class="px-1 py-1 text-[var(--scrapscache-text-muted)]">
@@ -377,42 +378,32 @@
 			{/each}
 
 			{#if unusedTags.length > 0}
-				<div
-					bind:this={tagPickerRoot}
-					class="relative w-[min(19rem,calc(100vw-2rem))] shrink-0 pt-1"
-				>
-					<button
-						type="button"
-						class="flex w-full items-center justify-between gap-2 rounded-xl border border-dashed border-[var(--scrapscache-border)] bg-transparent px-3 py-2.5 text-left text-sm font-medium text-[var(--scrapscache-text-muted)] outline-none hover:bg-black/[0.035] hover:text-[var(--scrapscache-text)] dark:hover:bg-white/[0.055]"
-						aria-label="Add a label column"
-						aria-haspopup="listbox"
-						aria-expanded={tagPickerOpen}
-						onclick={() => (tagPickerOpen = !tagPickerOpen)}
-					>
-						<span>+ Add label column</span>
-						<ChevronDown class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-					</button>
-					{#if tagPickerOpen}
-						<ul
-							class="scrapscache-popover absolute inset-x-0 z-20 mt-1 max-h-64 overflow-y-auto py-1"
-							role="listbox"
-							aria-label="Labels"
+				<div class="relative w-[min(19rem,calc(100vw-2rem))] shrink-0 pt-1">
+					<Menu.Root bind:open={tagPickerOpen} positioning={{ placement: 'bottom-start' }}>
+						<Menu.Trigger
+							class="flex w-full items-center justify-between gap-2 rounded-xl border border-dashed border-[var(--scrapscache-border)] bg-transparent px-3 py-2.5 text-left text-sm font-medium text-[var(--scrapscache-text-muted)] outline-none hover:bg-black/[0.035] hover:text-[var(--scrapscache-text)] dark:hover:bg-white/[0.055]"
+							aria-label="Add a label column"
 						>
-							{#each unusedTags as label (label.id)}
-								<li>
-									<button
-										type="button"
-										role="option"
-										aria-selected="false"
+							<span>+ Add label column</span>
+							<ChevronDown class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+						</Menu.Trigger>
+						<Menu.Positioner class="z-20 w-[var(--reference-width)]">
+							<Menu.Content
+								class="scrapscache-popover max-h-64 overflow-y-auto py-1"
+								aria-label="Labels"
+							>
+								{#each unusedTags as label (label.id)}
+									<Menu.Item
+										value={label.id}
+										onSelect={() => addTagColumn(label.id)}
 										class="block w-full truncate px-3 py-2 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/[0.05] dark:hover:bg-white/[0.08]"
-										onclick={() => addTagColumn(label.id)}
 									>
 										{label.name}
-									</button>
-								</li>
-							{/each}
-						</ul>
-					{/if}
+									</Menu.Item>
+								{/each}
+							</Menu.Content>
+						</Menu.Positioner>
+					</Menu.Root>
 				</div>
 			{/if}
 		</div>

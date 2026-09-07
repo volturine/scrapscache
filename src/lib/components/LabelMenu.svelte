@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { Checkbox } from '@ark-ui/svelte/checkbox';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { Plus } from '@lucide/svelte';
 
@@ -33,7 +34,7 @@
 	function keepKeyboardOpen(event: PointerEvent) {
 		if (event.pointerType !== 'touch') return;
 		const target = event.target instanceof Element ? event.target : null;
-		if (target?.closest('button')) event.preventDefault();
+		if (target?.closest('button, [data-scope="checkbox"]')) event.preventDefault();
 	}
 
 	function labelMenuInteractions(node: HTMLElement) {
@@ -80,22 +81,22 @@
 		{:else}
 			{#each notesStore.labels as label (label.id)}
 				{#if note}
-					<button
-						type="button"
-						onclick={() => toggle(label.id)}
+					<Checkbox.Root
+						checked={note.labels.includes(label.id)}
+						onCheckedChange={(details) => {
+							const on = details.checked === true;
+							if (on !== note.labels.includes(label.id)) toggle(label.id);
+						}}
 						class="flex items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/5 dark:hover:bg-white/10"
 					>
-						<span
-							class="h-5 w-5 shrink-0 rounded border-2 border-black/30 dark:border-white/30 flex items-center justify-center text-xs {note.labels.includes(
-								label.id
-							)
-								? 'border-[var(--scrapscache-accent)] bg-[var(--scrapscache-accent)] text-[var(--scrapscache-accent-foreground)]'
-								: ''}"
+						<Checkbox.Control
+							class="flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 border-black/30 text-xs dark:border-white/30 data-[state=checked]:border-[var(--scrapscache-accent)] data-[state=checked]:bg-[var(--scrapscache-accent)] data-[state=checked]:text-[var(--scrapscache-accent-foreground)]"
 						>
-							{#if note.labels.includes(label.id)}✓{/if}
-						</span>
-						<span class="truncate">{label.name}</span>
-					</button>
+							<Checkbox.Indicator>✓</Checkbox.Indicator>
+						</Checkbox.Control>
+						<Checkbox.Label class="truncate">{label.name}</Checkbox.Label>
+						<Checkbox.HiddenInput />
+					</Checkbox.Root>
 				{/if}
 			{/each}
 		{/if}

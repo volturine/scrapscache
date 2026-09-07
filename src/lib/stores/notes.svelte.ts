@@ -40,6 +40,7 @@ import {
 import {
 	hydrateTombstones,
 	deleteLabelWithTombstone,
+	resetTombstoneCaches,
 	readLabelTombstones,
 	readTombstones,
 	writeLabelTombstones,
@@ -61,6 +62,9 @@ import { stableStringify } from '$lib/syncHash';
 
 /** Minimum gap between opportunistic auto syncs; manual syncs are never throttled. */
 const AUTO_SYNC_MIN_INTERVAL_MS = 30_000;
+
+/** Web lock serializing sync flights and profile dataset swaps. */
+export const SYNC_LOCK = 'scrapscache-sync';
 
 function durableNoteSignature(note: Note): string {
 	return stableStringify({
@@ -98,6 +102,15 @@ function noteSyncKeys(note: Note): string[] {
 }
 
 export class NotesStore {
+	/** The namespace this window currently reads and writes. */
+	private get pid(): string {
+		return syncStore.activePid;
+	}
+
+	/** True while a sync flight (auto or manual) is running. */
+	get syncing(): boolean {
+		return this.syncFlight !== null;
+	}
 	notes = $state<Note[]>([]);
 	labels = $state<Label[]>([]);
 	loaded = $state(false);
@@ -163,6 +176,7 @@ export class NotesStore {
 
 	// --- Lifecycle -------------------------------------------------------
 	async init() {
+		await syncStore.ensureProfilesLoaded();
 		if (this.loaded) {
 			await this.rehydrateFromIDB();
 			return;
@@ -174,7 +188,10 @@ export class NotesStore {
 		let dbLabels: Label[] = [];
 		let deviceReadFailed = false;
 		try {
-			[dbNotes, dbLabels] = await Promise.all([getAllNotesMetadata(), getAllLabels()]);
+			[dbNotes, dbLabels] = await Promise.all([
+				getAllNotesMetadata(this.pid),
+				getAllLabels(this.pid)
+			]);
 		} catch (err) {
 			deviceReadFailed = true;
 			this.recordPersistenceError('Could not read IndexedDB', err);
@@ -187,14 +204,14 @@ export class NotesStore {
 		const seededFlag =
 			typeof localStorage !== 'undefined' ? localStorage.getItem('scrapscache-seeded') : null;
 
-		const tombstones = await hydrateTombstones().catch(() => ({
+		const tombstones = await hydrateTombstones(this.pid).catch(() => ({
 			notes: this.deletedNoteIds,
 			labels: this.deletedLabelIds,
 			boards: {}
 		}));
 		this.deletedNoteIds = tombstones.notes;
 		this.deletedLabelIds = tombstones.labels;
-		await kanbanStore.hydrateFromDevice(tombstones.boards);
+		await kanbanStore.hydrateFromDevice(this.pid, tombstones.boards);
 
 		if (notes.length === 0 && labels.length === 0 && !seededFlag && !syncStore.isLoggedIn) {
 			localStorage?.setItem('scrapscache-seeded', '1');
@@ -202,7 +219,7 @@ export class NotesStore {
 			this.labels = [];
 			this.mirrorToLS();
 			try {
-				await bulkPutNotes(this.notes);
+				await bulkPutNotes(this.pid, this.notes);
 			} catch (err) {
 				this.recordPersistenceError('Could not save starter notes', err);
 			}
@@ -217,7 +234,7 @@ export class NotesStore {
 					this.recordPersistenceError('Could not restore IndexedDB from mirror', err);
 				}
 			}
-			pruneOrphanImageBlobs().catch((err) =>
+			pruneOrphanImageBlobs(this.pid).catch((err) =>
 				this.recordPersistenceError('Could not reclaim unused photo storage', err)
 			);
 		}
@@ -227,7 +244,10 @@ export class NotesStore {
 
 	private async rehydrateFromIDB() {
 		try {
-			const [dbNotes, dbLabels] = await Promise.all([getAllNotesMetadata(), getAllLabels()]);
+			const [dbNotes, dbLabels] = await Promise.all([
+				getAllNotesMetadata(this.pid),
+				getAllLabels(this.pid)
+			]);
 			this.notes = withoutTombstoned(mergeNoteLists(this.notes, dbNotes), this.deletedNoteIds).sort(
 				(a, b) => b.updatedAt - a.updatedAt
 			);
@@ -249,7 +269,7 @@ export class NotesStore {
 		if (pending) return pending;
 
 		const source = cloneNote(existing);
-		const load = hydrateNoteAttachments(source)
+		const load = hydrateNoteAttachments(this.pid, source)
 			.then(async (hydrated) => {
 				const missingBytes = (hydrated.images ?? []).some((image) => !image.dataUrl);
 				if (missingBytes) {
@@ -309,7 +329,7 @@ export class NotesStore {
 	/** Only hydrate a few notes per sync so photo-heavy accounts transfer in fractions. */
 	private async hydrateAttachmentsForSync(): Promise<void> {
 		this.pruneAttachmentHydrationFailures();
-		const dirtyKeys = new Set(await getSyncOutboxKeys().catch(() => []));
+		const dirtyKeys = new Set(await getSyncOutboxKeys(this.pid).catch(() => []));
 		const ids = this.notes
 			.filter(
 				(note) =>
@@ -372,7 +392,7 @@ export class NotesStore {
 		const note = this.notes[idx];
 		this.mirrorToLS();
 		try {
-			await putNote(note, noteSyncKeys(note));
+			await putNote(this.pid, note, noteSyncKeys(note));
 			this.lastPersistError = null;
 			this.dirty = true;
 			this.scheduleSyncPush();
@@ -518,11 +538,11 @@ export class NotesStore {
 	async deleteNoteForever(id: string): Promise<void> {
 		const deletedAt = Date.now();
 		const next = { ...this.deletedNoteIds, [id]: deletedAt };
-		await writeTombstones(next);
+		await writeTombstones(this.pid, next);
 		this.deletedNoteIds = next;
 		this.notes = this.notes.filter((n) => n.id !== id);
 		this.mirrorToLS();
-		await deleteNote(id).catch((err) =>
+		await deleteNote(this.pid, id).catch((err) =>
 			this.recordPersistenceError(`Could not delete note ${id}`, err)
 		);
 		await syncStore.queueOutbox([`note-tombstone:${id}`]);
@@ -547,7 +567,7 @@ export class NotesStore {
 		const label: Label = { id: uid(), name: trimmed, createdAt: now, updatedAt: now };
 		this.labels = [...this.labels, label].sort((a, b) => a.name.localeCompare(b.name));
 		this.mirrorToLS();
-		putLabel(label, [`label:${label.id}`]).catch((err) =>
+		putLabel(this.pid, label, [`label:${label.id}`]).catch((err) =>
 			this.recordPersistenceError('Could not save label', err)
 		);
 		this.markLabelsDirty([`label:${label.id}`]);
@@ -568,7 +588,7 @@ export class NotesStore {
 		this.labels[idx] = renamed;
 		this.labels.sort((a, b) => a.name.localeCompare(b.name));
 		this.mirrorToLS();
-		putLabel(renamed, [`label:${renamed.id}`]).catch((err) =>
+		putLabel(this.pid, renamed, [`label:${renamed.id}`]).catch((err) =>
 			this.recordPersistenceError('Could not rename label', err)
 		);
 		this.markLabelsDirty([`label:${renamed.id}`]);
@@ -647,7 +667,9 @@ export class NotesStore {
 		const fullNotes: Note[] = [];
 		for (const note of this.notes) {
 			const needsFull = (note.images ?? []).some((image) => !image.dataUrl);
-			fullNotes.push(needsFull ? await hydrateNoteAttachments(cloneNote(note)) : cloneNote(note));
+			fullNotes.push(
+				needsFull ? await hydrateNoteAttachments(this.pid, cloneNote(note)) : cloneNote(note)
+			);
 		}
 		return {
 			version: 4,
@@ -722,18 +744,18 @@ export class NotesStore {
 						const mapped = labelIds.get(id);
 						return mapped ? [mapped] : [];
 					});
-					await putNote(note, noteSyncKeys(note));
+					await putNote(this.pid, note, noteSyncKeys(note));
 					await this.compactPersistedNoteImages(note);
 					if (this.backupImportProgress) this.backupImportProgress.completed += 1;
 				}
-				await bulkPutLabels(importedLabels);
+				await bulkPutLabels(this.pid, importedLabels);
 				this.notes = [...this.notes, ...importedNotes].sort((a, b) => b.updatedAt - a.updatedAt);
 				this.labels = [...this.labels, ...importedLabels].sort((a, b) =>
 					a.name.localeCompare(b.name)
 				);
 				await syncStore.queueOutbox(importedLabels.map((label) => `label:${label.id}`));
 			} else {
-				await replaceAllDeviceData(importedNotes, backup.labels, async (note) => {
+				await replaceAllDeviceData(this.pid, importedNotes, backup.labels, async (note) => {
 					await this.compactPersistedNoteImages(note);
 					if (this.backupImportProgress) this.backupImportProgress.completed += 1;
 				});
@@ -745,8 +767,8 @@ export class NotesStore {
 					if (!importedIds.has(id)) this.deletedNoteIds[id] = now;
 				}
 				this.deletedLabelIds = { ...backup.labelTombstones };
-				await writeTombstones(this.deletedNoteIds);
-				await writeLabelTombstones(this.deletedLabelIds);
+				await writeTombstones(this.pid, this.deletedNoteIds);
+				await writeLabelTombstones(this.pid, this.deletedLabelIds);
 				kanbanStore.replaceWithCloud(backup.boards, backup.boardTombstones);
 				if (
 					backup.activeBoardId &&
@@ -793,11 +815,36 @@ export class NotesStore {
 
 	// Reload all three layers. Mirror is only a fast-boot cache; IDB always participates so
 	// image blobs are rehydrated even when a mirror exists.
+	/**
+	 * Point the in-memory state at another profile's namespace. Datasets live
+	 * in separate IDB namespaces, so this only drops pending writes belonging
+	 * to the previous profile and reloads from storage.
+	 */
+	async reloadForProfile(): Promise<void> {
+		if (this.syncPushTimer) clearTimeout(this.syncPushTimer);
+		this.syncPushTimer = null;
+		for (const timer of this.noteRetryTimers.values()) clearTimeout(timer);
+		this.noteRetryTimers.clear();
+		this.noteRetryAttempts.clear();
+		this.attachmentLoads.clear();
+		this.attachmentHydrationFailures.clear();
+		this.visibleAttachmentQueue.clear();
+		this.syncFollowupRequested = false;
+		this.dirty = false;
+		this.lastPersistError = null;
+		resetTombstoneCaches();
+		this.loaded = false;
+		await this.init();
+	}
+
 	async hardResync() {
 		const mirrorNotes = readNotesMirror();
 		const mirrorLabels = readLabelsMirror();
 		try {
-			const [dbNotes, dbLabels] = await Promise.all([getAllNotesMetadata(), getAllLabels()]);
+			const [dbNotes, dbLabels] = await Promise.all([
+				getAllNotesMetadata(this.pid),
+				getAllLabels(this.pid)
+			]);
 			this.notes = mergeNoteLists(mirrorNotes, dbNotes).sort((a, b) => b.updatedAt - a.updatedAt);
 			this.labels = mergeLabelLists(mirrorLabels, dbLabels).sort((a, b) =>
 				a.name.localeCompare(b.name)
@@ -816,14 +863,14 @@ export class NotesStore {
 		const deletedAt = Date.now();
 		const next = { ...this.deletedNoteIds };
 		for (const id of ids) next[id] = deletedAt;
-		await writeTombstones(next);
+		await writeTombstones(this.pid, next);
 		this.deletedNoteIds = next;
 		this.notes = this.notes.filter((n) => !ids.includes(n.id));
 		this.mirrorToLS();
 		this.dirty = true;
 		this.scheduleSyncPush();
 		await syncStore.queueOutbox(ids.map((id) => `note-tombstone:${id}`));
-		await Promise.all(ids.map((id) => deleteNote(id)));
+		await Promise.all(ids.map((id) => deleteNote(this.pid, id)));
 	}
 
 	private markLabelsDeleted(ids: string[], deletedAt = Date.now()): void {
@@ -831,7 +878,9 @@ export class NotesStore {
 		const next = { ...this.deletedLabelIds };
 		for (const id of ids) next[id] = deletedAt;
 		this.deletedLabelIds = next;
-		void Promise.all(ids.map((id) => deleteLabelWithTombstone(id, next, [`label-tombstone:${id}`])))
+		void Promise.all(
+			ids.map((id) => deleteLabelWithTombstone(this.pid, id, next, [`label-tombstone:${id}`]))
+		)
 			.then(() => this.markLabelsDirty())
 			.catch((err) => this.recordPersistenceError('Could not delete label', err));
 	}
@@ -864,7 +913,7 @@ export class NotesStore {
 	private noteRetryTimers = new Map<string, ReturnType<typeof setTimeout>>();
 	private noteRetryAttempts = new Map<string, number>();
 	private dirty = false;
-	private syncFlight: Promise<boolean> | null = null;
+	private syncFlight = $state<Promise<boolean> | null>(null);
 	private syncFollowupRequested = false;
 	private syncBroadcastChannel: BroadcastChannel | null = null;
 
@@ -876,7 +925,7 @@ export class NotesStore {
 			this.noteRetryTimers.delete(id);
 			const note = this.notes.find((item) => item.id === id);
 			if (!note) return;
-			putNote(note, noteSyncKeys(note))
+			putNote(this.pid, note, noteSyncKeys(note))
 				.then(() => {
 					this.noteRetryAttempts.delete(id);
 					this.lastPersistError = null;
@@ -896,14 +945,15 @@ export class NotesStore {
 	private async recoverMirrorIntoIndexedDB(dbNotes: Note[], dbLabels: Label[]): Promise<void> {
 		const dbById = new Map(dbNotes.map((item) => [item.id, item]));
 		for (const item of this.notes) {
-			if (noteNeedsDurableWrite(dbById.get(item.id), item)) await putNote(item, noteSyncKeys(item));
+			if (noteNeedsDurableWrite(dbById.get(item.id), item))
+				await putNote(this.pid, item, noteSyncKeys(item));
 		}
 		const dbLabelById = new Map(dbLabels.map((item) => [item.id, item]));
 		const labelKeys: string[] = [];
 		for (const label of this.labels) {
 			const current = dbLabelById.get(label.id);
 			if (current && current.name === label.name && current.updatedAt === label.updatedAt) continue;
-			await putLabel(label);
+			await putLabel(this.pid, label);
 			labelKeys.push(`label:${label.id}`);
 		}
 		if (labelKeys.length) await syncStore.queueOutbox(labelKeys);
@@ -975,7 +1025,7 @@ export class NotesStore {
 			this.syncRetryTimer = null;
 		}
 		return this.queueSync(indicate).then(async (synced) => {
-			const leftover = synced ? await getSyncOutboxKeys().catch(() => []) : [];
+			const leftover = synced ? await getSyncOutboxKeys(this.pid).catch(() => []) : [];
 			if (synced && leftover.length === 0) {
 				this.dirty = false;
 				this.clearSyncRetry();
@@ -992,7 +1042,7 @@ export class NotesStore {
 	async syncPendingChanges(): Promise<boolean> {
 		if (!syncStore.isLoggedIn) return false;
 		await syncStore.waitForOutboxWrites();
-		const pending = await getSyncOutboxKeys().catch(() => []);
+		const pending = await getSyncOutboxKeys(this.pid).catch(() => []);
 		if (pending.length === 0) return false;
 		return this.flushSync(true);
 	}
@@ -1037,13 +1087,13 @@ export class NotesStore {
 			.map((label) => label.id);
 
 		kanbanStore.applySync(snapshot.boards, snapshot.boardTombstones);
-		await writeTombstones(tombstones);
-		await writeLabelTombstones(labelTombstones);
-		for (const note of notesToPersist) await putNote(note);
-		for (const id of tombstonedNoteIds) await deleteNote(id);
-		for (const id of tombstonedLabelIds) await deleteLabel(id);
-		if (labelsChanged) await bulkPutLabels(mergedLabels);
-		await kanbanStore.persistSyncState();
+		await writeTombstones(this.pid, tombstones);
+		await writeLabelTombstones(this.pid, labelTombstones);
+		for (const note of notesToPersist) await putNote(this.pid, note);
+		for (const id of tombstonedNoteIds) await deleteNote(this.pid, id);
+		for (const id of tombstonedLabelIds) await deleteLabel(this.pid, id);
+		if (labelsChanged) await bulkPutLabels(this.pid, mergedLabels);
+		await kanbanStore.persistSyncState(this.pid);
 
 		// Preserve edits made while the device writes were in flight.
 		durableNotes = withoutTombstoned(mergeNoteLists(this.notes, durableNotes), tombstones).sort(
@@ -1088,15 +1138,17 @@ export class NotesStore {
 				);
 			}
 		}
-		await replaceAllDeviceData(notes, labels, (note) => this.compactPersistedNoteImages(note));
+		await replaceAllDeviceData(this.pid, notes, labels, (note) =>
+			this.compactPersistedNoteImages(note)
+		);
 		this.notes = notes;
 		this.labels = labels;
 		this.deletedNoteIds = { ...snapshot.tombstones };
 		this.deletedLabelIds = { ...snapshot.labelTombstones };
 		kanbanStore.replaceWithCloud(snapshot.boards, snapshot.boardTombstones);
-		await writeTombstones(this.deletedNoteIds);
-		await writeLabelTombstones(this.deletedLabelIds);
-		await kanbanStore.persistSyncState();
+		await writeTombstones(this.pid, this.deletedNoteIds);
+		await writeLabelTombstones(this.pid, this.deletedLabelIds);
+		await kanbanStore.persistSyncState(this.pid);
 		this.mirrorToLS();
 		return {
 			notes,
@@ -1124,8 +1176,8 @@ export class NotesStore {
 		const original = this.notes.map(cloneNote);
 		try {
 			await this.hydrateAllAttachments();
-			const leftover = await getSyncOutboxKeys().catch(() => []);
-			if (leftover.length) await clearSyncOutbox(leftover);
+			const leftover = await getSyncOutboxKeys(this.pid).catch(() => []);
+			if (leftover.length) await clearSyncOutbox(this.pid, leftover);
 			await syncStore.clearAccountControlPlane(account.accountId);
 			const pulledSnapshots: SyncSnapshot[] = [];
 			const pulled = await syncStore.sync([], [], {}, {}, [], {}, true, true, async (snapshot) => {
@@ -1167,7 +1219,7 @@ export class NotesStore {
 					(image, imageIndex) => image.id !== (before.images ?? [])[imageIndex]?.id
 				);
 				if (before.id !== after.id || imagesChanged) {
-					await putNote(after, noteSyncKeys(after));
+					await putNote(this.pid, after, noteSyncKeys(after));
 				}
 			}
 			this.notes = remapped;
@@ -1179,7 +1231,7 @@ export class NotesStore {
 			}
 			const kept = new Set(this.notes.map((note) => note.id));
 			for (const note of original) {
-				if (!kept.has(note.id)) await deleteNote(note.id);
+				if (!kept.has(note.id)) await deleteNote(this.pid, note.id);
 			}
 			await syncStore.clearAccountControlPlane(account.accountId);
 			return true;
@@ -1199,8 +1251,8 @@ export class NotesStore {
 	private async replaceWithCloudLocked(): Promise<boolean> {
 		if (!syncStore.isLoggedIn || !syncStore.account) return false;
 		try {
-			const leftover = await getSyncOutboxKeys().catch(() => []);
-			if (leftover.length) await clearSyncOutbox(leftover);
+			const leftover = await getSyncOutboxKeys(this.pid).catch(() => []);
+			if (leftover.length) await clearSyncOutbox(this.pid, leftover);
 			await syncStore.clearAccountControlPlane(syncStore.account.accountId);
 			const result = await syncStore.sync([], [], {}, {}, [], {}, true, true, (snapshot) =>
 				this.applyCloudReplacement(snapshot)
@@ -1289,7 +1341,7 @@ export class NotesStore {
 	private async withSyncLock<T>(run: () => Promise<T>): Promise<T> {
 		const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined;
 		if (!locks?.request) return run();
-		return locks.request('scrapscache-sync', run);
+		return locks.request(SYNC_LOCK, run);
 	}
 
 	// Core sync. Local IDB remains authoritative; photo bytes move in small fractions.

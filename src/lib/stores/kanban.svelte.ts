@@ -150,9 +150,17 @@ export class KanbanStore {
 		localStorage.setItem(BOARD_TOMBSTONES_KEY, JSON.stringify(this.#boardTombstones));
 	}
 
-	async hydrateFromDevice(remoteTombstones: Record<string, number> = {}): Promise<void> {
+	async hydrateFromDevice(
+		pidOrTombstones: string | Record<string, number> = {},
+		maybeTombstones?: Record<string, number>
+	): Promise<void> {
+		const isScoped = typeof pidOrTombstones === 'string';
+		const pid = isScoped ? pidOrTombstones : syncStore.activePid;
+		const remoteTombstones = isScoped
+			? (maybeTombstones ?? {})
+			: (pidOrTombstones as Record<string, number>);
 		const fromLs = this.boardsForSync();
-		const stored = await loadBoardsFromDevice<KanbanBoard[] | undefined>(undefined);
+		const stored = await loadBoardsFromDevice<KanbanBoard[] | undefined>(pid, undefined);
 		const fromIdb = Array.isArray(stored) ? stored : [];
 		const tombstones = { ...this.boardTombstones, ...remoteTombstones };
 		this.boardTombstones = tombstones;
@@ -202,8 +210,19 @@ export class KanbanStore {
 			this.activeBoardId = this.boards[0].id;
 	}
 
-	async persistSyncState(syncOutboxKeys: Iterable<string> = []): Promise<void> {
-		await writeKanbanState(this.boardsForSync(), this.boardTombstonesForSync(), syncOutboxKeys);
+	async persistSyncState(
+		pidOrKeys: string | Iterable<string> = [],
+		maybeKeys?: Iterable<string>
+	): Promise<void> {
+		const isScoped = typeof pidOrKeys === 'string';
+		const pid = isScoped ? pidOrKeys : syncStore.activePid;
+		const syncOutboxKeys = isScoped ? (maybeKeys ?? []) : (pidOrKeys as Iterable<string>);
+		await writeKanbanState(
+			pid,
+			this.boardsForSync(),
+			this.boardTombstonesForSync(),
+			syncOutboxKeys
+		);
 	}
 
 	/** Used for the explicit “discard local data” link flow. */
@@ -327,7 +346,9 @@ export class KanbanStore {
 	}
 
 	private requestSync(keys: Iterable<string> = []): void {
-		const write = this.pendingDeviceWrites.then(() => this.persistSyncState(keys));
+		const write = this.pendingDeviceWrites.then(() =>
+			this.persistSyncState(syncStore.activePid, keys)
+		);
 		this.pendingDeviceWrites = write.catch(() => undefined);
 		// Empty re-mark: the atomic write above already queued the keys; this
 		// only nudges the debounced push via the shared data-change hook.

@@ -1,5 +1,7 @@
 // Device persistence. IndexedDB is the durable source of truth; localStorage is handled
 // separately as a blob-free fast-boot mirror by noteStorage.ts.
+// Each profile has its own isolated IndexedDB database, keeping the schema,
+// stores, and DB version (v6) identical to master with zero migrations.
 
 import { openDB, type IDBPDatabase, type IDBPTransaction } from 'idb';
 import type { LinkPreview } from '$lib/linkPreview';
@@ -8,24 +10,33 @@ import { blobToDataUrl, dataUrlToBlob } from '$lib/imageBlob';
 
 const DB_NAME = 'scrapscache';
 const DB_VERSION = 6;
-const NOTES_STORE = 'notes';
-const LABELS_STORE = 'labels';
-const IMAGES_STORE = 'note-images';
+export const NOTES_STORE = 'notes';
+export const LABELS_STORE = 'labels';
+export const IMAGES_STORE = 'note-images';
 const LINK_PREVIEWS_STORE = 'link-previews';
 const SYNC_STATE_STORE = 'sync-state';
-const SYNC_OUTBOX_STORE = 'sync-outbox';
+export const SYNC_OUTBOX_STORE = 'sync-outbox';
 
-let dbPromise: Promise<IDBPDatabase> | null = null;
+/** Namespace for notes created before any sync key exists. */
+export const LOCAL_PROFILE_ID = 'device-local';
+
+/** One saved sync key ("profile") on this device. */
+export interface StoredProfile {
+	id: string;
+	name: string;
+	syncKey: string;
+	createdAt: number;
+	dbName?: string;
+}
+
+const LS_PROFILES = 'scrapscache-sync-profiles';
+const LS_PROFILES_LEGACY = 'gkc-sync-profiles';
+
+const dbPromises = new Map<string, Promise<IDBPDatabase>>();
 const noteChains = new Map<string, Promise<void>>();
-// Safari can abort overlapping writes while a fresh-device replacement clears
-// the stores. Keep every write on one device-wide chain; noteChains still
-// coalesce rapid writes to the same note before they reach it.
 let deviceWriteChain: Promise<void> = Promise.resolve();
 let writeGeneration = 0;
-
-function imageKey(noteId: string, imageId: string): string {
-	return `${noteId}::${imageId}`;
-}
+const outboxGenerations = new Map<string, number>();
 
 function enqueueDeviceWrite<T>(operation: () => Promise<T>): Promise<T> {
 	const run = deviceWriteChain.catch(() => undefined).then(operation);
@@ -38,12 +49,59 @@ function enqueueDeviceWrite<T>(operation: () => Promise<T>): Promise<T> {
 
 export const DEVICE_DB_NAME = DB_NAME;
 
-function getDB(): Promise<IDBPDatabase> {
+export function resolveDbName(pid?: string): string {
+	if (!pid || pid === LOCAL_PROFILE_ID) return DEVICE_DB_NAME;
+	if (typeof localStorage !== 'undefined') {
+		try {
+			const raw = localStorage.getItem(LS_PROFILES) ?? localStorage.getItem(LS_PROFILES_LEGACY);
+			if (raw) {
+				const list = JSON.parse(raw);
+				if (Array.isArray(list)) {
+					const match = list.find((p) => p && p.id === pid);
+					if (match && typeof match.dbName === 'string' && match.dbName) {
+						return match.dbName;
+					}
+				}
+			}
+		} catch {
+			// fall back to default profile DB naming
+		}
+	}
+	return `${DEVICE_DB_NAME}-profile-${pid}`;
+}
+
+export function scopedStateKey(base: string, pid?: string): string {
+	return pid && pid !== LOCAL_PROFILE_ID ? `${base}:${pid}` : base;
+}
+
+const SCOPED_STATE_PREFIXES = [
+	'scrapscache-idb-note-tombstones',
+	'scrapscache-idb-label-tombstones',
+	'scrapscache-idb-board-tombstones',
+	'scrapscache-idb-kanban-boards',
+	'scrapscache-fired-reminders'
+];
+
+function extractPidFromStateKey(key: string): { pid: string; baseKey: string } {
+	for (const prefix of SCOPED_STATE_PREFIXES) {
+		if (key.startsWith(prefix + ':')) {
+			return {
+				pid: key.slice(prefix.length + 1),
+				baseKey: prefix
+			};
+		}
+	}
+	return { pid: LOCAL_PROFILE_ID, baseKey: key };
+}
+
+export function getDB(pid?: string): Promise<IDBPDatabase> {
 	if (typeof indexedDB === 'undefined') {
 		return Promise.reject(new Error('IndexedDB is not available'));
 	}
-	if (!dbPromise) {
-		dbPromise = openDB(DB_NAME, DB_VERSION, {
+	const dbName = resolveDbName(pid);
+	let promise = dbPromises.get(dbName);
+	if (!promise) {
+		promise = openDB(dbName, DB_VERSION, {
 			upgrade(db) {
 				if (!db.objectStoreNames.contains(NOTES_STORE)) {
 					db.createObjectStore(NOTES_STORE, { keyPath: 'id' });
@@ -65,23 +123,29 @@ function getDB(): Promise<IDBPDatabase> {
 				}
 			}
 		});
+		dbPromises.set(dbName, promise);
 	}
-	return dbPromise;
+	return promise;
 }
 
-/** Drop the cached connection so tests can delete the database between cases. */
+/** Drop the cached connections so tests can delete the database between cases. */
 export function closeDeviceDatabase(): void {
-	const pending = dbPromise;
-	dbPromise = null;
+	const existing = Array.from(dbPromises.values());
+	dbPromises.clear();
 	deviceWriteChain = Promise.resolve();
 	noteChains.clear();
 	writeGeneration = 0;
-	outboxGenerationCache = null;
-	if (pending)
-		void pending.then(
-			(db) => db.close(),
+	outboxGenerations.clear();
+	for (const p of existing) {
+		void p.then(
+			(db) => {
+				try {
+					db.close();
+				} catch {}
+			},
 			() => undefined
 		);
+	}
 }
 
 /** Plain clone of an attachment — never hand Svelte proxies to IndexedDB. */
@@ -118,10 +182,6 @@ function plainLinkPreview(preview: LinkPreview): LinkPreview {
 	};
 }
 
-/**
- * Fully plain Note for IDB. Spreading `$state` notes leaves nested proxies
- * (labels/images/linkPreviews) which throw DataCloneError on put.
- */
 function plainNote(note: Note): Note {
 	const images = (note.images ?? []).map(plainImage);
 	const linkPreviews = (note.linkPreviews ?? []).map(plainLinkPreview);
@@ -144,6 +204,15 @@ function plainNote(note: Note): Note {
 	};
 }
 
+function plainLabel(label: Label): Label {
+	return {
+		id: String(label.id),
+		name: String(label.name),
+		createdAt: Number(label.createdAt) || 0,
+		updatedAt: Number(label.updatedAt) || Number(label.createdAt) || 0
+	};
+}
+
 /** Plain, validated data only: never hand Svelte proxies to IndexedDB.
  *  Image bytes live in IMAGES_STORE — note rows keep empty dataUrl placeholders + thumbs. */
 function detachNote(note: Note): Note {
@@ -156,10 +225,6 @@ function detachNote(note: Note): Note {
 			...(image.thumbUrl ? { thumbUrl: image.thumbUrl } : {})
 		}))
 	};
-}
-
-function snapshotNote(note: Note): Note {
-	return plainNote(note);
 }
 
 function bytesFromStored(value: unknown): Uint8Array | null {
@@ -177,12 +242,33 @@ function bytesFromStored(value: unknown): Uint8Array | null {
 async function blobFromStored(stored: unknown): Promise<Blob | null> {
 	if (stored instanceof Blob) return stored;
 	if (!stored || typeof stored !== 'object') return null;
-	const record = stored as { mime?: unknown; bytes?: unknown; buffer?: unknown };
+	const record = stored as {
+		mime?: unknown;
+		type?: unknown;
+		bytes?: unknown;
+		buffer?: unknown;
+		dataUrl?: unknown;
+		blob?: unknown;
+	};
+	if (record.blob instanceof Blob) return record.blob;
 	const bytes = bytesFromStored(record.bytes) ?? bytesFromStored(record.buffer);
-	if (!bytes) return null;
-	return new Blob([bytes.slice()], {
-		type: typeof record.mime === 'string' ? record.mime : 'application/octet-stream'
-	});
+	if (bytes) {
+		const type =
+			typeof record.mime === 'string'
+				? record.mime
+				: typeof record.type === 'string'
+					? record.type
+					: 'application/octet-stream';
+		return new Blob([bytes.slice()], { type });
+	}
+	if (typeof record.dataUrl === 'string' && record.dataUrl) {
+		try {
+			return await dataUrlToBlob(record.dataUrl);
+		} catch {
+			return null;
+		}
+	}
+	return null;
 }
 
 async function imageFromStoredValue(
@@ -191,9 +277,10 @@ async function imageFromStoredValue(
 	meta: NoteImage
 ): Promise<NoteImage | null> {
 	if (meta.dataUrl?.length > 20) return plainImage(meta);
-	const blob = await blobFromStored(await db.get(IMAGES_STORE, imageKey(noteId, meta.id)));
+	const blob =
+		(await blobFromStored(await db.get(IMAGES_STORE, `${noteId}::${meta.id}`))) ??
+		(await blobFromStored(await db.get(IMAGES_STORE, `${noteId}:${meta.id}`)));
 	if (!blob) {
-		// Keep thumb-only metadata so cards still render while full bytes are missing.
 		return plainImage({ ...meta, dataUrl: '' });
 	}
 	return plainImage({
@@ -214,101 +301,98 @@ async function hydrateNoteImages(db: IDBPDatabase, note: Note): Promise<Note> {
 	};
 }
 
-/**
- * Photo bytes land first so a crash before the note-row commit still leaves
- * blobs that boot recovery can reattach from mirrored image ids. Blobs are
- * converted and written one at a time so a multi-image note never holds every
- * converted copy in memory at once.
- */
-async function putImageBlobs(note: Note): Promise<void> {
-	const db = await getDB();
+async function putImageBlobs(pid: string, note: Note): Promise<void> {
+	const db = await getDB(pid);
 	for (const image of note.images ?? []) {
 		if (!image.dataUrl) continue;
 		const blob = await dataUrlToBlob(image.dataUrl);
 		const bytes = new Uint8Array(await blob.arrayBuffer());
-		await db.put(IMAGES_STORE, { mime: blob.type, bytes }, imageKey(note.id, image.id));
+		await db.put(IMAGES_STORE, { mime: blob.type, bytes }, `${note.id}::${image.id}`);
 	}
 }
 
-async function putNoteSnapshot(note: Note, syncOutboxKeys: string[] = []): Promise<void> {
-	const db = await getDB();
-	await putImageBlobs(note);
-	const previousGeneration = outboxGenerationCache;
-	const existingKeys = (await db.getAllKeys(IMAGES_STORE)).filter((key) =>
-		String(key).startsWith(`${note.id}::`)
+async function putNoteSnapshot(
+	pid: string,
+	note: Note,
+	syncOutboxKeys: string[] = []
+): Promise<void> {
+	const db = await getDB(pid);
+	await putImageBlobs(pid, note);
+	const dbName = resolveDbName(pid);
+	const previousGeneration = outboxGenerations.get(dbName) ?? null;
+	const ownPrefix = `${note.id}::`;
+	const existingKeys = ((await db.getAllKeys(IMAGES_STORE)) as string[]).filter((key) =>
+		key.startsWith(ownPrefix)
 	);
-	const desiredKeys = new Set((note.images ?? []).map((image) => imageKey(note.id, image.id)));
+	const desiredKeys = new Set((note.images ?? []).map((image) => `${note.id}::${image.id}`));
 	const lean = detachNote(note);
 	const stores = syncOutboxKeys.length
 		? [NOTES_STORE, IMAGES_STORE, SYNC_STATE_STORE, SYNC_OUTBOX_STORE]
 		: [NOTES_STORE, IMAGES_STORE];
 	const tx = db.transaction(stores, 'readwrite');
 	try {
-		// Metadata-only writes (hydration, a pulled note whose photo has not
-		// arrived) must not drop blobs. Clear them when this write has bytes or
-		// the note no longer lists any images.
 		const incomingHasBytes = (note.images ?? []).some((image) => image.dataUrl);
 		if (incomingHasBytes || desiredKeys.size === 0) {
 			for (const key of existingKeys) {
-				if (!desiredKeys.has(String(key))) await tx.objectStore(IMAGES_STORE).delete(key);
+				if (!desiredKeys.has(key)) await tx.objectStore(IMAGES_STORE).delete(key);
 			}
 		}
 		await tx.objectStore(NOTES_STORE).put(lean);
 		if (syncOutboxKeys.length) {
-			const generation = await nextOutboxGeneration(tx);
+			const generation = await nextOutboxGeneration(tx, dbName);
 			const outbox = tx.objectStore(SYNC_OUTBOX_STORE);
 			for (const key of syncOutboxKeys) await outbox.put(generation, key);
 		}
 		await tx.done;
 	} catch (error) {
-		try {
-			tx.abort();
-		} catch {
-			// The transaction may already have aborted after a failed request.
-		}
-		await tx.done.catch(() => undefined);
-		outboxGenerationCache = previousGeneration;
+		await abortWrite(tx, dbName, previousGeneration);
 		throw error;
 	}
 }
 
-function enqueueNote<T>(noteId: string, operation: () => Promise<T>): Promise<T> {
-	const previous = noteChains.get(noteId) ?? Promise.resolve();
+function enqueueNote<T>(pid: string, noteId: string, operation: () => Promise<T>): Promise<T> {
+	const chainKey = `${pid}::${noteId}`;
+	const previous = noteChains.get(chainKey) ?? Promise.resolve();
 	const run = previous.catch(() => undefined).then(operation);
 	const completion = run.then(
 		() => undefined,
 		() => undefined
 	);
-	noteChains.set(noteId, completion);
+	noteChains.set(chainKey, completion);
 	return run.finally(() => {
-		if (noteChains.get(noteId) === completion) noteChains.delete(noteId);
+		if (noteChains.get(chainKey) === completion) noteChains.delete(chainKey);
 	});
 }
 
-/** Fast metadata pass: note rows are lean and attachment blobs remain in IDB. */
-export async function getAllNotesMetadata(): Promise<Note[]> {
-	const db = await getDB();
+// --- Notes API --------------------------------------------------------------
+
+export async function getAllNotesMetadata(pid: string = LOCAL_PROFILE_ID): Promise<Note[]> {
+	const db = await getDB(pid);
 	return ((await db.getAll(NOTES_STORE)) as Note[]).map(plainNote);
 }
 
-/**
- * Image blobs exist only while a note row references them. Writes land bytes
- * before the row (crash safety) and metadata-only writes keep existing blobs,
- * so unreferenced keys can accumulate; ownership is reclaimed at boot. Runs
- * inside the device write queue so it cannot observe a half-committed write.
- */
-export function pruneOrphanImageBlobs(): Promise<void> {
-	return enqueueDeviceWrite(async () => {
-		const db = await getDB();
-		const [keys, notes] = await Promise.all([
-			db.getAllKeys(IMAGES_STORE),
-			db.getAll(NOTES_STORE) as Promise<Note[]>
-		]);
+export async function getNote(
+	id: string,
+	pid: string = LOCAL_PROFILE_ID
+): Promise<Note | undefined> {
+	const db = await getDB(pid);
+	const stored = (await db.get(NOTES_STORE, id)) as Note | undefined;
+	if (!stored) return undefined;
+	return plainNote(stored);
+}
+
+export async function pruneOrphanImageBlobs(pid: string = LOCAL_PROFILE_ID): Promise<void> {
+	await enqueueDeviceWrite(async () => {
+		const db = await getDB(pid);
+		const notes = (await db.getAll(NOTES_STORE)) as Note[];
 		const referenced = new Set<string>();
 		for (const note of notes) {
-			for (const image of note.images ?? []) referenced.add(imageKey(note.id, image.id));
+			for (const image of note.images ?? []) {
+				referenced.add(`${note.id}::${image.id}`);
+			}
 		}
-		const orphans = keys.filter((key) => !referenced.has(String(key)));
+		const storedKeys = (await db.getAllKeys(IMAGES_STORE)) as string[];
+		const orphans = storedKeys.filter((key) => !referenced.has(key));
 		if (orphans.length === 0) return;
 		const tx = db.transaction(IMAGES_STORE, 'readwrite');
 		for (const key of orphans) void tx.objectStore(IMAGES_STORE).delete(key);
@@ -316,33 +400,47 @@ export function pruneOrphanImageBlobs(): Promise<void> {
 	});
 }
 
-/** Hydrate every attachment for one note. Callers schedule this with bounded concurrency. */
-export async function hydrateNoteAttachments(note: Note): Promise<Note> {
-	const db = await getDB();
+export async function hydrateNoteAttachments(
+	pidOrNote: string | Note,
+	maybeNote?: Note
+): Promise<Note> {
+	const pid = typeof pidOrNote === 'string' ? pidOrNote : LOCAL_PROFILE_ID;
+	const note = typeof pidOrNote === 'string' ? maybeNote! : pidOrNote;
+	const db = await getDB(pid);
 	return hydrateNoteImages(db, note);
 }
 
-export function putNote(note: Note, syncOutboxKeys: Iterable<string> = []): Promise<void> {
-	const snapshot = snapshotNote(note);
-	const outboxKeys = [...new Set(syncOutboxKeys)];
+export async function putNote(
+	pidOrNote: string | Note,
+	noteOrKeys?: Note | Iterable<string>,
+	maybeKeys?: Iterable<string>
+): Promise<void> {
+	const pid = typeof pidOrNote === 'string' ? pidOrNote : LOCAL_PROFILE_ID;
+	const note = typeof pidOrNote === 'string' ? (noteOrKeys as Note) : pidOrNote;
+	const keys =
+		typeof pidOrNote === 'string' ? (maybeKeys ?? []) : ((noteOrKeys as Iterable<string>) ?? []);
+	const snapshot = plainNote(note);
+	const outboxKeys = uniqueOutboxKeys(keys);
 	const generation = writeGeneration;
-	return enqueueNote(snapshot.id, () =>
+	return enqueueNote(pid, snapshot.id, () =>
 		enqueueDeviceWrite(async () => {
-			// A replacement requested after this save owns the final device state.
 			if (generation !== writeGeneration) return;
-			await putNoteSnapshot(snapshot, outboxKeys);
+			await putNoteSnapshot(pid, snapshot, outboxKeys);
 		})
 	);
 }
 
-export function deleteNote(id: string): Promise<void> {
+export function deleteNote(pidOrId: string, maybeId?: string): Promise<void> {
+	const pid = maybeId !== undefined ? pidOrId : LOCAL_PROFILE_ID;
+	const id = maybeId !== undefined ? maybeId : pidOrId;
 	const generation = writeGeneration;
-	return enqueueNote(id, async () => {
+	return enqueueNote(pid, id, async () => {
 		await enqueueDeviceWrite(async () => {
 			if (generation !== writeGeneration) return;
-			const db = await getDB();
-			const imageKeys = (await db.getAllKeys(IMAGES_STORE)).filter((key) =>
-				String(key).startsWith(`${id}::`)
+			const db = await getDB(pid);
+			const ownPrefix = `${id}::`;
+			const imageKeys = ((await db.getAllKeys(IMAGES_STORE)) as string[]).filter((key) =>
+				key.startsWith(ownPrefix)
 			);
 			const tx = db.transaction([NOTES_STORE, IMAGES_STORE], 'readwrite');
 			tx.objectStore(NOTES_STORE).delete(id);
@@ -352,178 +450,187 @@ export function deleteNote(id: string): Promise<void> {
 	});
 }
 
-export async function getAllLabels(): Promise<Label[]> {
-	const db = await getDB();
-	return (await db.getAll(LABELS_STORE)) as Label[];
+// --- Labels API -------------------------------------------------------------
+
+export async function getAllLabels(pid: string = LOCAL_PROFILE_ID): Promise<Label[]> {
+	const db = await getDB(pid);
+	return ((await db.getAll(LABELS_STORE)) as Label[]).map(plainLabel);
 }
 
-function uniqueOutboxKeys(keys: Iterable<string>): string[] {
-	const unique = [...new Set(keys)];
-	for (const key of unique) {
-		if (typeof key !== 'string' || !key) throw new Error('Invalid sync outbox key');
-	}
-	return unique;
-}
-
-async function writeOutboxKeys(
-	tx: IDBPTransaction<unknown, string[], 'readwrite'>,
-	keys: string[]
+export async function putLabel(
+	pidOrLabel: string | Label,
+	labelOrKeys?: Label | Iterable<string>,
+	maybeKeys?: Iterable<string>
 ): Promise<void> {
-	if (!keys.length) return;
-	const generation = await nextOutboxGeneration(tx);
-	const outbox = tx.objectStore(SYNC_OUTBOX_STORE);
-	for (const key of keys) await outbox.put(generation, key);
-}
-
-function abortWrite(
-	tx: IDBPTransaction<unknown, string[], 'readwrite'>,
-	previousGeneration: number | null
-): Promise<void> {
-	try {
-		tx.abort();
-	} catch {
-		// The transaction may already have aborted after a failed request.
-	}
-	outboxGenerationCache = previousGeneration;
-	return tx.done.catch(() => undefined);
-}
-
-function labelRow(label: Label): Label {
-	return {
-		id: String(label.id),
-		name: String(label.name),
-		createdAt: Number(label.createdAt) || 0,
-		updatedAt: Number(label.updatedAt) || Number(label.createdAt) || 0
-	};
-}
-
-export async function putLabel(label: Label, syncOutboxKeys: Iterable<string> = []): Promise<void> {
+	const pid = typeof pidOrLabel === 'string' ? pidOrLabel : LOCAL_PROFILE_ID;
+	const label = typeof pidOrLabel === 'string' ? (labelOrKeys as Label) : pidOrLabel;
+	const syncOutboxKeys =
+		typeof pidOrLabel === 'string' ? (maybeKeys ?? []) : ((labelOrKeys as Iterable<string>) ?? []);
 	const outboxKeys = uniqueOutboxKeys(syncOutboxKeys);
-	const generation = writeGeneration;
+	const lean = plainLabel(label);
+	const dbName = resolveDbName(pid);
+	const previousGeneration = outboxGenerations.get(dbName) ?? null;
 	await enqueueDeviceWrite(async () => {
-		if (generation !== writeGeneration) return;
-		const db = await getDB();
-		const previousGeneration = outboxGenerationCache;
+		const db = await getDB(pid);
 		const tx = db.transaction(
 			outboxKeys.length ? [LABELS_STORE, SYNC_STATE_STORE, SYNC_OUTBOX_STORE] : [LABELS_STORE],
 			'readwrite'
 		);
 		try {
-			tx.objectStore(LABELS_STORE).put(labelRow(label));
-			await writeOutboxKeys(tx, outboxKeys);
+			await tx.objectStore(LABELS_STORE).put(lean);
+			if (outboxKeys.length) {
+				const generation = await nextOutboxGeneration(tx, dbName);
+				const outbox = tx.objectStore(SYNC_OUTBOX_STORE);
+				for (const key of outboxKeys) await outbox.put(generation, key);
+			}
 			await tx.done;
 		} catch (error) {
-			await abortWrite(tx, previousGeneration);
+			await abortWrite(tx, dbName, previousGeneration);
 			throw error;
 		}
 	});
 }
 
 export async function deleteLabel(
-	id: string,
-	syncOutboxKeys: Iterable<string> = []
+	pidOrId: string,
+	maybeId?: string,
+	maybeKeys?: Iterable<string>
 ): Promise<void> {
+	const pid = maybeId !== undefined ? pidOrId : LOCAL_PROFILE_ID;
+	const id = maybeId !== undefined ? maybeId : pidOrId;
+	const syncOutboxKeys = maybeKeys !== undefined ? maybeKeys : [];
 	const outboxKeys = uniqueOutboxKeys(syncOutboxKeys);
-	const generation = writeGeneration;
+	const dbName = resolveDbName(pid);
+	const previousGeneration = outboxGenerations.get(dbName) ?? null;
 	await enqueueDeviceWrite(async () => {
-		if (generation !== writeGeneration) return;
-		const db = await getDB();
-		const previousGeneration = outboxGenerationCache;
+		const db = await getDB(pid);
 		const tx = db.transaction(
 			outboxKeys.length ? [LABELS_STORE, SYNC_STATE_STORE, SYNC_OUTBOX_STORE] : [LABELS_STORE],
 			'readwrite'
 		);
 		try {
 			await tx.objectStore(LABELS_STORE).delete(id);
-			await writeOutboxKeys(tx, outboxKeys);
+			if (outboxKeys.length) {
+				const generation = await nextOutboxGeneration(tx, dbName);
+				const outbox = tx.objectStore(SYNC_OUTBOX_STORE);
+				for (const key of outboxKeys) await outbox.put(generation, key);
+			}
 			await tx.done;
 		} catch (error) {
-			await abortWrite(tx, previousGeneration);
+			await abortWrite(tx, dbName, previousGeneration);
 			throw error;
 		}
 	});
 }
 
-/** Delete a label while durably committing related sync state and outbox markers. */
 export async function deleteLabelWithSyncState(
-	id: string,
-	state: Iterable<readonly [key: string, value: unknown]>,
-	syncOutboxKeys: Iterable<string> = []
+	pidOrId: string,
+	idOrState: string | Iterable<readonly [key: string, value: unknown]>,
+	stateOrKeys?: Iterable<readonly [key: string, value: unknown]> | Iterable<string>,
+	maybeKeys?: Iterable<string>
 ): Promise<void> {
-	const entries = [...state];
+	const isScoped = typeof idOrState === 'string';
+	const pid = isScoped ? pidOrId : LOCAL_PROFILE_ID;
+	const id = isScoped ? idOrState : pidOrId;
+	const state = isScoped
+		? (stateOrKeys as Iterable<readonly [key: string, value: unknown]>)
+		: (idOrState as Iterable<readonly [key: string, value: unknown]>);
+	const syncOutboxKeys = isScoped ? (maybeKeys ?? []) : ((stateOrKeys as Iterable<string>) ?? []);
 	const outboxKeys = uniqueOutboxKeys(syncOutboxKeys);
-	const generation = writeGeneration;
+	const entries = [...state];
+	const dbName = resolveDbName(pid);
+	const previousGeneration = outboxGenerations.get(dbName) ?? null;
 	await enqueueDeviceWrite(async () => {
-		if (generation !== writeGeneration) return;
-		const db = await getDB();
-		const previousGeneration = outboxGenerationCache;
-		const tx = db.transaction([LABELS_STORE, SYNC_STATE_STORE, SYNC_OUTBOX_STORE], 'readwrite');
+		const db = await getDB(pid);
+		const tx = db.transaction(
+			outboxKeys.length
+				? [LABELS_STORE, SYNC_STATE_STORE, SYNC_OUTBOX_STORE]
+				: [LABELS_STORE, SYNC_STATE_STORE],
+			'readwrite'
+		);
 		try {
 			await tx.objectStore(LABELS_STORE).delete(id);
-			const stateStore = tx.objectStore(SYNC_STATE_STORE);
-			for (const [key, value] of entries) await stateStore.put(value, key);
-			await writeOutboxKeys(tx, outboxKeys);
+			const syncState = tx.objectStore(SYNC_STATE_STORE);
+			for (const [key, value] of entries) await syncState.put(value, scopedStateKey(key, pid));
+			if (outboxKeys.length) {
+				const generation = await nextOutboxGeneration(tx, dbName);
+				const outbox = tx.objectStore(SYNC_OUTBOX_STORE);
+				for (const key of outboxKeys) await outbox.put(generation, key);
+			}
 			await tx.done;
 		} catch (error) {
-			await abortWrite(tx, previousGeneration);
+			await abortWrite(tx, dbName, previousGeneration);
 			throw error;
 		}
 	});
 }
 
-/** Write durable sync-state keys and optional outbox markers in one transaction. */
 export async function writeSyncStateWithOutbox(
-	state: Iterable<readonly [key: string, value: unknown]>,
-	syncOutboxKeys: Iterable<string> = []
+	pidOrState: string | Iterable<readonly [key: string, value: unknown]>,
+	stateOrKeys?: Iterable<readonly [key: string, value: unknown]> | Iterable<string>,
+	maybeKeys?: Iterable<string>
 ): Promise<void> {
+	const isScoped = typeof pidOrState === 'string';
+	const pid = isScoped ? pidOrState : LOCAL_PROFILE_ID;
+	const state = isScoped
+		? (stateOrKeys as Iterable<readonly [key: string, value: unknown]>)
+		: (pidOrState as Iterable<readonly [key: string, value: unknown]>);
+	const syncOutboxKeys = isScoped ? (maybeKeys ?? []) : ((stateOrKeys as Iterable<string>) ?? []);
 	const entries = [...state];
 	const outboxKeys = uniqueOutboxKeys(syncOutboxKeys);
+	const dbName = resolveDbName(pid);
+	const previousGeneration = outboxGenerations.get(dbName) ?? null;
 	await enqueueDeviceWrite(async () => {
-		const db = await getDB();
-		const previousGeneration = outboxGenerationCache;
+		const db = await getDB(pid);
 		const tx = db.transaction(
 			outboxKeys.length ? [SYNC_STATE_STORE, SYNC_OUTBOX_STORE] : [SYNC_STATE_STORE],
 			'readwrite'
 		);
 		try {
 			const store = tx.objectStore(SYNC_STATE_STORE);
-			for (const [key, value] of entries) await store.put(value, key);
-			await writeOutboxKeys(tx, outboxKeys);
+			for (const [key, value] of entries) await store.put(value, scopedStateKey(key, pid));
+			if (outboxKeys.length) {
+				const next = await nextOutboxGeneration(tx, dbName);
+				for (const key of outboxKeys) await tx.objectStore(SYNC_OUTBOX_STORE).put(next, key);
+			}
 			await tx.done;
 		} catch (error) {
-			await abortWrite(tx, previousGeneration);
+			await abortWrite(tx, dbName, previousGeneration);
 			throw error;
 		}
 	});
 }
 
-export async function bulkPutNotes(notes: Note[]): Promise<void> {
+export async function bulkPutNotes(
+	pidOrNotes: string | Note[],
+	maybeNotes?: Note[]
+): Promise<void> {
+	const pid = typeof pidOrNotes === 'string' ? pidOrNotes : LOCAL_PROFILE_ID;
+	const notes = typeof pidOrNotes === 'string' ? (maybeNotes ?? []) : pidOrNotes;
 	for (const note of notes) {
-		await putNote(note);
+		await putNote(pid, note);
 	}
 }
 
-export async function bulkPutLabels(labels: Label[]): Promise<void> {
+export async function bulkPutLabels(
+	pidOrLabels: string | Label[],
+	maybeLabels?: Label[]
+): Promise<void> {
+	const pid = typeof pidOrLabels === 'string' ? pidOrLabels : LOCAL_PROFILE_ID;
+	const labels = typeof pidOrLabels === 'string' ? (maybeLabels ?? []) : pidOrLabels;
 	const generation = writeGeneration;
 	await enqueueDeviceWrite(async () => {
 		if (generation !== writeGeneration) return;
-		const db = await getDB();
+		const db = await getDB(pid);
 		const tx = db.transaction(LABELS_STORE, 'readwrite');
-		for (const label of labels) {
-			tx.store.put({
-				id: String(label.id),
-				name: String(label.name),
-				createdAt: Number(label.createdAt) || 0,
-				updatedAt: Number(label.updatedAt) || Number(label.createdAt) || 0
-			});
-		}
+		for (const label of labels) tx.store.put(plainLabel(label));
 		await tx.done;
 	});
 }
 
-export async function clearAllNotes(): Promise<void> {
+export async function clearAllNotes(pid: string = LOCAL_PROFILE_ID): Promise<void> {
 	await enqueueDeviceWrite(async () => {
-		const db = await getDB();
+		const db = await getDB(pid);
 		const tx = db.transaction([NOTES_STORE, IMAGES_STORE], 'readwrite');
 		tx.objectStore(NOTES_STORE).clear();
 		tx.objectStore(IMAGES_STORE).clear();
@@ -531,34 +638,31 @@ export async function clearAllNotes(): Promise<void> {
 	});
 }
 
-export async function clearAllLabels(): Promise<void> {
+export async function clearAllLabels(pid: string = LOCAL_PROFILE_ID): Promise<void> {
 	await enqueueDeviceWrite(async () => {
-		const db = await getDB();
+		const db = await getDB(pid);
 		await db.clear(LABELS_STORE);
 	});
 }
 
-/**
- * Replace a newly linked device's records as one exclusive write operation.
- * The per-note Blob commits stay short for iOS Safari, while the write gate
- * prevents an earlier seed/autosave from committing after the clear.
- */
 export function replaceAllDeviceData(
-	notes: Note[],
-	labels: Label[],
-	onNoteCommitted?: (note: Note) => void | Promise<void>
+	pidOrNotes: string | Note[],
+	notesOrLabels: Note[] | Label[],
+	labelsOrCb?: Label[] | ((note: Note) => void | Promise<void>),
+	maybeCb?: (note: Note) => void | Promise<void>
 ): Promise<void> {
+	const isScoped = typeof pidOrNotes === 'string';
+	const pid = isScoped ? pidOrNotes : LOCAL_PROFILE_ID;
+	const notes = isScoped ? (notesOrLabels as Note[]) : (pidOrNotes as Note[]);
+	const labels = isScoped ? (labelsOrCb as Label[]) : (notesOrLabels as Label[]);
+	const onNoteCommitted = isScoped
+		? maybeCb
+		: (labelsOrCb as ((note: Note) => void | Promise<void>) | undefined);
+
 	const generation = ++writeGeneration;
-	const labelSnapshots = labels.map((label) => ({
-		id: String(label.id),
-		name: String(label.name),
-		createdAt: Number(label.createdAt) || 0,
-		updatedAt: Number(label.updatedAt) || Number(label.createdAt) || 0
-	}));
 	return enqueueDeviceWrite(async () => {
-		// A later replacement supersedes this one before it touches storage.
 		if (generation !== writeGeneration) return;
-		const db = await getDB();
+		const db = await getDB(pid);
 		const clear = db.transaction([NOTES_STORE, IMAGES_STORE, LABELS_STORE], 'readwrite');
 		clear.objectStore(NOTES_STORE).clear();
 		clear.objectStore(IMAGES_STORE).clear();
@@ -567,25 +671,21 @@ export function replaceAllDeviceData(
 		let firstError: unknown = null;
 		for (const note of notes) {
 			try {
-				await putNoteSnapshot(snapshotNote(note));
-				// Release each downloaded full-resolution data URL immediately after
-				// its Blob transaction is durable; a fresh iPhone must not retain the
-				// full account while the rest of the replacement is still writing.
+				await putNoteSnapshot(pid, plainNote(note));
 				await onNoteCommitted?.(note);
 			} catch (error) {
-				// Keep writing the remaining notes so an abort on one image (quota,
-				// Safari pressure) cannot leave the device half-replaced.
 				firstError ??= error;
 			}
 		}
 		const labelWrite = db.transaction(LABELS_STORE, 'readwrite');
-		for (const label of labelSnapshots) labelWrite.store.put(label);
+		for (const label of labels) labelWrite.store.put(plainLabel(label));
 		await labelWrite.done;
 		if (firstError) throw firstError;
 	});
 }
 
-/** Shared link-preview cache: one fetch per URL, reused across notes. */
+// --- Link previews (shared cache, not profile-scoped) -----------------------
+
 export async function getCachedLinkPreview(url: string): Promise<LinkPreview | undefined> {
 	const db = await getDB();
 	const row = await db.get(LINK_PREVIEWS_STORE, url);
@@ -606,63 +706,86 @@ export async function getCachedLinkPreview(url: string): Promise<LinkPreview | u
 export async function putCachedLinkPreview(preview: LinkPreview): Promise<void> {
 	const db = await getDB();
 	await db.put(LINK_PREVIEWS_STORE, {
-		...plainLinkPreview(preview),
-		fetchedAt: Date.now()
+		url: String(preview.url),
+		hostname: String(preview.hostname),
+		title: String(preview.title),
+		...(preview.description ? { description: String(preview.description) } : {}),
+		...(preview.image ? { image: String(preview.image) } : {}),
+		...(preview.icon ? { icon: String(preview.icon) } : {}),
+		savedAt: Date.now()
 	});
 }
 
-export async function getAllCachedLinkPreviews(): Promise<LinkPreview[]> {
-	const db = await getDB();
-	const rows = await db.getAll(LINK_PREVIEWS_STORE);
-	return rows.flatMap((row) => {
-		if (!row || typeof row !== 'object') return [];
-		const { url, hostname, title, description, image, icon } = row as LinkPreview;
-		if (typeof url !== 'string' || typeof hostname !== 'string' || typeof title !== 'string')
-			return [];
-		return [
-			plainLinkPreview({
-				url,
-				hostname,
-				title,
-				...(typeof description === 'string' ? { description } : {}),
-				...(typeof image === 'string' ? { image } : {}),
-				...(typeof icon === 'string' ? { icon } : {})
-			})
-		];
-	});
+// --- Sync state KV ----------------------------------------------------------
+
+export async function getSyncState<T>(key: string, pid?: string): Promise<T | undefined> {
+	const { pid: extractedPid, baseKey } = extractPidFromStateKey(key);
+	const resolvedPid = pid ?? extractedPid;
+	const db = await getDB(resolvedPid);
+	const val = (await db.get(SYNC_STATE_STORE, key)) as T | undefined;
+	if (val !== undefined) return val;
+	if (baseKey !== key) {
+		return (await db.get(SYNC_STATE_STORE, baseKey)) as T | undefined;
+	}
+	return undefined;
 }
 
-/** Durable sync cursor/baseline state. Unlike localStorage, this is not size-limited. */
-export async function getSyncState<T>(key: string): Promise<T | undefined> {
-	const db = await getDB();
-	return (await db.get(SYNC_STATE_STORE, key)) as T | undefined;
-}
-
-export async function setSyncState<T>(key: string, value: T): Promise<void> {
+export async function setSyncState(key: string, value: unknown, pid?: string): Promise<void> {
+	const { pid: extractedPid, baseKey } = extractPidFromStateKey(key);
+	const resolvedPid = pid ?? extractedPid;
 	await enqueueDeviceWrite(async () => {
-		const db = await getDB();
-		await db.put(SYNC_STATE_STORE, value, key);
+		const db = await getDB(resolvedPid);
+		const tx = db.transaction(SYNC_STATE_STORE, 'readwrite');
+		tx.objectStore(SYNC_STATE_STORE).put(value, key);
+		if (baseKey !== key) {
+			tx.objectStore(SYNC_STATE_STORE).put(value, baseKey);
+		}
+		await tx.done;
+	});
+}
+
+export async function deleteSyncState(key: string, pid?: string): Promise<void> {
+	const { pid: extractedPid, baseKey } = extractPidFromStateKey(key);
+	const resolvedPid = pid ?? extractedPid;
+	await enqueueDeviceWrite(async () => {
+		const db = await getDB(resolvedPid);
+		const tx = db.transaction(SYNC_STATE_STORE, 'readwrite');
+		tx.objectStore(SYNC_STATE_STORE).delete(key);
+		if (baseKey !== key) {
+			tx.objectStore(SYNC_STATE_STORE).delete(baseKey);
+		}
+		await tx.done;
 	});
 }
 
 const FIRED_REMINDERS_KEY = 'scrapscache-fired-reminders';
 
-export async function getFiredReminderKeys(): Promise<string[]> {
-	const stored = await getSyncState<unknown>(FIRED_REMINDERS_KEY);
-	if (!Array.isArray(stored)) return [];
-	return stored.filter((item): item is string => typeof item === 'string');
+export async function getFiredReminderKeys(pid: string = LOCAL_PROFILE_ID): Promise<string[]> {
+	const stored = await getSyncState<unknown>(scopedStateKey(FIRED_REMINDERS_KEY, pid), pid);
+	return Array.isArray(stored)
+		? stored.filter((item): item is string => typeof item === 'string')
+		: [];
 }
 
-export async function setFiredReminderKeys(keys: Iterable<string>): Promise<void> {
-	await setSyncState(FIRED_REMINDERS_KEY, [...keys]);
+export async function setFiredReminderKeys(
+	pidOrKeys: string | Iterable<string>,
+	maybeKeys?: Iterable<string>
+): Promise<void> {
+	const pid = maybeKeys !== undefined ? (pidOrKeys as string) : LOCAL_PROFILE_ID;
+	const keys = maybeKeys !== undefined ? maybeKeys : (pidOrKeys as Iterable<string>);
+	const clean = [...new Set(keys)].filter((item): item is string => typeof item === 'string');
+	await setSyncState(scopedStateKey(FIRED_REMINDERS_KEY, pid), clean, pid);
 }
 
-/** Atomically claim a wake for delivery. Returns false when another context already claimed it. */
-export async function claimFiredReminderKey(key: string): Promise<boolean> {
+export async function claimFiredReminderKey(
+	key: string,
+	pid: string = LOCAL_PROFILE_ID
+): Promise<boolean> {
 	return enqueueDeviceWrite(async () => {
-		const db = await getDB();
+		const db = await getDB(pid);
+		const storeKey = scopedStateKey(FIRED_REMINDERS_KEY, pid);
 		const tx = db.transaction(SYNC_STATE_STORE, 'readwrite');
-		const stored = await tx.store.get(FIRED_REMINDERS_KEY);
+		const stored = await tx.store.get(storeKey);
 		const keys = new Set(
 			Array.isArray(stored) ? stored.filter((item): item is string => typeof item === 'string') : []
 		);
@@ -671,95 +794,118 @@ export async function claimFiredReminderKey(key: string): Promise<boolean> {
 			return false;
 		}
 		keys.add(key);
-		await tx.store.put([...keys], FIRED_REMINDERS_KEY);
+		await tx.store.put([...keys], storeKey);
 		await tx.done;
 		return true;
 	});
 }
 
-export async function deleteSyncState(key: string): Promise<void> {
-	await enqueueDeviceWrite(async () => {
-		const db = await getDB();
-		await db.delete(SYNC_STATE_STORE, key);
-	});
-}
+// --- Outbox -----------------------------------------------------------------
 
-/**
- * Outbox generations are a persisted monotonic counter seeded from the wall
- * clock. Timestamps alone break under backward clock jumps: a marker stamped
- * after a sync snapshot could sort below it and get acknowledged without its
- * content ever uploading.
- */
 const OUTBOX_GENERATION_KEY = 'scrapscache-outbox-generation';
-let outboxGenerationCache: number | null = null;
 
-async function loadOutboxGeneration(db: IDBPDatabase): Promise<number> {
-	if (outboxGenerationCache == null) {
-		outboxGenerationCache = Number((await db.get(SYNC_STATE_STORE, OUTBOX_GENERATION_KEY)) ?? 0);
+function abortWrite(
+	tx:
+		| IDBPTransaction<unknown, string[], 'readwrite'>
+		| IDBPTransaction<unknown, string[], 'readonly'>,
+	dbName: string,
+	previousGeneration: number | null
+): Promise<void> {
+	try {
+		tx.abort();
+	} catch {
+		// The transaction may already have aborted after a failed request.
 	}
-	return outboxGenerationCache;
+	if (previousGeneration != null) {
+		outboxGenerations.set(dbName, previousGeneration);
+	} else {
+		outboxGenerations.delete(dbName);
+	}
+	return tx.done.catch(() => undefined);
 }
 
-/** Allocate the next generation inside the caller's transaction. */
-async function nextOutboxGeneration(
-	tx: IDBPTransaction<unknown, string[], 'readwrite'>
-): Promise<number> {
-	if (outboxGenerationCache == null) {
-		outboxGenerationCache = Number(
-			(await tx.objectStore(SYNC_STATE_STORE).get(OUTBOX_GENERATION_KEY)) ?? 0
-		);
+async function loadOutboxGeneration(db: IDBPDatabase, dbName: string): Promise<number> {
+	let cached = outboxGenerations.get(dbName);
+	if (cached == null) {
+		cached = Number((await db.get(SYNC_STATE_STORE, OUTBOX_GENERATION_KEY)) ?? 0);
+		outboxGenerations.set(dbName, cached);
 	}
-	const generation = Math.max(Date.now(), outboxGenerationCache + 1);
-	outboxGenerationCache = generation;
+	return cached;
+}
+
+async function nextOutboxGeneration(
+	tx: IDBPTransaction<unknown, string[], 'readwrite'>,
+	dbName: string
+): Promise<number> {
+	let cached = outboxGenerations.get(dbName);
+	if (cached == null) {
+		cached = Number((await tx.objectStore(SYNC_STATE_STORE).get(OUTBOX_GENERATION_KEY)) ?? 0);
+	}
+	const generation = Math.max(Date.now(), cached + 1);
+	outboxGenerations.set(dbName, generation);
 	await tx.objectStore(SYNC_STATE_STORE).put(generation, OUTBOX_GENERATION_KEY);
 	return generation;
 }
 
-/** Highest generation allocated so far; sync runs acknowledge up to this snapshot. */
-export function getOutboxGeneration(): Promise<number> {
-	return enqueueDeviceWrite(async () => loadOutboxGeneration(await getDB()));
+export function getOutboxGeneration(pid: string = LOCAL_PROFILE_ID): Promise<number> {
+	const dbName = resolveDbName(pid);
+	return enqueueDeviceWrite(async () => loadOutboxGeneration(await getDB(pid), dbName));
 }
 
-/** Durable set of plaintext-local record keys awaiting encrypted upload. Returns its generation. */
-export async function markSyncOutbox(keys: Iterable<string>): Promise<number> {
-	const unique = [...new Set(keys)].filter(Boolean);
+function uniqueOutboxKeys(keys: Iterable<string>): string[] {
+	return [...new Set(keys)];
+}
+
+export async function markSyncOutbox(
+	pidOrKeys: string | Iterable<string>,
+	maybeKeys?: Iterable<string>
+): Promise<number> {
+	const pid = maybeKeys !== undefined ? (pidOrKeys as string) : LOCAL_PROFILE_ID;
+	const keys = maybeKeys !== undefined ? maybeKeys : (pidOrKeys as Iterable<string>);
+	const unique = uniqueOutboxKeys(keys);
 	if (unique.length === 0) return 0;
+	const dbName = resolveDbName(pid);
 	return enqueueDeviceWrite(async () => {
-		const db = await getDB();
-		const previousGeneration = outboxGenerationCache;
+		const db = await getDB(pid);
+		const previousGeneration = outboxGenerations.get(dbName) ?? null;
 		const tx = db.transaction([SYNC_STATE_STORE, SYNC_OUTBOX_STORE], 'readwrite');
 		try {
-			const generation = await nextOutboxGeneration(tx);
+			const generation = await nextOutboxGeneration(tx, dbName);
 			const outbox = tx.objectStore(SYNC_OUTBOX_STORE);
 			for (const key of unique) await outbox.put(generation, key);
 			await tx.done;
 			return generation;
 		} catch (error) {
-			try {
-				tx.abort();
-			} catch {
-				// The transaction may already have aborted after a failed request.
-			}
-			await tx.done.catch(() => undefined);
-			outboxGenerationCache = previousGeneration;
+			await abortWrite(tx, dbName, previousGeneration);
 			throw error;
 		}
 	});
 }
 
-export async function getSyncOutboxKeys(): Promise<string[]> {
-	const db = await getDB();
-	return (await db.getAllKeys(SYNC_OUTBOX_STORE)).map(String);
+export async function getSyncOutboxKeys(pid: string = LOCAL_PROFILE_ID): Promise<string[]> {
+	const db = await getDB(pid);
+	const keys = await db.getAllKeys(SYNC_OUTBOX_STORE);
+	return keys.map(String);
 }
 
 export async function clearSyncOutbox(
-	keys: Iterable<string>,
-	through = Number.POSITIVE_INFINITY
+	pidOrKeys: string | Iterable<string>,
+	keysOrThrough?: Iterable<string> | number,
+	maybeThrough: number = Number.POSITIVE_INFINITY
 ): Promise<void> {
-	const unique = [...new Set(keys)].filter(Boolean);
+	const isScoped = typeof pidOrKeys === 'string';
+	const pid = isScoped ? pidOrKeys : LOCAL_PROFILE_ID;
+	const keys = isScoped ? (keysOrThrough as Iterable<string>) : (pidOrKeys as Iterable<string>);
+	const through = isScoped
+		? maybeThrough
+		: typeof keysOrThrough === 'number'
+			? keysOrThrough
+			: Number.POSITIVE_INFINITY;
+
+	const unique = uniqueOutboxKeys(keys);
 	if (unique.length === 0) return;
 	await enqueueDeviceWrite(async () => {
-		const db = await getDB();
+		const db = await getDB(pid);
 		const tx = db.transaction(SYNC_OUTBOX_STORE, 'readwrite');
 		for (const key of unique) {
 			const markedAt = Number(await tx.store.get(key));
@@ -769,18 +915,30 @@ export async function clearSyncOutbox(
 	});
 }
 
-/** Commit the durable cursor/baseline and acknowledge their outbox generation together. */
 export async function commitSyncControl(
-	state: Iterable<readonly [key: string, value: unknown]>,
-	acknowledgements: Iterable<{ keys: Iterable<string>; through: number }>
+	pidOrState: string | Iterable<readonly [key: string, value: unknown]>,
+	stateOrAck?:
+		| Iterable<readonly [key: string, value: unknown]>
+		| Iterable<{ keys: Iterable<string>; through: number }>,
+	maybeAck?: Iterable<{ keys: Iterable<string>; through: number }>
 ): Promise<void> {
+	const isScoped = typeof pidOrState === 'string';
+	const pid = isScoped ? pidOrState : LOCAL_PROFILE_ID;
+	const state = (isScoped ? stateOrAck : pidOrState) as Iterable<
+		readonly [key: string, value: unknown]
+	>;
+	const acknowledgements = (isScoped ? (maybeAck ?? []) : (stateOrAck ?? [])) as Iterable<{
+		keys: Iterable<string>;
+		through: number;
+	}>;
+
 	const entries = [...state];
 	const acknowledged = [...acknowledgements].map(({ keys, through }) => ({
-		keys: [...new Set(keys)].filter(Boolean),
+		keys: uniqueOutboxKeys(keys),
 		through
 	}));
 	await enqueueDeviceWrite(async () => {
-		const db = await getDB();
+		const db = await getDB(pid);
 		const tx = db.transaction([SYNC_STATE_STORE, SYNC_OUTBOX_STORE], 'readwrite');
 		try {
 			const syncState = tx.objectStore(SYNC_STATE_STORE);
@@ -797,10 +955,213 @@ export async function commitSyncControl(
 			try {
 				tx.abort();
 			} catch {
-				// The transaction may already have aborted after a failed request.
+				// aborted
 			}
 			await tx.done.catch(() => undefined);
 			throw error;
 		}
 	});
+}
+
+// --- Profiles ---------------------------------------------------------------
+
+function isStoredProfile(value: unknown): value is StoredProfile {
+	if (!value || typeof value !== 'object') return false;
+	const row = value as Partial<StoredProfile>;
+	return (
+		typeof row.id === 'string' &&
+		typeof row.name === 'string' &&
+		typeof row.syncKey === 'string' &&
+		typeof row.createdAt === 'number'
+	);
+}
+
+export async function listStoredProfiles(): Promise<StoredProfile[]> {
+	if (typeof localStorage === 'undefined') return [];
+	try {
+		const raw = localStorage.getItem(LS_PROFILES) ?? localStorage.getItem(LS_PROFILES_LEGACY);
+		if (!raw) return [];
+		const parsed = JSON.parse(raw);
+		if (Array.isArray(parsed)) return parsed.filter(isStoredProfile);
+	} catch {
+		// fall back to empty list
+	}
+	return [];
+}
+
+export async function putStoredProfile(profile: StoredProfile): Promise<void> {
+	if (typeof localStorage === 'undefined') return;
+	const current = await listStoredProfiles();
+	const index = current.findIndex((p) => p.id === profile.id);
+	const stored: StoredProfile = {
+		id: String(profile.id),
+		name: String(profile.name),
+		syncKey: String(profile.syncKey),
+		createdAt: Number(profile.createdAt) || Date.now(),
+		...(profile.dbName ? { dbName: profile.dbName } : {})
+	};
+	if (index >= 0) {
+		current[index] = stored;
+	} else {
+		current.push(stored);
+	}
+	try {
+		localStorage.setItem(LS_PROFILES, JSON.stringify(current));
+	} catch {
+		// local storage quota or error
+	}
+}
+
+export async function deleteProfileDatabase(pid: string): Promise<void> {
+	const dbName = resolveDbName(pid);
+	const p = dbPromises.get(dbName);
+	if (p) {
+		dbPromises.delete(dbName);
+		try {
+			const db = await p;
+			db.close();
+		} catch {}
+	}
+	if (typeof indexedDB !== 'undefined') {
+		await new Promise<void>((resolve, reject) => {
+			const req = indexedDB.deleteDatabase(dbName);
+			req.onsuccess = () => resolve();
+			req.onerror = () => reject(req.error);
+			req.onblocked = () => resolve();
+		});
+	}
+}
+
+export async function deleteStoredProfile(id: string): Promise<void> {
+	if (typeof localStorage !== 'undefined') {
+		const current = await listStoredProfiles();
+		const next = current.filter((p) => p.id !== id);
+		try {
+			localStorage.setItem(LS_PROFILES, JSON.stringify(next));
+		} catch {}
+	}
+	await deleteProfileDatabase(id);
+}
+
+export async function copyProfileNamespace(fromPid: string, toPid: string): Promise<void> {
+	const fromDb = await getDB(fromPid);
+	const toDb = await getDB(toPid);
+
+	// Notes
+	const notes = (await fromDb.getAll(NOTES_STORE)) as Note[];
+	if (notes.length > 0) {
+		const tx = toDb.transaction(NOTES_STORE, 'readwrite');
+		for (const n of notes) tx.objectStore(NOTES_STORE).put(plainNote(n));
+		await tx.done;
+	}
+
+	// Labels
+	const labels = (await fromDb.getAll(LABELS_STORE)) as Label[];
+	if (labels.length > 0) {
+		const tx = toDb.transaction(LABELS_STORE, 'readwrite');
+		for (const l of labels) tx.objectStore(LABELS_STORE).put(plainLabel(l));
+		await tx.done;
+	}
+
+	// Images
+	const imageKeys = (await fromDb.getAllKeys(IMAGES_STORE)) as string[];
+	if (imageKeys.length > 0) {
+		const entries: Array<{ key: string; blob: unknown }> = [];
+		for (const key of imageKeys) {
+			const blob = await fromDb.get(IMAGES_STORE, key);
+			if (blob) entries.push({ key, blob });
+		}
+		if (entries.length > 0) {
+			const tx = toDb.transaction(IMAGES_STORE, 'readwrite');
+			for (const { key, blob } of entries) {
+				tx.objectStore(IMAGES_STORE).put(blob, key);
+			}
+			await tx.done;
+		}
+	}
+
+	// Sync state
+	const stateKeys = (await fromDb.getAllKeys(SYNC_STATE_STORE)) as string[];
+	if (stateKeys.length > 0) {
+		const entries: Array<{ key: string; val: unknown }> = [];
+		for (const key of stateKeys) {
+			const val = await fromDb.get(SYNC_STATE_STORE, key);
+			if (val !== undefined) {
+				entries.push({ key, val });
+				const { baseKey } = extractPidFromStateKey(key);
+				if (toPid && toPid !== LOCAL_PROFILE_ID) {
+					entries.push({ key: scopedStateKey(baseKey, toPid), val });
+				}
+			}
+		}
+		if (entries.length > 0) {
+			const tx = toDb.transaction(SYNC_STATE_STORE, 'readwrite');
+			for (const { key, val } of entries) {
+				tx.objectStore(SYNC_STATE_STORE).put(val, key);
+			}
+			await tx.done;
+		}
+	}
+
+	// Outbox
+	const outboxKeys = (await fromDb.getAllKeys(SYNC_OUTBOX_STORE)) as string[];
+	if (outboxKeys.length > 0) {
+		const entries: Array<{ key: string; val: unknown }> = [];
+		for (const key of outboxKeys) {
+			const val = await fromDb.get(SYNC_OUTBOX_STORE, key);
+			if (val !== undefined) entries.push({ key, val });
+		}
+		if (entries.length > 0) {
+			const tx = toDb.transaction(SYNC_OUTBOX_STORE, 'readwrite');
+			for (const { key, val } of entries) {
+				tx.objectStore(SYNC_OUTBOX_STORE).put(val, key);
+			}
+			await tx.done;
+		}
+	}
+}
+
+export async function unlinkProfileToNamespace(fromPid: string, toPid: string): Promise<void> {
+	if (fromPid === toPid) return;
+	await copyProfileNamespace(fromPid, toPid);
+}
+
+export async function clearProfileNamespace(pid: string): Promise<void> {
+	await clearAllNotes(pid);
+	await clearAllLabels(pid);
+	await enqueueDeviceWrite(async () => {
+		const db = await getDB(pid);
+		await db.clear(SYNC_OUTBOX_STORE);
+	});
+}
+
+export async function namespaceHasData(pid: string): Promise<boolean> {
+	const db = await getDB(pid);
+	const noteCount = await db.count(NOTES_STORE);
+	if (noteCount > 0) return true;
+	const labelCount = await db.count(LABELS_STORE);
+	return labelCount > 0;
+}
+
+export async function estimateProfileBytes(pid: string): Promise<number> {
+	const db = await getDB(pid);
+	let bytes = 0;
+	const notes = (await db.getAll(NOTES_STORE)) as Note[];
+	for (const note of notes) {
+		bytes += JSON.stringify(note).length;
+	}
+	const labels = (await db.getAll(LABELS_STORE)) as Label[];
+	for (const label of labels) {
+		bytes += JSON.stringify(label).length;
+	}
+	const images = await db.getAll(IMAGES_STORE);
+	for (const img of images) {
+		if (img instanceof Blob) bytes += img.size;
+		else if (img && typeof img === 'object') {
+			const rec = img as { bytes?: Uint8Array; blob?: Blob };
+			if (rec.blob instanceof Blob) bytes += rec.blob.size;
+			else if (rec.bytes instanceof Uint8Array) bytes += rec.bytes.byteLength;
+		}
+	}
+	return bytes;
 }

@@ -28,6 +28,11 @@
 		if (disabled || event.pointerType !== 'touch') return;
 		start = { x: event.clientX, y: event.clientY, offset: open ? -144 : 0 };
 		swiped = false;
+		try {
+			(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+		} catch {
+			// The gesture still works when a browser rejects pointer capture.
+		}
 	}
 	function move(event: PointerEvent) {
 		if (!start) return;
@@ -41,7 +46,6 @@
 		dragging = true;
 		swiped = true;
 		offset = Math.max(-144, Math.min(0, start.offset + dx));
-		(event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
 	}
 	function end() {
 		if (dragging) open = offset < -48;

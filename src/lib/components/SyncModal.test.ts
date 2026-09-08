@@ -89,6 +89,33 @@ describe('SyncModal profile interactions', () => {
 		expect(screen.getByRole('button', { name: 'Main is active' })).toBeTruthy();
 	});
 
+	it('keeps a swipe with the row it started on when the finger drifts onto another row', async () => {
+		const switchTo = vi.spyOn(profileCoordinator, 'switchTo');
+		render(SyncModal, { props: { onClose: vi.fn() } });
+		const row = screen.getByRole('button', { name: 'Switch to Side' });
+		const neighbour = screen.getByRole('button', { name: 'Main is active' });
+		const drawerOffset = () =>
+			(row.closest('.row') as HTMLElement).style.getPropertyValue('--swipe-offset');
+		async function pointer(target: Element, type: string, x: number, y: number) {
+			const event = new Event(type, { bubbles: true });
+			Object.assign(event, { pointerType: 'touch', pointerId: 1, clientX: x, clientY: y });
+			await fireEvent(target, event);
+		}
+
+		await pointer(row, 'pointerdown', 200, 100);
+		// Drifting down first reads as a scroll, so the row stays put but the
+		// gesture is not thrown away.
+		await pointer(row, 'pointermove', 196, 140);
+		expect(drawerOffset()).toBe('0px');
+		// Pulling left now counts, even though the finger sits over another row.
+		await pointer(neighbour, 'pointermove', 90, 150);
+		expect(drawerOffset()).toBe('-110px');
+		await pointer(neighbour, 'pointerup', 90, 150);
+
+		expect(drawerOffset()).toBe('-152px');
+		expect(switchTo).not.toHaveBeenCalled();
+	});
+
 	it('renames a workspace inline and keeps the row editable when saving fails', async () => {
 		const rename = vi
 			.spyOn(syncStore, 'renameProfile')

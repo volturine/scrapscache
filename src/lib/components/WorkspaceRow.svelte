@@ -33,6 +33,8 @@
 	const RUBBER_BAND = 0.25;
 	// Pixels per millisecond that count as a flick rather than a drag.
 	const FLICK_VELOCITY = 0.4;
+	// Horizontal travel that turns a touch into a swipe.
+	const SLOP = 8;
 
 	let mode = $state<'idle' | 'rename' | 'confirm'>('idle');
 	let working = $state<'rename' | 'unlink' | null>(null);
@@ -73,17 +75,15 @@
 		offset = next ? -ACTIONS_WIDTH : 0;
 	}
 
+	// The gesture belongs to the row it started on. Everything after the press is
+	// tracked on the document, so the drag survives the finger wandering onto a
+	// neighbouring row or off the list entirely.
 	function down(event: PointerEvent) {
 		if (locked || mode !== 'idle' || event.pointerType !== 'touch') return;
 		start = { x: event.clientX, y: event.clientY, offset: open ? -ACTIONS_WIDTH : 0 };
 		last = { x: event.clientX, time: event.timeStamp };
 		velocity = 0;
 		swiped = false;
-		try {
-			(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-		} catch {
-			// The gesture still works when a browser rejects pointer capture.
-		}
 	}
 
 	function move(event: PointerEvent) {
@@ -91,12 +91,10 @@
 		const dx = event.clientX - start.x;
 		const dy = event.clientY - start.y;
 		if (!dragging) {
-			// Leave vertical gestures to the scroller.
-			if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 8) {
-				start = null;
-				return;
-			}
-			if (Math.abs(dx) < 8) return;
+			// Wait for a clear sideways pull rather than giving up on the gesture:
+			// a swipe that drifts down first still counts once it turns left. The
+			// browser cancels this pointer if it decides the list should scroll.
+			if (Math.abs(dx) < SLOP || Math.abs(dy) > Math.abs(dx) * 2) return;
 			dragging = true;
 			swiped = true;
 		}
@@ -135,6 +133,7 @@
 	}
 
 	function cancelDrag() {
+		if (!start) return;
 		dragging = false;
 		armed = false;
 		start = null;
@@ -196,7 +195,12 @@
 	}
 </script>
 
-<svelte:document onpointerdown={onDocumentPointerDown} />
+<svelte:document
+	onpointerdown={onDocumentPointerDown}
+	onpointermove={move}
+	onpointerup={end}
+	onpointercancel={cancelDrag}
+/>
 
 <div
 	bind:this={rowElement}
@@ -310,9 +314,6 @@
 				disabled={locked}
 				aria-label={active ? `${name} is active` : `Switch to ${name}`}
 				onpointerdown={down}
-				onpointermove={move}
-				onpointerup={end}
-				onpointercancel={cancelDrag}
 				onclick={() => {
 					if (swiped) {
 						swiped = false;

@@ -9,7 +9,7 @@
 	import { profileCoordinator } from '$lib/stores/profiles.svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { buildProfileNotesExport } from '$lib/profiles';
-	import { estimateProfileBytes } from '$lib/db/idb';
+	import { estimateProfileBytes, LOCAL_PROFILE_ID } from '$lib/db/idb';
 	import { unregisterReminderDevice } from '$lib/reminderWake';
 	import { downloadJSON } from '$lib/utils';
 	import { Cloud, Download, Pencil, Trash2, X } from '@lucide/svelte';
@@ -69,7 +69,7 @@
 	let sizes = $state<Record<string, number>>({});
 	$effect(() => {
 		void syncStore.lastSync;
-		const ids = syncStore.profiles.map((profile) => profile.id);
+		const ids = [LOCAL_PROFILE_ID, ...syncStore.profiles.map((profile) => profile.id)];
 		let cancelled = false;
 		void Promise.all(
 			ids.map(async (id) => {
@@ -103,7 +103,10 @@
 	async function exportProfile(id: string) {
 		error = '';
 		await runOperation('export', 'Could not export that sync key\u2019s notes.', async () => {
-			const name = syncStore.profiles.find((profile) => profile.id === id)?.name ?? 'profile';
+			const name =
+				id === LOCAL_PROFILE_ID
+					? 'anonymous-workspace'
+					: (syncStore.profiles.find((profile) => profile.id === id)?.name ?? 'profile');
 			const backup = await buildProfileNotesExport(id);
 			if (!backup) {
 				info = 'That sync key has no notes stored on this device yet.';
@@ -294,12 +297,12 @@
 	async function switchProfile(id: string) {
 		error = '';
 		info = '';
-		const result = await runOperation('switch', 'Could not switch sync key', () =>
+		const result = await runOperation('switch', 'Could not switch workspace', () =>
 			profileCoordinator.switchTo(id)
 		);
 		if (!result) return;
 		if (!result.success) {
-			error = friendlyError(result.error, 'Could not switch sync key');
+			error = friendlyError(result.error, 'Could not switch workspace');
 			return;
 		}
 		onClose();
@@ -555,9 +558,54 @@
 					<div class="space-y-3">
 						{#if syncStore.profiles.length}
 							<p class="text-xs font-medium tracking-wide text-[var(--scrapscache-text-muted)]">
-								Saved sync keys on this device
+								Workspaces on this device
 							</p>
 							<div class="space-y-1.5">
+								<div
+									class="relative flex items-center gap-2 rounded-lg border border-[var(--scrapscache-border)] px-3 py-2"
+								>
+									<button
+										type="button"
+										class="absolute inset-0 rounded-lg touch-manipulation disabled:cursor-not-allowed"
+										disabled={busy}
+										title={syncStore.activePid !== LOCAL_PROFILE_ID && notesStore.syncing
+											? 'Wait for the current sync to finish'
+											: undefined}
+										aria-label={syncStore.activePid === LOCAL_PROFILE_ID
+											? 'Anonymous workspace is active'
+											: 'Switch to Anonymous workspace'}
+										onclick={() => {
+											if (syncStore.activePid !== LOCAL_PROFILE_ID)
+												void switchProfile(LOCAL_PROFILE_ID);
+										}}
+									></button>
+									<span class="pointer-events-none relative min-w-0 flex-1">
+										<span class="block truncate text-sm">Anonymous workspace</span>
+										{#if sizeLabel(LOCAL_PROFILE_ID)}
+											<span class="block text-xs text-[var(--scrapscache-text-muted)]"
+												>{sizeLabel(LOCAL_PROFILE_ID)} stored locally</span
+											>
+										{/if}
+										<span
+											class="block text-xs {syncStore.activePid === LOCAL_PROFILE_ID
+												? 'font-medium text-[var(--scrapscache-success)]'
+												: 'text-[var(--scrapscache-text-muted)]'}"
+										>
+											{syncStore.activePid === LOCAL_PROFILE_ID
+												? 'Active — not synced'
+												: 'Not synced — tap to switch'}
+										</span>
+									</span>
+									<button
+										type="button"
+										onclick={() => void exportProfile(LOCAL_PROFILE_ID)}
+										disabled={busy}
+										class="icon-btn relative z-10 h-7 w-7 shrink-0"
+										aria-label="Export notes of Anonymous workspace"
+									>
+										<Download class="h-3.5 w-3.5" aria-hidden="true" />
+									</button>
+								</div>
 								{#each syncStore.profiles as profile (profile.id)}
 									{#if editingId === profile.id}
 										<div

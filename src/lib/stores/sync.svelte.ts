@@ -408,6 +408,22 @@ export class SyncStore {
 		this.restoreStatus(profile.id);
 	}
 
+	/** Activate the unsynced device-local namespace without removing any saved sync keys. */
+	activateLocalWorkspace(): void {
+		this.authenticationGeneration += 1;
+		this.pendingSessions.clear();
+		this.session = null;
+		this.account = null;
+		this.lastError = null;
+		this.progress = null;
+		this.usage = null;
+		this.syncedCursor = 0;
+		setLastActiveProfileId(LOCAL_PROFILE_ID);
+		this.clearLegacyAccountStorage();
+		this.restoreStatus(LOCAL_PROFILE_ID);
+		this.onAccountChange?.();
+	}
+
 	private activateAccount(account: SyncAccount): void {
 		this.authenticationGeneration += 1;
 		this.pendingSessions.clear();

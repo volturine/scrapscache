@@ -116,4 +116,35 @@ describe('profile creation handover', () => {
 			'unrelated-local-note'
 		]);
 	});
+
+	it('switches to the anonymous workspace without removing or syncing saved profiles', async () => {
+		const active = {
+			id: 'switch-from-profile',
+			name: 'Active',
+			syncKey: createSyncIdentity().syncKey,
+			createdAt: 1
+		};
+		syncStore.profiles = [active];
+		syncStore.activateProfile(active);
+		await putNote(active.id, note('synced-workspace-note'));
+		await putNote(LOCAL_PROFILE_ID, note('anonymous-workspace-note'));
+
+		vi.spyOn(notesStore, 'waitForPendingProfileWrites').mockResolvedValue();
+		const reload = vi.spyOn(notesStore, 'reloadForProfile').mockResolvedValue();
+		const sync = vi.spyOn(notesStore, 'syncWithCloudManual').mockResolvedValue(true);
+
+		const result = await new ProfileCoordinator().switchTo(LOCAL_PROFILE_ID);
+
+		expect(result).toEqual({ success: true });
+		expect(syncStore.profiles).toEqual([active]);
+		expect(syncStore.activePid).toBe(LOCAL_PROFILE_ID);
+		expect(reload).toHaveBeenCalledTimes(1);
+		expect(sync).not.toHaveBeenCalled();
+		expect((await getAllNotesMetadata(active.id)).map(({ id }) => id)).toEqual([
+			'synced-workspace-note'
+		]);
+		expect((await getAllNotesMetadata(LOCAL_PROFILE_ID)).map(({ id }) => id)).toContain(
+			'anonymous-workspace-note'
+		);
+	});
 });

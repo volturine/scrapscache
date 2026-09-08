@@ -97,7 +97,14 @@ export class ProfileCoordinator {
 		if (blocked) return { success: false, error: blocked };
 		this.switching = true;
 		try {
-			const changed = await this.exclusive(async () => {
+			const shouldSync = await this.exclusive(async () => {
+				if (profileId === LOCAL_PROFILE_ID) {
+					if (syncStore.activePid === LOCAL_PROFILE_ID) return false;
+					await notesStore.waitForPendingProfileWrites();
+					syncStore.activateLocalWorkspace();
+					await notesStore.reloadForProfile();
+					return false;
+				}
 				const target = syncStore.profiles.find((profile) => profile.id === profileId);
 				if (!target) throw new Error('That sync key is no longer on this device');
 				if (target.id === syncStore.activeProfile?.id) return false;
@@ -105,7 +112,7 @@ export class ProfileCoordinator {
 				await this.activate(target);
 				return true;
 			});
-			if (changed) {
+			if (shouldSync) {
 				const synced = await notesStore.syncWithCloudManual();
 				if (!synced)
 					return {

@@ -60,6 +60,27 @@ describe('SyncModal profile interactions', () => {
 		await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
 	});
 
+	it('shows and switches to the anonymous workspace without treating it as a sync key', async () => {
+		vi.spyOn(profileCoordinator, 'switchTo').mockImplementation(async (id) => {
+			expect(id).toBe('device-local');
+			syncStore.activateLocalWorkspace();
+			return { success: true };
+		});
+		const onClose = vi.fn();
+		render(SyncModal, { props: { onClose } });
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Switch sync key' }));
+		expect(screen.getByText('Anonymous workspace')).toBeTruthy();
+		expect(screen.getByText('Not synced — tap to switch')).toBeTruthy();
+		expect(screen.queryByRole('button', { name: 'Rename Anonymous workspace' })).toBeNull();
+		expect(screen.queryByRole('button', { name: 'Remove Anonymous workspace' })).toBeNull();
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Switch to Anonymous workspace' }));
+		await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+		expect(syncStore.profiles).toEqual([main, side]);
+		expect(syncStore.activePid).toBe('device-local');
+	});
+
 	it('keeps sync screen open and shows error if switch fails', async () => {
 		vi.spyOn(profileCoordinator, 'switchTo').mockResolvedValueOnce({
 			success: false,

@@ -63,6 +63,10 @@ describe('SyncModal profile interactions', () => {
 		const switchTo = vi.spyOn(profileCoordinator, 'switchTo');
 		render(SyncModal, { props: { onClose: vi.fn() } });
 		const row = screen.getByRole('button', { name: 'Switch to Side' });
+		// How far the row has been pulled aside is the only signal of the drawer,
+		// since a swipe is the sole way to open it.
+		const drawerOffset = () =>
+			(row.closest('.row') as HTMLElement).style.getPropertyValue('--swipe-offset');
 		async function pointer(type: string, x: number, y: number) {
 			const event = new Event(type, { bubbles: true });
 			Object.assign(event, { pointerType: 'touch', pointerId: 1, clientX: x, clientY: y });
@@ -71,17 +75,14 @@ describe('SyncModal profile interactions', () => {
 		await pointer('pointerdown', 200, 100);
 		await pointer('pointermove', 190, 160);
 		await pointer('pointerup', 190, 160);
-		expect(
-			screen.getByRole('button', { name: 'Actions for Side' }).getAttribute('aria-expanded')
-		).toBe('false');
+		expect(drawerOffset()).toBe('0px');
 		await pointer('pointerdown', 200, 100);
 		await pointer('pointermove', 70, 105);
 		await pointer('pointerup', 70, 105);
+		expect(drawerOffset()).toBe('-152px');
 		await fireEvent.click(row);
 		expect(switchTo).not.toHaveBeenCalled();
-		expect(
-			screen.getByRole('button', { name: 'Actions for Side' }).getAttribute('aria-expanded')
-		).toBe('true');
+		expect(drawerOffset()).toBe('-152px');
 		await fireEvent.click(screen.getByRole('button', { name: 'Rename Side' }));
 		expect(screen.getByRole('textbox', { name: 'Workspace name' })).toBeTruthy();
 		// The list stays put: renaming happens on the row, not on its own screen.

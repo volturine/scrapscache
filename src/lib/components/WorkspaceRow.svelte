@@ -1,14 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import {
-		Check,
-		ChevronLeft,
-		ChevronRight,
-		CloudOff,
-		Pencil,
-		TriangleAlert,
-		X
-	} from '@lucide/svelte';
+	import { Check, CloudOff, Pencil, TriangleAlert, X } from '@lucide/svelte';
 
 	let {
 		name,
@@ -336,19 +328,6 @@
 					<span class="caption">{caption}</span>
 				</span>
 			</button>
-			<button
-				type="button"
-				class="more"
-				disabled={locked}
-				aria-label="Actions for {name}"
-				aria-expanded={open}
-				onclick={() => settle(!open)}
-			>
-				{#if open}<ChevronRight size={19} aria-hidden="true" />{:else}<ChevronLeft
-						size={19}
-						aria-hidden="true"
-					/>{/if}
-			</button>
 		{/if}
 	</div>
 </div>
@@ -522,13 +501,6 @@
 	.on-narrow {
 		display: none;
 	}
-	.more {
-		display: none;
-		width: 34px;
-		flex-shrink: 0;
-		place-items: center;
-		color: var(--scrapscache-text-muted);
-	}
 
 	@media (max-width: 640px) {
 		/* Phones: the row slides to uncover the actions underneath it. */
@@ -601,10 +573,7 @@
 			opacity: 0;
 		}
 		.select {
-			padding-right: 4px;
-		}
-		.more {
-			display: grid;
+			padding-right: 12px;
 		}
 		.panel.confirm {
 			flex-wrap: wrap;

@@ -130,12 +130,17 @@ export const LOCAL_PID = LOCAL_PROFILE_ID;
  * so registering does not look like data loss.
  */
 export async function adoptLocalDatasetInto(pid: string): Promise<void> {
-	await copyProfileNamespace(LOCAL_PID, pid);
+	await copyProfileDatasetInto(LOCAL_PID, pid);
+}
+
+/** Copy one workspace's device-local dataset into a newly created profile. */
+export async function copyProfileDatasetInto(fromPid: string, toPid: string): Promise<void> {
+	await copyProfileNamespace(fromPid, toPid);
 	try {
-		const localNotes = readNotesMirror(LOCAL_PID);
-		if (localNotes.length) writeNotesMirror(localNotes, pid);
-		const localLabels = readLabelsMirror(LOCAL_PID);
-		if (localLabels.length) writeLabelsMirror(localLabels, pid);
+		const notes = readNotesMirror(fromPid);
+		if (notes.length) writeNotesMirror(notes, toPid);
+		const labels = readLabelsMirror(fromPid);
+		if (labels.length) writeLabelsMirror(labels, toPid);
 	} catch {}
 }
 

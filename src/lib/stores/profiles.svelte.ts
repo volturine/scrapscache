@@ -6,7 +6,7 @@ import { syncStore, PROFILE_META_KEY } from './sync.svelte';
 import { notesStore, SYNC_LOCK } from './notes.svelte';
 import { clearNotesMirror } from '$lib/noteStorage';
 import {
-	adoptLocalDatasetInto,
+	copyProfileDatasetInto,
 	nextProfileName,
 	profileForSyncKey,
 	type StoredProfile
@@ -43,21 +43,35 @@ export class ProfileCoordinator {
 
 	/** Create a brand-new sync key and make it this window's active profile. */
 	async create(name?: string): Promise<{ success: boolean; error?: string }> {
+		const sourcePid = syncStore.activePid === LOCAL_PROFILE_ID ? LOCAL_PROFILE_ID : null;
+		return this.createWithDataset(name, sourcePid);
+	}
+
+	/** Create a new key seeded with the active synced workspace's current device data. */
+	async createFromActive(name?: string): Promise<{ success: boolean; error?: string }> {
+		const source = syncStore.activeProfile;
+		if (!source) return { success: false, error: 'No synced workspace is active' };
+		return this.createWithDataset(name, source.id);
+	}
+
+	private async createWithDataset(
+		name: string | undefined,
+		sourcePid: string | null
+	): Promise<{ success: boolean; error?: string }> {
 		const blocked = this.guard();
 		if (blocked) return { success: false, error: blocked };
 		this.switching = true;
 		try {
-			const adoptsLocalDataset = syncStore.activePid === LOCAL_PROFILE_ID;
 			const created = await this.exclusive(async () => {
 				await notesStore.waitForPendingProfileWrites();
 				const result = await syncStore.register(name);
 				if (!result.success || !result.profile)
 					return { success: false, error: result.error ?? 'Registration failed' };
 				try {
-					// Creating from the anonymous workspace adopts its notes even when other
-					// saved keys remain. Creating from a synced profile starts blank.
-					if (adoptsLocalDataset) {
-						await adoptLocalDatasetInto(result.profile.id);
+					// Normal creation from a synced profile starts blank. Recovery creation
+					// and creation from the anonymous workspace copy their selected source.
+					if (sourcePid) {
+						await copyProfileDatasetInto(sourcePid, result.profile.id);
 					} else {
 						clearNotesMirror(result.profile.id);
 					}
@@ -85,6 +99,40 @@ export class ProfileCoordinator {
 			return {
 				success: false,
 				error: err instanceof Error ? err.message : 'Could not switch profiles'
+			};
+		} finally {
+			this.switching = false;
+		}
+	}
+
+	/** Forget local sync bookkeeping and fully reconcile the active workspace using its same key. */
+	async forceResync(): Promise<{ success: boolean; error?: string }> {
+		const blocked = this.guard();
+		if (blocked) return { success: false, error: blocked };
+		const account = syncStore.account;
+		const profileId = syncStore.activeProfile?.id;
+		if (!account || !profileId) return { success: false, error: 'No synced workspace is active' };
+		this.switching = true;
+		try {
+			await this.exclusive(async () => {
+				await notesStore.waitForPendingProfileWrites();
+				if (syncStore.account !== account || syncStore.activeProfile?.id !== profileId) {
+					throw new Error('The active workspace changed before recovery started');
+				}
+				await syncStore.clearAccountControlPlane(account.accountId, profileId);
+			});
+			const synced = await notesStore.syncWithCloudManual();
+			return synced
+				? { success: true }
+				: {
+						success: false,
+						error:
+							syncStore.lastError ?? notesStore.lastPersistError ?? 'Full resync did not finish'
+					};
+		} catch (err) {
+			return {
+				success: false,
+				error: err instanceof Error ? err.message : 'Could not force a full resync'
 			};
 		} finally {
 			this.switching = false;

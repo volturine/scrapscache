@@ -109,6 +109,44 @@ describe('SyncModal profile interactions', () => {
 		expect(button.textContent).toContain('Sync now');
 	});
 
+	it('confirms and runs a full resync using the active key', async () => {
+		const force = vi.spyOn(profileCoordinator, 'forceResync').mockResolvedValue({ success: true });
+		render(SyncModal, { props: { onClose: vi.fn() } });
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Sync recovery options' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Force full resync with this key' }));
+		expect(force).not.toHaveBeenCalled();
+		await fireEvent.click(screen.getByRole('button', { name: 'Force full resync' }));
+
+		await waitFor(() => expect(force).toHaveBeenCalledTimes(1));
+		expect(
+			screen.getByText('Full encrypted resync completed using the same sync key.')
+		).toBeTruthy();
+	});
+
+	it('creates a replacement key from the current synced workspace', async () => {
+		const createReplacement = vi
+			.spyOn(profileCoordinator, 'createFromActive')
+			.mockResolvedValue({ success: true });
+		render(SyncModal, { props: { onClose: vi.fn() } });
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Sync recovery options' }));
+		await fireEvent.click(
+			screen.getByRole('button', { name: 'Create new sync key from these notes' })
+		);
+		await fireEvent.input(screen.getByLabelText('Replacement sync key name'), {
+			target: { value: 'Recovered notes' }
+		});
+		await fireEvent.click(screen.getByRole('button', { name: 'Create replacement sync key' }));
+
+		await waitFor(() => expect(createReplacement).toHaveBeenCalledWith('Recovered notes'));
+		expect(
+			screen.getByText(
+				'Replacement sync key created from this workspace. The previous key is still saved.'
+			)
+		).toBeTruthy();
+	});
+
 	it('shows syncing only for a sync started from the modal', async () => {
 		const manualSync = deferred<boolean>();
 		vi.spyOn(notesStore, 'syncWithCloudManual').mockReturnValueOnce(manualSync.promise);

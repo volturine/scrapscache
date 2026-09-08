@@ -24,7 +24,7 @@
 	};
 
 	let { onClose }: { onClose: () => void } = $props();
-	let mode = $state<'menu' | 'register' | 'link' | 'waiting' | 'linked'>(
+	let mode = $state<'menu' | 'register' | 'link' | 'waiting' | 'linked' | 'recover' | 'replace'>(
 		syncStore.isLoggedIn ? 'linked' : 'menu'
 	);
 	let code = $state('');
@@ -40,7 +40,9 @@
 		| 'sync'
 		| 'switch'
 		| 'unlink'
-		| 'delete';
+		| 'delete'
+		| 'force-sync'
+		| 'replace-key';
 	let operation = $state<Operation | null>(null);
 	let copyFlash = $state(false);
 	let copyFlashTimer: ReturnType<typeof setTimeout> | null = null;
@@ -52,6 +54,7 @@
 	let editingId = $state<string | null>(null);
 	let editName = $state('');
 	let removingId = $state<string | null>(null);
+	let forceConfirm = $state(false);
 
 	let syncError = $derived(syncStore.lastError ?? '');
 	let quotaStatus = $derived(resolveSyncStatus(syncError, syncStore.usage));
@@ -60,7 +63,7 @@
 	// Background pulls and outbox retries are intentionally silent. They still
 	// block a dataset handover, but only a sync started from this modal owns its
 	// visible "Syncing" state.
-	const syncing = $derived(operation === 'sync');
+	const syncing = $derived(operation === 'sync' || operation === 'force-sync');
 	const busy = $derived(operation !== null || notesStore.syncing || profileCoordinator.switching);
 	const handoverBlocked = $derived(notesStore.syncing || profileCoordinator.switching);
 
@@ -177,6 +180,40 @@
 		mode = 'linked';
 		if (result.error)
 			error = friendlyError(result.error, 'Created, but the first sync did not finish');
+	}
+
+	async function createReplacement() {
+		error = '';
+		info = '';
+		const result = await runOperation('replace-key', 'Could not create replacement sync key', () =>
+			profileCoordinator.createFromActive(newName)
+		);
+		if (!result) return;
+		if (!result.success) {
+			error = friendlyError(result.error, 'Could not create replacement sync key');
+			return;
+		}
+		newName = '';
+		mode = 'linked';
+		info = 'Replacement sync key created from this workspace. The previous key is still saved.';
+		if (result.error)
+			error = friendlyError(result.error, 'Created, but the first sync did not finish');
+	}
+
+	async function forceResync() {
+		error = '';
+		info = '';
+		const result = await runOperation('force-sync', 'Could not force a full resync', () =>
+			profileCoordinator.forceResync()
+		);
+		if (!result) return;
+		if (!result.success) {
+			error = friendlyError(result.error, 'Could not force a full resync');
+			return;
+		}
+		forceConfirm = false;
+		mode = 'linked';
+		info = 'Full encrypted resync completed using the same sync key.';
 	}
 
 	async function beginLink() {
@@ -494,6 +531,18 @@
 							class="w-full rounded-lg border border-[var(--scrapscache-border)] px-3 py-2.5 text-sm touch-manipulation"
 							>Switch sync key</button
 						>
+						<button
+							type="button"
+							onclick={() => {
+								mode = 'recover';
+								forceConfirm = false;
+								error = '';
+								info = '';
+							}}
+							disabled={busy}
+							class="w-full text-xs text-[var(--scrapscache-text-muted)] touch-manipulation"
+							>Sync recovery options</button
+						>
 						{#if syncStore.usage}
 							<div
 								aria-label="Sync storage usage"
@@ -553,6 +602,108 @@
 								>Delete cloud data</button
 							>
 						{/if}
+					</div>
+				{:else if mode === 'recover' && syncStore.account}
+					<div class="space-y-3">
+						<p class="text-sm text-[var(--scrapscache-text-muted)]">
+							Use these only when normal sync keeps failing. Notes on this device are preserved.
+						</p>
+						{#if forceConfirm}
+							<div class="scrapscache-status-warning rounded-[var(--scrapscache-radius-md)] p-3">
+								<p class="text-xs leading-relaxed">
+									Rebuild this profile’s local sync state and re-encrypt every record using the same
+									sync key? Existing cloud records will be reconciled before the rewrite.
+								</p>
+								<div class="mt-2 flex gap-2">
+									<button
+										type="button"
+										onclick={() => {
+											forceConfirm = false;
+										}}
+										disabled={busy}
+										class="flex-1 rounded border border-[var(--scrapscache-border)] px-2 py-1.5 text-xs"
+										>Cancel</button
+									>
+									<button
+										type="button"
+										onclick={() => void forceResync()}
+										disabled={busy}
+										class="scrapscache-button scrapscache-button-primary flex-1 px-2 py-1.5 text-xs font-medium"
+										>{operation === 'force-sync' ? 'Resyncing…' : 'Force full resync'}</button
+									>
+								</div>
+							</div>
+						{:else}
+							<button
+								type="button"
+								onclick={() => {
+									forceConfirm = true;
+								}}
+								disabled={busy}
+								class="scrapscache-button scrapscache-button-secondary w-full px-3 py-3 text-sm"
+								>Force full resync with this key</button
+							>
+						{/if}
+						<button
+							type="button"
+							onclick={() => {
+								mode = 'replace';
+								newName = '';
+								error = '';
+							}}
+							disabled={busy}
+							class="w-full rounded-lg border border-[var(--scrapscache-border)] px-3 py-3 text-sm touch-manipulation"
+							>Create new sync key from these notes</button
+						>
+						{#if error}<p class="text-sm text-[var(--scrapscache-danger)]" role="alert">
+								{error}
+							</p>{/if}
+						<button
+							type="button"
+							onclick={() => {
+								mode = 'linked';
+								forceConfirm = false;
+								error = '';
+							}}
+							disabled={busy}
+							class="w-full text-xs text-[var(--scrapscache-text-muted)] touch-manipulation"
+							>← Back</button
+						>
+					</div>
+				{:else if mode === 'replace' && syncStore.account}
+					<div class="space-y-3">
+						<p class="text-sm text-[var(--scrapscache-text-muted)]">
+							Create a fresh sync key containing this workspace’s current notes. The existing key
+							and its local workspace remain saved as a fallback.
+						</p>
+						<input
+							bind:value={newName}
+							placeholder="Name the replacement key (optional)"
+							maxlength="60"
+							class="scrapscache-input w-full px-3 py-2 text-sm"
+							aria-label="Replacement sync key name"
+							onkeydown={(event) => event.key === 'Enter' && void createReplacement()}
+						/>
+						{#if error}<p class="text-sm text-[var(--scrapscache-danger)]" role="alert">
+								{error}
+							</p>{/if}
+						<button
+							type="button"
+							onclick={() => void createReplacement()}
+							disabled={busy}
+							class="scrapscache-button scrapscache-button-primary w-full px-3 py-2 text-sm font-medium"
+							>{operation === 'replace-key' ? 'Creating…' : 'Create replacement sync key'}</button
+						>
+						<button
+							type="button"
+							onclick={() => {
+								mode = 'recover';
+								error = '';
+							}}
+							disabled={busy}
+							class="w-full text-xs text-[var(--scrapscache-text-muted)] touch-manipulation"
+							>← Back</button
+						>
 					</div>
 				{:else if mode === 'menu'}
 					<div class="space-y-3">

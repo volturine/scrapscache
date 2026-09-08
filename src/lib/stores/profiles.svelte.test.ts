@@ -117,6 +117,67 @@ describe('profile creation handover', () => {
 		]);
 	});
 
+	it('creates a replacement key from the active synced workspace without changing the source', async () => {
+		const active = {
+			id: 'replacement-source',
+			name: 'Source',
+			syncKey: createSyncIdentity().syncKey,
+			createdAt: 1
+		};
+		const created = {
+			id: 'replacement-created',
+			name: 'Replacement',
+			syncKey: createSyncIdentity().syncKey,
+			createdAt: 2
+		};
+		syncStore.profiles = [active];
+		syncStore.activateProfile(active);
+		await putNote(active.id, note('replacement-note'));
+
+		vi.spyOn(notesStore, 'waitForPendingProfileWrites').mockResolvedValue();
+		vi.spyOn(notesStore, 'reloadForProfile').mockResolvedValue();
+		vi.spyOn(notesStore, 'syncWithCloudManual').mockResolvedValue(true);
+		vi.spyOn(syncStore, 'queueOutbox').mockResolvedValue();
+		vi.spyOn(syncStore, 'register').mockImplementation(async () => {
+			syncStore.profiles = [active, created];
+			syncStore.activateProfile(created);
+			return { success: true, profile: created };
+		});
+
+		const result = await new ProfileCoordinator().createFromActive('Replacement');
+
+		expect(result).toEqual({ success: true });
+		expect((await getAllNotesMetadata(active.id)).map(({ id }) => id)).toEqual([
+			'replacement-note'
+		]);
+		expect((await getAllNotesMetadata(created.id)).map(({ id }) => id)).toEqual([
+			'replacement-note'
+		]);
+	});
+
+	it('clears only local control state before forcing a sync with the same profile', async () => {
+		const active = {
+			id: 'force-resync-profile',
+			name: 'Active',
+			syncKey: createSyncIdentity().syncKey,
+			createdAt: 1
+		};
+		syncStore.profiles = [active];
+		syncStore.activateProfile(active);
+
+		vi.spyOn(notesStore, 'waitForPendingProfileWrites').mockResolvedValue();
+		const clear = vi.spyOn(syncStore, 'clearAccountControlPlane').mockResolvedValue();
+		const sync = vi.spyOn(notesStore, 'syncWithCloudManual').mockResolvedValue(true);
+
+		const result = await new ProfileCoordinator().forceResync();
+
+		expect(result).toEqual({ success: true });
+		expect(clear).toHaveBeenCalledWith(syncStore.account?.accountId, active.id);
+		expect(sync).toHaveBeenCalledTimes(1);
+		expect(syncStore.profiles).toEqual([active]);
+		expect(syncStore.activeProfile).toEqual(active);
+	});
+
 	it('switches to the anonymous workspace without removing or syncing saved profiles', async () => {
 		const active = {
 			id: 'switch-from-profile',

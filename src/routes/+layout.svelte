@@ -12,7 +12,7 @@
 	import { reminderStore } from '$lib/stores/reminders.svelte';
 	import { preloadVapidPublicKey } from '$lib/reminderWake';
 	import { provideEditorActions } from '$lib/editorContext';
-	import { fade, fly } from 'svelte/transition';
+	import { Drawer } from '@ark-ui/svelte/drawer';
 	import { onMount } from 'svelte';
 	import { MediaQuery } from 'svelte/reactivity';
 	import { attachSyncCloudIndicator } from '$lib/syncCloudIndicator';
@@ -176,27 +176,32 @@
 			})}
 	>
 		{#if mobile.current}
-			{#if uiStore.sidebarOpen}
-				<button
-					type="button"
-					aria-label="Close sidebar"
+			<Drawer.Root
+				open={uiStore.sidebarOpen}
+				onOpenChange={(details) => {
+					uiStore.sidebarOpen = details.open;
+				}}
+				swipeDirection="start"
+				preventScroll={false}
+				lazyMount
+				unmountOnExit
+			>
+				<Drawer.Backdrop
 					data-sidebar-backdrop
+					aria-label="Close sidebar"
 					class="fixed inset-0 z-20 bg-black/30"
-					onclick={() => {
-						uiStore.sidebarOpen = false;
-					}}
-					transition:fade={{ duration: 150 }}
-				></button>
-				<div
-					class="fixed left-0 top-0 z-30 h-full w-72 border-r border-[var(--scrapscache-border)] bg-[var(--scrapscache-surface)]"
-					transition:fly={{ x: -288, duration: 200 }}
-					role="navigation"
-					aria-label="Sidebar"
-					data-sidebar-drawer
-				>
-					<Sidebar onNavigate={closeMobileSidebar} />
-				</div>
-			{/if}
+				/>
+				<Drawer.Positioner class="fixed left-0 top-0 z-30 h-full">
+					<Drawer.Content
+						class="h-full w-72 border-r border-[var(--scrapscache-border)] bg-[var(--scrapscache-surface)]"
+						role="navigation"
+						aria-label="Sidebar"
+						data-sidebar-drawer
+					>
+						<Sidebar onNavigate={closeMobileSidebar} />
+					</Drawer.Content>
+				</Drawer.Positioner>
+			</Drawer.Root>
 		{:else}
 			{#if uiStore.sidebarOpen}
 				<div class="w-64 shrink-0 border-r border-[var(--scrapscache-border)]">

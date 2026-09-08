@@ -60,6 +60,20 @@
 		return () => observer.disconnect();
 	});
 
+	async function saveCroppedPhoto(cropped: NoteImage) {
+		const currentImages = note.images ?? [];
+		const next = currentImages.map((img) => (img.id === cropped.id ? cropped : img));
+		notesStore.updateNote(note.id, { images: next });
+		await notesStore.flushNote(note.id);
+	}
+
+	async function deletePhoto(id: string) {
+		const currentImages = note.images ?? [];
+		const next = currentImages.filter((img) => img.id !== id);
+		notesStore.updateNote(note.id, { images: next });
+		await notesStore.flushNote(note.id);
+	}
+
 	async function focusImage(id: string, event: MouseEvent) {
 		event.stopPropagation();
 		await notesStore.ensureNoteAttachments(note.id);
@@ -151,14 +165,6 @@
 	{/each}
 </div>
 
-{#if links.length > 0}
-	<div class="mt-2 flex flex-col gap-2">
-		{#each links as url (url)}
-			<LinkPreview {url} />
-		{/each}
-	</div>
-{/if}
-
 {#if canvases.length > 0}
 	<div class="mt-2 grid gap-1.5" aria-label="Canvases">
 		{#each canvases as canvas (canvas.id)}
@@ -194,35 +200,6 @@
 	</div>
 {/if}
 
-{#if photos.length > 0 || pendingPhotos.length > 0}
-	<div class="mt-2 flex flex-wrap gap-1.5">
-		{#each photos as img (img.id)}
-			<button
-				type="button"
-				class="block max-w-full touch-manipulation overflow-hidden rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-				data-photo
-				onclick={(event) => focusImage(img.id, event)}
-				aria-label={`Open ${img.name ?? 'photo'}`}
-			>
-				<img
-					src={displayImageSrc(img)}
-					alt={img.name ?? 'Photo'}
-					class="max-h-32 max-w-full rounded-lg object-cover"
-					loading="lazy"
-					decoding="async"
-				/>
-			</button>
-		{/each}
-		{#each pendingPhotos as img (img.id)}
-			<div
-				class="h-24 w-24 animate-pulse rounded-lg bg-black/10 dark:bg-white/10"
-				role="img"
-				aria-label={`Loading ${img.name ?? 'photo'}`}
-			></div>
-		{/each}
-	</div>
-{/if}
-
 {#if files.length > 0}
 	<div class="mt-2 flex flex-col gap-1">
 		{#each files as file (file.id)}
@@ -246,6 +223,43 @@
 	</div>
 {/if}
 
+{#if links.length > 0}
+	<div class="mt-2 flex flex-col gap-2" aria-label="Links">
+		{#each links as url (url)}
+			<LinkPreview {url} />
+		{/each}
+	</div>
+{/if}
+
+{#if photos.length > 0 || pendingPhotos.length > 0}
+	<div class="mt-2 flex gap-1.5 overflow-x-auto" aria-label="Photos">
+		{#each photos as img (img.id)}
+			<button
+				type="button"
+				class="block shrink-0 touch-manipulation overflow-hidden rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+				data-photo
+				onclick={(event) => focusImage(img.id, event)}
+				aria-label={`Open ${img.name ?? 'photo'}`}
+			>
+				<img
+					src={displayImageSrc(img)}
+					alt={img.name ?? 'Photo'}
+					class="h-24 w-auto max-w-[10rem] rounded-lg object-cover"
+					loading="lazy"
+					decoding="async"
+				/>
+			</button>
+		{/each}
+		{#each pendingPhotos as img (img.id)}
+			<div
+				class="h-24 w-24 shrink-0 animate-pulse rounded-lg bg-black/10 dark:bg-white/10"
+				role="img"
+				aria-label={`Loading ${img.name ?? 'photo'}`}
+			></div>
+		{/each}
+	</div>
+{/if}
+
 <PhotoFullscreen
 	images={photos}
 	bind:activeIndex={
@@ -258,6 +272,8 @@
 			focusedImageId = index === null ? null : (photos[index]?.id ?? null);
 		}
 	}
+	onCrop={note.trashed ? undefined : saveCroppedPhoto}
+	onDelete={note.trashed ? undefined : deletePhoto}
 />
 {#if focusedCanvas}
 	<CanvasEditor

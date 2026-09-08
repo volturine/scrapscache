@@ -10,7 +10,7 @@
 </script>
 
 <a
-	class="mt-2 flex overflow-hidden rounded-lg border border-black/10 bg-black/[0.035] text-left no-underline transition-colors hover:bg-black/[0.07] focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-white/10 dark:bg-white/[0.045] dark:hover:bg-white/[0.09]"
+	class="flex overflow-hidden rounded-lg border border-black/10 bg-black/[0.035] text-left no-underline transition-colors hover:bg-black/[0.07] focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-white/10 dark:bg-white/[0.045] dark:hover:bg-white/[0.09]"
 	data-link
 	href={url}
 	target="_blank"

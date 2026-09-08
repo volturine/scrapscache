@@ -1,19 +1,25 @@
 <script lang="ts">
 	import { createSubscriber } from 'svelte/reactivity';
+	import { CalendarDate } from '@internationalized/date';
+	import { DatePicker, type DatePickerValueChangeDetails } from '@ark-ui/svelte/date-picker';
 	import WheelPicker from './WheelPicker.svelte';
+	import DatePickerViews from './DatePickerViews.svelte';
 	import { AlarmClock, ChevronLeft, ChevronRight } from '@lucide/svelte';
 	import { requestReminderPermission } from '$lib/reminderNotify';
 	import { ensurePushSubscription } from '$lib/reminderWake';
 	import { formatReminderCountdown } from '$lib/utils';
+	import { PHONE_MEDIA } from '$lib/appViewport';
 
 	let {
 		reminder,
 		onClose,
-		onApply
+		onApply,
+		forceMode
 	}: {
 		reminder: number | null;
 		onClose: () => void;
 		onApply?: (value: number | null) => void;
+		forceMode?: 'mobile' | 'desktop';
 	} = $props();
 
 	const MONTH_ITEMS = Array.from({ length: 12 }, (_, month) => ({
@@ -29,9 +35,13 @@
 		label: String(minute).padStart(2, '0')
 	}));
 
+	function daysInMonth(year: number, month: number): number {
+		return new Date(year, month + 1, 0).getDate();
+	}
+
 	// Initialize once from the existing reminder or now+1h default
 	function initDate(ts: number | null): Date {
-		if (ts == null) {
+		if (ts == null || !Number.isFinite(ts)) {
 			const d = new Date();
 			d.setHours(d.getHours() + 1, 0, 0, 0);
 			return d;
@@ -43,14 +53,39 @@
 	// svelte-ignore state_referenced_locally -- snapshot the reminder at open time on purpose
 	let selected = $state(initDate(reminder));
 	let monthYearOpen = $state(false);
+	// svelte-ignore state_referenced_locally
+	let isMobile = $state(
+		forceMode
+			? forceMode === 'mobile'
+			: typeof window !== 'undefined'
+				? window.matchMedia(PHONE_MEDIA).matches
+				: false
+	);
+
+	$effect(() => {
+		if (forceMode) {
+			isMobile = forceMode === 'mobile';
+			return;
+		}
+		if (typeof window === 'undefined') return;
+		const mql = window.matchMedia(PHONE_MEDIA);
+		isMobile = mql.matches;
+		const handler = (e: MediaQueryListEvent) => {
+			isMobile = e.matches;
+		};
+		mql.addEventListener('change', handler);
+		return () => mql.removeEventListener('change', handler);
+	});
 
 	function apply(ts: number | null) {
 		onApply?.(ts);
 		onClose();
 	}
 
-	function daysInMonth(year: number, month: number): number {
-		return new Date(year, month + 1, 0).getDate();
+	function shiftDay(delta: number) {
+		const d = new Date(selected);
+		d.setDate(d.getDate() + delta);
+		selected = d;
 	}
 
 	function setDateParts(parts: { year?: number; month?: number; day?: number }) {
@@ -59,12 +94,6 @@
 		const month = parts.month ?? d.getMonth();
 		const day = parts.day ?? d.getDate();
 		d.setFullYear(year, month, Math.min(day, daysInMonth(year, month)));
-		selected = d;
-	}
-
-	function shiftDay(delta: number) {
-		const d = new Date(selected);
-		d.setDate(d.getDate() + delta);
 		selected = d;
 	}
 
@@ -97,16 +126,12 @@
 	const showRemove = $derived(reminder != null);
 	const primaryIsSave = $derived(uiStatus !== 'active');
 
-	function primaryAction() {
-		if (primaryIsSave) save();
-		else onClose();
-	}
-
 	const hours24 = $derived(selected.getHours());
 	const minutes = $derived(selected.getMinutes());
 	const selectedMonth = $derived(selected.getMonth());
 	const selectedDay = $derived(selected.getDate());
 	const selectedYear = $derived(selected.getFullYear());
+
 	const dayItems = $derived(
 		Array.from({ length: daysInMonth(selectedYear, selectedMonth) }, (_, index) => ({
 			value: index + 1,
@@ -124,6 +149,19 @@
 		}
 		return items;
 	});
+
+	const pickerValue = $derived([
+		new CalendarDate(selected.getFullYear(), selected.getMonth() + 1, selected.getDate())
+	]);
+
+	function onDateChange(details: DatePickerValueChangeDetails) {
+		const next = details.value[0];
+		if (!next) return;
+		const d = new Date(selected);
+		d.setFullYear(next.year, next.month - 1, next.day);
+		selected = d;
+		monthYearOpen = false;
+	}
 
 	function setHour(hour: number) {
 		const d = new Date(selected);
@@ -198,93 +236,163 @@
 			Pick date & time
 		</div>
 
-		<div class="mb-3 flex items-center">
-			<button
-				type="button"
-				class="icon-btn h-8 w-8 shrink-0 p-2"
-				onclick={() => shiftDay(-1)}
-				aria-label="Previous day"
-			>
-				<ChevronLeft class="h-5 w-5" aria-hidden="true" />
-			</button>
-			<button
-				type="button"
-				class="mx-1 flex min-w-0 flex-1 items-center justify-center rounded-lg px-2 py-1.5 text-sm font-medium text-[var(--scrapscache-text)] {monthYearOpen
-					? 'bg-[var(--scrapscache-bg)]'
-					: ''}"
-				onclick={() => (monthYearOpen = !monthYearOpen)}
-				aria-label="Choose date"
-				aria-expanded={monthYearOpen}
-			>
-				<span class="truncate">{dateLabel}</span>
-			</button>
-			<button
-				type="button"
-				class="icon-btn h-8 w-8 shrink-0 p-2"
-				onclick={() => shiftDay(1)}
-				aria-label="Next day"
-			>
-				<ChevronRight class="h-5 w-5" aria-hidden="true" />
-			</button>
-		</div>
-
-		{#if monthYearOpen}
-			<div
-				class="mb-1 flex justify-center gap-2 rounded-xl bg-black/[0.03] px-2 py-1 dark:bg-white/[0.04]"
-			>
-				<WheelPicker
-					class="w-12"
-					items={dayItems}
-					value={selectedDay}
-					onChange={(day) => setDateParts({ day })}
-					ariaLabel="Day"
-				/>
-				<WheelPicker
-					class="w-[7.75rem]"
-					items={MONTH_ITEMS}
-					value={selectedMonth}
-					onChange={(month) => setDateParts({ month })}
-					ariaLabel="Month"
-				/>
-				<WheelPicker
-					class="w-[4.5rem]"
-					items={yearItems}
-					value={selectedYear}
-					onChange={(year) => setDateParts({ year })}
-					ariaLabel="Year"
-				/>
-			</div>
-		{:else}
-			<div
-				class="flex justify-center gap-1 rounded-xl bg-black/[0.03] px-2 py-1 dark:bg-white/[0.04]"
-			>
-				<WheelPicker
-					class="w-16"
-					items={HOUR_ITEMS}
-					value={hours24}
-					onChange={setHour}
-					ariaLabel="Hour"
-				/>
-				<div
-					class="flex w-3 shrink-0 items-center justify-center text-xl font-semibold text-[var(--scrapscache-text)]"
-					aria-hidden="true"
-				>
-					:
+		<div class="schedule-panel">
+			{#if isMobile}
+				<div class="mb-3 flex items-center">
+					<button
+						type="button"
+						class="icon-btn h-8 w-8 shrink-0 p-2"
+						onclick={() => shiftDay(-1)}
+						aria-label="Previous day"
+					>
+						<ChevronLeft class="h-5 w-5" aria-hidden="true" />
+					</button>
+					<button
+						type="button"
+						class="mx-1 flex min-w-0 flex-1 items-center justify-center rounded-lg px-2 py-1.5 text-sm font-medium text-[var(--scrapscache-text)] {monthYearOpen
+							? 'bg-[var(--scrapscache-bg)]'
+							: ''}"
+						onclick={() => (monthYearOpen = !monthYearOpen)}
+						aria-label="Choose date"
+						aria-expanded={monthYearOpen}
+					>
+						<span class="truncate">{dateLabel}</span>
+					</button>
+					<button
+						type="button"
+						class="icon-btn h-8 w-8 shrink-0 p-2"
+						onclick={() => shiftDay(1)}
+						aria-label="Next day"
+					>
+						<ChevronRight class="h-5 w-5" aria-hidden="true" />
+					</button>
 				</div>
-				<WheelPicker
-					class="w-16"
-					items={MINUTE_ITEMS}
-					value={minutes}
-					onChange={setMinute}
-					ariaLabel="Minute"
-				/>
-			</div>
-		{/if}
+
+				{#if monthYearOpen}
+					<div
+						class="flex justify-center gap-2 rounded-xl bg-black/[0.03] px-2 py-1 dark:bg-white/[0.04]"
+					>
+						<WheelPicker
+							class="w-12"
+							items={dayItems}
+							value={selectedDay}
+							onChange={(day) => setDateParts({ day })}
+							ariaLabel="Day"
+						/>
+						<WheelPicker
+							class="w-[7.75rem]"
+							items={MONTH_ITEMS}
+							value={selectedMonth}
+							onChange={(month) => setDateParts({ month })}
+							ariaLabel="Month"
+						/>
+						<WheelPicker
+							class="w-[4.5rem]"
+							items={yearItems}
+							value={selectedYear}
+							onChange={(year) => setDateParts({ year })}
+							ariaLabel="Year"
+						/>
+					</div>
+				{:else}
+					<div
+						class="flex justify-center gap-1 rounded-xl bg-black/[0.03] px-2 py-1 dark:bg-white/[0.04]"
+					>
+						<WheelPicker
+							class="w-16"
+							items={HOUR_ITEMS}
+							value={hours24}
+							onChange={setHour}
+							ariaLabel="Hour"
+						/>
+						<div
+							class="flex w-3 shrink-0 items-center justify-center text-xl font-semibold text-[var(--scrapscache-text)]"
+							aria-hidden="true"
+						>
+							:
+						</div>
+						<WheelPicker
+							class="w-16"
+							items={MINUTE_ITEMS}
+							value={minutes}
+							onChange={setMinute}
+							ariaLabel="Minute"
+						/>
+					</div>
+				{/if}
+			{:else if monthYearOpen}
+				<div
+					class="h-full overflow-hidden rounded-xl bg-black/[0.03] px-2 py-2 dark:bg-white/[0.04]"
+				>
+					<DatePicker.Root
+						inline
+						startOfWeek={1}
+						fixedWeeks
+						value={pickerValue}
+						onValueChange={onDateChange}
+					>
+						<DatePickerViews />
+					</DatePicker.Root>
+				</div>
+			{:else}
+				<div class="flex h-full flex-col">
+					<div class="mb-3 flex items-center">
+						<button
+							type="button"
+							class="icon-btn h-8 w-8 shrink-0 p-2"
+							onclick={() => shiftDay(-1)}
+							aria-label="Previous day"
+						>
+							<ChevronLeft class="h-5 w-5" aria-hidden="true" />
+						</button>
+						<button
+							type="button"
+							class="mx-1 flex min-w-0 flex-1 items-center justify-center rounded-lg px-2 py-1.5 text-sm font-medium text-[var(--scrapscache-text)]"
+							onclick={() => (monthYearOpen = true)}
+							aria-label="Choose date"
+							aria-expanded="false"
+						>
+							<span class="truncate">{dateLabel}</span>
+						</button>
+						<button
+							type="button"
+							class="icon-btn h-8 w-8 shrink-0 p-2"
+							onclick={() => shiftDay(1)}
+							aria-label="Next day"
+						>
+							<ChevronRight class="h-5 w-5" aria-hidden="true" />
+						</button>
+					</div>
+					<div
+						class="flex min-h-0 flex-1 items-center justify-center gap-1 rounded-xl bg-black/[0.03] px-2 py-1 dark:bg-white/[0.04]"
+					>
+						<WheelPicker
+							class="w-16"
+							items={HOUR_ITEMS}
+							value={hours24}
+							onChange={setHour}
+							ariaLabel="Hour"
+						/>
+						<div
+							class="flex w-3 shrink-0 items-center justify-center text-xl font-semibold text-[var(--scrapscache-text)]"
+							aria-hidden="true"
+						>
+							:
+						</div>
+						<WheelPicker
+							class="w-16"
+							items={MINUTE_ITEMS}
+							value={minutes}
+							onChange={setMinute}
+							ariaLabel="Minute"
+						/>
+					</div>
+				</div>
+			{/if}
+		</div>
 	</div>
 
-	<div
-		class="flex items-center justify-between gap-3 border-t border-[var(--scrapscache-border)] pt-4"
-	>
+	<div class="flex items-center gap-2 border-t border-[var(--scrapscache-border)] pt-4">
 		{#if showRemove}
 			<button
 				type="button"
@@ -293,17 +401,33 @@
 			>
 				Remove
 			</button>
-		{:else}
-			<span class="shrink-0" aria-hidden="true"></span>
 		{/if}
 		<button
 			type="button"
-			onclick={primaryAction}
-			class="scrapscache-button min-w-[7.5rem] shrink-0 px-6 py-2.5 text-sm font-medium {primaryIsSave
-				? 'scrapscache-button-primary'
-				: 'scrapscache-button-secondary'}"
+			onclick={onClose}
+			class="scrapscache-button scrapscache-button-secondary min-w-[5.5rem] px-4 py-2.5 text-sm font-medium"
 		>
-			{primaryIsSave ? 'Save' : 'Cancel'}
+			Cancel
 		</button>
+		{#if primaryIsSave}
+			<button
+				type="button"
+				onclick={save}
+				class="scrapscache-button scrapscache-button-primary ml-auto min-w-[5.5rem] px-4 py-2.5 text-sm font-medium"
+			>
+				Save
+			</button>
+		{/if}
 	</div>
 </div>
+
+<style>
+	.schedule-panel {
+		height: 17.25rem;
+	}
+	@media (max-width: 767px) {
+		.schedule-panel {
+			height: auto;
+		}
+	}
+</style>

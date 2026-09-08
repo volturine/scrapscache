@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-	import { DatePicker, type DatePickerValueChangeDetails } from '@ark-ui/svelte/date-picker';
+	import { DatePicker } from '@ark-ui/svelte/date-picker';
 	import { parseDate, type DateValue } from '@internationalized/date';
 	import DatePickerViews from './DatePickerViews.svelte';
 	import type { Note } from '$lib/types';
@@ -17,6 +17,10 @@
 		notes: Note[];
 		selected?: ReminderDayFilter | null;
 	} = $props();
+
+	const LONG_PRESS_MS = 450;
+	let pressTimer: ReturnType<typeof setTimeout> | null = null;
+	let longPressed = false;
 
 	const pickingEnd = $derived(selected !== null && selected.to === null);
 	const reminderDays = $derived.by(() => {
@@ -32,20 +36,52 @@
 		if (!selected) return [];
 		const from = parseDate(selected.from);
 		if (selected.to == null) return [from];
+		if (selected.from === selected.to) return [from, from];
 		return [from, parseDate(selected.to)];
 	});
 
-	function onValueChange(details: DatePickerValueChangeDetails) {
-		const keys = details.value.map((date) => date.toString());
-		if (keys.length === 0) {
+	function startPress(day: DateValue) {
+		longPressed = false;
+		cancelPress();
+		pressTimer = setTimeout(() => {
+			pressTimer = null;
+			longPressed = true;
+			try {
+				navigator.vibrate?.(10);
+			} catch {}
+			const key = day.toString();
+			selected = { from: key, to: null };
+		}, LONG_PRESS_MS);
+	}
+
+	function cancelPress() {
+		if (pressTimer !== null) {
+			clearTimeout(pressTimer);
+			pressTimer = null;
+		}
+	}
+
+	function handleDayClick(day: DateValue, event?: MouseEvent) {
+		cancelPress();
+		if (longPressed) {
+			longPressed = false;
+			return;
+		}
+		const key = day.toString();
+		if (event?.shiftKey && (!selected || selected.to !== null)) {
+			selected = { from: key, to: null };
+			return;
+		}
+		if (selected && selected.to === null) {
+			selected =
+				key < selected.from ? { from: key, to: selected.from } : { from: selected.from, to: key };
+			return;
+		}
+		if (selected && selected.from === key && selected.to === key) {
 			selected = null;
 			return;
 		}
-		if (keys.length === 1) {
-			selected = { from: keys[0], to: null };
-			return;
-		}
-		selected = { from: keys[0], to: keys[1] };
+		selected = { from: key, to: key };
 	}
 
 	function filterToday() {
@@ -68,10 +104,15 @@
 		fixedWeeks
 		selectionMode="range"
 		value={pickerValue}
-		{onValueChange}
 		closeOnSelect={false}
 	>
-		<DatePickerViews>
+		<DatePickerViews
+			onDayClick={handleDayClick}
+			onDayPointerDown={startPress}
+			onDayPointerUp={cancelPress}
+			onDayPointerLeave={cancelPress}
+			onDayPointerCancel={cancelPress}
+		>
 			{#snippet dayExtra(day)}
 				{@const count = reminderDays.get(day.toString()) ?? 0}
 				{#if count > 0}

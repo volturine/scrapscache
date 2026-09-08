@@ -4,7 +4,23 @@
 	import type { DateValue } from '@internationalized/date';
 	import type { Snippet } from 'svelte';
 
-	let { dayExtra }: { dayExtra?: Snippet<[DateValue]> } = $props();
+	let {
+		dayExtra,
+		onDayClick,
+		onDayPointerDown,
+		onDayPointerUp,
+		onDayPointerLeave,
+		onDayPointerCancel,
+		onDayContextMenu
+	}: {
+		dayExtra?: Snippet<[DateValue]>;
+		onDayClick?: (day: DateValue, e: MouseEvent) => void;
+		onDayPointerDown?: (day: DateValue, e: PointerEvent) => void;
+		onDayPointerUp?: (day: DateValue, e: PointerEvent) => void;
+		onDayPointerLeave?: (day: DateValue, e: PointerEvent) => void;
+		onDayPointerCancel?: (day: DateValue, e: PointerEvent) => void;
+		onDayContextMenu?: (day: DateValue, e: MouseEvent) => void;
+	} = $props();
 
 	const navBtn =
 		'rounded-full p-1.5 text-[var(--scrapscache-text-muted)] hover:bg-black/5 dark:hover:bg-white/10';
@@ -46,10 +62,41 @@
 							<DatePicker.TableRow class="text-center">
 								{#each week as day (day.toString())}
 									<DatePicker.TableCell value={day}>
-										<DatePicker.TableCellTrigger class={dayBtn}>
-											{day.day}
-											{@render dayExtra?.(day)}
-										</DatePicker.TableCellTrigger>
+										{#if onDayClick || onDayPointerDown}
+											<DatePicker.TableCellTrigger>
+												{#snippet asChild(triggerProps)}
+													{@const { onClick, onclick, ...safeProps } = triggerProps() as Record<
+														string,
+														any
+													>}
+													<button
+														type="button"
+														{...safeProps}
+														class={dayBtn}
+														onpointerdown={(e) => onDayPointerDown?.(day, e)}
+														onpointerup={(e) => onDayPointerUp?.(day, e)}
+														onpointerleave={(e) => onDayPointerLeave?.(day, e)}
+														onpointercancel={(e) => onDayPointerCancel?.(day, e)}
+														oncontextmenu={(e) => {
+															e.preventDefault();
+															onDayContextMenu?.(day, e);
+														}}
+														onclick={(e) => {
+															e.preventDefault();
+															onDayClick?.(day, e);
+														}}
+													>
+														{day.day}
+														{@render dayExtra?.(day)}
+													</button>
+												{/snippet}
+											</DatePicker.TableCellTrigger>
+										{:else}
+											<DatePicker.TableCellTrigger class={dayBtn}>
+												{day.day}
+												{@render dayExtra?.(day)}
+											</DatePicker.TableCellTrigger>
+										{/if}
 									</DatePicker.TableCell>
 								{/each}
 							</DatePicker.TableRow>

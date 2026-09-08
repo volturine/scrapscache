@@ -60,6 +60,20 @@
 		return () => observer.disconnect();
 	});
 
+	async function saveCroppedPhoto(cropped: NoteImage) {
+		const currentImages = note.images ?? [];
+		const next = currentImages.map((img) => (img.id === cropped.id ? cropped : img));
+		notesStore.updateNote(note.id, { images: next });
+		await notesStore.flushNote(note.id);
+	}
+
+	async function deletePhoto(id: string) {
+		const currentImages = note.images ?? [];
+		const next = currentImages.filter((img) => img.id !== id);
+		notesStore.updateNote(note.id, { images: next });
+		await notesStore.flushNote(note.id);
+	}
+
 	async function focusImage(id: string, event: MouseEvent) {
 		event.stopPropagation();
 		await notesStore.ensureNoteAttachments(note.id);
@@ -258,6 +272,8 @@
 			focusedImageId = index === null ? null : (photos[index]?.id ?? null);
 		}
 	}
+	onCrop={note.trashed ? undefined : saveCroppedPhoto}
+	onDelete={note.trashed ? undefined : deletePhoto}
 />
 {#if focusedCanvas}
 	<CanvasEditor

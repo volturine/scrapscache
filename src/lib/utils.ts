@@ -1,3 +1,4 @@
+import { downloadFile } from '@zag-js/file-utils';
 // Small utility helpers shared across components and stores.
 
 /** Generate a reasonably unique id (crypto when available, fallback to Math.random). */
@@ -182,13 +183,9 @@ export function cloneNoteForBackup(note: import('$lib/types').Note): import('$li
 
 /** Download a JSON backup file in the browser. */
 export function downloadJSON(data: unknown, filename: string): void {
-	const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-	const url = URL.createObjectURL(blob);
-	const a = document.createElement('a');
-	a.href = url;
-	a.download = filename;
-	document.body.appendChild(a);
-	a.click();
-	document.body.removeChild(a);
-	URL.revokeObjectURL(url);
+	downloadFile({
+		file: JSON.stringify(data, null, 2),
+		name: filename,
+		type: 'application/json'
+	});
 }

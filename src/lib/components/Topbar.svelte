@@ -4,6 +4,7 @@
 	import { downloadJSON } from '$lib/utils';
 	import { syncStore } from '$lib/stores/sync.svelte';
 	import SyncModal from './SyncModal.svelte';
+	import Tooltip from './Tooltip.svelte';
 	import ReminderNotificationSettings from './ReminderNotificationSettings.svelte';
 	import BackupPassphraseDialog from './BackupPassphraseDialog.svelte';
 	import BackupImportModeDialog from './BackupImportModeDialog.svelte';
@@ -158,14 +159,16 @@
 	class="relative z-20 flex h-[var(--app-topbar-height)] shrink-0 items-center gap-1 px-2 sm:gap-2 sm:px-3"
 	onpointerdown={closeNote}
 >
-	<button
-		class="icon-btn h-10 w-10 p-2"
-		title="Toggle sidebar"
-		onclick={() => uiStore.toggleSidebar()}
-		aria-label="Toggle sidebar"
-	>
-		<MenuIcon class="h-5 w-5" aria-hidden="true" />
-	</button>
+	<Tooltip content="Toggle sidebar">
+		<button
+			class="icon-btn h-10 w-10 p-2"
+			title="Toggle sidebar"
+			onclick={() => uiStore.toggleSidebar()}
+			aria-label="Toggle sidebar"
+		>
+			<MenuIcon class="h-5 w-5" aria-hidden="true" />
+		</button>
+	</Tooltip>
 
 	<div
 		class="flex h-10 min-h-10 max-h-10 min-w-0 flex-1 items-center gap-2 rounded-full border border-[var(--scrapscache-border)] bg-[var(--scrapscache-surface)] px-3"
@@ -190,44 +193,50 @@
 		{/if}
 	</div>
 
-	<button
-		type="button"
-		class="icon-btn h-10 w-10 p-2"
-		title={syncControlLabel}
-		onclick={() => {
-			syncOpen = true;
-		}}
-		aria-label={syncControlLabel}
-		data-scrapscache-sync-control
-	>
-		<Cloud
-			class={['h-5 w-5', SYNC_STATUS_CLASS[syncStatus]]}
-			data-scrapscache-sync-icon
-			aria-hidden="true"
-		/>
-	</button>
+	<Tooltip content={syncControlLabel}>
+		<button
+			type="button"
+			class="icon-btn h-10 w-10 p-2"
+			title={syncControlLabel}
+			onclick={() => {
+				syncOpen = true;
+			}}
+			aria-label={syncControlLabel}
+			data-scrapscache-sync-control
+		>
+			<Cloud
+				class={['h-5 w-5', SYNC_STATUS_CLASS[syncStatus]]}
+				data-scrapscache-sync-icon
+				aria-hidden="true"
+			/>
+		</button>
+	</Tooltip>
 
-	<button
-		class="icon-btn h-10 w-10 p-2"
-		title="Toggle layout"
-		onclick={() => uiStore.toggleLayout()}
-		aria-label="Toggle layout"
-	>
-		{#if uiStore.layout === 'grid'}
-			<List class="h-5 w-5" aria-hidden="true" />
-		{:else}
-			<LayoutGrid class="h-5 w-5" aria-hidden="true" />
-		{/if}
-	</button>
+	<Tooltip content={uiStore.layout === 'grid' ? 'List view' : 'Grid view'}>
+		<button
+			class="icon-btn h-10 w-10 p-2"
+			title="Toggle layout"
+			onclick={() => uiStore.toggleLayout()}
+			aria-label="Toggle layout"
+		>
+			{#if uiStore.layout === 'grid'}
+				<List class="h-5 w-5" aria-hidden="true" />
+			{:else}
+				<LayoutGrid class="h-5 w-5" aria-hidden="true" />
+			{/if}
+		</button>
+	</Tooltip>
 
 	<Menu.Root
 		bind:open={settingsOpen}
 		positioning={{ placement: 'bottom-end' }}
 		closeOnSelect={false}
 	>
-		<Menu.Trigger class="icon-btn h-10 w-10 p-2" title="Settings" aria-label="Settings">
-			<Settings class="h-5 w-5" aria-hidden="true" />
-		</Menu.Trigger>
+		<Tooltip content="Settings">
+			<Menu.Trigger class="icon-btn h-10 w-10 p-2" title="Settings" aria-label="Settings">
+				<Settings class="h-5 w-5" aria-hidden="true" />
+			</Menu.Trigger>
+		</Tooltip>
 		<Menu.Positioner class="z-30">
 			<Menu.Content class="scrapscache-popover w-64 overflow-hidden pt-1">
 				{#if importingBackup}

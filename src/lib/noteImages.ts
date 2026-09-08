@@ -145,6 +145,27 @@ export async function fileToNoteImage(file: File, imageQuality: ImageQuality): P
 	};
 }
 
+/** Replace a photo's stored bytes after a crop, keeping the same attachment id. */
+export async function noteImageFromCroppedDataUrl(
+	source: NoteImage,
+	dataUrl: string
+): Promise<NoteImage> {
+	const blob = await dataUrlToBlob(dataUrl);
+	const mime = blob.type || 'image/webp';
+	const contentHash = await sha256(dataUrl);
+	const thumbUrl = isImageMime(mime)
+		? ((await makeImageThumbDataUrl(dataUrl)) ?? undefined)
+		: undefined;
+	return {
+		...source,
+		mime,
+		dataUrl,
+		contentHash,
+		byteSize: blob.size,
+		...(thumbUrl ? { thumbUrl } : { thumbUrl: undefined })
+	};
+}
+
 /** Drop large previewable bytes from memory after IDB has the durable attachment blob. */
 export function stripFullPreviewBytes(image: NoteImage): NoteImage {
 	if (!isImageMime(image.mime) && !isCanvasAttachment(image)) return image;

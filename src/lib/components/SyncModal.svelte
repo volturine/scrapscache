@@ -2,6 +2,9 @@
 	import { onDestroy } from 'svelte';
 	import { Clipboard } from '@ark-ui/svelte/clipboard';
 	import { Dialog } from '@ark-ui/svelte/dialog';
+	import { Format } from '@ark-ui/svelte/format';
+	import { PinInput } from '@ark-ui/svelte/pin-input';
+	import { Progress } from '@ark-ui/svelte/progress';
 	import { formatPairingCode, normalizePairingCode } from '$lib/syncPairing';
 	import { syncStore, type StartedDeviceLink } from '$lib/stores/sync.svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
@@ -174,16 +177,6 @@
 		void pollLink();
 	}
 
-	function formatBytes(bytes: number): string {
-		if (bytes < 1_000_000) return `${Math.round(bytes / 1_000)} KB`;
-		const megabytes = bytes / 1_000_000;
-		return `${Number.isInteger(megabytes) ? megabytes : megabytes.toFixed(1)} MB`;
-	}
-
-	function formatLimit(bytes: number): string {
-		return formatBytes(bytes);
-	}
-
 	function progressPercent(loaded: number, total: number | null): number {
 		return total && total > 0 ? Math.min(100, Math.round((loaded / total) * 100)) : 0;
 	}
@@ -240,17 +233,17 @@
 	function secondsLeft() {
 		return waiting ? Math.max(0, Math.ceil((waiting.expiresAt - now) / 1000)) : 0;
 	}
+
 	function pairingGroups(value: string): string[] {
 		const formatted = formatPairingCode(value);
 		const parts = formatted.split('-').filter(Boolean);
 		return parts.length ? parts : [formatted];
 	}
+
 	function expiryRatio(): number {
 		return Math.max(0, Math.min(1, secondsLeft() / 60));
 	}
-	function formatInput(event: Event) {
-		code = formatPairingCode((event.currentTarget as HTMLInputElement).value);
-	}
+
 	function close() {
 		stopWaiting();
 		onClose();
@@ -292,17 +285,24 @@
 											? 'Encrypting & uploading'
 											: 'Downloading encrypted sync'}</span
 									><span
-										>{formatBytes(progress.loadedBytes)}{progress.totalBytes
-											? ` / ${formatBytes(progress.totalBytes)} (${percent}%)`
-											: ''}</span
+										><Format.Byte
+											value={progress.loadedBytes}
+											unitSystem="decimal"
+										/>{#if progress.totalBytes}
+											{' '}/ <Format.Byte value={progress.totalBytes} unitSystem="decimal" /> ({percent}%)
+										{/if}</span
 									>
 								</div>
-								<div class="scrapscache-progress-track h-2 overflow-hidden rounded-full">
-									<div
-										class="scrapscache-progress-value h-full rounded-full transition-[width] duration-150"
-										style={`width: ${progress.totalBytes ? percent : 100}%`}
-									></div>
-								</div>
+								<Progress.Root value={progress.totalBytes ? percent : null} class="w-full">
+									<Progress.Track
+										class="scrapscache-progress-track h-2 overflow-hidden rounded-full"
+									>
+										<Progress.Range
+											class="scrapscache-progress-value h-full rounded-full transition-[width] duration-150"
+											style={`width: ${progress.totalBytes ? percent : 100}%`}
+										/>
+									</Progress.Track>
+								</Progress.Root>
 							</div>
 						{:else if syncing}<p class="text-sm text-[var(--scrapscache-text-muted)]">
 								Syncing…
@@ -338,8 +338,8 @@
 								<div class="flex items-center justify-between gap-3">
 									<span class="font-medium">Sync storage</span>
 									<span>
-										{formatBytes(syncStore.usage.storageBytes)} of
-										{formatLimit(syncStore.usage.maxBytes)}
+										<Format.Byte value={syncStore.usage.storageBytes} unitSystem="decimal" /> of
+										<Format.Byte value={syncStore.usage.maxBytes} unitSystem="decimal" />
 									</span>
 								</div>
 							</div>
@@ -432,21 +432,40 @@
 						>
 					</div>
 				{:else if mode === SyncModalMode.Link}
-					<div class="space-y-3">
+					<div class="space-y-4">
 						<p class="text-sm text-[var(--scrapscache-text-muted)]">
 							On your other device open Sync and choose Connect another device. Enter the one-time
 							code shown there.
 						</p>
-						<input
-							value={code}
-							oninput={formatInput}
-							autocomplete="one-time-code"
-							placeholder="XXXX-XXXX-XXXX-XXXX"
-							maxlength="19"
-							spellcheck="false"
-							class="scrapscache-input w-full px-3 py-2 text-center text-lg font-bold tracking-wider"
-							onkeydown={(event) => event.key === 'Enter' && void beginLink()}
-						/>{#if error}<p class="text-sm text-[var(--scrapscache-danger)]">{error}</p>{/if}<button
+						<PinInput.Root
+							type="alphanumeric"
+							otp
+							autoFocus
+							placeholder="·"
+							onValueChange={(details) => {
+								code = details.valueAsString;
+							}}
+							onValueComplete={(details) => {
+								code = details.valueAsString;
+								void beginLink();
+							}}
+						>
+							<PinInput.Control class="grid grid-cols-2 place-items-center gap-2.5 py-1 sm:gap-3">
+								{#each [0, 1, 2, 3] as groupIndex (groupIndex)}
+									<div class="flex items-center gap-1" aria-label="Code group">
+										{#each [0, 1, 2, 3] as charIndex (charIndex)}
+											{@const index = groupIndex * 4 + charIndex}
+											<PinInput.Input
+												{index}
+												class="h-10 w-7 rounded-lg border border-[var(--scrapscache-border)] bg-[var(--scrapscache-bg)] text-center font-mono text-base font-semibold uppercase text-[var(--scrapscache-text)] transition-colors focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 sm:w-8"
+											/>
+										{/each}
+									</div>
+								{/each}
+							</PinInput.Control>
+							<PinInput.HiddenInput />
+						</PinInput.Root>
+						{#if error}<p class="text-sm text-[var(--scrapscache-danger)]">{error}</p>{/if}<button
 							type="button"
 							onclick={() => void beginLink()}
 							disabled={loading}

@@ -58,7 +58,7 @@ describe('SyncModal storage usage', () => {
 
 	it('shows a quota rejection as a persistent danger alert', async () => {
 		const usage = renderUsage(MB);
-		syncStore.lastError = 'Sync incomplete: account storage quota prevented some uploads';
+		syncStore.lastError = 'Account quota exceeded (50 MB)';
 		await tick();
 
 		expect(usage.classList.contains('scrapscache-status-danger')).toBe(true);
@@ -67,6 +67,6 @@ describe('SyncModal storage usage', () => {
 
 	it('displays the default 100 MB decimal-byte limit', () => {
 		const usage = renderUsage(5_000, 100_000_000);
-		expect(usage.textContent?.replace(/\s+/g, ' ')).toContain('5 KB of 100 MB');
+		expect(usage.textContent?.replace(/\s+/g, ' ').toLowerCase()).toContain('5 kb of 100 mb');
 	});
 });

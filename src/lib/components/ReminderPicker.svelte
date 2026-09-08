@@ -8,17 +8,24 @@
 	import { requestReminderPermission } from '$lib/reminderNotify';
 	import { ensurePushSubscription } from '$lib/reminderWake';
 	import { formatReminderCountdown } from '$lib/utils';
+	import { PHONE_MEDIA } from '$lib/appViewport';
 
 	let {
 		reminder,
 		onClose,
-		onApply
+		onApply,
+		forceMode
 	}: {
 		reminder: number | null;
 		onClose: () => void;
 		onApply?: (value: number | null) => void;
+		forceMode?: 'mobile' | 'desktop';
 	} = $props();
 
+	const MONTH_ITEMS = Array.from({ length: 12 }, (_, month) => ({
+		value: month,
+		label: new Date(2020, month, 1).toLocaleDateString([], { month: 'long' })
+	}));
 	const HOUR_ITEMS = Array.from({ length: 24 }, (_, hour) => ({
 		value: hour,
 		label: String(hour).padStart(2, '0')
@@ -27,6 +34,10 @@
 		value: minute,
 		label: String(minute).padStart(2, '0')
 	}));
+
+	function daysInMonth(year: number, month: number): number {
+		return new Date(year, month + 1, 0).getDate();
+	}
 
 	// Initialize once from the existing reminder or now+1h default
 	function initDate(ts: number | null): Date {
@@ -42,6 +53,29 @@
 	// svelte-ignore state_referenced_locally -- snapshot the reminder at open time on purpose
 	let selected = $state(initDate(reminder));
 	let monthYearOpen = $state(false);
+	// svelte-ignore state_referenced_locally
+	let isMobile = $state(
+		forceMode
+			? forceMode === 'mobile'
+			: typeof window !== 'undefined'
+				? window.matchMedia(PHONE_MEDIA).matches
+				: false
+	);
+
+	$effect(() => {
+		if (forceMode) {
+			isMobile = forceMode === 'mobile';
+			return;
+		}
+		if (typeof window === 'undefined') return;
+		const mql = window.matchMedia(PHONE_MEDIA);
+		isMobile = mql.matches;
+		const handler = (e: MediaQueryListEvent) => {
+			isMobile = e.matches;
+		};
+		mql.addEventListener('change', handler);
+		return () => mql.removeEventListener('change', handler);
+	});
 
 	function apply(ts: number | null) {
 		onApply?.(ts);
@@ -51,6 +85,15 @@
 	function shiftDay(delta: number) {
 		const d = new Date(selected);
 		d.setDate(d.getDate() + delta);
+		selected = d;
+	}
+
+	function setDateParts(parts: { year?: number; month?: number; day?: number }) {
+		const d = new Date(selected);
+		const year = parts.year ?? d.getFullYear();
+		const month = parts.month ?? d.getMonth();
+		const day = parts.day ?? d.getDate();
+		d.setFullYear(year, month, Math.min(day, daysInMonth(year, month)));
 		selected = d;
 	}
 
@@ -85,6 +128,28 @@
 
 	const hours24 = $derived(selected.getHours());
 	const minutes = $derived(selected.getMinutes());
+	const selectedMonth = $derived(selected.getMonth());
+	const selectedDay = $derived(selected.getDate());
+	const selectedYear = $derived(selected.getFullYear());
+
+	const dayItems = $derived(
+		Array.from({ length: daysInMonth(selectedYear, selectedMonth) }, (_, index) => ({
+			value: index + 1,
+			label: String(index + 1).padStart(2, '0')
+		}))
+	);
+
+	const yearItems = $derived.by(() => {
+		const nowYear = new Date().getFullYear();
+		const start = Math.min(nowYear - 10, selectedYear);
+		const end = Math.max(nowYear + 15, selectedYear);
+		const items: { value: number; label: string }[] = [];
+		for (let year = start; year <= end; year++) {
+			items.push({ value: year, label: String(year) });
+		}
+		return items;
+	});
+
 	const pickerValue = $derived([
 		new CalendarDate(selected.getFullYear(), selected.getMonth() + 1, selected.getDate())
 	]);
@@ -181,7 +246,90 @@
 		</div>
 
 		<div class="schedule-panel">
-			{#if monthYearOpen}
+			{#if isMobile}
+				<div class="mb-3 flex items-center">
+					<button
+						type="button"
+						class="icon-btn h-8 w-8 shrink-0 p-2"
+						onclick={() => shiftDay(-1)}
+						aria-label="Previous day"
+					>
+						<ChevronLeft class="h-5 w-5" aria-hidden="true" />
+					</button>
+					<button
+						type="button"
+						class="mx-1 flex min-w-0 flex-1 items-center justify-center rounded-lg px-2 py-1.5 text-sm font-medium text-[var(--scrapscache-text)] {monthYearOpen
+							? 'bg-[var(--scrapscache-bg)]'
+							: ''}"
+						onclick={() => (monthYearOpen = !monthYearOpen)}
+						aria-label="Choose date"
+						aria-expanded={monthYearOpen}
+					>
+						<span class="truncate">{dateLabel}</span>
+					</button>
+					<button
+						type="button"
+						class="icon-btn h-8 w-8 shrink-0 p-2"
+						onclick={() => shiftDay(1)}
+						aria-label="Next day"
+					>
+						<ChevronRight class="h-5 w-5" aria-hidden="true" />
+					</button>
+				</div>
+
+				{#if monthYearOpen}
+					<div
+						class="flex justify-center gap-2 rounded-xl bg-black/[0.03] px-2 py-1 dark:bg-white/[0.04]"
+					>
+						<WheelPicker
+							class="w-12"
+							items={dayItems}
+							value={selectedDay}
+							onChange={(day) => setDateParts({ day })}
+							ariaLabel="Day"
+						/>
+						<WheelPicker
+							class="w-[7.75rem]"
+							items={MONTH_ITEMS}
+							value={selectedMonth}
+							onChange={(month) => setDateParts({ month })}
+							ariaLabel="Month"
+						/>
+						<WheelPicker
+							class="w-[4.5rem]"
+							items={yearItems}
+							value={selectedYear}
+							onChange={(year) => setDateParts({ year })}
+							ariaLabel="Year"
+						/>
+					</div>
+				{:else}
+					<div
+						class="flex justify-center gap-1 rounded-xl bg-black/[0.03] px-2 py-1 dark:bg-white/[0.04]"
+					>
+						<WheelPicker
+							class="w-16"
+							items={HOUR_ITEMS}
+							value={hours24}
+							onChange={setHour}
+							ariaLabel="Hour"
+						/>
+						<div
+							class="flex w-3 shrink-0 items-center justify-center text-xl font-semibold text-[var(--scrapscache-text)]"
+							aria-hidden="true"
+						>
+							:
+						</div>
+						<WheelPicker
+							class="w-16"
+							items={MINUTE_ITEMS}
+							value={minutes}
+							onChange={setMinute}
+							ariaLabel="Minute"
+						/>
+					</div>
+				{/if}
+			{:else if monthYearOpen}
 				<div
 					class="h-full overflow-hidden rounded-xl bg-black/[0.03] px-2 py-2 dark:bg-white/[0.04]"
 					role="presentation"
@@ -287,5 +435,10 @@
 <style>
 	.schedule-panel {
 		height: 17.25rem;
+	}
+	@media (max-width: 767px) {
+		.schedule-panel {
+			height: auto;
+		}
 	}
 </style>

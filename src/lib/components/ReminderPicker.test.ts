@@ -102,6 +102,38 @@ describe('ReminderPicker date and time controls', () => {
 	});
 });
 
+describe('ReminderPicker mobile wheel controls', () => {
+	it('switches between time wheels and date wheels on mobile', async () => {
+		render(ReminderPicker, { props: { reminder, onClose: () => {}, forceMode: 'mobile' } });
+
+		// Initially shows time wheels
+		expect(screen.getByRole('listbox', { name: 'Hour' })).toBeTruthy();
+		expect(screen.getByRole('listbox', { name: 'Minute' })).toBeTruthy();
+		expect(screen.queryByRole('listbox', { name: 'Day' })).toBeNull();
+		expect(screen.queryByRole('grid')).toBeNull();
+
+		// Clicking date button toggles to date wheels
+		await fireEvent.click(screen.getByRole('button', { name: 'Choose date' }));
+		expect(screen.getByRole('listbox', { name: 'Day' })).toBeTruthy();
+		expect(screen.getByRole('listbox', { name: 'Month' })).toBeTruthy();
+		expect(screen.getByRole('listbox', { name: 'Year' })).toBeTruthy();
+		expect(screen.queryByRole('listbox', { name: 'Hour' })).toBeNull();
+		expect(screen.queryByRole('grid')).toBeNull();
+
+		// Selecting a day on mobile wheel
+		await fireEvent.click(
+			within(screen.getByRole('listbox', { name: 'Day' })).getByRole('option', { name: '20' })
+		);
+		expect(screen.getByRole('button', { name: 'Choose date' }).textContent).toContain('20');
+
+		// Clicking date button again toggles back to time wheels
+		await fireEvent.click(screen.getByRole('button', { name: 'Choose date' }));
+		expect(screen.getByRole('listbox', { name: 'Hour' })).toBeTruthy();
+		expect(screen.getByRole('listbox', { name: 'Minute' })).toBeTruthy();
+		expect(screen.queryByRole('listbox', { name: 'Day' })).toBeNull();
+	});
+});
+
 describe('ReminderPicker remaining time', () => {
 	it('shows time left and only the closed-app sync note', () => {
 		vi.useFakeTimers();
@@ -133,12 +165,12 @@ describe('ReminderPicker remaining time', () => {
 		const { container } = render(ReminderPicker, { props: { reminder, onClose: () => {} } });
 		const panel = container.querySelector('.schedule-panel');
 		expect(panel).toBeTruthy();
-		expect(panel?.querySelector('[aria-label="Hour"]')).toBeTruthy();
+		expect(panel?.querySelector('[aria-label=\"Hour\"]')).toBeTruthy();
 
 		await fireEvent.click(screen.getByRole('button', { name: 'Choose date' }));
 
-		expect(panel?.querySelector('[role="grid"]')).toBeTruthy();
-		expect(panel?.querySelector('[aria-label="Hour"]')).toBeNull();
+		expect(panel?.querySelector('[role=\"grid\"]')).toBeTruthy();
+		expect(panel?.querySelector('[aria-label=\"Hour\"]')).toBeNull();
 	});
 
 	it('updates remaining time when the hour changes', async () => {

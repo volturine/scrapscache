@@ -117,7 +117,7 @@
 				{@const count = reminderDays.get(day.toString()) ?? 0}
 				{#if count > 0}
 					<span
-						class="absolute bottom-1 h-1 w-1 rounded-full bg-[var(--scrapscache-accent)] data-[selected]:bg-[var(--scrapscache-accent-foreground)]"
+						class="reminder-dot absolute bottom-1 h-1 w-1 rounded-full bg-[var(--scrapscache-accent)]"
 					></span>
 				{/if}
 			{/snippet}

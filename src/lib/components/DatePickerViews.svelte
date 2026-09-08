@@ -23,13 +23,13 @@
 	} = $props();
 
 	const navBtn =
-		'rounded-full p-1.5 text-[var(--scrapscache-text-muted)] hover:bg-black/5 dark:hover:bg-white/10';
+		'rounded-full p-1.5 text-[var(--scrapscache-text-muted)] transition-colors hover:bg-black/5 dark:hover:bg-white/10';
 	const viewBtn =
-		'rounded-lg px-2 py-1 text-sm font-semibold text-[var(--scrapscache-text)] hover:bg-black/5 dark:hover:bg-white/10';
+		'rounded-lg px-2 py-1 text-sm font-semibold text-[var(--scrapscache-text)] transition-colors hover:bg-black/5 dark:hover:bg-white/10';
 	const dayBtn =
-		'relative mx-auto flex h-8 w-8 items-center justify-center rounded-full text-sm hover:bg-black/5 dark:hover:bg-white/10 data-[selected]:bg-[var(--scrapscache-accent)] data-[selected]:text-[var(--scrapscache-accent-foreground)] data-[in-range]:bg-[color-mix(in_srgb,var(--scrapscache-accent)_18%,transparent)] data-[today]:font-bold data-[today]:ring-1 data-[today]:ring-[var(--scrapscache-border)] data-[outside-range]:opacity-40';
+		'relative mx-auto flex h-8 w-8 items-center justify-center rounded-full text-sm font-medium transition-colors hover:bg-black/5 dark:hover:bg-white/10 data-[selected]:bg-[var(--scrapscache-accent)] data-[selected]:text-[var(--scrapscache-accent-foreground)] data-[selected]:font-semibold data-[today]:ring-1 data-[today]:ring-[var(--scrapscache-border)] data-[outside-range]:opacity-30 data-[outside-range]:pointer-events-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--scrapscache-accent)]';
 	const monthBtn =
-		'flex h-full min-h-10 w-full items-center justify-center rounded-lg text-sm hover:bg-black/5 dark:hover:bg-white/10 data-[selected]:bg-[var(--scrapscache-accent)] data-[selected]:text-[var(--scrapscache-accent-foreground)] data-[focus]:bg-black/[0.06] dark:data-[focus]:bg-white/[0.08] data-[today]:ring-1 data-[today]:ring-[var(--scrapscache-border)]';
+		'mx-auto flex h-9 w-14 items-center justify-center rounded-lg text-sm font-medium transition-colors hover:bg-black/5 dark:hover:bg-white/10 data-[selected]:bg-[var(--scrapscache-accent)] data-[selected]:text-[var(--scrapscache-accent-foreground)] data-[selected]:font-semibold data-[today]:ring-1 data-[today]:ring-[var(--scrapscache-border)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--scrapscache-accent)]';
 </script>
 
 <div class="calendar-panel">
@@ -194,5 +194,30 @@
 	.calendar-panel :global(.calendar-table-fill [data-part='table-cell']) {
 		height: inherit;
 		vertical-align: middle;
+	}
+
+	/* Never apply dark block background on roving focus */
+	.calendar-panel
+		:global(
+			[data-part='table-cell-trigger'][data-focus]:not([data-selected]):not([data-in-range])
+		) {
+		background-color: transparent !important;
+	}
+
+	/* In-range highlighting: in-between days get soft accent tint, not solid accent */
+	.calendar-panel
+		:global(
+			[data-part='table-cell-trigger'][data-in-range]:not([data-range-start]):not([data-range-end])
+		) {
+		background-color: color-mix(in srgb, var(--scrapscache-accent) 18%, transparent) !important;
+		color: var(--scrapscache-text) !important;
+		font-weight: normal !important;
+	}
+
+	/* Selected day dots */
+	.calendar-panel :global([data-part='table-cell-trigger'][data-selected] .reminder-dot),
+	.calendar-panel :global([data-part='table-cell-trigger'][data-range-start] .reminder-dot),
+	.calendar-panel :global([data-part='table-cell-trigger'][data-range-end] .reminder-dot) {
+		background-color: var(--scrapscache-accent-foreground) !important;
 	}
 </style>

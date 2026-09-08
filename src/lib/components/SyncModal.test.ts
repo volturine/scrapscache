@@ -86,14 +86,14 @@ describe('SyncModal profile interactions', () => {
 		expect(screen.getByRole('textbox', { name: 'Workspace name' })).toBeTruthy();
 	});
 
-	it('requires confirmation before deleting an inactive workspace', async () => {
-		const remove = vi.spyOn(syncStore, 'removeProfile').mockResolvedValue(true);
+	it('requires confirmation before unlinking an inactive workspace', async () => {
+		const unlink = vi.spyOn(profileCoordinator, 'unlinkSaved').mockResolvedValue({ success: true });
 		render(SyncModal, { props: { onClose: vi.fn() } });
 		await fireEvent.click(screen.getByRole('button', { name: 'Actions for Side' }));
-		await fireEvent.click(screen.getByRole('button', { name: 'Delete Side' }));
-		expect(remove).not.toHaveBeenCalled();
-		await fireEvent.click(screen.getByRole('button', { name: 'Delete from device' }));
-		await waitFor(() => expect(remove).toHaveBeenCalledWith(side.id));
+		await fireEvent.click(screen.getByRole('button', { name: 'Unlink Side' }));
+		expect(unlink).not.toHaveBeenCalled();
+		await fireEvent.click(screen.getByRole('button', { name: 'Unlink & keep notes' }));
+		await waitFor(() => expect(unlink).toHaveBeenCalledWith(side.id));
 	});
 
 	it('shows and switches to the anonymous workspace without treating it as a sync key', async () => {

@@ -12,7 +12,7 @@ import {
 	type StoredProfile
 } from '$lib/profiles';
 import { randomOpaqueId } from '$lib/syncPairing';
-import { LOCAL_PROFILE_ID } from '$lib/db/idb';
+import { LOCAL_PROFILE_ID, unlinkProfileToNamespace } from '$lib/db/idb';
 import { unregisterReminderDevice } from '$lib/reminderWake';
 
 export class ProfileCoordinator {
@@ -142,6 +142,33 @@ export class ProfileCoordinator {
 					void unregisterReminderDevice(account);
 				}
 				await notesStore.reloadForProfile();
+				return { success: true };
+			});
+		} catch (err) {
+			return {
+				success: false,
+				error: err instanceof Error ? err.message : 'Could not unlink workspace'
+			};
+		} finally {
+			this.switching = false;
+		}
+	}
+
+	/** Unlink a saved, inactive workspace and preserve its local data anonymously. */
+	async unlinkSaved(profileId: string): Promise<{ success: boolean; error?: string }> {
+		if (profileId === syncStore.activeProfile?.id) return this.unlink();
+		const blocked = this.guard();
+		if (blocked) return { success: false, error: blocked };
+		if (!syncStore.profiles.some((profile) => profile.id === profileId))
+			return { success: false, error: 'That workspace is no longer on this device' };
+		this.switching = true;
+		try {
+			return await this.exclusive(async () => {
+				await notesStore.waitForPendingProfileWrites();
+				await unlinkProfileToNamespace(profileId, LOCAL_PROFILE_ID);
+				if (!(await syncStore.removeProfile(profileId)))
+					return { success: false, error: 'Could not unlink workspace' };
+				if (syncStore.activePid === LOCAL_PROFILE_ID) await notesStore.reloadForProfile();
 				return { success: true };
 			});
 		} catch (err) {

@@ -168,4 +168,49 @@ describe('profile creation handover', () => {
 			'anonymous-workspace-note'
 		);
 	});
+
+	it('unlinks an inactive workspace and appends its notes to anonymous storage', async () => {
+		const inactive = {
+			id: 'inactive-unlink-profile',
+			name: 'Inactive',
+			syncKey: createSyncIdentity().syncKey,
+			createdAt: 1
+		};
+		syncStore.profiles = [inactive];
+		syncStore.activateLocalWorkspace();
+		await putNote(LOCAL_PROFILE_ID, note('existing-anonymous-note'));
+		await putNote(inactive.id, note('inactive-workspace-note'));
+
+		vi.spyOn(notesStore, 'waitForPendingProfileWrites').mockResolvedValue();
+		const reload = vi.spyOn(notesStore, 'reloadForProfile').mockResolvedValue();
+
+		const result = await new ProfileCoordinator().unlinkSaved(inactive.id);
+
+		expect(result).toEqual({ success: true });
+		expect(syncStore.profiles).toEqual([]);
+		expect(syncStore.activePid).toBe(LOCAL_PROFILE_ID);
+		expect(reload).toHaveBeenCalledTimes(1);
+		expect((await getAllNotesMetadata(LOCAL_PROFILE_ID)).map(({ id }) => id)).toEqual(
+			expect.arrayContaining(['existing-anonymous-note', 'inactive-workspace-note'])
+		);
+	});
+
+	it('rejects unlinking an unknown workspace without changing saved profiles', async () => {
+		const kept = {
+			id: 'kept-profile',
+			name: 'Kept',
+			syncKey: createSyncIdentity().syncKey,
+			createdAt: 1
+		};
+		syncStore.profiles = [kept];
+		syncStore.activateLocalWorkspace();
+
+		const result = await new ProfileCoordinator().unlinkSaved('missing-profile');
+
+		expect(result).toEqual({
+			success: false,
+			error: 'That workspace is no longer on this device'
+		});
+		expect(syncStore.profiles).toEqual([kept]);
+	});
 });

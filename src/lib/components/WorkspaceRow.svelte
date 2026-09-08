@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import { ChevronLeft, ChevronRight, MoreHorizontal, Pencil, Trash2 } from '@lucide/svelte';
+	import { ChevronLeft, ChevronRight, CloudOff, MoreHorizontal, Pencil } from '@lucide/svelte';
 	let {
 		name,
 		active,
@@ -8,7 +8,7 @@
 		children,
 		onselect,
 		onrename,
-		ondelete
+		onunlink
 	}: {
 		name: string;
 		active: boolean;
@@ -16,7 +16,7 @@
 		children: Snippet;
 		onselect: () => void;
 		onrename: () => void;
-		ondelete: () => void;
+		onunlink: () => void;
 	} = $props();
 	let open = $state(false);
 	let offset = $state(0);
@@ -71,12 +71,12 @@
 			type="button"
 			disabled={disabled || !open}
 			tabindex={open ? 0 : -1}
-			aria-label="Delete {name}"
-			class="delete"
+			aria-label="Unlink {name}"
+			class="unlink"
 			onclick={() => {
 				open = false;
-				ondelete();
-			}}><Trash2 size={16} aria-hidden="true" />Delete</button
+				onunlink();
+			}}><CloudOff size={16} aria-hidden="true" />Unlink</button
 		>
 	</div>
 	<div
@@ -159,10 +159,15 @@
 		text-align: left;
 		font-size: 14px;
 		touch-action: pan-y;
+		padding-right: 44px;
 	}
 	.more {
+		position: absolute;
+		top: 8px;
+		right: 8px;
 		display: grid;
-		width: 36px;
+		width: 28px;
+		height: 28px;
 		flex-shrink: 0;
 		place-items: center;
 		border-radius: 6px;
@@ -198,9 +203,6 @@
 	.actions button:hover {
 		background: var(--scrapscache-interactive-hover);
 	}
-	.actions .delete {
-		color: var(--scrapscache-danger);
-	}
 	.mobile-more {
 		display: none;
 	}
@@ -209,11 +211,17 @@
 			overflow: hidden;
 		}
 		.front {
+			z-index: 1;
 			transform: translateX(var(--swipe-offset));
 			transition: transform 160ms ease;
+			background: var(--scrapscache-surface, var(--scrapscache-bg));
+		}
+		.front.active {
+			background: var(--scrapscache-interactive-hover);
 		}
 		.actions {
 			inset: 0 0 0 auto;
+			z-index: 0;
 			display: flex;
 			width: 144px;
 			padding: 0;
@@ -245,7 +253,12 @@
 			display: contents;
 		}
 		.more {
+			position: static;
 			width: 32px;
+			height: auto;
+		}
+		.select {
+			padding-right: 12px;
 		}
 	}
 	@media (prefers-reduced-motion: reduce) {

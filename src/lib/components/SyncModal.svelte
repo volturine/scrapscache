@@ -16,7 +16,7 @@
 	import { portalToAppFloat } from '$lib/appViewport';
 
 	let { onClose }: { onClose: () => void } = $props();
-	let mode = $state<'menu' | 'register' | 'link' | 'waiting' | 'confirm'>('menu');
+	let mode = $state<'menu' | 'register' | 'link' | 'waiting' | 'confirm' | 'rename'>('menu');
 	let code = $state('');
 	let error = $state('');
 	let info = $state('');
@@ -26,7 +26,6 @@
 		| 'export'
 		| 'pair'
 		| 'rename'
-		| 'remove'
 		| 'sync'
 		| 'switch'
 		| 'unlink'
@@ -41,12 +40,17 @@
 	let timer: ReturnType<typeof setTimeout> | null = null;
 	let confirmation = $state<'unlink' | 'delete' | 'force' | null>(null);
 	let newName = $state('');
-	let deletingId = $state<string | null>(null);
+	let unlinkingId = $state<string | null>(null);
 	let editingId = $state<string | null>(null);
 	let editName = $state('');
 
 	const authenticationFailed = $derived(/authentication/i.test(syncStore.lastError ?? ''));
 	let syncError = $derived(syncStore.lastError ?? '');
+	const unlinkingProfile = $derived(
+		unlinkingId
+			? syncStore.profiles.find((profile) => profile.id === unlinkingId)
+			: syncStore.activeProfile
+	);
 
 	// A running sync must finish before a dataset handover can start.
 	// Background pulls and outbox retries are intentionally silent. They still
@@ -283,11 +287,14 @@
 	function startRename(id: string, current: string) {
 		editingId = id;
 		editName = current;
+		error = '';
+		mode = 'rename';
 	}
 
 	function cancelEdit() {
 		editingId = null;
 		editName = '';
+		mode = 'menu';
 	}
 
 	async function saveRename() {
@@ -338,8 +345,9 @@
 
 	async function unlinkDevice() {
 		error = '';
+		const profileId = unlinkingId;
 		const result = await runOperation('unlink', 'Could not unlink workspace', () =>
-			profileCoordinator.unlink()
+			profileId ? profileCoordinator.unlinkSaved(profileId) : profileCoordinator.unlink()
 		);
 		if (!result) return;
 		if (!result.success) {
@@ -348,6 +356,7 @@
 		}
 		mode = 'menu';
 		confirmation = null;
+		unlinkingId = null;
 		info = 'Notes moved to Anonymous workspace. Cloud data is unchanged.';
 	}
 
@@ -413,13 +422,15 @@
 							? 'Workspaces'
 							: mode === 'register'
 								? 'New workspace'
-								: mode === 'confirm'
-									? confirmation === 'force'
-										? 'Replace cloud notes?'
-										: confirmation === 'unlink'
-											? 'Unlink workspace?'
-											: 'Delete cloud data?'
-									: 'Connect device'}
+								: mode === 'rename'
+									? 'Rename workspace'
+									: mode === 'confirm'
+										? confirmation === 'force'
+											? 'Replace cloud notes?'
+											: confirmation === 'unlink'
+												? 'Unlink workspace?'
+												: 'Delete cloud data?'
+										: 'Connect device'}
 					</Dialog.Title>
 					<Dialog.CloseTrigger
 						type="button"
@@ -458,99 +469,34 @@
 							{#each syncStore.profiles as profile (profile.id)}
 								{@const active = profile.id === syncStore.activeProfile?.id}
 								<div class="min-w-0">
-									{#if editingId === profile.id}
-										<form
-											class="flex w-full gap-2 p-2"
-											onsubmit={(event) => {
-												event.preventDefault();
-												void saveRename();
-											}}
+									<WorkspaceRow
+										name={profile.name}
+										{active}
+										disabled={busy}
+										onselect={() => {
+											if (!active) void switchProfile(profile.id);
+										}}
+										onrename={() => startRename(profile.id, profile.name)}
+										onunlink={() => {
+											unlinkingId = active ? null : profile.id;
+											confirmation = 'unlink';
+											mode = 'confirm';
+											error = '';
+										}}
+									>
+										<Cloud size={18} aria-hidden="true" />
+										<span class="min-w-0 flex-1 text-left"
+											><span class="block truncate">{profile.name}</span><span
+												class="workspace-caption"
+												>{active ? 'Current workspace' : 'Synced workspace'}{sizeLabel(profile.id)
+													? ' · ' + sizeLabel(profile.id)
+													: ''}</span
+											></span
 										>
-											<input
-												class="scrapscache-input min-w-0 flex-1 px-2 py-1 text-sm"
-												bind:value={editName}
-												maxlength="60"
-												aria-label="Workspace name"
-												disabled={busy}
-											/>
-											<button type="submit" disabled={busy || !editName.trim()} class="text-sm"
-												>Save</button
-											>
-											<button
-												type="button"
-												onclick={cancelEdit}
-												disabled={busy}
-												class="icon-btn"
-												aria-label="Cancel rename"><X size={16} /></button
-											>
-										</form>
-									{:else}
-										<WorkspaceRow
-											name={profile.name}
-											{active}
-											disabled={busy}
-											onselect={() => {
-												if (!active) void switchProfile(profile.id);
-											}}
-											onrename={() => startRename(profile.id, profile.name)}
-											ondelete={() => {
-												if (active) {
-													confirmation = 'unlink';
-													mode = 'confirm';
-												} else {
-													deletingId = profile.id;
-												}
-												error = '';
-											}}
-										>
-											<Cloud size={18} aria-hidden="true" />
-											<span class="min-w-0 flex-1 text-left"
-												><span class="block truncate">{profile.name}</span><span
-													class="workspace-caption"
-													>{active ? 'Current workspace' : 'Synced workspace'}{sizeLabel(profile.id)
-														? ' · ' + sizeLabel(profile.id)
-														: ''}</span
-												></span
-											>
-										</WorkspaceRow>
-									{/if}
+									</WorkspaceRow>
 								</div>
 							{/each}
 						</div>
-						{#if deletingId}
-							{@const target = syncStore.profiles.find((profile) => profile.id === deletingId)}
-							<div class="space-y-2 rounded-lg border border-[var(--scrapscache-border)] p-3">
-								<p class="text-sm">
-									Delete “{target?.name}” and its notes from this device? Cloud data stays available
-									on other linked devices.
-								</p>
-								<div class="flex gap-3">
-									<button
-										type="button"
-										disabled={busy}
-										onclick={() => {
-											deletingId = null;
-										}}>Cancel</button
-									>
-									<button
-										type="button"
-										disabled={busy}
-										class="text-[var(--scrapscache-danger)]"
-										onclick={async () => {
-											const id = deletingId;
-											if (!id) return;
-											const removed = await runOperation(
-												'remove',
-												'Could not delete workspace',
-												() => syncStore.removeProfile(id)
-											);
-											if (removed) deletingId = null;
-											else if (removed === false) error = 'Could not delete workspace';
-										}}>Delete from device</button
-									>
-								</div>
-							</div>
-						{/if}
 
 						<div class={syncStore.account ? 'flex gap-4 text-sm' : ''}>
 							<button
@@ -665,6 +611,7 @@
 										class="manage-row"
 										disabled={busy}
 										onclick={() => {
+											unlinkingId = null;
 											confirmation = 'unlink';
 											mode = 'confirm';
 											error = '';
@@ -691,6 +638,39 @@
 							</div>
 						</details>
 					</div>
+				{:else if mode === 'rename'}
+					<form
+						class="space-y-4"
+						onsubmit={(event) => {
+							event.preventDefault();
+							void saveRename();
+						}}
+					>
+						<label class="block text-sm" for="workspace-name">Workspace name</label>
+						<input
+							id="workspace-name"
+							class="scrapscache-input w-full px-3 py-2.5 text-sm"
+							bind:value={editName}
+							maxlength="60"
+							disabled={busy}
+						/>
+						{#if error}<p class="text-sm text-[var(--scrapscache-danger)]" role="alert">
+								{error}
+							</p>{/if}
+						<div class="flex gap-2">
+							<button
+								type="button"
+								class="scrapscache-button scrapscache-button-secondary flex-1 px-3 py-2.5 text-sm"
+								disabled={busy}
+								onclick={cancelEdit}>Cancel</button
+							>
+							<button
+								type="submit"
+								class="scrapscache-button scrapscache-button-primary flex-1 px-3 py-2.5 text-sm font-medium"
+								disabled={busy || !editName.trim()}>Save name</button
+							>
+						</div>
+					</form>
 				{:else if mode === 'confirm'}
 					<div class="space-y-4">
 						<p class="text-sm leading-relaxed text-[var(--scrapscache-text-muted)]">
@@ -699,9 +679,8 @@
 								only in the cloud will be removed. Other devices will receive these notes as the
 								latest version.
 							{:else if confirmation === 'unlink'}
-								All notes in “{syncStore.activeProfile?.name}” will be appended to Anonymous
-								workspace. Existing anonymous notes are kept. Other devices and cloud data stay
-								connected.
+								All notes in “{unlinkingProfile?.name}” will be appended to Anonymous workspace.
+								Existing anonymous notes are kept. Other devices and cloud data stay connected.
 							{:else}
 								Permanently delete “{syncStore.activeProfile?.name}” from the cloud and stop syncing
 								it on all devices. This device’s notes will be appended to Anonymous workspace.
@@ -719,6 +698,7 @@
 								onclick={() => {
 									mode = 'menu';
 									confirmation = null;
+									unlinkingId = null;
 									error = '';
 								}}>Cancel</button
 							>

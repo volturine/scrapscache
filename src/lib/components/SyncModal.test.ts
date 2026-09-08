@@ -116,6 +116,16 @@ describe('SyncModal profile interactions', () => {
 		expect(syncStore.activePid).toBe('device-local');
 	});
 
+	it('uses a single primary new-workspace action while anonymous is active', () => {
+		syncStore.activateLocalWorkspace();
+		render(SyncModal, { props: { onClose: vi.fn() } });
+
+		const create = screen.getByRole('button', { name: '+ New workspace' });
+		expect(create.classList.contains('scrapscache-button-primary')).toBe(true);
+		expect(screen.queryByText('These notes stay on this device.')).toBeNull();
+		expect(screen.queryByRole('button', { name: 'Sync now' })).toBeNull();
+	});
+
 	it('keeps sync screen open and shows error if switch fails', async () => {
 		vi.spyOn(profileCoordinator, 'switchTo').mockResolvedValueOnce({
 			success: false,

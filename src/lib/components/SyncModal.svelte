@@ -552,11 +552,13 @@
 							</div>
 						{/if}
 
-						<div class="flex gap-4 text-sm">
+						<div class={syncStore.account ? 'flex gap-4 text-sm' : ''}>
 							<button
 								type="button"
 								disabled={busy}
-								class="text-[var(--scrapscache-primary)]"
+								class={syncStore.account
+									? 'text-[var(--scrapscache-primary)]'
+									: 'scrapscache-button scrapscache-button-primary w-full px-3 py-2.5 text-sm font-medium'}
 								onclick={() => {
 									mode = 'register';
 									error = '';
@@ -616,10 +618,6 @@
 									>
 								{:else if syncing}<p class="mt-2 text-xs" role="status">Syncing…</p>{/if}
 							</div>
-						{:else}
-							<p class="text-sm text-[var(--scrapscache-text-muted)]">
-								These notes stay on this device. Create a workspace to sync them.
-							</p>
 						{/if}
 						{#if handoverBlocked}<p class="text-xs text-[var(--scrapscache-text-muted)]">
 								Wait for sync to finish before changing workspaces.

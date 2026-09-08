@@ -13,6 +13,7 @@ import {
 } from '$lib/profiles';
 import { randomOpaqueId } from '$lib/syncPairing';
 import { LOCAL_PROFILE_ID } from '$lib/db/idb';
+import { unregisterReminderDevice } from '$lib/reminderWake';
 
 export class ProfileCoordinator {
 	/** True while a create/switch/adopt handover is in progress. */
@@ -133,6 +134,36 @@ export class ProfileCoordinator {
 			return {
 				success: false,
 				error: err instanceof Error ? err.message : 'Could not force a full resync'
+			};
+		} finally {
+			this.switching = false;
+		}
+	}
+
+	/** Append this workspace to anonymous storage before leaving its sync key. */
+	async unlink(deleteCloud = false): Promise<{ success: boolean; error?: string }> {
+		const blocked = this.guard();
+		if (blocked) return { success: false, error: blocked };
+		this.switching = true;
+		try {
+			return await this.exclusive(async () => {
+				await notesStore.waitForPendingProfileWrites();
+				const account = syncStore.account;
+				if (!account) return { success: false, error: 'No synced workspace is active' };
+				if (deleteCloud) {
+					const result = await syncStore.deleteCloudAccount();
+					if (!result.success) return result;
+				} else {
+					await syncStore.logout();
+					void unregisterReminderDevice(account);
+				}
+				await notesStore.reloadForProfile();
+				return { success: true };
+			});
+		} catch (err) {
+			return {
+				success: false,
+				error: err instanceof Error ? err.message : 'Could not unlink workspace'
 			};
 		} finally {
 			this.switching = false;

@@ -6,6 +6,7 @@
 import { openDB, type IDBPDatabase, type IDBPTransaction } from 'idb';
 import type { LinkPreview } from '$lib/linkPreview';
 import type { Label, Note, NoteImage } from '$lib/types';
+import type { KanbanBoard } from '$lib/kanban';
 import { blobToDataUrl, dataUrlToBlob } from '$lib/imageBlob';
 
 const DB_NAME = 'scrapscache';
@@ -1153,7 +1154,103 @@ export async function copyProfileNamespace(fromPid: string, toPid: string): Prom
 
 export async function unlinkProfileToNamespace(fromPid: string, toPid: string): Promise<void> {
 	if (fromPid === toPid) return;
-	await copyProfileNamespace(fromPid, toPid);
+	await enqueueDeviceWrite(async () => {
+		const source = await getDB(fromPid);
+		const target = await getDB(toPid);
+		const notes = (await source.getAll(NOTES_STORE)) as Note[];
+		const labels = (await source.getAll(LABELS_STORE)) as Label[];
+		const boardsKey = 'scrapscache-idb-kanban-boards';
+		const boards: KanbanBoard[] =
+			(await source.get(SYNC_STATE_STORE, scopedStateKey(boardsKey, fromPid))) ?? [];
+		const images = await Promise.all(
+			notes.flatMap((note) =>
+				(note.images ?? []).map(async (image) => ({
+					noteId: note.id,
+					imageId: image.id,
+					value:
+						(await source.get(IMAGES_STORE, `${note.id}::${image.id}`)) ??
+						(await source.get(IMAGES_STORE, `${note.id}:${image.id}`))
+				}))
+			)
+		);
+		const imageIds = new Map(images.map((image) => [image.imageId, crypto.randomUUID()]));
+		const tx = target.transaction(
+			[NOTES_STORE, LABELS_STORE, IMAGES_STORE, SYNC_STATE_STORE],
+			'readwrite'
+		);
+		try {
+			const noteIds = new Map<string, string>();
+			const labelIds = new Map<string, string>();
+			const noteTombstones =
+				(await tx
+					.objectStore(SYNC_STATE_STORE)
+					.get(scopedStateKey('scrapscache-idb-note-tombstones', toPid))) ?? {};
+			const labelTombstones =
+				(await tx
+					.objectStore(SYNC_STATE_STORE)
+					.get(scopedStateKey('scrapscache-idb-label-tombstones', toPid))) ?? {};
+			for (const label of labels) {
+				const id =
+					(await tx.objectStore(LABELS_STORE).get(label.id)) || labelTombstones[label.id]
+						? crypto.randomUUID()
+						: label.id;
+				labelIds.set(label.id, id);
+				await tx.objectStore(LABELS_STORE).put({ ...label, id });
+			}
+			for (const note of notes) {
+				const id =
+					(await tx.objectStore(NOTES_STORE).get(note.id)) || noteTombstones[note.id]
+						? crypto.randomUUID()
+						: note.id;
+				noteIds.set(note.id, id);
+				await tx.objectStore(NOTES_STORE).put({
+					...note,
+					id,
+					labels: note.labels.map((id) => labelIds.get(id) ?? id),
+					images: (note.images ?? []).map((image) => ({ ...image, id: imageIds.get(image.id)! }))
+				});
+			}
+			for (const image of images) {
+				if (image.value !== undefined)
+					await tx
+						.objectStore(IMAGES_STORE)
+						.put(image.value, `${noteIds.get(image.noteId)}::${imageIds.get(image.imageId)}`);
+			}
+			const existingBoards: KanbanBoard[] =
+				(await tx.objectStore(SYNC_STATE_STORE).get(scopedStateKey(boardsKey, toPid))) ?? [];
+			const boardTombstones =
+				(await tx
+					.objectStore(SYNC_STATE_STORE)
+					.get(scopedStateKey('scrapscache-idb-board-tombstones', toPid))) ?? {};
+			const appended = boards.map((board) => ({
+				...board,
+				id:
+					existingBoards.some((existing) => existing.id === board.id) || boardTombstones[board.id]
+						? crypto.randomUUID()
+						: board.id,
+				columns: board.columns.map((column) => ({
+					...column,
+					labelId: column.labelId ? (labelIds.get(column.labelId) ?? column.labelId) : null
+				})),
+				backlogFilter: {
+					...board.backlogFilter,
+					labelIds: board.backlogFilter.labelIds.map((id) => labelIds.get(id) ?? id)
+				}
+			}));
+			await tx
+				.objectStore(SYNC_STATE_STORE)
+				.put([...existingBoards, ...appended], scopedStateKey(boardsKey, toPid));
+			await tx.done;
+		} catch (error) {
+			try {
+				tx.abort();
+			} catch {
+				/* The failed transaction may already be aborted. */
+			}
+			await tx.done.catch(() => undefined);
+			throw error;
+		}
+	});
 }
 
 export async function clearProfileNamespace(pid: string): Promise<void> {

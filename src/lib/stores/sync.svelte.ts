@@ -1363,8 +1363,10 @@ export class SyncStore {
 
 	async logout(): Promise<void> {
 		const accountId = this.account?.accountId;
+		const pid = this.activePid;
 		const profile = this.activeProfile;
 		if (profile) {
+			await unlinkProfileToNamespace(profile.id, LOCAL_PROFILE_ID);
 			removeProfileFromLocalStorage(profile.id);
 			this.profiles = this.profiles.filter((entry) => entry.id !== profile.id);
 		}
@@ -1378,11 +1380,10 @@ export class SyncStore {
 		setLastActiveProfileId(LOCAL_PROFILE_ID);
 		this.clearLegacyAccountStorage();
 		this.onAccountChange?.();
-		if (accountId) void this.clearAccountControlPlane(accountId);
+		if (accountId) await this.clearAccountControlPlane(accountId, pid);
 		this.restoreStatus(LOCAL_PROFILE_ID);
 		if (profile) {
 			try {
-				await unlinkProfileToNamespace(profile.id, LOCAL_PROFILE_ID);
 				await deleteProfileDatabase(profile.id);
 			} catch (err) {
 				console.error('[sync] could not unlink profile namespace:', err);

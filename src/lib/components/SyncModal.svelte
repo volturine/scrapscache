@@ -10,9 +10,8 @@
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { buildProfileNotesExport } from '$lib/profiles';
 	import { estimateProfileBytes, LOCAL_PROFILE_ID } from '$lib/db/idb';
-	import { unregisterReminderDevice } from '$lib/reminderWake';
 	import { downloadJSON } from '$lib/utils';
-	import { Cloud, Download, Pencil, Trash2, X } from '@lucide/svelte';
+	import { Cloud, CloudOff, Check, Download, Pencil, RefreshCw, X } from '@lucide/svelte';
 	import { portalToAppFloat } from '$lib/appViewport';
 	import { resolveSyncStatus, SyncStatus } from '$lib/syncStatus';
 
@@ -24,9 +23,7 @@
 	};
 
 	let { onClose }: { onClose: () => void } = $props();
-	let mode = $state<'menu' | 'register' | 'link' | 'waiting' | 'linked' | 'recover' | 'replace'>(
-		syncStore.isLoggedIn ? 'linked' : 'menu'
-	);
+	let mode = $state<'menu' | 'register' | 'link' | 'waiting' | 'replace' | 'confirm'>('menu');
 	let code = $state('');
 	let error = $state('');
 	let info = $state('');
@@ -49,12 +46,10 @@
 	let waiting = $state<StartedDeviceLink | null>(null);
 	let now = $state(Date.now());
 	let timer: ReturnType<typeof setTimeout> | null = null;
-	let deleteConfirm = $state(false);
+	let confirmation = $state<'unlink' | 'delete' | null>(null);
 	let newName = $state('');
 	let editingId = $state<string | null>(null);
 	let editName = $state('');
-	let removingId = $state<string | null>(null);
-	let forceConfirm = $state(false);
 
 	let syncError = $derived(syncStore.lastError ?? '');
 	let quotaStatus = $derived(resolveSyncStatus(syncError, syncStore.usage));
@@ -177,7 +172,7 @@
 			return;
 		}
 		newName = '';
-		mode = 'linked';
+		mode = 'menu';
 		if (result.error)
 			error = friendlyError(result.error, 'Created, but the first sync did not finish');
 	}
@@ -194,7 +189,7 @@
 			return;
 		}
 		newName = '';
-		mode = 'linked';
+		mode = 'menu';
 		info = 'Replacement sync key created from this workspace. The previous key is still saved.';
 		if (result.error)
 			error = friendlyError(result.error, 'Created, but the first sync did not finish');
@@ -211,8 +206,7 @@
 			error = friendlyError(result.error, 'Could not force a full resync');
 			return;
 		}
-		forceConfirm = false;
-		mode = 'linked';
+		mode = 'menu';
 		info = 'Full encrypted resync completed using the same sync key.';
 	}
 
@@ -248,7 +242,7 @@
 			if (waiting?.id !== active.id) return;
 			stopWaiting();
 			waiting = null;
-			mode = active.role === 'existing' ? 'linked' : 'link';
+			mode = active.role === 'existing' ? 'menu' : 'link';
 			error = friendlyError(
 				err instanceof Error ? err.message : null,
 				'Could not check the connection. Try again.'
@@ -261,7 +255,7 @@
 			stopWaiting();
 			waiting = null;
 			if (wasExisting) {
-				mode = 'linked';
+				mode = 'menu';
 				info = 'Key sent. This device can go offline.';
 				error = '';
 				return;
@@ -271,14 +265,14 @@
 			);
 			if (!adopted) return;
 			if (adopted.error || !result.receivedSyncKey) {
-				mode = syncStore.isLoggedIn ? 'linked' : 'link';
+				mode = syncStore.isLoggedIn ? 'menu' : 'link';
 				error = friendlyError(
 					adopted.error ?? 'Invalid encrypted sync key',
 					'Could not set up the received sync key'
 				);
 				return;
 			}
-			mode = 'linked';
+			mode = 'menu';
 			info = 'Paired and synced.';
 			error = '';
 			return;
@@ -286,7 +280,7 @@
 		if (result.expired || !result.success) {
 			stopWaiting();
 			waiting = null;
-			mode = active.role === 'existing' ? 'linked' : 'link';
+			mode = active.role === 'existing' ? 'menu' : 'link';
 			error = friendlyError(result.error, 'Connection timed out. Try again on both devices.');
 			return;
 		}
@@ -313,7 +307,6 @@
 	function startRename(id: string, current: string) {
 		editingId = id;
 		editName = current;
-		removingId = null;
 	}
 
 	function cancelEdit() {
@@ -345,15 +338,6 @@
 		onClose();
 	}
 
-	async function removeProfile(id: string) {
-		error = '';
-		const removed = await runOperation('remove', 'Could not remove that sync key', () =>
-			syncStore.removeProfile(id)
-		);
-		if (removed) removingId = null;
-		else if (removed === false) error = 'Could not remove that sync key.';
-	}
-
 	function progressPercent(loaded: number, total: number | null): number {
 		if (!total || total <= 0) return 0;
 		return Math.min(100, Math.round((loaded / total) * 100));
@@ -377,14 +361,18 @@
 	}
 
 	async function unlinkDevice() {
-		const account = syncStore.account;
 		error = '';
-		await syncStore.logout();
-		await notesStore.refreshProfileEffects();
+		const result = await runOperation('unlink', 'Could not unlink workspace', () =>
+			profileCoordinator.unlink()
+		);
+		if (!result) return;
+		if (!result.success) {
+			error = friendlyError(result.error, 'Could not unlink workspace');
+			return;
+		}
 		mode = 'menu';
-		error = '';
-		info = '';
-		if (account) void unregisterReminderDevice(account);
+		confirmation = null;
+		info = 'Notes moved to Anonymous workspace. Cloud data is unchanged.';
 	}
 
 	function onCopyStatus(details: { copied: boolean }) {
@@ -398,20 +386,19 @@
 	}
 
 	async function deleteCloudData() {
-		if (!deleteConfirm) return;
+		if (confirmation !== 'delete') return;
 		error = '';
 		const result = await runOperation('delete', 'Could not delete synced data', () =>
-			syncStore.deleteCloudAccount()
+			profileCoordinator.unlink(true)
 		);
 		if (!result) return;
 		if (!result.success) {
 			error = friendlyError(result.error, 'Could not delete synced data');
 			return;
 		}
-		deleteConfirm = false;
-		await notesStore.refreshProfileEffects();
+		confirmation = null;
 		mode = 'menu';
-		info = 'Cloud data deleted. Notes on this device were kept.';
+		info = 'Cloud data deleted. Your notes are now in Anonymous workspace.';
 	}
 
 	function friendlyError(raw: string | null | undefined, fallback: string): string {
@@ -438,17 +425,25 @@
 	<div {@attach portalToAppFloat} class="fixed inset-0 z-50" role="presentation">
 		<Dialog.Backdrop class="absolute inset-0 bg-black/40" />
 		<Dialog.Positioner class="absolute inset-0 flex items-center justify-center p-4">
-			<Dialog.Content class="scrapscache-dialog relative w-full max-w-md p-6">
+			<Dialog.Content
+				class="scrapscache-dialog relative max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto p-5"
+			>
 				<div class="mb-4 flex items-center justify-between">
 					<Dialog.Title
 						class="flex items-center gap-2 text-lg font-medium text-[var(--scrapscache-text)]"
 					>
 						<Cloud class="h-5 w-5" aria-hidden="true" />
-						{#if syncStore.isLoggedIn && syncStore.activeProfile}
-							<span class="max-w-[16rem] truncate">{syncStore.activeProfile.name}</span>
-						{:else}
-							Sync
-						{/if}
+						{mode === 'menu'
+							? 'Workspaces'
+							: mode === 'register'
+								? 'New workspace'
+								: mode === 'replace'
+									? 'New sync key'
+									: mode === 'confirm'
+										? confirmation === 'unlink'
+											? 'Unlink workspace?'
+											: 'Delete cloud data?'
+										: 'Connect device'}
 					</Dialog.Title>
 					<Dialog.CloseTrigger
 						type="button"
@@ -460,477 +455,349 @@
 					</Dialog.CloseTrigger>
 				</div>
 
-				{#if mode === 'linked' && syncStore.account}
+				{#if mode === 'menu'}
 					<div class="space-y-4">
-						<p class="text-sm text-[var(--scrapscache-text-muted)]">
-							This device is linked. Connect another device with a one-time code that expires in 60
-							seconds.
-						</p>
-						{#if syncStore.progress}
-							{@const progress = syncStore.progress}
-							{@const percent = progressPercent(progress.loadedBytes, progress.totalBytes)}
-							<div
-								class="rounded-[var(--scrapscache-radius-md)] bg-[var(--scrapscache-interactive-hover)] p-3 text-sm"
-							>
-								<div class="mb-1 flex justify-between text-[var(--scrapscache-text-muted)]">
-									<span>
-										{progress.phase === 'upload'
-											? 'Encrypting & uploading'
-											: 'Downloading encrypted sync'}
-									</span>
-									<span>
-										<Format.Byte
-											value={progress.loadedBytes}
-											unitSystem="decimal"
-										/>{#if progress.totalBytes}
-											&nbsp;/ <Format.Byte value={progress.totalBytes} unitSystem="decimal" /> ({percent}%){/if}
-									</span>
-								</div>
-								<Progress.Root value={progress.totalBytes ? percent : null} class="w-full">
-									<Progress.Track
-										class="scrapscache-progress-track h-2 overflow-hidden rounded-full"
-									>
-										<Progress.Range
-											class="scrapscache-progress-value h-full rounded-full transition-[width] duration-150"
-											style={`width: ${progress.totalBytes ? percent : 100}%`}
-										/>
-									</Progress.Track>
-								</Progress.Root>
-							</div>
-						{:else if syncing}<p class="text-sm text-[var(--scrapscache-text-muted)]">
-								Syncing…
-							</p>{/if}
-						{#if info}<p class="text-sm text-[var(--scrapscache-text-muted)]">{info}</p>{/if}
-						{#if error}
-							<p class="text-sm text-[var(--scrapscache-danger)]" role="alert">{error}</p>
-						{:else if syncError}
-							<p class="text-sm text-[var(--scrapscache-danger)]" role="alert">{syncError}</p>
-						{/if}
-						<button
-							type="button"
-							onclick={() => void syncNow()}
-							disabled={busy}
-							class="scrapscache-button scrapscache-button-primary w-full px-3 py-2.5 text-sm font-medium"
-							>{operation === 'sync' ? 'Syncing…' : '🔄 Sync now'}</button
-						>
-						<button
-							type="button"
-							onclick={() => void startExistingConnection()}
-							disabled={busy}
-							class="scrapscache-button scrapscache-button-secondary w-full px-3 py-2.5 text-sm"
-							>Connect another device</button
-						>
-						<button
-							type="button"
-							onclick={() => {
-								error = '';
-								info = '';
-								mode = 'menu';
-							}}
-							disabled={busy}
-							class="w-full rounded-lg border border-[var(--scrapscache-border)] px-3 py-2.5 text-sm touch-manipulation"
-							>Switch sync key</button
-						>
-						<button
-							type="button"
-							onclick={() => {
-								mode = 'recover';
-								forceConfirm = false;
-								error = '';
-								info = '';
-							}}
-							disabled={busy}
-							class="w-full text-xs text-[var(--scrapscache-text-muted)] touch-manipulation"
-							>Sync recovery options</button
-						>
-						{#if syncStore.usage}
-							<div
-								aria-label="Sync storage usage"
-								class={[
-									'rounded-[var(--scrapscache-radius-md)] p-3 text-xs',
-									SYNC_STATUS_CLASS[quotaStatus]
-								]}
-							>
-								<div class="flex items-center justify-between gap-3">
-									<span class="font-medium">Sync storage</span>
-									<span>
-										<Format.Byte value={syncStore.usage.storageBytes} unitSystem="decimal" /> of
-										<Format.Byte value={syncStore.usage.maxBytes} unitSystem="decimal" />
-									</span>
-								</div>
-							</div>
-						{/if}
-						<button
-							type="button"
-							onclick={() => void unlinkDevice()}
-							disabled={busy}
-							class="scrapscache-button scrapscache-button-destructive w-full text-sm"
-							>Unlink this device</button
-						>
-						{#if deleteConfirm}
-							<div class="scrapscache-status-danger rounded-[var(--scrapscache-radius-md)] p-3">
-								<p class="text-xs leading-relaxed">
-									Delete all encrypted cloud records? Notes stored on this device will remain.
-								</p>
-								<div class="mt-2 flex gap-2">
-									<button
-										type="button"
-										onclick={() => {
-											deleteConfirm = false;
-										}}
-										disabled={busy}
-										class="flex-1 rounded border border-[var(--scrapscache-border)] px-2 py-1.5 text-xs"
-										>Cancel</button
-									>
-									<button
-										type="button"
-										onclick={() => void deleteCloudData()}
-										disabled={busy}
-										class="scrapscache-button scrapscache-button-destructive-solid flex-1 px-2 py-1.5 text-xs font-medium"
-										>{operation === 'delete' ? 'Deleting…' : 'Delete cloud data'}</button
-									>
-								</div>
-							</div>
-						{:else}
+						<div class="workspace-list" aria-label="Workspaces on this device">
 							<button
 								type="button"
-								onclick={() => {
-									deleteConfirm = true;
-								}}
+								class="workspace-row"
+								class:active={syncStore.activePid === LOCAL_PROFILE_ID}
 								disabled={busy}
-								class="scrapscache-button scrapscache-button-destructive w-full text-xs"
-								>Delete cloud data</button
+								aria-label={syncStore.activePid === LOCAL_PROFILE_ID
+									? 'Anonymous workspace is active'
+									: 'Switch to Anonymous workspace'}
+								onclick={() =>
+									syncStore.activePid !== LOCAL_PROFILE_ID && void switchProfile(LOCAL_PROFILE_ID)}
 							>
-						{/if}
-					</div>
-				{:else if mode === 'recover' && syncStore.account}
-					<div class="space-y-3">
-						<p class="text-sm text-[var(--scrapscache-text-muted)]">
-							Use these only when normal sync keeps failing. Notes on this device are preserved.
-						</p>
-						{#if forceConfirm}
-							<div class="scrapscache-status-warning rounded-[var(--scrapscache-radius-md)] p-3">
-								<p class="text-xs leading-relaxed">
-									Rebuild this profile’s local sync state and re-encrypt every record using the same
-									sync key? Existing cloud records will be reconciled before the rewrite.
-								</p>
-								<div class="mt-2 flex gap-2">
-									<button
-										type="button"
-										onclick={() => {
-											forceConfirm = false;
-										}}
-										disabled={busy}
-										class="flex-1 rounded border border-[var(--scrapscache-border)] px-2 py-1.5 text-xs"
-										>Cancel</button
-									>
-									<button
-										type="button"
-										onclick={() => void forceResync()}
-										disabled={busy}
-										class="scrapscache-button scrapscache-button-primary flex-1 px-2 py-1.5 text-xs font-medium"
-										>{operation === 'force-sync' ? 'Resyncing…' : 'Force full resync'}</button
-									>
-								</div>
-							</div>
-						{:else}
-							<button
-								type="button"
-								onclick={() => {
-									forceConfirm = true;
-								}}
-								disabled={busy}
-								class="scrapscache-button scrapscache-button-secondary w-full px-3 py-3 text-sm"
-								>Force full resync with this key</button
-							>
-						{/if}
-						<button
-							type="button"
-							onclick={() => {
-								mode = 'replace';
-								newName = '';
-								error = '';
-							}}
-							disabled={busy}
-							class="w-full rounded-lg border border-[var(--scrapscache-border)] px-3 py-3 text-sm touch-manipulation"
-							>Create new sync key from these notes</button
-						>
-						{#if error}<p class="text-sm text-[var(--scrapscache-danger)]" role="alert">
-								{error}
-							</p>{/if}
-						<button
-							type="button"
-							onclick={() => {
-								mode = 'linked';
-								forceConfirm = false;
-								error = '';
-							}}
-							disabled={busy}
-							class="w-full text-xs text-[var(--scrapscache-text-muted)] touch-manipulation"
-							>← Back</button
-						>
-					</div>
-				{:else if mode === 'replace' && syncStore.account}
-					<div class="space-y-3">
-						<p class="text-sm text-[var(--scrapscache-text-muted)]">
-							Create a fresh sync key containing this workspace’s current notes. The existing key
-							and its local workspace remain saved as a fallback.
-						</p>
-						<input
-							bind:value={newName}
-							placeholder="Name the replacement key (optional)"
-							maxlength="60"
-							class="scrapscache-input w-full px-3 py-2 text-sm"
-							aria-label="Replacement sync key name"
-							onkeydown={(event) => event.key === 'Enter' && void createReplacement()}
-						/>
-						{#if error}<p class="text-sm text-[var(--scrapscache-danger)]" role="alert">
-								{error}
-							</p>{/if}
-						<button
-							type="button"
-							onclick={() => void createReplacement()}
-							disabled={busy}
-							class="scrapscache-button scrapscache-button-primary w-full px-3 py-2 text-sm font-medium"
-							>{operation === 'replace-key' ? 'Creating…' : 'Create replacement sync key'}</button
-						>
-						<button
-							type="button"
-							onclick={() => {
-								mode = 'recover';
-								error = '';
-							}}
-							disabled={busy}
-							class="w-full text-xs text-[var(--scrapscache-text-muted)] touch-manipulation"
-							>← Back</button
-						>
-					</div>
-				{:else if mode === 'menu'}
-					<div class="space-y-3">
-						{#if syncStore.profiles.length}
-							<p class="text-xs font-medium tracking-wide text-[var(--scrapscache-text-muted)]">
-								Workspaces on this device
-							</p>
-							<div class="space-y-1.5">
-								<div
-									class="relative flex items-center gap-2 rounded-lg border border-[var(--scrapscache-border)] px-3 py-2"
+								<CloudOff size={18} aria-hidden="true" />
+								<span class="min-w-0 flex-1 text-left"
+									><span class="block truncate">Anonymous workspace</span><span
+										class="workspace-caption"
+										>Only on this device{sizeLabel(LOCAL_PROFILE_ID)
+											? ' · ' + sizeLabel(LOCAL_PROFILE_ID)
+											: ''}</span
+									></span
 								>
-									<button
-										type="button"
-										class="absolute inset-0 rounded-lg touch-manipulation disabled:cursor-not-allowed"
-										disabled={busy}
-										title={syncStore.activePid !== LOCAL_PROFILE_ID && notesStore.syncing
-											? 'Wait for the current sync to finish'
-											: undefined}
-										aria-label={syncStore.activePid === LOCAL_PROFILE_ID
-											? 'Anonymous workspace is active'
-											: 'Switch to Anonymous workspace'}
-										onclick={() => {
-											if (syncStore.activePid !== LOCAL_PROFILE_ID)
-												void switchProfile(LOCAL_PROFILE_ID);
-										}}
-									></button>
-									<span class="pointer-events-none relative min-w-0 flex-1">
-										<span class="block truncate text-sm">Anonymous workspace</span>
-										{#if sizeLabel(LOCAL_PROFILE_ID)}
-											<span class="block text-xs text-[var(--scrapscache-text-muted)]"
-												>{sizeLabel(LOCAL_PROFILE_ID)} stored locally</span
-											>
-										{/if}
-										<span
-											class="block text-xs {syncStore.activePid === LOCAL_PROFILE_ID
-												? 'font-medium text-[var(--scrapscache-success)]'
-												: 'text-[var(--scrapscache-text-muted)]'}"
-										>
-											{syncStore.activePid === LOCAL_PROFILE_ID
-												? 'Active — not synced'
-												: 'Not synced — tap to switch'}
-										</span>
-									</span>
-									<button
-										type="button"
-										onclick={() => void exportProfile(LOCAL_PROFILE_ID)}
-										disabled={busy}
-										class="icon-btn relative z-10 h-7 w-7 shrink-0"
-										aria-label="Export notes of Anonymous workspace"
-									>
-										<Download class="h-3.5 w-3.5" aria-hidden="true" />
-									</button>
-								</div>
-								{#each syncStore.profiles as profile (profile.id)}
+								{#if syncStore.activePid === LOCAL_PROFILE_ID}<Check
+										size={16}
+										aria-hidden="true"
+									/>{/if}
+							</button>
+							{#each syncStore.profiles as profile (profile.id)}
+								{@const active = profile.id === syncStore.activeProfile?.id}
+								<div class="flex items-center gap-1">
 									{#if editingId === profile.id}
-										<div
-											class="flex items-center gap-2 rounded-lg border border-[var(--scrapscache-border)] px-2 py-1.5"
+										<form
+											class="flex w-full gap-2 p-2"
+											onsubmit={(event) => {
+												event.preventDefault();
+												void saveRename();
+											}}
 										>
 											<input
 												class="scrapscache-input min-w-0 flex-1 px-2 py-1 text-sm"
 												bind:value={editName}
 												maxlength="60"
-												aria-label="Sync key name"
-												onkeydown={(event) => {
-													if (event.key === 'Enter') void saveRename();
-													if (event.key === 'Escape') cancelEdit();
-												}}
-											/>
-											<button
-												type="button"
-												onclick={() => void saveRename()}
+												aria-label="Workspace name"
 												disabled={busy}
-												class="shrink-0 text-xs font-medium text-[var(--scrapscache-primary)]"
+											/>
+											<button type="submit" disabled={busy || !editName.trim()} class="text-sm"
 												>Save</button
 											>
 											<button
 												type="button"
 												onclick={cancelEdit}
 												disabled={busy}
-												class="shrink-0 text-xs text-[var(--scrapscache-text-muted)]">Cancel</button
+												class="icon-btn"
+												aria-label="Cancel rename"><X size={16} /></button
 											>
-										</div>
-									{:else if removingId === profile.id}
-										<div
-											class="scrapscache-status-danger rounded-lg border border-[var(--scrapscache-danger)] px-3 py-2"
-										>
-											<p class="text-xs leading-relaxed">
-												Remove “{profile.name}” and its stashed notes from this device? Its synced
-												cloud data stays.
-											</p>
-											<div class="mt-2 flex gap-2">
-												<button
-													type="button"
-													onclick={() => {
-														removingId = null;
-													}}
-													disabled={busy}
-													class="flex-1 rounded border border-[var(--scrapscache-border)] px-2 py-1 text-xs"
-													>Keep</button
-												>
-												<button
-													type="button"
-													onclick={() => {
-														void removeProfile(profile.id);
-													}}
-													disabled={busy}
-													class="scrapscache-button scrapscache-button-destructive-solid flex-1 px-2 py-1 text-xs font-medium"
-													>Remove</button
-												>
-											</div>
-										</div>
+										</form>
 									{:else}
-										{@const active = profile.id === syncStore.activeProfile?.id}
-										<div
-											class="relative flex items-center gap-2 rounded-lg border border-[var(--scrapscache-border)] px-3 py-2"
+										<button
+											type="button"
+											class="workspace-row min-w-0 flex-1"
+											class:active
+											disabled={busy}
+											aria-label={active
+												? `${profile.name} is active`
+												: `Switch to ${profile.name}`}
+											onclick={() => !active && void switchProfile(profile.id)}
 										>
-											<button
-												type="button"
-												class="absolute inset-0 rounded-lg touch-manipulation disabled:cursor-not-allowed"
-												disabled={busy}
-												title={!active && notesStore.syncing
-													? 'Wait for the current sync to finish'
-													: undefined}
-												aria-label={active ? `Manage ${profile.name}` : `Switch to ${profile.name}`}
-												onclick={() => {
-													if (active) {
-														mode = 'linked';
-														error = '';
-														info = '';
-														return;
-													}
-													void switchProfile(profile.id);
-												}}
-											></button>
-											<span class="pointer-events-none relative min-w-0 flex-1">
-												<span class="block truncate text-sm">{profile.name}</span>
-												{#if sizeLabel(profile.id)}
-													<span class="block text-xs text-[var(--scrapscache-text-muted)]"
-														>{sizeLabel(profile.id)} stored locally</span
-													>
-												{/if}
-												{#if active}
-													<span class="block text-xs font-medium text-[var(--scrapscache-success)]"
-														>Active — tap to manage</span
-													>
-												{:else}
-													<span class="block text-xs text-[var(--scrapscache-text-muted)]">
-														{profileCoordinator.switching ? 'Switching…' : 'Tap to switch'}
-													</span>
-												{/if}
-											</span>
-											<button
-												type="button"
-												onclick={() => void exportProfile(profile.id)}
-												disabled={busy}
-												class="icon-btn relative z-10 h-7 w-7 shrink-0"
-												aria-label="Export notes of {profile.name}"
+											<Cloud size={18} aria-hidden="true" />
+											<span class="min-w-0 flex-1 text-left"
+												><span class="block truncate">{profile.name}</span><span
+													class="workspace-caption"
+													>{active ? 'Current workspace' : 'Synced workspace'}{sizeLabel(profile.id)
+														? ' · ' + sizeLabel(profile.id)
+														: ''}</span
+												></span
 											>
-												<Download class="h-3.5 w-3.5" aria-hidden="true" />
-											</button>
-											<button
-												type="button"
-												onclick={() => startRename(profile.id, profile.name)}
-												disabled={busy}
-												class="icon-btn relative z-10 h-7 w-7 shrink-0"
-												aria-label="Rename {profile.name}"
-											>
-												<Pencil class="h-3.5 w-3.5" aria-hidden="true" />
-											</button>
-											{#if !active}
-												<button
-													type="button"
-													onclick={() => {
-														removingId = profile.id;
-														cancelEdit();
-													}}
-													disabled={busy}
-													class="icon-btn relative z-10 h-7 w-7 shrink-0"
-													aria-label="Remove {profile.name}"
-												>
-													<Trash2 class="h-3.5 w-3.5" aria-hidden="true" />
-												</button>
-											{/if}
-										</div>
+											{#if active}<Check size={16} aria-hidden="true" />{/if}
+										</button>
+										<button
+											type="button"
+											class="icon-btn h-9 w-9 shrink-0"
+											disabled={busy}
+											aria-label={`Rename ${profile.name}`}
+											onclick={() => startRename(profile.id, profile.name)}
+											><Pencil size={14} aria-hidden="true" /></button
+										>
 									{/if}
-								{/each}
+								</div>
+							{/each}
+						</div>
+						<div class="flex gap-4 text-sm">
+							<button
+								type="button"
+								disabled={busy}
+								class="text-[var(--scrapscache-primary)]"
+								onclick={() => {
+									mode = 'register';
+									error = '';
+									info = '';
+									newName = '';
+								}}>+ New workspace</button
+							>
+							<button
+								type="button"
+								disabled={busy}
+								class="text-[var(--scrapscache-text-muted)]"
+								onclick={() => {
+									mode = 'link';
+									error = '';
+									info = '';
+								}}>Join existing</button
+							>
+						</div>
+						{#if syncStore.account}
+							<div class="border-t border-[var(--scrapscache-border)] pt-4">
+								<div
+									class="mb-3 flex items-center justify-between gap-3 text-xs text-[var(--scrapscache-text-muted)]"
+								>
+									<span class="truncate">{syncStore.activeProfile?.name}</span>
+									{#if syncStore.usage}<span
+											aria-label="Sync storage usage"
+											class={SYNC_STATUS_CLASS[quotaStatus]}
+											><Format.Byte value={syncStore.usage.storageBytes} /> / <Format.Byte
+												value={syncStore.usage.maxBytes}
+											/></span
+										>{:else}<span>Encrypted sync</span>{/if}
+								</div>
+								<div class="flex gap-2">
+									<button
+										type="button"
+										onclick={() => void syncNow()}
+										disabled={busy}
+										class="scrapscache-button scrapscache-button-primary flex flex-1 items-center justify-center gap-2 px-3 py-2.5 text-sm"
+										><RefreshCw
+											size={16}
+											class={syncing ? 'animate-spin' : ''}
+											aria-hidden="true"
+										/>{operation === 'sync' ? 'Syncing…' : 'Sync now'}</button
+									>
+									<button
+										type="button"
+										onclick={() => void startExistingConnection()}
+										disabled={busy}
+										class="scrapscache-button scrapscache-button-secondary flex-1 px-3 py-2.5 text-sm"
+										>Connect device</button
+									>
+								</div>
+								{#if syncStore.progress}
+									{@const progress = syncStore.progress}
+									{@const percent = progressPercent(progress.loadedBytes, progress.totalBytes)}
+									<p class="mt-2 text-xs text-[var(--scrapscache-text-muted)]" role="status">
+										{progress.phase === 'upload' ? 'Uploading' : 'Downloading'} · <Format.Byte
+											value={progress.loadedBytes}
+										/>
+									</p>
+									<Progress.Root value={progress.totalBytes ? percent : null} class="mt-2 w-full"
+										><Progress.Track
+											class="scrapscache-progress-track h-1 overflow-hidden rounded-full"
+											><Progress.Range
+												class="scrapscache-progress-value h-full"
+												style={`width: ${progress.totalBytes ? percent : 100}%`}
+											/></Progress.Track
+										></Progress.Root
+									>
+								{:else if syncing}<p class="mt-2 text-xs" role="status">Syncing…</p>{/if}
 							</div>
+						{:else}
+							<p class="text-sm text-[var(--scrapscache-text-muted)]">
+								These notes stay on this device. Create a workspace to sync them.
+							</p>
 						{/if}
-						<p class="text-sm text-[var(--scrapscache-text-muted)]">
-							Create one private sync key, then connect your own devices by starting the connection
-							on both within 60 seconds. Each key keeps its own notes on this device.
-							{#if handoverBlocked}<span class="block">
-									Switching sync keys is paused until the current sync finishes.</span
-								>{/if}
-						</p>
-						<button
-							type="button"
-							disabled={busy}
-							onclick={() => {
-								mode = 'register';
-								error = '';
-								info = '';
-							}}
-							class="scrapscache-button scrapscache-button-primary w-full px-3 py-3 text-sm font-medium"
-							>Create sync key</button
-						><button
-							type="button"
-							onclick={() => {
-								mode = 'link';
-								error = '';
-								info = '';
-							}}
-							disabled={busy}
-							class="w-full rounded-lg border border-[var(--scrapscache-border)] px-3 py-3 text-sm touch-manipulation"
-							>Connect to an existing sync</button
-						>
-						{#if error}<p class="text-sm text-[var(--scrapscache-danger)]">{error}</p>{/if}
+						{#if handoverBlocked}<p class="text-xs text-[var(--scrapscache-text-muted)]">
+								Wait for sync to finish before changing workspaces.
+							</p>{/if}
+						{#if error || syncError}<p
+								class="text-sm text-[var(--scrapscache-danger)]"
+								role="alert"
+							>
+								{error || syncError}
+							</p>{/if}
+						{#if info}<p class="text-sm text-[var(--scrapscache-text-muted)]" role="status">
+								{info}
+							</p>{/if}
+						<details class="border-t border-[var(--scrapscache-border)] pt-3">
+							<summary class="cursor-pointer text-sm text-[var(--scrapscache-text-muted)]"
+								>Manage workspace</summary
+							>
+							<div class="mt-2 space-y-1">
+								<button
+									class="manage-row"
+									disabled={busy}
+									onclick={() => void exportProfile(syncStore.activePid)}
+									><Download size={16} aria-hidden="true" /><span>Export notes</span></button
+								>
+								{#if syncStore.account}
+									<button class="manage-row" disabled={busy} onclick={() => void forceResync()}
+										><RefreshCw
+											size={16}
+											class={operation === 'force-sync' ? 'animate-spin' : ''}
+											aria-hidden="true"
+										/><span
+											>{operation === 'force-sync' ? 'Resyncing…' : 'Force resync'}<small
+												>Retry all notes with the same sync key</small
+											></span
+										></button
+									>
+									<button
+										class="manage-row"
+										disabled={busy}
+										onclick={() => {
+											mode = 'replace';
+											newName = '';
+											error = '';
+										}}
+										><Cloud size={16} aria-hidden="true" /><span
+											>New sync key<small>Copy these notes to a fresh synced workspace</small></span
+										></button
+									>
+									<button
+										class="manage-row"
+										disabled={busy}
+										onclick={() => {
+											confirmation = 'unlink';
+											mode = 'confirm';
+											error = '';
+										}}
+										><CloudOff size={16} aria-hidden="true" /><span
+											>Unlink workspace<small>Move its notes to Anonymous workspace</small></span
+										></button
+									>
+									<button
+										class="manage-row text-[var(--scrapscache-danger)]"
+										disabled={busy}
+										onclick={() => {
+											confirmation = 'delete';
+											mode = 'confirm';
+											error = '';
+										}}
+										><X size={16} aria-hidden="true" /><span
+											>Delete cloud data<small
+												>Keep this device’s notes in Anonymous workspace</small
+											></span
+										></button
+									>
+								{/if}
+							</div>
+						</details>
 					</div>
-				{:else if mode === 'register'}
-					<div class="space-y-3">
+				{:else if mode === 'confirm'}
+					<div class="space-y-4">
+						<p class="text-sm leading-relaxed text-[var(--scrapscache-text-muted)]">
+							{#if confirmation === 'unlink'}
+								All notes in “{syncStore.activeProfile?.name}” will be appended to Anonymous
+								workspace. Existing anonymous notes are kept. Other devices and cloud data stay
+								connected.
+							{:else}
+								Permanently delete “{syncStore.activeProfile?.name}” from the cloud and stop syncing
+								it on all devices. This device’s notes will be appended to Anonymous workspace.
+								Existing anonymous notes are kept.
+							{/if}
+						</p>
+						{#if error}<p class="text-sm text-[var(--scrapscache-danger)]" role="alert">
+								{error}
+							</p>{/if}
+						<div class="flex gap-2">
+							<button
+								type="button"
+								class="scrapscache-button scrapscache-button-secondary flex-1 px-3 py-2"
+								disabled={busy}
+								onclick={() => {
+									mode = 'menu';
+									confirmation = null;
+									error = '';
+								}}>Cancel</button
+							>
+							<button
+								type="button"
+								class="scrapscache-button flex-1 px-3 py-2 {confirmation === 'delete'
+									? 'scrapscache-button-destructive-solid'
+									: 'scrapscache-button-primary'}"
+								disabled={busy}
+								onclick={() =>
+									confirmation === 'delete' ? void deleteCloudData() : void unlinkDevice()}
+								>{busy
+									? 'Working…'
+									: confirmation === 'delete'
+										? 'Delete cloud data'
+										: 'Unlink & keep notes'}</button
+							>
+						</div>
+					</div>
+				{:else if mode === 'replace'}
+					<form
+						class="space-y-4"
+						onsubmit={(event) => {
+							event.preventDefault();
+							void createReplacement();
+						}}
+					>
 						<p class="text-sm text-[var(--scrapscache-text-muted)]">
-							Creates a private account on this device. Other devices join with a one-time code, not
-							a lifetime password.
+							Copy this workspace’s notes to a new sync key. The old workspace stays saved. Connect
+							your other devices to the new workspace when you’re ready.
 						</p>
 						<input
 							bind:value={newName}
-							placeholder="Name this sync key (optional)"
+							placeholder="Workspace name (optional)"
+							maxlength="60"
+							disabled={busy}
+							class="scrapscache-input w-full px-3 py-2 text-sm"
+							aria-label="Replacement sync key name"
+						/>
+						{#if error}<p class="text-sm text-[var(--scrapscache-danger)]" role="alert">
+								{error}
+							</p>{/if}
+						<div class="flex gap-2">
+							<button
+								type="button"
+								disabled={busy}
+								class="scrapscache-button scrapscache-button-secondary px-3 py-2"
+								onclick={() => {
+									mode = 'menu';
+									error = '';
+								}}>Cancel</button
+							>
+							<button
+								type="submit"
+								disabled={busy}
+								class="scrapscache-button scrapscache-button-primary flex-1 px-3 py-2"
+								>{operation === 'replace-key' ? 'Creating…' : 'Create new key & copy notes'}</button
+							>
+						</div>
+					</form>
+				{:else if mode === 'register'}
+					<div class="space-y-3">
+						<p class="text-sm text-[var(--scrapscache-text-muted)]">
+							{syncStore.account
+								? 'Starts with no notes. Your other workspaces stay as they are.'
+								: 'Your anonymous notes will be copied into this synced workspace.'}
+						</p>
+						<input
+							bind:value={newName}
+							placeholder="Workspace name (optional)"
 							maxlength="60"
 							class="scrapscache-input w-full px-3 py-2 text-sm"
 							aria-label="Sync key name"
@@ -941,7 +808,7 @@
 							onclick={() => void create()}
 							disabled={busy}
 							class="scrapscache-button scrapscache-button-primary w-full px-3 py-2 text-sm font-medium"
-							>{operation === 'create' ? 'Creating…' : 'Create my sync key'}</button
+							>{operation === 'create' ? 'Creating…' : 'Create workspace'}</button
 						><button
 							type="button"
 							onclick={() => (mode = 'menu')}
@@ -953,8 +820,8 @@
 				{:else if mode === 'link'}
 					<div class="space-y-3">
 						<p class="text-sm text-[var(--scrapscache-text-muted)]">
-							On your other device open Sync and choose Connect another device. Enter the one-time
-							code shown there.
+							On your other device open Sync and choose Connect device. Enter the one-time code
+							shown there.
 						</p>
 						<input
 							type="text"
@@ -988,7 +855,7 @@
 									On the new device
 								</p>
 								<p class="mt-1 text-sm text-[var(--scrapscache-text)]">
-									Open Sync and type this code
+									Open Workspaces → Join existing and type this code
 								</p>
 							</div>
 							<div
@@ -1028,7 +895,7 @@
 									On the other device
 								</p>
 								<p class="mt-1 text-sm text-[var(--scrapscache-text)]">
-									Open Sync and choose Connect another device
+									Open Sync and choose Connect device
 								</p>
 							</div>
 						{/if}
@@ -1051,7 +918,7 @@
 							onclick={() => {
 								stopWaiting();
 								waiting = null;
-								mode = syncStore.isLoggedIn ? 'linked' : 'link';
+								mode = syncStore.isLoggedIn ? 'menu' : 'link';
 							}}
 							class="w-full text-sm text-[var(--scrapscache-text-muted)] touch-manipulation"
 							>Cancel</button
@@ -1062,3 +929,47 @@
 		</Dialog.Positioner>
 	</div>
 </Dialog.Root>
+
+<style>
+	.workspace-list {
+		display: grid;
+		gap: 4px;
+	}
+	.workspace-row {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		width: 100%;
+		border-radius: 10px;
+		padding: 12px;
+		font-size: 14px;
+	}
+	.workspace-row:hover,
+	.manage-row:hover {
+		background: var(--scrapscache-interactive-hover);
+	}
+	.workspace-row.active {
+		background: var(--scrapscache-interactive-hover);
+	}
+	.workspace-caption,
+	.manage-row small {
+		display: block;
+		margin-top: 2px;
+		color: var(--scrapscache-text-muted);
+		font-size: 12px;
+		font-weight: 400;
+	}
+	.manage-row {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		width: 100%;
+		border-radius: 8px;
+		padding: 10px 8px;
+		text-align: left;
+		font-size: 14px;
+	}
+	button:disabled {
+		opacity: 0.55;
+	}
+</style>

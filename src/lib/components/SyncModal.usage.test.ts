@@ -38,7 +38,7 @@ describe('SyncModal storage usage', () => {
 		const usage = renderUsage(7 * MB);
 		const text = usage.textContent?.replace(/\s+/g, ' ');
 
-		expect(text).toContain('7 MB of 10 MB');
+		expect(text).toContain('7 MB / 10 MB');
 		expect(usage.classList.contains('scrapscache-status-warning')).toBe(false);
 		expect(usage.classList.contains('scrapscache-status-danger')).toBe(false);
 	});
@@ -67,6 +67,6 @@ describe('SyncModal storage usage', () => {
 
 	it('displays the default 100 MB decimal-byte limit', () => {
 		const usage = renderUsage(5_000, 100_000_000);
-		expect(usage.textContent?.replace(/\s+/g, ' ').toLowerCase()).toContain('5 kb of 100 mb');
+		expect(usage.textContent?.replace(/\s+/g, ' ').toLowerCase()).toContain('5 kb / 100 mb');
 	});
 });

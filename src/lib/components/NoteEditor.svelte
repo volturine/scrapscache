@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { flushSync, onMount } from 'svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
@@ -12,8 +13,6 @@
 	import LabelMenu from './LabelMenu.svelte';
 	import NoteEditorFooter from './NoteEditorFooter.svelte';
 	import BodyEditor from './BodyEditor.svelte';
-	import LinkPreview from './LinkPreview.svelte';
-	import { extractHttpUrls } from '$lib/linkPreview';
 	import { appClock } from '$lib/appClock.svelte';
 	import { formatReminder, isReminderOverdue } from '$lib/utils';
 	import ReminderLabel from './ReminderLabel.svelte';
@@ -46,7 +45,6 @@
 	let title = $state(note?.title ?? '');
 	// svelte-ignore state_referenced_locally
 	let body = $state(note?.body ?? '');
-	const links = $derived(extractHttpUrls(body));
 	let paletteOpen = $state(false);
 	let reminderOpen = $state(false);
 	let labelOpen = $state(false);
@@ -465,7 +463,9 @@
 
 <svelte:window
 	onkeydown={(e) => {
-		if (isOpen && e.key === 'Escape') void close();
+		if (!isOpen || e.key !== 'Escape') return;
+		if (paletteOpen || reminderOpen || labelOpen) return;
+		void close();
 	}}
 	onpastecapture={handlePaste}
 />
@@ -591,14 +591,6 @@
 							onFocusTask={focusTask}
 							onExitTaskFocus={exitTaskFocus}
 						/>
-
-						{#if links.length > 0}
-							<div class="mt-3 flex flex-col gap-2" aria-label="Links">
-								{#each links as url (url)}
-									<LinkPreview {url} />
-								{/each}
-							</div>
-						{/if}
 					</div>
 
 					{#if fileDropActive}
@@ -654,74 +646,86 @@
 		</div>
 	</div>
 
-	<!-- Popups render at the viewport level so they're never clipped by the dialog -->
 	{#if paletteOpen}
-		<!-- svelte-ignore a11y_click_events_have_key_events -->
-		<div
-			class="fixed inset-0 z-[60] bg-black/30"
-			onpointerdown={keepEditorFocused}
-			onclick={() => {
-				paletteOpen = false;
+		<Dialog.Root
+			open
+			onOpenChange={(details) => {
+				if (!details.open) paletteOpen = false;
 			}}
-			role="presentation"
-		></div>
-		<div
-			data-editor-popup
-			class="fixed z-[61] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
-			onpointerdown={keepEditorFocused}
-			role="presentation"
+			preventScroll={false}
 		>
-			<ColorPalette
-				color={note.color}
-				onSelect={(c) => {
-					commit({ color: c });
-					paletteOpen = false;
-				}}
-			/>
-		</div>
+			<Dialog.Backdrop class="fixed inset-0 z-[60] bg-black/30" />
+			<Dialog.Positioner
+				class="fixed inset-0 z-[61] flex items-center justify-center"
+				data-editor-popup
+				onpointerdown={keepEditorFocused}
+			>
+				<Dialog.Content class="outline-none">
+					<ColorPalette
+						color={note.color}
+						onSelect={(c) => {
+							commit({ color: c });
+							paletteOpen = false;
+						}}
+					/>
+				</Dialog.Content>
+			</Dialog.Positioner>
+		</Dialog.Root>
 	{/if}
 
 	{#if reminderOpen}
-		<!-- svelte-ignore a11y_click_events_have_key_events -->
-		<div
-			class="fixed inset-0 z-[60] bg-black/30"
-			onclick={() => {
-				reminderOpen = false;
+		<Dialog.Root
+			open
+			onOpenChange={(details) => {
+				if (!details.open) reminderOpen = false;
 			}}
-			role="presentation"
-		></div>
-		<div data-editor-popup class="fixed z-[61] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-			<ReminderPicker
-				reminder={note.reminder}
-				onApply={(r) => {
-					commit({ reminder: r });
-					reminderStore.sync(notesStore.notes);
-					void notesStore.flushSync();
-				}}
-				onClose={() => {
-					reminderOpen = false;
-				}}
-			/>
-		</div>
+			preventScroll={false}
+		>
+			<Dialog.Backdrop class="fixed inset-0 z-[60] bg-black/30" />
+			<Dialog.Positioner
+				class="fixed inset-0 z-[61] flex items-center justify-center"
+				data-editor-popup
+			>
+				<Dialog.Content class="outline-none">
+					<ReminderPicker
+						reminder={note.reminder}
+						onApply={(r) => {
+							commit({ reminder: r });
+							reminderStore.sync(notesStore.notes);
+							void notesStore.flushSync();
+						}}
+						onClose={() => {
+							reminderOpen = false;
+						}}
+					/>
+				</Dialog.Content>
+			</Dialog.Positioner>
+		</Dialog.Root>
 	{/if}
 
 	{#if labelOpen}
-		<!-- svelte-ignore a11y_click_events_have_key_events -->
-		<div
-			class="fixed inset-0 z-[60] bg-black/30"
-			onpointerdown={keepEditorFocused}
-			onclick={() => {
-				labelOpen = false;
+		<Dialog.Root
+			open
+			onOpenChange={(details) => {
+				if (!details.open) labelOpen = false;
 			}}
-			role="presentation"
-		></div>
-		<div data-editor-popup class="fixed z-[61] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-			<LabelMenu
-				noteId={note.id}
-				onClose={() => {
-					labelOpen = false;
-				}}
-			/>
-		</div>
+			preventScroll={false}
+		>
+			<Dialog.Backdrop class="fixed inset-0 z-[60] bg-black/30" />
+			<Dialog.Positioner
+				class="fixed inset-0 z-[61] flex items-center justify-center"
+				data-editor-popup
+				onpointerdown={keepEditorFocused}
+			>
+				<Dialog.Content class="outline-none">
+					<LabelMenu
+						noteId={note.id}
+						onClose={() => {
+							labelOpen = false;
+						}}
+					/>
+				</Dialog.Content>
+			</Dialog.Positioner>
+		</Dialog.Root>
 	{/if}
 {/if}

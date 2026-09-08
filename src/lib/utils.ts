@@ -1,3 +1,4 @@
+import { downloadFile } from '@zag-js/file-utils';
 // Small utility helpers shared across components and stores.
 
 /** Generate a reasonably unique id (crypto when available, fallback to Math.random). */
@@ -94,7 +95,9 @@ export function reminderTimeForDay(key: string, nowMs = Date.now()): number {
 	const [year, month, day] = key.split('-').map(Number);
 	const reminder = new Date(nowMs);
 	reminder.setHours(reminder.getHours() + 1, 0, 0, 0);
-	reminder.setFullYear(year, month - 1, day);
+	if (Number.isFinite(year) && Number.isFinite(month) && Number.isFinite(day)) {
+		reminder.setFullYear(year, month - 1, day);
+	}
 	return reminder.getTime();
 }
 
@@ -180,13 +183,9 @@ export function cloneNoteForBackup(note: import('$lib/types').Note): import('$li
 
 /** Download a JSON backup file in the browser. */
 export function downloadJSON(data: unknown, filename: string): void {
-	const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-	const url = URL.createObjectURL(blob);
-	const a = document.createElement('a');
-	a.href = url;
-	a.download = filename;
-	document.body.appendChild(a);
-	a.click();
-	document.body.removeChild(a);
-	URL.revokeObjectURL(url);
+	downloadFile({
+		file: JSON.stringify(data, null, 2),
+		name: filename,
+		type: 'application/json'
+	});
 }

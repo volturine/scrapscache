@@ -445,7 +445,7 @@ describe('NoteEditor task focus', () => {
 		await fireEvent.click(labels);
 		await tick();
 		const popup = container.querySelector('[data-editor-popup]') as HTMLElement;
-		const work = popup.querySelector('button:not([aria-label])') as HTMLButtonElement;
+		const work = popup.querySelector('[data-part="label"]') as HTMLElement;
 		const labelPointerDown = dispatchTouchPointer(work, 'pointerdown');
 		expect(labelPointerDown.defaultPrevented).toBe(true);
 		expect(document.activeElement).toBe(editor);

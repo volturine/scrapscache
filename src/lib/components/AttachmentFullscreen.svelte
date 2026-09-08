@@ -1,7 +1,8 @@
 <script lang="ts">
 	import type { NoteImage } from '$lib/types';
 	import { dataUrlToBlob } from '$lib/imageBlob';
-	import { ChevronLeft } from '@lucide/svelte';
+	import { ChevronLeft, Download } from '@lucide/svelte';
+	import { DownloadTrigger } from '@ark-ui/svelte/download-trigger';
 	import { portalToAppFloat } from '$lib/appViewport';
 	import { onDestroy, onMount } from 'svelte';
 
@@ -105,6 +106,18 @@
 				<div class="min-w-0 flex-1 truncate text-sm font-medium">
 					{attachment.name || 'Attachment'}
 				</div>
+				{#if attachment.dataUrl}
+					<DownloadTrigger
+						fileName={attachment.name || 'attachment'}
+						data={attachment.dataUrl}
+						mimeType={attachment.mime || 'application/octet-stream'}
+						class="icon-btn h-10 w-10 p-2"
+						aria-label="Download file"
+						title="Download file"
+					>
+						<Download class="h-5 w-5" aria-hidden="true" />
+					</DownloadTrigger>
+				{/if}
 			</header>
 
 			{#if loading}

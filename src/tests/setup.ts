@@ -18,6 +18,23 @@ if (typeof Element !== 'undefined' && !Element.prototype.animate) {
 	})) as unknown as typeof Element.prototype.animate;
 }
 
+if (typeof window !== 'undefined' && !window.ResizeObserver) {
+	window.ResizeObserver = class {
+		observe() {}
+		unobserve() {}
+		disconnect() {}
+	} as typeof ResizeObserver;
+}
+
+if (typeof window !== 'undefined') {
+	if (!window.URL.createObjectURL) {
+		window.URL.createObjectURL = () => 'blob:mock';
+	}
+	if (!window.URL.revokeObjectURL) {
+		window.URL.revokeObjectURL = () => {};
+	}
+}
+
 // jsdom lacks matchMedia; add a minimal stub.
 if (typeof window !== 'undefined' && !window.matchMedia) {
 	window.matchMedia = (query: string) => ({
@@ -43,8 +60,8 @@ function deleteDatabase(name: string): Promise<void> {
 
 afterEach(async () => {
 	vi.useRealTimers();
-	closeDeviceDatabase();
 	resetTombstoneCaches();
+	await closeDeviceDatabase();
 	await deleteDatabase(DEVICE_DB_NAME);
 	if (typeof indexedDB !== 'undefined' && 'databases' in indexedDB) {
 		try {

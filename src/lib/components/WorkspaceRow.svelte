@@ -1,32 +1,91 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import { ChevronLeft, ChevronRight, CloudOff, MoreHorizontal, Pencil } from '@lucide/svelte';
+	import {
+		Check,
+		ChevronLeft,
+		ChevronRight,
+		CloudOff,
+		Pencil,
+		TriangleAlert,
+		X
+	} from '@lucide/svelte';
+
 	let {
 		name,
+		caption,
 		active,
 		disabled,
-		children,
+		icon,
 		onselect,
 		onrename,
-		onunlink
+		onunlink,
+		onbusychange
 	}: {
 		name: string;
+		caption: string;
 		active: boolean;
 		disabled: boolean;
-		children: Snippet;
+		icon: Snippet;
 		onselect: () => void;
-		onrename: () => void;
-		onunlink: () => void;
+		onrename: (next: string) => Promise<boolean>;
+		onunlink: () => Promise<boolean>;
+		onbusychange: (holdsEscape: boolean) => void;
 	} = $props();
+
+	// Width of the swipe drawer: two touch targets side by side.
+	const ACTIONS_WIDTH = 152;
+	// Share of the row a swipe must cross to arm the full-swipe unlink.
+	const COMMIT_RATIO = 0.55;
+	// Past the drawer the row keeps moving, but slower than the finger.
+	const OVERSWIPE_RESISTANCE = 0.7;
+	const RUBBER_BAND = 0.25;
+	// Pixels per millisecond that count as a flick rather than a drag.
+	const FLICK_VELOCITY = 0.4;
+
+	let mode = $state<'idle' | 'rename' | 'confirm'>('idle');
+	let working = $state<'rename' | 'unlink' | null>(null);
+	let draft = $state('');
 	let open = $state(false);
 	let offset = $state(0);
 	let dragging = $state(false);
-	let start: { x: number; y: number; offset: number } | null = null;
-	let swiped = false;
+	let armed = $state(false);
 	let rowElement: HTMLDivElement | undefined;
+	let input = $state<HTMLInputElement | undefined>(undefined);
+	let start: { x: number; y: number; offset: number } | null = null;
+	let last = { x: 0, time: 0 };
+	let velocity = 0;
+	let swiped = false;
+
+	const progress = $derived(Math.min(1, Math.max(0, -offset / ACTIONS_WIDTH)));
+	const locked = $derived(disabled || working !== null);
+
+	// While a row edits or shows its drawer, Escape belongs to the row. The
+	// dialog must stop closing on it, which only the dialog itself can decide.
+	$effect(() => {
+		onbusychange(mode !== 'idle' || open);
+	});
+
+	$effect(() => {
+		if (mode !== 'rename') return;
+		input?.focus();
+		input?.select();
+	});
+
+	// Never arm before the drawer is fully uncovered, whatever the row measures.
+	function commitDistance(): number {
+		return Math.max(ACTIONS_WIDTH + 40, (rowElement?.clientWidth ?? 0) * COMMIT_RATIO);
+	}
+
+	function settle(next: boolean) {
+		open = next;
+		offset = next ? -ACTIONS_WIDTH : 0;
+	}
+
 	function down(event: PointerEvent) {
-		if (disabled || event.pointerType !== 'touch') return;
-		start = { x: event.clientX, y: event.clientY, offset: open ? -144 : 0 };
+		if (locked || mode !== 'idle' || event.pointerType !== 'touch') return;
+		start = { x: event.clientX, y: event.clientY, offset: open ? -ACTIONS_WIDTH : 0 };
+		last = { x: event.clientX, time: event.timeStamp };
+		velocity = 0;
 		swiped = false;
 		try {
 			(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
@@ -34,102 +93,263 @@
 			// The gesture still works when a browser rejects pointer capture.
 		}
 	}
+
 	function move(event: PointerEvent) {
 		if (!start) return;
-		const dx = event.clientX - start.x,
-			dy = event.clientY - start.y;
-		if (!dragging && Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 8) {
+		const dx = event.clientX - start.x;
+		const dy = event.clientY - start.y;
+		if (!dragging) {
+			// Leave vertical gestures to the scroller.
+			if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 8) {
+				start = null;
+				return;
+			}
+			if (Math.abs(dx) < 8) return;
+			dragging = true;
+			swiped = true;
+		}
+		const elapsed = event.timeStamp - last.time;
+		if (elapsed > 0) velocity = (event.clientX - last.x) / elapsed;
+		last = { x: event.clientX, time: event.timeStamp };
+		const raw = start.offset + dx;
+		offset =
+			raw > 0
+				? raw * RUBBER_BAND
+				: raw < -ACTIONS_WIDTH
+					? -ACTIONS_WIDTH + (raw + ACTIONS_WIDTH) * OVERSWIPE_RESISTANCE
+					: raw;
+		const nextArmed = -offset >= commitDistance();
+		if (nextArmed !== armed) {
+			armed = nextArmed;
+			if (nextArmed) navigator.vibrate?.(8);
+		}
+	}
+
+	function end() {
+		if (!dragging) {
 			start = null;
 			return;
 		}
-		if (!dragging && Math.abs(dx) < 8) return;
-		dragging = true;
-		swiped = true;
-		offset = Math.max(-144, Math.min(0, start.offset + dx));
-	}
-	function end() {
-		if (dragging) open = offset < -48;
 		dragging = false;
 		start = null;
+		if (armed) {
+			armed = false;
+			askUnlink();
+			return;
+		}
+		if (velocity < -FLICK_VELOCITY) settle(true);
+		else if (velocity > FLICK_VELOCITY) settle(false);
+		else settle(-offset > ACTIONS_WIDTH / 2);
 	}
-	function closeFromOutside(event: PointerEvent) {
-		if (open && rowElement && !rowElement.contains(event.target as Node)) open = false;
+
+	function cancelDrag() {
+		dragging = false;
+		armed = false;
+		start = null;
+		settle(open);
+	}
+
+	function startRename() {
+		draft = name;
+		mode = 'rename';
+		settle(false);
+	}
+
+	function askUnlink() {
+		mode = 'confirm';
+		settle(false);
+	}
+
+	function cancel() {
+		mode = 'idle';
+		draft = name;
+	}
+
+	async function saveRename() {
+		const next = draft.trim();
+		if (!next || next === name) {
+			cancel();
+			return;
+		}
+		working = 'rename';
+		const saved = await onrename(next);
+		working = null;
+		if (saved) mode = 'idle';
+		else input?.focus();
+	}
+
+	async function confirmUnlink() {
+		working = 'unlink';
+		const done = await onunlink();
+		working = null;
+		if (done) mode = 'idle';
+	}
+
+	function onDocumentPointerDown(event: PointerEvent) {
+		if (working || !rowElement || rowElement.contains(event.target as Node)) return;
+		if (open) settle(false);
+		// Clicking away keeps a typed name, the way a file rename behaves.
+		if (mode === 'rename') void saveRename();
+		else if (mode === 'confirm') cancel();
+	}
+
+	// Escape belongs to the row while it is editing or open, so it never reaches
+	// the dialog and closes the whole sheet.
+	function onKeyDown(event: KeyboardEvent) {
+		if (event.key !== 'Escape' || (mode === 'idle' && !open)) return;
+		event.stopPropagation();
+		event.preventDefault();
+		if (mode === 'idle') settle(false);
+		else cancel();
 	}
 </script>
 
-<svelte:document onpointerdown={closeFromOutside} />
+<svelte:document onpointerdown={onDocumentPointerDown} />
 
-<div class="row" class:open bind:this={rowElement}>
+<div
+	bind:this={rowElement}
+	class="row"
+	class:open
+	class:armed
+	class:dragging
+	class:editing={mode !== 'idle'}
+	style:--swipe-offset={`${offset}px`}
+	style:--swipe-progress={progress}
+	onkeydown={onKeyDown}
+	role="presentation"
+>
 	<div class="actions">
 		<button
 			type="button"
-			disabled={disabled || !open}
-			tabindex={open ? 0 : -1}
+			class="tile"
+			disabled={locked}
+			title="Rename"
 			aria-label="Rename {name}"
-			onclick={() => {
-				open = false;
-				onrename();
-			}}><Pencil size={16} aria-hidden="true" />Rename</button
+			onclick={startRename}
 		>
-		<button
-			type="button"
-			disabled={disabled || !open}
-			tabindex={open ? 0 : -1}
-			aria-label="Unlink {name}"
-			class="unlink"
-			onclick={() => {
-				open = false;
-				onunlink();
-			}}><CloudOff size={16} aria-hidden="true" />Unlink</button
-		>
-	</div>
-	<div
-		class="front"
-		class:active
-		style:--swipe-offset={`${dragging ? offset : open ? -144 : 0}px`}
-		class:dragging
-	>
-		<button
-			type="button"
-			class="select"
-			{disabled}
-			aria-label={active ? `${name} is active` : `Switch to ${name}`}
-			onpointerdown={down}
-			onpointermove={move}
-			onpointerup={end}
-			onpointercancel={() => {
-				dragging = false;
-				start = null;
-			}}
-			onclick={() => {
-				if (swiped) {
-					swiped = false;
-					return;
-				}
-				if (open) open = false;
-				else onselect();
-			}}
-		>
-			{@render children()}
+			<Pencil size={16} aria-hidden="true" /><span class="tile-label">Rename</span>
 		</button>
 		<button
 			type="button"
-			class="more"
-			{disabled}
-			aria-label="Actions for {name}"
-			aria-expanded={open}
-			onclick={() => {
-				open = !open;
-			}}
+			class="tile unlink"
+			disabled={locked}
+			title="Unlink"
+			aria-label="Unlink {name}"
+			onclick={askUnlink}
 		>
-			<span class="desktop-more"><MoreHorizontal size={17} aria-hidden="true" /></span>
-			<span class="mobile-more">
+			<CloudOff size={16} aria-hidden="true" /><span class="tile-label"
+				>{armed ? 'Release' : 'Unlink'}</span
+			>
+		</button>
+	</div>
+
+	<div class="front" class:active>
+		{#if mode === 'confirm'}
+			<div class="panel confirm">
+				<span class="glyph" aria-hidden="true"><TriangleAlert size={18} /></span>
+				<p class="message">
+					Unlink <strong>{name}</strong>?<span class="caption"
+						>Its notes move to Anonymous workspace. Cloud data stays.</span
+					>
+				</p>
+				<div class="panel-actions">
+					<button
+						type="button"
+						class="ghost"
+						disabled={working !== null}
+						aria-label="Keep {name} linked"
+						onclick={cancel}>Cancel</button
+					>
+					<button
+						type="button"
+						class="danger"
+						disabled={locked}
+						aria-label="Unlink {name} and keep notes"
+						onclick={() => void confirmUnlink()}
+						>{working === 'unlink' ? 'Unlinking…' : 'Unlink'}</button
+					>
+				</div>
+			</div>
+		{:else if mode === 'rename'}
+			<form
+				class="panel"
+				onsubmit={(event) => {
+					event.preventDefault();
+					void saveRename();
+				}}
+			>
+				<span class="glyph" aria-hidden="true">{@render icon()}</span>
+				<span class="body">
+					<input
+						bind:this={input}
+						bind:value={draft}
+						class="name-input"
+						maxlength="60"
+						spellcheck="false"
+						disabled={working !== null}
+						aria-label="Workspace name"
+					/>
+					<span class="caption">
+						{#if working === 'rename'}Saving…{:else}<span class="on-wide"
+								>Enter saves · Esc cancels</span
+							><span class="on-narrow">{caption}</span>{/if}
+					</span>
+				</span>
+				<div class="panel-actions">
+					<button
+						type="button"
+						class="icon"
+						disabled={working !== null}
+						aria-label="Cancel renaming {name}"
+						onclick={cancel}><X size={16} aria-hidden="true" /></button
+					>
+					<button
+						type="submit"
+						class="icon accept"
+						disabled={locked || !draft.trim()}
+						aria-label="Save name"><Check size={16} aria-hidden="true" /></button
+					>
+				</div>
+			</form>
+		{:else}
+			<button
+				type="button"
+				class="select"
+				disabled={locked}
+				aria-label={active ? `${name} is active` : `Switch to ${name}`}
+				onpointerdown={down}
+				onpointermove={move}
+				onpointerup={end}
+				onpointercancel={cancelDrag}
+				onclick={() => {
+					if (swiped) {
+						swiped = false;
+						return;
+					}
+					if (open) settle(false);
+					else onselect();
+				}}
+			>
+				<span class="glyph" aria-hidden="true">{@render icon()}</span>
+				<span class="body">
+					<span class="name">{name}</span>
+					<span class="caption">{caption}</span>
+				</span>
+			</button>
+			<button
+				type="button"
+				class="more"
+				disabled={locked}
+				aria-label="Actions for {name}"
+				aria-expanded={open}
+				onclick={() => settle(!open)}
+			>
 				{#if open}<ChevronRight size={19} aria-hidden="true" />{:else}<ChevronLeft
 						size={19}
 						aria-hidden="true"
 					/>{/if}
-			</span>
-		</button>
+			</button>
+		{/if}
 	</div>
 </div>
 
@@ -138,136 +358,268 @@
 		position: relative;
 		border-radius: 10px;
 	}
-	.row.open {
-		z-index: 2;
-	}
 	.front {
 		position: relative;
+		z-index: 1;
 		display: flex;
-		background: transparent;
+		align-items: stretch;
 		border-radius: 10px;
+		background: var(--scrapscache-surface, var(--scrapscache-bg));
 	}
-	.front.active {
+	.front.active,
+	.row.editing .front {
 		background: var(--scrapscache-interactive-hover);
 	}
-	.front.dragging {
-		transition: none;
+	/* The current workspace keeps a marker so hover never impersonates it. */
+	.front.active::before {
+		content: '';
+		position: absolute;
+		top: 10px;
+		bottom: 10px;
+		left: 0;
+		width: 3px;
+		border-radius: 0 3px 3px 0;
+		background: var(--scrapscache-accent);
 	}
-	.select {
+	@media (hover: hover) {
+		.row:hover .front {
+			background: var(--scrapscache-interactive-hover);
+		}
+	}
+	.select,
+	.panel {
 		display: flex;
+		flex: 1;
 		align-items: center;
 		gap: 12px;
-		padding: 12px;
-		flex: 1;
 		min-width: 0;
+		padding: 12px;
 		text-align: left;
 		font-size: 14px;
-		touch-action: pan-y;
-		padding-right: 44px;
 	}
-	.more {
-		position: absolute;
-		top: 8px;
-		right: 8px;
+	.select {
+		padding-right: 76px;
+		touch-action: pan-y;
+	}
+	.glyph {
 		display: grid;
-		width: 28px;
-		height: 28px;
 		flex-shrink: 0;
 		place-items: center;
-		border-radius: 6px;
 		color: var(--scrapscache-text-muted);
 	}
-	.actions {
-		position: absolute;
-		top: calc(100% - 3px);
-		right: 6px;
-		z-index: 3;
-		display: grid;
-		width: 150px;
-		padding: 4px;
-		border: 1px solid var(--scrapscache-border);
-		border-radius: 8px;
-		background: var(--scrapscache-surface, var(--scrapscache-bg));
-		box-shadow: 0 10px 28px rgb(0 0 0 / 22%);
-		visibility: hidden;
+	.body,
+	.message {
+		min-width: 0;
+		flex: 1;
 	}
-	.row.open .actions {
-		visibility: visible;
+	.name {
+		display: block;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
-	.actions button {
+	.caption {
+		display: block;
+		margin-top: 2px;
+		color: var(--scrapscache-text-muted);
+		font-size: 12px;
+		font-weight: 400;
+	}
+	.name-input {
+		width: 100%;
+		padding: 1px 0;
+		border: 0;
+		border-bottom: 1px solid var(--scrapscache-accent);
+		background: transparent;
+		color: inherit;
+		font: inherit;
+		outline: none;
+	}
+	.message {
+		font-size: 13px;
+	}
+	.panel.confirm {
+		background: var(--scrapscache-danger-subtle);
+		border-radius: 10px;
+	}
+	.panel.confirm .glyph {
+		color: var(--scrapscache-danger);
+	}
+	.panel-actions {
 		display: flex;
 		align-items: center;
-		gap: 9px;
-		width: 100%;
-		padding: 8px;
-		border-radius: 5px;
-		font-size: 13px;
-		text-align: left;
+		gap: 6px;
+		flex-shrink: 0;
 	}
-	.actions button:hover {
+	.icon {
+		display: grid;
+		width: 30px;
+		height: 30px;
+		place-items: center;
+		border-radius: 7px;
+		color: var(--scrapscache-text-muted);
+	}
+	.icon:hover {
+		background: var(--scrapscache-interactive-hover);
+		color: var(--scrapscache-text);
+	}
+	.icon.accept {
+		color: var(--scrapscache-success);
+	}
+	.ghost,
+	.danger {
+		padding: 7px 12px;
+		border-radius: 7px;
+		font-size: 13px;
+		white-space: nowrap;
+	}
+	.ghost:hover {
 		background: var(--scrapscache-interactive-hover);
 	}
-	.mobile-more {
+	.danger {
+		background: var(--scrapscache-danger);
+		color: var(--scrapscache-danger-foreground);
+		font-weight: 500;
+	}
+
+	/* Desktop: the actions ride above the right edge and fade in on approach. */
+	.actions {
+		position: absolute;
+		inset: 0 0 0 auto;
+		z-index: 2;
+		display: flex;
+		align-items: center;
+		gap: 2px;
+		padding-right: 8px;
+		opacity: 0;
+		pointer-events: none;
+		transition: opacity 120ms ease;
+	}
+	.row:hover .actions,
+	.row:focus-within .actions {
+		opacity: 1;
+		pointer-events: auto;
+	}
+	.row.editing .actions {
 		display: none;
 	}
+	.tile {
+		display: grid;
+		width: 30px;
+		height: 30px;
+		place-items: center;
+		border-radius: 7px;
+		color: var(--scrapscache-text-muted);
+	}
+	.tile:hover {
+		background: var(--scrapscache-interactive-hover);
+		color: var(--scrapscache-text);
+	}
+	.tile.unlink:hover {
+		color: var(--scrapscache-danger);
+	}
+	.tile-label,
+	.on-narrow {
+		display: none;
+	}
+	.more {
+		display: none;
+		width: 34px;
+		flex-shrink: 0;
+		place-items: center;
+		color: var(--scrapscache-text-muted);
+	}
+
 	@media (max-width: 640px) {
+		/* Phones: the row slides to uncover the actions underneath it. */
 		.row {
 			overflow: hidden;
 		}
 		.front {
-			z-index: 1;
 			transform: translateX(var(--swipe-offset));
-			transition: transform 160ms ease;
-			background: var(--scrapscache-surface, var(--scrapscache-bg));
 		}
-		.front.active {
-			background: var(--scrapscache-interactive-hover);
+		.row:not(.dragging) .front {
+			transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
 		}
+		.row:not(.dragging):has(.actions :focus-visible) .front {
+			transform: translateX(-152px);
+		}
+		/* The drawer is exactly as wide as the row has been pulled aside, and its
+		   actions are pinned to the trailing edge, so Unlink leads the reveal. */
 		.actions {
-			inset: 0 0 0 auto;
 			z-index: 0;
-			display: flex;
-			width: 144px;
-			padding: 0;
-			border: 0;
+			width: max(0px, calc(-1 * var(--swipe-offset)));
+			justify-content: flex-end;
+			padding-right: 0;
+			overflow: hidden;
 			border-radius: 0 10px 10px 0;
-			box-shadow: none;
+			opacity: 1;
+			pointer-events: auto;
 		}
-		.row.open .actions,
-		.row:has(.dragging) .actions {
-			visibility: visible;
+		.row:not(.dragging) .actions {
+			transition: width 260ms cubic-bezier(0.22, 1, 0.36, 1);
 		}
-		.actions button {
-			width: 72px;
+		.tile {
+			display: flex;
+			width: 76px;
+			height: auto;
 			flex-direction: column;
+			align-items: center;
 			justify-content: center;
 			gap: 4px;
-			padding: 0;
+			flex-shrink: 0;
+			align-self: stretch;
 			border-radius: 0;
 			font-size: 12px;
-			text-align: center;
+			color: var(--scrapscache-text);
 		}
-		.actions button:hover {
+		.tile.unlink {
+			flex: 1 0 76px;
+			color: var(--scrapscache-danger);
+		}
+		.tile:hover {
 			background: transparent;
 		}
-		.desktop-more {
+		.tile-label {
+			display: block;
+		}
+		.on-wide {
 			display: none;
 		}
-		.mobile-more {
-			display: contents;
+		.on-narrow {
+			display: inline;
 		}
-		.more {
-			position: static;
-			width: 32px;
-			height: auto;
+		/* Icons settle to full size as the drawer arrives. */
+		.tile > :global(svg) {
+			transform: scale(calc(0.8 + 0.2 * var(--swipe-progress)));
+		}
+		.row.armed .tile.unlink {
+			background: var(--scrapscache-danger);
+			color: var(--scrapscache-danger-foreground);
+		}
+		.row.armed .tile:not(.unlink) {
+			opacity: 0;
 		}
 		.select {
-			padding-right: 12px;
+			padding-right: 4px;
+		}
+		.more {
+			display: grid;
+		}
+		.panel.confirm {
+			flex-wrap: wrap;
+		}
+		.panel.confirm .panel-actions {
+			width: 100%;
+			justify-content: flex-end;
 		}
 	}
 	@media (prefers-reduced-motion: reduce) {
-		.front {
+		.row:not(.dragging) .front {
 			transition: none;
 		}
+	}
+	button:disabled {
+		opacity: 0.55;
 	}
 </style>

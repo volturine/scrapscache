@@ -16,7 +16,7 @@
 	import { portalToAppFloat } from '$lib/appViewport';
 
 	let { onClose }: { onClose: () => void } = $props();
-	let mode = $state<'menu' | 'register' | 'link' | 'waiting' | 'confirm' | 'rename'>('menu');
+	let mode = $state<'menu' | 'register' | 'link' | 'waiting' | 'confirm'>('menu');
 	let code = $state('');
 	let error = $state('');
 	let info = $state('');
@@ -38,19 +38,13 @@
 	let waiting = $state<StartedDeviceLink | null>(null);
 	let now = $state(Date.now());
 	let timer: ReturnType<typeof setTimeout> | null = null;
-	let confirmation = $state<'unlink' | 'delete' | 'force' | null>(null);
+	let confirmation = $state<'delete' | 'force' | null>(null);
 	let newName = $state('');
-	let unlinkingId = $state<string | null>(null);
-	let editingId = $state<string | null>(null);
-	let editName = $state('');
+	// The row that currently owns Escape, so the dialog leaves the key alone.
+	let rowHoldingEscape = $state<string | null>(null);
 
 	const authenticationFailed = $derived(/authentication/i.test(syncStore.lastError ?? ''));
 	let syncError = $derived(syncStore.lastError ?? '');
-	const unlinkingProfile = $derived(
-		unlinkingId
-			? syncStore.profiles.find((profile) => profile.id === unlinkingId)
-			: syncStore.activeProfile
-	);
 
 	// A running sync must finish before a dataset handover can start.
 	// Background pulls and outbox retries are intentionally silent. They still
@@ -284,27 +278,15 @@
 		void pollLink(result.link);
 	}
 
-	function startRename(id: string, current: string) {
-		editingId = id;
-		editName = current;
+	async function renameProfile(id: string, next: string): Promise<boolean> {
 		error = '';
-		mode = 'rename';
-	}
-
-	function cancelEdit() {
-		editingId = null;
-		editName = '';
-		mode = 'menu';
-	}
-
-	async function saveRename() {
-		const id = editingId;
-		if (!id || !editName.trim()) return;
-		error = '';
-		const renamed = await runOperation('rename', 'Could not rename that sync key', () =>
-			syncStore.renameProfile(id, editName)
+		info = '';
+		const renamed = await runOperation('rename', 'Could not rename that workspace', () =>
+			syncStore.renameProfile(id, next)
 		);
-		if (renamed) cancelEdit();
+		if (renamed) return true;
+		if (!error) error = 'Could not rename that workspace';
+		return false;
 	}
 
 	async function switchProfile(id: string) {
@@ -343,21 +325,22 @@
 		if (warning) error = friendlyError(warning, 'Some records are still pending');
 	}
 
-	async function unlinkDevice() {
+	async function unlinkProfile(id: string): Promise<boolean> {
 		error = '';
-		const profileId = unlinkingId;
+		info = '';
 		const result = await runOperation('unlink', 'Could not unlink workspace', () =>
-			profileId ? profileCoordinator.unlinkSaved(profileId) : profileCoordinator.unlink()
+			profileCoordinator.unlinkSaved(id)
 		);
-		if (!result) return;
+		if (!result) {
+			if (!error) error = 'Could not unlink workspace';
+			return false;
+		}
 		if (!result.success) {
 			error = friendlyError(result.error, 'Could not unlink workspace');
-			return;
+			return false;
 		}
-		mode = 'menu';
-		confirmation = null;
-		unlinkingId = null;
 		info = 'Notes moved to Anonymous workspace. Cloud data is unchanged.';
+		return true;
 	}
 
 	function onCopyStatus(details: { copied: boolean }) {
@@ -406,7 +389,12 @@
 	}
 </script>
 
-<Dialog.Root open onOpenChange={(details) => !details.open && close()} preventScroll={false}>
+<Dialog.Root
+	open
+	onOpenChange={(details) => !details.open && close()}
+	preventScroll={false}
+	closeOnEscape={rowHoldingEscape === null}
+>
 	<div {@attach portalToAppFloat} class="fixed inset-0 z-50" role="presentation">
 		<Dialog.Backdrop class="absolute inset-0 bg-black/40" />
 		<Dialog.Positioner class="absolute inset-0 flex items-center justify-center p-4">
@@ -422,15 +410,11 @@
 							? 'Workspaces'
 							: mode === 'register'
 								? 'New workspace'
-								: mode === 'rename'
-									? 'Rename workspace'
-									: mode === 'confirm'
-										? confirmation === 'force'
-											? 'Replace cloud notes?'
-											: confirmation === 'unlink'
-												? 'Unlink workspace?'
-												: 'Delete cloud data?'
-										: 'Connect device'}
+								: mode === 'confirm'
+									? confirmation === 'force'
+										? 'Replace cloud notes?'
+										: 'Delete cloud data?'
+									: 'Connect device'}
 					</Dialog.Title>
 					<Dialog.CloseTrigger
 						type="button"
@@ -468,33 +452,25 @@
 							</button>
 							{#each syncStore.profiles as profile (profile.id)}
 								{@const active = profile.id === syncStore.activeProfile?.id}
-								<div class="min-w-0">
-									<WorkspaceRow
-										name={profile.name}
-										{active}
-										disabled={busy}
-										onselect={() => {
-											if (!active) void switchProfile(profile.id);
-										}}
-										onrename={() => startRename(profile.id, profile.name)}
-										onunlink={() => {
-											unlinkingId = active ? null : profile.id;
-											confirmation = 'unlink';
-											mode = 'confirm';
-											error = '';
-										}}
-									>
-										<Cloud size={18} aria-hidden="true" />
-										<span class="min-w-0 flex-1 text-left"
-											><span class="block truncate">{profile.name}</span><span
-												class="workspace-caption"
-												>{active ? 'Current workspace' : 'Synced workspace'}{sizeLabel(profile.id)
-													? ' · ' + sizeLabel(profile.id)
-													: ''}</span
-											></span
-										>
-									</WorkspaceRow>
-								</div>
+								<WorkspaceRow
+									name={profile.name}
+									caption={`${active ? 'Current workspace' : 'Synced workspace'}${
+										sizeLabel(profile.id) ? ' · ' + sizeLabel(profile.id) : ''
+									}`}
+									{active}
+									disabled={busy}
+									onselect={() => {
+										if (!active) void switchProfile(profile.id);
+									}}
+									onrename={(next) => renameProfile(profile.id, next)}
+									onunlink={() => unlinkProfile(profile.id)}
+									onbusychange={(holdsEscape) => {
+										if (holdsEscape) rowHoldingEscape = profile.id;
+										else if (rowHoldingEscape === profile.id) rowHoldingEscape = null;
+									}}
+								>
+									{#snippet icon()}<Cloud size={18} aria-hidden="true" />{/snippet}
+								</WorkspaceRow>
 							{/each}
 						</div>
 
@@ -608,19 +584,6 @@
 										></button
 									>
 									<button
-										class="manage-row"
-										disabled={busy}
-										onclick={() => {
-											unlinkingId = null;
-											confirmation = 'unlink';
-											mode = 'confirm';
-											error = '';
-										}}
-										><CloudOff size={16} aria-hidden="true" /><span
-											>Unlink workspace<small>Move its notes to Anonymous workspace</small></span
-										></button
-									>
-									<button
 										class="manage-row text-[var(--scrapscache-danger)]"
 										disabled={busy}
 										onclick={() => {
@@ -638,39 +601,6 @@
 							</div>
 						</details>
 					</div>
-				{:else if mode === 'rename'}
-					<form
-						class="space-y-4"
-						onsubmit={(event) => {
-							event.preventDefault();
-							void saveRename();
-						}}
-					>
-						<label class="block text-sm" for="workspace-name">Workspace name</label>
-						<input
-							id="workspace-name"
-							class="scrapscache-input w-full px-3 py-2.5 text-sm"
-							bind:value={editName}
-							maxlength="60"
-							disabled={busy}
-						/>
-						{#if error}<p class="text-sm text-[var(--scrapscache-danger)]" role="alert">
-								{error}
-							</p>{/if}
-						<div class="flex gap-2">
-							<button
-								type="button"
-								class="scrapscache-button scrapscache-button-secondary flex-1 px-3 py-2.5 text-sm"
-								disabled={busy}
-								onclick={cancelEdit}>Cancel</button
-							>
-							<button
-								type="submit"
-								class="scrapscache-button scrapscache-button-primary flex-1 px-3 py-2.5 text-sm font-medium"
-								disabled={busy || !editName.trim()}>Save name</button
-							>
-						</div>
-					</form>
 				{:else if mode === 'confirm'}
 					<div class="space-y-4">
 						<p class="text-sm leading-relaxed text-[var(--scrapscache-text-muted)]">
@@ -678,9 +608,6 @@
 								This device’s notes will replace the cloud version using the same sync key. Notes
 								only in the cloud will be removed. Other devices will receive these notes as the
 								latest version.
-							{:else if confirmation === 'unlink'}
-								All notes in “{unlinkingProfile?.name}” will be appended to Anonymous workspace.
-								Existing anonymous notes are kept. Other devices and cloud data stay connected.
 							{:else}
 								Permanently delete “{syncStore.activeProfile?.name}” from the cloud and stop syncing
 								it on all devices. This device’s notes will be appended to Anonymous workspace.
@@ -698,7 +625,6 @@
 								onclick={() => {
 									mode = 'menu';
 									confirmation = null;
-									unlinkingId = null;
 									error = '';
 								}}>Cancel</button
 							>
@@ -709,18 +635,12 @@
 									: 'scrapscache-button-primary'}"
 								disabled={busy}
 								onclick={() =>
-									confirmation === 'force'
-										? void forceResync()
-										: confirmation === 'delete'
-											? void deleteCloudData()
-											: void unlinkDevice()}
+									confirmation === 'force' ? void forceResync() : void deleteCloudData()}
 								>{busy
 									? 'Working…'
 									: confirmation === 'force'
 										? 'Replace cloud notes'
-										: confirmation === 'delete'
-											? 'Delete cloud data'
-											: 'Unlink & keep notes'}</button
+										: 'Delete cloud data'}</button
 							>
 						</div>
 					</div>
@@ -894,6 +814,7 @@
 		gap: 4px;
 	}
 	.workspace-row {
+		position: relative;
 		display: flex;
 		align-items: center;
 		gap: 12px;
@@ -908,6 +829,16 @@
 	}
 	.workspace-row.active {
 		background: var(--scrapscache-interactive-hover);
+	}
+	.workspace-row.active::before {
+		content: '';
+		position: absolute;
+		top: 10px;
+		bottom: 10px;
+		left: 0;
+		width: 3px;
+		border-radius: 0 3px 3px 0;
+		background: var(--scrapscache-accent);
 	}
 	.workspace-caption,
 	.manage-row small {

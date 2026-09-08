@@ -84,15 +84,59 @@ describe('SyncModal profile interactions', () => {
 		).toBe('true');
 		await fireEvent.click(screen.getByRole('button', { name: 'Rename Side' }));
 		expect(screen.getByRole('textbox', { name: 'Workspace name' })).toBeTruthy();
+		// The list stays put: renaming happens on the row, not on its own screen.
+		expect(screen.getByRole('button', { name: 'Main is active' })).toBeTruthy();
 	});
 
-	it('requires confirmation before unlinking an inactive workspace', async () => {
+	it('renames a workspace inline and keeps the row editable when saving fails', async () => {
+		const rename = vi
+			.spyOn(syncStore, 'renameProfile')
+			.mockResolvedValueOnce(null)
+			.mockResolvedValueOnce({ ...side, name: 'Studio' });
+		render(SyncModal, { props: { onClose: vi.fn() } });
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Rename Side' }));
+		const field = screen.getByRole('textbox', { name: 'Workspace name' }) as HTMLInputElement;
+		expect(field.value).toBe('Side');
+
+		await fireEvent.input(field, { target: { value: 'Studio' } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Save name' }));
+		await waitFor(() => expect(screen.getByText('Could not rename that workspace')).toBeTruthy());
+		expect(screen.getByRole('textbox', { name: 'Workspace name' })).toBeTruthy();
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Save name' }));
+		await waitFor(() =>
+			expect(screen.queryByRole('textbox', { name: 'Workspace name' })).toBeNull()
+		);
+		expect(rename).toHaveBeenLastCalledWith(side.id, 'Studio');
+	});
+
+	it('escapes an inline rename without saving', async () => {
+		const rename = vi.spyOn(syncStore, 'renameProfile');
+		render(SyncModal, { props: { onClose: vi.fn() } });
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Rename Side' }));
+		const field = screen.getByRole('textbox', { name: 'Workspace name' });
+		await fireEvent.input(field, { target: { value: 'Discarded' } });
+		await fireEvent.keyDown(field, { key: 'Escape' });
+
+		expect(rename).not.toHaveBeenCalled();
+		expect(screen.queryByRole('textbox', { name: 'Workspace name' })).toBeNull();
+		expect(screen.getByRole('button', { name: 'Switch to Side' })).toBeTruthy();
+	});
+
+	it('requires confirmation on the row before unlinking an inactive workspace', async () => {
 		const unlink = vi.spyOn(profileCoordinator, 'unlinkSaved').mockResolvedValue({ success: true });
 		render(SyncModal, { props: { onClose: vi.fn() } });
-		await fireEvent.click(screen.getByRole('button', { name: 'Actions for Side' }));
 		await fireEvent.click(screen.getByRole('button', { name: 'Unlink Side' }));
 		expect(unlink).not.toHaveBeenCalled();
-		await fireEvent.click(screen.getByRole('button', { name: 'Unlink & keep notes' }));
+		// Other workspaces stay reachable while one row asks for confirmation.
+		expect(screen.getByRole('button', { name: 'Main is active' })).toBeTruthy();
+		await fireEvent.click(screen.getByRole('button', { name: 'Keep Side linked' }));
+		expect(unlink).not.toHaveBeenCalled();
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Unlink Side' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Unlink Side and keep notes' }));
 		await waitFor(() => expect(unlink).toHaveBeenCalledWith(side.id));
 	});
 
@@ -217,18 +261,18 @@ describe('SyncModal profile interactions', () => {
 		expect(target.disabled).toBe(false);
 	});
 
-	it('cancels unlink without changing the workspace, then confirms keeping notes', async () => {
+	it('unlinks the active workspace from its own row and reports where the notes went', async () => {
 		const unlink = vi.spyOn(profileCoordinator, 'unlink').mockResolvedValue({ success: true });
 		render(SyncModal, { props: { onClose: vi.fn() } });
-		await fireEvent.click(screen.getByText('Manage workspace'));
-		await fireEvent.click(screen.getByRole('button', { name: /Unlink workspace/ }));
-		expect(screen.getByText(/Existing anonymous notes are kept/)).toBeTruthy();
-		await fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-		expect(unlink).not.toHaveBeenCalled();
-		await fireEvent.click(screen.getByText('Manage workspace'));
-		await fireEvent.click(screen.getByRole('button', { name: /Unlink workspace/ }));
-		await fireEvent.click(screen.getByRole('button', { name: 'Unlink & keep notes' }));
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Unlink Main' }));
+		expect(screen.getByText(/notes move to Anonymous workspace/i)).toBeTruthy();
+		await fireEvent.click(screen.getByRole('button', { name: 'Unlink Main and keep notes' }));
+
 		await waitFor(() => expect(unlink).toHaveBeenCalledWith());
+		expect(
+			screen.getByText('Notes moved to Anonymous workspace. Cloud data is unchanged.')
+		).toBeTruthy();
 	});
 
 	it('requires confirmation before deleting cloud data', async () => {

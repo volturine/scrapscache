@@ -412,7 +412,7 @@
 					>
 						<ImageCropper.Viewport
 							style="width: {viewportDimensions.width}px; height: {viewportDimensions.height}px;"
-							class="relative shrink-0 overflow-hidden shadow-2xl"
+							class="relative shrink-0 overflow-visible shadow-2xl"
 						>
 							<ImageCropper.Image
 								src={currentSrc}
@@ -587,7 +587,7 @@
 <style>
 	.crop-root :global([data-part='viewport']) {
 		position: relative;
-		overflow: hidden;
+		overflow: visible;
 		touch-action: none;
 		user-select: none;
 	}
@@ -604,27 +604,77 @@
 		display: grid;
 		place-items: center;
 		z-index: 10;
+		touch-action: none;
+		user-select: none;
+		-webkit-user-select: none;
+		-webkit-tap-highlight-color: transparent;
+	}
+	/* 48px × 48px touch targets centered on the corners */
+	.crop-root :global([data-part='handle'][data-position='nw']),
+	.crop-root :global([data-part='handle'][data-position='ne']),
+	.crop-root :global([data-part='handle'][data-position='se']),
+	.crop-root :global([data-part='handle'][data-position='sw']) {
+		width: 3rem;
+		height: 3rem;
+		z-index: 20;
+	}
+	/* 48px tall hit area across horizontal edges */
+	.crop-root :global([data-part='handle'][data-position='n']),
+	.crop-root :global([data-part='handle'][data-position='s']) {
+		height: 3rem;
+		z-index: 10;
+	}
+	/* 48px wide hit area across vertical edges */
+	.crop-root :global([data-part='handle'][data-position='w']),
+	.crop-root :global([data-part='handle'][data-position='e']) {
+		width: 3rem;
+		z-index: 10;
 	}
 	.crop-knob {
-		background: white;
+		background: #ffffff;
 		box-shadow:
-			0 0 3px rgb(0 0 0 / 0.6),
-			0 0 0 1px rgb(0 0 0 / 0.35);
+			0 1px 4px rgb(0 0 0 / 0.6),
+			0 0 0 1.5px rgb(0 0 0 / 0.35);
+		pointer-events: none;
+		transition:
+			transform 0.15s ease,
+			box-shadow 0.15s ease;
+	}
+	.crop-root :global([data-part='handle']:hover .crop-knob),
+	.crop-root :global([data-part='handle']:active .crop-knob) {
+		transform: scale(1.15);
+		box-shadow:
+			0 2px 8px rgb(0 0 0 / 0.8),
+			0 0 0 2px rgb(0 0 0 / 0.5);
 	}
 	.crop-knob-corner {
-		height: 0.75rem;
-		width: 0.75rem;
-		border-radius: 2px;
+		height: 1.5rem;
+		width: 1.5rem;
+		border-radius: 4px;
 	}
 	.crop-knob-edge-h {
-		height: 0.35rem;
-		width: 1.25rem;
+		height: 0.625rem;
+		width: 2.75rem;
 		border-radius: 9999px;
 	}
 	.crop-knob-edge-v {
-		height: 1.25rem;
-		width: 0.35rem;
+		height: 2.75rem;
+		width: 0.625rem;
 		border-radius: 9999px;
+	}
+	@media (min-width: 640px) {
+		.crop-knob-corner {
+			height: 1.25rem;
+			width: 1.25rem;
+		}
+		.crop-knob-edge-h {
+			height: 0.5rem;
+			width: 2.25rem;
+		}
+		.crop-knob-edge-v {
+			height: 2.25rem;
+			width: 0.5rem;
+		}
 	}
 	.crop-root :global([data-part='grid'][data-axis='horizontal']) {
 		border-bottom: 1px solid rgb(255 255 255 / 0.4);

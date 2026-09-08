@@ -1,16 +1,19 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
+import { tick } from 'svelte';
 
 vi.mock('$lib/editorContext', () => ({
 	useEditorActions: () => ({ startNewNote: vi.fn(), closeNote: vi.fn() })
 }));
 
 import { syncStore } from '$lib/stores/sync.svelte';
+import { notesStore } from '$lib/stores/notes.svelte';
 import Topbar from './Topbar.svelte';
 
 afterEach(() => {
 	syncStore.lastError = null;
 	syncStore.usage = null;
+	(notesStore as unknown as { syncFlight: Promise<boolean> | null }).syncFlight = null;
 });
 
 describe('Topbar sync status', () => {
@@ -34,5 +37,20 @@ describe('Topbar sync status', () => {
 			).toBeTruthy()
 		);
 		expect(icon?.getAttribute('class')).toContain('text-[var(--scrapscache-danger)]');
+	});
+
+	it('spins the cloud for the full notes sync flight', async () => {
+		const { container } = render(Topbar);
+		const icon = container.querySelector('[data-scrapscache-sync-icon]');
+
+		(notesStore as unknown as { syncFlight: Promise<boolean> | null }).syncFlight = new Promise(
+			() => undefined
+		);
+		await tick();
+		expect(icon?.classList.contains('scrapscache-sync-icon-active')).toBe(true);
+
+		(notesStore as unknown as { syncFlight: Promise<boolean> | null }).syncFlight = null;
+		await tick();
+		expect(icon?.classList.contains('scrapscache-sync-icon-active')).toBe(false);
 	});
 });

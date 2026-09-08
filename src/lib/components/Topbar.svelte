@@ -205,7 +205,11 @@
 			data-scrapscache-sync-control
 		>
 			<Cloud
-				class={['h-5 w-5', SYNC_STATUS_CLASS[syncStatus]]}
+				class={[
+					'h-5 w-5',
+					SYNC_STATUS_CLASS[syncStatus],
+					notesStore.syncing && 'scrapscache-sync-icon-active'
+				]}
 				data-scrapscache-sync-icon
 				aria-hidden="true"
 			/>

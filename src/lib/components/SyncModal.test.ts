@@ -59,6 +59,43 @@ describe('SyncModal profile interactions', () => {
 		await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
 	});
 
+	it('reveals row actions with a swipe without switching and keeps vertical scrolling separate', async () => {
+		const switchTo = vi.spyOn(profileCoordinator, 'switchTo');
+		render(SyncModal, { props: { onClose: vi.fn() } });
+		const row = screen.getByRole('button', { name: 'Switch to Side' });
+		async function pointer(type: string, x: number, y: number) {
+			const event = new Event(type, { bubbles: true });
+			Object.assign(event, { pointerType: 'touch', pointerId: 1, clientX: x, clientY: y });
+			await fireEvent(row, event);
+		}
+		await pointer('pointerdown', 200, 100);
+		await pointer('pointermove', 190, 160);
+		await pointer('pointerup', 190, 160);
+		expect(
+			screen.getByRole('button', { name: 'Actions for Side' }).getAttribute('aria-expanded')
+		).toBe('false');
+		await pointer('pointerdown', 200, 100);
+		await pointer('pointermove', 70, 105);
+		await pointer('pointerup', 70, 105);
+		await fireEvent.click(row);
+		expect(switchTo).not.toHaveBeenCalled();
+		expect(
+			screen.getByRole('button', { name: 'Actions for Side' }).getAttribute('aria-expanded')
+		).toBe('true');
+		await fireEvent.click(screen.getByRole('button', { name: 'Rename Side' }));
+		expect(screen.getByRole('textbox', { name: 'Workspace name' })).toBeTruthy();
+	});
+
+	it('requires confirmation before deleting an inactive workspace', async () => {
+		const remove = vi.spyOn(syncStore, 'removeProfile').mockResolvedValue(true);
+		render(SyncModal, { props: { onClose: vi.fn() } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Actions for Side' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Delete Side' }));
+		expect(remove).not.toHaveBeenCalled();
+		await fireEvent.click(screen.getByRole('button', { name: 'Delete from device' }));
+		await waitFor(() => expect(remove).toHaveBeenCalledWith(side.id));
+	});
+
 	it('shows and switches to the anonymous workspace without treating it as a sync key', async () => {
 		vi.spyOn(profileCoordinator, 'switchTo').mockImplementation(async (id) => {
 			expect(id).toBe('device-local');

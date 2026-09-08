@@ -1,4 +1,5 @@
 <script lang="ts">
+	import WorkspaceRow from './WorkspaceRow.svelte';
 	import { onDestroy } from 'svelte';
 	import { Clipboard } from '@ark-ui/svelte/clipboard';
 	import { Dialog } from '@ark-ui/svelte/dialog';
@@ -11,7 +12,7 @@
 	import { buildProfileNotesExport } from '$lib/profiles';
 	import { estimateProfileBytes, LOCAL_PROFILE_ID } from '$lib/db/idb';
 	import { downloadJSON } from '$lib/utils';
-	import { Cloud, CloudOff, Check, Download, Pencil, RefreshCw, X } from '@lucide/svelte';
+	import { Cloud, CloudOff, Check, Download, RefreshCw, X } from '@lucide/svelte';
 	import { portalToAppFloat } from '$lib/appViewport';
 
 	let { onClose }: { onClose: () => void } = $props();
@@ -40,6 +41,7 @@
 	let timer: ReturnType<typeof setTimeout> | null = null;
 	let confirmation = $state<'unlink' | 'delete' | 'force' | null>(null);
 	let newName = $state('');
+	let deletingId = $state<string | null>(null);
 	let editingId = $state<string | null>(null);
 	let editName = $state('');
 
@@ -459,7 +461,7 @@
 							</button>
 							{#each syncStore.profiles as profile (profile.id)}
 								{@const active = profile.id === syncStore.activeProfile?.id}
-								<div class="flex items-center gap-1">
+								<div class="min-w-0">
 									{#if editingId === profile.id}
 										<form
 											class="flex w-full gap-2 p-2"
@@ -487,15 +489,23 @@
 											>
 										</form>
 									{:else}
-										<button
-											type="button"
-											class="workspace-row min-w-0 flex-1"
-											class:active
+										<WorkspaceRow
+											name={profile.name}
+											{active}
 											disabled={busy}
-											aria-label={active
-												? `${profile.name} is active`
-												: `Switch to ${profile.name}`}
-											onclick={() => !active && void switchProfile(profile.id)}
+											onselect={() => {
+												if (!active) void switchProfile(profile.id);
+											}}
+											onrename={() => startRename(profile.id, profile.name)}
+											ondelete={() => {
+												if (active) {
+													confirmation = 'unlink';
+													mode = 'confirm';
+												} else {
+													deletingId = profile.id;
+												}
+												error = '';
+											}}
 										>
 											<Cloud size={18} aria-hidden="true" />
 											<span class="min-w-0 flex-1 text-left"
@@ -507,19 +517,46 @@
 												></span
 											>
 											{#if active}<Check size={16} aria-hidden="true" />{/if}
-										</button>
-										<button
-											type="button"
-											class="icon-btn h-9 w-9 shrink-0"
-											disabled={busy}
-											aria-label={`Rename ${profile.name}`}
-											onclick={() => startRename(profile.id, profile.name)}
-											><Pencil size={14} aria-hidden="true" /></button
-										>
+										</WorkspaceRow>
 									{/if}
 								</div>
 							{/each}
 						</div>
+						{#if deletingId}
+							{@const target = syncStore.profiles.find((profile) => profile.id === deletingId)}
+							<div class="space-y-2 rounded-lg border border-[var(--scrapscache-border)] p-3">
+								<p class="text-sm">
+									Delete “{target?.name}” and its notes from this device? Cloud data stays available
+									on other linked devices.
+								</p>
+								<div class="flex gap-3">
+									<button
+										type="button"
+										disabled={busy}
+										onclick={() => {
+											deletingId = null;
+										}}>Cancel</button
+									>
+									<button
+										type="button"
+										disabled={busy}
+										class="text-[var(--scrapscache-danger)]"
+										onclick={async () => {
+											const id = deletingId;
+											if (!id) return;
+											const removed = await runOperation(
+												'remove',
+												'Could not delete workspace',
+												() => syncStore.removeProfile(id)
+											);
+											if (removed) deletingId = null;
+											else if (removed === false) error = 'Could not delete workspace';
+										}}>Delete from device</button
+									>
+								</div>
+							</div>
+						{/if}
+
 						<div class="flex gap-4 text-sm">
 							<button
 								type="button"

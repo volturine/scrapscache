@@ -6,7 +6,6 @@
 		ChevronRight,
 		Crop,
 		Download,
-		RotateCcw,
 		RotateCw,
 		Trash2,
 		Undo2,
@@ -256,25 +255,25 @@
 					<ImageCropper.Context>
 						{#snippet render(cropper)}
 							<header
-								class="flex shrink-0 items-center justify-between gap-2 border-b border-white/10 bg-black/85 px-3 py-2 backdrop-blur-md"
+								class="relative flex shrink-0 items-center justify-between gap-2 border-b border-white/10 bg-black/85 px-3 py-2 backdrop-blur-md"
 							>
-								<div class="flex items-center gap-2">
+								<!-- Left: Cancel, Rotate, Undo -->
+								<div class="flex items-center gap-1 sm:gap-1.5">
 									<Tooltip content="Cancel">
 										<button
 											type="button"
-											class="grid h-10 w-10 place-items-center rounded-full text-white/90 hover:bg-white/10 hover:text-white touch-manipulation"
+											class="grid h-9 w-9 place-items-center rounded-full text-white/90 hover:bg-white/10 hover:text-white touch-manipulation"
 											onclick={cancelCrop}
 											disabled={cropBusy}
 											aria-label="Cancel crop"
 											title="Cancel"
 										>
-											<X class="h-6 w-6" aria-hidden="true" />
+											<X class="h-5 w-5" aria-hidden="true" />
 										</button>
 									</Tooltip>
-									<span class="text-sm font-medium text-white/90">Crop & Rotate</span>
-								</div>
 
-								<div class="flex items-center gap-1 sm:gap-1.5">
+									<div class="mx-0.5 h-4 w-px bg-white/20 sm:mx-1" aria-hidden="true"></div>
+
 									<Tooltip content="Rotate 90°">
 										<button
 											type="button"
@@ -299,32 +298,25 @@
 											<Undo2 class="h-4 w-4" aria-hidden="true" />
 										</button>
 									</Tooltip>
-									<Tooltip content="Reset">
-										<button
-											type="button"
-											class="grid h-9 w-9 place-items-center rounded-md text-white/80 transition-colors hover:bg-white/10 hover:text-white touch-manipulation"
-											onclick={() => resetCrop(cropper)}
-											disabled={cropBusy}
-											aria-label="Reset crop"
-											title="Reset"
-										>
-											<RotateCcw class="h-4 w-4" aria-hidden="true" />
-										</button>
-									</Tooltip>
+								</div>
 
+								<!-- Center: Crop ratio presets -->
+								<div
+									class="absolute left-1/2 hidden -translate-x-1/2 items-center justify-center sm:flex"
+								>
 									<SegmentGroup.Root
 										value={selectedRatio}
 										onValueChange={(details) => {
 											if (details.value) selectedRatio = details.value as any;
 										}}
 										disabled={cropBusy}
-										class="hidden items-center gap-0.5 rounded-lg bg-white/10 p-0.5 text-xs sm:flex"
+										class="flex items-center gap-0.5 rounded-lg bg-white/10 p-0.5 text-xs"
 										aria-label="Aspect ratio presets"
 									>
 										{#each [{ id: 'free', label: 'Free' }, { id: '1:1', label: '1:1' }, { id: '4:3', label: '4:3' }, { id: '16:9', label: '16:9' }] as opt (opt.id)}
 											<SegmentGroup.Item
 												value={opt.id}
-												class="cursor-pointer rounded px-2 py-1 transition-colors data-[state=checked]:bg-white data-[state=checked]:font-semibold data-[state=checked]:text-black data-[state=checked]:shadow data-[state=unchecked]:text-white/80 data-[state=unchecked]:hover:bg-white/10 data-[state=unchecked]:hover:text-white data-[disabled]:pointer-events-none data-[disabled]:opacity-50"
+												class="cursor-pointer rounded px-2.5 py-1 transition-colors data-[state=checked]:bg-white data-[state=checked]:font-semibold data-[state=checked]:text-black data-[state=checked]:shadow data-[state=unchecked]:text-white/80 data-[state=unchecked]:hover:bg-white/10 data-[state=unchecked]:hover:text-white data-[disabled]:pointer-events-none data-[disabled]:opacity-50"
 											>
 												<SegmentGroup.ItemText>{opt.label}</SegmentGroup.ItemText>
 												<SegmentGroup.ItemHiddenInput />
@@ -333,7 +325,19 @@
 									</SegmentGroup.Root>
 								</div>
 
+								<!-- Right: Reset & Apply -->
 								<div class="flex items-center gap-2">
+									<button
+										type="button"
+										class="rounded-md px-2.5 py-1.5 text-xs font-medium text-white/70 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-30 disabled:pointer-events-none touch-manipulation"
+										onclick={() => resetCrop(cropper)}
+										disabled={cropBusy}
+										aria-label="Reset crop"
+										title="Reset crop"
+									>
+										Reset
+									</button>
+
 									<button
 										type="button"
 										class="scrapscache-button scrapscache-button-primary min-w-[5.25rem] px-3.5 py-1.5 text-sm font-medium"

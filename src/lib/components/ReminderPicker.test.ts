@@ -113,18 +113,32 @@ describe('ReminderPicker remaining time', () => {
 		expect(screen.getByText('Closed-app alerts need Sync on this device.')).toBeTruthy();
 	});
 
-	it('shows cancel next to save after the reminder is edited', async () => {
+	it('keeps cancel on the left with remove, and save on the right after edit', async () => {
 		render(ReminderPicker, { props: { reminder, onClose: () => {} } });
 
-		expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy();
+		const remove = screen.getByRole('button', { name: 'Remove' });
+		const cancel = screen.getByRole('button', { name: 'Cancel' });
 		expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
+		expect(remove.compareDocumentPosition(cancel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
 		await fireEvent.click(
 			within(screen.getByRole('listbox', { name: 'Hour' })).getByRole('option', { name: '16' })
 		);
 
-		expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy();
-		expect(screen.getByRole('button', { name: 'Save' })).toBeTruthy();
+		const save = screen.getByRole('button', { name: 'Save' });
+		expect(cancel.compareDocumentPosition(save) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+	});
+
+	it('opens the calendar inside the same date-time panel', async () => {
+		const { container } = render(ReminderPicker, { props: { reminder, onClose: () => {} } });
+		const panel = container.querySelector('.schedule-panel');
+		expect(panel).toBeTruthy();
+		expect(panel?.querySelector('[aria-label="Hour"]')).toBeTruthy();
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Choose date' }));
+
+		expect(panel?.querySelector('[role="grid"]')).toBeTruthy();
+		expect(panel?.querySelector('[aria-label="Hour"]')).toBeNull();
 	});
 
 	it('updates remaining time when the hour changes', async () => {

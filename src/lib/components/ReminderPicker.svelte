@@ -180,80 +180,82 @@
 			Pick date & time
 		</div>
 
-		{#if monthYearOpen}
-			<div
-				class="mb-1 rounded-xl bg-black/[0.03] px-2 py-2 dark:bg-white/[0.04]"
-				role="presentation"
-				onclick={closeCalendarIfDayPicked}
-			>
-				<DatePicker.Root
-					inline
-					startOfWeek={1}
-					fixedWeeks
-					value={pickerValue}
-					onValueChange={onDateChange}
-				>
-					<DatePickerViews />
-				</DatePicker.Root>
-			</div>
-		{:else}
-			<div class="mb-3 flex items-center">
-				<button
-					type="button"
-					class="icon-btn h-8 w-8 shrink-0 p-2"
-					onclick={() => shiftDay(-1)}
-					aria-label="Previous day"
-				>
-					<ChevronLeft class="h-5 w-5" aria-hidden="true" />
-				</button>
-				<button
-					type="button"
-					class="mx-1 flex min-w-0 flex-1 items-center justify-center rounded-lg px-2 py-1.5 text-sm font-medium text-[var(--scrapscache-text)]"
-					onclick={() => (monthYearOpen = true)}
-					aria-label="Choose date"
-					aria-expanded="false"
-				>
-					<span class="truncate">{dateLabel}</span>
-				</button>
-				<button
-					type="button"
-					class="icon-btn h-8 w-8 shrink-0 p-2"
-					onclick={() => shiftDay(1)}
-					aria-label="Next day"
-				>
-					<ChevronRight class="h-5 w-5" aria-hidden="true" />
-				</button>
-			</div>
-			<div
-				class="flex justify-center gap-1 rounded-xl bg-black/[0.03] px-2 py-1 dark:bg-white/[0.04]"
-			>
-				<WheelPicker
-					class="w-16"
-					items={HOUR_ITEMS}
-					value={hours24}
-					onChange={setHour}
-					ariaLabel="Hour"
-				/>
+		<div class="schedule-panel">
+			{#if monthYearOpen}
 				<div
-					class="flex w-3 shrink-0 items-center justify-center text-xl font-semibold text-[var(--scrapscache-text)]"
-					aria-hidden="true"
+					class="h-full overflow-hidden rounded-xl bg-black/[0.03] px-2 py-2 dark:bg-white/[0.04]"
+					role="presentation"
+					onclick={closeCalendarIfDayPicked}
 				>
-					:
+					<DatePicker.Root
+						inline
+						startOfWeek={1}
+						fixedWeeks
+						value={pickerValue}
+						onValueChange={onDateChange}
+					>
+						<DatePickerViews />
+					</DatePicker.Root>
 				</div>
-				<WheelPicker
-					class="w-16"
-					items={MINUTE_ITEMS}
-					value={minutes}
-					onChange={setMinute}
-					ariaLabel="Minute"
-				/>
-			</div>
-		{/if}
+			{:else}
+				<div class="flex h-full flex-col">
+					<div class="mb-3 flex items-center">
+						<button
+							type="button"
+							class="icon-btn h-8 w-8 shrink-0 p-2"
+							onclick={() => shiftDay(-1)}
+							aria-label="Previous day"
+						>
+							<ChevronLeft class="h-5 w-5" aria-hidden="true" />
+						</button>
+						<button
+							type="button"
+							class="mx-1 flex min-w-0 flex-1 items-center justify-center rounded-lg px-2 py-1.5 text-sm font-medium text-[var(--scrapscache-text)]"
+							onclick={() => (monthYearOpen = true)}
+							aria-label="Choose date"
+							aria-expanded="false"
+						>
+							<span class="truncate">{dateLabel}</span>
+						</button>
+						<button
+							type="button"
+							class="icon-btn h-8 w-8 shrink-0 p-2"
+							onclick={() => shiftDay(1)}
+							aria-label="Next day"
+						>
+							<ChevronRight class="h-5 w-5" aria-hidden="true" />
+						</button>
+					</div>
+					<div
+						class="flex min-h-0 flex-1 items-center justify-center gap-1 rounded-xl bg-black/[0.03] px-2 py-1 dark:bg-white/[0.04]"
+					>
+						<WheelPicker
+							class="w-16"
+							items={HOUR_ITEMS}
+							value={hours24}
+							onChange={setHour}
+							ariaLabel="Hour"
+						/>
+						<div
+							class="flex w-3 shrink-0 items-center justify-center text-xl font-semibold text-[var(--scrapscache-text)]"
+							aria-hidden="true"
+						>
+							:
+						</div>
+						<WheelPicker
+							class="w-16"
+							items={MINUTE_ITEMS}
+							value={minutes}
+							onChange={setMinute}
+							ariaLabel="Minute"
+						/>
+					</div>
+				</div>
+			{/if}
+		</div>
 	</div>
 
-	<div
-		class="flex items-center justify-between gap-3 border-t border-[var(--scrapscache-border)] pt-4"
-	>
+	<div class="flex items-center gap-2 border-t border-[var(--scrapscache-border)] pt-4">
 		{#if showRemove}
 			<button
 				type="button"
@@ -262,26 +264,28 @@
 			>
 				Remove
 			</button>
-		{:else}
-			<span class="shrink-0" aria-hidden="true"></span>
 		{/if}
-		<div class="flex shrink-0 items-center gap-2">
+		<button
+			type="button"
+			onclick={onClose}
+			class="scrapscache-button scrapscache-button-secondary min-w-[5.5rem] px-4 py-2.5 text-sm font-medium"
+		>
+			Cancel
+		</button>
+		{#if primaryIsSave}
 			<button
 				type="button"
-				onclick={onClose}
-				class="scrapscache-button scrapscache-button-secondary min-w-[5.5rem] px-4 py-2.5 text-sm font-medium"
+				onclick={save}
+				class="scrapscache-button scrapscache-button-primary ml-auto min-w-[5.5rem] px-4 py-2.5 text-sm font-medium"
 			>
-				Cancel
+				Save
 			</button>
-			{#if primaryIsSave}
-				<button
-					type="button"
-					onclick={save}
-					class="scrapscache-button scrapscache-button-primary min-w-[5.5rem] px-4 py-2.5 text-sm font-medium"
-				>
-					Save
-				</button>
-			{/if}
-		</div>
+		{/if}
 	</div>
 </div>
+
+<style>
+	.schedule-panel {
+		height: 17.25rem;
+	}
+</style>

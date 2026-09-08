@@ -91,15 +91,33 @@ describe('PhotoFullscreen', () => {
 		expect(document.body.querySelector('img[alt="two.png"]')).toBeTruthy();
 	});
 
-	it('renders rotate, reset, and aspect ratio controls inside cropper', async () => {
+	it('renders rotate, undo, reset, and aspect ratio controls inside cropper', async () => {
 		render(PhotoFullscreen, {
 			props: { images: [photo('a', 'one.png')], activeIndex: 0, onCrop: () => {} }
 		});
 
 		await fireEvent.click(document.body.querySelector('[aria-label="Crop photo"]')!);
 		expect(document.body.querySelector('[data-scope="image-cropper"]')).toBeTruthy();
-		expect(document.body.querySelector('[aria-label="Rotate 90 degrees"]')).toBeTruthy();
-		expect(document.body.querySelector('[aria-label="Reset crop"]')).toBeTruthy();
+		const rotateBtn = document.body.querySelector(
+			'[aria-label="Rotate 90 degrees"]'
+		) as HTMLButtonElement;
+		const undoBtn = document.body.querySelector(
+			'[aria-label="Undo crop adjustment"]'
+		) as HTMLButtonElement;
+		const resetBtn = document.body.querySelector('[aria-label="Reset crop"]') as HTMLButtonElement;
+
+		expect(rotateBtn).toBeTruthy();
+		expect(undoBtn).toBeTruthy();
+		expect(resetBtn).toBeTruthy();
+		expect(undoBtn.disabled).toBe(true);
+
+		await fireEvent.click(rotateBtn);
+		expect(undoBtn.disabled).toBe(false);
+
+		await fireEvent.click(undoBtn);
+		expect(undoBtn.disabled).toBe(true);
+
+		await fireEvent.click(resetBtn);
 		expect(document.body.querySelector('[aria-label="Aspect ratio presets"]')).toBeTruthy();
 		expect(document.body.textContent).toContain('Apply');
 

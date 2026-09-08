@@ -9,6 +9,7 @@
 		RotateCcw,
 		RotateCw,
 		Trash2,
+		Undo2,
 		X
 	} from '@lucide/svelte';
 	import { ImageCropper, type UseImageCropperContext } from '@ark-ui/svelte/image-cropper';
@@ -40,6 +41,28 @@
 	let imgNaturalHeight = $state(0);
 	let cropContainerW = $state(0);
 	let cropContainerH = $state(0);
+	let previewImageEl = $state<HTMLImageElement | null>(null);
+	let capturedRect = $state<{ width: number; height: number } | null>(null);
+	let currentRotation = $state(0);
+
+	interface CropHistoryState {
+		rotation: number;
+		ratio: 'free' | '1:1' | '4:3' | '16:9';
+	}
+	let historyStack = $state<CropHistoryState[]>([]);
+	let originalImages = new Map<string, NoteImage>();
+
+	function capturePreviewRect() {
+		if (previewImageEl) {
+			const r = previewImageEl.getBoundingClientRect();
+			if (r.width > 0 && r.height > 0) {
+				capturedRect = {
+					width: Math.round(r.width),
+					height: Math.round(r.height)
+				};
+			}
+		}
+	}
 
 	$effect(() => {
 		if (!currentSrc) return;
@@ -57,12 +80,15 @@
 	});
 
 	const viewportDimensions = $derived.by(() => {
+		if (capturedRect && capturedRect.width > 0 && capturedRect.height > 0) {
+			return capturedRect;
+		}
 		const nw = imgNaturalWidth || current?.width || 800;
 		const nh = imgNaturalHeight || current?.height || 600;
 		const pad = cropContainerW < 640 ? 16 : 48;
-		const maxW = Math.max(100, (cropContainerW || 800) - pad);
-		const maxH = Math.max(100, (cropContainerH || 600) - pad);
-		const scale = Math.min(maxW / nw, maxH / nh);
+		const maxW = Math.max(40, (cropContainerW || 800) - pad);
+		const maxH = Math.max(40, (cropContainerH || 600) - pad);
+		const scale = Math.min(1, maxW / nw, maxH / nh);
 		return {
 			width: Math.max(40, Math.round(nw * scale)),
 			height: Math.max(40, Math.round(nh * scale))
@@ -97,13 +123,62 @@
 		cropping = false;
 		cropBusy = false;
 		cropError = '';
+		historyStack = [];
+		currentRotation = 0;
 		selectedRatio = 'free';
 	}
 
 	function startCrop() {
 		if (!canCrop) return;
+		capturePreviewRect();
+		historyStack = [];
+		currentRotation = 0;
 		cropError = '';
 		cropping = true;
+	}
+
+	function rotate(cropper: () => any) {
+		historyStack.push({
+			rotation: currentRotation,
+			ratio: selectedRatio
+		});
+		currentRotation = (currentRotation + 90) % 360;
+		cropper().rotateBy(90);
+	}
+
+	function resetCrop(cropper: () => any) {
+		if (historyStack.length > 0 || currentRotation !== 0 || selectedRatio !== 'free') {
+			historyStack.push({
+				rotation: currentRotation,
+				ratio: selectedRatio
+			});
+		}
+		currentRotation = 0;
+		selectedRatio = 'free';
+		cropper().reset();
+	}
+
+	function undo(cropper: () => any) {
+		const prev = historyStack.pop();
+		if (!prev) return;
+		if (prev.rotation !== currentRotation) {
+			currentRotation = prev.rotation;
+			cropper().setRotation(prev.rotation);
+		}
+		selectedRatio = prev.ratio;
+	}
+
+	function hasOriginal(id: string) {
+		return originalImages.has(id);
+	}
+
+	async function revertToOriginal() {
+		if (!current || !onCrop) return;
+		const original = originalImages.get(current.id);
+		if (!original) return;
+		await onCrop(original);
+		originalImages.delete(current.id);
+		capturedRect = null;
 	}
 
 	function select(index: number) {
@@ -200,7 +275,16 @@
 	>
 		{#if cropping}
 			<div class="crop-root relative z-[1] flex min-h-0 flex-1 flex-col">
-				<ImageCropper.Root aspectRatio={currentAspectRatio} class="flex min-h-0 flex-1 flex-col">
+				<ImageCropper.Root
+					aspectRatio={currentAspectRatio}
+					initialCrop={{
+						x: 0,
+						y: 0,
+						width: viewportDimensions.width,
+						height: viewportDimensions.height
+					}}
+					class="flex min-h-0 flex-1 flex-col"
+				>
 					<ImageCropper.Context>
 						{#snippet render(cropper)}
 							<header
@@ -222,12 +306,12 @@
 									<span class="text-sm font-medium text-white/90">Crop & Rotate</span>
 								</div>
 
-								<div class="flex items-center gap-1.5 sm:gap-2">
+								<div class="flex items-center gap-1 sm:gap-1.5">
 									<Tooltip content="Rotate 90°">
 										<button
 											type="button"
 											class="grid h-9 w-9 place-items-center rounded-md text-white/80 transition-colors hover:bg-white/10 hover:text-white touch-manipulation"
-											onclick={() => cropper().rotateBy(90)}
+											onclick={() => rotate(cropper)}
 											disabled={cropBusy}
 											aria-label="Rotate 90 degrees"
 											title="Rotate 90°"
@@ -235,14 +319,23 @@
 											<RotateCw class="h-4 w-4" aria-hidden="true" />
 										</button>
 									</Tooltip>
+									<Tooltip content="Undo">
+										<button
+											type="button"
+											class="grid h-9 w-9 place-items-center rounded-md text-white/80 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-35 disabled:hover:bg-transparent disabled:hover:text-white/80 touch-manipulation"
+											onclick={() => undo(cropper)}
+											disabled={cropBusy || historyStack.length === 0}
+											aria-label="Undo crop adjustment"
+											title="Undo"
+										>
+											<Undo2 class="h-4 w-4" aria-hidden="true" />
+										</button>
+									</Tooltip>
 									<Tooltip content="Reset">
 										<button
 											type="button"
 											class="grid h-9 w-9 place-items-center rounded-md text-white/80 transition-colors hover:bg-white/10 hover:text-white touch-manipulation"
-											onclick={() => {
-												cropper().reset();
-												selectedRatio = 'free';
-											}}
+											onclick={() => resetCrop(cropper)}
 											disabled={cropBusy}
 											aria-label="Reset crop"
 											title="Reset"

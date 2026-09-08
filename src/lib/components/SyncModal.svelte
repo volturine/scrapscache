@@ -12,7 +12,7 @@
 	import { buildProfileNotesExport } from '$lib/profiles';
 	import { estimateProfileBytes, LOCAL_PROFILE_ID } from '$lib/db/idb';
 	import { downloadJSON } from '$lib/utils';
-	import { Cloud, CloudOff, Check, Download, RefreshCw, X } from '@lucide/svelte';
+	import { Cloud, CloudOff, Download, RefreshCw, Trash2, X } from '@lucide/svelte';
 	import { portalToAppFloat } from '$lib/appViewport';
 
 	let { onClose }: { onClose: () => void } = $props();
@@ -454,10 +454,6 @@
 											: ''}</span
 									></span
 								>
-								{#if syncStore.activePid === LOCAL_PROFILE_ID}<Check
-										size={16}
-										aria-hidden="true"
-									/>{/if}
 							</button>
 							{#each syncStore.profiles as profile (profile.id)}
 								{@const active = profile.id === syncStore.activeProfile?.id}
@@ -516,7 +512,6 @@
 														: ''}</span
 												></span
 											>
-											{#if active}<Check size={16} aria-hidden="true" />{/if}
 										</WorkspaceRow>
 									{/if}
 								</div>
@@ -688,7 +683,7 @@
 											mode = 'confirm';
 											error = '';
 										}}
-										><X size={16} aria-hidden="true" /><span
+										><Trash2 size={16} aria-hidden="true" /><span
 											>Delete cloud data<small
 												>Keep this device’s notes in Anonymous workspace</small
 											></span
@@ -752,42 +747,54 @@
 						</div>
 					</div>
 				{:else if mode === 'register'}
-					<div class="space-y-3">
-						<p class="text-sm text-[var(--scrapscache-text-muted)]">
+					<div class="space-y-4">
+						<p class="text-sm leading-relaxed text-[var(--scrapscache-text-muted)]">
 							{syncStore.account
-								? 'Starts with no notes. Your other workspaces stay as they are.'
-								: 'Your anonymous notes will be copied into this synced workspace.'}
+								? 'It starts empty. Your existing workspaces stay unchanged.'
+								: 'Your current anonymous notes will be copied into it.'}
 						</p>
-						<input
-							bind:value={newName}
-							placeholder="Workspace name (optional)"
-							maxlength="60"
-							class="scrapscache-input w-full px-3 py-2 text-sm"
-							aria-label="Sync key name"
-							onkeydown={(event) => event.key === 'Enter' && void create()}
-						/>
-						{#if error}<p class="text-sm text-[var(--scrapscache-danger)]">{error}</p>{/if}<button
-							type="button"
-							onclick={() => void create()}
-							disabled={busy}
-							class="scrapscache-button scrapscache-button-primary w-full px-3 py-2 text-sm font-medium"
-							>{operation === 'create' ? 'Creating…' : 'Create workspace'}</button
-						><button
-							type="button"
-							onclick={() => (mode = 'menu')}
-							disabled={busy}
-							class="w-full text-xs text-[var(--scrapscache-text-muted)] touch-manipulation"
-							>← Back</button
-						>
+						<div class="space-y-2">
+							<input
+								bind:value={newName}
+								placeholder="Workspace name (optional)"
+								maxlength="60"
+								class="scrapscache-input w-full px-3 py-2.5 text-sm"
+								aria-label="Sync key name"
+								onkeydown={(event) => event.key === 'Enter' && void create()}
+							/>
+							{#if error}<p class="text-sm text-[var(--scrapscache-danger)]">{error}</p>{/if}
+							<button
+								type="button"
+								onclick={() => void create()}
+								disabled={busy}
+								class="scrapscache-button scrapscache-button-primary w-full px-3 py-2.5 text-sm font-medium"
+								>{operation === 'create' ? 'Creating…' : 'Create workspace'}</button
+							>
+						</div>
+						<div class="flex items-center gap-3" aria-hidden="true">
+							<span class="h-px flex-1 bg-[var(--scrapscache-border)]"></span>
+							<span
+								class="text-[11px] uppercase tracking-wider text-[var(--scrapscache-text-muted)]"
+								>or</span
+							>
+							<span class="h-px flex-1 bg-[var(--scrapscache-border)]"></span>
+						</div>
 						<button
 							type="button"
 							disabled={busy}
-							class="text-[var(--scrapscache-text-muted)]"
+							class="scrapscache-button scrapscache-button-secondary w-full px-3 py-2.5 text-sm"
 							onclick={() => {
 								mode = 'link';
 								error = '';
 								info = '';
 							}}>Join existing</button
+						>
+						<button
+							type="button"
+							onclick={() => (mode = 'menu')}
+							disabled={busy}
+							class="w-full text-xs text-[var(--scrapscache-text-muted)] touch-manipulation"
+							>← Back to workspaces</button
 						>
 					</div>
 				{:else if mode === 'link'}

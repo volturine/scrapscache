@@ -13,17 +13,9 @@
 	import { downloadJSON } from '$lib/utils';
 	import { Cloud, CloudOff, Check, Download, Pencil, RefreshCw, X } from '@lucide/svelte';
 	import { portalToAppFloat } from '$lib/appViewport';
-	import { resolveSyncStatus, SyncStatus } from '$lib/syncStatus';
-
-	const SYNC_STATUS_CLASS: Record<SyncStatus, string> = {
-		[SyncStatus.Normal]:
-			'border border-[var(--scrapscache-border)] text-[var(--scrapscache-text-muted)]',
-		[SyncStatus.Warning]: 'scrapscache-status-warning',
-		[SyncStatus.Danger]: 'scrapscache-status-danger'
-	};
 
 	let { onClose }: { onClose: () => void } = $props();
-	let mode = $state<'menu' | 'register' | 'link' | 'waiting' | 'replace' | 'confirm'>('menu');
+	let mode = $state<'menu' | 'register' | 'link' | 'waiting' | 'confirm'>('menu');
 	let code = $state('');
 	let error = $state('');
 	let info = $state('');
@@ -46,13 +38,13 @@
 	let waiting = $state<StartedDeviceLink | null>(null);
 	let now = $state(Date.now());
 	let timer: ReturnType<typeof setTimeout> | null = null;
-	let confirmation = $state<'unlink' | 'delete' | null>(null);
+	let confirmation = $state<'unlink' | 'delete' | 'force' | null>(null);
 	let newName = $state('');
 	let editingId = $state<string | null>(null);
 	let editName = $state('');
 
+	const authenticationFailed = $derived(/authentication/i.test(syncStore.lastError ?? ''));
 	let syncError = $derived(syncStore.lastError ?? '');
-	let quotaStatus = $derived(resolveSyncStatus(syncError, syncStore.usage));
 
 	// A running sync must finish before a dataset handover can start.
 	// Background pulls and outbox retries are intentionally silent. They still
@@ -177,24 +169,6 @@
 			error = friendlyError(result.error, 'Created, but the first sync did not finish');
 	}
 
-	async function createReplacement() {
-		error = '';
-		info = '';
-		const result = await runOperation('replace-key', 'Could not create replacement sync key', () =>
-			profileCoordinator.createFromActive(newName)
-		);
-		if (!result) return;
-		if (!result.success) {
-			error = friendlyError(result.error, 'Could not create replacement sync key');
-			return;
-		}
-		newName = '';
-		mode = 'menu';
-		info = 'Replacement sync key created from this workspace. The previous key is still saved.';
-		if (result.error)
-			error = friendlyError(result.error, 'Created, but the first sync did not finish');
-	}
-
 	async function forceResync() {
 		error = '';
 		info = '';
@@ -207,7 +181,7 @@
 			return;
 		}
 		mode = 'menu';
-		info = 'Full encrypted resync completed using the same sync key.';
+		info = 'This device’s notes are now the latest cloud version.';
 	}
 
 	async function beginLink() {
@@ -437,13 +411,13 @@
 							? 'Workspaces'
 							: mode === 'register'
 								? 'New workspace'
-								: mode === 'replace'
-									? 'New sync key'
-									: mode === 'confirm'
-										? confirmation === 'unlink'
+								: mode === 'confirm'
+									? confirmation === 'force'
+										? 'Replace cloud notes?'
+										: confirmation === 'unlink'
 											? 'Unlink workspace?'
 											: 'Delete cloud data?'
-										: 'Connect device'}
+									: 'Connect device'}
 					</Dialog.Title>
 					<Dialog.CloseTrigger
 						type="button"
@@ -558,42 +532,30 @@
 									newName = '';
 								}}>+ New workspace</button
 							>
-							<button
-								type="button"
-								disabled={busy}
-								class="text-[var(--scrapscache-text-muted)]"
-								onclick={() => {
-									mode = 'link';
-									error = '';
-									info = '';
-								}}>Join existing</button
-							>
 						</div>
 						{#if syncStore.account}
 							<div class="border-t border-[var(--scrapscache-border)] pt-4">
-								<div
-									class="mb-3 flex items-center justify-between gap-3 text-xs text-[var(--scrapscache-text-muted)]"
-								>
-									<span class="truncate">{syncStore.activeProfile?.name}</span>
-									{#if syncStore.usage}<span
-											aria-label="Sync storage usage"
-											class={SYNC_STATUS_CLASS[quotaStatus]}
-											><Format.Byte value={syncStore.usage.storageBytes} /> / <Format.Byte
-												value={syncStore.usage.maxBytes}
-											/></span
-										>{:else}<span>Encrypted sync</span>{/if}
-								</div>
 								<div class="flex gap-2">
 									<button
 										type="button"
-										onclick={() => void syncNow()}
+										onclick={() => {
+											if (authenticationFailed) {
+												confirmation = 'force';
+												mode = 'confirm';
+												error = '';
+											} else void syncNow();
+										}}
 										disabled={busy}
 										class="scrapscache-button scrapscache-button-primary flex flex-1 items-center justify-center gap-2 px-3 py-2.5 text-sm"
 										><RefreshCw
 											size={16}
 											class={syncing ? 'animate-spin' : ''}
 											aria-hidden="true"
-										/>{operation === 'sync' ? 'Syncing…' : 'Sync now'}</button
+										/>{operation === 'sync'
+											? 'Syncing…'
+											: authenticationFailed
+												? 'Force resync'
+												: 'Sync now'}</button
 									>
 									<button
 										type="button"
@@ -651,27 +613,22 @@
 									><Download size={16} aria-hidden="true" /><span>Export notes</span></button
 								>
 								{#if syncStore.account}
-									<button class="manage-row" disabled={busy} onclick={() => void forceResync()}
+									<button
+										class="manage-row"
+										disabled={busy}
+										onclick={() => {
+											confirmation = 'force';
+											mode = 'confirm';
+											error = '';
+										}}
 										><RefreshCw
 											size={16}
 											class={operation === 'force-sync' ? 'animate-spin' : ''}
 											aria-hidden="true"
 										/><span
 											>{operation === 'force-sync' ? 'Resyncing…' : 'Force resync'}<small
-												>Retry all notes with the same sync key</small
+												>Replace cloud notes with this device’s version</small
 											></span
-										></button
-									>
-									<button
-										class="manage-row"
-										disabled={busy}
-										onclick={() => {
-											mode = 'replace';
-											newName = '';
-											error = '';
-										}}
-										><Cloud size={16} aria-hidden="true" /><span
-											>New sync key<small>Copy these notes to a fresh synced workspace</small></span
 										></button
 									>
 									<button
@@ -707,7 +664,11 @@
 				{:else if mode === 'confirm'}
 					<div class="space-y-4">
 						<p class="text-sm leading-relaxed text-[var(--scrapscache-text-muted)]">
-							{#if confirmation === 'unlink'}
+							{#if confirmation === 'force'}
+								This device’s notes will replace the cloud version using the same sync key. Notes
+								only in the cloud will be removed. Other devices will receive these notes as the
+								latest version.
+							{:else if confirmation === 'unlink'}
 								All notes in “{syncStore.activeProfile?.name}” will be appended to Anonymous
 								workspace. Existing anonymous notes are kept. Other devices and cloud data stay
 								connected.
@@ -738,56 +699,21 @@
 									: 'scrapscache-button-primary'}"
 								disabled={busy}
 								onclick={() =>
-									confirmation === 'delete' ? void deleteCloudData() : void unlinkDevice()}
+									confirmation === 'force'
+										? void forceResync()
+										: confirmation === 'delete'
+											? void deleteCloudData()
+											: void unlinkDevice()}
 								>{busy
 									? 'Working…'
-									: confirmation === 'delete'
-										? 'Delete cloud data'
-										: 'Unlink & keep notes'}</button
+									: confirmation === 'force'
+										? 'Replace cloud notes'
+										: confirmation === 'delete'
+											? 'Delete cloud data'
+											: 'Unlink & keep notes'}</button
 							>
 						</div>
 					</div>
-				{:else if mode === 'replace'}
-					<form
-						class="space-y-4"
-						onsubmit={(event) => {
-							event.preventDefault();
-							void createReplacement();
-						}}
-					>
-						<p class="text-sm text-[var(--scrapscache-text-muted)]">
-							Copy this workspace’s notes to a new sync key. The old workspace stays saved. Connect
-							your other devices to the new workspace when you’re ready.
-						</p>
-						<input
-							bind:value={newName}
-							placeholder="Workspace name (optional)"
-							maxlength="60"
-							disabled={busy}
-							class="scrapscache-input w-full px-3 py-2 text-sm"
-							aria-label="Replacement sync key name"
-						/>
-						{#if error}<p class="text-sm text-[var(--scrapscache-danger)]" role="alert">
-								{error}
-							</p>{/if}
-						<div class="flex gap-2">
-							<button
-								type="button"
-								disabled={busy}
-								class="scrapscache-button scrapscache-button-secondary px-3 py-2"
-								onclick={() => {
-									mode = 'menu';
-									error = '';
-								}}>Cancel</button
-							>
-							<button
-								type="submit"
-								disabled={busy}
-								class="scrapscache-button scrapscache-button-primary flex-1 px-3 py-2"
-								>{operation === 'replace-key' ? 'Creating…' : 'Create new key & copy notes'}</button
-							>
-						</div>
-					</form>
 				{:else if mode === 'register'}
 					<div class="space-y-3">
 						<p class="text-sm text-[var(--scrapscache-text-muted)]">
@@ -815,6 +741,16 @@
 							disabled={busy}
 							class="w-full text-xs text-[var(--scrapscache-text-muted)] touch-manipulation"
 							>← Back</button
+						>
+						<button
+							type="button"
+							disabled={busy}
+							class="text-[var(--scrapscache-text-muted)]"
+							onclick={() => {
+								mode = 'link';
+								error = '';
+								info = '';
+							}}>Join existing</button
 						>
 					</div>
 				{:else if mode === 'link'}
@@ -855,7 +791,7 @@
 									On the new device
 								</p>
 								<p class="mt-1 text-sm text-[var(--scrapscache-text)]">
-									Open Workspaces → Join existing and type this code
+									Open Workspaces → New workspace → Join existing and type this code
 								</p>
 							</div>
 							<div

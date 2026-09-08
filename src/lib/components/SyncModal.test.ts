@@ -106,38 +106,27 @@ describe('SyncModal profile interactions', () => {
 		expect(button.textContent).toContain('Sync now');
 	});
 
-	it('runs non-destructive full resync directly from workspace management', async () => {
+	it('confirms replacing cloud data before force resync', async () => {
 		const force = vi.spyOn(profileCoordinator, 'forceResync').mockResolvedValue({ success: true });
 		render(SyncModal, { props: { onClose: vi.fn() } });
 
 		await fireEvent.click(screen.getByText('Manage workspace'));
 		await fireEvent.click(screen.getByRole('button', { name: /Force resync/ }));
 
+		expect(force).not.toHaveBeenCalled();
+		await fireEvent.click(screen.getByRole('button', { name: 'Replace cloud notes' }));
 		await waitFor(() => expect(force).toHaveBeenCalledTimes(1));
-		expect(
-			screen.getByText('Full encrypted resync completed using the same sync key.')
-		).toBeTruthy();
+		expect(screen.getByText('This device’s notes are now the latest cloud version.')).toBeTruthy();
 	});
 
-	it('creates a replacement key from the current synced workspace', async () => {
-		const createReplacement = vi
-			.spyOn(profileCoordinator, 'createFromActive')
-			.mockResolvedValue({ success: true });
+	it('offers recovery for authentication failure and places joining under new workspace', async () => {
+		syncStore.lastError = 'Could not start sync authentication';
 		render(SyncModal, { props: { onClose: vi.fn() } });
-
-		await fireEvent.click(screen.getByText('Manage workspace'));
-		await fireEvent.click(screen.getByRole('button', { name: /New sync key/ }));
-		await fireEvent.input(screen.getByLabelText('Replacement sync key name'), {
-			target: { value: 'Recovered notes' }
-		});
-		await fireEvent.click(screen.getByRole('button', { name: 'Create new key & copy notes' }));
-
-		await waitFor(() => expect(createReplacement).toHaveBeenCalledWith('Recovered notes'));
-		expect(
-			screen.getByText(
-				'Replacement sync key created from this workspace. The previous key is still saved.'
-			)
-		).toBeTruthy();
+		expect(screen.queryByRole('button', { name: 'Sync now' })).toBeNull();
+		expect(screen.getByRole('button', { name: 'Force resync' })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: 'Join existing' })).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: '+ New workspace' }));
+		expect(screen.getByRole('button', { name: 'Join existing' })).toBeTruthy();
 	});
 
 	it('shows syncing only for a sync started from the modal', async () => {

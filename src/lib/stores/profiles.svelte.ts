@@ -48,13 +48,6 @@ export class ProfileCoordinator {
 		return this.createWithDataset(name, sourcePid);
 	}
 
-	/** Create a new key seeded with the active synced workspace's current device data. */
-	async createFromActive(name?: string): Promise<{ success: boolean; error?: string }> {
-		const source = syncStore.activeProfile;
-		if (!source) return { success: false, error: 'No synced workspace is active' };
-		return this.createWithDataset(name, source.id);
-	}
-
 	private async createWithDataset(
 		name: string | undefined,
 		sourcePid: string | null
@@ -106,34 +99,25 @@ export class ProfileCoordinator {
 		}
 	}
 
-	/** Forget local sync bookkeeping and fully reconcile the active workspace using its same key. */
+	/** Publish this device's workspace as the newest cloud version. */
 	async forceResync(): Promise<{ success: boolean; error?: string }> {
 		const blocked = this.guard();
 		if (blocked) return { success: false, error: blocked };
-		const account = syncStore.account;
-		const profileId = syncStore.activeProfile?.id;
-		if (!account || !profileId) return { success: false, error: 'No synced workspace is active' };
+		if (!syncStore.account) return { success: false, error: 'No synced workspace is active' };
 		this.switching = true;
 		try {
-			await this.exclusive(async () => {
-				await notesStore.waitForPendingProfileWrites();
-				if (syncStore.account !== account || syncStore.activeProfile?.id !== profileId) {
-					throw new Error('The active workspace changed before recovery started');
-				}
-				await syncStore.clearAccountControlPlane(account.accountId, profileId);
-			});
-			const synced = await notesStore.syncWithCloudManual();
+			const synced = await notesStore.forcePushWorkspace();
 			return synced
 				? { success: true }
 				: {
 						success: false,
 						error:
-							syncStore.lastError ?? notesStore.lastPersistError ?? 'Full resync did not finish'
+							syncStore.lastError ?? notesStore.lastPersistError ?? 'Force resync did not finish'
 					};
 		} catch (err) {
 			return {
 				success: false,
-				error: err instanceof Error ? err.message : 'Could not force a full resync'
+				error: err instanceof Error ? err.message : 'Could not force resync'
 			};
 		} finally {
 			this.switching = false;

@@ -432,6 +432,37 @@ export class SyncStore {
 		this.onAccountChange?.();
 	}
 
+	async reauthenticateForRecovery(): Promise<void> {
+		const account = this.account;
+		if (!account) throw new Error('No synced workspace is active');
+		this.authenticationGeneration += 1;
+		this.pendingSessions.clear();
+		this.session = null;
+		try {
+			await this.accessToken(account);
+			return;
+		} catch {
+			// A missing relay account can only be recreated during explicit recovery.
+		}
+		// Explicit recovery may recreate a missing relay account with the same signed identity.
+		const response = await fetch('/api/sync/register', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				accountId: account.accountId,
+				authPublicKey: account.authPublicKey,
+				signature: signSyncRegistration(account.syncKey, account.accountId, account.authPublicKey)
+			})
+		});
+		if (!response.ok && response.status !== 409) {
+			const data = await response.json().catch(() => ({}));
+			throw new Error(
+				typeof data.error === 'string' ? data.error : 'Could not recover sync authentication'
+			);
+		}
+		await this.accessToken(account);
+	}
+
 	async register(
 		name?: string
 	): Promise<{ success: boolean; profile?: StoredProfile; error?: string }> {

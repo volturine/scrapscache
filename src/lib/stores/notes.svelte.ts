@@ -61,6 +61,7 @@ import {
 	type ScrapsCacheBackup
 } from '$lib/backup';
 import { stableStringify } from '$lib/syncHash';
+import { buildForcePushSnapshot } from '$lib/syncForcePush';
 
 /** Minimum gap between opportunistic auto syncs; manual syncs are never throttled. */
 const AUTO_SYNC_MIN_INTERVAL_MS = 30_000;
@@ -1269,6 +1270,66 @@ export class NotesStore {
 	}
 
 	// Manual sync — caller shows UI feedback (spinning cloud icon).
+	async forcePushWorkspace(): Promise<boolean> {
+		return this.withSyncLock(async () => {
+			const account = syncStore.account;
+			if (!account) return false;
+			try {
+				await this.waitForPendingProfileWrites();
+				await this.hydrateAllAttachments();
+				if (this.attachmentHydrationFailures.size)
+					throw new Error('Some attachments could not be loaded. Force resync was not started.');
+				await syncStore.reauthenticateForRecovery();
+				await syncStore.clearAccountControlPlane(account.accountId);
+				let remote: SyncSnapshot | undefined;
+				const pulled = await syncStore.sync(
+					[],
+					[],
+					{},
+					{},
+					[],
+					{},
+					true,
+					true,
+					async (snapshot) => {
+						remote = snapshot;
+						return snapshot;
+					}
+				);
+				if (!pulled.success || !remote)
+					throw new Error(pulled.error ?? 'Could not read cloud state before force resync');
+				const snapshot = buildForcePushSnapshot(
+					{
+						notes: this.notes.map(cloneNote),
+						labels: [...this.labels],
+						boards: kanbanStore.boardsForSync(),
+						tombstones: this.deletedNoteIds,
+						labelTombstones: this.deletedLabelIds,
+						boardTombstones: kanbanStore.boardTombstonesForSync()
+					},
+					remote
+				);
+				await bulkPutNotes(this.pid, snapshot.notes);
+				await bulkPutLabels(this.pid, snapshot.labels);
+				this.notes = snapshot.notes;
+				this.labels = snapshot.labels;
+				this.deletedNoteIds = snapshot.tombstones;
+				this.deletedLabelIds = snapshot.labelTombstones;
+				kanbanStore.replaceWithCloud(snapshot.boards, snapshot.boardTombstones);
+				await writeTombstones(this.pid, snapshot.tombstones);
+				await writeLabelTombstones(this.pid, snapshot.labelTombstones);
+				await kanbanStore.persistSyncState(this.pid);
+				this.mirrorToLS();
+				await syncStore.clearAccountControlPlane(account.accountId);
+				const synced = await this.doSyncLocked(true);
+				return synced && !syncStore.lastError && !this.lastPersistError;
+			} catch (err) {
+				this.recordPersistenceError('Could not force resync', err);
+				return false;
+			}
+		});
+	}
+
 	async syncWithCloudManual(): Promise<boolean> {
 		return this.flushSync(true);
 	}

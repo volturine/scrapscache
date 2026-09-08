@@ -1,5 +1,7 @@
 <script lang="ts">
-	import ReminderCalendar, { type ReminderDayFilter } from './ReminderCalendar.svelte';
+	import ReminderCalendar, {
+		type ReminderDayFilter
+	} from '$lib/components/ReminderCalendar.svelte';
 	import type { Note } from '$lib/types';
 
 	let { notes = [] }: { notes?: Note[] } = $props();

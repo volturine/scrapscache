@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import ReminderCalendarTestWrapper from './ReminderCalendarTestWrapper.svelte';
+import ReminderCalendarTestWrapper from '../../tests/ReminderCalendarTestWrapper.svelte';
 import type { ReminderDayFilter } from './ReminderCalendar.svelte';
 
 function getFilterState(container: HTMLElement): ReminderDayFilter | null {

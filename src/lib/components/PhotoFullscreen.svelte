@@ -41,8 +41,6 @@
 	let imgNaturalHeight = $state(0);
 	let cropContainerW = $state(0);
 	let cropContainerH = $state(0);
-	let previewImageEl = $state<HTMLImageElement | null>(null);
-	let capturedRect = $state<{ width: number; height: number } | null>(null);
 	let currentRotation = $state(0);
 
 	interface CropHistoryState {
@@ -50,19 +48,6 @@
 		ratio: 'free' | '1:1' | '4:3' | '16:9';
 	}
 	let historyStack = $state<CropHistoryState[]>([]);
-	let originalImages = new Map<string, NoteImage>();
-
-	function capturePreviewRect() {
-		if (previewImageEl) {
-			const r = previewImageEl.getBoundingClientRect();
-			if (r.width > 0 && r.height > 0) {
-				capturedRect = {
-					width: Math.round(r.width),
-					height: Math.round(r.height)
-				};
-			}
-		}
-	}
 
 	$effect(() => {
 		if (!currentSrc) return;
@@ -80,9 +65,6 @@
 	});
 
 	const viewportDimensions = $derived.by(() => {
-		if (capturedRect && capturedRect.width > 0 && capturedRect.height > 0) {
-			return capturedRect;
-		}
 		const nw = imgNaturalWidth || current?.width || 800;
 		const nh = imgNaturalHeight || current?.height || 600;
 		const pad = cropContainerW < 640 ? 16 : 48;
@@ -130,7 +112,6 @@
 
 	function startCrop() {
 		if (!canCrop) return;
-		capturePreviewRect();
 		historyStack = [];
 		currentRotation = 0;
 		cropError = '';
@@ -166,19 +147,6 @@
 			cropper().setRotation(prev.rotation);
 		}
 		selectedRatio = prev.ratio;
-	}
-
-	function hasOriginal(id: string) {
-		return originalImages.has(id);
-	}
-
-	async function revertToOriginal() {
-		if (!current || !onCrop) return;
-		const original = originalImages.get(current.id);
-		if (!original) return;
-		await onCrop(original);
-		originalImages.delete(current.id);
-		capturedRect = null;
 	}
 
 	function select(index: number) {

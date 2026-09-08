@@ -163,15 +163,6 @@
 		monthYearOpen = false;
 	}
 
-	function closeCalendarIfDayPicked(event: MouseEvent) {
-		if (
-			event.target instanceof Element &&
-			event.target.closest('[data-part="view"][data-view="day"] [data-part="cell-trigger"]')
-		) {
-			monthYearOpen = false;
-		}
-	}
-
 	function setHour(hour: number) {
 		const d = new Date(selected);
 		d.setHours(hour);
@@ -332,8 +323,6 @@
 			{:else if monthYearOpen}
 				<div
 					class="h-full overflow-hidden rounded-xl bg-black/[0.03] px-2 py-2 dark:bg-white/[0.04]"
-					role="presentation"
-					onclick={closeCalendarIfDayPicked}
 				>
 					<DatePicker.Root
 						inline

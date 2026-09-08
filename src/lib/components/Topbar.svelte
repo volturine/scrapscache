@@ -147,9 +147,9 @@
 			e.preventDefault();
 			startNewNote();
 		}
-		if (e.key === 'Escape') {
-			if (importingBackup) return;
-			settingsOpen = false;
+		if (importingBackup && e.key === 'Escape') {
+			e.preventDefault();
+			e.stopImmediatePropagation();
 		}
 	}
 </script>

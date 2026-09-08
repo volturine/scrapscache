@@ -36,6 +36,38 @@
 	let cropBusy = $state(false);
 	let cropError = $state('');
 	let selectedRatio = $state<'free' | '1:1' | '4:3' | '16:9'>('free');
+	let imgNaturalWidth = $state(0);
+	let imgNaturalHeight = $state(0);
+	let cropContainerW = $state(0);
+	let cropContainerH = $state(0);
+
+	$effect(() => {
+		if (!currentSrc) return;
+		const img = new Image();
+		img.src = currentSrc;
+		if (img.complete && img.naturalWidth) {
+			imgNaturalWidth = img.naturalWidth;
+			imgNaturalHeight = img.naturalHeight;
+		} else {
+			img.onload = () => {
+				imgNaturalWidth = img.naturalWidth;
+				imgNaturalHeight = img.naturalHeight;
+			};
+		}
+	});
+
+	const viewportDimensions = $derived.by(() => {
+		const nw = imgNaturalWidth || current?.width || 800;
+		const nh = imgNaturalHeight || current?.height || 600;
+		const pad = cropContainerW < 640 ? 16 : 48;
+		const maxW = Math.max(100, (cropContainerW || 800) - pad);
+		const maxH = Math.max(100, (cropContainerH || 600) - pad);
+		const scale = Math.min(maxW / nw, maxH / nh);
+		return {
+			width: Math.max(40, Math.round(nw * scale)),
+			height: Math.max(40, Math.round(nh * scale))
+		};
+	});
 
 	const portal = portalToAppOverlay;
 	const current = $derived(activeIndex === null ? null : (images[activeIndex] ?? null));
@@ -280,24 +312,36 @@
 						{/snippet}
 					</ImageCropper.Context>
 
-					<ImageCropper.Viewport class="min-h-0 flex-1">
-						<ImageCropper.Image src={currentSrc} />
-						<ImageCropper.Selection>
-							{#each ImageCropper.handles as position (position)}
-								<ImageCropper.Handle {position}>
-									<div
-										class="crop-knob {position.length === 2
-											? 'crop-knob-corner'
-											: position === 'n' || position === 's'
-												? 'crop-knob-edge-h'
-												: 'crop-knob-edge-v'}"
-									></div>
-								</ImageCropper.Handle>
-							{/each}
-							<ImageCropper.Grid axis="horizontal" />
-							<ImageCropper.Grid axis="vertical" />
-						</ImageCropper.Selection>
-					</ImageCropper.Viewport>
+					<div
+						bind:clientWidth={cropContainerW}
+						bind:clientHeight={cropContainerH}
+						class="relative flex min-h-0 flex-1 items-center justify-center p-2 sm:p-6 overflow-hidden"
+					>
+						<ImageCropper.Viewport
+							style="width: {viewportDimensions.width}px; height: {viewportDimensions.height}px;"
+							class="relative shrink-0 overflow-hidden shadow-2xl"
+						>
+							<ImageCropper.Image
+								src={currentSrc}
+								class="h-full w-full object-fill block select-none pointer-events-none"
+							/>
+							<ImageCropper.Selection>
+								{#each ImageCropper.handles as position (position)}
+									<ImageCropper.Handle {position}>
+										<div
+											class="crop-knob {position.length === 2
+												? 'crop-knob-corner'
+												: position === 'n' || position === 's'
+													? 'crop-knob-edge-h'
+													: 'crop-knob-edge-v'}"
+										></div>
+									</ImageCropper.Handle>
+								{/each}
+								<ImageCropper.Grid axis="horizontal" />
+								<ImageCropper.Grid axis="vertical" />
+							</ImageCropper.Selection>
+						</ImageCropper.Viewport>
+					</div>
 				</ImageCropper.Root>
 				{#if cropError}
 					<p class="px-4 pb-3 text-center text-xs text-red-400">{cropError}</p>

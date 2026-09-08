@@ -3,7 +3,6 @@
 	import { Clipboard } from '@ark-ui/svelte/clipboard';
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { Format } from '@ark-ui/svelte/format';
-	import { PinInput } from '@ark-ui/svelte/pin-input';
 	import { Progress } from '@ark-ui/svelte/progress';
 	import { formatPairingCode, normalizePairingCode } from '$lib/syncPairing';
 	import { syncStore, type StartedDeviceLink } from '$lib/stores/sync.svelte';
@@ -244,6 +243,9 @@
 		return Math.max(0, Math.min(1, secondsLeft() / 60));
 	}
 
+	function formatInput(event: Event) {
+		code = formatPairingCode((event.currentTarget as HTMLInputElement).value);
+	}
 	function close() {
 		stopWaiting();
 		onClose();
@@ -437,34 +439,16 @@
 							On your other device open Sync and choose Connect another device. Enter the one-time
 							code shown there.
 						</p>
-						<PinInput.Root
-							type="alphanumeric"
-							otp
-							autoFocus
-							placeholder="·"
-							onValueChange={(details) => {
-								code = details.valueAsString;
-							}}
-							onValueComplete={(details) => {
-								code = details.valueAsString;
-								void beginLink();
-							}}
-						>
-							<PinInput.Control class="grid grid-cols-2 place-items-center gap-2.5 py-1 sm:gap-3">
-								{#each [0, 1, 2, 3] as groupIndex (groupIndex)}
-									<div class="flex items-center gap-1" aria-label="Code group">
-										{#each [0, 1, 2, 3] as charIndex (charIndex)}
-											{@const index = groupIndex * 4 + charIndex}
-											<PinInput.Input
-												{index}
-												class="h-10 w-7 rounded-lg border border-[var(--scrapscache-border)] bg-[var(--scrapscache-bg)] text-center font-mono text-base font-semibold uppercase text-[var(--scrapscache-text)] transition-colors focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 sm:w-8"
-											/>
-										{/each}
-									</div>
-								{/each}
-							</PinInput.Control>
-							<PinInput.HiddenInput />
-						</PinInput.Root>
+						<input
+							value={code}
+							oninput={formatInput}
+							autocomplete="one-time-code"
+							placeholder="XXXX-XXXX-XXXX-XXXX"
+							maxlength="19"
+							spellcheck="false"
+							class="scrapscache-input w-full px-3 py-2 text-center text-lg font-bold tracking-wider"
+							onkeydown={(event) => event.key === 'Enter' && void beginLink()}
+						/>
 						{#if error}<p class="text-sm text-[var(--scrapscache-danger)]">{error}</p>{/if}<button
 							type="button"
 							onclick={() => void beginLink()}

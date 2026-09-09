@@ -153,6 +153,73 @@ describe('SyncModal profile interactions', () => {
 		expect(screen.getByRole('button', { name: 'Switch to Side' })).toBeTruthy();
 	});
 
+	it('focuses and selects the name when an inline rename opens', async () => {
+		render(SyncModal, { props: { onClose: vi.fn() } });
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Rename Side' }));
+		const field = screen.getByRole('textbox', { name: 'Workspace name' }) as HTMLInputElement;
+
+		expect(document.activeElement).toBe(field);
+		expect(field.selectionStart).toBe(0);
+		expect(field.selectionEnd).toBe('Side'.length);
+	});
+
+	it('keeps Escape with the row while it edits, and returns it to the dialog after', async () => {
+		const onClose = vi.fn();
+		render(SyncModal, { props: { onClose } });
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Rename Side' }));
+		const field = screen.getByRole('textbox', { name: 'Workspace name' });
+
+		// The row consumes this one: it cancels the rename without closing the sheet.
+		await fireEvent.keyDown(field, { key: 'Escape' });
+		expect(onClose).not.toHaveBeenCalled();
+		expect(screen.queryByRole('textbox', { name: 'Workspace name' })).toBeNull();
+
+		// With no row busy, Escape belongs to the dialog again.
+		await tick();
+		expect(screen.getByRole('button', { name: 'Rename Side' })).toBeTruthy();
+	});
+
+	it('keeps Escape with a row whose swipe drawer is open', async () => {
+		const onClose = vi.fn();
+		render(SyncModal, { props: { onClose } });
+		const row = screen.getByRole('button', { name: 'Switch to Side' });
+		const drawerOffset = () =>
+			(row.closest('.row') as HTMLElement).style.getPropertyValue('--swipe-offset');
+		async function pointer(type: string, x: number, y: number) {
+			const event = new Event(type, { bubbles: true });
+			Object.assign(event, { pointerType: 'touch', pointerId: 1, clientX: x, clientY: y });
+			await fireEvent(row, event);
+		}
+
+		await pointer('pointerdown', 200, 100);
+		await pointer('pointermove', 70, 105);
+		await pointer('pointerup', 70, 105);
+		expect(drawerOffset()).toBe('-152px');
+
+		// Escape closes the drawer the row owns, not the sheet around it.
+		await fireEvent.keyDown(row, { key: 'Escape' });
+		expect(drawerOffset()).toBe('0px');
+		expect(onClose).not.toHaveBeenCalled();
+	});
+
+	it('holds the dialog open while a row awaits confirmation, wherever Escape lands', async () => {
+		const onClose = vi.fn();
+		render(SyncModal, { props: { onClose } });
+
+		// Escape reaches the dialog from outside any row, so the row has to have
+		// told the dialog to stop closing on it.
+		await fireEvent.click(screen.getByRole('button', { name: 'Unlink Side' }));
+		await fireEvent.keyDown(document, { key: 'Escape' });
+		expect(onClose).not.toHaveBeenCalled();
+
+		// Once the row is idle again the dialog takes Escape back.
+		await fireEvent.click(screen.getByRole('button', { name: 'Keep Side linked' }));
+		await fireEvent.keyDown(document, { key: 'Escape' });
+		expect(onClose).toHaveBeenCalled();
+	});
+
 	it('requires confirmation on the row before unlinking an inactive workspace', async () => {
 		const unlink = vi.spyOn(profileCoordinator, 'unlinkSaved').mockResolvedValue({ success: true });
 		render(SyncModal, { props: { onClose: vi.fn() } });

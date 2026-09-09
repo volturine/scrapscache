@@ -44,7 +44,7 @@
 	let dragging = $state(false);
 	let armed = $state(false);
 	let rowElement: HTMLDivElement | undefined;
-	let input = $state<HTMLInputElement | undefined>(undefined);
+	let input: HTMLInputElement | undefined;
 	let start: { x: number; y: number; offset: number } | null = null;
 	let last = { x: 0, time: 0 };
 	let velocity = 0;
@@ -55,15 +55,27 @@
 
 	// While a row edits or shows its drawer, Escape belongs to the row. The
 	// dialog must stop closing on it, which only the dialog itself can decide.
-	$effect(() => {
+	// Announced from the two writers below rather than watched, so the parent
+	// hears a change only when one actually happens.
+	function notifyBusy() {
 		onbusychange(mode !== 'idle' || open);
-	});
+	}
 
-	$effect(() => {
-		if (mode !== 'rename') return;
-		input?.focus();
-		input?.select();
-	});
+	function setMode(next: typeof mode) {
+		mode = next;
+		notifyBusy();
+	}
+
+	// The field only exists while renaming, so mounting it is the moment to take
+	// focus. Held afterwards so a rejected rename can hand focus back.
+	function renameField(node: HTMLInputElement) {
+		input = node;
+		node.focus();
+		node.select();
+		return () => {
+			if (input === node) input = undefined;
+		};
+	}
 
 	// Never arm before the drawer is fully uncovered, whatever the row measures.
 	function commitDistance(): number {
@@ -73,6 +85,7 @@
 	function settle(next: boolean) {
 		open = next;
 		offset = next ? -ACTIONS_WIDTH : 0;
+		notifyBusy();
 	}
 
 	// The gesture belongs to the row it started on. Everything after the press is
@@ -142,17 +155,17 @@
 
 	function startRename() {
 		draft = name;
-		mode = 'rename';
+		setMode('rename');
 		settle(false);
 	}
 
 	function askUnlink() {
-		mode = 'confirm';
+		setMode('confirm');
 		settle(false);
 	}
 
 	function cancel() {
-		mode = 'idle';
+		setMode('idle');
 		draft = name;
 	}
 
@@ -165,7 +178,7 @@
 		working = 'rename';
 		const saved = await onrename(next);
 		working = null;
-		if (saved) mode = 'idle';
+		if (saved) setMode('idle');
 		else input?.focus();
 	}
 
@@ -173,7 +186,7 @@
 		working = 'unlink';
 		const done = await onunlink();
 		working = null;
-		if (done) mode = 'idle';
+		if (done) setMode('idle');
 	}
 
 	function onDocumentPointerDown(event: PointerEvent) {
@@ -277,7 +290,7 @@
 				<span class="glyph" aria-hidden="true">{@render icon()}</span>
 				<span class="body">
 					<input
-						bind:this={input}
+						{@attach renameField}
 						bind:value={draft}
 						class="name-input"
 						maxlength="60"

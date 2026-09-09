@@ -134,7 +134,8 @@ export class SyncStore {
 		cursor: number,
 		uploads: OpaqueUpload[],
 		deletions: OpaqueDelete[],
-		downloadLimit = 12
+		downloadLimit = 12,
+		senderClientId?: string
 	): Promise<
 		SyncResult & {
 			usage: {
@@ -156,7 +157,8 @@ export class SyncStore {
 				uploads,
 				deletions,
 				downloadLimit,
-				maxAccountBytes: this.maxAccountBytes
+				maxAccountBytes: this.maxAccountBytes,
+				senderClientId
 			})
 		});
 		if (response.status === 507) throw new SyncQuotaExceededError();
@@ -353,14 +355,27 @@ export class SyncStore {
 		);
 		return Number(r.rows[0]?.count ?? 0);
 	}
-	async createEventStream(accountId: string, signal?: AbortSignal): Promise<Response> {
+	async createEventStream(
+		accountId: string,
+		signal?: AbortSignal,
+		clientId?: string
+	): Promise<Response> {
 		const stub = this.bindings.ACCOUNT_COORDINATOR.get(
 			this.bindings.ACCOUNT_COORDINATOR.idFromName(accountId)
 		);
-		const res = await stub.fetch('https://coordinator/events', {
+		const url = new URL('https://coordinator/events');
+		if (clientId) url.searchParams.set('clientId', clientId);
+		const res = await stub.fetch(url.toString(), {
 			signal: (signal ?? null) as any
 		});
-		return res as unknown as Response;
+		// A response that came back from fetch() has immutable headers, and the
+		// server hook sets security headers on everything it returns. Hand back a
+		// response this app owns rather than the coordinator's own object.
+		return new Response(res.body as unknown as BodyInit | null, {
+			status: res.status,
+			statusText: res.statusText,
+			headers: new Headers(res.headers as unknown as HeadersInit)
+		});
 	}
 
 	async isReady(): Promise<boolean> {

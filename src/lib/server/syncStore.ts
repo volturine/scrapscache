@@ -842,7 +842,14 @@ export class SyncStore {
 		}
 	}
 
-	createEventStream(accountId: string, signal?: AbortSignal, clientId?: string): Response {
+	// Async so both deployments expose the same shape; see
+	// syncStore.contract.test.ts. The Cloudflare store has to await its
+	// coordinator before it can hand back a stream.
+	async createEventStream(
+		accountId: string,
+		signal?: AbortSignal,
+		clientId?: string
+	): Promise<Response> {
 		const encoder = new TextEncoder();
 		let unsubscribe: (() => void) | undefined;
 		let pingInterval: ReturnType<typeof setInterval> | undefined;

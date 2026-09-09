@@ -7,8 +7,6 @@ import { notesStore, SYNC_LOCK } from './notes.svelte';
 import { clearNotesMirror } from '$lib/noteStorage';
 import {
 	copyProfileDatasetInto,
-	forgetAdoptedLocalData,
-	markAdoptedLocalData,
 	nextProfileName,
 	profileForSyncKey,
 	type StoredProfile
@@ -68,7 +66,6 @@ export class ProfileCoordinator {
 					// and creation from the anonymous workspace copy their selected source.
 					if (sourcePid) {
 						await copyProfileDatasetInto(sourcePid, result.profile.id);
-						if (sourcePid === LOCAL_PROFILE_ID) markAdoptedLocalData(result.profile.id);
 					} else {
 						clearNotesMirror(result.profile.id);
 					}
@@ -169,7 +166,6 @@ export class ProfileCoordinator {
 			return await this.exclusive(async () => {
 				await notesStore.waitForPendingProfileWrites();
 				await unlinkProfileToNamespace(profileId, LOCAL_PROFILE_ID);
-				forgetAdoptedLocalData();
 				if (!(await syncStore.removeProfile(profileId)))
 					return { success: false, error: 'Could not unlink workspace' };
 				if (syncStore.activePid === LOCAL_PROFILE_ID) await notesStore.reloadForProfile();

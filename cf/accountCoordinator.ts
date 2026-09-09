@@ -22,6 +22,8 @@ type SyncInput = {
 	deletions: Deletion[];
 	downloadLimit: number;
 	maxAccountBytes: number;
+	/** The device that wrote, so its own stream is not woken by its own change. */
+	senderClientId?: string;
 };
 
 const STORAGE_OVERHEAD_BYTES = 512;
@@ -53,7 +55,7 @@ async function hydrated(env: Env, rows: EnvelopeRow[]) {
 }
 
 export class AccountCoordinator {
-	private readonly listeners = new Set<(seq: number) => void>();
+	private readonly listeners = new Set<{ clientId?: string; send: (seq: number) => void }>();
 
 	constructor(
 		private readonly state: DurableObjectState,
@@ -80,11 +82,15 @@ export class AccountCoordinator {
 
 	private events(request: Request): Response {
 		const encoder = new TextEncoder();
+		const clientId = new URL(request.url).searchParams.get('clientId') ?? undefined;
 		const { readable, writable } = new TransformStream();
 		const writer = writable.getWriter();
 		void writer.write(encoder.encode(': ok\n\n'));
-		const listener = (seq: number) => {
-			void writer.write(encoder.encode(`data: ${JSON.stringify({ seq })}\n\n`)).catch(() => {});
+		const listener = {
+			clientId,
+			send: (seq: number) => {
+				void writer.write(encoder.encode(`data: ${JSON.stringify({ seq })}\n\n`)).catch(() => {});
+			}
 		};
 		this.listeners.add(listener);
 		const ping = setInterval(() => {
@@ -364,8 +370,11 @@ export class AccountCoordinator {
 		const mutated = acceptedUploads.length > 0 || input.deletions.length > 0;
 		if (mutated) {
 			for (const listener of this.listeners) {
+				// The writer already applied this change locally; waking it would
+				// only make it sync again for nothing.
+				if (input.senderClientId && listener.clientId === input.senderClientId) continue;
 				try {
-					listener(sequence);
+					listener.send(sequence);
 				} catch {}
 			}
 		}

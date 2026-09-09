@@ -3,7 +3,7 @@
 	import { flushSync, onMount } from 'svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
-	import { noteToPlainText, noteAttachments } from '$lib/checklistBody';
+	import { noteToPlainText, noteAttachments, splitPastedHeading } from '$lib/checklistBody';
 	import { mergeHydratedImages } from '$lib/noteAttachmentHydration';
 	import type { NoteColor, NoteImage } from '$lib/types';
 	import { NOTE_COLORS, NOTE_DARK_COLORS } from '$lib/types';
@@ -58,7 +58,10 @@
 		note ? noteAttachments(note).map((attachment) => ({ ...attachment })) : []
 	);
 	let draftDirty = false;
-	let bodyEditor = $state<{ focusDefault(): void } | null>(null);
+	let bodyEditor = $state<{
+		focusDefault(): void;
+		replaceBodyWithText(text: string): Promise<void>;
+	} | null>(null);
 	let footer = $state<{ handlePickedFiles(files: File[]): void } | null>(null);
 	let editorDialog = $state<HTMLDivElement | null>(null);
 	let fileDropActive = $state(false);
@@ -332,18 +335,25 @@
 		if (files.length > 0) footer?.handlePickedFiles(files);
 	}
 
-	const PASTE_HEADING_RE = /^#\s+(.+)$/;
-
-	/**
-	 * On an empty note, a pasted top-level markdown heading becomes the title
-	 * instead of the first body line; the paste handler inserts what we return.
-	 */
 	function transformPaste(text: string): string | null {
 		if (title || body) return null;
-		const heading = text.split('\n')[0].match(PASTE_HEADING_RE);
-		if (!heading) return null;
-		title = heading[1].trim();
-		return text.split('\n').slice(1).join('\n');
+		const split = splitPastedHeading(text);
+		if (!split) return null;
+		title = split.title;
+		return split.body;
+	}
+
+	// Same empty-note rule when the paste lands on the title field itself.
+	function handleTitlePaste(event: ClipboardEvent) {
+		if (!isOpen || !note) return;
+		if (title || body) return;
+		const text = event.clipboardData?.getData('text/plain');
+		if (!text) return;
+		const split = splitPastedHeading(text);
+		if (!split) return;
+		event.preventDefault();
+		title = split.title;
+		if (split.body) void bodyEditor?.replaceBodyWithText(split.body);
 	}
 
 	function handlePaste(event: ClipboardEvent) {
@@ -588,6 +598,7 @@
 							placeholder="Title"
 							bind:value={title}
 							oninput={handleTitleInput}
+							onpaste={handleTitlePaste}
 							onfocus={exitTaskFocus}
 							onkeydown={(e) => {
 								if (e.key === 'Enter') {

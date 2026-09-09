@@ -211,3 +211,17 @@ export function noteToPlainText(note: Note): string {
 	const heading = note.title ? `# ${note.title}\n` : '';
 	return `${heading}${note.body}${suffix}`.trim();
 }
+
+const PASTE_HEADING_RE = /^#\s+(.+)$/;
+
+/**
+ * Round-trip of the copy export: when the first pasted line is the top-level
+ * heading a whole note copies as, split it into title and body. Returns null
+ * when the text carries no leading heading.
+ */
+export function splitPastedHeading(text: string): { title: string; body: string } | null {
+	const [first = '', ...rest] = text.split('\n');
+	const heading = first.match(PASTE_HEADING_RE);
+	if (!heading) return null;
+	return { title: heading[1].trim(), body: rest.join('\n') };
+}

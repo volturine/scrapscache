@@ -7,6 +7,7 @@ import {
 	parseBody,
 	parseBulletLine,
 	parseCheckLine,
+	splitPastedHeading,
 	toggleLineAt
 } from './checklistBody';
 import type { Note } from './types';
@@ -41,6 +42,24 @@ describe('noteToPlainText export', () => {
 
 	it('exports a body-only note without a heading', () => {
 		expect(noteToPlainText(plainNote({ title: '' }))).toBe('packing list');
+	});
+});
+
+describe('splitPastedHeading', () => {
+	it('round-trips a copied note into title and body', () => {
+		expect(splitPastedHeading('# Trip\npacking list')).toEqual({
+			title: 'Trip',
+			body: 'packing list'
+		});
+	});
+
+	it('splits a heading-only paste with an empty body', () => {
+		expect(splitPastedHeading('# Solo')).toEqual({ title: 'Solo', body: '' });
+	});
+
+	it('requires the first line to be a top-level heading', () => {
+		expect(splitPastedHeading('plain first line\n## Not a doc heading')).toBeNull();
+		expect(splitPastedHeading('## Subhead without the h1\nbody')).toBeNull();
 	});
 });
 

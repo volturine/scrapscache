@@ -13,7 +13,12 @@ import Topbar from './Topbar.svelte';
 afterEach(() => {
 	syncStore.lastError = null;
 	syncStore.usage = null;
+	syncStore.account = null;
+	syncStore.onSyncStart = null;
+	syncStore.onSyncEnd = null;
 	(notesStore as unknown as { syncFlight: Promise<boolean> | null }).syncFlight = null;
+	(notesStore as unknown as { lastAutoSyncAt: number }).lastAutoSyncAt = 0;
+	vi.restoreAllMocks();
 });
 
 describe('Topbar sync status', () => {
@@ -52,5 +57,33 @@ describe('Topbar sync status', () => {
 		(notesStore as unknown as { syncFlight: Promise<boolean> | null }).syncFlight = null;
 		await tick();
 		expect(icon?.classList.contains('scrapscache-sync-icon-active')).toBe(false);
+	});
+
+	it('notifies sync indicator to spin during syncWithCloud and flushSync', async () => {
+		const startSpy = vi.fn();
+		const endSpy = vi.fn();
+		syncStore.onSyncStart = startSpy;
+		syncStore.onSyncEnd = endSpy;
+		syncStore.account = {
+			syncKey: 'k',
+			accountId: 'acc',
+			authPublicKey: 'pub',
+			pairingCode: 'code'
+		};
+		vi.spyOn(syncStore, 'sync').mockImplementation(async () => {
+			expect(startSpy).toHaveBeenCalledOnce();
+			return { success: true, notes: [], labels: [] };
+		});
+
+		await notesStore.syncWithCloud();
+		expect(startSpy).toHaveBeenCalledOnce();
+		expect(endSpy).toHaveBeenCalledOnce();
+
+		startSpy.mockClear();
+		endSpy.mockClear();
+
+		await notesStore.flushSync();
+		expect(startSpy).toHaveBeenCalledOnce();
+		expect(endSpy).toHaveBeenCalledOnce();
 	});
 });

@@ -620,15 +620,17 @@
 							onFocusTask={focusTask}
 							onExitTaskFocus={exitTaskFocus}
 						/>
-
-						{#if links.length > 0}
-							<div class="mt-3 flex flex-col gap-2" aria-label="Links">
-								{#each links as url (url)}
-									<LinkPreview {url} />
-								{/each}
-							</div>
-						{/if}
 					</div>
+
+					{#if links.length > 0}
+						<div class="scrollable flex gap-2 overflow-x-auto px-3 pb-2" aria-label="Links">
+							{#each links as url (url)}
+								<div class="w-56 shrink-0">
+									<LinkPreview {url} />
+								</div>
+							{/each}
+						</div>
+					{/if}
 
 					{#if fileDropActive}
 						<div

@@ -66,6 +66,13 @@
 		notifyBusy();
 	}
 
+	// A panel replaces the button that opened it, so without this focus falls to
+	// the body. The confirm panel hands it to the safe action: a stray Enter on a
+	// destructive prompt must not unlink.
+	function focusOnMount(node: HTMLElement) {
+		node.focus();
+	}
+
 	// The field only exists while renaming, so mounting it is the moment to take
 	// focus. Held afterwards so a rejected rename can hand focus back.
 	function renameField(node: HTMLInputElement) {
@@ -265,6 +272,7 @@
 					<button
 						type="button"
 						class="ghost"
+						{@attach focusOnMount}
 						disabled={working !== null}
 						aria-label="Keep {name} linked"
 						onclick={cancel}>Cancel</button

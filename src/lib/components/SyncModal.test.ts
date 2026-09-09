@@ -209,10 +209,10 @@ describe('SyncModal profile interactions', () => {
 		const onClose = vi.fn();
 		render(SyncModal, { props: { onClose } });
 
-		// Opening the panel removes the button that had focus, so focus falls back
-		// to the body. Escape must still reach the row that owns it.
+		// Opening the panel removes the button that had focus, so the panel takes
+		// it, and gives it to the safe action rather than the destructive one.
 		await fireEvent.click(screen.getByRole('button', { name: 'Unlink Side' }));
-		expect(document.activeElement?.closest('.row')).toBeNull();
+		expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Keep Side linked' }));
 
 		await fireEvent.keyDown(document, { key: 'Escape' });
 		expect(screen.queryByRole('button', { name: 'Keep Side linked' })).toBeNull();

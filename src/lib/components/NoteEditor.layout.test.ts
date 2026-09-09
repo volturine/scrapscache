@@ -45,7 +45,7 @@ afterEach(() => {
 });
 
 describe('NoteEditor Keep-style layout', () => {
-	it('renders link previews inside the body scroller and keeps a horizontal photo strip docked below', () => {
+	it('docks link previews and the photo strip below the body scroller as sibling strips', () => {
 		notesStore.notes = [note()];
 		const { container } = render(NoteEditor, {
 			props: { noteId: 'note-1', onClose: () => {} }
@@ -58,14 +58,15 @@ describe('NoteEditor Keep-style layout', () => {
 		expect(scroller).toBeTruthy();
 		expect(links).toBeTruthy();
 		expect(photos).toBeTruthy();
-		expect(scroller!.contains(links)).toBe(true);
+		// Links live outside the body scroller, in their own scrollable strip.
+		expect(scroller!.contains(links)).toBe(false);
 		expect(scroller!.contains(photos)).toBe(false);
+		expect(links!.className).toMatch(/overflow-x-auto/);
 		expect(photos!.className).toMatch(/overflow-x-auto/);
-		expect(photos!.className).not.toMatch(/grid-cols-3/);
 		expect(links!.compareDocumentPosition(photos!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 	});
 
-	it('keeps multiple link previews inside the scroller below the title and body', () => {
+	it('keeps multiple link previews side by side in the docked strip', () => {
 		notesStore.notes = [
 			note({
 				body: 'Multiple links:\nhttps://one.example.com\nhttps://two.example.com\nhttps://three.example.com\nhttps://four.example.com'
@@ -83,8 +84,10 @@ describe('NoteEditor Keep-style layout', () => {
 		expect(title).toBeTruthy();
 		expect(links).toBeTruthy();
 		expect(scroller!.contains(title)).toBe(true);
-		expect(scroller!.contains(links)).toBe(true);
-		expect(title!.compareDocumentPosition(links!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		expect(scroller!.contains(links)).toBe(false);
 		expect(links!.children.length).toBe(4);
+		// One card each, side by side rather than stacked.
+		expect(links!.children[0]!.className).toMatch(/shrink-0/);
+		expect(title!.compareDocumentPosition(links!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 	});
 });

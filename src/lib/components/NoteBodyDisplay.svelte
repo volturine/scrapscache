@@ -150,9 +150,11 @@
 {/if}
 
 {#if links.length > 0}
-	<div class="mt-2 flex flex-col gap-2" aria-label="Links">
+	<div class="scrollable mt-2 flex gap-1.5 overflow-x-auto" aria-label="Links">
 		{#each links as url (url)}
-			<LinkPreview {url} interactive={false} />
+			<div class="w-48 shrink-0">
+				<LinkPreview {url} interactive={false} />
+			</div>
 		{/each}
 	</div>
 {/if}

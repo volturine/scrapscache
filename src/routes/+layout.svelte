@@ -12,6 +12,7 @@
 	import { reminderStore } from '$lib/stores/reminders.svelte';
 	import { preloadVapidPublicKey } from '$lib/reminderWake';
 	import { provideEditorActions } from '$lib/editorContext';
+	import { splitPastedHeading } from '$lib/checklistBody';
 	import { Drawer } from '@ark-ui/svelte/drawer';
 	import { onMount } from 'svelte';
 	import { MediaQuery } from 'svelte/reactivity';
@@ -98,7 +99,7 @@
 		};
 	});
 
-	function startNewNote() {
+	function startNewNote(seed?: { title?: string; body?: string }) {
 		const labels =
 			uiStore.view === 'label' &&
 			uiStore.activeLabelId &&
@@ -106,8 +107,8 @@
 				? [uiStore.activeLabelId]
 				: [];
 		const n = notesStore.createNote({
-			title: '',
-			body: '',
+			title: seed?.title ?? '',
+			body: seed?.body ?? '',
 			labels,
 			reminder:
 				uiStore.view === 'reminders'
@@ -116,6 +117,19 @@
 		});
 		editingId = n.id;
 		applyEditorOpen(true);
+	}
+
+	// Paste on the note gallery (no editor open, no editable field focused)
+	// starts a new note seeded with the pasted text and opens it for editing.
+	function handleGalleryPaste(event: ClipboardEvent) {
+		if (editingId !== null) return;
+		if (!(event.target instanceof Element)) return;
+		if (event.target.closest('input, textarea, [contenteditable], .canvas-editor-shell')) return;
+		const text = event.clipboardData?.getData('text/plain');
+		if (!text?.trim()) return;
+		event.preventDefault();
+		const split = splitPastedHeading(text);
+		startNewNote(split ? { title: split.title, body: split.body } : { body: text });
 	}
 
 	function requestCloseEditor() {
@@ -165,6 +179,8 @@
 	<title>Scraps Cache</title>
 	<meta name="theme-color" content={uiStore.effectiveDark ? '#1a1a1a' : '#ffffff'} />
 </svelte:head>
+
+<svelte:window onpaste={handleGalleryPaste} />
 
 <div class="app-viewport">
 	<div

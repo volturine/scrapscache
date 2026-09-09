@@ -224,6 +224,76 @@ describe('NoteEditor paste photo', () => {
 		expect(bodyLines).toEqual(['# Pasted headingMilk']);
 	});
 
+	it('lifts a pasted markdown heading into an empty note even without a caret in the body', async () => {
+		// Editor just opened: focus/selection has not reached the body editor yet.
+		notesStore.notes = [note({ title: '', body: '' })];
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+		const bodyEditor = container.querySelector('[data-body-editor]') as HTMLElement;
+		expect(bodyEditor).not.toBeNull();
+
+		const headingPaste = createClipboardEvent([], '# Trip\npacking list\nextra line');
+		bodyEditor.dispatchEvent(headingPaste);
+
+		await vi.waitFor(() => {
+			const titleInput = container.querySelector(
+				'textarea[placeholder="Title"]'
+			) as HTMLTextAreaElement;
+			expect(titleInput.value).toBe('Trip');
+		});
+		const bodyLines = Array.from(container.querySelectorAll('[data-line-text]')).map(
+			(el) => el.textContent
+		);
+		expect(bodyLines).toEqual(['packing list', 'extra line']);
+	});
+
+	it('seeds an empty note with a paste that carries no heading when nothing is selected', async () => {
+		notesStore.notes = [note({ title: '', body: '' })];
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+		const bodyEditor = container.querySelector('[data-body-editor]') as HTMLElement;
+
+		const textPaste = createClipboardEvent([], 'plain text\nsecond line');
+		bodyEditor.dispatchEvent(textPaste);
+		await tick();
+
+		const titleInput = container.querySelector(
+			'textarea[placeholder="Title"]'
+		) as HTMLTextAreaElement;
+		expect(titleInput.value).toBe('');
+		const bodyLines = Array.from(container.querySelectorAll('[data-line-text]')).map(
+			(el) => el.textContent
+		);
+		expect(bodyLines).toEqual(['plain text', 'second line']);
+	});
+
+	it('lifts a markdown heading pasted into the title field of an empty note', async () => {
+		notesStore.notes = [note({ title: '', body: '' })];
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+		const titleInput = container.querySelector(
+			'textarea[placeholder="Title"]'
+		) as HTMLTextAreaElement;
+		expect(titleInput).not.toBeNull();
+
+		const headingPaste = createClipboardEvent([], '# Trip\npacking list\nextra line');
+		titleInput.dispatchEvent(headingPaste);
+
+		await vi.waitFor(() => {
+			const title = container.querySelector('textarea[placeholder="Title"]') as HTMLTextAreaElement;
+			expect(title.value).toBe('Trip');
+		});
+		await vi.waitFor(() => {
+			const bodyLines = Array.from(container.querySelectorAll('[data-line-text]')).map(
+				(el) => el.textContent
+			);
+			expect(bodyLines).toEqual(['packing list', 'extra line']);
+		});
+	});
+
 	it('ignores paste events originating from inside CanvasEditor', async () => {
 		notesStore.notes = [note()];
 		const { container } = render(NoteEditor, {

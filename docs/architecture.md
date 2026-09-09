@@ -38,21 +38,22 @@ The same SvelteKit app serves the UI and the sync API when self-hosted.
 
 ## Client
 
-| Area           | Location                                               | Responsibility                                        |
-| -------------- | ------------------------------------------------------ | ----------------------------------------------------- |
-| Routes / pages | `src/routes/`                                          | Notes home, kanban, reminders, archive, trash, labels |
-| Components     | `src/lib/components/`                                  | Editors, feed, sidebar, sync UI, backup dialogs       |
-| Domain types   | `src/lib/types.ts`                                     | Notes, labels, attachments, colors                    |
-| Notes state    | `src/lib/stores/notes.svelte.ts`                       | CRUD, search, trash, labels                           |
-| Sync state     | `src/lib/stores/sync.svelte.ts`                        | Pairing, auto-sync, cloud status                      |
-| Kanban         | `src/lib/stores/kanban.svelte.ts`, `src/lib/kanban.ts` | Boards and columns                                    |
-| IndexedDB      | `src/lib/db/idb.ts`                                    | Persistence, outbox, replace/import                   |
-| Sync crypto    | `src/lib/syncPairing.ts`                               | Identity, pairing PAKE, payload encrypt/decrypt       |
-| Sync records   | `src/lib/syncRecords.ts`, `noteMerge.ts`               | Envelope packing, merge, tombstones                   |
-| Backups        | `src/lib/backup.ts`, `backupCrypto.ts`                 | Export/import encrypted `.scraps-cache-backup`        |
-| Images         | `src/lib/imageOptimize.ts`                             | Resize, WebP, strip EXIF before store/sync            |
-| App viewport   | `src/lib/appViewport.ts`                               | Safe area + keyboard frame; overlay host              |
-| Reminder wakes | `src/lib/server/wakeDispatch.ts`, `webPush.ts`         | Contentless Web Push ticks; SW reads notes locally    |
+| Area           | Location                                                   | Responsibility                                                  |
+| -------------- | ---------------------------------------------------------- | --------------------------------------------------------------- |
+| Routes / pages | `src/routes/`                                              | Notes home, kanban, reminders, archive, trash, labels           |
+| Components     | `src/lib/components/`                                      | Editors, feed, sidebar, sync UI, backup dialogs                 |
+| Domain types   | `src/lib/types.ts`                                         | Notes, labels, attachments, colors                              |
+| Notes state    | `src/lib/stores/notes.svelte.ts`                           | CRUD, search, trash, labels                                     |
+| Sync state     | `src/lib/stores/sync.svelte.ts`                            | Pairing, auto-sync, cloud status                                |
+| Kanban         | `src/lib/stores/kanban.svelte.ts`, `src/lib/kanban.ts`     | Boards and columns                                              |
+| IndexedDB      | `src/lib/db/idb.ts`                                        | Persistence, outbox, replace/import; one database per workspace |
+| Workspaces     | `src/lib/profiles.ts`, `src/lib/stores/profiles.svelte.ts` | Sync-key keyring, workspace switching, dataset handover         |
+| Sync crypto    | `src/lib/syncPairing.ts`                                   | Identity, pairing PAKE, payload encrypt/decrypt                 |
+| Sync records   | `src/lib/syncRecords.ts`, `noteMerge.ts`                   | Envelope packing, merge, tombstones                             |
+| Backups        | `src/lib/backup.ts`, `backupCrypto.ts`                     | Export/import encrypted `.scraps-cache-backup`                  |
+| Images         | `src/lib/imageOptimize.ts`                                 | Resize, WebP, strip EXIF before store/sync                      |
+| App viewport   | `src/lib/appViewport.ts`                                   | Safe area + keyboard frame; overlay host                        |
+| Reminder wakes | `src/lib/server/wakeDispatch.ts`, `webPush.ts`             | Contentless Web Push ticks; SW reads notes locally              |
 
 ### Local data model (conceptual)
 
@@ -84,6 +85,22 @@ decrypt envelopes.
 Accounts created before proof-of-possession authentication upgrade automatically
 replace their stored scrypt credential with the public key after one final legacy
 authentication. The account ID and encrypted relay data do not move.
+
+### Workspaces
+
+A device can hold several sync keys. Each one is a **workspace** owning its own
+IndexedDB database (`scrapscache-profile-<id>`), so datasets never mix and
+switching is a pointer change plus an in-memory reload rather than a copy. Notes
+written before any key exists live in the **anonymous workspace**, which keeps
+the original `scrapscache` database and never syncs.
+
+The keyring itself — id, display name, and sync key per workspace — is held in
+`localStorage`; see the residual-risk note in
+[security.md](security.md#out-of-scope--residual-risk).
+
+Creating a key from the anonymous workspace adopts its notes: they are copied
+into the new workspace and the originals are dropped only once a sync confirms
+the cloud holds them, so a partial or quota-blocked upload keeps them.
 
 ## Server
 

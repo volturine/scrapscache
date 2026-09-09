@@ -627,7 +627,8 @@ body {
 		transform: rotate(360deg);
 	}
 }
-html.scrapscache-sync-active [data-scrapscache-sync-icon] {
+html.scrapscache-sync-active [data-scrapscache-sync-icon],
+[data-scrapscache-sync-icon].scrapscache-sync-icon-active {
 	/* Keep in lockstep with SYNC_ICON_ROTATION_MS — one full turn. */
 	animation: scrapscache-spin 1s linear infinite;
 }

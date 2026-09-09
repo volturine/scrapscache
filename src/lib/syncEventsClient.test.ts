@@ -61,4 +61,31 @@ describe('SyncEventsClient', () => {
 		expect(mockSyncStore.authorizedFetch).not.toHaveBeenCalled();
 		client.destroy();
 	});
+
+	it('replaces an active event stream when the sync account changes', async () => {
+		const signals: AbortSignal[] = [];
+		(mockSyncStore.authorizedFetch as ReturnType<typeof vi.fn>).mockImplementation(
+			async (_input: RequestInfo | URL, init?: RequestInit) => {
+				const signal = init?.signal as AbortSignal;
+				signals.push(signal);
+				const stream = new ReadableStream<Uint8Array>({
+					start(controller) {
+						controller.enqueue(new TextEncoder().encode(': ok\n\n'));
+						signal.addEventListener('abort', () => controller.close(), { once: true });
+					}
+				});
+				return new Response(stream);
+			}
+		);
+		const client = new SyncEventsClient(mockSyncStore);
+		client.subscribe(() => undefined);
+		await vi.waitFor(() => expect(signals).toHaveLength(1));
+
+		client.accountChanged();
+
+		await vi.waitFor(() => expect(signals).toHaveLength(2));
+		expect(signals[0].aborted).toBe(true);
+		expect(signals[1].aborted).toBe(false);
+		client.destroy();
+	});
 });

@@ -48,20 +48,15 @@
 	}
 	let historyStack = $state<CropHistoryState[]>([]);
 
-	$effect(() => {
-		if (!currentSrc) return;
-		const img = new Image();
-		img.src = currentSrc;
-		if (img.complete && img.naturalWidth) {
-			imgNaturalWidth = img.naturalWidth;
-			imgNaturalHeight = img.naturalHeight;
-		} else {
-			img.onload = () => {
-				imgNaturalWidth = img.naturalWidth;
-				imgNaturalHeight = img.naturalHeight;
-			};
-		}
-	});
+	// Read the intrinsic size off the image the cropper already renders, rather
+	// than probing a second detached one. Until it loads, viewportDimensions
+	// falls back to the stored dimensions.
+	function measureNatural(event: Event) {
+		// Ark UI widens the img handler to EventHandler<Event, Element>.
+		const img = event.currentTarget as HTMLImageElement;
+		imgNaturalWidth = img.naturalWidth;
+		imgNaturalHeight = img.naturalHeight;
+	}
 
 	const viewportDimensions = $derived.by(() => {
 		const nw = imgNaturalWidth || current?.width || 800;
@@ -388,6 +383,7 @@
 						>
 							<ImageCropper.Image
 								src={currentSrc}
+								onload={measureNatural}
 								class="h-full w-full object-fill block select-none pointer-events-none"
 							/>
 							<ImageCropper.Selection>

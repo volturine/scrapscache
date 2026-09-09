@@ -2,8 +2,10 @@ import { tick } from 'svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createKanbanBoard } from '$lib/kanban';
 import { getSyncOutboxKeys } from '$lib/db/idb';
+import { createSyncIdentity } from '$lib/syncPairing';
 import { loadBoardsFromDevice } from '$lib/syncTombstones';
 import { KanbanStore } from './kanban.svelte';
+import { syncStore } from './sync.svelte';
 
 describe('kanban persist during sync', () => {
 	beforeEach(() => {
@@ -55,6 +57,35 @@ describe('kanban persist during sync', () => {
 		await store.hydrateFromDevice();
 		expect(store.boards[0]?.name).toBe('from-ls');
 		expect((await loadBoardsFromDevice(store.boardsForSync()))[0]?.name).toBe('from-ls');
+	});
+
+	it('keeps a queued board write owned by the profile where the edit happened', async () => {
+		const accountA = createSyncIdentity();
+		const accountB = createSyncIdentity();
+		const profileA = { id: 'board-a', name: 'A', syncKey: accountA.syncKey, createdAt: 1 };
+		const profileB = { id: 'board-b', name: 'B', syncKey: accountB.syncKey, createdAt: 2 };
+		syncStore.profiles = [profileA, profileB];
+		syncStore.activateProfile(profileA);
+		const store = new KanbanStore();
+		let release!: () => void;
+		const blocked = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		(store as unknown as { pendingDeviceWrites: Promise<void> }).pendingDeviceWrites = blocked;
+
+		store.renameBoard(store.boards[0].id, 'Saved in A');
+		syncStore.activateProfile(profileB);
+		release();
+		await store.waitForPendingWrites();
+
+		expect((await loadBoardsFromDevice<typeof store.boards>('board-a', [])).at(0)?.name).toBe(
+			'Saved in A'
+		);
+		expect(await loadBoardsFromDevice('board-b', null)).toBeNull();
+		expect(await getSyncOutboxKeys('board-a')).toEqual([`board:${store.boards[0].id}`]);
+		expect(await getSyncOutboxKeys('board-b')).toEqual([]);
+		syncStore.account = null;
+		syncStore.profiles = [];
 	});
 });
 

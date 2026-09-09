@@ -48,12 +48,9 @@ export function createCardSwipe(opts: {
 	function onPointerDown(e: PointerEvent) {
 		if (tracking) return;
 		justDragged = false;
-		const target = e.target as HTMLElement;
-		if (
-			target.closest('[data-checklist-toggle], [data-photo], [data-file], button, input, textarea')
-		)
-			return;
-		// The left edge belongs to the navigation drawer.
+		// The left edge belongs to the navigation drawer. Everything else on the
+		// card is fair game: a shield covers the content, so no link, photo or
+		// canvas can swallow the press.
 		if (window.matchMedia(PHONE_MEDIA).matches && isSidebarEdgeStart(e.clientX)) return;
 
 		// Keep the pointer until we can identify its direction, but do not promote

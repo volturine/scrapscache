@@ -32,13 +32,18 @@ vi.mock('$lib/server/rateLimit', () => ({
 
 import { GET } from './+server';
 
-async function get(): Promise<Response> {
+async function get(clientId?: string): Promise<Response> {
+	const url = new URL('http://localhost/api/sync/events');
+	if (clientId) url.searchParams.set('clientId', clientId);
 	return (
-		GET as unknown as (event: { request: Request; getClientAddress(): string }) => Promise<Response>
+		GET as unknown as (event: {
+			request: Request;
+			url: URL;
+			getClientAddress(): string;
+		}) => Promise<Response>
 	)({
-		request: new Request('http://localhost/api/sync/events', {
-			headers: { authorization: 'Bearer valid-session' }
-		}),
+		request: new Request(url, { headers: { authorization: 'Bearer valid-session' } }),
+		url,
 		getClientAddress: () => '127.0.0.1'
 	});
 }
@@ -49,7 +54,21 @@ describe('GET /api/sync/events', () => {
 		const res = await get();
 		expect(res.status).toBe(200);
 		expect(res.headers.get('content-type')).toBe('text/event-stream');
-		expect(mocks.createEventStream).toHaveBeenCalledWith('account-123456789', expect.any(Object));
+		expect(mocks.createEventStream).toHaveBeenCalledWith(
+			'account-123456789',
+			expect.any(Object),
+			undefined
+		);
+	});
+
+	it('forwards the client id so the stream can suppress self-echo', async () => {
+		mocks.authenticate.mockReturnValueOnce('account-123456789');
+		await get('device-abc');
+		expect(mocks.createEventStream).toHaveBeenCalledWith(
+			'account-123456789',
+			expect.any(Object),
+			'device-abc'
+		);
 	});
 
 	it('rejects unauthenticated requests with 401', async () => {

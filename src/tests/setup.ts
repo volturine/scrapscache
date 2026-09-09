@@ -5,6 +5,26 @@ import { afterEach, vi } from 'vitest';
 import { closeDeviceDatabase, DEVICE_DB_NAME } from '$lib/db/idb';
 import { resetTombstoneCaches } from '$lib/syncTombstones';
 
+if (typeof Element !== 'undefined' && !Element.prototype.animate) {
+	Element.prototype.animate = (() => ({
+		cancel: () => {},
+		finish: () => {},
+		pause: () => {},
+		play: () => {},
+		reverse: () => {},
+		finished: Promise.resolve(),
+		addEventListener: () => {},
+		removeEventListener: () => {}
+	})) as unknown as typeof Element.prototype.animate;
+}
+
+// jsdom has no pointer capture; gestures call it on every press.
+if (typeof Element !== 'undefined' && !Element.prototype.setPointerCapture) {
+	Element.prototype.setPointerCapture = () => {};
+	Element.prototype.releasePointerCapture = () => {};
+	Element.prototype.hasPointerCapture = () => false;
+}
+
 if (typeof window !== 'undefined' && !window.ResizeObserver) {
 	window.ResizeObserver = class {
 		observe() {}
@@ -50,4 +70,12 @@ afterEach(async () => {
 	resetTombstoneCaches();
 	await closeDeviceDatabase();
 	await deleteDatabase(DEVICE_DB_NAME);
+	if (typeof indexedDB !== 'undefined' && 'databases' in indexedDB) {
+		try {
+			const dbs = await indexedDB.databases();
+			for (const db of dbs) {
+				if (db.name) await deleteDatabase(db.name);
+			}
+		} catch {}
+	}
 });

@@ -19,6 +19,9 @@
 	import { attachAppViewport } from '$lib/appViewport';
 	import { attachSidebarSwipe } from '$lib/sidebarSwipe';
 	import { dayKey, reminderTimeForDay } from '$lib/utils';
+	import type { Snippet } from 'svelte';
+
+	let { children }: { children: Snippet } = $props();
 
 	const mobile = new MediaQuery('max-width: 767px');
 	let editingId = $state<string | null>(null);
@@ -50,19 +53,20 @@
 		uiStore.viewChangeHandler = restoreFeedScroll;
 		attachSyncCloudIndicator(syncStore);
 		notesStore.onAfterSync = () => reminderStore.publish(notesStore.notes);
+		notesStore.onProfileReload = (pid, notes) => reminderStore.activateProfile(pid, notes);
 		if (mobile.current) uiStore.sidebarOpen = false;
 		void notesStore.init().then(async () => {
+			await notesStore.refreshProfileEffects();
 			if (syncStore.isLoggedIn) await notesStore.syncWithCloud();
 			openNoteFromQuery();
-			reminderStore.sync(notesStore.notes);
 		});
 		const onForeground = () => {
 			if (document.visibilityState === 'hidden') return;
-			if (syncStore.isLoggedIn) void notesStore.triggerSync();
+			if (syncStore.isLoggedIn) void notesStore.syncWithCloud();
 		};
 		document.addEventListener('visibilitychange', onForeground);
-		const stopSyncEvents = syncEventsClient.subscribe(() => {
-			void notesStore.triggerSync();
+		const stopSyncEvents = syncEventsClient.subscribe((seq?: number) => {
+			void notesStore.triggerSync(seq);
 		});
 		const stopReminders = reminderStore.attach(openEditor);
 		void preloadVapidPublicKey();
@@ -85,6 +89,7 @@
 		}
 		return () => {
 			stopSyncEvents();
+			notesStore.onProfileReload = null;
 			uiStore.viewChangeHandler = null;
 			stopViewport();
 			applyEditorOpen(false);
@@ -238,3 +243,4 @@
 	</div>
 </div>
 <div class="app-overlay" data-app-overlay></div>
+{@render children()}

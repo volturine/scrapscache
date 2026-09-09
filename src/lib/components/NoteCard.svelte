@@ -21,14 +21,11 @@
 		return uiStore.effectiveDark ? NOTE_DARK_COLORS[c] : NOTE_COLORS[c];
 	}
 
-	function openUnlessAction(e: MouseEvent) {
+	function openUnlessDrag(e: MouseEvent) {
 		if (swipe.wasDrag()) {
 			e.stopPropagation();
 			return;
 		}
-		const t = e.target as HTMLElement;
-		if (t.closest('[data-checklist-toggle], [data-photo], [data-canvas], [data-file], [data-link]'))
-			return;
 		onOpen(note.id);
 	}
 
@@ -100,7 +97,7 @@
 		onpointermove={swipe.onPointerMove}
 		onpointerup={swipe.onPointerUp}
 		onpointercancel={swipe.onPointerCancel}
-		onclick={openUnlessAction}
+		onclick={openUnlessDrag}
 		onkeydown={(event) => activateOnKeyboard(event, () => onOpen(note.id))}
 	>
 		{#if note.reminder != null}
@@ -110,15 +107,20 @@
 		{/if}
 
 		<div class="note-scrollbar-hidden scrollable min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
-			<div class="block w-full p-3 pb-2 text-left" class:opacity-60={note.trashed}>
-				{#if note.title}
-					<h3
-						class="mb-1 break-words text-[15px] font-semibold leading-snug tracking-tight text-[var(--scrapscache-text)]"
-					>
-						{note.title}
-					</h3>
-				{/if}
-				<NoteBodyDisplay {note} />
+			<div class="relative">
+				<div class="block w-full p-3 pb-2 text-left" class:opacity-60={note.trashed}>
+					{#if note.title}
+						<h3
+							class="mb-1 break-words text-[15px] font-semibold leading-snug tracking-tight text-[var(--scrapscache-text)]"
+						>
+							{note.title}
+						</h3>
+					{/if}
+					<NoteBodyDisplay {note} />
+				</div>
+				<!-- Every press lands here, so links, photos, canvases and files can
+				     never swallow a swipe or start a drag of their own. -->
+				<div class="absolute inset-0" data-card-shield aria-hidden="true"></div>
 			</div>
 		</div>
 

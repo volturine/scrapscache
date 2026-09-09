@@ -60,7 +60,13 @@ def drop_sql(objects: Sequence[Mapping[str, object]]) -> str | None:
 
 def is_missing_worker(output: str) -> bool:
     lowered = output.lower()
-    return "cannot find" in lowered or "could not find" in lowered or "code: 10007" in lowered
+    return (
+        "cannot find" in lowered
+        or "could not find" in lowered
+        or "does not exist" in lowered
+        or "code: 10007" in lowered
+        or "code: 10090" in lowered
+    )
 
 
 def wrangler(args: Sequence[str], env: Mapping[str, str] | None = None) -> subprocess.CompletedProcess[str]:

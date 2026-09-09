@@ -1,7 +1,11 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { syncEventEmitter } from './syncEvents';
 
 describe('syncEventEmitter', () => {
+	beforeEach(() => {
+		syncEventEmitter.clear();
+	});
+
 	it('notifies subscribers for the correct account', () => {
 		const listenerA = vi.fn();
 		const listenerB = vi.fn();
@@ -12,7 +16,7 @@ describe('syncEventEmitter', () => {
 		syncEventEmitter.notify('acc-1', 42);
 
 		expect(listenerA).toHaveBeenCalledTimes(1);
-		expect(listenerA).toHaveBeenCalledWith(42);
+		expect(listenerA).toHaveBeenCalledWith(42, undefined);
 		expect(listenerB).not.toHaveBeenCalled();
 
 		unsubA();
@@ -29,5 +33,15 @@ describe('syncEventEmitter', () => {
 
 		syncEventEmitter.notify('acc-1', 43);
 		expect(listener).not.toHaveBeenCalled();
+	});
+
+	it('forwards senderClientId when provided', () => {
+		const listener = vi.fn();
+		const unsub = syncEventEmitter.subscribe('acc-1', listener);
+
+		syncEventEmitter.notify('acc-1', 44, 'client-xyz');
+		expect(listener).toHaveBeenCalledWith(44, 'client-xyz');
+
+		unsub();
 	});
 });

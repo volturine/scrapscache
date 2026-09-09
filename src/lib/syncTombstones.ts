@@ -2,14 +2,16 @@
 import {
 	deleteLabelWithSyncState,
 	getSyncState,
+	LOCAL_PROFILE_ID,
+	scopedStateKey,
 	setSyncState,
 	writeSyncStateWithOutbox
 } from '$lib/db/idb';
 
-const NOTE_IDB = 'scrapscache-idb-note-tombstones';
-const LABEL_IDB = 'scrapscache-idb-label-tombstones';
-const BOARD_IDB = 'scrapscache-idb-board-tombstones';
-const BOARDS_IDB = 'scrapscache-idb-kanban-boards';
+export const NOTE_IDB = 'scrapscache-idb-note-tombstones';
+export const LABEL_IDB = 'scrapscache-idb-label-tombstones';
+export const BOARD_IDB = 'scrapscache-idb-board-tombstones';
+export const BOARDS_IDB = 'scrapscache-idb-kanban-boards';
 
 export type Tombstones = Record<string, number>;
 
@@ -44,38 +46,59 @@ export function readBoardTombstones(): Tombstones {
 	return { ...(boardCache ?? {}) };
 }
 
-export async function writeTombstones(tombstones: Tombstones): Promise<void> {
+export async function writeTombstones(
+	pidOrTombstones: string | Tombstones,
+	maybeTombstones?: Tombstones
+): Promise<void> {
+	const pid = maybeTombstones !== undefined ? (pidOrTombstones as string) : LOCAL_PROFILE_ID;
+	const tombstones =
+		maybeTombstones !== undefined ? maybeTombstones : (pidOrTombstones as Tombstones);
 	noteCache = sanitize(tombstones);
-	await setSyncState(NOTE_IDB, noteCache);
+	await setSyncState(scopedStateKey(NOTE_IDB, pid), noteCache);
 }
 
 export async function writeLabelTombstones(
-	tombstones: Tombstones,
-	syncOutboxKeys: Iterable<string> = []
+	pidOrTombstones: string | Tombstones,
+	tombstonesOrKeys?: Tombstones | Iterable<string>,
+	maybeKeys?: Iterable<string>
 ): Promise<void> {
+	const isScoped = typeof pidOrTombstones === 'string';
+	const pid = isScoped ? pidOrTombstones : LOCAL_PROFILE_ID;
+	const tombstones = isScoped ? (tombstonesOrKeys as Tombstones) : (pidOrTombstones as Tombstones);
+	const syncOutboxKeys = isScoped
+		? (maybeKeys ?? [])
+		: ((tombstonesOrKeys as Iterable<string>) ?? []);
 	labelCache = sanitize(tombstones);
-	await writeSyncStateWithOutbox([[LABEL_IDB, labelCache]], syncOutboxKeys);
+	await writeSyncStateWithOutbox(pid, [[LABEL_IDB, labelCache]], syncOutboxKeys);
 }
 
 export async function deleteLabelWithTombstone(
-	id: string,
-	tombstones: Tombstones,
-	syncOutboxKeys: Iterable<string> = []
+	pidOrId: string,
+	idOrTombstones: string | Tombstones,
+	tombstonesOrKeys?: Tombstones | Iterable<string>,
+	maybeKeys?: Iterable<string>
 ): Promise<void> {
+	const isScoped = typeof idOrTombstones === 'string';
+	const pid = isScoped ? pidOrId : LOCAL_PROFILE_ID;
+	const id = isScoped ? idOrTombstones : pidOrId;
+	const tombstones = isScoped ? (tombstonesOrKeys as Tombstones) : (idOrTombstones as Tombstones);
+	const syncOutboxKeys = isScoped
+		? (maybeKeys ?? [])
+		: ((tombstonesOrKeys as Iterable<string>) ?? []);
 	const next = sanitize(tombstones);
-	await deleteLabelWithSyncState(id, [[LABEL_IDB, next]], syncOutboxKeys);
+	await deleteLabelWithSyncState(pid, id, [[LABEL_IDB, next]], syncOutboxKeys);
 	labelCache = next;
 }
 
-export async function hydrateTombstones(): Promise<{
+export async function hydrateTombstones(pid: string = LOCAL_PROFILE_ID): Promise<{
 	notes: Tombstones;
 	labels: Tombstones;
 	boards: Tombstones;
 }> {
 	const [idbNotes, idbLabels, idbBoards] = await Promise.all([
-		getSyncState<unknown>(NOTE_IDB),
-		getSyncState<unknown>(LABEL_IDB),
-		getSyncState<unknown>(BOARD_IDB)
+		getSyncState<unknown>(scopedStateKey(NOTE_IDB, pid)),
+		getSyncState<unknown>(scopedStateKey(LABEL_IDB, pid)),
+		getSyncState<unknown>(scopedStateKey(BOARD_IDB, pid))
 	]);
 	noteCache = sanitize(idbNotes);
 	labelCache = sanitize(idbLabels);
@@ -83,25 +106,47 @@ export async function hydrateTombstones(): Promise<{
 	return { notes: { ...noteCache }, labels: { ...labelCache }, boards: { ...boardCache } };
 }
 
-export async function loadBoardsFromDevice<T>(fallback: T): Promise<T> {
-	const stored = await getSyncState<T>(BOARDS_IDB);
+export async function loadBoardsFromDevice<T>(
+	pidOrFallback: string | T,
+	maybeFallback?: T
+): Promise<T> {
+	const pid = maybeFallback !== undefined ? (pidOrFallback as string) : LOCAL_PROFILE_ID;
+	const fallback = (maybeFallback !== undefined ? maybeFallback : pidOrFallback) as T;
+	const stored = await getSyncState<T>(scopedStateKey(BOARDS_IDB, pid));
 	return stored ?? fallback;
 }
 
-export async function saveBoardsToDevice<T>(boards: T): Promise<void> {
+export async function saveBoardsToDevice<T>(
+	pidOrBoards: string | T,
+	maybeBoards?: T
+): Promise<void> {
+	const pid = maybeBoards !== undefined ? (pidOrBoards as string) : LOCAL_PROFILE_ID;
+	const boards = maybeBoards !== undefined ? maybeBoards : pidOrBoards;
 	// `$state` board proxies throw DataCloneError in IndexedDB; JSON is already how
 	// localStorage snapshots them.
-	await setSyncState(BOARDS_IDB, JSON.parse(JSON.stringify(boards ?? [])));
+	await setSyncState(scopedStateKey(BOARDS_IDB, pid), JSON.parse(JSON.stringify(boards ?? [])));
 }
 
 /** Persist boards, tombstones, and optional upload markers in one transaction. */
 export async function writeKanbanState(
-	boards: unknown,
-	boardTombstones: Tombstones,
-	syncOutboxKeys: Iterable<string> = []
+	pidOrBoards: string | unknown,
+	boardsOrTombstones: unknown,
+	tombstonesOrKeys?: Tombstones | Iterable<string>,
+	maybeKeys?: Iterable<string>
 ): Promise<void> {
+	const isScoped = typeof pidOrBoards === 'string';
+	const pid = isScoped ? pidOrBoards : LOCAL_PROFILE_ID;
+	const boards = isScoped ? boardsOrTombstones : pidOrBoards;
+	const boardTombstones = isScoped
+		? (tombstonesOrKeys as Tombstones)
+		: (boardsOrTombstones as Tombstones);
+	const syncOutboxKeys = isScoped
+		? (maybeKeys ?? [])
+		: ((tombstonesOrKeys as Iterable<string>) ?? []);
+
 	boardCache = sanitize(boardTombstones);
 	await writeSyncStateWithOutbox(
+		pid,
 		[
 			[BOARDS_IDB, JSON.parse(JSON.stringify(boards ?? []))],
 			[BOARD_IDB, boardCache]

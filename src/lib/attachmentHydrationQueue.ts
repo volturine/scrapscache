@@ -12,6 +12,11 @@ export class AttachmentHydrationQueue {
 		private readonly concurrency = 2
 	) {}
 
+	clear(): void {
+		this.pending = [];
+		this.queued.clear();
+	}
+
 	enqueue(noteId: string): void {
 		if (!noteId || this.queued.has(noteId)) return;
 		this.queued.add(noteId);

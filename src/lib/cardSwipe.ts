@@ -46,6 +46,7 @@ export function createCardSwipe(opts: {
 	}
 
 	function onPointerDown(e: PointerEvent) {
+		if (e.pointerType === 'mouse' && e.button !== 0) return;
 		if (tracking) return;
 		justDragged = false;
 		// The left edge belongs to the navigation drawer. Everything else on the

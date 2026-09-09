@@ -39,7 +39,8 @@ function label(id: string, updatedAt = 1): Label {
 }
 
 type NotesInternals = {
-	queueSync: (indicate?: boolean) => Promise<boolean>;
+	doSync: (indicate?: boolean) => Promise<boolean>;
+	lastAutoSyncAt: number;
 	lastPersistError: string | null;
 	attachmentHydrationFailures: Set<string>;
 	syncPushTimer: ReturnType<typeof setTimeout> | null;
@@ -85,8 +86,13 @@ describe('dropping a redundant anonymous workspace', () => {
 		await clearProfileNamespace(PID);
 	});
 
+	/** Stand in for the relay so a sync run reaches its completion path. */
+	function withSyncResult(synced: boolean): void {
+		vi.spyOn(internals(), 'doSync').mockResolvedValue(synced);
+	}
+
 	async function flushWith(synced: boolean): Promise<void> {
-		vi.spyOn(internals(), 'queueSync').mockResolvedValue(synced);
+		withSyncResult(synced);
 		await notesStore.flushSync();
 		await waitForDeviceWrites(LOCAL_PROFILE_ID);
 	}
@@ -139,6 +145,28 @@ describe('dropping a redundant anonymous workspace', () => {
 		await flushWith(true);
 
 		expect(await localNoteIds()).toEqual(['adopted-1', 'adopted-2']);
+	});
+
+	// The paths a real device actually takes. Startup, foregrounding and live
+	// nudges all bypass flushSync, so hanging the cleanup off that alone meant an
+	// upgraded device stayed duplicated until the user edited or synced by hand.
+	it('drops the copy on the boot and foreground sync path', async () => {
+		withSyncResult(true);
+		internals().lastAutoSyncAt = 0;
+
+		await notesStore.syncWithCloud();
+		await waitForDeviceWrites(LOCAL_PROFILE_ID);
+
+		expect(await localNoteIds()).toEqual([]);
+	});
+
+	it('drops the copy when another device nudges this one', async () => {
+		withSyncResult(true);
+
+		await notesStore.triggerSync();
+		await waitForDeviceWrites(LOCAL_PROFILE_ID);
+
+		expect(await localNoteIds()).toEqual([]);
 	});
 
 	it('keeps the copy when the sync did not finish', async () => {

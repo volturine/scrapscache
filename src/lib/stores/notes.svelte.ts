@@ -1035,7 +1035,6 @@ export class NotesStore {
 		return this.queueSync(indicate).then(async (synced) => {
 			const leftover = synced ? await getSyncOutboxKeys(this.pid).catch(() => []) : [];
 			this.dirty = !synced || leftover.length > 0;
-			if (synced && leftover.length === 0) await this.dropRedundantLocalCopy();
 			return synced;
 		});
 	}
@@ -1057,6 +1056,8 @@ export class NotesStore {
 		if (syncStore.lastError || this.lastPersistError) return;
 		if (this.attachmentHydrationFailures.size > 0) return;
 		try {
+			const pending = await getSyncOutboxKeys(pid).catch(() => null);
+			if (pending === null || pending.length > 0) return;
 			if (!(await isNamespaceRedundant(LOCAL_PROFILE_ID, pid))) return;
 			await clearProfileNamespace(LOCAL_PROFILE_ID);
 			clearNotesMirror(LOCAL_PROFILE_ID);
@@ -1420,6 +1421,10 @@ export class NotesStore {
 				} catch {
 					/* ignore BroadcastChannel error */
 				}
+				// Every sync path ends here, including the one a boot takes. Hanging
+				// this off flushSync instead would skip startup, foregrounding and
+				// live nudges, which are exactly when an upgraded device first syncs.
+				await this.dropRedundantLocalCopy();
 			}
 			return success;
 		})().finally(() => {

@@ -18,10 +18,12 @@ import {
 import {
 	adoptLocalDatasetInto,
 	buildProfileNotesExport,
+	getLastActiveProfileId,
 	loadProfiles,
 	nextProfileName,
 	pickBootProfile,
 	saveProfile,
+	setLastActiveProfileId,
 	type StoredProfile
 } from './profiles';
 import {
@@ -126,6 +128,7 @@ describe('keyring boot selection', () => {
 		const second: StoredProfile = { id: 'b', name: 'Second', syncKey: 'k-b', createdAt: 2 };
 
 		localStorage.clear();
+		sessionStorage.clear();
 		expect(pickBootProfile([first, second])).toBe(first);
 
 		localStorage.setItem('gkc-last-active-profile', 'b');
@@ -136,6 +139,39 @@ describe('keyring boot selection', () => {
 		expect([first.name, second.name]).not.toContain(generated);
 		void saveProfile;
 		void loadProfiles;
+	});
+});
+
+describe('per-tab active-profile pointer', () => {
+	it('a tab refresh restores its own workspace before the shared pointer', () => {
+		localStorage.clear();
+		sessionStorage.clear();
+		const first: StoredProfile = { id: 'tab-a', name: 'TabA', syncKey: 'k-a', createdAt: 1 };
+		const second: StoredProfile = { id: 'tab-b', name: 'TabB', syncKey: 'k-b', createdAt: 2 };
+
+		// Another tab switched later, moving the shared pointer.
+		setLastActiveProfileId('tab-b');
+		// This tab had switched earlier and keeps its own pointer from that time.
+		sessionStorage.setItem('scrapscache-last-active-profile-tab', 'tab-a');
+
+		expect(getLastActiveProfileId()).toBe('tab-a');
+		expect(pickBootProfile([first, second])).toBe(first);
+
+		// Without a per-tab pointer (fresh window), the shared pointer applies.
+		sessionStorage.clear();
+		expect(pickBootProfile([first, second])).toBe(second);
+	});
+
+	it('writes both pointers together and clears both on null', () => {
+		localStorage.clear();
+		sessionStorage.clear();
+		setLastActiveProfileId('tab-a');
+		expect(sessionStorage.getItem('scrapscache-last-active-profile-tab')).toBe('tab-a');
+		expect(localStorage.getItem('scrapscache-last-active-profile')).toBe('tab-a');
+
+		setLastActiveProfileId(null);
+		expect(sessionStorage.getItem('scrapscache-last-active-profile-tab')).toBeNull();
+		expect(localStorage.getItem('scrapscache-last-active-profile')).toBeNull();
 	});
 });
 

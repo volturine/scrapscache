@@ -66,12 +66,19 @@ export function nextProfileName(existing: readonly { name: string }[]): string {
 }
 
 // --- Active-profile pointer -------------------------------------------------
-// Per-origin default for newly opened windows; each window keeps its own
-// active profile in memory once booted.
+// Two layers: a per-tab pointer in sessionStorage keeps a tab on its own
+// workspace across refreshes, while the shared localStorage pointer stays the
+// per-origin default for newly opened windows.
+
+const SS_LAST_ACTIVE = 'scrapscache-last-active-profile-tab';
 
 export function getLastActiveProfileId(): string | null {
 	if (typeof localStorage === 'undefined') return null;
 	try {
+		if (typeof sessionStorage !== 'undefined') {
+			const tabPointer = sessionStorage.getItem(SS_LAST_ACTIVE);
+			if (tabPointer) return tabPointer;
+		}
 		return localStorage.getItem(LS_LAST_ACTIVE) ?? localStorage.getItem(LS_LAST_ACTIVE_LEGACY);
 	} catch {
 		return null;
@@ -81,6 +88,10 @@ export function getLastActiveProfileId(): string | null {
 export function setLastActiveProfileId(id: string | null): void {
 	if (typeof localStorage === 'undefined') return;
 	try {
+		if (typeof sessionStorage !== 'undefined') {
+			if (id) sessionStorage.setItem(SS_LAST_ACTIVE, id);
+			else sessionStorage.removeItem(SS_LAST_ACTIVE);
+		}
 		if (id) {
 			localStorage.setItem(LS_LAST_ACTIVE, id);
 		} else {

@@ -68,6 +68,7 @@ function deleteDatabase(name: string): Promise<void> {
 afterEach(async () => {
 	vi.useRealTimers();
 	resetTombstoneCaches();
+	if (typeof sessionStorage !== 'undefined') sessionStorage.clear();
 	await closeDeviceDatabase();
 	await deleteDatabase(DEVICE_DB_NAME);
 	if (typeof indexedDB !== 'undefined' && 'databases' in indexedDB) {

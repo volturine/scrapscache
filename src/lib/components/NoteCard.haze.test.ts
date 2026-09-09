@@ -135,8 +135,10 @@ describe('NoteCard right-click haze', () => {
 		await fireEvent.contextMenu(card());
 		await fireEvent.click(screen.getByRole('button', { name: 'Copy note' }));
 
-		expect(writeText).toHaveBeenCalledWith('Trip\npacking list');
-		expect(screen.getByRole('status').textContent).toContain('Copied to clipboard');
+		expect(writeText).toHaveBeenCalledWith('# Trip\npacking list');
+		// Feedback is the green checkmark on the copy button; no separate toast.
+		expect(screen.getByRole('button', { name: 'Copied to clipboard' })).toBeTruthy();
+		expect(screen.queryByRole('status')).toBeNull();
 	});
 
 	it('left-click on a hazy card dismisses the haze instead of opening the note', async () => {

@@ -377,15 +377,6 @@
 						</button>
 					</div>
 				</div>
-
-				{#if copied}
-					<div
-						class="mt-2 rounded-full bg-black/70 px-2.5 py-0.5 text-xs font-medium text-emerald-300 shadow-md backdrop-blur-md"
-						role="status"
-					>
-						Copied to clipboard
-					</div>
-				{/if}
 			</div>
 		{/if}
 	</div>

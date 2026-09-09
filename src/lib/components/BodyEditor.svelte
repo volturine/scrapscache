@@ -21,7 +21,8 @@
 		placeholder = '',
 		focusLine = null,
 		onFocusTask,
-		onExitTaskFocus
+		onExitTaskFocus,
+		transformPaste
 	}: {
 		body?: string;
 		oninput?: () => void;
@@ -29,6 +30,7 @@
 		focusLine?: number | null;
 		onFocusTask?: (line: number) => void;
 		onExitTaskFocus?: () => void;
+		transformPaste?: (text: string) => string | null;
 	} = $props();
 
 	type Line = {
@@ -666,8 +668,12 @@
 		const text = event.clipboardData.getData('text/plain');
 		if (!text) return;
 		event.preventDefault();
+		// The owner may lift part of the paste (e.g. a markdown heading into the
+		// note title); it returns the body text that should actually be inserted.
+		const transformed = transformPaste ? transformPaste(text) : null;
+		const bodyText = transformed === null ? text : transformed;
 		rememberEdit(range);
-		const caret = replaceRangeWithText(range, text);
+		const caret = replaceRangeWithText(range, bodyText);
 		focusAt(caret.line, caret.offset, lines[caret.line]?.id ?? null);
 	}
 

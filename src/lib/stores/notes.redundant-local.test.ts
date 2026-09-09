@@ -1,21 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+	bulkPutLabels,
 	bulkPutNotes,
 	clearProfileNamespace,
+	getAllLabels,
 	getAllNotesMetadata,
 	LOCAL_PROFILE_ID,
 	markSyncOutbox,
 	waitForDeviceWrites
 } from '$lib/db/idb';
-import { adoptedLocalDataPid, markAdoptedLocalData } from '$lib/profiles';
 import { createSyncIdentity } from '$lib/syncPairing';
 import { notesStore } from './notes.svelte';
 import { syncStore } from './sync.svelte';
-import type { Note } from '$lib/types';
+import type { Label, Note } from '$lib/types';
 
 const PID = 'profile-adopting';
 
-function note(id: string): Note {
+function note(id: string, updatedAt = 1): Note {
 	return {
 		id,
 		title: id,
@@ -26,14 +27,17 @@ function note(id: string): Note {
 		trashed: false,
 		trashedAt: null,
 		createdAt: 1,
-		updatedAt: 1,
+		updatedAt,
 		reminder: null,
 		labels: [],
 		images: []
 	};
 }
 
-/** Reach past queueSync so the gate is exercised without a real relay. */
+function label(id: string, updatedAt = 1): Label {
+	return { id, name: id, updatedAt } as Label;
+}
+
 type NotesInternals = {
 	queueSync: (indicate?: boolean) => Promise<boolean>;
 	lastPersistError: string | null;
@@ -46,16 +50,11 @@ function internals(): NotesInternals {
 	return notesStore as unknown as NotesInternals;
 }
 
-describe('dropping the adopted anonymous workspace', () => {
+describe('dropping a redundant anonymous workspace', () => {
 	beforeEach(async () => {
 		localStorage.clear();
 		const account = createSyncIdentity();
-		const profile = {
-			id: PID,
-			name: 'Adopting profile',
-			syncKey: account.syncKey,
-			createdAt: 1
-		};
+		const profile = { id: PID, name: 'Adopting profile', syncKey: account.syncKey, createdAt: 1 };
 		syncStore.profiles = [profile];
 		syncStore.activateProfile(profile);
 		syncStore.lastError = null;
@@ -64,12 +63,13 @@ describe('dropping the adopted anonymous workspace', () => {
 		internals().lastPersistError = null;
 		internals().attachmentHydrationFailures = new Set();
 
-		// The anonymous workspace still holds the rows the profile adopted.
 		await clearProfileNamespace(LOCAL_PROFILE_ID);
 		await clearProfileNamespace(PID);
-		await bulkPutNotes(LOCAL_PROFILE_ID, [note('adopted-1')]);
-		await bulkPutNotes(PID, [note('adopted-1')]);
-		markAdoptedLocalData(PID);
+		// The state a device is left in after an adoption: the same rows in both.
+		await bulkPutNotes(LOCAL_PROFILE_ID, [note('adopted-1'), note('adopted-2')]);
+		await bulkPutLabels(LOCAL_PROFILE_ID, [label('label-1')]);
+		await bulkPutNotes(PID, [note('adopted-1'), note('adopted-2')]);
+		await bulkPutLabels(PID, [label('label-1')]);
 	});
 
 	afterEach(async () => {
@@ -99,16 +99,52 @@ describe('dropping the adopted anonymous workspace', () => {
 		await flushWith(true);
 
 		expect(await localNoteIds()).toEqual([]);
-		expect(adoptedLocalDataPid()).toBeNull();
-		// The profile that adopted the rows keeps them.
-		expect((await getAllNotesMetadata(PID)).map((row) => row.id)).toEqual(['adopted-1']);
+		expect(await getAllLabels(LOCAL_PROFILE_ID)).toEqual([]);
+		// The profile that owns the rows keeps them.
+		expect((await getAllNotesMetadata(PID)).map((row) => row.id).sort()).toEqual([
+			'adopted-1',
+			'adopted-2'
+		]);
+	});
+
+	it('heals a device duplicated by an earlier build, with nothing recorded', async () => {
+		// No marker of any kind was ever written for this device: redundancy is
+		// judged purely from the rows, which is what makes the healing retroactive.
+		expect(localStorage.getItem('scrapscache-adopted-local-into')).toBeNull();
+
+		await flushWith(true);
+
+		expect(await localNoteIds()).toEqual([]);
+	});
+
+	it('keeps notes the user actually wrote in the anonymous workspace', async () => {
+		await bulkPutNotes(LOCAL_PROFILE_ID, [note('anonymous-only')]);
+
+		await flushWith(true);
+
+		expect((await localNoteIds()).sort()).toEqual(['adopted-1', 'adopted-2', 'anonymous-only']);
+	});
+
+	it('keeps the copy when the anonymous version is newer than the synced one', async () => {
+		await bulkPutNotes(LOCAL_PROFILE_ID, [note('adopted-1', 999)]);
+
+		await flushWith(true);
+
+		expect((await localNoteIds()).sort()).toEqual(['adopted-1', 'adopted-2']);
+	});
+
+	it('keeps a label the synced workspace does not have', async () => {
+		await bulkPutLabels(LOCAL_PROFILE_ID, [label('anonymous-label')]);
+
+		await flushWith(true);
+
+		expect(await localNoteIds()).toEqual(['adopted-1', 'adopted-2']);
 	});
 
 	it('keeps the copy when the sync did not finish', async () => {
 		await flushWith(false);
 
-		expect(await localNoteIds()).toEqual(['adopted-1']);
-		expect(adoptedLocalDataPid()).toBe(PID);
+		expect((await localNoteIds()).sort()).toEqual(['adopted-1', 'adopted-2']);
 	});
 
 	it('keeps the copy when records are still queued in the outbox', async () => {
@@ -116,8 +152,7 @@ describe('dropping the adopted anonymous workspace', () => {
 
 		await flushWith(true);
 
-		expect(await localNoteIds()).toEqual(['adopted-1']);
-		expect(adoptedLocalDataPid()).toBe(PID);
+		expect((await localNoteIds()).sort()).toEqual(['adopted-1', 'adopted-2']);
 	});
 
 	it('keeps the copy when an attachment could not be read', async () => {
@@ -125,8 +160,7 @@ describe('dropping the adopted anonymous workspace', () => {
 
 		await flushWith(true);
 
-		expect(await localNoteIds()).toEqual(['adopted-1']);
-		expect(adoptedLocalDataPid()).toBe(PID);
+		expect((await localNoteIds()).sort()).toEqual(['adopted-1', 'adopted-2']);
 	});
 
 	it('keeps the copy when the sync reported a quota error', async () => {
@@ -134,8 +168,7 @@ describe('dropping the adopted anonymous workspace', () => {
 
 		await flushWith(true);
 
-		expect(await localNoteIds()).toEqual(['adopted-1']);
-		expect(adoptedLocalDataPid()).toBe(PID);
+		expect((await localNoteIds()).sort()).toEqual(['adopted-1', 'adopted-2']);
 	});
 
 	it('keeps the copy when a local write failed', async () => {
@@ -143,36 +176,25 @@ describe('dropping the adopted anonymous workspace', () => {
 
 		await flushWith(true);
 
-		expect(await localNoteIds()).toEqual(['adopted-1']);
-		expect(adoptedLocalDataPid()).toBe(PID);
+		expect((await localNoteIds()).sort()).toEqual(['adopted-1', 'adopted-2']);
 	});
 
 	it('retries on a later sync once the blocking condition clears', async () => {
 		syncStore.lastError = 'Storage quota exceeded';
 		await flushWith(true);
-		expect(await localNoteIds()).toEqual(['adopted-1']);
+		expect((await localNoteIds()).sort()).toEqual(['adopted-1', 'adopted-2']);
 
 		syncStore.lastError = null;
 		await flushWith(true);
 
 		expect(await localNoteIds()).toEqual([]);
-		expect(adoptedLocalDataPid()).toBeNull();
 	});
 
-	it('never touches the anonymous workspace when no adoption is pending', async () => {
-		localStorage.removeItem('scrapscache-adopted-local-into');
-
-		await flushWith(true);
-
-		expect(await localNoteIds()).toEqual(['adopted-1']);
-	});
-
-	it('never drops the anonymous workspace while it is the active namespace', async () => {
+	it('never drops the anonymous workspace while it is the active one', async () => {
 		syncStore.activateLocalWorkspace();
-		markAdoptedLocalData(LOCAL_PROFILE_ID);
 
 		await flushWith(true);
 
-		expect(await localNoteIds()).toEqual(['adopted-1']);
+		expect((await localNoteIds()).sort()).toEqual(['adopted-1', 'adopted-2']);
 	});
 });

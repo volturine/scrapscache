@@ -18,7 +18,8 @@ import {
 	clearSyncOutbox,
 	pruneOrphanImageBlobs,
 	waitForDeviceWrites,
-	clearProfileNamespace
+	clearProfileNamespace,
+	isNamespaceRedundant
 } from '$lib/db/idb';
 import {
 	mergeLabelLists,
@@ -41,7 +42,6 @@ import {
 	writeLabelsMirror,
 	writeNotesMirror
 } from '$lib/noteStorage';
-import { adoptedLocalDataPid, forgetAdoptedLocalData } from '$lib/profiles';
 import {
 	hydrateTombstones,
 	deleteLabelWithTombstone,
@@ -1035,28 +1035,33 @@ export class NotesStore {
 		return this.queueSync(indicate).then(async (synced) => {
 			const leftover = synced ? await getSyncOutboxKeys(this.pid).catch(() => []) : [];
 			this.dirty = !synced || leftover.length > 0;
-			if (synced && leftover.length === 0) await this.dropAdoptedLocalCopy();
+			if (synced && leftover.length === 0) await this.dropRedundantLocalCopy();
 			return synced;
 		});
 	}
 
 	/**
-	 * Drop the anonymous workspace once the profile that adopted it is fully
-	 * published. Every condition here must hold: a partial sync, a record still
-	 * queued, or an attachment that could not be read means the cloud is not yet
-	 * a complete copy, so the originals stay and a later sync tries again.
+	 * Drop the anonymous workspace when it has become a redundant copy of the
+	 * profile that adopted it. Redundancy is judged from the rows themselves
+	 * rather than from a record of having copied them, so a device duplicated by
+	 * an earlier build is healed too, and a workspace the user has actually
+	 * written to is never a candidate.
+	 *
+	 * Every condition here must hold: a partial sync, a record still queued, or
+	 * an attachment that could not be read means the cloud is not yet a complete
+	 * copy, so the rows stay and a later sync tries again.
 	 */
-	private async dropAdoptedLocalCopy(): Promise<void> {
+	private async dropRedundantLocalCopy(): Promise<void> {
 		const pid = this.pid;
-		if (pid === LOCAL_PROFILE_ID || adoptedLocalDataPid() !== pid) return;
+		if (pid === LOCAL_PROFILE_ID) return;
 		if (syncStore.lastError || this.lastPersistError) return;
 		if (this.attachmentHydrationFailures.size > 0) return;
 		try {
+			if (!(await isNamespaceRedundant(LOCAL_PROFILE_ID, pid))) return;
 			await clearProfileNamespace(LOCAL_PROFILE_ID);
 			clearNotesMirror(LOCAL_PROFILE_ID);
-			forgetAdoptedLocalData();
 		} catch (err) {
-			console.error('[sync] could not drop the adopted anonymous workspace:', err);
+			console.error('[sync] could not drop the redundant anonymous workspace:', err);
 		}
 	}
 

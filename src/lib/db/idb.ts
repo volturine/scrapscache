@@ -1230,6 +1230,39 @@ export async function clearProfileNamespace(pid: string): Promise<void> {
 	});
 }
 
+/**
+ * True when `sourcePid` holds nothing that `targetPid` does not already have at
+ * least as recent a copy of. Adoption leaves the anonymous workspace as an
+ * exact copy of the profile that took it over, and note ids are random, so a
+ * workspace the user actually typed into can never look redundant by accident.
+ */
+export async function isNamespaceRedundant(sourcePid: string, targetPid: string): Promise<boolean> {
+	if (sourcePid === targetPid) return false;
+	const source = await getDB(sourcePid);
+	const target = await getDB(targetPid);
+	const [sourceNotes, sourceLabels] = await Promise.all([
+		source.count(NOTES_STORE),
+		source.count(LABELS_STORE)
+	]);
+	if (sourceNotes === 0 && sourceLabels === 0) return false;
+	// A larger source cannot be contained in the target; skip the row reads.
+	const [targetNotes, targetLabels] = await Promise.all([
+		target.count(NOTES_STORE),
+		target.count(LABELS_STORE)
+	]);
+	if (sourceNotes > targetNotes || sourceLabels > targetLabels) return false;
+
+	for (const note of (await source.getAll(NOTES_STORE)) as Note[]) {
+		const owned = (await target.get(NOTES_STORE, note.id)) as Note | undefined;
+		if (!owned || Number(note.updatedAt) > Number(owned.updatedAt)) return false;
+	}
+	for (const label of (await source.getAll(LABELS_STORE)) as Label[]) {
+		const owned = (await target.get(LABELS_STORE, label.id)) as Label | undefined;
+		if (!owned || Number(label.updatedAt) > Number(owned.updatedAt)) return false;
+	}
+	return true;
+}
+
 export async function namespaceHasData(pid: string): Promise<boolean> {
 	const db = await getDB(pid);
 	const noteCount = await db.count(NOTES_STORE);

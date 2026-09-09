@@ -58,8 +58,6 @@ import {
 } from '$lib/db/idb';
 import {
 	adoptLocalDatasetInto,
-	markAdoptedLocalData,
-	forgetAdoptedLocalData,
 	getLastActiveProfileId,
 	loadProfiles,
 	readProfiles,
@@ -292,7 +290,6 @@ export class SyncStore {
 			if (!activeHasData && localHasData) {
 				console.error('[sync] adopting pre-upgrade data into the active profile');
 				await adoptLocalDatasetInto(activePid);
-				markAdoptedLocalData(activePid);
 				const profile = this.profiles.find((entry) => entry.id === activePid);
 				if (profile)
 					await this.clearAccountControlPlane(identityFromSyncKey(profile.syncKey).accountId);
@@ -419,7 +416,6 @@ export class SyncStore {
 		this.usage = null;
 		this.syncedCursor = 0;
 		setLastActiveProfileId(LOCAL_PROFILE_ID);
-		forgetAdoptedLocalData();
 		this.clearLegacyAccountStorage();
 		this.restoreStatus(LOCAL_PROFILE_ID);
 		this.onAccountChange?.();
@@ -1410,7 +1406,6 @@ export class SyncStore {
 		this.usage = null;
 		this.session = null;
 		setLastActiveProfileId(LOCAL_PROFILE_ID);
-		forgetAdoptedLocalData();
 		this.clearLegacyAccountStorage();
 		this.onAccountChange?.();
 		if (accountId) await this.clearAccountControlPlane(accountId, pid);

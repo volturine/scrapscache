@@ -66,6 +66,20 @@
 		visibility: hidden;
 		pointer-events: none;
 	}
+	/* Outside the note editor a long press must act on gestures (swipes,
+	 * context menus), not start a text selection. Editable fields keep the
+	 * native selection behavior. */
+	html:not(.editor-open) * {
+		-webkit-user-select: none;
+		user-select: none;
+	}
+	html:not(.editor-open) input,
+	html:not(.editor-open) textarea,
+	html:not(.editor-open) [contenteditable],
+	html:not(.editor-open) [contenteditable] * {
+		-webkit-user-select: text;
+		user-select: text;
+	}
 }
 
 @media (min-width: 640px) {

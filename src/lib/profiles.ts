@@ -24,6 +24,7 @@ import {
 import type { KanbanBoard } from '$lib/kanban';
 import type { Note } from '$lib/types';
 import type { ScrapsCacheBackup } from '$lib/backup';
+import { randomWorkspaceName } from '$lib/workspaceNames';
 
 export type { StoredProfile } from '$lib/db/idb';
 import type { StoredProfile } from '$lib/db/idb';
@@ -62,7 +63,7 @@ export function profileForSyncKey(
 }
 
 export function nextProfileName(existing: readonly { name: string }[]): string {
-	return existing.length === 0 ? 'Sync key' : `Sync key ${existing.length + 1}`;
+	return randomWorkspaceName(existing.map((entry) => entry.name));
 }
 
 // --- Active-profile pointer -------------------------------------------------

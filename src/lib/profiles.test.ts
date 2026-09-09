@@ -130,7 +130,10 @@ describe('keyring boot selection', () => {
 
 		localStorage.setItem('gkc-last-active-profile', 'b');
 		expect(pickBootProfile([first, second])).toBe(second);
-		expect(nextProfileName([first, second])).toBe('Sync key 3');
+		// A generated name is a fresh two-word pair, never one already on the device.
+		const generated = nextProfileName([first, second]);
+		expect(generated).toMatch(/^[A-Z][a-z]+ [A-Z][a-z]+$/);
+		expect([first.name, second.name]).not.toContain(generated);
 		void saveProfile;
 		void loadProfiles;
 	});

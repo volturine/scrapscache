@@ -208,5 +208,6 @@ export function noteToPlainText(note: Note): string {
 		files && `${files} file(s)`
 	].filter(Boolean);
 	const suffix = parts.length ? `\n[${parts.join(', ')}]` : '';
-	return `${note.title}\n${note.body}${suffix}`.trim();
+	const heading = note.title ? `# ${note.title}\n` : '';
+	return `${heading}${note.body}${suffix}`.trim();
 }

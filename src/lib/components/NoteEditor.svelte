@@ -332,6 +332,20 @@
 		if (files.length > 0) footer?.handlePickedFiles(files);
 	}
 
+	const PASTE_HEADING_RE = /^#\s+(.+)$/;
+
+	/**
+	 * On an empty note, a pasted top-level markdown heading becomes the title
+	 * instead of the first body line; the paste handler inserts what we return.
+	 */
+	function transformPaste(text: string): string | null {
+		if (title || body) return null;
+		const heading = text.split('\n')[0].match(PASTE_HEADING_RE);
+		if (!heading) return null;
+		title = heading[1].trim();
+		return text.split('\n').slice(1).join('\n');
+	}
+
 	function handlePaste(event: ClipboardEvent) {
 		if (!isOpen || !note) return;
 		if (event.target instanceof Element && event.target.closest('.canvas-editor-shell')) return;
@@ -589,6 +603,7 @@
 							bind:this={bodyEditor}
 							bind:body
 							oninput={scheduleCommit}
+							{transformPaste}
 							placeholder="Take a note… type [ ] for a checklist, - for a bullet, Tab for sub-task"
 							focusLine={taskFocusLine}
 							onFocusTask={focusTask}

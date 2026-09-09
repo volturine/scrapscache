@@ -302,74 +302,82 @@
 				}}
 			>
 				<div
-					class="flex flex-wrap items-center justify-center gap-1.5 rounded-2xl bg-black/50 p-1.5 text-white shadow-2xl backdrop-blur-lg border border-white/20 dark:bg-black/70 max-w-full"
+					class="flex flex-col items-center gap-1.5 rounded-2xl bg-black/50 p-1.5 text-white shadow-2xl backdrop-blur-lg border border-white/20 dark:bg-black/70 max-w-full"
 				>
-					<!-- Delete -->
-					<button
-						type="button"
-						class="flex h-9 w-9 items-center justify-center rounded-full text-white/90 transition-all hover:scale-105 hover:bg-rose-500/30 hover:text-rose-300 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
-						title={note.trashed ? 'Delete forever' : 'Delete note'}
-						aria-label={note.trashed ? 'Delete forever' : 'Delete note'}
-						onclick={handleDelete}
-					>
-						<Trash2 class="h-4 w-4" aria-hidden="true" />
-					</button>
+					<div class="flex items-center justify-center gap-1.5">
+						<!-- Copy -->
+						<button
+							type="button"
+							class={`flex h-9 w-9 items-center justify-center rounded-full transition-all hover:scale-105 hover:bg-white/20 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 ${copied ? 'text-emerald-400' : 'text-white/90'}`}
+							title={copied ? 'Copied!' : 'Copy note'}
+							aria-label={copied ? 'Copied to clipboard' : 'Copy note'}
+							onclick={handleCopy}
+						>
+							{#if copied}
+								<Check class="h-4 w-4 text-emerald-400" aria-hidden="true" />
+							{:else}
+								<Copy class="h-4 w-4" aria-hidden="true" />
+							{/if}
+						</button>
 
-					<!-- Archive -->
-					<button
-						type="button"
-						class="flex h-9 w-9 items-center justify-center rounded-full text-white/90 transition-all hover:scale-105 hover:bg-white/20 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
-						title={note.archived ? 'Unarchive' : 'Archive'}
-						aria-label={note.archived ? 'Unarchive note' : 'Archive note'}
-						onclick={handleArchive}
-					>
-						{#if note.archived}
-							<ArchiveRestore class="h-4 w-4" aria-hidden="true" />
-						{:else}
-							<Archive class="h-4 w-4" aria-hidden="true" />
-						{/if}
-					</button>
+						<!-- Pin -->
+						<button
+							type="button"
+							class={`flex h-9 w-9 items-center justify-center rounded-full transition-all hover:scale-105 hover:bg-white/20 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 ${note.pinned ? 'text-amber-300' : 'text-white/90'}`}
+							title={note.pinned ? 'Unpin' : 'Pin'}
+							aria-label={note.pinned ? 'Unpin note' : 'Pin note'}
+							onclick={handlePin}
+						>
+							<Pin
+								class="h-4 w-4"
+								fill={note.pinned ? 'currentColor' : 'none'}
+								aria-hidden="true"
+							/>
+						</button>
 
-					<!-- Copy -->
-					<button
-						type="button"
-						class={`flex h-9 w-9 items-center justify-center rounded-full transition-all hover:scale-105 hover:bg-white/20 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 ${copied ? 'text-emerald-400' : 'text-white/90'}`}
-						title={copied ? 'Copied!' : 'Copy note'}
-						aria-label={copied ? 'Copied to clipboard' : 'Copy note'}
-						onclick={handleCopy}
-					>
-						{#if copied}
-							<Check class="h-4 w-4 text-emerald-400" aria-hidden="true" />
-						{:else}
-							<Copy class="h-4 w-4" aria-hidden="true" />
-						{/if}
-					</button>
+						<!-- Reminder -->
+						<button
+							type="button"
+							class={`flex h-9 w-9 items-center justify-center rounded-full transition-all hover:scale-105 hover:bg-white/20 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 ${note.reminder != null ? 'text-blue-300' : 'text-white/90'}`}
+							title={note.reminder != null ? 'Edit reminder' : 'Add reminder'}
+							aria-label={note.reminder != null ? 'Edit reminder' : 'Add reminder'}
+							onclick={handleReminder}
+						>
+							<Bell
+								class="h-4 w-4"
+								fill={note.reminder != null ? 'currentColor' : 'none'}
+								aria-hidden="true"
+							/>
+						</button>
+					</div>
 
-					<!-- Pin -->
-					<button
-						type="button"
-						class={`flex h-9 w-9 items-center justify-center rounded-full transition-all hover:scale-105 hover:bg-white/20 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 ${note.pinned ? 'text-amber-300' : 'text-white/90'}`}
-						title={note.pinned ? 'Unpin' : 'Pin'}
-						aria-label={note.pinned ? 'Unpin note' : 'Pin note'}
-						onclick={handlePin}
-					>
-						<Pin class="h-4 w-4" fill={note.pinned ? 'currentColor' : 'none'} aria-hidden="true" />
-					</button>
+					<div class="flex items-center justify-center gap-1.5">
+						<!-- Delete -->
+						<button
+							type="button"
+							class="flex h-9 w-9 items-center justify-center rounded-full text-white/90 transition-all hover:scale-105 hover:bg-rose-500/30 hover:text-rose-300 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+							title={note.trashed ? 'Delete forever' : 'Delete note'}
+							aria-label={note.trashed ? 'Delete forever' : 'Delete note'}
+							onclick={handleDelete}
+						>
+							<Trash2 class="h-4 w-4" aria-hidden="true" />
+						</button>
 
-					<!-- Reminder -->
-					<button
-						type="button"
-						class={`flex h-9 w-9 items-center justify-center rounded-full transition-all hover:scale-105 hover:bg-white/20 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 ${note.reminder != null ? 'text-blue-300' : 'text-white/90'}`}
-						title={note.reminder != null ? 'Edit reminder' : 'Add reminder'}
-						aria-label={note.reminder != null ? 'Edit reminder' : 'Add reminder'}
-						onclick={handleReminder}
-					>
-						<Bell
-							class="h-4 w-4"
-							fill={note.reminder != null ? 'currentColor' : 'none'}
-							aria-hidden="true"
-						/>
-					</button>
+						<!-- Archive -->
+						<button
+							type="button"
+							class="flex h-9 w-9 items-center justify-center rounded-full text-white/90 transition-all hover:scale-105 hover:bg-white/20 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+							title={note.archived ? 'Unarchive' : 'Archive'}
+							aria-label={note.archived ? 'Unarchive note' : 'Archive note'}
+							onclick={handleArchive}
+						>
+							{#if note.archived}
+								<ArchiveRestore class="h-4 w-4" aria-hidden="true" />
+							{:else}
+								<Archive class="h-4 w-4" aria-hidden="true" />
+							{/if}
+						</button>
+					</div>
 				</div>
 
 				{#if copied}

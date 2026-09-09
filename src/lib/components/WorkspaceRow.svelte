@@ -45,6 +45,8 @@
 	let armed = $state(false);
 	let rowElement: HTMLDivElement | undefined;
 	let input: HTMLInputElement | undefined;
+	// The control a panel was opened from, so focus can go back where it started.
+	let trigger: HTMLElement | null = null;
 	let start: { x: number; y: number; offset: number } | null = null;
 	let last = { x: 0, time: 0 };
 	let velocity = 0;
@@ -66,21 +68,28 @@
 		notifyBusy();
 	}
 
-	// A panel replaces the button that opened it, so without this focus falls to
-	// the body. The confirm panel hands it to the safe action: a stray Enter on a
-	// destructive prompt must not unlink.
-	function focusOnMount(node: HTMLElement) {
+	// A panel only exists while it is open, so mounting it is the moment to take
+	// focus, and unmounting is the moment to hand it back. The browser drops
+	// focus on the body when the element holding it goes away, which strands
+	// keyboard users at the top of the sheet.
+	function takeFocus(node: HTMLElement) {
 		node.focus();
+		return () => {
+			// Reclaim only what the panel itself was still holding. A click
+			// elsewhere has already chosen where focus belongs, and that wins.
+			const active = document.activeElement;
+			if (active === node || active === document.body || active === null) trigger?.focus();
+		};
 	}
 
-	// The field only exists while renaming, so mounting it is the moment to take
-	// focus. Held afterwards so a rejected rename can hand focus back.
+	// Held beyond mount so a rejected rename can hand focus back to the field.
 	function renameField(node: HTMLInputElement) {
 		input = node;
-		node.focus();
+		const release = takeFocus(node);
 		node.select();
 		return () => {
 			if (input === node) input = undefined;
+			release();
 		};
 	}
 
@@ -160,13 +169,16 @@
 		settle(open);
 	}
 
-	function startRename() {
+	function startRename(event: MouseEvent) {
+		trigger = event.currentTarget as HTMLElement;
 		draft = name;
 		setMode('rename');
 		settle(false);
 	}
 
-	function askUnlink() {
+	// Opened by the tile, or by a full swipe, which has no control to return to.
+	function askUnlink(event?: MouseEvent) {
+		trigger = (event?.currentTarget as HTMLElement | undefined) ?? null;
 		setMode('confirm');
 		settle(false);
 	}
@@ -272,7 +284,7 @@
 					<button
 						type="button"
 						class="ghost"
-						{@attach focusOnMount}
+						{@attach takeFocus}
 						disabled={working !== null}
 						aria-label="Keep {name} linked"
 						onclick={cancel}>Cancel</button

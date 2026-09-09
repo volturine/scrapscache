@@ -223,6 +223,32 @@ describe('SyncModal profile interactions', () => {
 		expect(onClose).toHaveBeenCalled();
 	});
 
+	it('hands focus back to the control that opened a panel', async () => {
+		render(SyncModal, { props: { onClose: vi.fn() } });
+
+		const unlinkTile = screen.getByRole('button', { name: 'Unlink Side' });
+		await fireEvent.click(unlinkTile);
+		await fireEvent.keyDown(document, { key: 'Escape' });
+		expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Unlink Side' }));
+
+		const renameTile = screen.getByRole('button', { name: 'Rename Side' });
+		await fireEvent.click(renameTile);
+		await fireEvent.keyDown(document, { key: 'Escape' });
+		expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Rename Side' }));
+	});
+
+	it('leaves focus where a click away from an open panel put it', async () => {
+		render(SyncModal, { props: { onClose: vi.fn() } });
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Unlink Side' }));
+		const elsewhere = screen.getByRole('button', { name: 'Main is active' });
+		elsewhere.focus();
+		await fireEvent.pointerDown(elsewhere);
+
+		expect(screen.queryByRole('button', { name: 'Keep Side linked' })).toBeNull();
+		expect(document.activeElement).toBe(elsewhere);
+	});
+
 	it('requires confirmation on the row before unlinking an inactive workspace', async () => {
 		const unlink = vi.spyOn(profileCoordinator, 'unlinkSaved').mockResolvedValue({ success: true });
 		render(SyncModal, { props: { onClose: vi.fn() } });

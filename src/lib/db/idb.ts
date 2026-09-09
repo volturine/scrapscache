@@ -27,7 +27,6 @@ export interface StoredProfile {
 	name: string;
 	syncKey: string;
 	createdAt: number;
-	dbName?: string;
 }
 
 const LS_PROFILES = 'scrapscache-sync-profiles';
@@ -50,24 +49,9 @@ function enqueueDeviceWrite<T>(operation: () => Promise<T>): Promise<T> {
 
 export const DEVICE_DB_NAME = DB_NAME;
 
+/** Each profile owns its own database; the no-key namespace keeps the device name. */
 export function resolveDbName(pid?: string): string {
 	if (!pid || pid === LOCAL_PROFILE_ID) return DEVICE_DB_NAME;
-	if (typeof localStorage !== 'undefined') {
-		try {
-			const raw = localStorage.getItem(LS_PROFILES) ?? localStorage.getItem(LS_PROFILES_LEGACY);
-			if (raw) {
-				const list = JSON.parse(raw);
-				if (Array.isArray(list)) {
-					const match = list.find((p) => p && p.id === pid);
-					if (match && typeof match.dbName === 'string' && match.dbName) {
-						return match.dbName;
-					}
-				}
-			}
-		} catch {
-			// fall back to default profile DB naming
-		}
-	}
 	return `${DEVICE_DB_NAME}-profile-${pid}`;
 }
 
@@ -906,19 +890,10 @@ export async function getSyncOutboxKeys(pid: string = LOCAL_PROFILE_ID): Promise
 }
 
 export async function clearSyncOutbox(
-	pidOrKeys: string | Iterable<string>,
-	keysOrThrough?: Iterable<string> | number,
-	maybeThrough: number = Number.POSITIVE_INFINITY
+	pid: string,
+	keys: Iterable<string>,
+	through: number = Number.POSITIVE_INFINITY
 ): Promise<void> {
-	const isScoped = typeof pidOrKeys === 'string';
-	const pid = isScoped ? pidOrKeys : LOCAL_PROFILE_ID;
-	const keys = isScoped ? (keysOrThrough as Iterable<string>) : (pidOrKeys as Iterable<string>);
-	const through = isScoped
-		? maybeThrough
-		: typeof keysOrThrough === 'number'
-			? keysOrThrough
-			: Number.POSITIVE_INFINITY;
-
 	const unique = uniqueOutboxKeys(keys);
 	if (unique.length === 0) return;
 	await enqueueDeviceWrite(async () => {
@@ -933,22 +908,10 @@ export async function clearSyncOutbox(
 }
 
 export async function commitSyncControl(
-	pidOrState: string | Iterable<readonly [key: string, value: unknown]>,
-	stateOrAck?:
-		| Iterable<readonly [key: string, value: unknown]>
-		| Iterable<{ keys: Iterable<string>; through: number }>,
-	maybeAck?: Iterable<{ keys: Iterable<string>; through: number }>
+	pid: string,
+	state: Iterable<readonly [key: string, value: unknown]>,
+	acknowledgements: Iterable<{ keys: Iterable<string>; through: number }> = []
 ): Promise<void> {
-	const isScoped = typeof pidOrState === 'string';
-	const pid = isScoped ? pidOrState : LOCAL_PROFILE_ID;
-	const state = (isScoped ? stateOrAck : pidOrState) as Iterable<
-		readonly [key: string, value: unknown]
-	>;
-	const acknowledgements = (isScoped ? (maybeAck ?? []) : (stateOrAck ?? [])) as Iterable<{
-		keys: Iterable<string>;
-		through: number;
-	}>;
-
 	const entries = [...state];
 	const acknowledged = [...acknowledgements].map(({ keys, through }) => ({
 		keys: uniqueOutboxKeys(keys),
@@ -1018,8 +981,7 @@ export async function putStoredProfile(profile: StoredProfile): Promise<void> {
 		id: String(profile.id),
 		name: String(profile.name),
 		syncKey: String(profile.syncKey),
-		createdAt: Number(profile.createdAt) || Date.now(),
-		...(profile.dbName ? { dbName: profile.dbName } : {})
+		createdAt: Number(profile.createdAt) || Date.now()
 	};
 	if (index >= 0) {
 		current[index] = stored;
@@ -1253,12 +1215,18 @@ export async function unlinkProfileToNamespace(fromPid: string, toPid: string): 
 	});
 }
 
+/** Empty one namespace: notes, attachments, labels, its sync state, and its outbox. */
 export async function clearProfileNamespace(pid: string): Promise<void> {
 	await clearAllNotes(pid);
 	await clearAllLabels(pid);
 	await enqueueDeviceWrite(async () => {
 		const db = await getDB(pid);
 		await db.clear(SYNC_OUTBOX_STORE);
+		const tx = db.transaction(SYNC_STATE_STORE, 'readwrite');
+		for (const prefix of SCOPED_STATE_PREFIXES) {
+			tx.store.delete(scopedStateKey(prefix, pid));
+		}
+		await tx.done;
 	});
 }
 
@@ -1270,25 +1238,41 @@ export async function namespaceHasData(pid: string): Promise<boolean> {
 	return labelCount > 0;
 }
 
+/**
+ * Approximate on-device footprint. Attachment sizes come from the `byteSize`
+ * recorded on each note's image metadata, so the blob store is only read for
+ * the attachments that predate that field.
+ */
 export async function estimateProfileBytes(pid: string): Promise<number> {
 	const db = await getDB(pid);
 	let bytes = 0;
+	const unsized: string[] = [];
 	const notes = (await db.getAll(NOTES_STORE)) as Note[];
 	for (const note of notes) {
 		bytes += JSON.stringify(note).length;
+		for (const image of note.images ?? []) {
+			if (Number.isFinite(image.byteSize)) bytes += Number(image.byteSize);
+			else unsized.push(`${note.id}::${image.id}`);
+		}
 	}
 	const labels = (await db.getAll(LABELS_STORE)) as Label[];
 	for (const label of labels) {
 		bytes += JSON.stringify(label).length;
 	}
-	const images = await db.getAll(IMAGES_STORE);
-	for (const img of images) {
-		if (img instanceof Blob) bytes += img.size;
-		else if (img && typeof img === 'object') {
-			const rec = img as { bytes?: Uint8Array; blob?: Blob };
-			if (rec.blob instanceof Blob) bytes += rec.blob.size;
-			else if (rec.bytes instanceof Uint8Array) bytes += rec.bytes.byteLength;
-		}
+	for (const key of unsized) {
+		bytes += storedByteLength(await db.get(IMAGES_STORE, key));
 	}
 	return bytes;
+}
+
+function storedByteLength(value: unknown): number {
+	if (value instanceof Blob) return value.size;
+	const bytes = bytesFromStored(value);
+	if (bytes) return bytes.byteLength;
+	if (value && typeof value === 'object') {
+		const record = value as { bytes?: unknown; blob?: unknown };
+		if (record.blob instanceof Blob) return record.blob.size;
+		return bytesFromStored(record.bytes)?.byteLength ?? 0;
+	}
+	return 0;
 }

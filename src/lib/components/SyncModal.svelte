@@ -54,24 +54,20 @@
 	const busy = $derived(operation !== null || notesStore.syncing || profileCoordinator.switching);
 	const handoverBlocked = $derived(notesStore.syncing || profileCoordinator.switching);
 
-	// Approximate on-device footprint per saved key. Recomputed after each
-	// completed sync so the number never goes stale mid-session.
+	// Approximate on-device footprint per saved key. Measured when the modal
+	// opens and after any operation that can change what is stored, rather than
+	// reactively, so opening the modal costs one pass instead of one per sync.
 	let sizes = $state<Record<string, number>>({});
-	$effect(() => {
-		void syncStore.lastSync;
+	let sizeGeneration = 0;
+	async function refreshSizes() {
+		const generation = ++sizeGeneration;
 		const ids = [LOCAL_PROFILE_ID, ...syncStore.profiles.map((profile) => profile.id)];
-		let cancelled = false;
-		void Promise.all(
-			ids.map(async (id) => {
-				return [id, await estimateProfileBytes(id).catch(() => 0)] as const;
-			})
-		).then((entries) => {
-			if (!cancelled) sizes = Object.fromEntries(entries);
-		});
-		return () => {
-			cancelled = true;
-		};
-	});
+		const entries = await Promise.all(
+			ids.map(async (id) => [id, await estimateProfileBytes(id).catch(() => 0)] as const)
+		);
+		if (generation === sizeGeneration) sizes = Object.fromEntries(entries);
+	}
+	void refreshSizes();
 
 	async function runOperation<T>(
 		kind: Operation,
@@ -87,6 +83,8 @@
 			return undefined;
 		} finally {
 			if (operation === kind) operation = null;
+			// Exporting and renaming are the only operations that cannot move bytes.
+			if (kind !== 'export' && kind !== 'rename') void refreshSizes();
 		}
 	}
 

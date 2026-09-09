@@ -13,7 +13,8 @@ import {
 	markSyncOutbox,
 	putLabel,
 	putNote,
-	setSyncState
+	setSyncState,
+	LOCAL_PROFILE_ID
 } from './idb';
 
 function note(title: string): Note {
@@ -48,23 +49,23 @@ describe('durable sync outbox', () => {
 		await markSyncOutbox(['note:one', 'note:one', 'label:two']);
 		expect((await getSyncOutboxKeys()).sort()).toEqual(['label:two', 'note:one']);
 
-		await clearSyncOutbox(['note:one'], 0);
+		await clearSyncOutbox(LOCAL_PROFILE_ID, ['note:one'], 0);
 		expect((await getSyncOutboxKeys()).sort()).toEqual(['label:two', 'note:one']);
 
-		await clearSyncOutbox(['note:one', 'label:two']);
+		await clearSyncOutbox(LOCAL_PROFILE_ID, ['note:one', 'label:two']);
 		expect(await getSyncOutboxKeys()).toEqual([]);
 	});
 
 	it('clears an internally marked generation without clearing a later edit', async () => {
 		const first = await markSyncOutbox(['note:one']);
-		await clearSyncOutbox(['note:one'], first - 1);
+		await clearSyncOutbox(LOCAL_PROFILE_ID, ['note:one'], first - 1);
 		expect(await getSyncOutboxKeys()).toEqual(['note:one']);
 
 		const second = await markSyncOutbox(['note:one']);
-		await clearSyncOutbox(['note:one'], first);
+		await clearSyncOutbox(LOCAL_PROFILE_ID, ['note:one'], first);
 		expect(await getSyncOutboxKeys()).toEqual(['note:one']);
 
-		await clearSyncOutbox(['note:one'], second);
+		await clearSyncOutbox(LOCAL_PROFILE_ID, ['note:one'], second);
 		expect(await getSyncOutboxKeys()).toEqual([]);
 	});
 
@@ -86,6 +87,7 @@ describe('durable sync outbox', () => {
 
 		await expect(
 			commitSyncControl(
+				LOCAL_PROFILE_ID,
 				[
 					['test-cursor', 5],
 					['uncloneable-value', () => undefined]
@@ -99,7 +101,7 @@ describe('durable sync outbox', () => {
 	});
 
 	it('commits a label and its outbox marker together or rolls both back', async () => {
-		await clearSyncOutbox(await getSyncOutboxKeys());
+		await clearSyncOutbox(LOCAL_PROFILE_ID, await getSyncOutboxKeys());
 		const label = {
 			id: 'atomic-label',
 			name: 'saved',
@@ -110,7 +112,7 @@ describe('durable sync outbox', () => {
 		expect((await getAllLabels()).find(({ id }) => id === 'atomic-label')?.name).toBe('saved');
 		expect(await getSyncOutboxKeys()).toEqual(['label:atomic-label']);
 
-		await clearSyncOutbox(['label:atomic-label']);
+		await clearSyncOutbox(LOCAL_PROFILE_ID, ['label:atomic-label']);
 		await expect(
 			putLabel({ ...label, name: 'must roll back' }, [Number.NaN as unknown as string])
 		).rejects.toThrow();
@@ -130,7 +132,7 @@ describe('durable sync outbox', () => {
 		expect(await getSyncState('label-tombstones')).toEqual({ [label.id]: 123 });
 		expect(await getSyncOutboxKeys()).toEqual([`label-tombstone:${label.id}`]);
 
-		await clearSyncOutbox(await getSyncOutboxKeys());
+		await clearSyncOutbox(LOCAL_PROFILE_ID, await getSyncOutboxKeys());
 		await putLabel(label);
 		await expect(
 			deleteLabelWithSyncState(
@@ -145,7 +147,7 @@ describe('durable sync outbox', () => {
 	});
 
 	it('commits a note and its outbox marker together or rolls both back', async () => {
-		await clearSyncOutbox(await getSyncOutboxKeys());
+		await clearSyncOutbox(LOCAL_PROFILE_ID, await getSyncOutboxKeys());
 		await putNote(note('before'));
 
 		await putNote(note('saved'), ['note:atomic-note', 'note:atomic-note']);
@@ -154,7 +156,7 @@ describe('durable sync outbox', () => {
 		);
 		expect(await getSyncOutboxKeys()).toEqual(['note:atomic-note']);
 
-		await clearSyncOutbox(['note:atomic-note']);
+		await clearSyncOutbox(LOCAL_PROFILE_ID, ['note:atomic-note']);
 		await expect(
 			putNote(note('must roll back'), [Number.NaN as unknown as string])
 		).rejects.toThrow();

@@ -4,11 +4,11 @@ import type { Label, Note, NoteImage } from './types';
 export const NOTES_MIRROR_KEY = 'scrapscache-notes-mirror';
 export const LABELS_MIRROR_KEY = 'scrapscache-labels-mirror';
 
-export function notesMirrorKey(pid?: string): string {
+function notesMirrorKey(pid?: string): string {
 	return pid && pid !== 'device-local' ? `${NOTES_MIRROR_KEY}:${pid}` : NOTES_MIRROR_KEY;
 }
 
-export function labelsMirrorKey(pid?: string): string {
+function labelsMirrorKey(pid?: string): string {
 	return pid && pid !== 'device-local' ? `${LABELS_MIRROR_KEY}:${pid}` : LABELS_MIRROR_KEY;
 }
 

@@ -118,11 +118,9 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 				refillWindowMs: 60_000
 			});
 			if (!accountLimit.allowed) return rateLimitResponse(accountLimit);
-			const syncResult =
-				senderClientId !== undefined
-					? await store.sync(accountId, cursor, envelopes, deleteSlots, limit, senderClientId)
-					: await store.sync(accountId, cursor, envelopes, deleteSlots, limit);
-			return json(syncResult);
+			return json(
+				await store.sync(accountId, cursor, envelopes, deleteSlots, limit, senderClientId)
+			);
 		} catch (error) {
 			recordSqliteError(error);
 			if (error instanceof SyncQuotaExceededError) {

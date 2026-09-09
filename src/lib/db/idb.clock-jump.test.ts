@@ -4,7 +4,8 @@ import {
 	commitSyncControl,
 	getOutboxGeneration,
 	getSyncOutboxKeys,
-	putNote
+	putNote,
+	LOCAL_PROFILE_ID
 } from '$lib/db/idb';
 import type { Note } from '$lib/types';
 
@@ -37,7 +38,7 @@ describe('outbox generations under a backward clock jump', () => {
 	});
 
 	it('keeps a marker stamped after the sync snapshot when the clock jumps backward', async () => {
-		await clearSyncOutbox(await getSyncOutboxKeys());
+		await clearSyncOutbox(LOCAL_PROFILE_ID, await getSyncOutboxKeys());
 
 		// Sync starts: capture the generation snapshot like the engine does.
 		const snapshotGeneration = await getOutboxGeneration();
@@ -48,6 +49,7 @@ describe('outbox generations under a backward clock jump', () => {
 		expect(await getSyncOutboxKeys()).toEqual(['note:clock-note']);
 
 		await commitSyncControl(
+			LOCAL_PROFILE_ID,
 			[['test-cursor', 1]],
 			[{ keys: ['note:clock-note'], through: snapshotGeneration }]
 		);

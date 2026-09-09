@@ -8,11 +8,7 @@ class SyncEventEmitter {
 		if (!set) return;
 		for (const listener of set) {
 			try {
-				if (senderClientId !== undefined) {
-					listener(seq, senderClientId);
-				} else {
-					listener(seq);
-				}
+				listener(seq, senderClientId);
 			} catch {
 				/* ignore listener error */
 			}

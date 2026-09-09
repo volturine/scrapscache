@@ -31,6 +31,7 @@ import type { StoredProfile } from '$lib/db/idb';
 const LS_LAST_ACTIVE = 'scrapscache-last-active-profile';
 const LS_LAST_ACTIVE_LEGACY = 'gkc-last-active-profile';
 const LS_LEGACY_ACCOUNT = 'scrapscache-sync-account';
+const LS_ADOPTED_LOCAL = 'scrapscache-adopted-local-into';
 const LS_LEGACY_ACCOUNT_OLD = 'gkc-sync-account';
 
 export function readProfiles(): StoredProfile[] {
@@ -122,15 +123,12 @@ export function pickBootProfile(profiles: StoredProfile[]): StoredProfile | null
 	return profiles[0];
 }
 
-/** The namespace this window works on while no sync key exists yet. */
-export const LOCAL_PID = LOCAL_PROFILE_ID;
-
 /**
  * Give a key created from the anonymous workspace ownership of its local data
  * so registering does not look like data loss.
  */
 export async function adoptLocalDatasetInto(pid: string): Promise<void> {
-	await copyProfileDatasetInto(LOCAL_PID, pid);
+	await copyProfileDatasetInto(LOCAL_PROFILE_ID, pid);
 }
 
 /** Copy one workspace's device-local dataset into a newly created profile. */
@@ -142,6 +140,44 @@ export async function copyProfileDatasetInto(fromPid: string, toPid: string): Pr
 		const labels = readLabelsMirror(fromPid);
 		if (labels.length) writeLabelsMirror(labels, toPid);
 	} catch {}
+}
+
+// --- Adopted anonymous data ----------------------------------------------
+// Adoption copies the anonymous workspace into the profile that now owns it,
+// which leaves the rows in two places. The copy is only dropped once the cloud
+// has confirmed it, so a failed or partial sync keeps the originals and retries
+// on a later sync. Recorded in localStorage so a reload cannot lose the intent.
+
+export function markAdoptedLocalData(pid: string): void {
+	if (typeof localStorage === 'undefined') return;
+	try {
+		localStorage.setItem(LS_ADOPTED_LOCAL, pid);
+	} catch (err) {
+		console.error('[profiles] could not record the adopted anonymous workspace:', err);
+	}
+}
+
+export function adoptedLocalDataPid(): string | null {
+	if (typeof localStorage === 'undefined') return null;
+	try {
+		return localStorage.getItem(LS_ADOPTED_LOCAL);
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Stop tracking the adopted copy. Called both when it has been dropped and
+ * whenever the anonymous workspace gains data of its own, so notes the user put
+ * there deliberately are never mistaken for a leftover copy.
+ */
+export function forgetAdoptedLocalData(): void {
+	if (typeof localStorage === 'undefined') return;
+	try {
+		localStorage.removeItem(LS_ADOPTED_LOCAL);
+	} catch {
+		/* nothing durable depends on the marker going away */
+	}
 }
 
 // --- Per-profile exports ----------------------------------------------------

@@ -19,7 +19,8 @@ import {
 	getSyncState,
 	hydrateNoteAttachments,
 	putNote,
-	setSyncState
+	setSyncState,
+	LOCAL_PROFILE_ID
 } from '$lib/db/idb';
 import * as idb from '$lib/db/idb';
 import { openDB } from 'idb';
@@ -385,7 +386,7 @@ describe('notes store sync apply', () => {
 		const keys = syncControlKeys(account.accountId);
 		await clearAllNotes();
 		await clearAllLabels();
-		await clearSyncOutbox(await getSyncOutboxKeys());
+		await clearSyncOutbox(LOCAL_PROFILE_ID, await getSyncOutboxKeys());
 		await deleteSyncState(keys.cursor);
 		await deleteSyncState(keys.baseline);
 		await deleteSyncState(keys.recordIds);

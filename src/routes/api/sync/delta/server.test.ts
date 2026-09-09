@@ -89,7 +89,8 @@ describe('sync delta route', () => {
 			0,
 			[validEnvelope, replacement],
 			[{ id: 'deleted-id', slot: 'b'.repeat(64) }],
-			50
+			50,
+			undefined
 		);
 		expect(await response.json()).toMatchObject({ writesAccepted: true, conflicts: [] });
 	});

@@ -16,7 +16,7 @@ describe('syncEventEmitter', () => {
 		syncEventEmitter.notify('acc-1', 42);
 
 		expect(listenerA).toHaveBeenCalledTimes(1);
-		expect(listenerA).toHaveBeenCalledWith(42);
+		expect(listenerA).toHaveBeenCalledWith(42, undefined);
 		expect(listenerB).not.toHaveBeenCalled();
 
 		unsubA();

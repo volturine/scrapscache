@@ -4,7 +4,8 @@ import {
 	clearSyncOutbox,
 	getSyncOutboxKeys,
 	markSyncOutbox,
-	putNote
+	putNote,
+	LOCAL_PROFILE_ID
 } from '$lib/db/idb';
 import { syncStore } from './sync.svelte';
 import { notesStore } from './notes.svelte';
@@ -44,7 +45,7 @@ async function settleIndexedDb(): Promise<void> {
 
 describe('syncing when a note closes', () => {
 	beforeEach(async () => {
-		await clearSyncOutbox(await getSyncOutboxKeys());
+		await clearSyncOutbox(LOCAL_PROFILE_ID, await getSyncOutboxKeys());
 		syncStore.account = {
 			syncKey: 'test-key',
 			accountId: 'test-account',
@@ -71,7 +72,7 @@ describe('syncing when a note closes', () => {
 			notesStore as unknown as { attachmentHydrationFailures: Set<string> }
 		).attachmentHydrationFailures.clear();
 		await clearAllNotes();
-		await clearSyncOutbox(await getSyncOutboxKeys());
+		await clearSyncOutbox(LOCAL_PROFILE_ID, await getSyncOutboxKeys());
 	});
 
 	it('skips the cloud request when there are no pending records', async () => {
@@ -112,7 +113,7 @@ describe('syncing when a note closes', () => {
 			'queueSync'
 		).mockImplementation(async (indicate) => {
 			expect(indicate).toBe(true);
-			await clearSyncOutbox(['note:note-1']);
+			await clearSyncOutbox(LOCAL_PROFILE_ID, ['note:note-1']);
 			return true;
 		});
 
@@ -229,7 +230,7 @@ describe('syncing when a note closes', () => {
 			)
 			.mockResolvedValueOnce(false)
 			.mockImplementationOnce(async () => {
-				await clearSyncOutbox(['note:note-1']);
+				await clearSyncOutbox(LOCAL_PROFILE_ID, ['note:note-1']);
 				return true;
 			});
 		await notesStore.flushSync();

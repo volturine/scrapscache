@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { createSubscriber } from 'svelte/reactivity';
+	import { createSubscriber, MediaQuery } from 'svelte/reactivity';
 	import { CalendarDate } from '@internationalized/date';
 	import { DatePicker, type DatePickerValueChangeDetails } from '@ark-ui/svelte/date-picker';
 	import WheelPicker from './WheelPicker.svelte';
@@ -53,29 +53,8 @@
 	// svelte-ignore state_referenced_locally -- snapshot the reminder at open time on purpose
 	let selected = $state(initDate(reminder));
 	let monthYearOpen = $state(false);
-	// svelte-ignore state_referenced_locally
-	let isMobile = $state(
-		forceMode
-			? forceMode === 'mobile'
-			: typeof window !== 'undefined'
-				? window.matchMedia(PHONE_MEDIA).matches
-				: false
-	);
-
-	$effect(() => {
-		if (forceMode) {
-			isMobile = forceMode === 'mobile';
-			return;
-		}
-		if (typeof window === 'undefined') return;
-		const mql = window.matchMedia(PHONE_MEDIA);
-		isMobile = mql.matches;
-		const handler = (e: MediaQueryListEvent) => {
-			isMobile = e.matches;
-		};
-		mql.addEventListener('change', handler);
-		return () => mql.removeEventListener('change', handler);
-	});
+	const phone = new MediaQuery(PHONE_MEDIA, false);
+	const isMobile = $derived(forceMode ? forceMode === 'mobile' : phone.current);
 
 	function apply(ts: number | null) {
 		onApply?.(ts);

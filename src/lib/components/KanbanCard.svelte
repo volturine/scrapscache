@@ -30,17 +30,6 @@
 		return uiStore.effectiveDark ? NOTE_DARK_COLORS[color] : NOTE_COLORS[color];
 	}
 
-	function interactiveTarget(target: EventTarget | null): boolean {
-		return (
-			target instanceof Element &&
-			Boolean(
-				target.closest(
-					'button, a, input, textarea, select, [data-checklist-toggle], [data-photo], [data-file], [data-link]'
-				)
-			)
-		);
-	}
-
 	let pointerId: number | null = null;
 	let startX = 0;
 	let startY = 0;
@@ -59,7 +48,7 @@
 
 	function onPointerDown(event: PointerEvent) {
 		// Desktop gets the native HTML drag path; this path makes touch dragging work on iPhone.
-		if (event.pointerType === 'mouse' || interactiveTarget(event.target)) return;
+		if (event.pointerType === 'mouse') return;
 		if (window.matchMedia(PHONE_MEDIA).matches && isSidebarEdgeStart(event.clientX)) return;
 		pointerId = event.pointerId;
 		startX = event.clientX;
@@ -172,8 +161,8 @@
 		}, 0);
 	}
 
-	function open(event: MouseEvent) {
-		if (suppressOpen || interactiveTarget(event.target)) return;
+	function open() {
+		if (suppressOpen) return;
 		onOpen(note.id);
 	}
 </script>
@@ -200,20 +189,27 @@
 	onkeydown={(event) => activateOnKeyboard(event, () => onOpen(note.id))}
 	aria-label={`Drag ${note.title || 'untitled note'} to another Kanban column`}
 >
-	<div class="scrollable max-h-[240px] overflow-x-hidden overflow-y-auto p-3">
-		{#if note.reminder != null}
-			<div class="mb-1">
-				<ReminderLabel reminder={note.reminder} variant="inline" />
+	<div class="scrollable max-h-[240px] overflow-x-hidden overflow-y-auto">
+		<div class="relative">
+			<div class="p-3">
+				{#if note.reminder != null}
+					<div class="mb-1">
+						<ReminderLabel reminder={note.reminder} variant="inline" />
+					</div>
+				{/if}
+				{#if note.title}
+					<h3
+						class="mb-1 break-words text-[15px] font-semibold leading-snug tracking-tight text-[var(--scrapscache-text)]"
+					>
+						{note.title}
+					</h3>
+				{/if}
+				<NoteBodyDisplay {note} />
 			</div>
-		{/if}
-		{#if note.title}
-			<h3
-				class="mb-1 break-words text-[15px] font-semibold leading-snug tracking-tight text-[var(--scrapscache-text)]"
-			>
-				{note.title}
-			</h3>
-		{/if}
-		<NoteBodyDisplay {note} />
+			<!-- Every press lands here, so links, photos, canvases and files can
+			     never swallow a drag or start one of their own. -->
+			<div class="absolute inset-0" data-card-shield aria-hidden="true"></div>
+		</div>
 	</div>
 
 	{#if labelsForNote.length}

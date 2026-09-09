@@ -1,21 +1,16 @@
 <script lang="ts">
-	import AttachmentFullscreen from '$lib/components/AttachmentFullscreen.svelte';
-	import CanvasEditor from '$lib/components/CanvasEditor.svelte';
-	import PhotoFullscreen from '$lib/components/PhotoFullscreen.svelte';
-	import type { Note, NoteImage } from '$lib/types';
+	// A read-only preview of a note. Cards cover it with a shield so a press
+	// anywhere drags the card and a click opens the note; attachments, links and
+	// checklists are interactive in the editor instead.
+	import type { Note } from '$lib/types';
 	import { parseBody, noteAttachments } from '$lib/checklistBody';
 	import { extractHttpUrls } from '$lib/linkPreview';
 	import LinkPreview from './LinkPreview.svelte';
-	import {
-		isImageAttachment,
-		isInlinePreviewable,
-		fileIconLabel,
-		openAttachment
-	} from '$lib/noteImages';
+	import { isImageAttachment, fileIconLabel } from '$lib/noteImages';
 	import { displayImageSrc } from '$lib/imageThumb';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { onMount } from 'svelte';
-	import { isCanvasAttachment, mergeCanvasEdit } from '$lib/canvasAttachment';
+	import { isCanvasAttachment } from '$lib/canvasAttachment';
 
 	let { note }: { note: Note } = $props();
 
@@ -31,9 +26,6 @@
 		attachments.filter((a) => !isImageAttachment(a) && !isCanvasAttachment(a))
 	);
 	const links = $derived(extractHttpUrls(note.body ?? ''));
-	let focusedImageId = $state<string | null>(null);
-	let focusedAttachment = $state<NoteImage | null>(null);
-	let focusedCanvas = $state<NoteImage | null>(null);
 	let contentElement: HTMLDivElement | null = $state(null);
 
 	onMount(() => {
@@ -59,57 +51,6 @@
 		observer.observe(node);
 		return () => observer.disconnect();
 	});
-
-	async function saveCroppedPhoto(cropped: NoteImage) {
-		const currentImages = note.images ?? [];
-		const next = currentImages.map((img) => (img.id === cropped.id ? cropped : img));
-		notesStore.updateNote(note.id, { images: next });
-		await notesStore.flushNote(note.id);
-	}
-
-	async function deletePhoto(id: string) {
-		const currentImages = note.images ?? [];
-		const next = currentImages.filter((img) => img.id !== id);
-		notesStore.updateNote(note.id, { images: next });
-		await notesStore.flushNote(note.id);
-	}
-
-	async function focusImage(id: string, event: MouseEvent) {
-		event.stopPropagation();
-		await notesStore.ensureNoteAttachments(note.id);
-		focusedImageId = id;
-	}
-
-	async function focusCanvas(id: string, event: MouseEvent) {
-		event.stopPropagation();
-		await notesStore.ensureNoteAttachments(note.id);
-		const current = notesStore.notes.find((item) => item.id === note.id);
-		const canvas = current?.images?.find((item) => item.id === id);
-		if (canvas?.dataUrl) focusedCanvas = { ...canvas };
-	}
-
-	async function saveCanvas(saved: NoteImage, sourceHash?: string) {
-		const currentNote = notesStore.notes.find((item) => item.id === note.id);
-		const currentImages = currentNote?.images ?? attachments;
-		const next = mergeCanvasEdit(currentImages, saved, sourceHash).attachments;
-		notesStore.updateNote(note.id, { images: next });
-		await notesStore.flushNote(note.id);
-	}
-
-	async function openFile(event: MouseEvent, id: string) {
-		event.stopPropagation();
-		await notesStore.ensureNoteAttachments(note.id);
-		const current = notesStore.notes.find((item) => item.id === note.id);
-		const file =
-			current?.images?.find((item) => item.id === id) ?? files.find((item) => item.id === id);
-		if (!file?.dataUrl) return;
-		if (isInlinePreviewable(file)) focusedAttachment = { ...file };
-		else void openAttachment(file);
-	}
-
-	function toggle(lineIndex: number) {
-		notesStore.toggleBodyChecklistLine(note.id, lineIndex);
-	}
 </script>
 
 <div bind:this={contentElement} class="text-sm text-[var(--scrapscache-text)]">
@@ -120,24 +61,17 @@
 				data-check-line={seg.lineIndex}
 				style={seg.indent > 0 ? `padding-left: ${seg.indent * 1.25}rem` : undefined}
 			>
-				<button
-					type="button"
-					data-checklist-toggle
+				<span
 					class="checklist-toggle shrink-0 {seg.indent > 0 ? 'checklist-toggle-sub' : ''}"
 					class:checked={seg.checked}
-					onclick={(e) => {
-						e.stopPropagation();
-						toggle(seg.lineIndex);
-					}}
-					aria-label={seg.indent > 0 ? 'Toggle sub-task' : 'Toggle item'}
-					aria-pressed={seg.checked}
+					aria-hidden="true"
 				>
 					{#if seg.checked}
-						<svg viewBox="0 0 16 16" class="checklist-toggle-mark" aria-hidden="true">
+						<svg viewBox="0 0 16 16" class="checklist-toggle-mark">
 							<path d="M3.5 8.5 6.5 11.5 12.5 4.5" />
 						</svg>
 					{/if}
-				</button>
+				</span>
 				<span
 					class="flex-1 break-words {seg.checked ? 'line-through opacity-50' : ''} {seg.indent > 0
 						? 'text-[13px]'
@@ -168,12 +102,8 @@
 {#if canvases.length > 0}
 	<div class="mt-2 grid gap-1.5" aria-label="Canvases">
 		{#each canvases as canvas (canvas.id)}
-			<button
-				type="button"
-				class="group relative block aspect-[4/3] w-full touch-manipulation overflow-hidden rounded-lg border border-black/10 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-white/10 dark:bg-slate-900"
-				data-canvas
-				onclick={(event) => void focusCanvas(canvas.id, event)}
-				aria-label={`${note.trashed ? 'View' : 'Edit'} ${canvas.name ?? 'canvas'}`}
+			<div
+				class="relative block aspect-[4/3] w-full overflow-hidden rounded-lg border border-black/10 bg-white dark:border-white/10 dark:bg-slate-900"
 			>
 				{#if displayImageSrc(canvas)}
 					<img
@@ -195,7 +125,7 @@
 				>
 					{canvas.name ?? 'Canvas'}
 				</span>
-			</button>
+			</div>
 		{/each}
 	</div>
 {/if}
@@ -203,13 +133,9 @@
 {#if files.length > 0}
 	<div class="mt-2 flex flex-col gap-1">
 		{#each files as file (file.id)}
-			<button
-				type="button"
-				class="flex w-full items-center gap-2 rounded-md border border-black/10 bg-black/5 px-2 py-1.5 text-left touch-manipulation dark:border-white/10 dark:bg-white/5"
-				data-file
+			<div
+				class="flex w-full items-center gap-2 rounded-md border border-black/10 bg-black/5 px-2 py-1.5 text-left dark:border-white/10 dark:bg-white/5"
 				aria-busy={!file.dataUrl}
-				onclick={(event) => void openFile(event, file.id)}
-				aria-label={`Open ${file.name ?? 'file'}`}
 			>
 				<span
 					class="grid h-7 w-7 shrink-0 place-items-center rounded bg-black/10 text-[9px] font-bold text-[var(--scrapscache-text)] dark:bg-white/10"
@@ -218,7 +144,7 @@
 				<span class="min-w-0 flex-1 truncate text-xs text-[var(--scrapscache-text)]"
 					>{file.name || 'File'}</span
 				>
-			</button>
+			</div>
 		{/each}
 	</div>
 {/if}
@@ -226,7 +152,7 @@
 {#if links.length > 0}
 	<div class="mt-2 flex flex-col gap-2" aria-label="Links">
 		{#each links as url (url)}
-			<LinkPreview {url} />
+			<LinkPreview {url} interactive={false} />
 		{/each}
 	</div>
 {/if}
@@ -234,21 +160,16 @@
 {#if photos.length > 0 || pendingPhotos.length > 0}
 	<div class="mt-2 flex gap-1.5 overflow-x-auto" aria-label="Photos">
 		{#each photos as img (img.id)}
-			<button
-				type="button"
-				class="block shrink-0 touch-manipulation overflow-hidden rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-				data-photo
-				onclick={(event) => focusImage(img.id, event)}
-				aria-label={`Open ${img.name ?? 'photo'}`}
-			>
+			<div class="block shrink-0 overflow-hidden rounded-md">
 				<img
 					src={displayImageSrc(img)}
 					alt={img.name ?? 'Photo'}
 					class="h-24 w-auto max-w-[10rem] rounded-lg object-cover"
 					loading="lazy"
 					decoding="async"
+					draggable="false"
 				/>
-			</button>
+			</div>
 		{/each}
 		{#each pendingPhotos as img (img.id)}
 			<div
@@ -258,38 +179,4 @@
 			></div>
 		{/each}
 	</div>
-{/if}
-
-<PhotoFullscreen
-	images={photos}
-	bind:activeIndex={
-		() => {
-			if (focusedImageId === null) return null;
-			const index = photos.findIndex((photo) => photo.id === focusedImageId);
-			return index >= 0 ? index : null;
-		},
-		(index) => {
-			focusedImageId = index === null ? null : (photos[index]?.id ?? null);
-		}
-	}
-	onCrop={note.trashed ? undefined : saveCroppedPhoto}
-	onDelete={note.trashed ? undefined : deletePhoto}
-/>
-{#if focusedCanvas}
-	<CanvasEditor
-		attachment={focusedCanvas}
-		readOnly={note.trashed}
-		onSave={saveCanvas}
-		onClose={() => {
-			focusedCanvas = null;
-		}}
-	/>
-{/if}
-{#if focusedAttachment}
-	<AttachmentFullscreen
-		attachment={focusedAttachment}
-		onClose={() => {
-			focusedAttachment = null;
-		}}
-	/>
 {/if}

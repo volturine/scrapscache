@@ -18,6 +18,13 @@ if (typeof Element !== 'undefined' && !Element.prototype.animate) {
 	})) as unknown as typeof Element.prototype.animate;
 }
 
+// jsdom has no pointer capture; gestures call it on every press.
+if (typeof Element !== 'undefined' && !Element.prototype.setPointerCapture) {
+	Element.prototype.setPointerCapture = () => {};
+	Element.prototype.releasePointerCapture = () => {};
+	Element.prototype.hasPointerCapture = () => false;
+}
+
 if (typeof window !== 'undefined' && !window.ResizeObserver) {
 	window.ResizeObserver = class {
 		observe() {}

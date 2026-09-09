@@ -17,7 +17,8 @@ import {
 	getSyncOutboxKeys,
 	clearSyncOutbox,
 	pruneOrphanImageBlobs,
-	waitForDeviceWrites
+	waitForDeviceWrites,
+	clearProfileNamespace
 } from '$lib/db/idb';
 import {
 	mergeLabelLists,
@@ -34,11 +35,13 @@ import { uiStore } from '$lib/stores/ui.svelte';
 import { uid, daysSinceTrashed, TRASH_PURGE_DAYS, cloneNote } from '$lib/utils';
 import { noteAttachments, toggleLineAt } from '$lib/checklistBody';
 import {
+	clearNotesMirror,
 	readLabelsMirror,
 	readNotesMirror,
 	writeLabelsMirror,
 	writeNotesMirror
 } from '$lib/noteStorage';
+import { adoptedLocalDataPid, forgetAdoptedLocalData } from '$lib/profiles';
 import {
 	hydrateTombstones,
 	deleteLabelWithTombstone,
@@ -1032,8 +1035,29 @@ export class NotesStore {
 		return this.queueSync(indicate).then(async (synced) => {
 			const leftover = synced ? await getSyncOutboxKeys(this.pid).catch(() => []) : [];
 			this.dirty = !synced || leftover.length > 0;
+			if (synced && leftover.length === 0) await this.dropAdoptedLocalCopy();
 			return synced;
 		});
+	}
+
+	/**
+	 * Drop the anonymous workspace once the profile that adopted it is fully
+	 * published. Every condition here must hold: a partial sync, a record still
+	 * queued, or an attachment that could not be read means the cloud is not yet
+	 * a complete copy, so the originals stay and a later sync tries again.
+	 */
+	private async dropAdoptedLocalCopy(): Promise<void> {
+		const pid = this.pid;
+		if (pid === LOCAL_PROFILE_ID || adoptedLocalDataPid() !== pid) return;
+		if (syncStore.lastError || this.lastPersistError) return;
+		if (this.attachmentHydrationFailures.size > 0) return;
+		try {
+			await clearProfileNamespace(LOCAL_PROFILE_ID);
+			clearNotesMirror(LOCAL_PROFILE_ID);
+			forgetAdoptedLocalData();
+		} catch (err) {
+			console.error('[sync] could not drop the adopted anonymous workspace:', err);
+		}
 	}
 
 	/** Flush durable local changes when leaving a note, without a no-op cloud request. */

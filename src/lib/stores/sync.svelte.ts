@@ -58,6 +58,8 @@ import {
 } from '$lib/db/idb';
 import {
 	adoptLocalDatasetInto,
+	markAdoptedLocalData,
+	forgetAdoptedLocalData,
 	getLastActiveProfileId,
 	loadProfiles,
 	readProfiles,
@@ -228,15 +230,12 @@ export class SyncStore {
 		this.profilesReady ??= (async () => {
 			try {
 				let profiles = await loadProfiles();
+				// Left in place on purpose: it is the only pointer a build without
+				// profiles can use to find this device's account. It is cleared when
+				// that account is unlinked, not when it is adopted.
 				const rawLegacy =
 					localStorage.getItem(LS_LEGACY_ACCOUNT_KEY) ??
 					localStorage.getItem(LS_LEGACY_ACCOUNT_OLD);
-				try {
-					localStorage.removeItem(LS_LEGACY_ACCOUNT_KEY);
-					localStorage.removeItem(LS_LEGACY_ACCOUNT_OLD);
-				} catch {
-					/* ignore */
-				}
 				try {
 					const parsed: unknown = rawLegacy ? JSON.parse(rawLegacy) : null;
 					if (isSyncAccount(parsed) && !profiles.some((p) => p.syncKey === parsed.syncKey)) {
@@ -293,6 +292,7 @@ export class SyncStore {
 			if (!activeHasData && localHasData) {
 				console.error('[sync] adopting pre-upgrade data into the active profile');
 				await adoptLocalDatasetInto(activePid);
+				markAdoptedLocalData(activePid);
 				const profile = this.profiles.find((entry) => entry.id === activePid);
 				if (profile)
 					await this.clearAccountControlPlane(identityFromSyncKey(profile.syncKey).accountId);
@@ -419,6 +419,7 @@ export class SyncStore {
 		this.usage = null;
 		this.syncedCursor = 0;
 		setLastActiveProfileId(LOCAL_PROFILE_ID);
+		forgetAdoptedLocalData();
 		this.clearLegacyAccountStorage();
 		this.restoreStatus(LOCAL_PROFILE_ID);
 		this.onAccountChange?.();
@@ -1409,6 +1410,7 @@ export class SyncStore {
 		this.usage = null;
 		this.session = null;
 		setLastActiveProfileId(LOCAL_PROFILE_ID);
+		forgetAdoptedLocalData();
 		this.clearLegacyAccountStorage();
 		this.onAccountChange?.();
 		if (accountId) await this.clearAccountControlPlane(accountId, pid);

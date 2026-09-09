@@ -1254,7 +1254,7 @@ describe('client sync state machine', () => {
 		expect(store3.activeProfile).toBeNull();
 	});
 
-	it('purges legacy account keys unconditionally and never recreates removed profiles', async () => {
+	it('keeps the legacy account pointer after adopting it, without re-adopting', async () => {
 		localStorage.clear();
 		const legacyIdentity = createSyncIdentity();
 		localStorage.setItem('scrapscache-sync-account', JSON.stringify(legacyIdentity));
@@ -1264,17 +1264,25 @@ describe('client sync state machine', () => {
 		await store1.ensureProfilesLoaded();
 		expect(store1.profiles.length).toBe(1);
 		expect(store1.profiles[0].syncKey).toBe(legacyIdentity.syncKey);
-		expect(localStorage.getItem('scrapscache-sync-account')).toBeNull();
+		// Retained so a build without profiles can still find this account.
+		expect(localStorage.getItem('scrapscache-sync-account')).not.toBeNull();
 
-		// Remove the profile
-		await store1.logout();
-		expect(store1.profiles.length).toBe(0);
-
-		// Subsequent boot (hard refresh): must stay blank slate, no new account created
+		// Hard refresh: the retained pointer must not adopt a second time
 		const store2 = new SyncStore();
 		await store2.ensureProfilesLoaded();
+		expect(store2.profiles.length).toBe(1);
+		expect(store2.profiles[0].syncKey).toBe(legacyIdentity.syncKey);
+
+		// Unlinking is what clears the pointer: it must not outlive its account
+		await store2.logout();
 		expect(store2.profiles.length).toBe(0);
-		expect(store2.isLoggedIn).toBe(false);
-		expect(store2.activeProfile).toBeNull();
+		expect(localStorage.getItem('scrapscache-sync-account')).toBeNull();
+
+		// Subsequent boot (hard refresh): must stay blank slate, no new account created
+		const store3 = new SyncStore();
+		await store3.ensureProfilesLoaded();
+		expect(store3.profiles.length).toBe(0);
+		expect(store3.isLoggedIn).toBe(false);
+		expect(store3.activeProfile).toBeNull();
 	});
 });

@@ -1,3 +1,4 @@
+import { saveProfile } from '$lib/profiles';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Note, NoteImage } from '$lib/types';
 import {
@@ -667,17 +668,39 @@ describe('client sync state machine', () => {
 		expect(rebuiltUploads.every((item) => item.expectedId === null)).toBe(true);
 	});
 
-	it('splits more than 500 ordinary records into bounded rounds', async () => {
-		const notes = Array.from({ length: 501 }, (_, index) => note(`note-${index}`));
+	it('keeps every upload round within the hosted relay mutation limit', async () => {
+		const notes = Array.from({ length: 17 }, (_, index) => note(`note-${index}`));
 		const { store, requests } = createHarness((_request, index) => ({
 			success: true,
-			data: emptyData({ cursor: index === 0 ? 0 : index === 1 ? 500 : 501 })
+			data: emptyData({ cursor: index === 0 ? 0 : index * 8 })
 		}));
 
 		const result = await store.sync(notes, [], {}, {}, [], {}, false, false, passthrough);
 
 		expect(result.success, result.error).toBe(true);
-		expect(requests.map((request) => request.envelopes.length)).toEqual([0, 500, 1]);
+		expect(requests.map((request) => request.envelopes.length)).toEqual([0, 8, 8, 1]);
+		expect(
+			requests.every((request) => request.envelopes.length + request.deleteSlots.length <= 8)
+		).toBe(true);
+	});
+
+	it('shares the hosted relay limit between uploads and deletions', async () => {
+		const notes = Array.from({ length: 9 }, (_, index) => note(`note-${index}`));
+		const { store, account, requests } = createHarness((_request, index) => ({
+			success: true,
+			data: emptyData({ cursor: index })
+		}));
+		await seedControl(account.accountId, {
+			recordIds: { 'attachment:orphan': 'orphan-id' }
+		});
+
+		const result = await store.sync(notes, [], {}, {}, [], {}, false, false, passthrough);
+
+		expect(result.success, result.error).toBe(true);
+		expect(requests.some((request) => request.deleteSlots.length > 0)).toBe(true);
+		expect(
+			requests.every((request) => request.envelopes.length + request.deleteSlots.length <= 8)
+		).toBe(true);
 	});
 
 	it('limits attachment bytes to two records per upload round', async () => {
@@ -1095,5 +1118,171 @@ describe('client sync state machine', () => {
 		expect(retry.success, retry.error).toBe(true);
 		expect(await idb.getSyncOutboxKeys()).toEqual([]);
 		expect(store.lastSync).toBeGreaterThan(0);
+	});
+	it('clears outbox keys properly for custom profile using profile generation', async () => {
+		const pid = 'custom-profile-1';
+		const { store, account } = createHarness(() => ({
+			success: true,
+			data: emptyData({ cursor: 1, writesAccepted: true })
+		}));
+		await store.ensureProfilesLoaded();
+		const profile = {
+			id: pid,
+			name: 'Custom',
+			syncKey: account.syncKey,
+			createdAt: Date.now()
+		};
+		await store.addKeyringEntry(profile);
+		store.activateProfile(profile);
+		await idb.markSyncOutbox(pid, ['note:custom-1']);
+		expect(await idb.getSyncOutboxKeys(pid)).toEqual(['note:custom-1']);
+
+		const result = await store.sync(
+			[note('custom-1')],
+			[],
+			{},
+			{},
+			[],
+			{},
+			false,
+			false,
+			passthrough
+		);
+
+		expect(result.success, result.error).toBe(true);
+		expect(await idb.getSyncOutboxKeys(pid)).toEqual([]);
+	});
+
+	it('ignores a cursor load that finishes after another profile is activated', async () => {
+		let resolveA!: (value: number | undefined) => void;
+		let resolveB!: (value: number | undefined) => void;
+		const cursorA = new Promise<number | undefined>((resolve) => {
+			resolveA = resolve;
+		});
+		const cursorB = new Promise<number | undefined>((resolve) => {
+			resolveB = resolve;
+		});
+		vi.spyOn(idb, 'getSyncState').mockImplementation(((_key: string, pid?: string) => {
+			if (pid === 'cursor-a') return cursorA;
+			if (pid === 'cursor-b') return cursorB;
+			return Promise.resolve(undefined);
+		}) as typeof idb.getSyncState);
+		const store = new SyncStore();
+		const profileA = {
+			id: 'cursor-a',
+			name: 'A',
+			syncKey: createSyncIdentity().syncKey,
+			createdAt: 1
+		};
+		const profileB = {
+			id: 'cursor-b',
+			name: 'B',
+			syncKey: createSyncIdentity().syncKey,
+			createdAt: 2
+		};
+		store.profiles = [profileA, profileB];
+
+		store.activateProfile(profileA);
+		store.activateProfile(profileB);
+		resolveB(7);
+		await Promise.resolve();
+		expect(store.syncedCursor).toBe(7);
+
+		resolveA(99);
+		await Promise.resolve();
+		expect(store.syncedCursor).toBe(7);
+	});
+
+	it('prunes orphan outbox records when catch-up downloads drain', async () => {
+		const pid = 'custom-profile-2';
+		const { store, account } = createHarness(() => ({
+			success: true,
+			data: emptyData({ cursor: 1, writesAccepted: true })
+		}));
+		await store.ensureProfilesLoaded();
+		const profile = {
+			id: pid,
+			name: 'Custom 2',
+			syncKey: account.syncKey,
+			createdAt: Date.now()
+		};
+		await store.addKeyringEntry(profile);
+		store.activateProfile(profile);
+		await idb.markSyncOutbox(pid, ['attachment:non-existent']);
+		expect(await idb.getSyncOutboxKeys(pid)).toEqual(['attachment:non-existent']);
+
+		const result = await store.sync([], [], {}, {}, [], {}, false, false, passthrough);
+
+		expect(result.success, result.error).toBe(true);
+		expect(await idb.getSyncOutboxKeys(pid)).toEqual([]);
+	});
+
+	it('does not create or resurrect any sync accounts on hard refresh or unlinking', async () => {
+		localStorage.clear();
+		const store1 = new SyncStore();
+		await store1.ensureProfilesLoaded();
+		expect(store1.profiles).toEqual([]);
+		expect(store1.isLoggedIn).toBe(false);
+
+		// Create a profile
+		const p1 = {
+			id: 'test-p1',
+			name: 'Test Profile',
+			syncKey: createSyncIdentity().syncKey,
+			createdAt: Date.now()
+		};
+		await store1.addKeyringEntry(p1);
+		store1.activateProfile(p1);
+		expect(store1.isLoggedIn).toBe(true);
+
+		// Simulate hard refresh while logged in
+		const store2 = new SyncStore();
+		await store2.ensureProfilesLoaded();
+		expect(store2.profiles.length).toBe(1);
+		expect(store2.activeProfile?.id).toBe('test-p1');
+
+		// Unlink device
+		await store2.logout();
+		expect(store2.isLoggedIn).toBe(false);
+		expect(store2.profiles).toEqual([]);
+
+		// Simulate hard refresh after unlink: must NOT resurrect or create any new account
+		const store3 = new SyncStore();
+		await store3.ensureProfilesLoaded();
+		expect(store3.profiles).toEqual([]);
+		expect(store3.isLoggedIn).toBe(false);
+		expect(store3.activeProfile).toBeNull();
+	});
+
+	it('keeps the legacy account pointer after adopting it, without re-adopting', async () => {
+		localStorage.clear();
+		const legacyIdentity = createSyncIdentity();
+		localStorage.setItem('scrapscache-sync-account', JSON.stringify(legacyIdentity));
+
+		// First boot adopts legacy account once
+		const store1 = new SyncStore();
+		await store1.ensureProfilesLoaded();
+		expect(store1.profiles.length).toBe(1);
+		expect(store1.profiles[0].syncKey).toBe(legacyIdentity.syncKey);
+		// Retained so a build without profiles can still find this account.
+		expect(localStorage.getItem('scrapscache-sync-account')).not.toBeNull();
+
+		// Hard refresh: the retained pointer must not adopt a second time
+		const store2 = new SyncStore();
+		await store2.ensureProfilesLoaded();
+		expect(store2.profiles.length).toBe(1);
+		expect(store2.profiles[0].syncKey).toBe(legacyIdentity.syncKey);
+
+		// Unlinking is what clears the pointer: it must not outlive its account
+		await store2.logout();
+		expect(store2.profiles.length).toBe(0);
+		expect(localStorage.getItem('scrapscache-sync-account')).toBeNull();
+
+		// Subsequent boot (hard refresh): must stay blank slate, no new account created
+		const store3 = new SyncStore();
+		await store3.ensureProfilesLoaded();
+		expect(store3.profiles.length).toBe(0);
+		expect(store3.isLoggedIn).toBe(false);
+		expect(store3.activeProfile).toBeNull();
 	});
 });

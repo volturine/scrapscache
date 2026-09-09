@@ -1,6 +1,7 @@
 // Rune-based notes & labels store. Persists to IndexedDB from explicit write paths.
 import type { Note, Label, NoteColor, NoteField } from '$lib/types';
 import {
+	LOCAL_PROFILE_ID,
 	getAllNotesMetadata,
 	hydrateNoteAttachments,
 	putNote,
@@ -15,7 +16,10 @@ import {
 	replaceAllDeviceData,
 	getSyncOutboxKeys,
 	clearSyncOutbox,
-	pruneOrphanImageBlobs
+	pruneOrphanImageBlobs,
+	waitForDeviceWrites,
+	clearProfileNamespace,
+	isNamespaceRedundant
 } from '$lib/db/idb';
 import {
 	mergeLabelLists,
@@ -32,6 +36,7 @@ import { uiStore } from '$lib/stores/ui.svelte';
 import { uid, daysSinceTrashed, TRASH_PURGE_DAYS, cloneNote } from '$lib/utils';
 import { noteAttachments, toggleLineAt } from '$lib/checklistBody';
 import {
+	clearNotesMirror,
 	readLabelsMirror,
 	readNotesMirror,
 	writeLabelsMirror,
@@ -40,6 +45,7 @@ import {
 import {
 	hydrateTombstones,
 	deleteLabelWithTombstone,
+	resetTombstoneCaches,
 	readLabelTombstones,
 	readTombstones,
 	writeLabelTombstones,
@@ -58,9 +64,13 @@ import {
 	type ScrapsCacheBackup
 } from '$lib/backup';
 import { stableStringify } from '$lib/syncHash';
+import { buildForcePushSnapshot } from '$lib/syncForcePush';
 
 /** Minimum gap between opportunistic auto syncs; manual syncs are never throttled. */
 const AUTO_SYNC_MIN_INTERVAL_MS = 30_000;
+
+/** Web lock serializing sync flights and profile dataset swaps. */
+export const SYNC_LOCK = 'scrapscache-sync';
 
 function durableNoteSignature(note: Note): string {
 	return stableStringify({
@@ -98,6 +108,15 @@ function noteSyncKeys(note: Note): string[] {
 }
 
 export class NotesStore {
+	/** The namespace this window currently reads and writes. */
+	private get pid(): string {
+		return syncStore.activePid;
+	}
+
+	/** True while a sync flight (auto or manual) is running. */
+	get syncing(): boolean {
+		return this.syncFlight !== null;
+	}
 	notes = $state<Note[]>([]);
 	labels = $state<Label[]>([]);
 	loaded = $state(false);
@@ -115,22 +134,37 @@ export class NotesStore {
 	);
 	/** Called after cloud notes replace local state. Used to refresh reminder wakes. */
 	onAfterSync: (() => void) | null = null;
+	/** Refreshes profile-dependent services after local state changes namespace. */
+	onProfileReload: ((pid: string, notes: Note[]) => void | Promise<void>) | null = null;
 
 	constructor() {
-		this.notes = readNotesMirror();
-		this.labels = readLabelsMirror();
+		this.notes = readNotesMirror(this.pid);
+		this.labels = readLabelsMirror(this.pid);
 		syncStore.onLocalDataChange = () => {
 			this.dirty = true;
 			this.scheduleSyncPush();
 		};
 		if (this.notes.length > 0) this.loaded = true;
 		if (typeof window !== 'undefined') {
+			if ('BroadcastChannel' in window) {
+				this.syncBroadcastChannel = new BroadcastChannel('scrapscache-sync-channel');
+				this.syncBroadcastChannel.onmessage = (event) => {
+					if (event.data?.type === 'local-sync-complete' && event.data?.pid === this.pid) {
+						void this.rehydrateFromIDB();
+					}
+				};
+			}
 			window.addEventListener('visibilitychange', () => {
 				if (document.visibilityState === 'hidden') this.mirrorToLS();
 			});
 			window.addEventListener('pagehide', () => this.mirrorToLS());
 			window.addEventListener('online', () => {
-				if (this.dirty && syncStore.isLoggedIn) this.scheduleSyncPush(0);
+				if (!syncStore.isLoggedIn) return;
+				if (this.dirty) {
+					this.scheduleSyncPush(0);
+				} else {
+					void this.triggerSync();
+				}
 			});
 		}
 	}
@@ -150,18 +184,18 @@ export class NotesStore {
 
 	// --- Lifecycle -------------------------------------------------------
 	async init() {
-		if (this.loaded) {
-			await this.rehydrateFromIDB();
-			return;
-		}
+		await syncStore.ensureProfilesLoaded();
 
-		const mirrorNotes = this.notes.length ? this.notes : readNotesMirror();
-		const mirrorLabels = this.labels.length ? this.labels : readLabelsMirror();
+		const mirrorNotes = readNotesMirror(this.pid);
+		const mirrorLabels = readLabelsMirror(this.pid);
 		let dbNotes: Note[] = [];
 		let dbLabels: Label[] = [];
 		let deviceReadFailed = false;
 		try {
-			[dbNotes, dbLabels] = await Promise.all([getAllNotesMetadata(), getAllLabels()]);
+			[dbNotes, dbLabels] = await Promise.all([
+				getAllNotesMetadata(this.pid),
+				getAllLabels(this.pid)
+			]);
 		} catch (err) {
 			deviceReadFailed = true;
 			this.recordPersistenceError('Could not read IndexedDB', err);
@@ -174,22 +208,28 @@ export class NotesStore {
 		const seededFlag =
 			typeof localStorage !== 'undefined' ? localStorage.getItem('scrapscache-seeded') : null;
 
-		const tombstones = await hydrateTombstones().catch(() => ({
+		const tombstones = await hydrateTombstones(this.pid).catch(() => ({
 			notes: this.deletedNoteIds,
 			labels: this.deletedLabelIds,
 			boards: {}
 		}));
 		this.deletedNoteIds = tombstones.notes;
 		this.deletedLabelIds = tombstones.labels;
-		await kanbanStore.hydrateFromDevice(tombstones.boards);
+		await kanbanStore.hydrateFromDevice(this.pid, tombstones.boards);
 
-		if (notes.length === 0 && labels.length === 0 && !seededFlag && !syncStore.isLoggedIn) {
+		if (
+			notes.length === 0 &&
+			labels.length === 0 &&
+			!seededFlag &&
+			!syncStore.isLoggedIn &&
+			this.pid === LOCAL_PROFILE_ID
+		) {
 			localStorage?.setItem('scrapscache-seeded', '1');
 			this.notes = this.seedNotes();
 			this.labels = [];
 			this.mirrorToLS();
 			try {
-				await bulkPutNotes(this.notes);
+				await bulkPutNotes(this.pid, this.notes);
 			} catch (err) {
 				this.recordPersistenceError('Could not save starter notes', err);
 			}
@@ -204,7 +244,7 @@ export class NotesStore {
 					this.recordPersistenceError('Could not restore IndexedDB from mirror', err);
 				}
 			}
-			pruneOrphanImageBlobs().catch((err) =>
+			pruneOrphanImageBlobs(this.pid).catch((err) =>
 				this.recordPersistenceError('Could not reclaim unused photo storage', err)
 			);
 		}
@@ -214,12 +254,18 @@ export class NotesStore {
 
 	private async rehydrateFromIDB() {
 		try {
-			const [dbNotes, dbLabels] = await Promise.all([getAllNotesMetadata(), getAllLabels()]);
-			this.notes = withoutTombstoned(mergeNoteLists(this.notes, dbNotes), this.deletedNoteIds).sort(
-				(a, b) => b.updatedAt - a.updatedAt
-			);
+			const [dbNotes, dbLabels] = await Promise.all([
+				getAllNotesMetadata(this.pid),
+				getAllLabels(this.pid)
+			]);
+			const mirrorNotes = readNotesMirror(this.pid);
+			const mirrorLabels = readLabelsMirror(this.pid);
+			this.notes = withoutTombstoned(
+				mergeNoteLists(mirrorNotes, dbNotes),
+				this.deletedNoteIds
+			).sort((a, b) => b.updatedAt - a.updatedAt);
 			this.labels = withoutTombstoned(
-				mergeLabelLists(this.labels, dbLabels),
+				mergeLabelLists(mirrorLabels, dbLabels),
 				this.deletedLabelIds
 			).sort((a, b) => a.name.localeCompare(b.name));
 			this.mirrorToLS();
@@ -236,7 +282,7 @@ export class NotesStore {
 		if (pending) return pending;
 
 		const source = cloneNote(existing);
-		const load = hydrateNoteAttachments(source)
+		const load = hydrateNoteAttachments(this.pid, source)
 			.then(async (hydrated) => {
 				const missingBytes = (hydrated.images ?? []).some((image) => !image.dataUrl);
 				if (missingBytes) {
@@ -296,7 +342,7 @@ export class NotesStore {
 	/** Only hydrate a few notes per sync so photo-heavy accounts transfer in fractions. */
 	private async hydrateAttachmentsForSync(): Promise<void> {
 		this.pruneAttachmentHydrationFailures();
-		const dirtyKeys = new Set(await getSyncOutboxKeys().catch(() => []));
+		const dirtyKeys = new Set(await getSyncOutboxKeys(this.pid).catch(() => []));
 		const ids = this.notes
 			.filter(
 				(note) =>
@@ -359,7 +405,7 @@ export class NotesStore {
 		const note = this.notes[idx];
 		this.mirrorToLS();
 		try {
-			await putNote(note, noteSyncKeys(note));
+			await putNote(this.pid, note, noteSyncKeys(note));
 			this.lastPersistError = null;
 			this.dirty = true;
 			this.scheduleSyncPush();
@@ -505,11 +551,11 @@ export class NotesStore {
 	async deleteNoteForever(id: string): Promise<void> {
 		const deletedAt = Date.now();
 		const next = { ...this.deletedNoteIds, [id]: deletedAt };
-		await writeTombstones(next);
+		await writeTombstones(this.pid, next);
 		this.deletedNoteIds = next;
 		this.notes = this.notes.filter((n) => n.id !== id);
 		this.mirrorToLS();
-		await deleteNote(id).catch((err) =>
+		await deleteNote(this.pid, id).catch((err) =>
 			this.recordPersistenceError(`Could not delete note ${id}`, err)
 		);
 		await syncStore.queueOutbox([`note-tombstone:${id}`]);
@@ -534,7 +580,7 @@ export class NotesStore {
 		const label: Label = { id: uid(), name: trimmed, createdAt: now, updatedAt: now };
 		this.labels = [...this.labels, label].sort((a, b) => a.name.localeCompare(b.name));
 		this.mirrorToLS();
-		putLabel(label, [`label:${label.id}`]).catch((err) =>
+		putLabel(this.pid, label, [`label:${label.id}`]).catch((err) =>
 			this.recordPersistenceError('Could not save label', err)
 		);
 		this.markLabelsDirty([`label:${label.id}`]);
@@ -555,7 +601,7 @@ export class NotesStore {
 		this.labels[idx] = renamed;
 		this.labels.sort((a, b) => a.name.localeCompare(b.name));
 		this.mirrorToLS();
-		putLabel(renamed, [`label:${renamed.id}`]).catch((err) =>
+		putLabel(this.pid, renamed, [`label:${renamed.id}`]).catch((err) =>
 			this.recordPersistenceError('Could not rename label', err)
 		);
 		this.markLabelsDirty([`label:${renamed.id}`]);
@@ -634,7 +680,9 @@ export class NotesStore {
 		const fullNotes: Note[] = [];
 		for (const note of this.notes) {
 			const needsFull = (note.images ?? []).some((image) => !image.dataUrl);
-			fullNotes.push(needsFull ? await hydrateNoteAttachments(cloneNote(note)) : cloneNote(note));
+			fullNotes.push(
+				needsFull ? await hydrateNoteAttachments(this.pid, cloneNote(note)) : cloneNote(note)
+			);
 		}
 		return {
 			version: 4,
@@ -709,18 +757,18 @@ export class NotesStore {
 						const mapped = labelIds.get(id);
 						return mapped ? [mapped] : [];
 					});
-					await putNote(note, noteSyncKeys(note));
+					await putNote(this.pid, note, noteSyncKeys(note));
 					await this.compactPersistedNoteImages(note);
 					if (this.backupImportProgress) this.backupImportProgress.completed += 1;
 				}
-				await bulkPutLabels(importedLabels);
+				await bulkPutLabels(this.pid, importedLabels);
 				this.notes = [...this.notes, ...importedNotes].sort((a, b) => b.updatedAt - a.updatedAt);
 				this.labels = [...this.labels, ...importedLabels].sort((a, b) =>
 					a.name.localeCompare(b.name)
 				);
 				await syncStore.queueOutbox(importedLabels.map((label) => `label:${label.id}`));
 			} else {
-				await replaceAllDeviceData(importedNotes, backup.labels, async (note) => {
+				await replaceAllDeviceData(this.pid, importedNotes, backup.labels, async (note) => {
 					await this.compactPersistedNoteImages(note);
 					if (this.backupImportProgress) this.backupImportProgress.completed += 1;
 				});
@@ -732,8 +780,8 @@ export class NotesStore {
 					if (!importedIds.has(id)) this.deletedNoteIds[id] = now;
 				}
 				this.deletedLabelIds = { ...backup.labelTombstones };
-				await writeTombstones(this.deletedNoteIds);
-				await writeLabelTombstones(this.deletedLabelIds);
+				await writeTombstones(this.pid, this.deletedNoteIds);
+				await writeLabelTombstones(this.pid, this.deletedLabelIds);
 				kanbanStore.replaceWithCloud(backup.boards, backup.boardTombstones);
 				if (
 					backup.activeBoardId &&
@@ -780,11 +828,57 @@ export class NotesStore {
 
 	// Reload all three layers. Mirror is only a fast-boot cache; IDB always participates so
 	// image blobs are rehydrated even when a mirror exists.
+	/**
+	 * Point the in-memory state at another profile's namespace. Datasets live
+	 * in separate IDB namespaces, so this only drops pending writes belonging
+	 * to the previous profile and reloads from storage.
+	 */
+	async reloadForProfile(): Promise<void> {
+		if (this.syncPushTimer) clearTimeout(this.syncPushTimer);
+		this.syncPushTimer = null;
+		for (const timer of this.noteRetryTimers.values()) clearTimeout(timer);
+		this.noteRetryTimers.clear();
+		this.noteRetryAttempts.clear();
+		this.attachmentLoads.clear();
+		this.attachmentHydrationFailures.clear();
+		this.visibleAttachmentQueue.clear();
+		this.syncFollowupRequested = false;
+		this.dirty = false;
+		this.lastPersistError = null;
+		syncStore.lastError = null;
+		resetTombstoneCaches();
+		this.loaded = false;
+		this.notes = [];
+		this.labels = [];
+		this.deletedNoteIds = {};
+		this.deletedLabelIds = {};
+		await this.init();
+		await this.refreshProfileEffects();
+	}
+
+	async refreshProfileEffects(): Promise<void> {
+		await this.onProfileReload?.(this.pid, this.notes);
+	}
+
+	/** Drain side effects that must remain owned by the outgoing profile. */
+	async waitForPendingProfileWrites(): Promise<void> {
+		if (this.attachmentPass) await this.attachmentPass;
+		while (this.attachmentLoads.size > 0) {
+			await Promise.allSettled([...this.attachmentLoads.values()]);
+		}
+		await syncStore.waitForOutboxWrites();
+		await kanbanStore.waitForPendingWrites();
+		await waitForDeviceWrites(this.pid);
+	}
+
 	async hardResync() {
-		const mirrorNotes = readNotesMirror();
-		const mirrorLabels = readLabelsMirror();
+		const mirrorNotes = readNotesMirror(this.pid);
+		const mirrorLabels = readLabelsMirror(this.pid);
 		try {
-			const [dbNotes, dbLabels] = await Promise.all([getAllNotesMetadata(), getAllLabels()]);
+			const [dbNotes, dbLabels] = await Promise.all([
+				getAllNotesMetadata(this.pid),
+				getAllLabels(this.pid)
+			]);
 			this.notes = mergeNoteLists(mirrorNotes, dbNotes).sort((a, b) => b.updatedAt - a.updatedAt);
 			this.labels = mergeLabelLists(mirrorLabels, dbLabels).sort((a, b) =>
 				a.name.localeCompare(b.name)
@@ -803,14 +897,14 @@ export class NotesStore {
 		const deletedAt = Date.now();
 		const next = { ...this.deletedNoteIds };
 		for (const id of ids) next[id] = deletedAt;
-		await writeTombstones(next);
+		await writeTombstones(this.pid, next);
 		this.deletedNoteIds = next;
 		this.notes = this.notes.filter((n) => !ids.includes(n.id));
 		this.mirrorToLS();
 		this.dirty = true;
 		this.scheduleSyncPush();
 		await syncStore.queueOutbox(ids.map((id) => `note-tombstone:${id}`));
-		await Promise.all(ids.map((id) => deleteNote(id)));
+		await Promise.all(ids.map((id) => deleteNote(this.pid, id)));
 	}
 
 	private markLabelsDeleted(ids: string[], deletedAt = Date.now()): void {
@@ -818,7 +912,9 @@ export class NotesStore {
 		const next = { ...this.deletedLabelIds };
 		for (const id of ids) next[id] = deletedAt;
 		this.deletedLabelIds = next;
-		void Promise.all(ids.map((id) => deleteLabelWithTombstone(id, next, [`label-tombstone:${id}`])))
+		void Promise.all(
+			ids.map((id) => deleteLabelWithTombstone(this.pid, id, next, [`label-tombstone:${id}`]))
+		)
 			.then(() => this.markLabelsDirty())
 			.catch((err) => this.recordPersistenceError('Could not delete label', err));
 	}
@@ -830,13 +926,13 @@ export class NotesStore {
 	}
 
 	private mirrorToLS() {
-		if (!writeNotesMirror(this.notes)) {
+		if (!writeNotesMirror(this.notes, this.pid)) {
 			this.recordPersistenceError(
 				'Could not update the local notes mirror',
 				new Error('localStorage write failed')
 			);
 		}
-		writeLabelsMirror(this.labels);
+		writeLabelsMirror(this.labels, this.pid);
 	}
 
 	private recordPersistenceError(context: string, err: unknown): void {
@@ -846,13 +942,12 @@ export class NotesStore {
 	}
 
 	private syncPushTimer: ReturnType<typeof setTimeout> | null = null;
-	private syncRetryTimer: ReturnType<typeof setTimeout> | null = null;
-	private syncRetryAttempt = 0;
 	private noteRetryTimers = new Map<string, ReturnType<typeof setTimeout>>();
 	private noteRetryAttempts = new Map<string, number>();
 	private dirty = false;
-	private syncFlight: Promise<boolean> | null = null;
+	private syncFlight = $state<Promise<boolean> | null>(null);
 	private syncFollowupRequested = false;
+	private syncBroadcastChannel: BroadcastChannel | null = null;
 
 	private scheduleNoteRetry(id: string): void {
 		if (this.noteRetryTimers.has(id)) return;
@@ -862,7 +957,7 @@ export class NotesStore {
 			this.noteRetryTimers.delete(id);
 			const note = this.notes.find((item) => item.id === id);
 			if (!note) return;
-			putNote(note, noteSyncKeys(note))
+			putNote(this.pid, note, noteSyncKeys(note))
 				.then(() => {
 					this.noteRetryAttempts.delete(id);
 					this.lastPersistError = null;
@@ -882,14 +977,15 @@ export class NotesStore {
 	private async recoverMirrorIntoIndexedDB(dbNotes: Note[], dbLabels: Label[]): Promise<void> {
 		const dbById = new Map(dbNotes.map((item) => [item.id, item]));
 		for (const item of this.notes) {
-			if (noteNeedsDurableWrite(dbById.get(item.id), item)) await putNote(item, noteSyncKeys(item));
+			if (noteNeedsDurableWrite(dbById.get(item.id), item))
+				await putNote(this.pid, item, noteSyncKeys(item));
 		}
 		const dbLabelById = new Map(dbLabels.map((item) => [item.id, item]));
 		const labelKeys: string[] = [];
 		for (const label of this.labels) {
 			const current = dbLabelById.get(label.id);
 			if (current && current.name === label.name && current.updatedAt === label.updatedAt) continue;
-			await putLabel(label);
+			await putLabel(this.pid, label);
 			labelKeys.push(`label:${label.id}`);
 		}
 		if (labelKeys.length) await syncStore.queueOutbox(labelKeys);
@@ -900,7 +996,7 @@ export class NotesStore {
 		if (!note) return;
 		// Preserve a crash-safe, blob-free copy synchronously before async IDB work.
 		this.mirrorToLS();
-		putNote(note, noteSyncKeys(note))
+		putNote(this.pid, note, noteSyncKeys(note))
 			.then(async () => {
 				this.lastPersistError = null;
 				// Keep only small thumbs in memory after a durable write of full blobs.
@@ -924,61 +1020,57 @@ export class NotesStore {
 	private scheduleSyncPush(delay = 5000) {
 		if (this.syncFlight) this.syncFollowupRequested = true;
 		if (this.syncPushTimer) clearTimeout(this.syncPushTimer);
-		if (this.syncRetryTimer) {
-			clearTimeout(this.syncRetryTimer);
-			this.syncRetryTimer = null;
-		}
 		this.syncPushTimer = setTimeout(() => {
 			this.syncPushTimer = null;
 			if (!this.dirty) return;
-			void this.flushSync();
+			void this.flushSync(true);
 		}, delay);
 	}
 
-	private scheduleSyncRetry(): void {
-		if (this.syncRetryTimer || !syncStore.isLoggedIn) return;
-		const delay = Math.min(5 * 60_000, 5_000 * 2 ** this.syncRetryAttempt);
-		this.syncRetryAttempt = Math.min(this.syncRetryAttempt + 1, 6);
-		this.syncRetryTimer = setTimeout(() => {
-			this.syncRetryTimer = null;
-			if (this.dirty && syncStore.isLoggedIn) void this.flushSync();
-		}, delay);
-	}
-
-	private clearSyncRetry(): void {
-		if (this.syncRetryTimer) clearTimeout(this.syncRetryTimer);
-		this.syncRetryTimer = null;
-		this.syncRetryAttempt = 0;
-	}
-
-	flushSync(indicate = false): Promise<boolean> {
+	flushSync(indicate = true): Promise<boolean> {
 		if (this.syncPushTimer) {
 			clearTimeout(this.syncPushTimer);
 			this.syncPushTimer = null;
 		}
-		if (this.syncRetryTimer) {
-			clearTimeout(this.syncRetryTimer);
-			this.syncRetryTimer = null;
-		}
 		return this.queueSync(indicate).then(async (synced) => {
-			const leftover = synced ? await getSyncOutboxKeys().catch(() => []) : [];
-			if (synced && leftover.length === 0) {
-				this.dirty = false;
-				this.clearSyncRetry();
-			} else {
-				this.dirty = true;
-				if (/quota/i.test(syncStore.lastError ?? '')) this.clearSyncRetry();
-				else this.scheduleSyncRetry();
-			}
+			const leftover = synced ? await getSyncOutboxKeys(this.pid).catch(() => []) : [];
+			this.dirty = !synced || leftover.length > 0;
 			return synced;
 		});
+	}
+
+	/**
+	 * Drop the anonymous workspace when it has become a redundant copy of the
+	 * profile that adopted it. Redundancy is judged from the rows themselves
+	 * rather than from a record of having copied them, so a device duplicated by
+	 * an earlier build is healed too, and a workspace the user has actually
+	 * written to is never a candidate.
+	 *
+	 * Every condition here must hold: a partial sync, a record still queued, or
+	 * an attachment that could not be read means the cloud is not yet a complete
+	 * copy, so the rows stay and a later sync tries again.
+	 */
+	private async dropRedundantLocalCopy(): Promise<void> {
+		const pid = this.pid;
+		if (pid === LOCAL_PROFILE_ID) return;
+		if (syncStore.lastError || this.lastPersistError) return;
+		if (this.attachmentHydrationFailures.size > 0) return;
+		try {
+			const pending = await getSyncOutboxKeys(pid).catch(() => null);
+			if (pending === null || pending.length > 0) return;
+			if (!(await isNamespaceRedundant(LOCAL_PROFILE_ID, pid))) return;
+			await clearProfileNamespace(LOCAL_PROFILE_ID);
+			clearNotesMirror(LOCAL_PROFILE_ID);
+		} catch (err) {
+			console.error('[sync] could not drop the redundant anonymous workspace:', err);
+		}
 	}
 
 	/** Flush durable local changes when leaving a note, without a no-op cloud request. */
 	async syncPendingChanges(): Promise<boolean> {
 		if (!syncStore.isLoggedIn) return false;
 		await syncStore.waitForOutboxWrites();
-		const pending = await getSyncOutboxKeys().catch(() => []);
+		const pending = await getSyncOutboxKeys(this.pid).catch(() => []);
 		if (pending.length === 0) return false;
 		return this.flushSync(true);
 	}
@@ -1023,13 +1115,13 @@ export class NotesStore {
 			.map((label) => label.id);
 
 		kanbanStore.applySync(snapshot.boards, snapshot.boardTombstones);
-		await writeTombstones(tombstones);
-		await writeLabelTombstones(labelTombstones);
-		for (const note of notesToPersist) await putNote(note);
-		for (const id of tombstonedNoteIds) await deleteNote(id);
-		for (const id of tombstonedLabelIds) await deleteLabel(id);
-		if (labelsChanged) await bulkPutLabels(mergedLabels);
-		await kanbanStore.persistSyncState();
+		await writeTombstones(this.pid, tombstones);
+		await writeLabelTombstones(this.pid, labelTombstones);
+		for (const note of notesToPersist) await putNote(this.pid, note);
+		for (const id of tombstonedNoteIds) await deleteNote(this.pid, id);
+		for (const id of tombstonedLabelIds) await deleteLabel(this.pid, id);
+		if (labelsChanged) await bulkPutLabels(this.pid, mergedLabels);
+		await kanbanStore.persistSyncState(this.pid);
 
 		// Preserve edits made while the device writes were in flight.
 		durableNotes = withoutTombstoned(mergeNoteLists(this.notes, durableNotes), tombstones).sort(
@@ -1074,15 +1166,17 @@ export class NotesStore {
 				);
 			}
 		}
-		await replaceAllDeviceData(notes, labels, (note) => this.compactPersistedNoteImages(note));
+		await replaceAllDeviceData(this.pid, notes, labels, (note) =>
+			this.compactPersistedNoteImages(note)
+		);
 		this.notes = notes;
 		this.labels = labels;
 		this.deletedNoteIds = { ...snapshot.tombstones };
 		this.deletedLabelIds = { ...snapshot.labelTombstones };
 		kanbanStore.replaceWithCloud(snapshot.boards, snapshot.boardTombstones);
-		await writeTombstones(this.deletedNoteIds);
-		await writeLabelTombstones(this.deletedLabelIds);
-		await kanbanStore.persistSyncState();
+		await writeTombstones(this.pid, this.deletedNoteIds);
+		await writeLabelTombstones(this.pid, this.deletedLabelIds);
+		await kanbanStore.persistSyncState(this.pid);
 		this.mirrorToLS();
 		return {
 			notes,
@@ -1110,8 +1204,8 @@ export class NotesStore {
 		const original = this.notes.map(cloneNote);
 		try {
 			await this.hydrateAllAttachments();
-			const leftover = await getSyncOutboxKeys().catch(() => []);
-			if (leftover.length) await clearSyncOutbox(leftover);
+			const leftover = await getSyncOutboxKeys(this.pid).catch(() => []);
+			if (leftover.length) await clearSyncOutbox(this.pid, leftover);
 			await syncStore.clearAccountControlPlane(account.accountId);
 			const pulledSnapshots: SyncSnapshot[] = [];
 			const pulled = await syncStore.sync([], [], {}, {}, [], {}, true, true, async (snapshot) => {
@@ -1153,7 +1247,7 @@ export class NotesStore {
 					(image, imageIndex) => image.id !== (before.images ?? [])[imageIndex]?.id
 				);
 				if (before.id !== after.id || imagesChanged) {
-					await putNote(after, noteSyncKeys(after));
+					await putNote(this.pid, after, noteSyncKeys(after));
 				}
 			}
 			this.notes = remapped;
@@ -1165,7 +1259,7 @@ export class NotesStore {
 			}
 			const kept = new Set(this.notes.map((note) => note.id));
 			for (const note of original) {
-				if (!kept.has(note.id)) await deleteNote(note.id);
+				if (!kept.has(note.id)) await deleteNote(this.pid, note.id);
 			}
 			await syncStore.clearAccountControlPlane(account.accountId);
 			return true;
@@ -1185,8 +1279,8 @@ export class NotesStore {
 	private async replaceWithCloudLocked(): Promise<boolean> {
 		if (!syncStore.isLoggedIn || !syncStore.account) return false;
 		try {
-			const leftover = await getSyncOutboxKeys().catch(() => []);
-			if (leftover.length) await clearSyncOutbox(leftover);
+			const leftover = await getSyncOutboxKeys(this.pid).catch(() => []);
+			if (leftover.length) await clearSyncOutbox(this.pid, leftover);
 			await syncStore.clearAccountControlPlane(syncStore.account.accountId);
 			const result = await syncStore.sync([], [], {}, {}, [], {}, true, true, (snapshot) =>
 				this.applyCloudReplacement(snapshot)
@@ -1206,28 +1300,109 @@ export class NotesStore {
 	}
 
 	// Manual sync — caller shows UI feedback (spinning cloud icon).
+	async forcePushWorkspace(): Promise<boolean> {
+		return this.withSyncLock(async () => {
+			const account = syncStore.account;
+			if (!account) return false;
+			try {
+				await this.waitForPendingProfileWrites();
+				await this.hydrateAllAttachments();
+				if (this.attachmentHydrationFailures.size)
+					throw new Error('Some attachments could not be loaded. Force resync was not started.');
+				await syncStore.reauthenticateForRecovery();
+				await syncStore.clearAccountControlPlane(account.accountId);
+				let remote: SyncSnapshot | undefined;
+				const pulled = await syncStore.sync(
+					[],
+					[],
+					{},
+					{},
+					[],
+					{},
+					true,
+					true,
+					async (snapshot) => {
+						remote = snapshot;
+						return snapshot;
+					}
+				);
+				if (!pulled.success || !remote)
+					throw new Error(pulled.error ?? 'Could not read cloud state before force resync');
+				const snapshot = buildForcePushSnapshot(
+					{
+						notes: this.notes.map(cloneNote),
+						labels: [...this.labels],
+						boards: kanbanStore.boardsForSync(),
+						tombstones: this.deletedNoteIds,
+						labelTombstones: this.deletedLabelIds,
+						boardTombstones: kanbanStore.boardTombstonesForSync()
+					},
+					remote
+				);
+				await bulkPutNotes(this.pid, snapshot.notes);
+				await bulkPutLabels(this.pid, snapshot.labels);
+				this.notes = snapshot.notes;
+				this.labels = snapshot.labels;
+				this.deletedNoteIds = snapshot.tombstones;
+				this.deletedLabelIds = snapshot.labelTombstones;
+				kanbanStore.replaceWithCloud(snapshot.boards, snapshot.boardTombstones);
+				await writeTombstones(this.pid, snapshot.tombstones);
+				await writeLabelTombstones(this.pid, snapshot.labelTombstones);
+				await kanbanStore.persistSyncState(this.pid);
+				this.mirrorToLS();
+				await syncStore.clearAccountControlPlane(account.accountId);
+				const synced = await this.doSyncLocked(true);
+				return synced && !syncStore.lastError && !this.lastPersistError;
+			} catch (err) {
+				this.recordPersistenceError('Could not force resync', err);
+				return false;
+			}
+		});
+	}
+
 	async syncWithCloudManual(): Promise<boolean> {
 		return this.flushSync(true);
 	}
 
-	// Auto sync — silent, no UI feedback. Opportunistic pulls (boot, editor
-	// open) are throttled; pending local edits always sync via flushSync.
-	async syncWithCloud(): Promise<boolean> {
+	/**
+	 * Explicit heuristic sync trigger (live nudge from another device,
+	 * network reconnection, tab foregrounding, or local change).
+	 * Bypasses opportunistic time-throttling and coalesces multiple triggers into one sync run.
+	 */
+	triggerSync(serverSeq?: number): Promise<boolean> {
+		if (!syncStore.isLoggedIn) return Promise.resolve(false);
+		if (typeof serverSeq === 'number' && serverSeq > 0 && serverSeq <= syncStore.syncedCursor) {
+			return Promise.resolve(true);
+		}
+		const syncedPromise = this.queueSync(true);
+		syncedPromise.then((synced) => {
+			if (synced) this.lastAutoSyncAt = Date.now();
+		});
+		return syncedPromise;
+	}
+
+	/**
+	 * Sync with the cloud relay, indicating flight progress via the cloud icon.
+	 * Opportunistic pulls (boot, editor open) are throttled; pending local edits
+	 * always sync via flushSync.
+	 */
+	async syncWithCloud(indicate = true): Promise<boolean> {
 		// Startup and foreground events can arrive together, especially on iOS.
 		// They all ask for the same opportunistic pull, so join the active flight.
 		// Durable edits request their own follow-up in scheduleSyncPush().
 		if (this.syncFlight) return this.syncFlight;
 		if (Date.now() - this.lastAutoSyncAt < AUTO_SYNC_MIN_INTERVAL_MS) return true;
-		const synced = await this.queueSync(false);
+		const synced = await this.queueSync(indicate);
 		if (synced) this.lastAutoSyncAt = Date.now();
 		return synced;
 	}
 
 	/** One sync at a time; edits during a flight collapse into exactly one follow-up pass. */
-	private queueSync(indicate: boolean): Promise<boolean> {
+	private queueSync(indicate = true): Promise<boolean> {
+		if (!syncStore.isLoggedIn) return Promise.resolve(false);
 		if (this.syncFlight) {
 			this.syncFollowupRequested = true;
-			// A silent flight already in progress still owes the cloud icon a pulse.
+			// A flight already in progress still owes the cloud icon a pulse.
 			if (indicate) {
 				syncStore.onSyncStart?.();
 				return this.syncFlight.finally(() => {
@@ -1237,14 +1412,30 @@ export class NotesStore {
 			return this.syncFlight;
 		}
 		this.syncFlight = (async () => {
-			let success = false;
-			let showProgress = indicate;
-			do {
-				this.syncFollowupRequested = false;
-				success = await this.doSync(showProgress);
-				showProgress = false;
-			} while (this.syncFollowupRequested);
-			return success;
+			if (indicate) syncStore.onSyncStart?.();
+			try {
+				let success = false;
+				let showProgress = indicate;
+				do {
+					this.syncFollowupRequested = false;
+					success = await this.doSync(showProgress);
+					showProgress = false;
+				} while (this.syncFollowupRequested);
+				if (success) {
+					try {
+						this.syncBroadcastChannel?.postMessage({ type: 'local-sync-complete', pid: this.pid });
+					} catch {
+						/* ignore BroadcastChannel error */
+					}
+					// Every sync path ends here, including the one a boot takes. Hanging
+					// this off flushSync instead would skip startup, foregrounding and
+					// live nudges, which are exactly when an upgraded device first syncs.
+					await this.dropRedundantLocalCopy();
+				}
+				return success;
+			} finally {
+				if (indicate) syncStore.onSyncEnd?.();
+			}
 		})().finally(() => {
 			this.syncFlight = null;
 		});
@@ -1254,15 +1445,15 @@ export class NotesStore {
 	private async withSyncLock<T>(run: () => Promise<T>): Promise<T> {
 		const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined;
 		if (!locks?.request) return run();
-		return locks.request('scrapscache-sync', run);
+		return locks.request(SYNC_LOCK, run);
 	}
 
 	// Core sync. Local IDB remains authoritative; photo bytes move in small fractions.
-	private async doSync(indicate = false): Promise<boolean> {
+	private async doSync(indicate = true): Promise<boolean> {
 		return this.withSyncLock(() => this.doSyncLocked(indicate));
 	}
 
-	private async doSyncLocked(indicate = false): Promise<boolean> {
+	private async doSyncLocked(indicate = true): Promise<boolean> {
 		if (!syncStore.isLoggedIn) return false;
 		// A newly reset relay needs one current-state bootstrap from this source device.
 		// Bytes are returned to thumb-only memory immediately after reconciliation below.
@@ -1298,6 +1489,12 @@ export class NotesStore {
 			if (this.attachmentHydrationFailures.size > 0) {
 				syncStore.lastError =
 					'Synced, but some photos could not be prepared for upload. They will retry on the next sync.';
+			} else if (
+				syncStore.lastError ===
+				'Synced, but some photos could not be prepared for upload. They will retry on the next sync.'
+			) {
+				syncStore.lastError = null;
+				this.lastPersistError = null;
 			} else if (!syncStore.lastError) {
 				this.lastPersistError = null;
 			}

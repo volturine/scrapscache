@@ -1,7 +1,10 @@
 <script lang="ts">
+	import { Dialog } from '@ark-ui/svelte/dialog';
+	import { Format } from '@ark-ui/svelte/format';
 	import AttachmentFullscreen from '$lib/components/AttachmentFullscreen.svelte';
 	import CanvasEditor from '$lib/components/CanvasEditor.svelte';
 	import PhotoFullscreen from '$lib/components/PhotoFullscreen.svelte';
+	import Tooltip from './Tooltip.svelte';
 	import type { NoteImage } from '$lib/types';
 	import {
 		fileToNoteImage,
@@ -203,6 +206,21 @@
 		}
 	}
 
+	async function saveCroppedPhoto(cropped: NoteImage) {
+		attachError = '';
+		const next = images.map((image) => (image.id === cropped.id ? cropped : image));
+		images = next;
+		onImagesChange?.(next);
+		if (noteId) {
+			try {
+				await notesStore.flushNote(noteId, { images: next });
+			} catch (err) {
+				console.error('[footer] crop flush:', err);
+				attachError = `Could not save crop: ${formatStorageError(err)}`;
+			}
+		}
+	}
+
 	function removeAttachment(id: string) {
 		const next = images.filter((i) => i.id !== id);
 		images = next;
@@ -223,9 +241,16 @@
 		onOpenTags?.();
 	}
 
-	function openPhoto(id: string) {
-		const idx = photoIndexById.get(id);
-		if (idx != null) focusedImageIndex = idx;
+	async function openPhoto(id: string) {
+		if (noteId) {
+			await notesStore.ensureNoteAttachments(noteId);
+			const hydratedNote = notesStore.notes.find((note) => note.id === noteId);
+			if (hydratedNote?.images) {
+				images = mergeHydratedImages(images, hydratedNote.images);
+			}
+		}
+		const idx = photoIndexById.get(id) ?? photos.findIndex((photo) => photo.id === id);
+		if (idx >= 0) focusedImageIndex = idx;
 	}
 
 	async function openFile(file: NoteImage) {
@@ -349,45 +374,6 @@
 	</div>
 {/if}
 
-{#if photos.length > 0 || pendingPhotos.length > 0}
-	<div class="scrollable grid max-h-44 grid-cols-3 gap-2 overflow-y-auto px-3 pb-2 sm:grid-cols-4">
-		{#each photos as img (img.id)}
-			<div class="relative">
-				<button
-					type="button"
-					class="block aspect-square w-full overflow-hidden rounded-lg touch-manipulation"
-					onclick={() => openPhoto(img.id)}
-					aria-label={`Open ${img.name ?? 'photo'}`}
-				>
-					<img
-						src={displayImageSrc(img)}
-						alt={img.name ?? 'Photo'}
-						class="h-full w-full object-cover"
-						loading="lazy"
-						decoding="async"
-						draggable="false"
-					/>
-				</button>
-				<button
-					type="button"
-					class="absolute right-1 top-1 rounded-full bg-black/60 px-1.5 py-0.5 text-xs text-white touch-manipulation"
-					onclick={() => removeAttachment(img.id)}
-					aria-label="Remove photo"
-				>
-					<X class="h-3 w-3" aria-hidden="true" />
-				</button>
-			</div>
-		{/each}
-		{#each pendingPhotos as img (img.id)}
-			<div
-				class="aspect-square animate-pulse rounded-lg bg-black/10 dark:bg-white/10"
-				role="img"
-				aria-label={`Loading ${img.name ?? 'photo'}`}
-			></div>
-		{/each}
-	</div>
-{/if}
-
 {#if files.length > 0}
 	<ul class="scrollable max-h-36 space-y-1.5 overflow-y-auto px-3 pb-2">
 		{#each files as file (file.id)}
@@ -408,7 +394,7 @@
 						{file.name || 'Attachment'}
 					</div>
 					<div class="text-[10px] text-[var(--scrapscache-text-muted)]">
-						{formatBytes(dataUrlByteLength(file.dataUrl))}
+						<Format.Byte value={dataUrlByteLength(file.dataUrl)} unitSystem="binary" />
 					</div>
 				</button>
 				<button
@@ -424,7 +410,51 @@
 	</ul>
 {/if}
 
-<PhotoFullscreen images={photos} bind:activeIndex={focusedImageIndex} />
+{#if photos.length > 0 || pendingPhotos.length > 0}
+	<div class="scrollable flex gap-2 overflow-x-auto px-3 pb-2" aria-label="Photos">
+		{#each photos as img (img.id)}
+			<div class="relative shrink-0">
+				<button
+					type="button"
+					class="block h-32 overflow-hidden rounded-lg touch-manipulation"
+					onclick={() => void openPhoto(img.id)}
+					aria-label={`Open ${img.name ?? 'photo'}`}
+				>
+					<img
+						src={displayImageSrc(img)}
+						alt={img.name ?? 'Photo'}
+						class="h-32 w-auto max-w-[15rem] object-cover"
+						loading="lazy"
+						decoding="async"
+						draggable="false"
+					/>
+				</button>
+				<button
+					type="button"
+					class="absolute right-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-full bg-black/60 text-white touch-manipulation"
+					onclick={() => removeAttachment(img.id)}
+					aria-label="Remove photo"
+				>
+					<X class="h-3.5 w-3.5" aria-hidden="true" />
+				</button>
+			</div>
+		{/each}
+		{#each pendingPhotos as img (img.id)}
+			<div
+				class="h-32 w-32 shrink-0 animate-pulse rounded-lg bg-black/10 dark:bg-white/10"
+				role="img"
+				aria-label={`Loading ${img.name ?? 'photo'}`}
+			></div>
+		{/each}
+	</div>
+{/if}
+
+<PhotoFullscreen
+	images={photos}
+	bind:activeIndex={focusedImageIndex}
+	onCrop={saveCroppedPhoto}
+	onDelete={removeAttachment}
+/>
 {#if canvasEditorOpen}
 	<CanvasEditor
 		attachment={focusedCanvas}
@@ -445,61 +475,60 @@
 {/if}
 
 {#if filesAwaitingQuality}
-	<div
-		class="fixed inset-0 z-50 grid place-items-center bg-black/45 p-4"
-		role="presentation"
-		onclick={(event) => {
-			if (event.target === event.currentTarget) filesAwaitingQuality = null;
+	<Dialog.Root
+		open
+		onOpenChange={(details) => {
+			if (!details.open) filesAwaitingQuality = null;
 		}}
+		preventScroll={false}
 	>
-		<div
-			class="scrapscache-dialog w-full max-w-sm p-4 text-[var(--scrapscache-text)]"
-			role="dialog"
-			aria-modal="true"
-			aria-labelledby="photo-quality-title"
-		>
-			<div class="mb-3 flex items-start justify-between gap-3">
-				<div>
-					<h2 id="photo-quality-title" class="text-base font-semibold">Photo quality</h2>
-					<p class="mt-0.5 text-xs text-[var(--scrapscache-text-muted)]">
-						Choose once for {filesAwaitingQuality.length === 1
-							? 'this attachment'
-							: `these ${filesAwaitingQuality.length} attachments`}.
-					</p>
+		<Dialog.Backdrop class="fixed inset-0 z-50 bg-black/45" />
+		<Dialog.Positioner class="fixed inset-0 z-50 grid place-items-center p-4">
+			<Dialog.Content class="scrapscache-dialog w-full max-w-sm p-4 text-[var(--scrapscache-text)]">
+				<div class="mb-3 flex items-start justify-between gap-3">
+					<div>
+						<Dialog.Title id="photo-quality-title" class="text-base font-semibold"
+							>Photo quality</Dialog.Title
+						>
+						<p class="mt-0.5 text-xs text-[var(--scrapscache-text-muted)]">
+							Choose once for {filesAwaitingQuality.length === 1
+								? 'this attachment'
+								: `these ${filesAwaitingQuality.length} attachments`}.
+						</p>
+					</div>
+					<Dialog.CloseTrigger
+						type="button"
+						class="icon-btn h-9 w-9 shrink-0 p-2 touch-manipulation"
+						aria-label="Cancel attachments"
+					>
+						<X class="h-4 w-4" aria-hidden="true" />
+					</Dialog.CloseTrigger>
 				</div>
-				<button
-					type="button"
-					class="icon-btn h-9 w-9 shrink-0 p-2 touch-manipulation"
-					onclick={() => (filesAwaitingQuality = null)}
-					aria-label="Cancel attachments"
-				>
-					<X class="h-4 w-4" aria-hidden="true" />
-				</button>
-			</div>
-			<div class="grid grid-cols-2 gap-2">
-				<button
-					type="button"
-					class="scrapscache-button scrapscache-button-primary min-h-20 px-3 py-3 text-left"
-					onclick={() => chooseImageQuality('compressed')}
-				>
-					<span class="block text-sm font-semibold">Compressed</span>
-					<span class="mt-1 block text-[11px] leading-4 opacity-85">
-						Small file · A4 text stays readable
-					</span>
-				</button>
-				<button
-					type="button"
-					class="scrapscache-button scrapscache-button-secondary min-h-20 px-3 py-3 text-left"
-					onclick={() => chooseImageQuality('hd')}
-				>
-					<span class="block text-sm font-semibold">HD</span>
-					<span class="mt-1 block text-[11px] leading-4 text-[var(--scrapscache-text-muted)]">
-						Sharper image · larger file
-					</span>
-				</button>
-			</div>
-		</div>
-	</div>
+				<div class="grid grid-cols-2 gap-2">
+					<button
+						type="button"
+						class="scrapscache-button scrapscache-button-primary min-h-20 px-3 py-3 text-left"
+						onclick={() => chooseImageQuality('compressed')}
+					>
+						<span class="block text-sm font-semibold">Compressed</span>
+						<span class="mt-1 block text-[11px] leading-4 opacity-85">
+							Small file · A4 text stays readable
+						</span>
+					</button>
+					<button
+						type="button"
+						class="scrapscache-button scrapscache-button-secondary min-h-20 px-3 py-3 text-left"
+						onclick={() => chooseImageQuality('hd')}
+					>
+						<span class="block text-sm font-semibold">HD</span>
+						<span class="mt-1 block text-[11px] leading-4 text-[var(--scrapscache-text-muted)]">
+							Sharper image · larger file
+						</span>
+					</button>
+				</div>
+			</Dialog.Content>
+		</Dialog.Positioner>
+	</Dialog.Root>
 {/if}
 
 <footer
@@ -507,98 +536,114 @@
 	class="flex shrink-0 items-center justify-between gap-2 border-t border-black/5 px-3 py-2 dark:border-white/10"
 >
 	<div class="flex shrink-0 items-center gap-1">
-		<button
-			type="button"
-			class="icon-btn h-10 w-10 p-2 touch-manipulation"
-			title="Attach"
-			onclick={openAttach}
-			aria-label="Attach"
-		>
-			<Paperclip class="h-5 w-5" aria-hidden="true" />
-		</button>
-		<button
-			type="button"
-			class="icon-btn h-10 w-10 p-2 touch-manipulation"
-			title="New canvas"
-			onclick={() => void openCanvas()}
-			aria-label="New canvas"
-		>
-			<PenLine class="h-5 w-5" aria-hidden="true" />
-		</button>
-		<button
-			type="button"
-			class="icon-btn h-10 w-10 p-2 touch-manipulation"
-			title="Labels"
-			onclick={openTags}
-			aria-label="Labels"
-		>
-			<Tag class="h-5 w-5" fill={hasLabels ? 'currentColor' : 'none'} aria-hidden="true" />
-		</button>
+		<Tooltip content="Attach">
+			<button
+				type="button"
+				class="icon-btn h-10 w-10 p-2 touch-manipulation"
+				title="Attach"
+				onclick={openAttach}
+				aria-label="Attach"
+			>
+				<Paperclip class="h-5 w-5" aria-hidden="true" />
+			</button>
+		</Tooltip>
+		<Tooltip content="New canvas">
+			<button
+				type="button"
+				class="icon-btn h-10 w-10 p-2 touch-manipulation"
+				title="New canvas"
+				onclick={() => void openCanvas()}
+				aria-label="New canvas"
+			>
+				<PenLine class="h-5 w-5" aria-hidden="true" />
+			</button>
+		</Tooltip>
+		<Tooltip content="Labels">
+			<button
+				type="button"
+				class="icon-btn h-10 w-10 p-2 touch-manipulation"
+				title="Labels"
+				onclick={openTags}
+				aria-label="Labels"
+			>
+				<Tag class="h-5 w-5" fill={hasLabels ? 'currentColor' : 'none'} aria-hidden="true" />
+			</button>
+		</Tooltip>
 	</div>
 
 	<div class="flex max-w-[calc(100%-5.5rem)] flex-wrap items-center justify-end gap-1">
-		<button
-			type="button"
-			class="icon-btn h-10 w-10 p-2 touch-manipulation"
-			title="Color"
-			aria-label="Color"
-			onclick={() => onOpenColor?.()}
-		>
-			<Palette class="h-5 w-5" aria-hidden="true" />
-		</button>
-		{#if showCopy}
+		<Tooltip content="Color">
 			<button
 				type="button"
 				class="icon-btn h-10 w-10 p-2 touch-manipulation"
-				title="Copy note"
-				aria-label="Copy note"
-				onclick={() => onCopy?.()}
+				title="Color"
+				aria-label="Color"
+				onclick={() => onOpenColor?.()}
 			>
-				{#if copyFlash}
-					<Check class="h-5 w-5" aria-hidden="true" />
-				{:else}
-					<Copy class="h-5 w-5" aria-hidden="true" />
-				{/if}
+				<Palette class="h-5 w-5" aria-hidden="true" />
 			</button>
+		</Tooltip>
+		{#if showCopy}
+			<Tooltip content="Copy note">
+				<button
+					type="button"
+					class="icon-btn h-10 w-10 p-2 touch-manipulation"
+					title="Copy note"
+					aria-label="Copy note"
+					onclick={() => onCopy?.()}
+				>
+					{#if copyFlash}
+						<Check class="h-5 w-5" aria-hidden="true" />
+					{:else}
+						<Copy class="h-5 w-5" aria-hidden="true" />
+					{/if}
+				</button>
+			</Tooltip>
 		{/if}
 		{#if showArchive}
-			<button
-				type="button"
-				class="icon-btn h-10 w-10 p-2 touch-manipulation"
-				title={trashed ? 'Restore' : archived ? 'Unarchive' : 'Archive'}
-				aria-label={trashed ? 'Restore' : archived ? 'Unarchive' : 'Archive'}
-				onclick={() => onArchive?.()}
-			>
-				{#if trashed}
-					<RotateCcw class="h-5 w-5" aria-hidden="true" />
-				{:else if archived}
-					<ArchiveRestore class="h-5 w-5" aria-hidden="true" />
-				{:else}
-					<Archive class="h-5 w-5" aria-hidden="true" />
-				{/if}
-			</button>
+			<Tooltip content={trashed ? 'Restore' : archived ? 'Unarchive' : 'Archive'}>
+				<button
+					type="button"
+					class="icon-btn h-10 w-10 p-2 touch-manipulation"
+					title={trashed ? 'Restore' : archived ? 'Unarchive' : 'Archive'}
+					aria-label={trashed ? 'Restore' : archived ? 'Unarchive' : 'Archive'}
+					onclick={() => onArchive?.()}
+				>
+					{#if trashed}
+						<RotateCcw class="h-5 w-5" aria-hidden="true" />
+					{:else if archived}
+						<ArchiveRestore class="h-5 w-5" aria-hidden="true" />
+					{:else}
+						<Archive class="h-5 w-5" aria-hidden="true" />
+					{/if}
+				</button>
+			</Tooltip>
 		{/if}
 		{#if showDelete}
-			<button
-				type="button"
-				class="icon-btn h-10 w-10 p-2 text-red-600 touch-manipulation dark:text-red-400"
-				title="Delete note"
-				aria-label="Delete note"
-				onclick={() => onDelete?.()}
-			>
-				<Trash2 class="h-5 w-5" aria-hidden="true" />
-			</button>
+			<Tooltip content="Delete note">
+				<button
+					type="button"
+					class="icon-btn h-10 w-10 p-2 text-red-600 touch-manipulation dark:text-red-400"
+					title="Delete note"
+					aria-label="Delete note"
+					onclick={() => onDelete?.()}
+				>
+					<Trash2 class="h-5 w-5" aria-hidden="true" />
+				</button>
+			</Tooltip>
 		{/if}
 		{#if onClose}
-			<button
-				type="button"
-				class="icon-btn h-10 w-10 p-2 touch-manipulation"
-				title="Done"
-				aria-label="Done"
-				onclick={() => onClose?.()}
-			>
-				<Check class="h-5 w-5" aria-hidden="true" />
-			</button>
+			<Tooltip content="Done">
+				<button
+					type="button"
+					class="icon-btn h-10 w-10 p-2 touch-manipulation"
+					title="Done"
+					aria-label="Done"
+					onclick={() => onClose?.()}
+				>
+					<Check class="h-5 w-5" aria-hidden="true" />
+				</button>
+			</Tooltip>
 		{/if}
 	</div>
 </footer>

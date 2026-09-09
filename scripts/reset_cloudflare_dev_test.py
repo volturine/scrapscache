@@ -64,6 +64,7 @@ class ParseAndMissingTests(unittest.TestCase):
         self.assertTrue(
             is_missing_worker("This Worker does not exist on this account. [code: 10090]")
         )
+        self.assertTrue(is_missing_worker("Worker does not exist"))
         self.assertFalse(is_missing_worker("Unauthorized"))
 
     def test_transient_d1_failure(self):
@@ -122,6 +123,16 @@ class DeleteWorkerTests(unittest.TestCase):
             returncode=1, stdout="", stderr="Cannot find script 'scrapscache-dev'\n"
         )
         delete_worker(["--env", "dev", "--force"])
+
+    @patch("scripts.reset_cloudflare_dev.echo")
+    @patch("scripts.reset_cloudflare_dev.wrangler")
+    def test_ignores_worker_not_existing(self, wrangler, _echo):
+        wrangler.return_value = SimpleNamespace(
+            returncode=1,
+            stdout="",
+            stderr="This Worker does not exist on this account. [code: 10090]\n",
+        )
+        delete_worker(["--config", "cf/wrangler.cron.jsonc", "--env", "dev", "--force"])
 
     @patch("scripts.reset_cloudflare_dev.echo")
     @patch("scripts.reset_cloudflare_dev.wrangler")

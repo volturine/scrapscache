@@ -142,4 +142,19 @@ describe('ReminderStore', () => {
 		await vi.advanceTimersByTimeAsync(5_000);
 		await vi.waitFor(() => expect(store.alerts[0]?.noteId).toBe('n1'));
 	});
+
+	it('hydrates and claims fired reminders independently for each profile', async () => {
+		const store = new ReminderStore();
+		await store.whenReady();
+		const internals = store as unknown as { claimFired(key: string): Promise<boolean> };
+
+		await store.activateProfile('reminders-a', []);
+		await expect(internals.claimFired('shared-wake')).resolves.toBe(true);
+		expect(await getFiredReminderKeys('reminders-a')).toEqual(['shared-wake']);
+		expect(await getFiredReminderKeys('reminders-b')).toEqual([]);
+
+		await store.activateProfile('reminders-b', []);
+		await expect(internals.claimFired('shared-wake')).resolves.toBe(true);
+		expect(await getFiredReminderKeys('reminders-b')).toEqual(['shared-wake']);
+	});
 });

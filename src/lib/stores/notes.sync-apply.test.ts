@@ -19,7 +19,8 @@ import {
 	getSyncState,
 	hydrateNoteAttachments,
 	putNote,
-	setSyncState
+	setSyncState,
+	LOCAL_PROFILE_ID
 } from '$lib/db/idb';
 import * as idb from '$lib/db/idb';
 import { openDB } from 'idb';
@@ -61,6 +62,80 @@ function remoteNote(id = 'note-1'): Note {
 }
 
 describe('notes store sync apply', () => {
+	it('force push persists local winners before upload and never adopts remote-only notes', async () => {
+		syncStore.account = createSyncIdentity();
+		const local = { ...remoteNote('shared'), title: 'This device wins' };
+		notesStore.notes = [local];
+		await putNote(local);
+		vi.spyOn(syncStore, 'reauthenticateForRecovery').mockResolvedValue();
+		const remote = {
+			notes: [
+				{
+					...remoteNote('shared'),
+					title: 'Cloud loses',
+					updatedAt: 5000,
+					fieldTimes: { title: 6000 }
+				},
+				remoteNote('cloud-only')
+			],
+			labels: [],
+			boards: [],
+			tombstones: {},
+			labelTombstones: {},
+			boardTombstones: {}
+		};
+		const sync = vi
+			.spyOn(syncStore, 'sync')
+			.mockImplementation(
+				async (
+					notes,
+					labels,
+					tombstones,
+					labelTombstones,
+					boards,
+					boardTombstones,
+					indicate,
+					pullOnly,
+					apply
+				) => {
+					if (pullOnly) {
+						await apply!(remote);
+						return { success: true, notes: remote.notes };
+					}
+					expect(notes.map((note) => note.title)).toEqual(['This device wins']);
+					expect(notes[0].fieldTimes!.title).toBeGreaterThan(6000);
+					expect(tombstones!['cloud-only']).toBeGreaterThan(6000);
+					expect((await getAllNotesMetadata())[0].title).toBe('This device wins');
+					return {
+						success: true,
+						notes,
+						labels,
+						tombstones,
+						labelTombstones,
+						boards,
+						boardTombstones
+					};
+				}
+			);
+		expect(await notesStore.forcePushWorkspace()).toBe(true);
+		expect(sync).toHaveBeenCalledTimes(2);
+	});
+
+	it('leaves local data unchanged when recovery authentication fails', async () => {
+		syncStore.account = createSyncIdentity();
+		const local = remoteNote('unchanged');
+		notesStore.notes = [local];
+		await putNote(local);
+		vi.spyOn(syncStore, 'reauthenticateForRecovery').mockRejectedValue(
+			new Error('Server unavailable')
+		);
+		const sync = vi.spyOn(syncStore, 'sync');
+		expect(await notesStore.forcePushWorkspace()).toBe(false);
+		expect(sync).not.toHaveBeenCalled();
+		expect((await getAllNotesMetadata())[0].updatedAt).toBe(1);
+		expect(notesStore.notes[0].title).toBe(local.title);
+	});
+
 	beforeEach(() => {
 		vi.useFakeTimers();
 		vi.clearAllTimers();
@@ -311,7 +386,7 @@ describe('notes store sync apply', () => {
 		const keys = syncControlKeys(account.accountId);
 		await clearAllNotes();
 		await clearAllLabels();
-		await clearSyncOutbox(await getSyncOutboxKeys());
+		await clearSyncOutbox(LOCAL_PROFILE_ID, await getSyncOutboxKeys());
 		await deleteSyncState(keys.cursor);
 		await deleteSyncState(keys.baseline);
 		await deleteSyncState(keys.recordIds);

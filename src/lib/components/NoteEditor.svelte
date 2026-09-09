@@ -1,8 +1,9 @@
 <script lang="ts">
+	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { flushSync, onMount } from 'svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
-	import { noteToPlainText, noteAttachments } from '$lib/checklistBody';
+	import { noteToPlainText, noteAttachments, splitPastedHeading } from '$lib/checklistBody';
 	import { mergeHydratedImages } from '$lib/noteAttachmentHydration';
 	import type { NoteColor, NoteImage } from '$lib/types';
 	import { NOTE_COLORS, NOTE_DARK_COLORS } from '$lib/types';
@@ -57,7 +58,10 @@
 		note ? noteAttachments(note).map((attachment) => ({ ...attachment })) : []
 	);
 	let draftDirty = false;
-	let bodyEditor = $state<{ focusDefault(): void } | null>(null);
+	let bodyEditor = $state<{
+		focusDefault(): void;
+		replaceBodyWithText(text: string): Promise<void>;
+	} | null>(null);
 	let footer = $state<{ handlePickedFiles(files: File[]): void } | null>(null);
 	let editorDialog = $state<HTMLDivElement | null>(null);
 	let fileDropActive = $state(false);
@@ -331,6 +335,27 @@
 		if (files.length > 0) footer?.handlePickedFiles(files);
 	}
 
+	function transformPaste(text: string): string | null {
+		if (title || body) return null;
+		const split = splitPastedHeading(text);
+		if (!split) return null;
+		title = split.title;
+		return split.body;
+	}
+
+	// Same empty-note rule when the paste lands on the title field itself.
+	function handleTitlePaste(event: ClipboardEvent) {
+		if (!isOpen || !note) return;
+		if (title || body) return;
+		const text = event.clipboardData?.getData('text/plain');
+		if (!text) return;
+		const split = splitPastedHeading(text);
+		if (!split) return;
+		event.preventDefault();
+		title = split.title;
+		if (split.body) void bodyEditor?.replaceBodyWithText(split.body);
+	}
+
 	function handlePaste(event: ClipboardEvent) {
 		if (!isOpen || !note) return;
 		if (event.target instanceof Element && event.target.closest('.canvas-editor-shell')) return;
@@ -424,11 +449,50 @@
 			copyFlashTimer = null;
 		}, 1500);
 	}
+	function handleTitleInput(event: Event) {
+		if (title.includes('\n') || title.includes('\r')) {
+			const target = event.target as HTMLTextAreaElement | null;
+			const start = target?.selectionStart ?? 0;
+			const end = target?.selectionEnd ?? 0;
+			title = title.replace(/[\r\n]+/g, ' ');
+			if (target) {
+				target.value = title;
+				target.setSelectionRange(start, end);
+			}
+		}
+		scheduleCommit();
+	}
+
+	function autoResizeTitle(node: HTMLTextAreaElement, _value?: string) {
+		const resize = () => {
+			node.style.height = 'auto';
+			if (node.scrollHeight > 0) {
+				node.style.height = `${node.scrollHeight}px`;
+			}
+		};
+		resize();
+		if (typeof requestAnimationFrame !== 'undefined') {
+			requestAnimationFrame(resize);
+		}
+		node.addEventListener('input', resize);
+		window.addEventListener('resize', resize);
+		return {
+			update() {
+				resize();
+			},
+			destroy() {
+				node.removeEventListener('input', resize);
+				window.removeEventListener('resize', resize);
+			}
+		};
+	}
 </script>
 
 <svelte:window
 	onkeydown={(e) => {
-		if (isOpen && e.key === 'Escape') void close();
+		if (!isOpen || e.key !== 'Escape') return;
+		if (paletteOpen || reminderOpen || labelOpen) return;
+		void close();
 	}}
 	onpastecapture={handlePaste}
 />
@@ -529,11 +593,12 @@
 						bind:this={editorScroller}
 						class="note-scrollbar-hidden scrollable min-h-0 flex-1 touch-pan-y overflow-y-auto overflow-x-hidden overscroll-contain px-6 pt-4 pb-3"
 					>
-						<input
-							type="text"
+						<textarea
+							use:autoResizeTitle={title}
 							placeholder="Title"
 							bind:value={title}
-							oninput={scheduleCommit}
+							oninput={handleTitleInput}
+							onpaste={handleTitlePaste}
 							onfocus={exitTaskFocus}
 							onkeydown={(e) => {
 								if (e.key === 'Enter') {
@@ -541,27 +606,31 @@
 									bodyEditor?.focusDefault();
 								}
 							}}
-							class="mb-3 block w-full bg-transparent text-xl font-medium text-[var(--scrapscache-text)] placeholder:text-[var(--scrapscache-text-muted)] outline-none"
-						/>
+							rows="1"
+							class="mb-3 block w-full resize-none overflow-hidden break-words border-none bg-transparent p-0 text-xl font-medium text-[var(--scrapscache-text)] placeholder:text-[var(--scrapscache-text-muted)] outline-none [field-sizing:content]"
+						></textarea>
 
 						<BodyEditor
 							bind:this={bodyEditor}
 							bind:body
 							oninput={scheduleCommit}
+							{transformPaste}
 							placeholder="Take a note… type [ ] for a checklist, - for a bullet, Tab for sub-task"
 							focusLine={taskFocusLine}
 							onFocusTask={focusTask}
 							onExitTaskFocus={exitTaskFocus}
 						/>
-
-						{#if links.length > 0}
-							<div class="mt-3 flex flex-col gap-2" aria-label="Links">
-								{#each links as url (url)}
-									<LinkPreview {url} />
-								{/each}
-							</div>
-						{/if}
 					</div>
+
+					{#if links.length > 0}
+						<div class="scrollable flex gap-2 overflow-x-auto px-3 pb-2" aria-label="Links">
+							{#each links as url (url)}
+								<div class="w-56 shrink-0">
+									<LinkPreview {url} />
+								</div>
+							{/each}
+						</div>
+					{/if}
 
 					{#if fileDropActive}
 						<div
@@ -616,74 +685,86 @@
 		</div>
 	</div>
 
-	<!-- Popups render at the viewport level so they're never clipped by the dialog -->
 	{#if paletteOpen}
-		<!-- svelte-ignore a11y_click_events_have_key_events -->
-		<div
-			class="fixed inset-0 z-[60] bg-black/30"
-			onpointerdown={keepEditorFocused}
-			onclick={() => {
-				paletteOpen = false;
+		<Dialog.Root
+			open
+			onOpenChange={(details) => {
+				if (!details.open) paletteOpen = false;
 			}}
-			role="presentation"
-		></div>
-		<div
-			data-editor-popup
-			class="fixed z-[61] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
-			onpointerdown={keepEditorFocused}
-			role="presentation"
+			preventScroll={false}
 		>
-			<ColorPalette
-				color={note.color}
-				onSelect={(c) => {
-					commit({ color: c });
-					paletteOpen = false;
-				}}
-			/>
-		</div>
+			<Dialog.Backdrop class="fixed inset-0 z-[60] bg-black/30" />
+			<Dialog.Positioner
+				class="fixed inset-0 z-[61] flex items-center justify-center"
+				data-editor-popup
+				onpointerdown={keepEditorFocused}
+			>
+				<Dialog.Content class="outline-none">
+					<ColorPalette
+						color={note.color}
+						onSelect={(c) => {
+							commit({ color: c });
+							paletteOpen = false;
+						}}
+					/>
+				</Dialog.Content>
+			</Dialog.Positioner>
+		</Dialog.Root>
 	{/if}
 
 	{#if reminderOpen}
-		<!-- svelte-ignore a11y_click_events_have_key_events -->
-		<div
-			class="fixed inset-0 z-[60] bg-black/30"
-			onclick={() => {
-				reminderOpen = false;
+		<Dialog.Root
+			open
+			onOpenChange={(details) => {
+				if (!details.open) reminderOpen = false;
 			}}
-			role="presentation"
-		></div>
-		<div data-editor-popup class="fixed z-[61] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-			<ReminderPicker
-				reminder={note.reminder}
-				onApply={(r) => {
-					commit({ reminder: r });
-					reminderStore.sync(notesStore.notes);
-					void notesStore.flushSync();
-				}}
-				onClose={() => {
-					reminderOpen = false;
-				}}
-			/>
-		</div>
+			preventScroll={false}
+		>
+			<Dialog.Backdrop class="fixed inset-0 z-[60] bg-black/30" />
+			<Dialog.Positioner
+				class="fixed inset-0 z-[61] flex items-center justify-center"
+				data-editor-popup
+			>
+				<Dialog.Content class="outline-none">
+					<ReminderPicker
+						reminder={note.reminder}
+						onApply={(r) => {
+							commit({ reminder: r });
+							reminderStore.sync(notesStore.notes);
+							void notesStore.flushSync();
+						}}
+						onClose={() => {
+							reminderOpen = false;
+						}}
+					/>
+				</Dialog.Content>
+			</Dialog.Positioner>
+		</Dialog.Root>
 	{/if}
 
 	{#if labelOpen}
-		<!-- svelte-ignore a11y_click_events_have_key_events -->
-		<div
-			class="fixed inset-0 z-[60] bg-black/30"
-			onpointerdown={keepEditorFocused}
-			onclick={() => {
-				labelOpen = false;
+		<Dialog.Root
+			open
+			onOpenChange={(details) => {
+				if (!details.open) labelOpen = false;
 			}}
-			role="presentation"
-		></div>
-		<div data-editor-popup class="fixed z-[61] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-			<LabelMenu
-				noteId={note.id}
-				onClose={() => {
-					labelOpen = false;
-				}}
-			/>
-		</div>
+			preventScroll={false}
+		>
+			<Dialog.Backdrop class="fixed inset-0 z-[60] bg-black/30" />
+			<Dialog.Positioner
+				class="fixed inset-0 z-[61] flex items-center justify-center"
+				data-editor-popup
+				onpointerdown={keepEditorFocused}
+			>
+				<Dialog.Content class="outline-none">
+					<LabelMenu
+						noteId={note.id}
+						onClose={() => {
+							labelOpen = false;
+						}}
+					/>
+				</Dialog.Content>
+			</Dialog.Positioner>
+		</Dialog.Root>
 	{/if}
 {/if}

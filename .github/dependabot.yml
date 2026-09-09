@@ -26,3 +26,6 @@ updates:
       weekly-batch:
         patterns:
           - '*'
+    ignore:
+      - dependency-name: 'typescript'
+        update-types: ['version-update:semver-major']

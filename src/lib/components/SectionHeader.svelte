@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import { notesShellClass } from '$lib/notesShell';
+	import { Format } from '@ark-ui/svelte/format';
 
 	let {
 		label,
@@ -22,7 +23,9 @@
 		<h2 class="text-xs font-semibold uppercase tracking-wide text-[var(--scrapscache-text-muted)]">
 			{label}
 		</h2>
-		<span class="text-xs text-[var(--scrapscache-text-muted)] opacity-60">{count}</span>
+		<span class="text-xs text-[var(--scrapscache-text-muted)] opacity-60">
+			<Format.Number value={count} />
+		</span>
 		{#if children}
 			<div class="flex-1"></div>
 			{@render children()}

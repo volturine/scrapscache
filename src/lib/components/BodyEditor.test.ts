@@ -576,6 +576,42 @@ describe('BodyEditor native editing', () => {
 		expect(lineTexts(container)).toEqual(['Finished task']);
 		expect(container.querySelector('[data-checklist-toggle]')?.className).toContain('checked');
 	});
+
+	it('lets the owner transform an empty-editor paste even without a caret', async () => {
+		const lifted: string[] = [];
+		const { container } = render(BodyEditor, {
+			props: {
+				body: '',
+				transformPaste: (raw: string) => {
+					lifted.push(raw);
+					return 'body-from-owner';
+				}
+			}
+		});
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+
+		const paste = new Event('paste', { bubbles: true, cancelable: true });
+		Object.defineProperty(paste, 'clipboardData', { value: { getData: () => '# Heading' } });
+		editor.dispatchEvent(paste);
+		await tick();
+
+		expect(lifted).toEqual(['# Heading']);
+		expect(lineTexts(container)).toEqual(['body-from-owner']);
+	});
+
+	it('keeps raw text on the empty editor when the owner declines without a caret', async () => {
+		const { container } = render(BodyEditor, {
+			props: { body: '', transformPaste: () => null }
+		});
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+
+		const paste = new Event('paste', { bubbles: true, cancelable: true });
+		Object.defineProperty(paste, 'clipboardData', { value: { getData: () => 'raw\ntext' } });
+		editor.dispatchEvent(paste);
+		await tick();
+
+		expect(lineTexts(container)).toEqual(['raw', 'text']);
+	});
 });
 
 describe('BodyEditor markdown bullets', () => {

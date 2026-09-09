@@ -3,11 +3,65 @@ import {
 	adjustTextIndent,
 	formatBulletLine,
 	formatCheckLine,
+	noteToPlainText,
 	parseBody,
 	parseBulletLine,
 	parseCheckLine,
+	splitPastedHeading,
 	toggleLineAt
 } from './checklistBody';
+import type { Note } from './types';
+
+function plainNote(partial: Partial<Note> = {}): Note {
+	return {
+		id: 'n',
+		title: 'Trip',
+		body: 'packing list',
+		color: 'default',
+		pinned: false,
+		archived: false,
+		trashed: false,
+		trashedAt: null,
+		createdAt: 1,
+		updatedAt: 1,
+		reminder: null,
+		labels: [],
+		images: [],
+		...partial
+	};
+}
+
+describe('noteToPlainText export', () => {
+	it('exports the title as a top-level markdown heading', () => {
+		expect(noteToPlainText(plainNote())).toBe('# Trip\npacking list');
+	});
+
+	it('exports a title-only note as a heading without an empty body line', () => {
+		expect(noteToPlainText(plainNote({ body: '' }))).toBe('# Trip');
+	});
+
+	it('exports a body-only note without a heading', () => {
+		expect(noteToPlainText(plainNote({ title: '' }))).toBe('packing list');
+	});
+});
+
+describe('splitPastedHeading', () => {
+	it('round-trips a copied note into title and body', () => {
+		expect(splitPastedHeading('# Trip\npacking list')).toEqual({
+			title: 'Trip',
+			body: 'packing list'
+		});
+	});
+
+	it('splits a heading-only paste with an empty body', () => {
+		expect(splitPastedHeading('# Solo')).toEqual({ title: 'Solo', body: '' });
+	});
+
+	it('requires the first line to be a top-level heading', () => {
+		expect(splitPastedHeading('plain first line\n## Not a doc heading')).toBeNull();
+		expect(splitPastedHeading('## Subhead without the h1\nbody')).toBeNull();
+	});
+});
 
 describe('checklist indent / sub-tasks', () => {
 	it('parses indented checklist lines as nested tasks', () => {

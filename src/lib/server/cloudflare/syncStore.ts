@@ -2,6 +2,7 @@ import { ACTIVITY_WINDOWS_DAYS } from '$lib/server/operatorConfig';
 import { parseMaxAccountBytes } from '$lib/server/syncQuota';
 import { batch, execute, type SqlStatement } from './d1';
 import { cloudflareBindings } from './env';
+import { MAX_CLIENT_SYNC_MUTATIONS_PER_REQUEST } from '$lib/syncLimits';
 import { syncThroughCoordinator, SyncQuotaExceededError } from './coordinatorSync';
 
 export { SyncQuotaExceededError };
@@ -49,7 +50,7 @@ export const WAKE_RETAIN_MS = 86_400_000;
 export const WAKE_CLAIM_LEASE_MS = 60_000;
 export const DELETED_SLOT_GRACE_MS = 14 * 86_400_000;
 /** Keeps D1 parameters and R2 subrequests safely inside Workers limits. */
-export const MAX_SYNC_MUTATIONS_PER_REQUEST = 8;
+export const MAX_SYNC_MUTATIONS_PER_REQUEST = MAX_CLIENT_SYNC_MUTATIONS_PER_REQUEST;
 
 export class SyncStore {
 	private readonly bindings = cloudflareBindings();
@@ -153,7 +154,8 @@ export class SyncStore {
 		cursor: number,
 		uploads: OpaqueUpload[],
 		deletions: OpaqueDelete[],
-		downloadLimit = 12
+		downloadLimit = 12,
+		senderClientId?: string
 	): Promise<
 		SyncResult & {
 			usage: {
@@ -170,7 +172,8 @@ export class SyncStore {
 			uploads,
 			deletions,
 			downloadLimit,
-			maxAccountBytes: this.maxAccountBytes
+			maxAccountBytes: this.maxAccountBytes,
+			senderClientId
 		})) as SyncResult & {
 			usage: {
 				envelopeCount: number;
@@ -370,6 +373,29 @@ export class SyncStore {
 		);
 		return Number(r.rows[0]?.count ?? 0);
 	}
+	async createEventStream(
+		accountId: string,
+		signal?: AbortSignal,
+		clientId?: string
+	): Promise<Response> {
+		const stub = this.bindings.ACCOUNT_COORDINATOR.get(
+			this.bindings.ACCOUNT_COORDINATOR.idFromName(accountId)
+		);
+		const url = new URL('https://coordinator/events');
+		if (clientId) url.searchParams.set('clientId', clientId);
+		const res = await stub.fetch(url.toString(), {
+			signal: (signal ?? null) as any
+		});
+		// A response that came back from fetch() has immutable headers, and the
+		// server hook sets security headers on everything it returns. Hand back a
+		// response this app owns rather than the coordinator's own object.
+		return new Response(res.body as unknown as BodyInit | null, {
+			status: res.status,
+			statusText: res.statusText,
+			headers: new Headers(res.headers as unknown as HeadersInit)
+		});
+	}
+
 	async isReady(): Promise<boolean> {
 		try {
 			await execute(this.db, 'SELECT 1');

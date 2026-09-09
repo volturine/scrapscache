@@ -21,7 +21,8 @@
 		placeholder = '',
 		focusLine = null,
 		onFocusTask,
-		onExitTaskFocus
+		onExitTaskFocus,
+		transformPaste
 	}: {
 		body?: string;
 		oninput?: () => void;
@@ -29,6 +30,7 @@
 		focusLine?: number | null;
 		onFocusTask?: (line: number) => void;
 		onExitTaskFocus?: () => void;
+		transformPaste?: (text: string) => string | null;
 	} = $props();
 
 	type Line = {
@@ -396,6 +398,22 @@
 		void focusAfterRender(index, lines[index]?.text.length ?? 0, lines[index]?.id ?? null);
 	}
 
+	/** Replace the whole body from outside (e.g. a title paste seeding the body). */
+	export async function replaceBodyWithText(text: string) {
+		applyingEdit = true;
+		try {
+			lines = parseBodyToLines(text);
+			draftTaskId = null;
+			ignoredFocusLine = null;
+			syncBody();
+			await tick();
+			const last = lines.length - 1;
+			await focusAfterRender(last, lines[last]?.text.length ?? 0, lines[last]?.id ?? null);
+		} finally {
+			applyingEdit = false;
+		}
+	}
+
 	const focusedRootId = $derived.by(() => {
 		if (focusLine === null || focusLine === ignoredFocusLine) return null;
 		const index = Math.max(0, Math.min(focusLine, lines.length - 1));
@@ -661,13 +679,34 @@
 	}
 
 	function handlePaste(event: ClipboardEvent) {
-		const range = editorRange();
-		if (!range || !event.clipboardData) return;
+		if (!event.clipboardData) return;
 		const text = event.clipboardData.getData('text/plain');
 		if (!text) return;
+		const range = editorRange();
+
+		if (!range) {
+			// The caret could not be resolved inside the editor. Normal editing
+			// keeps native browser insertion, but on an empty note the paste must
+			// still honor the owner's transform instead of letting a markdown
+			// heading land untouched in the body.
+			if (body) return;
+			event.preventDefault();
+			const transformed = transformPaste ? transformPaste(text) : null;
+			lines = parseBodyToLines(transformed === null ? text : transformed);
+			draftTaskId = null;
+			syncBody();
+			const last = lines.length - 1;
+			focusAt(last, lines[last]?.text.length ?? 0, lines[last]?.id ?? null);
+			return;
+		}
+
 		event.preventDefault();
+		// The owner may lift part of the paste (e.g. a markdown heading into the
+		// note title); it returns the body text that should actually be inserted.
+		const transformed = transformPaste ? transformPaste(text) : null;
+		const bodyText = transformed === null ? text : transformed;
 		rememberEdit(range);
-		const caret = replaceRangeWithText(range, text);
+		const caret = replaceRangeWithText(range, bodyText);
 		focusAt(caret.line, caret.offset, lines[caret.line]?.id ?? null);
 	}
 

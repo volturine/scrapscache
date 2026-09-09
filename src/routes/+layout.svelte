@@ -4,7 +4,7 @@
 	import type { LayoutProps } from './$types';
 	import { uiStore, type View } from '$lib/stores/ui.svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
-	import { syncStore } from '$lib/stores/sync.svelte';
+	import { syncStore, syncEventsClient } from '$lib/stores/sync.svelte';
 	import Sidebar from '$lib/components/Sidebar.svelte';
 	import Topbar from '$lib/components/Topbar.svelte';
 	import NoteEditor from '$lib/components/NoteEditor.svelte';
@@ -14,7 +14,8 @@
 	import { reminderStore } from '$lib/stores/reminders.svelte';
 	import { preloadVapidPublicKey } from '$lib/reminderWake';
 	import { provideEditorActions } from '$lib/editorContext';
-	import { fade, fly } from 'svelte/transition';
+	import { splitPastedHeading } from '$lib/checklistBody';
+	import { Drawer } from '@ark-ui/svelte/drawer';
 	import { onMount } from 'svelte';
 	import { MediaQuery } from 'svelte/reactivity';
 	import { attachSyncCloudIndicator } from '$lib/syncCloudIndicator';
@@ -60,17 +61,21 @@
 		uiStore.viewChangeHandler = restoreFeedScroll;
 		attachSyncCloudIndicator(syncStore);
 		notesStore.onAfterSync = () => reminderStore.publish(notesStore.notes);
+		notesStore.onProfileReload = (pid, notes) => reminderStore.activateProfile(pid, notes);
 		if (mobile.current) uiStore.sidebarOpen = false;
 		void notesStore.init().then(async () => {
+			await notesStore.refreshProfileEffects();
 			if (syncStore.isLoggedIn) await notesStore.syncWithCloud();
 			openNoteFromQuery();
-			reminderStore.sync(notesStore.notes);
 		});
 		const onForeground = () => {
 			if (document.visibilityState === 'hidden') return;
 			if (syncStore.isLoggedIn) void notesStore.syncWithCloud();
 		};
 		document.addEventListener('visibilitychange', onForeground);
+		const stopSyncEvents = syncEventsClient.subscribe((seq?: number) => {
+			void notesStore.triggerSync(seq);
+		});
 		const stopReminders = reminderStore.attach(openEditor);
 		void preloadVapidPublicKey();
 		if ('serviceWorker' in navigator) {
@@ -91,6 +96,8 @@
 			}
 		}
 		return () => {
+			stopSyncEvents();
+			notesStore.onProfileReload = null;
 			uiStore.viewChangeHandler = null;
 			stopViewport();
 			applyEditorOpen(false);
@@ -99,7 +106,7 @@
 		};
 	});
 
-	function startNewNote() {
+	function startNewNote(seed?: { title?: string; body?: string }) {
 		const labels =
 			uiStore.view === 'label' &&
 			uiStore.activeLabelId &&
@@ -107,8 +114,8 @@
 				? [uiStore.activeLabelId]
 				: [];
 		const n = notesStore.createNote({
-			title: '',
-			body: '',
+			title: seed?.title ?? '',
+			body: seed?.body ?? '',
 			labels,
 			reminder:
 				uiStore.view === 'reminders'
@@ -117,6 +124,19 @@
 		});
 		editingId = n.id;
 		applyEditorOpen(true);
+	}
+
+	// Paste on the note gallery (no editor open, no editable field focused)
+	// starts a new note seeded with the pasted text and opens it for editing.
+	function handleGalleryPaste(event: ClipboardEvent) {
+		if (editingId !== null) return;
+		if (!(event.target instanceof Element)) return;
+		if (event.target.closest('input, textarea, [contenteditable], .canvas-editor-shell')) return;
+		const text = event.clipboardData?.getData('text/plain');
+		if (!text?.trim()) return;
+		event.preventDefault();
+		const split = splitPastedHeading(text);
+		startNewNote(split ? { title: split.title, body: split.body } : { body: text });
 	}
 
 	function requestCloseEditor() {
@@ -167,6 +187,8 @@
 	<meta name="theme-color" content={uiStore.effectiveDark ? '#1a1a1a' : '#ffffff'} />
 </svelte:head>
 
+<svelte:window onpaste={handleGalleryPaste} />
+
 {#if standalonePage}
 	{@render children()}
 {:else}
@@ -185,27 +207,32 @@
 				})}
 		>
 			{#if mobile.current}
-				{#if uiStore.sidebarOpen}
-					<button
-						type="button"
-						aria-label="Close sidebar"
+				<Drawer.Root
+					open={uiStore.sidebarOpen}
+					onOpenChange={(details) => {
+						uiStore.sidebarOpen = details.open;
+					}}
+					swipeDirection="start"
+					preventScroll={false}
+					lazyMount
+					unmountOnExit
+				>
+					<Drawer.Backdrop
 						data-sidebar-backdrop
+						aria-label="Close sidebar"
 						class="fixed inset-0 z-20 bg-black/30"
-						onclick={() => {
-							uiStore.sidebarOpen = false;
-						}}
-						transition:fade={{ duration: 150 }}
-					></button>
-					<div
-						class="fixed left-0 top-0 z-30 h-full w-72 border-r border-[var(--scrapscache-border)] bg-[var(--scrapscache-surface)]"
-						transition:fly={{ x: -288, duration: 200 }}
-						role="navigation"
-						aria-label="Sidebar"
-						data-sidebar-drawer
-					>
-						<Sidebar onNavigate={closeMobileSidebar} />
-					</div>
-				{/if}
+					/>
+					<Drawer.Positioner class="fixed left-0 top-0 z-30 h-full">
+						<Drawer.Content
+							class="h-full w-72 border-r border-[var(--scrapscache-border)] bg-[var(--scrapscache-surface)]"
+							role="navigation"
+							aria-label="Sidebar"
+							data-sidebar-drawer
+						>
+							<Sidebar onNavigate={closeMobileSidebar} />
+						</Drawer.Content>
+					</Drawer.Positioner>
+				</Drawer.Root>
 			{:else}
 				{#if uiStore.sidebarOpen}
 					<div class="w-64 shrink-0 border-r border-[var(--scrapscache-border)]">

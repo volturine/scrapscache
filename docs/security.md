@@ -130,11 +130,14 @@ Structured logs use request IDs; prefer redacted identifiers.
 - Lost backup passphrase or lost sync key without another device / backup
 - Active MITM if TLS is misconfigured or users accept bad certificates
 - Physical access to an unlocked browser session with IndexedDB data
-- The **sync account key and auth secret are stored in `localStorage`** and are
-  plaintext-readable by script running in the app's origin. Given XSS or an
-  unlocked session, an attacker can equally read decrypted notes from memory,
-  so wrapping the key at rest would not raise the practical bar against this
-  threat model; it is accepted residual risk rather than an oversight.
+- The **sync key keyring is stored in `localStorage`** and is plaintext-readable
+  by script running in the app's origin. A device holding several workspaces
+  keeps every saved key in that one entry, so the reachable scope is all of
+  them, not one. Given XSS or an unlocked session an attacker can equally read
+  decrypted notes from memory, so wrapping the keys at rest would not raise the
+  practical bar against this threat model; it is accepted residual risk rather
+  than an oversight. It does mean a workspace on a device is only as isolated as
+  the origin: the separation is organisational, not a security boundary.
 
 Local live notes are **not** wrapped in an extra “vault passphrase” while the
 app is in use; browser storage isolation is the boundary.

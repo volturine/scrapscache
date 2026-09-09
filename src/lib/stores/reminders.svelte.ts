@@ -1,5 +1,5 @@
 import { tickAppClock } from '$lib/appClock.svelte';
-import { claimFiredReminderKey, getFiredReminderKeys } from '$lib/db/idb';
+import { claimFiredReminderKey, getFiredReminderKeys, LOCAL_PROFILE_ID } from '$lib/db/idb';
 import {
 	nextReminderAt,
 	notificationPermission,
@@ -16,10 +16,16 @@ import { publishReminderWakes, registerReminderDevice } from '$lib/reminderWake'
 const MAX_TIMER_MS = 60_000;
 const FIRED_REMINDERS_MIRROR_KEY = 'scrapscache-fired-reminders-mirror';
 
-function readFiredReminderMirror(): string[] {
+function firedReminderMirrorKey(pid: string): string {
+	return pid === LOCAL_PROFILE_ID
+		? FIRED_REMINDERS_MIRROR_KEY
+		: `${FIRED_REMINDERS_MIRROR_KEY}:${pid}`;
+}
+
+function readFiredReminderMirror(pid: string): string[] {
 	if (typeof localStorage === 'undefined') return [];
 	try {
-		const stored: unknown = JSON.parse(localStorage.getItem(FIRED_REMINDERS_MIRROR_KEY) ?? '[]');
+		const stored: unknown = JSON.parse(localStorage.getItem(firedReminderMirrorKey(pid)) ?? '[]');
 		return Array.isArray(stored)
 			? stored.filter((item): item is string => typeof item === 'string')
 			: [];
@@ -28,10 +34,10 @@ function readFiredReminderMirror(): string[] {
 	}
 }
 
-function writeFiredReminderMirror(keys: Iterable<string>): void {
+function writeFiredReminderMirror(pid: string, keys: Iterable<string>): void {
 	if (typeof localStorage === 'undefined') return;
 	try {
-		localStorage.setItem(FIRED_REMINDERS_MIRROR_KEY, JSON.stringify([...keys]));
+		localStorage.setItem(firedReminderMirrorKey(pid), JSON.stringify([...keys]));
 	} catch {
 		/* IndexedDB remains the durable fallback when localStorage is unavailable. */
 	}
@@ -49,6 +55,8 @@ export class ReminderStore {
 	private attached = false;
 	private hydrated = false;
 	private readonly hydration: Promise<void>;
+	private activePid = LOCAL_PROFILE_ID;
+	private profileGeneration = 0;
 
 	constructor() {
 		this.hydration = this.hydrateFired().finally(() => {
@@ -60,6 +68,22 @@ export class ReminderStore {
 
 	whenReady(): Promise<void> {
 		return this.hydration;
+	}
+
+	async activateProfile(pid: string, notes: ReminderNote[]): Promise<void> {
+		const generation = ++this.profileGeneration;
+		this.activePid = pid;
+		this.notes = [];
+		this.alerts = [];
+		this.fired = new Set();
+		this.seen = new Set();
+		this.armed = new Set();
+		this.arm();
+		const fired = await this.readFired(pid);
+		if (generation !== this.profileGeneration || pid !== this.activePid) return;
+		this.fired = fired;
+		writeFiredReminderMirror(pid, this.fired);
+		this.sync(notes);
 	}
 
 	attach(openNote: (id: string) => void): () => void {
@@ -195,22 +219,32 @@ export class ReminderStore {
 	}
 
 	private async hydrateFired(): Promise<void> {
-		this.fired = new Set([...this.fired, ...readFiredReminderMirror()]);
+		const pid = this.activePid;
+		const generation = this.profileGeneration;
+		const fired = await this.readFired(pid);
+		if (generation !== this.profileGeneration || pid !== this.activePid) return;
+		this.fired = new Set([...this.fired, ...fired]);
+		writeFiredReminderMirror(pid, this.fired);
+	}
+
+	private async readFired(pid: string): Promise<Set<string>> {
+		const fired = new Set(readFiredReminderMirror(pid));
 		try {
-			const stored = await getFiredReminderKeys();
-			this.fired = new Set([...this.fired, ...stored]);
+			const stored = await getFiredReminderKeys(pid);
+			for (const key of stored) fired.add(key);
 		} catch {
 			/* IndexedDB may be unavailable in private browsing or tests. */
 		}
-		writeFiredReminderMirror(this.fired);
+		return fired;
 	}
 
 	private async claimFired(key: string): Promise<boolean> {
 		if (this.fired.has(key)) return false;
+		const pid = this.activePid;
 		this.fired.add(key);
-		writeFiredReminderMirror(this.fired);
+		writeFiredReminderMirror(pid, this.fired);
 		try {
-			return await claimFiredReminderKey(key);
+			return await claimFiredReminderKey(key, pid);
 		} catch {
 			// Keep once-per-session behavior when IndexedDB is unavailable.
 			return true;

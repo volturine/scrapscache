@@ -22,6 +22,7 @@ export type CoordinatorSyncInput = {
 	deletions: unknown[];
 	downloadLimit: number;
 	maxAccountBytes: number;
+	senderClientId?: string;
 };
 
 export async function syncThroughCoordinator(

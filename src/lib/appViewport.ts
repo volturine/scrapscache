@@ -295,16 +295,24 @@ export function attachAppViewport(_node: HTMLElement) {
 	};
 }
 
+export function getAppFloatHost(): HTMLElement {
+	return document.querySelector<HTMLElement>(APP_FLOAT_SELECTOR) ?? document.body;
+}
+
+export function getAppOverlayHost(): HTMLElement {
+	return document.querySelector<HTMLElement>(APP_OVERLAY_SELECTOR) ?? document.body;
+}
+
 /** Render an overlay into the keyboard-aware layer. Falls back to body in tests. */
 export function portalToAppFloat(node: HTMLElement) {
-	const host = document.querySelector(APP_FLOAT_SELECTOR) ?? document.body;
+	const host = getAppFloatHost();
 	host.appendChild(node);
 	return () => node.remove();
 }
 
 /** Render a global dialog above navigation and remove it with its owner. */
 export function portalToAppOverlay(node: HTMLElement) {
-	const host = document.querySelector(APP_OVERLAY_SELECTOR) ?? document.body;
+	const host = getAppOverlayHost();
 	host.appendChild(node);
 	return () => node.remove();
 }

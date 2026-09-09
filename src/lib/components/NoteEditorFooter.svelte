@@ -17,8 +17,6 @@
 		looksLikePhoto
 	} from '$lib/noteImages';
 	import { displayImageSrc } from '$lib/imageThumb';
-	import { extractHttpUrls } from '$lib/linkPreview';
-	import LinkPreview from './LinkPreview.svelte';
 	import type { ImageQuality } from '$lib/imageOptimize';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { sha256 } from '$lib/syncHash';
@@ -92,7 +90,6 @@
 		imageAttachments.filter((attachment) => !displayImageSrc(attachment))
 	);
 	const files = $derived(images.filter((a) => !isImageAttachment(a) && !isCanvasAttachment(a)));
-	const links = $derived(extractHttpUrls(body));
 	const photoIndexById = $derived(new Map(photos.map((p, i) => [p.id, i])));
 
 	/**
@@ -411,14 +408,6 @@
 			</li>
 		{/each}
 	</ul>
-{/if}
-
-{#if links.length > 0}
-	<div class="flex flex-col gap-2 px-3 pb-2" aria-label="Links">
-		{#each links as url (url)}
-			<LinkPreview {url} />
-		{/each}
-	</div>
 {/if}
 
 {#if photos.length > 0 || pendingPhotos.length > 0}

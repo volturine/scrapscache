@@ -1023,11 +1023,11 @@ export class NotesStore {
 		this.syncPushTimer = setTimeout(() => {
 			this.syncPushTimer = null;
 			if (!this.dirty) return;
-			void this.flushSync();
+			void this.flushSync(true);
 		}, delay);
 	}
 
-	flushSync(indicate = false): Promise<boolean> {
+	flushSync(indicate = true): Promise<boolean> {
 		if (this.syncPushTimer) {
 			clearTimeout(this.syncPushTimer);
 			this.syncPushTimer = null;
@@ -1374,31 +1374,35 @@ export class NotesStore {
 		if (typeof serverSeq === 'number' && serverSeq > 0 && serverSeq <= syncStore.syncedCursor) {
 			return Promise.resolve(true);
 		}
-		const syncedPromise = this.queueSync(false);
+		const syncedPromise = this.queueSync(true);
 		syncedPromise.then((synced) => {
 			if (synced) this.lastAutoSyncAt = Date.now();
 		});
 		return syncedPromise;
 	}
 
-	// Auto sync — silent, no UI feedback. Opportunistic pulls (boot, editor
-	// open) are throttled; pending local edits always sync via flushSync.
-	async syncWithCloud(): Promise<boolean> {
+	/**
+	 * Sync with the cloud relay, indicating flight progress via the cloud icon.
+	 * Opportunistic pulls (boot, editor open) are throttled; pending local edits
+	 * always sync via flushSync.
+	 */
+	async syncWithCloud(indicate = true): Promise<boolean> {
 		// Startup and foreground events can arrive together, especially on iOS.
 		// They all ask for the same opportunistic pull, so join the active flight.
 		// Durable edits request their own follow-up in scheduleSyncPush().
 		if (this.syncFlight) return this.syncFlight;
 		if (Date.now() - this.lastAutoSyncAt < AUTO_SYNC_MIN_INTERVAL_MS) return true;
-		const synced = await this.queueSync(false);
+		const synced = await this.queueSync(indicate);
 		if (synced) this.lastAutoSyncAt = Date.now();
 		return synced;
 	}
 
 	/** One sync at a time; edits during a flight collapse into exactly one follow-up pass. */
-	private queueSync(indicate: boolean): Promise<boolean> {
+	private queueSync(indicate = true): Promise<boolean> {
+		if (!syncStore.isLoggedIn) return Promise.resolve(false);
 		if (this.syncFlight) {
 			this.syncFollowupRequested = true;
-			// A silent flight already in progress still owes the cloud icon a pulse.
+			// A flight already in progress still owes the cloud icon a pulse.
 			if (indicate) {
 				syncStore.onSyncStart?.();
 				return this.syncFlight.finally(() => {
@@ -1408,25 +1412,30 @@ export class NotesStore {
 			return this.syncFlight;
 		}
 		this.syncFlight = (async () => {
-			let success = false;
-			let showProgress = indicate;
-			do {
-				this.syncFollowupRequested = false;
-				success = await this.doSync(showProgress);
-				showProgress = false;
-			} while (this.syncFollowupRequested);
-			if (success) {
-				try {
-					this.syncBroadcastChannel?.postMessage({ type: 'local-sync-complete', pid: this.pid });
-				} catch {
-					/* ignore BroadcastChannel error */
+			if (indicate) syncStore.onSyncStart?.();
+			try {
+				let success = false;
+				let showProgress = indicate;
+				do {
+					this.syncFollowupRequested = false;
+					success = await this.doSync(showProgress);
+					showProgress = false;
+				} while (this.syncFollowupRequested);
+				if (success) {
+					try {
+						this.syncBroadcastChannel?.postMessage({ type: 'local-sync-complete', pid: this.pid });
+					} catch {
+						/* ignore BroadcastChannel error */
+					}
+					// Every sync path ends here, including the one a boot takes. Hanging
+					// this off flushSync instead would skip startup, foregrounding and
+					// live nudges, which are exactly when an upgraded device first syncs.
+					await this.dropRedundantLocalCopy();
 				}
-				// Every sync path ends here, including the one a boot takes. Hanging
-				// this off flushSync instead would skip startup, foregrounding and
-				// live nudges, which are exactly when an upgraded device first syncs.
-				await this.dropRedundantLocalCopy();
+				return success;
+			} finally {
+				if (indicate) syncStore.onSyncEnd?.();
 			}
-			return success;
 		})().finally(() => {
 			this.syncFlight = null;
 		});
@@ -1440,11 +1449,11 @@ export class NotesStore {
 	}
 
 	// Core sync. Local IDB remains authoritative; photo bytes move in small fractions.
-	private async doSync(indicate = false): Promise<boolean> {
+	private async doSync(indicate = true): Promise<boolean> {
 		return this.withSyncLock(() => this.doSyncLocked(indicate));
 	}
 
-	private async doSyncLocked(indicate = false): Promise<boolean> {
+	private async doSyncLocked(indicate = true): Promise<boolean> {
 		if (!syncStore.isLoggedIn) return false;
 		// A newly reset relay needs one current-state bootstrap from this source device.
 		// Bytes are returned to thumb-only memory immediately after reconciliation below.

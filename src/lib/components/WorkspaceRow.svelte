@@ -197,11 +197,12 @@
 		else if (mode === 'confirm') cancel();
 	}
 
-	// Escape belongs to the row while it is editing or open, so it never reaches
-	// the dialog and closes the whole sheet.
+	// Escape belongs to the row while it is editing or open. Tracked on the
+	// document, like the drag handlers below, because the row loses focus the
+	// moment a panel replaces the button that opened it. The dialog is kept open
+	// by the busy state the row reports, not by stopping the event here.
 	function onKeyDown(event: KeyboardEvent) {
 		if (event.key !== 'Escape' || (mode === 'idle' && !open)) return;
-		event.stopPropagation();
 		event.preventDefault();
 		if (mode === 'idle') settle(false);
 		else cancel();
@@ -209,6 +210,7 @@
 </script>
 
 <svelte:document
+	onkeydown={onKeyDown}
 	onpointerdown={onDocumentPointerDown}
 	onpointermove={move}
 	onpointerup={end}
@@ -224,8 +226,6 @@
 	class:editing={mode !== 'idle'}
 	style:--swipe-offset={`${offset}px`}
 	style:--swipe-progress={progress}
-	onkeydown={onKeyDown}
-	role="presentation"
 >
 	<div class="actions">
 		<button

@@ -198,8 +198,9 @@ describe('SyncModal profile interactions', () => {
 		await pointer('pointerup', 70, 105);
 		expect(drawerOffset()).toBe('-152px');
 
-		// Escape closes the drawer the row owns, not the sheet around it.
-		await fireEvent.keyDown(row, { key: 'Escape' });
+		// Escape closes the drawer the row owns, not the sheet around it, wherever
+		// the key is pressed.
+		await fireEvent.keyDown(document, { key: 'Escape' });
 		expect(drawerOffset()).toBe('0px');
 		expect(onClose).not.toHaveBeenCalled();
 	});
@@ -208,14 +209,16 @@ describe('SyncModal profile interactions', () => {
 		const onClose = vi.fn();
 		render(SyncModal, { props: { onClose } });
 
-		// Escape reaches the dialog from outside any row, so the row has to have
-		// told the dialog to stop closing on it.
+		// Opening the panel removes the button that had focus, so focus falls back
+		// to the body. Escape must still reach the row that owns it.
 		await fireEvent.click(screen.getByRole('button', { name: 'Unlink Side' }));
+		expect(document.activeElement?.closest('.row')).toBeNull();
+
 		await fireEvent.keyDown(document, { key: 'Escape' });
+		expect(screen.queryByRole('button', { name: 'Keep Side linked' })).toBeNull();
 		expect(onClose).not.toHaveBeenCalled();
 
 		// Once the row is idle again the dialog takes Escape back.
-		await fireEvent.click(screen.getByRole('button', { name: 'Keep Side linked' }));
 		await fireEvent.keyDown(document, { key: 'Escape' });
 		expect(onClose).toHaveBeenCalled();
 	});

@@ -1,5 +1,7 @@
 <script lang="ts">
 	import '../app.css';
+	import { page } from '$app/state';
+	import type { LayoutProps } from './$types';
 	import { uiStore, type View } from '$lib/stores/ui.svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { syncStore, syncEventsClient } from '$lib/stores/sync.svelte';
@@ -20,9 +22,13 @@
 	import { attachAppViewport } from '$lib/appViewport';
 	import { attachSidebarSwipe } from '$lib/sidebarSwipe';
 	import { dayKey, reminderTimeForDay } from '$lib/utils';
-	import type { Snippet } from 'svelte';
 
-	let { children }: { children: Snippet } = $props();
+	let { children }: LayoutProps = $props();
+	let oauthAuthorization = $derived(page.url.pathname === '/mcp/oauth/authorize');
+	let adminConsole = $derived(
+		page.url.pathname === '/admin' || page.url.pathname.startsWith('/admin/')
+	);
+	let standalonePage = $derived(oauthAuthorization || adminConsole);
 
 	const mobile = new MediaQuery('max-width: 767px');
 	let editingId = $state<string | null>(null);
@@ -49,6 +55,7 @@
 	}
 
 	onMount(() => {
+		if (standalonePage) return;
 		applyEditorOpen(editingId !== null);
 		const stopViewport = attachAppViewport(document.documentElement);
 		uiStore.viewChangeHandler = restoreFeedScroll;
@@ -182,81 +189,85 @@
 
 <svelte:window onpaste={handleGalleryPaste} />
 
-<div class="app-viewport">
-	<div
-		class="app-shell flex h-full w-full overflow-hidden bg-[var(--scrapscache-bg)] text-[var(--scrapscache-text)]"
-		{@attach mobile.current &&
-			attachSidebarSwipe({
-				getOpen: () => uiStore.sidebarOpen,
-				open: () => {
-					uiStore.sidebarOpen = true;
-				},
-				close: () => {
-					uiStore.sidebarOpen = false;
-				}
-			})}
-	>
-		{#if mobile.current}
-			<Drawer.Root
-				open={uiStore.sidebarOpen}
-				onOpenChange={(details) => {
-					uiStore.sidebarOpen = details.open;
-				}}
-				swipeDirection="start"
-				preventScroll={false}
-				lazyMount
-				unmountOnExit
-			>
-				<Drawer.Backdrop
-					data-sidebar-backdrop
-					aria-label="Close sidebar"
-					class="fixed inset-0 z-20 bg-black/30"
-				/>
-				<Drawer.Positioner class="fixed left-0 top-0 z-30 h-full">
-					<Drawer.Content
-						class="h-full w-72 border-r border-[var(--scrapscache-border)] bg-[var(--scrapscache-surface)]"
-						role="navigation"
-						aria-label="Sidebar"
-						data-sidebar-drawer
-					>
-						<Sidebar onNavigate={closeMobileSidebar} />
-					</Drawer.Content>
-				</Drawer.Positioner>
-			</Drawer.Root>
-		{:else}
-			{#if uiStore.sidebarOpen}
-				<div class="w-64 shrink-0 border-r border-[var(--scrapscache-border)]">
-					<Sidebar />
-				</div>
-			{/if}
-		{/if}
-
-		<div class="flex min-h-0 min-w-0 flex-1 flex-col">
-			<Topbar />
-			<div class="app-canvas relative min-h-0 min-w-0 flex-1">
-				<main
-					bind:this={feedEl}
-					class="app-feed scrollable h-full min-h-0 overflow-y-auto overflow-x-hidden px-4 pb-20 md:pb-6"
-					onscroll={rememberFeedScroll}
+{#if standalonePage}
+	{@render children()}
+{:else}
+	<div class="app-viewport">
+		<div
+			class="app-shell flex h-full w-full overflow-hidden bg-[var(--scrapscache-bg)] text-[var(--scrapscache-text)]"
+			{@attach mobile.current &&
+				attachSidebarSwipe({
+					getOpen: () => uiStore.sidebarOpen,
+					open: () => {
+						uiStore.sidebarOpen = true;
+					},
+					close: () => {
+						uiStore.sidebarOpen = false;
+					}
+				})}
+		>
+			{#if mobile.current}
+				<Drawer.Root
+					open={uiStore.sidebarOpen}
+					onOpenChange={(details) => {
+						uiStore.sidebarOpen = details.open;
+					}}
+					swipeDirection="start"
+					preventScroll={false}
+					lazyMount
+					unmountOnExit
 				>
-					<AppViews />
-				</main>
-				<div class="app-float" data-app-float>
-					<BottomNav />
-					<ReminderAlert />
-					{#key editingId}
-						<NoteEditor
-							noteId={editingId}
-							onClose={closeEditor}
-							registerClose={(fn) => {
-								closeOpenNote = fn;
-							}}
-						/>
-					{/key}
+					<Drawer.Backdrop
+						data-sidebar-backdrop
+						aria-label="Close sidebar"
+						class="fixed inset-0 z-20 bg-black/30"
+					/>
+					<Drawer.Positioner class="fixed left-0 top-0 z-30 h-full">
+						<Drawer.Content
+							class="h-full w-72 border-r border-[var(--scrapscache-border)] bg-[var(--scrapscache-surface)]"
+							role="navigation"
+							aria-label="Sidebar"
+							data-sidebar-drawer
+						>
+							<Sidebar onNavigate={closeMobileSidebar} />
+						</Drawer.Content>
+					</Drawer.Positioner>
+				</Drawer.Root>
+			{:else}
+				{#if uiStore.sidebarOpen}
+					<div class="w-64 shrink-0 border-r border-[var(--scrapscache-border)]">
+						<Sidebar />
+					</div>
+				{/if}
+			{/if}
+
+			<div class="flex min-h-0 min-w-0 flex-1 flex-col">
+				<Topbar />
+				<div class="app-canvas relative min-h-0 min-w-0 flex-1">
+					<main
+						bind:this={feedEl}
+						class="app-feed scrollable h-full min-h-0 overflow-y-auto overflow-x-hidden px-4 pb-20 md:pb-6"
+						onscroll={rememberFeedScroll}
+					>
+						{@render children()}
+						<AppViews />
+					</main>
+					<div class="app-float" data-app-float>
+						<BottomNav />
+						<ReminderAlert />
+						{#key editingId}
+							<NoteEditor
+								noteId={editingId}
+								onClose={closeEditor}
+								registerClose={(fn) => {
+									closeOpenNote = fn;
+								}}
+							/>
+						{/key}
+					</div>
 				</div>
 			</div>
 		</div>
 	</div>
-</div>
-<div class="app-overlay" data-app-overlay></div>
-{@render children()}
+	<div class="app-overlay" data-app-overlay></div>
+{/if}

@@ -12,8 +12,18 @@
 	import { buildProfileNotesExport } from '$lib/profiles';
 	import { estimateProfileBytes, LOCAL_PROFILE_ID } from '$lib/db/idb';
 	import { downloadJSON } from '$lib/utils';
-	import { Cloud, CloudOff, Download, RefreshCw, Trash2, X } from '@lucide/svelte';
+	import { Cloud, CloudOff, Copy, Check, Download, RefreshCw, Trash2, X } from '@lucide/svelte';
 	import { portalToAppFloat } from '$lib/appViewport';
+	import { resolveSyncStatus, SyncStatus } from '$lib/syncStatus';
+	import { MCP_TOKEN_STORAGE_PREFIX } from '$lib/mcp/token';
+	import McpAccessPanel from './McpAccessPanel.svelte';
+
+	const SYNC_STATUS_CLASS: Record<SyncStatus, string> = {
+		[SyncStatus.Normal]:
+			'border border-[var(--scrapscache-border)] text-[var(--scrapscache-text-muted)]',
+		[SyncStatus.Warning]: 'scrapscache-status-warning',
+		[SyncStatus.Danger]: 'scrapscache-status-danger'
+	};
 
 	let { onClose }: { onClose: () => void } = $props();
 	let mode = $state<'menu' | 'register' | 'link' | 'waiting' | 'confirm'>('menu');
@@ -45,7 +55,8 @@
 
 	const authenticationFailed = $derived(/authentication/i.test(syncStore.lastError ?? ''));
 	let syncError = $derived(syncStore.lastError ?? '');
-
+	let accountIdCopied = $state(false);
+	let quotaStatus = $derived(resolveSyncStatus(syncError, syncStore.usage));
 	// A running sync must finish before a dataset handover can start.
 	// Background pulls and outbox retries are intentionally silent. They still
 	// block a dataset handover, but only a sync started from this modal owns its
@@ -337,6 +348,13 @@
 			error = friendlyError(result.error, 'Could not unlink workspace');
 			return false;
 		}
+		if (
+			syncStore.account?.accountId &&
+			typeof localStorage !== 'undefined' &&
+			id === syncStore.activeProfile?.id
+		) {
+			localStorage.removeItem(`${MCP_TOKEN_STORAGE_PREFIX}${syncStore.account.accountId}`);
+		}
 		info = 'Notes moved to Anonymous workspace. Cloud data is unchanged.';
 		return true;
 	}
@@ -353,6 +371,7 @@
 
 	async function deleteCloudData() {
 		if (confirmation !== 'delete') return;
+		const account = syncStore.account;
 		error = '';
 		const result = await runOperation('delete', 'Could not delete synced data', () =>
 			profileCoordinator.unlink(true)
@@ -361,6 +380,9 @@
 		if (!result.success) {
 			error = friendlyError(result.error, 'Could not delete synced data');
 			return;
+		}
+		if (account?.accountId && typeof localStorage !== 'undefined') {
+			localStorage.removeItem(`${MCP_TOKEN_STORAGE_PREFIX}${account.accountId}`);
 		}
 		confirmation = null;
 		mode = 'menu';
@@ -384,6 +406,28 @@
 		if (busy) return;
 		stopWaiting();
 		onClose();
+	}
+	function copyAccountId() {
+		const text = syncStore.account?.accountId;
+		if (!text) return;
+		void navigator.clipboard?.writeText(text).then(() => {
+			accountIdCopied = true;
+			setTimeout(() => (accountIdCopied = false), 1500);
+		});
+	}
+	function formatBytes(bytes: number): string {
+		if (bytes < 1_000_000) return `${Math.round(bytes / 1_000)} KB`;
+		const megabytes = bytes / 1_000_000;
+		return `${Number.isInteger(megabytes) ? megabytes : megabytes.toFixed(1)} MB`;
+	}
+	function formatLimit(bytes: number): string {
+		return formatBytes(bytes);
+	}
+	function handleKeydown(event: KeyboardEvent) {
+		if (event.key === 'Escape') {
+			event.stopPropagation();
+			close();
+		}
 	}
 </script>
 
@@ -537,6 +581,46 @@
 										></Progress.Root
 									>
 								{:else if syncing}<p class="mt-2 text-xs" role="status">Syncing…</p>{/if}
+								{#if syncStore.usage}
+									<div
+										aria-label="Sync storage usage"
+										class={[
+											'mt-2 rounded-[var(--scrapscache-radius-md)] p-3 text-xs',
+											SYNC_STATUS_CLASS[quotaStatus]
+										]}
+									>
+										<div class="flex items-center justify-between gap-3">
+											<span class="font-medium">Sync storage</span>
+											<span>
+												{formatBytes(syncStore.usage.storageBytes)} of
+												{formatLimit(syncStore.usage.maxBytes)}
+											</span>
+										</div>
+									</div>
+								{/if}
+								<div
+									class="mt-2 flex items-center justify-between gap-3 rounded-[var(--scrapscache-radius-md)] border border-[var(--scrapscache-border)] p-3 text-xs"
+								>
+									<div class="min-w-0">
+										<div class="font-medium text-[var(--scrapscache-text)]">Sync account ID</div>
+										<div
+											class="truncate font-mono text-[10px] text-[var(--scrapscache-text-muted)]"
+										>
+											{syncStore.account.accountId}
+										</div>
+									</div>
+									<button
+										type="button"
+										onclick={() => void copyAccountId()}
+										class="flex shrink-0 items-center gap-1 font-medium text-[var(--scrapscache-accent)] hover:underline"
+									>
+										{#if accountIdCopied}<Check class="h-3 w-3" /> Copied{:else}<Copy
+												class="h-3 w-3"
+											/> Copy
+										{/if}
+									</button>
+								</div>
+								<McpAccessPanel />
 							</div>
 						{/if}
 						{#if handoverBlocked}<p class="text-xs text-[var(--scrapscache-text-muted)]">

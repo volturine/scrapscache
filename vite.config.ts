@@ -43,6 +43,15 @@ export default defineConfig({
 		// Excalidraw's index.css export only matches development/production.
 		conditions: ['browser', 'development|production']
 	},
+	build: {
+		// Excalidraw is an optional, lazily loaded canvas editor; its isolated bundle is ~1.3 MB minified.
+		chunkSizeWarningLimit: 1500,
+		rolldownOptions: {
+			checks: {
+				pluginTimings: false
+			}
+		}
+	},
 	test: {
 		include: ['src/**/*.{test,spec}.{js,ts}'],
 		environment: 'jsdom',

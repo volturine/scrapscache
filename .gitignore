@@ -32,3 +32,6 @@ test-results/
 # Python
 __pycache__/
 *.py[cod]
+
+# Browser-automation scratch output
+.playwright-mcp

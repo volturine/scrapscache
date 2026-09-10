@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dropIndexAt } from './kanbanDrag.svelte';
+import { dropIndexAt, overhangSpeed } from './kanbanDrag.svelte';
 
 // Three 100px cards, 12px apart, with no drop slot opened yet.
 const tops = [0, 112, 224];
@@ -32,5 +32,35 @@ describe('dropIndexAt', () => {
 		// 170 is past the second card's settled middle (162) but not the third's.
 		expect(dropIndexAt(170, shifted, heights, 1, 112)).toBe(2);
 		expect(dropIndexAt(280, shifted, heights, 1, 112)).toBe(3);
+	});
+});
+
+describe('overhangSpeed', () => {
+	// A phone column: the card nearly fills the scroller, so a finger anywhere
+	// on it would sit in an edge band. Only the card's own overhang may scroll.
+	const view = [0, 390] as const;
+
+	it('stays still while the card is inside the scroller', () => {
+		expect(overhangSpeed(16, 374, ...view)).toBe(0);
+		expect(overhangSpeed(0, 390, ...view)).toBe(0);
+	});
+
+	it('pulls towards the start when the card hangs off the start', () => {
+		expect(overhangSpeed(-90, 268, ...view)).toBeLessThan(0);
+		expect(overhangSpeed(-200, 158, ...view)).toBe(-16);
+	});
+
+	it('pushes towards the end when the card hangs off the end', () => {
+		expect(overhangSpeed(122, 480, ...view)).toBeGreaterThan(0);
+		expect(overhangSpeed(200, 558, ...view)).toBe(16);
+	});
+
+	it('creeps rather than stalls on a sliver of overhang', () => {
+		expect(overhangSpeed(120, 392, ...view)).toBeCloseTo(16 * 0.2);
+	});
+
+	it('follows the far side when the card is larger than the scroller', () => {
+		expect(overhangSpeed(-10, 480, ...view)).toBeGreaterThan(0);
+		expect(overhangSpeed(-100, 400, ...view)).toBeLessThan(0);
 	});
 });

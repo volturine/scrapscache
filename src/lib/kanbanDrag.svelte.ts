@@ -19,10 +19,12 @@ const HOLD_MS = 220;
 const HOLD_CANCEL_PX = 10;
 /** A mouse has no hold delay, just a threshold that separates a drag from a click. */
 const MOUSE_START_PX = 5;
-/** How close to a scroller's edge the pointer starts pushing it along. */
-const EDGE_PX = 72;
+/** Overhang at which a scroller follows the carried card at full speed. */
+const OVERHANG_FULL_PX = 90;
 /** Peak auto-scroll speed, in pixels per frame. */
 const EDGE_SPEED = 16;
+/** Slowest a scroller creeps once the card hangs over its edge at all. */
+const MIN_SCROLL_RATIO = 0.2;
 /** A finger lifts the card clear of itself so the drop preview stays visible. */
 const TOUCH_LIFT_PX = 12;
 /** The click that follows a drag release must not open the note. */
@@ -81,32 +83,31 @@ function scrollerFor(start: HTMLElement | null, axis: 'x' | 'y'): HTMLElement | 
 	return null;
 }
 
-/** Push a scroller along while the pointer rests near its edge. Returns true if it moved. */
-function edgeScroll(el: HTMLElement | null, axis: 'x' | 'y', x: number, y: number): boolean {
-	if (!el) return false;
-	const rect = el.getBoundingClientRect();
-	const [pointer, start, end] =
-		axis === 'x' ? [x, rect.left, rect.right] : [y, rect.top, rect.bottom];
-	const [cross, crossStart, crossEnd] =
-		axis === 'x' ? [y, rect.top, rect.bottom] : [x, rect.left, rect.right];
-	if (cross < crossStart || cross > crossEnd) return false;
-
-	const zone = Math.min(EDGE_PX, (end - start) / 3);
-	if (zone <= 0) return false;
-	const towardsStart = Math.max(pointer - start, 0);
-	const towardsEnd = Math.max(end - pointer, 0);
-	const delta =
-		towardsStart < zone
-			? -EDGE_SPEED * (1 - towardsStart / zone)
-			: towardsEnd < zone
-				? EDGE_SPEED * (1 - towardsEnd / zone)
-				: 0;
-	if (delta === 0) return false;
-
-	const before = axis === 'x' ? el.scrollLeft : el.scrollTop;
-	if (axis === 'x') el.scrollLeft = before + delta;
-	else el.scrollTop = before + delta;
-	return (axis === 'x' ? el.scrollLeft : el.scrollTop) !== before;
+/**
+ * How fast a scroller should follow the carried card along one axis, in pixels
+ * per frame. Negative moves towards the scroller's start.
+ *
+ * The card drives this, not the finger. On a phone a column fills the screen,
+ * so a finger is nearly always within any sensible edge band — the board would
+ * pan the whole time a note is carried. Measuring the card instead means
+ * nothing scrolls until the note itself is pushed past an edge, which is also
+ * what the gesture looks like: shove the note off the side to go there.
+ */
+export function overhangSpeed(
+	cardStart: number,
+	cardEnd: number,
+	viewStart: number,
+	viewEnd: number
+): number {
+	const beforeStart = viewStart - cardStart;
+	const afterEnd = cardEnd - viewEnd;
+	if (beforeStart <= 0 && afterEnd <= 0) return 0;
+	// A card taller or wider than the view hangs over both ends; follow the
+	// side it hangs over further.
+	const overhang = Math.max(beforeStart, afterEnd);
+	const direction = afterEnd > beforeStart ? 1 : -1;
+	const ratio = Math.max(Math.min(overhang / OVERHANG_FULL_PX, 1), MIN_SCROLL_RATIO);
+	return direction * EDGE_SPEED * ratio;
 }
 
 type Press = KanbanCardPress & {
@@ -214,8 +215,9 @@ class KanbanDragController {
 		this.#move(this.#pointerX, this.#pointerY);
 
 		document.documentElement.classList.add('kanban-dragging');
-		// Non-passive, so a lifted card stops the page from scrolling under it.
-		window.addEventListener('touchmove', preventDefault, { passive: false });
+		// Capturing and non-passive: a carried card owns the gesture outright, so
+		// the board can never pan under it while it is also being dragged.
+		document.addEventListener('touchmove', preventDefault, { passive: false, capture: true });
 		window.addEventListener('contextmenu', preventDefault);
 		navigator.vibrate?.(8);
 		// One frame later the ghost has its start transform and can animate in.
@@ -263,14 +265,28 @@ class KanbanDragController {
 		this.target = { columnId, index };
 	}
 
+	/** Follow the card's overhang on one axis. Returns true if the scroller moved. */
+	#followCard(el: HTMLElement | null, axis: 'x' | 'y'): boolean {
+		if (!el) return false;
+		const rect = el.getBoundingClientRect();
+		const speed =
+			axis === 'x'
+				? overhangSpeed(this.x, this.x + this.width, rect.left, rect.right)
+				: overhangSpeed(this.y, this.y + this.height, rect.top, rect.bottom);
+		if (speed === 0) return false;
+
+		const before = axis === 'x' ? el.scrollLeft : el.scrollTop;
+		if (axis === 'x') el.scrollLeft = before + speed;
+		else el.scrollTop = before + speed;
+		return (axis === 'x' ? el.scrollLeft : el.scrollTop) !== before;
+	}
+
 	#tick = (): void => {
 		const press = this.#press;
 		if (!press?.dragging) return;
 		this.#frame = requestAnimationFrame(this.#tick);
-		const scrolled =
-			edgeScroll(press.scrollX, 'x', this.#pointerX, this.#pointerY) ||
-			edgeScroll(press.scrollY, 'y', this.#pointerX, this.#pointerY);
-		// Auto-scroll slides new cards under a still pointer, so re-aim then too.
+		const scrolled = this.#followCard(press.scrollX, 'x') || this.#followCard(press.scrollY, 'y');
+		// Scrolling slides new cards under a still pointer, so re-aim then too.
 		if (scrolled) this.#retarget();
 	};
 
@@ -318,7 +334,7 @@ class KanbanDragController {
 		window.removeEventListener('pointermove', this.#onPointerMove);
 		window.removeEventListener('pointerup', this.#onPointerUp);
 		window.removeEventListener('pointercancel', this.#onPointerCancel);
-		window.removeEventListener('touchmove', preventDefault);
+		document.removeEventListener('touchmove', preventDefault, { capture: true });
 		window.removeEventListener('contextmenu', preventDefault);
 		if (this.#frame) cancelAnimationFrame(this.#frame);
 		this.#frame = 0;

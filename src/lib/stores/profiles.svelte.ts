@@ -247,27 +247,18 @@ export class ProfileCoordinator {
 					await syncStore.addKeyringEntry(profile);
 				}
 				await this.activate(profile);
-				if (existed) {
-					return { success: true, isNew: false };
-				}
-				// Linking an existing sync key starts local as a blank slate and pulls everything from cloud!
-				const synced = await notesStore.replaceWithCloudManual();
-				if (!synced)
-					return {
-						success: false,
-						error: syncStore.lastError ?? 'Could not sync the received profile'
-					};
-				return { success: true, isNew: true };
+				return { isNew: !existed };
 			});
-			if (!activated.success) return { outcome: 'linked', error: activated.error };
-			if (!activated.isNew) {
-				const synced = await notesStore.syncWithCloudManual();
-				if (!synced)
-					return {
-						outcome: 'linked',
-						error: syncStore.lastError ?? 'Could not sync the received profile'
-					};
-			}
+			// Both sync paths acquire SYNC_LOCK themselves. Release the handover
+			// lock first, while switching continues to block other profile changes.
+			const synced = activated.isNew
+				? await notesStore.replaceWithCloudManual()
+				: await notesStore.syncWithCloudManual();
+			if (!synced)
+				return {
+					outcome: 'linked',
+					error: syncStore.lastError ?? 'Could not sync the received profile'
+				};
 			return { outcome: 'linked' };
 		} catch (err) {
 			return {

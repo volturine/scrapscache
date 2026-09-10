@@ -16,7 +16,7 @@
 	import { portalToAppFloat } from '$lib/appViewport';
 
 	let { onClose }: { onClose: () => void } = $props();
-	let mode = $state<'menu' | 'register' | 'link' | 'waiting' | 'confirm'>('menu');
+	let mode = $state<'menu' | 'register' | 'link' | 'waiting' | 'pairing' | 'confirm'>('menu');
 	let code = $state('');
 	let error = $state('');
 	let info = $state('');
@@ -74,7 +74,8 @@
 		fallback: string,
 		run: () => Promise<T>
 	): Promise<T | undefined> {
-		if (busy) return undefined;
+		if (kind === 'pair' ? operation !== null || profileCoordinator.switching : busy)
+			return undefined;
 		operation = kind;
 		try {
 			return await run();
@@ -232,10 +233,15 @@
 				error = '';
 				return;
 			}
+			mode = 'pairing';
 			const adopted = await runOperation('pair', 'Could not set up the received sync key', () =>
 				profileCoordinator.receiveLinkedKey(result.receivedSyncKey ?? '')
 			);
-			if (!adopted) return;
+			if (!adopted) {
+				mode = syncStore.isLoggedIn ? 'menu' : 'link';
+				if (!error) error = 'Could not finish connecting. Try again.';
+				return;
+			}
 			if (adopted.error || !result.receivedSyncKey) {
 				mode = syncStore.isLoggedIn ? 'menu' : 'link';
 				error = friendlyError(
@@ -723,6 +729,10 @@
 							>← Back</button
 						>
 					</div>
+				{:else if mode === 'pairing'}
+					<p class="text-sm text-[var(--scrapscache-text)]" role="status">
+						Connected. Syncing workspace…
+					</p>
 				{:else if mode === 'waiting'}
 					<div class="space-y-5">
 						{#if waiting?.role === 'existing'}

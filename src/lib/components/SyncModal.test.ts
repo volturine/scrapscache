@@ -409,6 +409,50 @@ describe('SyncModal profile interactions', () => {
 		await waitFor(() => expect(unlink).toHaveBeenCalledWith(true));
 	});
 
+	it.each([undefined, 'Could not sync the received profile'])(
+		'shows pairing progress and settles after initial sync (%s)',
+		async (syncError) => {
+			const link: StartedDeviceLink = {
+				id: 'receiving-link',
+				expiresAt: Date.now() + 60_000,
+				role: 'new',
+				syncCode: 'ABCD1234EFGH5678',
+				pake: { ephemeralSecret: 'secret', share: 'share' }
+			};
+			const poll = deferred<{
+				success: boolean;
+				linked: boolean;
+				expired: boolean;
+				receivedSyncKey: string;
+			}>();
+			const handover = deferred<{ outcome: 'linked'; error?: string }>();
+			vi.spyOn(syncStore, 'startDeviceLink').mockResolvedValue({ success: true, link });
+			vi.spyOn(syncStore, 'pollDeviceLink').mockReturnValue(poll.promise);
+			const receive = vi
+				.spyOn(profileCoordinator, 'receiveLinkedKey')
+				.mockReturnValue(handover.promise);
+			render(SyncModal, { props: { onClose: vi.fn() } });
+			await fireEvent.click(screen.getByRole('button', { name: '+ New workspace' }));
+			await fireEvent.click(screen.getByRole('button', { name: 'Join existing' }));
+			await fireEvent.input(screen.getByPlaceholderText('XXXX-XXXX-XXXX-XXXX'), {
+				target: { value: link.syncCode }
+			});
+			await fireEvent.click(screen.getByRole('button', { name: 'Start connection' }));
+			// A background sync may start while the pairing poll is in flight.
+			(notesStore as unknown as { syncFlight: Promise<boolean> | null }).syncFlight =
+				Promise.resolve(true);
+			poll.resolve({ success: true, linked: true, expired: false, receivedSyncKey: side.syncKey });
+			await waitFor(() => expect(receive).toHaveBeenCalledWith(side.syncKey));
+			expect(screen.getByText('Connected. Syncing workspace…')).toBeTruthy();
+			expect(screen.queryByText('Expires in')).toBeNull();
+			expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
+			(notesStore as unknown as { syncFlight: Promise<boolean> | null }).syncFlight = null;
+			handover.resolve({ outcome: 'linked', error: syncError });
+			await waitFor(() => expect(screen.getByText(syncError ?? 'Paired and synced.')).toBeTruthy());
+			expect(screen.queryByText('Connected. Syncing workspace…')).toBeNull();
+		}
+	);
+
 	it('never overlaps pairing polls', async () => {
 		vi.useFakeTimers();
 		const link: StartedDeviceLink = {

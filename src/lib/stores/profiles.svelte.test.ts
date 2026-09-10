@@ -3,7 +3,7 @@ import { getAllNotesMetadata, LOCAL_PROFILE_ID, putNote } from '$lib/db/idb';
 import { createSyncIdentity } from '$lib/syncPairing';
 import type { Note } from '$lib/types';
 import { ProfileCoordinator } from './profiles.svelte';
-import { notesStore } from './notes.svelte';
+import { notesStore, SYNC_LOCK } from './notes.svelte';
 import { syncStore } from './sync.svelte';
 
 function note(id: string): Note {
@@ -116,6 +116,56 @@ describe('profile creation handover', () => {
 			'unrelated-local-note'
 		]);
 	});
+
+	it.each([true, false])(
+		'releases the handover lock before pulling a new paired workspace (sync succeeds: %s)',
+		async (success) => {
+			let held = false;
+			vi.stubGlobal('navigator', {
+				locks: {
+					request: async (name: string, run: () => Promise<unknown>) => {
+						expect(name).toBe(SYNC_LOCK);
+						if (held) throw new Error('Nested sync lock would deadlock');
+						held = true;
+						try {
+							return await run();
+						} finally {
+							held = false;
+						}
+					}
+				}
+			});
+			try {
+				syncStore.activateLocalWorkspace();
+				await putNote(LOCAL_PROFILE_ID, note('keep-anonymous'));
+				vi.spyOn(notesStore, 'waitForPendingProfileWrites').mockResolvedValue();
+				vi.spyOn(notesStore, 'reloadForProfile').mockResolvedValue();
+				vi.spyOn(syncStore, 'queueOutbox').mockResolvedValue();
+				const coordinator = new ProfileCoordinator();
+				const pull = vi.spyOn(notesStore, 'replaceWithCloudManual').mockImplementation(async () => {
+					expect(coordinator.switching).toBe(true);
+					return navigator.locks.request(SYNC_LOCK, async () => success);
+				});
+				const merge = vi.spyOn(notesStore, 'syncWithCloudManual').mockResolvedValue(true);
+				syncStore.lastError = null;
+				const result = await coordinator.receiveLinkedKey(createSyncIdentity().syncKey);
+				expect(result).toEqual(
+					success
+						? { outcome: 'linked' }
+						: { outcome: 'linked', error: 'Could not sync the received profile' }
+				);
+				expect(pull).toHaveBeenCalledOnce();
+				expect(merge).not.toHaveBeenCalled();
+				expect(coordinator.switching).toBe(false);
+				expect(await getAllNotesMetadata(syncStore.activePid)).toEqual([]);
+				expect((await getAllNotesMetadata(LOCAL_PROFILE_ID)).map(({ id }) => id)).toContain(
+					'keep-anonymous'
+				);
+			} finally {
+				vi.unstubAllGlobals();
+			}
+		}
+	);
 
 	it('force pushes using the same profile', async () => {
 		const active = {

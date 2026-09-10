@@ -455,7 +455,9 @@ describe('NoteEditor task focus', () => {
 		expect(notesStore.notes[0].labels).toContain('label-1');
 		expect(document.activeElement).toBe(editor);
 
-		const input = popup.querySelector('input[placeholder="Create new label…"]') as HTMLInputElement;
+		const input = popup.querySelector(
+			'input[placeholder="Search or create a label…"]'
+		) as HTMLInputElement;
 		input.focus();
 		await fireEvent.input(input, { target: { value: 'Personal' } });
 		await tick();
@@ -498,7 +500,9 @@ describe('NoteEditor task focus', () => {
 		await fireEvent.click(labels);
 		await tick();
 		const popup = container.querySelector('[data-editor-popup]') as HTMLElement;
-		const input = popup.querySelector('input[placeholder="Create new label…"]') as HTMLInputElement;
+		const input = popup.querySelector(
+			'input[placeholder="Search or create a label…"]'
+		) as HTMLInputElement;
 		input.focus();
 		await fireEvent.input(input, { target: { value: 'First label' } });
 		await tick();

@@ -36,11 +36,22 @@
 	let dragX = $state(0);
 	let dragY = $state(0);
 	let touchDragging = $state(false);
+	let nativeDragging = $state(false);
 	let suppressOpen = false;
-	let nativeDragGhost: HTMLElement | null = null;
 
 	// Dragging shows a miniaturized note so the card reads as "picked up".
 	const DRAG_SCALE = 0.8;
+	const dragVisual = $derived(touchDragging || nativeDragging);
+	// While a native drag carries the card, the browser snapshots it right after
+	// the dragstart handler, so its transform must already be settled:
+	// transition none during native drag, 120ms zoom in/out on touch.
+	const dragTransition = $derived(
+		touchDragging
+			? 'transform 120ms ease'
+			: nativeDragging
+				? 'none'
+				: 'left 120ms ease, top 120ms ease, transform 120ms ease, box-shadow 120ms ease'
+	);
 
 	function resetTouchDrag() {
 		pointerId = null;
@@ -90,57 +101,6 @@
 		}
 		resetTouchDrag();
 	}
-
-	function clearNativeDragGhost() {
-		nativeDragGhost?.remove();
-		nativeDragGhost = null;
-	}
-
-	function setNativeDragGhost(event: DragEvent) {
-		if (!event.dataTransfer || typeof document === 'undefined') return;
-		clearNativeDragGhost();
-		const source = event.currentTarget as HTMLElement;
-		const rect = source.getBoundingClientRect();
-		const ghost = document.createElement('div');
-		const preview = source.cloneNode(true) as HTMLElement;
-		ghost.setAttribute('aria-hidden', 'true');
-		preview.removeAttribute('draggable');
-		preview.setAttribute('aria-hidden', 'true');
-		// The drag image is just the card itself, miniaturized: the ghost is the
-		// card's bounds at the scale factor, with the card's own rounded corners
-		// and note colour (filling the slivers that corner clipping leaves
-		// transparent) — no frame, padding, or shadow around it. Soft shadow
-		// pixels on transparent areas flatten to a solid black band once the
-		// browser rasterizes the drag image, so the image must stay fully
-		// opaque. `zoom` scales layout and paint (transform would be skipped by
-		// some drag-image capture), and it scales the radius with the rest.
-		const radius = parseFloat(getComputedStyle(source).borderTopLeftRadius) || 0;
-		ghost.style.cssText = [
-			'position: fixed',
-			'left: -10000px',
-			'top: -10000px',
-			'box-sizing: border-box',
-			`width: ${Math.round(rect.width)}px`,
-			`height: ${Math.round(rect.height)}px`,
-			`zoom: ${DRAG_SCALE}`,
-			`border-radius: ${radius}px`,
-			'overflow: hidden',
-			`background: ${background(note.color)}`,
-			'pointer-events: none'
-		].join(';');
-		preview.style.cssText += `; width: ${Math.round(rect.width)}px; left: 0; top: 0; transition: none; pointer-events: none;`;
-		ghost.append(preview);
-		document.body.append(ghost);
-		nativeDragGhost = ghost;
-		const offsetX = Math.max(0, Math.min(rect.width, event.clientX - rect.left));
-		const offsetY = Math.max(0, Math.min(rect.height, event.clientY - rect.top));
-		event.dataTransfer.setDragImage(
-			ghost,
-			Math.round(offsetX * DRAG_SCALE),
-			Math.round(offsetY * DRAG_SCALE)
-		);
-		setTimeout(clearNativeDragGhost, 0);
-	}
 	function onNativeDragStart(event: DragEvent) {
 		if (!event.dataTransfer) return;
 		event.dataTransfer.effectAllowed = 'move';
@@ -148,12 +108,16 @@
 			'application/x-scrapscache-kanban',
 			JSON.stringify({ noteId: note.id, sourceColumnId })
 		);
-		setNativeDragGhost(event);
+		// No custom drag image: the browser snapshots this card itself, already
+		// scaled down by DRAG_SCALE below, so the preview is just the rounded
+		// mini note — no opaque frames, padding or flatten-prone shadows — and
+		// the OS adds its own lift shadow around it.
+		nativeDragging = true;
 		suppressOpen = true;
 	}
 
 	function onNativeDragEnd() {
-		clearNativeDragGhost();
+		nativeDragging = false;
 		setTimeout(() => {
 			suppressOpen = false;
 		}, 0);
@@ -169,16 +133,14 @@
 	role="button"
 	tabindex="0"
 	draggable="true"
-	class="kanban-card relative cursor-grab overflow-hidden rounded-xl border border-black/5 shadow-sm active:cursor-grabbing dark:border-white/10 {touchDragging
+	class="kanban-card relative cursor-grab overflow-hidden rounded-xl border border-black/5 shadow-sm active:cursor-grabbing dark:border-white/10 {dragVisual
 		? 'z-20 opacity-90 shadow-xl'
 		: ''}"
 	style="background-color: {background(note.color)}; left: {touchDragging
 		? dragX
-		: 0}px; top: {touchDragging ? dragY : 0}px; transform: scale({touchDragging
+		: 0}px; top: {touchDragging ? dragY : 0}px; transform: scale({dragVisual
 		? DRAG_SCALE
-		: 1}); transition: {touchDragging
-		? 'transform 120ms ease'
-		: 'left 120ms ease, top 120ms ease, transform 120ms ease, box-shadow 120ms ease'};"
+		: 1}); transition: {dragTransition};"
 	onpointerdown={onPointerDown}
 	onpointermove={onPointerMove}
 	onpointerup={onPointerUp}

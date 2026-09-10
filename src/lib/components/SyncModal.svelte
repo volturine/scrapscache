@@ -1,11 +1,12 @@
 <script lang="ts">
 	import WorkspaceRow from './WorkspaceRow.svelte';
-	import { onDestroy } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
+	import QRCode from 'qrcode';
 	import { Clipboard } from '@ark-ui/svelte/clipboard';
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { Format } from '@ark-ui/svelte/format';
 	import { Progress } from '@ark-ui/svelte/progress';
-	import { formatPairingCode, normalizePairingCode } from '$lib/syncPairing';
+	import { createPairingUrl, formatPairingCode, normalizePairingCode } from '$lib/syncPairing';
 	import { syncStore, type StartedDeviceLink } from '$lib/stores/sync.svelte';
 	import { profileCoordinator } from '$lib/stores/profiles.svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
@@ -15,7 +16,8 @@
 	import { Cloud, CloudOff, Download, RefreshCw, Trash2, X } from '@lucide/svelte';
 	import { portalToAppFloat } from '$lib/appViewport';
 
-	let { onClose }: { onClose: () => void } = $props();
+	let { onClose, initialPairingCode = '' }: { onClose: () => void; initialPairingCode?: string } =
+		$props();
 	let mode = $state<'menu' | 'register' | 'link' | 'waiting' | 'pairing' | 'confirm'>('menu');
 	let code = $state('');
 	let error = $state('');
@@ -34,6 +36,7 @@
 		| 'replace-key';
 	let operation = $state<Operation | null>(null);
 	let copyFlash = $state(false);
+	let qrDataUrl = $state('');
 	let copyFlashTimer: ReturnType<typeof setTimeout> | null = null;
 	let waiting = $state<StartedDeviceLink | null>(null);
 	let now = $state(Date.now());
@@ -134,6 +137,13 @@
 	onDestroy(() => {
 		stopWaiting();
 		if (copyFlashTimer !== null) clearTimeout(copyFlashTimer);
+	});
+
+	onMount(() => {
+		if (!initialPairingCode) return;
+		code = formatPairingCode(initialPairingCode);
+		mode = 'link';
+		void beginLink();
 	});
 
 	function secondsLeft(): number {
@@ -279,7 +289,27 @@
 		waiting = result.link;
 		now = Date.now();
 		mode = 'waiting';
+		void generatePairingQr(result.link);
 		void pollLink(result.link);
+	}
+
+	async function generatePairingQr(active: StartedDeviceLink) {
+		try {
+			const svg = await QRCode.toString(createPairingUrl(window.location.href, active.syncCode), {
+				type: 'svg',
+				width: 220,
+				margin: 1,
+				errorCorrectionLevel: 'M'
+			});
+			if (waiting?.id === active.id)
+				qrDataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+		} catch {
+			// The copyable URL and manual code remain available if QR rendering fails.
+		}
+	}
+
+	function pairingShareUrl(): string {
+		return waiting ? createPairingUrl(window.location.href, waiting.syncCode) : '';
 	}
 
 	async function renameProfile(id: string, next: string): Promise<boolean> {
@@ -741,9 +771,18 @@
 									On the new device
 								</p>
 								<p class="mt-1 text-sm text-[var(--scrapscache-text)]">
-									Open Workspaces → New workspace → Join existing and type this code
+									Scan the QR code, open the link, or type the one-time code
 								</p>
 							</div>
+							{#if qrDataUrl}
+								<div class="flex justify-center">
+									<img
+										src={qrDataUrl}
+										alt="Pair this device"
+										class="h-[220px] w-[220px] rounded-lg bg-white p-2"
+									/>
+								</div>
+							{/if}
 							<div
 								class="rounded-xl border border-[var(--scrapscache-border)] bg-[var(--scrapscache-bg)] px-2 py-5"
 								aria-label="One-time pairing code"
@@ -762,17 +801,15 @@
 									{/each}
 								</div>
 							</div>
-							<Clipboard.Root
-								value={formatPairingCode(waiting.syncCode)}
-								onStatusChange={onCopyStatus}
-							>
+							<Clipboard.Root value={pairingShareUrl()} onStatusChange={onCopyStatus}>
 								<Clipboard.Trigger
 									type="button"
+									aria-label="Copy pairing link"
 									class="scrapscache-button w-full px-3 py-2.5 text-sm font-medium {copyFlash
 										? 'border-[var(--scrapscache-success)] bg-[var(--scrapscache-success)] text-[var(--scrapscache-success-foreground)]'
 										: 'scrapscache-button-secondary'}"
 								>
-									{copyFlash ? 'Copied' : 'Copy code'}
+									{copyFlash ? 'Copied' : 'Copy pairing link'}
 								</Clipboard.Trigger>
 							</Clipboard.Root>
 						{:else}

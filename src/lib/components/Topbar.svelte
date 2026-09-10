@@ -11,6 +11,9 @@
 	import { BackupImportMode, BackupImportPhase, BackupOperation } from '$lib/backup';
 	import { resolveSyncStatus, SyncStatus } from '$lib/syncStatus';
 	import { useEditorActions } from '$lib/editorContext';
+	import { pairingCodeFromUrl } from '$lib/syncPairing';
+	import { onMount } from 'svelte';
+	import { replaceState } from '$app/navigation';
 	import {
 		decryptBackup,
 		encryptBackup,
@@ -49,6 +52,7 @@
 
 	let settingsOpen = $state(false);
 	let syncOpen = $state(false);
+	let pairingCode = $state('');
 	let importingBackup = $state(false);
 	let backupImportError = $state('');
 	let backupDialogMode = $state<BackupOperation | null>(null);
@@ -58,6 +62,16 @@
 	let choosingImportMode = $state(false);
 	let syncStatus = $derived(resolveSyncStatus(syncStore.lastError, syncStore.usage));
 	let syncControlLabel = $derived(SYNC_CONTROL_LABEL[syncStatus]);
+
+	function openPairingLink() {
+		const found = pairingCodeFromUrl(window.location.href);
+		if (!found) return;
+		pairingCode = found;
+		syncOpen = true;
+		replaceState(`${location.pathname}${location.search}`, history.state ?? {});
+	}
+
+	onMount(openPairingLink);
 
 	function startBackupExport() {
 		settingsOpen = false;
@@ -199,6 +213,7 @@
 			class="icon-btn h-10 w-10 p-2"
 			title={syncControlLabel}
 			onclick={() => {
+				pairingCode = '';
 				syncOpen = true;
 			}}
 			aria-label={syncControlLabel}
@@ -330,14 +345,18 @@
 	</Menu.Root>
 </header>
 
-<svelte:window onkeydown={handleKeydown} />
+<svelte:window onkeydown={handleKeydown} onhashchange={openPairingLink} />
 
 {#if syncOpen}
-	<SyncModal
-		onClose={() => {
-			syncOpen = false;
-		}}
-	/>
+	{#key pairingCode}
+		<SyncModal
+			initialPairingCode={pairingCode}
+			onClose={() => {
+				syncOpen = false;
+				pairingCode = '';
+			}}
+		/>
+	{/key}
 {/if}
 
 {#if choosingImportMode}

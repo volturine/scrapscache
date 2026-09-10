@@ -9,6 +9,7 @@ const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 const PAIRING_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 const PAIRING_CODE_LENGTH = 16;
+const PAIRING_URL_KEY = 'pair';
 export type SyncIdentity = {
 	syncKey: string;
 	accountId: string;
@@ -54,6 +55,21 @@ export function formatPairingCode(value: string): string {
 		.join('')
 		.slice(0, PAIRING_CODE_LENGTH);
 	return cleaned.match(/.{1,4}/g)?.join('-') ?? cleaned;
+}
+
+/** Build a pairing link with the one-time secret in the fragment, never the HTTP request. */
+export function createPairingUrl(currentUrl: string, code: string): string {
+	const normalized = normalizePairingCode(code);
+	if (!normalized) throw new Error('Pairing code is invalid');
+	const url = new URL(currentUrl);
+	url.search = '';
+	url.hash = new URLSearchParams({ [PAIRING_URL_KEY]: normalized }).toString();
+	return url.toString();
+}
+
+export function pairingCodeFromUrl(value: string): string | null {
+	const url = new URL(value);
+	return normalizePairingCode(new URLSearchParams(url.hash.slice(1)).get(PAIRING_URL_KEY) ?? '');
 }
 
 export function createOneTimePairingCode(): string {

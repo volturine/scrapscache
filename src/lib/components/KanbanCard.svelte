@@ -106,27 +106,29 @@
 		ghost.setAttribute('aria-hidden', 'true');
 		preview.removeAttribute('draggable');
 		preview.setAttribute('aria-hidden', 'true');
-		// The drag image is just the card itself, miniaturized: the ghost wraps it
-		// at exactly its scaled bounds with the card's own rounded corners and
-		// note colour (filling the slivers that corner clipping leaves
-		// transparent) plus a drop shadow — no frame or padding around it.
-		// `zoom` scales layout and paint (transform would be skipped by some
-		// drag-image capture).
-		const radius = (parseFloat(getComputedStyle(source).borderTopLeftRadius) || 0) * DRAG_SCALE;
+		// The drag image is just the card itself, miniaturized: the ghost is the
+		// card's bounds at the scale factor, with the card's own rounded corners
+		// and note colour (filling the slivers that corner clipping leaves
+		// transparent) — no frame, padding, or shadow around it. Soft shadow
+		// pixels on transparent areas flatten to a solid black band once the
+		// browser rasterizes the drag image, so the image must stay fully
+		// opaque. `zoom` scales layout and paint (transform would be skipped by
+		// some drag-image capture), and it scales the radius with the rest.
+		const radius = parseFloat(getComputedStyle(source).borderTopLeftRadius) || 0;
 		ghost.style.cssText = [
 			'position: fixed',
 			'left: -10000px',
 			'top: -10000px',
 			'box-sizing: border-box',
-			`width: ${Math.round(rect.width * DRAG_SCALE)}px`,
-			`height: ${Math.round(rect.height * DRAG_SCALE)}px`,
+			`width: ${Math.round(rect.width)}px`,
+			`height: ${Math.round(rect.height)}px`,
+			`zoom: ${DRAG_SCALE}`,
 			`border-radius: ${radius}px`,
 			'overflow: hidden',
 			`background: ${background(note.color)}`,
-			'box-shadow: 0 10px 24px rgba(0, 0, 0, 0.32)',
 			'pointer-events: none'
 		].join(';');
-		preview.style.cssText += `; width: ${Math.round(rect.width)}px; left: 0; top: 0; transition: none; pointer-events: none; zoom: ${DRAG_SCALE};`;
+		preview.style.cssText += `; width: ${Math.round(rect.width)}px; left: 0; top: 0; transition: none; pointer-events: none;`;
 		ghost.append(preview);
 		document.body.append(ghost);
 		nativeDragGhost = ghost;
@@ -139,7 +141,6 @@
 		);
 		setTimeout(clearNativeDragGhost, 0);
 	}
-
 	function onNativeDragStart(event: DragEvent) {
 		if (!event.dataTransfer) return;
 		event.dataTransfer.effectAllowed = 'move';

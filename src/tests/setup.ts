@@ -25,6 +25,11 @@ if (typeof Element !== 'undefined' && !Element.prototype.setPointerCapture) {
 	Element.prototype.hasPointerCapture = () => false;
 }
 
+// jsdom has no hit testing; drag code asks what sits under the pointer.
+if (typeof document !== 'undefined' && !document.elementFromPoint) {
+	document.elementFromPoint = () => null;
+}
+
 if (typeof window !== 'undefined' && !window.ResizeObserver) {
 	window.ResizeObserver = class {
 		observe() {}

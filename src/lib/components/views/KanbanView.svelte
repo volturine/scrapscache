@@ -1,13 +1,17 @@
 <script lang="ts">
 	import KanbanCard from '$lib/components/KanbanCard.svelte';
+	import KanbanCardBody from '$lib/components/KanbanCardBody.svelte';
 	import {
 		BacklogFilterMode,
 		columnNotes,
 		defaultBacklogFilter,
+		insertIntoOrder,
 		moveNoteLabels,
 		type BacklogFilter,
 		type KanbanColumn
 	} from '$lib/kanban';
+	import { kanbanDrag, type KanbanDropTarget } from '$lib/kanbanDrag.svelte';
+	import { portalToBody } from '$lib/appViewport';
 	import { useEditorActions } from '$lib/editorContext';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { kanbanStore } from '$lib/stores/kanban.svelte';
@@ -15,6 +19,9 @@
 	import { Checkbox } from '@ark-ui/svelte/checkbox';
 	import { Menu } from '@ark-ui/svelte/menu';
 	import { ChevronDown, X } from '@lucide/svelte';
+	import { flip } from 'svelte/animate';
+	import { onDestroy } from 'svelte';
+	import type { Note } from '$lib/types';
 
 	const { openNote } = useEditorActions();
 	const board = $derived(kanbanStore.activeBoard);
@@ -32,6 +39,12 @@
 	const backlogFilterTags = $derived(unusedTags);
 	const backlogFilter = $derived(board.backlogFilter ?? defaultBacklogFilter());
 	const backlogFilterActive = $derived(backlogFilter.mode === BacklogFilterMode.Custom);
+
+	const draggedNote = $derived(
+		kanbanDrag.noteId ? notesStore.notes.find((note) => note.id === kanbanDrag.noteId) : undefined
+	);
+
+	onDestroy(() => kanbanDrag.cancel());
 
 	let renamingBoard = $state(false);
 	let boardName = $derived(board.name);
@@ -132,19 +145,41 @@
 		});
 	}
 
-	function nativeDrop(event: DragEvent, destinationColumnId: string) {
-		event.preventDefault();
-		try {
-			const raw = event.dataTransfer?.getData('application/x-scrapscache-kanban');
-			const payload = raw
-				? (JSON.parse(raw) as { noteId?: unknown; sourceColumnId?: unknown })
-				: null;
-			if (typeof payload?.noteId === 'string' && typeof payload.sourceColumnId === 'string') {
-				moveNote(payload.noteId, payload.sourceColumnId, destinationColumnId);
-			}
-		} catch {
-			// Ignore drops that did not come from a Scraps Cache Kanban card.
+	/**
+	 * The cards a column shows while a drag is in flight: the carried card is
+	 * gone — it lives in the ghost — and the slot it would drop into is an item
+	 * of its own, so the whole list animates as one when the preview moves.
+	 */
+	type ColumnItem = { key: string; note: Note | null; index: number };
+
+	function columnItems(column: KanbanColumn): ColumnItem[] {
+		const items: ColumnItem[] = columnNotes(board, column, visibleNotes)
+			.filter((note) => note.id !== kanbanDrag.noteId)
+			.map((note, index) => ({ key: note.id, note, index }));
+		const slot = kanbanDrag.target?.columnId === column.id ? kanbanDrag.target.index : -1;
+		if (slot >= 0) {
+			const at = Math.min(slot, items.length);
+			items.splice(at, 0, { key: 'drop-slot', note: null, index: at });
 		}
+		return items;
+	}
+
+	function dropCard(noteId: string, sourceColumnId: string, target: KanbanDropTarget | null) {
+		// Reached from the drag controller after the card unmounted, so it may only
+		// touch board-level state — never anything scoped to that card's list item.
+		if (!target) return;
+		const destination = board.columns.find((column) => column.id === target.columnId);
+		if (!destination) return;
+		// Ordering is stored over every note in the column, but aimed at with the
+		// ones search left on screen.
+		const order = insertIntoOrder(
+			columnNotes(board, destination, notesStore.activeNotes).map((note) => note.id),
+			columnNotes(board, destination, visibleNotes).map((note) => note.id),
+			noteId,
+			target.index
+		);
+		if (target.columnId !== sourceColumnId) moveNote(noteId, sourceColumnId, target.columnId);
+		kanbanStore.placeCard(board.id, noteId, sourceColumnId, target.columnId, order);
 	}
 </script>
 
@@ -223,13 +258,12 @@
 	<div class="kanban-columns -mx-4 overflow-x-auto px-4 pb-4">
 		<div class="flex min-w-max items-start gap-3">
 			{#each board.columns as column (column.id)}
-				{@const notes = columnNotes(board, column, visibleNotes)}
+				{@const items = columnItems(column)}
 				<section
 					data-kanban-column={column.id}
 					class="w-[min(calc(var(--note-card-width)+1.5rem),calc(100vw-2rem))] shrink-0 rounded-2xl bg-black/[0.035] p-3 dark:bg-white/[0.055]"
+					class:kanban-column-target={kanbanDrag.target?.columnId === column.id}
 					aria-label={`${columnName(column)} ${column.labelId === null ? 'Kanban' : 'label'} column`}
-					ondragover={(event) => event.preventDefault()}
-					ondrop={(event) => nativeDrop(event, column.id)}
 				>
 					<div class="mb-2 flex items-center gap-2 px-1 pt-1">
 						<h2
@@ -362,11 +396,30 @@
 						</div>
 					{/if}
 
-					<div class="flex flex-col gap-3" aria-live="polite">
-						{#each notes as note (note.id)}
-							<KanbanCard {note} sourceColumnId={column.id} onOpen={openNote} onMove={moveNote} />
+					<!-- Positioned: card offsets are measured against this list while dragging. -->
+					<div class="relative flex flex-col gap-3" data-kanban-list aria-live="polite">
+						{#each items as item (item.key)}
+							<!-- Cards and the drop slot share one animated element, so the whole
+							     column glides when the preview moves between slots. -->
+							<div
+								data-kanban-card={item.note?.id}
+								data-kanban-slot={item.note ? undefined : ''}
+								class={item.note ? undefined : 'kanban-drop-slot'}
+								style={item.note ? undefined : `height: ${kanbanDrag.height}px`}
+								animate:flip={{ duration: 160 }}
+							>
+								{#if item.note}
+									<KanbanCard
+										note={item.note}
+										columnId={column.id}
+										index={item.index}
+										onOpen={openNote}
+										onDrop={dropCard}
+									/>
+								{/if}
+							</div>
 						{/each}
-						{#if notes.length === 0}
+						{#if items.length === 0}
 							<div
 								class="rounded-xl border border-dashed border-black/10 px-3 py-5 text-center text-xs text-[var(--scrapscache-text-muted)] dark:border-white/10"
 							>
@@ -411,3 +464,18 @@
 		</div>
 	</div>
 </div>
+
+{#if draggedNote}
+	<!-- Portalled to the document: clientX/clientY are viewport coordinates, and
+	     the app viewport is a transformed containing block that would shift them. -->
+	<div
+		{@attach portalToBody}
+		class="kanban-drag-ghost"
+		style="width: {kanbanDrag.width}px; transform: translate3d({kanbanDrag.x}px, {kanbanDrag.y}px, 0);"
+		aria-hidden="true"
+	>
+		<div class="kanban-drag-ghost-card" class:lifted={kanbanDrag.lifted}>
+			<KanbanCardBody note={draggedNote} />
+		</div>
+	</div>
+{/if}

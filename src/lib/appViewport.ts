@@ -310,6 +310,16 @@ export function portalToAppFloat(node: HTMLElement) {
 	return () => node.remove();
 }
 
+/**
+ * Render straight into the document. The app viewport is a transformed
+ * containing block, so anything that positions itself from viewport
+ * coordinates — a drag ghost following a pointer — must escape it.
+ */
+export function portalToBody(node: HTMLElement) {
+	document.body.appendChild(node);
+	return () => node.remove();
+}
+
 /** Render a global dialog above navigation and remove it with its owner. */
 export function portalToAppOverlay(node: HTMLElement) {
 	const host = getAppOverlayHost();

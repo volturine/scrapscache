@@ -6,6 +6,12 @@ export interface KanbanColumn {
 	id: string;
 	/** null is the fixed backlog; every other column is exactly one note tag. */
 	labelId: string | null;
+	/**
+	 * Manual card order for this column, as note ids. Notes missing from it —
+	 * newly created, or moved in from elsewhere — stay above the ordered ones in
+	 * feed order, so a fresh note is never hidden at the bottom of a long column.
+	 */
+	order: string[];
 }
 
 export const BacklogFilterMode = {
@@ -65,7 +71,7 @@ export function createKanbanBoard(name = 'Untitled board'): KanbanBoard {
 	return {
 		id: uid(),
 		name: name.trim() || 'Untitled board',
-		columns: [{ id: uid(), labelId: null }],
+		columns: [{ id: uid(), labelId: null, order: [] }],
 		backlogFilter: defaultBacklogFilter(),
 		updatedAt: now
 	};
@@ -97,13 +103,43 @@ export function noteMatchesBacklog(board: KanbanBoard, note: Note): boolean {
 	return note.labels.some((labelId) => allowed.has(labelId));
 }
 
+/** Apply a column's manual order; unlisted notes keep their feed order on top. */
+export function orderColumnNotes(notes: Note[], order: string[]): Note[] {
+	if (order.length === 0) return notes;
+	const rank = new Map(order.map((id, index) => [id, index]));
+	return [...notes].sort((a, b) => (rank.get(a.id) ?? -1) - (rank.get(b.id) ?? -1));
+}
+
 /**
  * A tag column contains notes with that tag. The backlog uses {@link noteMatchesBacklog}.
  */
 export function columnNotes(board: KanbanBoard, column: KanbanColumn, notes: Note[]): Note[] {
 	const columnLabelId = column.labelId;
-	if (columnLabelId !== null) return notes.filter((note) => note.labels.includes(columnLabelId));
-	return notes.filter((note) => noteMatchesBacklog(board, note));
+	const members =
+		columnLabelId !== null
+			? notes.filter((note) => note.labels.includes(columnLabelId))
+			: notes.filter((note) => noteMatchesBacklog(board, note));
+	return orderColumnNotes(members, column.order);
+}
+
+/**
+ * Place `noteId` at `visibleIndex` of a column's card list.
+ *
+ * Search hides cards, so the visible list is what the user aims at while the
+ * stored order must keep the hidden ones: anchor on the visible card the drop
+ * lands above and splice there, or append when it lands past the last one.
+ */
+export function insertIntoOrder(
+	orderedIds: string[],
+	visibleIds: string[],
+	noteId: string,
+	visibleIndex: number
+): string[] {
+	const rest = orderedIds.filter((id) => id !== noteId);
+	const anchor = visibleIds.filter((id) => id !== noteId)[visibleIndex];
+	const at = anchor === undefined ? rest.length : rest.indexOf(anchor);
+	const position = at < 0 ? rest.length : at;
+	return [...rest.slice(0, position), noteId, ...rest.slice(position)];
 }
 
 /** Newer boards win; equal timestamps use canonical content ordering on every device. */

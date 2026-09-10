@@ -41,7 +41,6 @@
 
 	// Dragging shows a miniaturized note so the card reads as "picked up".
 	const DRAG_SCALE = 0.8;
-	const GHOST_PAD = 20;
 
 	function resetTouchDrag() {
 		pointerId = null;
@@ -97,56 +96,37 @@
 		nativeDragGhost = null;
 	}
 
-	function solidColumnBackground(element: HTMLElement): string {
-		const layers: HTMLElement[] = [];
-		for (let current: HTMLElement | null = element; current; current = current.parentElement)
-			layers.push(current);
-		const seed = uiStore.effectiveDark ? 0 : 255;
-		let red = seed;
-		let green = seed;
-		let blue = seed;
-		for (const layer of layers.reverse()) {
-			const parts = getComputedStyle(layer)
-				.backgroundColor.match(/rgba?\(([^)]+)\)/)?.[1]
-				.split(',')
-				.map(Number);
-			if (!parts || parts.length < 3) continue;
-			const alpha = parts[3] ?? 1;
-			red = parts[0] * alpha + red * (1 - alpha);
-			green = parts[1] * alpha + green * (1 - alpha);
-			blue = parts[2] * alpha + blue * (1 - alpha);
-		}
-		return `rgb(${Math.round(red)}, ${Math.round(green)}, ${Math.round(blue)})`;
-	}
-
 	function setNativeDragGhost(event: DragEvent) {
 		if (!event.dataTransfer || typeof document === 'undefined') return;
 		clearNativeDragGhost();
 		const source = event.currentTarget as HTMLElement;
 		const rect = source.getBoundingClientRect();
-		const column = source.closest<HTMLElement>('[data-kanban-column]');
 		const ghost = document.createElement('div');
 		const preview = source.cloneNode(true) as HTMLElement;
 		ghost.setAttribute('aria-hidden', 'true');
 		preview.removeAttribute('draggable');
 		preview.setAttribute('aria-hidden', 'true');
-		// Preserve the card as a miniaturized snapshot. `zoom` scales layout and
-		// paint (transform would be skipped by some drag-image capture), so the
-		// ghost reads as a shrunken note. Only the transparent pixels outside
-		// its rounded corners are replaced by the opaque, composited column
-		// colour.
+		// The drag image is just the card itself, miniaturized: the ghost wraps it
+		// at exactly its scaled bounds with the card's own rounded corners and
+		// note colour (filling the slivers that corner clipping leaves
+		// transparent) plus a drop shadow — no frame or padding around it.
+		// `zoom` scales layout and paint (transform would be skipped by some
+		// drag-image capture).
+		const radius = (parseFloat(getComputedStyle(source).borderTopLeftRadius) || 0) * DRAG_SCALE;
 		ghost.style.cssText = [
 			'position: fixed',
 			'left: -10000px',
 			'top: -10000px',
 			'box-sizing: border-box',
-			`width: ${Math.round(rect.width * DRAG_SCALE + GHOST_PAD * 2)}px`,
-			`padding: ${GHOST_PAD}px`,
-			`background: ${solidColumnBackground(column ?? source)}`,
-			'border-radius: 0',
+			`width: ${Math.round(rect.width * DRAG_SCALE)}px`,
+			`height: ${Math.round(rect.height * DRAG_SCALE)}px`,
+			`border-radius: ${radius}px`,
+			'overflow: hidden',
+			`background: ${background(note.color)}`,
+			'box-shadow: 0 10px 24px rgba(0, 0, 0, 0.32)',
 			'pointer-events: none'
 		].join(';');
-		preview.style.cssText += `; width: ${Math.round(rect.width)}px; left: 0; top: 0; transition: none; pointer-events: none; zoom: ${DRAG_SCALE}; box-shadow: 0 6px 16px rgba(0, 0, 0, 0.28);`;
+		preview.style.cssText += `; width: ${Math.round(rect.width)}px; left: 0; top: 0; transition: none; pointer-events: none; zoom: ${DRAG_SCALE};`;
 		ghost.append(preview);
 		document.body.append(ghost);
 		nativeDragGhost = ghost;
@@ -154,8 +134,8 @@
 		const offsetY = Math.max(0, Math.min(rect.height, event.clientY - rect.top));
 		event.dataTransfer.setDragImage(
 			ghost,
-			Math.round(offsetX * DRAG_SCALE + GHOST_PAD),
-			Math.round(offsetY * DRAG_SCALE + GHOST_PAD)
+			Math.round(offsetX * DRAG_SCALE),
+			Math.round(offsetY * DRAG_SCALE)
 		);
 		setTimeout(clearNativeDragGhost, 0);
 	}

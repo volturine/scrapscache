@@ -379,9 +379,69 @@ body {
 	overscroll-behavior-x: contain;
 }
 
-/* Let cards claim horizontal drags while preserving normal vertical page scrolling. */
+/* Cards pan the board and the page normally; a press-and-hold picks them up
+ * instead, and the drag then blocks scrolling itself. A card is a handle, not
+ * text or an image to drag out of the page. */
 .kanban-card {
-	touch-action: pan-y;
+	touch-action: manipulation;
+	-webkit-user-select: none;
+	user-select: none;
+	-webkit-user-drag: none;
+}
+.kanban-card img {
+	-webkit-user-drag: none;
+}
+
+/* While a card is carried, nothing else may scroll, select or change cursor. */
+html.kanban-dragging,
+html.kanban-dragging * {
+	cursor: grabbing !important;
+}
+html.kanban-dragging .kanban-columns,
+html.kanban-dragging .app-feed {
+	touch-action: none;
+}
+
+/* The gap the carried card drops into. */
+.kanban-drop-slot {
+	border-radius: 0.75rem;
+	border: 2px dashed color-mix(in srgb, var(--scrapscache-accent) 45%, transparent);
+	background: color-mix(in srgb, var(--scrapscache-accent) 8%, transparent);
+}
+
+.kanban-column-target {
+	box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--scrapscache-accent) 35%, transparent);
+}
+
+/* The carried card itself: the outer element tracks the pointer every frame,
+ * the inner one owns the pick-up animation so the two never fight. */
+.kanban-drag-ghost {
+	position: fixed;
+	top: 0;
+	left: 0;
+	z-index: 200;
+	pointer-events: none;
+	will-change: transform;
+}
+.kanban-drag-ghost-card {
+	border-radius: 0.75rem;
+	transform: scale(1) rotate(0deg);
+	box-shadow: 0 1px 2px rgb(0 0 0 / 0.12);
+	transition:
+		transform 160ms cubic-bezier(0.2, 0.8, 0.3, 1.1),
+		box-shadow 160ms ease;
+}
+.kanban-drag-ghost-card.lifted {
+	transform: scale(1.04) rotate(-1.5deg);
+	box-shadow:
+		0 18px 40px -12px rgb(0 0 0 / 0.45),
+		0 6px 14px -6px rgb(0 0 0 / 0.3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.kanban-drag-ghost-card {
+		transition: none;
+	}
 }
 
 /* List view = single column; grid uses .masonry-balanced (JS packing). */

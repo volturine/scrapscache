@@ -160,9 +160,11 @@ function normalizeBoard(value: unknown): KanbanBoard | null {
 	if (typeof board.id !== 'string' || !Array.isArray(board.columns)) return null;
 	const columns = board.columns.flatMap((column) => {
 		if (!column || typeof column !== 'object' || typeof column.id !== 'string') return [];
-		return typeof column.labelId === 'string' || column.labelId === null
-			? [{ id: column.id, labelId: column.labelId }]
+		if (typeof column.labelId !== 'string' && column.labelId !== null) return [];
+		const order = Array.isArray(column.order)
+			? column.order.filter((id): id is string => typeof id === 'string')
 			: [];
+		return [{ id: column.id, labelId: column.labelId, order }];
 	});
 	return {
 		id: board.id,

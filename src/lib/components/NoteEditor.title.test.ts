@@ -134,9 +134,10 @@ describe('Title wrapping and single-line preservation', () => {
 		const { container } = render(KanbanCard, {
 			props: {
 				note: testNote,
-				sourceColumnId: 'col-1',
+				columnId: 'col-1',
+				index: 0,
 				onOpen: () => {},
-				onMove: () => {}
+				onDrop: () => {}
 			}
 		});
 

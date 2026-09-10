@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
 	columnNotes,
 	defaultBacklogFilter,
+	insertIntoOrder,
 	mergeKanbanBoards,
 	moveNoteLabels,
 	noteMatchesBacklog,
+	orderColumnNotes,
 	type KanbanBoard
 } from './kanban';
 import type { Note } from './types';
@@ -15,9 +17,9 @@ const board: KanbanBoard = {
 	updatedAt: 10,
 	backlogFilter: defaultBacklogFilter(),
 	columns: [
-		{ id: 'backlog', labelId: null },
-		{ id: 'todo', labelId: 'todo-label' },
-		{ id: 'done', labelId: 'done-label' }
+		{ id: 'backlog', labelId: null, order: [] },
+		{ id: 'todo', labelId: 'todo-label', order: [] },
+		{ id: 'done', labelId: 'done-label', order: [] }
 	]
 };
 
@@ -117,5 +119,47 @@ describe('Kanban board tag mapping', () => {
 		const edited: KanbanBoard = { ...board, name: 'Edited after delete', updatedAt: 40 };
 		expect(mergeKanbanBoards([stale], [], { board: 30 })).toEqual([]);
 		expect(mergeKanbanBoards([edited], [], { board: 30 })).toEqual([edited]);
+	});
+});
+
+describe('column card order', () => {
+	it('keeps feed order until a column is ordered by hand', () => {
+		const notes = [note('a', []), note('b', []), note('c', [])];
+		expect(orderColumnNotes(notes, []).map((n) => n.id)).toEqual(['a', 'b', 'c']);
+	});
+
+	it('follows the stored order and floats unlisted notes to the top', () => {
+		const notes = [note('a', []), note('b', []), note('fresh', [])];
+		expect(orderColumnNotes(notes, ['b', 'a']).map((n) => n.id)).toEqual(['fresh', 'b', 'a']);
+	});
+
+	it('orders the cards a column shows', () => {
+		const ordered: KanbanBoard = {
+			...board,
+			columns: board.columns.map((column) =>
+				column.id === 'todo' ? { ...column, order: ['n2', 'n1'] } : column
+			)
+		};
+		const notes = [note('n1', ['todo-label']), note('n2', ['todo-label'])];
+		expect(columnNotes(ordered, ordered.columns[1], notes).map((n) => n.id)).toEqual(['n2', 'n1']);
+	});
+});
+
+describe('insertIntoOrder', () => {
+	it('places a card above the one it was dropped on', () => {
+		expect(insertIntoOrder(['a', 'b', 'c'], ['a', 'b', 'c'], 'x', 1)).toEqual(['a', 'x', 'b', 'c']);
+	});
+
+	it('appends when the drop lands past the last card', () => {
+		expect(insertIntoOrder(['a', 'b'], ['a', 'b'], 'x', 2)).toEqual(['a', 'b', 'x']);
+	});
+
+	it('moves a card already in the column instead of duplicating it', () => {
+		expect(insertIntoOrder(['a', 'b', 'c'], ['a', 'b', 'c'], 'c', 0)).toEqual(['c', 'a', 'b']);
+	});
+
+	it('splices at the visible anchor so search-hidden cards keep their place', () => {
+		// 'b' is hidden by a search; dropping above visible 'c' must land above 'c'.
+		expect(insertIntoOrder(['a', 'b', 'c'], ['a', 'c'], 'x', 1)).toEqual(['a', 'b', 'x', 'c']);
 	});
 });

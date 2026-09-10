@@ -36,13 +36,16 @@ function normalizeBoard(value: unknown): KanbanBoard | null {
 	let hasBacklog = false;
 	const columns = board.columns.flatMap((column): KanbanColumn[] => {
 		if (!column || typeof column !== 'object') return [];
-		const candidate = column as { id?: unknown; labelId?: unknown };
+		const candidate = column as { id?: unknown; labelId?: unknown; order?: unknown };
 		if (
 			typeof candidate.id !== 'string' ||
 			(candidate.labelId !== null && typeof candidate.labelId !== 'string')
 		)
 			return [];
 		const labelId = candidate.labelId;
+		const order = Array.isArray(candidate.order)
+			? [...new Set(candidate.order.filter((id): id is string => typeof id === 'string' && !!id))]
+			: [];
 		if (labelId === null) {
 			if (hasBacklog) return [];
 			hasBacklog = true;
@@ -50,9 +53,9 @@ function normalizeBoard(value: unknown): KanbanBoard | null {
 			if (usedLabels.has(labelId)) return [];
 			usedLabels.add(labelId);
 		}
-		return [{ id: candidate.id, labelId }];
+		return [{ id: candidate.id, labelId, order }];
 	});
-	if (!hasBacklog) columns.unshift({ id: uid(), labelId: null });
+	if (!hasBacklog) columns.unshift({ id: uid(), labelId: null, order: [] });
 	const backlogFilter = normalizeBacklogFilter(board.backlogFilter);
 	// A tag cannot be both a column and a backlog filter tag.
 	backlogFilter.labelIds = backlogFilter.labelIds.filter((labelId) => !usedLabels.has(labelId));
@@ -160,7 +163,9 @@ export class KanbanStore {
 			? (maybeTombstones ?? {})
 			: (pidOrTombstones as Record<string, number>);
 		const stored = await loadBoardsFromDevice<KanbanBoard[] | undefined>(pid, undefined);
-		const fromIdb = Array.isArray(stored) ? stored : [];
+		// Normalized on read: boards stored before a field existed must not reach
+		// the reactive state half-shaped.
+		const fromIdb = normalizeBoards(stored);
 		const tombstones = { ...(isScoped ? {} : this.boardTombstones), ...remoteTombstones };
 		this.boardTombstones = tombstones;
 		if (isScoped && pid !== 'device-local') {
@@ -190,7 +195,7 @@ export class KanbanStore {
 	boardsForSync(): KanbanBoard[] {
 		return this.boards.map((board) => ({
 			...board,
-			columns: board.columns.map((column) => ({ ...column })),
+			columns: board.columns.map((column) => ({ ...column, order: [...column.order] })),
 			backlogFilter: {
 				...board.backlogFilter,
 				labelIds: [...board.backlogFilter.labelIds]
@@ -294,7 +299,7 @@ export class KanbanStore {
 		const board = this.boards.find((candidate) => candidate.id === boardId);
 		if (!board || !labelId || board.columns.some((column) => column.labelId === labelId))
 			return null;
-		const column: KanbanColumn = { id: uid(), labelId };
+		const column: KanbanColumn = { id: uid(), labelId, order: [] };
 		this.changeBoard(boardId, (candidate) => ({
 			...candidate,
 			columns: [...candidate.columns, column],
@@ -314,6 +319,29 @@ export class KanbanStore {
 		this.changeBoard(boardId, (candidate) => ({
 			...candidate,
 			columns: candidate.columns.filter((item) => item.id !== columnId)
+		}));
+	}
+
+	/**
+	 * Record where a dragged card landed: the destination column keeps the full
+	 * new order, and the source column forgets the card so a later return to it
+	 * is not pinned to a stale slot.
+	 */
+	placeCard(
+		boardId: string,
+		noteId: string,
+		sourceColumnId: string,
+		destinationColumnId: string,
+		order: string[]
+	): void {
+		this.changeBoard(boardId, (board) => ({
+			...board,
+			columns: board.columns.map((column) => {
+				if (column.id === destinationColumnId) return { ...column, order };
+				if (column.id === sourceColumnId)
+					return { ...column, order: column.order.filter((id) => id !== noteId) };
+				return column;
+			})
 		}));
 	}
 

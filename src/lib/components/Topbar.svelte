@@ -13,7 +13,8 @@
 	import { useEditorActions } from '$lib/editorContext';
 	import { pairingCodeFromUrl } from '$lib/syncPairing';
 	import { onMount } from 'svelte';
-	import { replaceState } from '$app/navigation';
+	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import {
 		decryptBackup,
 		encryptBackup,
@@ -68,7 +69,7 @@
 		if (!found) return;
 		pairingCode = found;
 		syncOpen = true;
-		replaceState(`${location.pathname}${location.search}`, history.state ?? {});
+		void goto(resolve('/'), { replaceState: true, noScroll: true, keepFocus: true });
 	}
 
 	onMount(openPairingLink);
@@ -345,7 +346,14 @@
 	</Menu.Root>
 </header>
 
-<svelte:window onkeydown={handleKeydown} onhashchange={openPairingLink} />
+<svelte:window
+	onkeydown={handleKeydown}
+	onhashchange={openPairingLink}
+	onpageshow={openPairingLink}
+	onfocus={openPairingLink}
+	onpopstate={openPairingLink}
+/>
+<svelte:document onvisibilitychange={openPairingLink} />
 
 {#if syncOpen}
 	{#key pairingCode}

@@ -10,7 +10,6 @@
 		AlarmClock,
 		Archive,
 		Kanban,
-		Pencil,
 		Plus,
 		StickyNote,
 		Tag,
@@ -165,6 +164,34 @@
 	}
 </script>
 
+{#snippet newLabelRow(extraClass: string)}
+	<button
+		type="button"
+		onclick={startCreateLabel}
+		data-sidebar-stay-open
+		class="sidebar-row flex w-full items-center gap-3 rounded-xl py-2.5 pl-4 pr-2 text-left text-sm font-medium text-[var(--scrapscache-text-muted)] {extraClass}"
+	>
+		<span class="grid h-7 w-7 shrink-0 place-items-center" aria-hidden="true">
+			<Plus class="h-4 w-4" strokeWidth={1.75} />
+		</span>
+		<span class="min-w-0 flex-1 truncate">New label</span>
+	</button>
+{/snippet}
+
+{#snippet deleteButton(label: Label)}
+	<!-- The ::before pad reaches a thumb-sized hit area without widening the row. -->
+	<button
+		type="button"
+		onclick={() => requestDelete(label)}
+		data-sidebar-stay-open
+		class="icon-btn sidebar-row-danger relative grid h-7 w-7 shrink-0 place-items-center text-[var(--scrapscache-text-muted)] before:absolute before:-inset-2 before:content-['']"
+		aria-label={`Delete ${label.name}`}
+		title="Delete"
+	>
+		<X class="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
+	</button>
+{/snippet}
+
 <aside
 	class="scrollable flex h-full flex-col gap-0.5 overflow-y-auto sidebar-scroll px-2 pb-4 pt-2"
 	transition:fly={{ x: -20, duration: 120 }}
@@ -174,7 +201,7 @@
 		<button
 			type="button"
 			onclick={() => navigate(item.view)}
-			class="flex items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-medium transition-colors hover:bg-black/5 dark:hover:bg-white/10 {isActive(
+			class="sidebar-row flex items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-medium {isActive(
 				item.view
 			)
 				? 'nav-active'
@@ -196,31 +223,25 @@
 				class="min-w-0 flex-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--scrapscache-text-muted)]"
 				>Labels</span
 			>
-			{#if labelsEditMode}
-				<button
-					type="button"
-					onclick={exitEditMode}
-					data-sidebar-stay-open
-					class="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-[var(--scrapscache-text-muted)] transition-colors hover:bg-black/5 hover:text-[var(--scrapscache-text)] dark:hover:bg-white/10"
-				>
-					Done
-				</button>
-			{:else}
-				<button
-					type="button"
-					onclick={enterEditMode}
-					data-sidebar-stay-open
-					class="grid h-7 w-7 shrink-0 place-items-center rounded-full text-[var(--scrapscache-text-muted)] transition-colors hover:bg-black/8 hover:text-[var(--scrapscache-text)] dark:hover:bg-white/10"
-					aria-label="Edit labels"
-					title="Edit labels"
-				>
-					<Pencil class="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
-				</button>
-			{/if}
+			<!-- One control in both modes, so the header never reflows on toggle. The
+			     ::before pad gives it a thumb-sized hit area without a taller header. -->
+			<button
+				type="button"
+				onclick={labelsEditMode ? exitEditMode : enterEditMode}
+				data-sidebar-stay-open
+				class="sidebar-row relative shrink-0 rounded-md px-2 py-1 text-xs font-medium text-[var(--scrapscache-text-muted)] before:absolute before:-inset-2.5 before:content-['']"
+				aria-label={labelsEditMode ? 'Finish editing labels' : 'Edit labels'}
+				title={labelsEditMode ? 'Finish editing labels' : 'Edit labels'}
+			>
+				{labelsEditMode ? 'Done' : 'Edit'}
+			</button>
 		</div>
 
 		{#if labelsEditMode && creatingLabel}
-			<div class="mb-1 flex items-center gap-3 rounded-xl px-4 py-2" data-sidebar-stay-open>
+			<div
+				class="sidebar-row-editing mb-1 flex items-center gap-3 rounded-xl py-2.5 pl-4 pr-2"
+				data-sidebar-stay-open
+			>
 				<span
 					class="grid h-7 w-7 shrink-0 place-items-center text-[var(--scrapscache-text-muted)]"
 					aria-hidden="true"
@@ -232,7 +253,8 @@
 					bind:value={newLabelName}
 					type="text"
 					placeholder="New label"
-					class="min-w-0 flex-1 bg-transparent text-sm text-[var(--scrapscache-text)] outline-none placeholder:text-[var(--scrapscache-text-muted)]"
+					aria-label="New label name"
+					class="min-w-0 flex-1 bg-transparent text-sm font-medium text-[var(--scrapscache-text)] outline-none placeholder:font-normal placeholder:text-[var(--scrapscache-text-muted)]"
 					onblur={finishCreateLabel}
 					onkeydown={(event) => {
 						if (event.key === 'Enter') finishCreateLabel();
@@ -241,36 +263,19 @@
 				/>
 			</div>
 		{:else if labelsEditMode}
-			<button
-				type="button"
-				onclick={startCreateLabel}
-				data-sidebar-stay-open
-				class="mb-1 flex w-full items-center gap-3 rounded-xl px-4 py-2.5 text-left text-sm text-[var(--scrapscache-text-muted)] transition-colors hover:bg-black/5 dark:hover:bg-white/10"
-			>
-				<span class="grid h-7 w-7 shrink-0 place-items-center" aria-hidden="true">
-					<Plus class="h-4 w-4" strokeWidth={1.75} />
-				</span>
-				<span>New label</span>
-			</button>
+			{@render newLabelRow('mb-1')}
 		{/if}
 
 		{#if notesStore.labels.length === 0 && !labelsEditMode}
-			<button
-				type="button"
-				onclick={startCreateLabel}
-				class="flex w-full items-center gap-3 rounded-xl px-4 py-2.5 text-left text-sm text-[var(--scrapscache-text-muted)] transition-colors hover:bg-black/5 dark:hover:bg-white/10"
-			>
-				<span class="grid h-7 w-7 shrink-0 place-items-center" aria-hidden="true">
-					<Plus class="h-4 w-4" strokeWidth={1.75} />
-				</span>
-				<span>New label</span>
-			</button>
+			{@render newLabelRow('')}
 		{:else}
 			<div class="flex flex-col gap-0.5">
 				{#each notesStore.labels as label (label.id)}
 					{#if labelsEditMode && renamingId === label.id}
+						<!-- Same box as the rows around it, so starting a rename never nudges
+						     the list; only the tint and the field change. -->
 						<div
-							class="flex items-center gap-3 rounded-xl px-4 py-2 dark:bg-white/[0.04]"
+							class="sidebar-row-editing flex items-center gap-3 rounded-xl py-2.5 pl-4 pr-2"
 							data-sidebar-stay-open
 						>
 							<span
@@ -283,6 +288,7 @@
 								bind:this={renameInput}
 								bind:value={renamingName}
 								type="text"
+								aria-label={`Rename ${label.name}`}
 								class="min-w-0 flex-1 bg-transparent text-sm font-medium text-[var(--scrapscache-text)] outline-none"
 								onblur={() => saveRename(label)}
 								onkeydown={(event) => {
@@ -290,9 +296,10 @@
 									if (event.key === 'Escape') cancelRename();
 								}}
 							/>
+							{@render deleteButton(label)}
 						</div>
 					{:else if labelsEditMode}
-						<div class="flex items-center gap-3 rounded-xl py-2.5 pl-4 pr-2">
+						<div class="sidebar-row flex items-center gap-3 rounded-xl py-2.5 pl-4 pr-2">
 							<span
 								class="grid h-7 w-7 shrink-0 place-items-center text-[var(--scrapscache-text-muted)]"
 								aria-hidden="true"
@@ -303,27 +310,19 @@
 								type="button"
 								onclick={() => startRename(label)}
 								data-sidebar-stay-open
-								class="min-w-0 flex-1 truncate text-left text-sm font-medium text-[var(--scrapscache-text)]"
+								class="min-w-0 flex-1 self-stretch truncate text-left text-sm font-medium text-[var(--scrapscache-text)]"
+								aria-label={`Rename ${label.name}`}
 								title="Rename"
 							>
 								{label.name}
 							</button>
-							<button
-								type="button"
-								onclick={() => requestDelete(label)}
-								data-sidebar-stay-open
-								class="grid h-7 w-7 shrink-0 place-items-center rounded-full text-[var(--scrapscache-text-muted)] transition-colors hover:bg-red-500/10 hover:text-red-600 dark:hover:text-red-400"
-								aria-label={`Delete ${label.name}`}
-								title="Delete"
-							>
-								<X class="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
-							</button>
+							{@render deleteButton(label)}
 						</div>
 					{:else}
 						<button
 							type="button"
 							onclick={() => navigate('label', label.id)}
-							class="flex w-full items-center gap-3 rounded-xl py-2.5 pl-4 pr-2 text-left text-sm font-medium transition-colors hover:bg-black/5 dark:hover:bg-white/10 {isActive(
+							class="sidebar-row flex w-full items-center gap-3 rounded-xl py-2.5 pl-4 pr-2 text-left text-sm font-medium {isActive(
 								'label',
 								label.id
 							)
@@ -335,7 +334,8 @@
 							</span>
 							<span class="min-w-0 flex-1 truncate">{label.name}</span>
 							{#if (labelCounts.get(label.id) ?? 0) > 0}
-								<span class="shrink-0 text-xs tabular-nums opacity-70"
+								<span
+									class="grid h-7 w-7 shrink-0 place-items-center text-xs tabular-nums opacity-70"
 									>{labelCounts.get(label.id)}</span
 								>
 							{/if}

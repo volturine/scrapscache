@@ -13,8 +13,6 @@
 	import LabelMenu from './LabelMenu.svelte';
 	import NoteEditorFooter from './NoteEditorFooter.svelte';
 	import BodyEditor from './BodyEditor.svelte';
-	import LinkPreview from './LinkPreview.svelte';
-	import { extractHttpUrls } from '$lib/linkPreview';
 	import { appClock } from '$lib/appClock.svelte';
 	import { formatReminder, isReminderOverdue } from '$lib/utils';
 	import ReminderLabel from './ReminderLabel.svelte';
@@ -47,7 +45,6 @@
 	let title = $state(note?.title ?? '');
 	// svelte-ignore state_referenced_locally
 	let body = $state(note?.body ?? '');
-	const links = $derived(extractHttpUrls(body));
 	let paletteOpen = $state(false);
 	let reminderOpen = $state(false);
 	let labelOpen = $state(false);
@@ -621,16 +618,6 @@
 							onExitTaskFocus={exitTaskFocus}
 						/>
 					</div>
-
-					{#if links.length > 0}
-						<div class="scrollable flex gap-2 overflow-x-auto px-3 pb-2" aria-label="Links">
-							{#each links as url (url)}
-								<div class="w-56 shrink-0">
-									<LinkPreview {url} />
-								</div>
-							{/each}
-						</div>
-					{/if}
 
 					{#if fileDropActive}
 						<div

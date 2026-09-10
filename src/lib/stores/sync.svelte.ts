@@ -51,13 +51,11 @@ import {
 	getSyncOutboxKeys,
 	getSyncState,
 	markSyncOutbox,
-	namespaceHasData,
 	removeProfileFromLocalStorage,
 	unlinkProfileToNamespace,
 	LOCAL_PROFILE_ID
 } from '$lib/db/idb';
 import {
-	adoptLocalDatasetInto,
 	getLastActiveProfileId,
 	loadProfiles,
 	readProfiles,
@@ -259,7 +257,6 @@ export class SyncStore {
 				const chosen =
 					pointerId === LOCAL_PROFILE_ID ? null : (pointed ?? pickBootProfile(this.profiles));
 				if (chosen) {
-					await this.healStrandedLocalData(chosen.id);
 					if (this.activeProfile?.id !== chosen.id) {
 						this.activateProfile(chosen);
 					}
@@ -271,32 +268,6 @@ export class SyncStore {
 			}
 		})();
 		return this.profilesReady;
-	}
-
-	/**
-	 * Upgrades that predate namespacing landed all device data in the local
-	 * no-key namespace while the keyring was still empty, so the adopted
-	 * profile booted on an empty namespace with a stale "already synced"
-	 * control plane. When the active profile holds no notes but the local
-	 * namespace does, hand the rows over before first paint.
-	 */
-	private async healStrandedLocalData(activePid: string): Promise<void> {
-		if (activePid === LOCAL_PROFILE_ID || this.profiles.length !== 1) return;
-		try {
-			const [activeHasData, localHasData] = await Promise.all([
-				namespaceHasData(activePid),
-				namespaceHasData(LOCAL_PROFILE_ID)
-			]);
-			if (!activeHasData && localHasData) {
-				console.error('[sync] adopting pre-upgrade data into the active profile');
-				await adoptLocalDatasetInto(activePid);
-				const profile = this.profiles.find((entry) => entry.id === activePid);
-				if (profile)
-					await this.clearAccountControlPlane(identityFromSyncKey(profile.syncKey).accountId);
-			}
-		} catch (err) {
-			console.error('[sync] could not check for stranded pre-upgrade data:', err);
-		}
 	}
 
 	/** Persist a keyring entry and surface it in the reactive profile list. */

@@ -1254,6 +1254,29 @@ describe('client sync state machine', () => {
 		expect(store3.activeProfile).toBeNull();
 	});
 
+	it('keeps anonymous data separate on repeated boots of an empty paired workspace', async () => {
+		localStorage.clear();
+		const profile = {
+			id: 'paired-empty',
+			name: 'Paired',
+			syncKey: createSyncIdentity().syncKey,
+			createdAt: 1
+		};
+		const store = new SyncStore();
+		await store.addKeyringEntry(profile);
+		store.activateProfile(profile);
+		await idb.putNote(idb.LOCAL_PROFILE_ID, note('anonymous-only'));
+		for (let boot = 0; boot < 2; boot++) {
+			const restored = new SyncStore();
+			await restored.ensureProfilesLoaded();
+			expect(restored.activePid).toBe(profile.id);
+			expect(await idb.getAllNotesMetadata(profile.id)).toEqual([]);
+			expect((await idb.getAllNotesMetadata(idb.LOCAL_PROFILE_ID)).map(({ id }) => id)).toEqual([
+				'anonymous-only'
+			]);
+		}
+	});
+
 	it('keeps the legacy account pointer after adopting it, without re-adopting', async () => {
 		localStorage.clear();
 		const legacyIdentity = createSyncIdentity();

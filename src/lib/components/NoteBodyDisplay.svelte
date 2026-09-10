@@ -4,8 +4,7 @@
 	// checklists are interactive in the editor instead.
 	import type { Note } from '$lib/types';
 	import { parseBody, noteAttachments } from '$lib/checklistBody';
-	import { extractHttpUrls } from '$lib/linkPreview';
-	import LinkPreview from './LinkPreview.svelte';
+	import { extractHttpUrls, localLinkCard } from '$lib/linkPreview';
 	import { isImageAttachment, fileIconLabel } from '$lib/noteImages';
 	import { displayImageSrc } from '$lib/imageThumb';
 	import { notesStore } from '$lib/stores/notes.svelte';
@@ -130,8 +129,8 @@
 	</div>
 {/if}
 
-{#if files.length > 0}
-	<div class="mt-2 flex flex-col gap-1">
+{#if files.length > 0 || links.length > 0}
+	<div class="mt-2 flex flex-col gap-1" aria-label="Files and links">
 		{#each files as file (file.id)}
 			<div
 				class="flex w-full items-center gap-2 rounded-md border border-black/10 bg-black/5 px-2 py-1.5 text-left dark:border-white/10 dark:bg-white/5"
@@ -146,14 +145,18 @@
 				>
 			</div>
 		{/each}
-	</div>
-{/if}
-
-{#if links.length > 0}
-	<div class="scrollable mt-2 flex gap-1.5 overflow-x-auto" aria-label="Links">
 		{#each links as url (url)}
-			<div class="w-48 shrink-0">
-				<LinkPreview {url} interactive={false} />
+			{@const card = localLinkCard(url)}
+			<div
+				class="flex w-full items-center gap-2 rounded-md border border-black/10 bg-black/5 px-2 py-1.5 text-left dark:border-white/10 dark:bg-white/5"
+			>
+				<span
+					class="grid h-7 w-7 shrink-0 place-items-center rounded bg-black/10 text-[9px] font-bold text-[var(--scrapscache-text)] dark:bg-white/10"
+					aria-hidden="true">{card?.badge ?? '↗'}</span
+				>
+				<span class="min-w-0 flex-1 truncate text-xs text-[var(--scrapscache-text)]"
+					>{card?.hostname ?? url}</span
+				>
 			</div>
 		{/each}
 	</div>

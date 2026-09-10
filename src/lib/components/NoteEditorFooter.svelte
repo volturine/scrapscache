@@ -18,6 +18,7 @@
 	} from '$lib/noteImages';
 	import { displayImageSrc } from '$lib/imageThumb';
 	import type { ImageQuality } from '$lib/imageOptimize';
+	import { extractHttpUrls, localLinkCard } from '$lib/linkPreview';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { sha256 } from '$lib/syncHash';
 	import { formatStorageError } from '$lib/imageBlob';
@@ -90,6 +91,7 @@
 		imageAttachments.filter((attachment) => !displayImageSrc(attachment))
 	);
 	const files = $derived(images.filter((a) => !isImageAttachment(a) && !isCanvasAttachment(a)));
+	const links = $derived(extractHttpUrls(body));
 	const photoIndexById = $derived(new Map(photos.map((p, i) => [p.id, i])));
 
 	/**
@@ -374,8 +376,11 @@
 	</div>
 {/if}
 
-{#if files.length > 0}
-	<ul class="scrollable max-h-36 space-y-1.5 overflow-y-auto px-3 pb-2">
+{#if files.length > 0 || links.length > 0}
+	<ul
+		class="note-scrollbar-hidden scrollable max-h-36 space-y-1.5 overflow-y-auto px-3 pb-2"
+		aria-label="Files and links"
+	>
 		{#each files as file (file.id)}
 			<li
 				class="flex items-center gap-2 rounded-lg border border-black/10 bg-black/5 px-2 py-1.5 dark:border-white/10 dark:bg-white/5"
@@ -405,6 +410,31 @@
 				>
 					<X class="h-3.5 w-3.5" aria-hidden="true" />
 				</button>
+			</li>
+		{/each}
+		{#each links as url (url)}
+			{@const card = localLinkCard(url)}
+			<li
+				class="flex items-center gap-2 rounded-lg border border-black/10 bg-black/5 px-2 py-1.5 dark:border-white/10 dark:bg-white/5"
+			>
+				<span
+					class="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-black/10 text-[10px] font-bold tracking-wide text-[var(--scrapscache-text)] dark:bg-white/10"
+					aria-hidden="true">{card?.badge ?? '↗'}</span
+				>
+				<a
+					href={url}
+					target="_blank"
+					rel="noreferrer noopener"
+					class="min-w-0 flex-1 text-left touch-manipulation"
+					aria-label={`Open ${card?.hostname ?? url}`}
+				>
+					<div class="truncate text-sm text-[var(--scrapscache-text)]">
+						{card?.hostname ?? url}
+					</div>
+					<div class="truncate text-[10px] text-[var(--scrapscache-text-muted)]">
+						{card?.path || url}
+					</div>
+				</a>
 			</li>
 		{/each}
 	</ul>

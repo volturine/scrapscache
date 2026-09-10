@@ -69,11 +69,13 @@
 }
 
 /* Outside the note editor a drag must act on gestures (swipes, context
- * menus), not start a text selection. Editable fields keep the native
- * selection behavior. */
+ * menus), not start a text selection — on every device, including iPad
+ * touch, where Safari also raises the long-press callout. Editable fields
+ * keep the native selection behavior. */
 html:not(.editor-open) * {
 	-webkit-user-select: none;
 	user-select: none;
+	-webkit-touch-callout: none;
 }
 html:not(.editor-open) input,
 html:not(.editor-open) textarea,

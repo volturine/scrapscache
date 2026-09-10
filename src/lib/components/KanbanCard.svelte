@@ -39,6 +39,10 @@
 	let suppressOpen = false;
 	let nativeDragGhost: HTMLElement | null = null;
 
+	// Dragging shows a miniaturized note so the card reads as "picked up".
+	const DRAG_SCALE = 0.8;
+	const GHOST_PAD = 20;
+
 	function resetTouchDrag() {
 		pointerId = null;
 		touchDragging = false;
@@ -69,7 +73,13 @@
 		if (event.pointerId !== pointerId) return;
 		if (touchDragging) {
 			suppressOpen = true;
+			// The dragged card sits under the finger, so it would win the hit test
+			// and always resolve to its own column. Hide it from hit testing for
+			// this lookup, then restore.
+			const card = event.currentTarget as HTMLElement;
+			card.style.pointerEvents = 'none';
 			const target = document.elementFromPoint(event.clientX, event.clientY);
+			card.style.pointerEvents = '';
 			const destination =
 				target instanceof Element
 					? target.closest<HTMLElement>('[data-kanban-column]')?.dataset.kanbanColumn
@@ -120,26 +130,33 @@
 		ghost.setAttribute('aria-hidden', 'true');
 		preview.removeAttribute('draggable');
 		preview.setAttribute('aria-hidden', 'true');
-		// Preserve the real card exactly. Only the transparent pixels outside its rounded
-		// corners are replaced by the opaque, composited column colour.
+		// Preserve the card as a miniaturized snapshot. `zoom` scales layout and
+		// paint (transform would be skipped by some drag-image capture), so the
+		// ghost reads as a shrunken note. Only the transparent pixels outside
+		// its rounded corners are replaced by the opaque, composited column
+		// colour.
 		ghost.style.cssText = [
 			'position: fixed',
 			'left: -10000px',
 			'top: -10000px',
 			'box-sizing: border-box',
-			`width: ${Math.round(rect.width + 16)}px`,
-			'padding: 8px',
+			`width: ${Math.round(rect.width * DRAG_SCALE + GHOST_PAD * 2)}px`,
+			`padding: ${GHOST_PAD}px`,
 			`background: ${solidColumnBackground(column ?? source)}`,
 			'border-radius: 0',
 			'pointer-events: none'
 		].join(';');
-		preview.style.cssText += `; width: ${Math.round(rect.width)}px; left: 0; top: 0; transition: none; pointer-events: none;`;
+		preview.style.cssText += `; width: ${Math.round(rect.width)}px; left: 0; top: 0; transition: none; pointer-events: none; zoom: ${DRAG_SCALE}; box-shadow: 0 6px 16px rgba(0, 0, 0, 0.28);`;
 		ghost.append(preview);
 		document.body.append(ghost);
 		nativeDragGhost = ghost;
 		const offsetX = Math.max(0, Math.min(rect.width, event.clientX - rect.left));
 		const offsetY = Math.max(0, Math.min(rect.height, event.clientY - rect.top));
-		event.dataTransfer.setDragImage(ghost, Math.round(offsetX + 8), Math.round(offsetY + 8));
+		event.dataTransfer.setDragImage(
+			ghost,
+			Math.round(offsetX * DRAG_SCALE + GHOST_PAD),
+			Math.round(offsetY * DRAG_SCALE + GHOST_PAD)
+		);
 		setTimeout(clearNativeDragGhost, 0);
 	}
 
@@ -172,13 +189,15 @@
 	tabindex="0"
 	draggable="true"
 	class="kanban-card relative cursor-grab overflow-hidden rounded-xl border border-black/5 shadow-sm active:cursor-grabbing dark:border-white/10 {touchDragging
-		? 'z-20 opacity-65 shadow-lg'
+		? 'z-20 opacity-90 shadow-xl'
 		: ''}"
 	style="background-color: {background(note.color)}; left: {touchDragging
 		? dragX
-		: 0}px; top: {touchDragging ? dragY : 0}px; transition: {touchDragging
-		? 'none'
-		: 'left 120ms ease, top 120ms ease, box-shadow 120ms ease'};"
+		: 0}px; top: {touchDragging ? dragY : 0}px; transform: scale({touchDragging
+		? DRAG_SCALE
+		: 1}); transition: {touchDragging
+		? 'transform 120ms ease'
+		: 'left 120ms ease, top 120ms ease, transform 120ms ease, box-shadow 120ms ease'};"
 	onpointerdown={onPointerDown}
 	onpointermove={onPointerMove}
 	onpointerup={onPointerUp}

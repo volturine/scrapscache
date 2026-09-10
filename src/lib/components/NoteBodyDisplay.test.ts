@@ -40,12 +40,16 @@ afterEach(() => {
 });
 
 describe('NoteBodyDisplay attachment order', () => {
-	it('places links with photos after the note body', () => {
+	it('lists links with the file rows after the note body, photos last', () => {
 		const { container } = render(NoteBodyDisplay, { props: { note: note() } });
-		const links = container.querySelector('[aria-label="Links"]');
+		const filesAndLinks = container.querySelector('[aria-label="Files and links"]');
 		const photos = container.querySelector('[aria-label="Photos"]');
-		expect(links).toBeTruthy();
+		expect(filesAndLinks).toBeTruthy();
 		expect(photos).toBeTruthy();
-		expect(links!.compareDocumentPosition(photos!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		expect(
+			filesAndLinks!.compareDocumentPosition(photos!) & Node.DOCUMENT_POSITION_FOLLOWING
+		).toBeTruthy();
+		// A URL renders as a pseudo file row showing its hostname.
+		expect(filesAndLinks!.textContent).toContain('webassembly.org');
 	});
 });

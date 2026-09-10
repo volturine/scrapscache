@@ -37,6 +37,9 @@
 	let dragY = $state(0);
 	let touchDragging = $state(false);
 	let nativeDragging = $state(false);
+	// Set from pointerdown until the touch gesture ends; Safari fires dragstart
+	// for touch on draggable elements, and its native flow must stay off then.
+	let touchPointerActive = false;
 	let suppressOpen = false;
 
 	// Dragging shows a miniaturized note so the card reads as "picked up".
@@ -55,6 +58,7 @@
 
 	function resetTouchDrag() {
 		pointerId = null;
+		touchPointerActive = false;
 		touchDragging = false;
 		dragX = 0;
 		dragY = 0;
@@ -64,6 +68,7 @@
 		// Desktop gets the native HTML drag path; this path makes touch dragging work on iPhone.
 		if (event.pointerType === 'mouse') return;
 		if (window.matchMedia(PHONE_MEDIA).matches && isSidebarEdgeStart(event.clientX)) return;
+		touchPointerActive = true;
 		pointerId = event.pointerId;
 		startX = event.clientX;
 		startY = event.clientY;
@@ -101,7 +106,17 @@
 		}
 		resetTouchDrag();
 	}
+
 	function onNativeDragStart(event: DragEvent) {
+		// Touch gestures belong to the pointer path, which drags the live card
+		// with no snapshot involved. Safari's native DHTML drag also fires
+		// dragstart for touch and takes over with an element snapshot that
+		// renders embedded images black and drops the rounded corners — cancel
+		// it so the pointer path keeps the gesture.
+		if (touchPointerActive) {
+			event.preventDefault();
+			return;
+		}
 		if (!event.dataTransfer) return;
 		event.dataTransfer.effectAllowed = 'move';
 		event.dataTransfer.setData(

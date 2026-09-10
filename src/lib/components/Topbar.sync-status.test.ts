@@ -2,15 +2,20 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import { tick } from 'svelte';
 
+const navigationMocks = vi.hoisted(() => ({ goto: vi.fn() }));
+
+vi.mock('$app/navigation', () => navigationMocks);
+
 vi.mock('$lib/editorContext', () => ({
 	useEditorActions: () => ({ startNewNote: vi.fn(), closeNote: vi.fn() })
 }));
 
-import { syncStore } from '$lib/stores/sync.svelte';
+import { syncStore, type StartedDeviceLink } from '$lib/stores/sync.svelte';
 import { notesStore } from '$lib/stores/notes.svelte';
 import Topbar from './Topbar.svelte';
 
 afterEach(() => {
+	history.replaceState({}, '', '/');
 	syncStore.lastError = null;
 	syncStore.usage = null;
 	syncStore.account = null;
@@ -22,6 +27,30 @@ afterEach(() => {
 });
 
 describe('Topbar sync status', () => {
+	it('consumes a pairing link when iOS resumes an already-open page', async () => {
+		const link: StartedDeviceLink = {
+			id: 'ios-resume-link',
+			expiresAt: Date.now() + 60_000,
+			role: 'new',
+			syncCode: 'ABCD1234EFGH5678',
+			pake: { ephemeralSecret: 'secret', share: 'share' }
+		};
+		const start = vi.spyOn(syncStore, 'startDeviceLink').mockResolvedValue({ success: true, link });
+		vi.spyOn(syncStore, 'pollDeviceLink').mockReturnValue(new Promise(() => undefined));
+		render(Topbar);
+
+		location.hash = `pair=${link.syncCode}`;
+		window.dispatchEvent(new PageTransitionEvent('pageshow'));
+
+		await vi.waitFor(() => expect(start).toHaveBeenCalledWith(link.syncCode));
+		expect(navigationMocks.goto).toHaveBeenCalledWith('/', {
+			keepFocus: true,
+			noScroll: true,
+			replaceState: true
+		});
+		expect(screen.getByText('Expires in')).toBeTruthy();
+	});
+
 	it('uses only the cloud color and accessible label to surface persistent sync attention', async () => {
 		syncStore.usage = {
 			ciphertextBytes: 700,

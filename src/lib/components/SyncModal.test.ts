@@ -453,6 +453,25 @@ describe('SyncModal profile interactions', () => {
 		}
 	);
 
+	it('starts pairing immediately from a shared link code', async () => {
+		const link: StartedDeviceLink = {
+			id: 'shared-link',
+			expiresAt: Date.now() + 60_000,
+			role: 'new',
+			syncCode: 'ABCD1234EFGH5678',
+			pake: { ephemeralSecret: 'secret', share: 'share' }
+		};
+		const start = vi.spyOn(syncStore, 'startDeviceLink').mockResolvedValue({ success: true, link });
+		vi.spyOn(syncStore, 'pollDeviceLink').mockReturnValue(new Promise(() => undefined));
+
+		render(SyncModal, {
+			props: { onClose: vi.fn(), initialPairingCode: 'ABCD-1234-EFGH-5678' }
+		});
+
+		await waitFor(() => expect(screen.getByText('Expires in')).toBeTruthy());
+		expect(start).toHaveBeenCalledWith(link.syncCode);
+	});
+
 	it('never overlaps pairing polls', async () => {
 		vi.useFakeTimers();
 		const link: StartedDeviceLink = {
@@ -475,6 +494,8 @@ describe('SyncModal profile interactions', () => {
 		render(SyncModal, { props: { onClose: vi.fn() } });
 
 		await fireEvent.click(screen.getByRole('button', { name: 'Connect device' }));
+		await waitFor(() => expect(screen.getByAltText('Pair this device')).toBeTruthy());
+		expect(screen.getByRole('button', { name: 'Copy pairing link' })).toBeTruthy();
 		expect(poll).toHaveBeenCalledTimes(1);
 		await vi.advanceTimersByTimeAsync(5_000);
 		expect(poll).toHaveBeenCalledTimes(1);

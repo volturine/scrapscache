@@ -379,11 +379,14 @@ body {
 	overscroll-behavior-x: contain;
 }
 
-/* Cards pan the board and the page normally; a press-and-hold picks them up
- * instead, and the drag then blocks scrolling itself. A card is a handle, not
- * text or an image to drag out of the page. */
+/* pan-y, so the browser may only ever scroll the page from a card. Sideways
+ * movement belongs to the board drag alone: once the browser latches a
+ * horizontal pan it keeps delivering it even through a cancelled touchmove,
+ * and it would then fight the card the finger is carrying. The board still
+ * pans sideways from a card — kanbanDrag drives that scroll itself.
+ * A card is a handle, not text or an image to drag out of the page. */
 .kanban-card {
-	touch-action: manipulation;
+	touch-action: pan-y;
 	-webkit-user-select: none;
 	user-select: none;
 	-webkit-user-drag: none;
@@ -400,6 +403,16 @@ html.kanban-dragging * {
 html.kanban-dragging .kanban-columns,
 html.kanban-dragging .app-feed {
 	touch-action: none;
+}
+/* A carried card owns the gesture outright: with the overflow closed, the
+ * board and the feed can only move where the drag scrolls them, so a pan the
+ * browser started before the card was picked up cannot run on underneath.
+ * Touch only — a mouse drag leaves the desktop scrollbars alone. */
+html.kanban-dragging-touch .kanban-columns {
+	overflow-x: hidden;
+}
+html.kanban-dragging-touch .app-feed {
+	overflow-y: hidden;
 }
 
 /* The gap the carried card drops into. */

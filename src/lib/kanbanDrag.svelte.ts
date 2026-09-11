@@ -22,9 +22,13 @@ const MOUSE_START_PX = 5;
 /** Overhang at which a scroller follows the carried card at full speed. */
 const OVERHANG_FULL_PX = 90;
 /** Peak auto-scroll speed, in pixels per frame. */
-const EDGE_SPEED = 16;
+const EDGE_SPEED = 12;
 /** Slowest a scroller creeps once the card hangs over its edge at all. */
 const MIN_SCROLL_RATIO = 0.2;
+/** How far the carried card must hang past a side before the board turns a page. */
+const PAGE_TRIGGER_PX = 16;
+/** Quiet time after a page, so holding the card at a side steps column by column. */
+const PAGE_COOLDOWN_MS = 500;
 /** A finger lifts the card clear of itself so the drop preview stays visible. */
 const TOUCH_LIFT_PX = 12;
 /** The click that follows a drag release must not open the note. */
@@ -110,6 +114,35 @@ export function overhangSpeed(
 	return direction * EDGE_SPEED * ratio;
 }
 
+/**
+ * Where the board should scroll to put the next column into view, or null when
+ * there is nothing further that way.
+ *
+ * Columns are page-sized on a phone, so the board turns pages instead of
+ * sliding continuously: a carried card that hangs past a side steps the board
+ * exactly one column and then waits. Continuous scrolling at a speed that
+ * feels responsive on a desktop board flies through three phone columns a
+ * second, which reads as the board fighting the finger.
+ */
+export function pagedScrollLeft(
+	scrollLeft: number,
+	maxScrollLeft: number,
+	columnStarts: number[],
+	direction: 1 | -1
+): number | null {
+	const settled = 4;
+	const starts = [...columnStarts].sort((a, b) => a - b);
+	const next =
+		direction === 1
+			? starts.find((start) => start > scrollLeft + settled)
+			: starts.findLast((start) => start < scrollLeft - settled);
+	// Past the last column start there is still the board's own tail — the
+	// "add label column" affordance — so run to the end rather than stopping.
+	const goal = next ?? (direction === 1 ? maxScrollLeft : 0);
+	const clamped = Math.min(Math.max(goal, 0), maxScrollLeft);
+	return Math.abs(clamped - scrollLeft) <= settled ? null : clamped;
+}
+
 type Press = KanbanCardPress & {
 	pointerId: number;
 	pointerType: string;
@@ -117,10 +150,14 @@ type Press = KanbanCardPress & {
 	startY: number;
 	grabX: number;
 	grabY: number;
+	/** Last seen pointer x, so a board pan can follow the finger one to one. */
+	lastX: number;
 	scrollX: HTMLElement | null;
 	scrollY: HTMLElement | null;
 	hold: ReturnType<typeof setTimeout> | null;
 	dragging: boolean;
+	/** Swiping the board sideways from this card instead of carrying it. */
+	panning: boolean;
 };
 
 class KanbanDragController {
@@ -141,6 +178,9 @@ class KanbanDragController {
 	#pointerY = 0;
 	#frame = 0;
 	#clickSuppressedUntil = 0;
+	#pagedAt = 0;
+	#scrolledX = 0;
+	#scrolledY = 0;
 
 	get active(): boolean {
 		return this.noteId !== null;
@@ -164,18 +204,23 @@ class KanbanDragController {
 			return;
 
 		const rect = card.card.getBoundingClientRect();
+		const column = card.card.closest<HTMLElement>('[data-kanban-column]');
 		this.#press = {
 			...card,
 			pointerId: event.pointerId,
 			pointerType: event.pointerType,
 			startX: event.clientX,
 			startY: event.clientY,
+			lastX: event.clientX,
 			grabX: event.clientX - rect.left,
 			grabY: event.clientY - rect.top,
-			scrollX: null,
-			scrollY: null,
+			// Resolved from the column, never from the card: a card's own overflow
+			// would otherwise capture the scrolling meant for the board.
+			scrollX: scrollerFor(column, 'x'),
+			scrollY: scrollerFor(column, 'y'),
 			hold: null,
-			dragging: false
+			dragging: false,
+			panning: false
 		};
 		this.width = rect.width;
 		this.height = rect.height;
@@ -202,12 +247,12 @@ class KanbanDragController {
 		if (!press || press.dragging) return;
 		press.dragging = true;
 
-		const column = press.card.closest<HTMLElement>('[data-kanban-column]');
-		// Resolved from the column, never from the card: a card's own overflow
-		// would otherwise capture the auto-scroll meant for the board.
-		press.scrollX = scrollerFor(column, 'x');
-		press.scrollY = scrollerFor(column, 'y');
-
+		// The board often rests part way between two columns, so a card can be
+		// picked up already hanging over a side. Start the page cooldown here:
+		// the board holds still until the card is deliberately pushed somewhere.
+		this.#pagedAt = performance.now();
+		this.#scrolledX = press.scrollX?.scrollLeft ?? 0;
+		this.#scrolledY = press.scrollY?.scrollTop ?? 0;
 		this.noteId = press.noteId;
 		this.sourceColumnId = press.columnId;
 		this.target = { columnId: press.columnId, index: press.index };
@@ -215,8 +260,12 @@ class KanbanDragController {
 		this.#move(this.#pointerX, this.#pointerY);
 
 		document.documentElement.classList.add('kanban-dragging');
+		// Touch drags also close the scrollers' overflow, because a browser that
+		// already latched a pan keeps running it through a cancelled touchmove.
+		if (press.pointerType !== 'mouse')
+			document.documentElement.classList.add('kanban-dragging-touch');
 		// Capturing and non-passive: a carried card owns the gesture outright, so
-		// the board can never pan under it while it is also being dragged.
+		// nothing can scroll under it while it is being carried.
 		document.addEventListener('touchmove', preventDefault, { passive: false, capture: true });
 		window.addEventListener('contextmenu', preventDefault);
 		navigator.vibrate?.(8);
@@ -265,29 +314,53 @@ class KanbanDragController {
 		this.target = { columnId, index };
 	}
 
-	/** Follow the card's overhang on one axis. Returns true if the scroller moved. */
-	#followCard(el: HTMLElement | null, axis: 'x' | 'y'): boolean {
-		if (!el) return false;
+	/** Follow the card's vertical overhang, a column being a list rather than a page. */
+	#followCard(el: HTMLElement | null): void {
+		if (!el) return;
 		const rect = el.getBoundingClientRect();
-		const speed =
-			axis === 'x'
-				? overhangSpeed(this.x, this.x + this.width, rect.left, rect.right)
-				: overhangSpeed(this.y, this.y + this.height, rect.top, rect.bottom);
-		if (speed === 0) return false;
+		const speed = overhangSpeed(this.y, this.y + this.height, rect.top, rect.bottom);
+		if (speed !== 0) el.scrollTop += speed;
+	}
 
-		const before = axis === 'x' ? el.scrollLeft : el.scrollTop;
-		if (axis === 'x') el.scrollLeft = before + speed;
-		else el.scrollTop = before + speed;
-		return (axis === 'x' ? el.scrollLeft : el.scrollTop) !== before;
+	/** Turn one board page when the carried card hangs past a side. */
+	#pageBoard(el: HTMLElement | null): void {
+		if (!el) return;
+		const rect = el.getBoundingClientRect();
+		const pastStart = rect.left - this.x;
+		const pastEnd = this.x + this.width - rect.right;
+		const direction =
+			pastEnd > PAGE_TRIGGER_PX && pastEnd >= pastStart ? 1 : pastStart > PAGE_TRIGGER_PX ? -1 : 0;
+		if (direction === 0) return;
+
+		const now = performance.now();
+		if (now - this.#pagedAt < PAGE_COOLDOWN_MS) return;
+
+		const padding = Number.parseFloat(getComputedStyle(el).paddingLeft) || 0;
+		const starts = [...el.querySelectorAll<HTMLElement>('[data-kanban-column]')].map(
+			(column) => el.scrollLeft + column.getBoundingClientRect().left - rect.left - padding
+		);
+		const goal = pagedScrollLeft(el.scrollLeft, el.scrollWidth - el.clientWidth, starts, direction);
+		if (goal === null) return;
+
+		this.#pagedAt = now;
+		el.scrollTo({ left: goal, behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
 	}
 
 	#tick = (): void => {
 		const press = this.#press;
 		if (!press?.dragging) return;
 		this.#frame = requestAnimationFrame(this.#tick);
-		const scrolled = this.#followCard(press.scrollX, 'x') || this.#followCard(press.scrollY, 'y');
-		// Scrolling slides new cards under a still pointer, so re-aim then too.
-		if (scrolled) this.#retarget();
+		this.#pageBoard(press.scrollX);
+		this.#followCard(press.scrollY);
+
+		// Any board movement — this frame's or the tail of a page still gliding —
+		// puts different cards under a still finger, so re-aim whenever it moved.
+		const scrollX = press.scrollX?.scrollLeft ?? 0;
+		const scrollY = press.scrollY?.scrollTop ?? 0;
+		if (scrollX === this.#scrolledX && scrollY === this.#scrolledY) return;
+		this.#scrolledX = scrollX;
+		this.#scrolledY = scrollY;
+		this.#retarget();
 	};
 
 	#onPointerMove = (event: PointerEvent): void => {
@@ -295,15 +368,14 @@ class KanbanDragController {
 		if (!press || event.pointerId !== press.pointerId) return;
 
 		if (!press.dragging) {
-			const moved = Math.hypot(event.clientX - press.startX, event.clientY - press.startY);
 			this.#pointerX = event.clientX;
 			this.#pointerY = event.clientY;
 			if (press.pointerType === 'mouse') {
+				const moved = Math.hypot(event.clientX - press.startX, event.clientY - press.startY);
 				if (moved < MOUSE_START_PX) return;
 				this.#lift();
 			} else {
-				// Still waiting on the hold: this is a scroll, so let the page have it.
-				if (moved > HOLD_CANCEL_PX) this.#finish(false);
+				this.#panBoard(event);
 				return;
 			}
 		}
@@ -313,12 +385,42 @@ class KanbanDragController {
 		this.#retarget();
 	};
 
+	/**
+	 * A swipe that starts on a card, before any card is picked up.
+	 *
+	 * Cards only allow the browser to pan the page, so a sideways swipe arrives
+	 * here instead: carry the board with the finger one to one. A swipe that is
+	 * mostly vertical is the page's, and the press is dropped so the browser can
+	 * scroll it with its own momentum.
+	 */
+	#panBoard(event: PointerEvent): void {
+		const press = this.#press;
+		if (!press) return;
+		const dx = event.clientX - press.startX;
+		const dy = event.clientY - press.startY;
+
+		if (!press.panning) {
+			if (Math.hypot(dx, dy) <= HOLD_CANCEL_PX) return;
+			if (press.hold) clearTimeout(press.hold);
+			press.hold = null;
+			if (Math.abs(dx) <= Math.abs(dy) || !press.scrollX) {
+				this.#finish(false);
+				return;
+			}
+			press.panning = true;
+		}
+
+		if (press.scrollX) press.scrollX.scrollLeft -= event.clientX - press.lastX;
+		press.lastX = event.clientX;
+	}
+
 	#onPointerUp = (event: PointerEvent): void => {
 		const press = this.#press;
 		if (!press || event.pointerId !== press.pointerId) return;
 		const target = press.dragging ? this.target : null;
 		const dropped = press.dragging;
-		this.#finish(dropped);
+		// A pan ends on the card it started on, and must not open that note.
+		this.#finish(dropped || press.panning);
 		if (dropped) press.onDrop(press.noteId, press.columnId, target);
 	};
 
@@ -327,7 +429,8 @@ class KanbanDragController {
 		this.#finish(false);
 	};
 
-	#finish(dragged: boolean): void {
+	/** Tear the gesture down. `swallowClick` covers a drop and a board pan alike. */
+	#finish(swallowClick: boolean): void {
 		const press = this.#press;
 		this.#press = null;
 		if (press?.hold) clearTimeout(press.hold);
@@ -338,8 +441,8 @@ class KanbanDragController {
 		window.removeEventListener('contextmenu', preventDefault);
 		if (this.#frame) cancelAnimationFrame(this.#frame);
 		this.#frame = 0;
-		document.documentElement.classList.remove('kanban-dragging');
-		if (dragged) this.#clickSuppressedUntil = performance.now() + CLICK_SUPPRESS_MS;
+		document.documentElement.classList.remove('kanban-dragging', 'kanban-dragging-touch');
+		if (swallowClick) this.#clickSuppressedUntil = performance.now() + CLICK_SUPPRESS_MS;
 		this.noteId = null;
 		this.sourceColumnId = null;
 		this.target = null;
@@ -349,6 +452,10 @@ class KanbanDragController {
 
 function preventDefault(event: Event): void {
 	event.preventDefault();
+}
+
+function prefersReducedMotion(): boolean {
+	return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
 export const kanbanDrag = new KanbanDragController();

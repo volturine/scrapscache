@@ -383,7 +383,7 @@
 	});
 	const btnUnassign = css({
 		rounded: 'xl',
-		bg: { base: 'black/[0.06]', _dark: 'white/10' },
+		bg: { base: 'rgba(0, 0, 0, 0.06)', _dark: 'white/10' },
 		px: '0.75rem',
 		py: '0.625rem',
 		fontSize: 'sm',

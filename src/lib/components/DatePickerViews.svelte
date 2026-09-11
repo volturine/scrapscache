@@ -262,3 +262,51 @@
 		</DatePicker.Context>
 	</DatePicker.View>
 </div>
+
+<style>
+	.calendar-panel {
+		min-height: 16.25rem;
+	}
+	.calendar-panel :global([data-part='view']:not([hidden])) {
+		display: flex;
+		flex-direction: column;
+	}
+	.calendar-panel :global(.calendar-table) {
+		height: 13.5rem;
+	}
+	.calendar-panel :global(.calendar-table-fill [data-part='table-body']) {
+		height: 100%;
+	}
+	.calendar-panel :global(.calendar-table-fill [data-part='table-row']) {
+		height: calc(13.5rem / 3);
+	}
+	.calendar-panel :global(.calendar-table-fill [data-part='table-cell']) {
+		height: inherit;
+		vertical-align: middle;
+	}
+
+	/* Never apply dark block background on roving focus */
+	.calendar-panel
+		:global(
+			[data-part='table-cell-trigger'][data-focus]:not([data-selected]):not([data-in-range])
+		) {
+		background-color: transparent !important;
+	}
+
+	/* In-range highlighting: in-between days get soft accent tint, not solid accent */
+	.calendar-panel
+		:global(
+			[data-part='table-cell-trigger'][data-in-range]:not([data-range-start]):not([data-range-end])
+		) {
+		background-color: color-mix(in srgb, var(--scrapscache-accent) 18%, transparent) !important;
+		color: var(--scrapscache-text) !important;
+		font-weight: normal !important;
+	}
+
+	/* Selected day dots */
+	.calendar-panel :global([data-part='table-cell-trigger'][data-selected] .reminder-dot),
+	.calendar-panel :global([data-part='table-cell-trigger'][data-range-start] .reminder-dot),
+	.calendar-panel :global([data-part='table-cell-trigger'][data-range-end] .reminder-dot) {
+		background-color: var(--scrapscache-accent-foreground) !important;
+	}
+</style>

@@ -12,6 +12,7 @@
 		toggleCheckEntries
 	} from '$lib/checklistBody';
 	import { revealEditorField } from '$lib/editorVisibility';
+	import { css } from 'styled-system/css';
 
 	const MAX_TASK_INDENT = 1;
 
@@ -1072,13 +1073,82 @@
 	function taskShellClass(line: Line): string {
 		if (!focusedGroupIds.has(line.id)) return '';
 		return [
-			'bg-black/[0.035] dark:bg-white/[0.06]',
-			line.id === focusedRootId ? 'mt-0.5 rounded-t-lg pt-1' : '',
-			line.id === focusedGroupLastId ? 'mb-0.5 rounded-b-lg pb-1' : ''
+			css({ bg: { base: 'black/[0.035]', _dark: 'white/[0.06]' } }),
+			line.id === focusedRootId
+				? `rounded-t-lg ${css({ mt: '0.125rem', borderTopRadius: 'lg', pt: '0.25rem' })}`
+				: '',
+			line.id === focusedGroupLastId
+				? `rounded-b-lg ${css({ mb: '0.125rem', borderBottomRadius: 'lg', pb: '0.25rem' })}`
+				: ''
 		]
 			.filter(Boolean)
 			.join(' ');
 	}
+	const editorContainerClass = css({
+		display: 'block',
+		w: 'full',
+		minW: 0,
+		fontSize: 'sm',
+		lineHeight: 'relaxed',
+		color: 'scrapscache.text',
+		outline: 'none'
+	});
+
+	const rowClass = css({
+		display: 'flex',
+		minW: 0,
+		flexWrap: 'wrap',
+		alignItems: 'flex-start',
+		columnGap: '0.5rem',
+		py: '0.125rem'
+	});
+
+	const bulletClass = css({
+		flexShrink: 0,
+		userSelect: 'none'
+	});
+
+	const lineSpanClass = css({
+		display: 'block',
+		minH: '1lh',
+		minW: 0,
+		flex: '1',
+		whiteSpace: 'pre-wrap',
+		wordBreak: 'break-word',
+		outline: 'none'
+	});
+
+	const lineCheckedClass = css({
+		textDecoration: 'line-through',
+		opacity: 0.5
+	});
+
+	const lineSubtaskTextClass = css({
+		fontSize: '13px'
+	});
+
+	const addSubtaskBase = css({
+		display: 'flex',
+		flexBasis: 'full',
+		userSelect: 'none',
+		alignItems: 'center',
+		rounded: 'sm',
+		py: '0.25rem',
+		textAlign: 'left',
+		fontSize: 'xs',
+		color: 'scrapscache.textMuted',
+		cursor: 'pointer',
+		transition: 'colors 120ms ease',
+		touchAction: 'manipulation',
+		minH: { base: '32px', sm: 0 },
+		_hover: {
+			bg: { base: 'black/5', _dark: 'white/10' },
+			color: 'scrapscache.text'
+		}
+	});
+
+	const addSubtaskSubIndent = css({ pl: '0.25rem' });
+	const addSubtaskRootIndent = css({ pl: '1.5rem' });
 
 	function rowStyle(line: Line): string | undefined {
 		const focused = focusedGroupIds.has(line.id);
@@ -1100,7 +1170,7 @@
 	aria-multiline="true"
 	aria-label="Note body"
 	spellcheck="true"
-	class="block w-full min-w-0 text-sm leading-relaxed text-[var(--scrapscache-text)] outline-none"
+	class={editorContainerClass}
 	onbeforeinput={handleBeforeInput}
 	oninput={handleInput}
 	oncopy={handleCopy}
@@ -1124,9 +1194,7 @@
 			data-task-row={line.isCheck ? '' : undefined}
 			data-bullet-row={line.isBullet ? '' : undefined}
 			data-focus-group={line.id === focusedRootId ? '' : undefined}
-			class="flex min-w-0 flex-wrap items-start gap-x-2 py-0.5 {line.isCheck
-				? taskShellClass(line)
-				: ''}"
+			class={`${rowClass} ${line.isCheck ? taskShellClass(line) : ''}`}
 			style={rowStyle(line)}
 		>
 			{#if line.isCheck}
@@ -1148,7 +1216,7 @@
 					{/if}
 				</button>
 			{:else if line.isBullet}
-				<span contenteditable="false" class="shrink-0 select-none" aria-hidden="true">•</span>
+				<span contenteditable="false" class={bulletClass} aria-hidden="true">•</span>
 			{/if}
 			<span
 				data-line-text
@@ -1162,9 +1230,7 @@
 							? placeholder
 							: ''
 					: undefined}
-				class="block min-h-[1lh] min-w-0 flex-1 whitespace-pre-wrap break-words outline-none {line.checked
-					? 'line-through opacity-50'
-					: ''} {line.indent > 0 ? 'text-[13px]' : ''}"
+				class={`min-h-[1lh] ${lineSpanClass} ${line.checked ? lineCheckedClass : ''} ${line.indent > 0 ? lineSubtaskTextClass : ''}`}
 			></span>
 			{#if line.id === focusedGroupLastId}
 				<button
@@ -1172,10 +1238,7 @@
 					contenteditable="false"
 					data-add-subtask
 					aria-label="Add sub-task"
-					class="flex basis-full select-none items-center rounded py-1 text-left text-xs text-[var(--scrapscache-text-muted)] transition-colors hover:bg-black/5 hover:text-[var(--scrapscache-text)] dark:hover:bg-white/10 touch-manipulation min-h-[32px] sm:min-h-0 {line.indent >
-					0
-						? 'pl-1'
-						: 'pl-6'}"
+					class={`${addSubtaskBase} ${line.indent > 0 ? addSubtaskSubIndent : addSubtaskRootIndent} ${line.indent > 0 ? 'pl-1' : 'pl-6'}`}
 					onpointerdown={(event) => activateAddSubtask(event, focusedGroupRows[0]?.index ?? -1)}
 					onclick={(event) => handleAddSubtaskClick(event, focusedGroupRows[0]?.index ?? -1)}
 				>

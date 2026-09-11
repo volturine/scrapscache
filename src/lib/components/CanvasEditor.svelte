@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
+	import { css } from 'styled-system/css';
 	import { LoaderCircle, X } from '@lucide/svelte';
 	import {
 		createCanvasAttachment,
@@ -113,6 +114,93 @@
 			}
 		};
 	}
+
+	const shellClass = css({
+		position: 'fixed',
+		zIndex: 90,
+		display: 'flex',
+		flexDirection: 'column',
+		bg: { base: 'white', _dark: '#121212' },
+		color: { base: 'slate.900', _dark: 'slate.100' }
+	});
+	const headerClass = css({
+		position: 'relative',
+		zIndex: 10,
+		display: 'flex',
+		h: '3rem',
+		flexShrink: 0,
+		alignItems: 'center',
+		justifyContent: 'space-between',
+		px: '0.75rem'
+	});
+	const headerActionClass = css({
+		display: 'grid',
+		h: '2.25rem',
+		w: '2.25rem',
+		flexShrink: 0,
+		placeItems: 'center',
+		rounded: 'full',
+		touchAction: 'manipulation'
+	});
+	const doneBtnClass = css({
+		h: '2.25rem',
+		flexShrink: 0,
+		rounded: 'full',
+		px: '1rem',
+		fontSize: 'sm',
+		fontWeight: '600',
+		touchAction: 'manipulation'
+	});
+	const errorBannerClass = css({
+		position: 'relative',
+		zIndex: 10,
+		display: 'flex',
+		alignItems: 'center',
+		justifyContent: 'space-between',
+		gap: '0.75rem',
+		borderBottomWidth: '1px',
+		borderColor: { base: 'red.200', _dark: 'red.900' },
+		bg: { base: 'red.50', _dark: 'red.950' },
+		px: '1rem',
+		py: '0.5rem',
+		fontSize: 'sm',
+		color: { base: 'red.700', _dark: 'red.200' }
+	});
+	const reloadBtnClass = css({
+		flexShrink: 0,
+		fontWeight: '600',
+		textDecoration: 'underline',
+		textDecorationColor: { base: 'red.700/50', _dark: 'red.200/50' },
+		textUnderlineOffset: '2px',
+		cursor: 'pointer'
+	});
+	const canvasAreaClass = css({
+		position: 'relative',
+		minH: 0,
+		flex: '1'
+	});
+	const hostNodeClass = css({
+		position: 'absolute',
+		inset: 0
+	});
+	const loadingOverlayClass = css({
+		position: 'absolute',
+		inset: 0,
+		zIndex: 20,
+		display: 'grid',
+		placeItems: 'center',
+		bg: { base: 'white', _dark: '#121212' }
+	});
+	const loadingTextClass = css({
+		display: 'flex',
+		alignItems: 'center',
+		gap: '0.5rem',
+		fontSize: 'sm',
+		color: { base: 'slate.500', _dark: 'slate.400' }
+	});
+	const spinnerSm = css({ h: '1rem', w: '1rem' });
+	const spinnerMd = css({ h: '1.25rem', w: '1.25rem' });
+	const iconClose = css({ h: '1.375rem', w: '1.375rem' });
 </script>
 
 <div
@@ -122,31 +210,31 @@
 	onpaste={markCanvasInteraction}
 	ondrop={markCanvasInteraction}
 	onwheel={markCanvasInteraction}
-	class="canvas-editor-shell fixed z-[90] flex flex-col bg-white text-slate-900 dark:bg-[#121212] dark:text-slate-100"
+	class={`canvas-editor-shell ${shellClass}`}
 	role="dialog"
 	tabindex="-1"
 	aria-modal="true"
 	aria-label={readOnly ? 'View canvas' : attachment ? 'Edit canvas' : 'New canvas'}
 >
-	<header class="relative z-10 flex h-12 shrink-0 items-center justify-between px-3">
+	<header class={headerClass}>
 		<button
 			type="button"
-			class="canvas-header-action grid h-9 w-9 shrink-0 place-items-center rounded-full touch-manipulation"
+			class={`canvas-header-action ${headerActionClass}`}
 			onclick={close}
 			aria-label={readOnly ? 'Close canvas' : 'Cancel canvas editing'}
 		>
-			<X class="h-5.5 w-5.5" aria-hidden="true" />
+			<X class={iconClose} aria-hidden="true" />
 		</button>
 
 		{#if !readOnly}
 			<button
 				type="button"
-				class="canvas-done h-9 shrink-0 rounded-full px-4 text-sm font-semibold touch-manipulation"
+				class={`canvas-done ${doneBtnClass}`}
 				disabled={loading || saving}
 				onclick={() => void save()}
 			>
 				{#if saving}
-					<LoaderCircle class="h-4 w-4 animate-spin" aria-hidden="true" />
+					<LoaderCircle class={`animate-spin ${spinnerSm}`} aria-hidden="true" />
 				{/if}
 				<span>{saving ? 'Saving' : 'Done'}</span>
 			</button>
@@ -154,28 +242,22 @@
 	</header>
 
 	{#if error}
-		<div
-			class="relative z-10 flex items-center justify-between gap-3 border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-200"
-		>
+		<div class={errorBannerClass}>
 			<span>{error}</span>
 			{#if staleModule}
-				<button
-					type="button"
-					class="shrink-0 font-semibold underline decoration-red-700/50 underline-offset-2 dark:decoration-red-200/50"
-					onclick={() => location.reload()}
-				>
+				<button type="button" class={reloadBtnClass} onclick={() => location.reload()}>
 					Reload
 				</button>
 			{/if}
 		</div>
 	{/if}
 
-	<div class="relative min-h-0 flex-1">
-		<div bind:this={hostNode} class="scrapscache-canvas absolute inset-0"></div>
+	<div class={canvasAreaClass}>
+		<div bind:this={hostNode} class={`scrapscache-canvas ${hostNodeClass}`}></div>
 		{#if loading}
-			<div class="absolute inset-0 z-20 grid place-items-center bg-white dark:bg-[#121212]">
-				<div class="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
-					<LoaderCircle class="h-5 w-5 animate-spin" aria-hidden="true" />
+			<div class={loadingOverlayClass}>
+				<div class={loadingTextClass}>
+					<LoaderCircle class={`animate-spin ${spinnerMd}`} aria-hidden="true" />
 					Loading canvas…
 				</div>
 			</div>

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { css, cva } from 'styled-system/css';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { reminderStore } from '$lib/stores/reminders.svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
@@ -175,38 +176,6 @@
 		}
 	});
 
-	$effect(() => {
-		if (!cardEl) return;
-		const observer = new ResizeObserver((entries) => {
-			for (const entry of entries) {
-				cardHeight = entry.contentRect.height;
-			}
-		});
-		observer.observe(cardEl);
-		return () => observer.disconnect();
-	});
-
-	$effect(() => {
-		if (!hazeActive) return;
-		function onWindowPointerDown(e: PointerEvent) {
-			if (cardEl && !cardEl.contains(e.target as Node)) {
-				closeHaze();
-			}
-		}
-		function onWindowKeyDown(e: KeyboardEvent) {
-			if (e.key === 'Escape') {
-				e.stopPropagation();
-				closeHaze();
-			}
-		}
-		window.addEventListener('pointerdown', onWindowPointerDown, true);
-		window.addEventListener('keydown', onWindowKeyDown, true);
-		return () => {
-			window.removeEventListener('pointerdown', onWindowPointerDown, true);
-			window.removeEventListener('keydown', onWindowKeyDown, true);
-		};
-	});
-
 	onMount(() => {
 		function onOtherHazeOpen(e: Event) {
 			const ce = e as CustomEvent<string>;
@@ -222,37 +191,200 @@
 	});
 
 	onDestroy(() => swipe.dispose());
+
+	const cardOuterClass = css({
+		position: 'relative',
+		overflow: 'hidden',
+		rounded: 'lg'
+	});
+
+	const swipeRestoreClass = css({
+		position: 'absolute',
+		inset: 0,
+		display: 'flex',
+		alignItems: 'center',
+		justifyContent: 'flex-end',
+		rounded: 'lg',
+		bg: 'green.500',
+		pr: '1rem',
+		color: 'white'
+	});
+
+	const swipeTrashClass = css({
+		position: 'absolute',
+		inset: 0,
+		display: 'flex',
+		alignItems: 'center',
+		justifyContent: 'flex-start',
+		rounded: 'lg',
+		bg: 'red.500',
+		pl: '1rem',
+		color: 'white'
+	});
+
+	const cardBodyClass = css({
+		position: 'relative',
+		zIndex: 1,
+		display: 'flex',
+		w: 'full',
+		maxH: '320px',
+		cursor: 'pointer',
+		flexDirection: 'column',
+		overflow: 'hidden',
+		rounded: 'lg',
+		borderWidth: '1px',
+		borderColor: { base: 'black/5', _dark: 'white/10' },
+		boxShadow: 'sm',
+		transition: 'box-shadow 150ms ease'
+	});
+
+	const cardPinnedClass = css({
+		boxShadow: 'md'
+	});
+
+	const contentPadClass = css({
+		display: 'block',
+		w: 'full',
+		p: '0.75rem',
+		pb: '0.5rem',
+		textAlign: 'left'
+	});
+
+	const titleClass = css({
+		mb: '0.25rem',
+		wordBreak: 'break-word',
+		fontSize: '15px',
+		fontWeight: '600',
+		lineHeight: 'snug',
+		letterSpacing: 'tight',
+		color: 'scrapscache.text'
+	});
+
+	const labelsRowClass = css({
+		display: 'flex',
+		flexShrink: 0,
+		flexWrap: 'wrap',
+		gap: '0.25rem',
+		px: '0.75rem',
+		pb: '0.75rem',
+		pt: '0.5rem'
+	});
+
+	const labelPillClass = css({
+		rounded: 'sm',
+		px: '0.375rem',
+		py: '0.125rem',
+		fontSize: '10px',
+		fontWeight: 'medium',
+		bg: { base: 'black/5', _dark: 'white/10' },
+		color: 'scrapscache.textMuted'
+	});
+
+	const hazeOverlayClass = css({
+		position: 'absolute',
+		inset: 0,
+		zIndex: 20,
+		display: 'flex',
+		flexDirection: 'column',
+		alignItems: 'center',
+		justifyContent: 'center',
+		p: '0.5rem',
+		rounded: 'lg',
+		backdropFilter: 'blur(12px)',
+		bg: { base: 'black/45', _dark: 'black/60' },
+		transition: 'opacity 150ms ease'
+	});
+
+	const hazeBtn = cva({
+		base: {
+			display: 'flex',
+			alignItems: 'center',
+			justifyContent: 'center',
+			rounded: 'full',
+			color: 'white/90',
+			cursor: 'pointer',
+			transition: 'all 150ms ease',
+			_hover: {
+				transform: 'scale(1.05)',
+				bg: 'white/20'
+			},
+			_active: {
+				transform: 'scale(0.95)'
+			},
+			_focusVisible: {
+				outline: 'none',
+				ringWidth: '2px',
+				ringColor: 'white/80'
+			}
+		},
+		variants: {
+			size: {
+				sm: { h: '2rem', w: '2rem' },
+				md: { h: '2.5rem', w: '2.5rem' }
+			},
+			tone: {
+				default: {},
+				emerald: { color: 'emerald.400' },
+				amber: { color: 'amber.300' },
+				blue: { color: 'blue.300' },
+				rose: {
+					_hover: {
+						bg: 'rose.500/30',
+						color: 'rose.300'
+					}
+				}
+			}
+		},
+		defaultVariants: {
+			size: 'sm',
+			tone: 'default'
+		}
+	});
 </script>
 
-<div class="card-stream-in relative overflow-hidden rounded-lg">
+<svelte:window
+	onpointerdowncapture={hazeActive
+		? (e) => {
+				if (cardEl && !cardEl.contains(e.target as Node)) {
+					closeHaze();
+				}
+			}
+		: undefined}
+	onkeydowncapture={hazeActive
+		? (e) => {
+				if (e.key === 'Escape') {
+					e.stopPropagation();
+					closeHaze();
+				}
+			}
+		: undefined}
+/>
+
+<div class={`card-stream-in ${cardOuterClass}`}>
 	{#if offsetX < 0}
-		<div
-			class="absolute inset-0 flex items-center justify-end rounded-lg bg-green-500 pr-4 text-white"
-		>
+		<div class={swipeRestoreClass}>
 			{#if note.trashed}
-				<RotateCcw class="h-6 w-6" aria-hidden="true" />
+				<RotateCcw size={24} aria-hidden="true" />
 			{:else if note.archived}
-				<ArchiveRestore class="h-6 w-6" aria-hidden="true" />
+				<ArchiveRestore size={24} aria-hidden="true" />
 			{:else}
-				<Archive class="h-6 w-6" aria-hidden="true" />
+				<Archive size={24} aria-hidden="true" />
 			{/if}
 		</div>
 	{:else if offsetX > 0}
-		<div
-			class="absolute inset-0 flex items-center justify-start rounded-lg bg-red-500 pl-4 text-white"
-		>
-			<Trash2 class="h-6 w-6" aria-hidden="true" />
+		<div class={swipeTrashClass}>
+			<Trash2 size={24} aria-hidden="true" />
 		</div>
 	{/if}
 
 	<div
 		bind:this={cardEl}
+		bind:clientHeight={cardHeight}
 		role="button"
 		tabindex="0"
 		aria-label={openLabel}
-		class="relative z-[1] flex w-full max-h-[320px] cursor-pointer flex-col overflow-hidden rounded-lg border border-black/5 shadow-sm transition-shadow dark:border-white/10"
+		class={`${cardBodyClass} ${note.pinned ? cardPinnedClass : ''}`}
 		style="background-color: {bgColor(note.color)}; {cardSwipeStyle(offsetX, dragging)}"
-		class:shadow-md={note.pinned}
 		onpointerdown={swipe.onPointerDown}
 		onpointermove={swipe.onPointerMove}
 		onpointerup={swipe.onPointerUp}
@@ -262,18 +394,18 @@
 		onkeydown={handleKeydown}
 	>
 		{#if note.reminder != null}
-			<div class="shrink-0">
+			<div class={css({ flexShrink: 0 })}>
 				<ReminderLabel reminder={note.reminder} />
 			</div>
 		{/if}
 
-		<div class="note-scrollbar-hidden scrollable min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
-			<div class="relative">
-				<div class="block w-full p-3 pb-2 text-left" class:opacity-60={note.trashed}>
+		<div
+			class={`note-scrollbar-hidden scrollable ${css({ minH: 0, flex: '1', overflowX: 'hidden', overflowY: 'auto' })}`}
+		>
+			<div class={css({ position: 'relative' })}>
+				<div class={`${contentPadClass} ${note.trashed ? css({ opacity: 0.6 }) : ''}`}>
 					{#if note.title}
-						<h3
-							class="mb-1 break-words text-[15px] font-semibold leading-snug tracking-tight text-[var(--scrapscache-text)]"
-						>
+						<h3 class={`break-words ${titleClass}`}>
 							{note.title}
 						</h3>
 					{/if}
@@ -281,16 +413,18 @@
 				</div>
 				<!-- Every press lands here, so links, photos, canvases and files can
 				     never swallow a swipe or start a drag of their own. -->
-				<div class="absolute inset-0" data-card-shield aria-hidden="true"></div>
+				<div
+					class={css({ position: 'absolute', inset: 0 })}
+					data-card-shield
+					aria-hidden="true"
+				></div>
 			</div>
 		</div>
 
 		{#if labelsForNote.length}
-			<div class="flex shrink-0 flex-wrap gap-1 px-3 pb-3 pt-2">
+			<div class={labelsRowClass}>
 				{#each labelsForNote as label (label.id)}
-					<span
-						class="rounded px-1.5 py-0.5 text-[10px] font-medium bg-black/5 text-[var(--scrapscache-text-muted)] dark:bg-white/10"
-					>
+					<span class={labelPillClass}>
 						{label.name}
 					</span>
 				{/each}
@@ -301,7 +435,7 @@
 			<!-- Clicking the haze is a pointer convenience; Escape and outside taps dismiss it. -->
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
 			<div
-				class="absolute inset-0 z-20 flex flex-col items-center justify-center p-2 rounded-lg backdrop-blur-md bg-black/45 dark:bg-black/60 transition-opacity animate-in fade-in duration-150"
+				class={hazeOverlayClass}
 				data-card-haze
 				role="presentation"
 				onclick={(e) => {
@@ -315,142 +449,164 @@
 				}}
 			>
 				{#if compactActions}
-					<div class="flex items-center justify-center gap-1.5 drop-shadow-md">
+					<div
+						class={css({
+							display: 'flex',
+							alignItems: 'center',
+							justifyContent: 'center',
+							gap: '0.375rem',
+							filter: 'drop-shadow(0 4px 3px rgb(0 0 0 / 0.07))'
+						})}
+					>
 						<button
 							type="button"
-							class={`flex h-8 w-8 items-center justify-center rounded-full transition-all hover:scale-105 hover:bg-white/20 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 ${copied ? 'text-emerald-400' : 'text-white/90'}`}
+							class={hazeBtn({ size: 'sm', tone: copied ? 'emerald' : 'default' })}
 							title={copied ? 'Copied!' : 'Copy note'}
 							aria-label={copied ? 'Copied to clipboard' : 'Copy note'}
 							onclick={handleCopy}
 						>
 							{#if copied}
-								<Check class="h-4 w-4 text-emerald-400" aria-hidden="true" />
+								<Check size={16} class={css({ color: 'emerald.400' })} aria-hidden="true" />
 							{:else}
-								<Copy class="h-4 w-4" aria-hidden="true" />
+								<Copy size={16} aria-hidden="true" />
 							{/if}
 						</button>
 						<button
 							type="button"
-							class={`flex h-8 w-8 items-center justify-center rounded-full transition-all hover:scale-105 hover:bg-white/20 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 ${note.pinned ? 'text-amber-300' : 'text-white/90'}`}
+							class={hazeBtn({ size: 'sm', tone: note.pinned ? 'amber' : 'default' })}
 							title={note.pinned ? 'Unpin' : 'Pin'}
 							aria-label={note.pinned ? 'Unpin note' : 'Pin note'}
 							onclick={handlePin}
 						>
-							<Pin
-								class="h-4 w-4"
-								fill={note.pinned ? 'currentColor' : 'none'}
-								aria-hidden="true"
-							/>
+							<Pin size={16} fill={note.pinned ? 'currentColor' : 'none'} aria-hidden="true" />
 						</button>
 						<button
 							type="button"
-							class={`flex h-8 w-8 items-center justify-center rounded-full transition-all hover:scale-105 hover:bg-white/20 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 ${note.reminder != null ? 'text-blue-300' : 'text-white/90'}`}
+							class={hazeBtn({ size: 'sm', tone: note.reminder != null ? 'blue' : 'default' })}
 							title={note.reminder != null ? 'Edit reminder' : 'Add reminder'}
 							aria-label={note.reminder != null ? 'Edit reminder' : 'Add reminder'}
 							onclick={handleReminder}
 						>
 							<Bell
-								class="h-4 w-4"
+								size={16}
 								fill={note.reminder != null ? 'currentColor' : 'none'}
 								aria-hidden="true"
 							/>
 						</button>
 						<button
 							type="button"
-							class="flex h-8 w-8 items-center justify-center rounded-full text-white/90 transition-all hover:scale-105 hover:bg-rose-500/30 hover:text-rose-300 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+							class={hazeBtn({ size: 'sm', tone: 'rose' })}
 							title={note.trashed ? 'Delete forever' : 'Delete note'}
 							aria-label={note.trashed ? 'Delete forever' : 'Delete note'}
 							onclick={handleDelete}
 						>
-							<Trash2 class="h-4 w-4" aria-hidden="true" />
+							<Trash2 size={16} aria-hidden="true" />
 						</button>
 						<button
 							type="button"
-							class="flex h-8 w-8 items-center justify-center rounded-full text-white/90 transition-all hover:scale-105 hover:bg-white/20 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+							class={hazeBtn({ size: 'sm', tone: 'default' })}
 							title={note.archived ? 'Unarchive' : 'Archive'}
 							aria-label={note.archived ? 'Unarchive note' : 'Archive note'}
 							onclick={handleArchive}
 						>
 							{#if note.archived}
-								<ArchiveRestore class="h-4 w-4" aria-hidden="true" />
+								<ArchiveRestore size={16} aria-hidden="true" />
 							{:else}
-								<Archive class="h-4 w-4" aria-hidden="true" />
+								<Archive size={16} aria-hidden="true" />
 							{/if}
 						</button>
 					</div>
 				{:else}
-					<div class="flex flex-col items-center gap-2.5 drop-shadow-md">
-						<div class="flex items-center justify-center gap-2.5">
+					<div
+						class={css({
+							display: 'flex',
+							flexDirection: 'column',
+							alignItems: 'center',
+							gap: '0.625rem',
+							filter: 'drop-shadow(0 4px 3px rgb(0 0 0 / 0.07))'
+						})}
+					>
+						<div
+							class={css({
+								display: 'flex',
+								alignItems: 'center',
+								justifyContent: 'center',
+								gap: '0.625rem'
+							})}
+						>
 							<!-- Copy -->
 							<button
 								type="button"
-								class={`flex h-10 w-10 items-center justify-center rounded-full transition-all hover:scale-105 hover:bg-white/20 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 ${copied ? 'text-emerald-400' : 'text-white/90'}`}
+								class={hazeBtn({ size: 'md', tone: copied ? 'emerald' : 'default' })}
 								title={copied ? 'Copied!' : 'Copy note'}
 								aria-label={copied ? 'Copied to clipboard' : 'Copy note'}
 								onclick={handleCopy}
 							>
 								{#if copied}
-									<Check class="h-5 w-5 text-emerald-400" aria-hidden="true" />
+									<Check size={20} class={css({ color: 'emerald.400' })} aria-hidden="true" />
 								{:else}
-									<Copy class="h-5 w-5" aria-hidden="true" />
+									<Copy size={20} aria-hidden="true" />
 								{/if}
 							</button>
 
 							<!-- Pin -->
 							<button
 								type="button"
-								class={`flex h-10 w-10 items-center justify-center rounded-full transition-all hover:scale-105 hover:bg-white/20 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 ${note.pinned ? 'text-amber-300' : 'text-white/90'}`}
+								class={hazeBtn({ size: 'md', tone: note.pinned ? 'amber' : 'default' })}
 								title={note.pinned ? 'Unpin' : 'Pin'}
 								aria-label={note.pinned ? 'Unpin note' : 'Pin note'}
 								onclick={handlePin}
 							>
-								<Pin
-									class="h-5 w-5"
-									fill={note.pinned ? 'currentColor' : 'none'}
-									aria-hidden="true"
-								/>
+								<Pin size={20} fill={note.pinned ? 'currentColor' : 'none'} aria-hidden="true" />
 							</button>
 
 							<!-- Reminder -->
 							<button
 								type="button"
-								class={`flex h-10 w-10 items-center justify-center rounded-full transition-all hover:scale-105 hover:bg-white/20 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 ${note.reminder != null ? 'text-blue-300' : 'text-white/90'}`}
+								class={hazeBtn({ size: 'md', tone: note.reminder != null ? 'blue' : 'default' })}
 								title={note.reminder != null ? 'Edit reminder' : 'Add reminder'}
 								aria-label={note.reminder != null ? 'Edit reminder' : 'Add reminder'}
 								onclick={handleReminder}
 							>
 								<Bell
-									class="h-5 w-5"
+									size={20}
 									fill={note.reminder != null ? 'currentColor' : 'none'}
 									aria-hidden="true"
 								/>
 							</button>
 						</div>
 
-						<div class="flex items-center justify-center gap-2.5">
+						<div
+							class={css({
+								display: 'flex',
+								alignItems: 'center',
+								justifyContent: 'center',
+								gap: '0.625rem'
+							})}
+						>
 							<!-- Delete -->
 							<button
 								type="button"
-								class="flex h-10 w-10 items-center justify-center rounded-full text-white/90 transition-all hover:scale-105 hover:bg-rose-500/30 hover:text-rose-300 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+								class={hazeBtn({ size: 'md', tone: 'rose' })}
 								title={note.trashed ? 'Delete forever' : 'Delete note'}
 								aria-label={note.trashed ? 'Delete forever' : 'Delete note'}
 								onclick={handleDelete}
 							>
-								<Trash2 class="h-5 w-5" aria-hidden="true" />
+								<Trash2 size={20} aria-hidden="true" />
 							</button>
 
 							<!-- Archive -->
 							<button
 								type="button"
-								class="flex h-10 w-10 items-center justify-center rounded-full text-white/90 transition-all hover:scale-105 hover:bg-white/20 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+								class={hazeBtn({ size: 'md', tone: 'default' })}
 								title={note.archived ? 'Unarchive' : 'Archive'}
 								aria-label={note.archived ? 'Unarchive note' : 'Archive note'}
 								onclick={handleArchive}
 							>
 								{#if note.archived}
-									<ArchiveRestore class="h-5 w-5" aria-hidden="true" />
+									<ArchiveRestore size={20} aria-hidden="true" />
 								{:else}
-									<Archive class="h-5 w-5" aria-hidden="true" />
+									<Archive size={20} aria-hidden="true" />
 								{/if}
 							</button>
 						</div>
@@ -469,9 +625,24 @@
 		}}
 		preventScroll={false}
 	>
-		<div {@attach portalToAppOverlay} class="fixed inset-0 z-[70]" role="presentation">
-			<Dialog.Backdrop class="fixed inset-0 bg-black/30 backdrop-blur-xs" />
-			<Dialog.Positioner class="fixed inset-0 flex items-center justify-center p-4">
+		<div
+			{@attach portalToAppOverlay}
+			class={css({ position: 'fixed', inset: 0, zIndex: 70 })}
+			role="presentation"
+		>
+			<Dialog.Backdrop
+				class={css({ position: 'fixed', inset: 0, bg: 'black/30', backdropFilter: 'blur(2px)' })}
+			/>
+			<Dialog.Positioner
+				class={css({
+					position: 'fixed',
+					inset: 0,
+					display: 'flex',
+					alignItems: 'center',
+					justifyContent: 'center',
+					p: '1rem'
+				})}
+			>
 				<Dialog.Content class="outline-none" onclick={(e) => e.stopPropagation()}>
 					<ReminderPicker
 						reminder={note.reminder}

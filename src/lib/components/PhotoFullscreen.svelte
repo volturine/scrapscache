@@ -16,6 +16,8 @@
 	import { SegmentGroup } from '@ark-ui/svelte/segment-group';
 	import Tooltip from './Tooltip.svelte';
 	import { portalToAppOverlay } from '$lib/appViewport';
+	import { css, cva } from 'styled-system/css';
+	import { button } from 'styled-system/recipes';
 	import { displayImageSrc } from '$lib/imageThumb';
 	import { noteImageFromCroppedDataUrl } from '$lib/noteImages';
 
@@ -224,19 +226,354 @@
 			cropBusy = false;
 		}
 	}
+
+	const fsRoot = css({
+		position: 'absolute',
+		inset: 0,
+		zIndex: 80,
+		display: 'flex',
+		flexDirection: 'column',
+		bg: 'black',
+		color: 'white'
+	});
+	const cropRootClass = css({
+		position: 'relative',
+		zIndex: 1,
+		display: 'flex',
+		minH: 0,
+		flex: '1',
+		flexDirection: 'column'
+	});
+	const cropCol = css({
+		display: 'flex',
+		minH: 0,
+		flex: '1',
+		flexDirection: 'column'
+	});
+	const cropHeader = css({
+		position: 'relative',
+		display: 'flex',
+		flexShrink: 0,
+		alignItems: 'center',
+		justifyContent: 'space-between',
+		gap: '0.5rem',
+		borderBottomWidth: '1px',
+		borderColor: 'white/10',
+		bg: 'black/85',
+		px: '0.75rem',
+		py: '0.5rem',
+		backdropFilter: 'blur(12px)'
+	});
+	const cropBtnRound = css({
+		display: 'grid',
+		h: '2.25rem',
+		w: '2.25rem',
+		placeItems: 'center',
+		rounded: 'full',
+		color: 'white/90',
+		touchAction: 'manipulation',
+		cursor: 'pointer',
+		_hover: { bg: 'white/10', color: 'white' }
+	});
+	const cropSep = css({
+		mx: { base: '0.125rem', sm: '0.25rem' },
+		h: '1rem',
+		w: '1px',
+		bg: 'white/20'
+	});
+	const cropToolBtn = css({
+		display: 'grid',
+		h: '2.25rem',
+		w: '2.25rem',
+		placeItems: 'center',
+		rounded: 'md',
+		color: 'white/80',
+		transition: 'colors 120ms ease',
+		touchAction: 'manipulation',
+		cursor: 'pointer',
+		_hover: { bg: 'white/10', color: 'white' },
+		_disabled: {
+			opacity: 0.35,
+			cursor: 'not-allowed',
+			_hover: { bg: 'transparent', color: 'white/80' }
+		}
+	});
+	const ratioDesktopWrap = css({
+		position: 'absolute',
+		left: '50%',
+		transform: 'translateX(-50%)',
+		display: { base: 'none', sm: 'flex' },
+		alignItems: 'center',
+		justifyContent: 'center'
+	});
+	const radioGroupRoot = css({
+		display: 'flex',
+		alignItems: 'center',
+		gap: '0.125rem',
+		rounded: 'lg',
+		bg: 'white/10',
+		p: '0.125rem',
+		fontSize: 'xs'
+	});
+	const radioGroupItem = css({
+		cursor: 'pointer',
+		rounded: 'sm',
+		px: '0.625rem',
+		py: '0.25rem',
+		transition: 'colors 120ms ease',
+		'&[data-state=checked]': {
+			bg: 'white',
+			fontWeight: 'semibold',
+			color: 'black',
+			boxShadow: 'sm'
+		},
+		'&[data-state=unchecked]': {
+			color: 'white/80',
+			_hover: { bg: 'white/10', color: 'white' }
+		},
+		'&[data-disabled]': {
+			pointerEvents: 'none',
+			opacity: 0.5
+		}
+	});
+	const resetBtn = css({
+		rounded: 'md',
+		px: '0.625rem',
+		py: '0.375rem',
+		fontSize: 'xs',
+		fontWeight: 'medium',
+		color: 'white/70',
+		transition: 'colors 120ms ease',
+		touchAction: 'manipulation',
+		cursor: 'pointer',
+		_hover: { bg: 'white/10', color: 'white' },
+		_disabled: { opacity: 0.3, pointerEvents: 'none' }
+	});
+	const saveCropBtnClass = css({
+		minW: '5.25rem',
+		px: '0.875rem',
+		py: '0.375rem',
+		fontSize: 'sm',
+		fontWeight: 'medium'
+	});
+	const ratioMobileWrap = css({
+		display: { base: 'flex', sm: 'none' },
+		flexShrink: 0,
+		alignItems: 'center',
+		justifyContent: 'center',
+		gap: '0.25rem',
+		borderBottomWidth: '1px',
+		borderColor: 'white/5',
+		bg: 'black/60',
+		px: '0.75rem',
+		py: '0.375rem'
+	});
+	const mobileRatioBtn = cva({
+		base: {
+			rounded: 'sm',
+			px: '0.5rem',
+			py: '0.125rem',
+			fontSize: 'xs',
+			transition: 'colors 120ms ease',
+			cursor: 'pointer'
+		},
+		variants: {
+			active: {
+				true: { bg: 'white', fontWeight: 'semibold', color: 'black' },
+				false: { color: 'white/70', _hover: { bg: 'white/10', color: 'white' } }
+			}
+		}
+	});
+	const cropViewport = css({
+		position: 'relative',
+		display: 'flex',
+		minH: 0,
+		flex: '1',
+		alignItems: 'center',
+		justifyContent: 'center',
+		p: { base: '0.5rem', sm: '1.5rem' },
+		overflow: 'hidden'
+	});
+	const cropImgWrap = css({
+		position: 'relative',
+		flexShrink: 0,
+		overflow: 'visible',
+		boxShadow: '2xl'
+	});
+	const cropImg = css({
+		h: 'full',
+		w: 'full',
+		objectFit: 'fill',
+		display: 'block',
+		userSelect: 'none',
+		pointerEvents: 'none'
+	});
+	const cropErr = css({
+		px: '1rem',
+		pb: '0.75rem',
+		textAlign: 'center',
+		fontSize: 'xs',
+		color: 'red.400'
+	});
+	const fsTopBar = css({
+		position: 'absolute',
+		insetX: 0,
+		top: 0,
+		zIndex: 20,
+		display: 'flex',
+		h: '3.5rem',
+		alignItems: 'center',
+		justifyContent: 'space-between',
+		gap: '0.75rem',
+		bgGradient: 'to-b',
+		gradientFrom: 'black/75',
+		gradientTo: 'transparent',
+		px: '0.75rem',
+		py: '0.5rem',
+		backdropFilter: 'blur(2px)'
+	});
+	const topBarBtn = css({
+		display: 'grid',
+		h: '2.5rem',
+		w: '2.5rem',
+		flexShrink: 0,
+		placeItems: 'center',
+		rounded: 'full',
+		color: 'white/90',
+		touchAction: 'manipulation',
+		cursor: 'pointer',
+		_hover: { bg: 'white/10', color: 'white' }
+	});
+	const topBarTrashBtn = css({
+		display: 'grid',
+		h: '2.5rem',
+		w: '2.5rem',
+		placeItems: 'center',
+		rounded: 'full',
+		color: 'white/90',
+		touchAction: 'manipulation',
+		cursor: 'pointer',
+		_hover: { bg: 'red.500/20', color: 'red.400' }
+	});
+	const navArrow = (side: 'left' | 'right') =>
+		css({
+			position: 'absolute',
+			top: '50%',
+			transform: 'translateY(-50%)',
+			zIndex: 20,
+			display: { base: 'none', sm: 'grid' },
+			h: '2.75rem',
+			w: '2.75rem',
+			placeItems: 'center',
+			rounded: 'full',
+			bg: 'black/40',
+			color: 'white/90',
+			boxShadow: 'md',
+			backdropFilter: 'blur(4px)',
+			transition: 'colors 120ms ease',
+			cursor: 'pointer',
+			touchAction: 'manipulation',
+			left: side === 'left' ? '0.75rem' : 'auto',
+			right: side === 'right' ? '0.75rem' : 'auto',
+			_hover: { bg: 'black/70', color: 'white' }
+		});
+	const viewerCenter = css({
+		pointerEvents: 'none',
+		position: 'relative',
+		zIndex: 1,
+		display: 'flex',
+		h: 'full',
+		alignItems: 'center',
+		justifyContent: 'center',
+		px: '1rem'
+	});
+	const viewerImg = css({
+		pointerEvents: 'auto',
+		maxH: 'full',
+		maxW: 'full',
+		userSelect: 'none',
+		objectFit: 'contain'
+	});
+	const thumbStrip = css({
+		position: 'relative',
+		zIndex: 1,
+		display: 'flex',
+		flexShrink: 0,
+		gap: '0.5rem',
+		overflowX: 'auto',
+		bgGradient: 'to-t',
+		gradientFrom: 'black/85',
+		gradientTo: 'transparent',
+		px: '1rem',
+		pb: '0.75rem',
+		pt: '0.5rem'
+	});
+	const thumbBtn = cva({
+		base: {
+			h: '3.5rem',
+			w: '3.5rem',
+			flexShrink: 0,
+			overflow: 'hidden',
+			rounded: 'md',
+			touchAction: 'manipulation',
+			transition: 'opacity 120ms ease, box-shadow 120ms ease',
+			cursor: 'pointer'
+		},
+		variants: {
+			active: {
+				true: { opacity: 1, ringWidth: '2px', ringColor: 'white' },
+				false: { opacity: 0.5, _hover: { opacity: 0.85 } }
+			}
+		}
+	});
+	const thumbImg = css({ h: 'full', w: 'full', objectFit: 'cover' });
+
+	const flexRowSm = css({
+		display: 'flex',
+		alignItems: 'center',
+		gap: { base: '0.25rem', sm: '0.375rem' }
+	});
+	const flexRowMd = css({ display: 'flex', alignItems: 'center', gap: '0.5rem' });
+	const flexRowGap1 = css({ display: 'flex', alignItems: 'center', gap: '0.25rem' });
+	const flexRowGap15 = css({ display: 'flex', alignItems: 'center', gap: '0.375rem' });
+	const ratioMobileBtn = (active: boolean) =>
+		css({
+			rounded: 'sm',
+			px: '0.5rem',
+			py: '0.125rem',
+			fontSize: 'xs',
+			transition: 'colors 120ms ease',
+			bg: active ? 'white' : 'transparent',
+			color: active ? 'black' : 'white/70',
+			fontWeight: active ? 'semibold' : 'normal',
+			_hover: { color: 'white' }
+		});
+	const titleWrap = css({
+		minW: 0,
+		flex: '1',
+		overflow: 'hidden',
+		textOverflow: 'ellipsis',
+		whiteSpace: 'nowrap',
+		fontSize: 'sm',
+		fontWeight: 'medium',
+		color: 'white/90'
+	});
+	const titleSize = css({ ml: '0.25rem', fontSize: 'xs', fontWeight: 'normal', color: 'white/60' });
+	const viewerStage = css({ position: 'relative', minH: 0, flex: '1' });
+	const zoomBackdrop = css({ position: 'absolute', inset: 0, cursor: 'zoom-out' });
 </script>
 
 {#if current}
 	<div
 		{@attach portal}
 		{@attach trapKeys}
-		class="absolute inset-0 z-[80] flex flex-col bg-black text-white"
+		class={fsRoot}
 		role="dialog"
 		aria-modal="true"
 		aria-label="Photo"
 	>
 		{#if cropping}
-			<div class="crop-root relative z-[1] flex min-h-0 flex-1 flex-col">
+			<div class={`crop-root ${cropRootClass}`}>
 				<ImageCropper.Root
 					aspectRatio={currentAspectRatio}
 					initialCrop={{
@@ -245,74 +582,67 @@
 						width: viewportDimensions.width,
 						height: viewportDimensions.height
 					}}
-					class="flex min-h-0 flex-1 flex-col"
+					class={cropCol}
 				>
 					<ImageCropper.Context>
 						{#snippet render(cropper)}
-							<header
-								class="relative flex shrink-0 items-center justify-between gap-2 border-b border-white/10 bg-black/85 px-3 py-2 backdrop-blur-md"
-							>
+							<header class={cropHeader}>
 								<!-- Left: Cancel, Rotate, Undo -->
-								<div class="flex items-center gap-1 sm:gap-1.5">
+								<div class={flexRowSm}>
 									<Tooltip content="Cancel">
 										<button
 											type="button"
-											class="grid h-9 w-9 place-items-center rounded-full text-white/90 hover:bg-white/10 hover:text-white touch-manipulation"
+											class={cropBtnRound}
 											onclick={cancelCrop}
 											disabled={cropBusy}
 											aria-label="Cancel crop"
 											title="Cancel"
 										>
-											<X class="h-5 w-5" aria-hidden="true" />
+											<X size={20} aria-hidden="true" />
 										</button>
 									</Tooltip>
 
-									<div class="mx-0.5 h-4 w-px bg-white/20 sm:mx-1" aria-hidden="true"></div>
+									<div class={cropSep} aria-hidden="true"></div>
 
 									<Tooltip content="Rotate 90°">
 										<button
 											type="button"
-											class="grid h-9 w-9 place-items-center rounded-md text-white/80 transition-colors hover:bg-white/10 hover:text-white touch-manipulation"
+											class={cropToolBtn}
 											onclick={() => rotate(cropper)}
 											disabled={cropBusy}
 											aria-label="Rotate 90 degrees"
 											title="Rotate 90°"
 										>
-											<RotateCw class="h-4 w-4" aria-hidden="true" />
+											<RotateCw size={16} aria-hidden="true" />
 										</button>
 									</Tooltip>
 									<Tooltip content="Undo">
 										<button
 											type="button"
-											class="grid h-9 w-9 place-items-center rounded-md text-white/80 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-35 disabled:hover:bg-transparent disabled:hover:text-white/80 touch-manipulation"
+											class={cropToolBtn}
 											onclick={() => undo(cropper)}
 											disabled={cropBusy || historyStack.length === 0}
 											aria-label="Undo crop adjustment"
 											title="Undo"
 										>
-											<Undo2 class="h-4 w-4" aria-hidden="true" />
+											<Undo2 size={16} aria-hidden="true" />
 										</button>
 									</Tooltip>
 								</div>
 
 								<!-- Center: Crop ratio presets -->
-								<div
-									class="absolute left-1/2 hidden -translate-x-1/2 items-center justify-center sm:flex"
-								>
+								<div class={ratioDesktopWrap}>
 									<SegmentGroup.Root
 										value={selectedRatio}
 										onValueChange={(details) => {
 											if (details.value) selectedRatio = details.value as any;
 										}}
 										disabled={cropBusy}
-										class="flex items-center gap-0.5 rounded-lg bg-white/10 p-0.5 text-xs"
+										class={radioGroupRoot}
 										aria-label="Aspect ratio presets"
 									>
 										{#each [{ id: 'free', label: 'Free' }, { id: '1:1', label: '1:1' }, { id: '4:3', label: '4:3' }, { id: '16:9', label: '16:9' }] as opt (opt.id)}
-											<SegmentGroup.Item
-												value={opt.id}
-												class="cursor-pointer rounded px-2.5 py-1 transition-colors data-[state=checked]:bg-white data-[state=checked]:font-semibold data-[state=checked]:text-black data-[state=checked]:shadow data-[state=unchecked]:text-white/80 data-[state=unchecked]:hover:bg-white/10 data-[state=unchecked]:hover:text-white data-[disabled]:pointer-events-none data-[disabled]:opacity-50"
-											>
+											<SegmentGroup.Item value={opt.id} class={radioGroupItem}>
 												<SegmentGroup.ItemText>{opt.label}</SegmentGroup.ItemText>
 												<SegmentGroup.ItemHiddenInput />
 											</SegmentGroup.Item>
@@ -321,10 +651,10 @@
 								</div>
 
 								<!-- Right: Reset & Apply -->
-								<div class="flex items-center gap-2">
+								<div class={flexRowMd}>
 									<button
 										type="button"
-										class="rounded-md px-2.5 py-1.5 text-xs font-medium text-white/70 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-30 disabled:pointer-events-none touch-manipulation"
+										class={resetBtn}
 										onclick={() => resetCrop(cropper)}
 										disabled={cropBusy}
 										aria-label="Reset crop"
@@ -335,7 +665,7 @@
 
 									<button
 										type="button"
-										class="scrapscache-button scrapscache-button-primary min-w-[5.25rem] px-3.5 py-1.5 text-sm font-medium"
+										class={`${button({ variant: 'primary', size: 'sm' })} ${saveCropBtnClass}`}
 										onclick={() => void applyCrop(cropper)}
 										disabled={cropBusy}
 										aria-label="Apply crop"
@@ -343,8 +673,8 @@
 										{#if cropBusy}
 											<span>Saving…</span>
 										{:else}
-											<div class="flex items-center gap-1.5">
-												<Check class="h-4 w-4" aria-hidden="true" />
+											<div class={flexRowGap15}>
+												<Check size={16} aria-hidden="true" />
 												<span>Apply</span>
 											</div>
 										{/if}
@@ -352,16 +682,11 @@
 								</div>
 							</header>
 
-							<div
-								class="flex shrink-0 items-center justify-center gap-1 border-b border-white/5 bg-black/60 px-3 py-1.5 sm:hidden"
-								aria-label="Aspect ratio presets mobile"
-							>
+							<div class={ratioMobileWrap} aria-label="Aspect ratio presets mobile">
 								{#each [{ id: 'free', label: 'Free' }, { id: '1:1', label: '1:1' }, { id: '4:3', label: '4:3' }, { id: '16:9', label: '16:9' }] as opt (opt.id)}
 									<button
 										type="button"
-										class="rounded px-2 py-0.5 text-xs transition-colors {selectedRatio === opt.id
-											? 'bg-white font-semibold text-black shadow'
-											: 'text-white/80 hover:bg-white/10 hover:text-white'}"
+										class={ratioMobileBtn(selectedRatio === opt.id)}
 										onclick={() => (selectedRatio = opt.id as any)}
 										disabled={cropBusy}
 									>
@@ -375,17 +700,13 @@
 					<div
 						bind:clientWidth={cropContainerW}
 						bind:clientHeight={cropContainerH}
-						class="relative flex min-h-0 flex-1 items-center justify-center p-2 sm:p-6 overflow-hidden"
+						class={cropViewport}
 					>
 						<ImageCropper.Viewport
 							style="width: {viewportDimensions.width}px; height: {viewportDimensions.height}px;"
-							class="relative shrink-0 overflow-visible shadow-2xl"
+							class={cropImgWrap}
 						>
-							<ImageCropper.Image
-								src={currentSrc}
-								onload={measureNatural}
-								class="h-full w-full object-fill block select-none pointer-events-none"
-							/>
+							<ImageCropper.Image src={currentSrc} onload={measureNatural} class={cropImg} />
 							<ImageCropper.Selection>
 								{#each ImageCropper.handles as position (position)}
 									<ImageCropper.Handle {position}>
@@ -405,43 +726,36 @@
 					</div>
 				</ImageCropper.Root>
 				{#if cropError}
-					<p class="px-4 pb-3 text-center text-xs text-red-400">{cropError}</p>
+					<p class={cropErr}>{cropError}</p>
 				{/if}
 			</div>
 		{:else}
-			<header
-				class="absolute inset-x-0 top-0 z-20 flex h-14 items-center justify-between gap-3 bg-gradient-to-b from-black/75 to-transparent px-3 py-2 backdrop-blur-[2px]"
-			>
-				<div class="flex min-w-0 items-center gap-2">
-					<button
-						type="button"
-						class="grid h-10 w-10 shrink-0 place-items-center rounded-full text-white/90 hover:bg-white/10 hover:text-white touch-manipulation"
-						onclick={close}
-						aria-label="Close photo"
-					>
-						<X class="h-6 w-6 drop-shadow" aria-hidden="true" />
+			<header class={fsTopBar}>
+				<div class={`${flexRowMd} ${css({ minW: 0 })}`}>
+					<button type="button" class={topBarBtn} onclick={close} aria-label="Close photo">
+						<X size={24} aria-hidden="true" />
 					</button>
-					<div class="min-w-0 flex-1 truncate text-sm font-medium text-white/90">
+					<div class={titleWrap}>
 						{current.name || `Photo ${(activeIndex ?? 0) + 1}`}
 						{#if images.length > 1}
-							<span class="ml-1 text-xs font-normal text-white/60">
+							<span class={titleSize}>
 								({(activeIndex ?? 0) + 1} of {images.length})
 							</span>
 						{/if}
 					</div>
 				</div>
 
-				<div class="flex items-center gap-1">
+				<div class={flexRowGap1}>
 					<Tooltip content="Download photo">
 						<DownloadTrigger
 							fileName={current.name || 'photo.webp'}
 							data={currentSrc}
 							mimeType={current.mime || 'image/webp'}
-							class="grid h-10 w-10 place-items-center rounded-full text-white/90 hover:bg-white/10 hover:text-white touch-manipulation"
+							class={topBarBtn}
 							aria-label="Download photo"
 							title="Download photo"
 						>
-							<Download class="h-5 w-5 drop-shadow" aria-hidden="true" />
+							<Download size={20} aria-hidden="true" />
 						</DownloadTrigger>
 					</Tooltip>
 
@@ -449,12 +763,12 @@
 						<Tooltip content="Crop & rotate">
 							<button
 								type="button"
-								class="grid h-10 w-10 place-items-center rounded-full text-white/90 hover:bg-white/10 hover:text-white touch-manipulation"
+								class={topBarBtn}
 								onclick={startCrop}
 								aria-label="Crop photo"
 								title="Crop and rotate"
 							>
-								<Crop class="h-5 w-5 drop-shadow" aria-hidden="true" />
+								<Crop size={20} aria-hidden="true" />
 							</button>
 						</Tooltip>
 					{/if}
@@ -463,59 +777,52 @@
 						<Tooltip content="Delete photo">
 							<button
 								type="button"
-								class="grid h-10 w-10 place-items-center rounded-full text-white/90 hover:bg-red-500/20 hover:text-red-400 touch-manipulation"
+								class={topBarTrashBtn}
 								onclick={() => void deleteCurrent()}
 								aria-label="Delete photo"
 								title="Delete photo"
 							>
-								<Trash2 class="h-5 w-5 drop-shadow" aria-hidden="true" />
+								<Trash2 size={20} aria-hidden="true" />
 							</button>
 						</Tooltip>
 					{/if}
 				</div>
 			</header>
 
-			<div class="relative min-h-0 flex-1">
-				<button
-					type="button"
-					class="absolute inset-0 cursor-zoom-out"
-					onclick={close}
-					aria-label="Close photo"
+			<div class={viewerStage}>
+				<button type="button" class={zoomBackdrop} onclick={close} aria-label="Close photo"
 				></button>
 
 				{#if images.length > 1}
 					<Tooltip content="Previous photo" placement="right">
 						<button
 							type="button"
-							class="absolute left-3 top-1/2 z-20 hidden h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-black/40 text-white/90 shadow-md backdrop-blur-sm transition-colors hover:bg-black/70 hover:text-white sm:grid touch-manipulation"
+							class={navArrow('left')}
 							onclick={() => move(-1)}
 							aria-label="Previous photo"
 							title="Previous photo"
 						>
-							<ChevronLeft class="h-6 w-6" aria-hidden="true" />
+							<ChevronLeft size={24} aria-hidden="true" />
 						</button>
 					</Tooltip>
 					<Tooltip content="Next photo" placement="left">
 						<button
 							type="button"
-							class="absolute right-3 top-1/2 z-20 hidden h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-black/40 text-white/90 shadow-md backdrop-blur-sm transition-colors hover:bg-black/70 hover:text-white sm:grid touch-manipulation"
+							class={navArrow('right')}
 							onclick={() => move(1)}
 							aria-label="Next photo"
 							title="Next photo"
 						>
-							<ChevronRight class="h-6 w-6" aria-hidden="true" />
+							<ChevronRight size={24} aria-hidden="true" />
 						</button>
 					</Tooltip>
 				{/if}
 
-				<div
-					{@attach swipeArea}
-					class="pointer-events-none relative z-[1] flex h-full items-center justify-center px-4"
-				>
+				<div {@attach swipeArea} class={viewerCenter}>
 					<img
 						src={currentSrc}
 						alt={current.name ?? 'Photo'}
-						class="pointer-events-auto max-h-full max-w-full select-none object-contain"
+						class={viewerImg}
 						decoding="async"
 						draggable="false"
 					/>
@@ -523,27 +830,16 @@
 			</div>
 
 			{#if images.length > 1}
-				<div
-					class="scrollable relative z-[1] flex shrink-0 gap-2 overflow-x-auto bg-gradient-to-t from-black/85 to-transparent px-4 pb-3 pt-2"
-					aria-label="Photo thumbnails"
-				>
+				<div class={`scrollable ${thumbStrip}`} aria-label="Photo thumbnails">
 					{#each images as image, index (image.id)}
 						<button
 							type="button"
-							class="h-14 w-14 shrink-0 overflow-hidden rounded-md touch-manipulation transition-opacity {index ===
-							activeIndex
-								? 'ring-2 ring-white ring-offset-2 ring-offset-black'
-								: 'opacity-60 hover:opacity-90'}"
+							class={thumbBtn({ active: index === activeIndex })}
 							onclick={() => select(index)}
 							aria-label={image.name ?? `Photo ${index + 1}`}
 							aria-current={index === activeIndex ? 'true' : undefined}
 						>
-							<img
-								src={displayImageSrc(image)}
-								alt=""
-								class="h-full w-full object-cover"
-								draggable="false"
-							/>
+							<img src={displayImageSrc(image)} alt="" class={thumbImg} draggable="false" />
 						</button>
 					{/each}
 				</div>

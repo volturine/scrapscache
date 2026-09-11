@@ -3,46 +3,117 @@
 	import { AlarmClock, X } from '@lucide/svelte';
 	import { reminderStore } from '$lib/stores/reminders.svelte';
 	import { formatReminder } from '$lib/utils';
+	import { css } from 'styled-system/css';
 
 	const alerts = $derived(reminderStore.alerts);
+
+	const containerClass = css({
+		pointerEvents: 'none',
+		position: 'fixed',
+		insetX: 0,
+		zIndex: 70,
+		display: 'flex',
+		flexDirection: 'column',
+		alignItems: 'center',
+		gap: '0.5rem',
+		px: '0.75rem'
+	});
+
+	const cardClass = css({
+		pointerEvents: 'auto',
+		display: 'flex',
+		w: 'full',
+		maxW: '28rem',
+		alignItems: 'flex-start',
+		gap: '0.75rem',
+		rounded: '2xl',
+		borderWidth: '1px',
+		borderColor: 'scrapscache.border',
+		bg: 'scrapscache.surface',
+		px: '0.75rem',
+		py: '0.75rem',
+		boxShadow: '2xl'
+	});
+
+	const iconClass = css({
+		mt: '0.125rem',
+		w: '1.25rem',
+		h: '1.25rem',
+		flexShrink: 0,
+		color: { base: 'blue.600', _dark: 'blue.400' }
+	});
+
+	const contentBtnClass = css({
+		minW: 0,
+		flex: '1',
+		textAlign: 'left',
+		cursor: 'pointer'
+	});
+
+	const titleClass = css({
+		overflow: 'hidden',
+		textOverflow: 'ellipsis',
+		whiteSpace: 'nowrap',
+		fontSize: 'sm',
+		fontWeight: '600',
+		color: 'scrapscache.text'
+	});
+
+	const subtitleClass = css({
+		fontSize: 'xs',
+		color: 'scrapscache.textMuted'
+	});
+
+	const dismissBtnClass = css({
+		w: '2rem',
+		h: '2rem',
+		flexShrink: 0,
+		p: '0.375rem',
+		cursor: 'pointer',
+		rounded: 'full',
+		display: 'inline-flex',
+		alignItems: 'center',
+		justifyContent: 'center',
+		_hover: {
+			bg: 'scrapscache.interactiveHover'
+		}
+	});
+
+	const closeIconClass = css({
+		w: '1rem',
+		h: '1rem'
+	});
 </script>
 
 {#if alerts.length > 0}
 	<div
-		class="pointer-events-none fixed inset-x-0 z-[70] flex flex-col items-center gap-2 px-3"
+		class={containerClass}
 		style="top: max(0.75rem, calc(env(safe-area-inset-top, 0px) + 0.35rem))"
 		role="region"
 		aria-label="Due reminders"
 	>
 		{#each alerts as alert (alert.wakeId)}
-			<div
-				class="pointer-events-auto flex w-full max-w-md items-start gap-3 rounded-2xl border border-[var(--scrapscache-border)] bg-[var(--scrapscache-surface)] px-3 py-3 shadow-2xl"
-				role="alert"
-				transition:fly={{ y: -16, duration: 180 }}
-			>
-				<AlarmClock
-					class="mt-0.5 h-5 w-5 shrink-0 text-blue-600 dark:text-blue-400"
-					aria-hidden="true"
-				/>
+			<div class={cardClass} role="alert" transition:fly={{ y: -16, duration: 180 }}>
+				<AlarmClock class={iconClass} aria-hidden="true" />
 				<button
 					type="button"
-					class="min-w-0 flex-1 text-left"
+					class={contentBtnClass}
 					onclick={() => reminderStore.open(alert.noteId)}
 				>
-					<div class="truncate text-sm font-semibold text-[var(--scrapscache-text)]">
+					<div class={titleClass}>
 						{alert.title}
 					</div>
-					<div class="text-xs text-[var(--scrapscache-text-muted)]">
+					<div class={subtitleClass}>
 						{formatReminder(alert.reminder)}
 					</div>
 				</button>
 				<button
 					type="button"
-					class="icon-btn h-8 w-8 shrink-0 p-1.5"
+					class={`icon-btn ${dismissBtnClass}`}
 					aria-label="Dismiss reminder"
 					onclick={() => reminderStore.dismiss(alert.noteId)}
 				>
-					<X class="h-4 w-4" aria-hidden="true" />
+					<X class={closeIconClass} aria-hidden="true" />
 				</button>
 			</div>
 		{/each}

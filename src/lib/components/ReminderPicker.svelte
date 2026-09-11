@@ -9,6 +9,8 @@
 	import { ensurePushSubscription } from '$lib/reminderWake';
 	import { formatReminderCountdown } from '$lib/utils';
 	import { PHONE_MEDIA } from '$lib/appViewport';
+	import { css } from 'styled-system/css';
+	import { button } from 'styled-system/recipes';
 
 	let {
 		reminder,
@@ -162,111 +164,295 @@
 	function clear() {
 		apply(null);
 	}
+
+	const dialogBoxClass = css({
+		w: '20rem',
+		p: '1.25rem'
+	});
+
+	const headingClass = css({
+		mb: '0.75rem',
+		fontSize: 'base',
+		fontWeight: 'medium',
+		color: 'scrapscache.text'
+	});
+
+	const statusBoxBase = css({
+		mb: '1rem',
+		rounded: 'lg',
+		px: '0.75rem',
+		py: '0.625rem'
+	});
+
+	const statusHeaderClass = css({
+		display: 'flex',
+		alignItems: 'center',
+		justifyContent: 'space-between',
+		gap: '0.5rem'
+	});
+
+	const statusLabelClass = css({
+		minW: 0,
+		fontSize: '10px',
+		fontWeight: '600',
+		textTransform: 'uppercase',
+		letterSpacing: '0.05em',
+		color: 'scrapscache.textMuted'
+	});
+
+	const badgeActive = css({
+		display: 'inline-flex',
+		minW: '4.25rem',
+		flexShrink: 0,
+		justifyContent: 'center',
+		rounded: 'full',
+		bg: 'scrapscache.success',
+		px: '0.5rem',
+		py: '0.125rem',
+		fontSize: '10px',
+		fontWeight: 'bold',
+		textTransform: 'uppercase',
+		letterSpacing: '0.05em',
+		color: 'scrapscache.successForeground'
+	});
+
+	const badgeEdit = css({
+		display: 'inline-flex',
+		minW: '4.25rem',
+		flexShrink: 0,
+		justifyContent: 'center',
+		rounded: 'full',
+		bg: 'scrapscache.warning',
+		px: '0.5rem',
+		py: '0.125rem',
+		fontSize: '10px',
+		fontWeight: 'bold',
+		textTransform: 'uppercase',
+		letterSpacing: '0.05em',
+		color: 'scrapscache.bg'
+	});
+
+	const badgeNew = css({
+		display: 'inline-flex',
+		minW: '4.25rem',
+		flexShrink: 0,
+		justifyContent: 'center',
+		rounded: 'full',
+		bg: 'scrapscache.accent',
+		px: '0.5rem',
+		py: '0.125rem',
+		fontSize: '10px',
+		fontWeight: 'bold',
+		textTransform: 'uppercase',
+		letterSpacing: '0.05em',
+		color: 'scrapscache.accentForeground'
+	});
+
+	const countdownRowClass = css({
+		mt: '0.375rem',
+		display: 'flex',
+		alignItems: 'center',
+		gap: '0.5rem',
+		fontSize: 'sm',
+		fontWeight: '600',
+		color: 'scrapscache.text'
+	});
+
+	const clockIconClass = css({
+		w: '1rem',
+		h: '1rem',
+		flexShrink: 0
+	});
+
+	const countdownTextClass = css({
+		minW: 0,
+		overflow: 'hidden',
+		textOverflow: 'ellipsis',
+		whiteSpace: 'nowrap'
+	});
+
+	const statusHintClass = css({
+		mt: '0.25rem',
+		fontSize: '11px',
+		lineHeight: 'snug',
+		color: 'scrapscache.textMuted'
+	});
+
+	const sectionDividerClass = css({
+		mb: '1rem',
+		borderTopWidth: '1px',
+		borderColor: 'scrapscache.border',
+		pt: '1rem'
+	});
+
+	const sectionTitleClass = css({
+		mb: '0.75rem',
+		fontSize: 'xs',
+		fontWeight: 'medium',
+		textTransform: 'uppercase',
+		letterSpacing: '0.05em',
+		color: 'scrapscache.textMuted'
+	});
+
+	const navRowClass = css({
+		mb: '0.75rem',
+		display: 'flex',
+		alignItems: 'center'
+	});
+
+	const dateBtnClass = css({
+		mx: '0.25rem',
+		display: 'flex',
+		minW: 0,
+		flex: '1',
+		alignItems: 'center',
+		justifyContent: 'center',
+		rounded: 'lg',
+		px: '0.5rem',
+		py: '0.375rem',
+		fontSize: 'sm',
+		fontWeight: 'medium',
+		color: 'scrapscache.text',
+		cursor: 'pointer'
+	});
+
+	const dateBtnActiveClass = css({
+		bg: 'scrapscache.bg'
+	});
+
+	const wheelGroupClass = css({
+		display: 'flex',
+		justifyContent: 'center',
+		gap: '0.5rem',
+		rounded: 'xl',
+		bg: { base: 'black/3', _dark: 'white/4' },
+		px: '0.5rem',
+		py: '0.25rem'
+	});
+
+	const wheelColDay = css({ w: '3rem' });
+	const wheelColMonth = css({ w: '7.75rem' });
+	const wheelColYear = css({ w: '4.5rem' });
+	const wheelColTime = css({ w: '4rem' });
+	const calNavBtn = css({ h: '2rem', w: '2rem', flexShrink: 0, p: '0.5rem' });
+	const wheelTimeGroupClass = css({
+		display: 'flex',
+		justifyContent: 'center',
+		gap: '0.25rem',
+		rounded: 'xl',
+		bg: { base: 'black/3', _dark: 'white/4' },
+		px: '0.5rem',
+		py: '0.25rem'
+	});
+
+	const colonClass = css({
+		display: 'flex',
+		w: '0.75rem',
+		flexShrink: 0,
+		alignItems: 'center',
+		justifyContent: 'center',
+		fontSize: 'xl',
+		fontWeight: '600',
+		color: 'scrapscache.text'
+	});
+
+	const footerRowClass = css({
+		display: 'flex',
+		alignItems: 'center',
+		gap: '0.5rem',
+		borderTopWidth: '1px',
+		borderColor: 'scrapscache.border',
+		pt: '1rem'
+	});
+
+	const btnMinW = css({
+		minW: '5.5rem'
+	});
 </script>
 
-<div class="scrapscache-dialog w-80 p-5">
-	<div class="mb-3 text-base font-medium text-[var(--scrapscache-text)]">Reminder</div>
+<div class={`scrapscache-dialog ${dialogBoxClass}`}>
+	<div class={headingClass}>Reminder</div>
 
 	<div
-		class="mb-4 rounded-[var(--scrapscache-radius-lg)] px-3 py-2.5 {uiStatus === 'active'
-			? 'scrapscache-status-success'
-			: uiStatus === 'unsaved'
-				? 'scrapscache-status-warning'
-				: 'scrapscache-status-accent'}"
+		class={`${statusBoxBase} ${
+			uiStatus === 'active'
+				? 'scrapscache-status-success'
+				: uiStatus === 'unsaved'
+					? 'scrapscache-status-warning'
+					: 'scrapscache-status-accent'
+		}`}
 	>
-		<div class="flex items-center justify-between gap-2">
-			<div
-				class="min-w-0 text-[10px] font-semibold uppercase tracking-wide text-[var(--scrapscache-text-muted)]"
-			>
-				Will remind you
-			</div>
+		<div class={statusHeaderClass}>
+			<div class={statusLabelClass}>Will remind you</div>
 			{#if uiStatus === 'active'}
-				<span
-					class="inline-flex min-w-[4.25rem] shrink-0 justify-center rounded-full bg-[var(--scrapscache-success)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--scrapscache-success-foreground)]"
-					>Active</span
-				>
+				<span class={badgeActive}>Active</span>
 			{:else if uiStatus === 'unsaved'}
-				<span
-					class="inline-flex min-w-[4.25rem] shrink-0 justify-center rounded-full bg-[var(--scrapscache-warning)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--scrapscache-bg)]"
-					>Edit</span
-				>
+				<span class={badgeEdit}>Edit</span>
 			{:else}
-				<span
-					class="inline-flex min-w-[4.25rem] shrink-0 justify-center rounded-full bg-[var(--scrapscache-accent)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--scrapscache-accent-foreground)]"
-					>New</span
-				>
+				<span class={badgeNew}>New</span>
 			{/if}
 		</div>
-		<div
-			class="mt-1.5 flex items-center gap-2 text-sm font-semibold text-[var(--scrapscache-text)]"
-		>
-			<AlarmClock class="h-4 w-4 shrink-0" aria-hidden="true" />
-			<span class="min-w-0 truncate">{remainingLabel}</span>
+		<div class={countdownRowClass}>
+			<AlarmClock class={clockIconClass} aria-hidden="true" />
+			<span class={countdownTextClass}>{remainingLabel}</span>
 		</div>
-		<div class="mt-1 text-[11px] leading-snug text-[var(--scrapscache-text-muted)]">
-			Closed-app alerts need Sync on this device.
-		</div>
+		<div class={statusHintClass}>Closed-app alerts need Sync on this device.</div>
 	</div>
 
-	<div class="mb-4 border-t border-[var(--scrapscache-border)] pt-4">
-		<div
-			class="mb-3 text-xs font-medium uppercase tracking-wide text-[var(--scrapscache-text-muted)]"
-		>
-			Pick date & time
-		</div>
+	<div class={sectionDividerClass}>
+		<div class={sectionTitleClass}>Pick date & time</div>
 
 		<div class="schedule-panel">
 			{#if isMobile}
-				<div class="mb-3 flex items-center">
+				<div class={navRowClass}>
 					<button
 						type="button"
-						class="icon-btn h-8 w-8 shrink-0 p-2"
+						class={`icon-btn ${calNavBtn}`}
 						onclick={() => shiftDay(-1)}
 						aria-label="Previous day"
 					>
-						<ChevronLeft class="h-5 w-5" aria-hidden="true" />
+						<ChevronLeft size={20} aria-hidden="true" />
 					</button>
 					<button
 						type="button"
-						class="mx-1 flex min-w-0 flex-1 items-center justify-center rounded-lg px-2 py-1.5 text-sm font-medium text-[var(--scrapscache-text)] {monthYearOpen
-							? 'bg-[var(--scrapscache-bg)]'
-							: ''}"
+						class={`${dateBtnClass} ${monthYearOpen ? dateBtnActiveClass : ''}`}
 						onclick={() => (monthYearOpen = !monthYearOpen)}
 						aria-label="Choose date"
 						aria-expanded={monthYearOpen}
 					>
-						<span class="truncate">{dateLabel}</span>
+						<span
+							class={css({ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' })}
+							>{dateLabel}</span
+						>
 					</button>
 					<button
 						type="button"
-						class="icon-btn h-8 w-8 shrink-0 p-2"
+						class={`icon-btn ${calNavBtn}`}
 						onclick={() => shiftDay(1)}
 						aria-label="Next day"
 					>
-						<ChevronRight class="h-5 w-5" aria-hidden="true" />
+						<ChevronRight size={20} aria-hidden="true" />
 					</button>
 				</div>
 
 				{#if monthYearOpen}
-					<div
-						class="flex justify-center gap-2 rounded-xl bg-black/[0.03] px-2 py-1 dark:bg-white/[0.04]"
-					>
+					<div class={wheelGroupClass}>
 						<WheelPicker
-							class="w-12"
+							class={wheelColDay}
 							items={dayItems}
 							value={selectedDay}
 							onChange={(day) => setDateParts({ day })}
 							ariaLabel="Day"
 						/>
 						<WheelPicker
-							class="w-[7.75rem]"
+							class={wheelColMonth}
 							items={MONTH_ITEMS}
 							value={selectedMonth}
 							onChange={(month) => setDateParts({ month })}
 							ariaLabel="Month"
 						/>
 						<WheelPicker
-							class="w-[4.5rem]"
+							class={wheelColYear}
 							items={yearItems}
 							value={selectedYear}
 							onChange={(year) => setDateParts({ year })}
@@ -274,24 +460,17 @@
 						/>
 					</div>
 				{:else}
-					<div
-						class="flex justify-center gap-1 rounded-xl bg-black/[0.03] px-2 py-1 dark:bg-white/[0.04]"
-					>
+					<div class={wheelTimeGroupClass}>
 						<WheelPicker
-							class="w-16"
+							class={wheelColTime}
 							items={HOUR_ITEMS}
 							value={hours24}
 							onChange={setHour}
 							ariaLabel="Hour"
 						/>
-						<div
-							class="flex w-3 shrink-0 items-center justify-center text-xl font-semibold text-[var(--scrapscache-text)]"
-							aria-hidden="true"
-						>
-							:
-						</div>
+						<div class={colonClass} aria-hidden="true">:</div>
 						<WheelPicker
-							class="w-16"
+							class={wheelColTime}
 							items={MINUTE_ITEMS}
 							value={minutes}
 							onChange={setMinute}
@@ -301,7 +480,14 @@
 				{/if}
 			{:else if monthYearOpen}
 				<div
-					class="h-full overflow-hidden rounded-xl bg-black/[0.03] px-2 py-2 dark:bg-white/[0.04]"
+					class={css({
+						h: 'full',
+						overflow: 'hidden',
+						rounded: 'xl',
+						bg: { base: 'black/3', _dark: 'white/4' },
+						px: '0.5rem',
+						py: '0.5rem'
+					})}
 				>
 					<DatePicker.Root
 						inline
@@ -314,52 +500,61 @@
 					</DatePicker.Root>
 				</div>
 			{:else}
-				<div class="flex h-full flex-col">
-					<div class="mb-3 flex items-center">
+				<div class={css({ display: 'flex', h: 'full', flexDirection: 'column' })}>
+					<div class={navRowClass}>
 						<button
 							type="button"
-							class="icon-btn h-8 w-8 shrink-0 p-2"
+							class={`icon-btn ${calNavBtn}`}
 							onclick={() => shiftDay(-1)}
 							aria-label="Previous day"
 						>
-							<ChevronLeft class="h-5 w-5" aria-hidden="true" />
+							<ChevronLeft size={20} aria-hidden="true" />
 						</button>
 						<button
 							type="button"
-							class="mx-1 flex min-w-0 flex-1 items-center justify-center rounded-lg px-2 py-1.5 text-sm font-medium text-[var(--scrapscache-text)]"
+							class={dateBtnClass}
 							onclick={() => (monthYearOpen = true)}
 							aria-label="Choose date"
 							aria-expanded="false"
 						>
-							<span class="truncate">{dateLabel}</span>
+							<span
+								class={css({ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' })}
+								>{dateLabel}</span
+							>
 						</button>
 						<button
 							type="button"
-							class="icon-btn h-8 w-8 shrink-0 p-2"
+							class={`icon-btn ${calNavBtn}`}
 							onclick={() => shiftDay(1)}
 							aria-label="Next day"
 						>
-							<ChevronRight class="h-5 w-5" aria-hidden="true" />
+							<ChevronRight size={20} aria-hidden="true" />
 						</button>
 					</div>
 					<div
-						class="flex min-h-0 flex-1 items-center justify-center gap-1 rounded-xl bg-black/[0.03] px-2 py-1 dark:bg-white/[0.04]"
+						class={css({
+							display: 'flex',
+							minH: 0,
+							flex: '1',
+							alignItems: 'center',
+							justifyContent: 'center',
+							gap: '0.25rem',
+							rounded: 'xl',
+							bg: { base: 'black/3', _dark: 'white/4' },
+							px: '0.5rem',
+							py: '0.25rem'
+						})}
 					>
 						<WheelPicker
-							class="w-16"
+							class={wheelColTime}
 							items={HOUR_ITEMS}
 							value={hours24}
 							onChange={setHour}
 							ariaLabel="Hour"
 						/>
-						<div
-							class="flex w-3 shrink-0 items-center justify-center text-xl font-semibold text-[var(--scrapscache-text)]"
-							aria-hidden="true"
-						>
-							:
-						</div>
+						<div class={colonClass} aria-hidden="true">:</div>
 						<WheelPicker
-							class="w-16"
+							class={wheelColTime}
 							items={MINUTE_ITEMS}
 							value={minutes}
 							onChange={setMinute}
@@ -371,12 +566,12 @@
 		</div>
 	</div>
 
-	<div class="flex items-center gap-2 border-t border-[var(--scrapscache-border)] pt-4">
+	<div class={footerRowClass}>
 		{#if showRemove}
 			<button
 				type="button"
 				onclick={clear}
-				class="scrapscache-button scrapscache-button-quiet shrink-0 px-3 py-2.5 text-sm font-medium"
+				class={`${button({ variant: 'quiet', size: 'md' })} ${css({ flexShrink: 0 })}`}
 			>
 				Remove
 			</button>
@@ -384,7 +579,7 @@
 		<button
 			type="button"
 			onclick={onClose}
-			class="scrapscache-button scrapscache-button-secondary min-w-[5.5rem] px-4 py-2.5 text-sm font-medium"
+			class={`${button({ variant: 'secondary', size: 'md' })} ${btnMinW}`}
 		>
 			Cancel
 		</button>
@@ -392,21 +587,10 @@
 			<button
 				type="button"
 				onclick={save}
-				class="scrapscache-button scrapscache-button-primary ml-auto min-w-[5.5rem] px-4 py-2.5 text-sm font-medium"
+				class={`${button({ variant: 'primary', size: 'md' })} ${btnMinW} ${css({ ml: 'auto' })}`}
 			>
 				Save
 			</button>
 		{/if}
 	</div>
 </div>
-
-<style>
-	.schedule-panel {
-		height: 17.25rem;
-	}
-	@media (max-width: 767px) {
-		.schedule-panel {
-			height: auto;
-		}
-	}
-</style>

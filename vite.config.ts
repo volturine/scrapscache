@@ -1,5 +1,4 @@
 import { sveltekit } from '@sveltejs/kit/vite';
-import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vitest/config';
 import { fileURLToPath } from 'node:url';
 
@@ -32,7 +31,7 @@ const cloudflarePlatform = {
 };
 
 export default defineConfig({
-	plugins: [cloudflarePlatform, tailwindcss(), sveltekit()],
+	plugins: [cloudflarePlatform, sveltekit()],
 	server: {
 		watch: {
 			// Don't reload the page when the sync server writes to sync-data/.

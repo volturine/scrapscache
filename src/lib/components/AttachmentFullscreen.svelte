@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { css } from 'styled-system/css';
 	import type { NoteImage } from '$lib/types';
 	import { dataUrlToBlob } from '$lib/imageBlob';
 	import { ChevronLeft, Download } from '@lucide/svelte';
@@ -83,27 +84,87 @@
 	function onKeydown(event: KeyboardEvent) {
 		if (event.key === 'Escape') close();
 	}
+
+	const fsShell = css({
+		position: 'fixed',
+		inset: 0,
+		zIndex: 80,
+		display: 'flex',
+		flexDirection: 'column',
+		bg: 'scrapscache.bg',
+		color: 'scrapscache.text'
+	});
+	const fsHeader = css({
+		display: 'flex',
+		flexShrink: 0,
+		alignItems: 'center',
+		gap: '0.75rem',
+		borderBottomWidth: '1px',
+		borderColor: 'scrapscache.border',
+		px: '0.75rem',
+		py: '0.5rem'
+	});
+	const fsIconBtn = css({ h: '2.5rem', w: '2.5rem', p: '0.5rem' });
+	const fsTitle = css({
+		minW: 0,
+		flex: '1',
+		overflow: 'hidden',
+		textOverflow: 'ellipsis',
+		whiteSpace: 'nowrap',
+		fontSize: 'sm',
+		fontWeight: 'medium'
+	});
+	const centerNotice = css({
+		display: 'grid',
+		flex: '1',
+		placeItems: 'center',
+		p: '1.5rem',
+		fontSize: 'sm',
+		color: 'scrapscache.textMuted'
+	});
+	const textPre = css({
+		m: 0,
+		minH: 0,
+		flex: '1',
+		overflow: 'auto',
+		whiteSpace: 'pre-wrap',
+		wordBreak: 'break-word',
+		p: '1rem',
+		fontFamily: 'mono',
+		fontSize: 'sm',
+		lineHeight: 'relaxed',
+		color: 'scrapscache.text'
+	});
+	const audioContainer = css({ display: 'grid', flex: '1', placeItems: 'center', p: '1.5rem' });
+	const audioEl = css({ w: 'full', maxW: '32rem' });
+	const videoContainer = css({
+		display: 'flex',
+		flex: '1',
+		alignItems: 'center',
+		justifyContent: 'center',
+		bg: 'black'
+	});
+	const videoEl = css({ maxH: 'full', maxW: 'full' });
+	const pdfFrame = css({ h: 'full', w: 'full', flex: '1', borderWidth: 0, bg: 'white' });
+	const iconBack = css({ h: '1.5rem', w: '1.5rem' });
+	const iconDownload = css({ h: '1.25rem', w: '1.25rem' });
 </script>
 
 <svelte:window onkeydown={attachment ? onKeydown : undefined} />
 
 {#if attachment}
 	<div {@attach portal}>
-		<div
-			class="fixed inset-0 z-[80] flex flex-col bg-[var(--scrapscache-bg)] text-[var(--scrapscache-text)]"
-		>
-			<header
-				class="flex shrink-0 items-center gap-3 border-b border-[var(--scrapscache-border)] px-3 py-2"
-			>
+		<div class={fsShell}>
+			<header class={fsHeader}>
 				<button
 					type="button"
-					class="icon-btn h-10 w-10 p-2"
+					class={`icon-btn ${fsIconBtn}`}
 					onclick={close}
 					aria-label="Close file"
 				>
-					<ChevronLeft class="h-6 w-6" aria-hidden="true" />
+					<ChevronLeft class={iconBack} aria-hidden="true" />
 				</button>
-				<div class="min-w-0 flex-1 truncate text-sm font-medium">
+				<div class={fsTitle}>
 					{attachment.name || 'Attachment'}
 				</div>
 				{#if attachment.dataUrl}
@@ -111,44 +172,32 @@
 						fileName={attachment.name || 'attachment'}
 						data={attachment.dataUrl}
 						mimeType={attachment.mime || 'application/octet-stream'}
-						class="icon-btn h-10 w-10 p-2"
+						class={`icon-btn ${fsIconBtn}`}
 						aria-label="Download file"
 						title="Download file"
 					>
-						<Download class="h-5 w-5" aria-hidden="true" />
+						<Download class={iconDownload} aria-hidden="true" />
 					</DownloadTrigger>
 				{/if}
 			</header>
 
 			{#if loading}
-				<div class="grid flex-1 place-items-center text-sm text-[var(--scrapscache-text-muted)]">
-					Opening file…
-				</div>
+				<div class={centerNotice}>Opening file…</div>
 			{:else if failed}
-				<div
-					class="grid flex-1 place-items-center p-6 text-sm text-[var(--scrapscache-text-muted)]"
-				>
-					Could not open this attachment.
-				</div>
+				<div class={centerNotice}>Could not open this attachment.</div>
 			{:else if isText}
-				<pre
-					class="scrollable m-0 min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words p-4 font-mono text-sm leading-relaxed text-[var(--scrapscache-text)]">{textContent ??
-						''}</pre>
+				<pre class={`scrollable ${textPre}`}>{textContent ?? ''}</pre>
 			{:else if isAudio && sourceUrl}
-				<div class="grid flex-1 place-items-center p-6">
-					<audio class="w-full max-w-lg" controls src={sourceUrl}></audio>
+				<div class={audioContainer}>
+					<audio class={audioEl} controls src={sourceUrl}></audio>
 				</div>
 			{:else if isVideo && sourceUrl}
 				<!-- svelte-ignore a11y_media_has_caption -->
-				<div class="flex flex-1 items-center justify-center bg-black">
-					<video class="max-h-full max-w-full" controls playsinline src={sourceUrl}></video>
+				<div class={videoContainer}>
+					<video class={videoEl} controls playsinline src={sourceUrl}></video>
 				</div>
 			{:else if isPdf && sourceUrl}
-				<iframe
-					class="h-full w-full flex-1 border-0 bg-white"
-					title={attachment.name || 'Attachment'}
-					src={sourceUrl}
-				></iframe>
+				<iframe class={pdfFrame} title={attachment.name || 'Attachment'} src={sourceUrl}></iframe>
 			{/if}
 		</div>
 	</div>

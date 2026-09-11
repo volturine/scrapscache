@@ -2,6 +2,7 @@
 	import { Checkbox } from '@ark-ui/svelte/checkbox';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { Check, Plus, Search, Tag } from '@lucide/svelte';
+	import { css } from 'styled-system/css';
 
 	let {
 		noteId,
@@ -89,57 +90,193 @@
 			}
 		};
 	}
+
+	const containerClass = css({
+		display: 'flex',
+		w: 'min(20rem, calc(100vw - 2rem))',
+		flexDirection: 'column',
+		p: '0.5rem'
+	});
+
+	const headerRowClass = css({
+		mb: '0.25rem',
+		display: 'flex',
+		h: '2rem',
+		alignItems: 'center',
+		gap: '0.5rem',
+		pl: '0.75rem',
+		pr: '0.25rem'
+	});
+
+	const headerTitleClass = css({
+		minW: 0,
+		flex: '1',
+		fontSize: '11px',
+		fontWeight: '600',
+		textTransform: 'uppercase',
+		letterSpacing: '0.14em',
+		color: 'scrapscache.textMuted'
+	});
+
+	const doneBtnClass = css({
+		flexShrink: 0,
+		rounded: 'md',
+		px: '0.5rem',
+		py: '0.25rem',
+		fontSize: 'xs',
+		fontWeight: 'medium',
+		color: 'scrapscache.textMuted',
+		cursor: 'pointer',
+		transition: 'colors 120ms ease',
+		_hover: {
+			bg: 'scrapscache.interactiveHover',
+			color: 'scrapscache.text'
+		}
+	});
+
+	const searchWrapClass = css({
+		position: 'relative',
+		mb: '0.25rem'
+	});
+
+	const searchIconClass = css({
+		pointerEvents: 'none',
+		position: 'absolute',
+		left: '0.75rem',
+		top: '50%',
+		h: '1rem',
+		w: '1rem',
+		transform: 'translateY(-50%)',
+		color: 'scrapscache.textMuted'
+	});
+
+	const inputClass = css({
+		w: 'full',
+		rounded: 'xl',
+		py: '0.5rem',
+		pl: '2.25rem',
+		pr: '0.75rem',
+		fontSize: 'sm',
+		_placeholder: {
+			color: 'scrapscache.textMuted'
+		}
+	});
+
+	const listScrollClass = css({
+		display: 'flex',
+		maxH: '16rem',
+		flexDirection: 'column',
+		gap: '0.125rem',
+		overflowY: 'auto'
+	});
+
+	const createBtnClass = css({
+		display: 'flex',
+		w: 'full',
+		alignItems: 'center',
+		gap: '0.75rem',
+		rounded: 'xl',
+		px: '0.75rem',
+		py: '0.625rem',
+		textAlign: 'left',
+		fontSize: 'sm',
+		fontWeight: 'medium',
+		color: 'scrapscache.accent',
+		cursor: 'pointer',
+		transition: 'colors 120ms ease',
+		_hover: {
+			bg: 'scrapscache.interactiveHover'
+		}
+	});
+
+	const checkboxItemClass = css({
+		display: 'flex',
+		w: 'full',
+		cursor: 'pointer',
+		alignItems: 'center',
+		gap: '0.75rem',
+		rounded: 'xl',
+		px: '0.75rem',
+		py: '0.625rem',
+		textAlign: 'left',
+		fontSize: 'sm',
+		fontWeight: 'medium',
+		color: 'scrapscache.text',
+		transition: 'colors 120ms ease',
+		_hover: {
+			bg: 'scrapscache.interactiveHover'
+		}
+	});
+
+	const iconBoxClass = css({
+		display: 'grid',
+		h: '1.75rem',
+		w: '1.75rem',
+		flexShrink: 0,
+		placeItems: 'center',
+		color: 'scrapscache.textMuted',
+		'&[data-state=checked]': {
+			color: 'scrapscache.accent'
+		}
+	});
+
+	const iconSizeClass = css({
+		w: '1rem',
+		h: '1rem'
+	});
+
+	const labelTextClass = css({
+		minW: 0,
+		flex: '1',
+		overflow: 'hidden',
+		textOverflow: 'ellipsis',
+		whiteSpace: 'nowrap'
+	});
+
+	const checkIndicatorClass = css({
+		flexShrink: 0,
+		color: 'scrapscache.accent'
+	});
+
+	const emptyMessageClass = css({
+		px: '0.75rem',
+		py: '1rem',
+		textAlign: 'center',
+		fontSize: 'xs',
+		color: 'scrapscache.textMuted'
+	});
 </script>
 
-<div
-	use:labelMenuInteractions
-	class="scrapscache-popover flex w-[min(20rem,calc(100vw-2rem))] flex-col p-2"
->
-	<div class="mb-1 flex h-8 items-center gap-2 pl-3 pr-1">
-		<span
-			class="min-w-0 flex-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--scrapscache-text-muted)]"
-			>Labels</span
-		>
-		<button
-			type="button"
-			onclick={onClose}
-			class="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-[var(--scrapscache-text-muted)] transition-colors hover:bg-[var(--scrapscache-interactive-hover)] hover:text-[var(--scrapscache-text)]"
-		>
-			Done
-		</button>
+<div use:labelMenuInteractions class={`scrapscache-popover ${containerClass}`}>
+	<div class={headerRowClass}>
+		<span class={headerTitleClass}>Labels</span>
+		<button type="button" onclick={onClose} class={doneBtnClass}> Done </button>
 	</div>
 
-	<div class="relative mb-1">
-		<Search
-			class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--scrapscache-text-muted)]"
-			strokeWidth={1.75}
-			aria-hidden="true"
-		/>
+	<div class={searchWrapClass}>
+		<Search class={searchIconClass} strokeWidth={1.75} aria-hidden="true" />
 		<input
 			bind:this={queryInput}
 			type="text"
 			bind:value={query}
 			placeholder="Search or create a label…"
 			onkeydown={onQueryKeydown}
-			class="scrapscache-input w-full rounded-xl py-2 pl-9 pr-3 text-sm placeholder:text-[var(--scrapscache-text-muted)]"
+			class={`scrapscache-input ${inputClass}`}
 		/>
 	</div>
 
-	<div
-		class="flex max-h-64 flex-col gap-0.5 overflow-y-auto sidebar-scroll"
-		style:min-height={listMinHeight}
-	>
+	<div class={`${listScrollClass} sidebar-scroll`} style:min-height={listMinHeight}>
 		{#if canCreate}
 			<button
 				type="button"
 				onclick={createAndAssign}
 				aria-label="Create label"
-				class="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-[var(--scrapscache-accent)] transition-colors hover:bg-[var(--scrapscache-interactive-hover)]"
+				class={createBtnClass}
 			>
-				<span class="grid h-7 w-7 shrink-0 place-items-center" aria-hidden="true">
-					<Plus class="h-4 w-4" strokeWidth={1.75} />
+				<span class={iconBoxClass} aria-hidden="true">
+					<Plus class={iconSizeClass} strokeWidth={1.75} />
 				</span>
-				<span class="min-w-0 flex-1 truncate">Create “{trimmed}”</span>
+				<span class={labelTextClass}>Create “{trimmed}”</span>
 			</button>
 		{/if}
 
@@ -152,21 +289,19 @@
 						const on = details.checked === true;
 						if (on !== note.labels.includes(label.id)) toggle(label.id);
 					}}
-					class="flex w-full cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-[var(--scrapscache-text)] transition-colors hover:bg-[var(--scrapscache-interactive-hover)]"
+					class={checkboxItemClass}
 				>
-					<Checkbox.Control
-						class="grid h-7 w-7 shrink-0 place-items-center text-[var(--scrapscache-text-muted)] data-[state=checked]:text-[var(--scrapscache-accent)]"
-					>
+					<Checkbox.Control class={iconBoxClass}>
 						<Tag
-							class="h-4 w-4"
+							class={iconSizeClass}
 							strokeWidth={1.75}
 							fill={checked ? 'currentColor' : 'none'}
 							aria-hidden="true"
 						/>
 					</Checkbox.Control>
-					<Checkbox.Label class="min-w-0 flex-1 truncate">{label.name}</Checkbox.Label>
-					<Checkbox.Indicator class="shrink-0 text-[var(--scrapscache-accent)]">
-						<Check class="h-4 w-4" strokeWidth={2.25} aria-hidden="true" />
+					<Checkbox.Label class={labelTextClass}>{label.name}</Checkbox.Label>
+					<Checkbox.Indicator class={checkIndicatorClass}>
+						<Check class={iconSizeClass} strokeWidth={2.25} aria-hidden="true" />
 					</Checkbox.Indicator>
 					<Checkbox.HiddenInput />
 				</Checkbox.Root>
@@ -174,9 +309,7 @@
 		{/each}
 
 		{#if matches.length === 0 && !canCreate}
-			<p class="px-3 py-4 text-center text-xs text-[var(--scrapscache-text-muted)]">
-				No labels yet. Type a name to create one.
-			</p>
+			<p class={emptyMessageClass}>No labels yet. Type a name to create one.</p>
 		{/if}
 	</div>
 </div>

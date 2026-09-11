@@ -23,6 +23,7 @@
 	import { flip, type FlipParams } from 'svelte/animate';
 	import { onDestroy } from 'svelte';
 	import type { Note } from '$lib/types';
+	import { css } from 'styled-system/css';
 
 	const { openNote } = useEditorActions();
 	const board = $derived(kanbanStore.activeBoard);
@@ -204,29 +205,305 @@
 		if (target.columnId !== sourceColumnId) moveNote(noteId, sourceColumnId, target.columnId);
 		kanbanStore.placeCard(board.id, noteId, sourceColumnId, target.columnId, order);
 	}
+
+	const pageWrap = css({ pt: '1rem', pb: '2rem' });
+	const controlsRow = css({
+		mb: '1rem',
+		display: 'flex',
+		flexWrap: 'wrap',
+		alignItems: 'center',
+		gap: '0.5rem'
+	});
+	const selectBox = css({ position: 'relative', minW: 0, maxW: 'full' });
+	const selectEl = css({
+		minW: 0,
+		maxW: 'full',
+		appearance: 'none',
+		rounded: 'xl',
+		borderWidth: '1px',
+		borderColor: 'scrapscache.border',
+		bg: 'scrapscache.surface',
+		py: '0.5rem',
+		pl: '0.75rem',
+		pr: '2rem',
+		fontSize: 'sm',
+		fontWeight: '600',
+		color: 'scrapscache.text',
+		outline: 'none'
+	});
+	const selectChevron = css({
+		pointerEvents: 'none',
+		position: 'absolute',
+		right: '0.625rem',
+		top: '50%',
+		h: '0.875rem',
+		w: '0.875rem',
+		transform: 'translateY(-50%)',
+		color: 'scrapscache.textMuted'
+	});
+	const subBtn = css({
+		rounded: 'xl',
+		px: '0.75rem',
+		py: '0.5rem',
+		fontSize: 'sm',
+		fontWeight: 'medium',
+		color: 'scrapscache.textMuted',
+		cursor: 'pointer',
+		transition: 'colors 120ms ease',
+		_hover: { bg: { base: 'black/5', _dark: 'white/10' }, color: 'scrapscache.text' }
+	});
+	const delBtn = css({
+		rounded: 'xl',
+		px: '0.75rem',
+		py: '0.5rem',
+		fontSize: 'sm',
+		fontWeight: 'medium',
+		color: { base: 'red.600', _dark: 'red.400' },
+		cursor: 'pointer',
+		transition: 'colors 120ms ease',
+		_hover: { bg: { base: 'red.500/10', _dark: 'red.500/15' } }
+	});
+	const renameRow = css({ mb: '1rem', display: 'flex', maxW: '28rem', gap: '0.5rem' });
+	const renameInput = css({
+		minW: 0,
+		flex: '1',
+		rounded: 'xl',
+		borderWidth: '1px',
+		borderColor: 'scrapscache.border',
+		bg: 'scrapscache.surface',
+		px: '0.75rem',
+		py: '0.5rem',
+		fontSize: 'sm',
+		outline: 'none',
+		_focus: { ringWidth: '2px', ringColor: 'blue.400/40' }
+	});
+	const renameSaveBtn = css({
+		rounded: 'xl',
+		bg: { base: 'black/[0.06]', _dark: 'white/10' },
+		px: '0.75rem',
+		py: '0.5rem',
+		fontSize: 'sm',
+		fontWeight: 'medium',
+		color: 'scrapscache.text',
+		cursor: 'pointer',
+		_hover: { bg: { base: 'black/10', _dark: 'white/15' } }
+	});
+	const columnsContainer = css({ mx: '-1rem', overflowX: 'auto', px: '1rem', pb: '1rem' });
+	const columnsTrack = css({
+		display: 'flex',
+		minW: 'max-content',
+		alignItems: 'flex-start',
+		gap: '0.75rem'
+	});
+	const colSection = css({
+		w: 'min(calc(var(--note-card-width) + 1.5rem), calc(100vw - 2rem))',
+		flexShrink: 0,
+		rounded: '2xl',
+		bg: { base: 'black/[0.035]', _dark: 'white/[0.055]' },
+		p: '0.75rem'
+	});
+	const colHeadingRow = css({
+		mb: '0.5rem',
+		display: 'flex',
+		alignItems: 'center',
+		gap: '0.5rem',
+		px: '0.25rem',
+		pt: '0.25rem'
+	});
+	const colTitle = css({
+		minW: 0,
+		flex: '1',
+		overflow: 'hidden',
+		textOverflow: 'ellipsis',
+		whiteSpace: 'nowrap',
+		fontSize: 'sm',
+		fontWeight: '600',
+		color: 'scrapscache.text'
+	});
+	const filterBtn = (active: boolean) =>
+		css({
+			display: 'grid',
+			h: '1.75rem',
+			minW: '1.75rem',
+			placeItems: 'center',
+			rounded: 'lg',
+			px: '0.375rem',
+			fontSize: 'xs',
+			fontWeight: 'medium',
+			cursor: 'pointer',
+			transition: 'colors 120ms ease',
+			bg: active ? 'blue.500/15' : 'transparent',
+			color: active ? { base: 'blue.700', _dark: 'blue.300' } : 'scrapscache.textMuted',
+			_hover: active
+				? {}
+				: { bg: { base: 'black/5', _dark: 'white/10' }, color: 'scrapscache.text' }
+		});
+	const removeColBtn = css({
+		display: 'grid',
+		h: '1.75rem',
+		w: '1.75rem',
+		placeItems: 'center',
+		rounded: 'lg',
+		color: 'scrapscache.textMuted',
+		cursor: 'pointer',
+		_hover: { bg: 'red.500/10', color: { base: 'red.600', _dark: 'red.400' } }
+	});
+	const backlogGroup = css({
+		mb: '0.5rem',
+		display: 'flex',
+		flexDirection: 'column',
+		gap: '0.5rem',
+		rounded: 'xl',
+		borderWidth: '1px',
+		borderColor: { base: 'black/10', _dark: 'white/10' },
+		bg: 'scrapscache.surface',
+		p: '0.5rem',
+		fontSize: 'xs'
+	});
+	const radioLabel = css({
+		display: 'flex',
+		cursor: 'pointer',
+		alignItems: 'flex-start',
+		gap: '0.5rem',
+		rounded: 'lg',
+		px: '0.25rem',
+		py: '0.25rem',
+		_hover: { bg: { base: 'black/[0.04]', _dark: 'white/[0.06]' } }
+	});
+	const cardsList = css({
+		position: 'relative',
+		display: 'flex',
+		flexDirection: 'column',
+		gap: '0.75rem'
+	});
+	const emptyDrop = css({
+		rounded: 'xl',
+		borderWidth: '1px',
+		borderStyle: 'dashed',
+		borderColor: { base: 'black/10', _dark: 'white/10' },
+		px: '0.75rem',
+		py: '1.25rem',
+		textAlign: 'center',
+		fontSize: 'xs',
+		color: 'scrapscache.textMuted'
+	});
+	const addColWrap = css({
+		position: 'relative',
+		w: 'min(calc(var(--note-card-width) + 1.5rem), calc(100vw - 2rem))',
+		flexShrink: 0,
+		pt: '0.25rem'
+	});
+	const addColBtn = css({
+		display: 'flex',
+		w: 'full',
+		alignItems: 'center',
+		justifyContent: 'space-between',
+		gap: '0.5rem',
+		rounded: 'xl',
+		borderWidth: '1px',
+		borderStyle: 'dashed',
+		borderColor: 'scrapscache.border',
+		bg: 'transparent',
+		px: '0.75rem',
+		py: '0.625rem',
+		textAlign: 'left',
+		fontSize: 'sm',
+		fontWeight: 'medium',
+		color: 'scrapscache.textMuted',
+		outline: 'none',
+		cursor: 'pointer',
+		_hover: { bg: { base: 'black/[0.035]', _dark: 'white/[0.055]' }, color: 'scrapscache.text' }
+	});
+	const menuItemClass = css({
+		display: 'block',
+		w: 'full',
+		overflow: 'hidden',
+		textOverflow: 'ellipsis',
+		whiteSpace: 'nowrap',
+		px: '0.75rem',
+		py: '0.5rem',
+		textAlign: 'left',
+		fontSize: 'sm',
+		color: 'scrapscache.text',
+		_hover: { bg: { base: 'black/[0.05]', _dark: 'white/[0.08]' } }
+	});
+
+	const hintText = css({ fontSize: '11px', lineHeight: 'snug', color: 'scrapscache.textMuted' });
+	const mtHalf = css({ mt: '0.125rem' });
+	const optionTitle = css({ fontWeight: 'medium', color: 'scrapscache.text' });
+	const optionDesc = css({ mt: '0.125rem', display: 'block', color: 'scrapscache.textMuted' });
+	const customFilterIndent = css({
+		ml: '0.25rem',
+		display: 'flex',
+		flexDirection: 'column',
+		gap: '0.25rem',
+		borderLeftWidth: '2px',
+		borderColor: { base: 'black/10', _dark: 'white/10' },
+		pl: '0.5rem'
+	});
+	const checkRow = css({
+		display: 'flex',
+		cursor: 'pointer',
+		alignItems: 'center',
+		gap: '0.5rem',
+		rounded: 'lg',
+		px: '0.25rem',
+		py: '0.25rem',
+		_hover: { bg: { base: 'black/[0.04]', _dark: 'white/[0.06]' } }
+	});
+	const checkControl = css({
+		display: 'flex',
+		h: '1rem',
+		w: '1rem',
+		alignItems: 'center',
+		justifyContent: 'center',
+		rounded: 'sm',
+		borderWidth: '1px',
+		borderColor: 'scrapscache.border',
+		'&[data-state=checked]': {
+			borderColor: 'scrapscache.accent',
+			bg: 'scrapscache.accent'
+		}
+	});
+	const checkMark = css({ fontSize: '10px', color: 'scrapscache.accentForeground' });
+	const checkLabel = css({ color: 'scrapscache.text' });
+	const checkLabelTruncate = css({
+		overflow: 'hidden',
+		textOverflow: 'ellipsis',
+		whiteSpace: 'nowrap',
+		color: 'scrapscache.text'
+	});
+	const emptyTagsNotice = css({ px: '0.25rem', py: '0.25rem', color: 'scrapscache.textMuted' });
+	const filterSummary = css({
+		overflow: 'hidden',
+		textOverflow: 'ellipsis',
+		whiteSpace: 'nowrap',
+		px: '0.25rem',
+		fontSize: '10px',
+		color: 'scrapscache.textMuted'
+	});
+	const menuPositionerClass = css({ zIndex: 20, w: '[var(--reference-width)]' });
+	const menuContentClass = css({ maxH: '16rem', overflowY: 'auto', py: '0.25rem' });
 </script>
 
-<div class="pt-4 pb-8">
-	<div class="mb-4 flex flex-wrap items-center gap-2">
-		<div class="relative min-w-0 max-w-full">
+<div class={pageWrap}>
+	<div class={controlsRow}>
+		<div class={selectBox}>
 			<select
 				aria-label="Kanban board"
 				value={board.id}
 				onchange={(event) => selectBoard((event.currentTarget as HTMLSelectElement).value)}
-				class="min-w-0 max-w-full appearance-none rounded-xl border border-[var(--scrapscache-border)] bg-[var(--scrapscache-surface)] py-2 pl-3 pr-8 text-sm font-semibold text-[var(--scrapscache-text)] outline-none"
+				class={selectEl}
 			>
 				{#each kanbanStore.boards as choice (choice.id)}
 					<option value={choice.id}>{choice.name}</option>
 				{/each}
 			</select>
-			<ChevronDown
-				class="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--scrapscache-text-muted)]"
-				aria-hidden="true"
-			/>
+			<ChevronDown class={selectChevron} aria-hidden="true" />
 		</div>
 		<button
 			type="button"
-			class="rounded-xl px-3 py-2 text-sm font-medium text-[var(--scrapscache-text-muted)] transition-colors hover:bg-black/5 hover:text-[var(--scrapscache-text)] dark:hover:bg-white/10"
+			class={subBtn}
 			onclick={() => {
 				backlogFilterOpen = false;
 				tagPickerOpen = false;
@@ -238,7 +515,7 @@
 		</button>
 		<button
 			type="button"
-			class="rounded-xl px-3 py-2 text-sm font-medium text-[var(--scrapscache-text-muted)] transition-colors hover:bg-black/5 hover:text-[var(--scrapscache-text)] dark:hover:bg-white/10"
+			class={subBtn}
 			onclick={() => {
 				boardName = board.name;
 				renamingBoard = !renamingBoard;
@@ -249,7 +526,7 @@
 		</button>
 		<button
 			type="button"
-			class="rounded-xl px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-500/10 dark:text-red-400 dark:hover:bg-red-500/15"
+			class={delBtn}
 			onclick={deleteActiveBoard}
 			aria-label={`Delete board ${board.name}`}
 		>
@@ -258,7 +535,7 @@
 	</div>
 
 	{#if renamingBoard}
-		<div class="mb-4 flex max-w-md gap-2">
+		<div class={renameRow}>
 			<input
 				bind:value={boardName}
 				aria-label="Board name"
@@ -266,40 +543,30 @@
 					if (event.key === 'Enter') commitBoardName();
 					if (event.key === 'Escape') renamingBoard = false;
 				}}
-				class="min-w-0 flex-1 rounded-xl border border-[var(--scrapscache-border)] bg-[var(--scrapscache-surface)] px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-400/40"
+				class={renameInput}
 			/>
-			<button
-				type="button"
-				onclick={commitBoardName}
-				class="rounded-xl bg-black/[0.06] px-3 py-2 text-sm font-medium text-[var(--scrapscache-text)] hover:bg-black/10 dark:bg-white/10 dark:hover:bg-white/15"
-			>
-				Save
-			</button>
+			<button type="button" onclick={commitBoardName} class={renameSaveBtn}> Save </button>
 		</div>
 	{/if}
 
-	<div class="kanban-columns -mx-4 overflow-x-auto px-4 pb-4">
-		<div class="flex min-w-max items-start gap-3">
+	<div class={`kanban-columns ${columnsContainer}`}>
+		<div class={columnsTrack}>
 			{#each board.columns as column (column.id)}
 				{@const items = columnItems(column)}
 				<section
 					data-kanban-column={column.id}
-					class="w-[min(calc(var(--note-card-width)+1.5rem),calc(100vw-2rem))] shrink-0 rounded-2xl bg-black/[0.035] p-3 dark:bg-white/[0.055]"
+					class={colSection}
 					class:kanban-column-target={kanbanDrag.target?.columnId === column.id}
 					aria-label={`${columnName(column)} ${column.labelId === null ? 'Kanban' : 'label'} column`}
 				>
-					<div class="mb-2 flex items-center gap-2 px-1 pt-1">
-						<h2
-							class="min-w-0 flex-1 truncate text-sm font-semibold text-[var(--scrapscache-text)]"
-						>
+					<div class={colHeadingRow}>
+						<h2 class={colTitle}>
 							{columnName(column)}
 						</h2>
 						{#if column.labelId === null}
 							<button
 								type="button"
-								class="grid h-7 min-w-7 place-items-center rounded-lg px-1.5 text-xs font-medium transition-colors {backlogFilterActive
-									? 'bg-blue-500/15 text-blue-700 dark:text-blue-300'
-									: 'text-[var(--scrapscache-text-muted)] hover:bg-black/5 hover:text-[var(--scrapscache-text)] dark:hover:bg-white/10'}"
+								class={filterBtn(backlogFilterActive)}
 								onclick={() => (backlogFilterOpen = !backlogFilterOpen)}
 								aria-expanded={backlogFilterOpen}
 								aria-label="Backlog filter"
@@ -311,98 +578,73 @@
 							<button
 								type="button"
 								onclick={() => kanbanStore.removeTagColumn(board.id, column.id)}
-								class="grid h-7 w-7 place-items-center rounded-lg text-[var(--scrapscache-text-muted)] hover:bg-red-500/10 hover:text-red-600 dark:hover:text-red-400"
+								class={removeColBtn}
 								aria-label={`Remove ${columnName(column)} label column`}
 								title="Remove label column"
 							>
-								<X class="h-3.5 w-3.5" aria-hidden="true" />
+								<X size={14} aria-hidden="true" />
 							</button>
 						{/if}
 					</div>
 
 					{#if column.labelId === null && backlogFilterOpen}
-						<div
-							class="mb-2 space-y-2 rounded-xl border border-black/10 bg-[var(--scrapscache-surface)] p-2 text-xs dark:border-white/10"
-							role="group"
-							aria-label="Backlog filter options"
-						>
-							<p class="text-[11px] leading-snug text-[var(--scrapscache-text-muted)]">
+						<div class={backlogGroup} role="group" aria-label="Backlog filter options">
+							<p class={hintText}>
 								Choose which notes show in Backlog. Notes already in a label column are never listed
 								here.
 							</p>
-							<label
-								class="flex cursor-pointer items-start gap-2 rounded-lg px-1 py-1 hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
-							>
+							<label class={radioLabel}>
 								<input
 									type="radio"
 									name="backlog-mode-{board.id}"
 									checked={backlogFilter.mode === BacklogFilterMode.AllNonColumn}
 									onchange={() => setBacklogMode(BacklogFilterMode.AllNonColumn)}
-									class="mt-0.5"
+									class={mtHalf}
 								/>
 								<span>
-									<span class="font-medium text-[var(--scrapscache-text)]"
-										>All non-column notes</span
-									>
-									<span class="mt-0.5 block text-[var(--scrapscache-text-muted)]"
-										>Default: everything not in a label column</span
-									>
+									<span class={optionTitle}>All non-column notes</span>
+									<span class={optionDesc}>Default: everything not in a label column</span>
 								</span>
 							</label>
-							<label
-								class="flex cursor-pointer items-start gap-2 rounded-lg px-1 py-1 hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
-							>
+							<label class={radioLabel}>
 								<input
 									type="radio"
 									name="backlog-mode-{board.id}"
 									checked={backlogFilter.mode === BacklogFilterMode.Custom}
 									onchange={() => setBacklogMode(BacklogFilterMode.Custom)}
-									class="mt-0.5"
+									class={mtHalf}
 								/>
-								<span class="font-medium text-[var(--scrapscache-text)]">Only selected…</span>
+								<span class={optionTitle}>Only selected…</span>
 							</label>
 
 							{#if backlogFilter.mode === BacklogFilterMode.Custom}
-								<div class="ml-1 space-y-1 border-l-2 border-black/10 pl-2 dark:border-white/10">
+								<div class={customFilterIndent}>
 									<Checkbox.Root
 										checked={backlogFilter.includeUntagged}
 										onCheckedChange={toggleBacklogUntagged}
-										class="flex cursor-pointer items-center gap-2 rounded-lg px-1 py-1 hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+										class={checkRow}
 									>
-										<Checkbox.Control
-											class="flex h-4 w-4 items-center justify-center rounded border border-[var(--scrapscache-border)] data-[state=checked]:border-[var(--scrapscache-accent)] data-[state=checked]:bg-[var(--scrapscache-accent)]"
-										>
-											<Checkbox.Indicator
-												class="text-[10px] text-[var(--scrapscache-accent-foreground)]"
-												>✓</Checkbox.Indicator
-											>
+										<Checkbox.Control class={checkControl}>
+											<Checkbox.Indicator class={checkMark}>✓</Checkbox.Indicator>
 										</Checkbox.Control>
-										<Checkbox.Label class="text-[var(--scrapscache-text)]">No labels</Checkbox.Label
-										>
+										<Checkbox.Label class={checkLabel}>No labels</Checkbox.Label>
 										<Checkbox.HiddenInput />
 									</Checkbox.Root>
 									{#each backlogFilterTags as label (label.id)}
 										<Checkbox.Root
 											checked={backlogFilter.labelIds.includes(label.id)}
 											onCheckedChange={() => toggleBacklogLabel(label.id)}
-											class="flex cursor-pointer items-center gap-2 rounded-lg px-1 py-1 hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+											class={checkRow}
 										>
-											<Checkbox.Control
-												class="flex h-4 w-4 items-center justify-center rounded border border-[var(--scrapscache-border)] data-[state=checked]:border-[var(--scrapscache-accent)] data-[state=checked]:bg-[var(--scrapscache-accent)]"
-											>
-												<Checkbox.Indicator
-													class="text-[10px] text-[var(--scrapscache-accent-foreground)]"
-													>✓</Checkbox.Indicator
-												>
+											<Checkbox.Control class={checkControl}>
+												<Checkbox.Indicator class={checkMark}>✓</Checkbox.Indicator>
 											</Checkbox.Control>
-											<Checkbox.Label class="truncate text-[var(--scrapscache-text)]"
-												>{label.name}</Checkbox.Label
-											>
+											<Checkbox.Label class={checkLabelTruncate}>{label.name}</Checkbox.Label>
 											<Checkbox.HiddenInput />
 										</Checkbox.Root>
 									{/each}
 									{#if backlogFilterTags.length === 0}
-										<p class="px-1 py-1 text-[var(--scrapscache-text-muted)]">
+										<p class={emptyTagsNotice}>
 											No other labels available. Create labels on notes, or remove a label column
 											first.
 										</p>
@@ -410,17 +652,14 @@
 								</div>
 							{/if}
 
-							<p
-								class="truncate px-1 text-[10px] text-[var(--scrapscache-text-muted)]"
-								title={backlogFilterSummary()}
-							>
+							<p class={filterSummary} title={backlogFilterSummary()}>
 								Showing: {backlogFilterSummary()}
 							</p>
 						</div>
 					{/if}
 
 					<!-- Positioned: card offsets are measured against this list while dragging. -->
-					<div class="relative flex flex-col gap-3" data-kanban-list aria-live="polite">
+					<div class={cardsList} data-kanban-list aria-live="polite">
 						{#each items as item (item.key)}
 							<!-- Cards and the drop slot share one animated element, so the whole
 							     column glides when the preview moves between slots. -->
@@ -444,38 +683,26 @@
 							</div>
 						{/each}
 						{#if items.length === 0}
-							<div
-								class="rounded-xl border border-dashed border-black/10 px-3 py-5 text-center text-xs text-[var(--scrapscache-text-muted)] dark:border-white/10"
-							>
-								Drop a note here
-							</div>
+							<div class={emptyDrop}>Drop a note here</div>
 						{/if}
 					</div>
 				</section>
 			{/each}
 
 			{#if unusedTags.length > 0}
-				<div
-					class="relative w-[min(calc(var(--note-card-width)+1.5rem),calc(100vw-2rem))] shrink-0 pt-1"
-				>
+				<div class={addColWrap}>
 					<Menu.Root bind:open={tagPickerOpen} positioning={{ placement: 'bottom-start' }}>
-						<Menu.Trigger
-							class="flex w-full items-center justify-between gap-2 rounded-xl border border-dashed border-[var(--scrapscache-border)] bg-transparent px-3 py-2.5 text-left text-sm font-medium text-[var(--scrapscache-text-muted)] outline-none hover:bg-black/[0.035] hover:text-[var(--scrapscache-text)] dark:hover:bg-white/[0.055]"
-							aria-label="Add a label column"
-						>
+						<Menu.Trigger class={addColBtn} aria-label="Add a label column">
 							<span>+ Add label column</span>
-							<ChevronDown class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+							<ChevronDown size={14} aria-hidden="true" />
 						</Menu.Trigger>
-						<Menu.Positioner class="z-20 w-[var(--reference-width)]">
-							<Menu.Content
-								class="scrapscache-popover max-h-64 overflow-y-auto py-1"
-								aria-label="Labels"
-							>
+						<Menu.Positioner class={menuPositionerClass}>
+							<Menu.Content class={`scrapscache-popover ${menuContentClass}`} aria-label="Labels">
 								{#each unusedTags as label (label.id)}
 									<Menu.Item
 										value={label.id}
 										onSelect={() => addTagColumn(label.id)}
-										class="block w-full truncate px-3 py-2 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/[0.05] dark:hover:bg-white/[0.08]"
+										class={menuItemClass}
 									>
 										{label.name}
 									</Menu.Item>

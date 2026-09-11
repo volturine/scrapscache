@@ -6,6 +6,9 @@ import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 const config = {
 	preprocess: vitePreprocess(),
 	kit: {
+		alias: {
+			'styled-system': './styled-system'
+		},
 		// Self-hosted Node builds are the default; DEPLOY_TARGET=cloudflare builds the Workers bundle.
 		adapter:
 			process.env.DEPLOY_TARGET === 'cloudflare'

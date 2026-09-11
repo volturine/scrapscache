@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { css } from 'styled-system/css';
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { flushSync, onMount } from 'svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
@@ -75,8 +76,17 @@
 		  }
 		| undefined;
 	const TOUCH_TAP_SLOP = 8;
+	const editorDialogBase = css({
+		position: 'relative',
+		display: 'flex',
+		h: 'full',
+		w: 'full',
+		flexDirection: 'column',
+		overflow: 'hidden',
+		rounded: '2xl'
+	});
 	const editorDialogClass = $derived(
-		`relative flex h-full w-full flex-col overflow-hidden rounded-2xl${paletteOpen || labelOpen ? ' editor-caret-hidden' : ''}`
+		`${editorDialogBase}${paletteOpen || labelOpen ? ' editor-caret-hidden' : ''}`
 	);
 	const editorDialogStyle = $derived(
 		`background-color: ${note ? bgColor(note.color) : 'transparent'};`
@@ -483,6 +493,103 @@
 			}
 		};
 	}
+
+	const editorOverlayRoot = css({ position: 'fixed', inset: 0, zIndex: 50 });
+	const editorSheetWrap = css({
+		position: 'absolute',
+		inset: 0,
+		display: 'flex',
+		alignItems: { base: 'flex-start', md: 'center' },
+		justifyContent: 'center',
+		px: '1rem',
+		pb: 'var(--app-sheet-pad-bottom)'
+	});
+	const editorSheetBox = css({
+		h: { base: 'full', md: '72%' },
+		maxH: 'full',
+		minH: 0,
+		w: 'full',
+		maxW: '2xl',
+		rounded: '2xl'
+	});
+	const editorHeader = css({
+		display: 'flex',
+		flexShrink: 0,
+		alignItems: 'center',
+		gap: '0.5rem',
+		borderBottomWidth: '1px',
+		borderColor: { base: 'black/5', _dark: 'white/10' },
+		px: '0.5rem',
+		py: '0.5rem'
+	});
+	const btnBack = css({ h: '2.5rem', w: '2.5rem', p: '0.5rem' });
+	const btnHeaderAction = css({ h: '2.25rem', w: '2.25rem', p: '0.5rem' });
+	const reminderOverdueColor = css({ color: { base: 'rose.600', _dark: 'rose.400' } });
+	const reminderActiveColor = css({ color: { base: 'blue.600', _dark: 'blue.400' } });
+	const editorScrollerClass = css({
+		minH: 0,
+		flex: '1',
+		touchAction: 'pan-y',
+		overflowY: 'auto',
+		overflowX: 'hidden',
+		overscrollBehavior: 'contain',
+		px: '1.5rem',
+		pt: '1rem',
+		pb: '0.75rem'
+	});
+	const titleTextareaClass = css({
+		mb: '0.75rem',
+		display: 'block',
+		w: 'full',
+		resize: 'none',
+		overflow: 'hidden',
+		wordBreak: 'break-word',
+		border: 'none',
+		bg: 'transparent',
+		p: 0,
+		fontSize: 'xl',
+		fontWeight: 'medium',
+		color: 'scrapscache.text',
+		_placeholder: { color: 'scrapscache.textMuted' },
+		outline: 'none',
+		fieldSizing: 'content'
+	});
+	const fileDropHintClass = css({
+		pointerEvents: 'none',
+		position: 'absolute',
+		inset: 0,
+		zIndex: 20,
+		display: 'grid',
+		placeItems: 'center',
+		rounded: '2xl',
+		borderWidth: '2px',
+		borderStyle: 'dashed',
+		borderColor: 'scrapscache.accent',
+		bg: 'color-mix(in oklab, var(--scrapscache-accent) 16%, transparent)'
+	});
+	const fileDropPillClass = css({
+		display: 'flex',
+		alignItems: 'center',
+		gap: '0.5rem',
+		rounded: 'full',
+		bg: 'scrapscache.surface',
+		px: '1rem',
+		py: '0.5rem',
+		fontSize: 'sm',
+		fontWeight: 'medium',
+		color: 'scrapscache.text',
+		boxShadow: 'sm'
+	});
+	const dialogBackdrop = css({ position: 'fixed', inset: 0, zIndex: 60, bg: 'black/30' });
+	const dialogPositioner = css({
+		position: 'fixed',
+		inset: 0,
+		zIndex: 61,
+		display: 'flex',
+		alignItems: 'center',
+		justifyContent: 'center'
+	});
+	const dialogContent = css({ outline: 'none' });
 </script>
 
 <svelte:window
@@ -496,7 +603,7 @@
 
 {#if isOpen && note}
 	<div
-		class="fixed inset-0 z-50"
+		class={`fixed z-50 ${editorOverlayRoot}`}
 		role="presentation"
 		onpointerdown={handleBackdropPointerDown}
 		onclick={handleBackdropClick}
@@ -505,15 +612,10 @@
 		ondragleave={handleFileDragLeave}
 		ondropcapture={handleFileDrop}
 	>
-		<div
-			class="absolute inset-0 flex items-start justify-center px-4 pb-[var(--app-sheet-pad-bottom)] md:items-center"
-			role="presentation"
-		>
+		<div class={editorSheetWrap} role="presentation">
 			<!-- Clicking blank editor chrome is a pointer convenience; keyboard users focus the fields directly. -->
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
-			<div
-				class="note-sheet-shadow h-full max-h-full min-h-0 w-full max-w-2xl rounded-2xl md:h-[72%]"
-			>
+			<div class={`note-sheet-shadow ${editorSheetBox}`}>
 				<div
 					bind:this={editorDialog}
 					class={editorDialogClass}
@@ -528,22 +630,20 @@
 					onclick={focusBodyFromPage}
 				>
 					<!-- Header -->
-					<header
-						class="flex shrink-0 items-center gap-2 border-b border-black/5 px-2 py-2 dark:border-white/10"
-					>
+					<header class={editorHeader}>
 						<button
 							type="button"
-							class="icon-btn h-10 w-10 p-2"
+							class={`icon-btn ${btnBack}`}
 							title="Close note"
 							onclick={handleBack}
 							aria-label="Close note"
 						>
-							<ChevronLeft class="h-6 w-6" aria-hidden="true" />
+							<ChevronLeft size={24} aria-hidden="true" />
 						</button>
 
-						<div class="flex-1" aria-hidden="true"></div>
+						<div class={css({ flex: '1' })} aria-hidden="true"></div>
 
-						<div class="flex min-w-0 items-center gap-1">
+						<div class={css({ display: 'flex', minW: 0, alignItems: 'center', gap: '0.25rem' })}>
 							{#if note.reminder != null}
 								<button
 									type="button"
@@ -559,36 +659,28 @@
 							{/if}
 							<button
 								type="button"
-								class="icon-btn h-9 w-9 p-2 {note.reminder == null
-									? ''
-									: reminderOverdue
-										? 'text-rose-600 dark:text-rose-400'
-										: 'text-blue-600 dark:text-blue-400'}"
+								class={`icon-btn ${btnHeaderAction} ${note.reminder == null ? '' : reminderOverdue ? `text-rose-600 ${reminderOverdueColor}` : reminderActiveColor}`}
 								title="Reminder"
 								onclick={openReminder}
 								aria-label="Reminder"
 							>
-								<Bell class="h-5 w-5" aria-hidden="true" />
+								<Bell size={20} aria-hidden="true" />
 							</button>
 							<button
 								type="button"
-								class="icon-btn h-9 w-9 p-2"
+								class={`icon-btn ${btnHeaderAction}`}
 								title={note.pinned ? 'Unpin' : 'Pin'}
 								onclick={() => commit({ pinned: !note.pinned })}
 								aria-label="Pin"
 							>
-								<Pin
-									class="h-5 w-5"
-									fill={note.pinned ? 'currentColor' : 'none'}
-									aria-hidden="true"
-								/>
+								<Pin size={20} fill={note.pinned ? 'currentColor' : 'none'} aria-hidden="true" />
 							</button>
 						</div>
 					</header>
 
 					<div
 						bind:this={editorScroller}
-						class="note-scrollbar-hidden scrollable min-h-0 flex-1 touch-pan-y overflow-y-auto overflow-x-hidden overscroll-contain px-6 pt-4 pb-3"
+						class={`note-scrollbar-hidden scrollable ${editorScrollerClass}`}
 					>
 						<textarea
 							use:autoResizeTitle={title}
@@ -604,8 +696,7 @@
 								}
 							}}
 							rows="1"
-							class="mb-3 block w-full resize-none overflow-hidden break-words border-none bg-transparent p-0 text-xl font-medium text-[var(--scrapscache-text)] placeholder:text-[var(--scrapscache-text-muted)] outline-none [field-sizing:content]"
-						></textarea>
+							class={`resize-none break-words ${titleTextareaClass}`}></textarea>
 
 						<BodyEditor
 							bind:this={bodyEditor}
@@ -620,15 +711,9 @@
 					</div>
 
 					{#if fileDropActive}
-						<div
-							class="pointer-events-none absolute inset-0 z-20 grid place-items-center rounded-2xl border-2 border-dashed border-[var(--scrapscache-accent)] bg-[color-mix(in_oklab,var(--scrapscache-accent)_16%,transparent)]"
-							data-file-drop-hint
-							aria-hidden="true"
-						>
-							<div
-								class="flex items-center gap-2 rounded-full bg-[var(--scrapscache-surface)] px-4 py-2 text-sm font-medium text-[var(--scrapscache-text)] shadow-sm"
-							>
-								<Paperclip class="h-4 w-4" aria-hidden="true" />
+						<div class={fileDropHintClass} data-file-drop-hint aria-hidden="true">
+							<div class={fileDropPillClass}>
+								<Paperclip size={16} aria-hidden="true" />
 								Drop to attach
 							</div>
 						</div>
@@ -680,13 +765,13 @@
 			}}
 			preventScroll={false}
 		>
-			<Dialog.Backdrop class="fixed inset-0 z-[60] bg-black/30" />
+			<Dialog.Backdrop class={dialogBackdrop} />
 			<Dialog.Positioner
-				class="fixed inset-0 z-[61] flex items-center justify-center"
+				class={dialogPositioner}
 				data-editor-popup
 				onpointerdown={keepEditorFocused}
 			>
-				<Dialog.Content class="outline-none">
+				<Dialog.Content class={dialogContent}>
 					<ColorPalette
 						color={note.color}
 						onSelect={(c) => {
@@ -707,12 +792,9 @@
 			}}
 			preventScroll={false}
 		>
-			<Dialog.Backdrop class="fixed inset-0 z-[60] bg-black/30" />
-			<Dialog.Positioner
-				class="fixed inset-0 z-[61] flex items-center justify-center"
-				data-editor-popup
-			>
-				<Dialog.Content class="outline-none">
+			<Dialog.Backdrop class={dialogBackdrop} />
+			<Dialog.Positioner class={dialogPositioner} data-editor-popup>
+				<Dialog.Content class={dialogContent}>
 					<ReminderPicker
 						reminder={note.reminder}
 						onApply={(r) => {
@@ -737,13 +819,13 @@
 			}}
 			preventScroll={false}
 		>
-			<Dialog.Backdrop class="fixed inset-0 z-[60] bg-black/30" />
+			<Dialog.Backdrop class={dialogBackdrop} />
 			<Dialog.Positioner
-				class="fixed inset-0 z-[61] flex items-center justify-center"
+				class={dialogPositioner}
 				data-editor-popup
 				onpointerdown={keepEditorFocused}
 			>
-				<Dialog.Content class="outline-none">
+				<Dialog.Content class={dialogContent}>
 					<LabelMenu
 						noteId={note.id}
 						onClose={() => {

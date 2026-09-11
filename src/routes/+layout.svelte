@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { css } from 'styled-system/css';
 	import '../app.css';
 	import { uiStore, type View } from '$lib/stores/ui.svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
@@ -173,6 +174,40 @@
 	function closeMobileSidebar() {
 		uiStore.sidebarOpen = false;
 	}
+
+	const appShellClass = css({
+		display: 'flex',
+		h: 'full',
+		w: 'full',
+		overflow: 'hidden',
+		bg: 'scrapscache.bg',
+		color: 'scrapscache.text'
+	});
+	const drawerBackdrop = css({ position: 'fixed', inset: 0, zIndex: 20, bg: 'black/30' });
+	const drawerPositioner = css({ position: 'fixed', left: 0, top: 0, zIndex: 30, h: 'full' });
+	const drawerContent = css({
+		h: 'full',
+		w: '18rem',
+		borderRightWidth: '1px',
+		borderColor: 'scrapscache.border',
+		bg: 'scrapscache.surface'
+	});
+	const desktopSidebar = css({
+		w: '16rem',
+		flexShrink: 0,
+		borderRightWidth: '1px',
+		borderColor: 'scrapscache.border'
+	});
+	const mainCol = css({ display: 'flex', minH: 0, minW: 0, flex: '1', flexDirection: 'column' });
+	const appCanvasClass = css({ position: 'relative', minH: 0, minW: 0, flex: '1' });
+	const appFeedClass = css({
+		h: 'full',
+		minH: 0,
+		overflowY: 'auto',
+		overflowX: 'hidden',
+		px: '1rem',
+		pb: { base: '5rem', md: '1.5rem' }
+	});
 </script>
 
 <svelte:head>
@@ -184,7 +219,7 @@
 
 <div class="app-viewport">
 	<div
-		class="app-shell flex h-full w-full overflow-hidden bg-[var(--scrapscache-bg)] text-[var(--scrapscache-text)]"
+		class={`app-shell ${appShellClass}`}
 		{@attach mobile.current &&
 			attachSidebarSwipe({
 				getOpen: () => uiStore.sidebarOpen,
@@ -207,14 +242,10 @@
 				lazyMount
 				unmountOnExit
 			>
-				<Drawer.Backdrop
-					data-sidebar-backdrop
-					aria-label="Close sidebar"
-					class="fixed inset-0 z-20 bg-black/30"
-				/>
-				<Drawer.Positioner class="fixed left-0 top-0 z-30 h-full">
+				<Drawer.Backdrop data-sidebar-backdrop aria-label="Close sidebar" class={drawerBackdrop} />
+				<Drawer.Positioner class={drawerPositioner}>
 					<Drawer.Content
-						class="h-full w-72 border-r border-[var(--scrapscache-border)] bg-[var(--scrapscache-surface)]"
+						class={drawerContent}
 						role="navigation"
 						aria-label="Sidebar"
 						data-sidebar-drawer
@@ -225,18 +256,18 @@
 			</Drawer.Root>
 		{:else}
 			{#if uiStore.sidebarOpen}
-				<div class="w-64 shrink-0 border-r border-[var(--scrapscache-border)]">
+				<div class={desktopSidebar}>
 					<Sidebar />
 				</div>
 			{/if}
 		{/if}
 
-		<div class="flex min-h-0 min-w-0 flex-1 flex-col">
+		<div class={mainCol}>
 			<Topbar />
-			<div class="app-canvas relative min-h-0 min-w-0 flex-1">
+			<div class={`app-canvas ${appCanvasClass}`}>
 				<main
 					bind:this={feedEl}
-					class="app-feed scrollable h-full min-h-0 overflow-y-auto overflow-x-hidden px-4 pb-20 md:pb-6"
+					class={`app-feed scrollable ${appFeedClass}`}
 					onscroll={rememberFeedScroll}
 				>
 					<AppViews />

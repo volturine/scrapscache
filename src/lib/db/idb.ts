@@ -431,9 +431,8 @@ export async function putNote(
 	);
 }
 
-export function deleteNote(pidOrId: string, maybeId?: string): Promise<void> {
-	const pid = maybeId !== undefined ? pidOrId : LOCAL_PROFILE_ID;
-	const id = maybeId !== undefined ? maybeId : pidOrId;
+/** Both arguments are named: two strings are too easy to read the wrong way round. */
+export function deleteNote(pid: string, id: string): Promise<void> {
 	const generation = writeGeneration;
 	return enqueueNote(pid, id, async () => {
 		await enqueueDeviceWrite(async () => {
@@ -493,13 +492,11 @@ export async function putLabel(
 }
 
 export async function deleteLabel(
-	pidOrId: string,
-	maybeId?: string,
+	pid: string,
+	id: string,
 	maybeKeys?: Iterable<string>
 ): Promise<void> {
-	const pid = maybeId !== undefined ? pidOrId : LOCAL_PROFILE_ID;
-	const id = maybeId !== undefined ? maybeId : pidOrId;
-	const syncOutboxKeys = maybeKeys !== undefined ? maybeKeys : [];
+	const syncOutboxKeys = maybeKeys ?? [];
 	const outboxKeys = uniqueOutboxKeys(syncOutboxKeys);
 	const dbName = resolveDbName(pid);
 	const previousGeneration = outboxGenerations.get(dbName) ?? null;
@@ -768,12 +765,7 @@ export async function getFiredReminderKeys(pid: string = LOCAL_PROFILE_ID): Prom
 		: [];
 }
 
-export async function setFiredReminderKeys(
-	pidOrKeys: string | Iterable<string>,
-	maybeKeys?: Iterable<string>
-): Promise<void> {
-	const pid = maybeKeys !== undefined ? (pidOrKeys as string) : LOCAL_PROFILE_ID;
-	const keys = maybeKeys !== undefined ? maybeKeys : (pidOrKeys as Iterable<string>);
+export async function setFiredReminderKeys(pid: string, keys: Iterable<string>): Promise<void> {
 	const clean = [...new Set(keys)].filter((item): item is string => typeof item === 'string');
 	await setSyncState(scopedStateKey(FIRED_REMINDERS_KEY, pid), clean, pid);
 }
@@ -857,12 +849,12 @@ function uniqueOutboxKeys(keys: Iterable<string>): string[] {
 	return [...new Set(keys)];
 }
 
-export async function markSyncOutbox(
-	pidOrKeys: string | Iterable<string>,
-	maybeKeys?: Iterable<string>
-): Promise<number> {
-	const pid = maybeKeys !== undefined ? (pidOrKeys as string) : LOCAL_PROFILE_ID;
-	const keys = maybeKeys !== undefined ? maybeKeys : (pidOrKeys as Iterable<string>);
+/**
+ * Both arguments are named. A single key is a string and so is a workspace, so
+ * a signature that took either could mark a signed-in workspace's uploads
+ * against the anonymous one, and those changes would never leave the device.
+ */
+export async function markSyncOutbox(pid: string, keys: Iterable<string>): Promise<number> {
 	const unique = uniqueOutboxKeys(keys);
 	if (unique.length === 0) return 0;
 	const dbName = resolveDbName(pid);

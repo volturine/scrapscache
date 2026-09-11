@@ -148,7 +148,7 @@ async function seedControl(
 	if (state.cursor != null) await idb.setSyncState(keys.cursor, state.cursor);
 	if (state.baseline) await idb.setSyncState(keys.baseline, state.baseline);
 	if (state.recordIds) await idb.setSyncState(keys.recordIds, state.recordIds);
-	if (state.outbox?.length) await idb.markSyncOutbox(state.outbox);
+	if (state.outbox?.length) await idb.markSyncOutbox(idb.LOCAL_PROFILE_ID, state.outbox);
 }
 
 describe('client sync state machine', () => {
@@ -501,7 +501,7 @@ describe('client sync state machine', () => {
 			}
 			return { success: true, data: emptyData({ cursor: 2 }) };
 		});
-		await idb.markSyncOutbox([`note:note-1`]);
+		await idb.markSyncOutbox(idb.LOCAL_PROFILE_ID, [`note:note-1`]);
 
 		const result = await store.sync([local], [], {}, {}, [], {}, false, false, passthrough);
 
@@ -582,7 +582,7 @@ describe('client sync state machine', () => {
 			}
 			return { success: true, data: emptyData({ cursor: 1 }) };
 		});
-		await idb.markSyncOutbox([`note:note-1`]);
+		await idb.markSyncOutbox(idb.LOCAL_PROFILE_ID, [`note:note-1`]);
 
 		const failed = await store.sync([local], [], {}, {}, [], {}, false, false, passthrough);
 		expect(failed).toMatchObject({ success: false, error: 'Sync timed out' });
@@ -832,7 +832,7 @@ describe('client sync state machine', () => {
 		});
 		const local = note('note-1', { title: 'local replacement' });
 		const poisonedSlot = await sha256(`${account.syncKey}\u0000note:note-1`);
-		await idb.markSyncOutbox(['note:note-1']);
+		await idb.markSyncOutbox(idb.LOCAL_PROFILE_ID, ['note:note-1']);
 
 		const pull = await store.sync([local], [], {}, {}, [], {}, false, true, passthrough);
 		expect(pull.success, pull.error).toBe(true);

@@ -6,10 +6,17 @@ import {
 	type KanbanBoard,
 	type KanbanColumn
 } from '$lib/kanban';
+import { LOCAL_PROFILE_ID, scopedStateKey } from '$lib/db/idb';
 import { syncStore } from '$lib/stores/sync.svelte';
 import { loadBoardsFromDevice, writeKanbanState } from '$lib/syncTombstones';
 import { uid } from '$lib/utils';
 
+/**
+ * Fast-boot mirrors, one set per workspace. Anonymous keeps the bare keys, as
+ * IndexedDB does, so every other workspace lands beside it rather than on top
+ * of it — a shared key meant the last workspace to save its boards decided
+ * what the next one showed on the way up.
+ */
 const BOARDS_KEY = 'scrapscache-kanban-boards-v1';
 const ACTIVE_BOARD_KEY = 'scrapscache-kanban-active-board-v1';
 const BOARD_TOMBSTONES_KEY = 'scrapscache-kanban-board-tombstones-v1';
@@ -78,20 +85,24 @@ function normalizeBoards(value: unknown): KanbanBoard[] {
 		: [];
 }
 
-function readBoards(): KanbanBoard[] {
+function readBoards(pid: string): KanbanBoard[] {
 	if (typeof localStorage === 'undefined') return [createKanbanBoard()];
 	try {
-		const boards = normalizeBoards(JSON.parse(localStorage.getItem(BOARDS_KEY) || '[]'));
+		const boards = normalizeBoards(
+			JSON.parse(localStorage.getItem(scopedStateKey(BOARDS_KEY, pid)) || '[]')
+		);
 		return boards.length ? boards : [createKanbanBoard()];
 	} catch {
 		return [createKanbanBoard()];
 	}
 }
 
-function readTombstones(): Record<string, number> {
+function readTombstones(pid: string): Record<string, number> {
 	if (typeof localStorage === 'undefined') return {};
 	try {
-		const value: unknown = JSON.parse(localStorage.getItem(BOARD_TOMBSTONES_KEY) || '{}');
+		const value: unknown = JSON.parse(
+			localStorage.getItem(scopedStateKey(BOARD_TOMBSTONES_KEY, pid)) || '{}'
+		);
 		if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
 		return Object.fromEntries(
 			Object.entries(value).flatMap(([id, updatedAt]) =>
@@ -104,9 +115,9 @@ function readTombstones(): Record<string, number> {
 }
 
 export class KanbanStore {
-	#boards = $state<KanbanBoard[]>(readBoards());
+	#boards = $state<KanbanBoard[]>(readBoards(syncStore.activePid));
 	#activeBoardId = $state<string>('');
-	#boardTombstones = $state<Record<string, number>>(readTombstones());
+	#boardTombstones = $state<Record<string, number>>(readTombstones(syncStore.activePid));
 	private pendingDeviceWrites: Promise<void> = Promise.resolve();
 	#persistable = false;
 
@@ -136,7 +147,7 @@ export class KanbanStore {
 
 	constructor() {
 		if (typeof localStorage !== 'undefined') {
-			const storedId = localStorage.getItem(ACTIVE_BOARD_KEY);
+			const storedId = localStorage.getItem(scopedStateKey(ACTIVE_BOARD_KEY, syncStore.activePid));
 			this.#activeBoardId = this.#boards.some((board) => board.id === storedId)
 				? storedId!
 				: this.#boards[0].id;
@@ -148,20 +159,20 @@ export class KanbanStore {
 
 	#persist() {
 		if (!this.#persistable || typeof localStorage === 'undefined') return;
-		localStorage.setItem(BOARDS_KEY, JSON.stringify(this.#boards));
-		localStorage.setItem(ACTIVE_BOARD_KEY, this.#activeBoardId);
-		localStorage.setItem(BOARD_TOMBSTONES_KEY, JSON.stringify(this.#boardTombstones));
+		const pid = syncStore.activePid;
+		localStorage.setItem(scopedStateKey(BOARDS_KEY, pid), JSON.stringify(this.#boards));
+		localStorage.setItem(scopedStateKey(ACTIVE_BOARD_KEY, pid), this.#activeBoardId);
+		localStorage.setItem(
+			scopedStateKey(BOARD_TOMBSTONES_KEY, pid),
+			JSON.stringify(this.#boardTombstones)
+		);
 	}
 
 	async hydrateFromDevice(
-		pidOrTombstones: string | Record<string, number> = {},
-		maybeTombstones?: Record<string, number>
+		pid: string,
+		remoteTombstones: Record<string, number> = {}
 	): Promise<void> {
-		const isScoped = typeof pidOrTombstones === 'string';
-		const pid = isScoped ? pidOrTombstones : syncStore.activePid;
-		const remoteTombstones = isScoped
-			? (maybeTombstones ?? {})
-			: (pidOrTombstones as Record<string, number>);
+		const isScoped = pid !== LOCAL_PROFILE_ID;
 		const stored = await loadBoardsFromDevice<KanbanBoard[] | undefined>(pid, undefined);
 		// Normalized on read: boards stored before a field existed must not reach
 		// the reactive state half-shaped.
@@ -221,13 +232,12 @@ export class KanbanStore {
 			this.activeBoardId = this.boards[0].id;
 	}
 
-	async persistSyncState(
-		pidOrKeys: string | Iterable<string> = [],
-		maybeKeys?: Iterable<string>
-	): Promise<void> {
-		const isScoped = typeof pidOrKeys === 'string';
-		const pid = isScoped ? pidOrKeys : syncStore.activePid;
-		const syncOutboxKeys = isScoped ? (maybeKeys ?? []) : (pidOrKeys as Iterable<string>);
+	/**
+	 * The workspace is named rather than guessed: a single outbox key is a string
+	 * too, so a signature that took either would sooner or later save one
+	 * workspace's boards into another's.
+	 */
+	async persistSyncState(pid: string, syncOutboxKeys: Iterable<string> = []): Promise<void> {
 		await writeKanbanState(
 			pid,
 			this.boardsForSync(),

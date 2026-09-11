@@ -46,7 +46,7 @@ describe('durable sync outbox', () => {
 	});
 
 	it('deduplicates keys and clears only acknowledged generations', async () => {
-		await markSyncOutbox(['note:one', 'note:one', 'label:two']);
+		await markSyncOutbox(LOCAL_PROFILE_ID, ['note:one', 'note:one', 'label:two']);
 		expect((await getSyncOutboxKeys()).sort()).toEqual(['label:two', 'note:one']);
 
 		await clearSyncOutbox(LOCAL_PROFILE_ID, ['note:one'], 0);
@@ -57,11 +57,11 @@ describe('durable sync outbox', () => {
 	});
 
 	it('clears an internally marked generation without clearing a later edit', async () => {
-		const first = await markSyncOutbox(['note:one']);
+		const first = await markSyncOutbox(LOCAL_PROFILE_ID, ['note:one']);
 		await clearSyncOutbox(LOCAL_PROFILE_ID, ['note:one'], first - 1);
 		expect(await getSyncOutboxKeys()).toEqual(['note:one']);
 
-		const second = await markSyncOutbox(['note:one']);
+		const second = await markSyncOutbox(LOCAL_PROFILE_ID, ['note:one']);
 		await clearSyncOutbox(LOCAL_PROFILE_ID, ['note:one'], first);
 		expect(await getSyncOutboxKeys()).toEqual(['note:one']);
 
@@ -72,9 +72,9 @@ describe('durable sync outbox', () => {
 	it('allocates strictly increasing generations even when the clock jumps backward', async () => {
 		const realNow = Date.now;
 		vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
-		const first = await markSyncOutbox(['note:a']);
+		const first = await markSyncOutbox(LOCAL_PROFILE_ID, ['note:a']);
 		Date.now = () => 500;
-		const second = await markSyncOutbox(['note:b']);
+		const second = await markSyncOutbox(LOCAL_PROFILE_ID, ['note:b']);
 		Date.now = realNow;
 
 		expect(second).toBeGreaterThan(first);
@@ -83,7 +83,7 @@ describe('durable sync outbox', () => {
 
 	it('rolls back cursor and outbox changes together when a control write fails', async () => {
 		await setSyncState('test-cursor', 4);
-		const marked = await markSyncOutbox([`note:atomic`]);
+		const marked = await markSyncOutbox(LOCAL_PROFILE_ID, [`note:atomic`]);
 
 		await expect(
 			commitSyncControl(

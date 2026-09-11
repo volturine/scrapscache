@@ -12,7 +12,7 @@ vi.mock('$lib/reminderWake', () => ({
 
 import { ReminderStore } from './reminders.svelte';
 import { reminderWakeId, type ReminderNote } from '$lib/reminderNotify';
-import { getFiredReminderKeys, setFiredReminderKeys } from '$lib/db/idb';
+import { getFiredReminderKeys, setFiredReminderKeys, LOCAL_PROFILE_ID } from '$lib/db/idb';
 
 function note(partial: Partial<ReminderNote> = {}): ReminderNote {
 	return {
@@ -85,7 +85,7 @@ describe('ReminderStore', () => {
 		await firstLoad.whenReady();
 		await vi.waitFor(() => expect(firstLoad.alerts).toHaveLength(1));
 
-		await setFiredReminderKeys([]);
+		await setFiredReminderKeys(LOCAL_PROFILE_ID, []);
 		const reloaded = new ReminderStore();
 		reloaded.sync([due]);
 		await reloaded.whenReady();

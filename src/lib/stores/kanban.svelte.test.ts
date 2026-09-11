@@ -22,7 +22,7 @@ describe('kanban persist during sync', () => {
 
 	it('writes $state boards to IndexedDB without throwing DataCloneError', async () => {
 		const store = new KanbanStore();
-		await expect(store.persistSyncState()).resolves.toBeUndefined();
+		await expect(store.persistSyncState(LOCAL_PROFILE_ID)).resolves.toBeUndefined();
 		const stored = await loadBoardsFromDevice<unknown>(LOCAL_PROFILE_ID, null);
 		expect(stored).toEqual(
 			expect.arrayContaining([
@@ -52,9 +52,9 @@ describe('kanban persist during sync', () => {
 		const store = new KanbanStore();
 		const base = store.boardsForSync()[0];
 		store.boards = [{ ...base, name: 'stale', updatedAt: 1 }];
-		await store.persistSyncState();
+		await store.persistSyncState(LOCAL_PROFILE_ID);
 		store.boards = [{ ...base, name: 'from-ls', updatedAt: 2 }];
-		await store.hydrateFromDevice();
+		await store.hydrateFromDevice(LOCAL_PROFILE_ID);
 		expect(store.boards[0]?.name).toBe('from-ls');
 		expect((await loadBoardsFromDevice(LOCAL_PROFILE_ID, store.boardsForSync()))[0]?.name).toBe(
 			'from-ls'

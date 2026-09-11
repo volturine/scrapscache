@@ -80,7 +80,7 @@ describe('KanbanCard content shield', () => {
 		expect(kanbanDrag.noteId).toBe('note-1');
 	});
 
-	it('leaves a swipe over the preview to the page instead of dragging', async () => {
+	it('leaves a swipe down the page to the browser instead of dragging', async () => {
 		card();
 
 		await pointer(shield(), 'pointerdown', 100, 100);
@@ -88,6 +88,32 @@ describe('KanbanCard content shield', () => {
 		vi.advanceTimersByTime(300);
 
 		expect(kanbanDrag.active).toBe(false);
+	});
+
+	it('pans the board from a sideways swipe, and does not open the note after it', async () => {
+		const onOpen = vi.fn();
+		const { container } = card({ onOpen });
+		// A board wide enough to scroll, wrapped around the rendered card.
+		const board = document.createElement('div');
+		board.dataset.kanbanColumn = 'todo';
+		board.style.overflowX = 'scroll';
+		Object.defineProperties(board, {
+			scrollWidth: { value: 900 },
+			clientWidth: { value: 390 }
+		});
+		document.body.appendChild(board);
+		board.appendChild(container);
+		board.scrollLeft = 300;
+
+		await pointer(shield(), 'pointerdown', 200, 100);
+		await pointer(window, 'pointermove', 160, 104);
+		await pointer(window, 'pointermove', 120, 104);
+		await pointer(window, 'pointerup', 120, 104);
+		await fireEvent.click(shield());
+
+		expect(board.scrollLeft).toBe(380);
+		expect(kanbanDrag.active).toBe(false);
+		expect(onOpen).not.toHaveBeenCalled();
 	});
 
 	it('drops the card where the pointer released it', async () => {

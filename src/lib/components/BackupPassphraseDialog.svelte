@@ -86,7 +86,7 @@
 	});
 
 	const passphraseField = cx(
-		input({ variant: 'unstyled', size: 'md' }),
+		input({ variant: 'outline', size: 'md' }),
 		css({ w: 'full', py: '0.625rem', fontSize: '16px' })
 	);
 </script>

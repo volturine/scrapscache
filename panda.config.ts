@@ -290,26 +290,23 @@ const inputRecipe = defineRecipe({
 	description: 'Text input recipe with variants and sizes',
 	base: {
 		minW: 0,
-		rounded: 'xl',
 		fontFamily: 'sans',
 		fontSize: 'sm',
 		color: 'scrapscache.text',
+		caretColor: 'scrapscache.focus',
 		outline: 'none',
-		transition: 'all 120ms ease'
+		transition: 'background-color 120ms ease, border-color 120ms ease, color 120ms ease',
+		_disabled: { opacity: 0.55 },
+		'&[aria-invalid="true"]': { borderColor: 'scrapscache.danger' }
 	},
 	variants: {
 		variant: {
 			outline: {
+				rounded: 'md',
 				borderWidth: '1px',
 				borderColor: 'scrapscache.border',
-				bg: 'scrapscache.surface',
+				bg: 'scrapscache.bg',
 				_focus: { ringWidth: '2px', ringColor: 'blue.400/40' }
-			},
-			subtle: {
-				borderWidth: '1px',
-				borderColor: 'transparent',
-				bg: { base: 'rgba(0, 0, 0, 0.04)', _dark: 'rgba(255, 255, 255, 0.06)' },
-				_focus: { borderColor: 'scrapscache.border' }
 			},
 			unstyled: {
 				bg: 'transparent',
@@ -322,6 +319,7 @@ const inputRecipe = defineRecipe({
 			lg: { px: '1rem', py: '0.75rem', fontSize: 'base' }
 		}
 	},
+	compoundVariants: [{ variant: 'unstyled', css: { px: 0, py: 0 } }],
 	defaultVariants: {
 		variant: 'outline',
 		size: 'md'

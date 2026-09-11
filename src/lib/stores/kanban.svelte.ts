@@ -85,16 +85,24 @@ function normalizeBoards(value: unknown): KanbanBoard[] {
 		: [];
 }
 
+/**
+ * What this workspace last mirrored, which may be nothing at all. Making one up
+ * here is the caller's business: a boot needs a board to show, while a merge
+ * needs the truth, or an empty shelf would look like a board worth keeping.
+ */
 function readBoards(pid: string): KanbanBoard[] {
-	if (typeof localStorage === 'undefined') return [createKanbanBoard()];
+	if (typeof localStorage === 'undefined') return [];
 	try {
-		const boards = normalizeBoards(
+		return normalizeBoards(
 			JSON.parse(localStorage.getItem(scopedStateKey(BOARDS_KEY, pid)) || '[]')
 		);
-		return boards.length ? boards : [createKanbanBoard()];
 	} catch {
-		return [createKanbanBoard()];
+		return [];
 	}
+}
+
+function boardsOrFresh(boards: KanbanBoard[]): KanbanBoard[] {
+	return boards.length ? boards : [createKanbanBoard()];
 }
 
 function readTombstones(pid: string): Record<string, number> {
@@ -115,7 +123,7 @@ function readTombstones(pid: string): Record<string, number> {
 }
 
 export class KanbanStore {
-	#boards = $state<KanbanBoard[]>(readBoards(syncStore.activePid));
+	#boards = $state<KanbanBoard[]>(boardsOrFresh(readBoards(syncStore.activePid)));
 	#activeBoardId = $state<string>('');
 	#boardTombstones = $state<Record<string, number>>(readTombstones(syncStore.activePid));
 	private pendingDeviceWrites: Promise<void> = Promise.resolve();
@@ -173,17 +181,26 @@ export class KanbanStore {
 		remoteTombstones: Record<string, number> = {}
 	): Promise<void> {
 		const isScoped = pid !== LOCAL_PROFILE_ID;
+		// Read this workspace's shelf before touching any state: saving state
+		// mirrors whatever is in memory, which until the swap below still belongs
+		// to the workspace being left.
+		const mirroredBoards = readBoards(pid);
+		const mirroredTombstones = readTombstones(pid);
 		const stored = await loadBoardsFromDevice<KanbanBoard[] | undefined>(pid, undefined);
 		// Normalized on read: boards stored before a field existed must not reach
 		// the reactive state half-shaped.
 		const fromIdb = normalizeBoards(stored);
-		const tombstones = { ...(isScoped ? {} : this.boardTombstones), ...remoteTombstones };
+		// Whatever is in memory belongs to the workspace being left, so a switch
+		// reads the one being entered off its own shelf. Merging memory in would
+		// carry the last workspace's boards — and its board deletions — across.
+		const tombstones = { ...(isScoped ? {} : mirroredTombstones), ...remoteTombstones };
 		this.boardTombstones = tombstones;
-		if (isScoped && pid !== 'device-local') {
+		if (isScoped) {
 			this.boards = fromIdb.length > 0 ? fromIdb : [createKanbanBoard()];
 		} else {
-			const fromLs = this.boardsForSync();
-			this.boards = mergeKanbanBoards(fromLs, fromIdb, tombstones);
+			// The anonymous workspace keeps a localStorage mirror that can outrun
+			// IndexedDB after a crash, so the newer of the two wins.
+			this.boards = mergeKanbanBoards(mirroredBoards, fromIdb, tombstones);
 			if (!this.boards.length) this.boards = [createKanbanBoard()];
 		}
 		if (!this.boards.some((board) => board.id === this.activeBoardId))
@@ -193,7 +210,7 @@ export class KanbanStore {
 			const current = idbById.get(board.id);
 			return !current || current.updatedAt < board.updatedAt;
 		});
-		if (recovered.length && (!isScoped || pid === 'device-local')) {
+		if (recovered.length && !isScoped) {
 			this.requestSync(recovered.map((board) => `board:${board.id}`));
 		}
 		await this.pendingDeviceWrites;

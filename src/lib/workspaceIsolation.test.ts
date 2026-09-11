@@ -235,3 +235,53 @@ describe('a workspace is only redundant when nothing in it is unique', () => {
 		expect(await isNamespaceRedundant(LOCAL_PROFILE_ID, MINE)).toBe(false);
 	});
 });
+
+describe('switching workspaces leaves each one as it was', () => {
+	it('does not carry the boards of the workspace being left', async () => {
+		const { KanbanStore } = await import('$lib/stores/kanban.svelte');
+		const { syncStore } = await import('$lib/stores/sync.svelte');
+		const activePid = vi.spyOn(syncStore, 'activePid', 'get');
+
+		// The anonymous workspace has a board of its own on this device.
+		await saveBoardsToDevice(LOCAL_PROFILE_ID, [
+			{ ...createKanbanBoard('Anonymous plans'), id: 'anon-board', updatedAt: 1 }
+		]);
+
+		// A signed-in workspace is used, and its board edited more recently.
+		activePid.mockReturnValue(MINE);
+		const store = new KanbanStore();
+		await store.hydrateFromDevice(MINE);
+		store.renameBoard(store.boards[0].id, 'Synced plans');
+
+		// Switching back must show the anonymous workspace's own board.
+		activePid.mockReturnValue(LOCAL_PROFILE_ID);
+		await store.hydrateFromDevice(LOCAL_PROFILE_ID);
+
+		expect(store.boards.map((board) => board.name)).toEqual(['Anonymous plans']);
+		activePid.mockRestore();
+	});
+
+	it('does not carry board deletions into the workspace being entered', async () => {
+		const { KanbanStore } = await import('$lib/stores/kanban.svelte');
+		const { syncStore } = await import('$lib/stores/sync.svelte');
+		const activePid = vi.spyOn(syncStore, 'activePid', 'get');
+
+		await saveBoardsToDevice(LOCAL_PROFILE_ID, [
+			{ ...createKanbanBoard('Anonymous plans'), id: 'shared-board-id', updatedAt: 1 }
+		]);
+
+		activePid.mockReturnValue(MINE);
+		const store = new KanbanStore();
+		await store.hydrateFromDevice(MINE);
+		// Delete the synced workspace's board, which shares an id with the
+		// anonymous one because it was copied from it.
+		store.boards = [{ ...createKanbanBoard('Synced'), id: 'shared-board-id', updatedAt: 2 }];
+		store.deleteBoard('shared-board-id');
+
+		activePid.mockReturnValue(LOCAL_PROFILE_ID);
+		await store.hydrateFromDevice(LOCAL_PROFILE_ID);
+
+		expect(store.boards.map((board) => board.name)).toEqual(['Anonymous plans']);
+		activePid.mockRestore();
+	});
+});

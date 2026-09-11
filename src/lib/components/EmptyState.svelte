@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { LucideIcon } from '@lucide/svelte';
+	import { emptyState } from 'styled-system/recipes';
 
 	type Props = {
 		icon: LucideIcon;
@@ -10,26 +11,18 @@
 	};
 
 	let { icon: Icon, description, actionLabel, onAction, href }: Props = $props();
+	const classes = emptyState();
 </script>
 
-<div
-	class="notes-content mx-auto mt-10 flex max-w-sm flex-col items-center px-4 text-center text-[var(--scrapscache-text-muted)]"
->
-	<Icon class="h-6 w-6" strokeWidth={1.5} aria-hidden="true" />
-	<p class="mt-3 text-sm leading-6">{description}</p>
+<div class={`notes-content ${classes.root}`}>
+	<Icon size={24} strokeWidth={1.5} aria-hidden="true" />
+	<p class={classes.description}>{description}</p>
 	{#if actionLabel && href}
-		<a
-			{href}
-			class="mt-3 rounded-full border border-[var(--scrapscache-border)] px-3 py-1.5 text-sm font-medium text-[var(--scrapscache-text)] transition-colors hover:bg-black/5 dark:hover:bg-white/10"
-		>
+		<a {href} class={classes.action}>
 			{actionLabel}
 		</a>
 	{:else if actionLabel && onAction}
-		<button
-			type="button"
-			onclick={onAction}
-			class="mt-3 rounded-full border border-[var(--scrapscache-border)] px-3 py-1.5 text-sm font-medium text-[var(--scrapscache-text)] transition-colors hover:bg-black/5 dark:hover:bg-white/10"
-		>
+		<button type="button" onclick={onAction} class={classes.action}>
 			{actionLabel}
 		</button>
 	{/if}

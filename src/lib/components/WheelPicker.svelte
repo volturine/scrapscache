@@ -1,5 +1,6 @@
 <script lang="ts" generics="T extends string | number">
 	import { onMount } from 'svelte';
+	import { cva, css } from 'styled-system/css';
 
 	const ITEM_H = 36;
 	const VISIBLE = 5;
@@ -50,67 +51,74 @@
 	function stepValue(from: T, delta: number): T {
 		const n = items.length;
 		if (n === 0) return from;
-		return items[wrapIndex(indexOf(from) + delta)].value;
+		const i = indexOf(from);
+		const next = (((i + delta) % n) + n) % n;
+		return items[next].value;
 	}
 
+	const totalItems = $derived(items.length * COPIES);
 	const middleStart = $derived(items.length);
-	const copyH = $derived(items.length * ITEM_H);
-	const minTop = $derived((middleStart - PAD) * ITEM_H);
 	const valueIndex = $derived(indexOf(value));
-	const centerIndex = $derived(scrollIndex ?? middleStart + valueIndex);
-	const looped = $derived(
-		Array.from({ length: items.length * COPIES }, (_, visual) => ({
-			visual,
-			item: items[wrapIndex(visual)],
-			primary: visual >= middleStart && visual < middleStart + items.length
-		}))
-	);
+	const centerIndex = $derived(scrollIndex ?? Math.round(offset / ITEM_H));
 
-	function optionId(logical: number): string {
-		return `${uid}-opt-${logical}`;
-	}
+	const looped = $derived.by(() => {
+		const result: { visual: number; item: { value: T; label: string }; primary: boolean }[] = [];
+		const n = items.length;
+		if (n === 0) return result;
+		for (let c = 0; c < COPIES; c++) {
+			for (let i = 0; i < n; i++) {
+				const visual = c * n + i;
+				result.push({ visual, item: items[i], primary: c === 1 });
+			}
+		}
+		return result;
+	});
 
-	function wrapOffset(px: number): number {
-		if (copyH === 0) return px;
-		let top = px;
-		const span = copyH;
-		while (top < minTop) top += span;
-		while (top >= minTop + span) top -= span;
-		return top;
-	}
-
-	function applyOffset(px: number) {
-		offset = wrapOffset(px);
-		scrollIndex = Math.round(offset / ITEM_H) + PAD;
+	function optionId(index: number): string {
+		return `${uid}-opt-${index}`;
 	}
 
 	function snapTo(index: number) {
-		offset = (index - PAD) * ITEM_H;
+		offset = index * ITEM_H;
+		scrollIndex = index;
+	}
+
+	function applyOffset(next: number) {
+		const n = items.length;
+		if (n === 0) {
+			offset = next;
+			return;
+		}
+		const span = n * ITEM_H;
+		const min = span;
+		const max = span * 2;
+		while (next < min) next += span;
+		while (next >= max) next -= span;
+		offset = next;
 		scrollIndex = null;
 	}
 
-	function commitIndex(index: number) {
-		const next = items[wrapIndex(index)];
-		if (!next) return;
-		snapTo(middleStart + wrapIndex(index));
-		if (next.value !== value) onChange(next.value);
-	}
-
 	function settle() {
-		commitIndex(Math.round(offset / ITEM_H) + PAD);
+		const target = Math.round(offset / ITEM_H);
+		snapTo(target);
+		const wrapped = wrapIndex(target);
+		if (items[wrapped] && items[wrapped].value !== value) {
+			onChange(items[wrapped].value);
+		}
 	}
 
 	function stopAnim() {
-		if (anim) cancelAnimationFrame(anim);
-		anim = 0;
+		if (anim) {
+			cancelAnimationFrame(anim);
+			anim = 0;
+		}
 	}
 
 	function inertia() {
-		stopAnim();
-		lastT = 0;
-		const tick = (t: number) => {
-			const dt = lastT ? Math.min(t - lastT, 32) : 16;
-			lastT = t;
+		let prev = performance.now();
+		const tick = (now: number) => {
+			const dt = Math.min(now - prev, 32);
+			prev = now;
 			if (Math.abs(velocity) < MIN_VEL) {
 				anim = 0;
 				settle();
@@ -209,15 +217,68 @@
 		if (dragging) return;
 		setValue(item.value);
 	}
+
+	const rootContainerClass = css({
+		position: 'relative'
+	});
+
+	const centerHighlightClass = css({
+		pointerEvents: 'none',
+		position: 'absolute',
+		insetX: 0,
+		top: '50%',
+		zIndex: 0,
+		h: '2.25rem',
+		transform: 'translateY(-50%)',
+		rounded: 'lg',
+		bg: 'scrapscache.bg'
+	});
+
+	const wheelViewportClass = css({
+		position: 'absolute',
+		inset: 0,
+		zIndex: 10,
+		overflow: 'hidden',
+		outline: 'none'
+	});
+
+	const wheelItemRecipe = cva({
+		base: {
+			display: 'flex',
+			cursor: 'pointer',
+			alignItems: 'center',
+			justifyContent: 'center',
+			fontVariantNumeric: 'tabular-nums'
+		},
+		variants: {
+			distance: {
+				center: {
+					fontSize: 'base',
+					fontWeight: '600',
+					color: 'scrapscache.text'
+				},
+				adjacent: {
+					fontSize: 'sm',
+					fontWeight: 'medium',
+					color: 'scrapscache.textMuted'
+				},
+				far: {
+					fontSize: 'sm',
+					color: 'scrapscache.textMuted',
+					opacity: 0.4
+				}
+			}
+		},
+		defaultVariants: {
+			distance: 'far'
+		}
+	});
 </script>
 
-<div class="relative {className}" style="height: {ITEM_H * VISIBLE}px">
+<div class={`${rootContainerClass} ${className}`} style="height: {ITEM_H * VISIBLE}px">
+	<div class={centerHighlightClass} aria-hidden="true"></div>
 	<div
-		class="pointer-events-none absolute inset-x-0 top-1/2 z-0 h-9 -translate-y-1/2 rounded-lg bg-[var(--scrapscache-bg)]"
-		aria-hidden="true"
-	></div>
-	<div
-		class="wheel-picker absolute inset-0 z-10 overflow-hidden outline-none"
+		class={`wheel-picker ${wheelViewportClass}`}
 		style="height: {ITEM_H * VISIBLE}px"
 		role="listbox"
 		tabindex="0"
@@ -232,17 +293,18 @@
 	>
 		<div class="will-change-transform" style="transform: translate3d(0, {-offset}px, 0)">
 			{#each looped as row (row.visual)}
+				{@const dist =
+					row.visual === centerIndex
+						? 'center'
+						: Math.abs(row.visual - centerIndex) === 1
+							? 'adjacent'
+							: 'far'}
 				<div
 					id={row.primary ? optionId(wrapIndex(row.visual)) : undefined}
 					role={row.primary ? 'option' : undefined}
 					aria-hidden={!row.primary}
 					aria-selected={row.primary ? row.item.value === value : undefined}
-					class="flex cursor-pointer items-center justify-center tabular-nums
-						{row.visual === centerIndex
-						? 'text-base font-semibold text-[var(--scrapscache-text)]'
-						: Math.abs(row.visual - centerIndex) === 1
-							? 'text-sm font-medium text-[var(--scrapscache-text-muted)]'
-							: 'text-sm text-[var(--scrapscache-text-muted)] opacity-40'}"
+					class={wheelItemRecipe({ distance: dist })}
 					style="height: {ITEM_H}px"
 					onclick={() => selectItem(row.item)}
 				>

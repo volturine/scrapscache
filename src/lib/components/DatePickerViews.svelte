@@ -3,6 +3,7 @@
 	import { ChevronLeft, ChevronRight } from '@lucide/svelte';
 	import type { DateValue } from '@internationalized/date';
 	import type { Snippet } from 'svelte';
+	import { css } from 'styled-system/css';
 
 	let {
 		dayExtra,
@@ -22,21 +23,121 @@
 		onDayContextMenu?: (day: DateValue, e: MouseEvent) => void;
 	} = $props();
 
-	const navBtn =
-		'rounded-full p-1.5 text-[var(--scrapscache-text-muted)] transition-colors hover:bg-black/5 dark:hover:bg-white/10';
-	const viewBtn =
-		'rounded-lg px-2 py-1 text-sm font-semibold text-[var(--scrapscache-text)] transition-colors hover:bg-black/5 dark:hover:bg-white/10';
-	const dayBtn =
-		'relative mx-auto flex h-8 w-8 items-center justify-center rounded-full text-sm font-medium transition-colors hover:bg-black/5 dark:hover:bg-white/10 data-[selected]:bg-[var(--scrapscache-accent)] data-[selected]:text-[var(--scrapscache-accent-foreground)] data-[selected]:font-semibold data-[today]:ring-1 data-[today]:ring-[var(--scrapscache-border)] data-[outside-range]:opacity-30 data-[outside-range]:pointer-events-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--scrapscache-accent)]';
-	const monthBtn =
-		'mx-auto flex h-9 w-14 items-center justify-center rounded-lg text-sm font-medium transition-colors hover:bg-black/5 dark:hover:bg-white/10 data-[selected]:bg-[var(--scrapscache-accent)] data-[selected]:text-[var(--scrapscache-accent-foreground)] data-[selected]:font-semibold data-[today]:ring-1 data-[today]:ring-[var(--scrapscache-border)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--scrapscache-accent)]';
+	const navBtn = css({
+		rounded: 'full',
+		p: '0.375rem',
+		color: 'scrapscache.textMuted',
+		cursor: 'pointer',
+		transition: 'colors 150ms ease',
+		_hover: { bg: { base: 'black/5', _dark: 'white/10' } }
+	});
+
+	const viewBtn = css({
+		rounded: 'lg',
+		px: '0.5rem',
+		py: '0.25rem',
+		fontSize: 'sm',
+		fontWeight: '600',
+		color: 'scrapscache.text',
+		cursor: 'pointer',
+		transition: 'colors 150ms ease',
+		_hover: { bg: { base: 'black/5', _dark: 'white/10' } }
+	});
+
+	const dayBtn = css({
+		position: 'relative',
+		mx: 'auto',
+		display: 'flex',
+		h: '2rem',
+		w: '2rem',
+		alignItems: 'center',
+		justifyContent: 'center',
+		rounded: 'full',
+		fontSize: 'sm',
+		fontWeight: 'medium',
+		cursor: 'pointer',
+		transition: 'colors 150ms ease',
+		_hover: { bg: { base: 'black/5', _dark: 'white/10' } },
+		_selected: {
+			bg: 'scrapscache.accent',
+			color: 'scrapscache.accentForeground',
+			fontWeight: '600'
+		},
+		'&[data-today]': {
+			ringWidth: '1px',
+			ringColor: 'scrapscache.border'
+		},
+		'&[data-outside-range]': {
+			opacity: 0.3,
+			pointerEvents: 'none'
+		},
+		_focusVisible: {
+			outline: 'none',
+			ringWidth: '2px',
+			ringColor: 'scrapscache.accent'
+		}
+	});
+
+	const monthBtn = css({
+		mx: 'auto',
+		display: 'flex',
+		h: '2.25rem',
+		w: '3.5rem',
+		alignItems: 'center',
+		justifyContent: 'center',
+		rounded: 'lg',
+		fontSize: 'sm',
+		fontWeight: 'medium',
+		cursor: 'pointer',
+		transition: 'colors 150ms ease',
+		_hover: { bg: { base: 'black/5', _dark: 'white/10' } },
+		_selected: {
+			bg: 'scrapscache.accent',
+			color: 'scrapscache.accentForeground',
+			fontWeight: '600'
+		},
+		'&[data-today]': {
+			ringWidth: '1px',
+			ringColor: 'scrapscache.border'
+		},
+		_focusVisible: {
+			outline: 'none',
+			ringWidth: '2px',
+			ringColor: 'scrapscache.accent'
+		}
+	});
+
+	const viewControlClass = css({
+		mb: '0.5rem',
+		display: 'flex',
+		h: '2.25rem',
+		alignItems: 'center',
+		justifyContent: 'space-between'
+	});
+
+	const tableClass = css({
+		w: 'full',
+		tableLayout: 'fixed'
+	});
+
+	const headRowClass = css({
+		h: '1.5rem',
+		textAlign: 'center',
+		fontSize: 'xs',
+		fontWeight: 'medium',
+		color: 'scrapscache.textMuted'
+	});
+
+	const bodyRowClass = css({
+		textAlign: 'center'
+	});
 </script>
 
 <div class="calendar-panel">
 	<DatePicker.View view="day">
 		<DatePicker.Context>
 			{#snippet render(datePicker)}
-				<DatePicker.ViewControl class="mb-2 flex h-9 items-center justify-between">
+				<DatePicker.ViewControl class={viewControlClass}>
 					<DatePicker.PrevTrigger class={navBtn} aria-label="Previous month">
 						<ChevronLeft size={16} />
 					</DatePicker.PrevTrigger>
@@ -47,11 +148,9 @@
 						<ChevronRight size={16} />
 					</DatePicker.NextTrigger>
 				</DatePicker.ViewControl>
-				<DatePicker.Table class="calendar-table w-full table-fixed">
+				<DatePicker.Table class={`calendar-table ${tableClass}`}>
 					<DatePicker.TableHead>
-						<DatePicker.TableRow
-							class="h-6 text-center text-xs font-medium text-[var(--scrapscache-text-muted)]"
-						>
+						<DatePicker.TableRow class={headRowClass}>
 							{#each datePicker().weekDays as weekDay (weekDay.value.toString())}
 								<DatePicker.TableHeader>{weekDay.narrow}</DatePicker.TableHeader>
 							{/each}
@@ -59,7 +158,7 @@
 					</DatePicker.TableHead>
 					<DatePicker.TableBody>
 						{#each datePicker().weeks as week (week[0].toString())}
-							<DatePicker.TableRow class="text-center">
+							<DatePicker.TableRow class={bodyRowClass}>
 								{#each week as day (day.toString())}
 									<DatePicker.TableCell value={day}>
 										{#if onDayClick || onDayPointerDown}
@@ -110,7 +209,7 @@
 	<DatePicker.View view="month">
 		<DatePicker.Context>
 			{#snippet render(datePicker)}
-				<DatePicker.ViewControl class="mb-2 flex h-9 items-center justify-between">
+				<DatePicker.ViewControl class={viewControlClass}>
 					<DatePicker.PrevTrigger class={navBtn} aria-label="Previous year">
 						<ChevronLeft size={16} />
 					</DatePicker.PrevTrigger>
@@ -121,7 +220,7 @@
 						<ChevronRight size={16} />
 					</DatePicker.NextTrigger>
 				</DatePicker.ViewControl>
-				<DatePicker.Table class="calendar-table calendar-table-fill w-full table-fixed">
+				<DatePicker.Table class={`calendar-table calendar-table-fill ${tableClass}`}>
 					<DatePicker.TableBody>
 						{#each datePicker().getMonthsGrid({ columns: 4, format: 'short' }) as months, row (row)}
 							<DatePicker.TableRow>
@@ -143,7 +242,7 @@
 	<DatePicker.View view="year">
 		<DatePicker.Context>
 			{#snippet render(datePicker)}
-				<DatePicker.ViewControl class="mb-2 flex h-9 items-center justify-between">
+				<DatePicker.ViewControl class={viewControlClass}>
 					<DatePicker.PrevTrigger class={navBtn} aria-label="Previous decade">
 						<ChevronLeft size={16} />
 					</DatePicker.PrevTrigger>
@@ -154,7 +253,7 @@
 						<ChevronRight size={16} />
 					</DatePicker.NextTrigger>
 				</DatePicker.ViewControl>
-				<DatePicker.Table class="calendar-table calendar-table-fill w-full table-fixed">
+				<DatePicker.Table class={`calendar-table calendar-table-fill ${tableClass}`}>
 					<DatePicker.TableBody>
 						{#each datePicker().getYearsGrid({ columns: 4 }) as years, row (row)}
 							<DatePicker.TableRow>
@@ -173,51 +272,3 @@
 		</DatePicker.Context>
 	</DatePicker.View>
 </div>
-
-<style>
-	.calendar-panel {
-		min-height: 16.25rem;
-	}
-	.calendar-panel :global([data-part='view']:not([hidden])) {
-		display: flex;
-		flex-direction: column;
-	}
-	.calendar-panel :global(.calendar-table) {
-		height: 13.5rem;
-	}
-	.calendar-panel :global(.calendar-table-fill [data-part='table-body']) {
-		height: 100%;
-	}
-	.calendar-panel :global(.calendar-table-fill [data-part='table-row']) {
-		height: calc(13.5rem / 3);
-	}
-	.calendar-panel :global(.calendar-table-fill [data-part='table-cell']) {
-		height: inherit;
-		vertical-align: middle;
-	}
-
-	/* Never apply dark block background on roving focus */
-	.calendar-panel
-		:global(
-			[data-part='table-cell-trigger'][data-focus]:not([data-selected]):not([data-in-range])
-		) {
-		background-color: transparent !important;
-	}
-
-	/* In-range highlighting: in-between days get soft accent tint, not solid accent */
-	.calendar-panel
-		:global(
-			[data-part='table-cell-trigger'][data-in-range]:not([data-range-start]):not([data-range-end])
-		) {
-		background-color: color-mix(in srgb, var(--scrapscache-accent) 18%, transparent) !important;
-		color: var(--scrapscache-text) !important;
-		font-weight: normal !important;
-	}
-
-	/* Selected day dots */
-	.calendar-panel :global([data-part='table-cell-trigger'][data-selected] .reminder-dot),
-	.calendar-panel :global([data-part='table-cell-trigger'][data-range-start] .reminder-dot),
-	.calendar-panel :global([data-part='table-cell-trigger'][data-range-end] .reminder-dot) {
-		background-color: var(--scrapscache-accent-foreground) !important;
-	}
-</style>

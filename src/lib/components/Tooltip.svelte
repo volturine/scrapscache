@@ -3,6 +3,7 @@
 	import type { Snippet } from 'svelte';
 	import { portalToAppOverlay } from '$lib/appViewport';
 	import type { Placement } from '@zag-js/tooltip';
+	import { tooltip } from 'styled-system/recipes';
 
 	let {
 		content,
@@ -32,9 +33,7 @@
 		</Tooltip.Trigger>
 		<div {@attach portalToAppOverlay}>
 			<Tooltip.Positioner>
-				<Tooltip.Content
-					class="pointer-events-none z-[120] rounded-md bg-neutral-900/90 px-2 py-1 text-xs font-medium text-white shadow-md backdrop-blur-sm transition-opacity duration-150 dark:bg-neutral-100/90 dark:text-neutral-900"
-				>
+				<Tooltip.Content class={tooltip()}>
 					{content}
 				</Tooltip.Content>
 			</Tooltip.Positioner>

@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { css } from 'styled-system/css';
+	import { button, dialog } from 'styled-system/recipes';
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { Format } from '@ark-ui/svelte/format';
 	import AttachmentFullscreen from '$lib/components/AttachmentFullscreen.svelte';
@@ -325,19 +327,274 @@
 			}
 		};
 	}
+
+	const attachErrorClass = css({
+		px: '0.75rem',
+		pb: '0.25rem',
+		fontSize: 'xs',
+		color: { base: 'red.600', _dark: 'red.400' }
+	});
+	const canvasesScroller = css({
+		display: 'flex',
+		maxH: '11rem',
+		gap: '0.5rem',
+		overflowX: 'auto',
+		px: '0.75rem',
+		pb: '0.5rem'
+	});
+	const canvasWrap = css({ position: 'relative', w: '9rem', flexShrink: 0 });
+	const canvasBtn = css({
+		position: 'relative',
+		display: 'block',
+		aspectRatio: '4/3',
+		w: 'full',
+		overflow: 'hidden',
+		rounded: 'lg',
+		borderWidth: '1px',
+		borderColor: { base: 'black/10', _dark: 'white/10' },
+		bg: { base: 'white', _dark: 'slate.900' },
+		touchAction: 'manipulation',
+		cursor: 'pointer'
+	});
+	const canvasImg = css({ h: 'full', w: 'full', objectFit: 'contain' });
+	const canvasLoading = css({
+		display: 'grid',
+		h: 'full',
+		placeItems: 'center',
+		fontSize: 'xs',
+		color: 'scrapscache.textMuted'
+	});
+	const canvasCaption = css({
+		position: 'absolute',
+		insetX: 0,
+		bottom: 0,
+		bgGradient: 'to-t',
+		gradientFrom: 'black/65',
+		gradientTo: 'transparent',
+		px: '0.5rem',
+		pb: '0.375rem',
+		pt: '1.25rem',
+		textAlign: 'left',
+		fontSize: '11px',
+		fontWeight: 'medium',
+		color: 'white'
+	});
+	const canvasDelBtn = css({
+		position: 'absolute',
+		right: '0.25rem',
+		top: '0.25rem',
+		rounded: 'full',
+		bg: 'black/60',
+		px: '0.375rem',
+		py: '0.125rem',
+		fontSize: 'xs',
+		color: 'white',
+		touchAction: 'manipulation',
+		cursor: 'pointer'
+	});
+	const filesList = css({
+		maxH: '9rem',
+		gap: '0.375rem',
+		overflowY: 'auto',
+		px: '0.75rem',
+		pb: '0.5rem',
+		display: 'flex',
+		flexDirection: 'column'
+	});
+	const fileItem = css({
+		display: 'flex',
+		alignItems: 'center',
+		gap: '0.5rem',
+		rounded: 'lg',
+		borderWidth: '1px',
+		borderColor: { base: 'black/10', _dark: 'white/10' },
+		bg: { base: 'black/5', _dark: 'white/5' },
+		px: '0.5rem',
+		py: '0.375rem'
+	});
+	const fileBadge = css({
+		display: 'grid',
+		h: '2rem',
+		w: '2rem',
+		flexShrink: 0,
+		placeItems: 'center',
+		rounded: 'md',
+		bg: { base: 'black/10', _dark: 'white/10' },
+		fontSize: '10px',
+		fontWeight: 'bold',
+		letterSpacing: 'wide',
+		color: 'scrapscache.text'
+	});
+	const fileActionBtn = css({
+		minW: 0,
+		flex: '1',
+		textAlign: 'left',
+		touchAction: 'manipulation',
+		cursor: 'pointer'
+	});
+	const fileTitle = css({
+		overflow: 'hidden',
+		textOverflow: 'ellipsis',
+		whiteSpace: 'nowrap',
+		fontSize: 'sm',
+		color: 'scrapscache.text'
+	});
+	const fileSize = css({ fontSize: '10px', color: 'scrapscache.textMuted' });
+	const fileRemoveBtn = css({
+		flexShrink: 0,
+		rounded: 'full',
+		px: '0.375rem',
+		py: '0.125rem',
+		fontSize: 'xs',
+		color: 'scrapscache.textMuted',
+		touchAction: 'manipulation',
+		cursor: 'pointer',
+		_hover: { bg: { base: 'black/5', _dark: 'white/10' } }
+	});
+	const photosScroller = css({
+		display: 'flex',
+		gap: '0.5rem',
+		overflowX: 'auto',
+		px: '0.75rem',
+		pb: '0.5rem'
+	});
+	const photoWrap = css({ position: 'relative', flexShrink: 0 });
+	const photoBtn = css({
+		display: 'block',
+		h: '8rem',
+		overflow: 'hidden',
+		rounded: 'lg',
+		touchAction: 'manipulation',
+		cursor: 'pointer'
+	});
+	const photoImg = css({ h: '8rem', w: 'auto', maxW: '15rem', objectFit: 'cover' });
+	const photoDelBtn = css({
+		position: 'absolute',
+		right: '0.375rem',
+		top: '0.375rem',
+		display: 'grid',
+		h: '1.5rem',
+		w: '1.5rem',
+		placeItems: 'center',
+		rounded: 'full',
+		bg: 'black/60',
+		color: 'white',
+		touchAction: 'manipulation',
+		cursor: 'pointer'
+	});
+	const photoPulse = css({
+		h: '8rem',
+		w: '8rem',
+		flexShrink: 0,
+		animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+		rounded: 'lg',
+		bg: { base: 'black/10', _dark: 'white/10' }
+	});
+	const dialogBackdrop = css({ position: 'fixed', inset: 0, zIndex: 50, bg: 'black/45' });
+	const dialogPositioner = css({
+		position: 'fixed',
+		inset: 0,
+		zIndex: 50,
+		display: 'grid',
+		placeItems: 'center',
+		p: '1rem'
+	});
+	const dialogContentClass = css({ w: 'full', maxW: 'sm', p: '1rem', color: 'scrapscache.text' });
+	const dialogHeader = css({
+		mb: '0.75rem',
+		display: 'flex',
+		alignItems: 'flex-start',
+		justifyContent: 'space-between',
+		gap: '0.75rem'
+	});
+	const dialogTitleClass = css({ fontSize: 'base', fontWeight: 'semibold' });
+	const dialogSubtitle = css({ mt: '0.125rem', fontSize: 'xs', color: 'scrapscache.textMuted' });
+	const dialogCloseTrigger = css({
+		h: '2.25rem',
+		w: '2.25rem',
+		flexShrink: 0,
+		p: '0.5rem',
+		touchAction: 'manipulation'
+	});
+	const qualityChoiceGrid = css({
+		display: 'grid',
+		gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+		gap: '0.5rem'
+	});
+	const qualityChoiceBtn = css({
+		minH: '5rem',
+		px: '0.75rem',
+		py: '0.75rem',
+		textAlign: 'left',
+		cursor: 'pointer'
+	});
+	const qualityTitle = css({ display: 'block', fontSize: 'sm', fontWeight: 'semibold' });
+	const qualityDescCompressed = css({
+		mt: '0.25rem',
+		display: 'block',
+		fontSize: '11px',
+		lineHeight: '1rem',
+		opacity: 0.85
+	});
+	const qualityDescHd = css({
+		mt: '0.25rem',
+		display: 'block',
+		fontSize: '11px',
+		lineHeight: '1rem',
+		color: 'scrapscache.textMuted'
+	});
+	const footerBar = css({
+		display: 'flex',
+		flexShrink: 0,
+		alignItems: 'center',
+		justifyContent: 'space-between',
+		gap: '0.5rem',
+		borderTopWidth: '1px',
+		borderColor: { base: 'black/5', _dark: 'white/10' },
+		px: '0.75rem',
+		py: '0.5rem'
+	});
+	const footerGroupLeft = css({
+		display: 'flex',
+		flexShrink: 0,
+		alignItems: 'center',
+		gap: '0.25rem'
+	});
+	const footerGroupRight = css({
+		display: 'flex',
+		maxW: 'calc(100% - 5.5rem)',
+		flexWrap: 'wrap',
+		alignItems: 'center',
+		justifyContent: 'flex-end',
+		gap: '0.25rem'
+	});
+	const footerActionBtn = css({
+		h: '2.5rem',
+		w: '2.5rem',
+		p: '0.5rem',
+		touchAction: 'manipulation'
+	});
+	const footerTrashBtn = css({
+		h: '2.5rem',
+		w: '2.5rem',
+		p: '0.5rem',
+		color: { base: 'red.600', _dark: 'red.400' },
+		touchAction: 'manipulation'
+	});
+	const iconMd = css({ h: '1.25rem', w: '1.25rem' });
 </script>
 
 {#if attachError}
-	<p class="px-3 pb-1 text-xs text-red-600 dark:text-red-400">{attachError}</p>
+	<p class={attachErrorClass}>{attachError}</p>
 {/if}
 
 {#if canvases.length > 0}
-	<div class="scrollable flex max-h-44 gap-2 overflow-x-auto px-3 pb-2" aria-label="Canvases">
+	<div class={`scrollable ${canvasesScroller}`} aria-label="Canvases">
 		{#each canvases as canvas (canvas.id)}
-			<div class="relative w-36 shrink-0">
+			<div class={canvasWrap}>
 				<button
 					type="button"
-					class="group block aspect-[4/3] w-full overflow-hidden rounded-lg border border-black/10 bg-white touch-manipulation dark:border-white/10 dark:bg-slate-900"
+					class={canvasBtn}
 					onclick={() => void openCanvas(canvas)}
 					aria-label={`Edit ${canvas.name ?? 'canvas'}`}
 				>
@@ -345,31 +602,25 @@
 						<img
 							src={displayImageSrc(canvas)}
 							alt={canvas.name ?? 'Canvas'}
-							class="h-full w-full object-contain"
+							class={canvasImg}
 							loading="lazy"
 							decoding="async"
 							draggable="false"
 						/>
 					{:else}
-						<div
-							class="grid h-full place-items-center text-xs text-[var(--scrapscache-text-muted)]"
-						>
-							Loading canvas…
-						</div>
+						<div class={canvasLoading}>Loading canvas…</div>
 					{/if}
-					<span
-						class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/65 to-transparent px-2 pb-1.5 pt-5 text-left text-[11px] font-medium text-white"
-					>
+					<span class={canvasCaption}>
 						{canvas.name ?? 'Canvas'}
 					</span>
 				</button>
 				<button
 					type="button"
-					class="absolute right-1 top-1 rounded-full bg-black/60 px-1.5 py-0.5 text-xs text-white touch-manipulation"
+					class={canvasDelBtn}
 					onclick={() => removeAttachment(canvas.id)}
 					aria-label="Remove canvas"
 				>
-					<X class="h-3 w-3" aria-hidden="true" />
+					<X size={12} aria-hidden="true" />
 				</button>
 			</div>
 		{/each}
@@ -378,60 +629,50 @@
 
 {#if files.length > 0 || links.length > 0}
 	<ul
-		class="note-scrollbar-hidden scrollable max-h-36 space-y-1.5 overflow-y-auto px-3 pb-2"
+		class={`note-scrollbar-hidden scrollable overflow-y-auto ${filesList}`}
 		aria-label="Files and links"
 	>
 		{#each files as file (file.id)}
-			<li
-				class="flex items-center gap-2 rounded-lg border border-black/10 bg-black/5 px-2 py-1.5 dark:border-white/10 dark:bg-white/5"
-			>
-				<span
-					class="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-black/10 text-[10px] font-bold tracking-wide text-[var(--scrapscache-text)] dark:bg-white/10"
-					aria-hidden="true">{fileIconLabel(file.mime, file.name)}</span
-				>
+			<li class={fileItem}>
+				<span class={fileBadge} aria-hidden="true">{fileIconLabel(file.mime, file.name)}</span>
 				<button
 					type="button"
-					class="min-w-0 flex-1 text-left touch-manipulation"
+					class={fileActionBtn}
 					onclick={() => void openFile(file)}
 					aria-label={`Open ${file.name ?? 'file'}`}
 				>
-					<div class="truncate text-sm text-[var(--scrapscache-text)]">
+					<div class={fileTitle}>
 						{file.name || 'Attachment'}
 					</div>
-					<div class="text-[10px] text-[var(--scrapscache-text-muted)]">
+					<div class={fileSize}>
 						<Format.Byte value={dataUrlByteLength(file.dataUrl)} unitSystem="binary" />
 					</div>
 				</button>
 				<button
 					type="button"
-					class="shrink-0 rounded-full px-1.5 py-0.5 text-xs text-[var(--scrapscache-text-muted)] touch-manipulation"
+					class={fileRemoveBtn}
 					onclick={() => removeAttachment(file.id)}
 					aria-label="Remove file"
 				>
-					<X class="h-3.5 w-3.5" aria-hidden="true" />
+					<X size={14} aria-hidden="true" />
 				</button>
 			</li>
 		{/each}
 		{#each links as url (url)}
 			{@const card = localLinkCard(url)}
-			<li
-				class="flex items-center gap-2 rounded-lg border border-black/10 bg-black/5 px-2 py-1.5 dark:border-white/10 dark:bg-white/5"
-			>
-				<span
-					class="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-black/10 text-[10px] font-bold tracking-wide text-[var(--scrapscache-text)] dark:bg-white/10"
-					aria-hidden="true">{card?.badge ?? '↗'}</span
-				>
+			<li class={fileItem}>
+				<span class={fileBadge} aria-hidden="true">{card?.badge ?? '↗'}</span>
 				<a
 					href={url}
 					target="_blank"
 					rel="noreferrer noopener"
-					class="min-w-0 flex-1 text-left touch-manipulation"
+					class={fileActionBtn}
 					aria-label={`Open ${card?.hostname ?? url}`}
 				>
-					<div class="truncate text-sm text-[var(--scrapscache-text)]">
+					<div class={fileTitle}>
 						{card?.hostname ?? url}
 					</div>
-					<div class="truncate text-[10px] text-[var(--scrapscache-text-muted)]">
+					<div class={fileSize}>
 						{card?.path || url}
 					</div>
 				</a>
@@ -441,19 +682,19 @@
 {/if}
 
 {#if photos.length > 0 || pendingPhotos.length > 0}
-	<div class="scrollable flex gap-2 overflow-x-auto px-3 pb-2" aria-label="Photos">
+	<div class={`scrollable overflow-x-auto ${photosScroller}`} aria-label="Photos">
 		{#each photos as img (img.id)}
-			<div class="relative shrink-0">
+			<div class={photoWrap}>
 				<button
 					type="button"
-					class="block h-32 overflow-hidden rounded-lg touch-manipulation"
+					class={photoBtn}
 					onclick={() => void openPhoto(img.id)}
 					aria-label={`Open ${img.name ?? 'photo'}`}
 				>
 					<img
 						src={displayImageSrc(img)}
 						alt={img.name ?? 'Photo'}
-						class="h-32 w-auto max-w-[15rem] object-cover"
+						class={photoImg}
 						loading="lazy"
 						decoding="async"
 						draggable="false"
@@ -461,20 +702,16 @@
 				</button>
 				<button
 					type="button"
-					class="absolute right-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-full bg-black/60 text-white touch-manipulation"
+					class={photoDelBtn}
 					onclick={() => removeAttachment(img.id)}
 					aria-label="Remove photo"
 				>
-					<X class="h-3.5 w-3.5" aria-hidden="true" />
+					<X size={14} aria-hidden="true" />
 				</button>
 			</div>
 		{/each}
 		{#each pendingPhotos as img (img.id)}
-			<div
-				class="h-32 w-32 shrink-0 animate-pulse rounded-lg bg-black/10 dark:bg-white/10"
-				role="img"
-				aria-label={`Loading ${img.name ?? 'photo'}`}
-			></div>
+			<div class={photoPulse} role="img" aria-label={`Loading ${img.name ?? 'photo'}`}></div>
 		{/each}
 	</div>
 {/if}
@@ -512,15 +749,15 @@
 		}}
 		preventScroll={false}
 	>
-		<Dialog.Backdrop class="fixed inset-0 z-50 bg-black/45" />
-		<Dialog.Positioner class="fixed inset-0 z-50 grid place-items-center p-4">
-			<Dialog.Content class="scrapscache-dialog w-full max-w-sm p-4 text-[var(--scrapscache-text)]">
-				<div class="mb-3 flex items-start justify-between gap-3">
+		<Dialog.Backdrop class={dialogBackdrop} />
+		<Dialog.Positioner class={dialogPositioner}>
+			<Dialog.Content class={`${dialog().panel} ${dialogContentClass}`}>
+				<div class={dialogHeader}>
 					<div>
-						<Dialog.Title id="photo-quality-title" class="text-base font-semibold"
+						<Dialog.Title id="photo-quality-title" class={dialogTitleClass}
 							>Photo quality</Dialog.Title
 						>
-						<p class="mt-0.5 text-xs text-[var(--scrapscache-text-muted)]">
+						<p class={dialogSubtitle}>
 							Choose once for {filesAwaitingQuality.length === 1
 								? 'this attachment'
 								: `these ${filesAwaitingQuality.length} attachments`}.
@@ -528,32 +765,28 @@
 					</div>
 					<Dialog.CloseTrigger
 						type="button"
-						class="icon-btn h-9 w-9 shrink-0 p-2 touch-manipulation"
+						class={`icon-btn ${dialogCloseTrigger}`}
 						aria-label="Cancel attachments"
 					>
-						<X class="h-4 w-4" aria-hidden="true" />
+						<X size={16} aria-hidden="true" />
 					</Dialog.CloseTrigger>
 				</div>
-				<div class="grid grid-cols-2 gap-2">
+				<div class={qualityChoiceGrid}>
 					<button
 						type="button"
-						class="scrapscache-button scrapscache-button-primary min-h-20 px-3 py-3 text-left"
+						class={`${button({ variant: 'primary' })} ${qualityChoiceBtn}`}
 						onclick={() => chooseImageQuality('compressed')}
 					>
-						<span class="block text-sm font-semibold">Compressed</span>
-						<span class="mt-1 block text-[11px] leading-4 opacity-85">
-							Small file · A4 text stays readable
-						</span>
+						<span class={qualityTitle}>Compressed</span>
+						<span class={qualityDescCompressed}> Small file · A4 text stays readable </span>
 					</button>
 					<button
 						type="button"
-						class="scrapscache-button scrapscache-button-secondary min-h-20 px-3 py-3 text-left"
+						class={`${button({ variant: 'secondary' })} ${qualityChoiceBtn}`}
 						onclick={() => chooseImageQuality('hd')}
 					>
-						<span class="block text-sm font-semibold">HD</span>
-						<span class="mt-1 block text-[11px] leading-4 text-[var(--scrapscache-text-muted)]">
-							Sharper image · larger file
-						</span>
+						<span class={qualityTitle}>HD</span>
+						<span class={qualityDescHd}> Sharper image · larger file </span>
 					</button>
 				</div>
 			</Dialog.Content>
@@ -561,71 +794,68 @@
 	</Dialog.Root>
 {/if}
 
-<footer
-	use:footerInteractions
-	class="flex shrink-0 items-center justify-between gap-2 border-t border-black/5 px-3 py-2 dark:border-white/10"
->
-	<div class="flex shrink-0 items-center gap-1">
+<footer use:footerInteractions class={footerBar}>
+	<div class={footerGroupLeft}>
 		<Tooltip content="Attach">
 			<button
 				type="button"
-				class="icon-btn h-10 w-10 p-2 touch-manipulation"
+				class={`icon-btn ${footerActionBtn}`}
 				title="Attach"
 				onclick={openAttach}
 				aria-label="Attach"
 			>
-				<Paperclip class="h-5 w-5" aria-hidden="true" />
+				<Paperclip class={iconMd} aria-hidden="true" />
 			</button>
 		</Tooltip>
 		<Tooltip content="New canvas">
 			<button
 				type="button"
-				class="icon-btn h-10 w-10 p-2 touch-manipulation"
+				class={`icon-btn ${footerActionBtn}`}
 				title="New canvas"
 				onclick={() => void openCanvas()}
 				aria-label="New canvas"
 			>
-				<PenLine class="h-5 w-5" aria-hidden="true" />
+				<PenLine class={iconMd} aria-hidden="true" />
 			</button>
 		</Tooltip>
 		<Tooltip content="Labels">
 			<button
 				type="button"
-				class="icon-btn h-10 w-10 p-2 touch-manipulation"
+				class={`icon-btn ${footerActionBtn}`}
 				title="Labels"
 				onclick={openTags}
 				aria-label="Labels"
 			>
-				<Tag class="h-5 w-5" fill={hasLabels ? 'currentColor' : 'none'} aria-hidden="true" />
+				<Tag class={iconMd} fill={hasLabels ? 'currentColor' : 'none'} aria-hidden="true" />
 			</button>
 		</Tooltip>
 	</div>
 
-	<div class="flex max-w-[calc(100%-5.5rem)] flex-wrap items-center justify-end gap-1">
+	<div class={footerGroupRight}>
 		<Tooltip content="Color">
 			<button
 				type="button"
-				class="icon-btn h-10 w-10 p-2 touch-manipulation"
+				class={`icon-btn ${footerActionBtn}`}
 				title="Color"
 				aria-label="Color"
 				onclick={() => onOpenColor?.()}
 			>
-				<Palette class="h-5 w-5" aria-hidden="true" />
+				<Palette class={iconMd} aria-hidden="true" />
 			</button>
 		</Tooltip>
 		{#if showCopy}
 			<Tooltip content="Copy note">
 				<button
 					type="button"
-					class="icon-btn h-10 w-10 p-2 touch-manipulation"
+					class={`icon-btn ${footerActionBtn}`}
 					title="Copy note"
 					aria-label="Copy note"
 					onclick={() => onCopy?.()}
 				>
 					{#if copyFlash}
-						<Check class="h-5 w-5" aria-hidden="true" />
+						<Check class={iconMd} aria-hidden="true" />
 					{:else}
-						<Copy class="h-5 w-5" aria-hidden="true" />
+						<Copy class={iconMd} aria-hidden="true" />
 					{/if}
 				</button>
 			</Tooltip>
@@ -634,17 +864,17 @@
 			<Tooltip content={trashed ? 'Restore' : archived ? 'Unarchive' : 'Archive'}>
 				<button
 					type="button"
-					class="icon-btn h-10 w-10 p-2 touch-manipulation"
+					class={`icon-btn ${footerActionBtn}`}
 					title={trashed ? 'Restore' : archived ? 'Unarchive' : 'Archive'}
 					aria-label={trashed ? 'Restore' : archived ? 'Unarchive' : 'Archive'}
 					onclick={() => onArchive?.()}
 				>
 					{#if trashed}
-						<RotateCcw class="h-5 w-5" aria-hidden="true" />
+						<RotateCcw class={iconMd} aria-hidden="true" />
 					{:else if archived}
-						<ArchiveRestore class="h-5 w-5" aria-hidden="true" />
+						<ArchiveRestore class={iconMd} aria-hidden="true" />
 					{:else}
-						<Archive class="h-5 w-5" aria-hidden="true" />
+						<Archive class={iconMd} aria-hidden="true" />
 					{/if}
 				</button>
 			</Tooltip>
@@ -653,12 +883,12 @@
 			<Tooltip content="Delete note">
 				<button
 					type="button"
-					class="icon-btn h-10 w-10 p-2 text-red-600 touch-manipulation dark:text-red-400"
+					class={`icon-btn ${footerTrashBtn}`}
 					title="Delete note"
 					aria-label="Delete note"
 					onclick={() => onDelete?.()}
 				>
-					<Trash2 class="h-5 w-5" aria-hidden="true" />
+					<Trash2 class={iconMd} aria-hidden="true" />
 				</button>
 			</Tooltip>
 		{/if}
@@ -666,12 +896,12 @@
 			<Tooltip content="Done">
 				<button
 					type="button"
-					class="icon-btn h-10 w-10 p-2 touch-manipulation"
+					class={`icon-btn ${footerActionBtn}`}
 					title="Done"
 					aria-label="Done"
 					onclick={() => onClose?.()}
 				>
-					<Check class="h-5 w-5" aria-hidden="true" />
+					<Check class={iconMd} aria-hidden="true" />
 				</button>
 			</Tooltip>
 		{/if}

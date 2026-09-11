@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { css } from 'styled-system/css';
+	import { button, dialog } from 'styled-system/recipes';
 	import WorkspaceRow from './WorkspaceRow.svelte';
 	import { onDestroy, onMount } from 'svelte';
 	import QRCode from 'qrcode';
@@ -421,6 +423,129 @@
 		stopWaiting();
 		onClose();
 	}
+
+	const modalOverlay = css({ position: 'fixed', inset: 0, zIndex: 50 });
+	const modalBackdrop = css({ position: 'absolute', inset: 0, bg: 'black/40' });
+	const modalPositioner = css({
+		position: 'absolute',
+		inset: 0,
+		display: 'flex',
+		alignItems: 'center',
+		justifyContent: 'center',
+		p: '1rem'
+	});
+	const modalDialogClass = css({
+		position: 'relative',
+		maxH: 'calc(100dvh - 2rem)',
+		w: 'full',
+		maxW: 'md',
+		overflowY: 'auto',
+		p: '1.25rem'
+	});
+	const modalHeader = css({
+		mb: '1rem',
+		display: 'flex',
+		alignItems: 'center',
+		justifyContent: 'space-between'
+	});
+	const modalTitle = css({
+		display: 'flex',
+		alignItems: 'center',
+		gap: '0.5rem',
+		fontSize: 'lg',
+		fontWeight: 'medium',
+		color: 'scrapscache.text'
+	});
+	const closeBtn = css({ h: '2rem', w: '2rem' });
+	const sectionGap4 = css({ display: 'flex', flexDirection: 'column', gap: '1rem' });
+	const sectionGap3 = css({ display: 'flex', flexDirection: 'column', gap: '0.75rem' });
+	const sectionGap2 = css({ display: 'flex', flexDirection: 'column', gap: '0.5rem' });
+	const sectionGap1 = css({ display: 'flex', flexDirection: 'column', gap: '0.25rem' });
+	const sectionBorderTop = css({
+		borderTopWidth: '1px',
+		borderColor: 'scrapscache.border',
+		pt: '1rem'
+	});
+	const rowGap2 = css({ display: 'flex', gap: '0.5rem' });
+	const inputBase = css({
+		w: 'full',
+		rounded: 'md',
+		borderWidth: '1px',
+		borderColor: 'scrapscache.border',
+		bg: 'scrapscache.surface',
+		px: '0.75rem',
+		py: '0.625rem',
+		fontSize: 'sm',
+		color: 'scrapscache.text',
+		outline: 'none',
+		_placeholder: { color: 'scrapscache.textMuted' }
+	});
+	const handoverInput = css({
+		w: 'full',
+		rounded: 'md',
+		borderWidth: '1px',
+		borderColor: 'scrapscache.border',
+		bg: 'scrapscache.surface',
+		px: '0.75rem',
+		py: '0.5rem',
+		textAlign: 'center',
+		fontSize: 'lg',
+		fontWeight: 'bold',
+		letterSpacing: 'wider',
+		color: 'scrapscache.text',
+		outline: 'none'
+	});
+	const orDividerWrap = css({ display: 'flex', alignItems: 'center', gap: '0.75rem' });
+	const orDividerLine = css({ h: '1px', flex: '1', bg: 'scrapscache.border' });
+	const orDividerText = css({
+		fontSize: '11px',
+		textTransform: 'uppercase',
+		letterSpacing: 'wider',
+		color: 'scrapscache.textMuted'
+	});
+	const linkMutedBtn = css({
+		w: 'full',
+		fontSize: 'xs',
+		color: 'scrapscache.textMuted',
+		touchAction: 'manipulation',
+		cursor: 'pointer',
+		textAlign: 'center'
+	});
+	const qrWrap = css({ display: 'flex', justifyContent: 'center' });
+	const qrBox = css({ h: '220px', w: '220px', rounded: 'lg', bg: 'white', p: '0.5rem' });
+	const digitsBox = css({
+		rounded: 'xl',
+		borderWidth: '1px',
+		borderColor: 'scrapscache.border',
+		bg: 'scrapscache.bg',
+		px: '0.5rem',
+		py: '1.25rem'
+	});
+	const digitsInner = css({
+		display: 'flex',
+		alignItems: 'center',
+		justifyContent: 'center',
+		gap: '0.25rem'
+	});
+	const digitsHyphen = css({ px: '0.125rem', color: 'scrapscache.textMuted' });
+	const digitsText = css({
+		fontFamily: 'mono',
+		fontSize: '1.35rem',
+		fontWeight: 'semibold',
+		letterSpacing: '0.14em',
+		color: 'scrapscache.text'
+	});
+	const progressTrack = css({ h: '0.25rem', overflow: 'hidden', rounded: 'full' });
+	const progressFill = css({ h: 'full', rounded: 'full', transition: 'width 1000ms linear' });
+	const detailsSection = css({
+		borderTopWidth: '1px',
+		borderColor: 'scrapscache.border',
+		pt: '0.75rem'
+	});
+	const detailsSummary = css({ cursor: 'pointer', fontSize: 'sm', color: 'scrapscache.textMuted' });
+	const dangerText = css({ fontSize: 'sm', color: 'scrapscache.danger' });
+	const mutedSmText = css({ fontSize: 'sm', color: 'scrapscache.textMuted' });
+	const mutedXsText = css({ fontSize: 'xs', color: 'scrapscache.textMuted' });
 </script>
 
 <Dialog.Root
@@ -429,17 +554,13 @@
 	preventScroll={false}
 	closeOnEscape={rowHoldingEscape === null}
 >
-	<div {@attach portalToAppFloat} class="fixed inset-0 z-50" role="presentation">
-		<Dialog.Backdrop class="absolute inset-0 bg-black/40" />
-		<Dialog.Positioner class="absolute inset-0 flex items-center justify-center p-4">
-			<Dialog.Content
-				class="scrapscache-dialog relative max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto p-5"
-			>
-				<div class="mb-4 flex items-center justify-between">
-					<Dialog.Title
-						class="flex items-center gap-2 text-lg font-medium text-[var(--scrapscache-text)]"
-					>
-						<Cloud class="h-5 w-5" aria-hidden="true" />
+	<div {@attach portalToAppFloat} class={modalOverlay} role="presentation">
+		<Dialog.Backdrop class={modalBackdrop} />
+		<Dialog.Positioner class={modalPositioner}>
+			<Dialog.Content class={`${dialog().panel} ${modalDialogClass}`}>
+				<div class={modalHeader}>
+					<Dialog.Title class={modalTitle}>
+						<Cloud size={20} aria-hidden="true" />
 						{mode === 'menu'
 							? 'Workspaces'
 							: mode === 'register'
@@ -453,15 +574,15 @@
 					<Dialog.CloseTrigger
 						type="button"
 						disabled={busy}
-						class="icon-btn h-8 w-8"
+						class={`icon-btn ${closeBtn}`}
 						aria-label="Close"
 					>
-						<X class="h-4 w-4" aria-hidden="true" />
+						<X size={16} aria-hidden="true" />
 					</Dialog.CloseTrigger>
 				</div>
 
 				{#if mode === 'menu'}
-					<div class="space-y-4">
+					<div class={sectionGap4}>
 						<div class="workspace-list" aria-label="Workspaces on this device">
 							<button
 								type="button"
@@ -475,9 +596,15 @@
 									syncStore.activePid !== LOCAL_PROFILE_ID && void switchProfile(LOCAL_PROFILE_ID)}
 							>
 								<CloudOff size={18} aria-hidden="true" />
-								<span class="min-w-0 flex-1 text-left"
-									><span class="block truncate">Anonymous workspace</span><span
-										class="workspace-caption"
+								<span class={css({ minW: 0, flex: '1', textAlign: 'left' })}
+									><span
+										class={css({
+											display: 'block',
+											overflow: 'hidden',
+											textOverflow: 'ellipsis',
+											whiteSpace: 'nowrap'
+										})}>Anonymous workspace</span
+									><span class="workspace-caption"
 										>Only on this device{sizeLabel(LOCAL_PROFILE_ID)
 											? ' · ' + sizeLabel(LOCAL_PROFILE_ID)
 											: ''}</span
@@ -524,8 +651,8 @@
 							>
 						</div>
 						{#if syncStore.account}
-							<div class="border-t border-[var(--scrapscache-border)] pt-4">
-								<div class="flex gap-2">
+							<div class={sectionBorderTop}>
+								<div class={rowGap2}>
 									<button
 										type="button"
 										onclick={() => {
@@ -536,7 +663,7 @@
 											} else void syncNow();
 										}}
 										disabled={busy}
-										class="scrapscache-button scrapscache-button-primary flex flex-1 items-center justify-center gap-2 px-3 py-2.5 text-sm"
+										class={`${button({ variant: 'primary', size: 'md' })} ${css({ flex: '1', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' })}`}
 										><RefreshCw
 											size={16}
 											class={syncing ? 'animate-spin' : ''}
@@ -551,47 +678,48 @@
 										type="button"
 										onclick={() => void startExistingConnection()}
 										disabled={busy}
-										class="scrapscache-button scrapscache-button-secondary flex-1 px-3 py-2.5 text-sm"
+										class={`${button({ variant: 'secondary', size: 'md' })} ${css({ flex: '1' })}`}
 										>Connect device</button
 									>
 								</div>
 								{#if syncStore.progress}
 									{@const progress = syncStore.progress}
 									{@const percent = progressPercent(progress.loadedBytes, progress.totalBytes)}
-									<p class="mt-2 text-xs text-[var(--scrapscache-text-muted)]" role="status">
+									<p class={`${mutedXsText} ${css({ mt: '0.5rem' })}`} role="status">
 										{progress.phase === 'upload' ? 'Uploading' : 'Downloading'} · <Format.Byte
 											value={progress.loadedBytes}
 										/>
 									</p>
-									<Progress.Root value={progress.totalBytes ? percent : null} class="mt-2 w-full"
-										><Progress.Track
-											class="scrapscache-progress-track h-1 overflow-hidden rounded-full"
+									<Progress.Root
+										value={progress.totalBytes ? percent : null}
+										class={css({ mt: '0.5rem', w: 'full' })}
+										><Progress.Track class={`scrapscache-progress-track ${progressTrack}`}
 											><Progress.Range
-												class="scrapscache-progress-value h-full"
+												class={`scrapscache-progress-value ${css({ h: 'full' })}`}
 												style={`width: ${progress.totalBytes ? percent : 100}%`}
 											/></Progress.Track
 										></Progress.Root
 									>
-								{:else if syncing}<p class="mt-2 text-xs" role="status">Syncing…</p>{/if}
+								{:else if syncing}<p
+										class={`${mutedXsText} ${css({ mt: '0.5rem' })}`}
+										role="status"
+									>
+										Syncing…
+									</p>{/if}
 							</div>
 						{/if}
-						{#if handoverBlocked}<p class="text-xs text-[var(--scrapscache-text-muted)]">
+						{#if handoverBlocked}<p class={mutedXsText}>
 								Wait for sync to finish before changing workspaces.
 							</p>{/if}
-						{#if error || syncError}<p
-								class="text-sm text-[var(--scrapscache-danger)]"
-								role="alert"
-							>
+						{#if error || syncError}<p class={dangerText} role="alert">
 								{error || syncError}
 							</p>{/if}
-						{#if info}<p class="text-sm text-[var(--scrapscache-text-muted)]" role="status">
+						{#if info}<p class={mutedSmText} role="status">
 								{info}
 							</p>{/if}
-						<details class="border-t border-[var(--scrapscache-border)] pt-3">
-							<summary class="cursor-pointer text-sm text-[var(--scrapscache-text-muted)]"
-								>Manage workspace</summary
-							>
-							<div class="mt-2 space-y-1">
+						<details class={detailsSection}>
+							<summary class={detailsSummary}>Manage workspace</summary>
+							<div class={`${sectionGap1} ${css({ mt: '0.5rem' })}`}>
 								<button
 									class="manage-row"
 									disabled={busy}
@@ -618,7 +746,7 @@
 										></button
 									>
 									<button
-										class="manage-row text-[var(--scrapscache-danger)]"
+										class={`manage-row ${dangerText}`}
 										disabled={busy}
 										onclick={() => {
 											confirmation = 'delete';
@@ -636,8 +764,8 @@
 						</details>
 					</div>
 				{:else if mode === 'confirm'}
-					<div class="space-y-4">
-						<p class="text-sm leading-relaxed text-[var(--scrapscache-text-muted)]">
+					<div class={sectionGap4}>
+						<p class={`${mutedSmText} ${css({ lineHeight: 'relaxed' })}`}>
 							{#if confirmation === 'force'}
 								This device’s notes will replace the cloud version using the same sync key. Notes
 								only in the cloud will be removed. Other devices will receive these notes as the
@@ -648,13 +776,13 @@
 								Existing anonymous notes are kept.
 							{/if}
 						</p>
-						{#if error}<p class="text-sm text-[var(--scrapscache-danger)]" role="alert">
+						{#if error}<p class={dangerText} role="alert">
 								{error}
 							</p>{/if}
-						<div class="flex gap-2">
+						<div class={rowGap2}>
 							<button
 								type="button"
-								class="scrapscache-button scrapscache-button-secondary flex-1 px-3 py-2"
+								class={`${button({ variant: 'secondary', size: 'sm' })} ${css({ flex: '1' })}`}
 								disabled={busy}
 								onclick={() => {
 									mode = 'menu';
@@ -664,9 +792,7 @@
 							>
 							<button
 								type="button"
-								class="scrapscache-button flex-1 px-3 py-2 {confirmation === 'delete'
-									? 'scrapscache-button-destructive-solid'
-									: 'scrapscache-button-primary'}"
+								class={`${button({ variant: confirmation === 'delete' ? 'destructive' : 'primary', size: 'sm' })} ${css({ flex: '1' })}`}
 								disabled={busy}
 								onclick={() =>
 									confirmation === 'force' ? void forceResync() : void deleteCloudData()}
@@ -679,42 +805,39 @@
 						</div>
 					</div>
 				{:else if mode === 'register'}
-					<div class="space-y-4">
-						<p class="text-sm leading-relaxed text-[var(--scrapscache-text-muted)]">
+					<div class={sectionGap4}>
+						<p class={`${mutedSmText} ${css({ lineHeight: 'relaxed' })}`}>
 							{syncStore.account
 								? 'It starts empty. Your existing workspaces stay unchanged.'
 								: 'Your current anonymous notes will be copied into it.'}
 						</p>
-						<div class="space-y-2">
+						<div class={sectionGap2}>
 							<input
 								bind:value={newName}
 								placeholder="Workspace name (optional)"
 								maxlength="60"
-								class="scrapscache-input w-full px-3 py-2.5 text-sm"
+								class={inputBase}
 								aria-label="Sync key name"
 								onkeydown={(event) => event.key === 'Enter' && void create()}
 							/>
-							{#if error}<p class="text-sm text-[var(--scrapscache-danger)]">{error}</p>{/if}
+							{#if error}<p class={dangerText}>{error}</p>{/if}
 							<button
 								type="button"
 								onclick={() => void create()}
 								disabled={busy}
-								class="scrapscache-button scrapscache-button-primary w-full px-3 py-2.5 text-sm font-medium"
+								class={`${button({ variant: 'primary', size: 'md' })} ${css({ w: 'full' })}`}
 								>{operation === 'create' ? 'Creating…' : 'Create workspace'}</button
 							>
 						</div>
-						<div class="flex items-center gap-3" aria-hidden="true">
-							<span class="h-px flex-1 bg-[var(--scrapscache-border)]"></span>
-							<span
-								class="text-[11px] uppercase tracking-wider text-[var(--scrapscache-text-muted)]"
-								>or</span
-							>
-							<span class="h-px flex-1 bg-[var(--scrapscache-border)]"></span>
+						<div class={orDividerWrap} aria-hidden="true">
+							<span class={orDividerLine}></span>
+							<span class={orDividerText}>or</span>
+							<span class={orDividerLine}></span>
 						</div>
 						<button
 							type="button"
 							disabled={busy}
-							class="scrapscache-button scrapscache-button-secondary w-full px-3 py-2.5 text-sm"
+							class={`${button({ variant: 'secondary', size: 'md' })} ${css({ w: 'full' })}`}
 							onclick={() => {
 								mode = 'link';
 								error = '';
@@ -725,13 +848,12 @@
 							type="button"
 							onclick={() => (mode = 'menu')}
 							disabled={busy}
-							class="w-full text-xs text-[var(--scrapscache-text-muted)] touch-manipulation"
-							>← Back to workspaces</button
+							class={linkMutedBtn}>← Back to workspaces</button
 						>
 					</div>
 				{:else if mode === 'link'}
-					<div class="space-y-3">
-						<p class="text-sm text-[var(--scrapscache-text-muted)]">
+					<div class={sectionGap3}>
+						<p class={mutedSmText}>
 							On your other device open Sync and choose Connect device. Enter the one-time code
 							shown there.
 						</p>
@@ -743,61 +865,48 @@
 							placeholder="XXXX-XXXX-XXXX-XXXX"
 							maxlength="19"
 							spellcheck="false"
-							class="scrapscache-input w-full px-3 py-2 text-center text-lg font-bold tracking-wider"
+							class={handoverInput}
 							onkeydown={(event) => event.key === 'Enter' && void beginLink()}
-						/>{#if error}<p class="text-sm text-[var(--scrapscache-danger)]">{error}</p>{/if}<button
+						/>{#if error}<p class={dangerText}>{error}</p>{/if}<button
 							type="button"
 							onclick={() => void beginLink()}
 							disabled={busy}
-							class="scrapscache-button scrapscache-button-primary w-full px-3 py-2 text-sm font-medium"
+							class={`${button({ variant: 'primary', size: 'md' })} ${css({ w: 'full' })}`}
 							>{operation === 'connect' ? 'Starting…' : 'Start connection'}</button
 						><button
 							type="button"
 							onclick={() => (mode = 'menu')}
 							disabled={busy}
-							class="w-full text-xs text-[var(--scrapscache-text-muted)] touch-manipulation"
-							>← Back</button
+							class={linkMutedBtn}>← Back</button
 						>
 					</div>
 				{:else if mode === 'pairing'}
-					<p class="text-sm text-[var(--scrapscache-text)]" role="status">
+					<p class={css({ fontSize: 'sm', color: 'scrapscache.text' })} role="status">
 						Connected. Syncing workspace…
 					</p>
 				{:else if mode === 'waiting'}
-					<div class="space-y-5">
+					<div class={css({ display: 'flex', flexDirection: 'column', gap: '1.25rem' })}>
 						{#if waiting?.role === 'existing'}
 							<div>
-								<p class="text-xs font-medium tracking-wide text-[var(--scrapscache-text-muted)]">
+								<p class={`${mutedXsText} ${css({ fontWeight: 'medium', letterSpacing: 'wide' })}`}>
 									On the new device
 								</p>
-								<p class="mt-1 text-sm text-[var(--scrapscache-text)]">
+								<p class={`${css({ mt: '0.25rem', fontSize: 'sm', color: 'scrapscache.text' })}`}>
 									Scan the QR code, open the link, or type the one-time code
 								</p>
 							</div>
 							{#if qrDataUrl}
-								<div class="flex justify-center">
-									<img
-										src={qrDataUrl}
-										alt="Pair this device"
-										class="h-[220px] w-[220px] rounded-lg bg-white p-2"
-									/>
+								<div class={qrWrap}>
+									<img src={qrDataUrl} alt="Pair this device" class={qrBox} />
 								</div>
 							{/if}
-							<div
-								class="rounded-xl border border-[var(--scrapscache-border)] bg-[var(--scrapscache-bg)] px-2 py-5"
-								aria-label="One-time pairing code"
-							>
-								<div class="flex items-center justify-center gap-1">
+							<div class={digitsBox} aria-label="One-time pairing code">
+								<div class={digitsInner}>
 									{#each pairingGroups(waiting.syncCode) as group, index (index)}
 										{#if index > 0}
-											<span class="px-0.5 text-[var(--scrapscache-text-muted)]" aria-hidden="true"
-												>·</span
-											>
+											<span class={digitsHyphen} aria-hidden="true">·</span>
 										{/if}
-										<span
-											class="font-mono text-[1.35rem] font-semibold tracking-[0.14em] text-[var(--scrapscache-text)]"
-											>{group}</span
-										>
+										<span class={digitsText}>{group}</span>
 									{/each}
 								</div>
 							</div>
@@ -805,33 +914,39 @@
 								<Clipboard.Trigger
 									type="button"
 									aria-label="Copy pairing link"
-									class="scrapscache-button w-full px-3 py-2.5 text-sm font-medium {copyFlash
-										? 'border-[var(--scrapscache-success)] bg-[var(--scrapscache-success)] text-[var(--scrapscache-success-foreground)]'
-										: 'scrapscache-button-secondary'}"
+									class={`${button({ variant: 'secondary', size: 'md' })} ${css({ w: 'full' })} ${copyFlash ? css({ borderColor: 'scrapscache.success', bg: 'scrapscache.success', color: 'scrapscache.successForeground' }) : ''}`}
 								>
 									{copyFlash ? 'Copied' : 'Copy pairing link'}
 								</Clipboard.Trigger>
 							</Clipboard.Root>
 						{:else}
 							<div>
-								<p class="text-xs font-medium tracking-wide text-[var(--scrapscache-text-muted)]">
+								<p class={`${mutedXsText} ${css({ fontWeight: 'medium', letterSpacing: 'wide' })}`}>
 									On the other device
 								</p>
-								<p class="mt-1 text-sm text-[var(--scrapscache-text)]">
+								<p class={`${css({ mt: '0.25rem', fontSize: 'sm', color: 'scrapscache.text' })}`}>
 									Open Sync and choose Connect device
 								</p>
 							</div>
 						{/if}
-						<div class="space-y-1.5">
+						<div class={css({ display: 'flex', flexDirection: 'column', gap: '0.375rem' })}>
 							<div
-								class="flex items-center justify-between text-xs text-[var(--scrapscache-text-muted)]"
+								class={css({
+									display: 'flex',
+									alignItems: 'center',
+									justifyContent: 'space-between',
+									fontSize: 'xs',
+									color: 'scrapscache.textMuted'
+								})}
 							>
 								<span>Expires in</span>
-								<span class="tabular-nums text-[var(--scrapscache-text)]">{secondsLeft()}s</span>
+								<span class={css({ fontVariantNumeric: 'tabular-nums', color: 'scrapscache.text' })}
+									>{secondsLeft()}s</span
+								>
 							</div>
-							<div class="scrapscache-progress-track h-1 overflow-hidden rounded-full">
+							<div class={`scrapscache-progress-track ${progressTrack}`}>
 								<div
-									class="scrapscache-progress-value h-full rounded-full transition-[width] duration-1000 ease-linear"
+									class={`scrapscache-progress-value ${progressFill}`}
 									style={`width: ${expiryRatio() * 100}%`}
 								></div>
 							</div>
@@ -843,8 +958,14 @@
 								waiting = null;
 								mode = syncStore.isLoggedIn ? 'menu' : 'link';
 							}}
-							class="w-full text-sm text-[var(--scrapscache-text-muted)] touch-manipulation"
-							>Cancel</button
+							class={css({
+								w: 'full',
+								fontSize: 'sm',
+								color: 'scrapscache.textMuted',
+								touchAction: 'manipulation',
+								cursor: 'pointer',
+								textAlign: 'center'
+							})}>Cancel</button
 						>
 					</div>
 				{/if}

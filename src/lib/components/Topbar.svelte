@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { css } from 'styled-system/css';
 	import { uiStore } from '$lib/stores/ui.svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { downloadJSON } from '$lib/utils';
@@ -45,8 +46,8 @@
 	};
 	const SYNC_STATUS_CLASS: Record<SyncStatus, string> = {
 		[SyncStatus.Normal]: '',
-		[SyncStatus.Warning]: 'text-[var(--scrapscache-warning)]',
-		[SyncStatus.Danger]: 'text-[var(--scrapscache-danger)]'
+		[SyncStatus.Warning]: `text-[var(--scrapscache-warning)] ${css({ color: 'scrapscache.warning' })}`,
+		[SyncStatus.Danger]: `text-[var(--scrapscache-danger)] ${css({ color: 'scrapscache.danger' })}`
 	};
 
 	const { startNewNote, closeNote } = useEditorActions();
@@ -167,43 +168,124 @@
 			e.stopImmediatePropagation();
 		}
 	}
+
+	const topbarClass = css({
+		position: 'relative',
+		zIndex: 20,
+		display: 'flex',
+		h: 'var(--app-topbar-height)',
+		flexShrink: 0,
+		alignItems: 'center',
+		gap: { base: '0.25rem', sm: '0.5rem' },
+		px: { base: '0.5rem', sm: '0.75rem' }
+	});
+	const topbarIconBtn = css({ h: '2.5rem', w: '2.5rem', p: '0.5rem' });
+	const searchBox = css({
+		display: 'flex',
+		h: '2.5rem',
+		minH: '2.5rem',
+		maxH: '2.5rem',
+		minW: 0,
+		flex: '1',
+		alignItems: 'center',
+		gap: '0.5rem',
+		rounded: 'full',
+		borderWidth: '1px',
+		borderColor: 'scrapscache.border',
+		bg: 'scrapscache.surface',
+		px: '0.75rem'
+	});
+	const searchInputClass = css({
+		h: 'full',
+		minW: 0,
+		flex: '1',
+		appearance: 'none',
+		bg: 'transparent',
+		fontSize: 'sm',
+		color: 'scrapscache.text',
+		outline: 'none',
+		_placeholder: { color: 'scrapscache.textMuted' }
+	});
+	const clearBtnClass = css({
+		h: '1.5rem',
+		w: '1.5rem',
+		minH: 0,
+		flexShrink: 0,
+		appearance: 'none',
+		p: 0,
+		color: 'scrapscache.textMuted'
+	});
+	const iconSm = css({ h: '1rem', w: '1rem' });
+	const iconMd = css({ h: '1.25rem', w: '1.25rem' });
+	const menuPositioner = css({ zIndex: 30 });
+	const popoverClass = css({ w: '16rem', overflow: 'hidden', pt: '0.25rem' });
+	const storageCard = css({
+		display: 'flex',
+		flexDirection: 'column',
+		gap: '0.5rem',
+		px: '0.75rem',
+		py: '0.5rem',
+		fontSize: 'xs',
+		color: 'scrapscache.textMuted'
+	});
+	const storageRow = css({ display: 'flex', justifyContent: 'space-between', gap: '0.5rem' });
+	const storageProgressTrack = css({
+		h: '0.375rem',
+		overflow: 'hidden',
+		rounded: 'full',
+		bg: { base: 'black/10', _dark: 'white/10' }
+	});
+	const storageProgressBar = css({ h: 'full', bg: 'blue.600', transition: 'width 150ms ease' });
+	const menuItemClass = css({
+		display: 'flex',
+		h: '2rem',
+		w: 'full',
+		cursor: 'pointer',
+		alignItems: 'center',
+		gap: '0.5rem',
+		px: '0.75rem',
+		textAlign: 'left',
+		fontSize: 'sm',
+		color: 'scrapscache.text',
+		_hover: { bg: { base: 'black/5', _dark: 'white/10' } }
+	});
+	const menuSep = css({ borderTopWidth: '1px', borderColor: 'scrapscache.border' });
+	const backupErrorAlert = css({ px: '0.75rem', pb: '0.5rem', fontSize: 'xs', color: 'red.600' });
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<header
-	class="relative z-20 flex h-[var(--app-topbar-height)] shrink-0 items-center gap-1 px-2 sm:gap-2 sm:px-3"
-	onpointerdown={closeNote}
->
+<header class={topbarClass} onpointerdown={closeNote}>
 	<Tooltip content="Toggle sidebar">
 		<button
-			class="icon-btn h-10 w-10 p-2"
+			class={`icon-btn ${topbarIconBtn}`}
 			title="Toggle sidebar"
 			onclick={() => uiStore.toggleSidebar()}
 			aria-label="Toggle sidebar"
 		>
-			<MenuIcon class="h-5 w-5" aria-hidden="true" />
+			<MenuIcon class={iconMd} aria-hidden="true" />
 		</button>
 	</Tooltip>
 
-	<div
-		class="flex h-10 min-h-10 max-h-10 min-w-0 flex-1 items-center gap-2 rounded-full border border-[var(--scrapscache-border)] bg-[var(--scrapscache-surface)] px-3"
-	>
-		<Search class="h-4 w-4 shrink-0 text-[var(--scrapscache-text-muted)]" aria-hidden="true" />
+	<div class={searchBox}>
+		<Search
+			class={`${iconSm} ${css({ flexShrink: 0, color: 'scrapscache.textMuted' })}`}
+			aria-hidden="true"
+		/>
 		<input
 			value={uiStore.searchInput}
 			oninput={(event) => uiStore.setSearchInput(event.currentTarget.value)}
 			type="text"
 			placeholder="Search"
-			class="h-full min-w-0 flex-1 appearance-none bg-transparent text-sm text-[var(--scrapscache-text)] focus:outline-none placeholder:text-[var(--scrapscache-text-muted)]"
+			class={searchInputClass}
 		/>
 		{#if uiStore.searchInput}
 			<button
 				type="button"
-				class="icon-btn h-6 w-6 min-h-0 shrink-0 appearance-none p-0 text-[var(--scrapscache-text-muted)]"
+				class={`icon-btn ${clearBtnClass}`}
 				onclick={() => uiStore.clearSearch()}
 				aria-label="Clear search"
 			>
-				<X class="h-4 w-4" aria-hidden="true" />
+				<X class={iconSm} aria-hidden="true" />
 			</button>
 		{/if}
 	</div>
@@ -211,7 +293,7 @@
 	<Tooltip content={syncControlLabel}>
 		<button
 			type="button"
-			class="icon-btn h-10 w-10 p-2"
+			class={`icon-btn ${topbarIconBtn}`}
 			title={syncControlLabel}
 			onclick={() => {
 				pairingCode = '';
@@ -223,11 +305,15 @@
 			<!-- The spin turns this span, not the icon: Safari treats a transform on
 			     an svg root as its own user space, so the icon sat still there. -->
 			<span
-				class={['block h-5 w-5', notesStore.syncing && 'scrapscache-sync-icon-active']}
+				class={[
+					iconMd,
+					css({ display: 'block' }),
+					notesStore.syncing && 'scrapscache-sync-icon-active'
+				]}
 				data-scrapscache-sync-spinner
 			>
 				<Cloud
-					class={['h-5 w-5', SYNC_STATUS_CLASS[syncStatus]]}
+					class={[iconMd, SYNC_STATUS_CLASS[syncStatus]]}
 					data-scrapscache-sync-icon
 					aria-hidden="true"
 				/>
@@ -237,15 +323,15 @@
 
 	<Tooltip content={uiStore.layout === 'grid' ? 'List view' : 'Grid view'}>
 		<button
-			class="icon-btn h-10 w-10 p-2"
+			class={`icon-btn ${topbarIconBtn}`}
 			title="Toggle layout"
 			onclick={() => uiStore.toggleLayout()}
 			aria-label="Toggle layout"
 		>
 			{#if uiStore.layout === 'grid'}
-				<List class="h-5 w-5" aria-hidden="true" />
+				<List class={iconMd} aria-hidden="true" />
 			{:else}
-				<LayoutGrid class="h-5 w-5" aria-hidden="true" />
+				<LayoutGrid class={iconMd} aria-hidden="true" />
 			{/if}
 		</button>
 	</Tooltip>
@@ -256,20 +342,16 @@
 		closeOnSelect={false}
 	>
 		<Tooltip content="Settings">
-			<Menu.Trigger class="icon-btn h-10 w-10 p-2" title="Settings" aria-label="Settings">
-				<Settings class="h-5 w-5" aria-hidden="true" />
+			<Menu.Trigger class={`icon-btn ${topbarIconBtn}`} title="Settings" aria-label="Settings">
+				<Settings class={iconMd} aria-hidden="true" />
 			</Menu.Trigger>
 		</Tooltip>
-		<Menu.Positioner class="z-30">
-			<Menu.Content class="scrapscache-popover w-64 overflow-hidden pt-1">
+		<Menu.Positioner class={menuPositioner}>
+			<Menu.Content class={`scrapscache-popover ${popoverClass}`}>
 				{#if importingBackup}
 					{@const progress = notesStore.backupImportProgress}
-					<div
-						class="space-y-2 px-3 py-2 text-xs text-[var(--scrapscache-text-muted)]"
-						role="status"
-						aria-live="polite"
-					>
-						<div class="flex justify-between gap-2">
+					<div class={storageCard} role="status" aria-live="polite">
+						<div class={storageRow}>
 							<span
 								>{progress?.phase === BackupImportPhase.Finishing
 									? 'Finishing backup…'
@@ -278,9 +360,9 @@
 										: 'Reading backup…'}</span
 							>{#if progress}<span>{progress.completed}/{progress.total}</span>{/if}
 						</div>
-						<div class="h-1.5 overflow-hidden rounded-full bg-black/10 dark:bg-white/10">
+						<div class={storageProgressTrack}>
 							<div
-								class="h-full bg-blue-600 transition-[width]"
+								class={storageProgressBar}
 								style={`width: ${progress && progress.total ? Math.round((progress.completed / progress.total) * 100) : 8}%`}
 							></div>
 						</div>
@@ -290,22 +372,18 @@
 						value="theme"
 						closeOnSelect={false}
 						onSelect={() => uiStore.toggleDark()}
-						class="flex h-8 w-full cursor-pointer items-center gap-2 px-3 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/5 dark:hover:bg-white/10"
+						class={menuItemClass}
 					>
 						{#if uiStore.effectiveDark}
-							<Sun class="h-4 w-4 shrink-0" aria-hidden="true" />
+							<Sun class={`${iconSm} ${css({ flexShrink: 0 })}`} aria-hidden="true" />
 							Light mode
 						{:else}
-							<Moon class="h-4 w-4 shrink-0" aria-hidden="true" />
+							<Moon class={`${iconSm} ${css({ flexShrink: 0 })}`} aria-hidden="true" />
 							Dark mode
 						{/if}
 					</Menu.Item>
-					<Menu.Item
-						value="export"
-						onSelect={startBackupExport}
-						class="flex h-8 w-full cursor-pointer items-center gap-2 px-3 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/5 dark:hover:bg-white/10"
-					>
-						<Download class="h-4 w-4 shrink-0" aria-hidden="true" />
+					<Menu.Item value="export" onSelect={startBackupExport} class={menuItemClass}>
+						<Download class={`${iconSm} ${css({ flexShrink: 0 })}`} aria-hidden="true" />
 						Export backup
 					</Menu.Item>
 					<FileUpload.Root
@@ -316,16 +394,14 @@
 							if (file) importBackupFile(file);
 						}}
 					>
-						<FileUpload.Trigger
-							class="flex h-8 w-full cursor-pointer items-center gap-2 px-3 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/5 dark:hover:bg-white/10"
-						>
-							<Upload class="h-4 w-4 shrink-0" aria-hidden="true" />
+						<FileUpload.Trigger class={menuItemClass}>
+							<Upload class={`${iconSm} ${css({ flexShrink: 0 })}`} aria-hidden="true" />
 							Import backup
 						</FileUpload.Trigger>
 						<FileUpload.HiddenInput />
 					</FileUpload.Root>
 					<ReminderNotificationSettings />
-					<Menu.Separator class="border-t border-[var(--scrapscache-border)]" />
+					<Menu.Separator class={menuSep} />
 					<Menu.Item value="issue">
 						{#snippet asChild(props)}
 							<a
@@ -333,15 +409,15 @@
 								href="https://github.com/volturine/scrapscache/issues/new/choose"
 								target="_blank"
 								rel="noreferrer"
-								class="flex h-8 w-full items-center gap-2 px-3 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/5 dark:hover:bg-white/10"
+								class={menuItemClass}
 							>
-								<ExternalLink class="h-4 w-4 shrink-0" aria-hidden="true" />
+								<ExternalLink class={`${iconSm} ${css({ flexShrink: 0 })}`} aria-hidden="true" />
 								Report an issue
 							</a>
 						{/snippet}
 					</Menu.Item>
 				{/if}
-				{#if backupImportError}<p class="px-3 pb-2 text-xs text-red-600" role="alert">
+				{#if backupImportError}<p class={backupErrorAlert} role="alert">
 						{backupImportError}
 					</p>{/if}
 			</Menu.Content>

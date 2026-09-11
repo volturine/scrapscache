@@ -9,6 +9,7 @@
 	import DatePickerViews from './DatePickerViews.svelte';
 	import type { Note } from '$lib/types';
 	import { dayKey } from '$lib/utils';
+	import { css } from 'styled-system/css';
 
 	let {
 		notes,
@@ -92,13 +93,89 @@
 		}
 		selected = { from: key, to: key };
 	}
+
+	const containerClass = css({
+		w: 'full',
+		userSelect: 'none',
+		rounded: '2xl',
+		borderWidth: '1px',
+		borderColor: 'scrapscache.border',
+		bg: 'scrapscache.surface',
+		px: '0.75rem',
+		py: '0.75rem'
+	});
+
+	const pickerRootClass = css({
+		w: 'full'
+	});
+
+	const dotClass = css({
+		position: 'absolute',
+		bottom: '0.25rem',
+		h: '0.25rem',
+		w: '0.25rem',
+		rounded: 'full',
+		bg: 'scrapscache.accent'
+	});
+
+	const footerClass = css({
+		mt: '0.5rem',
+		display: 'flex',
+		alignItems: 'center',
+		justifyContent: 'space-between',
+		gap: '0.5rem',
+		borderTopWidth: '1px',
+		borderColor: 'scrapscache.border',
+		pt: '0.75rem',
+		fontSize: 'xs'
+	});
+
+	const footerSideClass = css({
+		display: 'flex',
+		flex: '1',
+		alignItems: 'center'
+	});
+
+	const footerEndClass = css({
+		display: 'flex',
+		flex: '1',
+		alignItems: 'center',
+		justifyContent: 'flex-end'
+	});
+
+	const footerBtnClass = css({
+		rounded: 'full',
+		px: '0.5rem',
+		py: '0.125rem',
+		fontWeight: 'medium',
+		lineHeight: '1.25rem',
+		color: 'scrapscache.textMuted',
+		cursor: 'pointer',
+		transition: 'all 120ms ease',
+		_hover: {
+			bg: { base: 'black/5', _dark: 'white/10' },
+			color: 'scrapscache.text'
+		},
+		_disabled: {
+			pointerEvents: 'none',
+			opacity: 0.4
+		}
+	});
+
+	const statusTextClass = css({
+		flexShrink: 0,
+		overflow: 'hidden',
+		textOverflow: 'ellipsis',
+		whiteSpace: 'nowrap',
+		px: '0.5rem',
+		lineHeight: '1.25rem',
+		color: 'scrapscache.textMuted'
+	});
 </script>
 
-<div
-	class="reminder-calendar w-full select-none rounded-2xl border border-[var(--scrapscache-border)] bg-[var(--scrapscache-surface)] px-3 py-3"
->
+<div class={`reminder-calendar ${containerClass}`}>
 	<DatePicker.Root
-		class="w-full"
+		class={pickerRootClass}
 		inline
 		startOfWeek={1}
 		fixedWeeks
@@ -116,27 +193,17 @@
 			{#snippet dayExtra(day)}
 				{@const count = reminderDays.get(day.toString()) ?? 0}
 				{#if count > 0}
-					<span
-						class="reminder-dot absolute bottom-1 h-1 w-1 rounded-full bg-[var(--scrapscache-accent)]"
-					></span>
+					<span class={`reminder-dot ${dotClass}`}></span>
 				{/if}
 			{/snippet}
 		</DatePickerViews>
 	</DatePicker.Root>
 
-	<div
-		class="mt-2 flex items-center justify-between gap-2 border-t border-[var(--scrapscache-border)] pt-3 text-xs"
-	>
-		<div class="flex flex-1 items-center">
-			<button
-				type="button"
-				class="rounded-full px-2 py-0.5 font-medium leading-5 text-[var(--scrapscache-text-muted)] hover:bg-black/5 hover:text-[var(--scrapscache-text)] dark:hover:bg-white/10"
-				onclick={filterToday}
-			>
-				Today
-			</button>
+	<div class={footerClass}>
+		<div class={footerSideClass}>
+			<button type="button" class={footerBtnClass} onclick={filterToday}> Today </button>
 		</div>
-		<span class="shrink-0 truncate px-2 leading-5 text-[var(--scrapscache-text-muted)]">
+		<span class={statusTextClass}>
 			{#if pickingEnd}
 				Pick an end day
 			{:else if selected && selected.from !== selected.to}
@@ -145,10 +212,10 @@
 				Day filter active
 			{/if}
 		</span>
-		<div class="flex flex-1 items-center justify-end">
+		<div class={footerEndClass}>
 			<button
 				type="button"
-				class="rounded-full px-2 py-0.5 leading-5 text-[var(--scrapscache-text-muted)] hover:bg-black/5 hover:text-[var(--scrapscache-text)] disabled:pointer-events-none disabled:opacity-40 dark:hover:bg-white/10"
+				class={footerBtnClass}
 				disabled={!selected}
 				onclick={() => (selected = null)}
 			>

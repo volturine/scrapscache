@@ -6,6 +6,7 @@
 	import { useEditorActions } from '$lib/editorContext';
 	import EmptyState from '$lib/components/EmptyState.svelte';
 	import { Tag } from '@lucide/svelte';
+	import { css } from 'styled-system/css';
 
 	const { openNote: openEditor } = useEditorActions();
 
@@ -17,9 +18,35 @@
 	const pinned = $derived(notes.filter((n) => n.pinned));
 	const others = $derived(notes.filter((n) => !n.pinned));
 	const shell = $derived(notesShellClass());
+
+	const rootClass = css({
+		pt: '1rem',
+		pb: '2rem'
+	});
+
+	const titleClass = css({
+		mb: '1rem',
+		px: '0.5rem',
+		fontSize: 'xl',
+		fontWeight: 'medium',
+		color: 'scrapscache.text'
+	});
+
+	const sectionTitleClass = css({
+		mb: '0.5rem',
+		fontSize: 'xs',
+		fontWeight: '600',
+		textTransform: 'uppercase',
+		letterSpacing: '0.025em',
+		color: 'scrapscache.textMuted'
+	});
+
+	const pinnedFeedClass = css({
+		mb: '1.5rem'
+	});
 </script>
 
-<div class="pt-4 pb-8">
+<div class={rootClass}>
 	{#if !label}
 		<EmptyState
 			icon={Tag}
@@ -34,27 +61,19 @@
 		/>
 	{:else}
 		<div class={shell}>
-			<h1 class="mb-4 px-2 text-xl font-medium text-[var(--scrapscache-text)]">{label.name}</h1>
+			<h1 class={titleClass}>{label.name}</h1>
 		</div>
 
 		{#if pinned.length > 0}
 			<div class={shell}>
-				<h2
-					class="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--scrapscache-text-muted)]"
-				>
-					Pinned
-				</h2>
+				<h2 class={sectionTitleClass}>Pinned</h2>
 			</div>
-			<NotesFeed notes={pinned} onOpen={openEditor} class="mb-6" />
+			<NotesFeed notes={pinned} onOpen={openEditor} class={pinnedFeedClass} />
 		{/if}
 
 		{#if pinned.length > 0 && others.length > 0}
 			<div class={shell}>
-				<h2
-					class="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--scrapscache-text-muted)]"
-				>
-					Others
-				</h2>
+				<h2 class={sectionTitleClass}>Others</h2>
 			</div>
 		{/if}
 

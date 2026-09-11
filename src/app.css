@@ -1,7 +1,4 @@
-@import 'tailwindcss';
-
-/* Dark mode is driven by a `.dark` class on <html> via the `class` strategy. */
-@custom-variant dark (&:where(.dark, .dark *));
+@layer reset, base, tokens, recipes, utilities;
 
 :root {
 	--note-default: #ffffff;

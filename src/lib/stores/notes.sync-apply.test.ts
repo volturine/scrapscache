@@ -99,7 +99,7 @@ describe('notes store sync apply', () => {
 					apply
 				) => {
 					if (pullOnly) {
-						await apply!(remote);
+						await apply!(remote, LOCAL_PROFILE_ID);
 						return { success: true, notes: remote.notes };
 					}
 					expect(notes.map((note) => note.title)).toEqual(['This device wins']);

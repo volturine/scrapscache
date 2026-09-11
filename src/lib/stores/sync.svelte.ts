@@ -134,7 +134,12 @@ export type SyncSnapshot = {
 	boardTombstones: Record<string, number>;
 };
 
-type ApplyPulled = (snapshot: SyncSnapshot) => Promise<SyncSnapshot>;
+/**
+ * Applies what a flight pulled. The workspace is handed over with it: a flight
+ * belongs to the workspace it started in, and the window may have moved to
+ * another one by the time the bytes are decrypted.
+ */
+type ApplyPulled = (snapshot: SyncSnapshot, pid: string) => Promise<SyncSnapshot>;
 
 function mergeTombstoneMaps(
 	local: Record<string, number>,
@@ -1166,14 +1171,18 @@ export class SyncStore {
 					(!startedWithDownloadsDrained || envelopes.length > 0) &&
 					applyPulled
 				) {
-					const applied = await applyPulled({
-						notes: mergedNotes,
-						labels: mergedLabels,
-						boards: mergedBoards,
-						tombstones: mergedTombstones,
-						labelTombstones: mergedLabelTombstones,
-						boardTombstones: mergedBoardTombstones
-					});
+					if (syncCancelled()) return { success: false, error: 'Sync was cancelled' };
+					const applied = await applyPulled(
+						{
+							notes: mergedNotes,
+							labels: mergedLabels,
+							boards: mergedBoards,
+							tombstones: mergedTombstones,
+							labelTombstones: mergedLabelTombstones,
+							boardTombstones: mergedBoardTombstones
+						},
+						pid
+					);
 					mergedNotes = applied.notes;
 					mergedLabels = applied.labels;
 					mergedBoards = applied.boards;

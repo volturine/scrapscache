@@ -10,9 +10,14 @@
 	import { notesShellClass } from '$lib/notesShell';
 	import { MediaQuery } from 'svelte/reactivity';
 	import { css } from 'styled-system/css';
+	import { viewPage } from '$lib/components/viewStyles';
 
 	const { openNote: openEditor } = useEditorActions();
 	const reminders = $derived(notesStore.notesWithReminders);
+
+	const calendarWrap = css({ position: 'relative' });
+	const fullWidth = css({ w: 'full' });
+	const belowCalendar = css({ mt: '1rem' });
 
 	/** Phone widths keep the calendar full-width; wider grids pack it alongside note cards. */
 	const compact = new MediaQuery('max-width: 767px', true);
@@ -40,9 +45,9 @@
 	);
 </script>
 
-<div class={css({ pt: '1rem', pb: '2rem' })}>
+<div class={viewPage}>
 	{#if embedCalendar}
-		<div class={css({ position: 'relative' })}>
+		<div class={calendarWrap}>
 			<NotesFeed notes={visible} onOpen={openEditor}>
 				{#snippet leading()}
 					<ReminderCalendar notes={reminders} bind:selected={uiStore.reminderFilter} />
@@ -70,10 +75,10 @@
 			{/if}
 		</div>
 	{:else}
-		<div class={uiStore.layout === 'list' ? notesShellClass() : css({ w: 'full' })}>
+		<div class={uiStore.layout === 'list' ? notesShellClass() : fullWidth}>
 			<ReminderCalendar notes={reminders} bind:selected={uiStore.reminderFilter} />
 		</div>
-		<div class={css({ mt: '1rem' })}>
+		<div class={belowCalendar}>
 			{#if visible.length === 0}
 				<EmptyState icon={AlarmClock} description={emptyDescription} />
 			{:else}

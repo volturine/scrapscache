@@ -5,7 +5,7 @@
 	import { registerReminderDevice } from '$lib/reminderWake';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { reminderStore } from '$lib/stores/reminders.svelte';
-	import { css } from 'styled-system/css';
+	import { cva, sva } from 'styled-system/css';
 
 	let permission = $state(notificationPermission());
 
@@ -27,81 +27,84 @@
 		if (await registerReminderDevice()) reminderStore.publish(notesStore.notes);
 	}
 
-	const sectionClass = css({
-		borderTopWidth: '1px',
-		borderColor: 'scrapscache.border'
-	});
-
-	const buttonRow = css({
-		display: 'flex',
-		h: '2rem',
-		w: 'full',
-		alignItems: 'center',
-		gap: '0.625rem',
-		px: '0.75rem',
-		textAlign: 'left',
-		cursor: 'pointer',
-		_hover: {
-			bg: { base: 'black/5', _dark: 'white/10' }
+	const row = cva({
+		base: {
+			display: 'flex',
+			h: '2rem',
+			alignItems: 'center',
+			gap: '0.625rem',
+			px: '0.75rem'
+		},
+		variants: {
+			interactive: {
+				true: {
+					w: 'full',
+					textAlign: 'left',
+					cursor: 'pointer',
+					_hover: {
+						bg: { base: 'black/5', _dark: 'white/10' }
+					}
+				}
+			}
 		}
 	});
 
-	const staticRow = css({
-		display: 'flex',
-		h: '2rem',
-		alignItems: 'center',
-		gap: '0.625rem',
-		px: '0.75rem'
+	const settingsSva = sva({
+		slots: ['section', 'icon', 'label', 'status', 'chevron'],
+		base: {
+			section: {
+				borderTopWidth: '1px',
+				borderColor: 'scrapscache.border'
+			},
+			icon: {
+				w: '1rem',
+				h: '1rem',
+				flexShrink: 0,
+				color: 'scrapscache.text'
+			},
+			label: {
+				minW: 0,
+				flex: '1',
+				fontSize: 'sm',
+				fontWeight: 'medium',
+				color: 'scrapscache.text'
+			},
+			status: {
+				flexShrink: 0,
+				fontSize: 'xs',
+				fontWeight: 'medium',
+				color: 'scrapscache.textMuted'
+			},
+			chevron: {
+				w: '1rem',
+				h: '1rem',
+				flexShrink: 0,
+				color: 'scrapscache.textMuted'
+			}
+		}
 	});
 
-	const iconClass = css({
-		w: '1rem',
-		h: '1rem',
-		flexShrink: 0,
-		color: 'scrapscache.text'
-	});
-
-	const labelClass = css({
-		minW: 0,
-		flex: '1',
-		fontSize: 'sm',
-		fontWeight: 'medium',
-		color: 'scrapscache.text'
-	});
-
-	const statusClass = css({
-		flexShrink: 0,
-		fontSize: 'xs',
-		fontWeight: 'medium',
-		color: 'scrapscache.textMuted'
-	});
-
-	const chevronClass = css({
-		w: '1rem',
-		h: '1rem',
-		flexShrink: 0,
-		color: 'scrapscache.textMuted'
-	});
+	const s = settingsSva();
 </script>
 
-<section class={sectionClass} aria-label="Notifications">
+<section class={s.section} aria-label="Notifications">
 	{#if permission === 'default'}
 		<button
 			type="button"
 			onclick={() => void enable()}
-			class={buttonRow}
+			class={row({ interactive: true })}
 			aria-label="Turn on notifications"
 		>
-			<Bell class={iconClass} aria-hidden="true" />
-			<span class={labelClass}>Notifications</span>
-			<span class={statusClass}>Not set</span>
-			<ChevronRight class={chevronClass} aria-hidden="true" />
+			<Bell class={s.icon} aria-hidden="true" />
+			<span class={s.label}>Notifications</span>
+			<span class={s.status}>Not set</span>
+			<ChevronRight class={s.chevron} aria-hidden="true" />
 		</button>
 	{:else}
-		<div class={staticRow}>
-			<Bell class={iconClass} aria-hidden="true" />
-			<span class={labelClass}>Notifications</span>
-			<span class={statusClass}>
+		<div class={row()}>
+			<Bell class={s.icon} aria-hidden="true" />
+			<span class={s.label}>Notifications</span>
+			<span class={s.status}>
 				{permission === 'granted'
 					? 'Enabled'
 					: permission === 'denied'

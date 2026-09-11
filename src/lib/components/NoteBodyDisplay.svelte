@@ -11,6 +11,7 @@
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { onMount } from 'svelte';
 	import { isCanvasAttachment } from '$lib/canvasAttachment';
+	import { canvasPreview, filePreview, photoPreview } from './attachmentPreviewStyles';
 
 	let { note }: { note: Note } = $props();
 
@@ -74,109 +75,9 @@
 		py: '0.125rem'
 	});
 	const spacerClass = css({ h: '0.5rem' });
-	const canvasesGridClass = css({ mt: '0.5rem', display: 'grid', gap: '0.375rem' });
-	const canvasCardClass = css({
-		position: 'relative',
-		display: 'block',
-		aspectRatio: '4/3',
-		w: 'full',
-		overflow: 'hidden',
-		rounded: 'lg',
-		borderWidth: '1px',
-		borderColor: { base: 'black/10', _dark: 'white/10' },
-		bg: { base: 'white', _dark: 'slate.900' }
-	});
-	const canvasImgClass = css({ h: 'full', w: 'full', objectFit: 'cover' });
-	const canvasLoadingClass = css({
-		display: 'grid',
-		h: 'full',
-		w: 'full',
-		placeItems: 'center',
-		fontSize: '11px',
-		color: 'scrapscache.textMuted'
-	});
-	const canvasLabelClass = css({
-		position: 'absolute',
-		insetX: 0,
-		bottom: 0,
-		bgGradient: 'to-t',
-		gradientFrom: 'black/65',
-		gradientTo: 'transparent',
-		px: '0.5rem',
-		pb: '0.375rem',
-		pt: '1.25rem',
-		textAlign: 'left',
-		fontSize: '10px',
-		fontWeight: 'semibold',
-		color: 'white'
-	});
-	const filesListClass = css({
-		mt: '0.5rem',
-		display: 'flex',
-		flexDirection: 'column',
-		gap: '0.25rem'
-	});
-	const fileRowClass = css({
-		display: 'flex',
-		w: 'full',
-		alignItems: 'center',
-		gap: '0.5rem',
-		rounded: 'md',
-		borderWidth: '1px',
-		borderColor: { base: 'black/10', _dark: 'white/10' },
-		bg: { base: 'black/5', _dark: 'white/5' },
-		px: '0.5rem',
-		py: '0.375rem',
-		textAlign: 'left'
-	});
-	const fileBadgeClass = css({
-		display: 'grid',
-		h: '1.75rem',
-		w: '1.75rem',
-		flexShrink: 0,
-		placeItems: 'center',
-		rounded: 'sm',
-		bg: { base: 'black/10', _dark: 'white/10' },
-		fontSize: '9px',
-		fontWeight: 'bold',
-		color: 'scrapscache.text'
-	});
-	const fileTitleClass = css({
-		minW: 0,
-		flex: '1',
-		overflow: 'hidden',
-		textOverflow: 'ellipsis',
-		whiteSpace: 'nowrap',
-		fontSize: 'xs',
-		color: 'scrapscache.text'
-	});
-	const photosStripClass = css({
-		mt: '0.5rem',
-		display: 'flex',
-		gap: '0.375rem',
-		overflowX: 'auto'
-	});
-	const photoWrapClass = css({
-		display: 'block',
-		flexShrink: 0,
-		overflow: 'hidden',
-		rounded: 'md'
-	});
-	const photoImgClass = css({
-		h: '6rem',
-		w: 'auto',
-		maxW: '10rem',
-		rounded: 'lg',
-		objectFit: 'cover'
-	});
-	const photoSkeletonClass = css({
-		h: '6rem',
-		w: '6rem',
-		flexShrink: 0,
-		animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-		rounded: 'lg',
-		bg: { base: 'black/10', _dark: 'white/10' }
-	});
+	const c = canvasPreview({ mode: 'display' });
+	const f = filePreview({ mode: 'display' });
+	const p = photoPreview({ mode: 'display' });
 </script>
 
 <div bind:this={contentElement} class={containerClass}>
@@ -222,21 +123,21 @@
 </div>
 
 {#if canvases.length > 0}
-	<div class={canvasesGridClass} aria-label="Canvases">
+	<div class={c.strip} aria-label="Canvases">
 		{#each canvases as canvas (canvas.id)}
-			<div class={canvasCardClass}>
+			<div class={c.btn}>
 				{#if displayImageSrc(canvas)}
 					<img
 						src={displayImageSrc(canvas)}
 						alt={canvas.name ?? 'Canvas'}
-						class={canvasImgClass}
+						class={c.img}
 						loading="lazy"
 						decoding="async"
 					/>
 				{:else}
-					<div class={canvasLoadingClass}>Loading canvas…</div>
+					<div class={c.loading}>Loading canvas…</div>
 				{/if}
-				<span class={canvasLabelClass}>
+				<span class={c.caption}>
 					{canvas.name ?? 'Canvas'}
 				</span>
 			</div>
@@ -245,31 +146,31 @@
 {/if}
 
 {#if files.length > 0 || links.length > 0}
-	<div class={filesListClass} aria-label="Files and links">
+	<div class={f.list} aria-label="Files and links">
 		{#each files as file (file.id)}
-			<div class={fileRowClass} aria-busy={!file.dataUrl}>
-				<span class={fileBadgeClass}>{fileIconLabel(file.mime, file.name)}</span>
-				<span class={fileTitleClass}>{file.name || 'File'}</span>
+			<div class={f.row} aria-busy={!file.dataUrl}>
+				<span class={f.badge}>{fileIconLabel(file.mime, file.name)}</span>
+				<span class={f.title}>{file.name || 'File'}</span>
 			</div>
 		{/each}
 		{#each links as url (url)}
 			{@const card = localLinkCard(url)}
-			<div class={fileRowClass}>
-				<span class={fileBadgeClass} aria-hidden="true">{card?.badge ?? '↗'}</span>
-				<span class={fileTitleClass}>{card?.hostname ?? url}</span>
+			<div class={f.row}>
+				<span class={f.badge} aria-hidden="true">{card?.badge ?? '↗'}</span>
+				<span class={f.title}>{card?.hostname ?? url}</span>
 			</div>
 		{/each}
 	</div>
 {/if}
 
 {#if photos.length > 0 || pendingPhotos.length > 0}
-	<div class={photosStripClass} aria-label="Photos">
+	<div class={p.strip} aria-label="Photos">
 		{#each photos as img (img.id)}
-			<div class={photoWrapClass}>
+			<div class={p.wrap}>
 				<img
 					src={displayImageSrc(img)}
 					alt={img.name ?? 'Photo'}
-					class={photoImgClass}
+					class={p.img}
 					loading="lazy"
 					decoding="async"
 					draggable="false"
@@ -277,11 +178,7 @@
 			</div>
 		{/each}
 		{#each pendingPhotos as img (img.id)}
-			<div
-				class={photoSkeletonClass}
-				role="img"
-				aria-label={`Loading ${img.name ?? 'photo'}`}
-			></div>
+			<div class={p.skeleton} role="img" aria-label={`Loading ${img.name ?? 'photo'}`}></div>
 		{/each}
 	</div>
 {/if}

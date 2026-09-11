@@ -2,8 +2,9 @@
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { portalToAppOverlay } from '$lib/appViewport';
 	import { BackupOperation } from '$lib/backup';
-	import { css } from 'styled-system/css';
-	import { button } from 'styled-system/recipes';
+	import { css, cx } from 'styled-system/css';
+	import { button, dialog, input } from 'styled-system/recipes';
+	import { flex } from 'styled-system/patterns';
 
 	let {
 		mode,
@@ -43,43 +44,32 @@
 		if (!details.open && !busy) onClose();
 	}
 
-	const overlayWrap = css({
-		position: 'absolute',
-		inset: 0,
-		zIndex: 70
-	});
+	const d = dialog({ size: 'sm' });
 
-	const backdropClass = css({
-		position: 'absolute',
-		inset: 0,
-		bg: 'black/45'
-	});
-
-	const positionerClass = css({
-		position: 'absolute',
-		inset: 0,
-		display: 'flex',
-		alignItems: 'flex-start',
-		justifyContent: 'center',
-		px: '1rem',
-		pb: '1rem',
-		pt: 'calc(var(--app-topbar-height) + 0.5rem)'
-	});
-
-	const contentClass = css({
-		w: 'full',
-		maxW: '24rem'
-	});
-
-	const headerClass = css({
-		borderBottomWidth: '1px',
-		borderColor: 'scrapscache.border',
-		px: '1.25rem',
-		py: '1rem'
-	});
+	const shell = {
+		backdrop: cx(d.backdrop, css({ position: 'absolute', bg: 'black/45', backdropFilter: 'none' })),
+		positioner: flex({
+			position: 'absolute',
+			inset: 0,
+			align: 'flex-start',
+			justify: 'center',
+			px: '1rem',
+			pb: '1rem',
+			pt: 'calc(var(--app-topbar-height) + 0.5rem)'
+		}),
+		panel: cx('scrapscache-dialog', d.panel, css({ maxW: '24rem', p: 0, gap: 0 })),
+		header: cx(
+			d.header,
+			css({
+				borderBottomWidth: '1px',
+				borderColor: 'scrapscache.border',
+				px: '1.25rem',
+				py: '1rem'
+			})
+		)
+	};
 
 	const subheaderClass = css({
-		mb: '0.25rem',
 		fontSize: '11px',
 		fontWeight: '600',
 		textTransform: 'uppercase',
@@ -87,53 +77,18 @@
 		color: 'scrapscache.textMuted'
 	});
 
-	const titleClass = css({
-		fontSize: 'lg',
-		fontWeight: '600',
-		color: 'scrapscache.text'
-	});
-
-	const descClass = css({
-		mt: '0.25rem',
-		fontSize: 'sm',
-		lineHeight: 'relaxed',
-		color: 'scrapscache.textMuted'
-	});
-
-	const formClass = css({
-		display: 'flex',
-		flexDirection: 'column',
-		gap: '1rem',
-		px: '1.25rem',
-		py: '1.25rem'
-	});
-
 	const labelSpanClass = css({
-		mb: '0.375rem',
 		display: 'block',
+		mb: '0.375rem',
 		fontSize: 'xs',
 		fontWeight: 'medium',
 		color: 'scrapscache.textMuted'
 	});
 
-	const inputClass = css({
-		w: 'full',
-		px: '0.75rem',
-		py: '0.625rem',
-		fontSize: '16px'
-	});
-
-	const errorClass = css({
-		fontSize: 'sm',
-		color: 'scrapscache.danger'
-	});
-
-	const actionsRow = css({
-		display: 'flex',
-		justifyContent: 'flex-end',
-		gap: '0.5rem',
-		pt: '0.25rem'
-	});
+	const passphraseField = cx(
+		input({ variant: 'unstyled', size: 'md' }),
+		css({ w: 'full', py: '0.625rem', fontSize: '16px' })
+	);
 </script>
 
 <Dialog.Root
@@ -144,23 +99,30 @@
 	preventScroll={false}
 	initialFocusEl={() => passphraseInput}
 >
-	<div {@attach portalToAppOverlay} class={`absolute ${overlayWrap}`} role="presentation">
-		<Dialog.Backdrop class={backdropClass} />
-		<Dialog.Positioner class={positionerClass}>
-			<Dialog.Content class={`scrapscache-dialog ${contentClass}`}>
-				<div class={headerClass}>
+	<div
+		{@attach portalToAppOverlay}
+		class={`absolute ${css({ inset: 0, zIndex: 70 })}`}
+		role="presentation"
+	>
+		<Dialog.Backdrop class={shell.backdrop} />
+		<Dialog.Positioner class={shell.positioner}>
+			<Dialog.Content class={shell.panel}>
+				<div class={shell.header}>
 					<p class={subheaderClass}>Encrypted on this device</p>
-					<Dialog.Title class={titleClass}>
+					<Dialog.Title class={d.title}>
 						{exporting ? 'Protect this backup' : 'Unlock this backup'}
 					</Dialog.Title>
-					<Dialog.Description class={descClass}>
+					<Dialog.Description class={cx(d.description, css({ lineHeight: 'relaxed' }))}>
 						{exporting
 							? 'Scraps Cache cannot recover this passphrase. Store it separately from the backup file.'
 							: 'The passphrase and decrypted notes stay in this browser.'}
 					</Dialog.Description>
 				</div>
 
-				<form class={formClass} onsubmit={submit}>
+				<form
+					class={cx(d.body, css({ gap: '1rem', px: '1.25rem', py: '1.25rem' }))}
+					onsubmit={submit}
+				>
 					<label class={css({ display: 'block' })}>
 						<span class={labelSpanClass}>Backup passphrase</span>
 						<input
@@ -169,7 +131,7 @@
 							bind:value={passphrase}
 							bind:this={passphraseInput}
 							disabled={busy}
-							class={`scrapscache-input ${inputClass}`}
+							class={passphraseField}
 						/>
 					</label>
 
@@ -181,18 +143,18 @@
 								autocomplete="new-password"
 								bind:value={confirmation}
 								disabled={busy}
-								class={`scrapscache-input ${inputClass}`}
+								class={passphraseField}
 							/>
 						</label>
 					{/if}
 
 					{#if localError || error}
-						<p class={errorClass} role="alert">
+						<p class={css({ fontSize: 'sm', color: 'scrapscache.danger' })} role="alert">
 							{localError || error}
 						</p>
 					{/if}
 
-					<div class={actionsRow}>
+					<div class={cx(d.footer, css({ gap: '0.5rem', pt: '0.25rem' }))}>
 						<button
 							type="button"
 							onclick={onClose}

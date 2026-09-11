@@ -1,5 +1,7 @@
 <script lang="ts">
-	import { css } from 'styled-system/css';
+	import { css, cx } from 'styled-system/css';
+	import { iconButton, input } from 'styled-system/recipes';
+	import { hstack, vstack } from 'styled-system/patterns';
 	import { uiStore } from '$lib/stores/ui.svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { downloadJSON } from '$lib/utils';
@@ -169,43 +171,15 @@
 		}
 	}
 
-	const topbarClass = css({
-		position: 'relative',
-		zIndex: 20,
-		display: 'flex',
-		h: 'var(--app-topbar-height)',
-		flexShrink: 0,
-		alignItems: 'center',
-		gap: { base: '0.25rem', sm: '0.5rem' },
-		px: { base: '0.5rem', sm: '0.75rem' }
-	});
-	const topbarIconBtn = css({ h: '2.5rem', w: '2.5rem', p: '0.5rem' });
-	const searchBox = css({
-		display: 'flex',
-		h: '2.5rem',
-		minH: '2.5rem',
-		maxH: '2.5rem',
-		minW: 0,
-		flex: '1',
-		alignItems: 'center',
-		gap: '0.5rem',
-		rounded: 'full',
-		borderWidth: '1px',
-		borderColor: 'scrapscache.border',
-		bg: 'scrapscache.surface',
-		px: '0.75rem'
-	});
-	const searchInputClass = css({
-		h: 'full',
-		minW: 0,
-		flex: '1',
-		appearance: 'none',
-		bg: 'transparent',
-		fontSize: 'sm',
-		color: 'scrapscache.text',
-		outline: 'none',
-		_placeholder: { color: 'scrapscache.textMuted' }
-	});
+	const searchInputClass = cx(
+		input({ variant: 'unstyled' }),
+		css({
+			h: 'full',
+			flex: '1',
+			appearance: 'none',
+			_placeholder: { color: 'scrapscache.textMuted' }
+		})
+	);
 	const clearBtnClass = css({
 		h: '1.5rem',
 		w: '1.5rem',
@@ -217,18 +191,9 @@
 	});
 	const iconSm = css({ h: '1rem', w: '1rem' });
 	const iconMd = css({ h: '1.25rem', w: '1.25rem' });
+	const iconFlex = css({ flexShrink: 0 });
 	const menuPositioner = css({ zIndex: 30 });
 	const popoverClass = css({ w: '16rem', overflow: 'hidden', pt: '0.25rem' });
-	const storageCard = css({
-		display: 'flex',
-		flexDirection: 'column',
-		gap: '0.5rem',
-		px: '0.75rem',
-		py: '0.5rem',
-		fontSize: 'xs',
-		color: 'scrapscache.textMuted'
-	});
-	const storageRow = css({ display: 'flex', justifyContent: 'space-between', gap: '0.5rem' });
 	const storageProgressTrack = css({
 		h: '0.375rem',
 		overflow: 'hidden',
@@ -254,10 +219,20 @@
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<header class={topbarClass} onpointerdown={closeNote}>
+<header
+	class={hstack({
+		h: 'var(--app-topbar-height)',
+		flexShrink: 0,
+		px: { base: '0.5rem', sm: '0.75rem' },
+		gap: { base: '0.25rem', sm: '0.5rem' },
+		position: 'relative',
+		zIndex: 20
+	})}
+	onpointerdown={closeNote}
+>
 	<Tooltip content="Toggle sidebar">
 		<button
-			class={`icon-btn ${topbarIconBtn}`}
+			class={`icon-btn ${iconButton({ variant: 'ghost', size: 'standard' })}`}
 			title="Toggle sidebar"
 			onclick={() => uiStore.toggleSidebar()}
 			aria-label="Toggle sidebar"
@@ -266,7 +241,21 @@
 		</button>
 	</Tooltip>
 
-	<div class={searchBox}>
+	<div
+		class={hstack({
+			h: '2.5rem',
+			minH: '2.5rem',
+			maxH: '2.5rem',
+			minW: 0,
+			flex: '1',
+			rounded: 'full',
+			borderWidth: '1px',
+			borderColor: 'scrapscache.border',
+			bg: 'scrapscache.surface',
+			px: '0.75rem',
+			gap: '0.5rem'
+		})}
+	>
 		<Search
 			class={`${iconSm} ${css({ flexShrink: 0, color: 'scrapscache.textMuted' })}`}
 			aria-hidden="true"
@@ -293,7 +282,7 @@
 	<Tooltip content={syncControlLabel}>
 		<button
 			type="button"
-			class={`icon-btn ${topbarIconBtn}`}
+			class={`icon-btn ${iconButton({ variant: 'ghost', size: 'standard' })}`}
 			title={syncControlLabel}
 			onclick={() => {
 				pairingCode = '';
@@ -323,7 +312,7 @@
 
 	<Tooltip content={uiStore.layout === 'grid' ? 'List view' : 'Grid view'}>
 		<button
-			class={`icon-btn ${topbarIconBtn}`}
+			class={`icon-btn ${iconButton({ variant: 'ghost', size: 'standard' })}`}
 			title="Toggle layout"
 			onclick={() => uiStore.toggleLayout()}
 			aria-label="Toggle layout"
@@ -342,7 +331,11 @@
 		closeOnSelect={false}
 	>
 		<Tooltip content="Settings">
-			<Menu.Trigger class={`icon-btn ${topbarIconBtn}`} title="Settings" aria-label="Settings">
+			<Menu.Trigger
+				class={`icon-btn ${iconButton({ variant: 'ghost', size: 'standard' })}`}
+				title="Settings"
+				aria-label="Settings"
+			>
 				<Settings class={iconMd} aria-hidden="true" />
 			</Menu.Trigger>
 		</Tooltip>
@@ -350,8 +343,19 @@
 			<Menu.Content class={`scrapscache-popover ${popoverClass}`}>
 				{#if importingBackup}
 					{@const progress = notesStore.backupImportProgress}
-					<div class={storageCard} role="status" aria-live="polite">
-						<div class={storageRow}>
+					<div
+						class={vstack({
+							gap: '0.5rem',
+							px: '0.75rem',
+							py: '0.5rem',
+							fontSize: 'xs',
+							color: 'scrapscache.textMuted',
+							alignItems: 'stretch'
+						})}
+						role="status"
+						aria-live="polite"
+					>
+						<div class={hstack({ justify: 'space-between', gap: '0.5rem' })}>
 							<span
 								>{progress?.phase === BackupImportPhase.Finishing
 									? 'Finishing backup…'
@@ -375,15 +379,15 @@
 						class={menuItemClass}
 					>
 						{#if uiStore.effectiveDark}
-							<Sun class={`${iconSm} ${css({ flexShrink: 0 })}`} aria-hidden="true" />
+							<Sun class={`${iconSm} ${iconFlex}`} aria-hidden="true" />
 							Light mode
 						{:else}
-							<Moon class={`${iconSm} ${css({ flexShrink: 0 })}`} aria-hidden="true" />
+							<Moon class={`${iconSm} ${iconFlex}`} aria-hidden="true" />
 							Dark mode
 						{/if}
 					</Menu.Item>
 					<Menu.Item value="export" onSelect={startBackupExport} class={menuItemClass}>
-						<Download class={`${iconSm} ${css({ flexShrink: 0 })}`} aria-hidden="true" />
+						<Download class={`${iconSm} ${iconFlex}`} aria-hidden="true" />
 						Export backup
 					</Menu.Item>
 					<FileUpload.Root
@@ -395,7 +399,7 @@
 						}}
 					>
 						<FileUpload.Trigger class={menuItemClass}>
-							<Upload class={`${iconSm} ${css({ flexShrink: 0 })}`} aria-hidden="true" />
+							<Upload class={`${iconSm} ${iconFlex}`} aria-hidden="true" />
 							Import backup
 						</FileUpload.Trigger>
 						<FileUpload.HiddenInput />
@@ -411,7 +415,7 @@
 								rel="noreferrer"
 								class={menuItemClass}
 							>
-								<ExternalLink class={`${iconSm} ${css({ flexShrink: 0 })}`} aria-hidden="true" />
+								<ExternalLink class={`${iconSm} ${iconFlex}`} aria-hidden="true" />
 								Report an issue
 							</a>
 						{/snippet}

@@ -1,11 +1,13 @@
 <script lang="ts">
 	import { css } from 'styled-system/css';
+	import { iconButton } from 'styled-system/recipes';
 	import type { NoteImage } from '$lib/types';
 	import { dataUrlToBlob } from '$lib/imageBlob';
 	import { ChevronLeft, Download } from '@lucide/svelte';
 	import { DownloadTrigger } from '@ark-ui/svelte/download-trigger';
 	import { portalToAppFloat } from '$lib/appViewport';
 	import { onDestroy, onMount } from 'svelte';
+	import { fullscreen } from './fullscreenStyles';
 
 	let {
 		attachment = null,
@@ -85,43 +87,7 @@
 		if (event.key === 'Escape') close();
 	}
 
-	const fsShell = css({
-		position: 'fixed',
-		inset: 0,
-		zIndex: 80,
-		display: 'flex',
-		flexDirection: 'column',
-		bg: 'scrapscache.bg',
-		color: 'scrapscache.text'
-	});
-	const fsHeader = css({
-		display: 'flex',
-		flexShrink: 0,
-		alignItems: 'center',
-		gap: '0.75rem',
-		borderBottomWidth: '1px',
-		borderColor: 'scrapscache.border',
-		px: '0.75rem',
-		py: '0.5rem'
-	});
-	const fsIconBtn = css({ h: '2.5rem', w: '2.5rem', p: '0.5rem' });
-	const fsTitle = css({
-		minW: 0,
-		flex: '1',
-		overflow: 'hidden',
-		textOverflow: 'ellipsis',
-		whiteSpace: 'nowrap',
-		fontSize: 'sm',
-		fontWeight: 'medium'
-	});
-	const centerNotice = css({
-		display: 'grid',
-		flex: '1',
-		placeItems: 'center',
-		p: '1.5rem',
-		fontSize: 'sm',
-		color: 'scrapscache.textMuted'
-	});
+	const fs = fullscreen();
 	const textPre = css({
 		m: 0,
 		minH: 0,
@@ -154,17 +120,17 @@
 
 {#if attachment}
 	<div {@attach portal}>
-		<div class={fsShell}>
-			<header class={fsHeader}>
+		<div class={fs.shell}>
+			<header class={fs.header}>
 				<button
 					type="button"
-					class={`icon-btn ${fsIconBtn}`}
+					class={`icon-btn ${iconButton({ variant: 'ghost', size: 'standard' })}`}
 					onclick={close}
 					aria-label="Close file"
 				>
 					<ChevronLeft class={iconBack} aria-hidden="true" />
 				</button>
-				<div class={fsTitle}>
+				<div class={fs.title}>
 					{attachment.name || 'Attachment'}
 				</div>
 				{#if attachment.dataUrl}
@@ -172,7 +138,7 @@
 						fileName={attachment.name || 'attachment'}
 						data={attachment.dataUrl}
 						mimeType={attachment.mime || 'application/octet-stream'}
-						class={`icon-btn ${fsIconBtn}`}
+						class={`icon-btn ${iconButton({ variant: 'ghost', size: 'standard' })}`}
 						aria-label="Download file"
 						title="Download file"
 					>
@@ -182,9 +148,9 @@
 			</header>
 
 			{#if loading}
-				<div class={centerNotice}>Opening file…</div>
+				<div class={fs.notice}>Opening file…</div>
 			{:else if failed}
-				<div class={centerNotice}>Could not open this attachment.</div>
+				<div class={fs.notice}>Could not open this attachment.</div>
 			{:else if isText}
 				<pre class={`scrollable ${textPre}`}>{textContent ?? ''}</pre>
 			{:else if isAudio && sourceUrl}

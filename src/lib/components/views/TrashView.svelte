@@ -6,6 +6,8 @@
 	import EmptyState from '$lib/components/EmptyState.svelte';
 	import { Trash2 } from '@lucide/svelte';
 	import { css } from 'styled-system/css';
+	import { button } from 'styled-system/recipes';
+	import { viewPage } from '$lib/components/viewStyles';
 
 	const { openNote: openEditor } = useEditorActions();
 	const trashed = $derived(notesStore.trashedNotes);
@@ -18,31 +20,9 @@
 	}
 
 	const confirmText = css({ fontSize: 'xs', color: 'scrapscache.textMuted' });
-	const dangerBtn = css({
-		rounded: 'full',
-		bg: 'red.600/10',
-		px: '0.75rem',
-		py: '0.25rem',
-		fontSize: 'xs',
-		fontWeight: 'medium',
-		color: { base: 'red.600', _dark: 'red.400' },
-		cursor: 'pointer',
-		transition: 'colors 150ms ease',
-		_hover: { bg: 'red.600', color: 'white' }
-	});
-	const subtleBtn = css({
-		rounded: 'full',
-		px: '0.75rem',
-		py: '0.25rem',
-		fontSize: 'xs',
-		color: 'scrapscache.textMuted',
-		cursor: 'pointer',
-		transition: 'colors 150ms ease',
-		_hover: { bg: { base: 'black/5', _dark: 'white/10' } }
-	});
 </script>
 
-<div class={css({ pt: '1rem', pb: '2rem' })}>
+<div class={viewPage}>
 	{#if trashed.length === 0}
 		<EmptyState
 			icon={Trash2}
@@ -52,10 +32,20 @@
 		<SectionHeader label="Trash" count={trashed.length}>
 			{#if confirmEmpty}
 				<span class={confirmText}>Delete all?</span>
-				<button type="button" onclick={emptyTrash} class={dangerBtn}>Yes</button>
-				<button type="button" onclick={() => (confirmEmpty = false)} class={subtleBtn}>No</button>
+				<button type="button" onclick={emptyTrash} class={button({ variant: 'danger', size: 'xs' })}
+					>Yes</button
+				>
+				<button
+					type="button"
+					onclick={() => (confirmEmpty = false)}
+					class={button({ variant: 'quiet', size: 'xs' })}>No</button
+				>
 			{:else}
-				<button type="button" onclick={() => (confirmEmpty = true)} class={subtleBtn}>Empty</button>
+				<button
+					type="button"
+					onclick={() => (confirmEmpty = true)}
+					class={button({ variant: 'quiet', size: 'xs' })}>Empty</button
+				>
 			{/if}
 		</SectionHeader>
 		<NotesFeed notes={trashed} onOpen={openEditor} />

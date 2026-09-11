@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { useEditorActions } from '$lib/editorContext';
 	import { Plus } from '@lucide/svelte';
-	import { css } from 'styled-system/css';
+	import { css, cx } from 'styled-system/css';
+	import { center } from 'styled-system/patterns';
 
 	const { startNewNote } = useEditorActions();
 
@@ -12,19 +13,19 @@
 		right: '1.5rem'
 	});
 
-	const fabButtonClass = css({
-		display: 'flex',
-		h: 'var(--app-fab-size)',
-		w: 'var(--app-fab-size)',
-		alignItems: 'center',
-		justifyContent: 'center',
-		rounded: 'full',
-		borderWidth: '1px',
-		borderColor: 'scrapscache.border',
-		bg: 'scrapscache.surface',
-		boxShadow: 'lg',
-		cursor: 'pointer'
-	});
+	const fabButtonClass = cx(
+		center({}),
+		css({
+			h: 'var(--app-fab-size)',
+			w: 'var(--app-fab-size)',
+			rounded: 'full',
+			borderWidth: '1px',
+			borderColor: 'scrapscache.border',
+			bg: 'scrapscache.surface',
+			boxShadow: 'lg',
+			cursor: 'pointer'
+		})
+	);
 
 	const plusIconClass = css({
 		w: '1.5rem',

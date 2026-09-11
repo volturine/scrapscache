@@ -100,15 +100,11 @@
 			overdue: false
 		}
 	});
-
-	const iconClass = css({ w: '0.875rem', h: '0.875rem', flexShrink: 0 });
-	const labelClass = css({ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' });
 </script>
 
-<span
-	class={`${reminderStyle({ variant, overdue })} ${overdue ? (variant === 'inline' ? 'text-rose-700' : 'bg-rose-600') : variant === 'strip' ? 'bg-black/5' : ''}`}
-	aria-label={aria}
->
-	<AlarmClock class={iconClass} aria-hidden="true" />
-	<span class={labelClass}>{label}</span>
+<span class={reminderStyle({ variant, overdue })} aria-label={aria}>
+	<AlarmClock class={css({ w: '0.875rem', h: '0.875rem', flexShrink: 0 })} aria-hidden="true" />
+	<span class={css({ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' })}>
+		{label}
+	</span>
 </span>

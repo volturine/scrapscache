@@ -7,6 +7,9 @@
 	import EmptyState from '$lib/components/EmptyState.svelte';
 	import { Tag } from '@lucide/svelte';
 	import { css } from 'styled-system/css';
+	import { hstack } from 'styled-system/patterns';
+	import { sectionHeader } from 'styled-system/recipes';
+	import { viewPage } from '$lib/components/viewStyles';
 
 	const { openNote: openEditor } = useEditorActions();
 
@@ -18,13 +21,9 @@
 	const pinned = $derived(notes.filter((n) => n.pinned));
 	const others = $derived(notes.filter((n) => !n.pinned));
 	const shell = $derived(notesShellClass());
+	const sec = sectionHeader();
 
-	const rootClass = css({
-		pt: '1rem',
-		pb: '2rem'
-	});
-
-	const titleClass = css({
+	const titleClass = hstack({
 		mb: '1rem',
 		px: '0.5rem',
 		fontSize: 'xl',
@@ -32,21 +31,12 @@
 		color: 'scrapscache.text'
 	});
 
-	const sectionTitleClass = css({
-		mb: '0.5rem',
-		fontSize: 'xs',
-		fontWeight: '600',
-		textTransform: 'uppercase',
-		letterSpacing: '0.025em',
-		color: 'scrapscache.textMuted'
-	});
-
 	const pinnedFeedClass = css({
 		mb: '1.5rem'
 	});
 </script>
 
-<div class={rootClass}>
+<div class={viewPage}>
 	{#if !label}
 		<EmptyState
 			icon={Tag}
@@ -66,14 +56,14 @@
 
 		{#if pinned.length > 0}
 			<div class={shell}>
-				<h2 class={sectionTitleClass}>Pinned</h2>
+				<h2 class={sec.label}>Pinned</h2>
 			</div>
 			<NotesFeed notes={pinned} onOpen={openEditor} class={pinnedFeedClass} />
 		{/if}
 
 		{#if pinned.length > 0 && others.length > 0}
 			<div class={shell}>
-				<h2 class={sectionTitleClass}>Others</h2>
+				<h2 class={sec.label}>Others</h2>
 			</div>
 		{/if}
 

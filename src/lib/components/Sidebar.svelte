@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { css, cva } from 'styled-system/css';
-	import { dialog } from 'styled-system/recipes';
+	import { css, cva, cx } from 'styled-system/css';
+	import { sidebar, dialog, button, input } from 'styled-system/recipes';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
@@ -165,21 +165,20 @@
 		pendingDelete = null;
 	}
 
-	const createBtnClass = (extra: string) =>
-		css({
-			display: 'flex',
-			w: 'full',
-			alignItems: 'center',
-			gap: '0.75rem',
-			rounded: 'xl',
-			py: '0.625rem',
-			pl: '1rem',
-			pr: '0.5rem',
-			textAlign: 'left',
-			fontSize: 'sm',
-			fontWeight: 'medium',
-			color: 'scrapscache.textMuted'
-		});
+	const createBtnClass = css({
+		display: 'flex',
+		w: 'full',
+		alignItems: 'center',
+		gap: '0.75rem',
+		rounded: 'xl',
+		py: '0.625rem',
+		pl: '1rem',
+		pr: '0.5rem',
+		textAlign: 'left',
+		fontSize: 'sm',
+		fontWeight: 'medium',
+		color: 'scrapscache.textMuted'
+	});
 	const createIconWrap = css({
 		display: 'grid',
 		h: '1.75rem',
@@ -233,14 +232,6 @@
 		placeItems: 'center',
 		color: 'scrapscache.text'
 	});
-	const navLabelText = css({
-		minW: 0,
-		flex: '1',
-		overflow: 'hidden',
-		textOverflow: 'ellipsis',
-		whiteSpace: 'nowrap',
-		textAlign: 'left'
-	});
 	const labelsSectionClass = css({ mt: '1.25rem' });
 	const labelsHeaderClass = css({
 		mb: '0.25rem',
@@ -290,16 +281,14 @@
 		placeItems: 'center',
 		color: 'scrapscache.textMuted'
 	});
-	const labelInputClass = css({
-		minW: 0,
-		flex: '1',
-		bg: 'transparent',
-		fontSize: 'sm',
-		fontWeight: 'medium',
-		color: 'scrapscache.text',
-		outline: 'none',
-		_placeholder: { fontWeight: 'normal', color: 'scrapscache.textMuted' }
-	});
+	const labelInputClass = cx(
+		input({ variant: 'unstyled' }),
+		css({
+			flex: '1',
+			fontWeight: 'medium',
+			_placeholder: { fontWeight: 'normal', color: 'scrapscache.textMuted' }
+		})
+	);
 	const labelsCol = css({ display: 'flex', flexDirection: 'column', gap: '0.125rem' });
 	const labelDisplayRow = css({
 		display: 'flex',
@@ -323,8 +312,10 @@
 		color: 'scrapscache.text',
 		cursor: 'pointer'
 	});
-	const labelNavRow = (active: boolean) =>
-		css({
+	const s = sidebar();
+	const navLabelText = cx(s.navLabel, css({ minW: 0, textAlign: 'left' }));
+	const labelNavRowRecipe = cva({
+		base: {
 			display: 'flex',
 			w: 'full',
 			alignItems: 'center',
@@ -335,10 +326,15 @@
 			pr: '0.5rem',
 			textAlign: 'left',
 			fontSize: 'sm',
-			fontWeight: active ? 'semibold' : 'medium',
-			color: active ? 'scrapscache.text' : 'scrapscache.textMuted',
 			cursor: 'pointer'
-		});
+		},
+		variants: {
+			active: {
+				true: { fontWeight: 'semibold', color: 'scrapscache.text' },
+				false: { fontWeight: 'medium', color: 'scrapscache.textMuted' }
+			}
+		}
+	});
 	const labelCountBadge = css({
 		display: 'grid',
 		h: '1.75rem',
@@ -349,7 +345,7 @@
 		fontVariantNumeric: 'tabular-nums',
 		opacity: 0.7
 	});
-	const dialogBackdrop = css({ position: 'absolute', inset: 0, bg: 'black/40' });
+	const d = dialog({ size: 'sm' });
 	const dialogPositioner = css({
 		position: 'absolute',
 		inset: 0,
@@ -368,53 +364,11 @@
 		p: '1rem',
 		boxShadow: '2xl'
 	});
-	const dialogTitle = css({ fontSize: 'base', fontWeight: 'semibold', color: 'scrapscache.text' });
-	const dialogDesc = css({
-		mt: '0.375rem',
-		fontSize: 'sm',
-		lineHeight: 'snug',
-		color: 'scrapscache.textMuted'
-	});
 	const dialogActions = css({
 		mt: '1rem',
 		display: 'flex',
 		flexDirection: 'column',
 		gap: '0.5rem'
-	});
-	const btnUnassign = css({
-		rounded: 'xl',
-		bg: { base: 'rgba(0, 0, 0, 0.06)', _dark: 'white/10' },
-		px: '0.75rem',
-		py: '0.625rem',
-		fontSize: 'sm',
-		fontWeight: 'medium',
-		color: 'scrapscache.text',
-		transition: 'colors 120ms ease',
-		cursor: 'pointer',
-		_hover: { bg: { base: 'black/10', _dark: 'white/15' } }
-	});
-	const btnDeleteWithNotes = css({
-		rounded: 'xl',
-		bg: 'red.600/90',
-		px: '0.75rem',
-		py: '0.625rem',
-		fontSize: 'sm',
-		fontWeight: 'medium',
-		color: 'white',
-		transition: 'colors 120ms ease',
-		cursor: 'pointer',
-		_hover: { bg: 'red.600' }
-	});
-	const btnCancel = css({
-		rounded: 'xl',
-		px: '0.75rem',
-		py: '0.625rem',
-		fontSize: 'sm',
-		fontWeight: 'medium',
-		color: 'scrapscache.textMuted',
-		transition: 'colors 120ms ease',
-		cursor: 'pointer',
-		_hover: { bg: { base: 'black/5', _dark: 'white/10' } }
 	});
 </script>
 
@@ -423,7 +377,7 @@
 		type="button"
 		onclick={startCreateLabel}
 		data-sidebar-stay-open
-		class={`sidebar-row ${createBtnClass(extraClass)} ${extraClass}`}
+		class={`sidebar-row ${createBtnClass} ${extraClass}`}
 	>
 		<span class={createIconWrap} aria-hidden="true">
 			<Plus size={16} strokeWidth={1.75} />
@@ -551,7 +505,7 @@
 						<button
 							type="button"
 							onclick={() => navigate('label', label.id)}
-							class={`sidebar-row ${labelNavRow(isActive('label', label.id))} ${isActive('label', label.id) ? 'sidebar-row-active' : ''}`}
+							class={`sidebar-row ${labelNavRowRecipe({ active: isActive('label', label.id) })} ${isActive('label', label.id) ? 'sidebar-row-active' : ''}`}
 						>
 							<span class={createIconWrap} aria-hidden="true">
 								<Tag size={16} strokeWidth={1.75} />
@@ -580,13 +534,13 @@
 			role="presentation"
 			data-sidebar-stay-open
 		>
-			<Dialog.Backdrop class={dialogBackdrop} />
+			<Dialog.Backdrop class={d.backdrop} />
 			<Dialog.Positioner class={dialogPositioner} data-sidebar-stay-open>
-				<Dialog.Content class={`${dialog().panel} ${dialogPanel}`} data-sidebar-stay-open>
-					<Dialog.Title class={dialogTitle}>
+				<Dialog.Content class={`${d.panel} ${dialogPanel}`} data-sidebar-stay-open>
+					<Dialog.Title class={d.title}>
 						Delete “{pendingDelete.name}”?
 					</Dialog.Title>
-					<p class={dialogDesc}>
+					<p class={d.description}>
 						{#if (labelCounts.get(pendingDelete.id) ?? 0) > 0}
 							This label is on {labelCounts.get(pendingDelete.id)} note{(labelCounts.get(
 								pendingDelete.id
@@ -598,13 +552,27 @@
 						{/if}
 					</p>
 					<div class={dialogActions}>
-						<button type="button" onclick={confirmDeleteLabelOnly} class={btnUnassign}>
+						<button
+							type="button"
+							onclick={confirmDeleteLabelOnly}
+							class={button({ variant: 'subtle', size: 'md' })}
+						>
 							Delete label only
 						</button>
-						<button type="button" onclick={confirmDeleteLabelAndNotes} class={btnDeleteWithNotes}>
+						<button
+							type="button"
+							onclick={confirmDeleteLabelAndNotes}
+							class={button({ variant: 'destructive', size: 'md' })}
+						>
 							Delete label and its notes
 						</button>
-						<button type="button" onclick={cancelDelete} class={btnCancel}> Cancel </button>
+						<button
+							type="button"
+							onclick={cancelDelete}
+							class={button({ variant: 'ghost', size: 'md' })}
+						>
+							Cancel
+						</button>
 					</div>
 				</Dialog.Content>
 			</Dialog.Positioner>

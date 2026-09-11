@@ -1,6 +1,8 @@
 <script lang="ts">
-	import { css } from 'styled-system/css';
-	import { button, dialog } from 'styled-system/recipes';
+	import { css, cx } from 'styled-system/css';
+	import { button, dialog, iconButton } from 'styled-system/recipes';
+	import { hstack, grid } from 'styled-system/patterns';
+	import { canvasPreview, filePreview, photoPreview } from './attachmentPreviewStyles';
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { Format } from '@ark-ui/svelte/format';
 	import AttachmentFullscreen from '$lib/components/AttachmentFullscreen.svelte';
@@ -334,163 +336,10 @@
 		fontSize: 'xs',
 		color: { base: 'red.600', _dark: 'red.400' }
 	});
-	const canvasesScroller = css({
-		display: 'flex',
-		maxH: '11rem',
-		gap: '0.5rem',
-		overflowX: 'auto',
-		px: '0.75rem',
-		pb: '0.5rem'
-	});
-	const canvasWrap = css({ position: 'relative', w: '9rem', flexShrink: 0 });
-	const canvasBtn = css({
-		position: 'relative',
-		display: 'block',
-		aspectRatio: '4/3',
-		w: 'full',
-		overflow: 'hidden',
-		rounded: 'lg',
-		borderWidth: '1px',
-		borderColor: { base: 'black/10', _dark: 'white/10' },
-		bg: { base: 'white', _dark: 'slate.900' },
-		touchAction: 'manipulation',
-		cursor: 'pointer'
-	});
-	const canvasImg = css({ h: 'full', w: 'full', objectFit: 'contain' });
-	const canvasLoading = css({
-		display: 'grid',
-		h: 'full',
-		placeItems: 'center',
-		fontSize: 'xs',
-		color: 'scrapscache.textMuted'
-	});
-	const canvasCaption = css({
-		position: 'absolute',
-		insetX: 0,
-		bottom: 0,
-		bgGradient: 'to-t',
-		gradientFrom: 'black/65',
-		gradientTo: 'transparent',
-		px: '0.5rem',
-		pb: '0.375rem',
-		pt: '1.25rem',
-		textAlign: 'left',
-		fontSize: '11px',
-		fontWeight: 'medium',
-		color: 'white'
-	});
-	const canvasDelBtn = css({
-		position: 'absolute',
-		right: '0.25rem',
-		top: '0.25rem',
-		rounded: 'full',
-		bg: 'black/60',
-		px: '0.375rem',
-		py: '0.125rem',
-		fontSize: 'xs',
-		color: 'white',
-		touchAction: 'manipulation',
-		cursor: 'pointer'
-	});
-	const filesList = css({
-		maxH: '9rem',
-		gap: '0.375rem',
-		overflowY: 'auto',
-		px: '0.75rem',
-		pb: '0.5rem',
-		display: 'flex',
-		flexDirection: 'column'
-	});
-	const fileItem = css({
-		display: 'flex',
-		alignItems: 'center',
-		gap: '0.5rem',
-		rounded: 'lg',
-		borderWidth: '1px',
-		borderColor: { base: 'black/10', _dark: 'white/10' },
-		bg: { base: 'black/5', _dark: 'white/5' },
-		px: '0.5rem',
-		py: '0.375rem'
-	});
-	const fileBadge = css({
-		display: 'grid',
-		h: '2rem',
-		w: '2rem',
-		flexShrink: 0,
-		placeItems: 'center',
-		rounded: 'md',
-		bg: { base: 'black/10', _dark: 'white/10' },
-		fontSize: '10px',
-		fontWeight: 'bold',
-		letterSpacing: 'wide',
-		color: 'scrapscache.text'
-	});
-	const fileActionBtn = css({
-		minW: 0,
-		flex: '1',
-		textAlign: 'left',
-		touchAction: 'manipulation',
-		cursor: 'pointer'
-	});
-	const fileTitle = css({
-		overflow: 'hidden',
-		textOverflow: 'ellipsis',
-		whiteSpace: 'nowrap',
-		fontSize: 'sm',
-		color: 'scrapscache.text'
-	});
-	const fileSize = css({ fontSize: '10px', color: 'scrapscache.textMuted' });
-	const fileRemoveBtn = css({
-		flexShrink: 0,
-		rounded: 'full',
-		px: '0.375rem',
-		py: '0.125rem',
-		fontSize: 'xs',
-		color: 'scrapscache.textMuted',
-		touchAction: 'manipulation',
-		cursor: 'pointer',
-		_hover: { bg: { base: 'black/5', _dark: 'white/10' } }
-	});
-	const photosScroller = css({
-		display: 'flex',
-		gap: '0.5rem',
-		overflowX: 'auto',
-		px: '0.75rem',
-		pb: '0.5rem'
-	});
-	const photoWrap = css({ position: 'relative', flexShrink: 0 });
-	const photoBtn = css({
-		display: 'block',
-		h: '8rem',
-		overflow: 'hidden',
-		rounded: 'lg',
-		touchAction: 'manipulation',
-		cursor: 'pointer'
-	});
-	const photoImg = css({ h: '8rem', w: 'auto', maxW: '15rem', objectFit: 'cover' });
-	const photoDelBtn = css({
-		position: 'absolute',
-		right: '0.375rem',
-		top: '0.375rem',
-		display: 'grid',
-		h: '1.5rem',
-		w: '1.5rem',
-		placeItems: 'center',
-		rounded: 'full',
-		bg: 'black/60',
-		color: 'white',
-		touchAction: 'manipulation',
-		cursor: 'pointer'
-	});
-	const photoPulse = css({
-		h: '8rem',
-		w: '8rem',
-		flexShrink: 0,
-		animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-		rounded: 'lg',
-		bg: { base: 'black/10', _dark: 'white/10' }
-	});
-	const dialogBackdrop = css({ position: 'fixed', inset: 0, zIndex: 50, bg: 'black/45' });
+	const c = canvasPreview({ mode: 'editor' });
+	const f = filePreview({ mode: 'editor' });
+	const p = photoPreview({ mode: 'editor' });
+	const d = dialog({ size: 'sm' });
 	const dialogPositioner = css({
 		position: 'fixed',
 		inset: 0,
@@ -509,24 +358,11 @@
 	});
 	const dialogTitleClass = css({ fontSize: 'base', fontWeight: 'semibold' });
 	const dialogSubtitle = css({ mt: '0.125rem', fontSize: 'xs', color: 'scrapscache.textMuted' });
-	const dialogCloseTrigger = css({
-		h: '2.25rem',
-		w: '2.25rem',
-		flexShrink: 0,
-		p: '0.5rem',
-		touchAction: 'manipulation'
-	});
-	const qualityChoiceGrid = css({
-		display: 'grid',
-		gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-		gap: '0.5rem'
-	});
 	const qualityChoiceBtn = css({
 		minH: '5rem',
 		px: '0.75rem',
 		py: '0.75rem',
-		textAlign: 'left',
-		cursor: 'pointer'
+		textAlign: 'left'
 	});
 	const qualityTitle = css({ display: 'block', fontSize: 'sm', fontWeight: 'semibold' });
 	const qualityDescCompressed = css({
@@ -543,44 +379,6 @@
 		lineHeight: '1rem',
 		color: 'scrapscache.textMuted'
 	});
-	const footerBar = css({
-		display: 'flex',
-		flexShrink: 0,
-		alignItems: 'center',
-		justifyContent: 'space-between',
-		gap: '0.5rem',
-		borderTopWidth: '1px',
-		borderColor: { base: 'black/5', _dark: 'white/10' },
-		px: '0.75rem',
-		py: '0.5rem'
-	});
-	const footerGroupLeft = css({
-		display: 'flex',
-		flexShrink: 0,
-		alignItems: 'center',
-		gap: '0.25rem'
-	});
-	const footerGroupRight = css({
-		display: 'flex',
-		maxW: 'calc(100% - 5.5rem)',
-		flexWrap: 'wrap',
-		alignItems: 'center',
-		justifyContent: 'flex-end',
-		gap: '0.25rem'
-	});
-	const footerActionBtn = css({
-		h: '2.5rem',
-		w: '2.5rem',
-		p: '0.5rem',
-		touchAction: 'manipulation'
-	});
-	const footerTrashBtn = css({
-		h: '2.5rem',
-		w: '2.5rem',
-		p: '0.5rem',
-		color: { base: 'red.600', _dark: 'red.400' },
-		touchAction: 'manipulation'
-	});
 	const iconMd = css({ h: '1.25rem', w: '1.25rem' });
 </script>
 
@@ -589,12 +387,12 @@
 {/if}
 
 {#if canvases.length > 0}
-	<div class={`scrollable ${canvasesScroller}`} aria-label="Canvases">
+	<div class={`scrollable ${c.strip}`} aria-label="Canvases">
 		{#each canvases as canvas (canvas.id)}
-			<div class={canvasWrap}>
+			<div class={c.wrap}>
 				<button
 					type="button"
-					class={canvasBtn}
+					class={c.btn}
 					onclick={() => void openCanvas(canvas)}
 					aria-label={`Edit ${canvas.name ?? 'canvas'}`}
 				>
@@ -602,21 +400,21 @@
 						<img
 							src={displayImageSrc(canvas)}
 							alt={canvas.name ?? 'Canvas'}
-							class={canvasImg}
+							class={c.img}
 							loading="lazy"
 							decoding="async"
 							draggable="false"
 						/>
 					{:else}
-						<div class={canvasLoading}>Loading canvas…</div>
+						<div class={c.loading}>Loading canvas…</div>
 					{/if}
-					<span class={canvasCaption}>
+					<span class={c.caption}>
 						{canvas.name ?? 'Canvas'}
 					</span>
 				</button>
 				<button
 					type="button"
-					class={canvasDelBtn}
+					class={c.delBtn}
 					onclick={() => removeAttachment(canvas.id)}
 					aria-label="Remove canvas"
 				>
@@ -629,28 +427,28 @@
 
 {#if files.length > 0 || links.length > 0}
 	<ul
-		class={`note-scrollbar-hidden scrollable overflow-y-auto ${filesList}`}
+		class={`note-scrollbar-hidden scrollable overflow-y-auto ${f.list}`}
 		aria-label="Files and links"
 	>
 		{#each files as file (file.id)}
-			<li class={fileItem}>
-				<span class={fileBadge} aria-hidden="true">{fileIconLabel(file.mime, file.name)}</span>
+			<li class={f.row}>
+				<span class={f.badge} aria-hidden="true">{fileIconLabel(file.mime, file.name)}</span>
 				<button
 					type="button"
-					class={fileActionBtn}
+					class={f.openBtn}
 					onclick={() => void openFile(file)}
 					aria-label={`Open ${file.name ?? 'file'}`}
 				>
-					<div class={fileTitle}>
+					<div class={f.title}>
 						{file.name || 'Attachment'}
 					</div>
-					<div class={fileSize}>
+					<div class={f.size}>
 						<Format.Byte value={dataUrlByteLength(file.dataUrl)} unitSystem="binary" />
 					</div>
 				</button>
 				<button
 					type="button"
-					class={fileRemoveBtn}
+					class={f.removeBtn}
 					onclick={() => removeAttachment(file.id)}
 					aria-label="Remove file"
 				>
@@ -660,19 +458,19 @@
 		{/each}
 		{#each links as url (url)}
 			{@const card = localLinkCard(url)}
-			<li class={fileItem}>
-				<span class={fileBadge} aria-hidden="true">{card?.badge ?? '↗'}</span>
+			<li class={f.row}>
+				<span class={f.badge} aria-hidden="true">{card?.badge ?? '↗'}</span>
 				<a
 					href={url}
 					target="_blank"
 					rel="noreferrer noopener"
-					class={fileActionBtn}
+					class={f.openBtn}
 					aria-label={`Open ${card?.hostname ?? url}`}
 				>
-					<div class={fileTitle}>
+					<div class={f.title}>
 						{card?.hostname ?? url}
 					</div>
-					<div class={fileSize}>
+					<div class={f.size}>
 						{card?.path || url}
 					</div>
 				</a>
@@ -682,19 +480,19 @@
 {/if}
 
 {#if photos.length > 0 || pendingPhotos.length > 0}
-	<div class={`scrollable overflow-x-auto ${photosScroller}`} aria-label="Photos">
+	<div class={`scrollable overflow-x-auto ${p.strip}`} aria-label="Photos">
 		{#each photos as img (img.id)}
-			<div class={photoWrap}>
+			<div class={p.wrap}>
 				<button
 					type="button"
-					class={photoBtn}
+					class={p.btn}
 					onclick={() => void openPhoto(img.id)}
 					aria-label={`Open ${img.name ?? 'photo'}`}
 				>
 					<img
 						src={displayImageSrc(img)}
 						alt={img.name ?? 'Photo'}
-						class={photoImg}
+						class={p.img}
 						loading="lazy"
 						decoding="async"
 						draggable="false"
@@ -702,7 +500,7 @@
 				</button>
 				<button
 					type="button"
-					class={photoDelBtn}
+					class={p.delBtn}
 					onclick={() => removeAttachment(img.id)}
 					aria-label="Remove photo"
 				>
@@ -711,7 +509,7 @@
 			</div>
 		{/each}
 		{#each pendingPhotos as img (img.id)}
-			<div class={photoPulse} role="img" aria-label={`Loading ${img.name ?? 'photo'}`}></div>
+			<div class={p.skeleton} role="img" aria-label={`Loading ${img.name ?? 'photo'}`}></div>
 		{/each}
 	</div>
 {/if}
@@ -749,15 +547,15 @@
 		}}
 		preventScroll={false}
 	>
-		<Dialog.Backdrop class={dialogBackdrop} />
+		<Dialog.Backdrop class={d.backdrop} />
 		<Dialog.Positioner class={dialogPositioner}>
-			<Dialog.Content class={`${dialog().panel} ${dialogContentClass}`}>
+			<Dialog.Content class={`${d.panel} ${dialogContentClass}`}>
 				<div class={dialogHeader}>
 					<div>
-						<Dialog.Title id="photo-quality-title" class={dialogTitleClass}
+						<Dialog.Title id="photo-quality-title" class={cx(d.title, dialogTitleClass)}
 							>Photo quality</Dialog.Title
 						>
-						<p class={dialogSubtitle}>
+						<p class={cx(d.description, dialogSubtitle)}>
 							Choose once for {filesAwaitingQuality.length === 1
 								? 'this attachment'
 								: `these ${filesAwaitingQuality.length} attachments`}.
@@ -765,13 +563,13 @@
 					</div>
 					<Dialog.CloseTrigger
 						type="button"
-						class={`icon-btn ${dialogCloseTrigger}`}
+						class={`icon-btn ${iconButton({ variant: 'ghost', size: 'compact' })}`}
 						aria-label="Cancel attachments"
 					>
 						<X size={16} aria-hidden="true" />
 					</Dialog.CloseTrigger>
 				</div>
-				<div class={qualityChoiceGrid}>
+				<div class={grid({ columns: 2, gap: '0.5rem' })}>
 					<button
 						type="button"
 						class={`${button({ variant: 'primary' })} ${qualityChoiceBtn}`}
@@ -794,12 +592,21 @@
 	</Dialog.Root>
 {/if}
 
-<footer use:footerInteractions class={footerBar}>
-	<div class={footerGroupLeft}>
+<footer
+	use:footerInteractions
+	class={hstack({
+		justify: 'space-between',
+		px: '0.75rem',
+		py: '0.5rem',
+		borderTopWidth: '1px',
+		borderColor: { base: 'black/5', _dark: 'white/10' }
+	})}
+>
+	<div class={hstack({ gap: '0.25rem', flexShrink: 0 })}>
 		<Tooltip content="Attach">
 			<button
 				type="button"
-				class={`icon-btn ${footerActionBtn}`}
+				class={`icon-btn ${iconButton({ variant: 'ghost', size: 'standard' })}`}
 				title="Attach"
 				onclick={openAttach}
 				aria-label="Attach"
@@ -810,7 +617,7 @@
 		<Tooltip content="New canvas">
 			<button
 				type="button"
-				class={`icon-btn ${footerActionBtn}`}
+				class={`icon-btn ${iconButton({ variant: 'ghost', size: 'standard' })}`}
 				title="New canvas"
 				onclick={() => void openCanvas()}
 				aria-label="New canvas"
@@ -821,7 +628,7 @@
 		<Tooltip content="Labels">
 			<button
 				type="button"
-				class={`icon-btn ${footerActionBtn}`}
+				class={`icon-btn ${iconButton({ variant: 'ghost', size: 'standard' })}`}
 				title="Labels"
 				onclick={openTags}
 				aria-label="Labels"
@@ -831,11 +638,18 @@
 		</Tooltip>
 	</div>
 
-	<div class={footerGroupRight}>
+	<div
+		class={hstack({
+			gap: '0.25rem',
+			flexWrap: 'wrap',
+			justify: 'flex-end',
+			maxW: 'calc(100% - 5.5rem)'
+		})}
+	>
 		<Tooltip content="Color">
 			<button
 				type="button"
-				class={`icon-btn ${footerActionBtn}`}
+				class={`icon-btn ${iconButton({ variant: 'ghost', size: 'standard' })}`}
 				title="Color"
 				aria-label="Color"
 				onclick={() => onOpenColor?.()}
@@ -847,7 +661,7 @@
 			<Tooltip content="Copy note">
 				<button
 					type="button"
-					class={`icon-btn ${footerActionBtn}`}
+					class={`icon-btn ${iconButton({ variant: 'ghost', size: 'standard' })}`}
 					title="Copy note"
 					aria-label="Copy note"
 					onclick={() => onCopy?.()}
@@ -864,7 +678,7 @@
 			<Tooltip content={trashed ? 'Restore' : archived ? 'Unarchive' : 'Archive'}>
 				<button
 					type="button"
-					class={`icon-btn ${footerActionBtn}`}
+					class={`icon-btn ${iconButton({ variant: 'ghost', size: 'standard' })}`}
 					title={trashed ? 'Restore' : archived ? 'Unarchive' : 'Archive'}
 					aria-label={trashed ? 'Restore' : archived ? 'Unarchive' : 'Archive'}
 					onclick={() => onArchive?.()}
@@ -883,7 +697,7 @@
 			<Tooltip content="Delete note">
 				<button
 					type="button"
-					class={`icon-btn ${footerTrashBtn}`}
+					class={`icon-btn ${iconButton({ variant: 'danger', size: 'standard' })}`}
 					title="Delete note"
 					aria-label="Delete note"
 					onclick={() => onDelete?.()}
@@ -896,7 +710,7 @@
 			<Tooltip content="Done">
 				<button
 					type="button"
-					class={`icon-btn ${footerActionBtn}`}
+					class={`icon-btn ${iconButton({ variant: 'ghost', size: 'standard' })}`}
 					title="Done"
 					aria-label="Done"
 					onclick={() => onClose?.()}

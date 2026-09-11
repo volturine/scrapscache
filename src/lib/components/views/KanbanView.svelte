@@ -24,6 +24,7 @@
 	import { onDestroy } from 'svelte';
 	import type { Note } from '$lib/types';
 	import { css } from 'styled-system/css';
+	import { kanban, button, iconButton, input as inputRecipe, select } from 'styled-system/recipes';
 
 	const { openNote } = useEditorActions();
 	const board = $derived(kanbanStore.activeBoard);
@@ -206,307 +207,27 @@
 		kanbanStore.placeCard(board.id, noteId, sourceColumnId, target.columnId, order);
 	}
 
-	const pageWrap = css({ pt: '1rem', pb: '2rem' });
-	const controlsRow = css({
-		mb: '1rem',
-		display: 'flex',
-		flexWrap: 'wrap',
-		alignItems: 'center',
-		gap: '0.5rem'
-	});
-	const selectBox = css({ position: 'relative', minW: 0, maxW: 'full' });
-	const selectEl = css({
-		minW: 0,
-		maxW: 'full',
-		appearance: 'none',
-		rounded: 'xl',
-		borderWidth: '1px',
-		borderColor: 'scrapscache.border',
-		bg: 'scrapscache.surface',
-		py: '0.5rem',
-		pl: '0.75rem',
-		pr: '2rem',
-		fontSize: 'sm',
-		fontWeight: '600',
-		color: 'scrapscache.text',
-		outline: 'none'
-	});
-	const selectChevron = css({
-		pointerEvents: 'none',
-		position: 'absolute',
-		right: '0.625rem',
-		top: '50%',
-		h: '0.875rem',
-		w: '0.875rem',
-		transform: 'translateY(-50%)',
-		color: 'scrapscache.textMuted'
-	});
-	const subBtn = css({
-		rounded: 'xl',
-		px: '0.75rem',
-		py: '0.5rem',
-		fontSize: 'sm',
-		fontWeight: 'medium',
-		color: 'scrapscache.textMuted',
-		cursor: 'pointer',
-		transition: 'colors 120ms ease',
-		_hover: { bg: { base: 'black/5', _dark: 'white/10' }, color: 'scrapscache.text' }
-	});
-	const delBtn = css({
-		rounded: 'xl',
-		px: '0.75rem',
-		py: '0.5rem',
-		fontSize: 'sm',
-		fontWeight: 'medium',
-		color: { base: 'red.600', _dark: 'red.400' },
-		cursor: 'pointer',
-		transition: 'colors 120ms ease',
-		_hover: { bg: { base: 'red.500/10', _dark: 'red.500/15' } }
-	});
-	const renameRow = css({ mb: '1rem', display: 'flex', maxW: '28rem', gap: '0.5rem' });
-	const renameInput = css({
-		minW: 0,
-		flex: '1',
-		rounded: 'xl',
-		borderWidth: '1px',
-		borderColor: 'scrapscache.border',
-		bg: 'scrapscache.surface',
-		px: '0.75rem',
-		py: '0.5rem',
-		fontSize: 'sm',
-		outline: 'none',
-		_focus: { ringWidth: '2px', ringColor: 'blue.400/40' }
-	});
-	const renameSaveBtn = css({
-		rounded: 'xl',
-		bg: { base: 'rgba(0, 0, 0, 0.06)', _dark: 'white/10' },
-		px: '0.75rem',
-		py: '0.5rem',
-		fontSize: 'sm',
-		fontWeight: 'medium',
-		color: 'scrapscache.text',
-		cursor: 'pointer',
-		_hover: { bg: { base: 'black/10', _dark: 'white/15' } }
-	});
-	const columnsContainer = css({ mx: '-1rem', overflowX: 'auto', px: '1rem', pb: '1rem' });
-	const columnsTrack = css({
-		display: 'flex',
-		minW: 'max-content',
-		alignItems: 'flex-start',
-		gap: '0.75rem'
-	});
-	const colSection = css({
-		w: 'min(calc(var(--note-card-width) + 1.5rem), calc(100vw - 2rem))',
-		flexShrink: 0,
-		rounded: '2xl',
-		bg: { base: 'rgba(0, 0, 0, 0.035)', _dark: 'rgba(255, 255, 255, 0.055)' },
-		p: '0.75rem'
-	});
-	const colHeadingRow = css({
-		mb: '0.5rem',
-		display: 'flex',
-		alignItems: 'center',
-		gap: '0.5rem',
-		px: '0.25rem',
-		pt: '0.25rem'
-	});
-	const colTitle = css({
-		minW: 0,
-		flex: '1',
-		overflow: 'hidden',
-		textOverflow: 'ellipsis',
-		whiteSpace: 'nowrap',
-		fontSize: 'sm',
-		fontWeight: '600',
-		color: 'scrapscache.text'
-	});
-	const filterBtn = (active: boolean) =>
-		css({
-			display: 'grid',
-			h: '1.75rem',
-			minW: '1.75rem',
-			placeItems: 'center',
-			rounded: 'lg',
-			px: '0.375rem',
-			fontSize: 'xs',
-			fontWeight: 'medium',
-			cursor: 'pointer',
-			transition: 'colors 120ms ease',
-			bg: active ? 'blue.500/15' : 'transparent',
-			color: active ? { base: 'blue.700', _dark: 'blue.300' } : 'scrapscache.textMuted',
-			_hover: active
-				? {}
-				: { bg: { base: 'black/5', _dark: 'white/10' }, color: 'scrapscache.text' }
-		});
-	const removeColBtn = css({
-		display: 'grid',
-		h: '1.75rem',
-		w: '1.75rem',
-		placeItems: 'center',
-		rounded: 'lg',
-		color: 'scrapscache.textMuted',
-		cursor: 'pointer',
-		_hover: { bg: 'red.500/10', color: { base: 'red.600', _dark: 'red.400' } }
-	});
-	const backlogGroup = css({
-		mb: '0.5rem',
-		display: 'flex',
-		flexDirection: 'column',
-		gap: '0.5rem',
-		rounded: 'xl',
-		borderWidth: '1px',
-		borderColor: { base: 'black/10', _dark: 'white/10' },
-		bg: 'scrapscache.surface',
-		p: '0.5rem',
-		fontSize: 'xs'
-	});
-	const radioLabel = css({
-		display: 'flex',
-		cursor: 'pointer',
-		alignItems: 'flex-start',
-		gap: '0.5rem',
-		rounded: 'lg',
-		px: '0.25rem',
-		py: '0.25rem',
-		_hover: { bg: { base: 'rgba(0, 0, 0, 0.04)', _dark: 'rgba(255, 255, 255, 0.06)' } }
-	});
-	const cardsList = css({
-		position: 'relative',
-		display: 'flex',
-		flexDirection: 'column',
-		gap: '0.75rem'
-	});
-	const emptyDrop = css({
-		rounded: 'xl',
-		borderWidth: '1px',
-		borderStyle: 'dashed',
-		borderColor: { base: 'black/10', _dark: 'white/10' },
-		px: '0.75rem',
-		py: '1.25rem',
-		textAlign: 'center',
-		fontSize: 'xs',
-		color: 'scrapscache.textMuted'
-	});
-	const addColWrap = css({
-		position: 'relative',
-		w: 'min(calc(var(--note-card-width) + 1.5rem), calc(100vw - 2rem))',
-		flexShrink: 0,
-		pt: '0.25rem'
-	});
-	const addColBtn = css({
-		display: 'flex',
-		w: 'full',
-		alignItems: 'center',
-		justifyContent: 'space-between',
-		gap: '0.5rem',
-		rounded: 'xl',
-		borderWidth: '1px',
-		borderStyle: 'dashed',
-		borderColor: 'scrapscache.border',
-		bg: 'transparent',
-		px: '0.75rem',
-		py: '0.625rem',
-		textAlign: 'left',
-		fontSize: 'sm',
-		fontWeight: 'medium',
-		color: 'scrapscache.textMuted',
-		outline: 'none',
-		cursor: 'pointer',
-		_hover: {
-			bg: { base: 'rgba(0, 0, 0, 0.035)', _dark: 'rgba(255, 255, 255, 0.055)' },
-			color: 'scrapscache.text'
-		}
-	});
-	const menuItemClass = css({
-		display: 'block',
-		w: 'full',
-		overflow: 'hidden',
-		textOverflow: 'ellipsis',
-		whiteSpace: 'nowrap',
-		px: '0.75rem',
-		py: '0.5rem',
-		textAlign: 'left',
-		fontSize: 'sm',
-		color: 'scrapscache.text',
-		_hover: { bg: { base: 'rgba(0, 0, 0, 0.05)', _dark: 'rgba(255, 255, 255, 0.08)' } }
-	});
-
-	const hintText = css({ fontSize: '11px', lineHeight: 'snug', color: 'scrapscache.textMuted' });
-	const mtHalf = css({ mt: '0.125rem' });
-	const optionTitle = css({ fontWeight: 'medium', color: 'scrapscache.text' });
-	const optionDesc = css({ mt: '0.125rem', display: 'block', color: 'scrapscache.textMuted' });
-	const customFilterIndent = css({
-		ml: '0.25rem',
-		display: 'flex',
-		flexDirection: 'column',
-		gap: '0.25rem',
-		borderLeftWidth: '2px',
-		borderColor: { base: 'black/10', _dark: 'white/10' },
-		pl: '0.5rem'
-	});
-	const checkRow = css({
-		display: 'flex',
-		cursor: 'pointer',
-		alignItems: 'center',
-		gap: '0.5rem',
-		rounded: 'lg',
-		px: '0.25rem',
-		py: '0.25rem',
-		_hover: { bg: { base: 'rgba(0, 0, 0, 0.04)', _dark: 'rgba(255, 255, 255, 0.06)' } }
-	});
-	const checkControl = css({
-		display: 'flex',
-		h: '1rem',
-		w: '1rem',
-		alignItems: 'center',
-		justifyContent: 'center',
-		rounded: 'sm',
-		borderWidth: '1px',
-		borderColor: 'scrapscache.border',
-		'&[data-state=checked]': {
-			borderColor: 'scrapscache.accent',
-			bg: 'scrapscache.accent'
-		}
-	});
-	const checkMark = css({ fontSize: '10px', color: 'scrapscache.accentForeground' });
-	const checkLabel = css({ color: 'scrapscache.text' });
-	const checkLabelTruncate = css({
-		overflow: 'hidden',
-		textOverflow: 'ellipsis',
-		whiteSpace: 'nowrap',
-		color: 'scrapscache.text'
-	});
-	const emptyTagsNotice = css({ px: '0.25rem', py: '0.25rem', color: 'scrapscache.textMuted' });
-	const filterSummary = css({
-		overflow: 'hidden',
-		textOverflow: 'ellipsis',
-		whiteSpace: 'nowrap',
-		px: '0.25rem',
-		fontSize: '10px',
-		color: 'scrapscache.textMuted'
-	});
-	const menuPositionerClass = css({ zIndex: 20, w: 'var(--reference-width)' });
-	const menuContentClass = css({ maxH: '16rem', overflowY: 'auto', py: '0.25rem' });
+	const k = kanban();
 </script>
 
-<div class={pageWrap}>
-	<div class={controlsRow}>
-		<div class={selectBox}>
+<div class={k.page}>
+	<div class={k.controls}>
+		<div class={k.selectWrap}>
 			<select
 				aria-label="Kanban board"
 				value={board.id}
 				onchange={(event) => selectBoard((event.currentTarget as HTMLSelectElement).value)}
-				class={selectEl}
+				class={select({ size: 'md' })}
 			>
 				{#each kanbanStore.boards as choice (choice.id)}
 					<option value={choice.id}>{choice.name}</option>
 				{/each}
 			</select>
-			<ChevronDown class={selectChevron} aria-hidden="true" />
+			<ChevronDown class={k.selectChevron} aria-hidden="true" />
 		</div>
 		<button
 			type="button"
-			class={subBtn}
+			class={button({ variant: 'ghost', size: 'sm' })}
 			onclick={() => {
 				backlogFilterOpen = false;
 				tagPickerOpen = false;
@@ -518,7 +239,7 @@
 		</button>
 		<button
 			type="button"
-			class={subBtn}
+			class={button({ variant: 'ghost', size: 'sm' })}
 			onclick={() => {
 				boardName = board.name;
 				renamingBoard = !renamingBoard;
@@ -529,7 +250,7 @@
 		</button>
 		<button
 			type="button"
-			class={delBtn}
+			class={button({ variant: 'danger', size: 'sm' })}
 			onclick={deleteActiveBoard}
 			aria-label={`Delete board ${board.name}`}
 		>
@@ -538,7 +259,7 @@
 	</div>
 
 	{#if renamingBoard}
-		<div class={renameRow}>
+		<div class={k.renameRow}>
 			<input
 				bind:value={boardName}
 				aria-label="Board name"
@@ -546,30 +267,39 @@
 					if (event.key === 'Enter') commitBoardName();
 					if (event.key === 'Escape') renamingBoard = false;
 				}}
-				class={renameInput}
+				class={inputRecipe({ variant: 'outline', size: 'md' })}
 			/>
-			<button type="button" onclick={commitBoardName} class={renameSaveBtn}> Save </button>
+			<button
+				type="button"
+				onclick={commitBoardName}
+				class={button({ variant: 'subtle', size: 'sm' })}
+			>
+				Save
+			</button>
 		</div>
 	{/if}
 
-	<div class={`kanban-columns ${columnsContainer}`}>
-		<div class={columnsTrack}>
+	<div class={`kanban-columns ${k.columnsContainer}`}>
+		<div class={k.columnsTrack}>
 			{#each board.columns as column (column.id)}
 				{@const items = columnItems(column)}
 				<section
 					data-kanban-column={column.id}
-					class={colSection}
+					class={k.column}
 					class:kanban-column-target={kanbanDrag.target?.columnId === column.id}
 					aria-label={`${columnName(column)} ${column.labelId === null ? 'Kanban' : 'label'} column`}
 				>
-					<div class={colHeadingRow}>
-						<h2 class={colTitle}>
+					<div class={k.colHeader}>
+						<h2 class={k.colTitle}>
 							{columnName(column)}
 						</h2>
 						{#if column.labelId === null}
 							<button
 								type="button"
-								class={filterBtn(backlogFilterActive)}
+								class={button({
+									variant: backlogFilterActive ? 'filterActive' : 'filter',
+									size: 'xs'
+								})}
 								onclick={() => (backlogFilterOpen = !backlogFilterOpen)}
 								aria-expanded={backlogFilterOpen}
 								aria-label="Backlog filter"
@@ -581,7 +311,7 @@
 							<button
 								type="button"
 								onclick={() => kanbanStore.removeTagColumn(board.id, column.id)}
-								class={removeColBtn}
+								class={iconButton({ variant: 'danger', size: 'xs' })}
 								aria-label={`Remove ${columnName(column)} label column`}
 								title="Remove label column"
 							>
@@ -591,63 +321,92 @@
 					</div>
 
 					{#if column.labelId === null && backlogFilterOpen}
-						<div class={backlogGroup} role="group" aria-label="Backlog filter options">
-							<p class={hintText}>
+						<div class={k.backlogGroup} role="group" aria-label="Backlog filter options">
+							<p
+								class={css({
+									fontSize: '11px',
+									lineHeight: 'snug',
+									color: 'scrapscache.textMuted'
+								})}
+							>
 								Choose which notes show in Backlog. Notes already in a label column are never listed
 								here.
 							</p>
-							<label class={radioLabel}>
+							<label class={k.radioOption}>
 								<input
 									type="radio"
 									name="backlog-mode-{board.id}"
 									checked={backlogFilter.mode === BacklogFilterMode.AllNonColumn}
 									onchange={() => setBacklogMode(BacklogFilterMode.AllNonColumn)}
-									class={mtHalf}
+									class={css({ mt: '0.125rem' })}
 								/>
 								<span>
-									<span class={optionTitle}>All non-column notes</span>
-									<span class={optionDesc}>Default: everything not in a label column</span>
+									<span class={css({ fontWeight: 'medium', color: 'scrapscache.text' })}
+										>All non-column notes</span
+									>
+									<span
+										class={css({
+											mt: '0.125rem',
+											display: 'block',
+											color: 'scrapscache.textMuted'
+										})}
+									>
+										Default: everything not in a label column
+									</span>
 								</span>
 							</label>
-							<label class={radioLabel}>
+							<label class={k.radioOption}>
 								<input
 									type="radio"
 									name="backlog-mode-{board.id}"
 									checked={backlogFilter.mode === BacklogFilterMode.Custom}
 									onchange={() => setBacklogMode(BacklogFilterMode.Custom)}
-									class={mtHalf}
+									class={css({ mt: '0.125rem' })}
 								/>
-								<span class={optionTitle}>Only selected…</span>
+								<span class={css({ fontWeight: 'medium', color: 'scrapscache.text' })}
+									>Only selected…</span
+								>
 							</label>
 
 							{#if backlogFilter.mode === BacklogFilterMode.Custom}
-								<div class={customFilterIndent}>
+								<div class={k.filterIndent}>
 									<Checkbox.Root
 										checked={backlogFilter.includeUntagged}
 										onCheckedChange={toggleBacklogUntagged}
-										class={checkRow}
+										class={k.checkRow}
 									>
-										<Checkbox.Control class={checkControl}>
-											<Checkbox.Indicator class={checkMark}>✓</Checkbox.Indicator>
+										<Checkbox.Control class={k.checkControl}>
+											<Checkbox.Indicator class={k.checkMark}>✓</Checkbox.Indicator>
 										</Checkbox.Control>
-										<Checkbox.Label class={checkLabel}>No labels</Checkbox.Label>
+										<Checkbox.Label class={k.checkLabel}>No labels</Checkbox.Label>
 										<Checkbox.HiddenInput />
 									</Checkbox.Root>
 									{#each backlogFilterTags as label (label.id)}
 										<Checkbox.Root
 											checked={backlogFilter.labelIds.includes(label.id)}
 											onCheckedChange={() => toggleBacklogLabel(label.id)}
-											class={checkRow}
+											class={k.checkRow}
 										>
-											<Checkbox.Control class={checkControl}>
-												<Checkbox.Indicator class={checkMark}>✓</Checkbox.Indicator>
+											<Checkbox.Control class={k.checkControl}>
+												<Checkbox.Indicator class={k.checkMark}>✓</Checkbox.Indicator>
 											</Checkbox.Control>
-											<Checkbox.Label class={checkLabelTruncate}>{label.name}</Checkbox.Label>
+											<Checkbox.Label
+												class={css({
+													overflow: 'hidden',
+													textOverflow: 'ellipsis',
+													whiteSpace: 'nowrap',
+													color: 'scrapscache.text'
+												})}
+											>
+												{label.name}
+											</Checkbox.Label>
 											<Checkbox.HiddenInput />
 										</Checkbox.Root>
 									{/each}
 									{#if backlogFilterTags.length === 0}
-										<p class={emptyTagsNotice}>
+										<p
+											class={css({ px: '0.25rem', py: '0.25rem', color: 'scrapscache.textMuted' })}
+										>
 											No other labels available. Create labels on notes, or remove a label column
 											first.
 										</p>
@@ -655,14 +414,14 @@
 								</div>
 							{/if}
 
-							<p class={filterSummary} title={backlogFilterSummary()}>
+							<p class={k.filterSummary} title={backlogFilterSummary()}>
 								Showing: {backlogFilterSummary()}
 							</p>
 						</div>
 					{/if}
 
 					<!-- Positioned: card offsets are measured against this list while dragging. -->
-					<div class={cardsList} data-kanban-list aria-live="polite">
+					<div class={k.cardsList} data-kanban-list aria-live="polite">
 						{#each items as item (item.key)}
 							<!-- Cards and the drop slot share one animated element, so the whole
 							     column glides when the preview moves between slots. -->
@@ -686,26 +445,32 @@
 							</div>
 						{/each}
 						{#if items.length === 0}
-							<div class={emptyDrop}>Drop a note here</div>
+							<div class={k.emptyDrop}>Drop a note here</div>
 						{/if}
 					</div>
 				</section>
 			{/each}
 
 			{#if unusedTags.length > 0}
-				<div class={addColWrap}>
+				<div class={k.addColWrap}>
 					<Menu.Root bind:open={tagPickerOpen} positioning={{ placement: 'bottom-start' }}>
-						<Menu.Trigger class={addColBtn} aria-label="Add a label column">
+						<Menu.Trigger
+							class={button({ variant: 'dashed', size: 'md' })}
+							aria-label="Add a label column"
+						>
 							<span>+ Add label column</span>
 							<ChevronDown size={14} aria-hidden="true" />
 						</Menu.Trigger>
-						<Menu.Positioner class={menuPositionerClass}>
-							<Menu.Content class={`scrapscache-popover ${menuContentClass}`} aria-label="Labels">
+						<Menu.Positioner class={css({ zIndex: 20, w: 'var(--reference-width)' })}>
+							<Menu.Content
+								class={`scrapscache-popover ${css({ maxH: '16rem', overflowY: 'auto', py: '0.25rem' })}`}
+								aria-label="Labels"
+							>
 								{#each unusedTags as label (label.id)}
 									<Menu.Item
 										value={label.id}
 										onSelect={() => addTagColumn(label.id)}
-										class={menuItemClass}
+										class={k.menuItem}
 									>
 										{label.name}
 									</Menu.Item>

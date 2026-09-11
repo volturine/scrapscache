@@ -218,30 +218,6 @@
 		setValue(item.value);
 	}
 
-	const rootContainerClass = css({
-		position: 'relative'
-	});
-
-	const centerHighlightClass = css({
-		pointerEvents: 'none',
-		position: 'absolute',
-		insetX: 0,
-		top: '50%',
-		zIndex: 0,
-		h: '2.25rem',
-		transform: 'translateY(-50%)',
-		rounded: 'lg',
-		bg: 'scrapscache.bg'
-	});
-
-	const wheelViewportClass = css({
-		position: 'absolute',
-		inset: 0,
-		zIndex: 10,
-		overflow: 'hidden',
-		outline: 'none'
-	});
-
 	const wheelItemRecipe = cva({
 		base: {
 			display: 'flex',
@@ -275,10 +251,29 @@
 	});
 </script>
 
-<div class={`${rootContainerClass} ${className}`} style="height: {ITEM_H * VISIBLE}px">
-	<div class={centerHighlightClass} aria-hidden="true"></div>
+<div class={`${css({ position: 'relative' })} ${className}`} style="height: {ITEM_H * VISIBLE}px">
 	<div
-		class={`wheel-picker ${wheelViewportClass}`}
+		class={css({
+			pointerEvents: 'none',
+			position: 'absolute',
+			insetX: 0,
+			top: '50%',
+			zIndex: 0,
+			h: '2.25rem',
+			transform: 'translateY(-50%)',
+			rounded: 'lg',
+			bg: 'scrapscache.bg'
+		})}
+		aria-hidden="true"
+	></div>
+	<div
+		class={`wheel-picker ${css({
+			position: 'absolute',
+			inset: 0,
+			zIndex: 10,
+			overflow: 'hidden',
+			outline: 'none'
+		})}`}
 		style="height: {ITEM_H * VISIBLE}px"
 		role="listbox"
 		tabindex="0"

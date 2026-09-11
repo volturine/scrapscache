@@ -1,5 +1,7 @@
 <script lang="ts">
-	import { css } from 'styled-system/css';
+	import { css, cx, sva } from 'styled-system/css';
+	import { dialog, input } from 'styled-system/recipes';
+	import { hstack, spacer } from 'styled-system/patterns';
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { flushSync, onMount } from 'svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
@@ -494,66 +496,72 @@
 		};
 	}
 
-	const editorOverlayRoot = css({ position: 'fixed', inset: 0, zIndex: 50 });
-	const editorSheetWrap = css({
-		position: 'absolute',
-		inset: 0,
-		display: 'flex',
-		alignItems: { base: 'flex-start', md: 'center' },
-		justifyContent: 'center',
-		px: '1rem',
-		pb: 'var(--app-sheet-pad-bottom)'
+	const editorSheetSva = sva({
+		slots: ['overlay', 'sheetWrap', 'sheetBox', 'header', 'scroller'],
+		base: {
+			overlay: { position: 'fixed', inset: 0, zIndex: 50 },
+			sheetWrap: {
+				position: 'absolute',
+				inset: 0,
+				display: 'flex',
+				alignItems: { base: 'flex-start', md: 'center' },
+				justifyContent: 'center',
+				px: '1rem',
+				pb: 'var(--app-sheet-pad-bottom)'
+			},
+			sheetBox: {
+				h: { base: 'full', md: '72%' },
+				maxH: 'full',
+				minH: 0,
+				w: 'full',
+				maxW: '2xl',
+				rounded: '2xl'
+			},
+			header: {
+				display: 'flex',
+				flexShrink: 0,
+				alignItems: 'center',
+				gap: '0.5rem',
+				borderBottomWidth: '1px',
+				borderColor: { base: 'black/5', _dark: 'white/10' },
+				px: '0.5rem',
+				py: '0.5rem'
+			},
+			scroller: {
+				minH: 0,
+				flex: '1',
+				touchAction: 'pan-y',
+				overflowY: 'auto',
+				overflowX: 'hidden',
+				overscrollBehavior: 'contain',
+				px: '1.5rem',
+				pt: '1rem',
+				pb: '0.75rem'
+			}
+		}
 	});
-	const editorSheetBox = css({
-		h: { base: 'full', md: '72%' },
-		maxH: 'full',
-		minH: 0,
-		w: 'full',
-		maxW: '2xl',
-		rounded: '2xl'
-	});
-	const editorHeader = css({
-		display: 'flex',
-		flexShrink: 0,
-		alignItems: 'center',
-		gap: '0.5rem',
-		borderBottomWidth: '1px',
-		borderColor: { base: 'black/5', _dark: 'white/10' },
-		px: '0.5rem',
-		py: '0.5rem'
-	});
+	const sheet = editorSheetSva();
 	const btnBack = css({ h: '2.5rem', w: '2.5rem', p: '0.5rem' });
 	const btnHeaderAction = css({ h: '2.25rem', w: '2.25rem', p: '0.5rem' });
 	const reminderOverdueColor = css({ color: { base: 'rose.600', _dark: 'rose.400' } });
 	const reminderActiveColor = css({ color: { base: 'blue.600', _dark: 'blue.400' } });
-	const editorScrollerClass = css({
-		minH: 0,
-		flex: '1',
-		touchAction: 'pan-y',
-		overflowY: 'auto',
-		overflowX: 'hidden',
-		overscrollBehavior: 'contain',
-		px: '1.5rem',
-		pt: '1rem',
-		pb: '0.75rem'
-	});
-	const titleTextareaClass = css({
-		mb: '0.75rem',
-		display: 'block',
-		w: 'full',
-		resize: 'none',
-		overflow: 'hidden',
-		wordBreak: 'break-word',
-		border: 'none',
-		bg: 'transparent',
-		p: 0,
-		fontSize: 'xl',
-		fontWeight: 'medium',
-		color: 'scrapscache.text',
-		_placeholder: { color: 'scrapscache.textMuted' },
-		outline: 'none',
-		fieldSizing: 'content'
-	});
+	const titleField = cx(
+		input({ variant: 'unstyled' }),
+		css({
+			mb: '0.75rem',
+			display: 'block',
+			w: 'full',
+			resize: 'none',
+			overflow: 'hidden',
+			wordBreak: 'break-word',
+			p: 0,
+			fontSize: 'xl',
+			fontWeight: 'medium',
+			_placeholder: { color: 'scrapscache.textMuted' },
+			fieldSizing: 'content',
+			transition: 'none'
+		})
+	);
 	const fileDropHintClass = css({
 		pointerEvents: 'none',
 		position: 'absolute',
@@ -580,7 +588,11 @@
 		color: 'scrapscache.text',
 		boxShadow: 'sm'
 	});
-	const dialogBackdrop = css({ position: 'fixed', inset: 0, zIndex: 60, bg: 'black/30' });
+	const subDialog = dialog({ size: 'sm' });
+	const dialogBackdrop = cx(
+		subDialog.backdrop,
+		css({ bg: 'black/30', backdropFilter: 'none', zIndex: 60 })
+	);
 	const dialogPositioner = css({
 		position: 'fixed',
 		inset: 0,
@@ -603,7 +615,7 @@
 
 {#if isOpen && note}
 	<div
-		class={`fixed z-50 ${editorOverlayRoot}`}
+		class={`fixed z-50 ${sheet.overlay}`}
 		role="presentation"
 		onpointerdown={handleBackdropPointerDown}
 		onclick={handleBackdropClick}
@@ -612,10 +624,10 @@
 		ondragleave={handleFileDragLeave}
 		ondropcapture={handleFileDrop}
 	>
-		<div class={editorSheetWrap} role="presentation">
+		<div class={sheet.sheetWrap} role="presentation">
 			<!-- Clicking blank editor chrome is a pointer convenience; keyboard users focus the fields directly. -->
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
-			<div class={`note-sheet-shadow ${editorSheetBox}`}>
+			<div class={`note-sheet-shadow ${sheet.sheetBox}`}>
 				<div
 					bind:this={editorDialog}
 					class={editorDialogClass}
@@ -630,7 +642,7 @@
 					onclick={focusBodyFromPage}
 				>
 					<!-- Header -->
-					<header class={editorHeader}>
+					<header class={sheet.header}>
 						<button
 							type="button"
 							class={`icon-btn ${btnBack}`}
@@ -641,9 +653,9 @@
 							<ChevronLeft size={24} aria-hidden="true" />
 						</button>
 
-						<div class={css({ flex: '1' })} aria-hidden="true"></div>
+						<div class={spacer()} aria-hidden="true"></div>
 
-						<div class={css({ display: 'flex', minW: 0, alignItems: 'center', gap: '0.25rem' })}>
+						<div class={hstack({ minW: 0, gap: '0.25rem' })}>
 							{#if note.reminder != null}
 								<button
 									type="button"
@@ -680,7 +692,7 @@
 
 					<div
 						bind:this={editorScroller}
-						class={`note-scrollbar-hidden scrollable ${editorScrollerClass}`}
+						class={`note-scrollbar-hidden scrollable ${sheet.scroller}`}
 					>
 						<textarea
 							use:autoResizeTitle={title}
@@ -696,7 +708,7 @@
 								}
 							}}
 							rows="1"
-							class={`resize-none break-words ${titleTextareaClass}`}></textarea>
+							class={`resize-none break-words ${titleField}`}></textarea>
 
 						<BodyEditor
 							bind:this={bodyEditor}

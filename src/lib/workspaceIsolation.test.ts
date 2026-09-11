@@ -15,6 +15,7 @@ import {
 	deleteNote,
 	getAllLabels,
 	getAllNotesMetadata,
+	isNamespaceRedundant,
 	LOCAL_PROFILE_ID,
 	putLabel,
 	putNote
@@ -191,5 +192,46 @@ describe('fast-boot mirrors stay in the workspace that wrote them', () => {
 		activePid.mockReturnValue(THEIRS);
 		expect(new KanbanStore().boards.map((board) => board.name)).toEqual(['Theirs']);
 		activePid.mockRestore();
+	});
+});
+
+describe('a workspace is only redundant when nothing in it is unique', () => {
+	// The anonymous workspace's notes are copied into a signed-in one when it is
+	// created; once they are all over there, the local copy is dropped to save
+	// room. Anything the copy still holds alone has to stop that.
+	async function anonymousAdoptedBy(pid: string) {
+		await putNote(LOCAL_PROFILE_ID, note('shared'));
+		await putNote(pid, note('shared'));
+	}
+
+	it('drops a copy whose notes and boards both live in the workspace', async () => {
+		await anonymousAdoptedBy(MINE);
+		const board = { ...createKanbanBoard('Plans'), id: 'board-1', updatedAt: 5 };
+		await saveBoardsToDevice(LOCAL_PROFILE_ID, [board]);
+		await saveBoardsToDevice(MINE, [board]);
+
+		expect(await isNamespaceRedundant(LOCAL_PROFILE_ID, MINE)).toBe(true);
+	});
+
+	it('keeps a copy holding the only version of a board', async () => {
+		await anonymousAdoptedBy(MINE);
+		await saveBoardsToDevice(LOCAL_PROFILE_ID, [
+			{ ...createKanbanBoard('Plans'), id: 'board-1', updatedAt: 5 }
+		]);
+		await saveBoardsToDevice(MINE, []);
+
+		expect(await isNamespaceRedundant(LOCAL_PROFILE_ID, MINE)).toBe(false);
+	});
+
+	it('keeps a copy whose board was arranged more recently', async () => {
+		await anonymousAdoptedBy(MINE);
+		await saveBoardsToDevice(LOCAL_PROFILE_ID, [
+			{ ...createKanbanBoard('Plans'), id: 'board-1', updatedAt: 9 }
+		]);
+		await saveBoardsToDevice(MINE, [
+			{ ...createKanbanBoard('Plans'), id: 'board-1', updatedAt: 5 }
+		]);
+
+		expect(await isNamespaceRedundant(LOCAL_PROFILE_ID, MINE)).toBe(false);
 	});
 });

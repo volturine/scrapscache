@@ -59,11 +59,13 @@ export function scopedStateKey(base: string, pid?: string): string {
 	return pid && pid !== LOCAL_PROFILE_ID ? `${base}:${pid}` : base;
 }
 
+const KANBAN_BOARDS_STATE_KEY = 'scrapscache-idb-kanban-boards';
+
 const SCOPED_STATE_PREFIXES = [
 	'scrapscache-idb-note-tombstones',
 	'scrapscache-idb-label-tombstones',
 	'scrapscache-idb-board-tombstones',
-	'scrapscache-idb-kanban-boards',
+	KANBAN_BOARDS_STATE_KEY,
 	'scrapscache-fired-reminders'
 ];
 
@@ -1252,7 +1254,31 @@ export async function isNamespaceRedundant(sourcePid: string, targetPid: string)
 		const owned = (await target.get(LABELS_STORE, label.id)) as Label | undefined;
 		if (!owned || Number(label.updatedAt) > Number(owned.updatedAt)) return false;
 	}
+
+	// Boards count as much as the notes on them. A workspace whose notes all
+	// live in the target can still hold the only copy of a board — renamed,
+	// re-columned, or with its cards arranged by hand — and dropping it for
+	// being "redundant" would take that arrangement with it.
+	const sourceBoards = await boardVersions(source, sourcePid);
+	if (sourceBoards.size > 0) {
+		const targetBoards = await boardVersions(target, targetPid);
+		for (const [id, updatedAt] of sourceBoards) {
+			const owned = targetBoards.get(id);
+			if (owned === undefined || updatedAt > owned) return false;
+		}
+	}
 	return true;
+}
+
+/** When each of a workspace's boards was last edited, by board id. */
+async function boardVersions(db: IDBPDatabase, pid: string): Promise<Map<string, number>> {
+	const stored = await db.get(SYNC_STATE_STORE, scopedStateKey(KANBAN_BOARDS_STATE_KEY, pid));
+	const boards = Array.isArray(stored) ? (stored as { id?: unknown; updatedAt?: unknown }[]) : [];
+	return new Map(
+		boards.flatMap((board) =>
+			typeof board?.id === 'string' ? [[board.id, Number(board.updatedAt) || 0] as const] : []
+		)
+	);
 }
 
 export async function namespaceHasData(pid: string): Promise<boolean> {

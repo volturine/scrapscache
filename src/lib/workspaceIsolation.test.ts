@@ -15,6 +15,7 @@ import {
 	deleteNote,
 	getAllLabels,
 	getAllNotesMetadata,
+	hydrateNoteAttachments,
 	isNamespaceRedundant,
 	LOCAL_PROFILE_ID,
 	putLabel,
@@ -283,5 +284,42 @@ describe('switching workspaces leaves each one as it was', () => {
 
 		expect(store.boards.map((board) => board.name)).toEqual(['Anonymous plans']);
 		activePid.mockRestore();
+	});
+});
+
+describe('attachment bytes stay in the workspace that saved them', () => {
+	// A one pixel PNG, as a photo pasted into a note arrives.
+	const bytes =
+		'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
+	function withPhoto(id: string): Note {
+		return {
+			...note(id),
+			images: [{ id: `${id}-photo`, mime: 'image/png', dataUrl: bytes, createdAt: 1 }]
+		};
+	}
+
+	it('gives each workspace back only its own bytes', async () => {
+		await putNote(MINE, withPhoto('mine-1'));
+		await putNote(THEIRS, note('theirs-1'));
+
+		const [mine] = await getAllNotesMetadata(MINE);
+		const [theirs] = await getAllNotesMetadata(THEIRS);
+		const mineFull = await hydrateNoteAttachments(MINE, mine);
+		const theirsFull = await hydrateNoteAttachments(THEIRS, theirs);
+
+		expect(mineFull.images?.[0]?.dataUrl).toBe(bytes);
+		expect(theirsFull.images ?? []).toEqual([]);
+	});
+
+	it('does not hand one workspace\u2019s bytes to another asking for the same note', async () => {
+		await putNote(MINE, withPhoto('shared-id'));
+		// The other workspace knows the note by id but never stored its bytes.
+		await putNote(THEIRS, { ...note('shared-id'), images: [] });
+
+		const [theirs] = await getAllNotesMetadata(THEIRS);
+		const hydrated = await hydrateNoteAttachments(THEIRS, theirs);
+
+		expect(hydrated.images ?? []).toEqual([]);
 	});
 });

@@ -142,6 +142,55 @@ describe('scrolling the list under a carried card', () => {
 	});
 });
 
+describe('what the drop aims by', () => {
+	/** A card of real height, so holding it top or bottom is a long way apart. */
+	function heldCard() {
+		const { column: root, carried } = column();
+		carried.getBoundingClientRect = () => new DOMRect(16, 0, 288, 150);
+		document.elementFromPoint = () => root;
+		return carried;
+	}
+
+	function aimAt(card: HTMLElement, grabY: number, fingerY: number) {
+		kanbanDrag.press(pointerEvent('pointerdown', grabY), {
+			noteId: 'carried',
+			columnId: 'todo',
+			card,
+			index: 0,
+			onDrop: vi.fn()
+		});
+		vi.advanceTimersByTime(300);
+		window.dispatchEvent(pointerEvent('pointermove', fingerY));
+		return kanbanDrag.target;
+	}
+
+	it('lands by where the card is, not by where the finger holds it', () => {
+		const card = heldCard();
+		// Held at the top, finger at 200: the card's top edge sits at 178.
+		const byTheTop = aimAt(card, 10, 200);
+		kanbanDrag.cancel();
+		// Held near the bottom, finger 130px lower: the card's top edge is the
+		// same 178, and so is the slot it opens.
+		const byTheBottom = aimAt(card, 140, 330);
+
+		expect(byTheTop).toEqual({ columnId: 'todo', index: 2 });
+		expect(byTheBottom).toEqual(byTheTop);
+	});
+
+	it('moves the slot as the card itself moves, finger held still', () => {
+		const card = heldCard();
+
+		// Two grabs, same finger: the lower grab carries the card higher up the
+		// column, so it aims at an earlier slot.
+		const low = aimAt(card, 10, 200);
+		kanbanDrag.cancel();
+		const high = aimAt(card, 140, 200);
+
+		expect(low).toEqual({ columnId: 'todo', index: 2 });
+		expect(high).toEqual({ columnId: 'todo', index: 0 });
+	});
+});
+
 describe('drop target geometry with the preview open below the carried card', () => {
 	/**
 	 * Dragging downwards leaves the hidden card above the preview slot. The

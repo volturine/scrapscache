@@ -28,8 +28,8 @@
 	},
 	"scripts": {
 		"dev": "vite dev",
-		"build": "panda codegen && vite build",
-		"build:cloudflare": "DEPLOY_TARGET=cloudflare vite build",
+		"build": "svelte-kit sync && panda codegen && vite build",
+		"build:cloudflare": "svelte-kit sync && panda codegen && DEPLOY_TARGET=cloudflare vite build",
 		"cf:dev": "npm run build:cloudflare && wrangler d1 migrations apply SCRAPSCACHE_DB --local --env '' && wrangler dev --env ''",
 		"cf:cron:dev": "npm run build:cloudflare && wrangler d1 migrations apply SCRAPSCACHE_DB --local --env '' && wrangler dev --config cf/wrangler.cron.jsonc --config wrangler.jsonc --env '' --test-scheduled",
 		"cf:deploy": "npm run build:cloudflare && wrangler d1 migrations apply SCRAPSCACHE_DB --remote --env '' && wrangler deploy --env '' && wrangler deploy --config cf/wrangler.cron.jsonc --env ''",
@@ -39,9 +39,9 @@
 		"test": "vitest run",
 		"test:watch": "vitest",
 		"validate": "npm run check && npm run format:check && npm test && npm run build",
-		"prepare": "panda codegen && svelte-kit sync || echo '' && simple-git-hooks || true",
-		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --tsgo",
-		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+		"prepare": "svelte-kit sync && panda codegen || echo '' && simple-git-hooks || true",
+		"check": "svelte-kit sync && panda codegen && svelte-check --tsconfig ./tsconfig.json --tsgo",
+		"check:watch": "svelte-kit sync && panda codegen && svelte-check --tsconfig ./tsconfig.json --watch",
 		"format": "prettier --write .",
 		"format:check": "prettier --check ."
 	},

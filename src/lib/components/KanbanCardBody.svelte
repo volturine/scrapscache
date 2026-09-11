@@ -8,6 +8,7 @@
 	import NoteBodyDisplay from './NoteBodyDisplay.svelte';
 	import ReminderLabel from './ReminderLabel.svelte';
 	import { css } from 'styled-system/css';
+	import { noteCard } from 'styled-system/recipes';
 
 	let { note, shield = false }: { note: Note; shield?: boolean } = $props();
 
@@ -20,6 +21,10 @@
 	function background(color: NoteColor): string {
 		return uiStore.effectiveDark ? NOTE_DARK_COLORS[color] : NOTE_COLORS[color];
 	}
+
+	// The board card keeps its own box (rounded-xl, no max height) and a fixed
+	// scroll window; the shared noteCard recipe covers the pieces that match.
+	const card = noteCard();
 
 	const cardBoxClass = css({
 		overflow: 'hidden',
@@ -42,40 +47,6 @@
 	const reminderWrapClass = css({
 		mb: '0.25rem'
 	});
-
-	const titleClass = css({
-		mb: '0.25rem',
-		wordBreak: 'break-word',
-		fontSize: '15px',
-		fontWeight: '600',
-		lineHeight: 'snug',
-		letterSpacing: 'tight',
-		color: 'scrapscache.text'
-	});
-
-	const shieldClass = css({
-		position: 'absolute',
-		inset: 0
-	});
-
-	const labelsRowClass = css({
-		display: 'flex',
-		flexWrap: 'wrap',
-		gap: '0.25rem',
-		px: '0.75rem',
-		pb: '0.75rem',
-		pt: '0.5rem'
-	});
-
-	const labelPillClass = css({
-		rounded: 'sm',
-		bg: { base: 'black/5', _dark: 'white/10' },
-		px: '0.375rem',
-		py: '0.125rem',
-		fontSize: '10px',
-		fontWeight: 'medium',
-		color: 'scrapscache.textMuted'
-	});
 </script>
 
 <div class={`kanban-card ${cardBoxClass}`} style="background-color: {background(note.color)};">
@@ -87,7 +58,7 @@
 				</div>
 			{/if}
 			{#if note.title}
-				<h3 class={`break-words ${titleClass}`}>
+				<h3 class={`break-words ${card.title}`}>
 					{note.title}
 				</h3>
 			{/if}
@@ -96,14 +67,14 @@
 		{#if shield}
 			<!-- Every press lands here, so links, photos, canvases and files can
 			     never swallow a drag or start one of their own. -->
-			<div class={shieldClass} data-card-shield aria-hidden="true"></div>
+			<div class={card.shield} data-card-shield aria-hidden="true"></div>
 		{/if}
 	</div>
 
 	{#if labelsForNote.length}
-		<div class={labelsRowClass}>
+		<div class={card.labelsRow}>
 			{#each labelsForNote as label (label.id)}
-				<span class={labelPillClass}>{label.name}</span>
+				<span class={card.labelPill}>{label.name}</span>
 			{/each}
 		</div>
 	{/if}

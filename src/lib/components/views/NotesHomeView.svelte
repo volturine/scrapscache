@@ -7,8 +7,12 @@
 	import EmptyState from '$lib/components/EmptyState.svelte';
 	import { StickyNote } from '@lucide/svelte';
 	import { css } from 'styled-system/css';
+	import { viewPage } from '$lib/components/viewStyles';
 
 	const { openNote: openEditor } = useEditorActions();
+
+	const pinnedGap = css({ mb: '2rem' });
+	const othersGap = css({ mt: '1.5rem' });
 
 	const pinned = $derived(notesStore.pinnedNotes);
 	const others = $derived(notesStore.unpinnedNotes);
@@ -17,7 +21,7 @@
 	const filteredOthers = $derived(search ? notesStore.search(search, others) : others);
 </script>
 
-<div class={css({ pt: '1rem', pb: '2rem' })}>
+<div class={viewPage}>
 	{#if filteredPinned.length === 0 && filteredOthers.length === 0}
 		<EmptyState
 			icon={StickyNote}
@@ -29,13 +33,13 @@
 			<NotesFeed
 				notes={filteredPinned}
 				onOpen={openEditor}
-				class={filteredOthers.length > 0 ? css({ mb: '2rem' }) : ''}
+				class={filteredOthers.length > 0 ? pinnedGap : ''}
 			/>
 		{/if}
 
 		{#if filteredOthers.length > 0}
 			{#if filteredPinned.length > 0}
-				<SectionHeader label="Others" count={filteredOthers.length} class={css({ mt: '1.5rem' })} />
+				<SectionHeader label="Others" count={filteredOthers.length} class={othersGap} />
 			{/if}
 			<NotesFeed notes={filteredOthers} onOpen={openEditor} />
 		{/if}

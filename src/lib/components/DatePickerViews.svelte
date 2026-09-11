@@ -4,6 +4,7 @@
 	import type { DateValue } from '@internationalized/date';
 	import type { Snippet } from 'svelte';
 	import { css } from 'styled-system/css';
+	import { iconButton } from 'styled-system/recipes';
 
 	let {
 		dayExtra,
@@ -23,14 +24,7 @@
 		onDayContextMenu?: (day: DateValue, e: MouseEvent) => void;
 	} = $props();
 
-	const navBtn = css({
-		rounded: 'full',
-		p: '0.375rem',
-		color: 'scrapscache.textMuted',
-		cursor: 'pointer',
-		transition: 'colors 150ms ease',
-		_hover: { bg: { base: 'black/5', _dark: 'white/10' } }
-	});
+	const navBtn = iconButton({ variant: 'ghost', size: 'xs' });
 
 	const viewBtn = css({
 		rounded: 'lg',
@@ -119,18 +113,6 @@
 		w: 'full',
 		tableLayout: 'fixed'
 	});
-
-	const headRowClass = css({
-		h: '1.5rem',
-		textAlign: 'center',
-		fontSize: 'xs',
-		fontWeight: 'medium',
-		color: 'scrapscache.textMuted'
-	});
-
-	const bodyRowClass = css({
-		textAlign: 'center'
-	});
 </script>
 
 <div class="calendar-panel">
@@ -150,7 +132,15 @@
 				</DatePicker.ViewControl>
 				<DatePicker.Table class={`calendar-table ${tableClass}`}>
 					<DatePicker.TableHead>
-						<DatePicker.TableRow class={headRowClass}>
+						<DatePicker.TableRow
+							class={css({
+								h: '1.5rem',
+								textAlign: 'center',
+								fontSize: 'xs',
+								fontWeight: 'medium',
+								color: 'scrapscache.textMuted'
+							})}
+						>
 							{#each datePicker().weekDays as weekDay (weekDay.value.toString())}
 								<DatePicker.TableHeader>{weekDay.narrow}</DatePicker.TableHeader>
 							{/each}
@@ -158,7 +148,7 @@
 					</DatePicker.TableHead>
 					<DatePicker.TableBody>
 						{#each datePicker().weeks as week (week[0].toString())}
-							<DatePicker.TableRow class={bodyRowClass}>
+							<DatePicker.TableRow class={css({ textAlign: 'center' })}>
 								{#each week as day (day.toString())}
 									<DatePicker.TableCell value={day}>
 										{#if onDayClick || onDayPointerDown}

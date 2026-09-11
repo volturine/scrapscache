@@ -9,7 +9,9 @@
 	import DatePickerViews from './DatePickerViews.svelte';
 	import type { Note } from '$lib/types';
 	import { dayKey } from '$lib/utils';
-	import { css } from 'styled-system/css';
+	import { cx, css } from 'styled-system/css';
+	import { flex, hstack } from 'styled-system/patterns';
+	import { button } from 'styled-system/recipes';
 
 	let {
 		notes,
@@ -94,7 +96,25 @@
 		selected = { from: key, to: key };
 	}
 
-	const containerClass = css({
+	const footerBtnClass = cx(
+		button({ variant: 'ghost' }),
+		css({
+			h: 'auto',
+			rounded: 'full',
+			px: '0.5rem',
+			py: '0.125rem',
+			fontSize: 'inherit',
+			lineHeight: '1.25rem',
+			_disabled: {
+				opacity: 0.4,
+				pointerEvents: 'none'
+			}
+		})
+	);
+</script>
+
+<div
+	class={`reminder-calendar ${css({
 		w: 'full',
 		userSelect: 'none',
 		rounded: '2xl',
@@ -103,79 +123,10 @@
 		bg: 'scrapscache.surface',
 		px: '0.75rem',
 		py: '0.75rem'
-	});
-
-	const pickerRootClass = css({
-		w: 'full'
-	});
-
-	const dotClass = css({
-		position: 'absolute',
-		bottom: '0.25rem',
-		h: '0.25rem',
-		w: '0.25rem',
-		rounded: 'full',
-		bg: 'scrapscache.accent'
-	});
-
-	const footerClass = css({
-		mt: '0.5rem',
-		display: 'flex',
-		alignItems: 'center',
-		justifyContent: 'space-between',
-		gap: '0.5rem',
-		borderTopWidth: '1px',
-		borderColor: 'scrapscache.border',
-		pt: '0.75rem',
-		fontSize: 'xs'
-	});
-
-	const footerSideClass = css({
-		display: 'flex',
-		flex: '1',
-		alignItems: 'center'
-	});
-
-	const footerEndClass = css({
-		display: 'flex',
-		flex: '1',
-		alignItems: 'center',
-		justifyContent: 'flex-end'
-	});
-
-	const footerBtnClass = css({
-		rounded: 'full',
-		px: '0.5rem',
-		py: '0.125rem',
-		fontWeight: 'medium',
-		lineHeight: '1.25rem',
-		color: 'scrapscache.textMuted',
-		cursor: 'pointer',
-		transition: 'all 120ms ease',
-		_hover: {
-			bg: { base: 'black/5', _dark: 'white/10' },
-			color: 'scrapscache.text'
-		},
-		_disabled: {
-			pointerEvents: 'none',
-			opacity: 0.4
-		}
-	});
-
-	const statusTextClass = css({
-		flexShrink: 0,
-		overflow: 'hidden',
-		textOverflow: 'ellipsis',
-		whiteSpace: 'nowrap',
-		px: '0.5rem',
-		lineHeight: '1.25rem',
-		color: 'scrapscache.textMuted'
-	});
-</script>
-
-<div class={`reminder-calendar ${containerClass}`}>
+	})}`}
+>
 	<DatePicker.Root
-		class={pickerRootClass}
+		class={css({ w: 'full' })}
 		inline
 		startOfWeek={1}
 		fixedWeeks
@@ -193,17 +144,46 @@
 			{#snippet dayExtra(day)}
 				{@const count = reminderDays.get(day.toString()) ?? 0}
 				{#if count > 0}
-					<span class={`reminder-dot ${dotClass}`}></span>
+					<span
+						class={`reminder-dot ${css({
+							position: 'absolute',
+							bottom: '0.25rem',
+							h: '0.25rem',
+							w: '0.25rem',
+							rounded: 'full',
+							bg: 'scrapscache.accent'
+						})}`}
+					></span>
 				{/if}
 			{/snippet}
 		</DatePickerViews>
 	</DatePicker.Root>
 
-	<div class={footerClass}>
-		<div class={footerSideClass}>
+	<div
+		class={hstack({
+			mt: '0.5rem',
+			justify: 'space-between',
+			gap: '0.5rem',
+			borderTopWidth: '1px',
+			borderColor: 'scrapscache.border',
+			pt: '0.75rem',
+			fontSize: 'xs'
+		})}
+	>
+		<div class={flex({ flex: '1', align: 'center' })}>
 			<button type="button" class={footerBtnClass} onclick={filterToday}> Today </button>
 		</div>
-		<span class={statusTextClass}>
+		<span
+			class={css({
+				flexShrink: 0,
+				overflow: 'hidden',
+				textOverflow: 'ellipsis',
+				whiteSpace: 'nowrap',
+				px: '0.5rem',
+				lineHeight: '1.25rem',
+				color: 'scrapscache.textMuted'
+			})}
+		>
 			{#if pickingEnd}
 				Pick an end day
 			{:else if selected && selected.from !== selected.to}
@@ -212,7 +192,7 @@
 				Day filter active
 			{/if}
 		</span>
-		<div class={footerEndClass}>
+		<div class={flex({ flex: '1', align: 'center', justify: 'flex-end' })}>
 			<button
 				type="button"
 				class={footerBtnClass}

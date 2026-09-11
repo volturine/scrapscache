@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { css, cva } from 'styled-system/css';
+	import { css } from 'styled-system/css';
+	import { iconButton, noteCard } from 'styled-system/recipes';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { reminderStore } from '$lib/stores/reminders.svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
@@ -192,154 +193,7 @@
 
 	onDestroy(() => swipe.dispose());
 
-	const cardOuterClass = css({
-		position: 'relative',
-		overflow: 'hidden',
-		rounded: 'lg'
-	});
-
-	const swipeRestoreClass = css({
-		position: 'absolute',
-		inset: 0,
-		display: 'flex',
-		alignItems: 'center',
-		justifyContent: 'flex-end',
-		rounded: 'lg',
-		bg: 'green.500',
-		pr: '1rem',
-		color: 'white'
-	});
-
-	const swipeTrashClass = css({
-		position: 'absolute',
-		inset: 0,
-		display: 'flex',
-		alignItems: 'center',
-		justifyContent: 'flex-start',
-		rounded: 'lg',
-		bg: 'red.500',
-		pl: '1rem',
-		color: 'white'
-	});
-
-	const cardBodyClass = css({
-		position: 'relative',
-		zIndex: 1,
-		display: 'flex',
-		w: 'full',
-		maxH: '320px',
-		cursor: 'pointer',
-		flexDirection: 'column',
-		overflow: 'hidden',
-		rounded: 'lg',
-		borderWidth: '1px',
-		borderColor: { base: 'black/5', _dark: 'white/10' },
-		boxShadow: 'sm',
-		transition: 'box-shadow 150ms ease'
-	});
-
-	const cardPinnedClass = css({
-		boxShadow: 'md'
-	});
-
-	const contentPadClass = css({
-		display: 'block',
-		w: 'full',
-		p: '0.75rem',
-		pb: '0.5rem',
-		textAlign: 'left'
-	});
-
-	const titleClass = css({
-		mb: '0.25rem',
-		wordBreak: 'break-word',
-		fontSize: '15px',
-		fontWeight: '600',
-		lineHeight: 'snug',
-		letterSpacing: 'tight',
-		color: 'scrapscache.text'
-	});
-
-	const labelsRowClass = css({
-		display: 'flex',
-		flexShrink: 0,
-		flexWrap: 'wrap',
-		gap: '0.25rem',
-		px: '0.75rem',
-		pb: '0.75rem',
-		pt: '0.5rem'
-	});
-
-	const labelPillClass = css({
-		rounded: 'sm',
-		px: '0.375rem',
-		py: '0.125rem',
-		fontSize: '10px',
-		fontWeight: 'medium',
-		bg: { base: 'black/5', _dark: 'white/10' },
-		color: 'scrapscache.textMuted'
-	});
-
-	const hazeOverlayClass = css({
-		position: 'absolute',
-		inset: 0,
-		zIndex: 20,
-		display: 'flex',
-		flexDirection: 'column',
-		alignItems: 'center',
-		justifyContent: 'center',
-		p: '0.5rem',
-		rounded: 'lg',
-		backdropFilter: 'blur(12px)',
-		bg: { base: 'black/45', _dark: 'black/60' },
-		transition: 'opacity 150ms ease'
-	});
-
-	const hazeBtn = cva({
-		base: {
-			display: 'flex',
-			alignItems: 'center',
-			justifyContent: 'center',
-			rounded: 'full',
-			color: 'white/90',
-			cursor: 'pointer',
-			transition: 'all 150ms ease',
-			_hover: {
-				transform: 'scale(1.05)',
-				bg: 'white/20'
-			},
-			_active: {
-				transform: 'scale(0.95)'
-			},
-			_focusVisible: {
-				outline: 'none',
-				ringWidth: '2px',
-				ringColor: 'white/80'
-			}
-		},
-		variants: {
-			size: {
-				sm: { h: '2rem', w: '2rem' },
-				md: { h: '2.5rem', w: '2.5rem' }
-			},
-			tone: {
-				default: {},
-				emerald: { color: 'emerald.400' },
-				amber: { color: 'amber.300' },
-				blue: { color: 'blue.300' },
-				rose: {
-					_hover: {
-						bg: 'rose.500/30',
-						color: 'rose.300'
-					}
-				}
-			}
-		},
-		defaultVariants: {
-			size: 'sm',
-			tone: 'default'
-		}
-	});
+	const card = $derived(noteCard({ pinned: note.pinned, trashed: note.trashed }));
 </script>
 
 <svelte:window
@@ -360,9 +214,9 @@
 		: undefined}
 />
 
-<div class={`card-stream-in ${cardOuterClass}`}>
+<div class={`card-stream-in ${card.cardOuter}`}>
 	{#if offsetX < 0}
-		<div class={swipeRestoreClass}>
+		<div class={card.swipeRestore}>
 			{#if note.trashed}
 				<RotateCcw size={24} aria-hidden="true" />
 			{:else if note.archived}
@@ -372,7 +226,7 @@
 			{/if}
 		</div>
 	{:else if offsetX > 0}
-		<div class={swipeTrashClass}>
+		<div class={card.swipeTrash}>
 			<Trash2 size={24} aria-hidden="true" />
 		</div>
 	{/if}
@@ -383,7 +237,7 @@
 		role="button"
 		tabindex="0"
 		aria-label={openLabel}
-		class={`${cardBodyClass} ${note.pinned ? cardPinnedClass : ''}`}
+		class={card.cardBody}
 		style="background-color: {bgColor(note.color)}; {cardSwipeStyle(offsetX, dragging)}"
 		onpointerdown={swipe.onPointerDown}
 		onpointermove={swipe.onPointerMove}
@@ -403,9 +257,9 @@
 			class={`note-scrollbar-hidden scrollable ${css({ minH: 0, flex: '1', overflowX: 'hidden', overflowY: 'auto' })}`}
 		>
 			<div class={css({ position: 'relative' })}>
-				<div class={`${contentPadClass} ${note.trashed ? css({ opacity: 0.6 }) : ''}`}>
+				<div class={card.contentPad}>
 					{#if note.title}
-						<h3 class={`break-words ${titleClass}`}>
+						<h3 class={`break-words ${card.title}`}>
 							{note.title}
 						</h3>
 					{/if}
@@ -422,9 +276,9 @@
 		</div>
 
 		{#if labelsForNote.length}
-			<div class={labelsRowClass}>
+			<div class={card.labelsRow}>
 				{#each labelsForNote as label (label.id)}
-					<span class={labelPillClass}>
+					<span class={card.labelPill}>
 						{label.name}
 					</span>
 				{/each}
@@ -435,7 +289,7 @@
 			<!-- Clicking the haze is a pointer convenience; Escape and outside taps dismiss it. -->
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
 			<div
-				class={hazeOverlayClass}
+				class={card.hazeOverlay}
 				data-card-haze
 				role="presentation"
 				onclick={(e) => {
@@ -460,7 +314,7 @@
 					>
 						<button
 							type="button"
-							class={hazeBtn({ size: 'sm', tone: copied ? 'emerald' : 'default' })}
+							class={iconButton({ size: 'compact', variant: copied ? 'hazeCopied' : 'haze' })}
 							title={copied ? 'Copied!' : 'Copy note'}
 							aria-label={copied ? 'Copied to clipboard' : 'Copy note'}
 							onclick={handleCopy}
@@ -473,7 +327,7 @@
 						</button>
 						<button
 							type="button"
-							class={hazeBtn({ size: 'sm', tone: note.pinned ? 'amber' : 'default' })}
+							class={iconButton({ size: 'compact', variant: note.pinned ? 'hazePinned' : 'haze' })}
 							title={note.pinned ? 'Unpin' : 'Pin'}
 							aria-label={note.pinned ? 'Unpin note' : 'Pin note'}
 							onclick={handlePin}
@@ -482,7 +336,10 @@
 						</button>
 						<button
 							type="button"
-							class={hazeBtn({ size: 'sm', tone: note.reminder != null ? 'blue' : 'default' })}
+							class={iconButton({
+								size: 'compact',
+								variant: note.reminder != null ? 'hazeBlue' : 'haze'
+							})}
 							title={note.reminder != null ? 'Edit reminder' : 'Add reminder'}
 							aria-label={note.reminder != null ? 'Edit reminder' : 'Add reminder'}
 							onclick={handleReminder}
@@ -495,7 +352,7 @@
 						</button>
 						<button
 							type="button"
-							class={hazeBtn({ size: 'sm', tone: 'rose' })}
+							class={iconButton({ size: 'compact', variant: 'hazeRose' })}
 							title={note.trashed ? 'Delete forever' : 'Delete note'}
 							aria-label={note.trashed ? 'Delete forever' : 'Delete note'}
 							onclick={handleDelete}
@@ -504,7 +361,7 @@
 						</button>
 						<button
 							type="button"
-							class={hazeBtn({ size: 'sm', tone: 'default' })}
+							class={iconButton({ size: 'compact', variant: 'haze' })}
 							title={note.archived ? 'Unarchive' : 'Archive'}
 							aria-label={note.archived ? 'Unarchive note' : 'Archive note'}
 							onclick={handleArchive}
@@ -537,7 +394,7 @@
 							<!-- Copy -->
 							<button
 								type="button"
-								class={hazeBtn({ size: 'md', tone: copied ? 'emerald' : 'default' })}
+								class={iconButton({ size: 'standard', variant: copied ? 'hazeCopied' : 'haze' })}
 								title={copied ? 'Copied!' : 'Copy note'}
 								aria-label={copied ? 'Copied to clipboard' : 'Copy note'}
 								onclick={handleCopy}
@@ -552,7 +409,10 @@
 							<!-- Pin -->
 							<button
 								type="button"
-								class={hazeBtn({ size: 'md', tone: note.pinned ? 'amber' : 'default' })}
+								class={iconButton({
+									size: 'standard',
+									variant: note.pinned ? 'hazePinned' : 'haze'
+								})}
 								title={note.pinned ? 'Unpin' : 'Pin'}
 								aria-label={note.pinned ? 'Unpin note' : 'Pin note'}
 								onclick={handlePin}
@@ -563,7 +423,10 @@
 							<!-- Reminder -->
 							<button
 								type="button"
-								class={hazeBtn({ size: 'md', tone: note.reminder != null ? 'blue' : 'default' })}
+								class={iconButton({
+									size: 'standard',
+									variant: note.reminder != null ? 'hazeBlue' : 'haze'
+								})}
 								title={note.reminder != null ? 'Edit reminder' : 'Add reminder'}
 								aria-label={note.reminder != null ? 'Edit reminder' : 'Add reminder'}
 								onclick={handleReminder}
@@ -587,7 +450,7 @@
 							<!-- Delete -->
 							<button
 								type="button"
-								class={hazeBtn({ size: 'md', tone: 'rose' })}
+								class={iconButton({ size: 'standard', variant: 'hazeRose' })}
 								title={note.trashed ? 'Delete forever' : 'Delete note'}
 								aria-label={note.trashed ? 'Delete forever' : 'Delete note'}
 								onclick={handleDelete}
@@ -598,7 +461,7 @@
 							<!-- Archive -->
 							<button
 								type="button"
-								class={hazeBtn({ size: 'md', tone: 'default' })}
+								class={iconButton({ size: 'standard', variant: 'haze' })}
 								title={note.archived ? 'Unarchive' : 'Archive'}
 								aria-label={note.archived ? 'Unarchive note' : 'Archive note'}
 								onclick={handleArchive}

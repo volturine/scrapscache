@@ -5,14 +5,15 @@
 	import { useEditorActions } from '$lib/editorContext';
 	import EmptyState from '$lib/components/EmptyState.svelte';
 	import { Archive } from '@lucide/svelte';
-	import { css } from 'styled-system/css';
+	import { viewPage } from '$lib/components/viewStyles';
 
 	const { openNote: openEditor } = useEditorActions();
 	const archived = $derived(notesStore.archivedNotes);
 </script>
 
-<div class={css({ pt: '1rem', pb: '2rem' })}>
-	{#if archived.length === 0}\n\t\t<EmptyState
+<div class={viewPage}>
+	{#if archived.length === 0}
+		<EmptyState
 			icon={Archive}
 			description="Archive notes you want to keep without showing them in Notes."
 		/>

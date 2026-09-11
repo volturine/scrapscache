@@ -16,8 +16,10 @@
 	import { SegmentGroup } from '@ark-ui/svelte/segment-group';
 	import Tooltip from './Tooltip.svelte';
 	import { portalToAppOverlay } from '$lib/appViewport';
-	import { css, cva } from 'styled-system/css';
-	import { button } from 'styled-system/recipes';
+	import { css, cva, cx } from 'styled-system/css';
+	import { button, iconButton } from 'styled-system/recipes';
+	import { hstack } from 'styled-system/patterns';
+	import { fullscreen } from './fullscreenStyles';
 	import { displayImageSrc } from '$lib/imageThumb';
 	import { noteImageFromCroppedDataUrl } from '$lib/noteImages';
 
@@ -227,15 +229,7 @@
 		}
 	}
 
-	const fsRoot = css({
-		position: 'absolute',
-		inset: 0,
-		zIndex: 80,
-		display: 'flex',
-		flexDirection: 'column',
-		bg: 'black',
-		color: 'white'
-	});
+	const fs = fullscreen({ theme: 'photo' });
 	const cropRootClass = css({
 		position: 'relative',
 		zIndex: 1,
@@ -264,40 +258,30 @@
 		py: '0.5rem',
 		backdropFilter: 'blur(12px)'
 	});
-	const cropBtnRound = css({
-		display: 'grid',
-		h: '2.25rem',
-		w: '2.25rem',
-		placeItems: 'center',
-		rounded: 'full',
-		color: 'white/90',
-		touchAction: 'manipulation',
-		cursor: 'pointer',
-		_hover: { bg: 'white/10', color: 'white' }
-	});
+	const cropBtnRound = cx(iconButton({ variant: 'haze' }), css({ h: '2.25rem', w: '2.25rem' }));
 	const cropSep = css({
 		mx: { base: '0.125rem', sm: '0.25rem' },
 		h: '1rem',
 		w: '1px',
 		bg: 'white/20'
 	});
-	const cropToolBtn = css({
-		display: 'grid',
-		h: '2.25rem',
-		w: '2.25rem',
-		placeItems: 'center',
-		rounded: 'md',
-		color: 'white/80',
-		transition: 'colors 120ms ease',
-		touchAction: 'manipulation',
-		cursor: 'pointer',
-		_hover: { bg: 'white/10', color: 'white' },
-		_disabled: {
-			opacity: 0.35,
-			cursor: 'not-allowed',
-			_hover: { bg: 'transparent', color: 'white/80' }
-		}
-	});
+	const cropToolBtn = cx(
+		iconButton({ variant: 'haze' }),
+		css({
+			h: '2.25rem',
+			w: '2.25rem',
+			rounded: 'md',
+			color: 'white/80',
+			transition: 'colors 120ms ease',
+			_hover: { bg: 'white/10', color: 'white' },
+			_disabled: {
+				opacity: 0.35,
+				cursor: 'not-allowed',
+				pointerEvents: 'auto',
+				_hover: { bg: 'transparent', color: 'white/80' }
+			}
+		})
+	);
 	const ratioDesktopWrap = css({
 		position: 'absolute',
 		left: '50%',
@@ -368,7 +352,7 @@
 		px: '0.75rem',
 		py: '0.375rem'
 	});
-	const mobileRatioBtn = cva({
+	const ratioMobileBtn = cva({
 		base: {
 			rounded: 'sm',
 			px: '0.5rem',
@@ -380,7 +364,7 @@
 		variants: {
 			active: {
 				true: { bg: 'white', fontWeight: 'semibold', color: 'black' },
-				false: { color: 'white/70', _hover: { bg: 'white/10', color: 'white' } }
+				false: { bg: 'transparent', color: 'white/70', _hover: { bg: 'white/10', color: 'white' } }
 			}
 		}
 	});
@@ -408,55 +392,13 @@
 		userSelect: 'none',
 		pointerEvents: 'none'
 	});
-	const cropErr = css({
-		px: '1rem',
-		pb: '0.75rem',
-		textAlign: 'center',
-		fontSize: 'xs',
-		color: 'red.400'
-	});
-	const fsTopBar = css({
-		position: 'absolute',
-		insetX: 0,
-		top: 0,
-		zIndex: 20,
-		display: 'flex',
-		h: '3.5rem',
-		alignItems: 'center',
-		justifyContent: 'space-between',
-		gap: '0.75rem',
-		bgGradient: 'to-b',
-		gradientFrom: 'black/75',
-		gradientTo: 'transparent',
-		px: '0.75rem',
-		py: '0.5rem',
-		backdropFilter: 'blur(2px)'
-	});
-	const topBarBtn = css({
-		display: 'grid',
-		h: '2.5rem',
-		w: '2.5rem',
-		flexShrink: 0,
-		placeItems: 'center',
-		rounded: 'full',
-		color: 'white/90',
-		touchAction: 'manipulation',
-		cursor: 'pointer',
-		_hover: { bg: 'white/10', color: 'white' }
-	});
-	const topBarTrashBtn = css({
-		display: 'grid',
-		h: '2.5rem',
-		w: '2.5rem',
-		placeItems: 'center',
-		rounded: 'full',
-		color: 'white/90',
-		touchAction: 'manipulation',
-		cursor: 'pointer',
-		_hover: { bg: 'red.500/20', color: 'red.400' }
-	});
-	const navArrow = (side: 'left' | 'right') =>
-		css({
+	const topBarBtn = cx(iconButton({ variant: 'haze' }), css({ flexShrink: 0 }));
+	const topBarTrashBtn = cx(
+		iconButton({ variant: 'haze' }),
+		css({ _hover: { bg: 'red.500/20', color: 'red.400' } })
+	);
+	const navArrow = cva({
+		base: {
 			position: 'absolute',
 			top: '50%',
 			transform: 'translateY(-50%)',
@@ -473,10 +415,15 @@
 			transition: 'colors 120ms ease',
 			cursor: 'pointer',
 			touchAction: 'manipulation',
-			left: side === 'left' ? '0.75rem' : 'auto',
-			right: side === 'right' ? '0.75rem' : 'auto',
 			_hover: { bg: 'black/70', color: 'white' }
-		});
+		},
+		variants: {
+			side: {
+				left: { left: '0.75rem' },
+				right: { right: '0.75rem' }
+			}
+		}
+	});
 	const viewerCenter = css({
 		pointerEvents: 'none',
 		position: 'relative',
@@ -528,36 +475,6 @@
 	});
 	const thumbImg = css({ h: 'full', w: 'full', objectFit: 'cover' });
 
-	const flexRowSm = css({
-		display: 'flex',
-		alignItems: 'center',
-		gap: { base: '0.25rem', sm: '0.375rem' }
-	});
-	const flexRowMd = css({ display: 'flex', alignItems: 'center', gap: '0.5rem' });
-	const flexRowGap1 = css({ display: 'flex', alignItems: 'center', gap: '0.25rem' });
-	const flexRowGap15 = css({ display: 'flex', alignItems: 'center', gap: '0.375rem' });
-	const ratioMobileBtn = (active: boolean) =>
-		css({
-			rounded: 'sm',
-			px: '0.5rem',
-			py: '0.125rem',
-			fontSize: 'xs',
-			transition: 'colors 120ms ease',
-			bg: active ? 'white' : 'transparent',
-			color: active ? 'black' : 'white/70',
-			fontWeight: active ? 'semibold' : 'normal',
-			_hover: { color: 'white' }
-		});
-	const titleWrap = css({
-		minW: 0,
-		flex: '1',
-		overflow: 'hidden',
-		textOverflow: 'ellipsis',
-		whiteSpace: 'nowrap',
-		fontSize: 'sm',
-		fontWeight: 'medium',
-		color: 'white/90'
-	});
 	const titleSize = css({ ml: '0.25rem', fontSize: 'xs', fontWeight: 'normal', color: 'white/60' });
 	const viewerStage = css({ position: 'relative', minH: 0, flex: '1' });
 	const zoomBackdrop = css({ position: 'absolute', inset: 0, cursor: 'zoom-out' });
@@ -567,7 +484,7 @@
 	<div
 		{@attach portal}
 		{@attach trapKeys}
-		class={fsRoot}
+		class={fs.shell}
 		role="dialog"
 		aria-modal="true"
 		aria-label="Photo"
@@ -588,7 +505,7 @@
 						{#snippet render(cropper)}
 							<header class={cropHeader}>
 								<!-- Left: Cancel, Rotate, Undo -->
-								<div class={flexRowSm}>
+								<div class={hstack({ gap: { base: '0.25rem', sm: '0.375rem' } })}>
 									<Tooltip content="Cancel">
 										<button
 											type="button"
@@ -651,7 +568,7 @@
 								</div>
 
 								<!-- Right: Reset & Apply -->
-								<div class={flexRowMd}>
+								<div class={hstack({ gap: '0.5rem' })}>
 									<button
 										type="button"
 										class={resetBtn}
@@ -673,7 +590,7 @@
 										{#if cropBusy}
 											<span>Saving…</span>
 										{:else}
-											<div class={flexRowGap15}>
+											<div class={hstack({ gap: '0.375rem' })}>
 												<Check size={16} aria-hidden="true" />
 												<span>Apply</span>
 											</div>
@@ -686,7 +603,7 @@
 								{#each [{ id: 'free', label: 'Free' }, { id: '1:1', label: '1:1' }, { id: '4:3', label: '4:3' }, { id: '16:9', label: '16:9' }] as opt (opt.id)}
 									<button
 										type="button"
-										class={ratioMobileBtn(selectedRatio === opt.id)}
+										class={ratioMobileBtn({ active: selectedRatio === opt.id })}
 										onclick={() => (selectedRatio = opt.id as any)}
 										disabled={cropBusy}
 									>
@@ -726,16 +643,16 @@
 					</div>
 				</ImageCropper.Root>
 				{#if cropError}
-					<p class={cropErr}>{cropError}</p>
+					<p class={fs.notice}>{cropError}</p>
 				{/if}
 			</div>
 		{:else}
-			<header class={fsTopBar}>
-				<div class={`${flexRowMd} ${css({ minW: 0 })}`}>
+			<header class={fs.header}>
+				<div class={hstack({ gap: '0.5rem', minW: 0 })}>
 					<button type="button" class={topBarBtn} onclick={close} aria-label="Close photo">
 						<X size={24} aria-hidden="true" />
 					</button>
-					<div class={titleWrap}>
+					<div class={fs.title}>
 						{current.name || `Photo ${(activeIndex ?? 0) + 1}`}
 						{#if images.length > 1}
 							<span class={titleSize}>
@@ -745,7 +662,7 @@
 					</div>
 				</div>
 
-				<div class={flexRowGap1}>
+				<div class={hstack({ gap: '0.25rem' })}>
 					<Tooltip content="Download photo">
 						<DownloadTrigger
 							fileName={current.name || 'photo.webp'}
@@ -797,7 +714,7 @@
 					<Tooltip content="Previous photo" placement="right">
 						<button
 							type="button"
-							class={navArrow('left')}
+							class={navArrow({ side: 'left' })}
 							onclick={() => move(-1)}
 							aria-label="Previous photo"
 							title="Previous photo"
@@ -808,7 +725,7 @@
 					<Tooltip content="Next photo" placement="left">
 						<button
 							type="button"
-							class={navArrow('right')}
+							class={navArrow({ side: 'right' })}
 							onclick={() => move(1)}
 							aria-label="Next photo"
 							title="Next photo"

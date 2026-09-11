@@ -2,7 +2,9 @@
 	import { Checkbox } from '@ark-ui/svelte/checkbox';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { Check, Plus, Search, Tag } from '@lucide/svelte';
-	import { css } from 'styled-system/css';
+	import { css, cx, sva } from 'styled-system/css';
+	import { button, input } from 'styled-system/recipes';
+	import { hstack, vstack } from 'styled-system/patterns';
 
 	let {
 		noteId,
@@ -91,23 +93,8 @@
 		};
 	}
 
-	const containerClass = css({
-		display: 'flex',
-		w: 'min(20rem, calc(100vw - 2rem))',
-		flexDirection: 'column',
-		p: '0.5rem'
-	});
-
-	const headerRowClass = css({
-		mb: '0.25rem',
-		display: 'flex',
-		h: '2rem',
-		alignItems: 'center',
-		gap: '0.5rem',
-		pl: '0.75rem',
-		pr: '0.25rem'
-	});
-
+	// The header title is tighter than the shared sectionHeader recipe (11px,
+	// 0.14em tracking), so it stays local.
 	const headerTitleClass = css({
 		minW: 0,
 		flex: '1',
@@ -118,165 +105,124 @@
 		color: 'scrapscache.textMuted'
 	});
 
-	const doneBtnClass = css({
-		flexShrink: 0,
-		rounded: 'md',
-		px: '0.5rem',
-		py: '0.25rem',
-		fontSize: 'xs',
-		fontWeight: 'medium',
-		color: 'scrapscache.textMuted',
-		cursor: 'pointer',
-		transition: 'colors 120ms ease',
-		_hover: {
-			bg: 'scrapscache.interactiveHover',
-			color: 'scrapscache.text'
+	const searchInputClass = cx(
+		input({ variant: 'subtle', size: 'md' }),
+		css({ w: 'full', pl: '2.25rem', _placeholder: { color: 'scrapscache.textMuted' } })
+	);
+
+	// One row treatment shared by the checkbox rows and the create button; the
+	// create button tints itself with the accent color on top.
+	const itemSva = sva({
+		slots: ['row', 'iconBox', 'icon', 'label', 'checkIndicator'],
+		base: {
+			row: {
+				display: 'flex',
+				w: 'full',
+				cursor: 'pointer',
+				alignItems: 'center',
+				gap: '0.75rem',
+				rounded: 'xl',
+				px: '0.75rem',
+				py: '0.625rem',
+				textAlign: 'left',
+				fontSize: 'sm',
+				fontWeight: 'medium',
+				color: 'scrapscache.text',
+				transition: 'colors 120ms ease',
+				_hover: {
+					bg: 'scrapscache.interactiveHover'
+				}
+			},
+			iconBox: {
+				display: 'grid',
+				h: '1.75rem',
+				w: '1.75rem',
+				flexShrink: 0,
+				placeItems: 'center',
+				color: 'scrapscache.textMuted',
+				'&[data-state=checked]': {
+					color: 'scrapscache.accent'
+				}
+			},
+			icon: {
+				w: '1rem',
+				h: '1rem'
+			},
+			label: {
+				minW: 0,
+				flex: '1',
+				overflow: 'hidden',
+				textOverflow: 'ellipsis',
+				whiteSpace: 'nowrap'
+			},
+			checkIndicator: {
+				flexShrink: 0,
+				color: 'scrapscache.accent'
+			}
 		}
 	});
-
-	const searchWrapClass = css({
-		position: 'relative',
-		mb: '0.25rem'
-	});
-
-	const searchIconClass = css({
-		pointerEvents: 'none',
-		position: 'absolute',
-		left: '0.75rem',
-		top: '50%',
-		h: '1rem',
-		w: '1rem',
-		transform: 'translateY(-50%)',
-		color: 'scrapscache.textMuted'
-	});
-
-	const inputClass = css({
-		w: 'full',
-		rounded: 'xl',
-		py: '0.5rem',
-		pl: '2.25rem',
-		pr: '0.75rem',
-		fontSize: 'sm',
-		_placeholder: {
-			color: 'scrapscache.textMuted'
-		}
-	});
-
-	const listScrollClass = css({
-		display: 'flex',
-		maxH: '16rem',
-		flexDirection: 'column',
-		gap: '0.125rem',
-		overflowY: 'auto'
-	});
-
-	const createBtnClass = css({
-		display: 'flex',
-		w: 'full',
-		alignItems: 'center',
-		gap: '0.75rem',
-		rounded: 'xl',
-		px: '0.75rem',
-		py: '0.625rem',
-		textAlign: 'left',
-		fontSize: 'sm',
-		fontWeight: 'medium',
-		color: 'scrapscache.accent',
-		cursor: 'pointer',
-		transition: 'colors 120ms ease',
-		_hover: {
-			bg: 'scrapscache.interactiveHover'
-		}
-	});
-
-	const checkboxItemClass = css({
-		display: 'flex',
-		w: 'full',
-		cursor: 'pointer',
-		alignItems: 'center',
-		gap: '0.75rem',
-		rounded: 'xl',
-		px: '0.75rem',
-		py: '0.625rem',
-		textAlign: 'left',
-		fontSize: 'sm',
-		fontWeight: 'medium',
-		color: 'scrapscache.text',
-		transition: 'colors 120ms ease',
-		_hover: {
-			bg: 'scrapscache.interactiveHover'
-		}
-	});
-
-	const iconBoxClass = css({
-		display: 'grid',
-		h: '1.75rem',
-		w: '1.75rem',
-		flexShrink: 0,
-		placeItems: 'center',
-		color: 'scrapscache.textMuted',
-		'&[data-state=checked]': {
-			color: 'scrapscache.accent'
-		}
-	});
-
-	const iconSizeClass = css({
-		w: '1rem',
-		h: '1rem'
-	});
-
-	const labelTextClass = css({
-		minW: 0,
-		flex: '1',
-		overflow: 'hidden',
-		textOverflow: 'ellipsis',
-		whiteSpace: 'nowrap'
-	});
-
-	const checkIndicatorClass = css({
-		flexShrink: 0,
-		color: 'scrapscache.accent'
-	});
-
-	const emptyMessageClass = css({
-		px: '0.75rem',
-		py: '1rem',
-		textAlign: 'center',
-		fontSize: 'xs',
-		color: 'scrapscache.textMuted'
-	});
+	const item = itemSva();
 </script>
 
-<div use:labelMenuInteractions class={`scrapscache-popover ${containerClass}`}>
-	<div class={headerRowClass}>
+<div
+	use:labelMenuInteractions
+	class={`scrapscache-popover ${vstack({ p: '0.5rem', w: 'min(20rem, calc(100vw - 2rem))', gap: '0', alignItems: 'stretch' })}`}
+>
+	<div
+		class={hstack({
+			h: '2rem',
+			pl: '0.75rem',
+			pr: '0.25rem',
+			mb: '0.25rem',
+			justify: 'space-between'
+		})}
+	>
 		<span class={headerTitleClass}>Labels</span>
-		<button type="button" onclick={onClose} class={doneBtnClass}> Done </button>
+		<button type="button" onclick={onClose} class={button({ variant: 'ghost', size: 'xs' })}>
+			Done
+		</button>
 	</div>
 
-	<div class={searchWrapClass}>
-		<Search class={searchIconClass} strokeWidth={1.75} aria-hidden="true" />
+	<div class={css({ position: 'relative', mb: '0.25rem' })}>
+		<Search
+			class={css({
+				pointerEvents: 'none',
+				position: 'absolute',
+				left: '0.75rem',
+				top: '50%',
+				h: '1rem',
+				w: '1rem',
+				transform: 'translateY(-50%)',
+				color: 'scrapscache.textMuted'
+			})}
+			strokeWidth={1.75}
+			aria-hidden="true"
+		/>
 		<input
 			bind:this={queryInput}
 			type="text"
 			bind:value={query}
 			placeholder="Search or create a label…"
 			onkeydown={onQueryKeydown}
-			class={`scrapscache-input ${inputClass}`}
+			class={searchInputClass}
 		/>
 	</div>
 
-	<div class={`${listScrollClass} sidebar-scroll`} style:min-height={listMinHeight}>
+	<div
+		class={`${vstack({ gap: '0.125rem', maxH: '16rem', overflowY: 'auto', alignItems: 'stretch' })} sidebar-scroll`}
+		style:min-height={listMinHeight}
+	>
 		{#if canCreate}
 			<button
 				type="button"
 				onclick={createAndAssign}
 				aria-label="Create label"
-				class={createBtnClass}
+				class={cx(item.row, css({ color: 'scrapscache.accent' }))}
 			>
-				<span class={iconBoxClass} aria-hidden="true">
-					<Plus class={iconSizeClass} strokeWidth={1.75} />
+				<span class={item.iconBox} aria-hidden="true">
+					<Plus class={item.icon} strokeWidth={1.75} />
 				</span>
-				<span class={labelTextClass}>Create “{trimmed}”</span>
+				<span class={item.label}>Create “{trimmed}”</span>
 			</button>
 		{/if}
 
@@ -289,19 +235,19 @@
 						const on = details.checked === true;
 						if (on !== note.labels.includes(label.id)) toggle(label.id);
 					}}
-					class={checkboxItemClass}
+					class={item.row}
 				>
-					<Checkbox.Control class={iconBoxClass}>
+					<Checkbox.Control class={item.iconBox}>
 						<Tag
-							class={iconSizeClass}
+							class={item.icon}
 							strokeWidth={1.75}
 							fill={checked ? 'currentColor' : 'none'}
 							aria-hidden="true"
 						/>
 					</Checkbox.Control>
-					<Checkbox.Label class={labelTextClass}>{label.name}</Checkbox.Label>
-					<Checkbox.Indicator class={checkIndicatorClass}>
-						<Check class={iconSizeClass} strokeWidth={2.25} aria-hidden="true" />
+					<Checkbox.Label class={item.label}>{label.name}</Checkbox.Label>
+					<Checkbox.Indicator class={item.checkIndicator}>
+						<Check class={item.icon} strokeWidth={2.25} aria-hidden="true" />
 					</Checkbox.Indicator>
 					<Checkbox.HiddenInput />
 				</Checkbox.Root>
@@ -309,7 +255,17 @@
 		{/each}
 
 		{#if matches.length === 0 && !canCreate}
-			<p class={emptyMessageClass}>No labels yet. Type a name to create one.</p>
+			<p
+				class={css({
+					px: '0.75rem',
+					py: '1rem',
+					textAlign: 'center',
+					fontSize: 'xs',
+					color: 'scrapscache.textMuted'
+				})}
+			>
+				No labels yet. Type a name to create one.
+			</p>
 		{/if}
 	</div>
 </div>

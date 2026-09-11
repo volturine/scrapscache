@@ -2,8 +2,9 @@
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { portalToAppOverlay } from '$lib/appViewport';
 	import { BackupImportMode } from '$lib/backup';
-	import { css } from 'styled-system/css';
-	import { button } from 'styled-system/recipes';
+	import { css, cx } from 'styled-system/css';
+	import { button, dialog } from 'styled-system/recipes';
+	import { flex } from 'styled-system/patterns';
 
 	let {
 		busy = false,
@@ -23,54 +24,31 @@
 		if (!details.open && !busy) onClose();
 	}
 
-	const overlayWrap = css({
-		position: 'absolute',
-		inset: 0,
-		zIndex: 70
-	});
+	const d = dialog({ size: 'sm' });
 
-	const backdropClass = css({
-		position: 'absolute',
-		inset: 0,
-		bg: 'black/45'
-	});
-
-	const positionerClass = css({
-		position: 'absolute',
-		inset: 0,
-		display: 'flex',
-		alignItems: 'flex-start',
-		justifyContent: 'center',
-		px: '1rem',
-		pb: '1rem',
-		pt: 'calc(var(--app-topbar-height) + 0.5rem)'
-	});
-
-	const contentClass = css({
-		w: 'full',
-		maxW: '24rem'
-	});
-
-	const headerClass = css({
-		borderBottomWidth: '1px',
-		borderColor: 'scrapscache.border',
-		px: '1.25rem',
-		py: '1rem'
-	});
-
-	const titleClass = css({
-		fontSize: 'lg',
-		fontWeight: '600',
-		color: 'scrapscache.text'
-	});
-
-	const bodyClass = css({
-		display: 'flex',
-		flexDirection: 'column',
-		gap: '0.75rem',
-		px: '1.25rem',
-		py: '1.25rem'
-	});
+	const shell = {
+		backdrop: cx(d.backdrop, css({ position: 'absolute', bg: 'black/45', backdropFilter: 'none' })),
+		positioner: flex({
+			position: 'absolute',
+			inset: 0,
+			align: 'flex-start',
+			justify: 'center',
+			px: '1rem',
+			pb: '1rem',
+			pt: 'calc(var(--app-topbar-height) + 0.5rem)'
+		}),
+		panel: cx('scrapscache-dialog', d.panel, css({ maxW: '24rem', p: 0, gap: 0 })),
+		header: cx(
+			d.header,
+			css({
+				borderBottomWidth: '1px',
+				borderColor: 'scrapscache.border',
+				px: '1.25rem',
+				py: '1rem'
+			})
+		),
+		body: cx(d.body, css({ px: '1.25rem', py: '1.25rem' }))
+	};
 
 	const optionBtn = css({
 		w: 'full',
@@ -80,6 +58,7 @@
 		rounded: 'md',
 		borderWidth: '1px',
 		borderColor: 'scrapscache.border',
+		bg: 'transparent',
 		cursor: 'pointer',
 		transition: 'all 120ms ease',
 		_hover: {
@@ -87,34 +66,18 @@
 		}
 	});
 
-	const optionTitle = css({
-		display: 'block',
-		fontWeight: 'medium',
-		color: 'scrapscache.text'
-	});
-
-	const optionTitleDanger = css({
-		display: 'block',
-		fontWeight: 'medium',
-		color: 'scrapscache.danger'
-	});
+	const optionTitle = (danger: boolean) =>
+		css({
+			display: 'block',
+			fontWeight: 'medium',
+			color: danger ? 'scrapscache.danger' : 'scrapscache.text'
+		});
 
 	const optionDesc = css({
-		mt: '0.25rem',
 		display: 'block',
+		mt: '0.25rem',
 		fontSize: 'xs',
 		color: 'scrapscache.textMuted'
-	});
-
-	const errorClass = css({
-		fontSize: 'sm',
-		color: 'scrapscache.danger'
-	});
-
-	const footerClass = css({
-		display: 'flex',
-		justifyContent: 'flex-end',
-		pt: '0.25rem'
 	});
 </script>
 
@@ -126,15 +89,19 @@
 	preventScroll={false}
 	initialFocusEl={() => keepButton}
 >
-	<div {@attach portalToAppOverlay} class={overlayWrap} role="presentation">
-		<Dialog.Backdrop class={backdropClass} />
-		<Dialog.Positioner class={positionerClass}>
-			<Dialog.Content class={`scrapscache-dialog ${contentClass}`}>
-				<div class={headerClass}>
-					<Dialog.Title class={titleClass}>How should this backup be imported?</Dialog.Title>
+	<div
+		{@attach portalToAppOverlay}
+		class={css({ position: 'absolute', inset: 0, zIndex: 70 })}
+		role="presentation"
+	>
+		<Dialog.Backdrop class={shell.backdrop} />
+		<Dialog.Positioner class={shell.positioner}>
+			<Dialog.Content class={shell.panel}>
+				<div class={shell.header}>
+					<Dialog.Title class={d.title}>How should this backup be imported?</Dialog.Title>
 				</div>
 
-				<div class={bodyClass}>
+				<div class={shell.body}>
 					<button
 						bind:this={keepButton}
 						type="button"
@@ -142,7 +109,7 @@
 						onclick={() => onSelect(BackupImportMode.Keep)}
 						class={optionBtn}
 					>
-						<span class={optionTitle}>Keep local notes</span>
+						<span class={optionTitle(false)}>Keep local notes</span>
 						<span class={optionDesc}>
 							Add every backup note as a new copy. Existing notes stay unchanged.
 						</span>
@@ -153,17 +120,17 @@
 						onclick={() => onSelect(BackupImportMode.Replace)}
 						class={optionBtn}
 					>
-						<span class={optionTitleDanger}>Replace local data</span>
+						<span class={optionTitle(true)}>Replace local data</span>
 						<span class={optionDesc}>
 							Delete current local notes and restore the backup instead.
 						</span>
 					</button>
 					{#if error}
-						<p class={errorClass} role="alert">
+						<p class={css({ fontSize: 'sm', color: 'scrapscache.danger' })} role="alert">
 							{error}
 						</p>
 					{/if}
-					<div class={footerClass}>
+					<div class={cx(d.footer, css({ pt: '0.25rem' }))}>
 						<button
 							type="button"
 							disabled={busy}

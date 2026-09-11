@@ -6,6 +6,7 @@
 	import MasonryGrid from './MasonryGrid.svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
 	import { css } from 'styled-system/css';
+	import { hstack } from 'styled-system/patterns';
 	import { button } from 'styled-system/recipes';
 
 	/** Grid / list feed for notes pages — one place for layout branching. */
@@ -57,14 +58,6 @@
 		};
 	});
 
-	const navClass = css({
-		mt: '1.5rem',
-		display: 'flex',
-		alignItems: 'center',
-		justifyContent: 'center',
-		gap: '0.75rem'
-	});
-
 	const pageLabelClass = css({
 		fontSize: 'xs',
 		color: 'scrapscache.textMuted'
@@ -91,7 +84,10 @@
 	{/if}
 
 	{#if pageCount > 1}
-		<nav class={navClass} aria-label="Note pages">
+		<nav
+			class={hstack({ justify: 'center', gap: '0.75rem', mt: '1.5rem' })}
+			aria-label="Note pages"
+		>
 			<button
 				type="button"
 				disabled={safePageIndex === 0}

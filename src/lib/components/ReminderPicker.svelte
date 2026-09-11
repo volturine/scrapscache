@@ -9,8 +9,9 @@
 	import { ensurePushSubscription } from '$lib/reminderWake';
 	import { formatReminderCountdown } from '$lib/utils';
 	import { PHONE_MEDIA } from '$lib/appViewport';
-	import { css } from 'styled-system/css';
-	import { button } from 'styled-system/recipes';
+	import { css, cx, cva } from 'styled-system/css';
+	import { badge, button, dialog, iconButton } from 'styled-system/recipes';
+	import { hstack } from 'styled-system/patterns';
 
 	let {
 		reminder,
@@ -165,246 +166,164 @@
 		apply(null);
 	}
 
-	const dialogBoxClass = css({
-		w: '20rem',
-		p: '1.25rem'
-	});
+	const d = dialog({ size: 'sm' });
 
-	const headingClass = css({
-		mb: '0.75rem',
-		fontSize: 'base',
-		fontWeight: 'medium',
-		color: 'scrapscache.text'
-	});
-
-	const statusBoxBase = css({
+	const statusBoxClass = css({
 		mb: '1rem',
 		rounded: 'lg',
 		px: '0.75rem',
 		py: '0.625rem'
 	});
 
-	const statusHeaderClass = css({
-		display: 'flex',
-		alignItems: 'center',
-		justifyContent: 'space-between',
-		gap: '0.5rem'
-	});
-
-	const statusLabelClass = css({
-		minW: 0,
-		fontSize: '10px',
-		fontWeight: '600',
-		textTransform: 'uppercase',
-		letterSpacing: '0.05em',
-		color: 'scrapscache.textMuted'
-	});
-
-	const badgeActive = css({
-		display: 'inline-flex',
+	const badgeOverride = css({
 		minW: '4.25rem',
 		flexShrink: 0,
-		justifyContent: 'center',
 		rounded: 'full',
-		bg: 'scrapscache.success',
 		px: '0.5rem',
 		py: '0.125rem',
-		fontSize: '10px',
 		fontWeight: 'bold',
 		textTransform: 'uppercase',
-		letterSpacing: '0.05em',
-		color: 'scrapscache.successForeground'
+		letterSpacing: '0.05em'
 	});
 
-	const badgeEdit = css({
-		display: 'inline-flex',
-		minW: '4.25rem',
-		flexShrink: 0,
-		justifyContent: 'center',
-		rounded: 'full',
-		bg: 'scrapscache.warning',
-		px: '0.5rem',
-		py: '0.125rem',
-		fontSize: '10px',
-		fontWeight: 'bold',
-		textTransform: 'uppercase',
-		letterSpacing: '0.05em',
-		color: 'scrapscache.bg'
+	const badgeColor = cva({
+		variants: {
+			status: {
+				active: { bg: 'scrapscache.success', color: 'scrapscache.successForeground' },
+				edit: { bg: 'scrapscache.warning', color: 'scrapscache.bg' },
+				new: { bg: 'scrapscache.accent', color: 'scrapscache.accentForeground' }
+			}
+		}
 	});
 
-	const badgeNew = css({
-		display: 'inline-flex',
-		minW: '4.25rem',
-		flexShrink: 0,
-		justifyContent: 'center',
-		rounded: 'full',
-		bg: 'scrapscache.accent',
-		px: '0.5rem',
-		py: '0.125rem',
-		fontSize: '10px',
-		fontWeight: 'bold',
-		textTransform: 'uppercase',
-		letterSpacing: '0.05em',
-		color: 'scrapscache.accentForeground'
+	const dateBtn = cva({
+		base: {
+			mx: '0.25rem',
+			display: 'flex',
+			minW: 0,
+			flex: '1',
+			alignItems: 'center',
+			justifyContent: 'center',
+			rounded: 'lg',
+			px: '0.5rem',
+			py: '0.375rem',
+			fontSize: 'sm',
+			fontWeight: 'medium',
+			color: 'scrapscache.text',
+			cursor: 'pointer'
+		},
+		variants: {
+			active: {
+				true: { bg: 'scrapscache.bg' },
+				false: {}
+			}
+		},
+		defaultVariants: { active: false }
 	});
 
-	const countdownRowClass = css({
-		mt: '0.375rem',
-		display: 'flex',
-		alignItems: 'center',
-		gap: '0.5rem',
-		fontSize: 'sm',
-		fontWeight: '600',
-		color: 'scrapscache.text'
-	});
+	const calNavBtn = cx(
+		iconButton({ variant: 'ghost', size: 'compact' }),
+		css({ flexShrink: 0, color: 'inherit' })
+	);
 
-	const clockIconClass = css({
-		w: '1rem',
-		h: '1rem',
-		flexShrink: 0
-	});
-
-	const countdownTextClass = css({
-		minW: 0,
-		overflow: 'hidden',
-		textOverflow: 'ellipsis',
-		whiteSpace: 'nowrap'
-	});
-
-	const statusHintClass = css({
-		mt: '0.25rem',
-		fontSize: '11px',
-		lineHeight: 'snug',
-		color: 'scrapscache.textMuted'
-	});
-
-	const sectionDividerClass = css({
-		mb: '1rem',
-		borderTopWidth: '1px',
-		borderColor: 'scrapscache.border',
-		pt: '1rem'
-	});
-
-	const sectionTitleClass = css({
-		mb: '0.75rem',
-		fontSize: 'xs',
-		fontWeight: 'medium',
-		textTransform: 'uppercase',
-		letterSpacing: '0.05em',
-		color: 'scrapscache.textMuted'
-	});
-
-	const navRowClass = css({
-		mb: '0.75rem',
-		display: 'flex',
-		alignItems: 'center'
-	});
-
-	const dateBtnClass = css({
-		mx: '0.25rem',
-		display: 'flex',
-		minW: 0,
-		flex: '1',
-		alignItems: 'center',
-		justifyContent: 'center',
-		rounded: 'lg',
-		px: '0.5rem',
-		py: '0.375rem',
-		fontSize: 'sm',
-		fontWeight: 'medium',
-		color: 'scrapscache.text',
-		cursor: 'pointer'
-	});
-
-	const dateBtnActiveClass = css({
-		bg: 'scrapscache.bg'
-	});
-
-	const wheelGroupClass = css({
-		display: 'flex',
-		justifyContent: 'center',
-		gap: '0.5rem',
-		rounded: 'xl',
-		bg: { base: 'black/3', _dark: 'white/4' },
-		px: '0.5rem',
-		py: '0.25rem'
-	});
-
-	const wheelColDay = css({ w: '3rem' });
-	const wheelColMonth = css({ w: '7.75rem' });
-	const wheelColYear = css({ w: '4.5rem' });
-	const wheelColTime = css({ w: '4rem' });
-	const calNavBtn = css({ h: '2rem', w: '2rem', flexShrink: 0, p: '0.5rem' });
-	const wheelTimeGroupClass = css({
-		display: 'flex',
-		justifyContent: 'center',
-		gap: '0.25rem',
-		rounded: 'xl',
-		bg: { base: 'black/3', _dark: 'white/4' },
-		px: '0.5rem',
-		py: '0.25rem'
-	});
-
-	const colonClass = css({
-		display: 'flex',
-		w: '0.75rem',
-		flexShrink: 0,
-		alignItems: 'center',
-		justifyContent: 'center',
-		fontSize: 'xl',
-		fontWeight: '600',
-		color: 'scrapscache.text'
-	});
-
-	const footerRowClass = css({
-		display: 'flex',
-		alignItems: 'center',
-		gap: '0.5rem',
-		borderTopWidth: '1px',
-		borderColor: 'scrapscache.border',
-		pt: '1rem'
-	});
-
-	const btnMinW = css({
-		minW: '5.5rem'
-	});
+	const badgeClass = $derived(
+		cx(
+			badge({ variant: 'subtle', size: 'sm' }),
+			badgeOverride,
+			badgeColor({ status: uiStatus === 'unsaved' ? 'edit' : uiStatus })
+		)
+	);
+	const badgeLabel = $derived(
+		uiStatus === 'active' ? 'Active' : uiStatus === 'unsaved' ? 'Edit' : 'New'
+	);
 </script>
 
-<div class={`scrapscache-dialog ${dialogBoxClass}`}>
-	<div class={headingClass}>Reminder</div>
+<div class={cx('scrapscache-dialog', d.panel, css({ w: '20rem', p: '1.25rem', gap: 0 }))}>
+	<div
+		class={cx(
+			d.title,
+			css({ mb: '0.75rem', fontSize: 'base', fontWeight: 'medium', lineHeight: 'normal' })
+		)}
+	>
+		Reminder
+	</div>
 
 	<div
-		class={`${statusBoxBase} ${
+		class={cx(
+			statusBoxClass,
 			uiStatus === 'active'
 				? 'scrapscache-status-success'
 				: uiStatus === 'unsaved'
 					? 'scrapscache-status-warning'
 					: 'scrapscache-status-accent'
-		}`}
+		)}
 	>
-		<div class={statusHeaderClass}>
-			<div class={statusLabelClass}>Will remind you</div>
-			{#if uiStatus === 'active'}
-				<span class={badgeActive}>Active</span>
-			{:else if uiStatus === 'unsaved'}
-				<span class={badgeEdit}>Edit</span>
-			{:else}
-				<span class={badgeNew}>New</span>
-			{/if}
+		<div class={hstack({ justify: 'space-between', gap: '0.5rem' })}>
+			<div
+				class={css({
+					minW: 0,
+					fontSize: '10px',
+					fontWeight: '600',
+					textTransform: 'uppercase',
+					letterSpacing: '0.05em',
+					color: 'scrapscache.textMuted'
+				})}
+			>
+				Will remind you
+			</div>
+			<span class={badgeClass}>{badgeLabel}</span>
 		</div>
-		<div class={countdownRowClass}>
-			<AlarmClock class={clockIconClass} aria-hidden="true" />
-			<span class={countdownTextClass}>{remainingLabel}</span>
+		<div
+			class={hstack({
+				gap: '0.5rem',
+				mt: '0.375rem',
+				fontSize: 'sm',
+				fontWeight: '600',
+				color: 'scrapscache.text'
+			})}
+		>
+			<AlarmClock class={css({ w: '1rem', h: '1rem', flexShrink: 0 })} aria-hidden="true" />
+			<span
+				class={css({ minW: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' })}
+				>{remainingLabel}</span
+			>
 		</div>
-		<div class={statusHintClass}>Closed-app alerts need Sync on this device.</div>
+		<div
+			class={css({
+				mt: '0.25rem',
+				fontSize: '11px',
+				lineHeight: 'snug',
+				color: 'scrapscache.textMuted'
+			})}
+		>
+			Closed-app alerts need Sync on this device.
+		</div>
 	</div>
 
-	<div class={sectionDividerClass}>
-		<div class={sectionTitleClass}>Pick date & time</div>
+	<div
+		class={css({
+			mb: '1rem',
+			borderTopWidth: '1px',
+			borderColor: 'scrapscache.border',
+			pt: '1rem'
+		})}
+	>
+		<div
+			class={css({
+				mb: '0.75rem',
+				fontSize: 'xs',
+				fontWeight: 'medium',
+				textTransform: 'uppercase',
+				letterSpacing: '0.05em',
+				color: 'scrapscache.textMuted'
+			})}
+		>
+			Pick date & time
+		</div>
 
 		<div class="schedule-panel">
 			{#if isMobile}
-				<div class={navRowClass}>
+				<div class={hstack({ mb: '0.75rem' })}>
 					<button
 						type="button"
 						class={`icon-btn ${calNavBtn}`}
@@ -415,7 +334,7 @@
 					</button>
 					<button
 						type="button"
-						class={`${dateBtnClass} ${monthYearOpen ? dateBtnActiveClass : ''}`}
+						class={dateBtn({ active: monthYearOpen })}
 						onclick={() => (monthYearOpen = !monthYearOpen)}
 						aria-label="Choose date"
 						aria-expanded={monthYearOpen}
@@ -436,23 +355,32 @@
 				</div>
 
 				{#if monthYearOpen}
-					<div class={wheelGroupClass}>
+					<div
+						class={hstack({
+							justify: 'center',
+							gap: '0.5rem',
+							rounded: 'xl',
+							bg: { base: 'black/3', _dark: 'white/4' },
+							px: '0.5rem',
+							py: '0.25rem'
+						})}
+					>
 						<WheelPicker
-							class={wheelColDay}
+							class={css({ w: '3rem' })}
 							items={dayItems}
 							value={selectedDay}
 							onChange={(day) => setDateParts({ day })}
 							ariaLabel="Day"
 						/>
 						<WheelPicker
-							class={wheelColMonth}
+							class={css({ w: '7.75rem' })}
 							items={MONTH_ITEMS}
 							value={selectedMonth}
 							onChange={(month) => setDateParts({ month })}
 							ariaLabel="Month"
 						/>
 						<WheelPicker
-							class={wheelColYear}
+							class={css({ w: '4.5rem' })}
 							items={yearItems}
 							value={selectedYear}
 							onChange={(year) => setDateParts({ year })}
@@ -460,17 +388,40 @@
 						/>
 					</div>
 				{:else}
-					<div class={wheelTimeGroupClass}>
+					<div
+						class={hstack({
+							justify: 'center',
+							gap: '0.25rem',
+							rounded: 'xl',
+							bg: { base: 'black/3', _dark: 'white/4' },
+							px: '0.5rem',
+							py: '0.25rem'
+						})}
+					>
 						<WheelPicker
-							class={wheelColTime}
+							class={css({ w: '4rem' })}
 							items={HOUR_ITEMS}
 							value={hours24}
 							onChange={setHour}
 							ariaLabel="Hour"
 						/>
-						<div class={colonClass} aria-hidden="true">:</div>
+						<div
+							class={css({
+								display: 'flex',
+								w: '0.75rem',
+								flexShrink: 0,
+								alignItems: 'center',
+								justifyContent: 'center',
+								fontSize: 'xl',
+								fontWeight: '600',
+								color: 'scrapscache.text'
+							})}
+							aria-hidden="true"
+						>
+							:
+						</div>
 						<WheelPicker
-							class={wheelColTime}
+							class={css({ w: '4rem' })}
 							items={MINUTE_ITEMS}
 							value={minutes}
 							onChange={setMinute}
@@ -500,8 +451,14 @@
 					</DatePicker.Root>
 				</div>
 			{:else}
-				<div class={css({ display: 'flex', h: 'full', flexDirection: 'column' })}>
-					<div class={navRowClass}>
+				<div
+					class={css({
+						display: 'flex',
+						h: 'full',
+						flexDirection: 'column'
+					})}
+				>
+					<div class={hstack({ mb: '0.75rem' })}>
 						<button
 							type="button"
 							class={`icon-btn ${calNavBtn}`}
@@ -512,7 +469,7 @@
 						</button>
 						<button
 							type="button"
-							class={dateBtnClass}
+							class={dateBtn()}
 							onclick={() => (monthYearOpen = true)}
 							aria-label="Choose date"
 							aria-expanded="false"
@@ -546,15 +503,29 @@
 						})}
 					>
 						<WheelPicker
-							class={wheelColTime}
+							class={css({ w: '4rem' })}
 							items={HOUR_ITEMS}
 							value={hours24}
 							onChange={setHour}
 							ariaLabel="Hour"
 						/>
-						<div class={colonClass} aria-hidden="true">:</div>
+						<div
+							class={css({
+								display: 'flex',
+								w: '0.75rem',
+								flexShrink: 0,
+								alignItems: 'center',
+								justifyContent: 'center',
+								fontSize: 'xl',
+								fontWeight: '600',
+								color: 'scrapscache.text'
+							})}
+							aria-hidden="true"
+						>
+							:
+						</div>
 						<WheelPicker
-							class={wheelColTime}
+							class={css({ w: '4rem' })}
 							items={MINUTE_ITEMS}
 							value={minutes}
 							onChange={setMinute}
@@ -566,12 +537,19 @@
 		</div>
 	</div>
 
-	<div class={footerRowClass}>
+	<div
+		class={hstack({
+			gap: '0.5rem',
+			borderTopWidth: '1px',
+			borderColor: 'scrapscache.border',
+			pt: '1rem'
+		})}
+	>
 		{#if showRemove}
 			<button
 				type="button"
 				onclick={clear}
-				class={`${button({ variant: 'quiet', size: 'md' })} ${css({ flexShrink: 0 })}`}
+				class={cx(button({ variant: 'quiet', size: 'md' }), css({ flexShrink: 0 }))}
 			>
 				Remove
 			</button>
@@ -579,7 +557,7 @@
 		<button
 			type="button"
 			onclick={onClose}
-			class={`${button({ variant: 'secondary', size: 'md' })} ${btnMinW}`}
+			class={cx(button({ variant: 'secondary', size: 'md' }), css({ minW: '5.5rem' }))}
 		>
 			Cancel
 		</button>
@@ -587,7 +565,7 @@
 			<button
 				type="button"
 				onclick={save}
-				class={`${button({ variant: 'primary', size: 'md' })} ${btnMinW} ${css({ ml: 'auto' })}`}
+				class={cx(button({ variant: 'primary', size: 'md' }), css({ minW: '5.5rem', ml: 'auto' }))}
 			>
 				Save
 			</button>

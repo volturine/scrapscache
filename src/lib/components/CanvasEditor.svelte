@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
-	import { css } from 'styled-system/css';
+	import { css, sva } from 'styled-system/css';
+	import { button, iconButton } from 'styled-system/recipes';
+	import { cx } from 'styled-system/css';
 	import { LoaderCircle, X } from '@lucide/svelte';
 	import {
 		createCanvasAttachment,
@@ -115,89 +117,80 @@
 		};
 	}
 
-	const shellClass = css({
-		position: 'fixed',
-		zIndex: 90,
-		display: 'flex',
-		flexDirection: 'column',
-		bg: { base: 'white', _dark: '#121212' },
-		color: { base: 'slate.900', _dark: 'slate.100' }
+	const canvasEditor = sva({
+		slots: ['shell', 'header', 'error', 'reload', 'area', 'host', 'loading', 'loadingText'],
+		base: {
+			shell: {
+				position: 'fixed',
+				zIndex: 90,
+				display: 'flex',
+				flexDirection: 'column',
+				bg: { base: 'white', _dark: '#121212' },
+				color: { base: 'slate.900', _dark: 'slate.100' }
+			},
+			header: {
+				position: 'relative',
+				zIndex: 10,
+				display: 'flex',
+				h: '3rem',
+				flexShrink: 0,
+				alignItems: 'center',
+				justifyContent: 'space-between',
+				px: '0.75rem'
+			},
+			error: {
+				position: 'relative',
+				zIndex: 10,
+				display: 'flex',
+				alignItems: 'center',
+				justifyContent: 'space-between',
+				gap: '0.75rem',
+				borderBottomWidth: '1px',
+				borderColor: { base: 'red.200', _dark: 'red.900' },
+				bg: { base: 'red.50', _dark: 'red.950' },
+				px: '1rem',
+				py: '0.5rem',
+				fontSize: 'sm',
+				color: { base: 'red.700', _dark: 'red.200' }
+			},
+			reload: {
+				flexShrink: 0,
+				fontWeight: '600',
+				textDecoration: 'underline',
+				textDecorationColor: { base: 'red.700/50', _dark: 'red.200/50' },
+				textUnderlineOffset: '2px',
+				cursor: 'pointer'
+			},
+			area: { position: 'relative', minH: 0, flex: '1' },
+			host: { position: 'absolute', inset: 0 },
+			loading: {
+				position: 'absolute',
+				inset: 0,
+				zIndex: 20,
+				display: 'grid',
+				placeItems: 'center',
+				bg: { base: 'white', _dark: '#121212' }
+			},
+			loadingText: {
+				display: 'flex',
+				alignItems: 'center',
+				gap: '0.5rem',
+				fontSize: 'sm',
+				color: { base: 'slate.500', _dark: 'slate.400' }
+			}
+		}
 	});
-	const headerClass = css({
-		position: 'relative',
-		zIndex: 10,
-		display: 'flex',
-		h: '3rem',
-		flexShrink: 0,
-		alignItems: 'center',
-		justifyContent: 'space-between',
-		px: '0.75rem'
-	});
-	const headerActionClass = css({
-		display: 'grid',
-		h: '2.25rem',
-		w: '2.25rem',
-		flexShrink: 0,
-		placeItems: 'center',
-		rounded: 'full',
-		touchAction: 'manipulation'
-	});
-	const doneBtnClass = css({
-		h: '2.25rem',
-		flexShrink: 0,
-		rounded: 'full',
-		px: '1rem',
-		fontSize: 'sm',
-		fontWeight: '600',
-		touchAction: 'manipulation'
-	});
-	const errorBannerClass = css({
-		position: 'relative',
-		zIndex: 10,
-		display: 'flex',
-		alignItems: 'center',
-		justifyContent: 'space-between',
-		gap: '0.75rem',
-		borderBottomWidth: '1px',
-		borderColor: { base: 'red.200', _dark: 'red.900' },
-		bg: { base: 'red.50', _dark: 'red.950' },
-		px: '1rem',
-		py: '0.5rem',
-		fontSize: 'sm',
-		color: { base: 'red.700', _dark: 'red.200' }
-	});
-	const reloadBtnClass = css({
-		flexShrink: 0,
-		fontWeight: '600',
-		textDecoration: 'underline',
-		textDecorationColor: { base: 'red.700/50', _dark: 'red.200/50' },
-		textUnderlineOffset: '2px',
-		cursor: 'pointer'
-	});
-	const canvasAreaClass = css({
-		position: 'relative',
-		minH: 0,
-		flex: '1'
-	});
-	const hostNodeClass = css({
-		position: 'absolute',
-		inset: 0
-	});
-	const loadingOverlayClass = css({
-		position: 'absolute',
-		inset: 0,
-		zIndex: 20,
-		display: 'grid',
-		placeItems: 'center',
-		bg: { base: 'white', _dark: '#121212' }
-	});
-	const loadingTextClass = css({
-		display: 'flex',
-		alignItems: 'center',
-		gap: '0.5rem',
-		fontSize: 'sm',
-		color: { base: 'slate.500', _dark: 'slate.400' }
-	});
+	const ce = canvasEditor();
+	const headerCloseBtn = cx(iconButton({ variant: 'ghost' }), css({ h: '2.25rem', w: '2.25rem' }));
+	const doneBtn = cx(
+		button({ variant: 'primary', size: 'md' }),
+		css({
+			rounded: 'full',
+			fontWeight: '600',
+			flexShrink: 0,
+			touchAction: 'manipulation'
+		})
+	);
 	const spinnerSm = css({ h: '1rem', w: '1rem' });
 	const spinnerMd = css({ h: '1.25rem', w: '1.25rem' });
 	const iconClose = css({ h: '1.375rem', w: '1.375rem' });
@@ -210,16 +203,16 @@
 	onpaste={markCanvasInteraction}
 	ondrop={markCanvasInteraction}
 	onwheel={markCanvasInteraction}
-	class={`canvas-editor-shell ${shellClass}`}
+	class={`canvas-editor-shell ${ce.shell}`}
 	role="dialog"
 	tabindex="-1"
 	aria-modal="true"
 	aria-label={readOnly ? 'View canvas' : attachment ? 'Edit canvas' : 'New canvas'}
 >
-	<header class={headerClass}>
+	<header class={ce.header}>
 		<button
 			type="button"
-			class={`canvas-header-action ${headerActionClass}`}
+			class={`canvas-header-action ${headerCloseBtn}`}
 			onclick={close}
 			aria-label={readOnly ? 'Close canvas' : 'Cancel canvas editing'}
 		>
@@ -229,7 +222,7 @@
 		{#if !readOnly}
 			<button
 				type="button"
-				class={`canvas-done ${doneBtnClass}`}
+				class={`canvas-done ${doneBtn}`}
 				disabled={loading || saving}
 				onclick={() => void save()}
 			>
@@ -242,21 +235,19 @@
 	</header>
 
 	{#if error}
-		<div class={errorBannerClass}>
+		<div class={ce.error}>
 			<span>{error}</span>
 			{#if staleModule}
-				<button type="button" class={reloadBtnClass} onclick={() => location.reload()}>
-					Reload
-				</button>
+				<button type="button" class={ce.reload} onclick={() => location.reload()}> Reload </button>
 			{/if}
 		</div>
 	{/if}
 
-	<div class={canvasAreaClass}>
-		<div bind:this={hostNode} class={`scrapscache-canvas ${hostNodeClass}`}></div>
+	<div class={ce.area}>
+		<div bind:this={hostNode} class={`scrapscache-canvas ${ce.host}`}></div>
 		{#if loading}
-			<div class={loadingOverlayClass}>
-				<div class={loadingTextClass}>
+			<div class={ce.loading}>
+				<div class={ce.loadingText}>
 					<LoaderCircle class={`animate-spin ${spinnerMd}`} aria-hidden="true" />
 					Loading canvas…
 				</div>

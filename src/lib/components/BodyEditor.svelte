@@ -12,7 +12,7 @@
 		toggleCheckEntries
 	} from '$lib/checklistBody';
 	import { revealEditorField } from '$lib/editorVisibility';
-	import { css } from 'styled-system/css';
+	import { cva, sva } from 'styled-system/css';
 
 	const MAX_TASK_INDENT = 1;
 
@@ -1070,85 +1070,113 @@
 	const focusedGroupIds = $derived(new Set(focusedGroupRows.map(({ line }) => line.id)));
 	const focusedGroupLastId = $derived(focusedGroupRows.at(-1)?.line.id ?? null);
 
+	const editorSva = sva({
+		slots: ['container', 'row', 'bullet'],
+		base: {
+			container: {
+				display: 'block',
+				w: 'full',
+				minW: 0,
+				fontSize: 'sm',
+				lineHeight: 'relaxed',
+				color: 'scrapscache.text',
+				outline: 'none'
+			},
+			row: {
+				display: 'flex',
+				minW: 0,
+				flexWrap: 'wrap',
+				alignItems: 'flex-start',
+				columnGap: '0.5rem',
+				py: '0.125rem'
+			},
+			bullet: { flexShrink: 0, userSelect: 'none' }
+		}
+	});
+	const editor = editorSva();
+
+	const lineSpan = cva({
+		base: {
+			display: 'block',
+			minH: '1lh',
+			minW: 0,
+			flex: '1',
+			whiteSpace: 'pre-wrap',
+			wordBreak: 'break-word',
+			outline: 'none'
+		},
+		variants: {
+			checked: {
+				true: { textDecoration: 'line-through', opacity: 0.5 },
+				false: {}
+			},
+			indented: {
+				true: { fontSize: '13px' },
+				false: {}
+			}
+		},
+		defaultVariants: { checked: false, indented: false }
+	});
+
+	const taskShell = cva({
+		variants: {
+			focused: {
+				true: { bg: { base: 'rgba(0, 0, 0, 0.035)', _dark: 'rgba(255, 255, 255, 0.06)' } },
+				false: {}
+			},
+			root: {
+				true: { mt: '0.125rem', borderTopRadius: 'lg', pt: '0.25rem' },
+				false: {}
+			},
+			last: {
+				true: { mb: '0.125rem', borderBottomRadius: 'lg', pb: '0.25rem' },
+				false: {}
+			}
+		},
+		defaultVariants: { focused: false, root: false, last: false }
+	});
+
+	const addSubtaskBtn = cva({
+		base: {
+			display: 'flex',
+			flexBasis: 'full',
+			userSelect: 'none',
+			alignItems: 'center',
+			rounded: 'sm',
+			py: '0.25rem',
+			textAlign: 'left',
+			fontSize: 'xs',
+			color: 'scrapscache.textMuted',
+			cursor: 'pointer',
+			transition: 'colors 120ms ease',
+			touchAction: 'manipulation',
+			minH: { base: '32px', sm: 0 },
+			_hover: {
+				bg: { base: 'black/5', _dark: 'white/10' },
+				color: 'scrapscache.text'
+			}
+		},
+		variants: {
+			indented: {
+				true: { pl: '0.25rem' },
+				false: { pl: '1.5rem' }
+			}
+		},
+		defaultVariants: { indented: false }
+	});
+
 	function taskShellClass(line: Line): string {
 		if (!focusedGroupIds.has(line.id)) return '';
+		const isRoot = line.id === focusedRootId;
+		const isLast = line.id === focusedGroupLastId;
 		return [
-			css({ bg: { base: 'rgba(0, 0, 0, 0.035)', _dark: 'rgba(255, 255, 255, 0.06)' } }),
-			line.id === focusedRootId
-				? `rounded-t-lg ${css({ mt: '0.125rem', borderTopRadius: 'lg', pt: '0.25rem' })}`
-				: '',
-			line.id === focusedGroupLastId
-				? `rounded-b-lg ${css({ mb: '0.125rem', borderBottomRadius: 'lg', pb: '0.25rem' })}`
-				: ''
+			isRoot ? 'rounded-t-lg' : '',
+			isLast ? 'rounded-b-lg' : '',
+			taskShell({ focused: true, root: isRoot, last: isLast })
 		]
 			.filter(Boolean)
 			.join(' ');
 	}
-	const editorContainerClass = css({
-		display: 'block',
-		w: 'full',
-		minW: 0,
-		fontSize: 'sm',
-		lineHeight: 'relaxed',
-		color: 'scrapscache.text',
-		outline: 'none'
-	});
-
-	const rowClass = css({
-		display: 'flex',
-		minW: 0,
-		flexWrap: 'wrap',
-		alignItems: 'flex-start',
-		columnGap: '0.5rem',
-		py: '0.125rem'
-	});
-
-	const bulletClass = css({
-		flexShrink: 0,
-		userSelect: 'none'
-	});
-
-	const lineSpanClass = css({
-		display: 'block',
-		minH: '1lh',
-		minW: 0,
-		flex: '1',
-		whiteSpace: 'pre-wrap',
-		wordBreak: 'break-word',
-		outline: 'none'
-	});
-
-	const lineCheckedClass = css({
-		textDecoration: 'line-through',
-		opacity: 0.5
-	});
-
-	const lineSubtaskTextClass = css({
-		fontSize: '13px'
-	});
-
-	const addSubtaskBase = css({
-		display: 'flex',
-		flexBasis: 'full',
-		userSelect: 'none',
-		alignItems: 'center',
-		rounded: 'sm',
-		py: '0.25rem',
-		textAlign: 'left',
-		fontSize: 'xs',
-		color: 'scrapscache.textMuted',
-		cursor: 'pointer',
-		transition: 'colors 120ms ease',
-		touchAction: 'manipulation',
-		minH: { base: '32px', sm: 0 },
-		_hover: {
-			bg: { base: 'black/5', _dark: 'white/10' },
-			color: 'scrapscache.text'
-		}
-	});
-
-	const addSubtaskSubIndent = css({ pl: '0.25rem' });
-	const addSubtaskRootIndent = css({ pl: '1.5rem' });
 
 	function rowStyle(line: Line): string | undefined {
 		const focused = focusedGroupIds.has(line.id);
@@ -1170,7 +1198,7 @@
 	aria-multiline="true"
 	aria-label="Note body"
 	spellcheck="true"
-	class={editorContainerClass}
+	class={editor.container}
 	onbeforeinput={handleBeforeInput}
 	oninput={handleInput}
 	oncopy={handleCopy}
@@ -1194,7 +1222,7 @@
 			data-task-row={line.isCheck ? '' : undefined}
 			data-bullet-row={line.isBullet ? '' : undefined}
 			data-focus-group={line.id === focusedRootId ? '' : undefined}
-			class={`${rowClass} ${line.isCheck ? taskShellClass(line) : ''}`}
+			class={`${editor.row} ${line.isCheck ? taskShellClass(line) : ''}`}
 			style={rowStyle(line)}
 		>
 			{#if line.isCheck}
@@ -1216,7 +1244,7 @@
 					{/if}
 				</button>
 			{:else if line.isBullet}
-				<span contenteditable="false" class={bulletClass} aria-hidden="true">•</span>
+				<span contenteditable="false" class={editor.bullet} aria-hidden="true">•</span>
 			{/if}
 			<span
 				data-line-text
@@ -1230,7 +1258,7 @@
 							? placeholder
 							: ''
 					: undefined}
-				class={`min-h-[1lh] ${lineSpanClass} ${line.checked ? lineCheckedClass : ''} ${line.indent > 0 ? lineSubtaskTextClass : ''}`}
+				class={`min-h-[1lh] ${lineSpan({ checked: line.checked, indented: line.indent > 0 })}`}
 			></span>
 			{#if line.id === focusedGroupLastId}
 				<button
@@ -1238,7 +1266,7 @@
 					contenteditable="false"
 					data-add-subtask
 					aria-label="Add sub-task"
-					class={`${addSubtaskBase} ${line.indent > 0 ? addSubtaskSubIndent : addSubtaskRootIndent} ${line.indent > 0 ? 'pl-1' : 'pl-6'}`}
+					class={`${addSubtaskBtn({ indented: line.indent > 0 })} ${line.indent > 0 ? 'pl-1' : 'pl-6'}`}
 					onpointerdown={(event) => activateAddSubtask(event, focusedGroupRows[0]?.index ?? -1)}
 					onclick={(event) => handleAddSubtaskClick(event, focusedGroupRows[0]?.index ?? -1)}
 				>

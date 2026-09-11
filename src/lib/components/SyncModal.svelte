@@ -1,6 +1,7 @@
 <script lang="ts">
-	import { css } from 'styled-system/css';
-	import { button, dialog } from 'styled-system/recipes';
+	import { css, cx } from 'styled-system/css';
+	import { button, dialog, iconButton, input } from 'styled-system/recipes';
+	import { hstack, vstack } from 'styled-system/patterns';
 	import WorkspaceRow from './WorkspaceRow.svelte';
 	import { onDestroy, onMount } from 'svelte';
 	import QRCode from 'qrcode';
@@ -424,128 +425,96 @@
 		onClose();
 	}
 
-	const modalOverlay = css({ position: 'fixed', inset: 0, zIndex: 50 });
-	const modalBackdrop = css({ position: 'absolute', inset: 0, bg: 'black/40' });
-	const modalPositioner = css({
-		position: 'absolute',
-		inset: 0,
-		display: 'flex',
-		alignItems: 'center',
-		justifyContent: 'center',
-		p: '1rem'
-	});
-	const modalDialogClass = css({
-		position: 'relative',
-		maxH: 'calc(100dvh - 2rem)',
-		w: 'full',
-		maxW: 'md',
-		overflowY: 'auto',
-		p: '1.25rem'
-	});
-	const modalHeader = css({
-		mb: '1rem',
-		display: 'flex',
-		alignItems: 'center',
-		justifyContent: 'space-between'
-	});
-	const modalTitle = css({
-		display: 'flex',
-		alignItems: 'center',
-		gap: '0.5rem',
-		fontSize: 'lg',
-		fontWeight: 'medium',
-		color: 'scrapscache.text'
-	});
-	const closeBtn = css({ h: '2rem', w: '2rem' });
-	const sectionGap4 = css({ display: 'flex', flexDirection: 'column', gap: '1rem' });
-	const sectionGap3 = css({ display: 'flex', flexDirection: 'column', gap: '0.75rem' });
-	const sectionGap2 = css({ display: 'flex', flexDirection: 'column', gap: '0.5rem' });
-	const sectionGap1 = css({ display: 'flex', flexDirection: 'column', gap: '0.25rem' });
-	const sectionBorderTop = css({
-		borderTopWidth: '1px',
-		borderColor: 'scrapscache.border',
-		pt: '1rem'
-	});
-	const rowGap2 = css({ display: 'flex', gap: '0.5rem' });
-	const inputBase = css({
-		w: 'full',
-		rounded: 'md',
-		borderWidth: '1px',
-		borderColor: 'scrapscache.border',
-		bg: 'scrapscache.surface',
-		px: '0.75rem',
-		py: '0.625rem',
-		fontSize: 'sm',
-		color: 'scrapscache.text',
-		outline: 'none',
-		_placeholder: { color: 'scrapscache.textMuted' }
-	});
-	const handoverInput = css({
-		w: 'full',
-		rounded: 'md',
-		borderWidth: '1px',
-		borderColor: 'scrapscache.border',
-		bg: 'scrapscache.surface',
-		px: '0.75rem',
-		py: '0.5rem',
-		textAlign: 'center',
-		fontSize: 'lg',
-		fontWeight: 'bold',
-		letterSpacing: 'wider',
-		color: 'scrapscache.text',
-		outline: 'none'
-	});
-	const orDividerWrap = css({ display: 'flex', alignItems: 'center', gap: '0.75rem' });
-	const orDividerLine = css({ h: '1px', flex: '1', bg: 'scrapscache.border' });
-	const orDividerText = css({
-		fontSize: '11px',
-		textTransform: 'uppercase',
-		letterSpacing: 'wider',
-		color: 'scrapscache.textMuted'
-	});
-	const linkMutedBtn = css({
-		w: 'full',
-		fontSize: 'xs',
-		color: 'scrapscache.textMuted',
-		touchAction: 'manipulation',
-		cursor: 'pointer',
-		textAlign: 'center'
-	});
-	const qrWrap = css({ display: 'flex', justifyContent: 'center' });
-	const qrBox = css({ h: '220px', w: '220px', rounded: 'lg', bg: 'white', p: '0.5rem' });
-	const digitsBox = css({
-		rounded: 'xl',
-		borderWidth: '1px',
-		borderColor: 'scrapscache.border',
-		bg: 'scrapscache.bg',
-		px: '0.5rem',
-		py: '1.25rem'
-	});
-	const digitsInner = css({
-		display: 'flex',
-		alignItems: 'center',
-		justifyContent: 'center',
-		gap: '0.25rem'
-	});
-	const digitsHyphen = css({ px: '0.125rem', color: 'scrapscache.textMuted' });
-	const digitsText = css({
-		fontFamily: 'mono',
-		fontSize: '1.35rem',
-		fontWeight: 'semibold',
-		letterSpacing: '0.14em',
-		color: 'scrapscache.text'
-	});
-	const progressTrack = css({ h: '0.25rem', overflow: 'hidden', rounded: 'full' });
-	const progressFill = css({ h: 'full', rounded: 'full', transition: 'width 1000ms linear' });
-	const detailsSection = css({
-		borderTopWidth: '1px',
-		borderColor: 'scrapscache.border',
-		pt: '0.75rem'
-	});
-	const detailsSummary = css({ cursor: 'pointer', fontSize: 'sm', color: 'scrapscache.textMuted' });
-	const dangerText = css({ fontSize: 'sm', color: 'scrapscache.danger' });
-	const mutedSmText = css({ fontSize: 'sm', color: 'scrapscache.textMuted' });
-	const mutedXsText = css({ fontSize: 'xs', color: 'scrapscache.textMuted' });
+	const d = dialog({ size: 'md' });
+
+	// Modal shell: dialog slot recipe, narrowed to this modal's dimensions and
+	// the hand-rolled three-layer backdrop under it.
+	const shell = {
+		backdrop: cx(d.backdrop, css({ position: 'absolute', bg: 'black/40', backdropFilter: 'none' })),
+		positioner: css({
+			position: 'absolute',
+			inset: 0,
+			display: 'flex',
+			alignItems: 'center',
+			justifyContent: 'center',
+			p: '1rem'
+		}),
+		panel: cx(d.panel, css({ maxH: 'calc(100dvh - 2rem)', overflowY: 'auto', p: '1.25rem' })),
+		header: cx(
+			d.header,
+			css({ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' })
+		),
+		title: cx(
+			d.title,
+			css({ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 'medium' })
+		)
+	};
+
+	// Text and meter classes shared across the modal's modes.
+	const ui = {
+		muted: css({ fontSize: 'sm', color: 'scrapscache.textMuted' }),
+		mutedBody: css({ fontSize: 'sm', color: 'scrapscache.textMuted', lineHeight: 'relaxed' }),
+		mutedXs: css({ fontSize: 'xs', color: 'scrapscache.textMuted' }),
+		mutedLead: css({
+			fontSize: 'xs',
+			color: 'scrapscache.textMuted',
+			fontWeight: 'medium',
+			letterSpacing: 'wide'
+		}),
+		statusHint: css({ mt: '0.5rem', fontSize: 'xs', color: 'scrapscache.textMuted' }),
+		danger: css({ fontSize: 'sm', color: 'scrapscache.danger' }),
+		text: css({ fontSize: 'sm', color: 'scrapscache.text' }),
+		meterTrack: cx(
+			'scrapscache-progress-track',
+			css({ h: '0.25rem', overflow: 'hidden', rounded: 'full' })
+		),
+		meterFill: cx(
+			'scrapscache-progress-value',
+			css({ h: 'full', rounded: 'full', transition: 'width 1000ms linear' })
+		),
+		dividerLine: css({ h: '1px', flex: '1', bg: 'scrapscache.border' }),
+		dividerLabel: css({
+			fontSize: '11px',
+			textTransform: 'uppercase',
+			letterSpacing: 'wider',
+			color: 'scrapscache.textMuted'
+		}),
+		digitsHyphen: css({ px: '0.125rem', color: 'scrapscache.textMuted' }),
+		digits: css({
+			fontFamily: 'mono',
+			fontSize: '1.35rem',
+			fontWeight: 'semibold',
+			letterSpacing: '0.14em',
+			color: 'scrapscache.text'
+		}),
+		pairingInput: cx(
+			input({ variant: 'outline', size: 'md' }),
+			css({
+				w: 'full',
+				rounded: 'md',
+				textAlign: 'center',
+				fontSize: 'lg',
+				fontWeight: 'bold',
+				letterSpacing: 'wider'
+			})
+		),
+		backLink: css({
+			w: 'full',
+			fontSize: 'xs',
+			color: 'scrapscache.textMuted',
+			touchAction: 'manipulation',
+			cursor: 'pointer',
+			textAlign: 'center'
+		}),
+		cancelLink: css({
+			w: 'full',
+			fontSize: 'sm',
+			color: 'scrapscache.textMuted',
+			touchAction: 'manipulation',
+			cursor: 'pointer',
+			textAlign: 'center'
+		})
+	};
 </script>
 
 <Dialog.Root
@@ -554,12 +523,16 @@
 	preventScroll={false}
 	closeOnEscape={rowHoldingEscape === null}
 >
-	<div {@attach portalToAppFloat} class={modalOverlay} role="presentation">
-		<Dialog.Backdrop class={modalBackdrop} />
-		<Dialog.Positioner class={modalPositioner}>
-			<Dialog.Content class={`${dialog().panel} ${modalDialogClass}`}>
-				<div class={modalHeader}>
-					<Dialog.Title class={modalTitle}>
+	<div
+		{@attach portalToAppFloat}
+		class={css({ position: 'fixed', inset: 0, zIndex: 50 })}
+		role="presentation"
+	>
+		<Dialog.Backdrop class={shell.backdrop} />
+		<Dialog.Positioner class={shell.positioner}>
+			<Dialog.Content class={shell.panel}>
+				<div class={shell.header}>
+					<Dialog.Title class={shell.title}>
 						<Cloud size={20} aria-hidden="true" />
 						{mode === 'menu'
 							? 'Workspaces'
@@ -574,7 +547,7 @@
 					<Dialog.CloseTrigger
 						type="button"
 						disabled={busy}
-						class={`icon-btn ${closeBtn}`}
+						class={`icon-btn ${iconButton({ variant: 'ghost', size: 'compact' })}`}
 						aria-label="Close"
 					>
 						<X size={16} aria-hidden="true" />
@@ -582,7 +555,7 @@
 				</div>
 
 				{#if mode === 'menu'}
-					<div class={sectionGap4}>
+					<div class={vstack({ gap: '1rem', alignItems: 'stretch' })}>
 						<div class="workspace-list" aria-label="Workspaces on this device">
 							<button
 								type="button"
@@ -641,7 +614,10 @@
 								disabled={busy}
 								class={syncStore.account
 									? 'text-[var(--scrapscache-primary)]'
-									: 'scrapscache-button scrapscache-button-primary w-full px-3 py-2.5 text-sm font-medium'}
+									: cx(
+											'scrapscache-button scrapscache-button-primary',
+											button({ variant: 'primary', size: 'md' })
+										)}
 								onclick={() => {
 									mode = 'register';
 									error = '';
@@ -651,8 +627,14 @@
 							>
 						</div>
 						{#if syncStore.account}
-							<div class={sectionBorderTop}>
-								<div class={rowGap2}>
+							<div
+								class={css({
+									borderTopWidth: '1px',
+									borderColor: 'scrapscache.border',
+									pt: '1rem'
+								})}
+							>
+								<div class={hstack({ gap: '0.5rem' })}>
 									<button
 										type="button"
 										onclick={() => {
@@ -663,7 +645,7 @@
 											} else void syncNow();
 										}}
 										disabled={busy}
-										class={`${button({ variant: 'primary', size: 'md' })} ${css({ flex: '1', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' })}`}
+										class={cx(button({ variant: 'primary', size: 'md' }), css({ flex: '1' }))}
 										><RefreshCw
 											size={16}
 											class={syncing ? 'animate-spin' : ''}
@@ -678,14 +660,14 @@
 										type="button"
 										onclick={() => void startExistingConnection()}
 										disabled={busy}
-										class={`${button({ variant: 'secondary', size: 'md' })} ${css({ flex: '1' })}`}
+										class={cx(button({ variant: 'secondary', size: 'md' }), css({ flex: '1' }))}
 										>Connect device</button
 									>
 								</div>
 								{#if syncStore.progress}
 									{@const progress = syncStore.progress}
 									{@const percent = progressPercent(progress.loadedBytes, progress.totalBytes)}
-									<p class={`${mutedXsText} ${css({ mt: '0.5rem' })}`} role="status">
+									<p class={ui.statusHint} role="status">
 										{progress.phase === 'upload' ? 'Uploading' : 'Downloading'} · <Format.Byte
 											value={progress.loadedBytes}
 										/>
@@ -693,33 +675,37 @@
 									<Progress.Root
 										value={progress.totalBytes ? percent : null}
 										class={css({ mt: '0.5rem', w: 'full' })}
-										><Progress.Track class={`scrapscache-progress-track ${progressTrack}`}
+										><Progress.Track class={ui.meterTrack}
 											><Progress.Range
-												class={`scrapscache-progress-value ${css({ h: 'full' })}`}
+												class={cx('scrapscache-progress-value', css({ h: 'full' }))}
 												style={`width: ${progress.totalBytes ? percent : 100}%`}
 											/></Progress.Track
 										></Progress.Root
 									>
-								{:else if syncing}<p
-										class={`${mutedXsText} ${css({ mt: '0.5rem' })}`}
-										role="status"
-									>
-										Syncing…
-									</p>{/if}
+								{:else if syncing}<p class={ui.statusHint} role="status">Syncing…</p>{/if}
 							</div>
 						{/if}
-						{#if handoverBlocked}<p class={mutedXsText}>
+						{#if handoverBlocked}<p class={ui.mutedXs}>
 								Wait for sync to finish before changing workspaces.
 							</p>{/if}
-						{#if error || syncError}<p class={dangerText} role="alert">
+						{#if error || syncError}<p class={ui.danger} role="alert">
 								{error || syncError}
 							</p>{/if}
-						{#if info}<p class={mutedSmText} role="status">
+						{#if info}<p class={ui.muted} role="status">
 								{info}
 							</p>{/if}
-						<details class={detailsSection}>
-							<summary class={detailsSummary}>Manage workspace</summary>
-							<div class={`${sectionGap1} ${css({ mt: '0.5rem' })}`}>
+						<details
+							class={css({
+								borderTopWidth: '1px',
+								borderColor: 'scrapscache.border',
+								pt: '0.75rem'
+							})}
+						>
+							<summary
+								class={css({ cursor: 'pointer', fontSize: 'sm', color: 'scrapscache.textMuted' })}
+								>Manage workspace</summary
+							>
+							<div class={vstack({ gap: '0.25rem', alignItems: 'stretch', mt: '0.5rem' })}>
 								<button
 									class="manage-row"
 									disabled={busy}
@@ -746,7 +732,7 @@
 										></button
 									>
 									<button
-										class={`manage-row ${dangerText}`}
+										class={`manage-row ${ui.danger}`}
 										disabled={busy}
 										onclick={() => {
 											confirmation = 'delete';
@@ -764,8 +750,8 @@
 						</details>
 					</div>
 				{:else if mode === 'confirm'}
-					<div class={sectionGap4}>
-						<p class={`${mutedSmText} ${css({ lineHeight: 'relaxed' })}`}>
+					<div class={vstack({ gap: '1rem', alignItems: 'stretch' })}>
+						<p class={ui.mutedBody}>
 							{#if confirmation === 'force'}
 								This device’s notes will replace the cloud version using the same sync key. Notes
 								only in the cloud will be removed. Other devices will receive these notes as the
@@ -776,13 +762,13 @@
 								Existing anonymous notes are kept.
 							{/if}
 						</p>
-						{#if error}<p class={dangerText} role="alert">
+						{#if error}<p class={ui.danger} role="alert">
 								{error}
 							</p>{/if}
-						<div class={rowGap2}>
+						<div class={hstack({ gap: '0.5rem' })}>
 							<button
 								type="button"
-								class={`${button({ variant: 'secondary', size: 'sm' })} ${css({ flex: '1' })}`}
+								class={cx(button({ variant: 'secondary', size: 'sm' }), css({ flex: '1' }))}
 								disabled={busy}
 								onclick={() => {
 									mode = 'menu';
@@ -792,7 +778,13 @@
 							>
 							<button
 								type="button"
-								class={`${button({ variant: confirmation === 'delete' ? 'destructive' : 'primary', size: 'sm' })} ${css({ flex: '1' })}`}
+								class={cx(
+									button({
+										variant: confirmation === 'delete' ? 'destructive' : 'primary',
+										size: 'sm'
+									}),
+									css({ flex: '1' })
+								)}
 								disabled={busy}
 								onclick={() =>
 									confirmation === 'force' ? void forceResync() : void deleteCloudData()}
@@ -805,39 +797,39 @@
 						</div>
 					</div>
 				{:else if mode === 'register'}
-					<div class={sectionGap4}>
-						<p class={`${mutedSmText} ${css({ lineHeight: 'relaxed' })}`}>
+					<div class={vstack({ gap: '1rem', alignItems: 'stretch' })}>
+						<p class={ui.mutedBody}>
 							{syncStore.account
 								? 'It starts empty. Your existing workspaces stay unchanged.'
 								: 'Your current anonymous notes will be copied into it.'}
 						</p>
-						<div class={sectionGap2}>
+						<div class={vstack({ gap: '0.5rem', alignItems: 'stretch' })}>
 							<input
 								bind:value={newName}
 								placeholder="Workspace name (optional)"
 								maxlength="60"
-								class={inputBase}
+								class={input({ variant: 'outline', size: 'md' })}
 								aria-label="Sync key name"
 								onkeydown={(event) => event.key === 'Enter' && void create()}
 							/>
-							{#if error}<p class={dangerText}>{error}</p>{/if}
+							{#if error}<p class={ui.danger}>{error}</p>{/if}
 							<button
 								type="button"
 								onclick={() => void create()}
 								disabled={busy}
-								class={`${button({ variant: 'primary', size: 'md' })} ${css({ w: 'full' })}`}
+								class={cx(button({ variant: 'primary', size: 'md' }), css({ w: 'full' }))}
 								>{operation === 'create' ? 'Creating…' : 'Create workspace'}</button
 							>
 						</div>
-						<div class={orDividerWrap} aria-hidden="true">
-							<span class={orDividerLine}></span>
-							<span class={orDividerText}>or</span>
-							<span class={orDividerLine}></span>
+						<div class={hstack({ gap: '0.75rem', alignItems: 'center' })} aria-hidden="true">
+							<span class={ui.dividerLine}></span>
+							<span class={ui.dividerLabel}>or</span>
+							<span class={ui.dividerLine}></span>
 						</div>
 						<button
 							type="button"
 							disabled={busy}
-							class={`${button({ variant: 'secondary', size: 'md' })} ${css({ w: 'full' })}`}
+							class={cx(button({ variant: 'secondary', size: 'md' }), css({ w: 'full' }))}
 							onclick={() => {
 								mode = 'link';
 								error = '';
@@ -848,12 +840,12 @@
 							type="button"
 							onclick={() => (mode = 'menu')}
 							disabled={busy}
-							class={linkMutedBtn}>← Back to workspaces</button
+							class={ui.backLink}>← Back to workspaces</button
 						>
 					</div>
 				{:else if mode === 'link'}
-					<div class={sectionGap3}>
-						<p class={mutedSmText}>
+					<div class={vstack({ gap: '0.75rem', alignItems: 'stretch' })}>
+						<p class={ui.muted}>
 							On your other device open Sync and choose Connect device. Enter the one-time code
 							shown there.
 						</p>
@@ -865,48 +857,58 @@
 							placeholder="XXXX-XXXX-XXXX-XXXX"
 							maxlength="19"
 							spellcheck="false"
-							class={handoverInput}
+							class={ui.pairingInput}
 							onkeydown={(event) => event.key === 'Enter' && void beginLink()}
-						/>{#if error}<p class={dangerText}>{error}</p>{/if}<button
+						/>{#if error}<p class={ui.danger}>{error}</p>{/if}<button
 							type="button"
 							onclick={() => void beginLink()}
 							disabled={busy}
-							class={`${button({ variant: 'primary', size: 'md' })} ${css({ w: 'full' })}`}
+							class={cx(button({ variant: 'primary', size: 'md' }), css({ w: 'full' }))}
 							>{operation === 'connect' ? 'Starting…' : 'Start connection'}</button
 						><button
 							type="button"
 							onclick={() => (mode = 'menu')}
 							disabled={busy}
-							class={linkMutedBtn}>← Back</button
+							class={ui.backLink}>← Back</button
 						>
 					</div>
 				{:else if mode === 'pairing'}
-					<p class={css({ fontSize: 'sm', color: 'scrapscache.text' })} role="status">
-						Connected. Syncing workspace…
-					</p>
+					<p class={ui.text} role="status">Connected. Syncing workspace…</p>
 				{:else if mode === 'waiting'}
-					<div class={css({ display: 'flex', flexDirection: 'column', gap: '1.25rem' })}>
+					<div class={vstack({ gap: '1.25rem', alignItems: 'stretch' })}>
 						{#if waiting?.role === 'existing'}
 							<div>
-								<p class={`${mutedXsText} ${css({ fontWeight: 'medium', letterSpacing: 'wide' })}`}>
-									On the new device
-								</p>
-								<p class={`${css({ mt: '0.25rem', fontSize: 'sm', color: 'scrapscache.text' })}`}>
+								<p class={ui.mutedLead}>On the new device</p>
+								<p class={css({ mt: '0.25rem', fontSize: 'sm', color: 'scrapscache.text' })}>
 									Scan the QR code, open the link, or type the one-time code
 								</p>
 							</div>
 							{#if qrDataUrl}
-								<div class={qrWrap}>
-									<img src={qrDataUrl} alt="Pair this device" class={qrBox} />
+								<div class={hstack({ justify: 'center' })}>
+									<img
+										src={qrDataUrl}
+										alt="Pair this device"
+										class={css({ h: '220px', w: '220px', rounded: 'lg', bg: 'white', p: '0.5rem' })}
+									/>
 								</div>
 							{/if}
-							<div class={digitsBox} aria-label="One-time pairing code">
-								<div class={digitsInner}>
+							<div
+								class={css({
+									rounded: 'xl',
+									borderWidth: '1px',
+									borderColor: 'scrapscache.border',
+									bg: 'scrapscache.bg',
+									px: '0.5rem',
+									py: '1.25rem'
+								})}
+								aria-label="One-time pairing code"
+							>
+								<div class={hstack({ justify: 'center', gap: '0.25rem' })}>
 									{#each pairingGroups(waiting.syncCode) as group, index (index)}
 										{#if index > 0}
-											<span class={digitsHyphen} aria-hidden="true">·</span>
+											<span class={ui.digitsHyphen} aria-hidden="true">·</span>
 										{/if}
-										<span class={digitsText}>{group}</span>
+										<span class={ui.digits}>{group}</span>
 									{/each}
 								</div>
 							</div>
@@ -914,27 +916,33 @@
 								<Clipboard.Trigger
 									type="button"
 									aria-label="Copy pairing link"
-									class={`${button({ variant: 'secondary', size: 'md' })} ${css({ w: 'full' })} ${copyFlash ? css({ borderColor: 'scrapscache.success', bg: 'scrapscache.success', color: 'scrapscache.successForeground' }) : ''}`}
+									class={cx(
+										button({ variant: 'secondary', size: 'md' }),
+										css({ w: 'full' }),
+										copyFlash
+											? css({
+													borderColor: 'scrapscache.success',
+													bg: 'scrapscache.success',
+													color: 'scrapscache.successForeground'
+												})
+											: ''
+									)}
 								>
 									{copyFlash ? 'Copied' : 'Copy pairing link'}
 								</Clipboard.Trigger>
 							</Clipboard.Root>
 						{:else}
 							<div>
-								<p class={`${mutedXsText} ${css({ fontWeight: 'medium', letterSpacing: 'wide' })}`}>
-									On the other device
-								</p>
-								<p class={`${css({ mt: '0.25rem', fontSize: 'sm', color: 'scrapscache.text' })}`}>
+								<p class={ui.mutedLead}>On the other device</p>
+								<p class={css({ mt: '0.25rem', fontSize: 'sm', color: 'scrapscache.text' })}>
 									Open Sync and choose Connect device
 								</p>
 							</div>
 						{/if}
-						<div class={css({ display: 'flex', flexDirection: 'column', gap: '0.375rem' })}>
+						<div class={vstack({ gap: '0.375rem', alignItems: 'stretch' })}>
 							<div
-								class={css({
-									display: 'flex',
-									alignItems: 'center',
-									justifyContent: 'space-between',
+								class={hstack({
+									justify: 'space-between',
 									fontSize: 'xs',
 									color: 'scrapscache.textMuted'
 								})}
@@ -944,11 +952,8 @@
 									>{secondsLeft()}s</span
 								>
 							</div>
-							<div class={`scrapscache-progress-track ${progressTrack}`}>
-								<div
-									class={`scrapscache-progress-value ${progressFill}`}
-									style={`width: ${expiryRatio() * 100}%`}
-								></div>
+							<div class={ui.meterTrack}>
+								<div class={ui.meterFill} style={`width: ${expiryRatio() * 100}%`}></div>
 							</div>
 						</div>
 						<button
@@ -958,14 +963,7 @@
 								waiting = null;
 								mode = syncStore.isLoggedIn ? 'menu' : 'link';
 							}}
-							class={css({
-								w: 'full',
-								fontSize: 'sm',
-								color: 'scrapscache.textMuted',
-								touchAction: 'manipulation',
-								cursor: 'pointer',
-								textAlign: 'center'
-							})}>Cancel</button
+							class={ui.cancelLink}>Cancel</button
 						>
 					</div>
 				{/if}

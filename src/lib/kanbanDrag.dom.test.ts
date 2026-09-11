@@ -142,6 +142,45 @@ describe('scrolling the list under a carried card', () => {
 	});
 });
 
+describe('drop target geometry with the preview open below the carried card', () => {
+	/**
+	 * Dragging downwards leaves the hidden card above the preview slot. The
+	 * cards below the slot are pushed down by it; the drop index must read
+	 * through that, or every move re-opens the gap somewhere else and the
+	 * column jitters under the finger.
+	 */
+	function columnWithSlotBelow(): { column: HTMLElement; carried: HTMLElement } {
+		const root = document.createElement('div');
+		root.dataset.kanbanColumn = 'todo';
+		const list = document.createElement('div');
+		list.dataset.kanbanList = '';
+
+		const carried = card('carried', 0, 0, true);
+		const first = card('b', 0, 100);
+		const slot = document.createElement('div');
+		slot.dataset.kanbanSlot = '';
+		Object.defineProperties(slot, { offsetTop: { value: 112 }, offsetHeight: { value: 150 } });
+		// Pushed down by the slot's 150px and the 12px gap it brings with it.
+		const second = card('c', 274, 100);
+
+		list.append(carried, first, slot, second);
+		root.append(list);
+		document.body.append(root);
+		return { column: root, carried };
+	}
+
+	it('aims by where the cards would settle, not where the slot pushed them', () => {
+		const { column: root, carried } = columnWithSlotBelow();
+		document.elementFromPoint = () => root;
+
+		// Settled, the two cards on show sit at 0-100 and 112-212: a finger at
+		// 200 is past the second one's middle, so the card lands last.
+		carry(carried, 200);
+
+		expect(kanbanDrag.target).toEqual({ columnId: 'todo', index: 2 });
+	});
+});
+
 describe('drop target geometry', () => {
 	it('aims past the cards on show, ignoring the hidden card being carried', () => {
 		const { column: root, carried } = column();

@@ -7,6 +7,7 @@
 		defaultBacklogFilter,
 		insertIntoOrder,
 		moveNoteLabels,
+		slotPosition,
 		type BacklogFilter,
 		type KanbanColumn
 	} from '$lib/kanban';
@@ -168,8 +169,11 @@
 		});
 		const slot = kanbanDrag.target?.columnId === column.id ? kanbanDrag.target.index : -1;
 		if (slot >= 0) {
-			const at = Math.min(slot, items.length);
-			items.splice(at, 0, { key: 'drop-slot', note: null, index: at, carried: false });
+			const at = slotPosition(
+				items.map((item) => item.carried),
+				slot
+			);
+			items.splice(at, 0, { key: 'drop-slot', note: null, index: slot, carried: false });
 		}
 		return items;
 	}

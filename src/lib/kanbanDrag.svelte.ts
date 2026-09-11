@@ -313,23 +313,36 @@ class KanbanDragController {
 		const list = column.querySelector<HTMLElement>('[data-kanban-list]');
 		if (!list) return;
 
-		const children = [...list.children] as HTMLElement[];
-		const slot = children.find((child) => child.hasAttribute('data-kanban-slot')) ?? null;
-		// The carried card is still in the list, hidden; it holds no space and is
-		// no longer something to aim above or below.
-		const cards = children.filter(
-			(child) =>
-				child.hasAttribute('data-kanban-card') && !child.hasAttribute('data-kanban-carried')
-		);
 		const gap = Number.parseFloat(getComputedStyle(list).rowGap) || 0;
-		// offsetTop, not a client rect: cards slide into place with a transform
-		// while the preview moves, and only the settled layout is a stable ruler.
+		// Walked in one pass so the slot is counted in cards on show. The carried
+		// card is still in the list, hidden: it holds no space and is nothing to
+		// aim above or below, so counting it would place the slot a card too far
+		// down and the gap would be read out of the wrong cards.
+		const tops: number[] = [];
+		const heights: number[] = [];
+		let slotIndex = -1;
+		let slotSpan = 0;
+		for (const child of list.children as HTMLCollectionOf<HTMLElement>) {
+			if (child.hasAttribute('data-kanban-slot')) {
+				slotIndex = tops.length;
+				slotSpan = child.offsetHeight + gap;
+			} else if (
+				child.hasAttribute('data-kanban-card') &&
+				!child.hasAttribute('data-kanban-carried')
+			) {
+				// offsetTop, not a client rect: cards slide into place with a
+				// transform while the preview moves, and only the settled layout is
+				// a stable ruler.
+				tops.push(child.offsetTop);
+				heights.push(child.offsetHeight);
+			}
+		}
 		const index = dropIndexAt(
 			this.#pointerY - list.getBoundingClientRect().top,
-			cards.map((card) => card.offsetTop),
-			cards.map((card) => card.offsetHeight),
-			slot ? children.indexOf(slot) : -1,
-			slot ? slot.offsetHeight + gap : 0
+			tops,
+			heights,
+			slotIndex,
+			slotSpan
 		);
 
 		const columnId = column.dataset.kanbanColumn;

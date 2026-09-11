@@ -19,12 +19,10 @@ const HOLD_MS = 220;
 const HOLD_CANCEL_PX = 10;
 /** A mouse has no hold delay, just a threshold that separates a drag from a click. */
 const MOUSE_START_PX = 5;
-/** Overhang at which a scroller follows the carried card at full speed. */
-const OVERHANG_FULL_PX = 90;
 /** Peak auto-scroll speed, in pixels per frame. */
 const EDGE_SPEED = 12;
-/** Slowest a scroller creeps once the card hangs over its edge at all. */
-const MIN_SCROLL_RATIO = 0.2;
+/** How near a scroller's top or bottom the finger runs the list along. */
+const EDGE_BAND_PX = 64;
 /** How far the carried card must hang past a side before the board turns a page. */
 const PAGE_TRIGGER_PX = 16;
 /** Quiet time after a page, so holding the card at a side steps column by column. */
@@ -88,30 +86,47 @@ function scrollerFor(start: HTMLElement | null, axis: 'x' | 'y'): HTMLElement | 
 }
 
 /**
- * How fast a scroller should follow the carried card along one axis, in pixels
- * per frame. Negative moves towards the scroller's start.
+ * How fast a list should run along under a carried card, from how near the
+ * finger is to its top or bottom edge. Negative scrolls towards the top.
  *
- * The card drives this, not the finger. On a phone a column fills the screen,
- * so a finger is nearly always within any sensible edge band — the board would
- * pan the whole time a note is carried. Measuring the card instead means
- * nothing scrolls until the note itself is pushed past an edge, which is also
- * what the gesture looks like: shove the note off the side to go there.
+ * The finger drives this, not the card. A note is tall next to a phone screen,
+ * so measuring the card would make scrolling depend on where the note was
+ * picked up: hold a tall one near its top and its bottom edge already hangs
+ * past the screen, so the list runs away the moment it is carried, dragging
+ * fresh cards under a finger that never moved. Where a note is held must not
+ * change how it drags.
  */
-export function overhangSpeed(
+export function edgeSpeed(pointer: number, viewStart: number, viewEnd: number): number {
+	const band = Math.min(EDGE_BAND_PX, (viewEnd - viewStart) / 4);
+	if (band <= 0) return 0;
+	const intoStart = band - (pointer - viewStart);
+	const intoEnd = band - (viewEnd - pointer);
+	if (intoStart > 0) return -EDGE_SPEED * Math.min(intoStart / band, 1);
+	if (intoEnd > 0) return EDGE_SPEED * Math.min(intoEnd / band, 1);
+	return 0;
+}
+
+/**
+ * Which way the board should turn a page, from how far the carried card hangs
+ * past a side — or 0 to stay put.
+ *
+ * Sideways this is the card's business, not the finger's: a column fills a
+ * phone screen, so a finger is nearly always near a side, while the card only
+ * clears an edge when it is deliberately shoved there. It stays even-handed
+ * about where the card was picked up, because a card starts the drag exactly
+ * where it sat, so the push needed to clear a side is the same either way.
+ */
+export function pageDirection(
 	cardStart: number,
 	cardEnd: number,
 	viewStart: number,
 	viewEnd: number
-): number {
-	const beforeStart = viewStart - cardStart;
-	const afterEnd = cardEnd - viewEnd;
-	if (beforeStart <= 0 && afterEnd <= 0) return 0;
-	// A card taller or wider than the view hangs over both ends; follow the
-	// side it hangs over further.
-	const overhang = Math.max(beforeStart, afterEnd);
-	const direction = afterEnd > beforeStart ? 1 : -1;
-	const ratio = Math.max(Math.min(overhang / OVERHANG_FULL_PX, 1), MIN_SCROLL_RATIO);
-	return direction * EDGE_SPEED * ratio;
+): -1 | 0 | 1 {
+	const pastStart = viewStart - cardStart;
+	const pastEnd = cardEnd - viewEnd;
+	if (pastEnd > PAGE_TRIGGER_PX && pastEnd >= pastStart) return 1;
+	if (pastStart > PAGE_TRIGGER_PX) return -1;
+	return 0;
 }
 
 /**
@@ -322,11 +337,12 @@ class KanbanDragController {
 		this.target = { columnId, index };
 	}
 
-	/** Follow the card's vertical overhang, a column being a list rather than a page. */
-	#followCard(el: HTMLElement | null): void {
+	/** Run the list along under the card, a column being a list rather than a page. */
+	#followFinger(el: HTMLElement | null): void {
 		if (!el) return;
 		const rect = el.getBoundingClientRect();
-		const speed = overhangSpeed(this.y, this.y + this.height, rect.top, rect.bottom);
+		if (this.#pointerX < rect.left || this.#pointerX > rect.right) return;
+		const speed = edgeSpeed(this.#pointerY, rect.top, rect.bottom);
 		if (speed !== 0) el.scrollTop += speed;
 	}
 
@@ -334,10 +350,7 @@ class KanbanDragController {
 	#pageBoard(el: HTMLElement | null): void {
 		if (!el) return;
 		const rect = el.getBoundingClientRect();
-		const pastStart = rect.left - this.x;
-		const pastEnd = this.x + this.width - rect.right;
-		const direction =
-			pastEnd > PAGE_TRIGGER_PX && pastEnd >= pastStart ? 1 : pastStart > PAGE_TRIGGER_PX ? -1 : 0;
+		const direction = pageDirection(this.x, this.x + this.width, rect.left, rect.right);
 		if (direction === 0) return;
 
 		const now = performance.now();
@@ -359,7 +372,7 @@ class KanbanDragController {
 		if (!press?.dragging) return;
 		this.#frame = requestAnimationFrame(this.#tick);
 		this.#pageBoard(press.scrollX);
-		this.#followCard(press.scrollY);
+		this.#followFinger(press.scrollY);
 
 		// Any board movement — this frame's or the tail of a page still gliding —
 		// puts different cards under a still finger, so re-aim whenever it moved.

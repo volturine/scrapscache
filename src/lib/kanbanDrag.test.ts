@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dropIndexAt, overhangSpeed, pagedScrollLeft } from './kanbanDrag.svelte';
+import { dropIndexAt, edgeSpeed, pageDirection, pagedScrollLeft } from './kanbanDrag.svelte';
 
 // Three 100px cards, 12px apart, with no drop slot opened yet.
 const tops = [0, 112, 224];
@@ -35,35 +35,57 @@ describe('dropIndexAt', () => {
 	});
 });
 
-describe('overhangSpeed', () => {
-	// A phone column: the card nearly fills the scroller, so a finger anywhere
-	// on it would sit in an edge band. Only the card's own overhang may scroll.
-	const view = [0, 390] as const;
+describe('edgeSpeed', () => {
+	// A phone screen's worth of feed.
+	const view = [0, 780] as const;
 	/** Peak speed the module scrolls at, in pixels per frame. */
 	const full = 12;
 
-	it('stays still while the card is inside the scroller', () => {
-		expect(overhangSpeed(16, 374, ...view)).toBe(0);
-		expect(overhangSpeed(0, 390, ...view)).toBe(0);
+	it('holds still while the finger is away from both edges', () => {
+		expect(edgeSpeed(390, ...view)).toBe(0);
+		expect(edgeSpeed(80, ...view)).toBe(0);
+		expect(edgeSpeed(700, ...view)).toBe(0);
 	});
 
-	it('pulls towards the start when the card hangs off the start', () => {
-		expect(overhangSpeed(-90, 268, ...view)).toBeLessThan(0);
-		expect(overhangSpeed(-200, 158, ...view)).toBe(-full);
+	it('runs the list up as the finger nears the top', () => {
+		expect(edgeSpeed(40, ...view)).toBeLessThan(0);
+		expect(edgeSpeed(0, ...view)).toBe(-full);
+		expect(edgeSpeed(-50, ...view)).toBe(-full);
 	});
 
-	it('pushes towards the end when the card hangs off the end', () => {
-		expect(overhangSpeed(122, 480, ...view)).toBeGreaterThan(0);
-		expect(overhangSpeed(200, 558, ...view)).toBe(full);
+	it('runs the list down as the finger nears the bottom', () => {
+		expect(edgeSpeed(740, ...view)).toBeGreaterThan(0);
+		expect(edgeSpeed(780, ...view)).toBe(full);
+		expect(edgeSpeed(900, ...view)).toBe(full);
 	});
 
-	it('creeps rather than stalls on a sliver of overhang', () => {
-		expect(overhangSpeed(120, 392, ...view)).toBeCloseTo(full * 0.2);
+	it('shrinks the band rather than filling a short scroller with it', () => {
+		// 120px tall: a 64px band top and bottom would leave nowhere neutral.
+		expect(edgeSpeed(60, 0, 120)).toBe(0);
+	});
+});
+
+describe('pageDirection', () => {
+	// A phone board: the card sits inset in a column that fills the screen.
+	const view = [0, 390] as const;
+
+	it('stays put while the card is inside the board', () => {
+		expect(pageDirection(16, 304, ...view)).toBe(0);
+		expect(pageDirection(0, 390, ...view)).toBe(0);
 	});
 
-	it('follows the far side when the card is larger than the scroller', () => {
-		expect(overhangSpeed(-10, 480, ...view)).toBeGreaterThan(0);
-		expect(overhangSpeed(-100, 400, ...view)).toBeLessThan(0);
+	it('pages towards the side the card is shoved past', () => {
+		expect(pageDirection(120, 408, ...view)).toBe(1);
+		expect(pageDirection(-120, 168, ...view)).toBe(-1);
+	});
+
+	it('ignores a sliver of overhang', () => {
+		expect(pageDirection(110, 398, ...view)).toBe(0);
+	});
+
+	it('follows the side it hangs over further when wider than the board', () => {
+		expect(pageDirection(-20, 480, ...view)).toBe(1);
+		expect(pageDirection(-120, 400, ...view)).toBe(-1);
 	});
 });
 

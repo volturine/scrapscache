@@ -65,6 +65,83 @@ afterEach(() => {
 	document.elementFromPoint = () => null;
 });
 
+/** A feed with room to scroll, wrapped around a column. */
+function feed(child: HTMLElement): { feed: HTMLElement; scrollTop: () => number } {
+	const el = document.createElement('div');
+	el.style.overflowY = 'scroll';
+	Object.defineProperties(el, {
+		scrollHeight: { value: 2000 },
+		clientHeight: { value: 600 }
+	});
+	// jsdom does no layout, so scrolling is recorded rather than performed.
+	let top = 0;
+	Object.defineProperty(el, 'scrollTop', { get: () => top, set: (value: number) => (top = value) });
+	// A phone feed: the board sits under the top bar, so it is shorter than the screen.
+	el.getBoundingClientRect = () => new DOMRect(0, 0, 390, 600);
+	el.append(child);
+	document.body.append(el);
+	return { feed: el, scrollTop: () => top };
+}
+
+/** Carry a card from `grabY` to `toY` and let a few frames run. */
+function drag(card: HTMLElement, grabY: number, toY: number) {
+	kanbanDrag.press(pointerEvent('pointerdown', grabY), {
+		noteId: 'carried',
+		columnId: 'todo',
+		card,
+		index: 0,
+		onDrop: vi.fn()
+	});
+	vi.advanceTimersByTime(300);
+	window.dispatchEvent(pointerEvent('pointermove', toY));
+	vi.advanceTimersByTime(100);
+}
+
+describe('scrolling the list under a carried card', () => {
+	// A tall card, as one with a drawing or a photo on it is: over half the feed.
+	const TALL = 320;
+
+	function tallColumn() {
+		const { column: root, carried } = column();
+		carried.getBoundingClientRect = () => new DOMRect(16, 100, 288, TALL);
+		return { root, carried, ...feed(root) };
+	}
+
+	it('holds the list still for a finger in the middle, wherever the card was held', () => {
+		const held = tallColumn();
+		document.elementFromPoint = () => held.root;
+
+		// Held by its top edge: the card's own bottom edge hangs well past the
+		// feed from here, though the finger is nowhere near the bottom.
+		drag(held.carried, 110, 420);
+		expect(held.scrollTop()).toBe(0);
+
+		kanbanDrag.cancel();
+		// Held by its bottom edge instead. Same finger, same result.
+		drag(held.carried, 410, 420);
+		expect(held.scrollTop()).toBe(0);
+	});
+
+	it('runs the list down once the finger reaches the bottom edge', () => {
+		const held = tallColumn();
+		document.elementFromPoint = () => held.root;
+
+		drag(held.carried, 110, 590);
+
+		expect(held.scrollTop()).toBeGreaterThan(0);
+	});
+
+	it('runs the list up once the finger reaches the top edge', () => {
+		const held = tallColumn();
+		document.elementFromPoint = () => held.root;
+		held.feed.scrollTop = 500;
+
+		drag(held.carried, 110, 10);
+
+		expect(held.scrollTop()).toBeLessThan(500);
+	});
+});
+
 describe('drop target geometry', () => {
 	it('aims past the cards on show, ignoring the hidden card being carried', () => {
 		const { column: root, carried } = column();

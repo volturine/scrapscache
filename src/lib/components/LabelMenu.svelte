@@ -106,7 +106,7 @@
 	});
 
 	const searchInputClass = cx(
-		input({ variant: 'subtle', size: 'md' }),
+		input({ variant: 'outline', size: 'md' }),
 		css({ w: 'full', pl: '2.25rem', _placeholder: { color: 'scrapscache.textMuted' } })
 	);
 

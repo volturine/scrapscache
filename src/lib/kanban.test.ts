@@ -3,6 +3,7 @@ import {
 	columnNotes,
 	defaultBacklogFilter,
 	insertIntoOrder,
+	slotPosition,
 	mergeKanbanBoards,
 	moveNoteLabels,
 	noteMatchesBacklog,
@@ -161,5 +162,33 @@ describe('insertIntoOrder', () => {
 	it('splices at the visible anchor so search-hidden cards keep their place', () => {
 		// 'b' is hidden by a search; dropping above visible 'c' must land above 'c'.
 		expect(insertIntoOrder(['a', 'b', 'c'], ['a', 'c'], 'x', 1)).toEqual(['a', 'b', 'x', 'c']);
+	});
+});
+
+describe('slotPosition', () => {
+	// Three cards, the middle one being carried and so hidden from the column.
+	const carrying = [false, true, false];
+
+	it('puts the preview above the card on show it aims at', () => {
+		expect(slotPosition(carrying, 0)).toBe(0);
+	});
+
+	it('counts past the hidden card rather than through it', () => {
+		// Slot 1 is below the first card on show, which sits after the hidden one.
+		expect(slotPosition(carrying, 1)).toBe(2);
+	});
+
+	it('ends the column when the drop aims past the last card on show', () => {
+		expect(slotPosition(carrying, 2)).toBe(3);
+	});
+
+	it('needs no adjustment when nothing is carried', () => {
+		expect(slotPosition([false, false, false], 0)).toBe(0);
+		expect(slotPosition([false, false, false], 2)).toBe(2);
+		expect(slotPosition([false, false, false], 3)).toBe(3);
+	});
+
+	it('handles a column holding only the carried card', () => {
+		expect(slotPosition([true], 0)).toBe(1);
 	});
 });

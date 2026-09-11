@@ -142,6 +142,26 @@ export function insertIntoOrder(
 	return [...rest.slice(0, position), noteId, ...rest.slice(position)];
 }
 
+/**
+ * Where the drop preview belongs among a column's rendered items, given which
+ * of them is the carried card and which slot on show the drop aims at.
+ *
+ * The carried card stays in the list while it is being dragged, hidden, so the
+ * items and the slots the user can see no longer line up one to one. Counting
+ * only the cards on show keeps the preview under the finger; counting the
+ * hidden one as well leaves it a card behind, which on a column of tall cards
+ * is most of a screen away from where the note would actually land.
+ */
+export function slotPosition(carried: boolean[], visibleIndex: number): number {
+	let seen = 0;
+	for (const [position, isCarried] of carried.entries()) {
+		if (isCarried) continue;
+		if (seen === visibleIndex) return position;
+		seen += 1;
+	}
+	return carried.length;
+}
+
 /** Newer boards win; equal timestamps use canonical content ordering on every device. */
 export function mergeKanbanBoards(
 	local: KanbanBoard[],

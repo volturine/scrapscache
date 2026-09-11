@@ -162,6 +162,26 @@ export function slotPosition(carried: boolean[], visibleIndex: number): number {
 	return carried.length;
 }
 
+/**
+ * Keep a hand-arranged column order that the winning copy of a board has
+ * nothing to say about.
+ *
+ * An empty order is no opinion — a column nobody has arranged, or one saved by
+ * a device that does not keep card order yet. A filled one is an arrangement
+ * somebody made by hand. Letting silence overwrite it loses work every time
+ * such a device touches the board, which is how a whole column falls back to
+ * feed order after a sync.
+ */
+function keepColumnOrder(winner: KanbanBoard, loser: KanbanBoard): KanbanBoard {
+	const known = new Map(loser.columns.map((column) => [column.id, column.order]));
+	return {
+		...winner,
+		columns: winner.columns.map((column) =>
+			column.order.length > 0 ? column : { ...column, order: known.get(column.id) ?? [] }
+		)
+	};
+}
+
 /** Newer boards win; equal timestamps use canonical content ordering on every device. */
 export function mergeKanbanBoards(
 	local: KanbanBoard[],
@@ -171,13 +191,17 @@ export function mergeKanbanBoards(
 	const byId = new Map(local.map((board) => [board.id, board]));
 	for (const board of remote) {
 		const current = byId.get(board.id);
-		if (
-			!current ||
-			board.updatedAt > current.updatedAt ||
-			(board.updatedAt === current.updatedAt && stableStringify(board) > stableStringify(current))
-		) {
+		if (!current) {
 			byId.set(board.id, board);
+			continue;
 		}
+		const remoteWins =
+			board.updatedAt > current.updatedAt ||
+			(board.updatedAt === current.updatedAt && stableStringify(board) > stableStringify(current));
+		byId.set(
+			board.id,
+			remoteWins ? keepColumnOrder(board, current) : keepColumnOrder(current, board)
+		);
 	}
 	return [...byId.values()].filter(
 		(board) => board.updatedAt > (Number(tombstones[board.id]) || 0)

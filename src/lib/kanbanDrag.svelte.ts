@@ -46,16 +46,22 @@ export type KanbanCardPress = {
 };
 
 /**
- * Which slot the pointer is over, from a column's laid-out card geometry.
+ * Which slot the carried card's top edge is over, from a column's laid-out
+ * card geometry.
+ *
+ * The card's edge, not the finger: the note is what the eye follows, so the
+ * gap belongs where the note has reached. Taking it from the finger instead
+ * made the same drag land differently depending on where the note happened to
+ * be held, with the gap opening a card away from the note on screen.
  *
  * `slotIndex` / `slotSpan` describe the gap the drop preview already opened in
  * this column: the cards below it sit that much lower, so the gap is subtracted
- * back out and the answer stays a function of the pointer alone. Without that,
- * every opened gap would move the card it was measured from and the preview
- * would flip between two slots.
+ * back out and the answer stays a function of the card's edge alone. Without
+ * that, every opened gap would move the card it was measured from and the
+ * preview would flip between two slots.
  */
 export function dropIndexAt(
-	localY: number,
+	cardTop: number,
 	tops: number[],
 	heights: number[],
 	slotIndex: number,
@@ -63,7 +69,7 @@ export function dropIndexAt(
 ): number {
 	for (let index = 0; index < tops.length; index += 1) {
 		const shift = slotIndex >= 0 && index >= slotIndex ? slotSpan : 0;
-		if (localY < tops[index] - shift + heights[index] / 2) return index;
+		if (cardTop < tops[index] - shift + heights[index] / 2) return index;
 	}
 	return tops.length;
 }
@@ -306,7 +312,9 @@ class KanbanDragController {
 	#retarget(): void {
 		const press = this.#press;
 		if (!press?.dragging) return;
-		const column = columnAt(this.#pointerX, this.#pointerY);
+		// The card decides where it lands, so aim from its middle and its top edge
+		// rather than from the finger holding it.
+		const column = columnAt(this.x + this.width / 2, this.y + this.height / 2);
 		// Off the board entirely: keep the last preview so the drop is never a
 		// surprise — what the user last saw is where the card goes.
 		if (!column?.dataset.kanbanColumn) return;
@@ -338,7 +346,7 @@ class KanbanDragController {
 			}
 		}
 		const index = dropIndexAt(
-			this.#pointerY - list.getBoundingClientRect().top,
+			this.y - list.getBoundingClientRect().top,
 			tops,
 			heights,
 			slotIndex,

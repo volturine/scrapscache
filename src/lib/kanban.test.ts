@@ -192,3 +192,39 @@ describe('slotPosition', () => {
 		expect(slotPosition([true], 0)).toBe(1);
 	});
 });
+
+describe('merging a board whose copy has no card order', () => {
+	function boardWith(order: string[], updatedAt: number): KanbanBoard {
+		return {
+			...board,
+			updatedAt,
+			columns: board.columns.map((column) => (column.id === 'todo' ? { ...column, order } : column))
+		};
+	}
+
+	function orderOf(boards: KanbanBoard[]): string[] {
+		return boards[0].columns.find((column) => column.id === 'todo')!.order;
+	}
+
+	it('keeps a hand-arranged order a newer copy says nothing about', () => {
+		const arranged = boardWith(['n2', 'n1'], 10);
+		const newerWithout = boardWith([], 20);
+		expect(orderOf(mergeKanbanBoards([arranged], [newerWithout]))).toEqual(['n2', 'n1']);
+	});
+
+	it('keeps it the other way round too', () => {
+		const arranged = boardWith(['n2', 'n1'], 20);
+		const olderWithout = boardWith([], 10);
+		expect(orderOf(mergeKanbanBoards([olderWithout], [arranged]))).toEqual(['n2', 'n1']);
+	});
+
+	it('still lets a newer arrangement replace an older one', () => {
+		const older = boardWith(['n1', 'n2'], 10);
+		const newer = boardWith(['n2', 'n1'], 20);
+		expect(orderOf(mergeKanbanBoards([older], [newer]))).toEqual(['n2', 'n1']);
+	});
+
+	it('leaves a column nobody ever arranged empty', () => {
+		expect(orderOf(mergeKanbanBoards([boardWith([], 10)], [boardWith([], 20)]))).toEqual([]);
+	});
+});

@@ -702,3 +702,8 @@ html.scrapscache-sync-active [data-scrapscache-sync-spinner],
 	animation: scrapscache-spin 1s linear infinite;
 	transform-origin: center;
 }
+
+.hidden,
+[hidden] {
+	display: none !important;
+}

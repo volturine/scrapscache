@@ -1073,7 +1073,7 @@
 	function taskShellClass(line: Line): string {
 		if (!focusedGroupIds.has(line.id)) return '';
 		return [
-			css({ bg: { base: 'black/[0.035]', _dark: 'white/[0.06]' } }),
+			css({ bg: { base: 'rgba(0, 0, 0, 0.035)', _dark: 'rgba(255, 255, 255, 0.06)' } }),
 			line.id === focusedRootId
 				? `rounded-t-lg ${css({ mt: '0.125rem', borderTopRadius: 'lg', pt: '0.25rem' })}`
 				: '',

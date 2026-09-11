@@ -9,6 +9,9 @@
 	import TrashView from '$lib/components/views/TrashView.svelte';
 	import RemindersView from '$lib/components/views/RemindersView.svelte';
 	import KanbanView from '$lib/components/views/KanbanView.svelte';
+	import { css } from 'styled-system/css';
+
+	const hiddenPane = css({ display: 'none !important' });
 
 	function applyPath(pathname: string) {
 		const target = viewForPath(pathname);
@@ -24,32 +27,32 @@
 </script>
 
 {#if uiStore.opened.notes}
-	<div class:hidden={uiStore.view !== 'notes'}>
+	<div class={uiStore.view !== 'notes' ? `hidden ${hiddenPane}` : undefined}>
 		<NotesHomeView />
 	</div>
 {/if}
 {#if uiStore.opened.label}
-	<div class:hidden={uiStore.view !== 'label'}>
+	<div class={uiStore.view !== 'label' ? `hidden ${hiddenPane}` : undefined}>
 		<LabelView />
 	</div>
 {/if}
 {#if uiStore.opened.archive}
-	<div class:hidden={uiStore.view !== 'archive'}>
+	<div class={uiStore.view !== 'archive' ? `hidden ${hiddenPane}` : undefined}>
 		<ArchiveView />
 	</div>
 {/if}
 {#if uiStore.opened.trash}
-	<div class:hidden={uiStore.view !== 'trash'}>
+	<div class={uiStore.view !== 'trash' ? `hidden ${hiddenPane}` : undefined}>
 		<TrashView />
 	</div>
 {/if}
 {#if uiStore.opened.reminders}
-	<div class:hidden={uiStore.view !== 'reminders'}>
+	<div class={uiStore.view !== 'reminders' ? `hidden ${hiddenPane}` : undefined}>
 		<RemindersView />
 	</div>
 {/if}
 {#if uiStore.opened.kanban}
-	<div class:hidden={uiStore.view !== 'kanban'}>
+	<div class={uiStore.view !== 'kanban' ? `hidden ${hiddenPane}` : undefined}>
 		<KanbanView />
 	</div>
 {/if}

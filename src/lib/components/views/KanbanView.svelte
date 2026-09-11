@@ -279,7 +279,7 @@
 	});
 	const renameSaveBtn = css({
 		rounded: 'xl',
-		bg: { base: 'black/[0.06]', _dark: 'white/10' },
+		bg: { base: 'rgba(0, 0, 0, 0.06)', _dark: 'white/10' },
 		px: '0.75rem',
 		py: '0.5rem',
 		fontSize: 'sm',
@@ -299,7 +299,7 @@
 		w: 'min(calc(var(--note-card-width) + 1.5rem), calc(100vw - 2rem))',
 		flexShrink: 0,
 		rounded: '2xl',
-		bg: { base: 'black/[0.035]', _dark: 'white/[0.055]' },
+		bg: { base: 'rgba(0, 0, 0, 0.035)', _dark: 'rgba(255, 255, 255, 0.055)' },
 		p: '0.75rem'
 	});
 	const colHeadingRow = css({
@@ -368,7 +368,7 @@
 		rounded: 'lg',
 		px: '0.25rem',
 		py: '0.25rem',
-		_hover: { bg: { base: 'black/[0.04]', _dark: 'white/[0.06]' } }
+		_hover: { bg: { base: 'rgba(0, 0, 0, 0.04)', _dark: 'rgba(255, 255, 255, 0.06)' } }
 	});
 	const cardsList = css({
 		position: 'relative',
@@ -412,7 +412,10 @@
 		color: 'scrapscache.textMuted',
 		outline: 'none',
 		cursor: 'pointer',
-		_hover: { bg: { base: 'black/[0.035]', _dark: 'white/[0.055]' }, color: 'scrapscache.text' }
+		_hover: {
+			bg: { base: 'rgba(0, 0, 0, 0.035)', _dark: 'rgba(255, 255, 255, 0.055)' },
+			color: 'scrapscache.text'
+		}
 	});
 	const menuItemClass = css({
 		display: 'block',
@@ -425,7 +428,7 @@
 		textAlign: 'left',
 		fontSize: 'sm',
 		color: 'scrapscache.text',
-		_hover: { bg: { base: 'black/[0.05]', _dark: 'white/[0.08]' } }
+		_hover: { bg: { base: 'rgba(0, 0, 0, 0.05)', _dark: 'rgba(255, 255, 255, 0.08)' } }
 	});
 
 	const hintText = css({ fontSize: '11px', lineHeight: 'snug', color: 'scrapscache.textMuted' });
@@ -449,7 +452,7 @@
 		rounded: 'lg',
 		px: '0.25rem',
 		py: '0.25rem',
-		_hover: { bg: { base: 'black/[0.04]', _dark: 'white/[0.06]' } }
+		_hover: { bg: { base: 'rgba(0, 0, 0, 0.04)', _dark: 'rgba(255, 255, 255, 0.06)' } }
 	});
 	const checkControl = css({
 		display: 'flex',
@@ -482,7 +485,7 @@
 		fontSize: '10px',
 		color: 'scrapscache.textMuted'
 	});
-	const menuPositionerClass = css({ zIndex: 20, w: '[var(--reference-width)]' });
+	const menuPositionerClass = css({ zIndex: 20, w: 'var(--reference-width)' });
 	const menuContentClass = css({ maxH: '16rem', overflowY: 'auto', py: '0.25rem' });
 </script>
 

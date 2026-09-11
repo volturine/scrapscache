@@ -699,8 +699,9 @@ html.kanban-dragging-touch .app-feed {
 		transform: rotate(360deg);
 	}
 }
-html.scrapscache-sync-active [data-scrapscache-sync-icon],
-[data-scrapscache-sync-icon].scrapscache-sync-icon-active {
+html.scrapscache-sync-active [data-scrapscache-sync-spinner],
+[data-scrapscache-sync-spinner].scrapscache-sync-icon-active {
 	/* Keep in lockstep with SYNC_ICON_ROTATION_MS — one full turn. */
 	animation: scrapscache-spin 1s linear infinite;
+	transform-origin: center;
 }

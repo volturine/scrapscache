@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { LOCAL_PROFILE_ID } from '$lib/db/idb';
 import { loadBoardsFromDevice, saveBoardsToDevice } from './syncTombstones';
 
 describe('kanban board persistence', () => {
@@ -13,8 +14,8 @@ describe('kanban board persistence', () => {
 			}
 		];
 		const proxied = new Proxy(boards, {});
-		await expect(saveBoardsToDevice(proxied)).resolves.toBeUndefined();
-		const stored = await loadBoardsFromDevice(null);
+		await expect(saveBoardsToDevice(LOCAL_PROFILE_ID, proxied)).resolves.toBeUndefined();
+		const stored = await loadBoardsFromDevice(LOCAL_PROFILE_ID, null);
 		expect(stored).toEqual(boards);
 		expect(structuredClone(stored)).toEqual(boards);
 	});

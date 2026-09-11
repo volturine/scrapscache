@@ -75,7 +75,7 @@ describe('Topbar sync status', () => {
 
 	it('spins the cloud for the full notes sync flight', async () => {
 		const { container } = render(Topbar);
-		const icon = container.querySelector('[data-scrapscache-sync-icon]');
+		const icon = container.querySelector('[data-scrapscache-sync-spinner]');
 
 		(notesStore as unknown as { syncFlight: Promise<boolean> | null }).syncFlight = new Promise(
 			() => undefined

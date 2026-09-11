@@ -214,7 +214,7 @@ describe('notes store sync apply', () => {
 			{ id: 'note-1', title: 'pulled from relay' }
 		]);
 		expect(await getSyncState(keys.cursor)).toBe(1);
-		const boards = await loadBoardsFromDevice<unknown>(null);
+		const boards = await loadBoardsFromDevice<unknown>(LOCAL_PROFILE_ID, null);
 		expect(Array.isArray(boards) && boards.length > 0).toBe(true);
 	});
 

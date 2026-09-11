@@ -19,7 +19,7 @@
 	import { Checkbox } from '@ark-ui/svelte/checkbox';
 	import { Menu } from '@ark-ui/svelte/menu';
 	import { ChevronDown, X } from '@lucide/svelte';
-	import { flip } from 'svelte/animate';
+	import { flip, type FlipParams } from 'svelte/animate';
 	import { onDestroy } from 'svelte';
 	import type { Note } from '$lib/types';
 
@@ -146,27 +146,46 @@
 	}
 
 	/**
-	 * The cards a column shows while a drag is in flight: the carried card is
-	 * gone — it lives in the ghost — and the slot it would drop into is an item
-	 * of its own, so the whole list animates as one when the preview moves.
+	 * The cards a column shows while a drag is in flight, plus the slot the
+	 * carried one would drop into. The slot is an item of its own so the whole
+	 * column glides as one when the preview moves.
+	 *
+	 * The carried card stays in the list, only hidden. Touch events are
+	 * dispatched at whatever the touch started on for the life of the gesture,
+	 * so unmounting that card would cut the drag off from the document: the move
+	 * never reaches the guard that keeps the page from scrolling, and the
+	 * browser cancels the pointer mid-drag — the note snapping back to where it
+	 * came from. Hidden, it keeps no space and no hit area, but stays connected.
 	 */
-	type ColumnItem = { key: string; note: Note | null; index: number };
+	type ColumnItem = { key: string; note: Note | null; index: number; carried: boolean };
 
 	function columnItems(column: KanbanColumn): ColumnItem[] {
-		const items: ColumnItem[] = columnNotes(board, column, visibleNotes)
-			.filter((note) => note.id !== kanbanDrag.noteId)
-			.map((note, index) => ({ key: note.id, note, index }));
+		let index = 0;
+		const items: ColumnItem[] = columnNotes(board, column, visibleNotes).map((note) => {
+			const carried = note.id === kanbanDrag.noteId;
+			// Only the cards still on show are numbered: that is what a drop aims at.
+			return { key: note.id, note, index: carried ? -1 : index++, carried };
+		});
 		const slot = kanbanDrag.target?.columnId === column.id ? kanbanDrag.target.index : -1;
 		if (slot >= 0) {
 			const at = Math.min(slot, items.length);
-			items.splice(at, 0, { key: 'drop-slot', note: null, index: at });
+			items.splice(at, 0, { key: 'drop-slot', note: null, index: at, carried: false });
 		}
 		return items;
 	}
 
+	/**
+	 * flip, except on the carried card: it is hidden, so it measures zero and
+	 * would animate to a NaN transform. Nothing to move — it is not on show.
+	 */
+	function cardFlip(node: Element, rects: { from: DOMRect; to: DOMRect }, params: FlipParams) {
+		if (!rects.from.width || !rects.to.width) return {};
+		return flip(node, rects, params);
+	}
+
 	function dropCard(noteId: string, sourceColumnId: string, target: KanbanDropTarget | null) {
-		// Reached from the drag controller after the card unmounted, so it may only
-		// touch board-level state — never anything scoped to that card's list item.
+		// Reached from the drag controller, never from the card's own list item, so
+		// it may only touch board-level state.
 		if (!target) return;
 		const destination = board.columns.find((column) => column.id === target.columnId);
 		if (!destination) return;
@@ -403,10 +422,11 @@
 							     column glides when the preview moves between slots. -->
 							<div
 								data-kanban-card={item.note?.id}
+								data-kanban-carried={item.carried ? '' : undefined}
 								data-kanban-slot={item.note ? undefined : ''}
-								class={item.note ? undefined : 'kanban-drop-slot'}
+								class={item.carried ? 'hidden' : item.note ? undefined : 'kanban-drop-slot'}
 								style={item.note ? undefined : `height: ${kanbanDrag.height}px`}
-								animate:flip={{ duration: 160 }}
+								animate:cardFlip={{ duration: 160 }}
 							>
 								{#if item.note}
 									<KanbanCard

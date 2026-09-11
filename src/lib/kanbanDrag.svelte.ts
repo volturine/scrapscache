@@ -4,7 +4,7 @@
  * Native HTML drag-and-drop is deliberately unused. Its drag image is a browser
  * snapshot — opaque square corners, black embedded images in Safari — and iOS
  * never starts one from touch at all. Here the press is tracked with pointer
- * events, the card leaves its column, and a ghost element follows the pointer,
+ * events, the card hides in its column, and a ghost element follows the pointer,
  * so every device gets the same picked-up card and the same drop preview.
  */
 
@@ -41,8 +41,8 @@ export type KanbanCardPress = {
 	index: number;
 	/**
 	 * Called once the card is released, with everything it needs as arguments.
-	 * The card is unmounted by then — it moved into the ghost — so the handler
-	 * must belong to the board, not to the card's own list item.
+	 * The card is hidden by then — it shows as the ghost — so the handler must
+	 * belong to the board, not to the card's own list item.
 	 */
 	onDrop: (noteId: string, columnId: string, target: KanbanDropTarget | null) => void;
 };
@@ -265,8 +265,11 @@ class KanbanDragController {
 		if (press.pointerType !== 'mouse')
 			document.documentElement.classList.add('kanban-dragging-touch');
 		// Capturing and non-passive: a carried card owns the gesture outright, so
-		// nothing can scroll under it while it is being carried.
+		// nothing can scroll under it while it is being carried. The card itself
+		// listens too, because every touch event of this gesture is dispatched at
+		// the element the finger first landed on, whatever it is over now.
 		document.addEventListener('touchmove', preventDefault, { passive: false, capture: true });
+		press.card.addEventListener('touchmove', preventDefault, { passive: false });
 		window.addEventListener('contextmenu', preventDefault);
 		navigator.vibrate?.(8);
 		// One frame later the ghost has its start transform and can animate in.
@@ -297,7 +300,12 @@ class KanbanDragController {
 
 		const children = [...list.children] as HTMLElement[];
 		const slot = children.find((child) => child.hasAttribute('data-kanban-slot')) ?? null;
-		const cards = children.filter((child) => child.hasAttribute('data-kanban-card'));
+		// The carried card is still in the list, hidden; it holds no space and is
+		// no longer something to aim above or below.
+		const cards = children.filter(
+			(child) =>
+				child.hasAttribute('data-kanban-card') && !child.hasAttribute('data-kanban-carried')
+		);
 		const gap = Number.parseFloat(getComputedStyle(list).rowGap) || 0;
 		// offsetTop, not a client rect: cards slide into place with a transform
 		// while the preview moves, and only the settled layout is a stable ruler.
@@ -438,6 +446,7 @@ class KanbanDragController {
 		window.removeEventListener('pointerup', this.#onPointerUp);
 		window.removeEventListener('pointercancel', this.#onPointerCancel);
 		document.removeEventListener('touchmove', preventDefault, { capture: true });
+		press?.card.removeEventListener('touchmove', preventDefault);
 		window.removeEventListener('contextmenu', preventDefault);
 		if (this.#frame) cancelAnimationFrame(this.#frame);
 		this.#frame = 0;

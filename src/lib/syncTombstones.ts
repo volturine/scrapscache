@@ -50,9 +50,9 @@ export async function writeTombstones(
 	pidOrTombstones: string | Tombstones,
 	maybeTombstones?: Tombstones
 ): Promise<void> {
-	const pid = maybeTombstones !== undefined ? (pidOrTombstones as string) : LOCAL_PROFILE_ID;
-	const tombstones =
-		maybeTombstones !== undefined ? maybeTombstones : (pidOrTombstones as Tombstones);
+	const isScoped = typeof pidOrTombstones === 'string';
+	const pid = isScoped ? pidOrTombstones : LOCAL_PROFILE_ID;
+	const tombstones = isScoped ? (maybeTombstones as Tombstones) : pidOrTombstones;
 	noteCache = sanitize(tombstones);
 	await setSyncState(scopedStateKey(NOTE_IDB, pid), noteCache);
 }
@@ -106,22 +106,20 @@ export async function hydrateTombstones(pid: string = LOCAL_PROFILE_ID): Promise
 	return { notes: { ...noteCache }, labels: { ...labelCache }, boards: { ...boardCache } };
 }
 
-export async function loadBoardsFromDevice<T>(
-	pidOrFallback: string | T,
-	maybeFallback?: T
-): Promise<T> {
-	const pid = maybeFallback !== undefined ? (pidOrFallback as string) : LOCAL_PROFILE_ID;
-	const fallback = (maybeFallback !== undefined ? maybeFallback : pidOrFallback) as T;
+/**
+ * Boards a workspace saved on this device.
+ *
+ * The workspace is named outright rather than inferred from how many arguments
+ * turned up: a caller whose fallback is `undefined` used to read as one with no
+ * workspace at all, so a signed-in workspace silently read the anonymous one's
+ * boards, found none, and started over with an empty board on every load.
+ */
+export async function loadBoardsFromDevice<T>(pid: string, fallback: T): Promise<T> {
 	const stored = await getSyncState<T>(scopedStateKey(BOARDS_IDB, pid));
 	return stored ?? fallback;
 }
 
-export async function saveBoardsToDevice<T>(
-	pidOrBoards: string | T,
-	maybeBoards?: T
-): Promise<void> {
-	const pid = maybeBoards !== undefined ? (pidOrBoards as string) : LOCAL_PROFILE_ID;
-	const boards = maybeBoards !== undefined ? maybeBoards : pidOrBoards;
+export async function saveBoardsToDevice<T>(pid: string, boards: T): Promise<void> {
 	// `$state` board proxies throw DataCloneError in IndexedDB; JSON is already how
 	// localStorage snapshots them.
 	await setSyncState(scopedStateKey(BOARDS_IDB, pid), JSON.parse(JSON.stringify(boards ?? [])));

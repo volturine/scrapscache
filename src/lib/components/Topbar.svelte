@@ -220,15 +220,18 @@
 			aria-label={syncControlLabel}
 			data-scrapscache-sync-control
 		>
-			<Cloud
-				class={[
-					'h-5 w-5',
-					SYNC_STATUS_CLASS[syncStatus],
-					notesStore.syncing && 'scrapscache-sync-icon-active'
-				]}
-				data-scrapscache-sync-icon
-				aria-hidden="true"
-			/>
+			<!-- The spin turns this span, not the icon: Safari treats a transform on
+			     an svg root as its own user space, so the icon sat still there. -->
+			<span
+				class={['block h-5 w-5', notesStore.syncing && 'scrapscache-sync-icon-active']}
+				data-scrapscache-sync-spinner
+			>
+				<Cloud
+					class={['h-5 w-5', SYNC_STATUS_CLASS[syncStatus]]}
+					data-scrapscache-sync-icon
+					aria-hidden="true"
+				/>
+			</span>
 		</button>
 	</Tooltip>
 

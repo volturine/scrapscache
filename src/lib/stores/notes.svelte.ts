@@ -1084,7 +1084,12 @@ export class NotesStore {
 		);
 	}
 
-	private async applyPulledSnapshot(snapshot: SyncSnapshot): Promise<SyncSnapshot> {
+	private async applyPulledSnapshot(snapshot: SyncSnapshot, pid: string): Promise<SyncSnapshot> {
+		// A flight belongs to the workspace it started in. If the window has moved
+		// to another one, none of this may land: it would merge one workspace's
+		// notes into another's and save them there. The cursor is not committed
+		// either, so the workspace this came from downloads it again next time.
+		if (pid !== this.pid) return snapshot;
 		const tombstones = { ...this.deletedNoteIds };
 		for (const [id, deletedAt] of Object.entries(snapshot.tombstones)) {
 			if (deletedAt > (tombstones[id] || 0)) tombstones[id] = deletedAt;
@@ -1148,7 +1153,9 @@ export class NotesStore {
 		};
 	}
 
-	private async applyCloudReplacement(snapshot: SyncSnapshot): Promise<SyncSnapshot> {
+	private async applyCloudReplacement(snapshot: SyncSnapshot, pid: string): Promise<SyncSnapshot> {
+		// Replacing this device's notes with the cloud's belongs to one workspace.
+		if (pid !== this.pid) return snapshot;
 		const notes = withoutTombstoned(snapshot.notes, snapshot.tombstones).sort(
 			(a, b) => b.updatedAt - a.updatedAt
 		);
@@ -1252,7 +1259,7 @@ export class NotesStore {
 			}
 			this.notes = remapped;
 			try {
-				await this.applyPulledSnapshot(server);
+				await this.applyPulledSnapshot(server, this.pid);
 			} catch (err) {
 				this.notes = original;
 				throw err;
@@ -1282,8 +1289,8 @@ export class NotesStore {
 			const leftover = await getSyncOutboxKeys(this.pid).catch(() => []);
 			if (leftover.length) await clearSyncOutbox(this.pid, leftover);
 			await syncStore.clearAccountControlPlane(syncStore.account.accountId);
-			const result = await syncStore.sync([], [], {}, {}, [], {}, true, true, (snapshot) =>
-				this.applyCloudReplacement(snapshot)
+			const result = await syncStore.sync([], [], {}, {}, [], {}, true, true, (snapshot, pid) =>
+				this.applyCloudReplacement(snapshot, pid)
 			);
 			if (!result.success || !result.notes) {
 				this.recordPersistenceError(result.error || 'Cloud sync returned no notes', result.error);
@@ -1472,7 +1479,7 @@ export class NotesStore {
 				kanbanStore.boardTombstonesForSync(),
 				indicate,
 				false,
-				(snapshot) => this.applyPulledSnapshot(snapshot)
+				(snapshot, pid) => this.applyPulledSnapshot(snapshot, pid)
 			);
 			if (!result.success || !result.notes) {
 				this.recordPersistenceError(result.error || 'Cloud sync returned no notes', result.error);

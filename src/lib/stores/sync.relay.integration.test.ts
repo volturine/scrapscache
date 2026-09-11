@@ -8,7 +8,8 @@ import {
 	getAllNotesMetadata,
 	hydrateNoteAttachments,
 	markSyncOutbox,
-	putNote
+	putNote,
+	LOCAL_PROFILE_ID
 } from '$lib/db/idb';
 import { SyncStore, type SyncSnapshot } from './sync.svelte';
 import type { Note, NoteImage } from '$lib/types';
@@ -274,7 +275,7 @@ describe('client sync against the sqlite relay', () => {
 		const afterAdd = client.usage?.storageBytes ?? 0;
 		expect(afterAdd).toBeGreaterThan(1_000);
 
-		await markSyncOutbox([`note-tombstone:${local.id}`]);
+		await markSyncOutbox(LOCAL_PROFILE_ID, [`note-tombstone:${local.id}`]);
 		const deleted = await client.sync(
 			[],
 			[],

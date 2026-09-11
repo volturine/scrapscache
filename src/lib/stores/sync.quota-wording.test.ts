@@ -91,7 +91,11 @@ describe('quota isolation independent of server error wording', () => {
 				data: { cursor: 1 + request.envelopes.length, writesAccepted: true }
 			} satisfies RequestResult;
 		});
-		await idb.markSyncOutbox(['note:note-1', 'attachment:ok', 'attachment:huge']);
+		await idb.markSyncOutbox(idb.LOCAL_PROFILE_ID, [
+			'note:note-1',
+			'attachment:ok',
+			'attachment:huge'
+		]);
 
 		const result = await store.sync([local], [], {}, {}, [], {}, false, false, async (s) => s);
 

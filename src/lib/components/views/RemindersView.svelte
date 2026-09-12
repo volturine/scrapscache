@@ -9,8 +9,8 @@
 	import { dayKey } from '$lib/utils';
 	import { notesShellClass } from '$lib/notesShell';
 	import { MediaQuery } from 'svelte/reactivity';
-	import { css } from 'styled-system/css';
-	import { viewPage } from '$lib/components/viewStyles';
+	import { sva } from 'styled-system/css';
+	import { viewPage } from 'styled-system/recipes';
 
 	const { openNote: openEditor } = useEditorActions();
 	const reminders = $derived(notesStore.notesWithReminders);
@@ -39,42 +39,49 @@
 				? 'No reminders match the current filters.'
 				: 'Create a note, then add a reminder when you need to return to it.'
 	);
+	const styles = sva({
+		slots: ['embedded', 'empty', 'calendar', 'feed'],
+		base: {
+			embedded: { position: 'relative' },
+			empty: {
+				display: 'flex',
+				justifyContent: 'center',
+				px: '1rem',
+				py: '2.5rem',
+				md: {
+					position: 'absolute',
+					insetY: 0,
+					right: 0,
+					left: 'min(32rem, 58%)',
+					alignItems: 'center',
+					py: 0
+				}
+			},
+			calendar: { w: 'full' },
+			feed: { mt: '1rem' }
+		}
+	})();
 </script>
 
-<div class={viewPage}>
+<div class={viewPage()}>
 	{#if embedCalendar}
-		<div class={css({ position: 'relative' })}>
+		<div class={styles.embedded}>
 			<NotesFeed notes={visible} onOpen={openEditor}>
 				{#snippet leading()}
 					<ReminderCalendar notes={reminders} bind:selected={uiStore.reminderFilter} />
 				{/snippet}
 			</NotesFeed>
 			{#if visible.length === 0}
-				<div
-					class={css({
-						display: 'flex',
-						justifyContent: 'center',
-						px: '1rem',
-						py: '2.5rem',
-						md: {
-							position: 'absolute',
-							insetY: 0,
-							right: 0,
-							left: 'min(32rem, 58%)',
-							alignItems: 'center',
-							py: 0
-						}
-					})}
-				>
+				<div class={styles.empty}>
 					<EmptyState icon={AlarmClock} description={emptyDescription} />
 				</div>
 			{/if}
 		</div>
 	{:else}
-		<div class={uiStore.layout === 'list' ? notesShellClass() : css({ w: 'full' })}>
+		<div class={uiStore.layout === 'list' ? notesShellClass() : styles.calendar}>
 			<ReminderCalendar notes={reminders} bind:selected={uiStore.reminderFilter} />
 		</div>
-		<div class={css({ mt: '1rem' })}>
+		<div class={styles.feed}>
 			{#if visible.length === 0}
 				<EmptyState icon={AlarmClock} description={emptyDescription} />
 			{:else}

@@ -3,7 +3,7 @@
 	import type { Snippet } from 'svelte';
 	import { onMount } from 'svelte';
 	import NoteCard from './NoteCard.svelte';
-	import { css } from 'styled-system/css';
+	import { cva } from 'styled-system/css';
 
 	let {
 		notes,
@@ -108,6 +108,7 @@
 		observer.observe(root);
 		return () => observer.disconnect();
 	});
+	const leadingStyle = cva({ base: { position: 'absolute', top: 0, left: 0 } });
 </script>
 
 <div
@@ -118,11 +119,7 @@
 >
 	{#if leading && leadSpan > 0}
 		<div
-			class={css({
-				position: 'absolute',
-				top: 0,
-				left: 0
-			})}
+			class={leadingStyle()}
 			style="width: calc(({leadSpan} * (100% - {GAP * (colCount - 1)}px)) / {colCount} + {GAP *
 				(leadSpan - 1)}px); z-index: 10;"
 		>

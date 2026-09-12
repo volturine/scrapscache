@@ -12,7 +12,7 @@
 		toggleCheckEntries
 	} from '$lib/checklistBody';
 	import { revealEditorField } from '$lib/editorVisibility';
-	import { css, cva, sva } from 'styled-system/css';
+	import { cva, sva } from 'styled-system/css';
 
 	const MAX_TASK_INDENT = 1;
 
@@ -1071,7 +1071,7 @@
 	const focusedGroupLastId = $derived(focusedGroupRows.at(-1)?.line.id ?? null);
 
 	const editorSva = sva({
-		slots: ['container', 'row', 'bullet'],
+		slots: ['container', 'row', 'bullet', 'checkToggle', 'addSubtaskText'],
 		base: {
 			container: {
 				display: 'block',
@@ -1090,7 +1090,9 @@
 				columnGap: '0.5rem',
 				py: '0.125rem'
 			},
-			bullet: { flexShrink: 0, userSelect: 'none' }
+			bullet: { flexShrink: 0, userSelect: 'none' },
+			checkToggle: { flexShrink: 0 },
+			addSubtaskText: { '&::before': { content: '"+  Add sub-task"' } }
 		}
 	});
 	const editor = editorSva();
@@ -1231,7 +1233,7 @@
 					data-checklist-toggle
 					class={[
 						'checklist-toggle',
-						css({ flexShrink: 0 }),
+						editor.checkToggle,
 						line.indent > 0 && 'checklist-toggle-sub'
 					]}
 					class:checked={line.checked}
@@ -1273,8 +1275,7 @@
 					onpointerdown={(event) => activateAddSubtask(event, focusedGroupRows[0]?.index ?? -1)}
 					onclick={(event) => handleAddSubtaskClick(event, focusedGroupRows[0]?.index ?? -1)}
 				>
-					<span aria-hidden="true" class={css({ '&::before': { content: '"+  Add sub-task"' } })}
-					></span>
+					<span aria-hidden="true" class={editor.addSubtaskText}></span>
 				</button>
 			{/if}
 		</div>

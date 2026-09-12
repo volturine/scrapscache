@@ -2,7 +2,7 @@
 	import { Checkbox } from '@ark-ui/svelte/checkbox';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { Check, Plus, Search, Tag } from '@lucide/svelte';
-	import { css, cx, sva } from 'styled-system/css';
+	import { cx, sva } from 'styled-system/css';
 	import { button, input, popover } from 'styled-system/recipes';
 	import { hstack, vstack } from 'styled-system/patterns';
 
@@ -96,7 +96,19 @@
 	// One row treatment shared by the checkbox rows and the create button; the
 	// create button tints itself with the accent color on top.
 	const itemSva = sva({
-		slots: ['row', 'iconBox', 'icon', 'label', 'checkIndicator'],
+		slots: [
+			'row',
+			'iconBox',
+			'icon',
+			'label',
+			'checkIndicator',
+			'heading',
+			'searchWrap',
+			'searchIcon',
+			'searchInput',
+			'createRow',
+			'empty'
+		],
 		base: {
 			row: {
 				display: 'flex',
@@ -141,6 +153,35 @@
 			checkIndicator: {
 				flexShrink: 0,
 				color: 'scrapscache.accent'
+			},
+			heading: {
+				minW: 0,
+				flex: '1',
+				fontSize: '11px',
+				fontWeight: '600',
+				textTransform: 'uppercase',
+				letterSpacing: '0.14em',
+				color: 'scrapscache.textMuted'
+			},
+			searchWrap: { position: 'relative', mb: '0.25rem' },
+			searchIcon: {
+				pointerEvents: 'none',
+				position: 'absolute',
+				left: '0.75rem',
+				top: '50%',
+				h: '1rem',
+				w: '1rem',
+				transform: 'translateY(-50%)',
+				color: 'scrapscache.textMuted'
+			},
+			searchInput: { w: 'full', pl: '2.25rem', _placeholder: { color: 'scrapscache.textMuted' } },
+			createRow: { color: 'scrapscache.accent' },
+			empty: {
+				px: '0.75rem',
+				py: '1rem',
+				textAlign: 'center',
+				fontSize: 'xs',
+				color: 'scrapscache.textMuted'
 			}
 		}
 	});
@@ -160,49 +201,21 @@
 			justify: 'space-between'
 		})}
 	>
-		<span
-			class={css({
-				minW: 0,
-				flex: '1',
-				fontSize: '11px',
-				fontWeight: '600',
-				textTransform: 'uppercase',
-				letterSpacing: '0.14em',
-				color: 'scrapscache.textMuted'
-			})}
-		>
-			Labels
-		</span>
+		<span class={item.heading}> Labels </span>
 		<button type="button" onclick={onClose} class={button({ variant: 'ghost', size: 'xs' })}>
 			Done
 		</button>
 	</div>
 
-	<div class={css({ position: 'relative', mb: '0.25rem' })}>
-		<Search
-			class={css({
-				pointerEvents: 'none',
-				position: 'absolute',
-				left: '0.75rem',
-				top: '50%',
-				h: '1rem',
-				w: '1rem',
-				transform: 'translateY(-50%)',
-				color: 'scrapscache.textMuted'
-			})}
-			strokeWidth={1.75}
-			aria-hidden="true"
-		/>
+	<div class={item.searchWrap}>
+		<Search class={item.searchIcon} strokeWidth={1.75} aria-hidden="true" />
 		<input
 			bind:this={queryInput}
 			type="text"
 			bind:value={query}
 			placeholder="Search or create a label…"
 			onkeydown={onQueryKeydown}
-			class={cx(
-				input({ variant: 'outline', size: 'md' }),
-				css({ w: 'full', pl: '2.25rem', _placeholder: { color: 'scrapscache.textMuted' } })
-			)}
+			class={cx(input({ variant: 'outline', size: 'md' }), item.searchInput)}
 		/>
 	</div>
 
@@ -215,7 +228,7 @@
 				type="button"
 				onclick={createAndAssign}
 				aria-label="Create label"
-				class={cx(item.row, css({ color: 'scrapscache.accent' }))}
+				class={cx(item.row, item.createRow)}
 			>
 				<span class={item.iconBox} aria-hidden="true">
 					<Plus class={item.icon} strokeWidth={1.75} />
@@ -253,17 +266,7 @@
 		{/each}
 
 		{#if matches.length === 0 && !canCreate}
-			<p
-				class={css({
-					px: '0.75rem',
-					py: '1rem',
-					textAlign: 'center',
-					fontSize: 'xs',
-					color: 'scrapscache.textMuted'
-				})}
-			>
-				No labels yet. Type a name to create one.
-			</p>
+			<p class={item.empty}>No labels yet. Type a name to create one.</p>
 		{/if}
 	</div>
 </div>

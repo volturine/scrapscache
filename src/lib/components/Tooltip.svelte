@@ -3,7 +3,7 @@
 	import type { Snippet } from 'svelte';
 	import { portalToAppOverlay } from '$lib/appViewport';
 	import type { Placement } from '@zag-js/tooltip';
-	import { css } from 'styled-system/css';
+	import { sva } from 'styled-system/css';
 	import { tooltip } from 'styled-system/recipes';
 
 	let {
@@ -21,13 +21,18 @@
 		class?: string;
 		children: Snippet;
 	} = $props();
+
+	const styles = sva({
+		slots: ['trigger'],
+		base: { trigger: { display: 'inline-flex' } }
+	})();
 </script>
 
 {#if content}
 	<Tooltip.Root {openDelay} {closeDelay} positioning={{ placement, gutter: 6 }}>
 		<Tooltip.Trigger>
 			{#snippet asChild(triggerProps)}
-				<span {...triggerProps()} class={[css({ display: 'inline-flex' }), className]}>
+				<span {...triggerProps()} class={[styles.trigger, className]}>
 					{@render children()}
 				</span>
 			{/snippet}

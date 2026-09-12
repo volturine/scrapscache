@@ -1,5 +1,11 @@
 import { defineConfig, defineRecipe, defineSlotRecipe } from '@pandacss/dev';
 
+const viewPageRecipe = defineRecipe({
+	className: 'scrapscache-view-page',
+	description: 'Shared vertical padding for top-level application views',
+	base: { pt: '1rem', pb: '2rem' }
+});
+
 const tooltipRecipe = defineRecipe({
 	className: 'scrapscache-tooltip',
 	description: 'Tooltip popup content recipe',
@@ -1180,6 +1186,7 @@ export default defineConfig({
 				}
 			},
 			recipes: {
+				viewPage: viewPageRecipe,
 				tooltip: tooltipRecipe,
 				popover: popoverRecipe,
 				noteSurface: noteSurfaceRecipe,

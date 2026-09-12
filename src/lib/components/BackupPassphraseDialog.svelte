@@ -2,7 +2,7 @@
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { portalToAppOverlay } from '$lib/appViewport';
 	import { BackupOperation } from '$lib/backup';
-	import { css, cx } from 'styled-system/css';
+	import { cx, sva } from 'styled-system/css';
 	import { button, dialog, input } from 'styled-system/recipes';
 
 	let {
@@ -45,18 +45,32 @@
 
 	const d = dialog({ size: 'sm', presentation: 'appOverlay' });
 
-	const fieldLabel = css({
-		display: 'block',
-		mb: '0.375rem',
-		fontSize: 'xs',
-		fontWeight: 'medium',
-		color: 'scrapscache.textMuted'
+	const backupDialog = sva({
+		slots: ['eyebrow', 'description', 'form', 'label', 'fieldLabel', 'field', 'footer'],
+		base: {
+			eyebrow: {
+				fontSize: '11px',
+				fontWeight: '600',
+				textTransform: 'uppercase',
+				letterSpacing: '0.16em',
+				color: 'scrapscache.textMuted'
+			},
+			description: { lineHeight: 'relaxed' },
+			form: { gap: '1rem' },
+			label: { display: 'block' },
+			fieldLabel: {
+				display: 'block',
+				mb: '0.375rem',
+				fontSize: 'xs',
+				fontWeight: 'medium',
+				color: 'scrapscache.textMuted'
+			},
+			field: { w: 'full', py: '0.625rem', fontSize: '16px' },
+			footer: { gap: '0.5rem', pt: '0.25rem' }
+		}
 	});
-
-	const passphraseField = cx(
-		input({ variant: 'outline', size: 'md' }),
-		css({ w: 'full', py: '0.625rem', fontSize: '16px' })
-	);
+	const styles = backupDialog();
+	const passphraseField = cx(input({ variant: 'outline', size: 'md' }), styles.field);
 </script>
 
 <Dialog.Root
@@ -72,30 +86,20 @@
 		<Dialog.Positioner class={d.positioner}>
 			<Dialog.Content class={d.panel}>
 				<div class={d.header}>
-					<p
-						class={css({
-							fontSize: '11px',
-							fontWeight: '600',
-							textTransform: 'uppercase',
-							letterSpacing: '0.16em',
-							color: 'scrapscache.textMuted'
-						})}
-					>
-						Encrypted on this device
-					</p>
+					<p class={styles.eyebrow}>Encrypted on this device</p>
 					<Dialog.Title class={d.title}>
 						{exporting ? 'Protect this backup' : 'Unlock this backup'}
 					</Dialog.Title>
-					<Dialog.Description class={cx(d.description, css({ lineHeight: 'relaxed' }))}>
+					<Dialog.Description class={cx(d.description, styles.description)}>
 						{exporting
 							? 'Scraps Cache cannot recover this passphrase. Store it separately from the backup file.'
 							: 'The passphrase and decrypted notes stay in this browser.'}
 					</Dialog.Description>
 				</div>
 
-				<form class={cx(d.body, css({ gap: '1rem' }))} onsubmit={submit}>
-					<label class={css({ display: 'block' })}>
-						<span class={fieldLabel}>Backup passphrase</span>
+				<form class={cx(d.body, styles.form)} onsubmit={submit}>
+					<label class={styles.label}>
+						<span class={styles.fieldLabel}>Backup passphrase</span>
 						<input
 							type="password"
 							autocomplete={exporting ? 'new-password' : 'current-password'}
@@ -107,8 +111,8 @@
 					</label>
 
 					{#if exporting}
-						<label class={css({ display: 'block' })}>
-							<span class={fieldLabel}>Confirm passphrase</span>
+						<label class={styles.label}>
+							<span class={styles.fieldLabel}>Confirm passphrase</span>
 							<input
 								type="password"
 								autocomplete="new-password"
@@ -125,7 +129,7 @@
 						</p>
 					{/if}
 
-					<div class={cx(d.footer, css({ gap: '0.5rem', pt: '0.25rem' }))}>
+					<div class={cx(d.footer, styles.footer)}>
 						<button
 							type="button"
 							onclick={onClose}

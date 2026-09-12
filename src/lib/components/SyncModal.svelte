@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { css, cx, sva } from 'styled-system/css';
+	import { cx, sva } from 'styled-system/css';
 	import { button, dialog, iconButton, input } from 'styled-system/recipes';
 	import { hstack, vstack } from 'styled-system/patterns';
 	import WorkspaceRow from './WorkspaceRow.svelte';
@@ -474,7 +474,23 @@
 			'digits',
 			'pairingInput',
 			'backLink',
-			'cancelLink'
+			'cancelLink',
+			'fullButton',
+			'growButton',
+			'spinner',
+			'portal',
+			'workspaceText',
+			'truncate',
+			'accentButton',
+			'syncSection',
+			'progress',
+			'manageDetails',
+			'manageSummary',
+			'bodySpacing',
+			'qrCode',
+			'pairingCode',
+			'copySuccess',
+			'timer'
 		],
 		base: {
 			workspaceList: { display: 'grid', gap: '4px' },
@@ -589,14 +605,41 @@
 				touchAction: 'manipulation',
 				cursor: 'pointer',
 				textAlign: 'center'
-			}
+			},
+			fullButton: { w: 'full' },
+			growButton: { flex: '1' },
+			spinner: { animation: 'spin' },
+			portal: { position: 'fixed', inset: 0, zIndex: 50 },
+			workspaceText: { minW: 0, flex: '1', textAlign: 'left' },
+			truncate: { truncate: true },
+			accentButton: { color: 'scrapscache.accent' },
+			syncSection: { borderTopWidth: '1px', borderColor: 'scrapscache.border', pt: '1rem' },
+			progress: { mt: '0.5rem', w: 'full' },
+			manageDetails: { borderTopWidth: '1px', borderColor: 'scrapscache.border', pt: '0.75rem' },
+			manageSummary: { cursor: 'pointer', fontSize: 'sm', color: 'scrapscache.textMuted' },
+			bodySpacing: { mt: '0.25rem' },
+			qrCode: { h: '220px', w: '220px', rounded: 'lg', bg: 'white', p: '0.5rem' },
+			pairingCode: {
+				rounded: 'xl',
+				borderWidth: '1px',
+				borderColor: 'scrapscache.border',
+				bg: 'scrapscache.bg',
+				px: '0.5rem',
+				py: '1.25rem'
+			},
+			copySuccess: {
+				borderColor: 'scrapscache.success',
+				bg: 'scrapscache.success',
+				color: 'scrapscache.successForeground'
+			},
+			timer: { fontVariantNumeric: 'tabular-nums', color: 'scrapscache.text' }
 		}
 	});
 	const ui = modalUi();
 	const pairingInputClass = cx(input({ variant: 'outline', size: 'md' }), ui.pairingInput);
-	const fullButton = css({ w: 'full' });
-	const growButton = css({ flex: '1' });
-	const spinner = css({ animation: 'spin' });
+	const fullButton = ui.fullButton;
+	const growButton = ui.growButton;
+	const spinner = ui.spinner;
 </script>
 
 <Dialog.Root
@@ -605,11 +648,7 @@
 	preventScroll={false}
 	closeOnEscape={rowHoldingEscape === null}
 >
-	<div
-		{@attach portalToAppFloat}
-		class={css({ position: 'fixed', inset: 0, zIndex: 50 })}
-		role="presentation"
-	>
+	<div {@attach portalToAppFloat} class={ui.portal} role="presentation">
 		<Dialog.Backdrop class={shell.backdrop} />
 		<Dialog.Positioner class={shell.positioner}>
 			<Dialog.Content class={shell.panel}>
@@ -651,8 +690,8 @@
 									syncStore.activePid !== LOCAL_PROFILE_ID && void switchProfile(LOCAL_PROFILE_ID)}
 							>
 								<CloudOff size={18} aria-hidden="true" />
-								<span class={css({ minW: 0, flex: '1', textAlign: 'left' })}
-									><span class={css({ truncate: true })}>Anonymous workspace</span><span
+								<span class={ui.workspaceText}
+									><span class={ui.truncate}>Anonymous workspace</span><span
 										class={ui.workspaceCaption}
 										>Only on this device{sizeLabel(LOCAL_PROFILE_ID)
 											? ' · ' + sizeLabel(LOCAL_PROFILE_ID)
@@ -689,10 +728,7 @@
 								type="button"
 								disabled={busy}
 								class={syncStore.account
-									? cx(
-											button({ variant: 'quiet', size: 'sm' }),
-											css({ color: 'scrapscache.accent' })
-										)
+									? cx(button({ variant: 'quiet', size: 'sm' }), ui.accentButton)
 									: cx(button({ variant: 'primary', size: 'md' }), fullButton)}
 								onclick={() => {
 									mode = 'register';
@@ -703,13 +739,7 @@
 							>
 						</div>
 						{#if syncStore.account}
-							<div
-								class={css({
-									borderTopWidth: '1px',
-									borderColor: 'scrapscache.border',
-									pt: '1rem'
-								})}
-							>
+							<div class={ui.syncSection}>
 								<div class={hstack({ gap: '0.5rem' })}>
 									<button
 										type="button"
@@ -748,9 +778,7 @@
 											value={progress.loadedBytes}
 										/>
 									</p>
-									<Progress.Root
-										value={progress.totalBytes ? percent : null}
-										class={css({ mt: '0.5rem', w: 'full' })}
+									<Progress.Root value={progress.totalBytes ? percent : null} class={ui.progress}
 										><Progress.Track class={ui.meterTrack}
 											><Progress.Range
 												class={ui.meterFill}
@@ -770,17 +798,8 @@
 						{#if info}<p class={ui.muted} role="status">
 								{info}
 							</p>{/if}
-						<details
-							class={css({
-								borderTopWidth: '1px',
-								borderColor: 'scrapscache.border',
-								pt: '0.75rem'
-							})}
-						>
-							<summary
-								class={css({ cursor: 'pointer', fontSize: 'sm', color: 'scrapscache.textMuted' })}
-								>Manage workspace</summary
-							>
+						<details class={ui.manageDetails}>
+							<summary class={ui.manageSummary}>Manage workspace</summary>
 							<div class={vstack({ gap: '0.25rem', alignItems: 'stretch', mt: '0.5rem' })}>
 								<button
 									class={ui.manageRow}
@@ -955,30 +974,16 @@
 						{#if waiting?.role === 'existing'}
 							<div>
 								<p class={ui.mutedLead}>On the new device</p>
-								<p class={cx(ui.text, css({ mt: '0.25rem' }))}>
+								<p class={cx(ui.text, ui.bodySpacing)}>
 									Scan the QR code, open the link, or type the one-time code
 								</p>
 							</div>
 							{#if qrDataUrl}
 								<div class={hstack({ justify: 'center' })}>
-									<img
-										src={qrDataUrl}
-										alt="Pair this device"
-										class={css({ h: '220px', w: '220px', rounded: 'lg', bg: 'white', p: '0.5rem' })}
-									/>
+									<img src={qrDataUrl} alt="Pair this device" class={ui.qrCode} />
 								</div>
 							{/if}
-							<div
-								class={css({
-									rounded: 'xl',
-									borderWidth: '1px',
-									borderColor: 'scrapscache.border',
-									bg: 'scrapscache.bg',
-									px: '0.5rem',
-									py: '1.25rem'
-								})}
-								aria-label="One-time pairing code"
-							>
+							<div class={ui.pairingCode} aria-label="One-time pairing code">
 								<div class={hstack({ justify: 'center', gap: '0.25rem' })}>
 									{#each pairingGroups(waiting.syncCode) as group, index (index)}
 										{#if index > 0}
@@ -995,13 +1000,7 @@
 									class={cx(
 										button({ variant: 'secondary', size: 'md' }),
 										fullButton,
-										copyFlash
-											? css({
-													borderColor: 'scrapscache.success',
-													bg: 'scrapscache.success',
-													color: 'scrapscache.successForeground'
-												})
-											: ''
+										copyFlash ? ui.copySuccess : ''
 									)}
 								>
 									{copyFlash ? 'Copied' : 'Copy pairing link'}
@@ -1010,9 +1009,7 @@
 						{:else}
 							<div>
 								<p class={ui.mutedLead}>On the other device</p>
-								<p class={cx(ui.text, css({ mt: '0.25rem' }))}>
-									Open Sync and choose Connect device
-								</p>
+								<p class={cx(ui.text, ui.bodySpacing)}>Open Sync and choose Connect device</p>
 							</div>
 						{/if}
 						<div class={vstack({ gap: '0.375rem', alignItems: 'stretch' })}>
@@ -1024,9 +1021,7 @@
 								})}
 							>
 								<span>Expires in</span>
-								<span class={css({ fontVariantNumeric: 'tabular-nums', color: 'scrapscache.text' })}
-									>{secondsLeft()}s</span
-								>
+								<span class={ui.timer}>{secondsLeft()}s</span>
 							</div>
 							<div class={ui.meterTrack}>
 								<div class={ui.meterFill} style={`width: ${expiryRatio() * 100}%`}></div>

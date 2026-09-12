@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { ToggleGroup } from '@ark-ui/svelte/toggle-group';
 	import { NOTE_COLOR_ORDER, type NoteColor } from '$lib/types';
-	import { css, cva, cx } from 'styled-system/css';
+	import { cva, cx } from 'styled-system/css';
 	import { grid } from 'styled-system/patterns';
 	import { noteSurface, popover } from 'styled-system/recipes';
 
@@ -32,6 +32,17 @@
 			}
 		}
 	});
+	const checkmark = cva({
+		base: {
+			display: 'flex',
+			h: 'full',
+			w: 'full',
+			alignItems: 'center',
+			justifyContent: 'center',
+			fontSize: 'sm',
+			color: 'scrapscache.textMuted'
+		}
+	});
 </script>
 
 <ToggleGroup.Root
@@ -50,17 +61,7 @@
 			title={c}
 		>
 			{#if c === color}
-				<span
-					class={css({
-						display: 'flex',
-						h: 'full',
-						w: 'full',
-						alignItems: 'center',
-						justifyContent: 'center',
-						fontSize: 'sm',
-						color: 'scrapscache.textMuted'
-					})}>✓</span
-				>
+				<span class={checkmark()}>✓</span>
 			{/if}
 		</ToggleGroup.Item>
 	{/each}

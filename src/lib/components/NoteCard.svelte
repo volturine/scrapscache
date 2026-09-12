@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { css, cva, cx } from 'styled-system/css';
+	import { cva, cx, sva } from 'styled-system/css';
 	import { iconButton, noteCard, noteSurface } from 'styled-system/recipes';
 	import { flex } from 'styled-system/patterns';
 	import { notesStore } from '$lib/stores/notes.svelte';
@@ -205,6 +205,27 @@
 			}
 		}
 	});
+	const cardLocal = sva({
+		slots: [
+			'reminder',
+			'scroller',
+			'content',
+			'successIcon',
+			'portal',
+			'backdrop',
+			'dialogContent'
+		],
+		base: {
+			reminder: { flexShrink: 0 },
+			scroller: { minH: 0, flex: '1', overflowX: 'hidden', overflowY: 'auto' },
+			content: { position: 'relative' },
+			successIcon: { color: 'scrapscache.success' },
+			portal: { position: 'fixed', inset: 0, zIndex: 70 },
+			backdrop: { position: 'fixed', inset: 0, bg: 'black/30', backdropFilter: 'blur(2px)' },
+			dialogContent: { outline: 'none' }
+		}
+	});
+	const local = cardLocal();
 </script>
 
 <svelte:window
@@ -259,15 +280,13 @@
 		onkeydown={handleKeydown}
 	>
 		{#if note.reminder != null}
-			<div class={css({ flexShrink: 0 })}>
+			<div class={local.reminder}>
 				<ReminderLabel reminder={note.reminder} />
 			</div>
 		{/if}
 
-		<div
-			class={`note-scrollbar-hidden scrollable ${css({ minH: 0, flex: '1', overflowX: 'hidden', overflowY: 'auto' })}`}
-		>
-			<div class={css({ position: 'relative' })}>
+		<div class={`note-scrollbar-hidden scrollable ${local.scroller}`}>
+			<div class={local.content}>
 				<div class={card.contentPad}>
 					{#if note.title}
 						<h3 class={card.title}>
@@ -319,7 +338,7 @@
 							onclick={handleCopy}
 						>
 							{#if copied}
-								<Check size={16} class={css({ color: 'emerald.400' })} aria-hidden="true" />
+								<Check size={16} class={local.successIcon} aria-hidden="true" />
 							{:else}
 								<Copy size={16} aria-hidden="true" />
 							{/if}
@@ -384,7 +403,7 @@
 								onclick={handleCopy}
 							>
 								{#if copied}
-									<Check size={20} class={css({ color: 'emerald.400' })} aria-hidden="true" />
+									<Check size={20} class={local.successIcon} aria-hidden="true" />
 								{:else}
 									<Copy size={20} aria-hidden="true" />
 								{/if}
@@ -465,18 +484,12 @@
 		}}
 		preventScroll={false}
 	>
-		<div
-			{@attach portalToAppOverlay}
-			class={css({ position: 'fixed', inset: 0, zIndex: 70 })}
-			role="presentation"
-		>
-			<Dialog.Backdrop
-				class={css({ position: 'fixed', inset: 0, bg: 'black/30', backdropFilter: 'blur(2px)' })}
-			/>
+		<div {@attach portalToAppOverlay} class={local.portal} role="presentation">
+			<Dialog.Backdrop class={local.backdrop} />
 			<Dialog.Positioner
 				class={flex({ position: 'fixed', inset: 0, align: 'center', justify: 'center', p: '1rem' })}
 			>
-				<Dialog.Content class={css({ outline: 'none' })} onclick={(e) => e.stopPropagation()}>
+				<Dialog.Content class={local.dialogContent} onclick={(e) => e.stopPropagation()}>
 					<ReminderPicker
 						reminder={note.reminder}
 						onApply={(r) => {

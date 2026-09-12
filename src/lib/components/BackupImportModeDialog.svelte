@@ -2,7 +2,7 @@
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { portalToAppOverlay } from '$lib/appViewport';
 	import { BackupImportMode } from '$lib/backup';
-	import { css, cx, sva } from 'styled-system/css';
+	import { cx, sva } from 'styled-system/css';
 	import { button, dialog } from 'styled-system/recipes';
 
 	let {
@@ -26,7 +26,7 @@
 	const d = dialog({ size: 'sm', presentation: 'appOverlay' });
 
 	const option = sva({
-		slots: ['root', 'title', 'description'],
+		slots: ['root', 'title', 'description', 'footer'],
 		base: {
 			root: {
 				w: 'full',
@@ -53,7 +53,8 @@
 				mt: '0.25rem',
 				fontSize: 'xs',
 				color: 'scrapscache.textMuted'
-			}
+			},
+			footer: { pt: '0.25rem' }
 		},
 		variants: {
 			danger: {
@@ -114,7 +115,7 @@
 							{error}
 						</p>
 					{/if}
-					<div class={cx(d.footer, css({ pt: '0.25rem' }))}>
+					<div class={cx(d.footer, keepOption.footer)}>
 						<button
 							type="button"
 							disabled={busy}

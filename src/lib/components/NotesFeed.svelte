@@ -5,7 +5,7 @@
 	import NoteCard from './NoteCard.svelte';
 	import MasonryGrid from './MasonryGrid.svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
-	import { css } from 'styled-system/css';
+	import { cva } from 'styled-system/css';
 	import { hstack } from 'styled-system/patterns';
 	import { button } from 'styled-system/recipes';
 
@@ -59,6 +59,7 @@
 	});
 
 	const paginationBtn = button({ variant: 'secondary', size: 'sm' });
+	const pageRange = cva({ base: { fontSize: 'xs', color: 'scrapscache.textMuted' } });
 </script>
 
 <div class="notes-content {className}">
@@ -95,7 +96,7 @@
 			>
 				Previous
 			</button>
-			<span class={css({ fontSize: 'xs', color: 'scrapscache.textMuted' })}>
+			<span class={pageRange()}>
 				{safePageIndex * PAGE_SIZE + 1}–{Math.min(notes.length, (safePageIndex + 1) * PAGE_SIZE)} of {notes.length}
 			</span>
 			<button

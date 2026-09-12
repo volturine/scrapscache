@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { css, cx, cva, sva } from 'styled-system/css';
-	import { iconButton, input } from 'styled-system/recipes';
+	import { iconButton, input, popover } from 'styled-system/recipes';
 	import { hstack, vstack } from 'styled-system/patterns';
 	import { uiStore } from '$lib/stores/ui.svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
@@ -48,8 +48,8 @@
 	};
 	const SYNC_STATUS_CLASS: Record<SyncStatus, string> = {
 		[SyncStatus.Normal]: '',
-		[SyncStatus.Warning]: 'text-[var(--scrapscache-warning)]',
-		[SyncStatus.Danger]: 'text-[var(--scrapscache-danger)]'
+		[SyncStatus.Warning]: css({ color: 'scrapscache.warning' }),
+		[SyncStatus.Danger]: css({ color: 'scrapscache.danger' })
 	};
 
 	const { startNewNote, closeNote } = useEditorActions();
@@ -189,6 +189,7 @@
 		p: 0,
 		color: 'scrapscache.textMuted'
 	});
+	const clearButton = cx(iconButton({ variant: 'ghost', size: 'xs' }), clearBtnClass);
 	const icon = cva({
 		base: { flexShrink: 0 },
 		variants: {
@@ -214,19 +215,20 @@
 				textAlign: 'left',
 				fontSize: 'sm',
 				color: 'scrapscache.text',
-				_hover: { bg: { base: 'black/5', _dark: 'white/10' } }
+				_hoverable: { bg: 'scrapscache.interactiveHover' }
 			},
 			separator: { borderTopWidth: '1px', borderColor: 'scrapscache.border' },
 			track: {
 				h: '0.375rem',
 				overflow: 'hidden',
 				rounded: 'full',
-				bg: { base: 'black/10', _dark: 'white/10' }
+				bg: 'scrapscache.interactiveActive'
 			},
 			bar: { h: 'full', bg: 'blue.600', transition: 'width 150ms ease' },
 			alert: { px: '0.75rem', pb: '0.5rem', fontSize: 'xs', color: 'red.600' }
 		}
 	});
+	const menu = settingsMenu();
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -243,7 +245,7 @@
 >
 	<Tooltip content="Toggle sidebar">
 		<button
-			class={`icon-btn ${iconButton({ variant: 'ghost', size: 'standard' })}`}
+			class={iconButton({ variant: 'ghost', size: 'standard' })}
 			title="Toggle sidebar"
 			onclick={() => uiStore.toggleSidebar()}
 			aria-label="Toggle sidebar"
@@ -281,7 +283,7 @@
 		{#if uiStore.searchInput}
 			<button
 				type="button"
-				class={`icon-btn ${clearBtnClass}`}
+				class={clearButton}
 				onclick={() => uiStore.clearSearch()}
 				aria-label="Clear search"
 			>
@@ -293,7 +295,7 @@
 	<Tooltip content={syncControlLabel}>
 		<button
 			type="button"
-			class={`icon-btn ${iconButton({ variant: 'ghost', size: 'standard' })}`}
+			class={iconButton({ variant: 'ghost', size: 'standard' })}
 			title={syncControlLabel}
 			onclick={() => {
 				pairingCode = '';
@@ -323,7 +325,7 @@
 
 	<Tooltip content={uiStore.layout === 'grid' ? 'List view' : 'Grid view'}>
 		<button
-			class={`icon-btn ${iconButton({ variant: 'ghost', size: 'standard' })}`}
+			class={iconButton({ variant: 'ghost', size: 'standard' })}
 			title="Toggle layout"
 			onclick={() => uiStore.toggleLayout()}
 			aria-label="Toggle layout"
@@ -343,15 +345,15 @@
 	>
 		<Tooltip content="Settings">
 			<Menu.Trigger
-				class={`icon-btn ${iconButton({ variant: 'ghost', size: 'standard' })}`}
+				class={iconButton({ variant: 'ghost', size: 'standard' })}
 				title="Settings"
 				aria-label="Settings"
 			>
 				<Settings class={icon({ size: 'md' })} aria-hidden="true" />
 			</Menu.Trigger>
 		</Tooltip>
-		<Menu.Positioner class={settingsMenu({}).positioner}>
-			<Menu.Content class={cx('scrapscache-popover', settingsMenu({}).popover)}>
+		<Menu.Positioner class={menu.positioner}>
+			<Menu.Content class={cx(popover(), menu.popover)}>
 				{#if importingBackup}
 					{@const progress = notesStore.backupImportProgress}
 					<div
@@ -375,9 +377,9 @@
 										: 'Reading backup…'}</span
 							>{#if progress}<span>{progress.completed}/{progress.total}</span>{/if}
 						</div>
-						<div class={settingsMenu({}).track}>
+						<div class={menu.track}>
 							<div
-								class={settingsMenu({}).bar}
+								class={menu.bar}
 								style={`width: ${progress && progress.total ? Math.round((progress.completed / progress.total) * 100) : 8}%`}
 							></div>
 						</div>
@@ -387,7 +389,7 @@
 						value="theme"
 						closeOnSelect={false}
 						onSelect={() => uiStore.toggleDark()}
-						class={settingsMenu({}).item}
+						class={menu.item}
 					>
 						{#if uiStore.effectiveDark}
 							<Sun class={icon({ size: 'sm' })} aria-hidden="true" />
@@ -397,7 +399,7 @@
 							Dark mode
 						{/if}
 					</Menu.Item>
-					<Menu.Item value="export" onSelect={startBackupExport} class={settingsMenu({}).item}>
+					<Menu.Item value="export" onSelect={startBackupExport} class={menu.item}>
 						<Download class={icon({ size: 'sm' })} aria-hidden="true" />
 						Export backup
 					</Menu.Item>
@@ -409,14 +411,14 @@
 							if (file) importBackupFile(file);
 						}}
 					>
-						<FileUpload.Trigger class={settingsMenu({}).item}>
+						<FileUpload.Trigger class={menu.item}>
 							<Upload class={icon({ size: 'sm' })} aria-hidden="true" />
 							Import backup
 						</FileUpload.Trigger>
 						<FileUpload.HiddenInput />
 					</FileUpload.Root>
 					<ReminderNotificationSettings />
-					<Menu.Separator class={settingsMenu({}).separator} />
+					<Menu.Separator class={menu.separator} />
 					<Menu.Item value="issue">
 						{#snippet asChild(props)}
 							<a
@@ -424,7 +426,7 @@
 								href="https://github.com/volturine/scrapscache/issues/new/choose"
 								target="_blank"
 								rel="noreferrer"
-								class={settingsMenu({}).item}
+								class={menu.item}
 							>
 								<ExternalLink class={icon({ size: 'sm' })} aria-hidden="true" />
 								Report an issue
@@ -432,7 +434,7 @@
 						{/snippet}
 					</Menu.Item>
 				{/if}
-				{#if backupImportError}<p class={settingsMenu({}).alert} role="alert">
+				{#if backupImportError}<p class={menu.alert} role="alert">
 						{backupImportError}
 					</p>{/if}
 			</Menu.Content>

@@ -1,8 +1,7 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
-	import { css, sva } from 'styled-system/css';
+	import { css, cx, sva } from 'styled-system/css';
 	import { button, iconButton } from 'styled-system/recipes';
-	import { cx } from 'styled-system/css';
 	import { LoaderCircle, X } from '@lucide/svelte';
 	import {
 		createCanvasAttachment,
@@ -118,7 +117,18 @@
 	}
 
 	const canvasEditor = sva({
-		slots: ['shell', 'header', 'error', 'reload', 'area', 'host', 'loading', 'loadingText'],
+		slots: [
+			'shell',
+			'header',
+			'error',
+			'reload',
+			'area',
+			'host',
+			'loading',
+			'loadingText',
+			'spinnerSm',
+			'spinnerMd'
+		],
 		base: {
 			shell: {
 				position: 'fixed',
@@ -132,8 +142,8 @@
 				zIndex: 90,
 				display: 'flex',
 				flexDirection: 'column',
-				bg: { base: 'white', _dark: '#121212' },
-				color: { base: 'slate.900', _dark: 'slate.100' }
+				bg: 'scrapscache.canvasSurface',
+				color: 'scrapscache.text'
 			},
 			header: {
 				position: 'relative',
@@ -153,18 +163,18 @@
 				justifyContent: 'space-between',
 				gap: '0.75rem',
 				borderBottomWidth: '1px',
-				borderColor: { base: 'red.200', _dark: 'red.900' },
-				bg: { base: 'red.50', _dark: 'red.950' },
+				borderColor: 'scrapscache.danger',
+				bg: 'scrapscache.dangerSubtle',
 				px: '1rem',
 				py: '0.5rem',
 				fontSize: 'sm',
-				color: { base: 'red.700', _dark: 'red.200' }
+				color: 'scrapscache.danger'
 			},
 			reload: {
 				flexShrink: 0,
 				fontWeight: '600',
 				textDecoration: 'underline',
-				textDecorationColor: { base: 'red.700/50', _dark: 'red.200/50' },
+				textDecorationColor: 'scrapscache.danger',
 				textUnderlineOffset: '2px',
 				cursor: 'pointer'
 			},
@@ -176,15 +186,17 @@
 				zIndex: 20,
 				display: 'grid',
 				placeItems: 'center',
-				bg: { base: 'white', _dark: '#121212' }
+				bg: 'scrapscache.canvasSurface'
 			},
 			loadingText: {
 				display: 'flex',
 				alignItems: 'center',
 				gap: '0.5rem',
 				fontSize: 'sm',
-				color: { base: 'slate.500', _dark: 'slate.400' }
-			}
+				color: 'scrapscache.textMuted'
+			},
+			spinnerSm: { h: '1rem', w: '1rem', animation: 'spin' },
+			spinnerMd: { h: '1.25rem', w: '1.25rem', animation: 'spin' }
 		}
 	});
 	const ce = canvasEditor();
@@ -195,7 +207,7 @@
 			w: '2.25rem',
 			color: 'color-mix(in srgb, currentColor 82%, transparent)',
 			transition: 'background-color 120ms ease, color 120ms ease',
-			_hover: {
+			_hoverable: {
 				bg: 'color-mix(in srgb, currentColor 10%, transparent)',
 				color: 'currentColor'
 			},
@@ -254,10 +266,7 @@
 				onclick={() => void save()}
 			>
 				{#if saving}
-					<LoaderCircle
-						class={`animate-spin ${css({ h: '1rem', w: '1rem' })}`}
-						aria-hidden="true"
-					/>
+					<LoaderCircle class={ce.spinnerSm} aria-hidden="true" />
 				{/if}
 				<span>{saving ? 'Saving' : 'Done'}</span>
 			</button>
@@ -278,10 +287,7 @@
 		{#if loading}
 			<div class={ce.loading}>
 				<div class={ce.loadingText}>
-					<LoaderCircle
-						class={`animate-spin ${css({ h: '1.25rem', w: '1.25rem' })}`}
-						aria-hidden="true"
-					/>
+					<LoaderCircle class={ce.spinnerMd} aria-hidden="true" />
 					Loading canvas…
 				</div>
 			</div>

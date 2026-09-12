@@ -62,10 +62,10 @@ describe('NoteEditor Keep-style layout', () => {
 		expect(scroller!.contains(filesAndLinks)).toBe(false);
 		expect(scroller!.contains(photos)).toBe(false);
 		// URLs share the file rows' vertical list, with the scrollbar hidden.
-		expect(filesAndLinks!.className).toMatch(/overflow-y-auto/);
+		expect(filesAndLinks!.className).toMatch(/ov-y_auto/);
 		expect(filesAndLinks!.className).toMatch(/note-scrollbar-hidden/);
-		expect(filesAndLinks!.className).not.toMatch(/overflow-x-auto/);
-		expect(photos!.className).toMatch(/overflow-x-auto/);
+		expect(filesAndLinks!.className).not.toMatch(/ov-x_auto/);
+		expect(photos!.className).toMatch(/ov-x_auto/);
 		expect(
 			filesAndLinks!.compareDocumentPosition(photos!) & Node.DOCUMENT_POSITION_FOLLOWING
 		).toBeTruthy();

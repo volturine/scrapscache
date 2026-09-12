@@ -1,45 +1,6 @@
 @layer reset, base, tokens, recipes, utilities;
 
 :root {
-	--note-default: #ffffff;
-	--note-red: #f28b82;
-	--note-orange: #f6aea0;
-	--note-yellow: #f7d875;
-	--note-green: #b3e2a1;
-	--note-teal: #98e9d9;
-	--note-blue: #a9d5f4;
-	--note-darkblue: #9bb8f3;
-	--note-purple: #c6b3f2;
-	--note-pink: #f9c2d8;
-	--note-brown: #d6c5b0;
-	--note-gray: #f0f0f0;
-
-	--scrapscache-bg: #ffffff;
-	--scrapscache-surface: #f8f9fa;
-	--scrapscache-text: #202124;
-	--scrapscache-text-muted: #5f6368;
-	--scrapscache-border: #e0e0e0;
-	--scrapscache-accent: #2563eb;
-	--scrapscache-accent-hover: #1d4ed8;
-	--scrapscache-accent-foreground: #ffffff;
-	--scrapscache-focus: #1d4ed8;
-	--scrapscache-success: #15803d;
-	--scrapscache-success-foreground: #ffffff;
-	--scrapscache-success-subtle: #dcfce7;
-	--scrapscache-warning: #b45309;
-	--scrapscache-warning-subtle: #fef3c7;
-	--scrapscache-danger: #dc2626;
-	--scrapscache-danger-foreground: #ffffff;
-	--scrapscache-danger-subtle: #fee2e2;
-	--scrapscache-interactive-hover: rgba(0, 0, 0, 0.05);
-	--scrapscache-interactive-active: rgba(0, 0, 0, 0.1);
-	--scrapscache-radius-sm: 0.375rem;
-	--scrapscache-radius-md: 0.5rem;
-	--scrapscache-radius-lg: 0.75rem;
-	--scrapscache-radius-xl: 1rem;
-	--scrapscache-elevation-popover: 0 8px 24px rgba(0, 0, 0, 0.14);
-	--scrapscache-elevation-dialog: 0 20px 48px rgba(0, 0, 0, 0.24);
-
 	/* Published by attachAppViewport(); CSS env() is the pre-JS default. */
 	--app-inset-top: env(safe-area-inset-top, 0px);
 	--app-inset-right: env(safe-area-inset-right, 0px);
@@ -88,45 +49,8 @@ html:not(.editor-open) [contenteditable] * {
 	}
 }
 
-.dark {
-	--note-default: #1f1f1f;
-	--note-red: #5a3636;
-	--note-orange: #5a4a3f;
-	--note-yellow: #5a5240;
-	--note-green: #3a4a3a;
-	--note-teal: #2f4a4a;
-	--note-blue: #2f3a4f;
-	--note-darkblue: #2d3850;
-	--note-purple: #3d3756;
-	--note-pink: #4f3e4e;
-	--note-brown: #4f4a44;
-	--note-gray: #3c3c3c;
-
-	--scrapscache-bg: #1a1a1a;
-	--scrapscache-surface: #242424;
-	--scrapscache-text: #e8eaed;
-	--scrapscache-text-muted: #9aa0a6;
-	--scrapscache-border: #3c4043;
-	--scrapscache-accent: #60a5fa;
-	--scrapscache-accent-hover: #93c5fd;
-	--scrapscache-accent-foreground: #172554;
-	--scrapscache-focus: #93c5fd;
-	--scrapscache-success: #4ade80;
-	--scrapscache-success-foreground: #052e16;
-	--scrapscache-success-subtle: #14351f;
-	--scrapscache-warning: #fbbf24;
-	--scrapscache-warning-subtle: #3d2e0b;
-	--scrapscache-danger: #f87171;
-	--scrapscache-danger-foreground: #450a0a;
-	--scrapscache-danger-subtle: #3b1717;
-	--scrapscache-interactive-hover: rgba(255, 255, 255, 0.08);
-	--scrapscache-interactive-active: rgba(255, 255, 255, 0.12);
-	--scrapscache-elevation-popover: 0 8px 24px rgba(0, 0, 0, 0.35);
-	--scrapscache-elevation-dialog: 0 20px 48px rgba(0, 0, 0, 0.55);
-}
-
 html {
-	background-color: var(--scrapscache-bg);
+	background-color: var(--colors-scrapscache-bg);
 	color-scheme: light;
 }
 html.dark {
@@ -216,102 +140,7 @@ body {
 	overflow-y: auto;
 	overscroll-behavior-x: none;
 	overscroll-behavior-y: auto;
-	background-color: var(--scrapscache-bg);
-}
-
-/* Focus is communicated by the control state/caret without an extra browser ring. */
-:focus {
-	outline: none !important;
-}
-
-/* Shared interactive primitives. Components compose sizing and layout around these roles.
- * Button treatments: primary = accent action, secondary = outlined choice,
- * quiet = low-emphasis action, destructive = irreversible action. */
-.scrapscache-dialog,
-.scrapscache-popover {
-	border: 1px solid var(--scrapscache-border);
-	background: var(--scrapscache-surface);
-}
-.scrapscache-dialog {
-	border-radius: var(--scrapscache-radius-xl);
-	box-shadow: var(--scrapscache-elevation-dialog);
-}
-.scrapscache-popover {
-	border-radius: var(--scrapscache-radius-lg);
-	box-shadow: var(--scrapscache-elevation-popover);
-}
-.scrapscache-button {
-	border-radius: var(--scrapscache-radius-md);
-	transition:
-		background-color 120ms ease,
-		border-color 120ms ease,
-		color 120ms ease;
-}
-.scrapscache-button {
-	border: 1px solid transparent;
-	touch-action: manipulation;
-}
-.scrapscache-button:disabled,
-.scrapscache-button[aria-disabled='true'] {
-	opacity: 0.55;
-}
-.scrapscache-button-primary {
-	background: var(--scrapscache-accent);
-	color: var(--scrapscache-accent-foreground);
-}
-.scrapscache-button-primary:hover:not(:disabled) {
-	background: var(--scrapscache-accent-hover);
-}
-.scrapscache-button-secondary {
-	border-color: var(--scrapscache-border);
-	background: var(--scrapscache-bg);
-	color: var(--scrapscache-text);
-}
-.scrapscache-button-quiet {
-	color: var(--scrapscache-text-muted);
-}
-.scrapscache-button-secondary:hover:not(:disabled),
-.scrapscache-button-quiet:hover:not(:disabled) {
-	background: var(--scrapscache-interactive-hover);
-	color: var(--scrapscache-text);
-}
-.scrapscache-button-destructive {
-	color: var(--scrapscache-danger);
-}
-.scrapscache-button-destructive-solid {
-	background: var(--scrapscache-danger);
-	color: var(--scrapscache-danger-foreground);
-}
-.scrapscache-button-destructive-solid:hover:not(:disabled) {
-	filter: brightness(0.92);
-}
-.scrapscache-status-success,
-.scrapscache-status-warning,
-.scrapscache-status-accent,
-.scrapscache-status-danger {
-	border: 1px solid currentColor;
-}
-.scrapscache-status-success {
-	background: var(--scrapscache-success-subtle);
-	color: var(--scrapscache-success);
-}
-.scrapscache-status-warning {
-	background: var(--scrapscache-warning-subtle);
-	color: var(--scrapscache-warning);
-}
-.scrapscache-status-accent {
-	background: color-mix(in srgb, var(--scrapscache-accent) 14%, var(--scrapscache-surface));
-	color: var(--scrapscache-accent);
-}
-.scrapscache-status-danger {
-	background: var(--scrapscache-danger-subtle);
-	color: var(--scrapscache-danger);
-}
-.scrapscache-progress-track {
-	background: var(--scrapscache-interactive-active);
-}
-.scrapscache-progress-value {
-	background: var(--scrapscache-accent);
+	background-color: var(--colors-scrapscache-bg);
 }
 
 /* Respect system motion preferences while retaining the final UI state. */
@@ -327,8 +156,8 @@ body {
 }
 
 body {
-	background-color: var(--scrapscache-bg);
-	color: var(--scrapscache-text);
+	background-color: var(--colors-scrapscache-bg);
+	color: var(--colors-scrapscache-text);
 	font-family: 'Google Sans', 'Roboto', system-ui, Arial, sans-serif;
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
@@ -401,12 +230,12 @@ html.kanban-dragging-touch .app-feed {
 /* The gap the carried card drops into. */
 .kanban-drop-slot {
 	border-radius: 0.75rem;
-	border: 2px dashed color-mix(in srgb, var(--scrapscache-accent) 45%, transparent);
-	background: color-mix(in srgb, var(--scrapscache-accent) 8%, transparent);
+	border: 2px dashed color-mix(in srgb, var(--colors-scrapscache-accent) 45%, transparent);
+	background: color-mix(in srgb, var(--colors-scrapscache-accent) 8%, transparent);
 }
 
 .kanban-column-target {
-	box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--scrapscache-accent) 35%, transparent);
+	box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--colors-scrapscache-accent) 35%, transparent);
 }
 
 /* The carried card itself: the outer element tracks the pointer every frame,
@@ -547,7 +376,7 @@ html.kanban-dragging-touch .app-feed {
 	height: 1.125rem;
 	margin-top: 0.2rem; /* align with first text line (~text-sm) */
 	padding: 0;
-	border: 1.5px solid rgba(0, 0, 0, 0.4);
+	border: 1.5px solid var(--colors-scrapscache-checklist-border);
 	border-radius: 0.25rem;
 	background: transparent;
 	color: inherit;
@@ -563,19 +392,13 @@ html.kanban-dragging-touch .app-feed {
 	position: absolute;
 	inset: -0.4375rem;
 }
-.dark .checklist-toggle {
-	border-color: rgba(255, 255, 255, 0.4);
-}
 .checklist-toggle.checklist-toggle-sub {
 	width: 0.9375rem; /* 15px */
 	height: 0.9375rem;
 	margin-top: 0.22rem;
 }
 .checklist-toggle.checked {
-	background: rgba(0, 0, 0, 0.1);
-}
-.dark .checklist-toggle.checked {
-	background: rgba(255, 255, 255, 0.12);
+	background: var(--colors-scrapscache-interactive-active);
 }
 .checklist-toggle-mark {
 	width: 0.7rem;
@@ -596,66 +419,7 @@ html.kanban-dragging-touch .app-feed {
 
 /* Even omnidirectional shadow — 0 offset so it is the same on every side. */
 .note-sheet-shadow {
-	box-shadow: 0 0 24px 2px rgba(0, 0, 0, 0.22);
-}
-.dark .note-sheet-shadow {
-	box-shadow: 0 0 24px 2px rgba(0, 0, 0, 0.55);
-}
-
-/* Icon buttons — hover only on fine pointers (touch never gets sticky :hover). */
-.icon-btn {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	border-radius: 9999px;
-	transition:
-		background-color 120ms ease,
-		color 120ms ease;
-	touch-action: manipulation;
-	-webkit-tap-highlight-color: transparent;
-	outline: none;
-}
-
-@media (hover: hover) and (pointer: fine) {
-	.icon-btn:hover {
-		background-color: var(--scrapscache-interactive-hover);
-	}
-}
-
-@media (hover: hover) and (pointer: fine) {
-	.icon-btn:active {
-		background-color: var(--scrapscache-interactive-active);
-	}
-}
-
-/* Sidebar rows — same hover contract as .icon-btn, so a tap on a phone never
- * leaves a row stuck in its hover colour. */
-.sidebar-row {
-	transition:
-		background-color 120ms ease,
-		color 120ms ease;
-	touch-action: manipulation;
-	-webkit-tap-highlight-color: transparent;
-}
-
-@media (hover: hover) and (pointer: fine) {
-	.sidebar-row:hover {
-		background-color: var(--scrapscache-interactive-hover);
-	}
-
-	.sidebar-row-danger:hover {
-		background-color: var(--scrapscache-danger-subtle);
-		color: var(--scrapscache-danger);
-	}
-}
-
-.sidebar-row:active {
-	background-color: var(--scrapscache-interactive-active);
-}
-
-/* The row being renamed keeps the same box as its neighbours, just tinted. */
-.sidebar-row-editing {
-	background-color: var(--scrapscache-interactive-hover);
+	box-shadow: var(--shadows-note-sheet);
 }
 
 /* Hide elements on phone screens (under 640px) */
@@ -664,28 +428,11 @@ html.kanban-dragging-touch .app-feed {
 		display: none !important;
 	}
 }
-/* Sidebar active item */
-.nav-active {
-	background-color: #fef9c3; /* yellow-100 */
-	color: #1a1a1a;
-	font-weight: 600;
-}
-.dark .nav-active {
-	background-color: rgba(202, 138, 4, 0.15); /* yellow-900/40 */
-	color: #fde68a; /* yellow-100 */
-}
-
-/* Cloud sync spin — class on <html> so Svelte re-renders don't reset the animation.
- * Own keyframes: Tailwind tree-shakes its `spin` keyframes unless `animate-spin` is used. */
-@keyframes scrapscache-spin {
-	to {
-		transform: rotate(360deg);
-	}
-}
+/* Cloud sync spin — class on <html> so Svelte re-renders don't reset the animation. */
 html.scrapscache-sync-active [data-scrapscache-sync-spinner],
 [data-scrapscache-sync-spinner].scrapscache-sync-icon-active {
 	/* Keep in lockstep with SYNC_ICON_ROTATION_MS — one full turn. */
-	animation: scrapscache-spin 1s linear infinite;
+	animation: var(--animations-spin);
 	transform-origin: center;
 }
 

@@ -369,7 +369,7 @@
 				},
 				'&[data-state=unchecked]': {
 					color: 'white/80',
-					_hover: { bg: 'white/10', color: 'white' }
+					_hoverable: { bg: 'white/10', color: 'white' }
 				},
 				'&[data-disabled]': {
 					pointerEvents: 'none',
@@ -386,7 +386,7 @@
 				transition: 'colors 120ms ease',
 				touchAction: 'manipulation',
 				cursor: 'pointer',
-				_hover: { bg: 'white/10', color: 'white' },
+				_hoverable: { bg: 'white/10', color: 'white' },
 				_disabled: { opacity: 0.3, pointerEvents: 'none' }
 			},
 			save: {
@@ -439,12 +439,12 @@
 				rounded: 'md',
 				color: 'white/80',
 				transition: 'colors 120ms ease',
-				_hover: { bg: 'white/10', color: 'white' },
+				_hoverable: { bg: 'white/10', color: 'white' },
 				_disabled: {
 					opacity: 0.35,
 					cursor: 'not-allowed',
 					pointerEvents: 'auto',
-					_hover: { bg: 'transparent', color: 'white/80' }
+					_hoverable: { bg: 'transparent', color: 'white/80' }
 				}
 			}
 		}
@@ -519,7 +519,7 @@
 			thumbImg: { h: 'full', w: 'full', objectFit: 'cover' },
 			titleSize: { ml: '0.25rem', fontSize: 'xs', fontWeight: 'normal', color: 'white/60' },
 			topBtn: { flexShrink: 0 },
-			trashBtn: { _hover: { bg: 'red.500/20', color: 'red.400' } }
+			trashBtn: { _hoverable: { bg: 'red.500/20', color: 'red.400' } }
 		}
 	});
 	const viewer = viewerSva();
@@ -538,7 +538,11 @@
 		variants: {
 			active: {
 				true: { bg: 'white', fontWeight: 'semibold', color: 'black' },
-				false: { bg: 'transparent', color: 'white/70', _hover: { bg: 'white/10', color: 'white' } }
+				false: {
+					bg: 'transparent',
+					color: 'white/70',
+					_hoverable: { bg: 'white/10', color: 'white' }
+				}
 			}
 		}
 	});
@@ -561,7 +565,7 @@
 			transition: 'colors 120ms ease',
 			cursor: 'pointer',
 			touchAction: 'manipulation',
-			_hover: { bg: 'black/70', color: 'white' }
+			_hoverable: { bg: 'black/70', color: 'white' }
 		},
 		variants: {
 			side: {
@@ -585,7 +589,7 @@
 		variants: {
 			active: {
 				true: { opacity: 1, ringWidth: '2px', ringColor: 'white' },
-				false: { opacity: 0.5, _hover: { opacity: 0.85 } }
+				false: { opacity: 0.5, _hoverable: { opacity: 0.85 } }
 			}
 		}
 	});

@@ -24,7 +24,7 @@ function note(partial: Partial<Note> = {}): Note {
 }
 
 function editorOverlay(container: HTMLElement): HTMLElement {
-	const overlay = container.querySelector('[role="dialog"]')?.closest('.fixed.z-50');
+	const overlay = container.querySelector('[data-editor-overlay]');
 	if (!(overlay instanceof HTMLElement)) throw new Error('editor overlay missing');
 	return overlay;
 }

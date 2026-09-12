@@ -1,11 +1,10 @@
 <script lang="ts">
-	import { css, cva } from 'styled-system/css';
-	import { iconButton, noteCard } from 'styled-system/recipes';
+	import { css, cva, cx } from 'styled-system/css';
+	import { iconButton, noteCard, noteSurface } from 'styled-system/recipes';
 	import { flex } from 'styled-system/patterns';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { reminderStore } from '$lib/stores/reminders.svelte';
-	import { uiStore } from '$lib/stores/ui.svelte';
-	import { NOTE_COLORS, NOTE_DARK_COLORS, type Note, type NoteColor } from '$lib/types';
+	import type { Note } from '$lib/types';
 	import { activateOnKeyboard, formatReminder, isReminderOverdue } from '$lib/utils';
 	import { cardSwipeStyle, createCardSwipe } from '$lib/cardSwipe';
 	import NoteBodyDisplay from './NoteBodyDisplay.svelte';
@@ -33,10 +32,6 @@
 		note: Note;
 		onOpen: (id: string) => void;
 	} = $props();
-
-	function bgColor(c: NoteColor): string {
-		return uiStore.effectiveDark ? NOTE_DARK_COLORS[c] : NOTE_COLORS[c];
-	}
 
 	let cardEl = $state<HTMLDivElement | null>(null);
 	let hazeActive = $state(false);
@@ -253,8 +248,8 @@
 		role="button"
 		tabindex="0"
 		aria-label={openLabel}
-		class={card.cardBody}
-		style="background-color: {bgColor(note.color)}; {cardSwipeStyle(offsetX, dragging)}"
+		class={cx(card.cardBody, noteSurface({ color: note.color }))}
+		style={cardSwipeStyle(offsetX, dragging)}
 		onpointerdown={swipe.onPointerDown}
 		onpointermove={swipe.onPointerMove}
 		onpointerup={swipe.onPointerUp}
@@ -275,7 +270,7 @@
 			<div class={css({ position: 'relative' })}>
 				<div class={card.contentPad}>
 					{#if note.title}
-						<h3 class={`break-words ${card.title}`}>
+						<h3 class={card.title}>
 							{note.title}
 						</h3>
 					{/if}
@@ -481,7 +476,7 @@
 			<Dialog.Positioner
 				class={flex({ position: 'fixed', inset: 0, align: 'center', justify: 'center', p: '1rem' })}
 			>
-				<Dialog.Content class="outline-none" onclick={(e) => e.stopPropagation()}>
+				<Dialog.Content class={css({ outline: 'none' })} onclick={(e) => e.stopPropagation()}>
 					<ReminderPicker
 						reminder={note.reminder}
 						onApply={(r) => {

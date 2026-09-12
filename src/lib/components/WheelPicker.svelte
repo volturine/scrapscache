@@ -219,7 +219,7 @@
 	}
 
 	const wheelChrome = sva({
-		slots: ['band', 'viewport'],
+		slots: ['band', 'viewport', 'track'],
 		base: {
 			band: {
 				pointerEvents: 'none',
@@ -245,7 +245,8 @@
 					'linear-gradient(to bottom, transparent 0%, #000 28%, #000 72%, transparent 100%)',
 				maskImage:
 					'linear-gradient(to bottom, transparent 0%, #000 28%, #000 72%, transparent 100%)'
-			}
+			},
+			track: { willChange: 'transform' }
 		}
 	});
 	const wc = wheelChrome();
@@ -299,7 +300,7 @@
 		onpointerup={handlePointerUp}
 		onpointercancel={handlePointerUp}
 	>
-		<div class="will-change-transform" style="transform: translate3d(0, {-offset}px, 0)">
+		<div class={wc.track} style="transform: translate3d(0, {-offset}px, 0)">
 			{#each looped as row (row.visual)}
 				{@const dist =
 					row.visual === centerIndex

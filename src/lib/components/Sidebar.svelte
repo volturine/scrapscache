@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { css, cx, sva } from 'styled-system/css';
-	import { sidebar, dialog, button, input } from 'styled-system/recipes';
+	import { dialog, button, input } from 'styled-system/recipes';
 	import { hstack, vstack } from 'styled-system/patterns';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -166,8 +166,6 @@
 		pendingDelete = null;
 	}
 
-	const s = sidebar();
-
 	const chrome = sva({
 		slots: ['row', 'icon'],
 		base: {
@@ -178,7 +176,12 @@
 				rounded: 'xl',
 				py: '0.625rem',
 				pl: '1rem',
-				pr: '0.5rem'
+				pr: '0.5rem',
+				touchAction: 'manipulation',
+				WebkitTapHighlightColor: 'transparent',
+				transition: 'background-color 120ms ease, color 120ms ease',
+				_hoverable: { bg: 'scrapscache.interactiveHover' },
+				_active: { bg: 'scrapscache.interactiveActive' }
 			},
 			icon: {
 				display: 'grid',
@@ -193,7 +196,13 @@
 				true: { row: { w: 'full', textAlign: 'left', fontSize: 'sm', cursor: 'pointer' } }
 			},
 			active: {
-				true: { row: { fontWeight: 'semibold', color: 'scrapscache.text' } },
+				true: {
+					row: {
+						fontWeight: 'semibold',
+						bg: 'scrapscache.navigationActive',
+						color: 'scrapscache.navigationActiveText'
+					}
+				},
 				false: { row: { fontWeight: 'medium', color: 'scrapscache.textMuted' } }
 			},
 			wide: { true: { row: { pr: '1rem' } } },
@@ -201,6 +210,14 @@
 				nav: { icon: { color: 'scrapscache.text' } },
 				muted: { icon: { color: 'scrapscache.textMuted' } }
 			},
+			danger: {
+				true: {
+					icon: {
+						_hoverable: { bg: 'scrapscache.dangerSubtle', color: 'scrapscache.danger' }
+					}
+				}
+			},
+			editing: { true: { row: { bg: 'scrapscache.interactiveHover' } } },
 			hitPad: {
 				delete: {
 					icon: {
@@ -212,7 +229,15 @@
 			}
 		}
 	});
-	const navLabelText = cx(s.navLabel, css({ minW: 0, textAlign: 'left' }));
+	const navLabelText = css({
+		minW: 0,
+		flex: '1',
+		overflow: 'hidden',
+		textOverflow: 'ellipsis',
+		whiteSpace: 'nowrap',
+		textAlign: 'left'
+	});
+	const newLabelSpacing = css({ mb: '0.25rem' });
 	const labelInputClass = cx(
 		input({ variant: 'unstyled' }),
 		css({
@@ -229,7 +254,7 @@
 		type="button"
 		onclick={startCreateLabel}
 		data-sidebar-stay-open
-		class={`sidebar-row ${chrome({ navigation: true, active: false }).row} ${extraClass}`}
+		class={[chrome({ navigation: true, active: false }).row, extraClass]}
 	>
 		<span class={chrome({}).icon} aria-hidden="true">
 			<Plus size={16} strokeWidth={1.75} />
@@ -244,7 +269,7 @@
 		type="button"
 		onclick={() => requestDelete(label)}
 		data-sidebar-stay-open
-		class={`icon-btn sidebar-row-danger ${chrome({ iconTone: 'muted', hitPad: 'delete' }).icon}`}
+		class={chrome({ iconTone: 'muted', hitPad: 'delete', danger: true }).icon}
 		aria-label={`Delete ${label.name}`}
 		title="Delete"
 	>
@@ -268,7 +293,7 @@
 		<button
 			type="button"
 			onclick={() => navigate(item.view)}
-			class={`sidebar-row ${chrome({ navigation: true, active: isActive(item.view), wide: true }).row} ${isActive(item.view) ? 'sidebar-row-active' : ''}`}
+			class={chrome({ navigation: true, active: isActive(item.view), wide: true }).row}
 		>
 			<span class={chrome({ iconTone: 'nav' }).icon} aria-hidden="true">
 				<NavIcon size={18} strokeWidth={1.75} />
@@ -296,7 +321,7 @@
 				type="button"
 				onclick={labelsEditMode ? exitEditMode : enterEditMode}
 				data-sidebar-stay-open
-				class={`sidebar-row ${css({
+				class={css({
 					position: 'relative',
 					flexShrink: 0,
 					rounded: 'md',
@@ -306,8 +331,11 @@
 					fontWeight: 'medium',
 					color: 'scrapscache.textMuted',
 					cursor: 'pointer',
+					touchAction: 'manipulation',
+					WebkitTapHighlightColor: 'transparent',
+					_hoverable: { bg: 'scrapscache.interactiveHover' },
 					_before: { position: 'absolute', inset: '-0.625rem', content: '""' }
-				})}`}
+				})}
 				aria-label={labelsEditMode ? 'Finish editing labels' : 'Edit labels'}
 				title={labelsEditMode ? 'Finish editing labels' : 'Edit labels'}
 			>
@@ -316,7 +344,7 @@
 		</div>
 
 		{#if labelsEditMode && creatingLabel}
-			<div class={`sidebar-row-editing ${chrome({}).row}`} data-sidebar-stay-open>
+			<div class={chrome({ editing: true }).row} data-sidebar-stay-open>
 				<span class={chrome({ iconTone: 'muted' }).icon} aria-hidden="true">
 					<Tag size={16} strokeWidth={1.75} aria-hidden="true" />
 				</span>
@@ -335,7 +363,7 @@
 				/>
 			</div>
 		{:else if labelsEditMode}
-			{@render newLabelRow('mb-1')}
+			{@render newLabelRow(newLabelSpacing)}
 		{/if}
 
 		{#if notesStore.labels.length === 0 && !labelsEditMode}
@@ -346,7 +374,7 @@
 					{#if labelsEditMode && renamingId === label.id}
 						<!-- Same box as the rows around it, so starting a rename never nudges
 						     the list; only the tint and the field change. -->
-						<div class={`sidebar-row-editing ${chrome({}).row}`} data-sidebar-stay-open>
+						<div class={chrome({ editing: true }).row} data-sidebar-stay-open>
 							<span class={chrome({ iconTone: 'muted' }).icon} aria-hidden="true">
 								<Tag size={16} strokeWidth={1.75} />
 							</span>
@@ -365,7 +393,7 @@
 							{@render deleteButton(label)}
 						</div>
 					{:else if labelsEditMode}
-						<div class={`sidebar-row ${chrome({}).row}`}>
+						<div class={chrome({}).row}>
 							<span class={chrome({ iconTone: 'muted' }).icon} aria-hidden="true">
 								<Tag size={16} strokeWidth={1.75} />
 							</span>
@@ -397,7 +425,7 @@
 						<button
 							type="button"
 							onclick={() => navigate('label', label.id)}
-							class={`sidebar-row ${chrome({ navigation: true, active: isActive('label', label.id) }).row} ${isActive('label', label.id) ? 'sidebar-row-active' : ''}`}
+							class={chrome({ navigation: true, active: isActive('label', label.id) }).row}
 						>
 							<span class={chrome({ iconTone: 'muted' }).icon} aria-hidden="true">
 								<Tag size={16} strokeWidth={1.75} />
@@ -438,7 +466,7 @@
 				})}
 				data-sidebar-stay-open
 			>
-				<Dialog.Content class={cx('scrapscache-dialog', d.panel)} data-sidebar-stay-open>
+				<Dialog.Content class={d.panel} data-sidebar-stay-open>
 					<Dialog.Title class={d.title}>
 						Delete “{pendingDelete.name}”?
 					</Dialog.Title>

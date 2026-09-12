@@ -289,7 +289,7 @@ describe('SyncModal profile interactions', () => {
 		render(SyncModal, { props: { onClose: vi.fn() } });
 
 		const create = screen.getByRole('button', { name: '+ New workspace' });
-		expect(create.classList.contains('scrapscache-button-primary')).toBe(true);
+		expect(create.classList.contains('scrapscache-btn--variant_primary')).toBe(true);
 		expect(screen.queryByText('These notes stay on this device.')).toBeNull();
 		expect(screen.queryByRole('button', { name: 'Sync now' })).toBeNull();
 	});

@@ -23,8 +23,15 @@
 	import { flip, type FlipParams } from 'svelte/animate';
 	import { onDestroy } from 'svelte';
 	import type { Note } from '$lib/types';
-	import { sva } from 'styled-system/css';
-	import { kanban, button, iconButton, input as inputRecipe, select } from 'styled-system/recipes';
+	import { cva, cx, sva } from 'styled-system/css';
+	import {
+		kanban,
+		button,
+		iconButton,
+		input as inputRecipe,
+		popover,
+		select
+	} from 'styled-system/recipes';
 
 	const { openNote } = useEditorActions();
 	const board = $derived(kanbanStore.activeBoard);
@@ -208,6 +215,17 @@
 	}
 
 	const k = kanban();
+	const backlogFilterButton = cva({
+		base: { rounded: 'lg' },
+		variants: {
+			active: {
+				true: {
+					bg: 'blue.500/15',
+					color: 'scrapscache.accentHover'
+				}
+			}
+		}
+	});
 
 	// Backlog filter copy and the label-picker popover chrome, local to this view.
 	const backlogSva = sva({
@@ -326,10 +344,10 @@
 						{#if column.labelId === null}
 							<button
 								type="button"
-								class={button({
-									variant: backlogFilterActive ? 'filterActive' : 'filter',
-									size: 'xs'
-								})}
+								class={cx(
+									button({ variant: 'ghost', size: 'xs' }),
+									backlogFilterButton({ active: backlogFilterActive })
+								)}
 								onclick={() => (backlogFilterOpen = !backlogFilterOpen)}
 								aria-expanded={backlogFilterOpen}
 								aria-label="Backlog filter"
@@ -465,7 +483,7 @@
 							<ChevronDown size={14} aria-hidden="true" />
 						</Menu.Trigger>
 						<Menu.Positioner class={b.tagPickerPositioner}>
-							<Menu.Content class={`scrapscache-popover ${b.tagPickerContent}`} aria-label="Labels">
+							<Menu.Content class={`${popover()} ${b.tagPickerContent}`} aria-label="Labels">
 								{#each unusedTags as label (label.id)}
 									<Menu.Item
 										value={label.id}

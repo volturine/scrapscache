@@ -382,7 +382,7 @@
 			px: '0.75rem',
 			pb: '0.25rem',
 			fontSize: 'xs',
-			color: { base: 'red.600', _dark: 'red.400' }
+			color: 'scrapscache.danger'
 		})}
 	>
 		{attachError}
@@ -429,10 +429,7 @@
 {/if}
 
 {#if files.length > 0 || links.length > 0}
-	<ul
-		class={`note-scrollbar-hidden scrollable overflow-y-auto ${f.list}`}
-		aria-label="Files and links"
-	>
+	<ul class={`note-scrollbar-hidden scrollable ${f.list}`} aria-label="Files and links">
 		{#each files as file (file.id)}
 			<li class={f.row}>
 				<span class={f.badge} aria-hidden="true">{fileIconLabel(file.mime, file.name)}</span>
@@ -483,7 +480,7 @@
 {/if}
 
 {#if photos.length > 0 || pendingPhotos.length > 0}
-	<div class={`scrollable overflow-x-auto ${p.strip}`} aria-label="Photos">
+	<div class={`scrollable ${p.strip}`} aria-label="Photos">
 		{#each photos as img (img.id)}
 			<div class={p.wrap}>
 				<button
@@ -586,7 +583,7 @@
 					</div>
 					<Dialog.CloseTrigger
 						type="button"
-						class={`icon-btn ${iconButton({ variant: 'ghost', size: 'compact' })}`}
+						class={iconButton({ variant: 'ghost', size: 'compact' })}
 						aria-label="Cancel attachments"
 					>
 						<X size={16} aria-hidden="true" />
@@ -622,14 +619,14 @@
 		px: '0.75rem',
 		py: '0.5rem',
 		borderTopWidth: '1px',
-		borderColor: { base: 'black/5', _dark: 'white/10' }
+		borderColor: 'scrapscache.borderFaint'
 	})}
 >
 	<div class={hstack({ gap: '0.25rem', flexShrink: 0 })}>
 		<Tooltip content="Attach">
 			<button
 				type="button"
-				class={`icon-btn ${iconButton({ variant: 'ghost', size: 'standard' })}`}
+				class={iconButton({ variant: 'ghost', size: 'standard' })}
 				title="Attach"
 				onclick={openAttach}
 				aria-label="Attach"
@@ -640,7 +637,7 @@
 		<Tooltip content="New canvas">
 			<button
 				type="button"
-				class={`icon-btn ${iconButton({ variant: 'ghost', size: 'standard' })}`}
+				class={iconButton({ variant: 'ghost', size: 'standard' })}
 				title="New canvas"
 				onclick={() => void openCanvas()}
 				aria-label="New canvas"
@@ -651,7 +648,7 @@
 		<Tooltip content="Labels">
 			<button
 				type="button"
-				class={`icon-btn ${iconButton({ variant: 'ghost', size: 'standard' })}`}
+				class={iconButton({ variant: 'ghost', size: 'standard' })}
 				title="Labels"
 				onclick={openTags}
 				aria-label="Labels"
@@ -672,7 +669,7 @@
 		<Tooltip content="Color">
 			<button
 				type="button"
-				class={`icon-btn ${iconButton({ variant: 'ghost', size: 'standard' })}`}
+				class={iconButton({ variant: 'ghost', size: 'standard' })}
 				title="Color"
 				aria-label="Color"
 				onclick={() => onOpenColor?.()}
@@ -684,7 +681,7 @@
 			<Tooltip content="Copy note">
 				<button
 					type="button"
-					class={`icon-btn ${iconButton({ variant: 'ghost', size: 'standard' })}`}
+					class={iconButton({ variant: 'ghost', size: 'standard' })}
 					title="Copy note"
 					aria-label="Copy note"
 					onclick={() => onCopy?.()}
@@ -701,7 +698,7 @@
 			<Tooltip content={trashed ? 'Restore' : archived ? 'Unarchive' : 'Archive'}>
 				<button
 					type="button"
-					class={`icon-btn ${iconButton({ variant: 'ghost', size: 'standard' })}`}
+					class={iconButton({ variant: 'ghost', size: 'standard' })}
 					title={trashed ? 'Restore' : archived ? 'Unarchive' : 'Archive'}
 					aria-label={trashed ? 'Restore' : archived ? 'Unarchive' : 'Archive'}
 					onclick={() => onArchive?.()}
@@ -720,7 +717,7 @@
 			<Tooltip content="Delete note">
 				<button
 					type="button"
-					class={`icon-btn ${iconButton({ variant: 'danger', size: 'standard' })}`}
+					class={iconButton({ variant: 'danger', size: 'standard' })}
 					title="Delete note"
 					aria-label="Delete note"
 					onclick={() => onDelete?.()}
@@ -733,7 +730,7 @@
 			<Tooltip content="Done">
 				<button
 					type="button"
-					class={`icon-btn ${iconButton({ variant: 'ghost', size: 'standard' })}`}
+					class={iconButton({ variant: 'ghost', size: 'standard' })}
 					title="Done"
 					aria-label="Done"
 					onclick={() => onClose?.()}

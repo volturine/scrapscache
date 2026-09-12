@@ -49,7 +49,7 @@
 				variant: 'strip',
 				overdue: false,
 				css: {
-					bg: { base: 'black/5', _dark: 'white/5' },
+					bg: 'scrapscache.surfaceSubtle',
 					color: 'scrapscache.textMuted'
 				}
 			},
@@ -57,7 +57,7 @@
 				variant: 'strip',
 				overdue: true,
 				css: {
-					bg: { base: 'rose.600', _dark: 'rose.500' },
+					bg: 'scrapscache.overdueStrong',
 					fontWeight: 'medium',
 					color: 'white'
 				}
@@ -66,7 +66,7 @@
 				variant: 'chip',
 				overdue: false,
 				css: {
-					bg: { base: 'black/10', _dark: 'white/10' },
+					bg: 'scrapscache.interactiveActive',
 					color: 'scrapscache.textMuted'
 				}
 			},
@@ -74,7 +74,7 @@
 				variant: 'chip',
 				overdue: true,
 				css: {
-					bg: { base: 'rose.600', _dark: 'rose.500' },
+					bg: 'scrapscache.overdueStrong',
 					fontWeight: 'medium',
 					color: 'white'
 				}
@@ -91,7 +91,7 @@
 				overdue: true,
 				css: {
 					fontWeight: 'medium',
-					color: { base: 'rose.700', _dark: 'rose.400' }
+					color: 'scrapscache.overdue'
 				}
 			}
 		],

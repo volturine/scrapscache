@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { css, cx } from 'styled-system/css';
+	import { css, cx, sva } from 'styled-system/css';
 	import { button, dialog, iconButton, input } from 'styled-system/recipes';
 	import { hstack, vstack } from 'styled-system/patterns';
 	import WorkspaceRow from './WorkspaceRow.svelte';
@@ -427,144 +427,176 @@
 
 	const d = dialog({ size: 'md' });
 
-	// Modal shell: dialog slot recipe, narrowed to this modal's dimensions and
-	// the hand-rolled three-layer backdrop under it.
+	const modalShell = sva({
+		slots: ['backdrop', 'positioner', 'panel', 'header', 'title'],
+		base: {
+			backdrop: { position: 'absolute', bg: 'black/40', backdropFilter: 'none' },
+			positioner: {
+				position: 'absolute',
+				inset: 0,
+				display: 'flex',
+				alignItems: 'center',
+				justifyContent: 'center',
+				p: '1rem'
+			},
+			panel: { maxH: 'calc(100dvh - 2rem)', overflowY: 'auto', p: '1.25rem' },
+			header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+			title: { display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 'medium' }
+		}
+	});
+	const modal = modalShell();
 	const shell = {
-		backdrop: cx(d.backdrop, css({ position: 'absolute', bg: 'black/40', backdropFilter: 'none' })),
-		positioner: css({
-			position: 'absolute',
-			inset: 0,
-			display: 'flex',
-			alignItems: 'center',
-			justifyContent: 'center',
-			p: '1rem'
-		}),
-		panel: cx(d.panel, css({ maxH: 'calc(100dvh - 2rem)', overflowY: 'auto', p: '1.25rem' })),
-		header: cx(
-			d.header,
-			css({ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' })
-		),
-		title: cx(
-			d.title,
-			css({ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 'medium' })
-		)
+		backdrop: cx(d.backdrop, modal.backdrop),
+		positioner: modal.positioner,
+		panel: cx(d.panel, modal.panel),
+		header: cx(d.header, modal.header),
+		title: cx(d.title, modal.title)
 	};
 
-	// Text and meter classes shared across the modal's modes.
-	const ui = {
-		workspaceList: css({ display: 'grid', gap: '4px' }),
-		workspaceRow: css({
-			position: 'relative',
-			display: 'flex',
-			alignItems: 'center',
-			gap: '12px',
-			w: 'full',
-			rounded: '10px',
-			p: '12px',
-			fontSize: '14px',
-			_hover: { bg: 'scrapscache.interactiveHover' },
-			_disabled: { opacity: 0.55 },
-			'&.active': { bg: 'scrapscache.interactiveHover' },
-			'&.active::before': {
-				content: '""',
-				position: 'absolute',
-				top: '10px',
-				bottom: '10px',
-				left: 0,
-				w: '3px',
-				borderRadius: '0 3px 3px 0',
-				bg: 'scrapscache.accent'
-			}
-		}),
-		workspaceCaption: css({
-			display: 'block',
-			mt: '2px',
-			color: 'scrapscache.textMuted',
-			fontSize: '12px',
-			fontWeight: '400'
-		}),
-		manageRow: css({
-			display: 'flex',
-			alignItems: 'center',
-			gap: '12px',
-			w: 'full',
-			rounded: '8px',
-			padding: '10px 8px',
-			textAlign: 'left',
-			fontSize: '14px',
-			_hover: { bg: 'scrapscache.interactiveHover' },
-			_disabled: { opacity: 0.55 },
-			'& small': {
+	const modalUi = sva({
+		slots: [
+			'workspaceList',
+			'workspaceRow',
+			'workspaceCaption',
+			'manageRow',
+			'muted',
+			'mutedBody',
+			'mutedXs',
+			'mutedLead',
+			'statusHint',
+			'danger',
+			'text',
+			'meterTrack',
+			'meterFill',
+			'dividerLine',
+			'dividerLabel',
+			'digitsHyphen',
+			'digits',
+			'pairingInput',
+			'backLink',
+			'cancelLink'
+		],
+		base: {
+			workspaceList: { display: 'grid', gap: '4px' },
+			workspaceRow: {
+				position: 'relative',
+				display: 'flex',
+				alignItems: 'center',
+				gap: '12px',
+				w: 'full',
+				rounded: '10px',
+				p: '12px',
+				fontSize: '14px',
+				_hoverable: { bg: 'scrapscache.interactiveHover' },
+				_disabled: { opacity: 0.55 },
+				'&.active': { bg: 'scrapscache.interactiveHover' },
+				'&.active::before': {
+					content: '""',
+					position: 'absolute',
+					top: '10px',
+					bottom: '10px',
+					left: 0,
+					w: '3px',
+					borderRadius: '0 3px 3px 0',
+					bg: 'scrapscache.accent'
+				}
+			},
+			workspaceCaption: {
 				display: 'block',
 				mt: '2px',
 				color: 'scrapscache.textMuted',
 				fontSize: '12px',
 				fontWeight: '400'
-			}
-		}),
-		muted: css({ fontSize: 'sm', color: 'scrapscache.textMuted' }),
-		mutedBody: css({ fontSize: 'sm', color: 'scrapscache.textMuted', lineHeight: 'relaxed' }),
-		mutedXs: css({ fontSize: 'xs', color: 'scrapscache.textMuted' }),
-		mutedLead: css({
-			fontSize: 'xs',
-			color: 'scrapscache.textMuted',
-			fontWeight: 'medium',
-			letterSpacing: 'wide'
-		}),
-		statusHint: css({ mt: '0.5rem', fontSize: 'xs', color: 'scrapscache.textMuted' }),
-		danger: css({ fontSize: 'sm', color: 'scrapscache.danger' }),
-		text: css({ fontSize: 'sm', color: 'scrapscache.text' }),
-		meterTrack: cx(
-			'scrapscache-progress-track',
-			css({ h: '0.25rem', overflow: 'hidden', rounded: 'full' })
-		),
-		meterFill: cx(
-			'scrapscache-progress-value',
-			css({ h: 'full', rounded: 'full', transition: 'width 1000ms linear' })
-		),
-		dividerLine: css({ h: '1px', flex: '1', bg: 'scrapscache.border' }),
-		dividerLabel: css({
-			fontSize: '11px',
-			textTransform: 'uppercase',
-			letterSpacing: 'wider',
-			color: 'scrapscache.textMuted'
-		}),
-		digitsHyphen: css({ px: '0.125rem', color: 'scrapscache.textMuted' }),
-		digits: css({
-			fontFamily: 'mono',
-			fontSize: '1.35rem',
-			fontWeight: 'semibold',
-			letterSpacing: '0.14em',
-			color: 'scrapscache.text'
-		}),
-		pairingInput: cx(
-			input({ variant: 'outline', size: 'md' }),
-			css({
+			},
+			manageRow: {
+				display: 'flex',
+				alignItems: 'center',
+				gap: '12px',
+				w: 'full',
+				rounded: '8px',
+				padding: '10px 8px',
+				textAlign: 'left',
+				fontSize: '14px',
+				_hoverable: { bg: 'scrapscache.interactiveHover' },
+				_disabled: { opacity: 0.55 },
+				'& small': {
+					display: 'block',
+					mt: '2px',
+					color: 'scrapscache.textMuted',
+					fontSize: '12px',
+					fontWeight: '400'
+				}
+			},
+			muted: { fontSize: 'sm', color: 'scrapscache.textMuted' },
+			mutedBody: { fontSize: 'sm', color: 'scrapscache.textMuted', lineHeight: 'relaxed' },
+			mutedXs: { fontSize: 'xs', color: 'scrapscache.textMuted' },
+			mutedLead: {
+				fontSize: 'xs',
+				color: 'scrapscache.textMuted',
+				fontWeight: 'medium',
+				letterSpacing: 'wide'
+			},
+			statusHint: { mt: '0.5rem', fontSize: 'xs', color: 'scrapscache.textMuted' },
+			danger: { fontSize: 'sm', color: 'scrapscache.danger' },
+			text: { fontSize: 'sm', color: 'scrapscache.text' },
+			meterTrack: {
+				h: '0.25rem',
+				overflow: 'hidden',
+				rounded: 'full',
+				bg: 'scrapscache.interactiveActive'
+			},
+			meterFill: {
+				h: 'full',
+				rounded: 'full',
+				bg: 'scrapscache.accent',
+				transition: 'width 1000ms linear'
+			},
+			dividerLine: { h: '1px', flex: '1', bg: 'scrapscache.border' },
+			dividerLabel: {
+				fontSize: '11px',
+				textTransform: 'uppercase',
+				letterSpacing: 'wider',
+				color: 'scrapscache.textMuted'
+			},
+			digitsHyphen: { px: '0.125rem', color: 'scrapscache.textMuted' },
+			digits: {
+				fontFamily: 'mono',
+				fontSize: '1.35rem',
+				fontWeight: 'semibold',
+				letterSpacing: '0.14em',
+				color: 'scrapscache.text'
+			},
+			pairingInput: {
 				w: 'full',
 				rounded: 'md',
 				textAlign: 'center',
 				fontSize: 'lg',
 				fontWeight: 'bold',
 				letterSpacing: 'wider'
-			})
-		),
-		backLink: css({
-			w: 'full',
-			fontSize: 'xs',
-			color: 'scrapscache.textMuted',
-			touchAction: 'manipulation',
-			cursor: 'pointer',
-			textAlign: 'center'
-		}),
-		cancelLink: css({
-			w: 'full',
-			fontSize: 'sm',
-			color: 'scrapscache.textMuted',
-			touchAction: 'manipulation',
-			cursor: 'pointer',
-			textAlign: 'center'
-		})
-	};
+			},
+			backLink: {
+				w: 'full',
+				fontSize: 'xs',
+				color: 'scrapscache.textMuted',
+				touchAction: 'manipulation',
+				cursor: 'pointer',
+				textAlign: 'center'
+			},
+			cancelLink: {
+				w: 'full',
+				fontSize: 'sm',
+				color: 'scrapscache.textMuted',
+				touchAction: 'manipulation',
+				cursor: 'pointer',
+				textAlign: 'center'
+			}
+		}
+	});
+	const ui = modalUi();
+	const pairingInputClass = cx(input({ variant: 'outline', size: 'md' }), ui.pairingInput);
+	const fullButton = css({ w: 'full' });
+	const growButton = css({ flex: '1' });
+	const spinner = css({ animation: 'spin' });
 </script>
 
 <Dialog.Root
@@ -597,7 +629,7 @@
 					<Dialog.CloseTrigger
 						type="button"
 						disabled={busy}
-						class={`icon-btn ${iconButton({ variant: 'ghost', size: 'compact' })}`}
+						class={iconButton({ variant: 'ghost', size: 'compact' })}
 						aria-label="Close"
 					>
 						<X size={16} aria-hidden="true" />
@@ -652,16 +684,16 @@
 							{/each}
 						</div>
 
-						<div class={syncStore.account ? 'flex gap-4 text-sm' : ''}>
+						<div class={syncStore.account ? hstack({ gap: '1rem', fontSize: 'sm' }) : undefined}>
 							<button
 								type="button"
 								disabled={busy}
 								class={syncStore.account
-									? 'text-[var(--scrapscache-primary)]'
-									: cx(
-											'scrapscache-button scrapscache-button-primary',
-											button({ variant: 'primary', size: 'md' })
-										)}
+									? cx(
+											button({ variant: 'quiet', size: 'sm' }),
+											css({ color: 'scrapscache.accent' })
+										)
+									: cx(button({ variant: 'primary', size: 'md' }), fullButton)}
 								onclick={() => {
 									mode = 'register';
 									error = '';
@@ -689,10 +721,10 @@
 											} else void syncNow();
 										}}
 										disabled={busy}
-										class={cx(button({ variant: 'primary', size: 'md' }), css({ flex: '1' }))}
+										class={cx(button({ variant: 'primary', size: 'md' }), growButton)}
 										><RefreshCw
 											size={16}
-											class={syncing ? 'animate-spin' : ''}
+											class={syncing ? spinner : ''}
 											aria-hidden="true"
 										/>{operation === 'sync'
 											? 'Syncing…'
@@ -704,7 +736,7 @@
 										type="button"
 										onclick={() => void startExistingConnection()}
 										disabled={busy}
-										class={cx(button({ variant: 'secondary', size: 'md' }), css({ flex: '1' }))}
+										class={cx(button({ variant: 'secondary', size: 'md' }), growButton)}
 										>Connect device</button
 									>
 								</div>
@@ -721,7 +753,7 @@
 										class={css({ mt: '0.5rem', w: 'full' })}
 										><Progress.Track class={ui.meterTrack}
 											><Progress.Range
-												class={cx('scrapscache-progress-value', css({ h: 'full' }))}
+												class={ui.meterFill}
 												style={`width: ${progress.totalBytes ? percent : 100}%`}
 											/></Progress.Track
 										></Progress.Root
@@ -767,7 +799,7 @@
 										}}
 										><RefreshCw
 											size={16}
-											class={operation === 'force-sync' ? 'animate-spin' : ''}
+											class={operation === 'force-sync' ? spinner : ''}
 											aria-hidden="true"
 										/><span
 											>{operation === 'force-sync' ? 'Resyncing…' : 'Force resync'}<small
@@ -812,7 +844,7 @@
 						<div class={hstack({ gap: '0.5rem' })}>
 							<button
 								type="button"
-								class={cx(button({ variant: 'secondary', size: 'sm' }), css({ flex: '1' }))}
+								class={cx(button({ variant: 'secondary', size: 'sm' }), growButton)}
 								disabled={busy}
 								onclick={() => {
 									mode = 'menu';
@@ -827,7 +859,7 @@
 										variant: confirmation === 'delete' ? 'destructive' : 'primary',
 										size: 'sm'
 									}),
-									css({ flex: '1' })
+									growButton
 								)}
 								disabled={busy}
 								onclick={() =>
@@ -861,7 +893,7 @@
 								type="button"
 								onclick={() => void create()}
 								disabled={busy}
-								class={cx(button({ variant: 'primary', size: 'md' }), css({ w: 'full' }))}
+								class={cx(button({ variant: 'primary', size: 'md' }), fullButton)}
 								>{operation === 'create' ? 'Creating…' : 'Create workspace'}</button
 							>
 						</div>
@@ -873,7 +905,7 @@
 						<button
 							type="button"
 							disabled={busy}
-							class={cx(button({ variant: 'secondary', size: 'md' }), css({ w: 'full' }))}
+							class={cx(button({ variant: 'secondary', size: 'md' }), fullButton)}
 							onclick={() => {
 								mode = 'link';
 								error = '';
@@ -901,13 +933,13 @@
 							placeholder="XXXX-XXXX-XXXX-XXXX"
 							maxlength="19"
 							spellcheck="false"
-							class={ui.pairingInput}
+							class={pairingInputClass}
 							onkeydown={(event) => event.key === 'Enter' && void beginLink()}
 						/>{#if error}<p class={ui.danger}>{error}</p>{/if}<button
 							type="button"
 							onclick={() => void beginLink()}
 							disabled={busy}
-							class={cx(button({ variant: 'primary', size: 'md' }), css({ w: 'full' }))}
+							class={cx(button({ variant: 'primary', size: 'md' }), fullButton)}
 							>{operation === 'connect' ? 'Starting…' : 'Start connection'}</button
 						><button
 							type="button"
@@ -962,7 +994,7 @@
 									aria-label="Copy pairing link"
 									class={cx(
 										button({ variant: 'secondary', size: 'md' }),
-										css({ w: 'full' }),
+										fullButton,
 										copyFlash
 											? css({
 													borderColor: 'scrapscache.success',

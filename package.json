@@ -38,10 +38,11 @@
 		"preview": "vite preview",
 		"test": "vitest run",
 		"test:watch": "vitest",
-		"validate": "npm run check && npm run format:check && npm test && npm run build",
+		"validate": "npm run check && npm run style:check && npm run format:check && npm test && npm run build",
 		"prepare": "svelte-kit sync && panda codegen || echo '' && simple-git-hooks || true",
 		"check": "svelte-kit sync && panda codegen && svelte-check --tsconfig ./tsconfig.json --tsgo",
 		"check:watch": "svelte-kit sync && panda codegen && svelte-check --tsconfig ./tsconfig.json --watch",
+		"style:check": "node scripts/check-styles.mjs",
 		"format": "prettier --write .",
 		"format:check": "prettier --check ."
 	},

@@ -3,12 +3,11 @@
 	// it twice: once in the column, once inside the ghost that follows a drag, so
 	// the card the user carries is the card they see land.
 	import { notesStore } from '$lib/stores/notes.svelte';
-	import { uiStore } from '$lib/stores/ui.svelte';
-	import { NOTE_COLORS, NOTE_DARK_COLORS, type Note, type NoteColor } from '$lib/types';
+	import type { Note } from '$lib/types';
 	import NoteBodyDisplay from './NoteBodyDisplay.svelte';
 	import ReminderLabel from './ReminderLabel.svelte';
-	import { css } from 'styled-system/css';
-	import { noteCard } from 'styled-system/recipes';
+	import { css, cx } from 'styled-system/css';
+	import { noteCard, noteSurface } from 'styled-system/recipes';
 
 	let { note, shield = false }: { note: Note; shield?: boolean } = $props();
 
@@ -18,24 +17,23 @@
 			.filter((label): label is NonNullable<typeof label> => !!label)
 	);
 
-	function background(color: NoteColor): string {
-		return uiStore.effectiveDark ? NOTE_DARK_COLORS[color] : NOTE_COLORS[color];
-	}
-
 	// The board card keeps its own box (rounded-xl, no max height) and a fixed
 	// scroll window; the shared noteCard recipe covers the pieces that match.
 	const card = noteCard();
 </script>
 
 <div
-	class={`kanban-card ${css({
-		overflow: 'hidden',
-		rounded: 'xl',
-		borderWidth: '1px',
-		borderColor: { base: 'black/5', _dark: 'white/10' },
-		boxShadow: 'sm'
-	})}`}
-	style="background-color: {background(note.color)};"
+	class={cx(
+		'kanban-card',
+		noteSurface({ color: note.color }),
+		css({
+			overflow: 'hidden',
+			rounded: 'xl',
+			borderWidth: '1px',
+			borderColor: 'scrapscache.borderFaint',
+			boxShadow: 'sm'
+		})
+	)}
 >
 	<div class={css({ position: 'relative', maxH: '240px', overflow: 'hidden' })}>
 		<div class={css({ p: '0.75rem' })}>
@@ -45,7 +43,7 @@
 				</div>
 			{/if}
 			{#if note.title}
-				<h3 class={`break-words ${card.title}`}>
+				<h3 class={card.title}>
 					{note.title}
 				</h3>
 			{/if}

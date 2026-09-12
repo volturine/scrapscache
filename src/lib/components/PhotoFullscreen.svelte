@@ -16,6 +16,10 @@
 	import { SegmentGroup } from '@ark-ui/svelte/segment-group';
 	import Tooltip from './Tooltip.svelte';
 	import { portalToAppOverlay } from '$lib/appViewport';
+	import { cva, cx, sva } from 'styled-system/css';
+	import { button, iconButton } from 'styled-system/recipes';
+	import { hstack } from 'styled-system/patterns';
+	import { fullscreen } from './fullscreenStyles';
 	import { displayImageSrc } from '$lib/imageThumb';
 	import { noteImageFromCroppedDataUrl } from '$lib/noteImages';
 
@@ -224,19 +228,417 @@
 			cropBusy = false;
 		}
 	}
+
+	const fs = fullscreen({ theme: 'photo' });
+
+	const cropSva = sva({
+		slots: [
+			'root',
+			'col',
+			'header',
+			'sep',
+			'ratioDesktop',
+			'radioRoot',
+			'radioItem',
+			'reset',
+			'save',
+			'ratioMobile',
+			'viewport',
+			'imgWrap',
+			'img',
+			'btnRound',
+			'toolBtn'
+		],
+		base: {
+			root: {
+				position: 'relative',
+				zIndex: 1,
+				display: 'flex',
+				minH: 0,
+				flex: '1',
+				flexDirection: 'column',
+				'& [data-part="viewport"]': {
+					position: 'relative',
+					overflow: 'visible',
+					touchAction: 'none',
+					userSelect: 'none'
+				},
+				'& [data-part="image"]': {
+					position: 'absolute',
+					maxWidth: 'none',
+					userSelect: 'none'
+				},
+				'& [data-part="selection"]': {
+					boxShadow: 'cropMask',
+					outlineWidth: '1.5px',
+					outlineStyle: 'solid',
+					outlineColor: 'scrapscache.mediaOutline'
+				},
+				'& [data-part="handle"]': {
+					display: 'grid',
+					placeItems: 'center',
+					zIndex: 10,
+					background: 'transparent',
+					touchAction: 'none',
+					userSelect: 'none',
+					WebkitUserSelect: 'none',
+					WebkitTapHighlightColor: 'transparent'
+				},
+				// Generous invisible touch target (56px × 56px) centered on each corner
+				'& [data-part="handle"][data-position="nw"], & [data-part="handle"][data-position="ne"], & [data-part="handle"][data-position="se"], & [data-part="handle"][data-position="sw"]':
+					{
+						w: '3.5rem',
+						h: '3.5rem',
+						zIndex: 20
+					},
+				// Generous invisible touch strip (56px tall) across horizontal edges
+				'& [data-part="handle"][data-position="n"], & [data-part="handle"][data-position="s"]': {
+					h: '3.5rem',
+					zIndex: 10
+				},
+				// Generous invisible touch strip (56px wide) across vertical edges
+				'& [data-part="handle"][data-position="w"], & [data-part="handle"][data-position="e"]': {
+					w: '3.5rem',
+					zIndex: 10
+				},
+				'& [data-part="handle"]:hover .crop-knob, & [data-part="handle"]:active .crop-knob': {
+					transform: 'scale(1.35)',
+					boxShadow: 'cropHandle'
+				},
+				'& [data-part="grid"][data-axis="horizontal"]': {
+					borderBottomWidth: '1px',
+					borderTopWidth: '1px',
+					borderColor: 'scrapscache.mediaBorderStrong'
+				},
+				'& [data-part="grid"][data-axis="vertical"]': {
+					borderLeftWidth: '1px',
+					borderRightWidth: '1px',
+					borderColor: 'scrapscache.mediaBorderStrong'
+				}
+			},
+			col: {
+				display: 'flex',
+				minH: 0,
+				flex: '1',
+				flexDirection: 'column'
+			},
+			header: {
+				position: 'relative',
+				display: 'flex',
+				flexShrink: 0,
+				alignItems: 'center',
+				justifyContent: 'space-between',
+				gap: '0.5rem',
+				borderBottomWidth: '1px',
+				borderColor: 'scrapscache.mediaBorder',
+				bg: 'scrapscache.mediaSurfaceStrong',
+				px: '0.75rem',
+				py: '0.5rem',
+				backdropFilter: 'blur(12px)'
+			},
+			sep: {
+				mx: { base: '0.125rem', sm: '0.25rem' },
+				h: '1rem',
+				w: '1px',
+				bg: 'scrapscache.mediaControlActive'
+			},
+			ratioDesktop: {
+				position: 'absolute',
+				left: '50%',
+				transform: 'translateX(-50%)',
+				display: { base: 'none', sm: 'flex' },
+				alignItems: 'center',
+				justifyContent: 'center'
+			},
+			radioRoot: {
+				display: 'flex',
+				alignItems: 'center',
+				gap: '0.125rem',
+				rounded: 'lg',
+				bg: 'scrapscache.mediaControlHover',
+				p: '0.125rem',
+				fontSize: 'xs'
+			},
+			radioItem: {
+				cursor: 'pointer',
+				rounded: 'sm',
+				px: '0.625rem',
+				py: '0.25rem',
+				transition: 'colors 120ms ease',
+				'&[data-state=checked]': {
+					bg: 'scrapscache.mediaText',
+					fontWeight: 'semibold',
+					color: 'scrapscache.mediaSurface',
+					boxShadow: 'sm'
+				},
+				'&[data-state=unchecked]': {
+					color: 'scrapscache.mediaTextSoft',
+					_hoverable: {
+						bg: 'scrapscache.mediaControlHover',
+						color: 'scrapscache.mediaText'
+					}
+				},
+				'&[data-disabled]': {
+					pointerEvents: 'none',
+					opacity: 0.5
+				}
+			},
+			reset: {
+				rounded: 'md',
+				px: '0.625rem',
+				py: '0.375rem',
+				fontSize: 'xs',
+				fontWeight: 'medium',
+				color: 'scrapscache.mediaTextMuted',
+				transition: 'colors 120ms ease',
+				touchAction: 'manipulation',
+				cursor: 'pointer',
+				_hoverable: {
+					bg: 'scrapscache.mediaControlHover',
+					color: 'scrapscache.mediaText'
+				},
+				_disabled: { opacity: 0.3, pointerEvents: 'none' }
+			},
+			save: {
+				minW: '5.25rem',
+				px: '0.875rem',
+				py: '0.375rem',
+				fontSize: 'sm',
+				fontWeight: 'medium'
+			},
+			ratioMobile: {
+				display: { base: 'flex', sm: 'none' },
+				flexShrink: 0,
+				alignItems: 'center',
+				justifyContent: 'center',
+				gap: '0.25rem',
+				borderBottomWidth: '1px',
+				borderColor: 'scrapscache.mediaBorderFaint',
+				bg: 'scrapscache.mediaSurfaceMuted',
+				px: '0.75rem',
+				py: '0.375rem'
+			},
+			viewport: {
+				position: 'relative',
+				display: 'flex',
+				minH: 0,
+				flex: '1',
+				alignItems: 'center',
+				justifyContent: 'center',
+				p: { base: '0.5rem', sm: '1.5rem' },
+				overflow: 'hidden'
+			},
+			imgWrap: {
+				position: 'relative',
+				flexShrink: 0,
+				overflow: 'visible',
+				boxShadow: '2xl'
+			},
+			img: {
+				h: 'full',
+				w: 'full',
+				objectFit: 'fill',
+				display: 'block',
+				userSelect: 'none',
+				pointerEvents: 'none'
+			},
+			btnRound: { h: '2.25rem', w: '2.25rem' },
+			toolBtn: {
+				h: '2.25rem',
+				w: '2.25rem',
+				rounded: 'md',
+				color: 'scrapscache.mediaTextSoft',
+				transition: 'colors 120ms ease',
+				_hoverable: {
+					bg: 'scrapscache.mediaControlHover',
+					color: 'scrapscache.mediaText'
+				},
+				_disabled: {
+					opacity: 0.35,
+					cursor: 'not-allowed',
+					pointerEvents: 'auto',
+					_hoverable: { bg: 'transparent', color: 'scrapscache.mediaTextSoft' }
+				}
+			}
+		}
+	});
+	const crop = cropSva();
+	const cropBtnRound = cx(iconButton({ variant: 'haze' }), crop.btnRound);
+	const cropToolBtn = cx(iconButton({ variant: 'haze' }), crop.toolBtn);
+
+	const cropKnob = cva({
+		base: {
+			bg: 'scrapscache.mediaText',
+			boxShadow: 'cropKnob',
+			pointerEvents: 'none',
+			transition: 'transform 0.15s ease, box-shadow 0.15s ease'
+		},
+		variants: {
+			shape: {
+				corner: { h: '0.75rem', w: '0.75rem', rounded: '2px' },
+				edgeH: { h: '0.25rem', w: '1.5rem', rounded: 'full' },
+				edgeV: { h: '1.5rem', w: '0.25rem', rounded: 'full' }
+			}
+		},
+		defaultVariants: { shape: 'corner' }
+	});
+
+	const viewerSva = sva({
+		slots: [
+			'stage',
+			'center',
+			'img',
+			'backdrop',
+			'thumbStrip',
+			'thumbImg',
+			'titleSize',
+			'topBtn',
+			'trashBtn'
+		],
+		base: {
+			stage: { position: 'relative', minH: 0, flex: '1' },
+			center: {
+				pointerEvents: 'none',
+				position: 'relative',
+				zIndex: 1,
+				display: 'flex',
+				h: 'full',
+				alignItems: 'center',
+				justifyContent: 'center',
+				px: '1rem'
+			},
+			img: {
+				pointerEvents: 'auto',
+				maxH: 'full',
+				maxW: 'full',
+				userSelect: 'none',
+				objectFit: 'contain'
+			},
+			backdrop: { position: 'absolute', inset: 0, cursor: 'zoom-out' },
+			thumbStrip: {
+				position: 'relative',
+				zIndex: 1,
+				display: 'flex',
+				flexShrink: 0,
+				gap: '0.5rem',
+				overflowX: 'auto',
+				bgGradient: 'to-t',
+				gradientFrom: 'black/85',
+				gradientTo: 'transparent',
+				px: '1rem',
+				pb: '0.75rem',
+				pt: '0.5rem'
+			},
+			thumbImg: { h: 'full', w: 'full', objectFit: 'cover' },
+			titleSize: {
+				ml: '0.25rem',
+				fontSize: 'xs',
+				fontWeight: 'normal',
+				color: 'scrapscache.mediaTextFaint'
+			},
+			topBtn: { flexShrink: 0 },
+			trashBtn: {
+				_hoverable: {
+					bg: 'scrapscache.mediaDangerHover',
+					color: 'scrapscache.mediaDanger'
+				}
+			}
+		}
+	});
+	const viewer = viewerSva();
+	const topBarBtn = cx(iconButton({ variant: 'haze' }), viewer.topBtn);
+	const topBarTrashBtn = cx(iconButton({ variant: 'haze' }), viewer.trashBtn);
+
+	const ratioMobileBtn = cva({
+		base: {
+			rounded: 'sm',
+			px: '0.5rem',
+			py: '0.125rem',
+			fontSize: 'xs',
+			transition: 'colors 120ms ease',
+			cursor: 'pointer'
+		},
+		variants: {
+			active: {
+				true: {
+					bg: 'scrapscache.mediaText',
+					fontWeight: 'semibold',
+					color: 'scrapscache.mediaSurface'
+				},
+				false: {
+					bg: 'transparent',
+					color: 'scrapscache.mediaTextMuted',
+					_hoverable: {
+						bg: 'scrapscache.mediaControlHover',
+						color: 'scrapscache.mediaText'
+					}
+				}
+			}
+		}
+	});
+
+	const navArrow = cva({
+		base: {
+			position: 'absolute',
+			top: '50%',
+			transform: 'translateY(-50%)',
+			zIndex: 20,
+			display: { base: 'none', sm: 'grid' },
+			h: '2.75rem',
+			w: '2.75rem',
+			placeItems: 'center',
+			rounded: 'full',
+			bg: 'scrapscache.mediaSurfaceSoft',
+			color: 'scrapscache.mediaTextStrong',
+			boxShadow: 'md',
+			backdropFilter: 'blur(4px)',
+			transition: 'colors 120ms ease',
+			cursor: 'pointer',
+			touchAction: 'manipulation',
+			_hoverable: {
+				bg: 'scrapscache.mediaSurfaceHover',
+				color: 'scrapscache.mediaText'
+			}
+		},
+		variants: {
+			side: {
+				left: { left: '0.75rem' },
+				right: { right: '0.75rem' }
+			}
+		}
+	});
+
+	const thumbBtn = cva({
+		base: {
+			h: '3.5rem',
+			w: '3.5rem',
+			flexShrink: 0,
+			overflow: 'hidden',
+			rounded: 'md',
+			touchAction: 'manipulation',
+			transition: 'opacity 120ms ease, box-shadow 120ms ease',
+			cursor: 'pointer'
+		},
+		variants: {
+			active: {
+				true: { opacity: 1, ringWidth: '2px', ringColor: 'scrapscache.mediaText' },
+				false: { opacity: 0.5, _hoverable: { opacity: 0.85 } }
+			}
+		}
+	});
 </script>
 
 {#if current}
 	<div
 		{@attach portal}
 		{@attach trapKeys}
-		class="absolute inset-0 z-[80] flex flex-col bg-black text-white"
+		class={fs.shell}
 		role="dialog"
 		aria-modal="true"
 		aria-label="Photo"
 	>
 		{#if cropping}
-			<div class="crop-root relative z-[1] flex min-h-0 flex-1 flex-col">
+			<div class={`crop-root ${crop.root}`}>
 				<ImageCropper.Root
 					aspectRatio={currentAspectRatio}
 					initialCrop={{
@@ -245,74 +647,67 @@
 						width: viewportDimensions.width,
 						height: viewportDimensions.height
 					}}
-					class="flex min-h-0 flex-1 flex-col"
+					class={crop.col}
 				>
 					<ImageCropper.Context>
 						{#snippet render(cropper)}
-							<header
-								class="relative flex shrink-0 items-center justify-between gap-2 border-b border-white/10 bg-black/85 px-3 py-2 backdrop-blur-md"
-							>
+							<header class={crop.header}>
 								<!-- Left: Cancel, Rotate, Undo -->
-								<div class="flex items-center gap-1 sm:gap-1.5">
+								<div class={hstack({ gap: { base: '0.25rem', sm: '0.375rem' } })}>
 									<Tooltip content="Cancel">
 										<button
 											type="button"
-											class="grid h-9 w-9 place-items-center rounded-full text-white/90 hover:bg-white/10 hover:text-white touch-manipulation"
+											class={cropBtnRound}
 											onclick={cancelCrop}
 											disabled={cropBusy}
 											aria-label="Cancel crop"
 											title="Cancel"
 										>
-											<X class="h-5 w-5" aria-hidden="true" />
+											<X size={20} aria-hidden="true" />
 										</button>
 									</Tooltip>
 
-									<div class="mx-0.5 h-4 w-px bg-white/20 sm:mx-1" aria-hidden="true"></div>
+									<div class={crop.sep} aria-hidden="true"></div>
 
 									<Tooltip content="Rotate 90°">
 										<button
 											type="button"
-											class="grid h-9 w-9 place-items-center rounded-md text-white/80 transition-colors hover:bg-white/10 hover:text-white touch-manipulation"
+											class={cropToolBtn}
 											onclick={() => rotate(cropper)}
 											disabled={cropBusy}
 											aria-label="Rotate 90 degrees"
 											title="Rotate 90°"
 										>
-											<RotateCw class="h-4 w-4" aria-hidden="true" />
+											<RotateCw size={16} aria-hidden="true" />
 										</button>
 									</Tooltip>
 									<Tooltip content="Undo">
 										<button
 											type="button"
-											class="grid h-9 w-9 place-items-center rounded-md text-white/80 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-35 disabled:hover:bg-transparent disabled:hover:text-white/80 touch-manipulation"
+											class={cropToolBtn}
 											onclick={() => undo(cropper)}
 											disabled={cropBusy || historyStack.length === 0}
 											aria-label="Undo crop adjustment"
 											title="Undo"
 										>
-											<Undo2 class="h-4 w-4" aria-hidden="true" />
+											<Undo2 size={16} aria-hidden="true" />
 										</button>
 									</Tooltip>
 								</div>
 
 								<!-- Center: Crop ratio presets -->
-								<div
-									class="absolute left-1/2 hidden -translate-x-1/2 items-center justify-center sm:flex"
-								>
+								<div class={crop.ratioDesktop}>
 									<SegmentGroup.Root
 										value={selectedRatio}
 										onValueChange={(details) => {
 											if (details.value) selectedRatio = details.value as any;
 										}}
 										disabled={cropBusy}
-										class="flex items-center gap-0.5 rounded-lg bg-white/10 p-0.5 text-xs"
+										class={crop.radioRoot}
 										aria-label="Aspect ratio presets"
 									>
 										{#each [{ id: 'free', label: 'Free' }, { id: '1:1', label: '1:1' }, { id: '4:3', label: '4:3' }, { id: '16:9', label: '16:9' }] as opt (opt.id)}
-											<SegmentGroup.Item
-												value={opt.id}
-												class="cursor-pointer rounded px-2.5 py-1 transition-colors data-[state=checked]:bg-white data-[state=checked]:font-semibold data-[state=checked]:text-black data-[state=checked]:shadow data-[state=unchecked]:text-white/80 data-[state=unchecked]:hover:bg-white/10 data-[state=unchecked]:hover:text-white data-[disabled]:pointer-events-none data-[disabled]:opacity-50"
-											>
+											<SegmentGroup.Item value={opt.id} class={crop.radioItem}>
 												<SegmentGroup.ItemText>{opt.label}</SegmentGroup.ItemText>
 												<SegmentGroup.ItemHiddenInput />
 											</SegmentGroup.Item>
@@ -321,10 +716,10 @@
 								</div>
 
 								<!-- Right: Reset & Apply -->
-								<div class="flex items-center gap-2">
+								<div class={hstack({ gap: '0.5rem' })}>
 									<button
 										type="button"
-										class="rounded-md px-2.5 py-1.5 text-xs font-medium text-white/70 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-30 disabled:pointer-events-none touch-manipulation"
+										class={crop.reset}
 										onclick={() => resetCrop(cropper)}
 										disabled={cropBusy}
 										aria-label="Reset crop"
@@ -335,7 +730,7 @@
 
 									<button
 										type="button"
-										class="scrapscache-button scrapscache-button-primary min-w-[5.25rem] px-3.5 py-1.5 text-sm font-medium"
+										class={`${button({ variant: 'primary', size: 'sm' })} ${crop.save}`}
 										onclick={() => void applyCrop(cropper)}
 										disabled={cropBusy}
 										aria-label="Apply crop"
@@ -343,8 +738,8 @@
 										{#if cropBusy}
 											<span>Saving…</span>
 										{:else}
-											<div class="flex items-center gap-1.5">
-												<Check class="h-4 w-4" aria-hidden="true" />
+											<div class={hstack({ gap: '0.375rem' })}>
+												<Check size={16} aria-hidden="true" />
 												<span>Apply</span>
 											</div>
 										{/if}
@@ -352,16 +747,11 @@
 								</div>
 							</header>
 
-							<div
-								class="flex shrink-0 items-center justify-center gap-1 border-b border-white/5 bg-black/60 px-3 py-1.5 sm:hidden"
-								aria-label="Aspect ratio presets mobile"
-							>
+							<div class={crop.ratioMobile} aria-label="Aspect ratio presets mobile">
 								{#each [{ id: 'free', label: 'Free' }, { id: '1:1', label: '1:1' }, { id: '4:3', label: '4:3' }, { id: '16:9', label: '16:9' }] as opt (opt.id)}
 									<button
 										type="button"
-										class="rounded px-2 py-0.5 text-xs transition-colors {selectedRatio === opt.id
-											? 'bg-white font-semibold text-black shadow'
-											: 'text-white/80 hover:bg-white/10 hover:text-white'}"
+										class={ratioMobileBtn({ active: selectedRatio === opt.id })}
 										onclick={() => (selectedRatio = opt.id as any)}
 										disabled={cropBusy}
 									>
@@ -375,27 +765,23 @@
 					<div
 						bind:clientWidth={cropContainerW}
 						bind:clientHeight={cropContainerH}
-						class="relative flex min-h-0 flex-1 items-center justify-center p-2 sm:p-6 overflow-hidden"
+						class={crop.viewport}
 					>
 						<ImageCropper.Viewport
 							style="width: {viewportDimensions.width}px; height: {viewportDimensions.height}px;"
-							class="relative shrink-0 overflow-visible shadow-2xl"
+							class={crop.imgWrap}
 						>
-							<ImageCropper.Image
-								src={currentSrc}
-								onload={measureNatural}
-								class="h-full w-full object-fill block select-none pointer-events-none"
-							/>
+							<ImageCropper.Image src={currentSrc} onload={measureNatural} class={crop.img} />
 							<ImageCropper.Selection>
 								{#each ImageCropper.handles as position (position)}
 									<ImageCropper.Handle {position}>
-										<div
-											class="crop-knob {position.length === 2
-												? 'crop-knob-corner'
+										{@const knobShape =
+											position.length === 2
+												? 'corner'
 												: position === 'n' || position === 's'
-													? 'crop-knob-edge-h'
-													: 'crop-knob-edge-v'}"
-										></div>
+													? 'edgeH'
+													: 'edgeV'}
+										<div class={`crop-knob ${cropKnob({ shape: knobShape })}`}></div>
 									</ImageCropper.Handle>
 								{/each}
 								<ImageCropper.Grid axis="horizontal" />
@@ -405,43 +791,36 @@
 					</div>
 				</ImageCropper.Root>
 				{#if cropError}
-					<p class="px-4 pb-3 text-center text-xs text-red-400">{cropError}</p>
+					<p class={fs.notice}>{cropError}</p>
 				{/if}
 			</div>
 		{:else}
-			<header
-				class="absolute inset-x-0 top-0 z-20 flex h-14 items-center justify-between gap-3 bg-gradient-to-b from-black/75 to-transparent px-3 py-2 backdrop-blur-[2px]"
-			>
-				<div class="flex min-w-0 items-center gap-2">
-					<button
-						type="button"
-						class="grid h-10 w-10 shrink-0 place-items-center rounded-full text-white/90 hover:bg-white/10 hover:text-white touch-manipulation"
-						onclick={close}
-						aria-label="Close photo"
-					>
-						<X class="h-6 w-6 drop-shadow" aria-hidden="true" />
+			<header class={fs.header}>
+				<div class={hstack({ gap: '0.5rem', minW: 0 })}>
+					<button type="button" class={topBarBtn} onclick={close} aria-label="Close photo">
+						<X size={24} aria-hidden="true" />
 					</button>
-					<div class="min-w-0 flex-1 truncate text-sm font-medium text-white/90">
+					<div class={fs.title}>
 						{current.name || `Photo ${(activeIndex ?? 0) + 1}`}
 						{#if images.length > 1}
-							<span class="ml-1 text-xs font-normal text-white/60">
+							<span class={viewer.titleSize}>
 								({(activeIndex ?? 0) + 1} of {images.length})
 							</span>
 						{/if}
 					</div>
 				</div>
 
-				<div class="flex items-center gap-1">
+				<div class={hstack({ gap: '0.25rem' })}>
 					<Tooltip content="Download photo">
 						<DownloadTrigger
 							fileName={current.name || 'photo.webp'}
 							data={currentSrc}
 							mimeType={current.mime || 'image/webp'}
-							class="grid h-10 w-10 place-items-center rounded-full text-white/90 hover:bg-white/10 hover:text-white touch-manipulation"
+							class={topBarBtn}
 							aria-label="Download photo"
 							title="Download photo"
 						>
-							<Download class="h-5 w-5 drop-shadow" aria-hidden="true" />
+							<Download size={20} aria-hidden="true" />
 						</DownloadTrigger>
 					</Tooltip>
 
@@ -449,12 +828,12 @@
 						<Tooltip content="Crop & rotate">
 							<button
 								type="button"
-								class="grid h-10 w-10 place-items-center rounded-full text-white/90 hover:bg-white/10 hover:text-white touch-manipulation"
+								class={topBarBtn}
 								onclick={startCrop}
 								aria-label="Crop photo"
 								title="Crop and rotate"
 							>
-								<Crop class="h-5 w-5 drop-shadow" aria-hidden="true" />
+								<Crop size={20} aria-hidden="true" />
 							</button>
 						</Tooltip>
 					{/if}
@@ -463,59 +842,52 @@
 						<Tooltip content="Delete photo">
 							<button
 								type="button"
-								class="grid h-10 w-10 place-items-center rounded-full text-white/90 hover:bg-red-500/20 hover:text-red-400 touch-manipulation"
+								class={topBarTrashBtn}
 								onclick={() => void deleteCurrent()}
 								aria-label="Delete photo"
 								title="Delete photo"
 							>
-								<Trash2 class="h-5 w-5 drop-shadow" aria-hidden="true" />
+								<Trash2 size={20} aria-hidden="true" />
 							</button>
 						</Tooltip>
 					{/if}
 				</div>
 			</header>
 
-			<div class="relative min-h-0 flex-1">
-				<button
-					type="button"
-					class="absolute inset-0 cursor-zoom-out"
-					onclick={close}
-					aria-label="Close photo"
+			<div class={viewer.stage}>
+				<button type="button" class={viewer.backdrop} onclick={close} aria-label="Close photo"
 				></button>
 
 				{#if images.length > 1}
 					<Tooltip content="Previous photo" placement="right">
 						<button
 							type="button"
-							class="absolute left-3 top-1/2 z-20 hidden h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-black/40 text-white/90 shadow-md backdrop-blur-sm transition-colors hover:bg-black/70 hover:text-white sm:grid touch-manipulation"
+							class={navArrow({ side: 'left' })}
 							onclick={() => move(-1)}
 							aria-label="Previous photo"
 							title="Previous photo"
 						>
-							<ChevronLeft class="h-6 w-6" aria-hidden="true" />
+							<ChevronLeft size={24} aria-hidden="true" />
 						</button>
 					</Tooltip>
 					<Tooltip content="Next photo" placement="left">
 						<button
 							type="button"
-							class="absolute right-3 top-1/2 z-20 hidden h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-black/40 text-white/90 shadow-md backdrop-blur-sm transition-colors hover:bg-black/70 hover:text-white sm:grid touch-manipulation"
+							class={navArrow({ side: 'right' })}
 							onclick={() => move(1)}
 							aria-label="Next photo"
 							title="Next photo"
 						>
-							<ChevronRight class="h-6 w-6" aria-hidden="true" />
+							<ChevronRight size={24} aria-hidden="true" />
 						</button>
 					</Tooltip>
 				{/if}
 
-				<div
-					{@attach swipeArea}
-					class="pointer-events-none relative z-[1] flex h-full items-center justify-center px-4"
-				>
+				<div {@attach swipeArea} class={viewer.center}>
 					<img
 						src={currentSrc}
 						alt={current.name ?? 'Photo'}
-						class="pointer-events-auto max-h-full max-w-full select-none object-contain"
+						class={viewer.img}
 						decoding="async"
 						draggable="false"
 					/>
@@ -523,27 +895,16 @@
 			</div>
 
 			{#if images.length > 1}
-				<div
-					class="scrollable relative z-[1] flex shrink-0 gap-2 overflow-x-auto bg-gradient-to-t from-black/85 to-transparent px-4 pb-3 pt-2"
-					aria-label="Photo thumbnails"
-				>
+				<div class={`scrollable ${viewer.thumbStrip}`} aria-label="Photo thumbnails">
 					{#each images as image, index (image.id)}
 						<button
 							type="button"
-							class="h-14 w-14 shrink-0 overflow-hidden rounded-md touch-manipulation transition-opacity {index ===
-							activeIndex
-								? 'ring-2 ring-white ring-offset-2 ring-offset-black'
-								: 'opacity-60 hover:opacity-90'}"
+							class={thumbBtn({ active: index === activeIndex })}
 							onclick={() => select(index)}
 							aria-label={image.name ?? `Photo ${index + 1}`}
 							aria-current={index === activeIndex ? 'true' : undefined}
 						>
-							<img
-								src={displayImageSrc(image)}
-								alt=""
-								class="h-full w-full object-cover"
-								draggable="false"
-							/>
+							<img src={displayImageSrc(image)} alt="" class={viewer.thumbImg} draggable="false" />
 						</button>
 					{/each}
 				</div>
@@ -551,93 +912,3 @@
 		{/if}
 	</div>
 {/if}
-
-<style>
-	.crop-root :global([data-part='viewport']) {
-		position: relative;
-		overflow: visible;
-		touch-action: none;
-		user-select: none;
-	}
-	.crop-root :global([data-part='image']) {
-		position: absolute;
-		max-width: none;
-		user-select: none;
-	}
-	.crop-root :global([data-part='selection']) {
-		box-shadow: 0 0 0 9999px rgb(0 0 0 / 0.65);
-		outline: 1.5px solid rgb(255 255 255 / 0.95);
-	}
-	.crop-root :global([data-part='handle']) {
-		display: grid;
-		place-items: center;
-		z-index: 10;
-		background: transparent;
-		touch-action: none;
-		user-select: none;
-		-webkit-user-select: none;
-		-webkit-tap-highlight-color: transparent;
-	}
-	/* Generous invisible touch target (56px × 56px) centered on each corner */
-	.crop-root :global([data-part='handle'][data-position='nw']),
-	.crop-root :global([data-part='handle'][data-position='ne']),
-	.crop-root :global([data-part='handle'][data-position='se']),
-	.crop-root :global([data-part='handle'][data-position='sw']) {
-		width: 3.5rem;
-		height: 3.5rem;
-		z-index: 20;
-	}
-	/* Generous invisible touch strip (56px tall) across horizontal edges */
-	.crop-root :global([data-part='handle'][data-position='n']),
-	.crop-root :global([data-part='handle'][data-position='s']) {
-		height: 3.5rem;
-		z-index: 10;
-	}
-	/* Generous invisible touch strip (56px wide) across vertical edges */
-	.crop-root :global([data-part='handle'][data-position='w']),
-	.crop-root :global([data-part='handle'][data-position='e']) {
-		width: 3.5rem;
-		z-index: 10;
-	}
-	/* Sleek, subtle visual knobs */
-	.crop-knob {
-		background: #ffffff;
-		box-shadow:
-			0 1px 3px rgb(0 0 0 / 0.5),
-			0 0 0 1px rgb(0 0 0 / 0.25);
-		pointer-events: none;
-		transition:
-			transform 0.15s ease,
-			box-shadow 0.15s ease;
-	}
-	.crop-root :global([data-part='handle']:hover .crop-knob),
-	.crop-root :global([data-part='handle']:active .crop-knob) {
-		transform: scale(1.35);
-		box-shadow:
-			0 2px 6px rgb(0 0 0 / 0.7),
-			0 0 0 1.5px rgb(0 0 0 / 0.35);
-	}
-	.crop-knob-corner {
-		height: 0.75rem;
-		width: 0.75rem;
-		border-radius: 2px;
-	}
-	.crop-knob-edge-h {
-		height: 0.25rem;
-		width: 1.5rem;
-		border-radius: 9999px;
-	}
-	.crop-knob-edge-v {
-		height: 1.5rem;
-		width: 0.25rem;
-		border-radius: 9999px;
-	}
-	.crop-root :global([data-part='grid'][data-axis='horizontal']) {
-		border-bottom: 1px solid rgb(255 255 255 / 0.4);
-		border-top: 1px solid rgb(255 255 255 / 0.4);
-	}
-	.crop-root :global([data-part='grid'][data-axis='vertical']) {
-		border-left: 1px solid rgb(255 255 255 / 0.4);
-		border-right: 1px solid rgb(255 255 255 / 0.4);
-	}
-</style>

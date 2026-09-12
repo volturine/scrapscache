@@ -2,6 +2,9 @@
 	import { Checkbox } from '@ark-ui/svelte/checkbox';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { Check, Plus, Search, Tag } from '@lucide/svelte';
+	import { cx, sva } from 'styled-system/css';
+	import { button, input, popover } from 'styled-system/recipes';
+	import { hstack, vstack } from 'styled-system/patterns';
 
 	let {
 		noteId,
@@ -89,44 +92,140 @@
 			}
 		};
 	}
+
+	// One row treatment shared by the checkbox rows and the create button; the
+	// create button tints itself with the accent color on top.
+	const itemSva = sva({
+		slots: [
+			'row',
+			'iconBox',
+			'icon',
+			'label',
+			'checkIndicator',
+			'heading',
+			'searchWrap',
+			'searchIcon',
+			'searchInput',
+			'createRow',
+			'empty',
+			'scroller'
+		],
+		base: {
+			row: {
+				display: 'flex',
+				w: 'full',
+				cursor: 'pointer',
+				alignItems: 'center',
+				gap: '0.75rem',
+				rounded: 'xl',
+				px: '0.75rem',
+				py: '0.625rem',
+				textAlign: 'left',
+				fontSize: 'sm',
+				fontWeight: 'medium',
+				color: 'scrapscache.text',
+				transition: 'colors 120ms ease',
+				_hoverable: {
+					bg: 'scrapscache.interactiveHover'
+				}
+			},
+			iconBox: {
+				display: 'grid',
+				h: '1.75rem',
+				w: '1.75rem',
+				flexShrink: 0,
+				placeItems: 'center',
+				color: 'scrapscache.textMuted',
+				'&[data-state=checked]': {
+					color: 'scrapscache.accent'
+				}
+			},
+			icon: {
+				w: '1rem',
+				h: '1rem'
+			},
+			label: {
+				minW: 0,
+				flex: '1',
+				overflow: 'hidden',
+				textOverflow: 'ellipsis',
+				whiteSpace: 'nowrap'
+			},
+			checkIndicator: {
+				flexShrink: 0,
+				color: 'scrapscache.accent'
+			},
+			heading: {
+				minW: 0,
+				flex: '1',
+				fontSize: '11px',
+				fontWeight: '600',
+				textTransform: 'uppercase',
+				letterSpacing: '0.14em',
+				color: 'scrapscache.textMuted'
+			},
+			searchWrap: { position: 'relative', mb: '0.25rem' },
+			scroller: { scrollbarWidth: 'thin' },
+			searchIcon: {
+				pointerEvents: 'none',
+				position: 'absolute',
+				left: '0.75rem',
+				top: '50%',
+				h: '1rem',
+				w: '1rem',
+				transform: 'translateY(-50%)',
+				color: 'scrapscache.textMuted'
+			},
+			searchInput: { w: 'full', pl: '2.25rem', _placeholder: { color: 'scrapscache.textMuted' } },
+			createRow: { color: 'scrapscache.accent' },
+			empty: {
+				px: '0.75rem',
+				py: '1rem',
+				textAlign: 'center',
+				fontSize: 'xs',
+				color: 'scrapscache.textMuted'
+			}
+		}
+	});
+	const item = itemSva();
 </script>
 
 <div
 	use:labelMenuInteractions
-	class="scrapscache-popover flex w-[min(20rem,calc(100vw-2rem))] flex-col p-2"
+	class={`${popover()} ${vstack({ p: '0.5rem', w: 'min(20rem, calc(100vw - 2rem))', gap: '0', alignItems: 'stretch' })}`}
 >
-	<div class="mb-1 flex h-8 items-center gap-2 pl-3 pr-1">
-		<span
-			class="min-w-0 flex-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--scrapscache-text-muted)]"
-			>Labels</span
-		>
-		<button
-			type="button"
-			onclick={onClose}
-			class="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-[var(--scrapscache-text-muted)] transition-colors hover:bg-[var(--scrapscache-interactive-hover)] hover:text-[var(--scrapscache-text)]"
-		>
+	<div
+		class={hstack({
+			h: '2rem',
+			pl: '0.75rem',
+			pr: '0.25rem',
+			mb: '0.25rem',
+			justify: 'space-between'
+		})}
+	>
+		<span class={item.heading}> Labels </span>
+		<button type="button" onclick={onClose} class={button({ variant: 'ghost', size: 'xs' })}>
 			Done
 		</button>
 	</div>
 
-	<div class="relative mb-1">
-		<Search
-			class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--scrapscache-text-muted)]"
-			strokeWidth={1.75}
-			aria-hidden="true"
-		/>
+	<div class={item.searchWrap}>
+		<Search class={item.searchIcon} strokeWidth={1.75} aria-hidden="true" />
 		<input
 			bind:this={queryInput}
 			type="text"
 			bind:value={query}
 			placeholder="Search or create a label…"
 			onkeydown={onQueryKeydown}
-			class="scrapscache-input w-full rounded-xl py-2 pl-9 pr-3 text-sm placeholder:text-[var(--scrapscache-text-muted)]"
+			class={cx(input({ variant: 'outline', size: 'md' }), item.searchInput)}
 		/>
 	</div>
 
 	<div
-		class="flex max-h-64 flex-col gap-0.5 overflow-y-auto sidebar-scroll"
+		class={[
+			vstack({ gap: '0.125rem', maxH: '16rem', overflowY: 'auto', alignItems: 'stretch' }),
+			item.scroller
+		]}
 		style:min-height={listMinHeight}
 	>
 		{#if canCreate}
@@ -134,12 +233,12 @@
 				type="button"
 				onclick={createAndAssign}
 				aria-label="Create label"
-				class="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-[var(--scrapscache-accent)] transition-colors hover:bg-[var(--scrapscache-interactive-hover)]"
+				class={cx(item.row, item.createRow)}
 			>
-				<span class="grid h-7 w-7 shrink-0 place-items-center" aria-hidden="true">
-					<Plus class="h-4 w-4" strokeWidth={1.75} />
+				<span class={item.iconBox} aria-hidden="true">
+					<Plus class={item.icon} strokeWidth={1.75} />
 				</span>
-				<span class="min-w-0 flex-1 truncate">Create “{trimmed}”</span>
+				<span class={item.label}>Create “{trimmed}”</span>
 			</button>
 		{/if}
 
@@ -152,21 +251,19 @@
 						const on = details.checked === true;
 						if (on !== note.labels.includes(label.id)) toggle(label.id);
 					}}
-					class="flex w-full cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-[var(--scrapscache-text)] transition-colors hover:bg-[var(--scrapscache-interactive-hover)]"
+					class={item.row}
 				>
-					<Checkbox.Control
-						class="grid h-7 w-7 shrink-0 place-items-center text-[var(--scrapscache-text-muted)] data-[state=checked]:text-[var(--scrapscache-accent)]"
-					>
+					<Checkbox.Control class={item.iconBox}>
 						<Tag
-							class="h-4 w-4"
+							class={item.icon}
 							strokeWidth={1.75}
 							fill={checked ? 'currentColor' : 'none'}
 							aria-hidden="true"
 						/>
 					</Checkbox.Control>
-					<Checkbox.Label class="min-w-0 flex-1 truncate">{label.name}</Checkbox.Label>
-					<Checkbox.Indicator class="shrink-0 text-[var(--scrapscache-accent)]">
-						<Check class="h-4 w-4" strokeWidth={2.25} aria-hidden="true" />
+					<Checkbox.Label class={item.label}>{label.name}</Checkbox.Label>
+					<Checkbox.Indicator class={item.checkIndicator}>
+						<Check class={item.icon} strokeWidth={2.25} aria-hidden="true" />
 					</Checkbox.Indicator>
 					<Checkbox.HiddenInput />
 				</Checkbox.Root>
@@ -174,9 +271,7 @@
 		{/each}
 
 		{#if matches.length === 0 && !canCreate}
-			<p class="px-3 py-4 text-center text-xs text-[var(--scrapscache-text-muted)]">
-				No labels yet. Type a name to create one.
-			</p>
+			<p class={item.empty}>No labels yet. Type a name to create one.</p>
 		{/if}
 	</div>
 </div>

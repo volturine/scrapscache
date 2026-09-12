@@ -5,6 +5,7 @@
 	import { registerReminderDevice } from '$lib/reminderWake';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { reminderStore } from '$lib/stores/reminders.svelte';
+	import { cva, sva } from 'styled-system/css';
 
 	let permission = $state(notificationPermission());
 
@@ -25,33 +26,85 @@
 		if (permission !== 'granted') return;
 		if (await registerReminderDevice()) reminderStore.publish(notesStore.notes);
 	}
+
+	const row = cva({
+		base: {
+			display: 'flex',
+			h: '2rem',
+			alignItems: 'center',
+			gap: '0.625rem',
+			px: '0.75rem'
+		},
+		variants: {
+			interactive: {
+				true: {
+					w: 'full',
+					textAlign: 'left',
+					cursor: 'pointer',
+					_hoverable: {
+						bg: 'scrapscache.interactiveHover'
+					}
+				}
+			}
+		}
+	});
+
+	const settingsSva = sva({
+		slots: ['section', 'icon', 'label', 'status', 'chevron'],
+		base: {
+			section: {
+				borderTopWidth: '1px',
+				borderColor: 'scrapscache.border'
+			},
+			icon: {
+				w: '1rem',
+				h: '1rem',
+				flexShrink: 0,
+				color: 'scrapscache.text'
+			},
+			label: {
+				minW: 0,
+				flex: '1',
+				fontSize: 'sm',
+				fontWeight: 'medium',
+				color: 'scrapscache.text'
+			},
+			status: {
+				flexShrink: 0,
+				fontSize: 'xs',
+				fontWeight: 'medium',
+				color: 'scrapscache.textMuted'
+			},
+			chevron: {
+				w: '1rem',
+				h: '1rem',
+				flexShrink: 0,
+				color: 'scrapscache.textMuted'
+			}
+		}
+	});
+
+	const s = settingsSva();
 </script>
 
-<section class="border-t border-[var(--scrapscache-border)]" aria-label="Notifications">
+<section class={s.section} aria-label="Notifications">
 	{#if permission === 'default'}
 		<button
 			type="button"
 			onclick={() => void enable()}
-			class="flex h-8 w-full items-center gap-2.5 px-3 text-left hover:bg-black/5 dark:hover:bg-white/10"
+			class={row({ interactive: true })}
 			aria-label="Turn on notifications"
 		>
-			<Bell class="h-4 w-4 shrink-0 text-[var(--scrapscache-text)]" aria-hidden="true" />
-			<span class="min-w-0 flex-1 text-sm font-medium text-[var(--scrapscache-text)]"
-				>Notifications</span
-			>
-			<span class="shrink-0 text-xs font-medium text-[var(--scrapscache-text-muted)]">Not set</span>
-			<ChevronRight
-				class="h-4 w-4 shrink-0 text-[var(--scrapscache-text-muted)]"
-				aria-hidden="true"
-			/>
+			<Bell class={s.icon} aria-hidden="true" />
+			<span class={s.label}>Notifications</span>
+			<span class={s.status}>Not set</span>
+			<ChevronRight class={s.chevron} aria-hidden="true" />
 		</button>
 	{:else}
-		<div class="flex h-8 items-center gap-2.5 px-3">
-			<Bell class="h-4 w-4 shrink-0 text-[var(--scrapscache-text)]" aria-hidden="true" />
-			<span class="min-w-0 flex-1 text-sm font-medium text-[var(--scrapscache-text)]"
-				>Notifications</span
-			>
-			<span class="shrink-0 text-xs font-medium text-[var(--scrapscache-text-muted)]">
+		<div class={row()}>
+			<Bell class={s.icon} aria-hidden="true" />
+			<span class={s.label}>Notifications</span>
+			<span class={s.status}>
 				{permission === 'granted'
 					? 'Enabled'
 					: permission === 'denied'

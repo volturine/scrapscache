@@ -9,6 +9,9 @@
 	import { ensurePushSubscription } from '$lib/reminderWake';
 	import { formatReminderCountdown } from '$lib/utils';
 	import { PHONE_MEDIA } from '$lib/appViewport';
+	import { cx, cva, sva } from 'styled-system/css';
+	import { badge, button, dialog, iconButton, status } from 'styled-system/recipes';
+	import { hstack, flex } from 'styled-system/patterns';
 
 	let {
 		reminder,
@@ -162,111 +165,224 @@
 	function clear() {
 		apply(null);
 	}
+
+	const d = dialog({ size: 'sm' });
+	const picker = sva({
+		slots: [
+			'panel',
+			'title',
+			'statusBox',
+			'statusLabel',
+			'alarmIcon',
+			'remaining',
+			'hint',
+			'divider',
+			'sectionLabel',
+			'calNavButton',
+			'ellipsis',
+			'wheelDeck',
+			'desktopCalendar',
+			'dayWheel',
+			'monthWheel',
+			'yearWheel',
+			'timeWheel',
+			'colon',
+			'footer',
+			'removeButton',
+			'secondaryButton',
+			'primaryButton'
+		],
+		base: {
+			panel: { w: '20rem', p: '1.25rem', gap: 0 },
+			title: { mb: '0.75rem', fontSize: 'base', fontWeight: 'medium', lineHeight: 'normal' },
+			statusBox: { mb: '1rem', rounded: 'lg', px: '0.75rem', py: '0.625rem' },
+			statusLabel: {
+				minW: 0,
+				fontSize: '10px',
+				fontWeight: '600',
+				textTransform: 'uppercase',
+				letterSpacing: '0.05em',
+				color: 'scrapscache.textMuted'
+			},
+			alarmIcon: { w: '1rem', h: '1rem', flexShrink: 0 },
+			remaining: { minW: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+			hint: { mt: '0.25rem', fontSize: '11px', lineHeight: 'snug', color: 'scrapscache.textMuted' },
+			divider: { mb: '1rem', borderTopWidth: '1px', borderColor: 'scrapscache.border', pt: '1rem' },
+			sectionLabel: {
+				mb: '0.75rem',
+				fontSize: 'xs',
+				fontWeight: 'medium',
+				textTransform: 'uppercase',
+				letterSpacing: '0.05em',
+				color: 'scrapscache.textMuted'
+			},
+			calNavButton: { flexShrink: 0, color: 'inherit' },
+			ellipsis: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+			wheelDeck: { rounded: 'xl', bg: 'scrapscache.surfaceSubtle', px: '0.5rem', py: '0.25rem' },
+			desktopCalendar: { h: 'full', overflow: 'hidden', py: '0.5rem' },
+			dayWheel: { w: '3rem' },
+			monthWheel: { w: '7.75rem' },
+			yearWheel: { w: '4.5rem' },
+			timeWheel: { w: '4rem' },
+			colon: {
+				display: 'flex',
+				w: '0.75rem',
+				flexShrink: 0,
+				alignItems: 'center',
+				justifyContent: 'center',
+				fontSize: 'xl',
+				fontWeight: '600',
+				color: 'scrapscache.text'
+			},
+			footer: {
+				gap: '0.5rem',
+				borderTopWidth: '1px',
+				borderColor: 'scrapscache.border',
+				pt: '1rem'
+			},
+			removeButton: { flexShrink: 0 },
+			secondaryButton: { minW: '5.5rem' },
+			primaryButton: { minW: '5.5rem', ml: 'auto' }
+		}
+	});
+	const pickerStyles = picker();
+
+	const badgeChip = cva({
+		base: {
+			minW: '4.25rem',
+			flexShrink: 0,
+			rounded: 'full',
+			px: '0.5rem',
+			py: '0.125rem',
+			fontWeight: 'bold',
+			textTransform: 'uppercase',
+			letterSpacing: '0.05em'
+		},
+		variants: {
+			status: {
+				active: { bg: 'scrapscache.success', color: 'scrapscache.successForeground' },
+				edit: { bg: 'scrapscache.warning', color: 'scrapscache.bg' },
+				new: { bg: 'scrapscache.accent', color: 'scrapscache.accentForeground' }
+			}
+		}
+	});
+
+	const statusBoxClass = $derived(
+		uiStatus === 'active'
+			? status({ tone: 'success' })
+			: uiStatus === 'unsaved'
+				? status({ tone: 'warning' })
+				: status({ tone: 'accent' })
+	);
+	const badgeLabel = $derived(
+		uiStatus === 'active' ? 'Active' : uiStatus === 'unsaved' ? 'Edit' : 'New'
+	);
+
+	const dateBtn = cva({
+		base: {
+			mx: '0.25rem',
+			display: 'flex',
+			minW: 0,
+			flex: '1',
+			alignItems: 'center',
+			justifyContent: 'center',
+			rounded: 'lg',
+			px: '0.5rem',
+			py: '0.375rem',
+			fontSize: 'sm',
+			fontWeight: 'medium',
+			color: 'scrapscache.text',
+			cursor: 'pointer'
+		},
+		variants: {
+			active: {
+				true: { bg: 'scrapscache.bg' },
+				false: {}
+			}
+		},
+		defaultVariants: { active: false }
+	});
+
+	const calNavBtn = cx(
+		iconButton({ variant: 'ghost', size: 'compact' }),
+		pickerStyles.calNavButton
+	);
 </script>
 
-<div class="scrapscache-dialog w-80 p-5">
-	<div class="mb-3 text-base font-medium text-[var(--scrapscache-text)]">Reminder</div>
+<div class={cx(d.panel, pickerStyles.panel)}>
+	<div class={cx(d.title, pickerStyles.title)}>Reminder</div>
 
-	<div
-		class="mb-4 rounded-[var(--scrapscache-radius-lg)] px-3 py-2.5 {uiStatus === 'active'
-			? 'scrapscache-status-success'
-			: uiStatus === 'unsaved'
-				? 'scrapscache-status-warning'
-				: 'scrapscache-status-accent'}"
-	>
-		<div class="flex items-center justify-between gap-2">
-			<div
-				class="min-w-0 text-[10px] font-semibold uppercase tracking-wide text-[var(--scrapscache-text-muted)]"
+	<div class={cx(statusBoxClass, pickerStyles.statusBox)}>
+		<div class={hstack({ justify: 'space-between', gap: '0.5rem' })}>
+			<div class={pickerStyles.statusLabel}>Will remind you</div>
+			<span
+				class={cx(
+					badge({ variant: 'subtle', size: 'sm' }),
+					badgeChip({ status: uiStatus === 'unsaved' ? 'edit' : uiStatus })
+				)}>{badgeLabel}</span
 			>
-				Will remind you
-			</div>
-			{#if uiStatus === 'active'}
-				<span
-					class="inline-flex min-w-[4.25rem] shrink-0 justify-center rounded-full bg-[var(--scrapscache-success)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--scrapscache-success-foreground)]"
-					>Active</span
-				>
-			{:else if uiStatus === 'unsaved'}
-				<span
-					class="inline-flex min-w-[4.25rem] shrink-0 justify-center rounded-full bg-[var(--scrapscache-warning)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--scrapscache-bg)]"
-					>Edit</span
-				>
-			{:else}
-				<span
-					class="inline-flex min-w-[4.25rem] shrink-0 justify-center rounded-full bg-[var(--scrapscache-accent)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--scrapscache-accent-foreground)]"
-					>New</span
-				>
-			{/if}
 		</div>
 		<div
-			class="mt-1.5 flex items-center gap-2 text-sm font-semibold text-[var(--scrapscache-text)]"
+			class={hstack({
+				gap: '0.5rem',
+				mt: '0.375rem',
+				fontSize: 'sm',
+				fontWeight: '600',
+				color: 'scrapscache.text'
+			})}
 		>
-			<AlarmClock class="h-4 w-4 shrink-0" aria-hidden="true" />
-			<span class="min-w-0 truncate">{remainingLabel}</span>
+			<AlarmClock class={pickerStyles.alarmIcon} aria-hidden="true" />
+			<span class={pickerStyles.remaining}>{remainingLabel}</span>
 		</div>
-		<div class="mt-1 text-[11px] leading-snug text-[var(--scrapscache-text-muted)]">
-			Closed-app alerts need Sync on this device.
-		</div>
+		<div class={pickerStyles.hint}>Closed-app alerts need Sync on this device.</div>
 	</div>
 
-	<div class="mb-4 border-t border-[var(--scrapscache-border)] pt-4">
-		<div
-			class="mb-3 text-xs font-medium uppercase tracking-wide text-[var(--scrapscache-text-muted)]"
-		>
-			Pick date & time
-		</div>
+	<div class={pickerStyles.divider}>
+		<div class={pickerStyles.sectionLabel}>Pick date & time</div>
 
-		<div class="schedule-panel">
+		<div data-schedule-panel>
 			{#if isMobile}
-				<div class="mb-3 flex items-center">
+				<div class={hstack({ mb: '0.75rem' })}>
 					<button
 						type="button"
-						class="icon-btn h-8 w-8 shrink-0 p-2"
+						class={calNavBtn}
 						onclick={() => shiftDay(-1)}
 						aria-label="Previous day"
 					>
-						<ChevronLeft class="h-5 w-5" aria-hidden="true" />
+						<ChevronLeft size={20} aria-hidden="true" />
 					</button>
 					<button
 						type="button"
-						class="mx-1 flex min-w-0 flex-1 items-center justify-center rounded-lg px-2 py-1.5 text-sm font-medium text-[var(--scrapscache-text)] {monthYearOpen
-							? 'bg-[var(--scrapscache-bg)]'
-							: ''}"
+						class={dateBtn({ active: monthYearOpen })}
 						onclick={() => (monthYearOpen = !monthYearOpen)}
 						aria-label="Choose date"
 						aria-expanded={monthYearOpen}
 					>
-						<span class="truncate">{dateLabel}</span>
+						<span class={pickerStyles.ellipsis}>{dateLabel}</span>
 					</button>
-					<button
-						type="button"
-						class="icon-btn h-8 w-8 shrink-0 p-2"
-						onclick={() => shiftDay(1)}
-						aria-label="Next day"
-					>
-						<ChevronRight class="h-5 w-5" aria-hidden="true" />
+					<button type="button" class={calNavBtn} onclick={() => shiftDay(1)} aria-label="Next day">
+						<ChevronRight size={20} aria-hidden="true" />
 					</button>
 				</div>
 
 				{#if monthYearOpen}
-					<div
-						class="flex justify-center gap-2 rounded-xl bg-black/[0.03] px-2 py-1 dark:bg-white/[0.04]"
-					>
+					<div class={cx(hstack({ justify: 'center', gap: '0.5rem' }), pickerStyles.wheelDeck)}>
 						<WheelPicker
-							class="w-12"
+							class={pickerStyles.dayWheel}
 							items={dayItems}
 							value={selectedDay}
 							onChange={(day) => setDateParts({ day })}
 							ariaLabel="Day"
 						/>
 						<WheelPicker
-							class="w-[7.75rem]"
+							class={pickerStyles.monthWheel}
 							items={MONTH_ITEMS}
 							value={selectedMonth}
 							onChange={(month) => setDateParts({ month })}
 							ariaLabel="Month"
 						/>
 						<WheelPicker
-							class="w-[4.5rem]"
+							class={pickerStyles.yearWheel}
 							items={yearItems}
 							value={selectedYear}
 							onChange={(year) => setDateParts({ year })}
@@ -274,24 +390,17 @@
 						/>
 					</div>
 				{:else}
-					<div
-						class="flex justify-center gap-1 rounded-xl bg-black/[0.03] px-2 py-1 dark:bg-white/[0.04]"
-					>
+					<div class={cx(hstack({ justify: 'center', gap: '0.25rem' }), pickerStyles.wheelDeck)}>
 						<WheelPicker
-							class="w-16"
+							class={pickerStyles.timeWheel}
 							items={HOUR_ITEMS}
 							value={hours24}
 							onChange={setHour}
 							ariaLabel="Hour"
 						/>
-						<div
-							class="flex w-3 shrink-0 items-center justify-center text-xl font-semibold text-[var(--scrapscache-text)]"
-							aria-hidden="true"
-						>
-							:
-						</div>
+						<div class={pickerStyles.colon} aria-hidden="true">:</div>
 						<WheelPicker
-							class="w-16"
+							class={pickerStyles.timeWheel}
 							items={MINUTE_ITEMS}
 							value={minutes}
 							onChange={setMinute}
@@ -300,9 +409,7 @@
 					</div>
 				{/if}
 			{:else if monthYearOpen}
-				<div
-					class="h-full overflow-hidden rounded-xl bg-black/[0.03] px-2 py-2 dark:bg-white/[0.04]"
-				>
+				<div class={cx(pickerStyles.wheelDeck, pickerStyles.desktopCalendar)}>
 					<DatePicker.Root
 						inline
 						startOfWeek={1}
@@ -314,52 +421,56 @@
 					</DatePicker.Root>
 				</div>
 			{:else}
-				<div class="flex h-full flex-col">
-					<div class="mb-3 flex items-center">
+				<div class={flex({ h: 'full', direction: 'column' })}>
+					<div class={hstack({ mb: '0.75rem' })}>
 						<button
 							type="button"
-							class="icon-btn h-8 w-8 shrink-0 p-2"
+							class={calNavBtn}
 							onclick={() => shiftDay(-1)}
 							aria-label="Previous day"
 						>
-							<ChevronLeft class="h-5 w-5" aria-hidden="true" />
+							<ChevronLeft size={20} aria-hidden="true" />
 						</button>
 						<button
 							type="button"
-							class="mx-1 flex min-w-0 flex-1 items-center justify-center rounded-lg px-2 py-1.5 text-sm font-medium text-[var(--scrapscache-text)]"
+							class={dateBtn()}
 							onclick={() => (monthYearOpen = true)}
 							aria-label="Choose date"
 							aria-expanded="false"
 						>
-							<span class="truncate">{dateLabel}</span>
+							<span class={pickerStyles.ellipsis}>{dateLabel}</span>
 						</button>
 						<button
 							type="button"
-							class="icon-btn h-8 w-8 shrink-0 p-2"
+							class={calNavBtn}
 							onclick={() => shiftDay(1)}
 							aria-label="Next day"
 						>
-							<ChevronRight class="h-5 w-5" aria-hidden="true" />
+							<ChevronRight size={20} aria-hidden="true" />
 						</button>
 					</div>
 					<div
-						class="flex min-h-0 flex-1 items-center justify-center gap-1 rounded-xl bg-black/[0.03] px-2 py-1 dark:bg-white/[0.04]"
+						class={cx(
+							flex({
+								minH: 0,
+								flex: '1',
+								align: 'center',
+								justify: 'center',
+								gap: '0.25rem'
+							}),
+							pickerStyles.wheelDeck
+						)}
 					>
 						<WheelPicker
-							class="w-16"
+							class={pickerStyles.timeWheel}
 							items={HOUR_ITEMS}
 							value={hours24}
 							onChange={setHour}
 							ariaLabel="Hour"
 						/>
-						<div
-							class="flex w-3 shrink-0 items-center justify-center text-xl font-semibold text-[var(--scrapscache-text)]"
-							aria-hidden="true"
-						>
-							:
-						</div>
+						<div class={pickerStyles.colon} aria-hidden="true">:</div>
 						<WheelPicker
-							class="w-16"
+							class={pickerStyles.timeWheel}
 							items={MINUTE_ITEMS}
 							value={minutes}
 							onChange={setMinute}
@@ -371,12 +482,12 @@
 		</div>
 	</div>
 
-	<div class="flex items-center gap-2 border-t border-[var(--scrapscache-border)] pt-4">
+	<div class={cx(hstack(), pickerStyles.footer)}>
 		{#if showRemove}
 			<button
 				type="button"
 				onclick={clear}
-				class="scrapscache-button scrapscache-button-quiet shrink-0 px-3 py-2.5 text-sm font-medium"
+				class={cx(button({ variant: 'quiet', size: 'md' }), pickerStyles.removeButton)}
 			>
 				Remove
 			</button>
@@ -384,7 +495,7 @@
 		<button
 			type="button"
 			onclick={onClose}
-			class="scrapscache-button scrapscache-button-secondary min-w-[5.5rem] px-4 py-2.5 text-sm font-medium"
+			class={cx(button({ variant: 'secondary', size: 'md' }), pickerStyles.secondaryButton)}
 		>
 			Cancel
 		</button>
@@ -392,21 +503,10 @@
 			<button
 				type="button"
 				onclick={save}
-				class="scrapscache-button scrapscache-button-primary ml-auto min-w-[5.5rem] px-4 py-2.5 text-sm font-medium"
+				class={cx(button({ variant: 'primary', size: 'md' }), pickerStyles.primaryButton)}
 			>
 				Save
 			</button>
 		{/if}
 	</div>
 </div>
-
-<style>
-	.schedule-panel {
-		height: 17.25rem;
-	}
-	@media (max-width: 767px) {
-		.schedule-panel {
-			height: auto;
-		}
-	}
-</style>

@@ -23,6 +23,15 @@
 	import { flip, type FlipParams } from 'svelte/animate';
 	import { onDestroy } from 'svelte';
 	import type { Note } from '$lib/types';
+	import { cx } from 'styled-system/css';
+	import { backlogFilterButton, kanbanView } from './kanbanViewStyles';
+	import {
+		button,
+		iconButton,
+		input as inputRecipe,
+		popover,
+		viewPage
+	} from 'styled-system/recipes';
 
 	const { openNote } = useEditorActions();
 	const board = $derived(kanbanStore.activeBoard);
@@ -204,29 +213,28 @@
 		if (target.columnId !== sourceColumnId) moveNote(noteId, sourceColumnId, target.columnId);
 		kanbanStore.placeCard(board.id, noteId, sourceColumnId, target.columnId, order);
 	}
+
+	const k = kanbanView();
 </script>
 
-<div class="pt-4 pb-8">
-	<div class="mb-4 flex flex-wrap items-center gap-2">
-		<div class="relative min-w-0 max-w-full">
+<div class={viewPage()}>
+	<div class={k.controls}>
+		<div class={k.selectWrap}>
 			<select
 				aria-label="Kanban board"
 				value={board.id}
 				onchange={(event) => selectBoard((event.currentTarget as HTMLSelectElement).value)}
-				class="min-w-0 max-w-full appearance-none rounded-xl border border-[var(--scrapscache-border)] bg-[var(--scrapscache-surface)] py-2 pl-3 pr-8 text-sm font-semibold text-[var(--scrapscache-text)] outline-none"
+				class={k.select}
 			>
 				{#each kanbanStore.boards as choice (choice.id)}
 					<option value={choice.id}>{choice.name}</option>
 				{/each}
 			</select>
-			<ChevronDown
-				class="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--scrapscache-text-muted)]"
-				aria-hidden="true"
-			/>
+			<ChevronDown class={k.selectChevron} aria-hidden="true" />
 		</div>
 		<button
 			type="button"
-			class="rounded-xl px-3 py-2 text-sm font-medium text-[var(--scrapscache-text-muted)] transition-colors hover:bg-black/5 hover:text-[var(--scrapscache-text)] dark:hover:bg-white/10"
+			class={button({ variant: 'ghost', size: 'sm' })}
 			onclick={() => {
 				backlogFilterOpen = false;
 				tagPickerOpen = false;
@@ -238,7 +246,7 @@
 		</button>
 		<button
 			type="button"
-			class="rounded-xl px-3 py-2 text-sm font-medium text-[var(--scrapscache-text-muted)] transition-colors hover:bg-black/5 hover:text-[var(--scrapscache-text)] dark:hover:bg-white/10"
+			class={button({ variant: 'ghost', size: 'sm' })}
 			onclick={() => {
 				boardName = board.name;
 				renamingBoard = !renamingBoard;
@@ -249,7 +257,7 @@
 		</button>
 		<button
 			type="button"
-			class="rounded-xl px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-500/10 dark:text-red-400 dark:hover:bg-red-500/15"
+			class={button({ variant: 'danger', size: 'sm' })}
 			onclick={deleteActiveBoard}
 			aria-label={`Delete board ${board.name}`}
 		>
@@ -258,7 +266,7 @@
 	</div>
 
 	{#if renamingBoard}
-		<div class="mb-4 flex max-w-md gap-2">
+		<div class={k.renameRow}>
 			<input
 				bind:value={boardName}
 				aria-label="Board name"
@@ -266,40 +274,38 @@
 					if (event.key === 'Enter') commitBoardName();
 					if (event.key === 'Escape') renamingBoard = false;
 				}}
-				class="min-w-0 flex-1 rounded-xl border border-[var(--scrapscache-border)] bg-[var(--scrapscache-surface)] px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-400/40"
+				class={inputRecipe({ variant: 'outline', size: 'md' })}
 			/>
 			<button
 				type="button"
 				onclick={commitBoardName}
-				class="rounded-xl bg-black/[0.06] px-3 py-2 text-sm font-medium text-[var(--scrapscache-text)] hover:bg-black/10 dark:bg-white/10 dark:hover:bg-white/15"
+				class={button({ variant: 'subtle', size: 'sm' })}
 			>
 				Save
 			</button>
 		</div>
 	{/if}
 
-	<div class="kanban-columns -mx-4 overflow-x-auto px-4 pb-4">
-		<div class="flex min-w-max items-start gap-3">
+	<div class={['kanban-columns', k.columnsContainer]}>
+		<div class={k.columnsTrack}>
 			{#each board.columns as column (column.id)}
 				{@const items = columnItems(column)}
 				<section
 					data-kanban-column={column.id}
-					class="w-[min(calc(var(--note-card-width)+1.5rem),calc(100vw-2rem))] shrink-0 rounded-2xl bg-black/[0.035] p-3 dark:bg-white/[0.055]"
-					class:kanban-column-target={kanbanDrag.target?.columnId === column.id}
+					class={[k.column, kanbanDrag.target?.columnId === column.id && k.columnTarget]}
 					aria-label={`${columnName(column)} ${column.labelId === null ? 'Kanban' : 'label'} column`}
 				>
-					<div class="mb-2 flex items-center gap-2 px-1 pt-1">
-						<h2
-							class="min-w-0 flex-1 truncate text-sm font-semibold text-[var(--scrapscache-text)]"
-						>
+					<div class={k.colHeader}>
+						<h2 class={k.colTitle}>
 							{columnName(column)}
 						</h2>
 						{#if column.labelId === null}
 							<button
 								type="button"
-								class="grid h-7 min-w-7 place-items-center rounded-lg px-1.5 text-xs font-medium transition-colors {backlogFilterActive
-									? 'bg-blue-500/15 text-blue-700 dark:text-blue-300'
-									: 'text-[var(--scrapscache-text-muted)] hover:bg-black/5 hover:text-[var(--scrapscache-text)] dark:hover:bg-white/10'}"
+								class={cx(
+									button({ variant: 'ghost', size: 'xs' }),
+									backlogFilterButton({ active: backlogFilterActive })
+								)}
 								onclick={() => (backlogFilterOpen = !backlogFilterOpen)}
 								aria-expanded={backlogFilterOpen}
 								aria-label="Backlog filter"
@@ -311,98 +317,75 @@
 							<button
 								type="button"
 								onclick={() => kanbanStore.removeTagColumn(board.id, column.id)}
-								class="grid h-7 w-7 place-items-center rounded-lg text-[var(--scrapscache-text-muted)] hover:bg-red-500/10 hover:text-red-600 dark:hover:text-red-400"
+								class={iconButton({ variant: 'danger', size: 'xs' })}
 								aria-label={`Remove ${columnName(column)} label column`}
 								title="Remove label column"
 							>
-								<X class="h-3.5 w-3.5" aria-hidden="true" />
+								<X size={14} aria-hidden="true" />
 							</button>
 						{/if}
 					</div>
 
 					{#if column.labelId === null && backlogFilterOpen}
-						<div
-							class="mb-2 space-y-2 rounded-xl border border-black/10 bg-[var(--scrapscache-surface)] p-2 text-xs dark:border-white/10"
-							role="group"
-							aria-label="Backlog filter options"
-						>
-							<p class="text-[11px] leading-snug text-[var(--scrapscache-text-muted)]">
+						<div class={k.backlogGroup} role="group" aria-label="Backlog filter options">
+							<p class={k.explain}>
 								Choose which notes show in Backlog. Notes already in a label column are never listed
 								here.
 							</p>
-							<label
-								class="flex cursor-pointer items-start gap-2 rounded-lg px-1 py-1 hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
-							>
+							<label class={k.radioOption}>
 								<input
 									type="radio"
 									name="backlog-mode-{board.id}"
 									checked={backlogFilter.mode === BacklogFilterMode.AllNonColumn}
 									onchange={() => setBacklogMode(BacklogFilterMode.AllNonColumn)}
-									class="mt-0.5"
+									class={k.radioInput}
 								/>
 								<span>
-									<span class="font-medium text-[var(--scrapscache-text)]"
-										>All non-column notes</span
-									>
-									<span class="mt-0.5 block text-[var(--scrapscache-text-muted)]"
-										>Default: everything not in a label column</span
-									>
+									<span class={k.radioTitle}>All non-column notes</span>
+									<span class={k.radioSubtitle}> Default: everything not in a label column </span>
 								</span>
 							</label>
-							<label
-								class="flex cursor-pointer items-start gap-2 rounded-lg px-1 py-1 hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
-							>
+							<label class={k.radioOption}>
 								<input
 									type="radio"
 									name="backlog-mode-{board.id}"
 									checked={backlogFilter.mode === BacklogFilterMode.Custom}
 									onchange={() => setBacklogMode(BacklogFilterMode.Custom)}
-									class="mt-0.5"
+									class={k.radioInput}
 								/>
-								<span class="font-medium text-[var(--scrapscache-text)]">Only selected…</span>
+								<span class={k.radioTitle}>Only selected…</span>
 							</label>
 
 							{#if backlogFilter.mode === BacklogFilterMode.Custom}
-								<div class="ml-1 space-y-1 border-l-2 border-black/10 pl-2 dark:border-white/10">
+								<div class={k.filterIndent}>
 									<Checkbox.Root
 										checked={backlogFilter.includeUntagged}
 										onCheckedChange={toggleBacklogUntagged}
-										class="flex cursor-pointer items-center gap-2 rounded-lg px-1 py-1 hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+										class={k.checkRow}
 									>
-										<Checkbox.Control
-											class="flex h-4 w-4 items-center justify-center rounded border border-[var(--scrapscache-border)] data-[state=checked]:border-[var(--scrapscache-accent)] data-[state=checked]:bg-[var(--scrapscache-accent)]"
-										>
-											<Checkbox.Indicator
-												class="text-[10px] text-[var(--scrapscache-accent-foreground)]"
-												>✓</Checkbox.Indicator
-											>
+										<Checkbox.Control class={k.checkControl}>
+											<Checkbox.Indicator class={k.checkMark}>✓</Checkbox.Indicator>
 										</Checkbox.Control>
-										<Checkbox.Label class="text-[var(--scrapscache-text)]">No labels</Checkbox.Label
-										>
+										<Checkbox.Label class={k.checkLabel}>No labels</Checkbox.Label>
 										<Checkbox.HiddenInput />
 									</Checkbox.Root>
 									{#each backlogFilterTags as label (label.id)}
 										<Checkbox.Root
 											checked={backlogFilter.labelIds.includes(label.id)}
 											onCheckedChange={() => toggleBacklogLabel(label.id)}
-											class="flex cursor-pointer items-center gap-2 rounded-lg px-1 py-1 hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+											class={k.checkRow}
 										>
-											<Checkbox.Control
-												class="flex h-4 w-4 items-center justify-center rounded border border-[var(--scrapscache-border)] data-[state=checked]:border-[var(--scrapscache-accent)] data-[state=checked]:bg-[var(--scrapscache-accent)]"
-											>
-												<Checkbox.Indicator
-													class="text-[10px] text-[var(--scrapscache-accent-foreground)]"
-													>✓</Checkbox.Indicator
-												>
+											<Checkbox.Control class={k.checkControl}>
+												<Checkbox.Indicator class={k.checkMark}>✓</Checkbox.Indicator>
 											</Checkbox.Control>
-											<Checkbox.Label class="truncate text-[var(--scrapscache-text)]"
-												>{label.name}</Checkbox.Label
-											>
+											<Checkbox.Label class={k.tagLabel}>
+												{label.name}
+											</Checkbox.Label>
 											<Checkbox.HiddenInput />
 										</Checkbox.Root>
 									{/each}
 									{#if backlogFilterTags.length === 0}
-										<p class="px-1 py-1 text-[var(--scrapscache-text-muted)]">
+										<p class={k.emptyTags}>
 											No other labels available. Create labels on notes, or remove a label column
 											first.
 										</p>
@@ -410,17 +393,14 @@
 								</div>
 							{/if}
 
-							<p
-								class="truncate px-1 text-[10px] text-[var(--scrapscache-text-muted)]"
-								title={backlogFilterSummary()}
-							>
+							<p class={k.filterSummary} title={backlogFilterSummary()}>
 								Showing: {backlogFilterSummary()}
 							</p>
 						</div>
 					{/if}
 
 					<!-- Positioned: card offsets are measured against this list while dragging. -->
-					<div class="relative flex flex-col gap-3" data-kanban-list aria-live="polite">
+					<div class={k.cardsList} data-kanban-list aria-live="polite">
 						{#each items as item (item.key)}
 							<!-- Cards and the drop slot share one animated element, so the whole
 							     column glides when the preview moves between slots. -->
@@ -428,7 +408,8 @@
 								data-kanban-card={item.note?.id}
 								data-kanban-carried={item.carried ? '' : undefined}
 								data-kanban-slot={item.note ? undefined : ''}
-								class={item.carried ? 'hidden' : item.note ? undefined : 'kanban-drop-slot'}
+								hidden={item.carried}
+								class={item.note ? undefined : k.dropSlot}
 								style={item.note ? undefined : `height: ${kanbanDrag.height}px`}
 								animate:cardFlip={{ duration: 160 }}
 							>
@@ -444,38 +425,29 @@
 							</div>
 						{/each}
 						{#if items.length === 0}
-							<div
-								class="rounded-xl border border-dashed border-black/10 px-3 py-5 text-center text-xs text-[var(--scrapscache-text-muted)] dark:border-white/10"
-							>
-								Drop a note here
-							</div>
+							<div class={k.emptyDrop}>Drop a note here</div>
 						{/if}
 					</div>
 				</section>
 			{/each}
 
 			{#if unusedTags.length > 0}
-				<div
-					class="relative w-[min(calc(var(--note-card-width)+1.5rem),calc(100vw-2rem))] shrink-0 pt-1"
-				>
+				<div class={k.addColWrap}>
 					<Menu.Root bind:open={tagPickerOpen} positioning={{ placement: 'bottom-start' }}>
 						<Menu.Trigger
-							class="flex w-full items-center justify-between gap-2 rounded-xl border border-dashed border-[var(--scrapscache-border)] bg-transparent px-3 py-2.5 text-left text-sm font-medium text-[var(--scrapscache-text-muted)] outline-none hover:bg-black/[0.035] hover:text-[var(--scrapscache-text)] dark:hover:bg-white/[0.055]"
+							class={button({ variant: 'dashed', size: 'md' })}
 							aria-label="Add a label column"
 						>
 							<span>+ Add label column</span>
-							<ChevronDown class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+							<ChevronDown size={14} aria-hidden="true" />
 						</Menu.Trigger>
-						<Menu.Positioner class="z-20 w-[var(--reference-width)]">
-							<Menu.Content
-								class="scrapscache-popover max-h-64 overflow-y-auto py-1"
-								aria-label="Labels"
-							>
+						<Menu.Positioner class={k.tagPickerPositioner}>
+							<Menu.Content class={cx(popover(), k.tagPickerContent)} aria-label="Labels">
 								{#each unusedTags as label (label.id)}
 									<Menu.Item
 										value={label.id}
 										onSelect={() => addTagColumn(label.id)}
-										class="block w-full truncate px-3 py-2 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/[0.05] dark:hover:bg-white/[0.08]"
+										class={k.menuItem}
 									>
 										{label.name}
 									</Menu.Item>
@@ -494,11 +466,11 @@
 	     the app viewport is a transformed containing block that would shift them. -->
 	<div
 		{@attach portalToBody}
-		class="kanban-drag-ghost"
+		class={k.dragGhost}
 		style="width: {kanbanDrag.width}px; transform: translate3d({kanbanDrag.x}px, {kanbanDrag.y}px, 0);"
 		aria-hidden="true"
 	>
-		<div class="kanban-drag-ghost-card" class:lifted={kanbanDrag.lifted}>
+		<div class={k.dragGhostCard} data-lifted={kanbanDrag.lifted}>
 			<KanbanCardBody note={draggedNote} />
 		</div>
 	</div>

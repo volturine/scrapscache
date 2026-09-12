@@ -48,8 +48,8 @@ describe('Title wrapping and single-line preservation', () => {
 		expect(titleElement.tagName).toBe('TEXTAREA');
 		expect(titleElement.value).toBe('A very long note title that wraps across multiple lines');
 		expect(titleElement.getAttribute('rows')).toBe('1');
-		expect(titleElement.className).toContain('resize-none');
-		expect(titleElement.className).toContain('break-words');
+		expect(titleElement.className).toContain('resize_none');
+		expect(titleElement.className).toContain('wb_break-word');
 	});
 
 	it('moves to note body on Enter and does not insert newlines on Enter or Shift+Enter', async () => {
@@ -116,7 +116,7 @@ describe('Title wrapping and single-line preservation', () => {
 		expect(titleElement.style.height).toBe('72px');
 	});
 
-	it('renders title with break-words in NoteCard for soft wrapping', () => {
+	it('renders NoteCard titles through the shared card title recipe', () => {
 		const testNote = note({ title: 'VeryLongWordWithoutSpacesWrappingProperly' });
 		const { container } = render(NoteCard, {
 			props: { note: testNote, onOpen: () => {} }
@@ -125,11 +125,10 @@ describe('Title wrapping and single-line preservation', () => {
 		const titleEl = container.querySelector('h3');
 		expect(titleEl).not.toBeNull();
 		expect(titleEl?.textContent?.trim()).toBe('VeryLongWordWithoutSpacesWrappingProperly');
-		expect(titleEl?.className).toContain('break-words');
-		expect(titleEl?.className).not.toContain('whitespace-pre-wrap');
+		expect(titleEl?.className).toContain('scrapscache-card__title');
 	});
 
-	it('renders title with break-words in KanbanCard for soft wrapping', () => {
+	it('renders KanbanCard titles through the shared card title recipe', () => {
 		const testNote = note({ title: 'Column Title Soft Wrapping' });
 		const { container } = render(KanbanCard, {
 			props: {
@@ -144,7 +143,6 @@ describe('Title wrapping and single-line preservation', () => {
 		const titleEl = container.querySelector('h3');
 		expect(titleEl).not.toBeNull();
 		expect(titleEl?.textContent?.trim()).toBe('Column Title Soft Wrapping');
-		expect(titleEl?.className).toContain('break-words');
-		expect(titleEl?.className).not.toContain('whitespace-pre-wrap');
+		expect(titleEl?.className).toContain('scrapscache-card__title');
 	});
 });

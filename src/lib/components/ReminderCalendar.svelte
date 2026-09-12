@@ -9,6 +9,9 @@
 	import DatePickerViews from './DatePickerViews.svelte';
 	import type { Note } from '$lib/types';
 	import { dayKey } from '$lib/utils';
+	import { cx, sva } from 'styled-system/css';
+	import { flex, hstack } from 'styled-system/patterns';
+	import { button } from 'styled-system/recipes';
 
 	let {
 		notes,
@@ -92,13 +95,56 @@
 		}
 		selected = { from: key, to: key };
 	}
+
+	const calendar = sva({
+		slots: ['root', 'picker', 'dayDot', 'footerButton', 'status'],
+		base: {
+			root: {
+				w: 'full',
+				userSelect: 'none',
+				rounded: '2xl',
+				borderWidth: '1px',
+				borderColor: 'scrapscache.border',
+				bg: 'scrapscache.surface',
+				px: '0.75rem',
+				py: '0.75rem'
+			},
+			picker: { w: 'full' },
+			dayDot: {
+				position: 'absolute',
+				bottom: '0.25rem',
+				h: '0.25rem',
+				w: '0.25rem',
+				rounded: 'full',
+				bg: 'scrapscache.accent'
+			},
+			footerButton: {
+				h: 'auto',
+				rounded: 'full',
+				px: '0.5rem',
+				py: '0.125rem',
+				fontSize: 'inherit',
+				lineHeight: '1.25rem',
+				_disabled: { opacity: 0.4, pointerEvents: 'none' }
+			},
+			status: {
+				overflow: 'hidden',
+				textOverflow: 'ellipsis',
+				whiteSpace: 'nowrap',
+				flexShrink: 0,
+				px: '0.5rem',
+				lineHeight: '1.25rem',
+				color: 'scrapscache.textMuted'
+			}
+		}
+	});
+	const styles = calendar();
+	const footerBtnClass = cx(button({ variant: 'ghost' }), styles.footerButton);
 </script>
 
-<div
-	class="reminder-calendar w-full select-none rounded-2xl border border-[var(--scrapscache-border)] bg-[var(--scrapscache-surface)] px-3 py-3"
->
+<div class={['reminder-calendar', styles.root]}>
 	<DatePicker.Root
-		class="w-full"
+		class={styles.picker}
 		inline
 		startOfWeek={1}
 		fixedWeeks
@@ -116,27 +162,27 @@
 			{#snippet dayExtra(day)}
 				{@const count = reminderDays.get(day.toString()) ?? 0}
 				{#if count > 0}
-					<span
-						class="reminder-dot absolute bottom-1 h-1 w-1 rounded-full bg-[var(--scrapscache-accent)]"
-					></span>
+					<span class={`reminder-dot ${styles.dayDot}`}></span>
 				{/if}
 			{/snippet}
 		</DatePickerViews>
 	</DatePicker.Root>
 
 	<div
-		class="mt-2 flex items-center justify-between gap-2 border-t border-[var(--scrapscache-border)] pt-3 text-xs"
+		class={hstack({
+			mt: '0.5rem',
+			justify: 'space-between',
+			gap: '0.5rem',
+			borderTopWidth: '1px',
+			borderColor: 'scrapscache.border',
+			pt: '0.75rem',
+			fontSize: 'xs'
+		})}
 	>
-		<div class="flex flex-1 items-center">
-			<button
-				type="button"
-				class="rounded-full px-2 py-0.5 font-medium leading-5 text-[var(--scrapscache-text-muted)] hover:bg-black/5 hover:text-[var(--scrapscache-text)] dark:hover:bg-white/10"
-				onclick={filterToday}
-			>
-				Today
-			</button>
+		<div class={flex({ flex: '1', align: 'center' })}>
+			<button type="button" class={footerBtnClass} onclick={filterToday}> Today </button>
 		</div>
-		<span class="shrink-0 truncate px-2 leading-5 text-[var(--scrapscache-text-muted)]">
+		<span class={styles.status}>
 			{#if pickingEnd}
 				Pick an end day
 			{:else if selected && selected.from !== selected.to}
@@ -145,10 +191,10 @@
 				Day filter active
 			{/if}
 		</span>
-		<div class="flex flex-1 items-center justify-end">
+		<div class={flex({ flex: '1', align: 'center', justify: 'flex-end' })}>
 			<button
 				type="button"
-				class="rounded-full px-2 py-0.5 leading-5 text-[var(--scrapscache-text-muted)] hover:bg-black/5 hover:text-[var(--scrapscache-text)] disabled:pointer-events-none disabled:opacity-40 dark:hover:bg-white/10"
+				class={footerBtnClass}
 				disabled={!selected}
 				onclick={() => (selected = null)}
 			>

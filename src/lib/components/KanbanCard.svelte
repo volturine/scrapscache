@@ -3,6 +3,7 @@
 	import type { Note } from '$lib/types';
 	import { activateOnKeyboard } from '$lib/utils';
 	import KanbanCardBody from './KanbanCardBody.svelte';
+	import { cva } from 'styled-system/css';
 
 	let {
 		note,
@@ -31,13 +32,16 @@
 		if (kanbanDrag.suppressedClick) return;
 		onOpen(note.id);
 	}
+	const cardStyle = cva({
+		base: { cursor: 'grab', rounded: 'xl', _active: { cursor: 'grabbing' } }
+	});
 </script>
 
 <div
 	bind:this={card}
 	role="button"
 	tabindex="0"
-	class="cursor-grab rounded-xl active:cursor-grabbing"
+	class={cardStyle()}
 	onpointerdown={press}
 	ondragstart={(event) => event.preventDefault()}
 	onclick={open}

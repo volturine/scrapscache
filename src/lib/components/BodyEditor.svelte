@@ -12,6 +12,8 @@
 		toggleCheckEntries
 	} from '$lib/checklistBody';
 	import { revealEditorField } from '$lib/editorVisibility';
+	import { cva, sva } from 'styled-system/css';
+	import { checklist } from 'styled-system/recipes';
 
 	const MAX_TASK_INDENT = 1;
 
@@ -1069,15 +1071,113 @@
 	const focusedGroupIds = $derived(new Set(focusedGroupRows.map(({ line }) => line.id)));
 	const focusedGroupLastId = $derived(focusedGroupRows.at(-1)?.line.id ?? null);
 
+	const editorSva = sva({
+		slots: ['container', 'row', 'bullet', 'checkToggle', 'addSubtaskText'],
+		base: {
+			container: {
+				display: 'block',
+				w: 'full',
+				minW: 0,
+				fontSize: 'sm',
+				lineHeight: 'relaxed',
+				color: 'scrapscache.text',
+				outline: 'none'
+			},
+			row: {
+				display: 'flex',
+				minW: 0,
+				flexWrap: 'wrap',
+				alignItems: 'flex-start',
+				columnGap: '0.5rem',
+				py: '0.125rem'
+			},
+			bullet: { flexShrink: 0, userSelect: 'none' },
+			checkToggle: { flexShrink: 0 },
+			addSubtaskText: { '&::before': { content: '"+  Add sub-task"' } }
+		}
+	});
+	const editor = editorSva();
+
+	const lineSpan = cva({
+		base: {
+			display: 'block',
+			minH: '1lh',
+			minW: 0,
+			flex: '1',
+			whiteSpace: 'pre-wrap',
+			wordBreak: 'break-word',
+			outline: 'none',
+			'&[data-placeholder]:empty::before': {
+				content: 'attr(data-placeholder)',
+				color: 'scrapscache.textMuted',
+				pointerEvents: 'none'
+			}
+		},
+		variants: {
+			checked: {
+				true: { textDecoration: 'line-through', opacity: 0.5 },
+				false: {}
+			},
+			indented: {
+				true: { fontSize: '13px' },
+				false: {}
+			}
+		},
+		defaultVariants: { checked: false, indented: false }
+	});
+
+	const taskShell = cva({
+		variants: {
+			focused: {
+				true: { bg: 'scrapscache.surfaceSubtle' },
+				false: {}
+			},
+			root: {
+				true: { mt: '0.125rem', borderTopRadius: 'lg', pt: '0.25rem' },
+				false: {}
+			},
+			last: {
+				true: { mb: '0.125rem', borderBottomRadius: 'lg', pb: '0.25rem' },
+				false: {}
+			}
+		},
+		defaultVariants: { focused: false, root: false, last: false }
+	});
+
+	const addSubtaskBtn = cva({
+		base: {
+			display: 'flex',
+			flexBasis: 'full',
+			userSelect: 'none',
+			alignItems: 'center',
+			rounded: 'sm',
+			py: '0.25rem',
+			textAlign: 'left',
+			fontSize: 'xs',
+			color: 'scrapscache.textMuted',
+			cursor: 'pointer',
+			transition: 'colors 120ms ease',
+			touchAction: 'manipulation',
+			minH: { base: '32px', sm: 0 },
+			_hoverable: {
+				bg: 'scrapscache.interactiveHover',
+				color: 'scrapscache.text'
+			}
+		},
+		variants: {
+			indented: {
+				true: { pl: '0.25rem' },
+				false: { pl: '1.5rem' }
+			}
+		},
+		defaultVariants: { indented: false }
+	});
+
 	function taskShellClass(line: Line): string {
 		if (!focusedGroupIds.has(line.id)) return '';
-		return [
-			'bg-black/[0.035] dark:bg-white/[0.06]',
-			line.id === focusedRootId ? 'mt-0.5 rounded-t-lg pt-1' : '',
-			line.id === focusedGroupLastId ? 'mb-0.5 rounded-b-lg pb-1' : ''
-		]
-			.filter(Boolean)
-			.join(' ');
+		const isRoot = line.id === focusedRootId;
+		const isLast = line.id === focusedGroupLastId;
+		return taskShell({ focused: true, root: isRoot, last: isLast });
 	}
 
 	function rowStyle(line: Line): string | undefined {
@@ -1100,7 +1200,7 @@
 	aria-multiline="true"
 	aria-label="Note body"
 	spellcheck="true"
-	class="block w-full min-w-0 text-sm leading-relaxed text-[var(--scrapscache-text)] outline-none"
+	class={editor.container}
 	onbeforeinput={handleBeforeInput}
 	oninput={handleInput}
 	oncopy={handleCopy}
@@ -1118,15 +1218,14 @@
 	onblur={handleEditorBlur}
 >
 	{#each lines as line, index (line.id)}
+		{@const check = checklist({ checked: line.checked, indented: line.indent > 0 })}
 		<div
 			data-editor-line={index}
 			data-line-id={line.id}
 			data-task-row={line.isCheck ? '' : undefined}
 			data-bullet-row={line.isBullet ? '' : undefined}
 			data-focus-group={line.id === focusedRootId ? '' : undefined}
-			class="flex min-w-0 flex-wrap items-start gap-x-2 py-0.5 {line.isCheck
-				? taskShellClass(line)
-				: ''}"
+			class={`${editor.row} ${line.isCheck ? taskShellClass(line) : ''}`}
 			style={rowStyle(line)}
 		>
 			{#if line.isCheck}
@@ -1134,21 +1233,20 @@
 					type="button"
 					contenteditable="false"
 					data-checklist-toggle
-					class="checklist-toggle shrink-0 {line.indent > 0 ? 'checklist-toggle-sub' : ''}"
-					class:checked={line.checked}
+					class={[check.root, editor.checkToggle]}
 					onpointerdown={keepEditorFocus}
 					onclick={(event) => toggleCheck(index, event)}
 					aria-label={line.indent > 0 ? 'Toggle sub-task' : 'Toggle item'}
 					aria-pressed={line.checked}
 				>
 					{#if line.checked}
-						<svg viewBox="0 0 16 16" class="checklist-toggle-mark" aria-hidden="true">
+						<svg viewBox="0 0 16 16" class={check.mark} aria-hidden="true">
 							<path d="M3.5 8.5 6.5 11.5 12.5 4.5" />
 						</svg>
 					{/if}
 				</button>
 			{:else if line.isBullet}
-				<span contenteditable="false" class="shrink-0 select-none" aria-hidden="true">•</span>
+				<span contenteditable="false" class={editor.bullet} aria-hidden="true">•</span>
 			{/if}
 			<span
 				data-line-text
@@ -1162,9 +1260,7 @@
 							? placeholder
 							: ''
 					: undefined}
-				class="block min-h-[1lh] min-w-0 flex-1 whitespace-pre-wrap break-words outline-none {line.checked
-					? 'line-through opacity-50'
-					: ''} {line.indent > 0 ? 'text-[13px]' : ''}"
+				class={lineSpan({ checked: line.checked, indented: line.indent > 0 })}
 			></span>
 			{#if line.id === focusedGroupLastId}
 				<button
@@ -1172,28 +1268,13 @@
 					contenteditable="false"
 					data-add-subtask
 					aria-label="Add sub-task"
-					class="flex basis-full select-none items-center rounded py-1 text-left text-xs text-[var(--scrapscache-text-muted)] transition-colors hover:bg-black/5 hover:text-[var(--scrapscache-text)] dark:hover:bg-white/10 touch-manipulation min-h-[32px] sm:min-h-0 {line.indent >
-					0
-						? 'pl-1'
-						: 'pl-6'}"
+					class={addSubtaskBtn({ indented: line.indent > 0 })}
 					onpointerdown={(event) => activateAddSubtask(event, focusedGroupRows[0]?.index ?? -1)}
 					onclick={(event) => handleAddSubtaskClick(event, focusedGroupRows[0]?.index ?? -1)}
 				>
-					<span class="add-subtask-label" aria-hidden="true"></span>
+					<span aria-hidden="true" class={editor.addSubtaskText}></span>
 				</button>
 			{/if}
 		</div>
 	{/each}
 </div>
-
-<style>
-	[data-line-text][data-placeholder]:empty::before {
-		content: attr(data-placeholder);
-		color: var(--scrapscache-text-muted);
-		pointer-events: none;
-	}
-
-	.add-subtask-label::before {
-		content: '+  Add sub-task';
-	}
-</style>

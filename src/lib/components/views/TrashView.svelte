@@ -5,6 +5,9 @@
 	import { useEditorActions } from '$lib/editorContext';
 	import EmptyState from '$lib/components/EmptyState.svelte';
 	import { Trash2 } from '@lucide/svelte';
+	import { css } from 'styled-system/css';
+	import { button } from 'styled-system/recipes';
+	import { viewPage } from 'styled-system/recipes';
 
 	const { openNote: openEditor } = useEditorActions();
 	const trashed = $derived(notesStore.trashedNotes);
@@ -17,7 +20,7 @@
 	}
 </script>
 
-<div class="pt-4 pb-8">
+<div class={viewPage()}>
 	{#if trashed.length === 0}
 		<EmptyState
 			icon={Trash2}
@@ -26,29 +29,23 @@
 	{:else}
 		<SectionHeader label="Trash" count={trashed.length}>
 			{#if confirmEmpty}
-				<span class="text-xs text-[var(--scrapscache-text-muted)]">Delete all?</span>
-				<button
-					type="button"
-					onclick={emptyTrash}
-					class="rounded-full bg-red-600/10 px-3 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-600 hover:text-white dark:text-red-400"
+				<span class={css({ fontSize: 'xs', color: 'scrapscache.textMuted' })}>Delete all?</span>
+				<button type="button" onclick={emptyTrash} class={button({ variant: 'danger', size: 'xs' })}
 					>Yes</button
 				>
 				<button
 					type="button"
 					onclick={() => (confirmEmpty = false)}
-					class="rounded-full px-3 py-1 text-xs text-[var(--scrapscache-text-muted)] transition-colors hover:bg-black/5 dark:hover:bg-white/10"
-					>No</button
+					class={button({ variant: 'quiet', size: 'xs' })}>No</button
 				>
 			{:else}
 				<button
 					type="button"
 					onclick={() => (confirmEmpty = true)}
-					class="rounded-full px-3 py-1 text-xs text-[var(--scrapscache-text-muted)] transition-colors hover:bg-black/5 dark:hover:bg-white/10"
-					>Empty</button
+					class={button({ variant: 'quiet', size: 'xs' })}>Empty</button
 				>
 			{/if}
 		</SectionHeader>
-
 		<NotesFeed notes={trashed} onOpen={openEditor} />
 	{/if}
 </div>

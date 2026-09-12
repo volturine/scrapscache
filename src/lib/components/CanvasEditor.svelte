@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
+	import { cx, sva } from 'styled-system/css';
+	import { button, iconButton } from 'styled-system/recipes';
 	import { LoaderCircle, X } from '@lucide/svelte';
 	import {
 		createCanvasAttachment,
@@ -113,6 +115,124 @@
 			}
 		};
 	}
+
+	const canvasEditor = sva({
+		slots: [
+			'shell',
+			'header',
+			'error',
+			'reload',
+			'area',
+			'host',
+			'loading',
+			'loadingText',
+			'spinnerSm',
+			'spinnerMd',
+			'headerClose',
+			'doneButton',
+			'closeIcon'
+		],
+		base: {
+			shell: {
+				position: 'fixed',
+				top: 'var(--app-visual-offset-top)',
+				right: 0,
+				bottom: 0,
+				left: 0,
+				paddingTop: 'var(--app-inset-top)',
+				paddingRight: 'var(--app-inset-right)',
+				paddingLeft: 'var(--app-inset-left)',
+				zIndex: 90,
+				display: 'flex',
+				flexDirection: 'column',
+				bg: 'scrapscache.canvasSurface',
+				color: 'scrapscache.text'
+			},
+			header: {
+				position: 'relative',
+				zIndex: 10,
+				display: 'flex',
+				h: '3rem',
+				flexShrink: 0,
+				alignItems: 'center',
+				justifyContent: 'space-between',
+				px: '0.75rem'
+			},
+			error: {
+				position: 'relative',
+				zIndex: 10,
+				display: 'flex',
+				alignItems: 'center',
+				justifyContent: 'space-between',
+				gap: '0.75rem',
+				borderBottomWidth: '1px',
+				borderColor: 'scrapscache.danger',
+				bg: 'scrapscache.dangerSubtle',
+				px: '1rem',
+				py: '0.5rem',
+				fontSize: 'sm',
+				color: 'scrapscache.danger'
+			},
+			reload: {
+				flexShrink: 0,
+				fontWeight: '600',
+				textDecoration: 'underline',
+				textDecorationColor: 'scrapscache.danger',
+				textUnderlineOffset: '2px',
+				cursor: 'pointer'
+			},
+			area: { position: 'relative', minH: 0, flex: '1' },
+			host: { position: 'absolute', inset: 0 },
+			loading: {
+				position: 'absolute',
+				inset: 0,
+				zIndex: 20,
+				display: 'grid',
+				placeItems: 'center',
+				bg: 'scrapscache.canvasSurface'
+			},
+			loadingText: {
+				display: 'flex',
+				alignItems: 'center',
+				gap: '0.5rem',
+				fontSize: 'sm',
+				color: 'scrapscache.textMuted'
+			},
+			spinnerSm: { h: '1rem', w: '1rem', animation: 'spin' },
+			spinnerMd: { h: '1.25rem', w: '1.25rem', animation: 'spin' },
+			headerClose: {
+				h: '2.25rem',
+				w: '2.25rem',
+				color: 'color-mix(in srgb, currentColor 82%, transparent)',
+				transition: 'background-color 120ms ease, color 120ms ease',
+				_hoverable: {
+					bg: 'color-mix(in srgb, currentColor 10%, transparent)',
+					color: 'currentColor'
+				},
+				_focusVisible: {
+					bg: 'color-mix(in srgb, currentColor 10%, transparent)',
+					color: 'currentColor',
+					outline: '2px solid scrapscache.focus',
+					outlineOffset: '2px'
+				}
+			},
+			doneButton: {
+				rounded: 'full',
+				fontWeight: '600',
+				flexShrink: 0,
+				touchAction: 'manipulation',
+				transition: 'background-color 120ms ease, transform 120ms ease',
+				'&:hover:not(:disabled)': { bg: 'scrapscache.accentHover' },
+				'&:active:not(:disabled)': { transform: 'scale(0.97)' },
+				_focusVisible: { outline: '2px solid scrapscache.focus', outlineOffset: '2px' },
+				_disabled: { opacity: 0.5 }
+			},
+			closeIcon: { h: '1.375rem', w: '1.375rem' }
+		}
+	});
+	const ce = canvasEditor();
+	const headerCloseBtn = cx(iconButton({ variant: 'ghost' }), ce.headerClose);
+	const doneBtn = cx(button({ variant: 'primary', size: 'md' }), ce.doneButton);
 </script>
 
 <div
@@ -122,31 +242,31 @@
 	onpaste={markCanvasInteraction}
 	ondrop={markCanvasInteraction}
 	onwheel={markCanvasInteraction}
-	class="canvas-editor-shell fixed z-[90] flex flex-col bg-white text-slate-900 dark:bg-[#121212] dark:text-slate-100"
+	class={`canvas-editor-shell ${ce.shell}`}
 	role="dialog"
 	tabindex="-1"
 	aria-modal="true"
 	aria-label={readOnly ? 'View canvas' : attachment ? 'Edit canvas' : 'New canvas'}
 >
-	<header class="relative z-10 flex h-12 shrink-0 items-center justify-between px-3">
+	<header class={ce.header}>
 		<button
 			type="button"
-			class="canvas-header-action grid h-9 w-9 shrink-0 place-items-center rounded-full touch-manipulation"
+			class={`canvas-header-action ${headerCloseBtn}`}
 			onclick={close}
 			aria-label={readOnly ? 'Close canvas' : 'Cancel canvas editing'}
 		>
-			<X class="h-5.5 w-5.5" aria-hidden="true" />
+			<X class={ce.closeIcon} aria-hidden="true" />
 		</button>
 
 		{#if !readOnly}
 			<button
 				type="button"
-				class="canvas-done h-9 shrink-0 rounded-full px-4 text-sm font-semibold touch-manipulation"
+				class={`canvas-done ${doneBtn}`}
 				disabled={loading || saving}
 				onclick={() => void save()}
 			>
 				{#if saving}
-					<LoaderCircle class="h-4 w-4 animate-spin" aria-hidden="true" />
+					<LoaderCircle class={ce.spinnerSm} aria-hidden="true" />
 				{/if}
 				<span>{saving ? 'Saving' : 'Done'}</span>
 			</button>
@@ -154,129 +274,23 @@
 	</header>
 
 	{#if error}
-		<div
-			class="relative z-10 flex items-center justify-between gap-3 border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-200"
-		>
+		<div class={ce.error}>
 			<span>{error}</span>
 			{#if staleModule}
-				<button
-					type="button"
-					class="shrink-0 font-semibold underline decoration-red-700/50 underline-offset-2 dark:decoration-red-200/50"
-					onclick={() => location.reload()}
-				>
-					Reload
-				</button>
+				<button type="button" class={ce.reload} onclick={() => location.reload()}> Reload </button>
 			{/if}
 		</div>
 	{/if}
 
-	<div class="relative min-h-0 flex-1">
-		<div bind:this={hostNode} class="scrapscache-canvas absolute inset-0"></div>
+	<div class={ce.area}>
+		<div bind:this={hostNode} class={`scrapscache-canvas ${ce.host}`}></div>
 		{#if loading}
-			<div class="absolute inset-0 z-20 grid place-items-center bg-white dark:bg-[#121212]">
-				<div class="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
-					<LoaderCircle class="h-5 w-5 animate-spin" aria-hidden="true" />
+			<div class={ce.loading}>
+				<div class={ce.loadingText}>
+					<LoaderCircle class={ce.spinnerMd} aria-hidden="true" />
 					Loading canvas…
 				</div>
 			</div>
 		{/if}
 	</div>
 </div>
-
-<style>
-	.canvas-editor-shell {
-		top: var(--app-visual-offset-top);
-		right: 0;
-		bottom: 0;
-		left: 0;
-		padding-top: var(--app-inset-top);
-		padding-right: var(--app-inset-right);
-		padding-left: var(--app-inset-left);
-	}
-
-	.canvas-header-action {
-		color: color-mix(in srgb, currentColor 82%, transparent);
-		transition:
-			background-color 120ms ease,
-			color 120ms ease;
-	}
-
-	.canvas-header-action:hover,
-	.canvas-header-action:focus-visible {
-		background: color-mix(in srgb, currentColor 10%, transparent);
-		color: currentColor;
-		outline: 2px solid var(--scrapscache-focus);
-		outline-offset: 2px;
-	}
-
-	.canvas-done {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		gap: 0.4rem;
-		background: var(--scrapscache-accent);
-		color: var(--scrapscache-accent-foreground);
-		transition:
-			background-color 120ms ease,
-			transform 120ms ease;
-	}
-
-	.canvas-done:hover:not(:disabled) {
-		background: var(--scrapscache-accent-hover);
-	}
-
-	.canvas-done:active:not(:disabled) {
-		transform: scale(0.97);
-	}
-
-	.canvas-done:focus-visible {
-		outline: 2px solid var(--scrapscache-focus);
-		outline-offset: 2px;
-	}
-
-	.canvas-done:disabled {
-		opacity: 0.5;
-	}
-
-	:global(.scrapscache-canvas .excalidraw) {
-		--sat: 0px;
-		--sar: 0px;
-		--sab: var(--app-inset-bottom);
-		--sal: 0px;
-	}
-
-	:global(.scrapscache-canvas .App-bottom-bar .App-toolbar-content) {
-		padding: 4px 8px !important;
-	}
-
-	:global(.scrapscache-canvas .App-bottom-bar .dropdown-menu--mobile) {
-		bottom: 47px !important;
-	}
-
-	:global(.excalidraw-modal-container) {
-		top: calc(var(--app-visual-offset-top) + var(--app-inset-top)) !important;
-		right: var(--app-inset-right) !important;
-		bottom: var(--app-inset-bottom) !important;
-		left: var(--app-inset-left) !important;
-		height: auto !important;
-	}
-
-	:global(.excalidraw-modal-container .Modal__background) {
-		top: calc(var(--app-visual-offset-top) + var(--app-inset-top)) !important;
-		right: var(--app-inset-right) !important;
-		bottom: var(--app-inset-bottom) !important;
-		left: var(--app-inset-left) !important;
-	}
-
-	:global(.excalidraw-modal-container .confirm-dialog.Modal) {
-		align-items: center;
-		padding: 1rem;
-	}
-
-	:global(.excalidraw-modal-container .confirm-dialog.Dialog--fullscreen .Modal__content) {
-		position: relative;
-		inset: auto;
-		max-width: 34rem;
-		max-height: 100%;
-	}
-</style>

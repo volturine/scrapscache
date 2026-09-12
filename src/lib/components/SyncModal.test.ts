@@ -289,7 +289,7 @@ describe('SyncModal profile interactions', () => {
 		render(SyncModal, { props: { onClose: vi.fn() } });
 
 		const create = screen.getByRole('button', { name: '+ New workspace' });
-		expect(create.classList.contains('scrapscache-button-primary')).toBe(true);
+		expect(create.classList.contains('scrapscache-btn--variant_primary')).toBe(true);
 		expect(screen.queryByText('These notes stay on this device.')).toBeNull();
 		expect(screen.queryByRole('button', { name: 'Sync now' })).toBeNull();
 	});
@@ -344,14 +344,14 @@ describe('SyncModal profile interactions', () => {
 		expect(screen.getByRole('button', { name: 'Join existing' })).toBeTruthy();
 	});
 
-	it('shows syncing only for a sync started from the modal', async () => {
+	it('shows syncing once on the button for a sync started from the modal', async () => {
 		const manualSync = deferred<boolean>();
 		vi.spyOn(notesStore, 'syncWithCloudManual').mockReturnValueOnce(manualSync.promise);
 		render(SyncModal, { props: { onClose: vi.fn() } });
 
 		await fireEvent.click(screen.getByRole('button', { name: 'Sync now' }));
 		expect(screen.getByRole('button', { name: 'Syncing…' })).toBeTruthy();
-		expect(screen.getByText('Syncing…', { selector: 'p' })).toBeTruthy();
+		expect(screen.queryByText('Syncing…', { selector: 'p' })).toBeNull();
 
 		manualSync.resolve(true);
 		await waitFor(() => expect(screen.getByRole('button', { name: 'Sync now' })).toBeTruthy());
@@ -378,7 +378,7 @@ describe('SyncModal profile interactions', () => {
 		);
 		await tick();
 		expect(target.disabled).toBe(true);
-		expect(screen.getByText('Wait for sync to finish before changing workspaces.')).toBeTruthy();
+		expect(screen.queryByText('Wait for sync to finish before changing workspaces.')).toBeNull();
 
 		(notesStore as unknown as { syncFlight: Promise<boolean> | null }).syncFlight = null;
 		await tick();

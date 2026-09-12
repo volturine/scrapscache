@@ -2,6 +2,7 @@
 	import { appClock } from '$lib/appClock.svelte';
 	import { formatReminder, isReminderOverdue } from '$lib/utils';
 	import { AlarmClock } from '@lucide/svelte';
+	import { sva } from 'styled-system/css';
 
 	let {
 		reminder,
@@ -15,27 +16,117 @@
 	const label = $derived(formatReminder(reminder, appClock.now));
 	const aria = $derived(overdue ? `Overdue reminder, ${label}` : `Reminder, ${label}`);
 
-	const STYLES = {
-		strip: {
-			due: 'flex items-center gap-1 rounded-t-lg bg-black/5 px-3 py-1 text-xs text-[var(--scrapscache-text-muted)] dark:bg-white/5',
-			overdue:
-				'flex items-center gap-1 rounded-t-lg bg-rose-600 px-3 py-1 text-xs font-medium text-white dark:bg-rose-500'
+	const reminderStyle = sva({
+		slots: ['root', 'icon', 'text'],
+		base: {
+			root: {
+				display: 'inline-flex',
+				alignItems: 'center',
+				gap: '0.25rem',
+				fontSize: 'xs'
+			},
+			icon: { w: '0.875rem', h: '0.875rem', flexShrink: 0 },
+			text: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }
 		},
-		chip: {
-			due: 'inline-flex max-w-full items-center gap-1 truncate rounded-full bg-black/10 px-2.5 py-1 text-xs text-[var(--scrapscache-text-muted)] dark:bg-white/10',
-			overdue:
-				'inline-flex max-w-full items-center gap-1 truncate rounded-full bg-rose-600 px-2.5 py-1 text-xs font-medium text-white dark:bg-rose-500'
+		variants: {
+			variant: {
+				strip: {
+					root: {
+						w: 'full',
+						borderTopRadius: 'lg',
+						px: '0.75rem',
+						py: '0.25rem'
+					}
+				},
+				chip: {
+					root: {
+						maxW: 'full',
+						rounded: 'full',
+						px: '0.625rem',
+						py: '0.25rem'
+					}
+				},
+				inline: {}
+			},
+			overdue: {
+				true: {},
+				false: {}
+			}
 		},
-		inline: {
-			due: 'inline-flex items-center gap-1 text-xs text-[var(--scrapscache-text-muted)]',
-			overdue: 'inline-flex items-center gap-1 text-xs font-medium text-rose-700 dark:text-rose-400'
+		compoundVariants: [
+			{
+				variant: 'strip',
+				overdue: false,
+				css: {
+					root: {
+						bg: 'scrapscache.surfaceSubtle',
+						color: 'scrapscache.textMuted'
+					}
+				}
+			},
+			{
+				variant: 'strip',
+				overdue: true,
+				css: {
+					root: {
+						bg: 'scrapscache.overdueStrong',
+						fontWeight: 'medium',
+						color: 'scrapscache.mediaText'
+					}
+				}
+			},
+			{
+				variant: 'chip',
+				overdue: false,
+				css: {
+					root: {
+						bg: 'scrapscache.interactiveActive',
+						color: 'scrapscache.textMuted'
+					}
+				}
+			},
+			{
+				variant: 'chip',
+				overdue: true,
+				css: {
+					root: {
+						bg: 'scrapscache.overdueStrong',
+						fontWeight: 'medium',
+						color: 'scrapscache.mediaText'
+					}
+				}
+			},
+			{
+				variant: 'inline',
+				overdue: false,
+				css: {
+					root: {
+						color: 'scrapscache.textMuted'
+					}
+				}
+			},
+			{
+				variant: 'inline',
+				overdue: true,
+				css: {
+					root: {
+						fontWeight: 'medium',
+						color: 'scrapscache.overdue'
+					}
+				}
+			}
+		],
+		defaultVariants: {
+			variant: 'strip',
+			overdue: false
 		}
-	} as const;
-
-	const box = $derived(STYLES[variant][overdue ? 'overdue' : 'due']);
+	});
+	const styles = $derived(reminderStyle({ variant, overdue }));
 </script>
 
-<span class={box} aria-label={aria}>
-	<AlarmClock class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-	<span class="truncate">{label}</span>
+<span class={styles.root} aria-label={aria}>
+	<AlarmClock class={styles.icon} aria-hidden="true" />
+	<span class={styles.text}>
+		{label}
+	</span>
 </span>

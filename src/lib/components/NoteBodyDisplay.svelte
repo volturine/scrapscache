@@ -3,6 +3,7 @@
 	// anywhere drags the card and a click opens the note; attachments, links and
 	// checklists are interactive in the editor instead.
 	import type { Note } from '$lib/types';
+	import { cva, sva } from 'styled-system/css';
 	import { parseBody, noteAttachments } from '$lib/checklistBody';
 	import { extractHttpUrls, localLinkCard } from '$lib/linkPreview';
 	import { isImageAttachment, fileIconLabel } from '$lib/noteImages';
@@ -10,6 +11,8 @@
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { onMount } from 'svelte';
 	import { isCanvasAttachment } from '$lib/canvasAttachment';
+	import { canvasPreview, filePreview, photoPreview } from './attachmentPreviewStyles';
+	import { checklist } from 'styled-system/recipes';
 
 	let { note }: { note: Note } = $props();
 
@@ -50,78 +53,105 @@
 		observer.observe(node);
 		return () => observer.disconnect();
 	});
+
+	const bodySva = sva({
+		slots: ['container', 'itemRow', 'checklist', 'bulletSymbol', 'paragraph', 'spacer'],
+		base: {
+			container: { fontSize: 'sm', color: 'scrapscache.text' },
+			itemRow: {
+				display: 'flex',
+				alignItems: 'flex-start',
+				gap: '0.5rem',
+				py: '0.125rem'
+			},
+			checklist: { flexShrink: 0 },
+			bulletSymbol: { flexShrink: 0, userSelect: 'none' },
+			paragraph: {
+				whiteSpace: 'pre-wrap',
+				wordBreak: 'break-word',
+				py: '0.125rem'
+			},
+			spacer: { h: '0.5rem' }
+		}
+	});
+	const body = bodySva();
+	const itemText = cva({
+		base: {
+			flex: '1',
+			wordBreak: 'break-word'
+		},
+		variants: {
+			checked: {
+				true: { textDecoration: 'line-through', opacity: 0.5 },
+				false: {}
+			},
+			indented: {
+				true: { fontSize: '13px' },
+				false: {}
+			}
+		},
+		defaultVariants: { checked: false, indented: false }
+	});
+	const c = canvasPreview({ mode: 'display' });
+	const f = filePreview({ mode: 'display' });
+	const p = photoPreview({ mode: 'display' });
 </script>
 
-<div bind:this={contentElement} class="text-sm text-[var(--scrapscache-text)]">
+<div bind:this={contentElement} class={body.container}>
 	{#each segments as seg (seg.lineIndex)}
 		{#if seg.type === 'check'}
+			{@const check = checklist({ checked: seg.checked, indented: seg.indent > 0 })}
 			<div
-				class="flex items-start gap-2 py-0.5"
+				class={body.itemRow}
 				data-check-line={seg.lineIndex}
 				style={seg.indent > 0 ? `padding-left: ${seg.indent * 1.25}rem` : undefined}
 			>
-				<span
-					class="checklist-toggle shrink-0 {seg.indent > 0 ? 'checklist-toggle-sub' : ''}"
-					class:checked={seg.checked}
-					aria-hidden="true"
-				>
+				<span class={[check.root, body.checklist]} aria-hidden="true">
 					{#if seg.checked}
-						<svg viewBox="0 0 16 16" class="checklist-toggle-mark">
+						<svg viewBox="0 0 16 16" class={check.mark}>
 							<path d="M3.5 8.5 6.5 11.5 12.5 4.5" />
 						</svg>
 					{/if}
 				</span>
-				<span
-					class="flex-1 break-words {seg.checked ? 'line-through opacity-50' : ''} {seg.indent > 0
-						? 'text-[13px]'
-						: ''}"
-				>
+				<span class={itemText({ checked: seg.checked, indented: seg.indent > 0 })}>
 					{seg.text || '\u00a0'}
 				</span>
 			</div>
 		{:else if seg.type === 'bullet'}
 			<div
-				class="flex items-start gap-2 py-0.5"
+				class={body.itemRow}
 				data-bullet-line={seg.lineIndex}
 				style={seg.indent > 0 ? `padding-left: ${seg.indent * 1.25}rem` : undefined}
 			>
-				<span class="shrink-0 select-none" aria-hidden="true">•</span>
-				<span class="flex-1 break-words {seg.indent > 0 ? 'text-[13px]' : ''}">
+				<span class={body.bulletSymbol} aria-hidden="true">•</span>
+				<span class={itemText({ indented: seg.indent > 0 })}>
 					{seg.text || '\u00a0'}
 				</span>
 			</div>
 		{:else if seg.text}
-			<p class="whitespace-pre-wrap break-words py-0.5">{seg.text}</p>
+			<p class={body.paragraph}>{seg.text}</p>
 		{:else}
-			<div class="h-2"></div>
+			<div class={body.spacer}></div>
 		{/if}
 	{/each}
 </div>
 
 {#if canvases.length > 0}
-	<div class="mt-2 grid gap-1.5" aria-label="Canvases">
+	<div class={c.strip} aria-label="Canvases">
 		{#each canvases as canvas (canvas.id)}
-			<div
-				class="relative block aspect-[4/3] w-full overflow-hidden rounded-lg border border-black/10 bg-white dark:border-white/10 dark:bg-slate-900"
-			>
+			<div class={c.btn}>
 				{#if displayImageSrc(canvas)}
 					<img
 						src={displayImageSrc(canvas)}
 						alt={canvas.name ?? 'Canvas'}
-						class="h-full w-full object-cover"
+						class={c.img}
 						loading="lazy"
 						decoding="async"
 					/>
 				{:else}
-					<div
-						class="grid h-full w-full place-items-center text-[11px] text-[var(--scrapscache-text-muted)]"
-					>
-						Loading canvas…
-					</div>
+					<div class={c.loading}>Loading canvas…</div>
 				{/if}
-				<span
-					class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/65 to-transparent px-2 pb-1.5 pt-5 text-left text-[10px] font-semibold text-white"
-				>
+				<span class={c.caption}>
 					{canvas.name ?? 'Canvas'}
 				</span>
 			</div>
@@ -130,46 +160,31 @@
 {/if}
 
 {#if files.length > 0 || links.length > 0}
-	<div class="mt-2 flex flex-col gap-1" aria-label="Files and links">
+	<div class={f.list} aria-label="Files and links">
 		{#each files as file (file.id)}
-			<div
-				class="flex w-full items-center gap-2 rounded-md border border-black/10 bg-black/5 px-2 py-1.5 text-left dark:border-white/10 dark:bg-white/5"
-				aria-busy={!file.dataUrl}
-			>
-				<span
-					class="grid h-7 w-7 shrink-0 place-items-center rounded bg-black/10 text-[9px] font-bold text-[var(--scrapscache-text)] dark:bg-white/10"
-					>{fileIconLabel(file.mime, file.name)}</span
-				>
-				<span class="min-w-0 flex-1 truncate text-xs text-[var(--scrapscache-text)]"
-					>{file.name || 'File'}</span
-				>
+			<div class={f.row} aria-busy={!file.dataUrl}>
+				<span class={f.badge}>{fileIconLabel(file.mime, file.name)}</span>
+				<span class={f.title}>{file.name || 'File'}</span>
 			</div>
 		{/each}
 		{#each links as url (url)}
 			{@const card = localLinkCard(url)}
-			<div
-				class="flex w-full items-center gap-2 rounded-md border border-black/10 bg-black/5 px-2 py-1.5 text-left dark:border-white/10 dark:bg-white/5"
-			>
-				<span
-					class="grid h-7 w-7 shrink-0 place-items-center rounded bg-black/10 text-[9px] font-bold text-[var(--scrapscache-text)] dark:bg-white/10"
-					aria-hidden="true">{card?.badge ?? '↗'}</span
-				>
-				<span class="min-w-0 flex-1 truncate text-xs text-[var(--scrapscache-text)]"
-					>{card?.hostname ?? url}</span
-				>
+			<div class={f.row}>
+				<span class={f.badge} aria-hidden="true">{card?.badge ?? '↗'}</span>
+				<span class={f.title}>{card?.hostname ?? url}</span>
 			</div>
 		{/each}
 	</div>
 {/if}
 
 {#if photos.length > 0 || pendingPhotos.length > 0}
-	<div class="mt-2 flex gap-1.5 overflow-x-auto" aria-label="Photos">
+	<div class={p.strip} aria-label="Photos">
 		{#each photos as img (img.id)}
-			<div class="block shrink-0 overflow-hidden rounded-md">
+			<div class={p.wrap}>
 				<img
 					src={displayImageSrc(img)}
 					alt={img.name ?? 'Photo'}
-					class="h-24 w-auto max-w-[10rem] rounded-lg object-cover"
+					class={p.img}
 					loading="lazy"
 					decoding="async"
 					draggable="false"
@@ -177,11 +192,7 @@
 			</div>
 		{/each}
 		{#each pendingPhotos as img (img.id)}
-			<div
-				class="h-24 w-24 shrink-0 animate-pulse rounded-lg bg-black/10 dark:bg-white/10"
-				role="img"
-				aria-label={`Loading ${img.name ?? 'photo'}`}
-			></div>
+			<div class={p.skeleton} role="img" aria-label={`Loading ${img.name ?? 'photo'}`}></div>
 		{/each}
 	</div>
 {/if}

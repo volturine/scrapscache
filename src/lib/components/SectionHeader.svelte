@@ -1,7 +1,8 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import { notesShellClass } from '$lib/notesShell';
+	import { uiStore } from '$lib/stores/ui.svelte';
 	import { Format } from '@ark-ui/svelte/format';
+	import { notesShell, sectionHeader } from 'styled-system/recipes';
 
 	let {
 		label,
@@ -15,19 +16,20 @@
 		children?: Snippet;
 	} = $props();
 
-	const shell = $derived(notesShellClass());
+	const shell = $derived(notesShell({ layout: uiStore.layout }));
+	const classes = sectionHeader();
 </script>
 
-<div class="{shell} {className}">
-	<div class="mb-3 flex items-center gap-3 px-2">
-		<h2 class="text-xs font-semibold uppercase tracking-wide text-[var(--scrapscache-text-muted)]">
+<div class={[shell, className]}>
+	<div class={classes.row}>
+		<h2 class={classes.label}>
 			{label}
 		</h2>
-		<span class="text-xs text-[var(--scrapscache-text-muted)] opacity-60">
+		<span class={classes.count}>
 			<Format.Number value={count} />
 		</span>
 		{#if children}
-			<div class="flex-1"></div>
+			<div class={classes.spacer}></div>
 			{@render children()}
 		{/if}
 	</div>

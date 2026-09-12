@@ -5,6 +5,9 @@
 	import NoteCard from './NoteCard.svelte';
 	import MasonryGrid from './MasonryGrid.svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
+	import { css, cx } from 'styled-system/css';
+	import { hstack } from 'styled-system/patterns';
+	import { button, notesShell } from 'styled-system/recipes';
 
 	/** Grid / list feed for notes pages — one place for layout branching. */
 	let {
@@ -54,13 +57,20 @@
 			if (streamFrame !== undefined) cancelAnimationFrame(streamFrame);
 		};
 	});
+
+	const paginationBtn = button({ variant: 'secondary', size: 'sm' });
 </script>
 
-<div class="notes-content {className}">
+<div class={[notesShell(), className]}>
 	{#if uiStore.layout === 'grid'}
 		<MasonryGrid notes={shownNotes} {onOpen} {children} {leading} />
 	{:else}
-		<div class="masonry masonry-list">
+		<div
+			class={cx(
+				notesShell({ layout: 'list' }),
+				css({ display: 'flex', flexDirection: 'column', gap: '10px', p: 0, '& > *': { w: 'full' } })
+			)}
+		>
 			{#each shownNotes as note (note.id)}
 				<div>
 					{#if children}
@@ -74,7 +84,10 @@
 	{/if}
 
 	{#if pageCount > 1}
-		<nav class="mt-6 flex items-center justify-center gap-3" aria-label="Note pages">
+		<nav
+			class={hstack({ justify: 'center', gap: '0.75rem', mt: '1.5rem' })}
+			aria-label="Note pages"
+		>
 			<button
 				type="button"
 				disabled={safePageIndex === 0}
@@ -83,10 +96,11 @@
 					renderedCount = FIRST_BATCH;
 					pumpStream();
 				}}
-				class="rounded-lg border border-[var(--scrapscache-border)] px-3 py-1.5 text-sm text-[var(--scrapscache-text)] disabled:opacity-40"
-				>Previous</button
+				class={paginationBtn}
 			>
-			<span class="text-xs text-[var(--scrapscache-text-muted)]">
+				Previous
+			</button>
+			<span class={css({ fontSize: 'xs', color: 'scrapscache.textMuted' })}>
 				{safePageIndex * PAGE_SIZE + 1}–{Math.min(notes.length, (safePageIndex + 1) * PAGE_SIZE)} of {notes.length}
 			</span>
 			<button
@@ -97,9 +111,10 @@
 					renderedCount = FIRST_BATCH;
 					pumpStream();
 				}}
-				class="rounded-lg border border-[var(--scrapscache-border)] px-3 py-1.5 text-sm text-[var(--scrapscache-text)] disabled:opacity-40"
-				>Next</button
+				class={paginationBtn}
 			>
+				Next
+			</button>
 		</nav>
 	{/if}
 </div>

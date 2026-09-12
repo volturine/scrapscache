@@ -163,7 +163,7 @@ describe('ReminderPicker remaining time', () => {
 
 	it('opens the calendar inside the same date-time panel', async () => {
 		const { container } = render(ReminderPicker, { props: { reminder, onClose: () => {} } });
-		const panel = container.querySelector('.schedule-panel');
+		const panel = container.querySelector('[data-schedule-panel]');
 		expect(panel).toBeTruthy();
 		expect(panel?.querySelector('[aria-label=\"Hour\"]')).toBeTruthy();
 

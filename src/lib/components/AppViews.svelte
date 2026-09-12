@@ -24,32 +24,32 @@
 </script>
 
 {#if uiStore.opened.notes}
-	<div class:hidden={uiStore.view !== 'notes'}>
+	<div hidden={uiStore.view !== 'notes'}>
 		<NotesHomeView />
 	</div>
 {/if}
 {#if uiStore.opened.label}
-	<div class:hidden={uiStore.view !== 'label'}>
+	<div hidden={uiStore.view !== 'label'}>
 		<LabelView />
 	</div>
 {/if}
 {#if uiStore.opened.archive}
-	<div class:hidden={uiStore.view !== 'archive'}>
+	<div hidden={uiStore.view !== 'archive'}>
 		<ArchiveView />
 	</div>
 {/if}
 {#if uiStore.opened.trash}
-	<div class:hidden={uiStore.view !== 'trash'}>
+	<div hidden={uiStore.view !== 'trash'}>
 		<TrashView />
 	</div>
 {/if}
 {#if uiStore.opened.reminders}
-	<div class:hidden={uiStore.view !== 'reminders'}>
+	<div hidden={uiStore.view !== 'reminders'}>
 		<RemindersView />
 	</div>
 {/if}
 {#if uiStore.opened.kanban}
-	<div class:hidden={uiStore.view !== 'kanban'}>
+	<div hidden={uiStore.view !== 'kanban'}>
 		<KanbanView />
 	</div>
 {/if}

@@ -30,10 +30,6 @@
 		fontWeight: 'medium',
 		color: 'scrapscache.text'
 	});
-
-	const pinnedFeedClass = css({
-		mb: '1.5rem'
-	});
 </script>
 
 <div class={viewPage}>
@@ -58,7 +54,7 @@
 			<div class={shell}>
 				<h2 class={sec.label}>Pinned</h2>
 			</div>
-			<NotesFeed notes={pinned} onOpen={openEditor} class={pinnedFeedClass} />
+			<NotesFeed notes={pinned} onOpen={openEditor} class={css({ mb: '1.5rem' })} />
 		{/if}
 
 		{#if pinned.length > 0 && others.length > 0}

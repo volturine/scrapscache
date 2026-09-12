@@ -11,9 +11,6 @@
 
 	const { openNote: openEditor } = useEditorActions();
 
-	const pinnedGap = css({ mb: '2rem' });
-	const othersGap = css({ mt: '1.5rem' });
-
 	const pinned = $derived(notesStore.pinnedNotes);
 	const others = $derived(notesStore.unpinnedNotes);
 	const search = $derived(uiStore.search);
@@ -33,13 +30,13 @@
 			<NotesFeed
 				notes={filteredPinned}
 				onOpen={openEditor}
-				class={filteredOthers.length > 0 ? pinnedGap : ''}
+				class={filteredOthers.length > 0 ? css({ mb: '2rem' }) : ''}
 			/>
 		{/if}
 
 		{#if filteredOthers.length > 0}
 			{#if filteredPinned.length > 0}
-				<SectionHeader label="Others" count={filteredOthers.length} class={othersGap} />
+				<SectionHeader label="Others" count={filteredOthers.length} class={css({ mt: '1.5rem' })} />
 			{/if}
 			<NotesFeed notes={filteredOthers} onOpen={openEditor} />
 		{/if}

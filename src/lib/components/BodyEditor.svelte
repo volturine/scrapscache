@@ -1170,12 +1170,6 @@
 		defaultVariants: { indented: false }
 	});
 
-	const addSubtaskLabel = css({
-		'&::before': {
-			content: '"+  Add sub-task"'
-		}
-	});
-
 	function taskShellClass(line: Line): string {
 		if (!focusedGroupIds.has(line.id)) return '';
 		const isRoot = line.id === focusedRootId;
@@ -1281,7 +1275,8 @@
 					onpointerdown={(event) => activateAddSubtask(event, focusedGroupRows[0]?.index ?? -1)}
 					onclick={(event) => handleAddSubtaskClick(event, focusedGroupRows[0]?.index ?? -1)}
 				>
-					<span class={addSubtaskLabel} aria-hidden="true"></span>
+					<span aria-hidden="true" class={css({ '&::before': { content: '"+  Add sub-task"' } })}
+					></span>
 				</button>
 			{/if}
 		</div>

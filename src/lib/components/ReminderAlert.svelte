@@ -66,7 +66,6 @@
 	});
 
 	const slot = alertSva();
-	const closeIconClass = css({ w: '1rem', h: '1rem' });
 </script>
 
 {#if alerts.length > 0}
@@ -93,7 +92,7 @@
 					aria-label="Dismiss reminder"
 					onclick={() => reminderStore.dismiss(alert.noteId)}
 				>
-					<X class={closeIconClass} aria-hidden="true" />
+					<X class={css({ w: '1rem', h: '1rem' })} aria-hidden="true" />
 				</button>
 			</div>
 		{/each}

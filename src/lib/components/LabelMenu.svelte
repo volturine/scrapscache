@@ -93,23 +93,6 @@
 		};
 	}
 
-	// The header title is tighter than the shared sectionHeader recipe (11px,
-	// 0.14em tracking), so it stays local.
-	const headerTitleClass = css({
-		minW: 0,
-		flex: '1',
-		fontSize: '11px',
-		fontWeight: '600',
-		textTransform: 'uppercase',
-		letterSpacing: '0.14em',
-		color: 'scrapscache.textMuted'
-	});
-
-	const searchInputClass = cx(
-		input({ variant: 'outline', size: 'md' }),
-		css({ w: 'full', pl: '2.25rem', _placeholder: { color: 'scrapscache.textMuted' } })
-	);
-
 	// One row treatment shared by the checkbox rows and the create button; the
 	// create button tints itself with the accent color on top.
 	const itemSva = sva({
@@ -177,7 +160,19 @@
 			justify: 'space-between'
 		})}
 	>
-		<span class={headerTitleClass}>Labels</span>
+		<span
+			class={css({
+				minW: 0,
+				flex: '1',
+				fontSize: '11px',
+				fontWeight: '600',
+				textTransform: 'uppercase',
+				letterSpacing: '0.14em',
+				color: 'scrapscache.textMuted'
+			})}
+		>
+			Labels
+		</span>
 		<button type="button" onclick={onClose} class={button({ variant: 'ghost', size: 'xs' })}>
 			Done
 		</button>
@@ -204,7 +199,10 @@
 			bind:value={query}
 			placeholder="Search or create a label…"
 			onkeydown={onQueryKeydown}
-			class={searchInputClass}
+			class={cx(
+				input({ variant: 'outline', size: 'md' }),
+				css({ w: 'full', pl: '2.25rem', _placeholder: { color: 'scrapscache.textMuted' } })
+			)}
 		/>
 	</div>
 

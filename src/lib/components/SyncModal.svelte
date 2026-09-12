@@ -58,7 +58,6 @@
 	// visible "Syncing" state.
 	const syncing = $derived(operation === 'sync' || operation === 'force-sync');
 	const busy = $derived(operation !== null || notesStore.syncing || profileCoordinator.switching);
-	const handoverBlocked = $derived(notesStore.syncing || profileCoordinator.switching);
 
 	// Approximate on-device footprint per saved key. Measured when the modal
 	// opens and after any operation that can change what is stored, rather than
@@ -786,12 +785,9 @@
 											/></Progress.Track
 										></Progress.Root
 									>
-								{:else if syncing}<p class={ui.statusHint} role="status">Syncing…</p>{/if}
+								{/if}
 							</div>
 						{/if}
-						{#if handoverBlocked}<p class={ui.mutedXs}>
-								Wait for sync to finish before changing workspaces.
-							</p>{/if}
 						{#if error || syncError}<p class={ui.danger} role="alert">
 								{error || syncError}
 							</p>{/if}

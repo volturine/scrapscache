@@ -1307,7 +1307,7 @@ export class NotesStore {
 	}
 
 	// Manual sync — caller shows UI feedback (spinning cloud icon).
-	async forcePushWorkspace(): Promise<boolean> {
+	async forcePushWorkspace(turnstileToken?: string): Promise<boolean> {
 		return this.withSyncLock(async () => {
 			const account = syncStore.account;
 			if (!account) return false;
@@ -1316,7 +1316,7 @@ export class NotesStore {
 				await this.hydrateAllAttachments();
 				if (this.attachmentHydrationFailures.size)
 					throw new Error('Some attachments could not be loaded. Force resync was not started.');
-				await syncStore.reauthenticateForRecovery();
+				await syncStore.reauthenticateForRecovery(turnstileToken);
 				await syncStore.clearAccountControlPlane(account.accountId);
 				let remote: SyncSnapshot | undefined;
 				const pulled = await syncStore.sync(

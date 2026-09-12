@@ -1,5 +1,7 @@
 <script lang="ts">
 	import WorkspaceRow from './WorkspaceRow.svelte';
+	import TurnstileWidget from './TurnstileWidget.svelte';
+	import { env } from '$env/dynamic/public';
 	import { onDestroy, onMount } from 'svelte';
 	import QRCode from 'qrcode';
 	import { Clipboard } from '@ark-ui/svelte/clipboard';
@@ -43,6 +45,13 @@
 	let timer: ReturnType<typeof setTimeout> | null = null;
 	let confirmation = $state<'delete' | 'force' | null>(null);
 	let newName = $state('');
+	// Account creation, including recovery that may recreate the account, needs a Turnstile token
+	// when this deployment configures a sitekey. Each surface owns its own single-use widget.
+	const turnstileSitekey = env.PUBLIC_TURNSTILE_SITEKEY?.trim() ?? '';
+	let registerCheck = $state<TurnstileWidget>();
+	let registerToken = $state('');
+	let forceCheck = $state<TurnstileWidget>();
+	let forceToken = $state('');
 	// The row that currently owns Escape, so the dialog leaves the key alone.
 	let rowHoldingEscape = $state<string | null>(null);
 
@@ -161,12 +170,15 @@
 	}
 
 	async function create() {
+		if (turnstileSitekey && !registerToken) return;
 		error = '';
 		info = '';
 		const name = newName;
+		const token = registerToken || undefined;
 		const result = await runOperation('create', 'Could not create sync', () =>
-			profileCoordinator.create(name)
+			profileCoordinator.create(name, token)
 		);
+		registerCheck?.reset();
 		if (!result) return;
 		if (!result.success) {
 			error = friendlyError(result.error, 'Could not create sync');
@@ -179,11 +191,14 @@
 	}
 
 	async function forceResync() {
+		if (turnstileSitekey && !forceToken) return;
 		error = '';
 		info = '';
+		const token = forceToken || undefined;
 		const result = await runOperation('force-sync', 'Could not force a full resync', () =>
-			profileCoordinator.forceResync()
+			profileCoordinator.forceResync(token)
 		);
+		forceCheck?.reset();
 		if (!result) return;
 		if (!result.success) {
 			error = friendlyError(result.error, 'Could not force a full resync');
@@ -648,6 +663,14 @@
 								Existing anonymous notes are kept.
 							{/if}
 						</p>
+						{#if confirmation === 'force' && turnstileSitekey}
+							<TurnstileWidget
+								bind:this={forceCheck}
+								bind:token={forceToken}
+								sitekey={turnstileSitekey}
+								action="register"
+							/>
+						{/if}
 						{#if error}<p class="text-sm text-[var(--scrapscache-danger)]" role="alert">
 								{error}
 							</p>{/if}
@@ -667,7 +690,8 @@
 								class="scrapscache-button flex-1 px-3 py-2 {confirmation === 'delete'
 									? 'scrapscache-button-destructive-solid'
 									: 'scrapscache-button-primary'}"
-								disabled={busy}
+								disabled={busy ||
+									(confirmation === 'force' && Boolean(turnstileSitekey) && !forceToken)}
 								onclick={() =>
 									confirmation === 'force' ? void forceResync() : void deleteCloudData()}
 								>{busy
@@ -694,11 +718,19 @@
 								aria-label="Sync key name"
 								onkeydown={(event) => event.key === 'Enter' && void create()}
 							/>
+							{#if turnstileSitekey}
+								<TurnstileWidget
+									bind:this={registerCheck}
+									bind:token={registerToken}
+									sitekey={turnstileSitekey}
+									action="register"
+								/>
+							{/if}
 							{#if error}<p class="text-sm text-[var(--scrapscache-danger)]">{error}</p>{/if}
 							<button
 								type="button"
 								onclick={() => void create()}
-								disabled={busy}
+								disabled={busy || (Boolean(turnstileSitekey) && !registerToken)}
 								class="scrapscache-button scrapscache-button-primary w-full px-3 py-2.5 text-sm font-medium"
 								>{operation === 'create' ? 'Creating…' : 'Create workspace'}</button
 							>

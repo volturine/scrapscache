@@ -109,17 +109,20 @@ jobs:
       - name: Deploy development Workers
         run: |
           test -n "$SCRAPSCACHE_TICK_SECRET"
+          test -n "$TURNSTILE_SECRET"
           npm run build:cloudflare
           python3 scripts/reset_cloudflare_dev.py
           npx wrangler d1 migrations apply SCRAPSCACHE_DB --remote --env dev
           npx wrangler deploy --env dev
           printf '%s' "$SCRAPSCACHE_TICK_SECRET" | npx wrangler secret put SCRAPSCACHE_TICK_SECRET --env dev
+          printf '%s' "$TURNSTILE_SECRET" | npx wrangler secret put TURNSTILE_SECRET --env dev
           npx wrangler deploy --config cf/wrangler.cron.jsonc --env dev
           printf '%s' "$SCRAPSCACHE_TICK_SECRET" | npx wrangler secret put SCRAPSCACHE_TICK_SECRET --config cf/wrangler.cron.jsonc --env dev
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           SCRAPSCACHE_TICK_SECRET: ${{ secrets.SCRAPSCACHE_TICK_SECRET }}
+          TURNSTILE_SECRET: ${{ secrets.TURNSTILE_SECRET }}
 
       - name: Verify development deployment
         run: >-
@@ -153,16 +156,19 @@ jobs:
       - name: Deploy production Workers
         run: |
           test -n "$SCRAPSCACHE_TICK_SECRET"
+          test -n "$TURNSTILE_SECRET"
           npm run build:cloudflare
           npx wrangler d1 migrations apply SCRAPSCACHE_DB --remote --env ''
           npx wrangler deploy --env ''
           printf '%s' "$SCRAPSCACHE_TICK_SECRET" | npx wrangler secret put SCRAPSCACHE_TICK_SECRET --env ''
+          printf '%s' "$TURNSTILE_SECRET" | npx wrangler secret put TURNSTILE_SECRET --env ''
           npx wrangler deploy --config cf/wrangler.cron.jsonc --env ''
           printf '%s' "$SCRAPSCACHE_TICK_SECRET" | npx wrangler secret put SCRAPSCACHE_TICK_SECRET --config cf/wrangler.cron.jsonc --env ''
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           SCRAPSCACHE_TICK_SECRET: ${{ secrets.SCRAPSCACHE_TICK_SECRET }}
+          TURNSTILE_SECRET: ${{ secrets.TURNSTILE_SECRET }}
 
       - name: Verify production deployment
         run: >-

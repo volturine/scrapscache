@@ -156,9 +156,16 @@ client-address settings above so rate limits see real client IPs.
 | `SCRAPSCACHE_VAPID_PRIVATE_KEY`            |                 auto-generated | Optional stable Web Push VAPID private key                                      |
 | `SCRAPSCACHE_VAPID_SUBJECT`                | `mailto:scrapscache@localhost` | Contact URI for VAPID (`mailto:` or `https:`)                                   |
 | `ADDRESS_HEADER` / `XFF_DEPTH`             |                   direct / `1` | Trusted proxy client-address configuration                                      |
+| `PUBLIC_TURNSTILE_SITEKEY`                 |                          unset | Cloudflare Turnstile sitekey shown when creating a sync account                 |
+| `TURNSTILE_SECRET`                         |                          unset | Turnstile secret used for server-side siteverify                                |
+| `TURNSTILE_HOSTNAMES`                      |                          unset | Comma-separated frontend hostnames siteverify must report                       |
 
 Compose maps `SCRAPSCACHE_ADDRESS_HEADER` → `ADDRESS_HEADER` and
 `SCRAPSCACHE_XFF_DEPTH` → `XFF_DEPTH`.
+
+Turnstile is off when all three `TURNSTILE` variables are unset. Setting any of
+them turns it on for account registration, and registration then fails closed
+until all three are set. Use your own Turnstile widget for your domain.
 
 Provide both VAPID key variables or neither. When omitted, Scraps Cache generates a
 pair once and persists it in the ops database. Changing the pair causes

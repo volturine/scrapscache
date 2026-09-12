@@ -3,6 +3,7 @@ import { json } from '@sveltejs/kit';
 import { getSyncStore } from '$lib/server/syncStore';
 import { verifySyncRegistration } from '$lib/server/syncAuth';
 import { readJsonBody } from '$lib/server/request';
+import { verifyTurnstile } from '$lib/server/turnstile';
 import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '$lib/server/rateLimit';
 
 export const POST: RequestHandler = async ({ request, getClientAddress }) => {
@@ -12,7 +13,12 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 		{ capacity: 5, refillWindowMs: 60 * 60 * 1000 }
 	);
 	if (!limited.allowed) return rateLimitResponse(limited);
-	let body: { accountId?: unknown; authPublicKey?: unknown; signature?: unknown };
+	let body: {
+		accountId?: unknown;
+		authPublicKey?: unknown;
+		signature?: unknown;
+		turnstileToken?: unknown;
+	};
 	try {
 		body = (await readJsonBody(request, 16_384)) as typeof body;
 	} catch {
@@ -28,6 +34,18 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	) {
 		return json({ error: 'Invalid account credential' }, { status: 400 });
 	}
+	// Checked after the local signature so malformed requests never spend a siteverify call.
+	const human = await verifyTurnstile(
+		body.turnstileToken,
+		'register',
+		clientAddress(getClientAddress)
+	);
+	if (human === 'misconfigured') {
+		console.error('[sync] register: Turnstile configuration is incomplete');
+		return json({ error: 'Human verification is unavailable' }, { status: 503 });
+	}
+	if (human === 'rejected')
+		return json({ error: 'Human verification failed. Try again.' }, { status: 403 });
 	try {
 		const created = await getSyncStore().createAccount(body.accountId, body.authPublicKey);
 		if (!created)

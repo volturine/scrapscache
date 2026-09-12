@@ -43,14 +43,18 @@ export class ProfileCoordinator {
 	}
 
 	/** Create a brand-new sync key and make it this window's active profile. */
-	async create(name?: string): Promise<{ success: boolean; error?: string }> {
+	async create(
+		name?: string,
+		turnstileToken?: string
+	): Promise<{ success: boolean; error?: string }> {
 		const sourcePid = syncStore.activePid === LOCAL_PROFILE_ID ? LOCAL_PROFILE_ID : null;
-		return this.createWithDataset(name, sourcePid);
+		return this.createWithDataset(name, sourcePid, turnstileToken);
 	}
 
 	private async createWithDataset(
 		name: string | undefined,
-		sourcePid: string | null
+		sourcePid: string | null,
+		turnstileToken: string | undefined
 	): Promise<{ success: boolean; error?: string }> {
 		const blocked = this.guard();
 		if (blocked) return { success: false, error: blocked };
@@ -58,7 +62,7 @@ export class ProfileCoordinator {
 		try {
 			const created = await this.exclusive(async () => {
 				await notesStore.waitForPendingProfileWrites();
-				const result = await syncStore.register(name);
+				const result = await syncStore.register(name, turnstileToken);
 				if (!result.success || !result.profile)
 					return { success: false, error: result.error ?? 'Registration failed' };
 				try {
@@ -100,13 +104,13 @@ export class ProfileCoordinator {
 	}
 
 	/** Publish this device's workspace as the newest cloud version. */
-	async forceResync(): Promise<{ success: boolean; error?: string }> {
+	async forceResync(turnstileToken?: string): Promise<{ success: boolean; error?: string }> {
 		const blocked = this.guard();
 		if (blocked) return { success: false, error: blocked };
 		if (!syncStore.account) return { success: false, error: 'No synced workspace is active' };
 		this.switching = true;
 		try {
-			const synced = await notesStore.forcePushWorkspace();
+			const synced = await notesStore.forcePushWorkspace(turnstileToken);
 			return synced
 				? { success: true }
 				: {

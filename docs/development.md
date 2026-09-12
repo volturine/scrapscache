@@ -85,6 +85,14 @@ GitHub Actions reads this value from the `SCRAPSCACHE_TICK_SECRET` environment
 secret in the matching `development` or `production` GitHub environment and
 installs it on both Workers during every deployment.
 
+Account registration is gated by Cloudflare Turnstile. `wrangler.jsonc` sets the
+public `PUBLIC_TURNSTILE_SITEKEY` and the per-environment `TURNSTILE_HOSTNAMES`
+(`scrapscache.com` or `dev.scrapscache.com`; never `localhost` in a deployed
+environment). The widget secret is the `TURNSTILE_SECRET` environment secret in
+each GitHub environment, which deployment installs on the app Worker. For local
+testing, put all three values in `.dev.vars` (or `.env` for `npm run dev`) with
+`TURNSTILE_HOSTNAMES=localhost,127.0.0.1`.
+
 The sole open pull request labeled `deploy-dev` deploys the development Workers
 to `dev.scrapscache.com` after validation succeeds. Move the label to switch the
 shared development environment to another pull request. Deployment fails if
@@ -92,7 +100,8 @@ more than one open pull request has the label. Each development deploy deletes
 those Workers and wipes D1, then recreates them from the pull request, so
 Durable Object and D1 migrations from another PR cannot block it. R2 object
 bytes are left in place. Deleting the Workers also drops their secrets, so CI
-and `npm run cf:deploy:dev` put `SCRAPSCACHE_TICK_SECRET` back after deploy.
+and `npm run cf:deploy:dev` put `SCRAPSCACHE_TICK_SECRET` and `TURNSTILE_SECRET`
+back after deploy.
 Pushes to `master` deploy the production Workers to `scrapscache.com`. Both use
 Worker routes on the existing proxied DNS records, so the records must remain
 in place during the cutover.

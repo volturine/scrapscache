@@ -12,7 +12,7 @@
 		toggleCheckEntries
 	} from '$lib/checklistBody';
 	import { revealEditorField } from '$lib/editorVisibility';
-	import { cva, sva } from 'styled-system/css';
+	import { css, cva, sva } from 'styled-system/css';
 
 	const MAX_TASK_INDENT = 1;
 
@@ -1103,7 +1103,12 @@
 			flex: '1',
 			whiteSpace: 'pre-wrap',
 			wordBreak: 'break-word',
-			outline: 'none'
+			outline: 'none',
+			'&[data-placeholder]:empty::before': {
+				content: 'attr(data-placeholder)',
+				color: 'scrapscache.textMuted',
+				pointerEvents: 'none'
+			}
 		},
 		variants: {
 			checked: {
@@ -1163,6 +1168,12 @@
 			}
 		},
 		defaultVariants: { indented: false }
+	});
+
+	const addSubtaskLabel = css({
+		'&::before': {
+			content: '"+  Add sub-task"'
+		}
 	});
 
 	function taskShellClass(line: Line): string {
@@ -1270,21 +1281,9 @@
 					onpointerdown={(event) => activateAddSubtask(event, focusedGroupRows[0]?.index ?? -1)}
 					onclick={(event) => handleAddSubtaskClick(event, focusedGroupRows[0]?.index ?? -1)}
 				>
-					<span class="add-subtask-label" aria-hidden="true"></span>
+					<span class={addSubtaskLabel} aria-hidden="true"></span>
 				</button>
 			{/if}
 		</div>
 	{/each}
 </div>
-
-<style>
-	[data-line-text][data-placeholder]:empty::before {
-		content: attr(data-placeholder);
-		color: var(--scrapscache-text-muted);
-		pointer-events: none;
-	}
-
-	.add-subtask-label::before {
-		content: '+  Add sub-task';
-	}
-</style>

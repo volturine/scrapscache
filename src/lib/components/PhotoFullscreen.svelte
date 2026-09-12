@@ -236,8 +236,72 @@
 		display: 'flex',
 		minH: 0,
 		flex: '1',
-		flexDirection: 'column'
+		flexDirection: 'column',
+		'& [data-part="viewport"]': {
+			position: 'relative',
+			overflow: 'visible',
+			touchAction: 'none',
+			userSelect: 'none'
+		},
+		'& [data-part="image"]': {
+			position: 'absolute',
+			maxWidth: 'none',
+			userSelect: 'none'
+		},
+		'& [data-part="selection"]': {
+			boxShadow: '0 0 0 9999px rgb(0 0 0 / 0.65)',
+			outline: '1.5px solid rgb(255 255 255 / 0.95)'
+		},
+		'& [data-part="handle"]': {
+			display: 'grid',
+			placeItems: 'center',
+			zIndex: 10,
+			background: 'transparent',
+			touchAction: 'none',
+			userSelect: 'none',
+			WebkitUserSelect: 'none',
+			WebkitTapHighlightColor: 'transparent'
+		},
+		// Generous invisible touch target (56px × 56px) centered on each corner
+		'& [data-part="handle"][data-position="nw"], & [data-part="handle"][data-position="ne"], & [data-part="handle"][data-position="se"], & [data-part="handle"][data-position="sw"]':
+			{
+				w: '3.5rem',
+				h: '3.5rem',
+				zIndex: 20
+			},
+		// Generous invisible touch strip (56px tall) across horizontal edges
+		'& [data-part="handle"][data-position="n"], & [data-part="handle"][data-position="s"]': {
+			h: '3.5rem',
+			zIndex: 10
+		},
+		// Generous invisible touch strip (56px wide) across vertical edges
+		'& [data-part="handle"][data-position="w"], & [data-part="handle"][data-position="e"]': {
+			w: '3.5rem',
+			zIndex: 10
+		},
+		'& [data-part="handle"]:hover .crop-knob, & [data-part="handle"]:active .crop-knob': {
+			transform: 'scale(1.35)',
+			boxShadow: '0 2px 6px rgb(0 0 0 / 0.7), 0 0 0 1.5px rgb(0 0 0 / 0.35)'
+		},
+		'& [data-part="grid"][data-axis="horizontal"]': {
+			borderBottom: '1px solid rgb(255 255 255 / 0.4)',
+			borderTop: '1px solid rgb(255 255 255 / 0.4)'
+		},
+		'& [data-part="grid"][data-axis="vertical"]': {
+			borderLeft: '1px solid rgb(255 255 255 / 0.4)',
+			borderRight: '1px solid rgb(255 255 255 / 0.4)'
+		}
 	});
+
+	const cropKnobClass = css({
+		background: '#ffffff',
+		boxShadow: '0 1px 3px rgb(0 0 0 / 0.5), 0 0 0 1px rgb(0 0 0 / 0.25)',
+		pointerEvents: 'none',
+		transition: 'transform 0.15s ease, box-shadow 0.15s ease'
+	});
+	const cropKnobCornerClass = css({ h: '0.75rem', w: '0.75rem', rounded: '2px' });
+	const cropKnobEdgeHClass = css({ h: '0.25rem', w: '1.5rem', rounded: 'full' });
+	const cropKnobEdgeVClass = css({ h: '1.5rem', w: '0.25rem', rounded: 'full' });
 	const cropCol = css({
 		display: 'flex',
 		minH: 0,
@@ -627,13 +691,13 @@
 							<ImageCropper.Selection>
 								{#each ImageCropper.handles as position (position)}
 									<ImageCropper.Handle {position}>
-										<div
-											class="crop-knob {position.length === 2
-												? 'crop-knob-corner'
+										{@const knobShape =
+											position.length === 2
+												? cropKnobCornerClass
 												: position === 'n' || position === 's'
-													? 'crop-knob-edge-h'
-													: 'crop-knob-edge-v'}"
-										></div>
+													? cropKnobEdgeHClass
+													: cropKnobEdgeVClass}
+										<div class={`crop-knob ${cropKnobClass} ${knobShape}`}></div>
 									</ImageCropper.Handle>
 								{/each}
 								<ImageCropper.Grid axis="horizontal" />
@@ -764,93 +828,3 @@
 		{/if}
 	</div>
 {/if}
-
-<style>
-	.crop-root :global([data-part='viewport']) {
-		position: relative;
-		overflow: visible;
-		touch-action: none;
-		user-select: none;
-	}
-	.crop-root :global([data-part='image']) {
-		position: absolute;
-		max-width: none;
-		user-select: none;
-	}
-	.crop-root :global([data-part='selection']) {
-		box-shadow: 0 0 0 9999px rgb(0 0 0 / 0.65);
-		outline: 1.5px solid rgb(255 255 255 / 0.95);
-	}
-	.crop-root :global([data-part='handle']) {
-		display: grid;
-		place-items: center;
-		z-index: 10;
-		background: transparent;
-		touch-action: none;
-		user-select: none;
-		-webkit-user-select: none;
-		-webkit-tap-highlight-color: transparent;
-	}
-	/* Generous invisible touch target (56px × 56px) centered on each corner */
-	.crop-root :global([data-part='handle'][data-position='nw']),
-	.crop-root :global([data-part='handle'][data-position='ne']),
-	.crop-root :global([data-part='handle'][data-position='se']),
-	.crop-root :global([data-part='handle'][data-position='sw']) {
-		width: 3.5rem;
-		height: 3.5rem;
-		z-index: 20;
-	}
-	/* Generous invisible touch strip (56px tall) across horizontal edges */
-	.crop-root :global([data-part='handle'][data-position='n']),
-	.crop-root :global([data-part='handle'][data-position='s']) {
-		height: 3.5rem;
-		z-index: 10;
-	}
-	/* Generous invisible touch strip (56px wide) across vertical edges */
-	.crop-root :global([data-part='handle'][data-position='w']),
-	.crop-root :global([data-part='handle'][data-position='e']) {
-		width: 3.5rem;
-		z-index: 10;
-	}
-	/* Sleek, subtle visual knobs */
-	.crop-knob {
-		background: #ffffff;
-		box-shadow:
-			0 1px 3px rgb(0 0 0 / 0.5),
-			0 0 0 1px rgb(0 0 0 / 0.25);
-		pointer-events: none;
-		transition:
-			transform 0.15s ease,
-			box-shadow 0.15s ease;
-	}
-	.crop-root :global([data-part='handle']:hover .crop-knob),
-	.crop-root :global([data-part='handle']:active .crop-knob) {
-		transform: scale(1.35);
-		box-shadow:
-			0 2px 6px rgb(0 0 0 / 0.7),
-			0 0 0 1.5px rgb(0 0 0 / 0.35);
-	}
-	.crop-knob-corner {
-		height: 0.75rem;
-		width: 0.75rem;
-		border-radius: 2px;
-	}
-	.crop-knob-edge-h {
-		height: 0.25rem;
-		width: 1.5rem;
-		border-radius: 9999px;
-	}
-	.crop-knob-edge-v {
-		height: 1.5rem;
-		width: 0.25rem;
-		border-radius: 9999px;
-	}
-	.crop-root :global([data-part='grid'][data-axis='horizontal']) {
-		border-bottom: 1px solid rgb(255 255 255 / 0.4);
-		border-top: 1px solid rgb(255 255 255 / 0.4);
-	}
-	.crop-root :global([data-part='grid'][data-axis='vertical']) {
-		border-left: 1px solid rgb(255 255 255 / 0.4);
-		border-right: 1px solid rgb(255 255 255 / 0.4);
-	}
-</style>

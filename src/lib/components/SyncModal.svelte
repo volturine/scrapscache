@@ -452,6 +452,56 @@
 
 	// Text and meter classes shared across the modal's modes.
 	const ui = {
+		workspaceList: css({ display: 'grid', gap: '4px' }),
+		workspaceRow: css({
+			position: 'relative',
+			display: 'flex',
+			alignItems: 'center',
+			gap: '12px',
+			w: 'full',
+			rounded: '10px',
+			p: '12px',
+			fontSize: '14px',
+			_hover: { bg: 'scrapscache.interactiveHover' },
+			_disabled: { opacity: 0.55 },
+			'&.active': { bg: 'scrapscache.interactiveHover' },
+			'&.active::before': {
+				content: '""',
+				position: 'absolute',
+				top: '10px',
+				bottom: '10px',
+				left: 0,
+				w: '3px',
+				borderRadius: '0 3px 3px 0',
+				bg: 'scrapscache.accent'
+			}
+		}),
+		workspaceCaption: css({
+			display: 'block',
+			mt: '2px',
+			color: 'scrapscache.textMuted',
+			fontSize: '12px',
+			fontWeight: '400'
+		}),
+		manageRow: css({
+			display: 'flex',
+			alignItems: 'center',
+			gap: '12px',
+			w: 'full',
+			rounded: '8px',
+			padding: '10px 8px',
+			textAlign: 'left',
+			fontSize: '14px',
+			_hover: { bg: 'scrapscache.interactiveHover' },
+			_disabled: { opacity: 0.55 },
+			'& small': {
+				display: 'block',
+				mt: '2px',
+				color: 'scrapscache.textMuted',
+				fontSize: '12px',
+				fontWeight: '400'
+			}
+		}),
 		muted: css({ fontSize: 'sm', color: 'scrapscache.textMuted' }),
 		mutedBody: css({ fontSize: 'sm', color: 'scrapscache.textMuted', lineHeight: 'relaxed' }),
 		mutedXs: css({ fontSize: 'xs', color: 'scrapscache.textMuted' }),
@@ -556,10 +606,10 @@
 
 				{#if mode === 'menu'}
 					<div class={vstack({ gap: '1rem', alignItems: 'stretch' })}>
-						<div class="workspace-list" aria-label="Workspaces on this device">
+						<div class={ui.workspaceList} aria-label="Workspaces on this device">
 							<button
 								type="button"
-								class="workspace-row"
+								class={cx(ui.workspaceRow, syncStore.activePid === LOCAL_PROFILE_ID && 'active')}
 								class:active={syncStore.activePid === LOCAL_PROFILE_ID}
 								disabled={busy}
 								aria-label={syncStore.activePid === LOCAL_PROFILE_ID
@@ -577,7 +627,7 @@
 											textOverflow: 'ellipsis',
 											whiteSpace: 'nowrap'
 										})}>Anonymous workspace</span
-									><span class="workspace-caption"
+									><span class={ui.workspaceCaption}
 										>Only on this device{sizeLabel(LOCAL_PROFILE_ID)
 											? ' · ' + sizeLabel(LOCAL_PROFILE_ID)
 											: ''}</span
@@ -707,14 +757,14 @@
 							>
 							<div class={vstack({ gap: '0.25rem', alignItems: 'stretch', mt: '0.5rem' })}>
 								<button
-									class="manage-row"
+									class={ui.manageRow}
 									disabled={busy}
 									onclick={() => void exportProfile(syncStore.activePid)}
 									><Download size={16} aria-hidden="true" /><span>Export notes</span></button
 								>
 								{#if syncStore.account}
 									<button
-										class="manage-row"
+										class={ui.manageRow}
 										disabled={busy}
 										onclick={() => {
 											confirmation = 'force';
@@ -732,7 +782,7 @@
 										></button
 									>
 									<button
-										class={`manage-row ${ui.danger}`}
+										class={cx(ui.manageRow, ui.danger)}
 										disabled={busy}
 										onclick={() => {
 											confirmation = 'delete';
@@ -971,58 +1021,3 @@
 		</Dialog.Positioner>
 	</div>
 </Dialog.Root>
-
-<style>
-	.workspace-list {
-		display: grid;
-		gap: 4px;
-	}
-	.workspace-row {
-		position: relative;
-		display: flex;
-		align-items: center;
-		gap: 12px;
-		width: 100%;
-		border-radius: 10px;
-		padding: 12px;
-		font-size: 14px;
-	}
-	.workspace-row:hover,
-	.manage-row:hover {
-		background: var(--scrapscache-interactive-hover);
-	}
-	.workspace-row.active {
-		background: var(--scrapscache-interactive-hover);
-	}
-	.workspace-row.active::before {
-		content: '';
-		position: absolute;
-		top: 10px;
-		bottom: 10px;
-		left: 0;
-		width: 3px;
-		border-radius: 0 3px 3px 0;
-		background: var(--scrapscache-accent);
-	}
-	.workspace-caption,
-	.manage-row small {
-		display: block;
-		margin-top: 2px;
-		color: var(--scrapscache-text-muted);
-		font-size: 12px;
-		font-weight: 400;
-	}
-	.manage-row {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-		width: 100%;
-		border-radius: 8px;
-		padding: 10px 8px;
-		text-align: left;
-		font-size: 14px;
-	}
-	button:disabled {
-		opacity: 0.55;
-	}
-</style>

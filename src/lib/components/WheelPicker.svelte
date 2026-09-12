@@ -267,13 +267,19 @@
 		aria-hidden="true"
 	></div>
 	<div
-		class={`wheel-picker ${css({
+		class={css({
 			position: 'absolute',
 			inset: 0,
 			zIndex: 10,
 			overflow: 'hidden',
-			outline: 'none'
-		})}`}
+			outline: 'none',
+			touchAction: 'none',
+			userSelect: 'none',
+			WebkitUserSelect: 'none',
+			WebkitMaskImage:
+				'linear-gradient(to bottom, transparent 0%, #000 28%, #000 72%, transparent 100%)',
+			maskImage: 'linear-gradient(to bottom, transparent 0%, #000 28%, #000 72%, transparent 100%)'
+		})}
 		style="height: {ITEM_H * VISIBLE}px"
 		role="listbox"
 		tabindex="0"
@@ -309,19 +315,3 @@
 		</div>
 	</div>
 </div>
-
-<style>
-	.wheel-picker {
-		touch-action: none;
-		user-select: none;
-		-webkit-user-select: none;
-		-webkit-mask-image: linear-gradient(
-			to bottom,
-			transparent 0%,
-			#000 28%,
-			#000 72%,
-			transparent 100%
-		);
-		mask-image: linear-gradient(to bottom, transparent 0%, #000 28%, #000 72%, transparent 100%);
-	}
-</style>

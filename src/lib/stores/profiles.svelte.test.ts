@@ -264,3 +264,135 @@ describe('profile creation handover', () => {
 		expect(syncStore.profiles).toEqual([kept]);
 	});
 });
+
+describe('replacing the sync key of a lost device', () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+		syncStore.account = null;
+		syncStore.profiles = [];
+		syncStore.usage = null;
+		notesStore.notes = [];
+	});
+
+	function scenario(overrides: { remoteRecords?: number; localRecords?: number } = {}) {
+		const previous = {
+			id: 'previous-profile',
+			name: 'Mine',
+			syncKey: createSyncIdentity().syncKey,
+			createdAt: 1
+		};
+		const replacement = {
+			id: 'replacement-profile',
+			name: 'Mine',
+			syncKey: createSyncIdentity().syncKey,
+			createdAt: 2
+		};
+		syncStore.profiles = [previous];
+		syncStore.activateProfile(previous);
+
+		vi.spyOn(notesStore, 'waitForPendingProfileWrites').mockResolvedValue();
+		vi.spyOn(notesStore, 'reloadForProfile').mockResolvedValue();
+		vi.spyOn(syncStore, 'queueOutbox').mockResolvedValue();
+		vi.spyOn(syncStore, 'syncedRecordCount').mockResolvedValue(overrides.localRecords ?? 4);
+		// Activating a profile clears usage, so only a real sync repopulates it.
+		vi.spyOn(notesStore, 'syncWithCloudManual').mockImplementation(async () => {
+			syncStore.usage = {
+				ciphertextBytes: 0,
+				envelopeCount: overrides.remoteRecords ?? 4,
+				storageBytes: 0,
+				maxBytes: 100_000_000
+			};
+			return true;
+		});
+		vi.spyOn(syncStore, 'register').mockImplementation(async () => {
+			syncStore.profiles = [previous, replacement];
+			syncStore.activateProfile(replacement);
+			return { success: true, profile: replacement };
+		});
+		const deleted = vi.spyOn(syncStore, 'deleteAccountFor').mockResolvedValue(true);
+		const removed = vi.spyOn(syncStore, 'removeProfile').mockResolvedValue(true);
+		return { previous, replacement, deleted, removed };
+	}
+
+	it('moves the workspace to a new key and deletes the account the old one opened', async () => {
+		const { previous, replacement, deleted } = scenario();
+
+		const outcome = await new ProfileCoordinator().replaceSyncKey({
+			exportBackup: async () => undefined
+		});
+
+		expect(outcome).toEqual({ ok: true, forced: false, previousAccountRemoved: true });
+		expect(deleted.mock.calls.map(([account]) => account.syncKey)).toEqual([previous.syncKey]);
+		expect(syncStore.activeProfile?.id).toBe(replacement.id);
+	});
+
+	it('keeps the old account when the new one came up short', async () => {
+		const { previous, deleted } = scenario({ localRecords: 4, remoteRecords: 3 });
+
+		const outcome = await new ProfileCoordinator().replaceSyncKey({
+			exportBackup: async () => undefined
+		});
+
+		expect(outcome.ok).toBe(false);
+		expect(outcome.ok === false && outcome.step).toBe('confirm');
+		// The replacement is torn down; the account being replaced is untouched.
+		expect(deleted.mock.calls.map(([account]) => account.syncKey)).not.toContain(previous.syncKey);
+		expect(syncStore.activeProfile?.id).toBe(previous.id);
+	});
+
+	it('refuses when this device has not finished syncing, and does not register anything', async () => {
+		scenario();
+		vi.spyOn(notesStore, 'syncWithCloudManual').mockResolvedValue(false);
+		const register = vi.spyOn(syncStore, 'register');
+
+		const outcome = await new ProfileCoordinator().replaceSyncKey({
+			exportBackup: async () => undefined
+		});
+
+		expect(outcome.ok).toBe(false);
+		expect(outcome.ok === false && outcome.step).toBe('preflight');
+		expect(register).not.toHaveBeenCalled();
+	});
+
+	it('backs up before it registers anything', async () => {
+		scenario();
+		const order: string[] = [];
+		vi.spyOn(syncStore, 'register').mockImplementation(async () => {
+			order.push('register');
+			return { success: false, error: 'stop here' };
+		});
+
+		await new ProfileCoordinator().replaceSyncKey({
+			exportBackup: async () => void order.push('backup')
+		});
+
+		expect(order).toEqual(['backup', 'register']);
+	});
+
+	it('will not delete anything when the relay never said what the new account holds', async () => {
+		const { previous, deleted } = scenario();
+		vi.spyOn(notesStore, 'syncWithCloudManual').mockImplementation(async () => {
+			syncStore.usage = null;
+			return true;
+		});
+
+		const outcome = await new ProfileCoordinator().replaceSyncKey({
+			exportBackup: async () => undefined
+		});
+
+		expect(outcome.ok).toBe(false);
+		expect(outcome.ok === false && outcome.error).toContain('did not report');
+		expect(deleted.mock.calls.map(([account]) => account.syncKey)).not.toContain(previous.syncKey);
+	});
+
+	it('does not start while another profile change is running', async () => {
+		scenario();
+		const coordinator = new ProfileCoordinator();
+		coordinator.switching = true;
+
+		const outcome = await coordinator.replaceSyncKey({ exportBackup: async () => undefined });
+
+		expect(outcome.ok).toBe(false);
+		expect(outcome.ok === false && outcome.error).toContain('still running');
+	});
+});

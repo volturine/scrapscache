@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Note, NoteImage } from '$lib/types';
 import {
 	createSyncIdentity,
+	decryptSyncEnvelope,
 	decryptSyncPayload,
 	encryptSyncPayload,
 	legacyAuthSecret,
@@ -12,6 +13,7 @@ import { syncControlKeys } from '$lib/syncEngine';
 import { sha256 } from '$lib/syncHash';
 import * as idb from '$lib/db/idb';
 import { SyncStore, type SyncSnapshot } from './sync.svelte';
+import { legacySyncEnvelope } from '../../tests/legacyEnvelope';
 
 type RequestPayload = {
 	cursor: number;
@@ -104,7 +106,7 @@ function envelope(
 		seq,
 		id,
 		slot,
-		ciphertext: encryptSyncPayload(account.syncKey, payload)
+		ciphertext: encryptSyncPayload(account.syncKey, payload, slot)
 	};
 }
 
@@ -509,7 +511,13 @@ describe('client sync state machine', () => {
 		expect(requests[0].envelopes).toEqual([]);
 		expect(requests[1].envelopes).toHaveLength(1);
 		expect(requests[1].envelopes[0].expectedId).toBe('remote-id');
-		expect(decryptSyncPayload(account.syncKey, requests[1].envelopes[0].ciphertext)).toMatchObject({
+		expect(
+			decryptSyncPayload(
+				account.syncKey,
+				requests[1].envelopes[0].ciphertext,
+				requests[1].envelopes[0].slot
+			)
+		).toMatchObject({
 			kind: 'note',
 			value: { title: 'local winner' }
 		});
@@ -719,7 +727,9 @@ describe('client sync state machine', () => {
 			.slice(1)
 			.map((request) =>
 				request.envelopes.map(
-					(item) => (decryptSyncPayload(account.syncKey, item.ciphertext) as { kind: string }).kind
+					(item) =>
+						(decryptSyncPayload(account.syncKey, item.ciphertext, item.slot) as { kind: string })
+							.kind
 				)
 			);
 
@@ -754,7 +764,7 @@ describe('client sync state machine', () => {
 			const deletedOld = request.deleteSlots.some((slot) => slot.id === 'old-att-id');
 			if (deletedOld) expect(replacementAccepted).toBe(true);
 			const uploadedNew = request.envelopes.some((item) => {
-				const payload = decryptSyncPayload(account.syncKey, item.ciphertext) as {
+				const payload = decryptSyncPayload(account.syncKey, item.ciphertext, item.slot) as {
 					kind?: string;
 					value?: { id?: string };
 				};
@@ -845,7 +855,7 @@ describe('client sync state machine', () => {
 		expect(push.success, push.error).toBe(true);
 		const upload = requests.at(-1)?.envelopes[0];
 		expect(upload?.expectedId).toBe('poison');
-		expect(decryptSyncPayload(account.syncKey, upload!.ciphertext)).toMatchObject({
+		expect(decryptSyncPayload(account.syncKey, upload!.ciphertext, upload!.slot)).toMatchObject({
 			kind: 'note',
 			value: { title: 'local replacement' }
 		});
@@ -988,7 +998,11 @@ describe('client sync state machine', () => {
 				return { success: false, status: 507, error: 'Sync account storage quota exceeded' };
 			}
 			if (request.envelopes.length === 1) {
-				const payload = decryptSyncPayload(account.syncKey, request.envelopes[0].ciphertext) as {
+				const payload = decryptSyncPayload(
+					account.syncKey,
+					request.envelopes[0].ciphertext,
+					request.envelopes[0].slot
+				) as {
 					kind: string;
 					value?: { id?: string };
 				};
@@ -1003,7 +1017,7 @@ describe('client sync state machine', () => {
 		const result = await store.sync([local], [], {}, {}, [], {}, false, false, passthrough);
 		const uploaded = requests.flatMap((request) =>
 			request.envelopes.map((item) => {
-				const payload = decryptSyncPayload(account.syncKey, item.ciphertext) as {
+				const payload = decryptSyncPayload(account.syncKey, item.ciphertext, item.slot) as {
 					kind: string;
 					value?: { id?: string };
 				};
@@ -1023,7 +1037,7 @@ describe('client sync state machine', () => {
 		const local = note('note-1', {}, [attachment('huge'), attachment('ok-a'), attachment('ok-b')]);
 		const { store, account, requests } = createHarness((request) => {
 			const kinds = request.envelopes.map((item) => {
-				const payload = decryptSyncPayload(account.syncKey, item.ciphertext) as {
+				const payload = decryptSyncPayload(account.syncKey, item.ciphertext, item.slot) as {
 					kind: string;
 					value?: { id?: string };
 				};
@@ -1041,7 +1055,11 @@ describe('client sync state machine', () => {
 
 		const hugeSingle = requests.findIndex((request) => {
 			if (request.envelopes.length !== 1) return false;
-			const payload = decryptSyncPayload(account.syncKey, request.envelopes[0].ciphertext) as {
+			const payload = decryptSyncPayload(
+				account.syncKey,
+				request.envelopes[0].ciphertext,
+				request.envelopes[0].slot
+			) as {
 				kind?: string;
 				value?: { id?: string };
 			};
@@ -1101,7 +1119,11 @@ describe('client sync state machine', () => {
 		const isolatedIds = requests
 			.filter((request) => request.envelopes.length === 1)
 			.map((request) => {
-				const payload = decryptSyncPayload(account.syncKey, request.envelopes[0].ciphertext) as {
+				const payload = decryptSyncPayload(
+					account.syncKey,
+					request.envelopes[0].ciphertext,
+					request.envelopes[0].slot
+				) as {
 					value: { id: string };
 				};
 				return payload.value.id;
@@ -1307,5 +1329,54 @@ describe('client sync state machine', () => {
 		expect(store3.profiles.length).toBe(0);
 		expect(store3.isLoggedIn).toBe(false);
 		expect(store3.activeProfile).toBeNull();
+	});
+});
+
+describe('records the relay still holds unbound to their slot', () => {
+	beforeEach(() => {
+		localStorage.clear();
+		vi.restoreAllMocks();
+	});
+
+	/** Runs one pull of a single envelope and reports what the sync queued for
+	 * re-upload. The outbox is the mechanism under test: whether the record then
+	 * happens to be re-sent for some unrelated reason says nothing about it. */
+	async function outboxAfterPull(ciphertextFor: (account: SyncIdentity) => string) {
+		const { store, account } = createHarness((_request, index) =>
+			index === 0
+				? {
+						success: true,
+						data: emptyData({
+							cursor: 1,
+							envelopes: [
+								{
+									seq: 1,
+									id: 'remote-id',
+									slot: 'a'.repeat(64),
+									ciphertext: ciphertextFor(account)
+								}
+							]
+						})
+					}
+				: { success: true, data: emptyData({ cursor: 1, writesAccepted: true }) }
+		);
+		const result = await store.sync([], [], {}, {}, [], {}, false, false, passthrough);
+		expect(result.success, result.error).toBe(true);
+		await store.waitForOutboxWrites();
+		return idb.getSyncOutboxKeys(idb.LOCAL_PROFILE_ID);
+	}
+
+	const pulled = { kind: 'note', value: note('note-1', { title: 'pulled' }) };
+
+	it('queues one it read for rewrite, so the format leaves the account on its own', async () => {
+		const queued = await outboxAfterPull((account) => legacySyncEnvelope(account.syncKey, pulled));
+		expect(queued).toContain('note:note-1');
+	});
+
+	it('queues nothing when the record was already bound to its slot', async () => {
+		const queued = await outboxAfterPull((account) =>
+			encryptSyncPayload(account.syncKey, pulled, 'a'.repeat(64))
+		);
+		expect(queued).not.toContain('note:note-1');
 	});
 });

@@ -214,22 +214,82 @@ function syncPayloadKey(syncKey: string): Uint8Array {
 	identityFromSyncKey(syncKey);
 	return sha256(encoder.encode(`scraps-cache-sync-payload:v1:${syncKey}`));
 }
-export function encryptSyncPayload(syncKey: string, payload: unknown): string {
-	const nonce = secureBytes(24);
-	const ciphertext = xchacha20poly1305(syncPayloadKey(syncKey), nonce).encrypt(
-		encoder.encode(JSON.stringify(payload))
+
+/** Leading byte of a packed envelope. v1 envelopes have no marker and start
+ * straight into the nonce, so a v1 nonce beginning 0x02 is indistinguishable
+ * here; decryption resolves it, since only one version will authenticate. */
+const ENVELOPE_V2 = 2;
+
+/**
+ * Ties an envelope to the account and slot it was written for, so the cipher
+ * rejects a relay that moves ciphertext between slots or accounts instead of
+ * that only failing later, when the decrypted record names its own key.
+ */
+function syncPayloadAad(syncKey: string, slot: string): Uint8Array {
+	return encoder.encode(
+		`scraps-cache-sync-envelope:v2:${identityFromSyncKey(syncKey).accountId}:${slot}`
 	);
-	const packed = new Uint8Array(nonce.length + ciphertext.length);
-	packed.set(nonce);
-	packed.set(ciphertext, nonce.length);
+}
+
+export function encryptSyncPayload(syncKey: string, payload: unknown, slot: string): string {
+	const nonce = secureBytes(24);
+	const ciphertext = xchacha20poly1305(
+		syncPayloadKey(syncKey),
+		nonce,
+		syncPayloadAad(syncKey, slot)
+	).encrypt(encoder.encode(JSON.stringify(payload)));
+	const packed = new Uint8Array(1 + nonce.length + ciphertext.length);
+	packed[0] = ENVELOPE_V2;
+	packed.set(nonce, 1);
+	packed.set(ciphertext, 1 + nonce.length);
 	return bytesToBase64Url(packed);
 }
-export function decryptSyncPayload(syncKey: string, envelope: string): unknown {
+
+export type OpenedSyncEnvelope = {
+	payload: unknown;
+	/** True when this opened through the pre-slot-binding path. The caller is
+	 * expected to rewrite the record, which is what eventually empties the relay
+	 * of unbound envelopes and lets that path be deleted. Reading the version byte
+	 * from outside cannot answer this: a v1 nonce starting 0x02 looks like a v2
+	 * marker, and only attempting decryption settles it. */
+	legacy: boolean;
+};
+
+export function decryptSyncEnvelope(
+	syncKey: string,
+	envelope: string,
+	slot: string
+): OpenedSyncEnvelope {
 	const packed = base64UrlToBytes(envelope);
+	const key = syncPayloadKey(syncKey);
+	if (packed[0] === ENVELOPE_V2 && packed.length > 25) {
+		try {
+			return {
+				payload: JSON.parse(
+					decoder.decode(
+						xchacha20poly1305(key, packed.slice(1, 25), syncPayloadAad(syncKey, slot)).decrypt(
+							packed.slice(25)
+						)
+					)
+				),
+				legacy: false
+			};
+		} catch {
+			// Fall through: a v1 envelope whose nonce happens to open with 0x02.
+		}
+	}
+	// Envelopes written before slot binding existed. This path goes away once no
+	// account still has one; until then dropping it would make every record
+	// uploaded before the change unreadable.
 	if (packed.length <= 24) throw new Error('Invalid encrypted sync envelope');
-	return JSON.parse(
-		decoder.decode(
-			xchacha20poly1305(syncPayloadKey(syncKey), packed.slice(0, 24)).decrypt(packed.slice(24))
-		)
-	);
+	return {
+		payload: JSON.parse(
+			decoder.decode(xchacha20poly1305(key, packed.slice(0, 24)).decrypt(packed.slice(24)))
+		),
+		legacy: true
+	};
+}
+
+export function decryptSyncPayload(syncKey: string, envelope: string, slot: string): unknown {
+	return decryptSyncEnvelope(syncKey, envelope, slot).payload;
 }

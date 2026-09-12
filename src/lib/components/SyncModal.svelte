@@ -13,7 +13,8 @@
 	import { buildProfileNotesExport } from '$lib/profiles';
 	import { estimateProfileBytes, LOCAL_PROFILE_ID } from '$lib/db/idb';
 	import { downloadJSON } from '$lib/utils';
-	import { Cloud, CloudOff, Download, RefreshCw, Trash2, X } from '@lucide/svelte';
+	import { NOT_SYNCED_MESSAGE, type RotationStep } from '$lib/syncKeyRotation';
+	import { Cloud, CloudOff, Download, KeyRound, RefreshCw, Trash2, X } from '@lucide/svelte';
 	import { portalToAppFloat } from '$lib/appViewport';
 
 	let { onClose, initialPairingCode = '' }: { onClose: () => void; initialPairingCode?: string } =
@@ -41,7 +42,12 @@
 	let waiting = $state<StartedDeviceLink | null>(null);
 	let now = $state(Date.now());
 	let timer: ReturnType<typeof setTimeout> | null = null;
-	let confirmation = $state<'delete' | 'force' | null>(null);
+	let confirmation = $state<'delete' | 'force' | 'replace-key' | null>(null);
+	let replaceStep = $state<RotationStep | null>(null);
+	/** Shown only after a refusal, so the override is never the first thing offered. */
+	let replaceNeedsOverride = $state(false);
+	let replaceOverrideAck = $state('');
+	const REPLACE_OVERRIDE_WORD = 'CONTINUE';
 	let newName = $state('');
 	// The row that currently owns Escape, so the dialog leaves the key alone.
 	let rowHoldingEscape = $state<string | null>(null);
@@ -387,6 +393,66 @@
 		}, 2000);
 	}
 
+	const REPLACE_STEP_LABELS: Record<RotationStep, string> = {
+		preflight: 'Checking this device is up to date…',
+		backup: 'Saving a copy of your notes…',
+		replace: 'Creating the new sync key…',
+		upload: 'Uploading your notes to it…',
+		confirm: 'Checking everything arrived…',
+		discard: 'Removing the old cloud account…'
+	};
+
+	/**
+	 * A crash net for the next minute, not an archive: if rotation dies partway the
+	 * notes are still on disk. Deliberately the same unencrypted export this modal
+	 * already offers, because a passphrase invented mid-panic is a safety net that
+	 * fails exactly when it is needed.
+	 */
+	async function writeRotationBackup() {
+		const name = syncStore.activeProfile?.name ?? 'workspace';
+		const backup = await buildProfileNotesExport(syncStore.activePid);
+		if (!backup) return;
+		downloadJSON(
+			backup,
+			`scrapscache-${name.replace(/[^a-z0-9_-]+/gi, '-').toLowerCase()}-before-key-change-${new Date()
+				.toISOString()
+				.slice(0, 10)}.scrapscache-backup`
+		);
+	}
+
+	async function replaceSyncKey(force: boolean) {
+		if (confirmation !== 'replace-key') return;
+		error = '';
+		info = '';
+		replaceStep = null;
+		const outcome = await runOperation('replace-key', 'Could not replace the sync key', () =>
+			profileCoordinator.replaceSyncKey({
+				force,
+				exportBackup: writeRotationBackup,
+				onStep: (step) => (replaceStep = step)
+			})
+		);
+		replaceStep = null;
+		if (!outcome) return;
+		if (!outcome.ok) {
+			replaceNeedsOverride = outcome.error === NOT_SYNCED_MESSAGE;
+			replaceOverrideAck = '';
+			error = replaceNeedsOverride
+				? outcome.error
+				: friendlyError(outcome.error, 'Could not replace the sync key');
+			if (!outcome.replacementRemoved && outcome.step !== 'preflight') {
+				error += ' An unused sync key was left on this device; you can remove it below.';
+			}
+			return;
+		}
+		confirmation = null;
+		replaceNeedsOverride = false;
+		mode = 'menu';
+		info = outcome.previousAccountRemoved
+			? 'Your sync key has been replaced. Pair your other devices again with the new code.'
+			: 'Your sync key has been replaced, but the old cloud account could not be deleted. Try “Delete cloud data” on it from another device, or retry later.';
+	}
+
 	async function deleteCloudData() {
 		if (confirmation !== 'delete') return;
 		error = '';
@@ -618,6 +684,22 @@
 										></button
 									>
 									<button
+										class="manage-row"
+										disabled={busy}
+										onclick={() => {
+											confirmation = 'replace-key';
+											mode = 'confirm';
+											error = '';
+											replaceNeedsOverride = false;
+											replaceOverrideAck = '';
+										}}
+										><KeyRound size={16} aria-hidden="true" /><span
+											>I lost a device<small
+												>Move this workspace to a new sync key the old device does not have</small
+											></span
+										></button
+									>
+									<button
 										class="manage-row text-[var(--scrapscache-danger)]"
 										disabled={busy}
 										onclick={() => {
@@ -642,15 +724,51 @@
 								This device’s notes will replace the cloud version using the same sync key. Notes
 								only in the cloud will be removed. Other devices will receive these notes as the
 								latest version.
+							{:else if confirmation === 'replace-key'}
+								Your notes move to a brand-new sync key, and the old cloud account is deleted. The
+								lost device stops syncing and can never read anything you write from now on.
 							{:else}
 								Permanently delete “{syncStore.activeProfile?.name}” from the cloud and stop syncing
 								it on all devices. This device’s notes will be appended to Anonymous workspace.
 								Existing anonymous notes are kept.
 							{/if}
 						</p>
+						{#if confirmation === 'replace-key'}
+							<p
+								class="rounded-lg p-3 text-sm leading-relaxed"
+								style="background: var(--scrapscache-warning-subtle); color: var(--scrapscache-text);"
+							>
+								<strong>It cannot reach the notes already on that device.</strong> Nothing can erase them
+								remotely — this only stops the lost device receiving anything new. Your other devices
+								will need to be paired again with the new code.
+							</p>
+							<p class="text-sm leading-relaxed text-[var(--scrapscache-text-muted)]">
+								A copy of this workspace’s notes is downloaded first, in case anything goes wrong.
+							</p>
+						{/if}
+						{#if replaceStep}
+							<p class="text-sm text-[var(--scrapscache-text-muted)]" role="status">
+								{REPLACE_STEP_LABELS[replaceStep]}
+							</p>
+						{/if}
 						{#if error}<p class="text-sm text-[var(--scrapscache-danger)]" role="alert">
 								{error}
 							</p>{/if}
+						{#if replaceNeedsOverride}
+							<label class="block space-y-2 text-sm">
+								<span class="text-[var(--scrapscache-text-muted)]"
+									>To continue anyway, type {REPLACE_OVERRIDE_WORD}. Anything saved only in the
+									cloud will be lost.</span
+								>
+								<input
+									bind:value={replaceOverrideAck}
+									class="scrapscache-input w-full px-3 py-2"
+									autocomplete="off"
+									spellcheck="false"
+									placeholder={REPLACE_OVERRIDE_WORD}
+								/>
+							</label>
+						{/if}
 						<div class="flex gap-2">
 							<button
 								type="button"
@@ -660,6 +778,8 @@
 									mode = 'menu';
 									confirmation = null;
 									error = '';
+									replaceNeedsOverride = false;
+									replaceOverrideAck = '';
 								}}>Cancel</button
 							>
 							<button
@@ -667,14 +787,24 @@
 								class="scrapscache-button flex-1 px-3 py-2 {confirmation === 'delete'
 									? 'scrapscache-button-destructive-solid'
 									: 'scrapscache-button-primary'}"
-								disabled={busy}
-								onclick={() =>
-									confirmation === 'force' ? void forceResync() : void deleteCloudData()}
+								disabled={busy ||
+									(replaceNeedsOverride &&
+										replaceOverrideAck.trim().toUpperCase() !== REPLACE_OVERRIDE_WORD)}
+								onclick={() => {
+									if (confirmation === 'force') return void forceResync();
+									if (confirmation === 'replace-key')
+										return void replaceSyncKey(replaceNeedsOverride);
+									void deleteCloudData();
+								}}
 								>{busy
 									? 'Working…'
 									: confirmation === 'force'
 										? 'Replace cloud notes'
-										: 'Delete cloud data'}</button
+										: confirmation === 'replace-key'
+											? replaceNeedsOverride
+												? 'Replace key anyway'
+												: 'Replace sync key'
+											: 'Delete cloud data'}</button
 							>
 						</div>
 					</div>

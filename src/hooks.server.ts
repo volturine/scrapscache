@@ -3,7 +3,7 @@ import { recordHttpRequest } from '$lib/server/metrics';
 
 const SECURITY_HEADERS: ReadonlyArray<readonly [string, string]> = [
 	['referrer-policy', 'no-referrer'],
-	['strict-transport-security', 'max-age=31536000'],
+	['strict-transport-security', 'max-age=31536000; includeSubDomains'],
 	['x-content-type-options', 'nosniff'],
 	['x-frame-options', 'DENY'],
 	['permissions-policy', 'camera=(), geolocation=(), microphone=(), payment=(), usb=()']

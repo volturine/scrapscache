@@ -1,4 +1,8 @@
-import { ACTIVITY_WINDOWS_DAYS, parseMaxAccountBytes } from '$lib/server/operatorConfig';
+import {
+	ACTIVITY_WINDOWS_DAYS,
+	DEFAULT_SYNC_PER_MINUTE,
+	parseMaxAccountBytes
+} from '$lib/server/operatorConfig';
 import { batch, execute, type SqlStatement } from './d1';
 import { cloudflareBindings } from './env';
 import { MAX_CLIENT_SYNC_MUTATIONS_PER_REQUEST } from '$lib/syncLimits';
@@ -34,12 +38,31 @@ export type PushDeviceInput = {
 export type ReminderWakeInput = { id: string; fireAt: number };
 export type DueWake = PushDeviceInput & { wakeId: string; fireAt: number };
 
+export type AccountSummary = {
+	accountId: string;
+	envelopeCount: number;
+	ciphertextBytes: number;
+	storageBytes: number;
+	lastSeenAt: number;
+	maxBytes: number;
+	maxBytesOverridden: boolean;
+	syncPerMinute: number;
+	syncPerMinuteOverridden: boolean;
+};
+
+export type AccountPage = { total: number; accounts: AccountSummary[] };
+
+export type FeatureFlag = { flag: string; defaultEnabled: boolean; description: string };
+
 export const ENVELOPE_STORAGE_OVERHEAD_BYTES = 512;
 export const MAX_PUSH_DEVICES = 32;
 export const MAX_WAKES_PER_ACCOUNT = 1_000;
 export const WAKE_RETAIN_MS = 86_400_000;
 export const WAKE_CLAIM_LEASE_MS = 60_000;
 export const DELETED_SLOT_GRACE_MS = 14 * 86_400_000;
+/** How long an uncommitted upload may sit before the sweep treats it as abandoned.
+ * Far longer than any request can live, so an in-flight upload is never reclaimed. */
+export const PENDING_UPLOAD_GRACE_MS = 3_600_000;
 /** Keeps D1 parameters and R2 subrequests safely inside Workers limits. */
 export const MAX_SYNC_MUTATIONS_PER_REQUEST = MAX_CLIENT_SYNC_MUTATIONS_PER_REQUEST;
 
@@ -129,6 +152,166 @@ export class SyncStore {
 		});
 		return true;
 	}
+	/** One page of accounts with their effective limits, largest first, so the
+	 * operator view opens on whatever is consuming the most. */
+	async listAccounts(
+		options: { limit?: number; offset?: number; search?: string } = {}
+	): Promise<AccountPage> {
+		const limit = Math.min(Math.max(Math.trunc(options.limit ?? 50), 1), 200);
+		const offset = Math.max(Math.trunc(options.offset ?? 0), 0);
+		const search = (options.search ?? '').trim();
+		const where = search ? 'WHERE a.account_id LIKE ?' : '';
+		const filter = search ? [`${search}%`] : [];
+		const total = (
+			await execute(this.db, {
+				sql: `SELECT COUNT(*) AS total FROM accounts a ${where}`,
+				args: filter
+			})
+		).rows[0] as { total: number };
+		const rows = (
+			await execute(this.db, {
+				sql: `SELECT a.account_id AS accountId, a.envelope_count AS envelopeCount,
+						a.ciphertext_bytes AS ciphertextBytes, a.last_seen_at AS lastSeenAt,
+						q.max_bytes AS maxBytes, r.sync_per_minute AS syncPerMinute
+					FROM accounts a
+					LEFT JOIN account_quotas q ON q.account_id = a.account_id
+					LEFT JOIN account_rate_limits r ON r.account_id = a.account_id
+					${where}
+					ORDER BY a.ciphertext_bytes DESC, a.account_id ASC
+					LIMIT ? OFFSET ?`,
+				args: [...filter, limit, offset]
+			})
+		).rows;
+		return { total: Number(total.total), accounts: rows.map((row) => this.toSummary(row)) };
+	}
+
+	private toSummary(row: Record<string, unknown>): AccountSummary {
+		const envelopeCount = Number(row.envelopeCount ?? 0);
+		const ciphertextBytes = Number(row.ciphertextBytes ?? 0);
+		return {
+			accountId: String(row.accountId),
+			envelopeCount,
+			ciphertextBytes,
+			storageBytes: ciphertextBytes + envelopeCount * ENVELOPE_STORAGE_OVERHEAD_BYTES,
+			lastSeenAt: Number(row.lastSeenAt ?? 0),
+			maxBytes: row.maxBytes == null ? this.maxAccountBytes : Number(row.maxBytes),
+			maxBytesOverridden: row.maxBytes != null,
+			syncPerMinute:
+				row.syncPerMinute == null ? DEFAULT_SYNC_PER_MINUTE : Number(row.syncPerMinute),
+			syncPerMinuteOverridden: row.syncPerMinute != null
+		};
+	}
+
+	/** Null when this account runs on the shared default. */
+	async accountRateLimit(accountId: string): Promise<number | null> {
+		const row = (
+			await execute(this.db, {
+				sql: 'SELECT sync_per_minute AS syncPerMinute FROM account_rate_limits WHERE account_id = ?',
+				args: [accountId]
+			})
+		).rows[0];
+		return row ? Number(row.syncPerMinute) : null;
+	}
+
+	async setAccountRateLimit(accountId: string, syncPerMinute: number): Promise<boolean> {
+		if (!Number.isSafeInteger(syncPerMinute) || syncPerMinute <= 0) {
+			throw new RangeError('Sync rate limit must be a positive safe integer');
+		}
+		return (
+			(
+				await execute(this.db, {
+					sql: `INSERT INTO account_rate_limits(account_id, sync_per_minute, updated_at)
+						SELECT account_id, ?, ? FROM accounts WHERE account_id = ?
+						ON CONFLICT(account_id) DO UPDATE SET
+							sync_per_minute = excluded.sync_per_minute, updated_at = excluded.updated_at`,
+					args: [syncPerMinute, Date.now(), accountId]
+				})
+			).rowsAffected === 1
+		);
+	}
+
+	async clearAccountRateLimit(accountId: string): Promise<boolean> {
+		if (!(await this.getAuthCredential(accountId))) return false;
+		await execute(this.db, {
+			sql: 'DELETE FROM account_rate_limits WHERE account_id = ?',
+			args: [accountId]
+		});
+		return true;
+	}
+
+	async listFeatureFlags(): Promise<FeatureFlag[]> {
+		const rows = (
+			await execute(
+				this.db,
+				'SELECT flag, default_enabled AS defaultEnabled, description FROM feature_flags ORDER BY flag'
+			)
+		).rows;
+		return rows.map((row) => ({
+			flag: String(row.flag),
+			defaultEnabled: Number(row.defaultEnabled) === 1,
+			description: String(row.description ?? '')
+		}));
+	}
+
+	async upsertFeatureFlag(flag: string, defaultEnabled: boolean, description = ''): Promise<void> {
+		await execute(this.db, {
+			sql: `INSERT INTO feature_flags(flag, default_enabled, description, updated_at)
+				VALUES (?, ?, ?, ?)
+				ON CONFLICT(flag) DO UPDATE SET
+					default_enabled = excluded.default_enabled,
+					description = excluded.description,
+					updated_at = excluded.updated_at`,
+			args: [flag, defaultEnabled ? 1 : 0, description, Date.now()]
+		});
+	}
+
+	/** Removing the gate removes every per-account opinion about it, which is how
+	 * a finished rollout is cleaned up rather than left to accumulate. */
+	async deleteFeatureFlag(flag: string): Promise<boolean> {
+		const results = await batch(this.db, [
+			{ sql: 'DELETE FROM account_feature_flags WHERE flag = ?', args: [flag] },
+			{ sql: 'DELETE FROM feature_flags WHERE flag = ?', args: [flag] }
+		]);
+		return results[1]?.rowsAffected === 1;
+	}
+
+	/** Every known gate resolved for one account: its own opinion where it has
+	 * one, the default otherwise. A gate nobody declared is absent, not false. */
+	async accountFeatureFlags(accountId: string): Promise<Record<string, boolean>> {
+		const rows = (
+			await execute(this.db, {
+				sql: `SELECT f.flag AS flag, COALESCE(a.enabled, f.default_enabled) AS enabled
+					FROM feature_flags f
+					LEFT JOIN account_feature_flags a ON a.flag = f.flag AND a.account_id = ?
+					ORDER BY f.flag`,
+				args: [accountId]
+			})
+		).rows;
+		return Object.fromEntries(rows.map((row) => [String(row.flag), Number(row.enabled) === 1]));
+	}
+
+	async setAccountFeatureFlag(accountId: string, flag: string, enabled: boolean): Promise<boolean> {
+		return (
+			(
+				await execute(this.db, {
+					sql: `INSERT INTO account_feature_flags(account_id, flag, enabled, updated_at)
+						SELECT account_id, ?, ?, ? FROM accounts WHERE account_id = ?
+						ON CONFLICT(account_id, flag) DO UPDATE SET
+							enabled = excluded.enabled, updated_at = excluded.updated_at`,
+					args: [flag, enabled ? 1 : 0, Date.now(), accountId]
+				})
+			).rowsAffected === 1
+		);
+	}
+
+	async clearAccountFeatureFlag(accountId: string, flag: string): Promise<boolean> {
+		await execute(this.db, {
+			sql: 'DELETE FROM account_feature_flags WHERE account_id = ? AND flag = ?',
+			args: [accountId, flag]
+		});
+		return true;
+	}
+
 	async sync(
 		accountId: string,
 		cursor: number,
@@ -223,6 +406,13 @@ export class SyncStore {
 		for (const row of rows) await this.deleteAccount(String(row.accountId));
 		return rows.length;
 	}
+	/**
+	 * Reclaim R2 objects no live envelope points at: slots deleted long enough ago
+	 * that every device has seen the deletion, and uploads that reserved an object
+	 * but never committed because the request died between the R2 write and the
+	 * batch that would have promoted them. Both are invisible to account quota, so
+	 * nothing else would ever notice they were still being paid for.
+	 */
 	async purgeExpiredDeletedEnvelopes(
 		now = Date.now(),
 		graceMs = DELETED_SLOT_GRACE_MS
@@ -240,6 +430,35 @@ export class SyncStore {
 				args: [String(r.accountId), String(r.slot)]
 			}))
 		);
+		await Promise.all(rows.map((r) => this.bindings.SCRAPSCACHE_ENVELOPES.delete(String(r.r2Key))));
+		return rows.length + (await this.purgeAbandonedUploads(now));
+	}
+
+	/** Drop uncommitted uploads and the objects they reserved. An id that reached
+	 * `envelopes` is live: its row is only stale bookkeeping, so keep the object. */
+	private async purgeAbandonedUploads(now: number): Promise<number> {
+		const rows = (
+			await execute(this.db, {
+				sql: `SELECT p.account_id AS accountId,p.id AS id,p.r2_key AS r2Key
+					FROM pending_envelopes p
+					LEFT JOIN envelopes e ON e.account_id=p.account_id AND e.id=p.id
+					WHERE p.created_at <= ? AND e.id IS NULL`,
+				args: [now - PENDING_UPLOAD_GRACE_MS]
+			})
+		).rows;
+		await batch(this.db, [
+			{
+				sql: `DELETE FROM pending_envelopes WHERE created_at <= ? AND EXISTS (
+					SELECT 1 FROM envelopes e
+					WHERE e.account_id=pending_envelopes.account_id AND e.id=pending_envelopes.id
+				)`,
+				args: [now - PENDING_UPLOAD_GRACE_MS]
+			},
+			...rows.map((r) => ({
+				sql: 'DELETE FROM pending_envelopes WHERE account_id=? AND id=?',
+				args: [String(r.accountId), String(r.id)]
+			}))
+		]);
 		await Promise.all(rows.map((r) => this.bindings.SCRAPSCACHE_ENVELOPES.delete(String(r.r2Key))));
 		return rows.length;
 	}

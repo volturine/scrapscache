@@ -5,6 +5,9 @@
 	"compatibility_date": "2026-08-28",
 	"compatibility_flags": ["nodejs_compat"],
 	"workers_dev": false,
+	// Version preview URLs bind the same D1, R2 and Durable Object as production
+	// while bypassing every zone-level WAF and rate-limiting rule. Keep them off.
+	"preview_urls": false,
 	"routes": [
 		{
 			"pattern": "scrapscache.com/*",
@@ -13,7 +16,10 @@
 	],
 	"vars": {
 		"SCRAPSCACHE_ORIGIN": "https://scrapscache.com",
-		"SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES": "100000000"
+		"SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES": "100000000",
+		"SCRAPSCACHE_RETENTION_INACTIVE_DAYS": "365",
+		// Only the canonical production origin is crawlable; dev serves Disallow.
+		"SCRAPSCACHE_ALLOW_INDEXING": "true"
 	},
 	"assets": {
 		"binding": "ASSETS",
@@ -41,6 +47,14 @@
 			}
 		]
 	},
+	// Counters cannot live in isolate memory here: isolates are short-lived and
+	// numerous, so a scrape would report one arbitrary isolate's partial count.
+	"analytics_engine_datasets": [
+		{
+			"binding": "SCRAPSCACHE_ANALYTICS",
+			"dataset": "scrapscache_events"
+		}
+	],
 	"migrations": [
 		{
 			"tag": "v1",
@@ -71,6 +85,12 @@
 					}
 				]
 			},
+			"analytics_engine_datasets": [
+				{
+					"binding": "SCRAPSCACHE_ANALYTICS",
+					"dataset": "scrapscache_events_dev"
+				}
+			],
 			"routes": [
 				{
 					"pattern": "dev.scrapscache.com/*",
@@ -79,7 +99,10 @@
 			],
 			"vars": {
 				"SCRAPSCACHE_ORIGIN": "https://dev.scrapscache.com",
-				"SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES": "100000000"
+				"SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES": "100000000",
+				"SCRAPSCACHE_RETENTION_INACTIVE_DAYS": "365",
+				// Pre-merge code on a public hostname. Never invite crawlers here.
+				"SCRAPSCACHE_ALLOW_INDEXING": "false"
 			}
 		}
 	}

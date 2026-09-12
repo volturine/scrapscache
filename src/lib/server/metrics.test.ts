@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { recordHttpRequest, renderMetrics } from './metrics';
+import { metricsSnapshot, recordHttpRequest, renderMetrics } from './metrics';
 
 describe('renderMetrics', () => {
 	it('emits anonymous storage, activity, and retention gauges', () => {
@@ -42,5 +42,45 @@ describe('renderMetrics', () => {
 		const typed = new Set([...body.matchAll(/^# TYPE ([\w]+) /gm)].map((match) => match[1]));
 		expect(typed).toEqual(families);
 		expect(body).not.toContain('route="/health/live"');
+	});
+});
+
+describe('counters a deployment cannot total', () => {
+	it('emits them when one process has seen every request', () => {
+		recordHttpRequest('/api/sync/delta', 200, 5);
+		const body = renderMetrics(
+			{
+				accounts: 4,
+				envelopeCount: 8,
+				ciphertextBytes: 16,
+				gigabytes: 0,
+				activeByWindowDays: { '7': 3 },
+				staleAccounts: 2
+			},
+			undefined,
+			metricsSnapshot()
+		);
+		expect(body).toContain('scrapscache_http_requests_total{route="/api/sync/delta",status="200"}');
+		expect(body).toContain('scrapscache_sync_requests_total');
+	});
+
+	it('omits them entirely rather than publishing a partial count', () => {
+		const body = renderMetrics(
+			{
+				accounts: 4,
+				envelopeCount: 8,
+				ciphertextBytes: 16,
+				gigabytes: 0,
+				activeByWindowDays: { '7': 3 },
+				staleAccounts: 2
+			},
+			undefined,
+			null
+		);
+		expect(body).not.toContain('scrapscache_http_requests_total');
+		expect(body).not.toContain('scrapscache_sync_requests_total');
+		// Database-derived gauges are the same number wherever they are read.
+		expect(body).toContain('scrapscache_sync_accounts 4');
+		expect(body).toContain('scrapscache_sync_envelopes 8');
 	});
 });

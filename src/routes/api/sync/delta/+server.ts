@@ -14,6 +14,7 @@ import {
 	rateLimitResponse
 } from '$lib/server/rateLimit';
 import { env } from '$env/dynamic/private';
+import { DEFAULT_SYNC_PER_MINUTE } from '$lib/server/operatorConfig';
 import { recordSqliteError, recordSyncBatch } from '$lib/server/metrics';
 
 // Clients re-encode attachments to ~4 MiB before upload (imageOptimize.ts);
@@ -113,8 +114,13 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 		const senderClientId = request.headers.get('x-sync-client-id') ?? undefined;
 		try {
 			const store = getSyncStore();
+			// One relay read per sync, to pick up an operator override. Deliberately
+			// not cached and not carried on the session: the session lives in the ops
+			// store and the override in the relay, which are separate databases when
+			// self-hosted, so there is nothing to join it onto. This runs only after
+			// authentication, on a path that already makes several calls.
 			const accountLimit = await getPublicApiLimiter().check(`sync-account:${accountId}`, {
-				capacity: 60,
+				capacity: (await store.accountRateLimit(accountId)) ?? DEFAULT_SYNC_PER_MINUTE,
 				refillWindowMs: 60_000
 			});
 			if (!accountLimit.allowed) return rateLimitResponse(accountLimit);

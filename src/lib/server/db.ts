@@ -42,6 +42,27 @@ const RELAY_DDL = `
 		max_bytes INTEGER NOT NULL CHECK(max_bytes > 0),
 		FOREIGN KEY (account_id) REFERENCES accounts(account_id) ON DELETE CASCADE
 	);
+	CREATE TABLE IF NOT EXISTS account_rate_limits (
+		account_id TEXT PRIMARY KEY,
+		sync_per_minute INTEGER NOT NULL CHECK(sync_per_minute > 0),
+		updated_at INTEGER NOT NULL,
+		FOREIGN KEY (account_id) REFERENCES accounts(account_id) ON DELETE CASCADE
+	);
+	CREATE TABLE IF NOT EXISTS feature_flags (
+		flag TEXT PRIMARY KEY,
+		default_enabled INTEGER NOT NULL DEFAULT 0,
+		description TEXT NOT NULL DEFAULT '',
+		updated_at INTEGER NOT NULL
+	);
+	CREATE TABLE IF NOT EXISTS account_feature_flags (
+		account_id TEXT NOT NULL,
+		flag TEXT NOT NULL,
+		enabled INTEGER NOT NULL,
+		updated_at INTEGER NOT NULL,
+		PRIMARY KEY (account_id, flag),
+		FOREIGN KEY (account_id) REFERENCES accounts(account_id) ON DELETE CASCADE
+	);
+	CREATE INDEX IF NOT EXISTS account_feature_flags_flag ON account_feature_flags(flag);
 	CREATE TABLE IF NOT EXISTS pending_ops_deletions (
 		account_id TEXT PRIMARY KEY,
 		queued_at INTEGER NOT NULL

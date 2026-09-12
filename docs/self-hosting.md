@@ -143,19 +143,22 @@ client-address settings above so rate limits see real client IPs.
 
 ### Application / Node
 
-| Variable                                   |                        Default | Purpose                                                                         |
-| ------------------------------------------ | -----------------------------: | ------------------------------------------------------------------------------- |
-| `SCRAPSCACHE_RELAY_DB_URL`                 |        `http://127.0.0.1:8080` | libSQL URL for relay (accounts, envelopes, deleted_envelopes, quotas)           |
-| `SCRAPSCACHE_OPS_DB_URL`                   |        `http://127.0.0.1:8081` | libSQL URL for operational state (rate limits, auth, pairing, push, VAPID)      |
-| `SCRAPSCACHE_TICK_SECRET`                  |                       required | Shared secret protecting the `/api/cron/tick` endpoint                          |
-| `SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES`       |                    `100000000` | Relay storage quota per account (100 MB); same default on Workers               |
-| `SCRAPSCACHE_SYNC_MAX_CONCURRENT_REQUESTS` |                            `8` | Max sync requests in flight                                                     |
-| `SCRAPSCACHE_ADMIN_TOKEN`                  |                          unset | Enables and protects metrics, JSON status, and retention; unset disables them   |
-| `SCRAPSCACHE_RETENTION_INACTIVE_DAYS`      |                            `0` | Delete accounts with no authenticated activity for this many days; `0` disables |
-| `SCRAPSCACHE_VAPID_PUBLIC_KEY`             |                 auto-generated | Optional stable Web Push VAPID public key                                       |
-| `SCRAPSCACHE_VAPID_PRIVATE_KEY`            |                 auto-generated | Optional stable Web Push VAPID private key                                      |
-| `SCRAPSCACHE_VAPID_SUBJECT`                | `mailto:scrapscache@localhost` | Contact URI for VAPID (`mailto:` or `https:`)                                   |
-| `ADDRESS_HEADER` / `XFF_DEPTH`             |                   direct / `1` | Trusted proxy client-address configuration                                      |
+| Variable                                   |                        Default | Purpose                                                                                                                 |
+| ------------------------------------------ | -----------------------------: | ----------------------------------------------------------------------------------------------------------------------- |
+| `SCRAPSCACHE_RELAY_DB_URL`                 |        `http://127.0.0.1:8080` | libSQL URL for relay (accounts, envelopes, deleted_envelopes, quotas)                                                   |
+| `SCRAPSCACHE_OPS_DB_URL`                   |        `http://127.0.0.1:8081` | libSQL URL for operational state (rate limits, auth, pairing, push, VAPID)                                              |
+| `SCRAPSCACHE_TICK_SECRET`                  |                       required | Shared secret protecting the `/api/cron/tick` endpoint                                                                  |
+| `SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES`       |                    `100000000` | Relay storage quota per account (100 MB); same default on Workers                                                       |
+| `SCRAPSCACHE_SYNC_MAX_CONCURRENT_REQUESTS` |                            `8` | Max sync requests in flight. Counted per process, so it is a real ceiling on Node and only a per-isolate one on Workers |
+| `SCRAPSCACHE_ADMIN_TOKEN`                  |                          unset | Enables and protects metrics, JSON status, and retention; unset disables them                                           |
+| `SCRAPSCACHE_RETENTION_INACTIVE_DAYS`      |                            `0` | Delete accounts with no authenticated activity for this many days; `0` disables                                         |
+| `SCRAPSCACHE_VAPID_PUBLIC_KEY`             |                 auto-generated | Optional stable Web Push VAPID public key                                                                               |
+| `SCRAPSCACHE_VAPID_PRIVATE_KEY`            |                 auto-generated | Optional stable Web Push VAPID private key                                                                              |
+| `SCRAPSCACHE_VAPID_SUBJECT`                | `mailto:scrapscache@localhost` | Contact URI for VAPID (`mailto:` or `https:`)                                                                           |
+| `SCRAPSCACHE_ALLOW_INDEXING`               |                          unset | `true` serves a crawlable `robots.txt`; anything else disallows all crawling                                            |
+| `SCRAPSCACHE_CF_ACCOUNT_ID`                |                          unset | Workers only: account used to read the telemetry dataset back                                                           |
+| `SCRAPSCACHE_ANALYTICS_TOKEN`              |                          unset | Workers only: API token with Account Analytics Read, for `/api/admin/telemetry`                                         |
+| `ADDRESS_HEADER` / `XFF_DEPTH`             |                   direct / `1` | Trusted proxy client-address configuration                                                                              |
 
 Compose maps `SCRAPSCACHE_ADDRESS_HEADER` → `ADDRESS_HEADER` and
 `SCRAPSCACHE_XFF_DEPTH` → `XFF_DEPTH`.
@@ -191,15 +194,18 @@ may override them.
 
 ## Health, metrics, and administration
 
-| Endpoint                                   | Auth                                             | Purpose                                             |
-| ------------------------------------------ | ------------------------------------------------ | --------------------------------------------------- |
-| `GET /health/live`                         | none                                             | Process liveness                                    |
-| `GET /health/ready`                        | none                                             | Database readiness                                  |
-| `GET /metrics`                             | `Authorization: Bearer $SCRAPSCACHE_ADMIN_TOKEN` | Prometheus-style metrics                            |
-| `GET /api/admin/status`                    | same bearer token                                | Anonymous JSON: storage, users, activity, retention |
-| `POST /api/admin/retention`                | same bearer token                                | Run the inactive-account sweeper now                |
-| `POST/PUT/DELETE /api/admin/account-quota` | same bearer token                                | Inspect, set, or clear one account's byte quota     |
-| `POST /api/cron/tick`                      | `Authorization: Bearer $SCRAPSCACHE_TICK_SECRET` | Run scheduled tasks (cron endpoint)                 |
+| Endpoint                          | Auth                                             | Purpose                                                                       |
+| --------------------------------- | ------------------------------------------------ | ----------------------------------------------------------------------------- |
+| `GET /health/live`                | none                                             | Process liveness                                                              |
+| `GET /health/ready`               | none                                             | Database readiness                                                            |
+| `GET /metrics`                    | `Authorization: Bearer $SCRAPSCACHE_ADMIN_TOKEN` | Prometheus-style metrics                                                      |
+| `GET /api/admin/status`           | same bearer token                                | Anonymous JSON: storage, users, activity, retention                           |
+| `GET /api/admin/telemetry`        | same bearer token                                | Request counts and operational counters over a window                         |
+| `POST /api/admin/retention`       | same bearer token                                | Run the inactive-account sweeper now                                          |
+| `GET /api/admin/accounts`         | same bearer token                                | Accounts with their effective limits; `?accountId=` adds that account's flags |
+| `PATCH /api/admin/accounts`       | same bearer token                                | Set or clear one account's storage quota, request rate, and flags             |
+| `GET/PUT/DELETE /api/admin/flags` | same bearer token                                | The feature gate registry and its defaults                                    |
+| `POST /api/cron/tick`             | `Authorization: Bearer $SCRAPSCACHE_TICK_SECRET` | Run scheduled tasks (cron endpoint)                                           |
 
 With no `SCRAPSCACHE_ADMIN_TOKEN` configured, the three token-protected
 endpoints return 404 — the admin API is disabled.
@@ -216,6 +222,18 @@ minute. For self-hosted deployments, add a crontab entry:
 ciphertext bytes and decimal GB, account totals, activity in the last 1 / 7 / 30
 days, process-lifetime sync counters, and the retention policy. Counts are
 aggregates only — no account IDs, ciphertext, or credentials.
+
+The process-lifetime counters in `/metrics` and `/api/admin/status` come from
+memory, which is the whole picture on a single Node process (Docker, `npm start`)
+and none of it on Cloudflare Workers, where every ephemeral isolate keeps its own
+copy. The Workers build therefore emits those events to an Analytics Engine
+dataset instead: `/metrics` omits the counter families and `/api/admin/status`
+reports `activity: null` alongside `telemetry.source`, rather than serving a
+partial count that reads like a total. Storage and account gauges are database
+aggregates and are correct on both.
+
+The same data, plus per-account limits and feature gates, is available in the
+browser at `/admin`, signed in with `SCRAPSCACHE_ADMIN_TOKEN`.
 
 Inactive-account retention is **off** unless
 `SCRAPSCACHE_RETENTION_INACTIVE_DAYS` is a positive integer. When enabled, a
@@ -234,19 +252,40 @@ The environment value is the default for every account. An authenticated admin
 can set a durable per-account override in bytes, or delete it to restore the
 default:
 
+One endpoint changes anything about one account. Every field is optional, and
+`null` restores the shared default rather than setting zero, so there is no value
+you can type that silently disables an account:
+
+```sh
+curl -fsS -X PATCH \
+  -H "Authorization: Bearer $SCRAPSCACHE_ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"accountId\":\"$ACCOUNT_ID\",\"maxBytes\":2147483648,\"syncPerMinute\":240}" \
+  "http://localhost:3000/api/admin/accounts"
+
+# Back to the defaults, and drop this account's opinion of one feature gate.
+curl -fsS -X PATCH \
+  -H "Authorization: Bearer $SCRAPSCACHE_ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"accountId\":\"$ACCOUNT_ID\",\"maxBytes\":null,\"syncPerMinute\":null,\"flags\":{\"canvas-beta\":null}}" \
+  "http://localhost:3000/api/admin/accounts"
+```
+
+Feature gates are declared once, with the default every account gets, then
+overridden per account. Deleting a gate takes every per-account opinion with it,
+so a finished rollout leaves nothing behind:
+
 ```sh
 curl -fsS -X PUT \
   -H "Authorization: Bearer $SCRAPSCACHE_ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
-  -d "{\"accountId\":\"$ACCOUNT_ID\",\"maxBytes\":2147483648}" \
-  "http://localhost:3000/api/admin/account-quota"
-
-curl -fsS -X DELETE \
-	-H "Authorization: Bearer $SCRAPSCACHE_ADMIN_TOKEN" \
-	-H "Content-Type: application/json" \
-	-d "{\"accountId\":\"$ACCOUNT_ID\"}" \
-	"http://localhost:3000/api/admin/account-quota"
+  -d '{"flag":"canvas-beta","defaultEnabled":false,"description":"Unreleased canvas"}' \
+  "http://localhost:3000/api/admin/flags"
 ```
+
+Clients read their own resolved set from `GET /api/sync/features` when the app
+starts. A gate nobody has declared is absent rather than false, and a gate that
+cannot be read stays shut.
 
 ## Images and CI
 
@@ -267,9 +306,8 @@ password is required for GitHub Actions.
 
 ## Security notes for operators
 
-See [security.md](security.md). Short version: the database holds **encrypted
-envelopes**, not readable notes — but you still protect availability, auth
-tokens and TLS configuration carefully. Relay and ops sqld each store their data
+See [security.md](security.md). Short version: the database holds **encrypted envelopes**, not readable notes — but you
+still protect availability, auth tokens and TLS configuration carefully. Relay and ops sqld each store their data
 in `/var/lib/sqld` on distinct persistent volumes. Back up the relay volume for
 durable encrypted sync state. Back up ops as well unless VAPID keys are pinned
 in the environment and losing sessions, pairing state, and push registrations is acceptable.

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { css, cx } from 'styled-system/css';
+	import { css, cx, cva, sva } from 'styled-system/css';
 	import { iconButton, input } from 'styled-system/recipes';
 	import { hstack, vstack } from 'styled-system/patterns';
 	import { uiStore } from '$lib/stores/ui.svelte';
@@ -48,8 +48,8 @@
 	};
 	const SYNC_STATUS_CLASS: Record<SyncStatus, string> = {
 		[SyncStatus.Normal]: '',
-		[SyncStatus.Warning]: `text-[var(--scrapscache-warning)] ${css({ color: 'scrapscache.warning' })}`,
-		[SyncStatus.Danger]: `text-[var(--scrapscache-danger)] ${css({ color: 'scrapscache.danger' })}`
+		[SyncStatus.Warning]: 'text-[var(--scrapscache-warning)]',
+		[SyncStatus.Danger]: 'text-[var(--scrapscache-danger)]'
 	};
 
 	const { startNewNote, closeNote } = useEditorActions();
@@ -189,33 +189,44 @@
 		p: 0,
 		color: 'scrapscache.textMuted'
 	});
-	const iconSm = css({ h: '1rem', w: '1rem' });
-	const iconMd = css({ h: '1.25rem', w: '1.25rem' });
-	const iconFlex = css({ flexShrink: 0 });
-	const menuPositioner = css({ zIndex: 30 });
-	const popoverClass = css({ w: '16rem', overflow: 'hidden', pt: '0.25rem' });
-	const storageProgressTrack = css({
-		h: '0.375rem',
-		overflow: 'hidden',
-		rounded: 'full',
-		bg: { base: 'black/10', _dark: 'white/10' }
+	const icon = cva({
+		base: { flexShrink: 0 },
+		variants: {
+			size: {
+				sm: { h: '1rem', w: '1rem' },
+				md: { h: '1.25rem', w: '1.25rem' }
+			}
+		}
 	});
-	const storageProgressBar = css({ h: 'full', bg: 'blue.600', transition: 'width 150ms ease' });
-	const menuItemClass = css({
-		display: 'flex',
-		h: '2rem',
-		w: 'full',
-		cursor: 'pointer',
-		alignItems: 'center',
-		gap: '0.5rem',
-		px: '0.75rem',
-		textAlign: 'left',
-		fontSize: 'sm',
-		color: 'scrapscache.text',
-		_hover: { bg: { base: 'black/5', _dark: 'white/10' } }
+	const settingsMenu = sva({
+		slots: ['positioner', 'popover', 'item', 'separator', 'track', 'bar', 'alert'],
+		base: {
+			positioner: { zIndex: 30 },
+			popover: { w: '16rem', overflow: 'hidden', pt: '0.25rem' },
+			item: {
+				display: 'flex',
+				h: '2rem',
+				w: 'full',
+				cursor: 'pointer',
+				alignItems: 'center',
+				gap: '0.5rem',
+				px: '0.75rem',
+				textAlign: 'left',
+				fontSize: 'sm',
+				color: 'scrapscache.text',
+				_hover: { bg: { base: 'black/5', _dark: 'white/10' } }
+			},
+			separator: { borderTopWidth: '1px', borderColor: 'scrapscache.border' },
+			track: {
+				h: '0.375rem',
+				overflow: 'hidden',
+				rounded: 'full',
+				bg: { base: 'black/10', _dark: 'white/10' }
+			},
+			bar: { h: 'full', bg: 'blue.600', transition: 'width 150ms ease' },
+			alert: { px: '0.75rem', pb: '0.5rem', fontSize: 'xs', color: 'red.600' }
+		}
 	});
-	const menuSep = css({ borderTopWidth: '1px', borderColor: 'scrapscache.border' });
-	const backupErrorAlert = css({ px: '0.75rem', pb: '0.5rem', fontSize: 'xs', color: 'red.600' });
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -237,7 +248,7 @@
 			onclick={() => uiStore.toggleSidebar()}
 			aria-label="Toggle sidebar"
 		>
-			<MenuIcon class={iconMd} aria-hidden="true" />
+			<MenuIcon class={icon({ size: 'md' })} aria-hidden="true" />
 		</button>
 	</Tooltip>
 
@@ -257,7 +268,7 @@
 		})}
 	>
 		<Search
-			class={`${iconSm} ${css({ flexShrink: 0, color: 'scrapscache.textMuted' })}`}
+			class={cx(icon({ size: 'sm' }), css({ color: 'scrapscache.textMuted' }))}
 			aria-hidden="true"
 		/>
 		<input
@@ -274,7 +285,7 @@
 				onclick={() => uiStore.clearSearch()}
 				aria-label="Clear search"
 			>
-				<X class={iconSm} aria-hidden="true" />
+				<X class={icon({ size: 'sm' })} aria-hidden="true" />
 			</button>
 		{/if}
 	</div>
@@ -295,14 +306,14 @@
 			     an svg root as its own user space, so the icon sat still there. -->
 			<span
 				class={[
-					iconMd,
+					icon({ size: 'md' }),
 					css({ display: 'block' }),
 					notesStore.syncing && 'scrapscache-sync-icon-active'
 				]}
 				data-scrapscache-sync-spinner
 			>
 				<Cloud
-					class={[iconMd, SYNC_STATUS_CLASS[syncStatus]]}
+					class={[icon({ size: 'md' }), SYNC_STATUS_CLASS[syncStatus]]}
 					data-scrapscache-sync-icon
 					aria-hidden="true"
 				/>
@@ -318,9 +329,9 @@
 			aria-label="Toggle layout"
 		>
 			{#if uiStore.layout === 'grid'}
-				<List class={iconMd} aria-hidden="true" />
+				<List class={icon({ size: 'md' })} aria-hidden="true" />
 			{:else}
-				<LayoutGrid class={iconMd} aria-hidden="true" />
+				<LayoutGrid class={icon({ size: 'md' })} aria-hidden="true" />
 			{/if}
 		</button>
 	</Tooltip>
@@ -336,11 +347,11 @@
 				title="Settings"
 				aria-label="Settings"
 			>
-				<Settings class={iconMd} aria-hidden="true" />
+				<Settings class={icon({ size: 'md' })} aria-hidden="true" />
 			</Menu.Trigger>
 		</Tooltip>
-		<Menu.Positioner class={menuPositioner}>
-			<Menu.Content class={`scrapscache-popover ${popoverClass}`}>
+		<Menu.Positioner class={settingsMenu({}).positioner}>
+			<Menu.Content class={cx('scrapscache-popover', settingsMenu({}).popover)}>
 				{#if importingBackup}
 					{@const progress = notesStore.backupImportProgress}
 					<div
@@ -364,9 +375,9 @@
 										: 'Reading backup…'}</span
 							>{#if progress}<span>{progress.completed}/{progress.total}</span>{/if}
 						</div>
-						<div class={storageProgressTrack}>
+						<div class={settingsMenu({}).track}>
 							<div
-								class={storageProgressBar}
+								class={settingsMenu({}).bar}
 								style={`width: ${progress && progress.total ? Math.round((progress.completed / progress.total) * 100) : 8}%`}
 							></div>
 						</div>
@@ -376,18 +387,18 @@
 						value="theme"
 						closeOnSelect={false}
 						onSelect={() => uiStore.toggleDark()}
-						class={menuItemClass}
+						class={settingsMenu({}).item}
 					>
 						{#if uiStore.effectiveDark}
-							<Sun class={`${iconSm} ${iconFlex}`} aria-hidden="true" />
+							<Sun class={icon({ size: 'sm' })} aria-hidden="true" />
 							Light mode
 						{:else}
-							<Moon class={`${iconSm} ${iconFlex}`} aria-hidden="true" />
+							<Moon class={icon({ size: 'sm' })} aria-hidden="true" />
 							Dark mode
 						{/if}
 					</Menu.Item>
-					<Menu.Item value="export" onSelect={startBackupExport} class={menuItemClass}>
-						<Download class={`${iconSm} ${iconFlex}`} aria-hidden="true" />
+					<Menu.Item value="export" onSelect={startBackupExport} class={settingsMenu({}).item}>
+						<Download class={icon({ size: 'sm' })} aria-hidden="true" />
 						Export backup
 					</Menu.Item>
 					<FileUpload.Root
@@ -398,14 +409,14 @@
 							if (file) importBackupFile(file);
 						}}
 					>
-						<FileUpload.Trigger class={menuItemClass}>
-							<Upload class={`${iconSm} ${iconFlex}`} aria-hidden="true" />
+						<FileUpload.Trigger class={settingsMenu({}).item}>
+							<Upload class={icon({ size: 'sm' })} aria-hidden="true" />
 							Import backup
 						</FileUpload.Trigger>
 						<FileUpload.HiddenInput />
 					</FileUpload.Root>
 					<ReminderNotificationSettings />
-					<Menu.Separator class={menuSep} />
+					<Menu.Separator class={settingsMenu({}).separator} />
 					<Menu.Item value="issue">
 						{#snippet asChild(props)}
 							<a
@@ -413,15 +424,15 @@
 								href="https://github.com/volturine/scrapscache/issues/new/choose"
 								target="_blank"
 								rel="noreferrer"
-								class={menuItemClass}
+								class={settingsMenu({}).item}
 							>
-								<ExternalLink class={`${iconSm} ${iconFlex}`} aria-hidden="true" />
+								<ExternalLink class={icon({ size: 'sm' })} aria-hidden="true" />
 								Report an issue
 							</a>
 						{/snippet}
 					</Menu.Item>
 				{/if}
-				{#if backupImportError}<p class={backupErrorAlert} role="alert">
+				{#if backupImportError}<p class={settingsMenu({}).alert} role="alert">
 						{backupImportError}
 					</p>{/if}
 			</Menu.Content>

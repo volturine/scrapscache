@@ -23,14 +23,14 @@
 	import { flip, type FlipParams } from 'svelte/animate';
 	import { onDestroy } from 'svelte';
 	import type { Note } from '$lib/types';
-	import { cva, cx, sva } from 'styled-system/css';
+	import { cx } from 'styled-system/css';
+	import { backlogFilterButton, kanbanView } from './kanbanViewStyles';
 	import {
-		kanban,
 		button,
 		iconButton,
 		input as inputRecipe,
 		popover,
-		select
+		viewPage
 	} from 'styled-system/recipes';
 
 	const { openNote } = useEditorActions();
@@ -214,58 +214,17 @@
 		kanbanStore.placeCard(board.id, noteId, sourceColumnId, target.columnId, order);
 	}
 
-	const k = kanban();
-	const backlogFilterButton = cva({
-		base: { rounded: 'lg' },
-		variants: {
-			active: {
-				true: {
-					bg: 'blue.500/15',
-					color: 'scrapscache.accentHover'
-				}
-			}
-		}
-	});
-
-	// Backlog filter copy and the label-picker popover chrome, local to this view.
-	const backlogSva = sva({
-		slots: [
-			'explain',
-			'radioInput',
-			'radioTitle',
-			'radioSubtitle',
-			'tagLabel',
-			'emptyTags',
-			'tagPickerPositioner',
-			'tagPickerContent'
-		],
-		base: {
-			explain: { fontSize: '11px', lineHeight: 'snug', color: 'scrapscache.textMuted' },
-			radioInput: { mt: '0.125rem' },
-			radioTitle: { fontWeight: 'medium', color: 'scrapscache.text' },
-			radioSubtitle: { mt: '0.125rem', display: 'block', color: 'scrapscache.textMuted' },
-			tagLabel: {
-				overflow: 'hidden',
-				textOverflow: 'ellipsis',
-				whiteSpace: 'nowrap',
-				color: 'scrapscache.text'
-			},
-			emptyTags: { px: '0.25rem', py: '0.25rem', color: 'scrapscache.textMuted' },
-			tagPickerPositioner: { zIndex: 20, w: 'var(--reference-width)' },
-			tagPickerContent: { maxH: '16rem', overflowY: 'auto', py: '0.25rem' }
-		}
-	});
-	const b = backlogSva();
+	const k = kanbanView();
 </script>
 
-<div class={k.page}>
+<div class={viewPage()}>
 	<div class={k.controls}>
 		<div class={k.selectWrap}>
 			<select
 				aria-label="Kanban board"
 				value={board.id}
 				onchange={(event) => selectBoard((event.currentTarget as HTMLSelectElement).value)}
-				class={select({ size: 'md' })}
+				class={k.select}
 			>
 				{#each kanbanStore.boards as choice (choice.id)}
 					<option value={choice.id}>{choice.name}</option>
@@ -327,14 +286,13 @@
 		</div>
 	{/if}
 
-	<div class={`kanban-columns ${k.columnsContainer}`}>
+	<div class={['kanban-columns', k.columnsContainer]}>
 		<div class={k.columnsTrack}>
 			{#each board.columns as column (column.id)}
 				{@const items = columnItems(column)}
 				<section
 					data-kanban-column={column.id}
-					class={k.column}
-					class:kanban-column-target={kanbanDrag.target?.columnId === column.id}
+					class={[k.column, kanbanDrag.target?.columnId === column.id && k.columnTarget]}
 					aria-label={`${columnName(column)} ${column.labelId === null ? 'Kanban' : 'label'} column`}
 				>
 					<div class={k.colHeader}>
@@ -370,7 +328,7 @@
 
 					{#if column.labelId === null && backlogFilterOpen}
 						<div class={k.backlogGroup} role="group" aria-label="Backlog filter options">
-							<p class={b.explain}>
+							<p class={k.explain}>
 								Choose which notes show in Backlog. Notes already in a label column are never listed
 								here.
 							</p>
@@ -380,11 +338,11 @@
 									name="backlog-mode-{board.id}"
 									checked={backlogFilter.mode === BacklogFilterMode.AllNonColumn}
 									onchange={() => setBacklogMode(BacklogFilterMode.AllNonColumn)}
-									class={b.radioInput}
+									class={k.radioInput}
 								/>
 								<span>
-									<span class={b.radioTitle}>All non-column notes</span>
-									<span class={b.radioSubtitle}> Default: everything not in a label column </span>
+									<span class={k.radioTitle}>All non-column notes</span>
+									<span class={k.radioSubtitle}> Default: everything not in a label column </span>
 								</span>
 							</label>
 							<label class={k.radioOption}>
@@ -393,9 +351,9 @@
 									name="backlog-mode-{board.id}"
 									checked={backlogFilter.mode === BacklogFilterMode.Custom}
 									onchange={() => setBacklogMode(BacklogFilterMode.Custom)}
-									class={b.radioInput}
+									class={k.radioInput}
 								/>
-								<span class={b.radioTitle}>Only selected…</span>
+								<span class={k.radioTitle}>Only selected…</span>
 							</label>
 
 							{#if backlogFilter.mode === BacklogFilterMode.Custom}
@@ -420,14 +378,14 @@
 											<Checkbox.Control class={k.checkControl}>
 												<Checkbox.Indicator class={k.checkMark}>✓</Checkbox.Indicator>
 											</Checkbox.Control>
-											<Checkbox.Label class={b.tagLabel}>
+											<Checkbox.Label class={k.tagLabel}>
 												{label.name}
 											</Checkbox.Label>
 											<Checkbox.HiddenInput />
 										</Checkbox.Root>
 									{/each}
 									{#if backlogFilterTags.length === 0}
-										<p class={b.emptyTags}>
+										<p class={k.emptyTags}>
 											No other labels available. Create labels on notes, or remove a label column
 											first.
 										</p>
@@ -450,7 +408,8 @@
 								data-kanban-card={item.note?.id}
 								data-kanban-carried={item.carried ? '' : undefined}
 								data-kanban-slot={item.note ? undefined : ''}
-								class={item.carried ? 'hidden' : item.note ? undefined : 'kanban-drop-slot'}
+								hidden={item.carried}
+								class={item.note ? undefined : k.dropSlot}
 								style={item.note ? undefined : `height: ${kanbanDrag.height}px`}
 								animate:cardFlip={{ duration: 160 }}
 							>
@@ -482,8 +441,8 @@
 							<span>+ Add label column</span>
 							<ChevronDown size={14} aria-hidden="true" />
 						</Menu.Trigger>
-						<Menu.Positioner class={b.tagPickerPositioner}>
-							<Menu.Content class={`${popover()} ${b.tagPickerContent}`} aria-label="Labels">
+						<Menu.Positioner class={k.tagPickerPositioner}>
+							<Menu.Content class={cx(popover(), k.tagPickerContent)} aria-label="Labels">
 								{#each unusedTags as label (label.id)}
 									<Menu.Item
 										value={label.id}
@@ -507,11 +466,11 @@
 	     the app viewport is a transformed containing block that would shift them. -->
 	<div
 		{@attach portalToBody}
-		class="kanban-drag-ghost"
+		class={k.dragGhost}
 		style="width: {kanbanDrag.width}px; transform: translate3d({kanbanDrag.x}px, {kanbanDrag.y}px, 0);"
 		aria-hidden="true"
 	>
-		<div class="kanban-drag-ghost-card" class:lifted={kanbanDrag.lifted}>
+		<div class={k.dragGhostCard} data-lifted={kanbanDrag.lifted}>
 			<KanbanCardBody note={draggedNote} />
 		</div>
 	</div>

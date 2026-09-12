@@ -429,7 +429,11 @@
 	const modalShell = sva({
 		slots: ['backdrop', 'positioner', 'panel', 'header', 'title'],
 		base: {
-			backdrop: { position: 'absolute', bg: 'black/40', backdropFilter: 'none' },
+			backdrop: {
+				position: 'absolute',
+				bg: 'scrapscache.backdropMuted',
+				backdropFilter: 'none'
+			},
 			positioner: {
 				position: 'absolute',
 				inset: 0,
@@ -617,7 +621,13 @@
 			manageDetails: { borderTopWidth: '1px', borderColor: 'scrapscache.border', pt: '0.75rem' },
 			manageSummary: { cursor: 'pointer', fontSize: 'sm', color: 'scrapscache.textMuted' },
 			bodySpacing: { mt: '0.25rem' },
-			qrCode: { h: '220px', w: '220px', rounded: 'lg', bg: 'white', p: '0.5rem' },
+			qrCode: {
+				h: '220px',
+				w: '220px',
+				rounded: 'lg',
+				bg: 'scrapscache.qrSurface',
+				p: '0.5rem'
+			},
 			pairingCode: {
 				rounded: 'xl',
 				borderWidth: '1px',

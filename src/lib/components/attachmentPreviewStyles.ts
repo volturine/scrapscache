@@ -34,18 +34,18 @@ export const canvasPreview = sva({
 			pb: '0.375rem',
 			pt: '1.25rem',
 			textAlign: 'left',
-			color: 'white'
+			color: 'scrapscache.mediaText'
 		},
 		delBtn: {
 			position: 'absolute',
 			right: '0.25rem',
 			top: '0.25rem',
 			rounded: 'full',
-			bg: 'black/60',
+			bg: 'scrapscache.mediaSurfaceMuted',
 			px: '0.375rem',
 			py: '0.125rem',
 			fontSize: 'xs',
-			color: 'white',
+			color: 'scrapscache.mediaText',
 			touchAction: 'manipulation',
 			cursor: 'pointer'
 		}
@@ -174,8 +174,8 @@ export const photoPreview = sva({
 			w: '1.5rem',
 			placeItems: 'center',
 			rounded: 'full',
-			bg: 'black/60',
-			color: 'white',
+			bg: 'scrapscache.mediaSurfaceMuted',
+			color: 'scrapscache.mediaText',
 			touchAction: 'manipulation',
 			cursor: 'pointer'
 		}

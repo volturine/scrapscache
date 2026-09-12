@@ -114,10 +114,10 @@
 				flex: '1',
 				alignItems: 'center',
 				justifyContent: 'center',
-				bg: 'black'
+				bg: 'scrapscache.mediaSurface'
 			},
 			video: { maxH: 'full', maxW: 'full' },
-			pdf: { h: 'full', w: 'full', flex: '1', borderWidth: 0, bg: 'white' },
+			pdf: { h: 'full', w: 'full', flex: '1', borderWidth: 0, bg: 'scrapscache.documentSurface' },
 			backIcon: { h: '1.5rem', w: '1.5rem' },
 			downloadIcon: { h: '1.25rem', w: '1.25rem' }
 		}

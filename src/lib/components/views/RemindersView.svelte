@@ -7,10 +7,9 @@
 	import EmptyState from '$lib/components/EmptyState.svelte';
 	import { AlarmClock } from '@lucide/svelte';
 	import { dayKey } from '$lib/utils';
-	import { notesShellClass } from '$lib/notesShell';
 	import { MediaQuery } from 'svelte/reactivity';
 	import { sva } from 'styled-system/css';
-	import { viewPage } from 'styled-system/recipes';
+	import { notesShell, viewPage } from 'styled-system/recipes';
 
 	const { openNote: openEditor } = useEditorActions();
 	const reminders = $derived(notesStore.notesWithReminders);
@@ -78,7 +77,7 @@
 			{/if}
 		</div>
 	{:else}
-		<div class={uiStore.layout === 'list' ? notesShellClass() : styles.calendar}>
+		<div class={uiStore.layout === 'list' ? notesShell({ layout: 'list' }) : styles.calendar}>
 			<ReminderCalendar notes={reminders} bind:selected={uiStore.reminderFilter} />
 		</div>
 		<div class={styles.feed}>

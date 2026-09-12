@@ -12,6 +12,7 @@
 	import { onMount } from 'svelte';
 	import { isCanvasAttachment } from '$lib/canvasAttachment';
 	import { canvasPreview, filePreview, photoPreview } from './attachmentPreviewStyles';
+	import { checklist } from 'styled-system/recipes';
 
 	let { note }: { note: Note } = $props();
 
@@ -99,18 +100,15 @@
 <div bind:this={contentElement} class={body.container}>
 	{#each segments as seg (seg.lineIndex)}
 		{#if seg.type === 'check'}
+			{@const check = checklist({ checked: seg.checked, indented: seg.indent > 0 })}
 			<div
 				class={body.itemRow}
 				data-check-line={seg.lineIndex}
 				style={seg.indent > 0 ? `padding-left: ${seg.indent * 1.25}rem` : undefined}
 			>
-				<span
-					class={['checklist-toggle', body.checklist, seg.indent > 0 && 'checklist-toggle-sub']}
-					class:checked={seg.checked}
-					aria-hidden="true"
-				>
+				<span class={[check.root, body.checklist]} aria-hidden="true">
 					{#if seg.checked}
-						<svg viewBox="0 0 16 16" class="checklist-toggle-mark">
+						<svg viewBox="0 0 16 16" class={check.mark}>
 							<path d="M3.5 8.5 6.5 11.5 12.5 4.5" />
 						</svg>
 					{/if}

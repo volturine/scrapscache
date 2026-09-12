@@ -5,7 +5,7 @@
 	import { useEditorActions } from '$lib/editorContext';
 	import EmptyState from '$lib/components/EmptyState.svelte';
 	import { Trash2 } from '@lucide/svelte';
-	import { cva } from 'styled-system/css';
+	import { css } from 'styled-system/css';
 	import { button } from 'styled-system/recipes';
 	import { viewPage } from 'styled-system/recipes';
 
@@ -18,8 +18,6 @@
 		notesStore.emptyTrash();
 		confirmEmpty = false;
 	}
-
-	const confirmation = cva({ base: { fontSize: 'xs', color: 'scrapscache.textMuted' } });
 </script>
 
 <div class={viewPage()}>
@@ -31,7 +29,7 @@
 	{:else}
 		<SectionHeader label="Trash" count={trashed.length}>
 			{#if confirmEmpty}
-				<span class={confirmation()}>Delete all?</span>
+				<span class={css({ fontSize: 'xs', color: 'scrapscache.textMuted' })}>Delete all?</span>
 				<button type="button" onclick={emptyTrash} class={button({ variant: 'danger', size: 'xs' })}
 					>Yes</button
 				>

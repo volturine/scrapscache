@@ -13,8 +13,8 @@ export const fullscreen = sva({
 					zIndex: 80,
 					display: 'flex',
 					flexDirection: 'column',
-					bg: 'black',
-					color: 'white'
+					bg: 'scrapscache.mediaSurface',
+					color: 'scrapscache.mediaText'
 				},
 				header: {
 					position: 'absolute',
@@ -41,14 +41,14 @@ export const fullscreen = sva({
 					whiteSpace: 'nowrap',
 					fontSize: 'sm',
 					fontWeight: 'medium',
-					color: 'white/90'
+					color: 'scrapscache.mediaTextStrong'
 				},
 				notice: {
 					px: '1rem',
 					pb: '0.75rem',
 					textAlign: 'center',
 					fontSize: 'xs',
-					color: 'red.400'
+					color: 'scrapscache.mediaDanger'
 				}
 			},
 			attachment: {

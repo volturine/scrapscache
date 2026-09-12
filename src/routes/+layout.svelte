@@ -195,7 +195,12 @@
 				bg: 'scrapscache.bg',
 				color: 'scrapscache.text'
 			},
-			drawerBackdrop: { position: 'fixed', inset: 0, zIndex: 20, bg: 'black/30' },
+			drawerBackdrop: {
+				position: 'fixed',
+				inset: 0,
+				zIndex: 20,
+				bg: 'scrapscache.backdropSoft'
+			},
 			drawerPositioner: { position: 'fixed', left: 0, top: 0, zIndex: 30, h: 'full' },
 			drawerContent: {
 				h: 'full',

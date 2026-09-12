@@ -269,8 +269,10 @@
 					userSelect: 'none'
 				},
 				'& [data-part="selection"]': {
-					boxShadow: '0 0 0 9999px rgb(0 0 0 / 0.65)',
-					outline: '1.5px solid rgb(255 255 255 / 0.95)'
+					boxShadow: 'cropMask',
+					outlineWidth: '1.5px',
+					outlineStyle: 'solid',
+					outlineColor: 'scrapscache.mediaOutline'
 				},
 				'& [data-part="handle"]': {
 					display: 'grid',
@@ -301,15 +303,17 @@
 				},
 				'& [data-part="handle"]:hover .crop-knob, & [data-part="handle"]:active .crop-knob': {
 					transform: 'scale(1.35)',
-					boxShadow: '0 2px 6px rgb(0 0 0 / 0.7), 0 0 0 1.5px rgb(0 0 0 / 0.35)'
+					boxShadow: 'cropHandle'
 				},
 				'& [data-part="grid"][data-axis="horizontal"]': {
-					borderBottom: '1px solid rgb(255 255 255 / 0.4)',
-					borderTop: '1px solid rgb(255 255 255 / 0.4)'
+					borderBottomWidth: '1px',
+					borderTopWidth: '1px',
+					borderColor: 'scrapscache.mediaBorderStrong'
 				},
 				'& [data-part="grid"][data-axis="vertical"]': {
-					borderLeft: '1px solid rgb(255 255 255 / 0.4)',
-					borderRight: '1px solid rgb(255 255 255 / 0.4)'
+					borderLeftWidth: '1px',
+					borderRightWidth: '1px',
+					borderColor: 'scrapscache.mediaBorderStrong'
 				}
 			},
 			col: {
@@ -326,8 +330,8 @@
 				justifyContent: 'space-between',
 				gap: '0.5rem',
 				borderBottomWidth: '1px',
-				borderColor: 'white/10',
-				bg: 'black/85',
+				borderColor: 'scrapscache.mediaBorder',
+				bg: 'scrapscache.mediaSurfaceStrong',
 				px: '0.75rem',
 				py: '0.5rem',
 				backdropFilter: 'blur(12px)'
@@ -336,7 +340,7 @@
 				mx: { base: '0.125rem', sm: '0.25rem' },
 				h: '1rem',
 				w: '1px',
-				bg: 'white/20'
+				bg: 'scrapscache.mediaControlActive'
 			},
 			ratioDesktop: {
 				position: 'absolute',
@@ -351,7 +355,7 @@
 				alignItems: 'center',
 				gap: '0.125rem',
 				rounded: 'lg',
-				bg: 'white/10',
+				bg: 'scrapscache.mediaControlHover',
 				p: '0.125rem',
 				fontSize: 'xs'
 			},
@@ -362,14 +366,17 @@
 				py: '0.25rem',
 				transition: 'colors 120ms ease',
 				'&[data-state=checked]': {
-					bg: 'white',
+					bg: 'scrapscache.mediaText',
 					fontWeight: 'semibold',
-					color: 'black',
+					color: 'scrapscache.mediaSurface',
 					boxShadow: 'sm'
 				},
 				'&[data-state=unchecked]': {
-					color: 'white/80',
-					_hoverable: { bg: 'white/10', color: 'white' }
+					color: 'scrapscache.mediaTextSoft',
+					_hoverable: {
+						bg: 'scrapscache.mediaControlHover',
+						color: 'scrapscache.mediaText'
+					}
 				},
 				'&[data-disabled]': {
 					pointerEvents: 'none',
@@ -382,11 +389,14 @@
 				py: '0.375rem',
 				fontSize: 'xs',
 				fontWeight: 'medium',
-				color: 'white/70',
+				color: 'scrapscache.mediaTextMuted',
 				transition: 'colors 120ms ease',
 				touchAction: 'manipulation',
 				cursor: 'pointer',
-				_hoverable: { bg: 'white/10', color: 'white' },
+				_hoverable: {
+					bg: 'scrapscache.mediaControlHover',
+					color: 'scrapscache.mediaText'
+				},
 				_disabled: { opacity: 0.3, pointerEvents: 'none' }
 			},
 			save: {
@@ -403,8 +413,8 @@
 				justifyContent: 'center',
 				gap: '0.25rem',
 				borderBottomWidth: '1px',
-				borderColor: 'white/5',
-				bg: 'black/60',
+				borderColor: 'scrapscache.mediaBorderFaint',
+				bg: 'scrapscache.mediaSurfaceMuted',
 				px: '0.75rem',
 				py: '0.375rem'
 			},
@@ -437,14 +447,17 @@
 				h: '2.25rem',
 				w: '2.25rem',
 				rounded: 'md',
-				color: 'white/80',
+				color: 'scrapscache.mediaTextSoft',
 				transition: 'colors 120ms ease',
-				_hoverable: { bg: 'white/10', color: 'white' },
+				_hoverable: {
+					bg: 'scrapscache.mediaControlHover',
+					color: 'scrapscache.mediaText'
+				},
 				_disabled: {
 					opacity: 0.35,
 					cursor: 'not-allowed',
 					pointerEvents: 'auto',
-					_hoverable: { bg: 'transparent', color: 'white/80' }
+					_hoverable: { bg: 'transparent', color: 'scrapscache.mediaTextSoft' }
 				}
 			}
 		}
@@ -455,8 +468,8 @@
 
 	const cropKnob = cva({
 		base: {
-			background: '#ffffff',
-			boxShadow: '0 1px 3px rgb(0 0 0 / 0.5), 0 0 0 1px rgb(0 0 0 / 0.25)',
+			bg: 'scrapscache.mediaText',
+			boxShadow: 'cropKnob',
 			pointerEvents: 'none',
 			transition: 'transform 0.15s ease, box-shadow 0.15s ease'
 		},
@@ -517,9 +530,19 @@
 				pt: '0.5rem'
 			},
 			thumbImg: { h: 'full', w: 'full', objectFit: 'cover' },
-			titleSize: { ml: '0.25rem', fontSize: 'xs', fontWeight: 'normal', color: 'white/60' },
+			titleSize: {
+				ml: '0.25rem',
+				fontSize: 'xs',
+				fontWeight: 'normal',
+				color: 'scrapscache.mediaTextFaint'
+			},
 			topBtn: { flexShrink: 0 },
-			trashBtn: { _hoverable: { bg: 'red.500/20', color: 'red.400' } }
+			trashBtn: {
+				_hoverable: {
+					bg: 'scrapscache.mediaDangerHover',
+					color: 'scrapscache.mediaDanger'
+				}
+			}
 		}
 	});
 	const viewer = viewerSva();
@@ -537,11 +560,18 @@
 		},
 		variants: {
 			active: {
-				true: { bg: 'white', fontWeight: 'semibold', color: 'black' },
+				true: {
+					bg: 'scrapscache.mediaText',
+					fontWeight: 'semibold',
+					color: 'scrapscache.mediaSurface'
+				},
 				false: {
 					bg: 'transparent',
-					color: 'white/70',
-					_hoverable: { bg: 'white/10', color: 'white' }
+					color: 'scrapscache.mediaTextMuted',
+					_hoverable: {
+						bg: 'scrapscache.mediaControlHover',
+						color: 'scrapscache.mediaText'
+					}
 				}
 			}
 		}
@@ -558,14 +588,17 @@
 			w: '2.75rem',
 			placeItems: 'center',
 			rounded: 'full',
-			bg: 'black/40',
-			color: 'white/90',
+			bg: 'scrapscache.mediaSurfaceSoft',
+			color: 'scrapscache.mediaTextStrong',
 			boxShadow: 'md',
 			backdropFilter: 'blur(4px)',
 			transition: 'colors 120ms ease',
 			cursor: 'pointer',
 			touchAction: 'manipulation',
-			_hoverable: { bg: 'black/70', color: 'white' }
+			_hoverable: {
+				bg: 'scrapscache.mediaSurfaceHover',
+				color: 'scrapscache.mediaText'
+			}
 		},
 		variants: {
 			side: {
@@ -588,7 +621,7 @@
 		},
 		variants: {
 			active: {
-				true: { opacity: 1, ringWidth: '2px', ringColor: 'white' },
+				true: { opacity: 1, ringWidth: '2px', ringColor: 'scrapscache.mediaText' },
 				false: { opacity: 0.5, _hoverable: { opacity: 0.85 } }
 			}
 		}

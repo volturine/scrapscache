@@ -5,9 +5,9 @@
 	import NoteCard from './NoteCard.svelte';
 	import MasonryGrid from './MasonryGrid.svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
-	import { cva } from 'styled-system/css';
+	import { css, cx } from 'styled-system/css';
 	import { hstack } from 'styled-system/patterns';
-	import { button } from 'styled-system/recipes';
+	import { button, notesShell } from 'styled-system/recipes';
 
 	/** Grid / list feed for notes pages — one place for layout branching. */
 	let {
@@ -59,14 +59,18 @@
 	});
 
 	const paginationBtn = button({ variant: 'secondary', size: 'sm' });
-	const pageRange = cva({ base: { fontSize: 'xs', color: 'scrapscache.textMuted' } });
 </script>
 
-<div class="notes-content {className}">
+<div class={[notesShell(), className]}>
 	{#if uiStore.layout === 'grid'}
 		<MasonryGrid notes={shownNotes} {onOpen} {children} {leading} />
 	{:else}
-		<div class="masonry masonry-list">
+		<div
+			class={cx(
+				notesShell({ layout: 'list' }),
+				css({ display: 'flex', flexDirection: 'column', gap: '10px', p: 0, '& > *': { w: 'full' } })
+			)}
+		>
 			{#each shownNotes as note (note.id)}
 				<div>
 					{#if children}
@@ -96,7 +100,7 @@
 			>
 				Previous
 			</button>
-			<span class={pageRange()}>
+			<span class={css({ fontSize: 'xs', color: 'scrapscache.textMuted' })}>
 				{safePageIndex * PAGE_SIZE + 1}–{Math.min(notes.length, (safePageIndex + 1) * PAGE_SIZE)} of {notes.length}
 			</span>
 			<button

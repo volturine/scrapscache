@@ -1,8 +1,8 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import { notesShellClass } from '$lib/notesShell';
+	import { uiStore } from '$lib/stores/ui.svelte';
 	import { Format } from '@ark-ui/svelte/format';
-	import { sectionHeader } from 'styled-system/recipes';
+	import { notesShell, sectionHeader } from 'styled-system/recipes';
 
 	let {
 		label,
@@ -16,11 +16,11 @@
 		children?: Snippet;
 	} = $props();
 
-	const shell = $derived(notesShellClass());
+	const shell = $derived(notesShell({ layout: uiStore.layout }));
 	const classes = sectionHeader();
 </script>
 
-<div class="{shell} {className}">
+<div class={[shell, className]}>
 	<div class={classes.row}>
 		<h2 class={classes.label}>
 			{label}

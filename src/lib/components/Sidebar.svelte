@@ -178,7 +178,8 @@
 			'editButton',
 			'renameButton',
 			'dialogPortal',
-			'dialogPositioner'
+			'dialogPositioner',
+			'scroller'
 		],
 		base: {
 			row: {
@@ -262,7 +263,8 @@
 				alignItems: { base: 'flex-end', sm: 'center' },
 				justifyContent: 'center',
 				p: '1rem'
-			}
+			},
+			scroller: { scrollbarWidth: 'thin' }
 		},
 		variants: {
 			navigation: {
@@ -338,14 +340,18 @@
 {/snippet}
 
 <aside
-	class={`scrollable sidebar-scroll ${vstack({
-		h: 'full',
-		gap: '0.125rem',
-		overflowY: 'auto',
-		px: '0.5rem',
-		pb: '1rem',
-		pt: '0.5rem'
-	})}`}
+	class={[
+		'scrollable',
+		sidebar.scroller,
+		vstack({
+			h: 'full',
+			gap: '0.125rem',
+			overflowY: 'auto',
+			px: '0.5rem',
+			pb: '1rem',
+			pt: '0.5rem'
+		})
+	]}
 	transition:fly={{ x: -20, duration: 120 }}
 >
 	{#each navItems as item (item.view)}

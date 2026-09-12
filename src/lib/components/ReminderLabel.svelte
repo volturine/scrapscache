@@ -71,7 +71,7 @@
 					root: {
 						bg: 'scrapscache.overdueStrong',
 						fontWeight: 'medium',
-						color: 'white'
+						color: 'scrapscache.mediaText'
 					}
 				}
 			},
@@ -92,7 +92,7 @@
 					root: {
 						bg: 'scrapscache.overdueStrong',
 						fontWeight: 'medium',
-						color: 'white'
+						color: 'scrapscache.mediaText'
 					}
 				}
 			},

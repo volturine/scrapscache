@@ -23,7 +23,7 @@
 	import { flip, type FlipParams } from 'svelte/animate';
 	import { onDestroy } from 'svelte';
 	import type { Note } from '$lib/types';
-	import { css } from 'styled-system/css';
+	import { sva } from 'styled-system/css';
 	import { kanban, button, iconButton, input as inputRecipe, select } from 'styled-system/recipes';
 
 	const { openNote } = useEditorActions();
@@ -208,6 +208,36 @@
 	}
 
 	const k = kanban();
+
+	// Backlog filter copy and the label-picker popover chrome, local to this view.
+	const backlogSva = sva({
+		slots: [
+			'explain',
+			'radioInput',
+			'radioTitle',
+			'radioSubtitle',
+			'tagLabel',
+			'emptyTags',
+			'tagPickerPositioner',
+			'tagPickerContent'
+		],
+		base: {
+			explain: { fontSize: '11px', lineHeight: 'snug', color: 'scrapscache.textMuted' },
+			radioInput: { mt: '0.125rem' },
+			radioTitle: { fontWeight: 'medium', color: 'scrapscache.text' },
+			radioSubtitle: { mt: '0.125rem', display: 'block', color: 'scrapscache.textMuted' },
+			tagLabel: {
+				overflow: 'hidden',
+				textOverflow: 'ellipsis',
+				whiteSpace: 'nowrap',
+				color: 'scrapscache.text'
+			},
+			emptyTags: { px: '0.25rem', py: '0.25rem', color: 'scrapscache.textMuted' },
+			tagPickerPositioner: { zIndex: 20, w: 'var(--reference-width)' },
+			tagPickerContent: { maxH: '16rem', overflowY: 'auto', py: '0.25rem' }
+		}
+	});
+	const b = backlogSva();
 </script>
 
 <div class={k.page}>
@@ -322,13 +352,7 @@
 
 					{#if column.labelId === null && backlogFilterOpen}
 						<div class={k.backlogGroup} role="group" aria-label="Backlog filter options">
-							<p
-								class={css({
-									fontSize: '11px',
-									lineHeight: 'snug',
-									color: 'scrapscache.textMuted'
-								})}
-							>
+							<p class={b.explain}>
 								Choose which notes show in Backlog. Notes already in a label column are never listed
 								here.
 							</p>
@@ -338,21 +362,11 @@
 									name="backlog-mode-{board.id}"
 									checked={backlogFilter.mode === BacklogFilterMode.AllNonColumn}
 									onchange={() => setBacklogMode(BacklogFilterMode.AllNonColumn)}
-									class={css({ mt: '0.125rem' })}
+									class={b.radioInput}
 								/>
 								<span>
-									<span class={css({ fontWeight: 'medium', color: 'scrapscache.text' })}
-										>All non-column notes</span
-									>
-									<span
-										class={css({
-											mt: '0.125rem',
-											display: 'block',
-											color: 'scrapscache.textMuted'
-										})}
-									>
-										Default: everything not in a label column
-									</span>
+									<span class={b.radioTitle}>All non-column notes</span>
+									<span class={b.radioSubtitle}> Default: everything not in a label column </span>
 								</span>
 							</label>
 							<label class={k.radioOption}>
@@ -361,11 +375,9 @@
 									name="backlog-mode-{board.id}"
 									checked={backlogFilter.mode === BacklogFilterMode.Custom}
 									onchange={() => setBacklogMode(BacklogFilterMode.Custom)}
-									class={css({ mt: '0.125rem' })}
+									class={b.radioInput}
 								/>
-								<span class={css({ fontWeight: 'medium', color: 'scrapscache.text' })}
-									>Only selected…</span
-								>
+								<span class={b.radioTitle}>Only selected…</span>
 							</label>
 
 							{#if backlogFilter.mode === BacklogFilterMode.Custom}
@@ -390,23 +402,14 @@
 											<Checkbox.Control class={k.checkControl}>
 												<Checkbox.Indicator class={k.checkMark}>✓</Checkbox.Indicator>
 											</Checkbox.Control>
-											<Checkbox.Label
-												class={css({
-													overflow: 'hidden',
-													textOverflow: 'ellipsis',
-													whiteSpace: 'nowrap',
-													color: 'scrapscache.text'
-												})}
-											>
+											<Checkbox.Label class={b.tagLabel}>
 												{label.name}
 											</Checkbox.Label>
 											<Checkbox.HiddenInput />
 										</Checkbox.Root>
 									{/each}
 									{#if backlogFilterTags.length === 0}
-										<p
-											class={css({ px: '0.25rem', py: '0.25rem', color: 'scrapscache.textMuted' })}
-										>
+										<p class={b.emptyTags}>
 											No other labels available. Create labels on notes, or remove a label column
 											first.
 										</p>
@@ -461,11 +464,8 @@
 							<span>+ Add label column</span>
 							<ChevronDown size={14} aria-hidden="true" />
 						</Menu.Trigger>
-						<Menu.Positioner class={css({ zIndex: 20, w: 'var(--reference-width)' })}>
-							<Menu.Content
-								class={`scrapscache-popover ${css({ maxH: '16rem', overflowY: 'auto', py: '0.25rem' })}`}
-								aria-label="Labels"
-							>
+						<Menu.Positioner class={b.tagPickerPositioner}>
+							<Menu.Content class={`scrapscache-popover ${b.tagPickerContent}`} aria-label="Labels">
 								{#each unusedTags as label (label.id)}
 									<Menu.Item
 										value={label.id}

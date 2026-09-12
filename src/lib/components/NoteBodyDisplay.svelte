@@ -3,7 +3,7 @@
 	// anywhere drags the card and a click opens the note; attachments, links and
 	// checklists are interactive in the editor instead.
 	import type { Note } from '$lib/types';
-	import { css } from 'styled-system/css';
+	import { cva, sva } from 'styled-system/css';
 	import { parseBody, noteAttachments } from '$lib/checklistBody';
 	import { extractHttpUrls, localLinkCard } from '$lib/linkPreview';
 	import { isImageAttachment, fileIconLabel } from '$lib/noteImages';
@@ -53,38 +53,53 @@
 		return () => observer.disconnect();
 	});
 
-	const containerClass = css({ fontSize: 'sm', color: 'scrapscache.text' });
-	const itemRowClass = css({
-		display: 'flex',
-		alignItems: 'flex-start',
-		gap: '0.5rem',
-		py: '0.125rem'
+	const bodySva = sva({
+		slots: ['container', 'itemRow', 'bulletSymbol', 'paragraph', 'spacer'],
+		base: {
+			container: { fontSize: 'sm', color: 'scrapscache.text' },
+			itemRow: {
+				display: 'flex',
+				alignItems: 'flex-start',
+				gap: '0.5rem',
+				py: '0.125rem'
+			},
+			bulletSymbol: { flexShrink: 0, userSelect: 'none' },
+			paragraph: {
+				whiteSpace: 'pre-wrap',
+				wordBreak: 'break-word',
+				py: '0.125rem'
+			},
+			spacer: { h: '0.5rem' }
+		}
 	});
-	const bulletSymbolClass = css({ flexShrink: 0, userSelect: 'none' });
-	const itemTextClass = (checked: boolean, indented: boolean) =>
-		css({
+	const body = bodySva();
+	const itemText = cva({
+		base: {
 			flex: '1',
-			wordBreak: 'break-word',
-			textDecoration: checked ? 'line-through' : 'none',
-			opacity: checked ? 0.5 : 1,
-			fontSize: indented ? '13px' : 'inherit'
-		});
-	const plainParagraphClass = css({
-		whiteSpace: 'pre-wrap',
-		wordBreak: 'break-word',
-		py: '0.125rem'
+			wordBreak: 'break-word'
+		},
+		variants: {
+			checked: {
+				true: { textDecoration: 'line-through', opacity: 0.5 },
+				false: {}
+			},
+			indented: {
+				true: { fontSize: '13px' },
+				false: {}
+			}
+		},
+		defaultVariants: { checked: false, indented: false }
 	});
-	const spacerClass = css({ h: '0.5rem' });
 	const c = canvasPreview({ mode: 'display' });
 	const f = filePreview({ mode: 'display' });
 	const p = photoPreview({ mode: 'display' });
 </script>
 
-<div bind:this={contentElement} class={containerClass}>
+<div bind:this={contentElement} class={body.container}>
 	{#each segments as seg (seg.lineIndex)}
 		{#if seg.type === 'check'}
 			<div
-				class={itemRowClass}
+				class={body.itemRow}
 				data-check-line={seg.lineIndex}
 				style={seg.indent > 0 ? `padding-left: ${seg.indent * 1.25}rem` : undefined}
 			>
@@ -99,25 +114,25 @@
 						</svg>
 					{/if}
 				</span>
-				<span class={itemTextClass(seg.checked, seg.indent > 0)}>
+				<span class={itemText({ checked: seg.checked, indented: seg.indent > 0 })}>
 					{seg.text || '\u00a0'}
 				</span>
 			</div>
 		{:else if seg.type === 'bullet'}
 			<div
-				class={itemRowClass}
+				class={body.itemRow}
 				data-bullet-line={seg.lineIndex}
 				style={seg.indent > 0 ? `padding-left: ${seg.indent * 1.25}rem` : undefined}
 			>
-				<span class={bulletSymbolClass} aria-hidden="true">•</span>
-				<span class={itemTextClass(false, seg.indent > 0)}>
+				<span class={body.bulletSymbol} aria-hidden="true">•</span>
+				<span class={itemText({ indented: seg.indent > 0 })}>
 					{seg.text || '\u00a0'}
 				</span>
 			</div>
 		{:else if seg.text}
-			<p class={plainParagraphClass}>{seg.text}</p>
+			<p class={body.paragraph}>{seg.text}</p>
 		{:else}
-			<div class={spacerClass}></div>
+			<div class={body.spacer}></div>
 		{/if}
 	{/each}
 </div>

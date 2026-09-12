@@ -18,8 +18,6 @@
 		notesStore.emptyTrash();
 		confirmEmpty = false;
 	}
-
-	const confirmText = css({ fontSize: 'xs', color: 'scrapscache.textMuted' });
 </script>
 
 <div class={viewPage}>
@@ -31,7 +29,7 @@
 	{:else}
 		<SectionHeader label="Trash" count={trashed.length}>
 			{#if confirmEmpty}
-				<span class={confirmText}>Delete all?</span>
+				<span class={css({ fontSize: 'xs', color: 'scrapscache.textMuted' })}>Delete all?</span>
 				<button type="button" onclick={emptyTrash} class={button({ variant: 'danger', size: 'xs' })}
 					>Yes</button
 				>

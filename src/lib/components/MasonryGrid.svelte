@@ -108,12 +108,6 @@
 		observer.observe(root);
 		return () => observer.disconnect();
 	});
-
-	const leadingWrapClass = css({
-		position: 'absolute',
-		top: 0,
-		left: 0
-	});
 </script>
 
 <div
@@ -124,7 +118,11 @@
 >
 	{#if leading && leadSpan > 0}
 		<div
-			class={leadingWrapClass}
+			class={css({
+				position: 'absolute',
+				top: 0,
+				left: 0
+			})}
 			style="width: calc(({leadSpan} * (100% - {GAP * (colCount - 1)}px)) / {colCount} + {GAP *
 				(leadSpan - 1)}px); z-index: 10;"
 		>

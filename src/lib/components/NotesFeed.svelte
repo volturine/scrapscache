@@ -58,11 +58,6 @@
 		};
 	});
 
-	const pageLabelClass = css({
-		fontSize: 'xs',
-		color: 'scrapscache.textMuted'
-	});
-
 	const paginationBtn = button({ variant: 'secondary', size: 'sm' });
 </script>
 
@@ -100,7 +95,7 @@
 			>
 				Previous
 			</button>
-			<span class={pageLabelClass}>
+			<span class={css({ fontSize: 'xs', color: 'scrapscache.textMuted' })}>
 				{safePageIndex * PAGE_SIZE + 1}–{Math.min(notes.length, (safePageIndex + 1) * PAGE_SIZE)} of {notes.length}
 			</span>
 			<button

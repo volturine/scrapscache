@@ -2,7 +2,7 @@
 	import { ToggleGroup } from '@ark-ui/svelte/toggle-group';
 	import { NOTE_COLORS, NOTE_DARK_COLORS, NOTE_COLOR_ORDER, type NoteColor } from '$lib/types';
 	import { uiStore } from '$lib/stores/ui.svelte';
-	import { css } from 'styled-system/css';
+	import { css, cva } from 'styled-system/css';
 	import { grid } from 'styled-system/patterns';
 
 	let {
@@ -16,6 +16,26 @@
 	function bgColor(c: NoteColor): string {
 		return uiStore.effectiveDark ? NOTE_DARK_COLORS[c] : NOTE_COLORS[c];
 	}
+
+	const swatch = cva({
+		base: {
+			w: '2.5rem',
+			h: '2.5rem',
+			rounded: 'full',
+			borderWidth: '2px',
+			borderColor: { base: 'black/10', _dark: 'white/15' },
+			cursor: 'pointer',
+			transition: 'transform 150ms ease',
+			_motionReduce: {
+				transition: 'none'
+			},
+			sm: {
+				_hover: {
+					transform: 'scale(1.1)'
+				}
+			}
+		}
+	});
 </script>
 
 <ToggleGroup.Root
@@ -29,23 +49,7 @@
 	{#each NOTE_COLOR_ORDER as c (c)}
 		<ToggleGroup.Item
 			value={c}
-			class={css({
-				w: '2.5rem',
-				h: '2.5rem',
-				rounded: 'full',
-				borderWidth: '2px',
-				borderColor: { base: 'black/10', _dark: 'white/15' },
-				cursor: 'pointer',
-				transition: 'transform 150ms ease',
-				_motionReduce: {
-					transition: 'none'
-				},
-				sm: {
-					_hover: {
-						transform: 'scale(1.1)'
-					}
-				}
-			})}
+			class={swatch()}
 			style="background-color: {bgColor(c)}"
 			aria-label="Set color {c}"
 			title={c}

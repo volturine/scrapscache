@@ -125,9 +125,16 @@ jobs:
           TURNSTILE_SECRET: ${{ secrets.TURNSTILE_SECRET }}
 
       - name: Verify development deployment
-        run: >-
-          curl --fail-with-body --retry 12 --retry-delay 5 --retry-all-errors
-          https://dev.scrapscache.com/health/ready
+        # dev.scrapscache.com sits behind Cloudflare Access; a Service Auth token lets CI through.
+        run: |
+          test -n "$CF_ACCESS_CLIENT_ID"
+          test -n "$CF_ACCESS_CLIENT_SECRET"
+          printf 'CF-Access-Client-Id: %s\nCF-Access-Client-Secret: %s\n' "$CF_ACCESS_CLIENT_ID" "$CF_ACCESS_CLIENT_SECRET" |
+            curl --fail-with-body --retry 12 --retry-delay 5 --retry-all-errors -H @- \
+              https://dev.scrapscache.com/health/ready
+        env:
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
 
   deploy-cloudflare-production:
     name: Deploy Cloudflare production

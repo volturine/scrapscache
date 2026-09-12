@@ -8,8 +8,10 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { legacySyncEnvelope } from '../tests/legacyEnvelope';
 import {
 	createSyncIdentity,
+	decryptSyncEnvelope,
 	decryptSyncPayload,
 	encryptSyncPayload,
 	identityFromSyncKey,
@@ -39,20 +41,53 @@ describe('two workspaces are two accounts', () => {
 
 describe('one workspace cannot read another workspace', () => {
 	const secret = { notes: [{ id: 'n1', title: 'private' }] };
+	const slot = 'a'.repeat(64);
+	const otherSlot = 'b'.repeat(64);
 
 	it('cannot open an envelope sealed by the other', () => {
-		const sealed = encryptSyncPayload(mine.syncKey, secret);
-		expect(() => decryptSyncPayload(theirs.syncKey, sealed)).toThrow();
+		const sealed = encryptSyncPayload(mine.syncKey, secret, slot);
+		expect(() => decryptSyncPayload(theirs.syncKey, sealed, slot)).toThrow();
 	});
 
 	it('opens its own', () => {
-		const sealed = encryptSyncPayload(mine.syncKey, secret);
-		expect(decryptSyncPayload(mine.syncKey, sealed)).toEqual(secret);
+		const sealed = encryptSyncPayload(mine.syncKey, secret, slot);
+		expect(decryptSyncPayload(mine.syncKey, sealed, slot)).toEqual(secret);
 	});
 
 	it('seals the same notes differently for each workspace', () => {
-		expect(encryptSyncPayload(mine.syncKey, secret)).not.toBe(
-			encryptSyncPayload(theirs.syncKey, secret)
+		expect(encryptSyncPayload(mine.syncKey, secret, slot)).not.toBe(
+			encryptSyncPayload(theirs.syncKey, secret, slot)
 		);
+	});
+
+	it('refuses an envelope the relay moved to a different slot', () => {
+		const sealed = encryptSyncPayload(mine.syncKey, secret, slot);
+		expect(() => decryptSyncPayload(mine.syncKey, sealed, otherSlot)).toThrow();
+	});
+});
+
+describe('envelopes written before slot binding', () => {
+	const slot = 'a'.repeat(64);
+
+	it('still opens, so upgrading does not strand what the relay already holds', () => {
+		const secret = { kind: 'note', value: { id: 'old' } };
+		expect(
+			decryptSyncPayload(mine.syncKey, legacySyncEnvelope(mine.syncKey, secret), slot)
+		).toEqual(secret);
+	});
+
+	it('stays unreadable to another workspace', () => {
+		const sealed = legacySyncEnvelope(mine.syncKey, { kind: 'note' });
+		expect(() => decryptSyncPayload(theirs.syncKey, sealed, slot)).toThrow();
+	});
+
+	it('says which path opened it, so the reader knows to rewrite it', () => {
+		const payload = { kind: 'note', value: { id: 'old' } };
+		expect(
+			decryptSyncEnvelope(mine.syncKey, legacySyncEnvelope(mine.syncKey, payload), slot)
+		).toEqual({ payload, legacy: true });
+		expect(
+			decryptSyncEnvelope(mine.syncKey, encryptSyncPayload(mine.syncKey, payload, slot), slot)
+		).toEqual({ payload, legacy: false });
 	});
 });

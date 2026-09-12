@@ -151,6 +151,6 @@ per-record database overhead (default 100 MB).
 
 ## Related docs
 
-- [security.md](security.md) — threat model and crypto choices
+- [security.md](security.md) — security model and crypto choices
 - [self-hosting.md](self-hosting.md) — operator runbook
 - [development.md](development.md) — contributor workflow

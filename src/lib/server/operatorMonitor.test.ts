@@ -52,7 +52,8 @@ describe('operator snapshot', () => {
 			staleForRetention: 1
 		});
 		expect(JSON.stringify(snapshot)).not.toMatch(/account-[a-z0-9]+|credential/i);
-		expect(snapshot.activity.syncRequests).toBe(4);
+		expect(snapshot.activity?.syncRequests).toBe(4);
+		expect(snapshot.telemetry).toEqual({ source: 'process' });
 	});
 
 	it('omits stale retention counts when the policy is disabled', () => {
@@ -82,5 +83,41 @@ describe('operator snapshot', () => {
 			0
 		);
 		expect(snapshot.accounts.staleForRetention).toBeNull();
+	});
+});
+
+describe('deployments where no process sees every request', () => {
+	it('reports no counters and says where they live instead of guessing a total', () => {
+		const snapshot = buildOperatorSnapshot(
+			{
+				accounts: 3,
+				envelopeCount: 10,
+				ciphertextBytes: 1_000,
+				storageBytes: 1_000,
+				activeByWindowDays: { '1': 1 },
+				staleAccounts: 0
+			},
+			{ maxAccountBytes: 1_000_000_000 },
+			null,
+			{
+				enabled: false,
+				inactiveDays: 0,
+				lastRunAt: 0,
+				lastSuccessAt: 0,
+				lastDeletedAccounts: 0,
+				deletedAccountsTotal: 0,
+				lastPurgedSlots: 0,
+				failures: 0,
+				lastError: null
+			},
+			1_000,
+			0
+		);
+
+		expect(snapshot.activity).toBeNull();
+		expect(snapshot.telemetry).toEqual({ source: 'dataset' });
+		// Storage and account figures come from the database, so they stay real.
+		expect(snapshot.accounts.total).toBe(3);
+		expect(snapshot.storage.envelopes).toBe(10);
 	});
 });

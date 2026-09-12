@@ -73,10 +73,10 @@ describe('quota isolation independent of server error wording', () => {
 			'sendSyncRequest'
 		).mockImplementation(async (_path, payload) => {
 			const request = JSON.parse(payload) as {
-				envelopes: Array<{ ciphertext: string }>;
+				envelopes: Array<{ ciphertext: string; slot: string }>;
 			};
 			const kinds = request.envelopes.map((item) => {
-				const payload = decryptSyncPayload(account.syncKey, item.ciphertext) as {
+				const payload = decryptSyncPayload(account.syncKey, item.ciphertext, item.slot) as {
 					kind: string;
 					value?: { id?: string };
 				};

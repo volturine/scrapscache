@@ -7,6 +7,7 @@ import { notesStore } from '$lib/stores/notes.svelte';
 import { profileCoordinator } from '$lib/stores/profiles.svelte';
 import { syncStore, type StartedDeviceLink } from '$lib/stores/sync.svelte';
 import SyncModal from './SyncModal.svelte';
+import { NOT_SYNCED_MESSAGE as NOT_SYNCED } from '$lib/syncKeyRotation';
 
 function profile(id: string, name: string, createdAt: number): StoredProfile {
 	return { id, name, createdAt, syncKey: createSyncIdentity().syncKey };
@@ -504,5 +505,89 @@ describe('SyncModal profile interactions', () => {
 		await Promise.resolve();
 		await vi.advanceTimersByTimeAsync(1_500);
 		expect(poll).toHaveBeenCalledTimes(2);
+	});
+});
+
+describe('SyncModal replacing a lost device\u2019s sync key', () => {
+	let main: StoredProfile;
+
+	beforeEach(() => {
+		vi.restoreAllMocks();
+		localStorage.clear();
+		main = profile('profile-main', 'Main', 1);
+		syncStore.profiles = [main];
+		syncStore.account = identityFromSyncKey(main.syncKey);
+		syncStore.lastError = null;
+		syncStore.usage = null;
+		profileCoordinator.switching = false;
+		(notesStore as unknown as { syncFlight: Promise<boolean> | null }).syncFlight = null;
+	});
+
+	async function openConfirmation() {
+		render(SyncModal, { props: { onClose: () => {} } });
+		await fireEvent.click(await screen.findByText('Manage workspace'));
+		await fireEvent.click(await screen.findByText('I lost a device'));
+		await tick();
+	}
+
+	it('says plainly that it cannot reach notes already on the lost device', async () => {
+		await openConfirmation();
+
+		// The entry point is named for what people look for, so the screen has to
+		// carry the limitation the name does not.
+		expect(await screen.findByText(/cannot reach the notes already on that device/i)).toBeTruthy();
+		expect(screen.getByText(/nothing can erase them remotely/i)).toBeTruthy();
+		expect(screen.getByText(/paired again/i)).toBeTruthy();
+	});
+
+	it('replaces the key without offering an override first', async () => {
+		const replace = vi
+			.spyOn(profileCoordinator, 'replaceSyncKey')
+			.mockResolvedValue({ ok: true, forced: false, previousAccountRemoved: true });
+		await openConfirmation();
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Replace sync key' }));
+
+		await waitFor(() => expect(replace).toHaveBeenCalled());
+		expect(replace.mock.calls[0][0].force).toBe(false);
+		expect(await screen.findByText(/Pair your other devices again/i)).toBeTruthy();
+	});
+
+	it('asks for a typed confirmation only after refusing, and keeps the button disabled until it matches', async () => {
+		const replace = vi.spyOn(profileCoordinator, 'replaceSyncKey').mockResolvedValue({
+			ok: false,
+			step: 'preflight',
+			error: NOT_SYNCED,
+			replacementRemoved: false
+		});
+		await openConfirmation();
+
+		expect(screen.queryByPlaceholderText('CONTINUE')).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: 'Replace sync key' }));
+
+		const field = await screen.findByPlaceholderText('CONTINUE');
+		const confirm = screen.getByRole('button', { name: 'Replace key anyway' });
+		expect((confirm as HTMLButtonElement).disabled).toBe(true);
+
+		await fireEvent.input(field, { target: { value: 'continue' } });
+		await tick();
+		expect((confirm as HTMLButtonElement).disabled).toBe(false);
+
+		replace.mockResolvedValue({ ok: true, forced: true, previousAccountRemoved: true });
+		await fireEvent.click(confirm);
+		await waitFor(() => expect(replace.mock.calls[1][0].force).toBe(true));
+	});
+
+	it('says the old account survived rather than implying a clean finish', async () => {
+		vi.spyOn(profileCoordinator, 'replaceSyncKey').mockResolvedValue({
+			ok: true,
+			forced: false,
+			previousAccountRemoved: false
+		});
+		await openConfirmation();
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Replace sync key' }));
+
+		expect(await screen.findByText(/old cloud account could not be deleted/i)).toBeTruthy();
 	});
 });

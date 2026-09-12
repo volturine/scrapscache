@@ -122,6 +122,13 @@
 		base: {
 			shell: {
 				position: 'fixed',
+				top: 'var(--app-visual-offset-top)',
+				right: 0,
+				bottom: 0,
+				left: 0,
+				paddingTop: 'var(--app-inset-top)',
+				paddingRight: 'var(--app-inset-right)',
+				paddingLeft: 'var(--app-inset-left)',
 				zIndex: 90,
 				display: 'flex',
 				flexDirection: 'column',
@@ -181,14 +188,37 @@
 		}
 	});
 	const ce = canvasEditor();
-	const headerCloseBtn = cx(iconButton({ variant: 'ghost' }), css({ h: '2.25rem', w: '2.25rem' }));
+	const headerCloseBtn = cx(
+		iconButton({ variant: 'ghost' }),
+		css({
+			h: '2.25rem',
+			w: '2.25rem',
+			color: 'color-mix(in srgb, currentColor 82%, transparent)',
+			transition: 'background-color 120ms ease, color 120ms ease',
+			_hover: {
+				bg: 'color-mix(in srgb, currentColor 10%, transparent)',
+				color: 'currentColor'
+			},
+			_focusVisible: {
+				bg: 'color-mix(in srgb, currentColor 10%, transparent)',
+				color: 'currentColor',
+				outline: '2px solid scrapscache.focus',
+				outlineOffset: '2px'
+			}
+		})
+	);
 	const doneBtn = cx(
 		button({ variant: 'primary', size: 'md' }),
 		css({
 			rounded: 'full',
 			fontWeight: '600',
 			flexShrink: 0,
-			touchAction: 'manipulation'
+			touchAction: 'manipulation',
+			transition: 'background-color 120ms ease, transform 120ms ease',
+			'&:hover:not(:disabled)': { bg: 'scrapscache.accentHover' },
+			'&:active:not(:disabled)': { transform: 'scale(0.97)' },
+			_focusVisible: { outline: '2px solid scrapscache.focus', outlineOffset: '2px' },
+			_disabled: { opacity: 0.5 }
 		})
 	);
 	const spinnerSm = css({ h: '1rem', w: '1rem' });
@@ -255,101 +285,3 @@
 		{/if}
 	</div>
 </div>
-
-<style>
-	.canvas-editor-shell {
-		top: var(--app-visual-offset-top);
-		right: 0;
-		bottom: 0;
-		left: 0;
-		padding-top: var(--app-inset-top);
-		padding-right: var(--app-inset-right);
-		padding-left: var(--app-inset-left);
-	}
-
-	.canvas-header-action {
-		color: color-mix(in srgb, currentColor 82%, transparent);
-		transition:
-			background-color 120ms ease,
-			color 120ms ease;
-	}
-
-	.canvas-header-action:hover,
-	.canvas-header-action:focus-visible {
-		background: color-mix(in srgb, currentColor 10%, transparent);
-		color: currentColor;
-		outline: 2px solid var(--scrapscache-focus);
-		outline-offset: 2px;
-	}
-
-	.canvas-done {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		gap: 0.4rem;
-		background: var(--scrapscache-accent);
-		color: var(--scrapscache-accent-foreground);
-		transition:
-			background-color 120ms ease,
-			transform 120ms ease;
-	}
-
-	.canvas-done:hover:not(:disabled) {
-		background: var(--scrapscache-accent-hover);
-	}
-
-	.canvas-done:active:not(:disabled) {
-		transform: scale(0.97);
-	}
-
-	.canvas-done:focus-visible {
-		outline: 2px solid var(--scrapscache-focus);
-		outline-offset: 2px;
-	}
-
-	.canvas-done:disabled {
-		opacity: 0.5;
-	}
-
-	:global(.scrapscache-canvas .excalidraw) {
-		--sat: 0px;
-		--sar: 0px;
-		--sab: var(--app-inset-bottom);
-		--sal: 0px;
-	}
-
-	:global(.scrapscache-canvas .App-bottom-bar .App-toolbar-content) {
-		padding: 4px 8px !important;
-	}
-
-	:global(.scrapscache-canvas .App-bottom-bar .dropdown-menu--mobile) {
-		bottom: 47px !important;
-	}
-
-	:global(.excalidraw-modal-container) {
-		top: calc(var(--app-visual-offset-top) + var(--app-inset-top)) !important;
-		right: var(--app-inset-right) !important;
-		bottom: var(--app-inset-bottom) !important;
-		left: var(--app-inset-left) !important;
-		height: auto !important;
-	}
-
-	:global(.excalidraw-modal-container .Modal__background) {
-		top: calc(var(--app-visual-offset-top) + var(--app-inset-top)) !important;
-		right: var(--app-inset-right) !important;
-		bottom: var(--app-inset-bottom) !important;
-		left: var(--app-inset-left) !important;
-	}
-
-	:global(.excalidraw-modal-container .confirm-dialog.Modal) {
-		align-items: center;
-		padding: 1rem;
-	}
-
-	:global(.excalidraw-modal-container .confirm-dialog.Dialog--fullscreen .Modal__content) {
-		position: relative;
-		inset: auto;
-		max-width: 34rem;
-		max-height: 100%;
-	}
-</style>

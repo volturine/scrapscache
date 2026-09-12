@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import { Check, CloudOff, Pencil, TriangleAlert, X } from '@lucide/svelte';
+	import { css, cx } from 'styled-system/css';
 
 	let {
 		name,
@@ -226,6 +227,224 @@
 		if (mode === 'idle') settle(false);
 		else cancel();
 	}
+
+	const rowClass = css({
+		position: 'relative',
+		rounded: '10px',
+		overflow: { base: 'hidden', sm: 'visible' },
+		'& button:disabled': { opacity: 0.55 },
+		// Desktop: the actions ride above the right edge and fade in on approach.
+		'&:hover .actions, &:focus-within .actions': {
+			opacity: { sm: 1 },
+			pointerEvents: { sm: 'auto' }
+		},
+		'&.editing .actions': { display: 'none' },
+		'&:not(.dragging) .front': {
+			transition: {
+				base: 'transform 260ms cubic-bezier(0.22, 1, 0.36, 1)',
+				_motionReduce: 'none'
+			}
+		},
+		'&:not(.dragging):has(.actions :focus-visible) .front': {
+			transform: { base: 'translateX(-152px)' }
+		},
+		'&.editing .front': { bg: 'scrapscache.interactiveHover' },
+		'@media (hover: hover)': {
+			'&:hover .front': { bg: 'scrapscache.interactiveHover' }
+		},
+		'&:not(.dragging) .actions': {
+			transition: { base: 'width 260ms cubic-bezier(0.22, 1, 0.36, 1)' }
+		},
+		'&.armed .tile-unlink': {
+			bg: { base: 'scrapscache.danger' },
+			color: { base: 'scrapscache.dangerForeground' }
+		},
+		'&.armed .tile:not(.tile-unlink)': { opacity: { base: 0 } }
+	});
+
+	const actionsClass = css({
+		position: 'absolute',
+		inset: '0 0 0 auto',
+		zIndex: { base: 0, sm: 2 },
+		display: 'flex',
+		alignItems: 'center',
+		gap: '2px',
+		pr: { base: 0, sm: '8px' },
+		// The drawer is exactly as wide as the row has been pulled aside, and its
+		// actions are pinned to the trailing edge, so Unlink leads the reveal.
+		w: { base: 'max(0px, calc(-1 * var(--swipe-offset)))', sm: 'auto' },
+		justifyContent: { base: 'flex-end' },
+		overflow: { base: 'hidden' },
+		borderRadius: { base: '0 10px 10px 0' },
+		opacity: { base: 1, sm: 0 },
+		pointerEvents: { base: 'auto', sm: 'none' }
+	});
+
+	const tileClass = css({
+		display: { base: 'flex', sm: 'grid' },
+		w: { base: '76px', sm: '30px' },
+		h: { base: 'auto', sm: '30px' },
+		placeItems: 'center',
+		flexDirection: { base: 'column' },
+		alignItems: { base: 'center' },
+		justifyContent: { base: 'center' },
+		gap: { base: '4px' },
+		flexShrink: 0,
+		alignSelf: { base: 'stretch' },
+		rounded: { base: '0', sm: '7px' },
+		fontSize: { base: '12px' },
+		color: { base: 'scrapscache.text', sm: 'scrapscache.textMuted' },
+		_hover: {
+			bg: { base: 'transparent', sm: 'scrapscache.interactiveHover' },
+			color: { sm: 'scrapscache.text' }
+		},
+		'& svg': {
+			transform: { base: 'scale(calc(0.8 + 0.2 * var(--swipe-progress)))' }
+		}
+	});
+
+	const tileUnlinkClass = css({
+		flex: { base: '1 0 76px' },
+		color: { base: 'scrapscache.danger', sm: 'scrapscache.textMuted' },
+		_hover: { color: { sm: 'scrapscache.danger' } }
+	});
+
+	const tileLabelClass = css({
+		display: { base: 'block', sm: 'none' }
+	});
+
+	const frontClass = css({
+		position: 'relative',
+		zIndex: 1,
+		display: 'flex',
+		alignItems: 'stretch',
+		rounded: '10px',
+		bg: 'scrapscache.surface',
+		transform: { base: 'translateX(var(--swipe-offset))' }
+	});
+
+	const frontActiveClass = css({
+		bg: 'scrapscache.interactiveHover',
+		'&::before': {
+			content: '""',
+			position: 'absolute',
+			top: '10px',
+			bottom: '10px',
+			left: 0,
+			w: '3px',
+			borderRadius: '0 3px 3px 0',
+			bg: 'scrapscache.accent'
+		}
+	});
+
+	const selectClass = css({
+		display: 'flex',
+		flex: '1',
+		alignItems: 'center',
+		gap: '12px',
+		minW: 0,
+		py: '12px',
+		pl: '12px',
+		pr: { base: '12px', sm: '76px' },
+		textAlign: 'left',
+		fontSize: '14px',
+		touchAction: 'pan-y'
+	});
+
+	const panelClass = css({
+		display: 'flex',
+		flex: '1',
+		alignItems: 'center',
+		gap: '12px',
+		minW: 0,
+		p: '12px',
+		textAlign: 'left',
+		fontSize: '14px',
+		'&.confirm': {
+			bg: 'scrapscache.dangerSubtle',
+			rounded: '10px',
+			flexWrap: { base: 'wrap' },
+			'& .panel-glyph': { color: 'scrapscache.danger' },
+			'& .panel-actions': { w: { base: '100%' }, justifyContent: { base: 'flex-end' } }
+		}
+	});
+
+	const glyphClass = css({
+		display: 'grid',
+		flexShrink: 0,
+		placeItems: 'center',
+		color: 'scrapscache.textMuted'
+	});
+
+	const bodyClass = css({ minW: 0, flex: '1' });
+
+	const messageClass = css({ minW: 0, flex: '1', fontSize: '13px' });
+
+	const nameClass = css({
+		display: 'block',
+		overflow: 'hidden',
+		textOverflow: 'ellipsis',
+		whiteSpace: 'nowrap'
+	});
+
+	const captionClass = css({
+		display: 'block',
+		mt: '2px',
+		color: 'scrapscache.textMuted',
+		fontSize: '12px',
+		fontWeight: '400'
+	});
+
+	const nameInputClass = css({
+		w: 'full',
+		padding: '1px 0',
+		border: '0',
+		borderBottom: '1px solid scrapscache.accent',
+		bg: 'transparent',
+		color: 'inherit',
+		font: 'inherit',
+		outline: 'none'
+	});
+
+	const panelActionsClass = css({
+		display: 'flex',
+		alignItems: 'center',
+		gap: '6px',
+		flexShrink: 0
+	});
+
+	const iconBtnClass = css({
+		display: 'grid',
+		w: '30px',
+		h: '30px',
+		placeItems: 'center',
+		rounded: '7px',
+		color: 'scrapscache.textMuted',
+		_hover: { bg: 'scrapscache.interactiveHover', color: 'scrapscache.text' }
+	});
+
+	const iconAcceptClass = css({ color: 'scrapscache.success' });
+
+	const ghostBtnClass = css({
+		padding: '7px 12px',
+		rounded: '7px',
+		fontSize: '13px',
+		whiteSpace: 'nowrap',
+		_hover: { bg: 'scrapscache.interactiveHover' }
+	});
+
+	const dangerBtnClass = css({
+		padding: '7px 12px',
+		rounded: '7px',
+		fontSize: '13px',
+		whiteSpace: 'nowrap',
+		bg: 'scrapscache.danger',
+		color: 'scrapscache.dangerForeground',
+		fontWeight: '500'
+	});
+
+	const onWideClass = css({ display: { base: 'none', sm: 'inline' } });
+	const onNarrowClass = css({ display: { base: 'inline', sm: 'none' } });
 </script>
 
 <svelte:document
@@ -238,7 +457,7 @@
 
 <div
 	bind:this={rowElement}
-	class="row"
+	class={`row ${rowClass}`}
 	class:open
 	class:armed
 	class:dragging
@@ -246,44 +465,46 @@
 	style:--swipe-offset={`${offset}px`}
 	style:--swipe-progress={progress}
 >
-	<div class="actions">
+	<div class={`actions ${actionsClass}`}>
 		<button
 			type="button"
-			class="tile"
+			class={`tile ${tileClass}`}
 			disabled={locked}
 			title="Rename"
 			aria-label="Rename {name}"
 			onclick={startRename}
 		>
-			<Pencil size={16} aria-hidden="true" /><span class="tile-label">Rename</span>
+			<Pencil size={16} aria-hidden="true" /><span class={tileLabelClass}>Rename</span>
 		</button>
 		<button
 			type="button"
-			class="tile unlink"
+			class={`tile tile-unlink ${tileClass} ${tileUnlinkClass}`}
 			disabled={locked}
 			title="Unlink"
 			aria-label="Unlink {name}"
 			onclick={askUnlink}
 		>
-			<CloudOff size={16} aria-hidden="true" /><span class="tile-label"
+			<CloudOff size={16} aria-hidden="true" /><span class={tileLabelClass}
 				>{armed ? 'Release' : 'Unlink'}</span
 			>
 		</button>
 	</div>
 
-	<div class="front" class:active>
+	<div class={cx(frontClass, active && frontActiveClass)} data-front>
 		{#if mode === 'confirm'}
-			<div class="panel confirm">
-				<span class="glyph" aria-hidden="true"><TriangleAlert size={18} /></span>
-				<p class="message">
-					Unlink <strong>{name}</strong>?<span class="caption"
+			<div class={`panel confirm ${panelClass}`}>
+				<span class={`${glyphClass} panel-glyph`} aria-hidden="true"
+					><TriangleAlert size={18} /></span
+				>
+				<p class={messageClass}>
+					Unlink <strong>{name}</strong>?<span class={captionClass}
 						>Its notes move to Anonymous workspace. Cloud data stays.</span
 					>
 				</p>
-				<div class="panel-actions">
+				<div class={`panel-actions ${panelActionsClass}`}>
 					<button
 						type="button"
-						class="ghost"
+						class={ghostBtnClass}
 						{@attach takeFocus}
 						disabled={working !== null}
 						aria-label="Keep {name} linked"
@@ -291,7 +512,7 @@
 					>
 					<button
 						type="button"
-						class="danger"
+						class={dangerBtnClass}
 						disabled={locked}
 						aria-label="Unlink {name} and keep notes"
 						onclick={() => void confirmUnlink()}
@@ -301,40 +522,40 @@
 			</div>
 		{:else if mode === 'rename'}
 			<form
-				class="panel"
+				class={panelClass}
 				onsubmit={(event) => {
 					event.preventDefault();
 					void saveRename();
 				}}
 			>
-				<span class="glyph" aria-hidden="true">{@render icon()}</span>
-				<span class="body">
+				<span class={glyphClass} aria-hidden="true">{@render icon()}</span>
+				<span class={bodyClass}>
 					<input
 						{@attach renameField}
 						bind:value={draft}
-						class="name-input"
+						class={nameInputClass}
 						maxlength="60"
 						spellcheck="false"
 						disabled={working !== null}
 						aria-label="Workspace name"
 					/>
-					<span class="caption">
-						{#if working === 'rename'}Saving…{:else}<span class="on-wide"
+					<span class={captionClass}>
+						{#if working === 'rename'}Saving…{:else}<span class={onWideClass}
 								>Enter saves · Esc cancels</span
-							><span class="on-narrow">{caption}</span>{/if}
+							><span class={onNarrowClass}>{caption}</span>{/if}
 					</span>
 				</span>
-				<div class="panel-actions">
+				<div class={`panel-actions ${panelActionsClass}`}>
 					<button
 						type="button"
-						class="icon"
+						class={iconBtnClass}
 						disabled={working !== null}
 						aria-label="Cancel renaming {name}"
 						onclick={cancel}><X size={16} aria-hidden="true" /></button
 					>
 					<button
 						type="submit"
-						class="icon accept"
+						class={`${iconBtnClass} ${iconAcceptClass}`}
 						disabled={locked || !draft.trim()}
 						aria-label="Save name"><Check size={16} aria-hidden="true" /></button
 					>
@@ -343,7 +564,7 @@
 		{:else}
 			<button
 				type="button"
-				class="select"
+				class={selectClass}
 				disabled={locked}
 				aria-label={active ? `${name} is active` : `Switch to ${name}`}
 				onpointerdown={down}
@@ -356,273 +577,12 @@
 					else onselect();
 				}}
 			>
-				<span class="glyph" aria-hidden="true">{@render icon()}</span>
-				<span class="body">
-					<span class="name">{name}</span>
-					<span class="caption">{caption}</span>
+				<span class={glyphClass} aria-hidden="true">{@render icon()}</span>
+				<span class={bodyClass}>
+					<span class={nameClass}>{name}</span>
+					<span class={captionClass}>{caption}</span>
 				</span>
 			</button>
 		{/if}
 	</div>
 </div>
-
-<style>
-	.row {
-		position: relative;
-		border-radius: 10px;
-	}
-	.front {
-		position: relative;
-		z-index: 1;
-		display: flex;
-		align-items: stretch;
-		border-radius: 10px;
-		background: var(--scrapscache-surface, var(--scrapscache-bg));
-	}
-	.front.active,
-	.row.editing .front {
-		background: var(--scrapscache-interactive-hover);
-	}
-	/* The current workspace keeps a marker so hover never impersonates it. */
-	.front.active::before {
-		content: '';
-		position: absolute;
-		top: 10px;
-		bottom: 10px;
-		left: 0;
-		width: 3px;
-		border-radius: 0 3px 3px 0;
-		background: var(--scrapscache-accent);
-	}
-	@media (hover: hover) {
-		.row:hover .front {
-			background: var(--scrapscache-interactive-hover);
-		}
-	}
-	.select,
-	.panel {
-		display: flex;
-		flex: 1;
-		align-items: center;
-		gap: 12px;
-		min-width: 0;
-		padding: 12px;
-		text-align: left;
-		font-size: 14px;
-	}
-	.select {
-		padding-right: 76px;
-		touch-action: pan-y;
-	}
-	.glyph {
-		display: grid;
-		flex-shrink: 0;
-		place-items: center;
-		color: var(--scrapscache-text-muted);
-	}
-	.body,
-	.message {
-		min-width: 0;
-		flex: 1;
-	}
-	.name {
-		display: block;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-	.caption {
-		display: block;
-		margin-top: 2px;
-		color: var(--scrapscache-text-muted);
-		font-size: 12px;
-		font-weight: 400;
-	}
-	.name-input {
-		width: 100%;
-		padding: 1px 0;
-		border: 0;
-		border-bottom: 1px solid var(--scrapscache-accent);
-		background: transparent;
-		color: inherit;
-		font: inherit;
-		outline: none;
-	}
-	.message {
-		font-size: 13px;
-	}
-	.panel.confirm {
-		background: var(--scrapscache-danger-subtle);
-		border-radius: 10px;
-	}
-	.panel.confirm .glyph {
-		color: var(--scrapscache-danger);
-	}
-	.panel-actions {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		flex-shrink: 0;
-	}
-	.icon {
-		display: grid;
-		width: 30px;
-		height: 30px;
-		place-items: center;
-		border-radius: 7px;
-		color: var(--scrapscache-text-muted);
-	}
-	.icon:hover {
-		background: var(--scrapscache-interactive-hover);
-		color: var(--scrapscache-text);
-	}
-	.icon.accept {
-		color: var(--scrapscache-success);
-	}
-	.ghost,
-	.danger {
-		padding: 7px 12px;
-		border-radius: 7px;
-		font-size: 13px;
-		white-space: nowrap;
-	}
-	.ghost:hover {
-		background: var(--scrapscache-interactive-hover);
-	}
-	.danger {
-		background: var(--scrapscache-danger);
-		color: var(--scrapscache-danger-foreground);
-		font-weight: 500;
-	}
-
-	/* Desktop: the actions ride above the right edge and fade in on approach. */
-	.actions {
-		position: absolute;
-		inset: 0 0 0 auto;
-		z-index: 2;
-		display: flex;
-		align-items: center;
-		gap: 2px;
-		padding-right: 8px;
-		opacity: 0;
-		pointer-events: none;
-		transition: opacity 120ms ease;
-	}
-	.row:hover .actions,
-	.row:focus-within .actions {
-		opacity: 1;
-		pointer-events: auto;
-	}
-	.row.editing .actions {
-		display: none;
-	}
-	.tile {
-		display: grid;
-		width: 30px;
-		height: 30px;
-		place-items: center;
-		border-radius: 7px;
-		color: var(--scrapscache-text-muted);
-	}
-	.tile:hover {
-		background: var(--scrapscache-interactive-hover);
-		color: var(--scrapscache-text);
-	}
-	.tile.unlink:hover {
-		color: var(--scrapscache-danger);
-	}
-	.tile-label,
-	.on-narrow {
-		display: none;
-	}
-
-	@media (max-width: 640px) {
-		/* Phones: the row slides to uncover the actions underneath it. */
-		.row {
-			overflow: hidden;
-		}
-		.front {
-			transform: translateX(var(--swipe-offset));
-		}
-		.row:not(.dragging) .front {
-			transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
-		}
-		.row:not(.dragging):has(.actions :focus-visible) .front {
-			transform: translateX(-152px);
-		}
-		/* The drawer is exactly as wide as the row has been pulled aside, and its
-		   actions are pinned to the trailing edge, so Unlink leads the reveal. */
-		.actions {
-			z-index: 0;
-			width: max(0px, calc(-1 * var(--swipe-offset)));
-			justify-content: flex-end;
-			padding-right: 0;
-			overflow: hidden;
-			border-radius: 0 10px 10px 0;
-			opacity: 1;
-			pointer-events: auto;
-		}
-		.row:not(.dragging) .actions {
-			transition: width 260ms cubic-bezier(0.22, 1, 0.36, 1);
-		}
-		.tile {
-			display: flex;
-			width: 76px;
-			height: auto;
-			flex-direction: column;
-			align-items: center;
-			justify-content: center;
-			gap: 4px;
-			flex-shrink: 0;
-			align-self: stretch;
-			border-radius: 0;
-			font-size: 12px;
-			color: var(--scrapscache-text);
-		}
-		.tile.unlink {
-			flex: 1 0 76px;
-			color: var(--scrapscache-danger);
-		}
-		.tile:hover {
-			background: transparent;
-		}
-		.tile-label {
-			display: block;
-		}
-		.on-wide {
-			display: none;
-		}
-		.on-narrow {
-			display: inline;
-		}
-		/* Icons settle to full size as the drawer arrives. */
-		.tile > :global(svg) {
-			transform: scale(calc(0.8 + 0.2 * var(--swipe-progress)));
-		}
-		.row.armed .tile.unlink {
-			background: var(--scrapscache-danger);
-			color: var(--scrapscache-danger-foreground);
-		}
-		.row.armed .tile:not(.unlink) {
-			opacity: 0;
-		}
-		.select {
-			padding-right: 12px;
-		}
-		.panel.confirm {
-			flex-wrap: wrap;
-		}
-		.panel.confirm .panel-actions {
-			width: 100%;
-			justify-content: flex-end;
-		}
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.row:not(.dragging) .front {
-			transition: none;
-		}
-	}
-	button:disabled {
-		opacity: 0.55;
-	}
-</style>

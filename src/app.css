@@ -693,3 +693,41 @@ html.scrapscache-sync-active [data-scrapscache-sync-spinner],
 [hidden] {
 	display: none !important;
 }
+
+/* Excalidraw renders into portals outside this app's tree; these overrides
+   pin its floating UI inside the app's safe-area insets. */
+.scrapscache-canvas .excalidraw {
+	--sat: 0px;
+	--sar: 0px;
+	--sab: var(--app-inset-bottom);
+	--sal: 0px;
+}
+.scrapscache-canvas .App-bottom-bar .App-toolbar-content {
+	padding: 4px 8px !important;
+}
+.scrapscache-canvas .App-bottom-bar .dropdown-menu--mobile {
+	bottom: 47px !important;
+}
+.excalidraw-modal-container {
+	top: calc(var(--app-visual-offset-top) + var(--app-inset-top)) !important;
+	right: var(--app-inset-right) !important;
+	bottom: var(--app-inset-bottom) !important;
+	left: var(--app-inset-left) !important;
+	height: auto !important;
+}
+.excalidraw-modal-container .Modal__background {
+	top: calc(var(--app-visual-offset-top) + var(--app-inset-top)) !important;
+	right: var(--app-inset-right) !important;
+	bottom: var(--app-inset-bottom) !important;
+	left: var(--app-inset-left) !important;
+}
+.excalidraw-modal-container .confirm-dialog.Modal {
+	align-items: center;
+	padding: 1rem;
+}
+.excalidraw-modal-container .confirm-dialog.Dialog--fullscreen .Modal__content {
+	position: relative;
+	inset: auto;
+	max-width: 34rem;
+	max-height: 100%;
+}

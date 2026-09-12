@@ -43,7 +43,7 @@
 		color: 'scrapscache.text',
 		cursor: 'pointer',
 		transition: 'colors 150ms ease',
-		_hover: { bg: { base: 'black/5', _dark: 'white/10' } }
+		_hoverable: { bg: 'scrapscache.interactiveHover' }
 	});
 
 	const gridBtn = cva({
@@ -56,7 +56,7 @@
 			fontWeight: 'medium',
 			cursor: 'pointer',
 			transition: 'colors 150ms ease',
-			_hover: { bg: { base: 'black/5', _dark: 'white/10' } },
+			_hoverable: { bg: 'scrapscache.interactiveHover' },
 			_selected: {
 				bg: 'scrapscache.accent',
 				color: 'scrapscache.accentForeground',
@@ -238,7 +238,7 @@
 							color: 'scrapscache.text',
 							cursor: 'pointer',
 							transition: 'colors 150ms ease',
-							_hover: { bg: { base: 'black/5', _dark: 'white/10' } }
+							_hoverable: { bg: 'scrapscache.interactiveHover' }
 						})}
 					>
 						<DatePicker.RangeText />

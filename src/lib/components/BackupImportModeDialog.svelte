@@ -4,7 +4,6 @@
 	import { BackupImportMode } from '$lib/backup';
 	import { css, cx, sva } from 'styled-system/css';
 	import { button, dialog } from 'styled-system/recipes';
-	import { flex } from 'styled-system/patterns';
 
 	let {
 		busy = false,
@@ -24,7 +23,7 @@
 		if (!details.open && !busy) onClose();
 	}
 
-	const d = dialog({ size: 'sm' });
+	const d = dialog({ size: 'sm', presentation: 'appOverlay' });
 
 	const option = sva({
 		slots: ['root', 'title', 'description'],
@@ -39,8 +38,8 @@
 				borderColor: 'scrapscache.border',
 				bg: 'transparent',
 				cursor: 'pointer',
-				transition: 'all 120ms ease',
-				_hover: {
+				transition: 'background-color 120ms ease, border-color 120ms ease, color 120ms ease',
+				_hoverable: {
 					bg: 'scrapscache.interactiveHover'
 				}
 			},
@@ -66,6 +65,8 @@
 			}
 		}
 	});
+	const keepOption = option();
+	const replaceOption = option({ danger: true });
 </script>
 
 <Dialog.Root
@@ -76,52 +77,24 @@
 	preventScroll={false}
 	initialFocusEl={() => keepButton}
 >
-	<div
-		{@attach portalToAppOverlay}
-		class={css({ position: 'absolute', inset: 0, zIndex: 70 })}
-		role="presentation"
-	>
-		<Dialog.Backdrop
-			class={cx(d.backdrop, css({ position: 'absolute', bg: 'black/45', backdropFilter: 'none' }))}
-		/>
-		<Dialog.Positioner
-			class={flex({
-				position: 'absolute',
-				inset: 0,
-				align: 'flex-start',
-				justify: 'center',
-				px: '1rem',
-				pb: '1rem',
-				pt: 'calc(var(--app-topbar-height) + 0.5rem)'
-			})}
-		>
-			<Dialog.Content
-				class={cx('scrapscache-dialog', d.panel, css({ maxW: '24rem', p: 0, gap: 0 }))}
-			>
-				<div
-					class={cx(
-						d.header,
-						css({
-							borderBottomWidth: '1px',
-							borderColor: 'scrapscache.border',
-							px: '1.25rem',
-							py: '1rem'
-						})
-					)}
-				>
+	<div {@attach portalToAppOverlay} class={d.portal} role="presentation">
+		<Dialog.Backdrop class={d.backdrop} />
+		<Dialog.Positioner class={d.positioner}>
+			<Dialog.Content class={d.panel}>
+				<div class={d.header}>
 					<Dialog.Title class={d.title}>How should this backup be imported?</Dialog.Title>
 				</div>
 
-				<div class={cx(d.body, css({ px: '1.25rem', py: '1.25rem' }))}>
+				<div class={d.body}>
 					<button
 						bind:this={keepButton}
 						type="button"
 						disabled={busy}
 						onclick={() => onSelect(BackupImportMode.Keep)}
-						class={option().root}
+						class={keepOption.root}
 					>
-						<span class={option().title}>Keep local notes</span>
-						<span class={option().description}>
+						<span class={keepOption.title}>Keep local notes</span>
+						<span class={keepOption.description}>
 							Add every backup note as a new copy. Existing notes stay unchanged.
 						</span>
 					</button>
@@ -129,15 +102,15 @@
 						type="button"
 						disabled={busy}
 						onclick={() => onSelect(BackupImportMode.Replace)}
-						class={option({ danger: true }).root}
+						class={replaceOption.root}
 					>
-						<span class={option({ danger: true }).title}>Replace local data</span>
-						<span class={option({ danger: true }).description}>
+						<span class={replaceOption.title}>Replace local data</span>
+						<span class={replaceOption.description}>
 							Delete current local notes and restore the backup instead.
 						</span>
 					</button>
 					{#if error}
-						<p class={css({ fontSize: 'sm', color: 'scrapscache.danger' })} role="alert">
+						<p class={d.error} role="alert">
 							{error}
 						</p>
 					{/if}

@@ -89,7 +89,7 @@
 
 	const fs = fullscreen();
 
-	const headerBtn = cx('icon-btn', iconButton({ variant: 'ghost', size: 'standard' }));
+	const headerBtn = iconButton({ variant: 'ghost', size: 'standard' });
 
 	const media = sva({
 		slots: ['text', 'audioBox', 'audio', 'videoBox', 'video', 'pdf'],

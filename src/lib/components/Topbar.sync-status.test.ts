@@ -62,7 +62,7 @@ describe('Topbar sync status', () => {
 		const icon = container.querySelector('[data-scrapscache-sync-icon]');
 
 		expect(screen.getByRole('button', { name: 'Sync settings, storage nearly full' })).toBeTruthy();
-		expect(icon?.getAttribute('class')).toContain('text-[var(--scrapscache-warning)]');
+		expect(icon?.getAttribute('class')).toContain('c_scrapscache.warning');
 
 		syncStore.lastError = 'Sync network error';
 		await vi.waitFor(() =>
@@ -70,7 +70,7 @@ describe('Topbar sync status', () => {
 				screen.getByRole('button', { name: 'Sync settings, sync needs attention' })
 			).toBeTruthy()
 		);
-		expect(icon?.getAttribute('class')).toContain('text-[var(--scrapscache-danger)]');
+		expect(icon?.getAttribute('class')).toContain('c_scrapscache.danger');
 	});
 
 	it('spins the cloud for the full notes sync flight', async () => {

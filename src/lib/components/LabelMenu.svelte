@@ -3,7 +3,7 @@
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { Check, Plus, Search, Tag } from '@lucide/svelte';
 	import { css, cx, sva } from 'styled-system/css';
-	import { button, input } from 'styled-system/recipes';
+	import { button, input, popover } from 'styled-system/recipes';
 	import { hstack, vstack } from 'styled-system/patterns';
 
 	let {
@@ -112,7 +112,7 @@
 				fontWeight: 'medium',
 				color: 'scrapscache.text',
 				transition: 'colors 120ms ease',
-				_hover: {
+				_hoverable: {
 					bg: 'scrapscache.interactiveHover'
 				}
 			},
@@ -149,7 +149,7 @@
 
 <div
 	use:labelMenuInteractions
-	class={`scrapscache-popover ${vstack({ p: '0.5rem', w: 'min(20rem, calc(100vw - 2rem))', gap: '0', alignItems: 'stretch' })}`}
+	class={`${popover()} ${vstack({ p: '0.5rem', w: 'min(20rem, calc(100vw - 2rem))', gap: '0', alignItems: 'stretch' })}`}
 >
 	<div
 		class={hstack({

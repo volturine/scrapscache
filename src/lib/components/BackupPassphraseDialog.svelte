@@ -4,7 +4,6 @@
 	import { BackupOperation } from '$lib/backup';
 	import { css, cx } from 'styled-system/css';
 	import { button, dialog, input } from 'styled-system/recipes';
-	import { flex } from 'styled-system/patterns';
 
 	let {
 		mode,
@@ -44,7 +43,7 @@
 		if (!details.open && !busy) onClose();
 	}
 
-	const d = dialog({ size: 'sm' });
+	const d = dialog({ size: 'sm', presentation: 'appOverlay' });
 
 	const fieldLabel = css({
 		display: 'block',
@@ -68,39 +67,11 @@
 	preventScroll={false}
 	initialFocusEl={() => passphraseInput}
 >
-	<div
-		{@attach portalToAppOverlay}
-		class={`absolute ${css({ inset: 0, zIndex: 70 })}`}
-		role="presentation"
-	>
-		<Dialog.Backdrop
-			class={cx(d.backdrop, css({ position: 'absolute', bg: 'black/45', backdropFilter: 'none' }))}
-		/>
-		<Dialog.Positioner
-			class={flex({
-				position: 'absolute',
-				inset: 0,
-				align: 'flex-start',
-				justify: 'center',
-				px: '1rem',
-				pb: '1rem',
-				pt: 'calc(var(--app-topbar-height) + 0.5rem)'
-			})}
-		>
-			<Dialog.Content
-				class={cx('scrapscache-dialog', d.panel, css({ maxW: '24rem', p: 0, gap: 0 }))}
-			>
-				<div
-					class={cx(
-						d.header,
-						css({
-							borderBottomWidth: '1px',
-							borderColor: 'scrapscache.border',
-							px: '1.25rem',
-							py: '1rem'
-						})
-					)}
-				>
+	<div {@attach portalToAppOverlay} class={d.portal} role="presentation">
+		<Dialog.Backdrop class={d.backdrop} />
+		<Dialog.Positioner class={d.positioner}>
+			<Dialog.Content class={d.panel}>
+				<div class={d.header}>
 					<p
 						class={css({
 							fontSize: '11px',
@@ -122,10 +93,7 @@
 					</Dialog.Description>
 				</div>
 
-				<form
-					class={cx(d.body, css({ gap: '1rem', px: '1.25rem', py: '1.25rem' }))}
-					onsubmit={submit}
-				>
+				<form class={cx(d.body, css({ gap: '1rem' }))} onsubmit={submit}>
 					<label class={css({ display: 'block' })}>
 						<span class={fieldLabel}>Backup passphrase</span>
 						<input
@@ -152,7 +120,7 @@
 					{/if}
 
 					{#if localError || error}
-						<p class={css({ fontSize: 'sm', color: 'scrapscache.danger' })} role="alert">
+						<p class={d.error} role="alert">
 							{localError || error}
 						</p>
 					{/if}

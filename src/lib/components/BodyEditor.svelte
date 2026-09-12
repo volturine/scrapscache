@@ -1126,7 +1126,7 @@
 	const taskShell = cva({
 		variants: {
 			focused: {
-				true: { bg: { base: 'rgba(0, 0, 0, 0.035)', _dark: 'rgba(255, 255, 255, 0.06)' } },
+				true: { bg: 'scrapscache.surfaceSubtle' },
 				false: {}
 			},
 			root: {
@@ -1156,8 +1156,8 @@
 			transition: 'colors 120ms ease',
 			touchAction: 'manipulation',
 			minH: { base: '32px', sm: 0 },
-			_hover: {
-				bg: { base: 'black/5', _dark: 'white/10' },
+			_hoverable: {
+				bg: 'scrapscache.interactiveHover',
 				color: 'scrapscache.text'
 			}
 		},
@@ -1174,13 +1174,7 @@
 		if (!focusedGroupIds.has(line.id)) return '';
 		const isRoot = line.id === focusedRootId;
 		const isLast = line.id === focusedGroupLastId;
-		return [
-			isRoot ? 'rounded-t-lg' : '',
-			isLast ? 'rounded-b-lg' : '',
-			taskShell({ focused: true, root: isRoot, last: isLast })
-		]
-			.filter(Boolean)
-			.join(' ');
+		return taskShell({ focused: true, root: isRoot, last: isLast });
 	}
 
 	function rowStyle(line: Line): string | undefined {
@@ -1235,7 +1229,11 @@
 					type="button"
 					contenteditable="false"
 					data-checklist-toggle
-					class="checklist-toggle shrink-0 {line.indent > 0 ? 'checklist-toggle-sub' : ''}"
+					class={[
+						'checklist-toggle',
+						css({ flexShrink: 0 }),
+						line.indent > 0 && 'checklist-toggle-sub'
+					]}
 					class:checked={line.checked}
 					onpointerdown={keepEditorFocus}
 					onclick={(event) => toggleCheck(index, event)}
@@ -1263,7 +1261,7 @@
 							? placeholder
 							: ''
 					: undefined}
-				class={`min-h-[1lh] ${lineSpan({ checked: line.checked, indented: line.indent > 0 })}`}
+				class={lineSpan({ checked: line.checked, indented: line.indent > 0 })}
 			></span>
 			{#if line.id === focusedGroupLastId}
 				<button
@@ -1271,7 +1269,7 @@
 					contenteditable="false"
 					data-add-subtask
 					aria-label="Add sub-task"
-					class={`${addSubtaskBtn({ indented: line.indent > 0 })} ${line.indent > 0 ? 'pl-1' : 'pl-6'}`}
+					class={addSubtaskBtn({ indented: line.indent > 0 })}
 					onpointerdown={(event) => activateAddSubtask(event, focusedGroupRows[0]?.index ?? -1)}
 					onclick={(event) => handleAddSubtaskClick(event, focusedGroupRows[0]?.index ?? -1)}
 				>

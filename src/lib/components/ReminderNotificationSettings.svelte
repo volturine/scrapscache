@@ -41,8 +41,8 @@
 					w: 'full',
 					textAlign: 'left',
 					cursor: 'pointer',
-					_hover: {
-						bg: { base: 'black/5', _dark: 'white/10' }
+					_hoverable: {
+						bg: 'scrapscache.interactiveHover'
 					}
 				}
 			}

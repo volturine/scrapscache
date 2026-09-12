@@ -1,15 +1,13 @@
 <script lang="ts">
 	import { css, cva, cx, sva } from 'styled-system/css';
-	import { dialog, input } from 'styled-system/recipes';
+	import { dialog, iconButton, input, noteSurface } from 'styled-system/recipes';
 	import { flex, hstack, spacer } from 'styled-system/patterns';
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { flushSync, onMount } from 'svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
-	import { uiStore } from '$lib/stores/ui.svelte';
 	import { noteToPlainText, noteAttachments, splitPastedHeading } from '$lib/checklistBody';
 	import { mergeHydratedImages } from '$lib/noteAttachmentHydration';
-	import type { NoteColor, NoteImage } from '$lib/types';
-	import { NOTE_COLORS, NOTE_DARK_COLORS } from '$lib/types';
+	import type { NoteImage } from '$lib/types';
 	import ColorPalette from './ColorPalette.svelte';
 	import ReminderPicker from './ReminderPicker.svelte';
 	import { reminderStore } from '$lib/stores/reminders.svelte';
@@ -78,10 +76,6 @@
 		  }
 		| undefined;
 	const TOUCH_TAP_SLOP = 8;
-	const editorDialogStyle = $derived(
-		`background-color: ${note ? bgColor(note.color) : 'transparent'};`
-	);
-
 	function exitTaskFocus() {
 		taskFocusLine = null;
 	}
@@ -375,10 +369,6 @@
 		void close();
 	}
 
-	function bgColor(c: NoteColor): string {
-		return uiStore.effectiveDark ? NOTE_DARK_COLORS[c] : NOTE_COLORS[c];
-	}
-
 	function commit(patch: Record<string, unknown>) {
 		if (!note) return;
 		notesStore.updateNote(note.id, patch);
@@ -520,7 +510,7 @@
 				alignItems: 'center',
 				gap: '0.5rem',
 				borderBottomWidth: '1px',
-				borderColor: { base: 'black/5', _dark: 'white/10' },
+				borderColor: 'scrapscache.borderFaint',
 				px: '0.5rem',
 				py: '0.5rem'
 			},
@@ -539,22 +529,17 @@
 	});
 	const sheet = editorSheetSva();
 	const editorDialogClass = $derived(
-		`${sheet.dialog}${paletteOpen || labelOpen ? ' editor-caret-hidden' : ''}`
+		cx(
+			sheet.dialog,
+			note ? noteSurface({ color: note.color }) : undefined,
+			paletteOpen || labelOpen ? 'editor-caret-hidden' : undefined
+		)
 	);
-	const editorIconButton = cva({
-		base: { p: '0.5rem' },
-		variants: {
-			size: {
-				back: { h: '2.5rem', w: '2.5rem' },
-				action: { h: '2.25rem', w: '2.25rem' }
-			}
-		}
-	});
 	const reminderTone = cva({
 		variants: {
 			tone: {
-				overdue: { color: { base: 'rose.600', _dark: 'rose.400' } },
-				active: { color: { base: 'blue.600', _dark: 'blue.400' } }
+				overdue: { color: 'scrapscache.overdue' },
+				active: { color: 'scrapscache.accent' }
 			}
 		}
 	});
@@ -586,7 +571,7 @@
 		borderWidth: '2px',
 		borderStyle: 'dashed',
 		borderColor: 'scrapscache.accent',
-		bg: 'color-mix(in oklab, var(--scrapscache-accent) 16%, transparent)'
+		bg: 'color-mix(in oklab, var(--colors-scrapscache-accent) 16%, transparent)'
 	});
 	const fileDropPillClass = hstack({
 		gap: '0.5rem',
@@ -611,6 +596,7 @@
 		align: 'center',
 		justify: 'center'
 	});
+	const popupContent = css({ outline: 'none' });
 </script>
 
 <svelte:window
@@ -624,7 +610,8 @@
 
 {#if isOpen && note}
 	<div
-		class={`fixed z-50 ${sheet.overlay}`}
+		class={sheet.overlay}
+		data-editor-overlay
 		role="presentation"
 		onpointerdown={handleBackdropPointerDown}
 		onclick={handleBackdropClick}
@@ -640,7 +627,6 @@
 				<div
 					bind:this={editorDialog}
 					class={editorDialogClass}
-					style={editorDialogStyle}
 					role="dialog"
 					tabindex="-1"
 					aria-modal="true"
@@ -654,7 +640,7 @@
 					<header class={sheet.header}>
 						<button
 							type="button"
-							class={`icon-btn ${editorIconButton({ size: 'back' })}`}
+							class={iconButton({ variant: 'ghost', size: 'standard' })}
 							title="Close note"
 							onclick={handleBack}
 							aria-label="Close note"
@@ -668,7 +654,7 @@
 							{#if note.reminder != null}
 								<button
 									type="button"
-									class="min-w-0"
+									class={css({ minW: 0 })}
 									title={reminderOverdue ? `Overdue · ${reminderLabel}` : reminderLabel}
 									onclick={openReminder}
 									aria-label={reminderOverdue
@@ -680,7 +666,12 @@
 							{/if}
 							<button
 								type="button"
-								class={`icon-btn ${editorIconButton({ size: 'action' })} ${note.reminder == null ? '' : reminderOverdue ? `text-rose-600 ${reminderTone({ tone: 'overdue' })}` : reminderTone({ tone: 'active' })}`}
+								class={cx(
+									iconButton({ variant: 'ghost', size: 'sm' }),
+									note.reminder == null
+										? ''
+										: reminderTone({ tone: reminderOverdue ? 'overdue' : 'active' })
+								)}
 								title="Reminder"
 								onclick={openReminder}
 								aria-label="Reminder"
@@ -689,7 +680,7 @@
 							</button>
 							<button
 								type="button"
-								class={`icon-btn ${editorIconButton({ size: 'action' })}`}
+								class={iconButton({ variant: 'ghost', size: 'sm' })}
 								title={note.pinned ? 'Unpin' : 'Pin'}
 								onclick={() => commit({ pinned: !note.pinned })}
 								aria-label="Pin"
@@ -717,7 +708,7 @@
 								}
 							}}
 							rows="1"
-							class={`resize-none break-words ${titleField}`}></textarea>
+							class={titleField}></textarea>
 
 						<BodyEditor
 							bind:this={bodyEditor}
@@ -792,7 +783,7 @@
 				data-editor-popup
 				onpointerdown={keepEditorFocused}
 			>
-				<Dialog.Content class="outline-none">
+				<Dialog.Content class={popupContent}>
 					<ColorPalette
 						color={note.color}
 						onSelect={(c) => {
@@ -815,7 +806,7 @@
 		>
 			<Dialog.Backdrop class={dialogBackdrop} />
 			<Dialog.Positioner class={dialogPositioner} data-editor-popup>
-				<Dialog.Content class="outline-none">
+				<Dialog.Content class={popupContent}>
 					<ReminderPicker
 						reminder={note.reminder}
 						onApply={(r) => {
@@ -846,7 +837,7 @@
 				data-editor-popup
 				onpointerdown={keepEditorFocused}
 			>
-				<Dialog.Content class="outline-none">
+				<Dialog.Content class={popupContent}>
 					<LabelMenu
 						noteId={note.id}
 						onClose={() => {

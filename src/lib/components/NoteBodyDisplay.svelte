@@ -54,7 +54,7 @@
 	});
 
 	const bodySva = sva({
-		slots: ['container', 'itemRow', 'bulletSymbol', 'paragraph', 'spacer'],
+		slots: ['container', 'itemRow', 'checklist', 'bulletSymbol', 'paragraph', 'spacer'],
 		base: {
 			container: { fontSize: 'sm', color: 'scrapscache.text' },
 			itemRow: {
@@ -63,6 +63,7 @@
 				gap: '0.5rem',
 				py: '0.125rem'
 			},
+			checklist: { flexShrink: 0 },
 			bulletSymbol: { flexShrink: 0, userSelect: 'none' },
 			paragraph: {
 				whiteSpace: 'pre-wrap',
@@ -104,7 +105,7 @@
 				style={seg.indent > 0 ? `padding-left: ${seg.indent * 1.25}rem` : undefined}
 			>
 				<span
-					class="checklist-toggle shrink-0 {seg.indent > 0 ? 'checklist-toggle-sub' : ''}"
+					class={['checklist-toggle', body.checklist, seg.indent > 0 && 'checklist-toggle-sub']}
 					class:checked={seg.checked}
 					aria-hidden="true"
 				>

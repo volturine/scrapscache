@@ -102,7 +102,7 @@ describe('BodyEditor native editing', () => {
 
 		const blank = container.querySelector('[data-editor-line="1"] [data-line-text]');
 		expect(lineTexts(container)).toEqual(['before', '', 'after']);
-		expect(blank?.className).toContain('min-h-[1lh]');
+		expect(blank?.className).toContain('min-h_1lh');
 	});
 
 	it('keeps the existing empty sub-task Enter behavior', async () => {
@@ -758,8 +758,8 @@ describe('BodyEditor task focus chrome', () => {
 		expect(container.querySelector('[data-add-subtask]')?.closest('[data-editor-line]')).toBe(
 			container.querySelector('[data-editor-line="1"]')
 		);
-		expect(container.querySelector('[data-editor-line="0"]')?.className).toContain('rounded-t-lg');
-		expect(container.querySelector('[data-editor-line="1"]')?.className).toContain('rounded-b-lg');
+		expect(container.querySelector('[data-editor-line="0"]')?.className).toContain('bdr-t_lg');
+		expect(container.querySelector('[data-editor-line="1"]')?.className).toContain('bdr-b_lg');
 
 		await fireEvent.pointerDown(
 			container.querySelector('[data-add-subtask]') as HTMLButtonElement,
@@ -769,10 +769,8 @@ describe('BodyEditor task focus chrome', () => {
 		);
 
 		expect(container.querySelectorAll('[data-task-row]')).toHaveLength(4);
-		expect(container.querySelector('[data-editor-line="0"]')?.className).not.toContain(
-			'rounded-b-lg'
-		);
-		expect(container.querySelector('[data-editor-line="2"]')?.className).toContain('rounded-b-lg');
+		expect(container.querySelector('[data-editor-line="0"]')?.className).not.toContain('bdr-b_lg');
+		expect(container.querySelector('[data-editor-line="2"]')?.className).toContain('bdr-b_lg');
 		expect(
 			container
 				.querySelector('[data-editor-line="2"] [data-line-text]')
@@ -804,8 +802,8 @@ describe('BodyEditor task focus chrome', () => {
 
 		const buttonNoSub = c1.querySelector('[data-add-subtask]') as HTMLButtonElement;
 		expect(buttonNoSub).not.toBeNull();
-		expect(buttonNoSub.className).toContain('pl-6');
-		expect(buttonNoSub.className).not.toContain('pl-1');
+		expect(buttonNoSub.className).toContain('pl_1.5rem');
+		expect(buttonNoSub.className).not.toContain('pl_0.25rem');
 
 		const { container: c2 } = render(BodyEditor, {
 			props: { body: '[ ] Avocados\n  [ ] Hass\n[ ] Dark chocolate', focusLine: 0 }
@@ -814,8 +812,8 @@ describe('BodyEditor task focus chrome', () => {
 
 		const buttonWithSub = c2.querySelector('[data-add-subtask]') as HTMLButtonElement;
 		expect(buttonWithSub).not.toBeNull();
-		expect(buttonWithSub.className).toContain('pl-1');
-		expect(buttonWithSub.className).not.toContain('pl-6');
+		expect(buttonWithSub.className).toContain('pl_0.25rem');
+		expect(buttonWithSub.className).not.toContain('pl_1.5rem');
 	});
 
 	it('preserves the subtask draft across mobile pointerdown and blur cycles', async () => {

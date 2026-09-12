@@ -2,7 +2,7 @@
 
 Offline-first notes with end-to-end encrypted multi-device sync: local IndexedDB storage, SQLite relay storage, backups, and a self-hostable SvelteKit app.
 
-**Stack:** Node.js 24 + SvelteKit 5 + TypeScript · Tailwind CSS 4 · IndexedDB · SQLite · npm
+**Stack:** Node.js 24 + SvelteKit 5 + TypeScript · Panda CSS · IndexedDB · SQLite · npm
 
 ## Commands
 
@@ -20,6 +20,14 @@ npm run validate            # check + format + tests + production build
 - Use npm commands for dependency changes; do not hand-edit `package.json` or the lockfile.
 - Prefer the existing npm scripts over ad-hoc scripts.
 - Use two browser profiles when developing or testing device pairing and sync.
+
+## Styling
+
+- Panda semantic tokens in `panda.config.ts` are the source of truth for colors, radii, shadows, and shared interaction states. Do not add parallel CSS custom properties or raw light/dark color pairs.
+- Reuse config recipes from `styled-system/recipes` for shared controls and surfaces. Add a config recipe only when a visual contract is reused across components.
+- Use `cva` for a local single-element variant and `sva` for a local multi-part component. Keep truly one-off layout adjustments inline with `css()` or a Panda pattern.
+- Use the `_hoverable` condition for hover feedback so touch devices do not retain sticky hover styles.
+- Do not write Tailwind utility strings. Regenerate `styled-system` with `npx panda codegen` after config changes.
 
 ## Definition of done
 

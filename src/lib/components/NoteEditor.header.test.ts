@@ -104,7 +104,7 @@ describe('NoteEditor header reminder controls', () => {
 
 		expect(headerButtons(container)[1]).toBe(`Overdue reminder, ${formatReminder(reminder)}`);
 		const bell = container.querySelector('header button[aria-label="Reminder"]');
-		expect(bell?.className).toContain('text-rose-600');
+		expect(bell?.className).toContain('c_scrapscache.overdue');
 	});
 
 	it('allows touch scrolling in the reminder wheels outside the editor dialog', async () => {

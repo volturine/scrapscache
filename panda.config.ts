@@ -7,8 +7,8 @@ const tooltipRecipe = defineRecipe({
 		pointerEvents: 'none',
 		zIndex: 120,
 		rounded: 'md',
-		bg: { base: 'rgba(23, 23, 23, 0.9)', _dark: 'rgba(245, 245, 245, 0.9)' },
-		color: { base: '#ffffff', _dark: '#171717' },
+		bg: 'scrapscache.tooltipBg',
+		color: 'scrapscache.tooltipText',
 		px: '0.5rem',
 		py: '0.25rem',
 		fontSize: 'xs',
@@ -16,6 +16,18 @@ const tooltipRecipe = defineRecipe({
 		boxShadow: 'md',
 		backdropFilter: 'blur(4px)',
 		transition: 'opacity 150ms ease'
+	}
+});
+
+const popoverRecipe = defineRecipe({
+	className: 'scrapscache-popover',
+	description: 'Floating surface shared by menus and popovers',
+	base: {
+		borderWidth: '1px',
+		borderColor: 'scrapscache.border',
+		bg: 'scrapscache.surface',
+		rounded: 'lg',
+		boxShadow: 'popover'
 	}
 });
 
@@ -31,6 +43,8 @@ const buttonRecipe = defineRecipe({
 		rounded: 'md',
 		cursor: 'pointer',
 		userSelect: 'none',
+		touchAction: 'manipulation',
+		WebkitTapHighlightColor: 'transparent',
 		transition:
 			'background-color 120ms ease, border-color 120ms ease, color 120ms ease, box-shadow 120ms ease, transform 120ms ease',
 		_focusVisible: {
@@ -51,7 +65,7 @@ const buttonRecipe = defineRecipe({
 				color: 'scrapscache.accentForeground',
 				borderWidth: '1px',
 				borderColor: 'transparent',
-				_hover: {
+				_hoverable: {
 					bg: 'scrapscache.accentHover'
 				}
 			},
@@ -60,7 +74,7 @@ const buttonRecipe = defineRecipe({
 				color: 'scrapscache.text',
 				borderWidth: '1px',
 				borderColor: 'scrapscache.border',
-				_hover: {
+				_hoverable: {
 					bg: 'scrapscache.interactiveHover'
 				}
 			},
@@ -69,18 +83,18 @@ const buttonRecipe = defineRecipe({
 				color: 'scrapscache.textMuted',
 				borderWidth: '1px',
 				borderColor: 'transparent',
-				_hover: {
+				_hoverable: {
 					bg: 'scrapscache.interactiveHover',
 					color: 'scrapscache.text'
 				}
 			},
 			subtle: {
-				bg: { base: 'rgba(0, 0, 0, 0.06)', _dark: 'white/10' },
+				bg: 'scrapscache.controlSubtle',
 				color: 'scrapscache.text',
 				borderWidth: '0px',
 				rounded: 'xl',
-				_hover: {
-					bg: { base: 'rgba(0, 0, 0, 0.1)', _dark: 'white/15' }
+				_hoverable: {
+					bg: 'scrapscache.controlSubtleHover'
 				}
 			},
 			ghost: {
@@ -88,18 +102,18 @@ const buttonRecipe = defineRecipe({
 				color: 'scrapscache.textMuted',
 				borderWidth: '0px',
 				rounded: 'xl',
-				_hover: {
-					bg: { base: 'black/5', _dark: 'white/10' },
+				_hoverable: {
+					bg: 'scrapscache.interactiveHover',
 					color: 'scrapscache.text'
 				}
 			},
 			danger: {
 				bg: 'transparent',
-				color: { base: 'red.600', _dark: 'red.400' },
+				color: 'scrapscache.danger',
 				borderWidth: '0px',
 				rounded: 'xl',
-				_hover: {
-					bg: { base: 'red.500/10', _dark: 'red.500/15' }
+				_hoverable: {
+					bg: 'scrapscache.dangerSubtle'
 				}
 			},
 			destructive: {
@@ -107,8 +121,8 @@ const buttonRecipe = defineRecipe({
 				color: 'scrapscache.dangerForeground',
 				borderWidth: '1px',
 				borderColor: 'transparent',
-				_hover: {
-					bg: '#b91c1c'
+				_hoverable: {
+					bg: 'scrapscache.dangerHover'
 				}
 			},
 			dashed: {
@@ -118,26 +132,10 @@ const buttonRecipe = defineRecipe({
 				borderColor: 'scrapscache.border',
 				color: 'scrapscache.textMuted',
 				rounded: 'xl',
-				_hover: {
-					bg: { base: 'rgba(0, 0, 0, 0.035)', _dark: 'rgba(255, 255, 255, 0.055)' },
+				_hoverable: {
+					bg: 'scrapscache.surfaceSubtle',
 					color: 'scrapscache.text'
 				}
-			},
-			filter: {
-				bg: 'transparent',
-				color: 'scrapscache.textMuted',
-				borderWidth: '0px',
-				rounded: 'lg',
-				_hover: {
-					bg: { base: 'black/5', _dark: 'white/10' },
-					color: 'scrapscache.text'
-				}
-			},
-			filterActive: {
-				bg: 'blue.500/15',
-				color: { base: 'blue.700', _dark: 'blue.300' },
-				borderWidth: '0px',
-				rounded: 'lg'
 			}
 		},
 		size: {
@@ -184,7 +182,9 @@ const iconButtonRecipe = defineRecipe({
 		cursor: 'pointer',
 		userSelect: 'none',
 		touchAction: 'manipulation',
-		transition: 'all 150ms ease',
+		WebkitTapHighlightColor: 'transparent',
+		transition:
+			'background-color 150ms ease, color 150ms ease, opacity 150ms ease, transform 150ms ease',
 		_focusVisible: {
 			outline: 'none',
 			ringWidth: '2px',
@@ -199,7 +199,7 @@ const iconButtonRecipe = defineRecipe({
 			haze: {
 				bg: 'transparent',
 				color: 'white/90',
-				_hover: {
+				_hoverable: {
 					bg: 'white/20',
 					transform: 'scale(1.05)'
 				}
@@ -207,7 +207,7 @@ const iconButtonRecipe = defineRecipe({
 			hazeCopied: {
 				bg: 'transparent',
 				color: 'emerald.400',
-				_hover: {
+				_hoverable: {
 					bg: 'white/20',
 					transform: 'scale(1.05)'
 				}
@@ -215,7 +215,7 @@ const iconButtonRecipe = defineRecipe({
 			hazePinned: {
 				bg: 'transparent',
 				color: 'amber.300',
-				_hover: {
+				_hoverable: {
 					bg: 'white/20',
 					transform: 'scale(1.05)'
 				}
@@ -223,7 +223,7 @@ const iconButtonRecipe = defineRecipe({
 			hazeBlue: {
 				bg: 'transparent',
 				color: 'blue.300',
-				_hover: {
+				_hoverable: {
 					bg: 'white/20',
 					transform: 'scale(1.05)'
 				}
@@ -231,7 +231,7 @@ const iconButtonRecipe = defineRecipe({
 			hazeRose: {
 				bg: 'transparent',
 				color: 'white/90',
-				_hover: {
+				_hoverable: {
 					bg: 'rose.500/30',
 					color: 'rose.300'
 				}
@@ -239,7 +239,7 @@ const iconButtonRecipe = defineRecipe({
 			ghost: {
 				bg: 'transparent',
 				color: 'scrapscache.textMuted',
-				_hover: {
+				_hoverable: {
 					bg: 'scrapscache.interactiveHover',
 					color: 'scrapscache.text'
 				}
@@ -247,16 +247,9 @@ const iconButtonRecipe = defineRecipe({
 			danger: {
 				bg: 'transparent',
 				color: 'scrapscache.textMuted',
-				_hover: {
+				_hoverable: {
 					bg: 'red.500/10',
-					color: { base: 'red.600', _dark: 'red.400' }
-				}
-			},
-			subtle: {
-				bg: { base: 'rgba(0, 0, 0, 0.05)', _dark: 'rgba(255, 255, 255, 0.08)' },
-				color: 'scrapscache.text',
-				_hover: {
-					bg: { base: 'rgba(0, 0, 0, 0.1)', _dark: 'rgba(255, 255, 255, 0.15)' }
+					color: 'scrapscache.danger'
 				}
 			}
 		},
@@ -268,6 +261,10 @@ const iconButtonRecipe = defineRecipe({
 			compact: {
 				w: '2rem',
 				h: '2rem'
+			},
+			sm: {
+				w: '2.25rem',
+				h: '2.25rem'
 			},
 			standard: {
 				w: '2.5rem',
@@ -370,16 +367,7 @@ const badgeRecipe = defineRecipe({
 	variants: {
 		variant: {
 			subtle: {
-				bg: { base: 'black/5', _dark: 'white/10' },
-				color: 'scrapscache.textMuted'
-			},
-			active: {
-				bg: 'blue.500/15',
-				color: { base: 'blue.700', _dark: 'blue.300' }
-			},
-			outline: {
-				borderWidth: '1px',
-				borderColor: 'scrapscache.border',
+				bg: 'scrapscache.interactiveHover',
 				color: 'scrapscache.textMuted'
 			}
 		},
@@ -391,6 +379,35 @@ const badgeRecipe = defineRecipe({
 	defaultVariants: {
 		variant: 'subtle',
 		size: 'sm'
+	}
+});
+
+const statusRecipe = defineRecipe({
+	className: 'scrapscache-status',
+	description: 'Semantic status treatment',
+	base: {
+		borderWidth: '1px',
+		borderColor: 'currentColor'
+	},
+	variants: {
+		tone: {
+			accent: {
+				bg: 'scrapscache.accentSubtle',
+				color: 'scrapscache.accent'
+			},
+			success: {
+				bg: 'scrapscache.successSubtle',
+				color: 'scrapscache.success'
+			},
+			warning: {
+				bg: 'scrapscache.warningSubtle',
+				color: 'scrapscache.warning'
+			},
+			danger: {
+				bg: 'scrapscache.dangerSubtle',
+				color: 'scrapscache.danger'
+			}
+		}
 	}
 });
 
@@ -460,9 +477,30 @@ const emptyStateRecipe = defineSlotRecipe({
 			color: 'scrapscache.text',
 			cursor: 'pointer',
 			transition: 'background-color 150ms ease',
-			_hover: {
-				bg: { base: 'rgba(0, 0, 0, 0.05)', _dark: 'rgba(255, 255, 255, 0.1)' }
+			_hoverable: {
+				bg: 'scrapscache.borderFaint'
 			}
+		}
+	}
+});
+
+const noteSurfaceRecipe = defineRecipe({
+	className: 'scrapscache-note-surface',
+	description: 'Canonical note background colors for cards, editors, and palette swatches',
+	variants: {
+		color: {
+			default: { bg: 'note.default' },
+			red: { bg: 'note.red' },
+			orange: { bg: 'note.orange' },
+			yellow: { bg: 'note.yellow' },
+			green: { bg: 'note.green' },
+			teal: { bg: 'note.teal' },
+			blue: { bg: 'note.blue' },
+			darkblue: { bg: 'note.darkblue' },
+			purple: { bg: 'note.purple' },
+			pink: { bg: 'note.pink' },
+			brown: { bg: 'note.brown' },
+			gray: { bg: 'note.gray' }
 		}
 	}
 });
@@ -523,10 +561,10 @@ const noteCardRecipe = defineSlotRecipe({
 			overflow: 'hidden',
 			rounded: 'lg',
 			borderWidth: '1px',
-			borderColor: { base: 'black/5', _dark: 'white/10' },
+			borderColor: 'scrapscache.borderFaint',
 			boxShadow: 'sm',
 			transition: 'box-shadow 150ms ease',
-			_hover: {
+			_hoverable: {
 				boxShadow: 'md'
 			}
 		},
@@ -565,7 +603,7 @@ const noteCardRecipe = defineSlotRecipe({
 			py: '0.125rem',
 			fontSize: '10px',
 			fontWeight: 'medium',
-			bg: { base: 'black/5', _dark: 'white/10' },
+			bg: 'scrapscache.interactiveHover',
 			color: 'scrapscache.textMuted'
 		},
 		hazeOverlay: {
@@ -578,7 +616,7 @@ const noteCardRecipe = defineSlotRecipe({
 			justifyContent: 'center',
 			bg: 'black/40',
 			backdropFilter: 'blur(8px)',
-			transition: 'all 200ms ease'
+			transition: 'opacity 200ms ease, background-color 200ms ease'
 		},
 		hazeActions: {
 			display: 'flex',
@@ -675,7 +713,7 @@ const kanbanRecipe = defineSlotRecipe({
 			w: 'min(calc(var(--note-card-width) + 1.5rem), calc(100vw - 2rem))',
 			flexShrink: 0,
 			rounded: '2xl',
-			bg: { base: 'rgba(0, 0, 0, 0.035)', _dark: 'rgba(255, 255, 255, 0.055)' },
+			bg: 'scrapscache.surfaceSubtle',
 			p: '0.75rem'
 		},
 		colHeader: {
@@ -701,7 +739,7 @@ const kanbanRecipe = defineSlotRecipe({
 			rounded: 'xl',
 			borderWidth: '1px',
 			borderStyle: 'dashed',
-			borderColor: { base: 'black/10', _dark: 'white/10' },
+			borderColor: 'scrapscache.borderSubtle',
 			px: '0.75rem',
 			py: '1.25rem',
 			textAlign: 'center',
@@ -715,7 +753,7 @@ const kanbanRecipe = defineSlotRecipe({
 			gap: '0.5rem',
 			rounded: 'xl',
 			borderWidth: '1px',
-			borderColor: { base: 'black/10', _dark: 'white/10' },
+			borderColor: 'scrapscache.borderSubtle',
 			bg: 'scrapscache.surface',
 			p: '0.5rem',
 			fontSize: 'xs'
@@ -726,7 +764,7 @@ const kanbanRecipe = defineSlotRecipe({
 			flexDirection: 'column',
 			gap: '0.25rem',
 			borderLeftWidth: '2px',
-			borderColor: { base: 'black/10', _dark: 'white/10' },
+			borderColor: 'scrapscache.borderSubtle',
 			pl: '0.5rem'
 		},
 		addColWrap: {
@@ -743,7 +781,7 @@ const kanbanRecipe = defineSlotRecipe({
 			rounded: 'lg',
 			px: '0.25rem',
 			py: '0.25rem',
-			_hover: { bg: { base: 'rgba(0, 0, 0, 0.04)', _dark: 'rgba(255, 255, 255, 0.06)' } }
+			_hoverable: { bg: 'scrapscache.surfaceSubtle' }
 		},
 		checkRow: {
 			display: 'flex',
@@ -753,7 +791,7 @@ const kanbanRecipe = defineSlotRecipe({
 			rounded: 'lg',
 			px: '0.25rem',
 			py: '0.25rem',
-			_hover: { bg: { base: 'rgba(0, 0, 0, 0.04)', _dark: 'rgba(255, 255, 255, 0.06)' } }
+			_hoverable: { bg: 'scrapscache.surfaceSubtle' }
 		},
 		checkControl: {
 			display: 'flex',
@@ -790,123 +828,7 @@ const kanbanRecipe = defineSlotRecipe({
 			textAlign: 'left',
 			fontSize: 'sm',
 			color: 'scrapscache.text',
-			_hover: { bg: { base: 'rgba(0, 0, 0, 0.05)', _dark: 'rgba(255, 255, 255, 0.08)' } }
-		}
-	}
-});
-
-const sidebarRecipe = defineSlotRecipe({
-	className: 'scrapscache-sidebar',
-	description: 'Slot recipe for navigation sidebar',
-	slots: [
-		'aside',
-		'navItem',
-		'navIcon',
-		'navLabel',
-		'navBadge',
-		'section',
-		'sectionHeader',
-		'sectionTitle',
-		'editBtn',
-		'unassignBtn',
-		'labelsScroll'
-	],
-	base: {
-		aside: {
-			display: 'flex',
-			h: 'full',
-			w: '16rem',
-			flexDirection: 'column',
-			gap: '0.25rem',
-			borderRightWidth: '1px',
-			borderColor: 'scrapscache.border',
-			bg: 'scrapscache.bg',
-			px: '0.5rem',
-			py: '0.5rem'
-		},
-		navItem: {
-			display: 'flex',
-			w: 'full',
-			alignItems: 'center',
-			gap: '1rem',
-			rounded: 'xl',
-			px: '0.75rem',
-			py: '0.75rem',
-			textAlign: 'left',
-			fontSize: 'sm',
-			fontWeight: '500',
-			color: 'scrapscache.text',
-			cursor: 'pointer',
-			transition: 'background-color 120ms ease, color 120ms ease',
-			_hover: {
-				bg: { base: 'black/5', _dark: 'white/10' }
-			}
-		},
-		navIcon: {
-			h: '1.5rem',
-			w: '1.5rem',
-			flexShrink: 0
-		},
-		navLabel: {
-			flex: '1',
-			overflow: 'hidden',
-			textOverflow: 'ellipsis',
-			whiteSpace: 'nowrap'
-		},
-		navBadge: {
-			fontSize: 'xs',
-			color: 'scrapscache.textMuted'
-		},
-		section: {
-			display: 'flex',
-			flexDirection: 'column',
-			gap: '0.25rem',
-			pt: '0.5rem'
-		},
-		sectionHeader: {
-			display: 'flex',
-			alignItems: 'center',
-			justifyContent: 'space-between',
-			px: '1rem',
-			pt: '0.75rem',
-			pb: '0.25rem'
-		},
-		sectionTitle: {
-			fontSize: 'xs',
-			fontWeight: '600',
-			textTransform: 'uppercase',
-			letterSpacing: 'wider',
-			color: 'scrapscache.textMuted'
-		},
-		editBtn: {
-			rounded: 'lg',
-			px: '0.375rem',
-			py: '0.125rem',
-			fontSize: 'xs',
-			fontWeight: '500',
-			color: 'scrapscache.textMuted',
-			cursor: 'pointer',
-			_hover: {
-				bg: { base: 'black/5', _dark: 'white/10' },
-				color: 'scrapscache.text'
-			}
-		},
-		unassignBtn: {
-			rounded: 'xl',
-			bg: { base: 'rgba(0, 0, 0, 0.06)', _dark: 'white/10' },
-			px: '0.75rem',
-			py: '0.625rem',
-			fontSize: 'sm',
-			fontWeight: '500',
-			color: 'scrapscache.text',
-			cursor: 'pointer',
-			_hover: {
-				bg: { base: 'black/10', _dark: 'white/15' }
-			}
-		},
-		labelsScroll: {
-			maxH: 'calc(100vh - 24rem)',
-			overflowY: 'auto'
+			_hoverable: { bg: 'scrapscache.interactiveHover' }
 		}
 	}
 });
@@ -914,7 +836,19 @@ const sidebarRecipe = defineSlotRecipe({
 const dialogRecipe = defineSlotRecipe({
 	className: 'scrapscache-dialog-recipe',
 	description: 'Slot recipe for modal dialogs and alert dialogs',
-	slots: ['backdrop', 'panel', 'header', 'title', 'description', 'body', 'footer', 'closeButton'],
+	slots: [
+		'portal',
+		'backdrop',
+		'positioner',
+		'panel',
+		'header',
+		'title',
+		'description',
+		'body',
+		'footer',
+		'error',
+		'closeButton'
+	],
 	base: {
 		backdrop: {
 			position: 'fixed',
@@ -969,12 +903,16 @@ const dialogRecipe = defineSlotRecipe({
 			gap: '0.75rem',
 			pt: '0.5rem'
 		},
+		error: {
+			fontSize: 'sm',
+			color: 'scrapscache.danger'
+		},
 		closeButton: {
 			position: 'absolute',
 			top: '1rem',
 			right: '1rem',
 			color: 'scrapscache.textMuted',
-			_hover: {
+			_hoverable: {
 				color: 'scrapscache.text'
 			}
 		}
@@ -989,6 +927,38 @@ const dialogRecipe = defineSlotRecipe({
 			},
 			lg: {
 				panel: { maxW: '36rem' }
+			}
+		},
+		presentation: {
+			appOverlay: {
+				portal: {
+					position: 'absolute',
+					inset: 0,
+					zIndex: 70
+				},
+				backdrop: {
+					position: 'absolute',
+					bg: 'black/45',
+					backdropFilter: 'none'
+				},
+				positioner: {
+					position: 'absolute',
+					inset: 0,
+					display: 'flex',
+					alignItems: 'flex-start',
+					justifyContent: 'center',
+					px: '1rem',
+					pb: '1rem',
+					pt: 'calc(var(--app-topbar-height) + 0.5rem)'
+				},
+				panel: { maxW: '24rem', p: 0, gap: 0 },
+				header: {
+					borderBottomWidth: '1px',
+					borderColor: 'scrapscache.border',
+					px: '1.25rem',
+					py: '1rem'
+				},
+				body: { px: '1.25rem', py: '1.25rem' }
 			}
 		}
 	},
@@ -1007,9 +977,18 @@ export default defineConfig({
 	// Files to exclude
 	exclude: [],
 
+	// Note colors are selected from persisted data, so the extractor cannot see
+	// the runtime recipe variant. Emit the complete, intentionally bounded set.
+	staticCss: {
+		recipes: {
+			noteSurface: ['*']
+		}
+	},
+
 	conditions: {
 		extend: {
-			dark: '&:where(.dark, .dark *)'
+			dark: '&:where(.dark, .dark *)',
+			hoverable: ['@media (hover: hover) and (pointer: fine)', '&:hover']
 		}
 	},
 
@@ -1045,6 +1024,42 @@ export default defineConfig({
 						border: {
 							value: { base: '#e0e0e0', _dark: '#3c4043' }
 						},
+						borderFaint: {
+							value: { base: 'rgba(0, 0, 0, 0.05)', _dark: 'rgba(255, 255, 255, 0.1)' }
+						},
+						borderSubtle: {
+							value: { base: 'rgba(0, 0, 0, 0.1)', _dark: 'rgba(255, 255, 255, 0.1)' }
+						},
+						checklistBorder: {
+							value: { base: 'rgba(0, 0, 0, 0.4)', _dark: 'rgba(255, 255, 255, 0.4)' }
+						},
+						tooltipBg: {
+							value: { base: 'rgba(23, 23, 23, 0.9)', _dark: 'rgba(245, 245, 245, 0.9)' }
+						},
+						tooltipText: {
+							value: { base: '#ffffff', _dark: '#171717' }
+						},
+						controlSubtle: {
+							value: { base: 'rgba(0, 0, 0, 0.06)', _dark: 'rgba(255, 255, 255, 0.1)' }
+						},
+						controlSubtleHover: {
+							value: { base: 'rgba(0, 0, 0, 0.1)', _dark: 'rgba(255, 255, 255, 0.15)' }
+						},
+						surfaceSubtle: {
+							value: {
+								base: 'rgba(0, 0, 0, 0.035)',
+								_dark: 'rgba(255, 255, 255, 0.055)'
+							}
+						},
+						canvasSurface: {
+							value: { base: '#ffffff', _dark: '#121212' }
+						},
+						overdue: {
+							value: { base: '#be123c', _dark: '#fb7185' }
+						},
+						overdueStrong: {
+							value: { base: '#e11d48', _dark: '#f43f5e' }
+						},
 						accent: {
 							value: { base: '#2563eb', _dark: '#60a5fa' }
 						},
@@ -1053,6 +1068,13 @@ export default defineConfig({
 						},
 						accentForeground: {
 							value: { base: '#ffffff', _dark: '#172554' }
+						},
+						accentSubtle: {
+							value: {
+								base: 'color-mix(in srgb, {colors.scrapscache.accent} 14%, {colors.scrapscache.surface})',
+								_dark:
+									'color-mix(in srgb, {colors.scrapscache.accent} 14%, {colors.scrapscache.surface})'
+							}
 						},
 						focus: {
 							value: { base: '#1d4ed8', _dark: '#93c5fd' }
@@ -1075,6 +1097,9 @@ export default defineConfig({
 						danger: {
 							value: { base: '#dc2626', _dark: '#f87171' }
 						},
+						dangerHover: {
+							value: { base: '#b91c1c', _dark: '#ef4444' }
+						},
 						dangerForeground: {
 							value: { base: '#ffffff', _dark: '#450a0a' }
 						},
@@ -1086,6 +1111,12 @@ export default defineConfig({
 						},
 						interactiveActive: {
 							value: { base: 'rgba(0, 0, 0, 0.1)', _dark: 'rgba(255, 255, 255, 0.12)' }
+						},
+						navigationActive: {
+							value: { base: '#fef9c3', _dark: 'rgba(202, 138, 4, 0.15)' }
+						},
+						navigationActiveText: {
+							value: { base: '#1a1a1a', _dark: '#fde68a' }
 						}
 					},
 					note: {
@@ -1139,23 +1170,31 @@ export default defineConfig({
 							base: '0 20px 48px rgba(0, 0, 0, 0.24)',
 							_dark: '0 20px 48px rgba(0, 0, 0, 0.55)'
 						}
+					},
+					noteSheet: {
+						value: {
+							base: '0 0 24px 2px rgba(0, 0, 0, 0.22)',
+							_dark: '0 0 24px 2px rgba(0, 0, 0, 0.55)'
+						}
 					}
 				}
 			},
 			recipes: {
 				tooltip: tooltipRecipe,
+				popover: popoverRecipe,
+				noteSurface: noteSurfaceRecipe,
 				button: buttonRecipe,
 				iconButton: iconButtonRecipe,
 				input: inputRecipe,
 				select: selectRecipe,
-				badge: badgeRecipe
+				badge: badgeRecipe,
+				status: statusRecipe
 			},
 			slotRecipes: {
 				sectionHeader: sectionHeaderRecipe,
 				emptyState: emptyStateRecipe,
 				noteCard: noteCardRecipe,
 				kanban: kanbanRecipe,
-				sidebar: sidebarRecipe,
 				dialog: dialogRecipe
 			}
 		}

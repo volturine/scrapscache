@@ -295,7 +295,7 @@
 		rounded: { base: '0', sm: '7px' },
 		fontSize: { base: '12px' },
 		color: { base: 'scrapscache.text', sm: 'scrapscache.textMuted' },
-		_hover: {
+		_hoverable: {
 			bg: { base: 'transparent', sm: 'scrapscache.interactiveHover' },
 			color: { sm: 'scrapscache.text' }
 		},
@@ -307,7 +307,7 @@
 	const tileUnlinkClass = css({
 		flex: { base: '1 0 76px' },
 		color: { base: 'scrapscache.danger', sm: 'scrapscache.textMuted' },
-		_hover: { color: { sm: 'scrapscache.danger' } }
+		_hoverable: { color: { sm: 'scrapscache.danger' } }
 	});
 
 	const tileLabelClass = css({
@@ -413,7 +413,7 @@
 		placeItems: 'center',
 		rounded: '7px',
 		color: 'scrapscache.textMuted',
-		_hover: { bg: 'scrapscache.interactiveHover', color: 'scrapscache.text' }
+		_hoverable: { bg: 'scrapscache.interactiveHover', color: 'scrapscache.text' }
 	});
 
 	const panelBtn = cva({
@@ -425,7 +425,7 @@
 		},
 		variants: {
 			tone: {
-				neutral: { _hover: { bg: 'scrapscache.interactiveHover' } },
+				neutral: { _hoverable: { bg: 'scrapscache.interactiveHover' } },
 				danger: {
 					bg: 'scrapscache.danger',
 					color: 'scrapscache.dangerForeground',

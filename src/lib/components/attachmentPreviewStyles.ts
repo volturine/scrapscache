@@ -12,8 +12,8 @@ export const canvasPreview = sva({
 			overflow: 'hidden',
 			rounded: 'lg',
 			borderWidth: '1px',
-			borderColor: { base: 'black/10', _dark: 'white/10' },
-			bg: { base: 'white', _dark: 'slate.900' }
+			borderColor: 'scrapscache.borderSubtle',
+			bg: 'scrapscache.bg'
 		},
 		img: { h: 'full', w: 'full' },
 		loading: {
@@ -87,8 +87,8 @@ export const filePreview = sva({
 			alignItems: 'center',
 			gap: '0.5rem',
 			borderWidth: '1px',
-			borderColor: { base: 'black/10', _dark: 'white/10' },
-			bg: { base: 'black/5', _dark: 'white/5' },
+			borderColor: 'scrapscache.borderSubtle',
+			bg: 'scrapscache.surfaceSubtle',
 			px: '0.5rem',
 			py: '0.375rem'
 		},
@@ -96,7 +96,7 @@ export const filePreview = sva({
 			display: 'grid',
 			flexShrink: 0,
 			placeItems: 'center',
-			bg: { base: 'black/10', _dark: 'white/10' },
+			bg: 'scrapscache.interactiveActive',
 			fontWeight: 'bold',
 			color: 'scrapscache.text'
 		},
@@ -123,7 +123,7 @@ export const filePreview = sva({
 			color: 'scrapscache.textMuted',
 			touchAction: 'manipulation',
 			cursor: 'pointer',
-			_hover: { bg: { base: 'black/5', _dark: 'white/10' } }
+			_hoverable: { bg: 'scrapscache.interactiveHover' }
 		}
 	},
 	variants: {
@@ -163,7 +163,7 @@ export const photoPreview = sva({
 			flexShrink: 0,
 			animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
 			rounded: 'lg',
-			bg: { base: 'black/10', _dark: 'white/10' }
+			bg: 'scrapscache.interactiveActive'
 		},
 		delBtn: {
 			position: 'absolute',

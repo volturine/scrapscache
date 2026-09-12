@@ -10,7 +10,7 @@
 	import { formatReminderCountdown } from '$lib/utils';
 	import { PHONE_MEDIA } from '$lib/appViewport';
 	import { css, cx, cva } from 'styled-system/css';
-	import { badge, button, dialog, iconButton } from 'styled-system/recipes';
+	import { badge, button, dialog, iconButton, status } from 'styled-system/recipes';
 	import { hstack, flex } from 'styled-system/patterns';
 
 	let {
@@ -190,10 +190,10 @@
 
 	const statusBoxClass = $derived(
 		uiStatus === 'active'
-			? 'scrapscache-status-success'
+			? status({ tone: 'success' })
 			: uiStatus === 'unsaved'
-				? 'scrapscache-status-warning'
-				: 'scrapscache-status-accent'
+				? status({ tone: 'warning' })
+				: status({ tone: 'accent' })
 	);
 	const badgeLabel = $derived(
 		uiStatus === 'active' ? 'Active' : uiStatus === 'unsaved' ? 'Edit' : 'New'
@@ -248,7 +248,7 @@
 
 	const wheelDeckRaw = {
 		rounded: 'xl',
-		bg: { base: 'black/3', _dark: 'white/4' },
+		bg: 'scrapscache.surfaceSubtle',
 		px: '0.5rem',
 		py: '0.25rem'
 	};
@@ -298,7 +298,7 @@
 	};
 </script>
 
-<div class={cx('scrapscache-dialog', d.panel, css({ w: '20rem', p: '1.25rem', gap: 0 }))}>
+<div class={cx(d.panel, css({ w: '20rem', p: '1.25rem', gap: 0 }))}>
 	<div
 		class={cx(
 			d.title,
@@ -345,7 +345,7 @@
 				<div class={hstack({ mb: '0.75rem' })}>
 					<button
 						type="button"
-						class={`icon-btn ${calNavBtn}`}
+						class={calNavBtn}
 						onclick={() => shiftDay(-1)}
 						aria-label="Previous day"
 					>
@@ -360,12 +360,7 @@
 					>
 						<span class={ellipsisClass}>{dateLabel}</span>
 					</button>
-					<button
-						type="button"
-						class={`icon-btn ${calNavBtn}`}
-						onclick={() => shiftDay(1)}
-						aria-label="Next day"
-					>
+					<button type="button" class={calNavBtn} onclick={() => shiftDay(1)} aria-label="Next day">
 						<ChevronRight size={20} aria-hidden="true" />
 					</button>
 				</div>
@@ -430,7 +425,7 @@
 					<div class={hstack({ mb: '0.75rem' })}>
 						<button
 							type="button"
-							class={`icon-btn ${calNavBtn}`}
+							class={calNavBtn}
 							onclick={() => shiftDay(-1)}
 							aria-label="Previous day"
 						>
@@ -447,7 +442,7 @@
 						</button>
 						<button
 							type="button"
-							class={`icon-btn ${calNavBtn}`}
+							class={calNavBtn}
 							onclick={() => shiftDay(1)}
 							aria-label="Next day"
 						>

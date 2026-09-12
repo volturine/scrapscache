@@ -42,7 +42,7 @@
 				w: '1.25rem',
 				h: '1.25rem',
 				flexShrink: 0,
-				color: { base: 'blue.600', _dark: 'blue.400' }
+				color: 'scrapscache.accent'
 			},
 			content: {
 				minW: 0,
@@ -88,7 +88,7 @@
 				</button>
 				<button
 					type="button"
-					class={`icon-btn ${iconButton({ variant: 'ghost', size: 'compact' })}`}
+					class={iconButton({ variant: 'ghost', size: 'compact' })}
 					aria-label="Dismiss reminder"
 					onclick={() => reminderStore.dismiss(alert.noteId)}
 				>

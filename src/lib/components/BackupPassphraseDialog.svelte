@@ -46,38 +46,7 @@
 
 	const d = dialog({ size: 'sm' });
 
-	const shell = {
-		backdrop: cx(d.backdrop, css({ position: 'absolute', bg: 'black/45', backdropFilter: 'none' })),
-		positioner: flex({
-			position: 'absolute',
-			inset: 0,
-			align: 'flex-start',
-			justify: 'center',
-			px: '1rem',
-			pb: '1rem',
-			pt: 'calc(var(--app-topbar-height) + 0.5rem)'
-		}),
-		panel: cx('scrapscache-dialog', d.panel, css({ maxW: '24rem', p: 0, gap: 0 })),
-		header: cx(
-			d.header,
-			css({
-				borderBottomWidth: '1px',
-				borderColor: 'scrapscache.border',
-				px: '1.25rem',
-				py: '1rem'
-			})
-		)
-	};
-
-	const subheaderClass = css({
-		fontSize: '11px',
-		fontWeight: '600',
-		textTransform: 'uppercase',
-		letterSpacing: '0.16em',
-		color: 'scrapscache.textMuted'
-	});
-
-	const labelSpanClass = css({
+	const fieldLabel = css({
 		display: 'block',
 		mb: '0.375rem',
 		fontSize: 'xs',
@@ -104,11 +73,45 @@
 		class={`absolute ${css({ inset: 0, zIndex: 70 })}`}
 		role="presentation"
 	>
-		<Dialog.Backdrop class={shell.backdrop} />
-		<Dialog.Positioner class={shell.positioner}>
-			<Dialog.Content class={shell.panel}>
-				<div class={shell.header}>
-					<p class={subheaderClass}>Encrypted on this device</p>
+		<Dialog.Backdrop
+			class={cx(d.backdrop, css({ position: 'absolute', bg: 'black/45', backdropFilter: 'none' }))}
+		/>
+		<Dialog.Positioner
+			class={flex({
+				position: 'absolute',
+				inset: 0,
+				align: 'flex-start',
+				justify: 'center',
+				px: '1rem',
+				pb: '1rem',
+				pt: 'calc(var(--app-topbar-height) + 0.5rem)'
+			})}
+		>
+			<Dialog.Content
+				class={cx('scrapscache-dialog', d.panel, css({ maxW: '24rem', p: 0, gap: 0 }))}
+			>
+				<div
+					class={cx(
+						d.header,
+						css({
+							borderBottomWidth: '1px',
+							borderColor: 'scrapscache.border',
+							px: '1.25rem',
+							py: '1rem'
+						})
+					)}
+				>
+					<p
+						class={css({
+							fontSize: '11px',
+							fontWeight: '600',
+							textTransform: 'uppercase',
+							letterSpacing: '0.16em',
+							color: 'scrapscache.textMuted'
+						})}
+					>
+						Encrypted on this device
+					</p>
 					<Dialog.Title class={d.title}>
 						{exporting ? 'Protect this backup' : 'Unlock this backup'}
 					</Dialog.Title>
@@ -124,7 +127,7 @@
 					onsubmit={submit}
 				>
 					<label class={css({ display: 'block' })}>
-						<span class={labelSpanClass}>Backup passphrase</span>
+						<span class={fieldLabel}>Backup passphrase</span>
 						<input
 							type="password"
 							autocomplete={exporting ? 'new-password' : 'current-password'}
@@ -137,7 +140,7 @@
 
 					{#if exporting}
 						<label class={css({ display: 'block' })}>
-							<span class={labelSpanClass}>Confirm passphrase</span>
+							<span class={fieldLabel}>Confirm passphrase</span>
 							<input
 								type="password"
 								autocomplete="new-password"

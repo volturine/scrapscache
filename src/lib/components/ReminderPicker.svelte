@@ -11,7 +11,7 @@
 	import { PHONE_MEDIA } from '$lib/appViewport';
 	import { css, cx, cva } from 'styled-system/css';
 	import { badge, button, dialog, iconButton } from 'styled-system/recipes';
-	import { hstack } from 'styled-system/patterns';
+	import { hstack, flex } from 'styled-system/patterns';
 
 	let {
 		reminder,
@@ -168,25 +168,17 @@
 
 	const d = dialog({ size: 'sm' });
 
-	const statusBoxClass = css({
-		mb: '1rem',
-		rounded: 'lg',
-		px: '0.75rem',
-		py: '0.625rem'
-	});
-
-	const badgeOverride = css({
-		minW: '4.25rem',
-		flexShrink: 0,
-		rounded: 'full',
-		px: '0.5rem',
-		py: '0.125rem',
-		fontWeight: 'bold',
-		textTransform: 'uppercase',
-		letterSpacing: '0.05em'
-	});
-
-	const badgeColor = cva({
+	const badgeChip = cva({
+		base: {
+			minW: '4.25rem',
+			flexShrink: 0,
+			rounded: 'full',
+			px: '0.5rem',
+			py: '0.125rem',
+			fontWeight: 'bold',
+			textTransform: 'uppercase',
+			letterSpacing: '0.05em'
+		},
 		variants: {
 			status: {
 				active: { bg: 'scrapscache.success', color: 'scrapscache.successForeground' },
@@ -195,6 +187,17 @@
 			}
 		}
 	});
+
+	const statusBoxClass = $derived(
+		uiStatus === 'active'
+			? 'scrapscache-status-success'
+			: uiStatus === 'unsaved'
+				? 'scrapscache-status-warning'
+				: 'scrapscache-status-accent'
+	);
+	const badgeLabel = $derived(
+		uiStatus === 'active' ? 'Active' : uiStatus === 'unsaved' ? 'Edit' : 'New'
+	);
 
 	const dateBtn = cva({
 		base: {
@@ -226,16 +229,73 @@
 		css({ flexShrink: 0, color: 'inherit' })
 	);
 
-	const badgeClass = $derived(
-		cx(
-			badge({ variant: 'subtle', size: 'sm' }),
-			badgeOverride,
-			badgeColor({ status: uiStatus === 'unsaved' ? 'edit' : uiStatus })
-		)
-	);
-	const badgeLabel = $derived(
-		uiStatus === 'active' ? 'Active' : uiStatus === 'unsaved' ? 'Edit' : 'New'
-	);
+	const colonClass = css({
+		display: 'flex',
+		w: '0.75rem',
+		flexShrink: 0,
+		alignItems: 'center',
+		justifyContent: 'center',
+		fontSize: 'xl',
+		fontWeight: '600',
+		color: 'scrapscache.text'
+	});
+
+	const ellipsisClass = css({
+		overflow: 'hidden',
+		textOverflow: 'ellipsis',
+		whiteSpace: 'nowrap'
+	});
+
+	const wheelDeckRaw = {
+		rounded: 'xl',
+		bg: { base: 'black/3', _dark: 'white/4' },
+		px: '0.5rem',
+		py: '0.25rem'
+	};
+
+	const sectionLabelClass = css({
+		fontWeight: 'medium',
+		textTransform: 'uppercase',
+		letterSpacing: '0.05em',
+		color: 'scrapscache.textMuted'
+	});
+
+	const hintClass = css({
+		mt: '0.25rem',
+		fontSize: '11px',
+		lineHeight: 'snug',
+		color: 'scrapscache.textMuted'
+	});
+
+	const statusLabelClass = css({
+		minW: 0,
+		fontSize: '10px',
+		fontWeight: '600',
+		textTransform: 'uppercase',
+		letterSpacing: '0.05em',
+		color: 'scrapscache.textMuted'
+	});
+
+	const remainingClass = css({
+		minW: 0,
+		overflow: 'hidden',
+		textOverflow: 'ellipsis',
+		whiteSpace: 'nowrap'
+	});
+
+	const dividerClass = css({
+		mb: '1rem',
+		borderTopWidth: '1px',
+		borderColor: 'scrapscache.border',
+		pt: '1rem'
+	});
+
+	const footerDividerClass = {
+		gap: '0.5rem',
+		borderTopWidth: '1px',
+		borderColor: 'scrapscache.border',
+		pt: '1rem'
+	};
 </script>
 
 <div class={cx('scrapscache-dialog', d.panel, css({ w: '20rem', p: '1.25rem', gap: 0 }))}>
@@ -249,29 +309,16 @@
 	</div>
 
 	<div
-		class={cx(
-			statusBoxClass,
-			uiStatus === 'active'
-				? 'scrapscache-status-success'
-				: uiStatus === 'unsaved'
-					? 'scrapscache-status-warning'
-					: 'scrapscache-status-accent'
-		)}
+		class={cx(statusBoxClass, css({ mb: '1rem', rounded: 'lg', px: '0.75rem', py: '0.625rem' }))}
 	>
 		<div class={hstack({ justify: 'space-between', gap: '0.5rem' })}>
-			<div
-				class={css({
-					minW: 0,
-					fontSize: '10px',
-					fontWeight: '600',
-					textTransform: 'uppercase',
-					letterSpacing: '0.05em',
-					color: 'scrapscache.textMuted'
-				})}
+			<div class={statusLabelClass}>Will remind you</div>
+			<span
+				class={cx(
+					badge({ variant: 'subtle', size: 'sm' }),
+					badgeChip({ status: uiStatus === 'unsaved' ? 'edit' : uiStatus })
+				)}>{badgeLabel}</span
 			>
-				Will remind you
-			</div>
-			<span class={badgeClass}>{badgeLabel}</span>
 		</div>
 		<div
 			class={hstack({
@@ -283,41 +330,13 @@
 			})}
 		>
 			<AlarmClock class={css({ w: '1rem', h: '1rem', flexShrink: 0 })} aria-hidden="true" />
-			<span
-				class={css({ minW: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' })}
-				>{remainingLabel}</span
-			>
+			<span class={remainingClass}>{remainingLabel}</span>
 		</div>
-		<div
-			class={css({
-				mt: '0.25rem',
-				fontSize: '11px',
-				lineHeight: 'snug',
-				color: 'scrapscache.textMuted'
-			})}
-		>
-			Closed-app alerts need Sync on this device.
-		</div>
+		<div class={hintClass}>Closed-app alerts need Sync on this device.</div>
 	</div>
 
-	<div
-		class={css({
-			mb: '1rem',
-			borderTopWidth: '1px',
-			borderColor: 'scrapscache.border',
-			pt: '1rem'
-		})}
-	>
-		<div
-			class={css({
-				mb: '0.75rem',
-				fontSize: 'xs',
-				fontWeight: 'medium',
-				textTransform: 'uppercase',
-				letterSpacing: '0.05em',
-				color: 'scrapscache.textMuted'
-			})}
-		>
+	<div class={dividerClass}>
+		<div class={cx(sectionLabelClass, css({ mb: '0.75rem', fontSize: 'xs' }))}>
 			Pick date & time
 		</div>
 
@@ -339,10 +358,7 @@
 						aria-label="Choose date"
 						aria-expanded={monthYearOpen}
 					>
-						<span
-							class={css({ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' })}
-							>{dateLabel}</span
-						>
+						<span class={ellipsisClass}>{dateLabel}</span>
 					</button>
 					<button
 						type="button"
@@ -355,16 +371,7 @@
 				</div>
 
 				{#if monthYearOpen}
-					<div
-						class={hstack({
-							justify: 'center',
-							gap: '0.5rem',
-							rounded: 'xl',
-							bg: { base: 'black/3', _dark: 'white/4' },
-							px: '0.5rem',
-							py: '0.25rem'
-						})}
-					>
+					<div class={hstack({ justify: 'center', gap: '0.5rem', ...wheelDeckRaw })}>
 						<WheelPicker
 							class={css({ w: '3rem' })}
 							items={dayItems}
@@ -388,16 +395,7 @@
 						/>
 					</div>
 				{:else}
-					<div
-						class={hstack({
-							justify: 'center',
-							gap: '0.25rem',
-							rounded: 'xl',
-							bg: { base: 'black/3', _dark: 'white/4' },
-							px: '0.5rem',
-							py: '0.25rem'
-						})}
-					>
+					<div class={hstack({ justify: 'center', gap: '0.25rem', ...wheelDeckRaw })}>
 						<WheelPicker
 							class={css({ w: '4rem' })}
 							items={HOUR_ITEMS}
@@ -405,21 +403,7 @@
 							onChange={setHour}
 							ariaLabel="Hour"
 						/>
-						<div
-							class={css({
-								display: 'flex',
-								w: '0.75rem',
-								flexShrink: 0,
-								alignItems: 'center',
-								justifyContent: 'center',
-								fontSize: 'xl',
-								fontWeight: '600',
-								color: 'scrapscache.text'
-							})}
-							aria-hidden="true"
-						>
-							:
-						</div>
+						<div class={colonClass} aria-hidden="true">:</div>
 						<WheelPicker
 							class={css({ w: '4rem' })}
 							items={MINUTE_ITEMS}
@@ -430,16 +414,7 @@
 					</div>
 				{/if}
 			{:else if monthYearOpen}
-				<div
-					class={css({
-						h: 'full',
-						overflow: 'hidden',
-						rounded: 'xl',
-						bg: { base: 'black/3', _dark: 'white/4' },
-						px: '0.5rem',
-						py: '0.5rem'
-					})}
-				>
+				<div class={css({ h: 'full', overflow: 'hidden', ...wheelDeckRaw, py: '0.5rem' })}>
 					<DatePicker.Root
 						inline
 						startOfWeek={1}
@@ -451,13 +426,7 @@
 					</DatePicker.Root>
 				</div>
 			{:else}
-				<div
-					class={css({
-						display: 'flex',
-						h: 'full',
-						flexDirection: 'column'
-					})}
-				>
+				<div class={flex({ h: 'full', direction: 'column' })}>
 					<div class={hstack({ mb: '0.75rem' })}>
 						<button
 							type="button"
@@ -474,10 +443,7 @@
 							aria-label="Choose date"
 							aria-expanded="false"
 						>
-							<span
-								class={css({ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' })}
-								>{dateLabel}</span
-							>
+							<span class={ellipsisClass}>{dateLabel}</span>
 						</button>
 						<button
 							type="button"
@@ -489,17 +455,13 @@
 						</button>
 					</div>
 					<div
-						class={css({
-							display: 'flex',
+						class={flex({
 							minH: 0,
 							flex: '1',
-							alignItems: 'center',
-							justifyContent: 'center',
+							align: 'center',
+							justify: 'center',
 							gap: '0.25rem',
-							rounded: 'xl',
-							bg: { base: 'black/3', _dark: 'white/4' },
-							px: '0.5rem',
-							py: '0.25rem'
+							...wheelDeckRaw
 						})}
 					>
 						<WheelPicker
@@ -509,21 +471,7 @@
 							onChange={setHour}
 							ariaLabel="Hour"
 						/>
-						<div
-							class={css({
-								display: 'flex',
-								w: '0.75rem',
-								flexShrink: 0,
-								alignItems: 'center',
-								justifyContent: 'center',
-								fontSize: 'xl',
-								fontWeight: '600',
-								color: 'scrapscache.text'
-							})}
-							aria-hidden="true"
-						>
-							:
-						</div>
+						<div class={colonClass} aria-hidden="true">:</div>
 						<WheelPicker
 							class={css({ w: '4rem' })}
 							items={MINUTE_ITEMS}
@@ -537,14 +485,7 @@
 		</div>
 	</div>
 
-	<div
-		class={hstack({
-			gap: '0.5rem',
-			borderTopWidth: '1px',
-			borderColor: 'scrapscache.border',
-			pt: '1rem'
-		})}
-	>
+	<div class={hstack(footerDividerClass)}>
 		{#if showRemove}
 			<button
 				type="button"

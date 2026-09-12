@@ -134,7 +134,7 @@ jobs:
               -D "$RUNNER_TEMP/ready.headers" -o "$RUNNER_TEMP/ready.body" \
               https://dev.scrapscache.com/health/ready; then
             # Response metadata only: shows whether Access, a WAF rule, or the Worker refused.
-            grep -iE '^(HTTP/|cf-ray|cf-mitigated|www-authenticate|location|content-type):' "$RUNNER_TEMP/ready.headers" || true
+            grep -iE '^(HTTP/|(cf-ray|cf-mitigated|www-authenticate|location|content-type):)' "$RUNNER_TEMP/ready.headers" | tail -5 || true
             grep -oiE '<title>[^<]*</title>|error code:? ?[0-9]+' "$RUNNER_TEMP/ready.body" | head -5 || true
             exit 1
           fi

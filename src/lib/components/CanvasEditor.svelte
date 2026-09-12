@@ -221,9 +221,6 @@
 			_disabled: { opacity: 0.5 }
 		})
 	);
-	const spinnerSm = css({ h: '1rem', w: '1rem' });
-	const spinnerMd = css({ h: '1.25rem', w: '1.25rem' });
-	const iconClose = css({ h: '1.375rem', w: '1.375rem' });
 </script>
 
 <div
@@ -246,7 +243,7 @@
 			onclick={close}
 			aria-label={readOnly ? 'Close canvas' : 'Cancel canvas editing'}
 		>
-			<X class={iconClose} aria-hidden="true" />
+			<X class={css({ h: '1.375rem', w: '1.375rem' })} aria-hidden="true" />
 		</button>
 
 		{#if !readOnly}
@@ -257,7 +254,10 @@
 				onclick={() => void save()}
 			>
 				{#if saving}
-					<LoaderCircle class={`animate-spin ${spinnerSm}`} aria-hidden="true" />
+					<LoaderCircle
+						class={`animate-spin ${css({ h: '1rem', w: '1rem' })}`}
+						aria-hidden="true"
+					/>
 				{/if}
 				<span>{saving ? 'Saving' : 'Done'}</span>
 			</button>
@@ -278,7 +278,10 @@
 		{#if loading}
 			<div class={ce.loading}>
 				<div class={ce.loadingText}>
-					<LoaderCircle class={`animate-spin ${spinnerMd}`} aria-hidden="true" />
+					<LoaderCircle
+						class={`animate-spin ${css({ h: '1.25rem', w: '1.25rem' })}`}
+						aria-hidden="true"
+					/>
 					Loading canvas…
 				</div>
 			</div>

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { css } from 'styled-system/css';
+	import { css, cx, sva } from 'styled-system/css';
 	import { iconButton } from 'styled-system/recipes';
 	import type { NoteImage } from '$lib/types';
 	import { dataUrlToBlob } from '$lib/imageBlob';
@@ -88,32 +88,39 @@
 	}
 
 	const fs = fullscreen();
-	const textPre = css({
-		m: 0,
-		minH: 0,
-		flex: '1',
-		overflow: 'auto',
-		whiteSpace: 'pre-wrap',
-		wordBreak: 'break-word',
-		p: '1rem',
-		fontFamily: 'mono',
-		fontSize: 'sm',
-		lineHeight: 'relaxed',
-		color: 'scrapscache.text'
+
+	const headerBtn = cx('icon-btn', iconButton({ variant: 'ghost', size: 'standard' }));
+
+	const media = sva({
+		slots: ['text', 'audioBox', 'audio', 'videoBox', 'video', 'pdf'],
+		base: {
+			text: {
+				m: 0,
+				minH: 0,
+				flex: '1',
+				overflow: 'auto',
+				whiteSpace: 'pre-wrap',
+				wordBreak: 'break-word',
+				p: '1rem',
+				fontFamily: 'mono',
+				fontSize: 'sm',
+				lineHeight: 'relaxed',
+				color: 'scrapscache.text'
+			},
+			audioBox: { display: 'grid', flex: '1', placeItems: 'center', p: '1.5rem' },
+			audio: { w: 'full', maxW: '32rem' },
+			videoBox: {
+				display: 'flex',
+				flex: '1',
+				alignItems: 'center',
+				justifyContent: 'center',
+				bg: 'black'
+			},
+			video: { maxH: 'full', maxW: 'full' },
+			pdf: { h: 'full', w: 'full', flex: '1', borderWidth: 0, bg: 'white' }
+		}
 	});
-	const audioContainer = css({ display: 'grid', flex: '1', placeItems: 'center', p: '1.5rem' });
-	const audioEl = css({ w: 'full', maxW: '32rem' });
-	const videoContainer = css({
-		display: 'flex',
-		flex: '1',
-		alignItems: 'center',
-		justifyContent: 'center',
-		bg: 'black'
-	});
-	const videoEl = css({ maxH: 'full', maxW: 'full' });
-	const pdfFrame = css({ h: 'full', w: 'full', flex: '1', borderWidth: 0, bg: 'white' });
-	const iconBack = css({ h: '1.5rem', w: '1.5rem' });
-	const iconDownload = css({ h: '1.25rem', w: '1.25rem' });
+	const ms = media();
 </script>
 
 <svelte:window onkeydown={attachment ? onKeydown : undefined} />
@@ -122,13 +129,8 @@
 	<div {@attach portal}>
 		<div class={fs.shell}>
 			<header class={fs.header}>
-				<button
-					type="button"
-					class={`icon-btn ${iconButton({ variant: 'ghost', size: 'standard' })}`}
-					onclick={close}
-					aria-label="Close file"
-				>
-					<ChevronLeft class={iconBack} aria-hidden="true" />
+				<button type="button" class={headerBtn} onclick={close} aria-label="Close file">
+					<ChevronLeft class={css({ h: '1.5rem', w: '1.5rem' })} aria-hidden="true" />
 				</button>
 				<div class={fs.title}>
 					{attachment.name || 'Attachment'}
@@ -138,11 +140,11 @@
 						fileName={attachment.name || 'attachment'}
 						data={attachment.dataUrl}
 						mimeType={attachment.mime || 'application/octet-stream'}
-						class={`icon-btn ${iconButton({ variant: 'ghost', size: 'standard' })}`}
+						class={headerBtn}
 						aria-label="Download file"
 						title="Download file"
 					>
-						<Download class={iconDownload} aria-hidden="true" />
+						<Download class={css({ h: '1.25rem', w: '1.25rem' })} aria-hidden="true" />
 					</DownloadTrigger>
 				{/if}
 			</header>
@@ -152,18 +154,18 @@
 			{:else if failed}
 				<div class={fs.notice}>Could not open this attachment.</div>
 			{:else if isText}
-				<pre class={`scrollable ${textPre}`}>{textContent ?? ''}</pre>
+				<pre class={`scrollable ${ms.text}`}>{textContent ?? ''}</pre>
 			{:else if isAudio && sourceUrl}
-				<div class={audioContainer}>
-					<audio class={audioEl} controls src={sourceUrl}></audio>
+				<div class={ms.audioBox}>
+					<audio class={ms.audio} controls src={sourceUrl}></audio>
 				</div>
 			{:else if isVideo && sourceUrl}
 				<!-- svelte-ignore a11y_media_has_caption -->
-				<div class={videoContainer}>
-					<video class={videoEl} controls playsinline src={sourceUrl}></video>
+				<div class={ms.videoBox}>
+					<video class={ms.video} controls playsinline src={sourceUrl}></video>
 				</div>
 			{:else if isPdf && sourceUrl}
-				<iframe class={pdfFrame} title={attachment.name || 'Attachment'} src={sourceUrl}></iframe>
+				<iframe class={ms.pdf} title={attachment.name || 'Attachment'} src={sourceUrl}></iframe>
 			{/if}
 		</div>
 	</div>

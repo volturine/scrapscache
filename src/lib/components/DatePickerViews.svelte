@@ -3,7 +3,7 @@
 	import { ChevronLeft, ChevronRight } from '@lucide/svelte';
 	import type { DateValue } from '@internationalized/date';
 	import type { Snippet } from 'svelte';
-	import { css } from 'styled-system/css';
+	import { cva, css } from 'styled-system/css';
 	import { iconButton } from 'styled-system/recipes';
 
 	let {
@@ -26,6 +26,14 @@
 
 	const navBtn = iconButton({ variant: 'ghost', size: 'xs' });
 
+	const viewControlClass = css({
+		mb: '0.5rem',
+		display: 'flex',
+		h: '2.25rem',
+		alignItems: 'center',
+		justifyContent: 'space-between'
+	});
+
 	const viewBtn = css({
 		rounded: 'lg',
 		px: '0.5rem',
@@ -38,87 +46,63 @@
 		_hover: { bg: { base: 'black/5', _dark: 'white/10' } }
 	});
 
-	const dayBtn = css({
-		position: 'relative',
-		mx: 'auto',
-		display: 'flex',
-		h: '2rem',
-		w: '2rem',
-		alignItems: 'center',
-		justifyContent: 'center',
-		rounded: 'full',
-		fontSize: 'sm',
-		fontWeight: 'medium',
-		cursor: 'pointer',
-		transition: 'colors 150ms ease',
-		_hover: { bg: { base: 'black/5', _dark: 'white/10' } },
-		_selected: {
-			bg: 'scrapscache.accent',
-			color: 'scrapscache.accentForeground',
-			fontWeight: '600'
-		},
-		'&[data-in-range]:not([data-range-start]):not([data-range-end])': {
-			bg: 'scrapscache.accent/18',
-			color: 'scrapscache.text',
-			fontWeight: 'normal'
-		},
-		'&[data-focus]:not([data-selected]):not([data-in-range])': {
-			bg: 'transparent !important'
-		},
-		'&[data-selected] .reminder-dot, &[data-range-start] .reminder-dot, &[data-range-end] .reminder-dot':
-			{
-				bg: 'scrapscache.accentForeground !important'
+	const gridBtn = cva({
+		base: {
+			mx: 'auto',
+			display: 'flex',
+			alignItems: 'center',
+			justifyContent: 'center',
+			fontSize: 'sm',
+			fontWeight: 'medium',
+			cursor: 'pointer',
+			transition: 'colors 150ms ease',
+			_hover: { bg: { base: 'black/5', _dark: 'white/10' } },
+			_selected: {
+				bg: 'scrapscache.accent',
+				color: 'scrapscache.accentForeground',
+				fontWeight: '600'
 			},
-		'&[data-today]': {
-			ringWidth: '1px',
-			ringColor: 'scrapscache.border'
+			'&[data-today]': {
+				ringWidth: '1px',
+				ringColor: 'scrapscache.border'
+			},
+			_focusVisible: {
+				outline: 'none',
+				ringWidth: '2px',
+				ringColor: 'scrapscache.accent'
+			}
 		},
-		'&[data-outside-range]': {
-			opacity: 0.3,
-			pointerEvents: 'none'
-		},
-		_focusVisible: {
-			outline: 'none',
-			ringWidth: '2px',
-			ringColor: 'scrapscache.accent'
+		variants: {
+			kind: {
+				day: {
+					position: 'relative',
+					h: '2rem',
+					w: '2rem',
+					rounded: 'full',
+					'&[data-in-range]:not([data-range-start]):not([data-range-end])': {
+						bg: 'scrapscache.accent/18',
+						color: 'scrapscache.text',
+						fontWeight: 'normal'
+					},
+					'&[data-focus]:not([data-selected]):not([data-in-range])': {
+						bg: 'transparent !important'
+					},
+					'&[data-selected] .reminder-dot, &[data-range-start] .reminder-dot, &[data-range-end] .reminder-dot':
+						{
+							bg: 'scrapscache.accentForeground !important'
+						},
+					'&[data-outside-range]': {
+						opacity: 0.3,
+						pointerEvents: 'none'
+					}
+				},
+				month: {
+					h: '2.25rem',
+					w: '3.5rem',
+					rounded: 'lg'
+				}
+			}
 		}
-	});
-
-	const monthBtn = css({
-		mx: 'auto',
-		display: 'flex',
-		h: '2.25rem',
-		w: '3.5rem',
-		alignItems: 'center',
-		justifyContent: 'center',
-		rounded: 'lg',
-		fontSize: 'sm',
-		fontWeight: 'medium',
-		cursor: 'pointer',
-		transition: 'colors 150ms ease',
-		_hover: { bg: { base: 'black/5', _dark: 'white/10' } },
-		_selected: {
-			bg: 'scrapscache.accent',
-			color: 'scrapscache.accentForeground',
-			fontWeight: '600'
-		},
-		'&[data-today]': {
-			ringWidth: '1px',
-			ringColor: 'scrapscache.border'
-		},
-		_focusVisible: {
-			outline: 'none',
-			ringWidth: '2px',
-			ringColor: 'scrapscache.accent'
-		}
-	});
-
-	const viewControlClass = css({
-		mb: '0.5rem',
-		display: 'flex',
-		h: '2.25rem',
-		alignItems: 'center',
-		justifyContent: 'space-between'
 	});
 
 	const tableClass = css({
@@ -194,7 +178,7 @@
 													<button
 														type="button"
 														{...safeProps}
-														class={dayBtn}
+														class={gridBtn({ kind: 'day' })}
 														onpointerdown={(e) => onDayPointerDown?.(day, e)}
 														onpointerup={(e) => onDayPointerUp?.(day, e)}
 														onpointerleave={(e) => onDayPointerLeave?.(day, e)}
@@ -214,7 +198,7 @@
 												{/snippet}
 											</DatePicker.TableCellTrigger>
 										{:else}
-											<DatePicker.TableCellTrigger class={dayBtn}>
+											<DatePicker.TableCellTrigger class={gridBtn({ kind: 'day' })}>
 												{day.day}
 												{@render dayExtra?.(day)}
 											</DatePicker.TableCellTrigger>
@@ -232,11 +216,31 @@
 	<DatePicker.View view="month">
 		<DatePicker.Context>
 			{#snippet render(datePicker)}
-				<DatePicker.ViewControl class={viewControlClass}>
-					<DatePicker.PrevTrigger class={navBtn} aria-label="Previous year">
+				<DatePicker.ViewControl
+					class={css({
+						mb: '0.5rem',
+						display: 'flex',
+						h: '2.25rem',
+						alignItems: 'center',
+						justifyContent: 'space-between'
+					})}
+				>
+					<DatePicker.PrevTrigger class={navBtn} aria-label="Previous month">
 						<ChevronLeft size={16} />
 					</DatePicker.PrevTrigger>
-					<DatePicker.ViewTrigger class={viewBtn}>
+					<DatePicker.ViewTrigger
+						class={css({
+							rounded: 'lg',
+							px: '0.5rem',
+							py: '0.25rem',
+							fontSize: 'sm',
+							fontWeight: '600',
+							color: 'scrapscache.text',
+							cursor: 'pointer',
+							transition: 'colors 150ms ease',
+							_hover: { bg: { base: 'black/5', _dark: 'white/10' } }
+						})}
+					>
 						<DatePicker.RangeText />
 					</DatePicker.ViewTrigger>
 					<DatePicker.NextTrigger class={navBtn} aria-label="Next year">
@@ -249,7 +253,7 @@
 							<DatePicker.TableRow>
 								{#each months as month (month.value)}
 									<DatePicker.TableCell value={month.value}>
-										<DatePicker.TableCellTrigger class={monthBtn}>
+										<DatePicker.TableCellTrigger class={gridBtn({ kind: 'month' })}>
 											{month.label}
 										</DatePicker.TableCellTrigger>
 									</DatePicker.TableCell>
@@ -282,7 +286,7 @@
 							<DatePicker.TableRow>
 								{#each years as year (year.value)}
 									<DatePicker.TableCell value={year.value}>
-										<DatePicker.TableCellTrigger class={monthBtn}>
+										<DatePicker.TableCellTrigger class={gridBtn({ kind: 'month' })}>
 											{year.label}
 										</DatePicker.TableCellTrigger>
 									</DatePicker.TableCell>

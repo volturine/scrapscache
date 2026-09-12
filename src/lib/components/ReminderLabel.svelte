@@ -104,7 +104,13 @@
 
 <span class={reminderStyle({ variant, overdue })} aria-label={aria}>
 	<AlarmClock class={css({ w: '0.875rem', h: '0.875rem', flexShrink: 0 })} aria-hidden="true" />
-	<span class={css({ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' })}>
+	<span
+		class={css({
+			overflow: 'hidden',
+			textOverflow: 'ellipsis',
+			whiteSpace: 'nowrap'
+		})}
+	>
 		{label}
 	</span>
 </span>

@@ -111,6 +111,12 @@
 			}
 		})
 	);
+
+	const ellipsisClass = css({
+		overflow: 'hidden',
+		textOverflow: 'ellipsis',
+		whiteSpace: 'nowrap'
+	});
 </script>
 
 <div
@@ -174,15 +180,10 @@
 			<button type="button" class={footerBtnClass} onclick={filterToday}> Today </button>
 		</div>
 		<span
-			class={css({
-				flexShrink: 0,
-				overflow: 'hidden',
-				textOverflow: 'ellipsis',
-				whiteSpace: 'nowrap',
-				px: '0.5rem',
-				lineHeight: '1.25rem',
-				color: 'scrapscache.textMuted'
-			})}
+			class={cx(
+				ellipsisClass,
+				css({ flexShrink: 0, px: '0.5rem', lineHeight: '1.25rem', color: 'scrapscache.textMuted' })
+			)}
 		>
 			{#if pickingEnd}
 				Pick an end day

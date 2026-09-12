@@ -15,10 +15,6 @@
 	const { openNote: openEditor } = useEditorActions();
 	const reminders = $derived(notesStore.notesWithReminders);
 
-	const calendarWrap = css({ position: 'relative' });
-	const fullWidth = css({ w: 'full' });
-	const belowCalendar = css({ mt: '1rem' });
-
 	/** Phone widths keep the calendar full-width; wider grids pack it alongside note cards. */
 	const compact = new MediaQuery('max-width: 767px', true);
 
@@ -47,7 +43,7 @@
 
 <div class={viewPage}>
 	{#if embedCalendar}
-		<div class={calendarWrap}>
+		<div class={css({ position: 'relative' })}>
 			<NotesFeed notes={visible} onOpen={openEditor}>
 				{#snippet leading()}
 					<ReminderCalendar notes={reminders} bind:selected={uiStore.reminderFilter} />
@@ -75,10 +71,10 @@
 			{/if}
 		</div>
 	{:else}
-		<div class={uiStore.layout === 'list' ? notesShellClass() : fullWidth}>
+		<div class={uiStore.layout === 'list' ? notesShellClass() : css({ w: 'full' })}>
 			<ReminderCalendar notes={reminders} bind:selected={uiStore.reminderFilter} />
 		</div>
-		<div class={belowCalendar}>
+		<div class={css({ mt: '1rem' })}>
 			{#if visible.length === 0}
 				<EmptyState icon={AlarmClock} description={emptyDescription} />
 			{:else}

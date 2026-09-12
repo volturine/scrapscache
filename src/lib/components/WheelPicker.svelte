@@ -1,6 +1,6 @@
 <script lang="ts" generics="T extends string | number">
 	import { onMount } from 'svelte';
-	import { cva, css } from 'styled-system/css';
+	import { cva, css, sva } from 'styled-system/css';
 
 	const ITEM_H = 36;
 	const VISIBLE = 5;
@@ -218,6 +218,38 @@
 		setValue(item.value);
 	}
 
+	const wheelChrome = sva({
+		slots: ['band', 'viewport'],
+		base: {
+			band: {
+				pointerEvents: 'none',
+				position: 'absolute',
+				insetX: 0,
+				top: '50%',
+				zIndex: 0,
+				h: '2.25rem',
+				transform: 'translateY(-50%)',
+				rounded: 'lg',
+				bg: 'scrapscache.bg'
+			},
+			viewport: {
+				position: 'absolute',
+				inset: 0,
+				zIndex: 10,
+				overflow: 'hidden',
+				outline: 'none',
+				touchAction: 'none',
+				userSelect: 'none',
+				WebkitUserSelect: 'none',
+				WebkitMaskImage:
+					'linear-gradient(to bottom, transparent 0%, #000 28%, #000 72%, transparent 100%)',
+				maskImage:
+					'linear-gradient(to bottom, transparent 0%, #000 28%, #000 72%, transparent 100%)'
+			}
+		}
+	});
+	const wc = wheelChrome();
+
 	const wheelItemRecipe = cva({
 		base: {
 			display: 'flex',
@@ -252,34 +284,9 @@
 </script>
 
 <div class={`${css({ position: 'relative' })} ${className}`} style="height: {ITEM_H * VISIBLE}px">
+	<div class={wc.band} aria-hidden="true"></div>
 	<div
-		class={css({
-			pointerEvents: 'none',
-			position: 'absolute',
-			insetX: 0,
-			top: '50%',
-			zIndex: 0,
-			h: '2.25rem',
-			transform: 'translateY(-50%)',
-			rounded: 'lg',
-			bg: 'scrapscache.bg'
-		})}
-		aria-hidden="true"
-	></div>
-	<div
-		class={css({
-			position: 'absolute',
-			inset: 0,
-			zIndex: 10,
-			overflow: 'hidden',
-			outline: 'none',
-			touchAction: 'none',
-			userSelect: 'none',
-			WebkitUserSelect: 'none',
-			WebkitMaskImage:
-				'linear-gradient(to bottom, transparent 0%, #000 28%, #000 72%, transparent 100%)',
-			maskImage: 'linear-gradient(to bottom, transparent 0%, #000 28%, #000 72%, transparent 100%)'
-		})}
+		class={wc.viewport}
 		style="height: {ITEM_H * VISIBLE}px"
 		role="listbox"
 		tabindex="0"

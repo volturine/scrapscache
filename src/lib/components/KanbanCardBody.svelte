@@ -25,35 +25,22 @@
 	// The board card keeps its own box (rounded-xl, no max height) and a fixed
 	// scroll window; the shared noteCard recipe covers the pieces that match.
 	const card = noteCard();
+</script>
 
-	const cardBoxClass = css({
+<div
+	class={`kanban-card ${css({
 		overflow: 'hidden',
 		rounded: 'xl',
 		borderWidth: '1px',
 		borderColor: { base: 'black/5', _dark: 'white/10' },
 		boxShadow: 'sm'
-	});
-
-	const bodyScrollClass = css({
-		position: 'relative',
-		maxH: '240px',
-		overflow: 'hidden'
-	});
-
-	const padClass = css({
-		p: '0.75rem'
-	});
-
-	const reminderWrapClass = css({
-		mb: '0.25rem'
-	});
-</script>
-
-<div class={`kanban-card ${cardBoxClass}`} style="background-color: {background(note.color)};">
-	<div class={bodyScrollClass}>
-		<div class={padClass}>
+	})}`}
+	style="background-color: {background(note.color)};"
+>
+	<div class={css({ position: 'relative', maxH: '240px', overflow: 'hidden' })}>
+		<div class={css({ p: '0.75rem' })}>
 			{#if note.reminder != null}
-				<div class={reminderWrapClass}>
+				<div class={css({ mb: '0.25rem' })}>
 					<ReminderLabel reminder={note.reminder} variant="inline" />
 				</div>
 			{/if}

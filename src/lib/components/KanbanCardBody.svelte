@@ -7,7 +7,7 @@
 	import NoteBodyDisplay from './NoteBodyDisplay.svelte';
 	import ReminderLabel from './ReminderLabel.svelte';
 	import { cx, sva } from 'styled-system/css';
-	import { noteCard, noteSurface } from 'styled-system/recipes';
+	import { badge, noteCard, noteSurface } from 'styled-system/recipes';
 
 	let { note, shield = false }: { note: Note; shield?: boolean } = $props();
 
@@ -28,7 +28,9 @@
 				rounded: 'xl',
 				borderWidth: '1px',
 				borderColor: 'scrapscache.borderFaint',
-				boxShadow: 'sm'
+				boxShadow: 'sm',
+				touchAction: 'pan-y',
+				userSelect: 'none'
 			},
 			viewport: { position: 'relative', maxH: '240px', overflow: 'hidden' },
 			content: { p: '0.75rem' },
@@ -63,7 +65,7 @@
 	{#if labelsForNote.length}
 		<div class={card.labelsRow}>
 			{#each labelsForNote as label (label.id)}
-				<span class={card.labelPill}>{label.name}</span>
+				<span class={badge()}>{label.name}</span>
 			{/each}
 		</div>
 	{/if}

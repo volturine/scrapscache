@@ -142,7 +142,7 @@
 	const footerBtnClass = cx(button({ variant: 'ghost' }), styles.footerButton);
 </script>
 
-<div class={`reminder-calendar ${styles.root}`}>
+<div class={['reminder-calendar', styles.root]}>
 	<DatePicker.Root
 		class={styles.picker}
 		inline

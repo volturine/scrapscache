@@ -6,6 +6,24 @@ const viewPageRecipe = defineRecipe({
 	base: { pt: '1rem', pb: '2rem' }
 });
 
+const notesShellRecipe = defineRecipe({
+	className: 'scrapscache-notes-shell',
+	description: 'Shared width contract for note feeds and their section chrome',
+	base: {
+		w: 'full',
+		mx: 'auto',
+		px: 0,
+		boxSizing: 'border-box'
+	},
+	variants: {
+		layout: {
+			grid: {},
+			list: { maxW: '720px' }
+		}
+	},
+	defaultVariants: { layout: 'grid' }
+});
+
 const tooltipRecipe = defineRecipe({
 	className: 'scrapscache-tooltip',
 	description: 'Tooltip popup content recipe',
@@ -162,12 +180,6 @@ const buttonRecipe = defineRecipe({
 				px: '1rem',
 				fontSize: 'sm',
 				gap: '0.5rem'
-			},
-			lg: {
-				height: '2.75rem',
-				px: '1.25rem',
-				fontSize: 'base',
-				gap: '0.625rem'
 			}
 		}
 	},
@@ -194,7 +206,7 @@ const iconButtonRecipe = defineRecipe({
 		_focusVisible: {
 			outline: 'none',
 			ringWidth: '2px',
-			ringColor: 'white/80'
+			ringColor: 'scrapscache.focus'
 		},
 		_active: {
 			transform: 'scale(0.95)'
@@ -204,42 +216,42 @@ const iconButtonRecipe = defineRecipe({
 		variant: {
 			haze: {
 				bg: 'transparent',
-				color: 'white/90',
+				color: 'scrapscache.mediaTextStrong',
 				_hoverable: {
-					bg: 'white/20',
+					bg: 'scrapscache.mediaControlActive',
 					transform: 'scale(1.05)'
 				}
 			},
 			hazeCopied: {
 				bg: 'transparent',
-				color: 'emerald.400',
+				color: 'scrapscache.mediaSuccess',
 				_hoverable: {
-					bg: 'white/20',
+					bg: 'scrapscache.mediaControlActive',
 					transform: 'scale(1.05)'
 				}
 			},
 			hazePinned: {
 				bg: 'transparent',
-				color: 'amber.300',
+				color: 'scrapscache.mediaWarning',
 				_hoverable: {
-					bg: 'white/20',
+					bg: 'scrapscache.mediaControlActive',
 					transform: 'scale(1.05)'
 				}
 			},
 			hazeBlue: {
 				bg: 'transparent',
-				color: 'blue.300',
+				color: 'scrapscache.mediaAccent',
 				_hoverable: {
-					bg: 'white/20',
+					bg: 'scrapscache.mediaControlActive',
 					transform: 'scale(1.05)'
 				}
 			},
 			hazeRose: {
 				bg: 'transparent',
-				color: 'white/90',
+				color: 'scrapscache.mediaTextStrong',
 				_hoverable: {
-					bg: 'rose.500/30',
-					color: 'rose.300'
+					bg: 'scrapscache.mediaDangerSubtle',
+					color: 'scrapscache.mediaDanger'
 				}
 			},
 			ghost: {
@@ -254,7 +266,7 @@ const iconButtonRecipe = defineRecipe({
 				bg: 'transparent',
 				color: 'scrapscache.textMuted',
 				_hoverable: {
-					bg: 'red.500/10',
+					bg: 'scrapscache.dangerSubtle',
 					color: 'scrapscache.danger'
 				}
 			}
@@ -309,7 +321,7 @@ const inputRecipe = defineRecipe({
 				borderWidth: '1px',
 				borderColor: 'scrapscache.border',
 				bg: 'scrapscache.bg',
-				_focus: { ringWidth: '2px', ringColor: 'blue.400/40' }
+				_focus: { ringWidth: '2px', ringColor: 'scrapscache.focus' }
 			},
 			unstyled: {
 				bg: 'transparent',
@@ -318,43 +330,12 @@ const inputRecipe = defineRecipe({
 		},
 		size: {
 			sm: { px: '0.75rem', py: '0.375rem', fontSize: 'xs' },
-			md: { px: '0.75rem', py: '0.5rem', fontSize: 'sm' },
-			lg: { px: '1rem', py: '0.75rem', fontSize: 'base' }
+			md: { px: '0.75rem', py: '0.5rem', fontSize: 'sm' }
 		}
 	},
 	compoundVariants: [{ variant: 'unstyled', css: { px: 0, py: 0 } }],
 	defaultVariants: {
 		variant: 'outline',
-		size: 'md'
-	}
-});
-
-const selectRecipe = defineRecipe({
-	className: 'scrapscache-select',
-	description: 'Select element recipe',
-	base: {
-		minW: 0,
-		appearance: 'none',
-		rounded: 'xl',
-		borderWidth: '1px',
-		borderColor: 'scrapscache.border',
-		bg: 'scrapscache.surface',
-		py: '0.5rem',
-		pl: '0.75rem',
-		pr: '2rem',
-		fontSize: 'sm',
-		fontWeight: '600',
-		color: 'scrapscache.text',
-		outline: 'none',
-		cursor: 'pointer'
-	},
-	variants: {
-		size: {
-			sm: { py: '0.375rem', pl: '0.625rem', pr: '1.75rem', fontSize: 'xs' },
-			md: { py: '0.5rem', pl: '0.75rem', pr: '2rem', fontSize: 'sm' }
-		}
-	},
-	defaultVariants: {
 		size: 'md'
 	}
 });
@@ -378,8 +359,7 @@ const badgeRecipe = defineRecipe({
 			}
 		},
 		size: {
-			sm: { rounded: 'sm', px: '0.375rem', py: '0.125rem', fontSize: '10px' },
-			md: { rounded: 'md', px: '0.5rem', py: '0.25rem', fontSize: 'xs' }
+			sm: { rounded: 'sm', px: '0.375rem', py: '0.125rem', fontSize: '10px' }
 		}
 	},
 	defaultVariants: {
@@ -408,10 +388,6 @@ const statusRecipe = defineRecipe({
 			warning: {
 				bg: 'scrapscache.warningSubtle',
 				color: 'scrapscache.warning'
-			},
-			danger: {
-				bg: 'scrapscache.dangerSubtle',
-				color: 'scrapscache.danger'
 			}
 		}
 	}
@@ -523,7 +499,6 @@ const noteCardRecipe = defineSlotRecipe({
 		'title',
 		'body',
 		'labelsRow',
-		'labelPill',
 		'hazeOverlay',
 		'hazeActions',
 		'shield'
@@ -541,9 +516,9 @@ const noteCardRecipe = defineSlotRecipe({
 			alignItems: 'center',
 			justifyContent: 'flex-end',
 			rounded: 'lg',
-			bg: 'green.500',
+			bg: 'scrapscache.success',
 			pr: '1rem',
-			color: 'white'
+			color: 'scrapscache.successForeground'
 		},
 		swipeTrash: {
 			position: 'absolute',
@@ -552,9 +527,9 @@ const noteCardRecipe = defineSlotRecipe({
 			alignItems: 'center',
 			justifyContent: 'flex-start',
 			rounded: 'lg',
-			bg: 'red.500',
+			bg: 'scrapscache.danger',
 			pl: '1rem',
-			color: 'white'
+			color: 'scrapscache.dangerForeground'
 		},
 		cardBody: {
 			position: 'relative',
@@ -603,15 +578,6 @@ const noteCardRecipe = defineSlotRecipe({
 			pb: '0.75rem',
 			pt: '0.5rem'
 		},
-		labelPill: {
-			rounded: 'sm',
-			px: '0.375rem',
-			py: '0.125rem',
-			fontSize: '10px',
-			fontWeight: 'medium',
-			bg: 'scrapscache.interactiveHover',
-			color: 'scrapscache.textMuted'
-		},
 		hazeOverlay: {
 			position: 'absolute',
 			inset: 0,
@@ -620,7 +586,7 @@ const noteCardRecipe = defineSlotRecipe({
 			flexDirection: 'column',
 			alignItems: 'center',
 			justifyContent: 'center',
-			bg: 'black/40',
+			bg: 'scrapscache.backdropMuted',
 			backdropFilter: 'blur(8px)',
 			transition: 'opacity 200ms ease, background-color 200ms ease'
 		},
@@ -640,9 +606,9 @@ const noteCardRecipe = defineSlotRecipe({
 			true: {
 				cardBody: {
 					boxShadow: 'md',
-					borderColor: 'amber.400/40',
+					borderColor: 'scrapscache.pinnedBorder',
 					ringWidth: '1px',
-					ringColor: 'amber.400/50'
+					ringColor: 'scrapscache.pinnedRing'
 				}
 			}
 		},
@@ -660,183 +626,59 @@ const noteCardRecipe = defineSlotRecipe({
 	}
 });
 
-const kanbanRecipe = defineSlotRecipe({
-	className: 'scrapscache-kanban',
-	description: 'Slot recipe for Kanban board view',
-	slots: [
-		'page',
-		'controls',
-		'selectWrap',
-		'selectChevron',
-		'renameRow',
-		'columnsContainer',
-		'columnsTrack',
-		'column',
-		'colHeader',
-		'colTitle',
-		'cardsList',
-		'emptyDrop',
-		'backlogGroup',
-		'filterIndent',
-		'addColWrap',
-		'radioOption',
-		'checkRow',
-		'checkControl',
-		'checkMark',
-		'checkLabel',
-		'filterSummary',
-		'menuItem'
-	],
+const checklistRecipe = defineSlotRecipe({
+	className: 'scrapscache-checklist',
+	description: 'Shared checklist control for note display and editing',
+	slots: ['root', 'mark'],
 	base: {
-		page: { pt: '1rem', pb: '2rem' },
-		controls: {
-			mb: '1rem',
-			display: 'flex',
-			flexWrap: 'wrap',
-			alignItems: 'center',
-			gap: '0.5rem'
-		},
-		selectWrap: { position: 'relative', minW: 0, maxW: 'full' },
-		selectChevron: {
-			pointerEvents: 'none',
-			position: 'absolute',
-			right: '0.625rem',
-			top: '50%',
-			h: '0.875rem',
-			w: '0.875rem',
-			transform: 'translateY(-50%)',
-			color: 'scrapscache.textMuted'
-		},
-		renameRow: { mb: '1rem', display: 'flex', maxW: '28rem', gap: '0.5rem' },
-		columnsContainer: { mx: '-1rem', overflowX: 'auto', px: '1rem', pb: '1rem' },
-		columnsTrack: {
-			display: 'flex',
-			minW: 'max-content',
-			alignItems: 'flex-start',
-			gap: '0.75rem'
-		},
-		column: {
-			w: 'min(calc(var(--note-card-width) + 1.5rem), calc(100vw - 2rem))',
-			flexShrink: 0,
-			rounded: '2xl',
-			bg: 'scrapscache.surfaceSubtle',
-			p: '0.75rem'
-		},
-		colHeader: {
-			mb: '0.5rem',
-			display: 'flex',
-			alignItems: 'center',
-			gap: '0.5rem',
-			px: '0.25rem',
-			pt: '0.25rem'
-		},
-		colTitle: {
-			minW: 0,
-			flex: '1',
-			overflow: 'hidden',
-			textOverflow: 'ellipsis',
-			whiteSpace: 'nowrap',
-			fontSize: 'sm',
-			fontWeight: '600',
-			color: 'scrapscache.text'
-		},
-		cardsList: { position: 'relative', display: 'flex', flexDirection: 'column', gap: '0.75rem' },
-		emptyDrop: {
-			rounded: 'xl',
-			borderWidth: '1px',
-			borderStyle: 'dashed',
-			borderColor: 'scrapscache.borderSubtle',
-			px: '0.75rem',
-			py: '1.25rem',
-			textAlign: 'center',
-			fontSize: 'xs',
-			color: 'scrapscache.textMuted'
-		},
-		backlogGroup: {
-			mb: '0.5rem',
-			display: 'flex',
-			flexDirection: 'column',
-			gap: '0.5rem',
-			rounded: 'xl',
-			borderWidth: '1px',
-			borderColor: 'scrapscache.borderSubtle',
-			bg: 'scrapscache.surface',
-			p: '0.5rem',
-			fontSize: 'xs'
-		},
-		filterIndent: {
-			ml: '0.25rem',
-			display: 'flex',
-			flexDirection: 'column',
-			gap: '0.25rem',
-			borderLeftWidth: '2px',
-			borderColor: 'scrapscache.borderSubtle',
-			pl: '0.5rem'
-		},
-		addColWrap: {
+		root: {
+			boxSizing: 'border-box',
 			position: 'relative',
-			w: 'min(calc(var(--note-card-width) + 1.5rem), calc(100vw - 2rem))',
-			flexShrink: 0,
-			pt: '0.25rem'
-		},
-		radioOption: {
-			display: 'flex',
-			cursor: 'pointer',
-			alignItems: 'flex-start',
-			gap: '0.5rem',
-			rounded: 'lg',
-			px: '0.25rem',
-			py: '0.25rem',
-			_hoverable: { bg: 'scrapscache.surfaceSubtle' }
-		},
-		checkRow: {
-			display: 'flex',
-			cursor: 'pointer',
-			alignItems: 'center',
-			gap: '0.5rem',
-			rounded: 'lg',
-			px: '0.25rem',
-			py: '0.25rem',
-			_hoverable: { bg: 'scrapscache.surfaceSubtle' }
-		},
-		checkControl: {
-			display: 'flex',
-			h: '1rem',
-			w: '1rem',
-			alignItems: 'center',
-			justifyContent: 'center',
-			rounded: 'sm',
-			borderWidth: '1px',
-			borderColor: 'scrapscache.border',
-			'&[data-state=checked]': {
-				borderColor: 'scrapscache.accent',
-				bg: 'scrapscache.accent'
+			display: 'inline-grid',
+			placeItems: 'center',
+			w: '1.125rem',
+			h: '1.125rem',
+			mt: '0.2rem',
+			p: 0,
+			borderWidth: '1.5px',
+			borderColor: 'scrapscache.checklistBorder',
+			rounded: '0.25rem',
+			bg: 'transparent',
+			color: 'inherit',
+			lineHeight: 0,
+			appearance: 'none',
+			touchAction: 'manipulation',
+			WebkitTapHighlightColor: 'transparent',
+			'&::before': {
+				content: '""',
+				position: 'absolute',
+				inset: '-0.4375rem'
 			}
 		},
-		checkMark: { fontSize: '10px', color: 'scrapscache.accentForeground' },
-		checkLabel: { color: 'scrapscache.text' },
-		filterSummary: {
-			overflow: 'hidden',
-			textOverflow: 'ellipsis',
-			whiteSpace: 'nowrap',
-			px: '0.25rem',
-			fontSize: '10px',
-			color: 'scrapscache.textMuted'
-		},
-		menuItem: {
+		mark: {
+			w: '0.7rem',
+			h: '0.7rem',
 			display: 'block',
-			w: 'full',
-			overflow: 'hidden',
-			textOverflow: 'ellipsis',
-			whiteSpace: 'nowrap',
-			px: '0.75rem',
-			py: '0.5rem',
-			textAlign: 'left',
-			fontSize: 'sm',
-			color: 'scrapscache.text',
-			_hoverable: { bg: 'scrapscache.interactiveHover' }
+			fill: 'none',
+			stroke: 'currentColor',
+			strokeWidth: '2.25',
+			strokeLinecap: 'round',
+			strokeLinejoin: 'round',
+			transform: 'translateY(0.5px)'
 		}
-	}
+	},
+	variants: {
+		indented: {
+			true: {
+				root: { w: '0.9375rem', h: '0.9375rem', mt: '0.22rem' },
+				mark: { w: '0.55rem', h: '0.55rem' }
+			}
+		},
+		checked: {
+			true: { root: { bg: 'scrapscache.interactiveActive' } }
+		}
+	},
+	defaultVariants: { indented: false, checked: false }
 });
 
 const dialogRecipe = defineSlotRecipe({
@@ -859,7 +701,7 @@ const dialogRecipe = defineSlotRecipe({
 		backdrop: {
 			position: 'fixed',
 			inset: 0,
-			bg: 'black/50',
+			bg: 'scrapscache.backdrop',
 			backdropFilter: 'blur(4px)',
 			zIndex: 100,
 			display: 'flex',
@@ -930,9 +772,6 @@ const dialogRecipe = defineSlotRecipe({
 			},
 			md: {
 				panel: { maxW: '28rem' }
-			},
-			lg: {
-				panel: { maxW: '36rem' }
 			}
 		},
 		presentation: {
@@ -944,7 +783,7 @@ const dialogRecipe = defineSlotRecipe({
 				},
 				backdrop: {
 					position: 'absolute',
-					bg: 'black/45',
+					bg: 'scrapscache.backdropOverlay',
 					backdropFilter: 'none'
 				},
 				positioner: {
@@ -987,7 +826,8 @@ export default defineConfig({
 	// the runtime recipe variant. Emit the complete, intentionally bounded set.
 	staticCss: {
 		recipes: {
-			noteSurface: ['*']
+			noteSurface: ['*'],
+			checklist: ['*']
 		}
 	},
 
@@ -1000,6 +840,12 @@ export default defineConfig({
 
 	theme: {
 		extend: {
+			keyframes: {
+				cardIn: {
+					from: { opacity: 0, transform: 'translateY(8px)' },
+					to: { opacity: 1, transform: 'none' }
+				}
+			},
 			tokens: {
 				fonts: {
 					sans: { value: ['"Google Sans"', '"Roboto"', 'system-ui', 'Arial', 'sans-serif'] },
@@ -1010,6 +856,9 @@ export default defineConfig({
 					md: { value: '0.5rem' },
 					lg: { value: '0.75rem' },
 					xl: { value: '1rem' }
+				},
+				animations: {
+					cardIn: { value: 'cardIn 180ms ease-out backwards' }
 				}
 			},
 			semanticTokens: {
@@ -1044,6 +893,96 @@ export default defineConfig({
 						},
 						tooltipText: {
 							value: { base: '#ffffff', _dark: '#171717' }
+						},
+						backdropSoft: {
+							value: 'rgba(0, 0, 0, 0.3)'
+						},
+						backdropMuted: {
+							value: 'rgba(0, 0, 0, 0.4)'
+						},
+						backdropOverlay: {
+							value: 'rgba(0, 0, 0, 0.45)'
+						},
+						backdrop: {
+							value: 'rgba(0, 0, 0, 0.5)'
+						},
+						mediaSurface: {
+							value: '#000000'
+						},
+						mediaSurfaceStrong: {
+							value: 'rgba(0, 0, 0, 0.85)'
+						},
+						mediaSurfaceHover: {
+							value: 'rgba(0, 0, 0, 0.7)'
+						},
+						mediaSurfaceMuted: {
+							value: 'rgba(0, 0, 0, 0.6)'
+						},
+						mediaSurfaceSoft: {
+							value: 'rgba(0, 0, 0, 0.4)'
+						},
+						mediaText: {
+							value: '#ffffff'
+						},
+						mediaTextStrong: {
+							value: 'rgba(255, 255, 255, 0.9)'
+						},
+						mediaOutline: {
+							value: 'rgba(255, 255, 255, 0.95)'
+						},
+						mediaTextMuted: {
+							value: 'rgba(255, 255, 255, 0.7)'
+						},
+						mediaTextSoft: {
+							value: 'rgba(255, 255, 255, 0.8)'
+						},
+						mediaTextFaint: {
+							value: 'rgba(255, 255, 255, 0.6)'
+						},
+						mediaBorder: {
+							value: 'rgba(255, 255, 255, 0.1)'
+						},
+						mediaBorderStrong: {
+							value: 'rgba(255, 255, 255, 0.4)'
+						},
+						mediaBorderFaint: {
+							value: 'rgba(255, 255, 255, 0.05)'
+						},
+						mediaControlHover: {
+							value: 'rgba(255, 255, 255, 0.1)'
+						},
+						mediaControlActive: {
+							value: 'rgba(255, 255, 255, 0.2)'
+						},
+						mediaSuccess: {
+							value: '#34d399'
+						},
+						mediaWarning: {
+							value: '#fcd34d'
+						},
+						mediaAccent: {
+							value: '#93c5fd'
+						},
+						mediaDanger: {
+							value: '#f87171'
+						},
+						mediaDangerSubtle: {
+							value: 'rgba(244, 63, 94, 0.3)'
+						},
+						mediaDangerHover: {
+							value: 'rgba(239, 68, 68, 0.2)'
+						},
+						qrSurface: {
+							value: '#ffffff'
+						},
+						documentSurface: {
+							value: '#ffffff'
+						},
+						pinnedBorder: {
+							value: 'rgba(251, 191, 36, 0.4)'
+						},
+						pinnedRing: {
+							value: 'rgba(251, 191, 36, 0.5)'
 						},
 						controlSubtle: {
 							value: { base: 'rgba(0, 0, 0, 0.06)', _dark: 'rgba(255, 255, 255, 0.1)' }
@@ -1182,18 +1121,33 @@ export default defineConfig({
 							base: '0 0 24px 2px rgba(0, 0, 0, 0.22)',
 							_dark: '0 0 24px 2px rgba(0, 0, 0, 0.55)'
 						}
+					},
+					kanbanDrag: {
+						value: '0 1px 2px rgba(0, 0, 0, 0.12)'
+					},
+					kanbanDragLifted: {
+						value: '0 18px 40px -12px rgba(0, 0, 0, 0.45), 0 6px 14px -6px rgba(0, 0, 0, 0.3)'
+					},
+					cropMask: {
+						value: '0 0 0 9999px rgba(0, 0, 0, 0.65)'
+					},
+					cropHandle: {
+						value: '0 2px 6px rgba(0, 0, 0, 0.7), 0 0 0 1.5px rgba(0, 0, 0, 0.35)'
+					},
+					cropKnob: {
+						value: '0 1px 3px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 0, 0, 0.25)'
 					}
 				}
 			},
 			recipes: {
 				viewPage: viewPageRecipe,
+				notesShell: notesShellRecipe,
 				tooltip: tooltipRecipe,
 				popover: popoverRecipe,
 				noteSurface: noteSurfaceRecipe,
 				button: buttonRecipe,
 				iconButton: iconButtonRecipe,
 				input: inputRecipe,
-				select: selectRecipe,
 				badge: badgeRecipe,
 				status: statusRecipe
 			},
@@ -1201,7 +1155,7 @@ export default defineConfig({
 				sectionHeader: sectionHeaderRecipe,
 				emptyState: emptyStateRecipe,
 				noteCard: noteCardRecipe,
-				kanban: kanbanRecipe,
+				checklist: checklistRecipe,
 				dialog: dialogRecipe
 			}
 		}

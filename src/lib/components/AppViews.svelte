@@ -9,7 +9,6 @@
 	import TrashView from '$lib/components/views/TrashView.svelte';
 	import RemindersView from '$lib/components/views/RemindersView.svelte';
 	import KanbanView from '$lib/components/views/KanbanView.svelte';
-	import { cva } from 'styled-system/css';
 
 	function applyPath(pathname: string) {
 		const target = viewForPath(pathname);
@@ -22,38 +21,35 @@
 	afterNavigate(({ to }) => {
 		if (to) applyPath(to.url.pathname);
 	});
-
-	const hiddenView = cva({ base: { display: 'none !important' } });
-	const hiddenViewClass = `hidden ${hiddenView()}`;
 </script>
 
 {#if uiStore.opened.notes}
-	<div class={uiStore.view !== 'notes' ? hiddenViewClass : undefined}>
+	<div hidden={uiStore.view !== 'notes'}>
 		<NotesHomeView />
 	</div>
 {/if}
 {#if uiStore.opened.label}
-	<div class={uiStore.view !== 'label' ? hiddenViewClass : undefined}>
+	<div hidden={uiStore.view !== 'label'}>
 		<LabelView />
 	</div>
 {/if}
 {#if uiStore.opened.archive}
-	<div class={uiStore.view !== 'archive' ? hiddenViewClass : undefined}>
+	<div hidden={uiStore.view !== 'archive'}>
 		<ArchiveView />
 	</div>
 {/if}
 {#if uiStore.opened.trash}
-	<div class={uiStore.view !== 'trash' ? hiddenViewClass : undefined}>
+	<div hidden={uiStore.view !== 'trash'}>
 		<TrashView />
 	</div>
 {/if}
 {#if uiStore.opened.reminders}
-	<div class={uiStore.view !== 'reminders' ? hiddenViewClass : undefined}>
+	<div hidden={uiStore.view !== 'reminders'}>
 		<RemindersView />
 	</div>
 {/if}
 {#if uiStore.opened.kanban}
-	<div class={uiStore.view !== 'kanban' ? hiddenViewClass : undefined}>
+	<div hidden={uiStore.view !== 'kanban'}>
 		<KanbanView />
 	</div>
 {/if}

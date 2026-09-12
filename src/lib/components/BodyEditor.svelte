@@ -13,6 +13,7 @@
 	} from '$lib/checklistBody';
 	import { revealEditorField } from '$lib/editorVisibility';
 	import { cva, sva } from 'styled-system/css';
+	import { checklist } from 'styled-system/recipes';
 
 	const MAX_TASK_INDENT = 1;
 
@@ -1217,6 +1218,7 @@
 	onblur={handleEditorBlur}
 >
 	{#each lines as line, index (line.id)}
+		{@const check = checklist({ checked: line.checked, indented: line.indent > 0 })}
 		<div
 			data-editor-line={index}
 			data-line-id={line.id}
@@ -1231,19 +1233,14 @@
 					type="button"
 					contenteditable="false"
 					data-checklist-toggle
-					class={[
-						'checklist-toggle',
-						editor.checkToggle,
-						line.indent > 0 && 'checklist-toggle-sub'
-					]}
-					class:checked={line.checked}
+					class={[check.root, editor.checkToggle]}
 					onpointerdown={keepEditorFocus}
 					onclick={(event) => toggleCheck(index, event)}
 					aria-label={line.indent > 0 ? 'Toggle sub-task' : 'Toggle item'}
 					aria-pressed={line.checked}
 				>
 					{#if line.checked}
-						<svg viewBox="0 0 16 16" class="checklist-toggle-mark" aria-hidden="true">
+						<svg viewBox="0 0 16 16" class={check.mark} aria-hidden="true">
 							<path d="M3.5 8.5 6.5 11.5 12.5 4.5" />
 						</svg>
 					{/if}

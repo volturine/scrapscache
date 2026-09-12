@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { cva, cx, sva } from 'styled-system/css';
-	import { iconButton, noteCard, noteSurface } from 'styled-system/recipes';
+	import { badge, iconButton, noteCard, noteSurface } from 'styled-system/recipes';
 	import { flex } from 'styled-system/patterns';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { reminderStore } from '$lib/stores/reminders.svelte';
@@ -211,6 +211,7 @@
 			'scroller',
 			'content',
 			'successIcon',
+			'stream',
 			'portal',
 			'backdrop',
 			'dialogContent'
@@ -220,8 +221,14 @@
 			scroller: { minH: 0, flex: '1', overflowX: 'hidden', overflowY: 'auto' },
 			content: { position: 'relative' },
 			successIcon: { color: 'scrapscache.success' },
+			stream: { _motionSafe: { animation: 'cardIn' } },
 			portal: { position: 'fixed', inset: 0, zIndex: 70 },
-			backdrop: { position: 'fixed', inset: 0, bg: 'black/30', backdropFilter: 'blur(2px)' },
+			backdrop: {
+				position: 'fixed',
+				inset: 0,
+				bg: 'scrapscache.backdropSoft',
+				backdropFilter: 'blur(2px)'
+			},
 			dialogContent: { outline: 'none' }
 		}
 	});
@@ -246,7 +253,7 @@
 		: undefined}
 />
 
-<div class={`card-stream-in ${card.cardOuter}`}>
+<div class={cx(card.cardOuter, local.stream)}>
 	{#if offsetX < 0}
 		<div class={card.swipeRestore}>
 			{#if note.trashed}
@@ -304,7 +311,7 @@
 		{#if labelsForNote.length}
 			<div class={card.labelsRow}>
 				{#each labelsForNote as label (label.id)}
-					<span class={card.labelPill}>
+					<span class={badge()}>
 						{label.name}
 					</span>
 				{/each}

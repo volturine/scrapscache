@@ -505,7 +505,8 @@
 				minH: 0,
 				w: 'full',
 				maxW: '2xl',
-				rounded: '2xl'
+				rounded: '2xl',
+				boxShadow: 'noteSheet'
 			},
 			dialog: {
 				position: 'relative',
@@ -564,7 +565,11 @@
 				borderColor: 'scrapscache.accent',
 				bg: 'color-mix(in oklab, var(--colors-scrapscache-accent) 16%, transparent)'
 			},
-			subDialogBackdrop: { bg: 'black/30', backdropFilter: 'none', zIndex: 60 },
+			subDialogBackdrop: {
+				bg: 'scrapscache.backdropSoft',
+				backdropFilter: 'none',
+				zIndex: 60
+			},
 			popupContent: { outline: 'none' },
 			reminderButton: { minW: 0 }
 		}
@@ -634,7 +639,7 @@
 		<div class={sheet.sheetWrap} role="presentation">
 			<!-- Clicking blank editor chrome is a pointer convenience; keyboard users focus the fields directly. -->
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
-			<div class={`note-sheet-shadow ${sheet.sheetBox}`}>
+			<div class={sheet.sheetBox}>
 				<div
 					bind:this={editorDialog}
 					class={editorDialogClass}

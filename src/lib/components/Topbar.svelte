@@ -234,8 +234,8 @@
 				rounded: 'full',
 				bg: 'scrapscache.interactiveActive'
 			},
-			bar: { h: 'full', bg: 'blue.600', transition: 'width 150ms ease' },
-			alert: { px: '0.75rem', pb: '0.5rem', fontSize: 'xs', color: 'red.600' }
+			bar: { h: 'full', bg: 'scrapscache.accent', transition: 'width 150ms ease' },
+			alert: { px: '0.75rem', pb: '0.5rem', fontSize: 'xs', color: 'scrapscache.danger' }
 		}
 	});
 	const menu = settingsMenu();

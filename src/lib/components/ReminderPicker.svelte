@@ -340,7 +340,7 @@
 	<div class={pickerStyles.divider}>
 		<div class={pickerStyles.sectionLabel}>Pick date & time</div>
 
-		<div class="schedule-panel">
+		<div data-schedule-panel>
 			{#if isMobile}
 				<div class={hstack({ mb: '0.75rem' })}>
 					<button

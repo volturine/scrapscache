@@ -107,7 +107,8 @@
 			'searchIcon',
 			'searchInput',
 			'createRow',
-			'empty'
+			'empty',
+			'scroller'
 		],
 		base: {
 			row: {
@@ -164,6 +165,7 @@
 				color: 'scrapscache.textMuted'
 			},
 			searchWrap: { position: 'relative', mb: '0.25rem' },
+			scroller: { scrollbarWidth: 'thin' },
 			searchIcon: {
 				pointerEvents: 'none',
 				position: 'absolute',
@@ -220,7 +222,10 @@
 	</div>
 
 	<div
-		class={`${vstack({ gap: '0.125rem', maxH: '16rem', overflowY: 'auto', alignItems: 'stretch' })} sidebar-scroll`}
+		class={[
+			vstack({ gap: '0.125rem', maxH: '16rem', overflowY: 'auto', alignItems: 'stretch' }),
+			item.scroller
+		]}
 		style:min-height={listMinHeight}
 	>
 		{#if canCreate}

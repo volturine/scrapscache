@@ -555,7 +555,7 @@ describe('BodyEditor native editing', () => {
 		expect(lineTexts(container)).toEqual(['parent', 'child']);
 		expect(
 			container.querySelector('[data-editor-line="1"] [data-checklist-toggle]')?.className
-		).toContain('checklist-toggle-sub');
+		).toContain('scrapscache-checklist__root--indented_true');
 		expect(container.querySelector('[data-editor-line="1"]')?.getAttribute('style')).toContain(
 			'padding-left'
 		);
@@ -574,7 +574,9 @@ describe('BodyEditor native editing', () => {
 		await tick();
 
 		expect(lineTexts(container)).toEqual(['Finished task']);
-		expect(container.querySelector('[data-checklist-toggle]')?.className).toContain('checked');
+		expect(container.querySelector('[data-checklist-toggle]')?.className).toContain(
+			'scrapscache-checklist__root--checked_true'
+		);
 	});
 
 	it('lets the owner transform an empty-editor paste even without a caret', async () => {

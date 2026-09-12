@@ -129,9 +129,15 @@ jobs:
         run: |
           test -n "$CF_ACCESS_CLIENT_ID"
           test -n "$CF_ACCESS_CLIENT_SECRET"
-          printf 'CF-Access-Client-Id: %s\nCF-Access-Client-Secret: %s\n' "$CF_ACCESS_CLIENT_ID" "$CF_ACCESS_CLIENT_SECRET" |
-            curl --fail-with-body --retry 12 --retry-delay 5 --retry-all-errors -H @- \
-              https://dev.scrapscache.com/health/ready
+          if ! printf 'CF-Access-Client-Id: %s\nCF-Access-Client-Secret: %s\n' "$CF_ACCESS_CLIENT_ID" "$CF_ACCESS_CLIENT_SECRET" |
+            curl -sS --fail-with-body --retry 12 --retry-delay 5 --retry-all-errors -H @- \
+              -D "$RUNNER_TEMP/ready.headers" -o "$RUNNER_TEMP/ready.body" \
+              https://dev.scrapscache.com/health/ready; then
+            # Response metadata only: shows whether Access, a WAF rule, or the Worker refused.
+            grep -iE '^(HTTP/|cf-ray|cf-mitigated|www-authenticate|location|content-type):' "$RUNNER_TEMP/ready.headers" || true
+            grep -oiE '<title>[^<]*</title>|error code:? ?[0-9]+' "$RUNNER_TEMP/ready.body" | head -5 || true
+            exit 1
+          fi
         env:
           CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}

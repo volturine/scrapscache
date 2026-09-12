@@ -1,6 +1,6 @@
 <script lang="ts" generics="T extends string | number">
 	import { onMount } from 'svelte';
-	import { cva, css, sva } from 'styled-system/css';
+	import { cva, sva } from 'styled-system/css';
 
 	const ITEM_H = 36;
 	const VISIBLE = 5;
@@ -219,8 +219,9 @@
 	}
 
 	const wheelChrome = sva({
-		slots: ['band', 'viewport', 'track'],
+		slots: ['root', 'band', 'viewport', 'track'],
 		base: {
+			root: { position: 'relative' },
 			band: {
 				pointerEvents: 'none',
 				position: 'absolute',
@@ -284,7 +285,7 @@
 	});
 </script>
 
-<div class={`${css({ position: 'relative' })} ${className}`} style="height: {ITEM_H * VISIBLE}px">
+<div class={`${wc.root} ${className}`} style="height: {ITEM_H * VISIBLE}px">
 	<div class={wc.band} aria-hidden="true"></div>
 	<div
 		class={wc.viewport}

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { css, cx, sva } from 'styled-system/css';
+	import { cx, sva } from 'styled-system/css';
 	import { button, dialog, iconButton } from 'styled-system/recipes';
 	import { hstack, grid, flex } from 'styled-system/patterns';
 	import { canvasPreview, filePreview, photoPreview } from './attachmentPreviewStyles';
@@ -336,7 +336,17 @@
 	const d = dialog({ size: 'sm' });
 
 	const qualityChoice = sva({
-		slots: ['root', 'title', 'description'],
+		slots: [
+			'root',
+			'title',
+			'description',
+			'icon',
+			'error',
+			'positioner',
+			'panel',
+			'dialogTitle',
+			'dialogDescription'
+		],
 		base: {
 			root: {
 				minH: '5rem',
@@ -354,7 +364,20 @@
 				display: 'block',
 				fontSize: '11px',
 				lineHeight: '1rem'
-			}
+			},
+			icon: { h: '1.25rem', w: '1.25rem' },
+			error: { px: '0.75rem', pb: '0.25rem', fontSize: 'xs', color: 'scrapscache.danger' },
+			positioner: {
+				position: 'fixed',
+				inset: 0,
+				zIndex: 50,
+				display: 'grid',
+				placeItems: 'center',
+				p: '1rem'
+			},
+			panel: { w: 'full', maxW: 'sm', p: '1rem', color: 'scrapscache.text' },
+			dialogTitle: { fontSize: 'base', fontWeight: 'semibold' },
+			dialogDescription: { mt: '0.125rem', fontSize: 'xs' }
 		},
 		variants: {
 			kind: {
@@ -373,18 +396,11 @@
 	});
 	const qualityCompressed = qualityChoice({ kind: 'compressed' });
 	const qualityHd = qualityChoice({ kind: 'hd' });
-	const iconMd = css({ h: '1.25rem', w: '1.25rem' });
+	const iconMd = qualityCompressed.icon;
 </script>
 
 {#if attachError}
-	<p
-		class={css({
-			px: '0.75rem',
-			pb: '0.25rem',
-			fontSize: 'xs',
-			color: 'scrapscache.danger'
-		})}
-	>
+	<p class={qualityCompressed.error}>
 		{attachError}
 	</p>
 {/if}
@@ -548,19 +564,8 @@
 		preventScroll={false}
 	>
 		<Dialog.Backdrop class={d.backdrop} />
-		<Dialog.Positioner
-			class={css({
-				position: 'fixed',
-				inset: 0,
-				zIndex: 50,
-				display: 'grid',
-				placeItems: 'center',
-				p: '1rem'
-			})}
-		>
-			<Dialog.Content
-				class={cx(d.panel, css({ w: 'full', maxW: 'sm', p: '1rem', color: 'scrapscache.text' }))}
-			>
+		<Dialog.Positioner class={qualityCompressed.positioner}>
+			<Dialog.Content class={cx(d.panel, qualityCompressed.panel)}>
 				<div
 					class={flex({
 						mb: '0.75rem',
@@ -572,10 +577,9 @@
 					<div>
 						<Dialog.Title
 							id="photo-quality-title"
-							class={cx(d.title, css({ fontSize: 'base', fontWeight: 'semibold' }))}
-							>Photo quality</Dialog.Title
+							class={cx(d.title, qualityCompressed.dialogTitle)}>Photo quality</Dialog.Title
 						>
-						<p class={cx(d.description, css({ mt: '0.125rem', fontSize: 'xs' }))}>
+						<p class={cx(d.description, qualityCompressed.dialogDescription)}>
 							Choose once for {filesAwaitingQuality.length === 1
 								? 'this attachment'
 								: `these ${filesAwaitingQuality.length} attachments`}.

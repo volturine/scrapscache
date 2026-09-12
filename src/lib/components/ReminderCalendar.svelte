@@ -9,7 +9,7 @@
 	import DatePickerViews from './DatePickerViews.svelte';
 	import type { Note } from '$lib/types';
 	import { dayKey } from '$lib/utils';
-	import { cx, css } from 'styled-system/css';
+	import { cx, sva } from 'styled-system/css';
 	import { flex, hstack } from 'styled-system/patterns';
 	import { button } from 'styled-system/recipes';
 
@@ -96,43 +96,55 @@
 		selected = { from: key, to: key };
 	}
 
-	const footerBtnClass = cx(
-		button({ variant: 'ghost' }),
-		css({
-			h: 'auto',
-			rounded: 'full',
-			px: '0.5rem',
-			py: '0.125rem',
-			fontSize: 'inherit',
-			lineHeight: '1.25rem',
-			_disabled: {
-				opacity: 0.4,
-				pointerEvents: 'none'
+	const calendar = sva({
+		slots: ['root', 'picker', 'dayDot', 'footerButton', 'status'],
+		base: {
+			root: {
+				w: 'full',
+				userSelect: 'none',
+				rounded: '2xl',
+				borderWidth: '1px',
+				borderColor: 'scrapscache.border',
+				bg: 'scrapscache.surface',
+				px: '0.75rem',
+				py: '0.75rem'
+			},
+			picker: { w: 'full' },
+			dayDot: {
+				position: 'absolute',
+				bottom: '0.25rem',
+				h: '0.25rem',
+				w: '0.25rem',
+				rounded: 'full',
+				bg: 'scrapscache.accent'
+			},
+			footerButton: {
+				h: 'auto',
+				rounded: 'full',
+				px: '0.5rem',
+				py: '0.125rem',
+				fontSize: 'inherit',
+				lineHeight: '1.25rem',
+				_disabled: { opacity: 0.4, pointerEvents: 'none' }
+			},
+			status: {
+				overflow: 'hidden',
+				textOverflow: 'ellipsis',
+				whiteSpace: 'nowrap',
+				flexShrink: 0,
+				px: '0.5rem',
+				lineHeight: '1.25rem',
+				color: 'scrapscache.textMuted'
 			}
-		})
-	);
-
-	const ellipsisClass = css({
-		overflow: 'hidden',
-		textOverflow: 'ellipsis',
-		whiteSpace: 'nowrap'
+		}
 	});
+	const styles = calendar();
+	const footerBtnClass = cx(button({ variant: 'ghost' }), styles.footerButton);
 </script>
 
-<div
-	class={`reminder-calendar ${css({
-		w: 'full',
-		userSelect: 'none',
-		rounded: '2xl',
-		borderWidth: '1px',
-		borderColor: 'scrapscache.border',
-		bg: 'scrapscache.surface',
-		px: '0.75rem',
-		py: '0.75rem'
-	})}`}
->
+<div class={`reminder-calendar ${styles.root}`}>
 	<DatePicker.Root
-		class={css({ w: 'full' })}
+		class={styles.picker}
 		inline
 		startOfWeek={1}
 		fixedWeeks
@@ -150,16 +162,7 @@
 			{#snippet dayExtra(day)}
 				{@const count = reminderDays.get(day.toString()) ?? 0}
 				{#if count > 0}
-					<span
-						class={`reminder-dot ${css({
-							position: 'absolute',
-							bottom: '0.25rem',
-							h: '0.25rem',
-							w: '0.25rem',
-							rounded: 'full',
-							bg: 'scrapscache.accent'
-						})}`}
-					></span>
+					<span class={`reminder-dot ${styles.dayDot}`}></span>
 				{/if}
 			{/snippet}
 		</DatePickerViews>
@@ -179,12 +182,7 @@
 		<div class={flex({ flex: '1', align: 'center' })}>
 			<button type="button" class={footerBtnClass} onclick={filterToday}> Today </button>
 		</div>
-		<span
-			class={cx(
-				ellipsisClass,
-				css({ flexShrink: 0, px: '0.5rem', lineHeight: '1.25rem', color: 'scrapscache.textMuted' })
-			)}
-		>
+		<span class={styles.status}>
 			{#if pickingEnd}
 				Pick an end day
 			{:else if selected && selected.from !== selected.to}

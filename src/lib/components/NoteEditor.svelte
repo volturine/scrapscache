@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { css, cva, cx, sva } from 'styled-system/css';
+	import { cva, cx, sva } from 'styled-system/css';
 	import { dialog, iconButton, input, noteSurface } from 'styled-system/recipes';
 	import { flex, hstack, spacer } from 'styled-system/patterns';
 	import { Dialog } from '@ark-ui/svelte/dialog';
@@ -475,7 +475,19 @@
 	}
 
 	const editorSheetSva = sva({
-		slots: ['overlay', 'sheetWrap', 'sheetBox', 'dialog', 'header', 'scroller'],
+		slots: [
+			'overlay',
+			'sheetWrap',
+			'sheetBox',
+			'dialog',
+			'header',
+			'scroller',
+			'titleField',
+			'fileDropHint',
+			'subDialogBackdrop',
+			'popupContent',
+			'reminderButton'
+		],
 		base: {
 			overlay: { position: 'fixed', inset: 0, zIndex: 50 },
 			sheetWrap: {
@@ -524,7 +536,37 @@
 				px: '1.5rem',
 				pt: '1rem',
 				pb: '0.75rem'
-			}
+			},
+			titleField: {
+				mb: '0.75rem',
+				display: 'block',
+				w: 'full',
+				resize: 'none',
+				overflow: 'hidden',
+				wordBreak: 'break-word',
+				p: 0,
+				fontSize: 'xl',
+				fontWeight: 'medium',
+				_placeholder: { color: 'scrapscache.textMuted' },
+				fieldSizing: 'content',
+				transition: 'none'
+			},
+			fileDropHint: {
+				pointerEvents: 'none',
+				position: 'absolute',
+				inset: 0,
+				zIndex: 20,
+				display: 'grid',
+				placeItems: 'center',
+				rounded: '2xl',
+				borderWidth: '2px',
+				borderStyle: 'dashed',
+				borderColor: 'scrapscache.accent',
+				bg: 'color-mix(in oklab, var(--colors-scrapscache-accent) 16%, transparent)'
+			},
+			subDialogBackdrop: { bg: 'black/30', backdropFilter: 'none', zIndex: 60 },
+			popupContent: { outline: 'none' },
+			reminderButton: { minW: 0 }
 		}
 	});
 	const sheet = editorSheetSva();
@@ -543,36 +585,8 @@
 			}
 		}
 	});
-	const titleField = cx(
-		input({ variant: 'unstyled' }),
-		css({
-			mb: '0.75rem',
-			display: 'block',
-			w: 'full',
-			resize: 'none',
-			overflow: 'hidden',
-			wordBreak: 'break-word',
-			p: 0,
-			fontSize: 'xl',
-			fontWeight: 'medium',
-			_placeholder: { color: 'scrapscache.textMuted' },
-			fieldSizing: 'content',
-			transition: 'none'
-		})
-	);
-	const fileDropHintClass = css({
-		pointerEvents: 'none',
-		position: 'absolute',
-		inset: 0,
-		zIndex: 20,
-		display: 'grid',
-		placeItems: 'center',
-		rounded: '2xl',
-		borderWidth: '2px',
-		borderStyle: 'dashed',
-		borderColor: 'scrapscache.accent',
-		bg: 'color-mix(in oklab, var(--colors-scrapscache-accent) 16%, transparent)'
-	});
+	const titleField = cx(input({ variant: 'unstyled' }), sheet.titleField);
+	const fileDropHintClass = sheet.fileDropHint;
 	const fileDropPillClass = hstack({
 		gap: '0.5rem',
 		rounded: 'full',
@@ -585,10 +599,7 @@
 		boxShadow: 'sm'
 	});
 	const subDialog = dialog({ size: 'sm' });
-	const dialogBackdrop = cx(
-		subDialog.backdrop,
-		css({ bg: 'black/30', backdropFilter: 'none', zIndex: 60 })
-	);
+	const dialogBackdrop = cx(subDialog.backdrop, sheet.subDialogBackdrop);
 	const dialogPositioner = flex({
 		position: 'fixed',
 		inset: 0,
@@ -596,7 +607,7 @@
 		align: 'center',
 		justify: 'center'
 	});
-	const popupContent = css({ outline: 'none' });
+	const popupContent = sheet.popupContent;
 </script>
 
 <svelte:window
@@ -654,7 +665,7 @@
 							{#if note.reminder != null}
 								<button
 									type="button"
-									class={css({ minW: 0 })}
+									class={sheet.reminderButton}
 									title={reminderOverdue ? `Overdue · ${reminderLabel}` : reminderLabel}
 									onclick={openReminder}
 									aria-label={reminderOverdue

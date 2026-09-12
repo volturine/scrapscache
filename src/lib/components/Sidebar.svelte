@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { css, cx, sva } from 'styled-system/css';
+	import { cx, sva } from 'styled-system/css';
 	import { dialog, button, input } from 'styled-system/recipes';
 	import { hstack, vstack } from 'styled-system/patterns';
 	import { goto } from '$app/navigation';
@@ -167,7 +167,19 @@
 	}
 
 	const chrome = sva({
-		slots: ['row', 'icon'],
+		slots: [
+			'row',
+			'icon',
+			'navLabel',
+			'newLabelSpacing',
+			'labelInput',
+			'labelsSection',
+			'sectionTitle',
+			'editButton',
+			'renameButton',
+			'dialogPortal',
+			'dialogPositioner'
+		],
 		base: {
 			row: {
 				display: 'flex',
@@ -189,6 +201,67 @@
 				w: '1.75rem',
 				flexShrink: 0,
 				placeItems: 'center'
+			},
+			navLabel: {
+				minW: 0,
+				flex: '1',
+				overflow: 'hidden',
+				textOverflow: 'ellipsis',
+				whiteSpace: 'nowrap',
+				textAlign: 'left'
+			},
+			newLabelSpacing: { mb: '0.25rem' },
+			labelInput: {
+				flex: '1',
+				fontWeight: 'medium',
+				_placeholder: { fontWeight: 'normal', color: 'scrapscache.textMuted' }
+			},
+			labelsSection: { mt: '1.25rem' },
+			sectionTitle: {
+				minW: 0,
+				flex: '1',
+				fontSize: '11px',
+				fontWeight: 'semibold',
+				textTransform: 'uppercase',
+				letterSpacing: '0.14em',
+				color: 'scrapscache.textMuted'
+			},
+			editButton: {
+				position: 'relative',
+				flexShrink: 0,
+				rounded: 'md',
+				px: '0.5rem',
+				py: '0.25rem',
+				fontSize: 'xs',
+				fontWeight: 'medium',
+				color: 'scrapscache.textMuted',
+				cursor: 'pointer',
+				touchAction: 'manipulation',
+				WebkitTapHighlightColor: 'transparent',
+				_hoverable: { bg: 'scrapscache.interactiveHover' },
+				_before: { position: 'absolute', inset: '-0.625rem', content: '""' }
+			},
+			renameButton: {
+				minW: 0,
+				flex: '1',
+				alignSelf: 'stretch',
+				overflow: 'hidden',
+				textOverflow: 'ellipsis',
+				whiteSpace: 'nowrap',
+				textAlign: 'left',
+				fontSize: 'sm',
+				fontWeight: 'medium',
+				color: 'scrapscache.text',
+				cursor: 'pointer'
+			},
+			dialogPortal: { position: 'absolute', inset: 0, zIndex: 80 },
+			dialogPositioner: {
+				position: 'absolute',
+				inset: 0,
+				display: 'flex',
+				alignItems: { base: 'flex-end', sm: 'center' },
+				justifyContent: 'center',
+				p: '1rem'
 			}
 		},
 		variants: {
@@ -229,23 +302,10 @@
 			}
 		}
 	});
-	const navLabelText = css({
-		minW: 0,
-		flex: '1',
-		overflow: 'hidden',
-		textOverflow: 'ellipsis',
-		whiteSpace: 'nowrap',
-		textAlign: 'left'
-	});
-	const newLabelSpacing = css({ mb: '0.25rem' });
-	const labelInputClass = cx(
-		input({ variant: 'unstyled' }),
-		css({
-			flex: '1',
-			fontWeight: 'medium',
-			_placeholder: { fontWeight: 'normal', color: 'scrapscache.textMuted' }
-		})
-	);
+	const sidebar = chrome({});
+	const navLabelText = sidebar.navLabel;
+	const newLabelSpacing = sidebar.newLabelSpacing ?? '';
+	const labelInputClass = cx(input({ variant: 'unstyled' }), sidebar.labelInput);
 	const d = dialog({ size: 'sm' });
 </script>
 
@@ -302,40 +362,16 @@
 		</button>
 	{/each}
 
-	<section class={css({ mt: '1.25rem' })} data-labels-edit aria-label="Labels">
+	<section class={sidebar.labelsSection} data-labels-edit aria-label="Labels">
 		<div class={hstack({ mb: '0.25rem', h: '2rem', gap: '0.5rem', pl: '1rem', pr: '0.5rem' })}>
-			<span
-				class={css({
-					minW: 0,
-					flex: '1',
-					fontSize: '11px',
-					fontWeight: 'semibold',
-					textTransform: 'uppercase',
-					letterSpacing: '0.14em',
-					color: 'scrapscache.textMuted'
-				})}>Labels</span
-			>
+			<span class={sidebar.sectionTitle}>Labels</span>
 			<!-- One control in both modes, so the header never reflows on toggle. The
 			     ::before pad gives it a thumb-sized hit area without a taller header. -->
 			<button
 				type="button"
 				onclick={labelsEditMode ? exitEditMode : enterEditMode}
 				data-sidebar-stay-open
-				class={css({
-					position: 'relative',
-					flexShrink: 0,
-					rounded: 'md',
-					px: '0.5rem',
-					py: '0.25rem',
-					fontSize: 'xs',
-					fontWeight: 'medium',
-					color: 'scrapscache.textMuted',
-					cursor: 'pointer',
-					touchAction: 'manipulation',
-					WebkitTapHighlightColor: 'transparent',
-					_hoverable: { bg: 'scrapscache.interactiveHover' },
-					_before: { position: 'absolute', inset: '-0.625rem', content: '""' }
-				})}
+				class={sidebar.editButton}
 				aria-label={labelsEditMode ? 'Finish editing labels' : 'Edit labels'}
 				title={labelsEditMode ? 'Finish editing labels' : 'Edit labels'}
 			>
@@ -401,19 +437,7 @@
 								type="button"
 								onclick={() => startRename(label)}
 								data-sidebar-stay-open
-								class={css({
-									minW: 0,
-									flex: '1',
-									alignSelf: 'stretch',
-									overflow: 'hidden',
-									textOverflow: 'ellipsis',
-									whiteSpace: 'nowrap',
-									textAlign: 'left',
-									fontSize: 'sm',
-									fontWeight: 'medium',
-									color: 'scrapscache.text',
-									cursor: 'pointer'
-								})}
+								class={sidebar.renameButton}
 								aria-label={`Rename ${label.name}`}
 								title="Rename"
 							>
@@ -450,22 +474,12 @@
 	>
 		<div
 			{@attach portalToAppOverlay}
-			class={css({ position: 'absolute', inset: 0, zIndex: 80 })}
+			class={sidebar.dialogPortal}
 			role="presentation"
 			data-sidebar-stay-open
 		>
 			<Dialog.Backdrop class={d.backdrop} />
-			<Dialog.Positioner
-				class={css({
-					position: 'absolute',
-					inset: 0,
-					display: 'flex',
-					alignItems: { base: 'flex-end', sm: 'center' },
-					justifyContent: 'center',
-					p: '1rem'
-				})}
-				data-sidebar-stay-open
-			>
+			<Dialog.Positioner class={sidebar.dialogPositioner} data-sidebar-stay-open>
 				<Dialog.Content class={d.panel} data-sidebar-stay-open>
 					<Dialog.Title class={d.title}>
 						Delete “{pendingDelete.name}”?

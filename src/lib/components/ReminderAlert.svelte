@@ -3,13 +3,13 @@
 	import { AlarmClock, X } from '@lucide/svelte';
 	import { reminderStore } from '$lib/stores/reminders.svelte';
 	import { formatReminder } from '$lib/utils';
-	import { css, sva } from 'styled-system/css';
+	import { sva } from 'styled-system/css';
 	import { iconButton } from 'styled-system/recipes';
 
 	const alerts = $derived(reminderStore.alerts);
 
 	const alertSva = sva({
-		slots: ['root', 'card', 'icon', 'content', 'title', 'subtitle'],
+		slots: ['root', 'card', 'icon', 'content', 'title', 'subtitle', 'dismissIcon'],
 		base: {
 			root: {
 				pointerEvents: 'none',
@@ -61,7 +61,8 @@
 			subtitle: {
 				fontSize: 'xs',
 				color: 'scrapscache.textMuted'
-			}
+			},
+			dismissIcon: { w: '1rem', h: '1rem' }
 		}
 	});
 
@@ -92,7 +93,7 @@
 					aria-label="Dismiss reminder"
 					onclick={() => reminderStore.dismiss(alert.noteId)}
 				>
-					<X class={css({ w: '1rem', h: '1rem' })} aria-hidden="true" />
+					<X class={slot.dismissIcon} aria-hidden="true" />
 				</button>
 			</div>
 		{/each}

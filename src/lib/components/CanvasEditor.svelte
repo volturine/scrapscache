@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
-	import { css, cx, sva } from 'styled-system/css';
+	import { cx, sva } from 'styled-system/css';
 	import { button, iconButton } from 'styled-system/recipes';
 	import { LoaderCircle, X } from '@lucide/svelte';
 	import {
@@ -127,7 +127,10 @@
 			'loading',
 			'loadingText',
 			'spinnerSm',
-			'spinnerMd'
+			'spinnerMd',
+			'headerClose',
+			'doneButton',
+			'closeIcon'
 		],
 		base: {
 			shell: {
@@ -196,43 +199,40 @@
 				color: 'scrapscache.textMuted'
 			},
 			spinnerSm: { h: '1rem', w: '1rem', animation: 'spin' },
-			spinnerMd: { h: '1.25rem', w: '1.25rem', animation: 'spin' }
+			spinnerMd: { h: '1.25rem', w: '1.25rem', animation: 'spin' },
+			headerClose: {
+				h: '2.25rem',
+				w: '2.25rem',
+				color: 'color-mix(in srgb, currentColor 82%, transparent)',
+				transition: 'background-color 120ms ease, color 120ms ease',
+				_hoverable: {
+					bg: 'color-mix(in srgb, currentColor 10%, transparent)',
+					color: 'currentColor'
+				},
+				_focusVisible: {
+					bg: 'color-mix(in srgb, currentColor 10%, transparent)',
+					color: 'currentColor',
+					outline: '2px solid scrapscache.focus',
+					outlineOffset: '2px'
+				}
+			},
+			doneButton: {
+				rounded: 'full',
+				fontWeight: '600',
+				flexShrink: 0,
+				touchAction: 'manipulation',
+				transition: 'background-color 120ms ease, transform 120ms ease',
+				'&:hover:not(:disabled)': { bg: 'scrapscache.accentHover' },
+				'&:active:not(:disabled)': { transform: 'scale(0.97)' },
+				_focusVisible: { outline: '2px solid scrapscache.focus', outlineOffset: '2px' },
+				_disabled: { opacity: 0.5 }
+			},
+			closeIcon: { h: '1.375rem', w: '1.375rem' }
 		}
 	});
 	const ce = canvasEditor();
-	const headerCloseBtn = cx(
-		iconButton({ variant: 'ghost' }),
-		css({
-			h: '2.25rem',
-			w: '2.25rem',
-			color: 'color-mix(in srgb, currentColor 82%, transparent)',
-			transition: 'background-color 120ms ease, color 120ms ease',
-			_hoverable: {
-				bg: 'color-mix(in srgb, currentColor 10%, transparent)',
-				color: 'currentColor'
-			},
-			_focusVisible: {
-				bg: 'color-mix(in srgb, currentColor 10%, transparent)',
-				color: 'currentColor',
-				outline: '2px solid scrapscache.focus',
-				outlineOffset: '2px'
-			}
-		})
-	);
-	const doneBtn = cx(
-		button({ variant: 'primary', size: 'md' }),
-		css({
-			rounded: 'full',
-			fontWeight: '600',
-			flexShrink: 0,
-			touchAction: 'manipulation',
-			transition: 'background-color 120ms ease, transform 120ms ease',
-			'&:hover:not(:disabled)': { bg: 'scrapscache.accentHover' },
-			'&:active:not(:disabled)': { transform: 'scale(0.97)' },
-			_focusVisible: { outline: '2px solid scrapscache.focus', outlineOffset: '2px' },
-			_disabled: { opacity: 0.5 }
-		})
-	);
+	const headerCloseBtn = cx(iconButton({ variant: 'ghost' }), ce.headerClose);
+	const doneBtn = cx(button({ variant: 'primary', size: 'md' }), ce.doneButton);
 </script>
 
 <div
@@ -255,7 +255,7 @@
 			onclick={close}
 			aria-label={readOnly ? 'Close canvas' : 'Cancel canvas editing'}
 		>
-			<X class={css({ h: '1.375rem', w: '1.375rem' })} aria-hidden="true" />
+			<X class={ce.closeIcon} aria-hidden="true" />
 		</button>
 
 		{#if !readOnly}

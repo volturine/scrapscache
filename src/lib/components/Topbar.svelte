@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { css, cx, cva, sva } from 'styled-system/css';
+	import { cx, cva, sva } from 'styled-system/css';
 	import { iconButton, input, popover } from 'styled-system/recipes';
 	import { hstack, vstack } from 'styled-system/patterns';
 	import { uiStore } from '$lib/stores/ui.svelte';
@@ -45,11 +45,6 @@
 		[SyncStatus.Normal]: 'Sync settings',
 		[SyncStatus.Warning]: 'Sync settings, storage nearly full',
 		[SyncStatus.Danger]: 'Sync settings, sync needs attention'
-	};
-	const SYNC_STATUS_CLASS: Record<SyncStatus, string> = {
-		[SyncStatus.Normal]: '',
-		[SyncStatus.Warning]: css({ color: 'scrapscache.warning' }),
-		[SyncStatus.Danger]: css({ color: 'scrapscache.danger' })
 	};
 
 	const { startNewNote, closeNote } = useEditorActions();
@@ -171,25 +166,40 @@
 		}
 	}
 
-	const searchInputClass = cx(
-		input({ variant: 'unstyled' }),
-		css({
-			h: 'full',
-			flex: '1',
-			appearance: 'none',
-			_placeholder: { color: 'scrapscache.textMuted' }
-		})
-	);
-	const clearBtnClass = css({
-		h: '1.5rem',
-		w: '1.5rem',
-		minH: 0,
-		flexShrink: 0,
-		appearance: 'none',
-		p: 0,
-		color: 'scrapscache.textMuted'
+	const topbar = sva({
+		slots: ['searchInput', 'clearButton', 'searchIcon', 'syncIcon'],
+		base: {
+			searchInput: {
+				h: 'full',
+				flex: '1',
+				appearance: 'none',
+				_placeholder: { color: 'scrapscache.textMuted' }
+			},
+			clearButton: {
+				h: '1.5rem',
+				w: '1.5rem',
+				minH: 0,
+				flexShrink: 0,
+				appearance: 'none',
+				p: 0,
+				color: 'scrapscache.textMuted'
+			},
+			searchIcon: { color: 'scrapscache.textMuted' },
+			syncIcon: { display: 'block' }
+		}
 	});
-	const clearButton = cx(iconButton({ variant: 'ghost', size: 'xs' }), clearBtnClass);
+	const topbarStyles = topbar();
+	const searchInputClass = cx(input({ variant: 'unstyled' }), topbarStyles.searchInput);
+	const clearButton = cx(iconButton({ variant: 'ghost', size: 'xs' }), topbarStyles.clearButton);
+	const syncTone = cva({
+		variants: {
+			status: {
+				[SyncStatus.Normal]: {},
+				[SyncStatus.Warning]: { color: 'scrapscache.warning' },
+				[SyncStatus.Danger]: { color: 'scrapscache.danger' }
+			}
+		}
+	});
 	const icon = cva({
 		base: { flexShrink: 0 },
 		variants: {
@@ -269,10 +279,7 @@
 			gap: '0.5rem'
 		})}
 	>
-		<Search
-			class={cx(icon({ size: 'sm' }), css({ color: 'scrapscache.textMuted' }))}
-			aria-hidden="true"
-		/>
+		<Search class={cx(icon({ size: 'sm' }), topbarStyles.searchIcon)} aria-hidden="true" />
 		<input
 			value={uiStore.searchInput}
 			oninput={(event) => uiStore.setSearchInput(event.currentTarget.value)}
@@ -309,13 +316,13 @@
 			<span
 				class={[
 					icon({ size: 'md' }),
-					css({ display: 'block' }),
+					topbarStyles.syncIcon,
 					notesStore.syncing && 'scrapscache-sync-icon-active'
 				]}
 				data-scrapscache-sync-spinner
 			>
 				<Cloud
-					class={[icon({ size: 'md' }), SYNC_STATUS_CLASS[syncStatus]]}
+					class={[icon({ size: 'md' }), syncTone({ status: syncStatus })]}
 					data-scrapscache-sync-icon
 					aria-hidden="true"
 				/>

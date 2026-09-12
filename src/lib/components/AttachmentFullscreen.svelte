@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { css, cx, sva } from 'styled-system/css';
+	import { cx, sva } from 'styled-system/css';
 	import { iconButton } from 'styled-system/recipes';
 	import type { NoteImage } from '$lib/types';
 	import { dataUrlToBlob } from '$lib/imageBlob';
@@ -92,7 +92,7 @@
 	const headerBtn = iconButton({ variant: 'ghost', size: 'standard' });
 
 	const media = sva({
-		slots: ['text', 'audioBox', 'audio', 'videoBox', 'video', 'pdf'],
+		slots: ['text', 'audioBox', 'audio', 'videoBox', 'video', 'pdf', 'backIcon', 'downloadIcon'],
 		base: {
 			text: {
 				m: 0,
@@ -117,7 +117,9 @@
 				bg: 'black'
 			},
 			video: { maxH: 'full', maxW: 'full' },
-			pdf: { h: 'full', w: 'full', flex: '1', borderWidth: 0, bg: 'white' }
+			pdf: { h: 'full', w: 'full', flex: '1', borderWidth: 0, bg: 'white' },
+			backIcon: { h: '1.5rem', w: '1.5rem' },
+			downloadIcon: { h: '1.25rem', w: '1.25rem' }
 		}
 	});
 	const ms = media();
@@ -130,7 +132,7 @@
 		<div class={fs.shell}>
 			<header class={fs.header}>
 				<button type="button" class={headerBtn} onclick={close} aria-label="Close file">
-					<ChevronLeft class={css({ h: '1.5rem', w: '1.5rem' })} aria-hidden="true" />
+					<ChevronLeft class={ms.backIcon} aria-hidden="true" />
 				</button>
 				<div class={fs.title}>
 					{attachment.name || 'Attachment'}
@@ -144,7 +146,7 @@
 						aria-label="Download file"
 						title="Download file"
 					>
-						<Download class={css({ h: '1.25rem', w: '1.25rem' })} aria-hidden="true" />
+						<Download class={ms.downloadIcon} aria-hidden="true" />
 					</DownloadTrigger>
 				{/if}
 			</header>

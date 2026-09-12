@@ -6,7 +6,7 @@
 	import type { Note } from '$lib/types';
 	import NoteBodyDisplay from './NoteBodyDisplay.svelte';
 	import ReminderLabel from './ReminderLabel.svelte';
-	import { css, cx } from 'styled-system/css';
+	import { cx, sva } from 'styled-system/css';
 	import { noteCard, noteSurface } from 'styled-system/recipes';
 
 	let { note, shield = false }: { note: Note; shield?: boolean } = $props();
@@ -20,25 +20,29 @@
 	// The board card keeps its own box (rounded-xl, no max height) and a fixed
 	// scroll window; the shared noteCard recipe covers the pieces that match.
 	const card = noteCard();
+	const kanbanCard = sva({
+		slots: ['root', 'viewport', 'content', 'reminder'],
+		base: {
+			root: {
+				overflow: 'hidden',
+				rounded: 'xl',
+				borderWidth: '1px',
+				borderColor: 'scrapscache.borderFaint',
+				boxShadow: 'sm'
+			},
+			viewport: { position: 'relative', maxH: '240px', overflow: 'hidden' },
+			content: { p: '0.75rem' },
+			reminder: { mb: '0.25rem' }
+		}
+	});
+	const styles = kanbanCard();
 </script>
 
-<div
-	class={cx(
-		'kanban-card',
-		noteSurface({ color: note.color }),
-		css({
-			overflow: 'hidden',
-			rounded: 'xl',
-			borderWidth: '1px',
-			borderColor: 'scrapscache.borderFaint',
-			boxShadow: 'sm'
-		})
-	)}
->
-	<div class={css({ position: 'relative', maxH: '240px', overflow: 'hidden' })}>
-		<div class={css({ p: '0.75rem' })}>
+<div class={cx('kanban-card', noteSurface({ color: note.color }), styles.root)}>
+	<div class={styles.viewport}>
+		<div class={styles.content}>
 			{#if note.reminder != null}
-				<div class={css({ mb: '0.25rem' })}>
+				<div class={styles.reminder}>
 					<ReminderLabel reminder={note.reminder} variant="inline" />
 				</div>
 			{/if}

@@ -32,21 +32,13 @@
 		if (kanbanDrag.suppressedClick) return;
 		onOpen(note.id);
 	}
-
-	const cardStyle = css({
-		cursor: 'grab',
-		rounded: 'xl',
-		_active: {
-			cursor: 'grabbing'
-		}
-	});
 </script>
 
 <div
 	bind:this={card}
 	role="button"
 	tabindex="0"
-	class={cardStyle}
+	class={css({ cursor: 'grab', rounded: 'xl', _active: { cursor: 'grabbing' } })}
 	onpointerdown={press}
 	ondragstart={(event) => event.preventDefault()}
 	onclick={open}

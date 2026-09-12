@@ -1,6 +1,7 @@
 <script lang="ts">
-	import { css } from 'styled-system/css';
+	import { css, cva } from 'styled-system/css';
 	import { iconButton, noteCard } from 'styled-system/recipes';
+	import { flex } from 'styled-system/patterns';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { reminderStore } from '$lib/stores/reminders.svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
@@ -194,6 +195,21 @@
 	onDestroy(() => swipe.dispose());
 
 	const card = $derived(noteCard({ pinned: note.pinned, trashed: note.trashed }));
+
+	const hazeGroup = cva({
+		base: {
+			display: 'flex',
+			alignItems: 'center',
+			filter: 'drop-shadow(0 4px 3px rgb(0 0 0 / 0.07))'
+		},
+		variants: {
+			layout: {
+				compact: { justifyContent: 'center', gap: '0.375rem' },
+				column: { flexDirection: 'column', gap: '0.625rem' },
+				row: { justifyContent: 'center', gap: '0.625rem' }
+			}
+		}
+	});
 </script>
 
 <svelte:window
@@ -267,11 +283,7 @@
 				</div>
 				<!-- Every press lands here, so links, photos, canvases and files can
 				     never swallow a swipe or start a drag of their own. -->
-				<div
-					class={css({ position: 'absolute', inset: 0 })}
-					data-card-shield
-					aria-hidden="true"
-				></div>
+				<div class={card.shield} data-card-shield aria-hidden="true"></div>
 			</div>
 		</div>
 
@@ -303,15 +315,7 @@
 				}}
 			>
 				{#if compactActions}
-					<div
-						class={css({
-							display: 'flex',
-							alignItems: 'center',
-							justifyContent: 'center',
-							gap: '0.375rem',
-							filter: 'drop-shadow(0 4px 3px rgb(0 0 0 / 0.07))'
-						})}
-					>
+					<div class={hazeGroup({ layout: 'compact' })}>
 						<button
 							type="button"
 							class={iconButton({ size: 'compact', variant: copied ? 'hazeCopied' : 'haze' })}
@@ -374,23 +378,8 @@
 						</button>
 					</div>
 				{:else}
-					<div
-						class={css({
-							display: 'flex',
-							flexDirection: 'column',
-							alignItems: 'center',
-							gap: '0.625rem',
-							filter: 'drop-shadow(0 4px 3px rgb(0 0 0 / 0.07))'
-						})}
-					>
-						<div
-							class={css({
-								display: 'flex',
-								alignItems: 'center',
-								justifyContent: 'center',
-								gap: '0.625rem'
-							})}
-						>
+					<div class={hazeGroup({ layout: 'column' })}>
+						<div class={hazeGroup({ layout: 'row' })}>
 							<!-- Copy -->
 							<button
 								type="button"
@@ -439,14 +428,7 @@
 							</button>
 						</div>
 
-						<div
-							class={css({
-								display: 'flex',
-								alignItems: 'center',
-								justifyContent: 'center',
-								gap: '0.625rem'
-							})}
-						>
+						<div class={hazeGroup({ layout: 'row' })}>
 							<!-- Delete -->
 							<button
 								type="button"
@@ -497,14 +479,7 @@
 				class={css({ position: 'fixed', inset: 0, bg: 'black/30', backdropFilter: 'blur(2px)' })}
 			/>
 			<Dialog.Positioner
-				class={css({
-					position: 'fixed',
-					inset: 0,
-					display: 'flex',
-					alignItems: 'center',
-					justifyContent: 'center',
-					p: '1rem'
-				})}
+				class={flex({ position: 'fixed', inset: 0, align: 'center', justify: 'center', p: '1rem' })}
 			>
 				<Dialog.Content class="outline-none" onclick={(e) => e.stopPropagation()}>
 					<ReminderPicker

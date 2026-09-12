@@ -405,7 +405,7 @@ export class SyncStore {
 		this.onAccountChange?.();
 	}
 
-	async reauthenticateForRecovery(): Promise<void> {
+	async reauthenticateForRecovery(turnstileToken?: string): Promise<void> {
 		const account = this.account;
 		if (!account) throw new Error('No synced workspace is active');
 		this.authenticationGeneration += 1;
@@ -424,7 +424,8 @@ export class SyncStore {
 			body: JSON.stringify({
 				accountId: account.accountId,
 				authPublicKey: account.authPublicKey,
-				signature: signSyncRegistration(account.syncKey, account.accountId, account.authPublicKey)
+				signature: signSyncRegistration(account.syncKey, account.accountId, account.authPublicKey),
+				turnstileToken
 			})
 		});
 		if (!response.ok && response.status !== 409) {
@@ -437,7 +438,8 @@ export class SyncStore {
 	}
 
 	async register(
-		name?: string
+		name?: string,
+		turnstileToken?: string
 	): Promise<{ success: boolean; profile?: StoredProfile; error?: string }> {
 		const account = createSyncIdentity();
 		try {
@@ -447,7 +449,12 @@ export class SyncStore {
 				body: JSON.stringify({
 					accountId: account.accountId,
 					authPublicKey: account.authPublicKey,
-					signature: signSyncRegistration(account.syncKey, account.accountId, account.authPublicKey)
+					signature: signSyncRegistration(
+						account.syncKey,
+						account.accountId,
+						account.authPublicKey
+					),
+					turnstileToken
 				})
 			});
 			const data = await res.json().catch(() => ({}));

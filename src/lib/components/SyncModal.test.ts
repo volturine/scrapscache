@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { env as publicEnv } from '$env/dynamic/public';
 import { createSyncIdentity, identityFromSyncKey } from '$lib/syncPairing';
 import type { StoredProfile } from '$lib/profiles';
 import { notesStore } from '$lib/stores/notes.svelte';
@@ -332,6 +333,48 @@ describe('SyncModal profile interactions', () => {
 		await fireEvent.click(screen.getByRole('button', { name: 'Replace cloud notes' }));
 		await waitFor(() => expect(force).toHaveBeenCalledTimes(1));
 		expect(screen.getByText('This device’s notes are now the latest cloud version.')).toBeTruthy();
+	});
+
+	it('creates a workspace only with a Turnstile token and resets the widget afterwards', async () => {
+		publicEnv.PUBLIC_TURNSTILE_SITEKEY = 'sitekey';
+		let solve: ((token: string) => void) | undefined;
+		const turnstile = {
+			render: vi.fn((_container: HTMLElement, options: { callback: (token: string) => void }) => {
+				solve = options.callback;
+				return 'widget-1';
+			}),
+			reset: vi.fn(),
+			remove: vi.fn()
+		};
+		Object.assign(window, { turnstile });
+		// jsdom does not fetch external scripts, so finish loading as soon as the tag is added.
+		vi.spyOn(document.head, 'append').mockImplementation((...nodes) => {
+			(nodes[0] as HTMLScriptElement).onload?.(new Event('load'));
+		});
+		const create = vi.spyOn(profileCoordinator, 'create').mockResolvedValue({ success: false });
+		try {
+			render(SyncModal, { props: { onClose: vi.fn() } });
+			await fireEvent.click(screen.getByRole('button', { name: '+ New workspace' }));
+			const submit = screen.getByRole('button', { name: 'Create workspace' }) as HTMLButtonElement;
+			await waitFor(() => expect(turnstile.render).toHaveBeenCalledTimes(1));
+			expect(turnstile.render.mock.calls[0][1]).toMatchObject({
+				sitekey: 'sitekey',
+				action: 'register'
+			});
+			expect(submit.disabled).toBe(true);
+
+			solve?.('token-1');
+			await tick();
+			expect(submit.disabled).toBe(false);
+			await fireEvent.click(submit);
+
+			await waitFor(() => expect(create).toHaveBeenCalledWith('', 'token-1'));
+			await waitFor(() => expect(turnstile.reset).toHaveBeenCalledWith('widget-1'));
+			expect(submit.disabled).toBe(true);
+		} finally {
+			delete publicEnv.PUBLIC_TURNSTILE_SITEKEY;
+			Reflect.deleteProperty(window, 'turnstile');
+		}
 	});
 
 	it('offers recovery for authentication failure and places joining under new workspace', async () => {

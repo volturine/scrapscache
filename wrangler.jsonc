@@ -13,7 +13,9 @@
 	],
 	"vars": {
 		"SCRAPSCACHE_ORIGIN": "https://scrapscache.com",
-		"SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES": "100000000"
+		"SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES": "100000000",
+		"PUBLIC_TURNSTILE_SITEKEY": "0x4AAAAAAEx1iggiE7ZSHoeB",
+		"TURNSTILE_HOSTNAMES": "scrapscache.com"
 	},
 	"assets": {
 		"binding": "ASSETS",
@@ -79,7 +81,9 @@
 			],
 			"vars": {
 				"SCRAPSCACHE_ORIGIN": "https://dev.scrapscache.com",
-				"SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES": "100000000"
+				"SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES": "100000000",
+				"PUBLIC_TURNSTILE_SITEKEY": "0x4AAAAAAEx1iggiE7ZSHoeB",
+				"TURNSTILE_HOSTNAMES": "dev.scrapscache.com"
 			}
 		}
 	}

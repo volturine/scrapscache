@@ -5,6 +5,9 @@ import { afterEach, vi } from 'vitest';
 import { closeDeviceDatabase, DEVICE_DB_NAME } from '$lib/db/idb';
 import { resetTombstoneCaches } from '$lib/syncTombstones';
 
+// Browser-side $env/dynamic/public reads globals that only a SvelteKit page defines.
+vi.mock('$env/dynamic/public', () => ({ env: {} }));
+
 if (typeof Element !== 'undefined' && !Element.prototype.animate) {
 	Element.prototype.animate = (() => ({
 		cancel: () => {},

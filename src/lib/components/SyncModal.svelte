@@ -620,14 +620,8 @@
 							>
 								<CloudOff size={18} aria-hidden="true" />
 								<span class={css({ minW: 0, flex: '1', textAlign: 'left' })}
-									><span
-										class={css({
-											display: 'block',
-											overflow: 'hidden',
-											textOverflow: 'ellipsis',
-											whiteSpace: 'nowrap'
-										})}>Anonymous workspace</span
-									><span class={ui.workspaceCaption}
+									><span class={css({ truncate: true })}>Anonymous workspace</span><span
+										class={ui.workspaceCaption}
 										>Only on this device{sizeLabel(LOCAL_PROFILE_ID)
 											? ' · ' + sizeLabel(LOCAL_PROFILE_ID)
 											: ''}</span
@@ -929,7 +923,7 @@
 						{#if waiting?.role === 'existing'}
 							<div>
 								<p class={ui.mutedLead}>On the new device</p>
-								<p class={css({ mt: '0.25rem', fontSize: 'sm', color: 'scrapscache.text' })}>
+								<p class={cx(ui.text, css({ mt: '0.25rem' }))}>
 									Scan the QR code, open the link, or type the one-time code
 								</p>
 							</div>
@@ -984,7 +978,7 @@
 						{:else}
 							<div>
 								<p class={ui.mutedLead}>On the other device</p>
-								<p class={css({ mt: '0.25rem', fontSize: 'sm', color: 'scrapscache.text' })}>
+								<p class={cx(ui.text, css({ mt: '0.25rem' }))}>
 									Open Sync and choose Connect device
 								</p>
 							</div>

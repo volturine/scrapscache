@@ -1,7 +1,8 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import { Check, CloudOff, Pencil, TriangleAlert, X } from '@lucide/svelte';
-	import { css, cx } from 'styled-system/css';
+	import { css, cva, cx } from 'styled-system/css';
+	import { input as inputRecipe } from 'styled-system/recipes';
 
 	let {
 		name,
@@ -45,7 +46,7 @@
 	let dragging = $state(false);
 	let armed = $state(false);
 	let rowElement: HTMLDivElement | undefined;
-	let input: HTMLInputElement | undefined;
+	let renameInput: HTMLInputElement | undefined;
 	// The control a panel was opened from, so focus can go back where it started.
 	let trigger: HTMLElement | null = null;
 	let start: { x: number; y: number; offset: number } | null = null;
@@ -85,11 +86,11 @@
 
 	// Held beyond mount so a rejected rename can hand focus back to the field.
 	function renameField(node: HTMLInputElement) {
-		input = node;
+		renameInput = node;
 		const release = takeFocus(node);
 		node.select();
 		return () => {
-			if (input === node) input = undefined;
+			if (renameInput === node) renameInput = undefined;
 			release();
 		};
 	}
@@ -199,7 +200,7 @@
 		const saved = await onrename(next);
 		working = null;
 		if (saved) setMode('idle');
-		else input?.focus();
+		else renameInput?.focus();
 	}
 
 	async function confirmUnlink() {
@@ -378,8 +379,6 @@
 
 	const bodyClass = css({ minW: 0, flex: '1' });
 
-	const messageClass = css({ minW: 0, flex: '1', fontSize: '13px' });
-
 	const nameClass = css({
 		display: 'block',
 		overflow: 'hidden',
@@ -395,16 +394,10 @@
 		fontWeight: '400'
 	});
 
-	const nameInputClass = css({
-		w: 'full',
-		padding: '1px 0',
-		border: '0',
-		borderBottom: '1px solid scrapscache.accent',
-		bg: 'transparent',
-		color: 'inherit',
-		font: 'inherit',
-		outline: 'none'
-	});
+	const nameFieldClass = cx(
+		inputRecipe({ variant: 'outline', size: 'sm' }),
+		css({ w: 'full', font: 'inherit' })
+	);
 
 	const panelActionsClass = css({
 		display: 'flex',
@@ -423,28 +416,24 @@
 		_hover: { bg: 'scrapscache.interactiveHover', color: 'scrapscache.text' }
 	});
 
-	const iconAcceptClass = css({ color: 'scrapscache.success' });
-
-	const ghostBtnClass = css({
-		padding: '7px 12px',
-		rounded: '7px',
-		fontSize: '13px',
-		whiteSpace: 'nowrap',
-		_hover: { bg: 'scrapscache.interactiveHover' }
+	const panelBtn = cva({
+		base: {
+			padding: '7px 12px',
+			rounded: '7px',
+			fontSize: '13px',
+			whiteSpace: 'nowrap'
+		},
+		variants: {
+			tone: {
+				neutral: { _hover: { bg: 'scrapscache.interactiveHover' } },
+				danger: {
+					bg: 'scrapscache.danger',
+					color: 'scrapscache.dangerForeground',
+					fontWeight: '500'
+				}
+			}
+		}
 	});
-
-	const dangerBtnClass = css({
-		padding: '7px 12px',
-		rounded: '7px',
-		fontSize: '13px',
-		whiteSpace: 'nowrap',
-		bg: 'scrapscache.danger',
-		color: 'scrapscache.dangerForeground',
-		fontWeight: '500'
-	});
-
-	const onWideClass = css({ display: { base: 'none', sm: 'inline' } });
-	const onNarrowClass = css({ display: { base: 'inline', sm: 'none' } });
 </script>
 
 <svelte:document
@@ -496,7 +485,7 @@
 				<span class={`${glyphClass} panel-glyph`} aria-hidden="true"
 					><TriangleAlert size={18} /></span
 				>
-				<p class={messageClass}>
+				<p class={cx(bodyClass, css({ fontSize: '13px' }))}>
 					Unlink <strong>{name}</strong>?<span class={captionClass}
 						>Its notes move to Anonymous workspace. Cloud data stays.</span
 					>
@@ -504,7 +493,7 @@
 				<div class={`panel-actions ${panelActionsClass}`}>
 					<button
 						type="button"
-						class={ghostBtnClass}
+						class={panelBtn({ tone: 'neutral' })}
 						{@attach takeFocus}
 						disabled={working !== null}
 						aria-label="Keep {name} linked"
@@ -512,7 +501,7 @@
 					>
 					<button
 						type="button"
-						class={dangerBtnClass}
+						class={panelBtn({ tone: 'danger' })}
 						disabled={locked}
 						aria-label="Unlink {name} and keep notes"
 						onclick={() => void confirmUnlink()}
@@ -533,16 +522,17 @@
 					<input
 						{@attach renameField}
 						bind:value={draft}
-						class={nameInputClass}
+						class={nameFieldClass}
 						maxlength="60"
 						spellcheck="false"
 						disabled={working !== null}
 						aria-label="Workspace name"
 					/>
 					<span class={captionClass}>
-						{#if working === 'rename'}Saving…{:else}<span class={onWideClass}
+						{#if working === 'rename'}Saving…{:else}<span
+								class={css({ display: { base: 'none', sm: 'inline' } })}
 								>Enter saves · Esc cancels</span
-							><span class={onNarrowClass}>{caption}</span>{/if}
+							><span class={css({ display: { base: 'inline', sm: 'none' } })}>{caption}</span>{/if}
 					</span>
 				</span>
 				<div class={`panel-actions ${panelActionsClass}`}>
@@ -555,7 +545,7 @@
 					>
 					<button
 						type="submit"
-						class={`${iconBtnClass} ${iconAcceptClass}`}
+						class={cx(iconBtnClass, css({ color: 'scrapscache.success' }))}
 						disabled={locked || !draft.trim()}
 						aria-label="Save name"><Check size={16} aria-hidden="true" /></button
 					>

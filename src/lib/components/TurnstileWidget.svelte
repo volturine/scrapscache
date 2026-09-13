@@ -74,9 +74,9 @@
 	}
 </script>
 
-<div {@attach mount} class="min-h-[65px]"></div>
+<div {@attach mount} class="flex min-h-[65px] justify-center"></div>
 {#if failed}
-	<p class="text-sm text-[var(--scrapscache-danger)]" role="alert">
+	<p class="text-center text-sm text-[var(--scrapscache-danger)]" role="alert">
 		Human verification could not load. Check your connection and reopen this dialog.
 	</p>
 {/if}

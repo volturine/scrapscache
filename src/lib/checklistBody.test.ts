@@ -57,6 +57,17 @@ describe('splitPastedHeading', () => {
 		expect(splitPastedHeading('# Solo')).toEqual({ title: 'Solo', body: '' });
 	});
 
+	it('splits a heading after clipboard-leading blank lines', () => {
+		expect(splitPastedHeading('\n# Cloudflare and GitHub setup\n\nThe controls')).toEqual({
+			title: 'Cloudflare and GitHub setup',
+			body: '\nThe controls'
+		});
+	});
+
+	it('rejects an empty top-level heading', () => {
+		expect(splitPastedHeading('#   \nBody')).toBeNull();
+	});
+
 	it('requires the first line to be a top-level heading', () => {
 		expect(splitPastedHeading('plain first line\n## Not a doc heading')).toBeNull();
 		expect(splitPastedHeading('## Subhead without the h1\nbody')).toBeNull();

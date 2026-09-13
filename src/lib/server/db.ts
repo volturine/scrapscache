@@ -132,6 +132,15 @@ const OPS_DDL = `
 	);
 	CREATE INDEX IF NOT EXISTS reminder_wake_deliveries_account
 		ON reminder_wake_deliveries(account_id);
+	CREATE TABLE IF NOT EXISTS shared_notes (
+		id TEXT PRIMARY KEY,
+		ciphertext TEXT NOT NULL,
+		burn_after_reading INTEGER NOT NULL DEFAULT 0,
+		view_count INTEGER NOT NULL DEFAULT 0,
+		created_at INTEGER NOT NULL,
+		expires_at INTEGER NOT NULL
+	);
+	CREATE INDEX IF NOT EXISTS shared_notes_expires ON shared_notes(expires_at);
 `;
 
 /** Wrap pre-built clients (any libsql transport) with lazy idempotent schema setup. */

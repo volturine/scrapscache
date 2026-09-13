@@ -8,6 +8,7 @@
 	import NoteBodyDisplay from './NoteBodyDisplay.svelte';
 	import ReminderLabel from './ReminderLabel.svelte';
 	import ReminderPicker from './ReminderPicker.svelte';
+	import ShareModal from './ShareModal.svelte';
 	import { noteToPlainText } from '$lib/checklistBody';
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { portalToAppOverlay } from '$lib/appViewport';
@@ -19,6 +20,7 @@
 		Copy,
 		Pin,
 		RotateCcw,
+		Share2,
 		Trash2
 	} from '@lucide/svelte';
 	import { onDestroy, onMount } from 'svelte';
@@ -40,6 +42,13 @@
 	let copied = $state(false);
 	let copyTimer: ReturnType<typeof setTimeout> | null = null;
 	let reminderDialogOpen = $state(false);
+	let shareModalOpen = $state(false);
+
+	function handleShare(e: MouseEvent) {
+		e.stopPropagation();
+		closeHaze();
+		shareModalOpen = true;
+	}
 
 	function closeHaze() {
 		hazeActive = false;
@@ -329,6 +338,17 @@
 								<Copy class="h-4 w-4" aria-hidden="true" />
 							{/if}
 						</button>
+						{#if !note.trashed}
+							<button
+								type="button"
+								class="flex h-8 w-8 items-center justify-center rounded-full text-white/90 transition-all hover:scale-105 hover:bg-white/20 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+								title="Share note"
+								aria-label="Share note"
+								onclick={handleShare}
+							>
+								<Share2 class="h-4 w-4" aria-hidden="true" />
+							</button>
+						{/if}
 						<button
 							type="button"
 							class={`flex h-8 w-8 items-center justify-center rounded-full transition-all hover:scale-105 hover:bg-white/20 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 ${note.pinned ? 'text-amber-300' : 'text-white/90'}`}
@@ -395,6 +415,19 @@
 									<Copy class="h-5 w-5" aria-hidden="true" />
 								{/if}
 							</button>
+
+							{#if !note.trashed}
+								<!-- Share -->
+								<button
+									type="button"
+									class="flex h-10 w-10 items-center justify-center rounded-full text-white/90 transition-all hover:scale-105 hover:bg-white/20 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+									title="Share note"
+									aria-label="Share note"
+									onclick={handleShare}
+								>
+									<Share2 class="h-5 w-5" aria-hidden="true" />
+								</button>
+							{/if}
 
 							<!-- Pin -->
 							<button
@@ -489,4 +522,8 @@
 			</Dialog.Positioner>
 		</div>
 	</Dialog.Root>
+{/if}
+
+{#if shareModalOpen}
+	<ShareModal {note} onClose={() => (shareModalOpen = false)} />
 {/if}

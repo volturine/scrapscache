@@ -5,6 +5,7 @@
 	import CanvasEditor from '$lib/components/CanvasEditor.svelte';
 	import PhotoFullscreen from '$lib/components/PhotoFullscreen.svelte';
 	import Tooltip from './Tooltip.svelte';
+	import ShareModal from './ShareModal.svelte';
 	import type { NoteImage } from '$lib/types';
 	import {
 		fileToNoteImage,
@@ -34,6 +35,7 @@
 		Paperclip,
 		PenLine,
 		RotateCcw,
+		Share2,
 		Tag,
 		Trash2,
 		X
@@ -83,6 +85,7 @@
 	let focusedCanvas = $state<NoteImage | null>(null);
 	let attachError = $state('');
 	let filesAwaitingQuality = $state<File[] | null>(null);
+	let shareModalOpen = $state(false);
 
 	const imageAttachments = $derived(images.filter(isImageAttachment));
 	const canvases = $derived(images.filter(isCanvasAttachment));
@@ -613,6 +616,19 @@
 				<Palette class="h-5 w-5" aria-hidden="true" />
 			</button>
 		</Tooltip>
+		{#if noteId && !trashed}
+			<Tooltip content="Share note">
+				<button
+					type="button"
+					class="icon-btn h-10 w-10 p-2 touch-manipulation"
+					title="Share note"
+					aria-label="Share note"
+					onclick={() => (shareModalOpen = true)}
+				>
+					<Share2 class="h-5 w-5" aria-hidden="true" />
+				</button>
+			</Tooltip>
+		{/if}
 		{#if showCopy}
 			<Tooltip content="Copy note">
 				<button
@@ -677,3 +693,10 @@
 		{/if}
 	</div>
 </footer>
+
+{#if shareModalOpen && noteId}
+	{@const currentNote = notesStore.notes.find((n) => n.id === noteId)}
+	{#if currentNote}
+		<ShareModal note={currentNote} onClose={() => (shareModalOpen = false)} />
+	{/if}
+{/if}

@@ -1,6 +1,7 @@
 import { getDb } from '$lib/server/db';
 import { getSyncAuth } from '$lib/server/syncAuth';
 import { getPairingSessions } from '$lib/server/pairingSessions';
+import { getSharedNotes } from '$lib/server/sharedNotes';
 import { pruneRateBuckets } from '$lib/server/rateLimit';
 import { dispatchDueWakes, type WakeDispatchResult } from '$lib/server/wakeDispatch';
 import {
@@ -26,6 +27,7 @@ export async function runCronTick(now = Date.now()): Promise<CronTickResult> {
 	await pruneRateBuckets(db, now);
 	await getSyncAuth().pruneExpired(now);
 	await getPairingSessions().prune(now);
+	await getSharedNotes().pruneExpired(now);
 	return {
 		wakes,
 		retention: retention ?? (await getRetentionStatus(db)),

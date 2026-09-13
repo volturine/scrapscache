@@ -1,12 +1,6 @@
 <script lang="ts" generics="T extends string | number">
-	import {
-		wheelBand as band,
-		wheelViewport as viewport,
-		wheelTrack as track,
-		wheelItem as wheelItemRecipe
-	} from '$panda/styles';
 	import { onMount } from 'svelte';
-	import { css } from 'styled-system/css';
+	import { css, cva } from 'styled-system/css';
 
 	const ITEM_H = 36;
 	const VISIBLE = 5;
@@ -221,6 +215,62 @@
 		if (dragging) return;
 		setValue(item.value);
 	}
+
+	const band = css({
+		pointerEvents: 'none',
+		position: 'absolute',
+		insetX: 0,
+		top: '50%',
+		zIndex: 0,
+		h: '2.25rem',
+		transform: 'translateY(-50%)',
+		rounded: 'card',
+		bg: 'scrapscache.bg'
+	});
+	const viewport = css({
+		position: 'absolute',
+		inset: 0,
+		zIndex: 10,
+		overflow: 'hidden',
+		outline: 'none',
+		touchAction: 'none',
+		userSelect: 'none',
+		WebkitUserSelect: 'none',
+		WebkitMaskImage:
+			'linear-gradient(to bottom, transparent 0%, #000 28%, #000 72%, transparent 100%)',
+		maskImage: 'linear-gradient(to bottom, transparent 0%, #000 28%, #000 72%, transparent 100%)'
+	});
+	const track = css({ willChange: 'transform' });
+
+	const wheelItemRecipe = cva({
+		base: {
+			display: 'flex',
+			cursor: 'pointer',
+			alignItems: 'center',
+			justifyContent: 'center',
+			fontVariantNumeric: 'tabular-nums'
+		},
+		variants: {
+			distance: {
+				center: {
+					textStyle: 'subtitleStrong',
+					color: 'scrapscache.text'
+				},
+				adjacent: {
+					textStyle: 'button',
+					color: 'scrapscache.textMuted'
+				},
+				far: {
+					fontSize: 'body',
+					color: 'scrapscache.textMuted',
+					opacity: 0.4
+				}
+			}
+		},
+		defaultVariants: {
+			distance: 'far'
+		}
+	});
 </script>
 
 <div class={`${css({ position: 'relative' })} ${className}`} style="height: {ITEM_H * VISIBLE}px">

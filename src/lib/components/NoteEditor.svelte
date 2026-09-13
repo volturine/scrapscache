@@ -1,19 +1,5 @@
 <script lang="ts">
-	import {
-		noteEditorOverlay as overlay,
-		noteEditorSheetWrap as sheetWrap,
-		noteEditorSheetBox as sheetBox,
-		noteEditorDialogSurface as dialogSurface,
-		noteEditorHeader as header,
-		noteEditorScroller as scroller,
-		noteEditorTitleStyles as titleStyles,
-		noteEditorFileDropHint as fileDropHint,
-		noteEditorSubDialogBackdrop as subDialogBackdrop,
-		noteEditorPopupContent as popupContent,
-		noteEditorReminderButton as reminderButton,
-		noteEditorReminderTone as reminderTone
-	} from '$panda/styles';
-	import { cx } from 'styled-system/css';
+	import { css, cva, cx } from 'styled-system/css';
 	import { dialog, iconButton, input, noteSurface } from 'styled-system/recipes';
 	import { flex, hstack, spacer } from 'styled-system/patterns';
 	import { Dialog } from '@ark-ui/svelte/dialog';
@@ -487,6 +473,89 @@
 			}
 		};
 	}
+
+	const overlay = css({ position: 'fixed', inset: 0, zIndex: 50 });
+	const sheetWrap = css({
+		position: 'absolute',
+		inset: 0,
+		display: 'flex',
+		alignItems: { base: 'flex-start', md: 'center' },
+		justifyContent: 'center',
+		px: 'lg',
+		pb: 'var(--app-sheet-pad-bottom)'
+	});
+	const sheetBox = css({
+		h: { base: 'full', md: '72%' },
+		maxH: 'full',
+		minH: 0,
+		w: 'full',
+		maxW: '2xl',
+		rounded: 'sheet',
+		boxShadow: 'noteSheet'
+	});
+	const dialogSurface = css({
+		position: 'relative',
+		display: 'flex',
+		h: 'full',
+		w: 'full',
+		flexDirection: 'column',
+		overflow: 'hidden',
+		rounded: 'sheet'
+	});
+	const header = css({
+		display: 'flex',
+		flexShrink: 0,
+		alignItems: 'center',
+		gap: 'sm',
+		borderBottomWidth: 'hairline',
+		borderColor: 'scrapscache.borderFaint',
+		px: 'sm',
+		py: 'sm'
+	});
+	const scroller = css({
+		minH: 0,
+		flex: '1',
+		touchAction: 'pan-y',
+		overflowY: 'auto',
+		overflowX: 'hidden',
+		overscrollBehavior: 'contain',
+		px: '2xl',
+		pt: 'lg',
+		pb: 'md'
+	});
+	const titleStyles = css({
+		mb: 'md',
+		display: 'block',
+		w: 'full',
+		resize: 'none',
+		overflow: 'hidden',
+		wordBreak: 'break-word',
+		p: 0,
+		textStyle: 'editorTitle',
+		_placeholder: { color: 'scrapscache.textMuted' },
+		fieldSizing: 'content',
+		transition: 'none'
+	});
+	const fileDropHint = css({
+		pointerEvents: 'none',
+		position: 'absolute',
+		inset: 0,
+		zIndex: 20,
+		display: 'grid',
+		placeItems: 'center',
+		rounded: 'sheet',
+		borderWidth: 'strong',
+		borderStyle: 'dashed',
+		borderColor: 'scrapscache.accent',
+		bg: 'scrapscache.accentSubtle'
+	});
+	const subDialogBackdrop = css({
+		bg: 'scrapscache.backdropSoft',
+		backdropFilter: 'none',
+		zIndex: 60
+	});
+	const popupContent = css({ outline: 'none' });
+	const reminderButton = css({ minW: 0 });
 	const editorDialogClass = $derived(
 		cx(
 			dialogSurface,
@@ -494,6 +563,14 @@
 			paletteOpen || labelOpen ? 'editor-caret-hidden' : undefined
 		)
 	);
+	const reminderTone = cva({
+		variants: {
+			tone: {
+				overdue: { color: 'scrapscache.overdue' },
+				active: { color: 'scrapscache.accent' }
+			}
+		}
+	});
 	const titleField = cx(input({ variant: 'unstyled' }), titleStyles);
 	const subDialog = dialog({ size: 'sm' });
 	const dialogBackdrop = cx(subDialog.backdrop, subDialogBackdrop);

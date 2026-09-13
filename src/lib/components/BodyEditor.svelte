@@ -1,8 +1,4 @@
 <script lang="ts">
-	import {
-		bodyEditorTaskShell as taskShell,
-		bodyEditorAddSubtaskBtn as addSubtaskBtn
-	} from '$panda/styles';
 	import { flushSync, tick } from 'svelte';
 	import {
 		adjustTextIndent,
@@ -16,7 +12,7 @@
 		toggleCheckEntries
 	} from '$lib/checklistBody';
 	import { revealEditorField } from '$lib/editorVisibility';
-	import { css } from 'styled-system/css';
+	import { css, cva, cx } from 'styled-system/css';
 	import { checklist, noteBody } from 'styled-system/recipes';
 
 	const MAX_TASK_INDENT = 1;
@@ -1075,7 +1071,68 @@
 	const focusedGroupIds = $derived(new Set(focusedGroupRows.map(({ line }) => line.id)));
 	const focusedGroupLastId = $derived(focusedGroupRows.at(-1)?.line.id ?? null);
 
-	const editor = noteBody({ mode: 'editor' });
+	const bodyStyles = noteBody();
+	const editor = {
+		...bodyStyles,
+		container: cx(
+			bodyStyles.container,
+			css({ display: 'block', w: 'full', minW: 0, lineHeight: 'relaxed', outline: 'none' })
+		),
+		row: cx(bodyStyles.row, css({ flexWrap: 'wrap' })),
+		line: css({
+			display: 'block',
+			whiteSpace: 'pre-wrap',
+			outline: 'none',
+			'&[data-placeholder]:empty::before': {
+				content: 'attr(data-placeholder)',
+				color: 'scrapscache.textMuted',
+				pointerEvents: 'none'
+			}
+		})
+	};
+
+	const taskShell = cva({
+		variants: {
+			focused: {
+				true: { bg: 'scrapscache.surfaceSubtle' }
+			},
+			root: {
+				true: { mt: '3xs', borderTopRadius: 'card', pt: '2xs' }
+			},
+			last: {
+				true: { mb: '3xs', borderBottomRadius: 'card', pb: '2xs' }
+			}
+		}
+	});
+
+	const addSubtaskBtn = cva({
+		base: {
+			display: 'flex',
+			flexBasis: 'full',
+			userSelect: 'none',
+			alignItems: 'center',
+			rounded: 'compact',
+			py: '2xs',
+			textAlign: 'left',
+			textStyle: 'label',
+			color: 'scrapscache.textMuted',
+			cursor: 'pointer',
+			transition: 'colors 120ms ease',
+			touchAction: 'manipulation',
+			minH: { base: '32px', sm: 0 },
+			_hoverable: {
+				bg: 'scrapscache.interactiveHover',
+				color: 'scrapscache.text'
+			}
+		},
+		variants: {
+			indented: {
+				true: { pl: '2xs' },
+				false: { pl: '2xl' }
+			}
+		},
+		defaultVariants: { indented: false }
+	});
 
 	function taskShellClass(line: Line): string {
 		if (!focusedGroupIds.has(line.id)) return '';
@@ -1166,7 +1223,8 @@
 					: undefined}
 				class={[
 					css({ minH: '1lh' }),
-					noteBody({ mode: 'editor', checked: line.checked, indented: line.indent > 0 }).line
+					editor.line,
+					noteBody({ checked: line.checked, indented: line.indent > 0 }).line
 				]}
 			></span>
 			{#if line.id === focusedGroupLastId}

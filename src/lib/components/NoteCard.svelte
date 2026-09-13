@@ -1,9 +1,5 @@
 <script lang="ts">
-	import {
-		noteCardHazeGroup as hazeGroup,
-		noteCardSuccessIcon as successIcon
-	} from '$panda/styles';
-	import { css, cx } from 'styled-system/css';
+	import { css, cva, cx } from 'styled-system/css';
 	import { badge, iconButton, noteCard, noteSurface } from 'styled-system/recipes';
 	import { flex } from 'styled-system/patterns';
 	import { notesStore } from '$lib/stores/notes.svelte';
@@ -194,6 +190,22 @@
 	onDestroy(() => swipe.dispose());
 
 	const card = $derived(noteCard({ pinned: note.pinned, trashed: note.trashed }));
+
+	const hazeGroup = cva({
+		base: {
+			display: 'flex',
+			alignItems: 'center',
+			filter: 'drop-shadow(0 4px 3px rgb(0 0 0 / 0.07))'
+		},
+		variants: {
+			layout: {
+				compact: { justifyContent: 'center', gap: 'xs' },
+				column: { flexDirection: 'column', gap: 'list' },
+				row: { justifyContent: 'center', gap: 'list' }
+			}
+		}
+	});
+	const successIcon = css({ color: 'scrapscache.success' });
 </script>
 
 <svelte:window

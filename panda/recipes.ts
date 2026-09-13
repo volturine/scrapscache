@@ -2,7 +2,6 @@ import { defineRecipe, defineSlotRecipe } from '@pandacss/dev';
 
 const textRecipe = defineRecipe({
 	className: 'scrapscache-text',
-	description: 'Shared semantic typography roles',
 	base: { fontFamily: 'sans' },
 	variants: {
 		style: {
@@ -30,7 +29,6 @@ const mediaHazeButton = (color: string) => ({
 
 const menuItemRecipe = defineRecipe({
 	className: 'scrapscache-menu-item',
-	description: 'Shared interactive row treatment for menus and navigation',
 	base: {
 		display: 'flex',
 		w: 'full',
@@ -70,7 +68,6 @@ const menuItemRecipe = defineRecipe({
 
 const buttonRecipe = defineRecipe({
 	className: 'scrapscache-btn',
-	description: 'Interactive button component with variants and sizes',
 	base: {
 		display: 'inline-flex',
 		alignItems: 'center',
@@ -204,7 +201,6 @@ const buttonRecipe = defineRecipe({
 
 const iconButtonRecipe = defineRecipe({
 	className: 'scrapscache-icon-btn',
-	description: 'Circular icon button with states and hover effects',
 	base: {
 		display: 'inline-flex',
 		alignItems: 'center',
@@ -287,7 +283,6 @@ const iconButtonRecipe = defineRecipe({
 
 const inputRecipe = defineRecipe({
 	className: 'scrapscache-input',
-	description: 'Text input recipe with variants and sizes',
 	base: {
 		minW: 0,
 		fontFamily: 'sans',
@@ -327,7 +322,6 @@ const inputRecipe = defineRecipe({
 
 const badgeRecipe = defineRecipe({
 	className: 'scrapscache-badge',
-	description: 'Badge and pill element recipe',
 	base: {
 		display: 'inline-flex',
 		alignItems: 'center',
@@ -355,7 +349,6 @@ const badgeRecipe = defineRecipe({
 
 const noteSurfaceRecipe = defineRecipe({
 	className: 'scrapscache-note-surface',
-	description: 'Canonical note background colors for cards, editors, and palette swatches',
 	variants: {
 		color: {
 			default: { bg: 'note.default' },
@@ -376,7 +369,6 @@ const noteSurfaceRecipe = defineRecipe({
 
 const noteCardRecipe = defineSlotRecipe({
 	className: 'scrapscache-card',
-	description: 'Slot recipe for NoteCard components',
 	slots: [
 		'cardOuter',
 		'swipeRestore',
@@ -497,7 +489,6 @@ const noteCardRecipe = defineSlotRecipe({
 
 const checklistRecipe = defineSlotRecipe({
 	className: 'scrapscache-checklist',
-	description: 'Shared checklist control for note display and editing',
 	slots: ['root', 'mark'],
 	base: {
 		root: {
@@ -551,7 +542,6 @@ const checklistRecipe = defineSlotRecipe({
 
 const noteBodyRecipe = defineSlotRecipe({
 	className: 'scrapscache-note-body',
-	description: 'Shared note text, list row, and checklist layout',
 	slots: ['container', 'row', 'line', 'check', 'bullet', 'paragraph', 'spacer', 'addSubtask'],
 	base: {
 		container: { textStyle: 'body', color: 'scrapscache.text' },
@@ -569,28 +559,6 @@ const noteBodyRecipe = defineSlotRecipe({
 		addSubtask: { '&::before': { content: '"+  Add sub-task"' } }
 	},
 	variants: {
-		mode: {
-			editor: {
-				container: {
-					display: 'block',
-					w: 'full',
-					minW: 0,
-					lineHeight: 'relaxed',
-					outline: 'none'
-				},
-				row: { flexWrap: 'wrap' },
-				line: {
-					display: 'block',
-					whiteSpace: 'pre-wrap',
-					outline: 'none',
-					'&[data-placeholder]:empty::before': {
-						content: 'attr(data-placeholder)',
-						color: 'scrapscache.textMuted',
-						pointerEvents: 'none'
-					}
-				}
-			}
-		},
 		checked: {
 			true: { line: { textDecoration: 'line-through', opacity: 0.5 } }
 		},
@@ -602,7 +570,6 @@ const noteBodyRecipe = defineSlotRecipe({
 
 const choiceCardRecipe = defineSlotRecipe({
 	className: 'scrapscache-choice-card',
-	description: 'Shared selectable option card treatment',
 	slots: ['root', 'title', 'description', 'footer'],
 	base: {
 		root: {
@@ -637,17 +604,12 @@ const choiceCardRecipe = defineSlotRecipe({
 			}
 		},
 		danger: { true: { title: { color: 'scrapscache.danger' } } },
-		compact: { true: { root: { minH: '0', px: 'lg', py: 'md' } } },
-		kind: {
-			compressed: { description: { opacity: 0.85 } },
-			hd: { description: { color: 'scrapscache.textMuted' } }
-		}
+		compact: { true: { root: { minH: '0', px: 'lg', py: 'md' } } }
 	}
 });
 
 const dialogRecipe = defineSlotRecipe({
 	className: 'scrapscache-dialog-recipe',
-	description: 'Slot recipe for modal dialogs and alert dialogs',
 	slots: [
 		'portal',
 		'backdrop',

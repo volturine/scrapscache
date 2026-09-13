@@ -1,31 +1,9 @@
 <script lang="ts">
-	import {
-		workspaceRow as row,
-		workspaceActions as actions,
-		workspaceTile as tile,
-		workspaceTileUnlink as tileUnlink,
-		workspaceTileLabel as tileLabel,
-		workspaceFrontBase as frontBase,
-		workspaceFrontActive as frontActive,
-		workspaceSelect as select,
-		workspacePanel as panel,
-		workspaceGlyph as glyph,
-		workspaceBody as body,
-		workspaceNameText as nameText,
-		workspaceCaptionText as captionText,
-		workspaceNameField as nameField,
-		workspacePanelActions as panelActions,
-		workspaceIconButton as iconButton,
-		workspaceConfirmText as confirmText,
-		workspaceDesktopCaption as desktopCaption,
-		workspaceMobileCaption as mobileCaption,
-		workspaceSuccessIconButton as successIconButton,
-		workspacePanelBtn as panelBtn
-	} from '$panda/styles';
 	import type { Snippet } from 'svelte';
 	import { Check, CloudOff, Pencil, TriangleAlert, X } from '@lucide/svelte';
-	import { cx } from 'styled-system/css';
+	import { css, cva, cx } from 'styled-system/css';
 	import { input as inputRecipe } from 'styled-system/recipes';
+	import { truncate } from '$panda/styles';
 
 	let {
 		name,
@@ -251,8 +229,190 @@
 		if (mode === 'idle') settle(false);
 		else cancel();
 	}
+
+	const row = css({
+		position: 'relative',
+		rounded: 'row',
+		overflow: { base: 'hidden', sm: 'visible' },
+		'& button:disabled': { opacity: 0.55 },
+		'&:hover .actions, &:focus-within .actions': {
+			opacity: { sm: 1 },
+			pointerEvents: { sm: 'auto' }
+		},
+		'&.editing .actions': { display: 'none' },
+		'&:not(.dragging) .front': {
+			transition: {
+				base: 'transform 260ms cubic-bezier(0.22, 1, 0.36, 1)',
+				_motionReduce: 'none'
+			}
+		},
+		'&:not(.dragging):has(.actions :focus-visible) .front': {
+			transform: { base: 'translateX(-152px)' }
+		},
+		'&.editing .front': { bg: 'scrapscache.interactiveHover' },
+		'@media (hover: hover)': { '&:hover .front': { bg: 'scrapscache.interactiveHover' } },
+		'&:not(.dragging) .actions': {
+			transition: { base: 'width 260ms cubic-bezier(0.22, 1, 0.36, 1)' }
+		},
+		'&.armed .tile-unlink': {
+			bg: { base: 'scrapscache.danger' },
+			color: { base: 'scrapscache.dangerForeground' }
+		},
+		'&.armed .tile:not(.tile-unlink)': { opacity: { base: 0 } }
+	});
+	const actions = css({
+		position: 'absolute',
+		inset: '0 0 0 auto',
+		zIndex: { base: 0, sm: 2 },
+		display: 'flex',
+		alignItems: 'center',
+		gap: '3xs',
+		pr: { base: 0, sm: 'sm' },
+		w: { base: 'max(0px, calc(-1 * var(--swipe-offset)))', sm: 'auto' },
+		justifyContent: { base: 'flex-end' },
+		overflow: { base: 'hidden' },
+		borderTopRightRadius: { base: 'row' },
+		borderBottomRightRadius: { base: 'row' },
+		opacity: { base: 1, sm: 0 },
+		pointerEvents: { base: 'auto', sm: 'none' }
+	});
+	const tile = css({
+		display: { base: 'flex', sm: 'grid' },
+		w: { base: '76px', sm: '30px' },
+		h: { base: 'auto', sm: '30px' },
+		placeItems: 'center',
+		flexDirection: { base: 'column' },
+		alignItems: { base: 'center' },
+		justifyContent: { base: 'center' },
+		gap: { base: '2xs' },
+		flexShrink: 0,
+		alignSelf: { base: 'stretch' },
+		rounded: { base: '0', sm: 'action' },
+		fontSize: { base: 'label' },
+		color: { base: 'scrapscache.text', sm: 'scrapscache.textMuted' },
+		_hoverable: {
+			bg: { base: 'transparent', sm: 'scrapscache.interactiveHover' },
+			color: { sm: 'scrapscache.text' }
+		},
+		'& svg': { transform: { base: 'scale(calc(0.8 + 0.2 * var(--swipe-progress)))' } }
+	});
+	const tileUnlink = css({
+		flex: { base: '1 0 76px' },
+		color: { base: 'scrapscache.danger', sm: 'scrapscache.textMuted' },
+		_hoverable: { color: { sm: 'scrapscache.danger' } }
+	});
+	const tileLabel = css({ display: { base: 'block', sm: 'none' } });
+	const frontBase = css({
+		position: 'relative',
+		zIndex: 1,
+		display: 'flex',
+		alignItems: 'stretch',
+		rounded: 'row',
+		bg: 'scrapscache.surface',
+		transform: { base: 'translateX(var(--swipe-offset))' }
+	});
+	const frontActive = cva({
+		variants: {
+			active: {
+				true: {
+					bg: 'scrapscache.interactiveHover',
+					'&::before': {
+						content: '""',
+						position: 'absolute',
+						top: 'list',
+						bottom: 'list',
+						left: 0,
+						w: '3px',
+						borderTopRightRadius: 'marker',
+						borderBottomRightRadius: 'marker',
+						bg: 'scrapscache.accent'
+					}
+				}
+			}
+		}
+	});
 	const front = $derived(cx(frontBase, frontActive({ active })));
+	const select = css({
+		display: 'flex',
+		flex: '1',
+		alignItems: 'center',
+		gap: 'md',
+		minW: 0,
+		py: 'md',
+		pl: 'md',
+		pr: { base: 'md', sm: '76px' },
+		textAlign: 'left',
+		textStyle: 'body',
+		touchAction: 'pan-y'
+	});
+	const panel = css({
+		display: 'flex',
+		flex: '1',
+		alignItems: 'center',
+		gap: 'md',
+		minW: 0,
+		p: 'md',
+		textAlign: 'left',
+		textStyle: 'body',
+		'&.confirm': {
+			bg: 'scrapscache.dangerSubtle',
+			rounded: 'row',
+			flexWrap: { base: 'wrap' },
+			'& .panel-glyph': { color: 'scrapscache.danger' },
+			'& .panel-actions': { w: { base: '100%' }, justifyContent: { base: 'flex-end' } }
+		}
+	});
+	const glyph = css({
+		display: 'grid',
+		flexShrink: 0,
+		placeItems: 'center',
+		color: 'scrapscache.textMuted'
+	});
+	const body = css({ minW: 0, flex: '1' });
+	const nameText = css({
+		display: 'block'
+	});
+	const captionText = css({
+		display: 'block',
+		mt: '3xs',
+		color: 'scrapscache.textMuted',
+		textStyle: 'caption'
+	});
+	const nameField = css({ w: 'full', font: 'inherit' });
+	const panelActions = css({ display: 'flex', alignItems: 'center', gap: 'xs', flexShrink: 0 });
+	const iconButton = css({
+		display: 'grid',
+		w: '30px',
+		h: '30px',
+		placeItems: 'center',
+		rounded: 'action',
+		color: 'scrapscache.textMuted',
+		_hoverable: { bg: 'scrapscache.interactiveHover', color: 'scrapscache.text' }
+	});
+	const confirmText = css({ fontSize: 'compact' });
+	const desktopCaption = css({ display: { base: 'none', sm: 'inline' } });
+	const mobileCaption = css({ display: { base: 'inline', sm: 'none' } });
+	const successIconButton = css({ color: 'scrapscache.success' });
 	const nameFieldClass = $derived(cx(inputRecipe({ variant: 'outline', size: 'sm' }), nameField));
+	const panelBtn = cva({
+		base: {
+			py: 'action',
+			px: 'md',
+			rounded: 'action',
+			fontSize: 'compact',
+			whiteSpace: 'nowrap'
+		},
+		variants: {
+			tone: {
+				neutral: { _hoverable: { bg: 'scrapscache.interactiveHover' } },
+				danger: {
+					bg: 'scrapscache.danger',
+					color: 'scrapscache.dangerForeground',
+					fontWeight: 'interactive'
+				}
+			}
+		}
+	});
 </script>
 
 <svelte:document
@@ -385,7 +545,7 @@
 			>
 				<span class={glyph} aria-hidden="true">{@render icon()}</span>
 				<span class={body}>
-					<span class={nameText}>{name}</span>
+					<span class={cx(nameText, truncate)}>{name}</span>
 					<span class={captionText}>{caption}</span>
 				</span>
 			</button>

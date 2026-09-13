@@ -1,18 +1,11 @@
 <script lang="ts">
-	import {
-		reminderSettingsRow as row,
-		reminderSettingsIcon as icon,
-		reminderSettingsLabel as label,
-		reminderSettingsStatus as status,
-		reminderSettingsChevron as chevron
-	} from '$panda/styles';
 	import { onMount } from 'svelte';
 	import { Bell, ChevronRight } from '@lucide/svelte';
 	import { notificationPermission, requestReminderPermission } from '$lib/reminderNotify';
 	import { registerReminderDevice } from '$lib/reminderWake';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { reminderStore } from '$lib/stores/reminders.svelte';
-	import { css } from 'styled-system/css';
+	import { css, cva } from 'styled-system/css';
 
 	let permission = $state(notificationPermission());
 
@@ -33,6 +26,32 @@
 		if (permission !== 'granted') return;
 		if (await registerReminderDevice()) reminderStore.publish(notesStore.notes);
 	}
+
+	const row = cva({
+		base: {
+			display: 'flex',
+			h: '2rem',
+			alignItems: 'center',
+			gap: 'list',
+			px: 'md'
+		},
+		variants: {
+			interactive: {
+				true: {
+					w: 'full',
+					textAlign: 'left',
+					cursor: 'pointer',
+					_hoverable: {
+						bg: 'scrapscache.interactiveHover'
+					}
+				}
+			}
+		}
+	});
+	const icon = css({ w: '1rem', h: '1rem', flexShrink: 0, color: 'scrapscache.text' });
+	const label = css({ minW: 0, flex: '1', textStyle: 'button', color: 'scrapscache.text' });
+	const status = css({ flexShrink: 0, textStyle: 'captionStrong', color: 'scrapscache.textMuted' });
+	const chevron = css({ w: '1rem', h: '1rem', flexShrink: 0, color: 'scrapscache.textMuted' });
 </script>
 
 <section

@@ -234,6 +234,7 @@ export function normalizeBackup(data: unknown): ScrapsCacheBackup | null {
 				pinned: Boolean(note.pinned),
 				archived: Boolean(note.archived),
 				trashed: Boolean(note.trashed),
+				...(note.secret ? { secret: true } : {}),
 				trashedAt: note.trashedAt == null ? null : Number(note.trashedAt),
 				createdAt: Number(note.createdAt) || 0,
 				updatedAt: Number(note.updatedAt) || 0,

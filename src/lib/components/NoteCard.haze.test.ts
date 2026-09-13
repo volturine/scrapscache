@@ -151,4 +151,38 @@ describe('NoteCard right-click haze', () => {
 		expect(document.querySelector('[data-card-haze]')).toBeNull();
 		expect(onOpen).not.toHaveBeenCalled();
 	});
+
+	it('restores the note from the haze restore button when trashed', async () => {
+		const restoreSpy = vi.spyOn(notesStore, 'restoreNote').mockImplementation(() => {});
+		render(NoteCard, { props: { note: note({ trashed: true }), onOpen: vi.fn() } });
+
+		await fireEvent.contextMenu(card());
+		const restoreBtn = screen.getByRole('button', { name: 'Restore note' });
+		expect(restoreBtn).toBeTruthy();
+		expect(restoreBtn.getAttribute('title')).toBe('Restore');
+		await fireEvent.click(restoreBtn);
+
+		expect(restoreSpy).toHaveBeenCalledWith('note-1');
+		expect(document.querySelector('[data-card-haze]')).toBeNull();
+	});
+
+	it('restores the note from the haze restore button when archived', async () => {
+		const archiveSpy = vi.spyOn(notesStore, 'toggleArchive').mockImplementation(() => {});
+		render(NoteCard, { props: { note: note({ archived: true }), onOpen: vi.fn() } });
+
+		await fireEvent.contextMenu(card());
+		const restoreBtn = screen.getByRole('button', { name: 'Restore note' });
+		expect(restoreBtn).toBeTruthy();
+		expect(restoreBtn.getAttribute('title')).toBe('Restore');
+		await fireEvent.click(restoreBtn);
+
+		expect(archiveSpy).toHaveBeenCalledWith('note-1');
+		expect(document.querySelector('[data-card-haze]')).toBeNull();
+	});
+
+	it('renders hazy with secret overlay for a secret note in gallery view', () => {
+		render(NoteCard, { props: { note: note({ secret: true }), onOpen: vi.fn() } });
+		expect(document.querySelector('[data-secret-overlay]')).toBeTruthy();
+		expect(document.querySelector('.blur-sm')).toBeTruthy();
+	});
 });

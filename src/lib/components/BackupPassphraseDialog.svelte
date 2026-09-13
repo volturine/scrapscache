@@ -45,7 +45,7 @@
 
 	const d = dialog({ size: 'sm', presentation: 'appOverlay' });
 
-	const backupDialog = sva({
+	const styles = sva({
 		slots: ['eyebrow', 'description', 'form', 'label', 'fieldLabel', 'field', 'footer'],
 		base: {
 			eyebrow: {
@@ -67,8 +67,7 @@
 			field: { w: 'full', py: 'list', fontSize: 'subtitle' },
 			footer: { gap: 'sm', pt: '2xs' }
 		}
-	});
-	const styles = backupDialog();
+	})();
 	const passphraseField = cx(input({ variant: 'outline', size: 'md' }), styles.field);
 </script>
 

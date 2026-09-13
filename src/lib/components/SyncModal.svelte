@@ -442,7 +442,7 @@
 
 	const d = dialog({ size: 'md', presentation: 'centeredOverlay' });
 
-	const syncUi = sva({
+	const ui = sva({
 		slots: [
 			'workspaceList',
 			'workspaceRow',
@@ -563,8 +563,7 @@
 			},
 			timer: { fontVariantNumeric: 'tabular-nums', color: 'scrapscache.text' }
 		}
-	});
-	const ui = syncUi();
+	})();
 	const meter = progressMeter({ size: 'compact' });
 	const syncMuted = text({ style: 'bodyMuted' });
 	const syncMutedBody = cx(text({ style: 'bodyMuted' }), css({ lineHeight: 'relaxed' }));

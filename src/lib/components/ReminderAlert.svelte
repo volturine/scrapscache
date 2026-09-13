@@ -8,7 +8,7 @@
 
 	const alerts = $derived(reminderStore.alerts);
 
-	const alertSva = sva({
+	const slot = sva({
 		slots: ['root', 'card', 'icon', 'content', 'title', 'subtitle', 'dismissIcon'],
 		base: {
 			root: {
@@ -62,9 +62,7 @@
 			},
 			dismissIcon: { w: '1rem', h: '1rem' }
 		}
-	});
-
-	const slot = alertSva();
+	})();
 </script>
 
 {#if alerts.length > 0}

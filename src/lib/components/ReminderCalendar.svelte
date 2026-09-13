@@ -96,7 +96,7 @@
 		selected = { from: key, to: key };
 	}
 
-	const calendar = sva({
+	const styles = sva({
 		slots: ['root', 'picker', 'dayDot', 'footerButton', 'status'],
 		base: {
 			root: {
@@ -137,8 +137,7 @@
 				color: 'scrapscache.textMuted'
 			}
 		}
-	});
-	const styles = calendar();
+	})();
 	const footerBtnClass = cx(button({ variant: 'ghost' }), styles.footerButton);
 </script>
 

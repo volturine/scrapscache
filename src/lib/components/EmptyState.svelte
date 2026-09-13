@@ -13,7 +13,7 @@
 	};
 
 	let { icon: Icon, description, actionLabel, onAction, href }: Props = $props();
-	const emptyState = sva({
+	const classes = sva({
 		slots: ['root', 'description', 'action'],
 		base: {
 			root: {
@@ -45,8 +45,7 @@
 				_hoverable: { bg: 'scrapscache.borderFaint' }
 			}
 		}
-	});
-	const classes = emptyState();
+	})();
 </script>
 
 <div class={cx(notesShell(), classes.root)}>

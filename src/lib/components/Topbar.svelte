@@ -167,7 +167,7 @@
 		}
 	}
 
-	const topbar = sva({
+	const topbarStyles = sva({
 		slots: ['searchInput', 'clearButton', 'searchIcon', 'syncIcon'],
 		base: {
 			searchInput: {
@@ -188,8 +188,7 @@
 			searchIcon: { color: 'scrapscache.textMuted' },
 			syncIcon: { display: 'block' }
 		}
-	});
-	const topbarStyles = topbar();
+	})();
 	const clearButton = cx(iconButton({ variant: 'ghost', size: 'xs' }), topbarStyles.clearButton);
 	const syncTone = cva({
 		variants: {
@@ -209,7 +208,7 @@
 			}
 		}
 	});
-	const settingsMenu = sva({
+	const menu = sva({
 		slots: ['positioner', 'popover', 'separator', 'alert'],
 		base: {
 			positioner: { zIndex: 30 },
@@ -217,8 +216,7 @@
 			separator: { borderTopWidth: 'hairline', borderColor: 'scrapscache.border' },
 			alert: { px: 'md', pb: 'sm', textStyle: 'label', color: 'scrapscache.danger' }
 		}
-	});
-	const menu = settingsMenu();
+	})();
 	const menuItemClass = menuItem({ density: 'compact' });
 	const progressStyles = progressMeter();
 </script>

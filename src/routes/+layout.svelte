@@ -175,7 +175,7 @@
 		uiStore.sidebarOpen = false;
 	}
 
-	const shellSva = sva({
+	const shell = sva({
 		slots: [
 			'shell',
 			'drawerBackdrop',
@@ -226,8 +226,7 @@
 				pb: { base: '5rem', md: '2xl' }
 			}
 		}
-	});
-	const shell = shellSva();
+	})();
 </script>
 
 <svelte:head>

@@ -96,7 +96,7 @@
 
 	// One row treatment shared by the checkbox rows and the create button; the
 	// create button tints itself with the accent color on top.
-	const itemSva = sva({
+	const item = sva({
 		slots: [
 			'iconBox',
 			'icon',
@@ -168,8 +168,7 @@
 				color: 'scrapscache.textMuted'
 			}
 		}
-	});
-	const item = itemSva();
+	})();
 	const menuRow = menuItem({ density: 'comfortable' });
 </script>
 

@@ -474,7 +474,7 @@
 		};
 	}
 
-	const editorSheetSva = sva({
+	const sheet = sva({
 		slots: [
 			'overlay',
 			'sheetWrap',
@@ -572,8 +572,7 @@
 			popupContent: { outline: 'none' },
 			reminderButton: { minW: 0 }
 		}
-	});
-	const sheet = editorSheetSva();
+	})();
 	const editorDialogClass = $derived(
 		cx(
 			sheet.dialog,

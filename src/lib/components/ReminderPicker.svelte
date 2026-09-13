@@ -167,7 +167,7 @@
 	}
 
 	const d = dialog({ size: 'sm' });
-	const picker = sva({
+	const pickerStyles = sva({
 		slots: [
 			'panel',
 			'title',
@@ -247,8 +247,7 @@
 			secondaryButton: { minW: '5.5rem' },
 			primaryButton: { minW: '5.5rem', ml: 'auto' }
 		}
-	});
-	const pickerStyles = picker();
+	})();
 
 	const badgeChip = cva({
 		base: {

@@ -91,7 +91,7 @@
 
 	const headerBtn = iconButton({ variant: 'ghost', size: 'standard' });
 
-	const media = sva({
+	const ms = sva({
 		slots: ['text', 'audioBox', 'audio', 'videoBox', 'video', 'pdf', 'backIcon', 'downloadIcon'],
 		base: {
 			text: {
@@ -121,8 +121,7 @@
 			backIcon: { h: '1.5rem', w: '1.5rem' },
 			downloadIcon: { h: '1.25rem', w: '1.25rem' }
 		}
-	});
-	const ms = media();
+	})();
 </script>
 
 <svelte:window onkeydown={attachment ? onKeydown : undefined} />

@@ -49,7 +49,7 @@
 		}
 	});
 
-	const settingsSva = sva({
+	const s = sva({
 		slots: ['section', 'icon', 'label', 'status', 'chevron'],
 		base: {
 			section: {
@@ -80,9 +80,7 @@
 				color: 'scrapscache.textMuted'
 			}
 		}
-	});
-
-	const s = settingsSva();
+	})();
 </script>
 
 <section class={s.section} aria-label="Notifications">

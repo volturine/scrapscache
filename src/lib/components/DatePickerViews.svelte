@@ -26,7 +26,7 @@
 
 	const navBtn = iconButton({ variant: 'ghost', size: 'xs' });
 
-	const datePickerView = sva({
+	const styles = sva({
 		slots: ['panel', 'viewControl', 'viewButton', 'table', 'weekHeader', 'weekRow', 'dayCell'],
 		base: {
 			panel: {
@@ -81,8 +81,7 @@
 				'&:has([data-range-end])': { _before: { right: '50%' } }
 			}
 		}
-	});
-	const styles = datePickerView();
+	})();
 
 	const gridBtn = cva({
 		base: {

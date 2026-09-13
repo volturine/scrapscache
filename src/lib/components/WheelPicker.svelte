@@ -216,7 +216,7 @@
 		setValue(item.value);
 	}
 
-	const wheelChrome = sva({
+	const wc = sva({
 		slots: ['root', 'band', 'viewport', 'track'],
 		base: {
 			root: { position: 'relative' },
@@ -247,8 +247,7 @@
 			},
 			track: { willChange: 'transform' }
 		}
-	});
-	const wc = wheelChrome();
+	})();
 
 	const wheelItemRecipe = cva({
 		base: {

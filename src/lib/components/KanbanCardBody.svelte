@@ -20,7 +20,7 @@
 	// The board card keeps its own box (16px radius, no max height) and a fixed
 	// scroll window; the shared noteCard recipe covers the pieces that match.
 	const card = noteCard();
-	const kanbanCard = sva({
+	const styles = sva({
 		slots: ['root', 'viewport', 'content', 'reminder'],
 		base: {
 			root: {
@@ -36,8 +36,7 @@
 			content: { p: 'md' },
 			reminder: { mb: '2xs' }
 		}
-	});
-	const styles = kanbanCard();
+	})();
 </script>
 
 <div class={cx('kanban-card', noteSurface({ color: note.color }), styles.root)}>

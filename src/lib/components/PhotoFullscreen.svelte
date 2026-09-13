@@ -471,7 +471,7 @@
 		defaultVariants: { shape: 'corner' }
 	});
 
-	const viewerSva = sva({
+	const viewer = sva({
 		slots: ['stage', 'center', 'img', 'backdrop', 'thumbStrip', 'thumbImg', 'titleSize'],
 		base: {
 			stage: { position: 'relative', minH: 0, flex: '1' },
@@ -513,8 +513,7 @@
 				color: 'scrapscache.mediaTextFaint'
 			}
 		}
-	});
-	const viewer = viewerSva();
+	})();
 	const topBarBtn = iconButton({ variant: 'haze' });
 	const topBarTrashBtn = iconButton({ variant: 'hazeRose' });
 

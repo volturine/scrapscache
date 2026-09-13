@@ -335,7 +335,7 @@
 	const p = photoPreview({ mode: 'editor' });
 	const d = dialog({ size: 'sm' });
 
-	const qualityChoice = sva({
+	const quality = sva({
 		slots: ['icon', 'error', 'positioner', 'panel', 'dialogTitle', 'dialogDescription'],
 		base: {
 			icon: { h: '1.25rem', w: '1.25rem' },
@@ -352,16 +352,14 @@
 			dialogTitle: { textStyle: 'subtitleStrong' },
 			dialogDescription: { mt: '3xs', textStyle: 'caption' }
 		}
-	});
-	const qualityCompressed = qualityChoice();
-	const qualityHd = qualityChoice();
+	})();
 	const qualityCompressedCard = choiceCard({ kind: 'compressed' });
 	const qualityHdCard = choiceCard({ kind: 'hd' });
-	const iconMd = qualityCompressed.icon;
+	const iconMd = quality.icon;
 </script>
 
 {#if attachError}
-	<p class={qualityCompressed.error}>
+	<p class={quality.error}>
 		{attachError}
 	</p>
 {/if}
@@ -525,8 +523,8 @@
 		preventScroll={false}
 	>
 		<Dialog.Backdrop class={d.backdrop} />
-		<Dialog.Positioner class={qualityCompressed.positioner}>
-			<Dialog.Content class={cx(d.panel, qualityCompressed.panel)}>
+		<Dialog.Positioner class={quality.positioner}>
+			<Dialog.Content class={cx(d.panel, quality.panel)}>
 				<div
 					class={flex({
 						mb: 'md',
@@ -536,11 +534,10 @@
 					})}
 				>
 					<div>
-						<Dialog.Title
-							id="photo-quality-title"
-							class={cx(d.title, qualityCompressed.dialogTitle)}>Photo quality</Dialog.Title
+						<Dialog.Title id="photo-quality-title" class={cx(d.title, quality.dialogTitle)}
+							>Photo quality</Dialog.Title
 						>
-						<p class={cx(d.description, qualityCompressed.dialogDescription)}>
+						<p class={cx(d.description, quality.dialogDescription)}>
 							Choose once for {filesAwaitingQuality.length === 1
 								? 'this attachment'
 								: `these ${filesAwaitingQuality.length} attachments`}.

@@ -205,7 +205,7 @@
 			}
 		}
 	});
-	const cardLocal = sva({
+	const local = sva({
 		slots: [
 			'reminder',
 			'scroller',
@@ -231,8 +231,7 @@
 			},
 			dialogContent: { outline: 'none' }
 		}
-	});
-	const local = cardLocal();
+	})();
 </script>
 
 <svelte:window

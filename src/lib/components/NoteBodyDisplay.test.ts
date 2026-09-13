@@ -85,3 +85,78 @@ describe('NoteBodyDisplay inline Markdown', () => {
 		).toBe('bold');
 	});
 });
+
+describe('NoteBodyDisplay Markdown blocks', () => {
+	it('renders Markdown tables as semantic tables', () => {
+		const { container } = render(NoteBodyDisplay, {
+			props: {
+				note: note({
+					body: [
+						'| Rule name | Matches path | Limit |',
+						'| --- | --- | ---: |',
+						'| register | `/api/sync/register` | 5 per hour |'
+					].join('\n')
+				})
+			}
+		});
+
+		const table = container.querySelector('[data-markdown-table]');
+		expect(table).toBeTruthy();
+		expect(table?.querySelectorAll('th')).toHaveLength(3);
+		expect(table?.querySelectorAll('tbody tr')).toHaveLength(1);
+		expect(table?.textContent).not.toContain('---');
+		expect(
+			table?.querySelector('.markdown-token-code:not(.markdown-token-marker)')?.textContent
+		).toBe('/api/sync/register');
+	});
+
+	it('renders fenced code with safe syntax tokens', () => {
+		const { container } = render(NoteBodyDisplay, {
+			props: {
+				note: note({
+					body: [
+						'before',
+						'',
+						'```sh',
+						'# comment',
+						'wrangler d1 --remote --command "SELECT 1"',
+						'```',
+						'',
+						'after'
+					].join('\n')
+				})
+			}
+		});
+
+		const code = container.querySelector('[data-markdown-code-block]');
+		expect(code?.tagName).toBe('PRE');
+		expect(code?.getAttribute('data-language')).toBe('sh');
+		expect(code?.textContent).toContain('# comment');
+		expect(code?.querySelector('.markdown-code-token-comment')?.textContent).toBe('# comment');
+		expect(code?.querySelector('.markdown-code-token-flag')?.textContent).toBe('--remote');
+		expect(code?.querySelector('.markdown-code-token-string')?.textContent).toBe('"SELECT 1"');
+	});
+
+	it('keeps HTML-looking code as text', () => {
+		const { container } = render(NoteBodyDisplay, {
+			props: { note: note({ body: '```html\n<script>alert(1)</script>\n```' }) }
+		});
+
+		const code = container.querySelector('[data-markdown-code-block]');
+		expect(code?.querySelector('script')).toBeNull();
+		expect(code?.textContent).toContain('<script>alert(1)</script>');
+	});
+
+	it('keeps table source visible when raw Markdown is enabled', () => {
+		uiStore.rawMarkdown = true;
+		const { container } = render(NoteBodyDisplay, {
+			props: {
+				note: note({ body: '| Rule name | Matches path |\n| --- | --- |\n| register | `/api` |' })
+			}
+		});
+
+		expect(container.querySelector('[data-markdown-table]')).toBeNull();
+		expect(container.querySelector('.markdown-content')?.textContent).toContain('| Rule name |');
+		expect(container.querySelector('.markdown-content')?.classList).toContain('markdown-raw');
+	});
+});

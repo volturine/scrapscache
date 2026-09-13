@@ -1297,7 +1297,7 @@
 	aria-multiline="true"
 	aria-label="Note body"
 	spellcheck="true"
-	class={editor.container}
+	class={[editor.container, markdownStyles, uiStore.rawMarkdown && 'markdown-raw']}
 	onbeforeinput={handleBeforeInput}
 	oninput={handleInput}
 	oncopy={handleCopy}

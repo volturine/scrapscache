@@ -1781,6 +1781,7 @@ export const noteEditorStyles = {
 		pb: 'md'
 	}),
 	scrollerFill: css({ flex: 'initial' }),
+	rawScroller: css({ touchAction: 'pan-x pan-y' }),
 	title: css({
 		mb: 'md',
 		display: 'block',
@@ -1871,6 +1872,17 @@ export const topbarStyles = {
 };
 
 export const markdownStyles = css({
+	'& .markdown-table-scroll, & .markdown-code-block': { maxW: 'full', overflowX: 'auto', overscrollBehaviorX: 'contain', my: 'sm' },
+	'& .markdown-table': { w: 'max-content', minW: 'full', borderCollapse: 'collapse', textAlign: 'left' },
+	'& .markdown-table th, & .markdown-table td': { borderBottomWidth: 'hairline', borderColor: 'scrapscache.border', py: 'xs', px: 'list', verticalAlign: 'top', whiteSpace: 'nowrap' },
+	'& .markdown-table th': { fontWeight: 'strong' },
+	'& .markdown-table tr:last-child td': { borderBottom: 0 },
+	'& .markdown-code-block': { ...border, rounded: 'compact', bg: 'scrapscache.surface', color: 'scrapscache.text', fontFamily: 'mono', fontSize: 'compact', lineHeight: 'body' },
+	'& .markdown-code-block code': { display: 'block', minW: 'max-content', py: 'md' },
+	'& .markdown-code-line': { display: 'block', minW: 'max-content', px: 'md', whiteSpace: 'pre' },
+	'& .markdown-code-token-comment': { color: 'scrapscache.success', fontStyle: 'italic' },
+	'& .markdown-code-token-string': { color: 'scrapscache.danger' },
+	'& .markdown-code-token-flag': { color: 'scrapscache.accent' },
 	'& .markdown-token-marker-hidden': { display: 'none' },
 	'& .markdown-token-strong': { fontWeight: 'strong' },
 	'& .markdown-token-emphasis': { fontStyle: 'italic' },
@@ -1885,6 +1897,10 @@ export const markdownStyles = css({
 	'& .markdown-token-marker-heading': { color: 'scrapscache.warning' },
 	'&.markdown-raw': {
 		fontFamily: 'mono',
+		overflowX: 'auto',
+		overscrollBehaviorX: 'contain',
+		'& > p, & > [data-check-line], & > [data-bullet-line], & > [data-editor-line]': { w: 'max-content', minW: 'full', maxW: 'none', whiteSpace: 'pre', overflowWrap: 'normal', wordBreak: 'normal', flexWrap: 'nowrap' },
+		'& [data-line-text]': { w: 'max-content', minW: 'max-content', maxW: 'none', flex: '0 0 auto', whiteSpace: 'pre', overflowWrap: 'normal', wordBreak: 'normal' },
 		'& .markdown-token-marker': { display: 'inline' },
 		'& .markdown-token-code': { color: 'scrapscache.warning' },
 		'& [class*="markdown-token-heading-"]': { color: 'scrapscache.warning', fontSize: 'inherit', fontWeight: 'inherit' },

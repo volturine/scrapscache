@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { markdownTokenClass, parseInlineMarkdown } from './markdown';
+import {
+	highlightCodeLine,
+	markdownTokenClass,
+	parseInlineMarkdown,
+	parseMarkdownBlocks
+} from './markdown';
 
 describe('inline Markdown tokenizer', () => {
 	it('recognizes classic strong, emphasis, code, and strikethrough delimiters', () => {
@@ -101,5 +106,88 @@ describe('inline Markdown tokenizer', () => {
 			text: 'привет',
 			styles: ['strong']
 		});
+	});
+});
+
+describe('Markdown block tokenizer', () => {
+	it('recognizes tables and their column alignments', () => {
+		expect(
+			parseMarkdownBlocks(
+				[
+					'Before',
+					'',
+					'| Rule name | Matches path | Limit |',
+					'| :--- | :---: | ---: |',
+					'| register | `/api/sync/register` | 5 per hour |',
+					'| auth | starts with `/api/sync/auth/` | 30 per minute |',
+					'',
+					'After'
+				].join('\n')
+			)
+		).toEqual([
+			{ type: 'line', segment: { type: 'text', text: 'Before', lineIndex: 0 } },
+			{ type: 'line', segment: { type: 'text', text: '', lineIndex: 1 } },
+			{
+				type: 'table',
+				header: ['Rule name', 'Matches path', 'Limit'],
+				alignments: ['left', 'center', 'right'],
+				rows: [
+					['register', '`/api/sync/register`', '5 per hour'],
+					['auth', 'starts with `/api/sync/auth/`', '30 per minute']
+				],
+				lineIndex: 2
+			},
+			{ type: 'line', segment: { type: 'text', text: '', lineIndex: 6 } },
+			{ type: 'line', segment: { type: 'text', text: 'After', lineIndex: 7 } }
+		]);
+	});
+
+	it('keeps fenced code together and protects table-looking code', () => {
+		expect(
+			parseMarkdownBlocks(
+				['```sh', '# comment', 'echo "| not a table |"', '```', 'after'].join('\n')
+			)
+		).toEqual([
+			{ type: 'code', language: 'sh', code: '# comment\necho "| not a table |"', lineIndex: 0 },
+			{ type: 'line', segment: { type: 'text', text: 'after', lineIndex: 4 } }
+		]);
+	});
+
+	it('supports an unclosed fence without losing its source', () => {
+		expect(parseMarkdownBlocks('```text\nnot closed')).toEqual([
+			{ type: 'code', language: 'text', code: 'not closed', lineIndex: 0 }
+		]);
+	});
+
+	it('does not turn malformed separators into tables and respects escaped pipes', () => {
+		const malformed = parseMarkdownBlocks('| A | B |\n| - | no |');
+		expect(malformed.every((block) => block.type === 'line')).toBe(true);
+
+		const escapedPipe = parseMarkdownBlocks(
+			'| A | B |\n| --- | --- |\n| one \\| two | `three | four` |'
+		);
+		expect(escapedPipe).toContainEqual({
+			type: 'table',
+			header: ['A', 'B'],
+			alignments: ['left', 'left'],
+			rows: [['one | two', '`three | four`']],
+			lineIndex: 0
+		});
+	});
+});
+
+describe('code block tokenizer', () => {
+	it('colors comments, flags, and quoted strings while preserving text', () => {
+		expect(highlightCodeLine('# Reads the VAPID pair', 'sh')).toEqual([
+			{ kind: 'comment', text: '# Reads the VAPID pair' }
+		]);
+		expect(highlightCodeLine('wrangler d1 --remote --command "SELECT 1"', 'sh')).toEqual([
+			{ kind: 'plain', text: 'wrangler d1 ' },
+			{ kind: 'flag', text: '--remote' },
+			{ kind: 'plain', text: ' ' },
+			{ kind: 'flag', text: '--command' },
+			{ kind: 'plain', text: ' ' },
+			{ kind: 'string', text: '"SELECT 1"' }
+		]);
 	});
 });

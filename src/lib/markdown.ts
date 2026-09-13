@@ -1,3 +1,5 @@
+import { parseBody, type BodySegment } from './checklistBody';
+
 export type MarkdownStyle =
 	| 'strong'
 	| 'emphasis'
@@ -15,6 +17,26 @@ export type MarkdownMarker = 'strong' | 'emphasis' | 'code' | 'strikethrough' | 
 export type MarkdownToken =
 	| { kind: 'text'; text: string; styles: MarkdownStyle[] }
 	| { kind: 'marker'; text: string; marker: MarkdownMarker };
+
+export type TableAlignment = 'left' | 'center' | 'right';
+
+export type MarkdownBlock =
+	| { type: 'line'; segment: BodySegment }
+	| {
+			type: 'table';
+			header: string[];
+			alignments: TableAlignment[];
+			rows: string[][];
+			lineIndex: number;
+	  }
+	| { type: 'code'; language: string; code: string; lineIndex: number };
+
+type MarkdownTableBlock = Extract<MarkdownBlock, { type: 'table' }>;
+
+export type CodeToken = {
+	kind: 'plain' | 'comment' | 'string' | 'flag';
+	text: string;
+};
 
 type Delimiter = {
 	text: string;
@@ -215,4 +237,187 @@ export function markdownTokenClass(token: MarkdownToken, rawMarkdown: boolean): 
 	]
 		.filter(Boolean)
 		.join(' ');
+}
+
+const FENCE_OPEN_RE = /^( {0,3})(`{3,}|~{3,})(.*)$/;
+const FENCE_CLOSE_RE = /^ {0,3}(`{3,}|~{3,})[ \t]*$/;
+
+function splitTableRow(line: string): string[] | null {
+	let source = line.trim();
+	if (!source.includes('|')) return null;
+	if (source.startsWith('|')) source = source.slice(1);
+	if (source.endsWith('|') && !isEscaped(source, source.length - 1)) {
+		source = source.slice(0, -1);
+	}
+
+	const cells: string[] = [];
+	let cell = '';
+	let codeDelimiterLength = 0;
+	for (let index = 0; index < source.length; index++) {
+		const character = source[index];
+		if (character === '\\' && source[index + 1] === '|') {
+			cell += '|';
+			index++;
+			continue;
+		}
+		if (character === '`') {
+			let runLength = 1;
+			while (source[index + runLength] === '`') runLength++;
+			if (codeDelimiterLength === 0) codeDelimiterLength = runLength;
+			else if (codeDelimiterLength === runLength) codeDelimiterLength = 0;
+			cell += '`'.repeat(runLength);
+			index += runLength - 1;
+			continue;
+		}
+		if (character === '|' && codeDelimiterLength === 0) {
+			cells.push(cell.trim());
+			cell = '';
+			continue;
+		}
+		cell += character;
+	}
+	cells.push(cell.trim());
+	return cells.length >= 2 ? cells : null;
+}
+
+function tableAlignment(cell: string): TableAlignment | null {
+	const value = cell.trim();
+	if (!/^:?-{1,}:?$/.test(value)) return null;
+	if (value.startsWith(':') && value.endsWith(':')) return 'center';
+	if (value.endsWith(':')) return 'right';
+	return 'left';
+}
+
+function tableAt(lines: string[], lineIndex: number): MarkdownTableBlock | null {
+	const header = splitTableRow(lines[lineIndex] ?? '');
+	const separator = splitTableRow(lines[lineIndex + 1] ?? '');
+	if (!header || !separator || header.length !== separator.length) return null;
+	const alignments = separator.map(tableAlignment);
+	if (alignments.some((alignment) => alignment === null)) return null;
+
+	const rows: string[][] = [];
+	let nextLine = lineIndex + 2;
+	while (nextLine < lines.length) {
+		if (lines[nextLine]?.trim() === '') break;
+		const cells = splitTableRow(lines[nextLine] ?? '');
+		if (!cells) break;
+		rows.push(header.map((_, columnIndex) => cells[columnIndex] ?? ''));
+		nextLine++;
+	}
+
+	return {
+		type: 'table',
+		header,
+		alignments: alignments as TableAlignment[],
+		rows,
+		lineIndex
+	};
+}
+
+function fenceAt(line: string): { indent: number; marker: string; info: string } | null {
+	const match = line.match(FENCE_OPEN_RE);
+	if (!match || (match[2]?.startsWith('`') && match[3]?.includes('`'))) return null;
+	return { indent: match[1]?.length ?? 0, marker: match[2] ?? '', info: match[3]?.trim() ?? '' };
+}
+
+function isFenceClose(line: string, opening: string): boolean {
+	const match = line.match(FENCE_CLOSE_RE);
+	return match?.[1]?.[0] === opening[0] && (match[1]?.length ?? 0) >= opening.length;
+}
+
+/** Parse fenced code and GitHub-style table blocks without changing raw text. */
+export function parseMarkdownBlocks(source: string): MarkdownBlock[] {
+	const lines = source.replace(/\r\n?/g, '\n').split('\n');
+	const blocks: MarkdownBlock[] = [];
+	let lineIndex = 0;
+
+	while (lineIndex < lines.length) {
+		const opening = fenceAt(lines[lineIndex] ?? '');
+		if (opening) {
+			const codeLines: string[] = [];
+			let nextLine = lineIndex + 1;
+			while (nextLine < lines.length && !isFenceClose(lines[nextLine] ?? '', opening.marker)) {
+				const line = lines[nextLine] ?? '';
+				codeLines.push(
+					opening.indent > 0 && line.startsWith(' '.repeat(opening.indent))
+						? line.slice(opening.indent)
+						: line
+				);
+				nextLine++;
+			}
+			blocks.push({
+				type: 'code',
+				language: opening.info.split(/[ \t]+/, 1)[0] ?? '',
+				code: codeLines.join('\n'),
+				lineIndex
+			});
+			lineIndex = nextLine < lines.length ? nextLine + 1 : nextLine;
+			continue;
+		}
+
+		const table = tableAt(lines, lineIndex);
+		if (table) {
+			blocks.push(table);
+			lineIndex += 2 + table.rows.length;
+			continue;
+		}
+
+		const segment = parseBody(lines[lineIndex] ?? '')[0];
+		if (segment) blocks.push({ type: 'line', segment: { ...segment, lineIndex } });
+		lineIndex++;
+	}
+
+	return blocks;
+}
+
+function addCodeToken(tokens: CodeToken[], text: string, kind: CodeToken['kind'] = 'plain') {
+	if (!text) return;
+	const previous = tokens.at(-1);
+	if (previous?.kind === kind) {
+		previous.text += text;
+		return;
+	}
+	tokens.push({ kind, text });
+}
+
+function tokenizeCodeText(source: string): CodeToken[] {
+	const tokens: CodeToken[] = [];
+	const tokenRe = /("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|--[A-Za-z][\w-]*)/gu;
+	let textStart = 0;
+	for (const match of source.matchAll(tokenRe)) {
+		const index = match.index ?? 0;
+		addCodeToken(tokens, source.slice(textStart, index));
+		const value = match[0] ?? '';
+		addCodeToken(tokens, value, value.startsWith('--') ? 'flag' : 'string');
+		textStart = index + value.length;
+	}
+	addCodeToken(tokens, source.slice(textStart));
+	return tokens;
+}
+
+function codeCommentStart(source: string, language: string): number {
+	const trimmedStart = source.search(/\S/);
+	if (trimmedStart >= 0 && source[trimmedStart] === '#') return trimmedStart;
+	if (trimmedStart >= 0 && source.startsWith('//', trimmedStart)) return trimmedStart;
+	if (trimmedStart >= 0 && source.startsWith('<!--', trimmedStart)) return trimmedStart;
+	if (['sh', 'shell', 'bash', 'zsh'].includes(language.toLowerCase())) {
+		let quote: string | null = null;
+		for (let index = 0; index < source.length; index++) {
+			const character = source[index];
+			if ((character === '"' || character === "'") && source[index - 1] !== '\\') {
+				quote = quote === character ? null : (quote ?? character);
+			}
+			if (character === '#' && quote === null && source[index - 1] !== '\\') return index;
+		}
+	}
+	return -1;
+}
+
+/** Add restrained syntax color to common code-block strings, flags, and comments. */
+export function highlightCodeLine(source: string, language = ''): CodeToken[] {
+	const commentStart = codeCommentStart(source, language);
+	if (commentStart < 0) return tokenizeCodeText(source);
+	const tokens = tokenizeCodeText(source.slice(0, commentStart));
+	addCodeToken(tokens, source.slice(commentStart), 'comment');
+	return tokens;
 }

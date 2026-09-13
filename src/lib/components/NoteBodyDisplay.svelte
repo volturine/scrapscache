@@ -4,7 +4,7 @@
 	// checklists are interactive in the editor instead.
 	import type { Note } from '$lib/types';
 	import { noteBody } from 'styled-system/recipes';
-	import { parseBody, noteAttachments } from '$lib/checklistBody';
+	import { parseBody, noteAttachments, type BodySegment } from '$lib/checklistBody';
 	import { extractHttpUrls, localLinkCard } from '$lib/linkPreview';
 	import { isImageAttachment, fileIconLabel } from '$lib/noteImages';
 	import { displayImageSrc } from '$lib/imageThumb';
@@ -13,12 +13,18 @@
 	import { isCanvasAttachment } from '$lib/canvasAttachment';
 	import { canvasPreview, filePreview, photoPreview, markdownStyles } from '$panda/styles';
 	import { checklist } from 'styled-system/recipes';
-	import { markdownTokenClass, parseInlineMarkdown } from '$lib/markdown';
+	import {
+		highlightCodeLine,
+		markdownTokenClass,
+		parseInlineMarkdown,
+		parseMarkdownBlocks
+	} from '$lib/markdown';
 	import { uiStore } from '$lib/stores/ui.svelte';
 
 	let { note }: { note: Note } = $props();
 
 	const segments = $derived(parseBody(note.body ?? ''));
+	const blocks = $derived(parseMarkdownBlocks(note.body ?? ''));
 	const attachments = $derived(noteAttachments(note));
 	const imageAttachments = $derived(attachments.filter(isImageAttachment));
 	const canvases = $derived(attachments.filter(isCanvasAttachment));
@@ -79,46 +85,102 @@
 	</span>
 {/snippet}
 
+{#snippet bodyLine(seg: BodySegment)}
+	{#if seg.type === 'check'}
+		{@const check = checklist({ checked: seg.checked, indented: seg.indent > 0 })}
+		<div
+			class={body.row}
+			data-check-line={seg.lineIndex}
+			style={seg.indent > 0 ? `padding-left: ${seg.indent * 1.25}rem` : undefined}
+		>
+			<span class={[check.root, body.check]} aria-hidden="true">
+				{#if seg.checked}
+					<svg viewBox="0 0 16 16" class={check.mark}>
+						<path d="M3.5 8.5 6.5 11.5 12.5 4.5" />
+					</svg>
+				{/if}
+			</span>
+			<span class={noteBody({ checked: seg.checked, indented: seg.indent > 0 }).line}>
+				{@render inlineContent(seg.text)}
+			</span>
+		</div>
+	{:else if seg.type === 'bullet'}
+		<div
+			class={body.row}
+			data-bullet-line={seg.lineIndex}
+			style={seg.indent > 0 ? `padding-left: ${seg.indent * 1.25}rem` : undefined}
+		>
+			<span class={body.bullet} aria-hidden="true">•</span>
+			<span class={noteBody({ indented: seg.indent > 0 }).line}>
+				{@render inlineContent(seg.text)}
+			</span>
+		</div>
+	{:else if seg.text}
+		<p class={body.paragraph}>{@render inlineContent(seg.text)}</p>
+	{:else}
+		<div class={body.spacer}></div>
+	{/if}
+{/snippet}
+
 <div
 	bind:this={contentElement}
 	class={[body.container, markdownStyles, 'markdown-content', uiStore.rawMarkdown && 'markdown-raw']}
 >
-	{#each segments as seg (seg.lineIndex)}
-		{#if seg.type === 'check'}
-			{@const check = checklist({ checked: seg.checked, indented: seg.indent > 0 })}
-			<div
-				class={body.row}
-				data-check-line={seg.lineIndex}
-				style={seg.indent > 0 ? `padding-left: ${seg.indent * 1.25}rem` : undefined}
-			>
-				<span class={[check.root, body.check]} aria-hidden="true">
-					{#if seg.checked}
-						<svg viewBox="0 0 16 16" class={check.mark}>
-							<path d="M3.5 8.5 6.5 11.5 12.5 4.5" />
-						</svg>
-					{/if}
-				</span>
-				<span class={noteBody({ checked: seg.checked, indented: seg.indent > 0 }).line}>
-					{@render inlineContent(seg.text)}
-				</span>
-			</div>
-		{:else if seg.type === 'bullet'}
-			<div
-				class={body.row}
-				data-bullet-line={seg.lineIndex}
-				style={seg.indent > 0 ? `padding-left: ${seg.indent * 1.25}rem` : undefined}
-			>
-				<span class={body.bullet} aria-hidden="true">•</span>
-				<span class={noteBody({ indented: seg.indent > 0 }).line}>
-					{@render inlineContent(seg.text)}
-				</span>
-			</div>
-		{:else if seg.text}
-			<p class={body.paragraph}>{@render inlineContent(seg.text)}</p>
-		{:else}
-			<div class={body.spacer}></div>
-		{/if}
-	{/each}
+	{#if uiStore.rawMarkdown}
+		{#each segments as seg (seg.lineIndex)}
+			{@render bodyLine(seg)}
+		{/each}
+	{:else}
+		{#each blocks as block (block.type === 'line' ? block.segment.lineIndex : block.lineIndex)}
+			{#if block.type === 'line'}
+				{@render bodyLine(block.segment)}
+			{:else if block.type === 'table'}
+				<div
+					class="markdown-table-scroll"
+					data-markdown-table-container
+					role="region"
+					tabindex="-1"
+					aria-label="Markdown table"
+				>
+					<table class="markdown-table" data-markdown-table>
+						<thead>
+							<tr>
+								{#each block.header as cell, columnIndex (columnIndex)}
+									<th scope="col" style={`text-align: ${block.alignments[columnIndex]};`}>
+										{@render inlineContent(cell)}
+									</th>
+								{/each}
+							</tr>
+						</thead>
+						<tbody>
+							{#each block.rows as row, rowIndex (rowIndex)}
+								<tr>
+									{#each block.header as _, columnIndex (columnIndex)}
+										<td style={`text-align: ${block.alignments[columnIndex]};`}>
+											{@render inlineContent(row[columnIndex] ?? '')}
+										</td>
+									{/each}
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</div>
+			{:else}
+				{@const codeLines = block.code.split('\n')}
+				<pre
+					class="markdown-code-block"
+					data-markdown-code-block
+					data-language={block.language || undefined}><code
+						>{#each codeLines as codeLine, codeLineIndex (`${block.lineIndex}-${codeLineIndex}`)}<span
+								class="markdown-code-line"
+								>{#each highlightCodeLine(codeLine, block.language) as token, tokenIndex (tokenIndex)}{#if token.kind === 'plain'}{token.text}{:else}<span
+											class="markdown-code-token-{token.kind}">{token.text}</span
+										>{/if}{/each}</span
+							>{/each}</code
+					></pre>
+			{/if}
+		{/each}
+	{/if}
 </div>
 
 {#if canvases.length > 0}

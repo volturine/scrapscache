@@ -618,6 +618,7 @@
 						class={cx(
 							'note-scrollbar-hidden scrollable',
 							styles.scroller,
+							uiStore.rawMarkdown && styles.rawScroller,
 							photosFillEditor ? styles.scrollerFill : undefined
 						)}
 					>

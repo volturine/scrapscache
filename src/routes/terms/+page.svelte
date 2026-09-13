@@ -102,19 +102,32 @@
 				class="rounded-xl border border-[var(--scrapscache-border)] bg-[var(--scrapscache-surface)] p-6 sm:p-8"
 			>
 				<h2 class="text-xl font-semibold text-[var(--scrapscache-text)]">
-					4. Passphrase & Key Security Responsibility
+					4. Backup Passphrase, Keys & Zero-Knowledge Architecture
 				</h2>
 				<p class="mt-3 text-[var(--scrapscache-text-muted)]">
-					Because Scraps Cache uses end-to-end client-side encryption, we never have access to your
-					encryption keys, workspace passphrases, or backup passwords.
+					Scraps Cache operates on a strict zero-knowledge, client-side encryption architecture. No
+					unencrypted notes, titles, drawings, or photos are ever exposed to or stored by the
+					server:
 				</p>
-				<p class="mt-2 text-[var(--scrapscache-text-muted)]">
-					<strong
-						>You are solely responsible for securely storing your backup passphrases and pairing
-						codes.</strong
-					> If you lose your passphrase or device without a backup, Scraps Cache cannot restore or decrypt
-					your notes.
-				</p>
+				<ul class="mt-2 list-inside list-disc space-y-1 text-[var(--scrapscache-text-muted)]">
+					<li>
+						<strong>Backup Passphrase:</strong> The only password or passphrase you ever create is for
+						encrypting offline backup files. If you encrypt a backup file with a passphrase, you are solely
+						responsible for remembering it. We do not have access to your passphrase and cannot recover
+						it or decrypt your backup if you forget it.
+					</li>
+					<li>
+						<strong>Sync Keys & Pairing Codes:</strong> When using multi-device sync, cryptographic sync
+						keys are generated automatically on your device and stored in local device storage. Linking
+						devices uses temporary one-time pairing codes over encrypted channels. We never have access
+						to your unencrypted keys.
+					</li>
+					<li>
+						<strong>Zero Content Exposure:</strong> All content is encrypted on your hardware before transmission
+						using authenticated ciphers (XChaCha20-Poly1305 / AES-256-GCM). The hosted relay only sees
+						opaque ciphertext blobs and anonymous identifiers.
+					</li>
+				</ul>
 			</section>
 
 			<section
@@ -135,12 +148,17 @@
 				class="rounded-xl border border-[var(--scrapscache-border)] bg-[var(--scrapscache-surface)] p-6 sm:p-8"
 			>
 				<h2 class="text-xl font-semibold text-[var(--scrapscache-text)]">
-					6. Service Modifications
+					6. Service Modifications & Advance Notice
 				</h2>
 				<p class="mt-3 text-[var(--scrapscache-text-muted)]">
-					We reserve the right to modify or discontinue, temporarily or permanently, the hosted sync
-					service with or without notice. Since Scraps Cache is offline-first, your locally stored
-					notes will continue to function on your device regardless of hosted service availability.
+					If we ever decide to permanently discontinue the hosted sync relay or permanently delete
+					hosted data, we will provide advance notice (via in-app notification or project channels)
+					so you have ample time to export or back up your notes.
+				</p>
+				<p class="mt-2 text-[var(--scrapscache-text-muted)]">
+					Because Scraps Cache is offline-first, all notes stored locally on your device will
+					continue to work normally and remain completely accessible to you regardless of hosted
+					service availability.
 				</p>
 			</section>
 		</div>

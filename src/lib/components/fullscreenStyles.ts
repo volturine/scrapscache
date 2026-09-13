@@ -25,12 +25,12 @@ export const fullscreen = sva({
 					h: '3.5rem',
 					alignItems: 'center',
 					justifyContent: 'space-between',
-					gap: '0.75rem',
+					gap: 'md',
 					bgGradient: 'to-b',
 					gradientFrom: 'black/75',
 					gradientTo: 'transparent',
-					px: '0.75rem',
-					py: '0.5rem',
+					px: 'md',
+					py: 'sm',
 					backdropFilter: 'blur(2px)'
 				},
 				title: {
@@ -39,15 +39,15 @@ export const fullscreen = sva({
 					overflow: 'hidden',
 					textOverflow: 'ellipsis',
 					whiteSpace: 'nowrap',
-					fontSize: 'sm',
-					fontWeight: 'medium',
+					fontSize: 'body',
+					fontWeight: 'interactive',
 					color: 'scrapscache.mediaTextStrong'
 				},
 				notice: {
-					px: '1rem',
-					pb: '0.75rem',
+					px: 'lg',
+					pb: 'md',
 					textAlign: 'center',
-					fontSize: 'xs',
+					fontSize: 'label',
 					color: 'scrapscache.mediaDanger'
 				}
 			},
@@ -65,11 +65,11 @@ export const fullscreen = sva({
 					display: 'flex',
 					flexShrink: 0,
 					alignItems: 'center',
-					gap: '0.75rem',
-					borderBottomWidth: '1px',
+					gap: 'md',
+					borderBottomWidth: 'hairline',
 					borderColor: 'scrapscache.border',
-					px: '0.75rem',
-					py: '0.5rem'
+					px: 'md',
+					py: 'sm'
 				},
 				title: {
 					minW: 0,
@@ -77,15 +77,15 @@ export const fullscreen = sva({
 					overflow: 'hidden',
 					textOverflow: 'ellipsis',
 					whiteSpace: 'nowrap',
-					fontSize: 'sm',
-					fontWeight: 'medium'
+					fontSize: 'body',
+					fontWeight: 'interactive'
 				},
 				notice: {
 					display: 'grid',
 					flex: '1',
 					placeItems: 'center',
-					p: '1.5rem',
-					fontSize: 'sm',
+					p: '2xl',
+					fontSize: 'body',
 					color: 'scrapscache.textMuted'
 				}
 			}

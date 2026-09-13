@@ -205,14 +205,14 @@
 			drawerContent: {
 				h: 'full',
 				w: '18rem',
-				borderRightWidth: '1px',
+				borderRightWidth: 'hairline',
 				borderColor: 'scrapscache.border',
 				bg: 'scrapscache.surface'
 			},
 			desktopSidebar: {
 				w: '16rem',
 				flexShrink: 0,
-				borderRightWidth: '1px',
+				borderRightWidth: 'hairline',
 				borderColor: 'scrapscache.border'
 			},
 			mainCol: { display: 'flex', minH: 0, minW: 0, flex: '1', flexDirection: 'column' },
@@ -222,8 +222,8 @@
 				minH: 0,
 				overflowY: 'auto',
 				overflowX: 'hidden',
-				px: '1rem',
-				pb: { base: '5rem', md: '1.5rem' }
+				px: 'lg',
+				pb: { base: '5rem', md: '2xl' }
 			}
 		}
 	});

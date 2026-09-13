@@ -254,7 +254,7 @@
 		base: {
 			row: {
 				position: 'relative',
-				rounded: '10px',
+				rounded: 'row',
 				overflow: { base: 'hidden', sm: 'visible' },
 				'& button:disabled': { opacity: 0.55 },
 				'&:hover .actions, &:focus-within .actions': {
@@ -288,12 +288,13 @@
 				zIndex: { base: 0, sm: 2 },
 				display: 'flex',
 				alignItems: 'center',
-				gap: '2px',
-				pr: { base: 0, sm: '8px' },
+				gap: '3xs',
+				pr: { base: 0, sm: 'sm' },
 				w: { base: 'max(0px, calc(-1 * var(--swipe-offset)))', sm: 'auto' },
 				justifyContent: { base: 'flex-end' },
 				overflow: { base: 'hidden' },
-				borderRadius: { base: '0 10px 10px 0' },
+				borderTopRightRadius: { base: 'row' },
+				borderBottomRightRadius: { base: 'row' },
 				opacity: { base: 1, sm: 0 },
 				pointerEvents: { base: 'auto', sm: 'none' }
 			},
@@ -305,11 +306,11 @@
 				flexDirection: { base: 'column' },
 				alignItems: { base: 'center' },
 				justifyContent: { base: 'center' },
-				gap: { base: '4px' },
+				gap: { base: '2xs' },
 				flexShrink: 0,
 				alignSelf: { base: 'stretch' },
-				rounded: { base: '0', sm: '7px' },
-				fontSize: { base: '12px' },
+				rounded: { base: '0', sm: 'action' },
+				fontSize: { base: 'label' },
 				color: { base: 'scrapscache.text', sm: 'scrapscache.textMuted' },
 				_hoverable: {
 					bg: { base: 'transparent', sm: 'scrapscache.interactiveHover' },
@@ -328,7 +329,7 @@
 				zIndex: 1,
 				display: 'flex',
 				alignItems: 'stretch',
-				rounded: '10px',
+				rounded: 'row',
 				bg: 'scrapscache.surface',
 				transform: { base: 'translateX(var(--swipe-offset))' }
 			},
@@ -336,27 +337,27 @@
 				display: 'flex',
 				flex: '1',
 				alignItems: 'center',
-				gap: '12px',
+				gap: 'md',
 				minW: 0,
-				py: '12px',
-				pl: '12px',
-				pr: { base: '12px', sm: '76px' },
+				py: 'md',
+				pl: 'md',
+				pr: { base: 'md', sm: '76px' },
 				textAlign: 'left',
-				fontSize: '14px',
+				textStyle: 'body',
 				touchAction: 'pan-y'
 			},
 			panel: {
 				display: 'flex',
 				flex: '1',
 				alignItems: 'center',
-				gap: '12px',
+				gap: 'md',
 				minW: 0,
-				p: '12px',
+				p: 'md',
 				textAlign: 'left',
-				fontSize: '14px',
+				textStyle: 'body',
 				'&.confirm': {
 					bg: 'scrapscache.dangerSubtle',
-					rounded: '10px',
+					rounded: 'row',
 					flexWrap: { base: 'wrap' },
 					'& .panel-glyph': { color: 'scrapscache.danger' },
 					'& .panel-actions': { w: { base: '100%' }, justifyContent: { base: 'flex-end' } }
@@ -377,23 +378,22 @@
 			},
 			caption: {
 				display: 'block',
-				mt: '2px',
+				mt: '3xs',
 				color: 'scrapscache.textMuted',
-				fontSize: '12px',
-				fontWeight: '400'
+				textStyle: 'caption'
 			},
 			nameField: { w: 'full', font: 'inherit' },
-			panelActions: { display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 },
+			panelActions: { display: 'flex', alignItems: 'center', gap: 'xs', flexShrink: 0 },
 			iconButton: {
 				display: 'grid',
 				w: '30px',
 				h: '30px',
 				placeItems: 'center',
-				rounded: '7px',
+				rounded: 'action',
 				color: 'scrapscache.textMuted',
 				_hoverable: { bg: 'scrapscache.interactiveHover', color: 'scrapscache.text' }
 			},
-			confirmText: { fontSize: '13px' },
+			confirmText: { fontSize: 'compact' },
 			desktopCaption: { display: { base: 'none', sm: 'inline' } },
 			mobileCaption: { display: { base: 'inline', sm: 'none' } },
 			successIconButton: { color: 'scrapscache.success' }
@@ -406,11 +406,12 @@
 						'&::before': {
 							content: '""',
 							position: 'absolute',
-							top: '10px',
-							bottom: '10px',
+							top: 'list',
+							bottom: 'list',
 							left: 0,
 							w: '3px',
-							borderRadius: '0 3px 3px 0',
+							borderTopRightRadius: 'marker',
+							borderBottomRightRadius: 'marker',
 							bg: 'scrapscache.accent'
 						}
 					}
@@ -427,9 +428,10 @@
 
 	const panelBtn = cva({
 		base: {
-			padding: '7px 12px',
-			rounded: '7px',
-			fontSize: '13px',
+			py: 'action',
+			px: 'md',
+			rounded: 'action',
+			fontSize: 'compact',
 			whiteSpace: 'nowrap'
 		},
 		variants: {
@@ -438,7 +440,7 @@
 				danger: {
 					bg: 'scrapscache.danger',
 					color: 'scrapscache.dangerForeground',
-					fontWeight: '500'
+					fontWeight: 'interactive'
 				}
 			}
 		}

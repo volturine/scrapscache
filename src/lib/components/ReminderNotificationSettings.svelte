@@ -32,8 +32,8 @@
 			display: 'flex',
 			h: '2rem',
 			alignItems: 'center',
-			gap: '0.625rem',
-			px: '0.75rem'
+			gap: 'list',
+			px: 'md'
 		},
 		variants: {
 			interactive: {
@@ -53,7 +53,7 @@
 		slots: ['section', 'icon', 'label', 'status', 'chevron'],
 		base: {
 			section: {
-				borderTopWidth: '1px',
+				borderTopWidth: 'hairline',
 				borderColor: 'scrapscache.border'
 			},
 			icon: {
@@ -65,14 +65,12 @@
 			label: {
 				minW: 0,
 				flex: '1',
-				fontSize: 'sm',
-				fontWeight: 'medium',
+				textStyle: 'button',
 				color: 'scrapscache.text'
 			},
 			status: {
 				flexShrink: 0,
-				fontSize: 'xs',
-				fontWeight: 'medium',
+				textStyle: 'captionStrong',
 				color: 'scrapscache.textMuted'
 			},
 			chevron: {

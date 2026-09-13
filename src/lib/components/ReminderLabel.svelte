@@ -22,8 +22,8 @@
 			root: {
 				display: 'inline-flex',
 				alignItems: 'center',
-				gap: '0.25rem',
-				fontSize: 'xs'
+				gap: '2xs',
+				textStyle: 'caption'
 			},
 			icon: { w: '0.875rem', h: '0.875rem', flexShrink: 0 },
 			text: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }
@@ -34,16 +34,16 @@
 					root: {
 						w: 'full',
 						borderTopRadius: 'lg',
-						px: '0.75rem',
-						py: '0.25rem'
+						px: 'md',
+						py: '2xs'
 					}
 				},
 				chip: {
 					root: {
 						maxW: 'full',
-						rounded: 'full',
-						px: '0.625rem',
-						py: '0.25rem'
+						rounded: 'pill',
+						px: 'list',
+						py: '2xs'
 					}
 				},
 				inline: {}
@@ -70,7 +70,7 @@
 				css: {
 					root: {
 						bg: 'scrapscache.overdueStrong',
-						fontWeight: 'medium',
+						fontWeight: 'interactive',
 						color: 'scrapscache.mediaText'
 					}
 				}
@@ -91,7 +91,7 @@
 				css: {
 					root: {
 						bg: 'scrapscache.overdueStrong',
-						fontWeight: 'medium',
+						fontWeight: 'interactive',
 						color: 'scrapscache.mediaText'
 					}
 				}
@@ -110,7 +110,7 @@
 				overdue: true,
 				css: {
 					root: {
-						fontWeight: 'medium',
+						fontWeight: 'interactive',
 						color: 'scrapscache.overdue'
 					}
 				}

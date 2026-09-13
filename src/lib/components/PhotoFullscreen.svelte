@@ -306,13 +306,13 @@
 					boxShadow: 'cropHandle'
 				},
 				'& [data-part="grid"][data-axis="horizontal"]': {
-					borderBottomWidth: '1px',
-					borderTopWidth: '1px',
+					borderBottomWidth: 'hairline',
+					borderTopWidth: 'hairline',
 					borderColor: 'scrapscache.mediaBorderStrong'
 				},
 				'& [data-part="grid"][data-axis="vertical"]': {
-					borderLeftWidth: '1px',
-					borderRightWidth: '1px',
+					borderLeftWidth: 'hairline',
+					borderRightWidth: 'hairline',
 					borderColor: 'scrapscache.mediaBorderStrong'
 				}
 			},
@@ -328,16 +328,16 @@
 				flexShrink: 0,
 				alignItems: 'center',
 				justifyContent: 'space-between',
-				gap: '0.5rem',
-				borderBottomWidth: '1px',
+				gap: 'sm',
+				borderBottomWidth: 'hairline',
 				borderColor: 'scrapscache.mediaBorder',
 				bg: 'scrapscache.mediaSurfaceStrong',
-				px: '0.75rem',
-				py: '0.5rem',
+				px: 'md',
+				py: 'sm',
 				backdropFilter: 'blur(12px)'
 			},
 			sep: {
-				mx: { base: '0.125rem', sm: '0.25rem' },
+				mx: { base: '3xs', sm: '2xs' },
 				h: '1rem',
 				w: '1px',
 				bg: 'scrapscache.mediaControlActive'
@@ -353,21 +353,21 @@
 			radioRoot: {
 				display: 'flex',
 				alignItems: 'center',
-				gap: '0.125rem',
-				rounded: 'lg',
+				gap: '3xs',
+				rounded: 'card',
 				bg: 'scrapscache.mediaControlHover',
-				p: '0.125rem',
-				fontSize: 'xs'
+				p: '3xs',
+				fontSize: 'label'
 			},
 			radioItem: {
 				cursor: 'pointer',
-				rounded: 'sm',
-				px: '0.625rem',
-				py: '0.25rem',
+				rounded: 'compact',
+				px: 'list',
+				py: '2xs',
 				transition: 'colors 120ms ease',
 				'&[data-state=checked]': {
 					bg: 'scrapscache.mediaText',
-					fontWeight: 'semibold',
+					fontWeight: 'heading',
 					color: 'scrapscache.mediaSurface',
 					boxShadow: 'sm'
 				},
@@ -384,11 +384,11 @@
 				}
 			},
 			reset: {
-				rounded: 'md',
-				px: '0.625rem',
-				py: '0.375rem',
-				fontSize: 'xs',
-				fontWeight: 'medium',
+				rounded: 'control',
+				px: 'list',
+				py: 'xs',
+				fontSize: 'label',
+				fontWeight: 'interactive',
 				color: 'scrapscache.mediaTextMuted',
 				transition: 'colors 120ms ease',
 				touchAction: 'manipulation',
@@ -401,22 +401,22 @@
 			},
 			save: {
 				minW: '5.25rem',
-				px: '0.875rem',
-				py: '0.375rem',
-				fontSize: 'sm',
-				fontWeight: 'medium'
+				px: 'md',
+				py: 'xs',
+				fontSize: 'body',
+				fontWeight: 'interactive'
 			},
 			ratioMobile: {
 				display: { base: 'flex', sm: 'none' },
 				flexShrink: 0,
 				alignItems: 'center',
 				justifyContent: 'center',
-				gap: '0.25rem',
-				borderBottomWidth: '1px',
+				gap: '2xs',
+				borderBottomWidth: 'hairline',
 				borderColor: 'scrapscache.mediaBorderFaint',
 				bg: 'scrapscache.mediaSurfaceMuted',
-				px: '0.75rem',
-				py: '0.375rem'
+				px: 'md',
+				py: 'xs'
 			},
 			viewport: {
 				position: 'relative',
@@ -425,7 +425,7 @@
 				flex: '1',
 				alignItems: 'center',
 				justifyContent: 'center',
-				p: { base: '0.5rem', sm: '1.5rem' },
+				p: { base: 'sm', sm: '2xl' },
 				overflow: 'hidden'
 			},
 			imgWrap: {
@@ -446,7 +446,7 @@
 			toolBtn: {
 				h: '2.25rem',
 				w: '2.25rem',
-				rounded: 'md',
+				rounded: 'control',
 				color: 'scrapscache.mediaTextSoft',
 				transition: 'colors 120ms ease',
 				_hoverable: {
@@ -475,9 +475,9 @@
 		},
 		variants: {
 			shape: {
-				corner: { h: '0.75rem', w: '0.75rem', rounded: '2px' },
-				edgeH: { h: '0.25rem', w: '1.5rem', rounded: 'full' },
-				edgeV: { h: '1.5rem', w: '0.25rem', rounded: 'full' }
+				corner: { h: '0.75rem', w: '0.75rem', rounded: 'knob' },
+				edgeH: { h: '0.25rem', w: '1.5rem', rounded: 'pill' },
+				edgeV: { h: '1.5rem', w: '0.25rem', rounded: 'pill' }
 			}
 		},
 		defaultVariants: { shape: 'corner' }
@@ -505,7 +505,7 @@
 				h: 'full',
 				alignItems: 'center',
 				justifyContent: 'center',
-				px: '1rem'
+				px: 'lg'
 			},
 			img: {
 				pointerEvents: 'auto',
@@ -520,20 +520,19 @@
 				zIndex: 1,
 				display: 'flex',
 				flexShrink: 0,
-				gap: '0.5rem',
+				gap: 'sm',
 				overflowX: 'auto',
 				bgGradient: 'to-t',
 				gradientFrom: 'black/85',
 				gradientTo: 'transparent',
-				px: '1rem',
-				pb: '0.75rem',
-				pt: '0.5rem'
+				px: 'lg',
+				pb: 'md',
+				pt: 'sm'
 			},
 			thumbImg: { h: 'full', w: 'full', objectFit: 'cover' },
 			titleSize: {
-				ml: '0.25rem',
-				fontSize: 'xs',
-				fontWeight: 'normal',
+				ml: '2xs',
+				textStyle: 'caption',
 				color: 'scrapscache.mediaTextFaint'
 			},
 			topBtn: { flexShrink: 0 },
@@ -551,10 +550,10 @@
 
 	const ratioMobileBtn = cva({
 		base: {
-			rounded: 'sm',
-			px: '0.5rem',
-			py: '0.125rem',
-			fontSize: 'xs',
+			rounded: 'compact',
+			px: 'sm',
+			py: '3xs',
+			fontSize: 'label',
 			transition: 'colors 120ms ease',
 			cursor: 'pointer'
 		},
@@ -562,7 +561,7 @@
 			active: {
 				true: {
 					bg: 'scrapscache.mediaText',
-					fontWeight: 'semibold',
+					fontWeight: 'heading',
 					color: 'scrapscache.mediaSurface'
 				},
 				false: {
@@ -587,7 +586,7 @@
 			h: '2.75rem',
 			w: '2.75rem',
 			placeItems: 'center',
-			rounded: 'full',
+			rounded: 'pill',
 			bg: 'scrapscache.mediaSurfaceSoft',
 			color: 'scrapscache.mediaTextStrong',
 			boxShadow: 'md',
@@ -602,8 +601,8 @@
 		},
 		variants: {
 			side: {
-				left: { left: '0.75rem' },
-				right: { right: '0.75rem' }
+				left: { left: 'md' },
+				right: { right: 'md' }
 			}
 		}
 	});
@@ -614,7 +613,7 @@
 			w: '3.5rem',
 			flexShrink: 0,
 			overflow: 'hidden',
-			rounded: 'md',
+			rounded: 'control',
 			touchAction: 'manipulation',
 			transition: 'opacity 120ms ease, box-shadow 120ms ease',
 			cursor: 'pointer'
@@ -653,7 +652,7 @@
 						{#snippet render(cropper)}
 							<header class={crop.header}>
 								<!-- Left: Cancel, Rotate, Undo -->
-								<div class={hstack({ gap: { base: '0.25rem', sm: '0.375rem' } })}>
+								<div class={hstack({ gap: { base: '2xs', sm: 'xs' } })}>
 									<Tooltip content="Cancel">
 										<button
 											type="button"
@@ -716,7 +715,7 @@
 								</div>
 
 								<!-- Right: Reset & Apply -->
-								<div class={hstack({ gap: '0.5rem' })}>
+								<div class={hstack({ gap: 'sm' })}>
 									<button
 										type="button"
 										class={crop.reset}
@@ -738,7 +737,7 @@
 										{#if cropBusy}
 											<span>Saving…</span>
 										{:else}
-											<div class={hstack({ gap: '0.375rem' })}>
+											<div class={hstack({ gap: 'xs' })}>
 												<Check size={16} aria-hidden="true" />
 												<span>Apply</span>
 											</div>
@@ -796,7 +795,7 @@
 			</div>
 		{:else}
 			<header class={fs.header}>
-				<div class={hstack({ gap: '0.5rem', minW: 0 })}>
+				<div class={hstack({ gap: 'sm', minW: 0 })}>
 					<button type="button" class={topBarBtn} onclick={close} aria-label="Close photo">
 						<X size={24} aria-hidden="true" />
 					</button>
@@ -810,7 +809,7 @@
 					</div>
 				</div>
 
-				<div class={hstack({ gap: '0.25rem' })}>
+				<div class={hstack({ gap: '2xs' })}>
 					<Tooltip content="Download photo">
 						<DownloadTrigger
 							fileName={current.name || 'photo.webp'}

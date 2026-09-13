@@ -45,8 +45,8 @@
 			empty: {
 				display: 'flex',
 				justifyContent: 'center',
-				px: '1rem',
-				py: '2.5rem',
+				px: 'lg',
+				py: '3xl',
 				md: {
 					position: 'absolute',
 					insetY: 0,
@@ -57,7 +57,7 @@
 				}
 			},
 			calendar: { w: 'full' },
-			feed: { mt: '1rem' }
+			feed: { mt: 'lg' }
 		}
 	})();
 </script>

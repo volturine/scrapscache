@@ -17,7 +17,7 @@
 			.filter((label): label is NonNullable<typeof label> => !!label)
 	);
 
-	// The board card keeps its own box (rounded-xl, no max height) and a fixed
+	// The board card keeps its own box (16px radius, no max height) and a fixed
 	// scroll window; the shared noteCard recipe covers the pieces that match.
 	const card = noteCard();
 	const kanbanCard = sva({
@@ -25,16 +25,16 @@
 		base: {
 			root: {
 				overflow: 'hidden',
-				rounded: 'xl',
-				borderWidth: '1px',
+				rounded: 'dialog',
+				borderWidth: 'hairline',
 				borderColor: 'scrapscache.borderFaint',
 				boxShadow: 'sm',
 				touchAction: 'pan-y',
 				userSelect: 'none'
 			},
 			viewport: { position: 'relative', maxH: '240px', overflow: 'hidden' },
-			content: { p: '0.75rem' },
-			reminder: { mb: '0.25rem' }
+			content: { p: 'md' },
+			reminder: { mb: '2xs' }
 		}
 	});
 	const styles = kanbanCard();

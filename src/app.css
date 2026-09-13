@@ -158,7 +158,7 @@ body {
 body {
 	background-color: var(--colors-scrapscache-bg);
 	color: var(--colors-scrapscache-text);
-	font-family: 'Google Sans', 'Roboto', system-ui, Arial, sans-serif;
+	font-family: var(--fonts-sans);
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
 }

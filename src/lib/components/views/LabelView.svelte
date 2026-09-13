@@ -7,7 +7,7 @@
 	import { Tag } from '@lucide/svelte';
 	import { css } from 'styled-system/css';
 	import { hstack } from 'styled-system/patterns';
-	import { notesShell, sectionHeader, viewPage } from 'styled-system/recipes';
+	import { notesShell, sectionHeader, text, viewPage } from 'styled-system/recipes';
 
 	const { openNote: openEditor } = useEditorActions();
 
@@ -22,12 +22,10 @@
 	const sec = sectionHeader();
 
 	const titleClass = hstack({
-		mb: '1rem',
-		px: '0.5rem',
-		fontSize: 'xl',
-		fontWeight: 'medium',
-		color: 'scrapscache.text'
+		mb: 'lg',
+		px: 'sm'
 	});
+	const titleText = text({ style: 'heading' });
 </script>
 
 <div class={viewPage()}>
@@ -45,14 +43,14 @@
 		/>
 	{:else}
 		<div class={shell}>
-			<h1 class={titleClass}>{label.name}</h1>
+			<h1 class={`${titleClass} ${titleText}`}>{label.name}</h1>
 		</div>
 
 		{#if pinned.length > 0}
 			<div class={shell}>
 				<h2 class={sec.label}>Pinned</h2>
 			</div>
-			<NotesFeed notes={pinned} onOpen={openEditor} class={css({ mb: '1.5rem' })} />
+			<NotesFeed notes={pinned} onOpen={openEditor} class={css({ mb: '2xl' })} />
 		{/if}
 
 		{#if pinned.length > 0 && others.length > 0}

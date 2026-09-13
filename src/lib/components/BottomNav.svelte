@@ -12,12 +12,12 @@
 				position: 'fixed',
 				zIndex: 60,
 				bottom: 'var(--app-fab-bottom)',
-				right: '1.5rem'
+				right: '2xl'
 			},
 			button: {
 				h: 'var(--app-fab-size)',
 				w: 'var(--app-fab-size)',
-				borderWidth: '1px',
+				borderWidth: 'hairline',
 				borderColor: 'scrapscache.border',
 				bg: 'scrapscache.surface',
 				boxShadow: 'lg'

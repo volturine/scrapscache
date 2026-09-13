@@ -19,8 +19,8 @@
 				display: 'flex',
 				flexDirection: 'column',
 				alignItems: 'center',
-				gap: '0.5rem',
-				px: '0.75rem'
+				gap: 'sm',
+				px: 'md'
 			},
 			card: {
 				pointerEvents: 'auto',
@@ -28,17 +28,17 @@
 				w: 'full',
 				maxW: '28rem',
 				alignItems: 'flex-start',
-				gap: '0.75rem',
-				rounded: '2xl',
-				borderWidth: '1px',
+				gap: 'md',
+				rounded: 'sheet',
+				borderWidth: 'hairline',
 				borderColor: 'scrapscache.border',
 				bg: 'scrapscache.surface',
-				px: '0.75rem',
-				py: '0.75rem',
+				px: 'md',
+				py: 'md',
 				boxShadow: '2xl'
 			},
 			icon: {
-				mt: '0.125rem',
+				mt: '3xs',
 				w: '1.25rem',
 				h: '1.25rem',
 				flexShrink: 0,
@@ -54,13 +54,11 @@
 				overflow: 'hidden',
 				textOverflow: 'ellipsis',
 				whiteSpace: 'nowrap',
-				fontSize: 'sm',
-				fontWeight: '600',
+				textStyle: 'bodyStrong',
 				color: 'scrapscache.text'
 			},
 			subtitle: {
-				fontSize: 'xs',
-				color: 'scrapscache.textMuted'
+				textStyle: 'caption'
 			},
 			dismissIcon: { w: '1rem', h: '1rem' }
 		}

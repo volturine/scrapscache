@@ -760,8 +760,8 @@ describe('BodyEditor task focus chrome', () => {
 		expect(container.querySelector('[data-add-subtask]')?.closest('[data-editor-line]')).toBe(
 			container.querySelector('[data-editor-line="1"]')
 		);
-		expect(container.querySelector('[data-editor-line="0"]')?.className).toContain('bdr-t_lg');
-		expect(container.querySelector('[data-editor-line="1"]')?.className).toContain('bdr-b_lg');
+		expect(container.querySelector('[data-editor-line="0"]')?.className).toContain('bdr-t_card');
+		expect(container.querySelector('[data-editor-line="1"]')?.className).toContain('bdr-b_card');
 
 		await fireEvent.pointerDown(
 			container.querySelector('[data-add-subtask]') as HTMLButtonElement,
@@ -771,8 +771,10 @@ describe('BodyEditor task focus chrome', () => {
 		);
 
 		expect(container.querySelectorAll('[data-task-row]')).toHaveLength(4);
-		expect(container.querySelector('[data-editor-line="0"]')?.className).not.toContain('bdr-b_lg');
-		expect(container.querySelector('[data-editor-line="2"]')?.className).toContain('bdr-b_lg');
+		expect(container.querySelector('[data-editor-line="0"]')?.className).not.toContain(
+			'bdr-b_card'
+		);
+		expect(container.querySelector('[data-editor-line="2"]')?.className).toContain('bdr-b_card');
 		expect(
 			container
 				.querySelector('[data-editor-line="2"] [data-line-text]')
@@ -804,8 +806,8 @@ describe('BodyEditor task focus chrome', () => {
 
 		const buttonNoSub = c1.querySelector('[data-add-subtask]') as HTMLButtonElement;
 		expect(buttonNoSub).not.toBeNull();
-		expect(buttonNoSub.className).toContain('pl_1.5rem');
-		expect(buttonNoSub.className).not.toContain('pl_0.25rem');
+		expect(buttonNoSub.className).toContain('pl_2xl');
+		expect(buttonNoSub.className).not.toContain('pl_2xs');
 
 		const { container: c2 } = render(BodyEditor, {
 			props: { body: '[ ] Avocados\n  [ ] Hass\n[ ] Dark chocolate', focusLine: 0 }
@@ -814,8 +816,8 @@ describe('BodyEditor task focus chrome', () => {
 
 		const buttonWithSub = c2.querySelector('[data-add-subtask]') as HTMLButtonElement;
 		expect(buttonWithSub).not.toBeNull();
-		expect(buttonWithSub.className).toContain('pl_0.25rem');
-		expect(buttonWithSub.className).not.toContain('pl_1.5rem');
+		expect(buttonWithSub.className).toContain('pl_2xs');
+		expect(buttonWithSub.className).not.toContain('pl_2xl');
 	});
 
 	it('preserves the subtask draft across mobile pointerdown and blur cycles', async () => {

@@ -23,7 +23,8 @@ npm run validate            # check + format + tests + production build
 
 ## Styling
 
-- Treat Panda semantic tokens in `panda.config.ts` as the source of truth for colors, radii, shadows, and shared interaction states. Do not add raw palette colors, parallel CSS custom properties, or component-level light/dark pairs.
+- Treat Panda semantic tokens in `panda.config.ts` as the source of truth for colors, radii, shadows, typography, spacing, border widths, tracking, and shared interaction states. Do not add raw palette colors, parallel CSS custom properties, or component-level light/dark pairs.
+- Prefer the semantic aliases (`body`, `subtitle`, `label`, `caption`, `heading`, `sm`, `md`, `lg`, `card`, `dialog`, `hairline`, and similar) over Panda defaults or repeated raw values. Use configured text styles for copy or the `text` recipe for standalone text, keeping local overrides limited to a real component-specific contract.
 - Reuse config recipes from `styled-system/recipes` for shared controls and surfaces. Inspect the existing tokens and recipes before adding one; create a config recipe only for a visual contract reused across components.
 - Use `cva` for a local single-element variant and `sva` for a local multi-part component. Keep truly one-off adjustments inline with `css()` or a Panda pattern instead of hiding them behind named style constants.
 - Keep component visuals in Panda. Reserve `src/app.css` and authored static class names for document-state, application-shell, or third-party integration hooks; do not write Tailwind utility strings.

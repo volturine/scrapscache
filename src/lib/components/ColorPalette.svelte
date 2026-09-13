@@ -17,8 +17,8 @@
 		base: {
 			w: '2.5rem',
 			h: '2.5rem',
-			rounded: 'full',
-			borderWidth: '2px',
+			rounded: 'pill',
+			borderWidth: 'strong',
 			borderColor: 'scrapscache.borderSubtle',
 			cursor: 'pointer',
 			transition: 'transform 150ms ease',
@@ -39,14 +39,14 @@
 			w: 'full',
 			alignItems: 'center',
 			justifyContent: 'center',
-			fontSize: 'sm',
+			fontSize: 'body',
 			color: 'scrapscache.textMuted'
 		}
 	});
 </script>
 
 <ToggleGroup.Root
-	class={`${popover()} ${grid({ columns: 4, gap: '0.75rem', p: '1rem' })}`}
+	class={`${popover()} ${grid({ columns: 4, gap: 'md', p: 'lg' })}`}
 	value={[color]}
 	onValueChange={(details) => {
 		const next = details.value[0];

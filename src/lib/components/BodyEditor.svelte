@@ -1081,11 +1081,11 @@
 				false: {}
 			},
 			root: {
-				true: { mt: '0.125rem', borderTopRadius: 'lg', pt: '0.25rem' },
+				true: { mt: '3xs', borderTopRadius: 'card', pt: '2xs' },
 				false: {}
 			},
 			last: {
-				true: { mb: '0.125rem', borderBottomRadius: 'lg', pb: '0.25rem' },
+				true: { mb: '3xs', borderBottomRadius: 'card', pb: '2xs' },
 				false: {}
 			}
 		},
@@ -1098,10 +1098,10 @@
 			flexBasis: 'full',
 			userSelect: 'none',
 			alignItems: 'center',
-			rounded: 'sm',
-			py: '0.25rem',
+			rounded: 'compact',
+			py: '2xs',
 			textAlign: 'left',
-			fontSize: 'xs',
+			textStyle: 'label',
 			color: 'scrapscache.textMuted',
 			cursor: 'pointer',
 			transition: 'colors 120ms ease',
@@ -1114,8 +1114,8 @@
 		},
 		variants: {
 			indented: {
-				true: { pl: '0.25rem' },
-				false: { pl: '1.5rem' }
+				true: { pl: '2xs' },
+				false: { pl: '2xl' }
 			}
 		},
 		defaultVariants: { indented: false }

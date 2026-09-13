@@ -156,7 +156,7 @@
 				flexShrink: 0,
 				alignItems: 'center',
 				justifyContent: 'space-between',
-				px: '0.75rem'
+				px: 'md'
 			},
 			error: {
 				position: 'relative',
@@ -164,18 +164,18 @@
 				display: 'flex',
 				alignItems: 'center',
 				justifyContent: 'space-between',
-				gap: '0.75rem',
-				borderBottomWidth: '1px',
+				gap: 'md',
+				borderBottomWidth: 'hairline',
 				borderColor: 'scrapscache.danger',
 				bg: 'scrapscache.dangerSubtle',
-				px: '1rem',
-				py: '0.5rem',
-				fontSize: 'sm',
+				px: 'lg',
+				py: 'sm',
+				textStyle: 'body',
 				color: 'scrapscache.danger'
 			},
 			reload: {
 				flexShrink: 0,
-				fontWeight: '600',
+				fontWeight: 'heading',
 				textDecoration: 'underline',
 				textDecorationColor: 'scrapscache.danger',
 				textUnderlineOffset: '2px',
@@ -194,8 +194,8 @@
 			loadingText: {
 				display: 'flex',
 				alignItems: 'center',
-				gap: '0.5rem',
-				fontSize: 'sm',
+				gap: 'sm',
+				fontSize: 'body',
 				color: 'scrapscache.textMuted'
 			},
 			spinnerSm: { h: '1rem', w: '1rem', animation: 'spin' },
@@ -217,8 +217,8 @@
 				}
 			},
 			doneButton: {
-				rounded: 'full',
-				fontWeight: '600',
+				rounded: 'pill',
+				fontWeight: 'heading',
 				flexShrink: 0,
 				touchAction: 'manipulation',
 				transition: 'background-color 120ms ease, transform 120ms ease',

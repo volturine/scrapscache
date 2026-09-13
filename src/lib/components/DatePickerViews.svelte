@@ -39,18 +39,17 @@
 				'& .calendar-table-fill [data-part="table-cell"]': { h: 'inherit', verticalAlign: 'middle' }
 			},
 			viewControl: {
-				mb: '0.5rem',
+				mb: 'sm',
 				display: 'flex',
 				h: '2.25rem',
 				alignItems: 'center',
 				justifyContent: 'space-between'
 			},
 			viewButton: {
-				rounded: 'lg',
-				px: '0.5rem',
-				py: '0.25rem',
-				fontSize: 'sm',
-				fontWeight: '600',
+				rounded: 'card',
+				px: 'sm',
+				py: '2xs',
+				textStyle: 'bodyStrong',
 				color: 'scrapscache.text',
 				cursor: 'pointer',
 				transition: 'colors 150ms ease',
@@ -60,8 +59,7 @@
 			weekHeader: {
 				h: '1.5rem',
 				textAlign: 'center',
-				fontSize: 'xs',
-				fontWeight: 'medium',
+				textStyle: 'captionStrong',
 				color: 'scrapscache.textMuted'
 			},
 			weekRow: { textAlign: 'center' },
@@ -94,18 +92,17 @@
 			display: 'flex',
 			alignItems: 'center',
 			justifyContent: 'center',
-			fontSize: 'sm',
-			fontWeight: 'medium',
+			textStyle: 'bodyStrong',
 			cursor: 'pointer',
 			transition: 'colors 150ms ease',
 			_hoverable: { bg: 'scrapscache.interactiveHover' },
 			_selected: {
 				bg: 'scrapscache.accent',
 				color: 'scrapscache.accentForeground',
-				fontWeight: '600'
+				fontWeight: 'heading'
 			},
 			'&[data-today]:not([data-selected])': {
-				borderWidth: '1px',
+				borderWidth: 'hairline',
 				borderColor: 'scrapscache.textMuted'
 			},
 			_focusVisible: {
@@ -120,11 +117,11 @@
 					position: 'relative',
 					h: '2rem',
 					w: '2rem',
-					rounded: 'full',
+					rounded: 'pill',
 					'&[data-in-range]:not([data-range-start]):not([data-range-end])': {
 						bg: 'transparent',
 						color: 'scrapscache.text',
-						fontWeight: 'normal'
+						fontWeight: 'body'
 					},
 					'&[data-focus]:not([data-selected]):not([data-in-range])': {
 						bg: 'transparent !important'
@@ -141,7 +138,7 @@
 				month: {
 					h: '2.25rem',
 					w: '3.5rem',
-					rounded: 'lg'
+					rounded: 'card'
 				}
 			}
 		}

@@ -199,9 +199,9 @@
 		},
 		variants: {
 			layout: {
-				compact: { justifyContent: 'center', gap: '0.375rem' },
-				column: { flexDirection: 'column', gap: '0.625rem' },
-				row: { justifyContent: 'center', gap: '0.625rem' }
+				compact: { justifyContent: 'center', gap: 'xs' },
+				column: { flexDirection: 'column', gap: 'list' },
+				row: { justifyContent: 'center', gap: 'list' }
 			}
 		}
 	});
@@ -494,7 +494,7 @@
 		<div {@attach portalToAppOverlay} class={local.portal} role="presentation">
 			<Dialog.Backdrop class={local.backdrop} />
 			<Dialog.Positioner
-				class={flex({ position: 'fixed', inset: 0, align: 'center', justify: 'center', p: '1rem' })}
+				class={flex({ position: 'fixed', inset: 0, align: 'center', justify: 'center', p: 'lg' })}
 			>
 				<Dialog.Content class={local.dialogContent} onclick={(e) => e.stopPropagation()}>
 					<ReminderPicker

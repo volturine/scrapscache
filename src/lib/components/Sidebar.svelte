@@ -198,30 +198,28 @@
 				whiteSpace: 'nowrap',
 				textAlign: 'left'
 			},
-			newLabelSpacing: { mb: '0.25rem' },
+			newLabelSpacing: { mb: '2xs' },
 			labelInput: {
 				flex: '1',
-				fontWeight: 'medium',
-				_placeholder: { fontWeight: 'normal', color: 'scrapscache.textMuted' }
+				textStyle: 'button',
+				_placeholder: { fontWeight: 'body', color: 'scrapscache.textMuted' }
 			},
-			labelsSection: { mt: '1.25rem', w: 'full' },
+			labelsSection: { mt: 'xl', w: 'full' },
 			sectionTitle: {
 				minW: 0,
 				flex: '1',
-				fontSize: '11px',
-				fontWeight: 'semibold',
+				textStyle: 'captionStrong',
 				textTransform: 'uppercase',
-				letterSpacing: '0.14em',
+				letterSpacing: 'eyebrow',
 				color: 'scrapscache.textMuted'
 			},
 			editButton: {
 				position: 'relative',
 				flexShrink: 0,
-				rounded: 'md',
-				px: '0.5rem',
-				py: '0.25rem',
-				fontSize: 'xs',
-				fontWeight: 'medium',
+				rounded: 'control',
+				px: 'sm',
+				py: '2xs',
+				textStyle: 'label',
 				color: 'scrapscache.textMuted',
 				cursor: 'pointer',
 				touchAction: 'manipulation',
@@ -237,8 +235,7 @@
 				textOverflow: 'ellipsis',
 				whiteSpace: 'nowrap',
 				textAlign: 'left',
-				fontSize: 'sm',
-				fontWeight: 'medium',
+				textStyle: 'button',
 				color: 'scrapscache.text',
 				cursor: 'pointer'
 			},
@@ -249,25 +246,25 @@
 				display: 'flex',
 				alignItems: { base: 'flex-end', sm: 'center' },
 				justifyContent: 'center',
-				p: '1rem'
+				p: 'lg'
 			},
 			scroller: { scrollbarWidth: 'thin' }
 		},
 		variants: {
 			navigation: {
-				true: { row: { w: 'full', textAlign: 'left', fontSize: 'sm', cursor: 'pointer' } }
+				true: { row: { w: 'full', textAlign: 'left', textStyle: 'button', cursor: 'pointer' } }
 			},
 			active: {
 				true: {
 					row: {
-						fontWeight: 'semibold',
+						fontWeight: 'heading',
 						bg: 'scrapscache.navigationActive',
 						color: 'scrapscache.navigationActiveText'
 					}
 				},
-				false: { row: { fontWeight: 'medium', color: 'scrapscache.textMuted' } }
+				false: { row: { fontWeight: 'interactive', color: 'scrapscache.textMuted' } }
 			},
-			wide: { true: { row: { pr: '1rem' } } },
+			wide: { true: { row: { pr: 'lg' } } },
 			iconTone: {
 				nav: { icon: { color: 'scrapscache.text' } },
 				muted: { icon: { color: 'scrapscache.textMuted' } }
@@ -287,7 +284,7 @@
 						_before: { position: 'absolute', inset: '-0.5rem', content: '""' }
 					}
 				},
-				count: { icon: { fontSize: 'xs', fontVariantNumeric: 'tabular-nums', opacity: 0.7 } }
+				count: { icon: { fontSize: 'label', fontVariantNumeric: 'tabular-nums', opacity: 0.7 } }
 			}
 		}
 	});
@@ -333,11 +330,11 @@
 		sidebar.scroller,
 		vstack({
 			h: 'full',
-			gap: '0.125rem',
+			gap: '3xs',
 			overflowY: 'auto',
-			px: '0.5rem',
-			pb: '1rem',
-			pt: '0.5rem'
+			px: 'sm',
+			pb: 'lg',
+			pt: 'sm'
 		})
 	]}
 	transition:fly={{ x: -20, duration: 120 }}
@@ -357,7 +354,7 @@
 	{/each}
 
 	<section class={sidebar.labelsSection} data-labels-edit aria-label="Labels">
-		<div class={hstack({ mb: '0.25rem', h: '2rem', gap: '0.5rem', pl: '1rem', pr: '0.5rem' })}>
+		<div class={hstack({ mb: '2xs', h: '2rem', gap: 'sm', pl: 'lg', pr: 'sm' })}>
 			<span class={sidebar.sectionTitle}>Labels</span>
 			<!-- One control in both modes, so the header never reflows on toggle. The
 			     ::before pad gives it a thumb-sized hit area without a taller header. -->
@@ -399,7 +396,7 @@
 		{#if notesStore.labels.length === 0 && !labelsEditMode}
 			{@render newLabelRow('')}
 		{:else}
-			<div class={vstack({ gap: '0.125rem' })}>
+			<div class={vstack({ gap: '3xs' })}>
 				{#each notesStore.labels as label (label.id)}
 					{#if labelsEditMode && renamingId === label.id}
 						<!-- Same box as the rows around it, so starting a rename never nudges
@@ -492,7 +489,7 @@
 							No notes currently use this label.
 						{/if}
 					</p>
-					<div class={vstack({ gap: '0.5rem', mt: '1rem' })}>
+					<div class={vstack({ gap: 'sm', mt: 'lg' })}>
 						<button
 							type="button"
 							onclick={confirmDeleteLabelOnly}

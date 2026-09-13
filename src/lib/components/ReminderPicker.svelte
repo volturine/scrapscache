@@ -193,33 +193,37 @@
 			'primaryButton'
 		],
 		base: {
-			panel: { w: '20rem', p: '1.25rem', gap: 0 },
-			title: { mb: '0.75rem', fontSize: 'base', fontWeight: 'medium', lineHeight: 'normal' },
-			statusBox: { mb: '1rem', rounded: 'lg', px: '0.75rem', py: '0.625rem' },
+			panel: { w: '20rem', p: 'xl', gap: 0 },
+			title: { mb: 'md', textStyle: 'subtitle' },
+			statusBox: { mb: 'lg', rounded: 'card', px: 'md', py: 'list' },
 			statusLabel: {
 				minW: 0,
-				fontSize: '10px',
-				fontWeight: '600',
+				textStyle: 'micro',
 				textTransform: 'uppercase',
-				letterSpacing: '0.05em',
+				letterSpacing: 'status',
 				color: 'scrapscache.textMuted'
 			},
 			alarmIcon: { w: '1rem', h: '1rem', flexShrink: 0 },
 			remaining: { minW: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-			hint: { mt: '0.25rem', fontSize: '11px', lineHeight: 'snug', color: 'scrapscache.textMuted' },
-			divider: { mb: '1rem', borderTopWidth: '1px', borderColor: 'scrapscache.border', pt: '1rem' },
+			hint: { mt: '2xs', textStyle: 'caption' },
+			divider: {
+				mb: 'lg',
+				borderTopWidth: 'hairline',
+				borderColor: 'scrapscache.border',
+				pt: 'lg'
+			},
 			sectionLabel: {
-				mb: '0.75rem',
-				fontSize: 'xs',
-				fontWeight: 'medium',
+				mb: 'md',
+				fontSize: 'label',
+				fontWeight: 'interactive',
 				textTransform: 'uppercase',
-				letterSpacing: '0.05em',
+				letterSpacing: 'status',
 				color: 'scrapscache.textMuted'
 			},
 			calNavButton: { flexShrink: 0, color: 'inherit' },
 			ellipsis: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-			wheelDeck: { rounded: 'xl', bg: 'scrapscache.surfaceSubtle', px: '0.5rem', py: '0.25rem' },
-			desktopCalendar: { h: 'full', overflow: 'hidden', py: '0.5rem' },
+			wheelDeck: { rounded: 'dialog', bg: 'scrapscache.surfaceSubtle', px: 'sm', py: '2xs' },
+			desktopCalendar: { h: 'full', overflow: 'hidden', py: 'sm' },
 			dayWheel: { w: '3rem' },
 			monthWheel: { w: '7.75rem' },
 			yearWheel: { w: '4.5rem' },
@@ -230,15 +234,14 @@
 				flexShrink: 0,
 				alignItems: 'center',
 				justifyContent: 'center',
-				fontSize: 'xl',
-				fontWeight: '600',
+				textStyle: 'display',
 				color: 'scrapscache.text'
 			},
 			footer: {
-				gap: '0.5rem',
-				borderTopWidth: '1px',
+				gap: 'sm',
+				borderTopWidth: 'hairline',
 				borderColor: 'scrapscache.border',
-				pt: '1rem'
+				pt: 'lg'
 			},
 			removeButton: { flexShrink: 0 },
 			secondaryButton: { minW: '5.5rem' },
@@ -251,12 +254,12 @@
 		base: {
 			minW: '4.25rem',
 			flexShrink: 0,
-			rounded: 'full',
-			px: '0.5rem',
-			py: '0.125rem',
-			fontWeight: 'bold',
+			rounded: 'pill',
+			px: 'sm',
+			py: '3xs',
+			fontWeight: 'strong',
 			textTransform: 'uppercase',
-			letterSpacing: '0.05em'
+			letterSpacing: 'status'
 		},
 		variants: {
 			status: {
@@ -280,17 +283,16 @@
 
 	const dateBtn = cva({
 		base: {
-			mx: '0.25rem',
+			mx: '2xs',
 			display: 'flex',
 			minW: 0,
 			flex: '1',
 			alignItems: 'center',
 			justifyContent: 'center',
-			rounded: 'lg',
-			px: '0.5rem',
-			py: '0.375rem',
-			fontSize: 'sm',
-			fontWeight: 'medium',
+			rounded: 'card',
+			px: 'sm',
+			py: 'xs',
+			textStyle: 'button',
 			color: 'scrapscache.text',
 			cursor: 'pointer'
 		},
@@ -313,7 +315,7 @@
 	<div class={cx(d.title, pickerStyles.title)}>Reminder</div>
 
 	<div class={cx(statusBoxClass, pickerStyles.statusBox)}>
-		<div class={hstack({ justify: 'space-between', gap: '0.5rem' })}>
+		<div class={hstack({ justify: 'space-between', gap: 'sm' })}>
 			<div class={pickerStyles.statusLabel}>Will remind you</div>
 			<span
 				class={cx(
@@ -324,10 +326,9 @@
 		</div>
 		<div
 			class={hstack({
-				gap: '0.5rem',
-				mt: '0.375rem',
-				fontSize: 'sm',
-				fontWeight: '600',
+				gap: 'sm',
+				mt: 'xs',
+				textStyle: 'bodyStrong',
 				color: 'scrapscache.text'
 			})}
 		>
@@ -342,7 +343,7 @@
 
 		<div data-schedule-panel>
 			{#if isMobile}
-				<div class={hstack({ mb: '0.75rem' })}>
+				<div class={hstack({ mb: 'md' })}>
 					<button
 						type="button"
 						class={calNavBtn}
@@ -366,7 +367,7 @@
 				</div>
 
 				{#if monthYearOpen}
-					<div class={cx(hstack({ justify: 'center', gap: '0.5rem' }), pickerStyles.wheelDeck)}>
+					<div class={cx(hstack({ justify: 'center', gap: 'sm' }), pickerStyles.wheelDeck)}>
 						<WheelPicker
 							class={pickerStyles.dayWheel}
 							items={dayItems}
@@ -390,7 +391,7 @@
 						/>
 					</div>
 				{:else}
-					<div class={cx(hstack({ justify: 'center', gap: '0.25rem' }), pickerStyles.wheelDeck)}>
+					<div class={cx(hstack({ justify: 'center', gap: '2xs' }), pickerStyles.wheelDeck)}>
 						<WheelPicker
 							class={pickerStyles.timeWheel}
 							items={HOUR_ITEMS}
@@ -422,7 +423,7 @@
 				</div>
 			{:else}
 				<div class={flex({ h: 'full', direction: 'column' })}>
-					<div class={hstack({ mb: '0.75rem' })}>
+					<div class={hstack({ mb: 'md' })}>
 						<button
 							type="button"
 							class={calNavBtn}
@@ -456,7 +457,7 @@
 								flex: '1',
 								align: 'center',
 								justify: 'center',
-								gap: '0.25rem'
+								gap: '2xs'
 							}),
 							pickerStyles.wheelDeck
 						)}

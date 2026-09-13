@@ -116,7 +116,7 @@
 			columns: {
 				display: 'flex',
 				alignItems: 'flex-start',
-				gap: '10px',
+				gap: 'list',
 				p: 0,
 				w: 'full',
 				boxSizing: 'border-box',
@@ -128,7 +128,7 @@
 				minW: 0,
 				display: 'flex',
 				flexDirection: 'column',
-				gap: '10px'
+				gap: 'list'
 			}
 		}
 	})();

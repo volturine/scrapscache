@@ -101,13 +101,13 @@
 				overflow: 'auto',
 				whiteSpace: 'pre-wrap',
 				wordBreak: 'break-word',
-				p: '1rem',
+				p: 'lg',
 				fontFamily: 'mono',
-				fontSize: 'sm',
+				textStyle: 'body',
 				lineHeight: 'relaxed',
 				color: 'scrapscache.text'
 			},
-			audioBox: { display: 'grid', flex: '1', placeItems: 'center', p: '1.5rem' },
+			audioBox: { display: 'grid', flex: '1', placeItems: 'center', p: '2xl' },
 			audio: { w: 'full', maxW: '32rem' },
 			videoBox: {
 				display: 'flex',

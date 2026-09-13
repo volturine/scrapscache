@@ -339,18 +339,18 @@
 		slots: ['icon', 'error', 'positioner', 'panel', 'dialogTitle', 'dialogDescription'],
 		base: {
 			icon: { h: '1.25rem', w: '1.25rem' },
-			error: { px: '0.75rem', pb: '0.25rem', fontSize: 'xs', color: 'scrapscache.danger' },
+			error: { px: 'md', pb: '2xs', textStyle: 'label', color: 'scrapscache.danger' },
 			positioner: {
 				position: 'fixed',
 				inset: 0,
 				zIndex: 50,
 				display: 'grid',
 				placeItems: 'center',
-				p: '1rem'
+				p: 'lg'
 			},
-			panel: { w: 'full', maxW: 'sm', p: '1rem', color: 'scrapscache.text' },
-			dialogTitle: { fontSize: 'base', fontWeight: 'semibold' },
-			dialogDescription: { mt: '0.125rem', fontSize: 'xs' }
+			panel: { w: 'full', maxW: 'sm', p: 'lg', color: 'scrapscache.text' },
+			dialogTitle: { textStyle: 'subtitleStrong' },
+			dialogDescription: { mt: '3xs', textStyle: 'caption' }
 		}
 	});
 	const qualityCompressed = qualityChoice();
@@ -529,10 +529,10 @@
 			<Dialog.Content class={cx(d.panel, qualityCompressed.panel)}>
 				<div
 					class={flex({
-						mb: '0.75rem',
+						mb: 'md',
 						align: 'flex-start',
 						justify: 'space-between',
-						gap: '0.75rem'
+						gap: 'md'
 					})}
 				>
 					<div>
@@ -554,7 +554,7 @@
 						<X size={16} aria-hidden="true" />
 					</Dialog.CloseTrigger>
 				</div>
-				<div class={grid({ columns: 2, gap: '0.5rem' })}>
+				<div class={grid({ columns: 2, gap: 'sm' })}>
 					<button
 						type="button"
 						class={cx(button({ variant: 'primary' }), qualityCompressedCard.root)}
@@ -583,13 +583,13 @@
 	use:footerInteractions
 	class={hstack({
 		justify: 'space-between',
-		px: '0.75rem',
-		py: '0.5rem',
-		borderTopWidth: '1px',
+		px: 'md',
+		py: 'sm',
+		borderTopWidth: 'hairline',
 		borderColor: 'scrapscache.borderFaint'
 	})}
 >
-	<div class={hstack({ gap: '0.25rem', flexShrink: 0 })}>
+	<div class={hstack({ gap: '2xs', flexShrink: 0 })}>
 		<Tooltip content="Attach">
 			<button
 				type="button"
@@ -627,7 +627,7 @@
 
 	<div
 		class={hstack({
-			gap: '0.25rem',
+			gap: '2xs',
 			flexWrap: 'wrap',
 			justify: 'flex-end',
 			maxW: 'calc(100% - 5.5rem)'

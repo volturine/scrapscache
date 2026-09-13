@@ -139,18 +139,18 @@
 			heading: {
 				minW: 0,
 				flex: '1',
-				fontSize: '11px',
-				fontWeight: '600',
+				fontSize: 'caption',
+				fontWeight: 'heading',
 				textTransform: 'uppercase',
-				letterSpacing: '0.14em',
+				letterSpacing: 'eyebrow',
 				color: 'scrapscache.textMuted'
 			},
-			searchWrap: { position: 'relative', mb: '0.25rem' },
+			searchWrap: { position: 'relative', mb: '2xs' },
 			scroller: { scrollbarWidth: 'thin' },
 			searchIcon: {
 				pointerEvents: 'none',
 				position: 'absolute',
-				left: '0.75rem',
+				left: 'md',
 				top: '50%',
 				h: '1rem',
 				w: '1rem',
@@ -160,10 +160,10 @@
 			searchInput: { w: 'full', pl: '2.25rem', _placeholder: { color: 'scrapscache.textMuted' } },
 			createRow: { color: 'scrapscache.accent' },
 			empty: {
-				px: '0.75rem',
-				py: '1rem',
+				px: 'md',
+				py: 'lg',
 				textAlign: 'center',
-				fontSize: 'xs',
+				textStyle: 'caption',
 				color: 'scrapscache.textMuted'
 			}
 		}
@@ -174,14 +174,14 @@
 
 <div
 	use:labelMenuInteractions
-	class={`${popover()} ${vstack({ p: '0.5rem', w: 'min(20rem, calc(100vw - 2rem))', gap: '0', alignItems: 'stretch' })}`}
+	class={`${popover()} ${vstack({ p: 'sm', w: 'min(20rem, calc(100vw - 2rem))', gap: '0', alignItems: 'stretch' })}`}
 >
 	<div
 		class={hstack({
 			h: '2rem',
-			pl: '0.75rem',
-			pr: '0.25rem',
-			mb: '0.25rem',
+			pl: 'md',
+			pr: '2xs',
+			mb: '2xs',
 			justify: 'space-between'
 		})}
 	>
@@ -205,7 +205,7 @@
 
 	<div
 		class={[
-			vstack({ gap: '0.125rem', maxH: '16rem', overflowY: 'auto', alignItems: 'stretch' }),
+			vstack({ gap: '3xs', maxH: '16rem', overflowY: 'auto', alignItems: 'stretch' }),
 			item.scroller
 		]}
 		style:min-height={listMinHeight}

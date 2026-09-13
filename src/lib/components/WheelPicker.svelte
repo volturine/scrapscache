@@ -230,7 +230,7 @@
 				zIndex: 0,
 				h: '2.25rem',
 				transform: 'translateY(-50%)',
-				rounded: 'lg',
+				rounded: 'card',
 				bg: 'scrapscache.bg'
 			},
 			viewport: {
@@ -263,17 +263,16 @@
 		variants: {
 			distance: {
 				center: {
-					fontSize: 'base',
-					fontWeight: '600',
+					textStyle: 'subtitleStrong',
 					color: 'scrapscache.text'
 				},
 				adjacent: {
-					fontSize: 'sm',
-					fontWeight: 'medium',
+					fontSize: 'body',
+					fontWeight: 'interactive',
 					color: 'scrapscache.textMuted'
 				},
 				far: {
-					fontSize: 'sm',
+					fontSize: 'body',
 					color: 'scrapscache.textMuted',
 					opacity: 0.4
 				}

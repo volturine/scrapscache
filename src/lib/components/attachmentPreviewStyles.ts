@@ -10,8 +10,8 @@ export const canvasPreview = sva({
 			aspectRatio: '4/3',
 			w: 'full',
 			overflow: 'hidden',
-			rounded: 'lg',
-			borderWidth: '1px',
+			rounded: 'card',
+			borderWidth: 'hairline',
 			borderColor: 'scrapscache.borderSubtle',
 			bg: 'scrapscache.bg'
 		},
@@ -30,21 +30,21 @@ export const canvasPreview = sva({
 			bgGradient: 'to-t',
 			gradientFrom: 'black/65',
 			gradientTo: 'transparent',
-			px: '0.5rem',
-			pb: '0.375rem',
-			pt: '1.25rem',
+			px: 'sm',
+			pb: 'xs',
+			pt: 'xl',
 			textAlign: 'left',
 			color: 'scrapscache.mediaText'
 		},
 		delBtn: {
 			position: 'absolute',
-			right: '0.25rem',
-			top: '0.25rem',
-			rounded: 'full',
+			right: '2xs',
+			top: '2xs',
+			rounded: 'pill',
 			bg: 'scrapscache.mediaSurfaceMuted',
-			px: '0.375rem',
-			py: '0.125rem',
-			fontSize: 'xs',
+			px: 'xs',
+			py: '3xs',
+			fontSize: 'label',
 			color: 'scrapscache.mediaText',
 			touchAction: 'manipulation',
 			cursor: 'pointer'
@@ -57,21 +57,21 @@ export const canvasPreview = sva({
 					display: 'flex',
 					alignItems: 'center',
 					maxH: '11rem',
-					gap: '0.5rem',
+					gap: 'sm',
 					overflowX: 'auto',
-					px: '0.75rem',
-					pb: '0.5rem'
+					px: 'md',
+					pb: 'sm'
 				},
 				btn: { touchAction: 'manipulation', cursor: 'pointer' },
 				img: { objectFit: 'contain' },
-				loading: { fontSize: 'xs' },
-				caption: { fontSize: '11px', fontWeight: 'medium' }
+				loading: { fontSize: 'label' },
+				caption: { fontSize: 'caption', fontWeight: 'interactive' }
 			},
 			display: {
-				strip: { mt: '0.5rem', display: 'grid', gap: '0.375rem' },
+				strip: { mt: 'sm', display: 'grid', gap: 'xs' },
 				img: { objectFit: 'cover' },
-				loading: { fontSize: '11px' },
-				caption: { fontSize: '10px', fontWeight: 'semibold' }
+				loading: { fontSize: 'caption' },
+				caption: { fontSize: 'micro', fontWeight: 'heading' }
 			}
 		}
 	},
@@ -85,19 +85,19 @@ export const filePreview = sva({
 		row: {
 			display: 'flex',
 			alignItems: 'center',
-			gap: '0.5rem',
-			borderWidth: '1px',
+			gap: 'sm',
+			borderWidth: 'hairline',
 			borderColor: 'scrapscache.borderSubtle',
 			bg: 'scrapscache.surfaceSubtle',
-			px: '0.5rem',
-			py: '0.375rem'
+			px: 'sm',
+			py: 'xs'
 		},
 		badge: {
 			display: 'grid',
 			flexShrink: 0,
 			placeItems: 'center',
 			bg: 'scrapscache.interactiveActive',
-			fontWeight: 'bold',
+			fontWeight: 'strong',
 			color: 'scrapscache.text'
 		},
 		title: {
@@ -106,7 +106,7 @@ export const filePreview = sva({
 			whiteSpace: 'nowrap',
 			color: 'scrapscache.text'
 		},
-		size: { fontSize: '10px', color: 'scrapscache.textMuted' },
+		size: { fontSize: 'micro', color: 'scrapscache.textMuted' },
 		openBtn: {
 			minW: 0,
 			flex: '1',
@@ -116,10 +116,10 @@ export const filePreview = sva({
 		},
 		removeBtn: {
 			flexShrink: 0,
-			rounded: 'full',
-			px: '0.375rem',
-			py: '0.125rem',
-			fontSize: 'xs',
+			rounded: 'pill',
+			px: 'xs',
+			py: '3xs',
+			fontSize: 'label',
 			color: 'scrapscache.textMuted',
 			touchAction: 'manipulation',
 			cursor: 'pointer',
@@ -131,21 +131,27 @@ export const filePreview = sva({
 			editor: {
 				list: {
 					maxH: '9rem',
-					gap: '0.375rem',
+					gap: 'xs',
 					overflowY: 'auto',
-					px: '0.75rem',
-					pb: '0.5rem',
+					px: 'md',
+					pb: 'sm',
 					alignItems: 'stretch'
 				},
-				row: { rounded: 'lg' },
-				badge: { h: '2rem', w: '2rem', rounded: 'md', fontSize: '10px', letterSpacing: 'wide' },
-				title: { fontSize: 'sm' }
+				row: { rounded: 'card' },
+				badge: {
+					h: '2rem',
+					w: '2rem',
+					rounded: 'control',
+					fontSize: 'micro',
+					letterSpacing: 'wide'
+				},
+				title: { fontSize: 'body' }
 			},
 			display: {
-				list: { mt: '0.5rem', gap: '0.25rem' },
-				row: { w: 'full', rounded: 'md', textAlign: 'left' },
-				badge: { h: '1.75rem', w: '1.75rem', rounded: 'sm', fontSize: '9px' },
-				title: { minW: 0, flex: '1', fontSize: 'xs' }
+				list: { mt: 'sm', gap: '2xs' },
+				row: { w: 'full', rounded: 'control', textAlign: 'left' },
+				badge: { h: '1.75rem', w: '1.75rem', rounded: 'compact', fontSize: 'tiny' },
+				title: { minW: 0, flex: '1', fontSize: 'label' }
 			}
 		}
 	},
@@ -157,23 +163,23 @@ export const photoPreview = sva({
 	base: {
 		strip: { display: 'flex', overflowX: 'auto' },
 		wrap: { flexShrink: 0 },
-		btn: { display: 'block', overflow: 'hidden', rounded: 'lg' },
+		btn: { display: 'block', overflow: 'hidden', rounded: 'card' },
 		img: { w: 'auto', objectFit: 'cover' },
 		skeleton: {
 			flexShrink: 0,
 			animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-			rounded: 'lg',
+			rounded: 'card',
 			bg: 'scrapscache.interactiveActive'
 		},
 		delBtn: {
 			position: 'absolute',
-			right: '0.375rem',
-			top: '0.375rem',
+			right: 'xs',
+			top: 'xs',
 			display: 'grid',
 			h: '1.5rem',
 			w: '1.5rem',
 			placeItems: 'center',
-			rounded: 'full',
+			rounded: 'pill',
 			bg: 'scrapscache.mediaSurfaceMuted',
 			color: 'scrapscache.mediaText',
 			touchAction: 'manipulation',
@@ -185,9 +191,9 @@ export const photoPreview = sva({
 			editor: {
 				strip: {
 					alignItems: 'center',
-					gap: '0.5rem',
-					px: '0.75rem',
-					pb: '0.5rem'
+					gap: 'sm',
+					px: 'md',
+					pb: 'sm'
 				},
 				wrap: { position: 'relative' },
 				btn: { h: '8rem', touchAction: 'manipulation', cursor: 'pointer' },
@@ -195,9 +201,9 @@ export const photoPreview = sva({
 				skeleton: { h: '8rem', w: '8rem' }
 			},
 			display: {
-				strip: { mt: '0.5rem', gap: '0.375rem' },
-				wrap: { display: 'block', overflow: 'hidden', rounded: 'md' },
-				img: { h: '6rem', maxW: '10rem', rounded: 'lg' },
+				strip: { mt: 'sm', gap: 'xs' },
+				wrap: { display: 'block', overflow: 'hidden', rounded: 'control' },
+				img: { h: '6rem', maxW: '10rem', rounded: 'card' },
 				skeleton: { h: '6rem', w: '6rem' }
 			}
 		}

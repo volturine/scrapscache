@@ -496,7 +496,7 @@
 				display: 'flex',
 				alignItems: { base: 'flex-start', md: 'center' },
 				justifyContent: 'center',
-				px: '1rem',
+				px: 'lg',
 				pb: 'var(--app-sheet-pad-bottom)'
 			},
 			sheetBox: {
@@ -505,7 +505,7 @@
 				minH: 0,
 				w: 'full',
 				maxW: '2xl',
-				rounded: '2xl',
+				rounded: 'sheet',
 				boxShadow: 'noteSheet'
 			},
 			dialog: {
@@ -515,17 +515,17 @@
 				w: 'full',
 				flexDirection: 'column',
 				overflow: 'hidden',
-				rounded: '2xl'
+				rounded: 'sheet'
 			},
 			header: {
 				display: 'flex',
 				flexShrink: 0,
 				alignItems: 'center',
-				gap: '0.5rem',
-				borderBottomWidth: '1px',
+				gap: 'sm',
+				borderBottomWidth: 'hairline',
 				borderColor: 'scrapscache.borderFaint',
-				px: '0.5rem',
-				py: '0.5rem'
+				px: 'sm',
+				py: 'sm'
 			},
 			scroller: {
 				minH: 0,
@@ -534,20 +534,19 @@
 				overflowY: 'auto',
 				overflowX: 'hidden',
 				overscrollBehavior: 'contain',
-				px: '1.5rem',
-				pt: '1rem',
-				pb: '0.75rem'
+				px: '2xl',
+				pt: 'lg',
+				pb: 'md'
 			},
 			titleField: {
-				mb: '0.75rem',
+				mb: 'md',
 				display: 'block',
 				w: 'full',
 				resize: 'none',
 				overflow: 'hidden',
 				wordBreak: 'break-word',
 				p: 0,
-				fontSize: 'xl',
-				fontWeight: 'medium',
+				textStyle: 'editorTitle',
 				_placeholder: { color: 'scrapscache.textMuted' },
 				fieldSizing: 'content',
 				transition: 'none'
@@ -559,8 +558,8 @@
 				zIndex: 20,
 				display: 'grid',
 				placeItems: 'center',
-				rounded: '2xl',
-				borderWidth: '2px',
+				rounded: 'sheet',
+				borderWidth: 'strong',
 				borderStyle: 'dashed',
 				borderColor: 'scrapscache.accent',
 				bg: 'color-mix(in oklab, var(--colors-scrapscache-accent) 16%, transparent)'
@@ -593,13 +592,12 @@
 	const titleField = cx(input({ variant: 'unstyled' }), sheet.titleField);
 	const fileDropHintClass = sheet.fileDropHint;
 	const fileDropPillClass = hstack({
-		gap: '0.5rem',
-		rounded: 'full',
+		gap: 'sm',
+		rounded: 'pill',
 		bg: 'scrapscache.surface',
-		px: '1rem',
-		py: '0.5rem',
-		fontSize: 'sm',
-		fontWeight: 'medium',
+		px: 'lg',
+		py: 'sm',
+		textStyle: 'button',
 		color: 'scrapscache.text',
 		boxShadow: 'sm'
 	});
@@ -666,7 +664,7 @@
 
 						<div class={spacer()} aria-hidden="true"></div>
 
-						<div class={hstack({ minW: 0, gap: '0.25rem' })}>
+						<div class={hstack({ minW: 0, gap: '2xs' })}>
 							{#if note.reminder != null}
 								<button
 									type="button"

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { css, cx, sva } from 'styled-system/css';
-	import { button, dialog, iconButton, input, progressMeter } from 'styled-system/recipes';
+	import { button, dialog, iconButton, input, progressMeter, text } from 'styled-system/recipes';
 	import { hstack, vstack } from 'styled-system/patterns';
 	import WorkspaceRow from './WorkspaceRow.svelte';
 	import TurnstileWidget from './TurnstileWidget.svelte';
@@ -463,98 +463,97 @@
 			'timer'
 		],
 		base: {
-			workspaceList: { display: 'grid', gap: '4px' },
+			workspaceList: { display: 'grid', gap: '2xs' },
 			workspaceRow: {
 				position: 'relative',
 				display: 'flex',
 				alignItems: 'center',
-				gap: '12px',
+				gap: 'md',
 				w: 'full',
-				rounded: '10px',
-				p: '12px',
-				fontSize: '14px',
+				rounded: 'control',
+				p: 'md',
+				textStyle: 'body',
 				_hoverable: { bg: 'scrapscache.interactiveHover' },
 				_disabled: { opacity: 0.55 },
 				'&.active': { bg: 'scrapscache.interactiveHover' },
 				'&.active::before': {
 					content: '""',
 					position: 'absolute',
-					top: '10px',
-					bottom: '10px',
+					top: 'list',
+					bottom: 'list',
 					left: 0,
-					w: '3px',
-					borderRadius: '0 3px 3px 0',
+					w: 'marker',
+					borderTopRightRadius: 'marker',
+					borderBottomRightRadius: 'marker',
 					bg: 'scrapscache.accent'
 				}
 			},
 			workspaceCaption: {
 				display: 'block',
-				mt: '2px',
-				color: 'scrapscache.textMuted',
-				fontSize: '12px',
-				fontWeight: '400'
+				mt: '3xs',
+				textStyle: 'caption'
 			},
 			manageRow: {
 				display: 'flex',
 				alignItems: 'center',
-				gap: '12px',
+				gap: 'md',
 				w: 'full',
-				rounded: '8px',
-				padding: '10px 8px',
+				rounded: 'control',
+				py: 'list',
+				px: 'sm',
 				textAlign: 'left',
-				fontSize: '14px',
+				textStyle: 'body',
 				_hoverable: { bg: 'scrapscache.interactiveHover' },
 				_disabled: { opacity: 0.55 },
 				'& small': {
 					display: 'block',
-					mt: '2px',
-					color: 'scrapscache.textMuted',
-					fontSize: '12px',
-					fontWeight: '400'
+					mt: '3xs',
+					textStyle: 'caption'
 				}
 			},
-			dividerLine: { h: '1px', flex: '1', bg: 'scrapscache.border' },
+			dividerLine: { h: 'hairline', flex: '1', bg: 'scrapscache.border' },
 			dividerLabel: {
-				fontSize: '11px',
+				fontSize: 'caption',
+				fontWeight: 'heading',
 				textTransform: 'uppercase',
-				letterSpacing: 'wider',
+				letterSpacing: 'status',
 				color: 'scrapscache.textMuted'
 			},
-			digitsHyphen: { px: '0.125rem', color: 'scrapscache.textMuted' },
+			digitsHyphen: { px: '3xs', color: 'scrapscache.textMuted' },
 			digits: {
 				fontFamily: 'mono',
-				fontSize: '1.35rem',
-				fontWeight: 'semibold',
-				letterSpacing: '0.14em',
+				fontSize: 'pairing',
+				fontWeight: 'heading',
+				letterSpacing: 'eyebrow',
 				color: 'scrapscache.text'
 			},
 			pairingInput: {
 				w: 'full',
-				rounded: 'md',
+				rounded: 'control',
 				textAlign: 'center',
-				fontSize: 'lg',
-				fontWeight: 'bold',
-				letterSpacing: 'wider'
+				fontSize: 'heading',
+				fontWeight: 'strong',
+				letterSpacing: 'status'
 			},
 			workspaceText: { minW: 0, flex: '1', textAlign: 'left' },
-			syncSection: { borderTopWidth: '1px', borderColor: 'scrapscache.border', pt: '1rem' },
-			progress: { mt: '0.5rem', w: 'full' },
-			manageDetails: { borderTopWidth: '1px', borderColor: 'scrapscache.border', pt: '0.75rem' },
-			manageSummary: { cursor: 'pointer', fontSize: 'sm', color: 'scrapscache.textMuted' },
+			syncSection: { borderTopWidth: 'hairline', borderColor: 'scrapscache.border', pt: 'lg' },
+			progress: { mt: 'sm', w: 'full' },
+			manageDetails: { borderTopWidth: 'hairline', borderColor: 'scrapscache.border', pt: 'md' },
+			manageSummary: { cursor: 'pointer', textStyle: 'bodyMuted' },
 			qrCode: {
 				h: '220px',
 				w: '220px',
-				rounded: 'lg',
+				rounded: 'card',
 				bg: 'scrapscache.qrSurface',
-				p: '0.5rem'
+				p: 'sm'
 			},
 			pairingCode: {
-				rounded: 'xl',
-				borderWidth: '1px',
+				rounded: 'dialog',
+				borderWidth: 'hairline',
 				borderColor: 'scrapscache.border',
 				bg: 'scrapscache.bg',
-				px: '0.5rem',
-				py: '1.25rem'
+				px: 'sm',
+				py: 'xl'
 			},
 			copySuccess: {
 				borderColor: 'scrapscache.success',
@@ -566,43 +565,26 @@
 	});
 	const ui = syncUi();
 	const meter = progressMeter({ size: 'compact' });
-	const syncMuted = css({ fontSize: 'sm', color: 'scrapscache.textMuted' });
-	const syncMutedBody = css({
-		fontSize: 'sm',
-		color: 'scrapscache.textMuted',
-		lineHeight: 'relaxed'
-	});
-	const syncMutedLead = css({
-		fontSize: 'xs',
-		color: 'scrapscache.textMuted',
-		fontWeight: 'medium',
-		letterSpacing: 'wide'
-	});
-	const syncStatusHint = css({ mt: '0.5rem', fontSize: 'xs', color: 'scrapscache.textMuted' });
-	const syncDanger = css({ fontSize: 'sm', color: 'scrapscache.danger' });
-	const syncText = css({ fontSize: 'sm', color: 'scrapscache.text' });
-	const syncBackLink = css({
-		w: 'full',
-		fontSize: 'xs',
-		color: 'scrapscache.textMuted',
-		touchAction: 'manipulation',
-		cursor: 'pointer',
-		textAlign: 'center'
-	});
-	const syncCancelLink = css({
-		w: 'full',
-		fontSize: 'sm',
-		color: 'scrapscache.textMuted',
-		touchAction: 'manipulation',
-		cursor: 'pointer',
-		textAlign: 'center'
-	});
+	const syncMuted = text({ style: 'bodyMuted' });
+	const syncMutedBody = cx(text({ style: 'bodyMuted' }), css({ lineHeight: 'relaxed' }));
+	const syncMutedLead = cx(text({ style: 'captionStrong' }), css({ letterSpacing: 'wide' }));
+	const syncStatusHint = cx(text({ style: 'caption' }), css({ mt: 'sm' }));
+	const syncDanger = text({ style: 'body', tone: 'danger' });
+	const syncText = text({ style: 'body' });
+	const syncBackLink = cx(
+		text({ style: 'caption' }),
+		css({ w: 'full', touchAction: 'manipulation', cursor: 'pointer', textAlign: 'center' })
+	);
+	const syncCancelLink = cx(
+		text({ style: 'bodyMuted' }),
+		css({ w: 'full', touchAction: 'manipulation', cursor: 'pointer', textAlign: 'center' })
+	);
 	const syncFullButton = css({ w: 'full' });
 	const syncGrowButton = css({ flex: '1' });
 	const syncSpinner = css({ animation: 'spin' });
 	const syncTruncate = css({ truncate: true });
 	const syncAccentButton = css({ color: 'scrapscache.accent' });
-	const syncBodySpacing = css({ mt: '0.25rem' });
+	const syncBodySpacing = css({ mt: '2xs' });
 	const pairingInputClass = cx(input({ variant: 'outline', size: 'md' }), ui.pairingInput);
 </script>
 
@@ -640,7 +622,7 @@
 				</div>
 
 				{#if mode === 'menu'}
-					<div class={vstack({ gap: '1rem', alignItems: 'stretch' })}>
+					<div class={vstack({ gap: 'lg', alignItems: 'stretch' })}>
 						<div class={ui.workspaceList} aria-label="Workspaces on this device">
 							<button
 								type="button"
@@ -687,7 +669,7 @@
 							{/each}
 						</div>
 
-						<div class={syncStore.account ? hstack({ gap: '1rem', fontSize: 'sm' }) : undefined}>
+						<div class={syncStore.account ? hstack({ gap: 'lg', fontSize: 'body' }) : undefined}>
 							<button
 								type="button"
 								disabled={busy}
@@ -704,7 +686,7 @@
 						</div>
 						{#if syncStore.account}
 							<div class={ui.syncSection}>
-								<div class={hstack({ gap: '0.5rem' })}>
+								<div class={hstack({ gap: 'sm' })}>
 									<button
 										type="button"
 										onclick={() => {
@@ -763,7 +745,7 @@
 							</p>{/if}
 						<details class={ui.manageDetails}>
 							<summary class={ui.manageSummary}>Manage workspace</summary>
-							<div class={vstack({ gap: '0.25rem', alignItems: 'stretch', mt: '0.5rem' })}>
+							<div class={vstack({ gap: '2xs', alignItems: 'stretch', mt: 'sm' })}>
 								<button
 									class={ui.manageRow}
 									disabled={busy}
@@ -808,7 +790,7 @@
 						</details>
 					</div>
 				{:else if mode === 'confirm'}
-					<div class={vstack({ gap: '1rem', alignItems: 'stretch' })}>
+					<div class={vstack({ gap: 'lg', alignItems: 'stretch' })}>
 						<p class={syncMutedBody}>
 							{#if confirmation === 'force'}
 								This device’s notes will replace the cloud version using the same sync key. Notes
@@ -831,7 +813,7 @@
 						{#if error}<p class={syncDanger} role="alert">
 								{error}
 							</p>{/if}
-						<div class={hstack({ gap: '0.5rem' })}>
+						<div class={hstack({ gap: 'sm' })}>
 							<button
 								type="button"
 								class={cx(button({ variant: 'secondary', size: 'sm' }), syncGrowButton)}
@@ -864,13 +846,13 @@
 						</div>
 					</div>
 				{:else if mode === 'register'}
-					<div class={vstack({ gap: '1rem', alignItems: 'stretch' })}>
+					<div class={vstack({ gap: 'lg', alignItems: 'stretch' })}>
 						<p class={syncMutedBody}>
 							{syncStore.account
 								? 'It starts empty. Your existing workspaces stay unchanged.'
 								: 'Your current anonymous notes will be copied into it.'}
 						</p>
-						<div class={vstack({ gap: '0.5rem', alignItems: 'stretch' })}>
+						<div class={vstack({ gap: 'sm', alignItems: 'stretch' })}>
 							<input
 								bind:value={newName}
 								placeholder="Workspace name (optional)"
@@ -896,7 +878,7 @@
 								>{operation === 'create' ? 'Creating…' : 'Create workspace'}</button
 							>
 						</div>
-						<div class={hstack({ gap: '0.75rem', alignItems: 'center' })} aria-hidden="true">
+						<div class={hstack({ gap: 'md', alignItems: 'center' })} aria-hidden="true">
 							<span class={ui.dividerLine}></span>
 							<span class={ui.dividerLabel}>or</span>
 							<span class={ui.dividerLine}></span>
@@ -919,7 +901,7 @@
 						>
 					</div>
 				{:else if mode === 'link'}
-					<div class={vstack({ gap: '0.75rem', alignItems: 'stretch' })}>
+					<div class={vstack({ gap: 'md', alignItems: 'stretch' })}>
 						<p class={syncMuted}>
 							On your other device open Sync and choose Connect device. Enter the one-time code
 							shown there.
@@ -950,7 +932,7 @@
 				{:else if mode === 'pairing'}
 					<p class={syncText} role="status">Connected. Syncing workspace…</p>
 				{:else if mode === 'waiting'}
-					<div class={vstack({ gap: '1.25rem', alignItems: 'stretch' })}>
+					<div class={vstack({ gap: 'xl', alignItems: 'stretch' })}>
 						{#if waiting?.role === 'existing'}
 							<div>
 								<p class={syncMutedLead}>On the new device</p>
@@ -964,7 +946,7 @@
 								</div>
 							{/if}
 							<div class={ui.pairingCode} aria-label="One-time pairing code">
-								<div class={hstack({ justify: 'center', gap: '0.25rem' })}>
+								<div class={hstack({ justify: 'center', gap: '2xs' })}>
 									{#each pairingGroups(waiting.syncCode) as group, index (index)}
 										{#if index > 0}
 											<span class={ui.digitsHyphen} aria-hidden="true">·</span>
@@ -992,11 +974,11 @@
 								<p class={cx(syncText, syncBodySpacing)}>Open Sync and choose Connect device</p>
 							</div>
 						{/if}
-						<div class={vstack({ gap: '0.375rem', alignItems: 'stretch' })}>
+						<div class={vstack({ gap: 'xs', alignItems: 'stretch' })}>
 							<div
 								class={hstack({
 									justify: 'space-between',
-									fontSize: 'xs',
+									fontSize: 'label',
 									color: 'scrapscache.textMuted'
 								})}
 							>

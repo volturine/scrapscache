@@ -6,7 +6,7 @@
 	import EmptyState from '$lib/components/EmptyState.svelte';
 	import { Trash2 } from '@lucide/svelte';
 	import { css } from 'styled-system/css';
-	import { button } from 'styled-system/recipes';
+	import { button, text } from 'styled-system/recipes';
 	import { viewPage } from 'styled-system/recipes';
 
 	const { openNote: openEditor } = useEditorActions();
@@ -29,7 +29,7 @@
 	{:else}
 		<SectionHeader label="Trash" count={trashed.length}>
 			{#if confirmEmpty}
-				<span class={css({ fontSize: 'xs', color: 'scrapscache.textMuted' })}>Delete all?</span>
+				<span class={text({ style: 'caption' })}>Delete all?</span>
 				<button type="button" onclick={emptyTrash} class={button({ variant: 'danger', size: 'xs' })}
 					>Yes</button
 				>

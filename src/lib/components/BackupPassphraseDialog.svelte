@@ -49,24 +49,23 @@
 		slots: ['eyebrow', 'description', 'form', 'label', 'fieldLabel', 'field', 'footer'],
 		base: {
 			eyebrow: {
-				fontSize: '11px',
-				fontWeight: '600',
+				fontSize: 'caption',
+				fontWeight: 'heading',
 				textTransform: 'uppercase',
-				letterSpacing: '0.16em',
+				letterSpacing: 'code',
 				color: 'scrapscache.textMuted'
 			},
 			description: { lineHeight: 'relaxed' },
-			form: { gap: '1rem' },
+			form: { gap: 'lg' },
 			label: { display: 'block' },
 			fieldLabel: {
 				display: 'block',
-				mb: '0.375rem',
-				fontSize: 'xs',
-				fontWeight: 'medium',
+				mb: 'xs',
+				textStyle: 'label',
 				color: 'scrapscache.textMuted'
 			},
-			field: { w: 'full', py: '0.625rem', fontSize: '16px' },
-			footer: { gap: '0.5rem', pt: '0.25rem' }
+			field: { w: 'full', py: 'list', fontSize: 'subtitle' },
+			footer: { gap: 'sm', pt: '2xs' }
 		}
 	});
 	const styles = backupDialog();

@@ -33,7 +33,7 @@
 		onOpen(note.id);
 	}
 	const cardStyle = cva({
-		base: { cursor: 'grab', rounded: 'xl', _active: { cursor: 'grabbing' } }
+		base: { cursor: 'grab', rounded: 'dialog', _active: { cursor: 'grabbing' } }
 	});
 </script>
 

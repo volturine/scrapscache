@@ -102,29 +102,29 @@
 			root: {
 				w: 'full',
 				userSelect: 'none',
-				rounded: '2xl',
-				borderWidth: '1px',
+				rounded: 'sheet',
+				borderWidth: 'hairline',
 				borderColor: 'scrapscache.border',
 				bg: 'scrapscache.surface',
-				px: '0.75rem',
-				py: '0.75rem'
+				px: 'md',
+				py: 'md'
 			},
 			picker: { w: 'full' },
 			dayDot: {
 				position: 'absolute',
-				bottom: '0.25rem',
+				bottom: '2xs',
 				h: '0.25rem',
 				w: '0.25rem',
-				rounded: 'full',
+				rounded: 'pill',
 				bg: 'scrapscache.accent'
 			},
 			footerButton: {
 				h: 'auto',
-				rounded: 'full',
-				px: '0.5rem',
-				py: '0.125rem',
+				rounded: 'pill',
+				px: 'sm',
+				py: '3xs',
 				fontSize: 'inherit',
-				lineHeight: '1.25rem',
+				lineHeight: 'compact',
 				_disabled: { opacity: 0.4, pointerEvents: 'none' }
 			},
 			status: {
@@ -132,8 +132,8 @@
 				textOverflow: 'ellipsis',
 				whiteSpace: 'nowrap',
 				flexShrink: 0,
-				px: '0.5rem',
-				lineHeight: '1.25rem',
+				px: 'sm',
+				lineHeight: 'compact',
 				color: 'scrapscache.textMuted'
 			}
 		}
@@ -170,13 +170,13 @@
 
 	<div
 		class={hstack({
-			mt: '0.5rem',
+			mt: 'sm',
 			justify: 'space-between',
-			gap: '0.5rem',
-			borderTopWidth: '1px',
+			gap: 'sm',
+			borderTopWidth: 'hairline',
 			borderColor: 'scrapscache.border',
-			pt: '0.75rem',
-			fontSize: 'xs'
+			pt: 'md',
+			fontSize: 'label'
 		})}
 	>
 		<div class={flex({ flex: '1', align: 'center' })}>

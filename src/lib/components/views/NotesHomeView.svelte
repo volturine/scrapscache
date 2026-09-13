@@ -19,8 +19,8 @@
 	const styles = sva({
 		slots: ['pinnedFeed', 'othersHeader'],
 		base: {
-			pinnedFeed: { mb: '2rem' },
-			othersHeader: { mt: '1.5rem' }
+			pinnedFeed: { mb: '3xl' },
+			othersHeader: { mt: '2xl' }
 		}
 	})();
 </script>

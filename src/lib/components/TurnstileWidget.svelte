@@ -29,7 +29,8 @@
 </script>
 
 <script lang="ts">
-	import { css } from 'styled-system/css';
+	import { css, cx } from 'styled-system/css';
+	import { text } from 'styled-system/recipes';
 
 	let {
 		sitekey,
@@ -79,7 +80,7 @@
 
 <div {@attach mount} class={css({ minH: '65px', w: 'full' })}></div>
 {#if failed}
-	<p class={css({ textAlign: 'center', fontSize: 'sm', color: 'scrapscache.danger' })} role="alert">
+	<p class={cx(css({ textAlign: 'center' }), text({ style: 'body', tone: 'danger' }))} role="alert">
 		Human verification could not load. Check your connection and reopen this dialog.
 	</p>
 {/if}

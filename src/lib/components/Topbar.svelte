@@ -213,9 +213,9 @@
 		slots: ['positioner', 'popover', 'separator', 'alert'],
 		base: {
 			positioner: { zIndex: 30 },
-			popover: { w: '16rem', overflow: 'hidden', pt: '0.25rem' },
-			separator: { borderTopWidth: '1px', borderColor: 'scrapscache.border' },
-			alert: { px: '0.75rem', pb: '0.5rem', fontSize: 'xs', color: 'scrapscache.danger' }
+			popover: { w: '16rem', overflow: 'hidden', pt: '2xs' },
+			separator: { borderTopWidth: 'hairline', borderColor: 'scrapscache.border' },
+			alert: { px: 'md', pb: 'sm', textStyle: 'label', color: 'scrapscache.danger' }
 		}
 	});
 	const menu = settingsMenu();
@@ -228,8 +228,8 @@
 	class={hstack({
 		h: 'var(--app-topbar-height)',
 		flexShrink: 0,
-		px: { base: '0.5rem', sm: '0.75rem' },
-		gap: { base: '0.25rem', sm: '0.5rem' },
+		px: { base: 'sm', sm: 'md' },
+		gap: { base: '2xs', sm: 'sm' },
 		position: 'relative',
 		zIndex: 20
 	})}
@@ -253,12 +253,12 @@
 			maxH: '2.5rem',
 			minW: 0,
 			flex: '1',
-			rounded: 'full',
-			borderWidth: '1px',
+			rounded: 'pill',
+			borderWidth: 'hairline',
 			borderColor: 'scrapscache.border',
 			bg: 'scrapscache.surface',
-			px: '0.75rem',
-			gap: '0.5rem'
+			px: 'md',
+			gap: 'sm'
 		})}
 	>
 		<Search class={cx(icon({ size: 'sm' }), topbarStyles.searchIcon)} aria-hidden="true" />
@@ -347,17 +347,17 @@
 					{@const progress = notesStore.backupImportProgress}
 					<div
 						class={vstack({
-							gap: '0.5rem',
-							px: '0.75rem',
-							py: '0.5rem',
-							fontSize: 'xs',
+							gap: 'sm',
+							px: 'md',
+							py: 'sm',
+							fontSize: 'label',
 							color: 'scrapscache.textMuted',
 							alignItems: 'stretch'
 						})}
 						role="status"
 						aria-live="polite"
 					>
-						<div class={hstack({ justify: 'space-between', gap: '0.5rem' })}>
+						<div class={hstack({ justify: 'space-between', gap: 'sm' })}>
 							<span
 								>{progress?.phase === BackupImportPhase.Finishing
 									? 'Finishing backup…'

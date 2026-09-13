@@ -3,8 +3,9 @@
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { Check, Plus, Search, Tag } from '@lucide/svelte';
 	import { cx, sva } from 'styled-system/css';
-	import { button, input, menuItem, popover } from 'styled-system/recipes';
+	import { button, input, menuItem } from 'styled-system/recipes';
 	import { hstack, vstack } from 'styled-system/patterns';
+	import { popover } from '$lib/uiStyles';
 
 	let {
 		noteId,
@@ -174,7 +175,7 @@
 
 <div
 	use:labelMenuInteractions
-	class={`${popover()} ${vstack({ p: 'sm', w: 'min(20rem, calc(100vw - 2rem))', gap: '0', alignItems: 'stretch' })}`}
+	class={`${popover} ${vstack({ p: 'sm', w: 'min(20rem, calc(100vw - 2rem))', gap: '0', alignItems: 'stretch' })}`}
 >
 	<div
 		class={hstack({

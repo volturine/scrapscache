@@ -4,7 +4,7 @@
 	import { portalToAppOverlay } from '$lib/appViewport';
 	import type { Placement } from '@zag-js/tooltip';
 	import { css } from 'styled-system/css';
-	import { tooltip } from 'styled-system/recipes';
+	import { tooltip } from '$lib/uiStyles';
 
 	let {
 		content,
@@ -34,7 +34,7 @@
 		</Tooltip.Trigger>
 		<div {@attach portalToAppOverlay}>
 			<Tooltip.Positioner>
-				<Tooltip.Content class={tooltip()}>
+				<Tooltip.Content class={tooltip}>
 					{content}
 				</Tooltip.Content>
 			</Tooltip.Positioner>

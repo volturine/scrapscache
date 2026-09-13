@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { cx, cva, sva } from 'styled-system/css';
-	import { iconButton, input, menuItem, popover, progressMeter } from 'styled-system/recipes';
+	import { iconButton, input, menuItem } from 'styled-system/recipes';
 	import { hstack, vstack } from 'styled-system/patterns';
+	import { popover, progressMeter } from '$lib/uiStyles';
 	import { uiStore } from '$lib/stores/ui.svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { downloadJSON } from '$lib/utils';
@@ -342,7 +343,7 @@
 			</Menu.Trigger>
 		</Tooltip>
 		<Menu.Positioner class={menu.positioner}>
-			<Menu.Content class={cx(popover(), menu.popover)}>
+			<Menu.Content class={cx(popover, menu.popover)}>
 				{#if importingBackup}
 					{@const progress = notesStore.backupImportProgress}
 					<div

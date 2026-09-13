@@ -7,7 +7,8 @@
 	import { Tag } from '@lucide/svelte';
 	import { css } from 'styled-system/css';
 	import { hstack } from 'styled-system/patterns';
-	import { notesShell, sectionHeader, text, viewPage } from 'styled-system/recipes';
+	import { text } from 'styled-system/recipes';
+	import { notesShell, sectionHeader, viewPage } from '$lib/uiStyles';
 
 	const { openNote: openEditor } = useEditorActions();
 
@@ -18,7 +19,7 @@
 	);
 	const pinned = $derived(notes.filter((n) => n.pinned));
 	const others = $derived(notes.filter((n) => !n.pinned));
-	const shell = $derived(notesShell({ layout: uiStore.layout }));
+	const shell = $derived(notesShell(uiStore.layout));
 	const sec = sectionHeader();
 
 	const titleClass = hstack({
@@ -28,7 +29,7 @@
 	const titleText = text({ style: 'heading' });
 </script>
 
-<div class={viewPage()}>
+<div class={viewPage}>
 	{#if !label}
 		<EmptyState
 			icon={Tag}

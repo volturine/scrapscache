@@ -25,13 +25,8 @@
 	import type { Note } from '$lib/types';
 	import { cx } from 'styled-system/css';
 	import { backlogFilterButton, kanbanView } from './kanbanViewStyles';
-	import {
-		button,
-		iconButton,
-		input as inputRecipe,
-		popover,
-		viewPage
-	} from 'styled-system/recipes';
+	import { button, iconButton, input as inputRecipe } from 'styled-system/recipes';
+	import { popover, viewPage } from '$lib/uiStyles';
 
 	const { openNote } = useEditorActions();
 	const board = $derived(kanbanStore.activeBoard);
@@ -217,7 +212,7 @@
 	const k = kanbanView();
 </script>
 
-<div class={viewPage()}>
+<div class={viewPage}>
 	<div class={k.controls}>
 		<div class={k.selectWrap}>
 			<select
@@ -442,7 +437,7 @@
 							<ChevronDown size={14} aria-hidden="true" />
 						</Menu.Trigger>
 						<Menu.Positioner class={k.tagPickerPositioner}>
-							<Menu.Content class={cx(popover(), k.tagPickerContent)} aria-label="Labels">
+							<Menu.Content class={cx(popover, k.tagPickerContent)} aria-label="Labels">
 								{#each unusedTags as label (label.id)}
 									<Menu.Item
 										value={label.id}

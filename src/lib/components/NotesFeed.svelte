@@ -6,7 +6,8 @@
 	import MasonryGrid from './MasonryGrid.svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
 	import { hstack, vstack } from 'styled-system/patterns';
-	import { button, notesShell, text } from 'styled-system/recipes';
+	import { button, text } from 'styled-system/recipes';
+	import { notesShell } from '$lib/uiStyles';
 
 	/** Grid / list feed for notes pages — one place for layout branching. */
 	let {
@@ -64,12 +65,7 @@
 	{#if uiStore.layout === 'grid'}
 		<MasonryGrid notes={shownNotes} {onOpen} {children} {leading} />
 	{:else}
-		<div
-			class={[
-				notesShell({ layout: 'list' }),
-				vstack({ gap: 'list', p: 0, '& > *': { w: 'full' } })
-			]}
-		>
+		<div class={[notesShell('list'), vstack({ gap: 'list', p: 0, '& > *': { w: 'full' } })]}>
 			{#each shownNotes as note (note.id)}
 				<div>
 					{#if children}

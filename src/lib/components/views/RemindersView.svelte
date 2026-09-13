@@ -9,7 +9,7 @@
 	import { dayKey } from '$lib/utils';
 	import { MediaQuery } from 'svelte/reactivity';
 	import { sva } from 'styled-system/css';
-	import { notesShell, viewPage } from 'styled-system/recipes';
+	import { notesShell, viewPage } from '$lib/uiStyles';
 
 	const { openNote: openEditor } = useEditorActions();
 	const reminders = $derived(notesStore.notesWithReminders);
@@ -62,7 +62,7 @@
 	})();
 </script>
 
-<div class={viewPage()}>
+<div class={viewPage}>
 	{#if embedCalendar}
 		<div class={styles.embedded}>
 			<NotesFeed notes={visible} onOpen={openEditor}>
@@ -77,7 +77,7 @@
 			{/if}
 		</div>
 	{:else}
-		<div class={uiStore.layout === 'list' ? notesShell({ layout: 'list' }) : styles.calendar}>
+		<div class={uiStore.layout === 'list' ? notesShell('list') : styles.calendar}>
 			<ReminderCalendar notes={reminders} bind:selected={uiStore.reminderFilter} />
 		</div>
 		<div class={styles.feed}>

@@ -10,7 +10,7 @@
 	import { formatReminderCountdown } from '$lib/utils';
 	import { PHONE_MEDIA } from '$lib/appViewport';
 	import { cx, cva, sva } from 'styled-system/css';
-	import { badge, button, dialog, iconButton, status } from 'styled-system/recipes';
+	import { badge, button, dialog, iconButton } from 'styled-system/recipes';
 	import { hstack, flex } from 'styled-system/patterns';
 
 	let {
@@ -269,13 +269,23 @@
 			}
 		}
 	});
+	const statusTone = cva({
+		base: { borderWidth: 'hairline', borderColor: 'currentColor' },
+		variants: {
+			tone: {
+				accent: { bg: 'scrapscache.accentSubtle', color: 'scrapscache.accent' },
+				success: { bg: 'scrapscache.successSubtle', color: 'scrapscache.success' },
+				warning: { bg: 'scrapscache.warningSubtle', color: 'scrapscache.warning' }
+			}
+		}
+	});
 
 	const statusBoxClass = $derived(
 		uiStatus === 'active'
-			? status({ tone: 'success' })
+			? statusTone({ tone: 'success' })
 			: uiStatus === 'unsaved'
-				? status({ tone: 'warning' })
-				: status({ tone: 'accent' })
+				? statusTone({ tone: 'warning' })
+				: statusTone({ tone: 'accent' })
 	);
 	const badgeLabel = $derived(
 		uiStatus === 'active' ? 'Active' : uiStatus === 'unsaved' ? 'Edit' : 'New'

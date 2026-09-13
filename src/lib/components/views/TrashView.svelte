@@ -7,7 +7,7 @@
 	import { Trash2 } from '@lucide/svelte';
 	import { css } from 'styled-system/css';
 	import { button, text } from 'styled-system/recipes';
-	import { viewPage } from 'styled-system/recipes';
+	import { viewPage } from '$lib/uiStyles';
 
 	const { openNote: openEditor } = useEditorActions();
 	const trashed = $derived(notesStore.trashedNotes);
@@ -20,7 +20,7 @@
 	}
 </script>
 
-<div class={viewPage()}>
+<div class={viewPage}>
 	{#if trashed.length === 0}
 		<EmptyState
 			icon={Trash2}

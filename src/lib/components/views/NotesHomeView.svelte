@@ -7,7 +7,7 @@
 	import EmptyState from '$lib/components/EmptyState.svelte';
 	import { StickyNote } from '@lucide/svelte';
 	import { sva } from 'styled-system/css';
-	import { viewPage } from 'styled-system/recipes';
+	import { viewPage } from '$lib/uiStyles';
 
 	const { openNote: openEditor } = useEditorActions();
 
@@ -25,7 +25,7 @@
 	})();
 </script>
 
-<div class={viewPage()}>
+<div class={viewPage}>
 	{#if filteredPinned.length === 0 && filteredOthers.length === 0}
 		<EmptyState
 			icon={StickyNote}

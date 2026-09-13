@@ -20,60 +20,6 @@ const textRecipe = defineRecipe({
 	defaultVariants: { style: 'body', tone: 'default' }
 });
 
-const viewPageRecipe = defineRecipe({
-	className: 'scrapscache-view-page',
-	description: 'Shared vertical padding for top-level application views',
-	base: { pt: 'lg', pb: '3xl' }
-});
-
-const notesShellRecipe = defineRecipe({
-	className: 'scrapscache-notes-shell',
-	description: 'Shared width contract for note feeds and their section chrome',
-	base: {
-		w: 'full',
-		mx: 'auto',
-		px: 0,
-		boxSizing: 'border-box'
-	},
-	variants: {
-		layout: {
-			grid: {},
-			list: { maxW: '720px' }
-		}
-	},
-	defaultVariants: { layout: 'grid' }
-});
-
-const tooltipRecipe = defineRecipe({
-	className: 'scrapscache-tooltip',
-	description: 'Tooltip popup content recipe',
-	base: {
-		pointerEvents: 'none',
-		zIndex: 120,
-		rounded: 'control',
-		bg: 'scrapscache.tooltipBg',
-		color: 'scrapscache.tooltipText',
-		px: 'sm',
-		py: '2xs',
-		textStyle: 'captionStrong',
-		boxShadow: 'md',
-		backdropFilter: 'blur(4px)',
-		transition: 'opacity 150ms ease'
-	}
-});
-
-const popoverRecipe = defineRecipe({
-	className: 'scrapscache-popover',
-	description: 'Floating surface shared by menus and popovers',
-	base: {
-		borderWidth: 'hairline',
-		borderColor: 'scrapscache.border',
-		bg: 'scrapscache.surface',
-		rounded: 'card',
-		boxShadow: 'popover'
-	}
-});
-
 const mediaHazeButton = (color: string) => ({
 	bg: 'transparent',
 	color,
@@ -121,31 +67,6 @@ const menuItemRecipe = defineRecipe({
 		}
 	},
 	defaultVariants: { density: 'compact' }
-});
-
-const progressMeterRecipe = defineSlotRecipe({
-	className: 'scrapscache-progress-meter',
-	description: 'Shared progress meter track and fill treatment',
-	slots: ['track', 'bar'],
-	base: {
-		track: {
-			h: '0.375rem',
-			overflow: 'hidden',
-			rounded: 'pill',
-			bg: 'scrapscache.interactiveActive'
-		},
-		bar: { h: 'full', bg: 'scrapscache.accent', transition: 'width 150ms ease' }
-	},
-	variants: {
-		size: {
-			default: {},
-			compact: {
-				track: { h: '0.25rem' },
-				bar: { transition: 'width 1000ms linear' }
-			}
-		}
-	},
-	defaultVariants: { size: 'default' }
 });
 
 const buttonRecipe = defineRecipe({
@@ -433,97 +354,6 @@ const badgeRecipe = defineRecipe({
 	}
 });
 
-const statusRecipe = defineRecipe({
-	className: 'scrapscache-status',
-	description: 'Semantic status treatment',
-	base: {
-		borderWidth: 'hairline',
-		borderColor: 'currentColor'
-	},
-	variants: {
-		tone: {
-			accent: {
-				bg: 'scrapscache.accentSubtle',
-				color: 'scrapscache.accent'
-			},
-			success: {
-				bg: 'scrapscache.successSubtle',
-				color: 'scrapscache.success'
-			},
-			warning: {
-				bg: 'scrapscache.warningSubtle',
-				color: 'scrapscache.warning'
-			}
-		}
-	}
-});
-
-const sectionHeaderRecipe = defineSlotRecipe({
-	className: 'scrapscache-section-header',
-	description: 'Slot recipe for section headers in feed and views',
-	slots: ['row', 'label', 'count', 'spacer'],
-	base: {
-		row: {
-			mb: 'md',
-			display: 'flex',
-			alignItems: 'center',
-			gap: 'md',
-			px: 'sm'
-		},
-		label: {
-			textStyle: 'overline'
-		},
-		count: {
-			textStyle: 'caption',
-			opacity: 0.6
-		},
-		spacer: {
-			flex: '1'
-		}
-	}
-});
-
-const emptyStateRecipe = defineSlotRecipe({
-	className: 'scrapscache-empty-state',
-	description: 'Slot recipe for empty state display',
-	slots: ['root', 'description', 'action'],
-	base: {
-		root: {
-			mx: 'auto',
-			mt: '4xl',
-			display: 'flex',
-			maxW: '24rem',
-			flexDirection: 'column',
-			alignItems: 'center',
-			px: 'lg',
-			textAlign: 'center',
-			color: 'scrapscache.textMuted'
-		},
-		description: {
-			mt: 'md',
-			textStyle: 'bodyMuted'
-		},
-		action: {
-			display: 'inline-flex',
-			alignItems: 'center',
-			justifyContent: 'center',
-			mt: 'md',
-			rounded: 'pill',
-			borderWidth: 'hairline',
-			borderColor: 'scrapscache.border',
-			px: 'md',
-			py: 'xs',
-			textStyle: 'button',
-			color: 'scrapscache.text',
-			cursor: 'pointer',
-			transition: 'background-color 150ms ease',
-			_hoverable: {
-				bg: 'scrapscache.borderFaint'
-			}
-		}
-	}
-});
-
 const noteSurfaceRecipe = defineRecipe({
 	className: 'scrapscache-note-surface',
 	description: 'Canonical note background colors for cards, editors, and palette swatches',
@@ -555,10 +385,8 @@ const noteCardRecipe = defineSlotRecipe({
 		'cardBody',
 		'contentPad',
 		'title',
-		'body',
 		'labelsRow',
 		'hazeOverlay',
-		'hazeActions',
 		'shield'
 	],
 	base: {
@@ -621,10 +449,6 @@ const noteCardRecipe = defineSlotRecipe({
 			letterSpacing: 'tight',
 			color: 'scrapscache.text'
 		},
-		body: {
-			textStyle: 'body',
-			color: 'scrapscache.text'
-		},
 		labelsRow: {
 			display: 'flex',
 			flexShrink: 0,
@@ -645,12 +469,6 @@ const noteCardRecipe = defineSlotRecipe({
 			bg: 'scrapscache.backdropMuted',
 			backdropFilter: 'blur(8px)',
 			transition: 'opacity 200ms ease, background-color 200ms ease'
-		},
-		hazeActions: {
-			display: 'flex',
-			alignItems: 'center',
-			justifyContent: 'center',
-			gap: 'list'
 		},
 		shield: {
 			position: 'absolute',
@@ -851,8 +669,7 @@ const dialogRecipe = defineSlotRecipe({
 		'description',
 		'body',
 		'footer',
-		'error',
-		'closeButton'
+		'error'
 	],
 	base: {
 		backdrop: {
@@ -908,15 +725,6 @@ const dialogRecipe = defineSlotRecipe({
 		error: {
 			textStyle: 'body',
 			color: 'scrapscache.danger'
-		},
-		closeButton: {
-			position: 'absolute',
-			top: 'lg',
-			right: 'lg',
-			color: 'scrapscache.textMuted',
-			_hoverable: {
-				color: 'scrapscache.text'
-			}
 		}
 	},
 	variants: {
@@ -995,24 +803,16 @@ const dialogRecipe = defineSlotRecipe({
 });
 
 export const recipes = {
-	viewPage: viewPageRecipe,
-	notesShell: notesShellRecipe,
 	text: textRecipe,
-	tooltip: tooltipRecipe,
-	popover: popoverRecipe,
 	menuItem: menuItemRecipe,
-	progressMeter: progressMeterRecipe,
 	noteSurface: noteSurfaceRecipe,
 	button: buttonRecipe,
 	iconButton: iconButtonRecipe,
 	input: inputRecipe,
-	badge: badgeRecipe,
-	status: statusRecipe
+	badge: badgeRecipe
 };
 
 export const slotRecipes = {
-	sectionHeader: sectionHeaderRecipe,
-	emptyState: emptyStateRecipe,
 	noteCard: noteCardRecipe,
 	checklist: checklistRecipe,
 	noteBody: noteBodyRecipe,

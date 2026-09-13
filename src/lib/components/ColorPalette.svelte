@@ -3,7 +3,8 @@
 	import { NOTE_COLOR_ORDER, type NoteColor } from '$lib/types';
 	import { cva, cx } from 'styled-system/css';
 	import { grid } from 'styled-system/patterns';
-	import { noteSurface, popover } from 'styled-system/recipes';
+	import { noteSurface } from 'styled-system/recipes';
+	import { popover } from '$lib/uiStyles';
 
 	let {
 		color,
@@ -46,7 +47,7 @@
 </script>
 
 <ToggleGroup.Root
-	class={`${popover()} ${grid({ columns: 4, gap: 'md', p: 'lg' })}`}
+	class={`${popover} ${grid({ columns: 4, gap: 'md', p: 'lg' })}`}
 	value={[color]}
 	onValueChange={(details) => {
 		const next = details.value[0];

@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { css, cx, sva } from 'styled-system/css';
-	import { button, dialog, iconButton, input, progressMeter, text } from 'styled-system/recipes';
+	import { button, dialog, iconButton, input, text } from 'styled-system/recipes';
 	import { hstack, vstack } from 'styled-system/patterns';
+	import { progressMeter } from '$lib/uiStyles';
 	import WorkspaceRow from './WorkspaceRow.svelte';
 	import TurnstileWidget from './TurnstileWidget.svelte';
 	import { env } from '$env/dynamic/public';

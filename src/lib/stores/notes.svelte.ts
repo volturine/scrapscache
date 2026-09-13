@@ -554,7 +554,11 @@ export class NotesStore {
 	}
 
 	restoreNote(id: string): void {
-		this.updateNote(id, { trashed: false, trashedAt: null });
+		this.updateNote(id, { trashed: false, trashedAt: null, archived: false });
+	}
+
+	restoreToArchive(id: string): void {
+		this.updateNote(id, { trashed: false, trashedAt: null, archived: true, pinned: false });
 	}
 
 	async deleteNoteForever(id: string): Promise<void> {

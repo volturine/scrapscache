@@ -553,60 +553,62 @@
 
 						<div class="flex-1" aria-hidden="true"></div>
 
-						<div class="flex min-w-0 items-center gap-1">
-							{#if note.reminder != null}
+						{#if !note.trashed && !note.archived}
+							<div class="flex min-w-0 items-center gap-1">
+								{#if note.reminder != null}
+									<button
+										type="button"
+										class="min-w-0"
+										title={reminderOverdue ? `Overdue · ${reminderLabel}` : reminderLabel}
+										onclick={openReminder}
+										aria-label={reminderOverdue
+											? `Overdue reminder, ${reminderLabel}`
+											: `Reminder, ${reminderLabel}`}
+									>
+										<ReminderLabel reminder={note.reminder} variant="chip" />
+									</button>
+								{/if}
 								<button
 									type="button"
-									class="min-w-0"
-									title={reminderOverdue ? `Overdue · ${reminderLabel}` : reminderLabel}
+									class="icon-btn h-9 w-9 p-2 {note.reminder == null
+										? ''
+										: reminderOverdue
+											? 'text-rose-600 dark:text-rose-400'
+											: 'text-blue-600 dark:text-blue-400'}"
+									title="Reminder"
 									onclick={openReminder}
-									aria-label={reminderOverdue
-										? `Overdue reminder, ${reminderLabel}`
-										: `Reminder, ${reminderLabel}`}
+									aria-label="Reminder"
 								>
-									<ReminderLabel reminder={note.reminder} variant="chip" />
+									<Bell class="h-5 w-5" aria-hidden="true" />
 								</button>
-							{/if}
-							<button
-								type="button"
-								class="icon-btn h-9 w-9 p-2 {note.reminder == null
-									? ''
-									: reminderOverdue
-										? 'text-rose-600 dark:text-rose-400'
-										: 'text-blue-600 dark:text-blue-400'}"
-								title="Reminder"
-								onclick={openReminder}
-								aria-label="Reminder"
-							>
-								<Bell class="h-5 w-5" aria-hidden="true" />
-							</button>
-							<button
-								type="button"
-								class="icon-btn h-9 w-9 p-2"
-								title={note.pinned ? 'Unpin' : 'Pin'}
-								onclick={() => commit({ pinned: !note.pinned })}
-								aria-label="Pin"
-							>
-								<Pin
-									class="h-5 w-5"
-									fill={note.pinned ? 'currentColor' : 'none'}
-									aria-hidden="true"
-								/>
-							</button>
-							<button
-								type="button"
-								class="icon-btn h-9 w-9 p-2"
-								title={note.secret ? 'Remove secret' : 'Make secret'}
-								onclick={() => commit({ secret: !note.secret })}
-								aria-label={note.secret ? 'Remove secret' : 'Make secret'}
-							>
-								{#if note.secret}
-									<Lock class="h-5 w-5 text-amber-500 dark:text-amber-400" aria-hidden="true" />
-								{:else}
-									<LockOpen class="h-5 w-5" aria-hidden="true" />
-								{/if}
-							</button>
-						</div>
+								<button
+									type="button"
+									class="icon-btn h-9 w-9 p-2"
+									title={note.pinned ? 'Unpin' : 'Pin'}
+									onclick={() => commit({ pinned: !note.pinned })}
+									aria-label="Pin"
+								>
+									<Pin
+										class="h-5 w-5"
+										fill={note.pinned ? 'currentColor' : 'none'}
+										aria-hidden="true"
+									/>
+								</button>
+								<button
+									type="button"
+									class="icon-btn h-9 w-9 p-2"
+									title={note.secret ? 'Remove secret' : 'Make secret'}
+									onclick={() => commit({ secret: !note.secret })}
+									aria-label={note.secret ? 'Remove secret' : 'Make secret'}
+								>
+									{#if note.secret}
+										<Lock class="h-5 w-5 text-amber-500 dark:text-amber-400" aria-hidden="true" />
+									{:else}
+										<LockOpen class="h-5 w-5" aria-hidden="true" />
+									{/if}
+								</button>
+							</div>
+						{/if}
 					</header>
 
 					<div
@@ -678,9 +680,16 @@
 							labelOpen = true;
 						}}
 						onCopy={() => void copyText()}
+						onRestore={() => {
+							notesStore.restoreNote(note.id);
+							void close();
+						}}
 						onArchive={() => {
-							if (note.trashed) notesStore.restoreNote(note.id);
-							else notesStore.toggleArchive(note.id);
+							if (note.trashed) {
+								notesStore.restoreToArchive(note.id);
+							} else {
+								notesStore.toggleArchive(note.id);
+							}
 							void close();
 						}}
 						onDelete={() => {

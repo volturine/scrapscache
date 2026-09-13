@@ -1858,6 +1858,8 @@ export const sidebarStyles = {
 };
 
 export const topbarStyles = {
+	markdownLabel: css({ minW: 0, flex: '1' }),
+	markdownCheck: css({ ...gridCenter, ...iconMd, flexShrink: 0, rounded: 'checkbox', ...border, color: 'scrapscache.accent' }),
 	searchInput: css({ h: 'full', flex: '1', appearance: 'none', _placeholder: mutedText }),
 	searchIcon: css(mutedText),
 	syncIcon: css({ display: 'block' }),
@@ -1867,6 +1869,29 @@ export const topbarStyles = {
 	menuSeparator: css({ borderTopWidth: 'hairline', borderColor: 'scrapscache.border' }),
 	menuAlert: css({ px: 'md', pb: 'sm', textStyle: 'label', color: 'scrapscache.danger' })
 };
+
+export const markdownStyles = css({
+	'& .markdown-token-marker-hidden': { display: 'none' },
+	'& .markdown-token-strong': { fontWeight: 'strong' },
+	'& .markdown-token-emphasis': { fontStyle: 'italic' },
+	'& .markdown-token-strikethrough': { textDecoration: 'line-through', textDecorationThickness: '1.5px' },
+	'& .markdown-token-code': { rounded: 'checkbox', bg: 'scrapscache.controlSubtle', px: '0.3em', py: '0.06em', fontFamily: 'mono', fontSize: '0.9em' },
+	'& [class*="markdown-token-heading-"]': { fontWeight: 'strong' },
+	'& .markdown-token-heading-1': { fontSize: '1.35em' },
+	'& .markdown-token-heading-2': { fontSize: '1.2em' },
+	'& .markdown-token-heading-3': { fontSize: '1.08em' },
+	'& .markdown-token-marker': { color: 'scrapscache.accent' },
+	'& .markdown-token-marker-code': { color: 'scrapscache.warning' },
+	'& .markdown-token-marker-heading': { color: 'scrapscache.warning' },
+	'&.markdown-raw': {
+		'& .markdown-token-marker': { display: 'inline' },
+		'& .markdown-token-code': { color: 'scrapscache.warning', bg: 'scrapscache.warningSubtle' },
+		'& [class*="markdown-token-heading-"]': { color: 'scrapscache.warning' },
+		'& .markdown-token-strong, & .markdown-token-emphasis, & .markdown-token-strikethrough': {
+			color: 'scrapscache.accent', fontWeight: 'inherit', fontStyle: 'normal', textDecoration: 'none'
+		}
+	}
+});
 
 export const topbarSyncTone = {
 	normal: '',

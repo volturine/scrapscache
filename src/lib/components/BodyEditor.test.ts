@@ -3,16 +3,11 @@ import { flushSync, tick } from 'svelte';
 import { describe, expect, it, vi } from 'vitest';
 import BodyEditor from './BodyEditor.svelte';
 
-function textNode(element: Element): Node {
-	return element.firstChild ?? element;
+function textNode(element: Node): Node {
+	return element instanceof Element ? (element.firstChild ?? element) : element;
 }
 
-function select(
-	start: Element,
-	startOffset: number,
-	end: Element = start,
-	endOffset = startOffset
-) {
+function select(start: Node, startOffset: number, end: Node = start, endOffset = startOffset) {
 	const range = document.createRange();
 	range.setStart(textNode(start), startOffset);
 	range.setEnd(textNode(end), endOffset);
@@ -23,6 +18,15 @@ function select(
 
 function lineTexts(container: HTMLElement): string[] {
 	return [...container.querySelectorAll('[data-line-text]')].map((line) => line.textContent ?? '');
+}
+
+function rawCaretText(line: Element): string {
+	const selection = window.getSelection();
+	if (!selection?.anchorNode) return '';
+	const range = document.createRange();
+	range.selectNodeContents(line);
+	range.setEnd(selection.anchorNode, selection.anchorOffset);
+	return range.toString();
 }
 
 describe('BodyEditor native editing', () => {
@@ -814,6 +818,45 @@ describe('BodyEditor markdown bullets', () => {
 		expect(
 			container.querySelector('[data-editor-line="0"]')?.getAttribute('style') ?? ''
 		).not.toContain('padding-left');
+	});
+
+	it('renders inline Markdown without changing the editable raw body', () => {
+		const { container } = render(BodyEditor, {
+			props: { body: '**bold** *italic* `code` ~~removed~~' }
+		});
+		const line = container.querySelector('[data-line-text]') as HTMLElement;
+
+		expect(line.textContent).toBe('**bold** *italic* `code` ~~removed~~');
+		expect(line.querySelector('.markdown-token-strong')?.textContent).toBe('bold');
+		expect(line.querySelector('.markdown-token-emphasis')?.textContent).toBe('italic');
+		expect(line.querySelector('.markdown-token-code')?.textContent).toBe('code');
+		expect(line.querySelector('.markdown-token-strikethrough')?.textContent).toBe('removed');
+		expect(line.querySelectorAll('.markdown-token-marker-hidden')).toHaveLength(8);
+	});
+
+	it('keeps the raw caret position when a closing delimiter activates styling', async () => {
+		const { container } = render(BodyEditor, { props: { body: '**bold' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const line = container.querySelector('[data-line-text]') as HTMLElement;
+		const source = document.createTreeWalker(line, NodeFilter.SHOW_TEXT).nextNode();
+		if (!source) throw new Error('Expected an editable text node');
+		select(source, '**bold'.length);
+		editor.dispatchEvent(
+			new InputEvent('beforeinput', {
+				bubbles: true,
+				cancelable: true,
+				inputType: 'insertText',
+				data: '*'
+			})
+		);
+		source.textContent = '**bold**';
+
+		await fireEvent.input(editor, { inputType: 'insertText', data: '*' });
+		await tick();
+
+		const styledLine = container.querySelector('[data-line-text]') as HTMLElement;
+		expect(styledLine.querySelector('.markdown-token-strong')?.textContent).toBe('bold');
+		expect(rawCaretText(styledLine)).toBe('**bold**');
 	});
 });
 

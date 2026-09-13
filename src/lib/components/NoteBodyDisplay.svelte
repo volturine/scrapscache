@@ -11,8 +11,10 @@
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { onMount } from 'svelte';
 	import { isCanvasAttachment } from '$lib/canvasAttachment';
-	import { canvasPreview, filePreview, photoPreview } from '$panda/styles';
+	import { canvasPreview, filePreview, photoPreview, markdownStyles } from '$panda/styles';
 	import { checklist } from 'styled-system/recipes';
+	import { markdownTokenClass, parseInlineMarkdown } from '$lib/markdown';
+	import { uiStore } from '$lib/stores/ui.svelte';
 
 	let { note }: { note: Note } = $props();
 
@@ -60,7 +62,27 @@
 	const p = photoPreview.display;
 </script>
 
-<div bind:this={contentElement} class={body.container}>
+{#snippet inlineContent(text: string)}
+	<span class:markdown-raw={uiStore.rawMarkdown}>
+		{#if text}
+			{@const inlineTokens = parseInlineMarkdown(text)}
+			{#each inlineTokens as token, tokenIndex (tokenIndex)}
+				<span
+					class={markdownTokenClass(token, uiStore.rawMarkdown)}
+					data-markdown-token={token.kind === 'marker' ? token.marker : token.styles.join(' ')}
+					>{token.text}</span
+				>
+			{/each}
+		{:else}
+			&nbsp;
+		{/if}
+	</span>
+{/snippet}
+
+<div
+	bind:this={contentElement}
+	class={[body.container, markdownStyles, 'markdown-content', uiStore.rawMarkdown && 'markdown-raw']}
+>
 	{#each segments as seg (seg.lineIndex)}
 		{#if seg.type === 'check'}
 			{@const check = checklist({ checked: seg.checked, indented: seg.indent > 0 })}
@@ -77,7 +99,7 @@
 					{/if}
 				</span>
 				<span class={noteBody({ checked: seg.checked, indented: seg.indent > 0 }).line}>
-					{seg.text || '\u00a0'}
+					{@render inlineContent(seg.text)}
 				</span>
 			</div>
 		{:else if seg.type === 'bullet'}
@@ -88,11 +110,11 @@
 			>
 				<span class={body.bullet} aria-hidden="true">•</span>
 				<span class={noteBody({ indented: seg.indent > 0 }).line}>
-					{seg.text || '\u00a0'}
+					{@render inlineContent(seg.text)}
 				</span>
 			</div>
 		{:else if seg.text}
-			<p class={body.paragraph}>{seg.text}</p>
+			<p class={body.paragraph}>{@render inlineContent(seg.text)}</p>
 		{:else}
 			<div class={body.spacer}></div>
 		{/if}

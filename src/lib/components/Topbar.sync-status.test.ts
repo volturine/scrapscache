@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/svelte';
+import { fireEvent, render, screen } from '@testing-library/svelte';
 import { tick } from 'svelte';
 
 const navigationMocks = vi.hoisted(() => ({ goto: vi.fn() }));
@@ -12,6 +12,7 @@ vi.mock('$lib/editorContext', () => ({
 
 import { syncStore, type StartedDeviceLink } from '$lib/stores/sync.svelte';
 import { notesStore } from '$lib/stores/notes.svelte';
+import { uiStore } from '$lib/stores/ui.svelte';
 import Topbar from './Topbar.svelte';
 
 afterEach(() => {
@@ -21,6 +22,7 @@ afterEach(() => {
 	syncStore.account = null;
 	syncStore.onSyncStart = null;
 	syncStore.onSyncEnd = null;
+	uiStore.rawMarkdown = false;
 	(notesStore as unknown as { syncFlight: Promise<boolean> | null }).syncFlight = null;
 	(notesStore as unknown as { lastAutoSyncAt: number }).lastAutoSyncAt = 0;
 	vi.restoreAllMocks();
@@ -122,5 +124,18 @@ describe('Topbar sync status', () => {
 		await notesStore.flushSync();
 		expect(startSpy).toHaveBeenCalledOnce();
 		expect(endSpy).toHaveBeenCalledOnce();
+	});
+
+	it('toggles raw Markdown mode from settings', async () => {
+		render(Topbar);
+		await fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+		await tick();
+
+		const rawMode = screen.getByRole('menuitemcheckbox', { name: 'Raw Markdown' });
+		expect(rawMode.getAttribute('aria-checked')).toBe('false');
+
+		await fireEvent.click(rawMode);
+		expect(uiStore.rawMarkdown).toBe(true);
+		expect(rawMode.getAttribute('aria-checked')).toBe('true');
 	});
 });

@@ -14,6 +14,9 @@
 	import { revealEditorField } from '$lib/editorVisibility';
 	import { css } from 'styled-system/css';
 	import { checklist, noteBody } from 'styled-system/recipes';
+	import { markdownStyles } from '$panda/styles';
+	import { markdownTokenClass, parseInlineMarkdown } from '$lib/markdown';
+	import { uiStore } from '$lib/stores/ui.svelte';
 
 	const MAX_TASK_INDENT = 1;
 	// Rows render in fixed-size chunks that the browser skips while offscreen.
@@ -364,9 +367,49 @@
 		const text = textElement(resolved);
 		if (!text) return null;
 		const caret = Math.max(0, Math.min(offset, lines[resolved].text.length));
-		const textNode = text.firstChild;
-		if (textNode?.nodeType === Node.TEXT_NODE) return { node: textNode, offset: caret };
-		return { node: text, offset: 0 };
+		if (!uiStore.rawMarkdown) {
+			let consumed = 0;
+			for (let childIndex = 0; childIndex < text.childNodes.length; childIndex++) {
+				const child = text.childNodes[childIndex];
+				const length = child.textContent?.length ?? 0;
+				const hiddenMarker =
+					child instanceof Element && child.classList.contains('markdown-token-marker-hidden');
+				if (hiddenMarker) {
+					if (caret <= consumed) return { node: text, offset: childIndex };
+					if (caret < consumed + length) return { node: text, offset: childIndex + 1 };
+					consumed += length;
+					continue;
+				}
+				if (caret <= consumed + length) {
+					if (child.nodeType === Node.TEXT_NODE) {
+						return { node: child, offset: Math.max(0, caret - consumed) };
+					}
+					const walker = document.createTreeWalker(child, NodeFilter.SHOW_TEXT);
+					let node: Node | null = null;
+					let remaining = Math.max(0, caret - consumed);
+					while ((node = walker.nextNode())) {
+						const nodeLength = node.textContent?.length ?? 0;
+						if (remaining <= nodeLength) return { node, offset: remaining };
+						remaining -= nodeLength;
+					}
+				}
+				consumed += length;
+			}
+			return { node: text, offset: text.childNodes.length };
+		}
+		const walker = document.createTreeWalker(text, NodeFilter.SHOW_TEXT);
+		let node: Node | null = null;
+		let remaining = caret;
+		while ((node = walker.nextNode())) {
+			const length = node.textContent?.length ?? 0;
+			if (remaining <= length) return { node, offset: remaining };
+			remaining -= length;
+		}
+		const last = text.lastChild;
+		if (last?.nodeType === Node.TEXT_NODE) {
+			return { node: last, offset: last.textContent?.length ?? 0 };
+		}
+		return { node: text, offset: text.childNodes.length };
 	}
 
 	function selectAt(
@@ -1106,6 +1149,13 @@
 		}
 		const range = editorRange();
 		if (!range) return;
+		if ((event.key === 'Home' || event.key === 'End') && !event.altKey && !primaryModifier) {
+			event.preventDefault();
+			const offset = event.key === 'Home' ? 0 : (lines[range.start.line]?.text.length ?? 0);
+			if (event.shiftKey) selectAt(range.start.line, range.start.offset, range.start.line, offset);
+			else selectAt(range.start.line, offset);
+			return;
+		}
 		if (event.key === 'Enter' || event.key === 'NumpadEnter') {
 			event.preventDefault();
 			rememberEdit(range);
@@ -1266,6 +1316,7 @@
 >
 	{#snippet lineRow(line: Line, index: number)}
 		{@const check = checklist({ checked: line.checked, indented: line.indent > 0 })}
+		{@const inlineTokens = parseInlineMarkdown(line.text)}
 		<div
 			data-editor-line={index}
 			data-line-id={line.id}
@@ -1295,23 +1346,52 @@
 			{:else if line.isBullet}
 				<span contenteditable="false" class={editor.bullet} aria-hidden="true">•</span>
 			{/if}
-			<span
-				data-line-text
-				use:syncEditableText={line.text}
-				data-placeholder={line.text.length === 0
-					? line.isCheck
-						? line.indent > 0
-							? 'Sub-task'
-							: 'Task'
-						: isSingleLine
-							? placeholder
-							: ''
-					: undefined}
-				class={[
-					css({ minH: '1lh' }),
-					noteBody({ mode: 'editor', checked: line.checked, indented: line.indent > 0 }).line
-				]}
-			></span>
+			{#if !line.text || (inlineTokens.length === 1 && inlineTokens[0].kind === 'text' && inlineTokens[0].styles.length === 0)}
+				<span
+					data-line-text
+					use:syncEditableText={line.text}
+					data-placeholder={line.text.length === 0
+						? line.isCheck
+							? line.indent > 0
+								? 'Sub-task'
+								: 'Task'
+							: isSingleLine
+								? placeholder
+								: ''
+						: undefined}
+					class={[
+						markdownStyles,
+						'markdown-inline-content',
+						uiStore.rawMarkdown && 'markdown-raw',
+						css({ minH: '1lh' }),
+						noteBody({ mode: 'editor', checked: line.checked, indented: line.indent > 0 }).line
+					]}>{line.text}</span
+				>
+			{:else}
+				<span
+					data-line-text
+					class={[
+						markdownStyles,
+						'markdown-inline-content',
+						uiStore.rawMarkdown && 'markdown-raw',
+						css({ minH: '1lh' }),
+						noteBody({ mode: 'editor', checked: line.checked, indented: line.indent > 0 }).line
+					]}
+				>
+					{#each inlineTokens as token, tokenIndex (tokenIndex)}
+						{#if token.kind === 'text' && token.styles.length === 0}
+							{token.text}
+						{:else}
+							<span
+								class={markdownTokenClass(token, uiStore.rawMarkdown)}
+								data-markdown-token={token.kind === 'marker'
+									? token.marker
+									: token.styles.join(' ')}>{token.text}</span
+							>
+						{/if}
+					{/each}
+				</span>
+			{/if}
 			{#if line.id === focusedGroupLastId}
 				<button
 					type="button"

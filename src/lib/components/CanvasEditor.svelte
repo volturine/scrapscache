@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
-	import { cx, sva } from 'styled-system/css';
+	import { css, cx } from 'styled-system/css';
 	import { button, iconButton } from 'styled-system/recipes';
+	import { center, hstack } from 'styled-system/patterns';
 	import { LoaderCircle, X } from '@lucide/svelte';
 	import {
 		createCanvasAttachment,
@@ -12,6 +13,7 @@
 	import { isMissingModuleError, reloadOnceForMissingModule } from '$lib/staleModuleReload';
 	import type { NoteImage } from '$lib/types';
 	import { uiStore } from '$lib/stores/ui.svelte';
+	import { portalToAppOverlay } from '$lib/appViewport';
 
 	let {
 		attachment = null,
@@ -107,155 +109,84 @@
 		}
 	}
 
-	function portal(node: HTMLElement) {
-		document.body.appendChild(node);
-		return {
-			destroy() {
-				node.remove();
-			}
-		};
-	}
-
-	const canvasEditor = sva({
-		slots: [
-			'shell',
-			'header',
-			'error',
-			'reload',
-			'area',
-			'host',
-			'loading',
-			'loadingText',
-			'spinnerSm',
-			'spinnerMd',
-			'headerClose',
-			'doneButton',
-			'closeIcon'
-		],
-		base: {
-			shell: {
-				position: 'fixed',
-				top: 'var(--app-visual-offset-top)',
-				right: 0,
-				bottom: 0,
-				left: 0,
-				paddingTop: 'var(--app-inset-top)',
-				paddingRight: 'var(--app-inset-right)',
-				paddingLeft: 'var(--app-inset-left)',
-				zIndex: 90,
-				display: 'flex',
-				flexDirection: 'column',
-				bg: 'scrapscache.canvasSurface',
-				color: 'scrapscache.text'
-			},
-			header: {
-				position: 'relative',
-				zIndex: 10,
-				display: 'flex',
-				h: '3rem',
-				flexShrink: 0,
-				alignItems: 'center',
-				justifyContent: 'space-between',
-				px: 'md'
-			},
-			error: {
-				position: 'relative',
-				zIndex: 10,
-				display: 'flex',
-				alignItems: 'center',
-				justifyContent: 'space-between',
-				gap: 'md',
-				borderBottomWidth: 'hairline',
-				borderColor: 'scrapscache.danger',
-				bg: 'scrapscache.dangerSubtle',
-				px: 'lg',
-				py: 'sm',
-				textStyle: 'body',
-				color: 'scrapscache.danger'
-			},
-			reload: {
-				flexShrink: 0,
-				fontWeight: 'heading',
-				textDecoration: 'underline',
-				textDecorationColor: 'scrapscache.danger',
-				textUnderlineOffset: '2px',
-				cursor: 'pointer'
-			},
-			area: { position: 'relative', minH: 0, flex: '1' },
-			host: { position: 'absolute', inset: 0 },
-			loading: {
-				position: 'absolute',
-				inset: 0,
-				zIndex: 20,
-				display: 'grid',
-				placeItems: 'center',
-				bg: 'scrapscache.canvasSurface'
-			},
-			loadingText: {
-				display: 'flex',
-				alignItems: 'center',
-				gap: 'sm',
-				fontSize: 'body',
-				color: 'scrapscache.textMuted'
-			},
-			spinnerSm: { h: '1rem', w: '1rem', animation: 'spin' },
-			spinnerMd: { h: '1.25rem', w: '1.25rem', animation: 'spin' },
-			headerClose: {
-				h: '2.25rem',
-				w: '2.25rem',
-				color: 'color-mix(in srgb, currentColor 82%, transparent)',
-				transition: 'background-color 120ms ease, color 120ms ease',
-				_hoverable: {
-					bg: 'color-mix(in srgb, currentColor 10%, transparent)',
-					color: 'currentColor'
-				},
-				_focusVisible: {
-					bg: 'color-mix(in srgb, currentColor 10%, transparent)',
-					color: 'currentColor',
-					outline: '2px solid scrapscache.focus',
-					outlineOffset: '2px'
-				}
-			},
-			doneButton: {
-				rounded: 'pill',
-				fontWeight: 'heading',
-				flexShrink: 0,
-				touchAction: 'manipulation',
-				transition: 'background-color 120ms ease, transform 120ms ease',
-				'&:hover:not(:disabled)': { bg: 'scrapscache.accentHover' },
-				'&:active:not(:disabled)': { transform: 'scale(0.97)' },
-				_focusVisible: { outline: '2px solid scrapscache.focus', outlineOffset: '2px' },
-				_disabled: { opacity: 0.5 }
-			},
-			closeIcon: { h: '1.375rem', w: '1.375rem' }
-		}
+	const shell = css({
+		position: 'absolute',
+		inset: 0,
+		zIndex: 90,
+		display: 'flex',
+		flexDirection: 'column',
+		bg: 'scrapscache.canvasSurface',
+		color: 'scrapscache.text'
 	});
-	const ce = canvasEditor();
-	const headerCloseBtn = cx(iconButton({ variant: 'ghost' }), ce.headerClose);
-	const doneBtn = cx(button({ variant: 'primary', size: 'md' }), ce.doneButton);
+	const header = hstack({
+		position: 'relative',
+		zIndex: 10,
+		h: '3rem',
+		flexShrink: 0,
+		justify: 'space-between',
+		px: 'md'
+	});
+	const errorBar = hstack({
+		position: 'relative',
+		zIndex: 10,
+		gap: 'md',
+		justify: 'space-between',
+		borderBottomWidth: 'hairline',
+		borderColor: 'scrapscache.danger',
+		bg: 'scrapscache.dangerSubtle',
+		px: 'lg',
+		py: 'sm',
+		textStyle: 'body',
+		color: 'scrapscache.danger'
+	});
+	const reload = css({
+		flexShrink: 0,
+		fontWeight: 'heading',
+		textDecoration: 'underline',
+		textDecorationColor: 'scrapscache.danger',
+		textUnderlineOffset: '2px',
+		cursor: 'pointer'
+	});
+	const area = css({ position: 'relative', minH: 0, flex: '1' });
+	const hostClass = css({ position: 'absolute', inset: 0 });
+	const loadingClass = center({
+		position: 'absolute',
+		inset: 0,
+		zIndex: 20,
+		bg: 'scrapscache.canvasSurface'
+	});
+	const loadingText = hstack({ gap: 'sm', textStyle: 'body', color: 'scrapscache.textMuted' });
+	const spinnerSm = css({ h: '1rem', w: '1rem', animation: 'spin' });
+	const spinnerMd = css({ h: '1.25rem', w: '1.25rem', animation: 'spin' });
+	const headerCloseBtn = iconButton({ variant: 'ghost', size: 'sm' });
+	const doneBtn = cx(
+		button({ variant: 'primary', size: 'md' }),
+		css({ rounded: 'pill', fontWeight: 'heading', flexShrink: 0 })
+	);
+	const closeIcon = css({ h: '1.375rem', w: '1.375rem' });
 </script>
 
 <div
-	use:portal
+	{@attach portalToAppOverlay}
 	onpointerdown={markCanvasInteraction}
 	onkeydown={markCanvasInteraction}
 	onpaste={markCanvasInteraction}
 	ondrop={markCanvasInteraction}
 	onwheel={markCanvasInteraction}
-	class={`canvas-editor-shell ${ce.shell}`}
+	class={`canvas-editor-shell ${shell}`}
 	role="dialog"
 	tabindex="-1"
 	aria-modal="true"
 	aria-label={readOnly ? 'View canvas' : attachment ? 'Edit canvas' : 'New canvas'}
 >
-	<header class={ce.header}>
+	<header class={header}>
 		<button
 			type="button"
 			class={`canvas-header-action ${headerCloseBtn}`}
 			onclick={close}
 			aria-label={readOnly ? 'Close canvas' : 'Cancel canvas editing'}
 		>
-			<X class={ce.closeIcon} aria-hidden="true" />
+			<X class={closeIcon} aria-hidden="true" />
 		</button>
 
 		{#if !readOnly}
@@ -266,7 +197,7 @@
 				onclick={() => void save()}
 			>
 				{#if saving}
-					<LoaderCircle class={ce.spinnerSm} aria-hidden="true" />
+					<LoaderCircle class={spinnerSm} aria-hidden="true" />
 				{/if}
 				<span>{saving ? 'Saving' : 'Done'}</span>
 			</button>
@@ -274,20 +205,20 @@
 	</header>
 
 	{#if error}
-		<div class={ce.error}>
+		<div class={errorBar}>
 			<span>{error}</span>
 			{#if staleModule}
-				<button type="button" class={ce.reload} onclick={() => location.reload()}> Reload </button>
+				<button type="button" class={reload} onclick={() => location.reload()}> Reload </button>
 			{/if}
 		</div>
 	{/if}
 
-	<div class={ce.area}>
-		<div bind:this={hostNode} class={`scrapscache-canvas ${ce.host}`}></div>
+	<div class={area}>
+		<div bind:this={hostNode} class={`scrapscache-canvas ${hostClass}`}></div>
 		{#if loading}
-			<div class={ce.loading}>
-				<div class={ce.loadingText}>
-					<LoaderCircle class={ce.spinnerMd} aria-hidden="true" />
+			<div class={loadingClass}>
+				<div class={loadingText}>
+					<LoaderCircle class={spinnerMd} aria-hidden="true" />
 					Loading canvas…
 				</div>
 			</div>

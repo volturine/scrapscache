@@ -7,33 +7,17 @@ const textRecipe = defineRecipe({
 	variants: {
 		style: {
 			body: { textStyle: 'body' },
-			bodyStrong: { textStyle: 'bodyStrong' },
 			bodyMuted: { textStyle: 'bodyMuted' },
-			subtitle: { textStyle: 'subtitle' },
-			subtitleStrong: { textStyle: 'subtitleStrong' },
-			label: { textStyle: 'label' },
 			caption: { textStyle: 'caption' },
 			captionStrong: { textStyle: 'captionStrong' },
-			title: { textStyle: 'title' },
-			heading: { textStyle: 'heading' },
-			overline: { textStyle: 'overline' },
-			button: { textStyle: 'button' },
-			display: { textStyle: 'display' },
-			micro: { textStyle: 'micro' }
+			heading: { textStyle: 'heading' }
 		},
 		tone: {
 			default: {},
-			muted: { color: 'scrapscache.textMuted' },
-			accent: { color: 'scrapscache.accent' },
-			danger: { color: 'scrapscache.danger' },
-			success: { color: 'scrapscache.success' },
-			warning: { color: 'scrapscache.warning' }
-		},
-		truncate: {
-			true: { truncate: true }
+			danger: { color: 'scrapscache.danger' }
 		}
 	},
-	defaultVariants: { style: 'body', tone: 'default', truncate: false }
+	defaultVariants: { style: 'body', tone: 'default' }
 });
 
 const viewPageRecipe = defineRecipe({
@@ -90,6 +74,15 @@ const popoverRecipe = defineRecipe({
 	}
 });
 
+const mediaHazeButton = (color: string) => ({
+	bg: 'transparent',
+	color,
+	_hoverable: {
+		bg: 'scrapscache.mediaControlActive',
+		transform: 'scale(1.05)'
+	}
+});
+
 const menuItemRecipe = defineRecipe({
 	className: 'scrapscache-menu-item',
 	description: 'Shared interactive row treatment for menus and navigation',
@@ -125,21 +118,9 @@ const menuItemRecipe = defineRecipe({
 				pr: 'sm',
 				textStyle: 'button'
 			}
-		},
-		tone: {
-			default: {},
-			muted: { color: 'scrapscache.textMuted' },
-			accent: { color: 'scrapscache.accent' },
-			danger: {
-				color: 'scrapscache.danger',
-				_hoverable: { bg: 'scrapscache.dangerSubtle' }
-			}
-		},
-		selected: {
-			true: { bg: 'scrapscache.interactiveHover' }
 		}
 	},
-	defaultVariants: { density: 'compact', tone: 'default', selected: false }
+	defaultVariants: { density: 'compact' }
 });
 
 const progressMeterRecipe = defineSlotRecipe({
@@ -326,38 +307,10 @@ const iconButtonRecipe = defineRecipe({
 	},
 	variants: {
 		variant: {
-			haze: {
-				bg: 'transparent',
-				color: 'scrapscache.mediaTextStrong',
-				_hoverable: {
-					bg: 'scrapscache.mediaControlActive',
-					transform: 'scale(1.05)'
-				}
-			},
-			hazeCopied: {
-				bg: 'transparent',
-				color: 'scrapscache.mediaSuccess',
-				_hoverable: {
-					bg: 'scrapscache.mediaControlActive',
-					transform: 'scale(1.05)'
-				}
-			},
-			hazePinned: {
-				bg: 'transparent',
-				color: 'scrapscache.mediaWarning',
-				_hoverable: {
-					bg: 'scrapscache.mediaControlActive',
-					transform: 'scale(1.05)'
-				}
-			},
-			hazeBlue: {
-				bg: 'transparent',
-				color: 'scrapscache.mediaAccent',
-				_hoverable: {
-					bg: 'scrapscache.mediaControlActive',
-					transform: 'scale(1.05)'
-				}
-			},
+			haze: mediaHazeButton('scrapscache.mediaTextStrong'),
+			hazeCopied: mediaHazeButton('scrapscache.mediaSuccess'),
+			hazePinned: mediaHazeButton('scrapscache.mediaWarning'),
+			hazeBlue: mediaHazeButton('scrapscache.mediaAccent'),
 			hazeRose: {
 				bg: 'transparent',
 				color: 'scrapscache.mediaTextStrong',
@@ -1111,10 +1064,6 @@ export default defineConfig({
 					compact: { value: '1.375' }
 				},
 				radii: {
-					sm: { value: '0.375rem' },
-					md: { value: '0.5rem' },
-					lg: { value: '0.75rem' },
-					xl: { value: '1rem' },
 					compact: { value: '0.375rem' },
 					control: { value: '0.5rem' },
 					card: { value: '0.75rem' },
@@ -1128,7 +1077,6 @@ export default defineConfig({
 					pill: { value: '9999px' }
 				},
 				spacing: {
-					hairline: { value: '1px' },
 					'3xs': { value: '0.125rem' },
 					'2xs': { value: '0.25rem' },
 					xs: { value: '0.375rem' },
@@ -1140,8 +1088,10 @@ export default defineConfig({
 					'3xl': { value: '2rem' },
 					'4xl': { value: '2.5rem' },
 					list: { value: '0.625rem' },
-					action: { value: '0.4375rem' },
-					marker: { value: '3px' }
+					action: { value: '0.4375rem' }
+				},
+				sizes: {
+					indicator: { value: '3px' }
 				},
 				letterSpacings: {
 					eyebrow: { value: '0.14em' },
@@ -1329,9 +1279,6 @@ export default defineConfig({
 						mediaDangerSubtle: {
 							value: 'rgba(244, 63, 94, 0.3)'
 						},
-						mediaDangerHover: {
-							value: 'rgba(239, 68, 68, 0.2)'
-						},
 						qrSurface: {
 							value: '#ffffff'
 						},
@@ -1376,9 +1323,8 @@ export default defineConfig({
 						},
 						accentSubtle: {
 							value: {
-								base: 'color-mix(in srgb, {colors.scrapscache.accent} 14%, {colors.scrapscache.surface})',
-								_dark:
-									'color-mix(in srgb, {colors.scrapscache.accent} 14%, {colors.scrapscache.surface})'
+								base: 'color-mix(in srgb, #2563eb 14%, #f8f9fa)',
+								_dark: 'color-mix(in srgb, #60a5fa 14%, #242424)'
 							}
 						},
 						focus: {

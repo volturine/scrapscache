@@ -18,7 +18,7 @@
 	import { portalToAppOverlay } from '$lib/appViewport';
 	import { cva, cx, sva } from 'styled-system/css';
 	import { button, iconButton } from 'styled-system/recipes';
-	import { hstack } from 'styled-system/patterns';
+	import { center, hstack } from 'styled-system/patterns';
 	import { fullscreen } from './fullscreenStyles';
 	import { displayImageSrc } from '$lib/imageThumb';
 	import { noteImageFromCroppedDataUrl } from '$lib/noteImages';
@@ -246,7 +246,6 @@
 			'viewport',
 			'imgWrap',
 			'img',
-			'btnRound',
 			'toolBtn'
 		],
 		base: {
@@ -324,11 +323,11 @@
 			},
 			header: {
 				position: 'relative',
-				display: 'flex',
-				flexShrink: 0,
-				alignItems: 'center',
-				justifyContent: 'space-between',
-				gap: 'sm',
+				...hstack.raw({
+					flexShrink: 0,
+					justifyContent: 'space-between',
+					gap: 'sm'
+				}),
 				borderBottomWidth: 'hairline',
 				borderColor: 'scrapscache.mediaBorder',
 				bg: 'scrapscache.mediaSurfaceStrong',
@@ -346,14 +345,10 @@
 				position: 'absolute',
 				left: '50%',
 				transform: 'translateX(-50%)',
-				display: { base: 'none', sm: 'flex' },
-				alignItems: 'center',
-				justifyContent: 'center'
+				...center.raw({ display: { base: 'none', sm: 'flex' } })
 			},
 			radioRoot: {
-				display: 'flex',
-				alignItems: 'center',
-				gap: '3xs',
+				...hstack.raw({ gap: '3xs' }),
 				rounded: 'card',
 				bg: 'scrapscache.mediaControlHover',
 				p: '3xs',
@@ -387,8 +382,7 @@
 				rounded: 'control',
 				px: 'list',
 				py: 'xs',
-				fontSize: 'label',
-				fontWeight: 'interactive',
+				textStyle: 'label',
 				color: 'scrapscache.mediaTextMuted',
 				transition: 'colors 120ms ease',
 				touchAction: 'manipulation',
@@ -403,15 +397,11 @@
 				minW: '5.25rem',
 				px: 'md',
 				py: 'xs',
-				fontSize: 'body',
-				fontWeight: 'interactive'
+				textStyle: 'button'
 			},
 			ratioMobile: {
-				display: { base: 'flex', sm: 'none' },
+				...center.raw({ display: { base: 'flex', sm: 'none' }, gap: '2xs' }),
 				flexShrink: 0,
-				alignItems: 'center',
-				justifyContent: 'center',
-				gap: '2xs',
 				borderBottomWidth: 'hairline',
 				borderColor: 'scrapscache.mediaBorderFaint',
 				bg: 'scrapscache.mediaSurfaceMuted',
@@ -420,12 +410,11 @@
 			},
 			viewport: {
 				position: 'relative',
-				display: 'flex',
-				minH: 0,
-				flex: '1',
-				alignItems: 'center',
-				justifyContent: 'center',
-				p: { base: 'sm', sm: '2xl' },
+				...center.raw({
+					minH: 0,
+					flex: '1',
+					p: { base: 'sm', sm: '2xl' }
+				}),
 				overflow: 'hidden'
 			},
 			imgWrap: {
@@ -442,7 +431,6 @@
 				userSelect: 'none',
 				pointerEvents: 'none'
 			},
-			btnRound: { h: '2.25rem', w: '2.25rem' },
 			toolBtn: {
 				h: '2.25rem',
 				w: '2.25rem',
@@ -463,7 +451,7 @@
 		}
 	});
 	const crop = cropSva();
-	const cropBtnRound = cx(iconButton({ variant: 'haze' }), crop.btnRound);
+	const cropBtnRound = iconButton({ variant: 'haze', size: 'sm' });
 	const cropToolBtn = cx(iconButton({ variant: 'haze' }), crop.toolBtn);
 
 	const cropKnob = cva({
@@ -484,28 +472,17 @@
 	});
 
 	const viewerSva = sva({
-		slots: [
-			'stage',
-			'center',
-			'img',
-			'backdrop',
-			'thumbStrip',
-			'thumbImg',
-			'titleSize',
-			'topBtn',
-			'trashBtn'
-		],
+		slots: ['stage', 'center', 'img', 'backdrop', 'thumbStrip', 'thumbImg', 'titleSize'],
 		base: {
 			stage: { position: 'relative', minH: 0, flex: '1' },
 			center: {
 				pointerEvents: 'none',
 				position: 'relative',
 				zIndex: 1,
-				display: 'flex',
-				h: 'full',
-				alignItems: 'center',
-				justifyContent: 'center',
-				px: 'lg'
+				...center.raw({
+					h: 'full',
+					px: 'lg'
+				})
 			},
 			img: {
 				pointerEvents: 'auto',
@@ -534,19 +511,12 @@
 				ml: '2xs',
 				textStyle: 'caption',
 				color: 'scrapscache.mediaTextFaint'
-			},
-			topBtn: { flexShrink: 0 },
-			trashBtn: {
-				_hoverable: {
-					bg: 'scrapscache.mediaDangerHover',
-					color: 'scrapscache.mediaDanger'
-				}
 			}
 		}
 	});
 	const viewer = viewerSva();
-	const topBarBtn = cx(iconButton({ variant: 'haze' }), viewer.topBtn);
-	const topBarTrashBtn = cx(iconButton({ variant: 'haze' }), viewer.trashBtn);
+	const topBarBtn = iconButton({ variant: 'haze' });
+	const topBarTrashBtn = iconButton({ variant: 'hazeRose' });
 
 	const ratioMobileBtn = cva({
 		base: {

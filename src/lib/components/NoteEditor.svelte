@@ -562,7 +562,7 @@
 				borderWidth: 'strong',
 				borderStyle: 'dashed',
 				borderColor: 'scrapscache.accent',
-				bg: 'color-mix(in oklab, var(--colors-scrapscache-accent) 16%, transparent)'
+				bg: 'scrapscache.accentSubtle'
 			},
 			subDialogBackdrop: {
 				bg: 'scrapscache.backdropSoft',

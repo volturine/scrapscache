@@ -482,7 +482,7 @@
 					top: 'list',
 					bottom: 'list',
 					left: 0,
-					w: 'marker',
+					w: 'indicator',
 					borderTopRightRadius: 'marker',
 					borderBottomRightRadius: 'marker',
 					bg: 'scrapscache.accent'

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { cx, sva } from 'styled-system/css';
+	import { cva, css, cx } from 'styled-system/css';
 	import { dialog, button, input, menuItem } from 'styled-system/recipes';
 	import { hstack, vstack } from 'styled-system/patterns';
 	import { goto } from '$app/navigation';
@@ -166,133 +166,113 @@
 		pendingDelete = null;
 	}
 
-	const chrome = sva({
-		slots: [
-			'row',
-			'icon',
-			'navLabel',
-			'newLabelSpacing',
-			'labelInput',
-			'labelsSection',
-			'sectionTitle',
-			'editButton',
-			'renameButton',
-			'dialogPortal',
-			'dialogPositioner',
-			'scroller'
-		],
-		base: {
-			row: {},
-			icon: {
-				display: 'grid',
-				h: '1.75rem',
-				w: '1.75rem',
-				flexShrink: 0,
-				placeItems: 'center'
-			},
-			navLabel: {
-				minW: 0,
-				flex: '1',
-				overflow: 'hidden',
-				textOverflow: 'ellipsis',
-				whiteSpace: 'nowrap',
-				textAlign: 'left'
-			},
-			newLabelSpacing: { mb: '2xs' },
-			labelInput: {
-				flex: '1',
-				textStyle: 'button',
-				_placeholder: { fontWeight: 'body', color: 'scrapscache.textMuted' }
-			},
-			labelsSection: { mt: 'xl', w: 'full' },
-			sectionTitle: {
-				minW: 0,
-				flex: '1',
-				textStyle: 'captionStrong',
-				textTransform: 'uppercase',
-				letterSpacing: 'eyebrow',
-				color: 'scrapscache.textMuted'
-			},
-			editButton: {
-				position: 'relative',
-				flexShrink: 0,
-				rounded: 'control',
-				px: 'sm',
-				py: '2xs',
-				textStyle: 'label',
-				color: 'scrapscache.textMuted',
-				cursor: 'pointer',
-				touchAction: 'manipulation',
-				WebkitTapHighlightColor: 'transparent',
-				_hoverable: { bg: 'scrapscache.interactiveHover' },
-				_before: { position: 'absolute', inset: '-0.625rem', content: '""' }
-			},
-			renameButton: {
-				minW: 0,
-				flex: '1',
-				alignSelf: 'stretch',
-				overflow: 'hidden',
-				textOverflow: 'ellipsis',
-				whiteSpace: 'nowrap',
-				textAlign: 'left',
-				textStyle: 'button',
-				color: 'scrapscache.text',
-				cursor: 'pointer'
-			},
-			dialogPortal: { position: 'absolute', inset: 0, zIndex: 80 },
-			dialogPositioner: {
-				position: 'absolute',
-				inset: 0,
-				display: 'flex',
-				alignItems: { base: 'flex-end', sm: 'center' },
-				justifyContent: 'center',
-				p: 'lg'
-			},
-			scroller: { scrollbarWidth: 'thin' }
-		},
+	const sidebarRow = cva({
 		variants: {
 			navigation: {
-				true: { row: { w: 'full', textAlign: 'left', textStyle: 'button', cursor: 'pointer' } }
+				true: { w: 'full', textAlign: 'left', textStyle: 'button', cursor: 'pointer' }
 			},
 			active: {
 				true: {
-					row: {
-						fontWeight: 'heading',
-						bg: 'scrapscache.navigationActive',
-						color: 'scrapscache.navigationActiveText'
-					}
+					fontWeight: 'heading',
+					bg: 'scrapscache.navigationActive',
+					color: 'scrapscache.navigationActiveText'
 				},
-				false: { row: { fontWeight: 'interactive', color: 'scrapscache.textMuted' } }
+				false: { fontWeight: 'interactive', color: 'scrapscache.textMuted' }
 			},
-			wide: { true: { row: { pr: 'lg' } } },
+			wide: { true: { pr: 'lg' } },
+			editing: { true: { bg: 'scrapscache.interactiveHover' } }
+		}
+	});
+
+	const sidebarIcon = cva({
+		base: {
+			display: 'grid',
+			h: '1.75rem',
+			w: '1.75rem',
+			flexShrink: 0,
+			placeItems: 'center'
+		},
+		variants: {
 			iconTone: {
-				nav: { icon: { color: 'scrapscache.text' } },
-				muted: { icon: { color: 'scrapscache.textMuted' } }
+				nav: { color: 'scrapscache.text' },
+				muted: { color: 'scrapscache.textMuted' }
 			},
 			danger: {
 				true: {
-					icon: {
-						_hoverable: { bg: 'scrapscache.dangerSubtle', color: 'scrapscache.danger' }
-					}
+					_hoverable: { bg: 'scrapscache.dangerSubtle', color: 'scrapscache.danger' }
 				}
 			},
-			editing: { true: { row: { bg: 'scrapscache.interactiveHover' } } },
 			hitPad: {
 				delete: {
-					icon: {
-						position: 'relative',
-						_before: { position: 'absolute', inset: '-0.5rem', content: '""' }
-					}
+					position: 'relative',
+					_before: { position: 'absolute', inset: '-0.5rem', content: '""' }
 				},
-				count: { icon: { fontSize: 'label', fontVariantNumeric: 'tabular-nums', opacity: 0.7 } }
+				count: { fontSize: 'label', fontVariantNumeric: 'tabular-nums', opacity: 0.7 }
 			}
 		}
 	});
-	const sidebar = chrome({});
+
+	const navLabelText = css({
+		minW: 0,
+		flex: '1',
+		overflow: 'hidden',
+		textOverflow: 'ellipsis',
+		whiteSpace: 'nowrap',
+		textAlign: 'left'
+	});
+	const newLabelSpacing = css({ mb: '2xs' });
+	const labelInput = css({
+		flex: '1',
+		textStyle: 'button',
+		_placeholder: { fontWeight: 'body', color: 'scrapscache.textMuted' }
+	});
+	const labelsSection = css({ mt: 'xl', w: 'full' });
+	const sectionTitle = css({
+		minW: 0,
+		flex: '1',
+		textStyle: 'captionStrong',
+		textTransform: 'uppercase',
+		letterSpacing: 'eyebrow',
+		color: 'scrapscache.textMuted'
+	});
+	const editButton = css({
+		position: 'relative',
+		flexShrink: 0,
+		rounded: 'control',
+		px: 'sm',
+		py: '2xs',
+		textStyle: 'label',
+		color: 'scrapscache.textMuted',
+		cursor: 'pointer',
+		touchAction: 'manipulation',
+		WebkitTapHighlightColor: 'transparent',
+		_hoverable: { bg: 'scrapscache.interactiveHover' },
+		_before: { position: 'absolute', inset: '-0.625rem', content: '""' }
+	});
+	const renameButton = css({
+		minW: 0,
+		flex: '1',
+		alignSelf: 'stretch',
+		overflow: 'hidden',
+		textOverflow: 'ellipsis',
+		whiteSpace: 'nowrap',
+		textAlign: 'left',
+		textStyle: 'button',
+		color: 'scrapscache.text',
+		cursor: 'pointer'
+	});
+	const dialogPortal = css({ position: 'absolute', inset: 0, zIndex: 80 });
+	const dialogPositioner = css({
+		position: 'absolute',
+		inset: 0,
+		display: 'flex',
+		alignItems: { base: 'flex-end', sm: 'center' },
+		justifyContent: 'center',
+		p: 'lg'
+	});
+	const scroller = css({ scrollbarWidth: 'thin' });
 	const menuRow = menuItem({ density: 'sidebar' });
-	const navLabelText = sidebar.navLabel;
-	const newLabelSpacing = sidebar.newLabelSpacing ?? '';
-	const labelInputClass = cx(input({ variant: 'unstyled' }), sidebar.labelInput);
+	const labelInputClass = cx(input({ variant: 'unstyled' }), labelInput);
 	const d = dialog({ size: 'sm' });
 </script>
 
@@ -301,9 +281,9 @@
 		type="button"
 		onclick={startCreateLabel}
 		data-sidebar-stay-open
-		class={[menuRow, chrome({ navigation: true, active: false }).row, extraClass]}
+		class={[menuRow, sidebarRow({ navigation: true, active: false }), extraClass]}
 	>
-		<span class={chrome({}).icon} aria-hidden="true">
+		<span class={sidebarIcon()} aria-hidden="true">
 			<Plus size={16} strokeWidth={1.75} />
 		</span>
 		<span class={navLabelText}>New label</span>
@@ -316,7 +296,7 @@
 		type="button"
 		onclick={() => requestDelete(label)}
 		data-sidebar-stay-open
-		class={chrome({ iconTone: 'muted', hitPad: 'delete', danger: true }).icon}
+		class={sidebarIcon({ iconTone: 'muted', hitPad: 'delete', danger: true })}
 		aria-label={`Delete ${label.name}`}
 		title="Delete"
 	>
@@ -327,7 +307,7 @@
 <aside
 	class={[
 		'scrollable',
-		sidebar.scroller,
+		scroller,
 		vstack({
 			h: 'full',
 			gap: '3xs',
@@ -344,25 +324,25 @@
 		<button
 			type="button"
 			onclick={() => navigate(item.view)}
-			class={[menuRow, chrome({ navigation: true, active: isActive(item.view), wide: true }).row]}
+			class={[menuRow, sidebarRow({ navigation: true, active: isActive(item.view), wide: true })]}
 		>
-			<span class={chrome({ iconTone: 'nav' }).icon} aria-hidden="true">
+			<span class={sidebarIcon({ iconTone: 'nav' })} aria-hidden="true">
 				<NavIcon size={18} strokeWidth={1.75} />
 			</span>
 			<span class={navLabelText}>{item.label}</span>
 		</button>
 	{/each}
 
-	<section class={sidebar.labelsSection} data-labels-edit aria-label="Labels">
+	<section class={labelsSection} data-labels-edit aria-label="Labels">
 		<div class={hstack({ mb: '2xs', h: '2rem', gap: 'sm', pl: 'lg', pr: 'sm' })}>
-			<span class={sidebar.sectionTitle}>Labels</span>
+			<span class={sectionTitle}>Labels</span>
 			<!-- One control in both modes, so the header never reflows on toggle. The
 			     ::before pad gives it a thumb-sized hit area without a taller header. -->
 			<button
 				type="button"
 				onclick={labelsEditMode ? exitEditMode : enterEditMode}
 				data-sidebar-stay-open
-				class={sidebar.editButton}
+				class={editButton}
 				aria-label={labelsEditMode ? 'Finish editing labels' : 'Edit labels'}
 				title={labelsEditMode ? 'Finish editing labels' : 'Edit labels'}
 			>
@@ -371,8 +351,8 @@
 		</div>
 
 		{#if labelsEditMode && creatingLabel}
-			<div class={[menuRow, chrome({ editing: true }).row]} data-sidebar-stay-open>
-				<span class={chrome({ iconTone: 'muted' }).icon} aria-hidden="true">
+			<div class={[menuRow, sidebarRow({ editing: true })]} data-sidebar-stay-open>
+				<span class={sidebarIcon({ iconTone: 'muted' })} aria-hidden="true">
 					<Tag size={16} strokeWidth={1.75} aria-hidden="true" />
 				</span>
 				<input
@@ -401,8 +381,8 @@
 					{#if labelsEditMode && renamingId === label.id}
 						<!-- Same box as the rows around it, so starting a rename never nudges
 						     the list; only the tint and the field change. -->
-						<div class={[menuRow, chrome({ editing: true }).row]} data-sidebar-stay-open>
-							<span class={chrome({ iconTone: 'muted' }).icon} aria-hidden="true">
+						<div class={[menuRow, sidebarRow({ editing: true })]} data-sidebar-stay-open>
+							<span class={sidebarIcon({ iconTone: 'muted' })} aria-hidden="true">
 								<Tag size={16} strokeWidth={1.75} />
 							</span>
 							<input
@@ -420,15 +400,15 @@
 							{@render deleteButton(label)}
 						</div>
 					{:else if labelsEditMode}
-						<div class={[menuRow, chrome({}).row]}>
-							<span class={chrome({ iconTone: 'muted' }).icon} aria-hidden="true">
+						<div class={[menuRow, sidebarRow()]}>
+							<span class={sidebarIcon({ iconTone: 'muted' })} aria-hidden="true">
 								<Tag size={16} strokeWidth={1.75} />
 							</span>
 							<button
 								type="button"
 								onclick={() => startRename(label)}
 								data-sidebar-stay-open
-								class={sidebar.renameButton}
+								class={renameButton}
 								aria-label={`Rename ${label.name}`}
 								title="Rename"
 							>
@@ -442,15 +422,15 @@
 							onclick={() => navigate('label', label.id)}
 							class={[
 								menuRow,
-								chrome({ navigation: true, active: isActive('label', label.id) }).row
+								sidebarRow({ navigation: true, active: isActive('label', label.id) })
 							]}
 						>
-							<span class={chrome({ iconTone: 'muted' }).icon} aria-hidden="true">
+							<span class={sidebarIcon({ iconTone: 'muted' })} aria-hidden="true">
 								<Tag size={16} strokeWidth={1.75} />
 							</span>
 							<span class={navLabelText}>{label.name}</span>
 							{#if (labelCounts.get(label.id) ?? 0) > 0}
-								<span class={chrome({ hitPad: 'count' }).icon}>{labelCounts.get(label.id)}</span>
+								<span class={sidebarIcon({ hitPad: 'count' })}>{labelCounts.get(label.id)}</span>
 							{/if}
 						</button>
 					{/if}
@@ -468,12 +448,12 @@
 	>
 		<div
 			{@attach portalToAppOverlay}
-			class={sidebar.dialogPortal}
+			class={dialogPortal}
 			role="presentation"
 			data-sidebar-stay-open
 		>
 			<Dialog.Backdrop class={d.backdrop} />
-			<Dialog.Positioner class={sidebar.dialogPositioner} data-sidebar-stay-open>
+			<Dialog.Positioner class={dialogPositioner} data-sidebar-stay-open>
 				<Dialog.Content class={d.panel} data-sidebar-stay-open>
 					<Dialog.Title class={d.title}>
 						Delete “{pendingDelete.name}”?

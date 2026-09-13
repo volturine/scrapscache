@@ -4,7 +4,6 @@
 
 	const ITEM_H = 36;
 	const VISIBLE = 5;
-	const PAD = Math.floor(VISIBLE / 2);
 	const COPIES = 3;
 	const FRICTION = 0.95;
 	const MIN_VEL = 0.03;
@@ -56,7 +55,6 @@
 		return items[next].value;
 	}
 
-	const totalItems = $derived(items.length * COPIES);
 	const middleStart = $derived(items.length);
 	const valueIndex = $derived(indexOf(value));
 	const centerIndex = $derived(scrollIndex ?? Math.round(offset / ITEM_H));
@@ -267,8 +265,7 @@
 					color: 'scrapscache.text'
 				},
 				adjacent: {
-					fontSize: 'body',
-					fontWeight: 'interactive',
+					textStyle: 'button',
 					color: 'scrapscache.textMuted'
 				},
 				far: {

@@ -589,6 +589,7 @@
 					<div
 						bind:this={editorScroller}
 						class="note-scrollbar-hidden scrollable min-h-0 flex-1 touch-pan-y overflow-y-auto overflow-x-hidden overscroll-contain px-6 pt-4 pb-3"
+						class:raw-markdown-scroll={uiStore.rawMarkdown}
 					>
 						<textarea
 							use:autoResizeTitle={title}

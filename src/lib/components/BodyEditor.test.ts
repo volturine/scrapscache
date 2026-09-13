@@ -1,7 +1,8 @@
 import { fireEvent, render } from '@testing-library/svelte';
 import { tick } from 'svelte';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import BodyEditor from './BodyEditor.svelte';
+import { uiStore } from '$lib/stores/ui.svelte';
 
 function textNode(element: Node): Node {
 	return element instanceof Element ? (element.firstChild ?? element) : element;
@@ -28,6 +29,10 @@ function rawCaretText(line: Element): string {
 	range.setEnd(selection.anchorNode, selection.anchorOffset);
 	return range.toString();
 }
+
+afterEach(() => {
+	uiStore.rawMarkdown = false;
+});
 
 describe('BodyEditor native editing', () => {
 	it('renders exactly one block row for each saved newline', () => {
@@ -751,6 +756,17 @@ describe('BodyEditor markdown bullets', () => {
 		expect(line.querySelector('.markdown-token-code')?.textContent).toBe('code');
 		expect(line.querySelector('.markdown-token-strikethrough')?.textContent).toBe('removed');
 		expect(line.querySelectorAll('.markdown-token-marker-hidden')).toHaveLength(8);
+	});
+
+	it('keeps long raw Markdown rows on one horizontal source line', () => {
+		uiStore.rawMarkdown = true;
+		const source = '| Rule name | Matches path | Limit | Counting by | Action |';
+		const { container } = render(BodyEditor, { props: { body: source } });
+		const editor = container.querySelector('[data-body-editor]');
+
+		expect(editor?.classList).toContain('markdown-raw');
+		expect(lineTexts(container)).toEqual([source]);
+		expect(editor?.querySelector('[data-line-text]')?.className).toContain('whitespace-pre-wrap');
 	});
 
 	it('keeps the raw caret position when a closing delimiter activates styling', async () => {

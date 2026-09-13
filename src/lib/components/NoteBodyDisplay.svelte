@@ -3,19 +3,25 @@
 	// anywhere drags the card and a click opens the note; attachments, links and
 	// checklists are interactive in the editor instead.
 	import type { Note } from '$lib/types';
-	import { parseBody, noteAttachments } from '$lib/checklistBody';
+	import { parseBody, noteAttachments, type BodySegment } from '$lib/checklistBody';
 	import { extractHttpUrls, localLinkCard } from '$lib/linkPreview';
 	import { isImageAttachment, fileIconLabel } from '$lib/noteImages';
 	import { displayImageSrc } from '$lib/imageThumb';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { onMount } from 'svelte';
 	import { isCanvasAttachment } from '$lib/canvasAttachment';
-	import { markdownTokenClass, parseInlineMarkdown } from '$lib/markdown';
+	import {
+		highlightCodeLine,
+		markdownTokenClass,
+		parseInlineMarkdown,
+		parseMarkdownBlocks
+	} from '$lib/markdown';
 	import { uiStore } from '$lib/stores/ui.svelte';
 
 	let { note }: { note: Note } = $props();
 
 	const segments = $derived(parseBody(note.body ?? ''));
+	const blocks = $derived(parseMarkdownBlocks(note.body ?? ''));
 	const attachments = $derived(noteAttachments(note));
 	const imageAttachments = $derived(attachments.filter(isImageAttachment));
 	const canvases = $derived(attachments.filter(isCanvasAttachment));
@@ -71,54 +77,110 @@
 	</span>
 {/snippet}
 
+{#snippet bodyLine(seg: BodySegment)}
+	{#if seg.type === 'check'}
+		<div
+			class="flex items-start gap-2 py-0.5"
+			data-check-line={seg.lineIndex}
+			style={seg.indent > 0 ? `padding-left: ${seg.indent * 1.25}rem` : undefined}
+		>
+			<span
+				class="checklist-toggle shrink-0 {seg.indent > 0 ? 'checklist-toggle-sub' : ''}"
+				class:checked={seg.checked}
+				aria-hidden="true"
+			>
+				{#if seg.checked}
+					<svg viewBox="0 0 16 16" class="checklist-toggle-mark">
+						<path d="M3.5 8.5 6.5 11.5 12.5 4.5" />
+					</svg>
+				{/if}
+			</span>
+			<span
+				class="flex-1 break-words {seg.checked ? 'line-through opacity-50' : ''} {seg.indent > 0
+					? 'text-[13px]'
+					: ''}"
+			>
+				{@render inlineContent(seg.text)}
+			</span>
+		</div>
+	{:else if seg.type === 'bullet'}
+		<div
+			class="flex items-start gap-2 py-0.5"
+			data-bullet-line={seg.lineIndex}
+			style={seg.indent > 0 ? `padding-left: ${seg.indent * 1.25}rem` : undefined}
+		>
+			<span class="shrink-0 select-none" aria-hidden="true">•</span>
+			<span class="flex-1 break-words {seg.indent > 0 ? 'text-[13px]' : ''}">
+				{@render inlineContent(seg.text)}
+			</span>
+		</div>
+	{:else if seg.text}
+		<p class="whitespace-pre-wrap break-words py-0.5">{@render inlineContent(seg.text)}</p>
+	{:else}
+		<div class="h-2"></div>
+	{/if}
+{/snippet}
+
 <div
 	bind:this={contentElement}
 	class="markdown-content text-sm text-[var(--scrapscache-text)]"
 	class:markdown-raw={uiStore.rawMarkdown}
 >
-	{#each segments as seg (seg.lineIndex)}
-		{#if seg.type === 'check'}
-			<div
-				class="flex items-start gap-2 py-0.5"
-				data-check-line={seg.lineIndex}
-				style={seg.indent > 0 ? `padding-left: ${seg.indent * 1.25}rem` : undefined}
-			>
-				<span
-					class="checklist-toggle shrink-0 {seg.indent > 0 ? 'checklist-toggle-sub' : ''}"
-					class:checked={seg.checked}
-					aria-hidden="true"
+	{#if uiStore.rawMarkdown}
+		{#each segments as seg (seg.lineIndex)}
+			{@render bodyLine(seg)}
+		{/each}
+	{:else}
+		{#each blocks as block (block.type === 'line' ? block.segment.lineIndex : block.lineIndex)}
+			{#if block.type === 'line'}
+				{@render bodyLine(block.segment)}
+			{:else if block.type === 'table'}
+				<div
+					class="markdown-table-scroll"
+					data-markdown-table-container
+					role="region"
+					tabindex="-1"
+					aria-label="Markdown table"
 				>
-					{#if seg.checked}
-						<svg viewBox="0 0 16 16" class="checklist-toggle-mark">
-							<path d="M3.5 8.5 6.5 11.5 12.5 4.5" />
-						</svg>
-					{/if}
-				</span>
-				<span
-					class="flex-1 break-words {seg.checked ? 'line-through opacity-50' : ''} {seg.indent > 0
-						? 'text-[13px]'
-						: ''}"
-				>
-					{@render inlineContent(seg.text)}
-				</span>
-			</div>
-		{:else if seg.type === 'bullet'}
-			<div
-				class="flex items-start gap-2 py-0.5"
-				data-bullet-line={seg.lineIndex}
-				style={seg.indent > 0 ? `padding-left: ${seg.indent * 1.25}rem` : undefined}
-			>
-				<span class="shrink-0 select-none" aria-hidden="true">•</span>
-				<span class="flex-1 break-words {seg.indent > 0 ? 'text-[13px]' : ''}">
-					{@render inlineContent(seg.text)}
-				</span>
-			</div>
-		{:else if seg.text}
-			<p class="whitespace-pre-wrap break-words py-0.5">{@render inlineContent(seg.text)}</p>
-		{:else}
-			<div class="h-2"></div>
-		{/if}
-	{/each}
+					<table class="markdown-table" data-markdown-table>
+						<thead>
+							<tr>
+								{#each block.header as cell, columnIndex (columnIndex)}
+									<th scope="col" style={`text-align: ${block.alignments[columnIndex]};`}>
+										{@render inlineContent(cell)}
+									</th>
+								{/each}
+							</tr>
+						</thead>
+						<tbody>
+							{#each block.rows as row, rowIndex (rowIndex)}
+								<tr>
+									{#each block.header as _, columnIndex (columnIndex)}
+										<td style={`text-align: ${block.alignments[columnIndex]};`}>
+											{@render inlineContent(row[columnIndex] ?? '')}
+										</td>
+									{/each}
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</div>
+			{:else}
+				{@const codeLines = block.code.split('\n')}
+				<pre
+					class="markdown-code-block"
+					data-markdown-code-block
+					data-language={block.language || undefined}><code
+						>{#each codeLines as codeLine, codeLineIndex (`${block.lineIndex}-${codeLineIndex}`)}<span
+								class="markdown-code-line"
+								>{#each highlightCodeLine(codeLine, block.language) as token, tokenIndex (tokenIndex)}{#if token.kind === 'plain'}{token.text}{:else}<span
+											class="markdown-code-token-{token.kind}">{token.text}</span
+										>{/if}{/each}</span
+							>{/each}</code
+					></pre>
+			{/if}
+		{/each}
+	{/if}
 </div>
 
 {#if canvases.length > 0}

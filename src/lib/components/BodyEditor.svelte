@@ -1181,6 +1181,7 @@
 	aria-label="Note body"
 	spellcheck="true"
 	class="block w-full min-w-0 text-sm leading-relaxed text-[var(--scrapscache-text)] outline-none"
+	class:markdown-raw={uiStore.rawMarkdown}
 	onbeforeinput={handleBeforeInput}
 	oninput={handleInput}
 	oncopy={handleCopy}

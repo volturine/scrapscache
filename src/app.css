@@ -395,6 +395,7 @@ body {
 	color: #ce5d97;
 }
 .dark .markdown-token-marker-code,
+.dark .markdown-token-code,
 .dark .markdown-raw .markdown-token-marker-code,
 .dark .markdown-raw .markdown-token-code {
 	color: #d0a215;
@@ -421,6 +422,120 @@ body {
 .dark .markdown-raw .markdown-token-emphasis,
 .dark .markdown-raw .markdown-token-strikethrough {
 	color: #ce5d97;
+}
+
+.markdown-table-scroll,
+.markdown-code-block {
+	max-width: 100%;
+	overflow-x: auto;
+	overscroll-behavior-x: contain;
+}
+.markdown-table-scroll {
+	margin: 0.5rem 0;
+}
+.markdown-table {
+	width: max-content;
+	min-width: 100%;
+	border-collapse: collapse;
+	text-align: left;
+}
+.markdown-table th,
+.markdown-table td {
+	border-bottom: 1px solid color-mix(in srgb, var(--scrapscache-text) 20%, transparent);
+	padding: 0.4rem 0.625rem;
+	vertical-align: top;
+	white-space: nowrap;
+}
+.markdown-table th {
+	font-weight: 700;
+}
+.markdown-table tr:last-child td {
+	border-bottom: 0;
+}
+.markdown-code-block {
+	margin: 0.5rem 0;
+	border: 1px solid color-mix(in srgb, var(--scrapscache-text) 12%, transparent);
+	border-radius: 0.375rem;
+	background: var(--scrapscache-surface);
+	color: var(--scrapscache-text);
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+	font-size: 0.8rem;
+	line-height: 1.5;
+}
+.markdown-code-block code {
+	display: block;
+	min-width: max-content;
+	padding: 0.7rem 0;
+}
+.markdown-code-line {
+	display: block;
+	min-width: max-content;
+	padding: 0 0.75rem;
+	white-space: pre;
+}
+.markdown-code-token-comment {
+	color: #166534;
+	font-style: italic;
+}
+.markdown-code-token-string {
+	color: #9d174d;
+}
+.markdown-code-token-flag {
+	color: #0369a1;
+}
+.markdown-content.markdown-raw,
+[data-body-editor].markdown-raw {
+	overflow-x: auto;
+	overscroll-behavior-x: contain;
+}
+.markdown-content.markdown-raw > p,
+.markdown-content.markdown-raw > div[data-check-line],
+.markdown-content.markdown-raw > div[data-bullet-line] {
+	width: max-content;
+	min-width: 100%;
+	max-width: none;
+	white-space: pre;
+	overflow-wrap: normal;
+	word-break: normal;
+}
+.markdown-content.markdown-raw > div[data-check-line] > .flex-1,
+.markdown-content.markdown-raw > div[data-bullet-line] > .flex-1 {
+	flex: 0 0 auto;
+	min-width: max-content;
+}
+[data-body-editor].markdown-raw > [data-editor-line] {
+	width: max-content;
+	min-width: 100%;
+	flex-wrap: nowrap;
+}
+[data-body-editor].markdown-raw [data-line-text] {
+	width: max-content;
+	min-width: max-content;
+	max-width: none;
+	flex: 0 0 auto;
+	white-space: pre;
+	overflow-wrap: normal;
+	word-break: normal;
+}
+.raw-markdown-scroll {
+	touch-action: pan-x pan-y;
+}
+.raw-markdown-scroll.touch-pan-y {
+	touch-action: pan-x pan-y;
+}
+.dark .markdown-code-block {
+	border-color: #403a2d;
+	background: #100f0f;
+	color: #cecdc3;
+}
+.dark .markdown-code-token-comment {
+	color: #4f9f3e;
+}
+.dark .markdown-code-token-string {
+	color: #ce5d97;
+}
+.dark .markdown-code-token-flag {
+	color: #5394b8;
 }
 
 .scrapscache-status-success,

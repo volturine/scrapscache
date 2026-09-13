@@ -29,6 +29,8 @@
 </script>
 
 <script lang="ts">
+	import { css } from 'styled-system/css';
+
 	let {
 		sitekey,
 		action,
@@ -75,9 +77,9 @@
 	}
 </script>
 
-<div {@attach mount} class="min-h-[65px] w-full"></div>
+<div {@attach mount} class={css({ minH: '65px', w: 'full' })}></div>
 {#if failed}
-	<p class="text-center text-sm text-[var(--scrapscache-danger)]" role="alert">
+	<p class={css({ textAlign: 'center', fontSize: 'sm', color: 'scrapscache.danger' })} role="alert">
 		Human verification could not load. Check your connection and reopen this dialog.
 	</p>
 {/if}

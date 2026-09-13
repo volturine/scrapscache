@@ -716,6 +716,7 @@
 								maxlength="60"
 								class="scrapscache-input w-full px-3 py-2.5 text-sm"
 								aria-label="Sync key name"
+								aria-invalid={Boolean(error)}
 								onkeydown={(event) => event.key === 'Enter' && void create()}
 							/>
 							{#if turnstileSitekey}
@@ -776,6 +777,7 @@
 							maxlength="19"
 							spellcheck="false"
 							class="scrapscache-input w-full px-3 py-2 text-center text-lg font-bold tracking-wider"
+							aria-invalid={Boolean(error)}
 							onkeydown={(event) => event.key === 'Enter' && void beginLink()}
 						/>{#if error}<p class="text-sm text-[var(--scrapscache-danger)]">{error}</p>{/if}<button
 							type="button"

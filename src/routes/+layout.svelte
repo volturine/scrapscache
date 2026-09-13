@@ -1,5 +1,6 @@
 <script lang="ts">
 	import '../app.css';
+	import { page } from '$app/state';
 	import { uiStore, type View } from '$lib/stores/ui.svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { syncStore, syncEventsClient } from '$lib/stores/sync.svelte';
@@ -122,6 +123,7 @@
 	// Paste on the note gallery (no editor open, no editable field focused)
 	// starts a new note seeded with the pasted text and opens it for editing.
 	function handleGalleryPaste(event: ClipboardEvent) {
+		if (isStandalonePage) return;
 		if (editingId !== null) return;
 		if (!(event.target instanceof Element)) return;
 		if (event.target.closest('input, textarea, [contenteditable], .canvas-editor-shell')) return;
@@ -173,90 +175,157 @@
 	function closeMobileSidebar() {
 		uiStore.sidebarOpen = false;
 	}
+
+	const isStandalonePage = $derived(
+		Boolean(page.error) ||
+			page.url.pathname === '/privacy' ||
+			page.url.pathname === '/terms' ||
+			page.url.pathname === '/thank-you'
+	);
+
+	const metaTitle = $derived.by(() => {
+		if (page.error) return `${page.status || 404} · Scraps Cache`;
+		if (page.url.pathname === '/privacy') return 'Privacy Policy · Scraps Cache';
+		if (page.url.pathname === '/terms') return 'Terms of Service · Scraps Cache';
+		if (page.url.pathname === '/thank-you') return 'Thank You · Scraps Cache';
+		switch (uiStore.view) {
+			case 'kanban':
+				return 'Kanban · Scraps Cache';
+			case 'reminders':
+				return 'Reminders · Scraps Cache';
+			case 'archive':
+				return 'Archive · Scraps Cache';
+			case 'trash':
+				return 'Trash · Scraps Cache';
+			case 'label': {
+				const label = notesStore.labels.find((l) => l.id === uiStore.activeLabelId);
+				return label ? `${label.name} · Scraps Cache` : 'Label · Scraps Cache';
+			}
+			default:
+				return 'Scraps Cache';
+		}
+	});
+
+	const metaDescription = $derived.by(() => {
+		if (page.error) return 'Page not found or an error occurred in Scraps Cache.';
+		if (page.url.pathname === '/privacy')
+			return 'Learn how Scraps Cache protects your privacy with local-first storage, zero telemetry, and end-to-end encryption.';
+		if (page.url.pathname === '/terms')
+			return 'Terms of service and acceptable use guidelines for Scraps Cache.';
+		if (page.url.pathname === '/thank-you')
+			return 'Thank you for using and supporting Scraps Cache — private, local-first, end-to-end encrypted notes.';
+		switch (uiStore.view) {
+			case 'kanban':
+				return 'Organize and manage your notes visually in customizable Kanban columns.';
+			case 'reminders':
+				return 'Keep track of scheduled alerts, deadlines, and reminders in Scraps Cache.';
+			case 'archive':
+				return 'Browse archived notes stored securely offline with optional encryption.';
+			case 'trash':
+				return 'Review and restore deleted notes, or permanently empty trash.';
+			case 'label': {
+				const label = notesStore.labels.find((l) => l.id === uiStore.activeLabelId);
+				return label
+					? `Notes tagged with #${label.name} in Scraps Cache.`
+					: 'Labeled notes in Scraps Cache.';
+			}
+			default:
+				return 'Offline-first notes with optional end-to-end encrypted multi-device sync. Private by design, fast, and self-hostable.';
+		}
+	});
 </script>
 
 <svelte:head>
-	<title>Scraps Cache</title>
+	<title>{metaTitle}</title>
+	<meta name="description" content={metaDescription} />
+	<meta property="og:title" content={metaTitle} />
+	<meta property="og:description" content={metaDescription} />
+	<meta name="twitter:title" content={metaTitle} />
+	<meta name="twitter:description" content={metaDescription} />
 	<meta name="theme-color" content={uiStore.effectiveDark ? '#1a1a1a' : '#ffffff'} />
 </svelte:head>
 
 <svelte:window onpaste={handleGalleryPaste} />
 
-<div class="app-viewport">
-	<div
-		class="app-shell flex h-full w-full overflow-hidden bg-[var(--scrapscache-bg)] text-[var(--scrapscache-text)]"
-		{@attach mobile.current &&
-			attachSidebarSwipe({
-				getOpen: () => uiStore.sidebarOpen,
-				open: () => {
-					uiStore.sidebarOpen = true;
-				},
-				close: () => {
-					uiStore.sidebarOpen = false;
-				}
-			})}
-	>
-		{#if mobile.current}
-			<Drawer.Root
-				open={uiStore.sidebarOpen}
-				onOpenChange={(details) => {
-					uiStore.sidebarOpen = details.open;
-				}}
-				swipeDirection="start"
-				preventScroll={false}
-				lazyMount
-				unmountOnExit
-			>
-				<Drawer.Backdrop
-					data-sidebar-backdrop
-					aria-label="Close sidebar"
-					class="fixed inset-0 z-20 bg-black/30"
-				/>
-				<Drawer.Positioner class="fixed left-0 top-0 z-30 h-full">
-					<Drawer.Content
-						class="h-full w-72 border-r border-[var(--scrapscache-border)] bg-[var(--scrapscache-surface)]"
-						role="navigation"
-						aria-label="Sidebar"
-						data-sidebar-drawer
-					>
-						<Sidebar onNavigate={closeMobileSidebar} />
-					</Drawer.Content>
-				</Drawer.Positioner>
-			</Drawer.Root>
-		{:else}
-			{#if uiStore.sidebarOpen}
-				<div class="w-64 shrink-0 border-r border-[var(--scrapscache-border)]">
-					<Sidebar />
-				</div>
-			{/if}
-		{/if}
-
-		<div class="flex min-h-0 min-w-0 flex-1 flex-col">
-			<Topbar />
-			<div class="app-canvas relative min-h-0 min-w-0 flex-1">
-				<main
-					bind:this={feedEl}
-					class="app-feed scrollable h-full min-h-0 overflow-y-auto overflow-x-hidden px-4 pb-20 md:pb-6"
-					onscroll={rememberFeedScroll}
+{#if isStandalonePage}
+	{@render children()}
+{:else}
+	<div class="app-viewport">
+		<div
+			class="app-shell flex h-full w-full overflow-hidden bg-[var(--scrapscache-bg)] text-[var(--scrapscache-text)]"
+			{@attach mobile.current &&
+				attachSidebarSwipe({
+					getOpen: () => uiStore.sidebarOpen,
+					open: () => {
+						uiStore.sidebarOpen = true;
+					},
+					close: () => {
+						uiStore.sidebarOpen = false;
+					}
+				})}
+		>
+			{#if mobile.current}
+				<Drawer.Root
+					open={uiStore.sidebarOpen}
+					onOpenChange={(details) => {
+						uiStore.sidebarOpen = details.open;
+					}}
+					swipeDirection="start"
+					preventScroll={false}
+					lazyMount
+					unmountOnExit
 				>
-					<AppViews />
-				</main>
-				<div class="app-float" data-app-float>
-					<BottomNav />
-					<ReminderAlert />
-					{#key editingId}
-						<NoteEditor
-							noteId={editingId}
-							onClose={closeEditor}
-							registerClose={(fn) => {
-								closeOpenNote = fn;
-							}}
-						/>
-					{/key}
+					<Drawer.Backdrop
+						data-sidebar-backdrop
+						aria-label="Close sidebar"
+						class="fixed inset-0 z-20 bg-black/30"
+					/>
+					<Drawer.Positioner class="fixed left-0 top-0 z-30 h-full">
+						<Drawer.Content
+							class="h-full w-72 border-r border-[var(--scrapscache-border)] bg-[var(--scrapscache-surface)]"
+							role="navigation"
+							aria-label="Sidebar"
+							data-sidebar-drawer
+						>
+							<Sidebar onNavigate={closeMobileSidebar} />
+						</Drawer.Content>
+					</Drawer.Positioner>
+				</Drawer.Root>
+			{:else}
+				{#if uiStore.sidebarOpen}
+					<div class="w-64 shrink-0 border-r border-[var(--scrapscache-border)]">
+						<Sidebar />
+					</div>
+				{/if}
+			{/if}
+
+			<div class="flex min-h-0 min-w-0 flex-1 flex-col">
+				<Topbar />
+				<div class="app-canvas relative min-h-0 min-w-0 flex-1">
+					<main
+						bind:this={feedEl}
+						class="app-feed scrollable h-full min-h-0 overflow-y-auto overflow-x-hidden px-4 pb-20 md:pb-6"
+						onscroll={rememberFeedScroll}
+					>
+						<AppViews />
+					</main>
+					<div class="app-float" data-app-float>
+						<BottomNav />
+						<ReminderAlert />
+						{#key editingId}
+							<NoteEditor
+								noteId={editingId}
+								onClose={closeEditor}
+								registerClose={(fn) => {
+									closeOpenNote = fn;
+								}}
+							/>
+						{/key}
+					</div>
 				</div>
 			</div>
 		</div>
 	</div>
-</div>
-<div class="app-overlay" data-app-overlay></div>
-{@render children()}
+	<div class="app-overlay" data-app-overlay></div>
+	{@render children()}
+{/if}

@@ -448,7 +448,7 @@
 		<Dialog.Backdrop class="absolute inset-0 bg-black/40" />
 		<Dialog.Positioner class="absolute inset-0 flex items-center justify-center p-4">
 			<Dialog.Content
-				class="scrapscache-dialog relative max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto p-5"
+				class="scrapscache-dialog relative max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-x-hidden overflow-y-auto p-5"
 			>
 				<div class="mb-4 flex items-center justify-between">
 					<Dialog.Title

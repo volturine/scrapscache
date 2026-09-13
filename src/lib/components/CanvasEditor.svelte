@@ -108,62 +108,6 @@
 			saving = false;
 		}
 	}
-
-	const shell = css({
-		position: 'absolute',
-		inset: 0,
-		zIndex: 90,
-		display: 'flex',
-		flexDirection: 'column',
-		bg: 'scrapscache.canvasSurface',
-		color: 'scrapscache.text'
-	});
-	const header = hstack({
-		position: 'relative',
-		zIndex: 10,
-		h: '3rem',
-		flexShrink: 0,
-		justify: 'space-between',
-		px: 'md'
-	});
-	const errorBar = hstack({
-		position: 'relative',
-		zIndex: 10,
-		gap: 'md',
-		justify: 'space-between',
-		borderBottomWidth: 'hairline',
-		borderColor: 'scrapscache.danger',
-		bg: 'scrapscache.dangerSubtle',
-		px: 'lg',
-		py: 'sm',
-		textStyle: 'body',
-		color: 'scrapscache.danger'
-	});
-	const reload = css({
-		flexShrink: 0,
-		fontWeight: 'heading',
-		textDecoration: 'underline',
-		textDecorationColor: 'scrapscache.danger',
-		textUnderlineOffset: '2px',
-		cursor: 'pointer'
-	});
-	const area = css({ position: 'relative', minH: 0, flex: '1' });
-	const hostClass = css({ position: 'absolute', inset: 0 });
-	const loadingClass = center({
-		position: 'absolute',
-		inset: 0,
-		zIndex: 20,
-		bg: 'scrapscache.canvasSurface'
-	});
-	const loadingText = hstack({ gap: 'sm', textStyle: 'body', color: 'scrapscache.textMuted' });
-	const spinnerSm = css({ h: '1rem', w: '1rem', animation: 'spin' });
-	const spinnerMd = css({ h: '1.25rem', w: '1.25rem', animation: 'spin' });
-	const headerCloseBtn = iconButton({ variant: 'ghost', size: 'sm' });
-	const doneBtn = cx(
-		button({ variant: 'primary', size: 'md' }),
-		css({ rounded: 'pill', fontWeight: 'heading', flexShrink: 0 })
-	);
-	const closeIcon = css({ h: '1.375rem', w: '1.375rem' });
 </script>
 
 <div
@@ -173,31 +117,60 @@
 	onpaste={markCanvasInteraction}
 	ondrop={markCanvasInteraction}
 	onwheel={markCanvasInteraction}
-	class={`canvas-editor-shell ${shell}`}
+	class={[
+		'canvas-editor-shell',
+		css({
+			position: 'absolute',
+			inset: 0,
+			zIndex: 90,
+			display: 'flex',
+			flexDirection: 'column',
+			bg: 'scrapscache.canvasSurface',
+			color: 'scrapscache.text'
+		})
+	]}
 	role="dialog"
 	tabindex="-1"
 	aria-modal="true"
 	aria-label={readOnly ? 'View canvas' : attachment ? 'Edit canvas' : 'New canvas'}
 >
-	<header class={header}>
+	<header
+		class={hstack({
+			position: 'relative',
+			zIndex: 10,
+			h: '3rem',
+			flexShrink: 0,
+			justify: 'space-between',
+			px: 'md'
+		})}
+	>
 		<button
 			type="button"
-			class={`canvas-header-action ${headerCloseBtn}`}
+			class={['canvas-header-action', iconButton({ variant: 'ghost', size: 'sm' })]}
 			onclick={close}
 			aria-label={readOnly ? 'Close canvas' : 'Cancel canvas editing'}
 		>
-			<X class={closeIcon} aria-hidden="true" />
+			<X class={css({ h: '1.375rem', w: '1.375rem' })} aria-hidden="true" />
 		</button>
 
 		{#if !readOnly}
 			<button
 				type="button"
-				class={`canvas-done ${doneBtn}`}
+				class={[
+					'canvas-done',
+					cx(
+						button({ variant: 'primary', size: 'md' }),
+						css({ rounded: 'pill', fontWeight: 'heading', flexShrink: 0 })
+					)
+				]}
 				disabled={loading || saving}
 				onclick={() => void save()}
 			>
 				{#if saving}
-					<LoaderCircle class={spinnerSm} aria-hidden="true" />
+					<LoaderCircle
+						class={css({ h: '1rem', w: '1rem', animation: 'spin' })}
+						aria-hidden="true"
+					/>
 				{/if}
 				<span>{saving ? 'Saving' : 'Done'}</span>
 			</button>
@@ -205,20 +178,60 @@
 	</header>
 
 	{#if error}
-		<div class={errorBar}>
+		<div
+			class={hstack({
+				position: 'relative',
+				zIndex: 10,
+				gap: 'md',
+				justify: 'space-between',
+				borderBottomWidth: 'hairline',
+				borderColor: 'scrapscache.danger',
+				bg: 'scrapscache.dangerSubtle',
+				px: 'lg',
+				py: 'sm',
+				textStyle: 'body',
+				color: 'scrapscache.danger'
+			})}
+		>
 			<span>{error}</span>
 			{#if staleModule}
-				<button type="button" class={reload} onclick={() => location.reload()}> Reload </button>
+				<button
+					type="button"
+					class={css({
+						flexShrink: 0,
+						fontWeight: 'heading',
+						textDecoration: 'underline',
+						textDecorationColor: 'scrapscache.danger',
+						textUnderlineOffset: '2px',
+						cursor: 'pointer'
+					})}
+					onclick={() => location.reload()}
+				>
+					Reload
+				</button>
 			{/if}
 		</div>
 	{/if}
 
-	<div class={area}>
-		<div bind:this={hostNode} class={`scrapscache-canvas ${hostClass}`}></div>
+	<div class={css({ position: 'relative', minH: 0, flex: '1' })}>
+		<div
+			bind:this={hostNode}
+			class={['scrapscache-canvas', css({ position: 'absolute', inset: 0 })]}
+		></div>
 		{#if loading}
-			<div class={loadingClass}>
-				<div class={loadingText}>
-					<LoaderCircle class={spinnerMd} aria-hidden="true" />
+			<div
+				class={center({
+					position: 'absolute',
+					inset: 0,
+					zIndex: 20,
+					bg: 'scrapscache.canvasSurface'
+				})}
+			>
+				<div class={hstack({ gap: 'sm', textStyle: 'body', color: 'scrapscache.textMuted' })}>
+					<LoaderCircle
+						class={css({ h: '1.25rem', w: '1.25rem', animation: 'spin' })}
+						aria-hidden="true"
+					/>
 					Loading canvas…
 				</div>
 			</div>

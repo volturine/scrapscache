@@ -220,57 +220,11 @@
 		whiteSpace: 'nowrap',
 		textAlign: 'left'
 	});
-	const newLabelSpacing = css({ mb: '2xs' });
 	const labelInput = css({
 		flex: '1',
 		textStyle: 'button',
 		_placeholder: { fontWeight: 'body', color: 'scrapscache.textMuted' }
 	});
-	const labelsSection = css({ mt: 'xl', w: 'full' });
-	const sectionTitle = css({
-		minW: 0,
-		flex: '1',
-		textStyle: 'captionStrong',
-		textTransform: 'uppercase',
-		letterSpacing: 'eyebrow',
-		color: 'scrapscache.textMuted'
-	});
-	const editButton = css({
-		position: 'relative',
-		flexShrink: 0,
-		rounded: 'control',
-		px: 'sm',
-		py: '2xs',
-		textStyle: 'label',
-		color: 'scrapscache.textMuted',
-		cursor: 'pointer',
-		touchAction: 'manipulation',
-		WebkitTapHighlightColor: 'transparent',
-		_hoverable: { bg: 'scrapscache.interactiveHover' },
-		_before: { position: 'absolute', inset: '-0.625rem', content: '""' }
-	});
-	const renameButton = css({
-		minW: 0,
-		flex: '1',
-		alignSelf: 'stretch',
-		overflow: 'hidden',
-		textOverflow: 'ellipsis',
-		whiteSpace: 'nowrap',
-		textAlign: 'left',
-		textStyle: 'button',
-		color: 'scrapscache.text',
-		cursor: 'pointer'
-	});
-	const dialogPortal = css({ position: 'absolute', inset: 0, zIndex: 80 });
-	const dialogPositioner = css({
-		position: 'absolute',
-		inset: 0,
-		display: 'flex',
-		alignItems: { base: 'flex-end', sm: 'center' },
-		justifyContent: 'center',
-		p: 'lg'
-	});
-	const scroller = css({ scrollbarWidth: 'thin' });
 	const menuRow = menuItem({ density: 'sidebar' });
 	const labelInputClass = cx(input({ variant: 'unstyled' }), labelInput);
 	const d = dialog({ size: 'sm' });
@@ -307,7 +261,7 @@
 <aside
 	class={[
 		'scrollable',
-		scroller,
+		css({ scrollbarWidth: 'thin' }),
 		vstack({
 			h: 'full',
 			gap: '3xs',
@@ -333,16 +287,40 @@
 		</button>
 	{/each}
 
-	<section class={labelsSection} data-labels-edit aria-label="Labels">
+	<section class={css({ mt: 'xl', w: 'full' })} data-labels-edit aria-label="Labels">
 		<div class={hstack({ mb: '2xs', h: '2rem', gap: 'sm', pl: 'lg', pr: 'sm' })}>
-			<span class={sectionTitle}>Labels</span>
+			<span
+				class={css({
+					minW: 0,
+					flex: '1',
+					textStyle: 'captionStrong',
+					textTransform: 'uppercase',
+					letterSpacing: 'eyebrow',
+					color: 'scrapscache.textMuted'
+				})}
+			>
+				Labels
+			</span>
 			<!-- One control in both modes, so the header never reflows on toggle. The
 			     ::before pad gives it a thumb-sized hit area without a taller header. -->
 			<button
 				type="button"
 				onclick={labelsEditMode ? exitEditMode : enterEditMode}
 				data-sidebar-stay-open
-				class={editButton}
+				class={css({
+					position: 'relative',
+					flexShrink: 0,
+					rounded: 'control',
+					px: 'sm',
+					py: '2xs',
+					textStyle: 'label',
+					color: 'scrapscache.textMuted',
+					cursor: 'pointer',
+					touchAction: 'manipulation',
+					WebkitTapHighlightColor: 'transparent',
+					_hoverable: { bg: 'scrapscache.interactiveHover' },
+					_before: { position: 'absolute', inset: '-0.625rem', content: '""' }
+				})}
 				aria-label={labelsEditMode ? 'Finish editing labels' : 'Edit labels'}
 				title={labelsEditMode ? 'Finish editing labels' : 'Edit labels'}
 			>
@@ -370,7 +348,7 @@
 				/>
 			</div>
 		{:else if labelsEditMode}
-			{@render newLabelRow(newLabelSpacing)}
+			{@render newLabelRow(css({ mb: '2xs' }))}
 		{/if}
 
 		{#if notesStore.labels.length === 0 && !labelsEditMode}
@@ -408,7 +386,18 @@
 								type="button"
 								onclick={() => startRename(label)}
 								data-sidebar-stay-open
-								class={renameButton}
+								class={css({
+									minW: 0,
+									flex: '1',
+									alignSelf: 'stretch',
+									overflow: 'hidden',
+									textOverflow: 'ellipsis',
+									whiteSpace: 'nowrap',
+									textAlign: 'left',
+									textStyle: 'button',
+									color: 'scrapscache.text',
+									cursor: 'pointer'
+								})}
 								aria-label={`Rename ${label.name}`}
 								title="Rename"
 							>
@@ -448,12 +437,22 @@
 	>
 		<div
 			{@attach portalToAppOverlay}
-			class={dialogPortal}
+			class={css({ position: 'absolute', inset: 0, zIndex: 80 })}
 			role="presentation"
 			data-sidebar-stay-open
 		>
 			<Dialog.Backdrop class={d.backdrop} />
-			<Dialog.Positioner class={dialogPositioner} data-sidebar-stay-open>
+			<Dialog.Positioner
+				class={css({
+					position: 'absolute',
+					inset: 0,
+					display: 'flex',
+					alignItems: { base: 'flex-end', sm: 'center' },
+					justifyContent: 'center',
+					p: 'lg'
+				})}
+				data-sidebar-stay-open
+			>
 				<Dialog.Content class={d.panel} data-sidebar-stay-open>
 					<Dialog.Title class={d.title}>
 						Delete “{pendingDelete.name}”?

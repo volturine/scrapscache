@@ -21,12 +21,6 @@
 	const others = $derived(notes.filter((n) => !n.pinned));
 	const shell = $derived(notesShell(uiStore.layout));
 	const sec = sectionHeader();
-
-	const titleClass = hstack({
-		mb: 'lg',
-		px: 'sm'
-	});
-	const titleText = text({ style: 'heading' });
 </script>
 
 <div class={viewPage}>
@@ -44,7 +38,7 @@
 		/>
 	{:else}
 		<div class={shell}>
-			<h1 class={`${titleClass} ${titleText}`}>{label.name}</h1>
+			<h1 class={[hstack({ mb: 'lg', px: 'sm' }), text({ style: 'heading' })]}>{label.name}</h1>
 		</div>
 
 		{#if pinned.length > 0}

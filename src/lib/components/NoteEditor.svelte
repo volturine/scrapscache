@@ -590,17 +590,6 @@
 		}
 	});
 	const titleField = cx(input({ variant: 'unstyled' }), sheet.titleField);
-	const fileDropHintClass = sheet.fileDropHint;
-	const fileDropPillClass = hstack({
-		gap: 'sm',
-		rounded: 'pill',
-		bg: 'scrapscache.surface',
-		px: 'lg',
-		py: 'sm',
-		textStyle: 'button',
-		color: 'scrapscache.text',
-		boxShadow: 'sm'
-	});
 	const subDialog = dialog({ size: 'sm' });
 	const dialogBackdrop = cx(subDialog.backdrop, sheet.subDialogBackdrop);
 	const dialogPositioner = flex({
@@ -737,8 +726,19 @@
 					</div>
 
 					{#if fileDropActive}
-						<div class={fileDropHintClass} data-file-drop-hint aria-hidden="true">
-							<div class={fileDropPillClass}>
+						<div class={sheet.fileDropHint} data-file-drop-hint aria-hidden="true">
+							<div
+								class={hstack({
+									gap: 'sm',
+									rounded: 'pill',
+									bg: 'scrapscache.surface',
+									px: 'lg',
+									py: 'sm',
+									textStyle: 'button',
+									color: 'scrapscache.text',
+									boxShadow: 'sm'
+								})}
+							>
 								<Paperclip size={16} aria-hidden="true" />
 								Drop to attach
 							</div>

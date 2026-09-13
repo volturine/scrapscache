@@ -190,7 +190,6 @@
 		}
 	});
 	const topbarStyles = topbar();
-	const searchInputClass = cx(input({ variant: 'unstyled' }), topbarStyles.searchInput);
 	const clearButton = cx(iconButton({ variant: 'ghost', size: 'xs' }), topbarStyles.clearButton);
 	const syncTone = cva({
 		variants: {
@@ -268,7 +267,7 @@
 			oninput={(event) => uiStore.setSearchInput(event.currentTarget.value)}
 			type="text"
 			placeholder="Search"
-			class={searchInputClass}
+			class={cx(input({ variant: 'unstyled' }), topbarStyles.searchInput)}
 		/>
 		{#if uiStore.searchInput}
 			<button

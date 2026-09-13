@@ -1072,7 +1072,6 @@
 	const focusedGroupLastId = $derived(focusedGroupRows.at(-1)?.line.id ?? null);
 
 	const editor = noteBody({ mode: 'editor' });
-	const editorLineHeight = css({ minH: '1lh' });
 
 	const taskShell = cva({
 		variants: {
@@ -1209,7 +1208,7 @@
 							: ''
 					: undefined}
 				class={[
-					editorLineHeight,
+					css({ minH: '1lh' }),
 					noteBody({ mode: 'editor', checked: line.checked, indented: line.indent > 0 }).line
 				]}
 			></span>

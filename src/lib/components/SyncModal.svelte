@@ -569,24 +569,16 @@
 	const syncMuted = text({ style: 'bodyMuted' });
 	const syncMutedBody = cx(text({ style: 'bodyMuted' }), css({ lineHeight: 'relaxed' }));
 	const syncMutedLead = cx(text({ style: 'captionStrong' }), css({ letterSpacing: 'wide' }));
-	const syncStatusHint = cx(text({ style: 'caption' }), css({ mt: 'sm' }));
 	const syncDanger = text({ style: 'body', tone: 'danger' });
 	const syncText = text({ style: 'body' });
 	const syncBackLink = cx(
 		text({ style: 'caption' }),
 		css({ w: 'full', touchAction: 'manipulation', cursor: 'pointer', textAlign: 'center' })
 	);
-	const syncCancelLink = cx(
-		text({ style: 'bodyMuted' }),
-		css({ w: 'full', touchAction: 'manipulation', cursor: 'pointer', textAlign: 'center' })
-	);
 	const syncFullButton = css({ w: 'full' });
 	const syncGrowButton = css({ flex: '1' });
 	const syncSpinner = css({ animation: 'spin' });
-	const syncTruncate = css({ truncate: true });
-	const syncAccentButton = css({ color: 'scrapscache.accent' });
 	const syncBodySpacing = css({ mt: '2xs' });
-	const pairingInputClass = cx(input({ variant: 'outline', size: 'md' }), ui.pairingInput);
 </script>
 
 <Dialog.Root
@@ -638,7 +630,7 @@
 							>
 								<CloudOff size={18} aria-hidden="true" />
 								<span class={ui.workspaceText}
-									><span class={syncTruncate}>Anonymous workspace</span><span
+									><span class={css({ truncate: true })}>Anonymous workspace</span><span
 										class={ui.workspaceCaption}
 										>Only on this device{sizeLabel(LOCAL_PROFILE_ID)
 											? ' · ' + sizeLabel(LOCAL_PROFILE_ID)
@@ -675,7 +667,10 @@
 								type="button"
 								disabled={busy}
 								class={syncStore.account
-									? cx(button({ variant: 'quiet', size: 'sm' }), syncAccentButton)
+									? cx(
+											button({ variant: 'quiet', size: 'sm' }),
+											css({ color: 'scrapscache.accent' })
+										)
 									: cx(button({ variant: 'primary', size: 'md' }), syncFullButton)}
 								onclick={() => {
 									mode = 'register';
@@ -722,7 +717,7 @@
 								{#if syncStore.progress}
 									{@const progress = syncStore.progress}
 									{@const percent = progressPercent(progress.loadedBytes, progress.totalBytes)}
-									<p class={syncStatusHint} role="status">
+									<p class={cx(text({ style: 'caption' }), css({ mt: 'sm' }))} role="status">
 										{progress.phase === 'upload' ? 'Uploading' : 'Downloading'} · <Format.Byte
 											value={progress.loadedBytes}
 										/>
@@ -915,7 +910,7 @@
 							placeholder="XXXX-XXXX-XXXX-XXXX"
 							maxlength="19"
 							spellcheck="false"
-							class={pairingInputClass}
+							class={cx(input({ variant: 'outline', size: 'md' }), ui.pairingInput)}
 							onkeydown={(event) => event.key === 'Enter' && void beginLink()}
 						/>{#if error}<p class={syncDanger}>{error}</p>{/if}<button
 							type="button"
@@ -997,7 +992,15 @@
 								waiting = null;
 								mode = syncStore.isLoggedIn ? 'menu' : 'link';
 							}}
-							class={syncCancelLink}>Cancel</button
+							class={cx(
+								text({ style: 'bodyMuted' }),
+								css({
+									w: 'full',
+									touchAction: 'manipulation',
+									cursor: 'pointer',
+									textAlign: 'center'
+								})
+							)}>Cancel</button
 						>
 					</div>
 				{/if}

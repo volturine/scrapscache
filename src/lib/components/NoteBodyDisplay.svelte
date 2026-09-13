@@ -17,14 +17,17 @@
 		highlightCodeLine,
 		markdownTokenClass,
 		parseInlineMarkdown,
-		parseMarkdownBlocks
+		parseMarkdownBlocks,
+		type MarkdownBlock
 	} from '$lib/markdown';
 	import { uiStore } from '$lib/stores/ui.svelte';
 
 	let { note }: { note: Note } = $props();
+	type MarkdownTableBlock = Extract<MarkdownBlock, { type: 'table' }>;
 
 	const segments = $derived(parseBody(note.body ?? ''));
 	const blocks = $derived(parseMarkdownBlocks(note.body ?? ''));
+	const rawLines = $derived((note.body ?? '').replace(/\r\n?/g, '\n').split('\n'));
 	const attachments = $derived(noteAttachments(note));
 	const imageAttachments = $derived(attachments.filter(isImageAttachment));
 	const canvases = $derived(attachments.filter(isCanvasAttachment));
@@ -37,6 +40,20 @@
 	);
 	const links = $derived(extractHttpUrls(note.body ?? ''));
 	let contentElement: HTMLDivElement | null = $state(null);
+
+	function rawTableAt(lineIndex: number): MarkdownTableBlock | undefined {
+		const table = blocks.find(
+			(block) =>
+				block.type === 'table' &&
+				lineIndex >= block.lineIndex &&
+				lineIndex < block.lineIndex + block.rows.length + 2
+		);
+		return table?.type === 'table' ? table : undefined;
+	}
+
+	function rawTableSource(table: MarkdownTableBlock): string[] {
+		return rawLines.slice(table.lineIndex, table.lineIndex + table.rows.length + 2);
+	}
 
 	onMount(() => {
 		// Cards only need thumbs. Full bytes load on explicit open / editor focus.
@@ -128,7 +145,24 @@
 >
 	{#if uiStore.rawMarkdown}
 		{#each segments as seg (seg.lineIndex)}
-			{@render bodyLine(seg)}
+			{@const rawTable = rawTableAt(seg.lineIndex)}
+			{#if rawTable}
+				{#if rawTable.lineIndex === seg.lineIndex}
+					<div
+						class="markdown-table-scroll markdown-raw-table-scroll"
+						data-markdown-raw-table-container
+						role="region"
+						tabindex="-1"
+						aria-label="Raw Markdown table"
+					>
+						{#each rawTableSource(rawTable) as sourceLine, sourceLineIndex (sourceLineIndex)}
+							<div class="markdown-raw-table-line">{@render inlineContent(sourceLine)}</div>
+						{/each}
+					</div>
+				{/if}
+			{:else}
+				{@render bodyLine(seg)}
+			{/if}
 		{/each}
 	{:else}
 		{#each blocks as block (block.type === 'line' ? block.segment.lineIndex : block.lineIndex)}

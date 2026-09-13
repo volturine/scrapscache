@@ -26,6 +26,7 @@
 
 	const mobile = new MediaQuery('max-width: 767px');
 	let editingId = $state<string | null>(null);
+	let autoFocusBody = $state(false);
 	let closeOpenNote: (() => void) | null = null;
 
 	function applyEditorOpen(open: boolean) {
@@ -33,6 +34,7 @@
 	}
 
 	function openEditor(id: string) {
+		autoFocusBody = false;
 		editingId = id;
 		applyEditorOpen(true);
 		if (syncStore.isLoggedIn) void notesStore.syncWithCloud();
@@ -41,6 +43,7 @@
 	function openNoteFromQuery() {
 		const noteId = new URL(window.location.href).searchParams.get('note');
 		if (!noteId || !notesStore.notes.some((note) => note.id === noteId)) return;
+		autoFocusBody = false;
 		editingId = noteId;
 		applyEditorOpen(true);
 		const next = new URL(window.location.href);
@@ -115,6 +118,7 @@
 					? reminderTimeForDay(uiStore.reminderFilter?.from ?? dayKey(Date.now()))
 					: null
 		});
+		autoFocusBody = true;
 		editingId = n.id;
 		applyEditorOpen(true);
 	}
@@ -167,6 +171,7 @@
 
 	function closeEditor() {
 		editingId = null;
+		autoFocusBody = false;
 		applyEditorOpen(false);
 	}
 
@@ -247,6 +252,7 @@
 					{#key editingId}
 						<NoteEditor
 							noteId={editingId}
+							autofocusBody={autoFocusBody}
 							onClose={closeEditor}
 							registerClose={(fn) => {
 								closeOpenNote = fn;

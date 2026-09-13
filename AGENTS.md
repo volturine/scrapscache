@@ -23,11 +23,12 @@ npm run validate            # check + format + tests + production build
 
 ## Styling
 
-- Panda semantic tokens in `panda.config.ts` are the source of truth for colors, radii, shadows, and shared interaction states. Do not add parallel CSS custom properties or raw light/dark color pairs.
-- Reuse config recipes from `styled-system/recipes` for shared controls and surfaces. Add a config recipe only when a visual contract is reused across components.
-- Use `cva` for a local single-element variant and `sva` for a local multi-part component. Keep truly one-off layout adjustments inline with `css()` or a Panda pattern.
-- Use the `_hoverable` condition for hover feedback so touch devices do not retain sticky hover styles.
-- Do not write Tailwind utility strings. Regenerate `styled-system` with `npx panda codegen` after config changes.
+- Treat Panda semantic tokens in `panda.config.ts` as the source of truth for colors, radii, shadows, and shared interaction states. Do not add raw palette colors, parallel CSS custom properties, or component-level light/dark pairs.
+- Reuse config recipes from `styled-system/recipes` for shared controls and surfaces. Inspect the existing tokens and recipes before adding one; create a config recipe only for a visual contract reused across components.
+- Use `cva` for a local single-element variant and `sva` for a local multi-part component. Keep truly one-off adjustments inline with `css()` or a Panda pattern instead of hiding them behind named style constants.
+- Keep component visuals in Panda. Reserve `src/app.css` and authored static class names for document-state, application-shell, or third-party integration hooks; do not write Tailwind utility strings.
+- Use `_hoverable` for hover feedback, and name the properties being transitioned instead of using `transition: all`.
+- Regenerate `styled-system` with `npx panda codegen` after config changes.
 
 ## Definition of done
 

@@ -1,4 +1,12 @@
 <script lang="ts">
+	import {
+		backupEyebrow as eyebrow,
+		backupDescription as description,
+		backupForm as form,
+		backupLabel as label,
+		backupFieldLabel as fieldLabel,
+		backupFooter as footer
+	} from '$panda/styles';
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { portalToAppOverlay } from '$lib/appViewport';
 	import { BackupOperation } from '$lib/backup';
@@ -44,28 +52,10 @@
 	}
 
 	const d = dialog({ size: 'sm', presentation: 'appOverlay' });
-
-	const eyebrow = css({
-		fontSize: 'caption',
-		fontWeight: 'heading',
-		textTransform: 'uppercase',
-		letterSpacing: 'code',
-		color: 'scrapscache.textMuted'
-	});
-	const description = css({ lineHeight: 'relaxed' });
-	const form = css({ gap: 'lg' });
-	const label = css({ display: 'block' });
-	const fieldLabel = css({
-		display: 'block',
-		mb: 'xs',
-		textStyle: 'label',
-		color: 'scrapscache.textMuted'
-	});
 	const passphraseField = cx(
 		input({ variant: 'outline', size: 'md' }),
 		css({ w: 'full', py: 'list', fontSize: 'subtitle' })
 	);
-	const footer = css({ gap: 'sm', pt: '2xs' });
 </script>
 
 <Dialog.Root

@@ -7,7 +7,7 @@
 	import EmptyState from '$lib/components/EmptyState.svelte';
 	import { StickyNote } from '@lucide/svelte';
 	import { css } from 'styled-system/css';
-	import { viewPage } from '$lib/uiStyles';
+	import { viewPage } from '$panda/styles';
 
 	const { openNote: openEditor } = useEditorActions();
 

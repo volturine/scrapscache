@@ -11,7 +11,7 @@
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { onMount } from 'svelte';
 	import { isCanvasAttachment } from '$lib/canvasAttachment';
-	import { canvasPreview, filePreview, photoPreview } from './attachmentPreviewStyles';
+	import { canvasPreview, filePreview, photoPreview } from '$panda/styles';
 	import { checklist } from 'styled-system/recipes';
 
 	let { note }: { note: Note } = $props();

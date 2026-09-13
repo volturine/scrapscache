@@ -7,7 +7,7 @@
 	import { DownloadTrigger } from '@ark-ui/svelte/download-trigger';
 	import { portalToAppFloat } from '$lib/appViewport';
 	import { onDestroy, onMount } from 'svelte';
-	import { fullscreen } from './fullscreenStyles';
+	import { fullscreen } from '$panda/styles';
 
 	let {
 		attachment = null,

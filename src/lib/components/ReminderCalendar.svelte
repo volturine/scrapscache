@@ -9,6 +9,7 @@
 	import DatePickerViews from './DatePickerViews.svelte';
 	import type { Note } from '$lib/types';
 	import { dayKey } from '$lib/utils';
+	import { truncate } from '$panda/styles';
 	import { css, cx } from 'styled-system/css';
 	import { flex, hstack } from 'styled-system/patterns';
 	import { button } from 'styled-system/recipes';
@@ -174,15 +175,15 @@
 			<button type="button" class={footerBtnClass} onclick={filterToday}> Today </button>
 		</div>
 		<span
-			class={css({
-				overflow: 'hidden',
-				textOverflow: 'ellipsis',
-				whiteSpace: 'nowrap',
-				flexShrink: 0,
-				px: 'sm',
-				lineHeight: 'compact',
-				color: 'scrapscache.textMuted'
-			})}
+			class={cx(
+				truncate,
+				css({
+					flexShrink: 0,
+					px: 'sm',
+					lineHeight: 'compact',
+					color: 'scrapscache.textMuted'
+				})
+			)}
 		>
 			{#if pickingEnd}
 				Pick an end day

@@ -1,4 +1,13 @@
 <script lang="ts">
+	import {
+		reminderBadgeChip as badgeChip,
+		reminderStatusTone as statusTone,
+		reminderDateBtn as dateBtn,
+		reminderEllipsis as ellipsis,
+		reminderWheelDeck as wheelDeck,
+		reminderTimeWheel as timeWheel,
+		reminderColon as colon
+	} from '$panda/styles';
 	import { createSubscriber, MediaQuery } from 'svelte/reactivity';
 	import { CalendarDate } from '@internationalized/date';
 	import { DatePicker, type DatePickerValueChangeDetails } from '@ark-ui/svelte/date-picker';
@@ -9,7 +18,7 @@
 	import { ensurePushSubscription } from '$lib/reminderWake';
 	import { formatReminderCountdown } from '$lib/utils';
 	import { PHONE_MEDIA } from '$lib/appViewport';
-	import { css, cx, cva } from 'styled-system/css';
+	import { css, cx } from 'styled-system/css';
 	import { badge, button, dialog, iconButton } from 'styled-system/recipes';
 	import { hstack, flex } from 'styled-system/patterns';
 
@@ -167,35 +176,6 @@
 	}
 
 	const d = dialog({ size: 'sm' });
-	const badgeChip = cva({
-		base: {
-			minW: '4.25rem',
-			flexShrink: 0,
-			rounded: 'pill',
-			px: 'sm',
-			py: '3xs',
-			fontWeight: 'strong',
-			textTransform: 'uppercase',
-			letterSpacing: 'status'
-		},
-		variants: {
-			status: {
-				active: { bg: 'scrapscache.success', color: 'scrapscache.successForeground' },
-				edit: { bg: 'scrapscache.warning', color: 'scrapscache.bg' },
-				new: { bg: 'scrapscache.accent', color: 'scrapscache.accentForeground' }
-			}
-		}
-	});
-	const statusTone = cva({
-		base: { borderWidth: 'hairline', borderColor: 'currentColor' },
-		variants: {
-			tone: {
-				accent: { bg: 'scrapscache.accentSubtle', color: 'scrapscache.accent' },
-				success: { bg: 'scrapscache.successSubtle', color: 'scrapscache.success' },
-				warning: { bg: 'scrapscache.warningSubtle', color: 'scrapscache.warning' }
-			}
-		}
-	});
 
 	const statusBoxClass = $derived(
 		uiStatus === 'active'
@@ -208,49 +188,10 @@
 		uiStatus === 'active' ? 'Active' : uiStatus === 'unsaved' ? 'Edit' : 'New'
 	);
 
-	const dateBtn = cva({
-		base: {
-			mx: '2xs',
-			display: 'flex',
-			minW: 0,
-			flex: '1',
-			alignItems: 'center',
-			justifyContent: 'center',
-			rounded: 'card',
-			px: 'sm',
-			py: 'xs',
-			textStyle: 'button',
-			color: 'scrapscache.text',
-			cursor: 'pointer'
-		},
-		variants: {
-			active: {
-				true: { bg: 'scrapscache.bg' }
-			}
-		}
-	});
-
 	const calNavBtn = cx(
 		iconButton({ variant: 'ghost', size: 'compact' }),
 		css({ flexShrink: 0, color: 'inherit' })
 	);
-	const ellipsis = css({ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' });
-	const wheelDeck = css({
-		rounded: 'dialog',
-		bg: 'scrapscache.surfaceSubtle',
-		px: 'sm',
-		py: '2xs'
-	});
-	const timeWheel = css({ w: '4rem' });
-	const colon = css({
-		display: 'flex',
-		w: '0.75rem',
-		flexShrink: 0,
-		alignItems: 'center',
-		justifyContent: 'center',
-		textStyle: 'display',
-		color: 'scrapscache.text'
-	});
 </script>
 
 <div class={cx(d.panel, css({ w: '20rem', p: 'xl', gap: 0 }))}>
@@ -285,10 +226,7 @@
 			})}
 		>
 			<AlarmClock class={css({ w: '1rem', h: '1rem', flexShrink: 0 })} aria-hidden="true" />
-			<span
-				class={css({ minW: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' })}
-				>{remainingLabel}</span
-			>
+			<span class={ellipsis}>{remainingLabel}</span>
 		</div>
 		<div class={css({ mt: '2xs', textStyle: 'caption' })}>
 			Closed-app alerts need Sync on this device.

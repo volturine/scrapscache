@@ -1,8 +1,23 @@
 <script lang="ts">
+	import {
+		syncWorkspaceRow as workspaceRow,
+		syncManageRow as manageRow,
+		syncDividerLine as dividerLine,
+		syncPairingInput as pairingInput,
+		syncDigits as digits,
+		syncQrCode as qrCode,
+		syncPairingCode as pairingCode,
+		syncCopySuccess as copySuccess,
+		syncTimerText as timerText,
+		syncFullButton,
+		syncGrowButton,
+		syncSpinner,
+		syncBodySpacing,
+		progressMeter
+	} from '$panda/styles';
 	import { css, cx } from 'styled-system/css';
 	import { button, dialog, iconButton, input, text } from 'styled-system/recipes';
 	import { hstack, vstack } from 'styled-system/patterns';
-	import { progressMeter } from '$lib/uiStyles';
 	import WorkspaceRow from './WorkspaceRow.svelte';
 	import TurnstileWidget from './TurnstileWidget.svelte';
 	import { env } from '$env/dynamic/public';
@@ -441,82 +456,6 @@
 	}
 
 	const d = dialog({ size: 'md', presentation: 'centeredOverlay' });
-
-	const workspaceRow = css({
-		position: 'relative',
-		display: 'flex',
-		alignItems: 'center',
-		gap: 'md',
-		w: 'full',
-		rounded: 'control',
-		p: 'md',
-		textStyle: 'body',
-		_hoverable: { bg: 'scrapscache.interactiveHover' },
-		_disabled: { opacity: 0.55 },
-		'&.active': { bg: 'scrapscache.interactiveHover' },
-		'&.active::before': {
-			content: '""',
-			position: 'absolute',
-			top: 'list',
-			bottom: 'list',
-			left: 0,
-			w: 'indicator',
-			borderTopRightRadius: 'marker',
-			borderBottomRightRadius: 'marker',
-			bg: 'scrapscache.accent'
-		}
-	});
-	const manageRow = css({
-		display: 'flex',
-		alignItems: 'center',
-		gap: 'md',
-		w: 'full',
-		rounded: 'control',
-		py: 'list',
-		px: 'sm',
-		textAlign: 'left',
-		textStyle: 'body',
-		_hoverable: { bg: 'scrapscache.interactiveHover' },
-		_disabled: { opacity: 0.55 },
-		'& small': { display: 'block', mt: '3xs', textStyle: 'caption' }
-	});
-	const dividerLine = css({ h: 'hairline', flex: '1', bg: 'scrapscache.border' });
-	const pairingInput = css({
-		w: 'full',
-		rounded: 'control',
-		textAlign: 'center',
-		fontSize: 'heading',
-		fontWeight: 'strong',
-		letterSpacing: 'status'
-	});
-	const digits = css({
-		fontFamily: 'mono',
-		fontSize: 'pairing',
-		fontWeight: 'heading',
-		letterSpacing: 'eyebrow',
-		color: 'scrapscache.text'
-	});
-	const qrCode = css({
-		h: '220px',
-		w: '220px',
-		rounded: 'card',
-		bg: 'scrapscache.qrSurface',
-		p: 'sm'
-	});
-	const pairingCode = css({
-		rounded: 'dialog',
-		borderWidth: 'hairline',
-		borderColor: 'scrapscache.border',
-		bg: 'scrapscache.bg',
-		px: 'sm',
-		py: 'xl'
-	});
-	const copySuccess = css({
-		borderColor: 'scrapscache.success',
-		bg: 'scrapscache.success',
-		color: 'scrapscache.successForeground'
-	});
-	const timerText = css({ fontVariantNumeric: 'tabular-nums', color: 'scrapscache.text' });
 	const meter = progressMeter({ size: 'compact' });
 	const syncMuted = text({ style: 'bodyMuted' });
 	const syncMutedBody = cx(text({ style: 'bodyMuted' }), css({ lineHeight: 'relaxed' }));
@@ -527,10 +466,6 @@
 		text({ style: 'caption' }),
 		css({ w: 'full', touchAction: 'manipulation', cursor: 'pointer', textAlign: 'center' })
 	);
-	const syncFullButton = css({ w: 'full' });
-	const syncGrowButton = css({ flex: '1' });
-	const syncSpinner = css({ animation: 'spin' });
-	const syncBodySpacing = css({ mt: '2xs' });
 </script>
 
 <Dialog.Root

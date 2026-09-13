@@ -5,7 +5,7 @@
 	import { useEditorActions } from '$lib/editorContext';
 	import EmptyState from '$lib/components/EmptyState.svelte';
 	import { Archive } from '@lucide/svelte';
-	import { viewPage } from '$lib/uiStyles';
+	import { viewPage } from '$panda/styles';
 
 	const { openNote: openEditor } = useEditorActions();
 	const archived = $derived(notesStore.archivedNotes);

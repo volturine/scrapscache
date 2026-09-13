@@ -4,7 +4,7 @@
 	import { portalToAppOverlay } from '$lib/appViewport';
 	import type { Placement } from '@zag-js/tooltip';
 	import { css } from 'styled-system/css';
-	import { tooltip } from '$lib/uiStyles';
+	import { tooltip } from '$panda/styles';
 
 	let {
 		content,

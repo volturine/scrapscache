@@ -9,7 +9,7 @@
 	import { dayKey } from '$lib/utils';
 	import { MediaQuery } from 'svelte/reactivity';
 	import { css } from 'styled-system/css';
-	import { notesShell, viewPage } from '$lib/uiStyles';
+	import { notesShell, viewPage } from '$panda/styles';
 
 	const { openNote: openEditor } = useEditorActions();
 	const reminders = $derived(notesStore.notesWithReminders);

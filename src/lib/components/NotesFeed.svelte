@@ -7,7 +7,7 @@
 	import { uiStore } from '$lib/stores/ui.svelte';
 	import { hstack, vstack } from 'styled-system/patterns';
 	import { button, text } from 'styled-system/recipes';
-	import { notesShell } from '$lib/uiStyles';
+	import { notesShell } from '$panda/styles';
 
 	/** Grid / list feed for notes pages — one place for layout branching. */
 	let {

@@ -1,9 +1,18 @@
 <script lang="ts">
+	import {
+		datePickerPanel as panel,
+		datePickerViewControl as viewControl,
+		datePickerViewButton as viewButton,
+		datePickerTable as table,
+		datePickerWeekHeader as weekHeader,
+		datePickerWeekRow as weekRow,
+		datePickerDayCell as dayCell,
+		datePickerGridBtn as gridBtn
+	} from '$panda/styles';
 	import { DatePicker } from '@ark-ui/svelte/date-picker';
 	import { ChevronLeft, ChevronRight } from '@lucide/svelte';
 	import type { DateValue } from '@internationalized/date';
 	import type { Snippet } from 'svelte';
-	import { css, cva } from 'styled-system/css';
 	import { iconButton } from 'styled-system/recipes';
 
 	let {
@@ -25,118 +34,6 @@
 	} = $props();
 
 	const navBtn = iconButton({ variant: 'ghost', size: 'xs' });
-
-	const panel = css({
-		minH: '16.25rem',
-		display: 'flex',
-		flexDirection: 'column',
-		'& [data-part="view"]:not([hidden])': { display: 'flex', flexDirection: 'column' },
-		'& .calendar-table-fill [data-part="table-body"]': { h: '100%' },
-		'& .calendar-table-fill [data-part="table-row"]': { h: 'calc(13.5rem / 3)' },
-		'& .calendar-table-fill [data-part="table-cell"]': { h: 'inherit', verticalAlign: 'middle' }
-	});
-	const viewControl = css({
-		mb: 'sm',
-		display: 'flex',
-		h: '2.25rem',
-		alignItems: 'center',
-		justifyContent: 'space-between'
-	});
-	const viewButton = css({
-		rounded: 'card',
-		px: 'sm',
-		py: '2xs',
-		textStyle: 'bodyStrong',
-		color: 'scrapscache.text',
-		cursor: 'pointer',
-		transition: 'colors 150ms ease',
-		_hoverable: { bg: 'scrapscache.interactiveHover' }
-	});
-	const table = css({ w: 'full', tableLayout: 'fixed', h: '13.5rem' });
-	const weekHeader = css({
-		h: '1.5rem',
-		textAlign: 'center',
-		textStyle: 'captionStrong',
-		color: 'scrapscache.textMuted'
-	});
-	const weekRow = css({ textAlign: 'center' });
-	const dayCell = css({
-		position: 'relative',
-		'&:has([data-in-range])': {
-			_before: {
-				content: '""',
-				position: 'absolute',
-				top: '50%',
-				left: 0,
-				right: 0,
-				h: '2rem',
-				transform: 'translateY(-50%)',
-				bg: 'scrapscache.accent/18'
-			}
-		},
-		'&:has([data-range-start])': { _before: { left: '50%' } },
-		'&:has([data-range-end])': { _before: { right: '50%' } }
-	});
-
-	const gridBtn = cva({
-		base: {
-			position: 'relative',
-			zIndex: 1,
-			mx: 'auto',
-			display: 'flex',
-			alignItems: 'center',
-			justifyContent: 'center',
-			textStyle: 'bodyStrong',
-			cursor: 'pointer',
-			transition: 'colors 150ms ease',
-			_hoverable: { bg: 'scrapscache.interactiveHover' },
-			_selected: {
-				bg: 'scrapscache.accent',
-				color: 'scrapscache.accentForeground',
-				fontWeight: 'heading'
-			},
-			'&[data-today]:not([data-selected])': {
-				borderWidth: 'hairline',
-				borderColor: 'scrapscache.textMuted'
-			},
-			_focusVisible: {
-				outline: 'none',
-				ringWidth: '2px',
-				ringColor: 'scrapscache.accent'
-			}
-		},
-		variants: {
-			kind: {
-				day: {
-					position: 'relative',
-					h: '2rem',
-					w: '2rem',
-					rounded: 'pill',
-					'&[data-in-range]:not([data-range-start]):not([data-range-end])': {
-						bg: 'transparent',
-						color: 'scrapscache.text',
-						fontWeight: 'body'
-					},
-					'&[data-focus]:not([data-selected]):not([data-in-range])': {
-						bg: 'transparent !important'
-					},
-					'&[data-selected] .reminder-dot, &[data-range-start] .reminder-dot, &[data-range-end] .reminder-dot':
-						{
-							bg: 'scrapscache.accentForeground !important'
-						},
-					'&[data-outside-range]': {
-						opacity: 0.3,
-						pointerEvents: 'none'
-					}
-				},
-				month: {
-					h: '2.25rem',
-					w: '3.5rem',
-					rounded: 'card'
-				}
-			}
-		}
-	});
 </script>
 
 <div class={panel}>

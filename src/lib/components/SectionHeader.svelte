@@ -2,7 +2,7 @@
 	import type { Snippet } from 'svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
 	import { Format } from '@ark-ui/svelte/format';
-	import { notesShell, sectionHeader } from '$lib/uiStyles';
+	import { notesShell, sectionHeader } from '$panda/styles';
 
 	let {
 		label,

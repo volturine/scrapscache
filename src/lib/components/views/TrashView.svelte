@@ -7,7 +7,7 @@
 	import { Trash2 } from '@lucide/svelte';
 	import { css } from 'styled-system/css';
 	import { button, text } from 'styled-system/recipes';
-	import { viewPage } from '$lib/uiStyles';
+	import { viewPage } from '$panda/styles';
 
 	const { openNote: openEditor } = useEditorActions();
 	const trashed = $derived(notesStore.trashedNotes);

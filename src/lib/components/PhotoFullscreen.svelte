@@ -1,4 +1,32 @@
 <script lang="ts">
+	import {
+		photoCropRoot as cropRoot,
+		photoCropCol as cropCol,
+		photoCropHeader as cropHeader,
+		photoCropSep as cropSep,
+		photoCropRatioDesktop as cropRatioDesktop,
+		photoCropRadioRoot as cropRadioRoot,
+		photoCropRadioItem as cropRadioItem,
+		photoCropReset as cropReset,
+		photoCropSave as cropSave,
+		photoCropRatioMobile as cropRatioMobile,
+		photoCropViewport as cropViewport,
+		photoCropImgWrap as cropImgWrap,
+		photoCropImg as cropImg,
+		photoCropTool as cropTool,
+		photoCropKnob as cropKnob,
+		photoViewerStage as viewerStage,
+		photoViewerCenter as viewerCenter,
+		photoViewerImage as viewerImage,
+		photoViewerBackdrop as viewerBackdrop,
+		photoViewerThumbStrip as viewerThumbStrip,
+		photoViewerThumbImg as viewerThumbImg,
+		photoViewerTitleSize as viewerTitleSize,
+		photoRatioMobileBtn as ratioMobileBtn,
+		photoNavArrow as navArrow,
+		photoThumbBtn as thumbBtn,
+		fullscreen
+	} from '$panda/styles';
 	import type { NoteImage } from '$lib/types';
 	import {
 		Check,
@@ -16,10 +44,9 @@
 	import { SegmentGroup } from '@ark-ui/svelte/segment-group';
 	import Tooltip from './Tooltip.svelte';
 	import { portalToAppOverlay } from '$lib/appViewport';
-	import { css, cva, cx } from 'styled-system/css';
+	import { cx } from 'styled-system/css';
 	import { button, iconButton } from 'styled-system/recipes';
 	import { center, hstack } from 'styled-system/patterns';
-	import { fullscreen } from './fullscreenStyles';
 	import { displayImageSrc } from '$lib/imageThumb';
 	import { noteImageFromCroppedDataUrl } from '$lib/noteImages';
 
@@ -230,308 +257,10 @@
 	}
 
 	const fs = fullscreen({ theme: 'photo' });
-
-	const cropRoot = css({
-		position: 'relative',
-		zIndex: 1,
-		display: 'flex',
-		minH: 0,
-		flex: '1',
-		flexDirection: 'column',
-		'& [data-part="viewport"]': {
-			position: 'relative',
-			overflow: 'visible',
-			touchAction: 'none',
-			userSelect: 'none'
-		},
-		'& [data-part="image"]': {
-			position: 'absolute',
-			maxWidth: 'none',
-			userSelect: 'none'
-		},
-		'& [data-part="selection"]': {
-			boxShadow: 'cropMask',
-			outlineWidth: '1.5px',
-			outlineStyle: 'solid',
-			outlineColor: 'scrapscache.mediaOutline'
-		},
-		'& [data-part="handle"]': {
-			display: 'grid',
-			placeItems: 'center',
-			zIndex: 10,
-			background: 'transparent',
-			touchAction: 'none',
-			userSelect: 'none',
-			WebkitUserSelect: 'none',
-			WebkitTapHighlightColor: 'transparent'
-		},
-		'& [data-part="handle"][data-position="nw"], & [data-part="handle"][data-position="ne"], & [data-part="handle"][data-position="se"], & [data-part="handle"][data-position="sw"]':
-			{
-				w: '3.5rem',
-				h: '3.5rem',
-				zIndex: 20
-			},
-		'& [data-part="handle"][data-position="n"], & [data-part="handle"][data-position="s"]': {
-			h: '3.5rem',
-			zIndex: 10
-		},
-		'& [data-part="handle"][data-position="w"], & [data-part="handle"][data-position="e"]': {
-			w: '3.5rem',
-			zIndex: 10
-		},
-		'& [data-part="handle"]:hover .crop-knob, & [data-part="handle"]:active .crop-knob': {
-			transform: 'scale(1.35)',
-			boxShadow: 'cropHandle'
-		},
-		'& [data-part="grid"][data-axis="horizontal"]': {
-			borderBottomWidth: 'hairline',
-			borderTopWidth: 'hairline',
-			borderColor: 'scrapscache.mediaBorderStrong'
-		},
-		'& [data-part="grid"][data-axis="vertical"]': {
-			borderLeftWidth: 'hairline',
-			borderRightWidth: 'hairline',
-			borderColor: 'scrapscache.mediaBorderStrong'
-		}
-	});
-	const cropCol = css({ display: 'flex', minH: 0, flex: '1', flexDirection: 'column' });
-	const cropHeader = css({
-		position: 'relative',
-		...hstack.raw({ flexShrink: 0, justifyContent: 'space-between', gap: 'sm' }),
-		borderBottomWidth: 'hairline',
-		borderColor: 'scrapscache.mediaBorder',
-		bg: 'scrapscache.mediaSurfaceStrong',
-		px: 'md',
-		py: 'sm',
-		backdropFilter: 'blur(12px)'
-	});
-	const cropSep = css({
-		mx: { base: '3xs', sm: '2xs' },
-		h: '1rem',
-		w: '1px',
-		bg: 'scrapscache.mediaControlActive'
-	});
-	const cropRatioDesktop = css({
-		position: 'absolute',
-		left: '50%',
-		transform: 'translateX(-50%)',
-		...center.raw({ display: { base: 'none', sm: 'flex' } })
-	});
-	const cropRadioRoot = css({
-		...hstack.raw({ gap: '3xs' }),
-		rounded: 'card',
-		bg: 'scrapscache.mediaControlHover',
-		p: '3xs',
-		fontSize: 'label'
-	});
-	const cropRadioItem = css({
-		cursor: 'pointer',
-		rounded: 'compact',
-		px: 'list',
-		py: '2xs',
-		transition: 'colors 120ms ease',
-		'&[data-state=checked]': {
-			bg: 'scrapscache.mediaText',
-			fontWeight: 'heading',
-			color: 'scrapscache.mediaSurface',
-			boxShadow: 'sm'
-		},
-		'&[data-state=unchecked]': {
-			color: 'scrapscache.mediaTextSoft',
-			_hoverable: { bg: 'scrapscache.mediaControlHover', color: 'scrapscache.mediaText' }
-		},
-		'&[data-disabled]': { pointerEvents: 'none', opacity: 0.5 }
-	});
-	const cropReset = css({
-		rounded: 'control',
-		px: 'list',
-		py: 'xs',
-		textStyle: 'label',
-		color: 'scrapscache.mediaTextMuted',
-		transition: 'colors 120ms ease',
-		touchAction: 'manipulation',
-		cursor: 'pointer',
-		_hoverable: { bg: 'scrapscache.mediaControlHover', color: 'scrapscache.mediaText' },
-		_disabled: { opacity: 0.3, pointerEvents: 'none' }
-	});
-	const cropSave = css({ minW: '5.25rem', px: 'md', py: 'xs', textStyle: 'button' });
-	const cropRatioMobile = css({
-		...center.raw({ display: { base: 'flex', sm: 'none' }, gap: '2xs' }),
-		flexShrink: 0,
-		borderBottomWidth: 'hairline',
-		borderColor: 'scrapscache.mediaBorderFaint',
-		bg: 'scrapscache.mediaSurfaceMuted',
-		px: 'md',
-		py: 'xs'
-	});
-	const cropViewport = css({
-		position: 'relative',
-		...center.raw({ minH: 0, flex: '1', p: { base: 'sm', sm: '2xl' } }),
-		overflow: 'hidden'
-	});
-	const cropImgWrap = css({
-		position: 'relative',
-		flexShrink: 0,
-		overflow: 'visible',
-		boxShadow: '2xl'
-	});
-	const cropImg = css({
-		h: 'full',
-		w: 'full',
-		objectFit: 'fill',
-		display: 'block',
-		userSelect: 'none',
-		pointerEvents: 'none'
-	});
-	const cropTool = css({
-		h: '2.25rem',
-		w: '2.25rem',
-		rounded: 'control',
-		color: 'scrapscache.mediaTextSoft',
-		transition: 'colors 120ms ease',
-		_hoverable: { bg: 'scrapscache.mediaControlHover', color: 'scrapscache.mediaText' },
-		_disabled: {
-			opacity: 0.35,
-			cursor: 'not-allowed',
-			pointerEvents: 'auto',
-			_hoverable: { bg: 'transparent', color: 'scrapscache.mediaTextSoft' }
-		}
-	});
 	const cropBtnRound = iconButton({ variant: 'haze', size: 'sm' });
 	const cropToolBtn = cx(iconButton({ variant: 'haze' }), cropTool);
-
-	const cropKnob = cva({
-		base: {
-			bg: 'scrapscache.mediaText',
-			boxShadow: 'cropKnob',
-			pointerEvents: 'none',
-			transition: 'transform 0.15s ease, box-shadow 0.15s ease'
-		},
-		variants: {
-			shape: {
-				corner: { h: '0.75rem', w: '0.75rem', rounded: 'knob' },
-				edgeH: { h: '0.25rem', w: '1.5rem', rounded: 'pill' },
-				edgeV: { h: '1.5rem', w: '0.25rem', rounded: 'pill' }
-			}
-		},
-		defaultVariants: { shape: 'corner' }
-	});
-
-	const viewerStage = css({ position: 'relative', minH: 0, flex: '1' });
-	const viewerCenter = css({
-		pointerEvents: 'none',
-		position: 'relative',
-		zIndex: 1,
-		...center.raw({ h: 'full', px: 'lg' })
-	});
-	const viewerImage = css({
-		pointerEvents: 'auto',
-		maxH: 'full',
-		maxW: 'full',
-		userSelect: 'none',
-		objectFit: 'contain'
-	});
-	const viewerBackdrop = css({ position: 'absolute', inset: 0, cursor: 'zoom-out' });
-	const viewerThumbStrip = css({
-		position: 'relative',
-		zIndex: 1,
-		display: 'flex',
-		flexShrink: 0,
-		gap: 'sm',
-		overflowX: 'auto',
-		bgGradient: 'to-t',
-		gradientFrom: 'black/85',
-		gradientTo: 'transparent',
-		px: 'lg',
-		pb: 'md',
-		pt: 'sm'
-	});
-	const viewerThumbImg = css({ h: 'full', w: 'full', objectFit: 'cover' });
-	const viewerTitleSize = css({
-		ml: '2xs',
-		textStyle: 'caption',
-		color: 'scrapscache.mediaTextFaint'
-	});
 	const topBarBtn = iconButton({ variant: 'haze' });
 	const topBarTrashBtn = iconButton({ variant: 'hazeRose' });
-
-	const ratioMobileBtn = cva({
-		base: {
-			rounded: 'compact',
-			px: 'sm',
-			py: '3xs',
-			fontSize: 'label',
-			transition: 'colors 120ms ease',
-			cursor: 'pointer'
-		},
-		variants: {
-			active: {
-				true: {
-					bg: 'scrapscache.mediaText',
-					fontWeight: 'heading',
-					color: 'scrapscache.mediaSurface'
-				},
-				false: {
-					bg: 'transparent',
-					color: 'scrapscache.mediaTextMuted',
-					_hoverable: {
-						bg: 'scrapscache.mediaControlHover',
-						color: 'scrapscache.mediaText'
-					}
-				}
-			}
-		}
-	});
-
-	const navArrow = cva({
-		base: {
-			position: 'absolute',
-			top: '50%',
-			transform: 'translateY(-50%)',
-			zIndex: 20,
-			display: { base: 'none', sm: 'grid' },
-			h: '2.75rem',
-			w: '2.75rem',
-			placeItems: 'center',
-			rounded: 'pill',
-			bg: 'scrapscache.mediaSurfaceSoft',
-			color: 'scrapscache.mediaTextStrong',
-			boxShadow: 'md',
-			backdropFilter: 'blur(4px)',
-			transition: 'colors 120ms ease',
-			cursor: 'pointer',
-			touchAction: 'manipulation',
-			_hoverable: {
-				bg: 'scrapscache.mediaSurfaceHover',
-				color: 'scrapscache.mediaText'
-			}
-		},
-		variants: {
-			side: {
-				left: { left: 'md' },
-				right: { right: 'md' }
-			}
-		}
-	});
-
-	const thumbBtn = cva({
-		base: {
-			h: '3.5rem',
-			w: '3.5rem',
-			flexShrink: 0,
-			overflow: 'hidden',
-			rounded: 'control',
-			touchAction: 'manipulation',
-			transition: 'opacity 120ms ease, box-shadow 120ms ease',
-			cursor: 'pointer'
-		},
-		variants: {
-			active: {
-				true: { opacity: 1, ringWidth: '2px', ringColor: 'scrapscache.mediaText' },
-				false: { opacity: 0.5, _hoverable: { opacity: 0.85 } }
-			}
-		}
-	});
 </script>
 
 {#if current}

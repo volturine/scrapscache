@@ -24,9 +24,8 @@
 	import { onDestroy } from 'svelte';
 	import type { Note } from '$lib/types';
 	import { cx } from 'styled-system/css';
-	import { backlogFilterButton, kanbanViewStyles as k } from './kanbanViewStyles';
+	import { backlogFilterButton, kanbanViewStyles as k, popover, viewPage } from '$panda/styles';
 	import { button, iconButton, input as inputRecipe } from 'styled-system/recipes';
-	import { popover, viewPage } from '$lib/uiStyles';
 
 	const { openNote } = useEditorActions();
 	const board = $derived(kanbanStore.activeBoard);

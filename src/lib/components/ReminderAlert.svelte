@@ -1,56 +1,20 @@
 <script lang="ts">
+	import {
+		reminderAlertRoot as root,
+		reminderAlertCard as card,
+		reminderAlertIcon as icon,
+		reminderAlertContent as content,
+		reminderAlertTitle as title,
+		reminderAlertSubtitle as subtitle,
+		reminderAlertDismissIcon as dismissIcon
+	} from '$panda/styles';
 	import { fly } from 'svelte/transition';
 	import { AlarmClock, X } from '@lucide/svelte';
 	import { reminderStore } from '$lib/stores/reminders.svelte';
 	import { formatReminder } from '$lib/utils';
-	import { css } from 'styled-system/css';
 	import { iconButton } from 'styled-system/recipes';
 
 	const alerts = $derived(reminderStore.alerts);
-
-	const root = css({
-		pointerEvents: 'none',
-		position: 'fixed',
-		insetX: 0,
-		zIndex: 70,
-		display: 'flex',
-		flexDirection: 'column',
-		alignItems: 'center',
-		gap: 'sm',
-		px: 'md'
-	});
-	const card = css({
-		pointerEvents: 'auto',
-		display: 'flex',
-		w: 'full',
-		maxW: '28rem',
-		alignItems: 'flex-start',
-		gap: 'md',
-		rounded: 'sheet',
-		borderWidth: 'hairline',
-		borderColor: 'scrapscache.border',
-		bg: 'scrapscache.surface',
-		px: 'md',
-		py: 'md',
-		boxShadow: '2xl'
-	});
-	const icon = css({
-		mt: '3xs',
-		w: '1.25rem',
-		h: '1.25rem',
-		flexShrink: 0,
-		color: 'scrapscache.accent'
-	});
-	const content = css({ minW: 0, flex: '1', textAlign: 'left', cursor: 'pointer' });
-	const title = css({
-		overflow: 'hidden',
-		textOverflow: 'ellipsis',
-		whiteSpace: 'nowrap',
-		textStyle: 'bodyStrong',
-		color: 'scrapscache.text'
-	});
-	const subtitle = css({ textStyle: 'caption' });
-	const dismissIcon = css({ w: '1rem', h: '1rem' });
 </script>
 
 {#if alerts.length > 0}

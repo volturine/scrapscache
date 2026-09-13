@@ -8,7 +8,7 @@
 	import { css } from 'styled-system/css';
 	import { hstack } from 'styled-system/patterns';
 	import { text } from 'styled-system/recipes';
-	import { notesShell, sectionHeader, viewPage } from '$lib/uiStyles';
+	import { notesShell, sectionHeader, viewPage } from '$panda/styles';
 
 	const { openNote: openEditor } = useEditorActions();
 

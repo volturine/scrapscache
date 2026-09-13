@@ -1,8 +1,13 @@
 <script lang="ts">
+	import {
+		canvasPreview,
+		filePreview,
+		noteEditorFooterIconMd as iconMd,
+		photoPreview
+	} from '$panda/styles';
 	import { css, cx } from 'styled-system/css';
 	import { button, choiceCard, dialog, iconButton } from 'styled-system/recipes';
 	import { hstack, grid, flex } from 'styled-system/patterns';
-	import { canvasPreview, filePreview, photoPreview } from './attachmentPreviewStyles';
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { Format } from '@ark-ui/svelte/format';
 	import AttachmentFullscreen from '$lib/components/AttachmentFullscreen.svelte';
@@ -337,7 +342,6 @@
 
 	const qualityCompressedCard = choiceCard({ kind: 'compressed' });
 	const qualityHdCard = choiceCard({ kind: 'hd' });
-	const iconMd = css({ h: '1.25rem', w: '1.25rem' });
 </script>
 
 {#if attachError}

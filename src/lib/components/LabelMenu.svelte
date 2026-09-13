@@ -1,11 +1,23 @@
 <script lang="ts">
+	import {
+		labelMenuIconBox as iconBox,
+		labelMenuIcon as icon,
+		labelMenuLabel as label,
+		labelMenuCheckIndicator as checkIndicator,
+		labelMenuHeading as heading,
+		labelMenuSearchWrap as searchWrap,
+		labelMenuScroller as scroller,
+		labelMenuSearchIcon as searchIcon,
+		labelMenuSearchInput as searchInput,
+		labelMenuEmpty as empty,
+		popover
+	} from '$panda/styles';
 	import { Checkbox } from '@ark-ui/svelte/checkbox';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { Check, Plus, Search, Tag } from '@lucide/svelte';
 	import { css, cx } from 'styled-system/css';
 	import { button, input, menuItem } from 'styled-system/recipes';
 	import { hstack, vstack } from 'styled-system/patterns';
-	import { popover } from '$lib/uiStyles';
 
 	let {
 		noteId,
@@ -93,58 +105,6 @@
 			}
 		};
 	}
-
-	const iconBox = css({
-		display: 'grid',
-		h: '1.75rem',
-		w: '1.75rem',
-		flexShrink: 0,
-		placeItems: 'center',
-		color: 'scrapscache.textMuted',
-		'&[data-state=checked]': { color: 'scrapscache.accent' }
-	});
-	const icon = css({ w: '1rem', h: '1rem' });
-	const label = css({
-		minW: 0,
-		flex: '1',
-		overflow: 'hidden',
-		textOverflow: 'ellipsis',
-		whiteSpace: 'nowrap'
-	});
-	const checkIndicator = css({ flexShrink: 0, color: 'scrapscache.accent' });
-	const heading = css({
-		minW: 0,
-		flex: '1',
-		fontSize: 'caption',
-		fontWeight: 'heading',
-		textTransform: 'uppercase',
-		letterSpacing: 'eyebrow',
-		color: 'scrapscache.textMuted'
-	});
-	const searchWrap = css({ position: 'relative', mb: '2xs' });
-	const scroller = css({ scrollbarWidth: 'thin' });
-	const searchIcon = css({
-		pointerEvents: 'none',
-		position: 'absolute',
-		left: 'md',
-		top: '50%',
-		h: '1rem',
-		w: '1rem',
-		transform: 'translateY(-50%)',
-		color: 'scrapscache.textMuted'
-	});
-	const searchInput = css({
-		w: 'full',
-		pl: '2.25rem',
-		_placeholder: { color: 'scrapscache.textMuted' }
-	});
-	const empty = css({
-		px: 'md',
-		py: 'lg',
-		textAlign: 'center',
-		textStyle: 'caption',
-		color: 'scrapscache.textMuted'
-	});
 	const menuRow = menuItem({ density: 'comfortable' });
 </script>
 

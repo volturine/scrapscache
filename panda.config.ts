@@ -4,7 +4,7 @@ import { theme } from './panda/theme';
 
 export default defineConfig({
 	preflight: true,
-	include: ['./src/**/*.{js,jsx,ts,tsx,svelte}'],
+	include: ['./src/**/*.{js,jsx,ts,tsx,svelte}', './panda/styles.ts'],
 	exclude: [],
 	staticCss: {
 		recipes: {

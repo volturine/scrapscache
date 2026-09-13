@@ -1,5 +1,12 @@
 <script lang="ts">
-	import { cva, css, cx } from 'styled-system/css';
+	import {
+		sidebarRow,
+		sidebarIcon,
+		sidebarNavLabelText as navLabelText,
+		sidebarLabelInput as labelInput,
+		truncate
+	} from '$panda/styles';
+	import { css, cx } from 'styled-system/css';
 	import { dialog, button, input, menuItem } from 'styled-system/recipes';
 	import { hstack, vstack } from 'styled-system/patterns';
 	import { goto } from '$app/navigation';
@@ -165,66 +172,6 @@
 	function cancelDelete() {
 		pendingDelete = null;
 	}
-
-	const sidebarRow = cva({
-		variants: {
-			navigation: {
-				true: { w: 'full', textAlign: 'left', textStyle: 'button', cursor: 'pointer' }
-			},
-			active: {
-				true: {
-					fontWeight: 'heading',
-					bg: 'scrapscache.navigationActive',
-					color: 'scrapscache.navigationActiveText'
-				},
-				false: { fontWeight: 'interactive', color: 'scrapscache.textMuted' }
-			},
-			wide: { true: { pr: 'lg' } },
-			editing: { true: { bg: 'scrapscache.interactiveHover' } }
-		}
-	});
-
-	const sidebarIcon = cva({
-		base: {
-			display: 'grid',
-			h: '1.75rem',
-			w: '1.75rem',
-			flexShrink: 0,
-			placeItems: 'center'
-		},
-		variants: {
-			iconTone: {
-				nav: { color: 'scrapscache.text' },
-				muted: { color: 'scrapscache.textMuted' }
-			},
-			danger: {
-				true: {
-					_hoverable: { bg: 'scrapscache.dangerSubtle', color: 'scrapscache.danger' }
-				}
-			},
-			hitPad: {
-				delete: {
-					position: 'relative',
-					_before: { position: 'absolute', inset: '-0.5rem', content: '""' }
-				},
-				count: { fontSize: 'label', fontVariantNumeric: 'tabular-nums', opacity: 0.7 }
-			}
-		}
-	});
-
-	const navLabelText = css({
-		minW: 0,
-		flex: '1',
-		overflow: 'hidden',
-		textOverflow: 'ellipsis',
-		whiteSpace: 'nowrap',
-		textAlign: 'left'
-	});
-	const labelInput = css({
-		flex: '1',
-		textStyle: 'button',
-		_placeholder: { fontWeight: 'body', color: 'scrapscache.textMuted' }
-	});
 	const menuRow = menuItem({ density: 'sidebar' });
 	const labelInputClass = cx(input({ variant: 'unstyled' }), labelInput);
 	const d = dialog({ size: 'sm' });
@@ -386,18 +333,18 @@
 								type="button"
 								onclick={() => startRename(label)}
 								data-sidebar-stay-open
-								class={css({
-									minW: 0,
-									flex: '1',
-									alignSelf: 'stretch',
-									overflow: 'hidden',
-									textOverflow: 'ellipsis',
-									whiteSpace: 'nowrap',
-									textAlign: 'left',
-									textStyle: 'button',
-									color: 'scrapscache.text',
-									cursor: 'pointer'
-								})}
+								class={cx(
+									truncate,
+									css({
+										minW: 0,
+										flex: '1',
+										alignSelf: 'stretch',
+										textAlign: 'left',
+										textStyle: 'button',
+										color: 'scrapscache.text',
+										cursor: 'pointer'
+									})
+								)}
 								aria-label={`Rename ${label.name}`}
 								title="Rename"
 							>

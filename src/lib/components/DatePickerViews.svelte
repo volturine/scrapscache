@@ -27,7 +27,7 @@
 	const navBtn = iconButton({ variant: 'ghost', size: 'xs' });
 
 	const datePickerView = sva({
-		slots: ['panel', 'viewControl', 'viewButton', 'table', 'weekHeader', 'weekRow'],
+		slots: ['panel', 'viewControl', 'viewButton', 'table', 'weekHeader', 'weekRow', 'dayCell'],
 		base: {
 			panel: {
 				minH: '16.25rem',
@@ -64,13 +64,32 @@
 				fontWeight: 'medium',
 				color: 'scrapscache.textMuted'
 			},
-			weekRow: { textAlign: 'center' }
+			weekRow: { textAlign: 'center' },
+			dayCell: {
+				position: 'relative',
+				'&:has([data-in-range])': {
+					_before: {
+						content: '""',
+						position: 'absolute',
+						top: '50%',
+						left: 0,
+						right: 0,
+						h: '2rem',
+						transform: 'translateY(-50%)',
+						bg: 'scrapscache.accent/18'
+					}
+				},
+				'&:has([data-range-start])': { _before: { left: '50%' } },
+				'&:has([data-range-end])': { _before: { right: '50%' } }
+			}
 		}
 	});
 	const styles = datePickerView();
 
 	const gridBtn = cva({
 		base: {
+			position: 'relative',
+			zIndex: 1,
 			mx: 'auto',
 			display: 'flex',
 			alignItems: 'center',
@@ -85,9 +104,9 @@
 				color: 'scrapscache.accentForeground',
 				fontWeight: '600'
 			},
-			'&[data-today]': {
-				ringWidth: '1px',
-				ringColor: 'scrapscache.border'
+			'&[data-today]:not([data-selected])': {
+				borderWidth: '1px',
+				borderColor: 'scrapscache.textMuted'
 			},
 			_focusVisible: {
 				outline: 'none',
@@ -103,7 +122,7 @@
 					w: '2rem',
 					rounded: 'full',
 					'&[data-in-range]:not([data-range-start]):not([data-range-end])': {
-						bg: 'scrapscache.accent/18',
+						bg: 'transparent',
 						color: 'scrapscache.text',
 						fontWeight: 'normal'
 					},
@@ -144,7 +163,7 @@
 						<ChevronRight size={16} />
 					</DatePicker.NextTrigger>
 				</DatePicker.ViewControl>
-				<DatePicker.Table class={`calendar-table ${styles.table}`}>
+				<DatePicker.Table class={['calendar-table', styles.table]}>
 					<DatePicker.TableHead>
 						<DatePicker.TableRow class={styles.weekHeader}>
 							{#each datePicker().weekDays as weekDay (weekDay.value.toString())}
@@ -156,7 +175,7 @@
 						{#each datePicker().weeks as week (week[0].toString())}
 							<DatePicker.TableRow class={styles.weekRow}>
 								{#each week as day (day.toString())}
-									<DatePicker.TableCell value={day}>
+									<DatePicker.TableCell value={day} class={styles.dayCell}>
 										{#if onDayClick || onDayPointerDown}
 											<DatePicker.TableCellTrigger>
 												{#snippet asChild(triggerProps)}
@@ -216,7 +235,7 @@
 						<ChevronRight size={16} />
 					</DatePicker.NextTrigger>
 				</DatePicker.ViewControl>
-				<DatePicker.Table class={`calendar-table calendar-table-fill ${styles.table}`}>
+				<DatePicker.Table class={['calendar-table', 'calendar-table-fill', styles.table]}>
 					<DatePicker.TableBody>
 						{#each datePicker().getMonthsGrid({ columns: 4, format: 'short' }) as months, row (row)}
 							<DatePicker.TableRow>
@@ -249,7 +268,7 @@
 						<ChevronRight size={16} />
 					</DatePicker.NextTrigger>
 				</DatePicker.ViewControl>
-				<DatePicker.Table class={`calendar-table calendar-table-fill ${styles.table}`}>
+				<DatePicker.Table class={['calendar-table', 'calendar-table-fill', styles.table]}>
 					<DatePicker.TableBody>
 						{#each datePicker().getYearsGrid({ columns: 4 }) as years, row (row)}
 							<DatePicker.TableRow>

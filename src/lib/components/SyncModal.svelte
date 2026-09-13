@@ -791,13 +791,15 @@
 												? 'Force resync'
 												: 'Sync now'}</button
 									>
-									<button
-										type="button"
-										onclick={() => void startExistingConnection()}
-										disabled={busy}
-										class={cx(button({ variant: 'secondary', size: 'md' }), growButton)}
-										>Connect device</button
-									>
+									{#if !authenticationFailed}
+										<button
+											type="button"
+											onclick={() => void startExistingConnection()}
+											disabled={busy}
+											class={cx(button({ variant: 'secondary', size: 'md' }), growButton)}
+											>Connect device</button
+										>
+									{/if}
 								</div>
 								{#if syncStore.progress}
 									{@const progress = syncStore.progress}

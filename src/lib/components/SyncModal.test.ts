@@ -382,6 +382,7 @@ describe('SyncModal profile interactions', () => {
 		render(SyncModal, { props: { onClose: vi.fn() } });
 		expect(screen.queryByRole('button', { name: 'Sync now' })).toBeNull();
 		expect(screen.getByRole('button', { name: 'Force resync' })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: 'Connect device' })).toBeNull();
 		expect(screen.queryByRole('button', { name: 'Join existing' })).toBeNull();
 		await fireEvent.click(screen.getByRole('button', { name: '+ New workspace' }));
 		expect(screen.getByRole('button', { name: 'Join existing' })).toBeTruthy();

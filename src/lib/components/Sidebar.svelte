@@ -217,7 +217,7 @@
 				fontWeight: 'medium',
 				_placeholder: { fontWeight: 'normal', color: 'scrapscache.textMuted' }
 			},
-			labelsSection: { mt: '1.25rem' },
+			labelsSection: { mt: '1.25rem', w: 'full' },
 			sectionTitle: {
 				minW: 0,
 				flex: '1',

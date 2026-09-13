@@ -559,6 +559,22 @@ const noteBodyRecipe = defineSlotRecipe({
 		addSubtask: { '&::before': { content: '"+  Add sub-task"' } }
 	},
 	variants: {
+		mode: {
+			editor: {
+				container: { display: 'block', w: 'full', minW: 0, lineHeight: 'relaxed', outline: 'none' },
+				row: { flexWrap: 'wrap' },
+				line: {
+					display: 'block',
+					whiteSpace: 'pre-wrap',
+					outline: 'none',
+					'&[data-placeholder]:empty::before': {
+						content: 'attr(data-placeholder)',
+						color: 'scrapscache.textMuted',
+						pointerEvents: 'none'
+					}
+				}
+			}
+		},
 		checked: {
 			true: { line: { textDecoration: 'line-through', opacity: 0.5 } }
 		},
@@ -604,7 +620,11 @@ const choiceCardRecipe = defineSlotRecipe({
 			}
 		},
 		danger: { true: { title: { color: 'scrapscache.danger' } } },
-		compact: { true: { root: { minH: '0', px: 'lg', py: 'md' } } }
+		compact: { true: { root: { minH: '0', px: 'lg', py: 'md' } } },
+		kind: {
+			compressed: { description: { opacity: 0.85 } },
+			hd: { description: { color: 'scrapscache.textMuted' } }
+		}
 	}
 });
 

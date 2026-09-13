@@ -1,5 +1,12 @@
 <script lang="ts">
-	import { cva, css, cx } from 'styled-system/css';
+	import {
+		sidebarRow,
+		sidebarIcon,
+		sidebarNavLabelText as navLabelText,
+		sidebarLabelInput as labelInput,
+		truncate
+	} from '$panda/styles';
+	import { css, cx } from 'styled-system/css';
 	import { dialog, button, input, menuItem } from 'styled-system/recipes';
 	import { hstack, vstack } from 'styled-system/patterns';
 	import { goto } from '$app/navigation';
@@ -24,7 +31,6 @@
 	import { portalToAppOverlay } from '$lib/appViewport';
 	import { pathForView } from '$lib/viewRoutes';
 	import { useEditorActions } from '$lib/editorContext';
-	import { truncate } from '$panda/styles';
 
 	const { closeNote } = useEditorActions();
 
@@ -166,63 +172,6 @@
 	function cancelDelete() {
 		pendingDelete = null;
 	}
-
-	const sidebarRow = cva({
-		variants: {
-			navigation: {
-				true: { w: 'full', textAlign: 'left', textStyle: 'button', cursor: 'pointer' }
-			},
-			active: {
-				true: {
-					fontWeight: 'heading',
-					bg: 'scrapscache.navigationActive',
-					color: 'scrapscache.navigationActiveText'
-				},
-				false: { fontWeight: 'interactive', color: 'scrapscache.textMuted' }
-			},
-			wide: { true: { pr: 'lg' } },
-			editing: { true: { bg: 'scrapscache.interactiveHover' } }
-		}
-	});
-
-	const sidebarIcon = cva({
-		base: {
-			display: 'grid',
-			h: '1.75rem',
-			w: '1.75rem',
-			flexShrink: 0,
-			placeItems: 'center'
-		},
-		variants: {
-			iconTone: {
-				nav: { color: 'scrapscache.text' },
-				muted: { color: 'scrapscache.textMuted' }
-			},
-			danger: {
-				true: {
-					_hoverable: { bg: 'scrapscache.dangerSubtle', color: 'scrapscache.danger' }
-				}
-			},
-			hitPad: {
-				delete: {
-					position: 'relative',
-					_before: { position: 'absolute', inset: '-0.5rem', content: '""' }
-				},
-				count: { fontSize: 'label', fontVariantNumeric: 'tabular-nums', opacity: 0.7 }
-			}
-		}
-	});
-
-	const navLabelText = css({
-		minW: 0,
-		flex: '1',
-		textAlign: 'left'
-	});
-	const labelInput = css({
-		flex: '1',
-		textStyle: 'button',
-		_placeholder: { fontWeight: 'body', color: 'scrapscache.textMuted' }
-	});
 	const menuRow = menuItem({ density: 'sidebar' });
 	const labelInputClass = cx(input({ variant: 'unstyled' }), labelInput);
 	const d = dialog({ size: 'sm' });
@@ -238,7 +187,7 @@
 		<span class={sidebarIcon()} aria-hidden="true">
 			<Plus size={16} strokeWidth={1.75} />
 		</span>
-		<span class={cx(navLabelText, truncate)}>New label</span>
+		<span class={navLabelText}>New label</span>
 	</button>
 {/snippet}
 
@@ -281,7 +230,7 @@
 			<span class={sidebarIcon({ iconTone: 'nav' })} aria-hidden="true">
 				<NavIcon size={18} strokeWidth={1.75} />
 			</span>
-			<span class={cx(navLabelText, truncate)}>{item.label}</span>
+			<span class={navLabelText}>{item.label}</span>
 		</button>
 	{/each}
 
@@ -415,7 +364,7 @@
 							<span class={sidebarIcon({ iconTone: 'muted' })} aria-hidden="true">
 								<Tag size={16} strokeWidth={1.75} />
 							</span>
-							<span class={cx(navLabelText, truncate)}>{label.name}</span>
+							<span class={navLabelText}>{label.name}</span>
 							{#if (labelCounts.get(label.id) ?? 0) > 0}
 								<span class={sidebarIcon({ hitPad: 'count' })}>{labelCounts.get(label.id)}</span>
 							{/if}

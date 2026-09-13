@@ -1,8 +1,8 @@
 <script lang="ts">
+	import { emptyStateAction as action, notesShell } from '$panda/styles';
 	import { resolve } from '$app/paths';
 	import type { LucideIcon } from '@lucide/svelte';
 	import { css, cx } from 'styled-system/css';
-	import { notesShell } from '$panda/styles';
 
 	type Props = {
 		icon: LucideIcon;
@@ -13,22 +13,6 @@
 	};
 
 	let { icon: Icon, description, actionLabel, onAction, href }: Props = $props();
-	const action = css({
-		display: 'inline-flex',
-		alignItems: 'center',
-		justifyContent: 'center',
-		mt: 'md',
-		rounded: 'pill',
-		borderWidth: 'hairline',
-		borderColor: 'scrapscache.border',
-		px: 'md',
-		py: 'xs',
-		textStyle: 'button',
-		color: 'scrapscache.text',
-		cursor: 'pointer',
-		transition: 'background-color 150ms ease',
-		_hoverable: { bg: 'scrapscache.borderFaint' }
-	});
 </script>
 
 <div

@@ -1,8 +1,20 @@
 <script lang="ts">
-	import { css, cx, cva } from 'styled-system/css';
+	import {
+		topbarSearchInput as searchInput,
+		topbarSearchIcon as searchIcon,
+		topbarSyncIcon as syncIcon,
+		topbarSyncTone as syncTone,
+		topbarIcon as icon,
+		topbarMenuPositioner as menuPositioner,
+		topbarMenuPopover as menuPopover,
+		topbarMenuSeparator as menuSeparator,
+		topbarMenuAlert as menuAlert,
+		popover,
+		progressMeter
+	} from '$panda/styles';
+	import { css, cx } from 'styled-system/css';
 	import { iconButton, input, menuItem } from 'styled-system/recipes';
 	import { hstack, vstack } from 'styled-system/patterns';
-	import { popover, progressMeter } from '$panda/styles';
 	import { uiStore } from '$lib/stores/ui.svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { downloadJSON } from '$lib/utils';
@@ -166,13 +178,6 @@
 			e.stopImmediatePropagation();
 		}
 	}
-
-	const searchInput = css({
-		h: 'full',
-		flex: '1',
-		appearance: 'none',
-		_placeholder: { color: 'scrapscache.textMuted' }
-	});
 	const clearButton = cx(
 		iconButton({ variant: 'ghost', size: 'xs' }),
 		css({
@@ -185,30 +190,6 @@
 			color: 'scrapscache.textMuted'
 		})
 	);
-	const searchIcon = css({ color: 'scrapscache.textMuted' });
-	const syncIcon = css({ display: 'block' });
-	const syncTone = cva({
-		variants: {
-			status: {
-				[SyncStatus.Normal]: {},
-				[SyncStatus.Warning]: { color: 'scrapscache.warning' },
-				[SyncStatus.Danger]: { color: 'scrapscache.danger' }
-			}
-		}
-	});
-	const icon = cva({
-		base: { flexShrink: 0 },
-		variants: {
-			size: {
-				sm: { h: '1rem', w: '1rem' },
-				md: { h: '1.25rem', w: '1.25rem' }
-			}
-		}
-	});
-	const menuPositioner = css({ zIndex: 30 });
-	const menuPopover = css({ w: '16rem', overflow: 'hidden', pt: '2xs' });
-	const menuSeparator = css({ borderTopWidth: 'hairline', borderColor: 'scrapscache.border' });
-	const menuAlert = css({ px: 'md', pb: 'sm', textStyle: 'label', color: 'scrapscache.danger' });
 	const menuItemClass = menuItem({ density: 'compact' });
 	const progressStyles = progressMeter();
 </script>

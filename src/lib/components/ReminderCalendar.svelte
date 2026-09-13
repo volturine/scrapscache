@@ -9,10 +9,10 @@
 	import DatePickerViews from './DatePickerViews.svelte';
 	import type { Note } from '$lib/types';
 	import { dayKey } from '$lib/utils';
+	import { truncate } from '$panda/styles';
 	import { css, cx } from 'styled-system/css';
 	import { flex, hstack } from 'styled-system/patterns';
 	import { button } from 'styled-system/recipes';
-	import { truncate } from '$panda/styles';
 
 	let {
 		notes,

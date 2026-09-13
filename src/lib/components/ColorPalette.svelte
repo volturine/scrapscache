@@ -1,10 +1,10 @@
 <script lang="ts">
+	import { colorCheckmark as checkmark, colorSwatch as swatch, popover } from '$panda/styles';
 	import { ToggleGroup } from '@ark-ui/svelte/toggle-group';
 	import { NOTE_COLOR_ORDER, type NoteColor } from '$lib/types';
-	import { cva, cx } from 'styled-system/css';
+	import { cx } from 'styled-system/css';
 	import { grid } from 'styled-system/patterns';
 	import { noteSurface } from 'styled-system/recipes';
-	import { popover } from '$panda/styles';
 
 	let {
 		color,
@@ -13,37 +13,6 @@
 		color: NoteColor;
 		onSelect: (c: NoteColor) => void;
 	} = $props();
-
-	const swatch = cva({
-		base: {
-			w: '2.5rem',
-			h: '2.5rem',
-			rounded: 'pill',
-			borderWidth: 'strong',
-			borderColor: 'scrapscache.borderSubtle',
-			cursor: 'pointer',
-			transition: 'transform 150ms ease',
-			_motionReduce: {
-				transition: 'none'
-			},
-			sm: {
-				_hoverable: {
-					transform: 'scale(1.1)'
-				}
-			}
-		}
-	});
-	const checkmark = cva({
-		base: {
-			display: 'flex',
-			h: 'full',
-			w: 'full',
-			alignItems: 'center',
-			justifyContent: 'center',
-			fontSize: 'body',
-			color: 'scrapscache.textMuted'
-		}
-	});
 </script>
 
 <ToggleGroup.Root

@@ -37,6 +37,7 @@ export type ScrapsCacheBackup = {
 		dark: boolean | null;
 		layout: Layout;
 		view: View;
+		rawMarkdown: boolean;
 	};
 };
 
@@ -284,7 +285,8 @@ export function normalizeBackup(data: unknown): ScrapsCacheBackup | null {
 					? (uiRaw.dark as boolean | null)
 					: null,
 			layout: uiRaw.layout === 'list' ? 'list' : 'grid',
-			view: VIEWS.has(uiRaw.view as View) ? (uiRaw.view as View) : 'notes'
+			view: VIEWS.has(uiRaw.view as View) ? (uiRaw.view as View) : 'notes',
+			rawMarkdown: uiRaw.rawMarkdown === true
 		}
 	};
 }

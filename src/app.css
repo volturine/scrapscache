@@ -302,6 +302,117 @@ body {
 .scrapscache-input[aria-invalid='true'] {
 	border-color: var(--scrapscache-danger);
 }
+
+/* Inline Markdown is rendered from text tokens, so formatting never injects
+ * HTML into a note. Raw mode keeps the same token stream and reveals its
+ * delimiters with editor-like syntax colors. */
+.markdown-token-marker-hidden {
+	display: none;
+}
+.markdown-token-strong {
+	font-weight: 700;
+}
+.markdown-token-emphasis {
+	font-style: italic;
+}
+.markdown-token-strikethrough {
+	text-decoration: line-through;
+	text-decoration-thickness: 1.5px;
+}
+.markdown-token-code {
+	border-radius: 0.25rem;
+	background: color-mix(in srgb, var(--scrapscache-text) 9%, transparent);
+	padding: 0.06em 0.3em;
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+	font-size: 0.9em;
+}
+.markdown-token-heading-1,
+.markdown-token-heading-2,
+.markdown-token-heading-3,
+.markdown-token-heading-4,
+.markdown-token-heading-5,
+.markdown-token-heading-6 {
+	font-weight: 700;
+}
+.markdown-token-heading-1 {
+	font-size: 1.35em;
+}
+.markdown-token-heading-2 {
+	font-size: 1.2em;
+}
+.markdown-token-heading-3 {
+	font-size: 1.08em;
+}
+.markdown-token-marker {
+	color: #d946ef;
+}
+.markdown-token-marker-code {
+	color: #ca8a04;
+}
+.markdown-token-marker-heading {
+	color: #db2777;
+}
+.markdown-raw .markdown-token-marker {
+	display: inline;
+}
+.markdown-raw .markdown-token-marker-code,
+.markdown-raw .markdown-token-code {
+	color: #ca8a04;
+}
+.markdown-raw .markdown-token-marker-heading,
+.markdown-raw .markdown-token-heading-1,
+.markdown-raw .markdown-token-heading-2,
+.markdown-raw .markdown-token-heading-3,
+.markdown-raw .markdown-token-heading-4,
+.markdown-raw .markdown-token-heading-5,
+.markdown-raw .markdown-token-heading-6 {
+	color: #d97706;
+}
+.markdown-raw .markdown-token-marker-strong,
+.markdown-raw .markdown-token-marker-emphasis,
+.markdown-raw .markdown-token-marker-strikethrough,
+.markdown-raw .markdown-token-strong,
+.markdown-raw .markdown-token-emphasis,
+.markdown-raw .markdown-token-strikethrough {
+	color: #c026d3;
+}
+.markdown-raw .markdown-token-strong,
+.markdown-raw .markdown-token-emphasis,
+.markdown-raw .markdown-token-strikethrough {
+	font-weight: inherit;
+	font-style: normal;
+	text-decoration: none;
+}
+.markdown-raw .markdown-token-code {
+	background: color-mix(in srgb, #facc15 16%, transparent);
+}
+.dark .markdown-token-marker {
+	color: #f0abfc;
+}
+.dark .markdown-token-marker-code,
+.dark .markdown-raw .markdown-token-marker-code,
+.dark .markdown-raw .markdown-token-code {
+	color: #fde047;
+}
+.dark .markdown-token-marker-heading,
+.dark .markdown-raw .markdown-token-marker-heading,
+.dark .markdown-raw .markdown-token-heading-1,
+.dark .markdown-raw .markdown-token-heading-2,
+.dark .markdown-raw .markdown-token-heading-3,
+.dark .markdown-raw .markdown-token-heading-4,
+.dark .markdown-raw .markdown-token-heading-5,
+.dark .markdown-raw .markdown-token-heading-6 {
+	color: #fbbf24;
+}
+.dark .markdown-raw .markdown-token-marker-strong,
+.dark .markdown-raw .markdown-token-marker-emphasis,
+.dark .markdown-raw .markdown-token-marker-strikethrough,
+.dark .markdown-raw .markdown-token-strong,
+.dark .markdown-raw .markdown-token-emphasis,
+.dark .markdown-raw .markdown-token-strikethrough {
+	color: #f0abfc;
+}
+
 .scrapscache-status-success,
 .scrapscache-status-warning,
 .scrapscache-status-accent,

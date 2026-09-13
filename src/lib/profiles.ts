@@ -181,6 +181,6 @@ export async function buildProfileNotesExport(pid: string): Promise<ScrapsCacheB
 		tombstones: tombstones ?? {},
 		labelTombstones: labelTombstones ?? {},
 		boardTombstones: boardTombstones ?? {},
-		ui: { sidebarOpen: true, dark: null, layout: 'grid', view: 'notes' }
+		ui: { sidebarOpen: true, dark: null, layout: 'grid', view: 'notes', rawMarkdown: false }
 	};
 }

@@ -25,6 +25,8 @@
 	import { Menu } from '@ark-ui/svelte/menu';
 	import {
 		Cloud,
+		Code2,
+		Check,
 		Download,
 		ExternalLink,
 		FileText,
@@ -63,8 +65,22 @@
 	let pendingEncryptedBackup = $state<EncryptedScrapsCacheBackup | null>(null);
 	let pendingImportData = $state.raw<unknown>(null);
 	let choosingImportMode = $state(false);
+	let rawMarkdownClickHandled = false;
 	let syncStatus = $derived(resolveSyncStatus(syncStore.lastError, syncStore.usage));
 	let syncControlLabel = $derived(SYNC_CONTROL_LABEL[syncStatus]);
+
+	function handleRawMarkdownClick() {
+		rawMarkdownClickHandled = true;
+		uiStore.toggleRawMarkdown();
+		queueMicrotask(() => {
+			rawMarkdownClickHandled = false;
+		});
+	}
+
+	function handleRawMarkdownSelect() {
+		if (rawMarkdownClickHandled) return;
+		uiStore.toggleRawMarkdown();
+	}
 
 	function openPairingLink() {
 		const found = pairingCodeFromUrl(window.location.href);
@@ -301,6 +317,26 @@
 							<Moon class="h-4 w-4 shrink-0" aria-hidden="true" />
 							Dark mode
 						{/if}
+					</Menu.Item>
+					<Menu.Item
+						value="raw-markdown"
+						closeOnSelect={false}
+						onclick={handleRawMarkdownClick}
+						onSelect={handleRawMarkdownSelect}
+						role="menuitemcheckbox"
+						aria-checked={uiStore.rawMarkdown}
+						class="flex min-h-9 w-full cursor-pointer items-center gap-2 px-3 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/5 dark:hover:bg-white/10"
+					>
+						<Code2 class="h-4 w-4 shrink-0" aria-hidden="true" />
+						<span class="min-w-0 flex-1">Raw Markdown</span>
+						<span
+							class="grid h-5 w-5 shrink-0 place-items-center rounded border border-[var(--scrapscache-border)]"
+							aria-hidden="true"
+						>
+							{#if uiStore.rawMarkdown}
+								<Check class="h-3.5 w-3.5 text-[var(--scrapscache-accent)]" strokeWidth={2.5} />
+							{/if}
+						</span>
 					</Menu.Item>
 					<Menu.Item
 						value="export"

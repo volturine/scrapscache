@@ -10,6 +10,8 @@
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { onMount } from 'svelte';
 	import { isCanvasAttachment } from '$lib/canvasAttachment';
+	import { markdownTokenClass, parseInlineMarkdown } from '$lib/markdown';
+	import { uiStore } from '$lib/stores/ui.svelte';
 
 	let { note }: { note: Note } = $props();
 
@@ -52,7 +54,28 @@
 	});
 </script>
 
-<div bind:this={contentElement} class="text-sm text-[var(--scrapscache-text)]">
+{#snippet inlineContent(text: string)}
+	<span class:markdown-raw={uiStore.rawMarkdown}>
+		{#if text}
+			{@const inlineTokens = parseInlineMarkdown(text)}
+			{#each inlineTokens as token, tokenIndex (tokenIndex)}
+				<span
+					class={markdownTokenClass(token, uiStore.rawMarkdown)}
+					data-markdown-token={token.kind === 'marker' ? token.marker : token.styles.join(' ')}
+					>{token.text}</span
+				>
+			{/each}
+		{:else}
+			&nbsp;
+		{/if}
+	</span>
+{/snippet}
+
+<div
+	bind:this={contentElement}
+	class="markdown-content text-sm text-[var(--scrapscache-text)]"
+	class:markdown-raw={uiStore.rawMarkdown}
+>
 	{#each segments as seg (seg.lineIndex)}
 		{#if seg.type === 'check'}
 			<div
@@ -76,7 +99,7 @@
 						? 'text-[13px]'
 						: ''}"
 				>
-					{seg.text || '\u00a0'}
+					{@render inlineContent(seg.text)}
 				</span>
 			</div>
 		{:else if seg.type === 'bullet'}
@@ -87,11 +110,11 @@
 			>
 				<span class="shrink-0 select-none" aria-hidden="true">•</span>
 				<span class="flex-1 break-words {seg.indent > 0 ? 'text-[13px]' : ''}">
-					{seg.text || '\u00a0'}
+					{@render inlineContent(seg.text)}
 				</span>
 			</div>
 		{:else if seg.text}
-			<p class="whitespace-pre-wrap break-words py-0.5">{seg.text}</p>
+			<p class="whitespace-pre-wrap break-words py-0.5">{@render inlineContent(seg.text)}</p>
 		{:else}
 			<div class="h-2"></div>
 		{/if}

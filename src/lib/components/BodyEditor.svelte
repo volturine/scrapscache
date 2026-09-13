@@ -12,6 +12,8 @@
 		toggleCheckEntries
 	} from '$lib/checklistBody';
 	import { revealEditorField } from '$lib/editorVisibility';
+	import { markdownTokenClass, parseInlineMarkdown } from '$lib/markdown';
+	import { uiStore } from '$lib/stores/ui.svelte';
 
 	const MAX_TASK_INDENT = 1;
 
@@ -43,6 +45,10 @@
 	};
 	type EditorPoint = { line: number; offset: number; global: number };
 	type EditorRange = { start: EditorPoint; end: EditorPoint; collapsed: boolean };
+	type PendingInput = {
+		range: EditorRange;
+		lineText: string;
+	};
 	type HistoryEntry = {
 		body: string;
 		startLine: number;
@@ -101,6 +107,7 @@
 	let subtaskPointerId: number | null = null;
 	let composing = false;
 	let applyingEdit = false;
+	let pendingInput: PendingInput | null = null;
 	const undoStack: HistoryEntry[] = [];
 	const redoStack: HistoryEntry[] = [];
 
@@ -317,9 +324,49 @@
 		const text = textElement(resolved);
 		if (!text) return null;
 		const caret = Math.max(0, Math.min(offset, lines[resolved].text.length));
-		const textNode = text.firstChild;
-		if (textNode?.nodeType === Node.TEXT_NODE) return { node: textNode, offset: caret };
-		return { node: text, offset: 0 };
+		if (!uiStore.rawMarkdown) {
+			let consumed = 0;
+			for (let childIndex = 0; childIndex < text.childNodes.length; childIndex++) {
+				const child = text.childNodes[childIndex];
+				const length = child.textContent?.length ?? 0;
+				const hiddenMarker =
+					child instanceof Element && child.classList.contains('markdown-token-marker-hidden');
+				if (hiddenMarker) {
+					if (caret <= consumed) return { node: text, offset: childIndex };
+					if (caret < consumed + length) return { node: text, offset: childIndex + 1 };
+					consumed += length;
+					continue;
+				}
+				if (caret <= consumed + length) {
+					if (child.nodeType === Node.TEXT_NODE) {
+						return { node: child, offset: Math.max(0, caret - consumed) };
+					}
+					const walker = document.createTreeWalker(child, NodeFilter.SHOW_TEXT);
+					let node: Node | null = null;
+					let remaining = Math.max(0, caret - consumed);
+					while ((node = walker.nextNode())) {
+						const nodeLength = node.textContent?.length ?? 0;
+						if (remaining <= nodeLength) return { node, offset: remaining };
+						remaining -= nodeLength;
+					}
+				}
+				consumed += length;
+			}
+			return { node: text, offset: text.childNodes.length };
+		}
+		const walker = document.createTreeWalker(text, NodeFilter.SHOW_TEXT);
+		let node: Node | null = null;
+		let remaining = caret;
+		while ((node = walker.nextNode())) {
+			const length = node.textContent?.length ?? 0;
+			if (remaining <= length) return { node, offset: remaining };
+			remaining -= length;
+		}
+		const last = text.lastChild;
+		if (last?.nodeType === Node.TEXT_NODE) {
+			return { node: last, offset: last.textContent?.length ?? 0 };
+		}
+		return { node: text, offset: text.childNodes.length };
 	}
 
 	function selectAt(
@@ -438,14 +485,16 @@
 		if (scroller) scroller.scrollTop += row.getBoundingClientRect().top - anchorTop;
 	}
 
-	function readDomIntoLines() {
-		if (!container) return;
+	function readDomIntoLines(): boolean {
+		if (!container) return false;
+		let structureChanged = false;
 		for (let index = 0; index < lines.length; index++) {
 			const text = textElement(index)?.textContent ?? '';
 			lines[index].text = text.replaceAll('\u00a0', ' ');
 			if (!lines[index].isCheck && CHECK_RE.test(lines[index].text)) {
 				const parsed = parseCheckLine(lines[index].text);
 				if (parsed) {
+					structureChanged = true;
 					lines[index].isCheck = true;
 					lines[index].isBullet = false;
 					lines[index].checked = parsed.checked;
@@ -460,6 +509,7 @@
 			if (!lines[index].isCheck && !lines[index].isBullet && BULLET_RE.test(lines[index].text)) {
 				const parsed = parseBulletLine(lines[index].text);
 				if (parsed) {
+					structureChanged = true;
 					lines[index].isBullet = true;
 					lines[index].indent = Math.min(MAX_LIST_INDENT, parsed.indent);
 					lines[index].text = parsed.text;
@@ -470,13 +520,30 @@
 			if (lines[index].id === draftTaskId && lines[index].text.trim()) draftTaskId = null;
 		}
 		syncBody();
+		return structureChanged;
 	}
 
 	function handleInput(rawEvent: Event) {
 		if (applyingEdit) return;
 		const event = rawEvent as InputEvent;
-		if (composing || event.isComposing) return;
-		readDomIntoLines();
+		if (composing || event.isComposing) {
+			pendingInput = null;
+			return;
+		}
+		const input = pendingInput;
+		pendingInput = null;
+		const range = input?.range ?? editorRange();
+		const domLineText = input
+			? textElement(input.range.start.line)?.textContent?.replaceAll('\u00a0', ' ')
+			: undefined;
+		const structureChanged = readDomIntoLines();
+		if (range?.collapsed && !structureChanged) {
+			flushSync();
+			const line = Math.min(range.start.line, lines.length - 1);
+			let offset = range.start.offset;
+			if (input && domLineText !== undefined) offset += domLineText.length - input.lineText.length;
+			selectAt(line, Math.max(0, Math.min(offset, lines[line]?.text.length ?? 0)));
+		}
 	}
 
 	function replaceSelectedRange(range: EditorRange, replacement = ''): EditorPoint {
@@ -533,6 +600,12 @@
 		const event = rawEvent as InputEvent;
 		const range = editorRange();
 		if (!range) return;
+		pendingInput = range.collapsed
+			? {
+					range,
+					lineText: lines[range.start.line]?.text ?? ''
+				}
+			: null;
 		if (event.inputType.startsWith('insert') || event.inputType.startsWith('delete')) {
 			rememberEdit(range);
 		}
@@ -969,6 +1042,13 @@
 		}
 		const range = editorRange();
 		if (!range) return;
+		if ((event.key === 'Home' || event.key === 'End') && !event.altKey && !primaryModifier) {
+			event.preventDefault();
+			const offset = event.key === 'Home' ? 0 : (lines[range.start.line]?.text.length ?? 0);
+			if (event.shiftKey) selectAt(range.start.line, range.start.offset, range.start.line, offset);
+			else selectAt(range.start.line, offset);
+			return;
+		}
 		if (event.key === 'Enter' || event.key === 'NumpadEnter') {
 			event.preventDefault();
 			rememberEdit(range);
@@ -1118,6 +1198,7 @@
 	onblur={handleEditorBlur}
 >
 	{#each lines as line, index (line.id)}
+		{@const inlineTokens = parseInlineMarkdown(line.text)}
 		<div
 			data-editor-line={index}
 			data-line-id={line.id}
@@ -1150,22 +1231,48 @@
 			{:else if line.isBullet}
 				<span contenteditable="false" class="shrink-0 select-none" aria-hidden="true">•</span>
 			{/if}
-			<span
-				data-line-text
-				use:syncEditableText={line.text}
-				data-placeholder={line.text.length === 0
-					? line.isCheck
-						? line.indent > 0
-							? 'Sub-task'
-							: 'Task'
-						: index === 0 && lines.length === 1
-							? placeholder
-							: ''
-					: undefined}
-				class="block min-h-[1lh] min-w-0 flex-1 whitespace-pre-wrap break-words outline-none {line.checked
-					? 'line-through opacity-50'
-					: ''} {line.indent > 0 ? 'text-[13px]' : ''}"
-			></span>
+			{#if !line.text || (inlineTokens.length === 1 && inlineTokens[0].kind === 'text' && inlineTokens[0].styles.length === 0)}
+				<span
+					data-line-text
+					use:syncEditableText={line.text}
+					data-placeholder={line.text.length === 0
+						? line.isCheck
+							? line.indent > 0
+								? 'Sub-task'
+								: 'Task'
+							: index === 0 && lines.length === 1
+								? placeholder
+								: ''
+						: undefined}
+					class="markdown-inline-content block min-h-[1lh] min-w-0 flex-1 whitespace-pre-wrap break-words outline-none {line.checked
+						? 'line-through opacity-50'
+						: ''} {line.indent > 0 ? 'text-[13px]' : ''} {uiStore.rawMarkdown
+						? 'markdown-raw'
+						: ''}">{line.text}</span
+				>
+			{:else}
+				<span
+					data-line-text
+					class="markdown-inline-content block min-h-[1lh] min-w-0 flex-1 whitespace-pre-wrap break-words outline-none {line.checked
+						? 'line-through opacity-50'
+						: ''} {line.indent > 0 ? 'text-[13px]' : ''} {uiStore.rawMarkdown
+						? 'markdown-raw'
+						: ''}"
+				>
+					{#each inlineTokens as token, tokenIndex (tokenIndex)}
+						{#if token.kind === 'text' && token.styles.length === 0}
+							{token.text}
+						{:else}
+							<span
+								class={markdownTokenClass(token, uiStore.rawMarkdown)}
+								data-markdown-token={token.kind === 'marker'
+									? token.marker
+									: token.styles.join(' ')}>{token.text}</span
+							>
+						{/if}
+					{/each}
+				</span>
+			{/if}
 			{#if line.id === focusedGroupLastId}
 				<button
 					type="button"

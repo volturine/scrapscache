@@ -152,32 +152,57 @@ describe('NoteCard right-click haze', () => {
 		expect(onOpen).not.toHaveBeenCalled();
 	});
 
-	it('restores the note from the haze restore button when trashed', async () => {
+	it('shows exactly 3 quick options for a trashed note: restore, archive, and delete forever', async () => {
 		const restoreSpy = vi.spyOn(notesStore, 'restoreNote').mockImplementation(() => {});
+		const archiveSpy = vi.spyOn(notesStore, 'restoreToArchive').mockImplementation(() => {});
+		const deleteSpy = vi.spyOn(notesStore, 'deleteNoteForever').mockImplementation(async () => {});
 		render(NoteCard, { props: { note: note({ trashed: true }), onOpen: vi.fn() } });
 
 		await fireEvent.contextMenu(card());
-		const restoreBtn = screen.getByRole('button', { name: 'Restore note' });
-		expect(restoreBtn).toBeTruthy();
-		expect(restoreBtn.getAttribute('title')).toBe('Restore');
-		await fireEvent.click(restoreBtn);
+		const haze = document.querySelector('[data-card-haze]')!;
+		const buttons = haze.querySelectorAll('button');
+		expect(buttons.length).toBe(3);
 
+		const restoreBtn = screen.getByRole('button', { name: 'Restore note' });
+		const archiveBtn = screen.getByRole('button', { name: 'Archive note' });
+		const deleteBtn = screen.getByRole('button', { name: 'Delete forever' });
+		expect(restoreBtn).toBeTruthy();
+		expect(archiveBtn).toBeTruthy();
+		expect(deleteBtn).toBeTruthy();
+
+		await fireEvent.click(restoreBtn);
 		expect(restoreSpy).toHaveBeenCalledWith('note-1');
-		expect(document.querySelector('[data-card-haze]')).toBeNull();
+
+		await fireEvent.contextMenu(card());
+		await fireEvent.click(screen.getByRole('button', { name: 'Archive note' }));
+		expect(archiveSpy).toHaveBeenCalledWith('note-1');
+
+		await fireEvent.contextMenu(card());
+		await fireEvent.click(screen.getByRole('button', { name: 'Delete forever' }));
+		expect(deleteSpy).toHaveBeenCalledWith('note-1');
 	});
 
-	it('restores the note from the haze restore button when archived', async () => {
+	it('shows exactly 2 quick options for an archived note: restore and delete', async () => {
 		const archiveSpy = vi.spyOn(notesStore, 'toggleArchive').mockImplementation(() => {});
+		const deleteSpy = vi.spyOn(notesStore, 'trashNote').mockImplementation(() => {});
 		render(NoteCard, { props: { note: note({ archived: true }), onOpen: vi.fn() } });
 
 		await fireEvent.contextMenu(card());
-		const restoreBtn = screen.getByRole('button', { name: 'Restore note' });
-		expect(restoreBtn).toBeTruthy();
-		expect(restoreBtn.getAttribute('title')).toBe('Restore');
-		await fireEvent.click(restoreBtn);
+		const haze = document.querySelector('[data-card-haze]')!;
+		const buttons = haze.querySelectorAll('button');
+		expect(buttons.length).toBe(2);
 
+		const restoreBtn = screen.getByRole('button', { name: 'Restore note' });
+		const deleteBtn = screen.getByRole('button', { name: 'Delete note' });
+		expect(restoreBtn).toBeTruthy();
+		expect(deleteBtn).toBeTruthy();
+
+		await fireEvent.click(restoreBtn);
 		expect(archiveSpy).toHaveBeenCalledWith('note-1');
-		expect(document.querySelector('[data-card-haze]')).toBeNull();
+
+		await fireEvent.contextMenu(card());
+		await fireEvent.click(screen.getByRole('button', { name: 'Delete note' }));
+		expect(deleteSpy).toHaveBeenCalledWith('note-1');
 	});
 
 	it('renders hazy with secret overlay for a secret note in gallery view', () => {

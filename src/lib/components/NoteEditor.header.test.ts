@@ -360,16 +360,51 @@ describe('NoteEditor task focus', () => {
 		expect(toggle.getAttribute('aria-pressed')).toBe('true');
 	});
 
-	it('shows restore instead of archive for a trashed note', () => {
+	it('shows restore, archive, and permanently delete for a trashed note', async () => {
 		notesStore.notes = [note({ trashed: true, trashedAt: 1 })];
 		const restore = vi.spyOn(notesStore, 'restoreNote').mockImplementation(() => {});
+		const restoreToArchive = vi.spyOn(notesStore, 'restoreToArchive').mockImplementation(() => {});
+		const deleteForever = vi
+			.spyOn(notesStore, 'deleteNoteForever')
+			.mockImplementation(async () => {});
 		const { getByRole, queryByRole } = render(NoteEditor, {
 			props: { noteId: 'note-1', onClose: () => {} }
 		});
 
-		expect(queryByRole('button', { name: 'Archive' })).toBeNull();
-		void fireEvent.click(getByRole('button', { name: 'Restore' }));
+		expect(getByRole('button', { name: 'Restore' })).toBeTruthy();
+		expect(getByRole('button', { name: 'Archive' })).toBeTruthy();
+		expect(getByRole('button', { name: 'Delete forever' })).toBeTruthy();
+		expect(queryByRole('button', { name: 'Pin' })).toBeNull();
+		expect(queryByRole('button', { name: 'Reminder' })).toBeNull();
+		expect(queryByRole('button', { name: 'Make secret' })).toBeNull();
+
+		await fireEvent.click(getByRole('button', { name: 'Restore' }));
 		expect(restore).toHaveBeenCalledWith('note-1');
+		await fireEvent.click(getByRole('button', { name: 'Archive' }));
+		expect(restoreToArchive).toHaveBeenCalledWith('note-1');
+		await fireEvent.click(getByRole('button', { name: 'Delete forever' }));
+		expect(deleteForever).toHaveBeenCalledWith('note-1');
+	});
+
+	it('shows only restore and delete for an archived note', async () => {
+		notesStore.notes = [note({ archived: true })];
+		const toggleArchive = vi.spyOn(notesStore, 'toggleArchive').mockImplementation(() => {});
+		const trashNote = vi.spyOn(notesStore, 'trashNote').mockImplementation(() => {});
+		const { getByRole, queryByRole } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+
+		expect(getByRole('button', { name: 'Restore' })).toBeTruthy();
+		expect(getByRole('button', { name: 'Delete note' })).toBeTruthy();
+		expect(queryByRole('button', { name: 'Archive' })).toBeNull();
+		expect(queryByRole('button', { name: 'Pin' })).toBeNull();
+		expect(queryByRole('button', { name: 'Reminder' })).toBeNull();
+		expect(queryByRole('button', { name: 'Make secret' })).toBeNull();
+
+		await fireEvent.click(getByRole('button', { name: 'Restore' }));
+		expect(toggleArchive).toHaveBeenCalledWith('note-1');
+		await fireEvent.click(getByRole('button', { name: 'Delete note' }));
+		expect(trashNote).toHaveBeenCalledWith('note-1');
 	});
 
 	it('drops task focus when the editor loses focus and the keyboard is dismissed', async () => {

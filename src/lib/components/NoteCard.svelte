@@ -65,14 +65,22 @@
 		}
 	}
 
+	function handleRestore(e: MouseEvent) {
+		e.stopPropagation();
+		closeHaze();
+		notesStore.restoreNote(note.id);
+	}
+
+	function handleRestoreToArchive(e: MouseEvent) {
+		e.stopPropagation();
+		closeHaze();
+		notesStore.restoreToArchive(note.id);
+	}
+
 	function handleArchive(e: MouseEvent) {
 		e.stopPropagation();
 		closeHaze();
-		if (note.trashed) {
-			notesStore.restoreNote(note.id);
-		} else {
-			notesStore.toggleArchive(note.id);
-		}
+		notesStore.toggleArchive(note.id);
 	}
 
 	async function handleCopy(e: MouseEvent) {
@@ -337,7 +345,66 @@
 					e.stopPropagation();
 				}}
 			>
-				{#if compactActions}
+				{#if note.trashed}
+					<div class="flex items-center justify-center gap-2 drop-shadow-md">
+						<!-- Restore -->
+						<button
+							type="button"
+							class={`flex ${compactActions ? 'h-8 w-8' : 'h-10 w-10'} items-center justify-center rounded-full text-white/90 transition-all hover:scale-105 hover:bg-white/20 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80`}
+							title="Restore"
+							aria-label="Restore note"
+							onclick={handleRestore}
+						>
+							<RotateCcw class={compactActions ? 'h-4 w-4' : 'h-5 w-5'} aria-hidden="true" />
+						</button>
+
+						<!-- Archive -->
+						<button
+							type="button"
+							class={`flex ${compactActions ? 'h-8 w-8' : 'h-10 w-10'} items-center justify-center rounded-full text-white/90 transition-all hover:scale-105 hover:bg-white/20 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80`}
+							title="Archive"
+							aria-label="Archive note"
+							onclick={handleRestoreToArchive}
+						>
+							<Archive class={compactActions ? 'h-4 w-4' : 'h-5 w-5'} aria-hidden="true" />
+						</button>
+
+						<!-- Delete forever -->
+						<button
+							type="button"
+							class={`flex ${compactActions ? 'h-8 w-8' : 'h-10 w-10'} items-center justify-center rounded-full text-white/90 transition-all hover:scale-105 hover:bg-rose-500/30 hover:text-rose-300 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80`}
+							title="Delete forever"
+							aria-label="Delete forever"
+							onclick={handleDelete}
+						>
+							<Trash2 class={compactActions ? 'h-4 w-4' : 'h-5 w-5'} aria-hidden="true" />
+						</button>
+					</div>
+				{:else if note.archived}
+					<div class="flex items-center justify-center gap-2 drop-shadow-md">
+						<!-- Restore -->
+						<button
+							type="button"
+							class={`flex ${compactActions ? 'h-8 w-8' : 'h-10 w-10'} items-center justify-center rounded-full text-white/90 transition-all hover:scale-105 hover:bg-white/20 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80`}
+							title="Restore"
+							aria-label="Restore note"
+							onclick={handleArchive}
+						>
+							<ArchiveRestore class={compactActions ? 'h-4 w-4' : 'h-5 w-5'} aria-hidden="true" />
+						</button>
+
+						<!-- Delete note -->
+						<button
+							type="button"
+							class={`flex ${compactActions ? 'h-8 w-8' : 'h-10 w-10'} items-center justify-center rounded-full text-white/90 transition-all hover:scale-105 hover:bg-rose-500/30 hover:text-rose-300 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80`}
+							title="Delete note"
+							aria-label="Delete note"
+							onclick={handleDelete}
+						>
+							<Trash2 class={compactActions ? 'h-4 w-4' : 'h-5 w-5'} aria-hidden="true" />
+						</button>
+					</div>
+				{:else if compactActions}
 					<div class="flex items-center justify-center gap-1.5 drop-shadow-md">
 						<button
 							type="button"
@@ -381,8 +448,8 @@
 						<button
 							type="button"
 							class="flex h-8 w-8 items-center justify-center rounded-full text-white/90 transition-all hover:scale-105 hover:bg-rose-500/30 hover:text-rose-300 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
-							title={note.trashed ? 'Delete forever' : 'Delete note'}
-							aria-label={note.trashed ? 'Delete forever' : 'Delete note'}
+							title="Delete note"
+							aria-label="Delete note"
 							onclick={handleDelete}
 						>
 							<Trash2 class="h-4 w-4" aria-hidden="true" />
@@ -390,21 +457,11 @@
 						<button
 							type="button"
 							class="flex h-8 w-8 items-center justify-center rounded-full text-white/90 transition-all hover:scale-105 hover:bg-white/20 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
-							title={note.trashed ? 'Restore' : note.archived ? 'Restore' : 'Archive'}
-							aria-label={note.trashed
-								? 'Restore note'
-								: note.archived
-									? 'Restore note'
-									: 'Archive note'}
+							title="Archive"
+							aria-label="Archive note"
 							onclick={handleArchive}
 						>
-							{#if note.trashed}
-								<RotateCcw class="h-4 w-4" aria-hidden="true" />
-							{:else if note.archived}
-								<ArchiveRestore class="h-4 w-4" aria-hidden="true" />
-							{:else}
-								<Archive class="h-4 w-4" aria-hidden="true" />
-							{/if}
+							<Archive class="h-4 w-4" aria-hidden="true" />
 						</button>
 					</div>
 				{:else}
@@ -461,32 +518,22 @@
 							<button
 								type="button"
 								class="flex h-10 w-10 items-center justify-center rounded-full text-white/90 transition-all hover:scale-105 hover:bg-rose-500/30 hover:text-rose-300 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
-								title={note.trashed ? 'Delete forever' : 'Delete note'}
-								aria-label={note.trashed ? 'Delete forever' : 'Delete note'}
+								title="Delete note"
+								aria-label="Delete note"
 								onclick={handleDelete}
 							>
 								<Trash2 class="h-5 w-5" aria-hidden="true" />
 							</button>
 
-							<!-- Archive / Restore -->
+							<!-- Archive -->
 							<button
 								type="button"
 								class="flex h-10 w-10 items-center justify-center rounded-full text-white/90 transition-all hover:scale-105 hover:bg-white/20 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
-								title={note.trashed ? 'Restore' : note.archived ? 'Restore' : 'Archive'}
-								aria-label={note.trashed
-									? 'Restore note'
-									: note.archived
-										? 'Restore note'
-										: 'Archive note'}
+								title="Archive"
+								aria-label="Archive note"
 								onclick={handleArchive}
 							>
-								{#if note.trashed}
-									<RotateCcw class="h-5 w-5" aria-hidden="true" />
-								{:else if note.archived}
-									<ArchiveRestore class="h-5 w-5" aria-hidden="true" />
-								{:else}
-									<Archive class="h-5 w-5" aria-hidden="true" />
-								{/if}
+								<Archive class="h-5 w-5" aria-hidden="true" />
 							</button>
 						</div>
 					</div>

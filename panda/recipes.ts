@@ -753,7 +753,7 @@ const noteBodyRecipe = defineSlotRecipe({
 		check: { flexShrink: 0 },
 		bullet: { flexShrink: 0, userSelect: 'none' },
 		paragraph: { whiteSpace: 'pre-wrap', wordBreak: 'break-word', py: '3xs' },
-		spacer: { h: 'sm' },
+		spacer: { py: '2xs' },
 		addSubtask: { '&::before': { content: '"+  Add sub-task"' } }
 	},
 	variants: {

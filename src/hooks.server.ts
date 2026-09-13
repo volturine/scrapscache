@@ -15,7 +15,19 @@ export const handle: Handle = async ({ event, resolve }) => {
 	const requestId = /^[A-Za-z0-9._-]{1,128}$/.test(suppliedRequestId)
 		? suppliedRequestId
 		: crypto.randomUUID();
-	const response = await resolve(event);
+
+	const response = await resolve(event, {
+		transformPageChunk: ({ html }) => {
+			const origin = event.url.origin;
+			if (!origin) return html;
+			const canonical = `${origin}${event.url.pathname}`;
+			return html
+				.replaceAll('https://scrapscache.com/og-preview.png', `${origin}/og-preview.png`)
+				.replaceAll('https://scrapscache.com/', canonical)
+				.replaceAll('https://scrapscache.com', origin);
+		}
+	});
+
 	for (const [name, value] of SECURITY_HEADERS) response.headers.set(name, value);
 	response.headers.set('x-request-id', requestId);
 	const durationMs = performance.now() - startedAt;

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { cx, cva, sva } from 'styled-system/css';
+	import { css, cx, cva } from 'styled-system/css';
 	import { iconButton, input, menuItem } from 'styled-system/recipes';
 	import { hstack, vstack } from 'styled-system/patterns';
 	import { popover, progressMeter } from '$lib/uiStyles';
@@ -167,29 +167,26 @@
 		}
 	}
 
-	const topbarStyles = sva({
-		slots: ['searchInput', 'clearButton', 'searchIcon', 'syncIcon'],
-		base: {
-			searchInput: {
-				h: 'full',
-				flex: '1',
-				appearance: 'none',
-				_placeholder: { color: 'scrapscache.textMuted' }
-			},
-			clearButton: {
-				h: '1.5rem',
-				w: '1.5rem',
-				minH: 0,
-				flexShrink: 0,
-				appearance: 'none',
-				p: 0,
-				color: 'scrapscache.textMuted'
-			},
-			searchIcon: { color: 'scrapscache.textMuted' },
-			syncIcon: { display: 'block' }
-		}
-	})();
-	const clearButton = cx(iconButton({ variant: 'ghost', size: 'xs' }), topbarStyles.clearButton);
+	const searchInput = css({
+		h: 'full',
+		flex: '1',
+		appearance: 'none',
+		_placeholder: { color: 'scrapscache.textMuted' }
+	});
+	const clearButton = cx(
+		iconButton({ variant: 'ghost', size: 'xs' }),
+		css({
+			h: '1.5rem',
+			w: '1.5rem',
+			minH: 0,
+			flexShrink: 0,
+			appearance: 'none',
+			p: 0,
+			color: 'scrapscache.textMuted'
+		})
+	);
+	const searchIcon = css({ color: 'scrapscache.textMuted' });
+	const syncIcon = css({ display: 'block' });
 	const syncTone = cva({
 		variants: {
 			status: {
@@ -208,15 +205,10 @@
 			}
 		}
 	});
-	const menu = sva({
-		slots: ['positioner', 'popover', 'separator', 'alert'],
-		base: {
-			positioner: { zIndex: 30 },
-			popover: { w: '16rem', overflow: 'hidden', pt: '2xs' },
-			separator: { borderTopWidth: 'hairline', borderColor: 'scrapscache.border' },
-			alert: { px: 'md', pb: 'sm', textStyle: 'label', color: 'scrapscache.danger' }
-		}
-	})();
+	const menuPositioner = css({ zIndex: 30 });
+	const menuPopover = css({ w: '16rem', overflow: 'hidden', pt: '2xs' });
+	const menuSeparator = css({ borderTopWidth: 'hairline', borderColor: 'scrapscache.border' });
+	const menuAlert = css({ px: 'md', pb: 'sm', textStyle: 'label', color: 'scrapscache.danger' });
 	const menuItemClass = menuItem({ density: 'compact' });
 	const progressStyles = progressMeter();
 </script>
@@ -259,13 +251,13 @@
 			gap: 'sm'
 		})}
 	>
-		<Search class={cx(icon({ size: 'sm' }), topbarStyles.searchIcon)} aria-hidden="true" />
+		<Search class={cx(icon({ size: 'sm' }), searchIcon)} aria-hidden="true" />
 		<input
 			value={uiStore.searchInput}
 			oninput={(event) => uiStore.setSearchInput(event.currentTarget.value)}
 			type="text"
 			placeholder="Search"
-			class={cx(input({ variant: 'unstyled' }), topbarStyles.searchInput)}
+			class={cx(input({ variant: 'unstyled' }), searchInput)}
 		/>
 		{#if uiStore.searchInput}
 			<button
@@ -296,7 +288,7 @@
 			<span
 				class={[
 					icon({ size: 'md' }),
-					topbarStyles.syncIcon,
+					syncIcon,
 					notesStore.syncing && 'scrapscache-sync-icon-active'
 				]}
 				data-scrapscache-sync-spinner
@@ -339,8 +331,8 @@
 				<Settings class={icon({ size: 'md' })} aria-hidden="true" />
 			</Menu.Trigger>
 		</Tooltip>
-		<Menu.Positioner class={menu.positioner}>
-			<Menu.Content class={cx(popover, menu.popover)}>
+		<Menu.Positioner class={menuPositioner}>
+			<Menu.Content class={cx(popover, menuPopover)}>
 				{#if importingBackup}
 					{@const progress = notesStore.backupImportProgress}
 					<div
@@ -405,7 +397,7 @@
 						<FileUpload.HiddenInput />
 					</FileUpload.Root>
 					<ReminderNotificationSettings />
-					<Menu.Separator class={menu.separator} />
+					<Menu.Separator class={menuSeparator} />
 					<Menu.Item value="issue">
 						{#snippet asChild(props)}
 							<a
@@ -421,7 +413,7 @@
 						{/snippet}
 					</Menu.Item>
 				{/if}
-				{#if backupImportError}<p class={menu.alert} role="alert">
+				{#if backupImportError}<p class={menuAlert} role="alert">
 						{backupImportError}
 					</p>{/if}
 			</Menu.Content>

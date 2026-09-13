@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { sva } from 'styled-system/css';
+	import { css } from 'styled-system/css';
 	import '../app.css';
 	import { uiStore, type View } from '$lib/stores/ui.svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
@@ -174,59 +174,6 @@
 	function closeMobileSidebar() {
 		uiStore.sidebarOpen = false;
 	}
-
-	const shell = sva({
-		slots: [
-			'shell',
-			'drawerBackdrop',
-			'drawerPositioner',
-			'drawerContent',
-			'desktopSidebar',
-			'mainCol',
-			'canvas',
-			'feed'
-		],
-		base: {
-			shell: {
-				display: 'flex',
-				h: 'full',
-				w: 'full',
-				overflow: 'hidden',
-				bg: 'scrapscache.bg',
-				color: 'scrapscache.text'
-			},
-			drawerBackdrop: {
-				position: 'fixed',
-				inset: 0,
-				zIndex: 20,
-				bg: 'scrapscache.backdropSoft'
-			},
-			drawerPositioner: { position: 'fixed', left: 0, top: 0, zIndex: 30, h: 'full' },
-			drawerContent: {
-				h: 'full',
-				w: '18rem',
-				borderRightWidth: 'hairline',
-				borderColor: 'scrapscache.border',
-				bg: 'scrapscache.surface'
-			},
-			desktopSidebar: {
-				w: '16rem',
-				flexShrink: 0,
-				borderRightWidth: 'hairline',
-				borderColor: 'scrapscache.border'
-			},
-			mainCol: { display: 'flex', minH: 0, minW: 0, flex: '1', flexDirection: 'column' },
-			canvas: { position: 'relative', minH: 0, minW: 0, flex: '1' },
-			feed: {
-				h: 'full',
-				minH: 0,
-				overflowY: 'auto',
-				overflowX: 'hidden',
-				px: 'lg',
-				pb: { base: '5rem', md: '2xl' }
-			}
-		}
-	})();
 </script>
 
 <svelte:head>
@@ -238,7 +185,7 @@
 
 <div class="app-viewport">
 	<div
-		class={`app-shell ${shell.shell}`}
+		class={`app-shell ${css({ display: 'flex', h: 'full', w: 'full', overflow: 'hidden', bg: 'scrapscache.bg', color: 'scrapscache.text' })}`}
 		{@attach mobile.current &&
 			attachSidebarSwipe({
 				getOpen: () => uiStore.sidebarOpen,
@@ -264,11 +211,19 @@
 				<Drawer.Backdrop
 					data-sidebar-backdrop
 					aria-label="Close sidebar"
-					class={shell.drawerBackdrop}
+					class={css({ position: 'fixed', inset: 0, zIndex: 20, bg: 'scrapscache.backdropSoft' })}
 				/>
-				<Drawer.Positioner class={shell.drawerPositioner}>
+				<Drawer.Positioner
+					class={css({ position: 'fixed', left: 0, top: 0, zIndex: 30, h: 'full' })}
+				>
 					<Drawer.Content
-						class={shell.drawerContent}
+						class={css({
+							h: 'full',
+							w: '18rem',
+							borderRightWidth: 'hairline',
+							borderColor: 'scrapscache.border',
+							bg: 'scrapscache.surface'
+						})}
 						role="navigation"
 						aria-label="Sidebar"
 						data-sidebar-drawer
@@ -279,18 +234,25 @@
 			</Drawer.Root>
 		{:else}
 			{#if uiStore.sidebarOpen}
-				<div class={shell.desktopSidebar}>
+				<div
+					class={css({
+						w: '16rem',
+						flexShrink: 0,
+						borderRightWidth: 'hairline',
+						borderColor: 'scrapscache.border'
+					})}
+				>
 					<Sidebar />
 				</div>
 			{/if}
 		{/if}
 
-		<div class={shell.mainCol}>
+		<div class={css({ display: 'flex', minH: 0, minW: 0, flex: '1', flexDirection: 'column' })}>
 			<Topbar />
-			<div class={`app-canvas ${shell.canvas}`}>
+			<div class={`app-canvas ${css({ position: 'relative', minH: 0, minW: 0, flex: '1' })}`}>
 				<main
 					bind:this={feedEl}
-					class={`app-feed scrollable ${shell.feed}`}
+					class={`app-feed scrollable ${css({ h: 'full', minH: 0, overflowY: 'auto', overflowX: 'hidden', px: 'lg', pb: { base: '5rem', md: '2xl' } })}`}
 					onscroll={rememberFeedScroll}
 				>
 					<AppViews />

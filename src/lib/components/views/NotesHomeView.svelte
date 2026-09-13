@@ -6,7 +6,7 @@
 	import { useEditorActions } from '$lib/editorContext';
 	import EmptyState from '$lib/components/EmptyState.svelte';
 	import { StickyNote } from '@lucide/svelte';
-	import { sva } from 'styled-system/css';
+	import { css } from 'styled-system/css';
 	import { viewPage } from '$lib/uiStyles';
 
 	const { openNote: openEditor } = useEditorActions();
@@ -16,13 +16,6 @@
 	const search = $derived(uiStore.search);
 	const filteredPinned = $derived(search ? notesStore.search(search, pinned) : pinned);
 	const filteredOthers = $derived(search ? notesStore.search(search, others) : others);
-	const styles = sva({
-		slots: ['pinnedFeed', 'othersHeader'],
-		base: {
-			pinnedFeed: { mb: '3xl' },
-			othersHeader: { mt: '2xl' }
-		}
-	})();
 </script>
 
 <div class={viewPage}>
@@ -37,13 +30,13 @@
 			<NotesFeed
 				notes={filteredPinned}
 				onOpen={openEditor}
-				class={filteredOthers.length > 0 ? styles.pinnedFeed : ''}
+				class={filteredOthers.length > 0 ? css({ mb: '3xl' }) : ''}
 			/>
 		{/if}
 
 		{#if filteredOthers.length > 0}
 			{#if filteredPinned.length > 0}
-				<SectionHeader label="Others" count={filteredOthers.length} class={styles.othersHeader} />
+				<SectionHeader label="Others" count={filteredOthers.length} class={css({ mt: '2xl' })} />
 			{/if}
 			<NotesFeed notes={filteredOthers} onOpen={openEditor} />
 		{/if}

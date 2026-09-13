@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { css, cx, sva } from 'styled-system/css';
+	import { css, cx } from 'styled-system/css';
 	import { button, dialog, iconButton, input, text } from 'styled-system/recipes';
 	import { hstack, vstack } from 'styled-system/patterns';
 	import { progressMeter } from '$lib/uiStyles';
@@ -442,128 +442,81 @@
 
 	const d = dialog({ size: 'md', presentation: 'centeredOverlay' });
 
-	const ui = sva({
-		slots: [
-			'workspaceList',
-			'workspaceRow',
-			'workspaceCaption',
-			'manageRow',
-			'dividerLine',
-			'dividerLabel',
-			'digitsHyphen',
-			'digits',
-			'pairingInput',
-			'workspaceText',
-			'syncSection',
-			'progress',
-			'manageDetails',
-			'manageSummary',
-			'qrCode',
-			'pairingCode',
-			'copySuccess',
-			'timer'
-		],
-		base: {
-			workspaceList: { display: 'grid', gap: '2xs' },
-			workspaceRow: {
-				position: 'relative',
-				display: 'flex',
-				alignItems: 'center',
-				gap: 'md',
-				w: 'full',
-				rounded: 'control',
-				p: 'md',
-				textStyle: 'body',
-				_hoverable: { bg: 'scrapscache.interactiveHover' },
-				_disabled: { opacity: 0.55 },
-				'&.active': { bg: 'scrapscache.interactiveHover' },
-				'&.active::before': {
-					content: '""',
-					position: 'absolute',
-					top: 'list',
-					bottom: 'list',
-					left: 0,
-					w: 'indicator',
-					borderTopRightRadius: 'marker',
-					borderBottomRightRadius: 'marker',
-					bg: 'scrapscache.accent'
-				}
-			},
-			workspaceCaption: {
-				display: 'block',
-				mt: '3xs',
-				textStyle: 'caption'
-			},
-			manageRow: {
-				display: 'flex',
-				alignItems: 'center',
-				gap: 'md',
-				w: 'full',
-				rounded: 'control',
-				py: 'list',
-				px: 'sm',
-				textAlign: 'left',
-				textStyle: 'body',
-				_hoverable: { bg: 'scrapscache.interactiveHover' },
-				_disabled: { opacity: 0.55 },
-				'& small': {
-					display: 'block',
-					mt: '3xs',
-					textStyle: 'caption'
-				}
-			},
-			dividerLine: { h: 'hairline', flex: '1', bg: 'scrapscache.border' },
-			dividerLabel: {
-				fontSize: 'caption',
-				fontWeight: 'heading',
-				textTransform: 'uppercase',
-				letterSpacing: 'status',
-				color: 'scrapscache.textMuted'
-			},
-			digitsHyphen: { px: '3xs', color: 'scrapscache.textMuted' },
-			digits: {
-				fontFamily: 'mono',
-				fontSize: 'pairing',
-				fontWeight: 'heading',
-				letterSpacing: 'eyebrow',
-				color: 'scrapscache.text'
-			},
-			pairingInput: {
-				w: 'full',
-				rounded: 'control',
-				textAlign: 'center',
-				fontSize: 'heading',
-				fontWeight: 'strong',
-				letterSpacing: 'status'
-			},
-			workspaceText: { minW: 0, flex: '1', textAlign: 'left' },
-			syncSection: { borderTopWidth: 'hairline', borderColor: 'scrapscache.border', pt: 'lg' },
-			progress: { mt: 'sm', w: 'full' },
-			manageDetails: { borderTopWidth: 'hairline', borderColor: 'scrapscache.border', pt: 'md' },
-			manageSummary: { cursor: 'pointer', textStyle: 'bodyMuted' },
-			qrCode: {
-				h: '220px',
-				w: '220px',
-				rounded: 'card',
-				bg: 'scrapscache.qrSurface',
-				p: 'sm'
-			},
-			pairingCode: {
-				rounded: 'dialog',
-				borderWidth: 'hairline',
-				borderColor: 'scrapscache.border',
-				bg: 'scrapscache.bg',
-				px: 'sm',
-				py: 'xl'
-			},
-			copySuccess: {
-				borderColor: 'scrapscache.success',
-				bg: 'scrapscache.success',
-				color: 'scrapscache.successForeground'
-			},
-			timer: { fontVariantNumeric: 'tabular-nums', color: 'scrapscache.text' }
+	const workspaceRow = css({
+		position: 'relative',
+		display: 'flex',
+		alignItems: 'center',
+		gap: 'md',
+		w: 'full',
+		rounded: 'control',
+		p: 'md',
+		textStyle: 'body',
+		_hoverable: { bg: 'scrapscache.interactiveHover' },
+		_disabled: { opacity: 0.55 },
+		'&.active': { bg: 'scrapscache.interactiveHover' },
+		'&.active::before': {
+			content: '""',
+			position: 'absolute',
+			top: 'list',
+			bottom: 'list',
+			left: 0,
+			w: 'indicator',
+			borderTopRightRadius: 'marker',
+			borderBottomRightRadius: 'marker',
+			bg: 'scrapscache.accent'
 		}
-	})();
+	});
+	const manageRow = css({
+		display: 'flex',
+		alignItems: 'center',
+		gap: 'md',
+		w: 'full',
+		rounded: 'control',
+		py: 'list',
+		px: 'sm',
+		textAlign: 'left',
+		textStyle: 'body',
+		_hoverable: { bg: 'scrapscache.interactiveHover' },
+		_disabled: { opacity: 0.55 },
+		'& small': { display: 'block', mt: '3xs', textStyle: 'caption' }
+	});
+	const dividerLine = css({ h: 'hairline', flex: '1', bg: 'scrapscache.border' });
+	const pairingInput = css({
+		w: 'full',
+		rounded: 'control',
+		textAlign: 'center',
+		fontSize: 'heading',
+		fontWeight: 'strong',
+		letterSpacing: 'status'
+	});
+	const digits = css({
+		fontFamily: 'mono',
+		fontSize: 'pairing',
+		fontWeight: 'heading',
+		letterSpacing: 'eyebrow',
+		color: 'scrapscache.text'
+	});
+	const qrCode = css({
+		h: '220px',
+		w: '220px',
+		rounded: 'card',
+		bg: 'scrapscache.qrSurface',
+		p: 'sm'
+	});
+	const pairingCode = css({
+		rounded: 'dialog',
+		borderWidth: 'hairline',
+		borderColor: 'scrapscache.border',
+		bg: 'scrapscache.bg',
+		px: 'sm',
+		py: 'xl'
+	});
+	const copySuccess = css({
+		borderColor: 'scrapscache.success',
+		bg: 'scrapscache.success',
+		color: 'scrapscache.successForeground'
+	});
+	const timerText = css({ fontVariantNumeric: 'tabular-nums', color: 'scrapscache.text' });
 	const meter = progressMeter({ size: 'compact' });
 	const syncMuted = text({ style: 'bodyMuted' });
 	const syncMutedBody = cx(text({ style: 'bodyMuted' }), css({ lineHeight: 'relaxed' }));
@@ -615,10 +568,13 @@
 
 				{#if mode === 'menu'}
 					<div class={vstack({ gap: 'lg', alignItems: 'stretch' })}>
-						<div class={ui.workspaceList} aria-label="Workspaces on this device">
+						<div
+							class={css({ display: 'grid', gap: '2xs' })}
+							aria-label="Workspaces on this device"
+						>
 							<button
 								type="button"
-								class={cx(ui.workspaceRow, syncStore.activePid === LOCAL_PROFILE_ID && 'active')}
+								class={cx(workspaceRow, syncStore.activePid === LOCAL_PROFILE_ID && 'active')}
 								class:active={syncStore.activePid === LOCAL_PROFILE_ID}
 								disabled={busy}
 								aria-label={syncStore.activePid === LOCAL_PROFILE_ID
@@ -628,9 +584,9 @@
 									syncStore.activePid !== LOCAL_PROFILE_ID && void switchProfile(LOCAL_PROFILE_ID)}
 							>
 								<CloudOff size={18} aria-hidden="true" />
-								<span class={ui.workspaceText}
+								<span class={css({ minW: 0, flex: '1', textAlign: 'left' })}
 									><span class={css({ truncate: true })}>Anonymous workspace</span><span
-										class={ui.workspaceCaption}
+										class={css({ display: 'block', mt: '3xs', textStyle: 'caption' })}
 										>Only on this device{sizeLabel(LOCAL_PROFILE_ID)
 											? ' · ' + sizeLabel(LOCAL_PROFILE_ID)
 											: ''}</span
@@ -680,7 +636,13 @@
 							>
 						</div>
 						{#if syncStore.account}
-							<div class={ui.syncSection}>
+							<div
+								class={css({
+									borderTopWidth: 'hairline',
+									borderColor: 'scrapscache.border',
+									pt: 'lg'
+								})}
+							>
 								<div class={hstack({ gap: 'sm' })}>
 									<button
 										type="button"
@@ -721,7 +683,9 @@
 											value={progress.loadedBytes}
 										/>
 									</p>
-									<Progress.Root value={progress.totalBytes ? percent : null} class={ui.progress}
+									<Progress.Root
+										value={progress.totalBytes ? percent : null}
+										class={css({ mt: 'sm', w: 'full' })}
 										><Progress.Track class={meter.track}
 											><Progress.Range
 												class={meter.bar}
@@ -738,18 +702,26 @@
 						{#if info}<p class={syncMuted} role="status">
 								{info}
 							</p>{/if}
-						<details class={ui.manageDetails}>
-							<summary class={ui.manageSummary}>Manage workspace</summary>
+						<details
+							class={css({
+								borderTopWidth: 'hairline',
+								borderColor: 'scrapscache.border',
+								pt: 'md'
+							})}
+						>
+							<summary class={css({ cursor: 'pointer', textStyle: 'bodyMuted' })}
+								>Manage workspace</summary
+							>
 							<div class={vstack({ gap: '2xs', alignItems: 'stretch', mt: 'sm' })}>
 								<button
-									class={ui.manageRow}
+									class={manageRow}
 									disabled={busy}
 									onclick={() => void exportProfile(syncStore.activePid)}
 									><Download size={16} aria-hidden="true" /><span>Export notes</span></button
 								>
 								{#if syncStore.account}
 									<button
-										class={ui.manageRow}
+										class={manageRow}
 										disabled={busy}
 										onclick={() => {
 											confirmation = 'force';
@@ -767,7 +739,7 @@
 										></button
 									>
 									<button
-										class={cx(ui.manageRow, syncDanger)}
+										class={cx(manageRow, syncDanger)}
 										disabled={busy}
 										onclick={() => {
 											confirmation = 'delete';
@@ -874,9 +846,19 @@
 							>
 						</div>
 						<div class={hstack({ gap: 'md', alignItems: 'center' })} aria-hidden="true">
-							<span class={ui.dividerLine}></span>
-							<span class={ui.dividerLabel}>or</span>
-							<span class={ui.dividerLine}></span>
+							<span class={dividerLine}></span>
+							<span
+								class={css({
+									fontSize: 'caption',
+									fontWeight: 'heading',
+									textTransform: 'uppercase',
+									letterSpacing: 'status',
+									color: 'scrapscache.textMuted'
+								})}
+							>
+								or
+							</span>
+							<span class={dividerLine}></span>
 						</div>
 						<button
 							type="button"
@@ -909,7 +891,7 @@
 							placeholder="XXXX-XXXX-XXXX-XXXX"
 							maxlength="19"
 							spellcheck="false"
-							class={cx(input({ variant: 'outline', size: 'md' }), ui.pairingInput)}
+							class={cx(input({ variant: 'outline', size: 'md' }), pairingInput)}
 							onkeydown={(event) => event.key === 'Enter' && void beginLink()}
 						/>{#if error}<p class={syncDanger}>{error}</p>{/if}<button
 							type="button"
@@ -937,16 +919,19 @@
 							</div>
 							{#if qrDataUrl}
 								<div class={hstack({ justify: 'center' })}>
-									<img src={qrDataUrl} alt="Pair this device" class={ui.qrCode} />
+									<img src={qrDataUrl} alt="Pair this device" class={qrCode} />
 								</div>
 							{/if}
-							<div class={ui.pairingCode} aria-label="One-time pairing code">
+							<div class={pairingCode} aria-label="One-time pairing code">
 								<div class={hstack({ justify: 'center', gap: '2xs' })}>
 									{#each pairingGroups(waiting.syncCode) as group, index (index)}
 										{#if index > 0}
-											<span class={ui.digitsHyphen} aria-hidden="true">·</span>
+											<span
+												class={css({ px: '3xs', color: 'scrapscache.textMuted' })}
+												aria-hidden="true">·</span
+											>
 										{/if}
-										<span class={ui.digits}>{group}</span>
+										<span class={digits}>{group}</span>
 									{/each}
 								</div>
 							</div>
@@ -957,7 +942,7 @@
 									class={cx(
 										button({ variant: 'secondary', size: 'md' }),
 										syncFullButton,
-										copyFlash ? ui.copySuccess : ''
+										copyFlash ? copySuccess : ''
 									)}
 								>
 									{copyFlash ? 'Copied' : 'Copy pairing link'}
@@ -978,7 +963,7 @@
 								})}
 							>
 								<span>Expires in</span>
-								<span class={ui.timer}>{secondsLeft()}s</span>
+								<span class={timerText}>{secondsLeft()}s</span>
 							</div>
 							<div class={meter.track}>
 								<div class={meter.bar} style={`width: ${expiryRatio() * 100}%`}></div>

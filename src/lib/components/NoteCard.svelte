@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { cva, cx, sva } from 'styled-system/css';
+	import { css, cva, cx } from 'styled-system/css';
 	import { badge, iconButton, noteCard, noteSurface } from 'styled-system/recipes';
 	import { flex } from 'styled-system/patterns';
 	import { notesStore } from '$lib/stores/notes.svelte';
@@ -205,33 +205,7 @@
 			}
 		}
 	});
-	const local = sva({
-		slots: [
-			'reminder',
-			'scroller',
-			'content',
-			'successIcon',
-			'stream',
-			'portal',
-			'backdrop',
-			'dialogContent'
-		],
-		base: {
-			reminder: { flexShrink: 0 },
-			scroller: { minH: 0, flex: '1', overflowX: 'hidden', overflowY: 'auto' },
-			content: { position: 'relative' },
-			successIcon: { color: 'scrapscache.success' },
-			stream: { _motionSafe: { animation: 'cardIn' } },
-			portal: { position: 'fixed', inset: 0, zIndex: 70 },
-			backdrop: {
-				position: 'fixed',
-				inset: 0,
-				bg: 'scrapscache.backdropSoft',
-				backdropFilter: 'blur(2px)'
-			},
-			dialogContent: { outline: 'none' }
-		}
-	})();
+	const successIcon = css({ color: 'scrapscache.success' });
 </script>
 
 <svelte:window
@@ -252,7 +226,7 @@
 		: undefined}
 />
 
-<div class={cx(card.cardOuter, local.stream)}>
+<div class={cx(card.cardOuter, css({ _motionSafe: { animation: 'cardIn' } }))}>
 	{#if offsetX < 0}
 		<div class={card.swipeRestore}>
 			{#if note.trashed}
@@ -286,13 +260,15 @@
 		onkeydown={handleKeydown}
 	>
 		{#if note.reminder != null}
-			<div class={local.reminder}>
+			<div class={css({ flexShrink: 0 })}>
 				<ReminderLabel reminder={note.reminder} />
 			</div>
 		{/if}
 
-		<div class={`note-scrollbar-hidden scrollable ${local.scroller}`}>
-			<div class={local.content}>
+		<div
+			class={`note-scrollbar-hidden scrollable ${css({ minH: 0, flex: '1', overflowX: 'hidden', overflowY: 'auto' })}`}
+		>
+			<div class={css({ position: 'relative' })}>
 				<div class={card.contentPad}>
 					{#if note.title}
 						<h3 class={card.title}>
@@ -344,7 +320,7 @@
 							onclick={handleCopy}
 						>
 							{#if copied}
-								<Check size={16} class={local.successIcon} aria-hidden="true" />
+								<Check size={16} class={successIcon} aria-hidden="true" />
 							{:else}
 								<Copy size={16} aria-hidden="true" />
 							{/if}
@@ -409,7 +385,7 @@
 								onclick={handleCopy}
 							>
 								{#if copied}
-									<Check size={20} class={local.successIcon} aria-hidden="true" />
+									<Check size={20} class={successIcon} aria-hidden="true" />
 								{:else}
 									<Copy size={20} aria-hidden="true" />
 								{/if}
@@ -490,12 +466,23 @@
 		}}
 		preventScroll={false}
 	>
-		<div {@attach portalToAppOverlay} class={local.portal} role="presentation">
-			<Dialog.Backdrop class={local.backdrop} />
+		<div
+			{@attach portalToAppOverlay}
+			class={css({ position: 'fixed', inset: 0, zIndex: 70 })}
+			role="presentation"
+		>
+			<Dialog.Backdrop
+				class={css({
+					position: 'fixed',
+					inset: 0,
+					bg: 'scrapscache.backdropSoft',
+					backdropFilter: 'blur(2px)'
+				})}
+			/>
 			<Dialog.Positioner
 				class={flex({ position: 'fixed', inset: 0, align: 'center', justify: 'center', p: 'lg' })}
 			>
-				<Dialog.Content class={local.dialogContent} onclick={(e) => e.stopPropagation()}>
+				<Dialog.Content class={css({ outline: 'none' })} onclick={(e) => e.stopPropagation()}>
 					<ReminderPicker
 						reminder={note.reminder}
 						onApply={(r) => {

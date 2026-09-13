@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { cx, sva } from 'styled-system/css';
+	import { css, cx } from 'styled-system/css';
 	import { button, choiceCard, dialog, iconButton } from 'styled-system/recipes';
 	import { hstack, grid, flex } from 'styled-system/patterns';
 	import { canvasPreview, filePreview, photoPreview } from './attachmentPreviewStyles';
@@ -335,31 +335,13 @@
 	const p = photoPreview({ mode: 'editor' });
 	const d = dialog({ size: 'sm' });
 
-	const quality = sva({
-		slots: ['icon', 'error', 'positioner', 'panel', 'dialogTitle', 'dialogDescription'],
-		base: {
-			icon: { h: '1.25rem', w: '1.25rem' },
-			error: { px: 'md', pb: '2xs', textStyle: 'label', color: 'scrapscache.danger' },
-			positioner: {
-				position: 'fixed',
-				inset: 0,
-				zIndex: 50,
-				display: 'grid',
-				placeItems: 'center',
-				p: 'lg'
-			},
-			panel: { w: 'full', maxW: 'sm', p: 'lg', color: 'scrapscache.text' },
-			dialogTitle: { textStyle: 'subtitleStrong' },
-			dialogDescription: { mt: '3xs', textStyle: 'caption' }
-		}
-	})();
 	const qualityCompressedCard = choiceCard({ kind: 'compressed' });
 	const qualityHdCard = choiceCard({ kind: 'hd' });
-	const iconMd = quality.icon;
+	const iconMd = css({ h: '1.25rem', w: '1.25rem' });
 </script>
 
 {#if attachError}
-	<p class={quality.error}>
+	<p class={css({ px: 'md', pb: '2xs', textStyle: 'label', color: 'scrapscache.danger' })}>
 		{attachError}
 	</p>
 {/if}
@@ -523,8 +505,19 @@
 		preventScroll={false}
 	>
 		<Dialog.Backdrop class={d.backdrop} />
-		<Dialog.Positioner class={quality.positioner}>
-			<Dialog.Content class={cx(d.panel, quality.panel)}>
+		<Dialog.Positioner
+			class={css({
+				position: 'fixed',
+				inset: 0,
+				zIndex: 50,
+				display: 'grid',
+				placeItems: 'center',
+				p: 'lg'
+			})}
+		>
+			<Dialog.Content
+				class={cx(d.panel, css({ w: 'full', maxW: 'sm', p: 'lg', color: 'scrapscache.text' }))}
+			>
 				<div
 					class={flex({
 						mb: 'md',
@@ -534,10 +527,11 @@
 					})}
 				>
 					<div>
-						<Dialog.Title id="photo-quality-title" class={cx(d.title, quality.dialogTitle)}
-							>Photo quality</Dialog.Title
+						<Dialog.Title
+							id="photo-quality-title"
+							class={cx(d.title, css({ textStyle: 'subtitleStrong' }))}>Photo quality</Dialog.Title
 						>
-						<p class={cx(d.description, quality.dialogDescription)}>
+						<p class={cx(d.description, css({ mt: '3xs', textStyle: 'caption' }))}>
 							Choose once for {filesAwaitingQuality.length === 1
 								? 'this attachment'
 								: `these ${filesAwaitingQuality.length} attachments`}.

@@ -5,7 +5,7 @@
 	import { registerReminderDevice } from '$lib/reminderWake';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { reminderStore } from '$lib/stores/reminders.svelte';
-	import { cva, sva } from 'styled-system/css';
+	import { css, cva } from 'styled-system/css';
 
 	let permission = $state(notificationPermission());
 
@@ -48,42 +48,16 @@
 			}
 		}
 	});
-
-	const s = sva({
-		slots: ['section', 'icon', 'label', 'status', 'chevron'],
-		base: {
-			section: {
-				borderTopWidth: 'hairline',
-				borderColor: 'scrapscache.border'
-			},
-			icon: {
-				w: '1rem',
-				h: '1rem',
-				flexShrink: 0,
-				color: 'scrapscache.text'
-			},
-			label: {
-				minW: 0,
-				flex: '1',
-				textStyle: 'button',
-				color: 'scrapscache.text'
-			},
-			status: {
-				flexShrink: 0,
-				textStyle: 'captionStrong',
-				color: 'scrapscache.textMuted'
-			},
-			chevron: {
-				w: '1rem',
-				h: '1rem',
-				flexShrink: 0,
-				color: 'scrapscache.textMuted'
-			}
-		}
-	})();
+	const icon = css({ w: '1rem', h: '1rem', flexShrink: 0, color: 'scrapscache.text' });
+	const label = css({ minW: 0, flex: '1', textStyle: 'button', color: 'scrapscache.text' });
+	const status = css({ flexShrink: 0, textStyle: 'captionStrong', color: 'scrapscache.textMuted' });
+	const chevron = css({ w: '1rem', h: '1rem', flexShrink: 0, color: 'scrapscache.textMuted' });
 </script>
 
-<section class={s.section} aria-label="Notifications">
+<section
+	class={css({ borderTopWidth: 'hairline', borderColor: 'scrapscache.border' })}
+	aria-label="Notifications"
+>
 	{#if permission === 'default'}
 		<button
 			type="button"
@@ -91,16 +65,16 @@
 			class={row({ interactive: true })}
 			aria-label="Turn on notifications"
 		>
-			<Bell class={s.icon} aria-hidden="true" />
-			<span class={s.label}>Notifications</span>
-			<span class={s.status}>Not set</span>
-			<ChevronRight class={s.chevron} aria-hidden="true" />
+			<Bell class={icon} aria-hidden="true" />
+			<span class={label}>Notifications</span>
+			<span class={status}>Not set</span>
+			<ChevronRight class={chevron} aria-hidden="true" />
 		</button>
 	{:else}
 		<div class={row()}>
-			<Bell class={s.icon} aria-hidden="true" />
-			<span class={s.label}>Notifications</span>
-			<span class={s.status}>
+			<Bell class={icon} aria-hidden="true" />
+			<span class={label}>Notifications</span>
+			<span class={status}>
 				{permission === 'granted'
 					? 'Enabled'
 					: permission === 'denied'

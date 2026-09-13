@@ -24,7 +24,7 @@
 	import { onDestroy } from 'svelte';
 	import type { Note } from '$lib/types';
 	import { cx } from 'styled-system/css';
-	import { backlogFilterButton, kanbanView } from './kanbanViewStyles';
+	import { backlogFilterButton, kanbanViewStyles as k } from './kanbanViewStyles';
 	import { button, iconButton, input as inputRecipe } from 'styled-system/recipes';
 	import { popover, viewPage } from '$lib/uiStyles';
 
@@ -208,8 +208,6 @@
 		if (target.columnId !== sourceColumnId) moveNote(noteId, sourceColumnId, target.columnId);
 		kanbanStore.placeCard(board.id, noteId, sourceColumnId, target.columnId, order);
 	}
-
-	const k = kanbanView();
 </script>
 
 <div class={viewPage}>

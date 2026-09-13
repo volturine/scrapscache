@@ -8,7 +8,7 @@
 	import { AlarmClock } from '@lucide/svelte';
 	import { dayKey } from '$lib/utils';
 	import { MediaQuery } from 'svelte/reactivity';
-	import { sva } from 'styled-system/css';
+	import { css } from 'styled-system/css';
 	import { notesShell, viewPage } from '$lib/uiStyles';
 
 	const { openNote: openEditor } = useEditorActions();
@@ -38,49 +38,42 @@
 				? 'No reminders match the current filters.'
 				: 'Create a note, then add a reminder when you need to return to it.'
 	);
-	const styles = sva({
-		slots: ['embedded', 'empty', 'calendar', 'feed'],
-		base: {
-			embedded: { position: 'relative' },
-			empty: {
-				display: 'flex',
-				justifyContent: 'center',
-				px: 'lg',
-				py: '3xl',
-				md: {
-					position: 'absolute',
-					insetY: 0,
-					right: 0,
-					left: 'min(32rem, 58%)',
-					alignItems: 'center',
-					py: 0
-				}
-			},
-			calendar: { w: 'full' },
-			feed: { mt: 'lg' }
-		}
-	})();
 </script>
 
 <div class={viewPage}>
 	{#if embedCalendar}
-		<div class={styles.embedded}>
+		<div class={css({ position: 'relative' })}>
 			<NotesFeed notes={visible} onOpen={openEditor}>
 				{#snippet leading()}
 					<ReminderCalendar notes={reminders} bind:selected={uiStore.reminderFilter} />
 				{/snippet}
 			</NotesFeed>
 			{#if visible.length === 0}
-				<div class={styles.empty}>
+				<div
+					class={css({
+						display: 'flex',
+						justifyContent: 'center',
+						px: 'lg',
+						py: '3xl',
+						md: {
+							position: 'absolute',
+							insetY: 0,
+							right: 0,
+							left: 'min(32rem, 58%)',
+							alignItems: 'center',
+							py: 0
+						}
+					})}
+				>
 					<EmptyState icon={AlarmClock} description={emptyDescription} />
 				</div>
 			{/if}
 		</div>
 	{:else}
-		<div class={uiStore.layout === 'list' ? notesShell('list') : styles.calendar}>
+		<div class={uiStore.layout === 'list' ? notesShell('list') : css({ w: 'full' })}>
 			<ReminderCalendar notes={reminders} bind:selected={uiStore.reminderFilter} />
 		</div>
-		<div class={styles.feed}>
+		<div class={css({ mt: 'lg' })}>
 			{#if visible.length === 0}
 				<EmptyState icon={AlarmClock} description={emptyDescription} />
 			{:else}

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { cx, sva } from 'styled-system/css';
+	import { css, cx } from 'styled-system/css';
 	import { iconButton } from 'styled-system/recipes';
 	import type { NoteImage } from '$lib/types';
 	import { dataUrlToBlob } from '$lib/imageBlob';
@@ -90,38 +90,6 @@
 	const fs = fullscreen();
 
 	const headerBtn = iconButton({ variant: 'ghost', size: 'standard' });
-
-	const ms = sva({
-		slots: ['text', 'audioBox', 'audio', 'videoBox', 'video', 'pdf', 'backIcon', 'downloadIcon'],
-		base: {
-			text: {
-				m: 0,
-				minH: 0,
-				flex: '1',
-				overflow: 'auto',
-				whiteSpace: 'pre-wrap',
-				wordBreak: 'break-word',
-				p: 'lg',
-				fontFamily: 'mono',
-				textStyle: 'body',
-				lineHeight: 'relaxed',
-				color: 'scrapscache.text'
-			},
-			audioBox: { display: 'grid', flex: '1', placeItems: 'center', p: '2xl' },
-			audio: { w: 'full', maxW: '32rem' },
-			videoBox: {
-				display: 'flex',
-				flex: '1',
-				alignItems: 'center',
-				justifyContent: 'center',
-				bg: 'scrapscache.mediaSurface'
-			},
-			video: { maxH: 'full', maxW: 'full' },
-			pdf: { h: 'full', w: 'full', flex: '1', borderWidth: 0, bg: 'scrapscache.documentSurface' },
-			backIcon: { h: '1.5rem', w: '1.5rem' },
-			downloadIcon: { h: '1.25rem', w: '1.25rem' }
-		}
-	})();
 </script>
 
 <svelte:window onkeydown={attachment ? onKeydown : undefined} />
@@ -131,7 +99,7 @@
 		<div class={fs.shell}>
 			<header class={fs.header}>
 				<button type="button" class={headerBtn} onclick={close} aria-label="Close file">
-					<ChevronLeft class={ms.backIcon} aria-hidden="true" />
+					<ChevronLeft class={css({ h: '1.5rem', w: '1.5rem' })} aria-hidden="true" />
 				</button>
 				<div class={fs.title}>
 					{attachment.name || 'Attachment'}
@@ -145,7 +113,7 @@
 						aria-label="Download file"
 						title="Download file"
 					>
-						<Download class={ms.downloadIcon} aria-hidden="true" />
+						<Download class={css({ h: '1.25rem', w: '1.25rem' })} aria-hidden="true" />
 					</DownloadTrigger>
 				{/if}
 			</header>
@@ -155,18 +123,52 @@
 			{:else if failed}
 				<div class={fs.notice}>Could not open this attachment.</div>
 			{:else if isText}
-				<pre class={`scrollable ${ms.text}`}>{textContent ?? ''}</pre>
+				<pre
+					class={`scrollable ${css({
+						m: 0,
+						minH: 0,
+						flex: '1',
+						overflow: 'auto',
+						whiteSpace: 'pre-wrap',
+						wordBreak: 'break-word',
+						p: 'lg',
+						fontFamily: 'mono',
+						textStyle: 'body',
+						lineHeight: 'relaxed',
+						color: 'scrapscache.text'
+					})}`}>
+					{textContent ?? ''}
+				</pre>
 			{:else if isAudio && sourceUrl}
-				<div class={ms.audioBox}>
-					<audio class={ms.audio} controls src={sourceUrl}></audio>
+				<div class={css({ display: 'grid', flex: '1', placeItems: 'center', p: '2xl' })}>
+					<audio class={css({ w: 'full', maxW: '32rem' })} controls src={sourceUrl}></audio>
 				</div>
 			{:else if isVideo && sourceUrl}
 				<!-- svelte-ignore a11y_media_has_caption -->
-				<div class={ms.videoBox}>
-					<video class={ms.video} controls playsinline src={sourceUrl}></video>
+				<div
+					class={css({
+						display: 'flex',
+						flex: '1',
+						alignItems: 'center',
+						justifyContent: 'center',
+						bg: 'scrapscache.mediaSurface'
+					})}
+				>
+					<video class={css({ maxH: 'full', maxW: 'full' })} controls playsinline src={sourceUrl}
+					></video>
 				</div>
 			{:else if isPdf && sourceUrl}
-				<iframe class={ms.pdf} title={attachment.name || 'Attachment'} src={sourceUrl}></iframe>
+				<iframe
+					class={css({
+						h: 'full',
+						w: 'full',
+						flex: '1',
+						borderWidth: 0,
+						bg: 'scrapscache.documentSurface'
+					})}
+					title={attachment.name || 'Attachment'}
+					src={sourceUrl}
+				></iframe>
 			{/if}
 		</div>
 	</div>

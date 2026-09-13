@@ -13,11 +13,10 @@ const textRecipe = defineRecipe({
 			heading: { textStyle: 'heading' }
 		},
 		tone: {
-			default: {},
 			danger: { color: 'scrapscache.danger' }
 		}
 	},
-	defaultVariants: { style: 'body', tone: 'default' }
+	defaultVariants: { style: 'body' }
 });
 
 const mediaHazeButton = (color: string) => ({
@@ -493,10 +492,6 @@ const noteCardRecipe = defineSlotRecipe({
 				}
 			}
 		}
-	},
-	defaultVariants: {
-		pinned: false,
-		trashed: false
 	}
 });
 
@@ -551,8 +546,7 @@ const checklistRecipe = defineSlotRecipe({
 		checked: {
 			true: { root: { bg: 'scrapscache.interactiveActive' } }
 		}
-	},
-	defaultVariants: { indented: false, checked: false }
+	}
 });
 
 const noteBodyRecipe = defineSlotRecipe({
@@ -576,7 +570,6 @@ const noteBodyRecipe = defineSlotRecipe({
 	},
 	variants: {
 		mode: {
-			display: {},
 			editor: {
 				container: {
 					display: 'block',
@@ -599,15 +592,12 @@ const noteBodyRecipe = defineSlotRecipe({
 			}
 		},
 		checked: {
-			true: { line: { textDecoration: 'line-through', opacity: 0.5 } },
-			false: {}
+			true: { line: { textDecoration: 'line-through', opacity: 0.5 } }
 		},
 		indented: {
-			true: { line: { fontSize: 'compact' } },
-			false: {}
+			true: { line: { fontSize: 'compact' } }
 		}
-	},
-	defaultVariants: { mode: 'display', checked: false, indented: false }
+	}
 });
 
 const choiceCardRecipe = defineSlotRecipe({
@@ -652,8 +642,7 @@ const choiceCardRecipe = defineSlotRecipe({
 			compressed: { description: { opacity: 0.85 } },
 			hd: { description: { color: 'scrapscache.textMuted' } }
 		}
-	},
-	defaultVariants: { interactive: false, danger: false, compact: false }
+	}
 });
 
 const dialogRecipe = defineSlotRecipe({
@@ -796,9 +785,6 @@ const dialogRecipe = defineSlotRecipe({
 				title: { display: 'flex', alignItems: 'center', gap: 'sm', fontWeight: 'interactive' }
 			}
 		}
-	},
-	defaultVariants: {
-		size: 'md'
 	}
 });
 

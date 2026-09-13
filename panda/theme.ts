@@ -22,8 +22,7 @@ export const theme = {
 				}
 			},
 			fonts: {
-				sans: { value: ['"Google Sans"', '"Roboto"', 'system-ui', 'Arial', 'sans-serif'] },
-				roboto: { value: ['"Roboto"', 'system-ui', 'sans-serif'] }
+				sans: { value: ['"Google Sans"', '"Roboto"', 'system-ui', 'Arial', 'sans-serif'] }
 			},
 			borderWidths: {
 				hairline: { value: '1px' },

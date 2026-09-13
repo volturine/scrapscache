@@ -8,8 +8,9 @@ export default defineConfig({
 	exclude: [],
 	staticCss: {
 		recipes: {
-			// Note colors are selected from persisted data and need all generated variants.
+			// These values are selected from persisted or reactive state and need all generated variants.
 			noteSurface: ['*'],
+			noteCard: ['*'],
 			checklist: ['*'],
 			noteBody: ['*']
 		}

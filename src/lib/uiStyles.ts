@@ -61,12 +61,10 @@ export const progressMeter = sva({
 	},
 	variants: {
 		size: {
-			default: {},
 			compact: {
 				track: { h: '0.25rem' },
 				bar: { transition: 'width 1000ms linear' }
 			}
 		}
-	},
-	defaultVariants: { size: 'default' }
+	}
 });

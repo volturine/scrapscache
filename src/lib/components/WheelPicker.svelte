@@ -1,6 +1,6 @@
 <script lang="ts" generics="T extends string | number">
 	import { onMount } from 'svelte';
-	import { cva, sva } from 'styled-system/css';
+	import { css, cva } from 'styled-system/css';
 
 	const ITEM_H = 36;
 	const VISIBLE = 5;
@@ -216,38 +216,31 @@
 		setValue(item.value);
 	}
 
-	const wc = sva({
-		slots: ['root', 'band', 'viewport', 'track'],
-		base: {
-			root: { position: 'relative' },
-			band: {
-				pointerEvents: 'none',
-				position: 'absolute',
-				insetX: 0,
-				top: '50%',
-				zIndex: 0,
-				h: '2.25rem',
-				transform: 'translateY(-50%)',
-				rounded: 'card',
-				bg: 'scrapscache.bg'
-			},
-			viewport: {
-				position: 'absolute',
-				inset: 0,
-				zIndex: 10,
-				overflow: 'hidden',
-				outline: 'none',
-				touchAction: 'none',
-				userSelect: 'none',
-				WebkitUserSelect: 'none',
-				WebkitMaskImage:
-					'linear-gradient(to bottom, transparent 0%, #000 28%, #000 72%, transparent 100%)',
-				maskImage:
-					'linear-gradient(to bottom, transparent 0%, #000 28%, #000 72%, transparent 100%)'
-			},
-			track: { willChange: 'transform' }
-		}
-	})();
+	const band = css({
+		pointerEvents: 'none',
+		position: 'absolute',
+		insetX: 0,
+		top: '50%',
+		zIndex: 0,
+		h: '2.25rem',
+		transform: 'translateY(-50%)',
+		rounded: 'card',
+		bg: 'scrapscache.bg'
+	});
+	const viewport = css({
+		position: 'absolute',
+		inset: 0,
+		zIndex: 10,
+		overflow: 'hidden',
+		outline: 'none',
+		touchAction: 'none',
+		userSelect: 'none',
+		WebkitUserSelect: 'none',
+		WebkitMaskImage:
+			'linear-gradient(to bottom, transparent 0%, #000 28%, #000 72%, transparent 100%)',
+		maskImage: 'linear-gradient(to bottom, transparent 0%, #000 28%, #000 72%, transparent 100%)'
+	});
+	const track = css({ willChange: 'transform' });
 
 	const wheelItemRecipe = cva({
 		base: {
@@ -280,10 +273,10 @@
 	});
 </script>
 
-<div class={`${wc.root} ${className}`} style="height: {ITEM_H * VISIBLE}px">
-	<div class={wc.band} aria-hidden="true"></div>
+<div class={`${css({ position: 'relative' })} ${className}`} style="height: {ITEM_H * VISIBLE}px">
+	<div class={band} aria-hidden="true"></div>
 	<div
-		class={wc.viewport}
+		class={viewport}
 		style="height: {ITEM_H * VISIBLE}px"
 		role="listbox"
 		tabindex="0"
@@ -296,7 +289,7 @@
 		onpointerup={handlePointerUp}
 		onpointercancel={handlePointerUp}
 	>
-		<div class={wc.track} style="transform: translate3d(0, {-offset}px, 0)">
+		<div class={track} style="transform: translate3d(0, {-offset}px, 0)">
 			{#each looped as row (row.visual)}
 				{@const dist =
 					row.visual === centerIndex

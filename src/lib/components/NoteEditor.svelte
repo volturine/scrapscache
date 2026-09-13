@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { cva, cx, sva } from 'styled-system/css';
+	import { css, cva, cx } from 'styled-system/css';
 	import { dialog, iconButton, input, noteSurface } from 'styled-system/recipes';
 	import { flex, hstack, spacer } from 'styled-system/patterns';
 	import { Dialog } from '@ark-ui/svelte/dialog';
@@ -474,108 +474,91 @@
 		};
 	}
 
-	const sheet = sva({
-		slots: [
-			'overlay',
-			'sheetWrap',
-			'sheetBox',
-			'dialog',
-			'header',
-			'scroller',
-			'titleField',
-			'fileDropHint',
-			'subDialogBackdrop',
-			'popupContent',
-			'reminderButton'
-		],
-		base: {
-			overlay: { position: 'fixed', inset: 0, zIndex: 50 },
-			sheetWrap: {
-				position: 'absolute',
-				inset: 0,
-				display: 'flex',
-				alignItems: { base: 'flex-start', md: 'center' },
-				justifyContent: 'center',
-				px: 'lg',
-				pb: 'var(--app-sheet-pad-bottom)'
-			},
-			sheetBox: {
-				h: { base: 'full', md: '72%' },
-				maxH: 'full',
-				minH: 0,
-				w: 'full',
-				maxW: '2xl',
-				rounded: 'sheet',
-				boxShadow: 'noteSheet'
-			},
-			dialog: {
-				position: 'relative',
-				display: 'flex',
-				h: 'full',
-				w: 'full',
-				flexDirection: 'column',
-				overflow: 'hidden',
-				rounded: 'sheet'
-			},
-			header: {
-				display: 'flex',
-				flexShrink: 0,
-				alignItems: 'center',
-				gap: 'sm',
-				borderBottomWidth: 'hairline',
-				borderColor: 'scrapscache.borderFaint',
-				px: 'sm',
-				py: 'sm'
-			},
-			scroller: {
-				minH: 0,
-				flex: '1',
-				touchAction: 'pan-y',
-				overflowY: 'auto',
-				overflowX: 'hidden',
-				overscrollBehavior: 'contain',
-				px: '2xl',
-				pt: 'lg',
-				pb: 'md'
-			},
-			titleField: {
-				mb: 'md',
-				display: 'block',
-				w: 'full',
-				resize: 'none',
-				overflow: 'hidden',
-				wordBreak: 'break-word',
-				p: 0,
-				textStyle: 'editorTitle',
-				_placeholder: { color: 'scrapscache.textMuted' },
-				fieldSizing: 'content',
-				transition: 'none'
-			},
-			fileDropHint: {
-				pointerEvents: 'none',
-				position: 'absolute',
-				inset: 0,
-				zIndex: 20,
-				display: 'grid',
-				placeItems: 'center',
-				rounded: 'sheet',
-				borderWidth: 'strong',
-				borderStyle: 'dashed',
-				borderColor: 'scrapscache.accent',
-				bg: 'scrapscache.accentSubtle'
-			},
-			subDialogBackdrop: {
-				bg: 'scrapscache.backdropSoft',
-				backdropFilter: 'none',
-				zIndex: 60
-			},
-			popupContent: { outline: 'none' },
-			reminderButton: { minW: 0 }
-		}
-	})();
+	const overlay = css({ position: 'fixed', inset: 0, zIndex: 50 });
+	const sheetWrap = css({
+		position: 'absolute',
+		inset: 0,
+		display: 'flex',
+		alignItems: { base: 'flex-start', md: 'center' },
+		justifyContent: 'center',
+		px: 'lg',
+		pb: 'var(--app-sheet-pad-bottom)'
+	});
+	const sheetBox = css({
+		h: { base: 'full', md: '72%' },
+		maxH: 'full',
+		minH: 0,
+		w: 'full',
+		maxW: '2xl',
+		rounded: 'sheet',
+		boxShadow: 'noteSheet'
+	});
+	const dialogSurface = css({
+		position: 'relative',
+		display: 'flex',
+		h: 'full',
+		w: 'full',
+		flexDirection: 'column',
+		overflow: 'hidden',
+		rounded: 'sheet'
+	});
+	const header = css({
+		display: 'flex',
+		flexShrink: 0,
+		alignItems: 'center',
+		gap: 'sm',
+		borderBottomWidth: 'hairline',
+		borderColor: 'scrapscache.borderFaint',
+		px: 'sm',
+		py: 'sm'
+	});
+	const scroller = css({
+		minH: 0,
+		flex: '1',
+		touchAction: 'pan-y',
+		overflowY: 'auto',
+		overflowX: 'hidden',
+		overscrollBehavior: 'contain',
+		px: '2xl',
+		pt: 'lg',
+		pb: 'md'
+	});
+	const titleStyles = css({
+		mb: 'md',
+		display: 'block',
+		w: 'full',
+		resize: 'none',
+		overflow: 'hidden',
+		wordBreak: 'break-word',
+		p: 0,
+		textStyle: 'editorTitle',
+		_placeholder: { color: 'scrapscache.textMuted' },
+		fieldSizing: 'content',
+		transition: 'none'
+	});
+	const fileDropHint = css({
+		pointerEvents: 'none',
+		position: 'absolute',
+		inset: 0,
+		zIndex: 20,
+		display: 'grid',
+		placeItems: 'center',
+		rounded: 'sheet',
+		borderWidth: 'strong',
+		borderStyle: 'dashed',
+		borderColor: 'scrapscache.accent',
+		bg: 'scrapscache.accentSubtle'
+	});
+	const subDialogBackdrop = css({
+		bg: 'scrapscache.backdropSoft',
+		backdropFilter: 'none',
+		zIndex: 60
+	});
+	const popupContent = css({ outline: 'none' });
+	const reminderButton = css({ minW: 0 });
 	const editorDialogClass = $derived(
 		cx(
-			sheet.dialog,
+			dialogSurface,
 			note ? noteSurface({ color: note.color }) : undefined,
 			paletteOpen || labelOpen ? 'editor-caret-hidden' : undefined
 		)
@@ -588,9 +571,9 @@
 			}
 		}
 	});
-	const titleField = cx(input({ variant: 'unstyled' }), sheet.titleField);
+	const titleField = cx(input({ variant: 'unstyled' }), titleStyles);
 	const subDialog = dialog({ size: 'sm' });
-	const dialogBackdrop = cx(subDialog.backdrop, sheet.subDialogBackdrop);
+	const dialogBackdrop = cx(subDialog.backdrop, subDialogBackdrop);
 	const dialogPositioner = flex({
 		position: 'fixed',
 		inset: 0,
@@ -598,7 +581,6 @@
 		align: 'center',
 		justify: 'center'
 	});
-	const popupContent = sheet.popupContent;
 </script>
 
 <svelte:window
@@ -612,7 +594,7 @@
 
 {#if isOpen && note}
 	<div
-		class={sheet.overlay}
+		class={overlay}
 		data-editor-overlay
 		role="presentation"
 		onpointerdown={handleBackdropPointerDown}
@@ -622,10 +604,10 @@
 		ondragleave={handleFileDragLeave}
 		ondropcapture={handleFileDrop}
 	>
-		<div class={sheet.sheetWrap} role="presentation">
+		<div class={sheetWrap} role="presentation">
 			<!-- Clicking blank editor chrome is a pointer convenience; keyboard users focus the fields directly. -->
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
-			<div class={sheet.sheetBox}>
+			<div class={sheetBox}>
 				<div
 					bind:this={editorDialog}
 					class={editorDialogClass}
@@ -639,7 +621,7 @@
 					onclick={focusBodyFromPage}
 				>
 					<!-- Header -->
-					<header class={sheet.header}>
+					<header class={header}>
 						<button
 							type="button"
 							class={iconButton({ variant: 'ghost', size: 'standard' })}
@@ -656,7 +638,7 @@
 							{#if note.reminder != null}
 								<button
 									type="button"
-									class={sheet.reminderButton}
+									class={reminderButton}
 									title={reminderOverdue ? `Overdue · ${reminderLabel}` : reminderLabel}
 									onclick={openReminder}
 									aria-label={reminderOverdue
@@ -692,10 +674,7 @@
 						</div>
 					</header>
 
-					<div
-						bind:this={editorScroller}
-						class={`note-scrollbar-hidden scrollable ${sheet.scroller}`}
-					>
+					<div bind:this={editorScroller} class={`note-scrollbar-hidden scrollable ${scroller}`}>
 						<textarea
 							use:autoResizeTitle={title}
 							placeholder="Title"
@@ -725,7 +704,7 @@
 					</div>
 
 					{#if fileDropActive}
-						<div class={sheet.fileDropHint} data-file-drop-hint aria-hidden="true">
+						<div class={fileDropHint} data-file-drop-hint aria-hidden="true">
 							<div
 								class={hstack({
 									gap: 'sm',

@@ -6,7 +6,7 @@
 	import type { Note } from '$lib/types';
 	import NoteBodyDisplay from './NoteBodyDisplay.svelte';
 	import ReminderLabel from './ReminderLabel.svelte';
-	import { cx, sva } from 'styled-system/css';
+	import { cx, css } from 'styled-system/css';
 	import { badge, noteCard, noteSurface } from 'styled-system/recipes';
 
 	let { note, shield = false }: { note: Note; shield?: boolean } = $props();
@@ -20,30 +20,27 @@
 	// The board card keeps its own box (16px radius, no max height) and a fixed
 	// scroll window; the shared noteCard recipe covers the pieces that match.
 	const card = noteCard();
-	const styles = sva({
-		slots: ['root', 'viewport', 'content', 'reminder'],
-		base: {
-			root: {
-				overflow: 'hidden',
-				rounded: 'dialog',
-				borderWidth: 'hairline',
-				borderColor: 'scrapscache.borderFaint',
-				boxShadow: 'sm',
-				touchAction: 'pan-y',
-				userSelect: 'none'
-			},
-			viewport: { position: 'relative', maxH: '240px', overflow: 'hidden' },
-			content: { p: 'md' },
-			reminder: { mb: '2xs' }
-		}
-	})();
 </script>
 
-<div class={cx('kanban-card', noteSurface({ color: note.color }), styles.root)}>
-	<div class={styles.viewport}>
-		<div class={styles.content}>
+<div
+	class={cx(
+		'kanban-card',
+		noteSurface({ color: note.color }),
+		css({
+			overflow: 'hidden',
+			rounded: 'dialog',
+			borderWidth: 'hairline',
+			borderColor: 'scrapscache.borderFaint',
+			boxShadow: 'sm',
+			touchAction: 'pan-y',
+			userSelect: 'none'
+		})
+	)}
+>
+	<div class={css({ position: 'relative', maxH: '240px', overflow: 'hidden' })}>
+		<div class={css({ p: 'md' })}>
 			{#if note.reminder != null}
-				<div class={styles.reminder}>
+				<div class={css({ mb: '2xs' })}>
 					<ReminderLabel reminder={note.reminder} variant="inline" />
 				</div>
 			{/if}

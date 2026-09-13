@@ -54,7 +54,7 @@
 		return () => observer.disconnect();
 	});
 
-	const body = noteBody({ mode: 'display' });
+	const body = noteBody();
 	const c = canvasPreview({ mode: 'display' });
 	const f = filePreview({ mode: 'display' });
 	const p = photoPreview({ mode: 'display' });
@@ -76,9 +76,7 @@
 						</svg>
 					{/if}
 				</span>
-				<span
-					class={noteBody({ mode: 'display', checked: seg.checked, indented: seg.indent > 0 }).line}
-				>
+				<span class={noteBody({ checked: seg.checked, indented: seg.indent > 0 }).line}>
 					{seg.text || '\u00a0'}
 				</span>
 			</div>
@@ -89,7 +87,7 @@
 				style={seg.indent > 0 ? `padding-left: ${seg.indent * 1.25}rem` : undefined}
 			>
 				<span class={body.bullet} aria-hidden="true">•</span>
-				<span class={noteBody({ mode: 'display', indented: seg.indent > 0 }).line}>
+				<span class={noteBody({ indented: seg.indent > 0 }).line}>
 					{seg.text || '\u00a0'}
 				</span>
 			</div>

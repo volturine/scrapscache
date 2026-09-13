@@ -3,7 +3,7 @@
 	import { ChevronLeft, ChevronRight } from '@lucide/svelte';
 	import type { DateValue } from '@internationalized/date';
 	import type { Snippet } from 'svelte';
-	import { cva, sva } from 'styled-system/css';
+	import { css, cva } from 'styled-system/css';
 	import { iconButton } from 'styled-system/recipes';
 
 	let {
@@ -26,62 +26,57 @@
 
 	const navBtn = iconButton({ variant: 'ghost', size: 'xs' });
 
-	const styles = sva({
-		slots: ['panel', 'viewControl', 'viewButton', 'table', 'weekHeader', 'weekRow', 'dayCell'],
-		base: {
-			panel: {
-				minH: '16.25rem',
-				display: 'flex',
-				flexDirection: 'column',
-				'& [data-part="view"]:not([hidden])': { display: 'flex', flexDirection: 'column' },
-				'& .calendar-table-fill [data-part="table-body"]': { h: '100%' },
-				'& .calendar-table-fill [data-part="table-row"]': { h: 'calc(13.5rem / 3)' },
-				'& .calendar-table-fill [data-part="table-cell"]': { h: 'inherit', verticalAlign: 'middle' }
-			},
-			viewControl: {
-				mb: 'sm',
-				display: 'flex',
-				h: '2.25rem',
-				alignItems: 'center',
-				justifyContent: 'space-between'
-			},
-			viewButton: {
-				rounded: 'card',
-				px: 'sm',
-				py: '2xs',
-				textStyle: 'bodyStrong',
-				color: 'scrapscache.text',
-				cursor: 'pointer',
-				transition: 'colors 150ms ease',
-				_hoverable: { bg: 'scrapscache.interactiveHover' }
-			},
-			table: { w: 'full', tableLayout: 'fixed', h: '13.5rem' },
-			weekHeader: {
-				h: '1.5rem',
-				textAlign: 'center',
-				textStyle: 'captionStrong',
-				color: 'scrapscache.textMuted'
-			},
-			weekRow: { textAlign: 'center' },
-			dayCell: {
-				position: 'relative',
-				'&:has([data-in-range])': {
-					_before: {
-						content: '""',
-						position: 'absolute',
-						top: '50%',
-						left: 0,
-						right: 0,
-						h: '2rem',
-						transform: 'translateY(-50%)',
-						bg: 'scrapscache.accent/18'
-					}
-				},
-				'&:has([data-range-start])': { _before: { left: '50%' } },
-				'&:has([data-range-end])': { _before: { right: '50%' } }
+	const panel = css({
+		minH: '16.25rem',
+		display: 'flex',
+		flexDirection: 'column',
+		'& [data-part="view"]:not([hidden])': { display: 'flex', flexDirection: 'column' },
+		'& .calendar-table-fill [data-part="table-body"]': { h: '100%' },
+		'& .calendar-table-fill [data-part="table-row"]': { h: 'calc(13.5rem / 3)' },
+		'& .calendar-table-fill [data-part="table-cell"]': { h: 'inherit', verticalAlign: 'middle' }
+	});
+	const viewControl = css({
+		mb: 'sm',
+		display: 'flex',
+		h: '2.25rem',
+		alignItems: 'center',
+		justifyContent: 'space-between'
+	});
+	const viewButton = css({
+		rounded: 'card',
+		px: 'sm',
+		py: '2xs',
+		textStyle: 'bodyStrong',
+		color: 'scrapscache.text',
+		cursor: 'pointer',
+		transition: 'colors 150ms ease',
+		_hoverable: { bg: 'scrapscache.interactiveHover' }
+	});
+	const table = css({ w: 'full', tableLayout: 'fixed', h: '13.5rem' });
+	const weekHeader = css({
+		h: '1.5rem',
+		textAlign: 'center',
+		textStyle: 'captionStrong',
+		color: 'scrapscache.textMuted'
+	});
+	const weekRow = css({ textAlign: 'center' });
+	const dayCell = css({
+		position: 'relative',
+		'&:has([data-in-range])': {
+			_before: {
+				content: '""',
+				position: 'absolute',
+				top: '50%',
+				left: 0,
+				right: 0,
+				h: '2rem',
+				transform: 'translateY(-50%)',
+				bg: 'scrapscache.accent/18'
 			}
-		}
-	})();
+		},
+		'&:has([data-range-start])': { _before: { left: '50%' } },
+		'&:has([data-range-end])': { _before: { right: '50%' } }
+	});
 
 	const gridBtn = cva({
 		base: {
@@ -144,24 +139,24 @@
 	});
 </script>
 
-<div class={styles.panel}>
+<div class={panel}>
 	<DatePicker.View view="day">
 		<DatePicker.Context>
 			{#snippet render(datePicker)}
-				<DatePicker.ViewControl class={styles.viewControl}>
+				<DatePicker.ViewControl class={viewControl}>
 					<DatePicker.PrevTrigger class={navBtn} aria-label="Previous month">
 						<ChevronLeft size={16} />
 					</DatePicker.PrevTrigger>
-					<DatePicker.ViewTrigger class={styles.viewButton}>
+					<DatePicker.ViewTrigger class={viewButton}>
 						<DatePicker.RangeText />
 					</DatePicker.ViewTrigger>
 					<DatePicker.NextTrigger class={navBtn} aria-label="Next month">
 						<ChevronRight size={16} />
 					</DatePicker.NextTrigger>
 				</DatePicker.ViewControl>
-				<DatePicker.Table class={['calendar-table', styles.table]}>
+				<DatePicker.Table class={['calendar-table', table]}>
 					<DatePicker.TableHead>
-						<DatePicker.TableRow class={styles.weekHeader}>
+						<DatePicker.TableRow class={weekHeader}>
 							{#each datePicker().weekDays as weekDay (weekDay.value.toString())}
 								<DatePicker.TableHeader>{weekDay.narrow}</DatePicker.TableHeader>
 							{/each}
@@ -169,9 +164,9 @@
 					</DatePicker.TableHead>
 					<DatePicker.TableBody>
 						{#each datePicker().weeks as week (week[0].toString())}
-							<DatePicker.TableRow class={styles.weekRow}>
+							<DatePicker.TableRow class={weekRow}>
 								{#each week as day (day.toString())}
-									<DatePicker.TableCell value={day} class={styles.dayCell}>
+									<DatePicker.TableCell value={day} class={dayCell}>
 										{#if onDayClick || onDayPointerDown}
 											<DatePicker.TableCellTrigger>
 												{#snippet asChild(triggerProps)}
@@ -220,18 +215,18 @@
 	<DatePicker.View view="month">
 		<DatePicker.Context>
 			{#snippet render(datePicker)}
-				<DatePicker.ViewControl class={styles.viewControl}>
+				<DatePicker.ViewControl class={viewControl}>
 					<DatePicker.PrevTrigger class={navBtn} aria-label="Previous month">
 						<ChevronLeft size={16} />
 					</DatePicker.PrevTrigger>
-					<DatePicker.ViewTrigger class={styles.viewButton}>
+					<DatePicker.ViewTrigger class={viewButton}>
 						<DatePicker.RangeText />
 					</DatePicker.ViewTrigger>
 					<DatePicker.NextTrigger class={navBtn} aria-label="Next year">
 						<ChevronRight size={16} />
 					</DatePicker.NextTrigger>
 				</DatePicker.ViewControl>
-				<DatePicker.Table class={['calendar-table', 'calendar-table-fill', styles.table]}>
+				<DatePicker.Table class={['calendar-table', 'calendar-table-fill', table]}>
 					<DatePicker.TableBody>
 						{#each datePicker().getMonthsGrid({ columns: 4, format: 'short' }) as months, row (row)}
 							<DatePicker.TableRow>
@@ -253,18 +248,18 @@
 	<DatePicker.View view="year">
 		<DatePicker.Context>
 			{#snippet render(datePicker)}
-				<DatePicker.ViewControl class={styles.viewControl}>
+				<DatePicker.ViewControl class={viewControl}>
 					<DatePicker.PrevTrigger class={navBtn} aria-label="Previous decade">
 						<ChevronLeft size={16} />
 					</DatePicker.PrevTrigger>
-					<DatePicker.ViewTrigger class={styles.viewButton}>
+					<DatePicker.ViewTrigger class={viewButton}>
 						<DatePicker.RangeText />
 					</DatePicker.ViewTrigger>
 					<DatePicker.NextTrigger class={navBtn} aria-label="Next decade">
 						<ChevronRight size={16} />
 					</DatePicker.NextTrigger>
 				</DatePicker.ViewControl>
-				<DatePicker.Table class={['calendar-table', 'calendar-table-fill', styles.table]}>
+				<DatePicker.Table class={['calendar-table', 'calendar-table-fill', table]}>
 					<DatePicker.TableBody>
 						{#each datePicker().getYearsGrid({ columns: 4 }) as years, row (row)}
 							<DatePicker.TableRow>

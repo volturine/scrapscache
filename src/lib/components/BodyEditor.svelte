@@ -1076,19 +1076,15 @@
 	const taskShell = cva({
 		variants: {
 			focused: {
-				true: { bg: 'scrapscache.surfaceSubtle' },
-				false: {}
+				true: { bg: 'scrapscache.surfaceSubtle' }
 			},
 			root: {
-				true: { mt: '3xs', borderTopRadius: 'card', pt: '2xs' },
-				false: {}
+				true: { mt: '3xs', borderTopRadius: 'card', pt: '2xs' }
 			},
 			last: {
-				true: { mb: '3xs', borderBottomRadius: 'card', pb: '2xs' },
-				false: {}
+				true: { mb: '3xs', borderBottomRadius: 'card', pb: '2xs' }
 			}
-		},
-		defaultVariants: { focused: false, root: false, last: false }
+		}
 	});
 
 	const addSubtaskBtn = cva({

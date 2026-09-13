@@ -320,11 +320,7 @@ body {
 	text-decoration-thickness: 1.5px;
 }
 .markdown-token-code {
-	border-radius: 0.25rem;
-	background: color-mix(in srgb, var(--scrapscache-text) 9%, transparent);
-	padding: 0.06em 0.3em;
-	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
-	font-size: 0.9em;
+	color: #a16207;
 }
 .markdown-token-heading-1,
 .markdown-token-heading-2,
@@ -355,6 +351,18 @@ body {
 .markdown-raw .markdown-token-marker {
 	display: inline;
 }
+.markdown-raw {
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+}
+.markdown-raw .markdown-token-heading-1,
+.markdown-raw .markdown-token-heading-2,
+.markdown-raw .markdown-token-heading-3,
+.markdown-raw .markdown-token-heading-4,
+.markdown-raw .markdown-token-heading-5,
+.markdown-raw .markdown-token-heading-6 {
+	font-size: inherit;
+	font-weight: inherit;
+}
 .markdown-raw .markdown-token-marker-code,
 .markdown-raw .markdown-token-code {
 	color: #ca8a04;
@@ -383,26 +391,28 @@ body {
 	font-style: normal;
 	text-decoration: none;
 }
-.markdown-raw .markdown-token-code {
-	background: color-mix(in srgb, #facc15 16%, transparent);
-}
 .dark .markdown-token-marker {
-	color: #f0abfc;
+	color: #ce5d97;
 }
 .dark .markdown-token-marker-code,
 .dark .markdown-raw .markdown-token-marker-code,
 .dark .markdown-raw .markdown-token-code {
-	color: #fde047;
+	color: #d0a215;
 }
 .dark .markdown-token-marker-heading,
-.dark .markdown-raw .markdown-token-marker-heading,
+.dark .markdown-raw .markdown-token-marker-heading {
+	color: #ce5d97;
+}
+.dark .markdown-raw {
+	color: #cecdc3;
+}
 .dark .markdown-raw .markdown-token-heading-1,
 .dark .markdown-raw .markdown-token-heading-2,
 .dark .markdown-raw .markdown-token-heading-3,
 .dark .markdown-raw .markdown-token-heading-4,
 .dark .markdown-raw .markdown-token-heading-5,
 .dark .markdown-raw .markdown-token-heading-6 {
-	color: #fbbf24;
+	color: #d0a215;
 }
 .dark .markdown-raw .markdown-token-marker-strong,
 .dark .markdown-raw .markdown-token-marker-emphasis,
@@ -410,7 +420,7 @@ body {
 .dark .markdown-raw .markdown-token-strong,
 .dark .markdown-raw .markdown-token-emphasis,
 .dark .markdown-raw .markdown-token-strikethrough {
-	color: #f0abfc;
+	color: #ce5d97;
 }
 
 .scrapscache-status-success,

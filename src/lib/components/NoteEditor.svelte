@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Dialog } from '@ark-ui/svelte/dialog';
-	import { flushSync, onMount } from 'svelte';
+	import { flushSync, onMount, tick } from 'svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
 	import { noteToPlainText, noteAttachments, splitPastedHeading } from '$lib/checklistBody';
@@ -16,18 +16,20 @@
 	import { appClock } from '$lib/appClock.svelte';
 	import { formatReminder, isReminderOverdue } from '$lib/utils';
 	import ReminderLabel from './ReminderLabel.svelte';
-	import { Bell, ChevronLeft, Paperclip, Pin } from '@lucide/svelte';
+	import { Bell, ChevronLeft, Lock, LockOpen, Paperclip, Pin } from '@lucide/svelte';
 	import { revealEditorField, revealEditorPoint } from '$lib/editorVisibility';
 	import { getClipboardFiles } from '$lib/noteImages';
 
 	let {
 		noteId = $bindable(),
 		onClose,
-		registerClose
+		registerClose,
+		autofocusBody = false
 	}: {
 		noteId: string | null;
 		onClose: () => void;
 		registerClose?: (close: () => void) => void;
+		autofocusBody?: boolean;
 	} = $props();
 
 	const note = $derived(noteId ? notesStore.notes.find((n) => n.id === noteId) : null);
@@ -165,6 +167,14 @@
 			});
 			window.addEventListener('scroll', onOuterScroll, { capture: true, passive: false });
 			viewport?.addEventListener('scroll', onOuterScroll);
+		}
+		if (autofocusBody) {
+			void tick().then(() => {
+				bodyEditor?.focusDefault();
+				setTimeout(() => {
+					bodyEditor?.focusDefault();
+				}, 50);
+			});
 		}
 		return () => {
 			registerClose?.(() => {});
@@ -582,6 +592,19 @@
 									fill={note.pinned ? 'currentColor' : 'none'}
 									aria-hidden="true"
 								/>
+							</button>
+							<button
+								type="button"
+								class="icon-btn h-9 w-9 p-2"
+								title={note.secret ? 'Remove secret' : 'Make secret'}
+								onclick={() => commit({ secret: !note.secret })}
+								aria-label={note.secret ? 'Remove secret' : 'Make secret'}
+							>
+								{#if note.secret}
+									<Lock class="h-5 w-5 text-amber-500 dark:text-amber-400" aria-hidden="true" />
+								{:else}
+									<LockOpen class="h-5 w-5" aria-hidden="true" />
+								{/if}
 							</button>
 						</div>
 					</header>

@@ -445,6 +445,7 @@ export class NotesStore {
 			archived: false,
 			trashed: false,
 			trashedAt: null,
+			...(partial.secret ? { secret: true } : {}),
 			createdAt: now,
 			updatedAt: now,
 			reminder: partial.reminder ?? null,
@@ -457,6 +458,7 @@ export class NotesStore {
 				pinned: now,
 				archived: now,
 				trashed: now,
+				secret: now,
 				reminder: now,
 				labels: now,
 				images: now,
@@ -482,6 +484,7 @@ export class NotesStore {
 		if ('pinned' in patch) fields.push('pinned');
 		if ('archived' in patch) fields.push('archived');
 		if ('trashed' in patch) fields.push('trashed');
+		if ('secret' in patch) fields.push('secret');
 		if ('reminder' in patch) fields.push('reminder');
 		if ('labels' in patch) fields.push('labels');
 		if ('images' in patch) fields.push('images');
@@ -512,6 +515,12 @@ export class NotesStore {
 		const n = this.notes.find((x) => x.id === id);
 		if (!n) return;
 		this.updateNote(id, { archived: !n.archived, pinned: false });
+	}
+
+	toggleSecret(id: string): void {
+		const n = this.notes.find((x) => x.id === id);
+		if (!n) return;
+		this.updateNote(id, { secret: !n.secret });
 	}
 
 	setColor(id: string, color: NoteColor): void {

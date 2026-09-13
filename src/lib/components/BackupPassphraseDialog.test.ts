@@ -26,4 +26,28 @@ describe('BackupPassphraseDialog', () => {
 		expect(overlay.classList.contains('absolute')).toBe(true);
 		expect(overlay.classList.contains('fixed')).toBe(false);
 	});
+
+	it('sets aria-invalid on passphrase input when error is provided', () => {
+		const { unmount } = render(BackupPassphraseDialog, {
+			props: {
+				mode: 'import',
+				error: 'Wrong passphrase',
+				onSubmit: vi.fn(),
+				onClose: vi.fn()
+			}
+		});
+		const input = document.body.querySelector('input[type="password"]') as HTMLInputElement;
+		expect(input.getAttribute('aria-invalid')).toBe('true');
+		unmount();
+
+		render(BackupPassphraseDialog, {
+			props: {
+				mode: 'import',
+				onSubmit: vi.fn(),
+				onClose: vi.fn()
+			}
+		});
+		const cleanInput = document.body.querySelector('input[type="password"]') as HTMLInputElement;
+		expect(cleanInput.getAttribute('aria-invalid')).toBe('false');
+	});
 });

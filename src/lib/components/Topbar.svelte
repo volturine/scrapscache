@@ -27,12 +27,14 @@
 		Cloud,
 		Download,
 		ExternalLink,
+		FileText,
 		LayoutGrid,
 		List,
 		Menu as MenuIcon,
 		Moon,
 		Search,
 		Settings,
+		Shield,
 		Sun,
 		Upload,
 		X
@@ -337,6 +339,30 @@
 							>
 								<ExternalLink class="h-4 w-4 shrink-0" aria-hidden="true" />
 								Report an issue
+							</a>
+						{/snippet}
+					</Menu.Item>
+					<Menu.Item value="privacy">
+						{#snippet asChild(props)}
+							<a
+								{...props()}
+								href="/privacy"
+								class="flex h-8 w-full items-center gap-2 px-3 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/5 dark:hover:bg-white/10"
+							>
+								<Shield class="h-4 w-4 shrink-0" aria-hidden="true" />
+								Privacy policy
+							</a>
+						{/snippet}
+					</Menu.Item>
+					<Menu.Item value="terms">
+						{#snippet asChild(props)}
+							<a
+								{...props()}
+								href="/terms"
+								class="flex h-8 w-full items-center gap-2 px-3 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/5 dark:hover:bg-white/10"
+							>
+								<FileText class="h-4 w-4 shrink-0" aria-hidden="true" />
+								Terms of service
 							</a>
 						{/snippet}
 					</Menu.Item>

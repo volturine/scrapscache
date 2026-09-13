@@ -55,6 +55,7 @@
 					sitekey,
 					action,
 					theme: 'auto',
+					size: 'flexible',
 					callback: (value: string) => (token = value),
 					'expired-callback': () => (token = ''),
 					'error-callback': () => {
@@ -74,7 +75,7 @@
 	}
 </script>
 
-<div {@attach mount} class="flex min-h-[65px] justify-center"></div>
+<div {@attach mount} class="min-h-[65px] w-full"></div>
 {#if failed}
 	<p class="text-center text-sm text-[var(--scrapscache-danger)]" role="alert">
 		Human verification could not load. Check your connection and reopen this dialog.

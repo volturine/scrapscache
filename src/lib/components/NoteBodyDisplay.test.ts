@@ -151,12 +151,26 @@ describe('NoteBodyDisplay Markdown blocks', () => {
 		uiStore.rawMarkdown = true;
 		const { container } = render(NoteBodyDisplay, {
 			props: {
-				note: note({ body: '| Rule name | Matches path |\n| --- | --- |\n| register | `/api` |' })
+				note: note({
+					body: [
+						'| Rule name | Matches path |',
+						'| --- | --- |',
+						'| register | `/api` |',
+						'',
+						'Leave headroom rather than tightening the rule.'
+					].join('\n')
+				})
 			}
 		});
 
 		expect(container.querySelector('[data-markdown-table]')).toBeNull();
-		expect(container.querySelector('.markdown-content')?.textContent).toContain('| Rule name |');
+		const rawTable = container.querySelector('[data-markdown-raw-table-container]');
+		expect(rawTable).toBeTruthy();
+		expect(rawTable?.textContent).toContain('| Rule name | Matches path |');
+		expect(rawTable?.textContent).toContain('| register | `/api` |');
+		expect(container.querySelector('.markdown-content')?.textContent).toContain(
+			'Leave headroom rather than tightening the rule.'
+		);
 		expect(container.querySelector('.markdown-content')?.classList).toContain('markdown-raw');
 	});
 });

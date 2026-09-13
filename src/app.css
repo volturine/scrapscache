@@ -433,6 +433,17 @@ body {
 .markdown-table-scroll {
 	margin: 0.5rem 0;
 }
+.markdown-raw-table-scroll {
+	width: 100%;
+}
+.markdown-raw-table-line {
+	width: max-content;
+	min-width: 100%;
+	max-width: none;
+	white-space: pre;
+	overflow-wrap: normal;
+	word-break: normal;
+}
 .markdown-table {
 	width: max-content;
 	min-width: 100%;
@@ -483,7 +494,9 @@ body {
 .markdown-code-token-flag {
 	color: #0369a1;
 }
-.markdown-content.markdown-raw,
+.markdown-content.markdown-raw {
+	overflow-x: visible;
+}
 [data-body-editor].markdown-raw {
 	overflow-x: auto;
 	overscroll-behavior-x: contain;
@@ -491,17 +504,16 @@ body {
 .markdown-content.markdown-raw > p,
 .markdown-content.markdown-raw > div[data-check-line],
 .markdown-content.markdown-raw > div[data-bullet-line] {
-	width: max-content;
-	min-width: 100%;
-	max-width: none;
-	white-space: pre;
-	overflow-wrap: normal;
+	width: 100%;
+	min-width: 0;
+	max-width: 100%;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
 	word-break: normal;
 }
 .markdown-content.markdown-raw > div[data-check-line] > .flex-1,
 .markdown-content.markdown-raw > div[data-bullet-line] > .flex-1 {
-	flex: 0 0 auto;
-	min-width: max-content;
+	min-width: 0;
 }
 [data-body-editor].markdown-raw > [data-editor-line] {
 	width: max-content;

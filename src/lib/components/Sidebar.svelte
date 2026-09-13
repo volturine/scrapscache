@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { cx, sva } from 'styled-system/css';
-	import { dialog, button, input } from 'styled-system/recipes';
+	import { dialog, button, input, menuItem } from 'styled-system/recipes';
 	import { hstack, vstack } from 'styled-system/patterns';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -182,20 +182,7 @@
 			'scroller'
 		],
 		base: {
-			row: {
-				display: 'flex',
-				alignItems: 'center',
-				gap: '0.75rem',
-				rounded: 'xl',
-				py: '0.625rem',
-				pl: '1rem',
-				pr: '0.5rem',
-				touchAction: 'manipulation',
-				WebkitTapHighlightColor: 'transparent',
-				transition: 'background-color 120ms ease, color 120ms ease',
-				_hoverable: { bg: 'scrapscache.interactiveHover' },
-				_active: { bg: 'scrapscache.interactiveActive' }
-			},
+			row: {},
 			icon: {
 				display: 'grid',
 				h: '1.75rem',
@@ -305,6 +292,7 @@
 		}
 	});
 	const sidebar = chrome({});
+	const menuRow = menuItem({ density: 'sidebar' });
 	const navLabelText = sidebar.navLabel;
 	const newLabelSpacing = sidebar.newLabelSpacing ?? '';
 	const labelInputClass = cx(input({ variant: 'unstyled' }), sidebar.labelInput);
@@ -316,7 +304,7 @@
 		type="button"
 		onclick={startCreateLabel}
 		data-sidebar-stay-open
-		class={[chrome({ navigation: true, active: false }).row, extraClass]}
+		class={[menuRow, chrome({ navigation: true, active: false }).row, extraClass]}
 	>
 		<span class={chrome({}).icon} aria-hidden="true">
 			<Plus size={16} strokeWidth={1.75} />
@@ -359,7 +347,7 @@
 		<button
 			type="button"
 			onclick={() => navigate(item.view)}
-			class={chrome({ navigation: true, active: isActive(item.view), wide: true }).row}
+			class={[menuRow, chrome({ navigation: true, active: isActive(item.view), wide: true }).row]}
 		>
 			<span class={chrome({ iconTone: 'nav' }).icon} aria-hidden="true">
 				<NavIcon size={18} strokeWidth={1.75} />
@@ -386,7 +374,7 @@
 		</div>
 
 		{#if labelsEditMode && creatingLabel}
-			<div class={chrome({ editing: true }).row} data-sidebar-stay-open>
+			<div class={[menuRow, chrome({ editing: true }).row]} data-sidebar-stay-open>
 				<span class={chrome({ iconTone: 'muted' }).icon} aria-hidden="true">
 					<Tag size={16} strokeWidth={1.75} aria-hidden="true" />
 				</span>
@@ -416,7 +404,7 @@
 					{#if labelsEditMode && renamingId === label.id}
 						<!-- Same box as the rows around it, so starting a rename never nudges
 						     the list; only the tint and the field change. -->
-						<div class={chrome({ editing: true }).row} data-sidebar-stay-open>
+						<div class={[menuRow, chrome({ editing: true }).row]} data-sidebar-stay-open>
 							<span class={chrome({ iconTone: 'muted' }).icon} aria-hidden="true">
 								<Tag size={16} strokeWidth={1.75} />
 							</span>
@@ -435,7 +423,7 @@
 							{@render deleteButton(label)}
 						</div>
 					{:else if labelsEditMode}
-						<div class={chrome({}).row}>
+						<div class={[menuRow, chrome({}).row]}>
 							<span class={chrome({ iconTone: 'muted' }).icon} aria-hidden="true">
 								<Tag size={16} strokeWidth={1.75} />
 							</span>
@@ -455,7 +443,10 @@
 						<button
 							type="button"
 							onclick={() => navigate('label', label.id)}
-							class={chrome({ navigation: true, active: isActive('label', label.id) }).row}
+							class={[
+								menuRow,
+								chrome({ navigation: true, active: isActive('label', label.id) }).row
+							]}
 						>
 							<span class={chrome({ iconTone: 'muted' }).icon} aria-hidden="true">
 								<Tag size={16} strokeWidth={1.75} />

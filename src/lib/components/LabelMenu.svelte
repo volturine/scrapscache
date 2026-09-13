@@ -3,7 +3,7 @@
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { Check, Plus, Search, Tag } from '@lucide/svelte';
 	import { cx, sva } from 'styled-system/css';
-	import { button, input, popover } from 'styled-system/recipes';
+	import { button, input, menuItem, popover } from 'styled-system/recipes';
 	import { hstack, vstack } from 'styled-system/patterns';
 
 	let {
@@ -97,7 +97,6 @@
 	// create button tints itself with the accent color on top.
 	const itemSva = sva({
 		slots: [
-			'row',
 			'iconBox',
 			'icon',
 			'label',
@@ -111,24 +110,6 @@
 			'scroller'
 		],
 		base: {
-			row: {
-				display: 'flex',
-				w: 'full',
-				cursor: 'pointer',
-				alignItems: 'center',
-				gap: '0.75rem',
-				rounded: 'xl',
-				px: '0.75rem',
-				py: '0.625rem',
-				textAlign: 'left',
-				fontSize: 'sm',
-				fontWeight: 'medium',
-				color: 'scrapscache.text',
-				transition: 'colors 120ms ease',
-				_hoverable: {
-					bg: 'scrapscache.interactiveHover'
-				}
-			},
 			iconBox: {
 				display: 'grid',
 				h: '1.75rem',
@@ -188,6 +169,7 @@
 		}
 	});
 	const item = itemSva();
+	const menuRow = menuItem({ density: 'comfortable' });
 </script>
 
 <div
@@ -233,7 +215,7 @@
 				type="button"
 				onclick={createAndAssign}
 				aria-label="Create label"
-				class={cx(item.row, item.createRow)}
+				class={cx(menuRow, item.createRow)}
 			>
 				<span class={item.iconBox} aria-hidden="true">
 					<Plus class={item.icon} strokeWidth={1.75} />
@@ -251,7 +233,7 @@
 						const on = details.checked === true;
 						if (on !== note.labels.includes(label.id)) toggle(label.id);
 					}}
-					class={item.row}
+					class={menuRow}
 				>
 					<Checkbox.Control class={item.iconBox}>
 						<Tag

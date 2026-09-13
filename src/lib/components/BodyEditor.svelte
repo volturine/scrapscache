@@ -12,8 +12,8 @@
 		toggleCheckEntries
 	} from '$lib/checklistBody';
 	import { revealEditorField } from '$lib/editorVisibility';
-	import { cva, sva } from 'styled-system/css';
-	import { checklist } from 'styled-system/recipes';
+	import { css, cva } from 'styled-system/css';
+	import { checklist, noteBody } from 'styled-system/recipes';
 
 	const MAX_TASK_INDENT = 1;
 
@@ -1071,60 +1071,8 @@
 	const focusedGroupIds = $derived(new Set(focusedGroupRows.map(({ line }) => line.id)));
 	const focusedGroupLastId = $derived(focusedGroupRows.at(-1)?.line.id ?? null);
 
-	const editorSva = sva({
-		slots: ['container', 'row', 'bullet', 'checkToggle', 'addSubtaskText'],
-		base: {
-			container: {
-				display: 'block',
-				w: 'full',
-				minW: 0,
-				fontSize: 'sm',
-				lineHeight: 'relaxed',
-				color: 'scrapscache.text',
-				outline: 'none'
-			},
-			row: {
-				display: 'flex',
-				minW: 0,
-				flexWrap: 'wrap',
-				alignItems: 'flex-start',
-				columnGap: '0.5rem',
-				py: '0.125rem'
-			},
-			bullet: { flexShrink: 0, userSelect: 'none' },
-			checkToggle: { flexShrink: 0 },
-			addSubtaskText: { '&::before': { content: '"+  Add sub-task"' } }
-		}
-	});
-	const editor = editorSva();
-
-	const lineSpan = cva({
-		base: {
-			display: 'block',
-			minH: '1lh',
-			minW: 0,
-			flex: '1',
-			whiteSpace: 'pre-wrap',
-			wordBreak: 'break-word',
-			outline: 'none',
-			'&[data-placeholder]:empty::before': {
-				content: 'attr(data-placeholder)',
-				color: 'scrapscache.textMuted',
-				pointerEvents: 'none'
-			}
-		},
-		variants: {
-			checked: {
-				true: { textDecoration: 'line-through', opacity: 0.5 },
-				false: {}
-			},
-			indented: {
-				true: { fontSize: '13px' },
-				false: {}
-			}
-		},
-		defaultVariants: { checked: false, indented: false }
-	});
+	const editor = noteBody({ mode: 'editor' });
+	const editorLineHeight = css({ minH: '1lh' });
 
 	const taskShell = cva({
 		variants: {
@@ -1233,7 +1181,7 @@
 					type="button"
 					contenteditable="false"
 					data-checklist-toggle
-					class={[check.root, editor.checkToggle]}
+					class={[check.root, editor.check]}
 					onpointerdown={keepEditorFocus}
 					onclick={(event) => toggleCheck(index, event)}
 					aria-label={line.indent > 0 ? 'Toggle sub-task' : 'Toggle item'}
@@ -1260,7 +1208,10 @@
 							? placeholder
 							: ''
 					: undefined}
-				class={lineSpan({ checked: line.checked, indented: line.indent > 0 })}
+				class={[
+					editorLineHeight,
+					noteBody({ mode: 'editor', checked: line.checked, indented: line.indent > 0 }).line
+				]}
 			></span>
 			{#if line.id === focusedGroupLastId}
 				<button
@@ -1272,7 +1223,7 @@
 					onpointerdown={(event) => activateAddSubtask(event, focusedGroupRows[0]?.index ?? -1)}
 					onclick={(event) => handleAddSubtaskClick(event, focusedGroupRows[0]?.index ?? -1)}
 				>
-					<span aria-hidden="true" class={editor.addSubtaskText}></span>
+					<span aria-hidden="true" class={editor.addSubtask}></span>
 				</button>
 			{/if}
 		</div>

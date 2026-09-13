@@ -2,8 +2,8 @@
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { portalToAppOverlay } from '$lib/appViewport';
 	import { BackupImportMode } from '$lib/backup';
-	import { cx, sva } from 'styled-system/css';
-	import { button, dialog } from 'styled-system/recipes';
+	import { cx } from 'styled-system/css';
+	import { button, choiceCard, dialog } from 'styled-system/recipes';
 
 	let {
 		busy = false,
@@ -25,49 +25,8 @@
 
 	const d = dialog({ size: 'sm', presentation: 'appOverlay' });
 
-	const option = sva({
-		slots: ['root', 'title', 'description', 'footer'],
-		base: {
-			root: {
-				w: 'full',
-				px: '1rem',
-				py: '0.75rem',
-				textAlign: 'left',
-				rounded: 'md',
-				borderWidth: '1px',
-				borderColor: 'scrapscache.border',
-				bg: 'transparent',
-				cursor: 'pointer',
-				transition: 'background-color 120ms ease, border-color 120ms ease, color 120ms ease',
-				_hoverable: {
-					bg: 'scrapscache.interactiveHover'
-				}
-			},
-			title: {
-				display: 'block',
-				fontWeight: 'medium',
-				color: 'scrapscache.text'
-			},
-			description: {
-				display: 'block',
-				mt: '0.25rem',
-				fontSize: 'xs',
-				color: 'scrapscache.textMuted'
-			},
-			footer: { pt: '0.25rem' }
-		},
-		variants: {
-			danger: {
-				true: {
-					title: {
-						color: 'scrapscache.danger'
-					}
-				}
-			}
-		}
-	});
-	const keepOption = option();
-	const replaceOption = option({ danger: true });
+	const keepOption = choiceCard({ interactive: true, compact: true });
+	const replaceOption = choiceCard({ interactive: true, compact: true, danger: true });
 </script>
 
 <Dialog.Root

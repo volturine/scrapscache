@@ -55,6 +55,84 @@ const popoverRecipe = defineRecipe({
 	}
 });
 
+const menuItemRecipe = defineRecipe({
+	className: 'scrapscache-menu-item',
+	description: 'Shared interactive row treatment for menus and navigation',
+	base: {
+		display: 'flex',
+		w: 'full',
+		alignItems: 'center',
+		textAlign: 'left',
+		cursor: 'pointer',
+		touchAction: 'manipulation',
+		WebkitTapHighlightColor: 'transparent',
+		color: 'scrapscache.text',
+		transition: 'background-color 120ms ease, color 120ms ease',
+		_hoverable: { bg: 'scrapscache.interactiveHover' },
+		_active: { bg: 'scrapscache.interactiveActive' },
+		_disabled: { opacity: 0.55, cursor: 'not-allowed' }
+	},
+	variants: {
+		density: {
+			compact: { h: '2rem', gap: '0.5rem', px: '0.75rem', fontSize: 'sm' },
+			comfortable: {
+				gap: '0.75rem',
+				rounded: 'xl',
+				px: '0.75rem',
+				py: '0.625rem',
+				fontSize: 'sm',
+				fontWeight: 'medium'
+			},
+			sidebar: {
+				gap: '0.75rem',
+				rounded: 'xl',
+				py: '0.625rem',
+				pl: '1rem',
+				pr: '0.5rem',
+				fontSize: 'sm'
+			}
+		},
+		tone: {
+			default: {},
+			muted: { color: 'scrapscache.textMuted' },
+			accent: { color: 'scrapscache.accent' },
+			danger: {
+				color: 'scrapscache.danger',
+				_hoverable: { bg: 'scrapscache.dangerSubtle' }
+			}
+		},
+		selected: {
+			true: { bg: 'scrapscache.interactiveHover' }
+		}
+	},
+	defaultVariants: { density: 'compact', tone: 'default', selected: false }
+});
+
+const progressMeterRecipe = defineSlotRecipe({
+	className: 'scrapscache-progress-meter',
+	description: 'Shared progress meter track and fill treatment',
+	slots: ['track', 'bar'],
+	base: {
+		track: {
+			h: '0.375rem',
+			overflow: 'hidden',
+			rounded: 'full',
+			bg: 'scrapscache.interactiveActive'
+		},
+		bar: { h: 'full', bg: 'scrapscache.accent', transition: 'width 150ms ease' }
+	},
+	variants: {
+		size: {
+			default: {},
+			compact: {
+				track: { h: '0.25rem' },
+				bar: { transition: 'width 1000ms linear' }
+			}
+		}
+	},
+	defaultVariants: { size: 'default' }
+});
+
 const buttonRecipe = defineRecipe({
 	className: 'scrapscache-btn',
 	description: 'Interactive button component with variants and sizes',
@@ -681,6 +759,108 @@ const checklistRecipe = defineSlotRecipe({
 	defaultVariants: { indented: false, checked: false }
 });
 
+const noteBodyRecipe = defineSlotRecipe({
+	className: 'scrapscache-note-body',
+	description: 'Shared note text, list row, and checklist layout',
+	slots: ['container', 'row', 'line', 'check', 'bullet', 'paragraph', 'spacer', 'addSubtask'],
+	base: {
+		container: { fontSize: 'sm', color: 'scrapscache.text' },
+		row: {
+			display: 'flex',
+			alignItems: 'flex-start',
+			gap: '0.5rem',
+			py: '0.125rem'
+		},
+		line: { minW: 0, flex: '1', wordBreak: 'break-word' },
+		check: { flexShrink: 0 },
+		bullet: { flexShrink: 0, userSelect: 'none' },
+		paragraph: { whiteSpace: 'pre-wrap', wordBreak: 'break-word', py: '0.125rem' },
+		spacer: { h: '0.5rem' },
+		addSubtask: { '&::before': { content: '"+  Add sub-task"' } }
+	},
+	variants: {
+		mode: {
+			display: {},
+			editor: {
+				container: {
+					display: 'block',
+					w: 'full',
+					minW: 0,
+					lineHeight: 'relaxed',
+					outline: 'none'
+				},
+				row: { flexWrap: 'wrap' },
+				line: {
+					display: 'block',
+					whiteSpace: 'pre-wrap',
+					outline: 'none',
+					'&[data-placeholder]:empty::before': {
+						content: 'attr(data-placeholder)',
+						color: 'scrapscache.textMuted',
+						pointerEvents: 'none'
+					}
+				}
+			}
+		},
+		checked: {
+			true: { line: { textDecoration: 'line-through', opacity: 0.5 } },
+			false: {}
+		},
+		indented: {
+			true: { line: { fontSize: '13px' } },
+			false: {}
+		}
+	},
+	defaultVariants: { mode: 'display', checked: false, indented: false }
+});
+
+const choiceCardRecipe = defineSlotRecipe({
+	className: 'scrapscache-choice-card',
+	description: 'Shared selectable option card treatment',
+	slots: ['root', 'title', 'description', 'footer'],
+	base: {
+		root: {
+			w: 'full',
+			minH: '5rem',
+			px: '0.75rem',
+			py: '0.75rem',
+			textAlign: 'left'
+		},
+		title: { display: 'block', fontSize: 'sm', fontWeight: 'semibold', color: 'scrapscache.text' },
+		description: {
+			display: 'block',
+			mt: '0.25rem',
+			fontSize: '11px',
+			lineHeight: '1rem',
+			color: 'scrapscache.textMuted'
+		},
+		footer: { pt: '0.25rem' }
+	},
+	variants: {
+		interactive: {
+			true: {
+				root: {
+					rounded: 'md',
+					borderWidth: '1px',
+					borderColor: 'scrapscache.border',
+					bg: 'transparent',
+					cursor: 'pointer',
+					transition: 'background-color 120ms ease, border-color 120ms ease, color 120ms ease',
+					_hoverable: { bg: 'scrapscache.interactiveHover' },
+					_disabled: { opacity: 0.55, cursor: 'not-allowed' }
+				}
+			}
+		},
+		danger: { true: { title: { color: 'scrapscache.danger' } } },
+		compact: { true: { root: { minH: '0', px: '1rem', py: '0.75rem' } } },
+		kind: {
+			compressed: { description: { opacity: 0.85 } },
+			hd: { description: { color: 'scrapscache.textMuted' } }
+		}
+	},
+	defaultVariants: { interactive: false, danger: false, compact: false }
+});
+
 const dialogRecipe = defineSlotRecipe({
 	className: 'scrapscache-dialog-recipe',
 	description: 'Slot recipe for modal dialogs and alert dialogs',
@@ -804,6 +984,34 @@ const dialogRecipe = defineSlotRecipe({
 					py: '1rem'
 				},
 				body: { px: '1.25rem', py: '1.25rem' }
+			},
+			centeredOverlay: {
+				portal: {
+					position: 'fixed',
+					inset: 0,
+					zIndex: 50
+				},
+				backdrop: {
+					position: 'absolute',
+					bg: 'scrapscache.backdropMuted',
+					backdropFilter: 'none'
+				},
+				positioner: {
+					position: 'absolute',
+					inset: 0,
+					display: 'flex',
+					alignItems: 'center',
+					justifyContent: 'center',
+					p: '1rem'
+				},
+				panel: {
+					maxH: 'calc(100dvh - 2rem)',
+					overflowX: 'hidden',
+					overflowY: 'auto',
+					p: '1.25rem'
+				},
+				header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+				title: { display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 'medium' }
 			}
 		}
 	},
@@ -827,7 +1035,8 @@ export default defineConfig({
 	staticCss: {
 		recipes: {
 			noteSurface: ['*'],
-			checklist: ['*']
+			checklist: ['*'],
+			noteBody: ['*']
 		}
 	},
 
@@ -1144,6 +1353,8 @@ export default defineConfig({
 				notesShell: notesShellRecipe,
 				tooltip: tooltipRecipe,
 				popover: popoverRecipe,
+				menuItem: menuItemRecipe,
+				progressMeter: progressMeterRecipe,
 				noteSurface: noteSurfaceRecipe,
 				button: buttonRecipe,
 				iconButton: iconButtonRecipe,
@@ -1156,6 +1367,8 @@ export default defineConfig({
 				emptyState: emptyStateRecipe,
 				noteCard: noteCardRecipe,
 				checklist: checklistRecipe,
+				noteBody: noteBodyRecipe,
+				choiceCard: choiceCardRecipe,
 				dialog: dialogRecipe
 			}
 		}

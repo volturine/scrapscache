@@ -3,7 +3,7 @@
 	// anywhere drags the card and a click opens the note; attachments, links and
 	// checklists are interactive in the editor instead.
 	import type { Note } from '$lib/types';
-	import { cva, sva } from 'styled-system/css';
+	import { noteBody } from 'styled-system/recipes';
 	import { parseBody, noteAttachments } from '$lib/checklistBody';
 	import { extractHttpUrls, localLinkCard } from '$lib/linkPreview';
 	import { isImageAttachment, fileIconLabel } from '$lib/noteImages';
@@ -54,44 +54,7 @@
 		return () => observer.disconnect();
 	});
 
-	const bodySva = sva({
-		slots: ['container', 'itemRow', 'checklist', 'bulletSymbol', 'paragraph', 'spacer'],
-		base: {
-			container: { fontSize: 'sm', color: 'scrapscache.text' },
-			itemRow: {
-				display: 'flex',
-				alignItems: 'flex-start',
-				gap: '0.5rem',
-				py: '0.125rem'
-			},
-			checklist: { flexShrink: 0 },
-			bulletSymbol: { flexShrink: 0, userSelect: 'none' },
-			paragraph: {
-				whiteSpace: 'pre-wrap',
-				wordBreak: 'break-word',
-				py: '0.125rem'
-			},
-			spacer: { h: '0.5rem' }
-		}
-	});
-	const body = bodySva();
-	const itemText = cva({
-		base: {
-			flex: '1',
-			wordBreak: 'break-word'
-		},
-		variants: {
-			checked: {
-				true: { textDecoration: 'line-through', opacity: 0.5 },
-				false: {}
-			},
-			indented: {
-				true: { fontSize: '13px' },
-				false: {}
-			}
-		},
-		defaultVariants: { checked: false, indented: false }
-	});
+	const body = noteBody({ mode: 'display' });
 	const c = canvasPreview({ mode: 'display' });
 	const f = filePreview({ mode: 'display' });
 	const p = photoPreview({ mode: 'display' });
@@ -102,29 +65,31 @@
 		{#if seg.type === 'check'}
 			{@const check = checklist({ checked: seg.checked, indented: seg.indent > 0 })}
 			<div
-				class={body.itemRow}
+				class={body.row}
 				data-check-line={seg.lineIndex}
 				style={seg.indent > 0 ? `padding-left: ${seg.indent * 1.25}rem` : undefined}
 			>
-				<span class={[check.root, body.checklist]} aria-hidden="true">
+				<span class={[check.root, body.check]} aria-hidden="true">
 					{#if seg.checked}
 						<svg viewBox="0 0 16 16" class={check.mark}>
 							<path d="M3.5 8.5 6.5 11.5 12.5 4.5" />
 						</svg>
 					{/if}
 				</span>
-				<span class={itemText({ checked: seg.checked, indented: seg.indent > 0 })}>
+				<span
+					class={noteBody({ mode: 'display', checked: seg.checked, indented: seg.indent > 0 }).line}
+				>
 					{seg.text || '\u00a0'}
 				</span>
 			</div>
 		{:else if seg.type === 'bullet'}
 			<div
-				class={body.itemRow}
+				class={body.row}
 				data-bullet-line={seg.lineIndex}
 				style={seg.indent > 0 ? `padding-left: ${seg.indent * 1.25}rem` : undefined}
 			>
-				<span class={body.bulletSymbol} aria-hidden="true">•</span>
-				<span class={itemText({ indented: seg.indent > 0 })}>
+				<span class={body.bullet} aria-hidden="true">•</span>
+				<span class={noteBody({ mode: 'display', indented: seg.indent > 0 }).line}>
 					{seg.text || '\u00a0'}
 				</span>
 			</div>

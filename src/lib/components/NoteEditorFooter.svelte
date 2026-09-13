@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { cx, sva } from 'styled-system/css';
-	import { button, dialog, iconButton } from 'styled-system/recipes';
+	import { button, choiceCard, dialog, iconButton } from 'styled-system/recipes';
 	import { hstack, grid, flex } from 'styled-system/patterns';
 	import { canvasPreview, filePreview, photoPreview } from './attachmentPreviewStyles';
 	import { Dialog } from '@ark-ui/svelte/dialog';
@@ -336,35 +336,8 @@
 	const d = dialog({ size: 'sm' });
 
 	const qualityChoice = sva({
-		slots: [
-			'root',
-			'title',
-			'description',
-			'icon',
-			'error',
-			'positioner',
-			'panel',
-			'dialogTitle',
-			'dialogDescription'
-		],
+		slots: ['icon', 'error', 'positioner', 'panel', 'dialogTitle', 'dialogDescription'],
 		base: {
-			root: {
-				minH: '5rem',
-				px: '0.75rem',
-				py: '0.75rem',
-				textAlign: 'left'
-			},
-			title: {
-				display: 'block',
-				fontSize: 'sm',
-				fontWeight: 'semibold'
-			},
-			description: {
-				mt: '0.25rem',
-				display: 'block',
-				fontSize: '11px',
-				lineHeight: '1rem'
-			},
 			icon: { h: '1.25rem', w: '1.25rem' },
 			error: { px: '0.75rem', pb: '0.25rem', fontSize: 'xs', color: 'scrapscache.danger' },
 			positioner: {
@@ -378,24 +351,12 @@
 			panel: { w: 'full', maxW: 'sm', p: '1rem', color: 'scrapscache.text' },
 			dialogTitle: { fontSize: 'base', fontWeight: 'semibold' },
 			dialogDescription: { mt: '0.125rem', fontSize: 'xs' }
-		},
-		variants: {
-			kind: {
-				compressed: {
-					description: {
-						opacity: 0.85
-					}
-				},
-				hd: {
-					description: {
-						color: 'scrapscache.textMuted'
-					}
-				}
-			}
 		}
 	});
-	const qualityCompressed = qualityChoice({ kind: 'compressed' });
-	const qualityHd = qualityChoice({ kind: 'hd' });
+	const qualityCompressed = qualityChoice();
+	const qualityHd = qualityChoice();
+	const qualityCompressedCard = choiceCard({ kind: 'compressed' });
+	const qualityHdCard = choiceCard({ kind: 'hd' });
 	const iconMd = qualityCompressed.icon;
 </script>
 
@@ -596,19 +557,21 @@
 				<div class={grid({ columns: 2, gap: '0.5rem' })}>
 					<button
 						type="button"
-						class={`${button({ variant: 'primary' })} ${qualityCompressed.root}`}
+						class={cx(button({ variant: 'primary' }), qualityCompressedCard.root)}
 						onclick={() => chooseImageQuality('compressed')}
 					>
-						<span class={qualityCompressed.title}>Compressed</span>
-						<span class={qualityCompressed.description}> Small file · A4 text stays readable </span>
+						<span class={qualityCompressedCard.title}>Compressed</span>
+						<span class={qualityCompressedCard.description}>
+							Small file · A4 text stays readable
+						</span>
 					</button>
 					<button
 						type="button"
-						class={`${button({ variant: 'secondary' })} ${qualityHd.root}`}
+						class={cx(button({ variant: 'secondary' }), qualityHdCard.root)}
 						onclick={() => chooseImageQuality('hd')}
 					>
-						<span class={qualityHd.title}>HD</span>
-						<span class={qualityHd.description}> Sharper image · larger file </span>
+						<span class={qualityHdCard.title}>HD</span>
+						<span class={qualityHdCard.description}> Sharper image · larger file </span>
 					</button>
 				</div>
 			</Dialog.Content>

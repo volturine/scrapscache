@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { cx, cva, sva } from 'styled-system/css';
-	import { iconButton, input, popover } from 'styled-system/recipes';
+	import { iconButton, input, menuItem, popover, progressMeter } from 'styled-system/recipes';
 	import { hstack, vstack } from 'styled-system/patterns';
 	import { uiStore } from '$lib/stores/ui.svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
@@ -210,35 +210,17 @@
 		}
 	});
 	const settingsMenu = sva({
-		slots: ['positioner', 'popover', 'item', 'separator', 'track', 'bar', 'alert'],
+		slots: ['positioner', 'popover', 'separator', 'alert'],
 		base: {
 			positioner: { zIndex: 30 },
 			popover: { w: '16rem', overflow: 'hidden', pt: '0.25rem' },
-			item: {
-				display: 'flex',
-				h: '2rem',
-				w: 'full',
-				cursor: 'pointer',
-				alignItems: 'center',
-				gap: '0.5rem',
-				px: '0.75rem',
-				textAlign: 'left',
-				fontSize: 'sm',
-				color: 'scrapscache.text',
-				_hoverable: { bg: 'scrapscache.interactiveHover' }
-			},
 			separator: { borderTopWidth: '1px', borderColor: 'scrapscache.border' },
-			track: {
-				h: '0.375rem',
-				overflow: 'hidden',
-				rounded: 'full',
-				bg: 'scrapscache.interactiveActive'
-			},
-			bar: { h: 'full', bg: 'scrapscache.accent', transition: 'width 150ms ease' },
 			alert: { px: '0.75rem', pb: '0.5rem', fontSize: 'xs', color: 'scrapscache.danger' }
 		}
 	});
 	const menu = settingsMenu();
+	const menuItemClass = menuItem({ density: 'compact' });
+	const progressStyles = progressMeter();
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -384,9 +366,9 @@
 										: 'Reading backup…'}</span
 							>{#if progress}<span>{progress.completed}/{progress.total}</span>{/if}
 						</div>
-						<div class={menu.track}>
+						<div class={progressStyles.track}>
 							<div
-								class={menu.bar}
+								class={progressStyles.bar}
 								style={`width: ${progress && progress.total ? Math.round((progress.completed / progress.total) * 100) : 8}%`}
 							></div>
 						</div>
@@ -396,7 +378,7 @@
 						value="theme"
 						closeOnSelect={false}
 						onSelect={() => uiStore.toggleDark()}
-						class={menu.item}
+						class={menuItemClass}
 					>
 						{#if uiStore.effectiveDark}
 							<Sun class={icon({ size: 'sm' })} aria-hidden="true" />
@@ -406,7 +388,7 @@
 							Dark mode
 						{/if}
 					</Menu.Item>
-					<Menu.Item value="export" onSelect={startBackupExport} class={menu.item}>
+					<Menu.Item value="export" onSelect={startBackupExport} class={menuItemClass}>
 						<Download class={icon({ size: 'sm' })} aria-hidden="true" />
 						Export backup
 					</Menu.Item>
@@ -418,7 +400,7 @@
 							if (file) importBackupFile(file);
 						}}
 					>
-						<FileUpload.Trigger class={menu.item}>
+						<FileUpload.Trigger class={menuItemClass}>
 							<Upload class={icon({ size: 'sm' })} aria-hidden="true" />
 							Import backup
 						</FileUpload.Trigger>
@@ -433,7 +415,7 @@
 								href="https://github.com/volturine/scrapscache/issues/new/choose"
 								target="_blank"
 								rel="noreferrer"
-								class={menu.item}
+								class={menuItemClass}
 							>
 								<ExternalLink class={icon({ size: 'sm' })} aria-hidden="true" />
 								Report an issue

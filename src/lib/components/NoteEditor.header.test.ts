@@ -75,7 +75,7 @@ describe('NoteEditor header reminder controls', () => {
 			props: { noteId: 'note-1', onClose: () => {} }
 		});
 
-		expect(headerButtons(container)).toEqual(['Close note', 'Reminder', 'Pin']);
+		expect(headerButtons(container)).toEqual(['Close note', 'Reminder', 'Pin', 'Make secret']);
 		expect(container.querySelector('header')?.textContent).not.toMatch(/Today|Tomorrow|AM|PM/);
 	});
 
@@ -90,7 +90,8 @@ describe('NoteEditor header reminder controls', () => {
 			'Close note',
 			`Reminder, ${formatReminder(reminder)}`,
 			'Reminder',
-			'Pin'
+			'Pin',
+			'Make secret'
 		]);
 		expect(container.querySelector('header')?.textContent).toContain(formatReminder(reminder));
 	});
@@ -134,6 +135,38 @@ describe('NoteEditor header reminder controls', () => {
 		wheel.dispatchEvent(move);
 
 		expect(move.defaultPrevented).toBe(false);
+	});
+
+	it('toggles secret status from the header', async () => {
+		notesStore.notes = [note({ id: 'note-1', secret: false })];
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+
+		const secretBtn = container.querySelector('button[title="Make secret"]') as HTMLButtonElement;
+		expect(secretBtn).toBeDefined();
+		await fireEvent.click(secretBtn);
+		await tick();
+		expect(notesStore.notes[0].secret).toBe(true);
+
+		const removeSecretBtn = container.querySelector(
+			'button[title="Remove secret"]'
+		) as HTMLButtonElement;
+		expect(removeSecretBtn).toBeDefined();
+		await fireEvent.click(removeSecretBtn);
+		await tick();
+		expect(notesStore.notes[0].secret).toBe(false);
+	});
+
+	it('autofocuses the note body when autofocusBody is true', async () => {
+		notesStore.notes = [note({ id: 'note-1', body: 'hello' })];
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', autofocusBody: true, onClose: () => {} }
+		});
+		await tick();
+		await new Promise((r) => setTimeout(r, 10));
+		const body = container.querySelector('[data-body-editor]');
+		expect(document.activeElement).toBe(body);
 	});
 });
 

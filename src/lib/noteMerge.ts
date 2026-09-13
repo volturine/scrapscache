@@ -17,6 +17,7 @@ export const NOTE_FIELDS: NoteField[] = [
 	'pinned',
 	'archived',
 	'trashed',
+	'secret',
 	'reminder',
 	'labels',
 	'images',
@@ -120,6 +121,12 @@ export function mergeTwoNotes(primary: Note, secondary: Note): Note {
 		fieldTime(primary, 'trashed'),
 		fieldTime(secondary, 'trashed')
 	);
+	const secret = pickField(
+		Boolean(primary.secret),
+		Boolean(secondary.secret),
+		fieldTime(primary, 'secret'),
+		fieldTime(secondary, 'secret')
+	);
 	const reminder = pickField(
 		primary.reminder,
 		secondary.reminder,
@@ -150,6 +157,14 @@ export function mergeTwoNotes(primary: Note, secondary: Note): Note {
 	fieldTimes.pinned = pinned.time;
 	fieldTimes.archived = archived.time;
 	fieldTimes.trashed = trashed.time;
+	if (
+		primary.fieldTimes?.secret ||
+		secondary.fieldTimes?.secret ||
+		primary.secret ||
+		secondary.secret
+	) {
+		fieldTimes.secret = secret.time;
+	}
 	fieldTimes.reminder = reminder.time;
 	fieldTimes.labels = labels.time;
 	fieldTimes.images = imageSide.time;
@@ -170,6 +185,7 @@ export function mergeTwoNotes(primary: Note, secondary: Note): Note {
 		archived: archived.value,
 		trashed: trashed.value,
 		trashedAt,
+		...(secret.value ? { secret: true } : {}),
 		createdAt: Math.min(
 			primary.createdAt || secondary.createdAt,
 			secondary.createdAt || primary.createdAt

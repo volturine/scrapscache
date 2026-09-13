@@ -18,6 +18,7 @@
 		Check,
 		Copy,
 		Pin,
+		Lock,
 		RotateCcw,
 		Trash2
 	} from '@lucide/svelte';
@@ -67,7 +68,11 @@
 	function handleArchive(e: MouseEvent) {
 		e.stopPropagation();
 		closeHaze();
-		notesStore.toggleArchive(note.id);
+		if (note.trashed) {
+			notesStore.restoreNote(note.id);
+		} else {
+			notesStore.toggleArchive(note.id);
+		}
 	}
 
 	async function handleCopy(e: MouseEvent) {
@@ -267,7 +272,11 @@
 			</div>
 		{/if}
 
-		<div class="note-scrollbar-hidden scrollable min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
+		<div
+			class="note-scrollbar-hidden scrollable min-h-0 flex-1 overflow-x-hidden overflow-y-auto"
+			class:blur-sm={note.secret}
+			class:select-none={note.secret}
+		>
 			<div class="relative">
 				<div class="block w-full p-3 pb-2 text-left" class:opacity-60={note.trashed}>
 					{#if note.title}
@@ -294,6 +303,20 @@
 						{label.name}
 					</span>
 				{/each}
+			</div>
+		{/if}
+
+		{#if note.secret}
+			<div
+				class="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-1.5 rounded-lg bg-black/5 backdrop-blur-md dark:bg-black/20"
+				data-secret-overlay
+				aria-hidden="true"
+			>
+				<Lock class="h-6 w-6 text-[var(--scrapscache-text-muted)] drop-shadow-sm" />
+				<span
+					class="text-xs font-medium tracking-wide text-[var(--scrapscache-text-muted)] drop-shadow-sm"
+					>Secret note</span
+				>
 			</div>
 		{/if}
 
@@ -367,11 +390,17 @@
 						<button
 							type="button"
 							class="flex h-8 w-8 items-center justify-center rounded-full text-white/90 transition-all hover:scale-105 hover:bg-white/20 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
-							title={note.archived ? 'Unarchive' : 'Archive'}
-							aria-label={note.archived ? 'Unarchive note' : 'Archive note'}
+							title={note.trashed ? 'Restore' : note.archived ? 'Restore' : 'Archive'}
+							aria-label={note.trashed
+								? 'Restore note'
+								: note.archived
+									? 'Restore note'
+									: 'Archive note'}
 							onclick={handleArchive}
 						>
-							{#if note.archived}
+							{#if note.trashed}
+								<RotateCcw class="h-4 w-4" aria-hidden="true" />
+							{:else if note.archived}
 								<ArchiveRestore class="h-4 w-4" aria-hidden="true" />
 							{:else}
 								<Archive class="h-4 w-4" aria-hidden="true" />
@@ -439,15 +468,21 @@
 								<Trash2 class="h-5 w-5" aria-hidden="true" />
 							</button>
 
-							<!-- Archive -->
+							<!-- Archive / Restore -->
 							<button
 								type="button"
 								class="flex h-10 w-10 items-center justify-center rounded-full text-white/90 transition-all hover:scale-105 hover:bg-white/20 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
-								title={note.archived ? 'Unarchive' : 'Archive'}
-								aria-label={note.archived ? 'Unarchive note' : 'Archive note'}
+								title={note.trashed ? 'Restore' : note.archived ? 'Restore' : 'Archive'}
+								aria-label={note.trashed
+									? 'Restore note'
+									: note.archived
+										? 'Restore note'
+										: 'Archive note'}
 								onclick={handleArchive}
 							>
-								{#if note.archived}
+								{#if note.trashed}
+									<RotateCcw class="h-5 w-5" aria-hidden="true" />
+								{:else if note.archived}
 									<ArchiveRestore class="h-5 w-5" aria-hidden="true" />
 								{:else}
 									<Archive class="h-5 w-5" aria-hidden="true" />

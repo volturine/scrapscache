@@ -7,6 +7,7 @@
 	import { NOTE_COLORS, NOTE_DARK_COLORS, type Note, type NoteColor } from '$lib/types';
 	import NoteBodyDisplay from './NoteBodyDisplay.svelte';
 	import ReminderLabel from './ReminderLabel.svelte';
+	import { Lock } from '@lucide/svelte';
 
 	let { note, shield = false }: { note: Note; shield?: boolean } = $props();
 
@@ -22,11 +23,11 @@
 </script>
 
 <div
-	class="kanban-card overflow-hidden rounded-xl border border-black/5 shadow-sm dark:border-white/10"
+	class="kanban-card relative overflow-hidden rounded-xl border border-black/5 shadow-sm dark:border-white/10"
 	style="background-color: {background(note.color)};"
 >
 	<div class="relative max-h-[240px] overflow-hidden">
-		<div class="p-3">
+		<div class="p-3" class:blur-sm={note.secret} class:select-none={note.secret}>
 			{#if note.reminder != null}
 				<div class="mb-1">
 					<ReminderLabel reminder={note.reminder} variant="inline" />
@@ -47,6 +48,20 @@
 			<div class="absolute inset-0" data-card-shield aria-hidden="true"></div>
 		{/if}
 	</div>
+
+	{#if note.secret}
+		<div
+			class="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-1.5 rounded-xl bg-black/5 backdrop-blur-md dark:bg-black/20"
+			data-secret-overlay
+			aria-hidden="true"
+		>
+			<Lock class="h-6 w-6 text-[var(--scrapscache-text-muted)] drop-shadow-sm" />
+			<span
+				class="text-xs font-medium tracking-wide text-[var(--scrapscache-text-muted)] drop-shadow-sm"
+				>Secret note</span
+			>
+		</div>
+	{/if}
 
 	{#if labelsForNote.length}
 		<div class="flex flex-wrap gap-1 px-3 pb-3 pt-2">

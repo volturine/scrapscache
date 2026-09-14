@@ -266,12 +266,17 @@ describe('SyncModal profile interactions', () => {
 		expect(screen.queryByRole('button', { name: /sync this workspace/i })).toBeNull();
 	});
 
-	it('uses a single primary new-workspace action while a private workspace is active', () => {
+	it('shows the same new-workspace action whether a private or synced workspace is active', async () => {
+		const { unmount } = render(SyncModal, { props: { onClose: vi.fn() } });
+		const syncedClass = screen.getByRole('button', { name: '+ New workspace' }).className;
+		unmount();
+
 		syncStore.activateLocalWorkspace();
 		render(SyncModal, { props: { onClose: vi.fn() } });
 
 		const create = screen.getByRole('button', { name: '+ New workspace' });
-		expect(create.classList.contains('scrapscache-button-primary')).toBe(true);
+		expect(create.className).toBe(syncedClass);
+		expect(create.classList.contains('scrapscache-button-primary')).toBe(false);
 		expect(screen.queryByText('These notes stay on this device.')).toBeNull();
 		expect(screen.queryByRole('button', { name: 'Sync now' })).toBeNull();
 	});

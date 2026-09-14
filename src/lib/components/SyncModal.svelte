@@ -648,13 +648,11 @@
 							{/each}
 						</div>
 
-						<div class={syncStore.account ? 'flex gap-4 text-sm' : ''}>
+						<div class="flex gap-4 text-sm">
 							<button
 								type="button"
 								disabled={busy}
-								class={syncStore.account
-									? 'text-[var(--scrapscache-primary)]'
-									: 'scrapscache-button scrapscache-button-primary w-full px-3 py-2.5 text-sm font-medium'}
+								class="text-[var(--scrapscache-primary)]"
 								onclick={() => void createLocalWorkspace()}>+ New workspace</button
 							>
 						</div>

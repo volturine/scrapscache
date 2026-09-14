@@ -2,6 +2,8 @@
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { portalToAppOverlay } from '$lib/appViewport';
 	import { BackupImportMode } from '$lib/backup';
+	import { cx } from 'styled-system/css';
+	import { button, choiceCard, dialog } from 'styled-system/recipes';
 
 	let {
 		busy = false,
@@ -20,6 +22,11 @@
 	function handleOpenChange(details: { open: boolean }) {
 		if (!details.open && !busy) onClose();
 	}
+
+	const d = dialog({ size: 'sm', presentation: 'appOverlay' });
+
+	const keepOption = choiceCard({ interactive: true, compact: true });
+	const replaceOption = choiceCard({ interactive: true, compact: true, danger: true });
 </script>
 
 <Dialog.Root
@@ -30,28 +37,24 @@
 	preventScroll={false}
 	initialFocusEl={() => keepButton}
 >
-	<div {@attach portalToAppOverlay} class="absolute inset-0 z-[70]" role="presentation">
-		<Dialog.Backdrop class="absolute inset-0 bg-black/45" />
-		<Dialog.Positioner
-			class="absolute inset-0 flex items-start justify-center px-4 pb-4 pt-[calc(var(--app-topbar-height)+0.5rem)]"
-		>
-			<Dialog.Content class="scrapscache-dialog w-full max-w-sm">
-				<div class="border-b border-[var(--scrapscache-border)] px-5 py-4">
-					<Dialog.Title class="text-lg font-semibold text-[var(--scrapscache-text)]">
-						How should this backup be imported?
-					</Dialog.Title>
+	<div {@attach portalToAppOverlay} class={d.portal} role="presentation">
+		<Dialog.Backdrop class={d.backdrop} />
+		<Dialog.Positioner class={d.positioner}>
+			<Dialog.Content class={d.panel}>
+				<div class={d.header}>
+					<Dialog.Title class={d.title}>How should this backup be imported?</Dialog.Title>
 				</div>
 
-				<div class="space-y-3 px-5 py-5">
+				<div class={d.body}>
 					<button
 						bind:this={keepButton}
 						type="button"
 						disabled={busy}
 						onclick={() => onSelect(BackupImportMode.Keep)}
-						class="scrapscache-button w-full px-4 py-3 text-left"
+						class={keepOption.root}
 					>
-						<span class="block font-medium">Keep local notes</span>
-						<span class="mt-1 block text-xs text-[var(--scrapscache-text-muted)]">
+						<span class={keepOption.title}>Keep local notes</span>
+						<span class={keepOption.description}>
 							Add every backup note as a new copy. Existing notes stay unchanged.
 						</span>
 					</button>
@@ -59,24 +62,24 @@
 						type="button"
 						disabled={busy}
 						onclick={() => onSelect(BackupImportMode.Replace)}
-						class="scrapscache-button w-full px-4 py-3 text-left"
+						class={replaceOption.root}
 					>
-						<span class="block font-medium text-[var(--scrapscache-danger)]"
-							>Replace local data</span
-						>
-						<span class="mt-1 block text-xs text-[var(--scrapscache-text-muted)]">
+						<span class={replaceOption.title}>Replace local data</span>
+						<span class={replaceOption.description}>
 							Delete current local notes and restore the backup instead.
 						</span>
 					</button>
-					{#if error}<p class="text-sm text-[var(--scrapscache-danger)]" role="alert">
+					{#if error}
+						<p class={d.error} role="alert">
 							{error}
-						</p>{/if}
-					<div class="flex justify-end pt-1">
+						</p>
+					{/if}
+					<div class={cx(d.footer, keepOption.footer)}>
 						<button
 							type="button"
 							disabled={busy}
 							onclick={onClose}
-							class="scrapscache-button scrapscache-button-quiet px-3 py-2 text-sm">Cancel</button
+							class={button({ variant: 'quiet', size: 'md' })}>Cancel</button
 						>
 					</div>
 				</div>

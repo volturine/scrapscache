@@ -125,7 +125,7 @@ Details, threat model, and limits: **[docs/security.md](docs/security.md)**.
 ## Stack
 
 - [SvelteKit](https://svelte.dev/) + Svelte 5 + TypeScript
-- Tailwind CSS 4
+- Panda CSS
 - IndexedDB (`idb`) on the client; SQLite (`better-sqlite3`) on the server
 - [@noble](https://paulmillr.com/noble/) cryptography + [CPace](https://github.com/cipherman/pake-js) for pairing
 - Node adapter for self-hosting; multi-arch Docker images via GHCR

@@ -2,7 +2,7 @@
 
 Offline-first notes with end-to-end encrypted multi-device sync: local IndexedDB storage, SQLite relay storage, backups, and a self-hostable SvelteKit app.
 
-**Stack:** Node.js 24 + SvelteKit 5 + TypeScript · Tailwind CSS 4 · IndexedDB · SQLite · npm
+**Stack:** Node.js 24 + SvelteKit 5 + TypeScript · Panda CSS · IndexedDB · SQLite · npm
 
 ## Commands
 
@@ -20,6 +20,16 @@ npm run validate            # check + format + tests + production build
 - Use npm commands for dependency changes; do not hand-edit `package.json` or the lockfile.
 - Prefer the existing npm scripts over ad-hoc scripts.
 - Use two browser profiles when developing or testing device pairing and sync.
+
+## Styling
+
+- Treat Panda semantic tokens in `panda.config.ts` as the source of truth for colors, radii, shadows, typography, spacing, border widths, tracking, and shared interaction states. Do not add raw palette colors, parallel CSS custom properties, or component-level light/dark pairs.
+- Prefer the semantic aliases (`body`, `subtitle`, `label`, `caption`, `heading`, `sm`, `md`, `lg`, `card`, `dialog`, `hairline`, and similar) over Panda defaults or repeated raw values. Use configured text styles for copy or the `text` recipe for standalone text, keeping local overrides limited to a real component-specific contract.
+- Reuse config recipes from `styled-system/recipes` for shared controls and surfaces. Inspect the existing tokens and recipes before adding one; create a config recipe only for a visual contract reused across components.
+- Keep every named `css`, `cva`, and `sva` visual contract in `panda/styles.ts` and import it through `$panda/styles`; this is the single registry while the design system settles. Do not define named style contracts in `.svelte` files. Keep only truly one-off `css()` adjustments next to the markup that owns them, and split the registry only when clear component boundaries emerge.
+- Keep component visuals in Panda. Reserve `src/app.css` and authored static class names for document-state, application-shell, or third-party integration hooks; do not write Tailwind utility strings.
+- Use `_hoverable` for hover feedback, and name the properties being transitioned instead of using `transition: all`.
+- Regenerate `styled-system` with `npx panda codegen` after config changes.
 
 ## Definition of done
 

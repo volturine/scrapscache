@@ -9,6 +9,10 @@
 	import DatePickerViews from './DatePickerViews.svelte';
 	import type { Note } from '$lib/types';
 	import { dayKey } from '$lib/utils';
+	import { truncate } from '$panda/styles';
+	import { css, cx } from 'styled-system/css';
+	import { flex, hstack } from 'styled-system/patterns';
+	import { button } from 'styled-system/recipes';
 
 	let {
 		notes,
@@ -92,13 +96,38 @@
 		}
 		selected = { from: key, to: key };
 	}
+
+	const footerBtnClass = cx(
+		button({ variant: 'ghost' }),
+		css({
+			h: 'auto',
+			rounded: 'pill',
+			px: 'sm',
+			py: '3xs',
+			fontSize: 'inherit',
+			lineHeight: 'compact',
+			_disabled: { opacity: 0.4, pointerEvents: 'none' }
+		})
+	);
 </script>
 
 <div
-	class="reminder-calendar w-full select-none rounded-2xl border border-[var(--scrapscache-border)] bg-[var(--scrapscache-surface)] px-3 py-3"
+	class={[
+		'reminder-calendar',
+		css({
+			w: 'full',
+			userSelect: 'none',
+			rounded: 'sheet',
+			borderWidth: 'hairline',
+			borderColor: 'scrapscache.border',
+			bg: 'scrapscache.surface',
+			px: 'md',
+			py: 'md'
+		})
+	]}
 >
 	<DatePicker.Root
-		class="w-full"
+		class={css({ w: 'full' })}
 		inline
 		startOfWeek={1}
 		fixedWeeks
@@ -117,7 +146,14 @@
 				{@const count = reminderDays.get(day.toString()) ?? 0}
 				{#if count > 0}
 					<span
-						class="reminder-dot absolute bottom-1 h-1 w-1 rounded-full bg-[var(--scrapscache-accent)]"
+						class={`reminder-dot ${css({
+							position: 'absolute',
+							bottom: '2xs',
+							h: '0.25rem',
+							w: '0.25rem',
+							rounded: 'pill',
+							bg: 'scrapscache.accent'
+						})}`}
 					></span>
 				{/if}
 			{/snippet}
@@ -125,18 +161,30 @@
 	</DatePicker.Root>
 
 	<div
-		class="mt-2 flex items-center justify-between gap-2 border-t border-[var(--scrapscache-border)] pt-3 text-xs"
+		class={hstack({
+			mt: 'sm',
+			justify: 'space-between',
+			gap: 'sm',
+			borderTopWidth: 'hairline',
+			borderColor: 'scrapscache.border',
+			pt: 'md',
+			fontSize: 'label'
+		})}
 	>
-		<div class="flex flex-1 items-center">
-			<button
-				type="button"
-				class="rounded-full px-2 py-0.5 font-medium leading-5 text-[var(--scrapscache-text-muted)] hover:bg-black/5 hover:text-[var(--scrapscache-text)] dark:hover:bg-white/10"
-				onclick={filterToday}
-			>
-				Today
-			</button>
+		<div class={flex({ flex: '1', align: 'center' })}>
+			<button type="button" class={footerBtnClass} onclick={filterToday}> Today </button>
 		</div>
-		<span class="shrink-0 truncate px-2 leading-5 text-[var(--scrapscache-text-muted)]">
+		<span
+			class={cx(
+				truncate,
+				css({
+					flexShrink: 0,
+					px: 'sm',
+					lineHeight: 'compact',
+					color: 'scrapscache.textMuted'
+				})
+			)}
+		>
 			{#if pickingEnd}
 				Pick an end day
 			{:else if selected && selected.from !== selected.to}
@@ -145,10 +193,10 @@
 				Day filter active
 			{/if}
 		</span>
-		<div class="flex flex-1 items-center justify-end">
+		<div class={flex({ flex: '1', align: 'center', justify: 'flex-end' })}>
 			<button
 				type="button"
-				class="rounded-full px-2 py-0.5 leading-5 text-[var(--scrapscache-text-muted)] hover:bg-black/5 hover:text-[var(--scrapscache-text)] disabled:pointer-events-none disabled:opacity-40 dark:hover:bg-white/10"
+				class={footerBtnClass}
 				disabled={!selected}
 				onclick={() => (selected = null)}
 			>

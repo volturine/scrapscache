@@ -1,10 +1,13 @@
 <script lang="ts">
+	import { reminderSettingsRow, reminderSettingsStyles } from '$panda/styles';
 	import { onMount } from 'svelte';
 	import { Bell, ChevronRight } from '@lucide/svelte';
 	import { notificationPermission, requestReminderPermission } from '$lib/reminderNotify';
 	import { registerReminderDevice } from '$lib/reminderWake';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { reminderStore } from '$lib/stores/reminders.svelte';
+	import { cx } from 'styled-system/css';
+	import { menuItem } from 'styled-system/recipes';
 
 	let permission = $state(notificationPermission());
 
@@ -27,31 +30,28 @@
 	}
 </script>
 
-<section class="border-t border-[var(--scrapscache-border)]" aria-label="Notifications">
+<section class={reminderSettingsStyles.section} aria-label="Notifications">
 	{#if permission === 'default'}
 		<button
 			type="button"
 			onclick={() => void enable()}
-			class="flex h-8 w-full items-center gap-2.5 px-3 text-left hover:bg-black/5 dark:hover:bg-white/10"
+			class={cx(
+				menuItem({ density: 'compact' }),
+				reminderSettingsRow.base,
+				reminderSettingsRow.interactive
+			)}
 			aria-label="Turn on notifications"
 		>
-			<Bell class="h-4 w-4 shrink-0 text-[var(--scrapscache-text)]" aria-hidden="true" />
-			<span class="min-w-0 flex-1 text-sm font-medium text-[var(--scrapscache-text)]"
-				>Notifications</span
-			>
-			<span class="shrink-0 text-xs font-medium text-[var(--scrapscache-text-muted)]">Not set</span>
-			<ChevronRight
-				class="h-4 w-4 shrink-0 text-[var(--scrapscache-text-muted)]"
-				aria-hidden="true"
-			/>
+			<Bell class={reminderSettingsStyles.icon} aria-hidden="true" />
+			<span class={reminderSettingsStyles.label}>Notifications</span>
+			<span class={reminderSettingsStyles.status}>Not set</span>
+			<ChevronRight class={reminderSettingsStyles.chevron} aria-hidden="true" />
 		</button>
 	{:else}
-		<div class="flex h-8 items-center gap-2.5 px-3">
-			<Bell class="h-4 w-4 shrink-0 text-[var(--scrapscache-text)]" aria-hidden="true" />
-			<span class="min-w-0 flex-1 text-sm font-medium text-[var(--scrapscache-text)]"
-				>Notifications</span
-			>
-			<span class="shrink-0 text-xs font-medium text-[var(--scrapscache-text-muted)]">
+		<div class={reminderSettingsRow.base}>
+			<Bell class={reminderSettingsStyles.icon} aria-hidden="true" />
+			<span class={reminderSettingsStyles.label}>Notifications</span>
+			<span class={reminderSettingsStyles.status}>
 				{permission === 'granted'
 					? 'Enabled'
 					: permission === 'denied'

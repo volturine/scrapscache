@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { css } from 'styled-system/css';
 	import '../app.css';
 	import { page } from '$app/state';
 	import { uiStore, type View } from '$lib/stores/ui.svelte';
@@ -252,7 +253,7 @@
 {:else}
 	<div class="app-viewport">
 		<div
-			class="app-shell flex h-full w-full overflow-hidden bg-[var(--scrapscache-bg)] text-[var(--scrapscache-text)]"
+			class={`app-shell ${css({ display: 'flex', h: 'full', w: 'full', overflow: 'hidden', bg: 'scrapscache.bg' })}`}
 			{@attach mobile.current &&
 				attachSidebarSwipe({
 					getOpen: () => uiStore.sidebarOpen,
@@ -278,11 +279,19 @@
 					<Drawer.Backdrop
 						data-sidebar-backdrop
 						aria-label="Close sidebar"
-						class="fixed inset-0 z-20 bg-black/30"
+						class={css({ position: 'fixed', inset: 0, zIndex: 20, bg: 'scrapscache.backdropSoft' })}
 					/>
-					<Drawer.Positioner class="fixed left-0 top-0 z-30 h-full">
+					<Drawer.Positioner
+						class={css({ position: 'fixed', left: 0, top: 0, zIndex: 30, h: 'full' })}
+					>
 						<Drawer.Content
-							class="h-full w-72 border-r border-[var(--scrapscache-border)] bg-[var(--scrapscache-surface)]"
+							class={css({
+								h: 'full',
+								w: '18rem',
+								borderRightWidth: 'hairline',
+								borderColor: 'scrapscache.border',
+								bg: 'scrapscache.surface'
+							})}
 							role="navigation"
 							aria-label="Sidebar"
 							data-sidebar-drawer
@@ -293,18 +302,25 @@
 				</Drawer.Root>
 			{:else}
 				{#if uiStore.sidebarOpen}
-					<div class="w-64 shrink-0 border-r border-[var(--scrapscache-border)]">
+					<div
+						class={css({
+							w: '16rem',
+							flexShrink: 0,
+							borderRightWidth: 'hairline',
+							borderColor: 'scrapscache.border'
+						})}
+					>
 						<Sidebar />
 					</div>
 				{/if}
 			{/if}
 
-			<div class="flex min-h-0 min-w-0 flex-1 flex-col">
+			<div class={css({ display: 'flex', minH: 0, minW: 0, flex: '1', flexDirection: 'column' })}>
 				<Topbar />
-				<div class="app-canvas relative min-h-0 min-w-0 flex-1">
+				<div class={`app-canvas ${css({ position: 'relative', minH: 0, minW: 0, flex: '1' })}`}>
 					<main
 						bind:this={feedEl}
-						class="app-feed scrollable h-full min-h-0 overflow-y-auto overflow-x-hidden px-4 pb-20 md:pb-6"
+						class={`app-feed scrollable ${css({ h: 'full', minH: 0, overflowY: 'auto', overflowX: 'hidden', px: 'lg', pb: { base: '5rem', md: '2xl' } })}`}
 						onscroll={rememberFeedScroll}
 					>
 						<AppViews />

@@ -7,8 +7,9 @@
 	import EmptyState from '$lib/components/EmptyState.svelte';
 	import { AlarmClock } from '@lucide/svelte';
 	import { dayKey } from '$lib/utils';
-	import { notesShellClass } from '$lib/notesShell';
 	import { MediaQuery } from 'svelte/reactivity';
+	import { css } from 'styled-system/css';
+	import { notesShell, viewPage } from '$panda/styles';
 
 	const { openNote: openEditor } = useEditorActions();
 	const reminders = $derived(notesStore.notesWithReminders);
@@ -39,9 +40,9 @@
 	);
 </script>
 
-<div class="pt-4 pb-8">
+<div class={viewPage}>
 	{#if embedCalendar}
-		<div class="relative">
+		<div class={css({ position: 'relative' })}>
 			<NotesFeed notes={visible} onOpen={openEditor}>
 				{#snippet leading()}
 					<ReminderCalendar notes={reminders} bind:selected={uiStore.reminderFilter} />
@@ -49,17 +50,30 @@
 			</NotesFeed>
 			{#if visible.length === 0}
 				<div
-					class="flex justify-center px-4 py-10 md:absolute md:inset-y-0 md:right-0 md:left-[min(32rem,58%)] md:items-center md:py-0"
+					class={css({
+						display: 'flex',
+						justifyContent: 'center',
+						px: 'lg',
+						py: '3xl',
+						md: {
+							position: 'absolute',
+							insetY: 0,
+							right: 0,
+							left: 'min(32rem, 58%)',
+							alignItems: 'center',
+							py: 0
+						}
+					})}
 				>
 					<EmptyState icon={AlarmClock} description={emptyDescription} />
 				</div>
 			{/if}
 		</div>
 	{:else}
-		<div class={uiStore.layout === 'list' ? notesShellClass() : 'w-full'}>
+		<div class={uiStore.layout === 'list' ? notesShell('list') : css({ w: 'full' })}>
 			<ReminderCalendar notes={reminders} bind:selected={uiStore.reminderFilter} />
 		</div>
-		<div class="mt-4">
+		<div class={css({ mt: 'lg' })}>
 			{#if visible.length === 0}
 				<EmptyState icon={AlarmClock} description={emptyDescription} />
 			{:else}

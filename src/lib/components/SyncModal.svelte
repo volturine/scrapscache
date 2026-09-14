@@ -1,4 +1,8 @@
 <script lang="ts">
+	import { progressMeter, syncStyles as styles } from '$panda/styles';
+	import { css, cx } from 'styled-system/css';
+	import { button, dialog, iconButton, input, text } from 'styled-system/recipes';
+	import { hstack, vstack } from 'styled-system/patterns';
 	import WorkspaceRow from './WorkspaceRow.svelte';
 	import TurnstileWidget from './TurnstileWidget.svelte';
 	import { env } from '$env/dynamic/public';
@@ -64,7 +68,6 @@
 	// visible "Syncing" state.
 	const syncing = $derived(operation === 'sync' || operation === 'force-sync');
 	const busy = $derived(operation !== null || notesStore.syncing || profileCoordinator.switching);
-	const handoverBlocked = $derived(notesStore.syncing || profileCoordinator.switching);
 
 	// Approximate on-device footprint per saved key. Measured when the modal
 	// opens and after any operation that can change what is stored, rather than
@@ -436,6 +439,17 @@
 		stopWaiting();
 		onClose();
 	}
+
+	const d = dialog({ presentation: 'centeredOverlay' });
+	const meter = progressMeter.compact;
+	const syncMuted = text({ style: 'bodyMuted' });
+	const syncMutedBody = cx(text({ style: 'bodyMuted' }), css({ lineHeight: 'relaxed' }));
+	const syncMutedLead = cx(text({ style: 'captionStrong' }), css({ letterSpacing: 'wide' }));
+	const syncDanger = text({ tone: 'danger' });
+	const syncBackLink = cx(
+		text({ style: 'caption' }),
+		css({ w: 'full', touchAction: 'manipulation', cursor: 'pointer', textAlign: 'center' })
+	);
 </script>
 
 <Dialog.Root
@@ -444,17 +458,13 @@
 	preventScroll={false}
 	closeOnEscape={rowHoldingEscape === null}
 >
-	<div {@attach portalToAppFloat} class="fixed inset-0 z-50" role="presentation">
-		<Dialog.Backdrop class="absolute inset-0 bg-black/40" />
-		<Dialog.Positioner class="absolute inset-0 flex items-center justify-center p-4">
-			<Dialog.Content
-				class="scrapscache-dialog relative max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-x-hidden overflow-y-auto p-5"
-			>
-				<div class="mb-4 flex items-center justify-between">
-					<Dialog.Title
-						class="flex items-center gap-2 text-lg font-medium text-[var(--scrapscache-text)]"
-					>
-						<Cloud class="h-5 w-5" aria-hidden="true" />
+	<div {@attach portalToAppFloat} class={d.portal} role="presentation">
+		<Dialog.Backdrop class={d.backdrop} />
+		<Dialog.Positioner class={d.positioner}>
+			<Dialog.Content class={d.panel}>
+				<div class={d.header}>
+					<Dialog.Title class={d.title}>
+						<Cloud size={20} aria-hidden="true" />
 						{mode === 'menu'
 							? 'Workspaces'
 							: mode === 'register'
@@ -468,19 +478,25 @@
 					<Dialog.CloseTrigger
 						type="button"
 						disabled={busy}
-						class="icon-btn h-8 w-8"
+						class={iconButton({ variant: 'ghost', size: 'compact' })}
 						aria-label="Close"
 					>
-						<X class="h-4 w-4" aria-hidden="true" />
+						<X size={16} aria-hidden="true" />
 					</Dialog.CloseTrigger>
 				</div>
 
 				{#if mode === 'menu'}
-					<div class="space-y-4">
-						<div class="workspace-list" aria-label="Workspaces on this device">
+					<div class={vstack({ gap: 'lg', alignItems: 'stretch' })}>
+						<div
+							class={css({ display: 'grid', gap: '2xs' })}
+							aria-label="Workspaces on this device"
+						>
 							<button
 								type="button"
-								class="workspace-row"
+								class={cx(
+									styles.workspaceRow,
+									syncStore.activePid === LOCAL_PROFILE_ID && 'active'
+								)}
 								class:active={syncStore.activePid === LOCAL_PROFILE_ID}
 								disabled={busy}
 								aria-label={syncStore.activePid === LOCAL_PROFILE_ID
@@ -490,9 +506,9 @@
 									syncStore.activePid !== LOCAL_PROFILE_ID && void switchProfile(LOCAL_PROFILE_ID)}
 							>
 								<CloudOff size={18} aria-hidden="true" />
-								<span class="min-w-0 flex-1 text-left"
-									><span class="block truncate">Anonymous workspace</span><span
-										class="workspace-caption"
+								<span class={css({ minW: 0, flex: '1', textAlign: 'left' })}
+									><span class={css({ truncate: true })}>Anonymous workspace</span><span
+										class={css({ display: 'block', mt: '3xs', textStyle: 'caption' })}
 										>Only on this device{sizeLabel(LOCAL_PROFILE_ID)
 											? ' · ' + sizeLabel(LOCAL_PROFILE_ID)
 											: ''}</span
@@ -523,13 +539,16 @@
 							{/each}
 						</div>
 
-						<div class={syncStore.account ? 'flex gap-4 text-sm' : ''}>
+						<div class={syncStore.account ? hstack({ gap: 'lg', fontSize: 'body' }) : undefined}>
 							<button
 								type="button"
 								disabled={busy}
 								class={syncStore.account
-									? 'text-[var(--scrapscache-primary)]'
-									: 'scrapscache-button scrapscache-button-primary w-full px-3 py-2.5 text-sm font-medium'}
+									? cx(
+											button({ variant: 'quiet', size: 'sm' }),
+											css({ color: 'scrapscache.accent' })
+										)
+									: cx(button({ variant: 'primary', size: 'md' }), styles.fullButton)}
 								onclick={() => {
 									mode = 'register';
 									error = '';
@@ -539,8 +558,14 @@
 							>
 						</div>
 						{#if syncStore.account}
-							<div class="border-t border-[var(--scrapscache-border)] pt-4">
-								<div class="flex gap-2">
+							<div
+								class={css({
+									borderTopWidth: 'hairline',
+									borderColor: 'scrapscache.border',
+									pt: 'lg'
+								})}
+							>
+								<div class={hstack({ gap: 'sm' })}>
 									<button
 										type="button"
 										onclick={() => {
@@ -551,10 +576,10 @@
 											} else void syncNow();
 										}}
 										disabled={busy}
-										class="scrapscache-button scrapscache-button-primary flex flex-1 items-center justify-center gap-2 px-3 py-2.5 text-sm"
+										class={cx(button({ variant: 'primary', size: 'md' }), styles.growButton)}
 										><RefreshCw
 											size={16}
-											class={syncing ? 'animate-spin' : ''}
+											class={syncing ? styles.spinner : ''}
 											aria-hidden="true"
 										/>{operation === 'sync'
 											? 'Syncing…'
@@ -562,60 +587,63 @@
 												? 'Force resync'
 												: 'Sync now'}</button
 									>
-									<button
-										type="button"
-										onclick={() => void startExistingConnection()}
-										disabled={busy}
-										class="scrapscache-button scrapscache-button-secondary flex-1 px-3 py-2.5 text-sm"
-										>Connect device</button
-									>
+									{#if !authenticationFailed}
+										<button
+											type="button"
+											onclick={() => void startExistingConnection()}
+											disabled={busy}
+											class={cx(button({ variant: 'secondary', size: 'md' }), styles.growButton)}
+											>Connect device</button
+										>
+									{/if}
 								</div>
 								{#if syncStore.progress}
 									{@const progress = syncStore.progress}
 									{@const percent = progressPercent(progress.loadedBytes, progress.totalBytes)}
-									<p class="mt-2 text-xs text-[var(--scrapscache-text-muted)]" role="status">
+									<p class={cx(text({ style: 'caption' }), css({ mt: 'sm' }))} role="status">
 										{progress.phase === 'upload' ? 'Uploading' : 'Downloading'} · <Format.Byte
 											value={progress.loadedBytes}
 										/>
 									</p>
-									<Progress.Root value={progress.totalBytes ? percent : null} class="mt-2 w-full"
-										><Progress.Track
-											class="scrapscache-progress-track h-1 overflow-hidden rounded-full"
+									<Progress.Root
+										value={progress.totalBytes ? percent : null}
+										class={css({ mt: 'sm', w: 'full' })}
+										><Progress.Track class={meter.track}
 											><Progress.Range
-												class="scrapscache-progress-value h-full"
+												class={meter.bar}
 												style={`width: ${progress.totalBytes ? percent : 100}%`}
 											/></Progress.Track
 										></Progress.Root
 									>
-								{:else if syncing}<p class="mt-2 text-xs" role="status">Syncing…</p>{/if}
+								{/if}
 							</div>
 						{/if}
-						{#if handoverBlocked}<p class="text-xs text-[var(--scrapscache-text-muted)]">
-								Wait for sync to finish before changing workspaces.
-							</p>{/if}
-						{#if error || syncError}<p
-								class="text-sm text-[var(--scrapscache-danger)]"
-								role="alert"
-							>
+						{#if error || syncError}<p class={syncDanger} role="alert">
 								{error || syncError}
 							</p>{/if}
-						{#if info}<p class="text-sm text-[var(--scrapscache-text-muted)]" role="status">
+						{#if info}<p class={syncMuted} role="status">
 								{info}
 							</p>{/if}
-						<details class="border-t border-[var(--scrapscache-border)] pt-3">
-							<summary class="cursor-pointer text-sm text-[var(--scrapscache-text-muted)]"
+						<details
+							class={css({
+								borderTopWidth: 'hairline',
+								borderColor: 'scrapscache.border',
+								pt: 'md'
+							})}
+						>
+							<summary class={css({ cursor: 'pointer', textStyle: 'bodyMuted' })}
 								>Manage workspace</summary
 							>
-							<div class="mt-2 space-y-1">
+							<div class={vstack({ gap: '2xs', alignItems: 'stretch', mt: 'sm' })}>
 								<button
-									class="manage-row"
+									class={styles.manageRow}
 									disabled={busy}
 									onclick={() => void exportProfile(syncStore.activePid)}
 									><Download size={16} aria-hidden="true" /><span>Export notes</span></button
 								>
 								{#if syncStore.account}
 									<button
-										class="manage-row"
+										class={styles.manageRow}
 										disabled={busy}
 										onclick={() => {
 											confirmation = 'force';
@@ -624,7 +652,7 @@
 										}}
 										><RefreshCw
 											size={16}
-											class={operation === 'force-sync' ? 'animate-spin' : ''}
+											class={operation === 'force-sync' ? styles.spinner : ''}
 											aria-hidden="true"
 										/><span
 											>{operation === 'force-sync' ? 'Resyncing…' : 'Force resync'}<small
@@ -633,7 +661,7 @@
 										></button
 									>
 									<button
-										class="manage-row text-[var(--scrapscache-danger)]"
+										class={cx(styles.manageRow, syncDanger)}
 										disabled={busy}
 										onclick={() => {
 											confirmation = 'delete';
@@ -651,8 +679,8 @@
 						</details>
 					</div>
 				{:else if mode === 'confirm'}
-					<div class="space-y-4">
-						<p class="text-sm leading-relaxed text-[var(--scrapscache-text-muted)]">
+					<div class={vstack({ gap: 'lg', alignItems: 'stretch' })}>
+						<p class={syncMutedBody}>
 							{#if confirmation === 'force'}
 								This device’s notes will replace the cloud version using the same sync key. Notes
 								only in the cloud will be removed. Other devices will receive these notes as the
@@ -671,13 +699,13 @@
 								action="register"
 							/>
 						{/if}
-						{#if error}<p class="text-sm text-[var(--scrapscache-danger)]" role="alert">
+						{#if error}<p class={syncDanger} role="alert">
 								{error}
 							</p>{/if}
-						<div class="flex gap-2">
+						<div class={hstack({ gap: 'sm' })}>
 							<button
 								type="button"
-								class="scrapscache-button scrapscache-button-secondary flex-1 px-3 py-2"
+								class={cx(button({ variant: 'secondary', size: 'sm' }), styles.growButton)}
 								disabled={busy}
 								onclick={() => {
 									mode = 'menu';
@@ -687,9 +715,13 @@
 							>
 							<button
 								type="button"
-								class="scrapscache-button flex-1 px-3 py-2 {confirmation === 'delete'
-									? 'scrapscache-button-destructive-solid'
-									: 'scrapscache-button-primary'}"
+								class={cx(
+									button({
+										variant: confirmation === 'delete' ? 'destructive' : 'primary',
+										size: 'sm'
+									}),
+									styles.growButton
+								)}
 								disabled={busy ||
 									(confirmation === 'force' && Boolean(turnstileSitekey) && !forceToken)}
 								onclick={() =>
@@ -703,18 +735,18 @@
 						</div>
 					</div>
 				{:else if mode === 'register'}
-					<div class="space-y-4">
-						<p class="text-sm leading-relaxed text-[var(--scrapscache-text-muted)]">
+					<div class={vstack({ gap: 'lg', alignItems: 'stretch' })}>
+						<p class={syncMutedBody}>
 							{syncStore.account
 								? 'It starts empty. Your existing workspaces stay unchanged.'
 								: 'Your current anonymous notes will be copied into it.'}
 						</p>
-						<div class="space-y-2">
+						<div class={vstack({ gap: 'sm', alignItems: 'stretch' })}>
 							<input
 								bind:value={newName}
 								placeholder="Workspace name (optional)"
 								maxlength="60"
-								class="scrapscache-input w-full px-3 py-2.5 text-sm"
+								class={input({ variant: 'outline', size: 'md' })}
 								aria-label="Sync key name"
 								aria-invalid={Boolean(error)}
 								onkeydown={(event) => event.key === 'Enter' && void create()}
@@ -727,27 +759,34 @@
 									action="register"
 								/>
 							{/if}
-							{#if error}<p class="text-sm text-[var(--scrapscache-danger)]">{error}</p>{/if}
+							{#if error}<p class={syncDanger}>{error}</p>{/if}
 							<button
 								type="button"
 								onclick={() => void create()}
 								disabled={busy || (Boolean(turnstileSitekey) && !registerToken)}
-								class="scrapscache-button scrapscache-button-primary w-full px-3 py-2.5 text-sm font-medium"
+								class={cx(button({ variant: 'primary', size: 'md' }), styles.fullButton)}
 								>{operation === 'create' ? 'Creating…' : 'Create workspace'}</button
 							>
 						</div>
-						<div class="flex items-center gap-3" aria-hidden="true">
-							<span class="h-px flex-1 bg-[var(--scrapscache-border)]"></span>
+						<div class={hstack({ gap: 'md', alignItems: 'center' })} aria-hidden="true">
+							<span class={styles.dividerLine}></span>
 							<span
-								class="text-[11px] uppercase tracking-wider text-[var(--scrapscache-text-muted)]"
-								>or</span
+								class={css({
+									fontSize: 'caption',
+									fontWeight: 'heading',
+									textTransform: 'uppercase',
+									letterSpacing: 'status',
+									color: 'scrapscache.textMuted'
+								})}
 							>
-							<span class="h-px flex-1 bg-[var(--scrapscache-border)]"></span>
+								or
+							</span>
+							<span class={styles.dividerLine}></span>
 						</div>
 						<button
 							type="button"
 							disabled={busy}
-							class="scrapscache-button scrapscache-button-secondary w-full px-3 py-2.5 text-sm"
+							class={cx(button({ variant: 'secondary', size: 'md' }), styles.fullButton)}
 							onclick={() => {
 								mode = 'link';
 								error = '';
@@ -758,13 +797,12 @@
 							type="button"
 							onclick={() => (mode = 'menu')}
 							disabled={busy}
-							class="w-full text-xs text-[var(--scrapscache-text-muted)] touch-manipulation"
-							>← Back to workspaces</button
+							class={syncBackLink}>← Back to workspaces</button
 						>
 					</div>
 				{:else if mode === 'link'}
-					<div class="space-y-3">
-						<p class="text-sm text-[var(--scrapscache-text-muted)]">
+					<div class={vstack({ gap: 'md', alignItems: 'stretch' })}>
+						<p class={syncMuted}>
 							On your other device open Sync and choose Connect device. Enter the one-time code
 							shown there.
 						</p>
@@ -776,62 +814,48 @@
 							placeholder="XXXX-XXXX-XXXX-XXXX"
 							maxlength="19"
 							spellcheck="false"
-							class="scrapscache-input w-full px-3 py-2 text-center text-lg font-bold tracking-wider"
 							aria-invalid={Boolean(error)}
+							class={cx(input({ variant: 'outline', size: 'md' }), styles.pairingInput)}
 							onkeydown={(event) => event.key === 'Enter' && void beginLink()}
-						/>{#if error}<p class="text-sm text-[var(--scrapscache-danger)]">{error}</p>{/if}<button
+						/>{#if error}<p class={syncDanger}>{error}</p>{/if}<button
 							type="button"
 							onclick={() => void beginLink()}
 							disabled={busy}
-							class="scrapscache-button scrapscache-button-primary w-full px-3 py-2 text-sm font-medium"
+							class={cx(button({ variant: 'primary', size: 'md' }), styles.fullButton)}
 							>{operation === 'connect' ? 'Starting…' : 'Start connection'}</button
 						><button
 							type="button"
 							onclick={() => (mode = 'menu')}
 							disabled={busy}
-							class="w-full text-xs text-[var(--scrapscache-text-muted)] touch-manipulation"
-							>← Back</button
+							class={syncBackLink}>← Back</button
 						>
 					</div>
 				{:else if mode === 'pairing'}
-					<p class="text-sm text-[var(--scrapscache-text)]" role="status">
-						Connected. Syncing workspace…
-					</p>
+					<p role="status">Connected. Syncing workspace…</p>
 				{:else if mode === 'waiting'}
-					<div class="space-y-5">
+					<div class={vstack({ gap: 'xl', alignItems: 'stretch' })}>
 						{#if waiting?.role === 'existing'}
 							<div>
-								<p class="text-xs font-medium tracking-wide text-[var(--scrapscache-text-muted)]">
-									On the new device
-								</p>
-								<p class="mt-1 text-sm text-[var(--scrapscache-text)]">
+								<p class={syncMutedLead}>On the new device</p>
+								<p class={styles.bodySpacing}>
 									Scan the QR code, open the link, or type the one-time code
 								</p>
 							</div>
 							{#if qrDataUrl}
-								<div class="flex justify-center">
-									<img
-										src={qrDataUrl}
-										alt="Pair this device"
-										class="h-[220px] w-[220px] rounded-lg bg-white p-2"
-									/>
+								<div class={hstack({ justify: 'center' })}>
+									<img src={qrDataUrl} alt="Pair this device" class={styles.qrCode} />
 								</div>
 							{/if}
-							<div
-								class="rounded-xl border border-[var(--scrapscache-border)] bg-[var(--scrapscache-bg)] px-2 py-5"
-								aria-label="One-time pairing code"
-							>
-								<div class="flex items-center justify-center gap-1">
+							<div class={styles.pairingCode} aria-label="One-time pairing code">
+								<div class={hstack({ justify: 'center', gap: '2xs' })}>
 									{#each pairingGroups(waiting.syncCode) as group, index (index)}
 										{#if index > 0}
-											<span class="px-0.5 text-[var(--scrapscache-text-muted)]" aria-hidden="true"
-												>·</span
+											<span
+												class={css({ px: '3xs', color: 'scrapscache.textMuted' })}
+												aria-hidden="true">·</span
 											>
 										{/if}
-										<span
-											class="font-mono text-[1.35rem] font-semibold tracking-[0.14em] text-[var(--scrapscache-text)]"
-											>{group}</span
-										>
+										<span class={styles.digits}>{group}</span>
 									{/each}
 								</div>
 							</div>
@@ -839,35 +863,34 @@
 								<Clipboard.Trigger
 									type="button"
 									aria-label="Copy pairing link"
-									class="scrapscache-button w-full px-3 py-2.5 text-sm font-medium {copyFlash
-										? 'border-[var(--scrapscache-success)] bg-[var(--scrapscache-success)] text-[var(--scrapscache-success-foreground)]'
-										: 'scrapscache-button-secondary'}"
+									class={cx(
+										button({ variant: 'secondary', size: 'md' }),
+										styles.fullButton,
+										copyFlash ? styles.copySuccess : ''
+									)}
 								>
 									{copyFlash ? 'Copied' : 'Copy pairing link'}
 								</Clipboard.Trigger>
 							</Clipboard.Root>
 						{:else}
 							<div>
-								<p class="text-xs font-medium tracking-wide text-[var(--scrapscache-text-muted)]">
-									On the other device
-								</p>
-								<p class="mt-1 text-sm text-[var(--scrapscache-text)]">
-									Open Sync and choose Connect device
-								</p>
+								<p class={syncMutedLead}>On the other device</p>
+								<p class={styles.bodySpacing}>Open Sync and choose Connect device</p>
 							</div>
 						{/if}
-						<div class="space-y-1.5">
+						<div class={vstack({ gap: 'xs', alignItems: 'stretch' })}>
 							<div
-								class="flex items-center justify-between text-xs text-[var(--scrapscache-text-muted)]"
+								class={hstack({
+									justify: 'space-between',
+									fontSize: 'label',
+									color: 'scrapscache.textMuted'
+								})}
 							>
 								<span>Expires in</span>
-								<span class="tabular-nums text-[var(--scrapscache-text)]">{secondsLeft()}s</span>
+								<span class={styles.timerText}>{secondsLeft()}s</span>
 							</div>
-							<div class="scrapscache-progress-track h-1 overflow-hidden rounded-full">
-								<div
-									class="scrapscache-progress-value h-full rounded-full transition-[width] duration-1000 ease-linear"
-									style={`width: ${expiryRatio() * 100}%`}
-								></div>
+							<div class={meter.track}>
+								<div class={meter.bar} style={`width: ${expiryRatio() * 100}%`}></div>
 							</div>
 						</div>
 						<button
@@ -877,8 +900,15 @@
 								waiting = null;
 								mode = syncStore.isLoggedIn ? 'menu' : 'link';
 							}}
-							class="w-full text-sm text-[var(--scrapscache-text-muted)] touch-manipulation"
-							>Cancel</button
+							class={cx(
+								text({ style: 'bodyMuted' }),
+								css({
+									w: 'full',
+									touchAction: 'manipulation',
+									cursor: 'pointer',
+									textAlign: 'center'
+								})
+							)}>Cancel</button
 						>
 					</div>
 				{/if}
@@ -886,58 +916,3 @@
 		</Dialog.Positioner>
 	</div>
 </Dialog.Root>
-
-<style>
-	.workspace-list {
-		display: grid;
-		gap: 4px;
-	}
-	.workspace-row {
-		position: relative;
-		display: flex;
-		align-items: center;
-		gap: 12px;
-		width: 100%;
-		border-radius: 10px;
-		padding: 12px;
-		font-size: 14px;
-	}
-	.workspace-row:hover,
-	.manage-row:hover {
-		background: var(--scrapscache-interactive-hover);
-	}
-	.workspace-row.active {
-		background: var(--scrapscache-interactive-hover);
-	}
-	.workspace-row.active::before {
-		content: '';
-		position: absolute;
-		top: 10px;
-		bottom: 10px;
-		left: 0;
-		width: 3px;
-		border-radius: 0 3px 3px 0;
-		background: var(--scrapscache-accent);
-	}
-	.workspace-caption,
-	.manage-row small {
-		display: block;
-		margin-top: 2px;
-		color: var(--scrapscache-text-muted);
-		font-size: 12px;
-		font-weight: 400;
-	}
-	.manage-row {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-		width: 100%;
-		border-radius: 8px;
-		padding: 10px 8px;
-		text-align: left;
-		font-size: 14px;
-	}
-	button:disabled {
-		opacity: 0.55;
-	}
-</style>

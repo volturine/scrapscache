@@ -3,6 +3,7 @@
 	import type { Snippet } from 'svelte';
 	import { onMount } from 'svelte';
 	import NoteCard from './NoteCard.svelte';
+	import { css } from 'styled-system/css';
 
 	let {
 		notes,
@@ -111,22 +112,38 @@
 
 <div
 	bind:this={gridEl}
-	class="masonry-wrap {className}"
-	style="--masonry-cols: {colCount}"
+	class={[css({ position: 'relative' }), className]}
 	bind:clientWidth={containerWidth}
 >
 	{#if leading && leadSpan > 0}
 		<div
-			class="absolute top-0 left-0"
-			style="width: calc(({leadSpan} * (100% - {GAP * (colCount - 1)}px)) / {colCount} + {GAP *
-				(leadSpan - 1)}px); z-index: 10;"
+			class={css({ position: 'absolute', top: 0, left: 0, zIndex: 10 })}
+			style:width={`calc((${leadSpan} * (100% - ${GAP * (colCount - 1)}px)) / ${colCount} + ${GAP * (leadSpan - 1)}px)`}
 		>
 			{@render leading()}
 		</div>
 	{/if}
-	<div class="masonry-balanced">
+	<div
+		class={css({
+			display: 'flex',
+			alignItems: 'flex-start',
+			gap: 'list',
+			w: 'full',
+			flex: '1 1 var(--note-card-width)',
+			minW: 0
+		})}
+	>
 		{#each columns as col, i (i)}
-			<div class="masonry-balanced-col" style={i < leadSpan ? `margin-top: ${leadOffset}px` : ''}>
+			<div
+				class={css({
+					flex: '1 1 0',
+					minW: 0,
+					display: 'flex',
+					flexDirection: 'column',
+					gap: 'list'
+				})}
+				style:margin-top={i < leadSpan ? `${leadOffset}px` : undefined}
+			>
 				{#each col as note (note.id)}
 					<div data-note-height={note.id}>
 						{#if children}

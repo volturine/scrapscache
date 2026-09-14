@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { useEditorActions } from '$lib/editorContext';
 	import { Plus, Download, X, Share, Smartphone } from '@lucide/svelte';
+	import { css, cx } from 'styled-system/css';
+	import { iconButton } from 'styled-system/recipes';
 	import { pwaInstallStore } from '$lib/stores/pwaInstall.svelte';
 
 	const { startNewNote } = useEditorActions();
@@ -110,14 +112,31 @@
 {/if}
 
 <!-- Floating + button — bottom right on every device -->
-<div class="new-note-fab fixed z-[60] bottom-[var(--app-fab-bottom)] right-6">
+<div
+	class={`new-note-fab ${css({
+		position: 'fixed',
+		zIndex: 60,
+		bottom: 'var(--app-fab-bottom)',
+		right: '2xl'
+	})}`}
+>
 	<button
 		type="button"
 		onclick={startNewNote}
-		class="flex h-[var(--app-fab-size)] w-[var(--app-fab-size)] items-center justify-center rounded-full border border-[var(--scrapscache-border)] bg-[var(--scrapscache-surface)] shadow-lg"
+		class={cx(
+			iconButton({ variant: 'ghost', size: 'lg' }),
+			css({
+				h: 'var(--app-fab-size)',
+				w: 'var(--app-fab-size)',
+				borderWidth: 'hairline',
+				borderColor: 'scrapscache.border',
+				bg: 'scrapscache.surface',
+				boxShadow: 'lg'
+			})
+		)}
 		aria-label="New note"
 		title="New note"
 	>
-		<Plus class="h-6 w-6" strokeWidth={2.5} aria-hidden="true" />
+		<Plus class={css({ w: '1.5rem', h: '1.5rem' })} strokeWidth={2.5} aria-hidden="true" />
 	</button>
 </div>

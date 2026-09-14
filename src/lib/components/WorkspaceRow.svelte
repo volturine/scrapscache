@@ -1,6 +1,10 @@
 <script lang="ts">
+	import { truncate, workspaceStyles, workspacePanelBtn as panelBtn } from '$panda/styles';
 	import type { Snippet } from 'svelte';
 	import { Check, CloudOff, Pencil, TriangleAlert, X } from '@lucide/svelte';
+	import { css, cx } from 'styled-system/css';
+	import { input as inputRecipe } from 'styled-system/recipes';
+	import { hstack } from 'styled-system/patterns';
 
 	let {
 		name,
@@ -24,6 +28,8 @@
 		onbusychange: (holdsEscape: boolean) => void;
 	} = $props();
 
+	const styles = workspaceStyles;
+
 	// Width of the swipe drawer: two touch targets side by side.
 	const ACTIONS_WIDTH = 152;
 	// Share of the row a swipe must cross to arm the full-swipe unlink.
@@ -44,7 +50,7 @@
 	let dragging = $state(false);
 	let armed = $state(false);
 	let rowElement: HTMLDivElement | undefined;
-	let input: HTMLInputElement | undefined;
+	let renameInput: HTMLInputElement | undefined;
 	// The control a panel was opened from, so focus can go back where it started.
 	let trigger: HTMLElement | null = null;
 	let start: { x: number; y: number; offset: number } | null = null;
@@ -84,11 +90,11 @@
 
 	// Held beyond mount so a rejected rename can hand focus back to the field.
 	function renameField(node: HTMLInputElement) {
-		input = node;
+		renameInput = node;
 		const release = takeFocus(node);
 		node.select();
 		return () => {
-			if (input === node) input = undefined;
+			if (renameInput === node) renameInput = undefined;
 			release();
 		};
 	}
@@ -198,7 +204,7 @@
 		const saved = await onrename(next);
 		working = null;
 		if (saved) setMode('idle');
-		else input?.focus();
+		else renameInput?.focus();
 	}
 
 	async function confirmUnlink() {
@@ -226,6 +232,9 @@
 		if (mode === 'idle') settle(false);
 		else cancel();
 	}
+	const nameFieldClass = $derived(
+		cx(inputRecipe({ variant: 'outline', size: 'sm' }), css({ w: 'full', font: 'inherit' }))
+	);
 </script>
 
 <svelte:document
@@ -238,7 +247,7 @@
 
 <div
 	bind:this={rowElement}
-	class="row"
+	class={`row ${styles.row}`}
 	class:open
 	class:armed
 	class:dragging
@@ -246,44 +255,46 @@
 	style:--swipe-offset={`${offset}px`}
 	style:--swipe-progress={progress}
 >
-	<div class="actions">
+	<div class={`actions ${styles.actions}`}>
 		<button
 			type="button"
-			class="tile"
+			class={`tile ${styles.tile}`}
 			disabled={locked}
 			title="Rename"
 			aria-label="Rename {name}"
 			onclick={startRename}
 		>
-			<Pencil size={16} aria-hidden="true" /><span class="tile-label">Rename</span>
+			<Pencil size={16} aria-hidden="true" /><span class={styles.tileLabel}>Rename</span>
 		</button>
 		<button
 			type="button"
-			class="tile unlink"
+			class={`tile tile-unlink ${styles.tile} ${styles.tileUnlink}`}
 			disabled={locked}
 			title="Unlink"
 			aria-label="Unlink {name}"
 			onclick={askUnlink}
 		>
-			<CloudOff size={16} aria-hidden="true" /><span class="tile-label"
+			<CloudOff size={16} aria-hidden="true" /><span class={styles.tileLabel}
 				>{armed ? 'Release' : 'Unlink'}</span
 			>
 		</button>
 	</div>
 
-	<div class="front" class:active>
+	<div class={`front ${styles.frontBase}`} class:active data-front>
 		{#if mode === 'confirm'}
-			<div class="panel confirm">
-				<span class="glyph" aria-hidden="true"><TriangleAlert size={18} /></span>
-				<p class="message">
-					Unlink <strong>{name}</strong>?<span class="caption"
+			<div class={`panel confirm ${styles.panel}`}>
+				<span class={`${styles.glyph} panel-glyph`} aria-hidden="true"
+					><TriangleAlert size={18} /></span
+				>
+				<p class={cx(styles.content, css({ fontSize: 'compact' }))}>
+					Unlink <strong>{name}</strong>?<span class={styles.caption}
 						>Its notes move to Anonymous workspace. Cloud data stays.</span
 					>
 				</p>
-				<div class="panel-actions">
+				<div class={`panel-actions ${hstack({ gap: 'xs', flexShrink: 0 })}`}>
 					<button
 						type="button"
-						class="ghost"
+						class={panelBtn.neutral}
 						{@attach takeFocus}
 						disabled={working !== null}
 						aria-label="Keep {name} linked"
@@ -291,7 +302,7 @@
 					>
 					<button
 						type="button"
-						class="danger"
+						class={panelBtn.danger}
 						disabled={locked}
 						aria-label="Unlink {name} and keep notes"
 						onclick={() => void confirmUnlink()}
@@ -301,40 +312,41 @@
 			</div>
 		{:else if mode === 'rename'}
 			<form
-				class="panel"
+				class={styles.panel}
 				onsubmit={(event) => {
 					event.preventDefault();
 					void saveRename();
 				}}
 			>
-				<span class="glyph" aria-hidden="true">{@render icon()}</span>
-				<span class="body">
+				<span class={styles.glyph} aria-hidden="true">{@render icon()}</span>
+				<span class={styles.content}>
 					<input
 						{@attach renameField}
 						bind:value={draft}
-						class="name-input"
+						class={nameFieldClass}
 						maxlength="60"
 						spellcheck="false"
 						disabled={working !== null}
 						aria-label="Workspace name"
 					/>
-					<span class="caption">
-						{#if working === 'rename'}Saving…{:else}<span class="on-wide"
+					<span class={styles.caption}>
+						{#if working === 'rename'}Saving…{:else}<span
+								class={css({ display: { base: 'none', sm: 'inline' } })}
 								>Enter saves · Esc cancels</span
-							><span class="on-narrow">{caption}</span>{/if}
+							><span class={css({ display: { base: 'inline', sm: 'none' } })}>{caption}</span>{/if}
 					</span>
 				</span>
-				<div class="panel-actions">
+				<div class={`panel-actions ${hstack({ gap: 'xs', flexShrink: 0 })}`}>
 					<button
 						type="button"
-						class="icon"
+						class={styles.iconButton}
 						disabled={working !== null}
 						aria-label="Cancel renaming {name}"
 						onclick={cancel}><X size={16} aria-hidden="true" /></button
 					>
 					<button
 						type="submit"
-						class="icon accept"
+						class={cx(styles.iconButton, css({ color: 'scrapscache.success' }))}
 						disabled={locked || !draft.trim()}
 						aria-label="Save name"><Check size={16} aria-hidden="true" /></button
 					>
@@ -343,7 +355,7 @@
 		{:else}
 			<button
 				type="button"
-				class="select"
+				class={styles.select}
 				disabled={locked}
 				aria-label={active ? `${name} is active` : `Switch to ${name}`}
 				onpointerdown={down}
@@ -356,273 +368,12 @@
 					else onselect();
 				}}
 			>
-				<span class="glyph" aria-hidden="true">{@render icon()}</span>
-				<span class="body">
-					<span class="name">{name}</span>
-					<span class="caption">{caption}</span>
+				<span class={styles.glyph} aria-hidden="true">{@render icon()}</span>
+				<span class={styles.content}>
+					<span class={cx(css({ display: 'block' }), truncate)}>{name}</span>
+					<span class={styles.caption}>{caption}</span>
 				</span>
 			</button>
 		{/if}
 	</div>
 </div>
-
-<style>
-	.row {
-		position: relative;
-		border-radius: 10px;
-	}
-	.front {
-		position: relative;
-		z-index: 1;
-		display: flex;
-		align-items: stretch;
-		border-radius: 10px;
-		background: var(--scrapscache-surface, var(--scrapscache-bg));
-	}
-	.front.active,
-	.row.editing .front {
-		background: var(--scrapscache-interactive-hover);
-	}
-	/* The current workspace keeps a marker so hover never impersonates it. */
-	.front.active::before {
-		content: '';
-		position: absolute;
-		top: 10px;
-		bottom: 10px;
-		left: 0;
-		width: 3px;
-		border-radius: 0 3px 3px 0;
-		background: var(--scrapscache-accent);
-	}
-	@media (hover: hover) {
-		.row:hover .front {
-			background: var(--scrapscache-interactive-hover);
-		}
-	}
-	.select,
-	.panel {
-		display: flex;
-		flex: 1;
-		align-items: center;
-		gap: 12px;
-		min-width: 0;
-		padding: 12px;
-		text-align: left;
-		font-size: 14px;
-	}
-	.select {
-		padding-right: 76px;
-		touch-action: pan-y;
-	}
-	.glyph {
-		display: grid;
-		flex-shrink: 0;
-		place-items: center;
-		color: var(--scrapscache-text-muted);
-	}
-	.body,
-	.message {
-		min-width: 0;
-		flex: 1;
-	}
-	.name {
-		display: block;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-	.caption {
-		display: block;
-		margin-top: 2px;
-		color: var(--scrapscache-text-muted);
-		font-size: 12px;
-		font-weight: 400;
-	}
-	.name-input {
-		width: 100%;
-		padding: 1px 0;
-		border: 0;
-		border-bottom: 1px solid var(--scrapscache-accent);
-		background: transparent;
-		color: inherit;
-		font: inherit;
-		outline: none;
-	}
-	.message {
-		font-size: 13px;
-	}
-	.panel.confirm {
-		background: var(--scrapscache-danger-subtle);
-		border-radius: 10px;
-	}
-	.panel.confirm .glyph {
-		color: var(--scrapscache-danger);
-	}
-	.panel-actions {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		flex-shrink: 0;
-	}
-	.icon {
-		display: grid;
-		width: 30px;
-		height: 30px;
-		place-items: center;
-		border-radius: 7px;
-		color: var(--scrapscache-text-muted);
-	}
-	.icon:hover {
-		background: var(--scrapscache-interactive-hover);
-		color: var(--scrapscache-text);
-	}
-	.icon.accept {
-		color: var(--scrapscache-success);
-	}
-	.ghost,
-	.danger {
-		padding: 7px 12px;
-		border-radius: 7px;
-		font-size: 13px;
-		white-space: nowrap;
-	}
-	.ghost:hover {
-		background: var(--scrapscache-interactive-hover);
-	}
-	.danger {
-		background: var(--scrapscache-danger);
-		color: var(--scrapscache-danger-foreground);
-		font-weight: 500;
-	}
-
-	/* Desktop: the actions ride above the right edge and fade in on approach. */
-	.actions {
-		position: absolute;
-		inset: 0 0 0 auto;
-		z-index: 2;
-		display: flex;
-		align-items: center;
-		gap: 2px;
-		padding-right: 8px;
-		opacity: 0;
-		pointer-events: none;
-		transition: opacity 120ms ease;
-	}
-	.row:hover .actions,
-	.row:focus-within .actions {
-		opacity: 1;
-		pointer-events: auto;
-	}
-	.row.editing .actions {
-		display: none;
-	}
-	.tile {
-		display: grid;
-		width: 30px;
-		height: 30px;
-		place-items: center;
-		border-radius: 7px;
-		color: var(--scrapscache-text-muted);
-	}
-	.tile:hover {
-		background: var(--scrapscache-interactive-hover);
-		color: var(--scrapscache-text);
-	}
-	.tile.unlink:hover {
-		color: var(--scrapscache-danger);
-	}
-	.tile-label,
-	.on-narrow {
-		display: none;
-	}
-
-	@media (max-width: 640px) {
-		/* Phones: the row slides to uncover the actions underneath it. */
-		.row {
-			overflow: hidden;
-		}
-		.front {
-			transform: translateX(var(--swipe-offset));
-		}
-		.row:not(.dragging) .front {
-			transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
-		}
-		.row:not(.dragging):has(.actions :focus-visible) .front {
-			transform: translateX(-152px);
-		}
-		/* The drawer is exactly as wide as the row has been pulled aside, and its
-		   actions are pinned to the trailing edge, so Unlink leads the reveal. */
-		.actions {
-			z-index: 0;
-			width: max(0px, calc(-1 * var(--swipe-offset)));
-			justify-content: flex-end;
-			padding-right: 0;
-			overflow: hidden;
-			border-radius: 0 10px 10px 0;
-			opacity: 1;
-			pointer-events: auto;
-		}
-		.row:not(.dragging) .actions {
-			transition: width 260ms cubic-bezier(0.22, 1, 0.36, 1);
-		}
-		.tile {
-			display: flex;
-			width: 76px;
-			height: auto;
-			flex-direction: column;
-			align-items: center;
-			justify-content: center;
-			gap: 4px;
-			flex-shrink: 0;
-			align-self: stretch;
-			border-radius: 0;
-			font-size: 12px;
-			color: var(--scrapscache-text);
-		}
-		.tile.unlink {
-			flex: 1 0 76px;
-			color: var(--scrapscache-danger);
-		}
-		.tile:hover {
-			background: transparent;
-		}
-		.tile-label {
-			display: block;
-		}
-		.on-wide {
-			display: none;
-		}
-		.on-narrow {
-			display: inline;
-		}
-		/* Icons settle to full size as the drawer arrives. */
-		.tile > :global(svg) {
-			transform: scale(calc(0.8 + 0.2 * var(--swipe-progress)));
-		}
-		.row.armed .tile.unlink {
-			background: var(--scrapscache-danger);
-			color: var(--scrapscache-danger-foreground);
-		}
-		.row.armed .tile:not(.unlink) {
-			opacity: 0;
-		}
-		.select {
-			padding-right: 12px;
-		}
-		.panel.confirm {
-			flex-wrap: wrap;
-		}
-		.panel.confirm .panel-actions {
-			width: 100%;
-			justify-content: flex-end;
-		}
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.row:not(.dragging) .front {
-			transition: none;
-		}
-	}
-	button:disabled {
-		opacity: 0.55;
-	}
-</style>

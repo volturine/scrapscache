@@ -29,6 +29,9 @@
 </script>
 
 <script lang="ts">
+	import { css, cx } from 'styled-system/css';
+	import { text } from 'styled-system/recipes';
+
 	let {
 		sitekey,
 		action,
@@ -75,9 +78,9 @@
 	}
 </script>
 
-<div {@attach mount} class="min-h-[65px] w-full"></div>
+<div {@attach mount} class={css({ minH: '65px', w: 'full' })}></div>
 {#if failed}
-	<p class="text-center text-sm text-[var(--scrapscache-danger)]" role="alert">
+	<p class={cx(css({ textAlign: 'center' }), text({ tone: 'danger' }))} role="alert">
 		Human verification could not load. Check your connection and reopen this dialog.
 	</p>
 {/if}

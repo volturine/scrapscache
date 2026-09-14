@@ -370,7 +370,7 @@
 								: undefined}
 							data-secret-content={note.secret ? '' : undefined}
 						>
-							<NoteBodyDisplay {note} />
+							<NoteBodyDisplay {note} maxBodyLines={40} />
 						</div>
 						{#if note.secret}
 							<div

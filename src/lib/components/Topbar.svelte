@@ -89,7 +89,9 @@
 	function startBackupImport() {
 		settingsOpen = false;
 		backupImportError = '';
-		showingImportGuide = true;
+		queueMicrotask(() => {
+			showingImportGuide = true;
+		});
 	}
 
 	async function submitBackupPassphrase(passphrase: string) {

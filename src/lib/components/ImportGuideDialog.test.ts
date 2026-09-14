@@ -23,4 +23,15 @@ describe('ImportGuideDialog', () => {
 		await fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 		expect(onClose).toHaveBeenCalledOnce();
 	});
+
+	it('hands the chosen file to the importer', async () => {
+		const onFile = vi.fn();
+		render(ImportGuideDialog, { props: { onFile, onClose: vi.fn() } });
+		const input = document.querySelector('input[type="file"]');
+		if (!(input instanceof HTMLInputElement)) throw new Error('file input missing');
+		const file = new File(['{}'], 'notes.zip', { type: 'application/zip' });
+		Object.defineProperty(input, 'files', { value: [file], configurable: true });
+		await fireEvent.change(input);
+		expect(onFile).toHaveBeenCalledWith(file);
+	});
 });

@@ -26,24 +26,35 @@
 	class="kanban-card relative overflow-hidden rounded-xl border border-black/5 shadow-sm dark:border-white/10"
 	style="background-color: {background(note.color)};"
 >
-	<div class="relative max-h-[240px] overflow-hidden">
-		<div class="p-3">
+	<div
+		class="relative max-h-[240px] overflow-hidden"
+		class:flex={note.secret}
+		class:flex-col={note.secret}
+	>
+		<div
+			class="p-3"
+			class:flex-1={note.secret}
+			class:min-h-0={note.secret}
+			class:flex={note.secret}
+			class:flex-col={note.secret}
+		>
 			{#if note.reminder != null}
-				<div class="mb-1">
+				<div class="mb-1 shrink-0">
 					<ReminderLabel reminder={note.reminder} variant="inline" />
 				</div>
 			{/if}
 			{#if note.title}
 				<h3
-					class="mb-1 break-words text-[15px] font-semibold leading-snug tracking-tight text-[var(--scrapscache-text)]"
+					class="mb-1 shrink-0 break-words text-[15px] font-semibold leading-snug tracking-tight text-[var(--scrapscache-text)]"
 				>
 					{note.title}
 				</h3>
 			{/if}
 			<div
-				class="relative overflow-hidden"
-				class:h-24={note.secret}
-				class:min-h-[48px]={!note.secret}
+				class="relative min-h-[48px]"
+				class:flex-1={note.secret}
+				class:min-h-0={note.secret}
+				class:overflow-hidden={note.secret}
 			>
 				<div
 					class:blur-sm={note.secret}

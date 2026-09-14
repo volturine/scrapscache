@@ -285,20 +285,36 @@
 			class:scrollable={!note.secret}
 			class:overflow-y-auto={!note.secret}
 			class:overflow-hidden={note.secret}
+			class:flex={note.secret}
+			class:flex-col={note.secret}
 		>
-			<div class="relative">
-				<div class="block w-full p-3 pb-2 text-left" class:opacity-60={note.trashed}>
+			<div
+				class="relative"
+				class:flex-1={note.secret}
+				class:min-h-0={note.secret}
+				class:flex={note.secret}
+				class:flex-col={note.secret}
+			>
+				<div
+					class="block w-full p-3 pb-2 text-left"
+					class:opacity-60={note.trashed}
+					class:flex-1={note.secret}
+					class:min-h-0={note.secret}
+					class:flex={note.secret}
+					class:flex-col={note.secret}
+				>
 					{#if note.title}
 						<h3
-							class="mb-1 break-words text-[15px] font-semibold leading-snug tracking-tight text-[var(--scrapscache-text)]"
+							class="mb-1 shrink-0 break-words text-[15px] font-semibold leading-snug tracking-tight text-[var(--scrapscache-text)]"
 						>
 							{note.title}
 						</h3>
 					{/if}
 					<div
-						class="relative overflow-hidden"
-						class:h-24={note.secret}
-						class:min-h-[48px]={!note.secret}
+						class="relative min-h-[48px]"
+						class:flex-1={note.secret}
+						class:min-h-0={note.secret}
+						class:overflow-hidden={note.secret}
 					>
 						<div
 							class:blur-sm={note.secret}

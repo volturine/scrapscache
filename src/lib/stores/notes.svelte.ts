@@ -691,8 +691,9 @@ export class NotesStore {
 
 	// Backup ---------------------------------------------------------------
 	/**
-	 * Full app/DB backup: notes (with full-resolution attachments), labels, boards,
-	 * tombstones, and UI prefs. Never carries sync identity.
+	 * Snapshot of the open workspace only: its notes (with full-resolution
+	 * attachments), labels, boards, tombstones, and UI prefs. Never carries
+	 * sync identity.
 	 */
 	async exportBackup(): Promise<ScrapsCacheBackup> {
 		const fullNotes: Note[] = [];

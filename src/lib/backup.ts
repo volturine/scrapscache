@@ -21,7 +21,7 @@ const NOTE_COLORS = new Set<Note['color']>([
 ]);
 const VIEWS = new Set<View>(['notes', 'kanban', 'reminders', 'archive', 'trash', 'label']);
 
-/** Full device backup — complete app/DB snapshot including full-resolution attachments. */
+/** Current-workspace snapshot, including full-resolution attachments. Never carries sync identity. */
 export type ScrapsCacheBackup = {
 	version: 4;
 	exportedAt: number;

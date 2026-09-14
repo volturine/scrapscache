@@ -73,6 +73,10 @@ describe('ImportGuideDialog', () => {
 			props: { keepReady: true, onFile: vi.fn(), onSelectMode, onClose: vi.fn() }
 		});
 
+		// The guide steps are done by now; only the choice remains.
+		expect(screen.queryByRole('link', { name: 'takeout.google.com' })).toBeNull();
+		expect(screen.queryByRole('button', { name: 'Choose file' })).toBeNull();
+
 		await fireEvent.click(screen.getByRole('button', { name: /keep local notes/i }));
 		await fireEvent.click(screen.getByRole('button', { name: /replace local data/i }));
 

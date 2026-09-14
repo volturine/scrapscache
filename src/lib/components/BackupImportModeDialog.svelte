@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { portalToAppOverlay } from '$lib/appViewport';
-	import { BackupImportMode } from '$lib/backup';
+	import type { BackupImportMode } from '$lib/backup';
+	import ImportModeChoices from './ImportModeChoices.svelte';
 
 	let {
 		busy = false,
@@ -47,35 +48,7 @@
 				</div>
 
 				<div class="space-y-3 px-5 py-5">
-					<button
-						bind:this={keepButton}
-						type="button"
-						disabled={busy}
-						onclick={() => onSelect(BackupImportMode.Keep)}
-						class="scrapscache-button w-full px-4 py-3 text-left"
-					>
-						<span class="block font-medium">Keep local notes</span>
-						<span class="mt-1 block text-xs text-[var(--scrapscache-text-muted)]">
-							{keepImport
-								? 'Add every Keep note as a new copy. Existing notes stay unchanged.'
-								: 'Add every backup note as a new copy. Existing notes stay unchanged.'}
-						</span>
-					</button>
-					<button
-						type="button"
-						disabled={busy}
-						onclick={() => onSelect(BackupImportMode.Replace)}
-						class="scrapscache-button w-full px-4 py-3 text-left"
-					>
-						<span class="block font-medium text-[var(--scrapscache-danger)]"
-							>Replace local data</span
-						>
-						<span class="mt-1 block text-xs text-[var(--scrapscache-text-muted)]">
-							{keepImport
-								? 'Delete current notes in this workspace and import Keep instead.'
-								: 'Delete current local notes and restore the backup instead.'}
-						</span>
-					</button>
+					<ImportModeChoices {busy} {keepImport} bind:keepButton {onSelect} />
 					{#if error}<p class="text-sm text-[var(--scrapscache-danger)]" role="alert">
 							{error}
 						</p>{/if}

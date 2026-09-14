@@ -18,6 +18,7 @@
 		markdownTokenClass,
 		parseInlineMarkdown,
 		parseMarkdownBlocks,
+		tokenizeMarkdownTableRow,
 		type MarkdownBlock
 	} from '$lib/markdown';
 	import { uiStore } from '$lib/stores/ui.svelte';
@@ -102,6 +103,25 @@
 	</span>
 {/snippet}
 
+{#snippet rawTableContent(text: string)}
+	{@const tableTokens = tokenizeMarkdownTableRow(text)}
+	{@const lastCellIndex = tableTokens.filter((token) => token.kind === 'cell').length - 1}
+	<span class="markdown-raw-table-display-line">
+		{#each tableTokens as token, tokenIndex (tokenIndex)}
+			{#if token.kind === 'marker'}
+				<span class="markdown-raw-table-source-marker">{token.text}</span>
+			{:else}
+				<span
+					class="markdown-raw-table-display-cell"
+					class:markdown-table-last-cell={token.columnIndex === lastCellIndex}
+				>
+					{@render inlineContent(token.text)}
+				</span>
+			{/if}
+		{/each}
+	</span>
+{/snippet}
+
 {#snippet bodyLine(seg: BodySegment)}
 	{#if seg.type === 'check'}
 		{@const check = checklist({ checked: seg.checked, indented: seg.indent > 0 })}
@@ -149,15 +169,19 @@
 			{#if rawTable}
 				{#if rawTable.lineIndex === seg.lineIndex}
 					<div
-						class="markdown-table-scroll markdown-raw-table-scroll"
+						class="markdown-block-surface markdown-table-scroll markdown-raw-table-scroll note-scrollbar-hidden"
 						data-markdown-raw-table-container
 						role="region"
 						tabindex="-1"
 						aria-label="Raw Markdown table"
 					>
-						{#each rawTableSource(rawTable) as sourceLine, sourceLineIndex (sourceLineIndex)}
-							<div class="markdown-raw-table-line">{@render inlineContent(sourceLine)}</div>
-						{/each}
+						<div class="markdown-raw-display-table">
+							{#each rawTableSource(rawTable) as sourceLine, sourceLineIndex (sourceLineIndex)}
+								<div class="markdown-raw-table-display-row">
+									{@render rawTableContent(sourceLine)}
+								</div>
+							{/each}
+						</div>
 					</div>
 				{/if}
 			{:else}
@@ -170,7 +194,7 @@
 				{@render bodyLine(block.segment)}
 			{:else if block.type === 'table'}
 				<div
-					class="markdown-table-scroll"
+					class="markdown-block-surface markdown-table-scroll note-scrollbar-hidden"
 					data-markdown-table-container
 					role="region"
 					tabindex="-1"
@@ -202,7 +226,7 @@
 			{:else}
 				{@const codeLines = block.code.split('\n')}
 				<pre
-					class="markdown-code-block"
+					class="markdown-block-surface markdown-code-block note-scrollbar-hidden"
 					data-markdown-code-block
 					data-language={block.language || undefined}><code
 						>{#each codeLines as codeLine, codeLineIndex (`${block.lineIndex}-${codeLineIndex}`)}<span

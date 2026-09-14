@@ -31,6 +31,9 @@ export type MarkdownBlock =
 	  }
 	| { type: 'code'; language: string; code: string; lineIndex: number };
 
+export type MarkdownTableSourceToken =
+	{ kind: 'marker'; text: string } | { kind: 'cell'; text: string; columnIndex: number };
+
 type MarkdownTableBlock = Extract<MarkdownBlock, { type: 'table' }>;
 
 export type CodeToken = {
@@ -278,6 +281,54 @@ function splitTableRow(line: string): string[] | null {
 	}
 	cells.push(cell.trim());
 	return cells.length >= 2 ? cells : null;
+}
+
+/** Keep a table source row intact while separating visible cells from Markdown delimiters. */
+export function tokenizeMarkdownTableRow(source: string): MarkdownTableSourceToken[] {
+	const pipes: number[] = [];
+	let codeDelimiterLength = 0;
+	for (let index = 0; index < source.length; index++) {
+		if (source[index] === '`') {
+			let runLength = 1;
+			while (source[index + runLength] === '`') runLength++;
+			if (codeDelimiterLength === 0) codeDelimiterLength = runLength;
+			else if (codeDelimiterLength === runLength) codeDelimiterLength = 0;
+			index += runLength - 1;
+			continue;
+		}
+		if (source[index] === '|' && codeDelimiterLength === 0 && !isEscaped(source, index)) {
+			pipes.push(index);
+		}
+	}
+
+	if (pipes.length === 0) return [{ kind: 'cell', text: source, columnIndex: 0 }];
+	const tokens: MarkdownTableSourceToken[] = [];
+	let start = 0;
+	let columnIndex = 0;
+	const appendSegment = (text: string, outside: boolean) => {
+		if (outside) {
+			if (text) tokens.push({ kind: 'marker', text });
+			return;
+		}
+		const leading = text.match(/^\s*/)?.[0] ?? '';
+		const trailing = text.slice(leading.length).match(/\s*$/)?.[0] ?? '';
+		const cell = text.slice(leading.length, text.length - trailing.length);
+		if (leading) tokens.push({ kind: 'marker', text: leading });
+		tokens.push({ kind: 'cell', text: cell, columnIndex });
+		columnIndex++;
+		if (trailing) tokens.push({ kind: 'marker', text: trailing });
+	};
+
+	for (let pipeIndex = 0; pipeIndex < pipes.length; pipeIndex++) {
+		const pipe = pipes[pipeIndex];
+		const segment = source.slice(start, pipe);
+		appendSegment(segment, pipeIndex === 0 && segment.trim() === '');
+		tokens.push({ kind: 'marker', text: '|' });
+		start = pipe + 1;
+	}
+	const trailing = source.slice(start);
+	appendSegment(trailing, trailing.trim() === '');
+	return tokens;
 }
 
 function tableAlignment(cell: string): TableAlignment | null {

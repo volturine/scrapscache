@@ -15,8 +15,16 @@
 	import { css } from 'styled-system/css';
 	import { checklist, noteBody } from 'styled-system/recipes';
 	import { markdownStyles } from '$panda/styles';
-	import { markdownTokenClass, parseInlineMarkdown } from '$lib/markdown';
+	import {
+		highlightCodeLine,
+		markdownTokenClass,
+		parseInlineMarkdown,
+		parseMarkdownBlocks,
+		tokenizeMarkdownTableRow,
+		type MarkdownBlock
+	} from '$lib/markdown';
 	import { uiStore } from '$lib/stores/ui.svelte';
+	import MarkdownCopyButton from './MarkdownCopyButton.svelte';
 
 	const MAX_TASK_INDENT = 1;
 	// Rows render in fixed-size chunks that the browser skips while offscreen.
@@ -101,6 +109,10 @@
 	}
 
 	let lines = $state<Line[]>(parseBodyToLines(body));
+	type EditorMarkdownBlock = Exclude<MarkdownBlock, { type: 'line' }>;
+	type EditorTableBlock = Extract<MarkdownBlock, { type: 'table' }>;
+	type EditorCodeBlock = Extract<MarkdownBlock, { type: 'code' }>;
+	const markdownBlocks = $derived(parseMarkdownBlocks(serializeLines(lines)));
 	let container: HTMLDivElement | null = $state(null);
 	let draftTaskId = $state<number | null>(null);
 	let ignoredFocusLine = $state<number | null>(null);
@@ -110,6 +122,33 @@
 	let applyingEdit = false;
 	const undoStack: HistoryEntry[] = [];
 	const redoStack: HistoryEntry[] = [];
+
+	function markdownBlockAt(index: number): EditorMarkdownBlock | null {
+		const block = markdownBlocks.find((candidate) => {
+			if (candidate.type === 'line' || index < candidate.lineIndex) return false;
+			return index < markdownBlockEnd(candidate);
+		});
+		return block?.type === 'table' || block?.type === 'code' ? block : null;
+	}
+
+	function markdownBlockEnd(block: EditorMarkdownBlock): number {
+		const blockIndex = markdownBlocks.indexOf(block);
+		const next = markdownBlocks[blockIndex + 1];
+		return next ? (next.type === 'line' ? next.segment.lineIndex : next.lineIndex) : lines.length;
+	}
+
+	function markdownBlockCopyText(block: EditorMarkdownBlock): string {
+		if (block.type === 'code') return block.code;
+		return serializeLines(lines.slice(block.lineIndex, markdownBlockEnd(block)));
+	}
+
+	function isCodeFenceLine(block: EditorCodeBlock, index: number) {
+		if (index === block.lineIndex) return true;
+		if (index !== markdownBlockEnd(block) - 1) return false;
+		const opening = lines[block.lineIndex]?.text.match(/^ {0,3}(`{3,}|~{3,})/u)?.[1];
+		const closing = lines[index]?.text.match(/^ {0,3}(`{3,}|~{3,})[ \t]*$/u)?.[1];
+		return !!opening && !!closing && opening[0] === closing[0] && closing.length >= opening.length;
+	}
 
 	function syncEditableText(node: HTMLElement, value: string) {
 		const apply = (next: string) => {
@@ -369,29 +408,24 @@
 		const caret = Math.max(0, Math.min(offset, lines[resolved].text.length));
 		if (!uiStore.rawMarkdown) {
 			let consumed = 0;
-			for (let childIndex = 0; childIndex < text.childNodes.length; childIndex++) {
-				const child = text.childNodes[childIndex];
-				const length = child.textContent?.length ?? 0;
-				const hiddenMarker =
-					child instanceof Element && child.classList.contains('markdown-token-marker-hidden');
-				if (hiddenMarker) {
-					if (caret <= consumed) return { node: text, offset: childIndex };
-					if (caret < consumed + length) return { node: text, offset: childIndex + 1 };
+			const walker = document.createTreeWalker(text, NodeFilter.SHOW_TEXT);
+			let node: Node | null = null;
+			while ((node = walker.nextNode())) {
+				const length = node.textContent?.length ?? 0;
+				const element = node.parentElement;
+				const hiddenMarker = element?.closest('.markdown-token-marker-hidden');
+				if (hiddenMarker && text.contains(hiddenMarker)) {
+					if (caret < consumed + length) {
+						const parent = hiddenMarker.parentNode;
+						if (!parent) return null;
+						const markerIndex = Array.prototype.indexOf.call(parent.childNodes, hiddenMarker);
+						return { node: parent, offset: markerIndex + (caret > consumed ? 1 : 0) };
+					}
 					consumed += length;
 					continue;
 				}
 				if (caret <= consumed + length) {
-					if (child.nodeType === Node.TEXT_NODE) {
-						return { node: child, offset: Math.max(0, caret - consumed) };
-					}
-					const walker = document.createTreeWalker(child, NodeFilter.SHOW_TEXT);
-					let node: Node | null = null;
-					let remaining = Math.max(0, caret - consumed);
-					while ((node = walker.nextNode())) {
-						const nodeLength = node.textContent?.length ?? 0;
-						if (remaining <= nodeLength) return { node, offset: remaining };
-						remaining -= nodeLength;
-					}
+					return { node, offset: Math.max(0, caret - consumed) };
 				}
 				consumed += length;
 			}
@@ -1288,6 +1322,141 @@
 	}
 </script>
 
+{#snippet inlineEditorContent(text: string)}
+	{@const tokens = parseInlineMarkdown(text)}
+	{#each tokens as token, tokenIndex (tokenIndex)}
+		{#if token.kind === 'text' && token.styles.length === 0}
+			{token.text}
+		{:else}
+			<span
+				class={markdownTokenClass(token, uiStore.rawMarkdown)}
+				data-markdown-token={token.kind === 'marker' ? token.marker : token.styles.join(' ')}
+				>{token.text}</span
+			>
+		{/if}
+	{/each}
+{/snippet}
+
+{#snippet tableEditorContent(text: string, block: EditorTableBlock, header: boolean)}
+	{@const tableTokens = tokenizeMarkdownTableRow(text)}
+	{@const lastCellIndex = tableTokens.filter((token) => token.kind === 'cell').length - 1}
+	{#each tableTokens as token, tokenIndex (tokenIndex)}
+		{#if token.kind === 'marker'}
+			<span class="markdown-editor-table-marker markdown-token-marker-hidden">{token.text}</span>
+		{:else}
+			<span
+				class="markdown-editor-table-cell"
+				class:markdown-editor-table-header-cell={header}
+				class:markdown-table-last-cell={token.columnIndex === lastCellIndex}
+				style={`text-align: ${block.alignments[token.columnIndex] ?? 'left'};`}
+				data-markdown-table-cell={token.columnIndex}
+			>
+				{@render inlineEditorContent(token.text)}
+			</span>
+		{/if}
+	{/each}
+{/snippet}
+
+{#snippet codeEditorContent(text: string, block: EditorCodeBlock)}
+	{#each highlightCodeLine(text, block.language) as token, tokenIndex (tokenIndex)}
+		{#if token.kind === 'plain'}
+			{token.text}
+		{:else}
+			<span class="markdown-code-token-{token.kind}">{token.text}</span>
+		{/if}
+	{/each}
+{/snippet}
+
+{#snippet editorLine(line: Line, index: number, block: EditorMarkdownBlock | null)}
+	{@const check = checklist({ checked: line.checked, indented: line.indent > 0 })}
+	{@const inlineTokens = parseInlineMarkdown(line.text)}
+	{@const tableBlock = block?.type === 'table' ? block : null}
+	{@const codeBlock = block?.type === 'code' ? block : null}
+	{@const tableSeparator = tableBlock !== null && index === tableBlock.lineIndex + 1}
+	{@const codeFence = codeBlock !== null && isCodeFenceLine(codeBlock, index)}
+	<div
+		data-editor-line={index}
+		data-line-id={line.id}
+		data-task-row={line.isCheck ? '' : undefined}
+		data-bullet-row={line.isBullet ? '' : undefined}
+		data-focus-group={line.id === focusedRootId ? '' : undefined}
+		data-markdown-table-row={tableBlock ? '' : undefined}
+		data-markdown-table-separator={tableSeparator ? '' : undefined}
+		data-markdown-code-line={codeBlock && !uiStore.rawMarkdown && !codeFence ? '' : undefined}
+		data-markdown-code-fence={codeFence && !uiStore.rawMarkdown ? '' : undefined}
+		class={rowClass(line)}
+		style={rowStyle(line)}
+	>
+		{#if line.isCheck}
+			<button
+				type="button"
+				contenteditable="false"
+				data-checklist-toggle
+				class={[check.root, editor.check]}
+				onpointerdown={keepEditorFocus}
+				onclick={(event) => toggleCheck(line.id, event)}
+				aria-label={line.indent > 0 ? 'Toggle sub-task' : 'Toggle item'}
+				aria-pressed={line.checked}
+			>
+				{#if line.checked}
+					<svg viewBox="0 0 16 16" class={check.mark} aria-hidden="true">
+						<path d="M3.5 8.5 6.5 11.5 12.5 4.5" />
+					</svg>
+				{/if}
+			</button>
+		{:else if line.isBullet}
+			<span contenteditable="false" class={editor.bullet} aria-hidden="true">•</span>
+		{/if}
+		{#if tableBlock && (!tableSeparator || uiStore.rawMarkdown)}
+			<span data-line-text class={[markdownStyles, 'markdown-inline-content', 'markdown-editor-table-line', css({ minH: '1lh' }), noteBody({ mode: 'editor', checked: line.checked, indented: line.indent > 0 }).line]}>
+				{@render tableEditorContent(line.text, tableBlock, index === tableBlock.lineIndex)}
+			</span>
+		{:else if codeBlock && !uiStore.rawMarkdown && !codeFence}
+			<span
+				data-line-text
+				class="markdown-inline-content markdown-editor-code-line block min-h-[1lh] outline-none"
+			>
+				{@render codeEditorContent(line.text, codeBlock)}
+			</span>
+		{:else if !line.text || (inlineTokens.length === 1 && inlineTokens[0].kind === 'text' && inlineTokens[0].styles.length === 0)}
+			<span
+				data-line-text
+				use:syncEditableText={line.text}
+				data-placeholder={line.text.length === 0
+					? line.isCheck
+						? line.indent > 0
+							? 'Sub-task'
+							: 'Task'
+						: isSingleLine
+							? placeholder
+							: ''
+					: undefined}
+				class={[markdownStyles, 'markdown-inline-content', uiStore.rawMarkdown && 'markdown-raw', css({ minH: '1lh' }), noteBody({ mode: 'editor', checked: line.checked, indented: line.indent > 0 }).line]}>{line.text}</span
+			>
+		{:else}
+			<span
+				data-line-text
+				class={[markdownStyles, 'markdown-inline-content', css({ minH: '1lh' }), noteBody({ mode: 'editor', checked: line.checked, indented: line.indent > 0 }).line]}
+			>
+				{@render inlineEditorContent(line.text)}
+			</span>
+		{/if}
+		{#if line.id === focusedGroupLastId}
+			<button
+				type="button"
+				contenteditable="false"
+				data-add-subtask
+				aria-label="Add sub-task"
+				class={noteBody({ mode: 'editor', indented: line.indent > 0 }).addSubtask}
+				onpointerdown={(event) => activateAddSubtask(event, focusedGroupRows[0]?.index ?? -1)}
+				onclick={(event) => handleAddSubtaskClick(event, focusedGroupRows[0]?.index ?? -1)}
+			>
+				<span aria-hidden="true" class={editor.addSubtask}></span>
+			</button>
+		{/if}
+	</div>
+{/snippet}
+
 <div
 	bind:this={container}
 	contenteditable="plaintext-only"
@@ -1314,100 +1483,6 @@
 	}}
 	onblur={handleEditorBlur}
 >
-	{#snippet lineRow(line: Line, index: number)}
-		{@const check = checklist({ checked: line.checked, indented: line.indent > 0 })}
-		{@const inlineTokens = parseInlineMarkdown(line.text)}
-		<div
-			data-editor-line={index}
-			data-line-id={line.id}
-			data-task-row={line.isCheck ? '' : undefined}
-			data-bullet-row={line.isBullet ? '' : undefined}
-			data-focus-group={line.id === focusedRootId ? '' : undefined}
-			class={rowClass(line)}
-			style={rowStyle(line)}
-		>
-			{#if line.isCheck}
-				<button
-					type="button"
-					contenteditable="false"
-					data-checklist-toggle
-					class={[check.root, editor.check]}
-					onpointerdown={keepEditorFocus}
-					onclick={(event) => toggleCheck(line.id, event)}
-					aria-label={line.indent > 0 ? 'Toggle sub-task' : 'Toggle item'}
-					aria-pressed={line.checked}
-				>
-					{#if line.checked}
-						<svg viewBox="0 0 16 16" class={check.mark} aria-hidden="true">
-							<path d="M3.5 8.5 6.5 11.5 12.5 4.5" />
-						</svg>
-					{/if}
-				</button>
-			{:else if line.isBullet}
-				<span contenteditable="false" class={editor.bullet} aria-hidden="true">•</span>
-			{/if}
-			{#if !line.text || (inlineTokens.length === 1 && inlineTokens[0].kind === 'text' && inlineTokens[0].styles.length === 0)}
-				<span
-					data-line-text
-					use:syncEditableText={line.text}
-					data-placeholder={line.text.length === 0
-						? line.isCheck
-							? line.indent > 0
-								? 'Sub-task'
-								: 'Task'
-							: isSingleLine
-								? placeholder
-								: ''
-						: undefined}
-					class={[
-						markdownStyles,
-						'markdown-inline-content',
-						uiStore.rawMarkdown && 'markdown-raw',
-						css({ minH: '1lh' }),
-						noteBody({ mode: 'editor', checked: line.checked, indented: line.indent > 0 }).line
-					]}>{line.text}</span
-				>
-			{:else}
-				<span
-					data-line-text
-					class={[
-						markdownStyles,
-						'markdown-inline-content',
-						uiStore.rawMarkdown && 'markdown-raw',
-						css({ minH: '1lh' }),
-						noteBody({ mode: 'editor', checked: line.checked, indented: line.indent > 0 }).line
-					]}
-				>
-					{#each inlineTokens as token, tokenIndex (tokenIndex)}
-						{#if token.kind === 'text' && token.styles.length === 0}
-							{token.text}
-						{:else}
-							<span
-								class={markdownTokenClass(token, uiStore.rawMarkdown)}
-								data-markdown-token={token.kind === 'marker'
-									? token.marker
-									: token.styles.join(' ')}>{token.text}</span
-							>
-						{/if}
-					{/each}
-				</span>
-			{/if}
-			{#if line.id === focusedGroupLastId}
-				<button
-					type="button"
-					contenteditable="false"
-					data-add-subtask
-					aria-label="Add sub-task"
-					class={noteBody({ mode: 'editor', indented: line.indent > 0 }).addSubtask}
-					onpointerdown={(event) => activateAddSubtask(event, focusedGroupRows[0]?.index ?? -1)}
-					onclick={(event) => handleAddSubtaskClick(event, focusedGroupRows[0]?.index ?? -1)}
-				>
-					<span aria-hidden="true" class={editor.addSubtask}></span>
-				</button>
-			{/if}
-		</div>
-	{/snippet}
-
 	{#each chunks as chunk (chunk.start)}
 		<div
 			data-editor-chunk
@@ -1415,7 +1490,51 @@
 			style="contain-intrinsic-block-size:auto {chunk.lines.length * 2}rem"
 		>
 			{#each chunk.lines as line, offset (line.id)}
-				{@render lineRow(line, chunk.start + offset)}
+				{@const index = chunk.start + offset}
+				{@const block = markdownBlockAt(index)}
+				{#if block === null}
+					{@render editorLine(line, index, null)}
+				{:else if block.lineIndex === index}
+					<div
+						class="markdown-block-shell"
+						data-markdown-raw-table-container={uiStore.rawMarkdown && block.type === 'table'
+							? ''
+							: undefined}
+						data-markdown-editor-table={!uiStore.rawMarkdown && block.type === 'table'
+							? ''
+							: undefined}
+						data-markdown-editor-code-block={!uiStore.rawMarkdown && block.type === 'code'
+							? ''
+							: undefined}
+					>
+						<MarkdownCopyButton
+							text={markdownBlockCopyText(block)}
+							label={block.type === 'table' ? 'table' : 'code'}
+						/>
+						<div
+							class="markdown-block-scroll note-scrollbar-hidden"
+							class:markdown-raw-table-scroll={uiStore.rawMarkdown && block.type === 'table'}
+							class:markdown-editor-table-scroll={!uiStore.rawMarkdown && block.type === 'table'}
+							class:markdown-editor-code-block={!uiStore.rawMarkdown && block.type === 'code'}
+							class:markdown-raw-code-block={uiStore.rawMarkdown && block.type === 'code'}
+						>
+							{#if block.type === 'table'}
+								<div
+									class:markdown-editor-table={!uiStore.rawMarkdown}
+									class:markdown-raw-editor-table={uiStore.rawMarkdown}
+								>
+									{#each lines.slice(block.lineIndex, markdownBlockEnd(block)) as blockLine, blockLineOffset (blockLine.id)}
+										{@render editorLine(blockLine, block.lineIndex + blockLineOffset, block)}
+									{/each}
+								</div>
+							{:else}
+								{#each lines.slice(block.lineIndex, markdownBlockEnd(block)) as blockLine, blockLineOffset (blockLine.id)}
+									{@render editorLine(blockLine, block.lineIndex + blockLineOffset, block)}
+								{/each}
+							{/if}
+						</div>
+					</div>
+				{/if}
 			{/each}
 		</div>
 	{/each}

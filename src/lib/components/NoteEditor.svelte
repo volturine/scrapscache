@@ -6,6 +6,7 @@
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { flushSync, onMount, tick } from 'svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
+	import { uiStore } from '$lib/stores/ui.svelte';
 	import { noteToPlainText, noteAttachments, splitPastedHeading } from '$lib/checklistBody';
 	import { mergeHydratedImages } from '$lib/noteAttachmentHydration';
 	import type { NoteImage } from '$lib/types';
@@ -636,6 +637,7 @@
 								}
 							}}
 							rows="1"
+							class:markdown-raw={uiStore.rawMarkdown}
 							class={titleField}></textarea>
 
 						<BodyEditor

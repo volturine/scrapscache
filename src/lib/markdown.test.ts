@@ -3,7 +3,8 @@ import {
 	highlightCodeLine,
 	markdownTokenClass,
 	parseInlineMarkdown,
-	parseMarkdownBlocks
+	parseMarkdownBlocks,
+	tokenizeMarkdownTableRow
 } from './markdown';
 
 describe('inline Markdown tokenizer', () => {
@@ -110,6 +111,28 @@ describe('inline Markdown tokenizer', () => {
 });
 
 describe('Markdown block tokenizer', () => {
+	it('separates table cells without changing their raw source', () => {
+		const source = '| Rule name | starts with `/api/sync/auth/` |';
+		const tokens = tokenizeMarkdownTableRow(source);
+
+		expect(tokens.map((token) => token.text).join('')).toBe(source);
+		expect(tokens.filter((token) => token.kind === 'cell')).toEqual([
+			{ kind: 'cell', text: 'Rule name', columnIndex: 0 },
+			{ kind: 'cell', text: 'starts with `/api/sync/auth/`', columnIndex: 1 }
+		]);
+	});
+
+	it('does not split escaped or inline-code pipes into extra columns', () => {
+		const source = '| escaped \\| pipe | `left|right` |';
+		const tokens = tokenizeMarkdownTableRow(source);
+
+		expect(tokens.map((token) => token.text).join('')).toBe(source);
+		expect(tokens.filter((token) => token.kind === 'cell')).toEqual([
+			{ kind: 'cell', text: 'escaped \\| pipe', columnIndex: 0 },
+			{ kind: 'cell', text: '`left|right`', columnIndex: 1 }
+		]);
+	});
+
 	it('recognizes tables and their column alignments', () => {
 		expect(
 			parseMarkdownBlocks(

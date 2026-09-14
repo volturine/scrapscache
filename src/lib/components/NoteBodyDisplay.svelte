@@ -169,11 +169,8 @@
 			{#if rawTable}
 				{#if rawTable.lineIndex === seg.lineIndex}
 					<div
-						class="markdown-block-surface markdown-table-scroll markdown-raw-table-scroll note-scrollbar-hidden"
+						class="markdown-block-surface markdown-raw-table-scroll"
 						data-markdown-raw-table-container
-						role="region"
-						tabindex="-1"
-						aria-label="Raw Markdown table"
 					>
 						<div class="markdown-raw-display-table">
 							{#each rawTableSource(rawTable) as sourceLine, sourceLineIndex (sourceLineIndex)}
@@ -193,13 +190,7 @@
 			{#if block.type === 'line'}
 				{@render bodyLine(block.segment)}
 			{:else if block.type === 'table'}
-				<div
-					class="markdown-block-surface markdown-table-scroll note-scrollbar-hidden"
-					data-markdown-table-container
-					role="region"
-					tabindex="-1"
-					aria-label="Markdown table"
-				>
+				<div class="markdown-block-surface" data-markdown-table-container>
 					<table class="markdown-table" data-markdown-table>
 						<thead>
 							<tr>
@@ -226,7 +217,7 @@
 			{:else}
 				{@const codeLines = block.code.split('\n')}
 				<pre
-					class="markdown-block-surface markdown-code-block note-scrollbar-hidden"
+					class="markdown-block-surface markdown-code-block"
 					data-markdown-code-block
 					data-language={block.language || undefined}><code
 						>{#each codeLines as codeLine, codeLineIndex (`${block.lineIndex}-${codeLineIndex}`)}<span

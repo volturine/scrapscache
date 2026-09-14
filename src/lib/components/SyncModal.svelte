@@ -83,6 +83,9 @@
 	const syncedProfiles = $derived(
 		syncStore.profiles.filter((profile) => !isLocalWorkspace(profile))
 	);
+	const anonymousOnKeyring = $derived(
+		syncStore.profiles.some((profile) => profile.id === LOCAL_PROFILE_ID)
+	);
 
 	// Approximate on-device footprint per saved key. Measured when the modal
 	// opens and after any operation that can change what is stored, rather than
@@ -575,7 +578,6 @@
 										>Sync this workspace<small>Keep these notes and start cloud sync</small></span
 									></button
 								>
-								>
 							{/snippet}
 							{#snippet wipe(id: string, caption: string)}
 								<button
@@ -593,35 +595,37 @@
 									></button
 								>
 							{/snippet}
-							<WorkspaceRow
-								name={anonymousName}
-								caption={`Only on this device${
-									sizeLabel(LOCAL_PROFILE_ID) ? ' · ' + sizeLabel(LOCAL_PROFILE_ID) : ''
-								}`}
-								active={syncStore.activePid === LOCAL_PROFILE_ID}
-								disabled={busy}
-								expanded={expandedId === LOCAL_PROFILE_ID}
-								onselect={() => {
-									if (syncStore.activePid !== LOCAL_PROFILE_ID)
-										void switchProfile(LOCAL_PROFILE_ID);
-								}}
-								onexport={() => void exportProfile(LOCAL_PROFILE_ID)}
-								onexpand={() => {
-									expandedId = expandedId === LOCAL_PROFILE_ID ? null : LOCAL_PROFILE_ID;
-								}}
-								onrename={(next) => renameProfile(LOCAL_PROFILE_ID, next)}
-								onbusychange={(holdsEscape) => {
-									if (holdsEscape) rowHoldingEscape = LOCAL_PROFILE_ID;
-									else if (rowHoldingEscape === LOCAL_PROFILE_ID) rowHoldingEscape = null;
-								}}
-							>
-								{#snippet icon()}<CloudOff size={18} aria-hidden="true" />{/snippet}
-								{#snippet actions()}{@render promote(LOCAL_PROFILE_ID)}{/snippet}
-								{#snippet danger()}{@render wipe(
-										LOCAL_PROFILE_ID,
-										'Remove notes from this device'
-									)}{/snippet}
-							</WorkspaceRow>
+							{#if !anonymousOnKeyring}
+								<WorkspaceRow
+									name={anonymousName}
+									caption={`Only on this device${
+										sizeLabel(LOCAL_PROFILE_ID) ? ' · ' + sizeLabel(LOCAL_PROFILE_ID) : ''
+									}`}
+									active={syncStore.activePid === LOCAL_PROFILE_ID}
+									disabled={busy}
+									expanded={expandedId === LOCAL_PROFILE_ID}
+									onselect={() => {
+										if (syncStore.activePid !== LOCAL_PROFILE_ID)
+											void switchProfile(LOCAL_PROFILE_ID);
+									}}
+									onexport={() => void exportProfile(LOCAL_PROFILE_ID)}
+									onexpand={() => {
+										expandedId = expandedId === LOCAL_PROFILE_ID ? null : LOCAL_PROFILE_ID;
+									}}
+									onrename={(next) => renameProfile(LOCAL_PROFILE_ID, next)}
+									onbusychange={(holdsEscape) => {
+										if (holdsEscape) rowHoldingEscape = LOCAL_PROFILE_ID;
+										else if (rowHoldingEscape === LOCAL_PROFILE_ID) rowHoldingEscape = null;
+									}}
+								>
+									{#snippet icon()}<CloudOff size={18} aria-hidden="true" />{/snippet}
+									{#snippet actions()}{@render promote(LOCAL_PROFILE_ID)}{/snippet}
+									{#snippet danger()}{@render wipe(
+											LOCAL_PROFILE_ID,
+											'Remove notes from this device'
+										)}{/snippet}
+								</WorkspaceRow>
+							{/if}
 							{#each localProfiles as profile (profile.id)}
 								<WorkspaceRow
 									name={profile.name}

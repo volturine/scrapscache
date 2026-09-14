@@ -44,6 +44,7 @@ import {
 } from '$lib/syncPairing';
 import { PairingRole, PairingState, type PairingPoll } from '$lib/pairingProtocol';
 import {
+	clearProfileNamespace,
 	commitSyncControl,
 	deleteProfileDatabase,
 	deleteSyncState,
@@ -195,12 +196,11 @@ export class SyncStore {
 		try {
 			this.profiles = readProfiles();
 			const pointerId = getLastActiveProfileId();
-			const pointed =
-				pointerId != null && pointerId !== LOCAL_PROFILE_ID
-					? (this.profiles.find((entry) => entry.id === pointerId) ?? null)
-					: null;
+			const pointed = pointerId
+				? (this.profiles.find((entry) => entry.id === pointerId) ?? null)
+				: null;
 			const chosen =
-				pointerId === LOCAL_PROFILE_ID ? null : (pointed ?? pickBootProfile(this.profiles));
+				pointed ?? (pointerId === LOCAL_PROFILE_ID ? null : pickBootProfile(this.profiles));
 			if (chosen?.syncKey) this.activateProfile(chosen);
 			else if (chosen) this.activateLocalWorkspace(chosen.id);
 			else this.restoreStatus(LOCAL_PROFILE_ID);
@@ -259,12 +259,11 @@ export class SyncStore {
 				this.profiles = profiles.sort((a, b) => a.createdAt - b.createdAt);
 
 				const pointerId = getLastActiveProfileId();
-				const pointed =
-					pointerId != null && pointerId !== LOCAL_PROFILE_ID
-						? (this.profiles.find((entry) => entry.id === pointerId) ?? null)
-						: null;
+				const pointed = pointerId
+					? (this.profiles.find((entry) => entry.id === pointerId) ?? null)
+					: null;
 				const chosen =
-					pointerId === LOCAL_PROFILE_ID ? null : (pointed ?? pickBootProfile(this.profiles));
+					pointed ?? (pointerId === LOCAL_PROFILE_ID ? null : pickBootProfile(this.profiles));
 				if (chosen?.syncKey) {
 					if (this.activeProfile?.id !== chosen.id) this.activateProfile(chosen);
 				} else if (chosen) {
@@ -290,7 +289,20 @@ export class SyncStore {
 		if (!trimmed) return null;
 		if (id === LOCAL_PROFILE_ID) {
 			const next = writeAnonymousWorkspaceName(trimmed);
-			return next ? { id, name: next, syncKey: '', createdAt: 0 } : null;
+			if (!next) return null;
+			const keyed = this.profiles.find((entry) => entry.id === id);
+			if (!keyed) return { id, name: next, syncKey: '', createdAt: 0 };
+			const updated = { ...keyed, name: next };
+			await saveProfile(updated);
+			this.profiles = this.profiles.map((entry) => (entry.id === id ? updated : entry));
+			if (updated.syncKey) {
+				if (this.account && profileForSyncKey(this.profiles, this.account.syncKey)?.id === id) {
+					await this.queueOutbox([PROFILE_META_KEY]);
+				} else {
+					await markSyncOutbox(id, [PROFILE_META_KEY]);
+				}
+			}
+			return updated;
 		}
 		const profile = this.profiles.find((entry) => entry.id === id);
 		if (!profile || profile.name === trimmed) return profile ?? null;
@@ -1412,7 +1424,11 @@ export class SyncStore {
 		const pid = this.activePid;
 		const profile = this.activeProfile;
 		if (profile) {
-			if (keepLocalNotes) await unlinkProfileToNamespace(profile.id, LOCAL_PROFILE_ID);
+			if (profile.id === LOCAL_PROFILE_ID) {
+				if (!keepLocalNotes) await clearProfileNamespace(LOCAL_PROFILE_ID);
+			} else if (keepLocalNotes) {
+				await unlinkProfileToNamespace(profile.id, LOCAL_PROFILE_ID);
+			}
 			removeProfileFromLocalStorage(profile.id);
 			this.profiles = this.profiles.filter((entry) => entry.id !== profile.id);
 		}
@@ -1430,7 +1446,7 @@ export class SyncStore {
 		this.onAccountChange?.();
 		if (accountId) await this.clearAccountControlPlane(accountId, pid);
 		this.restoreStatus(LOCAL_PROFILE_ID);
-		if (profile) {
+		if (profile && profile.id !== LOCAL_PROFILE_ID) {
 			try {
 				await deleteProfileDatabase(profile.id);
 			} catch (err) {

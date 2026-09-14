@@ -990,6 +990,7 @@ export async function putStoredProfile(profile: StoredProfile): Promise<void> {
 }
 
 export async function deleteProfileDatabase(pid: string): Promise<void> {
+	if (!pid || pid === LOCAL_PROFILE_ID) return;
 	const dbName = resolveDbName(pid);
 	const p = dbPromises.get(dbName);
 	if (p) {

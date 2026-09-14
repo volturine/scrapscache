@@ -75,17 +75,26 @@ describe('profile creation handover', () => {
 		vi.spyOn(notesStore, 'reloadForProfile').mockResolvedValue();
 		vi.spyOn(notesStore, 'syncWithCloudManual').mockResolvedValue(true);
 		vi.spyOn(syncStore, 'queueOutbox').mockResolvedValue();
-		vi.spyOn(syncStore, 'register').mockImplementation(async () => {
-			syncStore.profiles = [remaining, created];
-			syncStore.activateProfile(created);
-			return { success: true, profile: created };
+		vi.spyOn(syncStore, 'register').mockImplementation(async (name, _token, existing) => {
+			const promoted = {
+				id: LOCAL_PROFILE_ID,
+				name: name?.trim() || existing?.name || 'Anonymous workspace',
+				syncKey: created.syncKey,
+				createdAt: 0
+			};
+			syncStore.profiles = [remaining, promoted];
+			return { success: true, profile: promoted };
 		});
 
 		const result = await new ProfileCoordinator().create();
 
 		expect(result).toEqual({ success: true });
-		expect((await getAllNotesMetadata(created.id)).map(({ id }) => id)).toEqual(['anonymous-note']);
-		expect(await getAllNotesMetadata(LOCAL_PROFILE_ID)).toEqual([]);
+		expect(syncStore.profiles.find((profile) => profile.id === LOCAL_PROFILE_ID)?.syncKey).toBe(
+			created.syncKey
+		);
+		expect((await getAllNotesMetadata(LOCAL_PROFILE_ID)).map(({ id }) => id)).toEqual([
+			'anonymous-note'
+		]);
 	});
 
 	it('still starts blank when creating from an active synced profile', async () => {
@@ -414,17 +423,25 @@ describe('profile creation handover', () => {
 		vi.spyOn(notesStore, 'reloadForProfile').mockResolvedValue();
 		vi.spyOn(syncStore, 'queueOutbox').mockResolvedValue();
 		vi.spyOn(notesStore, 'syncWithCloudManual').mockReturnValue(new Promise(() => {}));
-		vi.spyOn(syncStore, 'register').mockImplementation(async () => {
-			syncStore.profiles = [created];
-			return { success: true, profile: created };
+		vi.spyOn(syncStore, 'register').mockImplementation(async (name, _token, existing) => {
+			const promoted = {
+				id: LOCAL_PROFILE_ID,
+				name: name?.trim() || existing?.name || 'Anonymous workspace',
+				syncKey: created.syncKey,
+				createdAt: 0
+			};
+			syncStore.profiles = [promoted];
+			return { success: true, profile: promoted };
 		});
 
 		const result = await new ProfileCoordinator().create();
 
 		expect(result).toEqual({ success: true });
-		expect(syncStore.activeProfile).toEqual(created);
-		expect((await getAllNotesMetadata(created.id)).map(({ id }) => id)).toEqual(['anonymous-note']);
-		expect(await getAllNotesMetadata(LOCAL_PROFILE_ID)).toEqual([]);
+		expect(syncStore.activeProfile?.id).toBe(LOCAL_PROFILE_ID);
+		expect(syncStore.profiles).toHaveLength(1);
+		expect((await getAllNotesMetadata(LOCAL_PROFILE_ID)).map(({ id }) => id)).toEqual([
+			'anonymous-note'
+		]);
 	});
 
 	it('wipes an extra local workspace and returns to anonymous', async () => {

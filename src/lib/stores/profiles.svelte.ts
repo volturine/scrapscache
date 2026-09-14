@@ -127,9 +127,16 @@ export class ProfileCoordinator {
 			const created = await this.exclusive(async () => {
 				await notesStore.waitForPendingProfileWrites();
 				const sourceProfile =
-					sourcePid && sourcePid !== LOCAL_PROFILE_ID
-						? syncStore.profiles.find((profile) => profile.id === sourcePid)
-						: null;
+					sourcePid === LOCAL_PROFILE_ID
+						? {
+								id: LOCAL_PROFILE_ID,
+								name: readAnonymousWorkspaceName(),
+								syncKey: '',
+								createdAt: 0
+							}
+						: sourcePid
+							? (syncStore.profiles.find((profile) => profile.id === sourcePid) ?? null)
+							: null;
 				const reuse = sourceProfile && isLocalWorkspace(sourceProfile) ? sourceProfile : null;
 				const result = await syncStore.register(name, turnstileToken, reuse);
 				if (!result.success || !result.profile)
@@ -254,6 +261,7 @@ export class ProfileCoordinator {
 					if (syncStore.activePid === LOCAL_PROFILE_ID) await notesStore.reloadForProfile();
 					return { success: true };
 				}
+				if (profileId === LOCAL_PROFILE_ID) await clearProfileNamespace(LOCAL_PROFILE_ID);
 				if (!(await syncStore.removeProfile(profileId)))
 					return { success: false, error: 'Could not unlink workspace' };
 				return { success: true };
@@ -275,24 +283,25 @@ export class ProfileCoordinator {
 		this.switching = true;
 		try {
 			const shouldSync = await this.exclusive(async () => {
-				if (profileId === LOCAL_PROFILE_ID) {
-					if (syncStore.activePid === LOCAL_PROFILE_ID) return false;
-					await notesStore.waitForPendingProfileWrites();
-					syncStore.activateLocalWorkspace(LOCAL_PROFILE_ID);
-					await notesStore.reloadForProfile();
-					return false;
-				}
 				const target = syncStore.profiles.find((profile) => profile.id === profileId);
-				if (!target) throw new Error('That sync key is no longer on this device');
-				if (target.id === syncStore.activePid) return false;
-				await notesStore.waitForPendingProfileWrites();
-				if (isLocalWorkspace(target)) {
-					syncStore.activateLocalWorkspace(target.id);
-					await notesStore.reloadForProfile();
-					return false;
+				if (target) {
+					if (target.id === syncStore.activePid) return false;
+					await notesStore.waitForPendingProfileWrites();
+					if (isLocalWorkspace(target)) {
+						syncStore.activateLocalWorkspace(target.id);
+						await notesStore.reloadForProfile();
+						return false;
+					}
+					await this.activate(target);
+					return true;
 				}
-				await this.activate(target);
-				return true;
+				if (profileId !== LOCAL_PROFILE_ID)
+					throw new Error('That sync key is no longer on this device');
+				if (syncStore.activePid === LOCAL_PROFILE_ID) return false;
+				await notesStore.waitForPendingProfileWrites();
+				syncStore.activateLocalWorkspace(LOCAL_PROFILE_ID);
+				await notesStore.reloadForProfile();
+				return false;
 			});
 			if (shouldSync) {
 				const synced = await notesStore.syncWithCloudManual();

@@ -225,6 +225,7 @@ describe('NoteCard right-click haze', () => {
 		expect(document.querySelector('.overflow-hidden')).toBeTruthy();
 		const overlay = document.querySelector('[data-secret-overlay]');
 		expect(overlay).toBeTruthy();
-		expect(overlay?.textContent).toContain('Secret note');
+		expect(overlay?.querySelector('svg')).toBeTruthy();
+		expect(overlay?.textContent).toBe('');
 	});
 });

@@ -79,15 +79,11 @@
 				</div>
 				{#if note.secret}
 					<div
-						class="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-1.5 bg-black/5 backdrop-blur-md dark:bg-black/20"
+						class="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-black/5 backdrop-blur-md dark:bg-black/20"
 						data-secret-overlay
 						aria-hidden="true"
 					>
 						<Lock class="h-6 w-6 text-[var(--scrapscache-text-muted)] drop-shadow-sm" />
-						<span
-							class="text-xs font-medium tracking-wide text-[var(--scrapscache-text-muted)] drop-shadow-sm"
-							>Secret note</span
-						>
 					</div>
 				{/if}
 			</div>

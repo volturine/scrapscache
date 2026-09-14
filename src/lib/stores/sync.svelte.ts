@@ -1426,12 +1426,18 @@ export class SyncStore {
 		}
 	}
 
-	async deleteCloudAccount(): Promise<{ success: boolean; error?: string }> {
-		if (!this.account) return { success: false, error: 'Sync is not set up on this device' };
+	async deleteCloudAccount(
+		profile: StoredProfile | null = this.activeProfile
+	): Promise<{ success: boolean; error?: string }> {
+		if (!profile?.syncKey) return { success: false, error: 'Sync is not set up on this device' };
+		const account = identityFromSyncKey(profile.syncKey);
+		const active = this.activeProfile?.id === profile.id;
 		try {
-			const response = await this.authorizedFetch('/api/sync/account', {
-				method: 'DELETE'
-			});
+			const response = await this.authorizedFetch(
+				'/api/sync/account',
+				{ method: 'DELETE' },
+				account
+			);
 			if (!response.ok) {
 				const data = (await response.json().catch(() => ({}))) as { error?: unknown };
 				return {
@@ -1439,7 +1445,13 @@ export class SyncStore {
 					error: typeof data.error === 'string' ? data.error : 'Could not delete synced data'
 				};
 			}
-			await this.logout(true);
+			if (active) await this.logout(true);
+			else {
+				await unlinkProfileToNamespace(profile.id, LOCAL_PROFILE_ID);
+				if (!(await this.removeProfile(profile.id)))
+					return { success: false, error: 'Could not remove that workspace from this device' };
+				await this.clearAccountControlPlane(account.accountId, profile.id);
+			}
 			return { success: true };
 		} catch (error) {
 			return {

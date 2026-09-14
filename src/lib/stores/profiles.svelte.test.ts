@@ -196,6 +196,36 @@ describe('profile creation handover', () => {
 		expect(syncStore.activeProfile).toEqual(active);
 	});
 
+	it('activates another synced workspace before force pushing it', async () => {
+		const active = {
+			id: 'active-force-profile',
+			name: 'Active',
+			syncKey: createSyncIdentity().syncKey,
+			createdAt: 1
+		};
+		const other = {
+			id: 'other-force-profile',
+			name: 'Other',
+			syncKey: createSyncIdentity().syncKey,
+			createdAt: 2
+		};
+		syncStore.profiles = [active, other];
+		syncStore.activateProfile(active);
+
+		vi.spyOn(notesStore, 'waitForPendingProfileWrites').mockResolvedValue();
+		vi.spyOn(notesStore, 'reloadForProfile').mockResolvedValue();
+		vi.spyOn(syncStore, 'queueOutbox').mockResolvedValue();
+		const sync = vi.spyOn(notesStore, 'forcePushWorkspace').mockResolvedValue(true);
+		const pull = vi.spyOn(notesStore, 'syncWithCloudManual');
+
+		const result = await new ProfileCoordinator().forceResync(undefined, other.id);
+
+		expect(result).toEqual({ success: true });
+		expect(syncStore.activeProfile).toEqual(other);
+		expect(sync).toHaveBeenCalledTimes(1);
+		expect(pull).not.toHaveBeenCalled();
+	});
+
 	it('switches to the anonymous workspace without removing or syncing saved profiles', async () => {
 		const active = {
 			id: 'switch-from-profile',
@@ -414,6 +444,33 @@ describe('profile creation handover', () => {
 		expect(syncStore.activePid).toBe(LOCAL_PROFILE_ID);
 		expect(reload).toHaveBeenCalledTimes(1);
 		expect(await getAllNotesMetadata(LOCAL_PROFILE_ID)).toEqual([]);
+	});
+
+	it('deletes cloud data for an inactive workspace without leaving the current one', async () => {
+		const active = {
+			id: 'active-keep-profile',
+			name: 'Active',
+			syncKey: createSyncIdentity().syncKey,
+			createdAt: 1
+		};
+		const other = {
+			id: 'other-delete-cloud',
+			name: 'Other',
+			syncKey: createSyncIdentity().syncKey,
+			createdAt: 2
+		};
+		syncStore.profiles = [active, other];
+		syncStore.activateProfile(active);
+		vi.spyOn(notesStore, 'waitForPendingProfileWrites').mockResolvedValue();
+		const deleteCloud = vi
+			.spyOn(syncStore, 'deleteCloudAccount')
+			.mockResolvedValue({ success: true });
+
+		const result = await new ProfileCoordinator().unlinkSaved(other.id, true);
+
+		expect(result).toEqual({ success: true });
+		expect(deleteCloud).toHaveBeenCalledWith(other);
+		expect(syncStore.activeProfile).toEqual(active);
 	});
 
 	it('rejects unlinking an unknown workspace without changing saved profiles', async () => {

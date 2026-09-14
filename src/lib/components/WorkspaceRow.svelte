@@ -383,10 +383,13 @@
 		place-items: center;
 		border-radius: 7px;
 		color: var(--scrapscache-text-muted);
+		-webkit-tap-highlight-color: transparent;
 	}
-	.icon:hover {
-		background: var(--scrapscache-interactive-hover);
-		color: var(--scrapscache-text);
+	@media (hover: hover) and (pointer: fine) {
+		.icon:hover {
+			background: var(--scrapscache-interactive-hover);
+			color: var(--scrapscache-text);
+		}
 	}
 	.icon.accept {
 		color: var(--scrapscache-success);

@@ -352,7 +352,7 @@ describe('SyncModal profile interactions', () => {
 
 		expect(force).not.toHaveBeenCalled();
 		await fireEvent.click(screen.getByRole('button', { name: 'Replace cloud notes' }));
-		await waitFor(() => expect(force).toHaveBeenCalledTimes(1));
+		await waitFor(() => expect(force).toHaveBeenCalledWith(undefined, main.id));
 		expect(screen.getByText('This device’s notes are now the latest cloud version.')).toBeTruthy();
 	});
 
@@ -463,18 +463,35 @@ describe('SyncModal profile interactions', () => {
 		expect(screen.getByRole('button', { name: 'Keep Main linked' })).toBeTruthy();
 		await fireEvent.click(screen.getByRole('button', { name: 'Unlink Main from this device' }));
 
-		await waitFor(() => expect(unlink).toHaveBeenCalledWith());
+		await waitFor(() => expect(unlink).toHaveBeenCalledWith(false));
 		expect(screen.getByText('Removed from this device. Cloud notes are unchanged.')).toBeTruthy();
 	});
 
 	it('requires confirmation before deleting cloud data', async () => {
-		const unlink = vi.spyOn(profileCoordinator, 'unlink').mockResolvedValue({ success: true });
+		const unlink = vi.spyOn(profileCoordinator, 'unlinkSaved').mockResolvedValue({ success: true });
 		render(SyncModal, { props: { onClose: vi.fn() } });
 		await expand('Main');
 		await fireEvent.click(screen.getByRole('button', { name: /Delete cloud data/ }));
 		expect(unlink).not.toHaveBeenCalled();
 		await fireEvent.click(screen.getByRole('button', { name: 'Delete cloud data' }));
-		await waitFor(() => expect(unlink).toHaveBeenCalledWith(true));
+		await waitFor(() => expect(unlink).toHaveBeenCalledWith(main.id, true));
+	});
+
+	it('expands inactive synced workspaces with the same manage actions', async () => {
+		const force = vi.spyOn(profileCoordinator, 'forceResync').mockResolvedValue({ success: true });
+		render(SyncModal, { props: { onClose: vi.fn() } });
+		await expand('Side');
+		const rename = screen.getByRole('button', { name: 'Rename Side' });
+		const resync = screen.getByRole('button', { name: /Force resync/ });
+		const unlink = screen.getByRole('button', { name: 'Unlink Side' });
+		const remove = screen.getByRole('button', { name: /Delete cloud data/ });
+		expect(rename.compareDocumentPosition(resync) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		expect(resync.compareDocumentPosition(unlink) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		expect(unlink.compareDocumentPosition(remove) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+		await fireEvent.click(resync);
+		await fireEvent.click(screen.getByRole('button', { name: 'Replace cloud notes' }));
+		await waitFor(() => expect(force).toHaveBeenCalledWith(undefined, side.id));
 	});
 
 	it.each([undefined, 'Could not sync the received profile'])(

@@ -10,6 +10,7 @@ import {
 	isLocalWorkspace,
 	nextProfileName,
 	profileForSyncKey,
+	readAnonymousWorkspaceName,
 	type StoredProfile
 } from '$lib/profiles';
 import { randomOpaqueId } from '$lib/syncPairing';
@@ -46,10 +47,12 @@ export class ProfileCoordinator {
 	/** Create a brand-new sync key and make it this window's active profile. */
 	async create(
 		name?: string,
-		turnstileToken?: string
+		turnstileToken?: string,
+		sourcePid?: string | null
 	): Promise<{ success: boolean; error?: string }> {
-		const sourcePid = syncStore.account ? null : syncStore.activePid;
-		return this.createWithDataset(name, sourcePid, turnstileToken);
+		const source =
+			sourcePid !== undefined ? sourcePid : syncStore.account ? null : syncStore.activePid;
+		return this.createWithDataset(name, source, turnstileToken);
 	}
 
 	/** Create an empty local-only workspace. It never registers with the relay. */
@@ -62,7 +65,7 @@ export class ProfileCoordinator {
 				await notesStore.waitForPendingProfileWrites();
 				const profile = {
 					id: randomOpaqueId(),
-					name: nextProfileName([{ name: 'Anonymous workspace' }, ...syncStore.profiles]),
+					name: nextProfileName([{ name: readAnonymousWorkspaceName() }, ...syncStore.profiles]),
 					syncKey: '',
 					createdAt: Date.now()
 				};

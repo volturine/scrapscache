@@ -12,10 +12,13 @@
 	import { syncStore, type StartedDeviceLink } from '$lib/stores/sync.svelte';
 	import { profileCoordinator } from '$lib/stores/profiles.svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
-	import { buildProfileNotesExport } from '$lib/profiles';
+	import {
+		buildProfileNotesExport,
+		isLocalWorkspace,
+		readAnonymousWorkspaceName
+	} from '$lib/profiles';
 	import { estimateProfileBytes, LOCAL_PROFILE_ID } from '$lib/db/idb';
 	import { downloadJSON } from '$lib/utils';
-	import { isLocalWorkspace } from '$lib/profiles';
 	import { Cloud, CloudOff, RefreshCw, Trash2, X } from '@lucide/svelte';
 	import { portalToAppFloat } from '$lib/appViewport';
 
@@ -48,6 +51,8 @@
 	let wipeTarget = $state<string | null>(null);
 	let expandedId = $state<string | null>(null);
 	let newName = $state('');
+	let promoteSource = $state<string | null>(null);
+	let anonymousName = $state(readAnonymousWorkspaceName());
 	// Account creation, including recovery that may recreate the account, needs a Turnstile token
 	// when this deployment configures a sitekey. Each surface owns its own single-use widget.
 	const turnstileSitekey = env.PUBLIC_TURNSTILE_SITEKEY?.trim() ?? '';
@@ -198,7 +203,7 @@
 		const name = newName;
 		const token = registerToken || undefined;
 		const result = await runOperation('create', 'Could not create sync', () =>
-			profileCoordinator.create(name, token)
+			profileCoordinator.create(name, token, promoteSource)
 		);
 		registerCheck?.reset();
 		if (!result) return;
@@ -207,6 +212,7 @@
 			return;
 		}
 		newName = '';
+		promoteSource = null;
 		mode = 'menu';
 		if (result.error)
 			error = friendlyError(result.error, 'Created, but the first sync did not finish');
@@ -355,9 +361,20 @@
 		const renamed = await runOperation('rename', 'Could not rename that workspace', () =>
 			syncStore.renameProfile(id, next)
 		);
-		if (renamed) return true;
+		if (renamed) {
+			if (id === LOCAL_PROFILE_ID) anonymousName = renamed.name;
+			return true;
+		}
 		if (!error) error = 'Could not rename that workspace';
 		return false;
+	}
+
+	function startPromote(sourcePid: string) {
+		promoteSource = sourcePid;
+		mode = 'register';
+		error = '';
+		info = '';
+		newName = '';
 	}
 
 	async function switchProfile(id: string) {
@@ -539,8 +556,37 @@
 				{#if mode === 'menu'}
 					<div class="space-y-4">
 						<div class="workspace-list" aria-label="Workspaces on this device">
+							{#snippet promote(id: string)}
+								<button
+									type="button"
+									class="manage-row"
+									disabled={busy}
+									onclick={() => startPromote(id)}
+									><Cloud size={16} aria-hidden="true" /><span
+										>Sync notes to new workspace<small
+											>Copy these notes into a synced workspace</small
+										></span
+									></button
+								>
+							{/snippet}
+							{#snippet wipe(id: string, caption: string)}
+								<button
+									type="button"
+									class="manage-row text-[var(--scrapscache-danger)]"
+									disabled={busy}
+									onclick={() => {
+										confirmation = 'wipe';
+										wipeTarget = id;
+										mode = 'confirm';
+										error = '';
+									}}
+									><Trash2 size={16} aria-hidden="true" /><span
+										>Delete data<small>{caption}</small></span
+									></button
+								>
+							{/snippet}
 							<WorkspaceRow
-								name="Anonymous workspace"
+								name={anonymousName}
 								caption={`Only on this device${
 									sizeLabel(LOCAL_PROFILE_ID) ? ' · ' + sizeLabel(LOCAL_PROFILE_ID) : ''
 								}`}
@@ -555,43 +601,18 @@
 								onexpand={() => {
 									expandedId = expandedId === LOCAL_PROFILE_ID ? null : LOCAL_PROFILE_ID;
 								}}
+								onrename={(next) => renameProfile(LOCAL_PROFILE_ID, next)}
 								onbusychange={(holdsEscape) => {
 									if (holdsEscape) rowHoldingEscape = LOCAL_PROFILE_ID;
 									else if (rowHoldingEscape === LOCAL_PROFILE_ID) rowHoldingEscape = null;
 								}}
 							>
 								{#snippet icon()}<CloudOff size={18} aria-hidden="true" />{/snippet}
-								{#snippet actions()}
-									{#if syncStore.activePid === LOCAL_PROFILE_ID}
-										<button
-											type="button"
-											class="manage-row"
-											disabled={busy}
-											onclick={() => {
-												mode = 'register';
-												error = '';
-												info = '';
-												newName = '';
-											}}
-											><span
-												>Sync notes to new workspace<small
-													>Copy these notes into a synced workspace</small
-												></span
-											></button
-										>
-									{/if}
-									<button
-										type="button"
-										class="manage-row text-[var(--scrapscache-danger)]"
-										disabled={busy}
-										onclick={() => {
-											confirmation = 'wipe';
-											wipeTarget = LOCAL_PROFILE_ID;
-											mode = 'confirm';
-											error = '';
-										}}><span>Delete data<small>Remove notes from this device</small></span></button
-									>
-								{/snippet}
+								{#snippet actions()}{@render promote(LOCAL_PROFILE_ID)}{/snippet}
+								{#snippet danger()}{@render wipe(
+										LOCAL_PROFILE_ID,
+										'Remove notes from this device'
+									)}{/snippet}
 							</WorkspaceRow>
 							{#each localProfiles as profile (profile.id)}
 								<WorkspaceRow
@@ -616,37 +637,11 @@
 									}}
 								>
 									{#snippet icon()}<CloudOff size={18} aria-hidden="true" />{/snippet}
-									{#snippet actions()}
-										{#if syncStore.activePid === profile.id}
-											<button
-												type="button"
-												class="manage-row"
-												disabled={busy}
-												onclick={() => {
-													mode = 'register';
-													error = '';
-													info = '';
-													newName = '';
-												}}
-												><span
-													>Sync notes to new workspace<small
-														>Copy these notes into a synced workspace</small
-													></span
-												></button
-											>
-										{/if}
-										<button
-											type="button"
-											class="manage-row text-[var(--scrapscache-danger)]"
-											disabled={busy}
-											onclick={() => {
-												confirmation = 'wipe';
-												wipeTarget = profile.id;
-												mode = 'confirm';
-												error = '';
-											}}><span>Delete data<small>Remove this local workspace</small></span></button
-										>
-									{/snippet}
+									{#snippet actions()}{@render promote(profile.id)}{/snippet}
+									{#snippet danger()}{@render wipe(
+											profile.id,
+											'Remove this local workspace'
+										)}{/snippet}
 								</WorkspaceRow>
 							{/each}
 							{#each syncedProfiles as profile (profile.id)}
@@ -695,6 +690,10 @@
 													></span
 												></button
 											>
+										{/if}
+									{/snippet}
+									{#snippet danger()}
+										{#if active}
 											<button
 												type="button"
 												class="manage-row text-[var(--scrapscache-danger)]"
@@ -706,7 +705,7 @@
 												}}
 												><Trash2 size={16} aria-hidden="true" /><span
 													>Delete cloud data<small
-														>Keep this device’s notes in Anonymous workspace</small
+														>Keep this device’s notes in {anonymousName}</small
 													></span
 												></button
 											>
@@ -857,7 +856,7 @@
 				{:else if mode === 'register'}
 					<div class="space-y-4">
 						<p class="text-sm leading-relaxed text-[var(--scrapscache-text-muted)]">
-							Your current notes will be copied into a new synced workspace.
+							These notes will be copied into a new synced workspace.
 						</p>
 						<div class="space-y-2">
 							<input
@@ -906,7 +905,10 @@
 						>
 						<button
 							type="button"
-							onclick={() => (mode = 'menu')}
+							onclick={() => {
+								mode = 'menu';
+								promoteSource = null;
+							}}
 							disabled={busy}
 							class="w-full text-xs text-[var(--scrapscache-text-muted)] touch-manipulation"
 							>← Back to workspaces</button
@@ -937,7 +939,10 @@
 							>{operation === 'connect' ? 'Starting…' : 'Start connection'}</button
 						><button
 							type="button"
-							onclick={() => (mode = 'menu')}
+							onclick={() => {
+								mode = 'menu';
+								promoteSource = null;
+							}}
 							disabled={busy}
 							class="w-full text-xs text-[var(--scrapscache-text-muted)] touch-manipulation"
 							>← Back</button

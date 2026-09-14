@@ -15,7 +15,8 @@
 		onrename,
 		onunlink,
 		onbusychange,
-		actions
+		actions,
+		danger
 	}: {
 		name: string;
 		caption: string;
@@ -30,6 +31,7 @@
 		onunlink?: () => Promise<boolean>;
 		onbusychange: (holdsEscape: boolean) => void;
 		actions?: Snippet;
+		danger?: Snippet;
 	} = $props();
 
 	let mode = $state<'idle' | 'rename' | 'confirm'>('idle');
@@ -257,7 +259,6 @@
 		</div>
 	</div>
 	<div class="menu" hidden={!expanded || mode !== 'idle'}>
-		{@render actions?.()}
 		{#if onrename}
 			<button
 				type="button"
@@ -270,6 +271,7 @@
 				></button
 			>
 		{/if}
+		{@render actions?.()}
 		{#if onunlink}
 			<button
 				type="button"
@@ -278,10 +280,11 @@
 				onclick={askUnlink}
 				aria-label="Unlink {name}"
 				><CloudOff size={16} aria-hidden="true" /><span
-					>Unlink<small>Move notes to Anonymous workspace. Cloud stays.</small></span
+					>Unlink<small>Keep this device’s notes. Cloud data stays.</small></span
 				></button
 			>
 		{/if}
+		{@render danger?.()}
 	</div>
 </div>
 

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import { Check, ChevronDown, CloudOff, Download, TriangleAlert, X } from '@lucide/svelte';
+	import { Check, ChevronDown, CloudOff, Download, Pencil, TriangleAlert, X } from '@lucide/svelte';
 
 	let {
 		name,
@@ -136,7 +136,14 @@
 
 <svelte:document onkeydown={onKeyDown} onpointerdown={onDocumentPointerDown} />
 
-<div bind:this={rowElement} class="row" class:editing={mode !== 'idle'} tabindex="-1">
+<div
+	bind:this={rowElement}
+	class="row"
+	class:active
+	class:open={expanded}
+	class:editing={mode !== 'idle'}
+	tabindex="-1"
+>
 	<div class="front" class:active>
 		{#if onunlink}
 			<div class="panel confirm" hidden={mode !== 'confirm'}>
@@ -257,7 +264,10 @@
 				class="manage-row"
 				disabled={locked}
 				onclick={startRename}
-				aria-label="Rename {name}">Rename</button
+				aria-label="Rename {name}"
+				><Pencil size={16} aria-hidden="true" /><span
+					>Rename<small>Change this workspace’s name</small></span
+				></button
 			>
 		{/if}
 		{#if onunlink}
@@ -266,7 +276,10 @@
 				class="manage-row danger-text"
 				disabled={locked}
 				onclick={askUnlink}
-				aria-label="Unlink {name}"><CloudOff size={16} aria-hidden="true" />Unlink</button
+				aria-label="Unlink {name}"
+				><CloudOff size={16} aria-hidden="true" /><span
+					>Unlink<small>Move notes to Anonymous workspace. Cloud stays.</small></span
+				></button
 			>
 		{/if}
 	</div>
@@ -278,6 +291,11 @@
 		border-radius: 10px;
 		outline: none;
 	}
+	.row.active,
+	.row.open,
+	.row.editing {
+		background: var(--scrapscache-interactive-hover);
+	}
 	.row [hidden] {
 		display: none;
 	}
@@ -285,12 +303,6 @@
 		position: relative;
 		display: flex;
 		align-items: stretch;
-		border-radius: 10px;
-		background: var(--scrapscache-surface, var(--scrapscache-bg));
-	}
-	.front.active,
-	.row.editing .front {
-		background: var(--scrapscache-interactive-hover);
 	}
 	.front.active::before {
 		content: '';
@@ -303,7 +315,7 @@
 		background: var(--scrapscache-accent);
 	}
 	@media (hover: hover) {
-		.row:hover .front {
+		.row:hover {
 			background: var(--scrapscache-interactive-hover);
 		}
 	}
@@ -426,7 +438,14 @@
 		font-weight: 500;
 	}
 	.manage-row:hover {
-		background: var(--scrapscache-interactive-hover);
+		background: color-mix(in srgb, var(--scrapscache-text) 6%, transparent);
+	}
+	.manage-row small {
+		display: block;
+		margin-top: 2px;
+		color: var(--scrapscache-text-muted);
+		font-size: 12px;
+		font-weight: 400;
 	}
 	.danger-text {
 		color: var(--scrapscache-danger);

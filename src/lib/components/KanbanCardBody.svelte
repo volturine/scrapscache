@@ -40,8 +40,17 @@
 					{note.title}
 				</h3>
 			{/if}
-			<div class="relative min-h-[48px]">
-				<div class:blur-sm={note.secret} class:select-none={note.secret}>
+			<div
+				class="relative overflow-hidden"
+				class:h-24={note.secret}
+				class:min-h-[48px]={!note.secret}
+			>
+				<div
+					class:blur-sm={note.secret}
+					class:select-none={note.secret}
+					class:h-full={note.secret}
+					class:overflow-hidden={note.secret}
+				>
 					<NoteBodyDisplay {note} />
 				</div>
 				{#if note.secret}

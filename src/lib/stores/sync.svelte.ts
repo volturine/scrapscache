@@ -167,6 +167,8 @@ export class SyncStore {
 	syncedCursor = $state<number>(0);
 	/** Saved sync keys on this device; the one matching `account` is active. */
 	profiles = $state<StoredProfile[]>([]);
+	/** Local-only workspace when no sync account is active. */
+	activeLocalId = $state(LOCAL_PROFILE_ID);
 	private profilesReady: Promise<void> | null = null;
 	private bootstrapRequested = false;
 	private pendingOutboxWrites: Promise<void> = Promise.resolve();
@@ -197,11 +199,9 @@ export class SyncStore {
 					: null;
 			const chosen =
 				pointerId === LOCAL_PROFILE_ID ? null : (pointed ?? pickBootProfile(this.profiles));
-			if (chosen) {
-				this.activateProfile(chosen);
-			} else {
-				this.restoreStatus(LOCAL_PROFILE_ID);
-			}
+			if (chosen?.syncKey) this.activateProfile(chosen);
+			else if (chosen) this.activateLocalWorkspace(chosen.id);
+			else this.restoreStatus(LOCAL_PROFILE_ID);
 		} catch (err) {
 			console.error('[sync] could not restore profiles on boot:', err);
 		}
@@ -212,14 +212,16 @@ export class SyncStore {
 	}
 
 	get activeProfile(): StoredProfile | null {
-		return this.account
-			? (profileForSyncKey(this.profiles, this.account.syncKey) ?? this.profiles[0] ?? null)
-			: null;
+		if (this.account) {
+			return profileForSyncKey(this.profiles, this.account.syncKey) ?? this.profiles[0] ?? null;
+		}
+		return this.profiles.find((profile) => profile.id === this.activeLocalId) ?? null;
 	}
 
 	/** Namespace this window reads and writes right now. */
 	get activePid(): string {
-		return this.activeProfile?.id ?? LOCAL_PROFILE_ID;
+		if (this.account) return this.activeProfile?.id ?? LOCAL_PROFILE_ID;
+		return this.activeLocalId;
 	}
 
 	/**
@@ -261,12 +263,12 @@ export class SyncStore {
 						: null;
 				const chosen =
 					pointerId === LOCAL_PROFILE_ID ? null : (pointed ?? pickBootProfile(this.profiles));
-				if (chosen) {
-					if (this.activeProfile?.id !== chosen.id) {
-						this.activateProfile(chosen);
-					}
-				} else if (this.activeProfile !== null) {
-					this.restoreStatus(LOCAL_PROFILE_ID);
+				if (chosen?.syncKey) {
+					if (this.activeProfile?.id !== chosen.id) this.activateProfile(chosen);
+				} else if (chosen) {
+					if (this.activeLocalId !== chosen.id) this.activateLocalWorkspace(chosen.id);
+				} else if (this.account === null) {
+					this.restoreStatus(this.activeLocalId);
 				}
 			} catch (err) {
 				console.error('[sync] could not load saved profiles:', err);
@@ -288,8 +290,13 @@ export class SyncStore {
 		const updated = { ...profile, name: trimmed };
 		await saveProfile(updated);
 		this.profiles = this.profiles.map((entry) => (entry.id === id ? updated : entry));
-		if (this.activeProfile?.id === id) await this.queueOutbox([PROFILE_META_KEY]);
-		else await markSyncOutbox(id, [PROFILE_META_KEY]);
+		if (updated.syncKey) {
+			if (this.account && profileForSyncKey(this.profiles, this.account.syncKey)?.id === id) {
+				await this.queueOutbox([PROFILE_META_KEY]);
+			} else {
+				await markSyncOutbox(id, [PROFILE_META_KEY]);
+			}
+		}
 		return updated;
 	}
 
@@ -362,6 +369,10 @@ export class SyncStore {
 	}
 
 	activateProfile(profile: StoredProfile): void {
+		if (!profile.syncKey) {
+			this.activateLocalWorkspace(profile.id);
+			return;
+		}
 		this.activateAccount(identityFromSyncKey(profile.syncKey));
 		const generation = this.authenticationGeneration;
 		this.lastError = null;
@@ -381,19 +392,20 @@ export class SyncStore {
 		this.restoreStatus(profile.id);
 	}
 
-	/** Activate the unsynced device-local namespace without removing any saved sync keys. */
-	activateLocalWorkspace(): void {
+	/** Activate a local-only namespace without removing any saved sync keys. */
+	activateLocalWorkspace(id: string = LOCAL_PROFILE_ID): void {
 		this.authenticationGeneration += 1;
 		this.pendingSessions.clear();
 		this.session = null;
 		this.account = null;
+		this.activeLocalId = id;
 		this.lastError = null;
 		this.progress = null;
 		this.usage = null;
 		this.syncedCursor = 0;
-		setLastActiveProfileId(LOCAL_PROFILE_ID);
+		setLastActiveProfileId(id);
 		this.clearLegacyAccountStorage();
-		this.restoreStatus(LOCAL_PROFILE_ID);
+		this.restoreStatus(id);
 		this.onAccountChange?.();
 	}
 

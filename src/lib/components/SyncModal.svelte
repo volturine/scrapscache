@@ -15,7 +15,8 @@
 	import { buildProfileNotesExport } from '$lib/profiles';
 	import { estimateProfileBytes, LOCAL_PROFILE_ID } from '$lib/db/idb';
 	import { downloadJSON } from '$lib/utils';
-	import { Cloud, CloudOff, Download, RefreshCw, Trash2, X } from '@lucide/svelte';
+	import { isLocalWorkspace } from '$lib/profiles';
+	import { Cloud, CloudOff, RefreshCw, Trash2, X } from '@lucide/svelte';
 	import { portalToAppFloat } from '$lib/appViewport';
 
 	let { onClose, initialPairingCode = '' }: { onClose: () => void; initialPairingCode?: string } =
@@ -43,7 +44,9 @@
 	let waiting = $state<StartedDeviceLink | null>(null);
 	let now = $state(Date.now());
 	let timer: ReturnType<typeof setTimeout> | null = null;
-	let confirmation = $state<'delete' | 'force' | null>(null);
+	let confirmation = $state<'delete' | 'force' | 'wipe' | null>(null);
+	let wipeTarget = $state<string | null>(null);
+	let expandedId = $state<string | null>(null);
 	let newName = $state('');
 	// Account creation, including recovery that may recreate the account, needs a Turnstile token
 	// when this deployment configures a sitekey. Each surface owns its own single-use widget.
@@ -65,6 +68,11 @@
 	const syncing = $derived(operation === 'sync' || operation === 'force-sync');
 	const busy = $derived(operation !== null || notesStore.syncing || profileCoordinator.switching);
 	const handoverBlocked = $derived(notesStore.syncing || profileCoordinator.switching);
+	const rowOwnsEscape = $derived(rowHoldingEscape !== null || expandedId !== null);
+	const localProfiles = $derived(syncStore.profiles.filter((profile) => isLocalWorkspace(profile)));
+	const syncedProfiles = $derived(
+		syncStore.profiles.filter((profile) => !isLocalWorkspace(profile))
+	);
 
 	// Approximate on-device footprint per saved key. Measured when the modal
 	// opens and after any operation that can change what is stored, rather than
@@ -167,6 +175,20 @@
 	function pairingGroups(raw: string): string[] {
 		const formatted = formatPairingCode(raw);
 		return formatted ? formatted.split('-') : [];
+	}
+
+	async function createLocalWorkspace() {
+		error = '';
+		info = '';
+		const result = await runOperation('create', 'Could not create workspace', () =>
+			profileCoordinator.createLocal()
+		);
+		if (!result) return;
+		if (!result.success) {
+			error = friendlyError(result.error, 'Could not create workspace');
+			return;
+		}
+		info = 'Created a local workspace on this device.';
 	}
 
 	async function create() {
@@ -402,6 +424,28 @@
 		}, 2000);
 	}
 
+	async function wipeLocalData() {
+		if (confirmation !== 'wipe' || !wipeTarget) return;
+		error = '';
+		const target = wipeTarget;
+		const result = await runOperation('delete', 'Could not delete workspace data', () =>
+			profileCoordinator.wipeLocal(target)
+		);
+		if (!result) return;
+		if (!result.success) {
+			error = friendlyError(result.error, 'Could not delete workspace data');
+			return;
+		}
+		confirmation = null;
+		wipeTarget = null;
+		expandedId = null;
+		mode = 'menu';
+		info =
+			target === LOCAL_PROFILE_ID
+				? 'Anonymous workspace notes were deleted on this device.'
+				: 'That local workspace was deleted.';
+	}
+
 	async function deleteCloudData() {
 		if (confirmation !== 'delete') return;
 		error = '';
@@ -436,17 +480,31 @@
 		stopWaiting();
 		onClose();
 	}
+
+	function onWindowKeyDown(event: KeyboardEvent) {
+		if (event.key !== 'Escape' || event.defaultPrevented || busy || rowOwnsEscape) return;
+		event.preventDefault();
+		close();
+	}
 </script>
+
+<svelte:window onkeydown={onWindowKeyDown} />
 
 <Dialog.Root
 	open
 	onOpenChange={(details) => !details.open && close()}
 	preventScroll={false}
-	closeOnEscape={rowHoldingEscape === null}
+	closeOnEscape={false}
+	closeOnInteractOutside={false}
 >
 	<div {@attach portalToAppFloat} class="fixed inset-0 z-50" role="presentation">
-		<Dialog.Backdrop class="absolute inset-0 bg-black/40" />
-		<Dialog.Positioner class="absolute inset-0 flex items-center justify-center p-4">
+		<Dialog.Backdrop class="absolute inset-0 bg-black/40" onclick={() => close()} />
+		<Dialog.Positioner
+			class="absolute inset-0 flex items-center justify-center p-4"
+			onclick={(event) => {
+				if (event.target === event.currentTarget) close();
+			}}
+		>
 			<Dialog.Content
 				class="scrapscache-dialog relative max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-x-hidden overflow-y-auto p-5"
 			>
@@ -462,45 +520,137 @@
 								: mode === 'confirm'
 									? confirmation === 'force'
 										? 'Replace cloud notes?'
-										: 'Delete cloud data?'
+										: confirmation === 'wipe'
+											? 'Delete workspace data?'
+											: 'Delete cloud data?'
 									: 'Connect device'}
 					</Dialog.Title>
-					<Dialog.CloseTrigger
+					<button
 						type="button"
 						disabled={busy}
 						class="icon-btn h-8 w-8"
 						aria-label="Close"
+						onclick={() => close()}
 					>
 						<X class="h-4 w-4" aria-hidden="true" />
-					</Dialog.CloseTrigger>
+					</button>
 				</div>
 
 				{#if mode === 'menu'}
 					<div class="space-y-4">
 						<div class="workspace-list" aria-label="Workspaces on this device">
-							<button
-								type="button"
-								class="workspace-row"
-								class:active={syncStore.activePid === LOCAL_PROFILE_ID}
+							<WorkspaceRow
+								name="Anonymous workspace"
+								caption={`Only on this device${
+									sizeLabel(LOCAL_PROFILE_ID) ? ' · ' + sizeLabel(LOCAL_PROFILE_ID) : ''
+								}`}
+								active={syncStore.activePid === LOCAL_PROFILE_ID}
 								disabled={busy}
-								aria-label={syncStore.activePid === LOCAL_PROFILE_ID
-									? 'Anonymous workspace is active'
-									: 'Switch to Anonymous workspace'}
-								onclick={() =>
-									syncStore.activePid !== LOCAL_PROFILE_ID && void switchProfile(LOCAL_PROFILE_ID)}
+								expanded={expandedId === LOCAL_PROFILE_ID}
+								onselect={() => {
+									if (syncStore.activePid !== LOCAL_PROFILE_ID)
+										void switchProfile(LOCAL_PROFILE_ID);
+								}}
+								onexport={() => void exportProfile(LOCAL_PROFILE_ID)}
+								onexpand={() => {
+									expandedId = expandedId === LOCAL_PROFILE_ID ? null : LOCAL_PROFILE_ID;
+								}}
+								onbusychange={(holdsEscape) => {
+									if (holdsEscape) rowHoldingEscape = LOCAL_PROFILE_ID;
+									else if (rowHoldingEscape === LOCAL_PROFILE_ID) rowHoldingEscape = null;
+								}}
 							>
-								<CloudOff size={18} aria-hidden="true" />
-								<span class="min-w-0 flex-1 text-left"
-									><span class="block truncate">Anonymous workspace</span><span
-										class="workspace-caption"
-										>Only on this device{sizeLabel(LOCAL_PROFILE_ID)
-											? ' · ' + sizeLabel(LOCAL_PROFILE_ID)
-											: ''}</span
-									></span
+								{#snippet icon()}<CloudOff size={18} aria-hidden="true" />{/snippet}
+								{#snippet actions()}
+									{#if syncStore.activePid === LOCAL_PROFILE_ID}
+										<button
+											type="button"
+											class="manage-row"
+											disabled={busy}
+											onclick={() => {
+												mode = 'register';
+												error = '';
+												info = '';
+												newName = '';
+											}}
+											><span
+												>Sync notes to new workspace<small
+													>Copy these notes into a synced workspace</small
+												></span
+											></button
+										>
+									{/if}
+									<button
+										type="button"
+										class="manage-row text-[var(--scrapscache-danger)]"
+										disabled={busy}
+										onclick={() => {
+											confirmation = 'wipe';
+											wipeTarget = LOCAL_PROFILE_ID;
+											mode = 'confirm';
+											error = '';
+										}}><span>Delete data<small>Remove notes from this device</small></span></button
+									>
+								{/snippet}
+							</WorkspaceRow>
+							{#each localProfiles as profile (profile.id)}
+								<WorkspaceRow
+									name={profile.name}
+									caption={`Only on this device${
+										sizeLabel(profile.id) ? ' · ' + sizeLabel(profile.id) : ''
+									}`}
+									active={syncStore.activePid === profile.id}
+									disabled={busy}
+									expanded={expandedId === profile.id}
+									onselect={() => {
+										if (syncStore.activePid !== profile.id) void switchProfile(profile.id);
+									}}
+									onexport={() => void exportProfile(profile.id)}
+									onexpand={() => {
+										expandedId = expandedId === profile.id ? null : profile.id;
+									}}
+									onrename={(next) => renameProfile(profile.id, next)}
+									onbusychange={(holdsEscape) => {
+										if (holdsEscape) rowHoldingEscape = profile.id;
+										else if (rowHoldingEscape === profile.id) rowHoldingEscape = null;
+									}}
 								>
-							</button>
-							{#each syncStore.profiles as profile (profile.id)}
-								{@const active = profile.id === syncStore.activeProfile?.id}
+									{#snippet icon()}<CloudOff size={18} aria-hidden="true" />{/snippet}
+									{#snippet actions()}
+										{#if syncStore.activePid === profile.id}
+											<button
+												type="button"
+												class="manage-row"
+												disabled={busy}
+												onclick={() => {
+													mode = 'register';
+													error = '';
+													info = '';
+													newName = '';
+												}}
+												><span
+													>Sync notes to new workspace<small
+														>Copy these notes into a synced workspace</small
+													></span
+												></button
+											>
+										{/if}
+										<button
+											type="button"
+											class="manage-row text-[var(--scrapscache-danger)]"
+											disabled={busy}
+											onclick={() => {
+												confirmation = 'wipe';
+												wipeTarget = profile.id;
+												mode = 'confirm';
+												error = '';
+											}}><span>Delete data<small>Remove this local workspace</small></span></button
+										>
+									{/snippet}
+								</WorkspaceRow>
+							{/each}
+							{#each syncedProfiles as profile (profile.id)}
+								{@const active = profile.id === syncStore.activePid}
 								<WorkspaceRow
 									name={profile.name}
 									caption={`${active ? 'Current workspace' : 'Synced workspace'}${
@@ -508,8 +658,13 @@
 									}`}
 									{active}
 									disabled={busy}
+									expanded={expandedId === profile.id}
 									onselect={() => {
 										if (!active) void switchProfile(profile.id);
+									}}
+									onexport={() => void exportProfile(profile.id)}
+									onexpand={() => {
+										expandedId = expandedId === profile.id ? null : profile.id;
 									}}
 									onrename={(next) => renameProfile(profile.id, next)}
 									onunlink={() => unlinkProfile(profile.id)}
@@ -519,6 +674,44 @@
 									}}
 								>
 									{#snippet icon()}<Cloud size={18} aria-hidden="true" />{/snippet}
+									{#snippet actions()}
+										{#if active}
+											<button
+												type="button"
+												class="manage-row"
+												disabled={busy}
+												onclick={() => {
+													confirmation = 'force';
+													mode = 'confirm';
+													error = '';
+												}}
+												><RefreshCw
+													size={16}
+													class={operation === 'force-sync' ? 'animate-spin' : ''}
+													aria-hidden="true"
+												/><span
+													>{operation === 'force-sync' ? 'Resyncing…' : 'Force resync'}<small
+														>Replace cloud notes with this device’s version</small
+													></span
+												></button
+											>
+											<button
+												type="button"
+												class="manage-row text-[var(--scrapscache-danger)]"
+												disabled={busy}
+												onclick={() => {
+													confirmation = 'delete';
+													mode = 'confirm';
+													error = '';
+												}}
+												><Trash2 size={16} aria-hidden="true" /><span
+													>Delete cloud data<small
+														>Keep this device’s notes in Anonymous workspace</small
+													></span
+												></button
+											>
+										{/if}
+									{/snippet}
 								</WorkspaceRow>
 							{/each}
 						</div>
@@ -530,12 +723,7 @@
 								class={syncStore.account
 									? 'text-[var(--scrapscache-primary)]'
 									: 'scrapscache-button scrapscache-button-primary w-full px-3 py-2.5 text-sm font-medium'}
-								onclick={() => {
-									mode = 'register';
-									error = '';
-									info = '';
-									newName = '';
-								}}>+ New workspace</button
+								onclick={() => void createLocalWorkspace()}>+ New workspace</button
 							>
 						</div>
 						{#if syncStore.account}
@@ -602,53 +790,6 @@
 						{#if info}<p class="text-sm text-[var(--scrapscache-text-muted)]" role="status">
 								{info}
 							</p>{/if}
-						<details class="border-t border-[var(--scrapscache-border)] pt-3">
-							<summary class="cursor-pointer text-sm text-[var(--scrapscache-text-muted)]"
-								>Manage workspace</summary
-							>
-							<div class="mt-2 space-y-1">
-								<button
-									class="manage-row"
-									disabled={busy}
-									onclick={() => void exportProfile(syncStore.activePid)}
-									><Download size={16} aria-hidden="true" /><span>Export notes</span></button
-								>
-								{#if syncStore.account}
-									<button
-										class="manage-row"
-										disabled={busy}
-										onclick={() => {
-											confirmation = 'force';
-											mode = 'confirm';
-											error = '';
-										}}
-										><RefreshCw
-											size={16}
-											class={operation === 'force-sync' ? 'animate-spin' : ''}
-											aria-hidden="true"
-										/><span
-											>{operation === 'force-sync' ? 'Resyncing…' : 'Force resync'}<small
-												>Replace cloud notes with this device’s version</small
-											></span
-										></button
-									>
-									<button
-										class="manage-row text-[var(--scrapscache-danger)]"
-										disabled={busy}
-										onclick={() => {
-											confirmation = 'delete';
-											mode = 'confirm';
-											error = '';
-										}}
-										><Trash2 size={16} aria-hidden="true" /><span
-											>Delete cloud data<small
-												>Keep this device’s notes in Anonymous workspace</small
-											></span
-										></button
-									>
-								{/if}
-							</div>
-						</details>
 					</div>
 				{:else if mode === 'confirm'}
 					<div class="space-y-4">
@@ -657,6 +798,10 @@
 								This device’s notes will replace the cloud version using the same sync key. Notes
 								only in the cloud will be removed. Other devices will receive these notes as the
 								latest version.
+							{:else if confirmation === 'wipe'}
+								{wipeTarget === LOCAL_PROFILE_ID
+									? 'Permanently delete the notes in Anonymous workspace on this device. Synced workspaces are not changed.'
+									: 'Permanently delete this local workspace and its notes on this device.'}
 							{:else}
 								Permanently delete “{syncStore.activeProfile?.name}” from the cloud and stop syncing
 								it on all devices. This device’s notes will be appended to Anonymous workspace.
@@ -682,6 +827,7 @@
 								onclick={() => {
 									mode = 'menu';
 									confirmation = null;
+									wipeTarget = null;
 									error = '';
 								}}>Cancel</button
 							>
@@ -693,21 +839,25 @@
 								disabled={busy ||
 									(confirmation === 'force' && Boolean(turnstileSitekey) && !forceToken)}
 								onclick={() =>
-									confirmation === 'force' ? void forceResync() : void deleteCloudData()}
+									confirmation === 'force'
+										? void forceResync()
+										: confirmation === 'wipe'
+											? void wipeLocalData()
+											: void deleteCloudData()}
 								>{busy
 									? 'Working…'
 									: confirmation === 'force'
 										? 'Replace cloud notes'
-										: 'Delete cloud data'}</button
+										: confirmation === 'wipe'
+											? 'Delete data'
+											: 'Delete cloud data'}</button
 							>
 						</div>
 					</div>
 				{:else if mode === 'register'}
 					<div class="space-y-4">
 						<p class="text-sm leading-relaxed text-[var(--scrapscache-text-muted)]">
-							{syncStore.account
-								? 'It starts empty. Your existing workspaces stay unchanged.'
-								: 'Your current anonymous notes will be copied into it.'}
+							Your current notes will be copied into a new synced workspace.
 						</p>
 						<div class="space-y-2">
 							<input
@@ -892,34 +1042,9 @@
 		display: grid;
 		gap: 4px;
 	}
-	.workspace-row {
-		position: relative;
-		display: flex;
-		align-items: center;
-		gap: 12px;
-		width: 100%;
-		border-radius: 10px;
-		padding: 12px;
-		font-size: 14px;
-	}
-	.workspace-row:hover,
 	.manage-row:hover {
 		background: var(--scrapscache-interactive-hover);
 	}
-	.workspace-row.active {
-		background: var(--scrapscache-interactive-hover);
-	}
-	.workspace-row.active::before {
-		content: '';
-		position: absolute;
-		top: 10px;
-		bottom: 10px;
-		left: 0;
-		width: 3px;
-		border-radius: 0 3px 3px 0;
-		background: var(--scrapscache-accent);
-	}
-	.workspace-caption,
 	.manage-row small {
 		display: block;
 		margin-top: 2px;

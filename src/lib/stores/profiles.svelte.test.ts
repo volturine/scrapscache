@@ -245,6 +245,109 @@ describe('profile creation handover', () => {
 		);
 	});
 
+	it('creates an empty local workspace without copying notes or registering', async () => {
+		syncStore.activateLocalWorkspace();
+		await putNote(LOCAL_PROFILE_ID, note('stay-anonymous'));
+		vi.spyOn(notesStore, 'waitForPendingProfileWrites').mockResolvedValue();
+		const reload = vi.spyOn(notesStore, 'reloadForProfile').mockResolvedValue();
+		const register = vi.spyOn(syncStore, 'register');
+
+		const result = await new ProfileCoordinator().createLocal();
+
+		expect(result).toEqual({ success: true });
+		expect(register).not.toHaveBeenCalled();
+		expect(syncStore.account).toBeNull();
+		expect(syncStore.profiles).toHaveLength(1);
+		expect(syncStore.profiles[0].syncKey).toBe('');
+		expect(syncStore.activePid).toBe(syncStore.profiles[0].id);
+		expect(reload).toHaveBeenCalledTimes(1);
+		expect((await getAllNotesMetadata(LOCAL_PROFILE_ID)).map(({ id }) => id)).toEqual([
+			'stay-anonymous'
+		]);
+		expect(await getAllNotesMetadata(syncStore.activePid)).toEqual([]);
+	});
+
+	it('copies notes from an extra local workspace when creating a synced one', async () => {
+		const local = {
+			id: 'extra-local',
+			name: 'Local',
+			syncKey: '',
+			createdAt: 1
+		};
+		const created = {
+			id: 'created-from-local',
+			name: 'Created',
+			syncKey: createSyncIdentity().syncKey,
+			createdAt: 2
+		};
+		syncStore.profiles = [local];
+		syncStore.activateLocalWorkspace(local.id);
+		await putNote(local.id, note('local-note'));
+
+		vi.spyOn(notesStore, 'waitForPendingProfileWrites').mockResolvedValue();
+		vi.spyOn(notesStore, 'reloadForProfile').mockResolvedValue();
+		vi.spyOn(notesStore, 'syncWithCloudManual').mockResolvedValue(true);
+		vi.spyOn(syncStore, 'queueOutbox').mockResolvedValue();
+		vi.spyOn(syncStore, 'register').mockImplementation(async () => {
+			syncStore.profiles = [local, created];
+			syncStore.activateProfile(created);
+			return { success: true, profile: created };
+		});
+
+		const result = await new ProfileCoordinator().create();
+
+		expect(result).toEqual({ success: true });
+		expect((await getAllNotesMetadata(created.id)).map(({ id }) => id)).toEqual(['local-note']);
+		expect((await getAllNotesMetadata(local.id)).map(({ id }) => id)).toEqual(['local-note']);
+	});
+
+	it('wipes an extra local workspace and returns to anonymous', async () => {
+		const local = {
+			id: 'extra-local-wipe',
+			name: 'Local',
+			syncKey: '',
+			createdAt: 1
+		};
+		syncStore.profiles = [local];
+		syncStore.activateLocalWorkspace(local.id);
+		await putNote(local.id, note('local-note'));
+		await putNote(LOCAL_PROFILE_ID, note('anonymous-note'));
+		vi.spyOn(notesStore, 'waitForPendingProfileWrites').mockResolvedValue();
+		const reload = vi.spyOn(notesStore, 'reloadForProfile').mockResolvedValue();
+
+		const result = await new ProfileCoordinator().wipeLocal(local.id);
+
+		expect(result).toEqual({ success: true });
+		expect(syncStore.profiles).toEqual([]);
+		expect(syncStore.activePid).toBe(LOCAL_PROFILE_ID);
+		expect(reload).toHaveBeenCalled();
+		expect((await getAllNotesMetadata(LOCAL_PROFILE_ID)).map(({ id }) => id)).toEqual([
+			'anonymous-note'
+		]);
+	});
+
+	it('clears anonymous notes without removing saved profiles', async () => {
+		const saved = {
+			id: 'saved-profile',
+			name: 'Saved',
+			syncKey: createSyncIdentity().syncKey,
+			createdAt: 1
+		};
+		syncStore.profiles = [saved];
+		syncStore.activateLocalWorkspace();
+		await putNote(LOCAL_PROFILE_ID, note('wipe-me'));
+		vi.spyOn(notesStore, 'waitForPendingProfileWrites').mockResolvedValue();
+		const reload = vi.spyOn(notesStore, 'reloadForProfile').mockResolvedValue();
+
+		const result = await new ProfileCoordinator().wipeLocal(LOCAL_PROFILE_ID);
+
+		expect(result).toEqual({ success: true });
+		expect(syncStore.profiles).toEqual([saved]);
+		expect(syncStore.activePid).toBe(LOCAL_PROFILE_ID);
+		expect(reload).toHaveBeenCalledTimes(1);
+		expect(await getAllNotesMetadata(LOCAL_PROFILE_ID)).toEqual([]);
+	});
+
 	it('rejects unlinking an unknown workspace without changing saved profiles', async () => {
 		const kept = {
 			id: 'kept-profile',

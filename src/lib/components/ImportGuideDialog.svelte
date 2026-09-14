@@ -56,10 +56,9 @@
 	{open}
 	onOpenChange={handleOpenChange}
 	closeOnEscape={!busy && !pickingFile}
-	closeOnInteractOutside={!busy && !pickingFile}
+	closeOnInteractOutside={false}
 	preventScroll={false}
 	lazyMount
-	unmountOnExit
 >
 	<div {@attach portalToAppOverlay} class="absolute inset-0 z-[70]" role="presentation">
 		<Dialog.Backdrop class="absolute inset-0 bg-black/45" />

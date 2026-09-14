@@ -70,6 +70,7 @@
 	let keepImportReady = $state(false);
 	let syncStatus = $derived(resolveSyncStatus(syncStore.lastError, syncStore.usage));
 	let syncControlLabel = $derived(SYNC_CONTROL_LABEL[syncStatus]);
+	let backupImportProgress = $derived(notesStore.backupImportProgress);
 
 	function openPairingLink() {
 		const found = pairingCodeFromUrl(window.location.href);
@@ -92,7 +93,7 @@
 		backupImportError = '';
 		keepImportReady = false;
 		pendingKeepFiles = null;
-		queueMicrotask(() => {
+		void tick().then(() => {
 			showingImportGuide = true;
 		});
 	}
@@ -293,7 +294,6 @@
 		<Menu.Positioner class="z-30">
 			<Menu.Content class="scrapscache-popover w-64 overflow-hidden pt-1">
 				{#if importingBackup}
-					{@const progress = notesStore.backupImportProgress}
 					<div
 						class="space-y-2 px-3 py-2 text-xs text-[var(--scrapscache-text-muted)]"
 						role="status"
@@ -301,17 +301,19 @@
 					>
 						<div class="flex justify-between gap-2">
 							<span
-								>{progress?.phase === BackupImportPhase.Finishing
+								>{backupImportProgress?.phase === BackupImportPhase.Finishing
 									? 'Finishing backup…'
-									: progress
+									: backupImportProgress
 										? 'Importing backup…'
 										: 'Reading backup…'}</span
-							>{#if progress}<span>{progress.completed}/{progress.total}</span>{/if}
+							>{#if backupImportProgress}<span
+									>{backupImportProgress.completed}/{backupImportProgress.total}</span
+								>{/if}
 						</div>
 						<div class="h-1.5 overflow-hidden rounded-full bg-black/10 dark:bg-white/10">
 							<div
 								class="h-full bg-blue-600 transition-[width]"
-								style={`width: ${progress && progress.total ? Math.round((progress.completed / progress.total) * 100) : 8}%`}
+								style={`width: ${backupImportProgress && backupImportProgress.total ? Math.round((backupImportProgress.completed / backupImportProgress.total) * 100) : 8}%`}
 							></div>
 						</div>
 					</div>

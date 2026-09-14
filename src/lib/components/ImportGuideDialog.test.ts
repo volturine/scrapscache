@@ -1,8 +1,38 @@
 import { fireEvent, render, screen } from '@testing-library/svelte';
-import { describe, expect, it, vi } from 'vitest';
+import { tick } from 'svelte';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import ImportGuideDialog from './ImportGuideDialog.svelte';
 
+function captureDerivedInert() {
+	const hits: string[] = [];
+	const origWarn = console.warn;
+	const origError = console.error;
+	const capture = (...args: unknown[]) => {
+		const text = args.map(String).join(' ');
+		if (text.includes('derived_inert')) hits.push(text);
+	};
+	console.warn = (...args: unknown[]) => {
+		capture(...args);
+		origWarn.apply(console, args as []);
+	};
+	console.error = (...args: unknown[]) => {
+		capture(...args);
+		origError.apply(console, args as []);
+	};
+	return {
+		hits,
+		restore() {
+			console.warn = origWarn;
+			console.error = origError;
+		}
+	};
+}
+
 describe('ImportGuideDialog', () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
 	it('explains Google Keep Takeout before a file is chosen', () => {
 		render(ImportGuideDialog, {
 			props: { onFile: vi.fn(), onSelectMode: vi.fn(), onClose: vi.fn() }
@@ -48,5 +78,26 @@ describe('ImportGuideDialog', () => {
 
 		expect(onSelectMode).toHaveBeenNthCalledWith(1, 'keep');
 		expect(onSelectMode).toHaveBeenNthCalledWith(2, 'replace');
+	});
+
+	it('does not read destroyed deriveds when the import dialog closes', async () => {
+		const capture = captureDerivedInert();
+		const handlers = { onFile: vi.fn(), onSelectMode: vi.fn(), onClose: vi.fn() };
+		const { rerender } = render(ImportGuideDialog, { props: { open: true, ...handlers } });
+		await rerender({ open: false, ...handlers });
+		await tick();
+		capture.restore();
+		expect(capture.hits).toEqual([]);
+	});
+
+	it('does not read destroyed deriveds when the import dialog unmounts', async () => {
+		const capture = captureDerivedInert();
+		const { unmount } = render(ImportGuideDialog, {
+			props: { open: true, onFile: vi.fn(), onSelectMode: vi.fn(), onClose: vi.fn() }
+		});
+		unmount();
+		await tick();
+		capture.restore();
+		expect(capture.hits).toEqual([]);
 	});
 });

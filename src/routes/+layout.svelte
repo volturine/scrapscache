@@ -278,7 +278,6 @@
 					swipeDirection="start"
 					preventScroll={false}
 					lazyMount
-					unmountOnExit
 				>
 					<Drawer.Backdrop
 						data-sidebar-backdrop

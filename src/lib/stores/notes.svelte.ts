@@ -1077,11 +1077,16 @@ export class NotesStore {
 	}
 
 	private async notesForMemory(notes: Note[]): Promise<Note[]> {
+		const currentById = new Map(this.notes.map((note) => [note.id, note]));
 		return Promise.all(
-			notes.map(async (note) => ({
-				...note,
-				images: await Promise.all((note.images ?? []).map(prepareAttachmentForMemory))
-			}))
+			notes.map(async (note) => {
+				const current = currentById.get(note.id);
+				if (current && !noteNeedsDurableWrite(current, note)) return current;
+				return {
+					...note,
+					images: await Promise.all((note.images ?? []).map(prepareAttachmentForMemory))
+				};
+			})
 		);
 	}
 

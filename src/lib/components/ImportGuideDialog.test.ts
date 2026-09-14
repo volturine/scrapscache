@@ -80,6 +80,13 @@ describe('ImportGuideDialog', () => {
 		expect(onSelectMode).toHaveBeenNthCalledWith(2, 'replace');
 	});
 
+	it('does not cover the page with a click-catching overlay while closed', () => {
+		render(ImportGuideDialog, {
+			props: { open: false, onFile: vi.fn(), onSelectMode: vi.fn(), onClose: vi.fn() }
+		});
+		expect(document.querySelector('[role="presentation"]')).toBeNull();
+	});
+
 	it('does not read destroyed deriveds when the import dialog closes', async () => {
 		const capture = captureDerivedInert();
 		const handlers = { onFile: vi.fn(), onSelectMode: vi.fn(), onClose: vi.fn() };

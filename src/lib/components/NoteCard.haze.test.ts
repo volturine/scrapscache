@@ -151,4 +151,81 @@ describe('NoteCard right-click haze', () => {
 		expect(document.querySelector('[data-card-haze]')).toBeNull();
 		expect(onOpen).not.toHaveBeenCalled();
 	});
+
+	it('shows exactly 3 quick options for a trashed note: restore, archive, and delete forever', async () => {
+		const restoreSpy = vi.spyOn(notesStore, 'restoreNote').mockImplementation(() => {});
+		const archiveSpy = vi.spyOn(notesStore, 'restoreToArchive').mockImplementation(() => {});
+		const deleteSpy = vi.spyOn(notesStore, 'deleteNoteForever').mockImplementation(async () => {});
+		render(NoteCard, { props: { note: note({ trashed: true }), onOpen: vi.fn() } });
+
+		await fireEvent.contextMenu(card());
+		const haze = document.querySelector('[data-card-haze]')!;
+		const buttons = haze.querySelectorAll('button');
+		expect(buttons.length).toBe(3);
+
+		const restoreBtn = screen.getByRole('button', { name: 'Restore note' });
+		const archiveBtn = screen.getByRole('button', { name: 'Archive note' });
+		const deleteBtn = screen.getByRole('button', { name: 'Delete forever' });
+		expect(restoreBtn).toBeTruthy();
+		expect(archiveBtn).toBeTruthy();
+		expect(deleteBtn).toBeTruthy();
+
+		await fireEvent.click(restoreBtn);
+		expect(restoreSpy).toHaveBeenCalledWith('note-1');
+
+		await fireEvent.contextMenu(card());
+		await fireEvent.click(screen.getByRole('button', { name: 'Archive note' }));
+		expect(archiveSpy).toHaveBeenCalledWith('note-1');
+
+		await fireEvent.contextMenu(card());
+		await fireEvent.click(screen.getByRole('button', { name: 'Delete forever' }));
+		expect(deleteSpy).toHaveBeenCalledWith('note-1');
+	});
+
+	it('shows exactly 2 quick options for an archived note: restore and delete', async () => {
+		const archiveSpy = vi.spyOn(notesStore, 'toggleArchive').mockImplementation(() => {});
+		const deleteSpy = vi.spyOn(notesStore, 'trashNote').mockImplementation(() => {});
+		render(NoteCard, { props: { note: note({ archived: true }), onOpen: vi.fn() } });
+
+		await fireEvent.contextMenu(card());
+		const haze = document.querySelector('[data-card-haze]')!;
+		const buttons = haze.querySelectorAll('button');
+		expect(buttons.length).toBe(2);
+
+		const restoreBtn = screen.getByRole('button', { name: 'Restore note' });
+		const deleteBtn = screen.getByRole('button', { name: 'Delete note' });
+		expect(restoreBtn).toBeTruthy();
+		expect(deleteBtn).toBeTruthy();
+
+		await fireEvent.click(restoreBtn);
+		expect(archiveSpy).toHaveBeenCalledWith('note-1');
+
+		await fireEvent.contextMenu(card());
+		await fireEvent.click(screen.getByRole('button', { name: 'Delete note' }));
+		expect(deleteSpy).toHaveBeenCalledWith('note-1');
+	});
+
+	it('renders hazy with secret overlay for a secret note while keeping title visible and non-scrollable fixed size', () => {
+		render(NoteCard, {
+			props: {
+				note: note({ secret: true, title: 'Secret Title', body: 'Secret content\n'.repeat(50) }),
+				onOpen: vi.fn()
+			}
+		});
+		expect(document.querySelector('[data-secret-overlay]')).toBeTruthy();
+		const titleEl = screen.getByText('Secret Title');
+		expect(titleEl).toBeTruthy();
+		expect(titleEl.closest('.blur-sm')).toBeNull();
+		const blurred = document.querySelector('.blur-sm');
+		expect(blurred).toBeTruthy();
+		expect(blurred?.textContent).toContain('Secret content');
+
+		// Non-scrollable verification with overlay in visible body area
+		expect(document.querySelector('.scrollable')).toBeNull();
+		expect(document.querySelector('.overflow-hidden')).toBeTruthy();
+		const overlay = document.querySelector('[data-secret-overlay]');
+		expect(overlay).toBeTruthy();
+		expect(overlay?.querySelector('svg')).toBeTruthy();
+		expect(overlay?.textContent).toBe('');
+	});
 });

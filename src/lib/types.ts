@@ -50,6 +50,7 @@ export type NoteFieldTimes = {
 	pinned?: number;
 	archived?: number;
 	trashed?: number;
+	secret?: number;
 	reminder?: number;
 	labels?: number;
 	images?: number;
@@ -72,6 +73,7 @@ export interface Note {
 	archived: boolean;
 	trashed: boolean;
 	trashedAt: number | null;
+	secret?: boolean;
 	createdAt: number;
 	updatedAt: number;
 	reminder: number | null; // epoch ms

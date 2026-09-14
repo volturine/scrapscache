@@ -20,12 +20,30 @@
 	} from '$lib/markdown';
 	import { uiStore } from '$lib/stores/ui.svelte';
 
-	let { note }: { note: Note } = $props();
+	let { note, maxBodyLines }: { note: Note; maxBodyLines?: number } = $props();
 	type MarkdownTableBlock = Extract<MarkdownBlock, { type: 'table' }>;
 
-	const segments = $derived(parseBody(note.body ?? ''));
-	const blocks = $derived(parseMarkdownBlocks(note.body ?? ''));
-	const rawLines = $derived((note.body ?? '').replace(/\r\n?/g, '\n').split('\n'));
+	const MAX_PREVIEW_CHARACTERS = 12_000;
+
+	function previewBody(source: string): string {
+		if (maxBodyLines === undefined) return source;
+		let end = Math.min(source.length, MAX_PREVIEW_CHARACTERS);
+		let lineCount = 1;
+		for (let index = 0; index < end; index++) {
+			if (source[index] !== '\n') continue;
+			lineCount++;
+			if (lineCount > maxBodyLines) {
+				end = index;
+				break;
+			}
+		}
+		return source.slice(0, end);
+	}
+
+	const body = $derived(previewBody(note.body ?? ''));
+	const segments = $derived(parseBody(body));
+	const blocks = $derived(parseMarkdownBlocks(body));
+	const rawLines = $derived(body.replace(/\r\n?/g, '\n').split('\n'));
 	const attachments = $derived(noteAttachments(note));
 	const imageAttachments = $derived(attachments.filter(isImageAttachment));
 	const canvases = $derived(attachments.filter(isCanvasAttachment));
@@ -36,7 +54,7 @@
 	const files = $derived(
 		attachments.filter((a) => !isImageAttachment(a) && !isCanvasAttachment(a))
 	);
-	const links = $derived(extractHttpUrls(note.body ?? ''));
+	const links = $derived(extractHttpUrls(body));
 	let contentElement: HTMLDivElement | null = $state(null);
 
 	function rawTableAt(lineIndex: number): MarkdownTableBlock | undefined {

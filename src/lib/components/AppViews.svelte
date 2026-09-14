@@ -23,33 +23,16 @@
 	});
 </script>
 
-{#if uiStore.opened.notes}
-	<div class:hidden={uiStore.view !== 'notes'}>
-		<NotesHomeView />
-	</div>
-{/if}
-{#if uiStore.opened.label}
-	<div class:hidden={uiStore.view !== 'label'}>
-		<LabelView />
-	</div>
-{/if}
-{#if uiStore.opened.archive}
-	<div class:hidden={uiStore.view !== 'archive'}>
-		<ArchiveView />
-	</div>
-{/if}
-{#if uiStore.opened.trash}
-	<div class:hidden={uiStore.view !== 'trash'}>
-		<TrashView />
-	</div>
-{/if}
-{#if uiStore.opened.reminders}
-	<div class:hidden={uiStore.view !== 'reminders'}>
-		<RemindersView />
-	</div>
-{/if}
-{#if uiStore.opened.kanban}
-	<div class:hidden={uiStore.view !== 'kanban'}>
-		<KanbanView />
-	</div>
+{#if uiStore.view === 'notes'}
+	<NotesHomeView />
+{:else if uiStore.view === 'label'}
+	<LabelView />
+{:else if uiStore.view === 'archive'}
+	<ArchiveView />
+{:else if uiStore.view === 'trash'}
+	<TrashView />
+{:else if uiStore.view === 'reminders'}
+	<RemindersView />
+{:else if uiStore.view === 'kanban'}
+	<KanbanView />
 {/if}

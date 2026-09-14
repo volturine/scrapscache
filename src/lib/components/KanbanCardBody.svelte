@@ -39,7 +39,7 @@
 					{note.title}
 				</h3>
 			{/if}
-			<NoteBodyDisplay {note} />
+			<NoteBodyDisplay {note} maxBodyLines={40} />
 		</div>
 		{#if shield}
 			<!-- Every press lands here, so links, photos, canvases and files can

@@ -36,15 +36,6 @@ function isView(value: unknown): value is View {
 	return typeof value === 'string' && (VIEWS as readonly string[]).includes(value);
 }
 
-const CLOSED_VIEWS: Record<View, boolean> = {
-	notes: false,
-	kanban: false,
-	reminders: false,
-	archive: false,
-	trash: false,
-	label: false
-};
-
 export class UIStore {
 	#sidebarOpen = $state(true);
 	/** Explicit preference. `null` means follow the operating system. */
@@ -63,9 +54,6 @@ export class UIStore {
 	settingsOpen = $state(false);
 	/** Ephemeral calendar selection used when creating notes from the reminders view. */
 	reminderFilter = $state<{ from: string; to: string | null } | null>(null);
-	/** Views that have been shown this session and should stay mounted. */
-	opened = $state<Record<View, boolean>>({ ...CLOSED_VIEWS });
-
 	#persistable = false;
 	#searchTimer: ReturnType<typeof setTimeout> | null = null;
 	viewChangeHandler: (() => void) | null = null;
@@ -108,7 +96,6 @@ export class UIStore {
 	}
 	set view(value: View) {
 		this.#view = value;
-		this.#open(value);
 		this.#persist();
 	}
 
@@ -148,7 +135,6 @@ export class UIStore {
 				/* ignore */
 			}
 		}
-		this.#open(this.#view);
 		this.#persistable = true;
 		applyDocumentTheme(this.effectiveDark);
 
@@ -160,11 +146,6 @@ export class UIStore {
 				if (this.#dark === null) applyDocumentTheme(e.matches);
 			});
 		}
-	}
-
-	#open(view: View) {
-		if (this.opened[view]) return;
-		this.opened = { ...this.opened, [view]: true };
 	}
 
 	#persist() {

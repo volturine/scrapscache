@@ -30,6 +30,23 @@ function rawCaretText(line: Element): string {
 	return range.toString();
 }
 
+function caretAt(container: HTMLElement, line: number, offset: number) {
+	const text = container.querySelector(`[data-editor-line="${line}"] [data-line-text]`);
+	if (!text) throw new Error(`Expected editor line ${line}`);
+	const walker = document.createTreeWalker(text, NodeFilter.SHOW_TEXT);
+	let remaining = offset;
+	for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+		const length = node.textContent?.length ?? 0;
+		if (remaining <= length) return select(node, remaining);
+		remaining -= length;
+	}
+	throw new Error(`Offset ${offset} is outside editor line ${line}`);
+}
+
+function selectedEditorText(): string {
+	return window.getSelection()?.toString() ?? '';
+}
+
 afterEach(() => {
 	uiStore.rawMarkdown = false;
 	vi.unstubAllGlobals();
@@ -964,10 +981,12 @@ describe('BodyEditor markdown bullets', () => {
 
 		expect(editor?.classList).toContain('markdown-raw');
 		expect(table?.querySelectorAll('[data-editor-line]')).toHaveLength(3);
-		expect(table?.querySelector('.markdown-raw-editor-table')).toBeTruthy();
+		expect(table?.querySelector('.markdown-raw-table')).toBeTruthy();
 		expect(table?.querySelectorAll('[data-markdown-table-cell]')).toHaveLength(15);
-		expect(table?.querySelectorAll('[data-markdown-table-separator]')).toHaveLength(1);
-		expect(table?.textContent).toContain('/api/sync/register');
+		expect(table?.querySelectorAll('.markdown-token-marker-hidden')).toHaveLength(0);
+		expect(
+			[...(table?.querySelectorAll('[data-line-text]') ?? [])].map((line) => line.textContent)
+		).toEqual(source.split('\n').slice(0, 3));
 		expect(table?.contains(editor?.querySelector('[data-editor-line="4"]') ?? null)).toBe(false);
 		expect(lineTexts(container)).toEqual(source.split('\n'));
 	});
@@ -1132,5 +1151,111 @@ describe('BodyEditor task focus chrome', () => {
 		// Clicking the button directly should not trigger container's handleEditorClick row refocus
 		await fireEvent.click(addBtn);
 		expect(container.querySelectorAll('[data-task-row]')).toHaveLength(4);
+	});
+});
+
+describe('BodyEditor Markdown table editing', () => {
+	it('creates the delimiter and a first row when Enter ends a header row', async () => {
+		const { container } = render(BodyEditor, { props: { body: '| Name | Status |' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		editor.focus();
+		caretAt(container, 0, '| Name | Status |'.length);
+
+		await fireEvent.keyDown(editor, { key: 'Enter' });
+		await tick();
+
+		expect(lineTexts(container)).toEqual([
+			'| Name | Status |',
+			'| ---- | ------ |',
+			'|      |        |'
+		]);
+		expect(container.querySelector('[data-markdown-editor-table]')).not.toBeNull();
+	});
+
+	it('formats the table and moves between cells with Tab, adding a row at the end', async () => {
+		const source = ['| a | b |', '|---|:-:|', '| long value | x |'].join('\n');
+		const { container } = render(BodyEditor, { props: { body: source } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		editor.focus();
+		caretAt(container, 0, 3);
+
+		await fireEvent.keyDown(editor, { key: 'Tab' });
+		await tick();
+		expect(lineTexts(container)).toEqual([
+			'| a          |  b  |',
+			'| ---------- | :-: |',
+			'| long value |  x  |'
+		]);
+		expect(selectedEditorText()).toBe('b');
+
+		await fireEvent.keyDown(editor, { key: 'Tab' });
+		expect(selectedEditorText()).toBe('long value');
+		await fireEvent.keyDown(editor, { key: 'Tab', shiftKey: true });
+		expect(selectedEditorText()).toBe('b');
+
+		caretAt(container, 2, lineTexts(container)[2].length - 2);
+		await fireEvent.keyDown(editor, { key: 'Tab' });
+		await tick();
+		expect(lineTexts(container)).toHaveLength(4);
+		expect(lineTexts(container)[3]).toBe('|            |     |');
+	});
+
+	it('adds a row with Enter and leaves the table from an empty last row', async () => {
+		const source = ['| a | b |', '| - | - |', '| 1 | 2 |'].join('\n');
+		const { container } = render(BodyEditor, { props: { body: source } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		editor.focus();
+		caretAt(container, 2, 3);
+
+		await fireEvent.keyDown(editor, { key: 'Enter' });
+		await tick();
+		expect(lineTexts(container)).toEqual(['| a | b |', '| - | - |', '| 1 | 2 |', '|   |   |']);
+
+		caretAt(container, 3, 2);
+		await fireEvent.keyDown(editor, { key: 'Enter' });
+		await tick();
+		expect(lineTexts(container)).toEqual(['| a | b |', '| - | - |', '| 1 | 2 |', '']);
+		expect(
+			container.querySelectorAll('[data-markdown-editor-table] [data-editor-line]')
+		).toHaveLength(3);
+	});
+
+	it('formats an edited table once focus leaves the editor', async () => {
+		const source = ['| a | b |', '|---|---|', '| long value | x |'].join('\n');
+		const { container } = render(BodyEditor, { props: { body: source } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		editor.focus();
+		caretAt(container, 2, 3);
+		editor.dispatchEvent(
+			new InputEvent('beforeinput', {
+				bubbles: true,
+				cancelable: true,
+				inputType: 'insertText',
+				data: '!'
+			})
+		);
+		await fireEvent.input(editor, { inputType: 'insertText', data: '!' });
+		expect(lineTexts(container)[0]).toBe('| a | b |');
+
+		await fireEvent.blur(editor);
+		await tick();
+
+		expect(lineTexts(container)).toEqual([
+			'| a          | b |',
+			'| ---------- | - |',
+			'| long value | x |'
+		]);
+	});
+
+	it('leaves task rows that happen to contain pipes untouched', async () => {
+		const { container } = render(BodyEditor, { props: { body: '[ ] | a | b |' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		editor.focus();
+		caretAt(container, 0, '| a | b |'.length);
+
+		await fireEvent.keyDown(editor, { key: 'Enter' });
+		await tick();
+
+		expect(container.querySelector('[data-markdown-editor-table]')).toBeNull();
 	});
 });

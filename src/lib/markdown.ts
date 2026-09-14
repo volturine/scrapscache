@@ -1,3 +1,5 @@
+import { markdownTable } from 'markdown-table';
+import stringWidth from 'string-width';
 import { parseBody, type BodySegment } from './checklistBody';
 
 export type MarkdownStyle =
@@ -329,6 +331,68 @@ export function tokenizeMarkdownTableRow(source: string): MarkdownTableSourceTok
 	const trailing = source.slice(start);
 	appendSegment(trailing, trailing.trim() === '');
 	return tokens;
+}
+
+/** Source text of each cell in a table row, with Markdown escapes intact. */
+export function markdownTableCells(source: string): string[] {
+	return tokenizeMarkdownTableRow(source).flatMap((token) =>
+		token.kind === 'cell' ? [token.text] : []
+	);
+}
+
+/** Character ranges of each cell's content within a table row. */
+export function markdownTableCellRanges(source: string): { start: number; end: number }[] {
+	const ranges: { start: number; end: number }[] = [];
+	let offset = 0;
+	for (const token of tokenizeMarkdownTableRow(source)) {
+		if (token.kind === 'cell') ranges.push({ start: offset, end: offset + token.text.length });
+		offset += token.text.length;
+	}
+	return ranges;
+}
+
+/** A pipe-delimited row with at least two cells that could head a new table. */
+export function isMarkdownTableHeaderRow(source: string): boolean {
+	const trimmed = source.trim();
+	return (
+		trimmed.startsWith('|') &&
+		trimmed.endsWith('|') &&
+		!isEscaped(trimmed, trimmed.length - 1) &&
+		markdownTableCells(source).length >= 2
+	);
+}
+
+export function emptyMarkdownTableRow(columns: number): string {
+	return `|${'  |'.repeat(columns)}`;
+}
+
+export function markdownTableDelimiterRow(columns: number): string {
+	return `|${' --- |'.repeat(columns)}`;
+}
+
+function delimiterAlignment(cell: string): 'l' | 'c' | 'r' | '' {
+	const value = cell.trim();
+	const left = value.startsWith(':');
+	const right = value.length > 1 && value.endsWith(':');
+	if (left && right) return 'c';
+	if (right) return 'r';
+	return left ? 'l' : '';
+}
+
+/**
+ * Pretty-print a GFM table (header, delimiter, body rows): every column is
+ * padded to its widest cell, measured in terminal columns so emoji and CJK
+ * text line up in monospace, and the delimiter row is filled with dashes.
+ */
+export function formatMarkdownTable(rows: readonly string[]): string[] {
+	const [header = '', delimiter = '', ...body] = rows;
+	const indent = header.match(/^[ \t]*/)?.[0] ?? '';
+	return markdownTable([markdownTableCells(header), ...body.map(markdownTableCells)], {
+		align: markdownTableCells(delimiter).map(delimiterAlignment),
+		stringLength: stringWidth
+	})
+		.split('\n')
+		.map((line) => indent + line);
 }
 
 function tableAlignment(cell: string): TableAlignment | null {

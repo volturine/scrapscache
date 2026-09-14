@@ -166,10 +166,12 @@ describe('NoteBodyDisplay Markdown blocks', () => {
 		expect(container.querySelector('[data-markdown-table]')).toBeNull();
 		const rawTable = container.querySelector('[data-markdown-raw-table-container]');
 		expect(rawTable).toBeTruthy();
-		expect(rawTable?.querySelector('.markdown-raw-display-table')).toBeTruthy();
-		expect(rawTable?.querySelectorAll('.markdown-raw-table-display-cell')).toHaveLength(6);
-		expect(rawTable?.textContent).toContain('| Rule name | Matches path |');
-		expect(rawTable?.textContent).toContain('| register | `/api` |');
+		expect([...(rawTable?.children ?? [])].map((row) => row.textContent)).toEqual([
+			'| Rule name | Matches path |',
+			'| --- | --- |',
+			'| register | `/api` |'
+		]);
+		expect(rawTable?.querySelectorAll('.markdown-raw-table-marker').length).toBeGreaterThan(0);
 		expect(container.querySelector('.markdown-content')?.textContent).toContain(
 			'Leave headroom rather than tightening the rule.'
 		);

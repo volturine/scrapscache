@@ -220,10 +220,11 @@ describe('NoteCard right-click haze', () => {
 		expect(blurred).toBeTruthy();
 		expect(blurred?.textContent).toContain('Secret content');
 
-		// Non-scrollable fixed size verification
-		const fixedContainer = document.querySelector('.h-24');
-		expect(fixedContainer).toBeTruthy();
+		// Non-scrollable verification with overlay in visible body area
 		expect(document.querySelector('.scrollable')).toBeNull();
 		expect(document.querySelector('.overflow-hidden')).toBeTruthy();
+		const overlay = document.querySelector('[data-secret-overlay]');
+		expect(overlay).toBeTruthy();
+		expect(overlay?.textContent).toContain('Secret note');
 	});
 });

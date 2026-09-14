@@ -8,7 +8,7 @@
 </script>
 
 {#if pwaInstallStore.canPrompt}
-	<section class="md:hidden" aria-label="Install app">
+	<section aria-label="Install app">
 		<div class="flex items-center">
 			<button
 				type="button"

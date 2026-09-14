@@ -1,16 +1,23 @@
 <script lang="ts">
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { portalToAppOverlay } from '$lib/appViewport';
+	import { BackupImportMode } from '$lib/backup';
 
 	let {
+		open = true,
 		busy = false,
 		error = '',
+		keepReady = false,
 		onFile,
+		onSelectMode,
 		onClose
 	}: {
+		open?: boolean;
 		busy?: boolean;
 		error?: string;
+		keepReady?: boolean;
 		onFile: (file: File) => void | Promise<void>;
+		onSelectMode: (mode: BackupImportMode) => void | Promise<void>;
 		onClose: () => void;
 	} = $props();
 
@@ -28,11 +35,16 @@
 	}
 
 	function handleFileChange(event: Event) {
-		pickingFile = false;
 		const input = event.currentTarget as HTMLInputElement;
 		const file = input.files?.[0];
 		input.value = '';
-		if (file) void onFile(file);
+		if (!file) {
+			pickingFile = false;
+			return;
+		}
+		void Promise.resolve(onFile(file)).finally(() => {
+			pickingFile = false;
+		});
 	}
 
 	function handleFileCancel() {
@@ -41,11 +53,13 @@
 </script>
 
 <Dialog.Root
-	open
+	{open}
 	onOpenChange={handleOpenChange}
 	closeOnEscape={!busy && !pickingFile}
 	closeOnInteractOutside={!busy && !pickingFile}
 	preventScroll={false}
+	lazyMount
+	unmountOnExit
 >
 	<div {@attach portalToAppOverlay} class="absolute inset-0 z-[70]" role="presentation">
 		<Dialog.Backdrop class="absolute inset-0 bg-black/45" />
@@ -108,32 +122,71 @@
 							{error}
 						</p>{/if}
 
-					<div class="flex justify-end gap-2 pt-1">
-						<button
-							type="button"
-							disabled={busy}
-							onclick={onClose}
-							class="scrapscache-button scrapscache-button-quiet px-3 py-2 text-sm">Cancel</button
-						>
-						<input
-							bind:this={fileInput}
-							type="file"
-							accept=".scraps-cache-backup,.zip,application/json,application/zip,application/x-zip-compressed"
-							class="hidden"
-							tabindex="-1"
-							disabled={busy}
-							onchange={handleFileChange}
-							oncancel={handleFileCancel}
-						/>
-						<button
-							type="button"
-							disabled={busy}
-							onclick={chooseFile}
-							class="scrapscache-button scrapscache-button-primary px-4 py-2 text-sm font-medium"
-						>
-							{busy ? 'Reading file…' : 'Choose file'}
-						</button>
-					</div>
+					{#if keepReady}
+						<div class="space-y-3">
+							<p class="font-medium">How should these Keep notes be imported?</p>
+							<button
+								type="button"
+								disabled={busy}
+								onclick={() => onSelectMode(BackupImportMode.Keep)}
+								class="scrapscache-button w-full px-4 py-3 text-left"
+							>
+								<span class="block font-medium">Keep local notes</span>
+								<span class="mt-1 block text-xs text-[var(--scrapscache-text-muted)]">
+									Add every Keep note as a new copy. Existing notes stay unchanged.
+								</span>
+							</button>
+							<button
+								type="button"
+								disabled={busy}
+								onclick={() => onSelectMode(BackupImportMode.Replace)}
+								class="scrapscache-button w-full px-4 py-3 text-left"
+							>
+								<span class="block font-medium text-[var(--scrapscache-danger)]"
+									>Replace local data</span
+								>
+								<span class="mt-1 block text-xs text-[var(--scrapscache-text-muted)]">
+									Delete current notes in this workspace and import Keep instead.
+								</span>
+							</button>
+							<div class="flex justify-end pt-1">
+								<button
+									type="button"
+									disabled={busy}
+									onclick={onClose}
+									class="scrapscache-button scrapscache-button-quiet px-3 py-2 text-sm"
+									>Cancel</button
+								>
+							</div>
+						</div>
+					{:else}
+						<div class="flex justify-end gap-2 pt-1">
+							<button
+								type="button"
+								disabled={busy}
+								onclick={onClose}
+								class="scrapscache-button scrapscache-button-quiet px-3 py-2 text-sm">Cancel</button
+							>
+							<input
+								bind:this={fileInput}
+								type="file"
+								accept=".scraps-cache-backup,.zip,application/json,application/zip,application/x-zip-compressed"
+								class="hidden"
+								tabindex="-1"
+								disabled={busy}
+								onchange={handleFileChange}
+								oncancel={handleFileCancel}
+							/>
+							<button
+								type="button"
+								disabled={busy}
+								onclick={chooseFile}
+								class="scrapscache-button scrapscache-button-primary px-4 py-2 text-sm font-medium"
+							>
+								{busy ? 'Reading file…' : 'Choose file'}
+							</button>
+						</div>
+					{/if}
 				</div>
 			</Dialog.Content>
 		</Dialog.Positioner>

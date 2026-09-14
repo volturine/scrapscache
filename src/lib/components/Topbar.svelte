@@ -15,7 +15,7 @@
 	import { resolveSyncStatus, SyncStatus } from '$lib/syncStatus';
 	import { useEditorActions } from '$lib/editorContext';
 	import { pairingCodeFromUrl } from '$lib/syncPairing';
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import {
@@ -67,6 +67,7 @@
 	let pendingKeepFiles = $state.raw<Record<string, Uint8Array> | null>(null);
 	let choosingImportMode = $state(false);
 	let showingImportGuide = $state(false);
+	let keepImportReady = $state(false);
 	let syncStatus = $derived(resolveSyncStatus(syncStore.lastError, syncStore.usage));
 	let syncControlLabel = $derived(SYNC_CONTROL_LABEL[syncStatus]);
 
@@ -89,6 +90,8 @@
 	function startBackupImport() {
 		settingsOpen = false;
 		backupImportError = '';
+		keepImportReady = false;
+		pendingKeepFiles = null;
 		queueMicrotask(() => {
 			showingImportGuide = true;
 		});
@@ -114,6 +117,7 @@
 				pendingEncryptedBackup = null;
 				backupDialogMode = null;
 				settingsOpen = false;
+				await tick();
 				choosingImportMode = true;
 			}
 		} catch (error) {
@@ -126,6 +130,8 @@
 
 	async function selectImportMode(mode: BackupImportMode) {
 		if (!pendingKeepFiles && !pendingImportData) return;
+		showingImportGuide = false;
+		keepImportReady = false;
 		choosingImportMode = false;
 		importingBackup = true;
 		settingsOpen = true;
@@ -159,9 +165,8 @@
 					throw new Error('That zip does not contain Google Keep notes.');
 				pendingKeepFiles = files;
 				pendingImportData = null;
-				showingImportGuide = false;
+				keepImportReady = true;
 				settingsOpen = false;
-				choosingImportMode = true;
 				return;
 			}
 			const data = JSON.parse(new TextDecoder().decode(bytes));
@@ -169,9 +174,11 @@
 				throw new Error('This is not a Scraps Cache backup or Google Keep Takeout.');
 			pendingEncryptedBackup = data;
 			pendingKeepFiles = null;
+			keepImportReady = false;
 			showingImportGuide = false;
-			backupDialogMode = BackupOperation.Import;
 			settingsOpen = false;
+			await tick();
+			backupDialogMode = BackupOperation.Import;
 		} catch (err) {
 			backupImportError = err instanceof Error ? err.message : 'Could not read that file.';
 		} finally {
@@ -410,46 +417,47 @@
 	{/key}
 {/if}
 
-{#if showingImportGuide}
-	<ImportGuideDialog
-		busy={importingBackup}
-		error={backupImportError}
-		onFile={importBackupFile}
-		onClose={() => {
-			if (importingBackup) return;
-			showingImportGuide = false;
-			backupImportError = '';
-		}}
-	/>
-{/if}
+<ImportGuideDialog
+	open={showingImportGuide}
+	busy={importingBackup}
+	error={backupImportError}
+	keepReady={keepImportReady}
+	onFile={importBackupFile}
+	onSelectMode={selectImportMode}
+	onClose={() => {
+		if (importingBackup) return;
+		showingImportGuide = false;
+		keepImportReady = false;
+		pendingKeepFiles = null;
+		backupImportError = '';
+	}}
+/>
 
-{#if choosingImportMode}
-	<BackupImportModeDialog
-		busy={importingBackup}
-		error={backupImportError}
-		keepImport={pendingKeepFiles !== null}
-		onSelect={selectImportMode}
-		onClose={() => {
-			if (importingBackup) return;
-			choosingImportMode = false;
-			pendingImportData = null;
-			pendingKeepFiles = null;
-			backupImportError = '';
-		}}
-	/>
-{/if}
+<BackupImportModeDialog
+	open={choosingImportMode}
+	busy={importingBackup}
+	error={backupImportError}
+	keepImport={pendingKeepFiles !== null}
+	onSelect={selectImportMode}
+	onClose={() => {
+		if (importingBackup) return;
+		choosingImportMode = false;
+		pendingImportData = null;
+		pendingKeepFiles = null;
+		backupImportError = '';
+	}}
+/>
 
-{#if backupDialogMode}
-	<BackupPassphraseDialog
-		mode={backupDialogMode}
-		busy={backupBusy}
-		error={backupImportError}
-		onSubmit={submitBackupPassphrase}
-		onClose={() => {
-			if (backupBusy) return;
-			backupDialogMode = null;
-			pendingEncryptedBackup = null;
-			backupImportError = '';
-		}}
-	/>
-{/if}
+<BackupPassphraseDialog
+	open={backupDialogMode !== null}
+	mode={backupDialogMode ?? BackupOperation.Export}
+	busy={backupBusy}
+	error={backupImportError}
+	onSubmit={submitBackupPassphrase}
+	onClose={() => {
+		if (backupBusy) return;
+		backupDialogMode = null;
+		pendingEncryptedBackup = null;
+		backupImportError = '';
+	}}
+/>

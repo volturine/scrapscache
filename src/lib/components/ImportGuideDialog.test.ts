@@ -4,7 +4,9 @@ import ImportGuideDialog from './ImportGuideDialog.svelte';
 
 describe('ImportGuideDialog', () => {
 	it('explains Google Keep Takeout before a file is chosen', () => {
-		render(ImportGuideDialog, { props: { onFile: vi.fn(), onClose: vi.fn() } });
+		render(ImportGuideDialog, {
+			props: { onFile: vi.fn(), onSelectMode: vi.fn(), onClose: vi.fn() }
+		});
 
 		expect(screen.getByRole('heading', { name: 'Import notes' })).toBeTruthy();
 		expect(screen.getByRole('link', { name: 'takeout.google.com' }).getAttribute('href')).toBe(
@@ -18,7 +20,7 @@ describe('ImportGuideDialog', () => {
 
 	it('cancels without importing', async () => {
 		const onClose = vi.fn();
-		render(ImportGuideDialog, { props: { onFile: vi.fn(), onClose } });
+		render(ImportGuideDialog, { props: { onFile: vi.fn(), onSelectMode: vi.fn(), onClose } });
 
 		await fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 		expect(onClose).toHaveBeenCalledOnce();
@@ -26,12 +28,25 @@ describe('ImportGuideDialog', () => {
 
 	it('hands the chosen file to the importer', async () => {
 		const onFile = vi.fn();
-		render(ImportGuideDialog, { props: { onFile, onClose: vi.fn() } });
+		render(ImportGuideDialog, { props: { onFile, onSelectMode: vi.fn(), onClose: vi.fn() } });
 		const input = document.querySelector('input[type="file"]');
 		if (!(input instanceof HTMLInputElement)) throw new Error('file input missing');
 		const file = new File(['{}'], 'notes.zip', { type: 'application/zip' });
 		Object.defineProperty(input, 'files', { value: [file], configurable: true });
 		await fireEvent.change(input);
 		expect(onFile).toHaveBeenCalledWith(file);
+	});
+
+	it('lets the user keep or replace after a Keep zip is ready', async () => {
+		const onSelectMode = vi.fn();
+		render(ImportGuideDialog, {
+			props: { keepReady: true, onFile: vi.fn(), onSelectMode, onClose: vi.fn() }
+		});
+
+		await fireEvent.click(screen.getByRole('button', { name: /keep local notes/i }));
+		await fireEvent.click(screen.getByRole('button', { name: /replace local data/i }));
+
+		expect(onSelectMode).toHaveBeenNthCalledWith(1, 'keep');
+		expect(onSelectMode).toHaveBeenNthCalledWith(2, 'replace');
 	});
 });

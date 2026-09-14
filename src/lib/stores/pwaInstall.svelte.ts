@@ -15,6 +15,9 @@ export class PwaInstallStore {
 			this.checkDismissed();
 
 			window.addEventListener('beforeinstallprompt', (e) => {
+				this.checkStandalone();
+				this.checkDismissed();
+				if (this.isStandalone || this.dismissed) return;
 				e.preventDefault();
 				this.deferredPrompt = e as BeforeInstallPromptEvent;
 			});

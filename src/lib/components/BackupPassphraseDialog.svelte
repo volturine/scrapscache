@@ -4,12 +4,14 @@
 	import { BackupOperation } from '$lib/backup';
 
 	let {
+		open = true,
 		mode,
 		busy = false,
 		error = '',
 		onSubmit,
 		onClose
 	}: {
+		open?: boolean;
 		mode: BackupOperation;
 		busy?: boolean;
 		error?: string;
@@ -43,12 +45,14 @@
 </script>
 
 <Dialog.Root
-	open
+	{open}
 	onOpenChange={handleOpenChange}
 	closeOnEscape={!busy}
 	closeOnInteractOutside={!busy}
 	preventScroll={false}
 	initialFocusEl={() => passphraseInput}
+	lazyMount
+	unmountOnExit
 >
 	<div {@attach portalToAppOverlay} class="absolute inset-0 z-[70]" role="presentation">
 		<Dialog.Backdrop class="absolute inset-0 bg-black/45" />

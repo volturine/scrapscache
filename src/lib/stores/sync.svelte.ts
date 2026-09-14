@@ -65,6 +65,7 @@ import {
 	removeProfileRecord,
 	saveProfile,
 	setLastActiveProfileId,
+	writeAnonymousWorkspaceName,
 	type StoredProfile
 } from '$lib/profiles';
 
@@ -285,8 +286,13 @@ export class SyncStore {
 
 	async renameProfile(id: string, name: string): Promise<StoredProfile | null> {
 		const trimmed = name.trim().slice(0, 60);
+		if (!trimmed) return null;
+		if (id === LOCAL_PROFILE_ID) {
+			const next = writeAnonymousWorkspaceName(trimmed);
+			return next ? { id, name: next, syncKey: '', createdAt: 0 } : null;
+		}
 		const profile = this.profiles.find((entry) => entry.id === id);
-		if (!profile || !trimmed || profile.name === trimmed) return profile ?? null;
+		if (!profile || profile.name === trimmed) return profile ?? null;
 		const updated = { ...profile, name: trimmed };
 		await saveProfile(updated);
 		this.profiles = this.profiles.map((entry) => (entry.id === id ? updated : entry));

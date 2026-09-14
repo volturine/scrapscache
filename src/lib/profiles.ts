@@ -33,6 +33,23 @@ const LS_LAST_ACTIVE = 'scrapscache-last-active-profile';
 const LS_LAST_ACTIVE_LEGACY = 'gkc-last-active-profile';
 const LS_LEGACY_ACCOUNT = 'scrapscache-sync-account';
 const LS_LEGACY_ACCOUNT_OLD = 'gkc-sync-account';
+const LS_ANONYMOUS_NAME = 'scrapscache-anonymous-workspace-name';
+export const DEFAULT_ANONYMOUS_WORKSPACE_NAME = 'Anonymous workspace';
+
+export function readAnonymousWorkspaceName(): string {
+	try {
+		return localStorage.getItem(LS_ANONYMOUS_NAME)?.trim() || DEFAULT_ANONYMOUS_WORKSPACE_NAME;
+	} catch {
+		return DEFAULT_ANONYMOUS_WORKSPACE_NAME;
+	}
+}
+
+export function writeAnonymousWorkspaceName(name: string): string | null {
+	const trimmed = name.trim().slice(0, 60);
+	if (!trimmed) return null;
+	localStorage.setItem(LS_ANONYMOUS_NAME, trimmed);
+	return trimmed;
+}
 
 export function readProfiles(): StoredProfile[] {
 	const profiles = readStoredProfiles();

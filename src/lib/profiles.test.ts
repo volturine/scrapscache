@@ -18,14 +18,17 @@ import {
 import {
 	adoptLocalDatasetInto,
 	buildProfileNotesExport,
+	DEFAULT_ANONYMOUS_WORKSPACE_NAME,
 	getLastActiveProfileId,
 	isLocalWorkspace,
 	loadProfiles,
 	nextProfileName,
 	pickBootProfile,
 	profileForSyncKey,
+	readAnonymousWorkspaceName,
 	saveProfile,
 	setLastActiveProfileId,
+	writeAnonymousWorkspaceName,
 	type StoredProfile
 } from './profiles';
 import {
@@ -120,6 +123,15 @@ describe('single-profile export', () => {
 });
 
 describe('local workspaces', () => {
+	it('renames the anonymous workspace without putting it on the keyring', () => {
+		localStorage.clear();
+		expect(readAnonymousWorkspaceName()).toBe(DEFAULT_ANONYMOUS_WORKSPACE_NAME);
+		expect(writeAnonymousWorkspaceName('  Field Notes  ')).toBe('Field Notes');
+		expect(readAnonymousWorkspaceName()).toBe('Field Notes');
+		expect(writeAnonymousWorkspaceName('   ')).toBeNull();
+		expect(readAnonymousWorkspaceName()).toBe('Field Notes');
+	});
+
 	it('treats empty sync keys as local-only and ignores them when matching keys', () => {
 		const local: StoredProfile = { id: 'local', name: 'Studio', syncKey: '', createdAt: 1 };
 		const synced: StoredProfile = { id: 'synced', name: 'Cloud', syncKey: 'k-cloud', createdAt: 2 };

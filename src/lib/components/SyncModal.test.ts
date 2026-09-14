@@ -241,7 +241,6 @@ describe('SyncModal profile interactions', () => {
 
 		expect(screen.getByText('Anonymous workspace')).toBeTruthy();
 		expect(screen.getByText('Only on this device')).toBeTruthy();
-		expect(screen.queryByRole('button', { name: 'Rename Anonymous workspace' })).toBeNull();
 		expect(screen.queryByRole('button', { name: 'Remove Anonymous workspace' })).toBeNull();
 
 		await fireEvent.click(screen.getByRole('button', { name: 'Switch to Anonymous workspace' }));
@@ -282,22 +281,24 @@ describe('SyncModal profile interactions', () => {
 		expect(screen.queryByRole('button', { name: 'Unlink Main' })).toBeNull();
 
 		await expand('Main');
-		expect(screen.getByRole('button', { name: /Force resync/ })).toBeTruthy();
-		expect(screen.getByRole('button', { name: /Delete cloud data/ })).toBeTruthy();
-		expect(screen.getByRole('button', { name: 'Rename Main' })).toBeTruthy();
-		expect(screen.getByRole('button', { name: 'Unlink Main' })).toBeTruthy();
+		const rename = screen.getByRole('button', { name: 'Rename Main' });
+		const resync = screen.getByRole('button', { name: /Force resync/ });
+		const unlink = screen.getByRole('button', { name: 'Unlink Main' });
+		const remove = screen.getByRole('button', { name: /Delete cloud data/ });
+		expect(rename.compareDocumentPosition(resync) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		expect(resync.compareDocumentPosition(unlink) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		expect(unlink.compareDocumentPosition(remove) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 	});
 
-	it('expands anonymous workspace with promote and delete, not rename or unlink', async () => {
-		syncStore.activateLocalWorkspace();
+	it('expands anonymous workspace with rename, promote, and delete', async () => {
 		render(SyncModal, { props: { onClose: vi.fn() } });
 		expect(screen.getByRole('button', { name: 'Export Anonymous workspace' })).toBeTruthy();
 		expect(screen.queryByRole('button', { name: /sync notes to new workspace/i })).toBeNull();
 
 		await expand('Anonymous workspace');
+		expect(screen.getByRole('button', { name: 'Rename Anonymous workspace' })).toBeTruthy();
 		expect(screen.getByRole('button', { name: /sync notes to new workspace/i })).toBeTruthy();
 		expect(screen.getByRole('button', { name: /Delete data/ })).toBeTruthy();
-		expect(screen.queryByRole('button', { name: 'Rename Anonymous workspace' })).toBeNull();
 		expect(screen.queryByRole('button', { name: 'Unlink Anonymous workspace' })).toBeNull();
 	});
 
@@ -390,7 +391,7 @@ describe('SyncModal profile interactions', () => {
 			expect(submit.disabled).toBe(false);
 			await fireEvent.click(submit);
 
-			await waitFor(() => expect(create).toHaveBeenCalledWith('', 'token-1'));
+			await waitFor(() => expect(create).toHaveBeenCalledWith('', 'token-1', 'device-local'));
 			await waitFor(() => expect(turnstile.reset).toHaveBeenCalledWith('widget-1'));
 			expect(submit.disabled).toBe(true);
 		} finally {

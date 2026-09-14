@@ -14,7 +14,7 @@ import {
 	type StoredProfile
 } from '$lib/profiles';
 import { randomOpaqueId } from '$lib/syncPairing';
-import { clearProfileNamespace, LOCAL_PROFILE_ID, unlinkProfileToNamespace } from '$lib/db/idb';
+import { clearProfileNamespace, LOCAL_PROFILE_ID } from '$lib/db/idb';
 import { unregisterReminderDevice } from '$lib/reminderWake';
 
 export class ProfileCoordinator {
@@ -192,7 +192,7 @@ export class ProfileCoordinator {
 		}
 	}
 
-	/** Append this workspace to anonymous storage before leaving its sync key. */
+	/** Drop this device’s copy of a synced workspace. Cloud notes stay unless `deleteCloud`. */
 	async unlink(deleteCloud = false): Promise<{ success: boolean; error?: string }> {
 		const blocked = this.guard();
 		if (blocked) return { success: false, error: blocked };
@@ -222,7 +222,7 @@ export class ProfileCoordinator {
 		}
 	}
 
-	/** Unlink a saved, inactive workspace and preserve its local data anonymously. */
+	/** Drop an inactive synced workspace from this device without touching the cloud. */
 	async unlinkSaved(profileId: string): Promise<{ success: boolean; error?: string }> {
 		if (profileId === syncStore.activeProfile?.id) return this.unlink();
 		const blocked = this.guard();
@@ -233,10 +233,8 @@ export class ProfileCoordinator {
 		try {
 			return await this.exclusive(async () => {
 				await notesStore.waitForPendingProfileWrites();
-				await unlinkProfileToNamespace(profileId, LOCAL_PROFILE_ID);
 				if (!(await syncStore.removeProfile(profileId)))
 					return { success: false, error: 'Could not unlink workspace' };
-				if (syncStore.activePid === LOCAL_PROFILE_ID) await notesStore.reloadForProfile();
 				return { success: true };
 			});
 		} catch (err) {

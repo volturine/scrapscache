@@ -226,7 +226,7 @@ describe('SyncModal profile interactions', () => {
 		expect(unlink).not.toHaveBeenCalled();
 
 		await fireEvent.click(screen.getByRole('button', { name: 'Unlink Side' }));
-		await fireEvent.click(screen.getByRole('button', { name: 'Unlink Side and keep notes' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Unlink Side from this device' }));
 		await waitFor(() => expect(unlink).toHaveBeenCalledWith(side.id));
 	});
 
@@ -454,19 +454,17 @@ describe('SyncModal profile interactions', () => {
 		expect(target.disabled).toBe(false);
 	});
 
-	it('unlinks the active workspace from its own row and reports where the notes went', async () => {
+	it('unlinks the active workspace from its own row without keeping local notes', async () => {
 		const unlink = vi.spyOn(profileCoordinator, 'unlink').mockResolvedValue({ success: true });
 		render(SyncModal, { props: { onClose: vi.fn() } });
 
 		await expand('Main');
 		await fireEvent.click(screen.getByRole('button', { name: 'Unlink Main' }));
 		expect(screen.getByRole('button', { name: 'Keep Main linked' })).toBeTruthy();
-		await fireEvent.click(screen.getByRole('button', { name: 'Unlink Main and keep notes' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Unlink Main from this device' }));
 
 		await waitFor(() => expect(unlink).toHaveBeenCalledWith());
-		expect(
-			screen.getByText('Notes moved to Anonymous workspace. Cloud data is unchanged.')
-		).toBeTruthy();
+		expect(screen.getByText('Removed from this device. Cloud notes are unchanged.')).toBeTruthy();
 	});
 
 	it('requires confirmation before deleting cloud data', async () => {

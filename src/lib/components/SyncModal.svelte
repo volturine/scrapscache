@@ -427,7 +427,7 @@
 			error = friendlyError(result.error, 'Could not unlink workspace');
 			return false;
 		}
-		info = 'Notes moved to Anonymous workspace. Cloud data is unchanged.';
+		info = 'Removed from this device. Cloud notes are unchanged.';
 		return true;
 	}
 

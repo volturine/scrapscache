@@ -152,7 +152,7 @@
 				<span class="glyph" aria-hidden="true"><TriangleAlert size={18} /></span>
 				<p class="message">
 					Unlink <strong>{name}</strong>?<span class="caption"
-						>Its notes move to Anonymous workspace. Cloud data stays.</span
+						>This device’s notes are deleted. Cloud notes stay.</span
 					>
 				</p>
 				<div class="panel-actions">
@@ -168,7 +168,7 @@
 						type="button"
 						class="danger"
 						disabled={locked}
-						aria-label="Unlink {name} and keep notes"
+						aria-label="Unlink {name} from this device"
 						onclick={() => void confirmUnlink()}>{working ? 'Unlinking…' : 'Unlink'}</button
 					>
 				</div>
@@ -280,7 +280,7 @@
 				onclick={askUnlink}
 				aria-label="Unlink {name}"
 				><CloudOff size={16} aria-hidden="true" /><span
-					>Unlink<small>Keep this device’s notes. Cloud data stays.</small></span
+					>Unlink<small>Delete this device’s notes. Cloud notes stay.</small></span
 				></button
 			>
 		{/if}

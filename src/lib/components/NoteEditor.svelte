@@ -605,6 +605,7 @@
 								}
 							}}
 							rows="1"
+							class:markdown-raw={uiStore.rawMarkdown}
 							class="mb-3 block w-full resize-none overflow-hidden break-words border-none bg-transparent p-0 text-xl font-medium text-[var(--scrapscache-text)] placeholder:text-[var(--scrapscache-text-muted)] outline-none [field-sizing:content]"
 						></textarea>
 

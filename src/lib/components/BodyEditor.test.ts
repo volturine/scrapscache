@@ -32,6 +32,7 @@ function rawCaretText(line: Element): string {
 
 afterEach(() => {
 	uiStore.rawMarkdown = false;
+	vi.unstubAllGlobals();
 });
 
 describe('BodyEditor native editing', () => {
@@ -758,15 +759,146 @@ describe('BodyEditor markdown bullets', () => {
 		expect(line.querySelectorAll('.markdown-token-marker-hidden')).toHaveLength(8);
 	});
 
-	it('keeps long raw Markdown rows on one horizontal source line', () => {
+	it('renders and edits a Markdown table without changing its source structure', async () => {
+		const source = [
+			'| Rule name | Matches path | Limit |',
+			'| --- | --- | ---: |',
+			'| register | `/api/sync/register` | 5 per hour |'
+		].join('\n');
+		const { container } = render(BodyEditor, { props: { body: source } });
+		const table = container.querySelector('[data-markdown-editor-table]');
+
+		expect(table).not.toBeNull();
+		expect(table?.querySelectorAll('[data-markdown-table-cell]')).toHaveLength(6);
+		expect(table?.querySelectorAll('[data-markdown-table-separator]')).toHaveLength(1);
+		expect(table?.querySelector('.markdown-editor-table-header-cell')?.textContent).toBe(
+			'Rule name'
+		);
+		expect(table?.querySelector('.markdown-token-code')?.textContent).toBe('/api/sync/register');
+		expect(lineTexts(container)).toEqual(source.split('\n'));
+
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const register = table?.querySelectorAll('[data-markdown-table-cell]')[3];
+		const registerText = register
+			? document.createTreeWalker(register, NodeFilter.SHOW_TEXT).nextNode()
+			: null;
+		if (!registerText) throw new Error('Expected the first table body cell');
+		select(registerText, 'register'.length);
+		editor.dispatchEvent(
+			new InputEvent('beforeinput', {
+				bubbles: true,
+				cancelable: true,
+				inputType: 'insertText',
+				data: 's'
+			})
+		);
+		registerText.textContent = 'registers';
+		await fireEvent.input(editor, { inputType: 'insertText', data: 's' });
+		await tick();
+
+		expect(lineTexts(container)[2]).toBe('| registers | `/api/sync/register` | 5 per hour |');
+	});
+
+	it('renders fenced code in the editor without showing its fences', () => {
+		const source = [
+			'```sh',
+			'# Reads the VAPID pair',
+			'wrangler d1 --remote --command "SELECT 1"',
+			'```'
+		].join('\n');
+		const { container } = render(BodyEditor, { props: { body: source } });
+		const code = container.querySelector('[data-markdown-editor-code-block]');
+
+		expect(code).not.toBeNull();
+		expect(code?.querySelectorAll('[data-markdown-code-fence]')).toHaveLength(2);
+		expect(code?.querySelectorAll('[data-markdown-code-line]')).toHaveLength(2);
+		expect(code?.querySelector('.markdown-code-token-comment')?.textContent).toBe(
+			'# Reads the VAPID pair'
+		);
+		expect(code?.querySelector('.markdown-code-token-flag')?.textContent).toBe('--remote');
+		expect(lineTexts(container)).toEqual(source.split('\n'));
+	});
+
+	it('copies the exact Markdown table source without moving focus', async () => {
+		const source = [
+			'| Rule name | Matches path | Limit |',
+			'| --- | --- | ---: |',
+			'| register | `/api/sync/register` | 5 per hour |'
+		].join('\n');
+		const writeText = vi.fn().mockResolvedValue(undefined);
+		vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+		const { container } = render(BodyEditor, { props: { body: source } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const copy = container.querySelector('[aria-label="Copy table"]') as HTMLButtonElement;
+		editor.focus();
+
+		const pointerDown = new Event('pointerdown', { bubbles: true, cancelable: true });
+		copy.dispatchEvent(pointerDown);
+		await fireEvent.click(copy);
+
+		expect(pointerDown.defaultPrevented).toBe(true);
+		expect(document.activeElement).toBe(editor);
+		expect(writeText).toHaveBeenCalledWith(source);
+		expect(copy.getAttribute('aria-label')).toBe('Copied table');
+	});
+
+	it('copies only the contents of a fenced code block', async () => {
+		const source = '```sh\n# comment\nwrangler d1 --remote\n```';
+		const writeText = vi.fn().mockResolvedValue(undefined);
+		vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+		const { container } = render(BodyEditor, { props: { body: source } });
+		const copy = container.querySelector('[aria-label="Copy code"]') as HTMLButtonElement;
+
+		await fireEvent.click(copy);
+
+		expect(writeText).toHaveBeenCalledWith('# comment\nwrangler d1 --remote');
+		expect(copy.getAttribute('aria-label')).toBe('Copied code');
+	});
+
+	it('keeps the last line visible when a fenced code block is not closed', () => {
+		const { container } = render(BodyEditor, {
+			props: { body: '```text\nnot closed' }
+		});
+		const code = container.querySelector('[data-markdown-editor-code-block]');
+
+		expect(code?.querySelectorAll('[data-markdown-code-fence]')).toHaveLength(1);
+		expect(code?.querySelectorAll('[data-markdown-code-line]')).toHaveLength(1);
+		expect(code?.querySelector('[data-markdown-code-line] [data-line-text]')?.textContent).toBe(
+			'not closed'
+		);
+	});
+
+	it('puts only a complete raw Markdown table in its horizontal scroll container', () => {
 		uiStore.rawMarkdown = true;
-		const source = '| Rule name | Matches path | Limit | Counting by | Action |';
+		const source = [
+			'| Rule name | Matches path | Limit | Counting by | Action |',
+			'| --- | --- | --- | --- | --- |',
+			'| register | `/api/sync/register` | 5 per hour | IP | Block, 1 hour |',
+			'',
+			'Ordinary prose remains outside the table.'
+		].join('\n');
 		const { container } = render(BodyEditor, { props: { body: source } });
 		const editor = container.querySelector('[data-body-editor]');
+		const table = editor?.querySelector('[data-markdown-raw-table-container]');
 
 		expect(editor?.classList).toContain('markdown-raw');
-		expect(lineTexts(container)).toEqual([source]);
-		expect(editor?.querySelector('[data-line-text]')?.className).toContain('whitespace-pre-wrap');
+		expect(table?.querySelectorAll('[data-editor-line]')).toHaveLength(3);
+		expect(table?.querySelector('.markdown-raw-editor-table')).toBeTruthy();
+		expect(table?.querySelectorAll('[data-markdown-table-cell]')).toHaveLength(15);
+		expect(table?.querySelectorAll('[data-markdown-table-separator]')).toHaveLength(1);
+		expect(table?.textContent).toContain('/api/sync/register');
+		expect(table?.contains(editor?.querySelector('[data-editor-line="4"]') ?? null)).toBe(false);
+		expect(lineTexts(container)).toEqual(source.split('\n'));
+	});
+
+	it('keeps an empty raw line wide enough to show the caret', () => {
+		uiStore.rawMarkdown = true;
+		const { container } = render(BodyEditor, { props: { body: 'First\n\nThird' } });
+		const emptyLine = container.querySelector('[data-editor-line="1"] [data-line-text]');
+
+		expect(emptyLine).not.toBeNull();
+		expect(emptyLine?.className).toContain('flex-1');
+		expect(emptyLine?.textContent).toBe('');
 	});
 
 	it('keeps the raw caret position when a closing delimiter activates styling', async () => {

@@ -9,7 +9,7 @@
 	import { css } from 'styled-system/css';
 	import { viewPage } from '$panda/styles';
 
-	const { openNote: openEditor } = useEditorActions();
+	const { openNote: openEditor, startNewNote } = useEditorActions();
 
 	const pinned = $derived(notesStore.pinnedNotes);
 	const others = $derived(notesStore.unpinnedNotes);
@@ -22,7 +22,11 @@
 	{#if filteredPinned.length === 0 && filteredOthers.length === 0}
 		<EmptyState
 			icon={StickyNote}
-			description="Capture an idea, task, or anything you want to keep."
+			description={search
+				? 'No notes found'
+				: 'Capture an idea, task, or anything you want to keep.'}
+			actionLabel={search ? undefined : 'Take a note'}
+			onAction={search ? undefined : startNewNote}
 		/>
 	{:else}
 		{#if filteredPinned.length > 0}

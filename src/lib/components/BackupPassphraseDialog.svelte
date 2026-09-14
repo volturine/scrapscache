@@ -84,6 +84,7 @@
 							bind:value={passphrase}
 							bind:this={passphraseInput}
 							disabled={busy}
+							aria-invalid={Boolean(localError || error)}
 							class={passphraseField}
 						/>
 					</label>
@@ -96,6 +97,7 @@
 								autocomplete="new-password"
 								bind:value={confirmation}
 								disabled={busy}
+								aria-invalid={Boolean(localError || error)}
 								class={passphraseField}
 							/>
 						</label>

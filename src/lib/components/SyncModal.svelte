@@ -748,6 +748,7 @@
 								maxlength="60"
 								class={input({ variant: 'outline', size: 'md' })}
 								aria-label="Sync key name"
+								aria-invalid={Boolean(error)}
 								onkeydown={(event) => event.key === 'Enter' && void create()}
 							/>
 							{#if turnstileSitekey}
@@ -813,6 +814,7 @@
 							placeholder="XXXX-XXXX-XXXX-XXXX"
 							maxlength="19"
 							spellcheck="false"
+							aria-invalid={Boolean(error)}
 							class={cx(input({ variant: 'outline', size: 'md' }), styles.pairingInput)}
 							onkeydown={(event) => event.key === 'Enter' && void beginLink()}
 						/>{#if error}<p class={syncDanger}>{error}</p>{/if}<button

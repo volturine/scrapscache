@@ -32,7 +32,7 @@ Visit [scrapscache.com](https://scrapscache.com).
 - **Kanban** — boards with custom backlog filters
 - **Search** — local full-text style filtering on your device
 - **Sync** — pair devices with a short code; payloads are always E2E encrypted; server stores ciphertext only
-- **Workspaces** — keep several sync keys on one device, each with its own isolated notes, plus an anonymous workspace that never syncs
+- **Workspaces** — keep several workspaces on one device, each with its own isolated notes, and switch any of them between private and synced
 - **Backups** — passphrase-protected client exports and imports
 - **PWA** — installable shell with a service worker
 

@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { env as publicEnv } from '$env/dynamic/public';
-import { createSyncIdentity, identityFromSyncKey } from '$lib/syncPairing';
+import { createSyncIdentity } from '$lib/syncPairing';
 import type { StoredProfile } from '$lib/profiles';
 import { notesStore } from '$lib/stores/notes.svelte';
 import { profileCoordinator } from '$lib/stores/profiles.svelte';
@@ -28,16 +28,18 @@ function deferred<T>() {
 }
 
 describe('SyncModal profile interactions', () => {
+	let home: StoredProfile;
 	let main: StoredProfile;
 	let side: StoredProfile;
 
 	beforeEach(() => {
 		vi.restoreAllMocks();
 		localStorage.clear();
+		home = { id: 'device-local', name: 'Home', syncKey: '', createdAt: 0 };
 		main = profile('profile-main', 'Main', 1);
 		side = profile('profile-side', 'Side', 2);
-		syncStore.profiles = [main, side];
-		syncStore.account = identityFromSyncKey(main.syncKey);
+		syncStore.profiles = [home, main, side];
+		syncStore.activateProfile(main);
 		syncStore.lastError = null;
 		syncStore.progress = null;
 		syncStore.usage = null;
@@ -215,7 +217,7 @@ describe('SyncModal profile interactions', () => {
 	});
 
 	it('requires confirmation on the row before unlinking an inactive workspace', async () => {
-		const unlink = vi.spyOn(profileCoordinator, 'unlinkSaved').mockResolvedValue({ success: true });
+		const unlink = vi.spyOn(profileCoordinator, 'unlink').mockResolvedValue({ success: true });
 		render(SyncModal, { props: { onClose: vi.fn() } });
 		await expand('Side');
 		await fireEvent.click(screen.getByRole('button', { name: 'Unlink Side' }));
@@ -230,44 +232,41 @@ describe('SyncModal profile interactions', () => {
 		await waitFor(() => expect(unlink).toHaveBeenCalledWith(side.id));
 	});
 
-	it('shows and switches to the anonymous workspace without treating it as a sync key', async () => {
+	it('switches to a private workspace without changing the synced ones', async () => {
 		vi.spyOn(profileCoordinator, 'switchTo').mockImplementation(async (id) => {
-			expect(id).toBe('device-local');
-			syncStore.activateLocalWorkspace();
+			expect(id).toBe(home.id);
+			syncStore.activateLocalWorkspace(home.id);
 			return { success: true };
 		});
 		const onClose = vi.fn();
 		render(SyncModal, { props: { onClose } });
 
-		expect(screen.getByText('Anonymous workspace')).toBeTruthy();
 		expect(screen.getByText('Only on this device')).toBeTruthy();
-		expect(screen.queryByRole('button', { name: 'Remove Anonymous workspace' })).toBeNull();
-
-		await fireEvent.click(screen.getByRole('button', { name: 'Switch to Anonymous workspace' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Switch to Home' }));
 		await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
-		expect(syncStore.profiles).toEqual([main, side]);
-		expect(syncStore.activePid).toBe('device-local');
+		expect(syncStore.profiles).toEqual([home, main, side]);
+		expect(syncStore.activePid).toBe(home.id);
 	});
 
-	it('lists a synced anonymous workspace as that same row', async () => {
+	it('lists a synced default workspace as that same row', async () => {
 		const promoted: StoredProfile = {
 			id: 'device-local',
-			name: 'Anonymous workspace',
+			name: 'Home',
 			syncKey: createSyncIdentity().syncKey,
 			createdAt: 1
 		};
 		syncStore.profiles = [promoted];
-		syncStore.account = identityFromSyncKey(promoted.syncKey);
+		syncStore.activateProfile(promoted);
 		render(SyncModal, { props: { onClose: vi.fn() } });
 
-		expect(screen.getByRole('button', { name: 'Anonymous workspace is active' })).toBeTruthy();
-		expect(screen.queryByRole('button', { name: 'Switch to Anonymous workspace' })).toBeNull();
-		await expand('Anonymous workspace');
+		expect(screen.getByRole('button', { name: 'Home is active' })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: 'Switch to Home' })).toBeNull();
+		await expand('Home');
 		expect(screen.getByRole('button', { name: /Force resync/ })).toBeTruthy();
 		expect(screen.queryByRole('button', { name: /sync this workspace/i })).toBeNull();
 	});
 
-	it('uses a single primary new-workspace action while anonymous is active', () => {
+	it('uses a single primary new-workspace action while a private workspace is active', () => {
 		syncStore.activateLocalWorkspace();
 		render(SyncModal, { props: { onClose: vi.fn() } });
 
@@ -281,7 +280,7 @@ describe('SyncModal profile interactions', () => {
 		const createLocal = vi
 			.spyOn(profileCoordinator, 'createLocal')
 			.mockResolvedValue({ success: true });
-		const createSynced = vi.spyOn(profileCoordinator, 'create');
+		const createSynced = vi.spyOn(profileCoordinator, 'startSync');
 		render(SyncModal, { props: { onClose: vi.fn() } });
 		await fireEvent.click(screen.getByRole('button', { name: '+ New workspace' }));
 		await waitFor(() => expect(createLocal).toHaveBeenCalledTimes(1));
@@ -293,7 +292,7 @@ describe('SyncModal profile interactions', () => {
 	it('exports from the row and keeps manage actions behind the chevron', async () => {
 		render(SyncModal, { props: { onClose: vi.fn() } });
 		expect(screen.getByRole('button', { name: 'Export Main' })).toBeTruthy();
-		expect(screen.getByRole('button', { name: 'Export Anonymous workspace' })).toBeTruthy();
+		expect(screen.getByRole('button', { name: 'Export Home' })).toBeTruthy();
 		expect(screen.queryByRole('button', { name: /Force resync/ })).toBeNull();
 		expect(screen.queryByRole('button', { name: 'Rename Main' })).toBeNull();
 		expect(screen.queryByRole('button', { name: 'Unlink Main' })).toBeNull();
@@ -308,16 +307,33 @@ describe('SyncModal profile interactions', () => {
 		expect(unlink.compareDocumentPosition(remove) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 	});
 
-	it('expands anonymous workspace with rename, promote, and delete', async () => {
+	it('expands a private workspace with rename, sync, and delete', async () => {
 		render(SyncModal, { props: { onClose: vi.fn() } });
-		expect(screen.getByRole('button', { name: 'Export Anonymous workspace' })).toBeTruthy();
+		expect(screen.getByRole('button', { name: 'Export Home' })).toBeTruthy();
 		expect(screen.queryByRole('button', { name: /sync this workspace/i })).toBeNull();
 
-		await expand('Anonymous workspace');
-		expect(screen.getByRole('button', { name: 'Rename Anonymous workspace' })).toBeTruthy();
+		await expand('Home');
+		expect(screen.getByRole('button', { name: 'Rename Home' })).toBeTruthy();
 		expect(screen.getByRole('button', { name: /sync this workspace/i })).toBeTruthy();
-		expect(screen.getByRole('button', { name: /Delete data/ })).toBeTruthy();
-		expect(screen.queryByRole('button', { name: 'Unlink Anonymous workspace' })).toBeNull();
+		expect(screen.getByRole('button', { name: /Delete workspace/ })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: 'Unlink Home' })).toBeNull();
+		expect(screen.queryByRole('button', { name: /Delete cloud data/ })).toBeNull();
+	});
+
+	it.each([
+		['Home', 'device-local'],
+		['Main', 'profile-main'],
+		['Side', 'profile-side']
+	])('deletes the %s workspace after confirmation', async (name, id) => {
+		const remove = vi.spyOn(profileCoordinator, 'remove').mockResolvedValue({ success: true });
+		render(SyncModal, { props: { onClose: vi.fn() } });
+		await expand(name);
+		await fireEvent.click(screen.getByRole('button', { name: /Delete workspace/ }));
+		expect(remove).not.toHaveBeenCalled();
+		expect(screen.getByText(new RegExp(`delete “${name}” and its notes`))).toBeTruthy();
+		await fireEvent.click(screen.getByRole('button', { name: 'Delete workspace' }));
+		await waitFor(() => expect(remove).toHaveBeenCalledWith(id));
+		expect(screen.getByText('Workspace deleted from this device.')).toBeTruthy();
 	});
 
 	it('lists extra local workspaces with local actions', async () => {
@@ -330,7 +346,7 @@ describe('SyncModal profile interactions', () => {
 		await expand('Studio');
 		expect(screen.getByRole('button', { name: /sync this workspace/i })).toBeTruthy();
 		expect(screen.getByRole('button', { name: 'Rename Studio' })).toBeTruthy();
-		expect(screen.getByRole('button', { name: /Delete data/ })).toBeTruthy();
+		expect(screen.getByRole('button', { name: /Delete workspace/ })).toBeTruthy();
 		expect(screen.queryByRole('button', { name: 'Unlink Studio' })).toBeNull();
 	});
 
@@ -390,11 +406,11 @@ describe('SyncModal profile interactions', () => {
 		vi.spyOn(document.head, 'append').mockImplementation((...nodes) => {
 			(nodes[0] as HTMLScriptElement).onload?.(new Event('load'));
 		});
-		const create = vi.spyOn(profileCoordinator, 'create').mockResolvedValue({ success: false });
+		const create = vi.spyOn(profileCoordinator, 'startSync').mockResolvedValue({ success: false });
 		try {
 			syncStore.activateLocalWorkspace();
 			render(SyncModal, { props: { onClose: vi.fn() } });
-			await expand('Anonymous workspace');
+			await expand('Home');
 			await fireEvent.click(screen.getByRole('button', { name: /sync this workspace/i }));
 			const submit = screen.getByRole('button', { name: 'Start sync' }) as HTMLButtonElement;
 			await waitFor(() => expect(turnstile.render).toHaveBeenCalledTimes(1));
@@ -409,7 +425,7 @@ describe('SyncModal profile interactions', () => {
 			expect(submit.disabled).toBe(false);
 			await fireEvent.click(submit);
 
-			await waitFor(() => expect(create).toHaveBeenCalledWith('', 'token-1', 'device-local'));
+			await waitFor(() => expect(create).toHaveBeenCalledWith('device-local', '', 'token-1'));
 			await waitFor(() => expect(turnstile.reset).toHaveBeenCalledWith('widget-1'));
 			expect(submit.disabled).toBe(true);
 		} finally {
@@ -426,7 +442,7 @@ describe('SyncModal profile interactions', () => {
 		expect(screen.queryByRole('button', { name: 'Join existing' })).toBeNull();
 		syncStore.activateLocalWorkspace();
 		await tick();
-		await expand('Anonymous workspace');
+		await expand('Home');
 		await fireEvent.click(screen.getByRole('button', { name: /sync this workspace/i }));
 		expect(screen.getByRole('button', { name: 'Join existing' })).toBeTruthy();
 	});
@@ -472,7 +488,7 @@ describe('SyncModal profile interactions', () => {
 		expect(target.disabled).toBe(false);
 	});
 
-	it('unlinks the active workspace from its own row without keeping local notes', async () => {
+	it('unlinks the active workspace from its own row into a private workspace', async () => {
 		const unlink = vi.spyOn(profileCoordinator, 'unlink').mockResolvedValue({ success: true });
 		render(SyncModal, { props: { onClose: vi.fn() } });
 
@@ -481,12 +497,14 @@ describe('SyncModal profile interactions', () => {
 		expect(screen.getByRole('button', { name: 'Keep Main linked' })).toBeTruthy();
 		await fireEvent.click(screen.getByRole('button', { name: 'Unlink Main from this device' }));
 
-		await waitFor(() => expect(unlink).toHaveBeenCalledWith(false));
-		expect(screen.getByText('Removed from this device. Cloud notes are unchanged.')).toBeTruthy();
+		await waitFor(() => expect(unlink).toHaveBeenCalledWith(main.id));
+		expect(
+			screen.getByText('Unlinked. Its notes stay on this device as a private workspace.')
+		).toBeTruthy();
 	});
 
 	it('requires confirmation before deleting cloud data', async () => {
-		const unlink = vi.spyOn(profileCoordinator, 'unlinkSaved').mockResolvedValue({ success: true });
+		const unlink = vi.spyOn(profileCoordinator, 'unlink').mockResolvedValue({ success: true });
 		render(SyncModal, { props: { onClose: vi.fn() } });
 		await expand('Main');
 		await fireEvent.click(screen.getByRole('button', { name: /Delete cloud data/ }));
@@ -536,7 +554,7 @@ describe('SyncModal profile interactions', () => {
 				.mockReturnValue(handover.promise);
 			syncStore.activateLocalWorkspace();
 			render(SyncModal, { props: { onClose: vi.fn() } });
-			await expand('Anonymous workspace');
+			await expand('Home');
 			await fireEvent.click(screen.getByRole('button', { name: /sync this workspace/i }));
 			await fireEvent.click(screen.getByRole('button', { name: 'Join existing' }));
 			await fireEvent.input(screen.getByPlaceholderText('XXXX-XXXX-XXXX-XXXX'), {

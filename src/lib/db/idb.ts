@@ -1010,7 +1010,7 @@ export async function deleteProfileDatabase(pid: string): Promise<void> {
 	}
 }
 
-export function removeProfileFromLocalStorage(id: string): void {
+function removeProfileFromLocalStorage(id: string): void {
 	if (typeof localStorage === 'undefined') return;
 	try {
 		const raw = localStorage.getItem(LS_PROFILES) ?? localStorage.getItem(LS_PROFILES_LEGACY);
@@ -1026,260 +1026,28 @@ export function removeProfileFromLocalStorage(id: string): void {
 	} catch {}
 }
 
+/** Removes the keyring entry together with its entire dataset on this device. */
 export async function deleteStoredProfile(id: string): Promise<void> {
 	removeProfileFromLocalStorage(id);
-	await deleteProfileDatabase(id);
+	// The default workspace shares the device database with link previews, so
+	// it is emptied instead of dropped.
+	if (id === LOCAL_PROFILE_ID) await clearProfileNamespace(id);
+	else await deleteProfileDatabase(id);
 }
 
-export async function copyProfileNamespace(fromPid: string, toPid: string): Promise<void> {
-	const fromDb = await getDB(fromPid);
-	const toDb = await getDB(toPid);
-
-	// Notes
-	const notes = (await fromDb.getAll(NOTES_STORE)) as Note[];
-	if (notes.length > 0) {
-		const tx = toDb.transaction(NOTES_STORE, 'readwrite');
-		for (const n of notes) tx.objectStore(NOTES_STORE).put(plainNote(n));
-		await tx.done;
-	}
-
-	// Labels
-	const labels = (await fromDb.getAll(LABELS_STORE)) as Label[];
-	if (labels.length > 0) {
-		const tx = toDb.transaction(LABELS_STORE, 'readwrite');
-		for (const l of labels) tx.objectStore(LABELS_STORE).put(plainLabel(l));
-		await tx.done;
-	}
-
-	// Images
-	const imageKeys = (await fromDb.getAllKeys(IMAGES_STORE)) as string[];
-	if (imageKeys.length > 0) {
-		const entries: Array<{ key: string; blob: unknown }> = [];
-		for (const key of imageKeys) {
-			const blob = await fromDb.get(IMAGES_STORE, key);
-			if (blob) entries.push({ key, blob });
-		}
-		if (entries.length > 0) {
-			const tx = toDb.transaction(IMAGES_STORE, 'readwrite');
-			for (const { key, blob } of entries) {
-				tx.objectStore(IMAGES_STORE).put(blob, key);
-			}
-			await tx.done;
-		}
-	}
-
-	// Sync state
-	const stateKeys = (await fromDb.getAllKeys(SYNC_STATE_STORE)) as string[];
-	if (stateKeys.length > 0) {
-		const entries: Array<{ key: string; val: unknown }> = [];
-		for (const key of stateKeys) {
-			const val = await fromDb.get(SYNC_STATE_STORE, key);
-			if (val !== undefined) {
-				entries.push({ key, val });
-				const { baseKey } = extractPidFromStateKey(key);
-				if (toPid && toPid !== LOCAL_PROFILE_ID) {
-					entries.push({ key: scopedStateKey(baseKey, toPid), val });
-				}
-			}
-		}
-		if (entries.length > 0) {
-			const tx = toDb.transaction(SYNC_STATE_STORE, 'readwrite');
-			for (const { key, val } of entries) {
-				tx.objectStore(SYNC_STATE_STORE).put(val, key);
-			}
-			await tx.done;
-		}
-	}
-
-	// Outbox
-	const outboxKeys = (await fromDb.getAllKeys(SYNC_OUTBOX_STORE)) as string[];
-	if (outboxKeys.length > 0) {
-		const entries: Array<{ key: string; val: unknown }> = [];
-		for (const key of outboxKeys) {
-			const val = await fromDb.get(SYNC_OUTBOX_STORE, key);
-			if (val !== undefined) entries.push({ key, val });
-		}
-		if (entries.length > 0) {
-			const tx = toDb.transaction(SYNC_OUTBOX_STORE, 'readwrite');
-			for (const { key, val } of entries) {
-				tx.objectStore(SYNC_OUTBOX_STORE).put(val, key);
-			}
-			await tx.done;
-		}
-	}
-}
-
-export async function unlinkProfileToNamespace(fromPid: string, toPid: string): Promise<void> {
-	if (fromPid === toPid) return;
-	await enqueueDeviceWrite(async () => {
-		const source = await getDB(fromPid);
-		const target = await getDB(toPid);
-		const notes = (await source.getAll(NOTES_STORE)) as Note[];
-		const labels = (await source.getAll(LABELS_STORE)) as Label[];
-		const boardsKey = 'scrapscache-idb-kanban-boards';
-		const boards: KanbanBoard[] =
-			(await source.get(SYNC_STATE_STORE, scopedStateKey(boardsKey, fromPid))) ?? [];
-		const images = await Promise.all(
-			notes.flatMap((note) =>
-				(note.images ?? []).map(async (image) => ({
-					noteId: note.id,
-					imageId: image.id,
-					value:
-						(await source.get(IMAGES_STORE, `${note.id}::${image.id}`)) ??
-						(await source.get(IMAGES_STORE, `${note.id}:${image.id}`))
-				}))
-			)
-		);
-		const imageIds = new Map(images.map((image) => [image.imageId, crypto.randomUUID()]));
-		const tx = target.transaction(
-			[NOTES_STORE, LABELS_STORE, IMAGES_STORE, SYNC_STATE_STORE],
-			'readwrite'
-		);
-		try {
-			const noteIds = new Map<string, string>();
-			const labelIds = new Map<string, string>();
-			const noteTombstones =
-				(await tx
-					.objectStore(SYNC_STATE_STORE)
-					.get(scopedStateKey('scrapscache-idb-note-tombstones', toPid))) ?? {};
-			const labelTombstones =
-				(await tx
-					.objectStore(SYNC_STATE_STORE)
-					.get(scopedStateKey('scrapscache-idb-label-tombstones', toPid))) ?? {};
-			for (const label of labels) {
-				const id =
-					(await tx.objectStore(LABELS_STORE).get(label.id)) || labelTombstones[label.id]
-						? crypto.randomUUID()
-						: label.id;
-				labelIds.set(label.id, id);
-				await tx.objectStore(LABELS_STORE).put({ ...label, id });
-			}
-			for (const note of notes) {
-				const id =
-					(await tx.objectStore(NOTES_STORE).get(note.id)) || noteTombstones[note.id]
-						? crypto.randomUUID()
-						: note.id;
-				noteIds.set(note.id, id);
-				await tx.objectStore(NOTES_STORE).put({
-					...note,
-					id,
-					labels: note.labels.map((id) => labelIds.get(id) ?? id),
-					images: (note.images ?? []).map((image) => ({ ...image, id: imageIds.get(image.id)! }))
-				});
-			}
-			for (const image of images) {
-				if (image.value !== undefined)
-					await tx
-						.objectStore(IMAGES_STORE)
-						.put(image.value, `${noteIds.get(image.noteId)}::${imageIds.get(image.imageId)}`);
-			}
-			const existingBoards: KanbanBoard[] =
-				(await tx.objectStore(SYNC_STATE_STORE).get(scopedStateKey(boardsKey, toPid))) ?? [];
-			const boardTombstones =
-				(await tx
-					.objectStore(SYNC_STATE_STORE)
-					.get(scopedStateKey('scrapscache-idb-board-tombstones', toPid))) ?? {};
-			const appended = boards.map((board) => ({
-				...board,
-				id:
-					existingBoards.some((existing) => existing.id === board.id) || boardTombstones[board.id]
-						? crypto.randomUUID()
-						: board.id,
-				columns: board.columns.map((column) => ({
-					...column,
-					labelId: column.labelId ? (labelIds.get(column.labelId) ?? column.labelId) : null
-				})),
-				backlogFilter: {
-					...board.backlogFilter,
-					labelIds: board.backlogFilter.labelIds.map((id) => labelIds.get(id) ?? id)
-				}
-			}));
-			await tx
-				.objectStore(SYNC_STATE_STORE)
-				.put([...existingBoards, ...appended], scopedStateKey(boardsKey, toPid));
-			await tx.done;
-		} catch (error) {
-			try {
-				tx.abort();
-			} catch {
-				/* The failed transaction may already be aborted. */
-			}
-			await tx.done.catch(() => undefined);
-			throw error;
-		}
-	});
-}
-
-/** Empty one namespace: notes, attachments, labels, its sync state, and its outbox. */
+/**
+ * Empty one namespace: notes, attachments, labels, its outbox, and all of its
+ * sync state, including the cursor and baseline of any key it was synced with.
+ * Every database belongs to exactly one workspace, so nothing else lives here.
+ */
 export async function clearProfileNamespace(pid: string): Promise<void> {
 	await clearAllNotes(pid);
 	await clearAllLabels(pid);
 	await enqueueDeviceWrite(async () => {
 		const db = await getDB(pid);
 		await db.clear(SYNC_OUTBOX_STORE);
-		const tx = db.transaction(SYNC_STATE_STORE, 'readwrite');
-		for (const prefix of SCOPED_STATE_PREFIXES) {
-			tx.store.delete(scopedStateKey(prefix, pid));
-		}
-		await tx.done;
+		await db.clear(SYNC_STATE_STORE);
 	});
-}
-
-/**
- * True when `sourcePid` holds nothing that `targetPid` does not already have at
- * least as recent a copy of. Adoption leaves the anonymous workspace as an
- * exact copy of the profile that took it over, and note ids are random, so a
- * workspace the user actually typed into can never look redundant by accident.
- */
-export async function isNamespaceRedundant(sourcePid: string, targetPid: string): Promise<boolean> {
-	if (sourcePid === targetPid) return false;
-	const source = await getDB(sourcePid);
-	const target = await getDB(targetPid);
-	const [sourceNotes, sourceLabels] = await Promise.all([
-		source.count(NOTES_STORE),
-		source.count(LABELS_STORE)
-	]);
-	if (sourceNotes === 0 && sourceLabels === 0) return false;
-	// A larger source cannot be contained in the target; skip the row reads.
-	const [targetNotes, targetLabels] = await Promise.all([
-		target.count(NOTES_STORE),
-		target.count(LABELS_STORE)
-	]);
-	if (sourceNotes > targetNotes || sourceLabels > targetLabels) return false;
-
-	for (const note of (await source.getAll(NOTES_STORE)) as Note[]) {
-		const owned = (await target.get(NOTES_STORE, note.id)) as Note | undefined;
-		if (!owned || Number(note.updatedAt) > Number(owned.updatedAt)) return false;
-	}
-	for (const label of (await source.getAll(LABELS_STORE)) as Label[]) {
-		const owned = (await target.get(LABELS_STORE, label.id)) as Label | undefined;
-		if (!owned || Number(label.updatedAt) > Number(owned.updatedAt)) return false;
-	}
-
-	// Boards count as much as the notes on them. A workspace whose notes all
-	// live in the target can still hold the only copy of a board — renamed,
-	// re-columned, or with its cards arranged by hand — and dropping it for
-	// being "redundant" would take that arrangement with it.
-	const sourceBoards = await boardVersions(source, sourcePid);
-	if (sourceBoards.size > 0) {
-		const targetBoards = await boardVersions(target, targetPid);
-		for (const [id, updatedAt] of sourceBoards) {
-			const owned = targetBoards.get(id);
-			if (owned === undefined || updatedAt > owned) return false;
-		}
-	}
-	return true;
-}
-
-/** When each of a workspace's boards was last edited, by board id. */
-async function boardVersions(db: IDBPDatabase, pid: string): Promise<Map<string, number>> {
-	const stored = await db.get(SYNC_STATE_STORE, scopedStateKey(KANBAN_BOARDS_STATE_KEY, pid));
-	const boards = Array.isArray(stored) ? (stored as { id?: unknown; updatedAt?: unknown }[]) : [];
-	return new Map(
-		boards.flatMap((board) =>
-			typeof board?.id === 'string' ? [[board.id, Number(board.updatedAt) || 0] as const] : []
-		)
-	);
 }
 
 export async function namespaceHasData(pid: string): Promise<boolean> {

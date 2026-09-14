@@ -12,12 +12,8 @@
 	import { syncStore, type StartedDeviceLink } from '$lib/stores/sync.svelte';
 	import { profileCoordinator } from '$lib/stores/profiles.svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
-	import {
-		buildProfileNotesExport,
-		isLocalWorkspace,
-		readAnonymousWorkspaceName
-	} from '$lib/profiles';
-	import { estimateProfileBytes, LOCAL_PROFILE_ID } from '$lib/db/idb';
+	import { buildProfileNotesExport, isLocalWorkspace } from '$lib/profiles';
+	import { estimateProfileBytes } from '$lib/db/idb';
 	import { downloadJSON } from '$lib/utils';
 	import { Cloud, CloudOff, RefreshCw, Trash2, X } from '@lucide/svelte';
 	import { portalToAppFloat } from '$lib/appViewport';
@@ -47,13 +43,11 @@
 	let waiting = $state<StartedDeviceLink | null>(null);
 	let now = $state(Date.now());
 	let timer: ReturnType<typeof setTimeout> | null = null;
-	let confirmation = $state<'delete' | 'force' | 'wipe' | null>(null);
-	let wipeTarget = $state<string | null>(null);
+	let confirmation = $state<'delete' | 'force' | 'remove' | null>(null);
 	let confirmTarget = $state<string | null>(null);
 	let expandedId = $state<string | null>(null);
 	let newName = $state('');
 	let promoteSource = $state<string | null>(null);
-	let anonymousName = $state(readAnonymousWorkspaceName());
 	// Account creation, including recovery that may recreate the account, needs a Turnstile token
 	// when this deployment configures a sitekey. Each surface owns its own single-use widget.
 	const turnstileSitekey = env.PUBLIC_TURNSTILE_SITEKEY?.trim() ?? '';
@@ -66,9 +60,8 @@
 
 	const authenticationFailed = $derived(/authentication/i.test(syncStore.lastError ?? ''));
 	let syncError = $derived(syncStore.lastError ?? '');
-	const confirmName = $derived(
-		syncStore.profiles.find((profile) => profile.id === confirmTarget)?.name ??
-			syncStore.activeProfile?.name
+	const confirmProfile = $derived(
+		syncStore.profiles.find((profile) => profile.id === confirmTarget) ?? syncStore.activeProfile
 	);
 
 	// A running sync must finish before a dataset handover can start.
@@ -79,13 +72,6 @@
 	const busy = $derived(operation !== null || notesStore.syncing || profileCoordinator.switching);
 	const handoverBlocked = $derived(notesStore.syncing || profileCoordinator.switching);
 	const rowOwnsEscape = $derived(rowHoldingEscape !== null || expandedId !== null);
-	const localProfiles = $derived(syncStore.profiles.filter((profile) => isLocalWorkspace(profile)));
-	const syncedProfiles = $derived(
-		syncStore.profiles.filter((profile) => !isLocalWorkspace(profile))
-	);
-	const anonymousOnKeyring = $derived(
-		syncStore.profiles.some((profile) => profile.id === LOCAL_PROFILE_ID)
-	);
 
 	// Approximate on-device footprint per saved key. Measured when the modal
 	// opens and after any operation that can change what is stored, rather than
@@ -94,7 +80,7 @@
 	let sizeGeneration = 0;
 	async function refreshSizes() {
 		const generation = ++sizeGeneration;
-		const ids = [LOCAL_PROFILE_ID, ...syncStore.profiles.map((profile) => profile.id)];
+		const ids = syncStore.profiles.map((profile) => profile.id);
 		const entries = await Promise.all(
 			ids.map(async (id) => [id, await estimateProfileBytes(id).catch(() => 0)] as const)
 		);
@@ -125,10 +111,7 @@
 	async function exportProfile(id: string) {
 		error = '';
 		await runOperation('export', 'Could not export that sync key\u2019s notes.', async () => {
-			const name =
-				id === LOCAL_PROFILE_ID
-					? 'anonymous-workspace'
-					: (syncStore.profiles.find((profile) => profile.id === id)?.name ?? 'profile');
+			const name = syncStore.profiles.find((profile) => profile.id === id)?.name ?? 'workspace';
 			const backup = await buildProfileNotesExport(id);
 			if (!backup) {
 				info = 'That sync key has no notes stored on this device yet.';
@@ -210,8 +193,10 @@
 		info = '';
 		const name = newName;
 		const token = registerToken || undefined;
+		const source = promoteSource;
+		if (!source) return;
 		const result = await runOperation('create', 'Could not create sync', () =>
-			profileCoordinator.create(name, token, promoteSource)
+			profileCoordinator.startSync(source, name, token)
 		);
 		registerCheck?.reset();
 		if (!result) return;
@@ -222,8 +207,6 @@
 		newName = '';
 		promoteSource = null;
 		mode = 'menu';
-		if (result.error)
-			error = friendlyError(result.error, 'Created, but the first sync did not finish');
 	}
 
 	async function forceResync() {
@@ -371,10 +354,7 @@
 		const renamed = await runOperation('rename', 'Could not rename that workspace', () =>
 			syncStore.renameProfile(id, next)
 		);
-		if (renamed) {
-			if (id === LOCAL_PROFILE_ID) anonymousName = renamed.name;
-			return true;
-		}
+		if (renamed) return true;
 		if (!error) error = 'Could not rename that workspace';
 		return false;
 	}
@@ -427,7 +407,7 @@
 		error = '';
 		info = '';
 		const result = await runOperation('unlink', 'Could not unlink workspace', () =>
-			profileCoordinator.unlinkSaved(id)
+			profileCoordinator.unlink(id)
 		);
 		if (!result) {
 			if (!error) error = 'Could not unlink workspace';
@@ -437,7 +417,7 @@
 			error = friendlyError(result.error, 'Could not unlink workspace');
 			return false;
 		}
-		info = 'Removed from this device. Cloud notes are unchanged.';
+		info = 'Unlinked. Its notes stay on this device as a private workspace.';
 		return true;
 	}
 
@@ -451,34 +431,31 @@
 		}, 2000);
 	}
 
-	async function wipeLocalData() {
-		if (confirmation !== 'wipe' || !wipeTarget) return;
+	async function removeWorkspace() {
+		if (confirmation !== 'remove' || !confirmTarget) return;
 		error = '';
-		const target = wipeTarget;
-		const result = await runOperation('delete', 'Could not delete workspace data', () =>
-			profileCoordinator.wipeLocal(target)
+		const target = confirmTarget;
+		const result = await runOperation('delete', 'Could not delete workspace', () =>
+			profileCoordinator.remove(target)
 		);
 		if (!result) return;
 		if (!result.success) {
-			error = friendlyError(result.error, 'Could not delete workspace data');
+			error = friendlyError(result.error, 'Could not delete workspace');
 			return;
 		}
 		confirmation = null;
-		wipeTarget = null;
+		confirmTarget = null;
 		expandedId = null;
 		mode = 'menu';
-		info =
-			target === LOCAL_PROFILE_ID
-				? 'Anonymous workspace notes were deleted on this device.'
-				: 'That local workspace was deleted.';
+		info = 'Workspace deleted from this device.';
 	}
 
 	async function deleteCloudData() {
-		if (confirmation !== 'delete') return;
+		if (confirmation !== 'delete' || !confirmTarget) return;
 		error = '';
-		const target = confirmTarget ?? syncStore.activePid;
+		const target = confirmTarget;
 		const result = await runOperation('delete', 'Could not delete synced data', () =>
-			profileCoordinator.unlinkSaved(target, true)
+			profileCoordinator.unlink(target, true)
 		);
 		if (!result) return;
 		if (!result.success) {
@@ -488,7 +465,14 @@
 		confirmation = null;
 		confirmTarget = null;
 		mode = 'menu';
-		info = 'Cloud data deleted. Your notes are now in Anonymous workspace.';
+		info = 'Cloud data deleted. Its notes stay on this device as a private workspace.';
+	}
+
+	function confirm(kind: 'delete' | 'force' | 'remove', id: string) {
+		confirmation = kind;
+		confirmTarget = id;
+		mode = 'confirm';
+		error = '';
 	}
 
 	function friendlyError(raw: string | null | undefined, fallback: string): string {
@@ -549,8 +533,8 @@
 								: mode === 'confirm'
 									? confirmation === 'force'
 										? 'Replace cloud notes?'
-										: confirmation === 'wipe'
-											? 'Delete workspace data?'
+										: confirmation === 'remove'
+											? 'Delete workspace?'
 											: 'Delete cloud data?'
 									: 'Connect device'}
 					</Dialog.Title>
@@ -568,99 +552,12 @@
 				{#if mode === 'menu'}
 					<div class="space-y-4">
 						<div class="workspace-list" aria-label="Workspaces on this device">
-							{#snippet promote(id: string)}
-								<button
-									type="button"
-									class="manage-row"
-									disabled={busy}
-									onclick={() => startPromote(id)}
-									><Cloud size={16} aria-hidden="true" /><span
-										>Sync this workspace<small>Keep these notes and start cloud sync</small></span
-									></button
-								>
-							{/snippet}
-							{#snippet wipe(id: string, caption: string)}
-								<button
-									type="button"
-									class="manage-row text-[var(--scrapscache-danger)]"
-									disabled={busy}
-									onclick={() => {
-										confirmation = 'wipe';
-										wipeTarget = id;
-										mode = 'confirm';
-										error = '';
-									}}
-									><Trash2 size={16} aria-hidden="true" /><span
-										>Delete data<small>{caption}</small></span
-									></button
-								>
-							{/snippet}
-							{#if !anonymousOnKeyring}
-								<WorkspaceRow
-									name={anonymousName}
-									caption={`Only on this device${
-										sizeLabel(LOCAL_PROFILE_ID) ? ' · ' + sizeLabel(LOCAL_PROFILE_ID) : ''
-									}`}
-									active={syncStore.activePid === LOCAL_PROFILE_ID}
-									disabled={busy}
-									expanded={expandedId === LOCAL_PROFILE_ID}
-									onselect={() => {
-										if (syncStore.activePid !== LOCAL_PROFILE_ID)
-											void switchProfile(LOCAL_PROFILE_ID);
-									}}
-									onexport={() => void exportProfile(LOCAL_PROFILE_ID)}
-									onexpand={() => {
-										expandedId = expandedId === LOCAL_PROFILE_ID ? null : LOCAL_PROFILE_ID;
-									}}
-									onrename={(next) => renameProfile(LOCAL_PROFILE_ID, next)}
-									onbusychange={(holdsEscape) => {
-										if (holdsEscape) rowHoldingEscape = LOCAL_PROFILE_ID;
-										else if (rowHoldingEscape === LOCAL_PROFILE_ID) rowHoldingEscape = null;
-									}}
-								>
-									{#snippet icon()}<CloudOff size={18} aria-hidden="true" />{/snippet}
-									{#snippet actions()}{@render promote(LOCAL_PROFILE_ID)}{/snippet}
-									{#snippet danger()}{@render wipe(
-											LOCAL_PROFILE_ID,
-											'Remove notes from this device'
-										)}{/snippet}
-								</WorkspaceRow>
-							{/if}
-							{#each localProfiles as profile (profile.id)}
-								<WorkspaceRow
-									name={profile.name}
-									caption={`Only on this device${
-										sizeLabel(profile.id) ? ' · ' + sizeLabel(profile.id) : ''
-									}`}
-									active={syncStore.activePid === profile.id}
-									disabled={busy}
-									expanded={expandedId === profile.id}
-									onselect={() => {
-										if (syncStore.activePid !== profile.id) void switchProfile(profile.id);
-									}}
-									onexport={() => void exportProfile(profile.id)}
-									onexpand={() => {
-										expandedId = expandedId === profile.id ? null : profile.id;
-									}}
-									onrename={(next) => renameProfile(profile.id, next)}
-									onbusychange={(holdsEscape) => {
-										if (holdsEscape) rowHoldingEscape = profile.id;
-										else if (rowHoldingEscape === profile.id) rowHoldingEscape = null;
-									}}
-								>
-									{#snippet icon()}<CloudOff size={18} aria-hidden="true" />{/snippet}
-									{#snippet actions()}{@render promote(profile.id)}{/snippet}
-									{#snippet danger()}{@render wipe(
-											profile.id,
-											'Remove this local workspace'
-										)}{/snippet}
-								</WorkspaceRow>
-							{/each}
-							{#each syncedProfiles as profile (profile.id)}
+							{#each syncStore.profiles as profile (profile.id)}
 								{@const active = profile.id === syncStore.activePid}
+								{@const synced = !isLocalWorkspace(profile)}
 								<WorkspaceRow
 									name={profile.name}
-									caption={`${active ? 'Current workspace' : 'Synced workspace'}${
+									caption={`${synced ? 'Synced' : 'Only on this device'}${
 										sizeLabel(profile.id) ? ' · ' + sizeLabel(profile.id) : ''
 									}`}
 									{active}
@@ -674,52 +571,75 @@
 										expandedId = expandedId === profile.id ? null : profile.id;
 									}}
 									onrename={(next) => renameProfile(profile.id, next)}
-									onunlink={() => unlinkProfile(profile.id)}
+									onunlink={synced ? () => unlinkProfile(profile.id) : undefined}
 									onbusychange={(holdsEscape) => {
 										if (holdsEscape) rowHoldingEscape = profile.id;
 										else if (rowHoldingEscape === profile.id) rowHoldingEscape = null;
 									}}
 								>
-									{#snippet icon()}<Cloud size={18} aria-hidden="true" />{/snippet}
-									{#snippet actions()}
-										<button
-											type="button"
-											class="manage-row"
-											disabled={busy}
-											onclick={() => {
-												confirmation = 'force';
-												confirmTarget = profile.id;
-												mode = 'confirm';
-												error = '';
-											}}
-											><RefreshCw
-												size={16}
-												class={operation === 'force-sync' && confirmTarget === profile.id
-													? 'animate-spin'
-													: ''}
+									{#snippet icon()}
+										{#if synced}<Cloud size={18} aria-hidden="true" />{:else}<CloudOff
+												size={18}
 												aria-hidden="true"
-											/><span
-												>{operation === 'force-sync' && confirmTarget === profile.id
-													? 'Resyncing…'
-													: 'Force resync'}<small
-													>Replace cloud notes with this device’s version</small
-												></span
-											></button
-										>
+											/>{/if}
+									{/snippet}
+									{#snippet actions()}
+										{#if synced}
+											<button
+												type="button"
+												class="manage-row"
+												disabled={busy}
+												onclick={() => confirm('force', profile.id)}
+												><RefreshCw
+													size={16}
+													class={operation === 'force-sync' && confirmTarget === profile.id
+														? 'animate-spin'
+														: ''}
+													aria-hidden="true"
+												/><span
+													>{operation === 'force-sync' && confirmTarget === profile.id
+														? 'Resyncing…'
+														: 'Force resync'}<small
+														>Replace cloud notes with this device’s version</small
+													></span
+												></button
+											>
+										{:else}
+											<button
+												type="button"
+												class="manage-row"
+												disabled={busy}
+												onclick={() => startPromote(profile.id)}
+												><Cloud size={16} aria-hidden="true" /><span
+													>Sync this workspace<small>Keep these notes and start cloud sync</small
+													></span
+												></button
+											>
+										{/if}
 									{/snippet}
 									{#snippet danger()}
+										{#if synced}
+											<button
+												type="button"
+												class="manage-row text-[var(--scrapscache-danger)]"
+												disabled={busy}
+												onclick={() => confirm('delete', profile.id)}
+												><CloudOff size={16} aria-hidden="true" /><span
+													>Delete cloud data<small>Stop syncing everywhere. Notes stay here.</small
+													></span
+												></button
+											>
+										{/if}
 										<button
 											type="button"
 											class="manage-row text-[var(--scrapscache-danger)]"
 											disabled={busy}
-											onclick={() => {
-												confirmation = 'delete';
-												confirmTarget = profile.id;
-												mode = 'confirm';
-												error = '';
-											}}
+											onclick={() => confirm('remove', profile.id)}
 											><Trash2 size={16} aria-hidden="true" /><span
-												>Delete cloud data<small>Keep this device’s notes in {anonymousName}</small
+												>Delete workspace<small
+													>{synced
+														? 'Remove it from this device. Cloud notes stay.'
+														: 'Remove it and its notes from this device'}</small
 												></span
 											></button
 										>
@@ -744,12 +664,8 @@
 									<button
 										type="button"
 										onclick={() => {
-											if (authenticationFailed) {
-												confirmation = 'force';
-												confirmTarget = syncStore.activePid;
-												mode = 'confirm';
-												error = '';
-											} else void syncNow();
+											if (authenticationFailed) confirm('force', syncStore.activePid);
+											else void syncNow();
 										}}
 										disabled={busy}
 										class="scrapscache-button scrapscache-button-primary flex flex-1 items-center justify-center gap-2 px-3 py-2.5 text-sm"
@@ -811,14 +727,14 @@
 								This device’s notes will replace the cloud version using the same sync key. Notes
 								only in the cloud will be removed. Other devices will receive these notes as the
 								latest version.
-							{:else if confirmation === 'wipe'}
-								{wipeTarget === LOCAL_PROFILE_ID
-									? 'Permanently delete the notes in Anonymous workspace on this device. Synced workspaces are not changed.'
-									: 'Permanently delete this local workspace and its notes on this device.'}
+							{:else if confirmation === 'remove'}
+								Permanently delete “{confirmProfile?.name}” and its notes from this device.
+								{#if confirmProfile && !isLocalWorkspace(confirmProfile)}
+									Its cloud copy and other devices are not changed.
+								{/if}
 							{:else}
-								Permanently delete “{confirmName}” from the cloud and stop syncing it on all
-								devices. This device’s notes will be appended to Anonymous workspace. Existing
-								anonymous notes are kept.
+								Permanently delete “{confirmProfile?.name}” from the cloud and stop syncing it on
+								all devices. This device keeps its notes as a private workspace.
 							{/if}
 						</p>
 						{#if confirmation === 'force' && turnstileSitekey}
@@ -840,14 +756,13 @@
 								onclick={() => {
 									mode = 'menu';
 									confirmation = null;
-									wipeTarget = null;
 									confirmTarget = null;
 									error = '';
 								}}>Cancel</button
 							>
 							<button
 								type="button"
-								class="scrapscache-button flex-1 px-3 py-2 {confirmation === 'delete'
+								class="scrapscache-button flex-1 px-3 py-2 {confirmation !== 'force'
 									? 'scrapscache-button-destructive-solid'
 									: 'scrapscache-button-primary'}"
 								disabled={busy ||
@@ -855,15 +770,15 @@
 								onclick={() =>
 									confirmation === 'force'
 										? void forceResync()
-										: confirmation === 'wipe'
-											? void wipeLocalData()
+										: confirmation === 'remove'
+											? void removeWorkspace()
 											: void deleteCloudData()}
 								>{busy
 									? 'Working…'
 									: confirmation === 'force'
 										? 'Replace cloud notes'
-										: confirmation === 'wipe'
-											? 'Delete data'
+										: confirmation === 'remove'
+											? 'Delete workspace'
 											: 'Delete cloud data'}</button
 							>
 						</div>

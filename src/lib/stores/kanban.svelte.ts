@@ -12,7 +12,7 @@ import { loadBoardsFromDevice, writeKanbanState } from '$lib/syncTombstones';
 import { uid } from '$lib/utils';
 
 /**
- * Fast-boot mirrors, one set per workspace. Anonymous keeps the bare keys, as
+ * Fast-boot mirrors, one set per workspace. The default one keeps the bare keys, as
  * IndexedDB does, so every other workspace lands beside it rather than on top
  * of it — a shared key meant the last workspace to save its boards decided
  * what the next one showed on the way up.
@@ -198,7 +198,7 @@ export class KanbanStore {
 		if (isScoped) {
 			this.boards = fromIdb.length > 0 ? fromIdb : [createKanbanBoard()];
 		} else {
-			// The anonymous workspace keeps a localStorage mirror that can outrun
+			// The default workspace keeps a localStorage mirror that can outrun
 			// IndexedDB after a crash, so the newer of the two wins.
 			this.boards = mergeKanbanBoards(mirroredBoards, fromIdb, tombstones);
 			if (!this.boards.length) this.boards = [createKanbanBoard()];

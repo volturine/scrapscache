@@ -44,16 +44,14 @@ import {
 } from '$lib/syncPairing';
 import { PairingRole, PairingState, type PairingPoll } from '$lib/pairingProtocol';
 import {
-	clearProfileNamespace,
+	clearSyncOutbox,
 	commitSyncControl,
-	deleteProfileDatabase,
 	deleteSyncState,
 	getOutboxGeneration,
 	getSyncOutboxKeys,
 	getSyncState,
 	markSyncOutbox,
-	removeProfileFromLocalStorage,
-	unlinkProfileToNamespace,
+	namespaceHasData,
 	LOCAL_PROFILE_ID
 } from '$lib/db/idb';
 import {
@@ -63,11 +61,9 @@ import {
 	readProfiles,
 	nextProfileName,
 	pickBootProfile,
-	profileForSyncKey,
 	removeProfileRecord,
 	saveProfile,
 	setLastActiveProfileId,
-	writeAnonymousWorkspaceName,
 	type StoredProfile
 } from '$lib/profiles';
 
@@ -168,10 +164,10 @@ export class SyncStore {
 			? crypto.randomUUID()
 			: Math.random().toString(36).slice(2);
 	syncedCursor = $state<number>(0);
-	/** Saved sync keys on this device; the one matching `account` is active. */
+	/** Every workspace on this device. Synced ones carry a sync key. */
 	profiles = $state<StoredProfile[]>([]);
-	/** Local-only workspace when no sync account is active. */
-	activeLocalId = $state(LOCAL_PROFILE_ID);
+	/** The workspace this window reads and writes. */
+	activeId = $state(LOCAL_PROFILE_ID);
 	private profilesReady: Promise<void> | null = null;
 	private bootstrapRequested = false;
 	private pendingOutboxWrites: Promise<void> = Promise.resolve();
@@ -199,10 +195,8 @@ export class SyncStore {
 			const pointed = pointerId
 				? (this.profiles.find((entry) => entry.id === pointerId) ?? null)
 				: null;
-			const chosen =
-				pointed ?? (pointerId === LOCAL_PROFILE_ID ? null : pickBootProfile(this.profiles));
-			if (chosen?.syncKey) this.activateProfile(chosen);
-			else if (chosen) this.activateLocalWorkspace(chosen.id);
+			const chosen = pointed ?? pickBootProfile(this.profiles);
+			if (chosen) this.activateProfile(chosen);
 			else this.restoreStatus(LOCAL_PROFILE_ID);
 		} catch (err) {
 			console.error('[sync] could not restore profiles on boot:', err);
@@ -214,16 +208,12 @@ export class SyncStore {
 	}
 
 	get activeProfile(): StoredProfile | null {
-		if (this.account) {
-			return profileForSyncKey(this.profiles, this.account.syncKey) ?? this.profiles[0] ?? null;
-		}
-		return this.profiles.find((profile) => profile.id === this.activeLocalId) ?? null;
+		return this.profiles.find((profile) => profile.id === this.activeId) ?? null;
 	}
 
 	/** Namespace this window reads and writes right now. */
 	get activePid(): string {
-		if (this.account) return this.activeProfile?.id ?? LOCAL_PROFILE_ID;
-		return this.activeLocalId;
+		return this.activeId;
 	}
 
 	/**
@@ -256,21 +246,29 @@ export class SyncStore {
 				} catch {
 					/* unreadable legacy mirror is ignored */
 				}
+				// The default namespace is an ordinary workspace. It gets a keyring
+				// entry on a fresh device, or whenever it still holds notes.
+				if (
+					!profiles.some((profile) => profile.id === LOCAL_PROFILE_ID) &&
+					(profiles.length === 0 || (await namespaceHasData(LOCAL_PROFILE_ID).catch(() => false)))
+				) {
+					const workspace: StoredProfile = {
+						id: LOCAL_PROFILE_ID,
+						name: nextProfileName(profiles),
+						syncKey: '',
+						createdAt: 0
+					};
+					await saveProfile(workspace);
+					profiles = [...profiles, workspace];
+				}
 				this.profiles = profiles.sort((a, b) => a.createdAt - b.createdAt);
 
 				const pointerId = getLastActiveProfileId();
 				const pointed = pointerId
 					? (this.profiles.find((entry) => entry.id === pointerId) ?? null)
 					: null;
-				const chosen =
-					pointed ?? (pointerId === LOCAL_PROFILE_ID ? null : pickBootProfile(this.profiles));
-				if (chosen?.syncKey) {
-					if (this.activeProfile?.id !== chosen.id) this.activateProfile(chosen);
-				} else if (chosen) {
-					if (this.activeLocalId !== chosen.id) this.activateLocalWorkspace(chosen.id);
-				} else if (this.account === null) {
-					this.restoreStatus(this.activeLocalId);
-				}
+				const chosen = pointed ?? pickBootProfile(this.profiles);
+				if (chosen && chosen.id !== this.activeId) this.activateProfile(chosen);
 			} catch (err) {
 				console.error('[sync] could not load saved profiles:', err);
 			}
@@ -287,39 +285,19 @@ export class SyncStore {
 	async renameProfile(id: string, name: string): Promise<StoredProfile | null> {
 		const trimmed = name.trim().slice(0, 60);
 		if (!trimmed) return null;
-		if (id === LOCAL_PROFILE_ID) {
-			const next = writeAnonymousWorkspaceName(trimmed);
-			if (!next) return null;
-			const keyed = this.profiles.find((entry) => entry.id === id);
-			if (!keyed) return { id, name: next, syncKey: '', createdAt: 0 };
-			const updated = { ...keyed, name: next };
-			await saveProfile(updated);
-			this.profiles = this.profiles.map((entry) => (entry.id === id ? updated : entry));
-			if (updated.syncKey) {
-				if (this.account && profileForSyncKey(this.profiles, this.account.syncKey)?.id === id) {
-					await this.queueOutbox([PROFILE_META_KEY]);
-				} else {
-					await markSyncOutbox(id, [PROFILE_META_KEY]);
-				}
-			}
-			return updated;
-		}
 		const profile = this.profiles.find((entry) => entry.id === id);
 		if (!profile || profile.name === trimmed) return profile ?? null;
 		const updated = { ...profile, name: trimmed };
 		await saveProfile(updated);
 		this.profiles = this.profiles.map((entry) => (entry.id === id ? updated : entry));
 		if (updated.syncKey) {
-			if (this.account && profileForSyncKey(this.profiles, this.account.syncKey)?.id === id) {
-				await this.queueOutbox([PROFILE_META_KEY]);
-			} else {
-				await markSyncOutbox(id, [PROFILE_META_KEY]);
-			}
+			if (id === this.activeId) await this.queueOutbox([PROFILE_META_KEY]);
+			else await markSyncOutbox(id, [PROFILE_META_KEY]);
 		}
 		return updated;
 	}
 
-	/** Remove a non-active keyring entry together with its namespaced dataset. */
+	/** Remove a non-active workspace together with its dataset on this device. */
 	async removeProfile(id: string): Promise<boolean> {
 		if (this.activeProfile?.id === id) return false;
 		if (!this.profiles.some((entry) => entry.id === id)) return false;
@@ -342,7 +320,7 @@ export class SyncStore {
 
 	async queueOutbox(keys: Iterable<string> = []): Promise<void> {
 		const pendingKeys = [...new Set(keys)];
-		const pid = this.activeProfile?.id ?? LOCAL_PROFILE_ID;
+		const pid = this.activeId;
 		const write = this.pendingOutboxWrites.then(async () => {
 			await markSyncOutbox(pid, pendingKeys);
 		});
@@ -392,6 +370,7 @@ export class SyncStore {
 			this.activateLocalWorkspace(profile.id);
 			return;
 		}
+		this.activeId = profile.id;
 		this.activateAccount(identityFromSyncKey(profile.syncKey));
 		const generation = this.authenticationGeneration;
 		this.lastError = null;
@@ -417,7 +396,7 @@ export class SyncStore {
 		this.pendingSessions.clear();
 		this.session = null;
 		this.account = null;
-		this.activeLocalId = id;
+		this.activeId = id;
 		this.lastError = null;
 		this.progress = null;
 		this.usage = null;
@@ -468,11 +447,14 @@ export class SyncStore {
 		await this.accessToken(account);
 	}
 
+	/** Give a local workspace a fresh sync key. Its id, notes, and row stay the same. */
 	async register(
+		workspace: StoredProfile,
 		name?: string,
-		turnstileToken?: string,
-		existing?: StoredProfile | null
+		turnstileToken?: string
 	): Promise<{ success: boolean; profile?: StoredProfile; error?: string }> {
+		if (!isLocalWorkspace(workspace))
+			return { success: false, error: 'That workspace is already synced' };
 		const account = createSyncIdentity();
 		try {
 			const res = await fetch('/api/sync/register', {
@@ -495,30 +477,22 @@ export class SyncStore {
 					success: false,
 					error: typeof data.error === 'string' ? data.error : 'Registration failed'
 				};
-			const reuse = existing && isLocalWorkspace(existing) ? existing : null;
-			const profile: StoredProfile = reuse
-				? {
-						...reuse,
-						name: name?.trim() || reuse.name,
-						syncKey: account.syncKey
-					}
-				: {
-						id: randomOpaqueId(),
-						name: name?.trim() || nextProfileName(this.profiles),
-						syncKey: account.syncKey,
-						createdAt: Date.now()
-					};
-			if (reuse) {
-				await saveProfile(profile);
-				this.profiles = this.profiles.map((entry) => (entry.id === profile.id ? profile : entry));
-			} else {
-				await this.addKeyringEntry(profile);
-			}
+			const profile: StoredProfile = {
+				...workspace,
+				name: name?.trim() || workspace.name,
+				syncKey: account.syncKey
+			};
+			await this.replaceKeyringEntry(profile);
 			this.clearLegacyAccountStorage();
 			return { success: true, profile };
 		} catch (err) {
 			return { success: false, error: err instanceof Error ? err.message : 'Network error' };
 		}
+	}
+
+	private async replaceKeyringEntry(profile: StoredProfile): Promise<void> {
+		await saveProfile(profile);
+		this.profiles = this.profiles.map((entry) => (entry.id === profile.id ? profile : entry));
 	}
 
 	async startDeviceLink(
@@ -1419,53 +1393,31 @@ export class SyncStore {
 		]);
 	}
 
-	async logout(keepLocalNotes = false): Promise<void> {
-		const accountId = this.account?.accountId;
-		const pid = this.activePid;
-		const profile = this.activeProfile;
-		if (profile) {
-			if (profile.id === LOCAL_PROFILE_ID) {
-				if (!keepLocalNotes) await clearProfileNamespace(LOCAL_PROFILE_ID);
-			} else if (keepLocalNotes) {
-				await unlinkProfileToNamespace(profile.id, LOCAL_PROFILE_ID);
-			}
-			removeProfileFromLocalStorage(profile.id);
-			this.profiles = this.profiles.filter((entry) => entry.id !== profile.id);
-		}
-		this.authenticationGeneration += 1;
-		this.pendingSessions.clear();
-		this.session = null;
-		this.account = null;
-		this.activeLocalId = LOCAL_PROFILE_ID;
-		this.lastError = null;
-		this.progress = null;
-		this.usage = null;
-		this.syncedCursor = 0;
-		setLastActiveProfileId(LOCAL_PROFILE_ID);
+	/**
+	 * Stop syncing a workspace on this device. It keeps its id and notes and
+	 * becomes a private workspace; the cloud copy is left alone.
+	 */
+	async unlinkProfile(profile: StoredProfile): Promise<StoredProfile> {
+		if (isLocalWorkspace(profile)) return profile;
+		const { accountId } = identityFromSyncKey(profile.syncKey);
+		const unlinked: StoredProfile = { ...profile, syncKey: '' };
+		await this.replaceKeyringEntry(unlinked);
+		if (this.activeId === profile.id) this.activateLocalWorkspace(profile.id);
 		this.clearLegacyAccountStorage();
-		this.onAccountChange?.();
-		if (accountId) await this.clearAccountControlPlane(accountId, pid);
-		this.restoreStatus(LOCAL_PROFILE_ID);
-		if (profile && profile.id !== LOCAL_PROFILE_ID) {
-			try {
-				await deleteProfileDatabase(profile.id);
-			} catch (err) {
-				console.error('[sync] could not unlink profile namespace:', err);
-			}
-		}
+		await this.clearAccountControlPlane(accountId, profile.id);
+		const pending = await getSyncOutboxKeys(profile.id).catch(() => []);
+		await clearSyncOutbox(profile.id, pending);
+		return unlinked;
 	}
 
-	async deleteCloudAccount(
-		profile: StoredProfile | null = this.activeProfile
-	): Promise<{ success: boolean; error?: string }> {
-		if (!profile?.syncKey) return { success: false, error: 'Sync is not set up on this device' };
-		const account = identityFromSyncKey(profile.syncKey);
-		const active = this.activeProfile?.id === profile.id;
+	/** Delete a workspace's relay account, then keep its notes here as a private workspace. */
+	async deleteCloudAccount(profile: StoredProfile): Promise<{ success: boolean; error?: string }> {
+		if (!profile.syncKey) return { success: false, error: 'That workspace is not synced' };
 		try {
 			const response = await this.authorizedFetch(
 				'/api/sync/account',
 				{ method: 'DELETE' },
-				account
+				identityFromSyncKey(profile.syncKey)
 			);
 			if (!response.ok) {
 				const data = (await response.json().catch(() => ({}))) as { error?: unknown };
@@ -1474,13 +1426,7 @@ export class SyncStore {
 					error: typeof data.error === 'string' ? data.error : 'Could not delete synced data'
 				};
 			}
-			if (active) await this.logout(true);
-			else {
-				await unlinkProfileToNamespace(profile.id, LOCAL_PROFILE_ID);
-				if (!(await this.removeProfile(profile.id)))
-					return { success: false, error: 'Could not remove that workspace from this device' };
-				await this.clearAccountControlPlane(account.accountId, profile.id);
-			}
+			await this.unlinkProfile(profile);
 			return { success: true };
 		} catch (error) {
 			return {

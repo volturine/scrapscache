@@ -152,7 +152,7 @@
 				<span class="glyph" aria-hidden="true"><TriangleAlert size={18} /></span>
 				<p class="message">
 					Unlink <strong>{name}</strong>?<span class="caption"
-						>This device’s notes are deleted. Cloud notes stay.</span
+						>Notes stay here as a private workspace.</span
 					>
 				</p>
 				<div class="panel-actions">
@@ -280,7 +280,7 @@
 				onclick={askUnlink}
 				aria-label="Unlink {name}"
 				><CloudOff size={16} aria-hidden="true" /><span
-					>Unlink<small>Delete this device’s notes. Cloud notes stay.</small></span
+					>Unlink<small>Stop syncing on this device. Notes stay here.</small></span
 				></button
 			>
 		{/if}

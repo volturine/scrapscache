@@ -260,7 +260,7 @@ describe('client sync state machine', () => {
 			session: { accountId: string; accessToken: string; expiresAt: number } | null;
 		};
 		const pending = privateStore.accessToken();
-		store.logout();
+		store.activateLocalWorkspace();
 		releaseChallenge?.(
 			new Response(JSON.stringify({ challengeId: 'late', challenge: 'challenge' }))
 		);
@@ -1056,7 +1056,7 @@ describe('client sync state machine', () => {
 	it('aborts cleanly when the account is logged out mid-sync', async () => {
 		const { store, account } = createHarness((_request, index) => {
 			if (index === 0) {
-				store.logout();
+				store.activateLocalWorkspace();
 				return { success: true, data: emptyData({ cursor: 1, hasMore: true }) };
 			}
 			return { success: true, data: emptyData({ cursor: 2 }) };
@@ -1068,7 +1068,7 @@ describe('client sync state machine', () => {
 
 		expect(result).toEqual({ success: false, error: 'Sync was cancelled' });
 		expect(store.lastError).toBeNull();
-		expect(await idb.getSyncState(keys.cursor)).toBeUndefined();
+		expect(await idb.getSyncState(keys.cursor)).toBe(0);
 	});
 
 	it('stops after repeated relay reset requests instead of looping forever', async () => {
@@ -1221,7 +1221,10 @@ describe('client sync state machine', () => {
 		localStorage.clear();
 		const store1 = new SyncStore();
 		await store1.ensureProfilesLoaded();
-		expect(store1.profiles).toEqual([]);
+		// A fresh device starts with one private workspace and no sync key.
+		expect(store1.profiles.map(({ id, syncKey }) => [id, syncKey])).toEqual([
+			[idb.LOCAL_PROFILE_ID, '']
+		]);
 		expect(store1.isLoggedIn).toBe(false);
 
 		// Create a profile
@@ -1238,23 +1241,23 @@ describe('client sync state machine', () => {
 		// Simulate hard refresh while logged in
 		const store2 = new SyncStore();
 		await store2.ensureProfilesLoaded();
-		expect(store2.profiles.length).toBe(1);
+		expect(store2.profiles.length).toBe(2);
 		expect(store2.activeProfile?.id).toBe('test-p1');
 
-		// Unlink device
-		await store2.logout();
+		// Unlink device: the workspace stays, as a private one
+		await store2.unlinkProfile(store2.activeProfile!);
 		expect(store2.isLoggedIn).toBe(false);
-		expect(store2.profiles).toEqual([]);
+		expect(store2.profiles).toContainEqual({ ...p1, syncKey: '' });
 
-		// Simulate hard refresh after unlink: must NOT resurrect or create any new account
+		// Simulate hard refresh after unlink: must NOT resurrect the sync key
 		const store3 = new SyncStore();
 		await store3.ensureProfilesLoaded();
-		expect(store3.profiles).toEqual([]);
+		expect(store3.profiles.filter((profile) => profile.syncKey)).toEqual([]);
 		expect(store3.isLoggedIn).toBe(false);
-		expect(store3.activeProfile).toBeNull();
+		expect(store3.activeProfile).toEqual({ ...p1, syncKey: '' });
 	});
 
-	it('keeps anonymous data separate on repeated boots of an empty paired workspace', async () => {
+	it('lists the default namespace as its own workspace when it holds notes', async () => {
 		localStorage.clear();
 		const profile = {
 			id: 'paired-empty',
@@ -1263,6 +1266,7 @@ describe('client sync state machine', () => {
 			createdAt: 1
 		};
 		const store = new SyncStore();
+		await store.ensureProfilesLoaded();
 		await store.addKeyringEntry(profile);
 		store.activateProfile(profile);
 		await idb.putNote(idb.LOCAL_PROFILE_ID, note('anonymous-only'));
@@ -1270,11 +1274,38 @@ describe('client sync state machine', () => {
 			const restored = new SyncStore();
 			await restored.ensureProfilesLoaded();
 			expect(restored.activePid).toBe(profile.id);
+			expect(restored.profiles.map(({ id }) => id).sort()).toEqual(
+				[idb.LOCAL_PROFILE_ID, profile.id].sort()
+			);
 			expect(await idb.getAllNotesMetadata(profile.id)).toEqual([]);
 			expect((await idb.getAllNotesMetadata(idb.LOCAL_PROFILE_ID)).map(({ id }) => id)).toEqual([
 				'anonymous-only'
 			]);
 		}
+	});
+
+	it('lists default-namespace notes next to saved workspaces, and not once it is deleted', async () => {
+		localStorage.clear();
+		await idb.clearProfileNamespace(idb.LOCAL_PROFILE_ID);
+		const saved = { id: 'saved-only', name: 'Saved', syncKey: '', createdAt: 5 };
+		await idb.putStoredProfile(saved);
+		await idb.putNote(idb.LOCAL_PROFILE_ID, note('left-behind'));
+
+		const booted = new SyncStore();
+		await booted.ensureProfilesLoaded();
+		expect(booted.profiles.map(({ id }) => id)).toEqual([idb.LOCAL_PROFILE_ID, 'saved-only']);
+
+		const { cursor } = syncControlKeys(createSyncIdentity().accountId);
+		await idb.setSyncState(cursor, 7, idb.LOCAL_PROFILE_ID);
+		booted.activateProfile(saved);
+		expect(await booted.removeProfile(idb.LOCAL_PROFILE_ID)).toBe(true);
+		expect(await idb.getAllNotesMetadata(idb.LOCAL_PROFILE_ID)).toEqual([]);
+		expect(await idb.getSyncState(cursor, idb.LOCAL_PROFILE_ID)).toBeUndefined();
+
+		const rebooted = new SyncStore();
+		await rebooted.ensureProfilesLoaded();
+		expect(rebooted.profiles).toEqual([saved]);
+		expect(rebooted.activeProfile).toEqual(saved);
 	});
 
 	it('keeps the legacy account pointer after adopting it, without re-adopting', async () => {
@@ -1297,15 +1328,14 @@ describe('client sync state machine', () => {
 		expect(store2.profiles[0].syncKey).toBe(legacyIdentity.syncKey);
 
 		// Unlinking is what clears the pointer: it must not outlive its account
-		await store2.logout();
-		expect(store2.profiles.length).toBe(0);
+		await store2.unlinkProfile(store2.profiles[0]);
+		expect(store2.profiles.filter((profile) => profile.syncKey)).toEqual([]);
 		expect(localStorage.getItem('scrapscache-sync-account')).toBeNull();
 
-		// Subsequent boot (hard refresh): must stay blank slate, no new account created
+		// Subsequent boot (hard refresh): no sync key is re-adopted
 		const store3 = new SyncStore();
 		await store3.ensureProfilesLoaded();
-		expect(store3.profiles.length).toBe(0);
+		expect(store3.profiles.filter((profile) => profile.syncKey)).toEqual([]);
 		expect(store3.isLoggedIn).toBe(false);
-		expect(store3.activeProfile).toBeNull();
 	});
 });

@@ -57,6 +57,7 @@ import {
 } from '$lib/db/idb';
 import {
 	getLastActiveProfileId,
+	isLocalWorkspace,
 	loadProfiles,
 	readProfiles,
 	nextProfileName,
@@ -457,7 +458,8 @@ export class SyncStore {
 
 	async register(
 		name?: string,
-		turnstileToken?: string
+		turnstileToken?: string,
+		existing?: StoredProfile | null
 	): Promise<{ success: boolean; profile?: StoredProfile; error?: string }> {
 		const account = createSyncIdentity();
 		try {
@@ -481,14 +483,25 @@ export class SyncStore {
 					success: false,
 					error: typeof data.error === 'string' ? data.error : 'Registration failed'
 				};
-			const profile: StoredProfile = {
-				id: randomOpaqueId(),
-				name: name?.trim() || nextProfileName(this.profiles),
-				syncKey: account.syncKey,
-				createdAt: Date.now()
-			};
-			await this.addKeyringEntry(profile);
-			this.activateProfile(profile);
+			const reuse = existing && isLocalWorkspace(existing) ? existing : null;
+			const profile: StoredProfile = reuse
+				? {
+						...reuse,
+						name: name?.trim() || reuse.name,
+						syncKey: account.syncKey
+					}
+				: {
+						id: randomOpaqueId(),
+						name: name?.trim() || nextProfileName(this.profiles),
+						syncKey: account.syncKey,
+						createdAt: Date.now()
+					};
+			if (reuse) {
+				await saveProfile(profile);
+				this.profiles = this.profiles.map((entry) => (entry.id === profile.id ? profile : entry));
+			} else {
+				await this.addKeyringEntry(profile);
+			}
 			this.clearLegacyAccountStorage();
 			return { success: true, profile };
 		} catch (err) {

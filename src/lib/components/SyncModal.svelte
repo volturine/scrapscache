@@ -502,7 +502,7 @@
 	}
 
 	function close() {
-		if (busy) return;
+		if (operation !== null || profileCoordinator.switching) return;
 		stopWaiting();
 		onClose();
 	}
@@ -542,7 +542,7 @@
 						{mode === 'menu'
 							? 'Workspaces'
 							: mode === 'register'
-								? 'New workspace'
+								? 'Sync workspace'
 								: mode === 'confirm'
 									? confirmation === 'force'
 										? 'Replace cloud notes?'
@@ -553,7 +553,7 @@
 					</Dialog.Title>
 					<button
 						type="button"
-						disabled={busy}
+						disabled={operation !== null || profileCoordinator.switching}
 						class="icon-btn h-8 w-8"
 						aria-label="Close"
 						onclick={() => close()}
@@ -572,10 +572,9 @@
 									disabled={busy}
 									onclick={() => startPromote(id)}
 									><Cloud size={16} aria-hidden="true" /><span
-										>Sync notes to new workspace<small
-											>Copy these notes into a synced workspace</small
-										></span
+										>Sync this workspace<small>Keep these notes and start cloud sync</small></span
 									></button
+								>
 								>
 							{/snippet}
 							{#snippet wipe(id: string, caption: string)}
@@ -868,7 +867,7 @@
 				{:else if mode === 'register'}
 					<div class="space-y-4">
 						<p class="text-sm leading-relaxed text-[var(--scrapscache-text-muted)]">
-							These notes will be copied into a new synced workspace.
+							This workspace stays on this device and starts syncing to the cloud.
 						</p>
 						<div class="space-y-2">
 							<input
@@ -894,7 +893,7 @@
 								onclick={() => void create()}
 								disabled={busy || (Boolean(turnstileSitekey) && !registerToken)}
 								class="scrapscache-button scrapscache-button-primary w-full px-3 py-2.5 text-sm font-medium"
-								>{operation === 'create' ? 'Creating…' : 'Create workspace'}</button
+								>{operation === 'create' ? 'Starting sync…' : 'Start sync'}</button
 							>
 						</div>
 						<div class="flex items-center gap-3" aria-hidden="true">

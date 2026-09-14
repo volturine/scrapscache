@@ -293,11 +293,11 @@ describe('SyncModal profile interactions', () => {
 	it('expands anonymous workspace with rename, promote, and delete', async () => {
 		render(SyncModal, { props: { onClose: vi.fn() } });
 		expect(screen.getByRole('button', { name: 'Export Anonymous workspace' })).toBeTruthy();
-		expect(screen.queryByRole('button', { name: /sync notes to new workspace/i })).toBeNull();
+		expect(screen.queryByRole('button', { name: /sync this workspace/i })).toBeNull();
 
 		await expand('Anonymous workspace');
 		expect(screen.getByRole('button', { name: 'Rename Anonymous workspace' })).toBeTruthy();
-		expect(screen.getByRole('button', { name: /sync notes to new workspace/i })).toBeTruthy();
+		expect(screen.getByRole('button', { name: /sync this workspace/i })).toBeTruthy();
 		expect(screen.getByRole('button', { name: /Delete data/ })).toBeTruthy();
 		expect(screen.queryByRole('button', { name: 'Unlink Anonymous workspace' })).toBeNull();
 	});
@@ -310,7 +310,7 @@ describe('SyncModal profile interactions', () => {
 
 		expect(screen.getByRole('button', { name: 'Studio is active' })).toBeTruthy();
 		await expand('Studio');
-		expect(screen.getByRole('button', { name: /sync notes to new workspace/i })).toBeTruthy();
+		expect(screen.getByRole('button', { name: /sync this workspace/i })).toBeTruthy();
 		expect(screen.getByRole('button', { name: 'Rename Studio' })).toBeTruthy();
 		expect(screen.getByRole('button', { name: /Delete data/ })).toBeTruthy();
 		expect(screen.queryByRole('button', { name: 'Unlink Studio' })).toBeNull();
@@ -377,8 +377,8 @@ describe('SyncModal profile interactions', () => {
 			syncStore.activateLocalWorkspace();
 			render(SyncModal, { props: { onClose: vi.fn() } });
 			await expand('Anonymous workspace');
-			await fireEvent.click(screen.getByRole('button', { name: /sync notes to new workspace/i }));
-			const submit = screen.getByRole('button', { name: 'Create workspace' }) as HTMLButtonElement;
+			await fireEvent.click(screen.getByRole('button', { name: /sync this workspace/i }));
+			const submit = screen.getByRole('button', { name: 'Start sync' }) as HTMLButtonElement;
 			await waitFor(() => expect(turnstile.render).toHaveBeenCalledTimes(1));
 			expect(turnstile.render.mock.calls[0][1]).toMatchObject({
 				sitekey: 'sitekey',
@@ -409,7 +409,7 @@ describe('SyncModal profile interactions', () => {
 		syncStore.activateLocalWorkspace();
 		await tick();
 		await expand('Anonymous workspace');
-		await fireEvent.click(screen.getByRole('button', { name: /sync notes to new workspace/i }));
+		await fireEvent.click(screen.getByRole('button', { name: /sync this workspace/i }));
 		expect(screen.getByRole('button', { name: 'Join existing' })).toBeTruthy();
 	});
 
@@ -519,7 +519,7 @@ describe('SyncModal profile interactions', () => {
 			syncStore.activateLocalWorkspace();
 			render(SyncModal, { props: { onClose: vi.fn() } });
 			await expand('Anonymous workspace');
-			await fireEvent.click(screen.getByRole('button', { name: /sync notes to new workspace/i }));
+			await fireEvent.click(screen.getByRole('button', { name: /sync this workspace/i }));
 			await fireEvent.click(screen.getByRole('button', { name: 'Join existing' }));
 			await fireEvent.input(screen.getByPlaceholderText('XXXX-XXXX-XXXX-XXXX'), {
 				target: { value: link.syncCode }

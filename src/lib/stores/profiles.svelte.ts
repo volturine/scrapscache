@@ -167,13 +167,25 @@ export class ProfileCoordinator {
 		}
 	}
 
-	/** Publish this device's workspace as the newest cloud version. */
-	async forceResync(turnstileToken?: string): Promise<{ success: boolean; error?: string }> {
+	/** Publish a synced workspace as the newest cloud version. */
+	async forceResync(
+		turnstileToken?: string,
+		profileId?: string | null
+	): Promise<{ success: boolean; error?: string }> {
 		const blocked = this.guard();
 		if (blocked) return { success: false, error: blocked };
-		if (!syncStore.account) return { success: false, error: 'No synced workspace is active' };
 		this.switching = true;
 		try {
+			if (profileId && profileId !== syncStore.activePid) {
+				const target = syncStore.profiles.find((profile) => profile.id === profileId);
+				if (!target || isLocalWorkspace(target))
+					return { success: false, error: 'That workspace is no longer on this device' };
+				await this.exclusive(async () => {
+					await notesStore.waitForPendingProfileWrites();
+					await this.activate(target);
+				});
+			}
+			if (!syncStore.account) return { success: false, error: 'No synced workspace is active' };
 			const synced = await notesStore.forcePushWorkspace(turnstileToken);
 			return synced
 				? { success: true }
@@ -222,17 +234,26 @@ export class ProfileCoordinator {
 		}
 	}
 
-	/** Drop an inactive synced workspace from this device without touching the cloud. */
-	async unlinkSaved(profileId: string): Promise<{ success: boolean; error?: string }> {
-		if (profileId === syncStore.activeProfile?.id) return this.unlink();
+	/** Drop a saved workspace from this device. Cloud notes stay unless `deleteCloud`. */
+	async unlinkSaved(
+		profileId: string,
+		deleteCloud = false
+	): Promise<{ success: boolean; error?: string }> {
+		if (profileId === syncStore.activeProfile?.id) return this.unlink(deleteCloud);
 		const blocked = this.guard();
 		if (blocked) return { success: false, error: blocked };
-		if (!syncStore.profiles.some((profile) => profile.id === profileId))
-			return { success: false, error: 'That workspace is no longer on this device' };
+		const profile = syncStore.profiles.find((entry) => entry.id === profileId);
+		if (!profile) return { success: false, error: 'That workspace is no longer on this device' };
 		this.switching = true;
 		try {
 			return await this.exclusive(async () => {
 				await notesStore.waitForPendingProfileWrites();
+				if (deleteCloud) {
+					const result = await syncStore.deleteCloudAccount(profile);
+					if (!result.success) return result;
+					if (syncStore.activePid === LOCAL_PROFILE_ID) await notesStore.reloadForProfile();
+					return { success: true };
+				}
 				if (!(await syncStore.removeProfile(profileId)))
 					return { success: false, error: 'Could not unlink workspace' };
 				return { success: true };

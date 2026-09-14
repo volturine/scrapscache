@@ -49,6 +49,7 @@
 	let timer: ReturnType<typeof setTimeout> | null = null;
 	let confirmation = $state<'delete' | 'force' | 'wipe' | null>(null);
 	let wipeTarget = $state<string | null>(null);
+	let confirmTarget = $state<string | null>(null);
 	let expandedId = $state<string | null>(null);
 	let newName = $state('');
 	let promoteSource = $state<string | null>(null);
@@ -65,6 +66,10 @@
 
 	const authenticationFailed = $derived(/authentication/i.test(syncStore.lastError ?? ''));
 	let syncError = $derived(syncStore.lastError ?? '');
+	const confirmName = $derived(
+		syncStore.profiles.find((profile) => profile.id === confirmTarget)?.name ??
+			syncStore.activeProfile?.name
+	);
 
 	// A running sync must finish before a dataset handover can start.
 	// Background pulls and outbox retries are intentionally silent. They still
@@ -224,7 +229,7 @@
 		info = '';
 		const token = forceToken || undefined;
 		const result = await runOperation('force-sync', 'Could not force a full resync', () =>
-			profileCoordinator.forceResync(token)
+			profileCoordinator.forceResync(token, confirmTarget)
 		);
 		forceCheck?.reset();
 		if (!result) return;
@@ -232,6 +237,8 @@
 			error = friendlyError(result.error, 'Could not force a full resync');
 			return;
 		}
+		confirmation = null;
+		confirmTarget = null;
 		mode = 'menu';
 		info = 'This device’s notes are now the latest cloud version.';
 	}
@@ -466,8 +473,9 @@
 	async function deleteCloudData() {
 		if (confirmation !== 'delete') return;
 		error = '';
+		const target = confirmTarget ?? syncStore.activePid;
 		const result = await runOperation('delete', 'Could not delete synced data', () =>
-			profileCoordinator.unlink(true)
+			profileCoordinator.unlinkSaved(target, true)
 		);
 		if (!result) return;
 		if (!result.success) {
@@ -475,6 +483,7 @@
 			return;
 		}
 		confirmation = null;
+		confirmTarget = null;
 		mode = 'menu';
 		info = 'Cloud data deleted. Your notes are now in Anonymous workspace.';
 	}
@@ -670,46 +679,47 @@
 								>
 									{#snippet icon()}<Cloud size={18} aria-hidden="true" />{/snippet}
 									{#snippet actions()}
-										{#if active}
-											<button
-												type="button"
-												class="manage-row"
-												disabled={busy}
-												onclick={() => {
-													confirmation = 'force';
-													mode = 'confirm';
-													error = '';
-												}}
-												><RefreshCw
-													size={16}
-													class={operation === 'force-sync' ? 'animate-spin' : ''}
-													aria-hidden="true"
-												/><span
-													>{operation === 'force-sync' ? 'Resyncing…' : 'Force resync'}<small
-														>Replace cloud notes with this device’s version</small
-													></span
-												></button
-											>
-										{/if}
+										<button
+											type="button"
+											class="manage-row"
+											disabled={busy}
+											onclick={() => {
+												confirmation = 'force';
+												confirmTarget = profile.id;
+												mode = 'confirm';
+												error = '';
+											}}
+											><RefreshCw
+												size={16}
+												class={operation === 'force-sync' && confirmTarget === profile.id
+													? 'animate-spin'
+													: ''}
+												aria-hidden="true"
+											/><span
+												>{operation === 'force-sync' && confirmTarget === profile.id
+													? 'Resyncing…'
+													: 'Force resync'}<small
+													>Replace cloud notes with this device’s version</small
+												></span
+											></button
+										>
 									{/snippet}
 									{#snippet danger()}
-										{#if active}
-											<button
-												type="button"
-												class="manage-row text-[var(--scrapscache-danger)]"
-												disabled={busy}
-												onclick={() => {
-													confirmation = 'delete';
-													mode = 'confirm';
-													error = '';
-												}}
-												><Trash2 size={16} aria-hidden="true" /><span
-													>Delete cloud data<small
-														>Keep this device’s notes in {anonymousName}</small
-													></span
-												></button
-											>
-										{/if}
+										<button
+											type="button"
+											class="manage-row text-[var(--scrapscache-danger)]"
+											disabled={busy}
+											onclick={() => {
+												confirmation = 'delete';
+												confirmTarget = profile.id;
+												mode = 'confirm';
+												error = '';
+											}}
+											><Trash2 size={16} aria-hidden="true" /><span
+												>Delete cloud data<small>Keep this device’s notes in {anonymousName}</small
+												></span
+											></button
+										>
 									{/snippet}
 								</WorkspaceRow>
 							{/each}
@@ -733,6 +743,7 @@
 										onclick={() => {
 											if (authenticationFailed) {
 												confirmation = 'force';
+												confirmTarget = syncStore.activePid;
 												mode = 'confirm';
 												error = '';
 											} else void syncNow();
@@ -802,9 +813,9 @@
 									? 'Permanently delete the notes in Anonymous workspace on this device. Synced workspaces are not changed.'
 									: 'Permanently delete this local workspace and its notes on this device.'}
 							{:else}
-								Permanently delete “{syncStore.activeProfile?.name}” from the cloud and stop syncing
-								it on all devices. This device’s notes will be appended to Anonymous workspace.
-								Existing anonymous notes are kept.
+								Permanently delete “{confirmName}” from the cloud and stop syncing it on all
+								devices. This device’s notes will be appended to Anonymous workspace. Existing
+								anonymous notes are kept.
 							{/if}
 						</p>
 						{#if confirmation === 'force' && turnstileSitekey}
@@ -827,6 +838,7 @@
 									mode = 'menu';
 									confirmation = null;
 									wipeTarget = null;
+									confirmTarget = null;
 									error = '';
 								}}>Cancel</button
 							>

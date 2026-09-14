@@ -88,19 +88,26 @@ authentication. The account ID and encrypted relay data do not move.
 
 ### Workspaces
 
-A device can hold several sync keys. Each one is a **workspace** owning its own
-IndexedDB database (`scrapscache-profile-<id>`), so datasets never mix and
-switching is a pointer change plus an in-memory reload rather than a copy. Notes
-written before any key exists live in the **anonymous workspace**, which keeps
-the original `scrapscache` database and never syncs.
+A device can hold several **workspaces**. Each one owns its own isolated
+dataset, so datasets never mix and switching is a pointer change plus an
+in-memory reload rather than a copy. Every workspace is either private (no sync
+key, never talks to the relay) or synced, and any workspace can move between the
+two without its notes moving:
+
+- **Sync this workspace** registers a fresh sync key for that same workspace.
+- **Unlink** drops the sync key on this device and keeps the notes as a private
+  workspace; the cloud copy and other devices are untouched.
+- **Delete cloud data** deletes the relay account, then unlinks.
+- **Delete workspace** removes it and its notes from this device. Deleting the
+  last workspace leaves a fresh empty one.
+
+The first workspace on a device uses the original `scrapscache` database; the
+others use `scrapscache-profile-<id>`. That is a storage detail only: the
+first workspace is an ordinary keyring entry with the same actions as any other.
 
 The keyring itself — id, display name, and sync key per workspace — is held in
 `localStorage`; see the residual-risk note in
 [security.md](security.md#out-of-scope--residual-risk).
-
-Creating a key from the anonymous workspace adopts its notes: they are copied
-into the new workspace and the originals are dropped only once a sync confirms
-the cloud holds them, so a partial or quota-blocked upload keeps them.
 
 ## Server
 

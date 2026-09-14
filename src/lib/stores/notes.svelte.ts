@@ -17,9 +17,7 @@ import {
 	getSyncOutboxKeys,
 	clearSyncOutbox,
 	pruneOrphanImageBlobs,
-	waitForDeviceWrites,
-	clearProfileNamespace,
-	isNamespaceRedundant
+	waitForDeviceWrites
 } from '$lib/db/idb';
 import {
 	mergeLabelLists,
@@ -36,7 +34,6 @@ import { uiStore } from '$lib/stores/ui.svelte';
 import { uid, daysSinceTrashed, TRASH_PURGE_DAYS, cloneNote } from '$lib/utils';
 import { noteAttachments, toggleLineAt } from '$lib/checklistBody';
 import {
-	clearNotesMirror,
 	readLabelsMirror,
 	readNotesMirror,
 	writeLabelsMirror,
@@ -1173,33 +1170,6 @@ export class NotesStore {
 		});
 	}
 
-	/**
-	 * Drop the anonymous workspace when it has become a redundant copy of the
-	 * profile that adopted it. Redundancy is judged from the rows themselves
-	 * rather than from a record of having copied them, so a device duplicated by
-	 * an earlier build is healed too, and a workspace the user has actually
-	 * written to is never a candidate.
-	 *
-	 * Every condition here must hold: a partial sync, a record still queued, or
-	 * an attachment that could not be read means the cloud is not yet a complete
-	 * copy, so the rows stay and a later sync tries again.
-	 */
-	private async dropRedundantLocalCopy(): Promise<void> {
-		const pid = this.pid;
-		if (pid === LOCAL_PROFILE_ID) return;
-		if (syncStore.lastError || this.lastPersistError) return;
-		if (this.attachmentHydrationFailures.size > 0) return;
-		try {
-			const pending = await getSyncOutboxKeys(pid).catch(() => null);
-			if (pending === null || pending.length > 0) return;
-			if (!(await isNamespaceRedundant(LOCAL_PROFILE_ID, pid))) return;
-			await clearProfileNamespace(LOCAL_PROFILE_ID);
-			clearNotesMirror(LOCAL_PROFILE_ID);
-		} catch (err) {
-			console.error('[sync] could not drop the redundant anonymous workspace:', err);
-		}
-	}
-
 	/** Flush durable local changes when leaving a note, without a no-op cloud request. */
 	async syncPendingChanges(): Promise<boolean> {
 		if (!syncStore.isLoggedIn) return false;
@@ -1568,10 +1538,6 @@ export class NotesStore {
 					} catch {
 						/* ignore BroadcastChannel error */
 					}
-					// Every sync path ends here, including the one a boot takes. Hanging
-					// this off flushSync instead would skip startup, foregrounding and
-					// live nudges, which are exactly when an upgraded device first syncs.
-					await this.dropRedundantLocalCopy();
 				}
 				return success;
 			} finally {

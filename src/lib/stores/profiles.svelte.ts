@@ -1,24 +1,25 @@
-// Profile switching orchestration. Datasets are namespaced per profile, so a
-// switch is: drain pending writes, flip this window's identity, reload memory
-// from the target namespace, then pull that key's cloud deltas. Runs under the
+// Workspace orchestration. Every workspace owns its own namespaced dataset and
+// is either private (no sync key) or synced. Switching, syncing, unlinking and
+// removing are all handovers: drain pending writes, change this window's
+// identity, then reload memory from the target namespace. They run under the
 // sync web lock so no sync flight can interleave with the handover.
 import { syncStore, PROFILE_META_KEY } from './sync.svelte';
 import { notesStore, SYNC_LOCK } from './notes.svelte';
 import { clearNotesMirror } from '$lib/noteStorage';
 import {
-	copyProfileDatasetInto,
 	isLocalWorkspace,
 	nextProfileName,
 	profileForSyncKey,
-	readAnonymousWorkspaceName,
 	type StoredProfile
 } from '$lib/profiles';
-import { randomOpaqueId } from '$lib/syncPairing';
-import { clearProfileNamespace, LOCAL_PROFILE_ID } from '$lib/db/idb';
+import { identityFromSyncKey, randomOpaqueId } from '$lib/syncPairing';
+import { markSyncOutbox } from '$lib/db/idb';
 import { unregisterReminderDevice } from '$lib/reminderWake';
 
+type Outcome = { success: boolean; error?: string };
+
 export class ProfileCoordinator {
-	/** True while a create/switch/adopt handover is in progress. */
+	/** True while a workspace handover is in progress. */
 	switching = $state(false);
 
 	private async exclusive<T>(run: () => Promise<T>): Promise<T> {
@@ -41,152 +42,83 @@ export class ProfileCoordinator {
 		await notesStore.reloadForProfile();
 		// Queue the encrypted profile-name record so a fresh key's account learns
 		// its local name (baseline dedupe makes repeat switches free).
-		await syncStore.queueOutbox([PROFILE_META_KEY]);
+		if (target.syncKey) await syncStore.queueOutbox([PROFILE_META_KEY]);
 	}
 
-	/** Create a brand-new sync key and make it this window's active profile. */
-	async create(
-		name?: string,
-		turnstileToken?: string,
-		sourcePid?: string | null
-	): Promise<{ success: boolean; error?: string }> {
-		const source =
-			sourcePid !== undefined ? sourcePid : syncStore.account ? null : syncStore.activePid;
-		return this.createWithDataset(name, source, turnstileToken);
-	}
-
-	/** Create an empty local-only workspace. It never registers with the relay. */
-	async createLocal(): Promise<{ success: boolean; error?: string }> {
-		const blocked = this.guard();
+	private async handover(
+		fallback: string,
+		run: () => Promise<Outcome>,
+		blockOnSync = true
+	): Promise<Outcome> {
+		const blocked = this.guard(blockOnSync);
 		if (blocked) return { success: false, error: blocked };
 		this.switching = true;
 		try {
-			await this.exclusive(async () => {
+			return await this.exclusive(async () => {
 				await notesStore.waitForPendingProfileWrites();
-				const profile = {
-					id: randomOpaqueId(),
-					name: nextProfileName([{ name: readAnonymousWorkspaceName() }, ...syncStore.profiles]),
-					syncKey: '',
-					createdAt: Date.now()
-				};
-				clearNotesMirror(profile.id);
-				await syncStore.addKeyringEntry(profile);
-				syncStore.activateLocalWorkspace(profile.id);
-				await notesStore.reloadForProfile();
+				return run();
 			});
-			return { success: true };
 		} catch (err) {
-			return {
-				success: false,
-				error: err instanceof Error ? err.message : 'Could not create workspace'
-			};
+			return { success: false, error: err instanceof Error ? err.message : fallback };
 		} finally {
 			this.switching = false;
 		}
 	}
 
-	/** Wipe a local workspace's notes. Extra local workspaces are removed. */
-	async wipeLocal(pid: string): Promise<{ success: boolean; error?: string }> {
-		const blocked = this.guard();
-		if (blocked) return { success: false, error: blocked };
-		this.switching = true;
-		try {
-			await this.exclusive(async () => {
-				await notesStore.waitForPendingProfileWrites();
-				await clearProfileNamespace(pid);
-				if (pid !== LOCAL_PROFILE_ID) {
-					if (syncStore.activePid === pid) {
-						syncStore.activateLocalWorkspace(LOCAL_PROFILE_ID);
-						await notesStore.reloadForProfile();
-					}
-					await syncStore.removeProfile(pid);
-				} else if (syncStore.activePid === pid) {
-					await notesStore.reloadForProfile();
-				}
-			});
-			return { success: true };
-		} catch (err) {
-			return {
-				success: false,
-				error: err instanceof Error ? err.message : 'Could not delete workspace data'
-			};
-		} finally {
-			this.switching = false;
-		}
+	private find(profileId: string): StoredProfile {
+		const profile = syncStore.profiles.find((entry) => entry.id === profileId);
+		if (!profile) throw new Error('That workspace is no longer on this device');
+		return profile;
 	}
 
-	private async createWithDataset(
-		name: string | undefined,
-		sourcePid: string | null,
-		turnstileToken: string | undefined
-	): Promise<{ success: boolean; error?: string }> {
-		const blocked = this.guard();
-		if (blocked) return { success: false, error: blocked };
-		this.switching = true;
-		try {
-			const created = await this.exclusive(async () => {
-				await notesStore.waitForPendingProfileWrites();
-				const sourceProfile =
-					sourcePid === LOCAL_PROFILE_ID
-						? {
-								id: LOCAL_PROFILE_ID,
-								name: readAnonymousWorkspaceName(),
-								syncKey: '',
-								createdAt: 0
-							}
-						: sourcePid
-							? (syncStore.profiles.find((profile) => profile.id === sourcePid) ?? null)
-							: null;
-				const reuse = sourceProfile && isLocalWorkspace(sourceProfile) ? sourceProfile : null;
-				const result = await syncStore.register(name, turnstileToken, reuse);
-				if (!result.success || !result.profile)
-					return { success: false, error: result.error ?? 'Registration failed' };
-				try {
-					if (sourcePid && result.profile.id !== sourcePid) {
-						await copyProfileDatasetInto(sourcePid, result.profile.id);
-						if (sourcePid === LOCAL_PROFILE_ID) {
-							await clearProfileNamespace(LOCAL_PROFILE_ID);
-							clearNotesMirror(LOCAL_PROFILE_ID);
-						}
-					} else if (!sourcePid) {
-						clearNotesMirror(result.profile.id);
-					}
-					await this.activate(result.profile);
-					return { success: true };
-				} catch (setupErr) {
-					if (result.profile.id !== reuse?.id)
-						await syncStore.removeProfile(result.profile.id).catch(() => undefined);
-					throw setupErr;
-				}
-			});
-			if (!created.success) return created;
-			// First sync can take a long time for a large workspace. Leave the
-			// handover first so the UI can show the synced workspace immediately.
-			void notesStore.syncWithCloudManual().catch(() => undefined);
+	/** Create an empty private workspace and make it active. */
+	async createLocal(): Promise<Outcome> {
+		return this.handover('Could not create workspace', async () => {
+			await this.createAndActivateEmpty();
 			return { success: true };
-		} catch (err) {
-			return {
-				success: false,
-				error: err instanceof Error ? err.message : 'Could not switch profiles'
-			};
-		} finally {
-			this.switching = false;
-		}
+		});
+	}
+
+	private async createAndActivateEmpty(): Promise<void> {
+		const profile: StoredProfile = {
+			id: randomOpaqueId(),
+			name: nextProfileName(syncStore.profiles),
+			syncKey: '',
+			createdAt: Date.now()
+		};
+		clearNotesMirror(profile.id);
+		await syncStore.addKeyringEntry(profile);
+		await this.activate(profile);
+	}
+
+	/** Start syncing a private workspace. Its row, name, and notes stay the same. */
+	async startSync(profileId: string, name?: string, turnstileToken?: string): Promise<Outcome> {
+		let synced = false;
+		const result = await this.handover('Could not start sync', async () => {
+			const result = await syncStore.register(this.find(profileId), name, turnstileToken);
+			if (!result.success || !result.profile)
+				return { success: false, error: result.error ?? 'Registration failed' };
+			synced = syncStore.activeId === profileId;
+			if (synced) await this.activate(result.profile);
+			else await markSyncOutbox(profileId, [PROFILE_META_KEY]);
+			return { success: true };
+		});
+		// First sync can take a long time for a large workspace. Leave the
+		// handover first so the UI can show the synced workspace immediately.
+		if (synced) void notesStore.syncWithCloudManual().catch(() => undefined);
+		return result;
 	}
 
 	/** Publish a synced workspace as the newest cloud version. */
-	async forceResync(
-		turnstileToken?: string,
-		profileId?: string | null
-	): Promise<{ success: boolean; error?: string }> {
+	async forceResync(turnstileToken?: string, profileId?: string | null): Promise<Outcome> {
 		const blocked = this.guard();
 		if (blocked) return { success: false, error: blocked };
 		this.switching = true;
 		try {
-			if (profileId && profileId !== syncStore.activePid) {
+			if (profileId && profileId !== syncStore.activeId) {
 				const target = syncStore.profiles.find((profile) => profile.id === profileId);
 				if (!target || isLocalWorkspace(target))
-					return { success: false, error: 'That workspace is no longer on this device' };
+					return { success: false, error: 'That workspace is not synced' };
 				await this.exclusive(async () => {
 					await notesStore.waitForPendingProfileWrites();
 					await this.activate(target);
@@ -211,118 +143,68 @@ export class ProfileCoordinator {
 		}
 	}
 
-	/** Drop this device’s copy of a synced workspace. Cloud notes stay unless `deleteCloud`. */
-	async unlink(deleteCloud = false): Promise<{ success: boolean; error?: string }> {
-		const blocked = this.guard();
-		if (blocked) return { success: false, error: blocked };
-		this.switching = true;
-		try {
-			return await this.exclusive(async () => {
-				await notesStore.waitForPendingProfileWrites();
-				const account = syncStore.account;
-				if (!account) return { success: false, error: 'No synced workspace is active' };
-				if (deleteCloud) {
-					const result = await syncStore.deleteCloudAccount();
-					if (!result.success) return result;
-				} else {
-					await syncStore.logout();
-					void unregisterReminderDevice(account);
-				}
-				await notesStore.reloadForProfile();
-				return { success: true };
-			});
-		} catch (err) {
-			return {
-				success: false,
-				error: err instanceof Error ? err.message : 'Could not unlink workspace'
-			};
-		} finally {
-			this.switching = false;
-		}
-	}
-
-	/** Drop a saved workspace from this device. Cloud notes stay unless `deleteCloud`. */
-	async unlinkSaved(
-		profileId: string,
-		deleteCloud = false
-	): Promise<{ success: boolean; error?: string }> {
-		if (profileId === syncStore.activeProfile?.id) return this.unlink(deleteCloud);
-		const blocked = this.guard();
-		if (blocked) return { success: false, error: blocked };
-		const profile = syncStore.profiles.find((entry) => entry.id === profileId);
-		if (!profile) return { success: false, error: 'That workspace is no longer on this device' };
-		this.switching = true;
-		try {
-			return await this.exclusive(async () => {
-				await notesStore.waitForPendingProfileWrites();
-				if (deleteCloud) {
-					const result = await syncStore.deleteCloudAccount(profile);
-					if (!result.success) return result;
-					if (syncStore.activePid === LOCAL_PROFILE_ID) await notesStore.reloadForProfile();
-					return { success: true };
-				}
-				if (profileId === LOCAL_PROFILE_ID) await clearProfileNamespace(LOCAL_PROFILE_ID);
-				if (!(await syncStore.removeProfile(profileId)))
-					return { success: false, error: 'Could not unlink workspace' };
-				return { success: true };
-			});
-		} catch (err) {
-			return {
-				success: false,
-				error: err instanceof Error ? err.message : 'Could not unlink workspace'
-			};
-		} finally {
-			this.switching = false;
-		}
-	}
-
-	/** Point this window at another saved sync key's namespace. */
-	async switchTo(profileId: string): Promise<{ success: boolean; error?: string }> {
-		const blocked = this.guard();
-		if (blocked) return { success: false, error: blocked };
-		this.switching = true;
-		try {
-			const shouldSync = await this.exclusive(async () => {
-				const target = syncStore.profiles.find((profile) => profile.id === profileId);
-				if (target) {
-					if (target.id === syncStore.activePid) return false;
-					await notesStore.waitForPendingProfileWrites();
-					if (isLocalWorkspace(target)) {
-						syncStore.activateLocalWorkspace(target.id);
-						await notesStore.reloadForProfile();
-						return false;
-					}
-					await this.activate(target);
-					return true;
-				}
-				if (profileId !== LOCAL_PROFILE_ID)
-					throw new Error('That sync key is no longer on this device');
-				if (syncStore.activePid === LOCAL_PROFILE_ID) return false;
-				await notesStore.waitForPendingProfileWrites();
-				syncStore.activateLocalWorkspace(LOCAL_PROFILE_ID);
-				await notesStore.reloadForProfile();
-				return false;
-			});
-			if (shouldSync) {
-				const synced = await notesStore.syncWithCloudManual();
-				if (!synced)
-					return {
-						success: true,
-						error:
-							syncStore.lastError ??
-							notesStore.lastPersistError ??
-							'Switched profiles, but sync did not finish'
-					};
+	/**
+	 * Stop syncing a workspace on this device and keep it as a private
+	 * workspace. With `deleteCloud`, its cloud copy is deleted for every device.
+	 */
+	async unlink(profileId: string, deleteCloud = false): Promise<Outcome> {
+		return this.handover('Could not unlink workspace', async () => {
+			const profile = this.find(profileId);
+			if (isLocalWorkspace(profile)) return { success: true };
+			if (deleteCloud) {
+				const result = await syncStore.deleteCloudAccount(profile);
+				if (!result.success) return result;
+			} else {
+				await syncStore.unlinkProfile(profile);
+				void unregisterReminderDevice(identityFromSyncKey(profile.syncKey));
 			}
+			if (syncStore.activeId === profileId) await notesStore.reloadForProfile();
 			return { success: true };
-		} catch (err) {
+		});
+	}
+
+	/**
+	 * Remove a workspace and its notes from this device. A synced workspace's
+	 * cloud copy stays. Removing the active workspace switches to another one,
+	 * and removing the last one leaves a fresh empty workspace behind.
+	 */
+	async remove(profileId: string): Promise<Outcome> {
+		return this.handover('Could not delete workspace', async () => {
+			const profile = this.find(profileId);
+			if (syncStore.activeId === profileId) {
+				const next = syncStore.profiles.find((entry) => entry.id !== profileId);
+				if (next) await this.activate(next);
+				else await this.createAndActivateEmpty();
+			}
+			if (!(await syncStore.removeProfile(profileId)))
+				return { success: false, error: 'Could not delete workspace' };
+			clearNotesMirror(profileId);
+			if (profile.syncKey) void unregisterReminderDevice(identityFromSyncKey(profile.syncKey));
+			return { success: true };
+		});
+	}
+
+	/** Point this window at another workspace. */
+	async switchTo(profileId: string): Promise<Outcome> {
+		if (profileId === syncStore.activeId) return { success: true };
+		let shouldSync = false;
+		const result = await this.handover('Could not switch workspace', async () => {
+			const target = this.find(profileId);
+			await this.activate(target);
+			shouldSync = !isLocalWorkspace(target);
+			return { success: true };
+		});
+		if (!result.success || !shouldSync) return result;
+		const synced = await notesStore.syncWithCloudManual();
+		if (!synced)
 			return {
-				success: false,
-				error: err instanceof Error ? err.message : 'Could not switch profiles'
+				success: true,
+				error:
+					syncStore.lastError ??
+					notesStore.lastPersistError ??
+					'Switched workspace, but sync did not finish'
 			};
-		} finally {
-			this.switching = false;
-		}
+		return result;
 	}
 
 	/**

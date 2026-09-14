@@ -1,27 +1,7 @@
 <script lang="ts">
 	import {
-		photoCropRoot as cropRoot,
-		photoCropCol as cropCol,
-		photoCropHeader as cropHeader,
-		photoCropSep as cropSep,
-		photoCropRatioDesktop as cropRatioDesktop,
-		photoCropRadioRoot as cropRadioRoot,
-		photoCropRadioItem as cropRadioItem,
-		photoCropReset as cropReset,
-		photoCropSave as cropSave,
-		photoCropRatioMobile as cropRatioMobile,
-		photoCropViewport as cropViewport,
-		photoCropImgWrap as cropImgWrap,
-		photoCropImg as cropImg,
-		photoCropTool as cropTool,
+		photoStyles,
 		photoCropKnob as cropKnob,
-		photoViewerStage as viewerStage,
-		photoViewerCenter as viewerCenter,
-		photoViewerImage as viewerImage,
-		photoViewerBackdrop as viewerBackdrop,
-		photoViewerThumbStrip as viewerThumbStrip,
-		photoViewerThumbImg as viewerThumbImg,
-		photoViewerTitleSize as viewerTitleSize,
 		photoRatioMobileBtn as ratioMobileBtn,
 		photoNavArrow as navArrow,
 		photoThumbBtn as thumbBtn,
@@ -256,9 +236,10 @@
 		}
 	}
 
-	const fs = fullscreen({ theme: 'photo' });
+	const fs = fullscreen.photo;
+	const styles = photoStyles;
 	const cropBtnRound = iconButton({ variant: 'haze', size: 'sm' });
-	const cropToolBtn = cx(iconButton({ variant: 'haze' }), cropTool);
+	const cropToolBtn = cx(iconButton({ variant: 'haze' }), styles.cropTool);
 	const topBarBtn = iconButton({ variant: 'haze' });
 	const topBarTrashBtn = iconButton({ variant: 'hazeRose' });
 </script>
@@ -273,7 +254,7 @@
 		aria-label="Photo"
 	>
 		{#if cropping}
-			<div class={`crop-root ${cropRoot}`}>
+			<div class={`crop-root ${styles.cropRoot}`}>
 				<ImageCropper.Root
 					aspectRatio={currentAspectRatio}
 					initialCrop={{
@@ -282,11 +263,11 @@
 						width: viewportDimensions.width,
 						height: viewportDimensions.height
 					}}
-					class={cropCol}
+					class={styles.cropCol}
 				>
 					<ImageCropper.Context>
 						{#snippet render(cropper)}
-							<header class={cropHeader}>
+							<header class={styles.cropHeader}>
 								<!-- Left: Cancel, Rotate, Undo -->
 								<div class={hstack({ gap: { base: '2xs', sm: 'xs' } })}>
 									<Tooltip content="Cancel">
@@ -302,7 +283,7 @@
 										</button>
 									</Tooltip>
 
-									<div class={cropSep} aria-hidden="true"></div>
+									<div class={styles.cropSep} aria-hidden="true"></div>
 
 									<Tooltip content="Rotate 90°">
 										<button
@@ -331,18 +312,18 @@
 								</div>
 
 								<!-- Center: Crop ratio presets -->
-								<div class={cropRatioDesktop}>
+								<div class={styles.cropRatioDesktop}>
 									<SegmentGroup.Root
 										value={selectedRatio}
 										onValueChange={(details) => {
 											if (details.value) selectedRatio = details.value as any;
 										}}
 										disabled={cropBusy}
-										class={cropRadioRoot}
+										class={styles.cropRadioRoot}
 										aria-label="Aspect ratio presets"
 									>
 										{#each [{ id: 'free', label: 'Free' }, { id: '1:1', label: '1:1' }, { id: '4:3', label: '4:3' }, { id: '16:9', label: '16:9' }] as opt (opt.id)}
-											<SegmentGroup.Item value={opt.id} class={cropRadioItem}>
+											<SegmentGroup.Item value={opt.id} class={styles.cropRadioItem}>
 												<SegmentGroup.ItemText>{opt.label}</SegmentGroup.ItemText>
 												<SegmentGroup.ItemHiddenInput />
 											</SegmentGroup.Item>
@@ -354,7 +335,7 @@
 								<div class={hstack({ gap: 'sm' })}>
 									<button
 										type="button"
-										class={cropReset}
+										class={styles.cropReset}
 										onclick={() => resetCrop(cropper)}
 										disabled={cropBusy}
 										aria-label="Reset crop"
@@ -365,7 +346,7 @@
 
 									<button
 										type="button"
-										class={`${button({ variant: 'primary', size: 'sm' })} ${cropSave}`}
+										class={`${button({ variant: 'primary', size: 'sm' })} ${styles.cropSave}`}
 										onclick={() => void applyCrop(cropper)}
 										disabled={cropBusy}
 										aria-label="Apply crop"
@@ -382,11 +363,11 @@
 								</div>
 							</header>
 
-							<div class={cropRatioMobile} aria-label="Aspect ratio presets mobile">
+							<div class={styles.cropRatioMobile} aria-label="Aspect ratio presets mobile">
 								{#each [{ id: 'free', label: 'Free' }, { id: '1:1', label: '1:1' }, { id: '4:3', label: '4:3' }, { id: '16:9', label: '16:9' }] as opt (opt.id)}
 									<button
 										type="button"
-										class={ratioMobileBtn({ active: selectedRatio === opt.id })}
+										class={ratioMobileBtn[selectedRatio === opt.id ? 'active' : 'inactive']}
 										onclick={() => (selectedRatio = opt.id as any)}
 										disabled={cropBusy}
 									>
@@ -400,13 +381,13 @@
 					<div
 						bind:clientWidth={cropContainerW}
 						bind:clientHeight={cropContainerH}
-						class={cropViewport}
+						class={styles.cropViewport}
 					>
 						<ImageCropper.Viewport
 							style="width: {viewportDimensions.width}px; height: {viewportDimensions.height}px;"
-							class={cropImgWrap}
+							class={styles.cropImgWrap}
 						>
-							<ImageCropper.Image src={currentSrc} onload={measureNatural} class={cropImg} />
+							<ImageCropper.Image src={currentSrc} onload={measureNatural} class={styles.cropImg} />
 							<ImageCropper.Selection>
 								{#each ImageCropper.handles as position (position)}
 									<ImageCropper.Handle {position}>
@@ -416,7 +397,7 @@
 												: position === 'n' || position === 's'
 													? 'edgeH'
 													: 'edgeV'}
-										<div class={`crop-knob ${cropKnob({ shape: knobShape })}`}></div>
+										<div class={`crop-knob ${cropKnob[knobShape]}`}></div>
 									</ImageCropper.Handle>
 								{/each}
 								<ImageCropper.Grid axis="horizontal" />
@@ -438,7 +419,7 @@
 					<div class={fs.title}>
 						{current.name || `Photo ${(activeIndex ?? 0) + 1}`}
 						{#if images.length > 1}
-							<span class={viewerTitleSize}>
+							<span class={styles.viewerTitleSize}>
 								({(activeIndex ?? 0) + 1} of {images.length})
 							</span>
 						{/if}
@@ -489,15 +470,15 @@
 				</div>
 			</header>
 
-			<div class={viewerStage}>
-				<button type="button" class={viewerBackdrop} onclick={close} aria-label="Close photo"
+			<div class={styles.viewerStage}>
+				<button type="button" class={styles.viewerBackdrop} onclick={close} aria-label="Close photo"
 				></button>
 
 				{#if images.length > 1}
 					<Tooltip content="Previous photo" placement="right">
 						<button
 							type="button"
-							class={navArrow({ side: 'left' })}
+							class={navArrow.left}
 							onclick={() => move(-1)}
 							aria-label="Previous photo"
 							title="Previous photo"
@@ -508,7 +489,7 @@
 					<Tooltip content="Next photo" placement="left">
 						<button
 							type="button"
-							class={navArrow({ side: 'right' })}
+							class={navArrow.right}
 							onclick={() => move(1)}
 							aria-label="Next photo"
 							title="Next photo"
@@ -518,11 +499,11 @@
 					</Tooltip>
 				{/if}
 
-				<div {@attach swipeArea} class={viewerCenter}>
+				<div {@attach swipeArea} class={styles.viewerCenter}>
 					<img
 						src={currentSrc}
 						alt={current.name ?? 'Photo'}
-						class={viewerImage}
+						class={styles.viewerImage}
 						decoding="async"
 						draggable="false"
 					/>
@@ -530,16 +511,21 @@
 			</div>
 
 			{#if images.length > 1}
-				<div class={`scrollable ${viewerThumbStrip}`} aria-label="Photo thumbnails">
+				<div class={`scrollable ${styles.viewerThumbStrip}`} aria-label="Photo thumbnails">
 					{#each images as image, index (image.id)}
 						<button
 							type="button"
-							class={thumbBtn({ active: index === activeIndex })}
+							class={thumbBtn[index === activeIndex ? 'active' : 'inactive']}
 							onclick={() => select(index)}
 							aria-label={image.name ?? `Photo ${index + 1}`}
 							aria-current={index === activeIndex ? 'true' : undefined}
 						>
-							<img src={displayImageSrc(image)} alt="" class={viewerThumbImg} draggable="false" />
+							<img
+								src={displayImageSrc(image)}
+								alt=""
+								class={styles.viewerThumbImg}
+								draggable="false"
+							/>
 						</button>
 					{/each}
 				</div>

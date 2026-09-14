@@ -1,13 +1,5 @@
 <script lang="ts">
-	import {
-		reminderAlertRoot as root,
-		reminderAlertCard as card,
-		reminderAlertIcon as icon,
-		reminderAlertContent as content,
-		reminderAlertTitle as title,
-		reminderAlertSubtitle as subtitle,
-		reminderAlertDismissIcon as dismissIcon
-	} from '$panda/styles';
+	import { reminderAlertStyles } from '$panda/styles';
 	import { fly } from 'svelte/transition';
 	import { AlarmClock, X } from '@lucide/svelte';
 	import { reminderStore } from '$lib/stores/reminders.svelte';
@@ -19,19 +11,23 @@
 
 {#if alerts.length > 0}
 	<div
-		class={root}
+		class={reminderAlertStyles.root}
 		style="top: max(0.75rem, calc(env(safe-area-inset-top, 0px) + 0.35rem))"
 		role="region"
 		aria-label="Due reminders"
 	>
 		{#each alerts as alert (alert.wakeId)}
-			<div class={card} role="alert" transition:fly={{ y: -16, duration: 180 }}>
-				<AlarmClock class={icon} aria-hidden="true" />
-				<button type="button" class={content} onclick={() => reminderStore.open(alert.noteId)}>
-					<div class={title}>
+			<div class={reminderAlertStyles.card} role="alert" transition:fly={{ y: -16, duration: 180 }}>
+				<AlarmClock class={reminderAlertStyles.icon} aria-hidden="true" />
+				<button
+					type="button"
+					class={reminderAlertStyles.content}
+					onclick={() => reminderStore.open(alert.noteId)}
+				>
+					<div class={reminderAlertStyles.title}>
 						{alert.title}
 					</div>
-					<div class={subtitle}>
+					<div class={reminderAlertStyles.subtitle}>
 						{formatReminder(alert.reminder)}
 					</div>
 				</button>
@@ -41,7 +37,7 @@
 					aria-label="Dismiss reminder"
 					onclick={() => reminderStore.dismiss(alert.noteId)}
 				>
-					<X class={dismissIcon} aria-hidden="true" />
+					<X class={reminderAlertStyles.dismissIcon} aria-hidden="true" />
 				</button>
 			</div>
 		{/each}

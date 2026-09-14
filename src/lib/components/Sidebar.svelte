@@ -1,11 +1,5 @@
 <script lang="ts">
-	import {
-		sidebarRow,
-		sidebarIcon,
-		sidebarNavLabelText as navLabelText,
-		sidebarLabelInput as labelInput,
-		truncate
-	} from '$panda/styles';
+	import { sidebarIcon, sidebarRow, sidebarStyles } from '$panda/styles';
 	import { css, cx } from 'styled-system/css';
 	import { dialog, button, input, menuItem } from 'styled-system/recipes';
 	import { hstack, vstack } from 'styled-system/patterns';
@@ -173,7 +167,7 @@
 		pendingDelete = null;
 	}
 	const menuRow = menuItem({ density: 'sidebar' });
-	const labelInputClass = cx(input({ variant: 'unstyled' }), labelInput);
+	const labelInputClass = cx(input({ variant: 'unstyled' }), sidebarStyles.labelInput);
 	const d = dialog({ size: 'sm' });
 </script>
 
@@ -187,7 +181,7 @@
 		<span class={sidebarIcon()} aria-hidden="true">
 			<Plus size={16} strokeWidth={1.75} />
 		</span>
-		<span class={navLabelText}>New label</span>
+		<span class={sidebarStyles.navLabel}>New label</span>
 	</button>
 {/snippet}
 
@@ -230,7 +224,7 @@
 			<span class={sidebarIcon({ iconTone: 'nav' })} aria-hidden="true">
 				<NavIcon size={18} strokeWidth={1.75} />
 			</span>
-			<span class={navLabelText}>{item.label}</span>
+			<span class={sidebarStyles.navLabel}>{item.label}</span>
 		</button>
 	{/each}
 
@@ -334,7 +328,7 @@
 								onclick={() => startRename(label)}
 								data-sidebar-stay-open
 								class={cx(
-									truncate,
+									sidebarStyles.navLabel,
 									css({
 										minW: 0,
 										flex: '1',
@@ -364,7 +358,7 @@
 							<span class={sidebarIcon({ iconTone: 'muted' })} aria-hidden="true">
 								<Tag size={16} strokeWidth={1.75} />
 							</span>
-							<span class={navLabelText}>{label.name}</span>
+							<span class={sidebarStyles.navLabel}>{label.name}</span>
 							{#if (labelCounts.get(label.id) ?? 0) > 0}
 								<span class={sidebarIcon({ hitPad: 'count' })}>{labelCounts.get(label.id)}</span>
 							{/if}

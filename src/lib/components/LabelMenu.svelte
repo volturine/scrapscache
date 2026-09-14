@@ -1,17 +1,5 @@
 <script lang="ts">
-	import {
-		labelMenuIconBox as iconBox,
-		labelMenuIcon as icon,
-		labelMenuLabel as label,
-		labelMenuCheckIndicator as checkIndicator,
-		labelMenuHeading as heading,
-		labelMenuSearchWrap as searchWrap,
-		labelMenuScroller as scroller,
-		labelMenuSearchIcon as searchIcon,
-		labelMenuSearchInput as searchInput,
-		labelMenuEmpty as empty,
-		popover
-	} from '$panda/styles';
+	import { labelMenuStyles as styles, popover } from '$panda/styles';
 	import { Checkbox } from '@ark-ui/svelte/checkbox';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { Check, Plus, Search, Tag } from '@lucide/svelte';
@@ -121,28 +109,28 @@
 			justify: 'space-between'
 		})}
 	>
-		<span class={heading}> Labels </span>
+		<span class={styles.heading}> Labels </span>
 		<button type="button" onclick={onClose} class={button({ variant: 'ghost', size: 'xs' })}>
 			Done
 		</button>
 	</div>
 
-	<div class={searchWrap}>
-		<Search class={searchIcon} strokeWidth={1.75} aria-hidden="true" />
+	<div class={styles.searchWrap}>
+		<Search class={styles.searchIcon} strokeWidth={1.75} aria-hidden="true" />
 		<input
 			bind:this={queryInput}
 			type="text"
 			bind:value={query}
 			placeholder="Search or create a label…"
 			onkeydown={onQueryKeydown}
-			class={cx(input({ variant: 'outline', size: 'md' }), searchInput)}
+			class={cx(input({ variant: 'outline', size: 'md' }), styles.searchInput)}
 		/>
 	</div>
 
 	<div
 		class={[
 			vstack({ gap: '3xs', maxH: '16rem', overflowY: 'auto', alignItems: 'stretch' }),
-			scroller
+			styles.scroller
 		]}
 		style:min-height={listMinHeight}
 	>
@@ -153,10 +141,10 @@
 				aria-label="Create label"
 				class={cx(menuRow, css({ color: 'scrapscache.accent' }))}
 			>
-				<span class={iconBox} aria-hidden="true">
-					<Plus class={icon} strokeWidth={1.75} />
+				<span class={styles.iconBox} aria-hidden="true">
+					<Plus class={styles.icon} strokeWidth={1.75} />
 				</span>
-				<span class={label}>Create “{trimmed}”</span>
+				<span class={styles.label}>Create “{trimmed}”</span>
 			</button>
 		{/if}
 
@@ -171,17 +159,17 @@
 					}}
 					class={menuRow}
 				>
-					<Checkbox.Control class={iconBox}>
+					<Checkbox.Control class={styles.iconBox}>
 						<Tag
-							class={icon}
+							class={styles.icon}
 							strokeWidth={1.75}
 							fill={checked ? 'currentColor' : 'none'}
 							aria-hidden="true"
 						/>
 					</Checkbox.Control>
-					<Checkbox.Label class={label}>{label.name}</Checkbox.Label>
-					<Checkbox.Indicator class={checkIndicator}>
-						<Check class={icon} strokeWidth={2.25} aria-hidden="true" />
+					<Checkbox.Label class={styles.label}>{label.name}</Checkbox.Label>
+					<Checkbox.Indicator class={styles.checkIndicator}>
+						<Check class={styles.icon} strokeWidth={2.25} aria-hidden="true" />
 					</Checkbox.Indicator>
 					<Checkbox.HiddenInput />
 				</Checkbox.Root>
@@ -189,7 +177,7 @@
 		{/each}
 
 		{#if matches.length === 0 && !canCreate}
-			<p class={empty}>No labels yet. Type a name to create one.</p>
+			<p class={styles.empty}>No labels yet. Type a name to create one.</p>
 		{/if}
 	</div>
 </div>

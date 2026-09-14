@@ -1,12 +1,5 @@
 <script lang="ts">
-	import {
-		backupEyebrow as eyebrow,
-		backupDescription as description,
-		backupForm as form,
-		backupLabel as label,
-		backupFieldLabel as fieldLabel,
-		backupFooter as footer
-	} from '$panda/styles';
+	import { backupStyles } from '$panda/styles';
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { portalToAppOverlay } from '$lib/appViewport';
 	import { BackupOperation } from '$lib/backup';
@@ -71,20 +64,20 @@
 		<Dialog.Positioner class={d.positioner}>
 			<Dialog.Content class={d.panel}>
 				<div class={d.header}>
-					<p class={eyebrow}>Encrypted on this device</p>
+					<p class={backupStyles.eyebrow}>Encrypted on this device</p>
 					<Dialog.Title class={d.title}>
 						{exporting ? 'Protect this backup' : 'Unlock this backup'}
 					</Dialog.Title>
-					<Dialog.Description class={cx(d.description, description)}>
+					<Dialog.Description class={cx(d.description, backupStyles.description)}>
 						{exporting
 							? 'Scraps Cache cannot recover this passphrase. Store it separately from the backup file.'
 							: 'The passphrase and decrypted notes stay in this browser.'}
 					</Dialog.Description>
 				</div>
 
-				<form class={cx(d.body, form)} onsubmit={submit}>
-					<label class={label}>
-						<span class={fieldLabel}>Backup passphrase</span>
+				<form class={cx(d.body, backupStyles.form)} onsubmit={submit}>
+					<label class={backupStyles.label}>
+						<span class={backupStyles.fieldLabel}> Backup passphrase </span>
 						<input
 							type="password"
 							autocomplete={exporting ? 'new-password' : 'current-password'}
@@ -96,8 +89,8 @@
 					</label>
 
 					{#if exporting}
-						<label class={label}>
-							<span class={fieldLabel}>Confirm passphrase</span>
+						<label class={backupStyles.label}>
+							<span class={backupStyles.fieldLabel}> Confirm passphrase </span>
 							<input
 								type="password"
 								autocomplete="new-password"
@@ -114,7 +107,7 @@
 						</p>
 					{/if}
 
-					<div class={cx(d.footer, footer)}>
+					<div class={cx(d.footer, backupStyles.footer)}>
 						<button
 							type="button"
 							onclick={onClose}

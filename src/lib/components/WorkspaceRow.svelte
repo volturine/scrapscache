@@ -1,31 +1,10 @@
 <script lang="ts">
-	import {
-		workspaceRow as row,
-		workspaceActions as actions,
-		workspaceTile as tile,
-		workspaceTileUnlink as tileUnlink,
-		workspaceTileLabel as tileLabel,
-		workspaceFrontBase as frontBase,
-		workspaceFrontActive as frontActive,
-		workspaceSelect as select,
-		workspacePanel as panel,
-		workspaceGlyph as glyph,
-		workspaceBody as body,
-		workspaceNameText as nameText,
-		workspaceCaptionText as captionText,
-		workspaceNameField as nameField,
-		workspacePanelActions as panelActions,
-		workspaceIconButton as iconButton,
-		workspaceConfirmText as confirmText,
-		workspaceDesktopCaption as desktopCaption,
-		workspaceMobileCaption as mobileCaption,
-		workspaceSuccessIconButton as successIconButton,
-		workspacePanelBtn as panelBtn
-	} from '$panda/styles';
+	import { truncate, workspaceStyles, workspacePanelBtn as panelBtn } from '$panda/styles';
 	import type { Snippet } from 'svelte';
 	import { Check, CloudOff, Pencil, TriangleAlert, X } from '@lucide/svelte';
-	import { cx } from 'styled-system/css';
+	import { css, cx } from 'styled-system/css';
 	import { input as inputRecipe } from 'styled-system/recipes';
+	import { hstack } from 'styled-system/patterns';
 
 	let {
 		name,
@@ -48,6 +27,8 @@
 		onunlink: () => Promise<boolean>;
 		onbusychange: (holdsEscape: boolean) => void;
 	} = $props();
+
+	const styles = workspaceStyles;
 
 	// Width of the swipe drawer: two touch targets side by side.
 	const ACTIONS_WIDTH = 152;
@@ -251,8 +232,9 @@
 		if (mode === 'idle') settle(false);
 		else cancel();
 	}
-	const front = $derived(cx(frontBase, frontActive({ active })));
-	const nameFieldClass = $derived(cx(inputRecipe({ variant: 'outline', size: 'sm' }), nameField));
+	const nameFieldClass = $derived(
+		cx(inputRecipe({ variant: 'outline', size: 'sm' }), css({ w: 'full', font: 'inherit' }))
+	);
 </script>
 
 <svelte:document
@@ -265,7 +247,7 @@
 
 <div
 	bind:this={rowElement}
-	class={`row ${row}`}
+	class={`row ${styles.row}`}
 	class:open
 	class:armed
 	class:dragging
@@ -273,44 +255,46 @@
 	style:--swipe-offset={`${offset}px`}
 	style:--swipe-progress={progress}
 >
-	<div class={`actions ${actions}`}>
+	<div class={`actions ${styles.actions}`}>
 		<button
 			type="button"
-			class={`tile ${tile}`}
+			class={`tile ${styles.tile}`}
 			disabled={locked}
 			title="Rename"
 			aria-label="Rename {name}"
 			onclick={startRename}
 		>
-			<Pencil size={16} aria-hidden="true" /><span class={tileLabel}>Rename</span>
+			<Pencil size={16} aria-hidden="true" /><span class={styles.tileLabel}>Rename</span>
 		</button>
 		<button
 			type="button"
-			class={`tile tile-unlink ${tile} ${tileUnlink}`}
+			class={`tile tile-unlink ${styles.tile} ${styles.tileUnlink}`}
 			disabled={locked}
 			title="Unlink"
 			aria-label="Unlink {name}"
 			onclick={askUnlink}
 		>
-			<CloudOff size={16} aria-hidden="true" /><span class={tileLabel}
+			<CloudOff size={16} aria-hidden="true" /><span class={styles.tileLabel}
 				>{armed ? 'Release' : 'Unlink'}</span
 			>
 		</button>
 	</div>
 
-	<div class={`front ${front}`} data-front>
+	<div class={`front ${styles.frontBase}`} class:active data-front>
 		{#if mode === 'confirm'}
-			<div class={`panel confirm ${panel}`}>
-				<span class={`${glyph} panel-glyph`} aria-hidden="true"><TriangleAlert size={18} /></span>
-				<p class={cx(body, confirmText)}>
-					Unlink <strong>{name}</strong>?<span class={captionText}
+			<div class={`panel confirm ${styles.panel}`}>
+				<span class={`${styles.glyph} panel-glyph`} aria-hidden="true"
+					><TriangleAlert size={18} /></span
+				>
+				<p class={cx(styles.content, css({ fontSize: 'compact' }))}>
+					Unlink <strong>{name}</strong>?<span class={styles.caption}
 						>Its notes move to Anonymous workspace. Cloud data stays.</span
 					>
 				</p>
-				<div class={`panel-actions ${panelActions}`}>
+				<div class={`panel-actions ${hstack({ gap: 'xs', flexShrink: 0 })}`}>
 					<button
 						type="button"
-						class={panelBtn({ tone: 'neutral' })}
+						class={panelBtn.neutral}
 						{@attach takeFocus}
 						disabled={working !== null}
 						aria-label="Keep {name} linked"
@@ -318,7 +302,7 @@
 					>
 					<button
 						type="button"
-						class={panelBtn({ tone: 'danger' })}
+						class={panelBtn.danger}
 						disabled={locked}
 						aria-label="Unlink {name} and keep notes"
 						onclick={() => void confirmUnlink()}
@@ -328,14 +312,14 @@
 			</div>
 		{:else if mode === 'rename'}
 			<form
-				class={panel}
+				class={styles.panel}
 				onsubmit={(event) => {
 					event.preventDefault();
 					void saveRename();
 				}}
 			>
-				<span class={glyph} aria-hidden="true">{@render icon()}</span>
-				<span class={body}>
+				<span class={styles.glyph} aria-hidden="true">{@render icon()}</span>
+				<span class={styles.content}>
 					<input
 						{@attach renameField}
 						bind:value={draft}
@@ -345,23 +329,24 @@
 						disabled={working !== null}
 						aria-label="Workspace name"
 					/>
-					<span class={captionText}>
-						{#if working === 'rename'}Saving…{:else}<span class={desktopCaption}
+					<span class={styles.caption}>
+						{#if working === 'rename'}Saving…{:else}<span
+								class={css({ display: { base: 'none', sm: 'inline' } })}
 								>Enter saves · Esc cancels</span
-							><span class={mobileCaption}>{caption}</span>{/if}
+							><span class={css({ display: { base: 'inline', sm: 'none' } })}>{caption}</span>{/if}
 					</span>
 				</span>
-				<div class={`panel-actions ${panelActions}`}>
+				<div class={`panel-actions ${hstack({ gap: 'xs', flexShrink: 0 })}`}>
 					<button
 						type="button"
-						class={iconButton}
+						class={styles.iconButton}
 						disabled={working !== null}
 						aria-label="Cancel renaming {name}"
 						onclick={cancel}><X size={16} aria-hidden="true" /></button
 					>
 					<button
 						type="submit"
-						class={cx(iconButton, successIconButton)}
+						class={cx(styles.iconButton, css({ color: 'scrapscache.success' }))}
 						disabled={locked || !draft.trim()}
 						aria-label="Save name"><Check size={16} aria-hidden="true" /></button
 					>
@@ -370,7 +355,7 @@
 		{:else}
 			<button
 				type="button"
-				class={select}
+				class={styles.select}
 				disabled={locked}
 				aria-label={active ? `${name} is active` : `Switch to ${name}`}
 				onpointerdown={down}
@@ -383,10 +368,10 @@
 					else onselect();
 				}}
 			>
-				<span class={glyph} aria-hidden="true">{@render icon()}</span>
-				<span class={body}>
-					<span class={nameText}>{name}</span>
-					<span class={captionText}>{caption}</span>
+				<span class={styles.glyph} aria-hidden="true">{@render icon()}</span>
+				<span class={styles.content}>
+					<span class={cx(css({ display: 'block' }), truncate)}>{name}</span>
+					<span class={styles.caption}>{caption}</span>
 				</span>
 			</button>
 		{/if}

@@ -299,7 +299,7 @@
 				}}
 			>
 				{#if compactActions}
-					<div class={hazeGroup({ layout: 'compact' })}>
+					<div class={hazeGroup.compact}>
 						<button
 							type="button"
 							class={iconButton({ size: 'compact', variant: copied ? 'hazeCopied' : 'haze' })}
@@ -362,8 +362,8 @@
 						</button>
 					</div>
 				{:else}
-					<div class={hazeGroup({ layout: 'column' })}>
-						<div class={hazeGroup({ layout: 'row' })}>
+					<div class={hazeGroup.column}>
+						<div class={hazeGroup.row}>
 							<!-- Copy -->
 							<button
 								type="button"
@@ -412,7 +412,7 @@
 							</button>
 						</div>
 
-						<div class={hazeGroup({ layout: 'row' })}>
+						<div class={hazeGroup.row}>
 							<!-- Delete -->
 							<button
 								type="button"

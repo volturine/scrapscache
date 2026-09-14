@@ -2,7 +2,7 @@
 	import type { Snippet } from 'svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
 	import { Format } from '@ark-ui/svelte/format';
-	import { notesShell, sectionHeader } from '$panda/styles';
+	import { notesShell, sectionHeaderStyles as classes } from '$panda/styles';
 
 	let {
 		label,
@@ -17,7 +17,6 @@
 	} = $props();
 
 	const shell = $derived(notesShell(uiStore.layout));
-	const classes = sectionHeader();
 </script>
 
 <div class={[shell, className]}>

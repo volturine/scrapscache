@@ -1,10 +1,5 @@
 <script lang="ts">
-	import {
-		canvasPreview,
-		filePreview,
-		noteEditorFooterIconMd as iconMd,
-		photoPreview
-	} from '$panda/styles';
+	import { canvasPreview, filePreview, iconSizeMd as iconMd, photoPreview } from '$panda/styles';
 	import { css, cx } from 'styled-system/css';
 	import { button, choiceCard, dialog, iconButton } from 'styled-system/recipes';
 	import { hstack, grid, flex } from 'styled-system/patterns';
@@ -335,13 +330,13 @@
 		};
 	}
 
-	const c = canvasPreview({ mode: 'editor' });
-	const f = filePreview({ mode: 'editor' });
-	const p = photoPreview({ mode: 'editor' });
+	const c = canvasPreview.editor;
+	const f = filePreview.editor;
+	const p = photoPreview.editor;
 	const d = dialog({ size: 'sm' });
 
 	const qualityCompressedCard = choiceCard({ kind: 'compressed' });
-	const qualityHdCard = choiceCard({ kind: 'hd' });
+	const qualityHdCard = choiceCard();
 </script>
 
 {#if attachError}

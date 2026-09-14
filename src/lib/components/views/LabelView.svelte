@@ -8,7 +8,7 @@
 	import { css } from 'styled-system/css';
 	import { hstack } from 'styled-system/patterns';
 	import { text } from 'styled-system/recipes';
-	import { notesShell, sectionHeader, viewPage } from '$panda/styles';
+	import { notesShell, sectionHeaderStyles as sec, viewPage } from '$panda/styles';
 
 	const { openNote: openEditor } = useEditorActions();
 
@@ -20,7 +20,6 @@
 	const pinned = $derived(notes.filter((n) => n.pinned));
 	const others = $derived(notes.filter((n) => !n.pinned));
 	const shell = $derived(notesShell(uiStore.layout));
-	const sec = sectionHeader();
 </script>
 
 <div class={viewPage}>

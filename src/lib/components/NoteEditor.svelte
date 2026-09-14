@@ -1,18 +1,5 @@
 <script lang="ts">
-	import {
-		noteEditorOverlay as overlay,
-		noteEditorSheetWrap as sheetWrap,
-		noteEditorSheetBox as sheetBox,
-		noteEditorDialogSurface as dialogSurface,
-		noteEditorHeader as header,
-		noteEditorScroller as scroller,
-		noteEditorTitleStyles as titleStyles,
-		noteEditorFileDropHint as fileDropHint,
-		noteEditorSubDialogBackdrop as subDialogBackdrop,
-		noteEditorPopupContent as popupContent,
-		noteEditorReminderButton as reminderButton,
-		noteEditorReminderTone as reminderTone
-	} from '$panda/styles';
+	import { noteEditorReminderTone, noteEditorStyles as styles } from '$panda/styles';
 	import { cx } from 'styled-system/css';
 	import { dialog, iconButton, input, noteSurface } from 'styled-system/recipes';
 	import { flex, hstack, spacer } from 'styled-system/patterns';
@@ -489,14 +476,14 @@
 	}
 	const editorDialogClass = $derived(
 		cx(
-			dialogSurface,
+			styles.dialogSurface,
 			note ? noteSurface({ color: note.color }) : undefined,
 			paletteOpen || labelOpen ? 'editor-caret-hidden' : undefined
 		)
 	);
-	const titleField = cx(input({ variant: 'unstyled' }), titleStyles);
+	const titleField = cx(input({ variant: 'unstyled' }), styles.title);
 	const subDialog = dialog({ size: 'sm' });
-	const dialogBackdrop = cx(subDialog.backdrop, subDialogBackdrop);
+	const dialogBackdrop = cx(subDialog.backdrop, styles.subDialogBackdrop);
 	const dialogPositioner = flex({
 		position: 'fixed',
 		inset: 0,
@@ -517,7 +504,7 @@
 
 {#if isOpen && note}
 	<div
-		class={overlay}
+		class={styles.overlay}
 		data-editor-overlay
 		role="presentation"
 		onpointerdown={handleBackdropPointerDown}
@@ -527,10 +514,10 @@
 		ondragleave={handleFileDragLeave}
 		ondropcapture={handleFileDrop}
 	>
-		<div class={sheetWrap} role="presentation">
+		<div class={styles.sheetWrap} role="presentation">
 			<!-- Clicking blank editor chrome is a pointer convenience; keyboard users focus the fields directly. -->
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
-			<div class={sheetBox}>
+			<div class={styles.sheetBox}>
 				<div
 					bind:this={editorDialog}
 					class={editorDialogClass}
@@ -544,7 +531,7 @@
 					onclick={focusBodyFromPage}
 				>
 					<!-- Header -->
-					<header class={header}>
+					<header class={styles.header}>
 						<button
 							type="button"
 							class={iconButton({ variant: 'ghost', size: 'standard' })}
@@ -561,7 +548,7 @@
 							{#if note.reminder != null}
 								<button
 									type="button"
-									class={reminderButton}
+									class={styles.reminderButton}
 									title={reminderOverdue ? `Overdue · ${reminderLabel}` : reminderLabel}
 									onclick={openReminder}
 									aria-label={reminderOverdue
@@ -577,7 +564,7 @@
 									iconButton({ variant: 'ghost', size: 'sm' }),
 									note.reminder == null
 										? ''
-										: reminderTone({ tone: reminderOverdue ? 'overdue' : 'active' })
+										: noteEditorReminderTone[reminderOverdue ? 'overdue' : 'active']
 								)}
 								title="Reminder"
 								onclick={openReminder}
@@ -597,7 +584,10 @@
 						</div>
 					</header>
 
-					<div bind:this={editorScroller} class={`note-scrollbar-hidden scrollable ${scroller}`}>
+					<div
+						bind:this={editorScroller}
+						class={`note-scrollbar-hidden scrollable ${styles.scroller}`}
+					>
 						<textarea
 							use:autoResizeTitle={title}
 							placeholder="Title"
@@ -627,7 +617,7 @@
 					</div>
 
 					{#if fileDropActive}
-						<div class={fileDropHint} data-file-drop-hint aria-hidden="true">
+						<div class={styles.fileDropHint} data-file-drop-hint aria-hidden="true">
 							<div
 								class={hstack({
 									gap: 'sm',
@@ -698,7 +688,7 @@
 				data-editor-popup
 				onpointerdown={keepEditorFocused}
 			>
-				<Dialog.Content class={popupContent}>
+				<Dialog.Content class={styles.popupContent}>
 					<ColorPalette
 						color={note.color}
 						onSelect={(c) => {
@@ -721,7 +711,7 @@
 		>
 			<Dialog.Backdrop class={dialogBackdrop} />
 			<Dialog.Positioner class={dialogPositioner} data-editor-popup>
-				<Dialog.Content class={popupContent}>
+				<Dialog.Content class={styles.popupContent}>
 					<ReminderPicker
 						reminder={note.reminder}
 						onApply={(r) => {
@@ -752,7 +742,7 @@
 				data-editor-popup
 				onpointerdown={keepEditorFocused}
 			>
-				<Dialog.Content class={popupContent}>
+				<Dialog.Content class={styles.popupContent}>
 					<LabelMenu
 						noteId={note.id}
 						onClose={() => {

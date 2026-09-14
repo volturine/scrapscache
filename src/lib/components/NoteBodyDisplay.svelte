@@ -55,9 +55,9 @@
 	});
 
 	const body = noteBody();
-	const c = canvasPreview({ mode: 'display' });
-	const f = filePreview({ mode: 'display' });
-	const p = photoPreview({ mode: 'display' });
+	const c = canvasPreview.display;
+	const f = filePreview.display;
+	const p = photoPreview.display;
 </script>
 
 <div bind:this={contentElement} class={body.container}>

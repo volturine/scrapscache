@@ -1,20 +1,5 @@
 <script lang="ts">
-	import {
-		syncWorkspaceRow as workspaceRow,
-		syncManageRow as manageRow,
-		syncDividerLine as dividerLine,
-		syncPairingInput as pairingInput,
-		syncDigits as digits,
-		syncQrCode as qrCode,
-		syncPairingCode as pairingCode,
-		syncCopySuccess as copySuccess,
-		syncTimerText as timerText,
-		syncFullButton,
-		syncGrowButton,
-		syncSpinner,
-		syncBodySpacing,
-		progressMeter
-	} from '$panda/styles';
+	import { progressMeter, syncStyles as styles } from '$panda/styles';
 	import { css, cx } from 'styled-system/css';
 	import { button, dialog, iconButton, input, text } from 'styled-system/recipes';
 	import { hstack, vstack } from 'styled-system/patterns';
@@ -455,8 +440,8 @@
 		onClose();
 	}
 
-	const d = dialog({ size: 'md', presentation: 'centeredOverlay' });
-	const meter = progressMeter({ size: 'compact' });
+	const d = dialog({ presentation: 'centeredOverlay' });
+	const meter = progressMeter.compact;
 	const syncMuted = text({ style: 'bodyMuted' });
 	const syncMutedBody = cx(text({ style: 'bodyMuted' }), css({ lineHeight: 'relaxed' }));
 	const syncMutedLead = cx(text({ style: 'captionStrong' }), css({ letterSpacing: 'wide' }));
@@ -509,7 +494,10 @@
 						>
 							<button
 								type="button"
-								class={cx(workspaceRow, syncStore.activePid === LOCAL_PROFILE_ID && 'active')}
+								class={cx(
+									styles.workspaceRow,
+									syncStore.activePid === LOCAL_PROFILE_ID && 'active'
+								)}
 								class:active={syncStore.activePid === LOCAL_PROFILE_ID}
 								disabled={busy}
 								aria-label={syncStore.activePid === LOCAL_PROFILE_ID
@@ -561,7 +549,7 @@
 											button({ variant: 'quiet', size: 'sm' }),
 											css({ color: 'scrapscache.accent' })
 										)
-									: cx(button({ variant: 'primary', size: 'md' }), syncFullButton)}
+									: cx(button({ variant: 'primary', size: 'md' }), styles.fullButton)}
 								onclick={() => {
 									mode = 'register';
 									error = '';
@@ -589,10 +577,10 @@
 											} else void syncNow();
 										}}
 										disabled={busy}
-										class={cx(button({ variant: 'primary', size: 'md' }), syncGrowButton)}
+										class={cx(button({ variant: 'primary', size: 'md' }), styles.growButton)}
 										><RefreshCw
 											size={16}
-											class={syncing ? syncSpinner : ''}
+											class={syncing ? styles.spinner : ''}
 											aria-hidden="true"
 										/>{operation === 'sync'
 											? 'Syncing…'
@@ -605,7 +593,7 @@
 											type="button"
 											onclick={() => void startExistingConnection()}
 											disabled={busy}
-											class={cx(button({ variant: 'secondary', size: 'md' }), syncGrowButton)}
+											class={cx(button({ variant: 'secondary', size: 'md' }), styles.growButton)}
 											>Connect device</button
 										>
 									{/if}
@@ -649,14 +637,14 @@
 							>
 							<div class={vstack({ gap: '2xs', alignItems: 'stretch', mt: 'sm' })}>
 								<button
-									class={manageRow}
+									class={styles.manageRow}
 									disabled={busy}
 									onclick={() => void exportProfile(syncStore.activePid)}
 									><Download size={16} aria-hidden="true" /><span>Export notes</span></button
 								>
 								{#if syncStore.account}
 									<button
-										class={manageRow}
+										class={styles.manageRow}
 										disabled={busy}
 										onclick={() => {
 											confirmation = 'force';
@@ -665,7 +653,7 @@
 										}}
 										><RefreshCw
 											size={16}
-											class={operation === 'force-sync' ? syncSpinner : ''}
+											class={operation === 'force-sync' ? styles.spinner : ''}
 											aria-hidden="true"
 										/><span
 											>{operation === 'force-sync' ? 'Resyncing…' : 'Force resync'}<small
@@ -674,7 +662,7 @@
 										></button
 									>
 									<button
-										class={cx(manageRow, syncDanger)}
+										class={cx(styles.manageRow, syncDanger)}
 										disabled={busy}
 										onclick={() => {
 											confirmation = 'delete';
@@ -718,7 +706,7 @@
 						<div class={hstack({ gap: 'sm' })}>
 							<button
 								type="button"
-								class={cx(button({ variant: 'secondary', size: 'sm' }), syncGrowButton)}
+								class={cx(button({ variant: 'secondary', size: 'sm' }), styles.growButton)}
 								disabled={busy}
 								onclick={() => {
 									mode = 'menu';
@@ -733,7 +721,7 @@
 										variant: confirmation === 'delete' ? 'destructive' : 'primary',
 										size: 'sm'
 									}),
-									syncGrowButton
+									styles.growButton
 								)}
 								disabled={busy ||
 									(confirmation === 'force' && Boolean(turnstileSitekey) && !forceToken)}
@@ -776,12 +764,12 @@
 								type="button"
 								onclick={() => void create()}
 								disabled={busy || (Boolean(turnstileSitekey) && !registerToken)}
-								class={cx(button({ variant: 'primary', size: 'md' }), syncFullButton)}
+								class={cx(button({ variant: 'primary', size: 'md' }), styles.fullButton)}
 								>{operation === 'create' ? 'Creating…' : 'Create workspace'}</button
 							>
 						</div>
 						<div class={hstack({ gap: 'md', alignItems: 'center' })} aria-hidden="true">
-							<span class={dividerLine}></span>
+							<span class={styles.dividerLine}></span>
 							<span
 								class={css({
 									fontSize: 'caption',
@@ -793,12 +781,12 @@
 							>
 								or
 							</span>
-							<span class={dividerLine}></span>
+							<span class={styles.dividerLine}></span>
 						</div>
 						<button
 							type="button"
 							disabled={busy}
-							class={cx(button({ variant: 'secondary', size: 'md' }), syncFullButton)}
+							class={cx(button({ variant: 'secondary', size: 'md' }), styles.fullButton)}
 							onclick={() => {
 								mode = 'link';
 								error = '';
@@ -826,13 +814,13 @@
 							placeholder="XXXX-XXXX-XXXX-XXXX"
 							maxlength="19"
 							spellcheck="false"
-							class={cx(input({ variant: 'outline', size: 'md' }), pairingInput)}
+							class={cx(input({ variant: 'outline', size: 'md' }), styles.pairingInput)}
 							onkeydown={(event) => event.key === 'Enter' && void beginLink()}
 						/>{#if error}<p class={syncDanger}>{error}</p>{/if}<button
 							type="button"
 							onclick={() => void beginLink()}
 							disabled={busy}
-							class={cx(button({ variant: 'primary', size: 'md' }), syncFullButton)}
+							class={cx(button({ variant: 'primary', size: 'md' }), styles.fullButton)}
 							>{operation === 'connect' ? 'Starting…' : 'Start connection'}</button
 						><button
 							type="button"
@@ -848,16 +836,16 @@
 						{#if waiting?.role === 'existing'}
 							<div>
 								<p class={syncMutedLead}>On the new device</p>
-								<p class={cx(syncText, syncBodySpacing)}>
+								<p class={cx(syncText, styles.bodySpacing)}>
 									Scan the QR code, open the link, or type the one-time code
 								</p>
 							</div>
 							{#if qrDataUrl}
 								<div class={hstack({ justify: 'center' })}>
-									<img src={qrDataUrl} alt="Pair this device" class={qrCode} />
+									<img src={qrDataUrl} alt="Pair this device" class={styles.qrCode} />
 								</div>
 							{/if}
-							<div class={pairingCode} aria-label="One-time pairing code">
+							<div class={styles.pairingCode} aria-label="One-time pairing code">
 								<div class={hstack({ justify: 'center', gap: '2xs' })}>
 									{#each pairingGroups(waiting.syncCode) as group, index (index)}
 										{#if index > 0}
@@ -866,7 +854,7 @@
 												aria-hidden="true">·</span
 											>
 										{/if}
-										<span class={digits}>{group}</span>
+										<span class={styles.digits}>{group}</span>
 									{/each}
 								</div>
 							</div>
@@ -876,8 +864,8 @@
 									aria-label="Copy pairing link"
 									class={cx(
 										button({ variant: 'secondary', size: 'md' }),
-										syncFullButton,
-										copyFlash ? copySuccess : ''
+										styles.fullButton,
+										copyFlash ? styles.copySuccess : ''
 									)}
 								>
 									{copyFlash ? 'Copied' : 'Copy pairing link'}
@@ -886,7 +874,7 @@
 						{:else}
 							<div>
 								<p class={syncMutedLead}>On the other device</p>
-								<p class={cx(syncText, syncBodySpacing)}>Open Sync and choose Connect device</p>
+								<p class={cx(syncText, styles.bodySpacing)}>Open Sync and choose Connect device</p>
 							</div>
 						{/if}
 						<div class={vstack({ gap: 'xs', alignItems: 'stretch' })}>
@@ -898,7 +886,7 @@
 								})}
 							>
 								<span>Expires in</span>
-								<span class={timerText}>{secondsLeft()}s</span>
+								<span class={styles.timerText}>{secondsLeft()}s</span>
 							</div>
 							<div class={meter.track}>
 								<div class={meter.bar} style={`width: ${expiryRatio() * 100}%`}></div>

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { reminderIcon as icon, reminderRoot, reminderText as text } from '$panda/styles';
+	import { iconSizeXs as icon, reminderRoot, truncate as text } from '$panda/styles';
 	import { appClock } from '$lib/appClock.svelte';
 	import { formatReminder, isReminderOverdue } from '$lib/utils';
 	import { AlarmClock } from '@lucide/svelte';

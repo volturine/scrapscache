@@ -23,11 +23,12 @@
 	import { flip, type FlipParams } from 'svelte/animate';
 	import { onDestroy } from 'svelte';
 	import type { Note } from '$lib/types';
-	import { cx } from 'styled-system/css';
-	import { backlogFilterButton, kanbanViewStyles as k, popover, viewPage } from '$panda/styles';
+	import { css, cx } from 'styled-system/css';
+	import { kanbanViewStyles, popover, viewPage } from '$panda/styles';
 	import { button, iconButton, input as inputRecipe } from 'styled-system/recipes';
 
 	const { openNote } = useEditorActions();
+	const k = kanbanViewStyles;
 	const board = $derived(kanbanStore.activeBoard);
 	const visibleNotes = $derived(
 		uiStore.search
@@ -296,7 +297,10 @@
 								type="button"
 								class={cx(
 									button({ variant: 'ghost', size: 'xs' }),
-									backlogFilterButton({ active: backlogFilterActive })
+									css({ rounded: 'card' }),
+									backlogFilterActive
+										? css({ bg: 'scrapscache.accentSubtle', color: 'scrapscache.accentHover' })
+										: undefined
 								)}
 								onclick={() => (backlogFilterOpen = !backlogFilterOpen)}
 								aria-expanded={backlogFilterOpen}

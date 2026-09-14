@@ -20,44 +20,37 @@ const palette = tokenGroup({
 	accentForegroundDark: '#172554'
 });
 
+const type = (fontSize: string, fontWeight: string, lineHeight: string) => ({
+	fontSize,
+	fontWeight,
+	lineHeight
+});
+const mutedType = (fontSize: string, lineHeight: string) => ({
+	...type(fontSize, 'body', lineHeight),
+	color: 'scrapscache.textMuted'
+});
+
 const textStyles = tokenGroup({
-	body: { fontSize: 'body', fontWeight: 'body', lineHeight: 'body' },
-	bodyStrong: { fontSize: 'body', fontWeight: 'heading', lineHeight: 'body' },
-	subtitle: { fontSize: 'subtitle', fontWeight: 'interactive', lineHeight: 'body' },
-	subtitleStrong: { fontSize: 'subtitle', fontWeight: 'heading', lineHeight: 'tight' },
-	bodyMuted: {
-		fontSize: 'body',
-		fontWeight: 'body',
-		lineHeight: 'body',
-		color: 'scrapscache.textMuted'
-	},
-	label: { fontSize: 'label', fontWeight: 'interactive', lineHeight: 'compact' },
-	caption: {
-		fontSize: 'caption',
-		fontWeight: 'body',
-		lineHeight: 'caption',
-		color: 'scrapscache.textMuted'
-	},
-	captionStrong: {
-		fontSize: 'caption',
-		fontWeight: 'interactive',
-		lineHeight: 'caption',
-		color: 'scrapscache.textMuted'
-	},
-	title: { fontSize: 'title', fontWeight: 'heading', lineHeight: 'tight' },
-	heading: { fontSize: 'heading', fontWeight: 'heading', lineHeight: 'tight' },
-	display: { fontSize: 'display', fontWeight: 'heading', lineHeight: 'tight' },
-	editorTitle: { fontSize: 'display', fontWeight: 'interactive', lineHeight: 'tight' },
+	body: type('body', 'body', 'body'),
+	bodyStrong: type('body', 'heading', 'body'),
+	subtitle: type('subtitle', 'interactive', 'body'),
+	subtitleStrong: type('subtitle', 'heading', 'tight'),
+	bodyMuted: mutedType('body', 'body'),
+	label: type('label', 'interactive', 'compact'),
+	caption: mutedType('caption', 'caption'),
+	captionStrong: { ...mutedType('caption', 'caption'), fontWeight: 'interactive' },
+	title: type('title', 'heading', 'tight'),
+	heading: type('heading', 'heading', 'tight'),
+	display: type('display', 'heading', 'tight'),
+	editorTitle: type('display', 'interactive', 'tight'),
 	overline: {
-		fontSize: 'label',
-		fontWeight: 'heading',
-		lineHeight: 'compact',
+		...type('label', 'heading', 'compact'),
 		letterSpacing: 'wide',
 		textTransform: 'uppercase',
 		color: 'scrapscache.textMuted'
 	},
-	button: { fontSize: 'body', fontWeight: 'interactive', lineHeight: 'tight' },
-	micro: { fontSize: 'micro', fontWeight: 'heading', lineHeight: 'compact' }
+	button: type('body', 'interactive', 'tight'),
+	micro: type('micro', 'heading', 'compact')
 });
 
 const scrapscacheColors = tokenGroup({

@@ -1,14 +1,5 @@
 <script lang="ts">
-	import {
-		datePickerPanel as panel,
-		datePickerViewControl as viewControl,
-		datePickerViewButton as viewButton,
-		datePickerTable as table,
-		datePickerWeekHeader as weekHeader,
-		datePickerWeekRow as weekRow,
-		datePickerDayCell as dayCell,
-		datePickerGridBtn as gridBtn
-	} from '$panda/styles';
+	import { datePickerGridBtn as gridBtn, datePickerStyles as styles } from '$panda/styles';
 	import { DatePicker } from '@ark-ui/svelte/date-picker';
 	import { ChevronLeft, ChevronRight } from '@lucide/svelte';
 	import type { DateValue } from '@internationalized/date';
@@ -36,24 +27,24 @@
 	const navBtn = iconButton({ variant: 'ghost', size: 'xs' });
 </script>
 
-<div class={panel}>
+<div class={styles.panel}>
 	<DatePicker.View view="day">
 		<DatePicker.Context>
 			{#snippet render(datePicker)}
-				<DatePicker.ViewControl class={viewControl}>
+				<DatePicker.ViewControl class={styles.viewControl}>
 					<DatePicker.PrevTrigger class={navBtn} aria-label="Previous month">
 						<ChevronLeft size={16} />
 					</DatePicker.PrevTrigger>
-					<DatePicker.ViewTrigger class={viewButton}>
+					<DatePicker.ViewTrigger class={styles.viewButton}>
 						<DatePicker.RangeText />
 					</DatePicker.ViewTrigger>
 					<DatePicker.NextTrigger class={navBtn} aria-label="Next month">
 						<ChevronRight size={16} />
 					</DatePicker.NextTrigger>
 				</DatePicker.ViewControl>
-				<DatePicker.Table class={['calendar-table', table]}>
+				<DatePicker.Table class={['calendar-table', styles.table]}>
 					<DatePicker.TableHead>
-						<DatePicker.TableRow class={weekHeader}>
+						<DatePicker.TableRow class={styles.weekHeader}>
 							{#each datePicker().weekDays as weekDay (weekDay.value.toString())}
 								<DatePicker.TableHeader>{weekDay.narrow}</DatePicker.TableHeader>
 							{/each}
@@ -61,9 +52,9 @@
 					</DatePicker.TableHead>
 					<DatePicker.TableBody>
 						{#each datePicker().weeks as week (week[0].toString())}
-							<DatePicker.TableRow class={weekRow}>
+							<DatePicker.TableRow class={styles.weekRow}>
 								{#each week as day (day.toString())}
-									<DatePicker.TableCell value={day} class={dayCell}>
+									<DatePicker.TableCell value={day} class={styles.dayCell}>
 										{#if onDayClick || onDayPointerDown}
 											<DatePicker.TableCellTrigger>
 												{#snippet asChild(triggerProps)}
@@ -74,7 +65,7 @@
 													<button
 														type="button"
 														{...safeProps}
-														class={gridBtn({ kind: 'day' })}
+														class={gridBtn.day}
 														onpointerdown={(e) => onDayPointerDown?.(day, e)}
 														onpointerup={(e) => onDayPointerUp?.(day, e)}
 														onpointerleave={(e) => onDayPointerLeave?.(day, e)}
@@ -94,7 +85,7 @@
 												{/snippet}
 											</DatePicker.TableCellTrigger>
 										{:else}
-											<DatePicker.TableCellTrigger class={gridBtn({ kind: 'day' })}>
+											<DatePicker.TableCellTrigger class={gridBtn.day}>
 												{day.day}
 												{@render dayExtra?.(day)}
 											</DatePicker.TableCellTrigger>
@@ -112,24 +103,24 @@
 	<DatePicker.View view="month">
 		<DatePicker.Context>
 			{#snippet render(datePicker)}
-				<DatePicker.ViewControl class={viewControl}>
+				<DatePicker.ViewControl class={styles.viewControl}>
 					<DatePicker.PrevTrigger class={navBtn} aria-label="Previous month">
 						<ChevronLeft size={16} />
 					</DatePicker.PrevTrigger>
-					<DatePicker.ViewTrigger class={viewButton}>
+					<DatePicker.ViewTrigger class={styles.viewButton}>
 						<DatePicker.RangeText />
 					</DatePicker.ViewTrigger>
 					<DatePicker.NextTrigger class={navBtn} aria-label="Next year">
 						<ChevronRight size={16} />
 					</DatePicker.NextTrigger>
 				</DatePicker.ViewControl>
-				<DatePicker.Table class={['calendar-table', 'calendar-table-fill', table]}>
+				<DatePicker.Table class={['calendar-table', 'calendar-table-fill', styles.table]}>
 					<DatePicker.TableBody>
 						{#each datePicker().getMonthsGrid({ columns: 4, format: 'short' }) as months, row (row)}
 							<DatePicker.TableRow>
 								{#each months as month (month.value)}
 									<DatePicker.TableCell value={month.value}>
-										<DatePicker.TableCellTrigger class={gridBtn({ kind: 'month' })}>
+										<DatePicker.TableCellTrigger class={gridBtn.month}>
 											{month.label}
 										</DatePicker.TableCellTrigger>
 									</DatePicker.TableCell>
@@ -145,24 +136,24 @@
 	<DatePicker.View view="year">
 		<DatePicker.Context>
 			{#snippet render(datePicker)}
-				<DatePicker.ViewControl class={viewControl}>
+				<DatePicker.ViewControl class={styles.viewControl}>
 					<DatePicker.PrevTrigger class={navBtn} aria-label="Previous decade">
 						<ChevronLeft size={16} />
 					</DatePicker.PrevTrigger>
-					<DatePicker.ViewTrigger class={viewButton}>
+					<DatePicker.ViewTrigger class={styles.viewButton}>
 						<DatePicker.RangeText />
 					</DatePicker.ViewTrigger>
 					<DatePicker.NextTrigger class={navBtn} aria-label="Next decade">
 						<ChevronRight size={16} />
 					</DatePicker.NextTrigger>
 				</DatePicker.ViewControl>
-				<DatePicker.Table class={['calendar-table', 'calendar-table-fill', table]}>
+				<DatePicker.Table class={['calendar-table', 'calendar-table-fill', styles.table]}>
 					<DatePicker.TableBody>
 						{#each datePicker().getYearsGrid({ columns: 4 }) as years, row (row)}
 							<DatePicker.TableRow>
 								{#each years as year (year.value)}
 									<DatePicker.TableCell value={year.value}>
-										<DatePicker.TableCellTrigger class={gridBtn({ kind: 'month' })}>
+										<DatePicker.TableCellTrigger class={gridBtn.month}>
 											{year.label}
 										</DatePicker.TableCellTrigger>
 									</DatePicker.TableCell>

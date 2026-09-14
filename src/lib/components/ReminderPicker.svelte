@@ -1,13 +1,5 @@
 <script lang="ts">
-	import {
-		reminderBadgeChip as badgeChip,
-		reminderStatusTone as statusTone,
-		reminderDateBtn as dateBtn,
-		reminderEllipsis as ellipsis,
-		reminderWheelDeck as wheelDeck,
-		reminderTimeWheel as timeWheel,
-		reminderColon as colon
-	} from '$panda/styles';
+	import { reminderPickerStyles as styles } from '$panda/styles';
 	import { createSubscriber, MediaQuery } from 'svelte/reactivity';
 	import { CalendarDate } from '@internationalized/date';
 	import { DatePicker, type DatePickerValueChangeDetails } from '@ark-ui/svelte/date-picker';
@@ -178,11 +170,15 @@
 	const d = dialog({ size: 'sm' });
 
 	const statusBoxClass = $derived(
-		uiStatus === 'active'
-			? statusTone({ tone: 'success' })
-			: uiStatus === 'unsaved'
-				? statusTone({ tone: 'warning' })
-				: statusTone({ tone: 'accent' })
+		css({
+			borderWidth: 'hairline',
+			borderColor: 'currentColor',
+			...(uiStatus === 'active'
+				? { bg: 'scrapscache.successSubtle', color: 'scrapscache.success' }
+				: uiStatus === 'unsaved'
+					? { bg: 'scrapscache.warningSubtle', color: 'scrapscache.warning' }
+					: { bg: 'scrapscache.accentSubtle', color: 'scrapscache.accent' })
+		})
 	);
 	const badgeLabel = $derived(
 		uiStatus === 'active' ? 'Active' : uiStatus === 'unsaved' ? 'Edit' : 'New'
@@ -213,7 +209,21 @@
 			<span
 				class={cx(
 					badge({ variant: 'subtle', size: 'sm' }),
-					badgeChip({ status: uiStatus === 'unsaved' ? 'edit' : uiStatus })
+					css({
+						minW: '4.25rem',
+						flexShrink: 0,
+						rounded: 'pill',
+						px: 'sm',
+						py: '3xs',
+						fontWeight: 'strong',
+						textTransform: 'uppercase',
+						letterSpacing: 'status'
+					}),
+					uiStatus === 'active'
+						? css({ bg: 'scrapscache.success', color: 'scrapscache.successForeground' })
+						: uiStatus === 'unsaved'
+							? css({ bg: 'scrapscache.warning', color: 'scrapscache.bg' })
+							: css({ bg: 'scrapscache.accent', color: 'scrapscache.accentForeground' })
 				)}>{badgeLabel}</span
 			>
 		</div>
@@ -226,7 +236,7 @@
 			})}
 		>
 			<AlarmClock class={css({ w: '1rem', h: '1rem', flexShrink: 0 })} aria-hidden="true" />
-			<span class={ellipsis}>{remainingLabel}</span>
+			<span class={styles.ellipsis}>{remainingLabel}</span>
 		</div>
 		<div class={css({ mt: '2xs', textStyle: 'caption' })}>
 			Closed-app alerts need Sync on this device.
@@ -267,12 +277,25 @@
 					</button>
 					<button
 						type="button"
-						class={dateBtn({ active: monthYearOpen })}
+						class={cx(
+							button({ variant: 'ghost', size: 'sm' }),
+							css({
+								mx: '2xs',
+								minW: 0,
+								flex: '1',
+								rounded: 'card',
+								px: 'sm',
+								py: 'xs',
+								textStyle: 'button',
+								color: 'scrapscache.text'
+							}),
+							monthYearOpen ? css({ bg: 'scrapscache.bg' }) : undefined
+						)}
 						onclick={() => (monthYearOpen = !monthYearOpen)}
 						aria-label="Choose date"
 						aria-expanded={monthYearOpen}
 					>
-						<span class={ellipsis}>{dateLabel}</span>
+						<span class={styles.ellipsis}>{dateLabel}</span>
 					</button>
 					<button type="button" class={calNavBtn} onclick={() => shiftDay(1)} aria-label="Next day">
 						<ChevronRight size={20} aria-hidden="true" />
@@ -280,7 +303,7 @@
 				</div>
 
 				{#if monthYearOpen}
-					<div class={cx(hstack({ justify: 'center', gap: 'sm' }), wheelDeck)}>
+					<div class={cx(hstack({ justify: 'center', gap: 'sm' }), styles.wheelDeck)}>
 						<WheelPicker
 							class={css({ w: '3rem' })}
 							items={dayItems}
@@ -304,17 +327,17 @@
 						/>
 					</div>
 				{:else}
-					<div class={cx(hstack({ justify: 'center', gap: '2xs' }), wheelDeck)}>
+					<div class={cx(hstack({ justify: 'center', gap: '2xs' }), styles.wheelDeck)}>
 						<WheelPicker
-							class={timeWheel}
+							class={styles.timeWheel}
 							items={HOUR_ITEMS}
 							value={hours24}
 							onChange={setHour}
 							ariaLabel="Hour"
 						/>
-						<div class={colon} aria-hidden="true">:</div>
+						<div class={styles.colon} aria-hidden="true">:</div>
 						<WheelPicker
-							class={timeWheel}
+							class={styles.timeWheel}
 							items={MINUTE_ITEMS}
 							value={minutes}
 							onChange={setMinute}
@@ -323,7 +346,7 @@
 					</div>
 				{/if}
 			{:else if monthYearOpen}
-				<div class={cx(wheelDeck, css({ h: 'full', overflow: 'hidden', py: 'sm' }))}>
+				<div class={cx(styles.wheelDeck, css({ h: 'full', overflow: 'hidden', py: 'sm' }))}>
 					<DatePicker.Root
 						inline
 						startOfWeek={1}
@@ -347,12 +370,24 @@
 						</button>
 						<button
 							type="button"
-							class={dateBtn()}
+							class={cx(
+								button({ variant: 'ghost', size: 'sm' }),
+								css({
+									mx: '2xs',
+									minW: 0,
+									flex: '1',
+									rounded: 'card',
+									px: 'sm',
+									py: 'xs',
+									textStyle: 'button',
+									color: 'scrapscache.text'
+								})
+							)}
 							onclick={() => (monthYearOpen = true)}
 							aria-label="Choose date"
 							aria-expanded="false"
 						>
-							<span class={ellipsis}>{dateLabel}</span>
+							<span class={styles.ellipsis}>{dateLabel}</span>
 						</button>
 						<button
 							type="button"
@@ -372,19 +407,19 @@
 								justify: 'center',
 								gap: '2xs'
 							}),
-							wheelDeck
+							styles.wheelDeck
 						)}
 					>
 						<WheelPicker
-							class={timeWheel}
+							class={styles.timeWheel}
 							items={HOUR_ITEMS}
 							value={hours24}
 							onChange={setHour}
 							ariaLabel="Hour"
 						/>
-						<div class={colon} aria-hidden="true">:</div>
+						<div class={styles.colon} aria-hidden="true">:</div>
 						<WheelPicker
-							class={timeWheel}
+							class={styles.timeWheel}
 							items={MINUTE_ITEMS}
 							value={minutes}
 							onChange={setMinute}

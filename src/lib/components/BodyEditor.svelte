@@ -1,8 +1,4 @@
 <script lang="ts">
-	import {
-		bodyEditorTaskShell as taskShell,
-		bodyEditorAddSubtaskBtn as addSubtaskBtn
-	} from '$panda/styles';
 	import { flushSync, tick } from 'svelte';
 	import {
 		adjustTextIndent,
@@ -1077,11 +1073,11 @@
 
 	const editor = noteBody({ mode: 'editor' });
 
-	function taskShellClass(line: Line): string {
-		if (!focusedGroupIds.has(line.id)) return '';
+	function rowClass(line: Line): string {
+		if (!focusedGroupIds.has(line.id)) return editor.row;
 		const isRoot = line.id === focusedRootId;
 		const isLast = line.id === focusedGroupLastId;
-		return taskShell({ focused: true, root: isRoot, last: isLast });
+		return noteBody({ mode: 'editor', focused: true, root: isRoot, last: isLast }).row;
 	}
 
 	function rowStyle(line: Line): string | undefined {
@@ -1129,7 +1125,7 @@
 			data-task-row={line.isCheck ? '' : undefined}
 			data-bullet-row={line.isBullet ? '' : undefined}
 			data-focus-group={line.id === focusedRootId ? '' : undefined}
-			class={`${editor.row} ${line.isCheck ? taskShellClass(line) : ''}`}
+			class={rowClass(line)}
 			style={rowStyle(line)}
 		>
 			{#if line.isCheck}
@@ -1175,7 +1171,7 @@
 					contenteditable="false"
 					data-add-subtask
 					aria-label="Add sub-task"
-					class={addSubtaskBtn({ indented: line.indent > 0 })}
+					class={noteBody({ mode: 'editor', indented: line.indent > 0 }).addSubtask}
 					onpointerdown={(event) => activateAddSubtask(event, focusedGroupRows[0]?.index ?? -1)}
 					onclick={(event) => handleAddSubtaskClick(event, focusedGroupRows[0]?.index ?? -1)}
 				>

@@ -87,7 +87,7 @@
 		if (event.key === 'Escape') close();
 	}
 
-	const fs = fullscreen();
+	const fs = fullscreen.attachment;
 
 	const headerBtn = iconButton({ variant: 'ghost', size: 'standard' });
 </script>

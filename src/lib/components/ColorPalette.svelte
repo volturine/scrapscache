@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { colorCheckmark as checkmark, colorSwatch as swatch, popover } from '$panda/styles';
+	import { colorPaletteStyles, popover } from '$panda/styles';
 	import { ToggleGroup } from '@ark-ui/svelte/toggle-group';
 	import { NOTE_COLOR_ORDER, type NoteColor } from '$lib/types';
 	import { cx } from 'styled-system/css';
@@ -26,12 +26,12 @@
 	{#each NOTE_COLOR_ORDER as c (c)}
 		<ToggleGroup.Item
 			value={c}
-			class={cx(swatch(), noteSurface({ color: c }))}
+			class={cx(colorPaletteStyles.swatch, noteSurface({ color: c }))}
 			aria-label="Set color {c}"
 			title={c}
 		>
 			{#if c === color}
-				<span class={checkmark()}>✓</span>
+				<span class={colorPaletteStyles.checkmark}>✓</span>
 			{/if}
 		</ToggleGroup.Item>
 	{/each}

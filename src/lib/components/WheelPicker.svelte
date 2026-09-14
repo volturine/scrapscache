@@ -1,10 +1,5 @@
 <script lang="ts" generics="T extends string | number">
-	import {
-		wheelBand as band,
-		wheelViewport as viewport,
-		wheelTrack as track,
-		wheelItem as wheelItemRecipe
-	} from '$panda/styles';
+	import { wheelItem, wheelPickerStyles as styles } from '$panda/styles';
 	import { onMount } from 'svelte';
 	import { css } from 'styled-system/css';
 
@@ -224,9 +219,9 @@
 </script>
 
 <div class={`${css({ position: 'relative' })} ${className}`} style="height: {ITEM_H * VISIBLE}px">
-	<div class={band} aria-hidden="true"></div>
+	<div class={styles.band} aria-hidden="true"></div>
 	<div
-		class={viewport}
+		class={styles.viewport}
 		style="height: {ITEM_H * VISIBLE}px"
 		role="listbox"
 		tabindex="0"
@@ -239,7 +234,7 @@
 		onpointerup={handlePointerUp}
 		onpointercancel={handlePointerUp}
 	>
-		<div class={track} style="transform: translate3d(0, {-offset}px, 0)">
+		<div class={styles.track} style="transform: translate3d(0, {-offset}px, 0)">
 			{#each looped as row (row.visual)}
 				{@const dist =
 					row.visual === centerIndex
@@ -252,7 +247,7 @@
 					role={row.primary ? 'option' : undefined}
 					aria-hidden={!row.primary}
 					aria-selected={row.primary ? row.item.value === value : undefined}
-					class={wheelItemRecipe({ distance: dist })}
+					class={wheelItem[dist]}
 					style="height: {ITEM_H}px"
 					onclick={() => selectItem(row.item)}
 				>

@@ -1,8 +1,9 @@
 <script lang="ts">
-	import { emptyStateAction as action, notesShell } from '$panda/styles';
+	import { emptyStateStyles, notesShell } from '$panda/styles';
 	import { resolve } from '$app/paths';
 	import type { LucideIcon } from '@lucide/svelte';
-	import { css, cx } from 'styled-system/css';
+	import { cx } from 'styled-system/css';
+	import { button } from 'styled-system/recipes';
 
 	type Props = {
 		icon: LucideIcon;
@@ -15,30 +16,22 @@
 	let { icon: Icon, description, actionLabel, onAction, href }: Props = $props();
 </script>
 
-<div
-	class={cx(
-		notesShell(),
-		css({
-			mx: 'auto',
-			mt: '4xl',
-			display: 'flex',
-			maxW: '24rem',
-			flexDirection: 'column',
-			alignItems: 'center',
-			px: 'lg',
-			textAlign: 'center',
-			color: 'scrapscache.textMuted'
-		})
-	)}
->
+<div class={cx(notesShell(), emptyStateStyles.root)}>
 	<Icon size={24} strokeWidth={1.5} aria-hidden="true" />
-	<p class={css({ mt: 'md', textStyle: 'bodyMuted' })}>{description}</p>
+	<p class={emptyStateStyles.description}>{description}</p>
 	{#if actionLabel && href}
-		<a href={resolve(href)} class={action}>
+		<a
+			href={resolve(href)}
+			class={cx(button({ variant: 'secondary', size: 'sm' }), emptyStateStyles.action)}
+		>
 			{actionLabel}
 		</a>
 	{:else if actionLabel && onAction}
-		<button type="button" onclick={onAction} class={action}>
+		<button
+			type="button"
+			onclick={onAction}
+			class={cx(button({ variant: 'secondary', size: 'sm' }), emptyStateStyles.action)}
+		>
 			{actionLabel}
 		</button>
 	{/if}

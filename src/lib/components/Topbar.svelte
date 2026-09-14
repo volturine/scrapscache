@@ -1,16 +1,11 @@
 <script lang="ts">
 	import {
-		topbarSearchInput as searchInput,
-		topbarSearchIcon as searchIcon,
-		topbarSyncIcon as syncIcon,
-		topbarSyncTone as syncTone,
-		topbarIcon as icon,
-		topbarMenuPositioner as menuPositioner,
-		topbarMenuPopover as menuPopover,
-		topbarMenuSeparator as menuSeparator,
-		topbarMenuAlert as menuAlert,
+		iconSizeSm as iconSm,
+		iconSizeMd as iconMd,
 		popover,
-		progressMeter
+		progressMeter,
+		topbarStyles as styles,
+		topbarSyncTone as syncTone
 	} from '$panda/styles';
 	import { css, cx } from 'styled-system/css';
 	import { iconButton, input, menuItem } from 'styled-system/recipes';
@@ -191,7 +186,7 @@
 		})
 	);
 	const menuItemClass = menuItem({ density: 'compact' });
-	const progressStyles = progressMeter();
+	const progressStyles = progressMeter;
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -213,7 +208,7 @@
 			onclick={() => uiStore.toggleSidebar()}
 			aria-label="Toggle sidebar"
 		>
-			<MenuIcon class={icon({ size: 'md' })} aria-hidden="true" />
+			<MenuIcon class={iconMd} aria-hidden="true" />
 		</button>
 	</Tooltip>
 
@@ -232,13 +227,13 @@
 			gap: 'sm'
 		})}
 	>
-		<Search class={cx(icon({ size: 'sm' }), searchIcon)} aria-hidden="true" />
+		<Search class={cx(iconSm, styles.searchIcon)} aria-hidden="true" />
 		<input
 			value={uiStore.searchInput}
 			oninput={(event) => uiStore.setSearchInput(event.currentTarget.value)}
 			type="text"
 			placeholder="Search"
-			class={cx(input({ variant: 'unstyled' }), searchInput)}
+			class={cx(input({ variant: 'unstyled' }), styles.searchInput)}
 		/>
 		{#if uiStore.searchInput}
 			<button
@@ -247,7 +242,7 @@
 				onclick={() => uiStore.clearSearch()}
 				aria-label="Clear search"
 			>
-				<X class={icon({ size: 'sm' })} aria-hidden="true" />
+				<X class={iconSm} aria-hidden="true" />
 			</button>
 		{/if}
 	</div>
@@ -267,15 +262,11 @@
 			<!-- The spin turns this span, not the icon: Safari treats a transform on
 			     an svg root as its own user space, so the icon sat still there. -->
 			<span
-				class={[
-					icon({ size: 'md' }),
-					syncIcon,
-					notesStore.syncing && 'scrapscache-sync-icon-active'
-				]}
+				class={[iconMd, styles.syncIcon, notesStore.syncing && 'scrapscache-sync-icon-active']}
 				data-scrapscache-sync-spinner
 			>
 				<Cloud
-					class={[icon({ size: 'md' }), syncTone({ status: syncStatus })]}
+					class={[iconMd, syncTone[syncStatus]]}
 					data-scrapscache-sync-icon
 					aria-hidden="true"
 				/>
@@ -291,9 +282,9 @@
 			aria-label="Toggle layout"
 		>
 			{#if uiStore.layout === 'grid'}
-				<List class={icon({ size: 'md' })} aria-hidden="true" />
+				<List class={iconMd} aria-hidden="true" />
 			{:else}
-				<LayoutGrid class={icon({ size: 'md' })} aria-hidden="true" />
+				<LayoutGrid class={iconMd} aria-hidden="true" />
 			{/if}
 		</button>
 	</Tooltip>
@@ -309,11 +300,11 @@
 				title="Settings"
 				aria-label="Settings"
 			>
-				<Settings class={icon({ size: 'md' })} aria-hidden="true" />
+				<Settings class={iconMd} aria-hidden="true" />
 			</Menu.Trigger>
 		</Tooltip>
-		<Menu.Positioner class={menuPositioner}>
-			<Menu.Content class={cx(popover, menuPopover)}>
+		<Menu.Positioner class={styles.menuPositioner}>
+			<Menu.Content class={cx(popover, styles.menuPopover)}>
 				{#if importingBackup}
 					{@const progress = notesStore.backupImportProgress}
 					<div
@@ -352,15 +343,15 @@
 						class={menuItemClass}
 					>
 						{#if uiStore.effectiveDark}
-							<Sun class={icon({ size: 'sm' })} aria-hidden="true" />
+							<Sun class={iconSm} aria-hidden="true" />
 							Light mode
 						{:else}
-							<Moon class={icon({ size: 'sm' })} aria-hidden="true" />
+							<Moon class={iconSm} aria-hidden="true" />
 							Dark mode
 						{/if}
 					</Menu.Item>
 					<Menu.Item value="export" onSelect={startBackupExport} class={menuItemClass}>
-						<Download class={icon({ size: 'sm' })} aria-hidden="true" />
+						<Download class={iconSm} aria-hidden="true" />
 						Export backup
 					</Menu.Item>
 					<FileUpload.Root
@@ -372,13 +363,13 @@
 						}}
 					>
 						<FileUpload.Trigger class={menuItemClass}>
-							<Upload class={icon({ size: 'sm' })} aria-hidden="true" />
+							<Upload class={iconSm} aria-hidden="true" />
 							Import backup
 						</FileUpload.Trigger>
 						<FileUpload.HiddenInput />
 					</FileUpload.Root>
 					<ReminderNotificationSettings />
-					<Menu.Separator class={menuSeparator} />
+					<Menu.Separator class={styles.menuSeparator} />
 					<Menu.Item value="issue">
 						{#snippet asChild(props)}
 							<a
@@ -388,13 +379,13 @@
 								rel="noreferrer"
 								class={menuItemClass}
 							>
-								<ExternalLink class={icon({ size: 'sm' })} aria-hidden="true" />
+								<ExternalLink class={iconSm} aria-hidden="true" />
 								Report an issue
 							</a>
 						{/snippet}
 					</Menu.Item>
 				{/if}
-				{#if backupImportError}<p class={menuAlert} role="alert">
+				{#if backupImportError}<p class={styles.menuAlert} role="alert">
 						{backupImportError}
 					</p>{/if}
 			</Menu.Content>

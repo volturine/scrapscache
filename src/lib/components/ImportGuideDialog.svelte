@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { portalToAppOverlay } from '$lib/appViewport';
-	import { BackupImportMode } from '$lib/backup';
+	import { ArchiveRestore, FileArchive } from '@lucide/svelte';
+	import type { BackupImportMode } from '$lib/backup';
+	import ImportModeChoices from './ImportModeChoices.svelte';
 
 	let {
 		busy = false,
@@ -72,97 +74,71 @@
 					<Dialog.Description
 						class="mt-1 text-sm leading-relaxed text-[var(--scrapscache-text-muted)]"
 					>
-						The file is read in this browser and added to the workspace that is open now. Nothing is
-						uploaded.
+						{keepReady
+							? 'Your Keep export is ready. Choose how to add it to the workspace that is open now.'
+							: 'The file is read in this browser and added to the workspace that is open now. Nothing is uploaded.'}
 					</Dialog.Description>
 				</div>
 
 				<div class="space-y-4 px-5 py-5 text-sm text-[var(--scrapscache-text)]">
-					<section>
-						<h3 class="font-medium">Google Keep</h3>
-						<ol
-							class="mt-2 list-decimal space-y-1 pl-5 text-xs leading-relaxed text-[var(--scrapscache-text-muted)]"
-						>
-							<li>
-								Open
-								<a
-									href="https://takeout.google.com"
-									target="_blank"
-									rel="noreferrer"
-									class="underline underline-offset-2">takeout.google.com</a
-								>
-							</li>
-							<li>Deselect all, then select only Keep</li>
-							<li>Create the export and download the zip</li>
-							<li>Choose that zip below</li>
-						</ol>
-						<p class="mt-3 text-xs leading-relaxed text-[var(--scrapscache-text-muted)]">
-							Imported: titles, text, checklists, colors, pins, archive, trash, labels, photos, and
-							saved links, with original created and edited times.
-						</p>
-						<p class="mt-2 text-xs leading-relaxed text-[var(--scrapscache-text-muted)]">
-							Not imported: reminders (Takeout usually omits them), shared people, and editable
-							drawings (those arrive as pictures).
-						</p>
-					</section>
+					{#if keepReady}
+						<ImportModeChoices {busy} keepImport onSelect={onSelectMode} />
+					{:else}
+						<section class="source">
+							<h3 class="source-title">
+								<span class="source-icon" aria-hidden="true"><FileArchive size={16} /></span>
+								Google Keep
+							</h3>
+							<ol class="steps">
+								<li>
+									<span
+										>Open
+										<a
+											href="https://takeout.google.com"
+											target="_blank"
+											rel="noreferrer"
+											class="underline underline-offset-2">takeout.google.com</a
+										></span
+									>
+								</li>
+								<li>Deselect all, then select only Keep</li>
+								<li>Create the export and download the zip</li>
+								<li>Choose that zip below</li>
+							</ol>
+							<p class="note">
+								<strong>Imported:</strong> titles, text, checklists, colors, pins, archive, trash, labels,
+								photos, and saved links, with original created and edited times.
+							</p>
+							<p class="note">
+								<strong>Not imported:</strong> reminders (Takeout usually omits them), shared people,
+								and editable drawings (those arrive as pictures).
+							</p>
+						</section>
 
-					<section>
-						<h3 class="font-medium">Scraps Cache backup</h3>
-						<p class="mt-2 text-xs leading-relaxed text-[var(--scrapscache-text-muted)]">
-							Choose an encrypted <span class="whitespace-nowrap">.scraps-cache-backup</span> from Export
-							backup. You will be asked for its passphrase.
-						</p>
-					</section>
+						<section class="source">
+							<h3 class="source-title">
+								<span class="source-icon" aria-hidden="true"><ArchiveRestore size={16} /></span>
+								Scraps Cache backup
+							</h3>
+							<p class="note">
+								Choose an encrypted <span class="whitespace-nowrap">.scraps-cache-backup</span> from Export
+								backup. You will be asked for its passphrase.
+							</p>
+						</section>
+					{/if}
 
 					{#if error}<p class="text-sm text-[var(--scrapscache-danger)]" role="alert">
 							{error}
 						</p>{/if}
 
-					{#if keepReady}
-						<div class="space-y-3">
-							<p class="font-medium">How should these Keep notes be imported?</p>
-							<button
-								type="button"
-								disabled={busy}
-								onclick={() => onSelectMode(BackupImportMode.Keep)}
-								class="scrapscache-button w-full px-4 py-3 text-left"
-							>
-								<span class="block font-medium">Keep local notes</span>
-								<span class="mt-1 block text-xs text-[var(--scrapscache-text-muted)]">
-									Add every Keep note as a new copy. Existing notes stay unchanged.
-								</span>
-							</button>
-							<button
-								type="button"
-								disabled={busy}
-								onclick={() => onSelectMode(BackupImportMode.Replace)}
-								class="scrapscache-button w-full px-4 py-3 text-left"
-							>
-								<span class="block font-medium text-[var(--scrapscache-danger)]"
-									>Replace local data</span
-								>
-								<span class="mt-1 block text-xs text-[var(--scrapscache-text-muted)]">
-									Delete current notes in this workspace and import Keep instead.
-								</span>
-							</button>
-							<div class="flex justify-end pt-1">
-								<button
-									type="button"
-									disabled={busy}
-									onclick={onClose}
-									class="scrapscache-button scrapscache-button-quiet px-3 py-2 text-sm"
-									>Cancel</button
-								>
-							</div>
-						</div>
-					{:else}
-						<div class="flex justify-end gap-2 pt-1">
-							<button
-								type="button"
-								disabled={busy}
-								onclick={onClose}
-								class="scrapscache-button scrapscache-button-quiet px-3 py-2 text-sm">Cancel</button
-							>
+					<div class="flex justify-end gap-2 pt-1">
+						<button
+							type="button"
+							disabled={busy}
+							onclick={onClose}
+							class="scrapscache-button scrapscache-button-quiet px-3 py-2 text-sm">Cancel</button
+						>
+						{#if !keepReady}
 							<input
 								bind:this={fileInput}
 								type="file"
@@ -181,10 +157,72 @@
 							>
 								{busy ? 'Reading file…' : 'Choose file'}
 							</button>
-						</div>
-					{/if}
+						{/if}
+					</div>
 				</div>
 			</Dialog.Content>
 		</Dialog.Positioner>
 	</div>
 </Dialog.Root>
+
+<style>
+	.source {
+		padding: 14px;
+		border: 1px solid var(--scrapscache-border);
+		border-radius: 12px;
+		background: var(--scrapscache-bg);
+	}
+	.source-title {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		font-weight: 500;
+	}
+	.source-icon {
+		display: grid;
+		width: 28px;
+		height: 28px;
+		place-items: center;
+		border-radius: 8px;
+		background: color-mix(in srgb, var(--scrapscache-accent) 15%, transparent);
+		color: var(--scrapscache-accent);
+	}
+	.steps {
+		display: grid;
+		gap: 6px;
+		margin-top: 12px;
+		padding: 0;
+		list-style: none;
+		counter-reset: step;
+	}
+	.steps li {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		font-size: 13px;
+		counter-increment: step;
+	}
+	.steps li::before {
+		content: counter(step);
+		display: grid;
+		flex-shrink: 0;
+		width: 20px;
+		height: 20px;
+		place-items: center;
+		border-radius: 999px;
+		background: var(--scrapscache-interactive-hover);
+		color: var(--scrapscache-text-muted);
+		font-size: 11px;
+		font-weight: 600;
+	}
+	.note {
+		margin-top: 10px;
+		color: var(--scrapscache-text-muted);
+		font-size: 12px;
+		line-height: 1.5;
+	}
+	.note strong {
+		color: var(--scrapscache-text);
+		font-weight: 500;
+	}
+</style>

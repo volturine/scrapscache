@@ -10,7 +10,7 @@
 	import BackupPassphraseDialog from './BackupPassphraseDialog.svelte';
 	import BackupImportModeDialog from './BackupImportModeDialog.svelte';
 	import ImportGuideDialog from './ImportGuideDialog.svelte';
-	import { BackupImportMode, BackupImportPhase, BackupOperation } from '$lib/backup';
+	import { BackupImportMode, BackupOperation } from '$lib/backup';
 	import { isZipBytes, readKeepTakeout, unzipKeepTakeout } from '$lib/keepImport';
 	import { resolveSyncStatus, SyncStatus } from '$lib/syncStatus';
 	import { useEditorActions } from '$lib/editorContext';
@@ -70,7 +70,6 @@
 	let keepImportReady = $state(false);
 	let syncStatus = $derived(resolveSyncStatus(syncStore.lastError, syncStore.usage));
 	let syncControlLabel = $derived(SYNC_CONTROL_LABEL[syncStatus]);
-	let backupImportProgress = $derived(notesStore.backupImportProgress);
 
 	function openPairingLink() {
 		const found = pairingCodeFromUrl(window.location.href);
@@ -135,7 +134,6 @@
 		keepImportReady = false;
 		choosingImportMode = false;
 		importingBackup = true;
-		settingsOpen = true;
 		backupImportError = '';
 		try {
 			const result = pendingKeepFiles
@@ -144,11 +142,9 @@
 			if (!result.success) throw new Error(result.error || 'Could not import that file.');
 			pendingImportData = null;
 			pendingKeepFiles = null;
-			settingsOpen = false;
 		} catch (error) {
 			backupImportError = error instanceof Error ? error.message : 'Backup operation failed.';
 			choosingImportMode = true;
-			settingsOpen = false;
 		} finally {
 			importingBackup = false;
 		}
@@ -254,7 +250,10 @@
 			<!-- The spin turns this span, not the icon: Safari treats a transform on
 			     an svg root as its own user space, so the icon sat still there. -->
 			<span
-				class={['block h-5 w-5', notesStore.syncing && 'scrapscache-sync-icon-active']}
+				class={[
+					'block h-5 w-5',
+					(notesStore.syncing || importingBackup) && 'scrapscache-sync-icon-active'
+				]}
 				data-scrapscache-sync-spinner
 			>
 				<Cloud
@@ -293,103 +292,79 @@
 		</Tooltip>
 		<Menu.Positioner class="z-30">
 			<Menu.Content class="scrapscache-popover w-64 overflow-hidden pt-1">
-				{#if importingBackup}
-					<div
-						class="space-y-2 px-3 py-2 text-xs text-[var(--scrapscache-text-muted)]"
-						role="status"
-						aria-live="polite"
-					>
-						<div class="flex justify-between gap-2">
-							<span
-								>{backupImportProgress?.phase === BackupImportPhase.Finishing
-									? 'Finishing backup…'
-									: backupImportProgress
-										? 'Importing backup…'
-										: 'Reading backup…'}</span
-							>{#if backupImportProgress}<span
-									>{backupImportProgress.completed}/{backupImportProgress.total}</span
-								>{/if}
-						</div>
-						<div class="h-1.5 overflow-hidden rounded-full bg-black/10 dark:bg-white/10">
-							<div
-								class="h-full bg-blue-600 transition-[width]"
-								style={`width: ${backupImportProgress && backupImportProgress.total ? Math.round((backupImportProgress.completed / backupImportProgress.total) * 100) : 8}%`}
-							></div>
-						</div>
-					</div>
-				{:else}
-					<Menu.Item
-						value="theme"
-						closeOnSelect={false}
-						onSelect={() => uiStore.toggleDark()}
-						class="flex h-8 w-full cursor-pointer items-center gap-2 px-3 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/5 dark:hover:bg-white/10"
-					>
-						{#if uiStore.effectiveDark}
-							<Sun class="h-4 w-4 shrink-0" aria-hidden="true" />
-							Light mode
-						{:else}
-							<Moon class="h-4 w-4 shrink-0" aria-hidden="true" />
-							Dark mode
-						{/if}
-					</Menu.Item>
-					<Menu.Item
-						value="export"
-						onSelect={startBackupExport}
-						class="flex h-8 w-full cursor-pointer items-center gap-2 px-3 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/5 dark:hover:bg-white/10"
-					>
-						<Download class="h-4 w-4 shrink-0" aria-hidden="true" />
-						Export backup
-					</Menu.Item>
-					<Menu.Item
-						value="import"
-						onSelect={startBackupImport}
-						class="flex h-8 w-full cursor-pointer items-center gap-2 px-3 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/5 dark:hover:bg-white/10"
-					>
-						<Upload class="h-4 w-4 shrink-0" aria-hidden="true" />
-						Import backup
-					</Menu.Item>
-					<PwaInstallSettings />
-					<ReminderNotificationSettings />
-					<Menu.Separator class="border-t border-[var(--scrapscache-border)]" />
-					<Menu.Item value="issue">
-						{#snippet asChild(props)}
-							<a
-								{...props()}
-								href="https://github.com/volturine/scrapscache/issues/new/choose"
-								target="_blank"
-								rel="noreferrer"
-								class="flex h-8 w-full items-center gap-2 px-3 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/5 dark:hover:bg-white/10"
-							>
-								<ExternalLink class="h-4 w-4 shrink-0" aria-hidden="true" />
-								Report an issue
-							</a>
-						{/snippet}
-					</Menu.Item>
-					<Menu.Item value="privacy">
-						{#snippet asChild(props)}
-							<a
-								{...props()}
-								href="/privacy"
-								class="flex h-8 w-full items-center gap-2 px-3 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/5 dark:hover:bg-white/10"
-							>
-								<Shield class="h-4 w-4 shrink-0" aria-hidden="true" />
-								Privacy policy
-							</a>
-						{/snippet}
-					</Menu.Item>
-					<Menu.Item value="terms">
-						{#snippet asChild(props)}
-							<a
-								{...props()}
-								href="/terms"
-								class="flex h-8 w-full items-center gap-2 px-3 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/5 dark:hover:bg-white/10"
-							>
-								<FileText class="h-4 w-4 shrink-0" aria-hidden="true" />
-								Terms of service
-							</a>
-						{/snippet}
-					</Menu.Item>
-				{/if}
+				<Menu.Item
+					value="theme"
+					closeOnSelect={false}
+					onSelect={() => uiStore.toggleDark()}
+					class="flex h-8 w-full cursor-pointer items-center gap-2 px-3 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/5 dark:hover:bg-white/10"
+				>
+					{#if uiStore.effectiveDark}
+						<Sun class="h-4 w-4 shrink-0" aria-hidden="true" />
+						Light mode
+					{:else}
+						<Moon class="h-4 w-4 shrink-0" aria-hidden="true" />
+						Dark mode
+					{/if}
+				</Menu.Item>
+				<Menu.Item
+					value="export"
+					disabled={importingBackup}
+					onSelect={startBackupExport}
+					class="flex h-8 w-full cursor-pointer items-center gap-2 px-3 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/5 dark:hover:bg-white/10"
+				>
+					<Download class="h-4 w-4 shrink-0" aria-hidden="true" />
+					Export backup
+				</Menu.Item>
+				<Menu.Item
+					value="import"
+					disabled={importingBackup}
+					onSelect={startBackupImport}
+					class="flex h-8 w-full cursor-pointer items-center gap-2 px-3 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/5 dark:hover:bg-white/10"
+				>
+					<Upload class="h-4 w-4 shrink-0" aria-hidden="true" />
+					Import backup
+				</Menu.Item>
+				<PwaInstallSettings />
+				<ReminderNotificationSettings />
+				<Menu.Separator class="border-t border-[var(--scrapscache-border)]" />
+				<Menu.Item value="issue">
+					{#snippet asChild(props)}
+						<a
+							{...props()}
+							href="https://github.com/volturine/scrapscache/issues/new/choose"
+							target="_blank"
+							rel="noreferrer"
+							class="flex h-8 w-full items-center gap-2 px-3 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/5 dark:hover:bg-white/10"
+						>
+							<ExternalLink class="h-4 w-4 shrink-0" aria-hidden="true" />
+							Report an issue
+						</a>
+					{/snippet}
+				</Menu.Item>
+				<Menu.Item value="privacy">
+					{#snippet asChild(props)}
+						<a
+							{...props()}
+							href="/privacy"
+							class="flex h-8 w-full items-center gap-2 px-3 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/5 dark:hover:bg-white/10"
+						>
+							<Shield class="h-4 w-4 shrink-0" aria-hidden="true" />
+							Privacy policy
+						</a>
+					{/snippet}
+				</Menu.Item>
+				<Menu.Item value="terms">
+					{#snippet asChild(props)}
+						<a
+							{...props()}
+							href="/terms"
+							class="flex h-8 w-full items-center gap-2 px-3 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/5 dark:hover:bg-white/10"
+						>
+							<FileText class="h-4 w-4 shrink-0" aria-hidden="true" />
+							Terms of service
+						</a>
+					{/snippet}
+				</Menu.Item>
 				{#if backupImportError}<p class="px-3 pb-2 text-xs text-red-600" role="alert">
 						{backupImportError}
 					</p>{/if}

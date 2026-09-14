@@ -231,8 +231,7 @@
 			class={hstack({
 				gap: 'sm',
 				mt: 'xs',
-				textStyle: 'bodyStrong',
-				color: 'scrapscache.text'
+				textStyle: 'bodyStrong'
 			})}
 		>
 			<AlarmClock class={css({ w: '1rem', h: '1rem', flexShrink: 0 })} aria-hidden="true" />

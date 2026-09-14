@@ -181,7 +181,6 @@
 			minH: 0,
 			flexShrink: 0,
 			appearance: 'none',
-			p: 0,
 			color: 'scrapscache.textMuted'
 		})
 	);

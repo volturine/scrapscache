@@ -80,7 +80,7 @@
 
 <div {@attach mount} class={css({ minH: '65px', w: 'full' })}></div>
 {#if failed}
-	<p class={cx(css({ textAlign: 'center' }), text({ style: 'body', tone: 'danger' }))} role="alert">
+	<p class={cx(css({ textAlign: 'center' }), text({ tone: 'danger' }))} role="alert">
 		Human verification could not load. Check your connection and reopen this dialog.
 	</p>
 {/if}

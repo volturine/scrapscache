@@ -125,7 +125,6 @@
 			{:else if isText}
 				<pre
 					class={`scrollable ${css({
-						m: 0,
 						minH: 0,
 						flex: '1',
 						overflow: 'auto',
@@ -133,9 +132,7 @@
 						wordBreak: 'break-word',
 						p: 'lg',
 						fontFamily: 'mono',
-						textStyle: 'body',
-						lineHeight: 'relaxed',
-						color: 'scrapscache.text'
+						lineHeight: 'relaxed'
 					})}`}>
 					{textContent ?? ''}
 				</pre>

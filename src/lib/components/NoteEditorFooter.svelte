@@ -514,9 +514,7 @@
 				p: 'lg'
 			})}
 		>
-			<Dialog.Content
-				class={cx(d.panel, css({ w: 'full', maxW: 'sm', p: 'lg', color: 'scrapscache.text' }))}
-			>
+			<Dialog.Content class={cx(d.panel, css({ w: 'full', maxW: 'sm', p: 'lg' }))}>
 				<div
 					class={flex({
 						mb: 'md',

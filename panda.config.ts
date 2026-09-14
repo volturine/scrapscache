@@ -4,6 +4,16 @@ import { theme } from './panda/theme';
 
 export default defineConfig({
 	preflight: true,
+	globalCss: {
+		body: {
+			bg: 'scrapscache.bg',
+			color: 'scrapscache.text',
+			fontFamily: 'sans',
+			textStyle: 'body',
+			WebkitFontSmoothing: 'antialiased',
+			MozOsxFontSmoothing: 'grayscale'
+		}
+	},
 	include: ['./src/**/*.{js,jsx,ts,tsx,svelte}', './panda/styles.ts'],
 	exclude: [],
 	staticCss: {

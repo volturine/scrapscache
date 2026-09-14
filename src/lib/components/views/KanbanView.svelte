@@ -362,7 +362,7 @@
 										<Checkbox.Control class={k.checkControl}>
 											<Checkbox.Indicator class={k.checkMark}>✓</Checkbox.Indicator>
 										</Checkbox.Control>
-										<Checkbox.Label class={k.checkLabel}>No labels</Checkbox.Label>
+										<Checkbox.Label>No labels</Checkbox.Label>
 										<Checkbox.HiddenInput />
 									</Checkbox.Root>
 									{#each backlogFilterTags as label (label.id)}

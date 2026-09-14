@@ -140,7 +140,6 @@ body {
 	overflow-y: auto;
 	overscroll-behavior-x: none;
 	overscroll-behavior-y: auto;
-	background-color: var(--colors-scrapscache-bg);
 }
 
 /* Respect system motion preferences while retaining the final UI state. */
@@ -153,14 +152,6 @@ body {
 		transition-duration: 0.01ms !important;
 		scroll-behavior: auto !important;
 	}
-}
-
-body {
-	background-color: var(--colors-scrapscache-bg);
-	color: var(--colors-scrapscache-text);
-	font-family: var(--fonts-sans);
-	-webkit-font-smoothing: antialiased;
-	-moz-osx-font-smoothing: grayscale;
 }
 
 /* Allow touch scrolling on elements that opt in. */

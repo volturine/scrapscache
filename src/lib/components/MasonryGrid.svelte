@@ -128,9 +128,7 @@
 			display: 'flex',
 			alignItems: 'flex-start',
 			gap: 'list',
-			p: 0,
 			w: 'full',
-			boxSizing: 'border-box',
 			flex: '1 1 var(--note-card-width)',
 			minW: 0
 		})}

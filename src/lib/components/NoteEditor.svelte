@@ -626,7 +626,6 @@
 									px: 'lg',
 									py: 'sm',
 									textStyle: 'button',
-									color: 'scrapscache.text',
 									boxShadow: 'sm'
 								})}
 							>

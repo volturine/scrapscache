@@ -445,8 +445,7 @@
 	const syncMuted = text({ style: 'bodyMuted' });
 	const syncMutedBody = cx(text({ style: 'bodyMuted' }), css({ lineHeight: 'relaxed' }));
 	const syncMutedLead = cx(text({ style: 'captionStrong' }), css({ letterSpacing: 'wide' }));
-	const syncDanger = text({ style: 'body', tone: 'danger' });
-	const syncText = text({ style: 'body' });
+	const syncDanger = text({ tone: 'danger' });
 	const syncBackLink = cx(
 		text({ style: 'caption' }),
 		css({ w: 'full', touchAction: 'manipulation', cursor: 'pointer', textAlign: 'center' })
@@ -830,13 +829,13 @@
 						>
 					</div>
 				{:else if mode === 'pairing'}
-					<p class={syncText} role="status">Connected. Syncing workspace…</p>
+					<p role="status">Connected. Syncing workspace…</p>
 				{:else if mode === 'waiting'}
 					<div class={vstack({ gap: 'xl', alignItems: 'stretch' })}>
 						{#if waiting?.role === 'existing'}
 							<div>
 								<p class={syncMutedLead}>On the new device</p>
-								<p class={cx(syncText, styles.bodySpacing)}>
+								<p class={styles.bodySpacing}>
 									Scan the QR code, open the link, or type the one-time code
 								</p>
 							</div>
@@ -874,7 +873,7 @@
 						{:else}
 							<div>
 								<p class={syncMutedLead}>On the other device</p>
-								<p class={cx(syncText, styles.bodySpacing)}>Open Sync and choose Connect device</p>
+								<p class={styles.bodySpacing}>Open Sync and choose Connect device</p>
 							</div>
 						{/if}
 						<div class={vstack({ gap: 'xs', alignItems: 'stretch' })}>

@@ -185,7 +185,7 @@
 
 <div class="app-viewport">
 	<div
-		class={`app-shell ${css({ display: 'flex', h: 'full', w: 'full', overflow: 'hidden', bg: 'scrapscache.bg', color: 'scrapscache.text' })}`}
+		class={`app-shell ${css({ display: 'flex', h: 'full', w: 'full', overflow: 'hidden', bg: 'scrapscache.bg' })}`}
 		{@attach mobile.current &&
 			attachSidebarSwipe({
 				getOpen: () => uiStore.sidebarOpen,

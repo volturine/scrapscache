@@ -4,7 +4,6 @@ const textRecipe = defineRecipe({
 	className: 'scrapscache-text',
 	variants: {
 		style: {
-			body: { textStyle: 'body' },
 			bodyMuted: { textStyle: 'bodyMuted' },
 			caption: { textStyle: 'caption' },
 			captionStrong: { textStyle: 'captionStrong' },
@@ -13,12 +12,10 @@ const textRecipe = defineRecipe({
 		tone: {
 			danger: { color: 'scrapscache.danger' }
 		}
-	},
-	defaultVariants: { style: 'body' }
+	}
 });
 
 const mediaHazeButton = (color: string) => ({
-	bg: 'transparent',
 	color,
 	_hoverable: {
 		bg: 'scrapscache.mediaControlActive',
@@ -59,8 +56,8 @@ const menuItemComfortable = {
 	py: 'list',
 	textStyle: 'button'
 } as const;
-const quietButton = { bg: 'transparent', borderWidth: '0px', rounded: 'dialog' } as const;
-const outlinedTransparentButton = { bg: 'transparent', borderWidth: 'hairline' } as const;
+const quietButton = { rounded: 'dialog' } as const;
+const outlinedTransparentButton = { borderWidth: 'hairline' } as const;
 const buttonQuiet = (color: string, hover: string, hoverColor = 'scrapscache.text') => ({
 	...quietButton,
 	color,
@@ -74,7 +71,6 @@ const menuItemRecipe = defineRecipe({
 		w: 'full',
 		textAlign: 'left',
 		...gestureTarget,
-		color: 'scrapscache.text',
 		transition: 'background-color 120ms ease, color 120ms ease',
 		_hoverable: { bg: 'scrapscache.interactiveHover' },
 		_active: { bg: 'scrapscache.interactiveActive' },
@@ -142,7 +138,6 @@ const buttonRecipe = defineRecipe({
 			subtle: {
 				bg: 'scrapscache.controlSubtle',
 				color: 'scrapscache.text',
-				borderWidth: '0px',
 				rounded: 'dialog',
 				_hoverable: {
 					bg: 'scrapscache.controlSubtleHover'
@@ -213,7 +208,6 @@ const iconButtonRecipe = defineRecipe({
 			hazePinned: mediaHazeButton('scrapscache.mediaWarning'),
 			hazeBlue: mediaHazeButton('scrapscache.mediaAccent'),
 			hazeRose: {
-				bg: 'transparent',
 				color: 'scrapscache.mediaTextStrong',
 				_hoverable: {
 					bg: 'scrapscache.mediaDangerSubtle',
@@ -221,12 +215,10 @@ const iconButtonRecipe = defineRecipe({
 				}
 			},
 			ghost: {
-				bg: 'transparent',
 				color: 'scrapscache.textMuted',
 				_hoverable: { bg: 'scrapscache.interactiveHover', color: 'scrapscache.text' }
 			},
 			danger: {
-				bg: 'transparent',
 				color: 'scrapscache.textMuted',
 				_hoverable: {
 					bg: 'scrapscache.dangerSubtle',
@@ -252,8 +244,6 @@ const inputRecipe = defineRecipe({
 	className: 'scrapscache-input',
 	base: {
 		minW: 0,
-		fontSize: 'body',
-		color: 'scrapscache.text',
 		caretColor: 'scrapscache.focus',
 		outline: 'none',
 		transition: 'background-color 120ms ease, border-color 120ms ease, color 120ms ease',
@@ -270,8 +260,6 @@ const inputRecipe = defineRecipe({
 				_focus: { ringWidth: '2px', ringColor: 'scrapscache.focus' }
 			},
 			unstyled: {
-				bg: 'transparent',
-				borderWidth: '0px',
 				px: 0,
 				py: 0
 			}
@@ -394,8 +382,7 @@ const noteCardRecipe = defineSlotRecipe({
 			mb: '2xs',
 			wordBreak: 'break-word',
 			textStyle: 'title',
-			letterSpacing: 'tight',
-			color: 'scrapscache.text'
+			letterSpacing: 'tight'
 		},
 		labelsRow: {
 			display: 'flex',
@@ -448,18 +435,14 @@ const checklistRecipe = defineSlotRecipe({
 	slots: ['root', 'mark'],
 	base: {
 		root: {
-			boxSizing: 'border-box',
 			position: 'relative',
 			display: 'inline-grid',
 			placeItems: 'center',
 			...square('1.125rem'),
 			mt: '0.2rem',
-			p: 0,
 			borderWidth: 'control',
 			borderColor: 'scrapscache.checklistBorder',
 			rounded: 'checkbox',
-			bg: 'transparent',
-			color: 'inherit',
 			lineHeight: 0,
 			appearance: 'none',
 			touchAction: 'manipulation',
@@ -498,7 +481,6 @@ const noteBodyRecipe = defineSlotRecipe({
 	className: 'scrapscache-note-body',
 	slots: ['container', 'row', 'line', 'check', 'bullet', 'paragraph', 'spacer', 'addSubtask'],
 	base: {
-		container: { textStyle: 'body', color: 'scrapscache.text' },
 		row: {
 			display: 'flex',
 			alignItems: 'flex-start',
@@ -590,7 +572,6 @@ const choiceCardRecipe = defineSlotRecipe({
 					rounded: 'control',
 					borderWidth: 'hairline',
 					borderColor: 'scrapscache.border',
-					bg: 'transparent',
 					cursor: 'pointer',
 					transition: 'background-color 120ms ease, border-color 120ms ease, color 120ms ease',
 					_hoverable: { bg: 'scrapscache.interactiveHover' },
@@ -648,8 +629,7 @@ const dialogRecipe = defineSlotRecipe({
 			gap: '2xs'
 		},
 		title: {
-			textStyle: 'heading',
-			color: 'scrapscache.text'
+			textStyle: 'heading'
 		},
 		description: {
 			textStyle: 'bodyMuted'
@@ -664,10 +644,7 @@ const dialogRecipe = defineSlotRecipe({
 			gap: 'md',
 			pt: 'sm'
 		},
-		error: {
-			textStyle: 'body',
-			color: 'scrapscache.danger'
-		}
+		error: { color: 'scrapscache.danger' }
 	},
 	variants: {
 		size: {

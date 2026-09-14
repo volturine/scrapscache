@@ -125,8 +125,7 @@
 			zIndex: 90,
 			display: 'flex',
 			flexDirection: 'column',
-			bg: 'scrapscache.canvasSurface',
-			color: 'scrapscache.text'
+			bg: 'scrapscache.canvasSurface'
 		})
 	]}
 	role="dialog"
@@ -189,7 +188,6 @@
 				bg: 'scrapscache.dangerSubtle',
 				px: 'lg',
 				py: 'sm',
-				textStyle: 'body',
 				color: 'scrapscache.danger'
 			})}
 		>
@@ -227,7 +225,7 @@
 					bg: 'scrapscache.canvasSurface'
 				})}
 			>
-				<div class={hstack({ gap: 'sm', textStyle: 'body', color: 'scrapscache.textMuted' })}>
+				<div class={hstack({ gap: 'sm', color: 'scrapscache.textMuted' })}>
 					<LoaderCircle
 						class={css({ h: '1.25rem', w: '1.25rem', animation: 'spin' })}
 						aria-hidden="true"

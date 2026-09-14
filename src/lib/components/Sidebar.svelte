@@ -335,7 +335,6 @@
 										alignSelf: 'stretch',
 										textAlign: 'left',
 										textStyle: 'button',
-										color: 'scrapscache.text',
 										cursor: 'pointer'
 									})
 								)}

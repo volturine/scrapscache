@@ -23,7 +23,6 @@ const gridCenter = { display: 'grid', placeItems: 'center' } as const;
 const clickable = { cursor: 'pointer' } as const;
 const interactive = { cursor: 'pointer', touchAction: 'manipulation' } as const;
 const mutedText = { color: 'scrapscache.textMuted' } as const;
-const textColor = { color: 'scrapscache.text' } as const;
 const cardRadius = { rounded: 'card' } as const;
 const controlRadius = { rounded: 'control' } as const;
 const subtleHover = { _hoverable: { bg: 'scrapscache.interactiveHover' } } as const;
@@ -61,8 +60,7 @@ const filterOption = {
 const workspaceContent = {
 	...rowGapMd,
 	...flexFill,
-	textAlign: 'left',
-	textStyle: 'body'
+	textAlign: 'left'
 } as const;
 const iconSmClass = css(iconSm);
 const iconMdClass = css(iconMd);
@@ -79,9 +77,7 @@ export const viewPage = css({ pt: 'lg', pb: '3xl' });
 
 const notesShellBase = css({
 	w: 'full',
-	mx: 'auto',
-	px: 0,
-	boxSizing: 'border-box'
+	mx: 'auto'
 });
 const notesListShell = css({ maxW: '720px' });
 
@@ -226,8 +222,7 @@ const filePreviewBase = {
 		...gridCenter,
 		flexShrink: 0,
 		bg: 'scrapscache.interactiveActive',
-		fontWeight: 'strong',
-		color: 'scrapscache.text'
+		fontWeight: 'strong'
 	},
 	size: { fontSize: 'micro', ...mutedText },
 	openBtn: { ...flexFill, textAlign: 'left', ...interactive },
@@ -254,13 +249,13 @@ const filePreviewEditor = {
 	},
 	row: { rounded: 'card' },
 	badge: { ...square('2rem'), rounded: 'control', fontSize: 'micro', letterSpacing: 'wide' },
-	title: { ...truncateText, ...textColor, fontSize: 'body' }
+	title: { ...truncateText, fontSize: 'body' }
 } as const;
 const filePreviewDisplay = {
 	list: { ...column, mt: 'sm', gap: '2xs' },
 	row: { w: 'full', rounded: 'control', textAlign: 'left' },
 	badge: { h: '1.75rem', w: '1.75rem', rounded: 'compact', fontSize: 'tiny' },
-	title: { ...truncateText, ...textColor, ...flexFill, fontSize: 'label' }
+	title: { ...truncateText, ...flexFill, fontSize: 'label' }
 } as const;
 const filePreviewShared = {
 	size: css(filePreviewBase.size),
@@ -382,8 +377,7 @@ const fullscreenAttachment = {
 	shell: {
 		position: 'fixed',
 		...fullscreenShell,
-		bg: 'scrapscache.bg',
-		color: 'scrapscache.text'
+		bg: 'scrapscache.bg'
 	},
 	header: {
 		...rowCenter,
@@ -433,7 +427,6 @@ export const kanbanViewStyles = {
 		pl: 'md',
 		pr: '3xl',
 		textStyle: 'bodyStrong',
-		...textColor,
 		outline: 'none',
 		...clickable
 	}),
@@ -461,7 +454,7 @@ export const kanbanViewStyles = {
 			'inset 0 0 0 2px color-mix(in srgb, token(colors.scrapscache.accent) 35%, transparent)'
 	}),
 	colHeader: css({ mb: 'sm', ...rowGapSm, px: '2xs', pt: '2xs' }),
-	colTitle: css({ minW: 0, flex: '1', ...truncateText, textStyle: 'bodyStrong', ...textColor }),
+	colTitle: css({ minW: 0, flex: '1', ...truncateText, textStyle: 'bodyStrong' }),
 	cardsList: css({ position: 'relative', ...column, gap: 'md' }),
 	dropSlot: css({
 		...cardRadius,
@@ -510,7 +503,6 @@ export const kanbanViewStyles = {
 		'&[data-state=checked]': { borderColor: 'scrapscache.accent', bg: 'scrapscache.accent' }
 	}),
 	checkMark: css({ fontSize: 'micro', color: 'scrapscache.accentForeground' }),
-	checkLabel: css(textColor),
 	filterSummary: css({ ...truncateText, px: '2xs', textStyle: 'micro' }),
 	menuItem: css({
 		display: 'block',
@@ -519,15 +511,13 @@ export const kanbanViewStyles = {
 		px: 'md',
 		py: 'sm',
 		textAlign: 'left',
-		textStyle: 'body',
-		...textColor,
 		...subtleHover
 	}),
 	explain: css({ textStyle: 'caption' }),
 	radioInput: css({ mt: '3xs' }),
-	radioTitle: css({ textStyle: 'button', ...textColor }),
+	radioTitle: css({ textStyle: 'button' }),
 	radioSubtitle: css({ mt: '3xs', display: 'block', textStyle: 'caption' }),
-	tagLabel: css({ ...truncateText, ...textColor }),
+	tagLabel: css(truncateText),
 	emptyTags: css({ px: '2xs', py: '2xs', ...mutedText }),
 	tagPickerPositioner: css({ zIndex: 20, w: 'var(--reference-width)' }),
 	tagPickerContent: css({ maxH: '16rem', overflowY: 'auto', py: '2xs' }),
@@ -668,7 +658,7 @@ export const workspaceStyles = {
 	}),
 	glyph: css({ ...gridCenter, flexShrink: 0, ...mutedText }),
 	content: css(flexFill),
-	caption: css({ display: 'block', mt: '3xs', ...mutedText, textStyle: 'caption' }),
+	caption: css({ display: 'block', mt: '3xs', textStyle: 'caption' }),
 	iconButton: css({
 		...gridCenter,
 		w: '30px',
@@ -698,7 +688,7 @@ export const workspacePanelBtn = {
 
 const wheelItemBase = { ...flexCenter, fontVariantNumeric: 'tabular-nums', ...clickable };
 export const wheelItem = {
-	center: css({ ...wheelItemBase, textStyle: 'subtitleStrong', ...textColor }),
+	center: css({ ...wheelItemBase, textStyle: 'subtitleStrong' }),
 	adjacent: css({ ...wheelItemBase, textStyle: 'button', ...mutedText }),
 	far: css({ ...wheelItemBase, fontSize: 'body', ...mutedText, opacity: 0.4 })
 };
@@ -957,7 +947,6 @@ export const photoRatioMobileBtn = {
 	}),
 	inactive: css({
 		...ratioMobileBtnBase,
-		bg: 'transparent',
 		color: 'scrapscache.mediaTextMuted',
 		_hoverable: { bg: 'scrapscache.mediaControlHover', color: 'scrapscache.mediaText' }
 	})
@@ -1068,7 +1057,7 @@ export const reminderAlertStyles = {
 	}),
 	icon: css({ mt: '3xs', ...iconMd, flexShrink: 0, color: 'scrapscache.accent' }),
 	content: css({ minW: 0, flex: '1', textAlign: 'left', ...clickable }),
-	title: css({ ...truncateText, textStyle: 'bodyStrong', ...textColor }),
+	title: css({ ...truncateText, textStyle: 'bodyStrong' }),
 	subtitle: css({ textStyle: 'caption' }),
 	dismissIcon: iconSmClass
 };
@@ -1080,8 +1069,8 @@ export const reminderSettingsRow = {
 
 export const reminderSettingsStyles = {
 	section: css({ borderTopWidth: 'hairline', borderColor: 'scrapscache.border' }),
-	icon: css({ ...iconSm, flexShrink: 0, ...textColor }),
-	label: css({ ...flexFill, textStyle: 'button', ...textColor }),
+	icon: css({ ...iconSm, flexShrink: 0 }),
+	label: css({ ...flexFill, textStyle: 'button' }),
 	status: css({ flexShrink: 0, textStyle: 'captionStrong' }),
 	chevron: css({ ...iconSm, flexShrink: 0, ...mutedText })
 };
@@ -1147,7 +1136,6 @@ export const datePickerStyles = {
 		px: 'sm',
 		py: '2xs',
 		textStyle: 'bodyStrong',
-		...textColor,
 		...clickable,
 		transition: 'colors 150ms ease',
 		...subtleHover
@@ -1216,7 +1204,6 @@ const syncRowBase = {
 	gap: 'md',
 	w: 'full',
 	...controlRadius,
-	textStyle: 'body',
 	...subtleHover,
 	_disabled: { opacity: 0.55 }
 } as const;
@@ -1259,8 +1246,7 @@ export const syncStyles = {
 		fontFamily: 'mono',
 		fontSize: 'pairing',
 		fontWeight: 'heading',
-		letterSpacing: 'eyebrow',
-		...textColor
+		letterSpacing: 'eyebrow'
 	}),
 	qrCode: css({ ...square('220px'), ...cardRadius, bg: 'scrapscache.qrSurface', p: 'sm' }),
 	pairingCode: css({ rounded: 'dialog', ...border, bg: 'scrapscache.bg', px: 'sm', py: 'xl' }),
@@ -1269,7 +1255,7 @@ export const syncStyles = {
 		bg: 'scrapscache.success',
 		color: 'scrapscache.successForeground'
 	}),
-	timerText: css({ fontVariantNumeric: 'tabular-nums', ...textColor }),
+	timerText: css({ fontVariantNumeric: 'tabular-nums' }),
 	fullButton: css({ w: 'full' }),
 	growButton: css({ flex: '1' }),
 	spinner: css({ animation: 'spin' }),
@@ -1280,7 +1266,7 @@ export const reminderPickerStyles = {
 	ellipsis: flexTruncateClass,
 	wheelDeck: css({ rounded: 'dialog', bg: 'scrapscache.surfaceSubtle', px: 'sm', py: '2xs' }),
 	timeWheel: css({ w: '4rem' }),
-	colon: center({ w: '0.75rem', flexShrink: 0, textStyle: 'display', ...textColor })
+	colon: center({ w: '0.75rem', flexShrink: 0, textStyle: 'display' })
 };
 
 export const wheelPickerStyles = {
@@ -1373,7 +1359,6 @@ export const noteEditorStyles = {
 		resize: 'none',
 		overflow: 'hidden',
 		wordBreak: 'break-word',
-		p: 0,
 		textStyle: 'editorTitle',
 		_placeholder: mutedText,
 		fieldSizing: 'content',

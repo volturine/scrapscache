@@ -123,18 +123,30 @@
 	const undoStack: HistoryEntry[] = [];
 	const redoStack: HistoryEntry[] = [];
 
-	function markdownBlockAt(index: number): EditorMarkdownBlock | null {
-		const block = markdownBlocks.find((candidate) => {
-			if (candidate.type === 'line' || index < candidate.lineIndex) return false;
-			return index < markdownBlockEnd(candidate);
+	// Resolved once per parse so rendering each line is a lookup, not a scan.
+	const markdownBlockLayout = $derived.by(() => {
+		const blockAt: (EditorMarkdownBlock | null)[] = new Array(lines.length).fill(null);
+		const endOf = new Map<EditorMarkdownBlock, number>();
+		markdownBlocks.forEach((block, blockIndex) => {
+			if (block.type === 'line') return;
+			const next = markdownBlocks[blockIndex + 1];
+			const end = next
+				? next.type === 'line'
+					? next.segment.lineIndex
+					: next.lineIndex
+				: lines.length;
+			endOf.set(block, end);
+			for (let index = block.lineIndex; index < end; index++) blockAt[index] = block;
 		});
-		return block?.type === 'table' || block?.type === 'code' ? block : null;
+		return { blockAt, endOf };
+	});
+
+	function markdownBlockAt(index: number): EditorMarkdownBlock | null {
+		return markdownBlockLayout.blockAt[index] ?? null;
 	}
 
 	function markdownBlockEnd(block: EditorMarkdownBlock): number {
-		const blockIndex = markdownBlocks.indexOf(block);
-		const next = markdownBlocks[blockIndex + 1];
-		return next ? (next.type === 'line' ? next.segment.lineIndex : next.lineIndex) : lines.length;
+		return markdownBlockLayout.endOf.get(block) ?? lines.length;
 	}
 
 	function markdownBlockCopyText(block: EditorMarkdownBlock): string {

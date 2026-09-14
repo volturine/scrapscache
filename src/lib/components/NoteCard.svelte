@@ -190,28 +190,13 @@
 
 	$effect(() => {
 		if (!cardEl) return;
-		let heightTimer: ReturnType<typeof setTimeout> | null = null;
-		let pendingHeight: number | null = null;
 		const observer = new ResizeObserver((entries) => {
 			for (const entry of entries) {
-				const height = entry.contentRect.height;
-				if (height <= 0) continue;
-				pendingHeight = height;
-				if (heightTimer !== null) continue;
-				heightTimer = setTimeout(() => {
-					heightTimer = null;
-					if (pendingHeight !== null) {
-						cardHeight = pendingHeight;
-						pendingHeight = null;
-					}
-				}, 0);
+				cardHeight = entry.contentRect.height;
 			}
 		});
 		observer.observe(cardEl);
-		return () => {
-			observer.disconnect();
-			if (heightTimer !== null) clearTimeout(heightTimer);
-		};
+		return () => observer.disconnect();
 	});
 
 	$effect(() => {

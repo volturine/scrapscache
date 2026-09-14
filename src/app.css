@@ -424,15 +424,15 @@ body {
 	color: #ce5d97;
 }
 
-.markdown-table-scroll,
-.markdown-code-block,
+/* Only the open editor scrolls blocks horizontally. Card previews wrap instead:
+ * every scrollable overflow area is a native composited layer on iOS WebKit,
+ * and dozens of them inside animated, rounded, overlaid cards crash Safari. */
 .markdown-block-scroll {
 	max-width: 100%;
 	overflow-x: auto;
 	overscroll-behavior-x: contain;
 }
-.markdown-table-scroll,
-.markdown-code-block,
+.markdown-block-surface,
 .markdown-block-shell {
 	margin: 0.5rem 0;
 }
@@ -485,7 +485,11 @@ body {
 	width: 100%;
 	min-width: 0;
 }
-.markdown-raw-display-table,
+.markdown-raw-display-table {
+	display: table;
+	width: 100%;
+	border-collapse: collapse;
+}
 .markdown-raw-editor-table {
 	display: table;
 	width: max-content;
@@ -512,6 +516,10 @@ body {
 	font-weight: inherit;
 	white-space: nowrap;
 }
+.markdown-raw-table-display-cell {
+	white-space: normal;
+	overflow-wrap: anywhere;
+}
 .markdown-raw-table-display-cell::before,
 .markdown-raw-editor-table .markdown-editor-table-cell::before {
 	content: '|';
@@ -532,8 +540,7 @@ body {
 	padding-right: 2.75rem;
 }
 .markdown-table {
-	width: max-content;
-	min-width: 100%;
+	width: 100%;
 	border-collapse: collapse;
 	text-align: left;
 }
@@ -542,7 +549,7 @@ body {
 	border-bottom: 1px solid color-mix(in srgb, var(--scrapscache-text) 20%, transparent);
 	padding: 0.4rem 0.625rem;
 	vertical-align: top;
-	white-space: nowrap;
+	overflow-wrap: anywhere;
 }
 .markdown-table th {
 	font-weight: 700;
@@ -596,7 +603,6 @@ body {
 }
 .markdown-code-block code {
 	display: block;
-	min-width: max-content;
 	padding: 0.7rem 0;
 }
 .markdown-editor-code-block {
@@ -622,9 +628,9 @@ body {
 }
 .markdown-code-line {
 	display: block;
-	min-width: max-content;
 	padding: 0 0.75rem;
-	white-space: pre;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
 }
 .markdown-code-token-comment {
 	color: #166534;

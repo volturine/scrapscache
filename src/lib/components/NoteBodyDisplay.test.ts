@@ -166,7 +166,6 @@ describe('NoteBodyDisplay Markdown blocks', () => {
 		expect(container.querySelector('[data-markdown-table]')).toBeNull();
 		const rawTable = container.querySelector('[data-markdown-raw-table-container]');
 		expect(rawTable).toBeTruthy();
-		expect(rawTable?.classList).toContain('note-scrollbar-hidden');
 		expect(rawTable?.querySelector('.markdown-raw-display-table')).toBeTruthy();
 		expect(rawTable?.querySelectorAll('.markdown-raw-table-display-cell')).toHaveLength(6);
 		expect(rawTable?.textContent).toContain('| Rule name | Matches path |');

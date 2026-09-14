@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { Dialog } from '@ark-ui/svelte/dialog';
-	import { FileUpload } from '@ark-ui/svelte/file-upload';
 	import { portalToAppOverlay } from '$lib/appViewport';
 
 	let {
@@ -15,16 +14,37 @@
 		onClose: () => void;
 	} = $props();
 
+	let fileInput: HTMLInputElement | null = $state(null);
+	let pickingFile = $state(false);
+
 	function handleOpenChange(details: { open: boolean }) {
-		if (!details.open && !busy) onClose();
+		if (!details.open && !busy && !pickingFile) onClose();
+	}
+
+	function chooseFile() {
+		if (busy) return;
+		pickingFile = true;
+		fileInput?.click();
+	}
+
+	function handleFileChange(event: Event) {
+		pickingFile = false;
+		const input = event.currentTarget as HTMLInputElement;
+		const file = input.files?.[0];
+		input.value = '';
+		if (file) void onFile(file);
+	}
+
+	function handleFileCancel() {
+		pickingFile = false;
 	}
 </script>
 
 <Dialog.Root
 	open
 	onOpenChange={handleOpenChange}
-	closeOnEscape={!busy}
-	closeOnInteractOutside={!busy}
+	closeOnEscape={!busy && !pickingFile}
+	closeOnInteractOutside={!busy && !pickingFile}
 	preventScroll={false}
 >
 	<div {@attach portalToAppOverlay} class="absolute inset-0 z-[70]" role="presentation">
@@ -95,23 +115,24 @@
 							onclick={onClose}
 							class="scrapscache-button scrapscache-button-quiet px-3 py-2 text-sm">Cancel</button
 						>
-						<FileUpload.Root
+						<input
+							bind:this={fileInput}
+							type="file"
 							accept=".scraps-cache-backup,.zip,application/json,application/zip,application/x-zip-compressed"
-							maxFiles={1}
+							class="hidden"
+							tabindex="-1"
 							disabled={busy}
-							onFileAccept={(details) => {
-								const file = details.files[0];
-								if (file) void onFile(file);
-							}}
+							onchange={handleFileChange}
+							oncancel={handleFileCancel}
+						/>
+						<button
+							type="button"
+							disabled={busy}
+							onclick={chooseFile}
+							class="scrapscache-button scrapscache-button-primary px-4 py-2 text-sm font-medium"
 						>
-							<FileUpload.Trigger
-								disabled={busy}
-								class="scrapscache-button scrapscache-button-primary px-4 py-2 text-sm font-medium"
-							>
-								{busy ? 'Reading file…' : 'Choose file'}
-							</FileUpload.Trigger>
-							<FileUpload.HiddenInput />
-						</FileUpload.Root>
+							{busy ? 'Reading file…' : 'Choose file'}
+						</button>
 					</div>
 				</div>
 			</Dialog.Content>

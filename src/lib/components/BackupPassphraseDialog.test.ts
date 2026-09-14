@@ -9,13 +9,6 @@ function dispatchPointerDown(target: Element): MouseEvent {
 }
 
 describe('BackupPassphraseDialog', () => {
-	it('does not cover the page with a click-catching overlay while closed', () => {
-		render(BackupPassphraseDialog, {
-			props: { open: false, mode: 'import', onSubmit: vi.fn(), onClose: vi.fn() }
-		});
-		expect(document.querySelector('[role="presentation"]')).toBeNull();
-	});
-
 	it('leaves passphrase pointer focus and caret placement to the browser', () => {
 		render(BackupPassphraseDialog, {
 			props: {

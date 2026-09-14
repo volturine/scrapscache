@@ -1891,7 +1891,7 @@ export const markdownStyles = css({
 	'& .markdown-editor-code-block [data-markdown-code-fence]': { display: 'none' },
 	'& .markdown-editor-code-block [data-markdown-code-line]': { w: 'max-content', minW: 'full', flexWrap: 'nowrap', padding: '0 2.75rem 0 0.75rem' },
 	'& .markdown-editor-code-line': { w: 'max-content', minW: 'max-content', maxW: 'none', flex: '0 0 auto', whiteSpace: 'pre', overflowWrap: 'normal', wordBreak: 'normal' },
-	'& .markdown-raw-code-block [data-editor-line]': { padding: '0 2.75rem 0 0' },
+	'& .markdown-raw-code-block [data-editor-line]': { padding: '0 2.75rem 0 0.75rem' },
 	'& .markdown-code-line': { display: 'block', minW: 'max-content', px: 'md', whiteSpace: 'pre' },
 	'& .markdown-code-token-comment': { color: 'scrapscache.success', fontStyle: 'italic' },
 	'& .markdown-code-token-string': { color: 'scrapscache.danger' },

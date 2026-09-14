@@ -54,4 +54,18 @@ describe('PwaInstallStore', () => {
 		expect(promptFn).toHaveBeenCalledTimes(1);
 		expect(store.deferredPrompt).toBeNull();
 	});
+
+	it('hides the install option after the appinstalled event', () => {
+		const store = new PwaInstallStore();
+		store.deferredPrompt = {
+			prompt: vi.fn(),
+			userChoice: Promise.resolve({ outcome: 'dismissed' as const, platform: 'web' })
+		} as unknown as BeforeInstallPromptEvent;
+
+		expect(store.canPrompt).toBe(true);
+		window.dispatchEvent(new Event('appinstalled'));
+
+		expect(store.isStandalone).toBe(true);
+		expect(store.canPrompt).toBe(false);
+	});
 });

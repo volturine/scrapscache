@@ -1,7 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
 import BottomNav from './BottomNav.svelte';
-import { pwaInstallStore } from '$lib/stores/pwaInstall.svelte';
 
 const startNewNote = vi.fn();
 
@@ -23,24 +22,8 @@ describe('BottomNav', () => {
 		expect(startNewNote).toHaveBeenCalledTimes(1);
 	});
 
-	it('renders sticky install button when canPrompt is true', async () => {
-		pwaInstallStore.isStandalone = false;
-		pwaInstallStore.dismissed = false;
-		const promptSpy = vi.fn().mockResolvedValue(undefined);
-		pwaInstallStore.deferredPrompt = {
-			prompt: promptSpy,
-			userChoice: Promise.resolve({ outcome: 'accepted' as const, platform: 'web' })
-		} as any;
-
+	it('does not render an install control in the floating navigation', () => {
 		render(BottomNav);
-
-		const installBtn = screen.getByRole('button', { name: /install app/i });
-		expect(installBtn).toBeTruthy();
-
-		const dismissBtn = screen.getByRole('button', { name: /dismiss install prompt/i });
-		expect(dismissBtn).toBeTruthy();
-
-		await fireEvent.click(installBtn);
-		expect(promptSpy).toHaveBeenCalledTimes(1);
+		expect(screen.queryByRole('button', { name: /install app/i })).toBeNull();
 	});
 });

@@ -680,6 +680,7 @@ body {
 	display: contents;
 }
 .markdown-raw-code-block [data-editor-line] {
+	padding-left: 0.75rem;
 	padding-right: 2.75rem;
 }
 .raw-markdown-scroll {

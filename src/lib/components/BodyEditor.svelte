@@ -13,7 +13,13 @@
 	} from '$lib/checklistBody';
 	import { revealEditorField } from '$lib/editorVisibility';
 	import {
+		emptyMarkdownTableRow,
+		formatMarkdownTable,
 		highlightCodeLine,
+		isMarkdownTableHeaderRow,
+		markdownTableCellRanges,
+		markdownTableCells,
+		markdownTableDelimiterRow,
 		markdownTokenClass,
 		parseInlineMarkdown,
 		parseMarkdownBlocks,
@@ -120,6 +126,10 @@
 	let composing = false;
 	let applyingEdit = false;
 	let pendingInput: PendingInput | null = null;
+	/** An edit happened since tables were last formatted. */
+	let tablesNeedFormat = false;
+	/** First line id of the table holding the caret, so leaving it can format it. */
+	let caretTableId: number | null = null;
 	const undoStack: HistoryEntry[] = [];
 	const redoStack: HistoryEntry[] = [];
 
@@ -162,6 +172,166 @@
 		return !!opening && !!closing && opening[0] === closing[0] && closing.length >= opening.length;
 	}
 
+	type TableSpan = { start: number; end: number };
+
+	function tableSpanAt(index: number): TableSpan | null {
+		const block = markdownBlockAt(index);
+		if (block?.type !== 'table') return null;
+		const span = { start: block.lineIndex, end: markdownBlockEnd(block) };
+		// Task and bullet rows keep their own prefixes; never rewrite those as table source.
+		const rows = lines.slice(span.start, span.end);
+		return rows.some((line) => line.isCheck || line.isBullet) ? null : span;
+	}
+
+	function formatTable({ start, end }: TableSpan): boolean {
+		const rows = lines.slice(start, end);
+		const formatted = formatMarkdownTable(rows.map((line) => line.text));
+		let changed = false;
+		rows.forEach((line, offset) => {
+			const text = formatted[offset] ?? line.text;
+			if (line.text === text) return;
+			line.text = text;
+			changed = true;
+		});
+		return changed;
+	}
+
+	/**
+	 * Pretty-print tables once the caret is elsewhere, like editor table formatters:
+	 * after an edit, or when the caret leaves a table. The table being edited is left
+	 * alone so typing never shifts text under the caret.
+	 */
+	function formatSettledTables(caretInEditor = true) {
+		if (applyingEdit || composing || !container) return;
+		const range = caretInEditor ? editorRange() : null;
+		if (caretInEditor && !range) return;
+		const current = range ? tableSpanAt(range.start.line) : null;
+		const currentId = current ? (lines[current.start]?.id ?? null) : null;
+		const leftTable = caretTableId !== null && caretTableId !== currentId;
+		caretTableId = currentId;
+		if (!tablesNeedFormat && !leftTable) return;
+		tablesNeedFormat = false;
+
+		let changed = false;
+		for (const block of markdownBlocks) {
+			if (block.type !== 'table') continue;
+			const span = tableSpanAt(block.lineIndex);
+			if (!span) continue;
+			if (range && range.end.line >= span.start && range.start.line < span.end) continue;
+			if (formatTable(span)) changed = true;
+		}
+		if (!changed) return;
+		syncBody();
+		tablesNeedFormat = false;
+		if (range) {
+			selectAt(
+				range.start.line,
+				range.start.offset,
+				range.end.line,
+				range.end.offset,
+				selectionIsReversed()
+			);
+		}
+	}
+
+	function selectTableCell(row: number, cell: number) {
+		const range = markdownTableCellRanges(lines[row]?.text ?? '')[cell];
+		if (range) selectAt(row, range.start, row, range.end);
+	}
+
+	/** Tab / Shift+Tab: format the table and select the next or previous cell, adding a row at the end. */
+	function moveTableCell(range: EditorRange, direction: 1 | -1): boolean {
+		const span = tableSpanAt(range.start.line);
+		if (!span) return false;
+		const caretCell = markdownTableCellRanges(lines[range.start.line].text).findIndex(
+			(candidate) => range.start.offset <= candidate.end
+		);
+		formatTable(span);
+		const columns = markdownTableCells(lines[span.start].text).length;
+		const positions: { row: number; cell: number }[] = [];
+		for (let row = span.start; row < span.end; row++) {
+			if (row === span.start + 1) continue;
+			for (let cell = 0; cell < columns; cell++) positions.push({ row, cell });
+		}
+
+		let current: number;
+		if (range.start.line === span.start + 1) {
+			current = direction > 0 ? columns - 1 : columns;
+		} else {
+			const cell = caretCell < 0 ? columns - 1 : Math.min(caretCell, columns - 1);
+			current = positions.findIndex(
+				(position) => position.row === range.start.line && position.cell === cell
+			);
+		}
+
+		let target = positions[Math.max(0, current + direction)];
+		if (!target) {
+			lines.splice(span.end, 0, newLine(emptyMarkdownTableRow(columns)));
+			formatTable({ start: span.start, end: span.end + 1 });
+			target = { row: span.end, cell: 0 };
+		}
+		syncBody();
+		tablesNeedFormat = false;
+		selectTableCell(target.row, target.cell);
+		return true;
+	}
+
+	/**
+	 * Enter inside a table adds a row below and moves to its first cell; Enter on an
+	 * empty last row leaves the table. Enter at the end of a lone `| a | b |` header
+	 * creates the delimiter row and a first body row.
+	 */
+	function handleTableEnter(range: EditorRange): boolean {
+		if (!range.collapsed) return false;
+		const index = range.start.line;
+		const line = lines[index];
+		if (!line || line.isCheck || line.isBullet) return false;
+		const span = tableSpanAt(index);
+
+		if (!span) {
+			if (range.start.offset !== line.text.length || !isMarkdownTableHeaderRow(line.text)) {
+				return false;
+			}
+			const columns = markdownTableCells(line.text).length;
+			const delimiter = newLine(markdownTableDelimiterRow(columns));
+			const row = newLine(emptyMarkdownTableRow(columns));
+			lines.splice(index + 1, 0, delimiter, row);
+			formatTable({ start: index, end: index + 3 });
+			syncBody();
+			tablesNeedFormat = false;
+			caretTableId = line.id;
+			selectTableCell(index + 2, 0);
+			return true;
+		}
+
+		const columns = markdownTableCells(lines[span.start].text).length;
+		const isLastBodyRow = index === span.end - 1 && index >= span.start + 2;
+		if (isLastBodyRow && markdownTableCells(line.text).every((cell) => cell.trim() === '')) {
+			const exit = newLine();
+			lines.splice(index, 1, exit);
+			formatTable({ start: span.start, end: index });
+			syncBody();
+			tablesNeedFormat = false;
+			caretTableId = null;
+			focusAt(index, 0, exit.id);
+			return true;
+		}
+
+		const insertAt = Math.max(index + 1, span.start + 2);
+		lines.splice(insertAt, 0, newLine(emptyMarkdownTableRow(columns)));
+		formatTable({ start: span.start, end: span.end + 1 });
+		syncBody();
+		tablesNeedFormat = false;
+		selectTableCell(insertAt, 0);
+		return true;
+	}
+
+	$effect(() => {
+		const onSelectionChange = () => formatSettledTables();
+		document.addEventListener('selectionchange', onSelectionChange);
+		return () => document.removeEventListener('selectionchange', onSelectionChange);
+	});
+
 	function makeEditable(node: HTMLDivElement) {
 		node.setAttribute('contenteditable', 'plaintext-only');
 		return {
@@ -183,6 +353,7 @@
 
 	function syncBody() {
 		body = serializeLines(lines.filter((line) => line.id !== draftTaskId));
+		tablesNeedFormat = true;
 		oninput?.();
 	}
 
@@ -1090,6 +1261,7 @@
 			const range = editorRange();
 			if (!range) return;
 			rememberEdit(range);
+			if (moveTableCell(range, event.shiftKey ? -1 : 1)) return;
 			indentRange(range, event.shiftKey || event.ctrlKey ? -1 : 1);
 			return;
 		}
@@ -1105,6 +1277,7 @@
 		if (event.key === 'Enter' || event.key === 'NumpadEnter') {
 			event.preventDefault();
 			rememberEdit(range);
+			if (handleTableEnter(range)) return;
 			handleEnter(range);
 			return;
 		}
@@ -1184,6 +1357,7 @@
 		if (subtaskPointerId !== null) return;
 		discardEmptyDraft();
 		if (event.relatedTarget instanceof Node && container?.contains(event.relatedTarget)) return;
+		formatSettledTables(false);
 		dropTaskFocus();
 	}
 
@@ -1243,7 +1417,15 @@
 	{@const tableTokens = tokenizeMarkdownTableRow(text)}
 	{@const lastCellIndex = tableTokens.filter((token) => token.kind === 'cell').length - 1}
 	{#each tableTokens as token, tokenIndex (tokenIndex)}
-		{#if token.kind === 'marker'}
+		{#if uiStore.rawMarkdown}
+			{#if token.kind === 'marker'}
+				<span class="markdown-raw-table-marker">{token.text}</span>
+			{:else}
+				<span data-markdown-table-cell={token.columnIndex}
+					>{@render inlineEditorContent(token.text)}</span
+				>
+			{/if}
+		{:else if token.kind === 'marker'}
 			<span class="markdown-editor-table-marker markdown-token-marker-hidden">{token.text}</span>
 		{:else}
 			<span
@@ -1421,7 +1603,6 @@
 				/>
 				<div
 					class="markdown-block-scroll note-scrollbar-hidden"
-					class:markdown-raw-table-scroll={uiStore.rawMarkdown && block.type === 'table'}
 					class:markdown-editor-table-scroll={!uiStore.rawMarkdown && block.type === 'table'}
 					class:markdown-editor-code-block={!uiStore.rawMarkdown && block.type === 'code'}
 					class:markdown-raw-code-block={uiStore.rawMarkdown && block.type === 'code'}
@@ -1429,7 +1610,7 @@
 					{#if block.type === 'table'}
 						<div
 							class:markdown-editor-table={!uiStore.rawMarkdown}
-							class:markdown-raw-editor-table={uiStore.rawMarkdown}
+							class:markdown-raw-table={uiStore.rawMarkdown}
 						>
 							{#each lines.slice(block.lineIndex, markdownBlockEnd(block)) as blockLine, blockLineOffset (blockLine.id)}
 								{@render editorLine(blockLine, block.lineIndex + blockLineOffset, block)}

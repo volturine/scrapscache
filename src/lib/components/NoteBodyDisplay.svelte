@@ -96,22 +96,13 @@
 {/snippet}
 
 {#snippet rawTableContent(text: string)}
-	{@const tableTokens = tokenizeMarkdownTableRow(text)}
-	{@const lastCellIndex = tableTokens.filter((token) => token.kind === 'cell').length - 1}
-	<span class="markdown-raw-table-display-line">
-		{#each tableTokens as token, tokenIndex (tokenIndex)}
-			{#if token.kind === 'marker'}
-				<span class="markdown-raw-table-source-marker">{token.text}</span>
-			{:else}
-				<span
-					class="markdown-raw-table-display-cell"
-					class:markdown-table-last-cell={token.columnIndex === lastCellIndex}
-				>
-					{@render inlineContent(token.text)}
-				</span>
-			{/if}
-		{/each}
-	</span>
+	{#each tokenizeMarkdownTableRow(text) as token, tokenIndex (tokenIndex)}
+		{#if token.kind === 'marker'}
+			<span class="markdown-raw-table-marker">{token.text}</span>
+		{:else if token.text}
+			{@render inlineContent(token.text)}
+		{/if}
+	{/each}
 {/snippet}
 
 {#snippet bodyLine(seg: BodySegment)}
@@ -168,17 +159,10 @@
 			{@const rawTable = rawTableAt(seg.lineIndex)}
 			{#if rawTable}
 				{#if rawTable.lineIndex === seg.lineIndex}
-					<div
-						class="markdown-block-surface markdown-raw-table-scroll"
-						data-markdown-raw-table-container
-					>
-						<div class="markdown-raw-display-table">
-							{#each rawTableSource(rawTable) as sourceLine, sourceLineIndex (sourceLineIndex)}
-								<div class="markdown-raw-table-display-row">
-									{@render rawTableContent(sourceLine)}
-								</div>
-							{/each}
-						</div>
+					<div class="markdown-block-surface markdown-raw-table" data-markdown-raw-table-container>
+						{#each rawTableSource(rawTable) as sourceLine, sourceLineIndex (sourceLineIndex)}
+							<div>{@render rawTableContent(sourceLine)}</div>
+						{/each}
 					</div>
 				{/if}
 			{:else}

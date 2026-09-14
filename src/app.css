@@ -481,63 +481,21 @@ body {
 .dark .markdown-block-surface {
 	background: rgb(0 0 0 / 0.24);
 }
-.markdown-raw-table-scroll {
-	width: 100%;
-	min-width: 0;
+/* Raw tables show their literal, auto-formatted source; monospace keeps columns aligned. */
+.markdown-raw-table {
+	padding: 0.5rem 0.75rem;
+	white-space: pre;
 }
-.markdown-raw-display-table {
-	display: table;
-	width: 100%;
-	border-collapse: collapse;
+.markdown-content .markdown-raw-table {
+	overflow-x: clip;
 }
-.markdown-raw-editor-table {
-	display: table;
+[data-body-editor] .markdown-raw-table {
 	width: max-content;
 	min-width: 100%;
-	border-collapse: collapse;
-}
-.markdown-raw-table-display-row,
-.markdown-raw-editor-table [data-markdown-table-row] {
-	display: table-row;
-}
-.markdown-raw-table-display-line,
-.markdown-raw-editor-table .markdown-editor-table-line {
-	display: contents;
-}
-.markdown-raw-table-source-marker,
-.markdown-raw-editor-table .markdown-editor-table-marker {
-	display: none;
-}
-.markdown-raw-table-display-cell,
-.markdown-raw-editor-table .markdown-editor-table-cell {
-	display: table-cell;
-	padding: 0.2rem 0.45rem;
-	border: 0;
-	font-weight: inherit;
-	white-space: nowrap;
-}
-.markdown-raw-table-display-cell {
-	white-space: normal;
-	overflow-wrap: anywhere;
-}
-.markdown-raw-table-display-cell::before,
-.markdown-raw-editor-table .markdown-editor-table-cell::before {
-	content: '|';
-	padding-right: 0.55rem;
-	color: var(--scrapscache-text-muted);
-}
-.markdown-raw-table-display-cell.markdown-table-last-cell::after,
-.markdown-raw-editor-table .markdown-editor-table-cell.markdown-table-last-cell::after {
-	content: '|';
-	padding-left: 0.55rem;
-	color: var(--scrapscache-text-muted);
-}
-.markdown-raw-table-display-row:first-child
-	.markdown-raw-table-display-cell.markdown-table-last-cell,
-.markdown-raw-editor-table
-	[data-markdown-table-row]:first-child
-	.markdown-editor-table-cell.markdown-table-last-cell {
 	padding-right: 2.75rem;
+}
+.markdown-raw-table-marker {
+	color: var(--scrapscache-text-muted);
 }
 .markdown-table {
 	width: 100%;
@@ -677,13 +635,15 @@ body {
 	overflow-wrap: anywhere;
 	word-break: normal;
 }
-[data-body-editor].markdown-raw .markdown-raw-table-scroll [data-editor-line] {
-	width: max-content;
-	min-width: 100%;
+[data-body-editor].markdown-raw .markdown-raw-table [data-editor-line] {
 	flex-wrap: nowrap;
 }
-[data-body-editor].markdown-raw .markdown-raw-table-scroll [data-line-text] {
-	display: contents;
+[data-body-editor].markdown-raw .markdown-raw-table [data-line-text] {
+	display: block;
+	flex: none;
+	max-width: none;
+	white-space: pre;
+	overflow-wrap: normal;
 }
 .markdown-raw-code-block [data-editor-line] {
 	padding-left: 0.75rem;

@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+	formatMarkdownTable,
 	highlightCodeLine,
+	isMarkdownTableHeaderRow,
+	markdownTableCellRanges,
 	markdownTokenClass,
 	parseInlineMarkdown,
 	parseMarkdownBlocks,
@@ -212,5 +215,63 @@ describe('code block tokenizer', () => {
 			{ kind: 'plain', text: ' ' },
 			{ kind: 'string', text: '"SELECT 1"' }
 		]);
+	});
+});
+
+describe('Markdown table formatting', () => {
+	it('pads columns, fills the delimiter row, and keeps alignment markers', () => {
+		expect(
+			formatMarkdownTable([
+				'| Tables | Are | Cool |',
+				'|----------|:-------------:|------:|',
+				'| col 1 is | left-aligned | $1600 |',
+				'| col 3 is | right-aligned | $1 |'
+			])
+		).toEqual([
+			'| Tables   |      Are      |  Cool |',
+			'| -------- | :-----------: | ----: |',
+			'| col 1 is |  left-aligned | $1600 |',
+			'| col 3 is | right-aligned |    $1 |'
+		]);
+	});
+
+	it('aligns emoji by display width and keeps escaped pipes and code spans intact', () => {
+		const formatted = formatMarkdownTable([
+			'| Service | Status | Note |',
+			'| :-- | :-: | --- |',
+			'| API | 🟢 Up | `a|b` |',
+			'| Cache | 🟡 Slow | x \\| y |'
+		]);
+
+		expect(formatted).toEqual([
+			'| Service |  Status | Note   |',
+			'| :------ | :-----: | ------ |',
+			'| API     |  🟢 Up  | `a|b`  |',
+			'| Cache   | 🟡 Slow | x \\| y |'
+		]);
+		expect(parseMarkdownBlocks(formatted.join('\n'))[0]?.type).toBe('table');
+	});
+
+	it('keeps cells from ragged rows instead of dropping them', () => {
+		expect(formatMarkdownTable(['| a | b |', '| - | - |', '| 1 |', '| 1 | 2 | 3 |'])).toEqual([
+			'| a | b |   |',
+			'| - | - | - |',
+			'| 1 |   |   |',
+			'| 1 | 2 | 3 |'
+		]);
+	});
+
+	it('locates cell content for caret placement', () => {
+		const row = '| ab | c  |';
+		expect(markdownTableCellRanges(row).map(({ start, end }) => row.slice(start, end))).toEqual([
+			'ab',
+			'c'
+		]);
+	});
+
+	it('only treats a closed pipe row with two cells as a table header', () => {
+		expect(isMarkdownTableHeaderRow('| Name | Status |')).toBe(true);
+		expect(isMarkdownTableHeaderRow('| Name |')).toBe(false);
+		expect(isMarkdownTableHeaderRow('a | b')).toBe(false);
 	});
 });

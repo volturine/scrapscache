@@ -126,37 +126,37 @@ export class ProfileCoordinator {
 		try {
 			const created = await this.exclusive(async () => {
 				await notesStore.waitForPendingProfileWrites();
-				const result = await syncStore.register(name, turnstileToken);
+				const sourceProfile =
+					sourcePid && sourcePid !== LOCAL_PROFILE_ID
+						? syncStore.profiles.find((profile) => profile.id === sourcePid)
+						: null;
+				const reuse = sourceProfile && isLocalWorkspace(sourceProfile) ? sourceProfile : null;
+				const result = await syncStore.register(name, turnstileToken, reuse);
 				if (!result.success || !result.profile)
 					return { success: false, error: result.error ?? 'Registration failed' };
 				try {
-					// Normal creation from a synced profile starts blank. Recovery creation
-					// and creation from the anonymous workspace copy their selected source.
-					if (sourcePid) {
+					if (sourcePid && result.profile.id !== sourcePid) {
 						await copyProfileDatasetInto(sourcePid, result.profile.id);
-					} else {
+						if (sourcePid === LOCAL_PROFILE_ID) {
+							await clearProfileNamespace(LOCAL_PROFILE_ID);
+							clearNotesMirror(LOCAL_PROFILE_ID);
+						}
+					} else if (!sourcePid) {
 						clearNotesMirror(result.profile.id);
 					}
 					await this.activate(result.profile);
 					return { success: true };
 				} catch (setupErr) {
-					await syncStore.removeProfile(result.profile.id).catch(() => undefined);
+					if (result.profile.id !== reuse?.id)
+						await syncStore.removeProfile(result.profile.id).catch(() => undefined);
 					throw setupErr;
 				}
 			});
 			if (!created.success) return created;
-			// Manual sync acquires the same non-reentrant web lock, so it must
-			// start after the namespace handover releases that lock.
-			const synced = await notesStore.syncWithCloudManual();
-			return synced
-				? { success: true }
-				: {
-						success: true,
-						error:
-							syncStore.lastError ??
-							notesStore.lastPersistError ??
-							'Created, but the first sync did not finish'
-					};
+			// First sync can take a long time for a large workspace. Leave the
+			// handover first so the UI can show the synced workspace immediately.
+			void notesStore.syncWithCloudManual().catch(() => undefined);
+			return { success: true };
 		} catch (err) {
 			return {
 				success: false,

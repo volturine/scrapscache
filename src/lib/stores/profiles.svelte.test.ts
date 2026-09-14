@@ -85,6 +85,7 @@ describe('profile creation handover', () => {
 
 		expect(result).toEqual({ success: true });
 		expect((await getAllNotesMetadata(created.id)).map(({ id }) => id)).toEqual(['anonymous-note']);
+		expect(await getAllNotesMetadata(LOCAL_PROFILE_ID)).toEqual([]);
 	});
 
 	it('still starts blank when creating from an active synced profile', async () => {
@@ -365,19 +366,14 @@ describe('profile creation handover', () => {
 		expect(await getAllNotesMetadata(syncStore.activePid)).toEqual([]);
 	});
 
-	it('copies notes from an extra local workspace when creating a synced one', async () => {
+	it('turns an extra local workspace into the synced one without copying', async () => {
 		const local = {
 			id: 'extra-local',
 			name: 'Local',
 			syncKey: '',
 			createdAt: 1
 		};
-		const created = {
-			id: 'created-from-local',
-			name: 'Created',
-			syncKey: createSyncIdentity().syncKey,
-			createdAt: 2
-		};
+		const syncKey = createSyncIdentity().syncKey;
 		syncStore.profiles = [local];
 		syncStore.activateLocalWorkspace(local.id);
 		await putNote(local.id, note('local-note'));
@@ -386,17 +382,49 @@ describe('profile creation handover', () => {
 		vi.spyOn(notesStore, 'reloadForProfile').mockResolvedValue();
 		vi.spyOn(notesStore, 'syncWithCloudManual').mockResolvedValue(true);
 		vi.spyOn(syncStore, 'queueOutbox').mockResolvedValue();
+		vi.spyOn(syncStore, 'register').mockImplementation(async (name, _token, existing) => {
+			const promoted = {
+				...existing!,
+				name: name?.trim() || existing!.name,
+				syncKey
+			};
+			syncStore.profiles = [promoted];
+			return { success: true, profile: promoted };
+		});
+
+		const result = await new ProfileCoordinator().create();
+
+		expect(result).toEqual({ success: true });
+		expect(syncStore.profiles).toHaveLength(1);
+		expect(syncStore.profiles[0].id).toBe(local.id);
+		expect(syncStore.profiles[0].syncKey).toBe(syncKey);
+		expect((await getAllNotesMetadata(local.id)).map(({ id }) => id)).toEqual(['local-note']);
+	});
+
+	it('returns after promoting even if the first cloud sync has not finished', async () => {
+		const created = {
+			id: 'created-profile',
+			name: 'Created',
+			syncKey: createSyncIdentity().syncKey,
+			createdAt: 1
+		};
+		syncStore.activateLocalWorkspace();
+		await putNote(LOCAL_PROFILE_ID, note('anonymous-note'));
+		vi.spyOn(notesStore, 'waitForPendingProfileWrites').mockResolvedValue();
+		vi.spyOn(notesStore, 'reloadForProfile').mockResolvedValue();
+		vi.spyOn(syncStore, 'queueOutbox').mockResolvedValue();
+		vi.spyOn(notesStore, 'syncWithCloudManual').mockReturnValue(new Promise(() => {}));
 		vi.spyOn(syncStore, 'register').mockImplementation(async () => {
-			syncStore.profiles = [local, created];
-			syncStore.activateProfile(created);
+			syncStore.profiles = [created];
 			return { success: true, profile: created };
 		});
 
 		const result = await new ProfileCoordinator().create();
 
 		expect(result).toEqual({ success: true });
-		expect((await getAllNotesMetadata(created.id)).map(({ id }) => id)).toEqual(['local-note']);
-		expect((await getAllNotesMetadata(local.id)).map(({ id }) => id)).toEqual(['local-note']);
+		expect(syncStore.activeProfile).toEqual(created);
+		expect((await getAllNotesMetadata(created.id)).map(({ id }) => id)).toEqual(['anonymous-note']);
+		expect(await getAllNotesMetadata(LOCAL_PROFILE_ID)).toEqual([]);
 	});
 
 	it('wipes an extra local workspace and returns to anonymous', async () => {

@@ -58,7 +58,13 @@ export function profileForSyncKey(
 	profiles: StoredProfile[],
 	syncKey: string
 ): StoredProfile | null {
+	if (!syncKey) return null;
 	return profiles.find((profile) => profile.syncKey === syncKey) ?? null;
+}
+
+/** Local-only workspaces have no sync key and never talk to the relay. */
+export function isLocalWorkspace(profile: StoredProfile): boolean {
+	return !profile.syncKey;
 }
 
 export function nextProfileName(existing: readonly { name: string }[]): string {

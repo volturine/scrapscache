@@ -7,12 +7,13 @@ import { notesStore, SYNC_LOCK } from './notes.svelte';
 import { clearNotesMirror } from '$lib/noteStorage';
 import {
 	copyProfileDatasetInto,
+	isLocalWorkspace,
 	nextProfileName,
 	profileForSyncKey,
 	type StoredProfile
 } from '$lib/profiles';
 import { randomOpaqueId } from '$lib/syncPairing';
-import { LOCAL_PROFILE_ID, unlinkProfileToNamespace } from '$lib/db/idb';
+import { clearProfileNamespace, LOCAL_PROFILE_ID, unlinkProfileToNamespace } from '$lib/db/idb';
 import { unregisterReminderDevice } from '$lib/reminderWake';
 
 export class ProfileCoordinator {
@@ -47,8 +48,68 @@ export class ProfileCoordinator {
 		name?: string,
 		turnstileToken?: string
 	): Promise<{ success: boolean; error?: string }> {
-		const sourcePid = syncStore.activePid === LOCAL_PROFILE_ID ? LOCAL_PROFILE_ID : null;
+		const sourcePid = syncStore.account ? null : syncStore.activePid;
 		return this.createWithDataset(name, sourcePid, turnstileToken);
+	}
+
+	/** Create an empty local-only workspace. It never registers with the relay. */
+	async createLocal(): Promise<{ success: boolean; error?: string }> {
+		const blocked = this.guard();
+		if (blocked) return { success: false, error: blocked };
+		this.switching = true;
+		try {
+			await this.exclusive(async () => {
+				await notesStore.waitForPendingProfileWrites();
+				const profile = {
+					id: randomOpaqueId(),
+					name: nextProfileName([{ name: 'Anonymous workspace' }, ...syncStore.profiles]),
+					syncKey: '',
+					createdAt: Date.now()
+				};
+				clearNotesMirror(profile.id);
+				await syncStore.addKeyringEntry(profile);
+				syncStore.activateLocalWorkspace(profile.id);
+				await notesStore.reloadForProfile();
+			});
+			return { success: true };
+		} catch (err) {
+			return {
+				success: false,
+				error: err instanceof Error ? err.message : 'Could not create workspace'
+			};
+		} finally {
+			this.switching = false;
+		}
+	}
+
+	/** Wipe a local workspace's notes. Extra local workspaces are removed. */
+	async wipeLocal(pid: string): Promise<{ success: boolean; error?: string }> {
+		const blocked = this.guard();
+		if (blocked) return { success: false, error: blocked };
+		this.switching = true;
+		try {
+			await this.exclusive(async () => {
+				await notesStore.waitForPendingProfileWrites();
+				await clearProfileNamespace(pid);
+				if (pid !== LOCAL_PROFILE_ID) {
+					if (syncStore.activePid === pid) {
+						syncStore.activateLocalWorkspace(LOCAL_PROFILE_ID);
+						await notesStore.reloadForProfile();
+					}
+					await syncStore.removeProfile(pid);
+				} else if (syncStore.activePid === pid) {
+					await notesStore.reloadForProfile();
+				}
+			});
+			return { success: true };
+		} catch (err) {
+			return {
+				success: false,
+				error: err instanceof Error ? err.message : 'Could not delete workspace data'
+			};
+		} finally {
+			this.switching = false;
+		}
 	}
 
 	private async createWithDataset(
@@ -195,14 +256,19 @@ export class ProfileCoordinator {
 				if (profileId === LOCAL_PROFILE_ID) {
 					if (syncStore.activePid === LOCAL_PROFILE_ID) return false;
 					await notesStore.waitForPendingProfileWrites();
-					syncStore.activateLocalWorkspace();
+					syncStore.activateLocalWorkspace(LOCAL_PROFILE_ID);
 					await notesStore.reloadForProfile();
 					return false;
 				}
 				const target = syncStore.profiles.find((profile) => profile.id === profileId);
 				if (!target) throw new Error('That sync key is no longer on this device');
-				if (target.id === syncStore.activeProfile?.id) return false;
+				if (target.id === syncStore.activePid) return false;
 				await notesStore.waitForPendingProfileWrites();
+				if (isLocalWorkspace(target)) {
+					syncStore.activateLocalWorkspace(target.id);
+					await notesStore.reloadForProfile();
+					return false;
+				}
 				await this.activate(target);
 				return true;
 			});

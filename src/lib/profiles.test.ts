@@ -19,9 +19,11 @@ import {
 	adoptLocalDatasetInto,
 	buildProfileNotesExport,
 	getLastActiveProfileId,
+	isLocalWorkspace,
 	loadProfiles,
 	nextProfileName,
 	pickBootProfile,
+	profileForSyncKey,
 	saveProfile,
 	setLastActiveProfileId,
 	type StoredProfile
@@ -114,6 +116,17 @@ describe('single-profile export', () => {
 		expect(backup?.tombstones).toEqual({ 'gone-exp': 9 });
 		expect(backup?.version).toBe(4);
 		expect(await buildProfileNotesExport('p-other')).toBeNull();
+	});
+});
+
+describe('local workspaces', () => {
+	it('treats empty sync keys as local-only and ignores them when matching keys', () => {
+		const local: StoredProfile = { id: 'local', name: 'Studio', syncKey: '', createdAt: 1 };
+		const synced: StoredProfile = { id: 'synced', name: 'Cloud', syncKey: 'k-cloud', createdAt: 2 };
+		expect(isLocalWorkspace(local)).toBe(true);
+		expect(isLocalWorkspace(synced)).toBe(false);
+		expect(profileForSyncKey([local, synced], '')).toBeNull();
+		expect(profileForSyncKey([local, synced], 'k-cloud')).toBe(synced);
 	});
 });
 

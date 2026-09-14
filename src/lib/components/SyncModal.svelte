@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ChoiceCard from './ChoiceCard.svelte';
 	import WorkspaceRow from './WorkspaceRow.svelte';
 	import TurnstileWidget from './TurnstileWidget.svelte';
 	import { env } from '$env/dynamic/public';
@@ -15,12 +16,22 @@
 	import { buildProfileNotesExport, isLocalWorkspace } from '$lib/profiles';
 	import { estimateProfileBytes } from '$lib/db/idb';
 	import { downloadJSON } from '$lib/utils';
-	import { Cloud, CloudOff, RefreshCw, Trash2, X } from '@lucide/svelte';
+	import {
+		Cloud,
+		CloudOff,
+		FolderPlus,
+		MonitorSmartphone,
+		RefreshCw,
+		Trash2,
+		X
+	} from '@lucide/svelte';
 	import { portalToAppFloat } from '$lib/appViewport';
 
 	let { onClose, initialPairingCode = '' }: { onClose: () => void; initialPairingCode?: string } =
 		$props();
-	let mode = $state<'menu' | 'register' | 'link' | 'waiting' | 'pairing' | 'confirm'>('menu');
+	let mode = $state<'menu' | 'new' | 'register' | 'link' | 'waiting' | 'pairing' | 'confirm'>(
+		'menu'
+	);
 	let code = $state('');
 	let error = $state('');
 	let info = $state('');
@@ -184,6 +195,7 @@
 			error = friendlyError(result.error, 'Could not create workspace');
 			return;
 		}
+		mode = 'menu';
 		info = 'Created a local workspace on this device.';
 	}
 
@@ -528,15 +540,19 @@
 						<Cloud class="h-5 w-5" aria-hidden="true" />
 						{mode === 'menu'
 							? 'Workspaces'
-							: mode === 'register'
-								? 'Sync workspace'
-								: mode === 'confirm'
-									? confirmation === 'force'
-										? 'Replace cloud notes?'
-										: confirmation === 'remove'
-											? 'Delete workspace?'
-											: 'Delete cloud data?'
-									: 'Connect device'}
+							: mode === 'new'
+								? 'New workspace'
+								: mode === 'link'
+									? 'Join synced workspace'
+									: mode === 'register'
+										? 'Sync workspace'
+										: mode === 'confirm'
+											? confirmation === 'force'
+												? 'Replace cloud notes?'
+												: confirmation === 'remove'
+													? 'Delete workspace?'
+													: 'Delete cloud data?'
+											: 'Connect device'}
 					</Dialog.Title>
 					<button
 						type="button"
@@ -653,7 +669,11 @@
 								type="button"
 								disabled={busy}
 								class="text-[var(--scrapscache-primary)]"
-								onclick={() => void createLocalWorkspace()}>+ New workspace</button
+								onclick={() => {
+									mode = 'new';
+									error = '';
+									info = '';
+								}}>+ New workspace</button
 							>
 						</div>
 						{#if syncStore.account}
@@ -813,30 +833,46 @@
 								>{operation === 'create' ? 'Starting sync…' : 'Start sync'}</button
 							>
 						</div>
-						<div class="flex items-center gap-3" aria-hidden="true">
-							<span class="h-px flex-1 bg-[var(--scrapscache-border)]"></span>
-							<span
-								class="text-[11px] uppercase tracking-wider text-[var(--scrapscache-text-muted)]"
-								>or</span
-							>
-							<span class="h-px flex-1 bg-[var(--scrapscache-border)]"></span>
-						</div>
-						<button
-							type="button"
-							disabled={busy}
-							class="scrapscache-button scrapscache-button-secondary w-full px-3 py-2.5 text-sm"
-							onclick={() => {
-								mode = 'link';
-								error = '';
-								info = '';
-							}}>Join existing</button
-						>
 						<button
 							type="button"
 							onclick={() => {
 								mode = 'menu';
 								promoteSource = null;
 							}}
+							disabled={busy}
+							class="w-full text-xs text-[var(--scrapscache-text-muted)] touch-manipulation"
+							>← Back to workspaces</button
+						>
+					</div>
+				{:else if mode === 'new'}
+					<div class="space-y-4">
+						<div class="grid gap-2.5">
+							<ChoiceCard
+								title="Create workspace"
+								caption="Start an empty private workspace on this device. You can sync it later."
+								disabled={busy}
+								onclick={() => void createLocalWorkspace()}
+							>
+								{#snippet icon()}<FolderPlus size={18} />{/snippet}
+							</ChoiceCard>
+							<ChoiceCard
+								title="Join a synced workspace"
+								caption="Enter a one-time code from another device to sync its workspace here."
+								disabled={busy}
+								onclick={() => {
+									mode = 'link';
+									error = '';
+								}}
+							>
+								{#snippet icon()}<MonitorSmartphone size={18} />{/snippet}
+							</ChoiceCard>
+						</div>
+						{#if error}<p class="text-sm text-[var(--scrapscache-danger)]" role="alert">
+								{error}
+							</p>{/if}
+						<button
+							type="button"
+							onclick={() => (mode = 'menu')}
 							disabled={busy}
 							class="w-full text-xs text-[var(--scrapscache-text-muted)] touch-manipulation"
 							>← Back to workspaces</button
@@ -867,10 +903,7 @@
 							>{operation === 'connect' ? 'Starting…' : 'Start connection'}</button
 						><button
 							type="button"
-							onclick={() => {
-								mode = 'menu';
-								promoteSource = null;
-							}}
+							onclick={() => (mode = 'new')}
 							disabled={busy}
 							class="w-full text-xs text-[var(--scrapscache-text-muted)] touch-manipulation"
 							>← Back</button

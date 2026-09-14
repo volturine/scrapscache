@@ -12,6 +12,22 @@
 		toggleCheckEntries
 	} from '$lib/checklistBody';
 	import { revealEditorField } from '$lib/editorVisibility';
+	import {
+		emptyMarkdownTableRow,
+		formatMarkdownTable,
+		highlightCodeLine,
+		isMarkdownTableHeaderRow,
+		markdownTableCellRanges,
+		markdownTableCells,
+		markdownTableDelimiterRow,
+		markdownTokenClass,
+		parseInlineMarkdown,
+		parseMarkdownBlocks,
+		tokenizeMarkdownTableRow,
+		type MarkdownBlock
+	} from '$lib/markdown';
+	import { uiStore } from '$lib/stores/ui.svelte';
+	import MarkdownCopyButton from './MarkdownCopyButton.svelte';
 
 	const MAX_TASK_INDENT = 1;
 
@@ -43,6 +59,10 @@
 	};
 	type EditorPoint = { line: number; offset: number; global: number };
 	type EditorRange = { start: EditorPoint; end: EditorPoint; collapsed: boolean };
+	type PendingInput = {
+		range: EditorRange;
+		lineText: string;
+	};
 	type HistoryEntry = {
 		body: string;
 		startLine: number;
@@ -94,6 +114,10 @@
 	}
 
 	let lines = $state<Line[]>(parseBodyToLines(body));
+	type EditorMarkdownBlock = Exclude<MarkdownBlock, { type: 'line' }>;
+	type EditorTableBlock = Extract<MarkdownBlock, { type: 'table' }>;
+	type EditorCodeBlock = Extract<MarkdownBlock, { type: 'code' }>;
+	const markdownBlocks = $derived(parseMarkdownBlocks(serializeLines(lines)));
 	let container: HTMLDivElement | null = $state(null);
 	let draftTaskId = $state<number | null>(null);
 	let ignoredFocusLine = $state<number | null>(null);
@@ -101,8 +125,212 @@
 	let subtaskPointerId: number | null = null;
 	let composing = false;
 	let applyingEdit = false;
+	let pendingInput: PendingInput | null = null;
+	/** An edit happened since tables were last formatted. */
+	let tablesNeedFormat = false;
+	/** First line id of the table holding the caret, so leaving it can format it. */
+	let caretTableId: number | null = null;
 	const undoStack: HistoryEntry[] = [];
 	const redoStack: HistoryEntry[] = [];
+
+	// Resolved once per parse so rendering each line is a lookup, not a scan.
+	const markdownBlockLayout = $derived.by(() => {
+		const blockAt: (EditorMarkdownBlock | null)[] = new Array(lines.length).fill(null);
+		const endOf = new Map<EditorMarkdownBlock, number>();
+		markdownBlocks.forEach((block, blockIndex) => {
+			if (block.type === 'line') return;
+			const next = markdownBlocks[blockIndex + 1];
+			const end = next
+				? next.type === 'line'
+					? next.segment.lineIndex
+					: next.lineIndex
+				: lines.length;
+			endOf.set(block, end);
+			for (let index = block.lineIndex; index < end; index++) blockAt[index] = block;
+		});
+		return { blockAt, endOf };
+	});
+
+	function markdownBlockAt(index: number): EditorMarkdownBlock | null {
+		return markdownBlockLayout.blockAt[index] ?? null;
+	}
+
+	function markdownBlockEnd(block: EditorMarkdownBlock): number {
+		return markdownBlockLayout.endOf.get(block) ?? lines.length;
+	}
+
+	function markdownBlockCopyText(block: EditorMarkdownBlock): string {
+		if (block.type === 'code') return block.code;
+		return serializeLines(lines.slice(block.lineIndex, markdownBlockEnd(block)));
+	}
+
+	function isCodeFenceLine(block: EditorCodeBlock, index: number) {
+		if (index === block.lineIndex) return true;
+		if (index !== markdownBlockEnd(block) - 1) return false;
+		const opening = lines[block.lineIndex]?.text.match(/^ {0,3}(`{3,}|~{3,})/u)?.[1];
+		const closing = lines[index]?.text.match(/^ {0,3}(`{3,}|~{3,})[ \t]*$/u)?.[1];
+		return !!opening && !!closing && opening[0] === closing[0] && closing.length >= opening.length;
+	}
+
+	type TableSpan = { start: number; end: number };
+
+	function tableSpanAt(index: number): TableSpan | null {
+		const block = markdownBlockAt(index);
+		if (block?.type !== 'table') return null;
+		const span = { start: block.lineIndex, end: markdownBlockEnd(block) };
+		// Task and bullet rows keep their own prefixes; never rewrite those as table source.
+		const rows = lines.slice(span.start, span.end);
+		return rows.some((line) => line.isCheck || line.isBullet) ? null : span;
+	}
+
+	function formatTable({ start, end }: TableSpan): boolean {
+		const rows = lines.slice(start, end);
+		const formatted = formatMarkdownTable(rows.map((line) => line.text));
+		let changed = false;
+		rows.forEach((line, offset) => {
+			const text = formatted[offset] ?? line.text;
+			if (line.text === text) return;
+			line.text = text;
+			changed = true;
+		});
+		return changed;
+	}
+
+	/**
+	 * Pretty-print tables once the caret is elsewhere, like editor table formatters:
+	 * after an edit, or when the caret leaves a table. The table being edited is left
+	 * alone so typing never shifts text under the caret.
+	 */
+	function formatSettledTables(caretInEditor = true) {
+		if (applyingEdit || composing || !container) return;
+		const range = caretInEditor ? editorRange() : null;
+		if (caretInEditor && !range) return;
+		const current = range ? tableSpanAt(range.start.line) : null;
+		const currentId = current ? (lines[current.start]?.id ?? null) : null;
+		const leftTable = caretTableId !== null && caretTableId !== currentId;
+		caretTableId = currentId;
+		if (!tablesNeedFormat && !leftTable) return;
+		tablesNeedFormat = false;
+
+		let changed = false;
+		for (const block of markdownBlocks) {
+			if (block.type !== 'table') continue;
+			const span = tableSpanAt(block.lineIndex);
+			if (!span) continue;
+			if (range && range.end.line >= span.start && range.start.line < span.end) continue;
+			if (formatTable(span)) changed = true;
+		}
+		if (!changed) return;
+		syncBody();
+		tablesNeedFormat = false;
+		if (range) {
+			selectAt(
+				range.start.line,
+				range.start.offset,
+				range.end.line,
+				range.end.offset,
+				selectionIsReversed()
+			);
+		}
+	}
+
+	function selectTableCell(row: number, cell: number) {
+		const range = markdownTableCellRanges(lines[row]?.text ?? '')[cell];
+		if (range) selectAt(row, range.start, row, range.end);
+	}
+
+	/** Tab / Shift+Tab: format the table and select the next or previous cell, adding a row at the end. */
+	function moveTableCell(range: EditorRange, direction: 1 | -1): boolean {
+		const span = tableSpanAt(range.start.line);
+		if (!span) return false;
+		const caretCell = markdownTableCellRanges(lines[range.start.line].text).findIndex(
+			(candidate) => range.start.offset <= candidate.end
+		);
+		formatTable(span);
+		const columns = markdownTableCells(lines[span.start].text).length;
+		const positions: { row: number; cell: number }[] = [];
+		for (let row = span.start; row < span.end; row++) {
+			if (row === span.start + 1) continue;
+			for (let cell = 0; cell < columns; cell++) positions.push({ row, cell });
+		}
+
+		let current: number;
+		if (range.start.line === span.start + 1) {
+			current = direction > 0 ? columns - 1 : columns;
+		} else {
+			const cell = caretCell < 0 ? columns - 1 : Math.min(caretCell, columns - 1);
+			current = positions.findIndex(
+				(position) => position.row === range.start.line && position.cell === cell
+			);
+		}
+
+		let target = positions[Math.max(0, current + direction)];
+		if (!target) {
+			lines.splice(span.end, 0, newLine(emptyMarkdownTableRow(columns)));
+			formatTable({ start: span.start, end: span.end + 1 });
+			target = { row: span.end, cell: 0 };
+		}
+		syncBody();
+		tablesNeedFormat = false;
+		selectTableCell(target.row, target.cell);
+		return true;
+	}
+
+	/**
+	 * Enter inside a table adds a row below and moves to its first cell; Enter on an
+	 * empty last row leaves the table. Enter at the end of a lone `| a | b |` header
+	 * creates the delimiter row and a first body row.
+	 */
+	function handleTableEnter(range: EditorRange): boolean {
+		if (!range.collapsed) return false;
+		const index = range.start.line;
+		const line = lines[index];
+		if (!line || line.isCheck || line.isBullet) return false;
+		const span = tableSpanAt(index);
+
+		if (!span) {
+			if (range.start.offset !== line.text.length || !isMarkdownTableHeaderRow(line.text)) {
+				return false;
+			}
+			const columns = markdownTableCells(line.text).length;
+			const delimiter = newLine(markdownTableDelimiterRow(columns));
+			const row = newLine(emptyMarkdownTableRow(columns));
+			lines.splice(index + 1, 0, delimiter, row);
+			formatTable({ start: index, end: index + 3 });
+			syncBody();
+			tablesNeedFormat = false;
+			caretTableId = line.id;
+			selectTableCell(index + 2, 0);
+			return true;
+		}
+
+		const columns = markdownTableCells(lines[span.start].text).length;
+		const isLastBodyRow = index === span.end - 1 && index >= span.start + 2;
+		if (isLastBodyRow && markdownTableCells(line.text).every((cell) => cell.trim() === '')) {
+			const exit = newLine();
+			lines.splice(index, 1, exit);
+			formatTable({ start: span.start, end: index });
+			syncBody();
+			tablesNeedFormat = false;
+			caretTableId = null;
+			focusAt(index, 0, exit.id);
+			return true;
+		}
+
+		const insertAt = Math.max(index + 1, span.start + 2);
+		lines.splice(insertAt, 0, newLine(emptyMarkdownTableRow(columns)));
+		formatTable({ start: span.start, end: span.end + 1 });
+		syncBody();
+		tablesNeedFormat = false;
+		selectTableCell(insertAt, 0);
+		return true;
+	}
+
+	$effect(() => {
+		const onSelectionChange = () => formatSettledTables();
+		document.addEventListener('selectionchange', onSelectionChange);
+		return () => document.removeEventListener('selectionchange', onSelectionChange);
+	});
 
 	function makeEditable(node: HTMLDivElement) {
 		node.setAttribute('contenteditable', 'plaintext-only');
@@ -125,6 +353,7 @@
 
 	function syncBody() {
 		body = serializeLines(lines.filter((line) => line.id !== draftTaskId));
+		tablesNeedFormat = true;
 		oninput?.();
 	}
 
@@ -150,13 +379,20 @@
 	function pointFromDom(node: Node | null, offset: number): EditorPoint | null {
 		if (!container || !node) return null;
 		if (node === container) {
-			const childIndex = Math.max(0, Math.min(offset, lines.length));
-			if (childIndex >= lines.length) {
+			const childIndex = Math.max(0, Math.min(offset, container.childNodes.length));
+			if (childIndex >= container.childNodes.length) {
 				const line = Math.max(0, lines.length - 1);
 				const end = lines[line]?.text.length ?? 0;
 				return { line, offset: end, global: globalOffset(line, end) };
 			}
-			return { line: childIndex, offset: 0, global: globalOffset(childIndex, 0) };
+			const child = container.childNodes[childIndex];
+			const childElement = child instanceof Element ? child : child?.parentElement;
+			const row = childElement?.matches('[data-editor-line]')
+				? childElement
+				: childElement?.querySelector('[data-editor-line]');
+			const line = Number((row as HTMLElement | null)?.dataset.editorLine);
+			if (!Number.isInteger(line) || !lines[line]) return null;
+			return { line, offset: 0, global: globalOffset(line, 0) };
 		}
 
 		const row = closestLineElement(node);
@@ -317,9 +553,44 @@
 		const text = textElement(resolved);
 		if (!text) return null;
 		const caret = Math.max(0, Math.min(offset, lines[resolved].text.length));
-		const textNode = text.firstChild;
-		if (textNode?.nodeType === Node.TEXT_NODE) return { node: textNode, offset: caret };
-		return { node: text, offset: 0 };
+		if (!uiStore.rawMarkdown) {
+			let consumed = 0;
+			const walker = document.createTreeWalker(text, NodeFilter.SHOW_TEXT);
+			let node: Node | null = null;
+			while ((node = walker.nextNode())) {
+				const length = node.textContent?.length ?? 0;
+				const element = node.parentElement;
+				const hiddenMarker = element?.closest('.markdown-token-marker-hidden');
+				if (hiddenMarker && text.contains(hiddenMarker)) {
+					if (caret < consumed + length) {
+						const parent = hiddenMarker.parentNode;
+						if (!parent) return null;
+						const markerIndex = Array.prototype.indexOf.call(parent.childNodes, hiddenMarker);
+						return { node: parent, offset: markerIndex + (caret > consumed ? 1 : 0) };
+					}
+					consumed += length;
+					continue;
+				}
+				if (caret <= consumed + length) {
+					return { node, offset: Math.max(0, caret - consumed) };
+				}
+				consumed += length;
+			}
+			return { node: text, offset: text.childNodes.length };
+		}
+		const walker = document.createTreeWalker(text, NodeFilter.SHOW_TEXT);
+		let node: Node | null = null;
+		let remaining = caret;
+		while ((node = walker.nextNode())) {
+			const length = node.textContent?.length ?? 0;
+			if (remaining <= length) return { node, offset: remaining };
+			remaining -= length;
+		}
+		const last = text.lastChild;
+		if (last?.nodeType === Node.TEXT_NODE) {
+			return { node: last, offset: last.textContent?.length ?? 0 };
+		}
+		return { node: text, offset: text.childNodes.length };
 	}
 
 	function selectAt(
@@ -438,14 +709,16 @@
 		if (scroller) scroller.scrollTop += row.getBoundingClientRect().top - anchorTop;
 	}
 
-	function readDomIntoLines() {
-		if (!container) return;
+	function readDomIntoLines(): boolean {
+		if (!container) return false;
+		let structureChanged = false;
 		for (let index = 0; index < lines.length; index++) {
 			const text = textElement(index)?.textContent ?? '';
 			lines[index].text = text.replaceAll('\u00a0', ' ');
 			if (!lines[index].isCheck && CHECK_RE.test(lines[index].text)) {
 				const parsed = parseCheckLine(lines[index].text);
 				if (parsed) {
+					structureChanged = true;
 					lines[index].isCheck = true;
 					lines[index].isBullet = false;
 					lines[index].checked = parsed.checked;
@@ -460,6 +733,7 @@
 			if (!lines[index].isCheck && !lines[index].isBullet && BULLET_RE.test(lines[index].text)) {
 				const parsed = parseBulletLine(lines[index].text);
 				if (parsed) {
+					structureChanged = true;
 					lines[index].isBullet = true;
 					lines[index].indent = Math.min(MAX_LIST_INDENT, parsed.indent);
 					lines[index].text = parsed.text;
@@ -470,13 +744,30 @@
 			if (lines[index].id === draftTaskId && lines[index].text.trim()) draftTaskId = null;
 		}
 		syncBody();
+		return structureChanged;
 	}
 
 	function handleInput(rawEvent: Event) {
 		if (applyingEdit) return;
 		const event = rawEvent as InputEvent;
-		if (composing || event.isComposing) return;
-		readDomIntoLines();
+		if (composing || event.isComposing) {
+			pendingInput = null;
+			return;
+		}
+		const input = pendingInput;
+		pendingInput = null;
+		const range = input?.range ?? editorRange();
+		const domLineText = input
+			? textElement(input.range.start.line)?.textContent?.replaceAll('\u00a0', ' ')
+			: undefined;
+		const structureChanged = readDomIntoLines();
+		if (range?.collapsed && !structureChanged) {
+			flushSync();
+			const line = Math.min(range.start.line, lines.length - 1);
+			let offset = range.start.offset;
+			if (input && domLineText !== undefined) offset += domLineText.length - input.lineText.length;
+			selectAt(line, Math.max(0, Math.min(offset, lines[line]?.text.length ?? 0)));
+		}
 	}
 
 	function replaceSelectedRange(range: EditorRange, replacement = ''): EditorPoint {
@@ -533,6 +824,12 @@
 		const event = rawEvent as InputEvent;
 		const range = editorRange();
 		if (!range) return;
+		pendingInput = range.collapsed
+			? {
+					range,
+					lineText: lines[range.start.line]?.text ?? ''
+				}
+			: null;
 		if (event.inputType.startsWith('insert') || event.inputType.startsWith('delete')) {
 			rememberEdit(range);
 		}
@@ -964,14 +1261,23 @@
 			const range = editorRange();
 			if (!range) return;
 			rememberEdit(range);
+			if (moveTableCell(range, event.shiftKey ? -1 : 1)) return;
 			indentRange(range, event.shiftKey || event.ctrlKey ? -1 : 1);
 			return;
 		}
 		const range = editorRange();
 		if (!range) return;
+		if ((event.key === 'Home' || event.key === 'End') && !event.altKey && !primaryModifier) {
+			event.preventDefault();
+			const offset = event.key === 'Home' ? 0 : (lines[range.start.line]?.text.length ?? 0);
+			if (event.shiftKey) selectAt(range.start.line, range.start.offset, range.start.line, offset);
+			else selectAt(range.start.line, offset);
+			return;
+		}
 		if (event.key === 'Enter' || event.key === 'NumpadEnter') {
 			event.preventDefault();
 			rememberEdit(range);
+			if (handleTableEnter(range)) return;
 			handleEnter(range);
 			return;
 		}
@@ -1051,6 +1357,7 @@
 		if (subtaskPointerId !== null) return;
 		discardEmptyDraft();
 		if (event.relatedTarget instanceof Node && container?.contains(event.relatedTarget)) return;
+		formatSettledTables(false);
 		dropTaskFocus();
 	}
 
@@ -1091,6 +1398,163 @@
 	}
 </script>
 
+{#snippet inlineEditorContent(text: string)}
+	{@const tokens = parseInlineMarkdown(text)}
+	{#each tokens as token, tokenIndex (tokenIndex)}
+		{#if token.kind === 'text' && token.styles.length === 0}
+			{token.text}
+		{:else}
+			<span
+				class={markdownTokenClass(token, uiStore.rawMarkdown)}
+				data-markdown-token={token.kind === 'marker' ? token.marker : token.styles.join(' ')}
+				>{token.text}</span
+			>
+		{/if}
+	{/each}
+{/snippet}
+
+{#snippet tableEditorContent(text: string, block: EditorTableBlock, header: boolean)}
+	{@const tableTokens = tokenizeMarkdownTableRow(text)}
+	{@const lastCellIndex = tableTokens.filter((token) => token.kind === 'cell').length - 1}
+	{#each tableTokens as token, tokenIndex (tokenIndex)}
+		{#if uiStore.rawMarkdown}
+			{#if token.kind === 'marker'}
+				<span class="markdown-raw-table-marker">{token.text}</span>
+			{:else}
+				<span data-markdown-table-cell={token.columnIndex}
+					>{@render inlineEditorContent(token.text)}</span
+				>
+			{/if}
+		{:else if token.kind === 'marker'}
+			<span class="markdown-editor-table-marker markdown-token-marker-hidden">{token.text}</span>
+		{:else}
+			<span
+				class="markdown-editor-table-cell"
+				class:markdown-editor-table-header-cell={header}
+				class:markdown-table-last-cell={token.columnIndex === lastCellIndex}
+				style={`text-align: ${block.alignments[token.columnIndex] ?? 'left'};`}
+				data-markdown-table-cell={token.columnIndex}
+			>
+				{@render inlineEditorContent(token.text)}
+			</span>
+		{/if}
+	{/each}
+{/snippet}
+
+{#snippet codeEditorContent(text: string, block: EditorCodeBlock)}
+	{#each highlightCodeLine(text, block.language) as token, tokenIndex (tokenIndex)}
+		{#if token.kind === 'plain'}
+			{token.text}
+		{:else}
+			<span class="markdown-code-token-{token.kind}">{token.text}</span>
+		{/if}
+	{/each}
+{/snippet}
+
+{#snippet editorLine(line: Line, index: number, block: EditorMarkdownBlock | null)}
+	{@const inlineTokens = parseInlineMarkdown(line.text)}
+	{@const tableBlock = block?.type === 'table' ? block : null}
+	{@const codeBlock = block?.type === 'code' ? block : null}
+	{@const tableSeparator = tableBlock !== null && index === tableBlock.lineIndex + 1}
+	{@const codeFence = codeBlock !== null && isCodeFenceLine(codeBlock, index)}
+	<div
+		data-editor-line={index}
+		data-line-id={line.id}
+		data-task-row={line.isCheck ? '' : undefined}
+		data-bullet-row={line.isBullet ? '' : undefined}
+		data-focus-group={line.id === focusedRootId ? '' : undefined}
+		data-markdown-table-row={tableBlock ? '' : undefined}
+		data-markdown-table-separator={tableSeparator ? '' : undefined}
+		data-markdown-code-line={codeBlock && !uiStore.rawMarkdown && !codeFence ? '' : undefined}
+		data-markdown-code-fence={codeFence && !uiStore.rawMarkdown ? '' : undefined}
+		class="flex min-w-0 flex-wrap items-start gap-x-2 py-0.5 {line.isCheck
+			? taskShellClass(line)
+			: ''}"
+		style={rowStyle(line)}
+	>
+		{#if line.isCheck}
+			<button
+				type="button"
+				contenteditable="false"
+				data-checklist-toggle
+				class="checklist-toggle shrink-0 {line.indent > 0 ? 'checklist-toggle-sub' : ''}"
+				class:checked={line.checked}
+				onpointerdown={keepEditorFocus}
+				onclick={(event) => toggleCheck(index, event)}
+				aria-label={line.indent > 0 ? 'Toggle sub-task' : 'Toggle item'}
+				aria-pressed={line.checked}
+			>
+				{#if line.checked}
+					<svg viewBox="0 0 16 16" class="checklist-toggle-mark" aria-hidden="true">
+						<path d="M3.5 8.5 6.5 11.5 12.5 4.5" />
+					</svg>
+				{/if}
+			</button>
+		{:else if line.isBullet}
+			<span contenteditable="false" class="shrink-0 select-none" aria-hidden="true">•</span>
+		{/if}
+		{#if tableBlock && (!tableSeparator || uiStore.rawMarkdown)}
+			<span data-line-text class="markdown-inline-content markdown-editor-table-line outline-none">
+				{@render tableEditorContent(line.text, tableBlock, index === tableBlock.lineIndex)}
+			</span>
+		{:else if codeBlock && !uiStore.rawMarkdown && !codeFence}
+			<span
+				data-line-text
+				class="markdown-inline-content markdown-editor-code-line block min-h-[1lh] outline-none"
+			>
+				{@render codeEditorContent(line.text, codeBlock)}
+			</span>
+		{:else if !line.text || (inlineTokens.length === 1 && inlineTokens[0].kind === 'text' && inlineTokens[0].styles.length === 0)}
+			<span
+				data-line-text
+				use:syncEditableText={line.text}
+				data-placeholder={line.text.length === 0
+					? line.isCheck
+						? line.indent > 0
+							? 'Sub-task'
+							: 'Task'
+						: index === 0 && lines.length === 1
+							? placeholder
+							: ''
+					: undefined}
+				class="markdown-inline-content block min-h-[1lh] min-w-0 flex-1 whitespace-pre-wrap break-words outline-none {line.checked
+					? 'line-through opacity-50'
+					: ''} {line.indent > 0 ? 'text-[13px]' : ''} {uiStore.rawMarkdown
+					? 'markdown-raw'
+					: ''} {tableSeparator && !uiStore.rawMarkdown
+					? 'markdown-editor-block-source-marker'
+					: ''} {codeFence && !uiStore.rawMarkdown ? 'markdown-editor-block-source-marker' : ''}"
+				>{line.text}</span
+			>
+		{:else}
+			<span
+				data-line-text
+				class="markdown-inline-content block min-h-[1lh] min-w-0 flex-1 whitespace-pre-wrap break-words outline-none {line.checked
+					? 'line-through opacity-50'
+					: ''} {line.indent > 0 ? 'text-[13px]' : ''} {uiStore.rawMarkdown ? 'markdown-raw' : ''}"
+			>
+				{@render inlineEditorContent(line.text)}
+			</span>
+		{/if}
+		{#if line.id === focusedGroupLastId}
+			<button
+				type="button"
+				contenteditable="false"
+				data-add-subtask
+				aria-label="Add sub-task"
+				class="flex basis-full select-none items-center rounded py-1 text-left text-xs text-[var(--scrapscache-text-muted)] transition-colors hover:bg-black/5 hover:text-[var(--scrapscache-text)] dark:hover:bg-white/10 touch-manipulation min-h-[32px] sm:min-h-0 {line.indent >
+				0
+					? 'pl-1'
+					: 'pl-6'}"
+				onpointerdown={(event) => activateAddSubtask(event, focusedGroupRows[0]?.index ?? -1)}
+				onclick={(event) => handleAddSubtaskClick(event, focusedGroupRows[0]?.index ?? -1)}
+			>
+				<span class="add-subtask-label" aria-hidden="true"></span>
+			</button>
+		{/if}
+	</div>
+{/snippet}
+
 <div
 	bind:this={container}
 	use:makeEditable
@@ -1101,6 +1565,7 @@
 	aria-label="Note body"
 	spellcheck="true"
 	class="block w-full min-w-0 text-sm leading-relaxed text-[var(--scrapscache-text)] outline-none"
+	class:markdown-raw={uiStore.rawMarkdown}
 	onbeforeinput={handleBeforeInput}
 	oninput={handleInput}
 	oncopy={handleCopy}
@@ -1118,71 +1583,47 @@
 	onblur={handleEditorBlur}
 >
 	{#each lines as line, index (line.id)}
-		<div
-			data-editor-line={index}
-			data-line-id={line.id}
-			data-task-row={line.isCheck ? '' : undefined}
-			data-bullet-row={line.isBullet ? '' : undefined}
-			data-focus-group={line.id === focusedRootId ? '' : undefined}
-			class="flex min-w-0 flex-wrap items-start gap-x-2 py-0.5 {line.isCheck
-				? taskShellClass(line)
-				: ''}"
-			style={rowStyle(line)}
-		>
-			{#if line.isCheck}
-				<button
-					type="button"
-					contenteditable="false"
-					data-checklist-toggle
-					class="checklist-toggle shrink-0 {line.indent > 0 ? 'checklist-toggle-sub' : ''}"
-					class:checked={line.checked}
-					onpointerdown={keepEditorFocus}
-					onclick={(event) => toggleCheck(index, event)}
-					aria-label={line.indent > 0 ? 'Toggle sub-task' : 'Toggle item'}
-					aria-pressed={line.checked}
-				>
-					{#if line.checked}
-						<svg viewBox="0 0 16 16" class="checklist-toggle-mark" aria-hidden="true">
-							<path d="M3.5 8.5 6.5 11.5 12.5 4.5" />
-						</svg>
-					{/if}
-				</button>
-			{:else if line.isBullet}
-				<span contenteditable="false" class="shrink-0 select-none" aria-hidden="true">•</span>
-			{/if}
-			<span
-				data-line-text
-				use:syncEditableText={line.text}
-				data-placeholder={line.text.length === 0
-					? line.isCheck
-						? line.indent > 0
-							? 'Sub-task'
-							: 'Task'
-						: index === 0 && lines.length === 1
-							? placeholder
-							: ''
+		{@const block = markdownBlockAt(index)}
+		{#if block === null}
+			{@render editorLine(line, index, null)}
+		{:else if block.lineIndex === index}
+			<div
+				class="markdown-block-shell"
+				data-markdown-raw-table-container={uiStore.rawMarkdown && block.type === 'table'
+					? ''
 					: undefined}
-				class="block min-h-[1lh] min-w-0 flex-1 whitespace-pre-wrap break-words outline-none {line.checked
-					? 'line-through opacity-50'
-					: ''} {line.indent > 0 ? 'text-[13px]' : ''}"
-			></span>
-			{#if line.id === focusedGroupLastId}
-				<button
-					type="button"
-					contenteditable="false"
-					data-add-subtask
-					aria-label="Add sub-task"
-					class="flex basis-full select-none items-center rounded py-1 text-left text-xs text-[var(--scrapscache-text-muted)] transition-colors hover:bg-black/5 hover:text-[var(--scrapscache-text)] dark:hover:bg-white/10 touch-manipulation min-h-[32px] sm:min-h-0 {line.indent >
-					0
-						? 'pl-1'
-						: 'pl-6'}"
-					onpointerdown={(event) => activateAddSubtask(event, focusedGroupRows[0]?.index ?? -1)}
-					onclick={(event) => handleAddSubtaskClick(event, focusedGroupRows[0]?.index ?? -1)}
+				data-markdown-editor-table={!uiStore.rawMarkdown && block.type === 'table' ? '' : undefined}
+				data-markdown-editor-code-block={!uiStore.rawMarkdown && block.type === 'code'
+					? ''
+					: undefined}
+			>
+				<MarkdownCopyButton
+					text={markdownBlockCopyText(block)}
+					label={block.type === 'table' ? 'table' : 'code'}
+				/>
+				<div
+					class="markdown-block-scroll note-scrollbar-hidden"
+					class:markdown-editor-table-scroll={!uiStore.rawMarkdown && block.type === 'table'}
+					class:markdown-editor-code-block={!uiStore.rawMarkdown && block.type === 'code'}
+					class:markdown-raw-code-block={uiStore.rawMarkdown && block.type === 'code'}
 				>
-					<span class="add-subtask-label" aria-hidden="true"></span>
-				</button>
-			{/if}
-		</div>
+					{#if block.type === 'table'}
+						<div
+							class:markdown-editor-table={!uiStore.rawMarkdown}
+							class:markdown-raw-table={uiStore.rawMarkdown}
+						>
+							{#each lines.slice(block.lineIndex, markdownBlockEnd(block)) as blockLine, blockLineOffset (blockLine.id)}
+								{@render editorLine(blockLine, block.lineIndex + blockLineOffset, block)}
+							{/each}
+						</div>
+					{:else}
+						{#each lines.slice(block.lineIndex, markdownBlockEnd(block)) as blockLine, blockLineOffset (blockLine.id)}
+							{@render editorLine(blockLine, block.lineIndex + blockLineOffset, block)}
+						{/each}
+					{/if}
+				</div>
+			</div>
+		{/if}
 	{/each}
 </div>
 

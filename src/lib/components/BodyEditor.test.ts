@@ -1,18 +1,14 @@
 import { fireEvent, render } from '@testing-library/svelte';
 import { tick } from 'svelte';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import BodyEditor from './BodyEditor.svelte';
+import { uiStore } from '$lib/stores/ui.svelte';
 
-function textNode(element: Element): Node {
-	return element.firstChild ?? element;
+function textNode(element: Node): Node {
+	return element instanceof Element ? (element.firstChild ?? element) : element;
 }
 
-function select(
-	start: Element,
-	startOffset: number,
-	end: Element = start,
-	endOffset = startOffset
-) {
+function select(start: Node, startOffset: number, end: Node = start, endOffset = startOffset) {
 	const range = document.createRange();
 	range.setStart(textNode(start), startOffset);
 	range.setEnd(textNode(end), endOffset);
@@ -24,6 +20,37 @@ function select(
 function lineTexts(container: HTMLElement): string[] {
 	return [...container.querySelectorAll('[data-line-text]')].map((line) => line.textContent ?? '');
 }
+
+function rawCaretText(line: Element): string {
+	const selection = window.getSelection();
+	if (!selection?.anchorNode) return '';
+	const range = document.createRange();
+	range.selectNodeContents(line);
+	range.setEnd(selection.anchorNode, selection.anchorOffset);
+	return range.toString();
+}
+
+function caretAt(container: HTMLElement, line: number, offset: number) {
+	const text = container.querySelector(`[data-editor-line="${line}"] [data-line-text]`);
+	if (!text) throw new Error(`Expected editor line ${line}`);
+	const walker = document.createTreeWalker(text, NodeFilter.SHOW_TEXT);
+	let remaining = offset;
+	for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+		const length = node.textContent?.length ?? 0;
+		if (remaining <= length) return select(node, remaining);
+		remaining -= length;
+	}
+	throw new Error(`Offset ${offset} is outside editor line ${line}`);
+}
+
+function selectedEditorText(): string {
+	return window.getSelection()?.toString() ?? '';
+}
+
+afterEach(() => {
+	uiStore.rawMarkdown = false;
+	vi.unstubAllGlobals();
+});
 
 describe('BodyEditor native editing', () => {
 	it('renders exactly one block row for each saved newline', () => {
@@ -734,6 +761,189 @@ describe('BodyEditor markdown bullets', () => {
 			container.querySelector('[data-editor-line="0"]')?.getAttribute('style') ?? ''
 		).not.toContain('padding-left');
 	});
+
+	it('renders inline Markdown without changing the editable raw body', () => {
+		const { container } = render(BodyEditor, {
+			props: { body: '**bold** *italic* `code` ~~removed~~' }
+		});
+		const line = container.querySelector('[data-line-text]') as HTMLElement;
+
+		expect(line.textContent).toBe('**bold** *italic* `code` ~~removed~~');
+		expect(line.querySelector('.markdown-token-strong')?.textContent).toBe('bold');
+		expect(line.querySelector('.markdown-token-emphasis')?.textContent).toBe('italic');
+		expect(line.querySelector('.markdown-token-code')?.textContent).toBe('code');
+		expect(line.querySelector('.markdown-token-strikethrough')?.textContent).toBe('removed');
+		expect(line.querySelectorAll('.markdown-token-marker-hidden')).toHaveLength(8);
+	});
+
+	it('renders and edits a Markdown table without changing its source structure', async () => {
+		const source = [
+			'| Rule name | Matches path | Limit |',
+			'| --- | --- | ---: |',
+			'| register | `/api/sync/register` | 5 per hour |'
+		].join('\n');
+		const { container } = render(BodyEditor, { props: { body: source } });
+		const table = container.querySelector('[data-markdown-editor-table]');
+
+		expect(table).not.toBeNull();
+		expect(table?.querySelectorAll('[data-markdown-table-cell]')).toHaveLength(6);
+		expect(table?.querySelectorAll('[data-markdown-table-separator]')).toHaveLength(1);
+		expect(table?.querySelector('.markdown-editor-table-header-cell')?.textContent).toBe(
+			'Rule name'
+		);
+		expect(table?.querySelector('.markdown-token-code')?.textContent).toBe('/api/sync/register');
+		expect(lineTexts(container)).toEqual(source.split('\n'));
+
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const register = table?.querySelectorAll('[data-markdown-table-cell]')[3];
+		const registerText = register
+			? document.createTreeWalker(register, NodeFilter.SHOW_TEXT).nextNode()
+			: null;
+		if (!registerText) throw new Error('Expected the first table body cell');
+		select(registerText, 'register'.length);
+		editor.dispatchEvent(
+			new InputEvent('beforeinput', {
+				bubbles: true,
+				cancelable: true,
+				inputType: 'insertText',
+				data: 's'
+			})
+		);
+		registerText.textContent = 'registers';
+		await fireEvent.input(editor, { inputType: 'insertText', data: 's' });
+		await tick();
+
+		expect(lineTexts(container)[2]).toBe('| registers | `/api/sync/register` | 5 per hour |');
+	});
+
+	it('renders fenced code in the editor without showing its fences', () => {
+		const source = [
+			'```sh',
+			'# Reads the VAPID pair',
+			'wrangler d1 --remote --command "SELECT 1"',
+			'```'
+		].join('\n');
+		const { container } = render(BodyEditor, { props: { body: source } });
+		const code = container.querySelector('[data-markdown-editor-code-block]');
+
+		expect(code).not.toBeNull();
+		expect(code?.querySelectorAll('[data-markdown-code-fence]')).toHaveLength(2);
+		expect(code?.querySelectorAll('[data-markdown-code-line]')).toHaveLength(2);
+		expect(code?.querySelector('.markdown-code-token-comment')?.textContent).toBe(
+			'# Reads the VAPID pair'
+		);
+		expect(code?.querySelector('.markdown-code-token-flag')?.textContent).toBe('--remote');
+		expect(lineTexts(container)).toEqual(source.split('\n'));
+	});
+
+	it('copies the exact Markdown table source without moving focus', async () => {
+		const source = [
+			'| Rule name | Matches path | Limit |',
+			'| --- | --- | ---: |',
+			'| register | `/api/sync/register` | 5 per hour |'
+		].join('\n');
+		const writeText = vi.fn().mockResolvedValue(undefined);
+		vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+		const { container } = render(BodyEditor, { props: { body: source } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const copy = container.querySelector('[aria-label="Copy table"]') as HTMLButtonElement;
+		editor.focus();
+
+		const pointerDown = new Event('pointerdown', { bubbles: true, cancelable: true });
+		copy.dispatchEvent(pointerDown);
+		await fireEvent.click(copy);
+
+		expect(pointerDown.defaultPrevented).toBe(true);
+		expect(document.activeElement).toBe(editor);
+		expect(writeText).toHaveBeenCalledWith(source);
+		expect(copy.getAttribute('aria-label')).toBe('Copied table');
+	});
+
+	it('copies only the contents of a fenced code block', async () => {
+		const source = '```sh\n# comment\nwrangler d1 --remote\n```';
+		const writeText = vi.fn().mockResolvedValue(undefined);
+		vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+		const { container } = render(BodyEditor, { props: { body: source } });
+		const copy = container.querySelector('[aria-label="Copy code"]') as HTMLButtonElement;
+
+		await fireEvent.click(copy);
+
+		expect(writeText).toHaveBeenCalledWith('# comment\nwrangler d1 --remote');
+		expect(copy.getAttribute('aria-label')).toBe('Copied code');
+	});
+
+	it('keeps the last line visible when a fenced code block is not closed', () => {
+		const { container } = render(BodyEditor, {
+			props: { body: '```text\nnot closed' }
+		});
+		const code = container.querySelector('[data-markdown-editor-code-block]');
+
+		expect(code?.querySelectorAll('[data-markdown-code-fence]')).toHaveLength(1);
+		expect(code?.querySelectorAll('[data-markdown-code-line]')).toHaveLength(1);
+		expect(code?.querySelector('[data-markdown-code-line] [data-line-text]')?.textContent).toBe(
+			'not closed'
+		);
+	});
+
+	it('puts only a complete raw Markdown table in its horizontal scroll container', () => {
+		uiStore.rawMarkdown = true;
+		const source = [
+			'| Rule name | Matches path | Limit | Counting by | Action |',
+			'| --- | --- | --- | --- | --- |',
+			'| register | `/api/sync/register` | 5 per hour | IP | Block, 1 hour |',
+			'',
+			'Ordinary prose remains outside the table.'
+		].join('\n');
+		const { container } = render(BodyEditor, { props: { body: source } });
+		const editor = container.querySelector('[data-body-editor]');
+		const table = editor?.querySelector('[data-markdown-raw-table-container]');
+
+		expect(editor?.classList).toContain('markdown-raw');
+		expect(table?.querySelectorAll('[data-editor-line]')).toHaveLength(3);
+		expect(table?.querySelector('.markdown-raw-table')).toBeTruthy();
+		expect(table?.querySelectorAll('[data-markdown-table-cell]')).toHaveLength(15);
+		expect(table?.querySelectorAll('.markdown-token-marker-hidden')).toHaveLength(0);
+		expect(
+			[...(table?.querySelectorAll('[data-line-text]') ?? [])].map((line) => line.textContent)
+		).toEqual(source.split('\n').slice(0, 3));
+		expect(table?.contains(editor?.querySelector('[data-editor-line="4"]') ?? null)).toBe(false);
+		expect(lineTexts(container)).toEqual(source.split('\n'));
+	});
+
+	it('keeps an empty raw line wide enough to show the caret', () => {
+		uiStore.rawMarkdown = true;
+		const { container } = render(BodyEditor, { props: { body: 'First\n\nThird' } });
+		const emptyLine = container.querySelector('[data-editor-line="1"] [data-line-text]');
+
+		expect(emptyLine).not.toBeNull();
+		expect(emptyLine?.className).toContain('flex-1');
+		expect(emptyLine?.textContent).toBe('');
+	});
+
+	it('keeps the raw caret position when a closing delimiter activates styling', async () => {
+		const { container } = render(BodyEditor, { props: { body: '**bold' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const line = container.querySelector('[data-line-text]') as HTMLElement;
+		const source = document.createTreeWalker(line, NodeFilter.SHOW_TEXT).nextNode();
+		if (!source) throw new Error('Expected an editable text node');
+		select(source, '**bold'.length);
+		editor.dispatchEvent(
+			new InputEvent('beforeinput', {
+				bubbles: true,
+				cancelable: true,
+				inputType: 'insertText',
+				data: '*'
+			})
+		);
+		source.textContent = '**bold**';
+
+		await fireEvent.input(editor, { inputType: 'insertText', data: '*' });
+		await tick();
+
+		const styledLine = container.querySelector('[data-line-text]') as HTMLElement;
+		expect(styledLine.querySelector('.markdown-token-strong')?.textContent).toBe('bold');
+		expect(rawCaretText(styledLine)).toBe('**bold**');
+	});
 });
 
 describe('BodyEditor task focus chrome', () => {
@@ -852,5 +1062,111 @@ describe('BodyEditor task focus chrome', () => {
 		// Clicking the button directly should not trigger container's handleEditorClick row refocus
 		await fireEvent.click(addBtn);
 		expect(container.querySelectorAll('[data-task-row]')).toHaveLength(4);
+	});
+});
+
+describe('BodyEditor Markdown table editing', () => {
+	it('creates the delimiter and a first row when Enter ends a header row', async () => {
+		const { container } = render(BodyEditor, { props: { body: '| Name | Status |' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		editor.focus();
+		caretAt(container, 0, '| Name | Status |'.length);
+
+		await fireEvent.keyDown(editor, { key: 'Enter' });
+		await tick();
+
+		expect(lineTexts(container)).toEqual([
+			'| Name | Status |',
+			'| ---- | ------ |',
+			'|      |        |'
+		]);
+		expect(container.querySelector('[data-markdown-editor-table]')).not.toBeNull();
+	});
+
+	it('formats the table and moves between cells with Tab, adding a row at the end', async () => {
+		const source = ['| a | b |', '|---|:-:|', '| long value | x |'].join('\n');
+		const { container } = render(BodyEditor, { props: { body: source } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		editor.focus();
+		caretAt(container, 0, 3);
+
+		await fireEvent.keyDown(editor, { key: 'Tab' });
+		await tick();
+		expect(lineTexts(container)).toEqual([
+			'| a          |  b  |',
+			'| ---------- | :-: |',
+			'| long value |  x  |'
+		]);
+		expect(selectedEditorText()).toBe('b');
+
+		await fireEvent.keyDown(editor, { key: 'Tab' });
+		expect(selectedEditorText()).toBe('long value');
+		await fireEvent.keyDown(editor, { key: 'Tab', shiftKey: true });
+		expect(selectedEditorText()).toBe('b');
+
+		caretAt(container, 2, lineTexts(container)[2].length - 2);
+		await fireEvent.keyDown(editor, { key: 'Tab' });
+		await tick();
+		expect(lineTexts(container)).toHaveLength(4);
+		expect(lineTexts(container)[3]).toBe('|            |     |');
+	});
+
+	it('adds a row with Enter and leaves the table from an empty last row', async () => {
+		const source = ['| a | b |', '| - | - |', '| 1 | 2 |'].join('\n');
+		const { container } = render(BodyEditor, { props: { body: source } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		editor.focus();
+		caretAt(container, 2, 3);
+
+		await fireEvent.keyDown(editor, { key: 'Enter' });
+		await tick();
+		expect(lineTexts(container)).toEqual(['| a | b |', '| - | - |', '| 1 | 2 |', '|   |   |']);
+
+		caretAt(container, 3, 2);
+		await fireEvent.keyDown(editor, { key: 'Enter' });
+		await tick();
+		expect(lineTexts(container)).toEqual(['| a | b |', '| - | - |', '| 1 | 2 |', '']);
+		expect(
+			container.querySelectorAll('[data-markdown-editor-table] [data-editor-line]')
+		).toHaveLength(3);
+	});
+
+	it('formats an edited table once focus leaves the editor', async () => {
+		const source = ['| a | b |', '|---|---|', '| long value | x |'].join('\n');
+		const { container } = render(BodyEditor, { props: { body: source } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		editor.focus();
+		caretAt(container, 2, 3);
+		editor.dispatchEvent(
+			new InputEvent('beforeinput', {
+				bubbles: true,
+				cancelable: true,
+				inputType: 'insertText',
+				data: '!'
+			})
+		);
+		await fireEvent.input(editor, { inputType: 'insertText', data: '!' });
+		expect(lineTexts(container)[0]).toBe('| a | b |');
+
+		await fireEvent.blur(editor);
+		await tick();
+
+		expect(lineTexts(container)).toEqual([
+			'| a          | b |',
+			'| ---------- | - |',
+			'| long value | x |'
+		]);
+	});
+
+	it('leaves task rows that happen to contain pipes untouched', async () => {
+		const { container } = render(BodyEditor, { props: { body: '[ ] | a | b |' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		editor.focus();
+		caretAt(container, 0, '| a | b |'.length);
+
+		await fireEvent.keyDown(editor, { key: 'Enter' });
+		await tick();
+
+		expect(container.querySelector('[data-markdown-editor-table]')).toBeNull();
 	});
 });

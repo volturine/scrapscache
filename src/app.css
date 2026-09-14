@@ -302,6 +302,373 @@ body {
 .scrapscache-input[aria-invalid='true'] {
 	border-color: var(--scrapscache-danger);
 }
+
+/* Inline Markdown is rendered from text tokens, so formatting never injects
+ * HTML into a note. Raw mode keeps the same token stream and reveals its
+ * delimiters with editor-like syntax colors. */
+.markdown-token-marker-hidden {
+	display: none;
+}
+.markdown-token-strong {
+	font-weight: 700;
+}
+.markdown-token-emphasis {
+	font-style: italic;
+}
+.markdown-token-strikethrough {
+	text-decoration: line-through;
+	text-decoration-thickness: 1.5px;
+}
+.markdown-token-code {
+	color: #a16207;
+}
+.markdown-token-heading-1,
+.markdown-token-heading-2,
+.markdown-token-heading-3,
+.markdown-token-heading-4,
+.markdown-token-heading-5,
+.markdown-token-heading-6 {
+	font-weight: 700;
+}
+.markdown-token-heading-1 {
+	font-size: 1.35em;
+}
+.markdown-token-heading-2 {
+	font-size: 1.2em;
+}
+.markdown-token-heading-3 {
+	font-size: 1.08em;
+}
+.markdown-token-marker {
+	color: #d946ef;
+}
+.markdown-token-marker-code {
+	color: #ca8a04;
+}
+.markdown-token-marker-heading {
+	color: #db2777;
+}
+.markdown-raw .markdown-token-marker {
+	display: inline;
+}
+.markdown-raw {
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+}
+.markdown-raw .markdown-token-heading-1,
+.markdown-raw .markdown-token-heading-2,
+.markdown-raw .markdown-token-heading-3,
+.markdown-raw .markdown-token-heading-4,
+.markdown-raw .markdown-token-heading-5,
+.markdown-raw .markdown-token-heading-6 {
+	font-size: inherit;
+	font-weight: inherit;
+}
+.markdown-raw .markdown-token-marker-code,
+.markdown-raw .markdown-token-code {
+	color: #ca8a04;
+}
+.markdown-raw .markdown-token-marker-heading,
+.markdown-raw .markdown-token-heading-1,
+.markdown-raw .markdown-token-heading-2,
+.markdown-raw .markdown-token-heading-3,
+.markdown-raw .markdown-token-heading-4,
+.markdown-raw .markdown-token-heading-5,
+.markdown-raw .markdown-token-heading-6 {
+	color: #d97706;
+}
+.markdown-raw .markdown-token-marker-strong,
+.markdown-raw .markdown-token-marker-emphasis,
+.markdown-raw .markdown-token-marker-strikethrough,
+.markdown-raw .markdown-token-strong,
+.markdown-raw .markdown-token-emphasis,
+.markdown-raw .markdown-token-strikethrough {
+	color: #c026d3;
+}
+.markdown-raw .markdown-token-strong,
+.markdown-raw .markdown-token-emphasis,
+.markdown-raw .markdown-token-strikethrough {
+	font-weight: inherit;
+	font-style: normal;
+	text-decoration: none;
+}
+.dark .markdown-token-marker {
+	color: #ce5d97;
+}
+.dark .markdown-token-marker-code,
+.dark .markdown-token-code,
+.dark .markdown-raw .markdown-token-marker-code,
+.dark .markdown-raw .markdown-token-code {
+	color: #d0a215;
+}
+.dark .markdown-token-marker-heading,
+.dark .markdown-raw .markdown-token-marker-heading {
+	color: #ce5d97;
+}
+.dark .markdown-raw {
+	color: #cecdc3;
+}
+.dark .markdown-raw .markdown-token-heading-1,
+.dark .markdown-raw .markdown-token-heading-2,
+.dark .markdown-raw .markdown-token-heading-3,
+.dark .markdown-raw .markdown-token-heading-4,
+.dark .markdown-raw .markdown-token-heading-5,
+.dark .markdown-raw .markdown-token-heading-6 {
+	color: #d0a215;
+}
+.dark .markdown-raw .markdown-token-marker-strong,
+.dark .markdown-raw .markdown-token-marker-emphasis,
+.dark .markdown-raw .markdown-token-marker-strikethrough,
+.dark .markdown-raw .markdown-token-strong,
+.dark .markdown-raw .markdown-token-emphasis,
+.dark .markdown-raw .markdown-token-strikethrough {
+	color: #ce5d97;
+}
+
+/* Only the open editor scrolls blocks horizontally. Card previews wrap instead:
+ * every scrollable overflow area is a native composited layer on iOS WebKit,
+ * and dozens of them inside animated, rounded, overlaid cards crash Safari. */
+.markdown-block-scroll {
+	max-width: 100%;
+	overflow-x: auto;
+	overscroll-behavior-x: contain;
+}
+.markdown-block-surface,
+.markdown-block-shell {
+	margin: 0.5rem 0;
+}
+.markdown-block-shell,
+.markdown-block-surface {
+	border-radius: 0.5rem;
+	background: rgb(255 255 255 / 0.42);
+}
+.markdown-block-shell {
+	position: relative;
+	width: 100%;
+	min-width: 0;
+	max-width: 100%;
+}
+.markdown-block-copy {
+	position: absolute;
+	top: 0.375rem;
+	right: 0.375rem;
+	z-index: 2;
+	display: grid;
+	height: 1.75rem;
+	width: 1.75rem;
+	place-items: center;
+	border: 0;
+	border-radius: 0.375rem;
+	background: color-mix(in srgb, var(--scrapscache-surface) 84%, transparent);
+	color: var(--scrapscache-text-muted);
+	opacity: 0.58;
+	box-shadow: 0 0 0 1px color-mix(in srgb, var(--scrapscache-text) 10%, transparent);
+	transition:
+		opacity 120ms ease,
+		color 120ms ease,
+		background-color 120ms ease;
+}
+.markdown-block-copy:hover,
+.markdown-block-copy:focus-visible {
+	background: var(--scrapscache-surface);
+	color: var(--scrapscache-text);
+	opacity: 1;
+}
+.markdown-block-copy:focus-visible {
+	outline: 2px solid var(--scrapscache-focus);
+	outline-offset: 1px;
+}
+.dark .markdown-block-shell,
+.dark .markdown-block-surface {
+	background: rgb(0 0 0 / 0.24);
+}
+/* Raw tables show their literal, auto-formatted source; monospace keeps columns aligned. */
+.markdown-raw-table {
+	padding: 0.5rem 0.75rem;
+	white-space: pre;
+}
+.markdown-content .markdown-raw-table {
+	overflow-x: clip;
+}
+[data-body-editor] .markdown-raw-table {
+	width: max-content;
+	min-width: 100%;
+	padding-right: 2.75rem;
+}
+.markdown-raw-table-marker {
+	color: var(--scrapscache-text-muted);
+}
+.markdown-table {
+	width: 100%;
+	border-collapse: collapse;
+	text-align: left;
+}
+.markdown-table th,
+.markdown-table td {
+	border-bottom: 1px solid color-mix(in srgb, var(--scrapscache-text) 20%, transparent);
+	padding: 0.4rem 0.625rem;
+	vertical-align: top;
+	overflow-wrap: anywhere;
+}
+.markdown-table th {
+	font-weight: 700;
+}
+.markdown-editor-table
+	[data-markdown-table-row]:first-child
+	.markdown-editor-table-cell.markdown-table-last-cell {
+	padding-right: 2.75rem;
+}
+.markdown-table tr:last-child td {
+	border-bottom: 0;
+}
+.markdown-editor-table {
+	display: table;
+	width: max-content;
+	min-width: 100%;
+	border-collapse: collapse;
+	text-align: left;
+}
+.markdown-editor-table [data-markdown-table-row] {
+	display: table-row;
+}
+.markdown-editor-table [data-markdown-table-separator] {
+	display: none;
+}
+.markdown-editor-table-line {
+	display: contents;
+}
+.markdown-editor-table-marker {
+	display: none;
+}
+.markdown-editor-table-cell {
+	display: table-cell;
+	padding: 0.4rem 0.625rem;
+	border-bottom: 1px solid color-mix(in srgb, var(--scrapscache-text) 20%, transparent);
+	vertical-align: top;
+	white-space: nowrap;
+}
+.markdown-editor-table-header-cell {
+	font-weight: 700;
+}
+.markdown-editor-table [data-markdown-table-row]:last-child .markdown-editor-table-cell {
+	border-bottom: 0;
+}
+.markdown-code-block,
+.markdown-editor-code-block {
+	color: var(--scrapscache-text);
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+	font-size: 0.8rem;
+	line-height: 1.5;
+}
+.markdown-code-block code {
+	display: block;
+	padding: 0.7rem 0;
+}
+.markdown-editor-code-block {
+	padding: 0.7rem 0;
+}
+.markdown-editor-code-block [data-markdown-code-fence] {
+	display: none;
+}
+.markdown-editor-code-block [data-markdown-code-line] {
+	width: max-content;
+	min-width: 100%;
+	flex-wrap: nowrap;
+	padding: 0 2.75rem 0 0.75rem;
+}
+.markdown-editor-code-line {
+	width: max-content;
+	min-width: max-content;
+	max-width: none;
+	flex: 0 0 auto;
+	white-space: pre;
+	overflow-wrap: normal;
+	word-break: normal;
+}
+.markdown-code-line {
+	display: block;
+	padding: 0 0.75rem;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+.markdown-code-token-comment {
+	color: #166534;
+	font-style: italic;
+}
+.markdown-code-token-string {
+	color: #9d174d;
+}
+.markdown-code-token-flag {
+	color: #0369a1;
+}
+.markdown-content.markdown-raw {
+	overflow-x: visible;
+}
+[data-body-editor].markdown-raw {
+	overflow-x: visible;
+	caret-color: var(--scrapscache-focus);
+}
+.markdown-content.markdown-raw > p,
+.markdown-content.markdown-raw > div[data-check-line],
+.markdown-content.markdown-raw > div[data-bullet-line] {
+	width: 100%;
+	min-width: 0;
+	max-width: 100%;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	word-break: normal;
+}
+.markdown-content.markdown-raw > div[data-check-line] > .flex-1,
+.markdown-content.markdown-raw > div[data-bullet-line] > .flex-1 {
+	min-width: 0;
+}
+[data-body-editor].markdown-raw [data-editor-line] {
+	width: 100%;
+	min-width: 0;
+	flex-wrap: wrap;
+}
+[data-body-editor].markdown-raw [data-line-text] {
+	width: auto;
+	min-width: 0;
+	max-width: 100%;
+	flex: 1 1 0%;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	word-break: normal;
+}
+[data-body-editor].markdown-raw .markdown-raw-table [data-editor-line] {
+	flex-wrap: nowrap;
+}
+[data-body-editor].markdown-raw .markdown-raw-table [data-line-text] {
+	display: block;
+	flex: none;
+	max-width: none;
+	white-space: pre;
+	overflow-wrap: normal;
+}
+.markdown-raw-code-block [data-editor-line] {
+	padding-left: 0.75rem;
+	padding-right: 2.75rem;
+}
+.raw-markdown-scroll {
+	touch-action: pan-x pan-y;
+}
+.raw-markdown-scroll.touch-pan-y {
+	touch-action: pan-x pan-y;
+}
+.dark .markdown-code-block,
+.dark .markdown-editor-code-block {
+	color: #cecdc3;
+}
+.dark .markdown-code-token-comment {
+	color: #4f9f3e;
+}
+.dark .markdown-code-token-string {
+	color: #ce5d97;
+}
+.dark .markdown-code-token-flag {
+	color: #5394b8;
+}
+
 .scrapscache-status-success,
 .scrapscache-status-warning,
 .scrapscache-status-accent,

@@ -30,7 +30,19 @@ function note(id: string, title = id): Note {
 		updatedAt: 1,
 		reminder: null,
 		labels: [],
-		images: []
+		images: [],
+		fieldTimes: {
+			title: 1,
+			body: 1,
+			color: 1,
+			pinned: 1,
+			archived: 1,
+			trashed: 1,
+			reminder: 1,
+			labels: 1,
+			images: 1,
+			linkPreviews: 1
+		}
 	};
 }
 
@@ -92,6 +104,37 @@ describe('a sync flight cannot write into another workspace', () => {
 
 		expect((await getAllNotesMetadata(LOCAL_PROFILE_ID)).map((n) => n.id)).toEqual(['mine-1']);
 		expect(notesStore.notes.map((n) => n.id)).toEqual(['mine-1']);
+		vi.restoreAllMocks();
+	});
+
+	it('keeps unchanged note objects stable when another note is pulled', async () => {
+		vi.spyOn(syncStore, 'activePid', 'get').mockReturnValue(LOCAL_PROFILE_ID);
+		notesStore.notes = [note('large-note', 'large note')];
+		const current = notesStore.notes[0];
+
+		await applyPulled(
+			snapshotOf([note('large-note', 'large note'), note('remote-note', 'remote note')]),
+			LOCAL_PROFILE_ID
+		);
+
+		expect(notesStore.notes.find((item) => item.id === 'large-note')).toBe(current);
+		expect(notesStore.notes.map((item) => item.id)).toContain('remote-note');
+		vi.restoreAllMocks();
+	});
+
+	it('replaces a note object when pulled content changed', async () => {
+		vi.spyOn(syncStore, 'activePid', 'get').mockReturnValue(LOCAL_PROFILE_ID);
+		notesStore.notes = [note('changed-note', 'before')];
+		const current = notesStore.notes[0];
+		const changed = note('changed-note', 'after');
+		changed.updatedAt = 2;
+		changed.fieldTimes!.title = 2;
+
+		await applyPulled(snapshotOf([changed]), LOCAL_PROFILE_ID);
+
+		const applied = notesStore.notes.find((item) => item.id === 'changed-note');
+		expect(applied).not.toBe(current);
+		expect(applied?.title).toBe('after');
 		vi.restoreAllMocks();
 	});
 

@@ -249,6 +249,24 @@ describe('SyncModal profile interactions', () => {
 		expect(syncStore.activePid).toBe('device-local');
 	});
 
+	it('lists a synced anonymous workspace as that same row', async () => {
+		const promoted: StoredProfile = {
+			id: 'device-local',
+			name: 'Anonymous workspace',
+			syncKey: createSyncIdentity().syncKey,
+			createdAt: 1
+		};
+		syncStore.profiles = [promoted];
+		syncStore.account = identityFromSyncKey(promoted.syncKey);
+		render(SyncModal, { props: { onClose: vi.fn() } });
+
+		expect(screen.getByRole('button', { name: 'Anonymous workspace is active' })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: 'Switch to Anonymous workspace' })).toBeNull();
+		await expand('Anonymous workspace');
+		expect(screen.getByRole('button', { name: /Force resync/ })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: /sync this workspace/i })).toBeNull();
+	});
+
 	it('uses a single primary new-workspace action while anonymous is active', () => {
 		syncStore.activateLocalWorkspace();
 		render(SyncModal, { props: { onClose: vi.fn() } });

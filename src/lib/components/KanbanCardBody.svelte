@@ -92,7 +92,7 @@
 							})
 					)}
 				>
-					<NoteBodyDisplay {note} maxBodyLines={40} />
+					<NoteBodyDisplay {note} />
 				</div>
 				{#if note.secret}
 					<div

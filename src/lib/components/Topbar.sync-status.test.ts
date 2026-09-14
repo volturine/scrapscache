@@ -27,6 +27,14 @@ afterEach(() => {
 });
 
 describe('Topbar sync status', () => {
+	it('does not leave full-screen overlays over the app while dialogs are closed', () => {
+		render(Topbar);
+		const overlays = [...document.querySelectorAll('[role="presentation"]')].filter((el) =>
+			el.className.includes('inset-0')
+		);
+		expect(overlays).toEqual([]);
+	});
+
 	it('consumes a pairing link when iOS resumes an already-open page', async () => {
 		const link: StartedDeviceLink = {
 			id: 'ios-resume-link',

@@ -14,6 +14,13 @@ describe('BackupImportModeDialog', () => {
 		expect(onSelect).toHaveBeenNthCalledWith(2, 'replace');
 	});
 
+	it('does not cover the page with a click-catching overlay while closed', () => {
+		render(BackupImportModeDialog, {
+			props: { open: false, onSelect: vi.fn(), onClose: vi.fn() }
+		});
+		expect(document.querySelector('[role="presentation"]')).toBeNull();
+	});
+
 	it('names Keep notes when importing a Takeout', () => {
 		render(BackupImportModeDialog, {
 			props: { keepImport: true, onSelect: vi.fn(), onClose: vi.fn() }

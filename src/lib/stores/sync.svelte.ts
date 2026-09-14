@@ -1394,22 +1394,24 @@ export class SyncStore {
 		]);
 	}
 
-	async logout(): Promise<void> {
+	async logout(keepLocalNotes = false): Promise<void> {
 		const accountId = this.account?.accountId;
 		const pid = this.activePid;
 		const profile = this.activeProfile;
 		if (profile) {
-			await unlinkProfileToNamespace(profile.id, LOCAL_PROFILE_ID);
+			if (keepLocalNotes) await unlinkProfileToNamespace(profile.id, LOCAL_PROFILE_ID);
 			removeProfileFromLocalStorage(profile.id);
 			this.profiles = this.profiles.filter((entry) => entry.id !== profile.id);
 		}
 		this.authenticationGeneration += 1;
 		this.pendingSessions.clear();
+		this.session = null;
 		this.account = null;
+		this.activeLocalId = LOCAL_PROFILE_ID;
 		this.lastError = null;
 		this.progress = null;
 		this.usage = null;
-		this.session = null;
+		this.syncedCursor = 0;
 		setLastActiveProfileId(LOCAL_PROFILE_ID);
 		this.clearLegacyAccountStorage();
 		this.onAccountChange?.();
@@ -1437,7 +1439,7 @@ export class SyncStore {
 					error: typeof data.error === 'string' ? data.error : 'Could not delete synced data'
 				};
 			}
-			await this.logout();
+			await this.logout(true);
 			return { success: true };
 		} catch (error) {
 			return {

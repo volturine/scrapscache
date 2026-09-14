@@ -2,9 +2,15 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { getAllNotesMetadata, LOCAL_PROFILE_ID, putNote } from '$lib/db/idb';
 import { createSyncIdentity } from '$lib/syncPairing';
 import type { Note } from '$lib/types';
+import { unregisterReminderDevice } from '$lib/reminderWake';
 import { ProfileCoordinator } from './profiles.svelte';
 import { notesStore, SYNC_LOCK } from './notes.svelte';
 import { syncStore } from './sync.svelte';
+
+vi.mock('$lib/reminderWake', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('$lib/reminderWake')>();
+	return { ...actual, unregisterReminderDevice: vi.fn().mockResolvedValue(undefined) };
+});
 
 function note(id: string): Note {
 	return {
@@ -54,7 +60,8 @@ describe('profile creation handover', () => {
 		};
 		syncStore.profiles = [unlinked, remaining];
 		syncStore.activateProfile(unlinked);
-		await putNote(unlinked.id, note('anonymous-note'));
+		await putNote(LOCAL_PROFILE_ID, note('anonymous-note'));
+		await putNote(unlinked.id, note('unlinked-only-note'));
 
 		await syncStore.logout();
 
@@ -62,6 +69,7 @@ describe('profile creation handover', () => {
 		expect((await getAllNotesMetadata(LOCAL_PROFILE_ID)).map(({ id }) => id)).toEqual([
 			'anonymous-note'
 		]);
+		expect(await getAllNotesMetadata(unlinked.id)).toEqual([]);
 
 		vi.spyOn(notesStore, 'waitForPendingProfileWrites').mockResolvedValue();
 		vi.spyOn(notesStore, 'reloadForProfile').mockResolvedValue();
@@ -219,7 +227,7 @@ describe('profile creation handover', () => {
 		);
 	});
 
-	it('unlinks an inactive workspace and appends its notes to anonymous storage', async () => {
+	it('unlinks an inactive workspace and deletes its local notes', async () => {
 		const inactive = {
 			id: 'inactive-unlink-profile',
 			name: 'Inactive',
@@ -239,9 +247,69 @@ describe('profile creation handover', () => {
 		expect(result).toEqual({ success: true });
 		expect(syncStore.profiles).toEqual([]);
 		expect(syncStore.activePid).toBe(LOCAL_PROFILE_ID);
+		expect(reload).not.toHaveBeenCalled();
+		expect((await getAllNotesMetadata(LOCAL_PROFILE_ID)).map(({ id }) => id)).toEqual([
+			'existing-anonymous-note'
+		]);
+		expect(await getAllNotesMetadata(inactive.id)).toEqual([]);
+	});
+
+	it('unlinks the active workspace and deletes its local notes without touching the cloud', async () => {
+		const active = {
+			id: 'active-unlink-profile',
+			name: 'Active',
+			syncKey: createSyncIdentity().syncKey,
+			createdAt: 1
+		};
+		syncStore.profiles = [active];
+		syncStore.activateProfile(active);
+		await putNote(LOCAL_PROFILE_ID, note('existing-anonymous-note'));
+		await putNote(active.id, note('synced-workspace-note'));
+
+		vi.spyOn(notesStore, 'waitForPendingProfileWrites').mockResolvedValue();
+		const reload = vi.spyOn(notesStore, 'reloadForProfile').mockResolvedValue();
+		const deleteCloud = vi.spyOn(syncStore, 'deleteCloudAccount');
+		vi.mocked(unregisterReminderDevice).mockResolvedValue(undefined);
+
+		const result = await new ProfileCoordinator().unlink();
+
+		expect(result).toEqual({ success: true });
+		expect(deleteCloud).not.toHaveBeenCalled();
+		expect(unregisterReminderDevice).toHaveBeenCalled();
+		expect(syncStore.profiles).toEqual([]);
+		expect(syncStore.account).toBeNull();
+		expect(syncStore.activePid).toBe(LOCAL_PROFILE_ID);
 		expect(reload).toHaveBeenCalledTimes(1);
+		expect((await getAllNotesMetadata(LOCAL_PROFILE_ID)).map(({ id }) => id)).toEqual([
+			'existing-anonymous-note'
+		]);
+		expect(await getAllNotesMetadata(active.id)).toEqual([]);
+	});
+
+	it('keeps local notes in anonymous storage when deleting cloud data', async () => {
+		const active = {
+			id: 'delete-cloud-profile',
+			name: 'Active',
+			syncKey: createSyncIdentity().syncKey,
+			createdAt: 1
+		};
+		syncStore.profiles = [active];
+		syncStore.activateProfile(active);
+		await putNote(LOCAL_PROFILE_ID, note('existing-anonymous-note'));
+		await putNote(active.id, note('synced-workspace-note'));
+
+		vi.spyOn(notesStore, 'waitForPendingProfileWrites').mockResolvedValue();
+		vi.spyOn(notesStore, 'reloadForProfile').mockResolvedValue();
+		vi.spyOn(syncStore, 'deleteCloudAccount').mockImplementation(async () => {
+			await syncStore.logout(true);
+			return { success: true };
+		});
+
+		const result = await new ProfileCoordinator().unlink(true);
+
+		expect(result).toEqual({ success: true });
 		expect((await getAllNotesMetadata(LOCAL_PROFILE_ID)).map(({ id }) => id)).toEqual(
-			expect.arrayContaining(['existing-anonymous-note', 'inactive-workspace-note'])
+			expect.arrayContaining(['existing-anonymous-note', 'synced-workspace-note'])
 		);
 	});
 

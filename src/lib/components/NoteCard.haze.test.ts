@@ -205,9 +205,19 @@ describe('NoteCard right-click haze', () => {
 		expect(deleteSpy).toHaveBeenCalledWith('note-1');
 	});
 
-	it('renders hazy with secret overlay for a secret note in gallery view', () => {
-		render(NoteCard, { props: { note: note({ secret: true }), onOpen: vi.fn() } });
+	it('renders hazy with secret overlay for a secret note while keeping title visible', () => {
+		render(NoteCard, {
+			props: {
+				note: note({ secret: true, title: 'Secret Title', body: 'Secret content' }),
+				onOpen: vi.fn()
+			}
+		});
 		expect(document.querySelector('[data-secret-overlay]')).toBeTruthy();
-		expect(document.querySelector('.blur-sm')).toBeTruthy();
+		const titleEl = screen.getByText('Secret Title');
+		expect(titleEl).toBeTruthy();
+		expect(titleEl.closest('.blur-sm')).toBeNull();
+		const blurred = document.querySelector('.blur-sm');
+		expect(blurred).toBeTruthy();
+		expect(blurred?.textContent).toContain('Secret content');
 	});
 });

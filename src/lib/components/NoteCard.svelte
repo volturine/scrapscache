@@ -280,11 +280,7 @@
 			</div>
 		{/if}
 
-		<div
-			class="note-scrollbar-hidden scrollable min-h-0 flex-1 overflow-x-hidden overflow-y-auto"
-			class:blur-sm={note.secret}
-			class:select-none={note.secret}
-		>
+		<div class="note-scrollbar-hidden scrollable min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
 			<div class="relative">
 				<div class="block w-full p-3 pb-2 text-left" class:opacity-60={note.trashed}>
 					{#if note.title}
@@ -294,7 +290,9 @@
 							{note.title}
 						</h3>
 					{/if}
-					<NoteBodyDisplay {note} />
+					<div class:blur-sm={note.secret} class:select-none={note.secret}>
+						<NoteBodyDisplay {note} />
+					</div>
 				</div>
 				<!-- Every press lands here, so links, photos, canvases and files can
 				     never swallow a swipe or start a drag of their own. -->

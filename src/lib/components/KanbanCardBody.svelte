@@ -27,7 +27,7 @@
 	style="background-color: {background(note.color)};"
 >
 	<div class="relative max-h-[240px] overflow-hidden">
-		<div class="p-3" class:blur-sm={note.secret} class:select-none={note.secret}>
+		<div class="p-3">
 			{#if note.reminder != null}
 				<div class="mb-1">
 					<ReminderLabel reminder={note.reminder} variant="inline" />
@@ -40,7 +40,9 @@
 					{note.title}
 				</h3>
 			{/if}
-			<NoteBodyDisplay {note} />
+			<div class:blur-sm={note.secret} class:select-none={note.secret}>
+				<NoteBodyDisplay {note} />
+			</div>
 		</div>
 		{#if shield}
 			<!-- Every press lands here, so links, photos, canvases and files can

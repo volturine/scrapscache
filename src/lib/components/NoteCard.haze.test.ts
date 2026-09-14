@@ -205,10 +205,10 @@ describe('NoteCard right-click haze', () => {
 		expect(deleteSpy).toHaveBeenCalledWith('note-1');
 	});
 
-	it('renders hazy with secret overlay for a secret note while keeping title visible', () => {
+	it('renders hazy with secret overlay for a secret note while keeping title visible and non-scrollable fixed size', () => {
 		render(NoteCard, {
 			props: {
-				note: note({ secret: true, title: 'Secret Title', body: 'Secret content' }),
+				note: note({ secret: true, title: 'Secret Title', body: 'Secret content\n'.repeat(50) }),
 				onOpen: vi.fn()
 			}
 		});
@@ -219,5 +219,11 @@ describe('NoteCard right-click haze', () => {
 		const blurred = document.querySelector('.blur-sm');
 		expect(blurred).toBeTruthy();
 		expect(blurred?.textContent).toContain('Secret content');
+
+		// Non-scrollable fixed size verification
+		const fixedContainer = document.querySelector('.h-24');
+		expect(fixedContainer).toBeTruthy();
+		expect(document.querySelector('.scrollable')).toBeNull();
+		expect(document.querySelector('.overflow-hidden')).toBeTruthy();
 	});
 });

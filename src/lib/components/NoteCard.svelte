@@ -280,7 +280,12 @@
 			</div>
 		{/if}
 
-		<div class="note-scrollbar-hidden scrollable min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
+		<div
+			class="note-scrollbar-hidden min-h-0 flex-1 overflow-x-hidden"
+			class:scrollable={!note.secret}
+			class:overflow-y-auto={!note.secret}
+			class:overflow-hidden={note.secret}
+		>
 			<div class="relative">
 				<div class="block w-full p-3 pb-2 text-left" class:opacity-60={note.trashed}>
 					{#if note.title}
@@ -290,8 +295,17 @@
 							{note.title}
 						</h3>
 					{/if}
-					<div class="relative min-h-[48px]">
-						<div class:blur-sm={note.secret} class:select-none={note.secret}>
+					<div
+						class="relative overflow-hidden"
+						class:h-24={note.secret}
+						class:min-h-[48px]={!note.secret}
+					>
+						<div
+							class:blur-sm={note.secret}
+							class:select-none={note.secret}
+							class:h-full={note.secret}
+							class:overflow-hidden={note.secret}
+						>
 							<NoteBodyDisplay {note} />
 						</div>
 						{#if note.secret}

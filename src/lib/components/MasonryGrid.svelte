@@ -90,31 +90,49 @@
 	onMount(() => {
 		const root = gridEl;
 		if (!root || typeof ResizeObserver === 'undefined') return;
+		let measureTimer: ReturnType<typeof setTimeout> | null = null;
 		const measure = () => {
+			measureTimer = null;
+			const width = root.clientWidth;
+			if (width === 0) return;
+			if (containerWidth !== width) containerWidth = width;
 			const cards = root.querySelectorAll<HTMLElement>('[data-note-height]');
-			let changed = measuredHeights.size !== cards.length;
-			const next = new Map<string, number>();
+			const liveIds = new Set<string>();
+			const next = new Map(measuredHeights);
+			let changed = false;
+			for (const el of cards) liveIds.add(el.dataset.noteHeight!);
+			for (const id of next.keys()) {
+				if (!liveIds.has(id)) {
+					next.delete(id);
+					changed = true;
+				}
+			}
 			for (const el of cards) {
 				const id = el.dataset.noteHeight!;
 				const h = Math.round(el.getBoundingClientRect().height);
-				next.set(id, h);
-				if (measuredHeights.get(id) !== h) changed = true;
+				if (h === 0) continue;
+				if (next.get(id) !== h) {
+					next.set(id, h);
+					changed = true;
+				}
 			}
 			if (changed) measuredHeights = next;
 		};
-		measure();
-		const observer = new ResizeObserver(measure);
+		const scheduleMeasure = () => {
+			if (measureTimer !== null) return;
+			measureTimer = setTimeout(measure, 0);
+		};
+		scheduleMeasure();
+		const observer = new ResizeObserver(scheduleMeasure);
 		observer.observe(root);
-		return () => observer.disconnect();
+		return () => {
+			observer.disconnect();
+			if (measureTimer !== null) clearTimeout(measureTimer);
+		};
 	});
 </script>
 
-<div
-	bind:this={gridEl}
-	class="masonry-wrap {className}"
-	style="--masonry-cols: {colCount}"
-	bind:clientWidth={containerWidth}
->
+<div bind:this={gridEl} class="masonry-wrap {className}" style="--masonry-cols: {colCount}">
 	{#if leading && leadSpan > 0}
 		<div
 			class="absolute top-0 left-0"

@@ -5,6 +5,7 @@
 	import { syncStore } from '$lib/stores/sync.svelte';
 	import SyncModal from './SyncModal.svelte';
 	import Tooltip from './Tooltip.svelte';
+	import PwaInstallSettings from './PwaInstallSettings.svelte';
 	import ReminderNotificationSettings from './ReminderNotificationSettings.svelte';
 	import BackupPassphraseDialog from './BackupPassphraseDialog.svelte';
 	import BackupImportModeDialog from './BackupImportModeDialog.svelte';
@@ -326,6 +327,7 @@
 						</FileUpload.Trigger>
 						<FileUpload.HiddenInput />
 					</FileUpload.Root>
+					<PwaInstallSettings />
 					<ReminderNotificationSettings />
 					<Menu.Separator class="border-t border-[var(--scrapscache-border)]" />
 					<Menu.Item value="issue">

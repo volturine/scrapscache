@@ -13,4 +13,13 @@ describe('BackupImportModeDialog', () => {
 		expect(onSelect).toHaveBeenNthCalledWith(1, 'keep');
 		expect(onSelect).toHaveBeenNthCalledWith(2, 'replace');
 	});
+
+	it('names Keep notes when importing a Takeout', () => {
+		render(BackupImportModeDialog, {
+			props: { keepImport: true, onSelect: vi.fn(), onClose: vi.fn() }
+		});
+
+		expect(screen.getByRole('heading', { name: /keep notes/i })).toBeTruthy();
+		expect(screen.getByText(/add every keep note as a new copy/i)).toBeTruthy();
+	});
 });

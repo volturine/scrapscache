@@ -296,7 +296,9 @@
 				class:flex-col={note.secret}
 			>
 				<div
-					class="block w-full p-3 pb-2 text-left"
+					class="block w-full text-left"
+					class:p-3={!note.secret}
+					class:pb-2={!note.secret}
 					class:opacity-60={note.trashed}
 					class:flex-1={note.secret}
 					class:min-h-0={note.secret}
@@ -305,7 +307,12 @@
 				>
 					{#if note.title}
 						<h3
-							class="mb-1 shrink-0 break-words text-[15px] font-semibold leading-snug tracking-tight text-[var(--scrapscache-text)]"
+							class="break-words text-[15px] font-semibold leading-snug tracking-tight text-[var(--scrapscache-text)]"
+							class:mb-1={!note.secret}
+							class:px-3={note.secret}
+							class:pt-3={note.secret}
+							class:pb-2={note.secret}
+							class:shrink-0={note.secret}
 						>
 							{note.title}
 						</h3>
@@ -321,12 +328,15 @@
 							class:select-none={note.secret}
 							class:h-full={note.secret}
 							class:overflow-hidden={note.secret}
+							class:px-3={note.secret}
+							class:pb-3={note.secret}
+							class:pt-2={note.secret && !note.title}
 						>
 							<NoteBodyDisplay {note} />
 						</div>
 						{#if note.secret}
 							<div
-								class="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-1.5 rounded-md bg-black/5 backdrop-blur-md dark:bg-black/20"
+								class="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-1.5 bg-black/5 backdrop-blur-md dark:bg-black/20"
 								data-secret-overlay
 								aria-hidden="true"
 							>

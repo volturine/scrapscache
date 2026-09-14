@@ -419,47 +419,50 @@
 	{/key}
 {/if}
 
-<ImportGuideDialog
-	open={showingImportGuide}
-	busy={importingBackup}
-	error={backupImportError}
-	keepReady={keepImportReady}
-	onFile={importBackupFile}
-	onSelectMode={selectImportMode}
-	onClose={() => {
-		if (importingBackup) return;
-		showingImportGuide = false;
-		keepImportReady = false;
-		pendingKeepFiles = null;
-		backupImportError = '';
-	}}
-/>
+{#if showingImportGuide}
+	<ImportGuideDialog
+		busy={importingBackup}
+		error={backupImportError}
+		keepReady={keepImportReady}
+		onFile={importBackupFile}
+		onSelectMode={selectImportMode}
+		onClose={() => {
+			if (importingBackup) return;
+			showingImportGuide = false;
+			keepImportReady = false;
+			pendingKeepFiles = null;
+			backupImportError = '';
+		}}
+	/>
+{/if}
 
-<BackupImportModeDialog
-	open={choosingImportMode}
-	busy={importingBackup}
-	error={backupImportError}
-	keepImport={pendingKeepFiles !== null}
-	onSelect={selectImportMode}
-	onClose={() => {
-		if (importingBackup) return;
-		choosingImportMode = false;
-		pendingImportData = null;
-		pendingKeepFiles = null;
-		backupImportError = '';
-	}}
-/>
+{#if choosingImportMode}
+	<BackupImportModeDialog
+		busy={importingBackup}
+		error={backupImportError}
+		keepImport={pendingKeepFiles !== null}
+		onSelect={selectImportMode}
+		onClose={() => {
+			if (importingBackup) return;
+			choosingImportMode = false;
+			pendingImportData = null;
+			pendingKeepFiles = null;
+			backupImportError = '';
+		}}
+	/>
+{/if}
 
-<BackupPassphraseDialog
-	open={backupDialogMode !== null}
-	mode={backupDialogMode ?? BackupOperation.Export}
-	busy={backupBusy}
-	error={backupImportError}
-	onSubmit={submitBackupPassphrase}
-	onClose={() => {
-		if (backupBusy) return;
-		backupDialogMode = null;
-		pendingEncryptedBackup = null;
-		backupImportError = '';
-	}}
-/>
+{#if backupDialogMode}
+	<BackupPassphraseDialog
+		mode={backupDialogMode}
+		busy={backupBusy}
+		error={backupImportError}
+		onSubmit={submitBackupPassphrase}
+		onClose={() => {
+			if (backupBusy) return;
+			backupDialogMode = null;
+			pendingEncryptedBackup = null;
+			backupImportError = '';
+		}}
+	/>
+{/if}

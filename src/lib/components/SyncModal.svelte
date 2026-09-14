@@ -1043,7 +1043,7 @@
 		gap: 4px;
 	}
 	.manage-row:hover {
-		background: var(--scrapscache-interactive-hover);
+		background: color-mix(in srgb, var(--scrapscache-text) 6%, transparent);
 	}
 	.manage-row small {
 		display: block;

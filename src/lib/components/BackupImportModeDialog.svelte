@@ -6,11 +6,13 @@
 	let {
 		busy = false,
 		error = '',
+		keepImport = false,
 		onSelect,
 		onClose
 	}: {
 		busy?: boolean;
 		error?: string;
+		keepImport?: boolean;
 		onSelect: (mode: BackupImportMode) => void | Promise<void>;
 		onClose: () => void;
 	} = $props();
@@ -38,7 +40,9 @@
 			<Dialog.Content class="scrapscache-dialog w-full max-w-sm">
 				<div class="border-b border-[var(--scrapscache-border)] px-5 py-4">
 					<Dialog.Title class="text-lg font-semibold text-[var(--scrapscache-text)]">
-						How should this backup be imported?
+						{keepImport
+							? 'How should these Keep notes be imported?'
+							: 'How should this backup be imported?'}
 					</Dialog.Title>
 				</div>
 
@@ -52,7 +56,9 @@
 					>
 						<span class="block font-medium">Keep local notes</span>
 						<span class="mt-1 block text-xs text-[var(--scrapscache-text-muted)]">
-							Add every backup note as a new copy. Existing notes stay unchanged.
+							{keepImport
+								? 'Add every Keep note as a new copy. Existing notes stay unchanged.'
+								: 'Add every backup note as a new copy. Existing notes stay unchanged.'}
 						</span>
 					</button>
 					<button
@@ -65,7 +71,9 @@
 							>Replace local data</span
 						>
 						<span class="mt-1 block text-xs text-[var(--scrapscache-text-muted)]">
-							Delete current local notes and restore the backup instead.
+							{keepImport
+								? 'Delete current notes in this workspace and import Keep instead.'
+								: 'Delete current local notes and restore the backup instead.'}
 						</span>
 					</button>
 					{#if error}<p class="text-sm text-[var(--scrapscache-danger)]" role="alert">

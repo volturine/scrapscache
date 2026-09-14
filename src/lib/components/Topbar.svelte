@@ -9,6 +9,7 @@
 	import ReminderNotificationSettings from './ReminderNotificationSettings.svelte';
 	import BackupPassphraseDialog from './BackupPassphraseDialog.svelte';
 	import BackupImportModeDialog from './BackupImportModeDialog.svelte';
+	import ImportGuideDialog from './ImportGuideDialog.svelte';
 	import { BackupImportMode, BackupImportPhase, BackupOperation } from '$lib/backup';
 	import { isZipBytes, readKeepTakeout, unzipKeepTakeout } from '$lib/keepImport';
 	import { resolveSyncStatus, SyncStatus } from '$lib/syncStatus';
@@ -23,7 +24,6 @@
 		isEncryptedScrapsCacheBackup,
 		type EncryptedScrapsCacheBackup
 	} from '$lib/backupCrypto';
-	import { FileUpload } from '@ark-ui/svelte/file-upload';
 	import { Menu } from '@ark-ui/svelte/menu';
 	import {
 		Cloud,
@@ -66,6 +66,7 @@
 	let pendingImportData = $state.raw<unknown>(null);
 	let pendingKeepFiles = $state.raw<Record<string, Uint8Array> | null>(null);
 	let choosingImportMode = $state(false);
+	let showingImportGuide = $state(false);
 	let syncStatus = $derived(resolveSyncStatus(syncStore.lastError, syncStore.usage));
 	let syncControlLabel = $derived(SYNC_CONTROL_LABEL[syncStatus]);
 
@@ -83,6 +84,12 @@
 		settingsOpen = false;
 		backupImportError = '';
 		backupDialogMode = BackupOperation.Export;
+	}
+
+	function startBackupImport() {
+		settingsOpen = false;
+		backupImportError = '';
+		showingImportGuide = true;
 	}
 
 	async function submitBackupPassphrase(passphrase: string) {
@@ -150,6 +157,7 @@
 					throw new Error('That zip does not contain Google Keep notes.');
 				pendingKeepFiles = files;
 				pendingImportData = null;
+				showingImportGuide = false;
 				settingsOpen = false;
 				choosingImportMode = true;
 				return;
@@ -159,6 +167,7 @@
 				throw new Error('This is not a Scraps Cache backup or Google Keep Takeout.');
 			pendingEncryptedBackup = data;
 			pendingKeepFiles = null;
+			showingImportGuide = false;
 			backupDialogMode = BackupOperation.Import;
 			settingsOpen = false;
 		} catch (err) {
@@ -320,22 +329,14 @@
 						<Download class="h-4 w-4 shrink-0" aria-hidden="true" />
 						Export backup
 					</Menu.Item>
-					<FileUpload.Root
-						accept=".scraps-cache-backup,.zip,application/json,application/zip,application/x-zip-compressed"
-						maxFiles={1}
-						onFileAccept={(details) => {
-							const file = details.files[0];
-							if (file) void importBackupFile(file);
-						}}
+					<Menu.Item
+						value="import"
+						onSelect={startBackupImport}
+						class="flex h-8 w-full cursor-pointer items-center gap-2 px-3 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/5 dark:hover:bg-white/10"
 					>
-						<FileUpload.Trigger
-							class="flex h-8 w-full cursor-pointer items-center gap-2 px-3 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/5 dark:hover:bg-white/10"
-						>
-							<Upload class="h-4 w-4 shrink-0" aria-hidden="true" />
-							Import backup
-						</FileUpload.Trigger>
-						<FileUpload.HiddenInput />
-					</FileUpload.Root>
+						<Upload class="h-4 w-4 shrink-0" aria-hidden="true" />
+						Import backup
+					</Menu.Item>
 					<PwaInstallSettings />
 					<ReminderNotificationSettings />
 					<Menu.Separator class="border-t border-[var(--scrapscache-border)]" />
@@ -407,10 +408,24 @@
 	{/key}
 {/if}
 
+{#if showingImportGuide}
+	<ImportGuideDialog
+		busy={importingBackup}
+		error={backupImportError}
+		onFile={importBackupFile}
+		onClose={() => {
+			if (importingBackup) return;
+			showingImportGuide = false;
+			backupImportError = '';
+		}}
+	/>
+{/if}
+
 {#if choosingImportMode}
 	<BackupImportModeDialog
 		busy={importingBackup}
 		error={backupImportError}
+		keepImport={pendingKeepFiles !== null}
 		onSelect={selectImportMode}
 		onClose={() => {
 			if (importingBackup) return;

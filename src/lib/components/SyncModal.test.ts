@@ -281,16 +281,18 @@ describe('SyncModal profile interactions', () => {
 		expect(screen.queryByRole('button', { name: 'Sync now' })).toBeNull();
 	});
 
-	it('creates an empty local workspace from + New workspace', async () => {
+	it('asks before creating an empty local workspace from + New workspace', async () => {
 		const createLocal = vi
 			.spyOn(profileCoordinator, 'createLocal')
 			.mockResolvedValue({ success: true });
 		const createSynced = vi.spyOn(profileCoordinator, 'startSync');
 		render(SyncModal, { props: { onClose: vi.fn() } });
 		await fireEvent.click(screen.getByRole('button', { name: '+ New workspace' }));
+		expect(createLocal).not.toHaveBeenCalled();
+		await fireEvent.click(screen.getByRole('button', { name: /Create workspace/ }));
 		await waitFor(() => expect(createLocal).toHaveBeenCalledTimes(1));
 		expect(createSynced).not.toHaveBeenCalled();
-		expect(screen.queryByRole('button', { name: 'Create workspace' })).toBeNull();
+		expect(screen.queryByRole('button', { name: /Create workspace/ })).toBeNull();
 		expect(screen.getByText('Created a local workspace on this device.')).toBeTruthy();
 	});
 
@@ -439,17 +441,20 @@ describe('SyncModal profile interactions', () => {
 		}
 	});
 
-	it('offers recovery for authentication failure and places joining under new workspace', async () => {
+	it('offers recovery for authentication failure and places joining under new workspace only', async () => {
 		syncStore.lastError = 'Could not start sync authentication';
 		render(SyncModal, { props: { onClose: vi.fn() } });
 		expect(screen.queryByRole('button', { name: 'Sync now' })).toBeNull();
 		expect(screen.getByRole('button', { name: 'Force resync' })).toBeTruthy();
-		expect(screen.queryByRole('button', { name: 'Join existing' })).toBeNull();
 		syncStore.activateLocalWorkspace();
 		await tick();
 		await expand('Home');
 		await fireEvent.click(screen.getByRole('button', { name: /sync this workspace/i }));
-		expect(screen.getByRole('button', { name: 'Join existing' })).toBeTruthy();
+		expect(screen.getByRole('button', { name: 'Start sync' })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: /join/i })).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: '← Back to workspaces' }));
+		await fireEvent.click(screen.getByRole('button', { name: '+ New workspace' }));
+		expect(screen.getByRole('button', { name: /Join a synced workspace/ })).toBeTruthy();
 	});
 
 	it('shows syncing only for a sync started from the modal', async () => {
@@ -559,9 +564,8 @@ describe('SyncModal profile interactions', () => {
 				.mockReturnValue(handover.promise);
 			syncStore.activateLocalWorkspace();
 			render(SyncModal, { props: { onClose: vi.fn() } });
-			await expand('Home');
-			await fireEvent.click(screen.getByRole('button', { name: /sync this workspace/i }));
-			await fireEvent.click(screen.getByRole('button', { name: 'Join existing' }));
+			await fireEvent.click(screen.getByRole('button', { name: '+ New workspace' }));
+			await fireEvent.click(screen.getByRole('button', { name: /Join a synced workspace/ }));
 			await fireEvent.input(screen.getByPlaceholderText('XXXX-XXXX-XXXX-XXXX'), {
 				target: { value: link.syncCode }
 			});

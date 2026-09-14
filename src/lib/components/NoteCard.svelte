@@ -290,8 +290,23 @@
 							{note.title}
 						</h3>
 					{/if}
-					<div class:blur-sm={note.secret} class:select-none={note.secret}>
-						<NoteBodyDisplay {note} />
+					<div class="relative min-h-[48px]">
+						<div class:blur-sm={note.secret} class:select-none={note.secret}>
+							<NoteBodyDisplay {note} />
+						</div>
+						{#if note.secret}
+							<div
+								class="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-1.5 rounded-md bg-black/5 backdrop-blur-md dark:bg-black/20"
+								data-secret-overlay
+								aria-hidden="true"
+							>
+								<Lock class="h-6 w-6 text-[var(--scrapscache-text-muted)] drop-shadow-sm" />
+								<span
+									class="text-xs font-medium tracking-wide text-[var(--scrapscache-text-muted)] drop-shadow-sm"
+									>Secret note</span
+								>
+							</div>
+						{/if}
 					</div>
 				</div>
 				<!-- Every press lands here, so links, photos, canvases and files can
@@ -309,20 +324,6 @@
 						{label.name}
 					</span>
 				{/each}
-			</div>
-		{/if}
-
-		{#if note.secret}
-			<div
-				class="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-1.5 rounded-lg bg-black/5 backdrop-blur-md dark:bg-black/20"
-				data-secret-overlay
-				aria-hidden="true"
-			>
-				<Lock class="h-6 w-6 text-[var(--scrapscache-text-muted)] drop-shadow-sm" />
-				<span
-					class="text-xs font-medium tracking-wide text-[var(--scrapscache-text-muted)] drop-shadow-sm"
-					>Secret note</span
-				>
 			</div>
 		{/if}
 

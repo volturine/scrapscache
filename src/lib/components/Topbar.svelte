@@ -10,6 +10,7 @@
 	import BackupPassphraseDialog from './BackupPassphraseDialog.svelte';
 	import BackupImportModeDialog from './BackupImportModeDialog.svelte';
 	import { BackupImportMode, BackupImportPhase, BackupOperation } from '$lib/backup';
+	import { isZipBytes, readKeepTakeout, unzipKeepTakeout } from '$lib/keepImport';
 	import { resolveSyncStatus, SyncStatus } from '$lib/syncStatus';
 	import { useEditorActions } from '$lib/editorContext';
 	import { pairingCodeFromUrl } from '$lib/syncPairing';
@@ -63,6 +64,7 @@
 	let backupBusy = $state(false);
 	let pendingEncryptedBackup = $state<EncryptedScrapsCacheBackup | null>(null);
 	let pendingImportData = $state.raw<unknown>(null);
+	let pendingKeepFiles = $state.raw<Record<string, Uint8Array> | null>(null);
 	let choosingImportMode = $state(false);
 	let syncStatus = $derived(resolveSyncStatus(syncStore.lastError, syncStore.usage));
 	let syncControlLabel = $derived(SYNC_CONTROL_LABEL[syncStatus]);
@@ -114,15 +116,18 @@
 	}
 
 	async function selectImportMode(mode: BackupImportMode) {
-		if (!pendingImportData) return;
+		if (!pendingKeepFiles && !pendingImportData) return;
 		choosingImportMode = false;
 		importingBackup = true;
 		settingsOpen = true;
 		backupImportError = '';
 		try {
-			const result = await notesStore.importBackup(pendingImportData, mode);
-			if (!result.success) throw new Error(result.error || 'Could not import that backup.');
+			const result = pendingKeepFiles
+				? await notesStore.importKeepTakeout(pendingKeepFiles, mode)
+				: await notesStore.importBackup(pendingImportData, mode);
+			if (!result.success) throw new Error(result.error || 'Could not import that file.');
 			pendingImportData = null;
+			pendingKeepFiles = null;
 			settingsOpen = false;
 		} catch (error) {
 			backupImportError = error instanceof Error ? error.message : 'Backup operation failed.';
@@ -133,30 +138,34 @@
 		}
 	}
 
-	function importBackupFile(file: File) {
+	async function importBackupFile(file: File) {
 		if (importingBackup) return;
 		importingBackup = true;
 		backupImportError = '';
-		const reader = new FileReader();
-		reader.onload = async () => {
-			try {
-				const data = JSON.parse(String(reader.result));
-				if (!isEncryptedScrapsCacheBackup(data))
-					throw new Error('This is not a current encrypted Scraps Cache backup.');
-				pendingEncryptedBackup = data;
-				backupDialogMode = BackupOperation.Import;
+		try {
+			const bytes = new Uint8Array(await file.arrayBuffer());
+			if (isZipBytes(bytes)) {
+				const files = await unzipKeepTakeout(bytes);
+				if (readKeepTakeout(files).notes.length === 0)
+					throw new Error('That zip does not contain Google Keep notes.');
+				pendingKeepFiles = files;
+				pendingImportData = null;
 				settingsOpen = false;
-			} catch (err) {
-				backupImportError = err instanceof Error ? err.message : 'Could not read that backup file.';
-			} finally {
-				importingBackup = false;
+				choosingImportMode = true;
+				return;
 			}
-		};
-		reader.onerror = () => {
+			const data = JSON.parse(new TextDecoder().decode(bytes));
+			if (!isEncryptedScrapsCacheBackup(data))
+				throw new Error('This is not a Scraps Cache backup or Google Keep Takeout.');
+			pendingEncryptedBackup = data;
+			pendingKeepFiles = null;
+			backupDialogMode = BackupOperation.Import;
+			settingsOpen = false;
+		} catch (err) {
+			backupImportError = err instanceof Error ? err.message : 'Could not read that file.';
+		} finally {
 			importingBackup = false;
-			backupImportError = 'Could not read that backup file.';
-		};
-		reader.readAsText(file);
+		}
 	}
 
 	function handleKeydown(e: KeyboardEvent) {
@@ -312,11 +321,11 @@
 						Export backup
 					</Menu.Item>
 					<FileUpload.Root
-						accept=".scraps-cache-backup,application/json"
+						accept=".scraps-cache-backup,.zip,application/json,application/zip,application/x-zip-compressed"
 						maxFiles={1}
 						onFileAccept={(details) => {
 							const file = details.files[0];
-							if (file) importBackupFile(file);
+							if (file) void importBackupFile(file);
 						}}
 					>
 						<FileUpload.Trigger
@@ -407,6 +416,7 @@
 			if (importingBackup) return;
 			choosingImportMode = false;
 			pendingImportData = null;
+			pendingKeepFiles = null;
 			backupImportError = '';
 		}}
 	/>

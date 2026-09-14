@@ -292,7 +292,7 @@
 							{note.title}
 						</h3>
 					{/if}
-					<NoteBodyDisplay {note} maxBodyLines={40} />
+					<NoteBodyDisplay {note} />
 				</div>
 				<!-- Every press lands here, so links, photos, canvases and files can
 				     never swallow a swipe or start a drag of their own. -->

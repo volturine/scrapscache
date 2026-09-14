@@ -87,26 +87,6 @@ describe('NoteBodyDisplay inline Markdown', () => {
 });
 
 describe('NoteBodyDisplay Markdown blocks', () => {
-	it('bounds gallery previews without changing the stored note body', () => {
-		const body = Array.from({ length: 100 }, (_, index) => `line ${index + 1}`).join('\n');
-		const source = note({ body });
-		const { container } = render(NoteBodyDisplay, {
-			props: { note: source, maxBodyLines: 40 }
-		});
-
-		expect(container.querySelector('.markdown-content')?.textContent).toContain('line 40');
-		expect(container.querySelector('.markdown-content')?.textContent).not.toContain('line 41');
-		expect(source.body).toBe(body);
-	});
-
-	it('bounds a single very long line in gallery previews', () => {
-		const { container } = render(NoteBodyDisplay, {
-			props: { note: note({ body: 'x'.repeat(20_000) }), maxBodyLines: 40 }
-		});
-
-		expect(container.querySelector('.markdown-content')?.textContent).toHaveLength(12_000);
-	});
-
 	it('renders Markdown tables as semantic tables', () => {
 		const { container } = render(NoteBodyDisplay, {
 			props: {

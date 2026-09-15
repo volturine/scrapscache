@@ -85,13 +85,30 @@ GitHub Actions reads this value from the `SCRAPSCACHE_TICK_SECRET` environment
 secret in the matching `development` or `production` GitHub environment and
 installs it on both Workers during every deployment.
 
-Account registration is gated by Cloudflare Turnstile. `wrangler.jsonc` sets the
-public `PUBLIC_TURNSTILE_SITEKEY` and the per-environment `TURNSTILE_HOSTNAMES`
-(`scrapscache.com` or `dev.scrapscache.com`; never `localhost` in a deployed
-environment). The widget secret is the `TURNSTILE_SECRET` environment secret in
-each GitHub environment, which deployment installs on the app Worker. For local
-testing, put all three values in `.dev.vars` (or `.env` for `npm run dev`) with
-`TURNSTILE_HOSTNAMES=localhost,127.0.0.1`.
+Account registration is gated by Cloudflare Turnstile, which runs on its own
+origin so its script never shares one with the sync keys. `wrangler.jsonc` sets
+`PUBLIC_TURNSTILE_ORIGIN` (`https://verify.scrapscache.com` or
+`https://verify-dev.scrapscache.com`, both custom domains on the same Worker),
+`TURNSTILE_SITEKEY`, and `TURNSTILE_HOSTNAMES`, which is the challenge hostname
+because siteverify reports where the widget ran. The widget secret is the
+`TURNSTILE_SECRET` environment secret in each GitHub environment, which deployment
+installs on the app Worker.
+
+For local testing, `localhost` and `127.0.0.1` are different origins, so one dev
+server can play both parts. Open the app at `http://localhost:5173` and put these in
+`.env` (or `.dev.vars` for Wrangler):
+
+```sh
+SCRAPSCACHE_ORIGIN=http://localhost:5173
+PUBLIC_TURNSTILE_ORIGIN=http://127.0.0.1:5173
+TURNSTILE_SITEKEY=<a real widget's sitekey>
+TURNSTILE_SECRET=<that widget's secret>
+TURNSTILE_HOSTNAMES=127.0.0.1
+```
+
+Add `127.0.0.1` to that widget's hostnames in the Cloudflare dashboard. Cloudflare's
+public test keys are no use for an end-to-end check: their siteverify response
+carries no `action` and always names `example.com`, so the server rejects them.
 
 The sole open pull request labeled `deploy-dev` deploys the development Workers
 to `dev.scrapscache.com` after validation succeeds. Move the label to switch the

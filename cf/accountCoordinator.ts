@@ -27,6 +27,10 @@ type SyncInput = {
 };
 
 const STORAGE_OVERHEAD_BYTES = 512;
+/** Concurrent change streams one account may hold open. Comfortably above a real
+ * user's devices and tabs, and low enough that a session cannot grow this object's
+ * memory or its timer count without bound. */
+const MAX_EVENT_STREAMS = 16;
 const encoder = new TextEncoder();
 
 function hex(bytes: ArrayBuffer): string {
@@ -81,26 +85,36 @@ export class AccountCoordinator {
 	}
 
 	private events(request: Request): Response {
+		if (this.listeners.size >= MAX_EVENT_STREAMS) {
+			return Response.json(
+				{ error: 'Too many open change streams' },
+				{ status: 429, headers: { 'retry-after': '5' } }
+			);
+		}
 		const encoder = new TextEncoder();
 		const clientId = new URL(request.url).searchParams.get('clientId') ?? undefined;
 		const { readable, writable } = new TransformStream();
 		const writer = writable.getWriter();
 		void writer.write(encoder.encode(': ok\n\n'));
-		const listener = {
-			clientId,
-			send: (seq: number) => {
-				void writer.write(encoder.encode(`data: ${JSON.stringify({ seq })}\n\n`)).catch(() => {});
-			}
-		};
-		this.listeners.add(listener);
-		const ping = setInterval(() => {
-			void writer.write(encoder.encode(': ping\n\n')).catch(() => {});
-		}, 25_000);
+		let ping: ReturnType<typeof setInterval> | undefined;
 		const cleanup = () => {
-			clearInterval(ping);
+			if (ping !== undefined) clearInterval(ping);
 			this.listeners.delete(listener);
 			void writer.close().catch(() => {});
 		};
+		// A write only fails once the peer is gone. Dropping the stream here matters
+		// because the abort signal is the sole other exit, and a stream that outlives
+		// its client would otherwise hold a slot against the cap for good.
+		const listener = {
+			clientId,
+			send: (seq: number) => {
+				void writer.write(encoder.encode(`data: ${JSON.stringify({ seq })}\n\n`)).catch(cleanup);
+			}
+		};
+		this.listeners.add(listener);
+		ping = setInterval(() => {
+			void writer.write(encoder.encode(': ping\n\n')).catch(cleanup);
+		}, 25_000);
 		request.signal?.addEventListener('abort', cleanup);
 		return new Response(readable, {
 			headers: {
@@ -258,25 +272,25 @@ export class AccountCoordinator {
 			return true;
 		});
 		const prefix = await accountPrefix(input.accountId);
-		const objectKeys = new Map(
-			acceptedUploads.map(({ id }) => [id, `v1/${prefix}/${crypto.randomUUID()}`] as const)
+		// A retry of an upload that never committed already has an object key
+		// reserved. Minting a fresh one would leave the first object with nothing
+		// pointing at it, so nothing could ever find it again to delete it.
+		const reservedKeys = new Map(
+			acceptedUploads.length
+				? (
+						await execute(db, {
+							sql: `SELECT id, r2_key AS r2Key FROM pending_envelopes
+						 WHERE account_id = ? AND id IN (${acceptedUploads.map(() => '?').join(', ')})`,
+							args: [input.accountId, ...acceptedUploads.map(({ id }) => id)]
+						})
+					).rows.map((row) => [String(row.id), String(row.r2Key)] as const)
+				: []
 		);
-		if (acceptedUploads.length > 0) {
-			await batch(
-				db,
-				acceptedUploads.map(({ id }) => ({
-					sql: `INSERT OR REPLACE INTO pending_envelopes(account_id, id, r2_key, created_at)
-						VALUES (?, ?, ?, ?)`,
-					args: [input.accountId, id, objectKeys.get(id)!, now]
-				}))
-			);
-			await Promise.all(
-				acceptedUploads.map((upload) =>
-					this.env.SCRAPSCACHE_ENVELOPES.put(objectKeys.get(upload.id)!, upload.ciphertext)
-				)
-			);
-		}
-
+		const objectKeys = new Map(
+			acceptedUploads.map(
+				({ id }) => [id, reservedKeys.get(id) ?? `v1/${prefix}/${crypto.randomUUID()}`] as const
+			)
+		);
 		const statements: SqlStatement[] = [];
 		const obsoleteObjects: string[] = [];
 		for (const deletion of input.deletions) {
@@ -313,19 +327,9 @@ export class AccountCoordinator {
 			const projectedBytes =
 				ciphertextBytes + upload.ciphertext.length - (prior?.ciphertextBytes ?? 0);
 			const projectedStorage = storageBytes(projectedCount, projectedBytes);
+			// Nothing has been reserved or written yet, so a rejection costs no R2
+			// operations and leaves nothing behind to clean up.
 			if (projectedStorage > maxBytes && projectedStorage >= storageBytes()) {
-				await batch(
-					db,
-					acceptedUploads.map(({ id }) => ({
-						sql: 'DELETE FROM pending_envelopes WHERE account_id = ? AND id = ?',
-						args: [input.accountId, id]
-					}))
-				);
-				await Promise.all(
-					acceptedUploads.map(({ id }) =>
-						this.env.SCRAPSCACHE_ENVELOPES.delete(objectKeys.get(id)!)
-					)
-				);
 				return Response.json({ error: 'quota' }, { status: 507 });
 			}
 			sequence += 1;
@@ -364,6 +368,24 @@ export class AccountCoordinator {
 				updated_at = ?, last_seen_at = ? WHERE account_id = ?`,
 			args: [sequence, envelopeCount, ciphertextBytes, now, now, input.accountId]
 		});
+		// The batch fits. Reserve the object keys, write the bytes, and only then
+		// commit: a crash from here leaves a pending row the sweep can find.
+		if (acceptedUploads.length > 0) {
+			await batch(
+				db,
+				acceptedUploads.map(({ id }) => ({
+					sql: `INSERT OR REPLACE INTO pending_envelopes(account_id, id, r2_key, created_at)
+						VALUES (?, ?, ?, ?)`,
+					args: [input.accountId, id, objectKeys.get(id)!, now]
+				}))
+			);
+			await Promise.all(
+				acceptedUploads.map((upload) =>
+					this.env.SCRAPSCACHE_ENVELOPES.put(objectKeys.get(upload.id)!, upload.ciphertext)
+				)
+			);
+		}
+
 		await batch(db, statements);
 		await Promise.all(obsoleteObjects.map((key) => this.env.SCRAPSCACHE_ENVELOPES.delete(key)));
 

@@ -1,6 +1,6 @@
 import type { RequestHandler } from './$types';
 import { isAdminAuthorized, unauthorizedAdminResponse } from '$lib/server/adminAuth';
-import { renderMetrics } from '$lib/server/metrics';
+import { metricsSnapshot, renderMetrics } from '$lib/server/metrics';
 import {
 	bytesToGigabytes,
 	parseRetentionInactiveDays,
@@ -22,7 +22,8 @@ export const GET: RequestHandler = async ({ request }) => {
 				...usage,
 				gigabytes: bytesToGigabytes(usage.storageBytes)
 			},
-			await getRetentionStatus()
+			await getRetentionStatus(),
+			metricsSnapshot()
 		),
 		{
 			headers: {

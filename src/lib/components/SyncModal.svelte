@@ -16,10 +16,12 @@
 	import { buildProfileNotesExport, isLocalWorkspace } from '$lib/profiles';
 	import { estimateProfileBytes } from '$lib/db/idb';
 	import { downloadJSON } from '$lib/utils';
+	import { NOT_SYNCED_MESSAGE, type RotationStep } from '$lib/syncKeyRotation';
 	import {
 		Cloud,
 		CloudOff,
 		FolderPlus,
+		KeyRound,
 		MonitorSmartphone,
 		RefreshCw,
 		Trash2,
@@ -54,18 +56,25 @@
 	let waiting = $state<StartedDeviceLink | null>(null);
 	let now = $state(Date.now());
 	let timer: ReturnType<typeof setTimeout> | null = null;
-	let confirmation = $state<'delete' | 'force' | 'remove' | null>(null);
+	let confirmation = $state<'delete' | 'force' | 'remove' | 'replace-key' | null>(null);
+	let replaceStep = $state<RotationStep | null>(null);
+	/** Shown only after a refusal, so the override is never the first thing offered. */
+	let replaceNeedsOverride = $state(false);
+	let replaceOverrideAck = $state('');
+	const REPLACE_OVERRIDE_WORD = 'CONTINUE';
 	let confirmTarget = $state<string | null>(null);
 	let expandedId = $state<string | null>(null);
 	let newName = $state('');
 	let promoteSource = $state<string | null>(null);
 	// Account creation, including recovery that may recreate the account, needs a Turnstile token
-	// when this deployment configures a sitekey. Each surface owns its own single-use widget.
-	const turnstileSitekey = env.PUBLIC_TURNSTILE_SITEKEY?.trim() ?? '';
+	// when this deployment configures a challenge origin. Each surface owns its own single-use widget.
+	const turnstileOrigin = env.PUBLIC_TURNSTILE_ORIGIN?.trim() ?? '';
 	let registerCheck = $state<TurnstileWidget>();
 	let registerToken = $state('');
 	let forceCheck = $state<TurnstileWidget>();
 	let forceToken = $state('');
+	let replaceCheck = $state<TurnstileWidget>();
+	let replaceToken = $state('');
 	// The row that currently owns Escape, so the dialog leaves the key alone.
 	let rowHoldingEscape = $state<string | null>(null);
 
@@ -202,7 +211,7 @@
 	}
 
 	async function create() {
-		if (turnstileSitekey && !registerToken) return;
+		if (turnstileOrigin && !registerToken) return;
 		error = '';
 		info = '';
 		const name = newName;
@@ -224,7 +233,7 @@
 	}
 
 	async function forceResync() {
-		if (turnstileSitekey && !forceToken) return;
+		if (turnstileOrigin && !forceToken) return;
 		error = '';
 		info = '';
 		const token = forceToken || undefined;
@@ -482,11 +491,80 @@
 		info = 'Cloud data deleted. Its notes stay on this device as a private workspace.';
 	}
 
-	function confirm(kind: 'delete' | 'force' | 'remove', id: string) {
+	const REPLACE_STEP_LABELS: Record<RotationStep, string> = {
+		preflight: 'Checking this device is up to date…',
+		backup: 'Saving a copy of your notes…',
+		replace: 'Creating the new sync key…',
+		upload: 'Uploading your notes to it…',
+		confirm: 'Checking everything arrived…',
+		discard: 'Removing the old cloud account…'
+	};
+
+	/**
+	 * A crash net for the next minute, not an archive: if rotation dies partway the
+	 * notes are still on disk. Deliberately the same unencrypted export this modal
+	 * already offers, because a passphrase invented mid-panic is a safety net that
+	 * fails exactly when it is needed.
+	 */
+	async function writeRotationBackup() {
+		const name = syncStore.activeProfile?.name ?? 'workspace';
+		const backup = await buildProfileNotesExport(syncStore.activePid);
+		if (!backup) return;
+		downloadJSON(
+			backup,
+			`scrapscache-${name.replace(/[^a-z0-9_-]+/gi, '-').toLowerCase()}-before-key-change-${new Date()
+				.toISOString()
+				.slice(0, 10)}.scrapscache-backup`
+		);
+	}
+
+	async function replaceSyncKey(force: boolean) {
+		if (confirmation !== 'replace-key') return;
+		error = '';
+		info = '';
+		replaceStep = null;
+		if (turnstileOrigin && !replaceToken) return;
+		const turnstileToken = replaceToken || undefined;
+		const outcome = await runOperation('replace-key', 'Could not replace the sync key', () =>
+			profileCoordinator.replaceSyncKey({
+				force,
+				turnstileToken,
+				exportBackup: writeRotationBackup,
+				onStep: (step) => (replaceStep = step)
+			})
+		);
+		// Single-use: a refused attempt needs a fresh check before the override.
+		replaceCheck?.reset();
+		replaceStep = null;
+		if (!outcome) return;
+		if (!outcome.ok) {
+			replaceNeedsOverride = outcome.error === NOT_SYNCED_MESSAGE;
+			replaceOverrideAck = '';
+			error = replaceNeedsOverride
+				? outcome.error
+				: friendlyError(outcome.error, 'Could not replace the sync key');
+			if (!outcome.replacementRemoved && outcome.step !== 'preflight') {
+				error +=
+					' The workspace is back on its old key, but an unused cloud account was left behind.';
+			}
+			return;
+		}
+		confirmation = null;
+		confirmTarget = null;
+		replaceNeedsOverride = false;
+		mode = 'menu';
+		info = outcome.previousAccountRemoved
+			? 'Your sync key has been replaced. Pair your other devices again with the new code.'
+			: 'Your sync key has been replaced, but the old cloud account could not be deleted. It no longer receives anything new.';
+	}
+
+	function confirm(kind: 'delete' | 'force' | 'remove' | 'replace-key', id: string) {
 		confirmation = kind;
 		confirmTarget = id;
 		mode = 'confirm';
 		error = '';
+		replaceNeedsOverride = false;
+		replaceOverrideAck = '';
 	}
 
 	function friendlyError(raw: string | null | undefined, fallback: string): string {
@@ -551,9 +629,11 @@
 										: mode === 'confirm'
 											? confirmation === 'force'
 												? 'Replace cloud notes?'
-												: confirmation === 'remove'
-													? 'Delete workspace?'
-													: 'Delete cloud data?'
+												: confirmation === 'replace-key'
+													? 'Replace sync key?'
+													: confirmation === 'remove'
+														? 'Delete workspace?'
+														: 'Delete cloud data?'
 											: 'Connect device'}
 					</Dialog.Title>
 					<button
@@ -622,6 +702,19 @@
 													></span
 												></button
 											>
+											{#if active}
+												<button
+													type="button"
+													class="manage-row"
+													disabled={busy}
+													onclick={() => confirm('replace-key', profile.id)}
+													><KeyRound size={16} aria-hidden="true" /><span
+														>I lost a device<small
+															>Move this workspace to a new sync key the old device does not have</small
+														></span
+													></button
+												>
+											{/if}
 										{:else}
 											<button
 												type="button"
@@ -747,6 +840,9 @@
 								This device’s notes will replace the cloud version using the same sync key. Notes
 								only in the cloud will be removed. Other devices will receive these notes as the
 								latest version.
+							{:else if confirmation === 'replace-key'}
+								Your notes move to a brand-new sync key, and the old cloud account is deleted. The
+								lost device stops syncing and can never read anything you write from now on.
 							{:else if confirmation === 'remove'}
 								Permanently delete “{confirmProfile?.name}” and its notes from this device.
 								{#if confirmProfile && !isLocalWorkspace(confirmProfile)}
@@ -757,17 +853,58 @@
 								all devices. This device keeps its notes as a private workspace.
 							{/if}
 						</p>
-						{#if confirmation === 'force' && turnstileSitekey}
+						{#if confirmation === 'force' && turnstileOrigin}
 							<TurnstileWidget
 								bind:this={forceCheck}
 								bind:token={forceToken}
-								sitekey={turnstileSitekey}
+								origin={turnstileOrigin}
 								action="register"
 							/>
+						{/if}
+						{#if confirmation === 'replace-key'}
+							<p
+								class="rounded-lg p-3 text-sm leading-relaxed"
+								style="background: var(--scrapscache-warning-subtle); color: var(--scrapscache-text);"
+							>
+								<strong>It cannot reach the notes already on that device.</strong> Nothing can erase them
+								remotely — this only stops the lost device receiving anything new. Your other devices
+								will need to be paired again with the new code.
+							</p>
+							<p class="text-sm leading-relaxed text-[var(--scrapscache-text-muted)]">
+								A copy of this workspace’s notes is downloaded first, in case anything goes wrong.
+							</p>
+							{#if replaceStep}
+								<p class="text-sm text-[var(--scrapscache-text-muted)]" role="status">
+									{REPLACE_STEP_LABELS[replaceStep]}
+								</p>
+							{/if}
+							{#if turnstileOrigin}
+								<TurnstileWidget
+									bind:this={replaceCheck}
+									bind:token={replaceToken}
+									origin={turnstileOrigin}
+									action="register"
+								/>
+							{/if}
 						{/if}
 						{#if error}<p class="text-sm text-[var(--scrapscache-danger)]" role="alert">
 								{error}
 							</p>{/if}
+						{#if replaceNeedsOverride}
+							<label class="block space-y-2 text-sm">
+								<span class="text-[var(--scrapscache-text-muted)]"
+									>To continue anyway, type {REPLACE_OVERRIDE_WORD}. Anything saved only in the
+									cloud will be lost.</span
+								>
+								<input
+									bind:value={replaceOverrideAck}
+									class="scrapscache-input w-full px-3 py-2"
+									autocomplete="off"
+									spellcheck="false"
+									placeholder={REPLACE_OVERRIDE_WORD}
+								/>
+							</label>
+						{/if}
 						<div class="flex gap-2">
 							<button
 								type="button"
@@ -778,28 +915,39 @@
 									confirmation = null;
 									confirmTarget = null;
 									error = '';
+									replaceNeedsOverride = false;
+									replaceOverrideAck = '';
 								}}>Cancel</button
 							>
 							<button
 								type="button"
-								class="scrapscache-button flex-1 px-3 py-2 {confirmation !== 'force'
+								class="scrapscache-button flex-1 px-3 py-2 {confirmation !== 'force' &&
+								confirmation !== 'replace-key'
 									? 'scrapscache-button-destructive-solid'
 									: 'scrapscache-button-primary'}"
 								disabled={busy ||
-									(confirmation === 'force' && Boolean(turnstileSitekey) && !forceToken)}
-								onclick={() =>
-									confirmation === 'force'
-										? void forceResync()
-										: confirmation === 'remove'
-											? void removeWorkspace()
-											: void deleteCloudData()}
+									(confirmation === 'force' && Boolean(turnstileOrigin) && !forceToken) ||
+									(confirmation === 'replace-key' && Boolean(turnstileOrigin) && !replaceToken) ||
+									(replaceNeedsOverride &&
+										replaceOverrideAck.trim().toUpperCase() !== REPLACE_OVERRIDE_WORD)}
+								onclick={() => {
+									if (confirmation === 'force') return void forceResync();
+									if (confirmation === 'replace-key')
+										return void replaceSyncKey(replaceNeedsOverride);
+									if (confirmation === 'remove') return void removeWorkspace();
+									void deleteCloudData();
+								}}
 								>{busy
 									? 'Working…'
 									: confirmation === 'force'
 										? 'Replace cloud notes'
-										: confirmation === 'remove'
-											? 'Delete workspace'
-											: 'Delete cloud data'}</button
+										: confirmation === 'replace-key'
+											? replaceNeedsOverride
+												? 'Replace key anyway'
+												: 'Replace sync key'
+											: confirmation === 'remove'
+												? 'Delete workspace'
+												: 'Delete cloud data'}</button
 							>
 						</div>
 					</div>
@@ -818,11 +966,11 @@
 								aria-invalid={Boolean(error)}
 								onkeydown={(event) => event.key === 'Enter' && void create()}
 							/>
-							{#if turnstileSitekey}
+							{#if turnstileOrigin}
 								<TurnstileWidget
 									bind:this={registerCheck}
 									bind:token={registerToken}
-									sitekey={turnstileSitekey}
+									origin={turnstileOrigin}
 									action="register"
 								/>
 							{/if}
@@ -830,7 +978,7 @@
 							<button
 								type="button"
 								onclick={() => void create()}
-								disabled={busy || (Boolean(turnstileSitekey) && !registerToken)}
+								disabled={busy || (Boolean(turnstileOrigin) && !registerToken)}
 								class="scrapscache-button scrapscache-button-primary w-full px-3 py-2.5 text-sm font-medium"
 								>{operation === 'create' ? 'Starting sync…' : 'Start sync'}</button
 							>

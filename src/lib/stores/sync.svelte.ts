@@ -39,7 +39,7 @@ import {
 	signSyncMigration,
 	signSyncRegistration,
 	encryptSyncPayload,
-	decryptSyncPayload,
+	decryptSyncEnvelope,
 	randomOpaqueId
 } from '$lib/syncPairing';
 import { PairingRole, PairingState, type PairingPoll } from '$lib/pairingProtocol';
@@ -460,6 +460,30 @@ export class SyncStore {
 	): Promise<{ success: boolean; profile?: StoredProfile; error?: string }> {
 		if (!isLocalWorkspace(workspace))
 			return { success: false, error: 'That workspace is already synced' };
+		return this.assignNewKey(
+			{ ...workspace, name: name?.trim() || workspace.name },
+			turnstileToken
+		);
+	}
+
+	/**
+	 * Put a synced workspace on a new sync key and a new, empty relay account. The
+	 * account the old key opened is left for the caller to delete once the new one
+	 * is proven complete.
+	 */
+	async replaceKey(
+		workspace: StoredProfile,
+		turnstileToken?: string
+	): Promise<{ success: boolean; profile?: StoredProfile; error?: string }> {
+		if (isLocalWorkspace(workspace))
+			return { success: false, error: 'That workspace is not synced' };
+		return this.assignNewKey(workspace, turnstileToken);
+	}
+
+	private async assignNewKey(
+		workspace: StoredProfile,
+		turnstileToken?: string
+	): Promise<{ success: boolean; profile?: StoredProfile; error?: string }> {
 		const account = createSyncIdentity();
 		try {
 			const res = await fetch('/api/sync/register', {
@@ -482,11 +506,7 @@ export class SyncStore {
 					success: false,
 					error: typeof data.error === 'string' ? data.error : 'Registration failed'
 				};
-			const profile: StoredProfile = {
-				...workspace,
-				name: name?.trim() || workspace.name,
-				syncKey: account.syncKey
-			};
+			const profile: StoredProfile = { ...workspace, syncKey: account.syncKey };
 			await this.replaceKeyringEntry(profile);
 			this.clearLegacyAccountStorage();
 			return { success: true, profile };
@@ -495,7 +515,7 @@ export class SyncStore {
 		}
 	}
 
-	private async replaceKeyringEntry(profile: StoredProfile): Promise<void> {
+	async replaceKeyringEntry(profile: StoredProfile): Promise<void> {
 		await saveProfile(profile);
 		this.profiles = this.profiles.map((entry) => (entry.id === profile.id ? profile : entry));
 	}
@@ -899,6 +919,10 @@ export class SyncStore {
 			const internallyMarkedOutbox = new Map<string, number>();
 			let poisonCount = 0;
 			let stalledWrites = 0;
+			/** Records the relay still holds in the pre-slot-binding format. Rewriting
+			 * them is how that format leaves an account, and the only thing that can
+			 * ever make the read path for it safe to delete. */
+			const unboundRecordKeys = new Set<string>();
 			while (hasMore) {
 				if (syncCancelled()) return { success: false, error: 'Sync was cancelled' };
 				const startedWithDownloadsDrained = downloadsDrained;
@@ -970,7 +994,7 @@ export class SyncStore {
 							id,
 							slot,
 							expectedId: recordIds[record.key] ?? null,
-							ciphertext: encryptSyncPayload(account.syncKey, record.payload)
+							ciphertext: encryptSyncPayload(account.syncKey, record.payload, slot)
 						};
 					})
 				);
@@ -1141,12 +1165,15 @@ export class SyncStore {
 						continue;
 					}
 					let decodedRecords: SyncRecordPayload[] | null = null;
+					let decodedUnbound = false;
 					try {
-						const remote = decryptSyncPayload(
+						const remote = decryptSyncEnvelope(
 							account.syncKey,
-							(envelope as { ciphertext: string }).ciphertext
+							(envelope as { ciphertext: string }).ciphertext,
+							slot
 						);
-						decodedRecords = isSyncRecordPayload(remote) ? [remote] : null;
+						decodedUnbound = remote.legacy;
+						decodedRecords = isSyncRecordPayload(remote.payload) ? [remote.payload] : null;
 					} catch {
 						decodedRecords = null;
 					}
@@ -1170,6 +1197,7 @@ export class SyncStore {
 						recordIds[key] = id;
 						remoteFingerprints[key] = await sha256(record);
 						currentKeys.add(key);
+						if (decodedUnbound) unboundRecordKeys.add(key);
 					}
 				}
 				if (!writesAccepted && (outgoing.length > 0 || deleteSlots.length > 0)) {
@@ -1331,6 +1359,10 @@ export class SyncStore {
 			}
 
 			if (syncCancelled()) return { success: false, error: 'Sync was cancelled' };
+			// Queued rather than uploaded here: the next pass carries them like any
+			// other change, so a large account migrates over several syncs instead of
+			// one oversized one.
+			if (unboundRecordKeys.size > 0) await this.queueOutbox(unboundRecordKeys);
 			if (poisonCount > 0) {
 				this.lastError = `Skipped ${poisonCount} unreadable sync record${poisonCount === 1 ? '' : 's'}`;
 			} else if (quotaBlockedKeys.size > 0) {
@@ -1381,6 +1413,25 @@ export class SyncStore {
 			this.activePid
 		).catch(() => undefined);
 		return !baseline || Object.keys(baseline).length === 0;
+	}
+
+	/** How many records this device has confirmed onto the active account. Read
+	 * from the synced baseline rather than memory, so it reflects what the relay
+	 * acknowledged rather than what the client meant to send. */
+	async syncedRecordCount(): Promise<number> {
+		if (!this.account) return 0;
+		const baseline = await getSyncState<Record<string, string>>(
+			syncControlKeys(this.account.accountId).baseline,
+			this.activePid
+		).catch(() => undefined);
+		return baseline ? Object.keys(baseline).length : 0;
+	}
+
+	/** Delete the relay-side account a given key opens, which need not be the
+	 * active one: rotation discards the account it has just moved away from. */
+	async deleteAccountFor(account: SyncAccount): Promise<boolean> {
+		const response = await this.authorizedFetch('/api/sync/account', { method: 'DELETE' }, account);
+		return response.ok;
 	}
 
 	async committedRevision(): Promise<number | null> {

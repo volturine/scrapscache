@@ -40,18 +40,6 @@ export type ScrapsCacheBackup = {
 	};
 };
 
-export type BackupImportProgress = {
-	phase: BackupImportPhase;
-	completed: number;
-	total: number;
-};
-
-export const BackupImportPhase = {
-	Writing: 'writing',
-	Finishing: 'finishing'
-} as const;
-export type BackupImportPhase = (typeof BackupImportPhase)[keyof typeof BackupImportPhase];
-
 export const BackupImportMode = {
 	Keep: 'keep',
 	Replace: 'replace'

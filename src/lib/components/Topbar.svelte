@@ -3,6 +3,7 @@
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { downloadJSON } from '$lib/utils';
 	import { syncStore } from '$lib/stores/sync.svelte';
+	import { profileCoordinator } from '$lib/stores/profiles.svelte';
 	import SyncModal from './SyncModal.svelte';
 	import Tooltip from './Tooltip.svelte';
 	import PwaInstallSettings from './PwaInstallSettings.svelte';
@@ -130,6 +131,11 @@
 
 	async function selectImportMode(mode: BackupImportMode) {
 		if (!pendingKeepFiles && !pendingImportData) return;
+		// The import belongs to the open workspace, so it cannot start mid-switch.
+		if (profileCoordinator.switching) {
+			backupImportError = 'A workspace change is still running. Try again when it finishes.';
+			return;
+		}
 		showingImportGuide = false;
 		keepImportReady = false;
 		choosingImportMode = false;

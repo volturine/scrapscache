@@ -6,6 +6,8 @@
 import { syncStore, PROFILE_META_KEY } from './sync.svelte';
 import { notesStore, SYNC_LOCK } from './notes.svelte';
 import { clearNotesMirror } from '$lib/noteStorage';
+import { clearBoardsMirror } from './kanban.svelte';
+import { clearFiredReminderMirror } from './reminders.svelte';
 import {
 	isLocalWorkspace,
 	nextProfileName,
@@ -30,6 +32,9 @@ export class ProfileCoordinator {
 
 	private guard(blockOnSync = true): string | null {
 		if (this.switching) return 'Another profile change is still running';
+		// An import writes into the workspace it started in; switching mid-import
+		// would hand the rest of it to another workspace.
+		if (notesStore.importing) return 'An import is still running. Try again when it finishes.';
 		// A running sync must finish before its dataset can be handed over; the
 		// web lock below is only a safety net against races, not a waiting room.
 		if (blockOnSync && notesStore.syncing)
@@ -179,6 +184,8 @@ export class ProfileCoordinator {
 			if (!(await syncStore.removeProfile(profileId)))
 				return { success: false, error: 'Could not delete workspace' };
 			clearNotesMirror(profileId);
+			clearBoardsMirror(profileId);
+			clearFiredReminderMirror(profileId);
 			if (profile.syncKey) void unregisterReminderDevice(identityFromSyncKey(profile.syncKey));
 			return { success: true };
 		});

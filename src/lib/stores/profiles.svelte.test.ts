@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getAllNotesMetadata, getSyncOutboxKeys, LOCAL_PROFILE_ID, putNote } from '$lib/db/idb';
+import {
+	getAllNotesMetadata,
+	getSyncOutboxKeys,
+	LOCAL_PROFILE_ID,
+	putNote,
+	scopedStateKey
+} from '$lib/db/idb';
 import { readProfiles, type StoredProfile } from '$lib/profiles';
 import { createSyncIdentity } from '$lib/syncPairing';
 import type { Note } from '$lib/types';
@@ -183,6 +189,23 @@ describe('workspace handovers', () => {
 		syncStore.activateProfile(target);
 		await putNote(target.id, note('removed-note'));
 		await putNote(other.id, note('remaining-note'));
+		const cached = [
+			'scrapscache-notes-mirror',
+			'scrapscache-labels-mirror',
+			'scrapscache-kanban-boards-v1',
+			'scrapscache-kanban-active-board-v1',
+			'scrapscache-kanban-board-tombstones-v1',
+			'scrapscache-fired-reminders-mirror',
+			'scrapscache-sync-status'
+		];
+		for (const base of cached) {
+			const key =
+				base === 'scrapscache-sync-status'
+					? `${base}:${target.id}`
+					: scopedStateKey(base, target.id);
+			localStorage.setItem(key, '["removed"]');
+			localStorage.setItem(`${base}:${other.id}`, '["kept"]');
+		}
 		const reload = stubHandover();
 
 		const result = await new ProfileCoordinator().remove(target.id);
@@ -194,6 +217,13 @@ describe('workspace handovers', () => {
 		expect(reload).toHaveBeenCalledOnce();
 		expect(await noteIds(target.id)).toEqual([]);
 		expect(await noteIds(other.id)).toEqual(['remaining-note']);
+		// Nothing of the deleted workspace stays behind in this device's caches.
+		const statusKey = `scrapscache-sync-status:${target.id}`;
+		for (const base of cached) {
+			const key = base === 'scrapscache-sync-status' ? statusKey : scopedStateKey(base, target.id);
+			expect(localStorage.getItem(key), key).toBeNull();
+			expect(localStorage.getItem(`${base}:${other.id}`), base).not.toBeNull();
+		}
 	});
 
 	it('leaves a fresh empty workspace when the last one is deleted', async () => {

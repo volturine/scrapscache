@@ -22,6 +22,11 @@ function firedReminderMirrorKey(pid: string): string {
 		: `${FIRED_REMINDERS_MIRROR_KEY}:${pid}`;
 }
 
+export function clearFiredReminderMirror(pid: string): void {
+	if (typeof localStorage === 'undefined') return;
+	localStorage.removeItem(firedReminderMirrorKey(pid));
+}
+
 function readFiredReminderMirror(pid: string): string[] {
 	if (typeof localStorage === 'undefined') return [];
 	try {

@@ -47,6 +47,12 @@ For how to report vulnerabilities, see [SECURITY.md](../SECURITY.md).
 - The signing private key and reusable authentication material never leave the client
 - Existing accounts present their legacy secret once over HTTPS to atomically replace its scrypt hash
   with a verified public key; the legacy credential cannot be used again
+- Deleting cloud data retires the sync key: the relay keeps the deleted `accountId`
+  and refuses to register it again. A device still holding the key, such as a lost
+  one, cannot recreate the account and read what another device would upload
+  there; devices that sync with it are told the key is gone and offered a new one.
+  Accounts removed by the retention sweep are not retired, so recovery can
+  recreate them
 
 ### Device pairing
 
@@ -166,6 +172,9 @@ Structured logs use request IDs; prefer redacted identifiers.
 - Passive network attacker seeing note plaintext (with HTTPS)
 - Casual metadata scraping via OpenGraph-style server-side previews
 - Cross-site embedding / simple clickjacking (frame denial + CSP)
+- A **lost device** receiving new notes once its workspace's cloud data is deleted
+  and the workspace moves to a new key. What that device already stores stays
+  readable to whoever holds it
 
 ### Out of scope / residual risk
 

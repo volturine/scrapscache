@@ -111,10 +111,30 @@ export class SyncStore {
 		return (
 			(
 				await execute(this.db, {
-					sql: 'INSERT OR IGNORE INTO accounts(account_id, credential_hash, updated_at, last_seen_at) VALUES (?, ?, ?, ?)',
-					args: [accountId, authPublicKey, updatedAt, updatedAt]
+					sql: `INSERT OR IGNORE INTO accounts(account_id, credential_hash, updated_at, last_seen_at)
+						SELECT ?, ?, ?, ?
+						WHERE NOT EXISTS (SELECT 1 FROM retired_accounts WHERE account_id = ?)`,
+					args: [accountId, authPublicKey, updatedAt, updatedAt, accountId]
 				})
 			).rowsAffected === 1
+		);
+	}
+	/** Refuse this account id from now on. Recorded before the account is deleted,
+	 * so no registration can slip in between the two. */
+	async retireAccount(accountId: string, now = Date.now()): Promise<void> {
+		await execute(this.db, {
+			sql: 'INSERT OR IGNORE INTO retired_accounts(account_id, retired_at) VALUES (?, ?)',
+			args: [accountId, now]
+		});
+	}
+	async isAccountRetired(accountId: string): Promise<boolean> {
+		return (
+			(
+				await execute(this.db, {
+					sql: 'SELECT 1 AS retired FROM retired_accounts WHERE account_id = ?',
+					args: [accountId]
+				})
+			).rows.length > 0
 		);
 	}
 	async getAccountByteQuota(

@@ -84,6 +84,50 @@ describe('workspace handovers', () => {
 		expect(await noteIds(local.id)).toEqual(['local-note']);
 	});
 
+	it('moves a workspace with a retired key onto a new key in place', async () => {
+		const retired = workspace('retired', true);
+		syncStore.profiles = [retired];
+		syncStore.activateProfile(retired);
+		syncStore.keyRetired = true;
+		await putNote(retired.id, note('kept-note'));
+		const oldAccount = syncStore.account!.accountId;
+		stubHandover();
+		const sync = vi.spyOn(notesStore, 'syncWithCloudManual').mockReturnValue(new Promise(() => {}));
+		const cleared = vi.spyOn(syncStore, 'clearAccountControlPlane');
+		const register = vi.spyOn(globalThis, 'fetch').mockResolvedValue(Response.json({ ok: true }));
+
+		const result = await new ProfileCoordinator().replaceRetiredKey(retired.id, 'turnstile-token');
+
+		expect(result).toEqual({ success: true });
+		const [moved] = syncStore.profiles;
+		expect(moved.id).toBe(retired.id);
+		expect(moved.syncKey).not.toBe(retired.syncKey);
+		expect(syncStore.account?.syncKey).toBe(moved.syncKey);
+		expect(syncStore.keyRetired).toBe(false);
+		expect(readProfiles()[0].syncKey).toBe(moved.syncKey);
+		expect(JSON.parse(String(register.mock.calls[0][1]?.body)).turnstileToken).toBe(
+			'turnstile-token'
+		);
+		expect(cleared).toHaveBeenCalledWith(oldAccount, retired.id);
+		expect(sync).toHaveBeenCalledOnce();
+		expect(await noteIds(retired.id)).toEqual(['kept-note']);
+	});
+
+	it('keeps a retired key when the new one cannot be registered', async () => {
+		const retired = workspace('retired-failing', true);
+		syncStore.profiles = [retired];
+		syncStore.activateProfile(retired);
+		stubHandover();
+		vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+			Response.json({ error: 'Human verification failed. Try again.' }, { status: 403 })
+		);
+
+		const result = await new ProfileCoordinator().replaceRetiredKey(retired.id);
+
+		expect(result).toEqual({ success: false, error: 'Human verification failed. Try again.' });
+		expect(syncStore.profiles).toEqual([retired]);
+	});
+
 	it('starts syncing an inactive workspace without leaving the current one', async () => {
 		const current = workspace('current', false);
 		const other = workspace('inactive-promote', false, 2);

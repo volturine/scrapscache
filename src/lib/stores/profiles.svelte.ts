@@ -97,10 +97,30 @@ export class ProfileCoordinator {
 	}
 
 	/** Start syncing a private workspace. Its row, name, and notes stay the same. */
-	async startSync(profileId: string, name?: string, turnstileToken?: string): Promise<Outcome> {
+	startSync(profileId: string, name?: string, turnstileToken?: string): Promise<Outcome> {
+		return this.moveToNewKey('Could not start sync', profileId, (profile) =>
+			syncStore.register(profile, name, turnstileToken)
+		);
+	}
+
+	/** Give a workspace whose key was deleted from the cloud a new key, and upload
+	 * its notes to the new account. Other devices have to pair again. */
+	replaceRetiredKey(profileId: string, turnstileToken?: string): Promise<Outcome> {
+		return this.moveToNewKey('Could not create a new sync key', profileId, (profile) =>
+			syncStore.replaceRetiredKey(profile, turnstileToken)
+		);
+	}
+
+	private async moveToNewKey(
+		fallback: string,
+		profileId: string,
+		assign: (
+			profile: StoredProfile
+		) => Promise<{ success: boolean; profile?: StoredProfile; error?: string }>
+	): Promise<Outcome> {
 		let synced = false;
-		const result = await this.handover('Could not start sync', async () => {
-			const result = await syncStore.register(this.find(profileId), name, turnstileToken);
+		const result = await this.handover(fallback, async () => {
+			const result = await assign(this.find(profileId));
 			if (!result.success || !result.profile)
 				return { success: false, error: result.error ?? 'Registration failed' };
 			synced = syncStore.activeId === profileId;

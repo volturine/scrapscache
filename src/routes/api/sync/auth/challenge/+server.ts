@@ -4,6 +4,7 @@ import { getSyncAuth, isLegacySyncCredential } from '$lib/server/syncAuth';
 import { getSyncStore } from '$lib/server/syncStore';
 import { readJsonBody } from '$lib/server/request';
 import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '$lib/server/rateLimit';
+import { retiredKeyResponse } from '$lib/server/retiredKey';
 
 export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	const limited = await getPublicApiLimiter().check(`auth-ip:${clientAddress(getClientAddress)}`, {
@@ -20,8 +21,12 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	if (typeof body.accountId !== 'string' || !/^[A-Za-z0-9_-]{16,128}$/.test(body.accountId)) {
 		return json({ error: 'Sync account not found' }, { status: 404 });
 	}
-	const credential = await getSyncStore().getAuthCredential(body.accountId);
-	if (!credential) return json({ error: 'Sync account not found' }, { status: 404 });
+	const store = getSyncStore();
+	const credential = await store.getAuthCredential(body.accountId);
+	if (!credential) {
+		if (await store.isAccountRetired(body.accountId)) return retiredKeyResponse();
+		return json({ error: 'Sync account not found' }, { status: 404 });
+	}
 	if (isLegacySyncCredential(credential)) {
 		return json(
 			{ error: 'Sync authentication upgrade required', migrationRequired: true },

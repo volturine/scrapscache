@@ -217,6 +217,8 @@ may override them.
 | `POST /api/admin/retention` | same bearer token                                | Run the inactive-account sweeper now                      |
 | `GET /api/admin/accounts`   | same bearer token                                | Accounts with their effective limits                      |
 | `PATCH /api/admin/accounts` | same bearer token                                | Set or clear one account's storage quota and request rate |
+| `GET /api/admin/settings`   | same bearer token                                | Effective runtime settings, defaults, and overrides       |
+| `PATCH /api/admin/settings` | same bearer token                                | Set or clear non-secret runtime overrides                 |
 | `POST /api/cron/tick`       | `Authorization: Bearer $SCRAPSCACHE_TICK_SECRET` | Run scheduled tasks (cron endpoint)                       |
 
 With no `SCRAPSCACHE_ADMIN_TOKEN` configured, the token-protected endpoints
@@ -245,16 +247,20 @@ reports `activity: null` alongside `telemetry.source`, rather than serving a
 partial count that reads like a total. Storage and account gauges are database
 aggregates and are correct on both.
 
-The same data, plus per-account limits, is available in the browser at `/admin`,
-signed in with `SCRAPSCACHE_ADMIN_TOKEN`.
+The same data, plus per-account limits and runtime settings, is available in the
+browser at `/admin`, signed in with `SCRAPSCACHE_ADMIN_TOKEN`. Runtime settings
+are stored in the operational database and take effect without a redeploy. The
+environment remains the deployment default; leaving a field blank in the admin
+form removes its override.
 
-Inactive-account retention is **off** unless
-`SCRAPSCACHE_RETENTION_INACTIVE_DAYS` is a positive integer. When enabled, a
-daily sweep deletes every account with no authenticated activity for that many
-days. Last-seen is updated on authenticated sync and push activity, including
-pull-only deltas. Enable retention only after live traffic has refreshed
-last-seen, or after a deliberate grace period. The sweeper logs deleted counts,
-never account IDs.
+The runtime form controls the default account storage quota, default syncs per
+minute, concurrent sync requests, inactive-account retention, search indexing,
+and the VAPID subject. Inactive-account retention is **off** when its effective
+value is zero. When enabled, a daily sweep deletes every account with no
+authenticated activity for that many days. Last-seen is updated on authenticated
+sync and push activity, including pull-only deltas. Enable retention only after
+live traffic has refreshed last-seen, or after a deliberate grace period. The
+sweeper logs deleted counts, never account IDs.
 
 ```sh
 curl -fsS -H "Authorization: Bearer $SCRAPSCACHE_ADMIN_TOKEN" \

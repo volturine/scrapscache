@@ -4,6 +4,7 @@ import { requireAdmin } from '$lib/server/adminAuth';
 import { readJsonBody } from '$lib/server/request';
 import { getSyncStore } from '$lib/server/syncStore';
 import { ACCOUNT_ID_RE } from '$lib/server/pushWakes';
+import { getRuntimeSettings } from '$lib/server/runtimeSettings';
 
 const MAX_REQUEST_BYTES = 8_192;
 
@@ -28,11 +29,16 @@ export const GET: RequestHandler = async ({ request, url, getClientAddress }) =>
 	const rejected = await requireAdmin(request, getClientAddress);
 	if (rejected) return rejected;
 	const store = getSyncStore();
+	const settings = await getRuntimeSettings();
+	const defaults = {
+		defaultMaxAccountBytes: settings.maxAccountBytes,
+		defaultSyncPerMinute: settings.syncPerMinute
+	};
 
 	const accountId = url.searchParams.get('accountId');
 	if (accountId) {
 		if (!ACCOUNT_ID_RE.test(accountId)) return json({ error: 'Invalid account' }, { status: 400 });
-		const page = await store.listAccounts({ search: accountId, limit: 1 });
+		const page = await store.listAccounts({ search: accountId, limit: 1, ...defaults });
 		const account = page.accounts.find((entry) => entry.accountId === accountId);
 		if (!account) return json({ error: 'Sync account not found' }, { status: 404 });
 		return json(account, { headers: { 'cache-control': 'no-store' } });
@@ -44,7 +50,8 @@ export const GET: RequestHandler = async ({ request, url, getClientAddress }) =>
 		await store.listAccounts({
 			limit: Number.isFinite(limit) && limit > 0 ? limit : undefined,
 			offset: Number.isFinite(offset) && offset > 0 ? offset : undefined,
-			search: url.searchParams.get('search') ?? undefined
+			search: url.searchParams.get('search') ?? undefined,
+			...defaults
 		}),
 		{ headers: { 'cache-control': 'no-store' } }
 	);
@@ -58,6 +65,11 @@ export const GET: RequestHandler = async ({ request, url, getClientAddress }) =>
 export const PATCH: RequestHandler = async ({ request, getClientAddress }) => {
 	const rejected = await requireAdmin(request, getClientAddress);
 	if (rejected) return rejected;
+	const settings = await getRuntimeSettings();
+	const defaults = {
+		defaultMaxAccountBytes: settings.maxAccountBytes,
+		defaultSyncPerMinute: settings.syncPerMinute
+	};
 
 	let body: Patch;
 	try {
@@ -97,7 +109,7 @@ export const PATCH: RequestHandler = async ({ request, getClientAddress }) => {
 		throw error;
 	}
 
-	const page = await store.listAccounts({ search: accountId, limit: 1 });
+	const page = await store.listAccounts({ search: accountId, limit: 1, ...defaults });
 	const account = page.accounts.find((entry) => entry.accountId === accountId);
 	return json(account, { headers: { 'cache-control': 'no-store' } });
 };

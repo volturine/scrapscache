@@ -117,8 +117,8 @@ machine at that moment. It cannot prove that the same code is served to everyone
   push, and admin. Durable and shared across isolates, at the cost of one database
   write per request — size the store accordingly and put edge rate limiting in
   front of it on a usage-billed platform
-- **Admin token** — required for `/metrics`, `GET /api/admin/status`, and
-  `POST /api/admin/retention` in production Compose
+- **Admin token** — required for `/metrics` and every `/api/admin/*` endpoint in
+  production Compose
 - **Metrics** — process counters on Node, where one process sees every request.
   On Workers, where no isolate does, the build swaps in a module that adds to
   hourly counters in D1, and the endpoints report `activity: null` rather than
@@ -133,6 +133,10 @@ machine at that moment. It cannot prove that the same code is served to everyone
   already stored in the relay database and readable there, so the admin API
   surfaces them rather than revealing anything new. Note content, ciphertext and
   credentials stay unreachable through all of it
+- **Runtime settings** — non-secret policy overrides are stored under namespaced
+  keys in the operational database. The API accepts only the known settings and
+  validates every value before atomically applying a patch. Deployment secrets
+  and infrastructure bindings cannot be changed through the app
 - **Account retention** — optional; a daily sweep deletes unused relay accounts
   after `SCRAPSCACHE_RETENTION_INACTIVE_DAYS` with no authenticated activity.
   Disabled by default. Sweep logs report counts only

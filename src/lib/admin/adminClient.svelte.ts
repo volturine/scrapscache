@@ -50,6 +50,25 @@ export type TelemetryReport = {
 	note?: string;
 };
 
+export type RuntimeSettings = {
+	maxAccountBytes: number;
+	syncPerMinute: number;
+	maxConcurrentSyncRequests: number;
+	retentionInactiveDays: number;
+	allowIndexing: boolean;
+	vapidSubject: string;
+};
+
+export type RuntimeSettingsState = {
+	values: RuntimeSettings;
+	defaults: RuntimeSettings;
+	overrides: Partial<RuntimeSettings>;
+};
+
+export type RuntimeSettingsPatch = Partial<{
+	[Key in keyof RuntimeSettings]: RuntimeSettings[Key] | null;
+}>;
+
 export class AdminUnauthorized extends Error {}
 
 export class AdminClient {
@@ -84,8 +103,8 @@ export class AdminClient {
 			const body = (await response.json().catch(() => null)) as { error?: unknown } | null;
 			// The admin guard answers a wrong token with a bare 404 and no JSON, so
 			// the API gives no oracle for whether it exists. A 404 the app itself
-			// produced — an unknown account, a gate already removed — carries an
-			// error message, and must not sign the operator out.
+			// produced — such as an unknown account — carries an error message and
+			// must not sign the operator out.
 			if (response.status === 404 && typeof body?.error !== 'string') {
 				throw new AdminUnauthorized('Not authorised, or the admin API is disabled on this server');
 			}
@@ -102,6 +121,14 @@ export class AdminClient {
 
 	telemetry(hours: number): Promise<TelemetryReport> {
 		return this.call<TelemetryReport>(`/api/admin/telemetry?hours=${hours}`);
+	}
+
+	settings(): Promise<RuntimeSettingsState> {
+		return this.call<RuntimeSettingsState>('/api/admin/settings');
+	}
+
+	updateSettings(patch: RuntimeSettingsPatch): Promise<RuntimeSettingsState> {
+		return this.call('/api/admin/settings', { method: 'PATCH', body: JSON.stringify(patch) });
 	}
 
 	accounts(

@@ -184,12 +184,15 @@ export class SyncStore {
 		return result.rowsAffected === 1;
 	}
 
-	async getAccountByteQuota(accountId: string): Promise<AccountByteQuota | null> {
+	async getAccountByteQuota(
+		accountId: string,
+		defaultMaxAccountBytes = this.maxAccountBytes
+	): Promise<AccountByteQuota | null> {
 		await this.db.ready;
 		const row = await this.accountByteQuota(this.relay, accountId);
 		if (!row) return null;
 		return {
-			maxBytes: row.maxBytes ?? this.maxAccountBytes,
+			maxBytes: row.maxBytes ?? defaultMaxAccountBytes,
 			overridden: row.maxBytes !== null
 		};
 	}
@@ -234,7 +237,13 @@ export class SyncStore {
 	/** One page of accounts with their effective limits, newest-largest first, so
 	 * the operator view opens on whatever is consuming the most. */
 	async listAccounts(
-		options: { limit?: number; offset?: number; search?: string } = {}
+		options: {
+			limit?: number;
+			offset?: number;
+			search?: string;
+			defaultMaxAccountBytes?: number;
+			defaultSyncPerMinute?: number;
+		} = {}
 	): Promise<AccountPage> {
 		await this.db.ready;
 		const limit = Math.min(Math.max(Math.trunc(options.limit ?? 50), 1), 200);
@@ -262,10 +271,23 @@ export class SyncStore {
 				args: [...filter, limit, offset]
 			})
 		).rows as unknown as Array<Record<string, number | string | null>>;
-		return { total: Number(total.total), accounts: rows.map((row) => this.toSummary(row)) };
+		return {
+			total: Number(total.total),
+			accounts: rows.map((row) =>
+				this.toSummary(
+					row,
+					options.defaultMaxAccountBytes ?? this.maxAccountBytes,
+					options.defaultSyncPerMinute ?? DEFAULT_SYNC_PER_MINUTE
+				)
+			)
+		};
 	}
 
-	private toSummary(row: Record<string, number | string | null>): AccountSummary {
+	private toSummary(
+		row: Record<string, number | string | null>,
+		defaultMaxAccountBytes: number,
+		defaultSyncPerMinute: number
+	): AccountSummary {
 		const envelopeCount = Number(row.envelopeCount ?? 0);
 		const ciphertextBytes = Number(row.ciphertextBytes ?? 0);
 		return {
@@ -274,10 +296,9 @@ export class SyncStore {
 			ciphertextBytes,
 			storageBytes: ciphertextBytes + envelopeCount * ENVELOPE_STORAGE_OVERHEAD_BYTES,
 			lastSeenAt: Number(row.lastSeenAt ?? 0),
-			maxBytes: row.maxBytes == null ? this.maxAccountBytes : Number(row.maxBytes),
+			maxBytes: row.maxBytes == null ? defaultMaxAccountBytes : Number(row.maxBytes),
 			maxBytesOverridden: row.maxBytes != null,
-			syncPerMinute:
-				row.syncPerMinute == null ? DEFAULT_SYNC_PER_MINUTE : Number(row.syncPerMinute),
+			syncPerMinute: row.syncPerMinute == null ? defaultSyncPerMinute : Number(row.syncPerMinute),
 			syncPerMinuteOverridden: row.syncPerMinute != null
 		};
 	}
@@ -324,7 +345,8 @@ export class SyncStore {
 		uploads: OpaqueUpload[],
 		deletions: OpaqueDelete[],
 		downloadLimit = 12,
-		senderClientId?: string
+		senderClientId?: string,
+		defaultMaxAccountBytes = this.maxAccountBytes
 	): Promise<SyncResult & { usage: UsageRow & { maxBytes: number } }> {
 		await this.db.ready;
 		let resetRevisionCeiling: number | null = null;
@@ -342,7 +364,7 @@ export class SyncStore {
 			).rows[0] as unknown as AccountRow | undefined;
 			if (!account) throw new Error('Sync account does not exist');
 			const quotaRow = await this.accountByteQuota(tx, accountId);
-			const maxAccountBytes = quotaRow?.maxBytes ?? this.maxAccountBytes;
+			const maxAccountBytes = quotaRow?.maxBytes ?? defaultMaxAccountBytes;
 
 			let envelopeCount = account.envelopeCount;
 			let ciphertextBytes = account.ciphertextBytes;
@@ -630,9 +652,9 @@ export class SyncStore {
 		});
 	}
 
-	getQuotas(): SyncQuotas {
+	getQuotas(maxAccountBytes = this.maxAccountBytes): SyncQuotas {
 		return {
-			maxAccountBytes: this.maxAccountBytes
+			maxAccountBytes
 		};
 	}
 

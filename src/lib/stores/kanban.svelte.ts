@@ -90,6 +90,14 @@ function normalizeBoards(value: unknown): KanbanBoard[] {
  * here is the caller's business: a boot needs a board to show, while a merge
  * needs the truth, or an empty shelf would look like a board worth keeping.
  */
+/** Drop a deleted workspace's board mirror so nothing of it outlives the workspace. */
+export function clearBoardsMirror(pid: string): void {
+	if (typeof localStorage === 'undefined') return;
+	for (const key of [BOARDS_KEY, ACTIVE_BOARD_KEY, BOARD_TOMBSTONES_KEY]) {
+		localStorage.removeItem(scopedStateKey(key, pid));
+	}
+}
+
 function readBoards(pid: string): KanbanBoard[] {
 	if (typeof localStorage === 'undefined') return [];
 	try {

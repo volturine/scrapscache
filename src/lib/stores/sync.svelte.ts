@@ -309,6 +309,11 @@ export class SyncStore {
 		}
 		this.profiles = this.profiles.filter((entry) => entry.id !== id);
 		this.clearLegacyAccountStorage();
+		try {
+			localStorage.removeItem(`${LS_SYNC_STATUS_PREFIX}:${id}`);
+		} catch {
+			/* status is only a display cache */
+		}
 		return true;
 	}
 
@@ -814,10 +819,10 @@ export class SyncStore {
 		});
 	}
 
-	/** Adopt a name received from this account's encrypted profile record. */
-	private applySyncedProfileName(name: string): void {
+	/** Adopt a name received from this account's encrypted profile record, for the workspace that synced it. */
+	private applySyncedProfileName(name: string, pid: string): void {
 		const trimmed = name.trim().slice(0, 60);
-		const profile = this.activeProfile;
+		const profile = this.profiles.find((entry) => entry.id === pid);
 		if (!profile || !trimmed || profile.name === trimmed) return;
 		const updated = { ...profile, name: trimmed };
 		this.profiles = this.profiles.map((entry) => (entry.id === profile.id ? updated : entry));
@@ -1105,7 +1110,10 @@ export class SyncStore {
 							break;
 						case 'profile-meta':
 							if (typeof (record as { value?: { name?: unknown } }).value?.name === 'string')
-								this.applySyncedProfileName((record as { value: { name: string } }).value.name);
+								this.applySyncedProfileName(
+									(record as { value: { name: string } }).value.name,
+									pid
+								);
 							break;
 					}
 				};

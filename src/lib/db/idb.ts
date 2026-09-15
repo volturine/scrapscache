@@ -1021,8 +1021,6 @@ function removeProfileFromLocalStorage(id: string): void {
 				localStorage.setItem(LS_PROFILES, JSON.stringify(next));
 			}
 		}
-		localStorage.removeItem(`scrapscache-notes-mirror:${id}`);
-		localStorage.removeItem(`scrapscache-labels-mirror:${id}`);
 	} catch {}
 }
 

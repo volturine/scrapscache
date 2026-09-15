@@ -1,9 +1,10 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { strToU8 } from 'fflate';
 import { getAllNotesMetadata, LOCAL_PROFILE_ID, waitForDeviceWrites } from '$lib/db/idb';
 import { BackupImportMode, type ScrapsCacheBackup } from '$lib/backup';
 import { createSyncIdentity } from '$lib/syncPairing';
 import { notesStore } from './notes.svelte';
+import { profileCoordinator } from './profiles.svelte';
 import { syncStore } from './sync.svelte';
 
 function profile(id: string) {
@@ -160,5 +161,59 @@ describe('backup and Keep import stay in the open workspace', () => {
 		]);
 		expect((await getAllNotesMetadata(workspaceA.id)).map((note) => note.title)).toEqual(['Stay']);
 		expect(await getAllNotesMetadata(LOCAL_PROFILE_ID)).toEqual([]);
+	});
+
+	it('keeps a running import in its workspace and blocks switching until it finishes', async () => {
+		await openWorkspace(workspaceB);
+		await openWorkspace(workspaceA);
+		let releaseEstimate!: () => void;
+		const estimateGate = new Promise<void>((resolve) => (releaseEstimate = resolve));
+		vi.stubGlobal('navigator', {
+			...navigator,
+			locks: undefined,
+			storage: {
+				estimate: async () => {
+					await estimateGate;
+					return { quota: 1e12, usage: 0 };
+				}
+			}
+		});
+		try {
+			const note = (id: string) => ({
+				id,
+				title: id,
+				body: '',
+				color: 'default' as const,
+				pinned: false,
+				archived: false,
+				trashed: false,
+				trashedAt: null,
+				createdAt: 1,
+				updatedAt: 1,
+				reminder: null,
+				labels: []
+			});
+			const running = notesStore.importBackup(
+				emptyBackup([note('first'), note('second')]),
+				BackupImportMode.Keep
+			);
+
+			const switched = await profileCoordinator.switchTo(workspaceB.id);
+			expect(switched.success).toBe(false);
+			expect(switched.error).toMatch(/import/i);
+			expect(syncStore.activeId).toBe(workspaceA.id);
+
+			releaseEstimate();
+			expect(await running).toEqual({ success: true });
+			await waitForDeviceWrites(workspaceA.id);
+			expect((await getAllNotesMetadata(workspaceA.id)).map((n) => n.title).sort()).toEqual([
+				'first',
+				'second'
+			]);
+			expect(await getAllNotesMetadata(workspaceB.id)).toEqual([]);
+			expect(await profileCoordinator.switchTo(workspaceB.id)).toMatchObject({ success: true });
+		} finally {
+			vi.unstubAllGlobals();
+		}
 	});
 });

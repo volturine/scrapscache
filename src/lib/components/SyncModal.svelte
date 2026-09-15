@@ -80,7 +80,9 @@
 	// block a dataset handover, but only a sync started from this modal owns its
 	// visible "Syncing" state.
 	const syncing = $derived(operation === 'sync' || operation === 'force-sync');
-	const busy = $derived(operation !== null || notesStore.syncing || profileCoordinator.switching);
+	const busy = $derived(
+		operation !== null || notesStore.syncing || notesStore.importing || profileCoordinator.switching
+	);
 	const handoverBlocked = $derived(notesStore.syncing || profileCoordinator.switching);
 	const rowOwnsEscape = $derived(rowHoldingEscape !== null || expandedId !== null);
 

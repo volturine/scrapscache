@@ -86,6 +86,24 @@ describe('listing accounts for the operator view', () => {
 		expect(page.accounts[0].accountId).toBe('account-bbb');
 	});
 
+	it('treats _ and % in a search as literal characters', async () => {
+		await addAccount('account_a');
+		await addAccount('accountXa');
+
+		const page = await store.listAccounts({ search: 'account_' });
+
+		expect(page.accounts.map((account) => account.accountId)).toEqual(['account_a']);
+	});
+
+	it('looks up one account exactly, even when a larger one matches its pattern', async () => {
+		await addAccount('account_a', 10);
+		await addAccount('accountXa', 9_000);
+
+		const page = await store.listAccounts({ accountId: 'account_a' });
+
+		expect(page.accounts.map((account) => account.accountId)).toEqual(['account_a']);
+	});
+
 	it('pages, and clamps a caller asking for everything at once', async () => {
 		for (let index = 0; index < 5; index++) await addAccount(`account-${index}`, index * 10);
 

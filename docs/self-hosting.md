@@ -172,8 +172,9 @@ until all four are set. Use your own Turnstile widget.
 The widget never runs on the app's own origin. Turnstile's script is third-party
 code, and anything running on the app's origin can read the sync keys and
 decrypted notes. Instead, point a second hostname at the same server and set it as
-`PUBLIC_TURNSTILE_ORIGIN`: on that hostname the server serves only `/turnstile`,
-which the app frames and which passes back nothing but a token. Registration fails
+`PUBLIC_TURNSTILE_ORIGIN`: on that hostname the server renders only `/turnstile`,
+which the app frames and which passes back nothing but a token. Static files are
+still served there, but no app page is, so the app never runs on that origin. Registration fails
 closed if the challenge origin is the app's own origin.
 
 Provide both VAPID key variables or neither. When omitted, Scraps Cache generates a

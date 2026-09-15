@@ -241,6 +241,8 @@ export class SyncStore {
 			limit?: number;
 			offset?: number;
 			search?: string;
+			/** Exactly this account, where `search` is a prefix match. */
+			accountId?: string;
 			defaultMaxAccountBytes?: number;
 			defaultSyncPerMinute?: number;
 		} = {}
@@ -249,8 +251,16 @@ export class SyncStore {
 		const limit = Math.min(Math.max(Math.trunc(options.limit ?? 50), 1), 200);
 		const offset = Math.max(Math.trunc(options.offset ?? 0), 0);
 		const search = (options.search ?? '').trim();
-		const where = search ? 'WHERE a.account_id LIKE ?' : '';
-		const filter = search ? [`${search}%`] : [];
+		const where = options.accountId
+			? 'WHERE a.account_id = ?'
+			: search
+				? "WHERE a.account_id LIKE ? ESCAPE '\\'"
+				: '';
+		const filter = options.accountId
+			? [options.accountId]
+			: search
+				? [`${search.replace(/[\\%_]/g, '\\$&')}%`]
+				: [];
 		const total = (
 			await this.relay.execute({
 				sql: `SELECT COUNT(*) AS total FROM accounts a ${where}`,

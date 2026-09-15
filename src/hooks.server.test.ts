@@ -22,11 +22,9 @@ function respond(requestHeaders: Record<string, string> = {}): Promise<Response>
 }
 
 describe('security headers', () => {
-	it('covers subdomains with HSTS so preview origins cannot be downgraded', async () => {
+	it('sends HSTS for the host that answered, without claiming the whole zone', async () => {
 		const response = await respond();
-		expect(response.headers.get('strict-transport-security')).toBe(
-			'max-age=31536000; includeSubDomains'
-		);
+		expect(response.headers.get('strict-transport-security')).toBe('max-age=31536000');
 	});
 
 	it('keeps the framing, sniffing and referrer protections', async () => {

@@ -181,10 +181,6 @@ Structured logs use request IDs; prefer redacted identifiers.
   account, or a build-time dependency — can serve a build that exfiltrates the
   sync key from `localStorage`. Build and delivery integrity, not relay opacity,
   is the primary control for a hosted deployment.
-- **A lost device keeps what it already has.** "I lost a device" moves the
-  workspace to a new sync key and deletes the old account, so the lost device can
-  no longer sync or read anything new. Nothing can reach the plaintext already in
-  that device's own storage.
 - **Envelope replay by the relay.** Envelopes are bound to their account and slot,
   so a relay cannot move one elsewhere, but it can replay an older envelope into
   the same slot. Devices holding newer state reject that through merge clocks and

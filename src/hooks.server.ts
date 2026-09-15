@@ -4,7 +4,10 @@ import { turnstileChallenge } from '$lib/server/turnstile';
 
 const SECURITY_HEADERS: ReadonlyArray<readonly [string, string]> = [
 	['referrer-policy', 'no-referrer'],
-	['strict-transport-security', 'max-age=31536000; includeSubDomains'],
+	// No includeSubDomains: HSTS cannot name hosts, and every host this Worker
+	// serves (app, dev, challenge) sends this header for itself. Covering the
+	// whole zone would also bind subdomains this app does not run.
+	['strict-transport-security', 'max-age=31536000'],
 	['x-content-type-options', 'nosniff'],
 	['permissions-policy', 'camera=(), geolocation=(), microphone=(), payment=(), usb=()']
 ];

@@ -70,6 +70,11 @@ describe('listing accounts', () => {
 	it('returns one account', async () => {
 		const response = await get(`?accountId=${ACCOUNT}`);
 		expect(await response.json()).toEqual({ accountId: ACCOUNT });
+		expect(mocks.listAccounts).toHaveBeenCalledWith({
+			accountId: ACCOUNT,
+			defaultMaxAccountBytes: 5_000,
+			defaultSyncPerMinute: 12
+		});
 	});
 
 	it('refuses an account id that is not shaped like one', async () => {

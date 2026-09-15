@@ -38,8 +38,7 @@ export const GET: RequestHandler = async ({ request, url, getClientAddress }) =>
 	const accountId = url.searchParams.get('accountId');
 	if (accountId) {
 		if (!ACCOUNT_ID_RE.test(accountId)) return json({ error: 'Invalid account' }, { status: 400 });
-		const page = await store.listAccounts({ search: accountId, limit: 1, ...defaults });
-		const account = page.accounts.find((entry) => entry.accountId === accountId);
+		const [account] = (await store.listAccounts({ accountId, ...defaults })).accounts;
 		if (!account) return json({ error: 'Sync account not found' }, { status: 404 });
 		return json(account, { headers: { 'cache-control': 'no-store' } });
 	}
@@ -109,7 +108,6 @@ export const PATCH: RequestHandler = async ({ request, getClientAddress }) => {
 		throw error;
 	}
 
-	const page = await store.listAccounts({ search: accountId, limit: 1, ...defaults });
-	const account = page.accounts.find((entry) => entry.accountId === accountId);
+	const [account] = (await store.listAccounts({ accountId, ...defaults })).accounts;
 	return json(account, { headers: { 'cache-control': 'no-store' } });
 };

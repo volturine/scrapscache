@@ -14,7 +14,9 @@
 			"zone_name": "scrapscache.com"
 		},
 		// Turnstile's widget runs here and nowhere else, so its script never shares
-		// an origin with the sync keys. The Worker serves only /turnstile on this host.
+		// an origin with the sync keys. The Worker answers only /turnstile on this host;
+		// static assets are served ahead of it on every route, so the bundle files load
+		// here too, but no app page does.
 		{
 			"pattern": "verify.scrapscache.com",
 			"custom_domain": true

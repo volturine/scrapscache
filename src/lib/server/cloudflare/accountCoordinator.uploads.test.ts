@@ -53,7 +53,7 @@ function sync(
 }
 
 describe('uploads that have to be retried', () => {
-	it('reuses the object key a previous attempt reserved', async () => {
+	it('writes a retry under a fresh key and deletes the object the earlier attempt reserved', async () => {
 		const reserved = 'v1/prefix/reserved-key';
 		objects.set(reserved, 'first attempt');
 		await client.execute({
@@ -64,14 +64,14 @@ describe('uploads that have to be retried', () => {
 		const response = await sync([{ id: 'upload-1', slot: SLOT, ciphertext: 'second attempt' }]);
 		expect(response.status).toBe(200);
 
-		// One object, at the reserved key, holding the committed bytes. A freshly
-		// minted key would leave the first object with nothing referencing it.
-		expect([...objects.keys()]).toEqual([reserved]);
-		expect(objects.get(reserved)).toBe('second attempt');
-
+		// A fresh key means a concurrent sweep of the old reservation can never
+		// delete the committed bytes; the old object is not left orphaned either.
 		const committed = await client.execute('SELECT id, r2_key AS r2Key FROM envelopes');
 		expect(committed.rows).toHaveLength(1);
-		expect(String(committed.rows[0].r2Key)).toBe(reserved);
+		const key = String(committed.rows[0].r2Key);
+		expect(key).not.toBe(reserved);
+		expect([...objects.keys()]).toEqual([key]);
+		expect(objects.get(key)).toBe('second attempt');
 	});
 
 	it('clears the pending row once the upload commits', async () => {

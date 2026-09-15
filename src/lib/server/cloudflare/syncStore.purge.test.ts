@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Client } from '@libsql/client/node';
+import type { D1Database } from '@cloudflare/workers-types';
 import { applyMigrations, testD1, testR2 } from './testBindings';
 
 const bindings = vi.hoisted(() => ({ value: undefined as unknown }));
@@ -79,6 +80,27 @@ describe('reclaiming storage nothing points at', () => {
 		expect(await store.purgeExpiredDeletedEnvelopes(NOW)).toBe(0);
 		expect(objects.has(key)).toBe(true);
 		expect(await pendingIds()).toEqual([]);
+	});
+
+	it('spares an upload a retry re-reserved after the sweep read it', async () => {
+		await addPending('retried', 'v1/prefix/old', NOW - PENDING_UPLOAD_GRACE_MS - 1);
+		const d1 = (bindings.value as { SCRAPSCACHE_DB: D1Database }).SCRAPSCACHE_DB;
+		const runBatch = d1.batch.bind(d1);
+		// The retry lands between the sweep's read and its delete: it drops the old
+		// object and reserves a fresh key for the same upload.
+		d1.batch = (async (statements: Parameters<D1Database['batch']>[0]) => {
+			objects.delete('v1/prefix/old');
+			objects.set('v1/prefix/new', 'retry');
+			await client.execute({
+				sql: 'UPDATE pending_envelopes SET r2_key=?, created_at=? WHERE id=?',
+				args: ['v1/prefix/new', NOW, 'retried']
+			});
+			return runBatch(statements);
+		}) as D1Database['batch'];
+
+		expect(await store.purgeExpiredDeletedEnvelopes(NOW)).toBe(0);
+		expect(objects.get('v1/prefix/new')).toBe('retry');
+		expect(await pendingIds()).toEqual(['retried']);
 	});
 
 	it('still purges deleted slots past their grace window, counting both kinds', async () => {

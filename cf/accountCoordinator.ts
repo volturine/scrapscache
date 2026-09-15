@@ -272,24 +272,21 @@ export class AccountCoordinator {
 			return true;
 		});
 		const prefix = await accountPrefix(input.accountId);
-		// A retry of an upload that never committed already has an object key
-		// reserved. Minting a fresh one would leave the first object with nothing
-		// pointing at it, so nothing could ever find it again to delete it.
-		const reservedKeys = new Map(
-			acceptedUploads.length
-				? (
-						await execute(db, {
-							sql: `SELECT id, r2_key AS r2Key FROM pending_envelopes
+		// A retry of an upload that never committed finds the object its earlier
+		// attempt reserved. It still writes under a fresh key: reusing the old one
+		// would race the abandoned-upload sweep, which may delete that object after
+		// this request has rewritten and committed it.
+		const supersededObjects = acceptedUploads.length
+			? (
+					await execute(db, {
+						sql: `SELECT r2_key AS r2Key FROM pending_envelopes
 						 WHERE account_id = ? AND id IN (${acceptedUploads.map(() => '?').join(', ')})`,
-							args: [input.accountId, ...acceptedUploads.map(({ id }) => id)]
-						})
-					).rows.map((row) => [String(row.id), String(row.r2Key)] as const)
-				: []
-		);
+						args: [input.accountId, ...acceptedUploads.map(({ id }) => id)]
+					})
+				).rows.map((row) => String(row.r2Key))
+			: [];
 		const objectKeys = new Map(
-			acceptedUploads.map(
-				({ id }) => [id, reservedKeys.get(id) ?? `v1/${prefix}/${crypto.randomUUID()}`] as const
-			)
+			acceptedUploads.map(({ id }) => [id, `v1/${prefix}/${crypto.randomUUID()}`] as const)
 		);
 		const statements: SqlStatement[] = [];
 		const obsoleteObjects: string[] = [];
@@ -368,9 +365,11 @@ export class AccountCoordinator {
 				updated_at = ?, last_seen_at = ? WHERE account_id = ?`,
 			args: [sequence, envelopeCount, ciphertextBytes, now, now, input.accountId]
 		});
-		// The batch fits. Reserve the object keys, write the bytes, and only then
-		// commit: a crash from here leaves a pending row the sweep can find.
+		// The batch fits. Drop what earlier attempts left, reserve the new object
+		// keys, write the bytes, and only then commit: a crash at any point from here
+		// leaves a pending row the sweep can find, never an object nothing names.
 		if (acceptedUploads.length > 0) {
+			await Promise.all(supersededObjects.map((key) => this.env.SCRAPSCACHE_ENVELOPES.delete(key)));
 			await batch(
 				db,
 				acceptedUploads.map(({ id }) => ({

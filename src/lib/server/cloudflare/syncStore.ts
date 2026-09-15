@@ -160,6 +160,8 @@ export class SyncStore {
 			limit?: number;
 			offset?: number;
 			search?: string;
+			/** Exactly this account, where `search` is a prefix match. */
+			accountId?: string;
 			defaultMaxAccountBytes?: number;
 			defaultSyncPerMinute?: number;
 		} = {}
@@ -167,8 +169,16 @@ export class SyncStore {
 		const limit = Math.min(Math.max(Math.trunc(options.limit ?? 50), 1), 200);
 		const offset = Math.max(Math.trunc(options.offset ?? 0), 0);
 		const search = (options.search ?? '').trim();
-		const where = search ? 'WHERE a.account_id LIKE ?' : '';
-		const filter = search ? [`${search}%`] : [];
+		const where = options.accountId
+			? 'WHERE a.account_id = ?'
+			: search
+				? "WHERE a.account_id LIKE ? ESCAPE '\\'"
+				: '';
+		const filter = options.accountId
+			? [options.accountId]
+			: search
+				? [`${search.replace(/[\\%_]/g, '\\$&')}%`]
+				: [];
 		const total = (
 			await execute(this.db, {
 				sql: `SELECT COUNT(*) AS total FROM accounts a ${where}`,
@@ -393,21 +403,27 @@ export class SyncStore {
 				args: [now - PENDING_UPLOAD_GRACE_MS]
 			})
 		).rows;
-		await batch(this.db, [
+		const cutoff = now - PENDING_UPLOAD_GRACE_MS;
+		const [, ...removed] = await batch(this.db, [
 			{
 				sql: `DELETE FROM pending_envelopes WHERE created_at <= ? AND EXISTS (
 					SELECT 1 FROM envelopes e
 					WHERE e.account_id=pending_envelopes.account_id AND e.id=pending_envelopes.id
 				)`,
-				args: [now - PENDING_UPLOAD_GRACE_MS]
+				args: [cutoff]
 			},
+			// Matched on the key and age that were read: a retry that re-reserved this
+			// upload in the meantime owns a new row, and its object must survive.
 			...rows.map((r) => ({
-				sql: 'DELETE FROM pending_envelopes WHERE account_id=? AND id=?',
-				args: [String(r.accountId), String(r.id)]
+				sql: 'DELETE FROM pending_envelopes WHERE account_id=? AND id=? AND r2_key=? AND created_at <= ?',
+				args: [String(r.accountId), String(r.id), String(r.r2Key), cutoff]
 			}))
 		]);
-		await Promise.all(rows.map((r) => this.bindings.SCRAPSCACHE_ENVELOPES.delete(String(r.r2Key))));
-		return rows.length;
+		const reclaimed = rows.filter((_, index) => removed[index]?.rowsAffected === 1);
+		await Promise.all(
+			reclaimed.map((r) => this.bindings.SCRAPSCACHE_ENVELOPES.delete(String(r.r2Key)))
+		);
+		return reclaimed.length;
 	}
 	async savePushDevice(d: PushDeviceInput): Promise<void> {
 		await batch(this.db, [

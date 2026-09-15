@@ -460,30 +460,6 @@ export class SyncStore {
 	): Promise<{ success: boolean; profile?: StoredProfile; error?: string }> {
 		if (!isLocalWorkspace(workspace))
 			return { success: false, error: 'That workspace is already synced' };
-		return this.assignNewKey(
-			{ ...workspace, name: name?.trim() || workspace.name },
-			turnstileToken
-		);
-	}
-
-	/**
-	 * Put a synced workspace on a new sync key and a new, empty relay account. The
-	 * account the old key opened is left for the caller to delete once the new one
-	 * is proven complete.
-	 */
-	async replaceKey(
-		workspace: StoredProfile,
-		turnstileToken?: string
-	): Promise<{ success: boolean; profile?: StoredProfile; error?: string }> {
-		if (isLocalWorkspace(workspace))
-			return { success: false, error: 'That workspace is not synced' };
-		return this.assignNewKey(workspace, turnstileToken);
-	}
-
-	private async assignNewKey(
-		workspace: StoredProfile,
-		turnstileToken?: string
-	): Promise<{ success: boolean; profile?: StoredProfile; error?: string }> {
 		const account = createSyncIdentity();
 		try {
 			const res = await fetch('/api/sync/register', {
@@ -506,7 +482,11 @@ export class SyncStore {
 					success: false,
 					error: typeof data.error === 'string' ? data.error : 'Registration failed'
 				};
-			const profile: StoredProfile = { ...workspace, syncKey: account.syncKey };
+			const profile: StoredProfile = {
+				...workspace,
+				name: name?.trim() || workspace.name,
+				syncKey: account.syncKey
+			};
 			await this.replaceKeyringEntry(profile);
 			this.clearLegacyAccountStorage();
 			return { success: true, profile };
@@ -515,7 +495,7 @@ export class SyncStore {
 		}
 	}
 
-	async replaceKeyringEntry(profile: StoredProfile): Promise<void> {
+	private async replaceKeyringEntry(profile: StoredProfile): Promise<void> {
 		await saveProfile(profile);
 		this.profiles = this.profiles.map((entry) => (entry.id === profile.id ? profile : entry));
 	}
@@ -1413,25 +1393,6 @@ export class SyncStore {
 			this.activePid
 		).catch(() => undefined);
 		return !baseline || Object.keys(baseline).length === 0;
-	}
-
-	/** How many records this device has confirmed onto the active account. Read
-	 * from the synced baseline rather than memory, so it reflects what the relay
-	 * acknowledged rather than what the client meant to send. */
-	async syncedRecordCount(): Promise<number> {
-		if (!this.account) return 0;
-		const baseline = await getSyncState<Record<string, string>>(
-			syncControlKeys(this.account.accountId).baseline,
-			this.activePid
-		).catch(() => undefined);
-		return baseline ? Object.keys(baseline).length : 0;
-	}
-
-	/** Delete the relay-side account a given key opens, which need not be the
-	 * active one: rotation discards the account it has just moved away from. */
-	async deleteAccountFor(account: SyncAccount): Promise<boolean> {
-		const response = await this.authorizedFetch('/api/sync/account', { method: 'DELETE' }, account);
-		return response.ok;
 	}
 
 	async committedRevision(): Promise<number | null> {

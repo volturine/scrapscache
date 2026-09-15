@@ -91,8 +91,6 @@ const scrapscacheColors = tokenGroup({
 	mediaDangerSubtle: 'rgba(244, 63, 94, 0.3)',
 	qrSurface: '#ffffff',
 	documentSurface: '#ffffff',
-	pinnedBorder: 'rgba(251, 191, 36, 0.4)',
-	pinnedRing: 'rgba(251, 191, 36, 0.5)',
 	controlSubtle: mode('rgba(0, 0, 0, 0.06)', 'rgba(255, 255, 255, 0.1)'),
 	controlSubtleHover: mode('rgba(0, 0, 0, 0.1)', 'rgba(255, 255, 255, 0.15)'),
 	surfaceSubtle: mode('rgba(0, 0, 0, 0.035)', 'rgba(255, 255, 255, 0.055)'),

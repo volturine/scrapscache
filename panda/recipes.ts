@@ -414,10 +414,7 @@ const noteCardRecipe = defineSlotRecipe({
 		pinned: {
 			true: {
 				cardBody: {
-					boxShadow: 'md',
-					borderColor: 'scrapscache.pinnedBorder',
-					ringWidth: '1px',
-					ringColor: 'scrapscache.pinnedRing'
+					boxShadow: 'md'
 				}
 			}
 		},

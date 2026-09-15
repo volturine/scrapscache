@@ -77,6 +77,7 @@ export const viewPage = css({ pt: 'lg', pb: '3xl' });
 
 export const appLayout = {
 	shell: css({
+		display: 'flex',
 		h: 'full',
 		w: 'full',
 		overflow: 'hidden',

@@ -5,6 +5,7 @@ import { hkdf } from '@noble/hashes/hkdf.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { concatBytes } from '@noble/hashes/utils.js';
 import { getMeta, getDb, setMetaIfAbsent, type Db } from '$lib/server/db';
+import { getRuntimeSettings } from '$lib/server/runtimeSettings';
 import { getSyncStore, type DueWake } from '$lib/server/syncStore';
 
 export const VAPID_KEY_PAIR_META_KEY = 'vapid-key-pair-v1';
@@ -30,11 +31,9 @@ function base64UrlToBytes(value: string): Uint8Array {
 	return Uint8Array.from(atob(padded), (character) => character.charCodeAt(0));
 }
 
-function vapidSubject(): string {
-	const subject = env.SCRAPSCACHE_VAPID_SUBJECT?.trim();
-	if (subject && (/^mailto:/i.test(subject) || /^https:/i.test(subject))) return subject;
-	const origin = env.SCRAPSCACHE_ORIGIN?.trim() || env.ORIGIN?.trim();
-	if (origin && /^https:/i.test(origin)) return origin.replace(/\/$/, '');
+async function vapidSubject(): Promise<string> {
+	const subject = (await getRuntimeSettings()).vapidSubject;
+	if (subject !== 'mailto:scrapscache@localhost') return subject;
 	if (!warnedDefaultSubject) {
 		warnedDefaultSubject = true;
 		console.warn(
@@ -45,7 +44,7 @@ function vapidSubject(): string {
 			})
 		);
 	}
-	return 'mailto:scrapscache@localhost';
+	return subject;
 }
 
 function warnKeyRegeneration(registeredDevices: number): void {
@@ -193,7 +192,7 @@ function vapidAuthorization(
 
 export async function sendReminderTick(device: DueWake): Promise<WakeSendResult> {
 	try {
-		const keys = await getVapidKeys();
+		const [keys, subject] = await Promise.all([getVapidKeys(), vapidSubject()]);
 		const userPublicKey = base64UrlToBytes(device.p256dh);
 		const authSecret = base64UrlToBytes(device.auth);
 		if (userPublicKey.length !== 65 || authSecret.length < 16) {
@@ -217,7 +216,7 @@ export async function sendReminderTick(device: DueWake): Promise<WakeSendResult>
 			headers: {
 				TTL: '86400',
 				Urgency: 'high',
-				Authorization: vapidAuthorization(new URL(device.endpoint).origin, vapidSubject(), keys),
+				Authorization: vapidAuthorization(new URL(device.endpoint).origin, subject, keys),
 				'Content-Encoding': 'aes128gcm',
 				'Content-Type': 'application/octet-stream'
 			},

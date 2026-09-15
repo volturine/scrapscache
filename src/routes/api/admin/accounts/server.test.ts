@@ -12,6 +12,9 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('$lib/server/adminAuth', () => ({ requireAdmin: mocks.requireAdmin }));
 vi.mock('$lib/server/syncStore', () => ({ getSyncStore: () => mocks }));
+vi.mock('$lib/server/runtimeSettings', () => ({
+	getRuntimeSettings: async () => ({ maxAccountBytes: 5_000, syncPerMinute: 12 })
+}));
 
 import { GET, PATCH } from './+server';
 
@@ -55,6 +58,13 @@ describe('listing accounts', () => {
 		const response = await get('?limit=10');
 		expect(response.status).toBe(200);
 		expect(await response.json()).toMatchObject({ total: 1 });
+		expect(mocks.listAccounts).toHaveBeenCalledWith({
+			limit: 10,
+			offset: undefined,
+			search: undefined,
+			defaultMaxAccountBytes: 5_000,
+			defaultSyncPerMinute: 12
+		});
 	});
 
 	it('returns one account', async () => {

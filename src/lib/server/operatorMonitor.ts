@@ -1,10 +1,8 @@
 import { processActivity, type ProcessActivity } from '$lib/server/metrics';
-import {
-	bytesToGigabytes,
-	parseRetentionInactiveDays,
-	staleBeforeMs
-} from '$lib/server/operatorConfig';
+import { bytesToGigabytes, staleBeforeMs } from '$lib/server/operatorConfig';
+import { getDb } from '$lib/server/db';
 import { getRetentionStatus, type RetentionStatus } from '$lib/server/retentionSweep';
+import { getRuntimeSettings } from '$lib/server/runtimeSettings';
 import { getSyncStore, type OperatorUsage, type SyncQuotas } from '$lib/server/syncStore';
 
 export type OperatorSnapshot = {
@@ -58,16 +56,18 @@ export function buildOperatorSnapshot(
 
 export async function getOperatorSnapshot(now = Date.now()): Promise<OperatorSnapshot> {
 	const store = getSyncStore();
-	const retentionInactiveDays = parseRetentionInactiveDays();
+	const db = getDb();
+	const settings = await getRuntimeSettings(db);
+	const retentionInactiveDays = settings.retentionInactiveDays;
 	const usage = await store.operatorUsage({
 		now,
 		staleBefore: staleBeforeMs(retentionInactiveDays, now)
 	});
 	return buildOperatorSnapshot(
 		usage,
-		store.getQuotas(),
+		store.getQuotas(settings.maxAccountBytes),
 		processActivity(),
-		await getRetentionStatus(),
+		await getRetentionStatus(db, retentionInactiveDays),
 		now,
 		retentionInactiveDays
 	);

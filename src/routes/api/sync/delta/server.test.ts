@@ -7,6 +7,15 @@ const mocks = vi.hoisted(() => {
 		authenticate: vi.fn((): string | null => 'account-123456789'),
 		sync: vi.fn(),
 		accountRateLimit: vi.fn(async (): Promise<number | null> => null),
+		enterSyncRequest: vi.fn(() => vi.fn()),
+		settings: {
+			maxAccountBytes: 5_000,
+			syncPerMinute: 12,
+			maxConcurrentSyncRequests: 3,
+			retentionInactiveDays: 365,
+			allowIndexing: false,
+			vapidSubject: 'mailto:test@example.com'
+		},
 		limitChecks: vi.fn<(key: string, policy?: unknown) => { allowed: true }>(() => ({
 			allowed: true
 		}))
@@ -26,11 +35,14 @@ vi.mock('$lib/server/syncAuth', () => ({
 }));
 vi.mock('$lib/server/rateLimit', () => ({
 	clientAddress: () => '127.0.0.1',
-	enterSyncRequest: () => vi.fn(),
+	enterSyncRequest: mocks.enterSyncRequest,
 	getPublicApiLimiter: () => ({
 		check: (key: string, policy: unknown) => mocks.limitChecks(key, policy)
 	}),
 	rateLimitResponse: () => new Response(null, { status: 429 })
+}));
+vi.mock('$lib/server/runtimeSettings', () => ({
+	getRuntimeSettings: async () => mocks.settings
 }));
 vi.mock('$lib/server/metrics', () => ({
 	recordSqliteError: vi.fn(),
@@ -38,7 +50,6 @@ vi.mock('$lib/server/metrics', () => ({
 }));
 
 import { POST } from './+server';
-import { DEFAULT_SYNC_PER_MINUTE } from '$lib/server/operatorConfig';
 
 const accountId = 'account-123456789';
 
@@ -97,7 +108,8 @@ describe('sync delta route', () => {
 			[validEnvelope, replacement],
 			[{ id: 'deleted-id', slot: 'b'.repeat(64) }],
 			50,
-			undefined
+			undefined,
+			5_000
 		);
 		expect(await response.json()).toMatchObject({ writesAccepted: true, conflicts: [] });
 	});
@@ -179,9 +191,14 @@ describe('sync delta route', () => {
 		await post({ cursor: 0, envelopes: [validEnvelope] });
 
 		expect(mocks.limitChecks).toHaveBeenCalledWith(`sync-account:${accountId}`, {
-			capacity: DEFAULT_SYNC_PER_MINUTE,
+			capacity: 12,
 			refillWindowMs: 60_000
 		});
+	});
+
+	it('applies the runtime concurrency limit before authentication', async () => {
+		await post({ envelopes: [], deleteSlots: [] });
+		expect(mocks.enterSyncRequest).toHaveBeenCalledWith(3);
 	});
 
 	it('maps an atomic relay quota rejection to HTTP 507', async () => {

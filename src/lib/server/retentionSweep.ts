@@ -1,6 +1,6 @@
-import { env } from '$env/dynamic/private';
-import { parseRetentionInactiveDays, staleBeforeMs } from '$lib/server/operatorConfig';
+import { staleBeforeMs } from '$lib/server/operatorConfig';
 import { getDb, getMeta, setMeta, type Db } from '$lib/server/db';
+import { getRuntimeSettings } from '$lib/server/runtimeSettings';
 import { getSyncStore, type SyncStore } from '$lib/server/syncStore';
 
 const RETENTION_INTERVAL_MS = 24 * 60 * 60 * 1000;
@@ -31,10 +31,6 @@ export type RetentionSweepOptions = {
 	force?: boolean;
 };
 
-function inactiveDaysFromEnv(): number {
-	return parseRetentionInactiveDays(env.SCRAPSCACHE_RETENTION_INACTIVE_DAYS);
-}
-
 function emptyStatus(inactiveDays: number): RetentionStatus {
 	return {
 		enabled: inactiveDays > 0,
@@ -49,16 +45,25 @@ function emptyStatus(inactiveDays: number): RetentionStatus {
 	};
 }
 
-export async function getRetentionStatus(db: Db = getDb()): Promise<RetentionStatus> {
+export async function getRetentionStatus(
+	db: Db = getDb(),
+	inactiveDays?: number
+): Promise<RetentionStatus> {
 	await db.ready;
-	const inactiveDays = inactiveDaysFromEnv();
+	const effectiveInactiveDays =
+		inactiveDays ?? (await getRuntimeSettings(db)).retentionInactiveDays;
 	const stored = await getMeta(db, STATUS_META_KEY);
-	if (!stored) return emptyStatus(inactiveDays);
+	if (!stored) return emptyStatus(effectiveInactiveDays);
 	try {
 		const parsed = JSON.parse(stored) as Partial<RetentionStatus>;
-		return { ...emptyStatus(inactiveDays), ...parsed, enabled: inactiveDays > 0, inactiveDays };
+		return {
+			...emptyStatus(effectiveInactiveDays),
+			...parsed,
+			enabled: effectiveInactiveDays > 0,
+			inactiveDays: effectiveInactiveDays
+		};
 	} catch {
-		return emptyStatus(inactiveDays);
+		return emptyStatus(effectiveInactiveDays);
 	}
 }
 
@@ -71,9 +76,9 @@ export async function runRetentionSweep(
 	const db = options.db ?? getDb();
 	const store: RetentionStore = options.store ?? getSyncStore();
 	const now = options.now?.() ?? Date.now();
-	const inactiveDays = options.inactiveDays ?? inactiveDaysFromEnv();
+	const inactiveDays = options.inactiveDays ?? (await getRuntimeSettings(db)).retentionInactiveDays;
 	await db.ready;
-	const previous = await getRetentionStatus(db);
+	const previous = await getRetentionStatus(db, inactiveDays);
 	if (!options.force && now - previous.lastRunAt < RETENTION_INTERVAL_MS) return null;
 	try {
 		const purgedSlots = await store.purgeExpiredDeletedEnvelopes(now);

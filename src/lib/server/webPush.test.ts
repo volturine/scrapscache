@@ -5,13 +5,17 @@ const envMock = vi.hoisted(() => ({}) as Record<string, string | undefined>);
 const storeMock = vi.hoisted(() => ({
 	getMeta: vi.fn<(key: string) => string | null>(() => null),
 	setMetaIfAbsent: vi.fn<(key: string, value: string) => string>((_key, value) => value),
-	countPushDevices: vi.fn<() => number>(() => 0)
+	countPushDevices: vi.fn<() => number>(() => 0),
+	vapidSubject: 'https://scrapscache.com'
 }));
 
 vi.mock('$env/dynamic/private', () => ({ env: envMock }));
 
 vi.mock('$lib/server/syncStore', () => ({
 	getSyncStore: () => ({ countPushDevices: storeMock.countPushDevices })
+}));
+vi.mock('$lib/server/runtimeSettings', () => ({
+	getRuntimeSettings: async () => ({ vapidSubject: storeMock.vapidSubject })
 }));
 
 vi.mock('$lib/server/db', () => ({
@@ -38,6 +42,9 @@ async function importFreshWebPush() {
 		getSyncStore: () => ({ countPushDevices: storeMock.countPushDevices })
 	}));
 	vi.doMock('$env/dynamic/private', () => ({ env: envMock }));
+	vi.doMock('$lib/server/runtimeSettings', () => ({
+		getRuntimeSettings: async () => ({ vapidSubject: storeMock.vapidSubject })
+	}));
 	return await import('./webPush');
 }
 
@@ -180,6 +187,7 @@ describe('sendReminderTick', () => {
 		setEnv('SCRAPSCACHE_VAPID_PUBLIC_KEY', undefined);
 		setEnv('SCRAPSCACHE_VAPID_PRIVATE_KEY', undefined);
 		setEnv('SCRAPSCACHE_ORIGIN', 'https://scrapscache.com');
+		storeMock.vapidSubject = 'https://scrapscache.com';
 	});
 
 	afterEach(() => {
@@ -245,6 +253,22 @@ describe('sendReminderTick', () => {
 		);
 		const { sendReminderTick } = await importFreshWebPush();
 		await expect(sendReminderTick(await validDevice())).resolves.toBe('gone');
+	});
+
+	it('uses the runtime VAPID subject on the next delivery', async () => {
+		storeMock.vapidSubject = 'mailto:ops@example.com';
+		const fetchMock = vi.fn(async () => new Response(null, { status: 201 }));
+		vi.stubGlobal('fetch', fetchMock);
+		const { sendReminderTick } = await importFreshWebPush();
+
+		await sendReminderTick(await validDevice());
+
+		const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+		const headers = init.headers as Record<string, string>;
+		const payload = JSON.parse(
+			new TextDecoder().decode(base64UrlToBytes(headers.Authorization.split('.')[1]))
+		) as { sub: string };
+		expect(payload.sub).toBe('mailto:ops@example.com');
 	});
 
 	it('returns failed when fetch throws', async () => {

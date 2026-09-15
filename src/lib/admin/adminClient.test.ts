@@ -99,6 +99,21 @@ describe('sending changes', () => {
 			maxBytes: null
 		});
 	});
+
+	it('updates runtime settings through the dedicated endpoint', async () => {
+		respond(200, {});
+		const client = new AdminClient();
+		client.remember('secret');
+
+		await client.updateSettings({ retentionInactiveDays: 30, allowIndexing: false });
+
+		expect(requests[0].url).toBe('/api/admin/settings');
+		expect(requests[0].init.method).toBe('PATCH');
+		expect(JSON.parse(String(requests[0].init.body))).toEqual({
+			retentionInactiveDays: 30,
+			allowIndexing: false
+		});
+	});
 });
 
 describe('formatting', () => {

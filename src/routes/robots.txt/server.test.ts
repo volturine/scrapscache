@@ -1,28 +1,27 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-const envMock = vi.hoisted(() => ({}) as Record<string, string | undefined>);
-vi.mock('$env/dynamic/private', () => ({ env: envMock }));
+const mocks = vi.hoisted(() => ({ allowIndexing: false }));
+vi.mock('$lib/server/runtimeSettings', () => ({
+	getRuntimeSettings: async () => ({ allowIndexing: mocks.allowIndexing })
+}));
 
 import { GET } from './+server';
 
 async function body(): Promise<string> {
-	const get = GET as unknown as (event: { url: URL }) => Response;
-	return get({ url: new URL('https://scrapscache.com/robots.txt') }).text();
+	const get = GET as unknown as (event: { url: URL }) => Promise<Response>;
+	return (await get({ url: new URL('https://scrapscache.com/robots.txt') })).text();
 }
 
 describe('robots.txt', () => {
-	afterEach(() => delete envMock.SCRAPSCACHE_ALLOW_INDEXING);
-
 	it('invites crawlers only where indexing is explicitly enabled', async () => {
-		envMock.SCRAPSCACHE_ALLOW_INDEXING = 'true';
+		mocks.allowIndexing = true;
 		expect(await body()).toBe(
 			'User-agent: *\nDisallow:\n\nSitemap: https://scrapscache.com/sitemap.xml\n'
 		);
 	});
 
 	it('keeps preview and self-hosted origins out of search results by default', async () => {
-		expect(await body()).toBe('User-agent: *\nDisallow: /\n');
-		envMock.SCRAPSCACHE_ALLOW_INDEXING = 'false';
+		mocks.allowIndexing = false;
 		expect(await body()).toBe('User-agent: *\nDisallow: /\n');
 	});
 });

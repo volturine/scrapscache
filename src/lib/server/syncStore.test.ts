@@ -50,6 +50,32 @@ describe('SQLite sync store', () => {
 		);
 	});
 
+	it('uses a runtime default for quota enforcement and operator listings', async () => {
+		const { store } = createStore({ maxAccountBytes: 10_000 });
+		await store.createAccount('account', 'credential');
+		const runtimeMax = ENVELOPE_STORAGE_OVERHEAD_BYTES + 5;
+
+		expect(await store.getAccountByteQuota('account', runtimeMax)).toEqual({
+			maxBytes: runtimeMax,
+			overridden: false
+		});
+		expect(
+			(await store.listAccounts({ defaultMaxAccountBytes: runtimeMax, defaultSyncPerMinute: 12 }))
+				.accounts[0]
+		).toMatchObject({ maxBytes: runtimeMax, syncPerMinute: 12 });
+		await expect(
+			store.sync(
+				'account',
+				0,
+				[{ id: 'too-large', slot: slot('a'), ciphertext: '123456' }],
+				[],
+				10,
+				undefined,
+				runtimeMax
+			)
+		).rejects.toThrow(SyncQuotaExceededError);
+	});
+
 	it('enforces a durable per-account byte quota and can restore the default', async () => {
 		const defaultQuota = ENVELOPE_STORAGE_OVERHEAD_BYTES + 100;
 		const limitedQuota = ENVELOPE_STORAGE_OVERHEAD_BYTES + 5;

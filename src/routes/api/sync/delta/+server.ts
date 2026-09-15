@@ -13,8 +13,7 @@ import {
 	getPublicApiLimiter,
 	rateLimitResponse
 } from '$lib/server/rateLimit';
-import { env } from '$env/dynamic/private';
-import { DEFAULT_SYNC_PER_MINUTE } from '$lib/server/operatorConfig';
+import { getRuntimeSettings } from '$lib/server/runtimeSettings';
 import { recordSqliteError, recordSyncBatch } from '$lib/server/metrics';
 
 // Clients re-encode attachments to ~4 MiB before upload (imageOptimize.ts);
@@ -66,9 +65,8 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 		}
 	);
 	if (!addressLimit.allowed) return rateLimitResponse(addressLimit);
-	const release = enterSyncRequest(
-		Math.max(1, Number(env.SCRAPSCACHE_SYNC_MAX_CONCURRENT_REQUESTS) || 8)
-	);
+	const settings = await getRuntimeSettings();
+	const release = enterSyncRequest(settings.maxConcurrentSyncRequests);
 	if (!release) {
 		return json({ error: 'Sync server is busy' }, { status: 503, headers: { 'retry-after': '2' } });
 	}
@@ -120,12 +118,20 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 			// self-hosted, so there is nothing to join it onto. This runs only after
 			// authentication, on a path that already makes several calls.
 			const accountLimit = await getPublicApiLimiter().check(`sync-account:${accountId}`, {
-				capacity: (await store.accountRateLimit(accountId)) ?? DEFAULT_SYNC_PER_MINUTE,
+				capacity: (await store.accountRateLimit(accountId)) ?? settings.syncPerMinute,
 				refillWindowMs: 60_000
 			});
 			if (!accountLimit.allowed) return rateLimitResponse(accountLimit);
 			return json(
-				await store.sync(accountId, cursor, envelopes, deleteSlots, limit, senderClientId)
+				await store.sync(
+					accountId,
+					cursor,
+					envelopes,
+					deleteSlots,
+					limit,
+					senderClientId,
+					settings.maxAccountBytes
+				)
 			);
 		} catch (error) {
 			recordSqliteError(error);

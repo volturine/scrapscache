@@ -8,6 +8,7 @@
 		type AccountDetail,
 		type AccountSummary,
 		type OperatorSnapshot,
+		type RuntimeSettingsState,
 		type TelemetryReport
 	} from '$lib/admin/adminClient.svelte';
 
@@ -19,6 +20,7 @@
 
 	let snapshot = $state<OperatorSnapshot | null>(null);
 	let telemetry = $state<TelemetryReport | null>(null);
+	let settings = $state<RuntimeSettingsState | null>(null);
 	const hours = 24;
 
 	let accounts = $state<AccountSummary[]>([]);
@@ -46,9 +48,10 @@
 
 	async function loadAll() {
 		await guard(async () => {
-			[snapshot, telemetry] = await Promise.all([
+			[snapshot, telemetry, settings] = await Promise.all([
 				adminClient.status(),
-				adminClient.telemetry(hours)
+				adminClient.telemetry(hours),
+				adminClient.settings()
 			]);
 			const page = await adminClient.accounts(search, offset, PAGE_SIZE);
 			accounts = page.accounts;
@@ -105,6 +108,51 @@
 		});
 	}
 
+	function nonNegativeFrom(value: string): number | null | undefined {
+		const trimmed = value.trim();
+		if (!trimmed) return null;
+		const parsed = Number(trimmed);
+		return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : undefined;
+	}
+
+	async function saveRuntimeSettings(form: HTMLFormElement) {
+		const data = new FormData(form);
+		const maxAccountBytes = limitFrom(String(data.get('maxAccountBytes') ?? ''));
+		const syncPerMinute = limitFrom(String(data.get('syncPerMinute') ?? ''));
+		const maxConcurrentSyncRequests = limitFrom(
+			String(data.get('maxConcurrentSyncRequests') ?? '')
+		);
+		const retentionInactiveDays = nonNegativeFrom(String(data.get('retentionInactiveDays') ?? ''));
+		if (
+			maxAccountBytes === undefined ||
+			syncPerMinute === undefined ||
+			maxConcurrentSyncRequests === undefined ||
+			retentionInactiveDays === undefined
+		) {
+			error = 'Numeric settings must be whole numbers; only retention may be zero';
+			return;
+		}
+		const indexing = String(data.get('allowIndexing') ?? '');
+		const vapidSubject = String(data.get('vapidSubject') ?? '').trim() || null;
+		await guard(async () => {
+			settings = await adminClient.updateSettings({
+				maxAccountBytes,
+				syncPerMinute,
+				maxConcurrentSyncRequests,
+				retentionInactiveDays,
+				allowIndexing: indexing === '' ? null : indexing === 'true',
+				vapidSubject
+			});
+			const [nextSnapshot, page] = await Promise.all([
+				adminClient.status(),
+				adminClient.accounts(search, offset, PAGE_SIZE)
+			]);
+			snapshot = nextSnapshot;
+			accounts = page.accounts;
+			accountTotal = page.total;
+		});
+	}
+
 	const storageShare = $derived(
 		snapshot ? Math.min(100, (snapshot.storage.storageBytes / 10_000_000_000) * 100) : 0
 	);
@@ -131,6 +179,7 @@
 						onclick={() => {
 							adminClient.forget();
 							snapshot = null;
+							settings = null;
 						}}>Sign out</button
 					>
 				</div>
@@ -198,6 +247,109 @@
 					{/if}
 				</div>
 			</section>
+
+			{#if settings}
+				<section class="space-y-3 rounded-lg border border-[var(--scrapscache-border)] p-4">
+					<div>
+						<h2 class="text-lg font-semibold">Runtime settings</h2>
+						<p class="text-sm text-[var(--scrapscache-text-muted)]">
+							Blank fields use the deployment default. Changes apply without a redeploy.
+						</p>
+					</div>
+					<form
+						class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
+						onsubmit={(event) => {
+							event.preventDefault();
+							void saveRuntimeSettings(event.currentTarget);
+						}}
+					>
+						<label class="space-y-1 text-sm">
+							<span class="block text-[var(--scrapscache-text-muted)]">Default storage bytes</span>
+							<input
+								name="maxAccountBytes"
+								type="number"
+								min="1"
+								step="1"
+								class="scrapscache-input w-full px-3 py-1.5"
+								placeholder={`Default: ${settings.defaults.maxAccountBytes}`}
+								value={settings.overrides.maxAccountBytes ?? ''}
+							/>
+						</label>
+						<label class="space-y-1 text-sm">
+							<span class="block text-[var(--scrapscache-text-muted)]"
+								>Default syncs per minute</span
+							>
+							<input
+								name="syncPerMinute"
+								type="number"
+								min="1"
+								step="1"
+								class="scrapscache-input w-full px-3 py-1.5"
+								placeholder={`Default: ${settings.defaults.syncPerMinute}`}
+								value={settings.overrides.syncPerMinute ?? ''}
+							/>
+						</label>
+						<label class="space-y-1 text-sm">
+							<span class="block text-[var(--scrapscache-text-muted)]"
+								>Concurrent sync requests</span
+							>
+							<input
+								name="maxConcurrentSyncRequests"
+								type="number"
+								min="1"
+								step="1"
+								class="scrapscache-input w-full px-3 py-1.5"
+								placeholder={`Default: ${settings.defaults.maxConcurrentSyncRequests}`}
+								value={settings.overrides.maxConcurrentSyncRequests ?? ''}
+							/>
+						</label>
+						<label class="space-y-1 text-sm">
+							<span class="block text-[var(--scrapscache-text-muted)]">Inactive retention days</span
+							>
+							<input
+								name="retentionInactiveDays"
+								type="number"
+								min="0"
+								step="1"
+								class="scrapscache-input w-full px-3 py-1.5"
+								placeholder={`Default: ${settings.defaults.retentionInactiveDays}`}
+								value={settings.overrides.retentionInactiveDays ?? ''}
+							/>
+							<span class="block text-xs text-[var(--scrapscache-text-muted)]">0 disables it.</span>
+						</label>
+						<label class="space-y-1 text-sm">
+							<span class="block text-[var(--scrapscache-text-muted)]">Search indexing</span>
+							<select
+								name="allowIndexing"
+								class="scrapscache-input w-full px-3 py-1.5"
+								value={settings.overrides.allowIndexing === undefined
+									? ''
+									: String(settings.overrides.allowIndexing)}
+							>
+								<option value=""
+									>Default: {settings.defaults.allowIndexing ? 'allowed' : 'blocked'}</option
+								>
+								<option value="true">Allowed</option>
+								<option value="false">Blocked</option>
+							</select>
+						</label>
+						<label class="space-y-1 text-sm">
+							<span class="block text-[var(--scrapscache-text-muted)]">VAPID subject</span>
+							<input
+								name="vapidSubject"
+								class="scrapscache-input w-full px-3 py-1.5"
+								placeholder={`Default: ${settings.defaults.vapidSubject}`}
+								value={settings.overrides.vapidSubject ?? ''}
+							/>
+						</label>
+						<div class="flex items-end sm:col-span-2 lg:col-span-3">
+							<button class="scrapscache-button scrapscache-button-primary px-3 py-2" type="submit"
+								>Save settings</button
+							>
+						</div>
+					</form>
+				</section>
+			{/if}
 
 			<section class="space-y-3">
 				<div class="flex flex-wrap items-center gap-2">

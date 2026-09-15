@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { TURNSTILE_MESSAGE } from '$lib/turnstileMessage';
+	import { css, cx } from 'styled-system/css';
+	import { text } from 'styled-system/recipes';
 
 	/**
 	 * Turnstile, kept out of this origin. Its script is third-party code, and
@@ -56,13 +58,13 @@
 			bind:this={frame}
 			{src}
 			title="Human verification"
-			class="block h-[65px] w-full border-0"
+			class={css({ display: 'block', h: '65px', w: 'full', border: '0' })}
 			sandbox="allow-scripts allow-same-origin allow-popups"
 			referrerpolicy="no-referrer"
 		></iframe>
 	{/key}
 {:else}
-	<p class="text-center text-sm text-[var(--scrapscache-danger)]" role="alert">
+	<p class={cx(css({ textAlign: 'center' }), text({ tone: 'danger' }))} role="alert">
 		Human verification is not configured correctly on this server.
 	</p>
 {/if}

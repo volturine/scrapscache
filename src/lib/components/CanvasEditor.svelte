@@ -1,5 +1,8 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
+	import { css, cx } from 'styled-system/css';
+	import { button, iconButton } from 'styled-system/recipes';
+	import { center, hstack } from 'styled-system/patterns';
 	import { LoaderCircle, X } from '@lucide/svelte';
 	import {
 		createCanvasAttachment,
@@ -10,6 +13,7 @@
 	import { isMissingModuleError, reloadOnceForMissingModule } from '$lib/staleModuleReload';
 	import type { NoteImage } from '$lib/types';
 	import { uiStore } from '$lib/stores/ui.svelte';
+	import { portalToAppOverlay } from '$lib/appViewport';
 
 	let {
 		attachment = null,
@@ -104,49 +108,68 @@
 			saving = false;
 		}
 	}
-
-	function portal(node: HTMLElement) {
-		document.body.appendChild(node);
-		return {
-			destroy() {
-				node.remove();
-			}
-		};
-	}
 </script>
 
 <div
-	use:portal
+	{@attach portalToAppOverlay}
 	onpointerdown={markCanvasInteraction}
 	onkeydown={markCanvasInteraction}
 	onpaste={markCanvasInteraction}
 	ondrop={markCanvasInteraction}
 	onwheel={markCanvasInteraction}
-	class="canvas-editor-shell fixed z-[90] flex flex-col bg-white text-slate-900 dark:bg-[#121212] dark:text-slate-100"
+	class={[
+		'canvas-editor-shell',
+		css({
+			position: 'absolute',
+			inset: 0,
+			zIndex: 90,
+			display: 'flex',
+			flexDirection: 'column',
+			bg: 'scrapscache.canvasSurface'
+		})
+	]}
 	role="dialog"
 	tabindex="-1"
 	aria-modal="true"
 	aria-label={readOnly ? 'View canvas' : attachment ? 'Edit canvas' : 'New canvas'}
 >
-	<header class="relative z-10 flex h-12 shrink-0 items-center justify-between px-3">
+	<header
+		class={hstack({
+			position: 'relative',
+			zIndex: 10,
+			h: '3rem',
+			flexShrink: 0,
+			justify: 'space-between',
+			px: 'md'
+		})}
+	>
 		<button
 			type="button"
-			class="canvas-header-action grid h-9 w-9 shrink-0 place-items-center rounded-full touch-manipulation"
+			class={['canvas-header-action', iconButton({ variant: 'ghost', size: 'sm' })]}
 			onclick={close}
 			aria-label={readOnly ? 'Close canvas' : 'Cancel canvas editing'}
 		>
-			<X class="h-5.5 w-5.5" aria-hidden="true" />
+			<X class={css({ h: '1.375rem', w: '1.375rem' })} aria-hidden="true" />
 		</button>
 
 		{#if !readOnly}
 			<button
 				type="button"
-				class="canvas-done h-9 shrink-0 rounded-full px-4 text-sm font-semibold touch-manipulation"
+				class={[
+					'canvas-done',
+					cx(
+						button({ variant: 'primary', size: 'md' }),
+						css({ rounded: 'pill', fontWeight: 'heading', flexShrink: 0 })
+					)
+				]}
 				disabled={loading || saving}
 				onclick={() => void save()}
 			>
 				{#if saving}
-					<LoaderCircle class="h-4 w-4 animate-spin" aria-hidden="true" />
+					<LoaderCircle
+						class={css({ h: '1rem', w: '1rem', animation: 'spin' })}
+						aria-hidden="true"
+					/>
 				{/if}
 				<span>{saving ? 'Saving' : 'Done'}</span>
 			</button>
@@ -155,13 +178,31 @@
 
 	{#if error}
 		<div
-			class="relative z-10 flex items-center justify-between gap-3 border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-200"
+			class={hstack({
+				position: 'relative',
+				zIndex: 10,
+				gap: 'md',
+				justify: 'space-between',
+				borderBottomWidth: 'hairline',
+				borderColor: 'scrapscache.danger',
+				bg: 'scrapscache.dangerSubtle',
+				px: 'lg',
+				py: 'sm',
+				color: 'scrapscache.danger'
+			})}
 		>
 			<span>{error}</span>
 			{#if staleModule}
 				<button
 					type="button"
-					class="shrink-0 font-semibold underline decoration-red-700/50 underline-offset-2 dark:decoration-red-200/50"
+					class={css({
+						flexShrink: 0,
+						fontWeight: 'heading',
+						textDecoration: 'underline',
+						textDecorationColor: 'scrapscache.danger',
+						textUnderlineOffset: '2px',
+						cursor: 'pointer'
+					})}
 					onclick={() => location.reload()}
 				>
 					Reload
@@ -170,113 +211,28 @@
 		</div>
 	{/if}
 
-	<div class="relative min-h-0 flex-1">
-		<div bind:this={hostNode} class="scrapscache-canvas absolute inset-0"></div>
+	<div class={css({ position: 'relative', minH: 0, flex: '1' })}>
+		<div
+			bind:this={hostNode}
+			class={['scrapscache-canvas', css({ position: 'absolute', inset: 0 })]}
+		></div>
 		{#if loading}
-			<div class="absolute inset-0 z-20 grid place-items-center bg-white dark:bg-[#121212]">
-				<div class="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
-					<LoaderCircle class="h-5 w-5 animate-spin" aria-hidden="true" />
+			<div
+				class={center({
+					position: 'absolute',
+					inset: 0,
+					zIndex: 20,
+					bg: 'scrapscache.canvasSurface'
+				})}
+			>
+				<div class={hstack({ gap: 'sm', color: 'scrapscache.textMuted' })}>
+					<LoaderCircle
+						class={css({ h: '1.25rem', w: '1.25rem', animation: 'spin' })}
+						aria-hidden="true"
+					/>
 					Loading canvas…
 				</div>
 			</div>
 		{/if}
 	</div>
 </div>
-
-<style>
-	.canvas-editor-shell {
-		top: var(--app-visual-offset-top);
-		right: 0;
-		bottom: 0;
-		left: 0;
-		padding-top: var(--app-inset-top);
-		padding-right: var(--app-inset-right);
-		padding-left: var(--app-inset-left);
-	}
-
-	.canvas-header-action {
-		color: color-mix(in srgb, currentColor 82%, transparent);
-		transition:
-			background-color 120ms ease,
-			color 120ms ease;
-	}
-
-	.canvas-header-action:hover,
-	.canvas-header-action:focus-visible {
-		background: color-mix(in srgb, currentColor 10%, transparent);
-		color: currentColor;
-		outline: 2px solid var(--scrapscache-focus);
-		outline-offset: 2px;
-	}
-
-	.canvas-done {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		gap: 0.4rem;
-		background: var(--scrapscache-accent);
-		color: var(--scrapscache-accent-foreground);
-		transition:
-			background-color 120ms ease,
-			transform 120ms ease;
-	}
-
-	.canvas-done:hover:not(:disabled) {
-		background: var(--scrapscache-accent-hover);
-	}
-
-	.canvas-done:active:not(:disabled) {
-		transform: scale(0.97);
-	}
-
-	.canvas-done:focus-visible {
-		outline: 2px solid var(--scrapscache-focus);
-		outline-offset: 2px;
-	}
-
-	.canvas-done:disabled {
-		opacity: 0.5;
-	}
-
-	:global(.scrapscache-canvas .excalidraw) {
-		--sat: 0px;
-		--sar: 0px;
-		--sab: var(--app-inset-bottom);
-		--sal: 0px;
-	}
-
-	:global(.scrapscache-canvas .App-bottom-bar .App-toolbar-content) {
-		padding: 4px 8px !important;
-	}
-
-	:global(.scrapscache-canvas .App-bottom-bar .dropdown-menu--mobile) {
-		bottom: 47px !important;
-	}
-
-	:global(.excalidraw-modal-container) {
-		top: calc(var(--app-visual-offset-top) + var(--app-inset-top)) !important;
-		right: var(--app-inset-right) !important;
-		bottom: var(--app-inset-bottom) !important;
-		left: var(--app-inset-left) !important;
-		height: auto !important;
-	}
-
-	:global(.excalidraw-modal-container .Modal__background) {
-		top: calc(var(--app-visual-offset-top) + var(--app-inset-top)) !important;
-		right: var(--app-inset-right) !important;
-		bottom: var(--app-inset-bottom) !important;
-		left: var(--app-inset-left) !important;
-	}
-
-	:global(.excalidraw-modal-container .confirm-dialog.Modal) {
-		align-items: center;
-		padding: 1rem;
-	}
-
-	:global(.excalidraw-modal-container .confirm-dialog.Dialog--fullscreen .Modal__content) {
-		position: relative;
-		inset: auto;
-		max-width: 34rem;
-		max-height: 100%;
-	}
-</style>

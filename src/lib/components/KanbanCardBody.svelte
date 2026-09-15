@@ -3,11 +3,12 @@
 	// it twice: once in the column, once inside the ghost that follows a drag, so
 	// the card the user carries is the card they see land.
 	import { notesStore } from '$lib/stores/notes.svelte';
-	import { uiStore } from '$lib/stores/ui.svelte';
-	import { NOTE_COLORS, NOTE_DARK_COLORS, type Note, type NoteColor } from '$lib/types';
+	import type { Note } from '$lib/types';
 	import NoteBodyDisplay from './NoteBodyDisplay.svelte';
 	import ReminderLabel from './ReminderLabel.svelte';
 	import { Lock } from '@lucide/svelte';
+	import { cx, css } from 'styled-system/css';
+	import { badge, noteCard, noteSurface } from 'styled-system/recipes';
 
 	let { note, shield = false }: { note: Note; shield?: boolean } = $props();
 
@@ -17,73 +18,96 @@
 			.filter((label): label is NonNullable<typeof label> => !!label)
 	);
 
-	function background(color: NoteColor): string {
-		return uiStore.effectiveDark ? NOTE_DARK_COLORS[color] : NOTE_COLORS[color];
-	}
+	const card = noteCard();
 </script>
 
 <div
-	class="kanban-card relative overflow-hidden rounded-xl border border-black/5 shadow-sm dark:border-white/10"
-	style="background-color: {background(note.color)};"
+	class={cx(
+		'kanban-card',
+		noteSurface({ color: note.color }),
+		css({
+			overflow: 'hidden',
+			rounded: 'dialog',
+			borderWidth: 'hairline',
+			borderColor: 'scrapscache.borderFaint',
+			boxShadow: 'sm',
+			touchAction: 'pan-y',
+			userSelect: 'none'
+		})
+	)}
 >
 	<div
-		class="relative max-h-[240px] overflow-hidden"
-		class:flex={note.secret}
-		class:flex-col={note.secret}
+		class={cx(
+			css({ position: 'relative', maxH: '240px', overflow: 'hidden' }),
+			note.secret && css({ display: 'flex', flexDirection: 'column' })
+		)}
 	>
 		<div
-			class="w-full text-left"
-			class:p-3={!note.secret}
-			class:flex-1={note.secret}
-			class:min-h-0={note.secret}
-			class:flex={note.secret}
-			class:flex-col={note.secret}
+			class={cx(
+				css({ w: 'full', textAlign: 'left', p: 'md' }),
+				note.secret && css({ flex: '1', minH: 0, display: 'flex', flexDirection: 'column', p: 0 })
+			)}
 		>
 			{#if note.reminder != null}
 				<div
-					class="shrink-0"
-					class:mb-1={!note.secret}
-					class:px-3={note.secret}
-					class:pt-3={note.secret}
+					class={cx(
+						css({ flexShrink: 0 }),
+						!note.secret && css({ mb: '2xs' }),
+						note.secret && css({ px: 'md', pt: 'md' })
+					)}
 				>
 					<ReminderLabel reminder={note.reminder} variant="inline" />
 				</div>
 			{/if}
 			{#if note.title}
 				<h3
-					class="shrink-0 break-words text-[15px] font-semibold leading-snug tracking-tight text-[var(--scrapscache-text)]"
-					class:mb-1={!note.secret}
-					class:px-3={note.secret}
-					class:pt-3={note.secret && note.reminder == null}
-					class:pb-2={note.secret}
+					class={cx(
+						card.title,
+						css({ flexShrink: 0 }),
+						!note.secret && css({ mb: '2xs' }),
+						note.secret && css({ px: 'md', pt: note.reminder == null ? 'md' : 0, pb: 'sm' })
+					)}
 				>
 					{note.title}
 				</h3>
 			{/if}
 			<div
-				class="relative min-h-[48px]"
-				class:flex-1={note.secret}
-				class:min-h-0={note.secret}
-				class:overflow-hidden={note.secret}
+				class={cx(
+					css({ position: 'relative', minH: '3rem' }),
+					note.secret && css({ flex: '1', minH: 0, overflow: 'hidden' })
+				)}
 			>
 				<div
-					class:blur-sm={note.secret}
-					class:select-none={note.secret}
-					class:h-full={note.secret}
-					class:overflow-hidden={note.secret}
-					class:px-3={note.secret}
-					class:pb-3={note.secret}
-					class:pt-2={note.secret && !note.title && note.reminder == null}
+					class={cx(
+						css({}),
+						note.secret &&
+							css({
+								filter: 'blur(4px)',
+								userSelect: 'none',
+								h: 'full',
+								overflow: 'hidden',
+								px: 'md',
+								pb: 'md',
+								pt: !note.title && note.reminder == null ? 'sm' : 0
+							})
+					)}
 				>
 					<NoteBodyDisplay {note} />
 				</div>
 				{#if note.secret}
 					<div
-						class="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-black/5 backdrop-blur-md dark:bg-black/20"
+						class={cx(card.hazeOverlay, css({ pointerEvents: 'none', zIndex: 10 }))}
 						data-secret-overlay
 						aria-hidden="true"
 					>
-						<Lock class="h-6 w-6 text-[var(--scrapscache-text-muted)] drop-shadow-sm" />
+						<Lock
+							class={css({
+								w: '1.5rem',
+								h: '1.5rem',
+								color: 'scrapscache.textMuted',
+								filter: 'drop-shadow(0 1px 2px rgb(0 0 0 / 0.35))'
+							})}
+						/>
 					</div>
 				{/if}
 			</div>
@@ -91,17 +115,14 @@
 		{#if shield}
 			<!-- Every press lands here, so links, photos, canvases and files can
 			     never swallow a drag or start one of their own. -->
-			<div class="absolute inset-0" data-card-shield aria-hidden="true"></div>
+			<div class={card.shield} data-card-shield aria-hidden="true"></div>
 		{/if}
 	</div>
 
 	{#if labelsForNote.length}
-		<div class="flex flex-wrap gap-1 px-3 pb-3 pt-2">
+		<div class={card.labelsRow}>
 			{#each labelsForNote as label (label.id)}
-				<span
-					class="rounded bg-black/5 px-1.5 py-0.5 text-[10px] font-medium text-[var(--scrapscache-text-muted)] dark:bg-white/10"
-					>{label.name}</span
-				>
+				<span class={badge()}>{label.name}</span>
 			{/each}
 		</div>
 	{/if}

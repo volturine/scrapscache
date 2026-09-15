@@ -23,8 +23,10 @@ describe('BackupPassphraseDialog', () => {
 		expect(pointerDown.defaultPrevented).toBe(false);
 		expect(input.classList.contains('bg-transparent')).toBe(false);
 		const overlay = input.closest('[role="presentation"]') as HTMLElement;
-		expect(overlay.classList.contains('absolute')).toBe(true);
-		expect(overlay.classList.contains('fixed')).toBe(false);
+		expect(overlay.className).toContain(
+			'scrapscache-dialog-recipe__portal--presentation_appOverlay'
+		);
+		expect(overlay.classList.contains('pos_fixed')).toBe(false);
 	});
 
 	it('sets aria-invalid on passphrase input when error is provided', () => {

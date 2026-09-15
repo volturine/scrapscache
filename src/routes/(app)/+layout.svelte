@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { appLayout as styles } from '$panda/styles';
+	import { cx } from 'styled-system/css';
 	import { uiStore, type View } from '$lib/stores/ui.svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { syncStore, syncEventsClient } from '$lib/stores/sync.svelte';
@@ -233,7 +235,7 @@
 
 <div class="app-viewport">
 	<div
-		class="app-shell flex h-full w-full overflow-hidden bg-[var(--scrapscache-bg)] text-[var(--scrapscache-text)]"
+		class={cx('app-shell', styles.shell)}
 		{@attach mobile.current &&
 			attachSidebarSwipe({
 				getOpen: () => uiStore.sidebarOpen,
@@ -256,14 +258,10 @@
 				lazyMount
 				unmountOnExit
 			>
-				<Drawer.Backdrop
-					data-sidebar-backdrop
-					aria-label="Close sidebar"
-					class="fixed inset-0 z-20 bg-black/30"
-				/>
-				<Drawer.Positioner class="fixed left-0 top-0 z-30 h-full">
+				<Drawer.Backdrop data-sidebar-backdrop aria-label="Close sidebar" class={styles.backdrop} />
+				<Drawer.Positioner class={styles.drawerPositioner}>
 					<Drawer.Content
-						class="h-full w-72 border-r border-[var(--scrapscache-border)] bg-[var(--scrapscache-surface)]"
+						class={styles.drawer}
 						role="navigation"
 						aria-label="Sidebar"
 						data-sidebar-drawer
@@ -274,18 +272,18 @@
 			</Drawer.Root>
 		{:else}
 			{#if uiStore.sidebarOpen}
-				<div class="w-64 shrink-0 border-r border-[var(--scrapscache-border)]">
+				<div class={styles.sidebar}>
 					<Sidebar />
 				</div>
 			{/if}
 		{/if}
 
-		<div class="flex min-h-0 min-w-0 flex-1 flex-col">
+		<div class={styles.column}>
 			<Topbar />
-			<div class="app-canvas relative min-h-0 min-w-0 flex-1">
+			<div class={cx('app-canvas', styles.canvas)}>
 				<main
 					bind:this={feedEl}
-					class="app-feed scrollable h-full min-h-0 overflow-y-auto overflow-x-hidden px-4 pb-20 md:pb-6"
+					class={cx('app-feed scrollable', styles.feed)}
 					onscroll={rememberFeedScroll}
 				>
 					<AppViews />

@@ -2,6 +2,7 @@
 	import { CopyPlus, Replace } from '@lucide/svelte';
 	import { BackupImportMode } from '$lib/backup';
 	import ChoiceCard from './ChoiceCard.svelte';
+	import { css } from 'styled-system/css';
 
 	let {
 		busy = false,
@@ -16,7 +17,7 @@
 	} = $props();
 </script>
 
-<div class="grid gap-2.5">
+<div class={css({ display: 'grid', gap: 'sm' })}>
 	<ChoiceCard
 		bind:element={keepButton}
 		title="Keep local notes"

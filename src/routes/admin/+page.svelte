@@ -1,5 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { adminPageStyles as styles } from '$panda/styles';
+	import { css, cx } from 'styled-system/css';
+	import { button, input } from 'styled-system/recipes';
 	import {
 		adminClient,
 		AdminUnauthorized,
@@ -13,6 +16,10 @@
 	} from '$lib/admin/adminClient.svelte';
 
 	const PAGE_SIZE = 25;
+	const primaryButton = button({ variant: 'primary', size: 'sm' });
+	const secondaryButton = button({ variant: 'secondary', size: 'sm' });
+	const compactInput = input({ variant: 'outline', size: 'sm' });
+	const wideInput = cx(input({ variant: 'outline', size: 'md' }), css({ w: 'full' }));
 
 	let tokenInput = $state('');
 	let error = $state('');
@@ -164,18 +171,16 @@
 
 <svelte:head><title>Scraps Cache operations</title></svelte:head>
 
-<div class="min-h-dvh bg-[var(--scrapscache-bg)] p-4 text-[var(--scrapscache-text)] sm:p-8">
-	<div class="mx-auto max-w-5xl space-y-6">
-		<header class="flex items-baseline justify-between gap-4">
-			<h1 class="text-xl font-semibold">Operations</h1>
+<div class={styles.root}>
+	<div class={styles.content}>
+		<header class={styles.header}>
+			<h1 class={styles.title}>Operations</h1>
 			{#if adminClient.signedIn}
-				<div class="flex items-center gap-3 text-sm">
-					{#if loading}<span class="text-[var(--scrapscache-text-muted)]">Loading…</span>{/if}
-					<button class="scrapscache-button px-3 py-1.5" onclick={() => void loadAll()}
-						>Refresh</button
-					>
+				<div class={styles.headerActions}>
+					{#if loading}<span class={styles.loading}>Loading…</span>{/if}
+					<button class={secondaryButton} onclick={() => void loadAll()}>Refresh</button>
 					<button
-						class="scrapscache-button scrapscache-button-secondary px-3 py-1.5"
+						class={secondaryButton}
 						onclick={() => {
 							adminClient.forget();
 							snapshot = null;
@@ -187,61 +192,54 @@
 		</header>
 
 		{#if error}
-			<p class="text-sm text-[var(--scrapscache-danger)]" role="alert">{error}</p>
+			<p class={styles.error} role="alert">{error}</p>
 		{/if}
 
 		{#if !adminClient.signedIn}
-			<form class="max-w-sm space-y-3" onsubmit={signIn}>
-				<label class="block space-y-2 text-sm">
-					<span class="text-[var(--scrapscache-text-muted)]">Admin token</span>
-					<input
-						bind:value={tokenInput}
-						type="password"
-						autocomplete="off"
-						class="scrapscache-input w-full px-3 py-2"
-					/>
+			<form class={styles.signIn} onsubmit={signIn}>
+				<label class={styles.field}>
+					<span class={styles.fieldLabel}>Admin token</span>
+					<input bind:value={tokenInput} type="password" autocomplete="off" class={wideInput} />
 				</label>
-				<button class="scrapscache-button scrapscache-button-primary px-3 py-2" type="submit"
-					>Sign in</button
-				>
+				<button class={primaryButton} type="submit">Sign in</button>
 			</form>
 		{:else if snapshot}
-			<section class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-				<div class="rounded-lg border border-[var(--scrapscache-border)] p-3">
-					<div class="text-sm text-[var(--scrapscache-text-muted)]">Stored</div>
-					<div class="text-lg font-semibold">{formatBytes(snapshot.storage.storageBytes)}</div>
-					<div class="text-xs text-[var(--scrapscache-text-muted)]">
+			<section class={styles.statGrid}>
+				<div class={styles.statCard}>
+					<div class={styles.statLabel}>Stored</div>
+					<div class={styles.statValue}>{formatBytes(snapshot.storage.storageBytes)}</div>
+					<div class={styles.statCaption}>
 						{storageShare.toFixed(1)}% of the 10 GB database ceiling
 					</div>
 				</div>
-				<div class="rounded-lg border border-[var(--scrapscache-border)] p-3">
-					<div class="text-sm text-[var(--scrapscache-text-muted)]">Accounts</div>
-					<div class="text-lg font-semibold">{snapshot.accounts.total}</div>
-					<div class="text-xs text-[var(--scrapscache-text-muted)]">
+				<div class={styles.statCard}>
+					<div class={styles.statLabel}>Accounts</div>
+					<div class={styles.statValue}>{snapshot.accounts.total}</div>
+					<div class={styles.statCaption}>
 						{snapshot.accounts.active['1'] ?? 0} active today
 					</div>
 				</div>
-				<div class="rounded-lg border border-[var(--scrapscache-border)] p-3">
-					<div class="text-sm text-[var(--scrapscache-text-muted)]">Envelopes</div>
-					<div class="text-lg font-semibold">{snapshot.storage.envelopes}</div>
-					<div class="text-xs text-[var(--scrapscache-text-muted)]">
+				<div class={styles.statCard}>
+					<div class={styles.statLabel}>Envelopes</div>
+					<div class={styles.statValue}>{snapshot.storage.envelopes}</div>
+					<div class={styles.statCaption}>
 						retention {snapshot.retention.enabled ? `${snapshot.retention.inactiveDays}d` : 'off'},
 						swept {formatAgo(snapshot.retention.lastRunAt)}
 					</div>
 				</div>
-				<div class="rounded-lg border border-[var(--scrapscache-border)] p-3">
-					<div class="text-sm text-[var(--scrapscache-text-muted)]">
+				<div class={styles.statCard}>
+					<div class={styles.statLabel}>
 						Activity, last {hours}h
 					</div>
 					{#if telemetry?.available && telemetry.activity}
-						<div class="text-lg font-semibold">{telemetry.activity.syncRequests ?? 0} syncs</div>
-						<div class="text-xs text-[var(--scrapscache-text-muted)]">
+						<div class={styles.statValue}>{telemetry.activity.syncRequests ?? 0} syncs</div>
+						<div class={styles.statCaption}>
 							{telemetry.activity.syncUploadEnvelopes ?? 0} uploads · {telemetry.throttledNow ??
 								'?'} callers throttled now
 						</div>
 					{:else}
-						<div class="text-sm">Not available</div>
-						<div class="text-xs text-[var(--scrapscache-text-muted)]">
+						<div class={styles.statLabel}>Not available</div>
+						<div class={styles.statCaption}>
 							{telemetry?.note ?? ''}
 						</div>
 					{/if}
@@ -249,79 +247,74 @@
 			</section>
 
 			{#if settings}
-				<section class="space-y-3 rounded-lg border border-[var(--scrapscache-border)] p-4">
+				<section class={styles.section}>
 					<div>
-						<h2 class="text-lg font-semibold">Runtime settings</h2>
-						<p class="text-sm text-[var(--scrapscache-text-muted)]">
+						<h2 class={styles.sectionTitle}>Runtime settings</h2>
+						<p class={styles.sectionDescription}>
 							Blank fields use the deployment default. Changes apply without a redeploy.
 						</p>
 					</div>
 					<form
-						class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
+						class={styles.settingsForm}
 						onsubmit={(event) => {
 							event.preventDefault();
 							void saveRuntimeSettings(event.currentTarget);
 						}}
 					>
-						<label class="space-y-1 text-sm">
-							<span class="block text-[var(--scrapscache-text-muted)]">Default storage bytes</span>
+						<label class={styles.field}>
+							<span class={styles.fieldLabel}>Default storage bytes</span>
 							<input
 								name="maxAccountBytes"
 								type="number"
 								min="1"
 								step="1"
-								class="scrapscache-input w-full px-3 py-1.5"
+								class={cx(compactInput, styles.fieldInput)}
 								placeholder={`Default: ${settings.defaults.maxAccountBytes}`}
 								value={settings.overrides.maxAccountBytes ?? ''}
 							/>
 						</label>
-						<label class="space-y-1 text-sm">
-							<span class="block text-[var(--scrapscache-text-muted)]"
-								>Default syncs per minute</span
-							>
+						<label class={styles.field}>
+							<span class={styles.fieldLabel}>Default syncs per minute</span>
 							<input
 								name="syncPerMinute"
 								type="number"
 								min="1"
 								step="1"
-								class="scrapscache-input w-full px-3 py-1.5"
+								class={cx(compactInput, styles.fieldInput)}
 								placeholder={`Default: ${settings.defaults.syncPerMinute}`}
 								value={settings.overrides.syncPerMinute ?? ''}
 							/>
 						</label>
-						<label class="space-y-1 text-sm">
-							<span class="block text-[var(--scrapscache-text-muted)]"
-								>Concurrent sync requests</span
-							>
+						<label class={styles.field}>
+							<span class={styles.fieldLabel}>Concurrent sync requests</span>
 							<input
 								name="maxConcurrentSyncRequests"
 								type="number"
 								min="1"
 								step="1"
-								class="scrapscache-input w-full px-3 py-1.5"
+								class={cx(compactInput, styles.fieldInput)}
 								placeholder={`Default: ${settings.defaults.maxConcurrentSyncRequests}`}
 								value={settings.overrides.maxConcurrentSyncRequests ?? ''}
 							/>
 						</label>
-						<label class="space-y-1 text-sm">
-							<span class="block text-[var(--scrapscache-text-muted)]">Inactive retention days</span
-							>
+						<label class={styles.field}>
+							<span class={styles.fieldLabel}>Inactive retention days</span>
 							<input
 								name="retentionInactiveDays"
 								type="number"
 								min="0"
 								step="1"
-								class="scrapscache-input w-full px-3 py-1.5"
+								class={cx(compactInput, styles.fieldInput)}
 								placeholder={`Default: ${settings.defaults.retentionInactiveDays}`}
 								value={settings.overrides.retentionInactiveDays ?? ''}
 							/>
-							<span class="block text-xs text-[var(--scrapscache-text-muted)]">0 disables it.</span>
+							<span class={styles.statCaption}>0 disables it.</span>
 						</label>
-						<label class="space-y-1 text-sm">
-							<span class="block text-[var(--scrapscache-text-muted)]">Search indexing</span>
+						<label class={styles.field}>
+							<span class={styles.fieldLabel}>Search indexing</span>
 							<select
 								name="allowIndexing"
-								class="scrapscache-input w-full px-3 py-1.5"
+								class={cx(compactInput, styles.fieldInput)}
 								value={settings.overrides.allowIndexing === undefined
 									? ''
 									: String(settings.overrides.allowIndexing)}
@@ -333,79 +326,70 @@
 								<option value="false">Blocked</option>
 							</select>
 						</label>
-						<label class="space-y-1 text-sm">
-							<span class="block text-[var(--scrapscache-text-muted)]">VAPID subject</span>
+						<label class={styles.field}>
+							<span class={styles.fieldLabel}>VAPID subject</span>
 							<input
 								name="vapidSubject"
-								class="scrapscache-input w-full px-3 py-1.5"
+								class={cx(compactInput, styles.fieldInput)}
 								placeholder={`Default: ${settings.defaults.vapidSubject}`}
 								value={settings.overrides.vapidSubject ?? ''}
 							/>
 						</label>
-						<div class="flex items-end sm:col-span-2 lg:col-span-3">
-							<button class="scrapscache-button scrapscache-button-primary px-3 py-2" type="submit"
-								>Save settings</button
-							>
+						<div class={styles.settingsSubmit}>
+							<button class={primaryButton} type="submit">Save settings</button>
 						</div>
 					</form>
 				</section>
 			{/if}
 
-			<section class="space-y-3">
-				<div class="flex flex-wrap items-center gap-2">
-					<h2 class="text-lg font-semibold">Accounts</h2>
+			<section class={styles.accounts}>
+				<div class={styles.accountControls}>
+					<h2 class={styles.sectionTitle}>Accounts</h2>
 					<input
 						bind:value={search}
 						placeholder="Account id starts with…"
-						class="scrapscache-input px-3 py-1.5 text-sm"
+						class={compactInput}
 						oninput={() => {
 							offset = 0;
 							void reloadAccounts();
 						}}
 					/>
-					<span class="text-sm text-[var(--scrapscache-text-muted)]">{accountTotal} total</span>
+					<span class={styles.loading}>{accountTotal} total</span>
 				</div>
 
-				<div class="overflow-x-auto rounded-lg border border-[var(--scrapscache-border)]">
-					<table class="w-full text-left text-sm">
-						<thead class="text-[var(--scrapscache-text-muted)]">
+				<div class={styles.tableWrap}>
+					<table class={styles.table}>
+						<thead class={styles.tableHead}>
 							<tr>
-								<th class="p-2 font-medium">Account</th>
-								<th class="p-2 font-medium">Stored</th>
-								<th class="p-2 font-medium">Quota</th>
-								<th class="p-2 font-medium">Syncs/min</th>
-								<th class="p-2 font-medium">Last seen</th>
+								<th class={styles.tableHeading}>Account</th>
+								<th class={styles.tableHeading}>Stored</th>
+								<th class={styles.tableHeading}>Quota</th>
+								<th class={styles.tableHeading}>Syncs/min</th>
+								<th class={styles.tableHeading}>Last seen</th>
 							</tr>
 						</thead>
 						<tbody>
 							{#each accounts as account (account.accountId)}
-								<tr
-									class="cursor-pointer border-t border-[var(--scrapscache-border)] hover:bg-[var(--scrapscache-interactive-hover)]"
-									onclick={() => void open(account.accountId)}
-								>
-									<td class="p-2 font-mono text-xs">{account.accountId}</td>
-									<td class="p-2">{formatBytes(account.storageBytes)}</td>
-									<td class="p-2"
-										>{formatBytes(account.maxBytes)}{account.maxBytesOverridden ? ' *' : ''}</td
-									>
-									<td class="p-2"
-										>{account.syncPerMinute}{account.syncPerMinuteOverridden ? ' *' : ''}</td
-									>
-									<td class="p-2">{formatAgo(account.lastSeenAt)}</td>
+								<tr class={styles.tableRow} onclick={() => void open(account.accountId)}>
+									<td class={cx(styles.tableCell, styles.accountId)}>{account.accountId}</td>
+									<td class={styles.tableCell}>{formatBytes(account.storageBytes)}</td>
+									<td class={styles.tableCell}>
+										{formatBytes(account.maxBytes)}{account.maxBytesOverridden ? ' *' : ''}
+									</td>
+									<td class={styles.tableCell}>
+										{account.syncPerMinute}{account.syncPerMinuteOverridden ? ' *' : ''}
+									</td>
+									<td class={styles.tableCell}>{formatAgo(account.lastSeenAt)}</td>
 								</tr>
 							{:else}
-								<tr
-									><td class="p-3 text-[var(--scrapscache-text-muted)]" colspan="5"
-										>No accounts match.</td
-									></tr
-								>
+								<tr><td class={styles.emptyCell} colspan="5">No accounts match.</td></tr>
 							{/each}
 						</tbody>
 					</table>
 				</div>
-				<div class="flex items-center gap-2 text-sm">
+				<div class={styles.pagination}>
 					<button
-						class="scrapscache-button scrapscache-button-secondary px-3 py-1.5"
+						class={secondaryButton}
 						disabled={offset === 0}
 						onclick={() => {
 							offset = Math.max(0, offset - PAGE_SIZE);
@@ -413,63 +397,56 @@
 						}}>Previous</button
 					>
 					<button
-						class="scrapscache-button scrapscache-button-secondary px-3 py-1.5"
+						class={secondaryButton}
 						disabled={offset + PAGE_SIZE >= accountTotal}
 						onclick={() => {
 							offset += PAGE_SIZE;
 							void reloadAccounts();
 						}}>Next</button
 					>
-					<span class="text-[var(--scrapscache-text-muted)]">* overridden</span>
+					<span class={styles.loading}>* overridden</span>
 				</div>
 			</section>
 
 			{#if selected}
-				<section class="space-y-3 rounded-lg border border-[var(--scrapscache-border)] p-4">
-					<div class="flex items-baseline justify-between gap-3">
-						<h2 class="font-mono text-sm break-all">{selected.accountId}</h2>
-						<button
-							class="scrapscache-button scrapscache-button-secondary px-3 py-1.5 text-sm"
-							onclick={() => (selected = null)}>Close</button
-						>
+				<section class={styles.selected}>
+					<div class={styles.selectedHeader}>
+						<h2 class={styles.selectedId}>{selected.accountId}</h2>
+						<button class={secondaryButton} onclick={() => (selected = null)}>Close</button>
 					</div>
-					<p class="text-sm text-[var(--scrapscache-text-muted)]">
+					<p class={styles.sectionDescription}>
 						{formatBytes(selected.storageBytes)} across {selected.envelopeCount} records, last seen {formatAgo(
 							selected.lastSeenAt
 						)}.
 					</p>
 
 					<form
-						class="flex flex-wrap items-end gap-3"
+						class={styles.selectedForm}
 						onsubmit={(event) => {
 							event.preventDefault();
 							void saveLimits(event.currentTarget);
 						}}
 					>
-						<label class="space-y-1 text-sm">
-							<span class="block text-[var(--scrapscache-text-muted)]">Storage bytes</span>
+						<label class={styles.field}>
+							<span class={styles.fieldLabel}>Storage bytes</span>
 							<input
 								name="maxBytes"
-								class="scrapscache-input px-3 py-1.5"
+								class={compactInput}
 								placeholder="default"
 								value={selected.maxBytesOverridden ? String(selected.maxBytes) : ''}
 							/>
 						</label>
-						<label class="space-y-1 text-sm">
-							<span class="block text-[var(--scrapscache-text-muted)]">Syncs per minute</span>
+						<label class={styles.field}>
+							<span class={styles.fieldLabel}>Syncs per minute</span>
 							<input
 								name="syncPerMinute"
-								class="scrapscache-input px-3 py-1.5"
+								class={compactInput}
 								placeholder="default"
 								value={selected.syncPerMinuteOverridden ? String(selected.syncPerMinute) : ''}
 							/>
 						</label>
-						<button class="scrapscache-button scrapscache-button-primary px-3 py-2" type="submit"
-							>Save limits</button
-						>
-						<span class="text-xs text-[var(--scrapscache-text-muted)]"
-							>Blank restores the shared default.</span
-						>
+						<button class={primaryButton} type="submit">Save limits</button>
+						<span class={styles.selectedHint}>Blank restores the shared default.</span>
 					</form>
 				</section>
 			{/if}

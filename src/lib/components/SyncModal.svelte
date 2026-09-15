@@ -1,5 +1,9 @@
 <script lang="ts">
 	import ChoiceCard from './ChoiceCard.svelte';
+	import { progressMeter, syncStyles as styles } from '$panda/styles';
+	import { css, cx } from 'styled-system/css';
+	import { button, dialog, iconButton, input, text } from 'styled-system/recipes';
+	import { hstack, vstack } from 'styled-system/patterns';
 	import WorkspaceRow from './WorkspaceRow.svelte';
 	import TurnstileWidget from './TurnstileWidget.svelte';
 	import { env } from '$env/dynamic/public';
@@ -19,6 +23,7 @@
 	import {
 		Cloud,
 		CloudOff,
+		Download,
 		FolderPlus,
 		MonitorSmartphone,
 		RefreshCw,
@@ -59,6 +64,7 @@
 	let expandedId = $state<string | null>(null);
 	let newName = $state('');
 	let promoteSource = $state<string | null>(null);
+	let manageOpen = $state(false);
 	// Account creation, including recovery that may recreate the account, needs a Turnstile token
 	// when this deployment configures a challenge origin. Each surface owns its own single-use widget.
 	const turnstileOrigin = env.PUBLIC_TURNSTILE_ORIGIN?.trim() ?? '';
@@ -83,7 +89,6 @@
 	const busy = $derived(
 		operation !== null || notesStore.syncing || notesStore.importing || profileCoordinator.switching
 	);
-	const handoverBlocked = $derived(notesStore.syncing || profileCoordinator.switching);
 	const rowOwnsEscape = $derived(rowHoldingEscape !== null || expandedId !== null);
 
 	// Approximate on-device footprint per saved key. Measured when the modal
@@ -536,6 +541,16 @@
 		event.preventDefault();
 		close();
 	}
+	const d = dialog({ presentation: 'centeredOverlay' });
+	const meter = progressMeter.compact;
+	const syncMuted = text({ style: 'bodyMuted' });
+	const syncMutedBody = cx(text({ style: 'bodyMuted' }), css({ lineHeight: 'relaxed' }));
+	const syncMutedLead = cx(text({ style: 'captionStrong' }), css({ letterSpacing: 'wide' }));
+	const syncDanger = text({ tone: 'danger' });
+	const syncBackLink = cx(
+		text({ style: 'caption' }),
+		css({ w: 'full', touchAction: 'manipulation', cursor: 'pointer', textAlign: 'center' })
+	);
 </script>
 
 <svelte:window onkeydown={onWindowKeyDown} />
@@ -547,22 +562,18 @@
 	closeOnEscape={false}
 	closeOnInteractOutside={false}
 >
-	<div {@attach portalToAppFloat} class="fixed inset-0 z-50" role="presentation">
-		<Dialog.Backdrop class="absolute inset-0 bg-black/40" onclick={() => close()} />
+	<div {@attach portalToAppFloat} class={d.portal} role="presentation">
+		<Dialog.Backdrop class={d.backdrop} onclick={() => close()} />
 		<Dialog.Positioner
-			class="absolute inset-0 flex items-center justify-center p-4"
+			class={d.positioner}
 			onclick={(event) => {
 				if (event.target === event.currentTarget) close();
 			}}
 		>
-			<Dialog.Content
-				class="scrapscache-dialog relative max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-x-hidden overflow-y-auto p-5"
-			>
-				<div class="mb-4 flex items-center justify-between">
-					<Dialog.Title
-						class="flex items-center gap-2 text-lg font-medium text-[var(--scrapscache-text)]"
-					>
-						<Cloud class="h-5 w-5" aria-hidden="true" />
+			<Dialog.Content class={d.panel}>
+				<div class={d.header}>
+					<Dialog.Title class={d.title}>
+						<Cloud size={20} aria-hidden="true" />
 						{mode === 'menu'
 							? 'Workspaces'
 							: mode === 'new'
@@ -583,18 +594,21 @@
 					</Dialog.Title>
 					<button
 						type="button"
-						disabled={operation !== null || profileCoordinator.switching}
-						class="icon-btn h-8 w-8"
+						disabled={busy}
+						class={iconButton({ variant: 'ghost', size: 'compact' })}
 						aria-label="Close"
 						onclick={() => close()}
 					>
-						<X class="h-4 w-4" aria-hidden="true" />
+						<X size={16} aria-hidden="true" />
 					</button>
 				</div>
 
 				{#if mode === 'menu'}
-					<div class="space-y-4">
-						<div class="workspace-list" aria-label="Workspaces on this device">
+					<div class={vstack({ gap: 'lg', alignItems: 'stretch' })}>
+						<div
+							class={css({ display: 'grid', gap: '2xs' })}
+							aria-label="Workspaces on this device"
+						>
 							{#each syncStore.profiles as profile (profile.id)}
 								{@const active = profile.id === syncStore.activePid}
 								{@const synced = !isLocalWorkspace(profile)}
@@ -630,13 +644,13 @@
 										{#if synced}
 											<button
 												type="button"
-												class="manage-row"
+												class={styles.manageRow}
 												disabled={busy}
 												onclick={() => confirm('force', profile.id)}
 												><RefreshCw
 													size={16}
 													class={operation === 'force-sync' && confirmTarget === profile.id
-														? 'animate-spin'
+														? styles.spinner
 														: ''}
 													aria-hidden="true"
 												/><span
@@ -650,7 +664,7 @@
 										{:else}
 											<button
 												type="button"
-												class="manage-row"
+												class={styles.manageRow}
 												disabled={busy}
 												onclick={() => startPromote(profile.id)}
 												><Cloud size={16} aria-hidden="true" /><span
@@ -664,7 +678,7 @@
 										{#if synced}
 											<button
 												type="button"
-												class="manage-row text-[var(--scrapscache-danger)]"
+												class={cx(styles.manageRow, syncDanger)}
 												disabled={busy}
 												onclick={() => confirm('delete', profile.id)}
 												><CloudOff size={16} aria-hidden="true" /><span
@@ -675,7 +689,7 @@
 										{/if}
 										<button
 											type="button"
-											class="manage-row text-[var(--scrapscache-danger)]"
+											class={cx(styles.manageRow, syncDanger)}
 											disabled={busy}
 											onclick={() => confirm('remove', profile.id)}
 											><Trash2 size={16} aria-hidden="true" /><span
@@ -691,11 +705,14 @@
 							{/each}
 						</div>
 
-						<div class="flex gap-4 text-sm">
+						<div class={syncStore.account ? hstack({ gap: 'lg', fontSize: 'body' }) : undefined}>
 							<button
 								type="button"
 								disabled={busy}
-								class="text-[var(--scrapscache-primary)]"
+								class={cx(
+									button({ variant: 'quiet', size: 'sm' }),
+									css({ color: 'scrapscache.accent' })
+								)}
 								onclick={() => {
 									mode = 'new';
 									error = '';
@@ -704,8 +721,14 @@
 							>
 						</div>
 						{#if syncStore.account}
-							<div class="border-t border-[var(--scrapscache-border)] pt-4">
-								<div class="flex gap-2">
+							<div
+								class={css({
+									borderTopWidth: 'hairline',
+									borderColor: 'scrapscache.border',
+									pt: 'lg'
+								})}
+							>
+								<div class={hstack({ gap: 'sm' })}>
 									<button
 										type="button"
 										onclick={() => {
@@ -714,10 +737,10 @@
 											else void syncNow();
 										}}
 										disabled={busy}
-										class="scrapscache-button scrapscache-button-primary flex flex-1 items-center justify-center gap-2 px-3 py-2.5 text-sm"
+										class={cx(button({ variant: 'primary', size: 'md' }), styles.growButton)}
 										><RefreshCw
 											size={16}
-											class={syncing ? 'animate-spin' : ''}
+											class={syncing ? styles.spinner : ''}
 											aria-hidden="true"
 										/>{operation === 'sync'
 											? 'Syncing…'
@@ -727,50 +750,104 @@
 													? 'Force resync'
 													: 'Sync now'}</button
 									>
-									<button
-										type="button"
-										onclick={() => void startExistingConnection()}
-										disabled={busy}
-										class="scrapscache-button scrapscache-button-secondary flex-1 px-3 py-2.5 text-sm"
-										>Connect device</button
-									>
+									{#if !authenticationFailed}
+										<button
+											type="button"
+											onclick={() => void startExistingConnection()}
+											disabled={busy}
+											class={cx(button({ variant: 'secondary', size: 'md' }), styles.growButton)}
+											>Connect device</button
+										>
+									{/if}
 								</div>
 								{#if syncStore.progress}
 									{@const progress = syncStore.progress}
 									{@const percent = progressPercent(progress.loadedBytes, progress.totalBytes)}
-									<p class="mt-2 text-xs text-[var(--scrapscache-text-muted)]" role="status">
+									<p class={cx(text({ style: 'caption' }), css({ mt: 'sm' }))} role="status">
 										{progress.phase === 'upload' ? 'Uploading' : 'Downloading'} · <Format.Byte
 											value={progress.loadedBytes}
 										/>
 									</p>
-									<Progress.Root value={progress.totalBytes ? percent : null} class="mt-2 w-full"
-										><Progress.Track
-											class="scrapscache-progress-track h-1 overflow-hidden rounded-full"
+									<Progress.Root
+										value={progress.totalBytes ? percent : null}
+										class={css({ mt: 'sm', w: 'full' })}
+										><Progress.Track class={meter.track}
 											><Progress.Range
-												class="scrapscache-progress-value h-full"
+												class={meter.bar}
 												style={`width: ${progress.totalBytes ? percent : 100}%`}
 											/></Progress.Track
 										></Progress.Root
 									>
-								{:else if syncing}<p class="mt-2 text-xs" role="status">Syncing…</p>{/if}
+								{/if}
 							</div>
 						{/if}
-						{#if handoverBlocked}<p class="text-xs text-[var(--scrapscache-text-muted)]">
-								Wait for sync to finish before changing workspaces.
-							</p>{/if}
-						{#if error || syncError}<p
-								class="text-sm text-[var(--scrapscache-danger)]"
-								role="alert"
-							>
+						{#if error || syncError}<p class={syncDanger} role="alert">
 								{error || syncError}
 							</p>{/if}
-						{#if info}<p class="text-sm text-[var(--scrapscache-text-muted)]" role="status">
+						{#if info}<p class={syncMuted} role="status">
 								{info}
 							</p>{/if}
+						<details
+							bind:open={manageOpen}
+							class={css({
+								borderTopWidth: 'hairline',
+								borderColor: 'scrapscache.border',
+								pt: 'md'
+							})}
+						>
+							<summary class={css({ cursor: 'pointer', textStyle: 'bodyMuted' })}
+								>Manage workspace</summary
+							>
+							<div
+								hidden={!manageOpen}
+								class={vstack({ gap: '2xs', alignItems: 'stretch', mt: 'sm' })}
+							>
+								<button
+									class={styles.manageRow}
+									disabled={busy}
+									onclick={() => void exportProfile(syncStore.activePid)}
+									><Download size={16} aria-hidden="true" /><span>Export notes</span></button
+								>
+								{#if syncStore.account}
+									<button
+										class={styles.manageRow}
+										disabled={busy}
+										onclick={() => {
+											confirmation = 'force';
+											mode = 'confirm';
+											error = '';
+										}}
+										><RefreshCw
+											size={16}
+											class={operation === 'force-sync' ? styles.spinner : ''}
+											aria-hidden="true"
+										/><span
+											>{operation === 'force-sync' ? 'Resyncing…' : 'Force resync'}<small
+												>Replace cloud notes with this device’s version</small
+											></span
+										></button
+									>
+									<button
+										class={cx(styles.manageRow, syncDanger)}
+										disabled={busy}
+										onclick={() => {
+											confirmation = 'delete';
+											mode = 'confirm';
+											error = '';
+										}}
+										><Trash2 size={16} aria-hidden="true" /><span
+											>Delete cloud data<small
+												>Keep this device’s notes in Anonymous workspace</small
+											></span
+										></button
+									>
+								{/if}
+							</div>
+						</details>
 					</div>
 				{:else if mode === 'confirm'}
-					<div class="space-y-4">
-						<p class="text-sm leading-relaxed text-[var(--scrapscache-text-muted)]">
+					<div class={vstack({ gap: 'lg', alignItems: 'stretch' })}>
+						<p class={syncMutedBody}>
 							{#if confirmation === 'force'}
 								This device’s notes will replace the cloud version using the same sync key. Notes
 								only in the cloud will be removed. Other devices will receive these notes as the
@@ -797,13 +874,13 @@
 								action="register"
 							/>
 						{/if}
-						{#if error}<p class="text-sm text-[var(--scrapscache-danger)]" role="alert">
+						{#if error}<p class={syncDanger} role="alert">
 								{error}
 							</p>{/if}
-						<div class="flex gap-2">
+						<div class={hstack({ gap: 'sm' })}>
 							<button
 								type="button"
-								class="scrapscache-button scrapscache-button-secondary flex-1 px-3 py-2"
+								class={cx(button({ variant: 'secondary', size: 'sm' }), styles.growButton)}
 								disabled={busy}
 								onclick={() => {
 									mode = 'menu';
@@ -814,10 +891,13 @@
 							>
 							<button
 								type="button"
-								class="scrapscache-button flex-1 px-3 py-2 {confirmation === 'force' ||
-								confirmation === 'new-key'
-									? 'scrapscache-button-primary'
-									: 'scrapscache-button-destructive-solid'}"
+								class={cx(
+									button({
+										variant: confirmation === 'delete' ? 'destructive' : 'primary',
+										size: 'sm'
+									}),
+									styles.growButton
+								)}
 								disabled={busy ||
 									((confirmation === 'force' || confirmation === 'new-key') &&
 										Boolean(turnstileOrigin) &&
@@ -843,16 +923,18 @@
 						</div>
 					</div>
 				{:else if mode === 'register'}
-					<div class="space-y-4">
-						<p class="text-sm leading-relaxed text-[var(--scrapscache-text-muted)]">
-							This workspace stays on this device and starts syncing to the cloud.
+					<div class={vstack({ gap: 'lg', alignItems: 'stretch' })}>
+						<p class={syncMutedBody}>
+							{syncStore.account
+								? 'It starts empty. Your existing workspaces stay unchanged.'
+								: 'Your current anonymous notes will be copied into it.'}
 						</p>
-						<div class="space-y-2">
+						<div class={vstack({ gap: 'sm', alignItems: 'stretch' })}>
 							<input
 								bind:value={newName}
 								placeholder="Workspace name (optional)"
 								maxlength="60"
-								class="scrapscache-input w-full px-3 py-2.5 text-sm"
+								class={input({ variant: 'outline', size: 'md' })}
 								aria-label="Sync key name"
 								aria-invalid={Boolean(error)}
 								onkeydown={(event) => event.key === 'Enter' && void create()}
@@ -865,29 +947,43 @@
 									action="register"
 								/>
 							{/if}
-							{#if error}<p class="text-sm text-[var(--scrapscache-danger)]">{error}</p>{/if}
+							{#if error}<p class={syncDanger}>{error}</p>{/if}
 							<button
 								type="button"
 								onclick={() => void create()}
 								disabled={busy || (Boolean(turnstileOrigin) && !registerToken)}
-								class="scrapscache-button scrapscache-button-primary w-full px-3 py-2.5 text-sm font-medium"
+								class={cx(button({ variant: 'primary', size: 'md' }), styles.fullButton)}
 								>{operation === 'create' ? 'Starting sync…' : 'Start sync'}</button
 							>
 						</div>
+						<div class={hstack({ gap: 'md', alignItems: 'center' })} aria-hidden="true">
+							<span class={styles.dividerLine}></span>
+							<span
+								class={css({
+									fontSize: 'caption',
+									fontWeight: 'heading',
+									textTransform: 'uppercase',
+									letterSpacing: 'status',
+									color: 'scrapscache.textMuted'
+								})}
+							>
+								or
+							</span>
+							<span class={styles.dividerLine}></span>
+						</div>
 						<button
 							type="button"
+							disabled={busy}
+							class={syncBackLink}
 							onclick={() => {
 								mode = 'menu';
 								promoteSource = null;
-							}}
-							disabled={busy}
-							class="w-full text-xs text-[var(--scrapscache-text-muted)] touch-manipulation"
-							>← Back to workspaces</button
+							}}>← Back to workspaces</button
 						>
 					</div>
 				{:else if mode === 'new'}
-					<div class="space-y-4">
-						<div class="grid gap-2.5">
+					<div class={vstack({ gap: 'lg', alignItems: 'stretch' })}>
+						<div class={css({ display: 'grid', gap: 'sm' })}>
 							<ChoiceCard
 								title="Create workspace"
 								caption="Start an empty private workspace on this device. You can sync it later."
@@ -908,20 +1004,19 @@
 								{#snippet icon()}<MonitorSmartphone size={18} />{/snippet}
 							</ChoiceCard>
 						</div>
-						{#if error}<p class="text-sm text-[var(--scrapscache-danger)]" role="alert">
+						{#if error}<p class={syncDanger} role="alert">
 								{error}
 							</p>{/if}
 						<button
 							type="button"
 							onclick={() => (mode = 'menu')}
 							disabled={busy}
-							class="w-full text-xs text-[var(--scrapscache-text-muted)] touch-manipulation"
-							>← Back to workspaces</button
+							class={syncBackLink}>← Back to workspaces</button
 						>
 					</div>
 				{:else if mode === 'link'}
-					<div class="space-y-3">
-						<p class="text-sm text-[var(--scrapscache-text-muted)]">
+					<div class={vstack({ gap: 'md', alignItems: 'stretch' })}>
+						<p class={syncMuted}>
 							On your other device open Sync and choose Connect device. Enter the one-time code
 							shown there.
 						</p>
@@ -933,62 +1028,48 @@
 							placeholder="XXXX-XXXX-XXXX-XXXX"
 							maxlength="19"
 							spellcheck="false"
-							class="scrapscache-input w-full px-3 py-2 text-center text-lg font-bold tracking-wider"
 							aria-invalid={Boolean(error)}
+							class={cx(input({ variant: 'outline', size: 'md' }), styles.pairingInput)}
 							onkeydown={(event) => event.key === 'Enter' && void beginLink()}
-						/>{#if error}<p class="text-sm text-[var(--scrapscache-danger)]">{error}</p>{/if}<button
+						/>{#if error}<p class={syncDanger}>{error}</p>{/if}<button
 							type="button"
 							onclick={() => void beginLink()}
 							disabled={busy}
-							class="scrapscache-button scrapscache-button-primary w-full px-3 py-2 text-sm font-medium"
+							class={cx(button({ variant: 'primary', size: 'md' }), styles.fullButton)}
 							>{operation === 'connect' ? 'Starting…' : 'Start connection'}</button
 						><button
 							type="button"
 							onclick={() => (mode = 'new')}
 							disabled={busy}
-							class="w-full text-xs text-[var(--scrapscache-text-muted)] touch-manipulation"
-							>← Back</button
+							class={syncBackLink}>← Back</button
 						>
 					</div>
 				{:else if mode === 'pairing'}
-					<p class="text-sm text-[var(--scrapscache-text)]" role="status">
-						Connected. Syncing workspace…
-					</p>
+					<p role="status">Connected. Syncing workspace…</p>
 				{:else if mode === 'waiting'}
-					<div class="space-y-5">
+					<div class={vstack({ gap: 'xl', alignItems: 'stretch' })}>
 						{#if waiting?.role === 'existing'}
 							<div>
-								<p class="text-xs font-medium tracking-wide text-[var(--scrapscache-text-muted)]">
-									On the new device
-								</p>
-								<p class="mt-1 text-sm text-[var(--scrapscache-text)]">
+								<p class={syncMutedLead}>On the new device</p>
+								<p class={styles.bodySpacing}>
 									Scan the QR code, open the link, or type the one-time code
 								</p>
 							</div>
 							{#if qrDataUrl}
-								<div class="flex justify-center">
-									<img
-										src={qrDataUrl}
-										alt="Pair this device"
-										class="h-[220px] w-[220px] rounded-lg bg-white p-2"
-									/>
+								<div class={hstack({ justify: 'center' })}>
+									<img src={qrDataUrl} alt="Pair this device" class={styles.qrCode} />
 								</div>
 							{/if}
-							<div
-								class="rounded-xl border border-[var(--scrapscache-border)] bg-[var(--scrapscache-bg)] px-2 py-5"
-								aria-label="One-time pairing code"
-							>
-								<div class="flex items-center justify-center gap-1">
+							<div class={styles.pairingCode} aria-label="One-time pairing code">
+								<div class={hstack({ justify: 'center', gap: '2xs' })}>
 									{#each pairingGroups(waiting.syncCode) as group, index (index)}
 										{#if index > 0}
-											<span class="px-0.5 text-[var(--scrapscache-text-muted)]" aria-hidden="true"
-												>·</span
+											<span
+												class={css({ px: '3xs', color: 'scrapscache.textMuted' })}
+												aria-hidden="true">·</span
 											>
 										{/if}
-										<span
-											class="font-mono text-[1.35rem] font-semibold tracking-[0.14em] text-[var(--scrapscache-text)]"
-											>{group}</span
-										>
+										<span class={styles.digits}>{group}</span>
 									{/each}
 								</div>
 							</div>
@@ -996,35 +1077,34 @@
 								<Clipboard.Trigger
 									type="button"
 									aria-label="Copy pairing link"
-									class="scrapscache-button w-full px-3 py-2.5 text-sm font-medium {copyFlash
-										? 'border-[var(--scrapscache-success)] bg-[var(--scrapscache-success)] text-[var(--scrapscache-success-foreground)]'
-										: 'scrapscache-button-secondary'}"
+									class={cx(
+										button({ variant: 'secondary', size: 'md' }),
+										styles.fullButton,
+										copyFlash ? styles.copySuccess : ''
+									)}
 								>
 									{copyFlash ? 'Copied' : 'Copy pairing link'}
 								</Clipboard.Trigger>
 							</Clipboard.Root>
 						{:else}
 							<div>
-								<p class="text-xs font-medium tracking-wide text-[var(--scrapscache-text-muted)]">
-									On the other device
-								</p>
-								<p class="mt-1 text-sm text-[var(--scrapscache-text)]">
-									Open Sync and choose Connect device
-								</p>
+								<p class={syncMutedLead}>On the other device</p>
+								<p class={styles.bodySpacing}>Open Sync and choose Connect device</p>
 							</div>
 						{/if}
-						<div class="space-y-1.5">
+						<div class={vstack({ gap: 'xs', alignItems: 'stretch' })}>
 							<div
-								class="flex items-center justify-between text-xs text-[var(--scrapscache-text-muted)]"
+								class={hstack({
+									justify: 'space-between',
+									fontSize: 'label',
+									color: 'scrapscache.textMuted'
+								})}
 							>
 								<span>Expires in</span>
-								<span class="tabular-nums text-[var(--scrapscache-text)]">{secondsLeft()}s</span>
+								<span class={styles.timerText}>{secondsLeft()}s</span>
 							</div>
-							<div class="scrapscache-progress-track h-1 overflow-hidden rounded-full">
-								<div
-									class="scrapscache-progress-value h-full rounded-full transition-[width] duration-1000 ease-linear"
-									style={`width: ${expiryRatio() * 100}%`}
-								></div>
+							<div class={meter.track}>
+								<div class={meter.bar} style={`width: ${expiryRatio() * 100}%`}></div>
 							</div>
 						</div>
 						<button
@@ -1034,8 +1114,15 @@
 								waiting = null;
 								mode = syncStore.isLoggedIn ? 'menu' : 'link';
 							}}
-							class="w-full text-sm text-[var(--scrapscache-text-muted)] touch-manipulation"
-							>Cancel</button
+							class={cx(
+								text({ style: 'bodyMuted' }),
+								css({
+									w: 'full',
+									touchAction: 'manipulation',
+									cursor: 'pointer',
+									textAlign: 'center'
+								})
+							)}>Cancel</button
 						>
 					</div>
 				{/if}
@@ -1043,33 +1130,3 @@
 		</Dialog.Positioner>
 	</div>
 </Dialog.Root>
-
-<style>
-	.workspace-list {
-		display: grid;
-		gap: 4px;
-	}
-	.manage-row:hover {
-		background: color-mix(in srgb, var(--scrapscache-text) 6%, transparent);
-	}
-	.manage-row small {
-		display: block;
-		margin-top: 2px;
-		color: var(--scrapscache-text-muted);
-		font-size: 12px;
-		font-weight: 400;
-	}
-	.manage-row {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-		width: 100%;
-		border-radius: 8px;
-		padding: 10px 8px;
-		text-align: left;
-		font-size: 14px;
-	}
-	button:disabled {
-		opacity: 0.55;
-	}
-</style>

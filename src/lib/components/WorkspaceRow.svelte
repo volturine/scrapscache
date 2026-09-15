@@ -1,6 +1,10 @@
 <script lang="ts">
+	import { truncate, workspaceStyles, workspacePanelBtn as panelBtn } from '$panda/styles';
 	import type { Snippet } from 'svelte';
 	import { Check, ChevronDown, CloudOff, Download, Pencil, TriangleAlert, X } from '@lucide/svelte';
+	import { css, cx } from 'styled-system/css';
+	import { input as inputRecipe } from 'styled-system/recipes';
+	import { hstack } from 'styled-system/patterns';
 
 	let {
 		name,
@@ -34,71 +38,150 @@
 		danger?: Snippet;
 	} = $props();
 
-	let mode = $state<'idle' | 'rename' | 'confirm'>('idle');
-	let working = $state(false);
-	let draft = $state('');
-	let rowElement: HTMLDivElement | undefined;
-	let input: HTMLInputElement | undefined;
-	let trigger: HTMLElement | null = null;
+	const styles = workspaceStyles;
+	const ACTIONS_WIDTH = 152;
+	const COMMIT_RATIO = 0.55;
+	const OVERSWIPE_RESISTANCE = 0.7;
+	const RUBBER_BAND = 0.25;
+	const FLICK_VELOCITY = 0.4;
+	const SLOP = 8;
 
-	const locked = $derived(disabled || working);
+	let mode = $state<'idle' | 'rename' | 'confirm'>('idle');
+	let working = $state<'rename' | 'unlink' | null>(null);
+	let draft = $state('');
+	let swipeOpen = $state(false);
+	let offset = $state(0);
+	let dragging = $state(false);
+	let armed = $state(false);
+	let rowElement: HTMLDivElement | undefined;
+	let renameInput: HTMLInputElement | undefined;
+	let trigger: HTMLElement | null = null;
+	let start: { x: number; y: number; offset: number } | null = null;
+	let last = { x: 0, time: 0 };
+	let velocity = 0;
+	let swiped = false;
+
+	const progress = $derived(Math.min(1, Math.max(0, -offset / ACTIONS_WIDTH)));
+	const locked = $derived(disabled || working !== null);
+	const nameFieldClass = $derived(
+		cx(inputRecipe({ variant: 'outline', size: 'sm' }), css({ w: 'full', font: 'inherit' }))
+	);
+	const chevronClass = $derived(cx(styles.chevron, expanded && styles.chevronOpen));
 
 	function notifyBusy() {
-		onbusychange(mode !== 'idle');
+		onbusychange(mode !== 'idle' || swipeOpen);
 	}
 
-	function panelHoldsFocus() {
-		const activeEl = document.activeElement;
-		if (activeEl === rowElement || activeEl === document.body || activeEl === null) return true;
-		return mode !== 'idle' && !!rowElement?.contains(activeEl);
-	}
-
-	function leavePanel(restore: boolean) {
-		if (restore) rowElement?.focus({ preventScroll: true });
-		mode = 'idle';
-		draft = name;
+	function setMode(next: typeof mode) {
+		mode = next;
 		notifyBusy();
-		if (restore) queueMicrotask(() => trigger?.focus());
 	}
 
-	function focusWhenMounted(node: HTMLElement) {
+	function takeFocus(node: HTMLElement) {
 		node.focus();
+		return () => {
+			const focused = document.activeElement;
+			if (focused === node || focused === document.body || focused === null) trigger?.focus();
+		};
 	}
 
 	function renameField(node: HTMLInputElement) {
-		input = node;
-		node.focus();
+		renameInput = node;
+		const release = takeFocus(node);
 		node.select();
 		return () => {
-			if (input === node) input = undefined;
+			if (renameInput === node) renameInput = undefined;
+			release();
 		};
+	}
+
+	function commitDistance() {
+		return Math.max(ACTIONS_WIDTH + 40, (rowElement?.clientWidth ?? 0) * COMMIT_RATIO);
+	}
+
+	function settle(next: boolean) {
+		swipeOpen = next;
+		offset = next ? -ACTIONS_WIDTH : 0;
+		notifyBusy();
+	}
+
+	function down(event: PointerEvent) {
+		if (locked || mode !== 'idle' || event.pointerType !== 'touch') return;
+		start = { x: event.clientX, y: event.clientY, offset: swipeOpen ? -ACTIONS_WIDTH : 0 };
+		last = { x: event.clientX, time: event.timeStamp };
+		velocity = 0;
+		swiped = false;
+	}
+
+	function move(event: PointerEvent) {
+		if (!start) return;
+		const dx = event.clientX - start.x;
+		const dy = event.clientY - start.y;
+		if (!dragging) {
+			if (Math.abs(dx) < SLOP || Math.abs(dy) > Math.abs(dx) * 2) return;
+			dragging = true;
+			swiped = true;
+		}
+		const elapsed = event.timeStamp - last.time;
+		if (elapsed > 0) velocity = (event.clientX - last.x) / elapsed;
+		last = { x: event.clientX, time: event.timeStamp };
+		const raw = start.offset + dx;
+		offset =
+			raw > 0
+				? raw * RUBBER_BAND
+				: raw < -ACTIONS_WIDTH
+					? -ACTIONS_WIDTH + (raw + ACTIONS_WIDTH) * OVERSWIPE_RESISTANCE
+					: raw;
+		const nextArmed = -offset >= commitDistance();
+		if (nextArmed !== armed) {
+			armed = nextArmed;
+			if (nextArmed) navigator.vibrate?.(8);
+		}
+	}
+
+	function end() {
+		if (!dragging) {
+			start = null;
+			return;
+		}
+		dragging = false;
+		start = null;
+		if (armed) {
+			armed = false;
+			askUnlink();
+			return;
+		}
+		if (velocity < -FLICK_VELOCITY) settle(true);
+		else if (velocity > FLICK_VELOCITY) settle(false);
+		else settle(-offset > ACTIONS_WIDTH / 2);
+	}
+
+	function cancelDrag() {
+		if (!start) return;
+		dragging = false;
+		armed = false;
+		start = null;
+		settle(swipeOpen);
 	}
 
 	function startRename(event: MouseEvent) {
 		if (!onrename) return;
 		trigger = event.currentTarget as HTMLElement;
 		draft = name;
-		mode = 'rename';
-		notifyBusy();
+		setMode('rename');
+		settle(false);
 	}
 
-	function askUnlink(event: MouseEvent) {
+	function askUnlink(event?: MouseEvent) {
 		if (!onunlink) return;
-		trigger = event.currentTarget as HTMLElement;
-		mode = 'confirm';
-		notifyBusy();
-	}
-
-	async function confirmUnlink() {
-		if (!onunlink) return;
-		working = true;
-		const done = await onunlink();
-		working = false;
-		if (done) leavePanel(true);
+		trigger = (event?.currentTarget as HTMLElement | undefined) ?? null;
+		setMode('confirm');
+		settle(false);
 	}
 
 	function cancel() {
-		leavePanel(panelHoldsFocus());
+		setMode('idle');
+		draft = name;
 	}
 
 	async function saveRename() {
@@ -107,356 +190,237 @@
 			cancel();
 			return;
 		}
-		working = true;
+		working = 'rename';
 		const saved = await onrename(next);
-		working = false;
-		if (saved) leavePanel(true);
-		else input?.focus();
+		working = null;
+		if (saved) setMode('idle');
+		else renameInput?.focus();
+	}
+
+	async function confirmUnlink() {
+		if (!onunlink) return;
+		working = 'unlink';
+		const done = await onunlink();
+		working = null;
+		if (done) setMode('idle');
 	}
 
 	function onDocumentPointerDown(event: PointerEvent) {
 		if (working || !rowElement || rowElement.contains(event.target as Node)) return;
+		if (swipeOpen) settle(false);
 		if (mode === 'rename') void saveRename();
 		else if (mode === 'confirm') cancel();
 	}
 
 	function onKeyDown(event: KeyboardEvent) {
-		if (event.key !== 'Escape') return;
-		if (mode !== 'idle') {
-			event.preventDefault();
-			event.stopPropagation();
-			cancel();
-			return;
-		}
-		if (expanded) {
-			event.preventDefault();
-			event.stopPropagation();
-			onexpand();
-		}
+		if (event.key !== 'Escape' || (mode === 'idle' && !swipeOpen && !expanded)) return;
+		event.preventDefault();
+		if (mode !== 'idle') cancel();
+		else if (swipeOpen) settle(false);
+		else onexpand();
 	}
 </script>
 
-<svelte:document onkeydown={onKeyDown} onpointerdown={onDocumentPointerDown} />
+<svelte:document
+	onkeydown={onKeyDown}
+	onpointerdown={onDocumentPointerDown}
+	onpointermove={move}
+	onpointerup={end}
+	onpointercancel={cancelDrag}
+/>
 
 <div
 	bind:this={rowElement}
-	class="row"
-	class:active
-	class:open={expanded}
+	class={`row ${styles.row}`}
+	class:open={expanded || swipeOpen}
+	class:armed
+	class:dragging
 	class:editing={mode !== 'idle'}
+	style:--swipe-offset={`${offset}px`}
+	style:--swipe-progress={progress}
 	tabindex="-1"
 >
-	<div class="front" class:active>
+	<div class={`actions ${styles.actions}`} aria-hidden="true">
+		{#if onrename}
+			<button
+				type="button"
+				class={`tile ${styles.tile}`}
+				disabled={locked}
+				title="Rename"
+				aria-label="Rename {name}"
+				onclick={startRename}
+			>
+				<Pencil size={16} aria-hidden="true" /><span class={styles.tileLabel}>Rename</span>
+			</button>
+		{/if}
 		{#if onunlink}
-			<div class="panel confirm" hidden={mode !== 'confirm'}>
-				<span class="glyph" aria-hidden="true"><TriangleAlert size={18} /></span>
-				<p class="message">
-					Unlink <strong>{name}</strong>?<span class="caption"
+			<button
+				type="button"
+				class={`tile tile-unlink ${styles.tile} ${styles.tileUnlink}`}
+				disabled={locked}
+				title="Unlink"
+				aria-label="Unlink {name}"
+				onclick={askUnlink}
+			>
+				<CloudOff size={16} aria-hidden="true" /><span class={styles.tileLabel}
+					>{armed ? 'Release' : 'Unlink'}</span
+				>
+			</button>
+		{/if}
+	</div>
+
+	<div class={`front ${styles.frontBase}`} class:active data-front>
+		{#if mode === 'confirm'}
+			<div class={`panel confirm ${styles.panel}`}>
+				<span class={`${styles.glyph} panel-glyph`} aria-hidden="true"
+					><TriangleAlert size={18} /></span
+				>
+				<p class={cx(styles.content, css({ fontSize: 'compact' }))}>
+					Unlink <strong>{name}</strong>?<span class={styles.caption}
 						>Notes stay here as a private workspace.</span
 					>
 				</p>
-				<div class="panel-actions">
+				<div class={`panel-actions ${hstack({ gap: 'xs', flexShrink: 0 })}`}>
 					<button
 						type="button"
-						class="ghost"
-						{@attach mode === 'confirm' && focusWhenMounted}
-						disabled={working}
+						class={panelBtn.neutral}
+						{@attach takeFocus}
+						disabled={working !== null}
 						aria-label="Keep {name} linked"
 						onclick={cancel}>Cancel</button
 					>
 					<button
 						type="button"
-						class="danger"
+						class={panelBtn.danger}
 						disabled={locked}
 						aria-label="Unlink {name} from this device"
-						onclick={() => void confirmUnlink()}>{working ? 'Unlinking…' : 'Unlink'}</button
+						onclick={() => void confirmUnlink()}
+						>{working === 'unlink' ? 'Unlinking…' : 'Unlink'}</button
 					>
 				</div>
 			</div>
-		{/if}
-		{#if onrename}
+		{:else if mode === 'rename'}
 			<form
-				class="panel"
-				hidden={mode !== 'rename'}
+				class={styles.panel}
 				onsubmit={(event) => {
 					event.preventDefault();
 					void saveRename();
 				}}
 			>
-				<span class="glyph" aria-hidden="true">{@render icon()}</span>
-				<span class="body">
+				<span class={styles.glyph} aria-hidden="true">{@render icon()}</span>
+				<span class={styles.content}>
 					<input
-						{@attach mode === 'rename' && renameField}
+						{@attach renameField}
 						bind:value={draft}
-						class="name-input"
+						class={nameFieldClass}
 						maxlength="60"
 						spellcheck="false"
-						disabled={working}
+						disabled={working !== null}
 						aria-label="Workspace name"
 					/>
-					<span class="caption">
-						{#if working}Saving…{:else}Enter saves · Esc cancels{/if}
+					<span class={styles.caption}>
+						{#if working === 'rename'}Saving…{:else}<span
+								class={css({ display: { base: 'none', sm: 'inline' } })}
+								>Enter saves · Esc cancels</span
+							><span class={css({ display: { base: 'inline', sm: 'none' } })}>{caption}</span>{/if}
 					</span>
 				</span>
-				<div class="panel-actions">
+				<div class={`panel-actions ${hstack({ gap: 'xs', flexShrink: 0 })}`}>
 					<button
 						type="button"
-						class="icon"
-						disabled={working}
+						class={styles.iconButton}
+						disabled={working !== null}
 						aria-label="Cancel renaming {name}"
 						onclick={cancel}><X size={16} aria-hidden="true" /></button
 					>
 					<button
 						type="submit"
-						class="icon accept"
+						class={cx(styles.iconButton, css({ color: 'scrapscache.success' }))}
 						disabled={locked || !draft.trim()}
 						aria-label="Save name"><Check size={16} aria-hidden="true" /></button
 					>
 				</div>
 			</form>
-		{/if}
-		<button
-			type="button"
-			class="select"
-			hidden={mode !== 'idle'}
-			disabled={locked}
-			aria-label={active ? `${name} is active` : `Switch to ${name}`}
-			onclick={onselect}
-		>
-			<span class="glyph" aria-hidden="true">{@render icon()}</span>
-			<span class="body">
-				<span class="name">{name}</span>
-				<span class="caption">{caption}</span>
-			</span>
-		</button>
-		<div class="tools" hidden={mode !== 'idle'}>
+		{:else}
 			<button
 				type="button"
-				class="icon"
+				class={styles.select}
 				disabled={locked}
-				title="Export notes"
-				aria-label="Export {name}"
-				onclick={(event) => {
-					event.stopPropagation();
-					onexport();
-				}}><Download size={16} aria-hidden="true" /></button
-			>
-			<button
-				type="button"
-				class="icon"
-				disabled={locked}
-				title={expanded ? 'Hide workspace options' : 'Show workspace options'}
-				aria-label={expanded ? `Collapse ${name}` : `Expand ${name}`}
-				aria-expanded={expanded}
-				onclick={(event) => {
-					event.stopPropagation();
-					onexpand();
+				aria-label={active ? `${name} is active` : `Switch to ${name}`}
+				onpointerdown={down}
+				onclick={() => {
+					if (swiped) {
+						swiped = false;
+						return;
+					}
+					if (swipeOpen) settle(false);
+					else onselect();
 				}}
-				><span class={['chevron', expanded && 'open']}
-					><ChevronDown size={16} aria-hidden="true" /></span
-				></button
 			>
-		</div>
+				<span class={styles.glyph} aria-hidden="true">{@render icon()}</span>
+				<span class={styles.content}>
+					<span class={cx(css({ display: 'block' }), truncate)}>{name}</span>
+					<span class={styles.caption}>{caption}</span>
+				</span>
+			</button>
+			<div class={`tools ${hstack({ gap: '3xs', flexShrink: 0 })}`} hidden={swipeOpen}>
+				<button
+					type="button"
+					class={styles.iconButton}
+					disabled={locked}
+					title="Export notes"
+					aria-label="Export {name}"
+					onclick={(event) => {
+						event.stopPropagation();
+						onexport();
+					}}><Download size={16} aria-hidden="true" /></button
+				>
+				<button
+					type="button"
+					class={styles.iconButton}
+					disabled={locked}
+					title={expanded ? 'Hide workspace options' : 'Show workspace options'}
+					aria-label={expanded ? `Collapse ${name}` : `Expand ${name}`}
+					aria-expanded={expanded}
+					onclick={(event) => {
+						event.stopPropagation();
+						onexpand();
+					}}
+				>
+					<span class={chevronClass}><ChevronDown size={16} aria-hidden="true" /></span>
+				</button>
+			</div>
+		{/if}
 	</div>
-	<div class="menu" hidden={!expanded || mode !== 'idle'}>
+
+	<div class={styles.menu} hidden={!expanded || mode !== 'idle'}>
 		{#if onrename}
 			<button
 				type="button"
-				class="manage-row"
+				class={styles.manageRow}
 				disabled={locked}
 				onclick={startRename}
 				aria-label="Rename {name}"
-				><Pencil size={16} aria-hidden="true" /><span
-					>Rename<small>Change this workspace’s name</small></span
-				></button
 			>
+				<Pencil size={16} aria-hidden="true" /><span
+					>Rename<small>Change this workspace’s name</small></span
+				>
+			</button>
 		{/if}
 		{@render actions?.()}
 		{#if onunlink}
 			<button
 				type="button"
-				class="manage-row danger-text"
+				class={cx(styles.manageRow, styles.manageRowDanger)}
 				disabled={locked}
 				onclick={askUnlink}
 				aria-label="Unlink {name}"
-				><CloudOff size={16} aria-hidden="true" /><span
-					>Unlink<small>Stop syncing on this device. Notes stay here.</small></span
-				></button
 			>
+				<CloudOff size={16} aria-hidden="true" /><span
+					>Unlink<small>Stop syncing on this device. Notes stay here.</small></span
+				>
+			</button>
 		{/if}
 		{@render danger?.()}
 	</div>
 </div>
-
-<style>
-	.row {
-		position: relative;
-		border-radius: 10px;
-		outline: none;
-	}
-	.row.active,
-	.row.open,
-	.row.editing {
-		background: var(--scrapscache-interactive-hover);
-	}
-	.row [hidden] {
-		display: none;
-	}
-	.front {
-		position: relative;
-		display: flex;
-		align-items: stretch;
-	}
-	.front.active::before {
-		content: '';
-		position: absolute;
-		top: 10px;
-		bottom: 10px;
-		left: 0;
-		width: 3px;
-		border-radius: 0 3px 3px 0;
-		background: var(--scrapscache-accent);
-	}
-	@media (hover: hover) {
-		.row:hover {
-			background: var(--scrapscache-interactive-hover);
-		}
-	}
-	.select,
-	.panel {
-		display: flex;
-		flex: 1;
-		align-items: center;
-		gap: 12px;
-		min-width: 0;
-		padding: 12px;
-		text-align: left;
-		font-size: 14px;
-	}
-	.glyph {
-		display: grid;
-		flex-shrink: 0;
-		place-items: center;
-		color: var(--scrapscache-text-muted);
-	}
-	.body {
-		min-width: 0;
-		flex: 1;
-	}
-	.name {
-		display: block;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-	.caption {
-		display: block;
-		margin-top: 2px;
-		color: var(--scrapscache-text-muted);
-		font-size: 12px;
-		font-weight: 400;
-	}
-	.name-input {
-		width: 100%;
-		padding: 1px 0;
-		border: 0;
-		border-bottom: 1px solid var(--scrapscache-accent);
-		background: transparent;
-		color: inherit;
-		font: inherit;
-		outline: none;
-	}
-	.panel-actions,
-	.tools {
-		display: flex;
-		align-items: center;
-		gap: 2px;
-		flex-shrink: 0;
-	}
-	.tools {
-		padding-right: 8px;
-	}
-	.icon {
-		display: grid;
-		width: 30px;
-		height: 30px;
-		place-items: center;
-		border-radius: 7px;
-		color: var(--scrapscache-text-muted);
-		-webkit-tap-highlight-color: transparent;
-	}
-	@media (hover: hover) and (pointer: fine) {
-		.icon:hover {
-			background: var(--scrapscache-interactive-hover);
-			color: var(--scrapscache-text);
-		}
-	}
-	.icon.accept {
-		color: var(--scrapscache-success);
-	}
-	.chevron {
-		display: grid;
-		transition: transform 160ms ease;
-	}
-	.chevron.open {
-		transform: rotate(180deg);
-	}
-	.menu {
-		display: grid;
-		gap: 2px;
-		padding: 4px 8px 8px;
-	}
-	.manage-row {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-		width: 100%;
-		border-radius: 8px;
-		padding: 10px 8px;
-		text-align: left;
-		font-size: 14px;
-	}
-	.message {
-		min-width: 0;
-		flex: 1;
-		font-size: 13px;
-	}
-	.panel.confirm {
-		background: var(--scrapscache-danger-subtle);
-		border-radius: 10px;
-	}
-	.panel.confirm .glyph {
-		color: var(--scrapscache-danger);
-	}
-	.ghost,
-	.danger {
-		padding: 7px 12px;
-		border-radius: 7px;
-		font-size: 13px;
-		white-space: nowrap;
-	}
-	.ghost:hover {
-		background: var(--scrapscache-interactive-hover);
-	}
-	.danger {
-		background: var(--scrapscache-danger);
-		color: var(--scrapscache-danger-foreground);
-		font-weight: 500;
-	}
-	.manage-row:hover {
-		background: color-mix(in srgb, var(--scrapscache-text) 6%, transparent);
-	}
-	.manage-row small {
-		display: block;
-		margin-top: 2px;
-		color: var(--scrapscache-text-muted);
-		font-size: 12px;
-		font-weight: 400;
-	}
-	.danger-text {
-		color: var(--scrapscache-danger);
-	}
-	button:disabled {
-		opacity: 0.55;
-	}
-</style>

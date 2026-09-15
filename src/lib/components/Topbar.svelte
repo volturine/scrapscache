@@ -1,4 +1,14 @@
 <script lang="ts">
+	import {
+		iconSizeSm as iconSm,
+		iconSizeMd as iconMd,
+		popover,
+		topbarStyles as styles,
+		topbarSyncTone as syncTone
+	} from '$panda/styles';
+	import { css, cx } from 'styled-system/css';
+	import { iconButton, input, menuItem } from 'styled-system/recipes';
+	import { hstack } from 'styled-system/patterns';
 	import { uiStore } from '$lib/stores/ui.svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { downloadJSON } from '$lib/utils';
@@ -47,11 +57,6 @@
 		[SyncStatus.Normal]: 'Sync settings',
 		[SyncStatus.Warning]: 'Sync settings, storage nearly full',
 		[SyncStatus.Danger]: 'Sync settings, sync needs attention'
-	};
-	const SYNC_STATUS_CLASS: Record<SyncStatus, string> = {
-		[SyncStatus.Normal]: '',
-		[SyncStatus.Warning]: 'text-[var(--scrapscache-warning)]',
-		[SyncStatus.Danger]: 'text-[var(--scrapscache-danger)]'
 	};
 
 	const { startNewNote, closeNote } = useEditorActions();
@@ -200,43 +205,74 @@
 			e.stopImmediatePropagation();
 		}
 	}
+	const clearButton = cx(
+		iconButton({ variant: 'ghost', size: 'xs' }),
+		css({
+			h: '1.5rem',
+			w: '1.5rem',
+			minH: 0,
+			flexShrink: 0,
+			appearance: 'none',
+			color: 'scrapscache.textMuted'
+		})
+	);
+	const menuItemClass = menuItem({ density: 'compact' });
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <header
-	class="relative z-20 flex h-[var(--app-topbar-height)] shrink-0 items-center gap-1 px-2 sm:gap-2 sm:px-3"
+	class={hstack({
+		h: 'var(--app-topbar-height)',
+		flexShrink: 0,
+		px: { base: 'sm', sm: 'md' },
+		gap: { base: '2xs', sm: 'sm' },
+		position: 'relative',
+		zIndex: 20
+	})}
 	onpointerdown={closeNote}
 >
 	<Tooltip content="Toggle sidebar">
 		<button
-			class="icon-btn h-10 w-10 p-2"
+			class={iconButton({ variant: 'ghost', size: 'standard' })}
 			title="Toggle sidebar"
 			onclick={() => uiStore.toggleSidebar()}
 			aria-label="Toggle sidebar"
 		>
-			<MenuIcon class="h-5 w-5" aria-hidden="true" />
+			<MenuIcon class={iconMd} aria-hidden="true" />
 		</button>
 	</Tooltip>
 
 	<div
-		class="flex h-10 min-h-10 max-h-10 min-w-0 flex-1 items-center gap-2 rounded-full border border-[var(--scrapscache-border)] bg-[var(--scrapscache-surface)] px-3"
+		class={hstack({
+			h: '2.5rem',
+			minH: '2.5rem',
+			maxH: '2.5rem',
+			minW: 0,
+			flex: '1',
+			rounded: 'pill',
+			borderWidth: 'hairline',
+			borderColor: 'scrapscache.border',
+			bg: 'scrapscache.surface',
+			px: 'md',
+			gap: 'sm'
+		})}
 	>
-		<Search class="h-4 w-4 shrink-0 text-[var(--scrapscache-text-muted)]" aria-hidden="true" />
+		<Search class={cx(iconSm, styles.searchIcon)} aria-hidden="true" />
 		<input
 			value={uiStore.searchInput}
 			oninput={(event) => uiStore.setSearchInput(event.currentTarget.value)}
 			type="text"
 			placeholder="Search"
-			class="h-full min-w-0 flex-1 appearance-none bg-transparent text-sm text-[var(--scrapscache-text)] focus:outline-none placeholder:text-[var(--scrapscache-text-muted)]"
+			class={cx(input({ variant: 'unstyled' }), styles.searchInput)}
 		/>
 		{#if uiStore.searchInput}
 			<button
 				type="button"
-				class="icon-btn h-6 w-6 min-h-0 shrink-0 appearance-none p-0 text-[var(--scrapscache-text-muted)]"
+				class={clearButton}
 				onclick={() => uiStore.clearSearch()}
 				aria-label="Clear search"
 			>
-				<X class="h-4 w-4" aria-hidden="true" />
+				<X class={iconSm} aria-hidden="true" />
 			</button>
 		{/if}
 	</div>
@@ -244,7 +280,7 @@
 	<Tooltip content={syncControlLabel}>
 		<button
 			type="button"
-			class="icon-btn h-10 w-10 p-2"
+			class={iconButton({ variant: 'ghost', size: 'standard' })}
 			title={syncControlLabel}
 			onclick={() => {
 				pairingCode = '';
@@ -257,13 +293,14 @@
 			     an svg root as its own user space, so the icon sat still there. -->
 			<span
 				class={[
-					'block h-5 w-5',
+					iconMd,
+					styles.syncIcon,
 					(notesStore.syncing || importingBackup) && 'scrapscache-sync-icon-active'
 				]}
 				data-scrapscache-sync-spinner
 			>
 				<Cloud
-					class={['h-5 w-5', SYNC_STATUS_CLASS[syncStatus]]}
+					class={[iconMd, syncTone[syncStatus]]}
 					data-scrapscache-sync-icon
 					aria-hidden="true"
 				/>
@@ -273,15 +310,15 @@
 
 	<Tooltip content={uiStore.layout === 'grid' ? 'List view' : 'Grid view'}>
 		<button
-			class="icon-btn h-10 w-10 p-2"
+			class={iconButton({ variant: 'ghost', size: 'standard' })}
 			title="Toggle layout"
 			onclick={() => uiStore.toggleLayout()}
 			aria-label="Toggle layout"
 		>
 			{#if uiStore.layout === 'grid'}
-				<List class="h-5 w-5" aria-hidden="true" />
+				<List class={iconMd} aria-hidden="true" />
 			{:else}
-				<LayoutGrid class="h-5 w-5" aria-hidden="true" />
+				<LayoutGrid class={iconMd} aria-hidden="true" />
 			{/if}
 		</button>
 	</Tooltip>
@@ -292,47 +329,46 @@
 		closeOnSelect={false}
 	>
 		<Tooltip content="Settings">
-			<Menu.Trigger class="icon-btn h-10 w-10 p-2" title="Settings" aria-label="Settings">
-				<Settings class="h-5 w-5" aria-hidden="true" />
+			<Menu.Trigger
+				class={iconButton({ variant: 'ghost', size: 'standard' })}
+				title="Settings"
+				aria-label="Settings"
+			>
+				<Settings class={iconMd} aria-hidden="true" />
 			</Menu.Trigger>
 		</Tooltip>
-		<Menu.Positioner class="z-30">
-			<Menu.Content class="scrapscache-popover w-64 overflow-hidden pt-1">
+		<Menu.Positioner class={styles.menuPositioner}>
+			<Menu.Content class={cx(popover, styles.menuPopover)}>
 				<Menu.Item
 					value="theme"
 					closeOnSelect={false}
 					onSelect={() => uiStore.toggleDark()}
-					class="flex h-8 w-full cursor-pointer items-center gap-2 px-3 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/5 dark:hover:bg-white/10"
+					class={menuItemClass}
 				>
 					{#if uiStore.effectiveDark}
-						<Sun class="h-4 w-4 shrink-0" aria-hidden="true" />
+						<Sun class={iconSm} aria-hidden="true" />
 						Light mode
 					{:else}
-						<Moon class="h-4 w-4 shrink-0" aria-hidden="true" />
+						<Moon class={iconSm} aria-hidden="true" />
 						Dark mode
 					{/if}
 				</Menu.Item>
-				<Menu.Item
-					value="export"
-					disabled={importingBackup}
-					onSelect={startBackupExport}
-					class="flex h-8 w-full cursor-pointer items-center gap-2 px-3 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/5 dark:hover:bg-white/10"
-				>
-					<Download class="h-4 w-4 shrink-0" aria-hidden="true" />
+				<Menu.Item value="export" onSelect={startBackupExport} class={menuItemClass}>
+					<Download class={iconSm} aria-hidden="true" />
 					Export backup
 				</Menu.Item>
 				<Menu.Item
 					value="import"
 					disabled={importingBackup}
 					onSelect={startBackupImport}
-					class="flex h-8 w-full cursor-pointer items-center gap-2 px-3 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/5 dark:hover:bg-white/10"
+					class={menuItemClass}
 				>
-					<Upload class="h-4 w-4 shrink-0" aria-hidden="true" />
+					<Upload class={iconSm} aria-hidden="true" />
 					Import backup
 				</Menu.Item>
 				<PwaInstallSettings />
 				<ReminderNotificationSettings />
-				<Menu.Separator class="border-t border-[var(--scrapscache-border)]" />
+				<Menu.Separator class={styles.menuSeparator} />
 				<Menu.Item value="issue">
 					{#snippet asChild(props)}
 						<a
@@ -340,38 +376,30 @@
 							href="https://github.com/volturine/scrapscache/issues/new/choose"
 							target="_blank"
 							rel="noreferrer"
-							class="flex h-8 w-full items-center gap-2 px-3 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/5 dark:hover:bg-white/10"
+							class={menuItemClass}
 						>
-							<ExternalLink class="h-4 w-4 shrink-0" aria-hidden="true" />
+							<ExternalLink class={iconSm} aria-hidden="true" />
 							Report an issue
 						</a>
 					{/snippet}
 				</Menu.Item>
 				<Menu.Item value="privacy">
 					{#snippet asChild(props)}
-						<a
-							{...props()}
-							href="/privacy"
-							class="flex h-8 w-full items-center gap-2 px-3 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/5 dark:hover:bg-white/10"
-						>
-							<Shield class="h-4 w-4 shrink-0" aria-hidden="true" />
+						<a {...props()} href="/privacy" class={menuItemClass}>
+							<Shield class={iconSm} aria-hidden="true" />
 							Privacy policy
 						</a>
 					{/snippet}
 				</Menu.Item>
 				<Menu.Item value="terms">
 					{#snippet asChild(props)}
-						<a
-							{...props()}
-							href="/terms"
-							class="flex h-8 w-full items-center gap-2 px-3 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/5 dark:hover:bg-white/10"
-						>
-							<FileText class="h-4 w-4 shrink-0" aria-hidden="true" />
+						<a {...props()} href="/terms" class={menuItemClass}>
+							<FileText class={iconSm} aria-hidden="true" />
 							Terms of service
 						</a>
 					{/snippet}
 				</Menu.Item>
-				{#if backupImportError}<p class="px-3 pb-2 text-xs text-red-600" role="alert">
+				{#if backupImportError}<p class={styles.menuAlert} role="alert">
 						{backupImportError}
 					</p>{/if}
 			</Menu.Content>

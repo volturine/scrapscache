@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { reminderPickerStyles as styles } from '$panda/styles';
 	import { createSubscriber, MediaQuery } from 'svelte/reactivity';
 	import { CalendarDate } from '@internationalized/date';
 	import { DatePicker, type DatePickerValueChangeDetails } from '@ark-ui/svelte/date-picker';
@@ -9,6 +10,9 @@
 	import { ensurePushSubscription } from '$lib/reminderWake';
 	import { formatReminderCountdown } from '$lib/utils';
 	import { PHONE_MEDIA } from '$lib/appViewport';
+	import { css, cx } from 'styled-system/css';
+	import { badge, button, dialog, iconButton } from 'styled-system/recipes';
+	import { hstack, flex } from 'styled-system/patterns';
 
 	let {
 		reminder,
@@ -162,111 +166,159 @@
 	function clear() {
 		apply(null);
 	}
+
+	const d = dialog({ size: 'sm' });
+
+	const statusBoxClass = $derived(
+		css({
+			borderWidth: 'hairline',
+			borderColor: 'currentColor',
+			...(uiStatus === 'active'
+				? { bg: 'scrapscache.successSubtle', color: 'scrapscache.success' }
+				: uiStatus === 'unsaved'
+					? { bg: 'scrapscache.warningSubtle', color: 'scrapscache.warning' }
+					: { bg: 'scrapscache.accentSubtle', color: 'scrapscache.accent' })
+		})
+	);
+	const badgeLabel = $derived(
+		uiStatus === 'active' ? 'Active' : uiStatus === 'unsaved' ? 'Edit' : 'New'
+	);
+
+	const calNavBtn = cx(
+		iconButton({ variant: 'ghost', size: 'compact' }),
+		css({ flexShrink: 0, color: 'inherit' })
+	);
 </script>
 
-<div class="scrapscache-dialog w-80 p-5">
-	<div class="mb-3 text-base font-medium text-[var(--scrapscache-text)]">Reminder</div>
+<div class={cx(d.panel, css({ w: '20rem', p: 'xl', gap: 0 }))}>
+	<div class={cx(d.title, css({ mb: 'md', textStyle: 'subtitle' }))}>Reminder</div>
 
-	<div
-		class="mb-4 rounded-[var(--scrapscache-radius-lg)] px-3 py-2.5 {uiStatus === 'active'
-			? 'scrapscache-status-success'
-			: uiStatus === 'unsaved'
-				? 'scrapscache-status-warning'
-				: 'scrapscache-status-accent'}"
-	>
-		<div class="flex items-center justify-between gap-2">
+	<div class={cx(statusBoxClass, css({ mb: 'lg', rounded: 'card', px: 'md', py: 'list' }))}>
+		<div class={hstack({ justify: 'space-between', gap: 'sm' })}>
 			<div
-				class="min-w-0 text-[10px] font-semibold uppercase tracking-wide text-[var(--scrapscache-text-muted)]"
+				class={css({
+					minW: 0,
+					textStyle: 'micro',
+					textTransform: 'uppercase',
+					letterSpacing: 'status',
+					color: 'scrapscache.textMuted'
+				})}
 			>
 				Will remind you
 			</div>
-			{#if uiStatus === 'active'}
-				<span
-					class="inline-flex min-w-[4.25rem] shrink-0 justify-center rounded-full bg-[var(--scrapscache-success)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--scrapscache-success-foreground)]"
-					>Active</span
-				>
-			{:else if uiStatus === 'unsaved'}
-				<span
-					class="inline-flex min-w-[4.25rem] shrink-0 justify-center rounded-full bg-[var(--scrapscache-warning)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--scrapscache-bg)]"
-					>Edit</span
-				>
-			{:else}
-				<span
-					class="inline-flex min-w-[4.25rem] shrink-0 justify-center rounded-full bg-[var(--scrapscache-accent)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--scrapscache-accent-foreground)]"
-					>New</span
-				>
-			{/if}
+			<span
+				class={cx(
+					badge({ variant: 'subtle', size: 'sm' }),
+					css({
+						minW: '4.25rem',
+						flexShrink: 0,
+						rounded: 'pill',
+						px: 'sm',
+						py: '3xs',
+						fontWeight: 'strong',
+						textTransform: 'uppercase',
+						letterSpacing: 'status'
+					}),
+					uiStatus === 'active'
+						? css({ bg: 'scrapscache.success', color: 'scrapscache.successForeground' })
+						: uiStatus === 'unsaved'
+							? css({ bg: 'scrapscache.warning', color: 'scrapscache.bg' })
+							: css({ bg: 'scrapscache.accent', color: 'scrapscache.accentForeground' })
+				)}>{badgeLabel}</span
+			>
 		</div>
 		<div
-			class="mt-1.5 flex items-center gap-2 text-sm font-semibold text-[var(--scrapscache-text)]"
+			class={hstack({
+				gap: 'sm',
+				mt: 'xs',
+				textStyle: 'bodyStrong'
+			})}
 		>
-			<AlarmClock class="h-4 w-4 shrink-0" aria-hidden="true" />
-			<span class="min-w-0 truncate">{remainingLabel}</span>
+			<AlarmClock class={css({ w: '1rem', h: '1rem', flexShrink: 0 })} aria-hidden="true" />
+			<span class={styles.ellipsis}>{remainingLabel}</span>
 		</div>
-		<div class="mt-1 text-[11px] leading-snug text-[var(--scrapscache-text-muted)]">
+		<div class={css({ mt: '2xs', textStyle: 'caption' })}>
 			Closed-app alerts need Sync on this device.
 		</div>
 	</div>
 
-	<div class="mb-4 border-t border-[var(--scrapscache-border)] pt-4">
+	<div
+		class={css({
+			mb: 'lg',
+			borderTopWidth: 'hairline',
+			borderColor: 'scrapscache.border',
+			pt: 'lg'
+		})}
+	>
 		<div
-			class="mb-3 text-xs font-medium uppercase tracking-wide text-[var(--scrapscache-text-muted)]"
+			class={css({
+				mb: 'md',
+				fontSize: 'label',
+				fontWeight: 'interactive',
+				textTransform: 'uppercase',
+				letterSpacing: 'status',
+				color: 'scrapscache.textMuted'
+			})}
 		>
 			Pick date & time
 		</div>
 
-		<div class="schedule-panel">
+		<div data-schedule-panel>
 			{#if isMobile}
-				<div class="mb-3 flex items-center">
+				<div class={hstack({ mb: 'md' })}>
 					<button
 						type="button"
-						class="icon-btn h-8 w-8 shrink-0 p-2"
+						class={calNavBtn}
 						onclick={() => shiftDay(-1)}
 						aria-label="Previous day"
 					>
-						<ChevronLeft class="h-5 w-5" aria-hidden="true" />
+						<ChevronLeft size={20} aria-hidden="true" />
 					</button>
 					<button
 						type="button"
-						class="mx-1 flex min-w-0 flex-1 items-center justify-center rounded-lg px-2 py-1.5 text-sm font-medium text-[var(--scrapscache-text)] {monthYearOpen
-							? 'bg-[var(--scrapscache-bg)]'
-							: ''}"
+						class={cx(
+							button({ variant: 'ghost', size: 'sm' }),
+							css({
+								mx: '2xs',
+								minW: 0,
+								flex: '1',
+								rounded: 'card',
+								px: 'sm',
+								py: 'xs',
+								textStyle: 'button',
+								color: 'scrapscache.text'
+							}),
+							monthYearOpen ? css({ bg: 'scrapscache.bg' }) : undefined
+						)}
 						onclick={() => (monthYearOpen = !monthYearOpen)}
 						aria-label="Choose date"
 						aria-expanded={monthYearOpen}
 					>
-						<span class="truncate">{dateLabel}</span>
+						<span class={styles.ellipsis}>{dateLabel}</span>
 					</button>
-					<button
-						type="button"
-						class="icon-btn h-8 w-8 shrink-0 p-2"
-						onclick={() => shiftDay(1)}
-						aria-label="Next day"
-					>
-						<ChevronRight class="h-5 w-5" aria-hidden="true" />
+					<button type="button" class={calNavBtn} onclick={() => shiftDay(1)} aria-label="Next day">
+						<ChevronRight size={20} aria-hidden="true" />
 					</button>
 				</div>
 
 				{#if monthYearOpen}
-					<div
-						class="flex justify-center gap-2 rounded-xl bg-black/[0.03] px-2 py-1 dark:bg-white/[0.04]"
-					>
+					<div class={cx(hstack({ justify: 'center', gap: 'sm' }), styles.wheelDeck)}>
 						<WheelPicker
-							class="w-12"
+							class={css({ w: '3rem' })}
 							items={dayItems}
 							value={selectedDay}
 							onChange={(day) => setDateParts({ day })}
 							ariaLabel="Day"
 						/>
 						<WheelPicker
-							class="w-[7.75rem]"
+							class={css({ w: '7.75rem' })}
 							items={MONTH_ITEMS}
 							value={selectedMonth}
 							onChange={(month) => setDateParts({ month })}
 							ariaLabel="Month"
 						/>
 						<WheelPicker
-							class="w-[4.5rem]"
+							class={css({ w: '4.5rem' })}
 							items={yearItems}
 							value={selectedYear}
 							onChange={(year) => setDateParts({ year })}
@@ -274,24 +326,17 @@
 						/>
 					</div>
 				{:else}
-					<div
-						class="flex justify-center gap-1 rounded-xl bg-black/[0.03] px-2 py-1 dark:bg-white/[0.04]"
-					>
+					<div class={cx(hstack({ justify: 'center', gap: '2xs' }), styles.wheelDeck)}>
 						<WheelPicker
-							class="w-16"
+							class={styles.timeWheel}
 							items={HOUR_ITEMS}
 							value={hours24}
 							onChange={setHour}
 							ariaLabel="Hour"
 						/>
-						<div
-							class="flex w-3 shrink-0 items-center justify-center text-xl font-semibold text-[var(--scrapscache-text)]"
-							aria-hidden="true"
-						>
-							:
-						</div>
+						<div class={styles.colon} aria-hidden="true">:</div>
 						<WheelPicker
-							class="w-16"
+							class={styles.timeWheel}
 							items={MINUTE_ITEMS}
 							value={minutes}
 							onChange={setMinute}
@@ -300,9 +345,7 @@
 					</div>
 				{/if}
 			{:else if monthYearOpen}
-				<div
-					class="h-full overflow-hidden rounded-xl bg-black/[0.03] px-2 py-2 dark:bg-white/[0.04]"
-				>
+				<div class={cx(styles.wheelDeck, css({ h: 'full', overflow: 'hidden', py: 'sm' }))}>
 					<DatePicker.Root
 						inline
 						startOfWeek={1}
@@ -314,52 +357,68 @@
 					</DatePicker.Root>
 				</div>
 			{:else}
-				<div class="flex h-full flex-col">
-					<div class="mb-3 flex items-center">
+				<div class={flex({ h: 'full', direction: 'column' })}>
+					<div class={hstack({ mb: 'md' })}>
 						<button
 							type="button"
-							class="icon-btn h-8 w-8 shrink-0 p-2"
+							class={calNavBtn}
 							onclick={() => shiftDay(-1)}
 							aria-label="Previous day"
 						>
-							<ChevronLeft class="h-5 w-5" aria-hidden="true" />
+							<ChevronLeft size={20} aria-hidden="true" />
 						</button>
 						<button
 							type="button"
-							class="mx-1 flex min-w-0 flex-1 items-center justify-center rounded-lg px-2 py-1.5 text-sm font-medium text-[var(--scrapscache-text)]"
+							class={cx(
+								button({ variant: 'ghost', size: 'sm' }),
+								css({
+									mx: '2xs',
+									minW: 0,
+									flex: '1',
+									rounded: 'card',
+									px: 'sm',
+									py: 'xs',
+									textStyle: 'button',
+									color: 'scrapscache.text'
+								})
+							)}
 							onclick={() => (monthYearOpen = true)}
 							aria-label="Choose date"
 							aria-expanded="false"
 						>
-							<span class="truncate">{dateLabel}</span>
+							<span class={styles.ellipsis}>{dateLabel}</span>
 						</button>
 						<button
 							type="button"
-							class="icon-btn h-8 w-8 shrink-0 p-2"
+							class={calNavBtn}
 							onclick={() => shiftDay(1)}
 							aria-label="Next day"
 						>
-							<ChevronRight class="h-5 w-5" aria-hidden="true" />
+							<ChevronRight size={20} aria-hidden="true" />
 						</button>
 					</div>
 					<div
-						class="flex min-h-0 flex-1 items-center justify-center gap-1 rounded-xl bg-black/[0.03] px-2 py-1 dark:bg-white/[0.04]"
+						class={cx(
+							flex({
+								minH: 0,
+								flex: '1',
+								align: 'center',
+								justify: 'center',
+								gap: '2xs'
+							}),
+							styles.wheelDeck
+						)}
 					>
 						<WheelPicker
-							class="w-16"
+							class={styles.timeWheel}
 							items={HOUR_ITEMS}
 							value={hours24}
 							onChange={setHour}
 							ariaLabel="Hour"
 						/>
-						<div
-							class="flex w-3 shrink-0 items-center justify-center text-xl font-semibold text-[var(--scrapscache-text)]"
-							aria-hidden="true"
-						>
-							:
-						</div>
+						<div class={styles.colon} aria-hidden="true">:</div>
 						<WheelPicker
-							class="w-16"
+							class={styles.timeWheel}
 							items={MINUTE_ITEMS}
 							value={minutes}
 							onChange={setMinute}
@@ -371,12 +430,17 @@
 		</div>
 	</div>
 
-	<div class="flex items-center gap-2 border-t border-[var(--scrapscache-border)] pt-4">
+	<div
+		class={cx(
+			hstack(),
+			css({ gap: 'sm', borderTopWidth: 'hairline', borderColor: 'scrapscache.border', pt: 'lg' })
+		)}
+	>
 		{#if showRemove}
 			<button
 				type="button"
 				onclick={clear}
-				class="scrapscache-button scrapscache-button-quiet shrink-0 px-3 py-2.5 text-sm font-medium"
+				class={cx(button({ variant: 'quiet', size: 'md' }), css({ flexShrink: 0 }))}
 			>
 				Remove
 			</button>
@@ -384,7 +448,7 @@
 		<button
 			type="button"
 			onclick={onClose}
-			class="scrapscache-button scrapscache-button-secondary min-w-[5.5rem] px-4 py-2.5 text-sm font-medium"
+			class={cx(button({ variant: 'secondary', size: 'md' }), css({ minW: '5.5rem' }))}
 		>
 			Cancel
 		</button>
@@ -392,21 +456,10 @@
 			<button
 				type="button"
 				onclick={save}
-				class="scrapscache-button scrapscache-button-primary ml-auto min-w-[5.5rem] px-4 py-2.5 text-sm font-medium"
+				class={cx(button({ variant: 'primary', size: 'md' }), css({ minW: '5.5rem', ml: 'auto' }))}
 			>
 				Save
 			</button>
 		{/if}
 	</div>
 </div>
-
-<style>
-	.schedule-panel {
-		height: 17.25rem;
-	}
-	@media (max-width: 767px) {
-		.schedule-panel {
-			height: auto;
-		}
-	}
-</style>

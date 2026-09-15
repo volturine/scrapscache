@@ -15,8 +15,9 @@ import {
 	type StoredProfile
 } from '$lib/profiles';
 import { identityFromSyncKey, randomOpaqueId } from '$lib/syncPairing';
-import { markSyncOutbox } from '$lib/db/idb';
+import { getSyncOutboxKeys, markSyncOutbox } from '$lib/db/idb';
 import { unregisterReminderDevice } from '$lib/reminderWake';
+import { rotateSyncKey, type RotationOutcome, type RotationStep } from '$lib/syncKeyRotation';
 
 type Outcome = { success: boolean; error?: string };
 
@@ -114,6 +115,118 @@ export class ProfileCoordinator {
 		return result;
 	}
 
+	/**
+	 * Move the active workspace onto a fresh sync key, so a key held by a device
+	 * you no longer control stops opening the account. The workspace and its notes
+	 * stay where they are; only the key and the relay account behind it change.
+	 * The ordering that makes this survivable lives in syncKeyRotation.ts; this
+	 * only supplies the capabilities and holds the floor while they run.
+	 */
+	async replaceSyncKey(options: {
+		exportBackup: () => Promise<void>;
+		/** Rotation registers a new account, which the relay may gate on Turnstile. */
+		turnstileToken?: string;
+		force?: boolean;
+		onStep?: (step: RotationStep) => void;
+	}): Promise<RotationOutcome> {
+		const blocked = this.guard();
+		if (blocked) return { ok: false, step: 'preflight', error: blocked, replacementRemoved: false };
+		const previous = syncStore.activeProfile;
+		if (!previous || isLocalWorkspace(previous) || !syncStore.account) {
+			return {
+				ok: false,
+				step: 'preflight',
+				error: 'No synced workspace is active',
+				replacementRemoved: false
+			};
+		}
+		const previousAccount = identityFromSyncKey(previous.syncKey);
+		let replacement: StoredProfile | null = null;
+
+		this.switching = true;
+		try {
+			return await rotateSyncKey(
+				{
+					// Outside the web lock deliberately: a sync takes the same
+					// non-reentrant lock, so checking currency has to happen before the
+					// rest of the sequence claims it.
+					readiness: async () => ({
+						downloadsDrained: await notesStore.syncWithCloudManual(),
+						pendingUploads: (await getSyncOutboxKeys(previous.id).catch(() => [])).length
+					}),
+					exportBackup: options.exportBackup,
+					createReplacement: () =>
+						this.exclusive(async () => {
+							await notesStore.waitForPendingProfileWrites();
+							const result = await syncStore.replaceKey(previous, options.turnstileToken);
+							if (!result.success || !result.profile) {
+								throw new Error(result.error ?? 'Could not create the replacement sync key');
+							}
+							replacement = result.profile;
+							await this.activate(result.profile);
+						}),
+					uploadAll: async () => {
+						if (!(await notesStore.syncWithCloudManual())) {
+							throw new Error(
+								syncStore.lastError ??
+									notesStore.lastPersistError ??
+									'The replacement account did not finish syncing'
+							);
+						}
+					},
+					// Both counts are read after the upload: what this device believes it
+					// committed, against what the relay says it is holding.
+					countLocalRecords: () => syncStore.syncedRecordCount(),
+					countRemoteRecords: async () => {
+						// Populated by the upload above from what the relay reported. Absent
+						// means the sync never told us what the account holds, and a
+						// rotation that cannot check is one that must not delete.
+						const usage = syncStore.usage;
+						if (!usage) {
+							throw new Error('The relay did not report what the new account holds');
+						}
+						return usage.envelopeCount;
+					},
+					discardReplacement: async () => {
+						const abandoned = replacement;
+						if (!abandoned) return;
+						const abandonedAccount = identityFromSyncKey(abandoned.syncKey);
+						// The previous key goes back first: it is the only one that opens the
+						// complete account, so it must not depend on the relay answering.
+						await this.exclusive(async () => {
+							await notesStore.waitForPendingProfileWrites();
+							await syncStore.replaceKeyringEntry(previous);
+							await this.activate(previous);
+							await syncStore.clearAccountControlPlane(abandonedAccount.accountId, previous.id);
+						});
+						if (!(await syncStore.deleteAccountFor(abandonedAccount))) {
+							throw new Error('The replacement account could not be deleted');
+						}
+					},
+					discardPrevious: async () => {
+						if (!(await syncStore.deleteAccountFor(previousAccount))) {
+							throw new Error('The previous account could not be deleted');
+						}
+						await syncStore
+							.clearAccountControlPlane(previousAccount.accountId, previous.id)
+							.catch(() => undefined);
+						void unregisterReminderDevice(previousAccount).catch(() => undefined);
+					}
+				},
+				{ force: options.force, onStep: options.onStep }
+			);
+		} catch (err) {
+			return {
+				ok: false,
+				step: 'preflight',
+				error: err instanceof Error ? err.message : 'Could not replace the sync key',
+				replacementRemoved: false
+			};
+		} finally {
+			this.switching = false;
+		}
+	}
+
 	/** Publish a synced workspace as the newest cloud version. */
 	async forceResync(turnstileToken?: string, profileId?: string | null): Promise<Outcome> {
 		const blocked = this.guard();
@@ -161,7 +274,9 @@ export class ProfileCoordinator {
 				if (!result.success) return result;
 			} else {
 				await syncStore.unlinkProfile(profile);
-				void unregisterReminderDevice(identityFromSyncKey(profile.syncKey));
+				// Best effort: an unreachable relay here must not surface as an
+				// unhandled rejection.
+				void unregisterReminderDevice(identityFromSyncKey(profile.syncKey)).catch(() => undefined);
 			}
 			if (syncStore.activeId === profileId) await notesStore.reloadForProfile();
 			return { success: true };
@@ -186,7 +301,8 @@ export class ProfileCoordinator {
 			clearNotesMirror(profileId);
 			clearBoardsMirror(profileId);
 			clearFiredReminderMirror(profileId);
-			if (profile.syncKey) void unregisterReminderDevice(identityFromSyncKey(profile.syncKey));
+			if (profile.syncKey)
+				void unregisterReminderDevice(identityFromSyncKey(profile.syncKey)).catch(() => undefined);
 			return { success: true };
 		});
 	}

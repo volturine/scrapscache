@@ -176,7 +176,11 @@ describe('client sync against the sqlite relay', () => {
 		const oldSlot = requests
 			.flatMap((request) => request.envelopes)
 			.find((envelope) => {
-				const payload = decryptSyncPayload(identity.syncKey, envelope.ciphertext) as {
+				const payload = decryptSyncPayload(
+					identity.syncKey,
+					envelope.ciphertext,
+					envelope.slot
+				) as {
 					kind?: string;
 					value?: { id?: string };
 				};
@@ -208,7 +212,11 @@ describe('client sync against the sqlite relay', () => {
 				const page = await relay.sync(identity.accountId, 0, [], [], 50);
 				const hasNew = page.envelopes.some((envelope) => {
 					try {
-						const payload = decryptSyncPayload(identity.syncKey, envelope.ciphertext) as {
+						const payload = decryptSyncPayload(
+							identity.syncKey,
+							envelope.ciphertext,
+							envelope.slot
+						) as {
 							kind?: string;
 							value?: { id?: string };
 						};
@@ -228,7 +236,11 @@ describe('client sync against the sqlite relay', () => {
 			);
 			if (
 				body.envelopes.some((envelope) => {
-					const payload = decryptSyncPayload(identity.syncKey, envelope.ciphertext) as {
+					const payload = decryptSyncPayload(
+						identity.syncKey,
+						envelope.ciphertext,
+						envelope.slot
+					) as {
 						kind?: string;
 						value?: { id?: string };
 					};

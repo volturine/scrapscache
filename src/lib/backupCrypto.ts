@@ -6,6 +6,11 @@ const decoder = new TextDecoder();
 const FORMAT = 'scraps-cache-encrypted-backup';
 const FORMAT_VERSION = 1;
 const DEFAULT_CHUNK_BYTES = 1024 * 1024;
+/** Accepted floor for a backup's stored KDF parameters. Below current guidance so
+ * older exports keep opening, far enough above the absurd range that a tampered
+ * header cannot downgrade an import to a KDF the passphrase cannot carry. */
+const MIN_MEMORY_KIB = 8 * 1024;
+const MIN_ITERATIONS = 2;
 
 export type BackupKdf = {
 	name: 'argon2id';
@@ -62,10 +67,10 @@ function validateKdf(kdf: BackupKdf): void {
 	}
 	if (
 		!Number.isInteger(kdf.memoryKiB) ||
-		kdf.memoryKiB < 8 ||
+		kdf.memoryKiB < MIN_MEMORY_KIB ||
 		kdf.memoryKiB > 262_144 ||
 		!Number.isInteger(kdf.iterations) ||
-		kdf.iterations < 1 ||
+		kdf.iterations < MIN_ITERATIONS ||
 		kdf.iterations > 10 ||
 		!Number.isInteger(kdf.parallelism) ||
 		kdf.parallelism < 1 ||

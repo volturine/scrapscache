@@ -7,7 +7,7 @@ const env = vi.hoisted(() => ({
 vi.mock('$env/dynamic/private', () => ({ env: env.private }));
 vi.mock('$env/dynamic/public', () => ({ env: env.public }));
 
-import { verifyTurnstile } from './turnstile';
+import { turnstileChallenge, verifyTurnstile } from './turnstile';
 
 const fetchMock = vi.fn();
 
@@ -17,7 +17,9 @@ function siteverify(body: unknown, status = 200) {
 
 describe('verifyTurnstile', () => {
 	beforeEach(() => {
-		env.public.PUBLIC_TURNSTILE_SITEKEY = 'sitekey';
+		env.public.PUBLIC_TURNSTILE_ORIGIN = 'https://verify.scrapscache.com';
+		env.private.TURNSTILE_SITEKEY = 'sitekey';
+		env.private.SCRAPSCACHE_ORIGIN = 'https://scrapscache.com';
 		env.private.TURNSTILE_SECRET = 'secret';
 		env.private.TURNSTILE_HOSTNAMES = 'scrapscache.com, dev.scrapscache.com';
 		fetchMock.mockReset();
@@ -31,22 +33,25 @@ describe('verifyTurnstile', () => {
 	});
 
 	it('is disabled only when every setting is unset', async () => {
-		delete env.public.PUBLIC_TURNSTILE_SITEKEY;
+		delete env.public.PUBLIC_TURNSTILE_ORIGIN;
+		delete env.private.TURNSTILE_SITEKEY;
 		delete env.private.TURNSTILE_SECRET;
 		delete env.private.TURNSTILE_HOSTNAMES;
 		expect(await verifyTurnstile(undefined, 'register', '203.0.113.1')).toBe('disabled');
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
-	it.each(['PUBLIC_TURNSTILE_SITEKEY', 'TURNSTILE_SECRET', 'TURNSTILE_HOSTNAMES'])(
-		'fails closed when %s is missing',
-		async (missing) => {
-			delete env.public[missing];
-			delete env.private[missing];
-			expect(await verifyTurnstile('token', 'register', '203.0.113.1')).toBe('misconfigured');
-			expect(fetchMock).not.toHaveBeenCalled();
-		}
-	);
+	it.each([
+		'PUBLIC_TURNSTILE_ORIGIN',
+		'TURNSTILE_SITEKEY',
+		'TURNSTILE_SECRET',
+		'TURNSTILE_HOSTNAMES'
+	])('fails closed when %s is missing', async (missing) => {
+		delete env.public[missing];
+		delete env.private[missing];
+		expect(await verifyTurnstile('token', 'register', '203.0.113.1')).toBe('misconfigured');
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
 
 	it.each([undefined, '', 42, 'x'.repeat(2049)])(
 		'rejects a missing or malformed token without calling siteverify',
@@ -91,5 +96,51 @@ describe('verifyTurnstile', () => {
 		expect(await verifyTurnstile('token', 'register', '203.0.113.1')).toBe('rejected');
 		fetchMock.mockRejectedValueOnce(new Error('network down'));
 		expect(await verifyTurnstile('token', 'register', '203.0.113.1')).toBe('rejected');
+	});
+
+	it('fails closed when the challenge would run on the app origin itself', async () => {
+		// Turnstile's script would then share an origin with the sync keys.
+		env.public.PUBLIC_TURNSTILE_ORIGIN = 'https://scrapscache.com';
+		expect(await verifyTurnstile('token', 'register', '203.0.113.1')).toBe('misconfigured');
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+});
+
+describe('turnstileChallenge', () => {
+	afterEach(() => {
+		for (const key of Object.keys(env.private)) delete env.private[key];
+		for (const key of Object.keys(env.public)) delete env.public[key];
+	});
+
+	function configure(origin: string, appOrigin = 'https://scrapscache.com') {
+		env.public.PUBLIC_TURNSTILE_ORIGIN = origin;
+		env.private.TURNSTILE_SITEKEY = 'sitekey';
+		env.private.SCRAPSCACHE_ORIGIN = appOrigin;
+	}
+
+	it('describes a challenge on its own origin', () => {
+		configure('https://verify.scrapscache.com/');
+		expect(turnstileChallenge()).toEqual({
+			origin: 'https://verify.scrapscache.com',
+			sitekey: 'sitekey',
+			appOrigin: 'https://scrapscache.com'
+		});
+	});
+
+	it('refuses to place the challenge on the app origin, whatever the letter case', () => {
+		configure('https://ScrapsCache.com');
+		expect(turnstileChallenge()).toBeNull();
+	});
+
+	it('refuses an origin that carries a path or is not an origin at all', () => {
+		configure('https://verify.scrapscache.com/turnstile');
+		expect(turnstileChallenge()).toBeNull();
+		configure('javascript:alert(1)');
+		expect(turnstileChallenge()).toBeNull();
+	});
+
+	it('treats localhost and 127.0.0.1 as the separate origins they are', () => {
+		configure('http://127.0.0.1:5173', 'http://localhost:5173');
+		expect(turnstileChallenge()?.origin).toBe('http://127.0.0.1:5173');
 	});
 });

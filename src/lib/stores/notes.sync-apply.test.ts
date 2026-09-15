@@ -182,10 +182,14 @@ describe('notes store sync apply', () => {
 								seq: 1,
 								id: 'remote-id',
 								slot: 'a'.repeat(64),
-								ciphertext: encryptSyncPayload(account.syncKey, {
-									kind: 'note',
-									value: pulled
-								})
+								ciphertext: encryptSyncPayload(
+									account.syncKey,
+									{
+										kind: 'note',
+										value: pulled
+									},
+									'a'.repeat(64)
+								)
 							}
 						],
 						conflicts: [],
@@ -411,35 +415,43 @@ describe('notes store sync apply', () => {
 								seq: 1,
 								id: 'att-id',
 								slot: 'a'.repeat(64),
-								ciphertext: encryptSyncPayload(account.syncKey, {
-									kind: 'attachment',
-									value: {
-										id: 'pic',
-										mime: 'image/png',
-										createdAt: 1,
-										hash: 'hash-pic',
-										dataUrl: image.dataUrl
-									}
-								})
+								ciphertext: encryptSyncPayload(
+									account.syncKey,
+									{
+										kind: 'attachment',
+										value: {
+											id: 'pic',
+											mime: 'image/png',
+											createdAt: 1,
+											hash: 'hash-pic',
+											dataUrl: image.dataUrl
+										}
+									},
+									'a'.repeat(64)
+								)
 							},
 							{
 								seq: 2,
 								id: 'note-id',
 								slot: 'b'.repeat(64),
-								ciphertext: encryptSyncPayload(account.syncKey, {
-									kind: 'note',
-									value: {
-										...remoteNote(),
-										images: [
-											{
-												id: 'pic',
-												mime: 'image/png',
-												createdAt: 1,
-												hash: 'hash-pic'
-											}
-										]
-									}
-								})
+								ciphertext: encryptSyncPayload(
+									account.syncKey,
+									{
+										kind: 'note',
+										value: {
+											...remoteNote(),
+											images: [
+												{
+													id: 'pic',
+													mime: 'image/png',
+													createdAt: 1,
+													hash: 'hash-pic'
+												}
+											]
+										}
+									},
+									'b'.repeat(64)
+								)
 							}
 						],
 						conflicts: [],
@@ -520,10 +532,14 @@ describe('notes store sync apply', () => {
 							seq: 1,
 							id: 'cloud-id',
 							slot: 'a'.repeat(64),
-							ciphertext: encryptSyncPayload(account.syncKey, {
-								kind: 'note',
-								value: cloud
-							})
+							ciphertext: encryptSyncPayload(
+								account.syncKey,
+								{
+									kind: 'note',
+									value: cloud
+								},
+								'a'.repeat(64)
+							)
 						}
 					],
 					conflicts: [],
@@ -646,10 +662,14 @@ describe('notes store sync apply', () => {
 							seq: 1,
 							id: 'cloud-id',
 							slot: 'b'.repeat(64),
-							ciphertext: encryptSyncPayload(account.syncKey, {
-								kind: 'note',
-								value: cloud
-							})
+							ciphertext: encryptSyncPayload(
+								account.syncKey,
+								{
+									kind: 'note',
+									value: cloud
+								},
+								'b'.repeat(64)
+							)
 						}
 					],
 					conflicts: [],

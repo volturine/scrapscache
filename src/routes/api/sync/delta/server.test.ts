@@ -6,7 +6,10 @@ const mocks = vi.hoisted(() => {
 		QuotaError,
 		authenticate: vi.fn((): string | null => 'account-123456789'),
 		sync: vi.fn(),
-		limitChecks: vi.fn<(key: string) => { allowed: true }>(() => ({ allowed: true }))
+		accountRateLimit: vi.fn(async (): Promise<number | null> => null),
+		limitChecks: vi.fn<(key: string, policy?: unknown) => { allowed: true }>(() => ({
+			allowed: true
+		}))
 	};
 });
 
@@ -14,7 +17,8 @@ vi.mock('$lib/server/syncStore', () => ({
 	SyncQuotaExceededError: mocks.QuotaError,
 	MAX_SYNC_MUTATIONS_PER_REQUEST: 2_000,
 	getSyncStore: () => ({
-		sync: mocks.sync
+		sync: mocks.sync,
+		accountRateLimit: mocks.accountRateLimit
 	})
 }));
 vi.mock('$lib/server/syncAuth', () => ({
@@ -23,7 +27,9 @@ vi.mock('$lib/server/syncAuth', () => ({
 vi.mock('$lib/server/rateLimit', () => ({
 	clientAddress: () => '127.0.0.1',
 	enterSyncRequest: () => vi.fn(),
-	getPublicApiLimiter: () => ({ check: (key: string) => mocks.limitChecks(key) }),
+	getPublicApiLimiter: () => ({
+		check: (key: string, policy: unknown) => mocks.limitChecks(key, policy)
+	}),
 	rateLimitResponse: () => new Response(null, { status: 429 })
 }));
 vi.mock('$lib/server/metrics', () => ({
@@ -32,6 +38,7 @@ vi.mock('$lib/server/metrics', () => ({
 }));
 
 import { POST } from './+server';
+import { DEFAULT_SYNC_PER_MINUTE } from '$lib/server/operatorConfig';
 
 const accountId = 'account-123456789';
 
@@ -153,6 +160,28 @@ describe('sync delta route', () => {
 			'sync-ip:127.0.0.1',
 			'sync-account:account-123456789'
 		]);
+	});
+
+	it('uses an operator override for the per-account budget', async () => {
+		mocks.accountRateLimit.mockResolvedValueOnce(240);
+
+		await post({ cursor: 0, envelopes: [validEnvelope] });
+
+		expect(mocks.limitChecks).toHaveBeenCalledWith(`sync-account:${accountId}`, {
+			capacity: 240,
+			refillWindowMs: 60_000
+		});
+	});
+
+	it('falls back to the shared budget when the account has no override', async () => {
+		mocks.accountRateLimit.mockResolvedValueOnce(null);
+
+		await post({ cursor: 0, envelopes: [validEnvelope] });
+
+		expect(mocks.limitChecks).toHaveBeenCalledWith(`sync-account:${accountId}`, {
+			capacity: DEFAULT_SYNC_PER_MINUTE,
+			refillWindowMs: 60_000
+		});
 	});
 
 	it('maps an atomic relay quota rejection to HTTP 507', async () => {

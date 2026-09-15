@@ -8,6 +8,7 @@ import { notesStore } from '$lib/stores/notes.svelte';
 import { profileCoordinator } from '$lib/stores/profiles.svelte';
 import { syncStore, type StartedDeviceLink } from '$lib/stores/sync.svelte';
 import SyncModal from './SyncModal.svelte';
+import { NOT_SYNCED_MESSAGE as NOT_SYNCED } from '$lib/syncKeyRotation';
 
 function profile(id: string, name: string, createdAt: number): StoredProfile {
 	return { id, name, createdAt, syncKey: createSyncIdentity().syncKey };
@@ -397,47 +398,52 @@ describe('SyncModal profile interactions', () => {
 		expect(screen.getByText('This device’s notes are now the latest cloud version.')).toBeTruthy();
 	});
 
-	it('creates a workspace only with a Turnstile token and resets the widget afterwards', async () => {
-		publicEnv.PUBLIC_TURNSTILE_SITEKEY = 'sitekey';
-		let solve: ((token: string) => void) | undefined;
-		const turnstile = {
-			render: vi.fn((_container: HTMLElement, options: { callback: (token: string) => void }) => {
-				solve = options.callback;
-				return 'widget-1';
-			}),
-			reset: vi.fn(),
-			remove: vi.fn()
-		};
-		Object.assign(window, { turnstile });
-		// jsdom does not fetch external scripts, so finish loading as soon as the tag is added.
-		vi.spyOn(document.head, 'append').mockImplementation((...nodes) => {
-			(nodes[0] as HTMLScriptElement).onload?.(new Event('load'));
-		});
+	it('starts sync only with a token from the isolated challenge frame, then resets it', async () => {
+		publicEnv.PUBLIC_TURNSTILE_ORIGIN = 'https://verify.scrapscache.com';
 		const create = vi.spyOn(profileCoordinator, 'startSync').mockResolvedValue({ success: false });
+		const post = (
+			frame: HTMLIFrameElement,
+			token: string,
+			origin = 'https://verify.scrapscache.com'
+		) =>
+			window.dispatchEvent(
+				new MessageEvent('message', {
+					origin,
+					source: frame.contentWindow,
+					data: { type: 'scrapscache-turnstile', token }
+				})
+			);
 		try {
 			syncStore.activateLocalWorkspace();
 			render(SyncModal, { props: { onClose: vi.fn() } });
 			await expand('Home');
 			await fireEvent.click(screen.getByRole('button', { name: /sync this workspace/i }));
 			const submit = screen.getByRole('button', { name: 'Start sync' }) as HTMLButtonElement;
-			await waitFor(() => expect(turnstile.render).toHaveBeenCalledTimes(1));
-			expect(turnstile.render.mock.calls[0][1]).toMatchObject({
-				sitekey: 'sitekey',
-				action: 'register'
-			});
+			const frame = screen.getByTitle('Human verification') as HTMLIFrameElement;
+
+			// The widget is a frame on the challenge origin, never a script in this page.
+			expect(frame.getAttribute('src')).toBe(
+				'https://verify.scrapscache.com/turnstile?action=register'
+			);
+			expect(document.querySelector('script[src*="challenges.cloudflare.com"]')).toBeNull();
 			expect(submit.disabled).toBe(true);
 
-			solve?.('token-1');
+			// A token from any other origin is ignored.
+			post(frame, 'forged', 'https://evil.example');
+			await tick();
+			expect(submit.disabled).toBe(true);
+
+			post(frame, 'token-1');
 			await tick();
 			expect(submit.disabled).toBe(false);
 			await fireEvent.click(submit);
 
 			await waitFor(() => expect(create).toHaveBeenCalledWith('device-local', '', 'token-1'));
-			await waitFor(() => expect(turnstile.reset).toHaveBeenCalledWith('widget-1'));
+			// Single-use: the frame is replaced for a fresh challenge.
+			await waitFor(() => expect(screen.getByTitle('Human verification')).not.toBe(frame));
 			expect(submit.disabled).toBe(true);
 		} finally {
-			delete publicEnv.PUBLIC_TURNSTILE_SITEKEY;
-			Reflect.deleteProperty(window, 'turnstile');
+			delete publicEnv.PUBLIC_TURNSTILE_ORIGIN;
 		}
 	});
 
@@ -636,5 +642,97 @@ describe('SyncModal profile interactions', () => {
 		await Promise.resolve();
 		await vi.advanceTimersByTimeAsync(1_500);
 		expect(poll).toHaveBeenCalledTimes(2);
+	});
+});
+
+describe('SyncModal replacing a lost device\u2019s sync key', () => {
+	let main: StoredProfile;
+	let side: StoredProfile;
+
+	beforeEach(() => {
+		vi.restoreAllMocks();
+		localStorage.clear();
+		main = profile('profile-main', 'Main', 1);
+		side = profile('profile-side', 'Side', 2);
+		syncStore.profiles = [main, side];
+		syncStore.activateProfile(main);
+		syncStore.lastError = null;
+		syncStore.usage = null;
+		profileCoordinator.switching = false;
+		(notesStore as unknown as { syncFlight: Promise<boolean> | null }).syncFlight = null;
+	});
+
+	async function openConfirmation() {
+		render(SyncModal, { props: { onClose: () => {} } });
+		await expand('Main');
+		await fireEvent.click(screen.getByRole('button', { name: /I lost a device/ }));
+		await tick();
+	}
+
+	it('is offered only on the active workspace, which is the one it replaces', async () => {
+		render(SyncModal, { props: { onClose: () => {} } });
+		await expand('Side');
+		expect(screen.queryByRole('button', { name: /I lost a device/ })).toBeNull();
+	});
+
+	it('says plainly that it cannot reach notes already on the lost device', async () => {
+		await openConfirmation();
+
+		// The entry point is named for what people look for, so the screen has to
+		// carry the limitation the name does not.
+		expect(await screen.findByText(/cannot reach the notes already on that device/i)).toBeTruthy();
+		expect(screen.getByText(/nothing can erase them remotely/i)).toBeTruthy();
+		expect(screen.getByText(/paired again/i)).toBeTruthy();
+	});
+
+	it('replaces the key without offering an override first', async () => {
+		const replace = vi
+			.spyOn(profileCoordinator, 'replaceSyncKey')
+			.mockResolvedValue({ ok: true, forced: false, previousAccountRemoved: true });
+		await openConfirmation();
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Replace sync key' }));
+
+		await waitFor(() => expect(replace).toHaveBeenCalled());
+		expect(replace.mock.calls[0][0].force).toBe(false);
+		expect(await screen.findByText(/Pair your other devices again/i)).toBeTruthy();
+	});
+
+	it('asks for a typed confirmation only after refusing, and keeps the button disabled until it matches', async () => {
+		const replace = vi.spyOn(profileCoordinator, 'replaceSyncKey').mockResolvedValue({
+			ok: false,
+			step: 'preflight',
+			error: NOT_SYNCED,
+			replacementRemoved: false
+		});
+		await openConfirmation();
+
+		expect(screen.queryByPlaceholderText('CONTINUE')).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: 'Replace sync key' }));
+
+		const field = await screen.findByPlaceholderText('CONTINUE');
+		const confirm = screen.getByRole('button', { name: 'Replace key anyway' });
+		expect((confirm as HTMLButtonElement).disabled).toBe(true);
+
+		await fireEvent.input(field, { target: { value: 'continue' } });
+		await tick();
+		expect((confirm as HTMLButtonElement).disabled).toBe(false);
+
+		replace.mockResolvedValue({ ok: true, forced: true, previousAccountRemoved: true });
+		await fireEvent.click(confirm);
+		await waitFor(() => expect(replace.mock.calls[1][0].force).toBe(true));
+	});
+
+	it('says the old account survived rather than implying a clean finish', async () => {
+		vi.spyOn(profileCoordinator, 'replaceSyncKey').mockResolvedValue({
+			ok: true,
+			forced: false,
+			previousAccountRemoved: false
+		});
+		await openConfirmation();
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Replace sync key' }));
+
+		expect(await screen.findByText(/old cloud account could not be deleted/i)).toBeTruthy();
 	});
 });

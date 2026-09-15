@@ -22,6 +22,16 @@ function composeFallback(source: string): string {
 	return match[1];
 }
 
+/** wrangler.jsonc carries rationale comments; strip whole-line ones before parsing
+ * so a URL's `//` is never mistaken for the start of a comment. */
+function readWranglerConfig(path: string): WranglerConfig {
+	const stripped = readFileSync(path, 'utf8')
+		.split('\n')
+		.filter((line) => !line.trim().startsWith('//'))
+		.join('\n');
+	return JSON.parse(stripped) as WranglerConfig;
+}
+
 describe('operator config', () => {
 	it('treats missing or non-positive retention days as disabled', () => {
 		expect(parseRetentionInactiveDays(undefined)).toBe(0);
@@ -52,7 +62,7 @@ describe('operator config', () => {
 		expect(composeFallback(readFileSync('docker/compose.yaml', 'utf8'))).toBe(expected);
 		expect(composeFallback(readFileSync('docker/compose.dev.yaml', 'utf8'))).toBe(expected);
 
-		const wrangler = JSON.parse(readFileSync('wrangler.jsonc', 'utf8')) as WranglerConfig;
+		const wrangler = readWranglerConfig('wrangler.jsonc');
 		expect(wrangler.vars?.SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES).toBe(expected);
 		const environments = Object.entries(wrangler.env ?? {});
 		expect(environments.length).toBeGreaterThan(0);

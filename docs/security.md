@@ -80,33 +80,10 @@ Before store/sync, images are re-encoded in the browser to strip EXIF/GPS,
 optionally resize, and prefer WebP. Original camera files are not retained as
 the long-term attachment format.
 
-## Verifying a deployment
-
-Because encryption happens in the browser, the JavaScript a deployment serves is
-what protects your notes. You do not have to take a deployment's word for what
-that code is.
-
-Every build is stamped with the commit it came from, served at
-`/_app/version.json`, and the client build is reproducible: building the same
-commit twice produces byte-identical files. So anyone can rebuild what a site
-claims to run and compare:
-
-```sh
-scripts/verify_deployment.py https://scrapscache.com
-```
-
-The script reads the commit from the site, clones that commit from this
-repository, builds it, and checks every file the site serves against the result.
-It also checks that the page runs no inline script or third-party code the
-repository does not contain, and that the Content Security Policy allows scripts
-only from the site itself. Use the Node version in `.nvmrc`, since a different
-toolchain can make an honest build differ.
-
-What it proves has a limit worth knowing: it verifies what the site served to your
-machine at that moment. It cannot prove that the same code is served to everyone.
-
 ## Server hardening
 
+- **Build version** — every build is stamped with the commit it came from, served
+  at `/_app/version.json`, so a deployment names the code it runs
 - **CSP** (nonce mode) in `svelte.config.js`: default `self`, no third-party
   scripts; `data:`/`blob:` only where attachments need them
   (`img-src`, `media-src`, and PDF `frame-src`/`object-src`). The only third-party

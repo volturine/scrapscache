@@ -49,7 +49,7 @@ jobs:
         run: npm test
 
       - name: Test Cloudflare helper scripts
-        run: python3 -m unittest scripts/migrate_sqlite_to_cloudflare_test.py scripts/reset_cloudflare_dev_test.py scripts/verify_deployment_test.py
+        run: python3 -m unittest scripts/migrate_sqlite_to_cloudflare_test.py scripts/reset_cloudflare_dev_test.py
 
       - name: Production build
         run: npm run build

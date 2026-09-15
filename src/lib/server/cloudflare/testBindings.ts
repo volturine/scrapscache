@@ -1,5 +1,5 @@
 import { createClient, type Client } from '@libsql/client/node';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import type { D1Database, R2Bucket } from '@cloudflare/workers-types';
 
 /**
@@ -25,8 +25,13 @@ export function testD1(): { db: D1Database; client: Client } {
 	return { db: db as unknown as D1Database, client };
 }
 
+/** Every migration, in the order wrangler applies them. */
 export async function applyMigrations(client: Client): Promise<void> {
-	await client.executeMultiple(readFileSync('cf/migrations/0001_initial.sql', 'utf8'));
+	for (const file of readdirSync('cf/migrations')
+		.filter((name) => name.endsWith('.sql'))
+		.sort()) {
+		await client.executeMultiple(readFileSync(`cf/migrations/${file}`, 'utf8'));
+	}
 }
 
 /**

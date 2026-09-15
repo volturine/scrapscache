@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { readFileSync } from 'node:fs';
 import type { Client } from '@libsql/client/node';
 import { applyMigrations, testD1, testR2 } from './testBindings';
 
@@ -27,7 +26,6 @@ beforeEach(async () => {
 	const r2 = testR2();
 	client = d1.client;
 	await applyMigrations(client);
-	await client.executeMultiple(readFileSync('cf/migrations/0002_account_controls.sql', 'utf8'));
 	bindings.value = {
 		SCRAPSCACHE_DB: d1.db,
 		SCRAPSCACHE_ENVELOPES: r2.bucket,

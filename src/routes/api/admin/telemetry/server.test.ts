@@ -5,7 +5,8 @@ const mocks = vi.hoisted(() => ({
 	limit: vi.fn<() => { allowed: boolean }>(() => ({ allowed: true })),
 	queryTelemetry: vi.fn(async (hours: number) => ({
 		available: true,
-		source: 'dataset',
+		source: 'database',
+		throttledNow: 0,
 		windowHours: hours,
 		activity: null,
 		http: []

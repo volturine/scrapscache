@@ -119,10 +119,12 @@ machine at that moment. It cannot prove that the same code is served to everyone
 - **Admin token** — required for `/metrics`, `GET /api/admin/status`, and
   `POST /api/admin/retention` in production Compose
 - **Metrics** — process counters on Node, where one process sees every request.
-  On Workers, where no isolate does, the build swaps in a module that emits to an
-  Analytics Engine dataset, and the endpoints report `activity: null` rather than
-  one isolate's partial count. Route labels are bucketed before emission, so
-  nothing account-scoped reaches telemetry
+  On Workers, where no isolate does, the build swaps in a module that adds to
+  hourly counters in D1, and the endpoints report `activity: null` rather than
+  one isolate's partial count. Counter keys name an event or a bucketed route,
+  never an account. Refused requests are not recorded, so a flood of them costs
+  no extra writes; the dashboard reads throttled callers from the rate-limit
+  buckets instead
 - **Operator status** — `/metrics` and `GET /api/admin/status` are anonymous
   aggregates. The account administration endpoints are not: they list account IDs
   alongside storage, activity and per-account limits, because an operator cannot

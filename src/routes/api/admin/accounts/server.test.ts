@@ -3,14 +3,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
 	requireAdmin: vi.fn(async (): Promise<Response | null> => null),
 	listAccounts: vi.fn(async () => ({ total: 1, accounts: [{ accountId: 'account-abcdefghij' }] })),
-	accountFeatureFlags: vi.fn(async () => ({ 'canvas-beta': true })),
 	getAuthCredential: vi.fn(async (): Promise<string | null> => 'public-key'),
 	setAccountByteQuota: vi.fn(async () => true),
 	clearAccountByteQuota: vi.fn(async () => true),
 	setAccountRateLimit: vi.fn(async () => true),
-	clearAccountRateLimit: vi.fn(async () => true),
-	setAccountFeatureFlag: vi.fn(async () => true),
-	clearAccountFeatureFlag: vi.fn(async () => true)
+	clearAccountRateLimit: vi.fn(async () => true)
 }));
 
 vi.mock('$lib/server/adminAuth', () => ({ requireAdmin: mocks.requireAdmin }));
@@ -60,12 +57,9 @@ describe('listing accounts', () => {
 		expect(await response.json()).toMatchObject({ total: 1 });
 	});
 
-	it('returns one account with its resolved flags', async () => {
+	it('returns one account', async () => {
 		const response = await get(`?accountId=${ACCOUNT}`);
-		expect(await response.json()).toMatchObject({
-			accountId: ACCOUNT,
-			flags: { 'canvas-beta': true }
-		});
+		expect(await response.json()).toEqual({ accountId: ACCOUNT });
 	});
 
 	it('refuses an account id that is not shaped like one', async () => {
@@ -81,25 +75,22 @@ describe('listing accounts', () => {
 });
 
 describe('changing what one account is allowed', () => {
-	it('sets both limits and a flag in one request', async () => {
+	it('sets both limits in one request', async () => {
 		await patch({
 			accountId: ACCOUNT,
 			maxBytes: 5_000,
-			syncPerMinute: 240,
-			flags: { 'canvas-beta': true }
+			syncPerMinute: 240
 		});
 
 		expect(mocks.setAccountByteQuota).toHaveBeenCalledWith(ACCOUNT, 5_000);
 		expect(mocks.setAccountRateLimit).toHaveBeenCalledWith(ACCOUNT, 240);
-		expect(mocks.setAccountFeatureFlag).toHaveBeenCalledWith(ACCOUNT, 'canvas-beta', true);
 	});
 
 	it('reads null as "back to the shared default", not as zero', async () => {
-		await patch({ accountId: ACCOUNT, maxBytes: null, syncPerMinute: null, flags: { beta: null } });
+		await patch({ accountId: ACCOUNT, maxBytes: null, syncPerMinute: null });
 
 		expect(mocks.clearAccountByteQuota).toHaveBeenCalledWith(ACCOUNT);
 		expect(mocks.clearAccountRateLimit).toHaveBeenCalledWith(ACCOUNT);
-		expect(mocks.clearAccountFeatureFlag).toHaveBeenCalledWith(ACCOUNT, 'beta');
 		expect(mocks.setAccountByteQuota).not.toHaveBeenCalled();
 	});
 
@@ -109,7 +100,6 @@ describe('changing what one account is allowed', () => {
 		expect(mocks.setAccountRateLimit).toHaveBeenCalled();
 		expect(mocks.setAccountByteQuota).not.toHaveBeenCalled();
 		expect(mocks.clearAccountByteQuota).not.toHaveBeenCalled();
-		expect(mocks.setAccountFeatureFlag).not.toHaveBeenCalled();
 	});
 
 	it('rejects a limit that would stop the account working, before touching anything', async () => {
@@ -124,12 +114,6 @@ describe('changing what one account is allowed', () => {
 		expect(mocks.setAccountRateLimit).not.toHaveBeenCalled();
 	});
 
-	it('rejects a malformed flag name rather than storing it', async () => {
-		expect((await patch({ accountId: ACCOUNT, flags: { 'Not Valid': true } })).status).toBe(400);
-		expect((await patch({ accountId: ACCOUNT, flags: { beta: 'yes' } })).status).toBe(400);
-		expect(mocks.setAccountFeatureFlag).not.toHaveBeenCalled();
-	});
-
 	it('fails as a whole for an unknown account rather than half-applying', async () => {
 		mocks.getAuthCredential.mockResolvedValue(null);
 
@@ -142,9 +126,6 @@ describe('changing what one account is allowed', () => {
 
 	it('answers with the account as it now stands', async () => {
 		const response = await patch({ accountId: ACCOUNT, syncPerMinute: 10 });
-		expect(await response.json()).toMatchObject({
-			accountId: ACCOUNT,
-			flags: { 'canvas-beta': true }
-		});
+		expect(await response.json()).toEqual({ accountId: ACCOUNT });
 	});
 });

@@ -21,8 +21,7 @@ export type AccountSummary = {
 	syncPerMinuteOverridden: boolean;
 };
 
-export type AccountDetail = AccountSummary & { flags: Record<string, boolean> };
-export type FeatureFlag = { flag: string; defaultEnabled: boolean; description: string };
+export type AccountDetail = AccountSummary;
 
 export type OperatorSnapshot = {
 	generatedAt: number;
@@ -123,21 +122,8 @@ export class AdminClient {
 		accountId: string;
 		maxBytes?: number | null;
 		syncPerMinute?: number | null;
-		flags?: Record<string, boolean | null>;
 	}): Promise<AccountDetail> {
 		return this.call('/api/admin/accounts', { method: 'PATCH', body: JSON.stringify(patch) });
-	}
-
-	flags(): Promise<{ flags: FeatureFlag[] }> {
-		return this.call('/api/admin/flags');
-	}
-
-	saveFlag(flag: FeatureFlag): Promise<{ flags: FeatureFlag[] }> {
-		return this.call('/api/admin/flags', { method: 'PUT', body: JSON.stringify(flag) });
-	}
-
-	deleteFlag(flag: string): Promise<{ flags: FeatureFlag[] }> {
-		return this.call('/api/admin/flags', { method: 'DELETE', body: JSON.stringify({ flag }) });
 	}
 }
 

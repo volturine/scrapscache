@@ -52,8 +52,6 @@ export type AccountSummary = {
 
 export type AccountPage = { total: number; accounts: AccountSummary[] };
 
-export type FeatureFlag = { flag: string; defaultEnabled: boolean; description: string };
-
 export const ENVELOPE_STORAGE_OVERHEAD_BYTES = 512;
 export const MAX_PUSH_DEVICES = 32;
 export const MAX_WAKES_PER_ACCOUNT = 1_000;
@@ -235,79 +233,6 @@ export class SyncStore {
 		await execute(this.db, {
 			sql: 'DELETE FROM account_rate_limits WHERE account_id = ?',
 			args: [accountId]
-		});
-		return true;
-	}
-
-	async listFeatureFlags(): Promise<FeatureFlag[]> {
-		const rows = (
-			await execute(
-				this.db,
-				'SELECT flag, default_enabled AS defaultEnabled, description FROM feature_flags ORDER BY flag'
-			)
-		).rows;
-		return rows.map((row) => ({
-			flag: String(row.flag),
-			defaultEnabled: Number(row.defaultEnabled) === 1,
-			description: String(row.description ?? '')
-		}));
-	}
-
-	async upsertFeatureFlag(flag: string, defaultEnabled: boolean, description = ''): Promise<void> {
-		await execute(this.db, {
-			sql: `INSERT INTO feature_flags(flag, default_enabled, description, updated_at)
-				VALUES (?, ?, ?, ?)
-				ON CONFLICT(flag) DO UPDATE SET
-					default_enabled = excluded.default_enabled,
-					description = excluded.description,
-					updated_at = excluded.updated_at`,
-			args: [flag, defaultEnabled ? 1 : 0, description, Date.now()]
-		});
-	}
-
-	/** Removing the gate removes every per-account opinion about it, which is how
-	 * a finished rollout is cleaned up rather than left to accumulate. */
-	async deleteFeatureFlag(flag: string): Promise<boolean> {
-		const results = await batch(this.db, [
-			{ sql: 'DELETE FROM account_feature_flags WHERE flag = ?', args: [flag] },
-			{ sql: 'DELETE FROM feature_flags WHERE flag = ?', args: [flag] }
-		]);
-		return results[1]?.rowsAffected === 1;
-	}
-
-	/** Every known gate resolved for one account: its own opinion where it has
-	 * one, the default otherwise. A gate nobody declared is absent, not false. */
-	async accountFeatureFlags(accountId: string): Promise<Record<string, boolean>> {
-		const rows = (
-			await execute(this.db, {
-				sql: `SELECT f.flag AS flag, COALESCE(a.enabled, f.default_enabled) AS enabled
-					FROM feature_flags f
-					LEFT JOIN account_feature_flags a ON a.flag = f.flag AND a.account_id = ?
-					ORDER BY f.flag`,
-				args: [accountId]
-			})
-		).rows;
-		return Object.fromEntries(rows.map((row) => [String(row.flag), Number(row.enabled) === 1]));
-	}
-
-	async setAccountFeatureFlag(accountId: string, flag: string, enabled: boolean): Promise<boolean> {
-		return (
-			(
-				await execute(this.db, {
-					sql: `INSERT INTO account_feature_flags(account_id, flag, enabled, updated_at)
-						SELECT account_id, ?, ?, ? FROM accounts WHERE account_id = ?
-						ON CONFLICT(account_id, flag) DO UPDATE SET
-							enabled = excluded.enabled, updated_at = excluded.updated_at`,
-					args: [flag, enabled ? 1 : 0, Date.now(), accountId]
-				})
-			).rowsAffected === 1
-		);
-	}
-
-	async clearAccountFeatureFlag(accountId: string, flag: string): Promise<boolean> {
-		await execute(this.db, {
-			sql: 'DELETE FROM account_feature_flags WHERE account_id = ? AND flag = ?',
-			args: [accountId, flag]
 		});
 		return true;
 	}

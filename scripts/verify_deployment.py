@@ -243,7 +243,16 @@ def compare(expected: Mapping[str, str], served: Mapping[str, str | None]) -> li
 
 
 def fetch(url: str) -> tuple[bytes, Mapping[str, str]]:
-    request = urllib.request.Request(url, headers={"cache-control": "no-cache"})
+    request = urllib.request.Request(
+        url,
+        headers={
+            "cache-control": "no-cache",
+            "user-agent": (
+                "Mozilla/5.0 (compatible; ScrapsCacheDeploymentVerifier/1.0; "
+                "+https://github.com/volturine/scrapscache)"
+            ),
+        },
+    )
     with urllib.request.urlopen(request, timeout=30) as response:
         return response.read(), {key.lower(): value for key, value in response.headers.items()}
 

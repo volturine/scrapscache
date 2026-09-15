@@ -58,6 +58,16 @@ export const handle: Handle = async ({ event, resolve }) => {
 				});
 
 	for (const [name, value] of SECURITY_HEADERS) response.headers.set(name, value);
+	if (response.headers.get('content-type')?.toLowerCase().startsWith('text/html')) {
+		const cacheControl = response.headers.get('cache-control');
+		const directives = cacheControl?.split(',').map((directive) => directive.trim().toLowerCase());
+		if (!directives?.includes('no-transform')) {
+			response.headers.set(
+				'cache-control',
+				cacheControl ? `${cacheControl}, no-transform` : 'no-transform'
+			);
+		}
+	}
 	const policy = response.headers.get('content-security-policy');
 	const ancestors = frameAncestors(policy);
 	// A response that names who may frame it keeps that decision; everything else

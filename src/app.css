@@ -96,6 +96,7 @@ html.editor-open .app-shell {
 }
 
 .app-shell {
+	display: flex;
 	isolation: isolate;
 }
 

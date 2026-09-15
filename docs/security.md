@@ -111,7 +111,8 @@ machine at that moment. It cannot prove that the same code is served to everyone
   deployment verification below covers all code that can reach them
 - **Headers** in `hooks.server.ts`: `Referrer-Policy: no-referrer`,
   `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, restrictive
-  `Permissions-Policy`
+  `Permissions-Policy`, and `Cache-Control: no-transform` on HTML so a CDN cannot
+  inject scripts into the key-bearing origin
 - **Rate limiting** — atomic SQL token buckets for register, auth, pairing, sync,
   push, and admin. Durable and shared across isolates, at the cost of one database
   write per request — size the store accordingly and put edge rate limiting in

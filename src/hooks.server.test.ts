@@ -45,6 +45,26 @@ describe('security headers', () => {
 		expect(rejected.headers.get('x-request-id')).not.toBe('bad id with junk');
 		expect(rejected.headers.get('x-request-id')).toMatch(/^[0-9a-f-]{36}$/);
 	});
+
+	it('prevents Cloudflare from injecting JavaScript into HTML responses', async () => {
+		const html = await visit(
+			'https://example.test/',
+			() =>
+				new Response('<html></html>', {
+					headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'private' }
+				})
+		);
+		const api = await visit(
+			'https://example.test/api/status',
+			() =>
+				new Response('{}', {
+					headers: { 'content-type': 'application/json', 'cache-control': 'no-store' }
+				})
+		);
+
+		expect(html.headers.get('cache-control')).toBe('private, no-transform');
+		expect(api.headers.get('cache-control')).toBe('no-store');
+	});
 });
 
 const APP = 'https://scrapscache.com';

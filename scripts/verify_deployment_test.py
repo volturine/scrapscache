@@ -1,11 +1,13 @@
 import unittest
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 from scripts.verify_deployment import (
     check_csp,
     declared_script_sources,
     check_shell,
     compare,
+    fetch,
     hash_tree,
     site_path,
 )
@@ -200,6 +202,19 @@ class PathTests(unittest.TestCase):
         self.assertIsNone(site_path("https://cdn.example/x.js"))
         self.assertIsNone(site_path("//cdn.example/x.js"))
         self.assertIsNone(site_path("data:text/javascript,alert(1)"))
+
+
+class FetchTests(unittest.TestCase):
+    def test_identifies_the_verifier_to_bot_protection(self):
+        response = MagicMock()
+        response.__enter__.return_value = response
+        response.read.return_value = b"ok"
+        response.headers.items.return_value = []
+        with patch("scripts.verify_deployment.urllib.request.urlopen", return_value=response) as urlopen:
+            fetch("https://example.test/version.json")
+
+        request = urlopen.call_args.args[0]
+        self.assertIn("ScrapsCacheDeploymentVerifier", request.get_header("User-agent"))
 
 
 if __name__ == "__main__":

@@ -17,9 +17,7 @@ import {
 	getSyncOutboxKeys,
 	clearSyncOutbox,
 	pruneOrphanImageBlobs,
-	waitForDeviceWrites,
-	clearProfileNamespace,
-	isNamespaceRedundant
+	waitForDeviceWrites
 } from '$lib/db/idb';
 import {
 	mergeLabelLists,
@@ -36,7 +34,6 @@ import { uiStore } from '$lib/stores/ui.svelte';
 import { uid, daysSinceTrashed, TRASH_PURGE_DAYS, cloneNote } from '$lib/utils';
 import { noteAttachments, toggleLineAt } from '$lib/checklistBody';
 import {
-	clearNotesMirror,
 	readLabelsMirror,
 	readNotesMirror,
 	writeLabelsMirror,
@@ -51,16 +48,19 @@ import {
 	writeLabelTombstones,
 	writeTombstones
 } from '$lib/syncTombstones';
-import { ensureAttachmentPreview, prepareAttachmentForMemory } from '$lib/noteImages';
+import {
+	ensureAttachmentPreview,
+	fileToNoteImage,
+	prepareAttachmentForMemory
+} from '$lib/noteImages';
+import { materializeKeepTakeout, readKeepTakeout } from '$lib/keepImport';
 import { isCanvasAttachment } from '$lib/canvasAttachment';
 import { replacementFitsStorage } from '$lib/storageCapacity';
 import { formatStorageError } from '$lib/imageBlob';
 import {
 	BackupImportMode,
-	BackupImportPhase,
 	normalizeBackup,
 	prepareImportedNotes,
-	type BackupImportProgress,
 	type ScrapsCacheBackup
 } from '$lib/backup';
 import { stableStringify } from '$lib/syncHash';
@@ -121,7 +121,8 @@ export class NotesStore {
 	labels = $state<Label[]>([]);
 	loaded = $state(false);
 	lastPersistError = $state<string | null>(null);
-	backupImportProgress = $state<BackupImportProgress | null>(null);
+	/** True for a whole backup or Keep import; workspace handovers wait for it. */
+	importing = $state(false);
 	deletedNoteIds = $state<Record<string, number>>(readTombstones());
 	deletedLabelIds = $state<Record<string, number>>(readLabelTombstones());
 	private attachmentLoads = new Map<string, Promise<void>>();
@@ -445,6 +446,7 @@ export class NotesStore {
 			archived: false,
 			trashed: false,
 			trashedAt: null,
+			...(partial.secret ? { secret: true } : {}),
 			createdAt: now,
 			updatedAt: now,
 			reminder: partial.reminder ?? null,
@@ -457,6 +459,7 @@ export class NotesStore {
 				pinned: now,
 				archived: now,
 				trashed: now,
+				secret: now,
 				reminder: now,
 				labels: now,
 				images: now,
@@ -482,6 +485,7 @@ export class NotesStore {
 		if ('pinned' in patch) fields.push('pinned');
 		if ('archived' in patch) fields.push('archived');
 		if ('trashed' in patch) fields.push('trashed');
+		if ('secret' in patch) fields.push('secret');
 		if ('reminder' in patch) fields.push('reminder');
 		if ('labels' in patch) fields.push('labels');
 		if ('images' in patch) fields.push('images');
@@ -512,6 +516,12 @@ export class NotesStore {
 		const n = this.notes.find((x) => x.id === id);
 		if (!n) return;
 		this.updateNote(id, { archived: !n.archived, pinned: false });
+	}
+
+	toggleSecret(id: string): void {
+		const n = this.notes.find((x) => x.id === id);
+		if (!n) return;
+		this.updateNote(id, { secret: !n.secret });
 	}
 
 	setColor(id: string, color: NoteColor): void {
@@ -545,7 +555,11 @@ export class NotesStore {
 	}
 
 	restoreNote(id: string): void {
-		this.updateNote(id, { trashed: false, trashedAt: null });
+		this.updateNote(id, { trashed: false, trashedAt: null, archived: false });
+	}
+
+	restoreToArchive(id: string): void {
+		this.updateNote(id, { trashed: false, trashedAt: null, archived: true, pinned: false });
 	}
 
 	async deleteNoteForever(id: string): Promise<void> {
@@ -673,15 +687,17 @@ export class NotesStore {
 
 	// Backup ---------------------------------------------------------------
 	/**
-	 * Full app/DB backup: notes (with full-resolution attachments), labels, boards,
-	 * tombstones, and UI prefs. Never carries sync identity.
+	 * Snapshot of the open workspace only: its notes (with full-resolution
+	 * attachments), labels, boards, tombstones, and UI prefs. Never carries
+	 * sync identity.
 	 */
 	async exportBackup(): Promise<ScrapsCacheBackup> {
+		const pid = this.pid;
 		const fullNotes: Note[] = [];
 		for (const note of this.notes) {
 			const needsFull = (note.images ?? []).some((image) => !image.dataUrl);
 			fullNotes.push(
-				needsFull ? await hydrateNoteAttachments(this.pid, cloneNote(note)) : cloneNote(note)
+				needsFull ? await hydrateNoteAttachments(pid, cloneNote(note)) : cloneNote(note)
 			);
 		}
 		return {
@@ -711,11 +727,13 @@ export class NotesStore {
 		data: unknown,
 		mode: BackupImportMode
 	): Promise<{ success: boolean; error?: string }> {
-		if (this.backupImportProgress)
-			return { success: false, error: 'A backup import is already running.' };
+		if (this.importing) return { success: false, error: 'An import is already running.' };
 		const backup = normalizeBackup(data);
 		if (!backup)
 			return { success: false, error: 'That file is not a valid Scraps Cache full backup.' };
+		// Every write lands in the workspace that was open when the import began.
+		const pid = this.pid;
+		this.importing = true;
 		try {
 			const now = Date.now();
 			const importedNotes = prepareImportedNotes(backup.notes, mode, now);
@@ -730,11 +748,6 @@ export class NotesStore {
 					};
 				}
 			}
-			this.backupImportProgress = {
-				phase: BackupImportPhase.Writing,
-				completed: 0,
-				total: importedNotes.length
-			};
 			if (mode === BackupImportMode.Keep) {
 				const labelsByName = new Map(
 					this.labels.map((label) => [label.name.trim().toLowerCase(), label])
@@ -757,21 +770,19 @@ export class NotesStore {
 						const mapped = labelIds.get(id);
 						return mapped ? [mapped] : [];
 					});
-					await putNote(this.pid, note, noteSyncKeys(note));
+					await putNote(pid, note, noteSyncKeys(note));
 					await this.compactPersistedNoteImages(note);
-					if (this.backupImportProgress) this.backupImportProgress.completed += 1;
 				}
-				await bulkPutLabels(this.pid, importedLabels);
+				await bulkPutLabels(pid, importedLabels);
 				this.notes = [...this.notes, ...importedNotes].sort((a, b) => b.updatedAt - a.updatedAt);
 				this.labels = [...this.labels, ...importedLabels].sort((a, b) =>
 					a.name.localeCompare(b.name)
 				);
 				await syncStore.queueOutbox(importedLabels.map((label) => `label:${label.id}`));
 			} else {
-				await replaceAllDeviceData(this.pid, importedNotes, backup.labels, async (note) => {
-					await this.compactPersistedNoteImages(note);
-					if (this.backupImportProgress) this.backupImportProgress.completed += 1;
-				});
+				await replaceAllDeviceData(pid, importedNotes, backup.labels, (note) =>
+					this.compactPersistedNoteImages(note)
+				);
 				this.notes = importedNotes.sort((a, b) => b.updatedAt - a.updatedAt);
 				this.labels = [...backup.labels].sort((a, b) => a.name.localeCompare(b.name));
 				const importedIds = new Set(importedNotes.map((note) => note.id));
@@ -780,8 +791,8 @@ export class NotesStore {
 					if (!importedIds.has(id)) this.deletedNoteIds[id] = now;
 				}
 				this.deletedLabelIds = { ...backup.labelTombstones };
-				await writeTombstones(this.pid, this.deletedNoteIds);
-				await writeLabelTombstones(this.pid, this.deletedLabelIds);
+				await writeTombstones(pid, this.deletedNoteIds);
+				await writeLabelTombstones(pid, this.deletedLabelIds);
 				kanbanStore.replaceWithCloud(backup.boards, backup.boardTombstones);
 				if (
 					backup.activeBoardId &&
@@ -792,11 +803,6 @@ export class NotesStore {
 				uiStore.restoreState(backup.ui);
 			}
 
-			this.backupImportProgress = {
-				phase: BackupImportPhase.Finishing,
-				completed: importedNotes.length,
-				total: importedNotes.length
-			};
 			this.mirrorToLS();
 			if (mode === BackupImportMode.Replace) {
 				const outbox = [
@@ -822,7 +828,112 @@ export class NotesStore {
 			await this.hardResync();
 			return { success: false, error: this.lastPersistError ?? 'Could not import full backup.' };
 		} finally {
-			this.backupImportProgress = null;
+			this.importing = false;
+		}
+	}
+
+	async importKeepTakeout(
+		files: Record<string, Uint8Array>,
+		mode: BackupImportMode
+	): Promise<{ success: boolean; error?: string }> {
+		if (this.importing) return { success: false, error: 'An import is already running.' };
+		if (readKeepTakeout(files).notes.length === 0)
+			return { success: false, error: 'That zip does not contain Google Keep notes.' };
+		// Every write lands in the workspace that was open when the import began.
+		const pid = this.pid;
+		this.importing = true;
+		try {
+			const now = Date.now();
+			const materialized = await materializeKeepTakeout(files, (file) =>
+				fileToNoteImage(file, 'compressed')
+			);
+			const importedNotes = materialized.notes;
+			const replacedNoteIds =
+				mode === BackupImportMode.Replace ? this.notes.map((note) => note.id) : [];
+			const replacedLabelIds =
+				mode === BackupImportMode.Replace ? this.labels.map((label) => label.id) : [];
+			if (navigator.storage?.estimate) {
+				const estimate = await navigator.storage.estimate();
+				if (!replacementFitsStorage(importedNotes, estimate)) {
+					return {
+						success: false,
+						error: 'Storage full on this device — free space or remove old notes/attachments.'
+					};
+				}
+			}
+			if (mode === BackupImportMode.Keep) {
+				const labelsByName = new Map(
+					this.labels.map((label) => [label.name.trim().toLowerCase(), label])
+				);
+				const labelIds = new Map<string, string>();
+				const importedLabels: Label[] = [];
+				for (const label of materialized.labels) {
+					const existing = labelsByName.get(label.name.trim().toLowerCase());
+					if (existing) {
+						labelIds.set(label.id, existing.id);
+						continue;
+					}
+					const imported = { ...label, id: uid(), createdAt: now, updatedAt: now };
+					labelIds.set(label.id, imported.id);
+					labelsByName.set(imported.name.trim().toLowerCase(), imported);
+					importedLabels.push(imported);
+				}
+				for (const note of importedNotes) {
+					note.labels = note.labels.flatMap((id) => {
+						const mapped = labelIds.get(id);
+						return mapped ? [mapped] : [];
+					});
+					await putNote(pid, note, noteSyncKeys(note));
+					await this.compactPersistedNoteImages(note);
+				}
+				await bulkPutLabels(pid, importedLabels);
+				this.notes = [...this.notes, ...importedNotes].sort((a, b) => b.updatedAt - a.updatedAt);
+				this.labels = [...this.labels, ...importedLabels].sort((a, b) =>
+					a.name.localeCompare(b.name)
+				);
+				await syncStore.queueOutbox(importedLabels.map((label) => `label:${label.id}`));
+			} else {
+				await replaceAllDeviceData(pid, importedNotes, materialized.labels, (note) =>
+					this.compactPersistedNoteImages(note)
+				);
+				this.notes = importedNotes.sort((a, b) => b.updatedAt - a.updatedAt);
+				this.labels = [...materialized.labels].sort((a, b) => a.name.localeCompare(b.name));
+				const importedIds = new Set(importedNotes.map((note) => note.id));
+				const importedLabelIds = new Set(materialized.labels.map((label) => label.id));
+				this.deletedNoteIds = { ...this.deletedNoteIds };
+				for (const id of replacedNoteIds) {
+					if (!importedIds.has(id)) this.deletedNoteIds[id] = now;
+				}
+				this.deletedLabelIds = { ...this.deletedLabelIds };
+				for (const id of replacedLabelIds) {
+					if (!importedLabelIds.has(id)) this.deletedLabelIds[id] = now;
+				}
+				await writeTombstones(pid, this.deletedNoteIds);
+				await writeLabelTombstones(pid, this.deletedLabelIds);
+			}
+
+			this.mirrorToLS();
+			if (mode === BackupImportMode.Replace) {
+				const outbox = [
+					...this.notes.flatMap((note) => noteSyncKeys(note)),
+					...this.labels.map((label) => `label:${label.id}`),
+					...Object.keys(this.deletedNoteIds).map((id) => `note-tombstone:${id}`),
+					...Object.keys(this.deletedLabelIds).map((id) => `label-tombstone:${id}`)
+				];
+				await syncStore.queueOutbox(outbox);
+			}
+			this.dirty = true;
+			this.scheduleSyncPush();
+			return { success: true };
+		} catch (err) {
+			this.recordPersistenceError('Could not import Google Keep notes', err);
+			await this.hardResync();
+			return {
+				success: false,
+				error: this.lastPersistError ?? 'Could not import Google Keep notes.'
+			};
+		} finally {
+			this.importing = false;
 		}
 	}
 
@@ -1037,33 +1148,6 @@ export class NotesStore {
 			this.dirty = !synced || leftover.length > 0;
 			return synced;
 		});
-	}
-
-	/**
-	 * Drop the anonymous workspace when it has become a redundant copy of the
-	 * profile that adopted it. Redundancy is judged from the rows themselves
-	 * rather than from a record of having copied them, so a device duplicated by
-	 * an earlier build is healed too, and a workspace the user has actually
-	 * written to is never a candidate.
-	 *
-	 * Every condition here must hold: a partial sync, a record still queued, or
-	 * an attachment that could not be read means the cloud is not yet a complete
-	 * copy, so the rows stay and a later sync tries again.
-	 */
-	private async dropRedundantLocalCopy(): Promise<void> {
-		const pid = this.pid;
-		if (pid === LOCAL_PROFILE_ID) return;
-		if (syncStore.lastError || this.lastPersistError) return;
-		if (this.attachmentHydrationFailures.size > 0) return;
-		try {
-			const pending = await getSyncOutboxKeys(pid).catch(() => null);
-			if (pending === null || pending.length > 0) return;
-			if (!(await isNamespaceRedundant(LOCAL_PROFILE_ID, pid))) return;
-			await clearProfileNamespace(LOCAL_PROFILE_ID);
-			clearNotesMirror(LOCAL_PROFILE_ID);
-		} catch (err) {
-			console.error('[sync] could not drop the redundant anonymous workspace:', err);
-		}
 	}
 
 	/** Flush durable local changes when leaving a note, without a no-op cloud request. */
@@ -1434,10 +1518,6 @@ export class NotesStore {
 					} catch {
 						/* ignore BroadcastChannel error */
 					}
-					// Every sync path ends here, including the one a boot takes. Hanging
-					// this off flushSync instead would skip startup, foregrounding and
-					// live nudges, which are exactly when an upgraded device first syncs.
-					await this.dropRedundantLocalCopy();
 				}
 				return success;
 			} finally {

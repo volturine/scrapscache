@@ -705,3 +705,12 @@ html.scrapscache-sync-active [data-scrapscache-sync-spinner],
 	animation: scrapscache-spin 1s linear infinite;
 	transform-origin: center;
 }
+/* The spin reports sync status, so it survives the reduced-motion reset above
+ * (Windows "Animation effects" off makes Chromium report reduced motion). */
+@media (prefers-reduced-motion: reduce) {
+	html.scrapscache-sync-active [data-scrapscache-sync-spinner],
+	[data-scrapscache-sync-spinner].scrapscache-sync-icon-active {
+		animation-duration: 1s !important;
+		animation-iteration-count: infinite !important;
+	}
+}

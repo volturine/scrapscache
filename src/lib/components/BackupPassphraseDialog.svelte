@@ -85,6 +85,7 @@
 							bind:value={passphrase}
 							bind:this={passphraseInput}
 							disabled={busy}
+							aria-invalid={Boolean(localError || error)}
 							class="scrapscache-input w-full px-3 py-2.5 text-[16px]"
 						/>
 					</label>
@@ -99,6 +100,7 @@
 								autocomplete="new-password"
 								bind:value={confirmation}
 								disabled={busy}
+								aria-invalid={Boolean(localError || error)}
 								class="scrapscache-input w-full px-3 py-2.5 text-[16px]"
 							/>
 						</label>

@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { env as publicEnv } from '$env/dynamic/public';
-import { createSyncIdentity, identityFromSyncKey } from '$lib/syncPairing';
+import { createSyncIdentity } from '$lib/syncPairing';
 import type { StoredProfile } from '$lib/profiles';
 import { notesStore } from '$lib/stores/notes.svelte';
 import { profileCoordinator } from '$lib/stores/profiles.svelte';
@@ -11,6 +11,10 @@ import SyncModal from './SyncModal.svelte';
 
 function profile(id: string, name: string, createdAt: number): StoredProfile {
 	return { id, name, createdAt, syncKey: createSyncIdentity().syncKey };
+}
+
+async function expand(name: string) {
+	await fireEvent.click(screen.getByRole('button', { name: `Expand ${name}` }));
 }
 
 function deferred<T>() {
@@ -24,16 +28,18 @@ function deferred<T>() {
 }
 
 describe('SyncModal profile interactions', () => {
+	let home: StoredProfile;
 	let main: StoredProfile;
 	let side: StoredProfile;
 
 	beforeEach(() => {
 		vi.restoreAllMocks();
 		localStorage.clear();
+		home = { id: 'device-local', name: 'Home', syncKey: '', createdAt: 0 };
 		main = profile('profile-main', 'Main', 1);
 		side = profile('profile-side', 'Side', 2);
-		syncStore.profiles = [main, side];
-		syncStore.account = identityFromSyncKey(main.syncKey);
+		syncStore.profiles = [home, main, side];
+		syncStore.activateProfile(main);
 		syncStore.lastError = null;
 		syncStore.progress = null;
 		syncStore.usage = null;
@@ -60,61 +66,14 @@ describe('SyncModal profile interactions', () => {
 		await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
 	});
 
-	it('reveals row actions with a swipe without switching and keeps vertical scrolling separate', async () => {
+	it('expands a workspace without switching and keeps rename on the row', async () => {
 		const switchTo = vi.spyOn(profileCoordinator, 'switchTo');
 		render(SyncModal, { props: { onClose: vi.fn() } });
-		const row = screen.getByRole('button', { name: 'Switch to Side' });
-		// How far the row has been pulled aside is the only signal of the drawer,
-		// since a swipe is the sole way to open it.
-		const drawerOffset = () =>
-			(row.closest('.row') as HTMLElement).style.getPropertyValue('--swipe-offset');
-		async function pointer(type: string, x: number, y: number) {
-			const event = new Event(type, { bubbles: true });
-			Object.assign(event, { pointerType: 'touch', pointerId: 1, clientX: x, clientY: y });
-			await fireEvent(row, event);
-		}
-		await pointer('pointerdown', 200, 100);
-		await pointer('pointermove', 190, 160);
-		await pointer('pointerup', 190, 160);
-		expect(drawerOffset()).toBe('0px');
-		await pointer('pointerdown', 200, 100);
-		await pointer('pointermove', 70, 105);
-		await pointer('pointerup', 70, 105);
-		expect(drawerOffset()).toBe('-152px');
-		await fireEvent.click(row);
+		await expand('Side');
 		expect(switchTo).not.toHaveBeenCalled();
-		expect(drawerOffset()).toBe('-152px');
 		await fireEvent.click(screen.getByRole('button', { name: 'Rename Side' }));
 		expect(screen.getByRole('textbox', { name: 'Workspace name' })).toBeTruthy();
-		// The list stays put: renaming happens on the row, not on its own screen.
 		expect(screen.getByRole('button', { name: 'Main is active' })).toBeTruthy();
-	});
-
-	it('keeps a swipe with the row it started on when the finger drifts onto another row', async () => {
-		const switchTo = vi.spyOn(profileCoordinator, 'switchTo');
-		render(SyncModal, { props: { onClose: vi.fn() } });
-		const row = screen.getByRole('button', { name: 'Switch to Side' });
-		const neighbour = screen.getByRole('button', { name: 'Main is active' });
-		const drawerOffset = () =>
-			(row.closest('.row') as HTMLElement).style.getPropertyValue('--swipe-offset');
-		async function pointer(target: Element, type: string, x: number, y: number) {
-			const event = new Event(type, { bubbles: true });
-			Object.assign(event, { pointerType: 'touch', pointerId: 1, clientX: x, clientY: y });
-			await fireEvent(target, event);
-		}
-
-		await pointer(row, 'pointerdown', 200, 100);
-		// Drifting down first reads as a scroll, so the row stays put but the
-		// gesture is not thrown away.
-		await pointer(row, 'pointermove', 196, 140);
-		expect(drawerOffset()).toBe('0px');
-		// Pulling left now counts, even though the finger sits over another row.
-		await pointer(neighbour, 'pointermove', 90, 150);
-		expect(drawerOffset()).toBe('-110px');
-		await pointer(neighbour, 'pointerup', 90, 150);
-
-		expect(drawerOffset()).toBe('-152px');
-		expect(switchTo).not.toHaveBeenCalled();
 	});
 
 	it('renames a workspace inline and keeps the row editable when saving fails', async () => {
@@ -124,6 +83,7 @@ describe('SyncModal profile interactions', () => {
 			.mockResolvedValueOnce({ ...side, name: 'Studio' });
 		render(SyncModal, { props: { onClose: vi.fn() } });
 
+		await expand('Side');
 		await fireEvent.click(screen.getByRole('button', { name: 'Rename Side' }));
 		const field = screen.getByRole('textbox', { name: 'Workspace name' }) as HTMLInputElement;
 		expect(field.value).toBe('Side');
@@ -144,6 +104,7 @@ describe('SyncModal profile interactions', () => {
 		const rename = vi.spyOn(syncStore, 'renameProfile');
 		render(SyncModal, { props: { onClose: vi.fn() } });
 
+		await expand('Side');
 		await fireEvent.click(screen.getByRole('button', { name: 'Rename Side' }));
 		const field = screen.getByRole('textbox', { name: 'Workspace name' });
 		await fireEvent.input(field, { target: { value: 'Discarded' } });
@@ -157,6 +118,7 @@ describe('SyncModal profile interactions', () => {
 	it('focuses and selects the name when an inline rename opens', async () => {
 		render(SyncModal, { props: { onClose: vi.fn() } });
 
+		await expand('Side');
 		await fireEvent.click(screen.getByRole('button', { name: 'Rename Side' }));
 		const field = screen.getByRole('textbox', { name: 'Workspace name' }) as HTMLInputElement;
 
@@ -169,6 +131,7 @@ describe('SyncModal profile interactions', () => {
 		const onClose = vi.fn();
 		render(SyncModal, { props: { onClose } });
 
+		await expand('Side');
 		await fireEvent.click(screen.getByRole('button', { name: 'Rename Side' }));
 		const field = screen.getByRole('textbox', { name: 'Workspace name' });
 
@@ -177,70 +140,73 @@ describe('SyncModal profile interactions', () => {
 		expect(onClose).not.toHaveBeenCalled();
 		expect(screen.queryByRole('textbox', { name: 'Workspace name' })).toBeNull();
 
-		// With no row busy, Escape belongs to the dialog again.
 		await tick();
 		expect(screen.getByRole('button', { name: 'Rename Side' })).toBeTruthy();
 	});
 
-	it('keeps Escape with a row whose swipe drawer is open', async () => {
+	it('keeps Escape with an expanded workspace row', async () => {
 		const onClose = vi.fn();
 		render(SyncModal, { props: { onClose } });
-		const row = screen.getByRole('button', { name: 'Switch to Side' });
-		const drawerOffset = () =>
-			(row.closest('.row') as HTMLElement).style.getPropertyValue('--swipe-offset');
-		async function pointer(type: string, x: number, y: number) {
-			const event = new Event(type, { bubbles: true });
-			Object.assign(event, { pointerType: 'touch', pointerId: 1, clientX: x, clientY: y });
-			await fireEvent(row, event);
-		}
-
-		await pointer('pointerdown', 200, 100);
-		await pointer('pointermove', 70, 105);
-		await pointer('pointerup', 70, 105);
-		expect(drawerOffset()).toBe('-152px');
-
-		// Escape closes the drawer the row owns, not the sheet around it, wherever
-		// the key is pressed.
+		await expand('Side');
+		expect(screen.getByRole('button', { name: 'Rename Side' })).toBeTruthy();
 		await fireEvent.keyDown(document, { key: 'Escape' });
-		expect(drawerOffset()).toBe('0px');
+		expect(screen.queryByRole('button', { name: 'Rename Side' })).toBeNull();
 		expect(onClose).not.toHaveBeenCalled();
 	});
 
 	it('holds the dialog open while a row awaits confirmation, wherever Escape lands', async () => {
+		const hits: string[] = [];
+		const origWarn = console.warn;
+		console.warn = (...args: unknown[]) => {
+			const text = args.map(String).join(' ');
+			if (text.includes('derived_inert')) hits.push(text);
+			origWarn.apply(console, args as []);
+		};
 		const onClose = vi.fn();
-		render(SyncModal, { props: { onClose } });
+		try {
+			render(SyncModal, { props: { onClose } });
 
-		// Opening the panel removes the button that had focus, so the panel takes
-		// it, and gives it to the safe action rather than the destructive one.
-		await fireEvent.click(screen.getByRole('button', { name: 'Unlink Side' }));
-		expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Keep Side linked' }));
+			await expand('Side');
+			await fireEvent.click(screen.getByRole('button', { name: 'Unlink Side' }));
+			expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Keep Side linked' }));
 
-		await fireEvent.keyDown(document, { key: 'Escape' });
-		expect(screen.queryByRole('button', { name: 'Keep Side linked' })).toBeNull();
-		expect(onClose).not.toHaveBeenCalled();
+			await fireEvent.keyDown(document, { key: 'Escape' });
+			expect(screen.queryByRole('button', { name: 'Keep Side linked' })).toBeNull();
+			expect(onClose).not.toHaveBeenCalled();
 
-		// Once the row is idle again the dialog takes Escape back.
-		await fireEvent.keyDown(document, { key: 'Escape' });
-		expect(onClose).toHaveBeenCalled();
+			await fireEvent.keyDown(document, { key: 'Escape' });
+			expect(screen.queryByRole('button', { name: 'Unlink Side' })).toBeNull();
+			expect(onClose).not.toHaveBeenCalled();
+
+			await fireEvent.keyDown(window, { key: 'Escape' });
+			expect(onClose).toHaveBeenCalled();
+			expect(hits).toEqual([]);
+		} finally {
+			console.warn = origWarn;
+		}
 	});
 
 	it('hands focus back to the control that opened a panel', async () => {
 		render(SyncModal, { props: { onClose: vi.fn() } });
 
+		await expand('Side');
 		const unlinkTile = screen.getByRole('button', { name: 'Unlink Side' });
 		await fireEvent.click(unlinkTile);
 		await fireEvent.keyDown(document, { key: 'Escape' });
+		await tick();
 		expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Unlink Side' }));
 
 		const renameTile = screen.getByRole('button', { name: 'Rename Side' });
 		await fireEvent.click(renameTile);
 		await fireEvent.keyDown(document, { key: 'Escape' });
+		await tick();
 		expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Rename Side' }));
 	});
 
 	it('leaves focus where a click away from an open panel put it', async () => {
 		render(SyncModal, { props: { onClose: vi.fn() } });
 
+		await expand('Side');
 		await fireEvent.click(screen.getByRole('button', { name: 'Unlink Side' }));
 		const elsewhere = screen.getByRole('button', { name: 'Main is active' });
 		elsewhere.focus();
@@ -251,8 +217,9 @@ describe('SyncModal profile interactions', () => {
 	});
 
 	it('requires confirmation on the row before unlinking an inactive workspace', async () => {
-		const unlink = vi.spyOn(profileCoordinator, 'unlinkSaved').mockResolvedValue({ success: true });
+		const unlink = vi.spyOn(profileCoordinator, 'unlink').mockResolvedValue({ success: true });
 		render(SyncModal, { props: { onClose: vi.fn() } });
+		await expand('Side');
 		await fireEvent.click(screen.getByRole('button', { name: 'Unlink Side' }));
 		expect(unlink).not.toHaveBeenCalled();
 		// Other workspaces stay reachable while one row asks for confirmation.
@@ -261,38 +228,133 @@ describe('SyncModal profile interactions', () => {
 		expect(unlink).not.toHaveBeenCalled();
 
 		await fireEvent.click(screen.getByRole('button', { name: 'Unlink Side' }));
-		await fireEvent.click(screen.getByRole('button', { name: 'Unlink Side and keep notes' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Unlink Side from this device' }));
 		await waitFor(() => expect(unlink).toHaveBeenCalledWith(side.id));
 	});
 
-	it('shows and switches to the anonymous workspace without treating it as a sync key', async () => {
+	it('switches to a private workspace without changing the synced ones', async () => {
 		vi.spyOn(profileCoordinator, 'switchTo').mockImplementation(async (id) => {
-			expect(id).toBe('device-local');
-			syncStore.activateLocalWorkspace();
+			expect(id).toBe(home.id);
+			syncStore.activateLocalWorkspace(home.id);
 			return { success: true };
 		});
 		const onClose = vi.fn();
 		render(SyncModal, { props: { onClose } });
 
-		expect(screen.getByText('Anonymous workspace')).toBeTruthy();
 		expect(screen.getByText('Only on this device')).toBeTruthy();
-		expect(screen.queryByRole('button', { name: 'Rename Anonymous workspace' })).toBeNull();
-		expect(screen.queryByRole('button', { name: 'Remove Anonymous workspace' })).toBeNull();
-
-		await fireEvent.click(screen.getByRole('button', { name: 'Switch to Anonymous workspace' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Switch to Home' }));
 		await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
-		expect(syncStore.profiles).toEqual([main, side]);
-		expect(syncStore.activePid).toBe('device-local');
+		expect(syncStore.profiles).toEqual([home, main, side]);
+		expect(syncStore.activePid).toBe(home.id);
 	});
 
-	it('uses a single primary new-workspace action while anonymous is active', () => {
+	it('lists a synced default workspace as that same row', async () => {
+		const promoted: StoredProfile = {
+			id: 'device-local',
+			name: 'Home',
+			syncKey: createSyncIdentity().syncKey,
+			createdAt: 1
+		};
+		syncStore.profiles = [promoted];
+		syncStore.activateProfile(promoted);
+		render(SyncModal, { props: { onClose: vi.fn() } });
+
+		expect(screen.getByRole('button', { name: 'Home is active' })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: 'Switch to Home' })).toBeNull();
+		await expand('Home');
+		expect(screen.getByRole('button', { name: /Force resync/ })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: /sync this workspace/i })).toBeNull();
+	});
+
+	it('shows the same new-workspace action whether a private or synced workspace is active', async () => {
+		const { unmount } = render(SyncModal, { props: { onClose: vi.fn() } });
+		const syncedClass = screen.getByRole('button', { name: '+ New workspace' }).className;
+		unmount();
+
 		syncStore.activateLocalWorkspace();
 		render(SyncModal, { props: { onClose: vi.fn() } });
 
 		const create = screen.getByRole('button', { name: '+ New workspace' });
-		expect(create.classList.contains('scrapscache-button-primary')).toBe(true);
+		expect(create.className).toBe(syncedClass);
+		expect(create.classList.contains('scrapscache-button-primary')).toBe(false);
 		expect(screen.queryByText('These notes stay on this device.')).toBeNull();
 		expect(screen.queryByRole('button', { name: 'Sync now' })).toBeNull();
+	});
+
+	it('asks before creating an empty local workspace from + New workspace', async () => {
+		const createLocal = vi
+			.spyOn(profileCoordinator, 'createLocal')
+			.mockResolvedValue({ success: true });
+		const createSynced = vi.spyOn(profileCoordinator, 'startSync');
+		render(SyncModal, { props: { onClose: vi.fn() } });
+		await fireEvent.click(screen.getByRole('button', { name: '+ New workspace' }));
+		expect(createLocal).not.toHaveBeenCalled();
+		await fireEvent.click(screen.getByRole('button', { name: /Create workspace/ }));
+		await waitFor(() => expect(createLocal).toHaveBeenCalledTimes(1));
+		expect(createSynced).not.toHaveBeenCalled();
+		expect(screen.queryByRole('button', { name: /Create workspace/ })).toBeNull();
+		expect(screen.getByText('Created a local workspace on this device.')).toBeTruthy();
+	});
+
+	it('exports from the row and keeps manage actions behind the chevron', async () => {
+		render(SyncModal, { props: { onClose: vi.fn() } });
+		expect(screen.getByRole('button', { name: 'Export Main' })).toBeTruthy();
+		expect(screen.getByRole('button', { name: 'Export Home' })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: /Force resync/ })).toBeNull();
+		expect(screen.queryByRole('button', { name: 'Rename Main' })).toBeNull();
+		expect(screen.queryByRole('button', { name: 'Unlink Main' })).toBeNull();
+
+		await expand('Main');
+		const rename = screen.getByRole('button', { name: 'Rename Main' });
+		const resync = screen.getByRole('button', { name: /Force resync/ });
+		const unlink = screen.getByRole('button', { name: 'Unlink Main' });
+		const remove = screen.getByRole('button', { name: /Delete cloud data/ });
+		expect(rename.compareDocumentPosition(resync) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		expect(resync.compareDocumentPosition(unlink) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		expect(unlink.compareDocumentPosition(remove) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+	});
+
+	it('expands a private workspace with rename, sync, and delete', async () => {
+		render(SyncModal, { props: { onClose: vi.fn() } });
+		expect(screen.getByRole('button', { name: 'Export Home' })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: /sync this workspace/i })).toBeNull();
+
+		await expand('Home');
+		expect(screen.getByRole('button', { name: 'Rename Home' })).toBeTruthy();
+		expect(screen.getByRole('button', { name: /sync this workspace/i })).toBeTruthy();
+		expect(screen.getByRole('button', { name: /Delete workspace/ })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: 'Unlink Home' })).toBeNull();
+		expect(screen.queryByRole('button', { name: /Delete cloud data/ })).toBeNull();
+	});
+
+	it.each([
+		['Home', 'device-local'],
+		['Main', 'profile-main'],
+		['Side', 'profile-side']
+	])('deletes the %s workspace after confirmation', async (name, id) => {
+		const remove = vi.spyOn(profileCoordinator, 'remove').mockResolvedValue({ success: true });
+		render(SyncModal, { props: { onClose: vi.fn() } });
+		await expand(name);
+		await fireEvent.click(screen.getByRole('button', { name: /Delete workspace/ }));
+		expect(remove).not.toHaveBeenCalled();
+		expect(screen.getByText(new RegExp(`delete “${name}” and its notes`))).toBeTruthy();
+		await fireEvent.click(screen.getByRole('button', { name: 'Delete workspace' }));
+		await waitFor(() => expect(remove).toHaveBeenCalledWith(id));
+		expect(screen.getByText('Workspace deleted from this device.')).toBeTruthy();
+	});
+
+	it('lists extra local workspaces with local actions', async () => {
+		const local: StoredProfile = { id: 'local-1', name: 'Studio', syncKey: '', createdAt: 3 };
+		syncStore.profiles = [main, side, local];
+		syncStore.activateLocalWorkspace(local.id);
+		render(SyncModal, { props: { onClose: vi.fn() } });
+
+		expect(screen.getByRole('button', { name: 'Studio is active' })).toBeTruthy();
+		await expand('Studio');
+		expect(screen.getByRole('button', { name: /sync this workspace/i })).toBeTruthy();
+		expect(screen.getByRole('button', { name: 'Rename Studio' })).toBeTruthy();
+		expect(screen.getByRole('button', { name: /Delete workspace/ })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: 'Unlink Studio' })).toBeNull();
 	});
 
 	it('keeps sync screen open and shows error if switch fails', async () => {
@@ -326,12 +388,12 @@ describe('SyncModal profile interactions', () => {
 		const force = vi.spyOn(profileCoordinator, 'forceResync').mockResolvedValue({ success: true });
 		render(SyncModal, { props: { onClose: vi.fn() } });
 
-		await fireEvent.click(screen.getByText('Manage workspace'));
+		await expand('Main');
 		await fireEvent.click(screen.getByRole('button', { name: /Force resync/ }));
 
 		expect(force).not.toHaveBeenCalled();
 		await fireEvent.click(screen.getByRole('button', { name: 'Replace cloud notes' }));
-		await waitFor(() => expect(force).toHaveBeenCalledTimes(1));
+		await waitFor(() => expect(force).toHaveBeenCalledWith(undefined, main.id));
 		expect(screen.getByText('This device’s notes are now the latest cloud version.')).toBeTruthy();
 	});
 
@@ -351,11 +413,13 @@ describe('SyncModal profile interactions', () => {
 		vi.spyOn(document.head, 'append').mockImplementation((...nodes) => {
 			(nodes[0] as HTMLScriptElement).onload?.(new Event('load'));
 		});
-		const create = vi.spyOn(profileCoordinator, 'create').mockResolvedValue({ success: false });
+		const create = vi.spyOn(profileCoordinator, 'startSync').mockResolvedValue({ success: false });
 		try {
+			syncStore.activateLocalWorkspace();
 			render(SyncModal, { props: { onClose: vi.fn() } });
-			await fireEvent.click(screen.getByRole('button', { name: '+ New workspace' }));
-			const submit = screen.getByRole('button', { name: 'Create workspace' }) as HTMLButtonElement;
+			await expand('Home');
+			await fireEvent.click(screen.getByRole('button', { name: /sync this workspace/i }));
+			const submit = screen.getByRole('button', { name: 'Start sync' }) as HTMLButtonElement;
 			await waitFor(() => expect(turnstile.render).toHaveBeenCalledTimes(1));
 			expect(turnstile.render.mock.calls[0][1]).toMatchObject({
 				sitekey: 'sitekey',
@@ -368,7 +432,7 @@ describe('SyncModal profile interactions', () => {
 			expect(submit.disabled).toBe(false);
 			await fireEvent.click(submit);
 
-			await waitFor(() => expect(create).toHaveBeenCalledWith('', 'token-1'));
+			await waitFor(() => expect(create).toHaveBeenCalledWith('device-local', '', 'token-1'));
 			await waitFor(() => expect(turnstile.reset).toHaveBeenCalledWith('widget-1'));
 			expect(submit.disabled).toBe(true);
 		} finally {
@@ -377,14 +441,20 @@ describe('SyncModal profile interactions', () => {
 		}
 	});
 
-	it('offers recovery for authentication failure and places joining under new workspace', async () => {
+	it('offers recovery for authentication failure and places joining under new workspace only', async () => {
 		syncStore.lastError = 'Could not start sync authentication';
 		render(SyncModal, { props: { onClose: vi.fn() } });
 		expect(screen.queryByRole('button', { name: 'Sync now' })).toBeNull();
 		expect(screen.getByRole('button', { name: 'Force resync' })).toBeTruthy();
-		expect(screen.queryByRole('button', { name: 'Join existing' })).toBeNull();
+		syncStore.activateLocalWorkspace();
+		await tick();
+		await expand('Home');
+		await fireEvent.click(screen.getByRole('button', { name: /sync this workspace/i }));
+		expect(screen.getByRole('button', { name: 'Start sync' })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: /join/i })).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: '← Back to workspaces' }));
 		await fireEvent.click(screen.getByRole('button', { name: '+ New workspace' }));
-		expect(screen.getByRole('button', { name: 'Join existing' })).toBeTruthy();
+		expect(screen.getByRole('button', { name: /Join a synced workspace/ })).toBeTruthy();
 	});
 
 	it('shows syncing only for a sync started from the modal', async () => {
@@ -428,28 +498,46 @@ describe('SyncModal profile interactions', () => {
 		expect(target.disabled).toBe(false);
 	});
 
-	it('unlinks the active workspace from its own row and reports where the notes went', async () => {
+	it('unlinks the active workspace from its own row into a private workspace', async () => {
 		const unlink = vi.spyOn(profileCoordinator, 'unlink').mockResolvedValue({ success: true });
 		render(SyncModal, { props: { onClose: vi.fn() } });
 
+		await expand('Main');
 		await fireEvent.click(screen.getByRole('button', { name: 'Unlink Main' }));
-		expect(screen.getByText(/notes move to Anonymous workspace/i)).toBeTruthy();
-		await fireEvent.click(screen.getByRole('button', { name: 'Unlink Main and keep notes' }));
+		expect(screen.getByRole('button', { name: 'Keep Main linked' })).toBeTruthy();
+		await fireEvent.click(screen.getByRole('button', { name: 'Unlink Main from this device' }));
 
-		await waitFor(() => expect(unlink).toHaveBeenCalledWith());
+		await waitFor(() => expect(unlink).toHaveBeenCalledWith(main.id));
 		expect(
-			screen.getByText('Notes moved to Anonymous workspace. Cloud data is unchanged.')
+			screen.getByText('Unlinked. Its notes stay on this device as a private workspace.')
 		).toBeTruthy();
 	});
 
 	it('requires confirmation before deleting cloud data', async () => {
 		const unlink = vi.spyOn(profileCoordinator, 'unlink').mockResolvedValue({ success: true });
 		render(SyncModal, { props: { onClose: vi.fn() } });
-		await fireEvent.click(screen.getByText('Manage workspace'));
+		await expand('Main');
 		await fireEvent.click(screen.getByRole('button', { name: /Delete cloud data/ }));
 		expect(unlink).not.toHaveBeenCalled();
 		await fireEvent.click(screen.getByRole('button', { name: 'Delete cloud data' }));
-		await waitFor(() => expect(unlink).toHaveBeenCalledWith(true));
+		await waitFor(() => expect(unlink).toHaveBeenCalledWith(main.id, true));
+	});
+
+	it('expands inactive synced workspaces with the same manage actions', async () => {
+		const force = vi.spyOn(profileCoordinator, 'forceResync').mockResolvedValue({ success: true });
+		render(SyncModal, { props: { onClose: vi.fn() } });
+		await expand('Side');
+		const rename = screen.getByRole('button', { name: 'Rename Side' });
+		const resync = screen.getByRole('button', { name: /Force resync/ });
+		const unlink = screen.getByRole('button', { name: 'Unlink Side' });
+		const remove = screen.getByRole('button', { name: /Delete cloud data/ });
+		expect(rename.compareDocumentPosition(resync) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		expect(resync.compareDocumentPosition(unlink) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		expect(unlink.compareDocumentPosition(remove) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+		await fireEvent.click(resync);
+		await fireEvent.click(screen.getByRole('button', { name: 'Replace cloud notes' }));
+		await waitFor(() => expect(force).toHaveBeenCalledWith(undefined, side.id));
 	});
 
 	it.each([undefined, 'Could not sync the received profile'])(
@@ -474,9 +562,10 @@ describe('SyncModal profile interactions', () => {
 			const receive = vi
 				.spyOn(profileCoordinator, 'receiveLinkedKey')
 				.mockReturnValue(handover.promise);
+			syncStore.activateLocalWorkspace();
 			render(SyncModal, { props: { onClose: vi.fn() } });
 			await fireEvent.click(screen.getByRole('button', { name: '+ New workspace' }));
-			await fireEvent.click(screen.getByRole('button', { name: 'Join existing' }));
+			await fireEvent.click(screen.getByRole('button', { name: /Join a synced workspace/ }));
 			await fireEvent.input(screen.getByPlaceholderText('XXXX-XXXX-XXXX-XXXX'), {
 				target: { value: link.syncCode }
 			});

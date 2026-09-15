@@ -21,7 +21,7 @@ const NOTE_COLORS = new Set<Note['color']>([
 ]);
 const VIEWS = new Set<View>(['notes', 'kanban', 'reminders', 'archive', 'trash', 'label']);
 
-/** Full device backup — complete app/DB snapshot including full-resolution attachments. */
+/** Current-workspace snapshot, including full-resolution attachments. Never carries sync identity. */
 export type ScrapsCacheBackup = {
 	version: 4;
 	exportedAt: number;
@@ -39,18 +39,6 @@ export type ScrapsCacheBackup = {
 		view: View;
 	};
 };
-
-export type BackupImportProgress = {
-	phase: BackupImportPhase;
-	completed: number;
-	total: number;
-};
-
-export const BackupImportPhase = {
-	Writing: 'writing',
-	Finishing: 'finishing'
-} as const;
-export type BackupImportPhase = (typeof BackupImportPhase)[keyof typeof BackupImportPhase];
 
 export const BackupImportMode = {
 	Keep: 'keep',
@@ -234,6 +222,7 @@ export function normalizeBackup(data: unknown): ScrapsCacheBackup | null {
 				pinned: Boolean(note.pinned),
 				archived: Boolean(note.archived),
 				trashed: Boolean(note.trashed),
+				...(note.secret ? { secret: true } : {}),
 				trashedAt: note.trashedAt == null ? null : Number(note.trashedAt),
 				createdAt: Number(note.createdAt) || 0,
 				updatedAt: Number(note.updatedAt) || 0,

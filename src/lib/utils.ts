@@ -132,6 +132,7 @@ export function cloneNote(note: import('$lib/types').Note): import('$lib/types')
 		archived: note.archived,
 		trashed: note.trashed,
 		trashedAt: note.trashedAt,
+		...(note.secret ? { secret: true } : {}),
 		createdAt: note.createdAt,
 		updatedAt: note.updatedAt,
 		reminder: note.reminder,

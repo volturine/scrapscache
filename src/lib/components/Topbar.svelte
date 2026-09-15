@@ -3,16 +3,20 @@
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { downloadJSON } from '$lib/utils';
 	import { syncStore } from '$lib/stores/sync.svelte';
+	import { profileCoordinator } from '$lib/stores/profiles.svelte';
 	import SyncModal from './SyncModal.svelte';
 	import Tooltip from './Tooltip.svelte';
+	import PwaInstallSettings from './PwaInstallSettings.svelte';
 	import ReminderNotificationSettings from './ReminderNotificationSettings.svelte';
 	import BackupPassphraseDialog from './BackupPassphraseDialog.svelte';
 	import BackupImportModeDialog from './BackupImportModeDialog.svelte';
-	import { BackupImportMode, BackupImportPhase, BackupOperation } from '$lib/backup';
+	import ImportGuideDialog from './ImportGuideDialog.svelte';
+	import { BackupImportMode, BackupOperation } from '$lib/backup';
+	import { isZipBytes, readKeepTakeout, unzipKeepTakeout } from '$lib/keepImport';
 	import { resolveSyncStatus, SyncStatus } from '$lib/syncStatus';
 	import { useEditorActions } from '$lib/editorContext';
 	import { pairingCodeFromUrl } from '$lib/syncPairing';
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import {
@@ -21,18 +25,19 @@
 		isEncryptedScrapsCacheBackup,
 		type EncryptedScrapsCacheBackup
 	} from '$lib/backupCrypto';
-	import { FileUpload } from '@ark-ui/svelte/file-upload';
 	import { Menu } from '@ark-ui/svelte/menu';
 	import {
 		Cloud,
 		Download,
 		ExternalLink,
+		FileText,
 		LayoutGrid,
 		List,
 		Menu as MenuIcon,
 		Moon,
 		Search,
 		Settings,
+		Shield,
 		Sun,
 		Upload,
 		X
@@ -60,7 +65,10 @@
 	let backupBusy = $state(false);
 	let pendingEncryptedBackup = $state<EncryptedScrapsCacheBackup | null>(null);
 	let pendingImportData = $state.raw<unknown>(null);
+	let pendingKeepFiles = $state.raw<Record<string, Uint8Array> | null>(null);
 	let choosingImportMode = $state(false);
+	let showingImportGuide = $state(false);
+	let keepImportReady = $state(false);
 	let syncStatus = $derived(resolveSyncStatus(syncStore.lastError, syncStore.usage));
 	let syncControlLabel = $derived(SYNC_CONTROL_LABEL[syncStatus]);
 
@@ -78,6 +86,16 @@
 		settingsOpen = false;
 		backupImportError = '';
 		backupDialogMode = BackupOperation.Export;
+	}
+
+	function startBackupImport() {
+		settingsOpen = false;
+		backupImportError = '';
+		keepImportReady = false;
+		pendingKeepFiles = null;
+		void tick().then(() => {
+			showingImportGuide = true;
+		});
 	}
 
 	async function submitBackupPassphrase(passphrase: string) {
@@ -100,6 +118,7 @@
 				pendingEncryptedBackup = null;
 				backupDialogMode = null;
 				settingsOpen = false;
+				await tick();
 				choosingImportMode = true;
 			}
 		} catch (error) {
@@ -111,49 +130,63 @@
 	}
 
 	async function selectImportMode(mode: BackupImportMode) {
-		if (!pendingImportData) return;
+		if (!pendingKeepFiles && !pendingImportData) return;
+		// The import belongs to the open workspace, so it cannot start mid-switch.
+		if (profileCoordinator.switching) {
+			backupImportError = 'A workspace change is still running. Try again when it finishes.';
+			return;
+		}
+		showingImportGuide = false;
+		keepImportReady = false;
 		choosingImportMode = false;
 		importingBackup = true;
-		settingsOpen = true;
 		backupImportError = '';
 		try {
-			const result = await notesStore.importBackup(pendingImportData, mode);
-			if (!result.success) throw new Error(result.error || 'Could not import that backup.');
+			const result = pendingKeepFiles
+				? await notesStore.importKeepTakeout(pendingKeepFiles, mode)
+				: await notesStore.importBackup(pendingImportData, mode);
+			if (!result.success) throw new Error(result.error || 'Could not import that file.');
 			pendingImportData = null;
-			settingsOpen = false;
+			pendingKeepFiles = null;
 		} catch (error) {
 			backupImportError = error instanceof Error ? error.message : 'Backup operation failed.';
 			choosingImportMode = true;
-			settingsOpen = false;
 		} finally {
 			importingBackup = false;
 		}
 	}
 
-	function importBackupFile(file: File) {
+	async function importBackupFile(file: File) {
 		if (importingBackup) return;
 		importingBackup = true;
 		backupImportError = '';
-		const reader = new FileReader();
-		reader.onload = async () => {
-			try {
-				const data = JSON.parse(String(reader.result));
-				if (!isEncryptedScrapsCacheBackup(data))
-					throw new Error('This is not a current encrypted Scraps Cache backup.');
-				pendingEncryptedBackup = data;
-				backupDialogMode = BackupOperation.Import;
+		try {
+			const bytes = new Uint8Array(await file.arrayBuffer());
+			if (isZipBytes(bytes)) {
+				const files = await unzipKeepTakeout(bytes);
+				if (readKeepTakeout(files).notes.length === 0)
+					throw new Error('That zip does not contain Google Keep notes.');
+				pendingKeepFiles = files;
+				pendingImportData = null;
+				keepImportReady = true;
 				settingsOpen = false;
-			} catch (err) {
-				backupImportError = err instanceof Error ? err.message : 'Could not read that backup file.';
-			} finally {
-				importingBackup = false;
+				return;
 			}
-		};
-		reader.onerror = () => {
+			const data = JSON.parse(new TextDecoder().decode(bytes));
+			if (!isEncryptedScrapsCacheBackup(data))
+				throw new Error('This is not a Scraps Cache backup or Google Keep Takeout.');
+			pendingEncryptedBackup = data;
+			pendingKeepFiles = null;
+			keepImportReady = false;
+			showingImportGuide = false;
+			settingsOpen = false;
+			await tick();
+			backupDialogMode = BackupOperation.Import;
+		} catch (err) {
+			backupImportError = err instanceof Error ? err.message : 'Could not read that file.';
+		} finally {
 			importingBackup = false;
-			backupImportError = 'Could not read that backup file.';
-		};
-		reader.readAsText(file);
+		}
 	}
 
 	function handleKeydown(e: KeyboardEvent) {
@@ -223,7 +256,10 @@
 			<!-- The spin turns this span, not the icon: Safari treats a transform on
 			     an svg root as its own user space, so the icon sat still there. -->
 			<span
-				class={['block h-5 w-5', notesStore.syncing && 'scrapscache-sync-icon-active']}
+				class={[
+					'block h-5 w-5',
+					(notesStore.syncing || importingBackup) && 'scrapscache-sync-icon-active'
+				]}
 				data-scrapscache-sync-spinner
 			>
 				<Cloud
@@ -262,85 +298,79 @@
 		</Tooltip>
 		<Menu.Positioner class="z-30">
 			<Menu.Content class="scrapscache-popover w-64 overflow-hidden pt-1">
-				{#if importingBackup}
-					{@const progress = notesStore.backupImportProgress}
-					<div
-						class="space-y-2 px-3 py-2 text-xs text-[var(--scrapscache-text-muted)]"
-						role="status"
-						aria-live="polite"
-					>
-						<div class="flex justify-between gap-2">
-							<span
-								>{progress?.phase === BackupImportPhase.Finishing
-									? 'Finishing backup…'
-									: progress
-										? 'Importing backup…'
-										: 'Reading backup…'}</span
-							>{#if progress}<span>{progress.completed}/{progress.total}</span>{/if}
-						</div>
-						<div class="h-1.5 overflow-hidden rounded-full bg-black/10 dark:bg-white/10">
-							<div
-								class="h-full bg-blue-600 transition-[width]"
-								style={`width: ${progress && progress.total ? Math.round((progress.completed / progress.total) * 100) : 8}%`}
-							></div>
-						</div>
-					</div>
-				{:else}
-					<Menu.Item
-						value="theme"
-						closeOnSelect={false}
-						onSelect={() => uiStore.toggleDark()}
-						class="flex h-8 w-full cursor-pointer items-center gap-2 px-3 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/5 dark:hover:bg-white/10"
-					>
-						{#if uiStore.effectiveDark}
-							<Sun class="h-4 w-4 shrink-0" aria-hidden="true" />
-							Light mode
-						{:else}
-							<Moon class="h-4 w-4 shrink-0" aria-hidden="true" />
-							Dark mode
-						{/if}
-					</Menu.Item>
-					<Menu.Item
-						value="export"
-						onSelect={startBackupExport}
-						class="flex h-8 w-full cursor-pointer items-center gap-2 px-3 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/5 dark:hover:bg-white/10"
-					>
-						<Download class="h-4 w-4 shrink-0" aria-hidden="true" />
-						Export backup
-					</Menu.Item>
-					<FileUpload.Root
-						accept=".scraps-cache-backup,application/json"
-						maxFiles={1}
-						onFileAccept={(details) => {
-							const file = details.files[0];
-							if (file) importBackupFile(file);
-						}}
-					>
-						<FileUpload.Trigger
-							class="flex h-8 w-full cursor-pointer items-center gap-2 px-3 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/5 dark:hover:bg-white/10"
+				<Menu.Item
+					value="theme"
+					closeOnSelect={false}
+					onSelect={() => uiStore.toggleDark()}
+					class="flex h-8 w-full cursor-pointer items-center gap-2 px-3 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/5 dark:hover:bg-white/10"
+				>
+					{#if uiStore.effectiveDark}
+						<Sun class="h-4 w-4 shrink-0" aria-hidden="true" />
+						Light mode
+					{:else}
+						<Moon class="h-4 w-4 shrink-0" aria-hidden="true" />
+						Dark mode
+					{/if}
+				</Menu.Item>
+				<Menu.Item
+					value="export"
+					disabled={importingBackup}
+					onSelect={startBackupExport}
+					class="flex h-8 w-full cursor-pointer items-center gap-2 px-3 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/5 dark:hover:bg-white/10"
+				>
+					<Download class="h-4 w-4 shrink-0" aria-hidden="true" />
+					Export backup
+				</Menu.Item>
+				<Menu.Item
+					value="import"
+					disabled={importingBackup}
+					onSelect={startBackupImport}
+					class="flex h-8 w-full cursor-pointer items-center gap-2 px-3 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/5 dark:hover:bg-white/10"
+				>
+					<Upload class="h-4 w-4 shrink-0" aria-hidden="true" />
+					Import backup
+				</Menu.Item>
+				<PwaInstallSettings />
+				<ReminderNotificationSettings />
+				<Menu.Separator class="border-t border-[var(--scrapscache-border)]" />
+				<Menu.Item value="issue">
+					{#snippet asChild(props)}
+						<a
+							{...props()}
+							href="https://github.com/volturine/scrapscache/issues/new/choose"
+							target="_blank"
+							rel="noreferrer"
+							class="flex h-8 w-full items-center gap-2 px-3 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/5 dark:hover:bg-white/10"
 						>
-							<Upload class="h-4 w-4 shrink-0" aria-hidden="true" />
-							Import backup
-						</FileUpload.Trigger>
-						<FileUpload.HiddenInput />
-					</FileUpload.Root>
-					<ReminderNotificationSettings />
-					<Menu.Separator class="border-t border-[var(--scrapscache-border)]" />
-					<Menu.Item value="issue">
-						{#snippet asChild(props)}
-							<a
-								{...props()}
-								href="https://github.com/volturine/scrapscache/issues/new/choose"
-								target="_blank"
-								rel="noreferrer"
-								class="flex h-8 w-full items-center gap-2 px-3 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/5 dark:hover:bg-white/10"
-							>
-								<ExternalLink class="h-4 w-4 shrink-0" aria-hidden="true" />
-								Report an issue
-							</a>
-						{/snippet}
-					</Menu.Item>
-				{/if}
+							<ExternalLink class="h-4 w-4 shrink-0" aria-hidden="true" />
+							Report an issue
+						</a>
+					{/snippet}
+				</Menu.Item>
+				<Menu.Item value="privacy">
+					{#snippet asChild(props)}
+						<a
+							{...props()}
+							href="/privacy"
+							class="flex h-8 w-full items-center gap-2 px-3 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/5 dark:hover:bg-white/10"
+						>
+							<Shield class="h-4 w-4 shrink-0" aria-hidden="true" />
+							Privacy policy
+						</a>
+					{/snippet}
+				</Menu.Item>
+				<Menu.Item value="terms">
+					{#snippet asChild(props)}
+						<a
+							{...props()}
+							href="/terms"
+							class="flex h-8 w-full items-center gap-2 px-3 text-left text-sm text-[var(--scrapscache-text)] hover:bg-black/5 dark:hover:bg-white/10"
+						>
+							<FileText class="h-4 w-4 shrink-0" aria-hidden="true" />
+							Terms of service
+						</a>
+					{/snippet}
+				</Menu.Item>
 				{#if backupImportError}<p class="px-3 pb-2 text-xs text-red-600" role="alert">
 						{backupImportError}
 					</p>{/if}
@@ -370,15 +400,34 @@
 	{/key}
 {/if}
 
+{#if showingImportGuide}
+	<ImportGuideDialog
+		busy={importingBackup}
+		error={backupImportError}
+		keepReady={keepImportReady}
+		onFile={importBackupFile}
+		onSelectMode={selectImportMode}
+		onClose={() => {
+			if (importingBackup) return;
+			showingImportGuide = false;
+			keepImportReady = false;
+			pendingKeepFiles = null;
+			backupImportError = '';
+		}}
+	/>
+{/if}
+
 {#if choosingImportMode}
 	<BackupImportModeDialog
 		busy={importingBackup}
 		error={backupImportError}
+		keepImport={pendingKeepFiles !== null}
 		onSelect={selectImportMode}
 		onClose={() => {
 			if (importingBackup) return;
 			choosingImportMode = false;
 			pendingImportData = null;
+			pendingKeepFiles = null;
 			backupImportError = '';
 		}}
 	/>

@@ -6,8 +6,6 @@ import {
 	listStoredProfiles,
 	readStoredProfiles,
 	putStoredProfile,
-	LOCAL_PROFILE_ID,
-	copyProfileNamespace,
 	getAllNotesMetadata,
 	getAllLabels,
 	getSyncState,
@@ -15,12 +13,6 @@ import {
 	scopedStateKey
 } from '$lib/db/idb';
 import { BOARDS_IDB, BOARD_IDB, LABEL_IDB, NOTE_IDB } from '$lib/syncTombstones';
-import {
-	readNotesMirror,
-	writeNotesMirror,
-	readLabelsMirror,
-	writeLabelsMirror
-} from './noteStorage';
 import type { KanbanBoard } from '$lib/kanban';
 import type { Note } from '$lib/types';
 import type { ScrapsCacheBackup } from '$lib/backup';
@@ -33,7 +25,6 @@ const LS_LAST_ACTIVE = 'scrapscache-last-active-profile';
 const LS_LAST_ACTIVE_LEGACY = 'gkc-last-active-profile';
 const LS_LEGACY_ACCOUNT = 'scrapscache-sync-account';
 const LS_LEGACY_ACCOUNT_OLD = 'gkc-sync-account';
-
 export function readProfiles(): StoredProfile[] {
 	const profiles = readStoredProfiles();
 	return profiles.sort((a, b) => a.createdAt - b.createdAt);
@@ -58,7 +49,13 @@ export function profileForSyncKey(
 	profiles: StoredProfile[],
 	syncKey: string
 ): StoredProfile | null {
+	if (!syncKey) return null;
 	return profiles.find((profile) => profile.syncKey === syncKey) ?? null;
+}
+
+/** Local-only workspaces have no sync key and never talk to the relay. */
+export function isLocalWorkspace(profile: StoredProfile): boolean {
+	return !profile.syncKey;
 }
 
 export function nextProfileName(existing: readonly { name: string }[]): string {
@@ -105,13 +102,11 @@ export function setLastActiveProfileId(id: string | null): void {
 
 /**
  * Boot selection: the last active pointer when it still exists in the keyring,
- * else the legacy single-account mirror's entry, else the only entry, else
- * none (the window runs on the local no-key namespace until one is created).
+ * else the legacy single-account mirror's entry, else the oldest entry.
  */
 export function pickBootProfile(profiles: StoredProfile[]): StoredProfile | null {
 	if (!profiles.length) return null;
 	const pointer = getLastActiveProfileId();
-	if (pointer === LOCAL_PROFILE_ID) return null;
 	if (pointer) {
 		const pointed = profiles.find((profile) => profile.id === pointer);
 		if (pointed) return pointed;
@@ -132,25 +127,6 @@ export function pickBootProfile(profiles: StoredProfile[]): StoredProfile | null
 		if (match) return match;
 	}
 	return profiles[0];
-}
-
-/**
- * Give a key created from the anonymous workspace ownership of its local data
- * so registering does not look like data loss.
- */
-export async function adoptLocalDatasetInto(pid: string): Promise<void> {
-	await copyProfileDatasetInto(LOCAL_PROFILE_ID, pid);
-}
-
-/** Copy one workspace's device-local dataset into a newly created profile. */
-export async function copyProfileDatasetInto(fromPid: string, toPid: string): Promise<void> {
-	await copyProfileNamespace(fromPid, toPid);
-	try {
-		const notes = readNotesMirror(fromPid);
-		if (notes.length) writeNotesMirror(notes, toPid);
-		const labels = readLabelsMirror(fromPid);
-		if (labels.length) writeLabelsMirror(labels, toPid);
-	} catch {}
 }
 
 // --- Per-profile exports ----------------------------------------------------

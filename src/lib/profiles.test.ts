@@ -16,12 +16,13 @@ import {
 	setFiredReminderKeys
 } from '$lib/db/idb';
 import {
-	adoptLocalDatasetInto,
 	buildProfileNotesExport,
 	getLastActiveProfileId,
+	isLocalWorkspace,
 	loadProfiles,
 	nextProfileName,
 	pickBootProfile,
+	profileForSyncKey,
 	saveProfile,
 	setLastActiveProfileId,
 	type StoredProfile
@@ -74,23 +75,6 @@ describe('profile namespaces', () => {
 		expect((await hydrateTombstones('p-two')).notes).toEqual({});
 		expect(await getFiredReminderKeys('p-two')).toEqual([]);
 	});
-
-	it('moves the whole local no-key dataset when the first sync key adopts it', async () => {
-		await putNote('device-local', note('kept'));
-		await putLabel('device-local', label('kept-label'));
-		await markSyncOutbox('device-local', ['note:kept']);
-		await writeTombstones('device-local', { old: 3 });
-		await writeLabelTombstones('device-local', { 'old-label': 4 });
-
-		await adoptLocalDatasetInto('p-new');
-
-		const adopted = await getAllNotesMetadata('p-new');
-		expect(adopted.map(({ id }) => id)).toEqual(['kept']);
-		expect((await getAllLabels('p-new')).map(({ id }) => id)).toEqual(['kept-label']);
-		expect(await getSyncOutboxKeys('p-new')).toEqual(['note:kept']);
-		await hydrateTombstones('p-new');
-		expect(await getSyncState(scopedStateKey(NOTE_IDB, 'p-new'))).toEqual({ old: 3 });
-	});
 });
 
 describe('per-profile size estimation', () => {
@@ -114,6 +98,17 @@ describe('single-profile export', () => {
 		expect(backup?.tombstones).toEqual({ 'gone-exp': 9 });
 		expect(backup?.version).toBe(4);
 		expect(await buildProfileNotesExport('p-other')).toBeNull();
+	});
+});
+
+describe('local workspaces', () => {
+	it('treats empty sync keys as local-only and ignores them when matching keys', () => {
+		const local: StoredProfile = { id: 'local', name: 'Studio', syncKey: '', createdAt: 1 };
+		const synced: StoredProfile = { id: 'synced', name: 'Cloud', syncKey: 'k-cloud', createdAt: 2 };
+		expect(isLocalWorkspace(local)).toBe(true);
+		expect(isLocalWorkspace(synced)).toBe(false);
+		expect(profileForSyncKey([local, synced], '')).toBeNull();
+		expect(profileForSyncKey([local, synced], 'k-cloud')).toBe(synced);
 	});
 });
 

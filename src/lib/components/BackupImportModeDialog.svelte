@@ -1,16 +1,19 @@
 <script lang="ts">
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { portalToAppOverlay } from '$lib/appViewport';
-	import { BackupImportMode } from '$lib/backup';
+	import type { BackupImportMode } from '$lib/backup';
+	import ImportModeChoices from './ImportModeChoices.svelte';
 
 	let {
 		busy = false,
 		error = '',
+		keepImport = false,
 		onSelect,
 		onClose
 	}: {
 		busy?: boolean;
 		error?: string;
+		keepImport?: boolean;
 		onSelect: (mode: BackupImportMode) => void | Promise<void>;
 		onClose: () => void;
 	} = $props();
@@ -38,36 +41,14 @@
 			<Dialog.Content class="scrapscache-dialog w-full max-w-sm">
 				<div class="border-b border-[var(--scrapscache-border)] px-5 py-4">
 					<Dialog.Title class="text-lg font-semibold text-[var(--scrapscache-text)]">
-						How should this backup be imported?
+						{keepImport
+							? 'How should these Keep notes be imported?'
+							: 'How should this backup be imported?'}
 					</Dialog.Title>
 				</div>
 
 				<div class="space-y-3 px-5 py-5">
-					<button
-						bind:this={keepButton}
-						type="button"
-						disabled={busy}
-						onclick={() => onSelect(BackupImportMode.Keep)}
-						class="scrapscache-button w-full px-4 py-3 text-left"
-					>
-						<span class="block font-medium">Keep local notes</span>
-						<span class="mt-1 block text-xs text-[var(--scrapscache-text-muted)]">
-							Add every backup note as a new copy. Existing notes stay unchanged.
-						</span>
-					</button>
-					<button
-						type="button"
-						disabled={busy}
-						onclick={() => onSelect(BackupImportMode.Replace)}
-						class="scrapscache-button w-full px-4 py-3 text-left"
-					>
-						<span class="block font-medium text-[var(--scrapscache-danger)]"
-							>Replace local data</span
-						>
-						<span class="mt-1 block text-xs text-[var(--scrapscache-text-muted)]">
-							Delete current local notes and restore the backup instead.
-						</span>
-					</button>
+					<ImportModeChoices {busy} {keepImport} bind:keepButton {onSelect} />
 					{#if error}<p class="text-sm text-[var(--scrapscache-danger)]" role="alert">
 							{error}
 						</p>{/if}

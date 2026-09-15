@@ -53,6 +53,7 @@
 		onOpenColor,
 		onOpenTags,
 		onCopy,
+		onRestore,
 		onArchive,
 		onDelete,
 		onImagesChange,
@@ -71,6 +72,7 @@
 		onOpenColor?: () => void;
 		onOpenTags?: () => void;
 		onCopy?: () => void;
+		onRestore?: () => void;
 		onArchive?: () => void;
 		onDelete?: () => void;
 		onImagesChange?: (images: NoteImage[]) => void;
@@ -561,119 +563,188 @@
 	</Dialog.Root>
 {/if}
 
-<footer
-	use:footerInteractions
-	class="flex shrink-0 items-center justify-between gap-2 border-t border-black/5 px-3 py-2 dark:border-white/10"
->
-	<div class="flex shrink-0 items-center gap-1">
-		<Tooltip content="Attach">
+{#if trashed}
+	<footer
+		use:footerInteractions
+		class="flex shrink-0 items-center justify-end gap-1 border-t border-black/5 px-3 py-2 dark:border-white/10"
+	>
+		<Tooltip content="Restore">
 			<button
 				type="button"
 				class="icon-btn h-10 w-10 p-2 touch-manipulation"
-				title="Attach"
-				onclick={openAttach}
-				aria-label="Attach"
+				title="Restore"
+				aria-label="Restore"
+				onclick={() => onRestore?.()}
 			>
-				<Paperclip class="h-5 w-5" aria-hidden="true" />
+				<RotateCcw class="h-5 w-5" aria-hidden="true" />
 			</button>
 		</Tooltip>
-		<Tooltip content="New canvas">
+		<Tooltip content="Archive">
 			<button
 				type="button"
 				class="icon-btn h-10 w-10 p-2 touch-manipulation"
-				title="New canvas"
-				onclick={() => void openCanvas()}
-				aria-label="New canvas"
+				title="Archive"
+				aria-label="Archive"
+				onclick={() => onArchive?.()}
 			>
-				<PenLine class="h-5 w-5" aria-hidden="true" />
+				<Archive class="h-5 w-5" aria-hidden="true" />
 			</button>
 		</Tooltip>
-		<Tooltip content="Labels">
+		<Tooltip content="Delete forever">
+			<button
+				type="button"
+				class="icon-btn h-10 w-10 p-2 text-red-600 touch-manipulation dark:text-red-400"
+				title="Delete forever"
+				aria-label="Delete forever"
+				onclick={() => onDelete?.()}
+			>
+				<Trash2 class="h-5 w-5" aria-hidden="true" />
+			</button>
+		</Tooltip>
+	</footer>
+{:else if archived}
+	<footer
+		use:footerInteractions
+		class="flex shrink-0 items-center justify-end gap-1 border-t border-black/5 px-3 py-2 dark:border-white/10"
+	>
+		<Tooltip content="Restore">
 			<button
 				type="button"
 				class="icon-btn h-10 w-10 p-2 touch-manipulation"
-				title="Labels"
-				onclick={openTags}
-				aria-label="Labels"
+				title="Restore"
+				aria-label="Restore"
+				onclick={() => onArchive?.()}
 			>
-				<Tag class="h-5 w-5" fill={hasLabels ? 'currentColor' : 'none'} aria-hidden="true" />
+				<ArchiveRestore class="h-5 w-5" aria-hidden="true" />
 			</button>
 		</Tooltip>
-	</div>
+		<Tooltip content="Delete note">
+			<button
+				type="button"
+				class="icon-btn h-10 w-10 p-2 text-red-600 touch-manipulation dark:text-red-400"
+				title="Delete note"
+				aria-label="Delete note"
+				onclick={() => onDelete?.()}
+			>
+				<Trash2 class="h-5 w-5" aria-hidden="true" />
+			</button>
+		</Tooltip>
+	</footer>
+{:else}
+	<footer
+		use:footerInteractions
+		class="flex shrink-0 items-center justify-between gap-2 border-t border-black/5 px-3 py-2 dark:border-white/10"
+	>
+		<div class="flex shrink-0 items-center gap-1">
+			<Tooltip content="Attach">
+				<button
+					type="button"
+					class="icon-btn h-10 w-10 p-2 touch-manipulation"
+					title="Attach"
+					onclick={openAttach}
+					aria-label="Attach"
+				>
+					<Paperclip class="h-5 w-5" aria-hidden="true" />
+				</button>
+			</Tooltip>
+			<Tooltip content="New canvas">
+				<button
+					type="button"
+					class="icon-btn h-10 w-10 p-2 touch-manipulation"
+					title="New canvas"
+					onclick={() => void openCanvas()}
+					aria-label="New canvas"
+				>
+					<PenLine class="h-5 w-5" aria-hidden="true" />
+				</button>
+			</Tooltip>
+			<Tooltip content="Labels">
+				<button
+					type="button"
+					class="icon-btn h-10 w-10 p-2 touch-manipulation"
+					title="Labels"
+					onclick={openTags}
+					aria-label="Labels"
+				>
+					<Tag class="h-5 w-5" fill={hasLabels ? 'currentColor' : 'none'} aria-hidden="true" />
+				</button>
+			</Tooltip>
+		</div>
 
-	<div class="flex max-w-[calc(100%-5.5rem)] flex-wrap items-center justify-end gap-1">
-		<Tooltip content="Color">
-			<button
-				type="button"
-				class="icon-btn h-10 w-10 p-2 touch-manipulation"
-				title="Color"
-				aria-label="Color"
-				onclick={() => onOpenColor?.()}
-			>
-				<Palette class="h-5 w-5" aria-hidden="true" />
-			</button>
-		</Tooltip>
-		{#if showCopy}
-			<Tooltip content="Copy note">
+		<div class="flex max-w-[calc(100%-5.5rem)] flex-wrap items-center justify-end gap-1">
+			<Tooltip content="Color">
 				<button
 					type="button"
 					class="icon-btn h-10 w-10 p-2 touch-manipulation"
-					title="Copy note"
-					aria-label="Copy note"
-					onclick={() => onCopy?.()}
+					title="Color"
+					aria-label="Color"
+					onclick={() => onOpenColor?.()}
 				>
-					{#if copyFlash}
+					<Palette class="h-5 w-5" aria-hidden="true" />
+				</button>
+			</Tooltip>
+			{#if showCopy}
+				<Tooltip content="Copy note">
+					<button
+						type="button"
+						class="icon-btn h-10 w-10 p-2 touch-manipulation"
+						title="Copy note"
+						aria-label="Copy note"
+						onclick={() => onCopy?.()}
+					>
+						{#if copyFlash}
+							<Check class="h-5 w-5" aria-hidden="true" />
+						{:else}
+							<Copy class="h-5 w-5" aria-hidden="true" />
+						{/if}
+					</button>
+				</Tooltip>
+			{/if}
+			{#if showArchive}
+				<Tooltip content={trashed ? 'Restore' : archived ? 'Unarchive' : 'Archive'}>
+					<button
+						type="button"
+						class="icon-btn h-10 w-10 p-2 touch-manipulation"
+						title={trashed ? 'Restore' : archived ? 'Unarchive' : 'Archive'}
+						aria-label={trashed ? 'Restore' : archived ? 'Unarchive' : 'Archive'}
+						onclick={() => onArchive?.()}
+					>
+						{#if trashed}
+							<RotateCcw class="h-5 w-5" aria-hidden="true" />
+						{:else if archived}
+							<ArchiveRestore class="h-5 w-5" aria-hidden="true" />
+						{:else}
+							<Archive class="h-5 w-5" aria-hidden="true" />
+						{/if}
+					</button>
+				</Tooltip>
+			{/if}
+			{#if showDelete}
+				<Tooltip content="Delete note">
+					<button
+						type="button"
+						class="icon-btn h-10 w-10 p-2 text-red-600 touch-manipulation dark:text-red-400"
+						title="Delete note"
+						aria-label="Delete note"
+						onclick={() => onDelete?.()}
+					>
+						<Trash2 class="h-5 w-5" aria-hidden="true" />
+					</button>
+				</Tooltip>
+			{/if}
+			{#if onClose}
+				<Tooltip content="Done">
+					<button
+						type="button"
+						class="icon-btn h-10 w-10 p-2 touch-manipulation"
+						title="Done"
+						aria-label="Done"
+						onclick={() => onClose?.()}
+					>
 						<Check class="h-5 w-5" aria-hidden="true" />
-					{:else}
-						<Copy class="h-5 w-5" aria-hidden="true" />
-					{/if}
-				</button>
-			</Tooltip>
-		{/if}
-		{#if showArchive}
-			<Tooltip content={trashed ? 'Restore' : archived ? 'Unarchive' : 'Archive'}>
-				<button
-					type="button"
-					class="icon-btn h-10 w-10 p-2 touch-manipulation"
-					title={trashed ? 'Restore' : archived ? 'Unarchive' : 'Archive'}
-					aria-label={trashed ? 'Restore' : archived ? 'Unarchive' : 'Archive'}
-					onclick={() => onArchive?.()}
-				>
-					{#if trashed}
-						<RotateCcw class="h-5 w-5" aria-hidden="true" />
-					{:else if archived}
-						<ArchiveRestore class="h-5 w-5" aria-hidden="true" />
-					{:else}
-						<Archive class="h-5 w-5" aria-hidden="true" />
-					{/if}
-				</button>
-			</Tooltip>
-		{/if}
-		{#if showDelete}
-			<Tooltip content="Delete note">
-				<button
-					type="button"
-					class="icon-btn h-10 w-10 p-2 text-red-600 touch-manipulation dark:text-red-400"
-					title="Delete note"
-					aria-label="Delete note"
-					onclick={() => onDelete?.()}
-				>
-					<Trash2 class="h-5 w-5" aria-hidden="true" />
-				</button>
-			</Tooltip>
-		{/if}
-		{#if onClose}
-			<Tooltip content="Done">
-				<button
-					type="button"
-					class="icon-btn h-10 w-10 p-2 touch-manipulation"
-					title="Done"
-					aria-label="Done"
-					onclick={() => onClose?.()}
-				>
-					<Check class="h-5 w-5" aria-hidden="true" />
-				</button>
-			</Tooltip>
-		{/if}
-	</div>
-</footer>
+					</button>
+				</Tooltip>
+			{/if}
+		</div>
+	</footer>
+{/if}

@@ -26,6 +26,10 @@ function buildVersion() {
 const config = {
 	preprocess: vitePreprocess(),
 	kit: {
+		alias: {
+			'styled-system': './styled-system',
+			$panda: './panda'
+		},
 		// Self-hosted Node builds are the default; DEPLOY_TARGET=cloudflare builds the Workers bundle.
 		adapter:
 			process.env.DEPLOY_TARGET === 'cloudflare'

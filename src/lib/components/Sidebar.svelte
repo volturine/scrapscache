@@ -1,4 +1,8 @@
 <script lang="ts">
+	import { sidebarIcon, sidebarRow, sidebarStyles } from '$panda/styles';
+	import { css, cx } from 'styled-system/css';
+	import { dialog, button, input, menuItem } from 'styled-system/recipes';
+	import { hstack, vstack } from 'styled-system/patterns';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
@@ -162,6 +166,9 @@
 	function cancelDelete() {
 		pendingDelete = null;
 	}
+	const menuRow = menuItem({ density: 'sidebar' });
+	const labelInputClass = cx(input({ variant: 'unstyled' }), sidebarStyles.labelInput);
+	const d = dialog({ size: 'sm' });
 </script>
 
 {#snippet newLabelRow(extraClass: string)}
@@ -169,12 +176,12 @@
 		type="button"
 		onclick={startCreateLabel}
 		data-sidebar-stay-open
-		class="sidebar-row flex w-full items-center gap-3 rounded-xl py-2.5 pl-4 pr-2 text-left text-sm font-medium text-[var(--scrapscache-text-muted)] {extraClass}"
+		class={[menuRow, sidebarRow({ navigation: true, active: false }), extraClass]}
 	>
-		<span class="grid h-7 w-7 shrink-0 place-items-center" aria-hidden="true">
-			<Plus class="h-4 w-4" strokeWidth={1.75} />
+		<span class={sidebarIcon()} aria-hidden="true">
+			<Plus size={16} strokeWidth={1.75} />
 		</span>
-		<span class="min-w-0 flex-1 truncate">New label</span>
+		<span class={sidebarStyles.navLabel}>New label</span>
 	</button>
 {/snippet}
 
@@ -184,16 +191,27 @@
 		type="button"
 		onclick={() => requestDelete(label)}
 		data-sidebar-stay-open
-		class="icon-btn sidebar-row-danger relative grid h-7 w-7 shrink-0 place-items-center text-[var(--scrapscache-text-muted)] before:absolute before:-inset-2 before:content-['']"
+		class={sidebarIcon({ iconTone: 'muted', hitPad: 'delete', danger: true })}
 		aria-label={`Delete ${label.name}`}
 		title="Delete"
 	>
-		<X class="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
+		<X size={14} strokeWidth={1.75} aria-hidden="true" />
 	</button>
 {/snippet}
 
 <aside
-	class="scrollable flex h-full flex-col gap-0.5 overflow-y-auto sidebar-scroll px-2 pb-4 pt-2"
+	class={[
+		'scrollable',
+		css({ scrollbarWidth: 'thin' }),
+		vstack({
+			h: 'full',
+			gap: '3xs',
+			overflowY: 'auto',
+			px: 'sm',
+			pb: 'lg',
+			pt: 'sm'
+		})
+	]}
 	transition:fly={{ x: -20, duration: 120 }}
 >
 	{#each navItems as item (item.view)}
@@ -201,35 +219,49 @@
 		<button
 			type="button"
 			onclick={() => navigate(item.view)}
-			class="sidebar-row flex items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-medium {isActive(
-				item.view
-			)
-				? 'nav-active'
-				: 'text-[var(--scrapscache-text-muted)]'}"
+			class={[menuRow, sidebarRow({ navigation: true, active: isActive(item.view), wide: true })]}
 		>
-			<span
-				class="grid h-7 w-7 shrink-0 place-items-center text-[var(--scrapscache-text)]"
-				aria-hidden="true"
-			>
-				<NavIcon class="h-[18px] w-[18px]" strokeWidth={1.75} />
+			<span class={sidebarIcon({ iconTone: 'nav' })} aria-hidden="true">
+				<NavIcon size={18} strokeWidth={1.75} />
 			</span>
-			<span class="min-w-0 flex-1 truncate text-left">{item.label}</span>
+			<span class={sidebarStyles.navLabel}>{item.label}</span>
 		</button>
 	{/each}
 
-	<section class="mt-5" data-labels-edit aria-label="Labels">
-		<div class="mb-1 flex h-8 items-center gap-2 pl-4 pr-2">
+	<section class={css({ mt: 'xl', w: 'full' })} data-labels-edit aria-label="Labels">
+		<div class={hstack({ mb: '2xs', h: '2rem', gap: 'sm', pl: 'lg', pr: 'sm' })}>
 			<span
-				class="min-w-0 flex-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--scrapscache-text-muted)]"
-				>Labels</span
+				class={css({
+					minW: 0,
+					flex: '1',
+					textStyle: 'captionStrong',
+					textTransform: 'uppercase',
+					letterSpacing: 'eyebrow',
+					color: 'scrapscache.textMuted'
+				})}
 			>
+				Labels
+			</span>
 			<!-- One control in both modes, so the header never reflows on toggle. The
 			     ::before pad gives it a thumb-sized hit area without a taller header. -->
 			<button
 				type="button"
 				onclick={labelsEditMode ? exitEditMode : enterEditMode}
 				data-sidebar-stay-open
-				class="sidebar-row relative shrink-0 rounded-md px-2 py-1 text-xs font-medium text-[var(--scrapscache-text-muted)] before:absolute before:-inset-2.5 before:content-['']"
+				class={css({
+					position: 'relative',
+					flexShrink: 0,
+					rounded: 'control',
+					px: 'sm',
+					py: '2xs',
+					textStyle: 'label',
+					color: 'scrapscache.textMuted',
+					cursor: 'pointer',
+					touchAction: 'manipulation',
+					WebkitTapHighlightColor: 'transparent',
+					_hoverable: { bg: 'scrapscache.interactiveHover' },
+					_before: { position: 'absolute', inset: '-0.625rem', content: '""' }
+				})}
 				aria-label={labelsEditMode ? 'Finish editing labels' : 'Edit labels'}
 				title={labelsEditMode ? 'Finish editing labels' : 'Edit labels'}
 			>
@@ -238,15 +270,9 @@
 		</div>
 
 		{#if labelsEditMode && creatingLabel}
-			<div
-				class="sidebar-row-editing mb-1 flex items-center gap-3 rounded-xl py-2.5 pl-4 pr-2"
-				data-sidebar-stay-open
-			>
-				<span
-					class="grid h-7 w-7 shrink-0 place-items-center text-[var(--scrapscache-text-muted)]"
-					aria-hidden="true"
-				>
-					<Tag class="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
+			<div class={[menuRow, sidebarRow({ editing: true })]} data-sidebar-stay-open>
+				<span class={sidebarIcon({ iconTone: 'muted' })} aria-hidden="true">
+					<Tag size={16} strokeWidth={1.75} aria-hidden="true" />
 				</span>
 				<input
 					bind:this={newLabelInput}
@@ -254,7 +280,7 @@
 					type="text"
 					placeholder="New label"
 					aria-label="New label name"
-					class="min-w-0 flex-1 bg-transparent text-sm font-medium text-[var(--scrapscache-text)] outline-none placeholder:font-normal placeholder:text-[var(--scrapscache-text-muted)]"
+					class={labelInputClass}
 					onblur={finishCreateLabel}
 					onkeydown={(event) => {
 						if (event.key === 'Enter') finishCreateLabel();
@@ -263,33 +289,27 @@
 				/>
 			</div>
 		{:else if labelsEditMode}
-			{@render newLabelRow('mb-1')}
+			{@render newLabelRow(css({ mb: '2xs' }))}
 		{/if}
 
 		{#if notesStore.labels.length === 0 && !labelsEditMode}
 			{@render newLabelRow('')}
 		{:else}
-			<div class="flex flex-col gap-0.5">
+			<div class={vstack({ gap: '3xs' })}>
 				{#each notesStore.labels as label (label.id)}
 					{#if labelsEditMode && renamingId === label.id}
 						<!-- Same box as the rows around it, so starting a rename never nudges
 						     the list; only the tint and the field change. -->
-						<div
-							class="sidebar-row-editing flex items-center gap-3 rounded-xl py-2.5 pl-4 pr-2"
-							data-sidebar-stay-open
-						>
-							<span
-								class="grid h-7 w-7 shrink-0 place-items-center text-[var(--scrapscache-text-muted)]"
-								aria-hidden="true"
-							>
-								<Tag class="h-4 w-4" strokeWidth={1.75} />
+						<div class={[menuRow, sidebarRow({ editing: true })]} data-sidebar-stay-open>
+							<span class={sidebarIcon({ iconTone: 'muted' })} aria-hidden="true">
+								<Tag size={16} strokeWidth={1.75} />
 							</span>
 							<input
 								bind:this={renameInput}
 								bind:value={renamingName}
 								type="text"
 								aria-label={`Rename ${label.name}`}
-								class="min-w-0 flex-1 bg-transparent text-sm font-medium text-[var(--scrapscache-text)] outline-none"
+								class={labelInputClass}
 								onblur={() => saveRename(label)}
 								onkeydown={(event) => {
 									if (event.key === 'Enter') saveRename(label);
@@ -299,18 +319,25 @@
 							{@render deleteButton(label)}
 						</div>
 					{:else if labelsEditMode}
-						<div class="sidebar-row flex items-center gap-3 rounded-xl py-2.5 pl-4 pr-2">
-							<span
-								class="grid h-7 w-7 shrink-0 place-items-center text-[var(--scrapscache-text-muted)]"
-								aria-hidden="true"
-							>
-								<Tag class="h-4 w-4" strokeWidth={1.75} />
+						<div class={[menuRow, sidebarRow()]}>
+							<span class={sidebarIcon({ iconTone: 'muted' })} aria-hidden="true">
+								<Tag size={16} strokeWidth={1.75} />
 							</span>
 							<button
 								type="button"
 								onclick={() => startRename(label)}
 								data-sidebar-stay-open
-								class="min-w-0 flex-1 self-stretch truncate text-left text-sm font-medium text-[var(--scrapscache-text)]"
+								class={cx(
+									sidebarStyles.navLabel,
+									css({
+										minW: 0,
+										flex: '1',
+										alignSelf: 'stretch',
+										textAlign: 'left',
+										textStyle: 'button',
+										cursor: 'pointer'
+									})
+								)}
 								aria-label={`Rename ${label.name}`}
 								title="Rename"
 							>
@@ -322,22 +349,17 @@
 						<button
 							type="button"
 							onclick={() => navigate('label', label.id)}
-							class="sidebar-row flex w-full items-center gap-3 rounded-xl py-2.5 pl-4 pr-2 text-left text-sm font-medium {isActive(
-								'label',
-								label.id
-							)
-								? 'nav-active'
-								: 'text-[var(--scrapscache-text-muted)]'}"
+							class={[
+								menuRow,
+								sidebarRow({ navigation: true, active: isActive('label', label.id) })
+							]}
 						>
-							<span class="grid h-7 w-7 shrink-0 place-items-center" aria-hidden="true">
-								<Tag class="h-4 w-4" strokeWidth={1.75} />
+							<span class={sidebarIcon({ iconTone: 'muted' })} aria-hidden="true">
+								<Tag size={16} strokeWidth={1.75} />
 							</span>
-							<span class="min-w-0 flex-1 truncate">{label.name}</span>
+							<span class={sidebarStyles.navLabel}>{label.name}</span>
 							{#if (labelCounts.get(label.id) ?? 0) > 0}
-								<span
-									class="grid h-7 w-7 shrink-0 place-items-center text-xs tabular-nums opacity-70"
-									>{labelCounts.get(label.id)}</span
-								>
+								<span class={sidebarIcon({ hitPad: 'count' })}>{labelCounts.get(label.id)}</span>
 							{/if}
 						</button>
 					{/if}
@@ -355,23 +377,27 @@
 	>
 		<div
 			{@attach portalToAppOverlay}
-			class="absolute inset-0 z-[80]"
+			class={css({ position: 'absolute', inset: 0, zIndex: 80 })}
 			role="presentation"
 			data-sidebar-stay-open
 		>
-			<Dialog.Backdrop class="absolute inset-0 bg-black/40" />
+			<Dialog.Backdrop class={d.backdrop} />
 			<Dialog.Positioner
-				class="absolute inset-0 flex items-end justify-center p-4 sm:items-center"
+				class={css({
+					position: 'absolute',
+					inset: 0,
+					display: 'flex',
+					alignItems: { base: 'flex-end', sm: 'center' },
+					justifyContent: 'center',
+					p: 'lg'
+				})}
 				data-sidebar-stay-open
 			>
-				<Dialog.Content
-					class="w-full max-w-sm rounded-2xl border border-[var(--scrapscache-border)] bg-[var(--scrapscache-surface)] p-4 shadow-2xl"
-					data-sidebar-stay-open
-				>
-					<Dialog.Title class="text-base font-semibold text-[var(--scrapscache-text)]">
+				<Dialog.Content class={d.panel} data-sidebar-stay-open>
+					<Dialog.Title class={d.title}>
 						Delete “{pendingDelete.name}”?
 					</Dialog.Title>
-					<p class="mt-1.5 text-sm leading-snug text-[var(--scrapscache-text-muted)]">
+					<p class={d.description}>
 						{#if (labelCounts.get(pendingDelete.id) ?? 0) > 0}
 							This label is on {labelCounts.get(pendingDelete.id)} note{(labelCounts.get(
 								pendingDelete.id
@@ -382,25 +408,25 @@
 							No notes currently use this label.
 						{/if}
 					</p>
-					<div class="mt-4 flex flex-col gap-2">
+					<div class={vstack({ gap: 'sm', mt: 'lg' })}>
 						<button
 							type="button"
 							onclick={confirmDeleteLabelOnly}
-							class="rounded-xl bg-black/[0.06] px-3 py-2.5 text-sm font-medium text-[var(--scrapscache-text)] transition-colors hover:bg-black/10 dark:bg-white/10 dark:hover:bg-white/15"
+							class={button({ variant: 'subtle', size: 'md' })}
 						>
 							Delete label only
 						</button>
 						<button
 							type="button"
 							onclick={confirmDeleteLabelAndNotes}
-							class="rounded-xl bg-red-600/90 px-3 py-2.5 text-sm font-medium text-white transition-colors hover:bg-red-600"
+							class={button({ variant: 'destructive', size: 'md' })}
 						>
 							Delete label and its notes
 						</button>
 						<button
 							type="button"
 							onclick={cancelDelete}
-							class="rounded-xl px-3 py-2.5 text-sm font-medium text-[var(--scrapscache-text-muted)] transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+							class={button({ variant: 'ghost', size: 'md' })}
 						>
 							Cancel
 						</button>

@@ -6,6 +6,8 @@
 	import { useEditorActions } from '$lib/editorContext';
 	import EmptyState from '$lib/components/EmptyState.svelte';
 	import { StickyNote } from '@lucide/svelte';
+	import { css } from 'styled-system/css';
+	import { viewPage } from '$panda/styles';
 
 	const { openNote: openEditor, startNewNote } = useEditorActions();
 
@@ -16,7 +18,7 @@
 	const filteredOthers = $derived(search ? notesStore.search(search, others) : others);
 </script>
 
-<div class="pt-4 pb-8">
+<div class={viewPage}>
 	{#if filteredPinned.length === 0 && filteredOthers.length === 0}
 		<EmptyState
 			icon={StickyNote}
@@ -32,13 +34,13 @@
 			<NotesFeed
 				notes={filteredPinned}
 				onOpen={openEditor}
-				class={filteredOthers.length > 0 ? 'mb-8' : ''}
+				class={filteredOthers.length > 0 ? css({ mb: '3xl' }) : ''}
 			/>
 		{/if}
 
 		{#if filteredOthers.length > 0}
 			{#if filteredPinned.length > 0}
-				<SectionHeader label="Others" count={filteredOthers.length} class="mt-6" />
+				<SectionHeader label="Others" count={filteredOthers.length} class={css({ mt: '2xl' })} />
 			{/if}
 			<NotesFeed notes={filteredOthers} onOpen={openEditor} />
 		{/if}

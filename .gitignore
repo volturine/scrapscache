@@ -35,3 +35,7 @@ __pycache__/
 
 # Browser-automation scratch output
 .playwright-mcp
+
+## Panda
+styled-system
+styled-system-studio

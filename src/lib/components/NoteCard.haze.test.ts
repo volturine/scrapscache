@@ -215,14 +215,14 @@ describe('NoteCard right-click haze', () => {
 		expect(document.querySelector('[data-secret-overlay]')).toBeTruthy();
 		const titleEl = screen.getByText('Secret Title');
 		expect(titleEl).toBeTruthy();
-		expect(titleEl.closest('.blur-sm')).toBeNull();
-		const blurred = document.querySelector('.blur-sm');
+		expect(titleEl.closest('[data-secret-content]')).toBeNull();
+		const blurred = document.querySelector('[data-secret-content]');
 		expect(blurred).toBeTruthy();
 		expect(blurred?.textContent).toContain('Secret content');
 
 		// Non-scrollable verification with overlay in visible body area
 		expect(document.querySelector('.scrollable')).toBeNull();
-		expect(document.querySelector('.overflow-hidden')).toBeTruthy();
+		expect(document.querySelector('[data-secret-body]')).toBeTruthy();
 		const overlay = document.querySelector('[data-secret-overlay]');
 		expect(overlay).toBeTruthy();
 		expect(overlay?.querySelector('svg')).toBeTruthy();

@@ -1,10 +1,13 @@
 <script lang="ts">
+	import { css, cx } from 'styled-system/css';
+	import { iconButton } from 'styled-system/recipes';
 	import type { NoteImage } from '$lib/types';
 	import { dataUrlToBlob } from '$lib/imageBlob';
 	import { ChevronLeft, Download } from '@lucide/svelte';
 	import { DownloadTrigger } from '@ark-ui/svelte/download-trigger';
 	import { portalToAppFloat } from '$lib/appViewport';
 	import { onDestroy, onMount } from 'svelte';
+	import { fullscreen } from '$panda/styles';
 
 	let {
 		attachment = null,
@@ -83,27 +86,22 @@
 	function onKeydown(event: KeyboardEvent) {
 		if (event.key === 'Escape') close();
 	}
+
+	const fs = fullscreen.attachment;
+
+	const headerBtn = iconButton({ variant: 'ghost', size: 'standard' });
 </script>
 
 <svelte:window onkeydown={attachment ? onKeydown : undefined} />
 
 {#if attachment}
 	<div {@attach portal}>
-		<div
-			class="fixed inset-0 z-[80] flex flex-col bg-[var(--scrapscache-bg)] text-[var(--scrapscache-text)]"
-		>
-			<header
-				class="flex shrink-0 items-center gap-3 border-b border-[var(--scrapscache-border)] px-3 py-2"
-			>
-				<button
-					type="button"
-					class="icon-btn h-10 w-10 p-2"
-					onclick={close}
-					aria-label="Close file"
-				>
-					<ChevronLeft class="h-6 w-6" aria-hidden="true" />
+		<div class={fs.shell}>
+			<header class={fs.header}>
+				<button type="button" class={headerBtn} onclick={close} aria-label="Close file">
+					<ChevronLeft class={css({ h: '1.5rem', w: '1.5rem' })} aria-hidden="true" />
 				</button>
-				<div class="min-w-0 flex-1 truncate text-sm font-medium">
+				<div class={fs.title}>
 					{attachment.name || 'Attachment'}
 				</div>
 				{#if attachment.dataUrl}
@@ -111,41 +109,60 @@
 						fileName={attachment.name || 'attachment'}
 						data={attachment.dataUrl}
 						mimeType={attachment.mime || 'application/octet-stream'}
-						class="icon-btn h-10 w-10 p-2"
+						class={headerBtn}
 						aria-label="Download file"
 						title="Download file"
 					>
-						<Download class="h-5 w-5" aria-hidden="true" />
+						<Download class={css({ h: '1.25rem', w: '1.25rem' })} aria-hidden="true" />
 					</DownloadTrigger>
 				{/if}
 			</header>
 
 			{#if loading}
-				<div class="grid flex-1 place-items-center text-sm text-[var(--scrapscache-text-muted)]">
-					Opening file…
-				</div>
+				<div class={fs.notice}>Opening file…</div>
 			{:else if failed}
-				<div
-					class="grid flex-1 place-items-center p-6 text-sm text-[var(--scrapscache-text-muted)]"
-				>
-					Could not open this attachment.
-				</div>
+				<div class={fs.notice}>Could not open this attachment.</div>
 			{:else if isText}
 				<pre
-					class="scrollable m-0 min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words p-4 font-mono text-sm leading-relaxed text-[var(--scrapscache-text)]">{textContent ??
-						''}</pre>
+					class={`scrollable ${css({
+						minH: 0,
+						flex: '1',
+						overflow: 'auto',
+						whiteSpace: 'pre-wrap',
+						wordBreak: 'break-word',
+						p: 'lg',
+						fontFamily: 'mono',
+						lineHeight: 'relaxed'
+					})}`}>
+					{textContent ?? ''}
+				</pre>
 			{:else if isAudio && sourceUrl}
-				<div class="grid flex-1 place-items-center p-6">
-					<audio class="w-full max-w-lg" controls src={sourceUrl}></audio>
+				<div class={css({ display: 'grid', flex: '1', placeItems: 'center', p: '2xl' })}>
+					<audio class={css({ w: 'full', maxW: '32rem' })} controls src={sourceUrl}></audio>
 				</div>
 			{:else if isVideo && sourceUrl}
 				<!-- svelte-ignore a11y_media_has_caption -->
-				<div class="flex flex-1 items-center justify-center bg-black">
-					<video class="max-h-full max-w-full" controls playsinline src={sourceUrl}></video>
+				<div
+					class={css({
+						display: 'flex',
+						flex: '1',
+						alignItems: 'center',
+						justifyContent: 'center',
+						bg: 'scrapscache.mediaSurface'
+					})}
+				>
+					<video class={css({ maxH: 'full', maxW: 'full' })} controls playsinline src={sourceUrl}
+					></video>
 				</div>
 			{:else if isPdf && sourceUrl}
 				<iframe
-					class="h-full w-full flex-1 border-0 bg-white"
+					class={css({
+						h: 'full',
+						w: 'full',
+						flex: '1',
+						borderWidth: 0,
+						bg: 'scrapscache.documentSurface'
+					})}
 					title={attachment.name || 'Attachment'}
 					src={sourceUrl}
 				></iframe>

@@ -12,6 +12,8 @@
 		toggleCheckEntries
 	} from '$lib/checklistBody';
 	import { revealEditorField } from '$lib/editorVisibility';
+	import { css } from 'styled-system/css';
+	import { checklist, noteBody } from 'styled-system/recipes';
 
 	const MAX_TASK_INDENT = 1;
 
@@ -1069,15 +1071,13 @@
 	const focusedGroupIds = $derived(new Set(focusedGroupRows.map(({ line }) => line.id)));
 	const focusedGroupLastId = $derived(focusedGroupRows.at(-1)?.line.id ?? null);
 
-	function taskShellClass(line: Line): string {
-		if (!focusedGroupIds.has(line.id)) return '';
-		return [
-			'bg-black/[0.035] dark:bg-white/[0.06]',
-			line.id === focusedRootId ? 'mt-0.5 rounded-t-lg pt-1' : '',
-			line.id === focusedGroupLastId ? 'mb-0.5 rounded-b-lg pb-1' : ''
-		]
-			.filter(Boolean)
-			.join(' ');
+	const editor = noteBody({ mode: 'editor' });
+
+	function rowClass(line: Line): string {
+		if (!focusedGroupIds.has(line.id)) return editor.row;
+		const isRoot = line.id === focusedRootId;
+		const isLast = line.id === focusedGroupLastId;
+		return noteBody({ mode: 'editor', focused: true, root: isRoot, last: isLast }).row;
 	}
 
 	function rowStyle(line: Line): string | undefined {
@@ -1100,7 +1100,7 @@
 	aria-multiline="true"
 	aria-label="Note body"
 	spellcheck="true"
-	class="block w-full min-w-0 text-sm leading-relaxed text-[var(--scrapscache-text)] outline-none"
+	class={editor.container}
 	onbeforeinput={handleBeforeInput}
 	oninput={handleInput}
 	oncopy={handleCopy}
@@ -1118,15 +1118,14 @@
 	onblur={handleEditorBlur}
 >
 	{#each lines as line, index (line.id)}
+		{@const check = checklist({ checked: line.checked, indented: line.indent > 0 })}
 		<div
 			data-editor-line={index}
 			data-line-id={line.id}
 			data-task-row={line.isCheck ? '' : undefined}
 			data-bullet-row={line.isBullet ? '' : undefined}
 			data-focus-group={line.id === focusedRootId ? '' : undefined}
-			class="flex min-w-0 flex-wrap items-start gap-x-2 py-0.5 {line.isCheck
-				? taskShellClass(line)
-				: ''}"
+			class={rowClass(line)}
 			style={rowStyle(line)}
 		>
 			{#if line.isCheck}
@@ -1134,21 +1133,20 @@
 					type="button"
 					contenteditable="false"
 					data-checklist-toggle
-					class="checklist-toggle shrink-0 {line.indent > 0 ? 'checklist-toggle-sub' : ''}"
-					class:checked={line.checked}
+					class={[check.root, editor.check]}
 					onpointerdown={keepEditorFocus}
 					onclick={(event) => toggleCheck(index, event)}
 					aria-label={line.indent > 0 ? 'Toggle sub-task' : 'Toggle item'}
 					aria-pressed={line.checked}
 				>
 					{#if line.checked}
-						<svg viewBox="0 0 16 16" class="checklist-toggle-mark" aria-hidden="true">
+						<svg viewBox="0 0 16 16" class={check.mark} aria-hidden="true">
 							<path d="M3.5 8.5 6.5 11.5 12.5 4.5" />
 						</svg>
 					{/if}
 				</button>
 			{:else if line.isBullet}
-				<span contenteditable="false" class="shrink-0 select-none" aria-hidden="true">•</span>
+				<span contenteditable="false" class={editor.bullet} aria-hidden="true">•</span>
 			{/if}
 			<span
 				data-line-text
@@ -1162,9 +1160,10 @@
 							? placeholder
 							: ''
 					: undefined}
-				class="block min-h-[1lh] min-w-0 flex-1 whitespace-pre-wrap break-words outline-none {line.checked
-					? 'line-through opacity-50'
-					: ''} {line.indent > 0 ? 'text-[13px]' : ''}"
+				class={[
+					css({ minH: '1lh' }),
+					noteBody({ mode: 'editor', checked: line.checked, indented: line.indent > 0 }).line
+				]}
 			></span>
 			{#if line.id === focusedGroupLastId}
 				<button
@@ -1172,28 +1171,13 @@
 					contenteditable="false"
 					data-add-subtask
 					aria-label="Add sub-task"
-					class="flex basis-full select-none items-center rounded py-1 text-left text-xs text-[var(--scrapscache-text-muted)] transition-colors hover:bg-black/5 hover:text-[var(--scrapscache-text)] dark:hover:bg-white/10 touch-manipulation min-h-[32px] sm:min-h-0 {line.indent >
-					0
-						? 'pl-1'
-						: 'pl-6'}"
+					class={noteBody({ mode: 'editor', indented: line.indent > 0 }).addSubtask}
 					onpointerdown={(event) => activateAddSubtask(event, focusedGroupRows[0]?.index ?? -1)}
 					onclick={(event) => handleAddSubtaskClick(event, focusedGroupRows[0]?.index ?? -1)}
 				>
-					<span class="add-subtask-label" aria-hidden="true"></span>
+					<span aria-hidden="true" class={editor.addSubtask}></span>
 				</button>
 			{/if}
 		</div>
 	{/each}
 </div>
-
-<style>
-	[data-line-text][data-placeholder]:empty::before {
-		content: attr(data-placeholder);
-		color: var(--scrapscache-text-muted);
-		pointer-events: none;
-	}
-
-	.add-subtask-label::before {
-		content: '+  Add sub-task';
-	}
-</style>

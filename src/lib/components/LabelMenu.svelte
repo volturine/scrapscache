@@ -1,7 +1,11 @@
 <script lang="ts">
+	import { labelMenuStyles as styles, popover } from '$panda/styles';
 	import { Checkbox } from '@ark-ui/svelte/checkbox';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { Check, Plus, Search, Tag } from '@lucide/svelte';
+	import { css, cx } from 'styled-system/css';
+	import { button, input, menuItem } from 'styled-system/recipes';
+	import { hstack, vstack } from 'styled-system/patterns';
 
 	let {
 		noteId,
@@ -89,44 +93,45 @@
 			}
 		};
 	}
+	const menuRow = menuItem({ density: 'comfortable' });
 </script>
 
 <div
 	use:labelMenuInteractions
-	class="scrapscache-popover flex w-[min(20rem,calc(100vw-2rem))] flex-col p-2"
+	class={`${popover} ${vstack({ p: 'sm', w: 'min(20rem, calc(100vw - 2rem))', gap: '0', alignItems: 'stretch' })}`}
 >
-	<div class="mb-1 flex h-8 items-center gap-2 pl-3 pr-1">
-		<span
-			class="min-w-0 flex-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--scrapscache-text-muted)]"
-			>Labels</span
-		>
-		<button
-			type="button"
-			onclick={onClose}
-			class="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-[var(--scrapscache-text-muted)] transition-colors hover:bg-[var(--scrapscache-interactive-hover)] hover:text-[var(--scrapscache-text)]"
-		>
+	<div
+		class={hstack({
+			h: '2rem',
+			pl: 'md',
+			pr: '2xs',
+			mb: '2xs',
+			justify: 'space-between'
+		})}
+	>
+		<span class={styles.heading}> Labels </span>
+		<button type="button" onclick={onClose} class={button({ variant: 'ghost', size: 'xs' })}>
 			Done
 		</button>
 	</div>
 
-	<div class="relative mb-1">
-		<Search
-			class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--scrapscache-text-muted)]"
-			strokeWidth={1.75}
-			aria-hidden="true"
-		/>
+	<div class={styles.searchWrap}>
+		<Search class={styles.searchIcon} strokeWidth={1.75} aria-hidden="true" />
 		<input
 			bind:this={queryInput}
 			type="text"
 			bind:value={query}
 			placeholder="Search or create a label…"
 			onkeydown={onQueryKeydown}
-			class="scrapscache-input w-full rounded-xl py-2 pl-9 pr-3 text-sm placeholder:text-[var(--scrapscache-text-muted)]"
+			class={cx(input({ variant: 'outline', size: 'md' }), styles.searchInput)}
 		/>
 	</div>
 
 	<div
-		class="flex max-h-64 flex-col gap-0.5 overflow-y-auto sidebar-scroll"
+		class={[
+			vstack({ gap: '3xs', maxH: '16rem', overflowY: 'auto', alignItems: 'stretch' }),
+			styles.scroller
+		]}
 		style:min-height={listMinHeight}
 	>
 		{#if canCreate}
@@ -134,12 +139,12 @@
 				type="button"
 				onclick={createAndAssign}
 				aria-label="Create label"
-				class="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-[var(--scrapscache-accent)] transition-colors hover:bg-[var(--scrapscache-interactive-hover)]"
+				class={cx(menuRow, css({ color: 'scrapscache.accent' }))}
 			>
-				<span class="grid h-7 w-7 shrink-0 place-items-center" aria-hidden="true">
-					<Plus class="h-4 w-4" strokeWidth={1.75} />
+				<span class={styles.iconBox} aria-hidden="true">
+					<Plus class={styles.icon} strokeWidth={1.75} />
 				</span>
-				<span class="min-w-0 flex-1 truncate">Create “{trimmed}”</span>
+				<span class={styles.label}>Create “{trimmed}”</span>
 			</button>
 		{/if}
 
@@ -152,21 +157,19 @@
 						const on = details.checked === true;
 						if (on !== note.labels.includes(label.id)) toggle(label.id);
 					}}
-					class="flex w-full cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-[var(--scrapscache-text)] transition-colors hover:bg-[var(--scrapscache-interactive-hover)]"
+					class={menuRow}
 				>
-					<Checkbox.Control
-						class="grid h-7 w-7 shrink-0 place-items-center text-[var(--scrapscache-text-muted)] data-[state=checked]:text-[var(--scrapscache-accent)]"
-					>
+					<Checkbox.Control class={styles.iconBox}>
 						<Tag
-							class="h-4 w-4"
+							class={styles.icon}
 							strokeWidth={1.75}
 							fill={checked ? 'currentColor' : 'none'}
 							aria-hidden="true"
 						/>
 					</Checkbox.Control>
-					<Checkbox.Label class="min-w-0 flex-1 truncate">{label.name}</Checkbox.Label>
-					<Checkbox.Indicator class="shrink-0 text-[var(--scrapscache-accent)]">
-						<Check class="h-4 w-4" strokeWidth={2.25} aria-hidden="true" />
+					<Checkbox.Label class={styles.label}>{label.name}</Checkbox.Label>
+					<Checkbox.Indicator class={styles.checkIndicator}>
+						<Check class={styles.icon} strokeWidth={2.25} aria-hidden="true" />
 					</Checkbox.Indicator>
 					<Checkbox.HiddenInput />
 				</Checkbox.Root>
@@ -174,9 +177,7 @@
 		{/each}
 
 		{#if matches.length === 0 && !canCreate}
-			<p class="px-3 py-4 text-center text-xs text-[var(--scrapscache-text-muted)]">
-				No labels yet. Type a name to create one.
-			</p>
+			<p class={styles.empty}>No labels yet. Type a name to create one.</p>
 		{/if}
 	</div>
 </div>

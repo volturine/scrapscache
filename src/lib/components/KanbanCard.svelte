@@ -3,6 +3,7 @@
 	import type { Note } from '$lib/types';
 	import { activateOnKeyboard } from '$lib/utils';
 	import KanbanCardBody from './KanbanCardBody.svelte';
+	import { css } from 'styled-system/css';
 
 	let {
 		note,
@@ -37,7 +38,7 @@
 	bind:this={card}
 	role="button"
 	tabindex="0"
-	class="cursor-grab rounded-xl active:cursor-grabbing"
+	class={css({ cursor: 'grab', rounded: 'dialog', _active: { cursor: 'grabbing' } })}
 	onpointerdown={press}
 	ondragstart={(event) => event.preventDefault()}
 	onclick={open}

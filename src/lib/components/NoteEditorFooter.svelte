@@ -50,6 +50,7 @@
 		archived = false,
 		trashed = false,
 		copyFlash = false,
+		fillPhotos = false,
 		onOpenColor,
 		onOpenTags,
 		onCopy,
@@ -69,6 +70,8 @@
 		archived?: boolean;
 		trashed?: boolean;
 		copyFlash?: boolean;
+		/** Grow the photo strip to the editor's free height (for notes with no body text). */
+		fillPhotos?: boolean;
 		onOpenColor?: () => void;
 		onOpenTags?: () => void;
 		onCopy?: () => void;
@@ -443,19 +446,26 @@
 {/if}
 
 {#if photos.length > 0 || pendingPhotos.length > 0}
-	<div class="scrollable flex gap-2 overflow-x-auto px-3 pb-2" aria-label="Photos">
+	<div
+		class="scrollable flex gap-2 overflow-x-auto px-3 {fillPhotos
+			? 'min-h-0 flex-1 overscroll-x-contain pb-3'
+			: 'pb-2'}"
+		aria-label="Photos"
+	>
 		{#each photos as img (img.id)}
-			<div class="relative shrink-0">
+			<div class="relative shrink-0 {fillPhotos ? 'h-full' : ''}">
 				<button
 					type="button"
-					class="block h-32 overflow-hidden rounded-lg touch-manipulation"
+					class="block overflow-hidden rounded-lg touch-manipulation {fillPhotos
+						? 'h-full'
+						: 'h-32'}"
 					onclick={() => void openPhoto(img.id)}
 					aria-label={`Open ${img.name ?? 'photo'}`}
 				>
 					<img
 						src={displayImageSrc(img)}
 						alt={img.name ?? 'Photo'}
-						class="h-32 w-auto max-w-[15rem] object-cover"
+						class="w-auto object-cover {fillPhotos ? 'h-full max-w-none' : 'h-32 max-w-[15rem]'}"
 						loading="lazy"
 						decoding="async"
 						draggable="false"
@@ -473,7 +483,9 @@
 		{/each}
 		{#each pendingPhotos as img (img.id)}
 			<div
-				class="h-32 w-32 shrink-0 animate-pulse rounded-lg bg-black/10 dark:bg-white/10"
+				class="{fillPhotos
+					? 'aspect-square h-full'
+					: 'h-32 w-32'} shrink-0 animate-pulse rounded-lg bg-black/10 dark:bg-white/10"
 				role="img"
 				aria-label={`Loading ${img.name ?? 'photo'}`}
 			></div>

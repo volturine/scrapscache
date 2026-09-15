@@ -64,17 +64,6 @@ describe('telling a rejected token from an ordinary not-found', () => {
 		await expect(client.status()).rejects.toBeInstanceOf(AdminUnauthorized);
 	});
 
-	it('does not sign you out when a gate you removed is already gone', async () => {
-		respond(404, { error: 'No such flag' });
-		const client = new AdminClient();
-		client.remember('secret');
-
-		const failure = await client.deleteFlag('canvas-beta').catch((error: unknown) => error);
-
-		expect(failure).not.toBeInstanceOf(AdminUnauthorized);
-		expect((failure as Error).message).toBe('No such flag');
-	});
-
 	it('reports an unknown account as unknown, not as a bad token', async () => {
 		respond(404, { error: 'Sync account not found' });
 		const client = new AdminClient();

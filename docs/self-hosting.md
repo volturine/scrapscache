@@ -207,21 +207,20 @@ may override them.
 
 ## Health, metrics, and administration
 
-| Endpoint                          | Auth                                             | Purpose                                                                       |
-| --------------------------------- | ------------------------------------------------ | ----------------------------------------------------------------------------- |
-| `GET /health/live`                | none                                             | Process liveness                                                              |
-| `GET /health/ready`               | none                                             | Database readiness                                                            |
-| `GET /metrics`                    | `Authorization: Bearer $SCRAPSCACHE_ADMIN_TOKEN` | Prometheus-style metrics                                                      |
-| `GET /api/admin/status`           | same bearer token                                | Anonymous JSON: storage, users, activity, retention                           |
-| `GET /api/admin/telemetry`        | same bearer token                                | Request counts and operational counters over a window                         |
-| `POST /api/admin/retention`       | same bearer token                                | Run the inactive-account sweeper now                                          |
-| `GET /api/admin/accounts`         | same bearer token                                | Accounts with their effective limits; `?accountId=` adds that account's flags |
-| `PATCH /api/admin/accounts`       | same bearer token                                | Set or clear one account's storage quota, request rate, and flags             |
-| `GET/PUT/DELETE /api/admin/flags` | same bearer token                                | The feature gate registry and its defaults                                    |
-| `POST /api/cron/tick`             | `Authorization: Bearer $SCRAPSCACHE_TICK_SECRET` | Run scheduled tasks (cron endpoint)                                           |
+| Endpoint                    | Auth                                             | Purpose                                                   |
+| --------------------------- | ------------------------------------------------ | --------------------------------------------------------- |
+| `GET /health/live`          | none                                             | Process liveness                                          |
+| `GET /health/ready`         | none                                             | Database readiness                                        |
+| `GET /metrics`              | `Authorization: Bearer $SCRAPSCACHE_ADMIN_TOKEN` | Prometheus-style metrics                                  |
+| `GET /api/admin/status`     | same bearer token                                | Anonymous JSON: storage, users, activity, retention       |
+| `GET /api/admin/telemetry`  | same bearer token                                | Request counts and operational counters over a window     |
+| `POST /api/admin/retention` | same bearer token                                | Run the inactive-account sweeper now                      |
+| `GET /api/admin/accounts`   | same bearer token                                | Accounts with their effective limits                      |
+| `PATCH /api/admin/accounts` | same bearer token                                | Set or clear one account's storage quota and request rate |
+| `POST /api/cron/tick`       | `Authorization: Bearer $SCRAPSCACHE_TICK_SECRET` | Run scheduled tasks (cron endpoint)                       |
 
-With no `SCRAPSCACHE_ADMIN_TOKEN` configured, the three token-protected
-endpoints return 404 — the admin API is disabled.
+With no `SCRAPSCACHE_ADMIN_TOKEN` configured, the token-protected endpoints
+return 404 — the admin API is disabled.
 
 The cron endpoint (`/api/cron/tick`) is the scheduler entry point. The included
 Cloudflare scheduler Worker calls it through a private service binding every
@@ -246,8 +245,8 @@ reports `activity: null` alongside `telemetry.source`, rather than serving a
 partial count that reads like a total. Storage and account gauges are database
 aggregates and are correct on both.
 
-The same data, plus per-account limits and feature gates, is available in the
-browser at `/admin`, signed in with `SCRAPSCACHE_ADMIN_TOKEN`.
+The same data, plus per-account limits, is available in the browser at `/admin`,
+signed in with `SCRAPSCACHE_ADMIN_TOKEN`.
 
 Inactive-account retention is **off** unless
 `SCRAPSCACHE_RETENTION_INACTIVE_DAYS` is a positive integer. When enabled, a
@@ -277,29 +276,13 @@ curl -fsS -X PATCH \
   -d "{\"accountId\":\"$ACCOUNT_ID\",\"maxBytes\":2147483648,\"syncPerMinute\":240}" \
   "http://localhost:3000/api/admin/accounts"
 
-# Back to the defaults, and drop this account's opinion of one feature gate.
+# Back to the defaults.
 curl -fsS -X PATCH \
   -H "Authorization: Bearer $SCRAPSCACHE_ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
-  -d "{\"accountId\":\"$ACCOUNT_ID\",\"maxBytes\":null,\"syncPerMinute\":null,\"flags\":{\"canvas-beta\":null}}" \
+  -d "{\"accountId\":\"$ACCOUNT_ID\",\"maxBytes\":null,\"syncPerMinute\":null}" \
   "http://localhost:3000/api/admin/accounts"
 ```
-
-Feature gates are declared once, with the default every account gets, then
-overridden per account. Deleting a gate takes every per-account opinion with it,
-so a finished rollout leaves nothing behind:
-
-```sh
-curl -fsS -X PUT \
-  -H "Authorization: Bearer $SCRAPSCACHE_ADMIN_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"flag":"canvas-beta","defaultEnabled":false,"description":"Unreleased canvas"}' \
-  "http://localhost:3000/api/admin/flags"
-```
-
-Clients read their own resolved set from `GET /api/sync/features` when the app
-starts. A gate nobody has declared is absent rather than false, and a gate that
-cannot be read stays shut.
 
 ## Images and CI
 

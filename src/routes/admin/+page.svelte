@@ -7,7 +7,6 @@
 		formatBytes,
 		type AccountDetail,
 		type AccountSummary,
-		type FeatureFlag,
 		type OperatorSnapshot,
 		type TelemetryReport
 	} from '$lib/admin/adminClient.svelte';
@@ -27,9 +26,6 @@
 	let offset = $state(0);
 	let search = $state('');
 	let selected = $state<AccountDetail | null>(null);
-
-	let flags = $state<FeatureFlag[]>([]);
-	let newFlag = $state({ flag: '', defaultEnabled: false, description: '' });
 
 	async function guard(run: () => Promise<void>) {
 		loading = true;
@@ -57,7 +53,6 @@
 			const page = await adminClient.accounts(search, offset, PAGE_SIZE);
 			accounts = page.accounts;
 			accountTotal = page.total;
-			flags = (await adminClient.flags()).flags;
 		});
 	}
 
@@ -107,31 +102,6 @@
 				syncPerMinute
 			});
 			await reloadAccounts();
-		});
-	}
-
-	async function setFlag(flag: string, value: boolean | null) {
-		if (!selected) return;
-		await guard(async () => {
-			selected = await adminClient.updateAccount({
-				accountId: selected!.accountId,
-				flags: { [flag]: value }
-			});
-		});
-	}
-
-	async function saveFlag(event: SubmitEvent) {
-		event.preventDefault();
-		await guard(async () => {
-			flags = (await adminClient.saveFlag({ ...newFlag })).flags;
-			newFlag = { flag: '', defaultEnabled: false, description: '' };
-		});
-	}
-
-	async function removeFlag(flag: string) {
-		await guard(async () => {
-			flags = (await adminClient.deleteFlag(flag)).flags;
-			if (selected) selected = await adminClient.account(selected.accountId);
 		});
 	}
 
@@ -349,87 +319,8 @@
 							>Blank restores the shared default.</span
 						>
 					</form>
-
-					{#if flags.length}
-						<div class="space-y-2">
-							<h3 class="text-sm font-medium">Features</h3>
-							{#each flags as flag (flag.flag)}
-								<div class="flex flex-wrap items-center gap-2 text-sm">
-									<span class="font-mono text-xs">{flag.flag}</span>
-									<span class="text-[var(--scrapscache-text-muted)]"
-										>{selected.flags[flag.flag] ? 'on' : 'off'}</span
-									>
-									<button
-										class="scrapscache-button scrapscache-button-secondary px-2 py-1 text-xs"
-										onclick={() => void setFlag(flag.flag, true)}>On</button
-									>
-									<button
-										class="scrapscache-button scrapscache-button-secondary px-2 py-1 text-xs"
-										onclick={() => void setFlag(flag.flag, false)}>Off</button
-									>
-									<button
-										class="scrapscache-button scrapscache-button-secondary px-2 py-1 text-xs"
-										onclick={() => void setFlag(flag.flag, null)}
-										>Default ({flag.defaultEnabled ? 'on' : 'off'})</button
-									>
-								</div>
-							{/each}
-						</div>
-					{/if}
 				</section>
 			{/if}
-
-			<section class="space-y-3">
-				<h2 class="text-lg font-semibold">Feature gates</h2>
-				<p class="text-sm text-[var(--scrapscache-text-muted)]">
-					A gate that is not listed here is off for everyone. Removing one takes every per-account
-					setting with it.
-				</p>
-				{#each flags as flag (flag.flag)}
-					<div
-						class="flex flex-wrap items-center gap-3 rounded-lg border border-[var(--scrapscache-border)] p-2 text-sm"
-					>
-						<span class="font-mono text-xs">{flag.flag}</span>
-						<span class="text-[var(--scrapscache-text-muted)]">{flag.description}</span>
-						<span class="ml-auto">default {flag.defaultEnabled ? 'on' : 'off'}</span>
-						<button
-							class="scrapscache-button scrapscache-button-secondary px-2 py-1 text-xs"
-							onclick={() =>
-								void guard(async () => {
-									flags = (
-										await adminClient.saveFlag({ ...flag, defaultEnabled: !flag.defaultEnabled })
-									).flags;
-								})}>Flip default</button
-						>
-						<button
-							class="scrapscache-button px-2 py-1 text-xs text-[var(--scrapscache-danger)]"
-							onclick={() => void removeFlag(flag.flag)}>Remove</button
-						>
-					</div>
-				{/each}
-
-				<form class="flex flex-wrap items-end gap-3" onsubmit={saveFlag}>
-					<label class="space-y-1 text-sm">
-						<span class="block text-[var(--scrapscache-text-muted)]">Gate</span>
-						<input
-							bind:value={newFlag.flag}
-							placeholder="canvas-beta"
-							class="scrapscache-input px-3 py-1.5"
-						/>
-					</label>
-					<label class="space-y-1 text-sm">
-						<span class="block text-[var(--scrapscache-text-muted)]">What it gates</span>
-						<input bind:value={newFlag.description} class="scrapscache-input px-3 py-1.5" />
-					</label>
-					<label class="flex items-center gap-2 text-sm">
-						<input type="checkbox" bind:checked={newFlag.defaultEnabled} />
-						<span>On by default</span>
-					</label>
-					<button class="scrapscache-button scrapscache-button-primary px-3 py-2" type="submit"
-						>Add gate</button
-					>
-				</form>
-			</section>
 		{/if}
 	</div>
 </div>

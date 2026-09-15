@@ -6,13 +6,11 @@ import { getSyncStore } from '$lib/server/syncStore';
 import { ACCOUNT_ID_RE } from '$lib/server/pushWakes';
 
 const MAX_REQUEST_BYTES = 8_192;
-const FLAG_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
 type Patch = {
 	accountId?: unknown;
 	maxBytes?: unknown;
 	syncPerMinute?: unknown;
-	flags?: unknown;
 };
 
 /** A positive limit, or null to hand the account back to the shared default. */
@@ -37,10 +35,7 @@ export const GET: RequestHandler = async ({ request, url, getClientAddress }) =>
 		const page = await store.listAccounts({ search: accountId, limit: 1 });
 		const account = page.accounts.find((entry) => entry.accountId === accountId);
 		if (!account) return json({ error: 'Sync account not found' }, { status: 404 });
-		return json(
-			{ ...account, flags: await store.accountFeatureFlags(accountId) },
-			{ headers: { 'cache-control': 'no-store' } }
-		);
+		return json(account, { headers: { 'cache-control': 'no-store' } });
 	}
 
 	const limit = Number(url.searchParams.get('limit'));
@@ -84,18 +79,6 @@ export const PATCH: RequestHandler = async ({ request, getClientAddress }) => {
 		return json({ error: 'syncPerMinute must be a positive integer or null' }, { status: 400 });
 	}
 
-	const flags = body.flags;
-	if (flags !== undefined) {
-		if (!flags || typeof flags !== 'object' || Array.isArray(flags)) {
-			return json({ error: 'flags must be an object' }, { status: 400 });
-		}
-		for (const [flag, enabled] of Object.entries(flags)) {
-			if (!FLAG_RE.test(flag) || !(enabled === null || typeof enabled === 'boolean')) {
-				return json({ error: `Invalid flag setting for ${flag}` }, { status: 400 });
-			}
-		}
-	}
-
 	const store = getSyncStore();
 	// Existence is checked once here so a request naming an unknown account fails
 	// as a whole, rather than partly applying and reporting success.
@@ -109,11 +92,6 @@ export const PATCH: RequestHandler = async ({ request, getClientAddress }) => {
 
 		if (syncPerMinute === null) await store.clearAccountRateLimit(accountId);
 		else if (syncPerMinute !== undefined) await store.setAccountRateLimit(accountId, syncPerMinute);
-
-		for (const [flag, enabled] of Object.entries((flags ?? {}) as Record<string, boolean | null>)) {
-			if (enabled === null) await store.clearAccountFeatureFlag(accountId, flag);
-			else await store.setAccountFeatureFlag(accountId, flag, enabled);
-		}
 	} catch (error) {
 		if (error instanceof RangeError) return json({ error: error.message }, { status: 400 });
 		throw error;
@@ -121,8 +99,5 @@ export const PATCH: RequestHandler = async ({ request, getClientAddress }) => {
 
 	const page = await store.listAccounts({ search: accountId, limit: 1 });
 	const account = page.accounts.find((entry) => entry.accountId === accountId);
-	return json(
-		{ ...account, flags: await store.accountFeatureFlags(accountId) },
-		{ headers: { 'cache-control': 'no-store' } }
-	);
+	return json(account, { headers: { 'cache-control': 'no-store' } });
 };

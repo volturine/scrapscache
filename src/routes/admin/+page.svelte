@@ -217,7 +217,8 @@
 					{#if telemetry?.available && telemetry.activity}
 						<div class="text-lg font-semibold">{telemetry.activity.syncRequests ?? 0} syncs</div>
 						<div class="text-xs text-[var(--scrapscache-text-muted)]">
-							{telemetry.activity.rateLimited ?? 0} rate limited
+							{telemetry.activity.syncUploadEnvelopes ?? 0} uploads · {telemetry.throttledNow ??
+								'?'} callers throttled now
 						</div>
 					{:else}
 						<div class="text-sm">Not available</div>

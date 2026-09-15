@@ -81,6 +81,23 @@ export async function pruneRateBuckets(db: Db, now = Date.now()): Promise<void> 
 	});
 }
 
+/**
+ * Callers whose latest request was refused and who have been seen recently
+ * enough that their bucket still exists. A current picture rather than a count
+ * over time: recording each refusal would cost a write per refused request,
+ * which is exactly what a flood should not get.
+ */
+export async function countThrottledCallers(db: Db, now = Date.now()): Promise<number> {
+	await db.ready;
+	const row = (
+		await db.ops.execute({
+			sql: 'SELECT COUNT(*) AS callers FROM rate_buckets WHERE last_allowed = 0 AND last_seen_at > ?',
+			args: [now - RATE_BUCKET_STALE_MS]
+		})
+	).rows[0] as { callers?: number } | undefined;
+	return Number(row?.callers ?? 0);
+}
+
 export function clientAddress(getClientAddress: () => string): string {
 	try {
 		return getClientAddress();

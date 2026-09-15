@@ -115,7 +115,7 @@ describe('deployments where no process sees every request', () => {
 		);
 
 		expect(snapshot.activity).toBeNull();
-		expect(snapshot.telemetry).toEqual({ source: 'dataset' });
+		expect(snapshot.telemetry).toEqual({ source: 'database' });
 		// Storage and account figures come from the database, so they stay real.
 		expect(snapshot.accounts.total).toBe(3);
 		expect(snapshot.storage.envelopes).toBe(10);

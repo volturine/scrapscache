@@ -49,7 +49,7 @@ type TelemetryMissingFromCloudflare = Exclude<
 >;
 
 /** The Cloudflare module may add exports the Node one has no use for, such as the
- * dataset name; it may not drop one a call site depends on. */
+ * hour length; it may not drop one a call site depends on. */
 type MissingFromCloudflare = Exclude<keyof NodeApi, keyof CloudflareApi>;
 
 const _drifted: never = undefined as unknown as DriftedMembers;

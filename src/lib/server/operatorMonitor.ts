@@ -23,7 +23,7 @@ export type OperatorSnapshot = {
 	/** Null where no single process sees every request; `telemetry` says where
 	 * the counters actually live. */
 	activity: ProcessActivity | null;
-	telemetry: { source: 'process' | 'dataset' };
+	telemetry: { source: 'process' | 'database' };
 	retention: RetentionStatus;
 	quotas: SyncQuotas;
 };
@@ -50,7 +50,7 @@ export function buildOperatorSnapshot(
 			staleForRetention: retentionInactiveDays > 0 ? usage.staleAccounts : null
 		},
 		activity,
-		telemetry: { source: activity ? 'process' : 'dataset' },
+		telemetry: { source: activity ? 'process' : 'database' },
 		retention,
 		quotas
 	};

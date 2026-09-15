@@ -1,16 +1,11 @@
 import { getRequestEvent } from '$app/server';
+import type { D1Database } from '@cloudflare/workers-types';
 import type { MetricsSnapshot, ProcessActivity } from '$lib/server/metricsRender';
 
 export { renderMetrics } from '$lib/server/metricsRender';
 export type { ProcessActivity, MetricsSnapshot } from '$lib/server/metricsRender';
 
-/** Dataset the Worker writes operational events to, read back by
- * /api/admin/telemetry. */
-export const ANALYTICS_DATASET = 'scrapscache_events';
-
-type AnalyticsEngineDataset = {
-	writeDataPoint(event: { indexes?: string[]; blobs?: string[]; doubles?: number[] }): void;
-};
+export const HOUR_MS = 3_600_000;
 
 export function routeLabel(pathname: string): string {
 	if (pathname.startsWith('/api/sync/delta')) return '/api/sync/delta';
@@ -23,35 +18,42 @@ export function routeLabel(pathname: string): string {
 	return 'app';
 }
 
-/**
- * Telemetry must never be the reason a request fails, and it is also called from
- * places with no request context, such as a scheduled tick that outlived its
- * event. Both cases resolve to "no dataset", not to an error.
- */
-function dataset(): AnalyticsEngineDataset | null {
-	try {
-		const bindings = (getRequestEvent().platform as { env?: Record<string, unknown> } | undefined)
-			?.env;
-		const binding = bindings?.SCRAPSCACHE_ANALYTICS;
-		return binding ? (binding as AnalyticsEngineDataset) : null;
-	} catch {
-		return null;
-	}
-}
+type Platform = {
+	env?: { SCRAPSCACHE_DB?: D1Database };
+	context?: { waitUntil(promise: Promise<unknown>): void };
+};
 
-function write(event: string, blobs: string[], doubles: number[]): void {
+const INCREMENT_SQL = `INSERT INTO activity_hours(hour, key, value) VALUES (?, ?, ?)
+	ON CONFLICT(hour, key) DO UPDATE SET value = value + excluded.value`;
+
+/**
+ * Adds to this hour's counters in D1, after the response. Nothing here may be the
+ * reason a request fails or slows down, and it is also reached from places with
+ * no request context, such as a scheduled tick that outlived its event: every one
+ * of those resolves to "not recorded", never to an error.
+ */
+function add(counts: Record<string, number>, now = Date.now()): void {
 	try {
-		dataset()?.writeDataPoint({ indexes: [event], blobs: [event, ...blobs], doubles });
+		const platform = getRequestEvent().platform as Platform | undefined;
+		const db = platform?.env?.SCRAPSCACHE_DB;
+		const context = platform?.context;
+		if (!db || !context) return;
+		const hour = Math.floor(now / HOUR_MS);
+		const statements = Object.entries(counts)
+			.filter(([, value]) => value > 0)
+			.map(([key, value]) => db.prepare(INCREMENT_SQL).bind(hour, key, value));
+		if (statements.length === 0) return;
+		context.waitUntil(db.batch(statements).catch(() => undefined));
 	} catch {
-		// A dropped data point is not worth failing a request over.
+		// A dropped count is not worth failing a request over.
 	}
 }
 
 /**
  * No isolate on Workers accumulates a meaningful total: they are short-lived and
  * there are many at once, so whatever one of them happened to count is not the
- * figure an operator wants. Counters go to the dataset; this reports nothing
- * rather than something misleading.
+ * figure an operator wants. Counters go to D1; this reports nothing rather than
+ * something misleading.
  */
 export function processActivity(): ProcessActivity | null {
 	return null;
@@ -61,24 +63,30 @@ export function metricsSnapshot(): MetricsSnapshot {
 	return null;
 }
 
+/** Only server errors are counted. Every request writing to D1 would make each one
+ * cost a database write, and the healthy ones are what Cloudflare's own dashboard
+ * already shows. */
 export function recordHttpRequest(pathname: string, status: number, durationMs: number): void {
-	write('http', [routeLabel(pathname), String(status)], [1, durationMs]);
+	if (status < 500) return;
+	const bucket = `${routeLabel(pathname)} ${status}`;
+	add({ [`http ${bucket}`]: 1, [`http_ms ${bucket}`]: durationMs });
 }
 
-export function recordRateLimit(): void {
-	write('rate_limited', [], [1]);
-}
+/** Deliberately not counted here. A refused request must cost as little as
+ * possible, and a write per refusal would hand a flood a database write for
+ * each one. The rate-limit buckets already show who is being held back. */
+export function recordRateLimit(): void {}
 
 export function recordSyncBatch(uploadCount: number, deleteCount: number): void {
-	write('sync_batch', [], [1, uploadCount, deleteCount]);
+	add({ sync: 1, uploads: uploadCount, deletes: deleteCount });
 }
 
 export function recordSqliteBusy(): void {
-	write('storage_busy', [], [1]);
+	add({ storage_busy: 1 });
 }
 
 export function recordReminderWake(result: 'sent' | 'gone' | 'failed'): void {
-	write('reminder_wake', [result], [1]);
+	add({ [`wake_${result}`]: 1 });
 }
 
 export function recordSqliteError(error: unknown): void {

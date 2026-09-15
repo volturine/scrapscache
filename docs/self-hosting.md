@@ -156,8 +156,6 @@ client-address settings above so rate limits see real client IPs.
 | `SCRAPSCACHE_VAPID_PRIVATE_KEY`            |                 auto-generated | Optional stable Web Push VAPID private key                                                                              |
 | `SCRAPSCACHE_VAPID_SUBJECT`                | `mailto:scrapscache@localhost` | Contact URI for VAPID (`mailto:` or `https:`)                                                                           |
 | `SCRAPSCACHE_ALLOW_INDEXING`               |                          unset | `true` serves a crawlable `robots.txt`; anything else disallows all crawling                                            |
-| `SCRAPSCACHE_CF_ACCOUNT_ID`                |                          unset | Workers only: account used to read the telemetry dataset back                                                           |
-| `SCRAPSCACHE_ANALYTICS_TOKEN`              |                          unset | Workers only: API token with Account Analytics Read, for `/api/admin/telemetry`                                         |
 | `PUBLIC_TURNSTILE_ORIGIN`                  |                          unset | Separate origin that serves the Turnstile widget, e.g. `https://verify.example.com`; never the app's own                |
 | `TURNSTILE_SITEKEY`                        |                          unset | Cloudflare Turnstile sitekey, used only by the challenge page                                                           |
 | `TURNSTILE_SECRET`                         |                          unset | Turnstile secret used for server-side siteverify                                                                        |
@@ -241,8 +239,9 @@ aggregates only — no account IDs, ciphertext, or credentials.
 The process-lifetime counters in `/metrics` and `/api/admin/status` come from
 memory, which is the whole picture on a single Node process (Docker, `npm start`)
 and none of it on Cloudflare Workers, where every ephemeral isolate keeps its own
-copy. The Workers build therefore emits those events to an Analytics Engine
-dataset instead: `/metrics` omits the counter families and `/api/admin/status`
+copy. The Workers build therefore keeps hourly counters in D1 instead, read by
+`/api/admin/telemetry` and the dashboard with no extra credentials: `/metrics`
+omits the counter families and `/api/admin/status`
 reports `activity: null` alongside `telemetry.source`, rather than serving a
 partial count that reads like a total. Storage and account gauges are database
 aggregates and are correct on both.

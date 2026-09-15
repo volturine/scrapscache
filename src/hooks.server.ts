@@ -63,12 +63,17 @@ export const handle: Handle = async ({ event, resolve }) => {
 	for (const [name, value] of SECURITY_HEADERS) response.headers.set(name, value);
 	if (response.headers.get('content-type')?.toLowerCase().startsWith('text/html')) {
 		const cacheControl = response.headers.get('cache-control');
-		const directives = cacheControl?.split(',').map((directive) => directive.trim().toLowerCase());
-		if (!directives?.includes('no-transform')) {
-			response.headers.set(
-				'cache-control',
-				cacheControl ? `${cacheControl}, no-transform` : 'no-transform'
-			);
+		const directives =
+			cacheControl?.split(',').map((directive) => directive.trim().toLowerCase()) ?? [];
+		const preventsSharedCaching = directives.some((directive) =>
+			/^(?:private|no-cache|no-store)(?:[= ]|$)/.test(directive)
+		);
+		if (!preventsSharedCaching) {
+			// The HTML shell contains build-specific asset URLs. Keep it out of
+			// shared caches so a deploy cannot leave clients on a stale shell.
+			response.headers.set('cache-control', 'private, no-transform');
+		} else if (!directives.includes('no-transform')) {
+			response.headers.set('cache-control', `${cacheControl}, no-transform`);
 		}
 	}
 	const policy = response.headers.get('content-security-policy');

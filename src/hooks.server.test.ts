@@ -63,6 +63,15 @@ describe('security headers', () => {
 		expect(html.headers.get('cache-control')).toBe('private, no-transform');
 		expect(api.headers.get('cache-control')).toBe('no-store');
 	});
+
+	it('keeps HTML shells out of shared caches when the resolver sets no policy', async () => {
+		const response = await visit(
+			'https://example.test/',
+			() => new Response('<html></html>', { headers: { 'content-type': 'text/html' } })
+		);
+
+		expect(response.headers.get('cache-control')).toBe('private, no-transform');
+	});
 });
 
 const APP = 'https://scrapscache.com';

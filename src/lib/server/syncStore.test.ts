@@ -33,6 +33,22 @@ describe('SQLite sync store', () => {
 		expect(await store.getAuthCredential('account')).toBe('first');
 	});
 
+	it('never registers a retired account again, while plain deletion leaves it free', async () => {
+		const { store } = createStore();
+		await store.createAccount('retired', 'credential');
+		await store.retireAccount('retired');
+		await store.deleteAccount('retired');
+		await store.createAccount('swept', 'credential');
+		await store.deleteAccount('swept');
+
+		expect(await store.createAccount('retired', 'lost-device')).toBe(false);
+		expect(await store.getAuthCredential('retired')).toBeNull();
+		expect(await store.isAccountRetired('retired')).toBe(true);
+		// Retention and other non-owner deletions do not retire, so recovery still works.
+		expect(await store.createAccount('swept', 'credential')).toBe(true);
+		expect(await store.isAccountRetired('swept')).toBe(false);
+	});
+
 	it('replaces an authentication credential only when the legacy value still matches', async () => {
 		const { store } = createStore();
 		await store.createAccount('account', 'legacy');

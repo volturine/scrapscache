@@ -305,6 +305,31 @@ describe('client sync state machine', () => {
 		expect(resourceTokens).toEqual(['Bearer stale-token', 'Bearer fresh-token']);
 	});
 
+	it('marks the active key retired when the relay refuses it for good', async () => {
+		const account = createSyncIdentity();
+		const store = new SyncStore();
+		store.account = account;
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => Response.json({ error: 'deleted', retired: true }, { status: 410 }))
+		);
+
+		await expect(store.authorizedFetch('/resource')).rejects.toThrow(/deleted from the cloud/);
+		expect(store.keyRetired).toBe(true);
+	});
+
+	it('does not mark the key retired when the account is merely missing', async () => {
+		const store = new SyncStore();
+		store.account = createSyncIdentity();
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => Response.json({ error: 'Sync account not found' }, { status: 404 }))
+		);
+
+		await expect(store.authorizedFetch('/resource')).rejects.toThrow();
+		expect(store.keyRetired).toBe(false);
+	});
+
 	it('reauthenticates and retries the same delta request once after HTTP 401', async () => {
 		const account = createSyncIdentity();
 		const store = new SyncStore();

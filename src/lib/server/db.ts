@@ -48,6 +48,12 @@ const RELAY_DDL = `
 		updated_at INTEGER NOT NULL,
 		FOREIGN KEY (account_id) REFERENCES accounts(account_id) ON DELETE CASCADE
 	);
+	-- Deleted by their owner, so never registered again. No foreign key: the row
+	-- has to outlive the account it names.
+	CREATE TABLE IF NOT EXISTS retired_accounts (
+		account_id TEXT PRIMARY KEY,
+		retired_at INTEGER NOT NULL
+	);
 	CREATE TABLE IF NOT EXISTS pending_ops_deletions (
 		account_id TEXT PRIMARY KEY,
 		queued_at INTEGER NOT NULL

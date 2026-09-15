@@ -5,6 +5,7 @@ import { verifySyncRegistration } from '$lib/server/syncAuth';
 import { readJsonBody } from '$lib/server/request';
 import { verifyTurnstile } from '$lib/server/turnstile';
 import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '$lib/server/rateLimit';
+import { retiredKeyResponse } from '$lib/server/retiredKey';
 
 export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	const limited = await getPublicApiLimiter().check(
@@ -47,9 +48,12 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	if (human === 'rejected')
 		return json({ error: 'Human verification failed. Try again.' }, { status: 403 });
 	try {
-		const created = await getSyncStore().createAccount(body.accountId, body.authPublicKey);
-		if (!created)
+		const store = getSyncStore();
+		const created = await store.createAccount(body.accountId, body.authPublicKey);
+		if (!created) {
+			if (await store.isAccountRetired(body.accountId)) return retiredKeyResponse();
 			return json({ error: 'This sync account already exists on this device.' }, { status: 409 });
+		}
 		return json({ accountId: body.accountId });
 	} catch (err) {
 		console.error('[sync] register failed:', err);

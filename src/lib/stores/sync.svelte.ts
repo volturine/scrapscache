@@ -157,6 +157,9 @@ export class SyncStore {
 	account = $state<SyncAccount | null>(null);
 	lastSync = $state(0);
 	lastError = $state<string | null>(null);
+	/** The active key's cloud data was deleted, so the relay will never accept it
+	 * again. The workspace can only keep syncing on a new key. */
+	keyRetired = $state(false);
 	progress = $state<SyncProgress | null>(null);
 	usage = $state<SyncUsage | null>(null);
 	readonly syncClientId =
@@ -379,6 +382,7 @@ export class SyncStore {
 		this.activateAccount(identityFromSyncKey(profile.syncKey));
 		const generation = this.authenticationGeneration;
 		this.lastError = null;
+		this.keyRetired = false;
 		this.progress = null;
 		this.usage = null;
 		this.syncedCursor = 0;
@@ -403,6 +407,7 @@ export class SyncStore {
 		this.account = null;
 		this.activeId = id;
 		this.lastError = null;
+		this.keyRetired = false;
 		this.progress = null;
 		this.usage = null;
 		this.syncedCursor = 0;
@@ -445,6 +450,7 @@ export class SyncStore {
 		});
 		if (!response.ok && response.status !== 409) {
 			const data = await response.json().catch(() => ({}));
+			if (response.status === 410 && data.retired === true) throw this.retired(account);
 			throw new Error(
 				typeof data.error === 'string' ? data.error : 'Could not recover sync authentication'
 			);
@@ -460,6 +466,37 @@ export class SyncStore {
 	): Promise<{ success: boolean; profile?: StoredProfile; error?: string }> {
 		if (!isLocalWorkspace(workspace))
 			return { success: false, error: 'That workspace is already synced' };
+		return this.assignNewKey(
+			{ ...workspace, name: name?.trim() || workspace.name },
+			turnstileToken
+		);
+	}
+
+	/**
+	 * Move a workspace whose key was retired onto a new key and a new, empty
+	 * account. Its id and notes stay; the next sync uploads them. The old key's
+	 * sync state is dropped, since that account no longer exists.
+	 */
+	async replaceRetiredKey(
+		workspace: StoredProfile,
+		turnstileToken?: string
+	): Promise<{ success: boolean; profile?: StoredProfile; error?: string }> {
+		if (isLocalWorkspace(workspace))
+			return { success: false, error: 'That workspace is not synced' };
+		const result = await this.assignNewKey(workspace, turnstileToken);
+		if (result.success) {
+			await this.clearAccountControlPlane(
+				identityFromSyncKey(workspace.syncKey).accountId,
+				workspace.id
+			);
+		}
+		return result;
+	}
+
+	private async assignNewKey(
+		workspace: StoredProfile,
+		turnstileToken?: string
+	): Promise<{ success: boolean; profile?: StoredProfile; error?: string }> {
 		const account = createSyncIdentity();
 		try {
 			const res = await fetch('/api/sync/register', {
@@ -482,11 +519,7 @@ export class SyncStore {
 					success: false,
 					error: typeof data.error === 'string' ? data.error : 'Registration failed'
 				};
-			const profile: StoredProfile = {
-				...workspace,
-				name: name?.trim() || workspace.name,
-				syncKey: account.syncKey
-			};
+			const profile: StoredProfile = { ...workspace, syncKey: account.syncKey };
 			await this.replaceKeyringEntry(profile);
 			this.clearLegacyAccountStorage();
 			return { success: true, profile };
@@ -624,7 +657,11 @@ export class SyncStore {
 				challengeId?: unknown;
 				challenge?: unknown;
 				migrationRequired?: unknown;
+				retired?: unknown;
 			};
+			if (challengeResponse.status === 410 && challenge.retired === true) {
+				throw this.retired(account);
+			}
 			if (challengeResponse.status === 409 && challenge.migrationRequired === true) {
 				const migrationResponse = await fetch('/api/sync/auth/migrate', {
 					method: 'POST',
@@ -663,6 +700,12 @@ export class SyncStore {
 			if (this.pendingSessions.get(account.accountId) === sessionRequest)
 				this.pendingSessions.delete(account.accountId);
 		}
+	}
+
+	/** Record that the relay refused this key for good, when it is the active one. */
+	private retired(account: SyncAccount): Error {
+		if (this.account?.accountId === account.accountId) this.keyRetired = true;
+		return new Error('This sync key was deleted from the cloud. Create a new key to keep syncing.');
 	}
 
 	private async acceptIssuedSession(

@@ -266,6 +266,37 @@ describe('SyncModal profile interactions', () => {
 		expect(screen.queryByRole('button', { name: /sync this workspace/i })).toBeNull();
 	});
 
+	it('asks for a new key when a sync finds the key retired, and creates it', async () => {
+		vi.spyOn(notesStore, 'syncWithCloudManual').mockImplementation(async () => {
+			syncStore.keyRetired = true;
+			syncStore.lastError = 'This sync key was deleted from the cloud.';
+			return false;
+		});
+		const replace = vi
+			.spyOn(profileCoordinator, 'replaceRetiredKey')
+			.mockResolvedValue({ success: true });
+		render(SyncModal, { props: { onClose: vi.fn() } });
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Sync now' }));
+
+		expect(
+			await screen.findByText(/sync key was deleted from the cloud, so it can no longer sync/)
+		).toBeTruthy();
+		await fireEvent.click(screen.getByRole('button', { name: 'Create new key' }));
+		await waitFor(() => expect(replace).toHaveBeenCalledWith('profile-main', undefined));
+		expect(await screen.findByText(/has a new sync key/)).toBeTruthy();
+	});
+
+	it('offers a new key instead of a resync once the key is known to be retired', async () => {
+		syncStore.keyRetired = true;
+		render(SyncModal, { props: { onClose: vi.fn() } });
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Create new sync key' }));
+
+		expect(await screen.findByRole('button', { name: 'Create new key' })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: 'Replace cloud notes' })).toBeNull();
+	});
+
 	it('shows the same new-workspace action whether a private or synced workspace is active', async () => {
 		const { unmount } = render(SyncModal, { props: { onClose: vi.fn() } });
 		const syncedClass = screen.getByRole('button', { name: '+ New workspace' }).className;

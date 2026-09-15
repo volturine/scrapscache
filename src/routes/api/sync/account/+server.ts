@@ -17,6 +17,9 @@ export const DELETE: RequestHandler = async ({ request, getClientAddress }) => {
 	if (!accountId) return json({ error: 'Account could not be deleted' }, { status: 401 });
 	try {
 		const store = getSyncStore();
+		// Deleting cloud data retires the key: any device still holding it, a lost
+		// one included, is told to make a new key instead of recreating this account.
+		await store.retireAccount(accountId);
 		await store.deleteAccount(accountId);
 		await getSyncAuth().revokeSyncSessions(accountId);
 		return new Response(null, { status: 204 });

@@ -135,3 +135,19 @@ describe('per-account request limits', () => {
 		await expect(store.setAccountRateLimit('account-tuned', -1)).rejects.toThrow(RangeError);
 	});
 });
+
+describe('retired accounts', () => {
+	it('refuses to register a retired id and keeps the record after the account is gone', async () => {
+		await addAccount('account-retired');
+		await store.retireAccount('account-retired');
+		await client.execute({
+			sql: 'DELETE FROM accounts WHERE account_id = ?',
+			args: ['account-retired']
+		});
+
+		expect(await store.createAccount('account-retired', 'lost-device')).toBe(false);
+		expect(await store.isAccountRetired('account-retired')).toBe(true);
+		expect(await store.createAccount('account-fresh', 'public-key')).toBe(true);
+		expect(await store.isAccountRetired('account-fresh')).toBe(false);
+	});
+});

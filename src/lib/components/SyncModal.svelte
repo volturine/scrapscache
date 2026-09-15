@@ -54,7 +54,7 @@
 	let waiting = $state<StartedDeviceLink | null>(null);
 	let now = $state(Date.now());
 	let timer: ReturnType<typeof setTimeout> | null = null;
-	let confirmation = $state<'delete' | 'force' | 'remove' | null>(null);
+	let confirmation = $state<'delete' | 'force' | 'remove' | 'new-key' | null>(null);
 	let confirmTarget = $state<string | null>(null);
 	let expandedId = $state<string | null>(null);
 	let newName = $state('');
@@ -64,8 +64,8 @@
 	const turnstileOrigin = env.PUBLIC_TURNSTILE_ORIGIN?.trim() ?? '';
 	let registerCheck = $state<TurnstileWidget>();
 	let registerToken = $state('');
-	let forceCheck = $state<TurnstileWidget>();
-	let forceToken = $state('');
+	let confirmCheck = $state<TurnstileWidget>();
+	let confirmToken = $state('');
 	// The row that currently owns Escape, so the dialog leaves the key alone.
 	let rowHoldingEscape = $state<string | null>(null);
 
@@ -224,14 +224,14 @@
 	}
 
 	async function forceResync() {
-		if (turnstileOrigin && !forceToken) return;
+		if (turnstileOrigin && !confirmToken) return;
 		error = '';
 		info = '';
-		const token = forceToken || undefined;
+		const token = confirmToken || undefined;
 		const result = await runOperation('force-sync', 'Could not force a full resync', () =>
 			profileCoordinator.forceResync(token, confirmTarget)
 		);
-		forceCheck?.reset();
+		confirmCheck?.reset();
 		if (!result) return;
 		if (!result.success) {
 			error = friendlyError(result.error, 'Could not force a full resync');
@@ -241,6 +241,27 @@
 		confirmTarget = null;
 		mode = 'menu';
 		info = 'This device’s notes are now the latest cloud version.';
+	}
+
+	async function replaceRetiredKey() {
+		if (!confirmTarget || (turnstileOrigin && !confirmToken)) return;
+		error = '';
+		info = '';
+		const token = confirmToken || undefined;
+		const target = confirmTarget;
+		const result = await runOperation('replace-key', 'Could not create a new sync key', () =>
+			profileCoordinator.replaceRetiredKey(target, token)
+		);
+		confirmCheck?.reset();
+		if (!result) return;
+		if (!result.success) {
+			error = friendlyError(result.error, 'Could not create a new sync key');
+			return;
+		}
+		confirmation = null;
+		confirmTarget = null;
+		mode = 'menu';
+		info = 'This workspace has a new sync key. Pair your other devices again with a new code.';
 	}
 
 	async function beginLink() {
@@ -408,6 +429,8 @@
 		);
 		if (success === undefined) return;
 		if (!success) {
+			// The handshake found the key retired: go straight to replacing it.
+			if (syncStore.keyRetired) return confirm('new-key', syncStore.activePid);
 			error = friendlyError(syncStore.lastError, 'Sync failed');
 			return;
 		}
@@ -482,7 +505,7 @@
 		info = 'Cloud data deleted. Its notes stay on this device as a private workspace.';
 	}
 
-	function confirm(kind: 'delete' | 'force' | 'remove', id: string) {
+	function confirm(kind: 'delete' | 'force' | 'remove' | 'new-key', id: string) {
 		confirmation = kind;
 		confirmTarget = id;
 		mode = 'confirm';
@@ -551,9 +574,11 @@
 										: mode === 'confirm'
 											? confirmation === 'force'
 												? 'Replace cloud notes?'
-												: confirmation === 'remove'
-													? 'Delete workspace?'
-													: 'Delete cloud data?'
+												: confirmation === 'new-key'
+													? 'Create a new sync key?'
+													: confirmation === 'remove'
+														? 'Delete workspace?'
+														: 'Delete cloud data?'
 											: 'Connect device'}
 					</Dialog.Title>
 					<button
@@ -684,7 +709,8 @@
 									<button
 										type="button"
 										onclick={() => {
-											if (authenticationFailed) confirm('force', syncStore.activePid);
+											if (syncStore.keyRetired) confirm('new-key', syncStore.activePid);
+											else if (authenticationFailed) confirm('force', syncStore.activePid);
 											else void syncNow();
 										}}
 										disabled={busy}
@@ -695,9 +721,11 @@
 											aria-hidden="true"
 										/>{operation === 'sync'
 											? 'Syncing…'
-											: authenticationFailed
-												? 'Force resync'
-												: 'Sync now'}</button
+											: syncStore.keyRetired
+												? 'Create new sync key'
+												: authenticationFailed
+													? 'Force resync'
+													: 'Sync now'}</button
 									>
 									<button
 										type="button"
@@ -747,6 +775,10 @@
 								This device’s notes will replace the cloud version using the same sync key. Notes
 								only in the cloud will be removed. Other devices will receive these notes as the
 								latest version.
+							{:else if confirmation === 'new-key'}
+								This workspace’s sync key was deleted from the cloud, so it can no longer sync. A
+								new key keeps the notes on this device and uploads them to a new cloud account.
+								Other devices have to be paired again with a new code.
 							{:else if confirmation === 'remove'}
 								Permanently delete “{confirmProfile?.name}” and its notes from this device.
 								{#if confirmProfile && !isLocalWorkspace(confirmProfile)}
@@ -757,10 +789,10 @@
 								all devices. This device keeps its notes as a private workspace.
 							{/if}
 						</p>
-						{#if confirmation === 'force' && turnstileOrigin}
+						{#if (confirmation === 'force' || confirmation === 'new-key') && turnstileOrigin}
 							<TurnstileWidget
-								bind:this={forceCheck}
-								bind:token={forceToken}
+								bind:this={confirmCheck}
+								bind:token={confirmToken}
 								origin={turnstileOrigin}
 								action="register"
 							/>
@@ -782,24 +814,31 @@
 							>
 							<button
 								type="button"
-								class="scrapscache-button flex-1 px-3 py-2 {confirmation !== 'force'
-									? 'scrapscache-button-destructive-solid'
-									: 'scrapscache-button-primary'}"
+								class="scrapscache-button flex-1 px-3 py-2 {confirmation === 'force' ||
+								confirmation === 'new-key'
+									? 'scrapscache-button-primary'
+									: 'scrapscache-button-destructive-solid'}"
 								disabled={busy ||
-									(confirmation === 'force' && Boolean(turnstileOrigin) && !forceToken)}
+									((confirmation === 'force' || confirmation === 'new-key') &&
+										Boolean(turnstileOrigin) &&
+										!confirmToken)}
 								onclick={() =>
 									confirmation === 'force'
 										? void forceResync()
-										: confirmation === 'remove'
-											? void removeWorkspace()
-											: void deleteCloudData()}
+										: confirmation === 'new-key'
+											? void replaceRetiredKey()
+											: confirmation === 'remove'
+												? void removeWorkspace()
+												: void deleteCloudData()}
 								>{busy
 									? 'Working…'
 									: confirmation === 'force'
 										? 'Replace cloud notes'
-										: confirmation === 'remove'
-											? 'Delete workspace'
-											: 'Delete cloud data'}</button
+										: confirmation === 'new-key'
+											? 'Create new key'
+											: confirmation === 'remove'
+												? 'Delete workspace'
+												: 'Delete cloud data'}</button
 							>
 						</div>
 					</div>

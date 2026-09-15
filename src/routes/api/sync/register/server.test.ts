@@ -3,6 +3,7 @@ import type { TurnstileResult } from '$lib/server/turnstile';
 
 const mocks = vi.hoisted(() => ({
 	createAccount: vi.fn(async () => true),
+	isAccountRetired: vi.fn(async () => false),
 	verifyRegistration: vi.fn(() => true),
 	verifyTurnstile: vi.fn(
 		async (_token: unknown, _action: string, _ip: string): Promise<TurnstileResult> => 'verified'
@@ -10,7 +11,10 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('$lib/server/syncStore', () => ({
-	getSyncStore: () => ({ createAccount: mocks.createAccount })
+	getSyncStore: () => ({
+		createAccount: mocks.createAccount,
+		isAccountRetired: mocks.isAccountRetired
+	})
 }));
 vi.mock('$lib/server/syncAuth', () => ({ verifySyncRegistration: mocks.verifyRegistration }));
 vi.mock('$lib/server/turnstile', () => ({ verifyTurnstile: mocks.verifyTurnstile }));
@@ -69,6 +73,17 @@ describe('POST /api/sync/register', () => {
 		const response = await post({ ...validBody, turnstileToken: undefined });
 		expect(response.status).toBe(200);
 		expect(mocks.createAccount).toHaveBeenCalledTimes(1);
+	});
+
+	it('tells a device its key was retired, distinct from an account that exists', async () => {
+		mocks.createAccount.mockResolvedValueOnce(false).mockResolvedValueOnce(false);
+		mocks.isAccountRetired.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+
+		const retired = await post(validBody);
+		expect(retired.status).toBe(410);
+		expect(await retired.json()).toMatchObject({ retired: true });
+
+		expect((await post(validBody)).status).toBe(409);
 	});
 
 	it('does not create the account when verification is rejected', async () => {

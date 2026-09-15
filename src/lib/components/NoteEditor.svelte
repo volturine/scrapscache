@@ -18,7 +18,7 @@
 	import ReminderLabel from './ReminderLabel.svelte';
 	import { Bell, ChevronLeft, Lock, LockOpen, Paperclip, Pin } from '@lucide/svelte';
 	import { revealEditorField, revealEditorPoint } from '$lib/editorVisibility';
-	import { getClipboardFiles } from '$lib/noteImages';
+	import { getClipboardFiles, isImageAttachment } from '$lib/noteImages';
 
 	let {
 		noteId = $bindable(),
@@ -80,6 +80,7 @@
 	const editorDialogClass = $derived(
 		`relative flex h-full w-full flex-col overflow-hidden rounded-2xl${paletteOpen || labelOpen ? ' editor-caret-hidden' : ''}`
 	);
+	const photosFillEditor = $derived(body.trim() === '' && images.some(isImageAttachment));
 	const editorDialogStyle = $derived(
 		`background-color: ${note ? bgColor(note.color) : 'transparent'};`
 	);
@@ -613,7 +614,9 @@
 
 					<div
 						bind:this={editorScroller}
-						class="note-scrollbar-hidden scrollable min-h-0 flex-1 touch-pan-y overflow-y-auto overflow-x-hidden overscroll-contain px-6 pt-4 pb-3"
+						class="note-scrollbar-hidden scrollable min-h-0 {photosFillEditor
+							? 'flex-initial'
+							: 'flex-1'} touch-pan-y overflow-y-auto overflow-x-hidden overscroll-contain px-6 pt-4 pb-3"
 					>
 						<textarea
 							use:autoResizeTitle={title}
@@ -671,6 +674,7 @@
 						archived={note.archived}
 						trashed={note.trashed}
 						{copyFlash}
+						fillPhotos={photosFillEditor}
 						onOpenColor={() => {
 							closePopups();
 							paletteOpen = true;

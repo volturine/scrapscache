@@ -76,6 +76,7 @@ const menuItemRecipe = defineRecipe({
 		transition: 'background-color 120ms ease, color 120ms ease',
 		_hoverable: { bg: 'scrapscache.interactiveHover' },
 		_active: { bg: 'scrapscache.interactiveActive' },
+		_focusVisible: { bg: 'scrapscache.interactiveHover' },
 		_disabled: { opacity: 0.55, cursor: 'not-allowed' }
 	},
 	variants: {
@@ -94,7 +95,8 @@ const menuItemRecipe = defineRecipe({
 		feedback: {
 			none: {
 				_hoverable: { bg: 'transparent' },
-				_active: { bg: 'transparent' }
+				_active: { bg: 'transparent' },
+				_focusVisible: { bg: 'transparent' }
 			}
 		}
 	},

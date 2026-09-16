@@ -30,6 +30,7 @@ npm run validate            # check + format + tests + production build
 - Keep component visuals in Panda. Reserve `src/app.css` and authored static class names for document-state, application-shell, or third-party integration hooks; do not write Tailwind utility strings.
 - Use `_hoverable` for hover feedback, and name the properties being transitioned instead of using `transition: all`.
 - Regenerate `styled-system` with `npx panda codegen` after config changes.
+- Treat hover, active, and keyboard focus as separate visual states when reviewing an interactive control. Verify each state in the browser; a screenshot can show more than one state at once. Passive menu rows should use `menuItem({ feedback: 'none' })` rather than removing feedback from the shared recipe.
 
 ## Definition of done
 

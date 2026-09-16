@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { iconSizeSm, iconSizeXs, pwaStyles as styles } from '$panda/styles';
 	import { css, cx } from 'styled-system/css';
+	import { menuItem } from 'styled-system/recipes';
 	import { Download, Share, Smartphone, X } from '@lucide/svelte';
 	import { pwaInstallStore } from '$lib/stores/pwaInstall.svelte';
 
@@ -11,9 +12,14 @@
 
 {#if pwaInstallStore.canPrompt}
 	<section aria-label="Install app">
-		<button type="button" onclick={install} class={styles.installButton} aria-label="Install app">
+		<button
+			type="button"
+			onclick={install}
+			class={menuItem({ density: 'compact' })}
+			aria-label="Install app"
+		>
 			<Download class={cx(iconSizeSm, css({ color: 'scrapscache.accent' }))} aria-hidden="true" />
-			<span class={styles.installLabel}>Install app</span>
+			<span>Install app</span>
 		</button>
 	</section>
 {/if}

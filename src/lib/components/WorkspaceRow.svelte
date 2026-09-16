@@ -229,26 +229,6 @@
 			</button>
 		{/if}
 		<div class={`tools ${hstack({ gap: '3xs', flexShrink: 0 })}`} hidden={mode !== 'idle'}>
-			{#if onrename}
-				<button
-					type="button"
-					class={styles.iconButton}
-					disabled={locked}
-					title="Rename"
-					aria-label="Rename {name}"
-					onclick={startRename}><Pencil size={16} aria-hidden="true" /></button
-				>
-			{/if}
-			{#if onunlink}
-				<button
-					type="button"
-					class={styles.iconButton}
-					disabled={locked}
-					title="Unlink"
-					aria-label="Unlink {name}"
-					onclick={askUnlink}><CloudOff size={16} aria-hidden="true" /></button
-				>
-			{/if}
 			<button
 				type="button"
 				class={styles.iconButton}
@@ -278,7 +258,33 @@
 	</div>
 
 	<div class={styles.menu} hidden={!expanded || mode !== 'idle'}>
+		{#if onrename}
+			<button
+				type="button"
+				class={styles.manageRow}
+				disabled={locked}
+				onclick={startRename}
+				aria-label="Rename {name}"
+			>
+				<Pencil size={16} aria-hidden="true" /><span
+					>Rename<small>Change this workspace’s name</small></span
+				>
+			</button>
+		{/if}
 		{@render actions?.()}
+		{#if onunlink}
+			<button
+				type="button"
+				class={cx(styles.manageRow, styles.manageRowDanger)}
+				disabled={locked}
+				onclick={askUnlink}
+				aria-label="Unlink {name}"
+			>
+				<CloudOff size={16} aria-hidden="true" /><span
+					>Unlink<small>Stop syncing on this device. Notes stay here.</small></span
+				>
+			</button>
+		{/if}
 		{@render danger?.()}
 	</div>
 </div>

@@ -150,7 +150,8 @@ describe('SyncModal profile interactions', () => {
 		await expand('Side');
 		expect(screen.getByRole('button', { name: 'Rename Side' })).toBeTruthy();
 		await fireEvent.keyDown(document, { key: 'Escape' });
-		expect(screen.queryByRole('button', { name: 'Rename Side' })).toBeNull();
+		expect(screen.getByRole('button', { name: 'Rename Side' })).toBeTruthy();
+		expect(screen.getByRole('button', { name: 'Expand Side' })).toBeTruthy();
 		expect(onClose).not.toHaveBeenCalled();
 	});
 
@@ -175,7 +176,8 @@ describe('SyncModal profile interactions', () => {
 			expect(onClose).not.toHaveBeenCalled();
 
 			await fireEvent.keyDown(document, { key: 'Escape' });
-			expect(screen.queryByRole('button', { name: 'Unlink Side' })).toBeNull();
+			expect(screen.getByRole('button', { name: 'Unlink Side' })).toBeTruthy();
+			expect(screen.getByRole('button', { name: 'Expand Side' })).toBeTruthy();
 			expect(onClose).not.toHaveBeenCalled();
 
 			await fireEvent.keyDown(window, { key: 'Escape' });
@@ -326,22 +328,21 @@ describe('SyncModal profile interactions', () => {
 		expect(screen.getByText('Created a local workspace on this device.')).toBeTruthy();
 	});
 
-	it('exports from the row and keeps manage actions behind the chevron', async () => {
+	it('keeps row actions visible and secondary actions behind the chevron', async () => {
 		render(SyncModal, { props: { onClose: vi.fn() } });
 		expect(screen.getByRole('button', { name: 'Export Main' })).toBeTruthy();
 		expect(screen.getByRole('button', { name: 'Export Home' })).toBeTruthy();
+		expect(screen.getByRole('button', { name: 'Rename Main' })).toBeTruthy();
+		expect(screen.getByRole('button', { name: 'Unlink Main' })).toBeTruthy();
 		expect(screen.queryByRole('button', { name: /Force resync/ })).toBeNull();
-		expect(screen.queryByRole('button', { name: 'Rename Main' })).toBeNull();
-		expect(screen.queryByRole('button', { name: 'Unlink Main' })).toBeNull();
 
 		await expand('Main');
-		const rename = screen.getByRole('button', { name: 'Rename Main' });
 		const resync = screen.getByRole('button', { name: /Force resync/ });
-		const unlink = screen.getByRole('button', { name: 'Unlink Main' });
 		const remove = screen.getByRole('button', { name: /Delete cloud data/ });
-		expect(rename.compareDocumentPosition(resync) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-		expect(resync.compareDocumentPosition(unlink) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-		expect(unlink.compareDocumentPosition(remove) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		expect(screen.getAllByRole('button', { name: 'Rename Main' })).toHaveLength(1);
+		expect(screen.getAllByRole('button', { name: 'Unlink Main' })).toHaveLength(1);
+		expect(resync).toBeTruthy();
+		expect(remove).toBeTruthy();
 	});
 
 	it('expands a private workspace with rename, sync, and delete', async () => {
@@ -564,13 +565,12 @@ describe('SyncModal profile interactions', () => {
 		const force = vi.spyOn(profileCoordinator, 'forceResync').mockResolvedValue({ success: true });
 		render(SyncModal, { props: { onClose: vi.fn() } });
 		await expand('Side');
-		const rename = screen.getByRole('button', { name: 'Rename Side' });
 		const resync = screen.getByRole('button', { name: /Force resync/ });
-		const unlink = screen.getByRole('button', { name: 'Unlink Side' });
 		const remove = screen.getByRole('button', { name: /Delete cloud data/ });
-		expect(rename.compareDocumentPosition(resync) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-		expect(resync.compareDocumentPosition(unlink) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-		expect(unlink.compareDocumentPosition(remove) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		expect(screen.getAllByRole('button', { name: 'Rename Side' })).toHaveLength(1);
+		expect(screen.getAllByRole('button', { name: 'Unlink Side' })).toHaveLength(1);
+		expect(resync).toBeTruthy();
+		expect(remove).toBeTruthy();
 
 		await fireEvent.click(resync);
 		await fireEvent.click(screen.getByRole('button', { name: 'Replace cloud notes' }));

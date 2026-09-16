@@ -39,29 +39,14 @@
 	} = $props();
 
 	const styles = workspaceStyles;
-	const ACTIONS_WIDTH = 152;
-	const COMMIT_RATIO = 0.55;
-	const OVERSWIPE_RESISTANCE = 0.7;
-	const RUBBER_BAND = 0.25;
-	const FLICK_VELOCITY = 0.4;
-	const SLOP = 8;
 
 	let mode = $state<'idle' | 'rename' | 'confirm'>('idle');
 	let working = $state<'rename' | 'unlink' | null>(null);
 	let draft = $state('');
-	let swipeOpen = $state(false);
-	let offset = $state(0);
-	let dragging = $state(false);
-	let armed = $state(false);
 	let rowElement: HTMLDivElement | undefined;
 	let renameInput: HTMLInputElement | undefined;
 	let trigger: HTMLElement | null = null;
-	let start: { x: number; y: number; offset: number } | null = null;
-	let last = { x: 0, time: 0 };
-	let velocity = 0;
-	let swiped = false;
 
-	const progress = $derived(Math.min(1, Math.max(0, -offset / ACTIONS_WIDTH)));
 	const locked = $derived(disabled || working !== null);
 	const nameFieldClass = $derived(
 		cx(inputRecipe({ variant: 'outline', size: 'sm' }), css({ w: 'full', font: 'inherit' }))
@@ -69,7 +54,7 @@
 	const chevronClass = $derived(cx(styles.chevron, expanded && styles.chevronOpen));
 
 	function notifyBusy() {
-		onbusychange(mode !== 'idle' || swipeOpen);
+		onbusychange(mode !== 'idle');
 	}
 
 	function setMode(next: typeof mode) {
@@ -95,88 +80,17 @@
 		};
 	}
 
-	function commitDistance() {
-		return Math.max(ACTIONS_WIDTH + 40, (rowElement?.clientWidth ?? 0) * COMMIT_RATIO);
-	}
-
-	function settle(next: boolean) {
-		swipeOpen = next;
-		offset = next ? -ACTIONS_WIDTH : 0;
-		notifyBusy();
-	}
-
-	function down(event: PointerEvent) {
-		if (locked || mode !== 'idle' || event.pointerType !== 'touch') return;
-		start = { x: event.clientX, y: event.clientY, offset: swipeOpen ? -ACTIONS_WIDTH : 0 };
-		last = { x: event.clientX, time: event.timeStamp };
-		velocity = 0;
-		swiped = false;
-	}
-
-	function move(event: PointerEvent) {
-		if (!start) return;
-		const dx = event.clientX - start.x;
-		const dy = event.clientY - start.y;
-		if (!dragging) {
-			if (Math.abs(dx) < SLOP || Math.abs(dy) > Math.abs(dx) * 2) return;
-			dragging = true;
-			swiped = true;
-		}
-		const elapsed = event.timeStamp - last.time;
-		if (elapsed > 0) velocity = (event.clientX - last.x) / elapsed;
-		last = { x: event.clientX, time: event.timeStamp };
-		const raw = start.offset + dx;
-		offset =
-			raw > 0
-				? raw * RUBBER_BAND
-				: raw < -ACTIONS_WIDTH
-					? -ACTIONS_WIDTH + (raw + ACTIONS_WIDTH) * OVERSWIPE_RESISTANCE
-					: raw;
-		const nextArmed = -offset >= commitDistance();
-		if (nextArmed !== armed) {
-			armed = nextArmed;
-			if (nextArmed) navigator.vibrate?.(8);
-		}
-	}
-
-	function end() {
-		if (!dragging) {
-			start = null;
-			return;
-		}
-		dragging = false;
-		start = null;
-		if (armed) {
-			armed = false;
-			askUnlink();
-			return;
-		}
-		if (velocity < -FLICK_VELOCITY) settle(true);
-		else if (velocity > FLICK_VELOCITY) settle(false);
-		else settle(-offset > ACTIONS_WIDTH / 2);
-	}
-
-	function cancelDrag() {
-		if (!start) return;
-		dragging = false;
-		armed = false;
-		start = null;
-		settle(swipeOpen);
-	}
-
 	function startRename(event: MouseEvent) {
 		if (!onrename) return;
 		trigger = event.currentTarget as HTMLElement;
 		draft = name;
 		setMode('rename');
-		settle(false);
 	}
 
 	function askUnlink(event?: MouseEvent) {
 		if (!onunlink) return;
 		trigger = (event?.currentTarget as HTMLElement | undefined) ?? null;
 		setMode('confirm');
-		settle(false);
 	}
 
 	function cancel() {
@@ -207,68 +121,26 @@
 
 	function onDocumentPointerDown(event: PointerEvent) {
 		if (working || !rowElement || rowElement.contains(event.target as Node)) return;
-		if (swipeOpen) settle(false);
 		if (mode === 'rename') void saveRename();
 		else if (mode === 'confirm') cancel();
 	}
 
 	function onKeyDown(event: KeyboardEvent) {
-		if (event.key !== 'Escape' || (mode === 'idle' && !swipeOpen && !expanded)) return;
+		if (event.key !== 'Escape' || (mode === 'idle' && !expanded)) return;
 		event.preventDefault();
 		if (mode !== 'idle') cancel();
-		else if (swipeOpen) settle(false);
 		else onexpand();
 	}
 </script>
 
-<svelte:document
-	onkeydown={onKeyDown}
-	onpointerdown={onDocumentPointerDown}
-	onpointermove={move}
-	onpointerup={end}
-	onpointercancel={cancelDrag}
-/>
+<svelte:document onkeydown={onKeyDown} onpointerdown={onDocumentPointerDown} />
 
 <div
 	bind:this={rowElement}
 	class={`row ${styles.row}`}
-	class:open={expanded || swipeOpen}
-	class:armed
-	class:dragging
 	class:editing={mode !== 'idle'}
-	style:--swipe-offset={`${offset}px`}
-	style:--swipe-progress={progress}
 	tabindex="-1"
 >
-	<div class={`actions ${styles.actions}`} aria-hidden="true">
-		{#if onrename}
-			<button
-				type="button"
-				class={`tile ${styles.tile}`}
-				disabled={locked}
-				title="Rename"
-				aria-label="Rename {name}"
-				onclick={startRename}
-			>
-				<Pencil size={16} aria-hidden="true" /><span class={styles.tileLabel}>Rename</span>
-			</button>
-		{/if}
-		{#if onunlink}
-			<button
-				type="button"
-				class={`tile tile-unlink ${styles.tile} ${styles.tileUnlink}`}
-				disabled={locked}
-				title="Unlink"
-				aria-label="Unlink {name}"
-				onclick={askUnlink}
-			>
-				<CloudOff size={16} aria-hidden="true" /><span class={styles.tileLabel}
-					>{armed ? 'Release' : 'Unlink'}</span
-				>
-			</button>
-		{/if}
-	</div>
-
 	<div class={`front ${styles.frontBase}`} class:active data-front>
 		{#if mode === 'confirm'}
 			<div class={`panel confirm ${styles.panel}`}>
@@ -347,15 +219,7 @@
 				class={styles.select}
 				disabled={locked}
 				aria-label={active ? `${name} is active` : `Switch to ${name}`}
-				onpointerdown={down}
-				onclick={() => {
-					if (swiped) {
-						swiped = false;
-						return;
-					}
-					if (swipeOpen) settle(false);
-					else onselect();
-				}}
+				onclick={onselect}
 			>
 				<span class={styles.glyph} aria-hidden="true">{@render icon()}</span>
 				<span class={styles.content}>
@@ -363,64 +227,58 @@
 					<span class={styles.caption}>{caption}</span>
 				</span>
 			</button>
-			<div class={`tools ${hstack({ gap: '3xs', flexShrink: 0 })}`} hidden={swipeOpen}>
-				<button
-					type="button"
-					class={styles.iconButton}
-					disabled={locked}
-					title="Export notes"
-					aria-label="Export {name}"
-					onclick={(event) => {
-						event.stopPropagation();
-						onexport();
-					}}><Download size={16} aria-hidden="true" /></button
-				>
-				<button
-					type="button"
-					class={styles.iconButton}
-					disabled={locked}
-					title={expanded ? 'Hide workspace options' : 'Show workspace options'}
-					aria-label={expanded ? `Collapse ${name}` : `Expand ${name}`}
-					aria-expanded={expanded}
-					onclick={(event) => {
-						event.stopPropagation();
-						onexpand();
-					}}
-				>
-					<span class={chevronClass}><ChevronDown size={16} aria-hidden="true" /></span>
-				</button>
-			</div>
 		{/if}
+		<div class={`tools ${hstack({ gap: '3xs', flexShrink: 0 })}`} hidden={mode !== 'idle'}>
+			{#if onrename}
+				<button
+					type="button"
+					class={styles.iconButton}
+					disabled={locked}
+					title="Rename"
+					aria-label="Rename {name}"
+					onclick={startRename}><Pencil size={16} aria-hidden="true" /></button
+				>
+			{/if}
+			{#if onunlink}
+				<button
+					type="button"
+					class={styles.iconButton}
+					disabled={locked}
+					title="Unlink"
+					aria-label="Unlink {name}"
+					onclick={askUnlink}><CloudOff size={16} aria-hidden="true" /></button
+				>
+			{/if}
+			<button
+				type="button"
+				class={styles.iconButton}
+				disabled={locked}
+				title="Export notes"
+				aria-label="Export {name}"
+				onclick={(event) => {
+					event.stopPropagation();
+					onexport();
+				}}><Download size={16} aria-hidden="true" /></button
+			>
+			<button
+				type="button"
+				class={styles.iconButton}
+				disabled={locked}
+				title={expanded ? 'Hide workspace options' : 'Show workspace options'}
+				aria-label={expanded ? `Collapse ${name}` : `Expand ${name}`}
+				aria-expanded={expanded}
+				onclick={(event) => {
+					event.stopPropagation();
+					onexpand();
+				}}
+			>
+				<span class={chevronClass}><ChevronDown size={16} aria-hidden="true" /></span>
+			</button>
+		</div>
 	</div>
 
 	<div class={styles.menu} hidden={!expanded || mode !== 'idle'}>
-		{#if onrename}
-			<button
-				type="button"
-				class={styles.manageRow}
-				disabled={locked}
-				onclick={startRename}
-				aria-label="Rename {name}"
-			>
-				<Pencil size={16} aria-hidden="true" /><span
-					>Rename<small>Change this workspace’s name</small></span
-				>
-			</button>
-		{/if}
 		{@render actions?.()}
-		{#if onunlink}
-			<button
-				type="button"
-				class={cx(styles.manageRow, styles.manageRowDanger)}
-				disabled={locked}
-				onclick={askUnlink}
-				aria-label="Unlink {name}"
-			>
-				<CloudOff size={16} aria-hidden="true" /><span
-					>Unlink<small>Stop syncing on this device. Notes stay here.</small></span
-				>
-			</button>
-		{/if}
 		{@render danger?.()}
 	</div>
 </div>

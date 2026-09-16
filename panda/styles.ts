@@ -1040,74 +1040,11 @@ export const workspaceStyles = {
 	row: css({
 		position: 'relative',
 		rounded: 'row',
-		overflow: { base: 'hidden', sm: 'visible' },
+		overflow: 'visible',
 		'& button:disabled': { opacity: 0.55 },
-		'&:hover .actions, &:focus-within .actions': {
-			opacity: { sm: 1 },
-			pointerEvents: { sm: 'auto' }
-		},
-		'&.editing .actions': { display: 'none' },
-		'&:not(.dragging) .front': {
-			transition: {
-				base: 'transform 260ms cubic-bezier(0.22, 1, 0.36, 1)',
-				_motionReduce: 'none'
-			}
-		},
-		'&:not(.dragging):has(.actions :focus-visible) .front': {
-			transform: { base: 'translateX(-152px)' }
-		},
 		'&.editing .front': { bg: 'scrapscache.interactiveHover' },
-		'@media (hover: hover)': { '&:hover .front': { bg: 'scrapscache.interactiveHover' } },
-		'&:not(.dragging) .actions': {
-			transition: { base: 'width 260ms cubic-bezier(0.22, 1, 0.36, 1)' }
-		},
-		'&.armed .tile-unlink': {
-			bg: { base: 'scrapscache.danger' },
-			color: { base: 'scrapscache.dangerForeground' }
-		},
-		'&.armed .tile:not(.tile-unlink)': { opacity: { base: 0 } }
+		'@media (hover: hover)': { '&:hover .front': { bg: 'scrapscache.interactiveHover' } }
 	}),
-	actions: css({
-		position: 'absolute',
-		inset: '0 0 0 auto',
-		zIndex: { base: 0, sm: 2 },
-		...rowCenter,
-		gap: '3xs',
-		pr: { base: 0, sm: 'sm' },
-		w: { base: 'max(0px, calc(-1 * var(--swipe-offset)))', sm: 'auto' },
-		justifyContent: { base: 'flex-end' },
-		overflow: { base: 'hidden' },
-		borderTopRightRadius: { base: 'row' },
-		borderBottomRightRadius: { base: 'row' },
-		opacity: { base: 1, sm: 0 },
-		pointerEvents: { base: 'auto', sm: 'none' }
-	}),
-	tile: css({
-		display: { base: 'flex', sm: 'grid' },
-		w: { base: '76px', sm: '30px' },
-		h: { base: 'auto', sm: '30px' },
-		placeItems: 'center',
-		flexDirection: { base: 'column' },
-		alignItems: { base: 'center' },
-		justifyContent: { base: 'center' },
-		gap: { base: '2xs' },
-		flexShrink: 0,
-		alignSelf: { base: 'stretch' },
-		rounded: { base: '0', sm: 'action' },
-		fontSize: { base: 'label' },
-		color: { base: 'scrapscache.text', sm: 'scrapscache.textMuted' },
-		_hoverable: {
-			bg: { base: 'transparent', sm: 'scrapscache.interactiveHover' },
-			color: { sm: 'scrapscache.text' }
-		},
-		'& svg': { transform: { base: 'scale(calc(0.8 + 0.2 * var(--swipe-progress)))' } }
-	}),
-	tileUnlink: css({
-		flex: { base: '1 0 76px' },
-		color: { base: 'scrapscache.danger', sm: 'scrapscache.textMuted' },
-		_hoverable: { color: { sm: 'scrapscache.danger' } }
-	}),
-	tileLabel: css({ display: { base: 'block', sm: 'none' } }),
 	frontBase: css({
 		position: 'relative',
 		zIndex: 1,
@@ -1115,7 +1052,6 @@ export const workspaceStyles = {
 		alignItems: 'stretch',
 		rounded: 'row',
 		bg: 'scrapscache.surface',
-		transform: { base: 'translateX(var(--swipe-offset))' },
 		'&.active': {
 			bg: 'scrapscache.interactiveHover',
 			'&::before': {
@@ -1135,24 +1071,9 @@ export const workspaceStyles = {
 		...workspaceContent,
 		py: 'md',
 		pl: 'md',
-		pr: { base: 'md', sm: '76px' },
-		touchAction: 'pan-y'
+		pr: 'md'
 	}),
 	menu: css({ display: 'grid', gap: '3xs', p: 'xs' }),
-	manageRow: css({
-		...rowGapMd,
-		w: 'full',
-		...clickable,
-		rounded: 'action',
-		px: 'sm',
-		py: 'action',
-		textAlign: 'left',
-		fontSize: 'compact',
-		_hoverable: { bg: 'scrapscache.interactiveHover' },
-		'& span': { minW: 0, flex: '1' },
-		'& small': { display: 'block', mt: '3xs', ...mutedText, textStyle: 'caption' }
-	}),
-	manageRowDanger: css({ color: 'scrapscache.danger' }),
 	chevron: css({ display: 'grid', transition: 'transform 160ms ease' }),
 	chevronOpen: css({ transform: 'rotate(180deg)' }),
 	panel: css({

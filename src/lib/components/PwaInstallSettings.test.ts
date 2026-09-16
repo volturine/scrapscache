@@ -20,7 +20,9 @@ describe('PwaInstallSettings', () => {
 		} as unknown as BeforeInstallPromptEvent;
 
 		render(PwaInstallSettings);
-		await fireEvent.click(screen.getByRole('button', { name: 'Install app' }));
+		const installButton = screen.getByRole('button', { name: 'Install app' });
+		expect(installButton.className).toContain('scrapscache-menu-item--feedback_none');
+		await fireEvent.click(installButton);
 
 		expect(prompt).toHaveBeenCalledOnce();
 		await waitFor(() => expect(screen.queryByRole('button', { name: 'Install app' })).toBeNull());

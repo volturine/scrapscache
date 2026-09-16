@@ -15,7 +15,7 @@
 		<button
 			type="button"
 			onclick={install}
-			class={menuItem({ density: 'compact' })}
+			class={menuItem({ density: 'compact', feedback: 'none' })}
 			aria-label="Install app"
 		>
 			<Download class={cx(iconSizeSm, css({ color: 'scrapscache.accent' }))} aria-hidden="true" />

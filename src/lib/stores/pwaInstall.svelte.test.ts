@@ -9,7 +9,6 @@ describe('PwaInstallStore', () => {
 	it('initializes with default values and detects non-standalone', () => {
 		const store = new PwaInstallStore();
 		expect(store.isStandalone).toBe(false);
-		expect(store.dismissed).toBe(false);
 		expect(store.deferredPrompt).toBeNull();
 	});
 
@@ -25,21 +24,6 @@ describe('PwaInstallStore', () => {
 
 		store.deferredPrompt = fakePrompt;
 		expect(store.canPrompt).toBe(true);
-	});
-
-	it('persists dismissal and suppresses prompt', () => {
-		const store = new PwaInstallStore();
-		store.deferredPrompt = {
-			prompt: vi.fn(),
-			userChoice: Promise.resolve({ outcome: 'dismissed' as const, platform: 'web' })
-		} as unknown as BeforeInstallPromptEvent;
-
-		expect(store.canPrompt).toBe(true);
-		store.dismiss();
-
-		expect(store.dismissed).toBe(true);
-		expect(store.canPrompt).toBe(false);
-		expect(localStorage.getItem('scrapscache:install-dismissed')).toBe('true');
 	});
 
 	it('triggers deferredPrompt.prompt when promptInstall is called', async () => {

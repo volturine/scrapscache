@@ -6,7 +6,6 @@ import { pwaInstallStore, type BeforeInstallPromptEvent } from '$lib/stores/pwaI
 function resetStore() {
 	pwaInstallStore.deferredPrompt = null;
 	pwaInstallStore.isStandalone = false;
-	pwaInstallStore.dismissed = false;
 	pwaInstallStore.showIOSHelp = false;
 }
 
@@ -41,15 +40,14 @@ describe('PwaInstallSettings', () => {
 		await waitFor(() => expect(screen.queryByRole('button', { name: 'Install app' })).toBeNull());
 	});
 
-	it('can be dismissed from Settings', async () => {
+	it('does not render a dismiss control', async () => {
 		pwaInstallStore.deferredPrompt = {
 			prompt: vi.fn(),
 			userChoice: Promise.resolve({ outcome: 'dismissed' as const, platform: 'web' })
 		} as unknown as BeforeInstallPromptEvent;
 
 		render(PwaInstallSettings);
-		await fireEvent.click(screen.getByRole('button', { name: 'Dismiss install prompt' }));
-
-		expect(screen.queryByRole('button', { name: 'Install app' })).toBeNull();
+		expect(screen.getByRole('button', { name: 'Install app' })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: 'Dismiss install prompt' })).toBeNull();
 	});
 });

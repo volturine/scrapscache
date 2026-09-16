@@ -30,7 +30,7 @@
 	}
 </script>
 
-<section class={reminderSettingsStyles.section} aria-label="Notifications">
+<section aria-label="Notifications">
 	{#if permission === 'default'}
 		<button
 			type="button"

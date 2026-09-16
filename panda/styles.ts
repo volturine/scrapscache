@@ -440,11 +440,11 @@ export const importGuideStyles = {
 };
 
 export const pwaStyles = {
-	installRow: hstack({ h: '2rem', minW: 0 }),
 	installButton: css({
 		...rowCenter,
+		w: 'full',
+		h: '2rem',
 		minW: 0,
-		flex: '1',
 		gap: 'sm',
 		px: 'md',
 		textAlign: 'left',
@@ -452,18 +452,7 @@ export const pwaStyles = {
 		...clickable,
 		_hoverable: { bg: 'scrapscache.interactiveHover' }
 	}),
-	installLabel: css({ minW: 0, flex: '1', textStyle: 'button' }),
-	dismiss: css({
-		...gridCenter,
-		mr: 'xs',
-		w: '1.5rem',
-		h: '1.5rem',
-		flexShrink: 0,
-		rounded: 'pill',
-		...mutedText,
-		...clickable,
-		_hoverable: { bg: 'scrapscache.interactiveHover', color: 'scrapscache.text' }
-	}),
+	installLabel: css({ minW: 0, textStyle: 'button' }),
 	iosPortal: css({
 		position: 'fixed',
 		inset: 0,
@@ -1513,7 +1502,6 @@ export const reminderSettingsRow = {
 };
 
 export const reminderSettingsStyles = {
-	section: css({ borderTopWidth: 'hairline', borderColor: 'scrapscache.border' }),
 	icon: css({ ...iconSm, flexShrink: 0 }),
 	label: css({ ...flexFill, textStyle: 'button' }),
 	status: css({ flexShrink: 0, textStyle: 'captionStrong' }),
@@ -1880,6 +1868,7 @@ export const topbarStyles = {
 	syncIcon: css({ display: 'block' }),
 	menuPositioner: css({ zIndex: 30 }),
 	menuPopover: css({ w: '16rem', overflow: 'hidden', pt: '2xs' }),
+	deviceSettings: css({ borderTopWidth: 'hairline', borderColor: 'scrapscache.border' }),
 	menuSeparator: css({ borderTopWidth: 'hairline', borderColor: 'scrapscache.border' }),
 	menuAlert: css({ px: 'md', pb: 'sm', textStyle: 'label', color: 'scrapscache.danger' })
 };

@@ -440,19 +440,6 @@ export const importGuideStyles = {
 };
 
 export const pwaStyles = {
-	installButton: css({
-		...rowCenter,
-		w: 'full',
-		h: '2rem',
-		minW: 0,
-		gap: 'sm',
-		px: 'md',
-		textAlign: 'left',
-		textStyle: 'button',
-		...clickable,
-		_hoverable: { bg: 'scrapscache.interactiveHover' }
-	}),
-	installLabel: css({ minW: 0, textStyle: 'button' }),
 	iosPortal: css({
 		position: 'fixed',
 		inset: 0,

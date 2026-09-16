@@ -513,7 +513,7 @@
 			class={css({
 				position: 'fixed',
 				inset: 0,
-				zIndex: 50,
+				zIndex: 101,
 				display: 'grid',
 				placeItems: 'center',
 				p: 'lg'

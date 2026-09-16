@@ -11,6 +11,23 @@ import {
 } from './markdown';
 
 describe('inline Markdown tokenizer', () => {
+	it.each(['_'.repeat(50_000), '**a '.repeat(20_000), '`'.repeat(50_000)])(
+		'preserves oversized delimiter input within an interactive parsing budget',
+		(source) => {
+			const start = performance.now();
+			const tokens = parseInlineMarkdown(source);
+			expect(performance.now() - start).toBeLessThan(250);
+			expect(tokens.map((token) => token.text).join('')).toBe(source);
+		}
+	);
+
+	it('requires an exact closing backtick run', () => {
+		const tokens = parseInlineMarkdown('`one `` two`');
+		expect(tokens.filter((token) => token.kind === 'text')).toEqual([
+			{ kind: 'text', text: 'one `` two', styles: ['code'] }
+		]);
+	});
+
 	it('recognizes classic strong, emphasis, code, and strikethrough delimiters', () => {
 		const tokens = parseInlineMarkdown('**bold** *italic* `code` ~~removed~~');
 

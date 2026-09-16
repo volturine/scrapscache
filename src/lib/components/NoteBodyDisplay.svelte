@@ -152,7 +152,12 @@
 
 <div
 	bind:this={contentElement}
-	class={[body.container, markdownStyles, 'markdown-content', uiStore.rawMarkdown && 'markdown-raw']}
+	class={[
+		body.container,
+		markdownStyles,
+		'markdown-content',
+		uiStore.rawMarkdown && 'markdown-raw'
+	]}
 >
 	{#if uiStore.rawMarkdown}
 		{#each segments as seg (seg.lineIndex)}
@@ -174,7 +179,7 @@
 			{#if block.type === 'line'}
 				{@render bodyLine(block.segment)}
 			{:else if block.type === 'table'}
-				<div class="markdown-block-surface" data-markdown-table-container>
+				<div class="markdown-block-surface markdown-table-scroll" data-markdown-table-container>
 					<table class="markdown-table" data-markdown-table>
 						<thead>
 							<tr>

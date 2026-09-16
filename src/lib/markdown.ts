@@ -97,11 +97,27 @@ function canClose(source: string, index: number, length: number, marker: Markdow
 	return true;
 }
 
-function findClosing(source: string, start: number, delimiter: string, marker: MarkdownMarker) {
+type ParseBudget = { remaining: number };
+
+function findClosing(
+	source: string,
+	start: number,
+	delimiter: string,
+	marker: MarkdownMarker,
+	budget: ParseBudget
+) {
 	for (let index = start; index <= source.length - delimiter.length; index++) {
+		if (--budget.remaining < 0) return -1;
 		if (!source.startsWith(delimiter, index)) continue;
 		let runLength = delimiter.length;
-		while (source[index + runLength] === delimiter[0]) runLength++;
+		while (source[index + runLength] === delimiter[0]) {
+			if (--budget.remaining < 0) return -1;
+			runLength++;
+		}
+		if (marker === 'code' && runLength !== delimiter.length) {
+			index += runLength - 1;
+			continue;
+		}
 		if (marker === 'emphasis' && delimiter.length === 1 && runLength > 1) {
 			const afterRun = source[index + runLength];
 			if (!isWhitespace(afterRun)) {
@@ -132,7 +148,15 @@ function addText(tokens: MarkdownToken[], text: string, styles: MarkdownStyle[])
 	tokens.push({ kind: 'text', text, styles });
 }
 
-function parseInline(source: string, inheritedStyles: MarkdownStyle[] = []): MarkdownToken[] {
+function parseInline(
+	source: string,
+	inheritedStyles: MarkdownStyle[] = [],
+	budget: ParseBudget = { remaining: source.length * 32 },
+	depth = 0
+): MarkdownToken[] {
+	if (depth >= 32 || budget.remaining <= 0) {
+		return source ? [{ kind: 'text', text: source, styles: inheritedStyles }] : [];
+	}
 	const tokens: MarkdownToken[] = [];
 	let textStart = 0;
 	let index = 0;
@@ -146,7 +170,9 @@ function parseInline(source: string, inheritedStyles: MarkdownStyle[] = []): Mar
 		if (delimiter.code) {
 			addText(tokens, content, addStyles(inheritedStyles, delimiter.styles));
 		} else {
-			tokens.push(...parseInline(content, addStyles(inheritedStyles, delimiter.styles)));
+			tokens.push(
+				...parseInline(content, addStyles(inheritedStyles, delimiter.styles), budget, depth + 1)
+			);
 		}
 		tokens.push({ kind: 'marker', text: delimiter.text, marker: delimiter.marker });
 		index = close + delimiter.text.length;
@@ -154,23 +180,25 @@ function parseInline(source: string, inheritedStyles: MarkdownStyle[] = []): Mar
 		return true;
 	};
 
-	while (index < source.length) {
+	while (index < source.length && --budget.remaining >= 0) {
 		if (source[index] === '`' && !isEscaped(source, index)) {
 			let length = 1;
 			while (source[index + length] === '`') length++;
 			const delimiter = '`'.repeat(length);
-			const close = findClosing(source, index + length, delimiter, 'code');
+			const close = findClosing(source, index + length, delimiter, 'code', budget);
 			if (
 				close >= 0 &&
 				pushDelimited({ text: delimiter, marker: 'code', styles: ['code'], code: true }, close)
 			) {
 				continue;
 			}
+			index += length;
+			continue;
 		}
 
 		const triple = source.slice(index, index + 3);
 		if ((triple === '***' || triple === '___') && canOpen(source, index, 3, 'emphasis')) {
-			const close = findClosing(source, index + 3, triple, 'emphasis');
+			const close = findClosing(source, index + 3, triple, 'emphasis', budget);
 			if (
 				close >= 0 &&
 				pushDelimited(
@@ -201,7 +229,8 @@ function parseInline(source: string, inheritedStyles: MarkdownStyle[] = []): Mar
 				source,
 				index + delimiter.text.length,
 				delimiter.text,
-				delimiter.marker
+				delimiter.marker,
+				budget
 			);
 			if (close >= 0 && pushDelimited(delimiter, close)) {
 				consumed = true;

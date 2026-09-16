@@ -1860,7 +1860,14 @@ export const sidebarStyles = {
 
 export const topbarStyles = {
 	markdownLabel: css({ minW: 0, flex: '1' }),
-	markdownCheck: css({ ...gridCenter, ...iconMd, flexShrink: 0, rounded: 'checkbox', ...border, color: 'scrapscache.accent' }),
+	markdownCheck: css({
+		...gridCenter,
+		...iconMd,
+		flexShrink: 0,
+		rounded: 'checkbox',
+		...border,
+		color: 'scrapscache.accent'
+	}),
 	searchInput: css({ h: 'full', flex: '1', appearance: 'none', _placeholder: mutedText }),
 	searchIcon: css(mutedText),
 	syncIcon: css({ display: 'block' }),
@@ -1872,54 +1879,131 @@ export const topbarStyles = {
 };
 
 export const markdownStyles = css({
-	'& .markdown-table-scroll, & .markdown-code-block': { maxW: 'full', overflowX: 'auto', overscrollBehaviorX: 'contain', my: 'sm' },
-	'& .markdown-block-shell, & .markdown-block-surface': { rounded: 'control', bg: 'scrapscache.surfaceSubtle' },
+	'& .markdown-table-scroll, & .markdown-code-block': {
+		maxW: 'full',
+		overflowX: 'auto',
+		overscrollBehaviorX: 'contain',
+		my: 'sm'
+	},
+	'& .markdown-block-shell, & .markdown-block-surface': {
+		rounded: 'control',
+		bg: 'scrapscache.surfaceSubtle'
+	},
 	'& .markdown-block-shell': { position: 'relative', w: 'full', minW: 0, maxW: 'full', my: 'sm' },
 	'& .markdown-block-copy': {
-		position: 'absolute', top: '2xs', right: '2xs', zIndex: 2, ...gridCenter, ...square('1.75rem'),
-		border: 0, rounded: 'compact', bg: 'scrapscache.surface', color: 'scrapscache.textMuted',
-		opacity: 0.58, boxShadow: 'sm', transition: 'colors 120ms ease', ...clickable,
+		position: 'absolute',
+		top: '2xs',
+		right: '2xs',
+		zIndex: 2,
+		...gridCenter,
+		...square('1.75rem'),
+		border: 0,
+		rounded: 'compact',
+		bg: 'scrapscache.surface',
+		color: 'scrapscache.textMuted',
+		opacity: 0.58,
+		boxShadow: 'sm',
+		transition: 'colors 120ms ease',
+		...clickable,
 		_hoverable: { bg: 'scrapscache.surface', color: 'scrapscache.text', opacity: 1 },
 		_focusVisible: { outline: '2px solid token(colors.scrapscache.focus)', outlineOffset: '1px' }
 	},
-	'& .markdown-table': { w: 'max-content', minW: 'full', borderCollapse: 'collapse', textAlign: 'left' },
-	'& .markdown-table th, & .markdown-table td': { borderBottomWidth: 'hairline', borderColor: 'scrapscache.border', py: 'xs', px: 'list', verticalAlign: 'top', whiteSpace: 'nowrap' },
+	'& .markdown-table': {
+		w: 'max-content',
+		minW: 'full',
+		borderCollapse: 'collapse',
+		textAlign: 'left'
+	},
+	'& .markdown-table th, & .markdown-table td': {
+		borderBottomWidth: 'hairline',
+		borderColor: 'scrapscache.border',
+		py: 'xs',
+		px: 'list',
+		verticalAlign: 'top',
+		whiteSpace: 'nowrap'
+	},
 	'& .markdown-table th': { fontWeight: 'strong' },
 	'& .markdown-table tr:last-child td': { borderBottom: 0 },
-	'& .markdown-code-block, & .markdown-editor-code-block': { color: 'scrapscache.text', fontFamily: 'mono', fontSize: 'compact', lineHeight: 'body' },
+	'& .markdown-code-block, & .markdown-editor-code-block': {
+		color: 'scrapscache.text',
+		fontFamily: 'mono',
+		fontSize: 'compact',
+		lineHeight: 'body'
+	},
 	'& .markdown-code-block code': { display: 'block', minW: 'max-content', py: 'md' },
 	'& .markdown-editor-code-block [data-markdown-code-fence]': { display: 'none' },
-	'& .markdown-editor-code-block [data-markdown-code-line]': { w: 'max-content', minW: 'full', flexWrap: 'nowrap', padding: '0 2.75rem 0 0.75rem' },
-	'& .markdown-editor-code-line': { w: 'max-content', minW: 'max-content', maxW: 'none', flex: '0 0 auto', whiteSpace: 'pre', overflowWrap: 'normal', wordBreak: 'normal' },
+	'& .markdown-editor-code-block [data-markdown-code-line]': {
+		w: 'max-content',
+		minW: 'full',
+		flexWrap: 'nowrap',
+		padding: '0 2.75rem 0 0.75rem'
+	},
+	'& .markdown-editor-code-line': {
+		w: 'max-content',
+		minW: 'max-content',
+		maxW: 'none',
+		flex: '0 0 auto',
+		whiteSpace: 'pre',
+		overflowWrap: 'normal',
+		wordBreak: 'normal'
+	},
 	'& .markdown-raw-code-block [data-editor-line]': { padding: '0 2.75rem 0 0.75rem' },
 	'& .markdown-code-line': { display: 'block', minW: 'max-content', px: 'md', whiteSpace: 'pre' },
 	'& .markdown-code-token-comment': { color: 'scrapscache.success', fontStyle: 'italic' },
 	'& .markdown-code-token-string': { color: 'scrapscache.danger' },
 	'& .markdown-code-token-flag': { color: 'scrapscache.accent' },
 	'& .markdown-raw-table-scroll, & .markdown-editor-table-scroll': { w: 'full', minW: 0 },
-	'& .markdown-raw-display-table, & .markdown-raw-editor-table, & .markdown-editor-table': { display: 'table', w: 'max-content', minW: 'full', borderCollapse: 'collapse' },
-	'& .markdown-raw-table-display-row, & .markdown-raw-editor-table [data-markdown-table-row], & .markdown-editor-table [data-markdown-table-row]': { display: 'table-row' },
-	'& .markdown-raw-table-display-line, & .markdown-raw-editor-table .markdown-editor-table-line, & .markdown-editor-table-line': { display: 'contents' },
-	'& .markdown-raw-table-source-marker, & .markdown-raw-editor-table .markdown-editor-table-marker, & .markdown-editor-table-marker': { display: 'none' },
+	'& .markdown-raw-display-table, & .markdown-raw-editor-table, & .markdown-editor-table': {
+		display: 'table',
+		w: 'max-content',
+		minW: 'full',
+		borderCollapse: 'collapse'
+	},
+	'& .markdown-raw-table-display-row, & .markdown-raw-editor-table [data-markdown-table-row], & .markdown-editor-table [data-markdown-table-row]':
+		{ display: 'table-row' },
+	'& .markdown-raw-table-display-line, & .markdown-raw-editor-table .markdown-editor-table-line, & .markdown-editor-table-line':
+		{ display: 'contents' },
+	'& .markdown-raw-table-source-marker, & .markdown-raw-editor-table .markdown-editor-table-marker, & .markdown-editor-table-marker':
+		{ display: 'none' },
 	'& .markdown-raw-table-display-cell, & .markdown-raw-editor-table .markdown-editor-table-cell': {
-		display: 'table-cell', padding: '0.2rem 0.45rem', fontWeight: 'inherit', whiteSpace: 'nowrap',
+		display: 'table-cell',
+		padding: '0.2rem 0.45rem',
+		fontWeight: 'inherit',
+		whiteSpace: 'nowrap',
 		_before: { content: '"|"', paddingRight: '0.55rem', color: 'scrapscache.textMuted' }
 	},
-	'& .markdown-raw-table-display-cell.markdown-table-last-cell::after, & .markdown-raw-editor-table .markdown-editor-table-cell.markdown-table-last-cell::after': {
-		content: '"|"', paddingLeft: '0.55rem', color: 'scrapscache.textMuted'
+	'& .markdown-raw-table-display-cell.markdown-table-last-cell::after, & .markdown-raw-editor-table .markdown-editor-table-cell.markdown-table-last-cell::after':
+		{
+			content: '"|"',
+			paddingLeft: '0.55rem',
+			color: 'scrapscache.textMuted'
+		},
+	'& .markdown-raw-table-display-row:first-child .markdown-raw-table-display-cell.markdown-table-last-cell, & .markdown-raw-editor-table [data-markdown-table-row]:first-child .markdown-editor-table-cell.markdown-table-last-cell':
+		{
+			paddingRight: '2.75rem'
+		},
+	'& .markdown-editor-table-cell': {
+		display: 'table-cell',
+		padding: '0.4rem 0.625rem',
+		borderBottomWidth: 'hairline',
+		borderColor: 'scrapscache.border',
+		verticalAlign: 'top',
+		whiteSpace: 'nowrap'
 	},
-	'& .markdown-raw-table-display-row:first-child .markdown-raw-table-display-cell.markdown-table-last-cell, & .markdown-raw-editor-table [data-markdown-table-row]:first-child .markdown-editor-table-cell.markdown-table-last-cell': {
-		paddingRight: '2.75rem'
-	},
-	'& .markdown-editor-table-cell': { display: 'table-cell', padding: '0.4rem 0.625rem', borderBottomWidth: 'hairline', borderColor: 'scrapscache.border', verticalAlign: 'top', whiteSpace: 'nowrap' },
 	'& .markdown-editor-table-header-cell': { fontWeight: 'strong' },
-	'& .markdown-editor-table [data-markdown-table-row]:last-child .markdown-editor-table-cell': { borderBottom: 0 },
+	'& .markdown-editor-table [data-markdown-table-row]:last-child .markdown-editor-table-cell': {
+		borderBottom: 0
+	},
 	'& .markdown-editor-table [data-markdown-table-separator]': { display: 'none' },
-	'& [data-markdown-editor-table] .markdown-editor-table [data-markdown-table-row]:first-child .markdown-editor-table-cell.markdown-table-last-cell': { paddingRight: '2.75rem' },
+	'& [data-markdown-editor-table] .markdown-editor-table [data-markdown-table-row]:first-child .markdown-editor-table-cell.markdown-table-last-cell':
+		{ paddingRight: '2.75rem' },
 	'& .markdown-token-marker-hidden': { display: 'none' },
 	'& .markdown-token-strong': { fontWeight: 'strong' },
 	'& .markdown-token-emphasis': { fontStyle: 'italic' },
-	'& .markdown-token-strikethrough': { textDecoration: 'line-through', textDecorationThickness: '1.5px' },
+	'& .markdown-token-strikethrough': {
+		textDecoration: 'line-through',
+		textDecorationThickness: '1.5px'
+	},
 	'& .markdown-token-code': { color: 'scrapscache.warning' },
 	'& [class*="markdown-token-heading-"]': { fontWeight: 'strong' },
 	'& .markdown-token-heading-1': { fontSize: '1.35em' },
@@ -1934,13 +2018,32 @@ export const markdownStyles = css({
 		'& [data-line-text]:empty': { flex: '1 1 0%' },
 		'& .markdown-token-marker': { display: 'inline' },
 		'& .markdown-token-code': { color: 'scrapscache.warning' },
-		'& [class*="markdown-token-heading-"]': { color: 'scrapscache.warning', fontSize: 'inherit', fontWeight: 'inherit' },
+		'& [class*="markdown-token-heading-"]': {
+			color: 'scrapscache.warning',
+			fontSize: 'inherit',
+			fontWeight: 'inherit'
+		},
 		'& .markdown-token-strong, & .markdown-token-emphasis, & .markdown-token-strikethrough': {
-			color: 'scrapscache.accent', fontWeight: 'inherit', fontStyle: 'normal', textDecoration: 'none'
+			color: 'scrapscache.accent',
+			fontWeight: 'inherit',
+			fontStyle: 'normal',
+			textDecoration: 'none'
 		},
 		'& [data-editor-line]': { w: 'full', minW: 0, flexWrap: 'wrap' },
-		'& [data-line-text]': { w: 'auto', minW: 0, maxW: 'full', flex: '1 1 0%', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'normal' },
-		'& .markdown-raw-table-scroll [data-editor-line]': { w: 'max-content', minW: 'full', flexWrap: 'nowrap' },
+		'& [data-line-text]': {
+			w: 'auto',
+			minW: 0,
+			maxW: 'full',
+			flex: '1 1 0%',
+			whiteSpace: 'pre-wrap',
+			overflowWrap: 'anywhere',
+			wordBreak: 'normal'
+		},
+		'& .markdown-raw-table-scroll [data-editor-line]': {
+			w: 'max-content',
+			minW: 'full',
+			flexWrap: 'nowrap'
+		},
 		'& .markdown-raw-table-scroll [data-line-text]': { display: 'contents' }
 	}
 });

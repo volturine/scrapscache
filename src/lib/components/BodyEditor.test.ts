@@ -485,6 +485,23 @@ describe('BodyEditor native editing', () => {
 		).toHaveLength(0);
 	});
 
+	it('keeps the caret before the suffix after pasting a multiline list', async () => {
+		const { container } = render(BodyEditor, { props: { body: 'suffix' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		select(container.querySelector('[data-line-text]') as HTMLElement, 0);
+		const paste = new Event('paste', { bubbles: true, cancelable: true });
+		Object.defineProperty(paste, 'clipboardData', {
+			value: { getData: () => '- first\n  [ ] last' }
+		});
+
+		editor.dispatchEvent(paste);
+		await tick();
+
+		expect(lineTexts(container)).toEqual(['first', 'lastsuffix']);
+		const last = container.querySelector('[data-editor-line="1"] [data-line-text]') as Element;
+		expect(rawCaretText(last)).toBe('last');
+	});
+
 	it('indents the current text segment with Tab and outdents with Control+Tab', async () => {
 		const { container } = render(BodyEditor, { props: { body: 'Hello' } });
 		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
@@ -1154,7 +1171,57 @@ describe('BodyEditor task focus chrome', () => {
 	});
 });
 
+describe('BodyEditor composition', () => {
+	it.each(['Enter', 'Backspace', 'Tab'])('leaves %s to the IME while composing', async (key) => {
+		const { container } = render(BodyEditor, { props: { body: 'before\nafter' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		caretAt(container, 1, 0);
+		await fireEvent.compositionStart(editor);
+		const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+
+		editor.dispatchEvent(event);
+		await tick();
+
+		expect(event.defaultPrevented).toBe(false);
+		expect(lineTexts(container)).toEqual(['before', 'after']);
+	});
+
+	it('restores the caret when composition activates Markdown styling and undoes in one step', async () => {
+		const oninput = vi.fn();
+		const { container } = render(BodyEditor, { props: { body: '**bold', oninput } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const line = container.querySelector('[data-line-text]') as HTMLElement;
+		caretAt(container, 0, 6);
+		await fireEvent.compositionStart(editor);
+		line.firstChild!.textContent = '**bold**';
+		select(line.firstChild!, 8);
+		await fireEvent.input(editor, { inputType: 'insertCompositionText', isComposing: true });
+		expect(oninput).not.toHaveBeenCalled();
+
+		await fireEvent.compositionEnd(editor);
+		await tick();
+
+		const styled = container.querySelector('[data-line-text]') as Element;
+		expect(styled.querySelector('.markdown-token-strong')?.textContent).toBe('bold');
+		expect(rawCaretText(styled)).toBe('**bold**');
+		await fireEvent.keyDown(editor, { key: 'z', ctrlKey: true });
+		await tick();
+		expect(lineTexts(container)).toEqual(['**bold']);
+	});
+});
+
 describe('BodyEditor Markdown table editing', () => {
+	it('does not create a table when Enter ends a pipe row inside fenced code', async () => {
+		const source = '```text\n| a | b |\n```';
+		const { container } = render(BodyEditor, { props: { body: source } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		caretAt(container, 1, '| a | b |'.length);
+
+		await fireEvent.keyDown(editor, { key: 'Enter' });
+
+		expect(lineTexts(container)).toEqual(['```text', '| a | b |', '', '```']);
+	});
+
 	it('creates the delimiter and a first row when Enter ends a header row', async () => {
 		const { container } = render(BodyEditor, { props: { body: '| Name | Status |' } });
 		const editor = container.querySelector('[data-body-editor]') as HTMLElement;

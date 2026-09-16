@@ -23,7 +23,7 @@ function emptyBackup(notes: ScrapsCacheBackup['notes'] = []): ScrapsCacheBackup 
 		tombstones: {},
 		labelTombstones: {},
 		boardTombstones: {},
-		ui: { sidebarOpen: true, dark: null, layout: 'grid', view: 'notes' }
+		ui: { sidebarOpen: true, dark: null, layout: 'grid', view: 'notes', rawMarkdown: false }
 	};
 }
 

@@ -285,7 +285,9 @@
 		if (!range.collapsed) return false;
 		const index = range.start.line;
 		const line = lines[index];
-		if (!line || line.isCheck || line.isBullet) return false;
+		if (!line || line.isCheck || line.isBullet || markdownBlockAt(index)?.type === 'code') {
+			return false;
+		}
 		const span = tableSpanAt(index);
 
 		if (!span) {
@@ -437,7 +439,7 @@
 				const range = document.createRange();
 				range.selectNodeContents(text);
 				range.setEnd(node, offset);
-				local = Math.min(lines[line].text.length, range.toString().length);
+				local = range.toString().length;
 			} else if (row.contains(node)) {
 				const position = text.compareDocumentPosition(node);
 				local = position & Node.DOCUMENT_POSITION_FOLLOWING ? lines[line].text.length : 0;
@@ -891,6 +893,7 @@
 			return;
 		}
 		const event = rawEvent as InputEvent;
+		if (composing || event.isComposing) return;
 		const range = editorRange();
 		if (!range) return;
 		if (event.inputType === 'insertReplacementText') {
@@ -1043,17 +1046,18 @@
 			const check = parseCheckLine(parts[index]);
 			const bullet = !check ? parseBulletLine(parts[index]) : null;
 			const trailing = index === parts.length - 1 ? suffix : '';
+			const parsedText = check ? check.text : bullet ? bullet.text : parts[index];
 			inserted.push(
 				check
 					? newLine(
-							check.text + trailing,
+							parsedText + trailing,
 							true,
 							check.checked,
 							Math.min(MAX_TASK_INDENT, check.indent)
 						)
 					: bullet
 						? newLine(
-								bullet.text + trailing,
+								parsedText + trailing,
 								false,
 								false,
 								Math.min(MAX_LIST_INDENT, bullet.indent),
@@ -1067,9 +1071,10 @@
 		if (draftTaskId !== null && removedIds.has(draftTaskId)) draftTaskId = null;
 		syncBody();
 		const line = range.start.line + inserted.length - 1;
+		const offset = inserted.at(-1)!.text.length - suffix.length;
 		return {
 			line,
-			offset: parts.at(-1)?.length ?? 0
+			offset
 		};
 	}
 
@@ -1344,6 +1349,7 @@
 
 	function handleKeydown(event: KeyboardEvent) {
 		const primaryModifier = event.ctrlKey || event.metaKey;
+		if (composing || event.isComposing) return;
 		if (primaryModifier && !event.altKey && event.key.toLowerCase() === 'z') {
 			event.preventDefault();
 			if (event.shiftKey) redo();
@@ -1602,7 +1608,16 @@
 			<span contenteditable="false" class={editor.bullet} aria-hidden="true">•</span>
 		{/if}
 		{#if tableBlock && (!tableSeparator || uiStore.rawMarkdown)}
-			<span data-line-text class={[markdownStyles, 'markdown-inline-content', 'markdown-editor-table-line', css({ minH: '1lh' }), noteBody({ mode: 'editor', checked: line.checked, indented: line.indent > 0 }).line]}>
+			<span
+				data-line-text
+				class={[
+					markdownStyles,
+					'markdown-inline-content',
+					'markdown-editor-table-line',
+					css({ minH: '1lh' }),
+					noteBody({ mode: 'editor', checked: line.checked, indented: line.indent > 0 }).line
+				]}
+			>
 				{@render tableEditorContent(line.text, tableBlock, index === tableBlock.lineIndex)}
 			</span>
 		{:else if codeBlock && !uiStore.rawMarkdown && !codeFence}
@@ -1625,12 +1640,23 @@
 							? placeholder
 							: ''
 					: undefined}
-				class={[markdownStyles, 'markdown-inline-content', uiStore.rawMarkdown && 'markdown-raw', css({ minH: '1lh' }), noteBody({ mode: 'editor', checked: line.checked, indented: line.indent > 0 }).line]}>{line.text}</span
+				class={[
+					markdownStyles,
+					'markdown-inline-content',
+					uiStore.rawMarkdown && 'markdown-raw',
+					css({ minH: '1lh' }),
+					noteBody({ mode: 'editor', checked: line.checked, indented: line.indent > 0 }).line
+				]}>{line.text}</span
 			>
 		{:else}
 			<span
 				data-line-text
-				class={[markdownStyles, 'markdown-inline-content', css({ minH: '1lh' }), noteBody({ mode: 'editor', checked: line.checked, indented: line.indent > 0 }).line]}
+				class={[
+					markdownStyles,
+					'markdown-inline-content',
+					css({ minH: '1lh' }),
+					noteBody({ mode: 'editor', checked: line.checked, indented: line.indent > 0 }).line
+				]}
 			>
 				{@render inlineEditorContent(line.text)}
 			</span>

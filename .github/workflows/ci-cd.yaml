@@ -59,8 +59,8 @@ jobs:
 
       - name: Validate Cloudflare deployments
         run: |
-          npx wrangler deploy --dry-run --env ''
-          npx wrangler deploy --dry-run --config cf/wrangler.cron.jsonc --env ''
+          npx wrangler deploy --dry-run --env=""
+          npx wrangler deploy --dry-run --config cf/wrangler.cron.jsonc --env=""
           npx wrangler deploy --dry-run --env dev
           npx wrangler deploy --dry-run --config cf/wrangler.cron.jsonc --env dev
 
@@ -158,24 +158,27 @@ jobs:
 
       - name: Deploy production Workers
         run: |
+          test -n "$SCRAPSCACHE_ADMIN_TOKEN"
           test -n "$SCRAPSCACHE_TICK_SECRET"
           test -n "$TURNSTILE_SECRET"
           npm run build:cloudflare
-          npx wrangler d1 migrations apply SCRAPSCACHE_DB --remote --env ''
-          npx wrangler deploy --env ''
-          printf '%s' "$SCRAPSCACHE_TICK_SECRET" | npx wrangler secret put SCRAPSCACHE_TICK_SECRET --env ''
-          printf '%s' "$TURNSTILE_SECRET" | npx wrangler secret put TURNSTILE_SECRET --env ''
+          npx wrangler d1 migrations apply SCRAPSCACHE_DB --remote --env=""
+          npx wrangler deploy --env=""
+          printf '%s' "$SCRAPSCACHE_ADMIN_TOKEN" | npx wrangler secret put SCRAPSCACHE_ADMIN_TOKEN --env=""
+          printf '%s' "$SCRAPSCACHE_TICK_SECRET" | npx wrangler secret put SCRAPSCACHE_TICK_SECRET --env=""
+          printf '%s' "$TURNSTILE_SECRET" | npx wrangler secret put TURNSTILE_SECRET --env=""
           # Optional: keeps the Web Push signing key out of the database. Skipped
           # until both halves are configured, because one half alone is an error.
           if [ -n "$SCRAPSCACHE_VAPID_PRIVATE_KEY" ] && [ -n "$SCRAPSCACHE_VAPID_PUBLIC_KEY" ]; then
-            printf '%s' "$SCRAPSCACHE_VAPID_PRIVATE_KEY" | npx wrangler secret put SCRAPSCACHE_VAPID_PRIVATE_KEY --env ''
-            printf '%s' "$SCRAPSCACHE_VAPID_PUBLIC_KEY" | npx wrangler secret put SCRAPSCACHE_VAPID_PUBLIC_KEY --env ''
+            printf '%s' "$SCRAPSCACHE_VAPID_PRIVATE_KEY" | npx wrangler secret put SCRAPSCACHE_VAPID_PRIVATE_KEY --env=""
+            printf '%s' "$SCRAPSCACHE_VAPID_PUBLIC_KEY" | npx wrangler secret put SCRAPSCACHE_VAPID_PUBLIC_KEY --env=""
           fi
-          npx wrangler deploy --config cf/wrangler.cron.jsonc --env ''
-          printf '%s' "$SCRAPSCACHE_TICK_SECRET" | npx wrangler secret put SCRAPSCACHE_TICK_SECRET --config cf/wrangler.cron.jsonc --env ''
+          npx wrangler deploy --config cf/wrangler.cron.jsonc --env=""
+          printf '%s' "$SCRAPSCACHE_TICK_SECRET" | npx wrangler secret put SCRAPSCACHE_TICK_SECRET --config cf/wrangler.cron.jsonc --env=""
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          SCRAPSCACHE_ADMIN_TOKEN: ${{ secrets.SCRAPSCACHE_ADMIN_TOKEN }}
           SCRAPSCACHE_TICK_SECRET: ${{ secrets.SCRAPSCACHE_TICK_SECRET }}
           TURNSTILE_SECRET: ${{ secrets.TURNSTILE_SECRET }}
           SCRAPSCACHE_VAPID_PUBLIC_KEY: ${{ secrets.SCRAPSCACHE_VAPID_PUBLIC_KEY }}

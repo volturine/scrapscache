@@ -366,8 +366,10 @@
 					<Upload class={iconSm} aria-hidden="true" />
 					Import backup
 				</Menu.Item>
-				<PwaInstallSettings />
-				<ReminderNotificationSettings />
+				<div class={styles.deviceSettings}>
+					<PwaInstallSettings />
+					<ReminderNotificationSettings />
+				</div>
 				<Menu.Separator class={styles.menuSeparator} />
 				<Menu.Item value="issue">
 					{#snippet asChild(props)}

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { iconSizeSm, iconSizeXs, pwaStyles as styles } from '$panda/styles';
 	import { css, cx } from 'styled-system/css';
-	import { ChevronRight, Download, Share, Smartphone, X } from '@lucide/svelte';
+	import { Download, Share, Smartphone, X } from '@lucide/svelte';
 	import { pwaInstallStore } from '$lib/stores/pwaInstall.svelte';
 
 	function install() {
@@ -11,24 +11,10 @@
 
 {#if pwaInstallStore.canPrompt}
 	<section aria-label="Install app">
-		<div class={styles.installRow}>
-			<button type="button" onclick={install} class={styles.installButton} aria-label="Install app">
-				<Download class={cx(iconSizeSm, css({ color: 'scrapscache.accent' }))} aria-hidden="true" />
-				<span class={styles.installLabel}>Install app</span>
-				<ChevronRight
-					class={cx(iconSizeSm, css({ color: 'scrapscache.textMuted' }))}
-					aria-hidden="true"
-				/>
-			</button>
-			<button
-				type="button"
-				onclick={() => pwaInstallStore.dismiss()}
-				class={styles.dismiss}
-				aria-label="Dismiss install prompt"
-			>
-				<X class={iconSizeXs} aria-hidden="true" />
-			</button>
-		</div>
+		<button type="button" onclick={install} class={styles.installButton} aria-label="Install app">
+			<Download class={cx(iconSizeSm, css({ color: 'scrapscache.accent' }))} aria-hidden="true" />
+			<span class={styles.installLabel}>Install app</span>
+		</button>
 	</section>
 {/if}
 

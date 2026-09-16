@@ -6,18 +6,15 @@ export interface BeforeInstallPromptEvent extends Event {
 export class PwaInstallStore {
 	deferredPrompt = $state<BeforeInstallPromptEvent | null>(null);
 	isStandalone = $state(false);
-	dismissed = $state(false);
 	showIOSHelp = $state(false);
 
 	constructor() {
 		if (typeof window !== 'undefined') {
 			this.checkStandalone();
-			this.checkDismissed();
 
 			window.addEventListener('beforeinstallprompt', (e) => {
 				this.checkStandalone();
-				this.checkDismissed();
-				if (this.isStandalone || this.dismissed) return;
+				if (this.isStandalone) return;
 				e.preventDefault();
 				this.deferredPrompt = e as BeforeInstallPromptEvent;
 			});
@@ -37,26 +34,6 @@ export class PwaInstallStore {
 		this.isStandalone = Boolean(isStandaloneMode);
 	}
 
-	checkDismissed() {
-		if (typeof localStorage === 'undefined') return;
-		try {
-			this.dismissed = localStorage.getItem('scrapscache:install-dismissed') === 'true';
-		} catch {
-			this.dismissed = false;
-		}
-	}
-
-	dismiss() {
-		this.dismissed = true;
-		if (typeof localStorage !== 'undefined') {
-			try {
-				localStorage.setItem('scrapscache:install-dismissed', 'true');
-			} catch {
-				// ignore storage access errors
-			}
-		}
-	}
-
 	get isIOS(): boolean {
 		if (typeof navigator === 'undefined') return false;
 		return (
@@ -66,7 +43,7 @@ export class PwaInstallStore {
 	}
 
 	get canPrompt(): boolean {
-		if (this.isStandalone || this.dismissed) return false;
+		if (this.isStandalone) return false;
 		return Boolean(this.deferredPrompt) || this.isIOS;
 	}
 

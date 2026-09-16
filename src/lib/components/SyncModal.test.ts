@@ -150,7 +150,7 @@ describe('SyncModal profile interactions', () => {
 		await expand('Side');
 		expect(screen.getByRole('button', { name: 'Rename Side' })).toBeTruthy();
 		await fireEvent.keyDown(document, { key: 'Escape' });
-		expect(screen.getByRole('button', { name: 'Rename Side' })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: 'Rename Side' })).toBeNull();
 		expect(screen.getByRole('button', { name: 'Expand Side' })).toBeTruthy();
 		expect(onClose).not.toHaveBeenCalled();
 	});
@@ -176,7 +176,7 @@ describe('SyncModal profile interactions', () => {
 			expect(onClose).not.toHaveBeenCalled();
 
 			await fireEvent.keyDown(document, { key: 'Escape' });
-			expect(screen.getByRole('button', { name: 'Unlink Side' })).toBeTruthy();
+			expect(screen.queryByRole('button', { name: 'Unlink Side' })).toBeNull();
 			expect(screen.getByRole('button', { name: 'Expand Side' })).toBeTruthy();
 			expect(onClose).not.toHaveBeenCalled();
 
@@ -328,12 +328,12 @@ describe('SyncModal profile interactions', () => {
 		expect(screen.getByText('Created a local workspace on this device.')).toBeTruthy();
 	});
 
-	it('keeps row actions visible and secondary actions behind the chevron', async () => {
+	it('keeps export visible and workspace actions behind the chevron', async () => {
 		render(SyncModal, { props: { onClose: vi.fn() } });
 		expect(screen.getByRole('button', { name: 'Export Main' })).toBeTruthy();
 		expect(screen.getByRole('button', { name: 'Export Home' })).toBeTruthy();
-		expect(screen.getByRole('button', { name: 'Rename Main' })).toBeTruthy();
-		expect(screen.getByRole('button', { name: 'Unlink Main' })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: 'Rename Main' })).toBeNull();
+		expect(screen.queryByRole('button', { name: 'Unlink Main' })).toBeNull();
 		expect(screen.queryByRole('button', { name: /Force resync/ })).toBeNull();
 
 		await expand('Main');

@@ -1074,6 +1074,20 @@ export const workspaceStyles = {
 		pr: 'md'
 	}),
 	menu: css({ display: 'grid', gap: '3xs', p: 'xs' }),
+	manageRow: css({
+		...rowGapMd,
+		w: 'full',
+		...clickable,
+		rounded: 'action',
+		px: 'sm',
+		py: 'action',
+		textAlign: 'left',
+		fontSize: 'compact',
+		_hoverable: { bg: 'scrapscache.interactiveHover' },
+		'& span': { minW: 0, flex: '1' },
+		'& small': { display: 'block', mt: '3xs', ...mutedText, textStyle: 'caption' }
+	}),
+	manageRowDanger: css({ color: 'scrapscache.danger' }),
 	chevron: css({ display: 'grid', transition: 'transform 160ms ease' }),
 	chevronOpen: css({ transform: 'rotate(180deg)' }),
 	panel: css({

@@ -81,6 +81,25 @@ describe('NoteEditor paste photo', () => {
 		});
 	});
 
+	it('keeps the photo quality dialog above its backdrop', async () => {
+		notesStore.notes = [note()];
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+		const overlay = editorOverlay(container);
+		const photo = new File(['fake-jpg-content'], 'camera.jpg', { type: 'image/jpeg' });
+
+		overlay.dispatchEvent(createClipboardEvent([photo]));
+
+		await vi.waitFor(() => {
+			const backdrop = document.querySelector('[data-scope="dialog"][data-part="backdrop"]');
+			const positioner = document.querySelector('[data-scope="dialog"][data-part="positioner"]');
+			expect(backdrop).not.toBeNull();
+			expect(positioner).not.toBeNull();
+			expect(positioner?.className).toContain('z_101');
+		});
+	});
+
 	it('attaches directly when a non-photo file is pasted into NoteEditor', async () => {
 		notesStore.notes = [note()];
 		const { container } = render(NoteEditor, {

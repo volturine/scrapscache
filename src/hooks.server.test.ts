@@ -33,6 +33,7 @@ describe('security headers', () => {
 		expect(response.headers.get('x-content-type-options')).toBe('nosniff');
 		expect(response.headers.get('referrer-policy')).toBe('no-referrer');
 		expect(response.headers.get('permissions-policy')).toContain('geolocation=()');
+		expect(response.headers.get('permissions-policy')).toContain('camera=(self)');
 	});
 
 	it('echoes a well-formed request id and replaces a malformed one', async () => {

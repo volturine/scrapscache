@@ -6,6 +6,7 @@
 	import { hstack, vstack } from 'styled-system/patterns';
 	import WorkspaceRow from './WorkspaceRow.svelte';
 	import TurnstileWidget from './TurnstileWidget.svelte';
+	import PairingQrScanner from './PairingQrScanner.svelte';
 	import { env } from '$env/dynamic/public';
 	import { onDestroy, onMount } from 'svelte';
 	import QRCode from 'qrcode';
@@ -27,6 +28,7 @@
 		FolderPlus,
 		MonitorSmartphone,
 		RefreshCw,
+		ScanQrCode,
 		Trash2,
 		X
 	} from '@lucide/svelte';
@@ -38,6 +40,7 @@
 		'menu'
 	);
 	let code = $state('');
+	let scanningQr = $state(false);
 	let error = $state('');
 	let info = $state('');
 	type Operation =
@@ -530,6 +533,13 @@
 		code = formatPairingCode((event.currentTarget as HTMLInputElement).value);
 	}
 
+	function handleScannedCode(scanned: string) {
+		scanningQr = false;
+		code = formatPairingCode(scanned);
+		error = '';
+		void beginLink();
+	}
+
 	function close() {
 		if (operation !== null || profileCoordinator.switching) return;
 		stopWaiting();
@@ -1017,9 +1027,21 @@
 				{:else if mode === 'link'}
 					<div class={vstack({ gap: 'md', alignItems: 'stretch' })}>
 						<p class={syncMuted}>
-							On your other device open Sync and choose Connect device. Enter the one-time code
-							shown there.
+							On your other device open Sync and choose Connect device. Scan the QR code or enter
+							the one-time code shown there.
 						</p>
+						{#if scanningQr}
+							<PairingQrScanner onCode={handleScannedCode} />
+						{/if}
+						<button
+							type="button"
+							onclick={() => (scanningQr = !scanningQr)}
+							disabled={busy}
+							class={cx(button({ variant: 'secondary', size: 'md' }), styles.fullButton)}
+						>
+							<ScanQrCode size={16} aria-hidden="true" />
+							{scanningQr ? 'Stop scanning' : 'Scan QR code'}
+						</button>
 						<input
 							type="text"
 							value={code}
@@ -1039,7 +1061,10 @@
 							>{operation === 'connect' ? 'Starting…' : 'Start connection'}</button
 						><button
 							type="button"
-							onclick={() => (mode = 'new')}
+							onclick={() => {
+								scanningQr = false;
+								mode = 'new';
+							}}
 							disabled={busy}
 							class={syncBackLink}>← Back</button
 						>

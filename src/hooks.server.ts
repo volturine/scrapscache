@@ -9,7 +9,8 @@ const SECURITY_HEADERS: ReadonlyArray<readonly [string, string]> = [
 	// whole zone would also bind subdomains this app does not run.
 	['strict-transport-security', 'max-age=31536000'],
 	['x-content-type-options', 'nosniff'],
-	['permissions-policy', 'camera=(), geolocation=(), microphone=(), payment=(), usb=()']
+	// The pairing scanner reads a QR code with this origin's camera; frames get none.
+	['permissions-policy', 'camera=(self), geolocation=(), microphone=(), payment=(), usb=()']
 ];
 
 /** The frame-ancestors a response declares for itself, if any. */

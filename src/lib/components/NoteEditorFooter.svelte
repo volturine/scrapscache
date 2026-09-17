@@ -451,7 +451,7 @@
 					aria-label={`Open ${img.name ?? 'photo'}`}
 				>
 					<img
-						src={displayImageSrc(img)}
+						src={fillPhotos ? img.dataUrl || displayImageSrc(img) : displayImageSrc(img)}
 						alt={img.name ?? 'Photo'}
 						class={p.img}
 						loading="lazy"

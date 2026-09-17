@@ -295,12 +295,17 @@
 		{/if}
 
 		<div
-			class={`note-scrollbar-hidden ${!note.secret ? 'scrollable' : ''} ${css({
-				minH: 0,
-				flex: '1',
-				overflowX: 'hidden',
-				overflowY: note.secret ? 'hidden' : 'auto'
-			})}`}
+			class={cx(
+				'note-scrollbar-hidden',
+				!note.secret && 'scrollable',
+				css({
+					minH: 0,
+					flex: '1',
+					overflowX: 'hidden',
+					overflowY: note.secret ? 'hidden' : 'auto'
+				}),
+				note.secret && css({ display: 'flex', flexDirection: 'column' })
+			)}
 			data-secret-body={note.secret ? '' : undefined}
 		>
 			<div

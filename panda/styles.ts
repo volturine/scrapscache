@@ -1879,6 +1879,28 @@ export const topbarStyles = {
 };
 
 export const markdownStyles = css({
+	'& .markdown-block-scroll': {
+		w: 'full',
+		minW: 0,
+		maxW: 'full',
+		overflowX: 'auto',
+		overscrollBehaviorX: 'contain',
+		touchAction: 'pan-x pan-y',
+		borderRadius: 'inherit'
+	},
+	'& .markdown-raw-table': {
+		fontFamily: 'mono',
+		whiteSpace: 'pre',
+		overflowWrap: 'normal',
+		wordBreak: 'normal'
+	},
+	'&.markdown-content .markdown-raw-table': {
+		maxW: 'full',
+		overflowX: 'auto',
+		overscrollBehaviorX: 'contain',
+		px: 'md',
+		py: 'sm'
+	},
 	'& .markdown-table-scroll, & .markdown-code-block': {
 		maxW: 'full',
 		overflowX: 'auto',
@@ -2039,12 +2061,22 @@ export const markdownStyles = css({
 			overflowWrap: 'anywhere',
 			wordBreak: 'normal'
 		},
-		'& .markdown-raw-table-scroll [data-editor-line]': {
+		'& .markdown-raw-table [data-editor-line], & .markdown-raw-code-block [data-editor-line]': {
 			w: 'max-content',
 			minW: 'full',
-			flexWrap: 'nowrap'
+			flexWrap: 'nowrap',
+			px: 'md'
 		},
-		'& .markdown-raw-table-scroll [data-line-text]': { display: 'contents' }
+		'& .markdown-raw-table [data-line-text], & .markdown-raw-code-block [data-line-text]': {
+			display: 'block',
+			w: 'max-content',
+			minW: 'max-content',
+			maxW: 'none',
+			flex: '0 0 auto',
+			whiteSpace: 'pre',
+			overflowWrap: 'normal',
+			wordBreak: 'normal'
+		}
 	}
 });
 

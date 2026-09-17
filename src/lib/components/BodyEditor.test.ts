@@ -1008,6 +1008,31 @@ describe('BodyEditor markdown bullets', () => {
 		expect(lineTexts(container)).toEqual(source.split('\n'));
 	});
 
+	it('wraps wide editor and raw Markdown blocks in horizontal scroll containers', () => {
+		const source = [
+			'| Column | Content |',
+			'| --- | --- |',
+			'| register | `/api/sync/register` |',
+			'',
+			'```sh',
+			'wrangler d1 --remote --command "SELECT 1"',
+			'```'
+		].join('\n');
+		const { container } = render(BodyEditor, { props: { body: source } });
+		let scrolls = container.querySelectorAll('.markdown-block-scroll');
+		expect(scrolls).toHaveLength(2);
+		expect(scrolls[0].classList.contains('markdown-editor-table-scroll')).toBe(true);
+		expect(scrolls[1].classList.contains('markdown-editor-code-block')).toBe(true);
+
+		uiStore.rawMarkdown = true;
+		const raw = render(BodyEditor, { props: { body: source } });
+		scrolls = raw.container.querySelectorAll('.markdown-block-scroll');
+		expect(scrolls).toHaveLength(2);
+		expect(scrolls[0].querySelector('.markdown-raw-table')).not.toBeNull();
+		expect(scrolls[1].classList.contains('markdown-raw-code-block')).toBe(true);
+		expect(raw.container.querySelector('[data-markdown-raw-table-container]')).not.toBeNull();
+	});
+
 	it('keeps an empty raw line wide enough to show the caret', () => {
 		uiStore.rawMarkdown = true;
 		const { container } = render(BodyEditor, { props: { body: 'First\n\nThird' } });

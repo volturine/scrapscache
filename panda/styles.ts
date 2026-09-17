@@ -2027,7 +2027,8 @@ export const markdownStyles = css({
 		textDecorationThickness: '1.5px'
 	},
 	'& .markdown-token-code': { color: 'scrapscache.warning' },
-	'& [class*="markdown-token-heading-"]': { fontWeight: 'strong' },
+	'& :is(.markdown-token-heading-1, .markdown-token-heading-2, .markdown-token-heading-3, .markdown-token-heading-4, .markdown-token-heading-5, .markdown-token-heading-6)':
+		{ fontWeight: 'strong' },
 	'& .markdown-token-heading-1': { fontSize: '1.35em' },
 	'& .markdown-token-heading-2': { fontSize: '1.2em' },
 	'& .markdown-token-heading-3': { fontSize: '1.08em' },
@@ -2040,11 +2041,12 @@ export const markdownStyles = css({
 		'& [data-line-text]:empty': { flex: '1 1 0%' },
 		'& .markdown-token-marker': { display: 'inline' },
 		'& .markdown-token-code': { color: 'scrapscache.warning' },
-		'& [class*="markdown-token-heading-"]': {
-			color: 'scrapscache.warning',
-			fontSize: 'inherit',
-			fontWeight: 'inherit'
-		},
+		'& :is(.markdown-token-heading-1, .markdown-token-heading-2, .markdown-token-heading-3, .markdown-token-heading-4, .markdown-token-heading-5, .markdown-token-heading-6)':
+			{
+				color: 'scrapscache.warning',
+				fontSize: 'inherit',
+				fontWeight: 'inherit'
+			},
 		'& .markdown-token-strong, & .markdown-token-emphasis, & .markdown-token-strikethrough': {
 			color: 'scrapscache.accent',
 			fontWeight: 'inherit',

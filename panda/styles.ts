@@ -1960,7 +1960,11 @@ export const markdownStyles = css({
 		flexWrap: 'nowrap',
 		padding: '0 2.75rem 0 0.75rem'
 	},
+	'& .markdown-block-copy svg': square('0.875rem'),
 	'& .markdown-editor-code-line': {
+		display: 'block',
+		minH: '1lh',
+		outline: 'none',
 		w: 'max-content',
 		minW: 'max-content',
 		maxW: 'none',
@@ -1974,38 +1978,19 @@ export const markdownStyles = css({
 	'& .markdown-code-token-comment': { color: 'scrapscache.success', fontStyle: 'italic' },
 	'& .markdown-code-token-string': { color: 'scrapscache.danger' },
 	'& .markdown-code-token-flag': { color: 'scrapscache.accent' },
-	'& .markdown-raw-table-scroll, & .markdown-editor-table-scroll': { w: 'full', minW: 0 },
-	'& .markdown-raw-display-table, & .markdown-raw-editor-table, & .markdown-editor-table': {
+	'& .markdown-editor-table-scroll': { w: 'full', minW: 0 },
+	'& .markdown-editor-table': {
 		display: 'table',
 		w: 'max-content',
 		minW: 'full',
 		borderCollapse: 'collapse'
 	},
-	'& .markdown-raw-table-display-row, & .markdown-raw-editor-table [data-markdown-table-row], & .markdown-editor-table [data-markdown-table-row]':
-		{ display: 'table-row' },
-	'& .markdown-raw-table-display-line, & .markdown-raw-editor-table .markdown-editor-table-line, & .markdown-editor-table-line':
-		{ display: 'contents' },
-	'& .markdown-raw-table-source-marker, & .markdown-raw-editor-table .markdown-editor-table-marker, & .markdown-editor-table-marker':
-		{ display: 'none' },
-	'& .markdown-raw-table-display-cell, & .markdown-raw-editor-table .markdown-editor-table-cell': {
-		display: 'table-cell',
-		padding: '0.2rem 0.45rem',
-		fontWeight: 'inherit',
-		whiteSpace: 'nowrap',
-		_before: { content: '"|"', paddingRight: '0.55rem', color: 'scrapscache.textMuted' }
-	},
-	'& .markdown-raw-table-display-cell.markdown-table-last-cell::after, & .markdown-raw-editor-table .markdown-editor-table-cell.markdown-table-last-cell::after':
-		{
-			content: '"|"',
-			paddingLeft: '0.55rem',
-			color: 'scrapscache.textMuted'
-		},
-	'& .markdown-raw-table-display-row:first-child .markdown-raw-table-display-cell.markdown-table-last-cell, & .markdown-raw-editor-table [data-markdown-table-row]:first-child .markdown-editor-table-cell.markdown-table-last-cell':
-		{
-			paddingRight: '2.75rem'
-		},
+	'& .markdown-editor-table [data-markdown-table-row]': { display: 'table-row' },
+	'& .markdown-editor-table-line': { display: 'contents' },
+	'& .markdown-raw-table-marker': { color: 'scrapscache.textMuted' },
 	'& .markdown-editor-table-cell': {
 		display: 'table-cell',
+		minW: '4ch',
 		padding: '0.4rem 0.625rem',
 		borderBottomWidth: 'hairline',
 		borderColor: 'scrapscache.border',
@@ -2016,7 +2001,9 @@ export const markdownStyles = css({
 	'& .markdown-editor-table [data-markdown-table-row]:last-child .markdown-editor-table-cell': {
 		borderBottom: 0
 	},
-	'& .markdown-editor-table [data-markdown-table-separator]': { display: 'none' },
+	'& .markdown-editor-table [data-markdown-table-row][data-markdown-table-separator]': {
+		display: 'none'
+	},
 	'& [data-markdown-editor-table] .markdown-editor-table [data-markdown-table-row]:first-child .markdown-editor-table-cell.markdown-table-last-cell':
 		{ paddingRight: '2.75rem' },
 	'& .markdown-token-marker-hidden': { display: 'none' },

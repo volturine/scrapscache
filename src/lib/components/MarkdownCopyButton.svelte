@@ -2,7 +2,7 @@
 	import { Check, Copy } from '@lucide/svelte';
 	import { onDestroy } from 'svelte';
 
-	let { text, label }: { text: string; label: 'table' | 'code' } = $props();
+	let { text, label }: { text: () => string; label: 'table' | 'code' } = $props();
 	let copied = $state(false);
 	let resetTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -13,13 +13,14 @@
 
 	async function copyBlock(event: MouseEvent) {
 		event.stopPropagation();
+		const value = text();
 		let succeeded = false;
 		try {
-			await navigator.clipboard.writeText(text);
+			await navigator.clipboard.writeText(value);
 			succeeded = true;
 		} catch {
 			const textarea = document.createElement('textarea');
-			textarea.value = text;
+			textarea.value = value;
 			textarea.style.position = 'fixed';
 			textarea.style.opacity = '0';
 			document.body.appendChild(textarea);
@@ -53,8 +54,8 @@
 	onclick={copyBlock}
 >
 	{#if copied}
-		<Check class="h-3.5 w-3.5" aria-hidden="true" />
+		<Check aria-hidden="true" />
 	{:else}
-		<Copy class="h-3.5 w-3.5" aria-hidden="true" />
+		<Copy aria-hidden="true" />
 	{/if}
 </button>

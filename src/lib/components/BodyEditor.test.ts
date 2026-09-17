@@ -899,17 +899,16 @@ describe('BodyEditor markdown bullets', () => {
 			: null;
 		if (!registerText) throw new Error('Expected the first table body cell');
 		select(registerText, 'register'.length);
-		editor.dispatchEvent(
-			new InputEvent('beforeinput', {
-				bubbles: true,
-				cancelable: true,
-				inputType: 'insertText',
-				data: 's'
-			})
-		);
-		registerText.textContent = 'registers';
-		await fireEvent.input(editor, { inputType: 'insertText', data: 's' });
+		const beforeInput = new InputEvent('beforeinput', {
+			bubbles: true,
+			cancelable: true,
+			inputType: 'insertText',
+			data: 's'
+		});
+		editor.dispatchEvent(beforeInput);
 		await tick();
+
+		expect(beforeInput.defaultPrevented).toBe(true);
 
 		expect(lineTexts(container)[2]).toBe('| registers | `/api/sync/register` | 5 per hour |');
 	});
@@ -1050,17 +1049,16 @@ describe('BodyEditor markdown bullets', () => {
 		const source = document.createTreeWalker(line, NodeFilter.SHOW_TEXT).nextNode();
 		if (!source) throw new Error('Expected an editable text node');
 		select(source, '**bold'.length);
-		editor.dispatchEvent(
-			new InputEvent('beforeinput', {
-				bubbles: true,
-				cancelable: true,
-				inputType: 'insertText',
-				data: '*'
-			})
-		);
-		source.textContent = '**bold**';
-
-		await fireEvent.input(editor, { inputType: 'insertText', data: '*' });
+		for (let typed = 0; typed < 2; typed++) {
+			editor.dispatchEvent(
+				new InputEvent('beforeinput', {
+					bubbles: true,
+					cancelable: true,
+					inputType: 'insertText',
+					data: '*'
+				})
+			);
+		}
 		await tick();
 
 		const styledLine = container.querySelector('[data-line-text]') as HTMLElement;
@@ -1317,7 +1315,7 @@ describe('BodyEditor Markdown table editing', () => {
 		const { container } = render(BodyEditor, { props: { body: source } });
 		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
 		editor.focus();
-		caretAt(container, 2, 3);
+		caretAt(container, 2, '| long value'.length);
 		editor.dispatchEvent(
 			new InputEvent('beforeinput', {
 				bubbles: true,
@@ -1326,16 +1324,16 @@ describe('BodyEditor Markdown table editing', () => {
 				data: '!'
 			})
 		);
-		await fireEvent.input(editor, { inputType: 'insertText', data: '!' });
+		await tick();
 		expect(lineTexts(container)[0]).toBe('| a | b |');
 
 		await fireEvent.blur(editor);
 		await tick();
 
 		expect(lineTexts(container)).toEqual([
-			'| a          | b |',
-			'| ---------- | - |',
-			'| long value | x |'
+			'| a           | b |',
+			'| ----------- | - |',
+			'| long value! | x |'
 		]);
 	});
 
@@ -1349,5 +1347,277 @@ describe('BodyEditor Markdown table editing', () => {
 		await tick();
 
 		expect(container.querySelector('[data-markdown-editor-table]')).toBeNull();
+	});
+});
+
+function input(editor: HTMLElement, inputType: string, data?: string): InputEvent {
+	const event = new InputEvent('beforeinput', { bubbles: true, cancelable: true, inputType, data });
+	editor.dispatchEvent(event);
+	return event;
+}
+
+async function typeText(editor: HTMLElement, text: string) {
+	for (const character of text) input(editor, 'insertText', character);
+	await tick();
+}
+
+describe('BodyEditor controlled input', () => {
+	it('applies typed text to the model instead of letting the browser edit styled DOM', async () => {
+		const oninput = vi.fn();
+		const { container } = render(BodyEditor, { props: { body: 'Hello', oninput } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		caretAt(container, 0, 5);
+
+		const event = input(editor, 'insertText', ' ');
+		await typeText(editor, '**bold** end');
+
+		expect(event.defaultPrevented).toBe(true);
+		expect(lineTexts(container)).toEqual(['Hello **bold** end']);
+		expect(container.querySelector('.markdown-token-strong')?.textContent).toBe('bold');
+		expect(rawCaretText(container.querySelector('[data-line-text]')!)).toBe('Hello **bold** end');
+		expect(oninput).toHaveBeenCalled();
+	});
+
+	it('groups a burst of typing into one undo step', async () => {
+		const { container } = render(BodyEditor, { props: { body: 'note' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		caretAt(container, 0, 4);
+
+		await typeText(editor, 'book');
+		await fireEvent.keyDown(editor, { key: 'z', ctrlKey: true });
+		await tick();
+
+		expect(lineTexts(container)).toEqual(['note']);
+	});
+
+	it('turns a typed dash prefix into a bullet', async () => {
+		const { container } = render(BodyEditor, { props: { body: '' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		editor.focus();
+		select(container.querySelector('[data-line-text]') as HTMLElement, 0);
+
+		await typeText(editor, '- Milk');
+
+		expect(lineTexts(container)).toEqual(['Milk']);
+		expect(container.querySelectorAll('[data-bullet-row]')).toHaveLength(1);
+	});
+
+	it('turns typed task syntax into a task without a leading space', async () => {
+		const { container } = render(BodyEditor, { props: { body: '' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		editor.focus();
+		select(container.querySelector('[data-line-text]') as HTMLElement, 0);
+
+		await typeText(editor, '[ ] Milk');
+
+		expect(lineTexts(container)).toEqual(['Milk']);
+		expect(container.querySelectorAll('[data-task-row]')).toHaveLength(1);
+	});
+
+	it('keeps task syntax typed inside a code block as code', async () => {
+		const { container } = render(BodyEditor, { props: { body: '```\n\n```' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		editor.focus();
+		select(container.querySelector('[data-editor-line="1"] [data-line-text]') as HTMLElement, 0);
+
+		await typeText(editor, '[ ] x');
+
+		expect(lineTexts(container)[1]).toBe('[ ] x');
+		expect(container.querySelector('[data-task-row]')).toBeNull();
+	});
+
+	it('saves text typed into a new sub-task draft', async () => {
+		let body = '[ ] Parent';
+		const { container } = render(BodyEditor, {
+			props: {
+				get body() {
+					return body;
+				},
+				set body(next: string) {
+					body = next;
+				},
+				focusLine: 0
+			}
+		});
+		await tick();
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		await fireEvent.click(container.querySelector('[data-add-subtask]') as HTMLElement);
+		await typeText(editor, 'child');
+		await vi.waitFor(() => {
+			expect(body).toBe('[ ] Parent\n  [ ] child');
+		});
+	});
+
+	it('deletes characters and words without removing the row', async () => {
+		const { container } = render(BodyEditor, { props: { body: 'first\nhello world\nlast' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		caretAt(container, 1, 'hello world'.length);
+
+		input(editor, 'deleteContentBackward');
+		await tick();
+		expect(lineTexts(container)).toEqual(['first', 'hello worl', 'last']);
+
+		input(editor, 'deleteWordBackward');
+		input(editor, 'deleteWordBackward');
+		await tick();
+		expect(lineTexts(container)).toEqual(['first', '', 'last']);
+
+		await typeText(editor, 'x');
+		expect(lineTexts(container)).toEqual(['first', 'x', 'last']);
+	});
+
+	it('removes a whole emoji with one Backspace', async () => {
+		const { container } = render(BodyEditor, { props: { body: 'ok 👍🏽' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		caretAt(container, 0, 'ok 👍🏽'.length);
+
+		input(editor, 'deleteContentBackward');
+		await tick();
+
+		expect(lineTexts(container)).toEqual(['ok ']);
+	});
+
+	it('joins the next row with forward delete at the end of a line', async () => {
+		const { container } = render(BodyEditor, { props: { body: 'one\ntwo' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		caretAt(container, 0, 3);
+
+		input(editor, 'deleteContentForward');
+		await tick();
+
+		expect(lineTexts(container)).toEqual(['onetwo']);
+	});
+
+	it('splits a row for a paragraph input from a soft keyboard', async () => {
+		const { container } = render(BodyEditor, { props: { body: 'onetwo' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		caretAt(container, 0, 3);
+
+		input(editor, 'insertParagraph');
+		await tick();
+
+		expect(lineTexts(container)).toEqual(['one', 'two']);
+	});
+
+	it('adopts text written natively when an IME composition ends', async () => {
+		const { container } = render(BodyEditor, { props: { body: 'ab' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const line = container.querySelector('[data-line-text]') as HTMLElement;
+		caretAt(container, 0, 1);
+		await fireEvent.compositionStart(editor);
+
+		const native = input(editor, 'insertCompositionText', 'に');
+		line.firstChild!.textContent = 'aにb';
+		await fireEvent.input(editor, { inputType: 'insertCompositionText', isComposing: true });
+		await fireEvent.compositionEnd(editor);
+		await tick();
+
+		expect(native.defaultPrevented).toBe(false);
+		expect(lineTexts(container)).toEqual(['aにb']);
+		expect(rawCaretText(container.querySelector('[data-line-text]')!)).toBe('aに');
+	});
+});
+
+describe('BodyEditor rendered table writing', () => {
+	const table = ['| Name | Qty |', '| ---- | --- |', '| tea  | 2   |'];
+
+	it('keeps a typed pipe inside the cell', async () => {
+		const { container } = render(BodyEditor, { props: { body: table.join('\n') } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		caretAt(container, 2, '| tea'.length);
+
+		await typeText(editor, '|x');
+
+		expect(lineTexts(container)[2]).toBe('| tea\\|x  | 2   |');
+		expect(
+			container.querySelectorAll('[data-editor-line="2"] [data-markdown-table-cell]')
+		).toHaveLength(2);
+	});
+
+	it('does not merge columns when Backspace reaches the start of a cell', async () => {
+		const { container } = render(BodyEditor, { props: { body: table.join('\n') } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		caretAt(container, 2, '| tea  | 2'.length);
+
+		for (let press = 0; press < 3; press++) input(editor, 'deleteContentBackward');
+		await tick();
+
+		expect(lineTexts(container)[2]).toBe('| tea  |    |');
+	});
+
+	it('removes an empty body row with Backspace', async () => {
+		const body = [...table, '|      |     |'].join('\n');
+		const { container } = render(BodyEditor, { props: { body } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		caretAt(container, 3, 2);
+
+		input(editor, 'deleteContentBackward');
+		await tick();
+
+		expect(lineTexts(container)).toEqual(table);
+		expect(rawCaretText(container.querySelector('[data-editor-line="2"] [data-line-text]')!)).toBe(
+			'| tea  | 2'
+		);
+	});
+
+	it('moves between rows in the same column and skips the delimiter row', async () => {
+		const { container } = render(BodyEditor, { props: { body: table.join('\n') } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		caretAt(container, 2, '| tea  | 2'.length);
+
+		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
+		await typeText(editor, '!');
+
+		expect(lineTexts(container)[0]).toBe('| Name | Q!ty |');
+	});
+
+	it('opens a paragraph below a table that ends the note', async () => {
+		const { container } = render(BodyEditor, { props: { body: table.join('\n') } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		caretAt(container, 2, 3);
+
+		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
+		await typeText(editor, 'after');
+
+		expect(lineTexts(container)).toEqual([...table, 'after']);
+		expect(
+			container.querySelectorAll('[data-markdown-editor-table] [data-editor-line]')
+		).toHaveLength(3);
+	});
+
+	it('opens a paragraph below a raw table that ends the note', async () => {
+		uiStore.rawMarkdown = true;
+		const { container } = render(BodyEditor, { props: { body: table.join('\n') } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		caretAt(container, 2, 3);
+
+		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
+		await typeText(editor, 'after');
+
+		expect(lineTexts(container)).toEqual([...table, 'after']);
+	});
+
+	it('leaves the table with Mod+Enter from any row', async () => {
+		const body = [...table, 'tail'].join('\n');
+		const { container } = render(BodyEditor, { props: { body } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		caretAt(container, 0, 3);
+
+		await fireEvent.keyDown(editor, { key: 'Enter', metaKey: true });
+		await typeText(editor, 'note');
+
+		expect(lineTexts(container)).toEqual([...table, 'note', 'tail']);
+	});
+
+	it('types into an empty cell after Enter adds a row', async () => {
+		const { container } = render(BodyEditor, { props: { body: table.join('\n') } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		editor.focus();
+		caretAt(container, 2, 3);
+
+		await fireEvent.keyDown(editor, { key: 'Enter' });
+		await typeText(editor, 'milk');
+
+		expect(lineTexts(container)[3]).toMatch(/^\| milk +\| +\|$/);
 	});
 });

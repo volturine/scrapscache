@@ -341,7 +341,8 @@ export function tokenizeMarkdownTableRow(source: string): MarkdownTableSourceTok
 			if (text) tokens.push({ kind: 'marker', text });
 			return;
 		}
-		const leading = text.match(/^\s*/)?.[0] ?? '';
+		// An empty cell's caret sits one space after its opening pipe, not after the padding.
+		const leading = text.trim() ? (text.match(/^\s*/)?.[0] ?? '') : text.slice(0, 1);
 		const trailing = text.slice(leading.length).match(/\s*$/)?.[0] ?? '';
 		const cell = text.slice(leading.length, text.length - trailing.length);
 		if (leading) tokens.push({ kind: 'marker', text: leading });

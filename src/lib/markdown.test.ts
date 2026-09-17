@@ -153,6 +153,13 @@ describe('Markdown block tokenizer', () => {
 		]);
 	});
 
+	it('places an empty cell one space after its opening pipe', () => {
+		expect(markdownTableCellRanges('|      | x |')).toEqual([
+			{ start: 2, end: 2 },
+			{ start: 9, end: 10 }
+		]);
+	});
+
 	it('recognizes tables and their column alignments', () => {
 		expect(
 			parseMarkdownBlocks(

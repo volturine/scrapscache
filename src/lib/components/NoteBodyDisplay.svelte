@@ -42,15 +42,16 @@
 	const links = $derived(extractHttpUrls(note.body ?? ''));
 	let contentElement: HTMLDivElement | null = $state(null);
 
-	function rawTableAt(lineIndex: number): MarkdownTableBlock | undefined {
-		const table = blocks.find(
-			(block) =>
-				block.type === 'table' &&
-				lineIndex >= block.lineIndex &&
-				lineIndex < block.lineIndex + block.rows.length + 2
-		);
-		return table?.type === 'table' ? table : undefined;
-	}
+	// Raw mode draws each table's source as one block; map every covered line to it.
+	const rawTables = $derived.by(() => {
+		const byLine = new Map<number, MarkdownTableBlock>();
+		for (const block of blocks) {
+			if (block.type !== 'table') continue;
+			const end = block.lineIndex + block.rows.length + 2;
+			for (let line = block.lineIndex; line < end; line++) byLine.set(line, block);
+		}
+		return byLine;
+	});
 
 	function rawTableSource(table: MarkdownTableBlock): string[] {
 		return rawLines.slice(table.lineIndex, table.lineIndex + table.rows.length + 2);
@@ -161,10 +162,13 @@
 >
 	{#if uiStore.rawMarkdown}
 		{#each segments as seg (seg.lineIndex)}
-			{@const rawTable = rawTableAt(seg.lineIndex)}
+			{@const rawTable = rawTables.get(seg.lineIndex)}
 			{#if rawTable}
 				{#if rawTable.lineIndex === seg.lineIndex}
-					<div class="markdown-block-surface markdown-raw-table" data-markdown-raw-table-container>
+					<div
+						class="markdown-block-surface markdown-raw-table note-scrollbar-hidden"
+						data-markdown-raw-table-container
+					>
 						{#each rawTableSource(rawTable) as sourceLine, sourceLineIndex (sourceLineIndex)}
 							<div>{@render rawTableContent(sourceLine)}</div>
 						{/each}
@@ -179,7 +183,10 @@
 			{#if block.type === 'line'}
 				{@render bodyLine(block.segment)}
 			{:else if block.type === 'table'}
-				<div class="markdown-block-surface markdown-table-scroll" data-markdown-table-container>
+				<div
+					class="markdown-block-surface markdown-table-scroll note-scrollbar-hidden"
+					data-markdown-table-container
+				>
 					<table class="markdown-table" data-markdown-table>
 						<thead>
 							<tr>
@@ -206,7 +213,7 @@
 			{:else}
 				{@const codeLines = block.code.split('\n')}
 				<pre
-					class="markdown-block-surface markdown-code-block"
+					class="markdown-block-surface markdown-code-block note-scrollbar-hidden"
 					data-markdown-code-block
 					data-language={block.language || undefined}><code
 						>{#each codeLines as codeLine, codeLineIndex (`${block.lineIndex}-${codeLineIndex}`)}<span

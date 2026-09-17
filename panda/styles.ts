@@ -1669,6 +1669,14 @@ export const syncStyles = {
 		letterSpacing: 'eyebrow'
 	}),
 	qrCode: css({ ...square('220px'), ...cardRadius, bg: 'scrapscache.qrSurface', p: 'sm' }),
+	qrScanner: css({
+		w: 'full',
+		aspectRatio: '1 / 1',
+		objectFit: 'cover',
+		...cardRadius,
+		...border,
+		bg: 'scrapscache.bg'
+	}),
 	pairingCode: css({ rounded: 'dialog', ...border, bg: 'scrapscache.bg', px: 'sm', py: 'xl' }),
 	copySuccess: css({
 		borderColor: 'scrapscache.success',

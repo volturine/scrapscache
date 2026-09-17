@@ -222,7 +222,12 @@ describe('NoteCard right-click haze', () => {
 
 		// Non-scrollable verification with overlay in visible body area
 		expect(document.querySelector('.scrollable')).toBeNull();
-		expect(document.querySelector('[data-secret-body]')).toBeTruthy();
+		const secretBody = document.querySelector('[data-secret-body]');
+		expect(secretBody).toBeTruthy();
+		// The secret viewport must be a flex column so its content is constrained
+		// by the card's max height instead of expanding to the hidden note height.
+		expect(secretBody?.className).toContain('d_flex');
+		expect(secretBody?.className).toContain('flex-d_column');
 		const overlay = document.querySelector('[data-secret-overlay]');
 		expect(overlay).toBeTruthy();
 		expect(overlay?.querySelector('svg')).toBeTruthy();

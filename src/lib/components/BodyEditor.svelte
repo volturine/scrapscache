@@ -1780,7 +1780,6 @@
 		| { kind: 'chunk'; key: string; start: number; lines: Line[] }
 		| { kind: 'block'; key: string; block: EditorMarkdownBlock };
 
-	const chunkBoundaryIds = new Set<number>();
 	// Plain rows stay in offscreen-skipping chunks. Tables and code sit outside
 	// those chunks so iOS WebKit does not crash on overflow + content-visibility.
 	const editorItems = $derived.by(() => {
@@ -1788,30 +1787,12 @@
 		let segmentStart: number | null = null;
 		const flush = (segmentEnd: number) => {
 			if (segmentStart === null) return;
-			let chunkStart = segmentStart;
-			for (let index = segmentStart; index < segmentEnd; index++) {
-				const line = lines[index];
-				const count = index - chunkStart;
-				const isBoundary = chunkBoundaryIds.has(line.id);
-				const mustSplit = count >= Math.floor(CHUNK_SIZE * 1.5);
-				if (count > 0 && (isBoundary || mustSplit)) {
-					if (mustSplit) chunkBoundaryIds.add(line.id);
-					const chunkLines = lines.slice(chunkStart, index);
-					items.push({
-						kind: 'chunk',
-						key: `c${chunkLines[0].id}`,
-						start: chunkStart,
-						lines: chunkLines
-					});
-					chunkStart = index;
-				}
-			}
-			if (chunkStart < segmentEnd) {
-				const chunkLines = lines.slice(chunkStart, segmentEnd);
+			for (let start = segmentStart; start < segmentEnd; start += CHUNK_SIZE) {
+				const chunkLines = lines.slice(start, Math.min(segmentEnd, start + CHUNK_SIZE));
 				items.push({
 					kind: 'chunk',
 					key: `c${chunkLines[0].id}`,
-					start: chunkStart,
+					start,
 					lines: chunkLines
 				});
 			}

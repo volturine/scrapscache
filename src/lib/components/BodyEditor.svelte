@@ -24,9 +24,11 @@
 		markdownTableCells,
 		markdownTableDelimiterRow,
 		markdownTokenClass,
+		parseEditorMarkdownBlocks,
 		parseInlineMarkdown,
 		parseMarkdownBlocks,
 		tokenizeMarkdownTableRow,
+		type EditorMarkdownBlockInfo,
 		type MarkdownBlock
 	} from '$lib/markdown';
 	import { uiStore } from '$lib/stores/ui.svelte';
@@ -119,14 +121,11 @@
 
 	let lines = $state<Line[]>(parseBodyToLines(body));
 	/** A table or code block with the row index just past its last row. */
-	type EditorMarkdownBlock = Exclude<MarkdownBlock, { type: 'line' }> & { end: number };
+	type EditorMarkdownBlock = EditorMarkdownBlockInfo & {
+		startLineId: number;
+	};
 	type EditorTableBlock = Extract<EditorMarkdownBlock, { type: 'table' }>;
 	type EditorCodeBlock = Extract<EditorMarkdownBlock, { type: 'code' }>;
-
-	function blockShape(block: EditorMarkdownBlock): string {
-		const detail = block.type === 'table' ? block.alignments.join() : block.language;
-		return `${block.type}:${block.lineIndex}:${block.end}:${detail}`;
-	}
 
 	let stableBlocks: EditorMarkdownBlock[] = [];
 	/**
@@ -134,20 +133,28 @@
 	 * holds, so typing inside a long note only re-renders the edited row.
 	 */
 	const markdownBlocks = $derived.by(() => {
-		const parsed = parseMarkdownBlocks(serializeLines(lines));
-		const previous = new Map(stableBlocks.map((block) => [blockShape(block), block]));
+		const parsed = parseEditorMarkdownBlocks(lines);
+		const previous = new Map(stableBlocks.map((block) => [block.startLineId, block]));
 		const next: EditorMarkdownBlock[] = [];
-		parsed.forEach((block, blockIndex) => {
-			if (block.type === 'line') return;
-			const following = parsed[blockIndex + 1];
-			const end = following
-				? following.type === 'line'
-					? following.segment.lineIndex
-					: following.lineIndex
-				: lines.length;
-			const candidate = { ...block, end };
-			next.push(previous.get(blockShape(candidate)) ?? candidate);
-		});
+		for (const block of parsed) {
+			const startLineId = lines[block.lineIndex]?.id ?? -1;
+			const candidate: EditorMarkdownBlock = { ...block, startLineId };
+			const prev = previous.get(startLineId);
+			if (
+				prev &&
+				prev.type === candidate.type &&
+				prev.end - prev.lineIndex === candidate.end - candidate.lineIndex &&
+				(candidate.type === 'table'
+					? prev.type === 'table' && prev.alignments.join() === candidate.alignments.join()
+					: prev.type === 'code' && prev.language === candidate.language)
+			) {
+				prev.lineIndex = candidate.lineIndex;
+				prev.end = candidate.end;
+				next.push(prev);
+			} else {
+				next.push(candidate);
+			}
+		}
 		const unchanged =
 			next.length === stableBlocks.length &&
 			next.every((block, index) => block === stableBlocks[index]);
@@ -1770,34 +1777,56 @@
 	const isSingleLine = $derived(lines.length === 1);
 
 	type EditorItem =
-		{ kind: 'chunk'; start: number; lines: Line[] } | { kind: 'block'; block: EditorMarkdownBlock };
+		| { kind: 'chunk'; key: string; start: number; lines: Line[] }
+		| { kind: 'block'; key: string; block: EditorMarkdownBlock };
 
+	const chunkBoundaryIds = new Set<number>();
 	// Plain rows stay in offscreen-skipping chunks. Tables and code sit outside
 	// those chunks so iOS WebKit does not crash on overflow + content-visibility.
 	const editorItems = $derived.by(() => {
 		const items: EditorItem[] = [];
-		let chunkStart: number | null = null;
-		const flush = (end: number) => {
-			if (chunkStart === null) return;
-			for (let start = chunkStart; start < end; start += CHUNK_SIZE) {
+		let segmentStart: number | null = null;
+		const flush = (segmentEnd: number) => {
+			if (segmentStart === null) return;
+			let chunkStart = segmentStart;
+			for (let index = segmentStart; index < segmentEnd; index++) {
+				const line = lines[index];
+				const count = index - chunkStart;
+				const isBoundary = chunkBoundaryIds.has(line.id);
+				const mustSplit = count >= Math.floor(CHUNK_SIZE * 1.5);
+				if (count > 0 && (isBoundary || mustSplit)) {
+					if (mustSplit) chunkBoundaryIds.add(line.id);
+					const chunkLines = lines.slice(chunkStart, index);
+					items.push({
+						kind: 'chunk',
+						key: `c${chunkLines[0].id}`,
+						start: chunkStart,
+						lines: chunkLines
+					});
+					chunkStart = index;
+				}
+			}
+			if (chunkStart < segmentEnd) {
+				const chunkLines = lines.slice(chunkStart, segmentEnd);
 				items.push({
 					kind: 'chunk',
-					start,
-					lines: lines.slice(start, Math.min(end, start + CHUNK_SIZE))
+					key: `c${chunkLines[0].id}`,
+					start: chunkStart,
+					lines: chunkLines
 				});
 			}
-			chunkStart = null;
+			segmentStart = null;
 		};
 		for (let index = 0; index < lines.length; index++) {
 			const block = markdownBlockAt(index);
 			if (block && block.lineIndex === index) {
 				flush(index);
-				items.push({ kind: 'block', block });
+				items.push({ kind: 'block', key: `b${block.startLineId}`, block });
 				index = block.end - 1;
 				continue;
 			}
 			if (block) continue;
-			if (chunkStart === null) chunkStart = index;
+			if (segmentStart === null) segmentStart = index;
 		}
 		flush(lines.length);
 		return items;
@@ -2009,7 +2038,7 @@
 	oncompositionend={handleCompositionEnd}
 	onblur={handleEditorBlur}
 >
-	{#each editorItems as item (item.kind === 'chunk' ? `c${item.start}` : `b${item.block.lineIndex}`)}
+	{#each editorItems as item (item.key)}
 		{#if item.kind === 'chunk'}
 			<div
 				data-editor-chunk

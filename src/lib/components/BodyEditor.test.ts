@@ -1685,3 +1685,36 @@ describe('BodyEditor rendered table writing', () => {
 		expect(lineTexts(container)[3]).toMatch(/^\| milk +\| +\|$/);
 	});
 });
+
+describe('BodyEditor markdown block stability', () => {
+	it('preserves code block shell and child DOM nodes when inserting a newline above it', async () => {
+		const source = ['First line', '```python', 'print("hello")', '```', 'Last line'].join('\n');
+		const { container } = render(BodyEditor, { props: { body: source } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+
+		const codeShellBefore = container.querySelector('[data-markdown-editor-code-block]');
+		const codeLineBefore = container.querySelector('[data-editor-line="2"]');
+		expect(codeShellBefore).not.toBeNull();
+		expect(codeLineBefore).not.toBeNull();
+
+		// Insert newline at line 0
+		caretAt(container, 0, 0);
+		await fireEvent.keyDown(editor, { key: 'Enter' });
+		await tick();
+
+		const codeShellAfter = container.querySelector('[data-markdown-editor-code-block]');
+		const codeLineAfter = container.querySelector('[data-editor-line="3"]');
+
+		// The code shell and interior line elements should be the exact same DOM node instances (reused)
+		expect(codeShellAfter).toBe(codeShellBefore);
+		expect(codeLineAfter).toBe(codeLineBefore);
+		expect(lineTexts(container)).toEqual([
+			'',
+			'First line',
+			'```python',
+			'print("hello")',
+			'```',
+			'Last line'
+		]);
+	});
+});

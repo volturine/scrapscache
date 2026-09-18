@@ -5,6 +5,7 @@ import {
 	isMarkdownTableHeaderRow,
 	markdownTableCellRanges,
 	markdownTokenClass,
+	parseEditorMarkdownBlocks,
 	parseInlineMarkdown,
 	parseMarkdownBlocks,
 	tokenizeMarkdownTableRow
@@ -223,6 +224,35 @@ describe('Markdown block tokenizer', () => {
 			rows: [['one | two', '`three | four`']],
 			lineIndex: 0
 		});
+	});
+	it('parses editor markdown blocks directly from line objects with end offsets', () => {
+		const lines = [
+			{ text: '# Title' },
+			{ text: '```python' },
+			{ text: 'print("hello")' },
+			{ text: '```' },
+			{ text: 'regular paragraph' },
+			{ text: '| Col 1 | Col 2 |' },
+			{ text: '| --- | --- |' },
+			{ text: '| val 1 | val 2 |' }
+		];
+		const blocks = parseEditorMarkdownBlocks(lines);
+		expect(blocks).toEqual([
+			{
+				type: 'code',
+				language: 'python',
+				lineIndex: 1,
+				end: 4
+			},
+			{
+				type: 'table',
+				header: ['Col 1', 'Col 2'],
+				alignments: ['left', 'left'],
+				rows: [['val 1', 'val 2']],
+				lineIndex: 5,
+				end: 8
+			}
+		]);
 	});
 });
 

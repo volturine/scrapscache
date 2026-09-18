@@ -435,9 +435,21 @@ function tableAlignment(cell: string): TableAlignment | null {
 	return 'left';
 }
 
-function tableAt(lines: string[], lineIndex: number): MarkdownTableBlock | null {
-	const header = splitTableRow(lines[lineIndex] ?? '');
-	const separator = splitTableRow(lines[lineIndex + 1] ?? '');
+type MarkdownLineSource = string | { text: string; isCheck?: boolean; isBullet?: boolean };
+
+function lineSourceText(lines: readonly MarkdownLineSource[], index: number): string {
+	const line = lines[index];
+	if (!line) return '';
+	if (typeof line === 'string') return line;
+	return line.isCheck || line.isBullet ? '' : line.text;
+}
+
+function tableAt(
+	lines: readonly MarkdownLineSource[],
+	lineIndex: number
+): MarkdownTableBlock | null {
+	const header = splitTableRow(lineSourceText(lines, lineIndex));
+	const separator = splitTableRow(lineSourceText(lines, lineIndex + 1));
 	if (!header || !separator || header.length !== separator.length) return null;
 	const alignments = separator.map(tableAlignment);
 	if (alignments.some((alignment) => alignment === null)) return null;
@@ -445,8 +457,9 @@ function tableAt(lines: string[], lineIndex: number): MarkdownTableBlock | null 
 	const rows: string[][] = [];
 	let nextLine = lineIndex + 2;
 	while (nextLine < lines.length) {
-		if (lines[nextLine]?.trim() === '') break;
-		const cells = splitTableRow(lines[nextLine] ?? '');
+		const raw = lineSourceText(lines, nextLine);
+		if (raw.trim() === '') break;
+		const cells = splitTableRow(raw);
 		if (!cells) break;
 		rows.push(header.map((_, columnIndex) => cells[columnIndex] ?? ''));
 		nextLine++;
@@ -511,6 +524,70 @@ export function parseMarkdownBlocks(source: string): MarkdownBlock[] {
 
 		const segment = parseBody(lines[lineIndex] ?? '')[0];
 		if (segment) blocks.push({ type: 'line', segment: { ...segment, lineIndex } });
+		lineIndex++;
+	}
+
+	return blocks;
+}
+
+export type EditorMarkdownBlockInfo =
+	| {
+			type: 'code';
+			language: string;
+			lineIndex: number;
+			end: number;
+	  }
+	| {
+			type: 'table';
+			header: string[];
+			alignments: TableAlignment[];
+			rows: string[][];
+			lineIndex: number;
+			end: number;
+	  };
+
+/**
+ * Scan code and table blocks directly from editor lines without full document
+ * string concatenation or inline line parsing.
+ */
+export function parseEditorMarkdownBlocks(
+	lines: readonly MarkdownLineSource[]
+): EditorMarkdownBlockInfo[] {
+	const blocks: EditorMarkdownBlockInfo[] = [];
+	let lineIndex = 0;
+
+	while (lineIndex < lines.length) {
+		const text = lineSourceText(lines, lineIndex);
+		const opening = fenceAt(text);
+		if (opening) {
+			let nextLine = lineIndex + 1;
+			while (nextLine < lines.length) {
+				const candidate = lineSourceText(lines, nextLine);
+				if (isFenceClose(candidate, opening.marker)) break;
+				nextLine++;
+			}
+			const end = nextLine < lines.length ? nextLine + 1 : nextLine;
+			blocks.push({
+				type: 'code',
+				language: opening.info.split(/[ \t]+/, 1)[0] ?? '',
+				lineIndex,
+				end
+			});
+			lineIndex = end;
+			continue;
+		}
+
+		const table = tableAt(lines, lineIndex);
+		if (table) {
+			const end = lineIndex + 2 + table.rows.length;
+			blocks.push({
+				...table,
+				end
+			});
+			lineIndex = end;
+			continue;
+		}
+
 		lineIndex++;
 	}
 

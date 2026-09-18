@@ -127,39 +127,15 @@
 	type EditorTableBlock = Extract<EditorMarkdownBlock, { type: 'table' }>;
 	type EditorCodeBlock = Extract<EditorMarkdownBlock, { type: 'code' }>;
 
-	let stableBlocks: EditorMarkdownBlock[] = [];
 	/**
-	 * Table and code blocks, re-parsed on every edit but reused while their shape
-	 * holds, so typing inside a long note only re-renders the edited row.
+	 * Table and code blocks, re-parsed directly on every edit.
 	 */
-	const markdownBlocks = $derived.by(() => {
+	const markdownBlocks = $derived.by<EditorMarkdownBlock[]>(() => {
 		const parsed = parseEditorMarkdownBlocks(lines);
-		const previous = new Map(stableBlocks.map((block) => [block.startLineId, block]));
-		const next: EditorMarkdownBlock[] = [];
-		for (const block of parsed) {
-			const startLineId = lines[block.lineIndex]?.id ?? -1;
-			const candidate: EditorMarkdownBlock = { ...block, startLineId };
-			const prev = previous.get(startLineId);
-			if (
-				prev &&
-				prev.type === candidate.type &&
-				prev.end - prev.lineIndex === candidate.end - candidate.lineIndex &&
-				(candidate.type === 'table'
-					? prev.type === 'table' && prev.alignments.join() === candidate.alignments.join()
-					: prev.type === 'code' && prev.language === candidate.language)
-			) {
-				prev.lineIndex = candidate.lineIndex;
-				prev.end = candidate.end;
-				next.push(prev);
-			} else {
-				next.push(candidate);
-			}
-		}
-		const unchanged =
-			next.length === stableBlocks.length &&
-			next.every((block, index) => block === stableBlocks[index]);
-		if (!unchanged) stableBlocks = next;
-		return stableBlocks;
+		return parsed.map((block) => ({
+			...block,
+			startLineId: lines[block.lineIndex]?.id ?? -1
+		}));
 	});
 	let container: HTMLDivElement | null = $state(null);
 	let draftTaskId = $state<number | null>(null);

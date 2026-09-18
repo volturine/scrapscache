@@ -1232,6 +1232,7 @@
 
 <div
 	bind:this={container}
+	contenteditable="plaintext-only"
 	use:makeEditable
 	data-body-editor
 	role="textbox"

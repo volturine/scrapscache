@@ -35,6 +35,9 @@ const cloudflarePlatform = {
 export default defineConfig({
 	plugins: [cloudflarePlatform, sveltekit()],
 	server: {
+		fs: {
+			allow: ['..']
+		},
 		watch: {
 			// Don't reload the page when the sync server writes to sync-data/.
 			ignored: ['**/sync-data/**']

@@ -125,6 +125,16 @@
 		return { update: apply };
 	}
 
+	const lineDoms = new Map<number, HTMLElement>();
+	function registerLine(node: HTMLElement, id: number) {
+		lineDoms.set(id, node);
+		return {
+			destroy() {
+				lineDoms.delete(id);
+			}
+		};
+	}
+
 	let lastSerializedBody = body;
 	let syncBodyTimer: ReturnType<typeof setTimeout> | null = null;
 	function syncBody(immediate = false) {
@@ -144,7 +154,7 @@
 			syncBodyTimer = null;
 			lastSerializedBody = serializeLines(lines.filter((line) => line.id !== draftTaskId));
 			body = lastSerializedBody;
-		}, 150);
+		}, 300);
 	}
 
 	export function syncBodyNow() {
@@ -152,9 +162,14 @@
 	}
 
 	function lineElement(index: number): HTMLElement | null {
+		const line = lines[index];
+		if (line) {
+			const el = lineDoms.get(line.id);
+			if (el) return el;
+		}
 		if (!container) return null;
 		const child = container.children[index] as HTMLElement | undefined;
-		if (child) return child;
+		if (child?.dataset.editorLine === String(index)) return child;
 		return container.querySelector(`[data-editor-line="${index}"]`) as HTMLElement | null;
 	}
 
@@ -175,6 +190,11 @@
 		if (row.dataset.editorLine !== undefined && row.dataset.editorLine !== '') {
 			const index = Number(row.dataset.editorLine);
 			if (Number.isInteger(index) && index >= 0 && index < lines.length) return index;
+		}
+		const lineId = row.dataset.lineId ? Number(row.dataset.lineId) : NaN;
+		if (Number.isInteger(lineId)) {
+			const idx = lines.findIndex((l) => l.id === lineId);
+			if (idx >= 0) return idx;
 		}
 		const index = Array.prototype.indexOf.call(container.children, row);
 		return index >= 0 && index < lines.length ? index : null;
@@ -412,6 +432,7 @@
 			const byId = lines.findIndex((line) => line.id === lineId);
 			if (byId >= 0) resolved = byId;
 		}
+		ensureWindowNear(resolved);
 		const caret = offset ?? lines[resolved]?.text.length ?? 0;
 		selectAt(resolved, caret);
 	}
@@ -439,6 +460,7 @@
 	}
 
 	function focusTask(index: number) {
+		ensureWindowNear(index);
 		ignoredFocusLine = null;
 		const line = lines[index];
 		if (!line?.isCheck) {
@@ -596,6 +618,7 @@
 		if (composing || event.isComposing) return;
 		const lineIdx = getActiveLineIndex(event);
 		if (lineIdx !== null) {
+			ensureWindowNear(lineIdx);
 			syncLineFromDom(lineIdx);
 		} else {
 			readDomIntoLines();
@@ -1088,6 +1111,18 @@
 		return true;
 	}
 
+	function handleKeyup(event: KeyboardEvent) {
+		if (
+			event.key.startsWith('Arrow') ||
+			event.key === 'Home' ||
+			event.key === 'End' ||
+			event.key.startsWith('Page')
+		) {
+			const range = editorRange();
+			if (range) ensureWindowNear(range.start.line);
+		}
+	}
+
 	function handleKeydown(event: KeyboardEvent) {
 		const primaryModifier = event.ctrlKey || event.metaKey;
 		if (primaryModifier && !event.altKey && event.key.toLowerCase() === 'z') {
@@ -1228,6 +1263,50 @@
 
 	const isSingleLine = $derived(lines.length === 1);
 
+	const LARGE_NOTE_THRESHOLD = 80;
+	const WINDOW_RADIUS = 40;
+
+	let activeWindowCenter = $state(0);
+
+	const activeWindowStart = $derived(
+		lines.length <= LARGE_NOTE_THRESHOLD ? 0 : Math.max(0, activeWindowCenter - WINDOW_RADIUS)
+	);
+
+	const activeWindowEnd = $derived(
+		lines.length <= LARGE_NOTE_THRESHOLD
+			? lines.length
+			: Math.min(lines.length, activeWindowCenter + WINDOW_RADIUS)
+	);
+
+	const headLines = $derived(
+		lines.length <= LARGE_NOTE_THRESHOLD || activeWindowStart === 0
+			? []
+			: lines.slice(0, activeWindowStart)
+	);
+
+	const activeLines = $derived(
+		lines.length <= LARGE_NOTE_THRESHOLD ? lines : lines.slice(activeWindowStart, activeWindowEnd)
+	);
+
+	const tailLines = $derived(
+		lines.length <= LARGE_NOTE_THRESHOLD || activeWindowEnd >= lines.length
+			? []
+			: lines.slice(activeWindowEnd)
+	);
+
+	function ensureWindowNear(lineIndex: number) {
+		if (lines.length <= LARGE_NOTE_THRESHOLD) return;
+		if (lineIndex < activeWindowStart + 10 || lineIndex > activeWindowEnd - 10) {
+			activeWindowCenter = Math.max(0, Math.min(lineIndex, lines.length - 1));
+		}
+	}
+
+	$effect(() => {
+		if (focusLine !== null) {
+			ensureWindowNear(focusLine);
+		}
+	});
+
 	const editor = noteBody({ mode: 'editor' });
 
 	const staticMinHClass = css({ minH: '1lh' });
@@ -1274,6 +1353,7 @@
 	oncut={handleCut}
 	onpaste={handlePaste}
 	onkeydown={handleKeydown}
+	onkeyup={handleKeyup}
 	onpointerup={finishPointer}
 	onpointercancel={cancelPointer}
 	onclick={handleEditorClick}
@@ -1284,10 +1364,11 @@
 	}}
 	onblur={handleEditorBlur}
 >
-	{#each lines as line (line.id)}
+	{#snippet lineRow(line: Line, index: number)}
 		{@const check = checklist({ checked: line.checked, indented: line.indent > 0 })}
 		<div
-			data-editor-line
+			use:registerLine={line.id}
+			data-editor-line={index}
 			data-line-id={line.id}
 			data-task-row={line.isCheck ? '' : undefined}
 			data-bullet-row={line.isBullet ? '' : undefined}
@@ -1343,5 +1424,31 @@
 				</button>
 			{/if}
 		</div>
-	{/each}
+	{/snippet}
+
+	{#if lines.length <= LARGE_NOTE_THRESHOLD}
+		{#each lines as line, index (line.id)}
+			{@render lineRow(line, index)}
+		{/each}
+	{:else}
+		{#if headLines.length > 0}
+			<div data-editor-head style="contain: layout;">
+				{#each headLines as line, index (line.id)}
+					{@render lineRow(line, index)}
+				{/each}
+			</div>
+		{/if}
+		<div data-editor-active>
+			{#each activeLines as line, index (line.id)}
+				{@render lineRow(line, activeWindowStart + index)}
+			{/each}
+		</div>
+		{#if tailLines.length > 0}
+			<div data-editor-tail style="contain: layout;">
+				{#each tailLines as line, index (line.id)}
+					{@render lineRow(line, activeWindowEnd + index)}
+				{/each}
+			</div>
+		{/if}
+	{/if}
 </div>

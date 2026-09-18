@@ -62,6 +62,7 @@
 	let bodyEditor = $state<{
 		focusDefault(): void;
 		replaceBodyWithText(text: string): Promise<void>;
+		syncBodyNow?(): void;
 	} | null>(null);
 	let footer = $state<{ handlePickedFiles(files: File[]): void } | null>(null);
 	let editorDialog = $state<HTMLDivElement | null>(null);
@@ -390,13 +391,15 @@
 		if (timer) clearTimeout(timer);
 		timer = setTimeout(() => {
 			if (!note) return;
+			bodyEditor?.syncBodyNow?.();
 			commit({ title, body, images, linkPreviews: [] });
-		}, 250);
+		}, 800);
 	}
 
 	function commitNow(nextImages?: NoteImage[]) {
 		if (!note) return;
 		draftDirty = true;
+		bodyEditor?.syncBodyNow?.();
 		commit({ title, body, images: nextImages ?? images });
 	}
 
@@ -405,6 +408,7 @@
 		taskFocusLine = null;
 		if (timer) clearTimeout(timer);
 		if (note && draftDirty) {
+			bodyEditor?.syncBodyNow?.();
 			commit({ title, body, images, linkPreviews: [] });
 			try {
 				await notesStore.flushNote(note.id, { title, body, images, linkPreviews: [] });
@@ -419,6 +423,7 @@
 
 	async function copyText() {
 		if (!note) return;
+		bodyEditor?.syncBodyNow?.();
 		const text = noteToPlainText({ ...note, title, body });
 		let copied = false;
 		try {

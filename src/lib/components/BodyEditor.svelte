@@ -126,16 +126,35 @@
 	}
 
 	let lastSerializedBody = body;
-	function syncBody() {
-		lastSerializedBody = serializeLines(lines.filter((line) => line.id !== draftTaskId));
-		body = lastSerializedBody;
+	let syncBodyTimer: ReturnType<typeof setTimeout> | null = null;
+	function syncBody(immediate = false) {
+		if (immediate) {
+			if (syncBodyTimer) {
+				clearTimeout(syncBodyTimer);
+				syncBodyTimer = null;
+			}
+			lastSerializedBody = serializeLines(lines.filter((line) => line.id !== draftTaskId));
+			body = lastSerializedBody;
+			oninput?.();
+			return;
+		}
 		oninput?.();
+		if (syncBodyTimer) clearTimeout(syncBodyTimer);
+		syncBodyTimer = setTimeout(() => {
+			syncBodyTimer = null;
+			lastSerializedBody = serializeLines(lines.filter((line) => line.id !== draftTaskId));
+			body = lastSerializedBody;
+		}, 150);
+	}
+
+	export function syncBodyNow() {
+		syncBody(true);
 	}
 
 	function lineElement(index: number): HTMLElement | null {
 		if (!container) return null;
 		const child = container.children[index] as HTMLElement | undefined;
-		if (child?.dataset?.editorLine === String(index)) return child;
+		if (child) return child;
 		return container.querySelector(`[data-editor-line="${index}"]`) as HTMLElement | null;
 	}
 
@@ -153,8 +172,12 @@
 	function lineIndexOfElement(node: Node | null): number | null {
 		const row = closestLineElement(node);
 		if (!row || !container?.contains(row)) return null;
-		const index = Number(row.dataset.editorLine);
-		return Number.isInteger(index) && index >= 0 && index < lines.length ? index : null;
+		if (row.dataset.editorLine !== undefined && row.dataset.editorLine !== '') {
+			const index = Number(row.dataset.editorLine);
+			if (Number.isInteger(index) && index >= 0 && index < lines.length) return index;
+		}
+		const index = Array.prototype.indexOf.call(container.children, row);
+		return index >= 0 && index < lines.length ? index : null;
 	}
 
 	function comparePoints(a: EditorPoint, b: EditorPoint): number {
@@ -176,8 +199,8 @@
 
 		const row = closestLineElement(node);
 		if (!row || !container.contains(row)) return null;
-		const line = Number(row.dataset.editorLine);
-		if (!Number.isInteger(line) || !lines[line]) return null;
+		const line = lineIndexOfElement(row);
+		if (line === null || !lines[line]) return null;
 		const text = row.querySelector('[data-line-text]') as HTMLElement | null;
 		if (!text) return null;
 
@@ -282,6 +305,12 @@
 	}
 
 	function historyEntry(range = editorRange()): HistoryEntry {
+		if (syncBodyTimer) {
+			clearTimeout(syncBodyTimer);
+			syncBodyTimer = null;
+			lastSerializedBody = serializeLines(lines.filter((line) => line.id !== draftTaskId));
+			body = lastSerializedBody;
+		}
 		const fallbackLine = Math.max(0, lines.length - 1);
 		const fallbackOffset = lines[fallbackLine]?.text.length ?? 0;
 		return {
@@ -448,8 +477,8 @@
 		if ((event.target as Element)?.closest?.('[data-add-subtask]')) return;
 		const row = closestLineElement(event.target as Node);
 		if (!row) return;
-		const index = Number(row.dataset.editorLine);
-		if (!Number.isInteger(index)) return;
+		const index = lineIndexOfElement(row);
+		if (index === null) return;
 		const scroller = container?.closest('.scrollable') as HTMLElement | null;
 		const anchorTop = row.getBoundingClientRect().top;
 		focusTask(index);
@@ -806,11 +835,13 @@
 		focusAt(caret.line, caret.offset, lines[caret.line]?.id ?? null);
 	}
 
-	function toggleCheck(index: number, event: MouseEvent) {
+	function toggleCheck(lineId: number, event: MouseEvent) {
 		event.stopPropagation();
 		rememberEdit();
+		const targetIndex = lines.findIndex((line) => line.id === lineId);
+		if (targetIndex < 0) return;
 		const tasks = lines.filter((line) => line.isCheck);
-		toggleCheckEntries(tasks, tasks.indexOf(lines[index]));
+		toggleCheckEntries(tasks, tasks.indexOf(lines[targetIndex]));
 		syncBody();
 	}
 
@@ -1146,6 +1177,7 @@
 	function handleEditorBlur(event: FocusEvent) {
 		if (subtaskPointerId !== null) return;
 		discardEmptyDraft();
+		syncBody(true);
 		if (event.relatedTarget instanceof Node && container?.contains(event.relatedTarget)) return;
 		dropTaskFocus();
 	}
@@ -1224,10 +1256,10 @@
 	}}
 	onblur={handleEditorBlur}
 >
-	{#each lines as line, index (line.id)}
+	{#each lines as line (line.id)}
 		{@const check = checklist({ checked: line.checked, indented: line.indent > 0 })}
 		<div
-			data-editor-line={index}
+			data-editor-line
 			data-line-id={line.id}
 			data-task-row={line.isCheck ? '' : undefined}
 			data-bullet-row={line.isBullet ? '' : undefined}
@@ -1242,7 +1274,7 @@
 					data-checklist-toggle
 					class={[check.root, editor.check]}
 					onpointerdown={keepEditorFocus}
-					onclick={(event) => toggleCheck(index, event)}
+					onclick={(event) => toggleCheck(line.id, event)}
 					aria-label={line.indent > 0 ? 'Toggle sub-task' : 'Toggle item'}
 					aria-pressed={line.checked}
 				>
@@ -1263,7 +1295,7 @@
 						? line.indent > 0
 							? 'Sub-task'
 							: 'Task'
-						: index === 0 && lines.length === 1
+						: lines.length === 1
 							? placeholder
 							: ''
 					: undefined}

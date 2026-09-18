@@ -106,22 +106,22 @@ function findClosing(
 	marker: MarkdownMarker,
 	budget: ParseBudget
 ) {
-	for (let index = start; index <= source.length - delimiter.length; index++) {
+	let index = source.indexOf(delimiter, start);
+	while (index !== -1) {
 		if (--budget.remaining < 0) return -1;
-		if (!source.startsWith(delimiter, index)) continue;
 		let runLength = delimiter.length;
 		while (source[index + runLength] === delimiter[0]) {
 			if (--budget.remaining < 0) return -1;
 			runLength++;
 		}
 		if (marker === 'code' && runLength !== delimiter.length) {
-			index += runLength - 1;
+			index = source.indexOf(delimiter, index + runLength);
 			continue;
 		}
 		if (marker === 'emphasis' && delimiter.length === 1 && runLength > 1) {
 			const afterRun = source[index + runLength];
 			if (!isWhitespace(afterRun)) {
-				index += runLength - 1;
+				index = source.indexOf(delimiter, index + runLength);
 				continue;
 			}
 		}
@@ -130,6 +130,7 @@ function findClosing(
 				? index
 				: index + Math.max(0, runLength - delimiter.length);
 		if (canClose(source, close, delimiter.length, marker)) return close;
+		index = source.indexOf(delimiter, index + 1);
 	}
 	return -1;
 }
@@ -158,6 +159,7 @@ function parseInline(
 		return source ? [{ kind: 'text', text: source, styles: inheritedStyles }] : [];
 	}
 	const tokens: MarkdownToken[] = [];
+	const deadDelimiters = new Set<string>();
 	let textStart = 0;
 	let index = 0;
 
@@ -185,19 +187,28 @@ function parseInline(
 			let length = 1;
 			while (source[index + length] === '`') length++;
 			const delimiter = '`'.repeat(length);
-			const close = findClosing(source, index + length, delimiter, 'code', budget);
-			if (
-				close >= 0 &&
-				pushDelimited({ text: delimiter, marker: 'code', styles: ['code'], code: true }, close)
-			) {
-				continue;
+			if (!deadDelimiters.has(delimiter)) {
+				const close = findClosing(source, index + length, delimiter, 'code', budget);
+				if (
+					close >= 0 &&
+					pushDelimited({ text: delimiter, marker: 'code', styles: ['code'], code: true }, close)
+				) {
+					continue;
+				}
+				if (close === -1) {
+					deadDelimiters.add(delimiter);
+				}
 			}
 			index += length;
 			continue;
 		}
 
 		const triple = source.slice(index, index + 3);
-		if ((triple === '***' || triple === '___') && canOpen(source, index, 3, 'emphasis')) {
+		if (
+			(triple === '***' || triple === '___') &&
+			!deadDelimiters.has(triple) &&
+			canOpen(source, index, 3, 'emphasis')
+		) {
 			const close = findClosing(source, index + 3, triple, 'emphasis', budget);
 			if (
 				close >= 0 &&
@@ -212,6 +223,9 @@ function parseInline(
 			) {
 				continue;
 			}
+			if (close === -1) {
+				deadDelimiters.add(triple);
+			}
 		}
 
 		const candidates: Delimiter[] = [
@@ -223,6 +237,7 @@ function parseInline(
 		];
 		let consumed = false;
 		for (const delimiter of candidates) {
+			if (deadDelimiters.has(delimiter.text)) continue;
 			if (!source.startsWith(delimiter.text, index)) continue;
 			if (!canOpen(source, index, delimiter.text.length, delimiter.marker)) continue;
 			const close = findClosing(
@@ -235,6 +250,9 @@ function parseInline(
 			if (close >= 0 && pushDelimited(delimiter, close)) {
 				consumed = true;
 				break;
+			}
+			if (close === -1) {
+				deadDelimiters.add(delimiter.text);
 			}
 		}
 		if (consumed) continue;

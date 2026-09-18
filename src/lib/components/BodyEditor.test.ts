@@ -1245,6 +1245,22 @@ describe('BodyEditor Markdown table editing', () => {
 		expect(lineTexts(container)).toEqual(['```text', '| a | b |', '', '```']);
 	});
 
+	it('creates a one-column table when Enter ends a single-cell header', async () => {
+		const { container } = render(BodyEditor, { props: { body: '| Name |' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		editor.focus();
+		caretAt(container, 0, '| Name |'.length);
+
+		await fireEvent.keyDown(editor, { key: 'Enter' });
+		await tick();
+
+		expect(lineTexts(container)).toEqual(['| Name |', '| ---- |', '|      |']);
+		expect(container.querySelector('[data-markdown-editor-table]')).not.toBeNull();
+		expect(
+			container.querySelectorAll('[data-markdown-editor-table] [data-markdown-table-cell]')
+		).toHaveLength(2);
+	});
+
 	it('creates the delimiter and a first row when Enter ends a header row', async () => {
 		const { container } = render(BodyEditor, { props: { body: '| Name | Status |' } });
 		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
@@ -1543,6 +1559,54 @@ describe('BodyEditor rendered table writing', () => {
 		await tick();
 
 		expect(lineTexts(container)[2]).toBe('| tea  |    |');
+	});
+
+	it('deletes the table when Backspace hits the start of the header', async () => {
+		const { container } = render(BodyEditor, { props: { body: table.join('\n') } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		caretAt(container, 0, 2);
+
+		input(editor, 'deleteContentBackward');
+		await tick();
+
+		expect(lineTexts(container)).toEqual(['']);
+		expect(container.querySelector('[data-markdown-editor-table]')).toBeNull();
+	});
+
+	it('deletes the table when the last empty body row is removed', async () => {
+		const body = ['| Name | Qty |', '| ---- | --- |', '|      |     |'].join('\n');
+		const { container } = render(BodyEditor, { props: { body } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		caretAt(container, 2, 2);
+
+		input(editor, 'deleteContentBackward');
+		await tick();
+
+		expect(lineTexts(container)).toEqual(['']);
+		expect(container.querySelector('[data-markdown-editor-table]')).toBeNull();
+	});
+
+	it('deletes the table when the selection covers it', async () => {
+		const { container } = render(BodyEditor, { props: { body: table.join('\n') + '\nafter' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		caretAt(container, 0, 2);
+		const startNode = window.getSelection()?.focusNode;
+		const startOffset = window.getSelection()?.focusOffset ?? 0;
+		caretAt(container, 2, 2);
+		const endNode = window.getSelection()?.focusNode;
+		const endOffset = window.getSelection()?.focusOffset ?? 0;
+		if (!startNode || !endNode) throw new Error('Expected a table selection');
+		const range = document.createRange();
+		range.setStart(startNode, startOffset);
+		range.setEnd(endNode, endOffset);
+		window.getSelection()?.removeAllRanges();
+		window.getSelection()?.addRange(range);
+
+		input(editor, 'deleteContentBackward');
+		await tick();
+
+		expect(lineTexts(container)).toEqual(['after']);
+		expect(container.querySelector('[data-markdown-editor-table]')).toBeNull();
 	});
 
 	it('removes an empty body row with Backspace', async () => {

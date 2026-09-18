@@ -214,6 +214,17 @@
 	/** Source of each table as last formatted, keyed by its first row, to skip clean tables. */
 	const formattedTables = new Map<number, string>();
 
+	function removeTable(span: TableSpan): EditorPoint {
+		const startId = lines[span.start]?.id;
+		if (startId !== undefined) formattedTables.delete(startId);
+		lines.splice(span.start, span.end - span.start);
+		if (lines.length === 0) lines.push(newLine());
+		caretTableId = null;
+		const line = Math.min(span.start, lines.length - 1);
+		syncBody();
+		return { line, offset: 0 };
+	}
+
 	function formatTable({ start, end }: TableSpan): boolean {
 		const rows = lines.slice(start, end);
 		const firstId = rows[0]?.id;
@@ -412,13 +423,9 @@
 		return true;
 	}
 
-	$effect(() => {
-		const onSelectionChange = () => {
-			if (document.activeElement === container) formatSettledTables();
-		};
-		document.addEventListener('selectionchange', onSelectionChange);
-		return () => document.removeEventListener('selectionchange', onSelectionChange);
-	});
+	function handleSelectionChange() {
+		if (document.activeElement === container) formatSettledTables();
+	}
 
 	let lastSerializedBody = body;
 	let syncBodyTimer: ReturnType<typeof setTimeout> | null = null;
@@ -915,6 +922,17 @@
 
 	function replaceSelectedRange(range: EditorRange, replacement = ''): EditorPoint {
 		const { start, end } = range;
+		if (replacement.length === 0 && start.line !== end.line) {
+			const span = tableSpanAt(start.line);
+			if (
+				span &&
+				tableSpanAt(end.line)?.start === span.start &&
+				start.line <= span.start &&
+				end.line >= span.end - 1
+			) {
+				return removeTable(span);
+			}
+		}
 		if (start.line === end.line) {
 			const line = lines[start.line];
 			const removesWholeRow =
@@ -1017,6 +1035,14 @@
 		const index = range.start.line;
 		const offset = range.start.offset;
 		const line = lines[index];
+		const tableSpan = uiStore.rawMarkdown ? null : tableSpanAt(index);
+		if (tableSpan) {
+			const cells = markdownTableCellRanges(line.text);
+			if (offset === 0 || (cells[0] && offset <= cells[0].start)) {
+				deleteEmptyTableRow(index, tableSpan, cells);
+				return;
+			}
+		}
 		if (offset === 0) {
 			handleBackspace(range);
 			return;
@@ -1070,19 +1096,28 @@
 		finishEdit(range.start);
 	}
 
-	/** Backspace at the start of a rendered row removes the row once every cell is empty. */
+	/** Backspace at the start of a rendered row removes the row, or the table when nothing remains. */
 	function deleteEmptyTableRow(
 		index: number,
 		span: TableSpan,
 		cells: { start: number; end: number }[]
 	) {
 		const isBodyRow = index >= span.start + 2;
+		const lastBodyRow = isBodyRow && index === span.end - 1;
+		if (index === span.start) {
+			finishEdit(removeTable(span));
+			return;
+		}
 		if (!isBodyRow || cells.some((cell) => cell.end > cell.start)) {
 			if (index > span.start) {
 				const previous = index === span.start + 2 ? span.start : index - 1;
 				const previousCells = markdownTableCellRanges(lines[previous].text);
 				selectAt(previous, previousCells.at(-1)?.end ?? lines[previous].text.length);
 			}
+			return;
+		}
+		if (lastBodyRow && span.end - span.start <= 3) {
+			finishEdit(removeTable(span));
 			return;
 		}
 		lines.splice(index, 1);
@@ -1606,7 +1641,13 @@
 		if (!range) return;
 		if ((event.key === 'Home' || event.key === 'End') && !event.altKey && !primaryModifier) {
 			event.preventDefault();
-			const offset = event.key === 'Home' ? 0 : (lines[range.start.line]?.text.length ?? 0);
+			const cells = tableSpanAt(range.start.line)
+				? markdownTableCellRanges(lines[range.start.line].text)
+				: [];
+			const offset =
+				event.key === 'Home'
+					? (cells[0]?.start ?? 0)
+					: (cells.at(-1)?.end ?? lines[range.start.line]?.text.length ?? 0);
 			if (event.shiftKey) selectAt(range.start.line, range.start.offset, range.start.line, offset);
 			else selectAt(range.start.line, offset);
 			return;
@@ -1728,13 +1769,38 @@
 
 	const isSingleLine = $derived(lines.length === 1);
 
-	// Reads only the array structure, so typing inside a line never re-chunks.
-	const chunks = $derived.by(() => {
-		const result: { start: number; lines: Line[] }[] = [];
-		for (let start = 0; start < lines.length; start += CHUNK_SIZE) {
-			result.push({ start, lines: lines.slice(start, start + CHUNK_SIZE) });
+	type EditorItem =
+		{ kind: 'chunk'; start: number; lines: Line[] } | { kind: 'block'; block: EditorMarkdownBlock };
+
+	// Plain rows stay in offscreen-skipping chunks. Tables and code sit outside
+	// those chunks so iOS WebKit does not crash on overflow + content-visibility.
+	const editorItems = $derived.by(() => {
+		const items: EditorItem[] = [];
+		let chunkStart: number | null = null;
+		const flush = (end: number) => {
+			if (chunkStart === null) return;
+			for (let start = chunkStart; start < end; start += CHUNK_SIZE) {
+				items.push({
+					kind: 'chunk',
+					start,
+					lines: lines.slice(start, Math.min(end, start + CHUNK_SIZE))
+				});
+			}
+			chunkStart = null;
+		};
+		for (let index = 0; index < lines.length; index++) {
+			const block = markdownBlockAt(index);
+			if (block && block.lineIndex === index) {
+				flush(index);
+				items.push({ kind: 'block', block });
+				index = block.end - 1;
+				continue;
+			}
+			if (block) continue;
+			if (chunkStart === null) chunkStart = index;
 		}
-		return result;
+		flush(lines.length);
+		return items;
 	});
 
 	const editor = noteBody({ mode: 'editor' });
@@ -1918,6 +1984,8 @@
 	</div>
 {/snippet}
 
+<svelte:document onselectionchange={handleSelectionChange} />
+
 <div
 	bind:this={container}
 	contenteditable="plaintext-only"
@@ -1941,58 +2009,55 @@
 	oncompositionend={handleCompositionEnd}
 	onblur={handleEditorBlur}
 >
-	{#each chunks as chunk (chunk.start)}
-		<div
-			data-editor-chunk
-			class={editor.chunk}
-			style="contain-intrinsic-block-size:auto {chunk.lines.length * 2}rem"
-		>
-			{#each chunk.lines as line, offset (line.id)}
-				{@const index = chunk.start + offset}
-				{@const block = markdownBlockAt(index)}
-				{#if block === null}
-					{@render editorLine(line, index, null)}
-				{:else if block.lineIndex === index}
-					<div
-						class="markdown-block-shell"
-						data-markdown-raw-table-container={uiStore.rawMarkdown && block.type === 'table'
-							? ''
-							: undefined}
-						data-markdown-editor-table={!uiStore.rawMarkdown && block.type === 'table'
-							? ''
-							: undefined}
-						data-markdown-editor-code-block={!uiStore.rawMarkdown && block.type === 'code'
-							? ''
-							: undefined}
-					>
-						<MarkdownCopyButton
-							text={() => markdownBlockCopyText(block)}
-							label={block.type === 'table' ? 'table' : 'code'}
-						/>
+	{#each editorItems as item (item.kind === 'chunk' ? `c${item.start}` : `b${item.block.lineIndex}`)}
+		{#if item.kind === 'chunk'}
+			<div
+				data-editor-chunk
+				class={editor.chunk}
+				style="contain-intrinsic-block-size:auto {item.lines.length * 2}rem"
+			>
+				{#each item.lines as line, offset (line.id)}
+					{@render editorLine(line, item.start + offset, null)}
+				{/each}
+			</div>
+		{:else}
+			{@const block = item.block}
+			<div
+				class="markdown-block-shell"
+				data-markdown-raw-table-container={uiStore.rawMarkdown && block.type === 'table'
+					? ''
+					: undefined}
+				data-markdown-editor-table={!uiStore.rawMarkdown && block.type === 'table' ? '' : undefined}
+				data-markdown-editor-code-block={!uiStore.rawMarkdown && block.type === 'code'
+					? ''
+					: undefined}
+			>
+				<MarkdownCopyButton
+					text={() => markdownBlockCopyText(block)}
+					label={block.type === 'table' ? 'table' : 'code'}
+				/>
+				<div
+					class="markdown-block-scroll note-scrollbar-hidden"
+					class:markdown-editor-table-scroll={!uiStore.rawMarkdown && block.type === 'table'}
+					class:markdown-editor-code-block={!uiStore.rawMarkdown && block.type === 'code'}
+					class:markdown-raw-code-block={uiStore.rawMarkdown && block.type === 'code'}
+				>
+					{#if block.type === 'table'}
 						<div
-							class="markdown-block-scroll note-scrollbar-hidden"
-							class:markdown-editor-table-scroll={!uiStore.rawMarkdown && block.type === 'table'}
-							class:markdown-editor-code-block={!uiStore.rawMarkdown && block.type === 'code'}
-							class:markdown-raw-code-block={uiStore.rawMarkdown && block.type === 'code'}
+							class:markdown-editor-table={!uiStore.rawMarkdown}
+							class:markdown-raw-table={uiStore.rawMarkdown}
 						>
-							{#if block.type === 'table'}
-								<div
-									class:markdown-editor-table={!uiStore.rawMarkdown}
-									class:markdown-raw-table={uiStore.rawMarkdown}
-								>
-									{#each lines.slice(block.lineIndex, block.end) as blockLine, blockLineOffset (blockLine.id)}
-										{@render editorLine(blockLine, block.lineIndex + blockLineOffset, block)}
-									{/each}
-								</div>
-							{:else}
-								{#each lines.slice(block.lineIndex, block.end) as blockLine, blockLineOffset (blockLine.id)}
-									{@render editorLine(blockLine, block.lineIndex + blockLineOffset, block)}
-								{/each}
-							{/if}
+							{#each lines.slice(block.lineIndex, block.end) as blockLine, blockLineOffset (blockLine.id)}
+								{@render editorLine(blockLine, block.lineIndex + blockLineOffset, block)}
+							{/each}
 						</div>
-					</div>
-				{/if}
-			{/each}
-		</div>
+					{:else}
+						{#each lines.slice(block.lineIndex, block.end) as blockLine, blockLineOffset (blockLine.id)}
+							{@render editorLine(blockLine, block.lineIndex + blockLineOffset, block)}
+						{/each}
+					{/if}
+				</div>
+			</div>
+		{/if}
 	{/each}
 </div>

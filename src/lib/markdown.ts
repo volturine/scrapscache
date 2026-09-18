@@ -279,6 +279,8 @@ const FENCE_CLOSE_RE = /^ {0,3}(`{3,}|~{3,})[ \t]*$/;
 function splitTableRow(line: string): string[] | null {
 	let source = line.trim();
 	if (!source.includes('|')) return null;
+	const wrapped =
+		source.startsWith('|') && source.endsWith('|') && !isEscaped(source, source.length - 1);
 	if (source.startsWith('|')) source = source.slice(1);
 	if (source.endsWith('|') && !isEscaped(source, source.length - 1)) {
 		source = source.slice(0, -1);
@@ -311,7 +313,7 @@ function splitTableRow(line: string): string[] | null {
 		cell += character;
 	}
 	cells.push(cell.trim());
-	return cells.length >= 2 ? cells : null;
+	return cells.length >= 2 || (wrapped && cells.length === 1) ? cells : null;
 }
 
 /** Keep a table source row intact while separating visible cells from Markdown delimiters. */
@@ -381,14 +383,14 @@ export function markdownTableCellRanges(source: string): { start: number; end: n
 	return ranges;
 }
 
-/** A pipe-delimited row with at least two cells that could head a new table. */
+/** A pipe-delimited row that could head a new table. */
 export function isMarkdownTableHeaderRow(source: string): boolean {
 	const trimmed = source.trim();
 	return (
 		trimmed.startsWith('|') &&
 		trimmed.endsWith('|') &&
 		!isEscaped(trimmed, trimmed.length - 1) &&
-		markdownTableCells(source).length >= 2
+		markdownTableCells(source).length >= 1
 	);
 }
 

@@ -293,9 +293,22 @@ describe('Markdown table formatting', () => {
 		]);
 	});
 
-	it('only treats a closed pipe row with two cells as a table header', () => {
+	it('treats a closed pipe row as a table header, including one column', () => {
 		expect(isMarkdownTableHeaderRow('| Name | Status |')).toBe(true);
-		expect(isMarkdownTableHeaderRow('| Name |')).toBe(false);
+		expect(isMarkdownTableHeaderRow('| Name |')).toBe(true);
 		expect(isMarkdownTableHeaderRow('a | b')).toBe(false);
+		expect(isMarkdownTableHeaderRow('| Name')).toBe(false);
+	});
+
+	it('parses a one-column table', () => {
+		expect(parseMarkdownBlocks('| Name |\n| ---- |\n| tea  |')).toEqual([
+			{
+				type: 'table',
+				header: ['Name'],
+				alignments: ['left'],
+				rows: [['tea']],
+				lineIndex: 0
+			}
+		]);
 	});
 });

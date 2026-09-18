@@ -16,6 +16,8 @@
 	import { checklist, noteBody } from 'styled-system/recipes';
 
 	const MAX_TASK_INDENT = 1;
+	// Rows render in fixed-size chunks that the browser skips while offscreen.
+	const CHUNK_SIZE = 64;
 
 	let {
 		body = $bindable(''),
@@ -43,7 +45,7 @@
 		isBullet: boolean;
 		indent: number;
 	};
-	type EditorPoint = { line: number; offset: number; global: number };
+	type EditorPoint = { line: number; offset: number };
 	type EditorRange = { start: EditorPoint; end: EditorPoint; collapsed: boolean };
 	type HistoryEntry = {
 		body: string;
@@ -106,28 +108,42 @@
 	const undoStack: HistoryEntry[] = [];
 	const redoStack: HistoryEntry[] = [];
 
-	function makeEditable(node: HTMLDivElement) {
-		node.setAttribute('contenteditable', 'plaintext-only');
-		return {
-			destroy() {
-				node.removeAttribute('contenteditable');
-			}
-		};
-	}
-
 	function syncEditableText(node: HTMLElement, value: string) {
 		const apply = (next: string) => {
 			// The browser mutates this text node directly. Only reconcile when state
 			// actually differs so iOS and Svelte never insert the first character twice.
-			if (node.textContent !== next) node.textContent = next;
+			// Lines store NBSPs as plain spaces, so an NBSP-only difference is not a
+			// divergence; rewriting the node would reset the caret to the line start.
+			if (node.textContent?.replaceAll('\u00a0', ' ') !== next) node.textContent = next;
 		};
 		apply(value);
 		return { update: apply };
 	}
 
-	function syncBody() {
-		body = serializeLines(lines.filter((line) => line.id !== draftTaskId));
+	let lastSerializedBody = body;
+	let syncBodyTimer: ReturnType<typeof setTimeout> | null = null;
+	function syncBody(immediate = false) {
+		if (immediate) {
+			if (syncBodyTimer) {
+				clearTimeout(syncBodyTimer);
+				syncBodyTimer = null;
+			}
+			lastSerializedBody = serializeLines(lines.filter((line) => line.id !== draftTaskId));
+			body = lastSerializedBody;
+			oninput?.();
+			return;
+		}
 		oninput?.();
+		if (syncBodyTimer) clearTimeout(syncBodyTimer);
+		syncBodyTimer = setTimeout(() => {
+			syncBodyTimer = null;
+			lastSerializedBody = serializeLines(lines.filter((line) => line.id !== draftTaskId));
+			body = lastSerializedBody;
+		}, 300);
+	}
+
+	export function syncBodyNow() {
+		syncBody(true);
 	}
 
 	function lineElement(index: number): HTMLElement | null {
@@ -143,34 +159,51 @@
 		return element?.closest('[data-editor-line]') as HTMLElement | null;
 	}
 
-	function globalOffset(line: number, offset: number): number {
-		let total = 0;
-		for (let index = 0; index < line; index++) total += lines[index].text.length + 1;
-		return total + offset;
+	function lineIndexOfElement(node: Node | null): number | null {
+		const row = closestLineElement(node);
+		if (!row || !container?.contains(row)) return null;
+		const index = Number(row.dataset.editorLine);
+		return Number.isInteger(index) && lines[index] ? index : null;
+	}
+
+	function comparePoints(a: EditorPoint, b: EditorPoint): number {
+		if (a.line !== b.line) return a.line - b.line;
+		return a.offset - b.offset;
+	}
+
+	/** Resolve a boundary between the host's or a chunk's children to a line point. */
+	function pointBetweenRows(parent: Element, offset: number): EditorPoint | null {
+		for (
+			let child: ChildNode | null = parent.childNodes[offset] ?? null;
+			child;
+			child = child.nextSibling
+		) {
+			if (!(child instanceof Element)) continue;
+			const row = child.closest('[data-editor-line]') ?? child.querySelector('[data-editor-line]');
+			const line = lineIndexOfElement(row);
+			if (line !== null) return { line, offset: 0 };
+		}
+		const rows = parent.querySelectorAll('[data-editor-line]');
+		const line = lineIndexOfElement(rows[rows.length - 1] ?? null) ?? lines.length - 1;
+		return { line, offset: lines[line]?.text.length ?? 0 };
 	}
 
 	function pointFromDom(node: Node | null, offset: number): EditorPoint | null {
 		if (!container || !node) return null;
-		if (node === container) {
-			const childIndex = Math.max(0, Math.min(offset, lines.length));
-			if (childIndex >= lines.length) {
-				const line = Math.max(0, lines.length - 1);
-				const end = lines[line]?.text.length ?? 0;
-				return { line, offset: end, global: globalOffset(line, end) };
-			}
-			return { line: childIndex, offset: 0, global: globalOffset(childIndex, 0) };
+		if (node === container || (node instanceof HTMLElement && node.dataset.editorChunk === '')) {
+			return pointBetweenRows(node as Element, offset);
 		}
 
 		const row = closestLineElement(node);
 		if (!row || !container.contains(row)) return null;
-		const line = Number(row.dataset.editorLine);
-		if (!Number.isInteger(line) || !lines[line]) return null;
+		const line = lineIndexOfElement(row);
+		if (line === null || !lines[line]) return null;
 		const text = row.querySelector('[data-line-text]') as HTMLElement | null;
 		if (!text) return null;
 
 		if (node === row) {
 			const local = offset >= row.childNodes.length ? lines[line].text.length : 0;
-			return { line, offset: local, global: globalOffset(line, local) };
+			return { line, offset: local };
 		}
 
 		let local = 0;
@@ -189,7 +222,7 @@
 		} catch {
 			local = 0;
 		}
-		return { line, offset: local, global: globalOffset(line, local) };
+		return { line, offset: local };
 	}
 
 	function rangeOverlapsLine(nativeRange: Range, row: Element): boolean {
@@ -213,16 +246,16 @@
 		}
 	}
 
-	function intersectingLines(selection: Selection): number[] {
+	function intersectingLines(selection: Selection, startLine: number, endLine: number): number[] {
 		if (!container || selection.rangeCount === 0) return [];
 		const nativeRange = selection.getRangeAt(0);
 		const indices: number[] = [];
-		for (const row of container.querySelectorAll('[data-editor-line]')) {
-			if (!rangeOverlapsLine(nativeRange, row)) continue;
-			const index = Number((row as HTMLElement).dataset.editorLine);
-			// Stay inside the model: pointFromDom rejects unknown rows too, and an
-			// out-of-range end line would make selectedText throw mid-copy.
-			if (Number.isInteger(index) && lines[index]) indices.push(index);
+		const min = Math.max(0, Math.min(startLine, endLine));
+		const max = Math.min(lines.length - 1, Math.max(startLine, endLine));
+		for (let index = min; index <= max; index++) {
+			const row = lineElement(index);
+			if (!row || !rangeOverlapsLine(nativeRange, row)) continue;
+			if (lines[index]) indices.push(index);
 		}
 		return indices;
 	}
@@ -230,50 +263,62 @@
 	function editorRange(): EditorRange | null {
 		const selection = window.getSelection();
 		if (!selection || selection.rangeCount === 0) return null;
+		if (selection.isCollapsed) {
+			const point = pointFromDom(selection.focusNode, selection.focusOffset);
+			if (!point) return null;
+			return { start: point, end: point, collapsed: true };
+		}
 		const anchor = pointFromDom(selection.anchorNode, selection.anchorOffset);
 		const focus = pointFromDom(selection.focusNode, selection.focusOffset);
-		let start: EditorPoint | null = null;
-		let end: EditorPoint | null = null;
-		if (anchor && focus) {
-			[start, end] = anchor.global <= focus.global ? [anchor, focus] : [focus, anchor];
-		}
-		const collapsed = !!start && !!end && start.global === end.global;
+		if (!anchor || !focus) return null;
+		let [start, end] = comparePoints(anchor, focus) <= 0 ? [anchor, focus] : [focus, anchor];
+		const collapsed = start.line === end.line && start.offset === end.offset;
 		if (!collapsed) {
-			const indices = intersectingLines(selection);
+			const indices = intersectingLines(selection, start.line, end.line);
 			if (indices.length > 0) {
 				const first = indices[0];
 				const last = indices[indices.length - 1];
-				if (!start || start.line !== first)
-					start = { line: first, offset: 0, global: globalOffset(first, 0) };
-				if (!end || end.line !== last) {
+				if (start.line !== first) start = { line: first, offset: 0 };
+				if (end.line !== last) {
 					const offset = lines[last]?.text.length ?? 0;
-					end = { line: last, offset, global: globalOffset(last, offset) };
+					end = { line: last, offset };
 				}
-			} else if (start && end && start.line < end.line) {
+			} else if (start.line < end.line) {
 				if (start.offset >= (lines[start.line]?.text.length ?? 0)) {
-					start = { line: start.line + 1, offset: 0, global: globalOffset(start.line + 1, 0) };
+					start = { line: start.line + 1, offset: 0 };
 				}
 				if (end.offset === 0 && end.line > start.line) {
 					const line = end.line - 1;
 					const offset = lines[line]?.text.length ?? 0;
-					end = { line, offset, global: globalOffset(line, offset) };
+					end = { line, offset };
 				}
 			}
 		}
-		if (!start || !end) return null;
-		return { start, end, collapsed: start.global === end.global };
+		return { start, end, collapsed };
 	}
 
 	function historyEntry(range = editorRange()): HistoryEntry {
+		const snapshotBody = syncBodyTimer
+			? serializeLines(lines.filter((line) => line.id !== draftTaskId))
+			: lastSerializedBody;
 		const fallbackLine = Math.max(0, lines.length - 1);
 		const fallbackOffset = lines[fallbackLine]?.text.length ?? 0;
 		return {
-			body: serializeLines(lines.filter((line) => line.id !== draftTaskId)),
+			body: snapshotBody,
 			startLine: range?.start.line ?? fallbackLine,
 			startOffset: range?.start.offset ?? fallbackOffset,
 			endLine: range?.end.line ?? fallbackLine,
 			endOffset: range?.end.offset ?? fallbackOffset
 		};
+	}
+
+	let lastTypingTime = 0;
+	function recordTypingEdit(range = editorRange()) {
+		const now = Date.now();
+		if (now - lastTypingTime > 1200) {
+			rememberEdit(range);
+		}
+		lastTypingTime = now;
 	}
 
 	function rememberEdit(range = editorRange()) {
@@ -350,7 +395,7 @@
 
 	function focusAt(index: number, offset: number | null = 0, lineId: number | null = null) {
 		let resolved = index;
-		if (lineId !== null) {
+		if (lineId !== null && lines[index]?.id !== lineId) {
 			const byId = lines.findIndex((line) => line.id === lineId);
 			if (byId >= 0) resolved = byId;
 		}
@@ -360,10 +405,10 @@
 
 	function selectionIsReversed(): boolean {
 		const selection = window.getSelection();
-		if (!selection || selection.rangeCount === 0) return false;
+		if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return false;
 		const anchor = pointFromDom(selection.anchorNode, selection.anchorOffset);
 		const focus = pointFromDom(selection.focusNode, selection.focusOffset);
-		return !!anchor && !!focus && anchor.global > focus.global;
+		return !!anchor && !!focus && comparePoints(anchor, focus) > 0;
 	}
 
 	async function focusAfterRender(index: number, offset: number, lineId: number | null = null) {
@@ -431,8 +476,8 @@
 		if ((event.target as Element)?.closest?.('[data-add-subtask]')) return;
 		const row = closestLineElement(event.target as Node);
 		if (!row) return;
-		const index = Number(row.dataset.editorLine);
-		if (!Number.isInteger(index)) return;
+		const index = lineIndexOfElement(row);
+		if (index === null) return;
 		const scroller = container?.closest('.scrollable') as HTMLElement | null;
 		const anchorTop = row.getBoundingClientRect().top;
 		focusTask(index);
@@ -440,11 +485,56 @@
 		if (scroller) scroller.scrollTop += row.getBoundingClientRect().top - anchorTop;
 	}
 
+	function syncLineFromDom(index: number): boolean {
+		const line = lines[index];
+		if (!line) return false;
+		const rawText = textElement(index)?.textContent ?? '';
+		const text = rawText.replaceAll('\u00a0', ' ');
+		if (line.text === text) return false;
+
+		line.text = text;
+		if (!line.isCheck && CHECK_RE.test(line.text)) {
+			const parsed = parseCheckLine(line.text);
+			if (parsed) {
+				line.isCheck = true;
+				line.isBullet = false;
+				line.checked = parsed.checked;
+				line.indent = Math.min(MAX_TASK_INDENT, parsed.indent);
+				line.text = parsed.text;
+				ignoredFocusLine = null;
+				onFocusTask?.(index);
+				flushSync();
+				focusAt(index, line.text.length, line.id);
+				syncBody();
+				return true;
+			}
+		}
+		if (!line.isCheck && !line.isBullet && BULLET_RE.test(line.text)) {
+			const parsed = parseBulletLine(line.text);
+			if (parsed) {
+				line.isBullet = true;
+				line.indent = Math.min(MAX_LIST_INDENT, parsed.indent);
+				line.text = parsed.text;
+				flushSync();
+				focusAt(index, line.text.length, line.id);
+				syncBody();
+				return true;
+			}
+		}
+		if (line.id === draftTaskId && line.text.trim()) draftTaskId = null;
+		syncBody();
+		return true;
+	}
+
 	function readDomIntoLines() {
 		if (!container) return;
+		let changed = false;
 		for (let index = 0; index < lines.length; index++) {
-			const text = textElement(index)?.textContent ?? '';
-			lines[index].text = text.replaceAll('\u00a0', ' ');
+			const text = (textElement(index)?.textContent ?? '').replaceAll('\u00a0', ' ');
+			if (lines[index].text !== text) {
+				lines[index].text = text;
+				changed = true;
+			}
 			if (!lines[index].isCheck && CHECK_RE.test(lines[index].text)) {
 				const parsed = parseCheckLine(lines[index].text);
 				if (parsed) {
@@ -457,6 +547,7 @@
 					onFocusTask?.(index);
 					flushSync();
 					focusAt(index, lines[index].text.length, lines[index].id);
+					changed = true;
 				}
 			}
 			if (!lines[index].isCheck && !lines[index].isBullet && BULLET_RE.test(lines[index].text)) {
@@ -467,18 +558,27 @@
 					lines[index].text = parsed.text;
 					flushSync();
 					focusAt(index, lines[index].text.length, lines[index].id);
+					changed = true;
 				}
 			}
 			if (lines[index].id === draftTaskId && lines[index].text.trim()) draftTaskId = null;
 		}
-		syncBody();
+		if (changed) syncBody();
 	}
 
+	/** Sync the line holding the caret; fall back to a full read if it is unknown. */
+	function syncEditedLine(index = lineIndexOfElement(window.getSelection()?.focusNode ?? null)) {
+		if (index === null) readDomIntoLines();
+		else syncLineFromDom(index);
+	}
+
+	let replacementLine: number | null = null;
 	function handleInput(rawEvent: Event) {
 		if (applyingEdit) return;
 		const event = rawEvent as InputEvent;
 		if (composing || event.isComposing) return;
-		readDomIntoLines();
+		syncEditedLine(event.inputType === 'insertReplacementText' ? replacementLine : undefined);
+		replacementLine = null;
 	}
 
 	function replaceSelectedRange(range: EditorRange, replacement = ''): EditorPoint {
@@ -493,14 +593,13 @@
 				if (lines.length === 0) lines.push(newLine());
 				const nextLine = Math.min(start.line, lines.length - 1);
 				syncBody();
-				return { line: nextLine, offset: 0, global: globalOffset(nextLine, 0) };
+				return { line: nextLine, offset: 0 };
 			}
 			line.text = line.text.slice(0, start.offset) + replacement + line.text.slice(end.offset);
 			syncBody();
 			return {
 				line: start.line,
-				offset: start.offset + replacement.length,
-				global: start.global + replacement.length
+				offset: start.offset + replacement.length
 			};
 		}
 
@@ -514,7 +613,7 @@
 			if (lines.length === 0) lines.push(newLine());
 			const nextLine = Math.min(start.line, lines.length - 1);
 			syncBody();
-			return { line: nextLine, offset: 0, global: globalOffset(nextLine, 0) };
+			return { line: nextLine, offset: 0 };
 		}
 
 		first.text = merged;
@@ -522,8 +621,7 @@
 		syncBody();
 		return {
 			line: start.line,
-			offset: start.offset + replacement.length,
-			global: start.global + replacement.length
+			offset: start.offset + replacement.length
 		};
 	}
 
@@ -535,15 +633,52 @@
 		const event = rawEvent as InputEvent;
 		const range = editorRange();
 		if (!range) return;
-		if (event.inputType.startsWith('insert') || event.inputType.startsWith('delete')) {
+		if (event.inputType === 'insertReplacementText') {
+			// Autocorrect and spelling replacements rewrite one word, often while the
+			// caret is being moved by a tap elsewhere. Let the browser apply them so
+			// that tap keeps its caret; handleInput syncs the replaced line.
+			const target = event.getTargetRanges()[0];
+			replacementLine = lineIndexOfElement(target?.startContainer ?? null) ?? range.start.line;
+			rememberEdit(range);
+			return;
+		}
+		if (event.inputType === 'insertParagraph' || event.inputType === 'insertLineBreak') {
+			// handled below
+		} else if (
+			(event.inputType === 'insertText' ||
+				event.inputType === 'insertCompositionText' ||
+				event.inputType === 'deleteContentBackward' ||
+				event.inputType === 'deleteContentForward') &&
+			range.collapsed
+		) {
+			recordTypingEdit(range);
+		} else if (event.inputType.startsWith('insert') || event.inputType.startsWith('delete')) {
 			rememberEdit(range);
 		}
-		if (range.collapsed || !event.inputType.startsWith('delete')) return;
-		event.preventDefault();
-		const caret = replaceSelectedRange(range);
-		const targetRoot = parentTaskIndex(caret.line);
-		if (lines[targetRoot]?.id !== focusedRootId) focusTask(caret.line);
-		focusAt(caret.line, caret.offset, lines[caret.line]?.id ?? null);
+		if (range.collapsed) {
+			if (event.inputType === 'insertParagraph' || event.inputType === 'insertLineBreak') {
+				event.preventDefault();
+				rememberEdit(range);
+				handleEnter(range);
+			}
+			return;
+		}
+		if (event.inputType.startsWith('delete')) {
+			event.preventDefault();
+			const caret = replaceSelectedRange(range);
+			const targetRoot = parentTaskIndex(caret.line);
+			if (lines[targetRoot]?.id !== focusedRootId) focusTask(caret.line);
+			focusAt(caret.line, caret.offset, lines[caret.line]?.id ?? null);
+			return;
+		}
+		if (event.inputType.startsWith('insert')) {
+			event.preventDefault();
+			const text = event.data ?? event.dataTransfer?.getData('text/plain') ?? '';
+			const caret = replaceRangeWithText(range, text);
+			const targetRoot = parentTaskIndex(caret.line);
+			if (lines[targetRoot]?.id !== focusedRootId) focusTask(caret.line);
+			focusAt(caret.line, caret.offset, lines[caret.line]?.id ?? null);
+		}
 	}
 
 	function selectedText(range: EditorRange): string {
@@ -611,8 +746,7 @@
 			syncBody();
 			return {
 				line: range.start.line,
-				offset: parsedText.length,
-				global: globalOffset(range.start.line, parsedText.length)
+				offset: parsedText.length
 			};
 		}
 
@@ -675,8 +809,7 @@
 		const line = range.start.line + inserted.length - 1;
 		return {
 			line,
-			offset: parts.at(-1)?.length ?? 0,
-			global: globalOffset(line, parts.at(-1)?.length ?? 0)
+			offset: parts.at(-1)?.length ?? 0
 		};
 	}
 
@@ -712,11 +845,13 @@
 		focusAt(caret.line, caret.offset, lines[caret.line]?.id ?? null);
 	}
 
-	function toggleCheck(index: number, event: MouseEvent) {
+	function toggleCheck(lineId: number, event: MouseEvent) {
 		event.stopPropagation();
 		rememberEdit();
+		const targetIndex = lines.findIndex((line) => line.id === lineId);
+		if (targetIndex < 0) return;
 		const tasks = lines.filter((line) => line.isCheck);
-		toggleCheckEntries(tasks, tasks.indexOf(lines[index]));
+		toggleCheckEntries(tasks, tasks.indexOf(lines[targetIndex]));
 		syncBody();
 	}
 
@@ -1052,6 +1187,7 @@
 	function handleEditorBlur(event: FocusEvent) {
 		if (subtaskPointerId !== null) return;
 		discardEmptyDraft();
+		syncBody(true);
 		if (event.relatedTarget instanceof Node && container?.contains(event.relatedTarget)) return;
 		dropTaskFocus();
 	}
@@ -1070,6 +1206,17 @@
 
 	const focusedGroupIds = $derived(new Set(focusedGroupRows.map(({ line }) => line.id)));
 	const focusedGroupLastId = $derived(focusedGroupRows.at(-1)?.line.id ?? null);
+
+	const isSingleLine = $derived(lines.length === 1);
+
+	// Reads only the array structure, so typing inside a line never re-chunks.
+	const chunks = $derived.by(() => {
+		const result: { start: number; lines: Line[] }[] = [];
+		for (let start = 0; start < lines.length; start += CHUNK_SIZE) {
+			result.push({ start, lines: lines.slice(start, start + CHUNK_SIZE) });
+		}
+		return result;
+	});
 
 	const editor = noteBody({ mode: 'editor' });
 
@@ -1093,7 +1240,7 @@
 
 <div
 	bind:this={container}
-	use:makeEditable
+	contenteditable="plaintext-only"
 	data-body-editor
 	role="textbox"
 	tabindex="0"
@@ -1113,11 +1260,11 @@
 	oncompositionstart={() => (composing = true)}
 	oncompositionend={() => {
 		composing = false;
-		readDomIntoLines();
+		syncEditedLine();
 	}}
 	onblur={handleEditorBlur}
 >
-	{#each lines as line, index (line.id)}
+	{#snippet lineRow(line: Line, index: number)}
 		{@const check = checklist({ checked: line.checked, indented: line.indent > 0 })}
 		<div
 			data-editor-line={index}
@@ -1135,7 +1282,7 @@
 					data-checklist-toggle
 					class={[check.root, editor.check]}
 					onpointerdown={keepEditorFocus}
-					onclick={(event) => toggleCheck(index, event)}
+					onclick={(event) => toggleCheck(line.id, event)}
 					aria-label={line.indent > 0 ? 'Toggle sub-task' : 'Toggle item'}
 					aria-pressed={line.checked}
 				>
@@ -1156,7 +1303,7 @@
 						? line.indent > 0
 							? 'Sub-task'
 							: 'Task'
-						: index === 0 && lines.length === 1
+						: isSingleLine
 							? placeholder
 							: ''
 					: undefined}
@@ -1178,6 +1325,18 @@
 					<span aria-hidden="true" class={editor.addSubtask}></span>
 				</button>
 			{/if}
+		</div>
+	{/snippet}
+
+	{#each chunks as chunk (chunk.start)}
+		<div
+			data-editor-chunk
+			class={editor.chunk}
+			style="contain-intrinsic-block-size:auto {chunk.lines.length * 2}rem"
+		>
+			{#each chunk.lines as line, offset (line.id)}
+				{@render lineRow(line, chunk.start + offset)}
+			{/each}
 		</div>
 	{/each}
 </div>

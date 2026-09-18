@@ -108,15 +108,6 @@
 	const undoStack: HistoryEntry[] = [];
 	const redoStack: HistoryEntry[] = [];
 
-	function makeEditable(node: HTMLDivElement) {
-		node.setAttribute('contenteditable', 'plaintext-only');
-		return {
-			destroy() {
-				node.removeAttribute('contenteditable');
-			}
-		};
-	}
-
 	function syncEditableText(node: HTMLElement, value: string) {
 		const apply = (next: string) => {
 			// The browser mutates this text node directly. Only reconcile when state
@@ -127,16 +118,6 @@
 		};
 		apply(value);
 		return { update: apply };
-	}
-
-	const lineDoms = new Map<number, HTMLElement>();
-	function registerLine(node: HTMLElement, id: number) {
-		lineDoms.set(id, node);
-		return {
-			destroy() {
-				lineDoms.delete(id);
-			}
-		};
 	}
 
 	let lastSerializedBody = body;
@@ -166,18 +147,11 @@
 	}
 
 	function lineElement(index: number): HTMLElement | null {
-		const line = lines[index];
-		if (line) {
-			const el = lineDoms.get(line.id);
-			if (el) return el;
-		}
 		return container?.querySelector(`[data-editor-line="${index}"]`) as HTMLElement | null;
 	}
 
 	function textElement(index: number): HTMLElement | null {
-		const row = lineElement(index);
-		return (row?.querySelector(':scope > [data-line-text]') ??
-			row?.querySelector('[data-line-text]')) as HTMLElement | null;
+		return lineElement(index)?.querySelector('[data-line-text]') as HTMLElement | null;
 	}
 
 	function closestLineElement(node: Node | null): HTMLElement | null {
@@ -188,16 +162,8 @@
 	function lineIndexOfElement(node: Node | null): number | null {
 		const row = closestLineElement(node);
 		if (!row || !container?.contains(row)) return null;
-		if (row.dataset.editorLine !== undefined && row.dataset.editorLine !== '') {
-			const index = Number(row.dataset.editorLine);
-			if (Number.isInteger(index) && index >= 0 && index < lines.length) return index;
-		}
-		const lineId = row.dataset.lineId ? Number(row.dataset.lineId) : NaN;
-		if (Number.isInteger(lineId)) {
-			const idx = lines.findIndex((l) => l.id === lineId);
-			if (idx >= 0) return idx;
-		}
-		return null;
+		const index = Number(row.dataset.editorLine);
+		return Number.isInteger(index) && lines[index] ? index : null;
 	}
 
 	function comparePoints(a: EditorPoint, b: EditorPoint): number {
@@ -241,24 +207,20 @@
 		}
 
 		let local = 0;
-		if (text.firstChild === node && node.nodeType === Node.TEXT_NODE) {
-			local = Math.min(lines[line].text.length, Math.max(0, offset));
-		} else {
-			try {
-				if (text === node || text.contains(node)) {
-					const range = document.createRange();
-					range.selectNodeContents(text);
-					range.setEnd(node, offset);
-					local = Math.min(lines[line].text.length, range.toString().length);
-				} else if (row.contains(node)) {
-					const position = text.compareDocumentPosition(node);
-					local = position & Node.DOCUMENT_POSITION_FOLLOWING ? lines[line].text.length : 0;
-				} else if (node.compareDocumentPosition(text) & Node.DOCUMENT_POSITION_FOLLOWING) {
-					local = lines[line].text.length;
-				}
-			} catch {
-				local = 0;
+		try {
+			if (text === node || text.contains(node)) {
+				const range = document.createRange();
+				range.selectNodeContents(text);
+				range.setEnd(node, offset);
+				local = Math.min(lines[line].text.length, range.toString().length);
+			} else if (row.contains(node)) {
+				const position = text.compareDocumentPosition(node);
+				local = position & Node.DOCUMENT_POSITION_FOLLOWING ? lines[line].text.length : 0;
+			} else if (node.compareDocumentPosition(text) & Node.DOCUMENT_POSITION_FOLLOWING) {
+				local = lines[line].text.length;
 			}
+		} catch {
+			local = 0;
 		}
 		return { line, offset: local };
 	}
@@ -428,13 +390,7 @@
 		else selection?.setBaseAndExtent(start.node, start.offset, end.node, end.offset);
 		const scroller = container.closest('.scrollable') as HTMLElement | null;
 		const row = lineElement(reversed ? startLine : endLine);
-		if (scroller && row) {
-			requestAnimationFrame(() => {
-				if (scroller && row && container?.contains(row)) {
-					revealEditorField(scroller, row);
-				}
-			});
-		}
+		if (scroller && row) revealEditorField(scroller, row);
 	}
 
 	function focusAt(index: number, offset: number | null = 0, lineId: number | null = null) {
@@ -610,27 +566,10 @@
 		if (changed) syncBody();
 	}
 
-	let lastActiveLineIndex: number | null = null;
-	function getActiveLineIndex(event?: Event): number | null {
-		const selection = window.getSelection();
-		const focusIdx = lineIndexOfElement(selection?.focusNode ?? null);
-		if (focusIdx !== null) {
-			lastActiveLineIndex = focusIdx;
-			return focusIdx;
-		}
-		const anchorIdx = lineIndexOfElement(selection?.anchorNode ?? null);
-		if (anchorIdx !== null) {
-			lastActiveLineIndex = anchorIdx;
-			return anchorIdx;
-		}
-		if (event) {
-			const targetIdx = lineIndexOfElement((event.target as Node) ?? null);
-			if (targetIdx !== null) {
-				lastActiveLineIndex = targetIdx;
-				return targetIdx;
-			}
-		}
-		return lastActiveLineIndex;
+	/** Sync the line holding the caret; fall back to a full read if it is unknown. */
+	function syncEditedLine(index = lineIndexOfElement(window.getSelection()?.focusNode ?? null)) {
+		if (index === null) readDomIntoLines();
+		else syncLineFromDom(index);
 	}
 
 	let replacementLine: number | null = null;
@@ -638,16 +577,8 @@
 		if (applyingEdit) return;
 		const event = rawEvent as InputEvent;
 		if (composing || event.isComposing) return;
-		const lineIdx =
-			event.inputType === 'insertReplacementText' && replacementLine !== null
-				? replacementLine
-				: getActiveLineIndex(event);
+		syncEditedLine(event.inputType === 'insertReplacementText' ? replacementLine : undefined);
 		replacementLine = null;
-		if (lineIdx !== null) {
-			syncLineFromDom(lineIdx);
-		} else {
-			readDomIntoLines();
-		}
 	}
 
 	function replaceSelectedRange(range: EditorRange, replacement = ''): EditorPoint {
@@ -716,7 +647,6 @@
 		} else if (
 			(event.inputType === 'insertText' ||
 				event.inputType === 'insertCompositionText' ||
-				event.inputType === 'insertReplacementText' ||
 				event.inputType === 'deleteContentBackward' ||
 				event.inputType === 'deleteContentForward') &&
 			range.collapsed
@@ -1262,13 +1192,10 @@
 		dropTaskFocus();
 	}
 
-	const EMPTY_ROWS: { line: Line; index: number }[] = [];
-	const EMPTY_SET = new Set<number>();
-
 	const focusedGroupRows = $derived.by(() => {
-		if (focusedRootId === null) return EMPTY_ROWS;
+		if (focusedRootId === null) return [] as { line: Line; index: number }[];
 		const rootIndex = lines.findIndex((line) => line.id === focusedRootId);
-		if (rootIndex < 0 || !lines[rootIndex].isCheck) return EMPTY_ROWS;
+		if (rootIndex < 0 || !lines[rootIndex].isCheck) return [];
 		const rows = [{ line: lines[rootIndex], index: rootIndex }];
 		for (let index = rootIndex + 1; index < lines.length; index++) {
 			if (lines[index].isCheck && lines[index].indent === 0) break;
@@ -1277,17 +1204,7 @@
 		return rows;
 	});
 
-	let cachedGroupIds = EMPTY_SET;
-	const focusedGroupIds = $derived.by(() => {
-		if (focusedGroupRows.length === 0) return EMPTY_SET;
-		const nextIds = focusedGroupRows.map(({ line }) => line.id);
-		if (cachedGroupIds.size === nextIds.length && nextIds.every((id) => cachedGroupIds.has(id))) {
-			return cachedGroupIds;
-		}
-		cachedGroupIds = new Set(nextIds);
-		return cachedGroupIds;
-	});
-
+	const focusedGroupIds = $derived(new Set(focusedGroupRows.map(({ line }) => line.id)));
 	const focusedGroupLastId = $derived(focusedGroupRows.at(-1)?.line.id ?? null);
 
 	const isSingleLine = $derived(lines.length === 1);
@@ -1303,29 +1220,20 @@
 
 	const editor = noteBody({ mode: 'editor' });
 
-	const staticMinHClass = css({ minH: '1lh' });
-	const staticDefaultLineClass = noteBody({ mode: 'editor', checked: false, indented: false }).line;
-	const staticDefaultLineTextClass = `${staticMinHClass} ${staticDefaultLineClass}`;
-
-	function lineTextClass(line: Line): string {
-		if (!line.checked && line.indent === 0) return staticDefaultLineTextClass;
-		return `${staticMinHClass} ${noteBody({ mode: 'editor', checked: line.checked, indented: line.indent > 0 }).line}`;
-	}
-
 	function rowClass(line: Line): string {
-		if (focusedRootId === null || !focusedGroupIds.has(line.id)) return editor.row;
+		if (!focusedGroupIds.has(line.id)) return editor.row;
 		const isRoot = line.id === focusedRootId;
 		const isLast = line.id === focusedGroupLastId;
 		return noteBody({ mode: 'editor', focused: true, root: isRoot, last: isLast }).row;
 	}
 
 	function rowStyle(line: Line): string | undefined {
-		if (focusedRootId === null || !focusedGroupIds.has(line.id)) {
-			if (line.indent === 0) return undefined;
-			return `padding-left:calc(${line.indent * 1.25}rem)`;
+		const focused = focusedGroupIds.has(line.id);
+		if (line.indent === 0 && !focused) return undefined;
+		const parts = [`padding-left:calc(${line.indent * 1.25}rem${focused ? ' + 0.5rem' : ''})`];
+		if (focused) {
+			parts.push('margin-left:-0.5rem', 'margin-right:-0.5rem', 'padding-right:0.5rem');
 		}
-		const parts = [`padding-left:calc(${line.indent * 1.25}rem + 0.5rem)`];
-		parts.push('margin-left:-0.5rem', 'margin-right:-0.5rem', 'padding-right:0.5rem');
 		return parts.join(';');
 	}
 </script>
@@ -1333,7 +1241,6 @@
 <div
 	bind:this={container}
 	contenteditable="plaintext-only"
-	use:makeEditable
 	data-body-editor
 	role="textbox"
 	tabindex="0"
@@ -1353,19 +1260,13 @@
 	oncompositionstart={() => (composing = true)}
 	oncompositionend={() => {
 		composing = false;
-		const lineIdx = getActiveLineIndex();
-		if (lineIdx !== null) {
-			syncLineFromDom(lineIdx);
-		} else {
-			readDomIntoLines();
-		}
+		syncEditedLine();
 	}}
 	onblur={handleEditorBlur}
 >
 	{#snippet lineRow(line: Line, index: number)}
 		{@const check = checklist({ checked: line.checked, indented: line.indent > 0 })}
 		<div
-			use:registerLine={line.id}
 			data-editor-line={index}
 			data-line-id={line.id}
 			data-task-row={line.isCheck ? '' : undefined}
@@ -1406,9 +1307,12 @@
 							? placeholder
 							: ''
 					: undefined}
-				class={lineTextClass(line)}
+				class={[
+					css({ minH: '1lh' }),
+					noteBody({ mode: 'editor', checked: line.checked, indented: line.indent > 0 }).line
+				]}
 			></span>
-			{#if focusedRootId !== null && line.id === focusedGroupLastId}
+			{#if line.id === focusedGroupLastId}
 				<button
 					type="button"
 					contenteditable="false"

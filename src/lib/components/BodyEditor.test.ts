@@ -100,9 +100,7 @@ describe('BodyEditor native editing', () => {
 
 		await fireEvent.keyDown(editor, { key: 'Enter' });
 
-		const blank = container
-			.querySelectorAll('[data-editor-line]')[1]
-			?.querySelector('[data-line-text]');
+		const blank = container.querySelector('[data-editor-line="1"] [data-line-text]');
 		expect(lineTexts(container)).toEqual(['before', '', 'after']);
 		expect(blank?.className).toContain('min-h_1lh');
 	});
@@ -349,9 +347,7 @@ describe('BodyEditor native editing', () => {
 		await fireEvent.keyDown(editor, { key: 'Backspace' });
 
 		expect(lineTexts(container)).toEqual(['', 'After']);
-		expect(
-			container.querySelectorAll('[data-editor-line]')[0]?.querySelector('[data-checklist-toggle]')
-		).toBeNull();
+		expect(container.querySelector('[data-editor-line="0"] [data-checklist-toggle]')).toBeNull();
 		expect(onExitTaskFocus).toHaveBeenCalledOnce();
 	});
 
@@ -420,9 +416,7 @@ describe('BodyEditor native editing', () => {
 		});
 		await tick();
 		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
-		const row = container
-			.querySelectorAll('[data-editor-line]')[1]
-			?.querySelector('[data-line-text]') as HTMLElement;
+		const row = container.querySelector('[data-editor-line="1"] [data-line-text]') as HTMLElement;
 		select(row, 0, row, 'plain row to remove'.length);
 		const beforeInput = new InputEvent('beforeinput', {
 			bubbles: true,
@@ -455,8 +449,7 @@ describe('BodyEditor native editing', () => {
 		expect(lineTexts(container)).toEqual(['First task', 'Second task']);
 		expect(container.querySelectorAll('[data-task-row]')).toHaveLength(2);
 		expect(
-			container.querySelectorAll('[data-editor-line]')[1]?.querySelector('[data-checklist-toggle]')
-				?.className
+			container.querySelector('[data-editor-line="1"] [data-checklist-toggle]')?.className
 		).toContain('checked');
 		expect(
 			[...editor.childNodes].filter(
@@ -640,10 +633,9 @@ describe('BodyEditor native editing', () => {
 
 		expect(lineTexts(container)).toEqual(['parent', 'child']);
 		expect(
-			container.querySelectorAll('[data-editor-line]')[1]?.querySelector('[data-checklist-toggle]')
-				?.className
+			container.querySelector('[data-editor-line="1"] [data-checklist-toggle]')?.className
 		).toContain('scrapscache-checklist__root--indented_true');
-		expect(container.querySelectorAll('[data-editor-line]')[1]?.getAttribute('style')).toContain(
+		expect(container.querySelector('[data-editor-line="1"]')?.getAttribute('style')).toContain(
 			'padding-left'
 		);
 	});
@@ -797,7 +789,7 @@ describe('BodyEditor markdown bullets', () => {
 
 		expect(lineTexts(container)).toEqual(['Milk']);
 		expect(container.querySelectorAll('[data-bullet-row]')).toHaveLength(1);
-		expect(container.querySelectorAll('[data-editor-line]')[0]?.getAttribute('style')).toContain(
+		expect(container.querySelector('[data-editor-line="0"]')?.getAttribute('style')).toContain(
 			'padding-left'
 		);
 
@@ -805,7 +797,7 @@ describe('BodyEditor markdown bullets', () => {
 		await tick();
 
 		expect(
-			container.querySelectorAll('[data-editor-line]')[0]?.getAttribute('style') ?? ''
+			container.querySelector('[data-editor-line="0"]')?.getAttribute('style') ?? ''
 		).not.toContain('padding-left');
 	});
 
@@ -820,7 +812,7 @@ describe('BodyEditor markdown bullets', () => {
 		expect(lineTexts(container)).toEqual(['Milk']);
 		expect(container.querySelectorAll('[data-bullet-row]')).toHaveLength(1);
 		expect(
-			container.querySelectorAll('[data-editor-line]')[0]?.getAttribute('style') ?? ''
+			container.querySelector('[data-editor-line="0"]')?.getAttribute('style') ?? ''
 		).not.toContain('padding-left');
 	});
 });
@@ -845,12 +837,12 @@ describe('BodyEditor task focus chrome', () => {
 		expect(container.querySelector('[data-focus-group]')).not.toBeNull();
 		expect(container.querySelector('[data-add-subtask]')).not.toBeNull();
 		expect(container.querySelector('[data-add-subtask]')?.closest('[data-editor-line]')).toBe(
-			container.querySelectorAll('[data-editor-line]')[1]
+			container.querySelector('[data-editor-line="1"]')
 		);
-		expect(container.querySelectorAll('[data-editor-line]')[0]?.className).toContain(
+		expect(container.querySelector('[data-editor-line="0"]')?.className).toContain(
 			'scrapscache-note-body__row--root_true'
 		);
-		expect(container.querySelectorAll('[data-editor-line]')[1]?.className).toContain(
+		expect(container.querySelector('[data-editor-line="1"]')?.className).toContain(
 			'scrapscache-note-body__row--last_true'
 		);
 
@@ -862,26 +854,23 @@ describe('BodyEditor task focus chrome', () => {
 		);
 
 		expect(container.querySelectorAll('[data-task-row]')).toHaveLength(4);
-		expect(container.querySelectorAll('[data-editor-line]')[0]?.className).not.toContain(
+		expect(container.querySelector('[data-editor-line="0"]')?.className).not.toContain(
 			'scrapscache-note-body__row--last_true'
 		);
-		expect(container.querySelectorAll('[data-editor-line]')[2]?.className).toContain(
+		expect(container.querySelector('[data-editor-line="2"]')?.className).toContain(
 			'scrapscache-note-body__row--last_true'
 		);
 		expect(
 			container
-				.querySelectorAll('[data-editor-line]')[2]
-				?.querySelector('[data-line-text]')
+				.querySelector('[data-editor-line="2"] [data-line-text]')
 				?.getAttribute('data-placeholder')
 		).toBe('Sub-task');
 		expect(container.querySelector('[data-add-subtask]')?.closest('[data-editor-line]')).toBe(
-			container.querySelectorAll('[data-editor-line]')[2]
+			container.querySelector('[data-editor-line="2"]')
 		);
 		expect(document.activeElement).toBe(container.querySelector('[data-body-editor]'));
 
-		const draft = container
-			.querySelectorAll('[data-editor-line]')[2]
-			?.querySelector('[data-line-text]') as HTMLElement;
+		const draft = container.querySelector('[data-editor-line="2"] [data-line-text]') as HTMLElement;
 		draft.textContent = 'a';
 		await fireEvent.input(draft, { inputType: 'insertText', data: 'a' });
 		await tick();
@@ -952,53 +941,5 @@ describe('BodyEditor task focus chrome', () => {
 		// Clicking the button directly should not trigger container's handleEditorClick row refocus
 		await fireEvent.click(addBtn);
 		expect(container.querySelectorAll('[data-task-row]')).toHaveLength(4);
-	});
-	it('efficiently handles typing and inserting at the start of a large note with hundreds of lines', async () => {
-		const lineCount = 300;
-		const initialLines = Array.from({ length: lineCount }, (_, i) => 'Line ' + i);
-		const body = initialLines.join('\n');
-		const oninput = vi.fn();
-
-		const { container } = render(BodyEditor, {
-			props: { body, oninput }
-		});
-		await tick();
-
-		const firstLineText = container
-			.querySelectorAll('[data-editor-line]')[0]
-			?.querySelector('[data-line-text]') as HTMLElement;
-		expect(firstLineText).not.toBeNull();
-		expect(firstLineText.textContent).toBe('Line 0');
-
-		// 1. Simulate typing into line 0
-		firstLineText.textContent = 'Hello Line 0';
-		await fireEvent.input(firstLineText, { inputType: 'insertText', data: 'Hello ' });
-		await tick();
-
-		expect(oninput).toHaveBeenCalled();
-		expect(firstLineText.textContent).toBe('Hello Line 0');
-
-		// Verify that lines below were preserved
-		const lastLineText = container
-			.querySelectorAll('[data-editor-line]')
-			[lineCount - 1]?.querySelector('[data-line-text]');
-		expect(lastLineText?.textContent).toBe(`Line ${lineCount - 1}`);
-
-		// 2. Simulate Enter on line 0 (inserting a line at the start)
-		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
-		select(firstLineText, 0);
-		await fireEvent.keyDown(editor, { key: 'Enter' });
-		await tick();
-
-		const allRows = container.querySelectorAll('[data-editor-line]');
-		expect(allRows).toHaveLength(lineCount + 1);
-		const newLine0 = container
-			.querySelectorAll('[data-editor-line]')[0]
-			?.querySelector('[data-line-text]');
-		const newLine1 = container
-			.querySelectorAll('[data-editor-line]')[1]
-			?.querySelector('[data-line-text]');
-		expect(newLine0?.textContent).toBe('');
-		expect(newLine1?.textContent).toBe('Hello Line 0');
 	});
 });

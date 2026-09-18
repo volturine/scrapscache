@@ -93,8 +93,7 @@
 
 		// Match any contenteditable host (including plaintext-only). A strict ="true"
 		// check lets page clicks steal focus and collapse multi-line iOS selections.
-		if (el?.closest('button, input, textarea, select, a, [contenteditable], [data-body-editor]'))
-			return;
+		if (el?.closest('button, input, textarea, select, a, [contenteditable]')) return;
 		const active = document.activeElement;
 		if (active instanceof HTMLElement && editorDialog?.contains(active)) {
 			// Android keeps a contenteditable focused after its software-keyboard
@@ -112,9 +111,7 @@
 		if (!isOpen || !editorDialog || !editorScroller) return;
 		const focused = document.activeElement;
 		if (!(focused instanceof HTMLElement) || !editorDialog.contains(focused)) return;
-		let field = focused.closest(
-			'input, textarea, select, [contenteditable], [data-body-editor]'
-		) as HTMLElement | null;
+		let field = focused.closest('input, textarea, select, [contenteditable]') as HTMLElement | null;
 		if (!field) return;
 		if (field.matches('[data-body-editor]')) {
 			const anchor = window.getSelection()?.anchorNode;
@@ -195,9 +192,7 @@
 
 	function editorFieldFromTarget(target: EventTarget | null): HTMLElement | null {
 		if (!(target instanceof Element) || !editorScroller) return null;
-		const field = target.closest(
-			'textarea, input[type="text"], [contenteditable], [data-body-editor]'
-		);
+		const field = target.closest('textarea, input[type="text"], [contenteditable]');
 		return field instanceof HTMLElement && editorScroller.contains(field) ? field : null;
 	}
 

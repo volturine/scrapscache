@@ -426,13 +426,6 @@ const noteCardRecipe = defineSlotRecipe({
 					boxShadow: 'md'
 				}
 			}
-		},
-		trashed: {
-			true: {
-				cardBody: {
-					opacity: 0.65
-				}
-			}
 		}
 	}
 });

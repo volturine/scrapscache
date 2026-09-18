@@ -305,21 +305,27 @@
 	}
 
 	function historyEntry(range = editorRange()): HistoryEntry {
-		if (syncBodyTimer) {
-			clearTimeout(syncBodyTimer);
-			syncBodyTimer = null;
-			lastSerializedBody = serializeLines(lines.filter((line) => line.id !== draftTaskId));
-			body = lastSerializedBody;
-		}
+		const snapshotBody = syncBodyTimer
+			? serializeLines(lines.filter((line) => line.id !== draftTaskId))
+			: lastSerializedBody;
 		const fallbackLine = Math.max(0, lines.length - 1);
 		const fallbackOffset = lines[fallbackLine]?.text.length ?? 0;
 		return {
-			body: lastSerializedBody,
+			body: snapshotBody,
 			startLine: range?.start.line ?? fallbackLine,
 			startOffset: range?.start.offset ?? fallbackOffset,
 			endLine: range?.end.line ?? fallbackLine,
 			endOffset: range?.end.offset ?? fallbackOffset
 		};
+	}
+
+	let lastTypingTime = 0;
+	function recordTypingEdit(range = editorRange()) {
+		const now = Date.now();
+		if (now - lastTypingTime > 1200) {
+			rememberEdit(range);
+		}
+		lastTypingTime = now;
 	}
 
 	function rememberEdit(range = editorRange()) {
@@ -391,7 +397,13 @@
 		else selection?.setBaseAndExtent(start.node, start.offset, end.node, end.offset);
 		const scroller = container.closest('.scrollable') as HTMLElement | null;
 		const row = lineElement(reversed ? startLine : endLine);
-		if (scroller && row) revealEditorField(scroller, row);
+		if (scroller && row) {
+			requestAnimationFrame(() => {
+				if (scroller && row && container?.contains(row)) {
+					revealEditorField(scroller, row);
+				}
+			});
+		}
 	}
 
 	function focusAt(index: number, offset: number | null = 0, lineId: number | null = null) {
@@ -642,7 +654,11 @@
 		const event = rawEvent as InputEvent;
 		const range = editorRange();
 		if (!range) return;
-		if (event.inputType.startsWith('insert') || event.inputType.startsWith('delete')) {
+		if (event.inputType === 'insertParagraph' || event.inputType === 'insertLineBreak') {
+			// handled below
+		} else if (event.inputType === 'insertText' && range.collapsed) {
+			recordTypingEdit(range);
+		} else if (event.inputType.startsWith('insert') || event.inputType.startsWith('delete')) {
 			rememberEdit(range);
 		}
 		if (range.collapsed) {
@@ -1210,22 +1226,33 @@
 
 	const focusedGroupLastId = $derived(focusedGroupRows.at(-1)?.line.id ?? null);
 
+	const isSingleLine = $derived(lines.length === 1);
+
 	const editor = noteBody({ mode: 'editor' });
 
+	const staticMinHClass = css({ minH: '1lh' });
+	const staticDefaultLineClass = noteBody({ mode: 'editor', checked: false, indented: false }).line;
+	const staticDefaultLineTextClass = `${staticMinHClass} ${staticDefaultLineClass}`;
+
+	function lineTextClass(line: Line): string {
+		if (!line.checked && line.indent === 0) return staticDefaultLineTextClass;
+		return `${staticMinHClass} ${noteBody({ mode: 'editor', checked: line.checked, indented: line.indent > 0 }).line}`;
+	}
+
 	function rowClass(line: Line): string {
-		if (!focusedGroupIds.has(line.id)) return editor.row;
+		if (focusedRootId === null || !focusedGroupIds.has(line.id)) return editor.row;
 		const isRoot = line.id === focusedRootId;
 		const isLast = line.id === focusedGroupLastId;
 		return noteBody({ mode: 'editor', focused: true, root: isRoot, last: isLast }).row;
 	}
 
 	function rowStyle(line: Line): string | undefined {
-		const focused = focusedGroupIds.has(line.id);
-		if (line.indent === 0 && !focused) return undefined;
-		const parts = [`padding-left:calc(${line.indent * 1.25}rem${focused ? ' + 0.5rem' : ''})`];
-		if (focused) {
-			parts.push('margin-left:-0.5rem', 'margin-right:-0.5rem', 'padding-right:0.5rem');
+		if (focusedRootId === null || !focusedGroupIds.has(line.id)) {
+			if (line.indent === 0) return undefined;
+			return `padding-left:calc(${line.indent * 1.25}rem)`;
 		}
+		const parts = [`padding-left:calc(${line.indent * 1.25}rem + 0.5rem)`];
+		parts.push('margin-left:-0.5rem', 'margin-right:-0.5rem', 'padding-right:0.5rem');
 		return parts.join(';');
 	}
 </script>
@@ -1296,16 +1323,13 @@
 						? line.indent > 0
 							? 'Sub-task'
 							: 'Task'
-						: lines.length === 1
+						: isSingleLine
 							? placeholder
 							: ''
 					: undefined}
-				class={[
-					css({ minH: '1lh' }),
-					noteBody({ mode: 'editor', checked: line.checked, indented: line.indent > 0 }).line
-				]}
+				class={lineTextClass(line)}
 			></span>
-			{#if line.id === focusedGroupLastId}
+			{#if focusedRootId !== null && line.id === focusedGroupLastId}
 				<button
 					type="button"
 					contenteditable="false"

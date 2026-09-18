@@ -43,7 +43,7 @@
 		isBullet: boolean;
 		indent: number;
 	};
-	type EditorPoint = { line: number; offset: number; global: number };
+	type EditorPoint = { line: number; offset: number };
 	type EditorRange = { start: EditorPoint; end: EditorPoint; collapsed: boolean };
 	type HistoryEntry = {
 		body: string;
@@ -125,17 +125,24 @@
 		return { update: apply };
 	}
 
+	let lastSerializedBody = body;
 	function syncBody() {
-		body = serializeLines(lines.filter((line) => line.id !== draftTaskId));
+		lastSerializedBody = serializeLines(lines.filter((line) => line.id !== draftTaskId));
+		body = lastSerializedBody;
 		oninput?.();
 	}
 
 	function lineElement(index: number): HTMLElement | null {
-		return container?.querySelector(`[data-editor-line="${index}"]`) as HTMLElement | null;
+		if (!container) return null;
+		const child = container.children[index] as HTMLElement | undefined;
+		if (child?.dataset?.editorLine === String(index)) return child;
+		return container.querySelector(`[data-editor-line="${index}"]`) as HTMLElement | null;
 	}
 
 	function textElement(index: number): HTMLElement | null {
-		return lineElement(index)?.querySelector('[data-line-text]') as HTMLElement | null;
+		const row = lineElement(index);
+		return (row?.querySelector(':scope > [data-line-text]') ??
+			row?.querySelector('[data-line-text]')) as HTMLElement | null;
 	}
 
 	function closestLineElement(node: Node | null): HTMLElement | null {
@@ -143,10 +150,16 @@
 		return element?.closest('[data-editor-line]') as HTMLElement | null;
 	}
 
-	function globalOffset(line: number, offset: number): number {
-		let total = 0;
-		for (let index = 0; index < line; index++) total += lines[index].text.length + 1;
-		return total + offset;
+	function lineIndexOfElement(node: Node | null): number | null {
+		const row = closestLineElement(node);
+		if (!row || !container?.contains(row)) return null;
+		const index = Number(row.dataset.editorLine);
+		return Number.isInteger(index) && index >= 0 && index < lines.length ? index : null;
+	}
+
+	function comparePoints(a: EditorPoint, b: EditorPoint): number {
+		if (a.line !== b.line) return a.line - b.line;
+		return a.offset - b.offset;
 	}
 
 	function pointFromDom(node: Node | null, offset: number): EditorPoint | null {
@@ -156,9 +169,9 @@
 			if (childIndex >= lines.length) {
 				const line = Math.max(0, lines.length - 1);
 				const end = lines[line]?.text.length ?? 0;
-				return { line, offset: end, global: globalOffset(line, end) };
+				return { line, offset: end };
 			}
-			return { line: childIndex, offset: 0, global: globalOffset(childIndex, 0) };
+			return { line: childIndex, offset: 0 };
 		}
 
 		const row = closestLineElement(node);
@@ -170,26 +183,30 @@
 
 		if (node === row) {
 			const local = offset >= row.childNodes.length ? lines[line].text.length : 0;
-			return { line, offset: local, global: globalOffset(line, local) };
+			return { line, offset: local };
 		}
 
 		let local = 0;
-		try {
-			if (text === node || text.contains(node)) {
-				const range = document.createRange();
-				range.selectNodeContents(text);
-				range.setEnd(node, offset);
-				local = Math.min(lines[line].text.length, range.toString().length);
-			} else if (row.contains(node)) {
-				const position = text.compareDocumentPosition(node);
-				local = position & Node.DOCUMENT_POSITION_FOLLOWING ? lines[line].text.length : 0;
-			} else if (node.compareDocumentPosition(text) & Node.DOCUMENT_POSITION_FOLLOWING) {
-				local = lines[line].text.length;
+		if (text.firstChild === node && node.nodeType === Node.TEXT_NODE) {
+			local = Math.min(lines[line].text.length, Math.max(0, offset));
+		} else {
+			try {
+				if (text === node || text.contains(node)) {
+					const range = document.createRange();
+					range.selectNodeContents(text);
+					range.setEnd(node, offset);
+					local = Math.min(lines[line].text.length, range.toString().length);
+				} else if (row.contains(node)) {
+					const position = text.compareDocumentPosition(node);
+					local = position & Node.DOCUMENT_POSITION_FOLLOWING ? lines[line].text.length : 0;
+				} else if (node.compareDocumentPosition(text) & Node.DOCUMENT_POSITION_FOLLOWING) {
+					local = lines[line].text.length;
+				}
+			} catch {
+				local = 0;
 			}
-		} catch {
-			local = 0;
 		}
-		return { line, offset: local, global: globalOffset(line, local) };
+		return { line, offset: local };
 	}
 
 	function rangeOverlapsLine(nativeRange: Range, row: Element): boolean {
@@ -213,16 +230,16 @@
 		}
 	}
 
-	function intersectingLines(selection: Selection): number[] {
+	function intersectingLines(selection: Selection, startLine: number, endLine: number): number[] {
 		if (!container || selection.rangeCount === 0) return [];
 		const nativeRange = selection.getRangeAt(0);
 		const indices: number[] = [];
-		for (const row of container.querySelectorAll('[data-editor-line]')) {
-			if (!rangeOverlapsLine(nativeRange, row)) continue;
-			const index = Number((row as HTMLElement).dataset.editorLine);
-			// Stay inside the model: pointFromDom rejects unknown rows too, and an
-			// out-of-range end line would make selectedText throw mid-copy.
-			if (Number.isInteger(index) && lines[index]) indices.push(index);
+		const min = Math.max(0, Math.min(startLine, endLine));
+		const max = Math.min(lines.length - 1, Math.max(startLine, endLine));
+		for (let index = min; index <= max; index++) {
+			const row = lineElement(index);
+			if (!row || !rangeOverlapsLine(nativeRange, row)) continue;
+			if (lines[index]) indices.push(index);
 		}
 		return indices;
 	}
@@ -230,45 +247,45 @@
 	function editorRange(): EditorRange | null {
 		const selection = window.getSelection();
 		if (!selection || selection.rangeCount === 0) return null;
+		if (selection.isCollapsed) {
+			const point = pointFromDom(selection.focusNode, selection.focusOffset);
+			if (!point) return null;
+			return { start: point, end: point, collapsed: true };
+		}
 		const anchor = pointFromDom(selection.anchorNode, selection.anchorOffset);
 		const focus = pointFromDom(selection.focusNode, selection.focusOffset);
-		let start: EditorPoint | null = null;
-		let end: EditorPoint | null = null;
-		if (anchor && focus) {
-			[start, end] = anchor.global <= focus.global ? [anchor, focus] : [focus, anchor];
-		}
-		const collapsed = !!start && !!end && start.global === end.global;
+		if (!anchor || !focus) return null;
+		let [start, end] = comparePoints(anchor, focus) <= 0 ? [anchor, focus] : [focus, anchor];
+		const collapsed = start.line === end.line && start.offset === end.offset;
 		if (!collapsed) {
-			const indices = intersectingLines(selection);
+			const indices = intersectingLines(selection, start.line, end.line);
 			if (indices.length > 0) {
 				const first = indices[0];
 				const last = indices[indices.length - 1];
-				if (!start || start.line !== first)
-					start = { line: first, offset: 0, global: globalOffset(first, 0) };
-				if (!end || end.line !== last) {
+				if (start.line !== first) start = { line: first, offset: 0 };
+				if (end.line !== last) {
 					const offset = lines[last]?.text.length ?? 0;
-					end = { line: last, offset, global: globalOffset(last, offset) };
+					end = { line: last, offset };
 				}
-			} else if (start && end && start.line < end.line) {
+			} else if (start.line < end.line) {
 				if (start.offset >= (lines[start.line]?.text.length ?? 0)) {
-					start = { line: start.line + 1, offset: 0, global: globalOffset(start.line + 1, 0) };
+					start = { line: start.line + 1, offset: 0 };
 				}
 				if (end.offset === 0 && end.line > start.line) {
 					const line = end.line - 1;
 					const offset = lines[line]?.text.length ?? 0;
-					end = { line, offset, global: globalOffset(line, offset) };
+					end = { line, offset };
 				}
 			}
 		}
-		if (!start || !end) return null;
-		return { start, end, collapsed: start.global === end.global };
+		return { start, end, collapsed };
 	}
 
 	function historyEntry(range = editorRange()): HistoryEntry {
 		const fallbackLine = Math.max(0, lines.length - 1);
 		const fallbackOffset = lines[fallbackLine]?.text.length ?? 0;
 		return {
-			body: serializeLines(lines.filter((line) => line.id !== draftTaskId)),
+			body: lastSerializedBody,
 			startLine: range?.start.line ?? fallbackLine,
 			startOffset: range?.start.offset ?? fallbackOffset,
 			endLine: range?.end.line ?? fallbackLine,
@@ -350,7 +367,7 @@
 
 	function focusAt(index: number, offset: number | null = 0, lineId: number | null = null) {
 		let resolved = index;
-		if (lineId !== null) {
+		if (lineId !== null && lines[index]?.id !== lineId) {
 			const byId = lines.findIndex((line) => line.id === lineId);
 			if (byId >= 0) resolved = byId;
 		}
@@ -360,10 +377,10 @@
 
 	function selectionIsReversed(): boolean {
 		const selection = window.getSelection();
-		if (!selection || selection.rangeCount === 0) return false;
+		if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return false;
 		const anchor = pointFromDom(selection.anchorNode, selection.anchorOffset);
 		const focus = pointFromDom(selection.focusNode, selection.focusOffset);
-		return !!anchor && !!focus && anchor.global > focus.global;
+		return !!anchor && !!focus && comparePoints(anchor, focus) > 0;
 	}
 
 	async function focusAfterRender(index: number, offset: number, lineId: number | null = null) {
@@ -440,11 +457,56 @@
 		if (scroller) scroller.scrollTop += row.getBoundingClientRect().top - anchorTop;
 	}
 
+	function syncLineFromDom(index: number): boolean {
+		const line = lines[index];
+		if (!line) return false;
+		const rawText = textElement(index)?.textContent ?? '';
+		const text = rawText.replaceAll('\u00a0', ' ');
+		if (line.text === text) return false;
+
+		line.text = text;
+		if (!line.isCheck && CHECK_RE.test(line.text)) {
+			const parsed = parseCheckLine(line.text);
+			if (parsed) {
+				line.isCheck = true;
+				line.isBullet = false;
+				line.checked = parsed.checked;
+				line.indent = Math.min(MAX_TASK_INDENT, parsed.indent);
+				line.text = parsed.text;
+				ignoredFocusLine = null;
+				onFocusTask?.(index);
+				flushSync();
+				focusAt(index, line.text.length, line.id);
+				syncBody();
+				return true;
+			}
+		}
+		if (!line.isCheck && !line.isBullet && BULLET_RE.test(line.text)) {
+			const parsed = parseBulletLine(line.text);
+			if (parsed) {
+				line.isBullet = true;
+				line.indent = Math.min(MAX_LIST_INDENT, parsed.indent);
+				line.text = parsed.text;
+				flushSync();
+				focusAt(index, line.text.length, line.id);
+				syncBody();
+				return true;
+			}
+		}
+		if (line.id === draftTaskId && line.text.trim()) draftTaskId = null;
+		syncBody();
+		return true;
+	}
+
 	function readDomIntoLines() {
 		if (!container) return;
+		let changed = false;
 		for (let index = 0; index < lines.length; index++) {
-			const text = textElement(index)?.textContent ?? '';
-			lines[index].text = text.replaceAll('\u00a0', ' ');
+			const text = (textElement(index)?.textContent ?? '').replaceAll('\u00a0', ' ');
+			if (lines[index].text !== text) {
+				lines[index].text = text;
+				changed = true;
+			}
 			if (!lines[index].isCheck && CHECK_RE.test(lines[index].text)) {
 				const parsed = parseCheckLine(lines[index].text);
 				if (parsed) {
@@ -457,6 +519,7 @@
 					onFocusTask?.(index);
 					flushSync();
 					focusAt(index, lines[index].text.length, lines[index].id);
+					changed = true;
 				}
 			}
 			if (!lines[index].isCheck && !lines[index].isBullet && BULLET_RE.test(lines[index].text)) {
@@ -467,18 +530,35 @@
 					lines[index].text = parsed.text;
 					flushSync();
 					focusAt(index, lines[index].text.length, lines[index].id);
+					changed = true;
 				}
 			}
 			if (lines[index].id === draftTaskId && lines[index].text.trim()) draftTaskId = null;
 		}
-		syncBody();
+		if (changed) syncBody();
+	}
+
+	function getActiveLineIndex(event: Event): number | null {
+		const selection = window.getSelection();
+		const focusIdx = lineIndexOfElement(selection?.focusNode ?? null);
+		if (focusIdx !== null) return focusIdx;
+		const anchorIdx = lineIndexOfElement(selection?.anchorNode ?? null);
+		if (anchorIdx !== null) return anchorIdx;
+		const targetIdx = lineIndexOfElement((event.target as Node) ?? null);
+		if (targetIdx !== null) return targetIdx;
+		return null;
 	}
 
 	function handleInput(rawEvent: Event) {
 		if (applyingEdit) return;
 		const event = rawEvent as InputEvent;
 		if (composing || event.isComposing) return;
-		readDomIntoLines();
+		const lineIdx = getActiveLineIndex(event);
+		if (lineIdx !== null) {
+			syncLineFromDom(lineIdx);
+		} else {
+			readDomIntoLines();
+		}
 	}
 
 	function replaceSelectedRange(range: EditorRange, replacement = ''): EditorPoint {
@@ -493,14 +573,13 @@
 				if (lines.length === 0) lines.push(newLine());
 				const nextLine = Math.min(start.line, lines.length - 1);
 				syncBody();
-				return { line: nextLine, offset: 0, global: globalOffset(nextLine, 0) };
+				return { line: nextLine, offset: 0 };
 			}
 			line.text = line.text.slice(0, start.offset) + replacement + line.text.slice(end.offset);
 			syncBody();
 			return {
 				line: start.line,
-				offset: start.offset + replacement.length,
-				global: start.global + replacement.length
+				offset: start.offset + replacement.length
 			};
 		}
 
@@ -514,7 +593,7 @@
 			if (lines.length === 0) lines.push(newLine());
 			const nextLine = Math.min(start.line, lines.length - 1);
 			syncBody();
-			return { line: nextLine, offset: 0, global: globalOffset(nextLine, 0) };
+			return { line: nextLine, offset: 0 };
 		}
 
 		first.text = merged;
@@ -522,8 +601,7 @@
 		syncBody();
 		return {
 			line: start.line,
-			offset: start.offset + replacement.length,
-			global: start.global + replacement.length
+			offset: start.offset + replacement.length
 		};
 	}
 
@@ -538,12 +616,30 @@
 		if (event.inputType.startsWith('insert') || event.inputType.startsWith('delete')) {
 			rememberEdit(range);
 		}
-		if (range.collapsed || !event.inputType.startsWith('delete')) return;
-		event.preventDefault();
-		const caret = replaceSelectedRange(range);
-		const targetRoot = parentTaskIndex(caret.line);
-		if (lines[targetRoot]?.id !== focusedRootId) focusTask(caret.line);
-		focusAt(caret.line, caret.offset, lines[caret.line]?.id ?? null);
+		if (range.collapsed) {
+			if (event.inputType === 'insertParagraph' || event.inputType === 'insertLineBreak') {
+				event.preventDefault();
+				rememberEdit(range);
+				handleEnter(range);
+			}
+			return;
+		}
+		if (event.inputType.startsWith('delete')) {
+			event.preventDefault();
+			const caret = replaceSelectedRange(range);
+			const targetRoot = parentTaskIndex(caret.line);
+			if (lines[targetRoot]?.id !== focusedRootId) focusTask(caret.line);
+			focusAt(caret.line, caret.offset, lines[caret.line]?.id ?? null);
+			return;
+		}
+		if (event.inputType.startsWith('insert')) {
+			event.preventDefault();
+			const text = event.data ?? '';
+			const caret = replaceRangeWithText(range, text);
+			const targetRoot = parentTaskIndex(caret.line);
+			if (lines[targetRoot]?.id !== focusedRootId) focusTask(caret.line);
+			focusAt(caret.line, caret.offset, lines[caret.line]?.id ?? null);
+		}
 	}
 
 	function selectedText(range: EditorRange): string {
@@ -611,8 +707,7 @@
 			syncBody();
 			return {
 				line: range.start.line,
-				offset: parsedText.length,
-				global: globalOffset(range.start.line, parsedText.length)
+				offset: parsedText.length
 			};
 		}
 
@@ -675,8 +770,7 @@
 		const line = range.start.line + inserted.length - 1;
 		return {
 			line,
-			offset: parts.at(-1)?.length ?? 0,
-			global: globalOffset(line, parts.at(-1)?.length ?? 0)
+			offset: parts.at(-1)?.length ?? 0
 		};
 	}
 
@@ -1056,10 +1150,13 @@
 		dropTaskFocus();
 	}
 
+	const EMPTY_ROWS: { line: Line; index: number }[] = [];
+	const EMPTY_SET = new Set<number>();
+
 	const focusedGroupRows = $derived.by(() => {
-		if (focusedRootId === null) return [] as { line: Line; index: number }[];
+		if (focusedRootId === null) return EMPTY_ROWS;
 		const rootIndex = lines.findIndex((line) => line.id === focusedRootId);
-		if (rootIndex < 0 || !lines[rootIndex].isCheck) return [];
+		if (rootIndex < 0 || !lines[rootIndex].isCheck) return EMPTY_ROWS;
 		const rows = [{ line: lines[rootIndex], index: rootIndex }];
 		for (let index = rootIndex + 1; index < lines.length; index++) {
 			if (lines[index].isCheck && lines[index].indent === 0) break;
@@ -1068,7 +1165,17 @@
 		return rows;
 	});
 
-	const focusedGroupIds = $derived(new Set(focusedGroupRows.map(({ line }) => line.id)));
+	let cachedGroupIds = EMPTY_SET;
+	const focusedGroupIds = $derived.by(() => {
+		if (focusedGroupRows.length === 0) return EMPTY_SET;
+		const nextIds = focusedGroupRows.map(({ line }) => line.id);
+		if (cachedGroupIds.size === nextIds.length && nextIds.every((id) => cachedGroupIds.has(id))) {
+			return cachedGroupIds;
+		}
+		cachedGroupIds = new Set(nextIds);
+		return cachedGroupIds;
+	});
+
 	const focusedGroupLastId = $derived(focusedGroupRows.at(-1)?.line.id ?? null);
 
 	const editor = noteBody({ mode: 'editor' });

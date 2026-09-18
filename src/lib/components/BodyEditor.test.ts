@@ -863,4 +863,48 @@ describe('BodyEditor task focus chrome', () => {
 		await fireEvent.click(addBtn);
 		expect(container.querySelectorAll('[data-task-row]')).toHaveLength(4);
 	});
+	it('efficiently handles typing and inserting at the start of a large note with hundreds of lines', async () => {
+		const lineCount = 300;
+		const initialLines = Array.from({ length: lineCount }, (_, i) => 'Line ' + i);
+		const body = initialLines.join('\n');
+		const oninput = vi.fn();
+
+		const { container } = render(BodyEditor, {
+			props: { body, oninput }
+		});
+		await tick();
+
+		const firstLineText = container.querySelector(
+			'[data-editor-line="0"] [data-line-text]'
+		) as HTMLElement;
+		expect(firstLineText).not.toBeNull();
+		expect(firstLineText.textContent).toBe('Line 0');
+
+		// 1. Simulate typing into line 0
+		firstLineText.textContent = 'Hello Line 0';
+		await fireEvent.input(firstLineText, { inputType: 'insertText', data: 'Hello ' });
+		await tick();
+
+		expect(oninput).toHaveBeenCalled();
+		expect(firstLineText.textContent).toBe('Hello Line 0');
+
+		// Verify that lines below were preserved
+		const lastLineText = container.querySelector(
+			`[data-editor-line="${lineCount - 1}"] [data-line-text]`
+		);
+		expect(lastLineText?.textContent).toBe(`Line ${lineCount - 1}`);
+
+		// 2. Simulate Enter on line 0 (inserting a line at the start)
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		select(firstLineText, 0);
+		await fireEvent.keyDown(editor, { key: 'Enter' });
+		await tick();
+
+		const allRows = container.querySelectorAll('[data-editor-line]');
+		expect(allRows).toHaveLength(lineCount + 1);
+		const newLine0 = container.querySelector('[data-editor-line="0"] [data-line-text]');
+		const newLine1 = container.querySelector('[data-editor-line="1"] [data-line-text]');
+		expect(newLine0?.textContent).toBe('');
+		expect(newLine1?.textContent).toBe('Hello Line 0');
+	});
 });

@@ -432,7 +432,6 @@
 			const byId = lines.findIndex((line) => line.id === lineId);
 			if (byId >= 0) resolved = byId;
 		}
-		ensureWindowNear(resolved);
 		const caret = offset ?? lines[resolved]?.text.length ?? 0;
 		selectAt(resolved, caret);
 	}
@@ -460,7 +459,6 @@
 	}
 
 	function focusTask(index: number) {
-		ensureWindowNear(index);
 		ignoredFocusLine = null;
 		const line = lines[index];
 		if (!line?.isCheck) {
@@ -601,15 +599,27 @@
 		if (changed) syncBody();
 	}
 
-	function getActiveLineIndex(event: Event): number | null {
+	let lastActiveLineIndex: number | null = null;
+	function getActiveLineIndex(event?: Event): number | null {
 		const selection = window.getSelection();
 		const focusIdx = lineIndexOfElement(selection?.focusNode ?? null);
-		if (focusIdx !== null) return focusIdx;
+		if (focusIdx !== null) {
+			lastActiveLineIndex = focusIdx;
+			return focusIdx;
+		}
 		const anchorIdx = lineIndexOfElement(selection?.anchorNode ?? null);
-		if (anchorIdx !== null) return anchorIdx;
-		const targetIdx = lineIndexOfElement((event.target as Node) ?? null);
-		if (targetIdx !== null) return targetIdx;
-		return null;
+		if (anchorIdx !== null) {
+			lastActiveLineIndex = anchorIdx;
+			return anchorIdx;
+		}
+		if (event) {
+			const targetIdx = lineIndexOfElement((event.target as Node) ?? null);
+			if (targetIdx !== null) {
+				lastActiveLineIndex = targetIdx;
+				return targetIdx;
+			}
+		}
+		return lastActiveLineIndex;
 	}
 
 	function handleInput(rawEvent: Event) {
@@ -618,7 +628,6 @@
 		if (composing || event.isComposing) return;
 		const lineIdx = getActiveLineIndex(event);
 		if (lineIdx !== null) {
-			ensureWindowNear(lineIdx);
 			syncLineFromDom(lineIdx);
 		} else {
 			readDomIntoLines();
@@ -679,7 +688,14 @@
 		if (!range) return;
 		if (event.inputType === 'insertParagraph' || event.inputType === 'insertLineBreak') {
 			// handled below
-		} else if (event.inputType === 'insertText' && range.collapsed) {
+		} else if (
+			(event.inputType === 'insertText' ||
+				event.inputType === 'insertCompositionText' ||
+				event.inputType === 'insertReplacementText' ||
+				event.inputType === 'deleteContentBackward' ||
+				event.inputType === 'deleteContentForward') &&
+			range.collapsed
+		) {
 			recordTypingEdit(range);
 		} else if (event.inputType.startsWith('insert') || event.inputType.startsWith('delete')) {
 			rememberEdit(range);
@@ -1111,18 +1127,6 @@
 		return true;
 	}
 
-	function handleKeyup(event: KeyboardEvent) {
-		if (
-			event.key.startsWith('Arrow') ||
-			event.key === 'Home' ||
-			event.key === 'End' ||
-			event.key.startsWith('Page')
-		) {
-			const range = editorRange();
-			if (range) ensureWindowNear(range.start.line);
-		}
-	}
-
 	function handleKeydown(event: KeyboardEvent) {
 		const primaryModifier = event.ctrlKey || event.metaKey;
 		if (primaryModifier && !event.altKey && event.key.toLowerCase() === 'z') {
@@ -1263,62 +1267,38 @@
 
 	const isSingleLine = $derived(lines.length === 1);
 
-	const LARGE_NOTE_THRESHOLD = 80;
-	const WINDOW_RADIUS = 40;
-
-	let activeWindowCenter = $state(0);
-
-	const activeWindowStart = $derived(
-		lines.length <= LARGE_NOTE_THRESHOLD ? 0 : Math.max(0, activeWindowCenter - WINDOW_RADIUS)
-	);
-
-	const activeWindowEnd = $derived(
-		lines.length <= LARGE_NOTE_THRESHOLD
-			? lines.length
-			: Math.min(lines.length, activeWindowCenter + WINDOW_RADIUS)
-	);
-
-	const headLines = $derived(
-		lines.length <= LARGE_NOTE_THRESHOLD || activeWindowStart === 0
-			? []
-			: lines.slice(0, activeWindowStart)
-	);
-
-	const activeLines = $derived(
-		lines.length <= LARGE_NOTE_THRESHOLD ? lines : lines.slice(activeWindowStart, activeWindowEnd)
-	);
-
-	const tailLines = $derived(
-		lines.length <= LARGE_NOTE_THRESHOLD || activeWindowEnd >= lines.length
-			? []
-			: lines.slice(activeWindowEnd)
-	);
-
-	function ensureWindowNear(lineIndex: number) {
-		if (lines.length <= LARGE_NOTE_THRESHOLD) return;
-		if (lineIndex < activeWindowStart + 10 || lineIndex > activeWindowEnd - 10) {
-			activeWindowCenter = Math.max(0, Math.min(lineIndex, lines.length - 1));
-		}
-	}
-
-	$effect(() => {
-		if (focusLine !== null) {
-			ensureWindowNear(focusLine);
-		}
-	});
-
 	const editor = noteBody({ mode: 'editor' });
 
 	const staticMinHClass = css({ minH: '1lh' });
 	const staticDefaultLineClass = noteBody({ mode: 'editor', checked: false, indented: false }).line;
 	const staticDefaultLineTextClass = `${staticMinHClass} ${staticDefaultLineClass}`;
 
+	const plainRowClass = css({
+		display: 'block',
+		py: '3xs'
+	});
+	const plainLineTextClass = `${staticMinHClass} ${css({ display: 'block', wordBreak: 'break-word' })}`;
+
 	function lineTextClass(line: Line): string {
+		if (
+			!line.isCheck &&
+			!line.isBullet &&
+			(focusedRootId === null || !focusedGroupIds.has(line.id))
+		) {
+			return plainLineTextClass;
+		}
 		if (!line.checked && line.indent === 0) return staticDefaultLineTextClass;
 		return `${staticMinHClass} ${noteBody({ mode: 'editor', checked: line.checked, indented: line.indent > 0 }).line}`;
 	}
 
 	function rowClass(line: Line): string {
+		if (
+			!line.isCheck &&
+			!line.isBullet &&
+			(focusedRootId === null || !focusedGroupIds.has(line.id))
+		) {
+			return plainRowClass;
+		}
 		if (focusedRootId === null || !focusedGroupIds.has(line.id)) return editor.row;
 		const isRoot = line.id === focusedRootId;
 		const isLast = line.id === focusedGroupLastId;
@@ -1353,14 +1333,18 @@
 	oncut={handleCut}
 	onpaste={handlePaste}
 	onkeydown={handleKeydown}
-	onkeyup={handleKeyup}
 	onpointerup={finishPointer}
 	onpointercancel={cancelPointer}
 	onclick={handleEditorClick}
 	oncompositionstart={() => (composing = true)}
 	oncompositionend={() => {
 		composing = false;
-		readDomIntoLines();
+		const lineIdx = getActiveLineIndex();
+		if (lineIdx !== null) {
+			syncLineFromDom(lineIdx);
+		} else {
+			readDomIntoLines();
+		}
 	}}
 	onblur={handleEditorBlur}
 >
@@ -1426,29 +1410,7 @@
 		</div>
 	{/snippet}
 
-	{#if lines.length <= LARGE_NOTE_THRESHOLD}
-		{#each lines as line, index (line.id)}
-			{@render lineRow(line, index)}
-		{/each}
-	{:else}
-		{#if headLines.length > 0}
-			<div data-editor-head style="contain: layout;">
-				{#each headLines as line, index (line.id)}
-					{@render lineRow(line, index)}
-				{/each}
-			</div>
-		{/if}
-		<div data-editor-active>
-			{#each activeLines as line, index (line.id)}
-				{@render lineRow(line, activeWindowStart + index)}
-			{/each}
-		</div>
-		{#if tailLines.length > 0}
-			<div data-editor-tail style="contain: layout;">
-				{#each tailLines as line, index (line.id)}
-					{@render lineRow(line, activeWindowEnd + index)}
-				{/each}
-			</div>
-		{/if}
-	{/if}
+	{#each lines as line, index (line.id)}
+		{@render lineRow(line, index)}
+	{/each}
 </div>

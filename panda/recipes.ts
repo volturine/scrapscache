@@ -486,7 +486,17 @@ const checklistRecipe = defineSlotRecipe({
 
 const noteBodyRecipe = defineSlotRecipe({
 	className: 'scrapscache-note-body',
-	slots: ['container', 'row', 'line', 'check', 'bullet', 'paragraph', 'spacer', 'addSubtask'],
+	slots: [
+		'container',
+		'chunk',
+		'row',
+		'line',
+		'check',
+		'bullet',
+		'paragraph',
+		'spacer',
+		'addSubtask'
+	],
 	base: {
 		row: {
 			display: 'flex',
@@ -521,6 +531,10 @@ const noteBodyRecipe = defineSlotRecipe({
 		mode: {
 			editor: {
 				container: { display: 'block', w: 'full', minW: 0, lineHeight: 'relaxed', outline: 'none' },
+				// iOS WebKit walks the rendered text after the caret on every keystroke.
+				// Skipping offscreen chunks keeps typing cost independent of note length.
+				// The inline padding keeps focused rows' bleed outside the paint clip.
+				chunk: { display: 'block', contentVisibility: 'auto', mx: '-sm', px: 'sm' },
 				row: { flexWrap: 'wrap' },
 				line: {
 					display: 'block',

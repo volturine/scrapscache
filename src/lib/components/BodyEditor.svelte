@@ -16,6 +16,8 @@
 	import { checklist, noteBody } from 'styled-system/recipes';
 
 	const MAX_TASK_INDENT = 1;
+	// Rows render in fixed-size chunks that the browser skips while offscreen.
+	const CHUNK_SIZE = 64;
 
 	let {
 		body = $bindable(''),
@@ -119,7 +121,9 @@
 		const apply = (next: string) => {
 			// The browser mutates this text node directly. Only reconcile when state
 			// actually differs so iOS and Svelte never insert the first character twice.
-			if (node.textContent !== next) node.textContent = next;
+			// Lines store NBSPs as plain spaces, so an NBSP-only difference is not a
+			// divergence; rewriting the node would reset the caret to the line start.
+			if (node.textContent?.replaceAll('\u00a0', ' ') !== next) node.textContent = next;
 		};
 		apply(value);
 		return { update: apply };
@@ -167,10 +171,7 @@
 			const el = lineDoms.get(line.id);
 			if (el) return el;
 		}
-		if (!container) return null;
-		const child = container.children[index] as HTMLElement | undefined;
-		if (child?.dataset.editorLine === String(index)) return child;
-		return container.querySelector(`[data-editor-line="${index}"]`) as HTMLElement | null;
+		return container?.querySelector(`[data-editor-line="${index}"]`) as HTMLElement | null;
 	}
 
 	function textElement(index: number): HTMLElement | null {
@@ -196,8 +197,7 @@
 			const idx = lines.findIndex((l) => l.id === lineId);
 			if (idx >= 0) return idx;
 		}
-		const index = Array.prototype.indexOf.call(container.children, row);
-		return index >= 0 && index < lines.length ? index : null;
+		return null;
 	}
 
 	function comparePoints(a: EditorPoint, b: EditorPoint): number {
@@ -205,16 +205,27 @@
 		return a.offset - b.offset;
 	}
 
+	/** Resolve a boundary between the host's or a chunk's children to a line point. */
+	function pointBetweenRows(parent: Element, offset: number): EditorPoint | null {
+		for (
+			let child: ChildNode | null = parent.childNodes[offset] ?? null;
+			child;
+			child = child.nextSibling
+		) {
+			if (!(child instanceof Element)) continue;
+			const row = child.closest('[data-editor-line]') ?? child.querySelector('[data-editor-line]');
+			const line = lineIndexOfElement(row);
+			if (line !== null) return { line, offset: 0 };
+		}
+		const rows = parent.querySelectorAll('[data-editor-line]');
+		const line = lineIndexOfElement(rows[rows.length - 1] ?? null) ?? lines.length - 1;
+		return { line, offset: lines[line]?.text.length ?? 0 };
+	}
+
 	function pointFromDom(node: Node | null, offset: number): EditorPoint | null {
 		if (!container || !node) return null;
-		if (node === container) {
-			const childIndex = Math.max(0, Math.min(offset, lines.length));
-			if (childIndex >= lines.length) {
-				const line = Math.max(0, lines.length - 1);
-				const end = lines[line]?.text.length ?? 0;
-				return { line, offset: end };
-			}
-			return { line: childIndex, offset: 0 };
+		if (node === container || (node instanceof HTMLElement && node.dataset.editorChunk === '')) {
+			return pointBetweenRows(node as Element, offset);
 		}
 
 		const row = closestLineElement(node);
@@ -622,11 +633,16 @@
 		return lastActiveLineIndex;
 	}
 
+	let replacementLine: number | null = null;
 	function handleInput(rawEvent: Event) {
 		if (applyingEdit) return;
 		const event = rawEvent as InputEvent;
 		if (composing || event.isComposing) return;
-		const lineIdx = getActiveLineIndex(event);
+		const lineIdx =
+			event.inputType === 'insertReplacementText' && replacementLine !== null
+				? replacementLine
+				: getActiveLineIndex(event);
+		replacementLine = null;
 		if (lineIdx !== null) {
 			syncLineFromDom(lineIdx);
 		} else {
@@ -686,6 +702,15 @@
 		const event = rawEvent as InputEvent;
 		const range = editorRange();
 		if (!range) return;
+		if (event.inputType === 'insertReplacementText') {
+			// Autocorrect and spelling replacements rewrite one word, often while the
+			// caret is being moved by a tap elsewhere. Let the browser apply them so
+			// that tap keeps its caret; handleInput syncs the replaced line.
+			const target = event.getTargetRanges()[0];
+			replacementLine = lineIndexOfElement(target?.startContainer ?? null) ?? range.start.line;
+			rememberEdit(range);
+			return;
+		}
 		if (event.inputType === 'insertParagraph' || event.inputType === 'insertLineBreak') {
 			// handled below
 		} else if (
@@ -718,7 +743,7 @@
 		}
 		if (event.inputType.startsWith('insert')) {
 			event.preventDefault();
-			const text = event.data ?? '';
+			const text = event.data ?? event.dataTransfer?.getData('text/plain') ?? '';
 			const caret = replaceRangeWithText(range, text);
 			const targetRoot = parentTaskIndex(caret.line);
 			if (lines[targetRoot]?.id !== focusedRootId) focusTask(caret.line);
@@ -1267,38 +1292,27 @@
 
 	const isSingleLine = $derived(lines.length === 1);
 
+	// Reads only the array structure, so typing inside a line never re-chunks.
+	const chunks = $derived.by(() => {
+		const result: { start: number; lines: Line[] }[] = [];
+		for (let start = 0; start < lines.length; start += CHUNK_SIZE) {
+			result.push({ start, lines: lines.slice(start, start + CHUNK_SIZE) });
+		}
+		return result;
+	});
+
 	const editor = noteBody({ mode: 'editor' });
 
 	const staticMinHClass = css({ minH: '1lh' });
 	const staticDefaultLineClass = noteBody({ mode: 'editor', checked: false, indented: false }).line;
 	const staticDefaultLineTextClass = `${staticMinHClass} ${staticDefaultLineClass}`;
 
-	const plainRowClass = css({
-		display: 'block',
-		py: '3xs'
-	});
-	const plainLineTextClass = `${staticMinHClass} ${css({ display: 'block', wordBreak: 'break-word' })}`;
-
 	function lineTextClass(line: Line): string {
-		if (
-			!line.isCheck &&
-			!line.isBullet &&
-			(focusedRootId === null || !focusedGroupIds.has(line.id))
-		) {
-			return plainLineTextClass;
-		}
 		if (!line.checked && line.indent === 0) return staticDefaultLineTextClass;
 		return `${staticMinHClass} ${noteBody({ mode: 'editor', checked: line.checked, indented: line.indent > 0 }).line}`;
 	}
 
 	function rowClass(line: Line): string {
-		if (
-			!line.isCheck &&
-			!line.isBullet &&
-			(focusedRootId === null || !focusedGroupIds.has(line.id))
-		) {
-			return plainRowClass;
-		}
 		if (focusedRootId === null || !focusedGroupIds.has(line.id)) return editor.row;
 		const isRoot = line.id === focusedRootId;
 		const isLast = line.id === focusedGroupLastId;
@@ -1410,7 +1424,15 @@
 		</div>
 	{/snippet}
 
-	{#each lines as line, index (line.id)}
-		{@render lineRow(line, index)}
+	{#each chunks as chunk (chunk.start)}
+		<div
+			data-editor-chunk
+			class={editor.chunk}
+			style="contain-intrinsic-block-size:auto {chunk.lines.length * 2}rem"
+		>
+			{#each chunk.lines as line, offset (line.id)}
+				{@render lineRow(line, chunk.start + offset)}
+			{/each}
+		</div>
 	{/each}
 </div>

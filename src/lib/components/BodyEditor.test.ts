@@ -1,5 +1,5 @@
 import { fireEvent, render } from '@testing-library/svelte';
-import { tick } from 'svelte';
+import { flushSync, tick } from 'svelte';
 import { describe, expect, it, vi } from 'vitest';
 import BodyEditor from './BodyEditor.svelte';
 
@@ -145,6 +145,85 @@ describe('BodyEditor native editing', () => {
 		expect(beforeInput.defaultPrevented).toBe(true);
 		expect(lineTexts(container)).toEqual(['Keep']);
 		expect(container.querySelectorAll('[data-task-row]')).toHaveLength(1);
+	});
+
+	it('lets autocorrect replace a word natively and syncs the replaced line', () => {
+		const { container } = render(BodyEditor, { props: { body: 'Helo world\nSecond' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const [first, second] = container.querySelectorAll('[data-line-text]');
+		select(first, 0, first, 4);
+
+		// iOS commits a pending correction when a tap moves the caret: the event
+		// carries no data and the selection still covers the corrected word.
+		const beforeInput = new InputEvent('beforeinput', {
+			bubbles: true,
+			cancelable: true,
+			inputType: 'insertReplacementText'
+		});
+		Object.defineProperty(beforeInput, 'getTargetRanges', {
+			value: () => [{ startContainer: first.firstChild }]
+		});
+		editor.dispatchEvent(beforeInput);
+		expect(beforeInput.defaultPrevented).toBe(false);
+
+		first.firstChild!.textContent = 'Hello world';
+		select(second, 3);
+		editor.dispatchEvent(
+			new InputEvent('input', { bubbles: true, inputType: 'insertReplacementText' })
+		);
+
+		expect(lineTexts(container)).toEqual(['Hello world', 'Second']);
+		const range = document.createRange();
+		range.selectNodeContents(editor);
+		window.getSelection()?.removeAllRanges();
+		window.getSelection()?.addRange(range);
+		const setData = vi.fn();
+		const copy = new Event('copy', { bubbles: true, cancelable: true });
+		Object.defineProperty(copy, 'clipboardData', { value: { setData } });
+		editor.dispatchEvent(copy);
+		expect(setData).toHaveBeenCalledWith('text/plain', 'Hello world\nSecond');
+	});
+
+	it('keeps line order and copy intact across render chunks', async () => {
+		const body = Array.from({ length: 130 }, (_, index) => `line ${index}`).join('\n');
+		const { container } = render(BodyEditor, { props: { body } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		expect(container.querySelectorAll('[data-editor-chunk]')).toHaveLength(3);
+
+		select(container.querySelector('[data-line-text]') as HTMLElement, 'line 0'.length);
+		await fireEvent.keyDown(editor, { key: 'Enter' });
+
+		const rows = [...container.querySelectorAll<HTMLElement>('[data-editor-line]')];
+		expect(rows).toHaveLength(131);
+		expect(rows.every((row, index) => row.dataset.editorLine === String(index))).toBe(true);
+		expect(lineTexts(container).slice(63, 66)).toEqual(['line 62', 'line 63', 'line 64']);
+
+		const range = document.createRange();
+		range.setStart(editor, 0);
+		range.setEnd(editor, editor.childNodes.length);
+		window.getSelection()?.removeAllRanges();
+		window.getSelection()?.addRange(range);
+		const setData = vi.fn();
+		const copy = new Event('copy', { bubbles: true, cancelable: true });
+		Object.defineProperty(copy, 'clipboardData', { value: { setData } });
+		editor.dispatchEvent(copy);
+		const lines = body.split('\n');
+		lines.splice(1, 0, '');
+		expect(setData).toHaveBeenCalledWith('text/plain', lines.join('\n'));
+	});
+
+	it('keeps the text node when the browser types a trailing NBSP', () => {
+		const { container } = render(BodyEditor, { props: { body: 'ab' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const line = container.querySelector('[data-line-text]') as HTMLElement;
+		const node = line.firstChild!;
+		node.textContent = 'ab ';
+		select(line, 3);
+		editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }));
+		flushSync();
+
+		expect(line.firstChild).toBe(node);
+		expect(window.getSelection()?.focusOffset).toBe(3);
 	});
 
 	it('copies the whole body from a select-all anchored on the editor host', () => {

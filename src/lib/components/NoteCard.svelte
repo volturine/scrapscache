@@ -318,8 +318,7 @@
 					class={cx(
 						note.secret
 							? css({ flex: '1', minH: 0, display: 'flex', flexDirection: 'column' })
-							: card.contentPad,
-						note.trashed && css({ opacity: 0.6 })
+							: card.contentPad
 					)}
 				>
 					{#if note.title}

@@ -31,6 +31,7 @@
 	} from '@lucide/svelte';
 	import { revealEditorField, revealEditorPoint } from '$lib/editorVisibility';
 	import { getClipboardFiles, isImageAttachment } from '$lib/noteImages';
+	import { isKeyboardField } from '$lib/appViewport';
 
 	let {
 		noteId = $bindable(),
@@ -90,6 +91,11 @@
 		  }
 		| undefined;
 	const TOUCH_TAP_SLOP = 8;
+	const AUTO_EXPAND_MAX_LINES = 8;
+	let autoExpanded = $state(false);
+	let shrunkThisOpen = $state(false);
+	const expanded = $derived(uiStore.editorExpanded || (autoExpanded && !shrunkThisOpen));
+	let autoExpandFrame = 0;
 	const photosFillEditor = $derived(body.trim() === '' && images.some(isImageAttachment));
 	function exitTaskFocus() {
 		taskFocusLine = null;
@@ -163,7 +169,9 @@
 		viewport?.addEventListener('resize', onViewportChange);
 		viewport?.addEventListener('scroll', onViewportChange);
 		window.addEventListener('resize', onViewportChange);
+		window.addEventListener('resize', onResizeAutoExpand);
 		document.addEventListener('focusin', onFocusIn);
+		queueAutoExpand(false);
 		if (noteId) {
 			lockPageScroll();
 			const id = noteId;
@@ -186,6 +194,8 @@
 			viewport?.removeEventListener('resize', onViewportChange);
 			viewport?.removeEventListener('scroll', onViewportChange);
 			window.removeEventListener('resize', onViewportChange);
+			window.removeEventListener('resize', onResizeAutoExpand);
+			cancelAnimationFrame(autoExpandFrame);
 			document.removeEventListener('focusin', onFocusIn);
 			window.removeEventListener('scroll', onOuterScroll, { capture: true });
 			viewport?.removeEventListener('scroll', onOuterScroll);
@@ -196,9 +206,51 @@
 
 	$effect(() => {
 		const root = document.documentElement;
-		root.classList.toggle('editor-expanded', isOpen && uiStore.editorExpanded);
+		root.classList.toggle('editor-expanded', isOpen && expanded);
 		return () => root.classList.remove('editor-expanded');
 	});
+
+	function toggleExpanded() {
+		const next = !expanded;
+		// A manual shrink also overrides auto-expand until the note closes.
+		shrunkThisOpen = !next;
+		uiStore.editorExpanded = next;
+	}
+
+	/** Body lines the note area fits, or Infinity before layout. */
+	function visibleBodyLines(): number {
+		const dialog = editorDialog;
+		const field = dialog?.querySelector('[data-body-editor]');
+		if (!dialog || !field || dialog.clientHeight === 0) return Infinity;
+		const lineHeight = parseFloat(getComputedStyle(field).lineHeight);
+		if (!(lineHeight > 0)) return Infinity;
+		const chrome = dialog.querySelectorAll<HTMLElement>(':scope > header, :scope > footer');
+		let space = dialog.clientHeight;
+		for (const el of chrome) space -= el.offsetHeight;
+		return space / lineHeight;
+	}
+
+	function updateAutoExpand(resized: boolean) {
+		if (!isOpen || shrunkThisOpen || uiStore.editorExpanded) return;
+		// The software keyboard shrinks the viewport; never flip the layout while typing.
+		if (
+			document.documentElement.classList.contains('keyboard-open') ||
+			(resized && navigator.maxTouchPoints > 0 && isKeyboardField(document.activeElement))
+		) {
+			return;
+		}
+		// Lay the note out at its normal size within this frame, then measure it.
+		autoExpanded = false;
+		flushSync();
+		autoExpanded = visibleBodyLines() <= AUTO_EXPAND_MAX_LINES;
+	}
+
+	function queueAutoExpand(resized: boolean) {
+		cancelAnimationFrame(autoExpandFrame);
+		// Runs before the next paint, so the normal-size measurement never shows.
+		autoExpandFrame = requestAnimationFrame(() => updateAutoExpand(resized));
+	}
+	const onResizeAutoExpand = () => queueAutoExpand(true);
 
 	function lockPageScroll() {
 		window.scrollTo(0, 0);
@@ -544,10 +596,10 @@
 		ondragleave={handleFileDragLeave}
 		ondropcapture={handleFileDrop}
 	>
-		<div class={styles.sheetWrap({ expanded: uiStore.editorExpanded })} role="presentation">
+		<div class={styles.sheetWrap({ expanded })} role="presentation">
 			<!-- Clicking blank editor chrome is a pointer convenience; keyboard users focus the fields directly. -->
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
-			<div class={styles.sheetBox({ expanded: uiStore.editorExpanded })}>
+			<div class={styles.sheetBox({ expanded })}>
 				<div
 					bind:this={editorDialog}
 					class={editorDialogClass}
@@ -578,12 +630,12 @@
 							<button
 								type="button"
 								class={iconButton({ variant: 'ghost', size: 'sm' })}
-								title={uiStore.editorExpanded ? 'Shrink note' : 'Expand note'}
-								onclick={() => (uiStore.editorExpanded = !uiStore.editorExpanded)}
-								aria-label={uiStore.editorExpanded ? 'Shrink note' : 'Expand note'}
-								aria-pressed={uiStore.editorExpanded}
+								title={expanded ? 'Shrink note' : 'Expand note'}
+								onclick={toggleExpanded}
+								aria-label={expanded ? 'Shrink note' : 'Expand note'}
+								aria-pressed={expanded}
 							>
-								{#if uiStore.editorExpanded}
+								{#if expanded}
 									<Minimize2 size={20} aria-hidden="true" />
 								{:else}
 									<Maximize2 size={20} aria-hidden="true" />

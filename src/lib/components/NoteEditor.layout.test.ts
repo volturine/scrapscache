@@ -131,4 +131,54 @@ describe('NoteEditor Keep-style layout', () => {
 		expect(sheet.className).toMatch(/max-w_none/);
 		expect(document.documentElement.classList.contains('editor-expanded')).toBe(true);
 	});
+
+	describe('auto-expand', () => {
+		function layOut(dialogHeight: number) {
+			vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function (
+				this: HTMLElement
+			) {
+				return this.getAttribute('role') === 'dialog' ? dialogHeight : 0;
+			});
+			vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function (
+				this: HTMLElement
+			) {
+				return this.matches('[role="dialog"] > header, [role="dialog"] > footer') ? 50 : 0;
+			});
+			const computed = window.getComputedStyle;
+			vi.spyOn(window, 'getComputedStyle').mockImplementation((el, pseudo) => {
+				const style = computed(el, pseudo);
+				if (!(el as Element).matches('[data-body-editor]')) return style;
+				return new Proxy(style, {
+					get: (target, key) => (key === 'lineHeight' ? '24px' : Reflect.get(target, key))
+				});
+			});
+		}
+
+		it('expands when the note area fits eight body lines or fewer', async () => {
+			layOut(100 + 8 * 24);
+			notesStore.notes = [note()];
+			const { getByRole } = render(NoteEditor, {
+				props: { noteId: 'note-1', onClose: () => {} }
+			});
+
+			await vi.waitFor(() => expect(getByRole('button', { name: 'Shrink note' })).toBeTruthy());
+			expect(uiStore.editorExpanded).toBe(false);
+
+			await fireEvent.click(getByRole('button', { name: 'Shrink note' }));
+			expect(getByRole('button', { name: 'Expand note' })).toBeTruthy();
+			expect(uiStore.editorExpanded).toBe(false);
+		});
+
+		it('keeps the normal sheet when more than eight lines fit', async () => {
+			layOut(100 + 9 * 24);
+			notesStore.notes = [note()];
+			const { getByRole } = render(NoteEditor, {
+				props: { noteId: 'note-1', onClose: () => {} }
+			});
+
+			await new Promise((resolve) => requestAnimationFrame(resolve));
+			await new Promise((resolve) => requestAnimationFrame(resolve));
+			expect(getByRole('button', { name: 'Expand note' })).toBeTruthy();
+		});
+	});
 });

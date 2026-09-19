@@ -511,7 +511,7 @@
 			</div>
 
 			{#if images.length > 1}
-				<div class={`scrollable ${styles.viewerThumbStrip}`} aria-label="Photo thumbnails">
+				<div class={styles.viewerThumbStrip} aria-label="Photo thumbnails">
 					{#each images as image, index (image.id)}
 						<button
 							type="button"

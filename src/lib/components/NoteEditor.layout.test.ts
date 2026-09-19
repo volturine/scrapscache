@@ -1,7 +1,8 @@
-import { render } from '@testing-library/svelte';
+import { fireEvent, render } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Note } from '$lib/types';
 import { notesStore } from '$lib/stores/notes.svelte';
+import { uiStore } from '$lib/stores/ui.svelte';
 import NoteEditor from './NoteEditor.svelte';
 
 const PNG =
@@ -42,6 +43,7 @@ afterEach(() => {
 	vi.restoreAllMocks();
 	notesStore.notes = [];
 	notesStore.labels = [];
+	uiStore.editorExpanded = false;
 });
 
 describe('NoteEditor Keep-style layout', () => {
@@ -96,5 +98,36 @@ describe('NoteEditor Keep-style layout', () => {
 		expect(
 			title!.compareDocumentPosition(filesAndLinks!) & Node.DOCUMENT_POSITION_FOLLOWING
 		).toBeTruthy();
+	});
+
+	it('lets the photo strip pan sideways on touch', () => {
+		notesStore.notes = [note({ body: '' })];
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+
+		const photos = container.querySelector('[aria-label="Photos"]')!;
+		// The global .scrollable class restricts touch to vertical pans.
+		expect(photos.classList.contains('scrollable')).toBe(false);
+		expect(photos.className).toMatch(/_pan-x_pan-y/);
+	});
+
+	it('toggles the expanded note sheet from the header', async () => {
+		notesStore.notes = [note()];
+		const { getByRole } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+
+		const expand = getByRole('button', { name: 'Expand note' });
+		const sheet = getByRole('dialog').parentElement!;
+		expect(expand.getAttribute('aria-pressed')).toBe('false');
+		expect(sheet.className).toMatch(/max-w_2xl/);
+
+		await fireEvent.click(expand);
+
+		expect(uiStore.editorExpanded).toBe(true);
+		const shrink = getByRole('button', { name: 'Shrink note' });
+		expect(shrink.getAttribute('aria-pressed')).toBe('true');
+		expect(sheet.className).toMatch(/max-w_none/);
 	});
 });

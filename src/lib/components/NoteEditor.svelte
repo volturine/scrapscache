@@ -12,13 +12,23 @@
 	import ColorPalette from './ColorPalette.svelte';
 	import ReminderPicker from './ReminderPicker.svelte';
 	import { reminderStore } from '$lib/stores/reminders.svelte';
+	import { uiStore } from '$lib/stores/ui.svelte';
 	import LabelMenu from './LabelMenu.svelte';
 	import NoteEditorFooter from './NoteEditorFooter.svelte';
 	import BodyEditor from './BodyEditor.svelte';
 	import { appClock } from '$lib/appClock.svelte';
 	import { formatReminder, isReminderOverdue } from '$lib/utils';
 	import ReminderLabel from './ReminderLabel.svelte';
-	import { Bell, ChevronLeft, Lock, LockOpen, Paperclip, Pin } from '@lucide/svelte';
+	import {
+		Bell,
+		ChevronLeft,
+		Lock,
+		LockOpen,
+		Maximize2,
+		Minimize2,
+		Paperclip,
+		Pin
+	} from '@lucide/svelte';
 	import { revealEditorField, revealEditorPoint } from '$lib/editorVisibility';
 	import { getClipboardFiles, isImageAttachment } from '$lib/noteImages';
 
@@ -182,6 +192,12 @@
 			if (revealTimer !== null) clearTimeout(revealTimer);
 			if (copyFlashTimer !== null) clearTimeout(copyFlashTimer);
 		};
+	});
+
+	$effect(() => {
+		const root = document.documentElement;
+		root.classList.toggle('editor-expanded', isOpen && uiStore.editorExpanded);
+		return () => root.classList.remove('editor-expanded');
 	});
 
 	function lockPageScroll() {
@@ -528,10 +544,10 @@
 		ondragleave={handleFileDragLeave}
 		ondropcapture={handleFileDrop}
 	>
-		<div class={styles.sheetWrap} role="presentation">
+		<div class={styles.sheetWrap({ expanded: uiStore.editorExpanded })} role="presentation">
 			<!-- Clicking blank editor chrome is a pointer convenience; keyboard users focus the fields directly. -->
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
-			<div class={styles.sheetBox}>
+			<div class={styles.sheetBox({ expanded: uiStore.editorExpanded })}>
 				<div
 					bind:this={editorDialog}
 					class={editorDialogClass}
@@ -559,6 +575,20 @@
 						<div class={spacer()} aria-hidden="true"></div>
 
 						<div class={hstack({ minW: 0, gap: '2xs' })}>
+							<button
+								type="button"
+								class={iconButton({ variant: 'ghost', size: 'sm' })}
+								title={uiStore.editorExpanded ? 'Shrink note' : 'Expand note'}
+								onclick={() => (uiStore.editorExpanded = !uiStore.editorExpanded)}
+								aria-label={uiStore.editorExpanded ? 'Shrink note' : 'Expand note'}
+								aria-pressed={uiStore.editorExpanded}
+							>
+								{#if uiStore.editorExpanded}
+									<Minimize2 size={20} aria-hidden="true" />
+								{:else}
+									<Maximize2 size={20} aria-hidden="true" />
+								{/if}
+							</button>
 							{#if !note.trashed && !note.archived}
 								{#if note.reminder != null}
 									<button

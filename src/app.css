@@ -16,6 +16,11 @@
 	--note-card-width: 18rem;
 }
 
+html.editor-expanded .new-note-fab {
+	visibility: hidden;
+	pointer-events: none;
+}
+
 @media (max-width: 767px) {
 	html.keyboard-open {
 		--app-sheet-pad-bottom: 0.5rem;

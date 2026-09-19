@@ -22,6 +22,12 @@ const flexCenter = { display: 'flex', alignItems: 'center', justifyContent: 'cen
 const gridCenter = { display: 'grid', placeItems: 'center' } as const;
 const clickable = { cursor: 'pointer' } as const;
 const interactive = { cursor: 'pointer', touchAction: 'manipulation' } as const;
+// Horizontal strips inside vertical scrollers must opt back into sideways touch pans.
+const sidewaysScroller = {
+	overflowX: 'auto',
+	overscrollBehaviorX: 'contain',
+	touchAction: 'pan-x pan-y'
+} as const;
 const mutedText = { color: 'scrapscache.textMuted' } as const;
 const cardRadius = { rounded: 'card' } as const;
 const controlRadius = { rounded: 'control' } as const;
@@ -614,7 +620,7 @@ const canvasPreviewBase = {
 	}
 } as const;
 const canvasPreviewEditor = {
-	strip: { ...rowCenter, maxH: '11rem', gap: 'sm', overflowX: 'auto', px: 'md', pb: 'sm' },
+	strip: { ...rowCenter, ...sidewaysScroller, maxH: '11rem', gap: 'sm', px: 'md', pb: 'sm' },
 	btn: { ...interactive },
 	img: { objectFit: 'contain' },
 	loading: { fontSize: 'label' },
@@ -740,14 +746,14 @@ const photoPreviewBase = {
 	}
 } as const;
 const photoPreviewEditor = {
-	strip: { alignItems: 'center', gap: 'sm', px: 'md', pb: 'sm' },
+	strip: { ...sidewaysScroller, alignItems: 'center', gap: 'sm', px: 'md', pb: 'sm' },
 	wrap: { position: 'relative' },
 	btn: { h: '8rem' },
 	img: { h: '8rem', maxW: '15rem' },
 	skeleton: { h: '8rem', w: '8rem' }
 } as const;
 const photoPreviewEditorFill = {
-	strip: { alignItems: 'stretch', minH: 0, flex: '1', overscrollBehaviorX: 'contain', pb: 'sm' },
+	strip: { alignItems: 'stretch', minH: 0, flex: '1', pb: 'sm' },
 	wrap: { h: 'full' },
 	btn: { h: 'full' },
 	img: { h: 'full', maxW: 'none' },
@@ -1327,7 +1333,7 @@ export const photoStyles = {
 		display: 'flex',
 		flexShrink: 0,
 		gap: 'sm',
-		overflowX: 'auto',
+		...sidewaysScroller,
 		bgGradient: 'to-t',
 		gradientFrom: 'black/85',
 		gradientTo: 'transparent',
@@ -1738,22 +1744,31 @@ export const noteCardSuccessIcon = css({ color: 'scrapscache.success' });
 
 export const noteEditorStyles = {
 	overlay: css({ position: 'fixed', inset: 0, zIndex: 50 }),
-	sheetWrap: flex({
-		position: 'absolute',
-		inset: 0,
-		align: { base: 'flex-start', md: 'center' },
-		justify: 'center',
-		px: 'lg',
-		pb: 'var(--app-sheet-pad-bottom)'
+	sheetWrap: cva({
+		base: {
+			position: 'absolute',
+			inset: 0,
+			display: 'flex',
+			alignItems: { base: 'flex-start', md: 'center' },
+			justifyContent: 'center',
+			px: 'lg'
+		},
+		variants: {
+			// Expanded notes hide the new-note button and take its bottom gutter.
+			expanded: { true: { pb: 'lg' }, false: { pb: 'var(--app-sheet-pad-bottom)' } }
+		},
+		defaultVariants: { expanded: false }
 	}),
-	sheetBox: css({
-		h: { base: 'full', md: '72%' },
-		maxH: 'full',
-		minH: 0,
-		w: 'full',
-		maxW: '2xl',
-		rounded: 'sheet',
-		boxShadow: 'noteSheet'
+	sheetBox: cva({
+		base: { maxH: 'full', minH: 0, w: 'full', rounded: 'sheet', boxShadow: 'noteSheet' },
+		variants: {
+			expanded: {
+				true: { h: 'full', maxW: 'none' },
+				// Short viewports (landscape phones, foldables) take the full height.
+				false: { h: { base: 'full', md: 'max(72%, 32rem)' }, maxW: '2xl' }
+			}
+		},
+		defaultVariants: { expanded: false }
 	}),
 	dialogSurface: css({
 		position: 'relative',

@@ -486,7 +486,12 @@
 		}
 
 		const row = closestLineElement(node);
-		if (!row || !container.contains(row)) return null;
+		if (!row || !container.contains(row)) {
+			if (node instanceof Element && container.contains(node)) {
+				return pointBetweenRows(node, offset);
+			}
+			return null;
+		}
 		const line = lineIndexOfElement(row);
 		if (line === null || !lines[line]) return null;
 		const text = row.querySelector('[data-line-text]') as HTMLElement | null;
@@ -1864,7 +1869,6 @@
 
 {#snippet editorLine(line: Line, index: number, block: EditorMarkdownBlock | null)}
 	{@const check = checklist({ checked: line.checked, indented: line.indent > 0 })}
-	{@const inlineTokens = parseInlineMarkdown(line.text)}
 	{@const tableBlock = block?.type === 'table' ? block : null}
 	{@const codeBlock = block?.type === 'code' ? block : null}
 	{@const tableSeparator = tableBlock !== null && index === tableBlock.lineIndex + 1}
@@ -1920,7 +1924,7 @@
 				<span data-line-text class="markdown-inline-content markdown-editor-code-line">
 					{@render codeEditorContent(line.text, codeBlock)}
 				</span>
-			{:else if !line.text || (inlineTokens.length === 1 && inlineTokens[0].kind === 'text' && inlineTokens[0].styles.length === 0)}
+			{:else if !line.text || !/[*_~`#]/.test(line.text)}
 				<span
 					data-line-text
 					data-placeholder={line.text.length === 0
@@ -1941,17 +1945,31 @@
 					]}>{line.text}</span
 				>
 			{:else}
-				<span
-					data-line-text
-					class={[
-						markdownStyles,
-						'markdown-inline-content',
-						css({ minH: '1lh' }),
-						noteBody({ mode: 'editor', checked: line.checked, indented: line.indent > 0 }).line
-					]}
-				>
-					{@render inlineEditorContent(line.text)}
-				</span>
+				{@const inlineTokens = parseInlineMarkdown(line.text)}
+				{#if inlineTokens.length === 1 && inlineTokens[0].kind === 'text' && inlineTokens[0].styles.length === 0}
+					<span
+						data-line-text
+						class={[
+							markdownStyles,
+							'markdown-inline-content',
+							uiStore.rawMarkdown && 'markdown-raw',
+							css({ minH: '1lh' }),
+							noteBody({ mode: 'editor', checked: line.checked, indented: line.indent > 0 }).line
+						]}>{line.text}</span
+					>
+				{:else}
+					<span
+						data-line-text
+						class={[
+							markdownStyles,
+							'markdown-inline-content',
+							css({ minH: '1lh' }),
+							noteBody({ mode: 'editor', checked: line.checked, indented: line.indent > 0 }).line
+						]}
+					>
+						{@render inlineEditorContent(line.text)}
+					</span>
+				{/if}
 			{/if}
 		{/key}
 		{#if line.id === focusedGroupLastId}
@@ -1997,11 +2015,7 @@
 >
 	{#each editorItems as item (item.key)}
 		{#if item.kind === 'chunk'}
-			<div
-				data-editor-chunk
-				class={editor.chunk}
-				style="contain-intrinsic-block-size:auto {item.lines.length * 2}rem"
-			>
+			<div data-editor-chunk class={editor.chunk}>
 				{#each item.lines as line, offset (line.id)}
 					{@render editorLine(line, item.start + offset, null)}
 				{/each}

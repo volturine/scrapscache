@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import { fireEvent, render } from '@testing-library/svelte';
 import { flushSync, tick } from 'svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -1716,5 +1717,23 @@ describe('BodyEditor markdown block stability', () => {
 			'```',
 			'Last line'
 		]);
+	});
+
+	it('handles large documents like Python handbook without freezing or crashing on newline', async () => {
+		const handbookPath =
+			'/Users/kripso/.t3/userdata/attachments/9c7408dc-9af9-4336-8672-b4b7c5c95f25-e2dea84f-a155-4532-958f-efe7947ee7ae-md.md';
+		if (!fs.existsSync(handbookPath)) return;
+		const source = fs.readFileSync(handbookPath, 'utf8');
+		const { container } = render(BodyEditor, { props: { body: source } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+
+		const start = performance.now();
+		caretAt(container, 0, 0);
+		await fireEvent.keyDown(editor, { key: 'Enter' });
+		await tick();
+		const elapsed = performance.now() - start;
+
+		expect(container.querySelectorAll('[data-editor-line]')).toHaveLength(2340);
+		expect(elapsed).toBeLessThan(500);
 	});
 });

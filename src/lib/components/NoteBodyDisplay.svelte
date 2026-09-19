@@ -26,8 +26,15 @@
 	let { note }: { note: Note } = $props();
 	type MarkdownTableBlock = Extract<MarkdownBlock, { type: 'table' }>;
 
+	const CARD_PREVIEW_LIMIT = 64;
 	const segments = $derived(parseBody(note.body ?? ''));
 	const blocks = $derived(parseMarkdownBlocks(note.body ?? ''));
+	const displaySegments = $derived(
+		segments.length > CARD_PREVIEW_LIMIT ? segments.slice(0, CARD_PREVIEW_LIMIT) : segments
+	);
+	const displayBlocks = $derived(
+		blocks.length > CARD_PREVIEW_LIMIT ? blocks.slice(0, CARD_PREVIEW_LIMIT) : blocks
+	);
 	const rawLines = $derived((note.body ?? '').replace(/\r\n?/g, '\n').split('\n'));
 	const attachments = $derived(noteAttachments(note));
 	const imageAttachments = $derived(attachments.filter(isImageAttachment));
@@ -161,7 +168,7 @@
 	]}
 >
 	{#if uiStore.rawMarkdown}
-		{#each segments as seg (seg.lineIndex)}
+		{#each displaySegments as seg (seg.lineIndex)}
 			{@const rawTable = rawTables.get(seg.lineIndex)}
 			{#if rawTable}
 				{#if rawTable.lineIndex === seg.lineIndex}
@@ -179,7 +186,7 @@
 			{/if}
 		{/each}
 	{:else}
-		{#each blocks as block (block.type === 'line' ? block.segment.lineIndex : block.lineIndex)}
+		{#each displayBlocks as block (block.type === 'line' ? block.segment.lineIndex : block.lineIndex)}
 			{#if block.type === 'line'}
 				{@render bodyLine(block.segment)}
 			{:else if block.type === 'table'}

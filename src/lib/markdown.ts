@@ -263,19 +263,34 @@ function parseInline(
 	return tokens;
 }
 
+const INLINE_CACHE_LIMIT = 4096;
+const inlineCache = new Map<string, MarkdownToken[]>();
+
 /**
  * Tokenize the small inline Markdown subset used by notes. Delimiters stay in
  * the token stream so raw mode can reveal them; normal mode hides them with CSS.
  */
 export function parseInlineMarkdown(source: string): MarkdownToken[] {
+	const cached = inlineCache.get(source);
+	if (cached) return cached;
 	const heading = source.match(/^(#{1,6})[ \t]+/);
-	if (!heading) return parseInline(source);
-	const level = heading[1].length as 1 | 2 | 3 | 4 | 5 | 6;
-	const prefix = heading[0];
-	return [
-		{ kind: 'marker', text: prefix, marker: 'heading' },
-		...parseInline(source.slice(prefix.length), [`heading-${level}` as MarkdownStyle])
-	];
+	let tokens: MarkdownToken[];
+	if (!heading) {
+		tokens = parseInline(source);
+	} else {
+		const level = heading[1].length as 1 | 2 | 3 | 4 | 5 | 6;
+		const prefix = heading[0];
+		tokens = [
+			{ kind: 'marker', text: prefix, marker: 'heading' },
+			...parseInline(source.slice(prefix.length), [`heading-${level}` as MarkdownStyle])
+		];
+	}
+	if (inlineCache.size >= INLINE_CACHE_LIMIT) {
+		const firstKey = inlineCache.keys().next().value;
+		if (firstKey !== undefined) inlineCache.delete(firstKey);
+	}
+	inlineCache.set(source, tokens);
+	return tokens;
 }
 
 export function markdownTokenClass(token: MarkdownToken, rawMarkdown: boolean): string {
@@ -655,11 +670,26 @@ function codeCommentStart(source: string, language: string): number {
 	return -1;
 }
 
+const CODE_CACHE_LIMIT = 4096;
+const codeCache = new Map<string, CodeToken[]>();
+
 /** Add restrained syntax color to common code-block strings, flags, and comments. */
 export function highlightCodeLine(source: string, language = ''): CodeToken[] {
+	const key = `${language}:${source}`;
+	const cached = codeCache.get(key);
+	if (cached) return cached;
 	const commentStart = codeCommentStart(source, language);
-	if (commentStart < 0) return tokenizeCodeText(source);
-	const tokens = tokenizeCodeText(source.slice(0, commentStart));
-	addCodeToken(tokens, source.slice(commentStart), 'comment');
+	let tokens: CodeToken[];
+	if (commentStart < 0) {
+		tokens = tokenizeCodeText(source);
+	} else {
+		tokens = tokenizeCodeText(source.slice(0, commentStart));
+		addCodeToken(tokens, source.slice(commentStart), 'comment');
+	}
+	if (codeCache.size >= CODE_CACHE_LIMIT) {
+		const firstKey = codeCache.keys().next().value;
+		if (firstKey !== undefined) codeCache.delete(firstKey);
+	}
+	codeCache.set(key, tokens);
 	return tokens;
 }

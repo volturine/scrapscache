@@ -12,6 +12,7 @@
 	import ColorPalette from './ColorPalette.svelte';
 	import ReminderPicker from './ReminderPicker.svelte';
 	import { reminderStore } from '$lib/stores/reminders.svelte';
+	import { uiStore } from '$lib/stores/ui.svelte';
 	import LabelMenu from './LabelMenu.svelte';
 	import NoteEditorFooter from './NoteEditorFooter.svelte';
 	import BodyEditor from './BodyEditor.svelte';
@@ -205,9 +206,17 @@
 	});
 
 	$effect(() => {
+		if (!isOpen || !expanded || !editorDialog) return;
+		void note?.color;
+		void uiStore.effectiveDark;
 		const root = document.documentElement;
-		root.classList.toggle('editor-expanded', isOpen && expanded);
-		return () => root.classList.remove('editor-expanded');
+		// Paint the safe areas around a full-page note in the note's own colour.
+		root.style.setProperty('--editor-page-bg', getComputedStyle(editorDialog).backgroundColor);
+		root.classList.add('editor-expanded');
+		return () => {
+			root.classList.remove('editor-expanded');
+			root.style.removeProperty('--editor-page-bg');
+		};
 	});
 
 	function toggleExpanded() {

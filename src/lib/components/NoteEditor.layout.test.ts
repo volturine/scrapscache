@@ -129,5 +129,6 @@ describe('NoteEditor Keep-style layout', () => {
 		const shrink = getByRole('button', { name: 'Shrink note' });
 		expect(shrink.getAttribute('aria-pressed')).toBe('true');
 		expect(sheet.className).toMatch(/max-w_none/);
+		expect(document.documentElement.classList.contains('editor-expanded')).toBe(true);
 	});
 });

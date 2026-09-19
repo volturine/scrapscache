@@ -1750,22 +1750,25 @@ export const noteEditorStyles = {
 			inset: 0,
 			display: 'flex',
 			alignItems: { base: 'flex-start', md: 'center' },
-			justifyContent: 'center',
-			px: 'lg'
+			justifyContent: 'center'
 		},
 		variants: {
-			// Expanded notes hide the new-note button and take its bottom gutter.
-			expanded: { true: { pb: 'lg' }, false: { pb: 'var(--app-sheet-pad-bottom)' } }
+			expanded: { true: {}, false: { px: 'lg', pb: 'var(--app-sheet-pad-bottom)' } }
 		},
 		defaultVariants: { expanded: false }
 	}),
 	sheetBox: cva({
-		base: { maxH: 'full', minH: 0, w: 'full', rounded: 'sheet', boxShadow: 'noteSheet' },
+		base: { maxH: 'full', minH: 0, w: 'full' },
 		variants: {
 			expanded: {
 				true: { h: 'full', maxW: 'none' },
 				// Short viewports (landscape phones, foldables) take the full height.
-				false: { h: { base: 'full', md: 'max(72%, 32rem)' }, maxW: '2xl' }
+				false: {
+					h: { base: 'full', md: 'max(72%, 32rem)' },
+					maxW: '2xl',
+					rounded: 'sheet',
+					boxShadow: 'noteSheet'
+				}
 			}
 		},
 		defaultVariants: { expanded: false }
@@ -1775,7 +1778,7 @@ export const noteEditorStyles = {
 		...column,
 		...fullSize,
 		overflow: 'hidden',
-		rounded: 'sheet'
+		rounded: 'inherit'
 	}),
 	header: hstack({
 		flexShrink: 0,
@@ -1814,7 +1817,7 @@ export const noteEditorStyles = {
 		inset: 0,
 		zIndex: 20,
 		...gridCenter,
-		rounded: 'sheet',
+		rounded: 'inherit',
 		borderWidth: 'strong',
 		borderStyle: 'dashed',
 		borderColor: 'scrapscache.accent',

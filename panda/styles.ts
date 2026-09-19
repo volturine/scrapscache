@@ -89,7 +89,8 @@ export const appLayout = {
 		bg: 'scrapscache.bg',
 		color: 'scrapscache.text'
 	}),
-	backdrop: css({ position: 'fixed', inset: 0, zIndex: 20, bg: 'scrapscache.backdropSoft' }),
+	// Catches taps outside the drawer without tinting the page behind it.
+	backdrop: css({ position: 'fixed', inset: 0, zIndex: 20 }),
 	drawerPositioner: css({ position: 'fixed', insetY: 0, left: 0, zIndex: 30, h: 'full' }),
 	drawer: css({
 		h: 'full',
@@ -890,29 +891,82 @@ export const fullscreen = {
 
 // Static view contracts stay class maps; CVA below is reserved for live state.
 export const kanbanViewStyles = {
-	controls: css({ mb: 'lg', flexWrap: 'wrap', ...rowGapSm }),
-	selectWrap: css({ position: 'relative', minW: 0, maxW: 'full' }),
-	select: css({
+	controls: css({ mb: 'lg', minH: '2.5rem', ...rowCenter }),
+	// The trigger and the rename field share one box, so renaming never nudges the board.
+	boardTrigger: css({
+		...rowCenter,
 		minW: 0,
-		appearance: 'none',
-		rounded: 'dialog',
-		...border,
-		bg: 'scrapscache.surface',
-		py: 'sm',
-		pl: 'md',
-		pr: '3xl',
-		textStyle: 'bodyStrong',
+		maxW: 'full',
+		h: '2.5rem',
+		gap: 'xs',
+		ml: '-sm',
+		rounded: 'control',
+		px: 'sm',
+		textStyle: 'heading',
 		outline: 'none',
-		...clickable
+		...clickable,
+		touchAction: 'manipulation',
+		WebkitTapHighlightColor: 'transparent',
+		transition: 'background-color 120ms ease',
+		...subtleHover,
+		_focusVisible: { bg: 'scrapscache.interactiveHover' },
+		'&[data-state=open]': { bg: 'scrapscache.interactiveHover' }
 	}),
-	selectChevron: css({
-		pointerEvents: 'none',
-		...absoluteCenterY,
-		right: 'list',
-		...iconXs,
-		...mutedText
+	boardName: css(truncateText),
+	boardChevron: css({
+		flexShrink: 0,
+		...iconSm,
+		...mutedText,
+		transition: 'transform 150ms ease',
+		'[data-state=open] > &': { transform: 'rotate(180deg)' }
 	}),
-	renameRow: flex({ mb: 'lg', maxW: '28rem', gap: 'sm' }),
+	boardInput: css({
+		w: '20rem',
+		maxW: 'full',
+		h: '2.5rem',
+		ml: '-sm',
+		rounded: 'control',
+		bg: 'scrapscache.interactiveHover',
+		px: 'sm',
+		textStyle: 'heading'
+	}),
+	// Ark copies the content's z-index onto the positioner, so it lives here.
+	boardMenuContent: css({
+		zIndex: 30,
+		w: '16rem',
+		maxH: '24rem',
+		overflowY: 'auto',
+		py: '2xs',
+		outline: 'none'
+	}),
+	boardMenuGroupLabel: css({
+		px: 'md',
+		pt: 'xs',
+		pb: '2xs',
+		textStyle: 'captionStrong',
+		textTransform: 'uppercase',
+		letterSpacing: 'eyebrow'
+	}),
+	boardMenuName: css({ minW: 0, flex: '1', ...truncateText }),
+	boardMenuCheck: css({ flexShrink: 0, ...iconSm, color: 'scrapscache.accent' }),
+	boardMenuSeparator: css({
+		my: '2xs',
+		borderTopWidth: 'hairline',
+		borderColor: 'scrapscache.border'
+	}),
+	boardMenuDanger: css({
+		color: 'scrapscache.danger',
+		_hoverable: { bg: 'scrapscache.dangerSubtle' },
+		_focusVisible: { bg: 'scrapscache.dangerSubtle' }
+	}),
+	deletePositioner: css({
+		position: 'absolute',
+		inset: 0,
+		display: 'flex',
+		alignItems: { base: 'flex-end', sm: 'center' },
+		justifyContent: 'center',
+		p: 'lg'
+	}),
 	columnsContainer: css({
 		display: 'block',
 		mx: '-1rem',

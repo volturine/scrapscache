@@ -12,20 +12,28 @@
 		type KanbanColumn
 	} from '$lib/kanban';
 	import { kanbanDrag, type KanbanDropTarget } from '$lib/kanbanDrag.svelte';
-	import { portalToBody } from '$lib/appViewport';
+	import { portalToAppOverlay, portalToBody } from '$lib/appViewport';
 	import { useEditorActions } from '$lib/editorContext';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { kanbanStore } from '$lib/stores/kanban.svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
 	import { Checkbox } from '@ark-ui/svelte/checkbox';
 	import { Menu } from '@ark-ui/svelte/menu';
-	import { ChevronDown, X } from '@lucide/svelte';
+	import { Dialog } from '@ark-ui/svelte/dialog';
+	import { Check, ChevronDown, Pencil, Plus, Trash2, X } from '@lucide/svelte';
 	import { flip, type FlipParams } from 'svelte/animate';
 	import { onDestroy } from 'svelte';
 	import type { Note } from '$lib/types';
 	import { css, cx } from 'styled-system/css';
-	import { kanbanViewStyles, popover, viewPage } from '$panda/styles';
-	import { button, iconButton, input as inputRecipe } from 'styled-system/recipes';
+	import { vstack } from 'styled-system/patterns';
+	import { iconSizeSm as iconSm, kanbanViewStyles, popover, viewPage } from '$panda/styles';
+	import {
+		button,
+		dialog,
+		iconButton,
+		input as inputRecipe,
+		menuItem
+	} from 'styled-system/recipes';
 
 	const { openNote } = useEditorActions();
 	const k = kanbanViewStyles;
@@ -52,37 +60,60 @@
 	onDestroy(() => kanbanDrag.cancel());
 
 	let renamingBoard = $state(false);
-	let boardName = $derived(board.name);
+	let boardName = $state('');
+	let boardMenuOpen = $state(false);
+	let pendingDelete = $state(false);
 	let backlogFilterOpen = $state(false);
 	let tagPickerOpen = $state(false);
 
-	function selectBoard(id: string) {
-		kanbanStore.selectBoard(id);
+	const menuItemClass = menuItem({ density: 'compact' });
+	const d = dialog({ size: 'sm' });
+
+	function resetBoardUi() {
 		renamingBoard = false;
 		backlogFilterOpen = false;
 		tagPickerOpen = false;
+	}
+
+	function selectBoard(id: string) {
+		kanbanStore.selectBoard(id);
+		resetBoardUi();
+	}
+
+	function createBoard() {
+		resetBoardUi();
+		kanbanStore.createBoard();
+		startRename();
+	}
+
+	function startRename() {
+		boardName = board.name;
+		renamingBoard = true;
+	}
+
+	/** Focus once the menu has closed and handed focus back, so it cannot steal it. */
+	function focusAndSelect(node: HTMLInputElement) {
+		const frame = requestAnimationFrame(() => {
+			node.focus({ preventScroll: true });
+			node.select();
+		});
+		return () => cancelAnimationFrame(frame);
 	}
 
 	function commitBoardName() {
+		if (!renamingBoard) return;
+		renamingBoard = false;
 		const next = boardName.trim();
-		if (!next) {
-			boardName = board.name;
-			return;
-		}
-		kanbanStore.renameBoard(board.id, next);
+		if (next && next !== board.name) kanbanStore.renameBoard(board.id, next);
+	}
+
+	function cancelRename() {
 		renamingBoard = false;
 	}
 
-	function deleteActiveBoard() {
-		const name = board.name.trim() || 'Untitled board';
-		const message =
-			kanbanStore.boards.length === 1
-				? `Delete board “${name}”? A new empty board will be created.`
-				: `Delete board “${name}”? This cannot be undone.`;
-		if (!window.confirm(message)) return;
-		renamingBoard = false;
-		backlogFilterOpen = false;
-		tagPickerOpen = false;
+	function confirmDeleteBoard() {
+		pendingDelete = false;
+		resetBoardUi();
 		kanbanStore.deleteBoard(board.id);
 	}
 
@@ -212,72 +243,65 @@
 
 <div class={viewPage}>
 	<div class={k.controls}>
-		<div class={k.selectWrap}>
-			<select
-				aria-label="Kanban board"
-				value={board.id}
-				onchange={(event) => selectBoard((event.currentTarget as HTMLSelectElement).value)}
-				class={k.select}
-			>
-				{#each kanbanStore.boards as choice (choice.id)}
-					<option value={choice.id}>{choice.name}</option>
-				{/each}
-			</select>
-			<ChevronDown class={k.selectChevron} aria-hidden="true" />
-		</div>
-		<button
-			type="button"
-			class={button({ variant: 'ghost', size: 'sm' })}
-			onclick={() => {
-				backlogFilterOpen = false;
-				tagPickerOpen = false;
-				kanbanStore.createBoard();
-				renamingBoard = true;
-			}}
-		>
-			New board
-		</button>
-		<button
-			type="button"
-			class={button({ variant: 'ghost', size: 'sm' })}
-			onclick={() => {
-				boardName = board.name;
-				renamingBoard = !renamingBoard;
-			}}
-			aria-expanded={renamingBoard}
-		>
-			Rename
-		</button>
-		<button
-			type="button"
-			class={button({ variant: 'danger', size: 'sm' })}
-			onclick={deleteActiveBoard}
-			aria-label={`Delete board ${board.name}`}
-		>
-			Delete
-		</button>
-	</div>
-
-	{#if renamingBoard}
-		<div class={k.renameRow}>
+		{#if renamingBoard}
 			<input
+				{@attach focusAndSelect}
 				bind:value={boardName}
+				type="text"
 				aria-label="Board name"
+				placeholder="Untitled board"
+				class={cx(inputRecipe({ variant: 'unstyled' }), k.boardInput)}
+				onblur={commitBoardName}
 				onkeydown={(event) => {
 					if (event.key === 'Enter') commitBoardName();
-					if (event.key === 'Escape') renamingBoard = false;
+					if (event.key === 'Escape') cancelRename();
 				}}
-				class={inputRecipe({ variant: 'outline', size: 'md' })}
 			/>
-			<button
-				type="button"
-				onclick={commitBoardName}
-				class={button({ variant: 'subtle', size: 'sm' })}
-			>
-				Save
-			</button>
-		</div>
-	{/if}
+		{:else}
+			<Menu.Root bind:open={boardMenuOpen} positioning={{ placement: 'bottom-start' }}>
+				<Menu.Trigger class={k.boardTrigger} aria-label={`Board: ${board.name}`}>
+					<span class={k.boardName}>{board.name}</span>
+					<ChevronDown class={k.boardChevron} aria-hidden="true" />
+				</Menu.Trigger>
+				<Menu.Positioner>
+					<Menu.Content class={cx(popover, k.boardMenuContent)} aria-label="Boards">
+						<Menu.ItemGroup>
+							<Menu.ItemGroupLabel class={k.boardMenuGroupLabel}>Boards</Menu.ItemGroupLabel>
+							{#each kanbanStore.boards as choice (choice.id)}
+								<Menu.Item
+									value={`board:${choice.id}`}
+									onSelect={() => selectBoard(choice.id)}
+									class={menuItemClass}
+								>
+									<span class={k.boardMenuName}>{choice.name}</span>
+									{#if choice.id === board.id}
+										<Check class={k.boardMenuCheck} aria-label="Current board" />
+									{/if}
+								</Menu.Item>
+							{/each}
+						</Menu.ItemGroup>
+						<Menu.Separator class={k.boardMenuSeparator} />
+						<Menu.Item value="new" onSelect={createBoard} class={menuItemClass}>
+							<Plus class={iconSm} aria-hidden="true" />
+							New board
+						</Menu.Item>
+						<Menu.Item value="rename" onSelect={startRename} class={menuItemClass}>
+							<Pencil class={iconSm} aria-hidden="true" />
+							Rename board
+						</Menu.Item>
+						<Menu.Item
+							value="delete"
+							onSelect={() => (pendingDelete = true)}
+							class={cx(menuItemClass, k.boardMenuDanger)}
+						>
+							<Trash2 class={iconSm} aria-hidden="true" />
+							Delete board
+						</Menu.Item>
+					</Menu.Content>
+				</Menu.Positioner>
+			</Menu.Root>
+		{/if}
+	</div>
 
 	<div class={['kanban-columns', k.columnsContainer]}>
 		<div class={k.columnsTrack}>
@@ -470,4 +494,49 @@
 			<KanbanCardBody note={draggedNote} />
 		</div>
 	</div>
+{/if}
+
+{#if pendingDelete}
+	<Dialog.Root
+		open
+		onOpenChange={(details) => !details.open && (pendingDelete = false)}
+		preventScroll={false}
+	>
+		<div
+			{@attach portalToAppOverlay}
+			class={css({ position: 'absolute', inset: 0, zIndex: 80 })}
+			role="presentation"
+		>
+			<Dialog.Backdrop class={d.backdrop} />
+			<Dialog.Positioner class={k.deletePositioner}>
+				<Dialog.Content class={d.panel}>
+					<Dialog.Title class={d.title}>Delete “{board.name}”?</Dialog.Title>
+					<p class={d.description}>
+						{#if kanbanStore.boards.length === 1}
+							Its columns and card order will be removed and a new empty board created. Your notes
+							and labels stay as they are.
+						{:else}
+							Its columns and card order will be removed. Your notes and labels stay as they are.
+						{/if}
+					</p>
+					<div class={vstack({ gap: 'sm', mt: 'lg' })}>
+						<button
+							type="button"
+							onclick={confirmDeleteBoard}
+							class={button({ variant: 'destructive', size: 'md' })}
+						>
+							Delete board
+						</button>
+						<button
+							type="button"
+							onclick={() => (pendingDelete = false)}
+							class={button({ variant: 'ghost', size: 'md' })}
+						>
+							Cancel
+						</button>
+					</div>
+				</Dialog.Content>
+			</Dialog.Positioner>
+		</div>
+	</Dialog.Root>
 {/if}

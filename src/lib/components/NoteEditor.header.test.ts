@@ -170,10 +170,8 @@ describe('NoteEditor header reminder controls', () => {
 		const { container } = render(NoteEditor, {
 			props: { noteId: 'note-1', autofocusBody: true, onClose: () => {} }
 		});
-		await tick();
-		await new Promise((r) => setTimeout(r, 10));
 		const body = container.querySelector('[data-body-editor]');
-		expect(document.activeElement).toBe(body);
+		await vi.waitFor(() => expect(document.activeElement).toBe(body));
 	});
 });
 
@@ -440,6 +438,8 @@ describe('NoteEditor task focus', () => {
 		});
 		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
 		const scroller = container.querySelector('.scrollable') as HTMLElement;
+		// A person taps only after the note has painted.
+		await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 		editor.focus();
 
 		await fireEvent.click(scroller);

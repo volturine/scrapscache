@@ -351,7 +351,7 @@
 {/if}
 
 {#if canvases.length > 0}
-	<div class={`scrollable ${c.strip}`} aria-label="Canvases">
+	<div class={c.strip} aria-label="Canvases">
 		{#each canvases as canvas (canvas.id)}
 			<div class={c.wrap}>
 				<button
@@ -441,7 +441,7 @@
 {/if}
 
 {#if photos.length > 0 || pendingPhotos.length > 0}
-	<div class={`scrollable ${p.strip}`} aria-label="Photos">
+	<div class={p.strip} aria-label="Photos">
 		{#each photos as img (img.id)}
 			<div class={p.wrap}>
 				<button

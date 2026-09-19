@@ -1911,7 +1911,15 @@ export const markdownStyles = css({
 		rounded: 'control',
 		bg: 'scrapscache.surfaceSubtle'
 	},
-	'& .markdown-block-shell': { position: 'relative', w: 'full', minW: 0, maxW: 'full', my: 'sm' },
+	'& .markdown-block-shell': {
+		display: 'flex',
+		flexDirection: 'column',
+		position: 'relative',
+		w: 'full',
+		minW: 0,
+		maxW: 'full',
+		my: 'sm'
+	},
 	'& .markdown-block-copy': {
 		position: 'absolute',
 		top: '2xs',

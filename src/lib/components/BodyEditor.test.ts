@@ -1023,6 +1023,10 @@ describe('BodyEditor markdown bullets', () => {
 		expect(scrolls).toHaveLength(2);
 		expect(scrolls[0].classList.contains('markdown-editor-table-scroll')).toBe(true);
 		expect(scrolls[1].classList.contains('markdown-editor-code-block')).toBe(true);
+		const shell = container.querySelector('.markdown-block-shell');
+		expect(shell).not.toBeNull();
+		const copyBtn = shell?.querySelector('.markdown-block-copy');
+		expect(copyBtn?.nextElementSibling).toBe(shell?.querySelector('.markdown-block-scroll'));
 
 		uiStore.rawMarkdown = true;
 		const raw = render(BodyEditor, { props: { body: source } });

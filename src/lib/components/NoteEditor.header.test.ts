@@ -90,7 +90,13 @@ describe('NoteEditor header reminder controls', () => {
 			props: { noteId: 'note-1', onClose: () => {} }
 		});
 
-		expect(headerButtons(container)).toEqual(['Close note', 'Reminder', 'Pin', 'Make secret']);
+		expect(headerButtons(container)).toEqual([
+			'Close note',
+			'Expand note',
+			'Reminder',
+			'Pin',
+			'Make secret'
+		]);
 		expect(container.querySelector('header')?.textContent).not.toMatch(/Today|Tomorrow|AM|PM/);
 	});
 
@@ -103,6 +109,7 @@ describe('NoteEditor header reminder controls', () => {
 
 		expect(headerButtons(container)).toEqual([
 			'Close note',
+			'Expand note',
 			`Reminder, ${formatReminder(reminder)}`,
 			'Reminder',
 			'Pin',
@@ -118,7 +125,7 @@ describe('NoteEditor header reminder controls', () => {
 			props: { noteId: 'note-1', onClose: () => {} }
 		});
 
-		expect(headerButtons(container)[1]).toBe(`Overdue reminder, ${formatReminder(reminder)}`);
+		expect(headerButtons(container)[2]).toBe(`Overdue reminder, ${formatReminder(reminder)}`);
 		const bell = container.querySelector('header button[aria-label="Reminder"]');
 		expect(bell?.className).toContain('c_scrapscache.overdue');
 	});

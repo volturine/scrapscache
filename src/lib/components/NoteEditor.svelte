@@ -13,15 +13,26 @@
 	import ColorPalette from './ColorPalette.svelte';
 	import ReminderPicker from './ReminderPicker.svelte';
 	import { reminderStore } from '$lib/stores/reminders.svelte';
+	import { uiStore } from '$lib/stores/ui.svelte';
 	import LabelMenu from './LabelMenu.svelte';
 	import NoteEditorFooter from './NoteEditorFooter.svelte';
 	import BodyEditor from './BodyEditor.svelte';
 	import { appClock } from '$lib/appClock.svelte';
 	import { formatReminder, isReminderOverdue } from '$lib/utils';
 	import ReminderLabel from './ReminderLabel.svelte';
-	import { Bell, ChevronLeft, Lock, LockOpen, Paperclip, Pin } from '@lucide/svelte';
+	import {
+		Bell,
+		ChevronLeft,
+		Lock,
+		LockOpen,
+		Maximize2,
+		Minimize2,
+		Paperclip,
+		Pin
+	} from '@lucide/svelte';
 	import { revealEditorField, revealEditorPoint } from '$lib/editorVisibility';
 	import { getClipboardFiles, isImageAttachment } from '$lib/noteImages';
+	import { isKeyboardField } from '$lib/appViewport';
 
 	let {
 		noteId = $bindable(),
@@ -81,6 +92,12 @@
 		  }
 		| undefined;
 	const TOUCH_TAP_SLOP = 8;
+	const AUTO_EXPAND_MAX_LINES = 8;
+	let autoExpanded = $state(false);
+	// The header toggle applies to this open note only and overrides auto-expand.
+	let manualExpanded = $state<boolean | null>(null);
+	const expanded = $derived(manualExpanded ?? autoExpanded);
+	let autoExpandFrame = 0;
 	const photosFillEditor = $derived(body.trim() === '' && images.some(isImageAttachment));
 	function exitTaskFocus() {
 		taskFocusLine = null;
@@ -154,7 +171,9 @@
 		viewport?.addEventListener('resize', onViewportChange);
 		viewport?.addEventListener('scroll', onViewportChange);
 		window.addEventListener('resize', onViewportChange);
+		window.addEventListener('resize', onResizeAutoExpand);
 		document.addEventListener('focusin', onFocusIn);
+		queueAutoExpand(false);
 		if (noteId) {
 			lockPageScroll();
 			const id = noteId;
@@ -177,6 +196,8 @@
 			viewport?.removeEventListener('resize', onViewportChange);
 			viewport?.removeEventListener('scroll', onViewportChange);
 			window.removeEventListener('resize', onViewportChange);
+			window.removeEventListener('resize', onResizeAutoExpand);
+			cancelAnimationFrame(autoExpandFrame);
 			document.removeEventListener('focusin', onFocusIn);
 			window.removeEventListener('scroll', onOuterScroll, { capture: true });
 			viewport?.removeEventListener('scroll', onOuterScroll);
@@ -184,6 +205,59 @@
 			if (copyFlashTimer !== null) clearTimeout(copyFlashTimer);
 		};
 	});
+
+	$effect(() => {
+		if (!isOpen || !expanded || !editorDialog) return;
+		void note?.color;
+		void uiStore.effectiveDark;
+		const root = document.documentElement;
+		// Paint the safe areas around a full-page note in the note's own colour.
+		root.style.setProperty('--editor-page-bg', getComputedStyle(editorDialog).backgroundColor);
+		root.classList.add('editor-expanded');
+		return () => {
+			root.classList.remove('editor-expanded');
+			root.style.removeProperty('--editor-page-bg');
+		};
+	});
+
+	function toggleExpanded() {
+		manualExpanded = !expanded;
+	}
+
+	/** Body lines the note area fits, or Infinity before layout. */
+	function visibleBodyLines(): number {
+		const dialog = editorDialog;
+		const field = dialog?.querySelector('[data-body-editor]');
+		if (!dialog || !field || dialog.clientHeight === 0) return Infinity;
+		const lineHeight = parseFloat(getComputedStyle(field).lineHeight);
+		if (!(lineHeight > 0)) return Infinity;
+		const chrome = dialog.querySelectorAll<HTMLElement>(':scope > header, :scope > footer');
+		let space = dialog.clientHeight;
+		for (const el of chrome) space -= el.offsetHeight;
+		return space / lineHeight;
+	}
+
+	function updateAutoExpand(resized: boolean) {
+		if (!isOpen || manualExpanded !== null) return;
+		// The software keyboard shrinks the viewport; never flip the layout while typing.
+		if (
+			document.documentElement.classList.contains('keyboard-open') ||
+			(resized && navigator.maxTouchPoints > 0 && isKeyboardField(document.activeElement))
+		) {
+			return;
+		}
+		// Lay the note out at its normal size within this frame, then measure it.
+		autoExpanded = false;
+		flushSync();
+		autoExpanded = visibleBodyLines() <= AUTO_EXPAND_MAX_LINES;
+	}
+
+	function queueAutoExpand(resized: boolean) {
+		cancelAnimationFrame(autoExpandFrame);
+		// Runs before the next paint, so the normal-size measurement never shows.
+		autoExpandFrame = requestAnimationFrame(() => updateAutoExpand(resized));
+	}
+	const onResizeAutoExpand = () => queueAutoExpand(true);
 
 	function lockPageScroll() {
 		window.scrollTo(0, 0);
@@ -529,10 +603,10 @@
 		ondragleave={handleFileDragLeave}
 		ondropcapture={handleFileDrop}
 	>
-		<div class={styles.sheetWrap} role="presentation">
+		<div class={styles.sheetWrap({ expanded })} role="presentation">
 			<!-- Clicking blank editor chrome is a pointer convenience; keyboard users focus the fields directly. -->
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
-			<div class={styles.sheetBox}>
+			<div class={styles.sheetBox({ expanded })}>
 				<div
 					bind:this={editorDialog}
 					class={editorDialogClass}
@@ -560,6 +634,20 @@
 						<div class={spacer()} aria-hidden="true"></div>
 
 						<div class={hstack({ minW: 0, gap: '2xs' })}>
+							<button
+								type="button"
+								class={iconButton({ variant: 'ghost', size: 'sm' })}
+								title={expanded ? 'Shrink note' : 'Expand note'}
+								onclick={toggleExpanded}
+								aria-label={expanded ? 'Shrink note' : 'Expand note'}
+								aria-pressed={expanded}
+							>
+								{#if expanded}
+									<Minimize2 size={20} aria-hidden="true" />
+								{:else}
+									<Maximize2 size={20} aria-hidden="true" />
+								{/if}
+							</button>
 							{#if !note.trashed && !note.archived}
 								{#if note.reminder != null}
 									<button

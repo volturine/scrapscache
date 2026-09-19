@@ -234,7 +234,7 @@
 
 	onDestroy(() => swipe.dispose());
 
-	const card = $derived(noteCard({ pinned: note.pinned, trashed: note.trashed }));
+	const card = $derived(noteCard({ pinned: note.pinned }));
 </script>
 
 <svelte:window

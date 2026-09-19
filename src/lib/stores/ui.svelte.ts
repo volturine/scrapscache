@@ -65,6 +65,11 @@ export class UIStore {
 	reminderFilter = $state<{ from: string; to: string | null } | null>(null);
 	/** Views that have been shown this session and should stay mounted. */
 	opened = $state<Record<View, boolean>>({ ...CLOSED_VIEWS });
+	themeColorOverride = $state<string | null>(null);
+
+	get themeColor(): string {
+		return this.themeColorOverride ?? (this.effectiveDark ? '#1a1a1a' : '#ffffff');
+	}
 
 	#persistable = false;
 	#searchTimer: ReturnType<typeof setTimeout> | null = null;

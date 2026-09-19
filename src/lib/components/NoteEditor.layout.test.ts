@@ -2,6 +2,7 @@ import { fireEvent, render } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Note } from '$lib/types';
 import { notesStore } from '$lib/stores/notes.svelte';
+import { uiStore } from '$lib/stores/ui.svelte';
 import NoteEditor from './NoteEditor.svelte';
 
 const PNG =
@@ -127,6 +128,22 @@ describe('NoteEditor Keep-style layout', () => {
 		expect(shrink.getAttribute('aria-pressed')).toBe('true');
 		expect(sheet.className).toMatch(/max-w_none/);
 		expect(document.documentElement.classList.contains('editor-expanded')).toBe(true);
+	});
+
+	it('paints safe-area background and theme-color on open, cleaning up on unmount', async () => {
+		notesStore.notes = [note({ color: 'yellow' })];
+		const { unmount } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+
+		expect(document.documentElement.style.getPropertyValue('--editor-page-bg')).not.toBe('');
+		expect(uiStore.themeColorOverride).not.toBeNull();
+
+		unmount();
+
+		expect(document.documentElement.style.getPropertyValue('--editor-page-bg')).toBe('');
+		expect(uiStore.themeColorOverride).toBeNull();
+		expect(document.documentElement.classList.contains('editor-expanded')).toBe(false);
 	});
 
 	describe('auto-expand', () => {

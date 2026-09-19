@@ -1,3 +1,24 @@
+import type { NoteColor } from './types';
+
+export const NOTE_COLOR_VALUES: Record<NoteColor, { light: string; dark: string }> = {
+	default: { light: '#ffffff', dark: '#1f1f1f' },
+	red: { light: '#f28b82', dark: '#5a3636' },
+	orange: { light: '#f6aea0', dark: '#5a4a3f' },
+	yellow: { light: '#f7d875', dark: '#5a5240' },
+	green: { light: '#b3e2a1', dark: '#3a4a3a' },
+	teal: { light: '#98e9d9', dark: '#2f4a4a' },
+	blue: { light: '#a9d5f4', dark: '#2f3a4f' },
+	darkblue: { light: '#9bb8f3', dark: '#2d3850' },
+	purple: { light: '#c6b3f2', dark: '#3d3756' },
+	pink: { light: '#f9c2d8', dark: '#4f3e4e' },
+	brown: { light: '#d6c5b0', dark: '#4f4a44' },
+	gray: { light: '#f0f0f0', dark: '#3c3c3c' }
+};
+
+export function getNoteBackgroundColor(color: NoteColor | undefined, dark: boolean): string {
+	const entry = NOTE_COLOR_VALUES[color ?? 'default'] ?? NOTE_COLOR_VALUES.default;
+	return dark ? entry.dark : entry.light;
+}
 import { downloadFile } from '@zag-js/file-utils';
 // Small utility helpers shared across components and stores.
 

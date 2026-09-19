@@ -12,7 +12,6 @@
 	import ColorPalette from './ColorPalette.svelte';
 	import ReminderPicker from './ReminderPicker.svelte';
 	import { reminderStore } from '$lib/stores/reminders.svelte';
-	import { uiStore } from '$lib/stores/ui.svelte';
 	import LabelMenu from './LabelMenu.svelte';
 	import NoteEditorFooter from './NoteEditorFooter.svelte';
 	import BodyEditor from './BodyEditor.svelte';
@@ -93,8 +92,9 @@
 	const TOUCH_TAP_SLOP = 8;
 	const AUTO_EXPAND_MAX_LINES = 8;
 	let autoExpanded = $state(false);
-	let shrunkThisOpen = $state(false);
-	const expanded = $derived(uiStore.editorExpanded || (autoExpanded && !shrunkThisOpen));
+	// The header toggle applies to this open note only and overrides auto-expand.
+	let manualExpanded = $state<boolean | null>(null);
+	const expanded = $derived(manualExpanded ?? autoExpanded);
 	let autoExpandFrame = 0;
 	const photosFillEditor = $derived(body.trim() === '' && images.some(isImageAttachment));
 	function exitTaskFocus() {
@@ -211,10 +211,7 @@
 	});
 
 	function toggleExpanded() {
-		const next = !expanded;
-		// A manual shrink also overrides auto-expand until the note closes.
-		shrunkThisOpen = !next;
-		uiStore.editorExpanded = next;
+		manualExpanded = !expanded;
 	}
 
 	/** Body lines the note area fits, or Infinity before layout. */
@@ -231,7 +228,7 @@
 	}
 
 	function updateAutoExpand(resized: boolean) {
-		if (!isOpen || shrunkThisOpen || uiStore.editorExpanded) return;
+		if (!isOpen || manualExpanded !== null) return;
 		// The software keyboard shrinks the viewport; never flip the layout while typing.
 		if (
 			document.documentElement.classList.contains('keyboard-open') ||

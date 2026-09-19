@@ -10,7 +10,6 @@ interface UIState {
 	activeLabelId: string | null;
 	search: string;
 	settingsOpen: boolean;
-	editorExpanded: boolean;
 }
 
 function prefersDark(): boolean {
@@ -52,7 +51,6 @@ export class UIStore {
 	private systemDark = $state(prefersDark());
 	#layout = $state<Layout>('grid');
 	#view = $state<View>('notes');
-	#editorExpanded = $state(false);
 	activeLabelId = $state<string | null>(null);
 	// Ephemeral route-feedback state; never persisted across a reload.
 	pendingPath = $state<string | null>(null);
@@ -95,14 +93,6 @@ export class UIStore {
 		this.#persist();
 	}
 
-	get editorExpanded() {
-		return this.#editorExpanded;
-	}
-	set editorExpanded(value: boolean) {
-		this.#editorExpanded = value;
-		this.#persist();
-	}
-
 	get view() {
 		return this.#view;
 	}
@@ -142,9 +132,6 @@ export class UIStore {
 					if (typeof parsed.dark === 'boolean' || parsed.dark === null) this.#dark = parsed.dark;
 					if (parsed.layout === 'grid' || parsed.layout === 'list') this.#layout = parsed.layout;
 					if (isView(parsed.view)) this.#view = parsed.view;
-					if (typeof parsed.editorExpanded === 'boolean') {
-						this.#editorExpanded = parsed.editorExpanded;
-					}
 				}
 			} catch {
 				/* ignore */
@@ -175,8 +162,7 @@ export class UIStore {
 			sidebarOpen: this.#sidebarOpen,
 			dark: this.#dark,
 			layout: this.#layout,
-			view: this.#view,
-			editorExpanded: this.#editorExpanded
+			view: this.#view
 		};
 		localStorage.setItem(LS_KEY, JSON.stringify(snap));
 	}

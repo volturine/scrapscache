@@ -2,7 +2,6 @@ import { fireEvent, render } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Note } from '$lib/types';
 import { notesStore } from '$lib/stores/notes.svelte';
-import { uiStore } from '$lib/stores/ui.svelte';
 import NoteEditor from './NoteEditor.svelte';
 
 const PNG =
@@ -43,7 +42,6 @@ afterEach(() => {
 	vi.restoreAllMocks();
 	notesStore.notes = [];
 	notesStore.labels = [];
-	uiStore.editorExpanded = false;
 });
 
 describe('NoteEditor Keep-style layout', () => {
@@ -125,7 +123,6 @@ describe('NoteEditor Keep-style layout', () => {
 
 		await fireEvent.click(expand);
 
-		expect(uiStore.editorExpanded).toBe(true);
 		const shrink = getByRole('button', { name: 'Shrink note' });
 		expect(shrink.getAttribute('aria-pressed')).toBe('true');
 		expect(sheet.className).toMatch(/max-w_none/);
@@ -162,11 +159,9 @@ describe('NoteEditor Keep-style layout', () => {
 			});
 
 			await vi.waitFor(() => expect(getByRole('button', { name: 'Shrink note' })).toBeTruthy());
-			expect(uiStore.editorExpanded).toBe(false);
 
 			await fireEvent.click(getByRole('button', { name: 'Shrink note' }));
 			expect(getByRole('button', { name: 'Expand note' })).toBeTruthy();
-			expect(uiStore.editorExpanded).toBe(false);
 		});
 
 		it('keeps the normal sheet when more than eight lines fit', async () => {

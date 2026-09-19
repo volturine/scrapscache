@@ -3,6 +3,7 @@ import { tick } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Note } from '$lib/types';
 import { notesStore } from '$lib/stores/notes.svelte';
+import { uiStore } from '$lib/stores/ui.svelte';
 import { formatReminder } from '$lib/utils';
 import NoteEditor from './NoteEditor.svelte';
 
@@ -66,9 +67,23 @@ afterEach(() => {
 	vi.restoreAllMocks();
 	notesStore.notes = [];
 	notesStore.labels = [];
+	uiStore.rawMarkdown = false;
 });
 
 describe('NoteEditor header reminder controls', () => {
+	it('uses the raw Markdown font for both the title and body', () => {
+		uiStore.rawMarkdown = true;
+		notesStore.notes = [note({ title: 'Raw title', body: 'Raw body' })];
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+
+		expect(container.querySelector('textarea[placeholder="Title"]')?.classList).toContain(
+			'markdown-raw'
+		);
+		expect(container.querySelector('[data-body-editor]')?.classList).toContain('markdown-raw');
+	});
+
 	it('shows reminder then pin, and no time when the note has no reminder', () => {
 		notesStore.notes = [note()];
 		const { container } = render(NoteEditor, {

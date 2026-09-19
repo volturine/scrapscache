@@ -114,6 +114,7 @@
 	bind:this={gridEl}
 	class={[css({ position: 'relative' }), className]}
 	bind:clientWidth={containerWidth}
+	style:--masonry-cols={colCount}
 >
 	{#if leading && leadSpan > 0}
 		<div

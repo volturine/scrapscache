@@ -267,6 +267,36 @@ describe('NoteEditor paste photo', () => {
 		expect(bodyLines).toEqual(['packing list', 'extra line']);
 	});
 
+	it('lifts a heading when the clipboard starts with a blank line', async () => {
+		notesStore.notes = [note({ title: '', body: '' })];
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+		const bodyEditor = container.querySelector('[data-body-editor]') as HTMLElement;
+
+		const headingPaste = createClipboardEvent(
+			[],
+			'\n# Cloudflare and GitHub setup\n\nThe controls that cannot live in this repository, in the order worth doing them.\nRoughly 45 minutes end to end. Everything here is a one-off; nothing needs\nrevisiting except the token rotation.'
+		);
+		bodyEditor.dispatchEvent(headingPaste);
+
+		await vi.waitFor(() => {
+			const titleInput = container.querySelector(
+				'textarea[placeholder="Title"]'
+			) as HTMLTextAreaElement;
+			expect(titleInput.value).toBe('Cloudflare and GitHub setup');
+		});
+		const bodyLines = Array.from(container.querySelectorAll('[data-line-text]')).map(
+			(el) => el.textContent
+		);
+		expect(bodyLines).toEqual([
+			'',
+			'The controls that cannot live in this repository, in the order worth doing them.',
+			'Roughly 45 minutes end to end. Everything here is a one-off; nothing needs',
+			'revisiting except the token rotation.'
+		]);
+	});
+
 	it('seeds an empty note with a paste that carries no heading when nothing is selected', async () => {
 		notesStore.notes = [note({ title: '', body: '' })];
 		const { container } = render(NoteEditor, {

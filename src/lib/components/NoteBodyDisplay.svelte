@@ -4,19 +4,38 @@
 	// checklists are interactive in the editor instead.
 	import type { Note } from '$lib/types';
 	import { noteBody } from 'styled-system/recipes';
-	import { parseBody, noteAttachments } from '$lib/checklistBody';
+	import { parseBody, noteAttachments, type BodySegment } from '$lib/checklistBody';
 	import { extractHttpUrls, localLinkCard } from '$lib/linkPreview';
 	import { isImageAttachment, fileIconLabel } from '$lib/noteImages';
 	import { displayImageSrc } from '$lib/imageThumb';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { onMount } from 'svelte';
 	import { isCanvasAttachment } from '$lib/canvasAttachment';
-	import { canvasPreview, filePreview, photoPreview } from '$panda/styles';
+	import { canvasPreview, filePreview, photoPreview, markdownStyles } from '$panda/styles';
 	import { checklist } from 'styled-system/recipes';
+	import {
+		highlightCodeLine,
+		markdownTokenClass,
+		parseInlineMarkdown,
+		parseMarkdownBlocks,
+		tokenizeMarkdownTableRow,
+		type MarkdownBlock
+	} from '$lib/markdown';
+	import { uiStore } from '$lib/stores/ui.svelte';
 
 	let { note }: { note: Note } = $props();
+	type MarkdownTableBlock = Extract<MarkdownBlock, { type: 'table' }>;
 
+	const CARD_PREVIEW_LIMIT = 64;
 	const segments = $derived(parseBody(note.body ?? ''));
+	const blocks = $derived(parseMarkdownBlocks(note.body ?? ''));
+	const displaySegments = $derived(
+		segments.length > CARD_PREVIEW_LIMIT ? segments.slice(0, CARD_PREVIEW_LIMIT) : segments
+	);
+	const displayBlocks = $derived(
+		blocks.length > CARD_PREVIEW_LIMIT ? blocks.slice(0, CARD_PREVIEW_LIMIT) : blocks
+	);
+	const rawLines = $derived((note.body ?? '').replace(/\r\n?/g, '\n').split('\n'));
 	const attachments = $derived(noteAttachments(note));
 	const imageAttachments = $derived(attachments.filter(isImageAttachment));
 	const canvases = $derived(attachments.filter(isCanvasAttachment));
@@ -29,6 +48,21 @@
 	);
 	const links = $derived(extractHttpUrls(note.body ?? ''));
 	let contentElement: HTMLDivElement | null = $state(null);
+
+	// Raw mode draws each table's source as one block; map every covered line to it.
+	const rawTables = $derived.by(() => {
+		const byLine = new Map<number, MarkdownTableBlock>();
+		for (const block of blocks) {
+			if (block.type !== 'table') continue;
+			const end = block.lineIndex + block.rows.length + 2;
+			for (let line = block.lineIndex; line < end; line++) byLine.set(line, block);
+		}
+		return byLine;
+	});
+
+	function rawTableSource(table: MarkdownTableBlock): string[] {
+		return rawLines.slice(table.lineIndex, table.lineIndex + table.rows.length + 2);
+	}
 
 	onMount(() => {
 		// Cards only need thumbs. Full bytes load on explicit open / editor focus.
@@ -60,43 +94,145 @@
 	const p = photoPreview.display;
 </script>
 
-<div bind:this={contentElement} class={body.container}>
-	{#each segments as seg (seg.lineIndex)}
-		{#if seg.type === 'check'}
-			{@const check = checklist({ checked: seg.checked, indented: seg.indent > 0 })}
-			<div
-				class={body.row}
-				data-check-line={seg.lineIndex}
-				style={seg.indent > 0 ? `padding-left: ${seg.indent * 1.25}rem` : undefined}
-			>
-				<span class={[check.root, body.check]} aria-hidden="true">
-					{#if seg.checked}
-						<svg viewBox="0 0 16 16" class={check.mark}>
-							<path d="M3.5 8.5 6.5 11.5 12.5 4.5" />
-						</svg>
-					{/if}
-				</span>
-				<span class={noteBody({ checked: seg.checked, indented: seg.indent > 0 }).line}>
-					{seg.text || '\u00a0'}
-				</span>
-			</div>
-		{:else if seg.type === 'bullet'}
-			<div
-				class={body.row}
-				data-bullet-line={seg.lineIndex}
-				style={seg.indent > 0 ? `padding-left: ${seg.indent * 1.25}rem` : undefined}
-			>
-				<span class={body.bullet} aria-hidden="true">•</span>
-				<span class={noteBody({ indented: seg.indent > 0 }).line}>
-					{seg.text || '\u00a0'}
-				</span>
-			</div>
-		{:else if seg.text}
-			<p class={body.paragraph}>{seg.text}</p>
+{#snippet inlineContent(text: string)}
+	<span class:markdown-raw={uiStore.rawMarkdown}>
+		{#if text}
+			{@const inlineTokens = parseInlineMarkdown(text)}
+			{#each inlineTokens as token, tokenIndex (tokenIndex)}
+				<span
+					class={markdownTokenClass(token, uiStore.rawMarkdown)}
+					data-markdown-token={token.kind === 'marker' ? token.marker : token.styles.join(' ')}
+					>{token.text}</span
+				>
+			{/each}
 		{:else}
-			<div class={body.spacer}></div>
+			&nbsp;
+		{/if}
+	</span>
+{/snippet}
+
+{#snippet rawTableContent(text: string)}
+	{#each tokenizeMarkdownTableRow(text) as token, tokenIndex (tokenIndex)}
+		{#if token.kind === 'marker'}
+			<span class="markdown-raw-table-marker">{token.text}</span>
+		{:else if token.text}
+			{@render inlineContent(token.text)}
 		{/if}
 	{/each}
+{/snippet}
+
+{#snippet bodyLine(seg: BodySegment)}
+	{#if seg.type === 'check'}
+		{@const check = checklist({ checked: seg.checked, indented: seg.indent > 0 })}
+		<div
+			class={body.row}
+			data-check-line={seg.lineIndex}
+			style={seg.indent > 0 ? `padding-left: ${seg.indent * 1.25}rem` : undefined}
+		>
+			<span class={[check.root, body.check]} aria-hidden="true">
+				{#if seg.checked}
+					<svg viewBox="0 0 16 16" class={check.mark}>
+						<path d="M3.5 8.5 6.5 11.5 12.5 4.5" />
+					</svg>
+				{/if}
+			</span>
+			<span class={noteBody({ checked: seg.checked, indented: seg.indent > 0 }).line}>
+				{@render inlineContent(seg.text)}
+			</span>
+		</div>
+	{:else if seg.type === 'bullet'}
+		<div
+			class={body.row}
+			data-bullet-line={seg.lineIndex}
+			style={seg.indent > 0 ? `padding-left: ${seg.indent * 1.25}rem` : undefined}
+		>
+			<span class={body.bullet} aria-hidden="true">•</span>
+			<span class={noteBody({ indented: seg.indent > 0 }).line}>
+				{@render inlineContent(seg.text)}
+			</span>
+		</div>
+	{:else if seg.text}
+		<p class={body.paragraph}>{@render inlineContent(seg.text)}</p>
+	{:else}
+		<div class={body.spacer}></div>
+	{/if}
+{/snippet}
+
+<div
+	bind:this={contentElement}
+	class={[
+		body.container,
+		markdownStyles,
+		'markdown-content',
+		uiStore.rawMarkdown && 'markdown-raw'
+	]}
+>
+	{#if uiStore.rawMarkdown}
+		{#each displaySegments as seg (seg.lineIndex)}
+			{@const rawTable = rawTables.get(seg.lineIndex)}
+			{#if rawTable}
+				{#if rawTable.lineIndex === seg.lineIndex}
+					<div
+						class="markdown-block-surface markdown-raw-table note-scrollbar-hidden"
+						data-markdown-raw-table-container
+					>
+						{#each rawTableSource(rawTable) as sourceLine, sourceLineIndex (sourceLineIndex)}
+							<div>{@render rawTableContent(sourceLine)}</div>
+						{/each}
+					</div>
+				{/if}
+			{:else}
+				{@render bodyLine(seg)}
+			{/if}
+		{/each}
+	{:else}
+		{#each displayBlocks as block (block.type === 'line' ? block.segment.lineIndex : block.lineIndex)}
+			{#if block.type === 'line'}
+				{@render bodyLine(block.segment)}
+			{:else if block.type === 'table'}
+				<div
+					class="markdown-block-surface markdown-table-scroll note-scrollbar-hidden"
+					data-markdown-table-container
+				>
+					<table class="markdown-table" data-markdown-table>
+						<thead>
+							<tr>
+								{#each block.header as cell, columnIndex (columnIndex)}
+									<th scope="col" style={`text-align: ${block.alignments[columnIndex]};`}>
+										{@render inlineContent(cell)}
+									</th>
+								{/each}
+							</tr>
+						</thead>
+						<tbody>
+							{#each block.rows as row, rowIndex (rowIndex)}
+								<tr>
+									{#each block.header as _, columnIndex (columnIndex)}
+										<td style={`text-align: ${block.alignments[columnIndex]};`}>
+											{@render inlineContent(row[columnIndex] ?? '')}
+										</td>
+									{/each}
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</div>
+			{:else}
+				{@const codeLines = block.code.split('\n')}
+				<pre
+					class="markdown-block-surface markdown-code-block note-scrollbar-hidden"
+					data-markdown-code-block
+					data-language={block.language || undefined}><code
+						>{#each codeLines as codeLine, codeLineIndex (`${block.lineIndex}-${codeLineIndex}`)}<span
+								class="markdown-code-line"
+								>{#each highlightCodeLine(codeLine, block.language) as token, tokenIndex (tokenIndex)}{#if token.kind === 'plain'}{token.text}{:else}<span
+											class="markdown-code-token-{token.kind}">{token.text}</span
+										>{/if}{/each}</span
+							>{/each}</code
+					></pre>
+			{/if}
+		{/each}
+	{/if}
 </div>
 
 {#if canvases.length > 0}

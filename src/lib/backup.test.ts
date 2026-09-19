@@ -44,7 +44,12 @@ describe('backup normalization', () => {
 			boardTombstones: {},
 			ui: { sidebarOpen: true, dark: null, layout: 'grid', view: 'notes' }
 		});
-		expect(backup).toMatchObject({ version: 4, exportedAt: 123, notes: [sourceNote] });
+		expect(backup).toMatchObject({
+			version: 4,
+			exportedAt: 123,
+			notes: [sourceNote],
+			ui: { rawMarkdown: false }
+		});
 	});
 
 	it('never retains sync identity from the backup file', () => {

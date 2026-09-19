@@ -1,4 +1,4 @@
-// Rune-based UI store: sidebar open, dark mode, density, active view, search.
+// Rune-based UI store: sidebar open, dark mode, density, Markdown mode, active view, search.
 export type Layout = 'grid' | 'list';
 export type View = 'notes' | 'kanban' | 'reminders' | 'archive' | 'trash' | 'label';
 
@@ -10,6 +10,7 @@ interface UIState {
 	activeLabelId: string | null;
 	search: string;
 	settingsOpen: boolean;
+	rawMarkdown: boolean;
 }
 
 function prefersDark(): boolean {
@@ -51,6 +52,7 @@ export class UIStore {
 	private systemDark = $state(prefersDark());
 	#layout = $state<Layout>('grid');
 	#view = $state<View>('notes');
+	#rawMarkdown = $state(false);
 	activeLabelId = $state<string | null>(null);
 	// Ephemeral route-feedback state; never persisted across a reload.
 	pendingPath = $state<string | null>(null);
@@ -63,6 +65,11 @@ export class UIStore {
 	reminderFilter = $state<{ from: string; to: string | null } | null>(null);
 	/** Views that have been shown this session and should stay mounted. */
 	opened = $state<Record<View, boolean>>({ ...CLOSED_VIEWS });
+	themeColorOverride = $state<string | null>(null);
+
+	get themeColor(): string {
+		return this.themeColorOverride ?? (this.effectiveDark ? '#1a1a1a' : '#ffffff');
+	}
 
 	#persistable = false;
 	#searchTimer: ReturnType<typeof setTimeout> | null = null;
@@ -90,6 +97,14 @@ export class UIStore {
 	}
 	set layout(value: Layout) {
 		this.#layout = value;
+		this.#persist();
+	}
+
+	get rawMarkdown() {
+		return this.#rawMarkdown;
+	}
+	set rawMarkdown(value: boolean) {
+		this.#rawMarkdown = value;
 		this.#persist();
 	}
 
@@ -132,6 +147,7 @@ export class UIStore {
 					if (typeof parsed.dark === 'boolean' || parsed.dark === null) this.#dark = parsed.dark;
 					if (parsed.layout === 'grid' || parsed.layout === 'list') this.#layout = parsed.layout;
 					if (isView(parsed.view)) this.#view = parsed.view;
+					if (typeof parsed.rawMarkdown === 'boolean') this.#rawMarkdown = parsed.rawMarkdown;
 				}
 			} catch {
 				/* ignore */
@@ -162,7 +178,8 @@ export class UIStore {
 			sidebarOpen: this.#sidebarOpen,
 			dark: this.#dark,
 			layout: this.#layout,
-			view: this.#view
+			view: this.#view,
+			rawMarkdown: this.#rawMarkdown
 		};
 		localStorage.setItem(LS_KEY, JSON.stringify(snap));
 	}
@@ -183,6 +200,10 @@ export class UIStore {
 		this.layout = this.layout === 'grid' ? 'list' : 'grid';
 	}
 
+	toggleRawMarkdown() {
+		this.rawMarkdown = !this.rawMarkdown;
+	}
+
 	setView(view: View, labelId: string | null = null) {
 		this.view = view;
 		this.activeLabelId = labelId;
@@ -196,11 +217,13 @@ export class UIStore {
 		dark?: boolean | null;
 		layout?: Layout;
 		view?: View;
+		rawMarkdown?: boolean;
 	}): void {
 		if (typeof state.sidebarOpen === 'boolean') this.sidebarOpen = state.sidebarOpen;
 		if (typeof state.dark === 'boolean' || state.dark === null) this.dark = state.dark;
 		if (state.layout === 'grid' || state.layout === 'list') this.layout = state.layout;
 		if (isView(state.view)) this.view = state.view;
+		if (typeof state.rawMarkdown === 'boolean') this.rawMarkdown = state.rawMarkdown;
 	}
 }
 

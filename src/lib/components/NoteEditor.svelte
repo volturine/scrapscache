@@ -6,18 +6,18 @@
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { flushSync, onMount, tick } from 'svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
+	import { uiStore } from '$lib/stores/ui.svelte';
 	import { noteToPlainText, noteAttachments, splitPastedHeading } from '$lib/checklistBody';
 	import { mergeHydratedImages } from '$lib/noteAttachmentHydration';
 	import type { NoteImage } from '$lib/types';
 	import ColorPalette from './ColorPalette.svelte';
 	import ReminderPicker from './ReminderPicker.svelte';
 	import { reminderStore } from '$lib/stores/reminders.svelte';
-	import { uiStore } from '$lib/stores/ui.svelte';
 	import LabelMenu from './LabelMenu.svelte';
 	import NoteEditorFooter from './NoteEditorFooter.svelte';
 	import BodyEditor from './BodyEditor.svelte';
 	import { appClock } from '$lib/appClock.svelte';
-	import { formatReminder, isReminderOverdue } from '$lib/utils';
+	import { formatReminder, getNoteBackgroundColor, isReminderOverdue } from '$lib/utils';
 	import ReminderLabel from './ReminderLabel.svelte';
 	import {
 		Bell,
@@ -206,16 +206,25 @@
 	});
 
 	$effect(() => {
-		if (!isOpen || !expanded || !editorDialog) return;
+		if (!isOpen || !editorDialog) return;
 		void note?.color;
 		void uiStore.effectiveDark;
 		const root = document.documentElement;
-		// Paint the safe areas around a full-page note in the note's own colour.
-		root.style.setProperty('--editor-page-bg', getComputedStyle(editorDialog).backgroundColor);
-		root.classList.add('editor-expanded');
+		const computedBg = getComputedStyle(editorDialog).backgroundColor;
+		const bg =
+			computedBg && computedBg !== 'rgba(0, 0, 0, 0)' && computedBg !== 'transparent'
+				? computedBg
+				: getNoteBackgroundColor(note?.color, uiStore.effectiveDark);
+
+		// Paint the safe areas around a note in the note's own colour.
+		root.style.setProperty('--editor-page-bg', bg);
+		root.classList.toggle('editor-expanded', expanded);
+		uiStore.themeColorOverride = bg;
+
 		return () => {
 			root.classList.remove('editor-expanded');
 			root.style.removeProperty('--editor-page-bg');
+			uiStore.themeColorOverride = null;
 		};
 	});
 
@@ -706,6 +715,7 @@
 						class={cx(
 							'note-scrollbar-hidden scrollable',
 							styles.scroller,
+							uiStore.rawMarkdown && styles.rawScroller,
 							photosFillEditor ? styles.scrollerFill : undefined
 						)}
 					>
@@ -723,6 +733,7 @@
 								}
 							}}
 							rows="1"
+							class:markdown-raw={uiStore.rawMarkdown}
 							class={titleField}></textarea>
 
 						<BodyEditor

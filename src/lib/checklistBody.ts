@@ -212,7 +212,7 @@ export function noteToPlainText(note: Note): string {
 	return `${heading}${note.body}${suffix}`.trim();
 }
 
-const PASTE_HEADING_RE = /^#\s+(.+)$/;
+const PASTE_HEADING_RE = /^[ \t]{0,3}#[ \t]+(.+?)(?:[ \t]+#+)?$/;
 
 /**
  * Round-trip of the copy export: when the first pasted line is the top-level
@@ -220,8 +220,15 @@ const PASTE_HEADING_RE = /^#\s+(.+)$/;
  * when the text carries no leading heading.
  */
 export function splitPastedHeading(text: string): { title: string; body: string } | null {
-	const [first = '', ...rest] = text.split('\n');
-	const heading = first.match(PASTE_HEADING_RE);
+	const lines = text
+		.replace(/^\uFEFF/, '')
+		.replace(/\r\n?/g, '\n')
+		.split('\n');
+	const firstContentLine = lines.findIndex((line) => line.trim() !== '');
+	if (firstContentLine < 0) return null;
+	const heading = lines[firstContentLine]?.match(PASTE_HEADING_RE);
 	if (!heading) return null;
-	return { title: heading[1].trim(), body: rest.join('\n') };
+	const title = heading[1].trim();
+	if (!title) return null;
+	return { title, body: lines.slice(firstContentLine + 1).join('\n') };
 }

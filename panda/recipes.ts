@@ -426,13 +426,6 @@ const noteCardRecipe = defineSlotRecipe({
 					boxShadow: 'md'
 				}
 			}
-		},
-		trashed: {
-			true: {
-				cardBody: {
-					opacity: 0.65
-				}
-			}
 		}
 	}
 });
@@ -534,7 +527,7 @@ const noteBodyRecipe = defineSlotRecipe({
 				// iOS WebKit walks the rendered text after the caret on every keystroke.
 				// Skipping offscreen chunks keeps typing cost independent of note length.
 				// The inline padding keeps focused rows' bleed outside the paint clip.
-				chunk: { display: 'block', contentVisibility: 'auto', mx: '-sm', px: 'sm' },
+				chunk: { display: 'block', mx: '-sm', px: 'sm' },
 				row: { flexWrap: 'wrap' },
 				line: {
 					display: 'block',

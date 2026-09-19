@@ -193,7 +193,9 @@
 	$effect(() => {
 		if (!cardEl) return;
 		const observer = new ResizeObserver((entries) => {
-			for (const entry of entries) cardHeight = entry.contentRect.height;
+			for (const entry of entries) {
+				cardHeight = entry.contentRect.height;
+			}
 		});
 		observer.observe(cardEl);
 		return () => observer.disconnect();
@@ -234,7 +236,7 @@
 
 	onDestroy(() => swipe.dispose());
 
-	const card = $derived(noteCard({ pinned: note.pinned, trashed: note.trashed }));
+	const card = $derived(noteCard({ pinned: note.pinned }));
 </script>
 
 <svelte:window
@@ -318,8 +320,7 @@
 					class={cx(
 						note.secret
 							? css({ flex: '1', minH: 0, display: 'flex', flexDirection: 'column' })
-							: card.contentPad,
-						note.trashed && css({ opacity: 0.6 })
+							: card.contentPad
 					)}
 				>
 					{#if note.title}

@@ -228,7 +228,7 @@
 	<meta property="og:description" content={metaDescription} />
 	<meta name="twitter:title" content={metaTitle} />
 	<meta name="twitter:description" content={metaDescription} />
-	<meta name="theme-color" content={uiStore.effectiveDark ? '#1a1a1a' : '#ffffff'} />
+	<meta name="theme-color" content={uiStore.themeColor} />
 </svelte:head>
 
 <svelte:window onpaste={handleGalleryPaste} />

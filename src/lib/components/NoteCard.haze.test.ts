@@ -233,4 +233,25 @@ describe('NoteCard right-click haze', () => {
 		expect(overlay?.querySelector('svg')).toBeTruthy();
 		expect(overlay?.textContent).toBe('');
 	});
+
+	it('renders trashed notes with the same visual card styling as regular notes', () => {
+		const { container: regularContainer } = render(NoteCard, {
+			props: { note: note(), onOpen: vi.fn() }
+		});
+		const regularCard = regularContainer.querySelector('[role="button"]') as HTMLElement;
+		const regularContentPad = regularCard.querySelector(
+			'.scrapscache-card__contentPad'
+		) as HTMLElement;
+
+		const { container: trashedContainer } = render(NoteCard, {
+			props: { note: note({ id: 'note-trashed', trashed: true }), onOpen: vi.fn() }
+		});
+		const trashedCard = trashedContainer.querySelector('[role="button"]') as HTMLElement;
+		const trashedContentPad = trashedCard.querySelector(
+			'.scrapscache-card__contentPad'
+		) as HTMLElement;
+
+		expect(trashedCard.className).toBe(regularCard.className);
+		expect(trashedContentPad.className).toBe(regularContentPad.className);
+	});
 });

@@ -176,6 +176,29 @@ body {
 	}
 }
 
+/* One scrollbar for the whole app: no track, and a rounded thumb in the app's
+ * own border tone that darkens under the pointer. Anything that hides its
+ * scrollbar outright, or brings its own like Excalidraw, still wins on
+ * specificity. */
+* {
+	scrollbar-width: thin;
+	scrollbar-color: var(--colors-scrapscache-border-subtle) transparent;
+}
+*::-webkit-scrollbar {
+	width: 0.375rem;
+	height: 0.375rem;
+}
+*::-webkit-scrollbar-track {
+	background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+	background: var(--colors-scrapscache-border-subtle);
+	border-radius: 9999px;
+}
+*::-webkit-scrollbar-thumb:hover {
+	background: var(--colors-scrapscache-text-muted);
+}
+
 /* Allow touch scrolling on elements that opt in. */
 .scrollable {
 	-webkit-overflow-scrolling: touch;

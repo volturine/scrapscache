@@ -30,8 +30,7 @@
 	} from '@lucide/svelte';
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { portalToAppOverlay } from '$lib/appViewport';
-	import { cardSwipeStyle } from '$lib/cardSwipe';
-	import { createLabelSwipe } from '$lib/labelSwipe';
+	import { createLabelSwipe, labelSwipeStyle, LABEL_TRAY_PX } from '$lib/labelSwipe';
 	import { pathForView } from '$lib/viewRoutes';
 	import { useEditorActions } from '$lib/editorContext';
 
@@ -52,18 +51,27 @@
 	let swipeLabelId = $state<string | null>(null);
 	let swipeOffsetX = $state(0);
 	let swipeDragging = $state(false);
+	let trayLabelId = $state<string | null>(null);
 
-	// Touch reaches the same actions as a right click: swipe a row to the left.
+	// Touch reaches the same actions as a right click: swipe a row to the left
+	// and its rename and delete buttons slide in behind it.
 	const swipe = createLabelSwipe({
-		onReveal: (labelId) => {
-			hazeLabelId = labelId;
-		},
 		setVisual: (visual) => {
 			swipeLabelId = visual.labelId;
 			swipeOffsetX = visual.offsetX;
 			swipeDragging = visual.dragging;
+		},
+		setOpen: (labelId) => {
+			trayLabelId = labelId;
 		}
 	});
+
+	/** How much of the row the tray has taken; the class owns the easing. */
+	function swipeStyle(labelId: string): string | undefined {
+		if (swipeLabelId === labelId) return labelSwipeStyle(swipeOffsetX, swipeDragging);
+		if (trayLabelId === labelId) return labelSwipeStyle(-LABEL_TRAY_PX, false);
+		return undefined;
+	}
 
 	const navItems: { view: View; label: string; icon: LucideIcon }[] = [
 		{ view: 'notes', label: 'Notes', icon: StickyNote },
@@ -159,18 +167,25 @@
 	}
 
 	function openLabel(label: Label) {
-		if (swipe.wasDrag()) return;
+		if (swipe.consumeDrag()) return;
+		// A row showing its actions takes the next tap to put them away.
+		if (trayLabelId === label.id) {
+			swipe.close();
+			return;
+		}
 		navigate('label', label.id);
 	}
 
 	function handleContextMenu(e: MouseEvent, label: Label) {
 		e.preventDefault();
 		e.stopPropagation();
+		swipe.close();
 		hazeLabelId = label.id;
 	}
 
 	function startRename(label: Label) {
 		pendingDelete = null;
+		swipe.close();
 		closeHaze();
 		renamingId = label.id;
 		renamingName = label.name;
@@ -193,6 +208,7 @@
 
 	function requestDelete(label: Label) {
 		renamingId = null;
+		swipe.close();
 		closeHaze();
 		pendingDelete = label;
 	}
@@ -356,12 +372,11 @@
 							onpointermove={swipe.onPointerMove}
 							onpointerup={swipe.onPointerUp}
 							onpointercancel={swipe.onPointerCancel}
-							style={swipeLabelId === label.id
-								? cardSwipeStyle(swipeOffsetX, swipeDragging)
-								: undefined}
+							style={swipeStyle(label.id)}
 							class={[
 								menuRow,
-								sidebarRow({ navigation: true, active: isActive('label', label.id) })
+								sidebarRow({ navigation: true, active: isActive('label', label.id) }),
+								sidebarStyles.labelSwipeRow
 							]}
 							aria-label={label.name}
 						>
@@ -375,6 +390,37 @@
 								</span>
 							{/if}
 						</button>
+
+						<!-- Mounted only while some of it can show, so its buttons are out of
+						     reach the rest of the time. -->
+						{#if trayLabelId === label.id || (swipeLabelId === label.id && swipeOffsetX < 0)}
+							<div class={sidebarStyles.labelTray} data-label-tray>
+								<button
+									type="button"
+									class={iconButton({ size: 'compact', variant: 'ghost' })}
+									title="Rename"
+									aria-label={`Rename ${label.name}`}
+									onclick={(e) => {
+										e.stopPropagation();
+										startRename(label);
+									}}
+								>
+									<Pencil size={16} strokeWidth={1.75} aria-hidden="true" />
+								</button>
+								<button
+									type="button"
+									class={iconButton({ size: 'compact', variant: 'danger' })}
+									title="Delete"
+									aria-label={`Delete ${label.name}`}
+									onclick={(e) => {
+										e.stopPropagation();
+										requestDelete(label);
+									}}
+								>
+									<Trash2 size={16} strokeWidth={1.75} aria-hidden="true" />
+								</button>
+							</div>
+						{/if}
 
 						{#if hazeLabelId === label.id}
 							<div
@@ -430,62 +476,63 @@
 
 <svelte:window
 	onpointerdown={(e) => {
-		if (hazeLabelId && !(e.target as HTMLElement | null)?.closest?.('[data-label-haze]')) {
-			closeHaze();
-		}
+		const target = e.target as HTMLElement | null;
+		if (hazeLabelId && !target?.closest?.('[data-label-haze]')) closeHaze();
+		if (trayLabelId && !target?.closest?.('[data-labels-edit]')) swipe.close();
 	}}
 	onkeydown={(e) => {
-		if (e.key === 'Escape' && hazeLabelId) {
-			closeHaze();
-		}
+		if (e.key !== 'Escape') return;
+		if (hazeLabelId) closeHaze();
+		if (trayLabelId) swipe.close();
 	}}
 />
 
-<Dialog.Root open={pendingDelete !== null} onOpenChange={(e) => !e.open && cancelDelete()}>
-	<Dialog.Backdrop class={d.backdrop} />
-	<Dialog.Positioner class={d.positioner}>
-		<Dialog.Content class={d.panel} aria-describedby={undefined}>
-			<Dialog.Title class={d.title}>
-				Delete “{pendingDelete?.name}”?
-			</Dialog.Title>
-			<Dialog.Description class={d.description}>
-				{#if pendingDelete}
-					{#if (labelCounts.get(pendingDelete.id) ?? 0) > 0}
-						This label is on {labelCounts.get(pendingDelete.id)} note{(labelCounts.get(
-							pendingDelete.id
-						) ?? 0) === 1
-							? ''
-							: 's'}.
-					{:else}
-						No notes currently use this label.
-					{/if}
-				{/if}
-			</Dialog.Description>
-			<div class={d.footer}>
-				<button
-					type="button"
-					class={button({ variant: 'ghost', size: 'sm' })}
-					onclick={cancelDelete}
-				>
-					Cancel
-				</button>
-				<button
-					type="button"
-					class={button({ variant: 'danger', size: 'sm' })}
-					onclick={confirmDeleteLabelOnly}
-				>
-					Delete label only
-				</button>
-				{#if pendingDelete && (labelCounts.get(pendingDelete.id) ?? 0) > 0}
-					<button
-						type="button"
-						class={button({ variant: 'danger', size: 'sm' })}
-						onclick={confirmDeleteLabelAndNotes}
-					>
-						Delete label and notes
-					</button>
-				{/if}
-			</div>
-		</Dialog.Content>
-	</Dialog.Positioner>
-</Dialog.Root>
+<!-- Mounted only while it has something to confirm: its portal covers the app
+     frame, so an idle one would swallow every press. -->
+{#if pendingDelete}
+	<Dialog.Root open onOpenChange={(e) => !e.open && cancelDelete()} preventScroll={false}>
+		<div {@attach portalToAppOverlay} class={sidebarStyles.dialogPortal} role="presentation">
+			<Dialog.Backdrop class={d.backdrop} />
+			<Dialog.Positioner class={sidebarStyles.dialogPositioner}>
+				<Dialog.Content class={d.panel} aria-describedby={undefined}>
+					{@const taggedCount = labelCounts.get(pendingDelete.id) ?? 0}
+					<Dialog.Title class={d.title}>
+						Delete “{pendingDelete.name}”?
+					</Dialog.Title>
+					<Dialog.Description class={d.description}>
+						{#if taggedCount > 0}
+							This label is on {taggedCount} note{taggedCount === 1 ? '' : 's'}.
+						{:else}
+							No notes currently use this label.
+						{/if}
+					</Dialog.Description>
+					<div class={d.footer}>
+						<button
+							type="button"
+							class={button({ variant: 'ghost', size: 'sm' })}
+							onclick={cancelDelete}
+						>
+							Cancel
+						</button>
+						<button
+							type="button"
+							class={button({ variant: 'danger', size: 'sm' })}
+							onclick={confirmDeleteLabelOnly}
+						>
+							Delete label only
+						</button>
+						{#if taggedCount > 0}
+							<button
+								type="button"
+								class={button({ variant: 'danger', size: 'sm' })}
+								onclick={confirmDeleteLabelAndNotes}
+							>
+								Delete label and notes
+							</button>
+						{/if}
+					</div>
+				</Dialog.Content>
+			</Dialog.Positioner>
+		</div>
+	</Dialog.Root>
+{/if}

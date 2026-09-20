@@ -81,6 +81,9 @@ export const truncate = css(truncateText);
 /** Shared page and feed layout classes. These are layout primitives, not component recipes. */
 export const viewPage = css({ pt: 'lg', pb: '3xl' });
 
+/** One width for the mobile drawer and the safe-area strip that continues it. */
+const DRAWER_WIDTH = '18rem';
+
 export const appLayout = {
 	shell: css({
 		h: 'full',
@@ -94,10 +97,23 @@ export const appLayout = {
 	drawerPositioner: css({ position: 'fixed', insetY: 0, left: 0, zIndex: 30, h: 'full' }),
 	drawer: css({
 		h: 'full',
-		w: '18rem',
+		w: DRAWER_WIDTH,
 		borderRightWidth: 'hairline',
 		borderColor: 'scrapscache.border',
 		bg: 'scrapscache.surface'
+	}),
+	// The app frame stops at the safe rect, so an open drawer stops short of the
+	// home indicator. This carries its surface the rest of the way down, across
+	// the drawer's width only, so the panel reads as one piece.
+	drawerSafeArea: css({
+		position: 'fixed',
+		left: 0,
+		bottom: 0,
+		w: `calc(${DRAWER_WIDTH} + var(--app-inset-left))`,
+		h: 'var(--app-inset-bottom)',
+		bg: 'scrapscache.surface',
+		zIndex: 40,
+		pointerEvents: 'none'
 	}),
 	sidebar: css({
 		w: '16rem',
@@ -1954,6 +1970,16 @@ export const sidebarStyles = {
 	}),
 	createButton: css({
 		color: 'scrapscache.accent'
+	}),
+	labelList: css({
+		scrollbarWidth: 'thin',
+		overflowY: 'auto',
+		minH: 0,
+		flex: '1',
+		pr: '3xs',
+		// Rows keep their own height and the list scrolls. As flex children they
+		// would otherwise share the space out and squash as labels are added.
+		'& > *': { flexShrink: 0 }
 	}),
 	labelRowContainer: css({
 		position: 'relative',

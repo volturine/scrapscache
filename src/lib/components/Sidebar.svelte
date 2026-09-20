@@ -347,17 +347,7 @@
 		{/if}
 
 		<div
-			class={[
-				'scrollable',
-				css({
-					scrollbarWidth: 'thin',
-					overflowY: 'auto',
-					minH: 0,
-					flex: '1',
-					pr: '3xs'
-				}),
-				vstack({ gap: '3xs', alignItems: 'stretch' })
-			]}
+			class={['scrollable', sidebarStyles.labelList, vstack({ gap: '3xs', alignItems: 'stretch' })]}
 		>
 			{#each filteredLabels as label (label.id)}
 				{#if renamingId === label.id}

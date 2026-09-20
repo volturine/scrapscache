@@ -293,5 +293,8 @@
 		</div>
 	</div>
 </div>
+{#if mobile.current && uiStore.sidebarOpen}
+	<div class={styles.drawerSafeArea} aria-hidden="true"></div>
+{/if}
 <div class="app-overlay" data-app-overlay></div>
 {@render children()}

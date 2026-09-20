@@ -1980,6 +1980,18 @@ export const sidebarStyles = {
 		transitionDuration: '200ms',
 		transitionTimingFunction: 'cubic-bezier(0.2, 0, 0, 1)'
 	}),
+	// Filled chips, so the uncovered actions read as their own surface rather
+	// than as icons loose in the sidebar.
+	labelTrayAction: css({
+		bg: 'scrapscache.controlSubtle',
+		color: 'scrapscache.text',
+		_hoverable: { bg: 'scrapscache.controlSubtleHover' }
+	}),
+	labelTrayDanger: css({
+		bg: 'scrapscache.dangerSubtle',
+		color: 'scrapscache.danger',
+		_hoverable: { bg: 'scrapscache.danger', color: 'scrapscache.dangerForeground' }
+	}),
 	// The drawer is a transformed, clipped box; its dialogs belong to the app
 	// frame instead.
 	dialogPortal: css({ position: 'absolute', inset: 0, zIndex: 80 }),

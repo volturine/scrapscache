@@ -5,6 +5,7 @@ import { createSyncIdentity, decryptSyncPayload, type SyncIdentity } from '$lib/
 import {
 	closeDeviceDatabase,
 	DEVICE_DB_NAME,
+	dropDatabase,
 	getAllNotesMetadata,
 	hydrateNoteAttachments,
 	markSyncOutbox,
@@ -56,14 +57,9 @@ function noteWithPhoto(image: NoteImage): Note {
 	};
 }
 
-function wipeDevice(): Promise<void> {
-	closeDeviceDatabase();
-	return new Promise((resolve, reject) => {
-		const request = indexedDB.deleteDatabase(DEVICE_DB_NAME);
-		request.onsuccess = () => resolve();
-		request.onerror = () => reject(request.error);
-		request.onblocked = () => resolve();
-	});
+async function wipeDevice(): Promise<void> {
+	await closeDeviceDatabase();
+	await dropDatabase(DEVICE_DB_NAME);
 }
 
 function wire(

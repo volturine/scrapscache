@@ -165,7 +165,7 @@ const buttonRecipe = defineRecipe({
 				borderStyle: 'dashed',
 				borderColor: 'scrapscache.border',
 				color: 'scrapscache.textMuted',
-				rounded: 'dialog',
+				rounded: 'control',
 				_hoverable: {
 					bg: 'scrapscache.surfaceSubtle',
 					color: 'scrapscache.text'

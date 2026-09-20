@@ -12,6 +12,12 @@ function label(name: string, id = name.toLowerCase()): Label {
 	return { id, name, createdAt: 1, updatedAt: 1 };
 }
 
+async function pointer(target: Element, type: string, clientX: number, clientY = 100) {
+	const event = new Event(type, { bubbles: true, cancelable: true });
+	Object.assign(event, { pointerType: 'touch', pointerId: 1, button: 0, clientX, clientY });
+	await fireEvent(target, event);
+}
+
 function setup(labels: Label[]) {
 	notesStore.notes = [];
 	notesStore.labels = labels;
@@ -22,6 +28,7 @@ function setup(labels: Label[]) {
 
 afterEach(() => {
 	vi.restoreAllMocks();
+	navigationMocks.goto.mockClear();
 });
 
 describe('Sidebar labels section', () => {
@@ -97,6 +104,25 @@ describe('Sidebar labels section', () => {
 		await fireEvent.keyDown(searchInput, { key: 'Escape' });
 		await tick();
 		expect(searchInput.value).toBe('');
+	});
+
+	it('opens the same haze overlay on a left swipe, without navigating', async () => {
+		const { section } = setup([label('Work')]);
+		const workBtn = section.querySelector('button[aria-label="Work"]') as HTMLButtonElement;
+
+		await pointer(workBtn, 'pointerdown', 200);
+		await pointer(workBtn, 'pointermove', 160);
+		await pointer(workBtn, 'pointermove', 120);
+		await pointer(workBtn, 'pointerup', 120);
+		await tick();
+
+		expect(section.querySelector('[data-label-haze]')).toBeTruthy();
+		expect(section.querySelector('button[aria-label="Rename Work"]')).toBeTruthy();
+
+		// The release that opened the actions must not also open the label.
+		await fireEvent.click(workBtn);
+		await tick();
+		expect(navigationMocks.goto).not.toHaveBeenCalled();
 	});
 
 	it('opens haze overlay on right click with small Rename and Delete icon buttons', async () => {

@@ -30,6 +30,8 @@
 	} from '@lucide/svelte';
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { portalToAppOverlay } from '$lib/appViewport';
+	import { cardSwipeStyle } from '$lib/cardSwipe';
+	import { createLabelSwipe } from '$lib/labelSwipe';
 	import { pathForView } from '$lib/viewRoutes';
 	import { useEditorActions } from '$lib/editorContext';
 
@@ -46,6 +48,22 @@
 
 	let pendingDelete: Label | null = $state(null);
 	let hazeLabelId = $state<string | null>(null);
+
+	let swipeLabelId = $state<string | null>(null);
+	let swipeOffsetX = $state(0);
+	let swipeDragging = $state(false);
+
+	// Touch reaches the same actions as a right click: swipe a row to the left.
+	const swipe = createLabelSwipe({
+		onReveal: (labelId) => {
+			hazeLabelId = labelId;
+		},
+		setVisual: (visual) => {
+			swipeLabelId = visual.labelId;
+			swipeOffsetX = visual.offsetX;
+			swipeDragging = visual.dragging;
+		}
+	});
 
 	const navItems: { view: View; label: string; icon: LucideIcon }[] = [
 		{ view: 'notes', label: 'Notes', icon: StickyNote },
@@ -138,6 +156,11 @@
 
 	function closeHaze() {
 		hazeLabelId = null;
+	}
+
+	function openLabel(label: Label) {
+		if (swipe.wasDrag()) return;
+		navigate('label', label.id);
 	}
 
 	function handleContextMenu(e: MouseEvent, label: Label) {
@@ -327,8 +350,15 @@
 					<div class={sidebarStyles.labelRowContainer}>
 						<button
 							type="button"
-							onclick={() => navigate('label', label.id)}
+							onclick={() => openLabel(label)}
 							oncontextmenu={(e) => handleContextMenu(e, label)}
+							onpointerdown={(e) => swipe.onPointerDown(e, label.id)}
+							onpointermove={swipe.onPointerMove}
+							onpointerup={swipe.onPointerUp}
+							onpointercancel={swipe.onPointerCancel}
+							style={swipeLabelId === label.id
+								? cardSwipeStyle(swipeOffsetX, swipeDragging)
+								: undefined}
 							class={[
 								menuRow,
 								sidebarRow({ navigation: true, active: isActive('label', label.id) })

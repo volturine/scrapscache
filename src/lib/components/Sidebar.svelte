@@ -413,7 +413,7 @@
 							<div class={sidebarStyles.labelTray} style={trayStyle(label.id)} data-label-tray>
 								<button
 									type="button"
-									class={iconButton({ size: 'compact', variant: 'ghost' })}
+									class={cx(iconButton({ size: 'compact' }), sidebarStyles.labelTrayAction)}
 									title="Rename"
 									aria-label={`Rename ${label.name}`}
 									onclick={(e) => {
@@ -425,7 +425,7 @@
 								</button>
 								<button
 									type="button"
-									class={iconButton({ size: 'compact', variant: 'danger' })}
+									class={cx(iconButton({ size: 'compact' }), sidebarStyles.labelTrayDanger)}
 									title="Delete"
 									aria-label={`Delete ${label.name}`}
 									onclick={(e) => {

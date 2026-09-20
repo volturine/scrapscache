@@ -1972,7 +1972,17 @@ export const sidebarStyles = {
 		color: 'scrapscache.accent'
 	}),
 	labelList: css({
+		// A quiet overlay bar: the panel shows through where the track would be,
+		// and the thumb only has to say how far down the list runs.
 		scrollbarWidth: 'thin',
+		scrollbarColor: 'var(--colors-scrapscache-border-subtle) transparent',
+		'&::-webkit-scrollbar': { width: '0.375rem' },
+		'&::-webkit-scrollbar-track': { background: 'transparent' },
+		'&::-webkit-scrollbar-thumb': {
+			background: 'scrapscache.borderSubtle',
+			borderRadius: 'pill'
+		},
+		'&::-webkit-scrollbar-thumb:hover': { background: 'scrapscache.textMuted' },
 		overflowY: 'auto',
 		minH: 0,
 		flex: '1',

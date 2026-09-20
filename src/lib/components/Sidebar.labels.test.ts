@@ -99,38 +99,48 @@ describe('Sidebar labels section', () => {
 		expect(searchInput.value).toBe('');
 	});
 
-	it('opens context menu on right click on PC with Rename and Delete options', async () => {
+	it('opens haze overlay on right click with small Rename and Delete icon buttons', async () => {
 		const { section } = setup([label('Work')]);
 		const workBtn = section.querySelector('button[aria-label="Work"]') as HTMLButtonElement;
 
+		// Initially no haze overlay
+		expect(section.querySelector('[data-label-haze]')).toBeNull();
+
 		// Right click on Work
-		await fireEvent.contextMenu(workBtn, { clientX: 150, clientY: 200 });
+		await fireEvent.contextMenu(workBtn);
 		await tick();
 
-		const menu = document.querySelector('[role="menu"][aria-label="Label options"]');
-		expect(menu).toBeTruthy();
-		expect(menu?.textContent).toContain('Rename');
-		expect(menu?.textContent).toContain('Delete');
+		const haze = section.querySelector('[data-label-haze]');
+		expect(haze).toBeTruthy();
+
+		const renameBtn = section.querySelector(
+			'button[aria-label="Rename Work"]'
+		) as HTMLButtonElement;
+		const deleteBtn = section.querySelector(
+			'button[aria-label="Delete Work"]'
+		) as HTMLButtonElement;
+		expect(renameBtn).toBeTruthy();
+		expect(deleteBtn).toBeTruthy();
 	});
 
-	it('renames a label via PC context menu, committing on Enter and cancelling on Escape', async () => {
+	it('renames a label via right-click haze overlay, committing on Enter and cancelling on Escape', async () => {
 		const renameLabel = vi.spyOn(notesStore, 'renameLabel').mockImplementation(() => {});
 		const { section } = setup([label('Work')]);
 		const workBtn = section.querySelector('button[aria-label="Work"]') as HTMLButtonElement;
 
-		// Open context menu
-		await fireEvent.contextMenu(workBtn, { clientX: 100, clientY: 100 });
+		// Open haze overlay
+		await fireEvent.contextMenu(workBtn);
 		await tick();
 
-		// Click Rename
-		const renameMenuBtn = Array.from(document.querySelectorAll('[role="menuitem"]')).find((el) =>
-			el.textContent?.includes('Rename')
+		// Click Rename icon button
+		const renameBtn = section.querySelector(
+			'button[aria-label="Rename Work"]'
 		) as HTMLButtonElement;
-		await fireEvent.click(renameMenuBtn);
+		await fireEvent.click(renameBtn);
 		await tick();
 
 		// Inline rename input is now visible
-		let input = section.querySelector('input[aria-label="Rename Work"]') as HTMLInputElement;
+		const input = section.querySelector('input[aria-label="Rename Work"]') as HTMLInputElement;
 		expect(input).toBeTruthy();
 
 		// Edit and press Enter
@@ -142,83 +152,75 @@ describe('Sidebar labels section', () => {
 		// Rename again and cancel with Escape
 		renameLabel.mockClear();
 		const errandsBtn = section.querySelector('button[aria-label="Work"]') as HTMLButtonElement;
-		await fireEvent.contextMenu(errandsBtn, { clientX: 100, clientY: 100 });
+		await fireEvent.contextMenu(errandsBtn);
 		await tick();
 
-		const renameMenuBtn2 = Array.from(document.querySelectorAll('[role="menuitem"]')).find((el) =>
-			el.textContent?.includes('Rename')
-		) as HTMLButtonElement;
-		await fireEvent.click(renameMenuBtn2);
-		await tick();
-
-		input = section.querySelector('input[aria-label="Rename Work"]') as HTMLInputElement;
-		await fireEvent.input(input, { target: { value: 'Discarded' } });
-		await fireEvent.keyDown(input, { key: 'Escape' });
-		await tick();
-		expect(renameLabel).not.toHaveBeenCalled();
-		expect(section.querySelector('button[aria-label="Work"]')).toBeTruthy();
-	});
-
-	it('opens delete confirmation dialog from PC context menu Delete', async () => {
-		const { section } = setup([label('Work')]);
-		const workBtn = section.querySelector('button[aria-label="Work"]') as HTMLButtonElement;
-
-		await fireEvent.contextMenu(workBtn, { clientX: 100, clientY: 100 });
-		await tick();
-
-		const deleteMenuBtn = Array.from(document.querySelectorAll('[role="menuitem"]')).find((el) =>
-			el.textContent?.includes('Delete')
-		) as HTMLButtonElement;
-		await fireEvent.click(deleteMenuBtn);
-		await tick();
-
-		// Delete dialog is opened
-		const dialog = document.querySelector('[role="dialog"]');
-		expect(dialog).toBeTruthy();
-		expect(dialog?.textContent).toContain('Delete “Work”?');
-	});
-
-	it('reveals Rename and Delete actions on touch swipe and triggers them', async () => {
-		const { section } = setup([label('Work')]);
-		const workBtn = section.querySelector('button[aria-label="Work"]') as HTMLButtonElement;
-
-		// Simulate swipe left
-		await fireEvent.pointerDown(workBtn, {
-			pointerId: 1,
-			pointerType: 'touch',
-			clientX: 200,
-			clientY: 100
-		});
-		await fireEvent.pointerMove(workBtn, {
-			pointerId: 1,
-			pointerType: 'touch',
-			clientX: 120,
-			clientY: 100
-		});
-		await fireEvent.pointerUp(workBtn, {
-			pointerId: 1,
-			pointerType: 'touch',
-			clientX: 120,
-			clientY: 100
-		});
-		await tick();
-
-		// The row is swiped open, revealing swipe action buttons
-		const swipeRenameBtn = section.querySelector(
+		const renameBtn2 = section.querySelector(
 			'button[aria-label="Rename Work"]'
 		) as HTMLButtonElement;
-		const swipeDeleteBtn = section.querySelector(
-			'button[aria-label="Delete Work"]'
-		) as HTMLButtonElement;
-		expect(swipeRenameBtn).toBeTruthy();
-		expect(swipeDeleteBtn).toBeTruthy();
-
-		// Clicking swipe delete opens confirmation dialog
-		await fireEvent.click(swipeDeleteBtn);
+		await fireEvent.click(renameBtn2);
 		await tick();
 
-		const dialog = document.querySelector('[role="dialog"]');
-		expect(dialog).toBeTruthy();
-		expect(dialog?.textContent).toContain('Delete “Work”?');
+		const input2 = section.querySelector('input[aria-label="Rename Work"]') as HTMLInputElement;
+		await fireEvent.input(input2, { target: { value: 'Shopping' } });
+		await fireEvent.keyDown(input2, { key: 'Escape' });
+		await tick();
+		expect(renameLabel).not.toHaveBeenCalled();
+	});
+
+	it('deletes a label via right-click haze overlay', async () => {
+		const removeLabel = vi.spyOn(notesStore, 'removeLabel').mockImplementation(() => {});
+		const { section } = setup([label('Work')]);
+		const workBtn = section.querySelector('button[aria-label="Work"]') as HTMLButtonElement;
+
+		// Open haze overlay
+		await fireEvent.contextMenu(workBtn);
+		await tick();
+
+		// Click Delete icon button
+		const deleteBtn = section.querySelector(
+			'button[aria-label="Delete Work"]'
+		) as HTMLButtonElement;
+		await fireEvent.click(deleteBtn);
+		await tick();
+
+		// Dialog should be open
+		const dialogContent = document.querySelector('[role="dialog"]');
+		expect(dialogContent).toBeTruthy();
+		expect(dialogContent?.textContent).toContain('Delete label');
+
+		// Click 'Delete label only'
+		const confirmBtn = Array.from(document.querySelectorAll('button')).find((el) =>
+			el.textContent?.includes('Delete label only')
+		) as HTMLButtonElement;
+		expect(confirmBtn).toBeTruthy();
+		await fireEvent.click(confirmBtn);
+		await tick();
+
+		expect(removeLabel).toHaveBeenCalledWith('work', { deleteNotes: false });
+	});
+
+	it('dismisses haze overlay on Escape key or outside click', async () => {
+		const { section } = setup([label('Work')]);
+		const workBtn = section.querySelector('button[aria-label="Work"]') as HTMLButtonElement;
+
+		// Open haze overlay
+		await fireEvent.contextMenu(workBtn);
+		await tick();
+		expect(section.querySelector('[data-label-haze]')).toBeTruthy();
+
+		// Press Escape
+		await fireEvent.keyDown(window, { key: 'Escape' });
+		await tick();
+		expect(section.querySelector('[data-label-haze]')).toBeNull();
+
+		// Open again and click outside
+		await fireEvent.contextMenu(workBtn);
+		await tick();
+		expect(section.querySelector('[data-label-haze]')).toBeTruthy();
+
+		await fireEvent.pointerDown(document.body);
+		await tick();
+		expect(section.querySelector('[data-label-haze]')).toBeNull();
 	});
 });

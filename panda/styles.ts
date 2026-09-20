@@ -1927,92 +1927,47 @@ export const sidebarStyles = {
 		textStyle: 'button',
 		_placeholder: { fontWeight: 'body', ...mutedText }
 	}),
-	searchWrap: css({ position: 'relative', mb: '2xs' }),
+	searchWrap: css({
+		position: 'relative',
+		mb: 'xs',
+		mx: 'xs',
+		flexShrink: 0
+	}),
 	searchIcon: css({
 		pointerEvents: 'none',
-		left: 'md',
+		left: 'sm',
 		...absoluteCenterY,
 		...iconSm,
 		...mutedText
 	}),
 	searchInput: css({
 		w: 'full',
+		h: '2.375rem',
 		pl: '2.25rem',
+		pr: 'sm',
+		fontSize: 'body',
 		_placeholder: mutedText
 	}),
 	createButton: css({
 		color: 'scrapscache.accent'
 	}),
-	swipeRowContainer: css({
+	labelRowContainer: css({
 		position: 'relative',
 		w: 'full',
-		overflow: 'hidden',
-		rounded: 'row',
-		display: 'flex',
-		alignItems: 'stretch'
+		rounded: 'row'
 	}),
-	swipeActions: css({
+	labelHazeOverlay: css({
 		position: 'absolute',
-		top: 0,
-		bottom: 0,
-		right: 0,
-		display: 'flex',
-		alignItems: 'stretch',
-		gap: 0,
-		zIndex: 0
-	}),
-	swipeActionRename: css({
+		inset: 0,
+		zIndex: 10,
 		display: 'flex',
 		alignItems: 'center',
 		justifyContent: 'center',
-		h: 'full',
-		w: '4.25rem',
-		gap: '3xs',
-		borderRadius: '0 !important',
-		border: 'none',
-		outline: 'none',
-		bg: 'scrapscache.surfaceSubtle',
-		color: 'scrapscache.text',
-		fontSize: 'caption',
-		fontWeight: 'interactive',
-		cursor: 'pointer',
-		touchAction: 'manipulation',
-		userSelect: 'none',
-		WebkitTapHighlightColor: 'transparent',
-		_hoverable: { bg: 'scrapscache.interactiveHover' }
-	}),
-	swipeActionDelete: css({
-		display: 'flex',
-		alignItems: 'center',
-		justifyContent: 'center',
-		h: 'full',
-		w: '4.25rem',
-		gap: '3xs',
-		borderRadius: '0 !important',
-		border: 'none',
-		outline: 'none',
-		bg: '#dc2626',
-		color: '#ffffff',
-		fontSize: 'caption',
-		fontWeight: 'interactive',
-		cursor: 'pointer',
-		touchAction: 'manipulation',
-		userSelect: 'none',
-		WebkitTapHighlightColor: 'transparent',
-		_hoverable: { bg: '#b91c1c' }
-	}),
-	swipeActionText: css({
-		fontSize: 'caption',
-		fontWeight: 'interactive'
-	}),
-	labelRow: css({
-		position: 'relative',
-		zIndex: 1,
-		w: 'full',
-		bg: 'scrapscache.bg',
-		touchAction: 'pan-y',
-		borderRadius: '0 !important',
-		_hoverable: { bg: 'scrapscache.interactiveHover' }
+		gap: 'xs',
+		bg: 'scrapscache.backdropMuted',
+		backdropFilter: 'blur(8px)',
+		rounded: 'row',
+		transition: 'opacity 150ms ease'
 	})
 };
 

@@ -1,13 +1,13 @@
 <script lang="ts">
 	import {
 		iconSizeSm as iconSm,
-		popover,
+		noteCardHazeGroup,
 		sidebarIcon,
 		sidebarRow,
 		sidebarStyles
 	} from '$panda/styles';
 	import { css, cx } from 'styled-system/css';
-	import { button, dialog, input, menuItem } from 'styled-system/recipes';
+	import { button, dialog, iconButton, input, menuItem } from 'styled-system/recipes';
 	import { hstack, vstack } from 'styled-system/patterns';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -45,18 +45,7 @@
 	let renameInput: HTMLInputElement | null = $state(null);
 
 	let pendingDelete: Label | null = $state(null);
-	let contextMenu = $state<{ label: Label; x: number; y: number } | null>(null);
-
-	let swipedLabelId = $state<string | null>(null);
-	let swipeOffsetX = $state(0);
-	let isDraggingSwipe = $state(false);
-
-	let trackingLabelId = $state<string | null>(null);
-	let pointerStartX = 0;
-	let pointerStartY = 0;
-	let decidedSwipe = $state(false);
-	let trackingPointerId: number | null = null;
-	let wasSwipeDrag = false;
+	let hazeLabelId = $state<string | null>(null);
 
 	const navItems: { view: View; label: string; icon: LucideIcon }[] = [
 		{ view: 'notes', label: 'Notes', icon: StickyNote },
@@ -147,10 +136,19 @@
 		}
 	}
 
+	function closeHaze() {
+		hazeLabelId = null;
+	}
+
+	function handleContextMenu(e: MouseEvent, label: Label) {
+		e.preventDefault();
+		e.stopPropagation();
+		hazeLabelId = label.id;
+	}
+
 	function startRename(label: Label) {
 		pendingDelete = null;
-		contextMenu = null;
-		swipedLabelId = null;
+		closeHaze();
 		renamingId = label.id;
 		renamingName = label.name;
 		queueMicrotask(() => {
@@ -172,8 +170,7 @@
 
 	function requestDelete(label: Label) {
 		renamingId = null;
-		contextMenu = null;
-		swipedLabelId = null;
+		closeHaze();
 		pendingDelete = label;
 	}
 
@@ -199,180 +196,52 @@
 		pendingDelete = null;
 	}
 
-	function handleContextMenu(e: MouseEvent, label: Label) {
-		e.preventDefault();
-		e.stopPropagation();
-		swipedLabelId = null;
-		swipeOffsetX = 0;
-		contextMenu = { label, x: e.clientX, y: e.clientY };
-	}
-
-	function contextMenuStyle(x: number, y: number): string {
-		const menuWidth = 160;
-		const menuHeight = 88;
-		const left =
-			typeof window !== 'undefined' && x + menuWidth > window.innerWidth
-				? Math.max(8, x - menuWidth)
-				: x;
-		const top =
-			typeof window !== 'undefined' && y + menuHeight > window.innerHeight
-				? Math.max(8, y - menuHeight)
-				: y;
-		return `left: ${left}px; top: ${top}px;`;
-	}
-
-	function onRowPointerDown(e: PointerEvent, labelId: string) {
-		if (e.pointerType === 'mouse' && e.button !== 0) return;
-
-		if (swipedLabelId && swipedLabelId !== labelId) {
-			swipedLabelId = null;
-			swipeOffsetX = 0;
-		}
-
-		wasSwipeDrag = false;
-		trackingLabelId = labelId;
-		trackingPointerId = e.pointerId;
-		pointerStartX = e.clientX;
-		pointerStartY = e.clientY;
-		decidedSwipe = false;
-		isDraggingSwipe = false;
-	}
-
-	function onRowPointerMove(e: PointerEvent, labelId: string) {
-		if (trackingLabelId !== labelId || trackingPointerId !== e.pointerId) return;
-
-		const dx = e.clientX - pointerStartX;
-		const dy = e.clientY - pointerStartY;
-
-		if (!decidedSwipe) {
-			if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
-			if (Math.abs(dy) >= Math.abs(dx)) {
-				trackingLabelId = null;
-				trackingPointerId = null;
-				return;
-			}
-			decidedSwipe = true;
-			isDraggingSwipe = true;
-			try {
-				(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-			} catch {}
-		}
-
-		e.preventDefault();
-		wasSwipeDrag = true;
-		const currentBase = swipedLabelId === labelId ? -136 : 0;
-		const nextX = currentBase + dx;
-		swipeOffsetX = Math.max(-160, Math.min(0, nextX));
-	}
-
-	function onRowPointerUp(e: PointerEvent, labelId: string) {
-		if (trackingLabelId !== labelId || trackingPointerId !== e.pointerId) return;
-
-		try {
-			(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
-		} catch {}
-
-		trackingLabelId = null;
-		trackingPointerId = null;
-		isDraggingSwipe = false;
-
-		if (!decidedSwipe) return;
-
-		if (swipeOffsetX <= -50) {
-			swipedLabelId = labelId;
-			swipeOffsetX = -136;
-		} else {
-			swipedLabelId = null;
-			swipeOffsetX = 0;
-		}
-
-		setTimeout(() => {
-			wasSwipeDrag = false;
-		}, 100);
-	}
-
-	function onRowPointerCancel(e: PointerEvent, labelId: string) {
-		if (trackingLabelId === labelId) {
-			trackingLabelId = null;
-			trackingPointerId = null;
-			isDraggingSwipe = false;
-			swipedLabelId = null;
-			swipeOffsetX = 0;
-		}
-	}
-
-	function handleLabelClick(label: Label) {
-		if (wasSwipeDrag) return;
-		if (swipedLabelId) {
-			swipedLabelId = null;
-			swipeOffsetX = 0;
-			return;
-		}
-		navigate('label', label.id);
-	}
-
-	function onSwipeRename(label: Label) {
-		swipedLabelId = null;
-		swipeOffsetX = 0;
-		startRename(label);
-	}
-
-	function onSwipeDelete(label: Label) {
-		swipedLabelId = null;
-		swipeOffsetX = 0;
-		requestDelete(label);
-	}
-
-	function rowStyle(labelId: string): string | undefined {
-		if (trackingLabelId === labelId && decidedSwipe) {
-			return `transform: translate3d(${swipeOffsetX}px, 0, 0); transition: none;`;
-		}
-		if (swipedLabelId === labelId) {
-			return `transform: translate3d(-136px, 0, 0); transition: transform 180ms cubic-bezier(0.2, 0, 0, 1);`;
-		}
-		return `transform: translate3d(0, 0, 0); transition: transform 180ms cubic-bezier(0.2, 0, 0, 1);`;
-	}
-
 	const menuRow = menuItem({ density: 'sidebar' });
-	const menuItemClass = cx(
-		menuItem({ density: 'compact' }),
-		css({ w: 'full', textAlign: 'left', cursor: 'pointer' })
-	);
 	const labelInputClass = cx(input({ variant: 'unstyled' }), sidebarStyles.labelInput);
 	const d = dialog({ size: 'sm' });
 </script>
 
 <aside
-	class={[
-		'scrollable',
-		css({ scrollbarWidth: 'thin' }),
-		vstack({
-			h: 'full',
-			gap: '3xs',
-			overflowY: 'auto',
-			px: 'sm',
-			pb: 'lg',
-			pt: 'sm'
-		})
-	]}
+	class={css({
+		h: 'full',
+		overflow: 'hidden',
+		display: 'flex',
+		flexDirection: 'column',
+		px: 'sm',
+		pt: 'sm',
+		pb: 'md'
+	})}
 	transition:fly={{ x: -20, duration: 120 }}
 >
-	{#each navItems as item (item.view)}
-		{@const NavIcon = item.icon}
-		<button
-			type="button"
-			onclick={() => navigate(item.view)}
-			class={[menuRow, sidebarRow({ navigation: true, active: isActive(item.view), wide: true })]}
-		>
-			<span class={sidebarIcon({ iconTone: 'nav' })} aria-hidden="true">
-				<NavIcon size={18} strokeWidth={1.75} />
-			</span>
-			<span class={sidebarStyles.navLabel}>{item.label}</span>
-		</button>
-	{/each}
+	<nav class={vstack({ gap: '3xs', flexShrink: 0, w: 'full' })} aria-label="Main navigation">
+		{#each navItems as item (item.view)}
+			{@const NavIcon = item.icon}
+			<button
+				type="button"
+				onclick={() => navigate(item.view)}
+				class={[menuRow, sidebarRow({ navigation: true, active: isActive(item.view), wide: true })]}
+			>
+				<span class={sidebarIcon({ iconTone: 'nav' })} aria-hidden="true">
+					<NavIcon size={18} strokeWidth={1.75} />
+				</span>
+				<span class={sidebarStyles.navLabel}>{item.label}</span>
+			</button>
+		{/each}
+	</nav>
 
-	<section class={css({ mt: 'xl', w: 'full' })} data-labels-edit aria-label="Labels">
-		<div class={hstack({ mb: '2xs', h: '2rem', gap: 'sm', pl: 'lg', pr: 'sm' })}>
+	<section
+		class={css({
+			mt: 'lg',
+			w: 'full',
+			minH: 0,
+			flex: '1',
+			display: 'flex',
+			flexDirection: 'column'
+		})}
+		data-labels-edit
+		aria-label="Labels"
+	>
+		<div class={hstack({ mb: '2xs', h: '2rem', gap: 'sm', pl: 'lg', pr: 'sm', flexShrink: 0 })}>
 			<span
 				class={css({
 					minW: 0,
@@ -396,31 +265,45 @@
 				bind:value={query}
 				placeholder="Search or create a label…"
 				onkeydown={onQueryKeydown}
-				class={cx(input({ variant: 'outline', size: 'sm' }), sidebarStyles.searchInput)}
+				class={cx(input({ variant: 'outline', size: 'md' }), sidebarStyles.searchInput)}
 				aria-label="Search or create a label"
 			/>
 		</div>
 
 		<!-- Create button when query doesn't match an existing label -->
 		{#if canCreate}
-			<button
-				type="button"
-				onclick={createAndNavigate}
-				aria-label={`Create "${trimmed}"`}
-				class={[
-					menuRow,
-					sidebarRow({ navigation: true, active: false }),
-					sidebarStyles.createButton
-				]}
-			>
-				<span class={sidebarIcon()} aria-hidden="true">
-					<Plus size={16} strokeWidth={1.75} />
-				</span>
-				<span class={sidebarStyles.navLabel}>Create “{trimmed}”</span>
-			</button>
+			<div class={css({ flexShrink: 0, mb: '3xs' })}>
+				<button
+					type="button"
+					onclick={createAndNavigate}
+					aria-label={`Create "${trimmed}"`}
+					class={[
+						menuRow,
+						sidebarRow({ navigation: true, active: false }),
+						sidebarStyles.createButton
+					]}
+				>
+					<span class={sidebarIcon()} aria-hidden="true">
+						<Plus size={16} strokeWidth={1.75} />
+					</span>
+					<span class={sidebarStyles.navLabel}>Create “{trimmed}”</span>
+				</button>
+			</div>
 		{/if}
 
-		<div class={vstack({ gap: '3xs' })}>
+		<div
+			class={[
+				'scrollable',
+				css({
+					scrollbarWidth: 'thin',
+					overflowY: 'auto',
+					minH: 0,
+					flex: '1',
+					pr: '3xs'
+				}),
+				vstack({ gap: '3xs', alignItems: 'stretch' })
+			]}
+		>
 			{#each filteredLabels as label (label.id)}
 				{#if renamingId === label.id}
 					<div class={[menuRow, sidebarRow({ editing: true })]} data-sidebar-stay-open>
@@ -441,44 +324,14 @@
 						/>
 					</div>
 				{:else}
-					<div class={sidebarStyles.swipeRowContainer} data-swipe-row={label.id}>
-						{#if swipedLabelId === label.id || (trackingLabelId === label.id && decidedSwipe)}
-							<div class={sidebarStyles.swipeActions}>
-								<button
-									type="button"
-									class={sidebarStyles.swipeActionRename}
-									onclick={() => onSwipeRename(label)}
-									aria-label={`Rename ${label.name}`}
-									title="Rename"
-								>
-									<Pencil size={14} strokeWidth={1.75} aria-hidden="true" />
-									<span class={sidebarStyles.swipeActionText}>Rename</span>
-								</button>
-								<button
-									type="button"
-									class={sidebarStyles.swipeActionDelete}
-									onclick={() => onSwipeDelete(label)}
-									aria-label={`Delete ${label.name}`}
-									title="Delete"
-								>
-									<Trash2 size={14} strokeWidth={1.75} aria-hidden="true" />
-									<span class={sidebarStyles.swipeActionText}>Delete</span>
-								</button>
-							</div>
-						{/if}
+					<div class={sidebarStyles.labelRowContainer}>
 						<button
 							type="button"
-							onclick={() => handleLabelClick(label)}
+							onclick={() => navigate('label', label.id)}
 							oncontextmenu={(e) => handleContextMenu(e, label)}
-							onpointerdown={(e) => onRowPointerDown(e, label.id)}
-							onpointermove={(e) => onRowPointerMove(e, label.id)}
-							onpointerup={(e) => onRowPointerUp(e, label.id)}
-							onpointercancel={(e) => onRowPointerCancel(e, label.id)}
-							style={rowStyle(label.id)}
 							class={[
 								menuRow,
-								sidebarRow({ navigation: true, active: isActive('label', label.id) }),
-								sidebarStyles.labelRow
+								sidebarRow({ navigation: true, active: isActive('label', label.id) })
 							]}
 							aria-label={label.name}
 						>
@@ -486,10 +339,58 @@
 								<Tag size={16} strokeWidth={1.75} />
 							</span>
 							<span class={sidebarStyles.navLabel}>{label.name}</span>
-							{#if (labelCounts.get(label.id) ?? 0) > 0}
-								<span class={sidebarIcon({ hitPad: 'count' })}>{labelCounts.get(label.id)}</span>
+							{#if labelCounts.get(label.id)}
+								<span class={sidebarIcon({ hitPad: 'count' })}>
+									{labelCounts.get(label.id)}
+								</span>
 							{/if}
 						</button>
+
+						{#if hazeLabelId === label.id}
+							<div
+								class={sidebarStyles.labelHazeOverlay}
+								data-label-haze
+								role="presentation"
+								onclick={(e) => {
+									e.stopPropagation();
+									closeHaze();
+								}}
+								onpointerdown={(e) => e.stopPropagation()}
+								oncontextmenu={(e) => {
+									e.preventDefault();
+									e.stopPropagation();
+								}}
+							>
+								<div class={noteCardHazeGroup.compact}>
+									<button
+										type="button"
+										class={iconButton({ size: 'xs', variant: 'haze' })}
+										title="Rename"
+										aria-label={`Rename ${label.name}`}
+										onclick={(e) => {
+											e.stopPropagation();
+											closeHaze();
+											startRename(label);
+										}}
+									>
+										<Pencil size={15} strokeWidth={1.75} aria-hidden="true" />
+									</button>
+									<button
+										type="button"
+										class={iconButton({ size: 'xs', variant: 'hazeRose' })}
+										title="Delete"
+										aria-label={`Delete ${label.name}`}
+										onclick={(e) => {
+											e.stopPropagation();
+											closeHaze();
+											requestDelete(label);
+										}}
+									>
+										<Trash2 size={15} strokeWidth={1.75} aria-hidden="true" />
+									</button>
+								</div>
+							</div>
+						{/if}
 					</div>
 				{/if}
 			{/each}
@@ -499,142 +400,62 @@
 
 <svelte:window
 	onpointerdown={(e) => {
-		if (
-			swipedLabelId &&
-			!(e.target as HTMLElement | null)?.closest?.(`[data-swipe-row="${swipedLabelId}"]`)
-		) {
-			swipedLabelId = null;
-			swipeOffsetX = 0;
+		if (hazeLabelId && !(e.target as HTMLElement | null)?.closest?.('[data-label-haze]')) {
+			closeHaze();
+		}
+	}}
+	onkeydown={(e) => {
+		if (e.key === 'Escape' && hazeLabelId) {
+			closeHaze();
 		}
 	}}
 />
 
-{#if contextMenu}
-	<div
-		{@attach portalToAppOverlay}
-		class={css({ position: 'fixed', inset: 0, zIndex: 90 })}
-		role="presentation"
-		onclick={() => (contextMenu = null)}
-		oncontextmenu={(e) => {
-			e.preventDefault();
-			contextMenu = null;
-		}}
-		onkeydown={(e) => {
-			if (e.key === 'Escape') contextMenu = null;
-		}}
-	>
-		<div
-			class={cx(popover, css({ position: 'absolute', minW: '10rem', py: '2xs', zIndex: 91 }))}
-			style={contextMenuStyle(contextMenu.x, contextMenu.y)}
-			role="menu"
-			tabindex="-1"
-			aria-label="Label options"
-			onclick={(e) => e.stopPropagation()}
-			onkeydown={(e) => e.stopPropagation()}
-		>
-			<button
-				type="button"
-				role="menuitem"
-				class={menuItemClass}
-				onclick={() => {
-					const l = contextMenu?.label;
-					contextMenu = null;
-					if (l) startRename(l);
-				}}
-			>
-				<Pencil size={14} strokeWidth={1.75} class={iconSm} aria-hidden="true" />
-				<span>Rename</span>
-			</button>
-			<button
-				type="button"
-				role="menuitem"
-				class={cx(menuItemClass, css({ color: 'scrapscache.danger' }))}
-				onclick={() => {
-					const l = contextMenu?.label;
-					contextMenu = null;
-					if (l) requestDelete(l);
-				}}
-			>
-				<Trash2 size={14} strokeWidth={1.75} class={iconSm} aria-hidden="true" />
-				<span>Delete</span>
-			</button>
-		</div>
-	</div>
-{/if}
-
-{#if pendingDelete}
-	<Dialog.Root
-		open
-		onOpenChange={(details) => !details.open && cancelDelete()}
-		preventScroll={false}
-	>
-		<div
-			{@attach portalToAppOverlay}
-			class={css({ position: 'absolute', inset: 0, zIndex: 80 })}
-			role="presentation"
-			data-sidebar-stay-open
-		>
-			<Dialog.Backdrop class={d.backdrop} />
-			<Dialog.Positioner
-				class={css({
-					position: 'absolute',
-					inset: 0,
-					display: 'flex',
-					alignItems: { base: 'flex-end', sm: 'center' },
-					justifyContent: 'center',
-					p: 'lg'
-				})}
-				data-sidebar-stay-open
-			>
-				<Dialog.Content class={d.panel} data-sidebar-stay-open>
-					<Dialog.Title class={d.title}>
-						Delete “{pendingDelete.name}”?
-					</Dialog.Title>
-					<p class={d.description}>
-						{#if (labelCounts.get(pendingDelete.id) ?? 0) > 0}
-							This label is on {labelCounts.get(pendingDelete.id)} note{(labelCounts.get(
-								pendingDelete.id
-							) ?? 0) === 1
-								? ''
-								: 's'}.
-						{:else}
-							No notes currently use this label.
-						{/if}
-					</p>
-					<div
-						class={hstack({
-							mt: 'lg',
-							gap: 'sm',
-							justifyContent: 'flex-end',
-							flexWrap: 'wrap'
-						})}
+<Dialog.Root open={pendingDelete !== null} onOpenChange={(e) => !e.open && cancelDelete()}>
+	<Dialog.Backdrop class={d.backdrop} />
+	<Dialog.Positioner class={d.positioner}>
+		<Dialog.Content class={d.panel} aria-describedby={undefined}>
+			<Dialog.Title class={d.title}>
+				Delete “{pendingDelete?.name}”?
+			</Dialog.Title>
+			<Dialog.Description class={d.description}>
+				{#if pendingDelete}
+					{#if (labelCounts.get(pendingDelete.id) ?? 0) > 0}
+						This label is on {labelCounts.get(pendingDelete.id)} note{(labelCounts.get(
+							pendingDelete.id
+						) ?? 0) === 1
+							? ''
+							: 's'}.
+					{:else}
+						No notes currently use this label.
+					{/if}
+				{/if}
+			</Dialog.Description>
+			<div class={d.footer}>
+				<button
+					type="button"
+					class={button({ variant: 'ghost', size: 'sm' })}
+					onclick={cancelDelete}
+				>
+					Cancel
+				</button>
+				<button
+					type="button"
+					class={button({ variant: 'danger', size: 'sm' })}
+					onclick={confirmDeleteLabelOnly}
+				>
+					Delete label only
+				</button>
+				{#if pendingDelete && (labelCounts.get(pendingDelete.id) ?? 0) > 0}
+					<button
+						type="button"
+						class={button({ variant: 'danger', size: 'sm' })}
+						onclick={confirmDeleteLabelAndNotes}
 					>
-						<button
-							type="button"
-							class={button({ variant: 'ghost', size: 'sm' })}
-							onclick={cancelDelete}
-						>
-							Cancel
-						</button>
-						<button
-							type="button"
-							class={button({ variant: 'danger', size: 'sm' })}
-							onclick={confirmDeleteLabelOnly}
-						>
-							Delete label only
-						</button>
-						{#if (labelCounts.get(pendingDelete.id) ?? 0) > 0}
-							<button
-								type="button"
-								class={button({ variant: 'destructive', size: 'sm' })}
-								onclick={confirmDeleteLabelAndNotes}
-							>
-								Delete label and notes
-							</button>
-						{/if}
-					</div>
-				</Dialog.Content>
-			</Dialog.Positioner>
-		</div>
-	</Dialog.Root>
-{/if}
+						Delete label and notes
+					</button>
+				{/if}
+			</div>
+		</Dialog.Content>
+	</Dialog.Positioner>
+</Dialog.Root>

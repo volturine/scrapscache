@@ -1947,46 +1947,59 @@ export const sidebarStyles = {
 		position: 'relative',
 		w: 'full',
 		overflow: 'hidden',
-		rounded: 'row'
+		rounded: 'row',
+		display: 'flex',
+		alignItems: 'stretch'
 	}),
 	swipeActions: css({
 		position: 'absolute',
 		top: 0,
 		bottom: 0,
 		right: 0,
-		...rowCenter,
-		gap: '3xs',
+		display: 'flex',
+		alignItems: 'stretch',
+		gap: 0,
 		zIndex: 0
 	}),
 	swipeActionRename: css({
-		...rowCenter,
+		display: 'flex',
+		alignItems: 'center',
 		justifyContent: 'center',
 		h: 'full',
-		px: 'sm',
+		w: '4.25rem',
 		gap: '3xs',
-		rounded: 'row',
+		borderRadius: '0 !important',
+		border: 'none',
+		outline: 'none',
 		bg: 'scrapscache.surfaceSubtle',
 		color: 'scrapscache.text',
 		fontSize: 'caption',
 		fontWeight: 'interactive',
 		cursor: 'pointer',
 		touchAction: 'manipulation',
+		userSelect: 'none',
+		WebkitTapHighlightColor: 'transparent',
 		_hoverable: { bg: 'scrapscache.interactiveHover' }
 	}),
 	swipeActionDelete: css({
-		...rowCenter,
+		display: 'flex',
+		alignItems: 'center',
 		justifyContent: 'center',
 		h: 'full',
-		px: 'sm',
+		w: '4.25rem',
 		gap: '3xs',
-		rounded: 'row',
-		bg: 'scrapscache.danger',
-		color: 'scrapscache.dangerForeground',
+		borderRadius: '0 !important',
+		border: 'none',
+		outline: 'none',
+		bg: '#dc2626',
+		color: '#ffffff',
 		fontSize: 'caption',
 		fontWeight: 'interactive',
 		cursor: 'pointer',
 		touchAction: 'manipulation',
-		_hoverable: { bg: 'scrapscache.dangerHover' }
+		userSelect: 'none',
+		WebkitTapHighlightColor: 'transparent',
+		_hoverable: { bg: '#b91c1c' }
 	}),
 	swipeActionText: css({
 		fontSize: 'caption',
@@ -1995,8 +2008,10 @@ export const sidebarStyles = {
 	labelRow: css({
 		position: 'relative',
 		zIndex: 1,
+		w: 'full',
 		bg: 'scrapscache.bg',
 		touchAction: 'pan-y',
+		borderRadius: '0 !important',
 		_hoverable: { bg: 'scrapscache.interactiveHover' }
 	})
 };

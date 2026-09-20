@@ -51,10 +51,10 @@
 	let swipeOffsetX = $state(0);
 	let isDraggingSwipe = $state(false);
 
-	let trackingLabelId: string | null = null;
+	let trackingLabelId = $state<string | null>(null);
 	let pointerStartX = 0;
 	let pointerStartY = 0;
-	let decidedSwipe = false;
+	let decidedSwipe = $state(false);
 	let trackingPointerId: number | null = null;
 	let wasSwipeDrag = false;
 
@@ -260,9 +260,9 @@
 
 		e.preventDefault();
 		wasSwipeDrag = true;
-		const currentBase = swipedLabelId === labelId ? -110 : 0;
+		const currentBase = swipedLabelId === labelId ? -136 : 0;
 		const nextX = currentBase + dx;
-		swipeOffsetX = Math.max(-140, Math.min(0, nextX));
+		swipeOffsetX = Math.max(-160, Math.min(0, nextX));
 	}
 
 	function onRowPointerUp(e: PointerEvent, labelId: string) {
@@ -278,9 +278,9 @@
 
 		if (!decidedSwipe) return;
 
-		if (swipeOffsetX <= -45) {
+		if (swipeOffsetX <= -50) {
 			swipedLabelId = labelId;
-			swipeOffsetX = -110;
+			swipeOffsetX = -136;
 		} else {
 			swipedLabelId = null;
 			swipeOffsetX = 0;
@@ -328,9 +328,9 @@
 			return `transform: translate3d(${swipeOffsetX}px, 0, 0); transition: none;`;
 		}
 		if (swipedLabelId === labelId) {
-			return `transform: translate3d(-110px, 0, 0); transition: transform 160ms cubic-bezier(0.2, 0, 0, 1);`;
+			return `transform: translate3d(-136px, 0, 0); transition: transform 180ms cubic-bezier(0.2, 0, 0, 1);`;
 		}
-		return `transition: transform 160ms cubic-bezier(0.2, 0, 0, 1);`;
+		return `transform: translate3d(0, 0, 0); transition: transform 180ms cubic-bezier(0.2, 0, 0, 1);`;
 	}
 
 	const menuRow = menuItem({ density: 'sidebar' });
@@ -441,29 +441,31 @@
 						/>
 					</div>
 				{:else}
-					<div class={sidebarStyles.swipeRowContainer}>
-						<div class={sidebarStyles.swipeActions}>
-							<button
-								type="button"
-								class={sidebarStyles.swipeActionRename}
-								onclick={() => onSwipeRename(label)}
-								aria-label={`Rename ${label.name}`}
-								title="Rename"
-							>
-								<Pencil size={14} strokeWidth={1.75} aria-hidden="true" />
-								<span class={sidebarStyles.swipeActionText}>Rename</span>
-							</button>
-							<button
-								type="button"
-								class={sidebarStyles.swipeActionDelete}
-								onclick={() => onSwipeDelete(label)}
-								aria-label={`Delete ${label.name}`}
-								title="Delete"
-							>
-								<Trash2 size={14} strokeWidth={1.75} aria-hidden="true" />
-								<span class={sidebarStyles.swipeActionText}>Delete</span>
-							</button>
-						</div>
+					<div class={sidebarStyles.swipeRowContainer} data-swipe-row={label.id}>
+						{#if swipedLabelId === label.id || (trackingLabelId === label.id && decidedSwipe)}
+							<div class={sidebarStyles.swipeActions}>
+								<button
+									type="button"
+									class={sidebarStyles.swipeActionRename}
+									onclick={() => onSwipeRename(label)}
+									aria-label={`Rename ${label.name}`}
+									title="Rename"
+								>
+									<Pencil size={14} strokeWidth={1.75} aria-hidden="true" />
+									<span class={sidebarStyles.swipeActionText}>Rename</span>
+								</button>
+								<button
+									type="button"
+									class={sidebarStyles.swipeActionDelete}
+									onclick={() => onSwipeDelete(label)}
+									aria-label={`Delete ${label.name}`}
+									title="Delete"
+								>
+									<Trash2 size={14} strokeWidth={1.75} aria-hidden="true" />
+									<span class={sidebarStyles.swipeActionText}>Delete</span>
+								</button>
+							</div>
+						{/if}
 						<button
 							type="button"
 							onclick={() => handleLabelClick(label)}
@@ -494,6 +496,18 @@
 		</div>
 	</section>
 </aside>
+
+<svelte:window
+	onpointerdown={(e) => {
+		if (
+			swipedLabelId &&
+			!(e.target as HTMLElement | null)?.closest?.(`[data-swipe-row="${swipedLabelId}"]`)
+		) {
+			swipedLabelId = null;
+			swipeOffsetX = 0;
+		}
+	}}
+/>
 
 {#if contextMenu}
 	<div

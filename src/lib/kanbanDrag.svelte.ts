@@ -8,9 +8,6 @@
  * so every device gets the same picked-up card and the same drop preview.
  */
 
-import { PHONE_MEDIA } from '$lib/appViewport';
-import { isSidebarEdgeStart } from '$lib/sidebarSwipe';
-
 export type KanbanDropTarget = { columnId: string; index: number };
 
 /** Touch and pen pick a card up by holding still; a plain swipe still scrolls. */
@@ -216,13 +213,6 @@ class KanbanDragController {
 	press(event: PointerEvent, card: KanbanCardPress): void {
 		if (this.#press || !event.isPrimary) return;
 		if (event.pointerType === 'mouse' && event.button !== 0) return;
-		// The left screen edge belongs to the sidebar swipe on phones.
-		if (
-			event.pointerType !== 'mouse' &&
-			window.matchMedia(PHONE_MEDIA).matches &&
-			isSidebarEdgeStart(event.clientX)
-		)
-			return;
 
 		const rect = card.card.getBoundingClientRect();
 		const column = card.card.closest<HTMLElement>('[data-kanban-column]');

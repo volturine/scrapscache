@@ -94,7 +94,6 @@ const scrapscacheColors = tokenGroup({
 	controlSubtle: mode('rgba(0, 0, 0, 0.06)', 'rgba(255, 255, 255, 0.1)'),
 	controlSubtleHover: mode('rgba(0, 0, 0, 0.1)', 'rgba(255, 255, 255, 0.15)'),
 	surfaceSubtle: mode('rgba(0, 0, 0, 0.035)', 'rgba(255, 255, 255, 0.055)'),
-	canvasSurface: mode('#ffffff', '#121212'),
 	overdue: mode('#be123c', '#fb7185'),
 	overdueStrong: mode('#e11d48', '#f43f5e'),
 	accent: mode('{colors.palette.accent}', '{colors.palette.accentDark}'),

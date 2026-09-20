@@ -19,7 +19,6 @@
 	import { MediaQuery } from 'svelte/reactivity';
 	import { attachSyncCloudIndicator } from '$lib/syncCloudIndicator';
 	import { attachAppViewport } from '$lib/appViewport';
-	import { attachSidebarSwipe } from '$lib/sidebarSwipe';
 	import { dayKey, reminderTimeForDay } from '$lib/utils';
 	import type { Snippet } from 'svelte';
 
@@ -234,26 +233,13 @@
 <svelte:window onpaste={handleGalleryPaste} />
 
 <div class="app-viewport">
-	<div
-		class={cx('app-shell', styles.shell)}
-		{@attach mobile.current &&
-			attachSidebarSwipe({
-				getOpen: () => uiStore.sidebarOpen,
-				open: () => {
-					uiStore.sidebarOpen = true;
-				},
-				close: () => {
-					uiStore.sidebarOpen = false;
-				}
-			})}
-	>
+	<div class={cx('app-shell', styles.shell)}>
 		{#if mobile.current}
 			<Drawer.Root
 				open={uiStore.sidebarOpen}
 				onOpenChange={(details) => {
 					uiStore.sidebarOpen = details.open;
 				}}
-				swipeDirection="start"
 				preventScroll={false}
 				lazyMount
 				unmountOnExit

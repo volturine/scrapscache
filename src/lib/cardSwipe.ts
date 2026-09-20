@@ -1,8 +1,5 @@
 /** Shared pointer swipe for note cards (touch + trackpad + mouse). */
 
-import { PHONE_MEDIA } from './appViewport';
-import { isSidebarEdgeStart } from './sidebarSwipe';
-
 export type CardSwipeHandlers = {
 	onPointerDown: (e: PointerEvent) => void;
 	onPointerMove: (e: PointerEvent) => void;
@@ -49,11 +46,6 @@ export function createCardSwipe(opts: {
 		if (e.pointerType === 'mouse' && e.button !== 0) return;
 		if (tracking) return;
 		justDragged = false;
-		// The left edge belongs to the navigation drawer. Everything else on the
-		// card is fair game: a shield covers the content, so no link, photo or
-		// canvas can swallow the press.
-		if (window.matchMedia(PHONE_MEDIA).matches && isSidebarEdgeStart(e.clientX)) return;
-
 		// Keep the pointer until we can identify its direction, but do not promote
 		// the card to a transformed layer yet. On iOS, transforming a card before
 		// a vertical pan is classified interrupts its nested native scroll.

@@ -391,7 +391,11 @@
 							style={swipeStyle(label.id)}
 							class={[
 								menuRow,
-								sidebarRow({ navigation: true, active: isActive('label', label.id) }),
+								sidebarRow({
+									navigation: true,
+									active: isActive('label', label.id),
+									swiped: (swipeOffset(label.id)?.offsetX ?? 0) < 0
+								}),
 								sidebarStyles.labelSwipeRow
 							]}
 							aria-label={label.name}
@@ -413,7 +417,7 @@
 							<div class={sidebarStyles.labelTray} style={trayStyle(label.id)} data-label-tray>
 								<button
 									type="button"
-									class={cx(iconButton({ size: 'compact' }), sidebarStyles.labelTrayAction)}
+									class={iconButton({ size: 'compact', variant: 'ghost' })}
 									title="Rename"
 									aria-label={`Rename ${label.name}`}
 									onclick={(e) => {
@@ -425,7 +429,7 @@
 								</button>
 								<button
 									type="button"
-									class={cx(iconButton({ size: 'compact' }), sidebarStyles.labelTrayDanger)}
+									class={iconButton({ size: 'compact', variant: 'danger' })}
 									title="Delete"
 									aria-label={`Delete ${label.name}`}
 									onclick={(e) => {

@@ -30,7 +30,12 @@
 	} from '@lucide/svelte';
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { portalToAppOverlay } from '$lib/appViewport';
-	import { createLabelSwipe, labelSwipeStyle, LABEL_TRAY_PX } from '$lib/labelSwipe';
+	import {
+		createLabelSwipe,
+		labelSwipeStyle,
+		labelTrayStyle,
+		LABEL_TRAY_PX
+	} from '$lib/labelSwipe';
 	import { pathForView } from '$lib/viewRoutes';
 	import { useEditorActions } from '$lib/editorContext';
 
@@ -66,11 +71,22 @@
 		}
 	});
 
+	/** How far the row has drawn back for this label, if at all. */
+	function swipeOffset(labelId: string): { offsetX: number; dragging: boolean } | null {
+		if (swipeLabelId === labelId) return { offsetX: swipeOffsetX, dragging: swipeDragging };
+		if (trayLabelId === labelId) return { offsetX: -LABEL_TRAY_PX, dragging: false };
+		return null;
+	}
+
 	/** How much of the row the tray has taken; the class owns the easing. */
 	function swipeStyle(labelId: string): string | undefined {
-		if (swipeLabelId === labelId) return labelSwipeStyle(swipeOffsetX, swipeDragging);
-		if (trayLabelId === labelId) return labelSwipeStyle(-LABEL_TRAY_PX, false);
-		return undefined;
+		const swiped = swipeOffset(labelId);
+		return swiped ? labelSwipeStyle(swiped.offsetX, swiped.dragging) : undefined;
+	}
+
+	function trayStyle(labelId: string): string | undefined {
+		const swiped = swipeOffset(labelId);
+		return swiped ? labelTrayStyle(swiped.offsetX, swiped.dragging) : undefined;
 	}
 
 	const navItems: { view: View; label: string; icon: LucideIcon }[] = [
@@ -394,7 +410,7 @@
 						<!-- Mounted only while some of it can show, so its buttons are out of
 						     reach the rest of the time. -->
 						{#if trayLabelId === label.id || (swipeLabelId === label.id && swipeOffsetX < 0)}
-							<div class={sidebarStyles.labelTray} data-label-tray>
+							<div class={sidebarStyles.labelTray} style={trayStyle(label.id)} data-label-tray>
 								<button
 									type="button"
 									class={iconButton({ size: 'compact', variant: 'ghost' })}

@@ -1965,15 +1965,20 @@ export const sidebarStyles = {
 		transitionDuration: '200ms',
 		transitionTimingFunction: 'cubic-bezier(0.2, 0, 0, 1)'
 	}),
+	// Anchored to the row's trailing edge, so it follows the width the row gives
+	// up instead of lying under it.
 	labelTray: css({
 		position: 'absolute',
 		insetY: 0,
-		right: 0,
+		left: '100%',
 		w: '5.5rem',
 		display: 'flex',
 		alignItems: 'center',
 		justifyContent: 'center',
-		gap: 'xs'
+		gap: 'xs',
+		transitionProperty: 'transform',
+		transitionDuration: '200ms',
+		transitionTimingFunction: 'cubic-bezier(0.2, 0, 0, 1)'
 	}),
 	// The drawer is a transformed, clipped box; its dialogs belong to the app
 	// frame instead.

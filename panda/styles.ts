@@ -1899,8 +1899,12 @@ export const sidebarRow = cva({
 			false: { fontWeight: 'interactive', color: 'scrapscache.textMuted' }
 		},
 		wide: { true: { pr: 'lg' } },
-		editing: { true: { bg: 'scrapscache.interactiveHover' } }
-	}
+		editing: { true: { bg: 'scrapscache.interactiveHover' } },
+		swiped: { true: {} }
+	},
+	// A row drawn back over its actions reads as a solid block being moved.
+	// An active row already carries one, so it keeps its own colour.
+	compoundVariants: [{ active: false, swiped: true, css: { bg: 'scrapscache.interactiveHover' } }]
 });
 
 export const sidebarIcon = cva({
@@ -1961,7 +1965,7 @@ export const sidebarStyles = {
 	// A swiped row narrows by exactly the tray's width, uncovering it.
 	labelSwipeRow: css({
 		w: 'full',
-		transitionProperty: 'width',
+		transitionProperty: 'width, background-color',
 		transitionDuration: '200ms',
 		transitionTimingFunction: 'cubic-bezier(0.2, 0, 0, 1)'
 	}),
@@ -1979,18 +1983,6 @@ export const sidebarStyles = {
 		transitionProperty: 'transform',
 		transitionDuration: '200ms',
 		transitionTimingFunction: 'cubic-bezier(0.2, 0, 0, 1)'
-	}),
-	// Filled chips, so the uncovered actions read as their own surface rather
-	// than as icons loose in the sidebar.
-	labelTrayAction: css({
-		bg: 'scrapscache.controlSubtle',
-		color: 'scrapscache.text',
-		_hoverable: { bg: 'scrapscache.controlSubtleHover' }
-	}),
-	labelTrayDanger: css({
-		bg: 'scrapscache.dangerSubtle',
-		color: 'scrapscache.danger',
-		_hoverable: { bg: 'scrapscache.danger', color: 'scrapscache.dangerForeground' }
 	}),
 	// The drawer is a transformed, clipped box; its dialogs belong to the app
 	// frame instead.

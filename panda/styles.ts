@@ -95,11 +95,11 @@ export const appLayout = {
 	// Catches taps outside the drawer without tinting the page behind it.
 	backdrop: css({ position: 'fixed', inset: 0, zIndex: 20 }),
 	drawerPositioner: css({ position: 'fixed', insetY: 0, left: 0, zIndex: 30, h: 'full' }),
+	// No edge of its own: the surface is what sets the panel apart from the body,
+	// and a border would stop where the frame does while the surface carries on.
 	drawer: css({
 		h: 'full',
 		w: DRAWER_WIDTH,
-		borderRightWidth: 'hairline',
-		borderColor: 'scrapscache.border',
 		bg: 'scrapscache.surface'
 	}),
 	// The app frame stops at the safe rect, so an open drawer stops short of the
@@ -115,11 +115,11 @@ export const appLayout = {
 		zIndex: 40,
 		pointerEvents: 'none'
 	}),
+	// Same panel as the drawer on a phone: its surface is what sets it apart.
 	sidebar: css({
 		w: '16rem',
 		flexShrink: 0,
-		borderRightWidth: 'hairline',
-		borderColor: 'scrapscache.border'
+		bg: 'scrapscache.surface'
 	}),
 	column: css({ ...column, minH: 0, minW: 0, flex: '1' }),
 	canvas: css({ position: 'relative', minH: 0, minW: 0, flex: '1' }),

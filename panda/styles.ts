@@ -1926,6 +1926,78 @@ export const sidebarStyles = {
 		flex: '1',
 		textStyle: 'button',
 		_placeholder: { fontWeight: 'body', ...mutedText }
+	}),
+	searchWrap: css({ position: 'relative', mb: '2xs' }),
+	searchIcon: css({
+		pointerEvents: 'none',
+		left: 'md',
+		...absoluteCenterY,
+		...iconSm,
+		...mutedText
+	}),
+	searchInput: css({
+		w: 'full',
+		pl: '2.25rem',
+		_placeholder: mutedText
+	}),
+	createButton: css({
+		color: 'scrapscache.accent'
+	}),
+	swipeRowContainer: css({
+		position: 'relative',
+		w: 'full',
+		overflow: 'hidden',
+		rounded: 'row'
+	}),
+	swipeActions: css({
+		position: 'absolute',
+		top: 0,
+		bottom: 0,
+		right: 0,
+		...rowCenter,
+		gap: '3xs',
+		zIndex: 0
+	}),
+	swipeActionRename: css({
+		...rowCenter,
+		justifyContent: 'center',
+		h: 'full',
+		px: 'sm',
+		gap: '3xs',
+		rounded: 'row',
+		bg: 'scrapscache.surfaceSubtle',
+		color: 'scrapscache.text',
+		fontSize: 'caption',
+		fontWeight: 'interactive',
+		cursor: 'pointer',
+		touchAction: 'manipulation',
+		_hoverable: { bg: 'scrapscache.interactiveHover' }
+	}),
+	swipeActionDelete: css({
+		...rowCenter,
+		justifyContent: 'center',
+		h: 'full',
+		px: 'sm',
+		gap: '3xs',
+		rounded: 'row',
+		bg: 'scrapscache.danger',
+		color: 'scrapscache.dangerForeground',
+		fontSize: 'caption',
+		fontWeight: 'interactive',
+		cursor: 'pointer',
+		touchAction: 'manipulation',
+		_hoverable: { bg: 'scrapscache.dangerHover' }
+	}),
+	swipeActionText: css({
+		fontSize: 'caption',
+		fontWeight: 'interactive'
+	}),
+	labelRow: css({
+		position: 'relative',
+		zIndex: 1,
+		bg: 'scrapscache.bg',
+		touchAction: 'pan-y',
+		_hoverable: { bg: 'scrapscache.interactiveHover' }
 	})
 };
 

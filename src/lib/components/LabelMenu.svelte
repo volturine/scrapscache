@@ -128,10 +128,7 @@
 	</div>
 
 	<div
-		class={[
-			vstack({ gap: '3xs', maxH: '16rem', overflowY: 'auto', alignItems: 'stretch' }),
-			styles.scroller
-		]}
+		class={vstack({ gap: '3xs', maxH: '16rem', overflowY: 'auto', alignItems: 'stretch' })}
 		style:min-height={listMinHeight}
 	>
 		{#if canCreate}

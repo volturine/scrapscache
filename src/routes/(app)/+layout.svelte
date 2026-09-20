@@ -19,7 +19,6 @@
 	import { MediaQuery } from 'svelte/reactivity';
 	import { attachSyncCloudIndicator } from '$lib/syncCloudIndicator';
 	import { attachAppViewport } from '$lib/appViewport';
-	import { attachSidebarSwipe } from '$lib/sidebarSwipe';
 	import { dayKey, reminderTimeForDay } from '$lib/utils';
 	import type { Snippet } from 'svelte';
 
@@ -234,26 +233,13 @@
 <svelte:window onpaste={handleGalleryPaste} />
 
 <div class="app-viewport">
-	<div
-		class={cx('app-shell', styles.shell)}
-		{@attach mobile.current &&
-			attachSidebarSwipe({
-				getOpen: () => uiStore.sidebarOpen,
-				open: () => {
-					uiStore.sidebarOpen = true;
-				},
-				close: () => {
-					uiStore.sidebarOpen = false;
-				}
-			})}
-	>
+	<div class={cx('app-shell', styles.shell)}>
 		{#if mobile.current}
 			<Drawer.Root
 				open={uiStore.sidebarOpen}
 				onOpenChange={(details) => {
 					uiStore.sidebarOpen = details.open;
 				}}
-				swipeDirection="start"
 				preventScroll={false}
 				lazyMount
 				unmountOnExit
@@ -261,6 +247,7 @@
 				<Drawer.Backdrop data-sidebar-backdrop aria-label="Close sidebar" class={styles.backdrop} />
 				<Drawer.Positioner class={styles.drawerPositioner}>
 					<Drawer.Content
+						draggable={false}
 						class={styles.drawer}
 						role="navigation"
 						aria-label="Sidebar"
@@ -306,5 +293,8 @@
 		</div>
 	</div>
 </div>
+{#if mobile.current && uiStore.sidebarOpen}
+	<div class={styles.drawerSafeArea} aria-hidden="true"></div>
+{/if}
 <div class="app-overlay" data-app-overlay></div>
 {@render children()}

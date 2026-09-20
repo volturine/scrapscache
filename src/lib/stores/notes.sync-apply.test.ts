@@ -343,11 +343,11 @@ describe('notes store sync apply', () => {
 
 	it('reattaches photo blobs after a crash between blob write and note commit', async () => {
 		await getAllNotesMetadata();
-		closeDeviceDatabase();
+		await closeDeviceDatabase();
 		const db = await openDB(DEVICE_DB_NAME);
 		await db.put('note-images', { mime: 'image/png', bytes: Uint8Array.from([65]) }, 'lost::pic');
 		db.close();
-		closeDeviceDatabase();
+		await closeDeviceDatabase();
 
 		const lost = remoteNote('lost');
 		lost.images = [

@@ -1,7 +1,13 @@
 <script lang="ts">
-	import { sidebarIcon, sidebarRow, sidebarStyles } from '$panda/styles';
+	import {
+		iconSizeSm as iconSm,
+		noteCardHazeGroup,
+		sidebarIcon,
+		sidebarRow,
+		sidebarStyles
+	} from '$panda/styles';
 	import { css, cx } from 'styled-system/css';
-	import { dialog, button, input, menuItem } from 'styled-system/recipes';
+	import { button, dialog, iconButton, input, menuItem } from 'styled-system/recipes';
 	import { hstack, vstack } from 'styled-system/patterns';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -14,29 +20,74 @@
 		AlarmClock,
 		Archive,
 		Kanban,
+		Pencil,
 		Plus,
+		Search,
 		StickyNote,
 		Tag,
 		Trash2,
-		X,
 		type LucideIcon
 	} from '@lucide/svelte';
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { portalToAppOverlay } from '$lib/appViewport';
+	import {
+		createLabelSwipe,
+		labelSwipeStyle,
+		labelTrayStyle,
+		LABEL_TRAY_PX
+	} from '$lib/labelSwipe';
 	import { pathForView } from '$lib/viewRoutes';
 	import { useEditorActions } from '$lib/editorContext';
 
 	const { closeNote } = useEditorActions();
 
 	let { onNavigate }: { onNavigate?: () => void } = $props();
-	let labelsEditMode = $state(false);
-	let creatingLabel = $state(false);
-	let newLabelName = $state('');
+
+	let query = $state('');
+	let queryInput = $state<HTMLInputElement | null>(null);
+
 	let renamingId = $state<string | null>(null);
 	let renamingName = $state('');
-	let pendingDelete: Label | null = $state(null);
-	let newLabelInput: HTMLInputElement | null = $state(null);
 	let renameInput: HTMLInputElement | null = $state(null);
+
+	let pendingDelete: Label | null = $state(null);
+	let hazeLabelId = $state<string | null>(null);
+
+	let swipeLabelId = $state<string | null>(null);
+	let swipeOffsetX = $state(0);
+	let swipeDragging = $state(false);
+	let trayLabelId = $state<string | null>(null);
+
+	// Touch reaches the same actions as a right click: swipe a row to the left
+	// and its rename and delete buttons slide in behind it.
+	const swipe = createLabelSwipe({
+		setVisual: (visual) => {
+			swipeLabelId = visual.labelId;
+			swipeOffsetX = visual.offsetX;
+			swipeDragging = visual.dragging;
+		},
+		setOpen: (labelId) => {
+			trayLabelId = labelId;
+		}
+	});
+
+	/** How far the row has drawn back for this label, if at all. */
+	function swipeOffset(labelId: string): { offsetX: number; dragging: boolean } | null {
+		if (swipeLabelId === labelId) return { offsetX: swipeOffsetX, dragging: swipeDragging };
+		if (trayLabelId === labelId) return { offsetX: -LABEL_TRAY_PX, dragging: false };
+		return null;
+	}
+
+	/** How much of the row the tray has taken; the class owns the easing. */
+	function swipeStyle(labelId: string): string | undefined {
+		const swiped = swipeOffset(labelId);
+		return swiped ? labelSwipeStyle(swiped.offsetX, swiped.dragging) : undefined;
+	}
+
+	function trayStyle(labelId: string): string | undefined {
+		const swiped = swipeOffset(labelId);
+		return swiped ? labelTrayStyle(swiped.offsetX, swiped.dragging) : undefined;
+	}
 
 	const navItems: { view: View; label: string; icon: LucideIcon }[] = [
 		{ view: 'notes', label: 'Notes', icon: StickyNote },
@@ -54,6 +105,17 @@
 		}
 		return counts;
 	});
+
+	const trimmed = $derived(query.trim());
+	const filteredLabels = $derived.by(() => {
+		if (!trimmed) return notesStore.labels;
+		const q = trimmed.toLowerCase();
+		return notesStore.labels.filter((l) => l.name.toLowerCase().includes(q));
+	});
+	const exactMatch = $derived(
+		trimmed ? notesStore.labels.find((l) => l.name.toLowerCase() === trimmed.toLowerCase()) : null
+	);
+	const canCreate = $derived(trimmed !== '' && !exactMatch);
 
 	type Destination = '/' | '/kanban' | '/reminders' | '/archive' | '/trash' | `/label/${string}`;
 
@@ -83,44 +145,64 @@
 		return uiStore.pendingPath ? uiStore.pendingPath === target : page.url.pathname === target;
 	}
 
-	function enterEditMode() {
-		labelsEditMode = true;
-		renamingId = null;
-		newLabelName = '';
-		pendingDelete = null;
+	function createAndNavigate() {
+		const name = (queryInput?.value ?? query).trim();
+		if (!name) return;
+		const newLabel = notesStore.createLabel(name);
+		query = '';
+		if (newLabel) navigate('label', newLabel.id);
 	}
 
-	function exitEditMode() {
-		labelsEditMode = false;
-		creatingLabel = false;
-		renamingId = null;
-		newLabelName = '';
-		pendingDelete = null;
+	function submitQuery() {
+		const name = (queryInput?.value ?? query).trim();
+		if (!name) return;
+		const existing = notesStore.labels.find((l) => l.name.toLowerCase() === name.toLowerCase());
+		if (existing) {
+			query = '';
+			navigate('label', existing.id);
+			return;
+		}
+		createAndNavigate();
 	}
 
-	function startCreateLabel() {
-		labelsEditMode = true;
-		creatingLabel = true;
-		renamingId = null;
-		newLabelName = '';
-		queueMicrotask(() => newLabelInput?.focus({ preventScroll: true }));
+	function onQueryKeydown(event: KeyboardEvent) {
+		if (event.key === 'Enter') {
+			event.preventDefault();
+			submitQuery();
+			return;
+		}
+		if (event.key === 'Escape' && query !== '') {
+			event.preventDefault();
+			event.stopPropagation();
+			query = '';
+		}
 	}
 
-	function finishCreateLabel() {
-		if (!creatingLabel) return;
-		notesStore.createLabel(newLabelName);
-		newLabelName = '';
-		creatingLabel = false;
+	function closeHaze() {
+		hazeLabelId = null;
 	}
 
-	function cancelCreateLabel() {
-		newLabelName = '';
-		creatingLabel = false;
+	function openLabel(label: Label) {
+		if (swipe.consumeDrag()) return;
+		// A row showing its actions takes the next tap to put them away.
+		if (trayLabelId === label.id) {
+			swipe.close();
+			return;
+		}
+		navigate('label', label.id);
+	}
+
+	function handleContextMenu(e: MouseEvent, label: Label) {
+		e.preventDefault();
+		e.stopPropagation();
+		swipe.close();
+		hazeLabelId = label.id;
 	}
 
 	function startRename(label: Label) {
-		if (!labelsEditMode) return;
 		pendingDelete = null;
+		swipe.close();
+		closeHaze();
 		renamingId = label.id;
 		renamingName = label.name;
 		queueMicrotask(() => {
@@ -142,6 +224,8 @@
 
 	function requestDelete(label: Label) {
 		renamingId = null;
+		swipe.close();
+		closeHaze();
 		pendingDelete = label;
 	}
 
@@ -166,70 +250,53 @@
 	function cancelDelete() {
 		pendingDelete = null;
 	}
+
 	const menuRow = menuItem({ density: 'sidebar' });
 	const labelInputClass = cx(input({ variant: 'unstyled' }), sidebarStyles.labelInput);
 	const d = dialog({ size: 'sm' });
 </script>
 
-{#snippet newLabelRow(extraClass: string)}
-	<button
-		type="button"
-		onclick={startCreateLabel}
-		data-sidebar-stay-open
-		class={[menuRow, sidebarRow({ navigation: true, active: false }), extraClass]}
-	>
-		<span class={sidebarIcon()} aria-hidden="true">
-			<Plus size={16} strokeWidth={1.75} />
-		</span>
-		<span class={sidebarStyles.navLabel}>New label</span>
-	</button>
-{/snippet}
-
-{#snippet deleteButton(label: Label)}
-	<!-- The ::before pad reaches a thumb-sized hit area without widening the row. -->
-	<button
-		type="button"
-		onclick={() => requestDelete(label)}
-		data-sidebar-stay-open
-		class={sidebarIcon({ iconTone: 'muted', hitPad: 'delete', danger: true })}
-		aria-label={`Delete ${label.name}`}
-		title="Delete"
-	>
-		<X size={14} strokeWidth={1.75} aria-hidden="true" />
-	</button>
-{/snippet}
-
 <aside
-	class={[
-		'scrollable',
-		css({ scrollbarWidth: 'thin' }),
-		vstack({
-			h: 'full',
-			gap: '3xs',
-			overflowY: 'auto',
-			px: 'sm',
-			pb: 'lg',
-			pt: 'sm'
-		})
-	]}
+	class={css({
+		h: 'full',
+		overflow: 'hidden',
+		display: 'flex',
+		flexDirection: 'column',
+		px: 'sm',
+		pt: 'sm',
+		pb: 'md'
+	})}
 	transition:fly={{ x: -20, duration: 120 }}
 >
-	{#each navItems as item (item.view)}
-		{@const NavIcon = item.icon}
-		<button
-			type="button"
-			onclick={() => navigate(item.view)}
-			class={[menuRow, sidebarRow({ navigation: true, active: isActive(item.view), wide: true })]}
-		>
-			<span class={sidebarIcon({ iconTone: 'nav' })} aria-hidden="true">
-				<NavIcon size={18} strokeWidth={1.75} />
-			</span>
-			<span class={sidebarStyles.navLabel}>{item.label}</span>
-		</button>
-	{/each}
+	<nav class={vstack({ gap: '3xs', flexShrink: 0, w: 'full' })} aria-label="Main navigation">
+		{#each navItems as item (item.view)}
+			{@const NavIcon = item.icon}
+			<button
+				type="button"
+				onclick={() => navigate(item.view)}
+				class={[menuRow, sidebarRow({ navigation: true, active: isActive(item.view), wide: true })]}
+			>
+				<span class={sidebarIcon({ iconTone: 'nav' })} aria-hidden="true">
+					<NavIcon size={18} strokeWidth={1.75} />
+				</span>
+				<span class={sidebarStyles.navLabel}>{item.label}</span>
+			</button>
+		{/each}
+	</nav>
 
-	<section class={css({ mt: 'xl', w: 'full' })} data-labels-edit aria-label="Labels">
-		<div class={hstack({ mb: '2xs', h: '2rem', gap: 'sm', pl: 'lg', pr: 'sm' })}>
+	<section
+		class={css({
+			mt: 'lg',
+			w: 'full',
+			minH: 0,
+			flex: '1',
+			display: 'flex',
+			flexDirection: 'column'
+		})}
+		data-labels-edit
+		aria-label="Labels"
+	>
+		<div class={hstack({ mb: '2xs', h: '2rem', gap: 'sm', pl: 'lg', pr: 'sm', flexShrink: 0 })}>
 			<span
 				class={css({
 					minW: 0,
@@ -242,194 +309,237 @@
 			>
 				Labels
 			</span>
-			<!-- One control in both modes, so the header never reflows on toggle. The
-			     ::before pad gives it a thumb-sized hit area without a taller header. -->
-			<button
-				type="button"
-				onclick={labelsEditMode ? exitEditMode : enterEditMode}
-				data-sidebar-stay-open
-				class={css({
-					position: 'relative',
-					flexShrink: 0,
-					rounded: 'control',
-					px: 'sm',
-					py: '2xs',
-					textStyle: 'label',
-					color: 'scrapscache.textMuted',
-					cursor: 'pointer',
-					touchAction: 'manipulation',
-					WebkitTapHighlightColor: 'transparent',
-					_hoverable: { bg: 'scrapscache.interactiveHover' },
-					_before: { position: 'absolute', inset: '-0.625rem', content: '""' }
-				})}
-				aria-label={labelsEditMode ? 'Finish editing labels' : 'Edit labels'}
-				title={labelsEditMode ? 'Finish editing labels' : 'Edit labels'}
-			>
-				{labelsEditMode ? 'Done' : 'Edit'}
-			</button>
 		</div>
 
-		{#if labelsEditMode && creatingLabel}
-			<div class={[menuRow, sidebarRow({ editing: true })]} data-sidebar-stay-open>
-				<span class={sidebarIcon({ iconTone: 'muted' })} aria-hidden="true">
-					<Tag size={16} strokeWidth={1.75} aria-hidden="true" />
-				</span>
-				<input
-					bind:this={newLabelInput}
-					bind:value={newLabelName}
-					type="text"
-					placeholder="New label"
-					aria-label="New label name"
-					class={labelInputClass}
-					onblur={finishCreateLabel}
-					onkeydown={(event) => {
-						if (event.key === 'Enter') finishCreateLabel();
-						if (event.key === 'Escape') cancelCreateLabel();
-					}}
-				/>
+		<!-- Search / create label input -->
+		<div class={sidebarStyles.searchWrap}>
+			<Search class={sidebarStyles.searchIcon} strokeWidth={1.75} aria-hidden="true" />
+			<input
+				bind:this={queryInput}
+				type="text"
+				bind:value={query}
+				placeholder="Search or create a label…"
+				onkeydown={onQueryKeydown}
+				class={cx(input({ variant: 'outline', size: 'md' }), sidebarStyles.searchInput)}
+				aria-label="Search or create a label"
+			/>
+		</div>
+
+		<!-- Create button when query doesn't match an existing label -->
+		{#if canCreate}
+			<div class={css({ flexShrink: 0, mb: '3xs' })}>
+				<button
+					type="button"
+					onclick={createAndNavigate}
+					aria-label={`Create "${trimmed}"`}
+					class={[
+						menuRow,
+						sidebarRow({ navigation: true, active: false }),
+						sidebarStyles.createButton
+					]}
+				>
+					<span class={sidebarIcon()} aria-hidden="true">
+						<Plus size={16} strokeWidth={1.75} />
+					</span>
+					<span class={sidebarStyles.navLabel}>Create “{trimmed}”</span>
+				</button>
 			</div>
-		{:else if labelsEditMode}
-			{@render newLabelRow(css({ mb: '2xs' }))}
 		{/if}
 
-		{#if notesStore.labels.length === 0 && !labelsEditMode}
-			{@render newLabelRow('')}
-		{:else}
-			<div class={vstack({ gap: '3xs' })}>
-				{#each notesStore.labels as label (label.id)}
-					{#if labelsEditMode && renamingId === label.id}
-						<!-- Same box as the rows around it, so starting a rename never nudges
-						     the list; only the tint and the field change. -->
-						<div class={[menuRow, sidebarRow({ editing: true })]} data-sidebar-stay-open>
-							<span class={sidebarIcon({ iconTone: 'muted' })} aria-hidden="true">
-								<Tag size={16} strokeWidth={1.75} />
-							</span>
-							<input
-								bind:this={renameInput}
-								bind:value={renamingName}
-								type="text"
-								aria-label={`Rename ${label.name}`}
-								class={labelInputClass}
-								onblur={() => saveRename(label)}
-								onkeydown={(event) => {
-									if (event.key === 'Enter') saveRename(label);
-									if (event.key === 'Escape') cancelRename();
-								}}
-							/>
-							{@render deleteButton(label)}
-						</div>
-					{:else if labelsEditMode}
-						<div class={[menuRow, sidebarRow()]}>
-							<span class={sidebarIcon({ iconTone: 'muted' })} aria-hidden="true">
-								<Tag size={16} strokeWidth={1.75} />
-							</span>
-							<button
-								type="button"
-								onclick={() => startRename(label)}
-								data-sidebar-stay-open
-								class={cx(
-									sidebarStyles.navLabel,
-									css({
-										minW: 0,
-										flex: '1',
-										alignSelf: 'stretch',
-										textAlign: 'left',
-										textStyle: 'button',
-										cursor: 'pointer'
-									})
-								)}
-								aria-label={`Rename ${label.name}`}
-								title="Rename"
-							>
-								{label.name}
-							</button>
-							{@render deleteButton(label)}
-						</div>
-					{:else}
+		<div
+			class={['scrollable', sidebarStyles.labelList, vstack({ gap: '3xs', alignItems: 'stretch' })]}
+		>
+			{#each filteredLabels as label (label.id)}
+				{#if renamingId === label.id}
+					<div class={[menuRow, sidebarRow({ editing: true })]} data-sidebar-stay-open>
+						<span class={sidebarIcon({ iconTone: 'muted' })} aria-hidden="true">
+							<Tag size={16} strokeWidth={1.75} />
+						</span>
+						<input
+							bind:this={renameInput}
+							bind:value={renamingName}
+							type="text"
+							aria-label={`Rename ${label.name}`}
+							class={labelInputClass}
+							onblur={() => saveRename(label)}
+							onkeydown={(event) => {
+								if (event.key === 'Enter') saveRename(label);
+								if (event.key === 'Escape') cancelRename();
+							}}
+						/>
+					</div>
+				{:else}
+					<div class={sidebarStyles.labelRowContainer}>
 						<button
 							type="button"
-							onclick={() => navigate('label', label.id)}
+							onclick={() => openLabel(label)}
+							oncontextmenu={(e) => handleContextMenu(e, label)}
+							onpointerdown={(e) => swipe.onPointerDown(e, label.id)}
+							onpointermove={swipe.onPointerMove}
+							onpointerup={swipe.onPointerUp}
+							onpointercancel={swipe.onPointerCancel}
+							style={swipeStyle(label.id)}
 							class={[
 								menuRow,
-								sidebarRow({ navigation: true, active: isActive('label', label.id) })
+								sidebarRow({
+									navigation: true,
+									active: isActive('label', label.id),
+									swiped: (swipeOffset(label.id)?.offsetX ?? 0) < 0
+								}),
+								sidebarStyles.labelSwipeRow
 							]}
+							aria-label={label.name}
 						>
 							<span class={sidebarIcon({ iconTone: 'muted' })} aria-hidden="true">
 								<Tag size={16} strokeWidth={1.75} />
 							</span>
 							<span class={sidebarStyles.navLabel}>{label.name}</span>
-							{#if (labelCounts.get(label.id) ?? 0) > 0}
-								<span class={sidebarIcon({ hitPad: 'count' })}>{labelCounts.get(label.id)}</span>
+							{#if labelCounts.get(label.id)}
+								<span class={sidebarIcon({ hitPad: 'count' })}>
+									{labelCounts.get(label.id)}
+								</span>
 							{/if}
 						</button>
-					{/if}
-				{/each}
-			</div>
-		{/if}
+
+						<!-- Mounted only while some of it can show, so its buttons are out of
+						     reach the rest of the time. -->
+						{#if trayLabelId === label.id || (swipeLabelId === label.id && swipeOffsetX < 0)}
+							<div class={sidebarStyles.labelTray} style={trayStyle(label.id)} data-label-tray>
+								<button
+									type="button"
+									class={iconButton({ size: 'compact', variant: 'ghost' })}
+									title="Rename"
+									aria-label={`Rename ${label.name}`}
+									onclick={(e) => {
+										e.stopPropagation();
+										startRename(label);
+									}}
+								>
+									<Pencil size={16} strokeWidth={1.75} aria-hidden="true" />
+								</button>
+								<button
+									type="button"
+									class={iconButton({ size: 'compact', variant: 'danger' })}
+									title="Delete"
+									aria-label={`Delete ${label.name}`}
+									onclick={(e) => {
+										e.stopPropagation();
+										requestDelete(label);
+									}}
+								>
+									<Trash2 size={16} strokeWidth={1.75} aria-hidden="true" />
+								</button>
+							</div>
+						{/if}
+
+						{#if hazeLabelId === label.id}
+							<div
+								class={sidebarStyles.labelHazeOverlay}
+								data-label-haze
+								role="presentation"
+								onclick={(e) => {
+									e.stopPropagation();
+									closeHaze();
+								}}
+								onpointerdown={(e) => e.stopPropagation()}
+								oncontextmenu={(e) => {
+									e.preventDefault();
+									e.stopPropagation();
+								}}
+							>
+								<div class={noteCardHazeGroup.compact}>
+									<button
+										type="button"
+										class={iconButton({ size: 'xs', variant: 'haze' })}
+										title="Rename"
+										aria-label={`Rename ${label.name}`}
+										onclick={(e) => {
+											e.stopPropagation();
+											closeHaze();
+											startRename(label);
+										}}
+									>
+										<Pencil size={15} strokeWidth={1.75} aria-hidden="true" />
+									</button>
+									<button
+										type="button"
+										class={iconButton({ size: 'xs', variant: 'hazeRose' })}
+										title="Delete"
+										aria-label={`Delete ${label.name}`}
+										onclick={(e) => {
+											e.stopPropagation();
+											closeHaze();
+											requestDelete(label);
+										}}
+									>
+										<Trash2 size={15} strokeWidth={1.75} aria-hidden="true" />
+									</button>
+								</div>
+							</div>
+						{/if}
+					</div>
+				{/if}
+			{/each}
+		</div>
 	</section>
 </aside>
 
+<svelte:window
+	onpointerdown={(e) => {
+		const target = e.target as HTMLElement | null;
+		if (hazeLabelId && !target?.closest?.('[data-label-haze]')) closeHaze();
+		if (trayLabelId && !target?.closest?.('[data-labels-edit]')) swipe.close();
+	}}
+	onkeydown={(e) => {
+		if (e.key !== 'Escape') return;
+		if (hazeLabelId) closeHaze();
+		if (trayLabelId) swipe.close();
+	}}
+/>
+
+<!-- Mounted only while it has something to confirm: its portal covers the app
+     frame, so an idle one would swallow every press. -->
 {#if pendingDelete}
-	<Dialog.Root
-		open
-		onOpenChange={(details) => !details.open && cancelDelete()}
-		preventScroll={false}
-	>
-		<div
-			{@attach portalToAppOverlay}
-			class={css({ position: 'absolute', inset: 0, zIndex: 80 })}
-			role="presentation"
-			data-sidebar-stay-open
-		>
+	<Dialog.Root open onOpenChange={(e) => !e.open && cancelDelete()} preventScroll={false}>
+		<div {@attach portalToAppOverlay} class={sidebarStyles.dialogPortal} role="presentation">
 			<Dialog.Backdrop class={d.backdrop} />
-			<Dialog.Positioner
-				class={css({
-					position: 'absolute',
-					inset: 0,
-					display: 'flex',
-					alignItems: { base: 'flex-end', sm: 'center' },
-					justifyContent: 'center',
-					p: 'lg'
-				})}
-				data-sidebar-stay-open
-			>
-				<Dialog.Content class={d.panel} data-sidebar-stay-open>
+			<Dialog.Positioner class={sidebarStyles.dialogPositioner}>
+				<Dialog.Content class={d.panel} aria-describedby={undefined}>
+					{@const taggedCount = labelCounts.get(pendingDelete.id) ?? 0}
 					<Dialog.Title class={d.title}>
 						Delete “{pendingDelete.name}”?
 					</Dialog.Title>
-					<p class={d.description}>
-						{#if (labelCounts.get(pendingDelete.id) ?? 0) > 0}
-							This label is on {labelCounts.get(pendingDelete.id)} note{(labelCounts.get(
-								pendingDelete.id
-							) ?? 0) === 1
-								? ''
-								: 's'}.
+					<Dialog.Description class={d.description}>
+						{#if taggedCount > 0}
+							This label is on {taggedCount} note{taggedCount === 1 ? '' : 's'}.
 						{:else}
 							No notes currently use this label.
 						{/if}
-					</p>
-					<div class={vstack({ gap: 'sm', mt: 'lg' })}>
+					</Dialog.Description>
+					<div class={d.footer}>
 						<button
 							type="button"
-							onclick={confirmDeleteLabelOnly}
-							class={button({ variant: 'subtle', size: 'md' })}
-						>
-							Delete label only
-						</button>
-						<button
-							type="button"
-							onclick={confirmDeleteLabelAndNotes}
-							class={button({ variant: 'destructive', size: 'md' })}
-						>
-							Delete label and its notes
-						</button>
-						<button
-							type="button"
+							class={button({ variant: 'ghost', size: 'sm' })}
 							onclick={cancelDelete}
-							class={button({ variant: 'ghost', size: 'md' })}
 						>
 							Cancel
 						</button>
+						<button
+							type="button"
+							class={button({ variant: 'danger', size: 'sm' })}
+							onclick={confirmDeleteLabelOnly}
+						>
+							Delete label only
+						</button>
+						{#if taggedCount > 0}
+							<button
+								type="button"
+								class={button({ variant: 'danger', size: 'sm' })}
+								onclick={confirmDeleteLabelAndNotes}
+							>
+								Delete label and notes
+							</button>
+						{/if}
 					</div>
 				</Dialog.Content>
 			</Dialog.Positioner>

@@ -125,7 +125,7 @@
 			zIndex: 90,
 			display: 'flex',
 			flexDirection: 'column',
-			bg: 'scrapscache.canvasSurface'
+			bg: 'scrapscache.bg'
 		})
 	]}
 	role="dialog"
@@ -222,7 +222,7 @@
 					position: 'absolute',
 					inset: 0,
 					zIndex: 20,
-					bg: 'scrapscache.canvasSurface'
+					bg: 'scrapscache.bg'
 				})}
 			>
 				<div class={hstack({ gap: 'sm', color: 'scrapscache.textMuted' })}>

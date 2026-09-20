@@ -115,24 +115,65 @@ export function getDB(pid?: string): Promise<IDBPDatabase> {
 	return promise;
 }
 
-/** Drop the cached connections so tests can delete the database between cases. */
-export function closeDeviceDatabase(): void {
+/** How long a delete may stay blocked before it is reported as failed. */
+const DELETE_BLOCKED_GRACE_MS = 2000;
+
+/**
+ * Delete a database and report what actually happened.
+ *
+ * A blocked delete is not a success: some connection is still open, and the
+ * browser will only finish once it closes. Resolving there would tell a caller
+ * their data is gone while all of it is still on the device, so the block is
+ * waited out and only a lasting one is an error. The database is never named
+ * in that error: its name carries the workspace id.
+ */
+export function dropDatabase(name: string, graceMs = DELETE_BLOCKED_GRACE_MS): Promise<void> {
+	if (typeof indexedDB === 'undefined') return Promise.resolve();
+	return new Promise<void>((resolve, reject) => {
+		const request = indexedDB.deleteDatabase(name);
+		let blockedTimer: ReturnType<typeof setTimeout> | null = null;
+		const settle = (finish: () => void) => {
+			if (blockedTimer !== null) clearTimeout(blockedTimer);
+			finish();
+		};
+		request.onsuccess = () => settle(resolve);
+		request.onerror = () =>
+			settle(() => reject(request.error ?? new Error('Could not delete a local database.')));
+		request.onblocked = () => {
+			blockedTimer = setTimeout(
+				() =>
+					reject(
+						new Error('Timed out deleting a local database: a connection to it is still open.')
+					),
+				graceMs
+			);
+		};
+	});
+}
+
+/**
+ * Settle the queued writes, then drop the cached connections. Closing without
+ * waiting would both lose a queued write and leave its connection open past
+ * the close, which is what blocks the delete that usually follows.
+ */
+export async function closeDeviceDatabase(): Promise<void> {
+	await waitForDeviceWrites();
 	const existing = Array.from(dbPromises.values());
 	dbPromises.clear();
 	deviceWriteChain = Promise.resolve();
 	noteChains.clear();
 	writeGeneration = 0;
 	outboxGenerations.clear();
-	for (const p of existing) {
-		void p.then(
-			(db) => {
-				try {
+	await Promise.all(
+		existing.map((p) =>
+			p.then(
+				(db) => {
 					db.close();
-				} catch {}
-			},
-			() => undefined
-		);
-	}
+				},
+				() => undefined
+			)
+		)
+	);
 }
 
 /** Wait until all note and device writes queued in this window have settled. */
@@ -992,6 +1033,9 @@ export async function putStoredProfile(profile: StoredProfile): Promise<void> {
 export async function deleteProfileDatabase(pid: string): Promise<void> {
 	if (!pid || pid === LOCAL_PROFILE_ID) return;
 	const dbName = resolveDbName(pid);
+	// A write still queued for this workspace would reopen the database midway
+	// through removing it, so let the queue drain before the connection goes.
+	await waitForDeviceWrites(pid);
 	const p = dbPromises.get(dbName);
 	if (p) {
 		dbPromises.delete(dbName);
@@ -1000,14 +1044,7 @@ export async function deleteProfileDatabase(pid: string): Promise<void> {
 			db.close();
 		} catch {}
 	}
-	if (typeof indexedDB !== 'undefined') {
-		await new Promise<void>((resolve, reject) => {
-			const req = indexedDB.deleteDatabase(dbName);
-			req.onsuccess = () => resolve();
-			req.onerror = () => reject(req.error);
-			req.onblocked = () => resolve();
-		});
-	}
+	await dropDatabase(dbName);
 }
 
 function removeProfileFromLocalStorage(id: string): void {

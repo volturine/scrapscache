@@ -197,6 +197,10 @@ export function mountExcalidraw(node: HTMLElement, options: HostOptions): Promis
 		root.render(
 			React.createElement(Excalidraw, {
 				initialData: {
+					// A new canvas carries no background of its own, so the editor surface
+					// shows through and the screen stays one colour from the status bar to
+					// the home indicator. Saved scenes keep the background they were given.
+					appState: { viewBackgroundColor: 'transparent' } as Partial<AppState>,
 					...(options.initialScene
 						? {
 								elements: sceneElements(options.initialScene.elements),

@@ -81,6 +81,9 @@ export const truncate = css(truncateText);
 /** Shared page and feed layout classes. These are layout primitives, not component recipes. */
 export const viewPage = css({ pt: 'lg', pb: '3xl' });
 
+/** One width for the mobile drawer and the safe-area strip that continues it. */
+const DRAWER_WIDTH = '18rem';
+
 export const appLayout = {
 	shell: css({
 		h: 'full',
@@ -92,18 +95,31 @@ export const appLayout = {
 	// Catches taps outside the drawer without tinting the page behind it.
 	backdrop: css({ position: 'fixed', inset: 0, zIndex: 20 }),
 	drawerPositioner: css({ position: 'fixed', insetY: 0, left: 0, zIndex: 30, h: 'full' }),
+	// No edge of its own: the surface is what sets the panel apart from the body,
+	// and a border would stop where the frame does while the surface carries on.
 	drawer: css({
 		h: 'full',
-		w: '18rem',
-		borderRightWidth: 'hairline',
-		borderColor: 'scrapscache.border',
+		w: DRAWER_WIDTH,
 		bg: 'scrapscache.surface'
 	}),
+	// The app frame stops at the safe rect, so an open drawer stops short of the
+	// home indicator. This carries its surface the rest of the way down, across
+	// the drawer's width only, so the panel reads as one piece.
+	drawerSafeArea: css({
+		position: 'fixed',
+		left: 0,
+		bottom: 0,
+		w: `calc(${DRAWER_WIDTH} + var(--app-inset-left))`,
+		h: 'var(--app-inset-bottom)',
+		bg: 'scrapscache.surface',
+		zIndex: 40,
+		pointerEvents: 'none'
+	}),
+	// Same panel as the drawer on a phone: its surface is what sets it apart.
 	sidebar: css({
 		w: '16rem',
 		flexShrink: 0,
-		borderRightWidth: 'hairline',
-		borderColor: 'scrapscache.border'
+		bg: 'scrapscache.surface'
 	}),
 	column: css({ ...column, minH: 0, minW: 0, flex: '1' }),
 	canvas: css({ position: 'relative', minH: 0, minW: 0, flex: '1' }),
@@ -1589,7 +1605,6 @@ export const labelMenuStyles = {
 		...mutedText
 	}),
 	searchWrap: css({ position: 'relative', mb: '2xs' }),
-	scroller: css({ scrollbarWidth: 'thin' }),
 	searchIcon: css({
 		pointerEvents: 'none',
 		left: 'md',
@@ -1899,8 +1914,12 @@ export const sidebarRow = cva({
 			false: { fontWeight: 'interactive', color: 'scrapscache.textMuted' }
 		},
 		wide: { true: { pr: 'lg' } },
-		editing: { true: { bg: 'scrapscache.interactiveHover' } }
-	}
+		editing: { true: { bg: 'scrapscache.interactiveHover' } },
+		swiped: { true: {} }
+	},
+	// A row drawn back over its actions reads as a solid block being moved.
+	// An active row already carries one, so it keeps its own colour.
+	compoundVariants: [{ active: false, swiped: true, css: { bg: 'scrapscache.interactiveHover' } }]
 });
 
 export const sidebarIcon = cva({
@@ -1926,6 +1945,92 @@ export const sidebarStyles = {
 		flex: '1',
 		textStyle: 'button',
 		_placeholder: { fontWeight: 'body', ...mutedText }
+	}),
+	searchWrap: css({
+		position: 'relative',
+		mb: 'xs',
+		mx: 'xs',
+		flexShrink: 0
+	}),
+	searchIcon: css({
+		pointerEvents: 'none',
+		left: 'sm',
+		...absoluteCenterY,
+		...iconSm,
+		...mutedText
+	}),
+	searchInput: css({
+		w: 'full',
+		h: '2.375rem',
+		pl: '2.25rem',
+		pr: 'sm',
+		fontSize: 'body',
+		_placeholder: mutedText
+	}),
+	createButton: css({
+		color: 'scrapscache.accent'
+	}),
+	labelList: css({
+		overflowY: 'auto',
+		minH: 0,
+		flex: '1',
+		pr: '3xs',
+		// Rows keep their own height and the list scrolls. As flex children they
+		// would otherwise share the space out and squash as labels are added.
+		'& > *': { flexShrink: 0 }
+	}),
+	labelRowContainer: css({
+		position: 'relative',
+		w: 'full',
+		rounded: 'row',
+		// The action tray waits just outside this edge until a swipe pulls it in.
+		overflow: 'hidden'
+	}),
+	// A swiped row narrows by exactly the tray's width, uncovering it.
+	labelSwipeRow: css({
+		w: 'full',
+		transitionProperty: 'width, background-color',
+		transitionDuration: '200ms',
+		transitionTimingFunction: 'cubic-bezier(0.2, 0, 0, 1)'
+	}),
+	// Anchored to the row's trailing edge, so it follows the width the row gives
+	// up instead of lying under it.
+	labelTray: css({
+		position: 'absolute',
+		insetY: 0,
+		left: '100%',
+		w: '5.5rem',
+		display: 'flex',
+		alignItems: 'center',
+		justifyContent: 'center',
+		gap: 'xs',
+		transitionProperty: 'transform',
+		transitionDuration: '200ms',
+		transitionTimingFunction: 'cubic-bezier(0.2, 0, 0, 1)'
+	}),
+	// The drawer is a transformed, clipped box; its dialogs belong to the app
+	// frame instead.
+	dialogPortal: css({ position: 'absolute', inset: 0, zIndex: 80 }),
+	dialogPositioner: css({
+		position: 'absolute',
+		inset: 0,
+		display: 'flex',
+		alignItems: { base: 'flex-end', sm: 'center' },
+		justifyContent: 'center',
+		p: 'lg'
+	}),
+	labelHazeOverlay: css({
+		position: 'absolute',
+		inset: 0,
+		zIndex: 10,
+		display: 'flex',
+		alignItems: 'center',
+		justifyContent: 'center',
+		gap: 'xs',
+		bg: 'scrapscache.backdropMuted',
+		backdropFilter: 'blur(8px)',
+		rounded: 'row',
+		transition: 'opacity 150ms ease'
 	})
 };
 

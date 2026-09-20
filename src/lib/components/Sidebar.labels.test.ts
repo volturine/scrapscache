@@ -106,23 +106,67 @@ describe('Sidebar labels section', () => {
 		expect(searchInput.value).toBe('');
 	});
 
-	it('opens the same haze overlay on a left swipe, without navigating', async () => {
+	it('slides rename and delete in behind the row on a left swipe, without navigating', async () => {
+		const { section } = setup([label('Work')]);
+		const workBtn = section.querySelector('button[aria-label="Work"]') as HTMLButtonElement;
+
+		expect(section.querySelector('[data-label-tray]')).toBeNull();
+
+		await pointer(workBtn, 'pointerdown', 200);
+		await pointer(workBtn, 'pointermove', 160);
+		await pointer(workBtn, 'pointermove', 100);
+		await pointer(workBtn, 'pointerup', 100);
+		await tick();
+
+		const tray = section.querySelector('[data-label-tray]') as HTMLElement;
+		expect(tray).toBeTruthy();
+		expect(tray.querySelector('button[aria-label="Rename Work"]')).toBeTruthy();
+		expect(tray.querySelector('button[aria-label="Delete Work"]')).toBeTruthy();
+		// The row gave up exactly the tray's width, so the two sit flush.
+		expect(workBtn.getAttribute('style')).toContain('width: calc(100% - 88px)');
+
+		// The release that uncovered the actions must not also open the label.
+		await fireEvent.click(workBtn);
+		await tick();
+		expect(navigationMocks.goto).not.toHaveBeenCalled();
+	});
+
+	it('puts the actions away on an outside tap, leaving the label openable again', async () => {
 		const { section } = setup([label('Work')]);
 		const workBtn = section.querySelector('button[aria-label="Work"]') as HTMLButtonElement;
 
 		await pointer(workBtn, 'pointerdown', 200);
-		await pointer(workBtn, 'pointermove', 160);
-		await pointer(workBtn, 'pointermove', 120);
-		await pointer(workBtn, 'pointerup', 120);
+		await pointer(workBtn, 'pointermove', 100);
+		await pointer(workBtn, 'pointerup', 100);
 		await tick();
+		expect(section.querySelector('[data-label-tray]')).toBeTruthy();
 
-		expect(section.querySelector('[data-label-haze]')).toBeTruthy();
-		expect(section.querySelector('button[aria-label="Rename Work"]')).toBeTruthy();
+		await fireEvent.pointerDown(document.body);
+		await tick();
+		expect(section.querySelector('[data-label-tray]')).toBeNull();
 
-		// The release that opened the actions must not also open the label.
 		await fireEvent.click(workBtn);
 		await tick();
-		expect(navigationMocks.goto).not.toHaveBeenCalled();
+		expect(navigationMocks.goto).toHaveBeenCalled();
+	});
+
+	it('deletes a label from the swipe actions', async () => {
+		const { section } = setup([label('Work')]);
+		const workBtn = section.querySelector('button[aria-label="Work"]') as HTMLButtonElement;
+
+		await pointer(workBtn, 'pointerdown', 200);
+		await pointer(workBtn, 'pointermove', 100);
+		await pointer(workBtn, 'pointerup', 100);
+		await tick();
+
+		const deleteBtn = section.querySelector(
+			'[data-label-tray] button[aria-label="Delete Work"]'
+		) as HTMLButtonElement;
+		await fireEvent.click(deleteBtn);
+		await tick();
+
+		expect(document.querySelector('[role="dialog"]')?.textContent).toContain('Delete label');
+		expect(section.querySelector('[data-label-tray]')).toBeNull();
 	});
 
 	it('opens haze overlay on right click with small Rename and Delete icon buttons', async () => {

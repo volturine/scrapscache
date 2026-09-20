@@ -1954,7 +1954,37 @@ export const sidebarStyles = {
 	labelRowContainer: css({
 		position: 'relative',
 		w: 'full',
-		rounded: 'row'
+		rounded: 'row',
+		// The action tray waits just outside this edge until a swipe pulls it in.
+		overflow: 'hidden'
+	}),
+	// A swiped row narrows by exactly the tray's width, uncovering it.
+	labelSwipeRow: css({
+		w: 'full',
+		transitionProperty: 'width',
+		transitionDuration: '200ms',
+		transitionTimingFunction: 'cubic-bezier(0.2, 0, 0, 1)'
+	}),
+	labelTray: css({
+		position: 'absolute',
+		insetY: 0,
+		right: 0,
+		w: '5.5rem',
+		display: 'flex',
+		alignItems: 'center',
+		justifyContent: 'center',
+		gap: 'xs'
+	}),
+	// The drawer is a transformed, clipped box; its dialogs belong to the app
+	// frame instead.
+	dialogPortal: css({ position: 'absolute', inset: 0, zIndex: 80 }),
+	dialogPositioner: css({
+		position: 'absolute',
+		inset: 0,
+		display: 'flex',
+		alignItems: { base: 'flex-end', sm: 'center' },
+		justifyContent: 'center',
+		p: 'lg'
 	}),
 	labelHazeOverlay: css({
 		position: 'absolute',

@@ -1,13 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createLabelSwipe, type LabelSwipeVisual } from './labelSwipe';
+import { createLabelSwipe, LABEL_TRAY_PX, type LabelSwipeVisual } from './labelSwipe';
 
 function session() {
 	const row = document.createElement('button');
-	const revealed: string[] = [];
+	const opened: (string | null)[] = [];
 	const visuals: LabelSwipeVisual[] = [];
 	const swipe = createLabelSwipe({
-		onReveal: (labelId) => revealed.push(labelId),
-		setVisual: (visual) => visuals.push(visual)
+		setVisual: (visual) => visuals.push(visual),
+		setOpen: (labelId) => opened.push(labelId)
 	});
 
 	function event(clientX: number, clientY: number): PointerEvent {
@@ -24,47 +24,87 @@ function session() {
 
 	return {
 		swipe,
-		revealed,
+		opened,
+		open: () => opened[opened.length - 1] ?? null,
 		last: () => visuals[visuals.length - 1],
-		down: (x: number, y = 100) => swipe.onPointerDown(event(x, y), 'work'),
+		down: (x: number, y = 100, id = 'work') => swipe.onPointerDown(event(x, y), id),
 		move: (x: number, y = 100) => swipe.onPointerMove(event(x, y)),
 		up: (x: number, y = 100) => swipe.onPointerUp(event(x, y)),
 		cancel: (x: number, y = 100) => swipe.onPointerCancel(event(x, y))
 	};
 }
 
-describe('createLabelSwipe', () => {
-	it('reveals the row actions after a left swipe past the threshold', () => {
-		const s = session();
-		s.down(200);
-		s.move(160);
-		expect(s.last()).toEqual({ labelId: 'work', offsetX: -40, dragging: true });
-		s.move(140);
-		s.up(140);
+/** A left swipe that settles the row's actions open. */
+function reveal(s: ReturnType<typeof session>, id = 'work') {
+	s.down(300, 100, id);
+	s.move(260);
+	s.move(200);
+	s.up(200);
+}
 
-		expect(s.revealed).toEqual(['work']);
-		// The row is back at rest once the actions are up.
-		expect(s.last()).toEqual({ labelId: 'work', offsetX: 0, dragging: false });
-		expect(s.swipe.wasDrag()).toBe(true);
+describe('createLabelSwipe', () => {
+	it('uncovers the row actions after a left swipe past half the tray', () => {
+		const s = session();
+		s.down(300);
+		s.move(260);
+		expect(s.last()).toEqual({ labelId: 'work', offsetX: -40, dragging: true });
+		s.move(150);
+		// The row never travels further than the tray it uncovers.
+		expect(s.last().offsetX).toBe(-LABEL_TRAY_PX);
+		s.up(150);
+
+		expect(s.open()).toBe('work');
+		expect(s.last()).toEqual({ labelId: 'work', offsetX: -LABEL_TRAY_PX, dragging: false });
+		expect(s.swipe.consumeDrag()).toBe(true);
 	});
 
-	it('snaps back without revealing when the swipe stops short', () => {
+	it('snaps back without uncovering when the swipe stops short', () => {
 		const s = session();
-		s.down(200);
-		s.move(180);
-		s.up(180);
+		s.down(300);
+		s.move(280);
+		s.up(280);
 
-		expect(s.revealed).toEqual([]);
+		expect(s.open()).toBe(null);
 		expect(s.last().offsetX).toBe(0);
 	});
 
-	it('never follows a rightward drag', () => {
+	it('keeps the actions open for a tap on the row', () => {
+		const s = session();
+		reveal(s);
+		s.down(300);
+		s.up(300);
+
+		expect(s.open()).toBe('work');
+		expect(s.last().offsetX).toBe(-LABEL_TRAY_PX);
+	});
+
+	it('swipes an open row back to rest', () => {
+		const s = session();
+		reveal(s);
+		s.down(100);
+		s.move(160);
+		s.move(200);
+		s.up(200);
+
+		expect(s.open()).toBe(null);
+		expect(s.last().offsetX).toBe(0);
+	});
+
+	it('puts one row away when another is touched', () => {
+		const s = session();
+		reveal(s);
+		s.down(300, 100, 'home');
+
+		expect(s.open()).toBe(null);
+	});
+
+	it('never follows a rightward drag on a row at rest', () => {
 		const s = session();
 		s.down(200);
 		s.move(260);
 
 		expect(s.last().offsetX).toBe(0);
-		expect(s.swipe.wasDrag()).toBe(false);
+		expect(s.swipe.consumeDrag()).toBe(false);
 	});
 
 	it('leaves a vertical drag to the labels list', () => {
@@ -74,9 +114,9 @@ describe('createLabelSwipe', () => {
 		s.move(150, 200);
 		s.up(150, 200);
 
-		expect(s.revealed).toEqual([]);
+		expect(s.open()).toBe(null);
 		expect(s.last().dragging).toBe(false);
-		expect(s.swipe.wasDrag()).toBe(false);
+		expect(s.swipe.consumeDrag()).toBe(false);
 	});
 
 	it('keeps a plain tap navigable', () => {
@@ -85,16 +125,26 @@ describe('createLabelSwipe', () => {
 		s.move(198);
 		s.up(198);
 
-		expect(s.swipe.wasDrag()).toBe(false);
+		expect(s.swipe.consumeDrag()).toBe(false);
 	});
 
-	it('drops the gesture when the pointer is cancelled', () => {
+	it('closes the open row on request', () => {
 		const s = session();
-		s.down(200);
-		s.move(120);
-		s.cancel(120);
+		reveal(s);
+		s.swipe.close();
 
-		expect(s.revealed).toEqual([]);
-		expect(s.last()).toEqual({ labelId: 'work', offsetX: 0, dragging: false });
+		expect(s.open()).toBe(null);
+		expect(s.last().offsetX).toBe(0);
+	});
+
+	it('returns an open row to its tray when the pointer is cancelled', () => {
+		const s = session();
+		reveal(s);
+		s.down(300);
+		s.move(320);
+		s.cancel(320);
+
+		expect(s.open()).toBe('work');
+		expect(s.last().offsetX).toBe(-LABEL_TRAY_PX);
 	});
 });

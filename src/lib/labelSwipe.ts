@@ -149,3 +149,9 @@ export function labelSwipeStyle(offsetX: number, dragging: boolean): string {
 	const width = offsetX === 0 ? '' : `width: calc(100% - ${-offsetX}px);`;
 	return dragging ? `${width} transition: none;` : width;
 }
+
+/** Inline offset for the tray riding the row's trailing edge. */
+export function labelTrayStyle(offsetX: number, dragging: boolean): string {
+	const transform = `transform: translate3d(${offsetX}px, 0, 0);`;
+	return dragging ? `${transform} transition: none;` : transform;
+}

@@ -29,8 +29,12 @@ export type EncryptedHandshakeGrant = {
 
 export function encryptHandshakePayload(params: {
 	mcpPublicKey: string;
-	syncKey: string;
+	syncKey?: string;
+	workspaces?: { name: string; syncKey: string }[];
 }): EncryptedHandshakeGrant {
+	const plaintext = params.workspaces?.length
+		? JSON.stringify({ v: 1, workspaces: params.workspaces })
+		: params.syncKey || '';
 	const clientPrivateKey = crypto.getRandomValues(new Uint8Array(32));
 	const clientPublicKey = bytesToBase64Url(x25519.getPublicKey(clientPrivateKey));
 	const mcpPubBytes = base64UrlToBytes(params.mcpPublicKey);
@@ -39,7 +43,7 @@ export function encryptHandshakePayload(params: {
 		encoder.encode(`scrapscache-mcp-handshake:v1:${bytesToBase64Url(sharedSecret)}`)
 	);
 	const nonce = crypto.getRandomValues(new Uint8Array(24));
-	const ciphertext = xchacha20poly1305(key, nonce).encrypt(encoder.encode(params.syncKey));
+	const ciphertext = xchacha20poly1305(key, nonce).encrypt(encoder.encode(plaintext));
 	return {
 		clientPublicKey,
 		ciphertext: bytesToBase64Url(ciphertext),

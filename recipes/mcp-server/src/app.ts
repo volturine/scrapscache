@@ -5,6 +5,8 @@ import { handleJsonRpcMessage } from './protocol.js';
 import { isRedirectAllowed, isPkceChallenge } from './oauth.js';
 import { renderConsentHtml } from './consentPage.js';
 import { identityFromSyncKey, decryptHandshakePayload } from './crypto.js';
+import { parseHandshakeGrant, type GrantedWorkspace } from './grant.js';
+import { VaultSession } from './vaults.js';
 
 export type AppConfig = {
 	scrapscacheUrl: string;
@@ -14,23 +16,37 @@ export type AppConfig = {
 
 export class McpApp {
 	private readonly config: AppConfig;
-	private readonly sessions = new Map<string, McpSession>();
+	private readonly sessions = new Map<string, McpSession | VaultSession>();
 
 	constructor(config: AppConfig) {
 		this.config = config;
 	}
 
-	private getSession(accountId: string, syncKey: string): McpSession {
-		let session = this.sessions.get(accountId);
+	private getSession(
+		accountId: string,
+		syncKey: string,
+		workspaces?: GrantedWorkspace[]
+	): McpSession | VaultSession {
+		const granted =
+			workspaces && workspaces.length > 1
+				? workspaces
+				: [{ name: 'Workspace', syncKey, accountId }];
+		const cacheKey =
+			granted.length > 1 ? granted.map((workspace) => workspace.accountId).join('\n') : accountId;
+		let session = this.sessions.get(cacheKey);
 		if (!session) {
-			const client = new ScrapscacheSyncClient(this.config.scrapscacheUrl, syncKey);
-			session = new McpSession(client);
-			this.sessions.set(accountId, session);
+			session =
+				granted.length > 1
+					? new VaultSession(this.config.scrapscacheUrl, granted)
+					: new McpSession(new ScrapscacheSyncClient(this.config.scrapscacheUrl, syncKey));
+			this.sessions.set(cacheKey, session);
 		}
 		return session;
 	}
 
-	private authenticate(req: Request): { accountId: string; syncKey: string } | null {
+	private authenticate(
+		req: Request
+	): { accountId: string; syncKey: string; workspaces?: GrantedWorkspace[] } | null {
 		const authHeader = req.headers.get('Authorization') || '';
 		let token = '';
 		if (authHeader.startsWith('Bearer ')) {
@@ -373,9 +389,9 @@ export class McpApp {
 						});
 					}
 
-					let syncKey = '';
+					let plaintext = '';
 					try {
-						syncKey = decryptHandshakePayload({
+						plaintext = decryptHandshakePayload({
 							mcpPrivateKey: session.mcpPrivateKey,
 							clientPublicKey: body.clientPublicKey,
 							ciphertext: body.ciphertext,
@@ -388,9 +404,9 @@ export class McpApp {
 						});
 					}
 
-					let accountId = '';
+					let granted: GrantedWorkspace[] = [];
 					try {
-						accountId = identityFromSyncKey(syncKey).accountId;
+						granted = parseHandshakeGrant(plaintext);
 					} catch {
 						return new Response(
 							JSON.stringify({ error: 'Invalid sync key in decrypted payload' }),
@@ -402,8 +418,9 @@ export class McpApp {
 						clientId: session.clientId,
 						redirectUri: session.redirectUri,
 						codeChallenge: session.codeChallenge,
-						syncKey,
-						accountId
+						syncKey: granted[0].syncKey,
+						accountId: granted[0].accountId,
+						workspaces: granted
 					});
 
 					redirectTarget.searchParams.set('code', code);
@@ -523,7 +540,7 @@ export class McpApp {
 				);
 			}
 
-			const session = this.getSession(auth.accountId, auth.syncKey);
+			const session = this.getSession(auth.accountId, auth.syncKey, auth.workspaces);
 
 			// Streamable HTTP: POST /mcp or /api/mcp or /
 			if (

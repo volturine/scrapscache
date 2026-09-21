@@ -2,8 +2,11 @@
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import { ArrowLeft, ShieldCheck, Sparkles, AlertCircle } from '@lucide/svelte';
+	import { css, cx } from 'styled-system/css';
+	import { button } from 'styled-system/recipes';
 	import { syncStore } from '$lib/stores/sync.svelte';
 	import { encryptHandshakePayload } from '$lib/mcpHandshake';
+	import { isLocalWorkspace, mcpWorkspaceGrant, workspacesForMcpGrant } from '$lib/profiles';
 
 	type AuthorizeParams = {
 		valid: boolean;
@@ -50,20 +53,246 @@
 		};
 	}
 
+	const shell = css({
+		position: 'fixed',
+		inset: 0,
+		zIndex: 100,
+		display: 'flex',
+		alignItems: 'center',
+		justifyContent: 'center',
+		overflowY: 'auto',
+		bg: 'scrapscache.bg',
+		color: 'scrapscache.text',
+		px: 'lg',
+		py: '3xl'
+	});
+	const frame = css({ w: 'full', maxW: '28rem' });
+	const back = css({
+		display: 'inline-flex',
+		alignItems: 'center',
+		gap: 'sm',
+		mb: 'lg',
+		textStyle: 'body',
+		color: 'scrapscache.textMuted',
+		_hoverable: { color: 'scrapscache.text' }
+	});
+	const card = css({
+		overflow: 'hidden',
+		rounded: 'dialog',
+		borderWidth: 'hairline',
+		borderColor: 'scrapscache.border',
+		bg: 'scrapscache.surface',
+		boxShadow: 'popover'
+	});
+	const header = css({
+		borderBottomWidth: 'hairline',
+		borderColor: 'scrapscache.border',
+		px: 'xl',
+		py: 'xl'
+	});
+	const shield = css({
+		display: 'grid',
+		placeItems: 'center',
+		w: '2.75rem',
+		h: '2.75rem',
+		mb: 'md',
+		rounded: 'control',
+		bg: 'scrapscache.accent',
+		color: 'scrapscache.accentForeground'
+	});
+	const eyebrow = css({
+		mb: '2xs',
+		textStyle: 'micro',
+		fontWeight: 'heading',
+		letterSpacing: 'eyebrow',
+		textTransform: 'uppercase',
+		color: 'scrapscache.accent'
+	});
+	const title = css({ textStyle: 'display', letterSpacing: '-0.02em' });
+	const body = css({
+		display: 'flex',
+		flexDirection: 'column',
+		gap: 'lg',
+		px: 'xl',
+		py: 'xl'
+	});
+	const origin = css({
+		rounded: 'control',
+		borderWidth: 'hairline',
+		borderColor: 'scrapscache.border',
+		bg: 'scrapscache.surfaceSubtle',
+		p: 'md'
+	});
+	const originLabel = css({
+		display: 'flex',
+		alignItems: 'center',
+		gap: 'xs',
+		mb: '2xs',
+		textStyle: 'captionStrong',
+		color: 'scrapscache.text'
+	});
+	const originUrl = css({
+		overflow: 'hidden',
+		textOverflow: 'ellipsis',
+		whiteSpace: 'nowrap',
+		fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+		textStyle: 'caption',
+		color: 'scrapscache.textMuted'
+	});
+	const copy = css({
+		display: 'flex',
+		flexDirection: 'column',
+		gap: 'sm',
+		textStyle: 'bodyMuted',
+		'& strong': { color: 'scrapscache.text', fontWeight: 'heading' }
+	});
+	const fine = css({ textStyle: 'caption' });
+	const iconSm = css({ w: '1rem', h: '1rem', flexShrink: 0 });
+	const iconMd = css({ w: '1.5rem', h: '1.5rem' });
+	const noticeDanger = css({
+		display: 'flex',
+		alignItems: 'flex-start',
+		gap: 'sm',
+		rounded: 'control',
+		borderWidth: 'hairline',
+		borderColor: 'scrapscache.danger',
+		bg: 'scrapscache.dangerSubtle',
+		p: 'md',
+		textStyle: 'body',
+		color: 'scrapscache.text'
+	});
+	const noticeWarning = css({
+		display: 'flex',
+		alignItems: 'flex-start',
+		gap: 'sm',
+		rounded: 'control',
+		borderWidth: 'hairline',
+		borderColor: 'scrapscache.warning',
+		bg: 'scrapscache.warningSubtle',
+		p: 'md',
+		textStyle: 'body',
+		color: 'scrapscache.text'
+	});
+	const workspaces = css({
+		display: 'flex',
+		flexDirection: 'column',
+		gap: 'sm',
+		m: 0,
+		minW: 0,
+		p: 0,
+		border: 'none'
+	});
+	const workspaceToolbar = css({
+		display: 'flex',
+		alignItems: 'center',
+		justifyContent: 'space-between',
+		gap: 'sm'
+	});
+	const workspaceList = css({
+		display: 'flex',
+		flexDirection: 'column',
+		gap: 'sm',
+		maxHeight: 'min(16rem, 45dvh)',
+		overflowY: 'auto',
+		overscrollBehavior: 'contain',
+		rounded: 'control',
+		borderWidth: 'hairline',
+		borderColor: 'scrapscache.border',
+		p: 'sm'
+	});
+	const legend = css({
+		textStyle: 'captionStrong',
+		letterSpacing: 'eyebrow',
+		textTransform: 'uppercase',
+		color: 'scrapscache.text'
+	});
+	const option = css({
+		display: 'flex',
+		alignItems: 'flex-start',
+		gap: 'sm',
+		rounded: 'control',
+		borderWidth: 'hairline',
+		borderColor: 'scrapscache.border',
+		bg: 'scrapscache.bg',
+		px: 'md',
+		py: 'md',
+		cursor: 'pointer',
+		_hoverable: { bg: 'scrapscache.interactiveHover' },
+		'&:has(input:checked)': {
+			borderColor: 'scrapscache.accent',
+			bg: 'scrapscache.accentSubtle'
+		},
+		'&:has(input:focus-visible)': {
+			outline: '2px solid',
+			outlineColor: 'scrapscache.focus',
+			outlineOffset: '2px'
+		}
+	});
+	const radio = css({ mt: '3xs', accentColor: 'scrapscache.accent' });
+	const optionText = css({ display: 'flex', flexDirection: 'column', gap: '3xs', minW: 0 });
+	const optionName = css({ textStyle: 'bodyStrong' });
+	const optionCaption = css({ textStyle: 'caption' });
+	const localRow = css({
+		display: 'flex',
+		alignItems: 'flex-start',
+		gap: 'sm',
+		rounded: 'control',
+		borderWidth: 'hairline',
+		borderColor: 'scrapscache.border',
+		px: 'md',
+		py: 'md',
+		opacity: 0.72
+	});
+	const actions = css({ display: 'flex', gap: 'md' });
+	const action = css({ flex: '1' });
+
 	let params = $derived(parseParams(page.url));
 	let busy = $state(false);
 	let error = $state('');
+	let pickedIds = $state<string[] | null>(null);
+
+	let synced = $derived(syncStore.profiles.filter((profile) => !isLocalWorkspace(profile)));
+	let localOnly = $derived(syncStore.profiles.filter((profile) => isLocalWorkspace(profile)));
+	let selected = $derived(workspacesForMcpGrant(syncStore.profiles, pickedIds));
+	let allSyncedSelected = $derived(
+		synced.length > 0 &&
+			synced.every((workspace) => selected.some((item) => item.id === workspace.id))
+	);
+
+	function chosenIds(): string[] {
+		return pickedIds ?? selected.map((workspace) => workspace.id);
+	}
+
+	function toggleWorkspace(id: string, checked: boolean) {
+		const current = chosenIds();
+		pickedIds = checked ? [...new Set([...current, id])] : current.filter((item) => item !== id);
+	}
+
+	function selectAllSynced() {
+		pickedIds = synced.map((workspace) => workspace.id);
+	}
+
+	function clearSynced() {
+		pickedIds = [];
+	}
+
+	function workspaceListText(names: string[]): string {
+		if (names.length === 0) return '';
+		if (names.length === 1) return names[0];
+		if (names.length === 2) return `${names[0]} and ${names[1]}`;
+		return `${names.slice(0, -1).join(', ')}, and ${names[names.length - 1]}`;
+	}
 
 	async function approve() {
-		const account = syncStore.account;
-		if (!params.valid || !account?.syncKey || busy) return;
+		const grantWorkspaces = mcpWorkspaceGrant(selected);
+		if (!params.valid || grantWorkspaces.length === 0 || busy) return;
 		busy = true;
 		error = '';
 
 		try {
 			const grant = encryptHandshakePayload({
 				mcpPublicKey: params.mcpPublicKey,
-				syncKey: account.syncKey
+				workspaces: grantWorkspaces
 			});
 
 			const redirectUrl = new URL(params.mcpCallback);
@@ -101,74 +330,113 @@
 	<meta name="robots" content="noindex" />
 </svelte:head>
 
-<div
-	class="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-[var(--scrapscache-bg)] px-4 py-10 text-[var(--scrapscache-text)]"
->
-	<div class="w-full max-w-md">
-		<a
-			href={resolve('/')}
-			class="mb-6 inline-flex items-center gap-2 text-sm text-[var(--scrapscache-text-muted)] hover:text-[var(--scrapscache-text)]"
-		>
-			<ArrowLeft class="h-4 w-4" />
+<div class={shell}>
+	<div class={frame}>
+		<a href={resolve('/')} class={back}>
+			<ArrowLeft class={iconSm} aria-hidden="true" />
 			Back to Scraps Cache
 		</a>
 
-		<section
-			class="overflow-hidden rounded-2xl border border-[var(--scrapscache-border)] bg-[var(--scrapscache-surface)] shadow-xl"
-		>
-			<div class="border-b border-[var(--scrapscache-border)] px-6 py-6">
-				<div
-					class="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-blue-600 text-white"
-				>
-					<ShieldCheck class="h-6 w-6" />
+		<section class={card}>
+			<div class={header}>
+				<div class={shield}>
+					<ShieldCheck class={iconMd} aria-hidden="true" />
 				</div>
-				<p class="mb-1 text-xs font-semibold uppercase tracking-wider text-blue-600">
-					MCP AI Authorization
-				</p>
-				<h1 class="text-2xl font-semibold tracking-tight">
-					Connect {params.clientName} to your notes?
-				</h1>
+				<p class={eyebrow}>MCP AI Authorization</p>
+				<h1 class={title}>Connect {params.clientName} to your notes?</h1>
 			</div>
 
-			<div class="space-y-5 px-6 py-6">
+			<div class={body}>
 				{#if !params.valid}
-					<div
-						class="flex items-start gap-2 rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-800"
-					>
-						<AlertCircle class="h-4 w-4 shrink-0 mt-0.5" />
-						<div>
-							This authorization handshake request is invalid or missing required parameters.
-						</div>
+					<div class={noticeDanger}>
+						<AlertCircle class={iconSm} aria-hidden="true" />
+						<p>This authorization handshake request is invalid or missing required parameters.</p>
 					</div>
-				{:else if !syncStore.account?.syncKey}
-					<div class="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
-						<p class="font-medium">No encrypted sync found on this device.</p>
-						<p class="mt-1">
-							Please set up or link your sync vault in Scraps Cache first, then refresh this page to
-							connect {params.clientName}.
-						</p>
+				{:else if synced.length === 0}
+					<div class={noticeWarning}>
+						<div>
+							<p class={optionName}>No synced workspace on this device.</p>
+							<p class={fine}>
+								Set up sync for a workspace in Scraps Cache, then refresh this page to connect
+								{params.clientName}. A workspace that stays on this device cannot be granted.
+							</p>
+						</div>
 					</div>
 				{:else}
-					<div class="space-y-3 text-sm leading-relaxed text-[var(--scrapscache-text-muted)]">
-						<div
-							class="rounded-lg border border-[var(--scrapscache-border)] bg-[var(--scrapscache-interactive-hover)] p-3 text-xs"
-						>
-							<div
-								class="font-medium text-[var(--scrapscache-text)] flex items-center gap-1.5 mb-1"
-							>
-								<Sparkles class="h-3.5 w-3.5 text-amber-500" />
-								<span>MCP Server Origin</span>
-							</div>
-							<div class="font-mono text-[11px] truncate text-[var(--scrapscache-text-muted)]">
-								{params.callbackOrigin}
-							</div>
+					<div class={origin}>
+						<div class={originLabel}>
+							<Sparkles class={iconSm} aria-hidden="true" />
+							<span>MCP Server Origin</span>
 						</div>
+						<div class={originUrl}>{params.callbackOrigin}</div>
+					</div>
 
-						<p>
-							<strong>{params.clientName}</strong> will be granted access to search, read, and update
-							your Scraps Cache notes through your self-hosted MCP server.
+					<fieldset class={workspaces} aria-labelledby="mcp-workspace-label">
+						<div class={workspaceToolbar}>
+							<span id="mcp-workspace-label" class={legend}>Workspaces</span>
+							{#if synced.length > 1}
+								<button
+									type="button"
+									class={button({ variant: 'quiet', size: 'xs' })}
+									onclick={allSyncedSelected ? clearSynced : selectAllSynced}
+								>
+									{allSyncedSelected ? 'Clear' : 'Select all'}
+								</button>
+							{/if}
+						</div>
+						<p id="mcp-workspace-hint" class={fine}>
+							{params.clientName} can search, read, and update notes only in the workspaces you select.
 						</p>
-						<p class="text-xs">
+						<div class={workspaceList}>
+							{#each synced as workspace (workspace.id)}
+								<label class={option}>
+									<input
+										class={radio}
+										type="checkbox"
+										name="mcp-workspace"
+										value={workspace.id}
+										checked={selected.some((item) => item.id === workspace.id)}
+										aria-describedby="mcp-workspace-hint"
+										onchange={(event) => toggleWorkspace(workspace.id, event.currentTarget.checked)}
+									/>
+									<span class={optionText}>
+										<span class={optionName}>{workspace.name}</span>
+										<span class={optionCaption}>
+											{workspace.id === syncStore.activeId ? 'Open on this device' : 'Synced'}
+										</span>
+									</span>
+								</label>
+							{/each}
+							{#each localOnly as workspace (workspace.id)}
+								<label class={localRow}>
+									<input class={radio} type="checkbox" disabled />
+									<span class={optionText}>
+										<span class={optionName}>{workspace.name}</span>
+										<span class={optionCaption}>On this device only</span>
+									</span>
+								</label>
+							{/each}
+						</div>
+					</fieldset>
+
+					<div class={copy}>
+						{#if selected.length > 3}
+							<p>
+								<strong>{params.clientName}</strong> will be granted access to notes in
+								<strong>{selected.length} workspaces</strong> through your self-hosted MCP server.
+							</p>
+						{:else if selected.length > 0}
+							<p>
+								<strong>{params.clientName}</strong> will be granted access to notes in
+								<strong
+									>{workspaceListText(mcpWorkspaceGrant(selected).map((item) => item.name))}</strong
+								>
+								through your self-hosted MCP server.
+							</p>
+						{:else}
+							<p>Select at least one workspace before allowing access.</p>
+						{/if}
+						<p class={fine}>
 							Your notes remain end-to-end encrypted in your cloud sync. The MCP server decrypts
 							requested note records only in ephemeral memory when your AI assistant requests them.
 						</p>
@@ -176,25 +444,23 @@
 				{/if}
 
 				{#if error}
-					<div class="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-800">
-						{error}
-					</div>
+					<div class={noticeDanger} role="alert">{error}</div>
 				{/if}
 
-				<div class="flex gap-3">
+				<div class={actions}>
 					<button
 						type="button"
+						class={cx(button({ variant: 'secondary', size: 'md' }), action)}
 						onclick={deny}
 						disabled={busy}
-						class="flex-1 rounded-lg border border-[var(--scrapscache-border)] px-4 py-2.5 text-sm font-medium hover:bg-[var(--scrapscache-interactive-hover)] disabled:opacity-50"
 					>
 						Cancel
 					</button>
 					<button
 						type="button"
+						class={cx(button({ variant: 'primary', size: 'md' }), action)}
 						onclick={() => void approve()}
-						disabled={busy || !params.valid || !syncStore.account?.syncKey}
-						class="flex-1 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+						disabled={busy || !params.valid || selected.length === 0}
 					>
 						{busy ? 'Connecting…' : 'Allow access'}
 					</button>

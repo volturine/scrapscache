@@ -7,6 +7,7 @@ import {
 	bytesToBase64Url,
 	base64UrlToBytes
 } from './crypto.js';
+import { grantedWorkspaces, type GrantedWorkspace } from './grant.js';
 
 export const MCP_OAUTH_SCOPE = 'mcp';
 export const MCP_OAUTH_CODE_TTL_MS = 5 * 60 * 1000; // 5 minutes
@@ -120,6 +121,7 @@ export type StoredOAuthCode = {
 	codeChallenge: string;
 	syncKey: string;
 	accountId: string;
+	workspaces?: GrantedWorkspace[];
 	expiresAt: number;
 };
 
@@ -129,7 +131,14 @@ export type StoredOAuthToken = {
 	clientId: string;
 	syncKey: string;
 	accountId: string;
+	workspaces?: GrantedWorkspace[];
 	expiresAt: number;
+};
+
+export type ResolvedOAuthToken = {
+	accountId: string;
+	syncKey: string;
+	workspaces: GrantedWorkspace[];
 };
 
 export type EphemeralAuthSession = {
@@ -297,6 +306,7 @@ export class OAuthManager {
 		codeChallenge: string;
 		syncKey: string;
 		accountId: string;
+		workspaces?: GrantedWorkspace[];
 		now?: number;
 	}): string {
 		const now = params.now ?? Date.now();
@@ -306,6 +316,7 @@ export class OAuthManager {
 			codeChallenge: params.codeChallenge,
 			syncKey: params.syncKey,
 			accountId: params.accountId,
+			...(params.workspaces?.length ? { workspaces: params.workspaces } : {}),
 			expiresAt: now + MCP_OAUTH_CODE_TTL_MS
 		};
 		const code = `code_${sealPayload(codeData, this.secret)}`;
@@ -334,6 +345,7 @@ export class OAuthManager {
 				codeChallenge: string;
 				syncKey: string;
 				accountId: string;
+				workspaces?: GrantedWorkspace[];
 				expiresAt: number;
 			}>(params.code.slice(5), this.secret);
 			if (data) {
@@ -360,6 +372,7 @@ export class OAuthManager {
 			clientId: params.clientId,
 			syncKey: storedCode.syncKey,
 			accountId: storedCode.accountId,
+			...(storedCode.workspaces?.length ? { workspaces: storedCode.workspaces } : {}),
 			expiresAt: now + MCP_TOKEN_TTL_MS
 		};
 		const accessToken = `sc_mcp_${sealPayload(tokenData, this.secret)}`;
@@ -375,20 +388,29 @@ export class OAuthManager {
 		return storedToken;
 	}
 
-	resolveToken(token: string, now = Date.now()): { accountId: string; syncKey: string } | null {
+	resolveToken(token: string, now = Date.now()): ResolvedOAuthToken | null {
 		if (this.revokedTokens.has(token)) return null;
 		const inMemory = this.tokens.get(token);
 		if (inMemory && inMemory.expiresAt > now) {
-			return { accountId: inMemory.accountId, syncKey: inMemory.syncKey };
+			return {
+				accountId: inMemory.accountId,
+				syncKey: inMemory.syncKey,
+				workspaces: grantedWorkspaces(inMemory.syncKey, inMemory.accountId, inMemory.workspaces)
+			};
 		}
 		if (token.startsWith('sc_mcp_')) {
 			const data = unsealPayload<{
 				syncKey: string;
 				accountId: string;
+				workspaces?: GrantedWorkspace[];
 				expiresAt: number;
 			}>(token.slice(7), this.secret);
 			if (data && data.expiresAt > now) {
-				return { accountId: data.accountId, syncKey: data.syncKey };
+				return {
+					accountId: data.accountId,
+					syncKey: data.syncKey,
+					workspaces: grantedWorkspaces(data.syncKey, data.accountId, data.workspaces)
+				};
 			}
 		}
 		return null;
@@ -398,6 +420,7 @@ export class OAuthManager {
 		let syncKey = '';
 		let accountId = '';
 		let clientId = 'mcp-client';
+		let workspaces: GrantedWorkspace[] | undefined;
 
 		const oldAccessToken = this.refreshTokens.get(refreshToken);
 		if (oldAccessToken) {
@@ -409,6 +432,7 @@ export class OAuthManager {
 				syncKey = oldToken.syncKey;
 				accountId = oldToken.accountId;
 				clientId = oldToken.clientId;
+				workspaces = oldToken.workspaces;
 			}
 		}
 		if (!syncKey && refreshToken.startsWith('sc_ref_')) {
@@ -416,12 +440,14 @@ export class OAuthManager {
 				clientId: string;
 				syncKey: string;
 				accountId: string;
+				workspaces?: GrantedWorkspace[];
 				expiresAt: number;
 			}>(refreshToken.slice(7), this.secret);
 			if (data && data.expiresAt > now) {
 				syncKey = data.syncKey;
 				accountId = data.accountId;
 				clientId = data.clientId;
+				workspaces = data.workspaces;
 			}
 		}
 
@@ -431,6 +457,7 @@ export class OAuthManager {
 			clientId,
 			syncKey,
 			accountId,
+			...(workspaces?.length ? { workspaces } : {}),
 			expiresAt: now + MCP_TOKEN_TTL_MS
 		};
 		const newAccessToken = `sc_mcp_${sealPayload(tokenData, this.secret)}`;

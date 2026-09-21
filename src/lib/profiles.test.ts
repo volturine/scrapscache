@@ -19,6 +19,8 @@ import {
 	buildProfileNotesExport,
 	getLastActiveProfileId,
 	isLocalWorkspace,
+	mcpWorkspaceGrant,
+	workspacesForMcpGrant,
 	loadProfiles,
 	nextProfileName,
 	pickBootProfile,
@@ -109,6 +111,23 @@ describe('local workspaces', () => {
 		expect(isLocalWorkspace(synced)).toBe(false);
 		expect(profileForSyncKey([local, synced], '')).toBeNull();
 		expect(profileForSyncKey([local, synced], 'k-cloud')).toBe(synced);
+	});
+
+	it('grants the only synced workspace, and waits for a choice when there are several', () => {
+		const local: StoredProfile = { id: 'local', name: 'Studio', syncKey: '', createdAt: 1 };
+		const cloud: StoredProfile = { id: 'cloud', name: 'Cloud', syncKey: 'k-cloud', createdAt: 2 };
+		const other: StoredProfile = { id: 'other', name: 'Other', syncKey: 'k-other', createdAt: 3 };
+		const again: StoredProfile = { id: 'again', name: 'Cloud', syncKey: 'k-cloud-2', createdAt: 4 };
+
+		expect(workspacesForMcpGrant([local, cloud], null)).toEqual([cloud]);
+		expect(workspacesForMcpGrant([local], null)).toEqual([]);
+		expect(workspacesForMcpGrant([cloud, other], null)).toEqual([]);
+		expect(workspacesForMcpGrant([cloud, other], ['other', 'local'])).toEqual([other]);
+		expect(workspacesForMcpGrant([cloud, other], ['cloud', 'other'])).toEqual([cloud, other]);
+		expect(mcpWorkspaceGrant([cloud, again, local])).toEqual([
+			{ name: 'Cloud', syncKey: 'k-cloud' },
+			{ name: 'Cloud 2', syncKey: 'k-cloud-2' }
+		]);
 	});
 });
 

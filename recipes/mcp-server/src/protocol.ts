@@ -1,4 +1,12 @@
-import { MCP_TOOLS, type McpSession } from './engine.js';
+import { MCP_TOOLS } from './engine.js';
+
+type RpcSession = {
+	touch(): void;
+	runExclusive<T>(operation: () => Promise<T>): Promise<T>;
+	callTool(name: string, args: Record<string, unknown>): Promise<unknown>;
+	listResources(): Promise<{ resources: { uri: string; name: string; mimeType: string }[] }>;
+	readResource(uri: string): Promise<unknown>;
+};
 
 const MCP_PROTOCOL_VERSIONS = new Set(['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05']);
 const LATEST_MCP_PROTOCOL_VERSION = '2025-11-25';
@@ -22,7 +30,7 @@ export type JsonRpcResponse = {
 };
 
 export async function handleJsonRpcMessage(
-	session: McpSession,
+	session: RpcSession,
 	message: unknown
 ): Promise<JsonRpcResponse | JsonRpcResponse[] | null> {
 	if (Array.isArray(message)) {
@@ -44,7 +52,7 @@ export async function handleJsonRpcMessage(
 }
 
 async function handleSingleJsonRpcMessage(
-	session: McpSession,
+	session: RpcSession,
 	message: unknown
 ): Promise<JsonRpcResponse | null> {
 	if (!message || typeof message !== 'object') {
@@ -94,7 +102,7 @@ async function handleSingleJsonRpcMessage(
 							version: '1.0.0'
 						},
 						instructions:
-							'Self-hosted Scraps Cache personal encrypted notes vault. Use search_notes to find notes, list_notes to see recent notes, open_note to view full note details and checklists, and create_note/update_note to modify notes.'
+							'Self-hosted Scraps Cache personal encrypted notes vault. Use search_notes to find notes, list_notes to see recent notes, open_note to view full note details and checklists, and create_note/update_note to modify notes. When several workspaces were granted, search and list cover every one and name it on each note. Pass workspace to create a note or to read or change a note that exists in more than one workspace.'
 					}
 				};
 			}

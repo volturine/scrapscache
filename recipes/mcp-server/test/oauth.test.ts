@@ -113,13 +113,13 @@ describe('MCP OAuth 2.1 manager', () => {
 
 		// 4. Token issued on isolate B is resolved on isolate A
 		const resolvedOnA = isolateA.resolveToken(tokenB!.accessToken);
-		expect(resolvedOnA).toEqual({ accountId, syncKey });
+		expect(resolvedOnA).toMatchObject({ accountId, syncKey });
 
 		// 5. Token refreshed on isolate A is valid on isolate B
 		const refreshedOnA = isolateA.refreshAccessToken(tokenB!.refreshToken);
 		expect(refreshedOnA).not.toBeNull();
 		const resolvedRefreshedOnB = isolateB.resolveToken(refreshedOnA!.accessToken);
-		expect(resolvedRefreshedOnB).toEqual({ accountId, syncKey });
+		expect(resolvedRefreshedOnB).toMatchObject({ accountId, syncKey });
 	});
 
 	it('runs through full authorization code and token exchange flow', () => {
@@ -172,13 +172,13 @@ describe('MCP OAuth 2.1 manager', () => {
 
 		// Resolve token
 		const resolved = manager.resolveToken(token!.accessToken);
-		expect(resolved).toEqual({ accountId, syncKey });
+		expect(resolved).toMatchObject({ accountId, syncKey });
 
 		// Refresh token
 		const refreshed = manager.refreshAccessToken(token!.refreshToken);
 		expect(refreshed).not.toBeNull();
 		expect(refreshed!.accessToken).not.toBe(token!.accessToken);
-		expect(manager.resolveToken(refreshed!.accessToken)).toEqual({ accountId, syncKey });
+		expect(manager.resolveToken(refreshed!.accessToken)).toMatchObject({ accountId, syncKey });
 		// Old access token is now invalid
 		expect(manager.resolveToken(token!.accessToken)).toBeNull();
 	});

@@ -185,6 +185,14 @@ export const MCP_TOOLS = [
 	}
 ];
 
+for (const tool of MCP_TOOLS) {
+	(tool.inputSchema.properties as Record<string, unknown>).workspace = {
+		type: 'string',
+		description:
+			'Workspace name when this connection includes more than one workspace. Omit on search and list to cover every granted workspace.'
+	};
+}
+
 export class McpSession {
 	private readonly client: ScrapscacheSyncClient;
 	private readonly syncKey: string;

@@ -37,8 +37,6 @@
 	import MarkdownCopyButton from './MarkdownCopyButton.svelte';
 
 	const MAX_TASK_INDENT = 1;
-	/** Present only in the DOM so an empty code line has a text node for the caret. */
-	const CODE_LINE_CARET = '\u200b';
 	// Rows render in fixed-size chunks that the browser skips while offscreen.
 	const CHUNK_SIZE = 64;
 
@@ -571,6 +569,45 @@
 		syncBody();
 	}
 
+	function codeLanguageField(block: EditorCodeBlock): HTMLInputElement | null {
+		return container?.querySelector(
+			`[data-code-language="${block.lineIndex}"]`
+		) as HTMLInputElement | null;
+	}
+
+	function setCodeLanguage(block: EditorCodeBlock, raw: string) {
+		const line = lines[block.lineIndex];
+		const opening = line ? matchOpeningCodeFence(line.text) : null;
+		if (!line || !opening) return;
+		const indent = line.text.match(/^[ \t]*/)?.[0] ?? '';
+		const language = raw.replace(/[^\w.+#-]/g, '').slice(0, 32);
+		const next = `${indent}${opening.marker}${language}`;
+		if (line.text === next) return;
+		line.text = next;
+		syncBody();
+	}
+
+	function onCodeLanguageKeydown(event: KeyboardEvent, block: EditorCodeBlock) {
+		event.stopPropagation();
+		if (event.key !== 'ArrowDown' && event.key !== 'Enter' && event.key !== 'ArrowUp') return;
+		event.preventDefault();
+		if (event.key === 'ArrowUp') {
+			const previous = block.lineIndex - 1;
+			if (previous >= 0) {
+				focusLineAt(previous, lines[previous].text.length);
+				return;
+			}
+			rememberEdit();
+			const line = newLine();
+			lines.splice(0, 0, line);
+			syncBody();
+			focusLineAt(0, 0);
+			return;
+		}
+		const body = codeBodyIndexes(block);
+		if (body.length > 0) focusLineAt(body[0], 0);
+	}
+
 	function moveCodeRow(range: EditorRange, direction: 1 | -1): boolean {
 		if (!range.collapsed) return false;
 		const index = range.start.line;
@@ -580,6 +617,14 @@
 		const body = codeBodyIndexes(block);
 		const position = body.indexOf(index);
 		if (position < 0) return focusCodeEdge(block, direction > 0 ? 'start' : 'end', column);
+		if (direction < 0 && position === 0) {
+			const field = codeLanguageField(block);
+			if (field) {
+				field.focus();
+				field.select();
+				return true;
+			}
+		}
 		const next = position + direction;
 		if (next >= 0 && next < body.length) {
 			focusLineAt(body[next], Math.min(column, lines[body[next]].text.length));
@@ -683,6 +728,10 @@
 	}
 
 	function handleSelectionChange() {
+		if (!container) return;
+		const line = editorRange()?.start.line;
+		const inBlock = line !== undefined && markdownBlockAt(line) !== null;
+		container.spellcheck = !inBlock;
 		if (document.activeElement === container) formatSettledTables();
 	}
 
@@ -977,11 +1026,7 @@
 		const text = textElement(resolved);
 		if (!text) return null;
 		const source = lines[resolved].text;
-		if (source.length === 0) {
-			const holder = text.firstChild;
-			if (holder?.nodeType === Node.TEXT_NODE) return { node: holder, offset: 0 };
-			return { node: text, offset: 0 };
-		}
+		if (source.length === 0) return { node: text, offset: 0 };
 		const caret = Math.max(0, Math.min(offset, source.length));
 		if (text.querySelector('[data-markdown-table-cell]')) {
 			// Keep the caret inside a cell, even an empty one, rather than beside its pipes.
@@ -1118,7 +1163,12 @@
 		// that case Safari may retarget its synthetic click to the task row. Keep
 		// the whole gesture owned by the checkbox so it cannot open the keyboard.
 		if (checklistPointerId !== null || subtaskPointerId !== null) return;
-		if ((event.target as Element)?.closest?.('[data-add-subtask], [data-checklist-toggle]')) return;
+		if (
+			(event.target as Element)?.closest?.(
+				'[data-add-subtask], [data-checklist-toggle], [data-code-language]'
+			)
+		)
+			return;
 		let index = lineIndexFromEvent(event, allowSelection);
 		if (index === null) {
 			const shell = (event.target as Element | null)?.closest?.('[data-markdown-block-line]');
@@ -1216,6 +1266,15 @@
 	}
 
 	function handleInput(rawEvent: Event) {
+		const languageField = rawEvent.target;
+		if (
+			languageField instanceof HTMLInputElement &&
+			languageField.dataset.codeLanguage !== undefined
+		) {
+			const block = markdownBlockAt(Number(languageField.dataset.codeLanguage));
+			if (block?.type === 'code') setCodeLanguage(block, languageField.value);
+			return;
+		}
 		if (applyingEdit || composing || (rawEvent as InputEvent).isComposing) return;
 		const range = editorRange();
 		reconcileDom(range?.start.line ?? null, range?.start.offset ?? 0);
@@ -1541,6 +1600,12 @@
 	 */
 	function handleBeforeInput(rawEvent: Event) {
 		const event = rawEvent as InputEvent;
+		if (
+			event.target instanceof HTMLInputElement &&
+			event.target.dataset.codeLanguage !== undefined
+		) {
+			return;
+		}
 		if (applyingEdit) {
 			event.preventDefault();
 			return;
@@ -2271,6 +2336,8 @@
 				{#each cellTextParts(token.text) as part, partIndex (partIndex)}
 					{#if part.hidden}
 						<span class="markdown-token-marker-hidden">{part.text}</span>
+					{:else if part.text.length === 0}
+						<br />
 					{:else}
 						{@render inlineEditorContent(part.text)}
 					{/if}
@@ -2336,10 +2403,11 @@
 			{:else if codeBlock && !codeFence}
 				<span
 					data-line-text
+					spellcheck="false"
 					class={['markdown-inline-content', 'markdown-editor-code-line', css({ minH: '1lh' })]}
 				>
 					{#if line.text.length === 0}
-						{CODE_LINE_CARET}
+						<br />
 					{:else}
 						{@render codeEditorContent(line.text, codeBlock)}
 					{/if}
@@ -2453,6 +2521,23 @@
 					text={() => markdownBlockCopyText(block)}
 					label={block.type === 'table' ? 'table' : 'code'}
 				/>
+				{#if block.type === 'code'}
+					<div contenteditable="false" class="markdown-code-language-row">
+						<input
+							contenteditable="false"
+							spellcheck="false"
+							autocomplete="off"
+							aria-label="Code language"
+							placeholder="language"
+							data-code-language={block.lineIndex}
+							class="markdown-code-language"
+							value={block.language}
+							onfocus={() => rememberEdit()}
+							onbeforeinput={(event) => event.stopPropagation()}
+							onkeydown={(event) => onCodeLanguageKeydown(event, block)}
+						/>
+					</div>
+				{/if}
 				<div
 					class="markdown-block-scroll note-scrollbar-hidden"
 					class:markdown-editor-table-scroll={block.type === 'table'}

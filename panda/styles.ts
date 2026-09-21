@@ -2221,6 +2221,21 @@ export const markdownStyles = css({
 	},
 	'& .markdown-block-scroll.markdown-editor-code-block': { py: 'sm' },
 	'& .markdown-code-block code': { display: 'block', minW: 'max-content', py: 'md' },
+	'& .markdown-code-language-row': { px: '0.75rem', pt: 'xs' },
+	'& .markdown-code-language': {
+		display: 'block',
+		w: '8rem',
+		maxW: 'full',
+		border: 'none',
+		bg: 'transparent',
+		color: 'scrapscache.textMuted',
+		fontFamily: 'mono',
+		fontSize: 'compact',
+		lineHeight: 'body',
+		p: '0',
+		outline: 'none',
+		'&::placeholder': { color: 'scrapscache.textMuted' }
+	},
 	'& .markdown-editor-code-block [data-markdown-code-fence]': { display: 'none' },
 	'& .markdown-editor-code-block [data-markdown-code-line]': {
 		w: 'max-content',
@@ -2262,6 +2277,7 @@ export const markdownStyles = css({
 	'& .markdown-editor-table-cell': {
 		display: 'table-cell',
 		minW: '4ch',
+		minH: '1lh',
 		padding: '0.4rem 0.625rem',
 		borderBottomWidth: 'hairline',
 		borderColor: 'scrapscache.border',

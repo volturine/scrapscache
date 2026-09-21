@@ -51,6 +51,15 @@ function caretAt(container: HTMLElement, line: number, offset: number) {
 		if (remaining <= length) return select(node, remaining);
 		remaining -= length;
 	}
+	if (offset === 0) {
+		const range = document.createRange();
+		range.setStart(text, 0);
+		range.collapse(true);
+		const selection = window.getSelection();
+		selection?.removeAllRanges();
+		selection?.addRange(range);
+		return;
+	}
 	throw new Error(`Offset ${offset} is outside editor line ${line}`);
 }
 
@@ -1853,6 +1862,56 @@ describe('BodyEditor code block writing', () => {
 		expect(lineTexts(container)[3]).toBe('beta!');
 	});
 
+	it('steps through empty code lines instead of skipping them', async () => {
+		const { container } = render(BodyEditor, { props: { body: '```\nalpha\n\n\nbeta\n```' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		caretAt(container, 1, 0);
+
+		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
+		expect(selectionLine()).toBe(2);
+		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
+		expect(selectionLine()).toBe(3);
+		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
+		expect(selectionLine()).toBe(2);
+	});
+
+	it('edits the code language after the block exists', async () => {
+		const { container } = render(BodyEditor, { props: { body: '```\nprint\n```' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const language = container.querySelector('[data-code-language]') as HTMLInputElement;
+		expect(language.placeholder).toBe('language');
+
+		caretAt(container, 1, 0);
+		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
+		expect(document.activeElement).toBe(language);
+
+		language.value = 'ts';
+		language.dispatchEvent(new InputEvent('input', { bubbles: true }));
+		await tick();
+		expect(lineTexts(container)[0]).toBe('```ts');
+		expect(lineTexts(container)[1]).toBe('print');
+
+		await fireEvent.keyDown(language, { key: 'ArrowDown' });
+		expect(selectionLine()).toBe(1);
+	});
+
+	it('lands on an empty table row that has not been typed in yet', async () => {
+		const body = ['| a | b |', '| - | - |', '| 1 | 2 |', '|   |   |'].join('\n');
+		const { container } = render(BodyEditor, { props: { body } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const emptyCell = container.querySelector(
+			'[data-editor-line="3"] [data-markdown-table-cell] br'
+		);
+		expect(emptyCell).not.toBeNull();
+		caretAt(container, 2, 2);
+
+		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
+
+		expect(selectionLine()).toBe(3);
+		await typeText(editor, 'new');
+		expect(lineTexts(container)[3]).toContain('new');
+	});
+
 	it('gives an empty code line a caret and accepts a click on the block', async () => {
 		const { container } = render(BodyEditor, { props: { body: '```\n\n```' } });
 		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
@@ -1949,6 +2008,8 @@ describe('BodyEditor markdown block boundaries', () => {
 		caretAt(container, 1, 0);
 
 		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
+		expect(document.activeElement).toBe(container.querySelector('[data-code-language]'));
+		await fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'ArrowUp' });
 		await typeText(editor, 'above');
 
 		expect(lineTexts(container)).toEqual(['above', '```', 'code', '```']);

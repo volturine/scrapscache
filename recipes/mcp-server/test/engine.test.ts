@@ -126,6 +126,22 @@ plain text line`;
 		note = await session.readNote({ id: created.note.id });
 		expect(note.checklist.find((c) => c.text === 'Wash dishes')?.checked).toBe(true);
 		expect(note.checklist.find((c) => c.text === 'Vacuum floor')?.checked).toBe(false);
+
+		// Replace entire body, change labels and color
+		await session.updateNote({
+			id: created.note.id,
+			title: 'Updated Todo List',
+			body: 'All tasks completed!\n- [x] All done',
+			labels: ['Chores'],
+			color: 'sage'
+		});
+
+		note = await session.readNote({ id: created.note.id });
+		expect(note.title).toBe('Updated Todo List');
+		expect(note.body).toBe('All tasks completed!\n- [x] All done');
+		expect(note.labels).toEqual(['Chores']);
+		expect(note.color).toBe('sage');
+		expect(note.checklist).toEqual([{ text: 'All done', checked: true }]);
 	});
 
 	it('lists tags/labels in the note vault', async () => {

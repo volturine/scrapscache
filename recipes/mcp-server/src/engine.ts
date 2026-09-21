@@ -141,13 +141,14 @@ export const MCP_TOOLS = [
 	{
 		name: 'update_note',
 		description:
-			'Update an existing note by ID. Can update title, append text or checklist items, toggle checklist tasks, or change pinned/archived state.',
+			'Update an existing note by ID. Can replace full body text, update title, append text or checklist items, toggle checklist tasks, update labels or color, or change pinned/archived state.',
 		inputSchema: {
 			type: 'object',
 			properties: {
 				id: { type: 'string', description: 'ID of the note to update' },
 				title: { type: 'string', description: 'New title for the note' },
-				appendBody: { type: 'string', description: 'Text to append to note body' },
+				body: { type: 'string', description: 'New body text to replace the entire note body' },
+				appendBody: { type: 'string', description: 'Text to append to existing note body' },
 				appendChecklistItems: {
 					type: 'array',
 					items: { type: 'string' },
@@ -157,6 +158,16 @@ export const MCP_TOOLS = [
 					type: 'array',
 					items: { type: 'string' },
 					description: 'Checklist task item texts to toggle between done and undone'
+				},
+				labels: {
+					type: 'array',
+					items: { type: 'string' },
+					description: 'Replace note labels with these label names'
+				},
+				color: {
+					type: 'string',
+					description:
+						'Change note color palette name (e.g. "default", "sand", "sage", "clay", "lavender")'
 				},
 				pinned: { type: 'boolean', description: 'Pin or unpin the note' },
 				archived: { type: 'boolean', description: 'Archive or unarchive the note' }
@@ -493,9 +504,12 @@ export class McpSession {
 	async updateNote(args: {
 		id: string;
 		title?: string;
+		body?: string;
 		appendBody?: string;
 		appendChecklistItems?: string[];
 		toggleChecklistItems?: string[];
+		labels?: string[];
+		color?: string;
 		pinned?: boolean;
 		archived?: boolean;
 	}) {
@@ -505,7 +519,7 @@ export class McpSession {
 			throw new Error(`Note not found with id: ${args.id}`);
 		}
 
-		let updatedBody = existing.body || '';
+		let updatedBody = args.body !== undefined ? args.body : existing.body || '';
 
 		if (args.appendBody) {
 			updatedBody = updatedBody ? `${updatedBody}\n${args.appendBody}` : args.appendBody;
@@ -533,10 +547,15 @@ export class McpSession {
 			updatedBody = newLines.join('\n');
 		}
 
+		const labelIds =
+			args.labels !== undefined ? this.resolveLabelIds(args.labels) : existing.labels;
+
 		const updatedNote: Note = {
 			...existing,
 			title: args.title !== undefined ? args.title : existing.title,
 			body: updatedBody,
+			labels: labelIds,
+			color: args.color !== undefined ? args.color : existing.color,
 			pinned: args.pinned !== undefined ? args.pinned : existing.pinned,
 			archived: args.archived !== undefined ? args.archived : existing.archived,
 			updatedAt: Date.now()
@@ -563,6 +582,7 @@ export class McpSession {
 			note: {
 				id: updatedNote.id,
 				title: updatedNote.title,
+				labels: this.getLabelNames(updatedNote.labels),
 				pinned: updatedNote.pinned,
 				archived: updatedNote.archived
 			}

@@ -2219,6 +2219,7 @@ export const markdownStyles = css({
 		fontSize: 'compact',
 		lineHeight: 'body'
 	},
+	'& .markdown-block-scroll.markdown-editor-code-block': { py: 'sm' },
 	'& .markdown-code-block code': { display: 'block', minW: 'max-content', py: 'md' },
 	'& .markdown-editor-code-block [data-markdown-code-fence]': { display: 'none' },
 	'& .markdown-editor-code-block [data-markdown-code-line]': {
@@ -2228,17 +2229,28 @@ export const markdownStyles = css({
 		padding: '0 2.75rem 0 0.75rem'
 	},
 	'& .markdown-block-copy svg': square('0.875rem'),
+	// max-content on an empty line is 0 wide, so the caret has no box to land in.
+	// Grow to the row, which is already at least as wide as the code block.
 	'& .markdown-editor-code-line': {
 		display: 'block',
+		position: 'relative',
 		minH: '1lh',
 		outline: 'none',
-		w: 'max-content',
-		minW: 'max-content',
+		w: 'auto',
+		minW: 'auto',
 		maxW: 'none',
-		flex: '0 0 auto',
+		flex: '1 0 auto',
 		whiteSpace: 'pre',
 		overflowWrap: 'normal',
 		wordBreak: 'normal'
+	},
+	'& .markdown-editor-code-line[data-placeholder]::before': {
+		content: 'attr(data-placeholder)',
+		position: 'absolute',
+		left: '0',
+		top: '0',
+		color: 'scrapscache.textMuted',
+		pointerEvents: 'none'
 	},
 	'& .markdown-raw-code-block [data-editor-line]': { padding: '0 2.75rem 0 0.75rem' },
 	'& .markdown-code-line': { display: 'block', minW: 'max-content', px: 'md', whiteSpace: 'pre' },

@@ -19,11 +19,13 @@
 		emptyMarkdownTableRow,
 		formatMarkdownTable,
 		highlightCodeLine,
+		isClosingCodeFence,
 		isMarkdownTableHeaderRow,
 		markdownTableCellRanges,
 		markdownTableCells,
 		markdownTableDelimiterRow,
 		markdownTokenClass,
+		matchOpeningCodeFence,
 		parseEditorMarkdownBlocks,
 		parseInlineMarkdown,
 		parseMarkdownBlocks,
@@ -35,6 +37,8 @@
 	import MarkdownCopyButton from './MarkdownCopyButton.svelte';
 
 	const MAX_TASK_INDENT = 1;
+	/** Present only in the DOM so an empty code line has a text node for the caret. */
+	const CODE_LINE_CARET = '\u200b';
 	// Rows render in fixed-size chunks that the browser skips while offscreen.
 	const CHUNK_SIZE = 64;
 
@@ -132,10 +136,16 @@
 	 */
 	const markdownBlocks = $derived.by<EditorMarkdownBlock[]>(() => {
 		const parsed = parseEditorMarkdownBlocks(lines);
-		return parsed.map((block) => ({
-			...block,
-			startLineId: lines[block.lineIndex]?.id ?? -1
-		}));
+		return parsed.flatMap((block) => {
+			// A fence with no code line would render as an empty shell: both markers are hidden.
+			if (block.type === 'code' && !codeBlockHasBody(block.lineIndex, block.end)) return [];
+			return [
+				{
+					...block,
+					startLineId: lines[block.lineIndex]?.id ?? -1
+				}
+			];
+		});
 	});
 	let container: HTMLDivElement | null = $state(null);
 	let draftTaskId = $state<number | null>(null);
@@ -178,9 +188,33 @@
 	function isCodeFenceLine(block: EditorCodeBlock, index: number) {
 		if (index === block.lineIndex) return true;
 		if (index !== block.end - 1) return false;
-		const opening = lines[block.lineIndex]?.text.match(/^ {0,3}(`{3,}|~{3,})/u)?.[1];
-		const closing = lines[index]?.text.match(/^ {0,3}(`{3,}|~{3,})[ \t]*$/u)?.[1];
-		return !!opening && !!closing && opening[0] === closing[0] && closing.length >= opening.length;
+		const opening = matchOpeningCodeFence(lines[block.lineIndex]?.text ?? '');
+		return !!opening && isClosingCodeFence(lines[index]?.text ?? '', opening.marker);
+	}
+
+	function codeBlockHasBody(start: number, end: number): boolean {
+		const opening = matchOpeningCodeFence(lines[start]?.text ?? '');
+		if (!opening) return false;
+		for (let index = start + 1; index < end; index++) {
+			if (!isClosingCodeFence(lines[index]?.text ?? '', opening.marker)) return true;
+		}
+		return false;
+	}
+
+	/** Opener of a ``` / ``` pair that has no code line yet, or null. */
+	function bareCodeOpenerIndex(index: number): number | null {
+		const line = lines[index];
+		if (!line || line.isCheck || line.isBullet || markdownBlockAt(index)) return null;
+		const opening = matchOpeningCodeFence(line.text);
+		if (opening) {
+			const next = lines[index + 1];
+			if (!next || isClosingCodeFence(next.text, opening.marker)) return index;
+			return null;
+		}
+		if (index === 0) return null;
+		const opener = matchOpeningCodeFence(lines[index - 1]?.text ?? '');
+		if (!opener || markdownBlockAt(index - 1)) return null;
+		return isClosingCodeFence(line.text, opener.marker) ? index - 1 : null;
 	}
 
 	type TableSpan = { start: number; end: number };
@@ -400,8 +434,194 @@
 			focusAt(insertAt, 0, line.id);
 			return true;
 		}
+		if (focusNeighboringBlock(target, direction, column)) return true;
 		focusTask(target);
 		focusAt(target, direction < 0 ? lines[target].text.length : 0, lines[target].id);
+		return true;
+	}
+
+	function codeBodyIndexes(block: EditorCodeBlock): number[] {
+		const indexes: number[] = [];
+		for (let index = block.lineIndex; index < block.end; index++) {
+			if (!isCodeFenceLine(block, index)) indexes.push(index);
+		}
+		return indexes;
+	}
+
+	function focusLineAt(index: number, offset: number) {
+		const line = lines[index];
+		if (!line) return;
+		focusTask(index);
+		focusAt(index, offset, line.id);
+	}
+
+	function focusCodeEdge(block: EditorCodeBlock, edge: 'start' | 'end', column: number): boolean {
+		const body = codeBodyIndexes(block);
+		if (body.length === 0) return false;
+		const target = edge === 'start' ? body[0] : body[body.length - 1];
+		focusLineAt(target, Math.min(Math.max(0, column), lines[target].text.length));
+		return true;
+	}
+
+	function focusTableEdge(span: TableSpan, edge: 'start' | 'end'): boolean {
+		let row = edge === 'start' ? span.start : span.end - 1;
+		if (row === span.start + 1) row += edge === 'start' ? 1 : -1;
+		if (row < span.start || row >= span.end) return false;
+		const cell = markdownTableCellRanges(lines[row]?.text ?? '')[0];
+		focusLineAt(row, cell?.start ?? 0);
+		return true;
+	}
+
+	/** Land inside a table or code block instead of on its hidden fence or delimiter. */
+	function focusNeighboringBlock(index: number, direction: 1 | -1, column: number): boolean {
+		const block = markdownBlockAt(index);
+		if (block?.type === 'code')
+			return focusCodeEdge(block, direction > 0 ? 'start' : 'end', column);
+		const table = tableSpanAt(index);
+		if (table) return focusTableEdge(table, direction > 0 ? 'start' : 'end');
+		const opener = bareCodeOpenerIndex(index);
+		if (opener === null) return false;
+		rememberEdit();
+		return openCodeBlockAt(opener);
+	}
+
+	function openCodeBlockAt(index: number): boolean {
+		const line = lines[index];
+		const opening = line ? matchOpeningCodeFence(line.text) : null;
+		if (!line || !opening || line.isCheck || line.isBullet || markdownBlockAt(index)) return false;
+		const next = lines[index + 1];
+		const body = newLine();
+		if (next && isClosingCodeFence(next.text, opening.marker)) lines.splice(index + 1, 0, body);
+		else lines.splice(index + 1, 0, body, newLine(opening.marker));
+		syncBody();
+		focusLineAt(index + 1, 0);
+		return true;
+	}
+
+	/**
+	 * A fence typed in front of an existing paragraph would swallow that paragraph.
+	 * Close it first so the following lines stay put and the fence stays editable.
+	 */
+	function sealSwallowedFence(index: number) {
+		const line = lines[index];
+		const opening = line ? matchOpeningCodeFence(line.text) : null;
+		if (!line || !opening || line.isCheck || line.isBullet) return;
+		const block = markdownBlockAt(index);
+		if (block?.type !== 'code' || block.lineIndex !== index) return;
+		if (block.end === index + 1) return;
+		if (isCodeFenceLine(block, block.end - 1) && block.end - 1 !== index) return;
+		lines.splice(index + 1, 0, newLine(opening.marker));
+		syncBody();
+	}
+
+	function moveCodeRow(range: EditorRange, direction: 1 | -1): boolean {
+		if (!range.collapsed) return false;
+		const index = range.start.line;
+		const block = markdownBlockAt(index);
+		if (block?.type !== 'code') return false;
+		const column = range.start.offset;
+		const body = codeBodyIndexes(block);
+		const position = body.indexOf(index);
+		if (position < 0) return focusCodeEdge(block, direction > 0 ? 'start' : 'end', column);
+		const next = position + direction;
+		if (next >= 0 && next < body.length) {
+			focusLineAt(body[next], Math.min(column, lines[body[next]].text.length));
+			return true;
+		}
+		const outside = direction < 0 ? block.lineIndex - 1 : block.end;
+		if (outside < 0 || outside >= lines.length) {
+			rememberEdit(range);
+			const line = newLine();
+			const insertAt = outside < 0 ? 0 : lines.length;
+			lines.splice(insertAt, 0, line);
+			syncBody();
+			focusLineAt(insertAt, 0);
+			return true;
+		}
+		if (focusNeighboringBlock(outside, direction, column)) return true;
+		focusLineAt(
+			outside,
+			direction < 0 ? lines[outside].text.length : Math.min(column, lines[outside].text.length)
+		);
+		return true;
+	}
+
+	function moveIntoMarkdownBlock(range: EditorRange, direction: 1 | -1): boolean {
+		if (!range.collapsed || markdownBlockAt(range.start.line)) return false;
+		const index = range.start.line;
+		const neighbor = index + direction;
+		if (neighbor >= lines.length) {
+			if (direction < 0 || bareCodeOpenerIndex(index) !== index) return false;
+			rememberEdit(range);
+			return openCodeBlockAt(index);
+		}
+		if (neighbor < 0) return false;
+		return focusNeighboringBlock(neighbor, direction, range.start.offset);
+	}
+
+	function openCodeBlock(range: EditorRange): boolean {
+		if (!range.collapsed || range.start.offset !== lines[range.start.line]?.text.length)
+			return false;
+		if (bareCodeOpenerIndex(range.start.line) !== range.start.line) return false;
+		return openCodeBlockAt(range.start.line);
+	}
+
+	function exitCode(range: EditorRange): boolean {
+		const block = markdownBlockAt(range.start.line);
+		if (block?.type !== 'code') return false;
+		const line = newLine();
+		lines.splice(block.end, 0, line);
+		syncBody();
+		focusLineAt(block.end, 0);
+		return true;
+	}
+
+	function codeFenceBetween(index: number, nextIndex: number): boolean {
+		const current = markdownBlockAt(index);
+		const next = markdownBlockAt(nextIndex);
+		if (current?.type === 'code' && isCodeFenceLine(current, index)) return true;
+		if (next?.type === 'code' && isCodeFenceLine(next, nextIndex)) return true;
+		if (current?.type === 'code' && next !== current) return true;
+		if (next?.type === 'code' && current !== next) return true;
+		return false;
+	}
+
+	function handleCodeBackspace(index: number): boolean {
+		const block = markdownBlockAt(index);
+		if (block?.type !== 'code') {
+			if (index > 0 && codeFenceBetween(index - 1, index)) {
+				const previous = markdownBlockAt(index - 1);
+				const landing =
+					previous?.type === 'code' ? (codeBodyIndexes(previous).at(-1) ?? index - 1) : index - 1;
+				focusNeighboringBlock(index - 1, -1, lines[landing]?.text.length ?? 0);
+				return true;
+			}
+			return false;
+		}
+		if (isCodeFenceLine(block, index)) {
+			focusCodeEdge(block, 'start', 0);
+			return true;
+		}
+		const body = codeBodyIndexes(block);
+		if (index !== body[0]) {
+			if (isCodeFenceLine(block, index - 1)) return true;
+			const previous = lines[index - 1];
+			const join = previous.text.length;
+			previous.text += lines[index].text;
+			lines.splice(index, 1);
+			syncBody();
+			focusLineAt(index - 1, join);
+			return true;
+		}
+		if (lines[index].text.length === 0 && body.length === 1) {
+			const replacement = newLine();
+			lines.splice(block.lineIndex, block.end - block.lineIndex, replacement);
+			syncBody();
+			focusLineAt(block.lineIndex, 0);
+			return true;
+		}
+		if (block.lineIndex === 0) return true;
+		focusLineAt(block.lineIndex - 1, lines[block.lineIndex - 1].text.length);
 		return true;
 	}
 
@@ -493,6 +713,8 @@
 		}
 		const line = lineIndexOfElement(row);
 		if (line === null || !lines[line]) return null;
+		// The empty-line caret holder is not note text.
+		if (lines[line].text.length === 0) return { line, offset: 0 };
 		const text = row.querySelector('[data-line-text]') as HTMLElement | null;
 		if (!text) return null;
 
@@ -698,6 +920,11 @@
 		const text = textElement(resolved);
 		if (!text) return null;
 		const source = lines[resolved].text;
+		if (source.length === 0) {
+			const holder = text.firstChild;
+			if (holder?.nodeType === Node.TEXT_NODE) return { node: holder, offset: 0 };
+			return { node: text, offset: 0 };
+		}
 		const caret = Math.max(0, Math.min(offset, source.length));
 		if (text.querySelector('[data-markdown-table-cell]')) {
 			// Keep the caret inside a cell, even an empty one, rather than beside its pipes.
@@ -835,8 +1062,24 @@
 		// the whole gesture owned by the checkbox so it cannot open the keyboard.
 		if (checklistPointerId !== null || subtaskPointerId !== null) return;
 		if ((event.target as Element)?.closest?.('[data-add-subtask], [data-checklist-toggle]')) return;
-		const index = lineIndexFromEvent(event, allowSelection);
-		if (index === null) return;
+		let index = lineIndexFromEvent(event, allowSelection);
+		if (index === null) {
+			const shell = (event.target as Element | null)?.closest?.('[data-markdown-block-line]');
+			if (!shell || (event.target as Element | null)?.closest?.('button, [data-editor-line]')) {
+				return;
+			}
+			const start = Number(shell.getAttribute('data-markdown-block-line'));
+			const block = markdownBlockAt(start);
+			if (block?.type === 'code') focusCodeEdge(block, 'start', 0);
+			else if (block?.type === 'table')
+				focusTableEdge({ start: block.lineIndex, end: block.end }, 'start');
+			return;
+		}
+		const code = markdownBlockAt(index);
+		if (code?.type === 'code' && !isCodeFenceLine(code, index) && lines[index].text.length === 0) {
+			focusLineAt(index, 0);
+			return;
+		}
 		const row = lineElement(index);
 		const scroller = container?.closest('.scrollable') as HTMLElement | null;
 		const anchorTop = row?.getBoundingClientRect().top;
@@ -897,7 +1140,7 @@
 		for (let index = 0; index < lines.length; index++) {
 			const element = textElement(index);
 			if (!element) continue;
-			const text = (element.textContent ?? '').replaceAll('\u00a0', ' ');
+			const text = (element.textContent ?? '').replaceAll('\u00a0', ' ').replaceAll('\u200b', '');
 			const line = lines[index];
 			if (text === line.text) continue;
 			changed = true;
@@ -1039,8 +1282,17 @@
 			// A pipe typed into a rendered cell is cell content, not a new column.
 			text = text.replace(/(?<!\\)\|/g, '\\|');
 		}
+		const openingBefore = matchOpeningCodeFence(line.text);
 		const caret = replaceRangeWithText(range, text);
 		const consumed = applyLinePrefix(caret.line);
+		if (
+			range.collapsed &&
+			!text.includes('\n') &&
+			!openingBefore &&
+			matchOpeningCodeFence(lines[caret.line]?.text ?? '')
+		) {
+			sealSwallowedFence(caret.line);
+		}
 		if (consumed > 0) syncBody();
 		finishEdit({ ...caret, offset: Math.max(0, caret.offset - consumed) });
 	}
@@ -1096,7 +1348,7 @@
 		if (cell) end = Math.min(end, cell.cell.end);
 		if (offset === line.text.length) {
 			const next = lines[index + 1];
-			if (!next || cell) return;
+			if (!next || cell || codeFenceBetween(index, index + 1)) return;
 			line.text += next.text;
 			lines.splice(index + 1, 1);
 			if (next.id === draftTaskId) draftTaskId = null;
@@ -1202,6 +1454,7 @@
 		}
 
 		if (type === 'insertParagraph' || type === 'insertLineBreak') {
+			if (openCodeBlock(range)) return;
 			if (!handleTableEnter(range)) handleEnter(range);
 			return;
 		}
@@ -1575,6 +1828,7 @@
 	function handleBackspace(range: EditorRange) {
 		if (!range.collapsed || range.start.offset !== 0) return false;
 		const index = range.start.line;
+		if (handleCodeBackspace(index)) return true;
 		const line = lines[index];
 		if (index === 0) {
 			if (!line.isCheck && !line.isBullet) return false;
@@ -1678,17 +1932,24 @@
 			(event.key === 'ArrowUp' || event.key === 'ArrowDown') &&
 			!event.altKey &&
 			!event.shiftKey &&
-			!primaryModifier &&
-			moveTableRow(range, event.key === 'ArrowUp' ? -1 : 1)
+			!primaryModifier
 		) {
-			event.preventDefault();
-			return;
+			const direction = event.key === 'ArrowUp' ? -1 : 1;
+			if (
+				moveTableRow(range, direction) ||
+				moveCodeRow(range, direction) ||
+				moveIntoMarkdownBlock(range, direction)
+			) {
+				event.preventDefault();
+				return;
+			}
 		}
 		if (event.key === 'Enter' || event.key === 'NumpadEnter') {
 			event.preventDefault();
 			rememberEdit(range);
 			lastTyping = null;
-			if (primaryModifier && exitTable(range)) return;
+			if (primaryModifier && (exitCode(range) || exitTable(range))) return;
+			if (openCodeBlock(range)) return;
 			if (handleTableEnter(range)) return;
 			handleEnter(range);
 			return;
@@ -1948,8 +2209,16 @@
 					{@render tableEditorContent(line.text, tableBlock, index === tableBlock.lineIndex)}
 				</span>
 			{:else if codeBlock && !codeFence}
-				<span data-line-text class="markdown-inline-content markdown-editor-code-line">
-					{@render codeEditorContent(line.text, codeBlock)}
+				<span
+					data-line-text
+					data-placeholder={line.text.length === 0 ? 'Code' : undefined}
+					class={['markdown-inline-content', 'markdown-editor-code-line', css({ minH: '1lh' })]}
+				>
+					{#if line.text.length === 0}
+						{CODE_LINE_CARET}
+					{:else}
+						{@render codeEditorContent(line.text, codeBlock)}
+					{/if}
 				</span>
 			{:else if !line.text || !/[*_~`#]/.test(line.text)}
 				<span
@@ -2052,6 +2321,7 @@
 			{@const block = item.block}
 			<div
 				class="markdown-block-shell"
+				data-markdown-block-line={block.lineIndex}
 				data-markdown-editor-table={block.type === 'table' ? '' : undefined}
 				data-markdown-editor-code-block={block.type === 'code' ? '' : undefined}
 			>

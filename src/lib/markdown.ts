@@ -518,6 +518,15 @@ function isFenceClose(line: string, opening: string): boolean {
 	return match?.[1]?.[0] === opening[0] && (match[1]?.length ?? 0) >= opening.length;
 }
 
+export function matchOpeningCodeFence(line: string): { marker: string } | null {
+	const opening = fenceAt(line);
+	return opening ? { marker: opening.marker } : null;
+}
+
+export function isClosingCodeFence(line: string, marker: string): boolean {
+	return isFenceClose(line, marker);
+}
+
 /** Parse fenced code and GitHub-style table blocks without changing raw text. */
 export function parseMarkdownBlocks(source: string): MarkdownBlock[] {
 	const lines = source.replace(/\r\n?/g, '\n').split('\n');

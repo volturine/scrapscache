@@ -245,7 +245,7 @@
 		gap: { base: '2xs', sm: 'sm' },
 		position: 'relative',
 		zIndex: 20,
-		bg: 'scrapscache.bg'
+		bg: 'scrapscache.surface'
 	})}
 	onpointerdown={handleHeaderPointerDown}
 >
@@ -270,7 +270,7 @@
 			rounded: 'pill',
 			borderWidth: 'hairline',
 			borderColor: 'scrapscache.border',
-			bg: 'scrapscache.surface',
+			bg: 'scrapscache.bg',
 			px: 'md',
 			gap: 'sm'
 		})}

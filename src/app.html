@@ -60,7 +60,7 @@
 		<!-- Android / Chrome Native Capabilities -->
 		<meta name="mobile-web-app-capable" content="yes" />
 		<meta name="application-name" content="Scraps Cache" />
-		<meta name="theme-color" content="#1a1a1a" />
+		<meta name="theme-color" content="#242424" />
 		<meta name="format-detection" content="telephone=no" />
 
 		<!-- Favicons & Manifest -->
@@ -98,7 +98,7 @@
 						el.style.colorScheme = 'light';
 					}
 					var theme = document.querySelector('meta[name="theme-color"]');
-					if (theme) theme.setAttribute('content', dark ? '#1a1a1a' : '#ffffff');
+					if (theme) theme.setAttribute('content', dark ? '#242424' : '#f8f9fa');
 				} catch (e) {
 					// Default to dark if anything fails (user prefers dark).
 					document.documentElement.style.backgroundColor = '#1a1a1a';

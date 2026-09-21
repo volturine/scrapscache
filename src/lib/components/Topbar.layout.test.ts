@@ -32,6 +32,12 @@ describe('Topbar layout and sidebar behavior', () => {
 		expect(appLayout.shell).toBeTruthy();
 	});
 
+	it('uses surface background matching the left sidebar and drawer', () => {
+		const { container } = render(Topbar);
+		const header = container.querySelector('header');
+		expect(header?.className).toContain('bg_scrapscache.surface');
+	});
+
 	it('toggles sidebar on hamburger button click', async () => {
 		render(Topbar);
 		const toggleBtn = screen.getByRole('button', { name: 'Toggle sidebar' });

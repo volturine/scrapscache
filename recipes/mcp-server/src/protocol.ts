@@ -147,7 +147,7 @@ async function handleSingleJsonRpcMessage(
 						}
 					};
 				} catch (err: unknown) {
-					const errorMessage = err instanceof Error ? err.message : String(err);
+					const errorMessage = err instanceof Error ? err.message : 'Tool execution error';
 					return {
 						jsonrpc: '2.0',
 						id,
@@ -191,7 +191,7 @@ async function handleSingleJsonRpcMessage(
 						result: content
 					};
 				} catch (err: unknown) {
-					const errorMessage = err instanceof Error ? err.message : String(err);
+					const errorMessage = err instanceof Error ? err.message : 'Resource read error';
 					return {
 						jsonrpc: '2.0',
 						id,
@@ -208,11 +208,11 @@ async function handleSingleJsonRpcMessage(
 				};
 		}
 	} catch (err: unknown) {
-		const errorMessage = err instanceof Error ? err.message : String(err);
+		console.error('[McpProtocol] Unhandled JSON-RPC error:', err);
 		return {
 			jsonrpc: '2.0',
 			id,
-			error: { code: -32603, message: `Internal error: ${errorMessage}` }
+			error: { code: -32603, message: 'Internal error: request processing failed' }
 		};
 	}
 }

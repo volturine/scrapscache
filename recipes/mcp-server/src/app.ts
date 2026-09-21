@@ -119,9 +119,12 @@ export class McpApp {
 						headers: { 'Content-Type': 'application/json', ...corsHeaders }
 					}
 				);
-			} catch (err) {
+			} catch {
 				return new Response(
-					JSON.stringify({ error: 'invalid_request', error_description: String(err) }),
+					JSON.stringify({
+						error: 'invalid_request',
+						error_description: 'Invalid client registration payload'
+					}),
 					{
 						status: 400,
 						headers: { 'Content-Type': 'application/json', ...corsHeaders }
@@ -360,12 +363,12 @@ export class McpApp {
 						status: 200,
 						headers: { 'Content-Type': 'application/json', ...corsHeaders }
 					});
-				} catch (err) {
+				} catch {
 					return new Response(
 						JSON.stringify({
 							jsonrpc: '2.0',
 							id: null,
-							error: { code: -32700, message: `Parse error: ${String(err)}` }
+							error: { code: -32700, message: 'Parse error: invalid JSON payload' }
 						}),
 						{ status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
 					);

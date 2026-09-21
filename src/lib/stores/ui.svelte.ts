@@ -96,7 +96,8 @@ export class UIStore {
 	}
 
 	get rawMarkdown() {
-		return this.#rawMarkdown;
+		// One editor view: source you can still read, with tables and code drawn as blocks.
+		return true;
 	}
 	set rawMarkdown(value: boolean) {
 		this.#rawMarkdown = value;

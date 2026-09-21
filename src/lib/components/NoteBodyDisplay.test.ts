@@ -59,20 +59,18 @@ describe('NoteBodyDisplay attachment order', () => {
 });
 
 describe('NoteBodyDisplay inline Markdown', () => {
-	it('styles supported Markdown and hides its delimiters by default', () => {
+	it('shows the markdown source with its markers, not a separate rendered document', () => {
 		const { container } = render(NoteBodyDisplay, {
 			props: { note: note({ body: '**bold** *italic* `code` ~~removed~~' }) }
 		});
 
+		expect(container.querySelector('.markdown-content')?.classList).toContain('markdown-raw');
 		expect(container.querySelector('.markdown-token-strong')?.textContent).toBe('bold');
-		expect(container.querySelector('.markdown-token-emphasis')?.textContent).toBe('italic');
-		expect(container.querySelector('.markdown-token-code')?.textContent).toBe('code');
-		expect(container.querySelector('.markdown-token-strikethrough')?.textContent).toBe('removed');
-		expect(container.textContent).not.toContain('**');
-		expect(container.textContent).not.toContain('~~');
+		expect(container.textContent).toContain('**');
+		expect(container.querySelector('h1, h2, h3')).toBeNull();
 	});
 
-	it('renders markdown headers and lists with checkboxes', () => {
+	it('renders task lines in the same source view', () => {
 		const { container } = render(NoteBodyDisplay, {
 			props: {
 				note: note({
@@ -81,16 +79,10 @@ describe('NoteBodyDisplay inline Markdown', () => {
 			}
 		});
 
-		const h1 = container.querySelector('h1');
-		expect(h1).toBeTruthy();
-		expect(h1?.textContent).toBe('Hello World');
-
-		const h2 = container.querySelector('h2');
-		expect(h2).toBeTruthy();
-		expect(h2?.textContent).toBe('Subheading');
-
-		const checkbox = container.querySelector('input[type="checkbox"]');
-		expect(checkbox).toBeTruthy();
+		expect(container.querySelector('[data-markdown-token="heading"]')?.textContent).toContain('#');
+		expect(container.textContent).toContain('Hello World');
+		expect(container.textContent).toContain('Task item');
+		expect(container.querySelector('input[type="checkbox"]')).toBeNull();
 	});
 
 	it('reveals raw delimiters and syntax colors when enabled', () => {

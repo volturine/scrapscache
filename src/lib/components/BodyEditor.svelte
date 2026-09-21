@@ -37,6 +37,8 @@
 	import MarkdownCopyButton from './MarkdownCopyButton.svelte';
 
 	const MAX_TASK_INDENT = 1;
+	/** Gives an empty line a text node Chrome can draw a caret in. Stripped before it is saved. */
+	const CARET_HOLDER = '\u200b';
 	// Rows render in fixed-size chunks that the browser skips while offscreen.
 	const CHUNK_SIZE = 64;
 
@@ -648,6 +650,25 @@
 		return true;
 	}
 
+	function movePlainRow(range: EditorRange, direction: 1 | -1): boolean {
+		if (!range.collapsed || markdownBlockAt(range.start.line)) return false;
+		const next = range.start.line + direction;
+		if (next < 0 || next >= lines.length) return true;
+		if (focusNeighboringBlock(next, direction, range.start.offset)) return true;
+		const length = lines[next].text.length;
+		focusLineAt(next, direction < 0 ? length : Math.min(range.start.offset, length));
+		return true;
+	}
+
+	function lockCaret(line: number, offset: number) {
+		requestAnimationFrame(() => {
+			if (document.activeElement !== container) return;
+			const now = editorRange();
+			if (now?.collapsed && now.start.line === line && now.start.offset === offset) return;
+			selectAt(line, offset);
+		});
+	}
+
 	function moveIntoMarkdownBlock(range: EditorRange, direction: 1 | -1): boolean {
 		if (!range.collapsed || markdownBlockAt(range.start.line)) return false;
 		const index = range.start.line;
@@ -835,7 +856,7 @@
 				const range = document.createRange();
 				range.selectNodeContents(text);
 				range.setEnd(node, offset);
-				local = range.toString().length;
+				local = range.toString().replaceAll('\u200b', '').length;
 			} else if (row.contains(node)) {
 				const position = text.compareDocumentPosition(node);
 				local = position & Node.DOCUMENT_POSITION_FOLLOWING ? lines[line].text.length : 0;
@@ -1026,7 +1047,11 @@
 		const text = textElement(resolved);
 		if (!text) return null;
 		const source = lines[resolved].text;
-		if (source.length === 0) return { node: text, offset: 0 };
+		if (source.length === 0) {
+			const holder = text.firstChild;
+			if (holder?.nodeType === Node.TEXT_NODE) return { node: holder, offset: 0 };
+			return { node: text, offset: 0 };
+		}
 		const caret = Math.max(0, Math.min(offset, source.length));
 		if (text.querySelector('[data-markdown-table-cell]')) {
 			// Keep the caret inside a cell, even an empty one, rather than beside its pipes.
@@ -2122,9 +2147,12 @@
 			if (
 				moveTableRow(range, direction) ||
 				moveCodeRow(range, direction) ||
-				moveIntoMarkdownBlock(range, direction)
+				moveIntoMarkdownBlock(range, direction) ||
+				movePlainRow(range, direction)
 			) {
 				event.preventDefault();
+				const placed = editorRange();
+				if (placed?.collapsed) lockCaret(placed.start.line, placed.start.offset);
 				return;
 			}
 		}
@@ -2337,7 +2365,7 @@
 					{#if part.hidden}
 						<span class="markdown-token-marker-hidden">{part.text}</span>
 					{:else if part.text.length === 0}
-						<br />
+						{CARET_HOLDER}
 					{:else}
 						{@render inlineEditorContent(part.text)}
 					{/if}
@@ -2407,7 +2435,7 @@
 					class={['markdown-inline-content', 'markdown-editor-code-line', css({ minH: '1lh' })]}
 				>
 					{#if line.text.length === 0}
-						<br />
+						{CARET_HOLDER}
 					{:else}
 						{@render codeEditorContent(line.text, codeBlock)}
 					{/if}
@@ -2430,7 +2458,8 @@
 						uiStore.rawMarkdown && 'markdown-raw',
 						css({ minH: '1lh' }),
 						noteBody({ mode: 'editor', checked: line.checked, indented: line.indent > 0 }).line
-					]}>{line.text}</span
+					]}
+					>{#if line.text.length === 0}{CARET_HOLDER}{:else}{line.text}{/if}</span
 				>
 			{:else}
 				{@const inlineTokens = parseInlineMarkdown(line.text)}

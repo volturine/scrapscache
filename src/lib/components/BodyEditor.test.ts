@@ -891,7 +891,7 @@ describe('BodyEditor markdown bullets', () => {
 		expect(line.querySelector('.markdown-token-emphasis')?.textContent).toBe('italic');
 		expect(line.querySelector('.markdown-token-code')?.textContent).toBe('code');
 		expect(line.querySelector('.markdown-token-strikethrough')?.textContent).toBe('removed');
-		expect(line.querySelectorAll('.markdown-token-marker-hidden')).toHaveLength(8);
+		expect(line.querySelectorAll('.markdown-token-marker-hidden')).toHaveLength(0);
 	});
 
 	it('renders and edits a Markdown table without changing its source structure', async () => {
@@ -1058,7 +1058,8 @@ describe('BodyEditor markdown bullets', () => {
 
 		expect(emptyLine).not.toBeNull();
 		expect(emptyLine?.className).toContain('flex_1_1_0%');
-		expect(emptyLine?.textContent).toBe('');
+		expect(emptyLine?.textContent).toBe('\u200b');
+		expect(emptyLine?.firstChild?.nodeType).toBe(Node.TEXT_NODE);
 	});
 
 	it('keeps the raw caret position when a closing delimiter activates styling', async () => {
@@ -1662,8 +1663,9 @@ describe('BodyEditor rendered table writing', () => {
 			container.querySelectorAll('[data-editor-line="2"] [data-markdown-table-cell]')
 		).toHaveLength(2);
 		expect(
-			container.querySelectorAll('[data-editor-line="2"] [data-markdown-table-cell]')[1]
-				?.textContent
+			container
+				.querySelectorAll('[data-editor-line="2"] [data-markdown-table-cell]')[1]
+				?.textContent?.replaceAll('\u200b', '')
 		).toBe('');
 	});
 
@@ -1862,6 +1864,21 @@ describe('BodyEditor code block writing', () => {
 		expect(lineTexts(container)[3]).toBe('beta!');
 	});
 
+	it('moves the caret onto a blank note line instead of skipping it', async () => {
+		const { container } = render(BodyEditor, { props: { body: 'alpha\n\nbeta' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		caretAt(container, 0, 0);
+
+		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
+		expect(selectionLine()).toBe(1);
+		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
+		expect(selectionLine()).toBe(2);
+		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
+		expect(selectionLine()).toBe(1);
+		await typeText(editor, 'mid');
+		expect(lineTexts(container)).toEqual(['alpha', 'mid', 'beta']);
+	});
+
 	it('steps through empty code lines instead of skipping them', async () => {
 		const { container } = render(BodyEditor, { props: { body: '```\nalpha\n\n\nbeta\n```' } });
 		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
@@ -1899,10 +1916,8 @@ describe('BodyEditor code block writing', () => {
 		const body = ['| a | b |', '| - | - |', '| 1 | 2 |', '|   |   |'].join('\n');
 		const { container } = render(BodyEditor, { props: { body } });
 		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
-		const emptyCell = container.querySelector(
-			'[data-editor-line="3"] [data-markdown-table-cell] br'
-		);
-		expect(emptyCell).not.toBeNull();
+		const emptyCell = container.querySelector('[data-editor-line="3"] [data-markdown-table-cell]');
+		expect(emptyCell?.textContent).toBe('\u200b');
 		caretAt(container, 2, 2);
 
 		await fireEvent.keyDown(editor, { key: 'ArrowDown' });

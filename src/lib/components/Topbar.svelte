@@ -38,8 +38,6 @@
 	import { Menu } from '@ark-ui/svelte/menu';
 	import {
 		Cloud,
-		Code2,
-		Check,
 		Download,
 		ExternalLink,
 		FileText,
@@ -76,20 +74,6 @@
 	let choosingImportMode = $state(false);
 	let showingImportGuide = $state(false);
 	let keepImportReady = $state(false);
-	let rawMarkdownClickHandled = false;
-
-	function handleRawMarkdownClick() {
-		rawMarkdownClickHandled = true;
-		uiStore.toggleRawMarkdown();
-		queueMicrotask(() => {
-			rawMarkdownClickHandled = false;
-		});
-	}
-
-	function handleRawMarkdownSelect() {
-		if (rawMarkdownClickHandled) return;
-		uiStore.toggleRawMarkdown();
-	}
 	let syncStatus = $derived(resolveSyncStatus(syncStore.lastError, syncStore.usage));
 	let syncControlLabel = $derived(SYNC_CONTROL_LABEL[syncStatus]);
 
@@ -368,21 +352,6 @@
 						<Moon class={iconSm} aria-hidden="true" />
 						Dark mode
 					{/if}
-				</Menu.Item>
-				<Menu.Item
-					value="raw-markdown"
-					closeOnSelect={false}
-					onclick={handleRawMarkdownClick}
-					onSelect={handleRawMarkdownSelect}
-					role="menuitemcheckbox"
-					aria-checked={uiStore.rawMarkdown}
-					class={menuItemClass}
-				>
-					<Code2 class={iconSm} aria-hidden="true" />
-					<span class={styles.markdownLabel}>Raw Markdown</span>
-					<span class={styles.markdownCheck} aria-hidden="true">
-						{#if uiStore.rawMarkdown}<Check class={iconSm} strokeWidth={2.5} />{/if}
-					</span>
 				</Menu.Item>
 				<Menu.Item value="export" onSelect={startBackupExport} class={menuItemClass}>
 					<Download class={iconSm} aria-hidden="true" />

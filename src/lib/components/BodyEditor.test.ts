@@ -916,6 +916,7 @@ describe('BodyEditor task focus chrome', () => {
 		expect(buttonNoSub).not.toBeNull();
 		expect(buttonNoSub.className).toContain('scrapscache-note-body__addSubtask--indented_false');
 		expect(buttonNoSub.className).not.toContain('scrapscache-note-body__addSubtask--indented_true');
+		expect(buttonNoSub.querySelector('[class*="addSubtask"]')).toBeNull();
 
 		const { container: c2 } = render(BodyEditor, {
 			props: { body: '[ ] Avocados\n  [ ] Hass\n[ ] Dark chocolate', focusLine: 0 }

@@ -1343,7 +1343,7 @@
 					onpointerdown={(event) => activateAddSubtask(event, focusedGroupRows[0]?.index ?? -1)}
 					onclick={(event) => handleAddSubtaskClick(event, focusedGroupRows[0]?.index ?? -1)}
 				>
-					<span aria-hidden="true" class={editor.addSubtask}></span>
+					<span aria-hidden="true"></span>
 				</button>
 			{/if}
 		</div>

@@ -24,7 +24,6 @@
 	import {
 		Cloud,
 		CloudOff,
-		Download,
 		FolderPlus,
 		MonitorSmartphone,
 		RefreshCw,
@@ -67,7 +66,6 @@
 	let expandedId = $state<string | null>(null);
 	let newName = $state('');
 	let promoteSource = $state<string | null>(null);
-	let manageOpen = $state(false);
 	// Account creation, including recovery that may recreate the account, needs a Turnstile token
 	// when this deployment configures a challenge origin. Each surface owns its own single-use widget.
 	const turnstileOrigin = env.PUBLIC_TURNSTILE_ORIGIN?.trim() ?? '';
@@ -797,63 +795,6 @@
 						{#if info}<p class={syncMuted} role="status">
 								{info}
 							</p>{/if}
-						<details
-							bind:open={manageOpen}
-							class={css({
-								borderTopWidth: 'hairline',
-								borderColor: 'scrapscache.border',
-								pt: 'md'
-							})}
-						>
-							<summary class={css({ cursor: 'pointer', textStyle: 'bodyMuted' })}
-								>Manage workspace</summary
-							>
-							<div
-								hidden={!manageOpen}
-								class={vstack({ gap: '2xs', alignItems: 'stretch', mt: 'sm' })}
-							>
-								<button
-									class={styles.manageRow}
-									disabled={busy}
-									onclick={() => void exportProfile(syncStore.activePid)}
-									><Download size={16} aria-hidden="true" /><span>Export notes</span></button
-								>
-								{#if syncStore.account}
-									<button
-										class={styles.manageRow}
-										disabled={busy}
-										onclick={() => {
-											confirmation = 'force';
-											mode = 'confirm';
-											error = '';
-										}}
-										><RefreshCw
-											size={16}
-											class={operation === 'force-sync' ? styles.spinner : ''}
-											aria-hidden="true"
-										/><span
-											>{operation === 'force-sync' ? 'Resyncing…' : 'Force resync'}<small
-												>Replace cloud notes with this device’s version</small
-											></span
-										></button
-									>
-									<button
-										class={cx(styles.manageRow, syncDanger)}
-										disabled={busy}
-										onclick={() => {
-											confirmation = 'delete';
-											mode = 'confirm';
-											error = '';
-										}}
-										><Trash2 size={16} aria-hidden="true" /><span
-											>Delete cloud data<small
-												>Keep this device’s notes in Anonymous workspace</small
-											></span
-										></button
-									>
-								{/if}
-							</div>
-						</details>
 					</div>
 				{:else if mode === 'confirm'}
 					<div class={vstack({ gap: 'lg', alignItems: 'stretch' })}>

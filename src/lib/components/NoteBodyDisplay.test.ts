@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import NoteBodyDisplay from './NoteBodyDisplay.svelte';
 import type { Note } from '$lib/types';
 import { notesStore } from '$lib/stores/notes.svelte';
+import { uiStore } from '$lib/stores/ui.svelte';
 
 const PNG =
 	'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
@@ -27,6 +28,9 @@ function note(partial: Partial<Note> = {}): Note {
 				mime: 'image/png',
 				dataUrl: PNG,
 				name: 'who-wins.png',
+				width: 1,
+				height: 1,
+				byteSize: 100,
 				createdAt: 1
 			}
 		],
@@ -36,7 +40,7 @@ function note(partial: Partial<Note> = {}): Note {
 
 afterEach(() => {
 	notesStore.notes = [];
-	notesStore.labels = [];
+	uiStore.rawMarkdown = false;
 });
 
 describe('NoteBodyDisplay attachment order', () => {
@@ -51,5 +55,126 @@ describe('NoteBodyDisplay attachment order', () => {
 		).toBeTruthy();
 		// A URL renders as a pseudo file row showing its hostname.
 		expect(filesAndLinks!.textContent).toContain('webassembly.org');
+	});
+});
+
+describe('NoteBodyDisplay inline Markdown', () => {
+	it('styles supported Markdown and hides its delimiters by default', () => {
+		const { container } = render(NoteBodyDisplay, {
+			props: { note: note({ body: '**bold** *italic* `code` ~~removed~~' }) }
+		});
+
+		expect(container.querySelector('.markdown-token-strong')?.textContent).toBe('bold');
+		expect(container.querySelector('.markdown-token-emphasis')?.textContent).toBe('italic');
+		expect(container.querySelector('.markdown-token-code')?.textContent).toBe('code');
+		expect(container.querySelector('.markdown-token-strikethrough')?.textContent).toBe('removed');
+		expect(container.querySelectorAll('.markdown-token-marker-hidden')).toHaveLength(8);
+	});
+
+	it('reveals raw delimiters and syntax colors when enabled', () => {
+		uiStore.rawMarkdown = true;
+		const { container } = render(NoteBodyDisplay, {
+			props: { note: note({ body: '## **bold** `code` ~~removed~~' }) }
+		});
+
+		expect(container.querySelector('.markdown-content')?.classList.contains('markdown-raw')).toBe(
+			true
+		);
+		expect(container.querySelectorAll('.markdown-token-marker-hidden')).toHaveLength(0);
+		expect(container.querySelector('[data-markdown-token="heading"]')?.textContent).toBe('## ');
+		expect(
+			container.querySelector('.markdown-token-strong:not(.markdown-token-marker)')?.textContent
+		).toBe('bold');
+	});
+});
+
+describe('NoteBodyDisplay Markdown blocks', () => {
+	it('renders Markdown tables as semantic tables', () => {
+		const { container } = render(NoteBodyDisplay, {
+			props: {
+				note: note({
+					body: [
+						'| Rule name | Matches path | Limit |',
+						'| --- | --- | ---: |',
+						'| register | `/api/sync/register` | 5 per hour |'
+					].join('\n')
+				})
+			}
+		});
+
+		const table = container.querySelector('[data-markdown-table]');
+		expect(table).toBeTruthy();
+		expect(table?.querySelectorAll('th')).toHaveLength(3);
+		expect(table?.querySelectorAll('tbody tr')).toHaveLength(1);
+		expect(table?.textContent).not.toContain('---');
+		expect(
+			table?.querySelector('.markdown-token-code:not(.markdown-token-marker)')?.textContent
+		).toBe('/api/sync/register');
+	});
+
+	it('renders fenced code with safe syntax tokens', () => {
+		const { container } = render(NoteBodyDisplay, {
+			props: {
+				note: note({
+					body: [
+						'before',
+						'',
+						'```sh',
+						'# comment',
+						'wrangler d1 --remote --command "SELECT 1"',
+						'```',
+						'',
+						'after'
+					].join('\n')
+				})
+			}
+		});
+
+		const code = container.querySelector('[data-markdown-code-block]');
+		expect(code?.tagName).toBe('PRE');
+		expect(code?.getAttribute('data-language')).toBe('sh');
+		expect(code?.textContent).toContain('# comment');
+		expect(code?.querySelector('.markdown-code-token-comment')?.textContent).toBe('# comment');
+		expect(code?.querySelector('.markdown-code-token-flag')?.textContent).toBe('--remote');
+		expect(code?.querySelector('.markdown-code-token-string')?.textContent).toBe('"SELECT 1"');
+	});
+
+	it('keeps HTML-looking code as text', () => {
+		const { container } = render(NoteBodyDisplay, {
+			props: { note: note({ body: '```html\n<script>alert(1)</script>\n```' }) }
+		});
+
+		const code = container.querySelector('[data-markdown-code-block]');
+		expect(code?.querySelector('script')).toBeNull();
+		expect(code?.textContent).toContain('<script>alert(1)</script>');
+	});
+
+	it('always renders tables and code blocks even when raw Markdown is enabled', () => {
+		uiStore.rawMarkdown = true;
+		const { container } = render(NoteBodyDisplay, {
+			props: {
+				note: note({
+					body: [
+						'| Rule name | Matches path |',
+						'| --- | --- |',
+						'| register | `/api` |',
+						'',
+						'```sh',
+						'echo "hello"',
+						'```',
+						'',
+						'Leave headroom rather than tightening the rule.'
+					].join('\n')
+				})
+			}
+		});
+
+		// Table and code are still rendered formatted
+		expect(container.querySelector('[data-markdown-table]')).toBeTruthy();
+		expect(container.querySelector('[data-markdown-code-block]')).toBeTruthy();
+		expect(container.querySelector('.markdown-content')?.textContent).toContain(
+			'Leave headroom rather than tightening the rule.'
+		);
+		expect(container.querySelector('.markdown-content')?.classList).toContain('markdown-raw');
 	});
 });

@@ -29,6 +29,7 @@
 		Paperclip,
 		Pin
 	} from '@lucide/svelte';
+
 	import { revealEditorField, revealEditorPoint } from '$lib/editorVisibility';
 	import { getClipboardFiles, isImageAttachment } from '$lib/noteImages';
 	import { isKeyboardField } from '$lib/appViewport';
@@ -60,6 +61,7 @@
 	let title = $state(note?.title ?? '');
 	// svelte-ignore state_referenced_locally
 	let body = $state(note?.body ?? '');
+
 	let paletteOpen = $state(false);
 	let reminderOpen = $state(false);
 	let labelOpen = $state(false);
@@ -706,6 +708,7 @@
 						class={cx(
 							'note-scrollbar-hidden scrollable',
 							styles.scroller,
+							uiStore.rawMarkdown && styles.rawScroller,
 							photosFillEditor ? styles.scrollerFill : undefined
 						)}
 					>
@@ -723,6 +726,7 @@
 								}
 							}}
 							rows="1"
+							class:markdown-raw={uiStore.rawMarkdown}
 							class={titleField}></textarea>
 
 						<BodyEditor

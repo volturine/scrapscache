@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { flushSync, onMount, tick } from 'svelte';
+	import { flushSync, tick } from 'svelte';
 	import {
 		adjustTextIndent,
 		BULLET_RE,
@@ -14,6 +14,25 @@
 	import { revealEditorField } from '$lib/editorVisibility';
 	import { css } from 'styled-system/css';
 	import { checklist, noteBody } from 'styled-system/recipes';
+	import { markdownStyles } from '$panda/styles';
+	import {
+		emptyMarkdownTableRow,
+		formatMarkdownTable,
+		highlightCodeLine,
+		isMarkdownTableHeaderRow,
+		markdownTableCellRanges,
+		markdownTableCells,
+		markdownTableDelimiterRow,
+		markdownTokenClass,
+		parseEditorMarkdownBlocks,
+		parseInlineMarkdown,
+		parseMarkdownBlocks,
+		tokenizeMarkdownTableRow,
+		type EditorMarkdownBlockInfo,
+		type MarkdownBlock
+	} from '$lib/markdown';
+	import { uiStore } from '$lib/stores/ui.svelte';
+	import MarkdownCopyButton from './MarkdownCopyButton.svelte';
 
 	const MAX_TASK_INDENT = 1;
 	// Rows render in fixed-size chunks that the browser skips while offscreen.
@@ -44,6 +63,8 @@
 		isCheck: boolean;
 		isBullet: boolean;
 		indent: number;
+		/** Bumped when the browser edited this row's DOM natively, so Svelte rebuilds it. */
+		rev: number;
 	};
 	type EditorPoint = { line: number; offset: number };
 	type EditorRange = { start: EditorPoint; end: EditorPoint; collapsed: boolean };
@@ -70,7 +91,8 @@
 			isCheck,
 			isBullet,
 			checked,
-			indent: Math.max(0, Math.min(maxIndent, indent))
+			indent: Math.max(0, Math.min(maxIndent, indent)),
+			rev: 0
 		};
 	}
 
@@ -98,6 +120,23 @@
 	}
 
 	let lines = $state<Line[]>(parseBodyToLines(body));
+	/** A table or code block with the row index just past its last row. */
+	type EditorMarkdownBlock = EditorMarkdownBlockInfo & {
+		startLineId: number;
+	};
+	type EditorTableBlock = Extract<EditorMarkdownBlock, { type: 'table' }>;
+	type EditorCodeBlock = Extract<EditorMarkdownBlock, { type: 'code' }>;
+
+	/**
+	 * Table and code blocks, re-parsed directly on every edit.
+	 */
+	const markdownBlocks = $derived.by<EditorMarkdownBlock[]>(() => {
+		const parsed = parseEditorMarkdownBlocks(lines);
+		return parsed.map((block) => ({
+			...block,
+			startLineId: lines[block.lineIndex]?.id ?? -1
+		}));
+	});
 	let container: HTMLDivElement | null = $state(null);
 	let draftTaskId = $state<number | null>(null);
 	let ignoredFocusLine = $state<number | null>(null);
@@ -105,24 +144,275 @@
 	let subtaskPointerId: number | null = null;
 	let composing = false;
 	let applyingEdit = false;
+	/** Caret and row text when an IME composition started, to restore the caret after it. */
+	let compositionStart: EditorRange | null = null;
+	/** Consecutive typing on one row shares an undo step. */
+	let lastTyping: { kind: 'insert' | 'delete'; line: number; at: number } | null = null;
+	/** An edit happened since tables were last formatted. */
+	let tablesNeedFormat = false;
+	/** First line id of the table holding the caret, so leaving it can format it. */
+	let caretTableId: number | null = null;
 	const undoStack: HistoryEntry[] = [];
 	const redoStack: HistoryEntry[] = [];
 
-	function syncEditableText(node: HTMLElement, value: string) {
-		const apply = (next: string) => {
-			// The browser mutates this text node directly. Only reconcile when state
-			// actually differs so iOS and Svelte never insert the first character twice.
-			// Lines store NBSPs as plain spaces, so an NBSP-only difference is not a
-			// divergence; rewriting the node would reset the caret to the line start.
-			if (node.textContent?.replaceAll('\u00a0', ' ') !== next) node.textContent = next;
-		};
-		apply(value);
-		return { update: apply };
+	// Resolved once per block shape so rendering each line is a lookup, not a scan.
+	const markdownBlockLayout = $derived.by(() => {
+		const blockAt: (EditorMarkdownBlock | null)[] = new Array(lines.length).fill(null);
+		for (const block of markdownBlocks) {
+			for (let index = block.lineIndex; index < block.end; index++) blockAt[index] = block;
+		}
+		return blockAt;
+	});
+
+	function markdownBlockAt(index: number): EditorMarkdownBlock | null {
+		return markdownBlockLayout[index] ?? null;
+	}
+
+	/** Read at copy time: a reused block object may carry stale code text. */
+	function markdownBlockCopyText(block: EditorMarkdownBlock): string {
+		const source = serializeLines(lines.slice(block.lineIndex, block.end));
+		if (block.type === 'table') return source;
+		return parseMarkdownBlocks(source).find((parsed) => parsed.type === 'code')?.code ?? '';
+	}
+
+	function isCodeFenceLine(block: EditorCodeBlock, index: number) {
+		if (index === block.lineIndex) return true;
+		if (index !== block.end - 1) return false;
+		const opening = lines[block.lineIndex]?.text.match(/^ {0,3}(`{3,}|~{3,})/u)?.[1];
+		const closing = lines[index]?.text.match(/^ {0,3}(`{3,}|~{3,})[ \t]*$/u)?.[1];
+		return !!opening && !!closing && opening[0] === closing[0] && closing.length >= opening.length;
+	}
+
+	type TableSpan = { start: number; end: number };
+
+	function tableSpanAt(index: number): TableSpan | null {
+		const block = markdownBlockAt(index);
+		if (block?.type !== 'table') return null;
+		const span = { start: block.lineIndex, end: block.end };
+		// Task and bullet rows keep their own prefixes; never rewrite those as table source.
+		const rows = lines.slice(span.start, span.end);
+		return rows.some((line) => line.isCheck || line.isBullet) ? null : span;
+	}
+
+	/** Source of each table as last formatted, keyed by its first row, to skip clean tables. */
+	const formattedTables = new Map<number, string>();
+
+	function removeTable(span: TableSpan): EditorPoint {
+		const startId = lines[span.start]?.id;
+		if (startId !== undefined) formattedTables.delete(startId);
+		lines.splice(span.start, span.end - span.start);
+		if (lines.length === 0) lines.push(newLine());
+		caretTableId = null;
+		const line = Math.min(span.start, lines.length - 1);
+		syncBody();
+		return { line, offset: 0 };
+	}
+
+	function formatTable({ start, end }: TableSpan): boolean {
+		const rows = lines.slice(start, end);
+		const firstId = rows[0]?.id;
+		const source = rows.map((line) => line.text);
+		if (firstId === undefined || formattedTables.get(firstId) === source.join('\n')) return false;
+		const formatted = formatMarkdownTable(source);
+		formattedTables.set(firstId, formatted.join('\n'));
+		let changed = false;
+		rows.forEach((line, offset) => {
+			const text = formatted[offset] ?? line.text;
+			if (line.text === text) return;
+			line.text = text;
+			changed = true;
+		});
+		return changed;
+	}
+
+	/**
+	 * Pretty-print tables once the caret is elsewhere, like editor table formatters:
+	 * after an edit, or when the caret leaves a table. The table being edited is left
+	 * alone so typing never shifts text under the caret.
+	 */
+	function formatSettledTables(caretInEditor = true) {
+		if (applyingEdit || composing || !container) return;
+		const range = caretInEditor ? editorRange() : null;
+		if (caretInEditor && !range) return;
+		const current = range ? tableSpanAt(range.start.line) : null;
+		const currentId = current ? (lines[current.start]?.id ?? null) : null;
+		const leftTable = caretTableId !== null && caretTableId !== currentId;
+		caretTableId = currentId;
+		if (!tablesNeedFormat && !leftTable) return;
+		tablesNeedFormat = false;
+
+		let changed = false;
+		for (const block of markdownBlocks) {
+			if (block.type !== 'table') continue;
+			const span = tableSpanAt(block.lineIndex);
+			if (!span) continue;
+			if (range && range.end.line >= span.start && range.start.line < span.end) continue;
+			if (formatTable(span)) changed = true;
+		}
+		if (!changed) return;
+		syncBody();
+		tablesNeedFormat = false;
+		if (range) {
+			selectAt(
+				range.start.line,
+				range.start.offset,
+				range.end.line,
+				range.end.offset,
+				selectionIsReversed()
+			);
+		}
+	}
+
+	function selectTableCell(row: number, cell: number) {
+		const range = markdownTableCellRanges(lines[row]?.text ?? '')[cell];
+		if (range) selectAt(row, range.start, row, range.end);
+	}
+
+	/** Tab / Shift+Tab: format the table and select the next or previous cell, adding a row at the end. */
+	function moveTableCell(range: EditorRange, direction: 1 | -1): boolean {
+		const span = tableSpanAt(range.start.line);
+		if (!span) return false;
+		const caretCell = markdownTableCellRanges(lines[range.start.line].text).findIndex(
+			(candidate) => range.start.offset <= candidate.end
+		);
+		formatTable(span);
+		const columns = markdownTableCells(lines[span.start].text).length;
+		const positions: { row: number; cell: number }[] = [];
+		for (let row = span.start; row < span.end; row++) {
+			if (row === span.start + 1) continue;
+			for (let cell = 0; cell < columns; cell++) positions.push({ row, cell });
+		}
+
+		let current: number;
+		if (range.start.line === span.start + 1) {
+			current = direction > 0 ? columns - 1 : columns;
+		} else {
+			const cell = caretCell < 0 ? columns - 1 : Math.min(caretCell, columns - 1);
+			current = positions.findIndex(
+				(position) => position.row === range.start.line && position.cell === cell
+			);
+		}
+
+		let target = positions[Math.max(0, current + direction)];
+		if (!target) {
+			lines.splice(span.end, 0, newLine(emptyMarkdownTableRow(columns)));
+			formatTable({ start: span.start, end: span.end + 1 });
+			target = { row: span.end, cell: 0 };
+		}
+		syncBody();
+		tablesNeedFormat = false;
+		selectTableCell(target.row, target.cell);
+		return true;
+	}
+
+	/**
+	 * Enter inside a table adds a row below and moves to its first cell; Enter on an
+	 * empty last row leaves the table. Enter at the end of a lone `| a | b |` header
+	 * creates the delimiter row and a first body row.
+	 */
+	function handleTableEnter(range: EditorRange): boolean {
+		if (!range.collapsed) return false;
+		const index = range.start.line;
+		const line = lines[index];
+		if (!line || line.isCheck || line.isBullet || markdownBlockAt(index)?.type === 'code') {
+			return false;
+		}
+		const span = tableSpanAt(index);
+
+		if (!span) {
+			if (range.start.offset !== line.text.length || !isMarkdownTableHeaderRow(line.text)) {
+				return false;
+			}
+			const columns = markdownTableCells(line.text).length;
+			const delimiter = newLine(markdownTableDelimiterRow(columns));
+			const row = newLine(emptyMarkdownTableRow(columns));
+			lines.splice(index + 1, 0, delimiter, row);
+			formatTable({ start: index, end: index + 3 });
+			syncBody();
+			tablesNeedFormat = false;
+			caretTableId = line.id;
+			selectTableCell(index + 2, 0);
+			return true;
+		}
+
+		const columns = markdownTableCells(lines[span.start].text).length;
+		const isLastBodyRow = index === span.end - 1 && index >= span.start + 2;
+		if (isLastBodyRow && markdownTableCells(line.text).every((cell) => cell.trim() === '')) {
+			const exit = newLine();
+			lines.splice(index, 1, exit);
+			formatTable({ start: span.start, end: index });
+			syncBody();
+			tablesNeedFormat = false;
+			caretTableId = null;
+			focusAt(index, 0, exit.id);
+			return true;
+		}
+
+		const insertAt = Math.max(index + 1, span.start + 2);
+		lines.splice(insertAt, 0, newLine(emptyMarkdownTableRow(columns)));
+		formatTable({ start: span.start, end: span.end + 1 });
+		syncBody();
+		tablesNeedFormat = false;
+		selectTableCell(insertAt, 0);
+		return true;
+	}
+
+	/** Mod+Enter anywhere in a table starts a paragraph right below it. */
+	function exitTable(range: EditorRange): boolean {
+		const span = tableSpanAt(range.start.line);
+		if (!span) return false;
+		const line = newLine();
+		lines.splice(span.end, 0, line);
+		syncBody();
+		focusAt(span.end, 0, line.id);
+		return true;
+	}
+
+	/**
+	 * ArrowUp / ArrowDown open a paragraph when a table touches the note's edge.
+	 * In a rendered table they also keep the column and skip the hidden delimiter row.
+	 */
+	function moveTableRow(range: EditorRange, direction: 1 | -1): boolean {
+		if (!range.collapsed) return false;
+		const index = range.start.line;
+		const span = tableSpanAt(index);
+		if (!span) return false;
+		const atEdge = direction < 0 ? index === 0 : index === lines.length - 1;
+		const cells = markdownTableCellRanges(lines[index].text);
+		const found = cells.findIndex((cell) => range.start.offset <= cell.end);
+		const cellIndex = found < 0 ? cells.length - 1 : found;
+		const column = Math.max(0, range.start.offset - (cells[cellIndex]?.start ?? 0));
+		let target = index + direction;
+		if (target === span.start + 1) target += direction;
+
+		if (target >= span.start && target < span.end) {
+			const targetCells = markdownTableCellRanges(lines[target].text);
+			const cell = targetCells[Math.min(cellIndex, targetCells.length - 1)];
+			selectAt(target, cell ? Math.min(cell.start + column, cell.end) : 0);
+			return true;
+		}
+		if (target < 0 || target >= lines.length) {
+			rememberEdit(range);
+			const line = newLine();
+			const insertAt = target < 0 ? 0 : lines.length;
+			lines.splice(insertAt, 0, line);
+			syncBody();
+			focusAt(insertAt, 0, line.id);
+			return true;
+		}
+		focusTask(target);
+		focusAt(target, direction < 0 ? lines[target].text.length : 0, lines[target].id);
+		return true;
+	}
+
+	function handleSelectionChange() {
+		if (document.activeElement === container) formatSettledTables();
 	}
 
 	let lastSerializedBody = body;
 	let syncBodyTimer: ReturnType<typeof setTimeout> | null = null;
 	function syncBody(immediate = false) {
+		tablesNeedFormat = true;
 		if (immediate) {
 			if (syncBodyTimer) {
 				clearTimeout(syncBodyTimer);
@@ -195,7 +485,12 @@
 		}
 
 		const row = closestLineElement(node);
-		if (!row || !container.contains(row)) return null;
+		if (!row || !container.contains(row)) {
+			if (node instanceof Element && container.contains(node)) {
+				return pointBetweenRows(node, offset);
+			}
+			return null;
+		}
 		const line = lineIndexOfElement(row);
 		if (line === null || !lines[line]) return null;
 		const text = row.querySelector('[data-line-text]') as HTMLElement | null;
@@ -212,7 +507,7 @@
 				const range = document.createRange();
 				range.selectNodeContents(text);
 				range.setEnd(node, offset);
-				local = Math.min(lines[line].text.length, range.toString().length);
+				local = range.toString().length;
 			} else if (row.contains(node)) {
 				const position = text.compareDocumentPosition(node);
 				local = position & Node.DOCUMENT_POSITION_FOLLOWING ? lines[line].text.length : 0;
@@ -312,15 +607,6 @@
 		};
 	}
 
-	let lastTypingTime = 0;
-	function recordTypingEdit(range = editorRange()) {
-		const now = Date.now();
-		if (now - lastTypingTime > 1200) {
-			rememberEdit(range);
-		}
-		lastTypingTime = now;
-	}
-
 	function rememberEdit(range = editorRange()) {
 		const entry = historyEntry(range);
 		if (undoStack.at(-1)?.body !== entry.body) undoStack.push(entry);
@@ -345,28 +631,84 @@
 		}
 	}
 
+	/** Pop the newest entry that differs from the current body; no-op edits leave duplicates. */
+	function popChanged(stack: HistoryEntry[], current: string): HistoryEntry | undefined {
+		let entry = stack.pop();
+		while (entry && entry.body === current) entry = stack.pop();
+		return entry;
+	}
+
 	function undo() {
-		const entry = undoStack.pop();
+		lastTyping = null;
+		const current = historyEntry();
+		const entry = popChanged(undoStack, current.body);
 		if (!entry) return;
-		redoStack.push(historyEntry());
+		redoStack.push(current);
 		void restoreHistory(entry);
 	}
 
 	function redo() {
-		const entry = redoStack.pop();
+		lastTyping = null;
+		const current = historyEntry();
+		const entry = popChanged(redoStack, current.body);
 		if (!entry) return;
-		undoStack.push(historyEntry());
+		undoStack.push(current);
 		void restoreHistory(entry);
 	}
 
-	function caretNode(index: number, offset: number): { node: Node; offset: number } | null {
+	type DomPoint = { node: Node; offset: number };
+
+	/**
+	 * Resolve a source offset to a DOM position inside `root`. Hidden Markdown
+	 * markers cannot hold a caret, so offsets touching them land on the nearest
+	 * visible text instead.
+	 */
+	function caretWithin(root: Node, caret: number): DomPoint | null {
+		const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+		let consumed = 0;
+		let lastVisible: { node: Node; end: number } | null = null;
+		for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+			const length = node.textContent?.length ?? 0;
+			const hidden = node.parentElement?.closest('.markdown-token-marker-hidden');
+			if (hidden && root.contains(hidden)) {
+				if (caret < consumed + length) {
+					if (lastVisible?.end === caret) {
+						return { node: lastVisible.node, offset: lastVisible.node.textContent?.length ?? 0 };
+					}
+					const parent = hidden.parentNode;
+					if (!parent) return null;
+					const index = Array.prototype.indexOf.call(parent.childNodes, hidden);
+					return { node: parent, offset: index + (caret > consumed ? 1 : 0) };
+				}
+				consumed += length;
+				continue;
+			}
+			if (length > 0 && caret <= consumed + length) return { node, offset: caret - consumed };
+			consumed += length;
+			if (length > 0) lastVisible = { node, end: consumed };
+		}
+		if (lastVisible?.end === caret) {
+			return { node: lastVisible.node, offset: lastVisible.node.textContent?.length ?? 0 };
+		}
+		return null;
+	}
+
+	function caretNode(index: number, offset: number): DomPoint | null {
 		const resolved = Math.max(0, Math.min(index, lines.length - 1));
 		const text = textElement(resolved);
 		if (!text) return null;
-		const caret = Math.max(0, Math.min(offset, lines[resolved].text.length));
-		const textNode = text.firstChild;
-		if (textNode?.nodeType === Node.TEXT_NODE) return { node: textNode, offset: caret };
-		return { node: text, offset: 0 };
+		const source = lines[resolved].text;
+		const caret = Math.max(0, Math.min(offset, source.length));
+		if (text.querySelector('[data-markdown-table-cell]')) {
+			// Keep the caret inside a cell, even an empty one, rather than beside its pipes.
+			const cells = markdownTableCellRanges(source);
+			const cellIndex = cells.findIndex((cell) => caret >= cell.start && caret <= cell.end);
+			const cell = text.querySelector(`[data-markdown-table-cell="${cellIndex}"]`);
+			if (cell) {
+				return caretWithin(cell, caret - cells[cellIndex].start) ?? { node: cell, offset: 0 };
+			}
+		}
+		return caretWithin(text, caret) ?? { node: text, offset: text.childNodes.length };
 	}
 
 	function selectAt(
@@ -440,28 +782,7 @@
 		onExitTaskFocus?.();
 	}
 
-	// WebKit settles whether a content-visibility chunk is on screen in the first
-	// frame that paints it. A chunk focused before then is recorded as offscreen
-	// and stops painting when focus leaves, though it is still in view. Opening a
-	// new note focuses the body on mount, so that focus waits for the first paint.
-	let painted = false;
-	let resolvePainted = () => {};
-	const firstPaint = new Promise<void>((resolve) => (resolvePainted = resolve));
-	onMount(() => {
-		let frame = requestAnimationFrame(() => {
-			frame = requestAnimationFrame(() => {
-				painted = true;
-				resolvePainted();
-			});
-		});
-		return () => cancelAnimationFrame(frame);
-	});
-
 	export function focusDefault() {
-		if (!painted) {
-			void firstPaint.then(focusDefault);
-			return;
-		}
 		const index = focusLine === null ? 0 : Math.max(0, Math.min(focusLine, lines.length - 1));
 		void focusAfterRender(index, lines[index]?.text.length ?? 0, lines[index]?.id ?? null);
 	}
@@ -534,104 +855,99 @@
 		handFocus(event, true);
 	}
 
-	function syncLineFromDom(index: number): boolean {
+	/**
+	 * Promote a row typed as `[ ] ` or `- ` into a task or bullet. Returns how many
+	 * characters of prefix were consumed so the caret can follow.
+	 */
+	function applyLinePrefix(index: number): number {
 		const line = lines[index];
-		if (!line) return false;
-		const rawText = textElement(index)?.textContent ?? '';
-		const text = rawText.replaceAll('\u00a0', ' ');
-		if (line.text === text) return false;
-
-		line.text = text;
-		if (!line.isCheck && CHECK_RE.test(line.text)) {
-			const parsed = parseCheckLine(line.text);
-			if (parsed) {
-				line.isCheck = true;
-				line.isBullet = false;
-				line.checked = parsed.checked;
-				line.indent = Math.min(MAX_TASK_INDENT, parsed.indent);
-				line.text = parsed.text;
-				ignoredFocusLine = null;
-				onFocusTask?.(index);
-				flushSync();
-				focusAt(index, line.text.length, line.id);
-				syncBody();
-				return true;
-			}
+		// Code and table rows keep their text verbatim.
+		if (!line || line.isCheck || markdownBlockAt(index)) return 0;
+		const check = CHECK_RE.test(line.text) ? parseCheckLine(line.text) : null;
+		if (check) {
+			const consumed = line.text.length - check.text.length;
+			line.isCheck = true;
+			line.isBullet = false;
+			line.checked = check.checked;
+			line.indent = Math.min(MAX_TASK_INDENT, check.indent);
+			line.text = check.text;
+			ignoredFocusLine = null;
+			onFocusTask?.(index);
+			return consumed;
 		}
-		if (!line.isCheck && !line.isBullet && BULLET_RE.test(line.text)) {
-			const parsed = parseBulletLine(line.text);
-			if (parsed) {
-				line.isBullet = true;
-				line.indent = Math.min(MAX_LIST_INDENT, parsed.indent);
-				line.text = parsed.text;
-				flushSync();
-				focusAt(index, line.text.length, line.id);
-				syncBody();
-				return true;
-			}
-		}
-		if (line.id === draftTaskId && line.text.trim()) draftTaskId = null;
-		syncBody();
-		return true;
+		if (line.isBullet || !BULLET_RE.test(line.text)) return 0;
+		const bullet = parseBulletLine(line.text);
+		if (!bullet) return 0;
+		const consumed = line.text.length - bullet.text.length;
+		line.isBullet = true;
+		line.indent = Math.min(MAX_LIST_INDENT, bullet.indent);
+		line.text = bullet.text;
+		return consumed;
 	}
 
-	function readDomIntoLines() {
+	/**
+	 * Adopt text the browser wrote into the DOM itself (IME composition, or an
+	 * input we could not intercept). Changed rows are rebuilt from the model so
+	 * browser-made nodes never linger next to Svelte-owned ones.
+	 */
+	function reconcileDom(caretLine: number | null, caretOffset: number) {
 		if (!container) return;
 		let changed = false;
+		let caret = caretOffset;
 		for (let index = 0; index < lines.length; index++) {
-			const text = (textElement(index)?.textContent ?? '').replaceAll('\u00a0', ' ');
-			if (lines[index].text !== text) {
-				lines[index].text = text;
-				changed = true;
-			}
-			if (!lines[index].isCheck && CHECK_RE.test(lines[index].text)) {
-				const parsed = parseCheckLine(lines[index].text);
-				if (parsed) {
-					lines[index].isCheck = true;
-					lines[index].isBullet = false;
-					lines[index].checked = parsed.checked;
-					lines[index].indent = Math.min(MAX_TASK_INDENT, parsed.indent);
-					lines[index].text = parsed.text;
-					ignoredFocusLine = null;
-					onFocusTask?.(index);
-					flushSync();
-					focusAt(index, lines[index].text.length, lines[index].id);
-					changed = true;
-				}
-			}
-			if (!lines[index].isCheck && !lines[index].isBullet && BULLET_RE.test(lines[index].text)) {
-				const parsed = parseBulletLine(lines[index].text);
-				if (parsed) {
-					lines[index].isBullet = true;
-					lines[index].indent = Math.min(MAX_LIST_INDENT, parsed.indent);
-					lines[index].text = parsed.text;
-					flushSync();
-					focusAt(index, lines[index].text.length, lines[index].id);
-					changed = true;
-				}
-			}
-			if (lines[index].id === draftTaskId && lines[index].text.trim()) draftTaskId = null;
+			const element = textElement(index);
+			if (!element) continue;
+			const text = (element.textContent ?? '').replaceAll('\u00a0', ' ');
+			const line = lines[index];
+			if (text === line.text) continue;
+			changed = true;
+			if (index === caretLine) caret += text.length - line.text.length;
+			line.text = text;
+			line.rev++;
+			const consumed = applyLinePrefix(index);
+			if (index === caretLine) caret -= consumed;
+			if (line.id === draftTaskId && line.text.trim()) draftTaskId = null;
 		}
-		if (changed) syncBody();
+		if (!changed) return;
+		syncBody();
+		if (caretLine === null) return;
+		const line = Math.min(caretLine, lines.length - 1);
+		focusAt(line, Math.max(0, Math.min(caret, lines[line]?.text.length ?? 0)), lines[line]?.id);
 	}
 
-	/** Sync the line holding the caret; fall back to a full read if it is unknown. */
-	function syncEditedLine(index = lineIndexOfElement(window.getSelection()?.focusNode ?? null)) {
-		if (index === null) readDomIntoLines();
-		else syncLineFromDom(index);
-	}
-
-	let replacementLine: number | null = null;
 	function handleInput(rawEvent: Event) {
-		if (applyingEdit) return;
-		const event = rawEvent as InputEvent;
-		if (composing || event.isComposing) return;
-		syncEditedLine(event.inputType === 'insertReplacementText' ? replacementLine : undefined);
-		replacementLine = null;
+		if (applyingEdit || composing || (rawEvent as InputEvent).isComposing) return;
+		const range = editorRange();
+		reconcileDom(range?.start.line ?? null, range?.start.offset ?? 0);
+	}
+
+	function handleCompositionStart() {
+		rememberEdit();
+		lastTyping = null;
+		compositionStart = editorRange();
+		composing = true;
+	}
+
+	function handleCompositionEnd() {
+		composing = false;
+		const start = compositionStart;
+		compositionStart = null;
+		reconcileDom(start?.start.line ?? null, start?.start.offset ?? 0);
 	}
 
 	function replaceSelectedRange(range: EditorRange, replacement = ''): EditorPoint {
 		const { start, end } = range;
+		if (replacement.length === 0 && start.line !== end.line) {
+			const span = tableSpanAt(start.line);
+			if (
+				span &&
+				tableSpanAt(end.line)?.start === span.start &&
+				start.line <= span.start &&
+				end.line >= span.end - 1
+			) {
+				return removeTable(span);
+			}
+		}
 		if (start.line === end.line) {
 			const line = lines[start.line];
 			const removesWholeRow =
@@ -674,60 +990,237 @@
 		};
 	}
 
-	function handleBeforeInput(rawEvent: Event) {
-		if (applyingEdit) {
-			rawEvent.preventDefault();
+	const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+
+	function graphemeBefore(text: string, offset: number): number {
+		let previous = 0;
+		for (const { index } of graphemes.segment(text)) {
+			if (index >= offset) break;
+			previous = index;
+		}
+		return previous;
+	}
+
+	function graphemeAfter(text: string, offset: number): number {
+		for (const { index, segment } of graphemes.segment(text)) {
+			if (index + segment.length > offset) return index + segment.length;
+		}
+		return text.length;
+	}
+
+	const WORD_BEFORE_RE = /(?:[\p{L}\p{N}_]+|[^\p{L}\p{N}_\s]+)?\s*$/u;
+	const WORD_AFTER_RE = /^\s*(?:[\p{L}\p{N}_]+|[^\p{L}\p{N}_\s]+)?/u;
+
+	type DeleteUnit = 'character' | 'word' | 'line';
+
+	/** A rendered table cell that holds `offset`, when pipes must be protected. */
+	function protectedCellAt(index: number, offset: number) {
+		const span = tableSpanAt(index);
+		if (!span || index === span.start + 1) return null;
+		const cells = markdownTableCellRanges(lines[index].text);
+		const cellIndex = cells.findIndex((cell) => offset >= cell.start && offset <= cell.end);
+		return cellIndex < 0 ? null : { span, cells, cellIndex, cell: cells[cellIndex] };
+	}
+
+	function finishEdit(caret: EditorPoint) {
+		const targetRoot = parentTaskIndex(caret.line);
+		if (lines[targetRoot]?.id !== focusedRootId) focusTask(caret.line);
+		focusAt(caret.line, caret.offset, lines[caret.line]?.id ?? null);
+	}
+
+	function insertText(range: EditorRange, rawText: string) {
+		let text = rawText.replace(/\r\n?/g, '\n');
+		const line = lines[range.start.line];
+		if (!text || !line) return;
+		// `[ ]` and `- ` become a task or bullet as soon as they match; swallow the space typed next.
+		if (text === ' ' && range.collapsed && (line.isCheck || line.isBullet) && !line.text) return;
+		if (line.id === draftTaskId && text.trim()) draftTaskId = null;
+		if (!text.includes('\n') && protectedCellAt(range.start.line, range.start.offset)) {
+			// A pipe typed into a rendered cell is cell content, not a new column.
+			text = text.replace(/(?<!\\)\|/g, '\\|');
+		}
+		const caret = replaceRangeWithText(range, text);
+		const consumed = applyLinePrefix(caret.line);
+		if (consumed > 0) syncBody();
+		finishEdit({ ...caret, offset: Math.max(0, caret.offset - consumed) });
+	}
+
+	function deleteBackward(range: EditorRange, unit: DeleteUnit) {
+		const index = range.start.line;
+		const offset = range.start.offset;
+		const line = lines[index];
+		const tableSpan = tableSpanAt(index);
+		if (tableSpan) {
+			const cells = markdownTableCellRanges(line.text);
+			if (offset === 0 || (cells[0] && offset <= cells[0].start)) {
+				deleteEmptyTableRow(index, tableSpan, cells);
+				return;
+			}
+		}
+		if (offset === 0) {
+			handleBackspace(range);
 			return;
 		}
-		const event = rawEvent as InputEvent;
-		const range = editorRange();
-		if (!range) return;
-		if (event.inputType === 'insertReplacementText') {
-			// Autocorrect and spelling replacements rewrite one word, often while the
-			// caret is being moved by a tap elsewhere. Let the browser apply them so
-			// that tap keeps its caret; handleInput syncs the replaced line.
-			const target = event.getTargetRanges()[0];
-			replacementLine = lineIndexOfElement(target?.startContainer ?? null) ?? range.start.line;
-			rememberEdit(range);
+		let start =
+			unit === 'character'
+				? graphemeBefore(line.text, offset)
+				: unit === 'word'
+					? offset - (line.text.slice(0, offset).match(WORD_BEFORE_RE)?.[0].length ?? 0)
+					: 0;
+		const cell = protectedCellAt(index, offset);
+		if (cell) {
+			if (offset === cell.cell.start) {
+				deleteEmptyTableRow(index, cell.span, cell.cells);
+				return;
+			}
+			start = Math.max(start, cell.cell.start);
+		}
+		if (start === offset) return;
+		// Remove characters, never the whole row: the caret stays on this line.
+		line.text = line.text.slice(0, start) + line.text.slice(offset);
+		syncBody();
+		finishEdit({ line: index, offset: start });
+	}
+
+	function deleteForward(range: EditorRange, unit: DeleteUnit) {
+		const index = range.start.line;
+		const offset = range.start.offset;
+		const line = lines[index];
+		let end =
+			unit === 'character'
+				? graphemeAfter(line.text, offset)
+				: unit === 'word'
+					? offset + (line.text.slice(offset).match(WORD_AFTER_RE)?.[0].length ?? 0)
+					: line.text.length;
+		const cell = protectedCellAt(index, offset);
+		if (cell) end = Math.min(end, cell.cell.end);
+		if (offset === line.text.length) {
+			const next = lines[index + 1];
+			if (!next || cell) return;
+			line.text += next.text;
+			lines.splice(index + 1, 1);
+			if (next.id === draftTaskId) draftTaskId = null;
+			syncBody();
+			finishEdit(range.start);
 			return;
 		}
-		if (event.inputType === 'insertParagraph' || event.inputType === 'insertLineBreak') {
-			// handled below
-		} else if (
-			(event.inputType === 'insertText' ||
-				event.inputType === 'insertCompositionText' ||
-				event.inputType === 'deleteContentBackward' ||
-				event.inputType === 'deleteContentForward') &&
-			range.collapsed
-		) {
-			recordTypingEdit(range);
-		} else if (event.inputType.startsWith('insert') || event.inputType.startsWith('delete')) {
-			rememberEdit(range);
+		if (end === offset) return;
+		line.text = line.text.slice(0, offset) + line.text.slice(end);
+		syncBody();
+		finishEdit(range.start);
+	}
+
+	/** Backspace at the start of a rendered row removes the row, or the table when nothing remains. */
+	function deleteEmptyTableRow(
+		index: number,
+		span: TableSpan,
+		cells: { start: number; end: number }[]
+	) {
+		const isBodyRow = index >= span.start + 2;
+		const lastBodyRow = isBodyRow && index === span.end - 1;
+		if (index === span.start) {
+			finishEdit(removeTable(span));
+			return;
 		}
-		if (range.collapsed) {
-			if (event.inputType === 'insertParagraph' || event.inputType === 'insertLineBreak') {
-				event.preventDefault();
-				rememberEdit(range);
-				handleEnter(range);
+		if (!isBodyRow || cells.some((cell) => cell.end > cell.start)) {
+			if (index > span.start) {
+				const previous = index === span.start + 2 ? span.start : index - 1;
+				const previousCells = markdownTableCellRanges(lines[previous].text);
+				selectAt(previous, previousCells.at(-1)?.end ?? lines[previous].text.length);
 			}
 			return;
 		}
-		if (event.inputType.startsWith('delete')) {
-			event.preventDefault();
-			const caret = replaceSelectedRange(range);
-			const targetRoot = parentTaskIndex(caret.line);
-			if (lines[targetRoot]?.id !== focusedRootId) focusTask(caret.line);
-			focusAt(caret.line, caret.offset, lines[caret.line]?.id ?? null);
+		if (lastBodyRow && span.end - span.start <= 3) {
+			finishEdit(removeTable(span));
 			return;
 		}
-		if (event.inputType.startsWith('insert')) {
+		lines.splice(index, 1);
+		syncBody();
+		const previous = index - 1 === span.start + 1 ? span.start : index - 1;
+		const previousCells = markdownTableCellRanges(lines[previous].text);
+		focusAt(previous, previousCells.at(-1)?.end ?? 0, lines[previous].id);
+	}
+
+	/** The range an input targets: spellcheck replacements name their own word. */
+	function inputTargetRange(event: InputEvent): EditorRange | null {
+		const target = event.getTargetRanges?.()[0];
+		if (!target || event.inputType !== 'insertReplacementText') return editorRange();
+		const start = pointFromDom(target.startContainer, target.startOffset);
+		const end = pointFromDom(target.endContainer, target.endOffset);
+		if (!start || !end) return editorRange();
+		return {
+			start,
+			end,
+			collapsed: start.line === end.line && start.offset === end.offset
+		};
+	}
+
+	/** Browser-owned composition steps; the DOM is reconciled when composition ends. */
+	const NATIVE_INPUT_TYPES = new Set([
+		'insertCompositionText',
+		'deleteCompositionText',
+		'insertFromComposition',
+		// iOS autocorrect rewrites a word natively, often while a tap moves the caret.
+		'insertReplacementText'
+	]);
+
+	/**
+	 * Every edit is applied to the line model and re-rendered, so the browser
+	 * never mutates the Markdown DOM that Svelte owns.
+	 */
+	function handleBeforeInput(rawEvent: Event) {
+		const event = rawEvent as InputEvent;
+		if (applyingEdit) {
 			event.preventDefault();
-			const text = event.data ?? event.dataTransfer?.getData('text/plain') ?? '';
-			const caret = replaceRangeWithText(range, text);
-			const targetRoot = parentTaskIndex(caret.line);
-			if (lines[targetRoot]?.id !== focusedRootId) focusTask(caret.line);
-			focusAt(caret.line, caret.offset, lines[caret.line]?.id ?? null);
+			return;
 		}
+		if (composing || event.isComposing || NATIVE_INPUT_TYPES.has(event.inputType)) {
+			if (event.inputType === 'insertReplacementText') rememberEdit();
+			return;
+		}
+		event.preventDefault();
+		const type = event.inputType;
+		if (type === 'historyUndo') return undo();
+		if (type === 'historyRedo') return redo();
+		const range = inputTargetRange(event);
+		if (!range) return;
+
+		const kind =
+			type === 'insertText' ? 'insert' : type === 'deleteContentBackward' ? 'delete' : null;
+		if (kind && range.collapsed) {
+			const now = Date.now();
+			const continues =
+				lastTyping?.kind === kind &&
+				lastTyping.line === range.start.line &&
+				now - lastTyping.at < 1000 &&
+				!/\s/.test(event.data ?? '');
+			if (!continues) rememberEdit(range);
+			lastTyping = { kind, line: range.start.line, at: now };
+		} else {
+			lastTyping = null;
+			rememberEdit(range);
+		}
+
+		if (type === 'insertParagraph' || type === 'insertLineBreak') {
+			if (!handleTableEnter(range)) handleEnter(range);
+			return;
+		}
+		if (type.startsWith('insert')) {
+			insertText(range, event.data ?? event.dataTransfer?.getData('text/plain') ?? '');
+			return;
+		}
+		if (!type.startsWith('delete')) return;
+		if (!range.collapsed) {
+			finishEdit(replaceSelectedRange(range));
+			return;
+		}
+		const unit: DeleteUnit = type.includes('Word')
+			? 'word'
+			: type.includes('Line')
+				? 'line'
+				: 'character';
+		if (type.endsWith('Forward')) deleteForward(range, unit);
+		else deleteBackward(range, unit);
 	}
 
 	function selectedText(range: EditorRange): string {
@@ -832,17 +1325,18 @@
 			const check = parseCheckLine(parts[index]);
 			const bullet = !check ? parseBulletLine(parts[index]) : null;
 			const trailing = index === parts.length - 1 ? suffix : '';
+			const parsedText = check ? check.text : bullet ? bullet.text : parts[index];
 			inserted.push(
 				check
 					? newLine(
-							check.text + trailing,
+							parsedText + trailing,
 							true,
 							check.checked,
 							Math.min(MAX_TASK_INDENT, check.indent)
 						)
 					: bullet
 						? newLine(
-								bullet.text + trailing,
+								parsedText + trailing,
 								false,
 								false,
 								Math.min(MAX_LIST_INDENT, bullet.indent),
@@ -856,9 +1350,10 @@
 		if (draftTaskId !== null && removedIds.has(draftTaskId)) draftTaskId = null;
 		syncBody();
 		const line = range.start.line + inserted.length - 1;
+		const offset = inserted.at(-1)!.text.length - suffix.length;
 		return {
 			line,
-			offset: parts.at(-1)?.length ?? 0
+			offset
 		};
 	}
 
@@ -1141,6 +1636,7 @@
 
 	function handleKeydown(event: KeyboardEvent) {
 		const primaryModifier = event.ctrlKey || event.metaKey;
+		if (composing || event.isComposing) return;
 		if (primaryModifier && !event.altKey && event.key.toLowerCase() === 'z') {
 			event.preventDefault();
 			if (event.shiftKey) redo();
@@ -1158,14 +1654,42 @@
 			const range = editorRange();
 			if (!range) return;
 			rememberEdit(range);
+			lastTyping = null;
+			if (moveTableCell(range, event.shiftKey ? -1 : 1)) return;
 			indentRange(range, event.shiftKey || event.ctrlKey ? -1 : 1);
 			return;
 		}
 		const range = editorRange();
 		if (!range) return;
+		if ((event.key === 'Home' || event.key === 'End') && !event.altKey && !primaryModifier) {
+			event.preventDefault();
+			const cells = tableSpanAt(range.start.line)
+				? markdownTableCellRanges(lines[range.start.line].text)
+				: [];
+			const offset =
+				event.key === 'Home'
+					? (cells[0]?.start ?? 0)
+					: (cells.at(-1)?.end ?? lines[range.start.line]?.text.length ?? 0);
+			if (event.shiftKey) selectAt(range.start.line, range.start.offset, range.start.line, offset);
+			else selectAt(range.start.line, offset);
+			return;
+		}
+		if (
+			(event.key === 'ArrowUp' || event.key === 'ArrowDown') &&
+			!event.altKey &&
+			!event.shiftKey &&
+			!primaryModifier &&
+			moveTableRow(range, event.key === 'ArrowUp' ? -1 : 1)
+		) {
+			event.preventDefault();
+			return;
+		}
 		if (event.key === 'Enter' || event.key === 'NumpadEnter') {
 			event.preventDefault();
 			rememberEdit(range);
+			lastTyping = null;
+			if (primaryModifier && exitTable(range)) return;
+			if (handleTableEnter(range)) return;
 			handleEnter(range);
 			return;
 		}
@@ -1246,6 +1770,7 @@
 		discardEmptyDraft();
 		syncBody(true);
 		if (event.relatedTarget instanceof Node && container?.contains(event.relatedTarget)) return;
+		formatSettledTables(false);
 		dropTaskFocus();
 	}
 
@@ -1266,13 +1791,42 @@
 
 	const isSingleLine = $derived(lines.length === 1);
 
-	// Reads only the array structure, so typing inside a line never re-chunks.
-	const chunks = $derived.by(() => {
-		const result: { start: number; lines: Line[] }[] = [];
-		for (let start = 0; start < lines.length; start += CHUNK_SIZE) {
-			result.push({ start, lines: lines.slice(start, start + CHUNK_SIZE) });
+	type EditorItem =
+		| { kind: 'chunk'; key: string; start: number; lines: Line[] }
+		| { kind: 'block'; key: string; block: EditorMarkdownBlock };
+
+	// Plain rows stay in offscreen-skipping chunks. Tables and code sit outside
+	// those chunks so iOS WebKit does not crash on overflow + content-visibility.
+	const editorItems = $derived.by(() => {
+		const items: EditorItem[] = [];
+		let segmentStart: number | null = null;
+		let chunkIndex = 0;
+		const flush = (segmentEnd: number) => {
+			if (segmentStart === null) return;
+			for (let start = segmentStart; start < segmentEnd; start += CHUNK_SIZE) {
+				const chunkLines = lines.slice(start, Math.min(segmentEnd, start + CHUNK_SIZE));
+				items.push({
+					kind: 'chunk',
+					key: `c${chunkIndex++}`,
+					start,
+					lines: chunkLines
+				});
+			}
+			segmentStart = null;
+		};
+		for (let index = 0; index < lines.length; index++) {
+			const block = markdownBlockAt(index);
+			if (block && block.lineIndex === index) {
+				flush(index);
+				items.push({ kind: 'block', key: `b${block.startLineId}`, block });
+				index = block.end - 1;
+				continue;
+			}
+			if (block) continue;
+			if (segmentStart === null) segmentStart = index;
 		}
-		return result;
+		flush(lines.length);
+		return items;
 	});
 
 	const editor = noteBody({ mode: 'editor' });
@@ -1295,6 +1849,174 @@
 	}
 </script>
 
+{#snippet inlineEditorContent(text: string)}
+	{@const tokens = parseInlineMarkdown(text)}
+	{#each tokens as token, tokenIndex (tokenIndex)}
+		{#if token.kind === 'text' && token.styles.length === 0}
+			{token.text}
+		{:else}
+			<span
+				class={markdownTokenClass(token, uiStore.rawMarkdown)}
+				data-markdown-token={token.kind === 'marker' ? token.marker : token.styles.join(' ')}
+				>{token.text}</span
+			>
+		{/if}
+	{/each}
+{/snippet}
+
+{#snippet codeEditorContent(text: string, block: EditorCodeBlock)}
+	{#each highlightCodeLine(text, block.language) as token, tokenIndex (tokenIndex)}
+		{#if token.kind === 'plain'}
+			{token.text}
+		{:else}
+			<span class="markdown-code-token-{token.kind}">{token.text}</span>
+		{/if}
+	{/each}
+{/snippet}
+
+{#snippet tableEditorContent(text: string, block: EditorTableBlock, header: boolean)}
+	{@const tableTokens = tokenizeMarkdownTableRow(text)}
+	{@const lastCellIndex = tableTokens.filter((token) => token.kind === 'cell').length - 1}
+	{#each tableTokens as token, tokenIndex (tokenIndex)}
+		{#if token.kind === 'marker'}
+			<span class="markdown-editor-table-marker markdown-token-marker-hidden">{token.text}</span>
+		{:else}
+			<span
+				class="markdown-editor-table-cell"
+				class:markdown-editor-table-header-cell={header}
+				class:markdown-table-last-cell={token.columnIndex === lastCellIndex}
+				style={`text-align: ${block.alignments[token.columnIndex] ?? 'left'};`}
+				data-markdown-table-cell={token.columnIndex}
+			>
+				{@render inlineEditorContent(token.text)}
+			</span>
+		{/if}
+	{/each}
+{/snippet}
+
+{#snippet editorLine(line: Line, index: number, block: EditorMarkdownBlock | null)}
+	{@const check = checklist({ checked: line.checked, indented: line.indent > 0 })}
+	{@const tableBlock = block?.type === 'table' ? block : null}
+	{@const codeBlock = block?.type === 'code' ? block : null}
+	{@const tableSeparator = tableBlock !== null && index === tableBlock.lineIndex + 1}
+	{@const codeFence = codeBlock !== null && isCodeFenceLine(codeBlock, index)}
+	<div
+		data-editor-line={index}
+		data-line-id={line.id}
+		data-task-row={line.isCheck ? '' : undefined}
+		data-bullet-row={line.isBullet ? '' : undefined}
+		data-focus-group={line.id === focusedRootId ? '' : undefined}
+		data-markdown-table-row={tableBlock ? '' : undefined}
+		data-markdown-table-separator={tableSeparator ? '' : undefined}
+		data-markdown-code-line={codeBlock && !codeFence ? '' : undefined}
+		data-markdown-code-fence={codeFence ? '' : undefined}
+		class={rowClass(line)}
+		style={rowStyle(line)}
+	>
+		{#if line.isCheck}
+			<button
+				type="button"
+				contenteditable="false"
+				data-checklist-toggle
+				class={[check.root, editor.check]}
+				onpointerdown={keepEditorFocus}
+				onclick={(event) => toggleCheck(line.id, event)}
+				aria-label={line.indent > 0 ? 'Toggle sub-task' : 'Toggle item'}
+				aria-pressed={line.checked}
+			>
+				{#if line.checked}
+					<svg viewBox="0 0 16 16" class={check.mark} aria-hidden="true">
+						<path d="M3.5 8.5 6.5 11.5 12.5 4.5" />
+					</svg>
+				{/if}
+			</button>
+		{:else if line.isBullet}
+			<span contenteditable="false" class={editor.bullet} aria-hidden="true">•</span>
+		{/if}
+		{#key line.rev}
+			{#if tableBlock && !tableSeparator}
+				<span
+					data-line-text
+					class={[
+						markdownStyles,
+						'markdown-inline-content',
+						'markdown-editor-table-line',
+						css({ minH: '1lh' }),
+						noteBody({ mode: 'editor', checked: line.checked, indented: line.indent > 0 }).line
+					]}
+				>
+					{@render tableEditorContent(line.text, tableBlock, index === tableBlock.lineIndex)}
+				</span>
+			{:else if codeBlock && !codeFence}
+				<span data-line-text class="markdown-inline-content markdown-editor-code-line">
+					{@render codeEditorContent(line.text, codeBlock)}
+				</span>
+			{:else if !line.text || !/[*_~`#]/.test(line.text)}
+				<span
+					data-line-text
+					data-placeholder={line.text.length === 0
+						? line.isCheck
+							? line.indent > 0
+								? 'Sub-task'
+								: 'Task'
+							: isSingleLine
+								? placeholder
+								: ''
+						: undefined}
+					class={[
+						markdownStyles,
+						'markdown-inline-content',
+						uiStore.rawMarkdown && 'markdown-raw',
+						css({ minH: '1lh' }),
+						noteBody({ mode: 'editor', checked: line.checked, indented: line.indent > 0 }).line
+					]}>{line.text}</span
+				>
+			{:else}
+				{@const inlineTokens = parseInlineMarkdown(line.text)}
+				{#if inlineTokens.length === 1 && inlineTokens[0].kind === 'text' && inlineTokens[0].styles.length === 0}
+					<span
+						data-line-text
+						class={[
+							markdownStyles,
+							'markdown-inline-content',
+							uiStore.rawMarkdown && 'markdown-raw',
+							css({ minH: '1lh' }),
+							noteBody({ mode: 'editor', checked: line.checked, indented: line.indent > 0 }).line
+						]}>{line.text}</span
+					>
+				{:else}
+					<span
+						data-line-text
+						class={[
+							markdownStyles,
+							'markdown-inline-content',
+							css({ minH: '1lh' }),
+							noteBody({ mode: 'editor', checked: line.checked, indented: line.indent > 0 }).line
+						]}
+					>
+						{@render inlineEditorContent(line.text)}
+					</span>
+				{/if}
+			{/if}
+		{/key}
+		{#if line.id === focusedGroupLastId}
+			<button
+				type="button"
+				contenteditable="false"
+				data-add-subtask
+				aria-label="Add sub-task"
+				class={noteBody({ mode: 'editor', indented: line.indent > 0 }).addSubtask}
+				onpointerdown={(event) => activateAddSubtask(event, focusedGroupRows[0]?.index ?? -1)}
+				onclick={(event) => handleAddSubtaskClick(event, focusedGroupRows[0]?.index ?? -1)}
+			>
+				<span aria-hidden="true"></span>
+			</button>
+		{/if}
+	</div>
+{/snippet}
+
+<svelte:document onselectionchange={handleSelectionChange} />
+
 <div
 	bind:this={container}
 	contenteditable="plaintext-only"
@@ -1304,7 +2026,7 @@
 	aria-multiline="true"
 	aria-label="Note body"
 	spellcheck="true"
-	class={editor.container}
+	class={[editor.container, markdownStyles, uiStore.rawMarkdown && 'markdown-raw']}
 	onbeforeinput={handleBeforeInput}
 	oninput={handleInput}
 	oncopy={handleCopy}
@@ -1315,86 +2037,46 @@
 	onpointerup={finishPointer}
 	onpointercancel={cancelPointer}
 	onclick={handleEditorClick}
-	oncompositionstart={() => (composing = true)}
-	oncompositionend={() => {
-		composing = false;
-		syncEditedLine();
-	}}
+	oncompositionstart={handleCompositionStart}
+	oncompositionend={handleCompositionEnd}
 	onblur={handleEditorBlur}
 >
-	{#snippet lineRow(line: Line, index: number)}
-		{@const check = checklist({ checked: line.checked, indented: line.indent > 0 })}
-		<div
-			data-editor-line={index}
-			data-line-id={line.id}
-			data-task-row={line.isCheck ? '' : undefined}
-			data-bullet-row={line.isBullet ? '' : undefined}
-			data-focus-group={line.id === focusedRootId ? '' : undefined}
-			class={rowClass(line)}
-			style={rowStyle(line)}
-		>
-			{#if line.isCheck}
-				<button
-					type="button"
-					contenteditable="false"
-					data-checklist-toggle
-					class={[check.root, editor.check]}
-					onpointerdown={keepEditorFocus}
-					onclick={(event) => toggleCheck(line.id, event)}
-					aria-label={line.indent > 0 ? 'Toggle sub-task' : 'Toggle item'}
-					aria-pressed={line.checked}
+	{#each editorItems as item (item.key)}
+		{#if item.kind === 'chunk'}
+			<div data-editor-chunk class={editor.chunk}>
+				{#each item.lines as line, offset (line.id)}
+					{@render editorLine(line, item.start + offset, null)}
+				{/each}
+			</div>
+		{:else}
+			{@const block = item.block}
+			<div
+				class="markdown-block-shell"
+				data-markdown-editor-table={block.type === 'table' ? '' : undefined}
+				data-markdown-editor-code-block={block.type === 'code' ? '' : undefined}
+			>
+				<MarkdownCopyButton
+					text={() => markdownBlockCopyText(block)}
+					label={block.type === 'table' ? 'table' : 'code'}
+				/>
+				<div
+					class="markdown-block-scroll note-scrollbar-hidden"
+					class:markdown-editor-table-scroll={block.type === 'table'}
+					class:markdown-editor-code-block={block.type === 'code'}
 				>
-					{#if line.checked}
-						<svg viewBox="0 0 16 16" class={check.mark} aria-hidden="true">
-							<path d="M3.5 8.5 6.5 11.5 12.5 4.5" />
-						</svg>
+					{#if block.type === 'table'}
+						<div class="markdown-editor-table">
+							{#each lines.slice(block.lineIndex, block.end) as blockLine, blockLineOffset (blockLine.id)}
+								{@render editorLine(blockLine, block.lineIndex + blockLineOffset, block)}
+							{/each}
+						</div>
+					{:else}
+						{#each lines.slice(block.lineIndex, block.end) as blockLine, blockLineOffset (blockLine.id)}
+							{@render editorLine(blockLine, block.lineIndex + blockLineOffset, block)}
+						{/each}
 					{/if}
-				</button>
-			{:else if line.isBullet}
-				<span contenteditable="false" class={editor.bullet} aria-hidden="true">•</span>
-			{/if}
-			<span
-				data-line-text
-				use:syncEditableText={line.text}
-				data-placeholder={line.text.length === 0
-					? line.isCheck
-						? line.indent > 0
-							? 'Sub-task'
-							: 'Task'
-						: isSingleLine
-							? placeholder
-							: ''
-					: undefined}
-				class={[
-					css({ minH: '1lh' }),
-					noteBody({ mode: 'editor', checked: line.checked, indented: line.indent > 0 }).line
-				]}
-			></span>
-			{#if line.id === focusedGroupLastId}
-				<button
-					type="button"
-					contenteditable="false"
-					data-add-subtask
-					aria-label="Add sub-task"
-					class={noteBody({ mode: 'editor', indented: line.indent > 0 }).addSubtask}
-					onpointerdown={(event) => activateAddSubtask(event, focusedGroupRows[0]?.index ?? -1)}
-					onclick={(event) => handleAddSubtaskClick(event, focusedGroupRows[0]?.index ?? -1)}
-				>
-					<span aria-hidden="true"></span>
-				</button>
-			{/if}
-		</div>
-	{/snippet}
-
-	{#each chunks as chunk (chunk.start)}
-		<div
-			data-editor-chunk
-			class={editor.chunk}
-			style="contain-intrinsic-block-size:auto {chunk.lines.length * 2}rem"
-		>
-			{#each chunk.lines as line, offset (line.id)}
-				{@render lineRow(line, chunk.start + offset)}
-			{/each}
-		</div>
+				</div>
+			</div>
+		{/if}
 	{/each}
 </div>

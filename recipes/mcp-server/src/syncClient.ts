@@ -52,9 +52,11 @@ export class ScrapscacheSyncClient {
 
 		this.authPromise = (async () => {
 			try {
-				const challengeUrl = `${this.baseUrl}/api/sync/auth/challenge?accountId=${encodeURIComponent(this.accountId)}`;
+				const challengeUrl = `${this.baseUrl}/api/sync/auth/challenge`;
 				const challengeRes = await fetch(challengeUrl, {
-					headers: { Accept: 'application/json' }
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+					body: JSON.stringify({ accountId: this.accountId })
 				});
 				if (!challengeRes.ok) {
 					throw new Error(

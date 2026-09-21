@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { ScrapscacheSyncClient } from '../src/syncClient.js';
-import { bytesToBase64Url, randomBytes } from '../src/crypto.js';
+import { bytesToBase64Url, identityFromSyncKey, randomBytes } from '../src/crypto.js';
 
 describe('ScrapscacheSyncClient', () => {
 	const syncKey = bytesToBase64Url(randomBytes(32));
@@ -22,6 +22,13 @@ describe('ScrapscacheSyncClient', () => {
 
 			if (urlStr.includes('/api/sync/auth/challenge')) {
 				challengeCalled = true;
+				expect(init?.method).toBe('POST');
+				expect((init?.headers as Record<string, string>)?.['Content-Type']).toBe(
+					'application/json'
+				);
+				expect(JSON.parse(String(init?.body || '{}'))).toEqual({
+					accountId: identityFromSyncKey(syncKey).accountId
+				});
 				return new Response(
 					JSON.stringify({ challengeId: 'chal_123', challenge: 'sample_challenge_nonce' }),
 					{ status: 200, headers: { 'Content-Type': 'application/json' } }

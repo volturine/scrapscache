@@ -234,39 +234,44 @@
 
 <div class="app-viewport">
 	<div class={cx('app-shell', styles.shell)}>
-		{#if mobile.current}
-			<Drawer.Root
-				open={uiStore.sidebarOpen}
-				onOpenChange={(details) => {
-					uiStore.sidebarOpen = details.open;
-				}}
-				preventScroll={false}
-				lazyMount
-				unmountOnExit
-			>
-				<Drawer.Backdrop data-sidebar-backdrop aria-label="Close sidebar" class={styles.backdrop} />
-				<Drawer.Positioner class={styles.drawerPositioner}>
-					<Drawer.Content
-						draggable={false}
-						class={styles.drawer}
-						role="navigation"
-						aria-label="Sidebar"
-						data-sidebar-drawer
-					>
-						<Sidebar onNavigate={closeMobileSidebar} />
-					</Drawer.Content>
-				</Drawer.Positioner>
-			</Drawer.Root>
-		{:else}
-			{#if uiStore.sidebarOpen}
-				<div class={styles.sidebar}>
-					<Sidebar />
-				</div>
-			{/if}
-		{/if}
+		<Topbar />
 
-		<div class={styles.column}>
-			<Topbar />
+		<div class={cx('app-body', styles.body)}>
+			{#if mobile.current}
+				<Drawer.Root
+					open={uiStore.sidebarOpen}
+					onOpenChange={(details) => {
+						uiStore.sidebarOpen = details.open;
+					}}
+					preventScroll={false}
+					lazyMount
+					unmountOnExit
+				>
+					<Drawer.Backdrop
+						data-sidebar-backdrop
+						aria-label="Close sidebar"
+						class={styles.backdrop}
+					/>
+					<Drawer.Positioner class={styles.drawerPositioner}>
+						<Drawer.Content
+							draggable={false}
+							class={styles.drawer}
+							role="navigation"
+							aria-label="Sidebar"
+							data-sidebar-drawer
+						>
+							<Sidebar onNavigate={closeMobileSidebar} />
+						</Drawer.Content>
+					</Drawer.Positioner>
+				</Drawer.Root>
+			{:else}
+				{#if uiStore.sidebarOpen}
+					<div class={styles.sidebar}>
+						<Sidebar />
+					</div>
+				{/if}
+			{/if}
+
 			<div class={cx('app-canvas', styles.canvas)}>
 				<main
 					bind:this={feedEl}

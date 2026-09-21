@@ -25,6 +25,8 @@
 	import { isZipBytes, readKeepTakeout, unzipKeepTakeout } from '$lib/keepImport';
 	import { resolveSyncStatus, SyncStatus } from '$lib/syncStatus';
 	import { useEditorActions } from '$lib/editorContext';
+	import { MediaQuery } from 'svelte/reactivity';
+	import { PHONE_MEDIA } from '$lib/appViewport';
 	import { pairingCodeFromUrl } from '$lib/syncPairing';
 	import { onMount, tick } from 'svelte';
 	import { goto } from '$app/navigation';
@@ -59,7 +61,21 @@
 		[SyncStatus.Danger]: 'Sync settings, sync needs attention'
 	};
 
-	const { startNewNote, closeNote } = useEditorActions();
+	const { startNewNote, closeNote: closeOpenNote } = useEditorActions();
+	const mobile = new MediaQuery(PHONE_MEDIA);
+
+	function handleHeaderPointerDown(event: PointerEvent) {
+		const target = event.target as HTMLElement | null;
+		if (target && target.closest('[data-sync-modal-portal]')) return;
+		closeOpenNote?.();
+		if (
+			mobile.current &&
+			uiStore.sidebarOpen &&
+			!target?.closest('button[aria-label="Toggle sidebar"]')
+		) {
+			uiStore.sidebarOpen = false;
+		}
+	}
 
 	let settingsOpen = $state(false);
 	let syncOpen = $state(false);
@@ -222,14 +238,16 @@
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <header
 	class={hstack({
+		w: 'full',
 		h: 'var(--app-topbar-height)',
 		flexShrink: 0,
 		px: { base: 'sm', sm: 'md' },
 		gap: { base: '2xs', sm: 'sm' },
 		position: 'relative',
-		zIndex: 20
+		zIndex: 20,
+		bg: 'scrapscache.bg'
 	})}
-	onpointerdown={closeNote}
+	onpointerdown={handleHeaderPointerDown}
 >
 	<Tooltip content="Toggle sidebar">
 		<button
@@ -261,6 +279,9 @@
 		<input
 			value={uiStore.searchInput}
 			oninput={(event) => uiStore.setSearchInput(event.currentTarget.value)}
+			onfocus={() => {
+				if (mobile.current) uiStore.sidebarOpen = false;
+			}}
 			type="text"
 			placeholder="Search"
 			class={cx(input({ variant: 'unstyled' }), styles.searchInput)}

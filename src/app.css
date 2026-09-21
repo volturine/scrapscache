@@ -118,6 +118,7 @@ html.editor-open .app-shell {
 
 .app-shell {
 	display: flex;
+	flex-direction: column;
 	isolation: isolate;
 }
 

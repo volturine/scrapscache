@@ -86,15 +86,37 @@ const DRAWER_WIDTH = '18rem';
 
 export const appLayout = {
 	shell: css({
+		...column,
 		h: 'full',
 		w: 'full',
 		overflow: 'hidden',
 		bg: 'scrapscache.bg',
 		color: 'scrapscache.text'
 	}),
+	body: css({
+		display: 'flex',
+		flexDirection: 'row',
+		minH: 0,
+		minW: 0,
+		flex: '1'
+	}),
 	// Catches taps outside the drawer without tinting the page behind it.
-	backdrop: css({ position: 'fixed', inset: 0, zIndex: 20 }),
-	drawerPositioner: css({ position: 'fixed', insetY: 0, left: 0, zIndex: 30, h: 'full' }),
+	backdrop: css({
+		position: 'fixed',
+		top: 'var(--app-topbar-height)',
+		bottom: 0,
+		left: 0,
+		right: 0,
+		zIndex: 20
+	}),
+	drawerPositioner: css({
+		position: 'fixed',
+		top: 'var(--app-topbar-height)',
+		bottom: 0,
+		left: 0,
+		zIndex: 30,
+		h: 'calc(100% - var(--app-topbar-height))'
+	}),
 	// No edge of its own: the surface is what sets the panel apart from the body,
 	// and a border would stop where the frame does while the surface carries on.
 	drawer: css({

@@ -61,6 +61,9 @@ describe('NoteEditor Keep-style layout', () => {
 		// Both live outside the body scroller, in their own scrollable strips.
 		expect(scroller!.contains(filesAndLinks)).toBe(false);
 		expect(scroller!.contains(photos)).toBe(false);
+		// The body scroller expands to fill available dialog space.
+		expect(scroller!.className).toMatch(/flex_1/);
+		expect(scroller!.className).toMatch(/ov-y_auto/);
 		// URLs share the file rows' vertical list, with the scrollbar hidden.
 		expect(filesAndLinks!.className).toMatch(/ov-y_auto/);
 		expect(filesAndLinks!.className).toMatch(/note-scrollbar-hidden/);

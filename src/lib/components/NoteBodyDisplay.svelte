@@ -20,6 +20,7 @@
 		parseMarkdownBlocks
 	} from '$lib/markdown';
 	import { uiStore } from '$lib/stores/ui.svelte';
+	import { tableScroll } from '$lib/tableScroll';
 
 	let { note }: { note: Note } = $props();
 
@@ -133,32 +134,31 @@
 		{#if block.type === 'line'}
 			{@render bodyLine(block.segment)}
 		{:else if block.type === 'table'}
-			<div
-				class="markdown-block-surface markdown-table-scroll note-scrollbar-hidden"
-				data-markdown-table-container
-			>
-				<table class="markdown-table" data-markdown-table>
-					<thead>
-						<tr>
-							{#each block.header as cell, columnIndex (columnIndex)}
-								<th scope="col" style={`text-align: ${block.alignments[columnIndex]};`}>
-									{@render inlineContent(cell)}
-								</th>
-							{/each}
-						</tr>
-					</thead>
-					<tbody>
-						{#each block.rows as row, rowIndex (rowIndex)}
+			<div class="markdown-block-surface markdown-table-frame">
+				<div class="markdown-table-scroll" data-markdown-table-container use:tableScroll>
+					<table class="markdown-table" data-markdown-table>
+						<thead>
 							<tr>
-								{#each block.header as _, columnIndex (columnIndex)}
-									<td style={`text-align: ${block.alignments[columnIndex]};`}>
-										{@render inlineContent(row[columnIndex] ?? '')}
-									</td>
+								{#each block.header as cell, columnIndex (columnIndex)}
+									<th scope="col" style={`text-align: ${block.alignments[columnIndex]};`}>
+										{@render inlineContent(cell)}
+									</th>
 								{/each}
 							</tr>
-						{/each}
-					</tbody>
-				</table>
+						</thead>
+						<tbody>
+							{#each block.rows as row, rowIndex (rowIndex)}
+								<tr>
+									{#each block.header as _, columnIndex (columnIndex)}
+										<td style={`text-align: ${block.alignments[columnIndex]};`}>
+											{@render inlineContent(row[columnIndex] ?? '')}
+										</td>
+									{/each}
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</div>
 			</div>
 		{:else}
 			{@const codeLines = block.code.split('\n')}

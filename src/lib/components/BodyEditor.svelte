@@ -34,6 +34,7 @@
 		type MarkdownBlock
 	} from '$lib/markdown';
 	import { uiStore } from '$lib/stores/ui.svelte';
+	import { tableScroll } from '$lib/tableScroll';
 	import MarkdownCopyButton from './MarkdownCopyButton.svelte';
 
 	const MAX_TASK_INDENT = 1;
@@ -2568,9 +2569,11 @@
 					</div>
 				{/if}
 				<div
-					class="markdown-block-scroll note-scrollbar-hidden"
+					class="markdown-block-scroll"
+					class:note-scrollbar-hidden={block.type !== 'table'}
 					class:markdown-editor-table-scroll={block.type === 'table'}
 					class:markdown-editor-code-block={block.type === 'code'}
+					use:tableScroll={block.type === 'table'}
 				>
 					{#if block.type === 'table'}
 						<div class="markdown-editor-table">

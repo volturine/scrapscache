@@ -162,7 +162,8 @@ export const theme = {
 		tokens: {
 			colors: { palette },
 			fonts: tokenGroup({
-				sans: ['"Google Sans"', '"Roboto"', 'system-ui', 'Arial', 'sans-serif']
+				// A string replaces Panda's preset stack. An array is concatenated after it, so Google Sans would never be chosen.
+				sans: '"Google Sans", "Roboto", system-ui, Arial, sans-serif'
 			}),
 			borderWidths: tokenGroup({ hairline: '1px', control: '1.5px', strong: '2px' }),
 			fontSizes: tokenGroup({

@@ -214,6 +214,37 @@ body {
 	display: none;
 }
 
+/* The table's own bar is the visible control. The system bar stays hidden until a gesture. */
+.markdown-editor-table-scroll,
+.markdown-table-scroll {
+	scrollbar-width: none;
+}
+.markdown-editor-table-scroll::-webkit-scrollbar,
+.markdown-table-scroll::-webkit-scrollbar {
+	display: none;
+}
+.markdown-table-hscroll {
+	position: relative;
+	z-index: 2;
+	height: 0.375rem;
+	margin: 0.35rem 0.75rem 0.45rem;
+	border-radius: 999px;
+	background: var(--colors-scrapscache-border-subtle);
+	cursor: pointer;
+	touch-action: none;
+}
+.markdown-table-hscroll[hidden] {
+	display: none;
+}
+.markdown-table-hscroll > div {
+	position: absolute;
+	top: 0;
+	left: 0;
+	height: 100%;
+	border-radius: inherit;
+	background: var(--colors-scrapscache-text-muted);
+}
+
 /* Let the primary feed chain a top-edge pull to Android Chrome's native
  * refresh gesture. Nested editor and attachment scrollers remain contained. */
 .app-feed {

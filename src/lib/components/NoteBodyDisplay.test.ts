@@ -185,6 +185,14 @@ describe('NoteBodyDisplay Markdown blocks', () => {
 
 		// Table and code are still rendered formatted
 		expect(container.querySelector('[data-markdown-table]')).toBeTruthy();
+		expect(
+			container.querySelector('.markdown-table-frame > [data-markdown-table-container]')
+		).toBeTruthy();
+		expect(
+			container
+				.querySelector('[data-markdown-table-container]')
+				?.classList.contains('note-scrollbar-hidden')
+		).toBe(false);
 		expect(container.querySelector('[data-markdown-code-block]')).toBeTruthy();
 		expect(container.querySelector('.markdown-content')?.textContent).toContain(
 			'Leave headroom rather than tightening the rule.'

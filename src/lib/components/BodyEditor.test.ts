@@ -1036,7 +1036,9 @@ describe('BodyEditor markdown bullets', () => {
 		let scrolls = container.querySelectorAll('.markdown-block-scroll');
 		expect(scrolls).toHaveLength(2);
 		expect(scrolls[0].classList.contains('markdown-editor-table-scroll')).toBe(true);
+		expect(scrolls[0].classList.contains('note-scrollbar-hidden')).toBe(false);
 		expect(scrolls[1].classList.contains('markdown-editor-code-block')).toBe(true);
+		expect(scrolls[1].classList.contains('note-scrollbar-hidden')).toBe(true);
 		const shell = container.querySelector('.markdown-block-shell');
 		expect(shell).not.toBeNull();
 		const copyBtn = shell?.querySelector('.markdown-block-copy');

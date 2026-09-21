@@ -2138,9 +2138,11 @@ export const markdownStyles = css({
 	'& del': {
 		textDecoration: 'line-through'
 	},
+	// Width 0 with min-width 100% keeps the scrollport as wide as the note.
+	// A max-content table otherwise stretches the contenteditable, and the editor clips it.
 	'& .markdown-block-scroll': {
-		w: 'full',
-		minW: 0,
+		w: '0',
+		minW: 'full',
 		maxW: 'full',
 		overflowX: 'auto',
 		overscrollBehaviorX: 'contain',
@@ -2148,7 +2150,7 @@ export const markdownStyles = css({
 		borderRadius: 'inherit'
 	},
 	'& .markdown-raw-table': {
-		fontFamily: 'mono',
+		fontFamily: 'sans',
 		whiteSpace: 'pre',
 		overflowWrap: 'normal',
 		wordBreak: 'normal'
@@ -2161,11 +2163,24 @@ export const markdownStyles = css({
 		py: 'sm'
 	},
 	'& .markdown-table-scroll, & .markdown-code-block': {
+		w: '0',
+		minW: 'full',
 		maxW: 'full',
 		overflowX: 'auto',
 		overscrollBehaviorX: 'contain',
 		my: 'sm'
 	},
+	// The bar is inserted after the scrollport. The frame keeps that bar inside the table.
+	'& .markdown-table-frame': {
+		display: 'flex',
+		flexDirection: 'column',
+		w: 'full',
+		minW: 0,
+		maxW: 'full',
+		my: 'sm'
+	},
+	'& .markdown-table-frame > .markdown-table-scroll': { my: 0 },
+
 	'& .markdown-block-shell, & .markdown-block-surface': {
 		rounded: 'control',
 		bg: 'scrapscache.surfaceSubtle'
@@ -2213,9 +2228,9 @@ export const markdownStyles = css({
 	},
 	'& .markdown-table th': { fontWeight: 'strong' },
 	'& .markdown-table tr:last-child td': { borderBottom: 0 },
-	'& .markdown-code-block, & .markdown-editor-code-block': {
+	'& .markdown-code-block, & .markdown-code-block code, & .markdown-editor-code-block': {
 		color: 'scrapscache.text',
-		fontFamily: 'mono',
+		fontFamily: 'sans',
 		fontSize: 'compact',
 		lineHeight: 'body'
 	},
@@ -2229,7 +2244,7 @@ export const markdownStyles = css({
 		border: 'none',
 		bg: 'transparent',
 		color: 'scrapscache.textMuted',
-		fontFamily: 'mono',
+		fontFamily: 'sans',
 		fontSize: 'compact',
 		lineHeight: 'body',
 		p: '0',
@@ -2264,7 +2279,12 @@ export const markdownStyles = css({
 	'& .markdown-code-token-comment': { color: 'scrapscache.success', fontStyle: 'italic' },
 	'& .markdown-code-token-string': { color: 'scrapscache.danger' },
 	'& .markdown-code-token-flag': { color: 'scrapscache.accent' },
-	'& .markdown-editor-table-scroll': { w: 'full', minW: 0 },
+	'& .markdown-editor-table-scroll': {
+		w: '0',
+		minW: 'full',
+		maxW: 'full',
+		overflowX: 'auto'
+	},
 	'& .markdown-editor-table': {
 		display: 'table',
 		w: 'max-content',
@@ -2310,7 +2330,7 @@ export const markdownStyles = css({
 	'& .markdown-token-marker-code': { color: 'scrapscache.warning' },
 	'& .markdown-token-marker-heading': { color: 'scrapscache.warning' },
 	'&.markdown-raw': {
-		fontFamily: 'mono',
+		fontFamily: 'sans',
 		caretColor: 'scrapscache.focus',
 		'& [data-line-text]:empty': { flex: '1 1 0%' },
 		'& .markdown-token-marker': { display: 'inline' },

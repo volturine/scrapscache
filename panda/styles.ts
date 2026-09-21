@@ -2244,14 +2244,6 @@ export const markdownStyles = css({
 		overflowWrap: 'normal',
 		wordBreak: 'normal'
 	},
-	'& .markdown-editor-code-line[data-placeholder]::before': {
-		content: 'attr(data-placeholder)',
-		position: 'absolute',
-		left: '0',
-		top: '0',
-		color: 'scrapscache.textMuted',
-		pointerEvents: 'none'
-	},
 	'& .markdown-raw-code-block [data-editor-line]': { padding: '0 2.75rem 0 0.75rem' },
 	'& .markdown-code-line': { display: 'block', minW: 'max-content', px: 'md', whiteSpace: 'pre' },
 	'& .markdown-code-token-comment': { color: 'scrapscache.success', fontStyle: 'italic' },

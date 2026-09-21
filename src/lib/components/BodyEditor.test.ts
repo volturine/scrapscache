@@ -1563,14 +1563,79 @@ describe('BodyEditor controlled input', () => {
 describe('BodyEditor rendered table writing', () => {
 	const table = ['| Name | Qty |', '| ---- | --- |', '| tea  | 2   |'];
 
-	it('keeps a typed pipe inside the cell', async () => {
+	it('adds a column when a pipe ends the last cell and removes that empty column', async () => {
+		const { container } = render(BodyEditor, { props: { body: table.join('\n') } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		caretAt(container, 2, '| tea  | 2'.length);
+
+		await typeText(editor, '|more');
+
+		const cells = container.querySelectorAll('[data-editor-line="2"] [data-markdown-table-cell]');
+		expect(cells).toHaveLength(3);
+		expect(cells[2]?.textContent).toBe('more');
+		expect(lineTexts(container)[2]).not.toContain('\\|');
+
+		for (let press = 0; press < 'more'.length; press++) input(editor, 'deleteContentBackward');
+		await tick();
+		input(editor, 'deleteContentBackward');
+		await tick();
+
+		expect(
+			container.querySelectorAll('[data-editor-line="0"] [data-markdown-table-cell]')
+		).toHaveLength(2);
+		expect(lineTexts(container)[2]).not.toContain('more');
+	});
+
+	it('keeps a pipe typed before the end of the last cell inside that cell', async () => {
+		const { container } = render(BodyEditor, { props: { body: table.join('\n') } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		caretAt(container, 2, '| tea  | '.length);
+
+		await typeText(editor, '|x');
+
+		expect(lineTexts(container)[2]).toContain('\\|x');
+		expect(
+			container.querySelectorAll('[data-editor-line="2"] [data-markdown-table-cell]')
+		).toHaveLength(2);
+	});
+
+	it('removes an empty body row without removing its neighbors', async () => {
+		const body = ['| a | b |', '| - | - |', '| 1 | 2 |', '|   |   |', '| 3 | 4 |'].join('\n');
+		const { container } = render(BodyEditor, { props: { body } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		caretAt(container, 3, 2);
+
+		input(editor, 'deleteContentBackward');
+		await tick();
+
+		expect(lineTexts(container)).toEqual(['| a | b |', '| - | - |', '| 1 | 2 |', '| 3 | 4 |']);
+		expect(container.querySelector('[data-markdown-editor-table]')).not.toBeNull();
+	});
+
+	it('inserts a column when a pipe ends an earlier cell', async () => {
 		const { container } = render(BodyEditor, { props: { body: table.join('\n') } });
 		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
 		caretAt(container, 2, '| tea'.length);
 
 		await typeText(editor, '|x');
 
-		expect(lineTexts(container)[2]).toBe('| tea\\|x  | 2   |');
+		const cells = container.querySelectorAll('[data-editor-line="2"] [data-markdown-table-cell]');
+		expect(cells).toHaveLength(3);
+		expect(cells[0]?.textContent).toBe('tea');
+		expect(cells[1]?.textContent).toBe('x');
+		expect(cells[2]?.textContent).toBe('2');
+	});
+
+	it('keeps a typed pipe inside the cell', async () => {
+		const { container } = render(BodyEditor, { props: { body: table.join('\n') } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		caretAt(container, 2, '| te'.length);
+
+		await typeText(editor, '|x');
+
+		expect(lineTexts(container)[2]).toBe('| te\\|xa  | 2   |');
+		const cell = container.querySelector('[data-editor-line="2"] [data-markdown-table-cell]');
+		expect(cell?.querySelector('.markdown-token-marker-hidden')?.textContent).toBe('\\');
 		expect(
 			container.querySelectorAll('[data-editor-line="2"] [data-markdown-table-cell]')
 		).toHaveLength(2);
@@ -1584,7 +1649,13 @@ describe('BodyEditor rendered table writing', () => {
 		for (let press = 0; press < 3; press++) input(editor, 'deleteContentBackward');
 		await tick();
 
-		expect(lineTexts(container)[2]).toBe('| tea  |    |');
+		expect(
+			container.querySelectorAll('[data-editor-line="2"] [data-markdown-table-cell]')
+		).toHaveLength(2);
+		expect(
+			container.querySelectorAll('[data-editor-line="2"] [data-markdown-table-cell]')[1]
+				?.textContent
+		).toBe('');
 	});
 
 	it('deletes the table when Backspace hits the start of the header', async () => {
@@ -1789,7 +1860,8 @@ describe('BodyEditor code block writing', () => {
 
 		expect(codeLine).not.toBeNull();
 		expect(codeLine?.className).toContain('min-h_1lh');
-		expect(codeLine?.getAttribute('data-placeholder')).toBe('Code');
+		expect(codeLine?.getAttribute('data-placeholder')).toBeNull();
+		expect(codeLine?.textContent?.replaceAll('\u200b', '')).toBe('');
 
 		await fireEvent.click(container.querySelector('.markdown-editor-code-block') as HTMLElement);
 		await typeText(editor, 'clicked');

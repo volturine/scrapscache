@@ -339,6 +339,63 @@
 		return true;
 	}
 
+	function cellTextParts(source: string): { text: string; hidden: boolean }[] {
+		const parts: { text: string; hidden: boolean }[] = [];
+		let plain = '';
+		for (let index = 0; index < source.length; index++) {
+			if (source[index] === '\\' && source[index + 1] === '|') {
+				if (plain) parts.push({ text: plain, hidden: false });
+				plain = '';
+				parts.push({ text: '\\', hidden: true });
+				parts.push({ text: '|', hidden: false });
+				index++;
+				continue;
+			}
+			plain += source[index];
+		}
+		if (plain || parts.length === 0) parts.push({ text: plain, hidden: false });
+		return parts;
+	}
+
+	function writeTableRow(cells: string[]): string {
+		return `| ${cells.join(' | ')} |`;
+	}
+
+	function insertTableColumn(span: TableSpan, column: number, focusRow: number) {
+		for (let row = span.start; row < span.end; row++) {
+			const cells = markdownTableCells(lines[row].text);
+			const filler = row === span.start + 1 ? '---' : '';
+			while (cells.length < column) cells.push(filler);
+			cells.splice(column, 0, filler);
+			lines[row].text = writeTableRow(cells);
+		}
+		formatTable(span);
+		syncBody();
+		tablesNeedFormat = false;
+		selectTableCell(focusRow, column);
+	}
+
+	function columnIsEmpty(span: TableSpan, column: number): boolean {
+		for (let row = span.start; row < span.end; row++) {
+			if (row === span.start + 1) continue;
+			if ((markdownTableCells(lines[row].text)[column] ?? '').trim() !== '') return false;
+		}
+		return true;
+	}
+
+	function removeTableColumn(span: TableSpan, column: number, focusRow: number) {
+		for (let row = span.start; row < span.end; row++) {
+			const cells = markdownTableCells(lines[row].text);
+			cells.splice(column, 1);
+			lines[row].text = writeTableRow(cells);
+		}
+		formatTable(span);
+		syncBody();
+		tablesNeedFormat = false;
+		const next = Math.min(column, markdownTableCells(lines[focusRow].text).length - 1);
+		selectTableCell(focusRow, Math.max(0, next));
+	}
+
 	/**
 	 * Enter inside a table adds a row below and moves to its first cell; Enter on an
 	 * empty last row leaves the table. Enter at the end of a lone `| a | b |` header
@@ -1271,6 +1328,43 @@
 		focusAt(caret.line, caret.offset, lines[caret.line]?.id ?? null);
 	}
 
+	/**
+	 * A pipe at the end of the last cell adds a column. A pipe in the padding
+	 * between cells is written into the cell it follows, so it cannot split the row.
+	 */
+	function placeTablePipe(
+		range: EditorRange,
+		text: string
+	): 'column' | { text: string; offset: number } | null {
+		const index = range.start.line;
+		const span = tableSpanAt(index);
+		if (!span || index === span.start + 1 || !range.collapsed) return null;
+		const cells = markdownTableCellRanges(lines[index].text);
+		if (cells.length === 0) return null;
+		const offset = range.start.offset;
+		let inside = -1;
+		for (let cellIndex = 0; cellIndex < cells.length; cellIndex++) {
+			const cell = cells[cellIndex];
+			if (offset >= cell.start && offset <= cell.end) inside = cellIndex;
+		}
+		const last = cells.length - 1;
+		// A pipe at the end of a cell, or in the padding after the row, adds a column there.
+		if (
+			text === '|' &&
+			((inside >= 0 && offset === cells[inside].end) || offset > cells[last].end)
+		) {
+			insertTableColumn(span, inside >= 0 ? inside + 1 : last + 1, index);
+			return 'column';
+		}
+		const escaped = text.replace(/(?<!\\)\|/g, '\\|');
+		if (inside >= 0) return { text: escaped, offset };
+		let owner = -1;
+		for (let cellIndex = 0; cellIndex < cells.length; cellIndex++) {
+			if (offset > cells[cellIndex].end) owner = cellIndex;
+		}
+		return { text: escaped, offset: cells[owner >= 0 ? owner : 0].end };
+	}
+
 	function insertText(range: EditorRange, rawText: string) {
 		let text = rawText.replace(/\r\n?/g, '\n');
 		const line = lines[range.start.line];
@@ -1278,12 +1372,23 @@
 		// `[ ]` and `- ` become a task or bullet as soon as they match; swallow the space typed next.
 		if (text === ' ' && range.collapsed && (line.isCheck || line.isBullet) && !line.text) return;
 		if (line.id === draftTaskId && text.trim()) draftTaskId = null;
-		if (!text.includes('\n') && protectedCellAt(range.start.line, range.start.offset)) {
-			// A pipe typed into a rendered cell is cell content, not a new column.
+		let insertRange = range;
+		if (range.collapsed && !text.includes('\n') && text.includes('|')) {
+			const placed = placeTablePipe(range, text);
+			if (placed === 'column') return;
+			if (placed) {
+				text = placed.text;
+				insertRange = {
+					start: { line: range.start.line, offset: placed.offset },
+					end: { line: range.start.line, offset: placed.offset },
+					collapsed: true
+				};
+			}
+		} else if (!text.includes('\n') && protectedCellAt(range.start.line, range.start.offset)) {
 			text = text.replace(/(?<!\\)\|/g, '\\|');
 		}
 		const openingBefore = matchOpeningCodeFence(line.text);
-		const caret = replaceRangeWithText(range, text);
+		const caret = replaceRangeWithText(insertRange, text);
 		const consumed = applyLinePrefix(caret.line);
 		if (
 			range.collapsed &&
@@ -1305,7 +1410,7 @@
 		if (tableSpan) {
 			const cells = markdownTableCellRanges(line.text);
 			if (offset === 0 || (cells[0] && offset <= cells[0].start)) {
-				deleteEmptyTableRow(index, tableSpan, cells);
+				deleteEmptyTableRow(index, tableSpan, cells, 0);
 				return;
 			}
 		}
@@ -1322,7 +1427,7 @@
 		const cell = protectedCellAt(index, offset);
 		if (cell) {
 			if (offset === cell.cell.start) {
-				deleteEmptyTableRow(index, cell.span, cell.cells);
+				deleteEmptyTableRow(index, cell.span, cell.cells, cell.cellIndex);
 				return;
 			}
 			start = Math.max(start, cell.cell.start);
@@ -1362,35 +1467,49 @@
 		finishEdit(range.start);
 	}
 
-	/** Backspace at the start of a rendered row removes the row, or the table when nothing remains. */
+	/** Backspace at the start of a cell removes an empty column or row, or the whole table. */
 	function deleteEmptyTableRow(
 		index: number,
 		span: TableSpan,
-		cells: { start: number; end: number }[]
+		cells: { start: number; end: number }[],
+		cellIndex: number
 	) {
+		const width = markdownTableCells(lines[span.start].text).length;
+		const cell = cells[cellIndex];
+		const cellEmpty = !cell || cell.end <= cell.start;
+		if (index === span.start && cellIndex === 0) {
+			finishEdit(removeTable(span));
+			return;
+		}
+		if (cellEmpty && width > 1 && columnIsEmpty(span, cellIndex)) {
+			removeTableColumn(span, cellIndex, index);
+			return;
+		}
 		const isBodyRow = index >= span.start + 2;
-		const lastBodyRow = isBodyRow && index === span.end - 1;
-		if (index === span.start) {
-			finishEdit(removeTable(span));
-			return;
-		}
-		if (!isBodyRow || cells.some((cell) => cell.end > cell.start)) {
-			if (index > span.start) {
-				const previous = index === span.start + 2 ? span.start : index - 1;
-				const previousCells = markdownTableCellRanges(lines[previous].text);
-				selectAt(previous, previousCells.at(-1)?.end ?? lines[previous].text.length);
+		const rowEmpty = cells.every((entry) => entry.end <= entry.start);
+		if (isBodyRow && rowEmpty) {
+			const lastBodyRow = index === span.end - 1;
+			if (lastBodyRow && span.end - span.start <= 3) {
+				finishEdit(removeTable(span));
+				return;
 			}
+			lines.splice(index, 1);
+			syncBody();
+			const previous = index - 1 === span.start + 1 ? span.start : index - 1;
+			const previousCells = markdownTableCellRanges(lines[previous].text);
+			focusAt(previous, previousCells.at(-1)?.end ?? 0, lines[previous].id);
 			return;
 		}
-		if (lastBodyRow && span.end - span.start <= 3) {
-			finishEdit(removeTable(span));
+		if (cellIndex > 0) {
+			const previous = cells[cellIndex - 1];
+			focusAt(index, previous?.end ?? 0, lines[index].id);
 			return;
 		}
-		lines.splice(index, 1);
-		syncBody();
-		const previous = index - 1 === span.start + 1 ? span.start : index - 1;
-		const previousCells = markdownTableCellRanges(lines[previous].text);
-		focusAt(previous, previousCells.at(-1)?.end ?? 0, lines[previous].id);
+		if (index > span.start) {
+			const previous = index === span.start + 2 ? span.start : index - 1;
+			const previousCells = markdownTableCellRanges(lines[previous].text);
+			selectAt(previous, previousCells.at(-1)?.end ?? lines[previous].text.length);
+		}
 	}
 
 	/** The range an input targets: spellcheck replacements name their own word. */
@@ -2149,7 +2268,13 @@
 				style={`text-align: ${block.alignments[token.columnIndex] ?? 'left'};`}
 				data-markdown-table-cell={token.columnIndex}
 			>
-				{@render inlineEditorContent(token.text)}
+				{#each cellTextParts(token.text) as part, partIndex (partIndex)}
+					{#if part.hidden}
+						<span class="markdown-token-marker-hidden">{part.text}</span>
+					{:else}
+						{@render inlineEditorContent(part.text)}
+					{/if}
+				{/each}
 			</span>
 		{/if}
 	{/each}
@@ -2172,7 +2297,7 @@
 		data-markdown-code-line={codeBlock && !codeFence ? '' : undefined}
 		data-markdown-code-fence={codeFence ? '' : undefined}
 		class={rowClass(line)}
-		style={rowStyle(line)}
+		style={tableSeparator ? 'display:none' : rowStyle(line)}
 	>
 		{#if line.isCheck}
 			<button
@@ -2211,7 +2336,6 @@
 			{:else if codeBlock && !codeFence}
 				<span
 					data-line-text
-					data-placeholder={line.text.length === 0 ? 'Code' : undefined}
 					class={['markdown-inline-content', 'markdown-editor-code-line', css({ minH: '1lh' })]}
 				>
 					{#if line.text.length === 0}

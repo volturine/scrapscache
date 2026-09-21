@@ -74,7 +74,10 @@ PORT=3001
 
 ### 2. Start the Container
 
+Run directly using the official image from GHCR or build locally:
+
 ```bash
+# Pulls prebuilt ghcr.io/volturine/scrapscache-mcp:latest or builds from source
 docker compose up -d
 ```
 
@@ -120,6 +123,9 @@ npx wrangler deploy
 ```
 
 Your MCP server will be live at `https://scrapscache-mcp.<your-subdomain>.workers.dev`.
+
+> [!NOTE]
+> In CI/CD, the MCP worker is also automatically deployed on PRs labeled `deploy-dev` (targeting `dev.scrapscache.com`) and on push to `master`.
 
 ---
 

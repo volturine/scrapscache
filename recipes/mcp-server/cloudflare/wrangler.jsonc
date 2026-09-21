@@ -6,5 +6,13 @@
 	"compatibility_flags": ["nodejs_compat"],
 	"vars": {
 		"SCRAPSCACHE_URL": "https://scrapscache.com"
+	},
+	"env": {
+		"dev": {
+			"name": "scrapscache-mcp-dev",
+			"vars": {
+				"SCRAPSCACHE_URL": "https://dev.scrapscache.com"
+			}
+		}
 	}
 }

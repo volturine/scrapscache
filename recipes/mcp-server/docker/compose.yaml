@@ -1,5 +1,6 @@
 services:
   scrapscache-mcp:
+    image: ghcr.io/volturine/scrapscache-mcp:latest
     build:
       context: ..
       dockerfile: docker/Dockerfile

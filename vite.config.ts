@@ -45,7 +45,7 @@ export default defineConfig({
 		conditions: ['browser', 'development|production']
 	},
 	test: {
-		include: ['src/**/*.{test,spec}.{js,ts}'],
+		include: ['src/**/*.{test,spec}.{js,ts}', 'recipes/**/*.{test,spec}.{js,ts}'],
 		environment: 'jsdom',
 		globals: true,
 		setupFiles: ['src/tests/setup.ts']

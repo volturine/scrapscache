@@ -1,0 +1,22 @@
+{
+	"name": "scrapscache-mcp-server",
+	"version": "1.0.0",
+	"description": "Self-hosted Model Context Protocol (MCP) server recipe for Scraps Cache",
+	"type": "module",
+	"main": "src/index.ts",
+	"scripts": {
+		"start": "tsx src/index.ts",
+		"test": "vitest run test"
+	},
+	"dependencies": {
+		"@noble/ciphers": "^2.4.0",
+		"@noble/curves": "^2.4.0",
+		"@noble/hashes": "^2.4.0"
+	},
+	"devDependencies": {
+		"@types/node": "^26.6.1",
+		"tsx": "^4.19.0",
+		"typescript": "^5.9.0",
+		"vitest": "^5.0.0"
+	}
+}

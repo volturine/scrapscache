@@ -1,0 +1,5 @@
+# Cloudflare Worker secrets (set with: npx wrangler secret put <NAME>)
+SCRAPSCACHE_URL="https://scrapscache.com"
+SCRAPSCACHE_SYNC_KEY="your_sync_key_here"
+MCP_BEARER_TOKEN="secret_mcp_bearer_token"
+# MCP_FRIENDS_TOKENS='{"token_alice":"syncKeyAlice","token_bob":"syncKeyBob"}'

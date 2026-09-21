@@ -11,6 +11,7 @@
 	import type { Note } from '$lib/types';
 	import { activateOnKeyboard, formatReminder, isReminderOverdue } from '$lib/utils';
 	import { cardSwipeStyle, createCardSwipe } from '$lib/cardSwipe';
+	import { overflowingTable } from '$lib/tableScroll';
 	import NoteBodyDisplay from './NoteBodyDisplay.svelte';
 	import ReminderLabel from './ReminderLabel.svelte';
 	import ReminderPicker from './ReminderPicker.svelte';
@@ -136,11 +137,96 @@
 			closeHaze();
 			return;
 		}
-		if (swipe.wasDrag()) {
+		if (swipe.wasDrag() || suppressClick) {
 			e.stopPropagation();
 			return;
 		}
 		onOpen(note.id);
+	}
+
+	// The card shield owns every press, including one that starts on a table.
+	// A sideways drag there moves the table; a tap still opens the note.
+	let tableGesture: {
+		el: HTMLElement;
+		startX: number;
+		startY: number;
+		startScroll: number;
+		horizontal: boolean | null;
+		moved: boolean;
+		pointerId: number;
+	} | null = null;
+	let suppressClick = false;
+	let suppressTimer: ReturnType<typeof setTimeout> | null = null;
+
+	function onCardPointerDown(event: PointerEvent) {
+		const table = cardEl ? overflowingTable(cardEl, event.clientX, event.clientY) : null;
+		if (!table || (event.pointerType === 'mouse' && event.button !== 0)) {
+			swipe.onPointerDown(event);
+			return;
+		}
+		tableGesture = {
+			el: table,
+			startX: event.clientX,
+			startY: event.clientY,
+			startScroll: table.scrollLeft,
+			horizontal: null,
+			moved: false,
+			pointerId: event.pointerId
+		};
+		(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+	}
+
+	function onCardPointerMove(event: PointerEvent) {
+		if (!tableGesture || event.pointerId !== tableGesture.pointerId) {
+			swipe.onPointerMove(event);
+			return;
+		}
+		const dx = event.clientX - tableGesture.startX;
+		const dy = event.clientY - tableGesture.startY;
+		if (tableGesture.horizontal === null) {
+			if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+			tableGesture.horizontal = Math.abs(dx) > Math.abs(dy);
+			if (!tableGesture.horizontal) {
+				(event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId);
+				tableGesture = null;
+				return;
+			}
+		}
+		event.preventDefault();
+		tableGesture.moved = true;
+		tableGesture.el.scrollLeft = tableGesture.startScroll - dx;
+	}
+
+	function onCardPointerUp(event: PointerEvent) {
+		if (!tableGesture || event.pointerId !== tableGesture.pointerId) {
+			swipe.onPointerUp(event);
+			return;
+		}
+		if (tableGesture.moved) {
+			suppressClick = true;
+			event.stopPropagation();
+			if (suppressTimer) clearTimeout(suppressTimer);
+			suppressTimer = setTimeout(() => {
+				suppressClick = false;
+			}, 50);
+		}
+		tableGesture = null;
+	}
+
+	function onCardPointerCancel(event: PointerEvent) {
+		if (!tableGesture || event.pointerId !== tableGesture.pointerId) {
+			swipe.onPointerCancel(event);
+			return;
+		}
+		tableGesture = null;
+	}
+
+	function onCardWheel(event: WheelEvent) {
+		if (!cardEl || Math.abs(event.deltaX) <= Math.abs(event.deltaY)) return;
+		const table = overflowingTable(cardEl, event.clientX, event.clientY);
+		if (!table) return;
+		table.scrollLeft += event.deltaX;
+		event.preventDefault();
 	}
 
 	function handleKeydown(event: KeyboardEvent) {
@@ -219,6 +305,8 @@
 	});
 
 	onMount(() => {
+		const el = cardEl;
+		el?.addEventListener('wheel', onCardWheel, { passive: false });
 		function onOtherHazeOpen(e: Event) {
 			const ce = e as CustomEvent<string>;
 			if (ce.detail !== note.id) {
@@ -227,8 +315,10 @@
 		}
 		window.addEventListener('scrapscache-card-haze-open', onOtherHazeOpen);
 		return () => {
+			el?.removeEventListener('wheel', onCardWheel);
 			window.removeEventListener('scrapscache-card-haze-open', onOtherHazeOpen);
 			if (copyTimer) clearTimeout(copyTimer);
+			if (suppressTimer) clearTimeout(suppressTimer);
 		};
 	});
 
@@ -280,10 +370,10 @@
 		aria-label={openLabel}
 		class={cx(card.cardBody, noteSurface({ color: note.color }))}
 		style={cardSwipeStyle(offsetX, dragging)}
-		onpointerdown={swipe.onPointerDown}
-		onpointermove={swipe.onPointerMove}
-		onpointerup={swipe.onPointerUp}
-		onpointercancel={swipe.onPointerCancel}
+		onpointerdown={onCardPointerDown}
+		onpointermove={onCardPointerMove}
+		onpointerup={onCardPointerUp}
+		onpointercancel={onCardPointerCancel}
 		onclick={openUnlessDrag}
 		oncontextmenu={handleContextMenu}
 		onkeydown={handleKeydown}

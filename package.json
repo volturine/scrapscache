@@ -78,6 +78,7 @@
 		"@ark-ui/svelte": "^5.24.2",
 		"@cipherman/pake-js": "^0.1.1",
 		"@excalidraw/excalidraw": "0.18.1",
+		"@humanspeak/svelte-markdown": "^1.9.1",
 		"@internationalized/date": "^3.12.4",
 		"@libsql/client": "^0.18.0",
 		"@noble/ciphers": "^2.4.0",
@@ -85,9 +86,11 @@
 		"@noble/hashes": "^2.3.0",
 		"fflate": "^0.8.3",
 		"jsqr": "^1.4.0",
+		"markdown-table": "^3.0.4",
 		"qrcode": "^1.5.4",
 		"react": "^19.3.0",
-		"react-dom": "^19.3.0"
+		"react-dom": "^19.3.0",
+		"string-width": "^7.2.0"
 	},
 	"simple-git-hooks": {
 		"pre-commit": "npx lint-staged"

@@ -714,7 +714,8 @@ export class NotesStore {
 				sidebarOpen: uiStore.sidebarOpen,
 				dark: uiStore.dark,
 				layout: uiStore.layout,
-				view: uiStore.view
+				view: uiStore.view,
+				rawMarkdown: uiStore.rawMarkdown
 			}
 		};
 	}

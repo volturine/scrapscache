@@ -45,6 +45,21 @@ describe('backup normalization', () => {
 			ui: { sidebarOpen: true, dark: null, layout: 'grid', view: 'notes' }
 		});
 		expect(backup).toMatchObject({ version: 4, exportedAt: 123, notes: [sourceNote] });
+		expect(backup?.ui.rawMarkdown).toBe(false);
+
+		const backupWithRawMarkdown = normalizeBackup({
+			version: 4,
+			exportedAt: 123,
+			notes: [],
+			labels: [],
+			boards: [],
+			activeBoardId: '',
+			tombstones: {},
+			labelTombstones: {},
+			boardTombstones: {},
+			ui: { sidebarOpen: true, dark: null, layout: 'grid', view: 'notes', rawMarkdown: true }
+		});
+		expect(backupWithRawMarkdown?.ui.rawMarkdown).toBe(true);
 	});
 
 	it('never retains sync identity from the backup file', () => {

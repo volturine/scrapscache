@@ -1894,6 +1894,7 @@ export const noteEditorStyles = {
 	}),
 	subDialogBackdrop: css({ bg: 'scrapscache.backdropSoft', backdropFilter: 'none', zIndex: 60 }),
 	popupContent: css({ outline: 'none' }),
+	rawScroller: css({ touchAction: 'pan-x pan-y' }),
 	reminderButton: css({ minW: 0 })
 };
 
@@ -2035,6 +2036,15 @@ export const sidebarStyles = {
 };
 
 export const topbarStyles = {
+	markdownLabel: css({ minW: 0, flex: '1' }),
+	markdownCheck: css({
+		...gridCenter,
+		...iconMd,
+		flexShrink: 0,
+		rounded: 'checkbox',
+		...border,
+		color: 'scrapscache.accent'
+	}),
 	searchInput: css({ h: 'full', flex: '1', appearance: 'none', _placeholder: mutedText }),
 	searchIcon: css(mutedText),
 	syncIcon: css({ display: 'block' }),
@@ -2050,3 +2060,318 @@ export const topbarSyncTone = {
 	warning: css({ color: 'scrapscache.warning' }),
 	danger: css({ color: 'scrapscache.danger' })
 } as const;
+
+export const markdownStyles = css({
+	w: 'full',
+	maxW: 'full',
+	overflowWrap: 'break-word',
+	wordBreak: 'break-word',
+	color: 'scrapscache.text',
+	'& h1, & h2, & h3, & h4, & h5, & h6': {
+		fontWeight: 'strong',
+		lineHeight: 'tight',
+		color: 'scrapscache.text'
+	},
+	'& h1': { fontSize: '1.4em', mt: 'md', mb: 'xs' },
+	'& h2': { fontSize: '1.2em', mt: 'md', mb: 'xs' },
+	'& h3': { fontSize: '1.05em', mt: 'sm', mb: '2xs' },
+	'& h4, & h5, & h6': { fontSize: '1em', mt: 'xs', mb: '2xs' },
+	'& p': {
+		my: 'xs',
+		'&:first-child': { mt: 0 },
+		'&:last-child': { mb: 0 }
+	},
+	'& blockquote': {
+		borderLeftWidth: '3px',
+		borderColor: 'scrapscache.accent',
+		pl: 'md',
+		my: 'sm',
+		color: 'scrapscache.textMuted',
+		fontStyle: 'italic'
+	},
+	'& ul': {
+		listStyleType: 'disc',
+		pl: 'lg',
+		my: 'xs'
+	},
+	'& ol': {
+		listStyleType: 'decimal',
+		pl: 'lg',
+		my: 'xs'
+	},
+	'& li': {
+		my: '2xs'
+	},
+	'& li.task-list-item, & li:has(> input[type="checkbox"])': {
+		listStyleType: 'none',
+		pl: 0
+	},
+	'& input[type="checkbox"]': {
+		accentColor: 'token(colors.scrapscache.accent)',
+		mr: 'xs',
+		verticalAlign: 'middle'
+	},
+	'& hr': {
+		border: 0,
+		borderTopWidth: 'hairline',
+		borderColor: 'scrapscache.border',
+		my: 'md'
+	},
+	'& a, & .markdown-link': {
+		color: 'scrapscache.accent',
+		textDecoration: 'underline',
+		textUnderlineOffset: '2px',
+		_hoverable: { opacity: 0.8 }
+	},
+	'& img': {
+		maxW: 'full',
+		h: 'auto',
+		rounded: 'control',
+		my: 'xs'
+	},
+	'& strong': {
+		fontWeight: 'strong'
+	},
+	'& em': {
+		fontStyle: 'italic'
+	},
+	'& del': {
+		textDecoration: 'line-through'
+	},
+	// Width 0 with min-width 100% keeps the scrollport as wide as the note.
+	// A max-content table otherwise stretches the contenteditable, and the editor clips it.
+	'& .markdown-block-scroll': {
+		w: '0',
+		minW: 'full',
+		maxW: 'full',
+		overflowX: 'auto',
+		overscrollBehaviorX: 'contain',
+		touchAction: 'pan-x pan-y',
+		borderRadius: 'inherit'
+	},
+	'& .markdown-raw-table': {
+		fontFamily: 'sans',
+		whiteSpace: 'pre',
+		overflowWrap: 'normal',
+		wordBreak: 'normal'
+	},
+	'&.markdown-content .markdown-raw-table': {
+		maxW: 'full',
+		overflowX: 'auto',
+		overscrollBehaviorX: 'contain',
+		px: 'md',
+		py: 'sm'
+	},
+	'& .markdown-table-scroll, & .markdown-code-block': {
+		w: '0',
+		minW: 'full',
+		maxW: 'full',
+		overflowX: 'auto',
+		overscrollBehaviorX: 'contain',
+		my: 'sm'
+	},
+	// The bar is inserted after the scrollport. The frame keeps that bar inside the table.
+	'& .markdown-table-frame': {
+		display: 'flex',
+		flexDirection: 'column',
+		w: 'full',
+		minW: 0,
+		maxW: 'full',
+		my: 'sm'
+	},
+	'& .markdown-table-frame > .markdown-table-scroll': { my: 0 },
+
+	'& .markdown-block-shell, & .markdown-block-surface': {
+		rounded: 'control',
+		bg: 'scrapscache.surfaceSubtle'
+	},
+	'& .markdown-block-shell': {
+		display: 'flex',
+		flexDirection: 'column',
+		position: 'relative',
+		w: 'full',
+		minW: 0,
+		maxW: 'full',
+		my: 'sm'
+	},
+	'& .markdown-block-copy': {
+		position: 'absolute',
+		top: '2xs',
+		right: '2xs',
+		zIndex: 2,
+		...gridCenter,
+		...square('1.75rem'),
+		border: 0,
+		rounded: 'compact',
+		bg: 'scrapscache.surface',
+		color: 'scrapscache.textMuted',
+		opacity: 0.58,
+		boxShadow: 'sm',
+		transition: 'colors 120ms ease',
+		...clickable,
+		_hoverable: { bg: 'scrapscache.surface', color: 'scrapscache.text', opacity: 1 },
+		_focusVisible: { outline: '2px solid token(colors.scrapscache.focus)', outlineOffset: '1px' }
+	},
+	'& .markdown-table': {
+		w: 'max-content',
+		minW: 'full',
+		borderCollapse: 'collapse',
+		textAlign: 'left'
+	},
+	'& .markdown-table th, & .markdown-table td': {
+		borderBottomWidth: 'hairline',
+		borderColor: 'scrapscache.border',
+		py: 'xs',
+		px: 'list',
+		verticalAlign: 'top',
+		whiteSpace: 'nowrap'
+	},
+	'& .markdown-table th': { fontWeight: 'strong' },
+	'& .markdown-table tr:last-child td': { borderBottom: 0 },
+	'& .markdown-code-block, & .markdown-code-block code, & .markdown-editor-code-block': {
+		color: 'scrapscache.text',
+		fontFamily: 'sans',
+		fontSize: 'compact',
+		lineHeight: 'body'
+	},
+	'& .markdown-block-scroll.markdown-editor-code-block': { py: 'sm' },
+	'& .markdown-code-block code': { display: 'block', minW: 'max-content', py: 'md' },
+	'& .markdown-code-language-row': { px: '0.75rem', pt: 'xs' },
+	'& .markdown-code-language': {
+		display: 'block',
+		w: '8rem',
+		maxW: 'full',
+		border: 'none',
+		bg: 'transparent',
+		color: 'scrapscache.textMuted',
+		fontFamily: 'sans',
+		fontSize: 'compact',
+		lineHeight: 'body',
+		p: '0',
+		outline: 'none',
+		'&::placeholder': { color: 'scrapscache.textMuted' }
+	},
+	'& .markdown-editor-code-block [data-markdown-code-fence]': { display: 'none' },
+	'& .markdown-editor-code-block [data-markdown-code-line]': {
+		w: 'max-content',
+		minW: 'full',
+		flexWrap: 'nowrap',
+		padding: '0 2.75rem 0 0.75rem'
+	},
+	'& .markdown-block-copy svg': square('0.875rem'),
+	// max-content on an empty line is 0 wide, so the caret has no box to land in.
+	// Grow to the row, which is already at least as wide as the code block.
+	'& .markdown-editor-code-line': {
+		display: 'block',
+		position: 'relative',
+		minH: '1lh',
+		outline: 'none',
+		w: 'auto',
+		minW: 'auto',
+		maxW: 'none',
+		flex: '1 0 auto',
+		whiteSpace: 'pre',
+		overflowWrap: 'normal',
+		wordBreak: 'normal'
+	},
+	'& .markdown-raw-code-block [data-editor-line]': { padding: '0 2.75rem 0 0.75rem' },
+	'& .markdown-code-line': { display: 'block', minW: 'max-content', px: 'md', whiteSpace: 'pre' },
+	'& .markdown-code-token-comment': { color: 'scrapscache.success', fontStyle: 'italic' },
+	'& .markdown-code-token-string': { color: 'scrapscache.danger' },
+	'& .markdown-code-token-flag': { color: 'scrapscache.accent' },
+	'& .markdown-editor-table-scroll': {
+		w: '0',
+		minW: 'full',
+		maxW: 'full',
+		overflowX: 'auto'
+	},
+	'& .markdown-editor-table': {
+		display: 'table',
+		w: 'max-content',
+		minW: 'full',
+		borderCollapse: 'collapse'
+	},
+	'& .markdown-editor-table [data-markdown-table-row]': { display: 'table-row' },
+	'& .markdown-editor-table-line': { display: 'contents' },
+	'& .markdown-raw-table-marker': { color: 'scrapscache.textMuted' },
+	'& .markdown-editor-table-cell': {
+		display: 'table-cell',
+		minW: '4ch',
+		minH: '1lh',
+		padding: '0.4rem 0.625rem',
+		borderBottomWidth: 'hairline',
+		borderColor: 'scrapscache.border',
+		verticalAlign: 'top',
+		whiteSpace: 'nowrap'
+	},
+	'& .markdown-editor-table-header-cell': { fontWeight: 'strong' },
+	'& .markdown-editor-table [data-markdown-table-row]:last-child .markdown-editor-table-cell': {
+		borderBottom: 0
+	},
+	'& .markdown-editor-table [data-markdown-table-row][data-markdown-table-separator]': {
+		display: 'none'
+	},
+	'& [data-markdown-editor-table] .markdown-editor-table [data-markdown-table-row]:first-child .markdown-editor-table-cell.markdown-table-last-cell':
+		{ paddingRight: '2.75rem' },
+	'& .markdown-token-marker-hidden': { display: 'none' },
+	'& .markdown-token-strong': { fontWeight: 'strong' },
+	'& .markdown-token-emphasis': { fontStyle: 'italic' },
+	'& .markdown-token-strikethrough': {
+		textDecoration: 'line-through',
+		textDecorationThickness: '1.5px'
+	},
+	'& .markdown-token-code': { color: 'scrapscache.warning' },
+	'& :is(.markdown-token-heading-1, .markdown-token-heading-2, .markdown-token-heading-3, .markdown-token-heading-4, .markdown-token-heading-5, .markdown-token-heading-6)':
+		{ fontWeight: 'strong' },
+	'& .markdown-token-heading-1': { fontSize: '1.35em' },
+	'& .markdown-token-heading-2': { fontSize: '1.2em' },
+	'& .markdown-token-heading-3': { fontSize: '1.08em' },
+	'& .markdown-token-marker': { color: 'scrapscache.accent' },
+	'& .markdown-token-marker-code': { color: 'scrapscache.warning' },
+	'& .markdown-token-marker-heading': { color: 'scrapscache.warning' },
+	'&.markdown-raw': {
+		fontFamily: 'sans',
+		caretColor: 'scrapscache.focus',
+		'& [data-line-text]:empty': { flex: '1 1 0%' },
+		'& .markdown-token-marker': { display: 'inline' },
+		'& .markdown-token-code': { color: 'scrapscache.warning' },
+		'& :is(.markdown-token-heading-1, .markdown-token-heading-2, .markdown-token-heading-3, .markdown-token-heading-4, .markdown-token-heading-5, .markdown-token-heading-6)':
+			{
+				color: 'scrapscache.warning',
+				fontSize: 'inherit',
+				fontWeight: 'inherit'
+			},
+		'& .markdown-token-strong, & .markdown-token-emphasis, & .markdown-token-strikethrough': {
+			color: 'scrapscache.accent',
+			fontWeight: 'inherit',
+			fontStyle: 'normal',
+			textDecoration: 'none'
+		},
+		'& [data-editor-line]': { w: 'full', minW: 0, flexWrap: 'wrap' },
+		'& [data-line-text]': {
+			w: 'auto',
+			minW: 0,
+			maxW: 'full',
+			flex: '1 1 0%',
+			whiteSpace: 'pre-wrap',
+			overflowWrap: 'anywhere',
+			wordBreak: 'normal'
+		},
+		'& .markdown-raw-table [data-editor-line], & .markdown-raw-code-block [data-editor-line]': {
+			w: 'max-content',
+			minW: 'full',
+			flexWrap: 'nowrap',
+			px: 'md'
+		},
+		'& .markdown-raw-table [data-line-text], & .markdown-raw-code-block [data-line-text]': {
+			display: 'block',
+			w: 'max-content',
+			minW: 'max-content',
+			maxW: 'none',
+			flex: '0 0 auto',
+			whiteSpace: 'pre',
+			overflowWrap: 'normal',
+			wordBreak: 'normal'
+		}
+	}
+});

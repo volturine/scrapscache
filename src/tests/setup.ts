@@ -41,13 +41,15 @@ if (typeof window !== 'undefined' && !window.ResizeObserver) {
 	} as typeof ResizeObserver;
 }
 
-if (typeof window !== 'undefined') {
-	if (!window.URL.createObjectURL) {
-		window.URL.createObjectURL = () => 'blob:mock';
-	}
-	if (!window.URL.revokeObjectURL) {
-		window.URL.revokeObjectURL = () => {};
-	}
+// jsdom has no blob URL support, and vitest's jsdom createObjectURL compat
+// crashes on jsdom >= 30.1.0 because jsdom moved impl references to private fields.
+if (typeof URL !== 'undefined') {
+	URL.createObjectURL = () => 'blob:mock';
+	URL.revokeObjectURL = () => {};
+}
+if (typeof window !== 'undefined' && window.URL) {
+	window.URL.createObjectURL = () => 'blob:mock';
+	window.URL.revokeObjectURL = () => {};
 }
 
 // jsdom lacks matchMedia; add a minimal stub.

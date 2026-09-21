@@ -489,21 +489,49 @@
 		return lines[root]?.isCheck ? lines[root].id : null;
 	});
 
-	function handleEditorClick(event: MouseEvent) {
+	// A second tap inside an already-focused plaintext editor often never fires
+	// click, so the highlight would stay on the previously focused task.
+	const TAP_SLOP = 8;
+	let tapOrigin: { id: number; x: number; y: number } | null = null;
+
+	function lineIndexFromEvent(event: MouseEvent, allowSelection: boolean): number | null {
+		const direct = lineIndexOfElement(event.target instanceof Node ? event.target : null);
+		if (direct !== null) return direct;
+		// The hit can land on a chunk wrapper. Resolve the line from the tap point,
+		// then from the caret click has already placed.
+		const fromPoint = document.caretRangeFromPoint?.(event.clientX, event.clientY);
+		if (fromPoint) {
+			const index = lineIndexOfElement(fromPoint.startContainer);
+			if (index !== null) return index;
+		}
+		if (!allowSelection) return null;
+		return lineIndexOfElement(window.getSelection()?.focusNode ?? null);
+	}
+
+	function handFocus(event: MouseEvent, allowSelection: boolean) {
 		// A touch can start on the checkbox and finish over the editable label. In
 		// that case Safari may retarget its synthetic click to the task row. Keep
 		// the whole gesture owned by the checkbox so it cannot open the keyboard.
 		if (checklistPointerId !== null || subtaskPointerId !== null) return;
-		if ((event.target as Element)?.closest?.('[data-add-subtask]')) return;
-		const row = closestLineElement(event.target as Node);
-		if (!row) return;
-		const index = lineIndexOfElement(row);
+		if ((event.target as Element)?.closest?.('[data-add-subtask], [data-checklist-toggle]')) return;
+		const index = lineIndexFromEvent(event, allowSelection);
 		if (index === null) return;
+		const row = lineElement(index);
 		const scroller = container?.closest('.scrollable') as HTMLElement | null;
-		const anchorTop = row.getBoundingClientRect().top;
+		const anchorTop = row?.getBoundingClientRect().top;
 		focusTask(index);
 		flushSync();
-		if (scroller) scroller.scrollTop += row.getBoundingClientRect().top - anchorTop;
+		if (scroller && row && anchorTop !== undefined)
+			scroller.scrollTop += row.getBoundingClientRect().top - anchorTop;
+	}
+
+	function trackTap(event: PointerEvent) {
+		if (event.pointerType === 'mouse' && event.button !== 0) return;
+		tapOrigin = { id: event.pointerId, x: event.clientX, y: event.clientY };
+	}
+
+	function handleEditorClick(event: MouseEvent) {
+		handFocus(event, true);
 	}
 
 	function syncLineFromDom(index: number): boolean {
@@ -893,6 +921,8 @@
 	}
 
 	function finishPointer(event: PointerEvent) {
+		const origin = tapOrigin?.id === event.pointerId ? tapOrigin : null;
+		if (origin) tapOrigin = null;
 		if (event.pointerId === checklistPointerId) {
 			queueMicrotask(() => {
 				if (checklistPointerId === event.pointerId) checklistPointerId = null;
@@ -903,9 +933,15 @@
 				if (subtaskPointerId === event.pointerId) subtaskPointerId = null;
 			});
 		}
+		// Move the highlight before the browser places the caret, while the id of a
+		// checkbox or add-subtask gesture is still set and can veto it.
+		if (event.pointerType !== 'touch' || !origin) return;
+		if (Math.hypot(event.clientX - origin.x, event.clientY - origin.y) > TAP_SLOP) return;
+		handFocus(event, false);
 	}
 
 	function cancelPointer(event: PointerEvent) {
+		if (tapOrigin?.id === event.pointerId) tapOrigin = null;
 		if (event.pointerId === checklistPointerId) checklistPointerId = null;
 		if (event.pointerId === subtaskPointerId) subtaskPointerId = null;
 	}
@@ -1275,6 +1311,7 @@
 	oncut={handleCut}
 	onpaste={handlePaste}
 	onkeydown={handleKeydown}
+	onpointerdown={trackTap}
 	onpointerup={finishPointer}
 	onpointercancel={cancelPointer}
 	onclick={handleEditorClick}
@@ -1343,7 +1380,7 @@
 					onpointerdown={(event) => activateAddSubtask(event, focusedGroupRows[0]?.index ?? -1)}
 					onclick={(event) => handleAddSubtaskClick(event, focusedGroupRows[0]?.index ?? -1)}
 				>
-					<span aria-hidden="true" class={editor.addSubtask}></span>
+					<span aria-hidden="true"></span>
 				</button>
 			{/if}
 		</div>

@@ -512,12 +512,14 @@ const noteBodyRecipe = defineSlotRecipe({
 			color: 'scrapscache.textMuted',
 			...tapTarget,
 			minH: { base: '32px', sm: 0 },
+			whiteSpace: 'nowrap',
 			transition: 'colors 120ms ease',
 			_hoverable: {
 				bg: 'scrapscache.interactiveHover',
 				color: 'scrapscache.text'
 			},
-			'&::before': { content: '"+  Add sub-task"' }
+			// Child only. This slot styles the button, so a button ::before paints a second label.
+			'& > span::before': { content: '"+  Add sub-task"' }
 		}
 	},
 	variants: {

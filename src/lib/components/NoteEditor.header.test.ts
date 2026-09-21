@@ -206,6 +206,33 @@ describe('NoteEditor task focus', () => {
 		expect(scroller.scrollTop).toBe(640);
 	});
 
+	it('moves task focus when a touch retargets to another task without a click', async () => {
+		notesStore.notes = [note({ body: '[ ] First task\n[ ] Last task' })];
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const tasks = container.querySelectorAll('[data-task-row] [data-line-text]');
+		editor.focus();
+
+		dispatchTouchPointer(tasks[0], 'pointerdown', { clientY: 20 });
+		dispatchTouchPointer(tasks[0], 'pointerup', { clientY: 22 });
+		await tick();
+
+		expect(container.querySelector('[data-focus-group] [data-line-text]')?.textContent).toBe(
+			'First task'
+		);
+
+		dispatchTouchPointer(tasks[1], 'pointerdown', { clientY: 80 });
+		dispatchTouchPointer(tasks[1], 'pointerup', { clientY: 82 });
+		await tick();
+
+		expect(container.querySelector('[data-focus-group] [data-line-text]')?.textContent).toBe(
+			'Last task'
+		);
+		expect(document.activeElement).toBe(editor);
+	});
+
 	it('keeps one native editing host when focus chrome moves between tasks', async () => {
 		notesStore.notes = [note({ body: '[ ] First task\n[ ] Last task' })];
 		const { container } = render(NoteEditor, {

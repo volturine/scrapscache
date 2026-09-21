@@ -68,7 +68,29 @@ describe('NoteBodyDisplay inline Markdown', () => {
 		expect(container.querySelector('.markdown-token-emphasis')?.textContent).toBe('italic');
 		expect(container.querySelector('.markdown-token-code')?.textContent).toBe('code');
 		expect(container.querySelector('.markdown-token-strikethrough')?.textContent).toBe('removed');
-		expect(container.querySelectorAll('.markdown-token-marker-hidden')).toHaveLength(8);
+		expect(container.textContent).not.toContain('**');
+		expect(container.textContent).not.toContain('~~');
+	});
+
+	it('renders markdown headers and lists with checkboxes', () => {
+		const { container } = render(NoteBodyDisplay, {
+			props: {
+				note: note({
+					body: '# Hello World\n## Subheading\n- [ ] Task item'
+				})
+			}
+		});
+
+		const h1 = container.querySelector('h1');
+		expect(h1).toBeTruthy();
+		expect(h1?.textContent).toBe('Hello World');
+
+		const h2 = container.querySelector('h2');
+		expect(h2).toBeTruthy();
+		expect(h2?.textContent).toBe('Subheading');
+
+		const checkbox = container.querySelector('input[type="checkbox"]');
+		expect(checkbox).toBeTruthy();
 	});
 
 	it('reveals raw delimiters and syntax colors when enabled', () => {
@@ -130,7 +152,7 @@ describe('NoteBodyDisplay Markdown blocks', () => {
 			}
 		});
 
-		const code = container.querySelector('[data-markdown-code-block]');
+		const code = container.querySelector('pre[data-markdown-code-block]');
 		expect(code?.tagName).toBe('PRE');
 		expect(code?.getAttribute('data-language')).toBe('sh');
 		expect(code?.textContent).toContain('# comment');
@@ -144,7 +166,7 @@ describe('NoteBodyDisplay Markdown blocks', () => {
 			props: { note: note({ body: '```html\n<script>alert(1)</script>\n```' }) }
 		});
 
-		const code = container.querySelector('[data-markdown-code-block]');
+		const code = container.querySelector('pre[data-markdown-code-block]');
 		expect(code?.querySelector('script')).toBeNull();
 		expect(code?.textContent).toContain('<script>alert(1)</script>');
 	});

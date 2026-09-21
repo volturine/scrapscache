@@ -4,7 +4,7 @@
 	// checklists are interactive in the editor instead.
 	import type { Note } from '$lib/types';
 	import { noteBody } from 'styled-system/recipes';
-	import { parseBody, noteAttachments, type BodySegment } from '$lib/checklistBody';
+	import { noteAttachments, type BodySegment } from '$lib/checklistBody';
 	import { extractHttpUrls, localLinkCard } from '$lib/linkPreview';
 	import { isImageAttachment, fileIconLabel } from '$lib/noteImages';
 	import { displayImageSrc } from '$lib/imageThumb';
@@ -13,6 +13,15 @@
 	import { isCanvasAttachment } from '$lib/canvasAttachment';
 	import { canvasPreview, filePreview, photoPreview, markdownStyles } from '$panda/styles';
 	import { checklist } from 'styled-system/recipes';
+	import SvelteMarkdown from '@humanspeak/svelte-markdown';
+	import MarkdownListItem from './MarkdownListItem.svelte';
+	import MarkdownDisplayLink from './MarkdownDisplayLink.svelte';
+	import MarkdownCodeBlock from './MarkdownCodeBlock.svelte';
+	import MarkdownTable from './MarkdownTable.svelte';
+	import MarkdownStrong from './MarkdownStrong.svelte';
+	import MarkdownEm from './MarkdownEm.svelte';
+	import MarkdownDel from './MarkdownDel.svelte';
+	import MarkdownCodespan from './MarkdownCodespan.svelte';
 	import {
 		highlightCodeLine,
 		markdownTokenClass,
@@ -28,6 +37,7 @@
 	const displayBlocks = $derived(
 		blocks.length > CARD_PREVIEW_LIMIT ? blocks.slice(0, CARD_PREVIEW_LIMIT) : blocks
 	);
+	const normalizedBody = $derived((note.body ?? '').replace(/^(\s*)\[([ xX])\]\s+/gm, '$1- [$2] '));
 	const attachments = $derived(noteAttachments(note));
 	const imageAttachments = $derived(attachments.filter(isImageAttachment));
 	const canvases = $derived(attachments.filter(isCanvasAttachment));
@@ -134,52 +144,69 @@
 		uiStore.rawMarkdown && 'markdown-raw'
 	]}
 >
-	{#each displayBlocks as block (block.type === 'line' ? block.segment.lineIndex : block.lineIndex)}
-		{#if block.type === 'line'}
-			{@render bodyLine(block.segment)}
-		{:else if block.type === 'table'}
-			<div
-				class="markdown-block-surface markdown-table-scroll note-scrollbar-hidden"
-				data-markdown-table-container
-			>
-				<table class="markdown-table" data-markdown-table>
-					<thead>
-						<tr>
-							{#each block.header as cell, columnIndex (columnIndex)}
-								<th scope="col" style={`text-align: ${block.alignments[columnIndex]};`}>
-									{@render inlineContent(cell)}
-								</th>
-							{/each}
-						</tr>
-					</thead>
-					<tbody>
-						{#each block.rows as row, rowIndex (rowIndex)}
+	{#if uiStore.rawMarkdown}
+		{#each displayBlocks as block (block.type === 'line' ? block.segment.lineIndex : block.lineIndex)}
+			{#if block.type === 'line'}
+				{@render bodyLine(block.segment)}
+			{:else if block.type === 'table'}
+				<div
+					class="markdown-block-surface markdown-table-scroll note-scrollbar-hidden"
+					data-markdown-table-container
+				>
+					<table class="markdown-table" data-markdown-table>
+						<thead>
 							<tr>
-								{#each block.header as _, columnIndex (columnIndex)}
-									<td style={`text-align: ${block.alignments[columnIndex]};`}>
-										{@render inlineContent(row[columnIndex] ?? '')}
-									</td>
+								{#each block.header as cell, columnIndex (columnIndex)}
+									<th scope="col" style={`text-align: ${block.alignments[columnIndex]};`}>
+										{@render inlineContent(cell)}
+									</th>
 								{/each}
 							</tr>
-						{/each}
-					</tbody>
-				</table>
-			</div>
-		{:else}
-			{@const codeLines = block.code.split('\n')}
-			<pre
-				class="markdown-block-surface markdown-code-block note-scrollbar-hidden"
-				data-markdown-code-block
-				data-language={block.language || undefined}><code
-					>{#each codeLines as codeLine, codeLineIndex (`${block.lineIndex}-${codeLineIndex}`)}<span
-							class="markdown-code-line"
-							>{#each highlightCodeLine(codeLine, block.language) as token, tokenIndex (tokenIndex)}{#if token.kind === 'plain'}{token.text}{:else}<span
-										class="markdown-code-token-{token.kind}">{token.text}</span
-									>{/if}{/each}</span
-						>{/each}</code
-				></pre>
-		{/if}
-	{/each}
+						</thead>
+						<tbody>
+							{#each block.rows as row, rowIndex (rowIndex)}
+								<tr>
+									{#each block.header as _, columnIndex (columnIndex)}
+										<td style={`text-align: ${block.alignments[columnIndex]};`}>
+											{@render inlineContent(row[columnIndex] ?? '')}
+										</td>
+									{/each}
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</div>
+			{:else}
+				{@const codeLines = block.code.split('\n')}
+				<pre
+					class="markdown-block-surface markdown-code-block note-scrollbar-hidden"
+					data-markdown-code-block
+					data-language={block.language || undefined}><code
+						>{#each codeLines as codeLine, codeLineIndex (`${block.lineIndex}-${codeLineIndex}`)}<span
+								class="markdown-code-line"
+								>{#each highlightCodeLine(codeLine, block.language) as token, tokenIndex (tokenIndex)}{#if token.kind === 'plain'}{token.text}{:else}<span
+											class="markdown-code-token-{token.kind}">{token.text}</span
+										>{/if}{/each}</span
+							>{/each}</code
+					></pre>
+			{/if}
+		{/each}
+	{:else if note.body?.trim()}
+		<SvelteMarkdown
+			source={normalizedBody}
+			options={{ gfm: true, breaks: true }}
+			renderers={{
+				code: MarkdownCodeBlock,
+				table: MarkdownTable,
+				listitem: MarkdownListItem,
+				link: MarkdownDisplayLink,
+				strong: MarkdownStrong,
+				em: MarkdownEm,
+				del: MarkdownDel,
+				codespan: MarkdownCodespan
+			}}
+		/>
+	{/if}
 </div>
 
 {#if canvases.length > 0}

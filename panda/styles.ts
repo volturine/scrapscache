@@ -2062,6 +2062,82 @@ export const topbarSyncTone = {
 } as const;
 
 export const markdownStyles = css({
+	w: 'full',
+	maxW: 'full',
+	overflowWrap: 'break-word',
+	wordBreak: 'break-word',
+	color: 'scrapscache.text',
+	'& h1, & h2, & h3, & h4, & h5, & h6': {
+		fontWeight: 'strong',
+		lineHeight: 'tight',
+		color: 'scrapscache.text'
+	},
+	'& h1': { fontSize: '1.4em', mt: 'md', mb: 'xs' },
+	'& h2': { fontSize: '1.2em', mt: 'md', mb: 'xs' },
+	'& h3': { fontSize: '1.05em', mt: 'sm', mb: '2xs' },
+	'& h4, & h5, & h6': { fontSize: '1em', mt: 'xs', mb: '2xs' },
+	'& p': {
+		my: 'xs',
+		'&:first-child': { mt: 0 },
+		'&:last-child': { mb: 0 }
+	},
+	'& blockquote': {
+		borderLeftWidth: '3px',
+		borderColor: 'scrapscache.accent',
+		pl: 'md',
+		my: 'sm',
+		color: 'scrapscache.textMuted',
+		fontStyle: 'italic'
+	},
+	'& ul': {
+		listStyleType: 'disc',
+		pl: 'lg',
+		my: 'xs'
+	},
+	'& ol': {
+		listStyleType: 'decimal',
+		pl: 'lg',
+		my: 'xs'
+	},
+	'& li': {
+		my: '2xs'
+	},
+	'& li.task-list-item, & li:has(> input[type="checkbox"])': {
+		listStyleType: 'none',
+		pl: 0
+	},
+	'& input[type="checkbox"]': {
+		accentColor: 'token(colors.scrapscache.accent)',
+		mr: 'xs',
+		verticalAlign: 'middle'
+	},
+	'& hr': {
+		border: 0,
+		borderTopWidth: 'hairline',
+		borderColor: 'scrapscache.border',
+		my: 'md'
+	},
+	'& a, & .markdown-link': {
+		color: 'scrapscache.accent',
+		textDecoration: 'underline',
+		textUnderlineOffset: '2px',
+		_hoverable: { opacity: 0.8 }
+	},
+	'& img': {
+		maxW: 'full',
+		h: 'auto',
+		rounded: 'control',
+		my: 'xs'
+	},
+	'& strong': {
+		fontWeight: 'strong'
+	},
+	'& em': {
+		fontStyle: 'italic'
+	},
+	'& del': {
+		textDecoration: 'line-through'
+	},
 	'& .markdown-block-scroll': {
 		w: 'full',
 		minW: 0,

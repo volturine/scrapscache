@@ -7,9 +7,11 @@ const SCRAPSCACHE_URL = process.env.SCRAPSCACHE_URL || 'https://scrapscache.com'
 const SCRAPSCACHE_SYNC_KEY = process.env.SCRAPSCACHE_SYNC_KEY;
 const MCP_BEARER_TOKEN = process.env.MCP_BEARER_TOKEN;
 const MCP_FRIENDS_TOKENS = process.env.MCP_FRIENDS_TOKENS;
+const MCP_SECRET =
+	process.env.MCP_SECRET || process.env.SCRAPSCACHE_SYNC_KEY || process.env.MCP_BEARER_TOKEN;
 const PORT = Number(process.env.MCP_PORT || process.env.PORT || 3001);
 
-const oauthManager = new OAuthManager();
+const oauthManager = new OAuthManager(MCP_SECRET);
 const tokenStore = new TokenStore(oauthManager, {
 	defaultSyncKey: SCRAPSCACHE_SYNC_KEY,
 	bearerToken: MCP_BEARER_TOKEN,
@@ -95,5 +97,10 @@ server.listen(PORT, () => {
 	}
 	if (MCP_BEARER_TOKEN) {
 		console.log('[McpServer] Static Bearer token enabled.');
+	}
+	if (!MCP_SECRET) {
+		console.log(
+			'[McpServer] MCP_SECRET is unset. OAuth grants stay in this process and will not survive a restart or a second instance.'
+		);
 	}
 });

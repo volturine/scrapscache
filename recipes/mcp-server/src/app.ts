@@ -147,7 +147,7 @@ export class McpApp {
 				const codeChallengeMethod = url.searchParams.get('code_challenge_method') || '';
 				const manual = url.searchParams.get('manual') === 'true';
 
-				const client = oauth.getClient(clientId);
+				const client = oauth.getClient(clientId, redirectUri);
 				if (!client || !isRedirectAllowed(client, redirectUri)) {
 					return new Response('Invalid client_id or unauthorized redirect_uri', { status: 400 });
 				}
@@ -201,7 +201,7 @@ export class McpApp {
 				const codeChallenge = String(formData.get('code_challenge') || '');
 				const customSyncKey = String(formData.get('custom_sync_key') || '').trim();
 
-				const client = oauth.getClient(clientId);
+				const client = oauth.getClient(clientId, redirectUri);
 				if (!client || !isRedirectAllowed(client, redirectUri)) {
 					return new Response('Invalid client_id or unauthorized redirect_uri', { status: 400 });
 				}

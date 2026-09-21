@@ -120,3 +120,66 @@ describe('MCP App HTTP endpoints and JSON-RPC dispatch', () => {
 		expect(html).toContain('Authorize Claude');
 	});
 });
+
+describe('OAuth authorize across isolated workers', () => {
+	const secret = 'grok-dev-worker-secret';
+	const grokRedirect = 'https://grok.com/connectors-oauth-exchange-code/';
+	const challenge = 'm2LSleqpoW4pmF1gZSzdRMXkDhRkoIfc_ITJDrFi_SY';
+
+	function isolatedApp(oauthSecret: string) {
+		return new McpApp({
+			scrapscacheUrl: 'https://dev.scrapscache.com',
+			tokenStore: new TokenStore(new OAuthManager(oauthSecret))
+		});
+	}
+
+	it('accepts Grok’s cached dynamic client_id on an isolate that never registered it', async () => {
+		const url = new URL('http://localhost:3001/oauth/authorize');
+		url.searchParams.set('response_type', 'code');
+		url.searchParams.set('client_id', 'client_E11z-0dUQT9u');
+		url.searchParams.set('redirect_uri', grokRedirect);
+		url.searchParams.set(
+			'state',
+			'264db41a296be048f39b0bc6405abf4c95714ca3846a567494fd3293e825b37b'
+		);
+		url.searchParams.set('code_challenge', challenge);
+		url.searchParams.set('code_challenge_method', 'S256');
+
+		const res = await isolatedApp(secret).handleRequest(new Request(url));
+		expect(res.status).toBe(302);
+		expect(res.headers.get('Location') || '').toContain(
+			'https://dev.scrapscache.com/mcp/authorize'
+		);
+	});
+
+	it('authorizes a client registered on a different instance that shares MCP_SECRET', async () => {
+		const registrar = isolatedApp(secret);
+		const authorizer = isolatedApp(secret);
+		const reg = await registrar.handleRequest(
+			new Request('http://localhost:3001/oauth/register', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({
+					client_name: 'Cursor',
+					redirect_uris: ['https://cursor.com/oauth/callback']
+				})
+			})
+		);
+		expect(reg.status).toBe(201);
+		const body = (await reg.json()) as { client_id: string };
+
+		const url = new URL('http://localhost:3001/oauth/authorize');
+		url.searchParams.set('response_type', 'code');
+		url.searchParams.set('client_id', body.client_id);
+		url.searchParams.set('redirect_uri', 'https://cursor.com/oauth/callback');
+		url.searchParams.set('state', 'abc');
+		url.searchParams.set('code_challenge', challenge);
+		url.searchParams.set('code_challenge_method', 'S256');
+
+		const res = await authorizer.handleRequest(new Request(url));
+		expect(res.status).toBe(302);
+		expect(res.headers.get('Location') || '').toContain(
+			'https://dev.scrapscache.com/mcp/authorize'
+		);
+	});
+});

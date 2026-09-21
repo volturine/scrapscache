@@ -126,7 +126,15 @@ wrangler secret put SCRAPSCACHE_SYNC_KEY
 wrangler secret put MCP_BEARER_TOKEN
 ```
 
-Otherwise, leave secrets empty for the pure zero-token 1-click OAuth handshake!
+OAuth clients, handshake sessions, and access tokens are sealed with `MCP_SECRET` so any Worker isolate can finish a login started on another isolate. Set one before connecting Claude, ChatGPT, or Grok:
+
+```bash
+wrangler secret put MCP_SECRET --env dev
+```
+
+If `MCP_SECRET` is unset, the worker falls back to `SCRAPSCACHE_SYNC_KEY` or `MCP_BEARER_TOKEN`. With none of those set, a dynamic client registered on one isolate is unknown on the next, and `/oauth/authorize` returns `Invalid client_id or unauthorized redirect_uri`.
+
+Leave `SCRAPSCACHE_SYNC_KEY` and `MCP_BEARER_TOKEN` empty for the pure zero-token 1-click OAuth handshake. `MCP_SECRET` is still required.
 
 ---
 

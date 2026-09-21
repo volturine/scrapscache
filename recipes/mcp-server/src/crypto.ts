@@ -97,8 +97,11 @@ export function computeSlot(syncKey: string, recordKey: string): string {
 
 export function createHandshakeKeyPair(): { privateKey: Uint8Array; publicKey: string } {
 	const privateKey = randomBytes(32);
-	const publicKey = bytesToBase64Url(x25519.getPublicKey(privateKey));
-	return { privateKey, publicKey };
+	const publicKeyBytes = x25519.getPublicKey(privateKey);
+	return {
+		privateKey,
+		publicKey: bytesToBase64Url(publicKeyBytes)
+	};
 }
 
 export function decryptHandshakePayload(params: {
@@ -107,13 +110,38 @@ export function decryptHandshakePayload(params: {
 	ciphertext: string;
 	nonce: string;
 }): string {
-	const clientPubBytes = base64UrlToBytes(params.clientPublicKey);
-	const sharedSecret = x25519.getSharedSecret(params.mcpPrivateKey, clientPubBytes);
+	const clientPublicKeyBytes = base64UrlToBytes(params.clientPublicKey);
+	const sharedSecret = x25519.getSharedSecret(params.mcpPrivateKey, clientPublicKeyBytes);
 	const key = sha256(
 		encoder.encode(`scrapscache-mcp-handshake:v1:${bytesToBase64Url(sharedSecret)}`)
 	);
-	const nonce = base64UrlToBytes(params.nonce);
-	const ciphertext = base64UrlToBytes(params.ciphertext);
-	const decrypted = xchacha20poly1305(key, nonce).decrypt(ciphertext);
+	const nonceBytes = base64UrlToBytes(params.nonce);
+	const ciphertextBytes = base64UrlToBytes(params.ciphertext);
+	const decrypted = xchacha20poly1305(key, nonceBytes).decrypt(ciphertextBytes);
 	return decoder.decode(decrypted);
+}
+
+export function sealPayload(payload: unknown, secret: string): string {
+	const key = sha256(encoder.encode(`scrapscache-mcp-seal:v1:${secret}`));
+	const nonce = randomBytes(24);
+	const plaintext = encoder.encode(JSON.stringify(payload));
+	const ciphertext = xchacha20poly1305(key, nonce).encrypt(plaintext);
+	const combined = new Uint8Array(nonce.length + ciphertext.length);
+	combined.set(nonce, 0);
+	combined.set(ciphertext, nonce.length);
+	return bytesToBase64Url(combined);
+}
+
+export function unsealPayload<T>(sealed: string, secret: string): T | null {
+	try {
+		const combined = base64UrlToBytes(sealed);
+		if (combined.length < 24 + 16) return null;
+		const nonce = combined.subarray(0, 24);
+		const ciphertext = combined.subarray(24);
+		const key = sha256(encoder.encode(`scrapscache-mcp-seal:v1:${secret}`));
+		const decrypted = xchacha20poly1305(key, nonce).decrypt(ciphertext);
+		return JSON.parse(decoder.decode(decrypted)) as T;
+	} catch {
+		return null;
+	}
 }

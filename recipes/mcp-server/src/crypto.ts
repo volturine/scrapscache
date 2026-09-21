@@ -1,5 +1,5 @@
 import { xchacha20poly1305 } from '@noble/ciphers/chacha.js';
-import { ed25519 } from '@noble/curves/ed25519.js';
+import { ed25519, x25519 } from '@noble/curves/ed25519.js';
 import { sha256 as nobleSha256 } from '@noble/hashes/sha2.js';
 
 const encoder = new TextEncoder();
@@ -93,4 +93,27 @@ export function decryptSyncPayload<T = unknown>(syncKey: string, envelope: strin
 
 export function computeSlot(syncKey: string, recordKey: string): string {
 	return bytesToBase64Url(sha256(encoder.encode(`${syncKey}\0${recordKey}`)));
+}
+
+export function createHandshakeKeyPair(): { privateKey: Uint8Array; publicKey: string } {
+	const privateKey = randomBytes(32);
+	const publicKey = bytesToBase64Url(x25519.getPublicKey(privateKey));
+	return { privateKey, publicKey };
+}
+
+export function decryptHandshakePayload(params: {
+	mcpPrivateKey: Uint8Array;
+	clientPublicKey: string;
+	ciphertext: string;
+	nonce: string;
+}): string {
+	const clientPubBytes = base64UrlToBytes(params.clientPublicKey);
+	const sharedSecret = x25519.getSharedSecret(params.mcpPrivateKey, clientPubBytes);
+	const key = sha256(
+		encoder.encode(`scrapscache-mcp-handshake:v1:${bytesToBase64Url(sharedSecret)}`)
+	);
+	const nonce = base64UrlToBytes(params.nonce);
+	const ciphertext = base64UrlToBytes(params.ciphertext);
+	const decrypted = xchacha20poly1305(key, nonce).decrypt(ciphertext);
+	return decoder.decode(decrypted);
 }

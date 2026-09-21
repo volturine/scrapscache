@@ -13,6 +13,8 @@ export function renderConsentHtml(params: {
 		? `<div class="alert error">${escapeHtml(params.errorMessage)}</div>`
 		: '';
 
+	const handshakeUrl = `/oauth/authorize?mode=handshake&client_id=${encodeURIComponent(params.clientId)}&redirect_uri=${encodeURIComponent(params.redirectUri)}&state=${encodeURIComponent(params.state)}&code_challenge=${encodeURIComponent(params.codeChallenge)}&code_challenge_method=${encodeURIComponent(params.codeChallengeMethod)}`;
+
 	return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -74,9 +76,8 @@ export function renderConsentHtml(params: {
       height: 48px;
       border-radius: 50%;
       background: rgba(56, 189, 248, 0.15);
-      color: var(--primary);
-      margin-bottom: 1rem;
-      font-size: 24px;
+      font-size: 1.5rem;
+      margin-bottom: 0.75rem;
     }
     h1 { font-size: 1.35rem; font-weight: 700; margin-bottom: 0.5rem; }
     p { font-size: 0.95rem; color: var(--text-muted); line-height: 1.5; }
@@ -125,7 +126,7 @@ export function renderConsentHtml(params: {
       gap: 0.75rem;
       margin-top: 1.5rem;
     }
-    button {
+    button, .btn-link {
       width: 100%;
       padding: 0.85rem;
       border: none;
@@ -133,6 +134,10 @@ export function renderConsentHtml(params: {
       font-size: 0.95rem;
       font-weight: 600;
       cursor: pointer;
+      text-align: center;
+      text-decoration: none;
+      box-sizing: border-box;
+      display: inline-block;
       transition: background 0.15s ease;
     }
     .btn-primary {
@@ -161,6 +166,16 @@ export function renderConsentHtml(params: {
       color: var(--danger);
       border: 1px solid rgba(239, 68, 68, 0.3);
     }
+    details {
+      margin-top: 1rem;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+    summary {
+      cursor: pointer;
+      margin-bottom: 0.5rem;
+      user-select: none;
+    }
     .footnote {
       text-align: center;
       font-size: 0.75rem;
@@ -188,6 +203,14 @@ export function renderConsentHtml(params: {
       </ul>
     </div>
 
+    ${
+			!params.hasDefaultSyncKey
+				? `<div class="actions" style="margin-bottom: 1rem;">
+             <a href="${handshakeUrl}" class="btn-primary btn-link">✨ Authorize with Scraps Cache (Zero-Token)</a>
+           </div>`
+				: ''
+		}
+
     <form method="POST" action="/oauth/authorize">
       <input type="hidden" name="client_id" value="${escapeHtml(params.clientId)}">
       <input type="hidden" name="redirect_uri" value="${escapeHtml(params.redirectUri)}">
@@ -197,14 +220,18 @@ export function renderConsentHtml(params: {
 
       ${
 				params.hasDefaultSyncKey
-					? `<div class="input-group">
-               <label for="custom_key">Sync Key (leave blank to use default self-hosted vault):</label>
-               <input type="password" id="custom_key" name="custom_sync_key" placeholder="Enter friend sync key (optional)">
-             </div>`
-					: `<div class="input-group">
-               <label for="custom_key">Scraps Cache Sync Key:</label>
-               <input type="password" id="custom_key" name="custom_sync_key" placeholder="Base64URL sync key" required>
-             </div>`
+					? `<details>
+               <summary>Use different sync key (optional)</summary>
+               <div class="input-group">
+                 <input type="password" id="custom_key" name="custom_sync_key" placeholder="Enter custom sync key">
+               </div>
+             </details>`
+					: `<details>
+               <summary>Manual sync key input</summary>
+               <div class="input-group">
+                 <input type="password" id="custom_key" name="custom_sync_key" placeholder="Base64URL sync key">
+               </div>
+             </details>`
 			}
 
       <div class="actions">

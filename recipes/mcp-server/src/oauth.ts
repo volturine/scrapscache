@@ -1,4 +1,4 @@
-import { sha256Base64Url, randomOpaqueId } from './crypto.js';
+import { sha256Base64Url, randomOpaqueId, createHandshakeKeyPair } from './crypto.js';
 
 export const MCP_OAUTH_SCOPE = 'mcp';
 export const MCP_OAUTH_CODE_TTL_MS = 5 * 60 * 1000; // 5 minutes
@@ -91,11 +91,24 @@ export type StoredOAuthToken = {
 	expiresAt: number;
 };
 
+export type EphemeralAuthSession = {
+	sessionId: string;
+	clientId: string;
+	redirectUri: string;
+	state: string;
+	codeChallenge: string;
+	codeChallengeMethod: string;
+	mcpPrivateKey: Uint8Array;
+	mcpPublicKey: string;
+	expiresAt: number;
+};
+
 export class OAuthManager {
 	private readonly clients = new Map<string, OAuthClientInfo>();
 	private readonly codes = new Map<string, StoredOAuthCode>();
 	private readonly tokens = new Map<string, StoredOAuthToken>();
 	private readonly refreshTokens = new Map<string, string>(); // refreshToken -> accessToken
+	private readonly authSessions = new Map<string, EphemeralAuthSession>();
 
 	constructor() {
 		for (const client of WELL_KNOWN_CLIENTS) {
@@ -119,6 +132,51 @@ export class OAuthManager {
 
 	getClient(clientId: string): OAuthClientInfo | null {
 		return this.clients.get(clientId) ?? null;
+	}
+
+	createAuthSession(params: {
+		clientId: string;
+		redirectUri: string;
+		state: string;
+		codeChallenge: string;
+		codeChallengeMethod: string;
+		now?: number;
+		ttlMs?: number;
+	}): EphemeralAuthSession {
+		const now = params.now ?? Date.now();
+		const sessionId = `auth_${randomOpaqueId()}`;
+		const { privateKey, publicKey } = createHandshakeKeyPair();
+		const session: EphemeralAuthSession = {
+			sessionId,
+			clientId: params.clientId,
+			redirectUri: params.redirectUri,
+			state: params.state,
+			codeChallenge: params.codeChallenge,
+			codeChallengeMethod: params.codeChallengeMethod,
+			mcpPrivateKey: privateKey,
+			mcpPublicKey: publicKey,
+			expiresAt: now + (params.ttlMs ?? 10 * 60 * 1000)
+		};
+		this.authSessions.set(sessionId, session);
+		return session;
+	}
+
+	getAuthSession(sessionId: string, now = Date.now()): EphemeralAuthSession | null {
+		const session = this.authSessions.get(sessionId);
+		if (!session) return null;
+		if (session.expiresAt <= now) {
+			this.authSessions.delete(sessionId);
+			return null;
+		}
+		return session;
+	}
+
+	consumeAuthSession(sessionId: string, now = Date.now()): EphemeralAuthSession | null {
+		const session = this.getAuthSession(sessionId, now);
+		if (session) {
+			this.authSessions.delete(sessionId);
+		}
+		return session;
 	}
 
 	createAuthorizationCode(params: {
@@ -162,7 +220,7 @@ export class OAuthManager {
 
 		const accessToken = `sc_mcp_${randomOpaqueId()}`;
 		const refreshToken = `sc_ref_${randomOpaqueId()}`;
-		const tokenRecord: StoredOAuthToken = {
+		const storedToken: StoredOAuthToken = {
 			accessToken,
 			refreshToken,
 			clientId: storedCode.clientId,
@@ -171,46 +229,53 @@ export class OAuthManager {
 			expiresAt: now + MCP_TOKEN_TTL_MS
 		};
 
-		this.tokens.set(accessToken, tokenRecord);
+		this.tokens.set(accessToken, storedToken);
 		this.refreshTokens.set(refreshToken, accessToken);
-		return tokenRecord;
+		return storedToken;
 	}
 
 	refreshAccessToken(refreshToken: string, now = Date.now()): StoredOAuthToken | null {
 		const oldAccessToken = this.refreshTokens.get(refreshToken);
 		if (!oldAccessToken) return null;
 
-		const tokenRecord = this.tokens.get(oldAccessToken);
-		if (!tokenRecord) return null;
+		const oldToken = this.tokens.get(oldAccessToken);
+		if (!oldToken) return null;
 
 		this.tokens.delete(oldAccessToken);
 		this.refreshTokens.delete(refreshToken);
 
 		const newAccessToken = `sc_mcp_${randomOpaqueId()}`;
 		const newRefreshToken = `sc_ref_${randomOpaqueId()}`;
-		const newTokenRecord: StoredOAuthToken = {
-			...tokenRecord,
+		const newToken: StoredOAuthToken = {
 			accessToken: newAccessToken,
 			refreshToken: newRefreshToken,
+			clientId: oldToken.clientId,
+			syncKey: oldToken.syncKey,
+			accountId: oldToken.accountId,
 			expiresAt: now + MCP_TOKEN_TTL_MS
 		};
 
-		this.tokens.set(newAccessToken, newTokenRecord);
+		this.tokens.set(newAccessToken, newToken);
 		this.refreshTokens.set(newRefreshToken, newAccessToken);
-		return newTokenRecord;
+		return newToken;
+	}
+
+	getToken(accessToken: string, now = Date.now()): StoredOAuthToken | null {
+		const token = this.tokens.get(accessToken);
+		if (!token) return null;
+		if (token.expiresAt <= now) {
+			this.tokens.delete(accessToken);
+			return null;
+		}
+		return token;
 	}
 
 	resolveToken(
 		accessToken: string,
 		now = Date.now()
 	): { accountId: string; syncKey: string } | null {
-		const record = this.tokens.get(accessToken);
-		if (!record) return null;
-		if (record.expiresAt <= now) {
-			this.tokens.delete(accessToken);
-			this.refreshTokens.delete(record.refreshToken);
-			return null;
-		}
-		return { accountId: record.accountId, syncKey: record.syncKey };
+		const token = this.getToken(accessToken, now);
+		if (!token) return null;
+		return { accountId: token.accountId, syncKey: token.syncKey };
 	}
 }

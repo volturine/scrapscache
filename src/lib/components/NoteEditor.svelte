@@ -705,6 +705,7 @@
 						bind:this={editorScroller}
 						class={cx(
 							'note-scrollbar-hidden scrollable',
+							styles.scroller,
 							photosFillEditor ? styles.scrollerFill : undefined
 						)}
 					>

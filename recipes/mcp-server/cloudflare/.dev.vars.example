@@ -2,4 +2,7 @@
 SCRAPSCACHE_URL="https://scrapscache.com"
 SCRAPSCACHE_SYNC_KEY="your_sync_key_here"
 MCP_BEARER_TOKEN="secret_mcp_bearer_token"
+# Stable secret used to share OAuth clients, sessions, codes, and tokens across
+# Cloudflare Worker isolates. Required for zero-token OAuth mode.
+MCP_SECRET="generate-a-long-random-string"
 # MCP_FRIENDS_TOKENS='{"token_alice":"syncKeyAlice","token_bob":"syncKeyBob"}'

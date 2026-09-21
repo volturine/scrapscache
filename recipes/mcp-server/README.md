@@ -132,7 +132,11 @@ OAuth clients, handshake sessions, and access tokens are sealed with `MCP_SECRET
 wrangler secret put MCP_SECRET --env dev
 ```
 
-If `MCP_SECRET` is unset, the worker falls back to `SCRAPSCACHE_SYNC_KEY` or `MCP_BEARER_TOKEN`. With none of those set, a dynamic client registered on one isolate is unknown on the next, and `/oauth/authorize` returns `Invalid client_id or unauthorized redirect_uri`.
+If the Worker is deployed by this repository's GitHub Actions workflow, add
+`MCP_SECRET` as a repository secret; the workflow forwards it to both the
+development and production MCP Workers.
+
+If `MCP_SECRET` is unset, the worker falls back to `SCRAPSCACHE_SYNC_KEY` or `MCP_BEARER_TOKEN`. With none of those set, OAuth state is isolated to one Worker instance and a login may fail with `Invalid client_id or unauthorized redirect_uri` or an expired session.
 
 Leave `SCRAPSCACHE_SYNC_KEY` and `MCP_BEARER_TOKEN` empty for the pure zero-token 1-click OAuth handshake. `MCP_SECRET` is still required.
 

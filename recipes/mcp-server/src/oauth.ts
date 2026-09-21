@@ -17,87 +17,105 @@ export type OAuthClientInfo = {
 	id: string;
 	name: string;
 	redirectUris: string[];
+	/**
+	 * Callbacks that cannot be written as fixed strings: a per-connection id in
+	 * the path (ChatGPT) or an ephemeral loopback port (CLI clients). Patterns
+	 * live on the client record so redirect matching never depends on the
+	 * client_id, which a dynamically registered client replaces with its own.
+	 */
+	redirectPatterns?: RegExp[];
 	clientSecret?: string;
 };
 
-const CHATGPT_CONNECTOR_RE = /^https:\/\/chatgpt\.com\/connector\/oauth\/[A-Za-z0-9_-]+$/;
-const GROK_CONNECTOR_RE =
+const CLAUDE_REDIRECT_RE = /^https:\/\/claude\.(?:ai|com)\/api\/mcp\/auth_callback$/;
+const CHATGPT_REDIRECT_RE =
+	/^https:\/\/chatgpt\.com\/(?:connector_platform_oauth_redirect|connector\/oauth\/[A-Za-z0-9_-]+)$/;
+const GROK_REDIRECT_RE =
 	/^https:\/\/(?:[a-z0-9-]+\.)?grok\.com\/connectors-oauth-exchange-code\/?$/;
-const HERMES_LOOPBACK_RE = /^http:\/\/(?:127\.0\.0\.1|localhost):([1-9][0-9]{0,4})\/callback$/;
+const PERPLEXITY_REDIRECT_RE =
+	/^https:\/\/(?:[a-z0-9-]+\.)?perplexity\.(?:ai|com)\/rest\/connections\/oauth_callback$/;
+// RFC 8252 §7.3: a native client binds a fresh loopback port on every run, so
+// the port carries no identity and must not be part of the comparison.
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]']);
+const LOOPBACK_REDIRECT_RE =
+	/^http:\/\/(?:127\.0\.0\.1|localhost|\[::1\]):[1-9][0-9]{0,4}\/callback$/;
 
 export const WELL_KNOWN_CLIENTS: OAuthClientInfo[] = [
 	{
 		id: 'claude',
 		name: 'Claude',
-		redirectUris: ['https://claude.ai/api/mcp/auth_callback']
+		redirectUris: [
+			'https://claude.ai/api/mcp/auth_callback',
+			'https://claude.com/api/mcp/auth_callback'
+		],
+		redirectPatterns: [CLAUDE_REDIRECT_RE]
 	},
 	{
 		id: 'chatgpt',
 		name: 'ChatGPT',
-		redirectUris: ['https://chatgpt.com/connector_platform_oauth_redirect']
+		redirectUris: ['https://chatgpt.com/connector_platform_oauth_redirect'],
+		redirectPatterns: [CHATGPT_REDIRECT_RE]
 	},
 	{
 		id: 'grok',
 		name: 'Grok',
-		redirectUris: [
-			'https://grok.com/connectors-oauth-exchange-code/',
-			'https://grok.com/connectors-oauth-exchange-code'
-		]
+		redirectUris: ['https://grok.com/connectors-oauth-exchange-code'],
+		redirectPatterns: [GROK_REDIRECT_RE]
 	},
 	{
 		id: 'perplexity',
 		name: 'Perplexity',
-		redirectUris: [
-			'https://www.perplexity.ai/rest/connections/oauth_callback',
-			'https://www.perplexity.com/rest/connections/oauth_callback',
-			'https://enterprise.perplexity.ai/rest/connections/oauth_callback',
-			'https://enterprise.perplexity.com/rest/connections/oauth_callback',
-			'https://staging.perplexity.ai/rest/connections/oauth_callback'
-		]
+		redirectUris: ['https://www.perplexity.ai/rest/connections/oauth_callback'],
+		redirectPatterns: [PERPLEXITY_REDIRECT_RE]
 	},
 	{
 		id: 'hermes',
 		name: 'Hermes Agent',
-		redirectUris: ['http://localhost:8080/callback', 'http://127.0.0.1:8080/callback']
+		redirectUris: ['http://localhost:8080/callback', 'http://127.0.0.1:8080/callback'],
+		redirectPatterns: [LOOPBACK_REDIRECT_RE]
 	}
 ];
 
-export function isRedirectAllowed(client: OAuthClientInfo, uri: string): boolean {
-	if (client.redirectUris.includes(uri)) return true;
-	if (client.id === 'chatgpt' && CHATGPT_CONNECTOR_RE.test(uri)) return true;
-	if ((client.id === 'grok' || client.name.toLowerCase() === 'grok') && GROK_CONNECTOR_RE.test(uri))
-		return true;
-	if (client.id === 'hermes') {
-		const match = HERMES_LOOPBACK_RE.exec(uri);
-		if (match && Number(match[1]) <= 65535) return true;
+function parseRedirectUri(uri: string): URL | null {
+	try {
+		return new URL(uri);
+	} catch {
+		return null;
 	}
-	if (
-		client.redirectUris.some(
-			(u) =>
-				u === uri ||
-				(u.endsWith('/') && uri === u.slice(0, -1)) ||
-				(!u.endsWith('/') && uri === `${u}/`)
-		)
-	) {
-		return true;
-	}
-	return false;
 }
 
-export function findWellKnownClient(
-	clientId?: string,
-	redirectUri?: string
-): OAuthClientInfo | null {
-	if (clientId) {
-		const byId = WELL_KNOWN_CLIENTS.find((c) => c.id === clientId.toLowerCase());
-		if (byId) return byId;
+function samePath(a: URL, b: URL): boolean {
+	const trim = (path: string) => (path.length > 1 && path.endsWith('/') ? path.slice(0, -1) : path);
+	return trim(a.pathname) === trim(b.pathname) && a.search === b.search && a.hash === b.hash;
+}
+
+function redirectUriMatches(registered: string, candidate: URL): boolean {
+	const expected = parseRedirectUri(registered);
+	if (!expected) return false;
+	if (expected.username || expected.password || candidate.username || candidate.password)
+		return false;
+	if (expected.protocol !== candidate.protocol) return false;
+	if (!samePath(expected, candidate)) return false;
+	if (LOOPBACK_HOSTS.has(expected.hostname) && LOOPBACK_HOSTS.has(candidate.hostname)) {
+		return Boolean(expected.port && candidate.port);
 	}
-	if (redirectUri) {
-		for (const client of WELL_KNOWN_CLIENTS) {
-			if (isRedirectAllowed(client, redirectUri)) return client;
-		}
+	return expected.hostname === candidate.hostname && expected.port === candidate.port;
+}
+
+export function isRedirectAllowed(client: OAuthClientInfo, uri: string): boolean {
+	if (!uri) return false;
+	if (client.redirectUris.includes(uri)) return true;
+
+	const candidate = parseRedirectUri(uri);
+	if (!candidate || candidate.username || candidate.password) return false;
+	if (client.redirectUris.some((registered) => redirectUriMatches(registered, candidate))) {
+		return true;
 	}
-	return null;
+	return (client.redirectPatterns ?? []).some((pattern) => pattern.test(uri));
+}
+
+export function findWellKnownClientByRedirect(redirectUri: string): OAuthClientInfo | null {
+	return WELL_KNOWN_CLIENTS.find((client) => isRedirectAllowed(client, redirectUri)) ?? null;
 }
 
 export function isPkceChallenge(value: string): boolean {
@@ -189,13 +207,17 @@ export class OAuthManager {
 	}
 
 	getClient(clientId: string, redirectUri?: string): OAuthClientInfo | null {
-		const wellKnown = findWellKnownClient(clientId, redirectUri);
-		if (wellKnown) {
-			return {
-				...wellKnown,
-				id: clientId || wellKnown.id
-			};
-		}
+		if (!clientId) return null;
+
+		// A client's own registration wins over the well-known list. Providers
+		// register a per-connection callback (ChatGPT) or an ephemeral loopback
+		// port (CLI clients), and matching those against a well-known template
+		// that merely shares their host rejects the redirect they registered.
+		const byId = clientId
+			? WELL_KNOWN_CLIENTS.find((client) => client.id === clientId.toLowerCase())
+			: undefined;
+		if (byId) return byId;
+
 		const inMemory = this.clients.get(clientId);
 		if (inMemory) return inMemory;
 
@@ -214,6 +236,18 @@ export class OAuthManager {
 				return client;
 			}
 		}
+
+		// Some hosted clients send a generated client_id that is not the value
+		// returned by this server's registration endpoint. Their fixed provider
+		// callback is still an explicit allowlist entry, so recover the provider
+		// identity from that callback. PKCE continues to bind the authorization
+		// code to the client that initiated the request.
+		const provider =
+			clientId.startsWith('client_') && redirectUri
+				? findWellKnownClientByRedirect(redirectUri)
+				: null;
+		if (provider) return { ...provider, id: clientId };
+
 		return null;
 	}
 

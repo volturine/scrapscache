@@ -15,6 +15,8 @@ services:
       - SCRAPSCACHE_SYNC_KEY=${SCRAPSCACHE_SYNC_KEY:-}
       # Static bearer token for direct connection from Claude Desktop, Cursor, or scripts
       - MCP_BEARER_TOKEN=${MCP_BEARER_TOKEN:-my-secret-token}
+      # Stable secret shared by OAuth clients, sessions, codes, and tokens
+      - MCP_SECRET=${MCP_SECRET:-}
       # Optional: JSON map for friends to connect their own sync keys:
       # MCP_FRIENDS_TOKENS={"token_alice":"syncKeyAlice...","token_bob":"syncKeyBob..."}
       - MCP_FRIENDS_TOKENS=${MCP_FRIENDS_TOKENS:-}

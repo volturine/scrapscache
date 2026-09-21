@@ -152,6 +152,22 @@ describe('OAuth authorize across isolated workers', () => {
 		);
 	});
 
+	it('accepts ChatGPT’s per-connection callback with a generated client_id', async () => {
+		const url = new URL('http://localhost:3001/oauth/authorize');
+		url.searchParams.set('response_type', 'code');
+		url.searchParams.set('client_id', 'client_generated_by_chatgpt');
+		url.searchParams.set('redirect_uri', 'https://chatgpt.com/connector/oauth/EqqY7q3ydpMT');
+		url.searchParams.set('state', 'chatgpt-state');
+		url.searchParams.set('code_challenge', challenge);
+		url.searchParams.set('code_challenge_method', 'S256');
+
+		const res = await isolatedApp(secret).handleRequest(new Request(url));
+		expect(res.status).toBe(302);
+		expect(res.headers.get('Location') || '').toContain(
+			'https://dev.scrapscache.com/mcp/authorize'
+		);
+	});
+
 	it('authorizes a client registered on a different instance that shares MCP_SECRET', async () => {
 		const registrar = isolatedApp(secret);
 		const authorizer = isolatedApp(secret);

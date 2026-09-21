@@ -19,10 +19,26 @@ describe('MCP OAuth 2.1 manager', () => {
 		expect(
 			isRedirectAllowed(chatgpt!, 'https://chatgpt.com/connector/oauth/custom_action_123')
 		).toBe(true);
+		expect(isRedirectAllowed(chatgpt!, 'https://chatgpt.com/connector/oauth/EqqY7q3ydpMT')).toBe(
+			true
+		);
+		expect(isRedirectAllowed(chatgpt!, 'https://chatgpt.com/connector/oauth/')).toBe(false);
+		expect(
+			isRedirectAllowed(
+				chatgpt!,
+				'https://chatgpt.com/connector/oauth/EqqY7q3ydpMT?next=https://evil.example.com'
+			)
+		).toBe(false);
+		expect(
+			isRedirectAllowed(chatgpt!, 'https://evil.chatgpt.com/connector/oauth/EqqY7q3ydpMT')
+		).toBe(false);
 
 		const hermes = manager.getClient('hermes');
 		expect(hermes).not.toBeNull();
 		expect(isRedirectAllowed(hermes!, 'http://localhost:8080/callback')).toBe(true);
+		expect(isRedirectAllowed(hermes!, 'http://127.0.0.1:43123/callback')).toBe(true);
+		expect(isRedirectAllowed(hermes!, 'http://localhost:65536/callback')).toBe(false);
+		expect(isRedirectAllowed(hermes!, 'http://localhost:43123/other')).toBe(false);
 
 		// Grok matches by id or redirect uri
 		const grok = manager.getClient('grok');
@@ -37,6 +53,42 @@ describe('MCP OAuth 2.1 manager', () => {
 		expect(client).not.toBeNull();
 		expect(client!.name).toBe('Grok');
 		expect(isRedirectAllowed(client!, grokUri)).toBe(true);
+	});
+
+	it.each([
+		['Claude', 'https://claude.com/api/mcp/auth_callback'],
+		['ChatGPT', 'https://chatgpt.com/connector/oauth/EqqY7q3ydpMT'],
+		['Grok', 'https://staging.grok.com/connectors-oauth-exchange-code/'],
+		['Perplexity', 'https://enterprise.perplexity.com/rest/connections/oauth_callback'],
+		['Hermes Agent', 'http://[::1]:43123/callback']
+	])('maps a generated client_id to the %s callback', (name, redirectUri) => {
+		const client = manager.getClient('client_generated_by_provider', redirectUri);
+
+		expect(client).toMatchObject({ id: 'client_generated_by_provider', name });
+		expect(isRedirectAllowed(client!, redirectUri)).toBe(true);
+	});
+
+	it('reconstructs a registered ChatGPT callback on another isolate', () => {
+		const redirectUri = 'https://chatgpt.com/connector/oauth/EqqY7q3ydpMT';
+		const registered = new OAuthManager('shared-secret').registerClient({
+			client_name: 'ChatGPT',
+			redirect_uris: [redirectUri]
+		});
+		const otherIsolate = new OAuthManager('shared-secret');
+
+		expect(otherIsolate.getClient(registered.id, redirectUri)).toEqual(registered);
+	});
+
+	it('does not infer a provider for an arbitrary callback', () => {
+		expect(
+			manager.getClient(
+				'client_generated_by_provider',
+				'https://assistant.example.com/oauth/callback'
+			)
+		).toBeNull();
+		expect(
+			manager.getClient('unregistered-client', 'https://grok.com/connectors-oauth-exchange-code/')
+		).toBeNull();
 	});
 
 	it('verifies PKCE challenges accurately', () => {

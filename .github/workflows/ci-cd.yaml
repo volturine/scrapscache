@@ -129,6 +129,9 @@ jobs:
           if [ -n "$SCRAPSCACHE_SYNC_KEY" ]; then
             printf '%s' "$SCRAPSCACHE_SYNC_KEY" | npx wrangler secret put SCRAPSCACHE_SYNC_KEY --config recipes/mcp-server/cloudflare/wrangler.jsonc --env dev
           fi
+          if [ -n "$MCP_SECRET" ]; then
+            printf '%s' "$MCP_SECRET" | npx wrangler secret put MCP_SECRET --config recipes/mcp-server/cloudflare/wrangler.jsonc --env dev
+          fi
           if [ -n "$MCP_FRIENDS_TOKENS" ]; then
             printf '%s' "$MCP_FRIENDS_TOKENS" | npx wrangler secret put MCP_FRIENDS_TOKENS --config recipes/mcp-server/cloudflare/wrangler.jsonc --env dev
           fi
@@ -140,6 +143,7 @@ jobs:
           TURNSTILE_SECRET: ${{ secrets.TURNSTILE_SECRET }}
           MCP_BEARER_TOKEN: ${{ secrets.MCP_BEARER_TOKEN }}
           SCRAPSCACHE_SYNC_KEY: ${{ secrets.SCRAPSCACHE_SYNC_KEY }}
+          MCP_SECRET: ${{ secrets.MCP_SECRET }}
           MCP_FRIENDS_TOKENS: ${{ secrets.MCP_FRIENDS_TOKENS }}
 
       - name: Verify development deployment
@@ -197,6 +201,9 @@ jobs:
           if [ -n "$SCRAPSCACHE_SYNC_KEY" ]; then
             printf '%s' "$SCRAPSCACHE_SYNC_KEY" | npx wrangler secret put SCRAPSCACHE_SYNC_KEY --config recipes/mcp-server/cloudflare/wrangler.jsonc --env=""
           fi
+          if [ -n "$MCP_SECRET" ]; then
+            printf '%s' "$MCP_SECRET" | npx wrangler secret put MCP_SECRET --config recipes/mcp-server/cloudflare/wrangler.jsonc --env=""
+          fi
           if [ -n "$MCP_FRIENDS_TOKENS" ]; then
             printf '%s' "$MCP_FRIENDS_TOKENS" | npx wrangler secret put MCP_FRIENDS_TOKENS --config recipes/mcp-server/cloudflare/wrangler.jsonc --env=""
           fi
@@ -210,6 +217,7 @@ jobs:
           SCRAPSCACHE_VAPID_PRIVATE_KEY: ${{ secrets.SCRAPSCACHE_VAPID_PRIVATE_KEY }}
           MCP_BEARER_TOKEN: ${{ secrets.MCP_BEARER_TOKEN }}
           SCRAPSCACHE_SYNC_KEY: ${{ secrets.SCRAPSCACHE_SYNC_KEY }}
+          MCP_SECRET: ${{ secrets.MCP_SECRET }}
           MCP_FRIENDS_TOKENS: ${{ secrets.MCP_FRIENDS_TOKENS }}
 
       - name: Verify production deployment

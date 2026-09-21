@@ -851,6 +851,21 @@ describe('BodyEditor task focus chrome', () => {
 		expect(container.querySelectorAll('[contenteditable="plaintext-only"]')).toHaveLength(1);
 	});
 
+	it('hands focus to the line under a chunk click once the caret is there', async () => {
+		const onFocusTask = vi.fn();
+		const { container } = render(BodyEditor, {
+			props: { body: '[ ] First\n[ ] Second', onFocusTask }
+		});
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const second = container.querySelectorAll('[data-line-text]')[1];
+		editor.focus();
+		select(second, 1);
+
+		await fireEvent.click(container.querySelector('[data-editor-chunk]') as HTMLElement);
+
+		expect(onFocusTask).toHaveBeenCalledWith(1);
+	});
+
 	it('shows Add sub-task on the focused root and drops it when focus leaves', async () => {
 		const { container, rerender } = render(BodyEditor, {
 			props: { body: '[ ] Avocados\n  [ ] tes\n[ ] Dark chocolate', focusLine: 0 }

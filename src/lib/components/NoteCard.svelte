@@ -470,6 +470,12 @@
 			</div>
 		</div>
 
+		<div class={card.metaRow} data-note-meta>
+			<time datetime={new Date(activity.at).toISOString()} title={activity.detail}
+				>{activity.label}</time
+			>
+		</div>
+
 		{#if labelsForNote.length}
 			<div class={card.labelsRow}>
 				{#each labelsForNote as label (label.id)}
@@ -479,12 +485,6 @@
 				{/each}
 			</div>
 		{/if}
-
-		<div class={card.metaRow} data-note-meta>
-			<time datetime={new Date(activity.at).toISOString()} title={activity.detail}
-				>{activity.label}</time
-			>
-		</div>
 
 		{#if hazeActive}
 			<!-- Clicking the haze is a pointer convenience; Escape and outside taps dismiss it. -->

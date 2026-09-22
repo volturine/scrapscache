@@ -402,7 +402,7 @@ const noteCardRecipe = defineSlotRecipe({
 			flexWrap: 'wrap',
 			gap: '2xs',
 			px: 'md',
-			pb: 'sm',
+			pb: 'md',
 			pt: 'sm'
 		},
 		metaRow: {

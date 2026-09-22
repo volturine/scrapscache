@@ -9,7 +9,8 @@
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { reminderStore } from '$lib/stores/reminders.svelte';
 	import type { Note } from '$lib/types';
-	import { activateOnKeyboard, formatReminder, isReminderOverdue } from '$lib/utils';
+	import { activateOnKeyboard, formatReminder, isReminderOverdue, noteActivity } from '$lib/utils';
+	import { appClock } from '$lib/appClock.svelte';
 	import { cardSwipeStyle, createCardSwipe } from '$lib/cardSwipe';
 	import { overflowingTable } from '$lib/tableScroll';
 	import NoteBodyDisplay from './NoteBodyDisplay.svelte';
@@ -325,6 +326,7 @@
 	onDestroy(() => swipe.dispose());
 
 	const card = $derived(noteCard({ pinned: note.pinned }));
+	const activity = $derived(noteActivity(note, appClock.now));
 </script>
 
 <svelte:window
@@ -477,6 +479,12 @@
 				{/each}
 			</div>
 		{/if}
+
+		<div class={card.metaRow} data-note-meta>
+			<time datetime={new Date(activity.at).toISOString()} title={activity.detail}
+				>{activity.label}</time
+			>
+		</div>
 
 		{#if hazeActive}
 			<!-- Clicking the haze is a pointer convenience; Escape and outside taps dismiss it. -->

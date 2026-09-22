@@ -114,6 +114,77 @@ export function daysSinceTrashed(trashedAt: number | null): number {
 
 export const TRASH_PURGE_DAYS = 7;
 
+/** Display state for a note's created/updated (or deleted) timestamp. */
+export type NoteActivity = {
+	/** Short relative label, e.g. "Edited 2h ago". */
+	label: string;
+	/** Epoch ms the label is relative to. */
+	at: number;
+	/** Absolute detail for tooltips, e.g. "Created Mar 3, 2026, 10:32 AM · …". */
+	detail: string;
+};
+
+type NoteActivitySource = {
+	createdAt: number;
+	updatedAt: number;
+	trashed?: boolean;
+	trashedAt?: number | null;
+};
+
+function formatActivityRelative(ts: number, nowMs: number): string {
+	const delta = nowMs - ts;
+	if (delta < 60_000) return 'just now';
+	if (delta < 3_600_000) return `${Math.floor(delta / 60_000)}m ago`;
+	const then = new Date(ts);
+	const now = new Date(nowMs);
+	if (then.toDateString() === now.toDateString()) {
+		return `${Math.floor(delta / 3_600_000)}h ago`;
+	}
+	const yesterday = new Date(now);
+	yesterday.setDate(now.getDate() - 1);
+	if (then.toDateString() === yesterday.toDateString()) return 'Yesterday';
+	const options: Intl.DateTimeFormatOptions =
+		then.getFullYear() === now.getFullYear()
+			? { month: 'short', day: 'numeric' }
+			: { month: 'short', day: 'numeric', year: 'numeric' };
+	return then.toLocaleDateString([], options);
+}
+
+function formatActivityAbsolute(ts: number): string {
+	const d = new Date(ts);
+	const date = d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+	const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+	return `${date}, ${time}`;
+}
+
+/**
+ * Smart created/updated label for a note: "Created …" until the first edit,
+ * "Edited …" afterwards, "Deleted …" while in trash.
+ */
+export function noteActivity(note: NoteActivitySource, nowMs = Date.now()): NoteActivity {
+	const neverEdited = note.updatedAt <= note.createdAt;
+	const deletedAt = note.trashed ? (note.trashedAt ?? note.updatedAt) : null;
+	const parts = [`Created ${formatActivityAbsolute(note.createdAt)}`];
+	if (!neverEdited) parts.push(`Edited ${formatActivityAbsolute(note.updatedAt)}`);
+	if (deletedAt != null) parts.push(`Deleted ${formatActivityAbsolute(deletedAt)}`);
+	const detail = parts.join(' · ');
+	if (deletedAt != null) {
+		return { label: `Deleted ${formatActivityRelative(deletedAt, nowMs)}`, at: deletedAt, detail };
+	}
+	if (neverEdited) {
+		return {
+			label: `Created ${formatActivityRelative(note.createdAt, nowMs)}`,
+			at: note.createdAt,
+			detail
+		};
+	}
+	return {
+		label: `Edited ${formatActivityRelative(note.updatedAt, nowMs)}`,
+		at: note.updatedAt,
+		detail
+	};
+}
+
 /** Give pointer-activated card surfaces an equivalent keyboard interaction. */
 export function activateOnKeyboard(event: KeyboardEvent, activate: () => void): void {
 	if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return;

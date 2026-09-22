@@ -17,7 +17,7 @@
 	import NoteEditorFooter from './NoteEditorFooter.svelte';
 	import BodyEditor from './BodyEditor.svelte';
 	import { appClock } from '$lib/appClock.svelte';
-	import { formatReminder, isReminderOverdue } from '$lib/utils';
+	import { formatReminder, isReminderOverdue, noteActivity } from '$lib/utils';
 	import ReminderLabel from './ReminderLabel.svelte';
 	import {
 		Bell,
@@ -52,6 +52,7 @@
 		note?.reminder != null && isReminderOverdue(note.reminder, appClock.now)
 	);
 	const reminderLabel = $derived(formatReminder(note?.reminder ?? null, appClock.now));
+	const activity = $derived(note ? noteActivity(note, appClock.now) : null);
 
 	let taskFocusLine = $state<number | null>(null);
 
@@ -728,6 +729,14 @@
 							rows="1"
 							class:markdown-raw={uiStore.rawMarkdown}
 							class={titleField}></textarea>
+
+						{#if activity}
+							<p class={styles.meta} data-note-meta>
+								<time datetime={new Date(activity.at).toISOString()} title={activity.detail}
+									>{activity.label}</time
+								>
+							</p>
+						{/if}
 
 						<BodyEditor
 							bind:this={bodyEditor}

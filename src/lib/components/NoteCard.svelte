@@ -222,6 +222,72 @@
 		tableGesture = null;
 	}
 
+	// Tags live on the swipe surface. When they overflow, keep the press here so
+	// the card does not start a swipe; touch/trackpad then use native overflow-x,
+	// and a mouse drag pans the row by hand.
+	let labelsScrolling = false;
+	let labelsScrollMoved = false;
+	let labelsStartX = 0;
+	let labelsStartY = 0;
+	let labelsStartScroll = 0;
+	let labelsPointerId: number | null = null;
+	let labelsPointerType: string | null = null;
+
+	function labelsOverflowing(el: HTMLElement): boolean {
+		return el.scrollWidth > el.clientWidth + 1;
+	}
+
+	function onLabelsPointerDown(event: PointerEvent) {
+		const el = event.currentTarget as HTMLElement;
+		if (!labelsOverflowing(el) || (event.pointerType === 'mouse' && event.button !== 0)) return;
+		event.stopPropagation();
+		labelsScrolling = true;
+		labelsScrollMoved = false;
+		labelsStartX = event.clientX;
+		labelsStartY = event.clientY;
+		labelsStartScroll = el.scrollLeft;
+		labelsPointerId = event.pointerId;
+		labelsPointerType = event.pointerType;
+		if (event.pointerType === 'mouse') {
+			el.setPointerCapture(event.pointerId);
+		}
+	}
+
+	function onLabelsPointerMove(event: PointerEvent) {
+		if (!labelsScrolling || event.pointerId !== labelsPointerId) return;
+		event.stopPropagation();
+		// Touch pans natively via overflow-x; only a mouse drag drives scrollLeft.
+		if (labelsPointerType !== 'mouse') return;
+		const el = event.currentTarget as HTMLElement;
+		const dx = event.clientX - labelsStartX;
+		const dy = event.clientY - labelsStartY;
+		if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+		if (Math.abs(dy) > Math.abs(dx)) {
+			labelsScrolling = false;
+			labelsPointerId = null;
+			return;
+		}
+		labelsScrollMoved = true;
+		el.scrollLeft = labelsStartScroll - dx;
+	}
+
+	function onLabelsPointerUp(event: PointerEvent) {
+		if (!labelsScrolling || event.pointerId !== labelsPointerId) {
+			labelsPointerId = null;
+			return;
+		}
+		labelsScrolling = false;
+		labelsPointerId = null;
+		event.stopPropagation();
+		if (labelsScrollMoved) {
+			suppressClick = true;
+			if (suppressTimer) clearTimeout(suppressTimer);
+			suppressTimer = setTimeout(() => {
+				suppressClick = false;
+			}, 50);
+		}
+	}
+
 	function onCardWheel(event: WheelEvent) {
 		if (!cardEl || Math.abs(event.deltaX) <= Math.abs(event.deltaY)) return;
 		const table = overflowingTable(cardEl, event.clientX, event.clientY);
@@ -477,7 +543,16 @@
 		</div>
 
 		{#if labelsForNote.length}
-			<div class={card.labelsRow}>
+			<!-- Gesture strip: when tags overflow, a sideways pan scrolls them instead of swiping the card. -->
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div
+				class={cx(card.labelsRow, 'note-scrollbar-hidden')}
+				data-card-hscroll
+				onpointerdown={onLabelsPointerDown}
+				onpointermove={onLabelsPointerMove}
+				onpointerup={onLabelsPointerUp}
+				onpointercancel={onLabelsPointerUp}
+			>
 				{#each labelsForNote as label (label.id)}
 					<span class={badge()}>
 						{label.name}

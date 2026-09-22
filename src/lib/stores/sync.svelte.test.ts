@@ -1329,6 +1329,7 @@ describe('client sync state machine', () => {
 			syncKey: unavailable.syncKey,
 			createdAt: 3
 		});
+		await idb.markSyncOutbox('pending-mcp', ['note:pending-upload']);
 		localStorage.setItem(
 			'scrapscache-sync-status:ready-mcp',
 			JSON.stringify({ lastSync: Date.now() })

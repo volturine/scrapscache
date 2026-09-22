@@ -342,6 +342,7 @@ const noteCardRecipe = defineSlotRecipe({
 		'contentPad',
 		'title',
 		'labelsRow',
+		'metaRow',
 		'hazeOverlay',
 		'shield'
 	],
@@ -401,8 +402,20 @@ const noteCardRecipe = defineSlotRecipe({
 			flexWrap: 'wrap',
 			gap: '2xs',
 			px: 'md',
-			pb: 'md',
+			// The meta row below owns the card's bottom padding.
+			pb: 0,
 			pt: 'sm'
+		},
+		metaRow: {
+			flexShrink: 0,
+			px: 'md',
+			pb: 'md',
+			pt: '2xs',
+			textStyle: 'caption',
+			color: 'scrapscache.textMuted',
+			overflow: 'hidden',
+			textOverflow: 'ellipsis',
+			whiteSpace: 'nowrap'
 		},
 		hazeOverlay: {
 			position: 'absolute',

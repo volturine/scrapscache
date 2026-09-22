@@ -70,6 +70,7 @@ import {
 const LS_LEGACY_ACCOUNT_KEY = 'scrapscache-sync-account';
 const LS_LEGACY_ACCOUNT_OLD = 'gkc-sync-account';
 const LS_SYNC_STATUS_PREFIX = 'scrapscache-sync-status';
+const LS_SYNC_STATUS_OLD = 'gkc-sync-status';
 
 /** Encrypted profile-name record; the name follows its sync key across devices. */
 export const PROFILE_META_KEY = 'profile-meta';
@@ -93,8 +94,19 @@ interface SyncStatus {
 	lastSync: number;
 }
 
+export type McpWorkspaceStatus = { state: 'local' } | { state: 'ready' } | { state: 'unavailable' };
+
 function isSyncAccount(value: unknown): value is Pick<SyncAccount, 'syncKey'> {
 	return !!value && typeof value === 'object' && typeof (value as SyncAccount).syncKey === 'string';
+}
+
+function parseLastSync(raw: string | null): number {
+	if (!raw) return 0;
+	try {
+		return Number((JSON.parse(raw) as SyncStatus).lastSync) || 0;
+	} catch {
+		return 0;
+	}
 }
 
 export interface SyncProgress {
@@ -234,8 +246,10 @@ export class SyncStore {
 				const rawLegacy =
 					localStorage.getItem(LS_LEGACY_ACCOUNT_KEY) ??
 					localStorage.getItem(LS_LEGACY_ACCOUNT_OLD);
+				let legacySyncKey: string | null = null;
 				try {
 					const parsed: unknown = rawLegacy ? JSON.parse(rawLegacy) : null;
+					if (isSyncAccount(parsed)) legacySyncKey = parsed.syncKey;
 					if (isSyncAccount(parsed) && !profiles.some((p) => p.syncKey === parsed.syncKey)) {
 						const adopted: StoredProfile = {
 							id: randomOpaqueId(),
@@ -265,6 +279,7 @@ export class SyncStore {
 					profiles = [...profiles, workspace];
 				}
 				this.profiles = profiles.sort((a, b) => a.createdAt - b.createdAt);
+				this.migrateLegacySyncStatus(this.profiles, legacySyncKey);
 
 				const pointerId = getLastActiveProfileId();
 				const pointed = pointerId
@@ -347,14 +362,66 @@ export class SyncStore {
 		await this.pendingOutboxWrites;
 	}
 
-	private restoreStatus(pid: string): void {
-		if (typeof localStorage === 'undefined') return;
+	private readStatus(pid: string): SyncStatus {
+		if (typeof localStorage === 'undefined') return { lastSync: 0 };
+		return { lastSync: parseLastSync(localStorage.getItem(`${LS_SYNC_STATUS_PREFIX}:${pid}`)) };
+	}
+
+	/** Move the single-workspace sync marker to the adopted profile exactly once. */
+	private migrateLegacySyncStatus(profiles: StoredProfile[], legacySyncKey: string | null): void {
+		if (typeof localStorage === 'undefined' || !legacySyncKey) return;
+		const profile = profiles.find((entry) => entry.syncKey === legacySyncKey);
+		if (!profile || this.readStatus(profile.id).lastSync > 0) return;
+
+		const legacyStatus =
+			localStorage.getItem(LS_SYNC_STATUS_PREFIX) ?? localStorage.getItem(LS_SYNC_STATUS_OLD);
+		const lastSync = parseLastSync(legacyStatus);
+		if (lastSync <= 0) return;
+
 		try {
-			const raw = localStorage.getItem(`${LS_SYNC_STATUS_PREFIX}:${pid}`);
-			this.lastSync = raw ? Number((JSON.parse(raw) as SyncStatus).lastSync) || 0 : 0;
+			localStorage.setItem(`${LS_SYNC_STATUS_PREFIX}:${profile.id}`, JSON.stringify({ lastSync }));
 		} catch {
-			this.lastSync = 0;
+			/* status is only a display cache; a later sync will write it again */
 		}
+	}
+
+	/**
+	 * Check which workspaces can be included in a new MCP grant. A synced
+	 * workspace is identified by its sync key; authenticating that key against
+	 * the relay also prevents stale or deleted cloud accounts from being shown
+	 * as selectable. Local sync progress is deliberately not a prerequisite:
+	 * MCP reads the encrypted cloud account, so an empty account and a workspace
+	 * with local changes waiting to upload are still valid user choices.
+	 */
+	async getMcpWorkspaceStatuses(): Promise<Record<string, McpWorkspaceStatus>> {
+		await this.ensureProfilesLoaded();
+		const statuses: Record<string, McpWorkspaceStatus> = {};
+		const candidates: StoredProfile[] = [];
+
+		for (const profile of this.profiles) {
+			if (!profile.syncKey) {
+				statuses[profile.id] = { state: 'local' };
+				continue;
+			}
+			candidates.push(profile);
+		}
+
+		await Promise.all(
+			candidates.map(async (profile) => {
+				try {
+					await this.accessToken(identityFromSyncKey(profile.syncKey));
+					statuses[profile.id] = { state: 'ready' };
+				} catch {
+					statuses[profile.id] = { state: 'unavailable' };
+				}
+			})
+		);
+
+		return statuses;
+	}
+
+	private restoreStatus(pid: string): void {
+		this.lastSync = this.readStatus(pid).lastSync;
 	}
 
 	private clearLegacyAccountStorage(): void {
@@ -535,6 +602,14 @@ export class SyncStore {
 	}
 
 	private async replaceKeyringEntry(profile: StoredProfile): Promise<void> {
+		const previous = this.profiles.find((entry) => entry.id === profile.id);
+		if (previous && previous.syncKey !== profile.syncKey && typeof localStorage !== 'undefined') {
+			try {
+				localStorage.removeItem(`${LS_SYNC_STATUS_PREFIX}:${profile.id}`);
+			} catch {
+				/* status is only a display cache */
+			}
+		}
 		await saveProfile(profile);
 		this.profiles = this.profiles.map((entry) => (entry.id === profile.id ? profile : entry));
 	}

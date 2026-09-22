@@ -431,10 +431,14 @@
 	</div>
 
 	<div
-		class={cx(
-			hstack(),
-			css({ gap: 'sm', borderTopWidth: 'hairline', borderColor: 'scrapscache.border', pt: 'lg' })
-		)}
+		class={css({
+			display: 'flex',
+			alignItems: 'center',
+			gap: 'sm',
+			borderTopWidth: 'hairline',
+			borderColor: 'scrapscache.border',
+			pt: 'lg'
+		})}
 	>
 		{#if showRemove}
 			<button
@@ -448,7 +452,11 @@
 		<button
 			type="button"
 			onclick={onClose}
-			class={cx(button({ variant: 'secondary', size: 'md' }), css({ minW: '5.5rem' }))}
+			class={cx(
+				button({ variant: 'secondary', size: 'md' }),
+				css({ minW: '5.5rem' }),
+				!primaryIsSave ? css({ ml: 'auto' }) : undefined
+			)}
 		>
 			Cancel
 		</button>

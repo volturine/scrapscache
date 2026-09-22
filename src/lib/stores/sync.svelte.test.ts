@@ -1304,6 +1304,69 @@ describe('client sync state machine', () => {
 		expect(store3.activeProfile).toEqual({ ...p1, syncKey: '' });
 	});
 
+	it('marks reachable synced workspaces as MCP-ready', async () => {
+		localStorage.clear();
+		const pending = createSyncIdentity();
+		const ready = createSyncIdentity();
+		const unavailable = createSyncIdentity();
+		const store = new SyncStore();
+		await store.ensureProfilesLoaded();
+		await store.addKeyringEntry({
+			id: 'pending-mcp',
+			name: 'Pending',
+			syncKey: pending.syncKey,
+			createdAt: 1
+		});
+		await store.addKeyringEntry({
+			id: 'ready-mcp',
+			name: 'Ready',
+			syncKey: ready.syncKey,
+			createdAt: 2
+		});
+		await store.addKeyringEntry({
+			id: 'unavailable-mcp',
+			name: 'Unavailable',
+			syncKey: unavailable.syncKey,
+			createdAt: 3
+		});
+		await idb.markSyncOutbox('pending-mcp', ['note:pending-upload']);
+		localStorage.setItem(
+			'scrapscache-sync-status:ready-mcp',
+			JSON.stringify({ lastSync: Date.now() })
+		);
+		localStorage.setItem(
+			'scrapscache-sync-status:unavailable-mcp',
+			JSON.stringify({ lastSync: Date.now() })
+		);
+
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+				const path = new URL(String(input), 'http://localhost').pathname;
+				if (path.endsWith('/auth/challenge')) {
+					const body = JSON.parse(String(init?.body)) as { accountId: string };
+					if (body.accountId === unavailable.accountId)
+						return new Response(JSON.stringify({ error: 'not found' }), { status: 404 });
+					return new Response(JSON.stringify({ challengeId: 'challenge', challenge: 'value' }), {
+						status: 200,
+						headers: { 'content-type': 'application/json' }
+					});
+				}
+				return new Response(
+					JSON.stringify({ accessToken: 'token', expiresAt: Date.now() + 60_000 }),
+					{ status: 200, headers: { 'content-type': 'application/json' } }
+				);
+			})
+		);
+
+		const statuses = await store.getMcpWorkspaceStatuses();
+
+		expect(statuses['pending-mcp']).toEqual({ state: 'ready' });
+		expect(statuses['ready-mcp']).toEqual({ state: 'ready' });
+		expect(statuses['unavailable-mcp']).toEqual({ state: 'unavailable' });
+		expect(statuses[idb.LOCAL_PROFILE_ID]).toEqual({ state: 'local' });
+	});
+
 	it('lists the default namespace as its own workspace when it holds notes', async () => {
 		localStorage.clear();
 		const profile = {
@@ -1384,6 +1447,77 @@ describe('client sync state machine', () => {
 		await store3.ensureProfilesLoaded();
 		expect(store3.profiles.filter((profile) => profile.syncKey)).toEqual([]);
 		expect(store3.isLoggedIn).toBe(false);
+	});
+
+	it('migrates the legacy sync marker to an adopted workspace for MCP', async () => {
+		localStorage.clear();
+		const legacyIdentity = createSyncIdentity();
+		const lastSync = Date.now();
+		localStorage.setItem('scrapscache-sync-account', JSON.stringify(legacyIdentity));
+		localStorage.setItem('scrapscache-sync-status', JSON.stringify({ lastSync }));
+
+		const store = new SyncStore();
+		await store.ensureProfilesLoaded();
+		const profile = store.profiles.find((entry) => entry.syncKey === legacyIdentity.syncKey);
+		expect(profile).toBeDefined();
+		expect(localStorage.getItem(`scrapscache-sync-status:${profile?.id}`)).toBe(
+			JSON.stringify({ lastSync })
+		);
+
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (input: RequestInfo | URL) => {
+				const path = new URL(String(input), 'http://localhost').pathname;
+				if (path.endsWith('/auth/challenge')) {
+					return new Response(JSON.stringify({ challengeId: 'challenge', challenge: 'value' }), {
+						status: 200,
+						headers: { 'content-type': 'application/json' }
+					});
+				}
+				return new Response(
+					JSON.stringify({ accessToken: 'token', expiresAt: Date.now() + 60_000 }),
+					{ status: 200, headers: { 'content-type': 'application/json' } }
+				);
+			})
+		);
+
+		expect((await store.getMcpWorkspaceStatuses())[profile!.id]).toEqual({ state: 'ready' });
+	});
+
+	it('does not apply an unowned legacy sync marker to a current profile', async () => {
+		localStorage.clear();
+		const profile = {
+			id: 'current-profile',
+			name: 'Current',
+			syncKey: createSyncIdentity().syncKey,
+			createdAt: 1
+		};
+		localStorage.setItem('scrapscache-sync-profiles', JSON.stringify([profile]));
+		localStorage.setItem('scrapscache-sync-status', JSON.stringify({ lastSync: Date.now() }));
+
+		const store = new SyncStore();
+		await store.ensureProfilesLoaded();
+
+		expect(localStorage.getItem(`scrapscache-sync-status:${profile.id}`)).toBeNull();
+
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (input: RequestInfo | URL) => {
+				const path = new URL(String(input), 'http://localhost').pathname;
+				if (path.endsWith('/auth/challenge')) {
+					return new Response(JSON.stringify({ challengeId: 'challenge', challenge: 'value' }), {
+						status: 200,
+						headers: { 'content-type': 'application/json' }
+					});
+				}
+				return new Response(
+					JSON.stringify({ accessToken: 'token', expiresAt: Date.now() + 60_000 }),
+					{ status: 200, headers: { 'content-type': 'application/json' } }
+				);
+			})
+		);
+
+		expect((await store.getMcpWorkspaceStatuses())[profile.id]).toEqual({ state: 'ready' });
 	});
 });
 

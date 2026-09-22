@@ -732,96 +732,103 @@ export class NotesStore {
 		const backup = normalizeBackup(data);
 		if (!backup)
 			return { success: false, error: 'That file is not a valid Scraps Cache full backup.' };
-		// Every write lands in the workspace that was open when the import began.
-		const pid = this.pid;
+		// Claimed before the lock is requested so a workspace switch is refused
+		// outright rather than queueing behind an import that may run for minutes.
 		this.importing = true;
 		try {
-			const now = Date.now();
-			const importedNotes = prepareImportedNotes(backup.notes, mode, now);
-			const replacedNoteIds =
-				mode === BackupImportMode.Replace ? this.notes.map((note) => note.id) : [];
-			if (navigator.storage?.estimate) {
-				const estimate = await navigator.storage.estimate();
-				if (!replacementFitsStorage(importedNotes, estimate)) {
-					return {
-						success: false,
-						error: 'Storage full on this device — free space or remove old notes/attachments.'
-					};
-				}
-			}
-			if (mode === BackupImportMode.Keep) {
-				const labelsByName = new Map(
-					this.labels.map((label) => [label.name.trim().toLowerCase(), label])
-				);
-				const labelIds = new Map<string, string>();
-				const importedLabels: Label[] = [];
-				for (const label of backup.labels) {
-					const existing = labelsByName.get(label.name.trim().toLowerCase());
-					if (existing) {
-						labelIds.set(label.id, existing.id);
-						continue;
+			// Under the sync lock: a flight that landed partway through an import
+			// would write the notes it pulled over the imported ones and push the
+			// mixture to the relay as the newest version.
+			return await this.withSyncLock(async () => {
+				// Every write lands in the workspace that was open when the import began.
+				const pid = this.pid;
+				const now = Date.now();
+				const importedNotes = prepareImportedNotes(backup.notes, mode, now);
+				const replacedNoteIds =
+					mode === BackupImportMode.Replace ? this.notes.map((note) => note.id) : [];
+				if (navigator.storage?.estimate) {
+					const estimate = await navigator.storage.estimate();
+					if (!replacementFitsStorage(importedNotes, estimate)) {
+						return {
+							success: false,
+							error: 'Storage full on this device — free space or remove old notes/attachments.'
+						};
 					}
-					const imported = { ...label, id: uid(), createdAt: now, updatedAt: now };
-					labelIds.set(label.id, imported.id);
-					labelsByName.set(imported.name.trim().toLowerCase(), imported);
-					importedLabels.push(imported);
 				}
-				for (const note of importedNotes) {
-					note.labels = note.labels.flatMap((id) => {
-						const mapped = labelIds.get(id);
-						return mapped ? [mapped] : [];
-					});
-					await putNote(pid, note, noteSyncKeys(note));
-					await this.compactPersistedNoteImages(note);
+				if (mode === BackupImportMode.Keep) {
+					const labelsByName = new Map(
+						this.labels.map((label) => [label.name.trim().toLowerCase(), label])
+					);
+					const labelIds = new Map<string, string>();
+					const importedLabels: Label[] = [];
+					for (const label of backup.labels) {
+						const existing = labelsByName.get(label.name.trim().toLowerCase());
+						if (existing) {
+							labelIds.set(label.id, existing.id);
+							continue;
+						}
+						const imported = { ...label, id: uid(), createdAt: now, updatedAt: now };
+						labelIds.set(label.id, imported.id);
+						labelsByName.set(imported.name.trim().toLowerCase(), imported);
+						importedLabels.push(imported);
+					}
+					for (const note of importedNotes) {
+						note.labels = note.labels.flatMap((id) => {
+							const mapped = labelIds.get(id);
+							return mapped ? [mapped] : [];
+						});
+						await putNote(pid, note, noteSyncKeys(note));
+						await this.compactPersistedNoteImages(note);
+					}
+					await bulkPutLabels(pid, importedLabels);
+					this.notes = [...this.notes, ...importedNotes].sort((a, b) => b.updatedAt - a.updatedAt);
+					this.labels = [...this.labels, ...importedLabels].sort((a, b) =>
+						a.name.localeCompare(b.name)
+					);
+					await syncStore.queueOutbox(importedLabels.map((label) => `label:${label.id}`));
+				} else {
+					await replaceAllDeviceData(pid, importedNotes, backup.labels, (note) =>
+						this.compactPersistedNoteImages(note)
+					);
+					this.notes = importedNotes.sort((a, b) => b.updatedAt - a.updatedAt);
+					this.labels = [...backup.labels].sort((a, b) => a.name.localeCompare(b.name));
+					const importedIds = new Set(importedNotes.map((note) => note.id));
+					this.deletedNoteIds = { ...backup.tombstones };
+					for (const id of replacedNoteIds) {
+						if (!importedIds.has(id)) this.deletedNoteIds[id] = now;
+					}
+					this.deletedLabelIds = { ...backup.labelTombstones };
+					await writeTombstones(pid, this.deletedNoteIds);
+					await writeLabelTombstones(pid, this.deletedLabelIds);
+					kanbanStore.replaceWithCloud(backup.boards, backup.boardTombstones);
+					if (
+						backup.activeBoardId &&
+						kanbanStore.boards.some((board) => board.id === backup.activeBoardId)
+					) {
+						kanbanStore.selectBoard(backup.activeBoardId);
+					}
+					uiStore.restoreState(backup.ui);
 				}
-				await bulkPutLabels(pid, importedLabels);
-				this.notes = [...this.notes, ...importedNotes].sort((a, b) => b.updatedAt - a.updatedAt);
-				this.labels = [...this.labels, ...importedLabels].sort((a, b) =>
-					a.name.localeCompare(b.name)
-				);
-				await syncStore.queueOutbox(importedLabels.map((label) => `label:${label.id}`));
-			} else {
-				await replaceAllDeviceData(pid, importedNotes, backup.labels, (note) =>
-					this.compactPersistedNoteImages(note)
-				);
-				this.notes = importedNotes.sort((a, b) => b.updatedAt - a.updatedAt);
-				this.labels = [...backup.labels].sort((a, b) => a.name.localeCompare(b.name));
-				const importedIds = new Set(importedNotes.map((note) => note.id));
-				this.deletedNoteIds = { ...backup.tombstones };
-				for (const id of replacedNoteIds) {
-					if (!importedIds.has(id)) this.deletedNoteIds[id] = now;
-				}
-				this.deletedLabelIds = { ...backup.labelTombstones };
-				await writeTombstones(pid, this.deletedNoteIds);
-				await writeLabelTombstones(pid, this.deletedLabelIds);
-				kanbanStore.replaceWithCloud(backup.boards, backup.boardTombstones);
-				if (
-					backup.activeBoardId &&
-					kanbanStore.boards.some((board) => board.id === backup.activeBoardId)
-				) {
-					kanbanStore.selectBoard(backup.activeBoardId);
-				}
-				uiStore.restoreState(backup.ui);
-			}
 
-			this.mirrorToLS();
-			if (mode === BackupImportMode.Replace) {
-				const outbox = [
-					...this.notes.flatMap((note) => noteSyncKeys(note)),
-					...this.labels.map((label) => `label:${label.id}`),
-					...kanbanStore.boards.map((board) => `board:${board.id}`),
-					...Object.keys(this.deletedNoteIds).map((id) => `note-tombstone:${id}`),
-					...Object.keys(this.deletedLabelIds).map((id) => `label-tombstone:${id}`),
-					...Object.keys(kanbanStore.boardTombstones).map((id) => `board-tombstone:${id}`)
-				];
-				if (syncStore.account) {
-					await syncStore.clearAccountControlPlane(syncStore.account.accountId);
+				this.mirrorToLS();
+				if (mode === BackupImportMode.Replace) {
+					const outbox = [
+						...this.notes.flatMap((note) => noteSyncKeys(note)),
+						...this.labels.map((label) => `label:${label.id}`),
+						...kanbanStore.boards.map((board) => `board:${board.id}`),
+						...Object.keys(this.deletedNoteIds).map((id) => `note-tombstone:${id}`),
+						...Object.keys(this.deletedLabelIds).map((id) => `label-tombstone:${id}`),
+						...Object.keys(kanbanStore.boardTombstones).map((id) => `board-tombstone:${id}`)
+					];
+					if (syncStore.account) {
+						await syncStore.clearAccountControlPlane(syncStore.account.accountId);
+					}
+					await syncStore.queueOutbox(outbox);
 				}
-				await syncStore.queueOutbox(outbox);
-			}
-			this.dirty = true;
-			this.scheduleSyncPush();
-			return { success: true };
+				this.dirty = true;
+				this.scheduleSyncPush();
+				return { success: true };
+			});
 		} catch (err) {
 			this.recordPersistenceError('Could not import full backup', err);
 			// The replacement may have partially committed; reload memory from the
@@ -840,92 +847,99 @@ export class NotesStore {
 		if (this.importing) return { success: false, error: 'An import is already running.' };
 		if (readKeepTakeout(files).notes.length === 0)
 			return { success: false, error: 'That zip does not contain Google Keep notes.' };
-		// Every write lands in the workspace that was open when the import began.
-		const pid = this.pid;
+		// Claimed before the lock is requested so a workspace switch is refused
+		// outright rather than queueing behind an import that may run for minutes.
 		this.importing = true;
 		try {
-			const now = Date.now();
-			const materialized = await materializeKeepTakeout(files, (file) =>
-				fileToNoteImage(file, 'compressed')
-			);
-			const importedNotes = materialized.notes;
-			const replacedNoteIds =
-				mode === BackupImportMode.Replace ? this.notes.map((note) => note.id) : [];
-			const replacedLabelIds =
-				mode === BackupImportMode.Replace ? this.labels.map((label) => label.id) : [];
-			if (navigator.storage?.estimate) {
-				const estimate = await navigator.storage.estimate();
-				if (!replacementFitsStorage(importedNotes, estimate)) {
-					return {
-						success: false,
-						error: 'Storage full on this device — free space or remove old notes/attachments.'
-					};
-				}
-			}
-			if (mode === BackupImportMode.Keep) {
-				const labelsByName = new Map(
-					this.labels.map((label) => [label.name.trim().toLowerCase(), label])
+			// Under the sync lock: a flight that landed partway through an import
+			// would write the notes it pulled over the imported ones and push the
+			// mixture to the relay as the newest version.
+			return await this.withSyncLock(async () => {
+				// Every write lands in the workspace that was open when the import began.
+				const pid = this.pid;
+				const now = Date.now();
+				const materialized = await materializeKeepTakeout(files, (file) =>
+					fileToNoteImage(file, 'compressed')
 				);
-				const labelIds = new Map<string, string>();
-				const importedLabels: Label[] = [];
-				for (const label of materialized.labels) {
-					const existing = labelsByName.get(label.name.trim().toLowerCase());
-					if (existing) {
-						labelIds.set(label.id, existing.id);
-						continue;
+				const importedNotes = materialized.notes;
+				const replacedNoteIds =
+					mode === BackupImportMode.Replace ? this.notes.map((note) => note.id) : [];
+				const replacedLabelIds =
+					mode === BackupImportMode.Replace ? this.labels.map((label) => label.id) : [];
+				if (navigator.storage?.estimate) {
+					const estimate = await navigator.storage.estimate();
+					if (!replacementFitsStorage(importedNotes, estimate)) {
+						return {
+							success: false,
+							error: 'Storage full on this device — free space or remove old notes/attachments.'
+						};
 					}
-					const imported = { ...label, id: uid(), createdAt: now, updatedAt: now };
-					labelIds.set(label.id, imported.id);
-					labelsByName.set(imported.name.trim().toLowerCase(), imported);
-					importedLabels.push(imported);
 				}
-				for (const note of importedNotes) {
-					note.labels = note.labels.flatMap((id) => {
-						const mapped = labelIds.get(id);
-						return mapped ? [mapped] : [];
-					});
-					await putNote(pid, note, noteSyncKeys(note));
-					await this.compactPersistedNoteImages(note);
+				if (mode === BackupImportMode.Keep) {
+					const labelsByName = new Map(
+						this.labels.map((label) => [label.name.trim().toLowerCase(), label])
+					);
+					const labelIds = new Map<string, string>();
+					const importedLabels: Label[] = [];
+					for (const label of materialized.labels) {
+						const existing = labelsByName.get(label.name.trim().toLowerCase());
+						if (existing) {
+							labelIds.set(label.id, existing.id);
+							continue;
+						}
+						const imported = { ...label, id: uid(), createdAt: now, updatedAt: now };
+						labelIds.set(label.id, imported.id);
+						labelsByName.set(imported.name.trim().toLowerCase(), imported);
+						importedLabels.push(imported);
+					}
+					for (const note of importedNotes) {
+						note.labels = note.labels.flatMap((id) => {
+							const mapped = labelIds.get(id);
+							return mapped ? [mapped] : [];
+						});
+						await putNote(pid, note, noteSyncKeys(note));
+						await this.compactPersistedNoteImages(note);
+					}
+					await bulkPutLabels(pid, importedLabels);
+					this.notes = [...this.notes, ...importedNotes].sort((a, b) => b.updatedAt - a.updatedAt);
+					this.labels = [...this.labels, ...importedLabels].sort((a, b) =>
+						a.name.localeCompare(b.name)
+					);
+					await syncStore.queueOutbox(importedLabels.map((label) => `label:${label.id}`));
+				} else {
+					await replaceAllDeviceData(pid, importedNotes, materialized.labels, (note) =>
+						this.compactPersistedNoteImages(note)
+					);
+					this.notes = importedNotes.sort((a, b) => b.updatedAt - a.updatedAt);
+					this.labels = [...materialized.labels].sort((a, b) => a.name.localeCompare(b.name));
+					const importedIds = new Set(importedNotes.map((note) => note.id));
+					const importedLabelIds = new Set(materialized.labels.map((label) => label.id));
+					this.deletedNoteIds = { ...this.deletedNoteIds };
+					for (const id of replacedNoteIds) {
+						if (!importedIds.has(id)) this.deletedNoteIds[id] = now;
+					}
+					this.deletedLabelIds = { ...this.deletedLabelIds };
+					for (const id of replacedLabelIds) {
+						if (!importedLabelIds.has(id)) this.deletedLabelIds[id] = now;
+					}
+					await writeTombstones(pid, this.deletedNoteIds);
+					await writeLabelTombstones(pid, this.deletedLabelIds);
 				}
-				await bulkPutLabels(pid, importedLabels);
-				this.notes = [...this.notes, ...importedNotes].sort((a, b) => b.updatedAt - a.updatedAt);
-				this.labels = [...this.labels, ...importedLabels].sort((a, b) =>
-					a.name.localeCompare(b.name)
-				);
-				await syncStore.queueOutbox(importedLabels.map((label) => `label:${label.id}`));
-			} else {
-				await replaceAllDeviceData(pid, importedNotes, materialized.labels, (note) =>
-					this.compactPersistedNoteImages(note)
-				);
-				this.notes = importedNotes.sort((a, b) => b.updatedAt - a.updatedAt);
-				this.labels = [...materialized.labels].sort((a, b) => a.name.localeCompare(b.name));
-				const importedIds = new Set(importedNotes.map((note) => note.id));
-				const importedLabelIds = new Set(materialized.labels.map((label) => label.id));
-				this.deletedNoteIds = { ...this.deletedNoteIds };
-				for (const id of replacedNoteIds) {
-					if (!importedIds.has(id)) this.deletedNoteIds[id] = now;
-				}
-				this.deletedLabelIds = { ...this.deletedLabelIds };
-				for (const id of replacedLabelIds) {
-					if (!importedLabelIds.has(id)) this.deletedLabelIds[id] = now;
-				}
-				await writeTombstones(pid, this.deletedNoteIds);
-				await writeLabelTombstones(pid, this.deletedLabelIds);
-			}
 
-			this.mirrorToLS();
-			if (mode === BackupImportMode.Replace) {
-				const outbox = [
-					...this.notes.flatMap((note) => noteSyncKeys(note)),
-					...this.labels.map((label) => `label:${label.id}`),
-					...Object.keys(this.deletedNoteIds).map((id) => `note-tombstone:${id}`),
-					...Object.keys(this.deletedLabelIds).map((id) => `label-tombstone:${id}`)
-				];
-				await syncStore.queueOutbox(outbox);
-			}
-			this.dirty = true;
-			this.scheduleSyncPush();
-			return { success: true };
+				this.mirrorToLS();
+				if (mode === BackupImportMode.Replace) {
+					const outbox = [
+						...this.notes.flatMap((note) => noteSyncKeys(note)),
+						...this.labels.map((label) => `label:${label.id}`),
+						...Object.keys(this.deletedNoteIds).map((id) => `note-tombstone:${id}`),
+						...Object.keys(this.deletedLabelIds).map((id) => `label-tombstone:${id}`)
+					];
+					await syncStore.queueOutbox(outbox);
+				}
+				this.dirty = true;
+				this.scheduleSyncPush();
+				return { success: true };
+			});
 		} catch (err) {
 			this.recordPersistenceError('Could not import Google Keep notes', err);
 			await this.hardResync();

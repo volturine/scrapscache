@@ -11,12 +11,15 @@ import {
 	closeDeviceDatabase,
 	DEVICE_DB_NAME,
 	deleteProfileDatabase,
+	deleteStoredProfile,
 	dropDatabase,
 	getAllLabels,
 	getAllNotesMetadata,
 	LOCAL_PROFILE_ID,
 	putLabel,
 	putNote,
+	putStoredProfile,
+	readStoredProfiles,
 	resolveDbName
 } from './idb';
 import type { Label, Note } from '$lib/types';
@@ -131,5 +134,38 @@ describe('deleteProfileDatabase', () => {
 		expect((await getAllNotesMetadata(LOCAL_PROFILE_ID)).map((item) => item.id)).toEqual([
 			'anonymous'
 		]);
+	});
+});
+
+describe('deleteStoredProfile', () => {
+	it('takes the workspace off the keyring once its data is gone', async () => {
+		await putStoredProfile({ id: PROFILE, name: 'Removed', syncKey: '', createdAt: 1 });
+		await putNote(PROFILE, note('removed'));
+
+		await deleteStoredProfile(PROFILE);
+
+		expect(readStoredProfiles().map((entry) => entry.id)).not.toContain(PROFILE);
+		expect(await databaseNames()).not.toContain(PROFILE_DB);
+	});
+
+	// The keyring entry is the only way back to a workspace's database. Removing
+	// it ahead of a delete that then fails would leave every note on the device
+	// with nothing able to reach or remove it.
+	it('leaves the workspace whole when its data could not be deleted', async () => {
+		await putStoredProfile({ id: PROFILE, name: 'Stuck', syncKey: '', createdAt: 1 });
+		await putNote(PROFILE, note('kept'));
+		await closeDeviceDatabase();
+		// A connection this module does not own, as another tab would hold.
+		const other = await openDB(PROFILE_DB);
+
+		try {
+			const failure = await deleteStoredProfile(PROFILE).catch((error: Error) => error);
+
+			expect(failure).toBeInstanceOf(Error);
+			expect(readStoredProfiles().map((entry) => entry.id)).toContain(PROFILE);
+			expect(await databaseNames()).toContain(PROFILE_DB);
+		} finally {
+			other.close();
+		}
 	});
 });

@@ -99,6 +99,19 @@ describe('single-profile export', () => {
 		expect(backup?.version).toBe(4);
 		expect(await buildProfileNotesExport('p-other')).toBeNull();
 	});
+
+	// Backing up a workspace that is not open reads the device store and nothing
+	// else, so a field the fast-boot mirror alone carried would leave the backup
+	// silently missing it.
+	it('carries a secret note out of a workspace that is not open', async () => {
+		await putNote('p-secret', { ...note('hidden'), secret: true });
+
+		const backup = await buildProfileNotesExport('p-secret');
+
+		expect(backup?.notes.map(({ id, secret }) => ({ id, secret }))).toEqual([
+			{ id: 'hidden', secret: true }
+		]);
+	});
 });
 
 describe('local workspaces', () => {

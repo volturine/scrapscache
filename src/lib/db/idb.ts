@@ -238,6 +238,9 @@ function plainNote(note: Note): Note {
 		archived: Boolean(note.archived),
 		trashed: Boolean(note.trashed),
 		trashedAt: note.trashedAt == null ? null : Number(note.trashedAt),
+		// Durable like every other field: the mirror is a fast-boot cache, so a
+		// flag only it carries is lost the moment the mirror is trimmed or evicted.
+		...(note.secret ? { secret: true } : {}),
 		createdAt: Number(note.createdAt) || 0,
 		updatedAt: Number(note.updatedAt) || 0,
 		reminder: note.reminder == null ? null : Number(note.reminder),
@@ -1061,13 +1064,21 @@ function removeProfileFromLocalStorage(id: string): void {
 	} catch {}
 }
 
-/** Removes the keyring entry together with its entire dataset on this device. */
+/**
+ * Removes the keyring entry together with its entire dataset on this device.
+ *
+ * The dataset goes first. Dropping a database can fail — another tab holding it
+ * open blocks the delete — and a keyring entry removed ahead of that failure
+ * would take the workspace off the list while every note it holds stayed on the
+ * device, reachable by nothing and removable by no one. Failing with the
+ * workspace still whole leaves the user a delete they can retry.
+ */
 export async function deleteStoredProfile(id: string): Promise<void> {
-	removeProfileFromLocalStorage(id);
 	// The default workspace shares the device database with link previews, so
 	// it is emptied instead of dropped.
 	if (id === LOCAL_PROFILE_ID) await clearProfileNamespace(id);
 	else await deleteProfileDatabase(id);
+	removeProfileFromLocalStorage(id);
 }
 
 /**

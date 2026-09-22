@@ -7,7 +7,7 @@
 	import { button } from 'styled-system/recipes';
 	import { syncStore, type McpWorkspaceStatus } from '$lib/stores/sync.svelte';
 	import { encryptHandshakePayload } from '$lib/mcpHandshake';
-	import { isLocalWorkspace, mcpWorkspaceGrant, workspacesForMcpGrant } from '$lib/profiles';
+	import { isLocalWorkspace, mcpWorkspaceGrant } from '$lib/profiles';
 
 	type AuthorizeParams = {
 		valid: boolean;
@@ -250,7 +250,7 @@
 	let params = $derived(parseParams(page.url));
 	let busy = $state(false);
 	let error = $state('');
-	let pickedIds = $state<string[] | null>(null);
+	let selectedWorkspaceId = $state<string | null>(null);
 	let checkingWorkspaces = $state(true);
 	let mcpStatuses = $state<Record<string, McpWorkspaceStatus>>({});
 
@@ -266,6 +266,10 @@
 			.then((statuses) => {
 				if (cancelled) return;
 				mcpStatuses = statuses;
+				const ready = syncStore.profiles.filter(
+					(profile) => statuses[profile.id]?.state === 'ready'
+				);
+				selectedWorkspaceId = ready.length === 1 ? ready[0].id : null;
 				checkingWorkspaces = false;
 			})
 			.catch(() => {
@@ -275,6 +279,7 @@
 					statuses[profile.id] = profile.syncKey ? { state: 'unavailable' } : { state: 'local' };
 				}
 				mcpStatuses = statuses;
+				selectedWorkspaceId = null;
 				checkingWorkspaces = false;
 			});
 
@@ -294,35 +299,7 @@
 				)
 	);
 	let localOnly = $derived(syncStore.profiles.filter((profile) => isLocalWorkspace(profile)));
-	let selected = $derived(workspacesForMcpGrant(synced, pickedIds));
-	let allSyncedSelected = $derived(
-		synced.length > 0 &&
-			synced.every((workspace) => selected.some((item) => item.id === workspace.id))
-	);
-
-	function chosenIds(): string[] {
-		return pickedIds ?? selected.map((workspace) => workspace.id);
-	}
-
-	function toggleWorkspace(id: string, checked: boolean) {
-		const current = chosenIds();
-		pickedIds = checked ? [...new Set([...current, id])] : current.filter((item) => item !== id);
-	}
-
-	function selectAllSynced() {
-		pickedIds = synced.map((workspace) => workspace.id);
-	}
-
-	function clearSynced() {
-		pickedIds = [];
-	}
-
-	function workspaceListText(names: string[]): string {
-		if (names.length === 0) return '';
-		if (names.length === 1) return names[0];
-		if (names.length === 2) return `${names[0]} and ${names[1]}`;
-		return `${names.slice(0, -1).join(', ')}, and ${names[names.length - 1]}`;
-	}
+	let selected = $derived(synced.find((workspace) => workspace.id === selectedWorkspaceId) ?? null);
 
 	function statusCaption(status: McpWorkspaceStatus | undefined): string {
 		if (status?.state === 'pending') {
@@ -335,8 +312,8 @@
 	}
 
 	async function approve() {
-		const grantWorkspaces = mcpWorkspaceGrant(selected);
-		if (!params.valid || checkingWorkspaces || grantWorkspaces.length === 0 || busy) return;
+		if (!params.valid || checkingWorkspaces || !selected || busy) return;
+		const grantWorkspaces = mcpWorkspaceGrant([selected]);
 		busy = true;
 		error = '';
 
@@ -450,24 +427,16 @@
 
 					<fieldset class={workspaces} aria-labelledby="mcp-workspace-label">
 						<div class={workspaceToolbar}>
-							<span id="mcp-workspace-label" class={legend}>Workspaces</span>
-							{#if synced.length > 1}
-								<button
-									type="button"
-									class={button({ variant: 'quiet', size: 'xs' })}
-									onclick={allSyncedSelected ? clearSynced : selectAllSynced}
-								>
-									{allSyncedSelected ? 'Clear' : 'Select all'}
-								</button>
-							{/if}
+							<span id="mcp-workspace-label" class={legend}>Workspace for this connection</span>
 						</div>
 						<p id="mcp-workspace-hint" class={fine}>
-							{params.clientName} can search, read, and update notes only in the workspaces you select.
+							Choose one synced workspace. To connect another workspace, create a separate MCP
+							connection.
 						</p>
 						<div class={workspaceList}>
 							{#each notReady as workspace (workspace.id)}
 								<label class={localRow}>
-									<input class={radio} type="checkbox" disabled />
+									<input class={radio} type="radio" disabled />
 									<span class={optionText}>
 										<span class={optionName}>{workspace.name}</span>
 										<span class={optionCaption}>{statusCaption(mcpStatuses[workspace.id])}</span>
@@ -478,12 +447,12 @@
 								<label class={option}>
 									<input
 										class={radio}
-										type="checkbox"
+										type="radio"
 										name="mcp-workspace"
 										value={workspace.id}
-										checked={selected.some((item) => item.id === workspace.id)}
+										checked={selected?.id === workspace.id}
 										aria-describedby="mcp-workspace-hint"
-										onchange={(event) => toggleWorkspace(workspace.id, event.currentTarget.checked)}
+										onchange={() => (selectedWorkspaceId = workspace.id)}
 									/>
 									<span class={optionText}>
 										<span class={optionName}>{workspace.name}</span>
@@ -495,7 +464,7 @@
 							{/each}
 							{#each localOnly as workspace (workspace.id)}
 								<label class={localRow}>
-									<input class={radio} type="checkbox" disabled />
+									<input class={radio} type="radio" disabled />
 									<span class={optionText}>
 										<span class={optionName}>{workspace.name}</span>
 										<span class={optionCaption}>On this device only</span>
@@ -506,21 +475,13 @@
 					</fieldset>
 
 					<div class={copy}>
-						{#if selected.length > 3}
+						{#if selected}
 							<p>
 								<strong>{params.clientName}</strong> will be granted access to notes in
-								<strong>{selected.length} workspaces</strong> through your self-hosted MCP server.
-							</p>
-						{:else if selected.length > 0}
-							<p>
-								<strong>{params.clientName}</strong> will be granted access to notes in
-								<strong
-									>{workspaceListText(mcpWorkspaceGrant(selected).map((item) => item.name))}</strong
-								>
-								through your self-hosted MCP server.
+								<strong>{selected.name}</strong> through your self-hosted MCP server.
 							</p>
 						{:else}
-							<p>Select at least one workspace before allowing access.</p>
+							<p>Select one workspace before allowing access.</p>
 						{/if}
 						<p class={fine}>
 							Your notes remain end-to-end encrypted in your cloud sync. The MCP server decrypts
@@ -546,7 +507,7 @@
 						type="button"
 						class={cx(button({ variant: 'primary', size: 'md' }), action)}
 						onclick={() => void approve()}
-						disabled={busy || checkingWorkspaces || !params.valid || selected.length === 0}
+						disabled={busy || checkingWorkspaces || !params.valid || !selected}
 					>
 						{busy ? 'Connecting…' : 'Allow access'}
 					</button>

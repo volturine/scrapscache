@@ -9,7 +9,11 @@ export type Note = {
 	color: string;
 	pinned: boolean;
 	archived: boolean;
+	trashed?: boolean;
+	trashedAt?: number | null;
+	/** Legacy MCP-created records used `trash`; keep reading them while they migrate. */
 	trash?: boolean;
+	reminder?: number | null;
 	createdAt: number;
 	updatedAt: number;
 	images?: unknown[];
@@ -205,6 +209,7 @@ for (const tool of MCP_TOOLS) {
 export class McpSession {
 	private readonly client: ScrapscacheSyncClient;
 	private readonly syncKey: string;
+	private readonly workspaceName: string;
 	private readonly notes = new Map<string, Note>();
 	private readonly labels = new Map<string, Label>();
 	private readonly syncedSlots = new Map<string, SyncEnvelope>();
@@ -214,9 +219,10 @@ export class McpSession {
 	private sseListeners = new Set<(event: string, data: unknown) => void>();
 	private lastActiveAt = Date.now();
 
-	constructor(client: ScrapscacheSyncClient) {
+	constructor(client: ScrapscacheSyncClient, workspaceName = 'Workspace') {
 		this.client = client;
 		this.syncKey = client.getSyncKey();
+		this.workspaceName = workspaceName.trim() || 'Workspace';
 	}
 
 	getAccountId(): string {
@@ -270,7 +276,11 @@ export class McpSession {
 	private applyEnvelopes(envelopes: SyncEnvelope[]): void {
 		for (const envelope of envelopes) {
 			try {
-				const payload = decryptSyncPayload<SyncRecordPayload>(this.syncKey, envelope.ciphertext);
+				const payload = decryptSyncPayload<SyncRecordPayload>(
+					this.syncKey,
+					envelope.ciphertext,
+					envelope.slot
+				);
 				if (!payload || typeof payload !== 'object') continue;
 				if (payload.kind === 'note') {
 					this.notes.set(payload.value.id, payload.value);
@@ -345,6 +355,10 @@ export class McpSession {
 			.filter((name): name is string => typeof name === 'string');
 	}
 
+	private isTrashed(note: Note): boolean {
+		return note.trashed ?? note.trash ?? false;
+	}
+
 	private resolveLabelIds(names: string[]): string[] {
 		const ids: string[] = [];
 		for (const rawName of names) {
@@ -401,7 +415,7 @@ export class McpSession {
 		}> = [];
 
 		const allNotes = [...this.notes.values()]
-			.filter((n) => !n.trash && !n.archived)
+			.filter((n) => !this.isTrashed(n) && !n.archived)
 			.sort((a, b) => b.updatedAt - a.updatedAt);
 
 		for (const note of allNotes) {
@@ -441,7 +455,7 @@ export class McpSession {
 	async readNote(args: { id: string }) {
 		await this.ensureHydrated();
 		const note = this.notes.get(args.id);
-		if (!note || note.trash) {
+		if (!note || this.isTrashed(note)) {
 			throw new Error(`Note not found with id: ${args.id}`);
 		}
 
@@ -488,14 +502,17 @@ export class McpSession {
 			color: args.color || 'default',
 			pinned: !!args.pinned,
 			archived: false,
+			trashed: false,
+			trashedAt: null,
+			reminder: null,
 			createdAt: now,
 			updatedAt: now
 		};
 
 		const recordKey = `note:${noteId}`;
 		const payload: SyncRecordPayload = { kind: 'note', value: note };
-		const ciphertext = encryptSyncPayload(this.syncKey, payload);
 		const slot = computeSlot(this.syncKey, recordKey);
+		const ciphertext = encryptSyncPayload(this.syncKey, payload, slot);
 
 		const envelope: SyncEnvelope = {
 			id: randomOpaqueId(),
@@ -532,7 +549,7 @@ export class McpSession {
 	}) {
 		await this.ensureHydrated();
 		const existing = this.notes.get(args.id);
-		if (!existing || existing.trash) {
+		if (!existing || this.isTrashed(existing)) {
 			throw new Error(`Note not found with id: ${args.id}`);
 		}
 
@@ -569,6 +586,8 @@ export class McpSession {
 
 		const updatedNote: Note = {
 			...existing,
+			trashed: existing.trashed ?? existing.trash ?? false,
+			trashedAt: existing.trashedAt ?? null,
 			title: args.title !== undefined ? args.title : existing.title,
 			body: updatedBody,
 			labels: labelIds,
@@ -580,8 +599,8 @@ export class McpSession {
 
 		const recordKey = `note:${existing.id}`;
 		const payload: SyncRecordPayload = { kind: 'note', value: updatedNote };
-		const ciphertext = encryptSyncPayload(this.syncKey, payload);
 		const slot = computeSlot(this.syncKey, recordKey);
+		const ciphertext = encryptSyncPayload(this.syncKey, payload, slot);
 		const currentEnvelope = this.syncedSlots.get(recordKey);
 
 		const envelope: SyncEnvelope = {
@@ -616,7 +635,7 @@ export class McpSession {
 	}
 
 	async listWorkspaces() {
-		return { workspaces: [{ workspace: 'Workspace' }] };
+		return { workspaces: [{ workspace: this.workspaceName }] };
 	}
 
 	async callTool(name: string, args: Record<string, unknown>): Promise<unknown> {
@@ -646,7 +665,7 @@ export class McpSession {
 	async listResources() {
 		await this.ensureHydrated();
 		const resources = [...this.notes.values()]
-			.filter((n) => !n.trash)
+			.filter((n) => !this.isTrashed(n))
 			.map((note) => ({
 				uri: `scrapscache://notes/${note.id}`,
 				name: note.title || 'Untitled note',

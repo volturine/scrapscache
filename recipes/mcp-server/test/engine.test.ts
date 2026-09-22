@@ -156,11 +156,11 @@ plain text line`;
 		expect(names).toEqual(['Ideas', 'Work']);
 	});
 
-	it('lists the granted workspace for a single-workspace connection', async () => {
-		const session = new McpSession(mockSyncClient);
+	it('lists the named workspace for a single-workspace connection', async () => {
+		const session = new McpSession(mockSyncClient, 'Personal');
 
 		expect(await session.callTool('list_workspaces', {})).toEqual({
-			workspaces: [{ workspace: 'Workspace' }]
+			workspaces: [{ workspace: 'Personal' }]
 		});
 	});
 });

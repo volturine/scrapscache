@@ -28,17 +28,21 @@ export class McpApp {
 		workspaces?: GrantedWorkspace[]
 	): McpSession | VaultSession {
 		const granted =
-			workspaces && workspaces.length > 1
+			workspaces && workspaces.length > 0
 				? workspaces
 				: [{ name: 'Workspace', syncKey, accountId }];
-		const cacheKey =
-			granted.length > 1 ? granted.map((workspace) => workspace.accountId).join('\n') : accountId;
+		const cacheKey = granted
+			.map((workspace) => `${workspace.accountId}:${workspace.name}`)
+			.join('\n');
 		let session = this.sessions.get(cacheKey);
 		if (!session) {
 			session =
 				granted.length > 1
 					? new VaultSession(this.config.scrapscacheUrl, granted)
-					: new McpSession(new ScrapscacheSyncClient(this.config.scrapscacheUrl, syncKey));
+					: new McpSession(
+							new ScrapscacheSyncClient(this.config.scrapscacheUrl, granted[0].syncKey),
+							granted[0].name
+						);
 			this.sessions.set(cacheKey, session);
 		}
 		return session;

@@ -1,6 +1,7 @@
 import { xchacha20poly1305 } from '@noble/ciphers/chacha.js';
 import { ed25519, x25519 } from '@noble/curves/ed25519.js';
 import { sha256 as nobleSha256 } from '@noble/hashes/sha2.js';
+import { bytesToHex } from '@noble/hashes/utils.js';
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -68,31 +69,76 @@ function syncPayloadKey(syncKey: string): Uint8Array {
 	return sha256(encoder.encode(`scraps-cache-sync-payload:v1:${syncKey}`));
 }
 
-export function encryptSyncPayload(syncKey: string, payload: unknown): string {
-	const key = syncPayloadKey(syncKey);
+const ENVELOPE_V2 = 2;
+
+function syncPayloadAad(syncKey: string, slot: string): Uint8Array {
+	return encoder.encode(
+		`scraps-cache-sync-envelope:v2:${identityFromSyncKey(syncKey).accountId}:${slot}`
+	);
+}
+
+export function encryptSyncPayload(syncKey: string, payload: unknown, slot: string): string {
 	const nonce = randomBytes(24);
 	const plaintext = encoder.encode(JSON.stringify(payload));
-	const ciphertext = xchacha20poly1305(key, nonce).encrypt(plaintext);
-	const envelope = new Uint8Array(nonce.length + ciphertext.length);
-	envelope.set(nonce, 0);
-	envelope.set(ciphertext, nonce.length);
+	const ciphertext = xchacha20poly1305(
+		syncPayloadKey(syncKey),
+		nonce,
+		syncPayloadAad(syncKey, slot)
+	).encrypt(plaintext);
+	const envelope = new Uint8Array(1 + nonce.length + ciphertext.length);
+	envelope[0] = ENVELOPE_V2;
+	envelope.set(nonce, 1);
+	envelope.set(ciphertext, 1 + nonce.length);
 	return bytesToBase64Url(envelope);
 }
 
-export function decryptSyncPayload<T = unknown>(syncKey: string, envelope: string): T {
-	const key = syncPayloadKey(syncKey);
+export type OpenedSyncEnvelope<T = unknown> = {
+	payload: T;
+	legacy: boolean;
+};
+
+export function decryptSyncEnvelope<T = unknown>(
+	syncKey: string,
+	envelope: string,
+	slot: string
+): OpenedSyncEnvelope<T> {
 	const bytes = base64UrlToBytes(envelope);
-	if (bytes.length < 40) {
-		throw new Error('Encrypted payload too short');
+	const key = syncPayloadKey(syncKey);
+	if (bytes[0] === ENVELOPE_V2 && bytes.length > 25) {
+		try {
+			return {
+				payload: JSON.parse(
+					decoder.decode(
+						xchacha20poly1305(key, bytes.slice(1, 25), syncPayloadAad(syncKey, slot)).decrypt(
+							bytes.slice(25)
+						)
+					)
+				) as T,
+				legacy: false
+			};
+		} catch {
+			// A legacy nonce can begin with the v2 marker byte. Try the legacy format below.
+		}
 	}
-	const nonce = bytes.subarray(0, 24);
-	const ciphertext = bytes.subarray(24);
-	const decrypted = xchacha20poly1305(key, nonce).decrypt(ciphertext);
-	return JSON.parse(decoder.decode(decrypted)) as T;
+	if (bytes.length <= 24) throw new Error('Encrypted payload too short');
+	return {
+		payload: JSON.parse(
+			decoder.decode(xchacha20poly1305(key, bytes.slice(0, 24)).decrypt(bytes.slice(24)))
+		) as T,
+		legacy: true
+	};
+}
+
+export function decryptSyncPayload<T = unknown>(
+	syncKey: string,
+	envelope: string,
+	slot: string
+): T {
+	return decryptSyncEnvelope<T>(syncKey, envelope, slot).payload;
 }
 
 export function computeSlot(syncKey: string, recordKey: string): string {
-	return bytesToBase64Url(sha256(encoder.encode(`${syncKey}\0${recordKey}`)));
+	return bytesToHex(sha256(encoder.encode(JSON.stringify(`${syncKey}\0${recordKey}`))));
 }
 
 export function createHandshakeKeyPair(): { privateKey: Uint8Array; publicKey: string } {

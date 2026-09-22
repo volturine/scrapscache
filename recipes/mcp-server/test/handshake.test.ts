@@ -53,7 +53,11 @@ describe('Scraps Cache automated OAuth handshake (zero manual token / sync key)'
 			new TextEncoder().encode(`scrapscache-mcp-handshake:v1:${bytesToBase64Url(sharedSecret)}`)
 		);
 		const nonce = randomBytes(24);
-		const ciphertext = xchacha20poly1305(key, nonce).encrypt(new TextEncoder().encode(userSyncKey));
+		const grant = JSON.stringify({
+			v: 1,
+			workspaces: [{ name: 'Personal', syncKey: userSyncKey }]
+		});
+		const ciphertext = xchacha20poly1305(key, nonce).encrypt(new TextEncoder().encode(grant));
 
 		// 3. Browser returns to MCP server callback
 		const callbackPostReq = new Request('http://localhost:3001/oauth/callback', {
@@ -112,5 +116,27 @@ describe('Scraps Cache automated OAuth handshake (zero manual token / sync key)'
 		expect(rpcRes.status).toBe(200);
 		const rpcData = (await rpcRes.json()) as { result: { tools: unknown[] } };
 		expect(rpcData.result.tools.length).toBeGreaterThan(0);
+
+		const workspaceRes = await app.handleRequest(
+			new Request('http://localhost:3001/mcp', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					Authorization: `Bearer ${tokenData.access_token}`
+				},
+				body: JSON.stringify({
+					jsonrpc: '2.0',
+					id: 2,
+					method: 'tools/call',
+					params: { name: 'list_workspaces', arguments: {} }
+				})
+			})
+		);
+		const workspaceData = (await workspaceRes.json()) as {
+			result: { content: Array<{ text: string }> };
+		};
+		expect(JSON.parse(workspaceData.result.content[0].text)).toEqual({
+			workspaces: [{ workspace: 'Personal' }]
+		});
 	});
 });

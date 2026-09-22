@@ -38,12 +38,14 @@ describe('MCP crypto primitives', () => {
 			}
 		};
 
-		const ciphertext = encryptSyncPayload(sampleSyncKey, payload);
+		const slot = computeSlot(sampleSyncKey, 'note:test-123');
+		const ciphertext = encryptSyncPayload(sampleSyncKey, payload, slot);
 		expect(typeof ciphertext).toBe('string');
 		expect(ciphertext).not.toContain('Encrypted Note');
 
-		const decrypted = decryptSyncPayload<typeof payload>(sampleSyncKey, ciphertext);
+		const decrypted = decryptSyncPayload<typeof payload>(sampleSyncKey, ciphertext, slot);
 		expect(decrypted).toEqual(payload);
+		expect(() => decryptSyncPayload(sampleSyncKey, ciphertext, 'f'.repeat(64))).toThrow();
 	});
 
 	it('computes deterministic slot identifiers', () => {
@@ -52,5 +54,6 @@ describe('MCP crypto primitives', () => {
 		const slot3 = computeSlot(sampleSyncKey, 'note:def');
 		expect(slot1).toBe(slot2);
 		expect(slot1).not.toBe(slot3);
+		expect(slot1).toMatch(/^[a-f0-9]{64}$/);
 	});
 });

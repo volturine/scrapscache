@@ -58,24 +58,6 @@ export function isLocalWorkspace(profile: StoredProfile): boolean {
 	return !profile.syncKey;
 }
 
-/**
- * Workspaces an MCP client may be granted. A click wins, and several may be
- * chosen. One synced workspace starts selected, because there is nothing else
- * to choose. Several stay unselected until the user picks. A local workspace
- * is never granted.
- */
-export function workspacesForMcpGrant(
-	profiles: readonly StoredProfile[],
-	pickedIds: readonly string[] | null
-): StoredProfile[] {
-	const synced = profiles.filter((profile) => profile.syncKey);
-	if (pickedIds) {
-		const wanted = new Set(pickedIds);
-		return synced.filter((profile) => wanted.has(profile.id));
-	}
-	return synced.length === 1 ? synced : [];
-}
-
 /** Names sent with a grant. Repeated names get a numeric suffix so each vault stays addressable. */
 export function mcpWorkspaceGrant(
 	profiles: readonly StoredProfile[]

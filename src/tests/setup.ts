@@ -4,9 +4,13 @@ import 'fake-indexeddb/auto';
 import { afterEach, vi } from 'vitest';
 import { closeDeviceDatabase, DEVICE_DB_NAME, dropDatabase } from '$lib/db/idb';
 import { resetTombstoneCaches } from '$lib/syncTombstones';
+import { installHorizontalWheel } from '$lib/horizontalWheel';
 
 // Browser-side $env/dynamic/public reads globals that only a SvelteKit page defines.
 vi.mock('$env/dynamic/public', () => ({ env: {} }));
+
+// Same Shift+wheel path the app installs in hooks.client.
+installHorizontalWheel();
 
 if (typeof Element !== 'undefined' && !Element.prototype.animate) {
 	Element.prototype.animate = (() => ({
@@ -31,6 +35,9 @@ if (typeof Element !== 'undefined' && !Element.prototype.setPointerCapture) {
 // jsdom has no hit testing; drag code asks what sits under the pointer.
 if (typeof document !== 'undefined' && !document.elementFromPoint) {
 	document.elementFromPoint = () => null;
+}
+if (typeof document !== 'undefined' && !document.elementsFromPoint) {
+	document.elementsFromPoint = () => [];
 }
 
 if (typeof window !== 'undefined' && !window.ResizeObserver) {

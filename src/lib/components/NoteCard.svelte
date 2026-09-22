@@ -288,14 +288,6 @@
 		}
 	}
 
-	function onCardWheel(event: WheelEvent) {
-		if (!cardEl || Math.abs(event.deltaX) <= Math.abs(event.deltaY)) return;
-		const table = overflowingTable(cardEl, event.clientX, event.clientY);
-		if (!table) return;
-		table.scrollLeft += event.deltaX;
-		event.preventDefault();
-	}
-
 	function handleKeydown(event: KeyboardEvent) {
 		if (hazeActive) {
 			if (event.key === 'Escape') {
@@ -372,8 +364,6 @@
 	});
 
 	onMount(() => {
-		const el = cardEl;
-		el?.addEventListener('wheel', onCardWheel, { passive: false });
 		function onOtherHazeOpen(e: Event) {
 			const ce = e as CustomEvent<string>;
 			if (ce.detail !== note.id) {
@@ -382,7 +372,6 @@
 		}
 		window.addEventListener('scrapscache-card-haze-open', onOtherHazeOpen);
 		return () => {
-			el?.removeEventListener('wheel', onCardWheel);
 			window.removeEventListener('scrapscache-card-haze-open', onOtherHazeOpen);
 			if (copyTimer) clearTimeout(copyTimer);
 			if (suppressTimer) clearTimeout(suppressTimer);

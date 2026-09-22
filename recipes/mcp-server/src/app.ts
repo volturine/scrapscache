@@ -100,7 +100,7 @@ function noStoreRedirect(location: string): Response {
 
 export type AppConfig = {
 	scrapscacheUrl: string;
-	tokenStore: TokenStore;
+	tokenStore?: TokenStore;
 	publicOrigin?: string;
 };
 
@@ -177,20 +177,23 @@ export class McpApp {
 	}
 
 	private async authenticate(
-		req: Request
+		req: Request,
+		tokenStore: TokenStore
 	): Promise<{ accountId: string; syncKey: string; workspaces?: GrantedWorkspace[] } | null> {
 		const authHeader = req.headers.get('Authorization') || '';
 		const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
 
 		if (!token) return null;
-		return this.config.tokenStore.resolveToken(token);
+		return tokenStore.resolveToken(token);
 	}
 
-	async handleRequest(req: Request): Promise<Response> {
-		return this.fetch(req);
+	async handleRequest(req: Request, tokenStore?: TokenStore): Promise<Response> {
+		return this.fetch(req, tokenStore);
 	}
 
-	async fetch(req: Request): Promise<Response> {
+	async fetch(req: Request, requestTokenStore?: TokenStore): Promise<Response> {
+		const tokenStore = requestTokenStore ?? this.config.tokenStore;
+		if (!tokenStore) throw new Error('MCP token store is not configured');
 		const url = new URL(req.url);
 		const pathname = url.pathname;
 
@@ -254,7 +257,7 @@ export class McpApp {
 					req,
 					MAX_OAUTH_BODY_BYTES
 				);
-				const client = this.config.tokenStore.getOAuthManager().registerClient(body);
+				const client = tokenStore.getOAuthManager().registerClient(body);
 				return new Response(
 					JSON.stringify({
 						client_id: client.id,
@@ -285,7 +288,7 @@ export class McpApp {
 
 		// 5. OAuth Authorize: always use the authenticated Scraps Cache handshake.
 		if (pathname === '/oauth/authorize') {
-			const oauth = this.config.tokenStore.getOAuthManager();
+			const oauth = tokenStore.getOAuthManager();
 
 			if (req.method === 'GET') {
 				const clientId = url.searchParams.get('client_id') || '';
@@ -332,7 +335,7 @@ export class McpApp {
 
 		// 6. OAuth Handshake Callback from Scraps Cache
 		if (pathname === '/oauth/callback') {
-			const oauth = this.config.tokenStore.getOAuthManager();
+			const oauth = tokenStore.getOAuthManager();
 
 			if (req.method === 'GET') {
 				const html = `<!DOCTYPE html>
@@ -501,7 +504,7 @@ export class McpApp {
 
 		// 7. OAuth Token Exchange
 		if (pathname === '/oauth/token' && req.method === 'POST') {
-			const oauth = this.config.tokenStore.getOAuthManager();
+			const oauth = tokenStore.getOAuthManager();
 			let params: Record<string, string>;
 			try {
 				params = await readOAuthParams(req);
@@ -596,7 +599,7 @@ export class McpApp {
 		if (isMcpRoute) {
 			let auth: Awaited<ReturnType<McpApp['authenticate']>>;
 			try {
-				auth = await this.authenticate(req);
+				auth = await this.authenticate(req, tokenStore);
 			} catch {
 				return new Response(JSON.stringify({ error: 'Authentication service unavailable' }), {
 					status: 503,

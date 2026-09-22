@@ -7,12 +7,14 @@
 	import { button, dialog, input } from 'styled-system/recipes';
 
 	let {
+		open = true,
 		mode,
 		busy = false,
 		error = '',
 		onSubmit,
 		onClose
 	}: {
+		open?: boolean;
 		mode: BackupOperation;
 		busy?: boolean;
 		error?: string;
@@ -52,80 +54,84 @@
 </script>
 
 <Dialog.Root
-	open
+	{open}
 	onOpenChange={handleOpenChange}
 	closeOnEscape={!busy}
 	closeOnInteractOutside={!busy}
 	preventScroll={false}
 	initialFocusEl={() => passphraseInput}
+	lazyMount
+	unmountOnExit
 >
-	<div {@attach portalToAppOverlay} class={d.portal} role="presentation">
-		<Dialog.Backdrop class={d.backdrop} />
-		<Dialog.Positioner class={d.positioner}>
-			<Dialog.Content class={d.panel}>
-				<div class={d.header}>
-					<p class={backupStyles.eyebrow}>Encrypted on this device</p>
-					<Dialog.Title class={d.title}>
-						{exporting ? 'Protect this backup' : 'Unlock this backup'}
-					</Dialog.Title>
-					<Dialog.Description class={cx(d.description, backupStyles.description)}>
-						{exporting
-							? 'Scraps Cache cannot recover this passphrase. Store it separately from the backup file.'
-							: 'The passphrase and decrypted notes stay in this browser.'}
-					</Dialog.Description>
-				</div>
+	{#if open}
+		<div {@attach portalToAppOverlay} class={d.portal} role="presentation">
+			<Dialog.Backdrop class={d.backdrop} />
+			<Dialog.Positioner class={d.positioner}>
+				<Dialog.Content class={d.panel}>
+					<div class={d.header}>
+						<p class={backupStyles.eyebrow}>Encrypted on this device</p>
+						<Dialog.Title class={d.title}>
+							{exporting ? 'Protect this backup' : 'Unlock this backup'}
+						</Dialog.Title>
+						<Dialog.Description class={cx(d.description, backupStyles.description)}>
+							{exporting
+								? 'Scraps Cache cannot recover this passphrase. Store it separately from the backup file.'
+								: 'The passphrase and decrypted notes stay in this browser.'}
+						</Dialog.Description>
+					</div>
 
-				<form class={cx(d.body, backupStyles.form)} onsubmit={submit}>
-					<label class={backupStyles.label}>
-						<span class={backupStyles.fieldLabel}> Backup passphrase </span>
-						<input
-							type="password"
-							autocomplete={exporting ? 'new-password' : 'current-password'}
-							bind:value={passphrase}
-							bind:this={passphraseInput}
-							disabled={busy}
-							aria-invalid={Boolean(localError || error)}
-							class={passphraseField}
-						/>
-					</label>
-
-					{#if exporting}
+					<form class={cx(d.body, backupStyles.form)} onsubmit={submit}>
 						<label class={backupStyles.label}>
-							<span class={backupStyles.fieldLabel}> Confirm passphrase </span>
+							<span class={backupStyles.fieldLabel}> Backup passphrase </span>
 							<input
 								type="password"
-								autocomplete="new-password"
-								bind:value={confirmation}
+								autocomplete={exporting ? 'new-password' : 'current-password'}
+								bind:value={passphrase}
+								bind:this={passphraseInput}
 								disabled={busy}
 								aria-invalid={Boolean(localError || error)}
 								class={passphraseField}
 							/>
 						</label>
-					{/if}
 
-					{#if localError || error}
-						<p class={d.error} role="alert">
-							{localError || error}
-						</p>
-					{/if}
+						{#if exporting}
+							<label class={backupStyles.label}>
+								<span class={backupStyles.fieldLabel}> Confirm passphrase </span>
+								<input
+									type="password"
+									autocomplete="new-password"
+									bind:value={confirmation}
+									disabled={busy}
+									aria-invalid={Boolean(localError || error)}
+									class={passphraseField}
+								/>
+							</label>
+						{/if}
 
-					<div class={cx(d.footer, backupStyles.footer)}>
-						<button
-							type="button"
-							onclick={onClose}
-							disabled={busy}
-							class={button({ variant: 'quiet', size: 'md' })}>Cancel</button
-						>
-						<button
-							type="submit"
-							disabled={busy}
-							class={button({ variant: 'primary', size: 'md' })}
-						>
-							{exporting ? 'Export backup' : 'Unlock and import'}
-						</button>
-					</div>
-				</form>
-			</Dialog.Content>
-		</Dialog.Positioner>
-	</div>
+						{#if localError || error}
+							<p class={d.error} role="alert">
+								{localError || error}
+							</p>
+						{/if}
+
+						<div class={cx(d.footer, backupStyles.footer)}>
+							<button
+								type="button"
+								onclick={onClose}
+								disabled={busy}
+								class={button({ variant: 'quiet', size: 'md' })}>Cancel</button
+							>
+							<button
+								type="submit"
+								disabled={busy}
+								class={button({ variant: 'primary', size: 'md' })}
+							>
+								{exporting ? 'Export backup' : 'Unlock and import'}
+							</button>
+						</div>
+					</form>
+				</Dialog.Content>
+			</Dialog.Positioner>
+		</div>
+	{/if}
 </Dialog.Root>

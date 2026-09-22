@@ -404,7 +404,10 @@ const noteCardRecipe = defineSlotRecipe({
 			px: 'md',
 			pb: 'md',
 			pt: 'sm',
-			overflow: 'hidden',
+			overflowX: 'auto',
+			overflowY: 'hidden',
+			touchAction: 'pan-x',
+			overscrollBehaviorX: 'contain',
 			'& > *': { flexShrink: 0 }
 		},
 		metaRow: {

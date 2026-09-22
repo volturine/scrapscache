@@ -19,6 +19,7 @@
 	);
 
 	const card = noteCard();
+	let labelsOwnsPointer: number | null = null;
 </script>
 
 <div
@@ -120,7 +121,33 @@
 	</div>
 
 	{#if labelsForNote.length}
-		<div class={card.labelsRow}>
+		<!-- Kanban drag owns presses on the card shell; when tags overflow, keep the press local. -->
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div
+			class={cx(card.labelsRow, 'note-scrollbar-hidden')}
+			data-card-hscroll
+			onpointerdown={(e) => {
+				const el = e.currentTarget as HTMLElement;
+				if (el.scrollWidth > el.clientWidth + 1 && !(e.pointerType === 'mouse' && e.button !== 0)) {
+					e.stopPropagation();
+					labelsOwnsPointer = e.pointerId;
+				}
+			}}
+			onpointermove={(e) => {
+				if (labelsOwnsPointer !== e.pointerId) return;
+				e.stopPropagation();
+			}}
+			onpointerup={(e) => {
+				if (labelsOwnsPointer !== e.pointerId) return;
+				labelsOwnsPointer = null;
+				e.stopPropagation();
+			}}
+			onpointercancel={(e) => {
+				if (labelsOwnsPointer !== e.pointerId) return;
+				labelsOwnsPointer = null;
+				e.stopPropagation();
+			}}
+		>
 			{#each labelsForNote as label (label.id)}
 				<span class={badge()}>{label.name}</span>
 			{/each}

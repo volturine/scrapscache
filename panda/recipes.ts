@@ -369,6 +369,7 @@ const noteCardRecipe = defineSlotRecipe({
 		cardBody: {
 			position: 'relative',
 			zIndex: 1,
+			group: true,
 			...column,
 			w: 'full',
 			maxH: '320px',
@@ -415,7 +416,12 @@ const noteCardRecipe = defineSlotRecipe({
 			color: 'scrapscache.textMuted',
 			overflow: 'hidden',
 			textOverflow: 'ellipsis',
-			whiteSpace: 'nowrap'
+			whiteSpace: 'nowrap',
+			opacity: 0,
+			transition: 'opacity 150ms ease',
+			_groupHover: {
+				opacity: 1
+			}
 		},
 		hazeOverlay: {
 			position: 'absolute',

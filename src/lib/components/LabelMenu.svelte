@@ -20,13 +20,16 @@
 
 	const note = $derived(notesStore.notes.find((n) => n.id === noteId));
 	const trimmed = $derived(query.trim());
-	const matches = $derived(
-		trimmed
+	const matches = $derived.by(() => {
+		const base = trimmed
 			? notesStore.labels.filter((label) =>
 					label.name.toLowerCase().includes(trimmed.toLowerCase())
 				)
-			: notesStore.labels
-	);
+			: notesStore.labels;
+		const active = base.filter((label) => note?.labels.includes(label.id));
+		const rest = base.filter((label) => !note?.labels.includes(label.id));
+		return [...active, ...rest];
+	});
 	const exact = $derived(
 		notesStore.labels.find((label) => label.name.toLowerCase() === trimmed.toLowerCase())
 	);

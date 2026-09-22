@@ -636,20 +636,6 @@
 						<div class={spacer()} aria-hidden="true"></div>
 
 						<div class={hstack({ minW: 0, gap: '2xs' })}>
-							<button
-								type="button"
-								class={iconButton({ variant: 'ghost', size: 'sm' })}
-								title={expanded ? 'Shrink note' : 'Expand note'}
-								onclick={toggleExpanded}
-								aria-label={expanded ? 'Shrink note' : 'Expand note'}
-								aria-pressed={expanded}
-							>
-								{#if expanded}
-									<Minimize2 size={20} aria-hidden="true" />
-								{:else}
-									<Maximize2 size={20} aria-hidden="true" />
-								{/if}
-							</button>
 							{#if !note.trashed && !note.archived}
 								{#if note.reminder != null}
 									<button
@@ -701,6 +687,20 @@
 									{/if}
 								</button>
 							{/if}
+							<button
+								type="button"
+								class={iconButton({ variant: 'ghost', size: 'sm' })}
+								title={expanded ? 'Shrink note' : 'Expand note'}
+								onclick={toggleExpanded}
+								aria-label={expanded ? 'Shrink note' : 'Expand note'}
+								aria-pressed={expanded}
+							>
+								{#if expanded}
+									<Minimize2 size={20} aria-hidden="true" />
+								{:else}
+									<Maximize2 size={20} aria-hidden="true" />
+								{/if}
+							</button>
 						</div>
 					</header>
 

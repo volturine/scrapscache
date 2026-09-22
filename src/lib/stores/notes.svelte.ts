@@ -17,6 +17,7 @@ import {
 	getSyncOutboxKeys,
 	clearSyncOutbox,
 	pruneOrphanImageBlobs,
+	isProfileReleased,
 	waitForDeviceWrites
 } from '$lib/db/idb';
 import {
@@ -1052,6 +1053,9 @@ export class NotesStore {
 	}
 
 	private mirrorToLS() {
+		// A workspace removed in another window keeps no mirror either: writing
+		// one back would leave note text behind for a workspace that is gone.
+		if (isProfileReleased(this.pid)) return;
 		if (!writeNotesMirror(this.notes, this.pid)) {
 			this.recordPersistenceError(
 				'Could not update the local notes mirror',

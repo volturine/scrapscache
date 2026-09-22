@@ -279,6 +279,12 @@ export class SyncStore {
 		return this.profilesReady;
 	}
 
+	/** Adopt the keyring as another window has just rewritten it. */
+	reloadKeyring(): StoredProfile[] {
+		this.profiles = readProfiles();
+		return this.profiles;
+	}
+
 	/** Persist a keyring entry and surface it in the reactive profile list. */
 	async addKeyringEntry(profile: StoredProfile): Promise<void> {
 		await saveProfile(profile);

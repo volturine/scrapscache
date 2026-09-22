@@ -15,12 +15,15 @@ import {
 	dropDatabase,
 	getAllLabels,
 	getAllNotesMetadata,
+	isProfileReleased,
 	LOCAL_PROFILE_ID,
 	putLabel,
 	putNote,
 	putStoredProfile,
 	readStoredProfiles,
-	resolveDbName
+	releaseProfile,
+	resolveDbName,
+	resumeProfile
 } from './idb';
 import type { Label, Note } from '$lib/types';
 
@@ -167,5 +170,39 @@ describe('deleteStoredProfile', () => {
 		} finally {
 			other.close();
 		}
+	});
+});
+
+describe('releasing a workspace another window removed', () => {
+	it('refuses to open it again, and leaves the shared device database alone', async () => {
+		await putNote(PROFILE, note('released'));
+		await putNote(LOCAL_PROFILE_ID, note('device'));
+
+		releaseProfile(PROFILE);
+
+		await expect(getAllNotesMetadata(PROFILE)).rejects.toThrow(/no longer on this device/);
+		expect((await getAllNotesMetadata(LOCAL_PROFILE_ID)).map((item) => item.id)).toEqual([
+			'device'
+		]);
+	});
+
+	it('serves it again once a keyring entry names it', async () => {
+		await putNote(PROFILE, note('restored'));
+
+		releaseProfile(PROFILE);
+		resumeProfile(PROFILE);
+
+		expect((await getAllNotesMetadata(PROFILE)).map((item) => item.id)).toEqual(['restored']);
+	});
+
+	// Without this the delete waits out its whole grace and fails, and the user
+	// is told a workspace could not be removed with no way to see why.
+	it('steps out of the way of a delete another window started', async () => {
+		await putNote(PROFILE, note('holding'));
+
+		await dropDatabase(PROFILE_DB, 50);
+
+		expect(await databaseNames()).not.toContain(PROFILE_DB);
+		expect(isProfileReleased(PROFILE)).toBe(true);
 	});
 });

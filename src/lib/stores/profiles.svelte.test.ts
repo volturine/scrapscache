@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
 	getAllNotesMetadata,
 	getSyncOutboxKeys,
+	isProfileReleased,
 	LOCAL_PROFILE_ID,
 	putNote,
 	scopedStateKey
@@ -10,7 +11,7 @@ import { readProfiles, type StoredProfile } from '$lib/profiles';
 import { createSyncIdentity } from '$lib/syncPairing';
 import type { Note } from '$lib/types';
 import { unregisterReminderDevice } from '$lib/reminderWake';
-import { ProfileCoordinator } from './profiles.svelte';
+import { ProfileCoordinator, profileCoordinator } from './profiles.svelte';
 import { notesStore, SYNC_LOCK } from './notes.svelte';
 import { PROFILE_META_KEY, syncStore } from './sync.svelte';
 
@@ -420,4 +421,83 @@ describe('workspace handovers', () => {
 			}
 		}
 	);
+});
+
+/**
+ * Each window keeps its own workspace, so one can be removed while another
+ * still has it open. That window has to hear about it: its dataset has left
+ * the device, and the next write would build it back with no keyring entry
+ * naming the result.
+ */
+describe('a workspace removed in another window', () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+		syncStore.activateLocalWorkspace();
+		syncStore.profiles = [];
+		notesStore.notes = [];
+		notesStore.labels = [];
+		localStorage.clear();
+	});
+
+	it('moves this window to another workspace without asking', async () => {
+		const removed = workspace('removed-elsewhere', false, 1);
+		const kept = workspace('kept-elsewhere', false, 2);
+		syncStore.profiles = [removed, kept];
+		syncStore.activateProfile(removed);
+		await putNote(kept.id, note('kept-note'));
+		const reload = stubHandover();
+		// What the other window left behind: a keyring without the open workspace.
+		localStorage.setItem('scrapscache-sync-profiles', JSON.stringify([kept]));
+
+		await new ProfileCoordinator().adoptKeyring();
+
+		expect(syncStore.activeId).toBe(kept.id);
+		expect(syncStore.profiles).toEqual([kept]);
+		expect(reload).toHaveBeenCalledOnce();
+		// Nothing may reopen the removed namespace and rebuild it.
+		expect(isProfileReleased(removed.id)).toBe(true);
+		await expect(getAllNotesMetadata(removed.id)).rejects.toThrow(/no longer on this device/);
+		expect(await noteIds(kept.id)).toEqual(['kept-note']);
+	});
+
+	it('leaves a fresh empty workspace when the one it had open was the last', async () => {
+		const removed = workspace('only-elsewhere', false, 1);
+		syncStore.profiles = [removed];
+		syncStore.activateProfile(removed);
+		stubHandover();
+		localStorage.setItem('scrapscache-sync-profiles', JSON.stringify([]));
+
+		await new ProfileCoordinator().adoptKeyring();
+
+		expect(syncStore.profiles).toHaveLength(1);
+		expect(syncStore.profiles[0].id).not.toBe(removed.id);
+		expect(syncStore.activeId).toBe(syncStore.profiles[0].id);
+	});
+
+	it('adopts a workspace another window added without handing this one over', async () => {
+		const open = workspace('open-elsewhere', false, 1);
+		const added = workspace('added-elsewhere', false, 2);
+		syncStore.profiles = [open];
+		syncStore.activateProfile(open);
+		const reload = stubHandover();
+		localStorage.setItem('scrapscache-sync-profiles', JSON.stringify([open, added]));
+
+		await new ProfileCoordinator().adoptKeyring();
+
+		expect(syncStore.activeId).toBe(open.id);
+		expect(syncStore.profiles.map((entry) => entry.id)).toEqual([open.id, added.id]);
+		expect(reload).not.toHaveBeenCalled();
+	});
+
+	it('listens for the keyring and for nothing else', () => {
+		const adopt = vi.spyOn(profileCoordinator, 'adoptKeyring').mockResolvedValue();
+
+		window.dispatchEvent(new StorageEvent('storage', { key: 'scrapscache-notes-mirror' }));
+		expect(adopt).not.toHaveBeenCalled();
+
+		window.dispatchEvent(new StorageEvent('storage', { key: 'scrapscache-sync-profiles' }));
+		// A null key is the whole origin being cleared, keyring included.
+		window.dispatchEvent(new StorageEvent('storage', { key: null }));
+		expect(adopt).toHaveBeenCalledTimes(2);
+	});
 });

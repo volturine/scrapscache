@@ -29,7 +29,8 @@ export interface StoredProfile {
 	createdAt: number;
 }
 
-const LS_PROFILES = 'scrapscache-sync-profiles';
+/** The keyring. Its `storage` event is how other windows learn of a change. */
+export const LS_PROFILES = 'scrapscache-sync-profiles';
 const LS_PROFILES_LEGACY = 'gkc-sync-profiles';
 
 const dbPromises = new Map<string, Promise<IDBPDatabase>>();
@@ -81,14 +82,53 @@ function extractPidFromStateKey(key: string): { pid: string; baseKey: string } {
 	return { pid: LOCAL_PROFILE_ID, baseKey: key };
 }
 
+const releasedProfiles = new Set<string>();
+
+/**
+ * Stop serving a workspace this device no longer holds.
+ *
+ * A window that still has it open must not reach its database again. Opening it
+ * would rebuild the one another window just dropped, and no keyring entry would
+ * name the result: a dataset no workspace owns and no delete can find. Writes
+ * already queued for it fail here instead of landing.
+ */
+export function releaseProfile(pid: string): void {
+	releasedProfiles.add(pid);
+	const open = dbPromises.get(resolveDbName(pid));
+	if (!open) return;
+	dbPromises.delete(resolveDbName(pid));
+	void open.then(
+		(db) => db.close(),
+		() => undefined
+	);
+}
+
+/** Serve a workspace again: a keyring entry names it, so this device holds it. */
+export function resumeProfile(pid: string): void {
+	releasedProfiles.delete(pid);
+}
+
+export function isProfileReleased(pid: string): boolean {
+	return releasedProfiles.has(pid);
+}
+
 export function getDB(pid?: string): Promise<IDBPDatabase> {
 	if (typeof indexedDB === 'undefined') {
 		return Promise.reject(new Error('IndexedDB is not available'));
+	}
+	if (pid && releasedProfiles.has(pid)) {
+		return Promise.reject(new Error('That workspace is no longer on this device.'));
 	}
 	const dbName = resolveDbName(pid);
 	let promise = dbPromises.get(dbName);
 	if (!promise) {
 		promise = openDB(dbName, DB_VERSION, {
+			// A null blocked version means a delete rather than an upgrade: another
+			// window is removing this workspace, and holding the connection open
+			// would only stall it until its grace runs out.
+			blocking(_currentVersion, blockedVersion) {
+				if (blockedVersion === null && pid) releaseProfile(pid);
+			},
 			upgrade(db) {
 				if (!db.objectStoreNames.contains(NOTES_STORE)) {
 					db.createObjectStore(NOTES_STORE, { keyPath: 'id' });
@@ -164,6 +204,7 @@ export async function closeDeviceDatabase(): Promise<void> {
 	noteChains.clear();
 	writeGeneration = 0;
 	outboxGenerations.clear();
+	releasedProfiles.clear();
 	await Promise.all(
 		existing.map((p) =>
 			p.then(

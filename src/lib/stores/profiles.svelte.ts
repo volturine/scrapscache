@@ -15,7 +15,7 @@ import {
 	type StoredProfile
 } from '$lib/profiles';
 import { identityFromSyncKey, randomOpaqueId } from '$lib/syncPairing';
-import { markSyncOutbox } from '$lib/db/idb';
+import { LS_PROFILES, markSyncOutbox, releaseProfile, resumeProfile } from '$lib/db/idb';
 import { unregisterReminderDevice } from '$lib/reminderWake';
 
 type Outcome = { success: boolean; error?: string };
@@ -214,6 +214,30 @@ export class ProfileCoordinator {
 		});
 	}
 
+	/**
+	 * Another window rewrote the keyring. Adopt it, and if the workspace this
+	 * window has open is no longer named there, move to another one without
+	 * asking: its dataset has already left the device, and anything still
+	 * writing to it would build back a dataset no workspace owns.
+	 */
+	async adoptKeyring(): Promise<void> {
+		const open = syncStore.activeId;
+		const profiles = syncStore.reloadKeyring();
+		// A workspace can come back — the default one is recreated whenever it
+		// still holds notes — so every entry on the keyring is served again.
+		for (const entry of profiles) resumeProfile(entry.id);
+		if (profiles.some((entry) => entry.id === open)) return;
+		// Released before the handover, so the writes this window has already
+		// queued fail instead of recreating the database that was just dropped.
+		// Their errors are cleared by the reload that lands the new workspace.
+		releaseProfile(open);
+		await this.exclusive(async () => {
+			const [next] = syncStore.profiles;
+			if (next) await this.activate(next);
+			else await this.createAndActivateEmpty();
+		});
+	}
+
 	/** Point this window at another workspace. */
 	async switchTo(profileId: string): Promise<Outcome> {
 		if (profileId === syncStore.activeId) return { success: true };
@@ -285,3 +309,16 @@ export class ProfileCoordinator {
 }
 
 export const profileCoordinator = new ProfileCoordinator();
+
+// The keyring lives in localStorage, so its own `storage` event is the signal:
+// it fires in every other window exactly when the keyring changes, and cannot
+// drift from the write the way a separate broadcast would.
+if (typeof window !== 'undefined') {
+	window.addEventListener('storage', (event) => {
+		// A null key means the origin was cleared, which takes the keyring with it.
+		if (event.key !== null && event.key !== LS_PROFILES) return;
+		void profileCoordinator.adoptKeyring().catch((err) => {
+			console.error('[profiles] could not adopt a keyring change:', err);
+		});
+	});
+}

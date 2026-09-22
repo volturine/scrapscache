@@ -99,6 +99,26 @@ plain text line`;
 		expect(pinnedOnly.notes[0].title).toBe('Workout plan');
 	});
 
+	it('shows matching text in previews and reports when the result limit hides matches', async () => {
+		const session = new McpSession(mockSyncClient);
+		await session.createNote({
+			title: 'First',
+			body: `${'before '.repeat(40)}NEEDED FOR V1 later`
+		});
+		await session.createNote({ title: 'Second', body: 'NEEDED FOR V1 now' });
+
+		const result = await session.searchNotes({ query: 'needed for v1', limit: 1 });
+		expect(result.total).toBe(2);
+		expect(result.hasMore).toBe(true);
+		expect(result.notes).toHaveLength(1);
+		expect(result.notes[0].preview.toLowerCase()).toContain('needed for v1');
+		expect(result.notes[0].id).toBeTruthy();
+
+		const all = await session.searchNotes({ query: 'needed for v1', limit: 2 });
+		expect(all.hasMore).toBe(false);
+		expect(all.notes[1].preview.toLowerCase()).toContain('needed for v1');
+	});
+
 	it('updates note body, appends tasks, and toggles checklist items', async () => {
 		const session = new McpSession(mockSyncClient);
 
@@ -162,5 +182,15 @@ plain text line`;
 		expect(await session.callTool('list_workspaces', {})).toEqual({
 			workspaces: [{ workspace: 'Personal' }]
 		});
+	});
+
+	it('does not dispatch obsolete alias tool names', async () => {
+		const session = new McpSession(mockSyncClient);
+		await expect(session.callTool('read_note', { id: 'note' })).rejects.toThrow(
+			'Unknown tool: read_note'
+		);
+		await expect(session.callTool('list_recent_notes', {})).rejects.toThrow(
+			'Unknown tool: list_recent_notes'
+		);
 	});
 });

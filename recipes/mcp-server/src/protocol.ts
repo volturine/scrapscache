@@ -1,7 +1,8 @@
-import { MCP_TOOLS } from './engine.js';
+import { getMcpTools } from './engine.js';
 
 type RpcSession = {
 	touch(): void;
+	getWorkspaceCount(): number;
 	runExclusive<T>(operation: () => Promise<T>): Promise<T>;
 	callTool(name: string, args: Record<string, unknown>): Promise<unknown>;
 	listResources(): Promise<{ resources: { uri: string; name: string; mimeType: string }[] }>;
@@ -86,6 +87,7 @@ async function handleSingleJsonRpcMessage(
 
 	const id = req.id;
 	session.touch();
+	const multipleWorkspaces = session.getWorkspaceCount() > 1;
 
 	try {
 		switch (req.method) {
@@ -108,7 +110,10 @@ async function handleSingleJsonRpcMessage(
 							version: '1.0.0'
 						},
 						instructions:
-							'Self-hosted Scraps Cache personal encrypted notes vault. Use list_workspaces to see the workspaces granted to this connection, search_notes to find notes, list_notes to see recent notes, open_note to view full note details and checklists, and create_note/update_note to modify notes. When several workspaces were granted, search and list cover every one and name it on each note. Pass workspace to create a note or to read or change a note that exists in more than one workspace.'
+							'Scraps Cache notes. Use search_notes for a topic or list_notes for recent notes; both return IDs and previews, not full note bodies. Use open_note with a returned ID when full contents are needed. Use create_note or update_note only when asked to change notes.' +
+							(multipleWorkspaces
+								? ' This connection has multiple workspaces. Search and list cover all of them by default. Specify workspace when creating a note or when a note ID is ambiguous.'
+								: '')
 					}
 				};
 			}
@@ -126,7 +131,7 @@ async function handleSingleJsonRpcMessage(
 					jsonrpc: '2.0',
 					id,
 					result: {
-						tools: MCP_TOOLS
+						tools: getMcpTools(multipleWorkspaces)
 					}
 				};
 			}
@@ -157,6 +162,9 @@ async function handleSingleJsonRpcMessage(
 											: JSON.stringify(toolResult, null, 2)
 								}
 							],
+							...(toolResult && typeof toolResult === 'object' && !Array.isArray(toolResult)
+								? { structuredContent: toolResult }
+								: {}),
 							isError: toolResultHasErrors(toolResult)
 						}
 					};

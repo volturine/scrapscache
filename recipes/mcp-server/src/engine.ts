@@ -57,76 +57,127 @@ export function parseChecklistItems(body: string): ParsedChecklistItem[] {
 	return items;
 }
 
+const READ_ONLY_ANNOTATIONS = {
+	readOnlyHint: true,
+	destructiveHint: false,
+	idempotentHint: true
+};
+
+const NOTE_LIST_OUTPUT_SCHEMA = {
+	type: 'object',
+	properties: {
+		notes: {
+			type: 'array',
+			items: {
+				type: 'object',
+				properties: {
+					id: { type: 'string' },
+					title: { type: 'string' },
+					preview: { type: 'string' },
+					workspace: { type: 'string' }
+				},
+				required: ['id', 'title', 'preview']
+			}
+		},
+		total: { type: 'integer', description: 'Number of matching notes before the limit' },
+		hasMore: { type: 'boolean', description: 'Whether additional notes matched' }
+	},
+	required: ['notes', 'total', 'hasMore']
+};
+
 export const MCP_TOOLS = [
 	{
 		name: 'search_notes',
 		description:
-			'Search encrypted notes by keyword query, label name, or pinned state. Returns matching note summaries.',
+			'Find active notes by words in their title or body, label, or pinned state. Returns IDs and short previews, not full notes. Use open_note with a returned ID to read a note; refine the query if hasMore is true.',
+		annotations: READ_ONLY_ANNOTATIONS,
 		inputSchema: {
 			type: 'object',
 			properties: {
 				query: { type: 'string', description: 'Search term to match within note title and body' },
 				label: { type: 'string', description: 'Optional label name to filter notes' },
 				pinnedOnly: { type: 'boolean', description: 'Filter only pinned notes' },
-				limit: { type: 'number', description: 'Max number of notes to return (default 20, max 50)' }
+				limit: {
+					type: 'integer',
+					minimum: 1,
+					maximum: 50,
+					description: 'Maximum results to return (default 20, max 50)'
+				}
 			}
-		}
+		},
+		outputSchema: NOTE_LIST_OUTPUT_SCHEMA
 	},
 	{
 		name: 'list_notes',
-		description: 'List recent active notes ordered by latest modification date.',
+		description:
+			'Find recently modified active notes. Returns IDs and short previews, not full notes. Use open_note with a returned ID to read one.',
+		annotations: READ_ONLY_ANNOTATIONS,
 		inputSchema: {
 			type: 'object',
 			properties: {
-				limit: { type: 'number', description: 'Max notes to list (default 20, max 50)' }
+				limit: {
+					type: 'integer',
+					minimum: 1,
+					maximum: 50,
+					description: 'Maximum results to return (default 20, max 50)'
+				}
 			}
-		}
-	},
-	{
-		name: 'list_recent_notes',
-		description: 'Alias for list_notes. Returns recently modified notes.',
-		inputSchema: {
-			type: 'object',
-			properties: {
-				limit: { type: 'number', description: 'Max notes to list (default 20, max 50)' }
-			}
-		}
+		},
+		outputSchema: NOTE_LIST_OUTPUT_SCHEMA
 	},
 	{
 		name: 'list_workspaces',
 		description: 'List the workspaces granted to this MCP connection.',
+		annotations: READ_ONLY_ANNOTATIONS,
 		inputSchema: {
 			type: 'object',
 			properties: {}
-		}
-	},
-	{
-		name: 'read_note',
-		description:
-			'Read the full contents of a note by its ID, including title, body text, checklist tasks, and labels.',
-		inputSchema: {
+		},
+		outputSchema: {
 			type: 'object',
 			properties: {
-				id: { type: 'string', description: 'The unique ID of the note' }
+				workspaces: {
+					type: 'array',
+					items: {
+						type: 'object',
+						properties: { workspace: { type: 'string' } },
+						required: ['workspace']
+					}
+				}
 			},
-			required: ['id']
+			required: ['workspaces']
 		}
 	},
 	{
 		name: 'open_note',
-		description: 'Alias for read_note. Read the full contents of a note by its ID.',
+		description:
+			'Read the full plaintext body, checklist, labels, and metadata of one note. Pass an ID returned by search_notes or list_notes.',
+		annotations: READ_ONLY_ANNOTATIONS,
 		inputSchema: {
 			type: 'object',
 			properties: {
-				id: { type: 'string', description: 'The unique ID of the note' }
+				id: { type: 'string', description: 'Note ID returned by search_notes or list_notes' }
 			},
 			required: ['id']
+		},
+		outputSchema: {
+			type: 'object',
+			properties: {
+				id: { type: 'string' },
+				title: { type: 'string' },
+				body: { type: 'string' },
+				checklist: { type: 'array', items: { type: 'object' } },
+				labels: { type: 'array', items: { type: 'string' } },
+				workspace: { type: 'string' }
+			},
+			required: ['id', 'title', 'body', 'checklist', 'labels']
 		}
 	},
 	{
 		name: 'create_note',
 		description:
 			'Create a new note in Scraps Cache. Supports title, text body, checklist items, labels, and pinned status.',
+		annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -154,6 +205,7 @@ export const MCP_TOOLS = [
 		name: 'update_note',
 		description:
 			'Update an existing note by ID. Can replace full body text, update title, append text or checklist items, toggle checklist tasks, update labels or color, or change pinned/archived state.',
+		annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -190,6 +242,7 @@ export const MCP_TOOLS = [
 	{
 		name: 'list_labels',
 		description: 'List all available tags/labels in the note vault.',
+		annotations: READ_ONLY_ANNOTATIONS,
 		inputSchema: {
 			type: 'object',
 			properties: {}
@@ -197,13 +250,27 @@ export const MCP_TOOLS = [
 	}
 ];
 
-for (const tool of MCP_TOOLS) {
-	if (tool.name === 'list_workspaces') continue;
-	(tool.inputSchema.properties as Record<string, unknown>).workspace = {
-		type: 'string',
-		description:
-			'Workspace name when this connection includes more than one workspace. Omit on search and list to cover every granted workspace.'
-	};
+export function getMcpTools(multipleWorkspaces: boolean) {
+	if (!multipleWorkspaces) return MCP_TOOLS;
+	return MCP_TOOLS.map((tool) =>
+		tool.name === 'list_workspaces'
+			? tool
+			: {
+					...tool,
+					inputSchema: {
+						...tool.inputSchema,
+						...(tool.name === 'create_note' ? { required: ['workspace'] } : {}),
+						properties: {
+							...tool.inputSchema.properties,
+							workspace: {
+								type: 'string',
+								description:
+									'Workspace name. Omit on search and list to cover all granted workspaces.'
+							}
+						}
+					}
+				}
+	);
 }
 
 export class McpSession {
@@ -235,6 +302,10 @@ export class McpSession {
 
 	getLastActiveAt(): number {
 		return this.lastActiveAt;
+	}
+
+	getWorkspaceCount(): number {
+		return 1;
 	}
 
 	addSseListener(listener: (event: string, data: unknown) => void): () => void {
@@ -400,7 +471,10 @@ export class McpSession {
 		limit?: number;
 	}) {
 		await this.ensureHydrated();
-		const limit = Math.min(Math.max(args.limit ?? 20, 1), 50);
+		const limit =
+			typeof args.limit === 'number' && Number.isInteger(args.limit)
+				? Math.min(Math.max(args.limit, 1), 50)
+				: 20;
 		const query = args.query?.trim().toLowerCase();
 
 		let targetLabelId: string | undefined;
@@ -408,7 +482,7 @@ export class McpSession {
 			const targetName = args.label.trim().toLowerCase();
 			const found = [...this.labels.values()].find((l) => l.name.toLowerCase() === targetName);
 			if (!found) {
-				return { notes: [], total: 0 };
+				return { notes: [], total: 0, hasMore: false };
 			}
 			targetLabelId = found.id;
 		}
@@ -426,18 +500,24 @@ export class McpSession {
 		const allNotes = [...this.notes.values()]
 			.filter((n) => !this.isTrashed(n) && !n.archived)
 			.sort((a, b) => b.updatedAt - a.updatedAt);
+		let total = 0;
 
 		for (const note of allNotes) {
 			if (args.pinnedOnly && !note.pinned) continue;
 			if (targetLabelId && !note.labels?.includes(targetLabelId)) continue;
 
+			const body = note.body || '';
+			const matchIndex = query ? body.toLowerCase().indexOf(query) : -1;
 			if (query) {
 				const titleMatch = note.title?.toLowerCase().includes(query);
-				const bodyMatch = note.body?.toLowerCase().includes(query);
-				if (!titleMatch && !bodyMatch) continue;
+				if (!titleMatch && matchIndex === -1) continue;
 			}
+			total++;
+			if (results.length >= limit) continue;
 
-			const preview = (note.body || '').slice(0, 150).replace(/\n+/g, ' ').trim();
+			const previewStart = matchIndex > 0 ? Math.max(0, matchIndex - 50) : 0;
+			const previewEnd = Math.min(body.length, previewStart + 150);
+			const preview = `${previewStart ? '…' : ''}${body.slice(previewStart, previewEnd).replace(/\s+/g, ' ').trim()}${previewEnd < body.length ? '…' : ''}`;
 			results.push({
 				id: note.id,
 				title: note.title || 'Untitled',
@@ -447,13 +527,12 @@ export class McpSession {
 				color: note.color || 'default',
 				updatedAt: new Date(note.updatedAt).toISOString()
 			});
-
-			if (results.length >= limit) break;
 		}
 
 		return {
 			notes: results,
-			total: results.length
+			total,
+			hasMore: total > limit
 		};
 	}
 
@@ -653,9 +732,7 @@ export class McpSession {
 			case 'search_notes':
 				return this.searchNotes(args as Parameters<McpSession['searchNotes']>[0]);
 			case 'list_notes':
-			case 'list_recent_notes':
 				return this.listNotes(args as Parameters<McpSession['listNotes']>[0]);
-			case 'read_note':
 			case 'open_note':
 				return this.readNote(args as { id: string });
 			case 'create_note':

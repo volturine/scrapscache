@@ -4,8 +4,8 @@ import { ScrapscacheSyncClient } from './syncClient.js';
 
 type Vault = { name: string; session: McpSession };
 
-const ACROSS_VAULTS = new Set(['search_notes', 'list_notes', 'list_recent_notes', 'list_labels']);
-const BY_NOTE_ID = new Set(['read_note', 'open_note', 'update_note']);
+const ACROSS_VAULTS = new Set(['search_notes', 'list_notes', 'list_labels']);
+const BY_NOTE_ID = new Set(['open_note', 'update_note']);
 
 function workspaceArg(args: Record<string, unknown>): string | undefined {
 	const value = args.workspace;
@@ -49,6 +49,10 @@ export class VaultSession {
 
 	getLastActiveAt(): number {
 		return Math.max(...this.vaults.map((vault) => vault.session.getLastActiveAt()));
+	}
+
+	getWorkspaceCount(): number {
+		return this.vaults.length;
 	}
 
 	dispose(): void {
@@ -107,7 +111,10 @@ export class VaultSession {
 	}
 
 	private async across(name: string, args: Record<string, unknown>): Promise<unknown> {
-		const limit = typeof args.limit === 'number' ? args.limit : undefined;
+		const limit =
+			typeof args.limit === 'number' && Number.isInteger(args.limit)
+				? Math.min(Math.max(args.limit, 1), 50)
+				: 20;
 		const settled = await Promise.all(
 			this.vaults.map(async (vault) => {
 				try {
@@ -149,13 +156,12 @@ export class VaultSession {
 
 		const notes: Array<Record<string, unknown> & { updatedAt?: string }> = [];
 		const workspaces = settled.map((item) => {
-			const found =
-				item.result && typeof item.result === 'object' && 'notes' in item.result
-					? (item.result as { notes?: unknown }).notes
-					: [];
 			return {
 				workspace: item.vault.name,
-				noteCount: Array.isArray(found) ? found.length : 0,
+				noteCount:
+					item.result && typeof item.result === 'object' && 'total' in item.result
+						? (item.result as { total: number }).total
+						: 0,
 				...(item.error ? { error: item.error } : {})
 			};
 		});
@@ -175,11 +181,18 @@ export class VaultSession {
 			}
 		}
 		notes.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
-		const capped =
-			typeof limit === 'number' ? notes.slice(0, Math.min(Math.max(limit, 1), 50)) : notes;
+		const capped = notes.slice(0, limit);
+		const total = settled.reduce((count, item) => {
+			if (!item.result || typeof item.result !== 'object' || !('total' in item.result)) {
+				return count;
+			}
+			const value = (item.result as { total: unknown }).total;
+			return count + (typeof value === 'number' ? value : 0);
+		}, 0);
 		return {
 			notes: capped,
-			total: capped.length,
+			total,
+			hasMore: total > capped.length,
 			workspaces,
 			...(errors.length ? { errors } : {})
 		};

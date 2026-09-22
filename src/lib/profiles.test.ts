@@ -19,6 +19,7 @@ import {
 	buildProfileNotesExport,
 	getLastActiveProfileId,
 	isLocalWorkspace,
+	mcpWorkspaceGrant,
 	loadProfiles,
 	nextProfileName,
 	pickBootProfile,
@@ -122,6 +123,13 @@ describe('local workspaces', () => {
 		expect(isLocalWorkspace(synced)).toBe(false);
 		expect(profileForSyncKey([local, synced], '')).toBeNull();
 		expect(profileForSyncKey([local, synced], 'k-cloud')).toBe(synced);
+	});
+
+	it('formats a single synced workspace grant and ignores local workspaces', () => {
+		const local: StoredProfile = { id: 'local', name: 'Studio', syncKey: '', createdAt: 1 };
+		const cloud: StoredProfile = { id: 'cloud', name: 'Cloud', syncKey: 'k-cloud', createdAt: 2 };
+
+		expect(mcpWorkspaceGrant([cloud, local])).toEqual([{ name: 'Cloud', syncKey: 'k-cloud' }]);
 	});
 });
 

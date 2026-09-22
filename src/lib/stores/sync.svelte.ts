@@ -70,6 +70,7 @@ import {
 const LS_LEGACY_ACCOUNT_KEY = 'scrapscache-sync-account';
 const LS_LEGACY_ACCOUNT_OLD = 'gkc-sync-account';
 const LS_SYNC_STATUS_PREFIX = 'scrapscache-sync-status';
+const LS_SYNC_STATUS_OLD = 'gkc-sync-status';
 
 /** Encrypted profile-name record; the name follows its sync key across devices. */
 export const PROFILE_META_KEY = 'profile-meta';
@@ -101,6 +102,15 @@ export type McpWorkspaceStatus =
 
 function isSyncAccount(value: unknown): value is Pick<SyncAccount, 'syncKey'> {
 	return !!value && typeof value === 'object' && typeof (value as SyncAccount).syncKey === 'string';
+}
+
+function parseLastSync(raw: string | null): number {
+	if (!raw) return 0;
+	try {
+		return Number((JSON.parse(raw) as SyncStatus).lastSync) || 0;
+	} catch {
+		return 0;
+	}
 }
 
 export interface SyncProgress {
@@ -240,8 +250,10 @@ export class SyncStore {
 				const rawLegacy =
 					localStorage.getItem(LS_LEGACY_ACCOUNT_KEY) ??
 					localStorage.getItem(LS_LEGACY_ACCOUNT_OLD);
+				let legacySyncKey: string | null = null;
 				try {
 					const parsed: unknown = rawLegacy ? JSON.parse(rawLegacy) : null;
+					if (isSyncAccount(parsed)) legacySyncKey = parsed.syncKey;
 					if (isSyncAccount(parsed) && !profiles.some((p) => p.syncKey === parsed.syncKey)) {
 						const adopted: StoredProfile = {
 							id: randomOpaqueId(),
@@ -271,6 +283,7 @@ export class SyncStore {
 					profiles = [...profiles, workspace];
 				}
 				this.profiles = profiles.sort((a, b) => a.createdAt - b.createdAt);
+				this.migrateLegacySyncStatus(this.profiles, legacySyncKey);
 
 				const pointerId = getLastActiveProfileId();
 				const pointed = pointerId
@@ -349,12 +362,24 @@ export class SyncStore {
 
 	private readStatus(pid: string): SyncStatus {
 		if (typeof localStorage === 'undefined') return { lastSync: 0 };
+		return { lastSync: parseLastSync(localStorage.getItem(`${LS_SYNC_STATUS_PREFIX}:${pid}`)) };
+	}
+
+	/** Move the single-workspace sync marker to the adopted profile exactly once. */
+	private migrateLegacySyncStatus(profiles: StoredProfile[], legacySyncKey: string | null): void {
+		if (typeof localStorage === 'undefined' || !legacySyncKey) return;
+		const profile = profiles.find((entry) => entry.syncKey === legacySyncKey);
+		if (!profile || this.readStatus(profile.id).lastSync > 0) return;
+
+		const legacyStatus =
+			localStorage.getItem(LS_SYNC_STATUS_PREFIX) ?? localStorage.getItem(LS_SYNC_STATUS_OLD);
+		const lastSync = parseLastSync(legacyStatus);
+		if (lastSync <= 0) return;
+
 		try {
-			const raw = localStorage.getItem(`${LS_SYNC_STATUS_PREFIX}:${pid}`);
-			const lastSync = raw ? Number((JSON.parse(raw) as SyncStatus).lastSync) || 0 : 0;
-			return { lastSync };
+			localStorage.setItem(`${LS_SYNC_STATUS_PREFIX}:${profile.id}`, JSON.stringify({ lastSync }));
 		} catch {
-			return { lastSync: 0 };
+			/* status is only a display cache; a later sync will write it again */
 		}
 	}
 

@@ -399,11 +399,13 @@ const noteCardRecipe = defineSlotRecipe({
 		labelsRow: {
 			display: 'flex',
 			flexShrink: 0,
-			flexWrap: 'wrap',
+			flexWrap: 'nowrap',
 			gap: '2xs',
 			px: 'md',
 			pb: 'md',
-			pt: 'sm'
+			pt: 'sm',
+			overflow: 'hidden',
+			'& > *': { flexShrink: 0 }
 		},
 		metaRow: {
 			flexShrink: 0,

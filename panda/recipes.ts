@@ -369,7 +369,6 @@ const noteCardRecipe = defineSlotRecipe({
 		cardBody: {
 			position: 'relative',
 			zIndex: 1,
-			group: true,
 			...column,
 			w: 'full',
 			maxH: '320px',
@@ -403,23 +402,26 @@ const noteCardRecipe = defineSlotRecipe({
 			flexWrap: 'wrap',
 			gap: '2xs',
 			px: 'md',
-			// The meta row below owns the card's bottom padding.
-			pb: 0,
+			pb: 'sm',
 			pt: 'sm'
 		},
 		metaRow: {
 			flexShrink: 0,
 			px: 'md',
-			pb: 'md',
-			pt: '2xs',
+			pb: 0,
+			pt: 0,
+			maxHeight: 0,
 			textStyle: 'caption',
 			color: 'scrapscache.textMuted',
 			overflow: 'hidden',
 			textOverflow: 'ellipsis',
 			whiteSpace: 'nowrap',
 			opacity: 0,
-			transition: 'opacity 150ms ease',
+			transition: 'max-height 150ms ease, padding 150ms ease, opacity 150ms ease',
 			_groupHover: {
+				maxHeight: '2.5rem',
+				pb: 'md',
+				pt: '2xs',
 				opacity: 1
 			}
 		},

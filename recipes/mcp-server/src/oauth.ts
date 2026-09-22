@@ -1,13 +1,14 @@
 import {
 	sha256Base64Url,
-	randomOpaqueId,
 	createHandshakeKeyPair,
 	sealPayload,
 	unsealPayload,
 	bytesToBase64Url,
-	base64UrlToBytes
+	base64UrlToBytes,
+	isValidSyncKey
 } from './crypto.js';
 import { grantedWorkspaces, type GrantedWorkspace } from './grant.js';
+import { InMemoryOAuthStateStore, type OAuthStateStore } from './oauthState.js';
 
 export const MCP_OAUTH_SCOPE = 'mcp';
 export const MCP_OAUTH_CODE_TTL_MS = 5 * 60 * 1000; // 5 minutes
@@ -132,6 +133,35 @@ export function verifyPkce(verifier: string, challenge: string): boolean {
 	return computed === challenge;
 }
 
+const MAX_CLIENT_NAME_LENGTH = 100;
+const MAX_REDIRECT_URIS = 16;
+const MAX_REDIRECT_URI_LENGTH = 2048;
+
+function validRegisteredRedirect(uri: string): boolean {
+	if (uri.length === 0 || uri.length > MAX_REDIRECT_URI_LENGTH) return false;
+	const parsed = parseRedirectUri(uri);
+	if (!parsed || !parsed.hostname || parsed.username || parsed.password || parsed.hash)
+		return false;
+	if (parsed.protocol === 'https:') return true;
+	return (
+		parsed.protocol === 'http:' &&
+		LOOPBACK_HOSTS.has(parsed.hostname) &&
+		Boolean(parsed.port && Number(parsed.port) >= 1 && Number(parsed.port) <= 65535)
+	);
+}
+
+function validClientRegistration(name: unknown, redirectUris: unknown): boolean {
+	return (
+		typeof name === 'string' &&
+		name.trim().length > 0 &&
+		name.trim().length <= MAX_CLIENT_NAME_LENGTH &&
+		Array.isArray(redirectUris) &&
+		redirectUris.length > 0 &&
+		redirectUris.length <= MAX_REDIRECT_URIS &&
+		redirectUris.every((uri) => typeof uri === 'string' && validRegisteredRedirect(uri))
+	);
+}
+
 export type StoredOAuthCode = {
 	code: string;
 	clientId: string;
@@ -173,37 +203,32 @@ export type EphemeralAuthSession = {
 
 export class OAuthManager {
 	private readonly secret: string;
-	private readonly clients = new Map<string, OAuthClientInfo>();
-	private readonly codes = new Map<string, StoredOAuthCode>();
-	private readonly tokens = new Map<string, StoredOAuthToken>();
-	private readonly refreshTokens = new Map<string, string>(); // refreshToken -> accessToken
-	private readonly authSessions = new Map<string, EphemeralAuthSession>();
-	private readonly revokedTokens = new Set<string>();
+	private readonly stateStore: OAuthStateStore;
 
-	constructor(secret?: string) {
-		// A shared secret seals clients, sessions, codes, and tokens so another
-		// isolate can read them. Without one, grants live only in this process.
-		this.secret = secret || randomOpaqueId();
-		for (const client of WELL_KNOWN_CLIENTS) {
-			this.clients.set(client.id, client);
-		}
+	constructor(secret: string, stateStore: OAuthStateStore = new InMemoryOAuthStateStore()) {
+		// The seal secret protects the contents. The state store protects one-time
+		// use and rotation; sealed values alone cannot do that across isolates.
+		if (!secret) throw new Error('MCP_SECRET must be configured');
+		this.secret = secret;
+		this.stateStore = stateStore;
 	}
 
 	registerClient(registration: {
 		client_name?: string;
 		redirect_uris?: string[];
 	}): OAuthClientInfo {
-		const name = registration.client_name || 'AI Assistant';
-		const redirectUris = registration.redirect_uris || [];
+		const name = registration.client_name?.trim() || 'AI Assistant';
+		const redirectUris = registration.redirect_uris?.map((uri) => uri.trim()) || [];
+		if (!validClientRegistration(name, redirectUris)) {
+			throw new Error('Invalid client registration');
+		}
 		const sealed = sealPayload({ name, redirectUris }, this.secret);
 		const id = `client_${sealed}`;
-		const client: OAuthClientInfo = {
+		return {
 			id,
 			name,
 			redirectUris
 		};
-		this.clients.set(id, client);
-		return client;
 	}
 
 	getClient(clientId: string, redirectUri?: string): OAuthClientInfo | null {
@@ -218,22 +243,17 @@ export class OAuthManager {
 			: undefined;
 		if (byId) return byId;
 
-		const inMemory = this.clients.get(clientId);
-		if (inMemory) return inMemory;
-
 		if (clientId.startsWith('client_')) {
 			const data = unsealPayload<{ name?: string; redirectUris?: string[] }>(
 				clientId.slice(7),
 				this.secret
 			);
-			if (data) {
-				const client: OAuthClientInfo = {
+			if (data && validClientRegistration(data.name, data.redirectUris)) {
+				return {
 					id: clientId,
-					name: data.name || 'AI Assistant',
-					redirectUris: data.redirectUris || []
+					name: data.name!.trim(),
+					redirectUris: data.redirectUris!.map((uri) => uri.trim())
 				};
-				this.clients.set(clientId, client);
-				return client;
 			}
 		}
 
@@ -259,7 +279,7 @@ export class OAuthManager {
 		codeChallengeMethod: string;
 		now?: number;
 		ttlMs?: number;
-	}): EphemeralAuthSession {
+	}): Promise<EphemeralAuthSession> {
 		const now = params.now ?? Date.now();
 		const { privateKey, publicKey } = createHandshakeKeyPair();
 		const sessionData = {
@@ -284,53 +304,48 @@ export class OAuthManager {
 			mcpPublicKey: publicKey,
 			expiresAt: sessionData.expiresAt
 		};
-		this.authSessions.set(sessionId, session);
-		return session;
+		return this.stateStore.registerSession(sessionId, session.expiresAt).then(() => session);
 	}
 
 	getAuthSession(sessionId: string, now = Date.now()): EphemeralAuthSession | null {
-		const session = this.authSessions.get(sessionId);
-		if (session) {
-			if (session.expiresAt <= now) {
-				this.authSessions.delete(sessionId);
-				return null;
-			}
-			return session;
-		}
-
 		if (sessionId.startsWith('sess_')) {
-			const data = unsealPayload<{
-				clientId: string;
-				redirectUri: string;
-				state: string;
-				codeChallenge: string;
-				codeChallengeMethod: string;
-				mcpPrivateKey: string;
-				mcpPublicKey: string;
-				expiresAt: number;
-			}>(sessionId.slice(5), this.secret);
-			if (data && data.expiresAt > now) {
-				return {
-					sessionId,
-					clientId: data.clientId,
-					redirectUri: data.redirectUri,
-					state: data.state,
-					codeChallenge: data.codeChallenge,
-					codeChallengeMethod: data.codeChallengeMethod,
-					mcpPrivateKey: base64UrlToBytes(data.mcpPrivateKey),
-					mcpPublicKey: data.mcpPublicKey,
-					expiresAt: data.expiresAt
-				};
+			try {
+				const data = unsealPayload<{
+					clientId: string;
+					redirectUri: string;
+					state: string;
+					codeChallenge: string;
+					codeChallengeMethod: string;
+					mcpPrivateKey: string;
+					mcpPublicKey: string;
+					expiresAt: number;
+				}>(sessionId.slice(5), this.secret);
+				if (data && data.expiresAt > now) {
+					return {
+						sessionId,
+						clientId: data.clientId,
+						redirectUri: data.redirectUri,
+						state: data.state,
+						codeChallenge: data.codeChallenge,
+						codeChallengeMethod: data.codeChallengeMethod,
+						mcpPrivateKey: base64UrlToBytes(data.mcpPrivateKey),
+						mcpPublicKey: data.mcpPublicKey,
+						expiresAt: data.expiresAt
+					};
+				}
+			} catch {
+				return null;
 			}
 		}
 		return null;
 	}
 
-	consumeAuthSession(sessionId: string, now = Date.now()): EphemeralAuthSession | null {
+	async consumeAuthSession(
+		sessionId: string,
+		now = Date.now()
+	): Promise<EphemeralAuthSession | null> {
 		const session = this.getAuthSession(sessionId, now);
-		if (session) {
-			this.authSessions.delete(sessionId);
-		}
+		if (!session || !(await this.stateStore.consumeSession(sessionId, now))) return null;
 		return session;
 	}
 
@@ -342,7 +357,8 @@ export class OAuthManager {
 		accountId: string;
 		workspaces?: GrantedWorkspace[];
 		now?: number;
-	}): string {
+	}): Promise<string> {
+		if (!isValidGrantSyncKey(params.syncKey)) throw new Error('Invalid sync key');
 		const now = params.now ?? Date.now();
 		const codeData = {
 			clientId: params.clientId,
@@ -354,25 +370,19 @@ export class OAuthManager {
 			expiresAt: now + MCP_OAUTH_CODE_TTL_MS
 		};
 		const code = `code_${sealPayload(codeData, this.secret)}`;
-		this.codes.set(code, {
-			code,
-			...codeData
-		});
-		return code;
+		return this.stateStore.registerCode(code, codeData.expiresAt).then(() => code);
 	}
 
-	exchangeCode(params: {
+	async exchangeCode(params: {
 		code: string;
 		clientId: string;
 		redirectUri: string;
 		codeVerifier: string;
 		now?: number;
-	}): StoredOAuthToken | null {
+	}): Promise<StoredOAuthToken | null> {
 		const now = params.now ?? Date.now();
-		let storedCode = this.codes.get(params.code);
-		if (storedCode) {
-			this.codes.delete(params.code);
-		} else if (params.code.startsWith('code_')) {
+		let storedCode: StoredOAuthCode | null = null;
+		if (params.code.startsWith('code_')) {
 			const data = unsealPayload<{
 				clientId: string;
 				redirectUri: string;
@@ -390,7 +400,7 @@ export class OAuthManager {
 			}
 		}
 
-		if (!storedCode) return null;
+		if (!storedCode || !isValidGrantSyncKey(storedCode.syncKey)) return null;
 		if (storedCode.expiresAt <= now) return null;
 		if (storedCode.redirectUri !== params.redirectUri) return null;
 		if (storedCode.clientId !== params.clientId) {
@@ -401,6 +411,7 @@ export class OAuthManager {
 			}
 		}
 		if (!verifyPkce(params.codeVerifier, storedCode.codeChallenge)) return null;
+		if (!(await this.stateStore.consumeCode(params.code, now))) return null;
 
 		const tokenData = {
 			clientId: params.clientId,
@@ -417,81 +428,56 @@ export class OAuthManager {
 			...tokenData
 		};
 
-		this.tokens.set(accessToken, storedToken);
-		this.refreshTokens.set(refreshToken, accessToken);
+		await this.stateStore.registerAccessToken(accessToken, storedToken.expiresAt);
+		await this.stateStore.registerRefreshToken(refreshToken, accessToken, storedToken.expiresAt);
 		return storedToken;
 	}
 
-	resolveToken(token: string, now = Date.now()): ResolvedOAuthToken | null {
-		if (this.revokedTokens.has(token)) return null;
-		const inMemory = this.tokens.get(token);
-		if (inMemory && inMemory.expiresAt > now) {
-			return {
-				accountId: inMemory.accountId,
-				syncKey: inMemory.syncKey,
-				workspaces: grantedWorkspaces(inMemory.syncKey, inMemory.accountId, inMemory.workspaces)
-			};
+	async resolveToken(token: string, now = Date.now()): Promise<ResolvedOAuthToken | null> {
+		if (!token.startsWith('sc_mcp_')) return null;
+		const data = unsealPayload<{
+			syncKey: string;
+			accountId: string;
+			workspaces?: GrantedWorkspace[];
+			expiresAt: number;
+		}>(token.slice(7), this.secret);
+		if (
+			!data ||
+			!isValidGrantSyncKey(data.syncKey) ||
+			data.expiresAt <= now ||
+			!(await this.stateStore.hasAccessToken(token, now))
+		) {
+			return null;
 		}
-		if (token.startsWith('sc_mcp_')) {
-			const data = unsealPayload<{
-				syncKey: string;
-				accountId: string;
-				workspaces?: GrantedWorkspace[];
-				expiresAt: number;
-			}>(token.slice(7), this.secret);
-			if (data && data.expiresAt > now) {
-				return {
-					accountId: data.accountId,
-					syncKey: data.syncKey,
-					workspaces: grantedWorkspaces(data.syncKey, data.accountId, data.workspaces)
-				};
-			}
-		}
-		return null;
+		return {
+			accountId: data.accountId,
+			syncKey: data.syncKey,
+			workspaces: grantedWorkspaces(data.syncKey, data.accountId, data.workspaces)
+		};
 	}
 
-	refreshAccessToken(refreshToken: string, now = Date.now()): StoredOAuthToken | null {
-		let syncKey = '';
-		let accountId = '';
-		let clientId = 'mcp-client';
-		let workspaces: GrantedWorkspace[] | undefined;
-
-		const oldAccessToken = this.refreshTokens.get(refreshToken);
-		if (oldAccessToken) {
-			this.revokedTokens.add(oldAccessToken);
-			const oldToken = this.tokens.get(oldAccessToken);
-			if (oldToken) {
-				this.tokens.delete(oldAccessToken);
-				this.refreshTokens.delete(refreshToken);
-				syncKey = oldToken.syncKey;
-				accountId = oldToken.accountId;
-				clientId = oldToken.clientId;
-				workspaces = oldToken.workspaces;
-			}
-		}
-		if (!syncKey && refreshToken.startsWith('sc_ref_')) {
-			const data = unsealPayload<{
-				clientId: string;
-				syncKey: string;
-				accountId: string;
-				workspaces?: GrantedWorkspace[];
-				expiresAt: number;
-			}>(refreshToken.slice(7), this.secret);
-			if (data && data.expiresAt > now) {
-				syncKey = data.syncKey;
-				accountId = data.accountId;
-				clientId = data.clientId;
-				workspaces = data.workspaces;
-			}
-		}
-
-		if (!syncKey) return null;
+	async refreshAccessToken(
+		refreshToken: string,
+		now = Date.now()
+	): Promise<StoredOAuthToken | null> {
+		if (!refreshToken.startsWith('sc_ref_')) return null;
+		const data = unsealPayload<{
+			clientId: string;
+			syncKey: string;
+			accountId: string;
+			workspaces?: GrantedWorkspace[];
+			expiresAt: number;
+		}>(refreshToken.slice(7), this.secret);
+		if (!data || !isValidGrantSyncKey(data.syncKey) || data.expiresAt <= now) return null;
+		const oldAccessToken = await this.stateStore.consumeRefreshToken(refreshToken, now);
+		if (!oldAccessToken) return null;
+		await this.stateStore.revokeAccessToken(oldAccessToken);
 
 		const tokenData = {
-			clientId,
-			syncKey,
-			accountId,
-			...(workspaces?.length ? { workspaces } : {}),
+			clientId: data.clientId,
+			syncKey: data.syncKey,
+			accountId: data.accountId,
+			...(data.workspaces?.length ? { workspaces: data.workspaces } : {}),
 			expiresAt: now + MCP_TOKEN_TTL_MS
 		};
 		const newAccessToken = `sc_mcp_${sealPayload(tokenData, this.secret)}`;
@@ -502,8 +488,12 @@ export class OAuthManager {
 			...tokenData
 		};
 
-		this.tokens.set(newAccessToken, newToken);
-		this.refreshTokens.set(newRefreshToken, newAccessToken);
+		await this.stateStore.registerAccessToken(newAccessToken, newToken.expiresAt);
+		await this.stateStore.registerRefreshToken(newRefreshToken, newAccessToken, newToken.expiresAt);
 		return newToken;
 	}
+}
+
+function isValidGrantSyncKey(value: string): boolean {
+	return isValidSyncKey(value);
 }

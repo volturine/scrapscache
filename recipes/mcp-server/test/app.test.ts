@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { McpApp } from '../src/app.js';
+import { MAX_HTTP_BODY_BYTES, McpApp } from '../src/app.js';
 import { TokenStore } from '../src/tokenStore.js';
 import { OAuthManager } from '../src/oauth.js';
 import { bytesToBase64Url, randomBytes, sha256Base64Url } from '../src/crypto.js';
@@ -8,15 +8,14 @@ describe('MCP App HTTP endpoints and JSON-RPC dispatch', () => {
 	const syncKey = bytesToBase64Url(randomBytes(32));
 	const bearerToken = 'test-static-bearer-token';
 
-	const oauthManager = new OAuthManager();
+	const oauthManager = new OAuthManager('test-mcp-secret-012345678901234567890123456789');
 	const tokenStore = new TokenStore(oauthManager, {
-		defaultSyncKey: syncKey,
+		syncKey,
 		bearerToken
 	});
 
 	const app = new McpApp({
 		scrapscacheUrl: 'https://scrapscache.com',
-		defaultSyncKey: syncKey,
 		tokenStore
 	});
 
@@ -55,6 +54,29 @@ describe('MCP App HTTP endpoints and JSON-RPC dispatch', () => {
 		const res = await app.handleRequest(req);
 		expect(res.status).toBe(401);
 		expect(res.headers.get('WWW-Authenticate')).toContain('Bearer');
+	});
+
+	it('rejects bearer tokens supplied in the query string', async () => {
+		const req = new Request(`http://localhost:3001/mcp?token=${bearerToken}`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'ping' })
+		});
+		const res = await app.handleRequest(req);
+		expect(res.status).toBe(401);
+	});
+
+	it('rejects oversized MCP request bodies before dispatch', async () => {
+		const req = new Request('http://localhost:3001/mcp', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				Authorization: `Bearer ${bearerToken}`
+			},
+			body: JSON.stringify({ payload: 'x'.repeat(MAX_HTTP_BODY_BYTES) })
+		});
+		const res = await app.handleRequest(req);
+		expect(res.status).toBe(413);
 	});
 
 	it('accepts authenticated MCP requests via Bearer token and responds to JSON-RPC', async () => {
@@ -107,7 +129,7 @@ describe('MCP App HTTP endpoints and JSON-RPC dispatch', () => {
 		expect(toolNames).toContain('list_workspaces');
 	});
 
-	it('serves HTML consent page on GET /oauth/authorize', async () => {
+	it('redirects OAuth authorization to the authenticated Scraps Cache handshake', async () => {
 		const verifier = 'my-verifier-12345678901234567890123456789012345';
 		const challenge = sha256Base64Url(verifier);
 
@@ -115,10 +137,8 @@ describe('MCP App HTTP endpoints and JSON-RPC dispatch', () => {
 			`http://localhost:3001/oauth/authorize?client_id=claude&redirect_uri=https://claude.ai/api/mcp/auth_callback&response_type=code&state=xyz&code_challenge=${challenge}&code_challenge_method=S256`
 		);
 		const res = await app.handleRequest(req);
-		expect(res.status).toBe(200);
-		const html = await res.text();
-		expect(html).toContain('Connect Claude');
-		expect(html).toContain('Authorize Claude');
+		expect(res.status).toBe(302);
+		expect(res.headers.get('Location')).toContain('https://scrapscache.com/mcp/authorize');
 	});
 });
 

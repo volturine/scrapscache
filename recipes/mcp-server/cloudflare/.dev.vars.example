@@ -1,8 +1,8 @@
 # Cloudflare Worker secrets (set with: npx wrangler secret put <NAME>)
 SCRAPSCACHE_URL="https://scrapscache.com"
-SCRAPSCACHE_SYNC_KEY="your_sync_key_here"
-MCP_BEARER_TOKEN="secret_mcp_bearer_token"
-# Stable secret used to share OAuth clients, sessions, codes, and tokens across
-# Cloudflare Worker isolates. Required for zero-token OAuth mode.
-MCP_SECRET="generate-a-long-random-string"
+# Optional static-vault access only; leave empty for browser OAuth.
+SCRAPSCACHE_SYNC_KEY=""
+MCP_BEARER_TOKEN=""
+# Required independent secret used to seal OAuth values. Use 32+ random bytes.
+MCP_SECRET=""
 # MCP_FRIENDS_TOKENS='{"token_alice":"syncKeyAlice","token_bob":"syncKeyBob"}'

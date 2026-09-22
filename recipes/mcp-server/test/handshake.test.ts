@@ -14,7 +14,7 @@ import { xchacha20poly1305 } from '@noble/ciphers/chacha.js';
 
 describe('Scraps Cache automated OAuth handshake (zero manual token / sync key)', () => {
 	it('completes end-to-end zero-configuration onboarding via Scraps Cache handshake', async () => {
-		const oauthManager = new OAuthManager();
+		const oauthManager = new OAuthManager('test-mcp-secret-012345678901234567890123456789');
 		// Server configured with NO default sync key and NO static bearer token
 		const tokenStore = new TokenStore(oauthManager);
 		const app = new McpApp({
@@ -60,18 +60,31 @@ describe('Scraps Cache automated OAuth handshake (zero manual token / sync key)'
 		const ciphertext = xchacha20poly1305(key, nonce).encrypt(new TextEncoder().encode(grant));
 
 		// 3. Browser returns to MCP server callback
+		const callbackBody = JSON.stringify({
+			sessionId,
+			clientPublicKey,
+			ciphertext: bytesToBase64Url(ciphertext),
+			nonce: bytesToBase64Url(nonce)
+		});
 		const callbackPostReq = new Request('http://localhost:3001/oauth/callback', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				sessionId,
-				clientPublicKey,
-				ciphertext: bytesToBase64Url(ciphertext),
-				nonce: bytesToBase64Url(nonce)
-			})
+			body: callbackBody
 		});
 		const callbackRes = await app.handleRequest(callbackPostReq);
 		expect(callbackRes.status).toBe(200);
+		expect(callbackRes.headers.get('Cache-Control')).toBe('no-store');
+		expect(
+			(
+				await app.handleRequest(
+					new Request('http://localhost:3001/oauth/callback', {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						body: callbackBody
+					})
+				)
+			).status
+		).toBe(400);
 
 		const callbackData = (await callbackRes.json()) as { redirectTo: string };
 		expect(callbackData.redirectTo).toContain('https://claude.ai/api/mcp/auth_callback');
@@ -95,6 +108,7 @@ describe('Scraps Cache automated OAuth handshake (zero manual token / sync key)'
 		});
 		const tokenRes = await app.handleRequest(tokenReq);
 		expect(tokenRes.status).toBe(200);
+		expect(tokenRes.headers.get('Cache-Control')).toBe('no-store');
 
 		const tokenData = (await tokenRes.json()) as { access_token: string };
 		expect(tokenData.access_token).toMatch(/^sc_mcp_/);

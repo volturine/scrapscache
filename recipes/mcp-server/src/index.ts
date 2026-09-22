@@ -1,27 +1,29 @@
 import http from 'node:http';
-import { McpApp } from './app.js';
+import { MAX_HTTP_BODY_BYTES, McpApp } from './app.js';
 import { TokenStore } from './tokenStore.js';
 import { OAuthManager } from './oauth.js';
+import { InMemoryOAuthStateStore } from './oauthState.js';
+import { requireRuntimeSecrets } from './config.js';
 
 const SCRAPSCACHE_URL = process.env.SCRAPSCACHE_URL || 'https://scrapscache.com';
 const SCRAPSCACHE_SYNC_KEY = process.env.SCRAPSCACHE_SYNC_KEY;
 const MCP_BEARER_TOKEN = process.env.MCP_BEARER_TOKEN;
 const MCP_FRIENDS_TOKENS = process.env.MCP_FRIENDS_TOKENS;
-const MCP_SECRET =
-	process.env.MCP_SECRET || process.env.SCRAPSCACHE_SYNC_KEY || process.env.MCP_BEARER_TOKEN;
+const MCP_SECRET = requireRuntimeSecrets(process.env);
 const PORT = Number(process.env.MCP_PORT || process.env.PORT || 3001);
+const BIND_ADDRESS = process.env.MCP_BIND_ADDRESS || '127.0.0.1';
 
-const oauthManager = new OAuthManager(MCP_SECRET);
+const oauthManager = new OAuthManager(MCP_SECRET, new InMemoryOAuthStateStore());
 const tokenStore = new TokenStore(oauthManager, {
-	defaultSyncKey: SCRAPSCACHE_SYNC_KEY,
+	syncKey: SCRAPSCACHE_SYNC_KEY,
 	bearerToken: MCP_BEARER_TOKEN,
 	friendsTokensJson: MCP_FRIENDS_TOKENS
 });
 
 const app = new McpApp({
 	scrapscacheUrl: SCRAPSCACHE_URL,
-	defaultSyncKey: SCRAPSCACHE_SYNC_KEY,
-	tokenStore
+	tokenStore,
+	publicOrigin: process.env.MCP_PUBLIC_ORIGIN
 });
 
 const server = http.createServer(
@@ -29,7 +31,8 @@ const server = http.createServer(
 		try {
 			const host = nodeReq.headers.host || `localhost:${PORT}`;
 			const protocol = nodeReq.headers['x-forwarded-proto'] || 'http';
-			const url = `${protocol}://${host}${nodeReq.url}`;
+			const configuredOrigin = process.env.MCP_PUBLIC_ORIGIN?.trim().replace(/\/$/, '');
+			const url = `${configuredOrigin || `${protocol}://${host}`}${nodeReq.url || '/'}`;
 
 			const headers = new Headers();
 			for (const [key, value] of Object.entries(nodeReq.headers)) {
@@ -42,9 +45,27 @@ const server = http.createServer(
 
 			let body: Uint8Array | undefined;
 			if (nodeReq.method !== 'GET' && nodeReq.method !== 'HEAD') {
+				const declaredLength = Number(nodeReq.headers['content-length'] || 0);
+				if (declaredLength > MAX_HTTP_BODY_BYTES) {
+					nodeReq.resume();
+					nodeRes.statusCode = 413;
+					nodeRes.setHeader('Content-Type', 'application/json');
+					nodeRes.end(JSON.stringify({ error: 'Request body is too large' }));
+					return;
+				}
 				const chunks: Buffer[] = [];
+				let total = 0;
 				for await (const chunk of nodeReq) {
-					chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : (chunk as Buffer));
+					const buffer = typeof chunk === 'string' ? Buffer.from(chunk) : (chunk as Buffer);
+					total += buffer.byteLength;
+					if (total > MAX_HTTP_BODY_BYTES) {
+						nodeReq.resume();
+						nodeRes.statusCode = 413;
+						nodeRes.setHeader('Content-Type', 'application/json');
+						nodeRes.end(JSON.stringify({ error: 'Request body is too large' }));
+						return;
+					}
+					chunks.push(buffer);
 				}
 				body = Buffer.concat(chunks);
 			}
@@ -68,9 +89,11 @@ const server = http.createServer(
 			}
 
 			const reader = response.body.getReader();
-			nodeReq.on('close', () => {
+			const cancelResponse = () => {
 				reader.cancel().catch(() => {});
-			});
+			};
+			nodeReq.on('close', cancelResponse);
+			nodeRes.on('close', cancelResponse);
 
 			while (true) {
 				const { done, value } = await reader.read();
@@ -89,18 +112,14 @@ const server = http.createServer(
 	}
 );
 
-server.listen(PORT, () => {
-	console.log(`[McpServer] Self-hosted MCP server running on port ${PORT}`);
+server.requestTimeout = 30_000;
+server.headersTimeout = 10_000;
+server.keepAliveTimeout = 5_000;
+
+server.listen(PORT, BIND_ADDRESS, () => {
+	console.log(`[McpServer] Self-hosted MCP server running on ${BIND_ADDRESS}:${PORT}`);
 	console.log(`[McpServer] Upstream Scraps Cache relay: ${SCRAPSCACHE_URL}`);
-	if (SCRAPSCACHE_SYNC_KEY) {
-		console.log('[McpServer] Default sync key loaded for single-tenant / self access.');
-	}
 	if (MCP_BEARER_TOKEN) {
 		console.log('[McpServer] Static Bearer token enabled.');
-	}
-	if (!MCP_SECRET) {
-		console.log(
-			'[McpServer] MCP_SECRET is unset. OAuth grants stay in this process and will not survive a restart or a second instance.'
-		);
 	}
 });

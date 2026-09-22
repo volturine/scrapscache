@@ -1,9 +1,11 @@
-import { identityFromSyncKey } from './crypto.js';
+import { identityFromSyncKey, isValidSyncKey } from './crypto.js';
 import { OAuthManager } from './oauth.js';
+import type { GrantedWorkspace } from './grant.js';
 
 export type ResolvedAccount = {
 	accountId: string;
 	syncKey: string;
+	workspaces?: GrantedWorkspace[];
 };
 
 export class TokenStore {
@@ -13,7 +15,7 @@ export class TokenStore {
 	constructor(
 		oauthManager: OAuthManager,
 		config?: {
-			defaultSyncKey?: string;
+			syncKey?: string;
 			bearerToken?: string;
 			friendsTokensJson?: string;
 			friendsTokensPairs?: string;
@@ -22,11 +24,13 @@ export class TokenStore {
 		this.oauthManager = oauthManager;
 
 		// 1. Single-user static token
-		if (config?.bearerToken && config?.defaultSyncKey) {
-			const accountId = identityFromSyncKey(config.defaultSyncKey).accountId;
+		if (config?.bearerToken && config?.syncKey) {
+			const syncKey = config.syncKey.trim();
+			if (!isValidSyncKey(syncKey)) throw new Error('Invalid MCP sync key configuration');
+			const accountId = identityFromSyncKey(syncKey).accountId;
 			this.staticTokens.set(config.bearerToken.trim(), {
 				accountId,
-				syncKey: config.defaultSyncKey.trim()
+				syncKey
 			});
 		}
 
@@ -36,11 +40,12 @@ export class TokenStore {
 				const map = JSON.parse(config.friendsTokensJson) as Record<string, string>;
 				for (const [tok, key] of Object.entries(map)) {
 					const cleanKey = key.trim();
+					if (!tok.trim() || !isValidSyncKey(cleanKey)) throw new Error('Invalid sync key');
 					const accountId = identityFromSyncKey(cleanKey).accountId;
 					this.staticTokens.set(tok.trim(), { accountId, syncKey: cleanKey });
 				}
 			} catch {
-				console.error('[TokenStore] Failed to parse friendsTokensJson');
+				throw new Error('Invalid MCP_FRIENDS_TOKENS configuration');
 			}
 		}
 
@@ -50,6 +55,7 @@ export class TokenStore {
 				const [tok, key] = pair.split(':');
 				if (tok && key) {
 					const cleanKey = key.trim();
+					if (!isValidSyncKey(cleanKey)) throw new Error('Invalid sync key');
 					const accountId = identityFromSyncKey(cleanKey).accountId;
 					this.staticTokens.set(tok.trim(), { accountId, syncKey: cleanKey });
 				}
@@ -61,7 +67,7 @@ export class TokenStore {
 		return this.oauthManager;
 	}
 
-	resolveToken(token: string): ResolvedAccount | null {
+	async resolveToken(token: string): Promise<ResolvedAccount | null> {
 		const clean = token.trim();
 		// Check static tokens first
 		const staticAccount = this.staticTokens.get(clean);

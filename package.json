@@ -104,5 +104,21 @@
 		"simple-git-hooks@2.14.0": true,
 		"esbuild@0.28.1": true,
 		"fsevents@2.3.3": true
+	},
+	"overrides": {
+		"devalue": "5.9.1",
+		"lodash-es": "4.18.1",
+		"@excalidraw/excalidraw": {
+			"nanoid": "3.3.19",
+			"@excalidraw/mermaid-to-excalidraw": {
+				"nanoid": "5.1.16"
+			}
+		},
+		"browserslist": "4.29.0",
+		"postcss": "$postcss",
+		"postcss-selector-parser": "7.1.6",
+		"@sveltejs/kit": {
+			"cookie": "0.7.2"
+		}
 	}
 }

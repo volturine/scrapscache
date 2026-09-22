@@ -7,17 +7,26 @@ services:
     container_name: scrapscache-mcp
     restart: unless-stopped
     ports:
-      - "3001:3001"
+      - "127.0.0.1:3001:3001"
+    read_only: true
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     environment:
       # Upstream Scrapscache server URL (e.g. your self-hosted instance or https://scrapscache.com)
       - SCRAPSCACHE_URL=${SCRAPSCACHE_URL:-https://scrapscache.com}
       # Your personal 32-byte Base64URL sync key (found in Scrapscache Settings > Sync)
       - SCRAPSCACHE_SYNC_KEY=${SCRAPSCACHE_SYNC_KEY:-}
       # Static bearer token for direct connection from Claude Desktop, Cursor, or scripts
-      - MCP_BEARER_TOKEN=${MCP_BEARER_TOKEN:-my-secret-token}
-      # Stable secret shared by OAuth clients, sessions, codes, and tokens
-      - MCP_SECRET=${MCP_SECRET:-}
+      - MCP_BEARER_TOKEN=${MCP_BEARER_TOKEN:-}
+      # Independent high-entropy secret used to seal OAuth values.
+      - MCP_SECRET=${MCP_SECRET:?MCP_SECRET must be set}
       # Optional: JSON map for friends to connect their own sync keys:
       # MCP_FRIENDS_TOKENS={"token_alice":"syncKeyAlice...","token_bob":"syncKeyBob..."}
       - MCP_FRIENDS_TOKENS=${MCP_FRIENDS_TOKENS:-}
+      # The host port is loopback-only; the process listens on the container interface.
+      - MCP_BIND_ADDRESS=0.0.0.0
+      - MCP_PUBLIC_ORIGIN=${MCP_PUBLIC_ORIGIN:-}
       - PORT=3001

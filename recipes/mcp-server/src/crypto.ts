@@ -23,6 +23,16 @@ export function base64UrlToBytes(value: string): Uint8Array {
 	return bytes;
 }
 
+/** Scraps Cache sync keys are exactly 32 random bytes encoded as Base64URL. */
+export function isValidSyncKey(value: string): boolean {
+	if (!/^[A-Za-z0-9_-]{43}$/.test(value)) return false;
+	try {
+		return base64UrlToBytes(value).length === 32;
+	} catch {
+		return false;
+	}
+}
+
 export function sha256(data: string | Uint8Array): Uint8Array {
 	const bytes = typeof data === 'string' ? encoder.encode(data) : data;
 	return nobleSha256(bytes);

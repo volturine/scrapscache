@@ -4,12 +4,34 @@
 	"main": "../src/worker.ts",
 	"compatibility_date": "2024-09-23",
 	"compatibility_flags": ["nodejs_compat"],
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "OAUTH_STATE",
+				"class_name": "McpOAuthState"
+			}
+		]
+	},
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": ["McpOAuthState"]
+		}
+	],
 	"vars": {
 		"SCRAPSCACHE_URL": "https://scrapscache.com"
 	},
 	"env": {
 		"dev": {
 			"name": "scrapscache-mcp-dev",
+			"durable_objects": {
+				"bindings": [
+					{
+						"name": "OAUTH_STATE",
+						"class_name": "McpOAuthState"
+					}
+				]
+			},
 			"vars": {
 				"SCRAPSCACHE_URL": "https://dev.scrapscache.com"
 			}

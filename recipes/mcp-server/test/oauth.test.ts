@@ -1,9 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { OAuthManager, WELL_KNOWN_CLIENTS, isRedirectAllowed, verifyPkce } from '../src/oauth.js';
-import { sha256Base64Url, randomOpaqueId } from '../src/crypto.js';
+import { bytesToBase64Url, randomBytes, sha256Base64Url } from '../src/crypto.js';
+import { InMemoryOAuthStateStore } from '../src/oauthState.js';
 
 describe('MCP OAuth 2.1 manager', () => {
-	const manager = new OAuthManager();
+	const manager = new OAuthManager('test-mcp-secret-012345678901234567890123456789');
+
+	it('fails closed without an OAuth sealing secret', () => {
+		expect(() => new OAuthManager('')).toThrow('MCP_SECRET must be configured');
+	});
 
 	it('contains pre-configured clients with strict redirect matching', () => {
 		const claude = manager.getClient('claude');
@@ -112,10 +117,11 @@ describe('MCP OAuth 2.1 manager', () => {
 		expect(manager.getClient(newClient.id)).toEqual(newClient);
 	});
 
-	it('works statelessly across isolated instances with shared secret', () => {
+	it('shares one-time OAuth state through a shared state store', async () => {
 		const sharedSecret = 'test-cluster-shared-secret';
-		const isolateA = new OAuthManager(sharedSecret);
-		const isolateB = new OAuthManager(sharedSecret);
+		const stateStore = new InMemoryOAuthStateStore();
+		const isolateA = new OAuthManager(sharedSecret, stateStore);
+		const isolateB = new OAuthManager(sharedSecret, stateStore);
 
 		// 1. Dynamic client registered on isolate A is recognized on isolate B
 		const registered = isolateA.registerClient({
@@ -128,14 +134,14 @@ describe('MCP OAuth 2.1 manager', () => {
 		expect(isRedirectAllowed(retrievedOnB!, 'https://isolate.example.com/callback')).toBe(true);
 
 		// 2. Auth session created on isolate A is consumed on isolate B
-		const sessionA = isolateA.createAuthSession({
+		const sessionA = await isolateA.createAuthSession({
 			clientId: registered.id,
 			redirectUri: 'https://isolate.example.com/callback',
 			state: 'test-state-1',
 			codeChallenge: 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM',
 			codeChallengeMethod: 'S256'
 		});
-		const sessionB = isolateB.consumeAuthSession(sessionA.sessionId);
+		const sessionB = await isolateB.consumeAuthSession(sessionA.sessionId);
 		expect(sessionB).not.toBeNull();
 		expect(sessionB!.clientId).toBe(registered.id);
 		expect(sessionB!.mcpPublicKey).toBe(sessionA.mcpPublicKey);
@@ -143,10 +149,10 @@ describe('MCP OAuth 2.1 manager', () => {
 		// 3. Authorization code created on isolate A is exchanged on isolate B
 		const verifier = 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk';
 		const challenge = sha256Base64Url(verifier);
-		const syncKey = '3i7W-s8rafDgu4HT8HD5xQ';
+		const syncKey = bytesToBase64Url(randomBytes(32));
 		const accountId = 'acc_isolate_99';
 
-		const codeA = isolateA.createAuthorizationCode({
+		const codeA = await isolateA.createAuthorizationCode({
 			clientId: registered.id,
 			redirectUri: 'https://isolate.example.com/callback',
 			codeChallenge: challenge,
@@ -154,7 +160,7 @@ describe('MCP OAuth 2.1 manager', () => {
 			accountId
 		});
 
-		const tokenB = isolateB.exchangeCode({
+		const tokenB = await isolateB.exchangeCode({
 			code: codeA,
 			clientId: registered.id,
 			redirectUri: 'https://isolate.example.com/callback',
@@ -164,24 +170,32 @@ describe('MCP OAuth 2.1 manager', () => {
 		expect(tokenB!.accessToken).toMatch(/^sc_mcp_/);
 
 		// 4. Token issued on isolate B is resolved on isolate A
-		const resolvedOnA = isolateA.resolveToken(tokenB!.accessToken);
+		const resolvedOnA = await isolateA.resolveToken(tokenB!.accessToken);
 		expect(resolvedOnA).toMatchObject({ accountId, syncKey });
 
 		// 5. Token refreshed on isolate A is valid on isolate B
-		const refreshedOnA = isolateA.refreshAccessToken(tokenB!.refreshToken);
+		const refreshedOnA = await isolateA.refreshAccessToken(tokenB!.refreshToken);
 		expect(refreshedOnA).not.toBeNull();
-		const resolvedRefreshedOnB = isolateB.resolveToken(refreshedOnA!.accessToken);
+		const resolvedRefreshedOnB = await isolateB.resolveToken(refreshedOnA!.accessToken);
 		expect(resolvedRefreshedOnB).toMatchObject({ accountId, syncKey });
+		expect(
+			await isolateB.exchangeCode({
+				code: codeA,
+				clientId: registered.id,
+				redirectUri: 'https://isolate.example.com/callback',
+				codeVerifier: verifier
+			})
+		).toBeNull();
 	});
 
-	it('runs through full authorization code and token exchange flow', () => {
+	it('runs through full authorization code and token exchange flow', async () => {
 		const verifier = 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk';
 		const challenge = sha256Base64Url(verifier);
 
-		const syncKey = randomOpaqueId();
+		const syncKey = bytesToBase64Url(randomBytes(32));
 		const accountId = 'acc_12345';
 
-		const code = manager.createAuthorizationCode({
+		const code = await manager.createAuthorizationCode({
 			clientId: 'claude',
 			redirectUri: 'https://claude.ai/api/mcp/auth_callback',
 			codeChallenge: challenge,
@@ -192,7 +206,7 @@ describe('MCP OAuth 2.1 manager', () => {
 		expect(code).toMatch(/^code_/);
 
 		// Exchange with wrong verifier -> fails
-		const badExchange = manager.exchangeCode({
+		const badExchange = await manager.exchangeCode({
 			code,
 			clientId: 'claude',
 			redirectUri: 'https://claude.ai/api/mcp/auth_callback',
@@ -201,7 +215,7 @@ describe('MCP OAuth 2.1 manager', () => {
 		expect(badExchange).toBeNull();
 
 		// Re-create code to test valid exchange
-		const validCode = manager.createAuthorizationCode({
+		const validCode = await manager.createAuthorizationCode({
 			clientId: 'claude',
 			redirectUri: 'https://claude.ai/api/mcp/auth_callback',
 			codeChallenge: challenge,
@@ -209,7 +223,7 @@ describe('MCP OAuth 2.1 manager', () => {
 			accountId
 		});
 
-		const token = manager.exchangeCode({
+		const token = await manager.exchangeCode({
 			code: validCode,
 			clientId: 'claude',
 			redirectUri: 'https://claude.ai/api/mcp/auth_callback',
@@ -223,15 +237,42 @@ describe('MCP OAuth 2.1 manager', () => {
 		expect(token!.accountId).toBe(accountId);
 
 		// Resolve token
-		const resolved = manager.resolveToken(token!.accessToken);
+		const resolved = await manager.resolveToken(token!.accessToken);
 		expect(resolved).toMatchObject({ accountId, syncKey });
 
 		// Refresh token
-		const refreshed = manager.refreshAccessToken(token!.refreshToken);
+		const refreshed = await manager.refreshAccessToken(token!.refreshToken);
 		expect(refreshed).not.toBeNull();
 		expect(refreshed!.accessToken).not.toBe(token!.accessToken);
-		expect(manager.resolveToken(refreshed!.accessToken)).toMatchObject({ accountId, syncKey });
+		expect(await manager.resolveToken(refreshed!.accessToken)).toMatchObject({
+			accountId,
+			syncKey
+		});
 		// Old access token is now invalid
-		expect(manager.resolveToken(token!.accessToken)).toBeNull();
+		expect(await manager.resolveToken(token!.accessToken)).toBeNull();
+		expect(await manager.refreshAccessToken(token!.refreshToken)).toBeNull();
+	});
+
+	it('allows only one concurrent exchange of an authorization code', async () => {
+		const verifier = 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk';
+		const code = await manager.createAuthorizationCode({
+			clientId: 'claude',
+			redirectUri: 'https://claude.ai/api/mcp/auth_callback',
+			codeChallenge: sha256Base64Url(verifier),
+			syncKey: bytesToBase64Url(randomBytes(32)),
+			accountId: 'acc_concurrent'
+		});
+		const request = {
+			code,
+			clientId: 'claude',
+			redirectUri: 'https://claude.ai/api/mcp/auth_callback',
+			codeVerifier: verifier
+		};
+
+		const results = await Promise.all([
+			manager.exchangeCode(request),
+			manager.exchangeCode(request)
+		]);
+		expect(results.filter(Boolean)).toHaveLength(1);
 	});
 });

@@ -2,16 +2,106 @@ import { TokenStore } from './tokenStore.js';
 import { ScrapscacheSyncClient } from './syncClient.js';
 import { McpSession } from './engine.js';
 import { handleJsonRpcMessage } from './protocol.js';
-import { isRedirectAllowed, isPkceChallenge } from './oauth.js';
-import { renderConsentHtml } from './consentPage.js';
-import { identityFromSyncKey, decryptHandshakePayload } from './crypto.js';
+import { isRedirectAllowed, isPkceChallenge, MCP_TOKEN_TTL_MS } from './oauth.js';
+import { decryptHandshakePayload } from './crypto.js';
 import { parseHandshakeGrant, type GrantedWorkspace } from './grant.js';
 import { VaultSession } from './vaults.js';
 
+export const MAX_HTTP_BODY_BYTES = 2 * 1024 * 1024;
+const MAX_OAUTH_BODY_BYTES = 128 * 1024;
+const MCP_SESSION_IDLE_TTL_MS = 15 * 60 * 1000;
+const MAX_MCP_SESSIONS = 256;
+
+export class RequestBodyTooLargeError extends Error {}
+
+async function readBodyText(req: Request, maxBytes: number): Promise<string> {
+	const contentLength = req.headers.get('Content-Length');
+	if (contentLength) {
+		const length = Number(contentLength);
+		if (!Number.isSafeInteger(length) || length < 0 || length > maxBytes) {
+			throw new RequestBodyTooLargeError('Request body exceeds the configured limit');
+		}
+	}
+
+	if (!req.body) return '';
+	const reader = req.body.getReader();
+	const chunks: Uint8Array[] = [];
+	let total = 0;
+	try {
+		while (true) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			total += value.byteLength;
+			if (total > maxBytes) {
+				await reader.cancel();
+				throw new RequestBodyTooLargeError('Request body exceeds the configured limit');
+			}
+			chunks.push(value);
+		}
+	} finally {
+		reader.releaseLock();
+	}
+
+	const bytes = new Uint8Array(total);
+	let offset = 0;
+	for (const chunk of chunks) {
+		bytes.set(chunk, offset);
+		offset += chunk.byteLength;
+	}
+	return new TextDecoder().decode(bytes);
+}
+
+async function readJson<T>(req: Request, maxBytes = MAX_HTTP_BODY_BYTES): Promise<T> {
+	return JSON.parse(await readBodyText(req, maxBytes)) as T;
+}
+
+async function readOAuthParams(req: Request): Promise<Record<string, string>> {
+	const body = await readBodyText(req, MAX_OAUTH_BODY_BYTES);
+	const contentType = req.headers.get('Content-Type') || '';
+	if (contentType.includes('application/x-www-form-urlencoded')) {
+		return Object.fromEntries(new URLSearchParams(body).entries());
+	}
+	const parsed = JSON.parse(body) as unknown;
+	if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
+		throw new Error('Invalid body');
+	return Object.fromEntries(
+		Object.entries(parsed).map(([key, value]) => [
+			key,
+			typeof value === 'string' ? value : String(value)
+		])
+	);
+}
+
+function bodyErrorResponse(error: unknown, corsHeaders: Record<string, string>): Response {
+	const tooLarge = error instanceof RequestBodyTooLargeError;
+	return new Response(
+		JSON.stringify({
+			error: tooLarge ? 'request_entity_too_large' : 'invalid_request',
+			error_description: tooLarge ? 'Request body is too large' : 'Invalid request body'
+		}),
+		{
+			status: tooLarge ? 413 : 400,
+			headers: { 'Content-Type': 'application/json', ...corsHeaders }
+		}
+	);
+}
+
+const NO_STORE_HEADERS = {
+	'Cache-Control': 'no-store',
+	Pragma: 'no-cache'
+};
+
+function noStoreRedirect(location: string): Response {
+	return new Response(null, {
+		status: 302,
+		headers: { Location: location, ...NO_STORE_HEADERS }
+	});
+}
+
 export type AppConfig = {
 	scrapscacheUrl: string;
-	defaultSyncKey?: string;
 	tokenStore: TokenStore;
+	publicOrigin?: string;
 };
 
 export class McpApp {
@@ -19,7 +109,43 @@ export class McpApp {
 	private readonly sessions = new Map<string, McpSession | VaultSession>();
 
 	constructor(config: AppConfig) {
-		this.config = config;
+		const configuredOrigin = config.publicOrigin?.trim();
+		if (configuredOrigin) {
+			const parsed = new URL(configuredOrigin);
+			if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) {
+				throw new Error('MCP_PUBLIC_ORIGIN must be an HTTP(S) origin');
+			}
+			this.config = { ...config, publicOrigin: parsed.origin };
+		} else {
+			this.config = config;
+		}
+	}
+
+	dispose(): void {
+		for (const session of this.sessions.values()) session.dispose();
+		this.sessions.clear();
+	}
+
+	private publicOrigin(req: Request): string {
+		return this.config.publicOrigin || new URL(req.url).origin;
+	}
+
+	private pruneSessions(protectedKey?: string): void {
+		const now = Date.now();
+		for (const [key, session] of this.sessions) {
+			if (now - session.getLastActiveAt() > MCP_SESSION_IDLE_TTL_MS) {
+				session.dispose();
+				this.sessions.delete(key);
+			}
+		}
+		while (this.sessions.size >= MAX_MCP_SESSIONS) {
+			const oldest = [...this.sessions.entries()]
+				.filter(([key]) => key !== protectedKey)
+				.sort(([, a], [, b]) => a.getLastActiveAt() - b.getLastActiveAt())[0];
+			if (!oldest) break;
+			oldest[1].dispose();
+			this.sessions.delete(oldest[0]);
+		}
 	}
 
 	private getSession(
@@ -34,6 +160,7 @@ export class McpApp {
 		const cacheKey = granted
 			.map((workspace) => `${workspace.accountId}:${workspace.name}`)
 			.join('\n');
+		this.pruneSessions(cacheKey);
 		let session = this.sessions.get(cacheKey);
 		if (!session) {
 			session =
@@ -45,20 +172,15 @@ export class McpApp {
 						);
 			this.sessions.set(cacheKey, session);
 		}
+		session.touch();
 		return session;
 	}
 
-	private authenticate(
+	private async authenticate(
 		req: Request
-	): { accountId: string; syncKey: string; workspaces?: GrantedWorkspace[] } | null {
+	): Promise<{ accountId: string; syncKey: string; workspaces?: GrantedWorkspace[] } | null> {
 		const authHeader = req.headers.get('Authorization') || '';
-		let token = '';
-		if (authHeader.startsWith('Bearer ')) {
-			token = authHeader.slice(7).trim();
-		} else {
-			const url = new URL(req.url);
-			token = url.searchParams.get('token') || '';
-		}
+		const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
 
 		if (!token) return null;
 		return this.config.tokenStore.resolveToken(token);
@@ -94,7 +216,7 @@ export class McpApp {
 
 		// 2. OAuth Authorization Server Metadata (RFC 8414)
 		if (pathname === '/.well-known/oauth-authorization-server') {
-			const baseUrl = url.origin;
+			const baseUrl = this.publicOrigin(req);
 			return new Response(
 				JSON.stringify({
 					issuer: baseUrl,
@@ -113,13 +235,13 @@ export class McpApp {
 
 		// 3. MCP OAuth Protected Resource Metadata
 		if (pathname === '/.well-known/oauth-protected-resource') {
-			const baseUrl = url.origin;
+			const baseUrl = this.publicOrigin(req);
 			return new Response(
 				JSON.stringify({
 					resource: baseUrl,
 					authorization_servers: [baseUrl],
 					scopes_supported: ['mcp'],
-					bearer_methods_supported: ['header', 'query']
+					bearer_methods_supported: ['header']
 				}),
 				{ status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
 			);
@@ -128,7 +250,10 @@ export class McpApp {
 		// 4. Dynamic Client Registration (RFC 7591)
 		if (pathname === '/oauth/register' && req.method === 'POST') {
 			try {
-				const body = (await req.json()) as { client_name?: string; redirect_uris?: string[] };
+				const body = await readJson<{ client_name?: string; redirect_uris?: string[] }>(
+					req,
+					MAX_OAUTH_BODY_BYTES
+				);
 				const client = this.config.tokenStore.getOAuthManager().registerClient(body);
 				return new Response(
 					JSON.stringify({
@@ -141,7 +266,10 @@ export class McpApp {
 						headers: { 'Content-Type': 'application/json', ...corsHeaders }
 					}
 				);
-			} catch {
+			} catch (error) {
+				if (error instanceof RequestBodyTooLargeError) {
+					return bodyErrorResponse(error, corsHeaders);
+				}
 				return new Response(
 					JSON.stringify({
 						error: 'invalid_request',
@@ -155,7 +283,7 @@ export class McpApp {
 			}
 		}
 
-		// 5. OAuth Authorize (GET: Consent screen or Handshake redirect, POST: Grant)
+		// 5. OAuth Authorize: always use the authenticated Scraps Cache handshake.
 		if (pathname === '/oauth/authorize') {
 			const oauth = this.config.tokenStore.getOAuthManager();
 
@@ -165,7 +293,14 @@ export class McpApp {
 				const state = url.searchParams.get('state') || '';
 				const codeChallenge = url.searchParams.get('code_challenge') || '';
 				const codeChallengeMethod = url.searchParams.get('code_challenge_method') || '';
-				const manual = url.searchParams.get('manual') === 'true';
+				if (
+					clientId.length > 256 ||
+					redirectUri.length > 2048 ||
+					state.length > 1024 ||
+					codeChallenge.length > 128
+				) {
+					return new Response('Invalid authorization request', { status: 400 });
+				}
 
 				const client = oauth.getClient(clientId, redirectUri);
 				if (!client || !isRedirectAllowed(client, redirectUri)) {
@@ -175,114 +310,24 @@ export class McpApp {
 					return new Response('Invalid PKCE parameters: S256 required', { status: 400 });
 				}
 
-				const hasDefault = Boolean(this.config.defaultSyncKey);
-				const shouldHandshake =
-					url.searchParams.get('mode') === 'handshake' || (!hasDefault && !manual);
-
-				if (shouldHandshake) {
-					const session = oauth.createAuthSession({
-						clientId,
-						redirectUri,
-						state,
-						codeChallenge,
-						codeChallengeMethod
-					});
-					const callbackUrl = `${url.origin}/oauth/callback`;
-					const scrapscacheUrl = this.config.scrapscacheUrl || 'https://scrapscache.com';
-					const authorizeUrl = new URL('/mcp/authorize', scrapscacheUrl);
-					authorizeUrl.searchParams.set('session_id', session.sessionId);
-					authorizeUrl.searchParams.set('mcp_public_key', session.mcpPublicKey);
-					authorizeUrl.searchParams.set('mcp_callback', callbackUrl);
-					authorizeUrl.searchParams.set('client_name', client.name);
-					return Response.redirect(authorizeUrl.toString(), 302);
-				}
-
-				const html = renderConsentHtml({
-					clientName: client.name,
+				const session = await oauth.createAuthSession({
 					clientId,
 					redirectUri,
 					state,
 					codeChallenge,
-					codeChallengeMethod,
-					hasDefaultSyncKey: !!this.config.defaultSyncKey
+					codeChallengeMethod
 				});
-				return new Response(html, {
-					status: 200,
-					headers: { 'Content-Type': 'text/html; charset=utf-8' }
-				});
+				const callbackUrl = `${this.publicOrigin(req)}/oauth/callback`;
+				const scrapscacheUrl = this.config.scrapscacheUrl || 'https://scrapscache.com';
+				const authorizeUrl = new URL('/mcp/authorize', scrapscacheUrl);
+				authorizeUrl.searchParams.set('session_id', session.sessionId);
+				authorizeUrl.searchParams.set('mcp_public_key', session.mcpPublicKey);
+				authorizeUrl.searchParams.set('mcp_callback', callbackUrl);
+				authorizeUrl.searchParams.set('client_name', client.name);
+				return noStoreRedirect(authorizeUrl.toString());
 			}
 
-			if (req.method === 'POST') {
-				const formData = await req.formData();
-				const action = formData.get('action');
-				const clientId = String(formData.get('client_id') || '');
-				const redirectUri = String(formData.get('redirect_uri') || '');
-				const state = String(formData.get('state') || '');
-				const codeChallenge = String(formData.get('code_challenge') || '');
-				const customSyncKey = String(formData.get('custom_sync_key') || '').trim();
-
-				const client = oauth.getClient(clientId, redirectUri);
-				if (!client || !isRedirectAllowed(client, redirectUri)) {
-					return new Response('Invalid client_id or unauthorized redirect_uri', { status: 400 });
-				}
-
-				const redirectTarget = new URL(redirectUri);
-				if (state) redirectTarget.searchParams.set('state', state);
-
-				if (action === 'deny') {
-					redirectTarget.searchParams.set('error', 'access_denied');
-					return Response.redirect(redirectTarget.toString(), 302);
-				}
-
-				let syncKey = customSyncKey || this.config.defaultSyncKey || '';
-				if (!syncKey) {
-					const html = renderConsentHtml({
-						clientName: client.name,
-						clientId,
-						redirectUri,
-						state,
-						codeChallenge,
-						codeChallengeMethod: 'S256',
-						hasDefaultSyncKey: !!this.config.defaultSyncKey,
-						errorMessage: 'A valid Scraps Cache sync key is required to authorize access.'
-					});
-					return new Response(html, {
-						status: 400,
-						headers: { 'Content-Type': 'text/html; charset=utf-8' }
-					});
-				}
-
-				let accountId = '';
-				try {
-					accountId = identityFromSyncKey(syncKey).accountId;
-				} catch {
-					const html = renderConsentHtml({
-						clientName: client.name,
-						clientId,
-						redirectUri,
-						state,
-						codeChallenge,
-						codeChallengeMethod: 'S256',
-						hasDefaultSyncKey: !!this.config.defaultSyncKey,
-						errorMessage: 'The provided sync key is invalid.'
-					});
-					return new Response(html, {
-						status: 400,
-						headers: { 'Content-Type': 'text/html; charset=utf-8' }
-					});
-				}
-
-				const code = oauth.createAuthorizationCode({
-					clientId,
-					redirectUri,
-					codeChallenge,
-					syncKey,
-					accountId
-				});
-
-				redirectTarget.searchParams.set('code', code);
-				return Response.redirect(redirectTarget.toString(), 302);
-			}
+			return new Response('Method Not Allowed', { status: 405, headers: { Allow: 'GET' } });
 		}
 
 		// 6. OAuth Handshake Callback from Scraps Cache
@@ -345,7 +390,8 @@ export class McpApp {
         }
         window.location.replace(data.redirectTo);
       } catch (err) {
-        card.innerHTML = '<h2 style="color: #ef4444;">Connection Failed</h2><p>' + (err.message || 'Unknown error') + '</p>';
+        card.innerHTML = '<h2 style="color: #ef4444;">Connection Failed</h2><p></p>';
+        card.querySelector('p').textContent = err instanceof Error ? err.message : 'Unknown error';
       }
     })();
   </script>
@@ -359,19 +405,22 @@ export class McpApp {
 
 			if (req.method === 'POST') {
 				try {
-					const body = (await req.json()) as {
+					const body = await readJson<{
 						sessionId?: string;
 						clientPublicKey?: string;
 						ciphertext?: string;
 						nonce?: string;
 						error?: string;
-					};
+					}>(req, MAX_OAUTH_BODY_BYTES);
 
-					const session = oauth.consumeAuthSession(body.sessionId || '');
+					const session = await oauth.consumeAuthSession(body.sessionId || '');
 					if (!session) {
 						return new Response(
 							JSON.stringify({ error: 'Session expired or invalid authorization session' }),
-							{ status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+							{
+								status: 400,
+								headers: { 'Content-Type': 'application/json', ...corsHeaders, ...NO_STORE_HEADERS }
+							}
 						);
 					}
 
@@ -382,14 +431,14 @@ export class McpApp {
 						redirectTarget.searchParams.set('error', body.error);
 						return new Response(JSON.stringify({ redirectTo: redirectTarget.toString() }), {
 							status: 200,
-							headers: { 'Content-Type': 'application/json', ...corsHeaders }
+							headers: { 'Content-Type': 'application/json', ...corsHeaders, ...NO_STORE_HEADERS }
 						});
 					}
 
 					if (!body.clientPublicKey || !body.ciphertext || !body.nonce) {
 						return new Response(JSON.stringify({ error: 'Missing encrypted handshake payload' }), {
 							status: 400,
-							headers: { 'Content-Type': 'application/json', ...corsHeaders }
+							headers: { 'Content-Type': 'application/json', ...corsHeaders, ...NO_STORE_HEADERS }
 						});
 					}
 
@@ -404,7 +453,7 @@ export class McpApp {
 					} catch {
 						return new Response(JSON.stringify({ error: 'Failed to decrypt handshake payload' }), {
 							status: 400,
-							headers: { 'Content-Type': 'application/json', ...corsHeaders }
+							headers: { 'Content-Type': 'application/json', ...corsHeaders, ...NO_STORE_HEADERS }
 						});
 					}
 
@@ -414,11 +463,14 @@ export class McpApp {
 					} catch {
 						return new Response(
 							JSON.stringify({ error: 'Invalid sync key in decrypted payload' }),
-							{ status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+							{
+								status: 400,
+								headers: { 'Content-Type': 'application/json', ...corsHeaders, ...NO_STORE_HEADERS }
+							}
 						);
 					}
 
-					const code = oauth.createAuthorizationCode({
+					const code = await oauth.createAuthorizationCode({
 						clientId: session.clientId,
 						redirectUri: session.redirectUri,
 						codeChallenge: session.codeChallenge,
@@ -430,12 +482,18 @@ export class McpApp {
 					redirectTarget.searchParams.set('code', code);
 					return new Response(JSON.stringify({ redirectTo: redirectTarget.toString() }), {
 						status: 200,
-						headers: { 'Content-Type': 'application/json', ...corsHeaders }
+						headers: { 'Content-Type': 'application/json', ...corsHeaders, ...NO_STORE_HEADERS }
 					});
-				} catch {
+				} catch (error) {
+					if (error instanceof RequestBodyTooLargeError) {
+						return bodyErrorResponse(error, corsHeaders);
+					}
 					return new Response(
 						JSON.stringify({ error: 'Internal error processing handshake callback' }),
-						{ status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+						{
+							status: 500,
+							headers: { 'Content-Type': 'application/json', ...corsHeaders, ...NO_STORE_HEADERS }
+						}
 					);
 				}
 			}
@@ -444,16 +502,11 @@ export class McpApp {
 		// 7. OAuth Token Exchange
 		if (pathname === '/oauth/token' && req.method === 'POST') {
 			const oauth = this.config.tokenStore.getOAuthManager();
-			let params: Record<string, string> = {};
-
-			const contentType = req.headers.get('Content-Type') || '';
-			if (contentType.includes('application/x-www-form-urlencoded')) {
-				const form = await req.formData();
-				form.forEach((v, k) => {
-					params[k] = String(v);
-				});
-			} else {
-				params = (await req.json()) as Record<string, string>;
+			let params: Record<string, string>;
+			try {
+				params = await readOAuthParams(req);
+			} catch (error) {
+				return bodyErrorResponse(error, { ...corsHeaders, ...NO_STORE_HEADERS });
 			}
 
 			const grantType = params.grant_type;
@@ -463,7 +516,7 @@ export class McpApp {
 				const redirectUri = params.redirect_uri || '';
 				const codeVerifier = params.code_verifier || '';
 
-				const token = oauth.exchangeCode({
+				const token = await oauth.exchangeCode({
 					code,
 					clientId,
 					redirectUri,
@@ -476,7 +529,10 @@ export class McpApp {
 							error: 'invalid_grant',
 							error_description: 'Invalid or expired authorization code'
 						}),
-						{ status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+						{
+							status: 400,
+							headers: { 'Content-Type': 'application/json', ...corsHeaders, ...NO_STORE_HEADERS }
+						}
 					);
 				}
 
@@ -484,39 +540,48 @@ export class McpApp {
 					JSON.stringify({
 						access_token: token.accessToken,
 						token_type: 'Bearer',
-						expires_in: 2592000,
+						expires_in: Math.floor(MCP_TOKEN_TTL_MS / 1000),
 						refresh_token: token.refreshToken,
 						scope: 'mcp'
 					}),
-					{ status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+					{
+						status: 200,
+						headers: { 'Content-Type': 'application/json', ...corsHeaders, ...NO_STORE_HEADERS }
+					}
 				);
 			} else if (grantType === 'refresh_token') {
 				const refreshToken = params.refresh_token || '';
-				const token = oauth.refreshAccessToken(refreshToken);
+				const token = await oauth.refreshAccessToken(refreshToken);
 				if (!token) {
 					return new Response(
 						JSON.stringify({
 							error: 'invalid_grant',
 							error_description: 'Invalid or expired refresh token'
 						}),
-						{ status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+						{
+							status: 400,
+							headers: { 'Content-Type': 'application/json', ...corsHeaders, ...NO_STORE_HEADERS }
+						}
 					);
 				}
 				return new Response(
 					JSON.stringify({
 						access_token: token.accessToken,
 						token_type: 'Bearer',
-						expires_in: 2592000,
+						expires_in: Math.floor(MCP_TOKEN_TTL_MS / 1000),
 						refresh_token: token.refreshToken,
 						scope: 'mcp'
 					}),
-					{ status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+					{
+						status: 200,
+						headers: { 'Content-Type': 'application/json', ...corsHeaders, ...NO_STORE_HEADERS }
+					}
 				);
 			}
 
 			return new Response(JSON.stringify({ error: 'unsupported_grant_type' }), {
 				status: 400,
-				headers: { 'Content-Type': 'application/json', ...corsHeaders }
+				headers: { 'Content-Type': 'application/json', ...corsHeaders, ...NO_STORE_HEADERS }
 			});
 		}
 
@@ -529,7 +594,15 @@ export class McpApp {
 			pathname === '/messages';
 
 		if (isMcpRoute) {
-			const auth = this.authenticate(req);
+			let auth: Awaited<ReturnType<McpApp['authenticate']>>;
+			try {
+				auth = await this.authenticate(req);
+			} catch {
+				return new Response(JSON.stringify({ error: 'Authentication service unavailable' }), {
+					status: 503,
+					headers: { 'Content-Type': 'application/json', ...corsHeaders }
+				});
+			}
 			if (!auth) {
 				return new Response(
 					JSON.stringify({ error: 'Unauthorized: missing or invalid Bearer token' }),
@@ -555,7 +628,7 @@ export class McpApp {
 					pathname === '/messages')
 			) {
 				try {
-					const jsonRpcBody = await req.json();
+					const jsonRpcBody = await readJson(req);
 					const response = await handleJsonRpcMessage(session, jsonRpcBody);
 					if (response === null) {
 						return new Response(null, { status: 204, headers: corsHeaders });
@@ -564,7 +637,10 @@ export class McpApp {
 						status: 200,
 						headers: { 'Content-Type': 'application/json', ...corsHeaders }
 					});
-				} catch {
+				} catch (error) {
+					if (error instanceof RequestBodyTooLargeError) {
+						return bodyErrorResponse(error, corsHeaders);
+					}
 					return new Response(
 						JSON.stringify({
 							jsonrpc: '2.0',
@@ -579,25 +655,42 @@ export class McpApp {
 			// SSE Transport: GET /sse or GET /mcp
 			if (req.method === 'GET' && (pathname === '/sse' || pathname === '/mcp')) {
 				const encoder = new TextEncoder();
+				const publicOrigin = this.publicOrigin(req);
+				let cleanup = () => {};
 				const stream = new ReadableStream({
 					start(controller) {
-						if (pathname === '/sse') {
-							controller.enqueue(
-								encoder.encode(`event: endpoint\ndata: ${url.origin}/messages\n\n`)
-							);
-						}
-						const unsubscribe = session.addSseListener((event, data) => {
-							controller.enqueue(
-								encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
-							);
-						});
-						const timer = setInterval(() => {
+						let closed = false;
+						let timer: ReturnType<typeof setInterval> | undefined;
+						let unsubscribe = () => {};
+						cleanup = () => {
+							if (closed) return;
+							closed = true;
+							if (timer) clearInterval(timer);
+							unsubscribe();
+						};
+						const enqueue = (value: Uint8Array) => {
+							if (closed) return;
 							try {
-								controller.enqueue(encoder.encode(': ping\n\n'));
+								controller.enqueue(value);
 							} catch {
-								clearInterval(timer);
+								cleanup();
 							}
+						};
+						if (pathname === '/sse') {
+							enqueue(encoder.encode(`event: endpoint\ndata: ${publicOrigin}/messages\n\n`));
+						}
+						if (closed) return;
+						unsubscribe = session.addSseListener((event, data) => {
+							enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+							if (event === 'close') cleanup();
+						});
+						timer = setInterval(() => {
+							session.touch();
+							enqueue(encoder.encode(': ping\n\n'));
 						}, 15000);
+					},
+					cancel() {
+						cleanup();
 					}
 				});
 

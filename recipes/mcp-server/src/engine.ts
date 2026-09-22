@@ -259,6 +259,15 @@ export class McpSession {
 		this.sseListeners.clear();
 	}
 
+	dispose(): void {
+		this.close();
+		this.notes.clear();
+		this.labels.clear();
+		this.syncedSlots.clear();
+		this.cursor = 0;
+		this.hydrated = false;
+	}
+
 	async runExclusive<T>(operation: () => Promise<T>): Promise<T> {
 		const previous = this.operationQueue;
 		let release!: () => void;

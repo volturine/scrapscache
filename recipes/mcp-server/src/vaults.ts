@@ -47,6 +47,14 @@ export class VaultSession {
 		for (const vault of this.vaults) vault.session.touch();
 	}
 
+	getLastActiveAt(): number {
+		return Math.max(...this.vaults.map((vault) => vault.session.getLastActiveAt()));
+	}
+
+	dispose(): void {
+		for (const vault of this.vaults) vault.session.dispose();
+	}
+
 	async runExclusive<T>(operation: () => Promise<T>): Promise<T> {
 		const previous = this.operationQueue;
 		let release!: () => void;

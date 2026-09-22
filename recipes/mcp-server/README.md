@@ -26,7 +26,7 @@ Scraps Cache is end-to-end encrypted and zero-knowledge. This MCP server acts as
                                                   └─────────────────────────┘
 ```
 
-- **Zero-Knowledge**: Notes are decrypted solely in ephemeral memory using ChaCha20-Poly1305. The upstream server only ever sees encrypted envelopes.
+- **Zero-Knowledge**: Notes are decrypted only in bounded, idle-expiring MCP session memory using ChaCha20-Poly1305. The upstream server only ever sees encrypted envelopes.
 - **Zero-Token 1-Click Handshake**: When connecting through OAuth (Claude Web, ChatGPT, Grok), the user is seamlessly redirected to Scraps Cache where they are already logged in, clicks **"Allow access"**, and an ephemeral X25519 ECDH + XChaCha20-Poly1305 handshake securely delivers the sync key without typing or exposing secrets in URLs or logs.
 - **Flexible Hosting**: Deploy via **Docker Compose** on your home server/VPS, or as a **Cloudflare Worker** on Cloudflare's free tier.
 - **For You and Your Friends**: Host a single vault for yourself, or share the same server with friends who connect to their own vaults via 1-click OAuth or dedicated bearer tokens.
@@ -65,17 +65,31 @@ Edit `.env`:
 # URL of the Scraps Cache instance
 SCRAPSCACHE_URL=https://scrapscache.com
 
-# Optional default sync key for your own vault (if you want static bearer token access)
-# SCRAPSCACHE_SYNC_KEY=your_base64url_sync_key
+# Required independent OAuth sealing secret (32+ random characters)
+MCP_SECRET=generate-with-openssl-rand-hex-32
 
-# Optional static bearer token for Claude Desktop / Cursor / Cline
-# MCP_BEARER_TOKEN=my-secure-secret-token
+# Optional static sync key for direct bearer-token access to one vault
+# SCRAPSCACHE_SYNC_KEY=your_base64url_32_byte_sync_key
+
+# Optional static bearer token for Claude Desktop / Cursor / Cline (32+ random characters)
+# MCP_BEARER_TOKEN=generate-a-long-random-token
+
+# Optional when a reverse proxy publishes the server at a stable HTTPS origin
+# MCP_PUBLIC_ORIGIN=https://mcp.example.com
 
 PORT=3001
 ```
 
 > [!TIP]
 > If you omit `SCRAPSCACHE_SYNC_KEY` and `MCP_BEARER_TOKEN`, the server runs entirely in **zero-token OAuth mode**! You or your friends just connect via Claude/ChatGPT and click "Allow" in Scraps Cache.
+
+The Docker port is bound to `127.0.0.1` on the host. Put it behind an HTTPS reverse
+proxy before exposing it publicly, and set `MCP_PUBLIC_ORIGIN` to that HTTPS origin.
+Configure rate limits and connection limits at that proxy or WAF for the public
+OAuth endpoints and long-lived MCP/SSE connections; the server bounds memory, but
+cannot replace edge-level abuse protection.
+`MCP_SECRET` is never a sync key and must not be reused between development and
+production.
 
 ### 2. Start the Container
 
@@ -119,24 +133,29 @@ Your MCP server will be live at `https://scrapscache-mcp.<your-subdomain>.worker
 If you want a static bearer token for local IDEs (Cursor/Claude Desktop), set secrets via Wrangler:
 
 ```bash
-# Optional: Set your default sync key
+# Optional: enable direct static bearer-token access to one vault
 wrangler secret put SCRAPSCACHE_SYNC_KEY
 
 # Optional: Set static Bearer token
 wrangler secret put MCP_BEARER_TOKEN
+
+# Required: independent 32+ character secret, for example `openssl rand -hex 32`
+wrangler secret put MCP_SECRET
 ```
 
-OAuth clients, handshake sessions, and access tokens are sealed with `MCP_SECRET` so any Worker isolate can finish a login started on another isolate. Set one before connecting Claude, ChatGPT, or Grok:
+OAuth values are sealed with `MCP_SECRET`, while one-time sessions, authorization
+codes, refresh-token rotation, and access-token revocation are stored in a
+Cloudflare Durable Object shared by Worker isolates. Set one independent
+`MCP_SECRET` in each Cloudflare Worker environment before connecting Claude,
+ChatGPT, or Grok:
 
 ```bash
 wrangler secret put MCP_SECRET --env dev
 ```
 
-If the Worker is deployed by this repository's GitHub Actions workflow, add
-`MCP_SECRET` as a repository secret; the workflow forwards it to both the
-development and production MCP Workers.
-
-If `MCP_SECRET` is unset, the worker falls back to `SCRAPSCACHE_SYNC_KEY` or `MCP_BEARER_TOKEN`. With none of those set, OAuth state is isolated to one Worker instance and a login may fail with `Invalid client_id or unauthorized redirect_uri` or an expired session.
+The GitHub Actions workflow deploys code only and does not copy MCP secrets
+through GitHub. Keep `MCP_SECRET` in Cloudflare as the runtime source of truth;
+deploying a new Worker version does not require a GitHub copy of that secret.
 
 Leave `SCRAPSCACHE_SYNC_KEY` and `MCP_BEARER_TOKEN` empty for the pure zero-token 1-click OAuth handshake. `MCP_SECRET` is still required.
 
@@ -161,7 +180,7 @@ No tokens or keys need to be configured. When your friend connects their AI assi
 If your friends want to use Claude Desktop or Cursor which don't support browser OAuth prompts, configure `MCP_FRIENDS_TOKENS` in your `.env` or Worker secrets as a JSON dictionary mapping individual Bearer tokens to each friend's Sync Key:
 
 ```json
-MCP_FRIENDS_TOKENS={"alice_secret_token":"alice_sync_key...","bob_secret_token":"bob_sync_key..."}
+MCP_FRIENDS_TOKENS={"alice_token_with_32_random_chars":"alice_base64url_32_byte_sync_key","bob_token_with_32_random_chars":"bob_base64url_32_byte_sync_key"}
 ```
 
 When Alice connects with `Authorization: Bearer alice_secret_token`, the server automatically accesses Alice's vault.
@@ -206,4 +225,9 @@ Configure an MCP server with Streamable HTTP:
 - **Transport**: HTTP / SSE
 - **URL**: `http://localhost:3001/mcp` (or your Cloudflare Worker URL)
 - **Headers**:
-  - `Authorization`: `Bearer my-secure-secret-token`
+  - `Authorization`: `Bearer your-32-plus-character-static-token`
+
+Bearer tokens are accepted only in the `Authorization` header. Query-string
+tokens are deliberately rejected because URLs can be copied into browser
+history, proxy logs, monitoring systems, and referrer headers. OAuth access and
+refresh token responses are marked `Cache-Control: no-store`.

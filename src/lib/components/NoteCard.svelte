@@ -370,7 +370,7 @@
 		role="button"
 		tabindex="0"
 		aria-label={openLabel}
-		class={cx(card.cardBody, noteSurface({ color: note.color }))}
+		class={cx(card.cardBody, 'group', noteSurface({ color: note.color }))}
 		style={cardSwipeStyle(offsetX, dragging)}
 		onpointerdown={onCardPointerDown}
 		onpointermove={onCardPointerMove}

@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest';
 import { openDB } from 'idb';
 import {
 	closeDeviceDatabase,
+	DeleteBlockedError,
 	DEVICE_DB_NAME,
 	deleteProfileDatabase,
 	deleteStoredProfile,
@@ -116,6 +117,22 @@ describe('dropDatabase', () => {
 			other.close();
 		}
 	});
+
+	// The browser cannot call a delete off. Past the grace it is still queued, and
+	// it lands the moment the last connection closes.
+	it('still reports when a delete it stopped waiting on finally lands', async () => {
+		await putNote(PROFILE, note('put-off'));
+		await closeDeviceDatabase();
+		const other = await openDB(PROFILE_DB);
+
+		const failure = await dropDatabase(PROFILE_DB, 20).catch((error: Error) => error);
+		expect(failure).toBeInstanceOf(DeleteBlockedError);
+
+		other.close();
+		await (failure as DeleteBlockedError).completion;
+
+		expect(await databaseNames()).not.toContain(PROFILE_DB);
+	});
 });
 
 describe('deleteProfileDatabase', () => {
@@ -151,25 +168,28 @@ describe('deleteStoredProfile', () => {
 		expect(await databaseNames()).not.toContain(PROFILE_DB);
 	});
 
-	// The keyring entry is the only way back to a workspace's database. Removing
-	// it ahead of a delete that then fails would leave every note on the device
-	// with nothing able to reach or remove it.
-	it('leaves the workspace whole when its data could not be deleted', async () => {
-		await putStoredProfile({ id: PROFILE, name: 'Stuck', syncKey: '', createdAt: 1 });
-		await putNote(PROFILE, note('kept'));
+	// The keyring entry is the only way back to a workspace's database. Removed
+	// while the data stayed, it would leave every note on the device with nothing
+	// able to reach or remove it; kept after the data went, it would name nothing.
+	it('keeps the keyring entry while a delete is held up, and drops it when it lands', async () => {
+		await putStoredProfile({ id: PROFILE, name: 'Held up', syncKey: '', createdAt: 1 });
+		await putNote(PROFILE, note('kept-for-now'));
 		await closeDeviceDatabase();
 		// A connection this module does not own, as another tab would hold.
 		const other = await openDB(PROFILE_DB);
 
-		try {
-			const failure = await deleteStoredProfile(PROFILE).catch((error: Error) => error);
+		const failure = await deleteStoredProfile(PROFILE).catch((error: Error) => error);
 
-			expect(failure).toBeInstanceOf(Error);
-			expect(readStoredProfiles().map((entry) => entry.id)).toContain(PROFILE);
-			expect(await databaseNames()).toContain(PROFILE_DB);
-		} finally {
-			other.close();
-		}
+		expect(failure).toBeInstanceOf(DeleteBlockedError);
+		expect(readStoredProfiles().map((entry) => entry.id)).toContain(PROFILE);
+		expect(await databaseNames()).toContain(PROFILE_DB);
+
+		other.close();
+		await (failure as DeleteBlockedError).completion;
+		await Promise.resolve();
+
+		expect(readStoredProfiles().map((entry) => entry.id)).not.toContain(PROFILE);
+		expect(await databaseNames()).not.toContain(PROFILE_DB);
 	});
 });
 
@@ -204,5 +224,18 @@ describe('releasing a workspace another window removed', () => {
 
 		expect(await databaseNames()).not.toContain(PROFILE_DB);
 		expect(isProfileReleased(PROFILE)).toBe(true);
+	});
+
+	// The keyring still names a workspace until its delete lands. Serving it again
+	// on that word would let a queued write rebuild the database behind the delete.
+	it('keeps refusing a workspace whose delete was asked for, whatever the keyring says', async () => {
+		await putNote(PROFILE, note('holding'));
+		await dropDatabase(PROFILE_DB, 50);
+
+		resumeProfile(PROFILE);
+
+		expect(isProfileReleased(PROFILE)).toBe(true);
+		await expect(getAllNotesMetadata(PROFILE)).rejects.toThrow(/no longer on this device/);
+		expect(await databaseNames()).not.toContain(PROFILE_DB);
 	});
 });

@@ -286,4 +286,49 @@ describe('backup and Keep import stay in the open workspace', () => {
 			vi.unstubAllGlobals();
 		}
 	});
+
+	// The window can be moved while an import waits for the lock: another window
+	// removed its workspace, and the handover that follows queued first. Landing
+	// in whatever is open once the lock comes would replace a workspace nobody
+	// chose and push that to its cloud.
+	it('imports into the workspace it was started in or nowhere', async () => {
+		await openWorkspace(workspaceB);
+		notesStore.createNote({ title: 'B note' });
+		await waitForDeviceWrites(workspaceB.id);
+		await openWorkspace(workspaceA);
+		notesStore.createNote({ title: 'A note' });
+		await waitForDeviceWrites(workspaceA.id);
+		vi.stubGlobal('navigator', { ...navigator, locks: serialLocks() });
+		try {
+			let releaseFlight!: () => void;
+			const flightGate = new Promise<void>((resolve) => (releaseFlight = resolve));
+			const flight = navigator.locks.request(SYNC_LOCK, () => flightGate);
+			// Queued ahead of the import, as a handover to another workspace would be.
+			const moved = navigator.locks.request(SYNC_LOCK, async () => {
+				syncStore.activateProfile(workspaceB);
+				await notesStore.reloadForProfile();
+			});
+			const running = notesStore.importBackup(
+				emptyBackup([backupNote('imported')]),
+				BackupImportMode.Replace
+			);
+
+			releaseFlight();
+			await flight;
+			await moved;
+			const result = await running;
+
+			expect(result.success).toBe(false);
+			expect(result.error).toMatch(/no longer open/);
+			await waitForDeviceWrites();
+			expect((await getAllNotesMetadata(workspaceB.id)).map((note) => note.title)).toEqual([
+				'B note'
+			]);
+			expect((await getAllNotesMetadata(workspaceA.id)).map((note) => note.title)).toEqual([
+				'A note'
+			]);
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
 });

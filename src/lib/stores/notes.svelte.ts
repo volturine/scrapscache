@@ -73,6 +73,9 @@ const AUTO_SYNC_MIN_INTERVAL_MS = 30_000;
 /** Web lock serializing sync flights and profile dataset swaps. */
 export const SYNC_LOCK = 'scrapscache-sync';
 
+const IMPORT_TARGET_GONE =
+	'The workspace this import was meant for is no longer open here. Nothing was imported.';
+
 function durableNoteSignature(note: Note): string {
 	return stableStringify({
 		...note,
@@ -733,6 +736,8 @@ export class NotesStore {
 		const backup = normalizeBackup(data);
 		if (!backup)
 			return { success: false, error: 'That file is not a valid Scraps Cache full backup.' };
+		// The workspace on screen when the import was chosen: it lands there or nowhere.
+		const pid = this.pid;
 		// Claimed before the lock is requested so a workspace switch is refused
 		// outright rather than queueing behind an import that may run for minutes.
 		this.importing = true;
@@ -741,8 +746,11 @@ export class NotesStore {
 			// would write the notes it pulled over the imported ones and push the
 			// mixture to the relay as the newest version.
 			return await this.withSyncLock(async () => {
-				// Every write lands in the workspace that was open when the import began.
-				const pid = this.pid;
+				// Another window may have removed this workspace while the lock was
+				// awaited, and moved this window elsewhere. Landing in whatever is open
+				// now would overwrite a workspace nobody chose and push it to its cloud.
+				if (this.pid !== pid || isProfileReleased(pid))
+					return { success: false, error: IMPORT_TARGET_GONE };
 				const now = Date.now();
 				const importedNotes = prepareImportedNotes(backup.notes, mode, now);
 				const replacedNoteIds =
@@ -848,6 +856,8 @@ export class NotesStore {
 		if (this.importing) return { success: false, error: 'An import is already running.' };
 		if (readKeepTakeout(files).notes.length === 0)
 			return { success: false, error: 'That zip does not contain Google Keep notes.' };
+		// The workspace on screen when the import was chosen: it lands there or nowhere.
+		const pid = this.pid;
 		// Claimed before the lock is requested so a workspace switch is refused
 		// outright rather than queueing behind an import that may run for minutes.
 		this.importing = true;
@@ -856,8 +866,11 @@ export class NotesStore {
 			// would write the notes it pulled over the imported ones and push the
 			// mixture to the relay as the newest version.
 			return await this.withSyncLock(async () => {
-				// Every write lands in the workspace that was open when the import began.
-				const pid = this.pid;
+				// Another window may have removed this workspace while the lock was
+				// awaited, and moved this window elsewhere. Landing in whatever is open
+				// now would overwrite a workspace nobody chose and push it to its cloud.
+				if (this.pid !== pid || isProfileReleased(pid))
+					return { success: false, error: IMPORT_TARGET_GONE };
 				const now = Date.now();
 				const materialized = await materializeKeepTakeout(files, (file) =>
 					fileToNoteImage(file, 'compressed')

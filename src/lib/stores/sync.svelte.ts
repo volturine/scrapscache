@@ -46,6 +46,7 @@ import { PairingRole, PairingState, type PairingPoll } from '$lib/pairingProtoco
 import {
 	clearSyncOutbox,
 	commitSyncControl,
+	DeleteBlockedError,
 	deleteSyncState,
 	getOutboxGeneration,
 	getSyncOutboxKeys,
@@ -306,16 +307,32 @@ export class SyncStore {
 		return updated;
 	}
 
-	/** Remove a non-active workspace together with its dataset on this device. */
-	async removeProfile(id: string): Promise<boolean> {
-		if (this.activeProfile?.id === id) return false;
-		if (!this.profiles.some((entry) => entry.id === id)) return false;
+	/**
+	 * Remove a non-active workspace together with its dataset on this device.
+	 * `pending` means another window is holding its database open: the delete
+	 * cannot be called off, and the workspace leaves the list when it lands.
+	 */
+	async removeProfile(id: string): Promise<'removed' | 'pending' | 'failed'> {
+		if (this.activeProfile?.id === id) return 'failed';
+		if (!this.profiles.some((entry) => entry.id === id)) return 'failed';
 		try {
 			await removeProfileRecord(id);
 		} catch (err) {
+			if (err instanceof DeleteBlockedError) {
+				void err.completion.then(
+					() => this.forgetProfile(id),
+					() => undefined
+				);
+				return 'pending';
+			}
 			console.error('[sync] could not remove profile:', err);
-			return false;
+			return 'failed';
 		}
+		this.forgetProfile(id);
+		return 'removed';
+	}
+
+	private forgetProfile(id: string): void {
 		this.profiles = this.profiles.filter((entry) => entry.id !== id);
 		this.clearLegacyAccountStorage();
 		try {
@@ -323,7 +340,6 @@ export class SyncStore {
 		} catch {
 			/* status is only a display cache */
 		}
-		return true;
 	}
 
 	requestAutoSync(keys: Iterable<string> = []): void {

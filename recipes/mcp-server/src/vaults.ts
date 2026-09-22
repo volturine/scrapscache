@@ -82,6 +82,7 @@ export class VaultSession {
 
 	async callTool(name: string, args: Record<string, unknown>): Promise<unknown> {
 		this.touch();
+		if (name === 'list_workspaces') return this.listWorkspaces();
 		const requested = workspaceArg(args);
 		const rest = withoutWorkspace(args);
 		const target = this.pick(requested);
@@ -113,6 +114,16 @@ export class VaultSession {
 				}
 			})
 		);
+		const errors = settled
+			.filter((item) => item.error)
+			.map((item) => ({ workspace: item.vault.name, error: item.error }));
+		if (errors.length === settled.length) {
+			throw new Error(
+				`No granted workspaces are available: ${errors
+					.map((item) => `${item.workspace}: ${item.error}`)
+					.join('; ')}`
+			);
+		}
 
 		if (name === 'list_labels') {
 			return {
@@ -123,15 +134,25 @@ export class VaultSession {
 							? (item.result as { labels: unknown }).labels
 							: [],
 					...(item.error ? { error: item.error } : {})
-				}))
+				})),
+				...(errors.length ? { errors } : {})
 			};
 		}
 
 		const notes: Array<Record<string, unknown> & { updatedAt?: string }> = [];
-		const errors: { workspace: string; error: string }[] = [];
+		const workspaces = settled.map((item) => {
+			const found =
+				item.result && typeof item.result === 'object' && 'notes' in item.result
+					? (item.result as { notes?: unknown }).notes
+					: [];
+			return {
+				workspace: item.vault.name,
+				noteCount: Array.isArray(found) ? found.length : 0,
+				...(item.error ? { error: item.error } : {})
+			};
+		});
 		for (const item of settled) {
 			if (item.error) {
-				errors.push({ workspace: item.vault.name, error: item.error });
 				continue;
 			}
 			const found =
@@ -151,8 +172,13 @@ export class VaultSession {
 		return {
 			notes: capped,
 			total: capped.length,
+			workspaces,
 			...(errors.length ? { errors } : {})
 		};
+	}
+
+	async listWorkspaces() {
+		return { workspaces: this.vaults.map((vault) => ({ workspace: vault.name })) };
 	}
 
 	private async byNoteId(name: string, args: Record<string, unknown>): Promise<unknown> {

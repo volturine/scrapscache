@@ -104,6 +104,7 @@ describe('MCP App HTTP endpoints and JSON-RPC dispatch', () => {
 		expect(toolNames).toContain('read_note');
 		expect(toolNames).toContain('update_note');
 		expect(toolNames).toContain('list_labels');
+		expect(toolNames).toContain('list_workspaces');
 	});
 
 	it('serves HTML consent page on GET /oauth/authorize', async () => {

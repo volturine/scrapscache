@@ -1,10 +1,11 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
+	import { onMount } from 'svelte';
 	import { ArrowLeft, ShieldCheck, Sparkles, AlertCircle } from '@lucide/svelte';
 	import { css, cx } from 'styled-system/css';
 	import { button } from 'styled-system/recipes';
-	import { syncStore } from '$lib/stores/sync.svelte';
+	import { syncStore, type McpWorkspaceStatus } from '$lib/stores/sync.svelte';
 	import { encryptHandshakePayload } from '$lib/mcpHandshake';
 	import { isLocalWorkspace, mcpWorkspaceGrant, workspacesForMcpGrant } from '$lib/profiles';
 
@@ -250,10 +251,50 @@
 	let busy = $state(false);
 	let error = $state('');
 	let pickedIds = $state<string[] | null>(null);
+	let checkingWorkspaces = $state(true);
+	let mcpStatuses = $state<Record<string, McpWorkspaceStatus>>({});
 
-	let synced = $derived(syncStore.profiles.filter((profile) => !isLocalWorkspace(profile)));
+	onMount(() => {
+		if (!params.valid) {
+			checkingWorkspaces = false;
+			return;
+		}
+
+		let cancelled = false;
+		void syncStore
+			.getMcpWorkspaceStatuses()
+			.then((statuses) => {
+				if (cancelled) return;
+				mcpStatuses = statuses;
+				checkingWorkspaces = false;
+			})
+			.catch(() => {
+				if (cancelled) return;
+				const statuses: Record<string, McpWorkspaceStatus> = {};
+				for (const profile of syncStore.profiles) {
+					statuses[profile.id] = profile.syncKey ? { state: 'unavailable' } : { state: 'local' };
+				}
+				mcpStatuses = statuses;
+				checkingWorkspaces = false;
+			});
+
+		return () => {
+			cancelled = true;
+		};
+	});
+
+	let synced = $derived(
+		syncStore.profiles.filter((profile) => mcpStatuses[profile.id]?.state === 'ready')
+	);
+	let notReady = $derived(
+		checkingWorkspaces
+			? []
+			: syncStore.profiles.filter(
+					(profile) => profile.syncKey && mcpStatuses[profile.id]?.state !== 'ready'
+				)
+	);
 	let localOnly = $derived(syncStore.profiles.filter((profile) => isLocalWorkspace(profile)));
-	let selected = $derived(workspacesForMcpGrant(syncStore.profiles, pickedIds));
+	let selected = $derived(workspacesForMcpGrant(synced, pickedIds));
 	let allSyncedSelected = $derived(
 		synced.length > 0 &&
 			synced.every((workspace) => selected.some((item) => item.id === workspace.id))
@@ -283,9 +324,19 @@
 		return `${names.slice(0, -1).join(', ')}, and ${names[names.length - 1]}`;
 	}
 
+	function statusCaption(status: McpWorkspaceStatus | undefined): string {
+		if (status?.state === 'pending') {
+			return status.reason === 'initial-sync'
+				? 'Initial sync is not complete'
+				: 'Sync has pending changes';
+		}
+		if (status?.state === 'unavailable') return 'Cloud sync account is unavailable';
+		return 'Not available to MCP';
+	}
+
 	async function approve() {
 		const grantWorkspaces = mcpWorkspaceGrant(selected);
-		if (!params.valid || grantWorkspaces.length === 0 || busy) return;
+		if (!params.valid || checkingWorkspaces || grantWorkspaces.length === 0 || busy) return;
 		busy = true;
 		error = '';
 
@@ -352,17 +403,43 @@
 						<AlertCircle class={iconSm} aria-hidden="true" />
 						<p>This authorization handshake request is invalid or missing required parameters.</p>
 					</div>
+				{:else if checkingWorkspaces}
+					<div class={noticeWarning}>
+						<div>
+							<p class={optionName}>Checking synced workspaces…</p>
+							<p class={fine}>
+								Scraps Cache is verifying that each workspace has completed sync and is reachable.
+							</p>
+						</div>
+					</div>
 				{:else if synced.length === 0}
 					<div class={noticeWarning}>
 						<div>
-							<p class={optionName}>No synced workspace on this device.</p>
+							<p class={optionName}>
+								{notReady.length > 0
+									? 'No synced workspace is ready for MCP.'
+									: 'No synced workspace on this device.'}
+							</p>
 							<p class={fine}>
-								Set up sync for a workspace in Scraps Cache, then refresh this page to connect
-								{params.clientName}. A workspace that stays on this device cannot be granted.
+								{notReady.length > 0
+									? `Finish the initial sync or repair the unavailable cloud account, then refresh this page to connect ${params.clientName}.`
+									: `Set up sync for a workspace in Scraps Cache, then refresh this page to connect ${params.clientName}.`}
+								A workspace that stays on this device cannot be granted.
 							</p>
 						</div>
 					</div>
 				{:else}
+					{#if notReady.length > 0}
+						<div class={noticeWarning}>
+							<div>
+								<p class={optionName}>Some workspaces are not ready for MCP.</p>
+								<p class={fine}>
+									Only completed, reachable sync workspaces can be selected. The unavailable
+									workspaces below are disabled.
+								</p>
+							</div>
+						</div>
+					{/if}
 					<div class={origin}>
 						<div class={originLabel}>
 							<Sparkles class={iconSm} aria-hidden="true" />
@@ -388,6 +465,15 @@
 							{params.clientName} can search, read, and update notes only in the workspaces you select.
 						</p>
 						<div class={workspaceList}>
+							{#each notReady as workspace (workspace.id)}
+								<label class={localRow}>
+									<input class={radio} type="checkbox" disabled />
+									<span class={optionText}>
+										<span class={optionName}>{workspace.name}</span>
+										<span class={optionCaption}>{statusCaption(mcpStatuses[workspace.id])}</span>
+									</span>
+								</label>
+							{/each}
 							{#each synced as workspace (workspace.id)}
 								<label class={option}>
 									<input
@@ -460,7 +546,7 @@
 						type="button"
 						class={cx(button({ variant: 'primary', size: 'md' }), action)}
 						onclick={() => void approve()}
-						disabled={busy || !params.valid || selected.length === 0}
+						disabled={busy || checkingWorkspaces || !params.valid || selected.length === 0}
 					>
 						{busy ? 'Connecting…' : 'Allow access'}
 					</button>

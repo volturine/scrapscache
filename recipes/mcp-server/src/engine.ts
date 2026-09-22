@@ -89,6 +89,14 @@ export const MCP_TOOLS = [
 		}
 	},
 	{
+		name: 'list_workspaces',
+		description: 'List the workspaces granted to this MCP connection.',
+		inputSchema: {
+			type: 'object',
+			properties: {}
+		}
+	},
+	{
 		name: 'read_note',
 		description:
 			'Read the full contents of a note by its ID, including title, body text, checklist tasks, and labels.',
@@ -186,6 +194,7 @@ export const MCP_TOOLS = [
 ];
 
 for (const tool of MCP_TOOLS) {
+	if (tool.name === 'list_workspaces') continue;
 	(tool.inputSchema.properties as Record<string, unknown>).workspace = {
 		type: 'string',
 		description:
@@ -606,6 +615,10 @@ export class McpSession {
 		return { labels };
 	}
 
+	async listWorkspaces() {
+		return { workspaces: [{ workspace: 'Workspace' }] };
+	}
+
 	async callTool(name: string, args: Record<string, unknown>): Promise<unknown> {
 		this.touch();
 		switch (name) {
@@ -623,6 +636,8 @@ export class McpSession {
 				return this.updateNote(args as Parameters<McpSession['updateNote']>[0]);
 			case 'list_labels':
 				return this.listLabels();
+			case 'list_workspaces':
+				return this.listWorkspaces();
 			default:
 				throw new Error(`Unknown tool: ${name}`);
 		}

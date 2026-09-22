@@ -8,6 +8,12 @@ type RpcSession = {
 	readResource(uri: string): Promise<unknown>;
 };
 
+function toolResultHasErrors(value: unknown): boolean {
+	if (!value || typeof value !== 'object') return false;
+	const errors = (value as { errors?: unknown }).errors;
+	return Array.isArray(errors) && errors.length > 0;
+}
+
 const MCP_PROTOCOL_VERSIONS = new Set(['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05']);
 const LATEST_MCP_PROTOCOL_VERSION = '2025-11-25';
 
@@ -102,7 +108,7 @@ async function handleSingleJsonRpcMessage(
 							version: '1.0.0'
 						},
 						instructions:
-							'Self-hosted Scraps Cache personal encrypted notes vault. Use search_notes to find notes, list_notes to see recent notes, open_note to view full note details and checklists, and create_note/update_note to modify notes. When several workspaces were granted, search and list cover every one and name it on each note. Pass workspace to create a note or to read or change a note that exists in more than one workspace.'
+							'Self-hosted Scraps Cache personal encrypted notes vault. Use list_workspaces to see the workspaces granted to this connection, search_notes to find notes, list_notes to see recent notes, open_note to view full note details and checklists, and create_note/update_note to modify notes. When several workspaces were granted, search and list cover every one and name it on each note. Pass workspace to create a note or to read or change a note that exists in more than one workspace.'
 					}
 				};
 			}
@@ -151,7 +157,7 @@ async function handleSingleJsonRpcMessage(
 											: JSON.stringify(toolResult, null, 2)
 								}
 							],
-							isError: false
+							isError: toolResultHasErrors(toolResult)
 						}
 					};
 				} catch (err: unknown) {

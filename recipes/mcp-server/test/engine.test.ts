@@ -155,4 +155,12 @@ plain text line`;
 		const names = labels.labels.map((l) => l.name).sort();
 		expect(names).toEqual(['Ideas', 'Work']);
 	});
+
+	it('lists the granted workspace for a single-workspace connection', async () => {
+		const session = new McpSession(mockSyncClient);
+
+		expect(await session.callTool('list_workspaces', {})).toEqual({
+			workspaces: [{ workspace: 'Workspace' }]
+		});
+	});
 });

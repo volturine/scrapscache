@@ -118,15 +118,47 @@ describe('MCP App HTTP endpoints and JSON-RPC dispatch', () => {
 		const toolsRes = await app.handleRequest(toolsReq);
 		expect(toolsRes.status).toBe(200);
 		const toolsData = (await toolsRes.json()) as {
-			result: { tools: Array<{ name: string }> };
+			result: {
+				tools: Array<{ name: string; inputSchema: { properties: Record<string, unknown> } }>;
+			};
 		};
 		const toolNames = toolsData.result.tools.map((t) => t.name);
 		expect(toolNames).toContain('search_notes');
 		expect(toolNames).toContain('create_note');
-		expect(toolNames).toContain('read_note');
+		expect(toolNames).toContain('open_note');
+		expect(toolNames).not.toContain('read_note');
+		expect(toolNames).not.toContain('list_recent_notes');
 		expect(toolNames).toContain('update_note');
 		expect(toolNames).toContain('list_labels');
 		expect(toolNames).toContain('list_workspaces');
+		expect(
+			toolsData.result.tools.find((tool) => tool.name === 'open_note')?.inputSchema.properties
+		).not.toHaveProperty('workspace');
+
+		const callRes = await app.handleRequest(
+			new Request('http://localhost:3001/mcp', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					Authorization: `Bearer ${bearerToken}`
+				},
+				body: JSON.stringify({
+					jsonrpc: '2.0',
+					id: 3,
+					method: 'tools/call',
+					params: { name: 'list_workspaces', arguments: {} }
+				})
+			})
+		);
+		expect(callRes.status).toBe(200);
+		const callData = (await callRes.json()) as {
+			result: { structuredContent: unknown; content: [{ text: string }] };
+		};
+		expect(callData.result.structuredContent).toEqual({
+			workspaces: [{ workspace: 'Workspace' }]
+		});
+		expect(JSON.parse(callData.result.content[0].text)).toEqual(callData.result.structuredContent);
+		expect(JSON.stringify(callData)).not.toContain(syncKey);
 	});
 
 	it('redirects OAuth authorization to the authenticated Scraps Cache handshake', async () => {

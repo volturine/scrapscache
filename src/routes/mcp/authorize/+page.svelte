@@ -302,11 +302,6 @@
 	let selected = $derived(synced.find((workspace) => workspace.id === selectedWorkspaceId) ?? null);
 
 	function statusCaption(status: McpWorkspaceStatus | undefined): string {
-		if (status?.state === 'pending') {
-			return status.reason === 'initial-sync'
-				? 'Initial sync is not complete'
-				: 'Sync has pending changes';
-		}
 		if (status?.state === 'unavailable') return 'Cloud sync account is unavailable';
 		return 'Not available to MCP';
 	}
@@ -375,6 +370,46 @@
 			</div>
 
 			<div class={body}>
+				{#snippet workspaceChoices()}
+					{#each notReady as workspace (workspace.id)}
+						<label class={localRow}>
+							<input class={radio} type="radio" disabled />
+							<span class={optionText}>
+								<span class={optionName}>{workspace.name}</span>
+								<span class={optionCaption}>{statusCaption(mcpStatuses[workspace.id])}</span>
+							</span>
+						</label>
+					{/each}
+					{#each synced as workspace (workspace.id)}
+						<label class={option}>
+							<input
+								class={radio}
+								type="radio"
+								name="mcp-workspace"
+								value={workspace.id}
+								checked={selected?.id === workspace.id}
+								aria-describedby="mcp-workspace-hint"
+								onchange={() => (selectedWorkspaceId = workspace.id)}
+							/>
+							<span class={optionText}>
+								<span class={optionName}>{workspace.name}</span>
+								<span class={optionCaption}>
+									{workspace.id === syncStore.activeId ? 'Open on this device' : 'Synced'}
+								</span>
+							</span>
+						</label>
+					{/each}
+					{#each localOnly as workspace (workspace.id)}
+						<label class={localRow}>
+							<input class={radio} type="radio" disabled />
+							<span class={optionText}>
+								<span class={optionName}>{workspace.name}</span>
+								<span class={optionCaption}>On this device only</span>
+							</span>
+						</label>
+					{/each}
+				{/snippet}
+
 				{#if !params.valid}
 					<div class={noticeDanger}>
 						<AlertCircle class={iconSm} aria-hidden="true" />
@@ -384,9 +419,7 @@
 					<div class={noticeWarning}>
 						<div>
 							<p class={optionName}>Checking synced workspaces…</p>
-							<p class={fine}>
-								Scraps Cache is verifying that each workspace has completed sync and is reachable.
-							</p>
+							<p class={fine}>Scraps Cache is verifying that each synced workspace is reachable.</p>
 						</div>
 					</div>
 				{:else if synced.length === 0}
@@ -394,25 +427,36 @@
 						<div>
 							<p class={optionName}>
 								{notReady.length > 0
-									? 'No synced workspace is ready for MCP.'
+									? 'No reachable synced workspace is available for MCP.'
 									: 'No synced workspace on this device.'}
 							</p>
 							<p class={fine}>
 								{notReady.length > 0
-									? `Finish the initial sync or repair the unavailable cloud account, then refresh this page to connect ${params.clientName}.`
+									? `Repair the unavailable cloud account, then refresh this page to connect ${params.clientName}.`
 									: `Set up sync for a workspace in Scraps Cache, then refresh this page to connect ${params.clientName}.`}
 								A workspace that stays on this device cannot be granted.
 							</p>
 						</div>
 					</div>
+					{#if notReady.length > 0 || localOnly.length > 0}
+						<fieldset class={workspaces} aria-labelledby="mcp-workspace-label">
+							<div class={workspaceToolbar}>
+								<span id="mcp-workspace-label" class={legend}>Workspace status</span>
+							</div>
+							<p id="mcp-workspace-hint" class={fine}>
+								Only synced workspaces with a reachable cloud account can be selected.
+							</p>
+							<div class={workspaceList}>{@render workspaceChoices()}</div>
+						</fieldset>
+					{/if}
 				{:else}
 					{#if notReady.length > 0}
 						<div class={noticeWarning}>
 							<div>
-								<p class={optionName}>Some workspaces are not ready for MCP.</p>
+								<p class={optionName}>Some workspaces are unavailable for MCP.</p>
 								<p class={fine}>
-									Only completed, reachable sync workspaces can be selected. The unavailable
-									workspaces below are disabled.
+									Only synced workspaces with a reachable cloud account can be selected. The
+									unavailable workspaces below are disabled.
 								</p>
 							</div>
 						</div>
@@ -434,43 +478,7 @@
 							connection.
 						</p>
 						<div class={workspaceList}>
-							{#each notReady as workspace (workspace.id)}
-								<label class={localRow}>
-									<input class={radio} type="radio" disabled />
-									<span class={optionText}>
-										<span class={optionName}>{workspace.name}</span>
-										<span class={optionCaption}>{statusCaption(mcpStatuses[workspace.id])}</span>
-									</span>
-								</label>
-							{/each}
-							{#each synced as workspace (workspace.id)}
-								<label class={option}>
-									<input
-										class={radio}
-										type="radio"
-										name="mcp-workspace"
-										value={workspace.id}
-										checked={selected?.id === workspace.id}
-										aria-describedby="mcp-workspace-hint"
-										onchange={() => (selectedWorkspaceId = workspace.id)}
-									/>
-									<span class={optionText}>
-										<span class={optionName}>{workspace.name}</span>
-										<span class={optionCaption}>
-											{workspace.id === syncStore.activeId ? 'Open on this device' : 'Synced'}
-										</span>
-									</span>
-								</label>
-							{/each}
-							{#each localOnly as workspace (workspace.id)}
-								<label class={localRow}>
-									<input class={radio} type="radio" disabled />
-									<span class={optionText}>
-										<span class={optionName}>{workspace.name}</span>
-										<span class={optionCaption}>On this device only</span>
-									</span>
-								</label>
-							{/each}
+							{@render workspaceChoices()}
 						</div>
 					</fieldset>
 

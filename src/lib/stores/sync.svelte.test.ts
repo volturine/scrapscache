@@ -1304,7 +1304,7 @@ describe('client sync state machine', () => {
 		expect(store3.activeProfile).toEqual({ ...p1, syncKey: '' });
 	});
 
-	it('only marks completed and reachable workspaces as MCP-ready', async () => {
+	it('marks reachable synced workspaces as MCP-ready', async () => {
 		localStorage.clear();
 		const pending = createSyncIdentity();
 		const ready = createSyncIdentity();
@@ -1329,6 +1329,7 @@ describe('client sync state machine', () => {
 			syncKey: unavailable.syncKey,
 			createdAt: 3
 		});
+		await idb.markSyncOutbox('pending-mcp', ['note:pending-upload']);
 		localStorage.setItem(
 			'scrapscache-sync-status:ready-mcp',
 			JSON.stringify({ lastSync: Date.now() })
@@ -1360,7 +1361,7 @@ describe('client sync state machine', () => {
 
 		const statuses = await store.getMcpWorkspaceStatuses();
 
-		expect(statuses['pending-mcp']).toEqual({ state: 'pending', reason: 'initial-sync' });
+		expect(statuses['pending-mcp']).toEqual({ state: 'ready' });
 		expect(statuses['ready-mcp']).toEqual({ state: 'ready' });
 		expect(statuses['unavailable-mcp']).toEqual({ state: 'unavailable' });
 		expect(statuses[idb.LOCAL_PROFILE_ID]).toEqual({ state: 'local' });
@@ -1498,10 +1499,25 @@ describe('client sync state machine', () => {
 		await store.ensureProfilesLoaded();
 
 		expect(localStorage.getItem(`scrapscache-sync-status:${profile.id}`)).toBeNull();
-		expect((await store.getMcpWorkspaceStatuses())[profile.id]).toEqual({
-			state: 'pending',
-			reason: 'initial-sync'
-		});
+
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (input: RequestInfo | URL) => {
+				const path = new URL(String(input), 'http://localhost').pathname;
+				if (path.endsWith('/auth/challenge')) {
+					return new Response(JSON.stringify({ challengeId: 'challenge', challenge: 'value' }), {
+						status: 200,
+						headers: { 'content-type': 'application/json' }
+					});
+				}
+				return new Response(
+					JSON.stringify({ accessToken: 'token', expiresAt: Date.now() + 60_000 }),
+					{ status: 200, headers: { 'content-type': 'application/json' } }
+				);
+			})
+		);
+
+		expect((await store.getMcpWorkspaceStatuses())[profile.id]).toEqual({ state: 'ready' });
 	});
 });
 

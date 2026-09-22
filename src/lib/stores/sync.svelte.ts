@@ -94,11 +94,7 @@ interface SyncStatus {
 	lastSync: number;
 }
 
-export type McpWorkspaceStatus =
-	| { state: 'local' }
-	| { state: 'pending'; reason: 'initial-sync' | 'unsynced-changes' }
-	| { state: 'ready' }
-	| { state: 'unavailable' };
+export type McpWorkspaceStatus = { state: 'local' } | { state: 'ready' } | { state: 'unavailable' };
 
 function isSyncAccount(value: unknown): value is Pick<SyncAccount, 'syncKey'> {
 	return !!value && typeof value === 'object' && typeof (value as SyncAccount).syncKey === 'string';
@@ -384,13 +380,15 @@ export class SyncStore {
 	}
 
 	/**
-	 * Check which workspaces are safe to include in a new MCP grant. A sync key
-	 * alone only proves that a workspace was linked; it does not prove that the
-	 * first sync completed or that the relay account still exists.
+	 * Check which workspaces can be included in a new MCP grant. A synced
+	 * workspace is identified by its sync key; authenticating that key against
+	 * the relay also prevents stale or deleted cloud accounts from being shown
+	 * as selectable. Local sync progress is deliberately not a prerequisite:
+	 * MCP reads the encrypted cloud account, so an empty account and a workspace
+	 * with local changes waiting to upload are still valid user choices.
 	 */
 	async getMcpWorkspaceStatuses(): Promise<Record<string, McpWorkspaceStatus>> {
 		await this.ensureProfilesLoaded();
-		await this.waitForOutboxWrites();
 		const statuses: Record<string, McpWorkspaceStatus> = {};
 		const candidates: StoredProfile[] = [];
 
@@ -399,23 +397,6 @@ export class SyncStore {
 				statuses[profile.id] = { state: 'local' };
 				continue;
 			}
-
-			if (this.readStatus(profile.id).lastSync <= 0) {
-				statuses[profile.id] = { state: 'pending', reason: 'initial-sync' };
-				continue;
-			}
-
-			try {
-				const outbox = await getSyncOutboxKeys(profile.id);
-				if (outbox.length > 0) {
-					statuses[profile.id] = { state: 'pending', reason: 'unsynced-changes' };
-					continue;
-				}
-			} catch {
-				statuses[profile.id] = { state: 'unavailable' };
-				continue;
-			}
-
 			candidates.push(profile);
 		}
 

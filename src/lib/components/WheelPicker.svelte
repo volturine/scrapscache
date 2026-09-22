@@ -5,6 +5,7 @@
 
 	const ITEM_H = 36;
 	const VISIBLE = 5;
+	const PAD = Math.floor(VISIBLE / 2);
 	const COPIES = 3;
 	const FRICTION = 0.95;
 	const MIN_VEL = 0.03;
@@ -51,14 +52,14 @@
 	function stepValue(from: T, delta: number): T {
 		const n = items.length;
 		if (n === 0) return from;
-		const i = indexOf(from);
-		const next = (((i + delta) % n) + n) % n;
-		return items[next].value;
+		return items[wrapIndex(indexOf(from) + delta)].value;
 	}
 
 	const middleStart = $derived(items.length);
+	const copyH = $derived(items.length * ITEM_H);
+	const minTop = $derived((middleStart - PAD) * ITEM_H);
 	const valueIndex = $derived(indexOf(value));
-	const centerIndex = $derived(scrollIndex ?? Math.round(offset / ITEM_H));
+	const centerIndex = $derived(scrollIndex ?? middleStart + valueIndex);
 
 	const looped = $derived.by(() => {
 		const result: { visual: number; item: { value: T; label: string }; primary: boolean }[] = [];
@@ -77,33 +78,34 @@
 		return `${uid}-opt-${index}`;
 	}
 
-	function snapTo(index: number) {
-		offset = index * ITEM_H;
-		scrollIndex = index;
+	function wrapOffset(px: number): number {
+		if (copyH === 0) return px;
+		let top = px;
+		const span = copyH;
+		while (top < minTop) top += span;
+		while (top >= minTop + span) top -= span;
+		return top;
 	}
 
-	function applyOffset(next: number) {
-		const n = items.length;
-		if (n === 0) {
-			offset = next;
-			return;
-		}
-		const span = n * ITEM_H;
-		const min = span;
-		const max = span * 2;
-		while (next < min) next += span;
-		while (next >= max) next -= span;
-		offset = next;
+	function applyOffset(px: number) {
+		offset = wrapOffset(px);
+		scrollIndex = Math.round(offset / ITEM_H) + PAD;
+	}
+
+	function snapTo(index: number) {
+		offset = (index - PAD) * ITEM_H;
 		scrollIndex = null;
 	}
 
+	function commitIndex(index: number) {
+		const next = items[wrapIndex(index)];
+		if (!next) return;
+		snapTo(middleStart + wrapIndex(index));
+		if (next.value !== value) onChange(next.value);
+	}
+
 	function settle() {
-		const target = Math.round(offset / ITEM_H);
-		snapTo(target);
-		const wrapped = wrapIndex(target);
-		if (items[wrapped] && items[wrapped].value !== value) {
-			onChange(items[wrapped].value);
-		}
+		commitIndex(Math.round(offset / ITEM_H) + PAD);
 	}
 
 	function stopAnim() {
@@ -114,10 +116,11 @@
 	}
 
 	function inertia() {
-		let prev = performance.now();
-		const tick = (now: number) => {
-			const dt = Math.min(now - prev, 32);
-			prev = now;
+		stopAnim();
+		lastT = 0;
+		const tick = (t: number) => {
+			const dt = lastT ? Math.min(t - lastT, 32) : 16;
+			lastT = t;
 			if (Math.abs(velocity) < MIN_VEL) {
 				anim = 0;
 				settle();
@@ -141,6 +144,12 @@
 			stopAnim();
 			if (settleTimer) clearTimeout(settleTimer);
 		};
+	});
+
+	$effect(() => {
+		if (!dragging && scrollIndex == null) {
+			snapTo(middleStart + valueIndex);
+		}
 	});
 
 	function handleKeydown(e: KeyboardEvent) {

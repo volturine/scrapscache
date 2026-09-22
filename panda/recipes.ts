@@ -133,6 +133,7 @@ const buttonRecipe = defineRecipe({
 			),
 			secondary: {
 				...outlinedTransparentButton,
+				bg: 'scrapscache.bg',
 				color: 'scrapscache.text',
 				borderColor: 'scrapscache.border',
 				_hoverable: {
@@ -671,6 +672,7 @@ const dialogRecipe = defineSlotRecipe({
 			w: 'full',
 			maxW: '28rem',
 			bg: 'scrapscache.surface',
+			color: 'scrapscache.text',
 			borderWidth: 'hairline',
 			borderColor: 'scrapscache.border',
 			rounded: 'dialog',

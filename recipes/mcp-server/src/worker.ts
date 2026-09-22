@@ -50,25 +50,24 @@ export default {
 		].join('\0');
 		if (!cachedApp || lastConfigFingerprint !== fingerprint) {
 			cachedApp?.dispose();
-			const secret = env.MCP_SECRET!;
-			const stateId = env.OAUTH_STATE.idFromName('global-oauth-state-v1');
-			const stateStore = new DurableOAuthStateStore(env.OAUTH_STATE.get(stateId));
-			const oauthManager = new OAuthManager(secret, stateStore);
-			const tokenStore = new TokenStore(oauthManager, {
-				syncKey,
-				bearerToken: env.MCP_BEARER_TOKEN,
-				friendsTokensJson: env.MCP_FRIENDS_TOKENS
-			});
-
 			cachedApp = new McpApp({
 				scrapscacheUrl: env.SCRAPSCACHE_URL || 'https://scrapscache.com',
-				tokenStore,
 				publicOrigin: env.MCP_PUBLIC_ORIGIN
 			});
 			lastConfigFingerprint = fingerprint;
 		}
 
-		return cachedApp.handleRequest(request);
+		// Durable Object stubs belong to the request that created them. Never keep
+		// one in the cached app across OAuth redirects or later MCP requests.
+		const stateId = env.OAUTH_STATE.idFromName('global-oauth-state-v1');
+		const stateStore = new DurableOAuthStateStore(env.OAUTH_STATE.get(stateId));
+		const oauthManager = new OAuthManager(env.MCP_SECRET!, stateStore);
+		const tokenStore = new TokenStore(oauthManager, {
+			syncKey,
+			bearerToken: env.MCP_BEARER_TOKEN,
+			friendsTokensJson: env.MCP_FRIENDS_TOKENS
+		});
+		return cachedApp.handleRequest(request, tokenStore);
 	}
 };
 

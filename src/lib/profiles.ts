@@ -58,6 +58,24 @@ export function isLocalWorkspace(profile: StoredProfile): boolean {
 	return !profile.syncKey;
 }
 
+/** Names sent with a grant. Repeated names get a numeric suffix so each vault stays addressable. */
+export function mcpWorkspaceGrant(
+	profiles: readonly StoredProfile[]
+): { name: string; syncKey: string }[] {
+	const used = new Map<string, number>();
+	return profiles
+		.filter((profile) => profile.syncKey)
+		.map((profile) => {
+			const base = profile.name.trim() || 'Workspace';
+			const count = used.get(base) ?? 0;
+			used.set(base, count + 1);
+			return {
+				name: count === 0 ? base : `${base} ${count + 1}`,
+				syncKey: profile.syncKey
+			};
+		});
+}
+
 export function nextProfileName(existing: readonly { name: string }[]): string {
 	return randomWorkspaceName(existing.map((entry) => entry.name));
 }

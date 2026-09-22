@@ -93,6 +93,12 @@ interface SyncStatus {
 	lastSync: number;
 }
 
+export type McpWorkspaceStatus =
+	| { state: 'local' }
+	| { state: 'pending'; reason: 'initial-sync' | 'unsynced-changes' }
+	| { state: 'ready' }
+	| { state: 'unavailable' };
+
 function isSyncAccount(value: unknown): value is Pick<SyncAccount, 'syncKey'> {
 	return !!value && typeof value === 'object' && typeof (value as SyncAccount).syncKey === 'string';
 }
@@ -341,14 +347,69 @@ export class SyncStore {
 		await this.pendingOutboxWrites;
 	}
 
-	private restoreStatus(pid: string): void {
-		if (typeof localStorage === 'undefined') return;
+	private readStatus(pid: string): SyncStatus {
+		if (typeof localStorage === 'undefined') return { lastSync: 0 };
 		try {
 			const raw = localStorage.getItem(`${LS_SYNC_STATUS_PREFIX}:${pid}`);
-			this.lastSync = raw ? Number((JSON.parse(raw) as SyncStatus).lastSync) || 0 : 0;
+			const lastSync = raw ? Number((JSON.parse(raw) as SyncStatus).lastSync) || 0 : 0;
+			return { lastSync };
 		} catch {
-			this.lastSync = 0;
+			return { lastSync: 0 };
 		}
+	}
+
+	/**
+	 * Check which workspaces are safe to include in a new MCP grant. A sync key
+	 * alone only proves that a workspace was linked; it does not prove that the
+	 * first sync completed or that the relay account still exists.
+	 */
+	async getMcpWorkspaceStatuses(): Promise<Record<string, McpWorkspaceStatus>> {
+		await this.ensureProfilesLoaded();
+		await this.waitForOutboxWrites();
+		const statuses: Record<string, McpWorkspaceStatus> = {};
+		const candidates: StoredProfile[] = [];
+
+		for (const profile of this.profiles) {
+			if (!profile.syncKey) {
+				statuses[profile.id] = { state: 'local' };
+				continue;
+			}
+
+			if (this.readStatus(profile.id).lastSync <= 0) {
+				statuses[profile.id] = { state: 'pending', reason: 'initial-sync' };
+				continue;
+			}
+
+			try {
+				const outbox = await getSyncOutboxKeys(profile.id);
+				if (outbox.length > 0) {
+					statuses[profile.id] = { state: 'pending', reason: 'unsynced-changes' };
+					continue;
+				}
+			} catch {
+				statuses[profile.id] = { state: 'unavailable' };
+				continue;
+			}
+
+			candidates.push(profile);
+		}
+
+		await Promise.all(
+			candidates.map(async (profile) => {
+				try {
+					await this.accessToken(identityFromSyncKey(profile.syncKey));
+					statuses[profile.id] = { state: 'ready' };
+				} catch {
+					statuses[profile.id] = { state: 'unavailable' };
+				}
+			})
+		);
+
+		return statuses;
+	}
+
+	private restoreStatus(pid: string): void {
+		this.lastSync = this.readStatus(pid).lastSync;
 	}
 
 	private clearLegacyAccountStorage(): void {
@@ -529,6 +590,14 @@ export class SyncStore {
 	}
 
 	private async replaceKeyringEntry(profile: StoredProfile): Promise<void> {
+		const previous = this.profiles.find((entry) => entry.id === profile.id);
+		if (previous && previous.syncKey !== profile.syncKey && typeof localStorage !== 'undefined') {
+			try {
+				localStorage.removeItem(`${LS_SYNC_STATUS_PREFIX}:${profile.id}`);
+			} catch {
+				/* status is only a display cache */
+			}
+		}
 		await saveProfile(profile);
 		this.profiles = this.profiles.map((entry) => (entry.id === profile.id ? profile : entry));
 	}

@@ -183,10 +183,9 @@
 			pendingEncryptedBackup = data;
 			pendingKeepFiles = null;
 			keepImportReady = false;
+			backupDialogMode = BackupOperation.Import;
 			showingImportGuide = false;
 			settingsOpen = false;
-			await tick();
-			backupDialogMode = BackupOperation.Import;
 		} catch (err) {
 			backupImportError = err instanceof Error ? err.message : 'Could not read that file.';
 		} finally {
@@ -387,7 +386,7 @@
 				</Menu.Item>
 				<Menu.Item value="privacy">
 					{#snippet asChild(props)}
-						<a {...props()} href="/privacy" class={menuItemClass}>
+						<a {...props()} href={resolve('/privacy')} class={menuItemClass}>
 							<Shield class={iconSm} aria-hidden="true" />
 							Privacy policy
 						</a>
@@ -395,7 +394,7 @@
 				</Menu.Item>
 				<Menu.Item value="terms">
 					{#snippet asChild(props)}
-						<a {...props()} href="/terms" class={menuItemClass}>
+						<a {...props()} href={resolve('/terms')} class={menuItemClass}>
 							<FileText class={iconSm} aria-hidden="true" />
 							Terms of service
 						</a>
@@ -430,50 +429,47 @@
 	{/key}
 {/if}
 
-{#if showingImportGuide}
-	<ImportGuideDialog
-		busy={importingBackup}
-		error={backupImportError}
-		keepReady={keepImportReady}
-		onFile={importBackupFile}
-		onSelectMode={selectImportMode}
-		onClose={() => {
-			if (importingBackup) return;
-			showingImportGuide = false;
-			keepImportReady = false;
-			pendingKeepFiles = null;
-			backupImportError = '';
-		}}
-	/>
-{/if}
+<ImportGuideDialog
+	open={showingImportGuide}
+	busy={importingBackup}
+	error={backupImportError}
+	keepReady={keepImportReady}
+	onFile={importBackupFile}
+	onSelectMode={selectImportMode}
+	onClose={() => {
+		if (importingBackup) return;
+		showingImportGuide = false;
+		keepImportReady = false;
+		pendingKeepFiles = null;
+		backupImportError = '';
+	}}
+/>
 
-{#if choosingImportMode}
-	<BackupImportModeDialog
-		busy={importingBackup}
-		error={backupImportError}
-		keepImport={pendingKeepFiles !== null}
-		onSelect={selectImportMode}
-		onClose={() => {
-			if (importingBackup) return;
-			choosingImportMode = false;
-			pendingImportData = null;
-			pendingKeepFiles = null;
-			backupImportError = '';
-		}}
-	/>
-{/if}
+<BackupImportModeDialog
+	open={choosingImportMode}
+	busy={importingBackup}
+	error={backupImportError}
+	keepImport={pendingKeepFiles !== null}
+	onSelect={selectImportMode}
+	onClose={() => {
+		if (importingBackup) return;
+		choosingImportMode = false;
+		pendingImportData = null;
+		pendingKeepFiles = null;
+		backupImportError = '';
+	}}
+/>
 
-{#if backupDialogMode}
-	<BackupPassphraseDialog
-		mode={backupDialogMode}
-		busy={backupBusy}
-		error={backupImportError}
-		onSubmit={submitBackupPassphrase}
-		onClose={() => {
-			if (backupBusy) return;
-			backupDialogMode = null;
-			pendingEncryptedBackup = null;
-			backupImportError = '';
-		}}
-	/>
-{/if}
+<BackupPassphraseDialog
+	open={backupDialogMode !== null}
+	mode={backupDialogMode ?? BackupOperation.Export}
+	busy={backupBusy}
+	error={backupImportError}
+	onSubmit={submitBackupPassphrase}
+	onClose={() => {
+		if (backupBusy) return;
+		backupDialogMode = null;
+		pendingEncryptedBackup = null;
+		backupImportError = '';
+	}}
+/>

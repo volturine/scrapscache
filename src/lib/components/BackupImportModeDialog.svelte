@@ -6,12 +6,14 @@
 	import ImportModeChoices from './ImportModeChoices.svelte';
 
 	let {
+		open = true,
 		busy = false,
 		error = '',
 		keepImport = false,
 		onSelect,
 		onClose
 	}: {
+		open?: boolean;
 		busy?: boolean;
 		error?: string;
 		keepImport?: boolean;
@@ -29,42 +31,46 @@
 </script>
 
 <Dialog.Root
-	open
+	{open}
 	onOpenChange={handleOpenChange}
 	closeOnEscape={!busy}
 	closeOnInteractOutside={!busy}
 	preventScroll={false}
 	initialFocusEl={() => keepButton}
+	lazyMount
+	unmountOnExit
 >
-	<div {@attach portalToAppOverlay} class={d.portal} role="presentation">
-		<Dialog.Backdrop class={d.backdrop} />
-		<Dialog.Positioner class={d.positioner}>
-			<Dialog.Content class={d.panel}>
-				<div class={d.header}>
-					<Dialog.Title class={d.title}>
-						{keepImport
-							? 'How should these Keep notes be imported?'
-							: 'How should this backup be imported?'}
-					</Dialog.Title>
-				</div>
-
-				<div class={d.body}>
-					<ImportModeChoices {busy} {keepImport} bind:keepButton {onSelect} />
-					{#if error}
-						<p class={d.error} role="alert">
-							{error}
-						</p>
-					{/if}
-					<div class={d.footer}>
-						<button
-							type="button"
-							disabled={busy}
-							onclick={onClose}
-							class={button({ variant: 'quiet', size: 'md' })}>Cancel</button
-						>
+	{#if open}
+		<div {@attach portalToAppOverlay} class={d.portal} role="presentation">
+			<Dialog.Backdrop class={d.backdrop} />
+			<Dialog.Positioner class={d.positioner}>
+				<Dialog.Content class={d.panel}>
+					<div class={d.header}>
+						<Dialog.Title class={d.title}>
+							{keepImport
+								? 'How should these Keep notes be imported?'
+								: 'How should this backup be imported?'}
+						</Dialog.Title>
 					</div>
-				</div>
-			</Dialog.Content>
-		</Dialog.Positioner>
-	</div>
+
+					<div class={d.body}>
+						<ImportModeChoices {busy} {keepImport} bind:keepButton {onSelect} />
+						{#if error}
+							<p class={d.error} role="alert">
+								{error}
+							</p>
+						{/if}
+						<div class={d.footer}>
+							<button
+								type="button"
+								disabled={busy}
+								onclick={onClose}
+								class={button({ variant: 'quiet', size: 'md' })}>Cancel</button
+							>
+						</div>
+					</div>
+				</Dialog.Content>
+			</Dialog.Positioner>
+		</div>
+	{/if}
 </Dialog.Root>

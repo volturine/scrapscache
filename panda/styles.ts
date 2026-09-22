@@ -1185,7 +1185,7 @@ export const workspacePanelBtn = {
 
 const wheelItemBase = { ...flexCenter, fontVariantNumeric: 'tabular-nums', ...clickable };
 export const wheelItem = {
-	center: css({ ...wheelItemBase, textStyle: 'subtitleStrong' }),
+	center: css({ ...wheelItemBase, textStyle: 'subtitleStrong', color: 'scrapscache.text' }),
 	adjacent: css({ ...wheelItemBase, textStyle: 'button', ...mutedText }),
 	far: css({ ...wheelItemBase, fontSize: 'body', ...mutedText, opacity: 0.4 })
 };
@@ -1769,7 +1769,7 @@ export const reminderPickerStyles = {
 	ellipsis: flexTruncateClass,
 	wheelDeck: css({ rounded: 'dialog', bg: 'scrapscache.surfaceSubtle', px: 'sm', py: '2xs' }),
 	timeWheel: css({ w: '4rem' }),
-	colon: center({ w: '0.75rem', flexShrink: 0, textStyle: 'display' })
+	colon: center({ w: '0.75rem', flexShrink: 0, textStyle: 'display', color: 'scrapscache.text' })
 };
 
 export const wheelPickerStyles = {

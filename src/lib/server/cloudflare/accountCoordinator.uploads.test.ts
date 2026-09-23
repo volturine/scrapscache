@@ -54,19 +54,22 @@ function sync(
 }
 
 describe('uploads that have to be retried', () => {
-	it('retains prior R2 ciphertext for history and removes it with the account', async () => {
+	it('retains initial and replaced R2 ciphertext for history and removes it with the account', async () => {
 		const first = await sync([{ id: 'old', slot: SLOT, ciphertext: 'old-bytes' }]);
+		const initial = await client.execute('SELECT id, r2_key AS r2Key FROM envelope_history');
+		expect(initial.rows.map((row) => row.id)).toEqual(['old']);
 		const firstCursor = ((await first.json()) as { cursor: number }).cursor;
 		await sync(
 			[{ id: 'new', slot: SLOT, ciphertext: 'new-bytes', expectedId: 'old' }],
 			100_000_000,
 			firstCursor
 		);
-		const history = await client.execute('SELECT r2_key AS r2Key FROM envelope_history');
-		expect(history.rows).toHaveLength(1);
+		const history = await client.execute('SELECT id, r2_key AS r2Key FROM envelope_history');
+		expect(history.rows.map((row) => row.id)).toEqual(['old', 'new']);
 		const versions = await client.execute('SELECT saved_at AS savedAt FROM envelope_history');
 		expect(Number(versions.rows[0].savedAt)).toBeGreaterThan(0);
 		expect(objects.get(String(history.rows[0].r2Key))).toBe('old-bytes');
+		expect(objects.get(String(history.rows[1].r2Key))).toBe('new-bytes');
 		expect(objects.size).toBe(2);
 		await coordinator.fetch(
 			new Request('https://coordinator/delete', {
@@ -93,8 +96,8 @@ describe('uploads that have to be retried', () => {
 			secondCursor
 		);
 		const history = await client.execute('SELECT id FROM envelope_history');
-		expect(history.rows.map((row) => row.id)).toEqual(['two']);
-		expect([...objects.values()].sort()).toEqual(['bb', 'cc']);
+		expect(history.rows.map((row) => row.id)).toEqual(['three']);
+		expect([...objects.values()].sort()).toEqual(['cc']);
 	});
 	it('writes a retry under a fresh key and deletes the object the earlier attempt reserved', async () => {
 		const reserved = 'v1/prefix/reserved-key';
@@ -130,6 +133,21 @@ describe('uploads that have to be retried', () => {
 		await sync([{ id: 'upload-1', slot: SLOT, ciphertext: 'bytes' }]);
 
 		expect(objects.size).toBe(1);
+		expect(
+			(await client.execute('SELECT id FROM envelope_history')).rows.map((row) => row.id)
+		).toEqual(['upload-1']);
+	});
+
+	it('records a force-style reupload as a new version', async () => {
+		const first = await sync([{ id: 'initial', slot: SLOT, ciphertext: 'bytes' }]);
+		const cursor = ((await first.json()) as { cursor: number }).cursor;
+		await sync(
+			[{ id: 'forced', slot: SLOT, ciphertext: 'bytes', expectedId: 'initial' }],
+			100_000_000,
+			cursor
+		);
+		const history = await client.execute('SELECT id FROM envelope_history ORDER BY history_id');
+		expect(history.rows.map((row) => row.id)).toEqual(['initial', 'forced']);
 	});
 });
 

@@ -2,6 +2,8 @@
 	import { historyStyles as styles } from '$panda/styles';
 	import { ChevronLeft, ChevronRight, X } from '@lucide/svelte';
 	import { onMount, tick } from 'svelte';
+	import { prefersReducedMotion } from 'svelte/motion';
+	import { scale } from 'svelte/transition';
 	import { loadNoteHistory, hydrateHistoryNote, type NoteHistoryEntry } from '$lib/historyClient';
 	import type { Note } from '$lib/types';
 	import { syncStore, type SyncAccount } from '$lib/stores/sync.svelte';
@@ -81,9 +83,12 @@
 	}
 
 	function handleFocusOut(event: FocusEvent) {
-		if (event.relatedTarget instanceof Node && picker?.contains(event.relatedTarget)) return;
-		focused = false;
-		toggled = false;
+		const next = event.relatedTarget;
+		queueMicrotask(() => {
+			if (!picker?.isConnected || (next instanceof Node && picker.contains(next))) return;
+			focused = false;
+			toggled = false;
+		});
 	}
 
 	function handleKeyDown(event: KeyboardEvent) {
@@ -100,7 +105,6 @@
 			const note = await hydrateHistoryNote(account, entry);
 			if (!currentAccount()) return;
 			onPreviewVersion(note, entry);
-			closePicker();
 		} catch (cause) {
 			error = cause instanceof Error ? cause.message : 'Could not load this note version.';
 		} finally {
@@ -131,6 +135,9 @@
 		hovering = false;
 		dismissed = false;
 	}}
+	onpointerdown={() => (pointerFocusing = true)}
+	onpointerup={() => (pointerFocusing = false)}
+	onpointercancel={() => (pointerFocusing = false)}
 	onfocusin={() => {
 		if (pointerFocusing) return;
 		dismissed = false;
@@ -146,11 +153,9 @@
 		aria-label="Browse note versions"
 		aria-expanded={open}
 		aria-controls="note-history-dates"
-		onpointerdown={() => (pointerFocusing = true)}
 		onclick={() => {
-			pointerFocusing = false;
 			dismissed = false;
-			toggled = !toggled;
+			if (!hovering) toggled = !toggled;
 		}}
 	>
 		{#each [0, 1, 2, 3, 4] as mark (mark)}
@@ -159,7 +164,16 @@
 	</button>
 
 	{#if open}
-		<div id="note-history-dates" class={styles.picker} aria-label="Saved note versions">
+		<div
+			id="note-history-dates"
+			class={styles.picker}
+			aria-label="Saved note versions"
+			transition:scale={{
+				duration: prefersReducedMotion.current ? 0 : 140,
+				start: 0.94,
+				opacity: 0.2
+			}}
+		>
 			<div class={['scrollable', styles.list]}>
 				{#each entries as entry (entry.historyId)}
 					<button
@@ -186,7 +200,7 @@
 					</button>
 				{/if}
 				{#if !loading && entries.length === 0 && nextBefore === null}
-					<p class={styles.empty}>No earlier versions yet</p>
+					<p class={styles.empty}>No saved versions yet</p>
 				{/if}
 			</div>
 			{#if previewLoading}<p class={styles.status} role="status">Opening version…</p>{/if}

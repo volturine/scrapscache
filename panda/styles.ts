@@ -2087,8 +2087,9 @@ export const historyStyles = {
 	picker: css({
 		position: 'absolute',
 		top: '50%',
-		right: 0,
+		right: '100%',
 		transform: 'translateY(-50%)',
+		transformOrigin: 'right center',
 		w: '12.5rem',
 		maxW: 'calc(100vw - 2rem)',
 		maxH: 'min(22rem, 70dvh)',

@@ -301,14 +301,18 @@ export class AccountCoordinator {
 			statements.push(
 				{
 					sql: `INSERT INTO envelope_history(account_id, slot, id, r2_key, ciphertext_bytes, saved_at)
-						VALUES (?, ?, ?, ?, ?, ?)`,
+						SELECT ?, ?, ?, ?, ?, ? WHERE NOT EXISTS (
+							SELECT 1 FROM envelope_history WHERE account_id = ? AND id = ?
+						)`,
 					args: [
 						input.accountId,
 						removed.slot,
 						removed.id,
 						removed.r2Key,
 						removed.ciphertextBytes,
-						now
+						now,
+						input.accountId,
+						removed.id
 					]
 				},
 				{
@@ -350,8 +354,19 @@ export class AccountCoordinator {
 			if (prior)
 				statements.push({
 					sql: `INSERT INTO envelope_history(account_id, slot, id, r2_key, ciphertext_bytes, saved_at)
-					VALUES (?, ?, ?, ?, ?, ?)`,
-					args: [input.accountId, prior.slot, prior.id, prior.r2Key, prior.ciphertextBytes, now]
+						SELECT ?, ?, ?, ?, ?, ? WHERE NOT EXISTS (
+							SELECT 1 FROM envelope_history WHERE account_id = ? AND id = ?
+						)`,
+					args: [
+						input.accountId,
+						prior.slot,
+						prior.id,
+						prior.r2Key,
+						prior.ciphertextBytes,
+						now,
+						input.accountId,
+						prior.id
+					]
 				});
 			statements.push({
 				sql: `INSERT INTO envelopes(account_id, slot, seq, id, r2_key, ciphertext_bytes)
@@ -369,10 +384,22 @@ export class AccountCoordinator {
 				]
 			});
 			statements.push({
+				sql: `INSERT INTO envelope_history(account_id, slot, id, r2_key, ciphertext_bytes, saved_at)
+					VALUES (?, ?, ?, ?, ?, ?)`,
+				args: [
+					input.accountId,
+					upload.slot,
+					upload.id,
+					objectKeys.get(upload.id)!,
+					upload.ciphertext.length,
+					now
+				]
+			});
+			statements.push({
 				sql: 'DELETE FROM pending_envelopes WHERE account_id = ? AND id = ?',
 				args: [input.accountId, upload.id]
 			});
-			// The prior object now belongs to the encrypted history.
+			// History and the live record can reference the same encrypted object.
 			envelopeCount = projectedCount;
 			ciphertextBytes = projectedBytes;
 			currentBySlot.set(upload.slot, {

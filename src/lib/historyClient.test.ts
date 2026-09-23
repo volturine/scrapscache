@@ -75,4 +75,71 @@ describe('encrypted note history', () => {
 			account
 		);
 	});
+
+	it('finds the attachment by encrypted history when the timestamp lookup returns a newer version', async () => {
+		const account = createSyncIdentity();
+		const imageSlot = await sha256(`${account.syncKey}\u0000attachment:image`);
+		const oldImage = {
+			id: 'image',
+			mime: 'image/png',
+			createdAt: 1,
+			hash: await sha256('data:image/png;base64,QQ=='),
+			dataUrl: 'data:image/png;base64,QQ=='
+		};
+		const newImage = {
+			...oldImage,
+			hash: await sha256('data:image/png;base64,Qg=='),
+			dataUrl: 'data:image/png;base64,Qg=='
+		};
+		const envelope = (id: string, value: typeof oldImage) => ({
+			id,
+			slot: imageSlot,
+			ciphertext: encryptSyncPayload(account.syncKey, { kind: 'attachment', value }, imageSlot)
+		});
+		const oldEnvelope = envelope('old', oldImage);
+		const newEnvelope = envelope('new', newImage);
+		const fetch = vi.spyOn(syncStore, 'authorizedFetch').mockImplementation(async (path) => {
+			const url = String(path);
+			const body = url.includes('?slot=')
+				? newEnvelope
+				: url.includes('?noteSlot=')
+					? {
+							entries: [
+								{ historyId: 2, savedAt: 2 },
+								{ historyId: 1, savedAt: 1 }
+							],
+							nextBefore: null
+						}
+					: url.includes('?id=2')
+						? newEnvelope
+						: oldEnvelope;
+			return new Response(JSON.stringify(body), {
+				headers: { 'content-type': 'application/json' }
+			});
+		});
+		const restored = await hydrateHistoryNote(account, {
+			historyId: 1,
+			savedAt: 1,
+			note: {
+				id: 'note',
+				title: '',
+				body: '',
+				color: 'default',
+				pinned: false,
+				archived: false,
+				trashed: false,
+				trashedAt: null,
+				createdAt: 1,
+				updatedAt: 1,
+				reminder: null,
+				labels: [],
+				images: [{ id: 'image', mime: 'image/png', createdAt: 1, hash: oldImage.hash }]
+			}
+		});
+		expect(restored.images?.[0].dataUrl).toBe(oldImage.dataUrl);
+		expect(fetch.mock.calls.some(([path]) => String(path).includes(`?noteSlot=${imageSlot}`))).toBe(
+			true
+		);
+		expect(fetch.mock.calls.every(([path]) => !String(path).includes(oldImage.hash))).toBe(true);
+	});
 });

@@ -1,4 +1,4 @@
-/** The relay knows only opaque envelope versions and the time they were replaced. */
+/** The relay knows only opaque envelope versions and when they were uploaded. */
 export type HistoryEntry = { historyId: number; savedAt: number };
 export type HistoryPage = { entries: HistoryEntry[]; nextBefore: number | null };
 export type HistoryEnvelope = { id: string; slot: string; ciphertext: string };

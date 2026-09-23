@@ -587,8 +587,18 @@ export class SyncStore {
 					},
 					{
 						sql: `INSERT INTO envelope_history(account_id, slot, id, ciphertext, saved_at)
-							VALUES (?, ?, ?, ?, ?)`,
-						args: [accountId, removed.slot, removed.id, removed.ciphertext, deletedAt]
+							SELECT ?, ?, ?, ?, ? WHERE NOT EXISTS (
+								SELECT 1 FROM envelope_history WHERE account_id = ? AND id = ?
+							)`,
+						args: [
+							accountId,
+							removed.slot,
+							removed.id,
+							removed.ciphertext,
+							deletedAt,
+							accountId,
+							removed.id
+						]
 					},
 					{
 						sql: 'DELETE FROM envelopes WHERE account_id = ? AND slot = ? AND id = ?',
@@ -623,8 +633,18 @@ export class SyncStore {
 				if (prior)
 					uploadStatements.push({
 						sql: `INSERT INTO envelope_history(account_id, slot, id, ciphertext, saved_at)
-						VALUES (?, ?, ?, ?, ?)`,
-						args: [accountId, prior.slot, prior.id, prior.ciphertext, deletedAt]
+							SELECT ?, ?, ?, ?, ? WHERE NOT EXISTS (
+								SELECT 1 FROM envelope_history WHERE account_id = ? AND id = ?
+							)`,
+						args: [
+							accountId,
+							prior.slot,
+							prior.id,
+							prior.ciphertext,
+							deletedAt,
+							accountId,
+							prior.id
+						]
 					});
 				uploadStatements.push({
 					sql: `INSERT INTO envelopes(account_id, slot, seq, id, ciphertext)
@@ -634,6 +654,11 @@ export class SyncStore {
 						id = excluded.id,
 						ciphertext = excluded.ciphertext`,
 					args: [accountId, upload.slot, sequence, upload.id, upload.ciphertext]
+				});
+				uploadStatements.push({
+					sql: `INSERT INTO envelope_history(account_id, slot, id, ciphertext, saved_at)
+						VALUES (?, ?, ?, ?, ?)`,
+					args: [accountId, upload.slot, upload.id, upload.ciphertext, deletedAt]
 				});
 				if (prior) knownIds.delete(prior.id);
 				knownIds.add(upload.id);

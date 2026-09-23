@@ -18,6 +18,13 @@ async function read<T>(path: string, account: SyncAccount): Promise<T> {
 	return response.json() as Promise<T>;
 }
 
+async function readOptional<T>(path: string, account: SyncAccount): Promise<T | null> {
+	const response = await syncStore.authorizedFetch(path, { cache: 'no-store' }, account);
+	if (response.status === 404) return null;
+	if (!response.ok) throw new Error('Could not load sync history.');
+	return response.json() as Promise<T>;
+}
+
 function decode(account: SyncAccount, envelope: HistoryEnvelope) {
 	const payload = decryptSyncEnvelope(account.syncKey, envelope.ciphertext, envelope.slot).payload;
 	if (!isSyncRecordPayload(payload))
@@ -65,19 +72,37 @@ export async function hydrateHistoryNote(
 	const images: NoteImage[] = [];
 	for (const image of entry.note.images ?? []) {
 		const slot = await sha256(`${account.syncKey}\u0000attachment:${image.id}`);
-		const envelope = await read<HistoryEnvelope>(
+		const envelope = await readOptional<HistoryEnvelope>(
 			`/api/sync/history?slot=${slot}&at=${entry.savedAt}`,
 			account
 		);
-		const payload = decode(account, envelope);
-		if (
-			payload.kind !== 'attachment' ||
-			payload.value.id !== image.id ||
-			payload.value.hash !== image.hash
-		) {
-			throw new Error('An attachment from this version is no longer available.');
+		const matching = (candidate: HistoryEnvelope) => {
+			const payload = decode(account, candidate);
+			return payload.kind === 'attachment' &&
+				payload.value.id === image.id &&
+				payload.value.hash === image.hash
+				? payload.value
+				: null;
+		};
+		let attachment = envelope ? matching(envelope) : null;
+		let before: number | undefined;
+		while (!attachment) {
+			const params = new URLSearchParams({ noteSlot: slot });
+			if (before) params.set('before', String(before));
+			const page = await read<HistoryPage>(`/api/sync/history?${params}`, account);
+			for (const version of page.entries) {
+				const candidate = await read<HistoryEnvelope>(
+					`/api/sync/history?id=${version.historyId}`,
+					account
+				);
+				attachment = matching(candidate);
+				if (attachment) break;
+			}
+			if (attachment || page.nextBefore === null) break;
+			before = page.nextBefore;
 		}
-		images.push(attachmentToImage(payload.value));
+		if (!attachment) throw new Error('An attachment from this version is no longer available.');
+		images.push(attachmentToImage(attachment));
 	}
 	return { ...entry.note, images } as Note;
 }

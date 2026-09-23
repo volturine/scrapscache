@@ -16,8 +16,38 @@ export type Note = {
 	reminder?: number | null;
 	createdAt: number;
 	updatedAt: number;
+	secret?: boolean;
 	images?: unknown[];
+	linkPreviews?: unknown[];
+	fieldTimes?: Partial<Record<NoteField, number>>;
 };
+
+// Mirrors the app's field-level last-write-wins merge (src/lib/noteMerge.ts).
+const NOTE_FIELDS = [
+	'title',
+	'body',
+	'color',
+	'pinned',
+	'archived',
+	'trashed',
+	'secret',
+	'reminder',
+	'labels',
+	'images',
+	'linkPreviews'
+] as const;
+type NoteField = (typeof NOTE_FIELDS)[number];
+
+function fieldTime(note: Note, field: NoteField): number {
+	return Number(note.fieldTimes?.[field]) || note.updatedAt;
+}
+
+/** Stamp each changed field past its previous time so the app's merge keeps this edit. */
+function touchNoteFields(note: Note, fields: NoteField[], at = Date.now()): Note {
+	const fieldTimes = { ...note.fieldTimes };
+	for (const field of fields) fieldTimes[field] = Math.max(at, fieldTime(note, field) + 1);
+	return { ...note, updatedAt: Math.max(note.updatedAt, ...Object.values(fieldTimes)), fieldTimes };
+}
 
 export type Label = {
 	id: string;
@@ -659,7 +689,8 @@ export class McpSession {
 			trashedAt: null,
 			reminder,
 			createdAt: now,
-			updatedAt: now
+			updatedAt: now,
+			fieldTimes: Object.fromEntries(NOTE_FIELDS.map((field) => [field, now]))
 		};
 
 		const recordKey = `note:${noteId}`;
@@ -740,19 +771,27 @@ export class McpSession {
 		const labelIds =
 			args.labels !== undefined ? this.resolveLabelIds(args.labels) : existing.labels;
 
-		const updatedNote: Note = {
+		const before: Note = {
 			...existing,
 			trashed: existing.trashed ?? existing.trash ?? false,
-			trashedAt: existing.trashedAt ?? null,
+			trashedAt: existing.trashedAt ?? null
+		};
+		const edited: Note = {
+			...before,
 			title: args.title !== undefined ? args.title : existing.title,
 			body: updatedBody,
 			labels: labelIds,
 			color: args.color !== undefined ? args.color : existing.color,
 			pinned: args.pinned !== undefined ? args.pinned : existing.pinned,
 			archived: args.archived !== undefined ? args.archived : existing.archived,
-			...(reminder !== undefined ? { reminder } : {}),
-			updatedAt: Date.now()
+			...(reminder !== undefined ? { reminder } : {})
 		};
+		// Only fields whose value changed are stamped, so a concurrent app edit to
+		// any other field still wins the merge.
+		const changed = NOTE_FIELDS.filter(
+			(field) => JSON.stringify(edited[field]) !== JSON.stringify(before[field])
+		);
+		const updatedNote = touchNoteFields(edited, changed);
 
 		const recordKey = `note:${existing.id}`;
 		const payload: SyncRecordPayload = { kind: 'note', value: updatedNote };

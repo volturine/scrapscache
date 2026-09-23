@@ -1821,13 +1821,11 @@ export const noteEditorStyles = {
 			alignItems: { base: 'flex-start', md: 'center' },
 			justifyContent: 'center'
 		},
-		variants: {
-			expanded: { true: {}, false: { px: 'lg', pb: 'var(--app-sheet-pad-bottom)' } }
-		},
+		variants: { expanded: { true: {}, false: { px: 'lg', pb: 'var(--app-sheet-pad-bottom)' } } },
 		defaultVariants: { expanded: false }
 	}),
 	sheetBox: cva({
-		base: { maxH: 'full', minH: 0, w: 'full' },
+		base: { position: 'relative', maxH: 'full', minH: 0, w: 'full' },
 		variants: {
 			expanded: {
 				true: { h: 'full', maxW: 'none' },
@@ -1846,7 +1844,7 @@ export const noteEditorStyles = {
 		position: 'relative',
 		...column,
 		...fullSize,
-		overflow: 'hidden',
+		overflow: 'visible',
 		rounded: 'inherit'
 	}),
 	header: hstack({
@@ -1867,6 +1865,16 @@ export const noteEditorStyles = {
 		pt: 'lg',
 		pb: 'md'
 	}),
+	scrollerPreview: css({ pt: { base: 'pageWide', sm: '4xl' } }),
+	historyPreviewTitle: css({
+		mb: 'md',
+		w: 'full',
+		textStyle: 'editorTitle',
+		overflowWrap: 'anywhere'
+	}),
+	historyPreviewMedia: css({ display: 'flex', flexWrap: 'wrap', gap: 'sm', mt: 'lg' }),
+	historyPreviewImage: css({ maxW: '100%', maxH: '22rem', rounded: 'sm', objectFit: 'contain' }),
+	historyPreviewAttachment: css({ textStyle: 'caption', color: 'scrapscache.textMuted' }),
 	scrollerFill: css({ flex: 'initial' }),
 	title: css({
 		mb: 'md',
@@ -2041,6 +2049,152 @@ export const sidebarStyles = {
 		rounded: 'row',
 		transition: 'opacity 150ms ease'
 	})
+};
+
+export const historyStyles = {
+	anchor: css({
+		position: 'absolute',
+		top: '50%',
+		right: 'xs',
+		zIndex: 5,
+		transform: 'translateY(-50%)',
+		w: '2rem',
+		h: '6rem'
+	}),
+	marker: css({
+		display: 'flex',
+		flexDirection: 'column',
+		alignItems: 'center',
+		justifyContent: 'center',
+		gap: 'xs',
+		w: 'full',
+		h: 'full',
+		cursor: 'pointer',
+		rounded: 'row',
+		transitionProperty: 'background-color',
+		transitionDuration: '120ms',
+		_hoverable: { bg: 'scrapscache.interactiveHover' },
+		_focusVisible: { outline: 'none', ringWidth: '2px', ringColor: 'scrapscache.accent' }
+	}),
+	mark: css({
+		display: 'block',
+		w: '1rem',
+		h: '2px',
+		bg: 'scrapscache.textMuted',
+		opacity: 0.45,
+		rounded: 'full'
+	}),
+	picker: css({
+		position: 'absolute',
+		top: '50%',
+		right: '100%',
+		transform: 'translateY(-50%)',
+		transformOrigin: 'right center',
+		w: '12.5rem',
+		maxW: 'calc(100vw - 2rem)',
+		maxH: 'min(22rem, 70dvh)',
+		display: 'flex',
+		flexDirection: 'column',
+		borderWidth: 'hairline',
+		borderColor: 'scrapscache.border',
+		bg: 'scrapscache.surface',
+		rounded: 'card',
+		boxShadow: 'popover',
+		overflow: 'hidden'
+	}),
+	list: css({ overflowY: 'auto', minH: 0, p: 'xs' }),
+	entry: css({
+		display: 'block',
+		w: 'full',
+		px: 'sm',
+		py: 'xs',
+		textAlign: 'left',
+		textStyle: 'caption',
+		color: 'scrapscache.text',
+		whiteSpace: 'nowrap',
+		fontVariantNumeric: 'tabular-nums',
+		cursor: 'pointer',
+		rounded: 'row',
+		transitionProperty: 'background-color',
+		transitionDuration: '120ms',
+		_hoverable: { bg: 'scrapscache.interactiveHover' },
+		_active: { bg: 'scrapscache.interactiveActive' },
+		_focusVisible: { outline: 'none', ringWidth: '2px', ringColor: 'scrapscache.accent' }
+	}),
+	entrySelected: css({ bg: 'scrapscache.accentSubtle', color: 'scrapscache.accent' }),
+	more: css({
+		w: 'full',
+		px: 'sm',
+		py: 'xs',
+		textAlign: 'left',
+		textStyle: 'caption',
+		color: 'scrapscache.textMuted',
+		cursor: 'pointer',
+		rounded: 'row',
+		_hoverable: { bg: 'scrapscache.interactiveHover' },
+		_focusVisible: { outline: 'none', ringWidth: '2px', ringColor: 'scrapscache.accent' }
+	}),
+	empty: css({ px: 'sm', py: 'xs', textStyle: 'caption', color: 'scrapscache.textMuted' }),
+	status: css({ px: 'sm', pb: 'xs', textStyle: 'caption', color: 'scrapscache.textMuted' }),
+	toolbar: css({
+		position: 'absolute',
+		top: '4.25rem',
+		right: 'md',
+		zIndex: 4,
+		display: 'flex',
+		alignItems: 'center',
+		gap: '2xs',
+		maxW: 'calc(100% - 2rem)',
+		px: 'xs',
+		py: '2xs',
+		borderWidth: 'hairline',
+		borderColor: 'scrapscache.border',
+		bg: 'scrapscache.surface',
+		rounded: 'card',
+		boxShadow: 'popover',
+		flexWrap: 'wrap'
+	}),
+	stepper: css({ display: 'flex', alignItems: 'center', gap: '2xs', minW: 0 }),
+	timestamp: css({
+		textStyle: 'caption',
+		color: 'scrapscache.textMuted',
+		fontVariantNumeric: 'tabular-nums',
+		whiteSpace: 'nowrap'
+	}),
+	actions: css({ display: 'flex', alignItems: 'center', gap: '2xs' }),
+	iconAction: css({
+		display: 'grid',
+		placeItems: 'center',
+		w: '1.75rem',
+		h: '1.75rem',
+		color: 'scrapscache.textMuted',
+		cursor: 'pointer',
+		rounded: 'control',
+		_hoverable: { bg: 'scrapscache.interactiveHover', color: 'scrapscache.text' },
+		_disabled: { opacity: 0.35, cursor: 'default' },
+		_focusVisible: { outline: 'none', ringWidth: '2px', ringColor: 'scrapscache.accent' }
+	}),
+	textAction: css({
+		px: 'xs',
+		py: '2xs',
+		textStyle: 'caption',
+		color: 'scrapscache.textMuted',
+		cursor: 'pointer',
+		rounded: 'control',
+		_hoverable: { bg: 'scrapscache.interactiveHover' },
+		_focusVisible: { outline: 'none', ringWidth: '2px', ringColor: 'scrapscache.accent' }
+	}),
+	restoreAction: css({
+		px: 'sm',
+		py: '2xs',
+		textStyle: 'captionStrong',
+		color: 'scrapscache.accent',
+		cursor: 'pointer',
+		rounded: 'control',
+		_hoverable: { bg: 'scrapscache.accentSubtle' },
+		_focusVisible: { outline: 'none', ringWidth: '2px', ringColor: 'scrapscache.accent' }
+	}),
+	toolbarError: css({ w: 'full', px: 'xs', textStyle: 'caption', color: 'scrapscache.textMuted' })
 };
 
 export const topbarStyles = {

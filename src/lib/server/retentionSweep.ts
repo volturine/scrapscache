@@ -21,6 +21,7 @@ export type RetentionStatus = {
 export type RetentionStore = {
 	deleteInactiveAccounts(staleBefore: number): Promise<number>;
 	purgeExpiredDeletedEnvelopes(now?: number): Promise<number>;
+	purgeExpiredHistory?(now?: number): Promise<number>;
 };
 
 export type RetentionSweepOptions = {
@@ -82,6 +83,7 @@ export async function runRetentionSweep(
 	if (!options.force && now - previous.lastRunAt < RETENTION_INTERVAL_MS) return null;
 	try {
 		const purgedSlots = await store.purgeExpiredDeletedEnvelopes(now);
+		await store.purgeExpiredHistory?.(now);
 		let deletedAccounts = 0;
 		const cutoff = staleBeforeMs(inactiveDays, now);
 		if (cutoff != null) deletedAccounts = await store.deleteInactiveAccounts(cutoff);

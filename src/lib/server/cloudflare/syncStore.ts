@@ -6,6 +6,12 @@ import {
 import { batch, execute, type SqlStatement } from './d1';
 import { cloudflareBindings } from './env';
 import { MAX_CLIENT_SYNC_MUTATIONS_PER_REQUEST } from '$lib/syncLimits';
+import {
+	HISTORY_PAGE_SIZE,
+	HISTORY_TTL_MS,
+	type HistoryEnvelope,
+	type HistoryPage
+} from '$lib/syncHistory';
 
 export type EncryptedEnvelope = { seq: number; id: string; ciphertext: string; slot: string };
 export type OpaqueUpload = Omit<EncryptedEnvelope, 'seq'> & { expectedId?: string | null };
@@ -78,6 +84,98 @@ export class SyncStore {
 	);
 	private get db() {
 		return this.bindings.SCRAPSCACHE_DB;
+	}
+
+	async listHistory(accountId: string, slot: string, before?: number): Promise<HistoryPage> {
+		const rows = (
+			await execute(this.db, {
+				sql: `SELECT history_id AS historyId, saved_at AS savedAt FROM envelope_history
+				WHERE account_id = ? AND saved_at >= ? AND history_id < ? AND slot = ?
+				ORDER BY history_id DESC LIMIT ?`,
+				args: [
+					accountId,
+					Date.now() - HISTORY_TTL_MS,
+					before ?? Number.MAX_SAFE_INTEGER,
+					slot,
+					HISTORY_PAGE_SIZE + 1
+				]
+			})
+		).rows as Array<{ historyId: number; savedAt: number }>;
+		const entries = rows.slice(0, HISTORY_PAGE_SIZE);
+		return {
+			entries,
+			nextBefore: rows.length > HISTORY_PAGE_SIZE ? entries.at(-1)!.historyId : null
+		};
+	}
+
+	async getHistory(accountId: string, historyId: number): Promise<HistoryEnvelope | null> {
+		const row = (
+			await execute(this.db, {
+				sql: `SELECT id, slot, r2_key AS r2Key FROM envelope_history
+				WHERE account_id = ? AND history_id = ? AND saved_at >= ?`,
+				args: [accountId, historyId, Date.now() - HISTORY_TTL_MS]
+			})
+		).rows[0] as { id: string; slot: string; r2Key: string } | undefined;
+		if (!row) return null;
+		const object = await this.bindings.SCRAPSCACHE_ENVELOPES.get(row.r2Key);
+		if (!object) throw new Error('Encrypted history object is missing');
+		return { id: row.id, slot: row.slot, ciphertext: await object.text() };
+	}
+
+	async getEnvelopeAt(
+		accountId: string,
+		slot: string,
+		at: number
+	): Promise<HistoryEnvelope | null> {
+		const historical = (
+			await execute(this.db, {
+				sql: `SELECT id, slot, r2_key AS r2Key FROM envelope_history
+				WHERE account_id = ? AND slot = ? AND saved_at >= ? AND saved_at >= ?
+				ORDER BY saved_at ASC, history_id ASC LIMIT 1`,
+				args: [accountId, slot, at, Date.now() - HISTORY_TTL_MS]
+			})
+		).rows[0] as { id: string; slot: string; r2Key: string } | undefined;
+		const row =
+			historical ??
+			((
+				await execute(this.db, {
+					sql: 'SELECT id, slot, r2_key AS r2Key FROM envelopes WHERE account_id = ? AND slot = ?',
+					args: [accountId, slot]
+				})
+			).rows[0] as { id: string; slot: string; r2Key: string } | undefined);
+		if (!row) return null;
+		const object = await this.bindings.SCRAPSCACHE_ENVELOPES.get(row.r2Key);
+		if (!object) throw new Error('Encrypted envelope object is missing');
+		return { id: row.id, slot: row.slot, ciphertext: await object.text() };
+	}
+
+	async purgeExpiredHistory(now = Date.now()): Promise<number> {
+		const rows = (
+			await execute(this.db, {
+				sql: 'SELECT history_id AS historyId, r2_key AS r2Key FROM envelope_history WHERE saved_at < ? ORDER BY history_id LIMIT 500',
+				args: [now - HISTORY_TTL_MS]
+			})
+		).rows as Array<{ historyId: number; r2Key: string }>;
+		for (let index = 0; index < rows.length; index += 100)
+			await batch(
+				this.db,
+				rows.slice(index, index + 100).map((row) => ({
+					sql: 'DELETE FROM envelope_history WHERE history_id = ? AND saved_at < ?',
+					args: [row.historyId, now - HISTORY_TTL_MS]
+				}))
+			);
+		for (const row of rows) {
+			const reference = (
+				await execute(this.db, {
+					sql: `SELECT 1 FROM envelopes WHERE r2_key = ?
+					UNION SELECT 1 FROM deleted_envelopes WHERE r2_key = ?
+					UNION SELECT 1 FROM envelope_history WHERE r2_key = ? LIMIT 1`,
+					args: [row.r2Key, row.r2Key, row.r2Key]
+				})
+			).rows[0];
+			if (!reference) await this.bindings.SCRAPSCACHE_ENVELOPES.delete(row.r2Key);
+		}
+		return rows.length;
 	}
 
 	async getAuthCredential(accountId: string): Promise<string | null> {
@@ -407,7 +505,16 @@ export class SyncStore {
 				args: [String(r.accountId), String(r.slot)]
 			}))
 		);
-		await Promise.all(rows.map((r) => this.bindings.SCRAPSCACHE_ENVELOPES.delete(String(r.r2Key))));
+		for (const row of rows) {
+			const held =
+				(
+					await execute(this.db, {
+						sql: 'SELECT 1 FROM envelope_history WHERE r2_key = ? LIMIT 1',
+						args: [String(row.r2Key)]
+					})
+				).rows.length > 0;
+			if (!held) await this.bindings.SCRAPSCACHE_ENVELOPES.delete(String(row.r2Key));
+		}
 		return rows.length + (await this.purgeAbandonedUploads(now));
 	}
 

@@ -619,6 +619,7 @@ const choiceCardRecipe = defineSlotRecipe({
 			textStyle: 'caption'
 		},
 		badge: {
+			ms: 'xs',
 			rounded: 'pill',
 			bg: 'scrapscache.accentSubtle',
 			color: 'scrapscache.accent',

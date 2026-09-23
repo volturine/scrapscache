@@ -14,6 +14,9 @@
 	import { reminderStore } from '$lib/stores/reminders.svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
 	import LabelMenu from './LabelMenu.svelte';
+	import NoteAiDialog from './NoteAiDialog.svelte';
+	import { NOTE_AI_ACTIONS, NoteAiApply, type NoteAiAction } from '$lib/noteAiActions';
+	import { localAiStore, LocalAiStatus } from '$lib/stores/localAi.svelte';
 	import NoteEditorFooter from './NoteEditorFooter.svelte';
 	import BodyEditor from './BodyEditor.svelte';
 	import { appClock } from '$lib/appClock.svelte';
@@ -72,6 +75,7 @@
 	let paletteOpen = $state(false);
 	let reminderOpen = $state(false);
 	let labelOpen = $state(false);
+	let aiAction = $state<NoteAiAction | null>(null);
 	let copyFlash = $state(false);
 	let copyFlashTimer: ReturnType<typeof setTimeout> | null = null;
 	// svelte-ignore state_referenced_locally
@@ -363,6 +367,7 @@
 		paletteOpen = false;
 		reminderOpen = false;
 		labelOpen = false;
+		aiAction = null;
 	}
 
 	function openReminder() {
@@ -505,6 +510,27 @@
 		if (note) await notesStore.discardIfEmpty(note.id);
 		onClose();
 		void notesStore.syncPendingChanges();
+	}
+
+	function openAiAction(action: NoteAiAction) {
+		closePopups();
+		bodyEditor?.syncBodyNow?.();
+		aiAction = action;
+	}
+
+	async function applyAiResult(action: NoteAiAction, result: string) {
+		aiAction = null;
+		bodyEditor?.syncBodyNow?.();
+		const apply = NOTE_AI_ACTIONS[action].apply;
+		if (apply === NoteAiApply.Title) {
+			title = result;
+			commitNow();
+			return;
+		}
+		const next =
+			apply === NoteAiApply.Append && body.trim() ? `${body.trimEnd()}\n\n${result}` : result;
+		await bodyEditor?.replaceBodyWithText(next);
+		commitNow();
 	}
 
 	async function copyText() {
@@ -815,6 +841,9 @@
 							closePopups();
 							labelOpen = true;
 						}}
+						onAiAction={localAiStore.status === LocalAiStatus.Ready && body.trim()
+							? openAiAction
+							: undefined}
 						onCopy={() => void copyText()}
 						onRestore={() => {
 							notesStore.restoreNote(note.id);
@@ -836,6 +865,17 @@
 			</div>
 		</div>
 	</div>
+
+	{#if aiAction}
+		{@const action = aiAction}
+		<NoteAiDialog
+			{action}
+			{title}
+			{body}
+			onApply={(result) => void applyAiResult(action, result)}
+			onClose={() => (aiAction = null)}
+		/>
+	{/if}
 
 	{#if paletteOpen}
 		<Dialog.Root

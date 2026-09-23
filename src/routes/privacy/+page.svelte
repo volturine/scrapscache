@@ -49,6 +49,12 @@
 					connecting to any server, and without sending a single byte of note data over the
 					internet.
 				</p>
+				<p class={styles.sectionCopy}>
+					The optional local AI runs its language model inside your browser. Downloading it from
+					Settings fetches the model files from Hugging Face and GitHub, which see your IP address
+					as with any download. Summaries are generated on your device, and note content is never
+					sent to them or to us.
+				</p>
 			</section>
 
 			<section class={styles.section}>

@@ -1,10 +1,19 @@
 <script lang="ts">
-	import { canvasPreview, filePreview, iconSizeMd as iconMd, photoPreview } from '$panda/styles';
+	import {
+		canvasPreview,
+		filePreview,
+		iconSizeMd as iconMd,
+		iconSizeSm as iconSm,
+		noteAiMenuStyles,
+		photoPreview,
+		popover
+	} from '$panda/styles';
 	import { css, cx } from 'styled-system/css';
-	import { button, choiceCard, dialog, iconButton } from 'styled-system/recipes';
+	import { button, choiceCard, dialog, iconButton, menuItem } from 'styled-system/recipes';
 	import { hstack, grid, flex } from 'styled-system/patterns';
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { Format } from '@ark-ui/svelte/format';
+	import { Menu } from '@ark-ui/svelte/menu';
 	import AttachmentFullscreen from '$lib/components/AttachmentFullscreen.svelte';
 	import CanvasEditor from '$lib/components/CanvasEditor.svelte';
 	import PhotoFullscreen from '$lib/components/PhotoFullscreen.svelte';
@@ -29,6 +38,7 @@
 	import { isKeyboardField } from '$lib/appViewport';
 	import { isCanvasAttachment, mergeCanvasEdit } from '$lib/canvasAttachment';
 	import { mergeHydratedImages } from '$lib/noteAttachmentHydration';
+	import { NoteAiAction, noteAiLabel, translationLanguage } from '$lib/noteAiActions';
 	import {
 		Archive,
 		ArchiveRestore,
@@ -38,6 +48,7 @@
 		Paperclip,
 		PenLine,
 		RotateCcw,
+		Sparkles,
 		Tag,
 		Trash2,
 		X
@@ -57,6 +68,7 @@
 		fillPhotos = false,
 		onOpenColor,
 		onOpenTags,
+		onAiAction,
 		onCopy,
 		onRestore,
 		onArchive,
@@ -78,6 +90,8 @@
 		fillPhotos?: boolean;
 		onOpenColor?: () => void;
 		onOpenTags?: () => void;
+		/** Present only when the on-device model is ready and the note has text to work on. */
+		onAiAction?: (action: NoteAiAction) => void;
 		onCopy?: () => void;
 		onRestore?: () => void;
 		onArchive?: () => void;
@@ -659,6 +673,37 @@
 				maxW: 'calc(100% - 5.5rem)'
 			})}
 		>
+			{#if onAiAction}
+				{@const language = translationLanguage(navigator.language)}
+				<Menu.Root
+					positioning={{ placement: 'top-end' }}
+					onSelect={(details) => onAiAction(details.value as NoteAiAction)}
+					onEscapeKeyDown={(event) => {
+						// Escape closes this menu only, not the note.
+						event.stopPropagation();
+					}}
+				>
+					<Tooltip content="AI actions">
+						<Menu.Trigger
+							class={iconButton({ variant: 'ghost', size: 'standard' })}
+							title="AI actions"
+							aria-label="AI actions"
+						>
+							<Sparkles class={iconMd} aria-hidden="true" />
+						</Menu.Trigger>
+					</Tooltip>
+					<Menu.Positioner class={noteAiMenuStyles.positioner}>
+						<Menu.Content class={cx(popover, noteAiMenuStyles.content)}>
+							{#each Object.values(NoteAiAction) as action (action)}
+								<Menu.Item value={action} class={menuItem({ density: 'compact' })}>
+									<Sparkles class={iconSm} aria-hidden="true" />
+									{noteAiLabel(action, language)}
+								</Menu.Item>
+							{/each}
+						</Menu.Content>
+					</Menu.Positioner>
+				</Menu.Root>
+			{/if}
 			{@render footerButton('Color', 'Color', Palette, 'ghost', () => onOpenColor?.())}
 			{#if showCopy}
 				<Tooltip content="Copy note">

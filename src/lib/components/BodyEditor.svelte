@@ -768,6 +768,9 @@
 				syncBodyTimer = null;
 			}
 			lastSerializedBody = serializeLines(lines.filter((line) => line.id !== draftTaskId));
+			// Only a real change is input. The owner's save timer calls syncBodyNow,
+			// and reporting input there re-armed that timer forever.
+			if (lastSerializedBody === body) return;
 			body = lastSerializedBody;
 			oninput?.();
 			return;

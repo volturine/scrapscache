@@ -1415,6 +1415,25 @@ async function typeText(editor: HTMLElement, text: string) {
 }
 
 describe('BodyEditor controlled input', () => {
+	it('reports input from syncBodyNow only when the body changed', async () => {
+		// The note editor's save timer calls syncBodyNow; reporting input for an
+		// unchanged body re-armed that timer and rewrote the note every 800ms.
+		const oninput = vi.fn();
+		const { container, component } = render(BodyEditor, { props: { body: 'Hello', oninput } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+
+		component.syncBodyNow();
+		expect(oninput).not.toHaveBeenCalled();
+
+		caretAt(container, 0, 5);
+		await typeText(editor, '!');
+		oninput.mockClear();
+		component.syncBodyNow();
+		expect(oninput).toHaveBeenCalledTimes(1);
+		component.syncBodyNow();
+		expect(oninput).toHaveBeenCalledTimes(1);
+	});
+
 	it('applies typed text to the model instead of letting the browser edit styled DOM', async () => {
 		const oninput = vi.fn();
 		const { container } = render(BodyEditor, { props: { body: 'Hello', oninput } });

@@ -592,7 +592,12 @@
 	function adoptStoreNote(current: Note) {
 		if (!titleEdited && current.title !== title) title = current.title;
 		const currentBody = current.body ?? '';
-		if (!bodyEdited && currentBody !== body && bodyEditor?.adoptBody?.(currentBody)) {
+		// With no editor mounted (a history preview is showing), nothing is mid-typing.
+		if (
+			!bodyEdited &&
+			currentBody !== body &&
+			(!bodyEditor || bodyEditor.adoptBody?.(currentBody))
+		) {
 			body = currentBody;
 		}
 		// Attachment edits commit immediately, so the store owns the list; the
@@ -611,9 +616,7 @@
 		if (current) untrack(() => adoptStoreNote(current));
 	});
 
-	async function close(preserveEmpty = false) {
-		// Drop task-focus chrome immediately so dismiss is never gated on focus mode.
-		taskFocusLine = null;
+	async function flushDraft() {
 		// Text still being composed (an accent, a prediction) is on screen but not yet in the body.
 		bodyEditor?.finishInput?.();
 		commitDraft();
@@ -624,6 +627,13 @@
 				console.error('[NoteEditor] flush failed:', err);
 			}
 		}
+		draftDirty = false;
+	}
+
+	async function close(preserveEmpty = false) {
+		// Drop task-focus chrome immediately so dismiss is never gated on focus mode.
+		taskFocusLine = null;
+		await flushDraft();
 		if (note && !preserveEmpty) await notesStore.discardIfEmpty(note.id);
 		onClose();
 		void notesStore.syncPendingChanges();
@@ -633,8 +643,8 @@
 		if (!note || version.id !== note.id || !syncStore.account) return;
 		const id = note.id;
 		const accountId = syncStore.account.accountId;
-		await close(true);
-		if (syncStore.account?.accountId !== accountId) return;
+		await flushDraft();
+		if (syncStore.account?.accountId !== accountId || !note) return;
 		const restored = prepareImportedNotes([version], BackupImportMode.Keep, editContext)[0];
 		const availableLabels = new Set(notesStore.labels.map((label) => label.id));
 		notesStore.updateNote(id, {
@@ -650,6 +660,9 @@
 			images: restored.images,
 			linkPreviews: restored.linkPreviews ?? []
 		});
+		// adoptStoreNote carries the restored fields into the draft.
+		exitHistoryPreview();
+		void notesStore.syncPendingChanges();
 	}
 
 	async function copyText() {
@@ -800,7 +813,7 @@
 						{#key syncStore.account.accountId}
 							<TimeTravel
 								account={syncStore.account}
-								noteId={note.id}
+								{note}
 								previewEntry={historyPreview?.entry ?? null}
 								{restoreConfirmOpen}
 								{restoringPreview}
@@ -902,38 +915,41 @@
 							'note-scrollbar-hidden scrollable',
 							styles.scroller,
 							historyPreview && styles.scrollerPreview,
+							syncStore.account && styles.scrollerWithHistory,
 							uiStore.rawMarkdown && styles.rawScroller,
 							!historyPreview && photosFillEditor ? styles.scrollerFill : undefined
 						)}
 					>
 						{#if historyPreview}
-							<h1 class={styles.historyPreviewTitle}>
-								{historyPreview.note.title || 'Untitled note'}
-							</h1>
 							{#key historyPreview.entry.historyId}
-								<BodyEditor
-									body={historyPreview.note.body}
-									readOnly
-									placeholder="This note has no text."
-								/>
-							{/key}
-							{#if historyPreview.note.images?.length}
-								<div class={styles.historyPreviewMedia}>
-									{#each historyPreview.note.images as image (image.id)}
-										{#if image.mime.startsWith('image/')}
-											<img
-												class={styles.historyPreviewImage}
-												src={image.dataUrl}
-												alt={image.name || 'Note attachment'}
-											/>
-										{:else}
-											<span class={styles.historyPreviewAttachment}
-												>{image.name || 'Attachment'}</span
-											>
-										{/if}
-									{/each}
+								<div class={styles.historyPreviewContent}>
+									<h1 class={styles.historyPreviewTitle}>
+										{historyPreview.note.title || 'Untitled note'}
+									</h1>
+									<BodyEditor
+										body={historyPreview.note.body}
+										readOnly
+										placeholder="This note has no text."
+									/>
+									{#if historyPreview.note.images?.length}
+										<div class={styles.historyPreviewMedia}>
+											{#each historyPreview.note.images as image (image.id)}
+												{#if image.mime.startsWith('image/')}
+													<img
+														class={styles.historyPreviewImage}
+														src={image.dataUrl}
+														alt={image.name || 'Note attachment'}
+													/>
+												{:else}
+													<span class={styles.historyPreviewAttachment}
+														>{image.name || 'Attachment'}</span
+													>
+												{/if}
+											{/each}
+										</div>
+									{/if}
 								</div>
-							{/if}
+							{/key}
 						{:else}
 							<textarea
 								use:autoResizeTitle={title}

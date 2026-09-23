@@ -1911,12 +1911,17 @@ export const noteEditorStyles = {
 		pt: 'lg',
 		pb: 'md'
 	}),
-	scrollerPreview: css({ pt: { base: 'pageWide', sm: '4xl' } }),
+	scrollerPreview: css({ pb: '5rem' }),
+	scrollerWithHistory: css({ pr: '2.25rem' }),
 	historyPreviewTitle: css({
 		mb: 'md',
 		w: 'full',
 		textStyle: 'editorTitle',
 		overflowWrap: 'anywhere'
+	}),
+	historyPreviewContent: css({
+		animation: 'fadeIn 180ms ease-out',
+		_motionReduce: { animation: 'none' }
 	}),
 	historyPreviewMedia: css({ display: 'flex', flexWrap: 'wrap', gap: 'sm', mt: 'lg' }),
 	historyPreviewImage: css({ maxW: '100%', maxH: '22rem', rounded: 'sm', objectFit: 'contain' }),
@@ -2097,150 +2102,220 @@ export const sidebarStyles = {
 	})
 };
 
+// One container morphs between the tick rail and the version list (Ark's TOC hover pattern).
+const historyMotion = {
+	transitionDuration: '240ms',
+	transitionTimingFunction: 'cubic-bezier(0.2, 0, 0, 1)',
+	_motionReduce: { transitionDuration: '0ms' }
+} as const;
+// The rail clips its overflow, so focus outlines sit inside each control.
+const historyFocusRing = {
+	outline: '2px solid',
+	outlineColor: 'scrapscache.focus',
+	outlineOffset: '-2px'
+} as const;
+const historySwapState = (enter: string, exit: string) => ({
+	'&[data-state=open]': { animation: `${enter} 200ms cubic-bezier(0.2, 0, 0, 1)` },
+	'&[data-state=closed]': { animation: `${exit} 120ms ease-in` },
+	_motionReduce: { animation: 'none !important' },
+	_hidden: { display: 'none !important' }
+});
+
 export const historyStyles = {
-	anchor: css({
+	rail: css({
 		position: 'absolute',
 		top: '50%',
-		right: 'xs',
+		right: '2xs',
 		zIndex: 5,
+		display: 'grid',
+		w: '1.5rem',
+		// A wider collapsed rail gives fingers a usable target without crowding mouse users.
+		'@media (pointer: coarse)': { w: '2.25rem' },
+		// --history-ticks / --history-rows are per-instance counts; the sizes stay here.
+		h: 'calc(var(--history-ticks) * 7px + 1.25rem)',
+		maxW: 'calc(100% - 1rem)',
+		maxH: 'calc(100% - 9rem)',
+		overflow: 'hidden',
 		transform: 'translateY(-50%)',
-		w: '2rem',
-		h: '6rem'
+		borderWidth: 'hairline',
+		borderColor: 'transparent',
+		rounded: 'card',
+		animation: 'fadeIn 200ms ease-out',
+		transitionProperty: 'width, height, background-color, border-color, box-shadow, border-radius',
+		...historyMotion,
+		'&[data-expanded]': {
+			w: '17rem',
+			h: 'calc(var(--history-rows) * 2.75rem + 2.75rem)',
+			bg: 'scrapscache.surface',
+			borderColor: 'scrapscache.border',
+			boxShadow: 'popover',
+			rounded: 'dialog'
+		}
 	}),
-	marker: css({
-		display: 'flex',
-		flexDirection: 'column',
-		alignItems: 'center',
-		justifyContent: 'center',
-		gap: 'xs',
+	swap: css({
 		w: 'full',
 		h: 'full',
-		cursor: 'pointer',
-		rounded: 'row',
+		minH: 0,
+		// Pin the track to the rail so the fixed-width panel overflows leftward while it expands.
+		gridTemplateColumns: 'minmax(0, 1fr)',
+		gridTemplateRows: 'minmax(0, 1fr)'
+	}),
+	ticksLayer: css({ ...historySwapState('fadeIn', 'fadeOut'), w: 'full', h: 'full' }),
+	trigger: css({
+		...column,
+		alignItems: 'flex-end',
+		justifyContent: 'center',
+		gap: '5px',
+		w: 'full',
+		h: 'full',
+		px: '2xs',
+		...interactive,
+		rounded: 'card',
 		transitionProperty: 'background-color',
 		transitionDuration: '120ms',
 		_hoverable: { bg: 'scrapscache.interactiveHover' },
-		_focusVisible: { outline: 'none', ringWidth: '2px', ringColor: 'scrapscache.accent' }
+		_focusVisible: historyFocusRing
 	}),
-	mark: css({
+	tick: css({
 		display: 'block',
-		w: '1rem',
+		flexShrink: 0,
 		h: '2px',
 		bg: 'scrapscache.textMuted',
-		opacity: 0.45,
-		rounded: 'full'
+		opacity: 0.5,
+		rounded: 'pill',
+		transitionProperty: 'width, opacity, background-color',
+		...historyMotion,
+		'&[data-active]': { w: '1rem !important', bg: 'scrapscache.text', opacity: 1 }
 	}),
-	picker: css({
-		position: 'absolute',
-		top: '50%',
-		right: '100%',
-		transform: 'translateY(-50%)',
-		transformOrigin: 'right center',
-		w: '12.5rem',
-		maxW: 'calc(100vw - 2rem)',
-		maxH: 'min(22rem, 70dvh)',
-		display: 'flex',
-		flexDirection: 'column',
-		borderWidth: 'hairline',
-		borderColor: 'scrapscache.border',
-		bg: 'scrapscache.surface',
-		rounded: 'card',
-		boxShadow: 'popover',
-		overflow: 'hidden'
+	panelLayer: css({
+		...historySwapState('swapIn', 'fadeOut'),
+		justifySelf: 'end',
+		w: '17rem',
+		maxW: 'calc(100vw - 1rem)',
+		h: 'full',
+		minH: 0,
+		transformOrigin: 'right center'
 	}),
-	list: css({ overflowY: 'auto', minH: 0, p: 'xs' }),
-	entry: css({
-		display: 'block',
+	panel: css({ ...column, w: 'full', h: 'full', minH: 0 }),
+	panelHeader: css({
+		...rowCenter,
+		justifyContent: 'space-between',
+		flexShrink: 0,
+		h: '2.25rem',
+		px: 'md',
+		textStyle: 'overline'
+	}),
+	panelCount: css({ textStyle: 'caption', fontVariantNumeric: 'tabular-nums' }),
+	list: css({
+		minH: 0,
+		flex: '1',
+		overflowY: 'auto',
+		px: '2xs',
+		pb: '2xs'
+	}),
+	row: css({
+		...column,
+		justifyContent: 'center',
 		w: 'full',
+		h: '2.75rem',
 		px: 'sm',
-		py: 'xs',
 		textAlign: 'left',
-		textStyle: 'caption',
-		color: 'scrapscache.text',
-		whiteSpace: 'nowrap',
-		fontVariantNumeric: 'tabular-nums',
-		cursor: 'pointer',
+		...interactive,
 		rounded: 'row',
-		transitionProperty: 'background-color',
+		outline: 'none',
+		transitionProperty: 'background-color, opacity',
 		transitionDuration: '120ms',
 		_hoverable: { bg: 'scrapscache.interactiveHover' },
 		_active: { bg: 'scrapscache.interactiveActive' },
-		_focusVisible: { outline: 'none', ringWidth: '2px', ringColor: 'scrapscache.accent' }
+		_focusVisible: historyFocusRing,
+		'&[data-loading]': { opacity: 0.55, animation: 'pulse 1.2s ease-in-out infinite' },
+		'&[aria-current]': { bg: 'scrapscache.accentSubtle' }
 	}),
-	entrySelected: css({ bg: 'scrapscache.accentSubtle', color: 'scrapscache.accent' }),
+	rowTop: css({ ...rowCenter, justifyContent: 'space-between', gap: 'sm', minW: 0 }),
+	rowTime: css({
+		textStyle: 'label',
+		color: 'scrapscache.text',
+		fontVariantNumeric: 'tabular-nums',
+		'[aria-current] &': { color: 'scrapscache.accent' }
+	}),
+	rowStats: css({
+		display: 'flex',
+		gap: '2xs',
+		flexShrink: 0,
+		textStyle: 'caption',
+		fontVariantNumeric: 'tabular-nums'
+	}),
+	added: css({ color: 'scrapscache.success' }),
+	removed: css({ color: 'scrapscache.danger' }),
+	rowSummary: css({ ...truncateText, textStyle: 'caption' }),
 	more: css({
 		w: 'full',
+		h: '2.75rem',
 		px: 'sm',
-		py: 'xs',
 		textAlign: 'left',
 		textStyle: 'caption',
-		color: 'scrapscache.textMuted',
-		cursor: 'pointer',
+		...interactive,
 		rounded: 'row',
-		_hoverable: { bg: 'scrapscache.interactiveHover' },
-		_focusVisible: { outline: 'none', ringWidth: '2px', ringColor: 'scrapscache.accent' }
+		_hoverable: { bg: 'scrapscache.interactiveHover', color: 'scrapscache.text' },
+		_focusVisible: historyFocusRing,
+		_disabled: { cursor: 'default' }
 	}),
-	empty: css({ px: 'sm', py: 'xs', textStyle: 'caption', color: 'scrapscache.textMuted' }),
-	status: css({ px: 'sm', pb: 'xs', textStyle: 'caption', color: 'scrapscache.textMuted' }),
-	toolbar: css({
+	message: css({ px: 'sm', py: 'sm', textStyle: 'caption' }),
+	bar: css({
 		position: 'absolute',
-		top: '4.25rem',
-		right: 'md',
+		bottom: 'lg',
+		left: '50%',
 		zIndex: 4,
 		display: 'flex',
 		alignItems: 'center',
 		gap: '2xs',
 		maxW: 'calc(100% - 2rem)',
-		px: 'xs',
-		py: '2xs',
+		p: '2xs',
+		transform: 'translateX(-50%)',
 		borderWidth: 'hairline',
 		borderColor: 'scrapscache.border',
 		bg: 'scrapscache.surface',
-		rounded: 'card',
+		rounded: 'pill',
 		boxShadow: 'popover',
-		flexWrap: 'wrap'
+		animation: 'cardIn',
+		_motionReduce: { animation: 'none' }
 	}),
-	stepper: css({ display: 'flex', alignItems: 'center', gap: '2xs', minW: 0 }),
-	timestamp: css({
-		textStyle: 'caption',
-		color: 'scrapscache.textMuted',
-		fontVariantNumeric: 'tabular-nums',
-		whiteSpace: 'nowrap'
-	}),
-	actions: css({ display: 'flex', alignItems: 'center', gap: '2xs' }),
-	iconAction: css({
-		display: 'grid',
-		placeItems: 'center',
-		w: '1.75rem',
-		h: '1.75rem',
-		color: 'scrapscache.textMuted',
-		cursor: 'pointer',
-		rounded: 'control',
-		_hoverable: { bg: 'scrapscache.interactiveHover', color: 'scrapscache.text' },
-		_disabled: { opacity: 0.35, cursor: 'default' },
-		_focusVisible: { outline: 'none', ringWidth: '2px', ringColor: 'scrapscache.accent' }
-	}),
-	textAction: css({
+	barLabel: css({
+		...column,
+		alignItems: 'center',
+		minW: '7.5rem',
 		px: 'xs',
-		py: '2xs',
-		textStyle: 'caption',
-		color: 'scrapscache.textMuted',
-		cursor: 'pointer',
-		rounded: 'control',
-		_hoverable: { bg: 'scrapscache.interactiveHover' },
-		_focusVisible: { outline: 'none', ringWidth: '2px', ringColor: 'scrapscache.accent' }
+		animation: 'fadeIn 160ms ease-out',
+		_motionReduce: { animation: 'none' }
 	}),
-	restoreAction: css({
+	barTime: css({ textStyle: 'label', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }),
+	barDate: css({ textStyle: 'caption', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }),
+	barDivider: css({
+		flexShrink: 0,
+		alignSelf: 'stretch',
+		w: 'hairline',
+		my: 'xs',
+		mx: '2xs',
+		bg: 'scrapscache.border'
+	}),
+	// Concentric with the pill bar.
+	barAction: css({ rounded: 'pill' }),
+	barPrompt: css({ px: 'xs', textStyle: 'label', whiteSpace: 'nowrap' }),
+	barError: css({
+		position: 'absolute',
+		bottom: 'calc(100% + 0.5rem)',
+		left: '50%',
+		transform: 'translateX(-50%)',
+		w: 'max-content',
+		maxW: '18rem',
 		px: 'sm',
 		py: '2xs',
-		textStyle: 'captionStrong',
-		color: 'scrapscache.accent',
-		cursor: 'pointer',
+		textStyle: 'caption',
+		color: 'scrapscache.danger',
+		bg: 'scrapscache.surface',
 		rounded: 'control',
-		_hoverable: { bg: 'scrapscache.accentSubtle' },
-		_focusVisible: { outline: 'none', ringWidth: '2px', ringColor: 'scrapscache.accent' }
-	}),
-	toolbarError: css({ w: 'full', px: 'xs', textStyle: 'caption', color: 'scrapscache.textMuted' })
+		boxShadow: 'popover'
+	})
 };
 
 export const topbarStyles = {

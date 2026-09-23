@@ -1,16 +1,19 @@
 <script lang="ts">
 	import { historyStyles as styles } from '$panda/styles';
+	import { Swap } from '@ark-ui/svelte/swap';
 	import { ChevronLeft, ChevronRight, X } from '@lucide/svelte';
 	import { onMount, tick } from 'svelte';
-	import { prefersReducedMotion } from 'svelte/motion';
-	import { scale } from 'svelte/transition';
+	import { button, iconButton } from 'styled-system/recipes';
+	import { appClock } from '$lib/appClock.svelte';
 	import { loadNoteHistory, hydrateHistoryNote, type NoteHistoryEntry } from '$lib/historyClient';
+	import { describeNoteVersionChange, distinctNoteVersions } from '$lib/noteVersionChange';
 	import type { Note } from '$lib/types';
+	import { formatActivityRelative } from '$lib/utils';
 	import { syncStore, type SyncAccount } from '$lib/stores/sync.svelte';
 
 	let {
 		account,
-		noteId,
+		note,
 		previewEntry,
 		restoreConfirmOpen,
 		restoringPreview,
@@ -22,7 +25,7 @@
 		onConfirmRestore
 	}: {
 		account: SyncAccount;
-		noteId: string;
+		note: Note;
 		previewEntry: NoteHistoryEntry | null;
 		restoreConfirmOpen: boolean;
 		restoringPreview: boolean;
@@ -34,25 +37,65 @@
 		onConfirmRestore: () => void;
 	} = $props();
 
+	const MAX_TICKS = 24;
+	const CLOSE_DELAY_MS = 160;
+
 	let entries = $state.raw<NoteHistoryEntry[]>([]);
 	let nextBefore = $state<number | null | undefined>(undefined);
 	let loading = $state(false);
-	let previewLoading = $state(false);
+	let openingId = $state<number | null>(null);
 	let error = $state('');
-	let hovering = $state(false);
-	let focused = $state(false);
-	let toggled = $state(false);
-	let dismissed = $state(false);
-	let pointerFocusing = false;
-	let trigger: HTMLButtonElement | null = null;
-	let picker = $state<HTMLElement | null>(null);
-	const open = $derived(!dismissed && (hovering || focused || toggled));
-	const selectedIndex = $derived(
-		previewEntry ? entries.findIndex((entry) => entry.historyId === previewEntry.historyId) : -1
+	let hovered = $state(false);
+	let pinned = $state(false);
+	let rail = $state<HTMLElement | null>(null);
+	let trigger = $state<HTMLButtonElement | null>(null);
+	let list = $state<HTMLElement | null>(null);
+	let closeTimer: ReturnType<typeof setTimeout> | undefined;
+	let lastPointerType = '';
+	let openRequest = 0;
+
+	const versions = $derived(distinctNoteVersions(entries, note));
+	const changes = $derived(
+		versions.map((entry, index) => describeNoteVersionChange(entry.note, versions[index + 1]?.note))
 	);
+	const selectedIndex = $derived(
+		previewEntry ? versions.findIndex((entry) => entry.historyId === previewEntry.historyId) : -1
+	);
+	// Row 0 is the live note; version rows follow newest first.
+	const activeRow = $derived(selectedIndex + 1);
+	const expanded = $derived(hovered || pinned);
+	const visible = $derived(versions.length > 0 || !!error);
+	const tickWidths = $derived([
+		12,
+		...changes.map((change) => 6 + Math.min(4, change.added + change.removed) * 3)
+	]);
+	const tickStart = $derived(
+		Math.max(0, Math.min(activeRow - MAX_TICKS / 2, tickWidths.length - MAX_TICKS))
+	);
+	const ticks = $derived(
+		tickWidths.map((width, row) => ({ width, row })).slice(tickStart, tickStart + MAX_TICKS)
+	);
+	const extraRows = $derived((nextBefore !== null ? 1 : 0) + (error ? 1 : 0));
 
 	function currentAccount(): boolean {
 		return syncStore.account?.accountId === account.accountId;
+	}
+
+	// Saves are often seconds apart, so the exact time keeps them distinguishable.
+	function exact(at: number): string {
+		return new Date(at).toLocaleString([], {
+			month: 'short',
+			day: 'numeric',
+			year: 'numeric',
+			hour: 'numeric',
+			minute: '2-digit',
+			second: '2-digit'
+		});
+	}
+
+	function relative(at: number): string {
+		const label = formatActivityRelative(at, appClock.now);
+		return label === 'just now' ? 'Just now' : label;
 	}
 
 	async function loadMore() {
@@ -60,9 +103,9 @@
 		loading = true;
 		error = '';
 		try {
-			const page = await loadNoteHistory(account, noteId, nextBefore);
+			const page = await loadNoteHistory(account, note.id, nextBefore);
 			if (!currentAccount()) return;
-			entries = [...entries, ...page.entries.filter((entry) => entry.note.id === noteId)];
+			entries = [...entries, ...page.entries.filter((entry) => entry.note.id === note.id)];
 			nextBefore = page.nextBefore;
 		} catch (cause) {
 			error = cause instanceof Error ? cause.message : 'Could not load note history.';
@@ -73,205 +116,290 @@
 
 	onMount(() => {
 		void loadMore();
+		return () => clearTimeout(closeTimer);
 	});
 
-	function closePicker(returnFocus = false) {
-		dismissed = true;
-		toggled = false;
-		focused = false;
-		if (returnFocus) void tick().then(() => trigger?.focus());
+	// Touch has no hover, so a tap pins the panel open until the next tap elsewhere.
+	$effect(() => {
+		if (!pinned) return;
+		const dismiss = (event: PointerEvent) => {
+			if (!(event.target instanceof Node) || !rail?.contains(event.target)) pinned = false;
+		};
+		document.addEventListener('pointerdown', dismiss, true);
+		return () => document.removeEventListener('pointerdown', dismiss, true);
+	});
+
+	// Keep keyboard focus on a control that stays visible when the panel collapses.
+	$effect(() => {
+		if (expanded || !rail?.contains(document.activeElement) || document.activeElement === trigger)
+			return;
+		void tick().then(() => trigger?.focus({ preventScroll: true }));
+	});
+
+	function rowButtons(): HTMLButtonElement[] {
+		return [...(list?.querySelectorAll<HTMLButtonElement>('[data-history-row]') ?? [])];
 	}
 
-	function handleFocusOut(event: FocusEvent) {
-		const next = event.relatedTarget;
-		queueMicrotask(() => {
-			if (!picker?.isConnected || (next instanceof Node && picker.contains(next))) return;
-			focused = false;
-			toggled = false;
-		});
+	async function expandFromTrigger() {
+		pinned = true;
+		if (lastPointerType === 'mouse') return;
+		await tick();
+		const rows = rowButtons();
+		(rows[activeRow] ?? rows[0])?.focus({ preventScroll: true });
+		rows[activeRow]?.scrollIntoView({ block: 'nearest' });
 	}
 
-	function handleKeyDown(event: KeyboardEvent) {
-		if (event.key !== 'Escape' || !open) return;
-		event.stopPropagation();
-		closePicker(true);
+	function handleListKeyDown(event: KeyboardEvent) {
+		if (event.key === 'Escape' && expanded) {
+			event.stopPropagation();
+			clearTimeout(closeTimer);
+			hovered = false;
+			pinned = false;
+			return;
+		}
+		const rows = rowButtons();
+		const index = rows.indexOf(document.activeElement as HTMLButtonElement);
+		if (index < 0) return;
+		const target =
+			event.key === 'ArrowDown'
+				? rows[Math.min(index + 1, rows.length - 1)]
+				: event.key === 'ArrowUp'
+					? rows[Math.max(index - 1, 0)]
+					: event.key === 'Home'
+						? rows[0]
+						: event.key === 'End'
+							? rows[rows.length - 1]
+							: null;
+		if (!target) return;
+		event.preventDefault();
+		target.focus();
+		target.scrollIntoView({ block: 'nearest' });
 	}
 
-	async function openPreview(entry: NoteHistoryEntry) {
-		if (previewLoading) return;
-		previewLoading = true;
+	async function openVersion(entry: NoteHistoryEntry) {
+		const request = ++openRequest;
+		openingId = entry.historyId;
 		error = '';
 		try {
-			const note = await hydrateHistoryNote(account, entry);
-			if (!currentAccount()) return;
-			onPreviewVersion(note, entry);
+			const version = await hydrateHistoryNote(account, entry);
+			if (request !== openRequest || !currentAccount()) return;
+			onPreviewVersion(version, entry);
 		} catch (cause) {
-			error = cause instanceof Error ? cause.message : 'Could not load this note version.';
+			if (request === openRequest)
+				error = cause instanceof Error ? cause.message : 'Could not load this note version.';
 		} finally {
-			previewLoading = false;
+			if (request === openRequest) openingId = null;
 		}
 	}
 
-	function travel(offset: number) {
-		const next = entries[selectedIndex + offset];
-		if (next) void openPreview(next);
+	function selectRow(entry: NoteHistoryEntry | null) {
+		if (lastPointerType === 'touch') pinned = false;
+		if (!entry) {
+			openRequest++;
+			openingId = null;
+			if (previewEntry) onCancelPreview();
+			return;
+		}
+		if (entry.historyId !== previewEntry?.historyId) void openVersion(entry);
+	}
+
+	async function stepOlder() {
+		if (selectedIndex === versions.length - 1) await loadMore();
+		const next = versions[selectedIndex + 1];
+		if (next) void openVersion(next);
+	}
+
+	function stepNewer() {
+		if (selectedIndex <= 0) selectRow(null);
+		else void openVersion(versions[selectedIndex - 1]);
 	}
 </script>
 
-<div
-	class={styles.anchor}
-	role="toolbar"
-	tabindex="-1"
-	aria-label="Note version history"
-	bind:this={picker}
-	data-editor-popup
-	onpointerenter={(event) => {
-		if (event.pointerType === 'mouse' || event.pointerType === 'pen') {
-			dismissed = false;
-			hovering = true;
-		}
-	}}
-	onpointerleave={() => {
-		hovering = false;
-		dismissed = false;
-	}}
-	onpointerdown={() => (pointerFocusing = true)}
-	onpointerup={() => (pointerFocusing = false)}
-	onpointercancel={() => (pointerFocusing = false)}
-	onfocusin={() => {
-		if (pointerFocusing) return;
-		dismissed = false;
-		focused = true;
-	}}
-	onfocusout={handleFocusOut}
-	onkeydown={handleKeyDown}
->
-	<button
-		bind:this={trigger}
-		type="button"
-		class={styles.marker}
-		aria-label="Browse note versions"
-		aria-expanded={open}
-		aria-controls="note-history-dates"
-		onclick={() => {
-			dismissed = false;
-			if (!hovering) toggled = !toggled;
+{#snippet stats(added: number, removed: number)}
+	{#if added || removed}
+		<span class={styles.rowStats}>
+			{#if added}<span class={styles.added}>+{added}</span>{/if}
+			{#if removed}<span class={styles.removed}>−{removed}</span>{/if}
+		</span>
+	{/if}
+{/snippet}
+
+{#if visible}
+	<nav
+		bind:this={rail}
+		class={styles.rail}
+		aria-label="Note version history"
+		data-editor-popup
+		data-expanded={expanded || undefined}
+		style:--history-ticks={ticks.length}
+		style:--history-rows={versions.length + 1 + extraRows}
+		onpointerdown={(event) => (lastPointerType = event.pointerType)}
+		onpointerenter={(event) => {
+			if (event.pointerType !== 'mouse' && event.pointerType !== 'pen') return;
+			clearTimeout(closeTimer);
+			hovered = true;
+		}}
+		onpointerleave={(event) => {
+			if (event.pointerType !== 'mouse' && event.pointerType !== 'pen') return;
+			clearTimeout(closeTimer);
+			closeTimer = setTimeout(() => (hovered = false), CLOSE_DELAY_MS);
+		}}
+		onfocusout={(event) => {
+			if (!(event.relatedTarget instanceof Node) || !rail?.contains(event.relatedTarget))
+				pinned = false;
 		}}
 	>
-		{#each [0, 1, 2, 3, 4] as mark (mark)}
-			<span class={styles.mark} aria-hidden="true"></span>
-		{/each}
-	</button>
-
-	{#if open}
-		<div
-			id="note-history-dates"
-			class={styles.picker}
-			aria-label="Saved note versions"
-			transition:scale={{
-				duration: prefersReducedMotion.current ? 0 : 140,
-				start: 0.94,
-				opacity: 0.2
-			}}
-		>
-			<div class={['scrollable', styles.list]}>
-				{#each entries as entry (entry.historyId)}
-					<button
-						type="button"
-						class={[
-							styles.entry,
-							previewEntry?.historyId === entry.historyId && styles.entrySelected
-						]}
-						aria-pressed={previewEntry?.historyId === entry.historyId}
-						onclick={() => void openPreview(entry)}
-						disabled={previewLoading}
+		<Swap.Root swap={expanded} class={styles.swap}>
+			<Swap.Indicator type="off" class={styles.ticksLayer}>
+				<button
+					bind:this={trigger}
+					type="button"
+					class={styles.trigger}
+					aria-label={`Version history, ${versions.length} earlier ${versions.length === 1 ? 'version' : 'versions'}`}
+					aria-expanded={expanded}
+					aria-controls="note-history-versions"
+					onclick={() => void expandFromTrigger()}
+				>
+					{#each ticks as mark (mark.row)}
+						<span
+							class={styles.tick}
+							style:width="{mark.width}px"
+							data-active={mark.row === activeRow || undefined}
+							aria-hidden="true"
+						></span>
+					{/each}
+				</button>
+			</Swap.Indicator>
+			<Swap.Indicator type="on" class={styles.panelLayer}>
+				<div class={styles.panel}>
+					<div class={styles.panelHeader}>
+						<span>History</span>
+						<span class={styles.panelCount}
+							>{versions.length}{nextBefore === null ? '' : '+'}
+							{versions.length === 1 ? 'version' : 'versions'}</span
+						>
+					</div>
+					<div
+						id="note-history-versions"
+						class={['scrollable note-scrollbar-hidden', styles.list]}
+						role="toolbar"
+						aria-orientation="vertical"
+						aria-label="Saved versions"
+						tabindex="-1"
+						bind:this={list}
+						onkeydown={handleListKeyDown}
 					>
-						{new Date(entry.savedAt).toLocaleString()}
-					</button>
-				{/each}
-				{#if nextBefore !== null}
-					<button
-						type="button"
-						class={styles.more}
-						onclick={() => void loadMore()}
-						disabled={loading}
-					>
-						{loading ? 'Loading…' : 'Older versions'}
-					</button>
-				{/if}
-				{#if !loading && entries.length === 0 && nextBefore === null}
-					<p class={styles.empty}>No saved versions yet</p>
-				{/if}
-			</div>
-			{#if previewLoading}<p class={styles.status} role="status">Opening version…</p>{/if}
-			{#if error}<p class={styles.status} role="alert">{error}</p>{/if}
-		</div>
-	{/if}
-</div>
+						<button
+							type="button"
+							class={styles.row}
+							data-history-row
+							aria-current={activeRow === 0 ? 'true' : undefined}
+							onclick={() => selectRow(null)}
+						>
+							<span class={styles.rowTop}><span class={styles.rowTime}>Now</span></span>
+							<span class={styles.rowSummary}>Current note</span>
+						</button>
+						{#each versions as entry, index (entry.historyId)}
+							<button
+								type="button"
+								class={styles.row}
+								data-history-row
+								data-loading={openingId === entry.historyId || undefined}
+								aria-current={activeRow === index + 1 ? 'true' : undefined}
+								title={exact(entry.savedAt)}
+								onclick={() => selectRow(entry)}
+							>
+								<span class={styles.rowTop}>
+									<span class={styles.rowTime}>{relative(entry.savedAt)}</span>
+									{@render stats(changes[index].added, changes[index].removed)}
+								</span>
+								<span class={styles.rowSummary}>{changes[index].summary}</span>
+							</button>
+						{/each}
+						{#if nextBefore !== null}
+							<button
+								type="button"
+								class={styles.more}
+								onclick={() => void loadMore()}
+								disabled={loading}
+							>
+								{loading ? 'Loading…' : 'Load older versions'}
+							</button>
+						{/if}
+						{#if error}
+							<p class={styles.message} role="alert">{error}</p>
+						{/if}
+					</div>
+				</div>
+			</Swap.Indicator>
+		</Swap.Root>
+	</nav>
+{/if}
 
 {#if previewEntry}
-	<div class={styles.toolbar} data-editor-popup aria-label="Time travel controls">
-		<div class={styles.stepper}>
+	<div class={styles.bar} role="group" aria-label="Time travel" data-editor-popup>
+		<button
+			type="button"
+			class={iconButton({ variant: 'ghost', size: 'compact' })}
+			aria-label="Older version"
+			title="Older version"
+			onclick={() => void stepOlder()}
+			disabled={restoringPreview ||
+				(selectedIndex >= versions.length - 1 && nextBefore === null) ||
+				loading}
+		>
+			<ChevronLeft size={18} aria-hidden="true" />
+		</button>
+		{#key previewEntry.historyId}
+			<div class={styles.barLabel} aria-live="polite">
+				<span class={styles.barTime}>{relative(previewEntry.savedAt)}</span>
+				<span class={styles.barDate}>{exact(previewEntry.savedAt)}</span>
+			</div>
+		{/key}
+		<button
+			type="button"
+			class={iconButton({ variant: 'ghost', size: 'compact' })}
+			aria-label={selectedIndex <= 0 ? 'Back to current note' : 'Newer version'}
+			title={selectedIndex <= 0 ? 'Back to current note' : 'Newer version'}
+			onclick={stepNewer}
+			disabled={restoringPreview}
+		>
+			<ChevronRight size={18} aria-hidden="true" />
+		</button>
+		<span class={styles.barDivider} aria-hidden="true"></span>
+		{#if restoreConfirmOpen}
+			<span class={styles.barPrompt}>Replace the current note?</span>
 			<button
 				type="button"
-				class={styles.iconAction}
-				aria-label="Newer version"
-				title="Newer version"
-				onclick={() => travel(-1)}
-				disabled={selectedIndex <= 0 || previewLoading || restoringPreview}
+				class={[button({ variant: 'quiet', size: 'xs' }), styles.barAction]}
+				onclick={onCancelRestore}
+				disabled={restoringPreview}>Cancel</button
 			>
-				<ChevronLeft size={16} aria-hidden="true" />
-			</button>
-			<span class={styles.timestamp}>{new Date(previewEntry.savedAt).toLocaleString()}</span>
 			<button
 				type="button"
-				class={styles.iconAction}
-				aria-label="Older version"
-				title="Older version"
-				onclick={() => travel(1)}
-				disabled={selectedIndex < 0 ||
-					selectedIndex >= entries.length - 1 ||
-					previewLoading ||
-					restoringPreview}
+				class={[button({ variant: 'primary', size: 'xs' }), styles.barAction]}
+				data-history-restore-action="confirm"
+				onclick={onConfirmRestore}
+				disabled={restoringPreview}>{restoringPreview ? 'Restoring…' : 'Restore'}</button
 			>
-				<ChevronRight size={16} aria-hidden="true" />
+		{:else}
+			<button
+				type="button"
+				class={[button({ variant: 'primary', size: 'xs' }), styles.barAction]}
+				data-history-restore-action="start"
+				onclick={onStartRestore}
+				disabled={openingId !== null}>Restore</button
+			>
+			<button
+				type="button"
+				class={iconButton({ variant: 'ghost', size: 'compact' })}
+				aria-label="Close time travel"
+				title="Close time travel"
+				onclick={onCancelPreview}
+			>
+				<X size={18} aria-hidden="true" />
 			</button>
-		</div>
-		<div class={styles.actions}>
-			{#if restoreConfirmOpen}
-				<button
-					type="button"
-					class={styles.textAction}
-					onclick={onCancelRestore}
-					disabled={restoringPreview}>Back</button
-				>
-				<button
-					type="button"
-					class={styles.restoreAction}
-					data-history-restore-action="confirm"
-					onclick={onConfirmRestore}
-					disabled={restoringPreview}>{restoringPreview ? 'Restoring…' : 'Confirm restore'}</button
-				>
-			{:else}
-				<button
-					type="button"
-					class={styles.restoreAction}
-					data-history-restore-action="start"
-					onclick={onStartRestore}
-					disabled={previewLoading}>Restore</button
-				>
-				<button
-					type="button"
-					class={styles.iconAction}
-					aria-label="Cancel time travel"
-					title="Cancel time travel"
-					onclick={onCancelPreview}
-					disabled={restoringPreview}
-				>
-					<X size={16} aria-hidden="true" />
-				</button>
-			{/if}
-		</div>
-		{#if restoreError}<p class={styles.toolbarError} role="alert">{restoreError}</p>{/if}
+		{/if}
+		{#if restoreError}<p class={styles.barError} role="alert">{restoreError}</p>{/if}
 	</div>
 {/if}

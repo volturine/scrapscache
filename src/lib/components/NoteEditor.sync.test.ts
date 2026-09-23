@@ -134,6 +134,21 @@ describe('NoteEditor draft and synced changes', () => {
 		expect(stored().title).toBe('Synced title');
 	});
 
+	it('saves text still being composed when the note closes', async () => {
+		const { container, close } = openEditor();
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const line = container.querySelector('[data-line-text]') as HTMLElement;
+		caretAtEnd(container);
+
+		// An accent or a keyboard prediction: the browser writes it before it is final.
+		await fireEvent.compositionStart(editor);
+		line.firstChild!.textContent = 'Bodyé';
+		await fireEvent.input(editor, { inputType: 'insertCompositionText', isComposing: true });
+		await close();
+
+		expect(stored().body).toBe('Bodyé');
+	});
+
 	it('writes nothing when a note is opened and closed without edits', async () => {
 		const update = vi.spyOn(notesStore, 'updateNote');
 		const { close } = openEditor();

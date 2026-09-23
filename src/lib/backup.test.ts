@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Note } from './types';
 import { normalizeBackup, prepareImportedNotes } from './backup';
+import { createEditContext } from './model';
 
 const sourceNote: Note = {
 	id: 'note',
@@ -80,19 +81,29 @@ describe('backup normalization', () => {
 		expect(JSON.stringify(backup)).not.toContain('root-secret');
 	});
 
-	it('refreshes timestamps while retaining IDs for replacement imports', () => {
-		const [note] = prepareImportedNotes([sourceNote], 'replace', 100);
+	it('restores replacement imports under new note ids, keeping attachment ids', () => {
+		// A restore under the old id would merge into newer synced text instead of replacing it.
+		const [note] = prepareImportedNotes(
+			[sourceNote],
+			'replace',
+			createEditContext(() => 100)
+		);
 
-		expect(note).toMatchObject({ id: 'note', createdAt: 100, updatedAt: 100, trashedAt: null });
+		expect(note.id).not.toBe(sourceNote.id);
+		expect(note).toMatchObject({ createdAt: 100, trashedAt: null });
 		expect(note.images).toEqual([expect.objectContaining({ id: 'image', createdAt: 100 })]);
-		expect(new Set(Object.values(note.fieldTimes ?? {}))).toEqual(new Set([100]));
+		expect(new Set(Object.values(note.fieldTimes ?? {})).size).toBe(1);
 	});
 
 	it('regenerates note and attachment IDs for additive imports', () => {
-		const [note] = prepareImportedNotes([sourceNote], 'keep', 100);
+		const [note] = prepareImportedNotes(
+			[sourceNote],
+			'keep',
+			createEditContext(() => 100)
+		);
 
 		expect(note.id).not.toBe(sourceNote.id);
 		expect(note.images?.[0].id).not.toBe(sourceNote.images?.[0].id);
-		expect(note).toMatchObject({ createdAt: 100, updatedAt: 100 });
+		expect(note).toMatchObject({ createdAt: 100 });
 	});
 });

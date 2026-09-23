@@ -9,6 +9,7 @@
 	import { noteToPlainText, noteAttachments, splitPastedHeading } from '$lib/checklistBody';
 	import { mergeHydratedImages } from '$lib/noteAttachmentHydration';
 	import type { Note, NoteImage } from '$lib/types';
+	import type { NotePatch } from '$lib/model';
 	import ColorPalette from './ColorPalette.svelte';
 	import ReminderPicker from './ReminderPicker.svelte';
 	import { reminderStore } from '$lib/stores/reminders.svelte';
@@ -88,6 +89,7 @@
 		focusDefault(): void;
 		replaceBodyWithText(text: string): Promise<void>;
 		syncBodyNow?(): void;
+		finishInput?(): void;
 		adoptBody?(text: string): boolean;
 	} | null>(null);
 	let footer = $state<{ handlePickedFiles(files: File[]): void } | null>(null);
@@ -471,7 +473,7 @@
 		void close();
 	}
 
-	function commit(patch: Record<string, unknown>) {
+	function commit(patch: NotePatch) {
 		if (!note) return;
 		notesStore.updateNote(note.id, patch);
 	}
@@ -496,13 +498,13 @@
 	}
 
 	/** Save the fields edited since the last commit, plus any explicit patch. */
-	function commitDraft(patch: Partial<Note> = {}) {
+	function commitDraft(patch: NotePatch = {}) {
 		if (!note) return;
 		// Syncing can report input and arm the save timer; this commit covers it.
 		bodyEditor?.syncBodyNow?.();
 		if (timer) clearTimeout(timer);
 		timer = null;
-		const next: Partial<Note> = { ...patch };
+		const next: NotePatch = { ...patch };
 		if (titleEdited) next.title = title;
 		// Link previews follow the body, so editing it drops imported ones.
 		if (bodyEdited) Object.assign(next, { body, linkPreviews: [] });
@@ -550,6 +552,8 @@
 	async function close() {
 		// Drop task-focus chrome immediately so dismiss is never gated on focus mode.
 		taskFocusLine = null;
+		// Text still being composed (an accent, a prediction) is on screen but not yet in the body.
+		bodyEditor?.finishInput?.();
 		commitDraft();
 		if (note && draftDirty) {
 			try {

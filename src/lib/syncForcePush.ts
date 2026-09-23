@@ -1,14 +1,44 @@
 import type { SyncSnapshot } from '$lib/stores/sync.svelte';
-import { NOTE_FIELDS, retargetLocalNotes, touchNoteFields } from '$lib/noteMerge';
+import {
+	mergeBodies,
+	NOTE_FIELDS,
+	retargetLocalNotes,
+	touchNoteFields,
+	type EditContext
+} from '$lib/model';
+import type { Note } from '$lib/types';
 import { uid } from '$lib/utils';
+
+/**
+ * Local content over the cloud copy. Body and attachments merge rather than
+ * replace, so the local version must also delete what only the cloud holds:
+ * the merged body is edited back to the local text, and cloud-only attachments
+ * are removed.
+ */
+function overCloudCopy(local: Note, cloud: Note | undefined, context: EditContext): Note {
+	if (!cloud) return local;
+	const body =
+		local.bodyDoc || cloud.bodyDoc
+			? context.author.edit(local.id, mergeBodies(local, cloud), local.body)
+			: { body: local.body };
+	const kept = new Set((local.images ?? []).map((image) => image.id));
+	const at = context.now();
+	const imageTombstones = { ...cloud.imageTombstones, ...local.imageTombstones };
+	for (const image of cloud.images ?? []) if (!kept.has(image.id)) imageTombstones[image.id] = at;
+	return {
+		...local,
+		...body,
+		...(Object.keys(imageTombstones).length ? { imageTombstones } : {})
+	};
+}
 
 /** Publish the local dataset over the observed cloud version, including field clocks and deletes. */
 export function buildForcePushSnapshot(
 	local: SyncSnapshot,
 	remote: SyncSnapshot,
-	now = Date.now()
+	context: EditContext
 ): SyncSnapshot {
-	let at = now;
+	let at = context.now();
 	for (const snapshot of [local, remote]) {
 		for (const note of snapshot.notes) {
 			at = Math.max(
@@ -32,14 +62,16 @@ export function buildForcePushSnapshot(
 		updatedAt: at
 	}));
 	// Permanent deletes are irrevocable for an ID. Restore local versions under fresh IDs.
+	const cloudNotes = new Map(remote.notes.map((note) => [note.id, note]));
+	const stamp: EditContext = { ...context, now: () => at };
 	const notes = retargetLocalNotes(local.notes, [], remote.tombstones, uid).map((note) =>
 		touchNoteFields(
 			{
-				...note,
+				...overCloudCopy(note, cloudNotes.get(note.id), stamp),
 				labels: note.labels.map((id) => labelIds.get(id) ?? id)
 			},
 			NOTE_FIELDS,
-			at
+			stamp
 		)
 	);
 	const boards = local.boards.map((board) => ({

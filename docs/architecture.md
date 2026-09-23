@@ -42,14 +42,14 @@ The same SvelteKit app serves the UI and the sync API when self-hosted.
 | -------------- | ---------------------------------------------------------- | --------------------------------------------------------------- |
 | Routes / pages | `src/routes/`                                              | Notes home, kanban, reminders, archive, trash, labels           |
 | Components     | `src/lib/components/`                                      | Editors, feed, sidebar, sync UI, backup dialogs                 |
-| Domain types   | `src/lib/types.ts`                                         | Notes, labels, attachments, colors                              |
+| Note model     | `src/lib/model/`                                           | Note types, edits, merge, body CRDT; shared with the MCP server |
 | Notes state    | `src/lib/stores/notes.svelte.ts`                           | CRUD, search, trash, labels                                     |
 | Sync state     | `src/lib/stores/sync.svelte.ts`                            | Pairing, auto-sync, cloud status                                |
 | Kanban         | `src/lib/stores/kanban.svelte.ts`, `src/lib/kanban.ts`     | Boards and columns                                              |
 | IndexedDB      | `src/lib/db/idb.ts`                                        | Persistence, outbox, replace/import; one database per workspace |
 | Workspaces     | `src/lib/profiles.ts`, `src/lib/stores/profiles.svelte.ts` | Sync-key keyring, workspace switching, dataset handover         |
 | Sync crypto    | `src/lib/syncPairing.ts`                                   | Identity, pairing PAKE, payload encrypt/decrypt                 |
-| Sync records   | `src/lib/syncRecords.ts`, `noteMerge.ts`                   | Envelope packing, merge, tombstones                             |
+| Sync records   | `src/lib/syncRecords.ts`                                   | Envelope packing, tombstones                                    |
 | Backups        | `src/lib/backup.ts`, `backupCrypto.ts`                     | Export/import encrypted `.scraps-cache-backup`                  |
 | Images         | `src/lib/imageOptimize.ts`                                 | Resize, WebP, strip EXIF before store/sync                      |
 | App viewport   | `src/lib/appViewport.ts`                                   | Safe area + keyboard frame; overlay host                        |
@@ -58,7 +58,11 @@ The same SvelteKit app serves the UI and the sync API when self-hosted.
 ### Local data model (conceptual)
 
 - **Notes** — title, body (plain text + checklist lines), color, pins, archive,
-  trash, reminder timestamp, label IDs, attachments.
+  trash, reminder timestamp, label IDs, attachments. Every change goes through
+  `applyNoteEdit` in `src/lib/model/`, which stamps only the fields it changes,
+  on the relay-corrected clock. The body is also a Yjs document, so concurrent
+  edits from two devices merge; attachments merge by id with removals
+  remembered; other fields are last-write-wins per field, ties broken by writer.
 - **Reminder wakes** — optional account-scoped opaque wake IDs and `fireAt`
   timestamps. Each enabled device has independent delivery state, and a device
   does not need the encrypted note before receiving a generic alert. The relay

@@ -1,5 +1,5 @@
 import { normalizeBacklogFilter, type KanbanBoard } from '$lib/kanban';
-import { NOTE_FIELDS } from './noteMerge';
+import { isReadableBodyDoc, NOTE_FIELDS, touchNoteFields, type EditContext } from './model';
 import type { LinkPreview } from '$lib/linkPreview';
 import type { Layout, View } from '$lib/stores/ui.svelte';
 import type { Label, Note, NoteFieldTimes, NoteImage } from '$lib/types';
@@ -53,28 +53,39 @@ export const BackupOperation = {
 } as const;
 export type BackupOperation = (typeof BackupOperation)[keyof typeof BackupOperation];
 
-/** Make imported notes current; additive imports also need fresh record identities. */
+/**
+ * Make imported notes current under fresh note ids, in the same order as
+ * `notes`. A note body merges with every other copy of its id, so restoring
+ * under the old id would blend the backup into newer synced text instead of
+ * replacing it. Additive imports also need fresh attachment ids.
+ */
 export function prepareImportedNotes(
 	notes: Note[],
 	mode: BackupImportMode,
-	now = Date.now()
+	context: EditContext
 ): Note[] {
-	const fieldTimes = Object.fromEntries(NOTE_FIELDS.map((field) => [field, now]));
+	const now = context.now();
 	return notes.map((source) => {
 		const note = cloneNote(source);
-		return {
-			...note,
-			id: mode === BackupImportMode.Keep ? uid() : note.id,
-			createdAt: now,
-			updatedAt: now,
-			trashedAt: note.trashed ? now : null,
-			fieldTimes: { ...fieldTimes },
-			images: (note.images ?? []).map((image) => ({
-				...image,
-				id: mode === BackupImportMode.Keep ? uid() : image.id,
-				createdAt: now
-			}))
-		};
+		const { imageTombstones: _removed, fieldWriters: _writers, ...rest } = note;
+		return touchNoteFields(
+			{
+				...rest,
+				id: uid(),
+				createdAt: now,
+				updatedAt: now,
+				trashedAt: note.trashed ? now : null,
+				fieldTimes: {},
+				// Distinct times keep the attachments in their original order.
+				images: (note.images ?? []).map((image, index) => ({
+					...image,
+					id: mode === BackupImportMode.Keep ? uid() : image.id,
+					createdAt: now + index
+				}))
+			},
+			NOTE_FIELDS,
+			context
+		);
 	});
 }
 
@@ -119,7 +130,8 @@ function normalizeImage(value: unknown): NoteImage | null {
 			: {}),
 		...(Number.isFinite(image.encodingVersion)
 			? { encodingVersion: Number(image.encodingVersion) }
-			: {})
+			: {}),
+		...(Number.isFinite(image.editedAt) ? { editedAt: Number(image.editedAt) } : {})
 	};
 }
 
@@ -219,6 +231,7 @@ export function normalizeBackup(data: unknown): ScrapsCacheBackup | null {
 				id: note.id,
 				title: String(note.title ?? ''),
 				body: String(note.body ?? ''),
+				...(isReadableBodyDoc(note.bodyDoc) ? { bodyDoc: note.bodyDoc } : {}),
 				color,
 				pinned: Boolean(note.pinned),
 				archived: Boolean(note.archived),
@@ -233,6 +246,8 @@ export function normalizeBackup(data: unknown): ScrapsCacheBackup | null {
 				...(note.fieldTimes && typeof note.fieldTimes === 'object'
 					? { fieldTimes: asFieldTimes(note.fieldTimes) }
 					: {}),
+				...(note.fieldWriters ? { fieldWriters: note.fieldWriters } : {}),
+				...(note.imageTombstones ? { imageTombstones: note.imageTombstones } : {}),
 				linkPreviews: Array.isArray(note.linkPreviews)
 					? note.linkPreviews.flatMap((preview) => {
 							const normalized = normalizeLinkPreview(preview);

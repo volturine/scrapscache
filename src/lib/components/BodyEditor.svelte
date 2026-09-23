@@ -789,6 +789,17 @@
 		syncBody(true);
 	}
 
+	/** End an open composition and keep its text; the editor is about to close. */
+	export function finishInput() {
+		if (composing) {
+			composing = false;
+			const start = compositionStart;
+			compositionStart = null;
+			reconcileDom(start?.start.line ?? null, start?.start.offset ?? 0);
+		}
+		syncBody(true);
+	}
+
 	/**
 	 * Show a body that changed elsewhere (another device, MCP). Refused while
 	 * typing is still settling, so input the model has not caught up with is

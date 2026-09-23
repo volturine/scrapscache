@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildForcePushSnapshot } from './syncForcePush';
-import { mergeNoteLists, withoutTombstoned } from './noteMerge';
+import { applyNoteEdit, createEditContext, mergeNoteLists, withoutTombstoned } from './model';
 import type { SyncSnapshot } from './stores/sync.svelte';
 import type { Note } from './types';
 
@@ -43,7 +43,11 @@ describe('force push workspace', () => {
 			},
 			note('remote-only', 'Remove me', 9000)
 		]);
-		const forced = buildForcePushSnapshot(local, remote, 100);
+		const forced = buildForcePushSnapshot(
+			local,
+			remote,
+			createEditContext(() => 100)
+		);
 		const received = withoutTombstoned(
 			mergeNoteLists(remote.notes, forced.notes),
 			forced.tombstones
@@ -55,10 +59,40 @@ describe('force push workspace', () => {
 		expect(forced.tombstones['remote-only']).toBeGreaterThan(11000);
 		expect(local.notes[0].updatedAt).toBe(10);
 	});
+	it('replaces cloud body text and attachments that merging would otherwise keep', () => {
+		const author = createEditContext(() => 50);
+		const shared = applyNoteEdit(note('shared', 'Shared', 10), { body: 'base' }, author);
+		const cloud = applyNoteEdit(
+			shared,
+			{
+				body: 'base + cloud edit',
+				images: [{ id: 'cloud-photo', mime: 'image/png', dataUrl: '', createdAt: 2 }]
+			},
+			createEditContext(() => 60)
+		);
+		const local = applyNoteEdit(
+			shared,
+			{ body: 'base + local edit' },
+			createEditContext(() => 55)
+		);
+
+		const forced = buildForcePushSnapshot(
+			snapshot([local]),
+			snapshot([cloud]),
+			createEditContext(() => 100)
+		);
+		const [received] = mergeNoteLists([cloud], forced.notes);
+		expect(received.body).toBe('base + local edit');
+		expect(received.images).toEqual([]);
+	});
 	it('restores a locally present note that another device permanently deleted', () => {
 		const local = snapshot([note('deleted', 'Restore me', 10)]);
 		const remote = { ...snapshot([]), tombstones: { deleted: 200 } };
-		const forced = buildForcePushSnapshot(local, remote, 100);
+		const forced = buildForcePushSnapshot(
+			local,
+			remote,
+			createEditContext(() => 100)
+		);
 		expect(forced.notes[0].id).not.toBe('deleted');
 		expect(withoutTombstoned(forced.notes, remote.tombstones)).toHaveLength(1);
 		expect(forced.tombstones.deleted).toBe(200);
@@ -67,7 +101,7 @@ describe('force push workspace', () => {
 		const forced = buildForcePushSnapshot(
 			snapshot([]),
 			snapshot([note('cloud', 'Delete', 10)]),
-			100
+			createEditContext(() => 100)
 		);
 		expect(forced.notes).toEqual([]);
 		expect(forced.tombstones).toEqual({ cloud: 100 });

@@ -124,7 +124,11 @@ wrangler login
 
 ### 2. Deploy
 
+The Worker bundles the app's shared note model (`src/lib/model`), so install
+the repository's dependencies first:
+
 ```bash
+npm ci
 cd recipes/mcp-server/cloudflare
 npx wrangler deploy
 ```

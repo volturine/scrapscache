@@ -177,7 +177,7 @@ describe('NoteEditor header reminder controls', () => {
 		expect(removeSecretBtn).toBeDefined();
 		await fireEvent.click(removeSecretBtn);
 		await tick();
-		expect(notesStore.notes[0].secret).toBe(false);
+		expect(notesStore.notes[0].secret).toBeUndefined();
 	});
 
 	it('autofocuses the note body when autofocusBody is true', async () => {

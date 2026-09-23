@@ -5,7 +5,7 @@ import {
 	readNotesMirror,
 	writeNotesMirror
 } from './noteStorage';
-import { mergeNoteLists } from './noteMerge';
+import { mergeNoteLists } from './model';
 import type { Note } from './types';
 
 describe('fast-boot note mirror', () => {

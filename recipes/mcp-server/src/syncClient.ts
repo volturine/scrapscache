@@ -15,6 +15,8 @@ export type SyncResult = {
 	hasMore: boolean;
 	reset: boolean;
 	writesAccepted: boolean;
+	/** The relay's clock when it answered, for stamping edits on its timeline. */
+	serverTime?: number;
 };
 
 export class ScrapscacheSyncClient {
@@ -149,6 +151,7 @@ export class ScrapscacheSyncClient {
 			hasMore?: boolean;
 			reset?: boolean;
 			writesAccepted?: boolean;
+			serverTime?: number;
 		};
 
 		return {
@@ -157,7 +160,8 @@ export class ScrapscacheSyncClient {
 			conflicts: data.conflicts ?? [],
 			hasMore: data.hasMore ?? false,
 			reset: data.reset ?? false,
-			writesAccepted: data.writesAccepted ?? true
+			writesAccepted: data.writesAccepted ?? true,
+			...(typeof data.serverTime === 'number' ? { serverTime: data.serverTime } : {})
 		};
 	}
 }

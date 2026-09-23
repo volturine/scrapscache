@@ -1,5 +1,5 @@
 import type { Note } from '$lib/types';
-import { stableStringify } from '$lib/syncHash';
+import { stableStringify } from '$lib/model';
 import { uid } from '$lib/utils';
 
 export interface KanbanColumn {

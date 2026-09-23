@@ -61,7 +61,12 @@ plain text line`;
 		expect(result.note.title).toBe('Shopping List');
 		expect(result.note.pinned).toBe(true);
 		expect(result.note.labels).toEqual(['Groceries']);
-		expect(uploadedEnvelopes.length).toBe(1);
+		// The new label is written with the note, so other devices can resolve it.
+		const kinds = uploadedEnvelopes.map(
+			(envelope) =>
+				decryptSyncPayload<{ kind: string }>(syncKey, envelope.ciphertext, envelope.slot).kind
+		);
+		expect(kinds).toEqual(['label', 'note']);
 
 		// Read note back
 		const note = await session.readNote({ id: result.note.id });
@@ -237,10 +242,107 @@ plain text line`;
 		expect(updatedAt).toBe(fieldTimes.body);
 	});
 
+	function appNote(partial: Record<string, unknown> = {}) {
+		const at = Date.now() - 60_000;
+		return {
+			id: 'app-note',
+			title: 'Groceries',
+			body: 'milk',
+			labels: [],
+			color: 'default',
+			pinned: false,
+			archived: false,
+			trashed: false,
+			trashedAt: null,
+			reminder: null,
+			createdAt: at,
+			updatedAt: at,
+			fieldTimes: { title: at, body: at },
+			...partial
+		};
+	}
+
+	function envelopeFor(id: string, value: Record<string, unknown>): SyncEnvelope {
+		const slot = computeSlot(syncKey, 'note:app-note');
+		return {
+			id,
+			slot,
+			ciphertext: encryptSyncPayload(syncKey, { kind: 'note', value }, slot),
+			expectedId: null
+		};
+	}
+
+	function lastUploadedNote() {
+		const upload = uploadedEnvelopes.at(-1)!;
+		return decryptSyncPayload<{ kind: 'note'; value: Record<string, any> }>(
+			syncKey,
+			upload.ciphertext,
+			upload.slot
+		).value;
+	}
+
+	it('merges with a note another writer changed first instead of overwriting it', async () => {
+		const original = appNote();
+		// The app renamed the note after MCP read it.
+		const renamed = appNote({
+			title: 'Weekly groceries',
+			updatedAt: Date.now(),
+			fieldTimes: { ...original.fieldTimes, title: Date.now() }
+		});
+		const responses = [
+			{ envelopes: [envelopeFor('v1', original)], conflicts: [], writesAccepted: true },
+			{ envelopes: [], conflicts: [envelopeFor('v2', renamed)], writesAccepted: false },
+			{ envelopes: [], conflicts: [], writesAccepted: true }
+		];
+		const client = {
+			...mockSyncClient,
+			syncDelta: async (cursor: number, uploads: SyncEnvelope[] = []) => {
+				uploadedEnvelopes.push(...uploads);
+				const next = responses.shift() ??
+					responses[responses.length - 1] ?? {
+						envelopes: [],
+						conflicts: [],
+						writesAccepted: true
+					};
+				return { cursor: cursor + 1, hasMore: false, reset: false, ...next };
+			}
+		} as unknown as ScrapscacheSyncClient;
+		const session = new McpSession(client);
+
+		await session.updateNote({ id: 'app-note', appendBody: 'eggs' });
+
+		expect(uploadedEnvelopes).toHaveLength(2);
+		expect(uploadedEnvelopes[1].expectedId).toBe('v2');
+		const written = lastUploadedNote();
+		expect(written.title).toBe('Weekly groceries');
+		expect(written.body).toBe('milk\neggs');
+	});
+
+	it('writes nothing when an update changes nothing', async () => {
+		const client = {
+			...mockSyncClient,
+			syncDelta: async (cursor: number, uploads: SyncEnvelope[] = []) => {
+				uploadedEnvelopes.push(...uploads);
+				return {
+					cursor: cursor + 1,
+					envelopes: cursor === 0 ? [envelopeFor('v1', appNote())] : [],
+					conflicts: [],
+					hasMore: false,
+					reset: false,
+					writesAccepted: true
+				};
+			}
+		} as unknown as ScrapscacheSyncClient;
+		const session = new McpSession(client);
+
+		await session.updateNote({ id: 'app-note', title: 'Groceries' });
+		expect(uploadedEnvelopes).toHaveLength(0);
+	});
+
 	it('gives created notes a time for every field', async () => {
 		const session = new McpSession(mockSyncClient);
 		await session.createNote({ title: 'New' });
-		const [upload] = uploadedEnvelopes;
+		const upload = uploadedEnvelopes.at(-1)!;
 		const payload = decryptSyncPayload<{ kind: 'note'; value: Record<string, any> }>(
 			syncKey,
 			upload.ciphertext,
@@ -259,9 +361,9 @@ plain text line`;
 			'title',
 			'trashed'
 		]);
-		expect(new Set(Object.values(payload.value.fieldTimes))).toEqual(
-			new Set([payload.value.createdAt])
-		);
+		const times = new Set(Object.values(payload.value.fieldTimes) as number[]);
+		expect(times.size).toBe(1);
+		expect([...times][0]).toBeGreaterThanOrEqual(payload.value.createdAt);
 	});
 
 	it('lists tags/labels in the note vault', async () => {

@@ -1,13 +1,8 @@
 const HTTP_URL_RE = /https?:\/\/[^\s<>"'`]+/gi;
 
-export type LinkPreview = {
-	url: string;
-	hostname: string;
-	title: string;
-	description?: string;
-	image?: string;
-	icon?: string;
-};
+import type { LinkPreview } from './model/types';
+
+export type { LinkPreview };
 
 export type LocalLinkCard = {
 	url: string;

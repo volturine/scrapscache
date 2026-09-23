@@ -1,5 +1,5 @@
 // Rune-based notes & labels store. Persists to IndexedDB from explicit write paths.
-import type { Note, Label, NoteColor, NoteField } from '$lib/types';
+import type { Note, Label, NoteColor } from '$lib/types';
 import {
 	LOCAL_PROFILE_ID,
 	getAllNotesMetadata,
@@ -21,12 +21,17 @@ import {
 	waitForDeviceWrites
 } from '$lib/db/idb';
 import {
+	applyNoteEdit,
 	mergeLabelLists,
 	mergeNoteLists,
+	mergeTwoNotes,
+	NOTE_FIELDS,
 	retargetLocalNotes,
 	touchNoteFields,
-	withoutTombstoned
-} from '$lib/noteMerge';
+	withoutTombstoned,
+	type NotePatch
+} from '$lib/model';
+import { editContext, syncClock } from '$lib/editContext';
 import { mergeHydratedImages } from '$lib/noteAttachmentHydration';
 import { AttachmentHydrationQueue } from '$lib/attachmentHydrationQueue';
 import { syncStore, type SyncSnapshot } from '$lib/stores/sync.svelte';
@@ -64,7 +69,7 @@ import {
 	prepareImportedNotes,
 	type ScrapsCacheBackup
 } from '$lib/backup';
-import { stableStringify } from '$lib/syncHash';
+import { stableStringify } from '$lib/model';
 import { buildForcePushSnapshot } from '$lib/syncForcePush';
 
 /** Minimum gap between opportunistic auto syncs; manual syncs are never throttled. */
@@ -391,22 +396,11 @@ export class NotesStore {
 		this.visibleAttachmentQueue.enqueue(noteId);
 	}
 
-	async flushNote(id: string, patch: Partial<Note> = {}): Promise<void> {
+	/** Apply an edit and wait until it is durable on this device. */
+	async flushNote(id: string, patch: NotePatch = {}): Promise<void> {
 		const idx = this.notes.findIndex((x) => x.id === id);
 		if (idx === -1) return;
-		if (Object.keys(patch).length > 0) {
-			const current = this.notes[idx];
-			this.notes[idx] = {
-				...current,
-				...patch,
-				updatedAt: Math.max(current.updatedAt, Date.now()),
-				labels: patch.labels ? [...patch.labels] : current.labels,
-				images: patch.images ? patch.images.map((image) => ({ ...image })) : current.images,
-				linkPreviews: patch.linkPreviews
-					? patch.linkPreviews.map((preview) => ({ ...preview }))
-					: current.linkPreviews
-			};
-		}
+		this.notes[idx] = applyNoteEdit(this.notes[idx], patch, editContext);
 		const note = this.notes[idx];
 		this.mirrorToLS();
 		try {
@@ -440,8 +434,8 @@ export class NotesStore {
 
 	// --- CRUD ------------------------------------------------------------
 	createNote(partial: Partial<Note> = {}): Note {
-		const now = Date.now();
-		const note: Note = {
+		const now = syncClock.now();
+		const created: Note = {
 			id: uid(),
 			title: partial.title ?? '',
 			body: partial.body ?? '',
@@ -456,56 +450,23 @@ export class NotesStore {
 			reminder: partial.reminder ?? null,
 			labels: [...(partial.labels ?? [])],
 			images: (partial.images ?? []).map((image) => ({ ...image })),
-			fieldTimes: {
-				title: now,
-				body: now,
-				color: now,
-				pinned: now,
-				archived: now,
-				trashed: now,
-				secret: now,
-				reminder: now,
-				labels: now,
-				images: now,
-				linkPreviews: now
-			},
 			...(partial.linkPreviews?.length
 				? { linkPreviews: partial.linkPreviews.map((preview) => ({ ...preview })) }
 				: {})
 		};
+		const note = touchNoteFields(created, NOTE_FIELDS, { ...editContext, now: () => now });
 		this.notes = [note, ...this.notes];
 		this.persist(note.id);
 		return note;
 	}
 
-	updateNote(id: string, patch: Partial<Note>): void {
+	/** Edits are stamped field by field; a patch that changes nothing writes nothing. */
+	updateNote(id: string, patch: NotePatch): void {
 		const idx = this.notes.findIndex((n) => n.id === id);
 		if (idx === -1) return;
 		const current = this.notes[idx];
-		const fields: NoteField[] = [];
-		if ('title' in patch) fields.push('title');
-		if ('body' in patch) fields.push('body');
-		if ('color' in patch) fields.push('color');
-		if ('pinned' in patch) fields.push('pinned');
-		if ('archived' in patch) fields.push('archived');
-		if ('trashed' in patch) fields.push('trashed');
-		if ('secret' in patch) fields.push('secret');
-		if ('reminder' in patch) fields.push('reminder');
-		if ('labels' in patch) fields.push('labels');
-		if ('images' in patch) fields.push('images');
-		if ('linkPreviews' in patch) fields.push('linkPreviews');
-		const next: Note = touchNoteFields(
-			{
-				...current,
-				...patch,
-				labels: patch.labels ? [...patch.labels] : current.labels,
-				images: patch.images ? patch.images.map((image) => ({ ...image })) : current.images,
-				linkPreviews: patch.linkPreviews
-					? patch.linkPreviews.map((preview) => ({ ...preview }))
-					: current.linkPreviews
-			},
-			fields
-		);
+		const next = applyNoteEdit(current, patch, editContext);
+		if (next === current) return;
 		this.notes[idx] = next;
 		this.persist(id);
 	}
@@ -594,8 +555,14 @@ export class NotesStore {
 		const trimmed = name.trim();
 		if (!trimmed) return null;
 		if (this.labels.some((l) => l.name.toLowerCase() === trimmed.toLowerCase())) return null;
-		const now = Date.now();
-		const label: Label = { id: uid(), name: trimmed, createdAt: now, updatedAt: now };
+		const now = syncClock.now();
+		const label: Label = {
+			id: uid(),
+			name: trimmed,
+			createdAt: now,
+			updatedAt: now,
+			writer: editContext.writer
+		};
 		this.labels = [...this.labels, label].sort((a, b) => a.name.localeCompare(b.name));
 		this.mirrorToLS();
 		putLabel(this.pid, label, [`label:${label.id}`]).catch((err) =>
@@ -614,7 +581,8 @@ export class NotesStore {
 			...this.labels[idx],
 			name: trimmed,
 			// Same-millisecond renames and backward clock jumps must still win.
-			updatedAt: Math.max(Date.now(), this.labels[idx].updatedAt + 1)
+			updatedAt: Math.max(syncClock.now(), this.labels[idx].updatedAt + 1),
+			writer: editContext.writer
 		};
 		this.labels[idx] = renamed;
 		this.labels.sort((a, b) => a.name.localeCompare(b.name));
@@ -634,23 +602,12 @@ export class NotesStore {
 			// Trash notes that carry this label (recoverable from Trash).
 			this.notes = this.notes.map((note) => {
 				if (!note.labels.includes(id)) return note;
-				if (note.trashed) {
-					return touchNoteFields(
-						{ ...note, labels: note.labels.filter((labelId) => labelId !== id) },
-						['labels'],
-						deletedAt
-					);
-				}
-				return touchNoteFields(
-					{
-						...note,
-						labels: note.labels.filter((labelId) => labelId !== id),
-						trashed: true,
-						trashedAt: deletedAt,
-						pinned: false
-					},
-					['labels', 'trashed', 'pinned'],
-					deletedAt
+				const labels = note.labels.filter((labelId) => labelId !== id);
+				if (note.trashed) return applyNoteEdit(note, { labels }, editContext);
+				return applyNoteEdit(
+					note,
+					{ labels, trashed: true, trashedAt: deletedAt, pinned: false },
+					editContext
 				);
 			});
 			this.labels = this.labels.filter((label) => label.id !== id);
@@ -665,10 +622,10 @@ export class NotesStore {
 		this.notes = this.notes.map((note) => {
 			if (!note.labels.includes(id)) return note;
 			affectedNoteIds.push(note.id);
-			return touchNoteFields(
-				{ ...note, labels: note.labels.filter((labelId) => labelId !== id) },
-				['labels'],
-				deletedAt
+			return applyNoteEdit(
+				note,
+				{ labels: note.labels.filter((labelId) => labelId !== id) },
+				editContext
 			);
 		});
 		this.mirrorToLS();
@@ -751,8 +708,11 @@ export class NotesStore {
 				// now would overwrite a workspace nobody chose and push it to its cloud.
 				if (this.pid !== pid || isProfileReleased(pid))
 					return { success: false, error: IMPORT_TARGET_GONE };
-				const now = Date.now();
-				const importedNotes = prepareImportedNotes(backup.notes, mode, now);
+				const now = syncClock.now();
+				const importedNotes = prepareImportedNotes(backup.notes, mode, editContext);
+				const importedIds = new Map(
+					backup.notes.map((note, index) => [note.id, importedNotes[index].id])
+				);
 				const replacedNoteIds =
 					mode === BackupImportMode.Replace ? this.notes.map((note) => note.id) : [];
 				if (navigator.storage?.estimate) {
@@ -801,15 +761,27 @@ export class NotesStore {
 					);
 					this.notes = importedNotes.sort((a, b) => b.updatedAt - a.updatedAt);
 					this.labels = [...backup.labels].sort((a, b) => a.name.localeCompare(b.name));
-					const importedIds = new Set(importedNotes.map((note) => note.id));
+					// The notes return under new ids, so every copy under an old id goes.
 					this.deletedNoteIds = { ...backup.tombstones };
-					for (const id of replacedNoteIds) {
-						if (!importedIds.has(id)) this.deletedNoteIds[id] = now;
+					for (const id of [...replacedNoteIds, ...importedIds.keys()]) {
+						this.deletedNoteIds[id] = now;
 					}
 					this.deletedLabelIds = { ...backup.labelTombstones };
 					await writeTombstones(pid, this.deletedNoteIds);
 					await writeLabelTombstones(pid, this.deletedLabelIds);
-					kanbanStore.replaceWithCloud(backup.boards, backup.boardTombstones);
+					kanbanStore.replaceWithCloud(
+						backup.boards.map((board) => ({
+							...board,
+							columns: board.columns.map((column) => ({
+								...column,
+								order: column.order.flatMap((id) => {
+									const imported = importedIds.get(id);
+									return imported ? [imported] : [];
+								})
+							}))
+						})),
+						backup.boardTombstones
+					);
 					if (
 						backup.activeBoardId &&
 						kanbanStore.boards.some((board) => board.id === backup.activeBoardId)
@@ -1238,7 +1210,13 @@ export class NotesStore {
 		kanbanStore.applySync(snapshot.boards, snapshot.boardTombstones);
 		await writeTombstones(this.pid, tombstones);
 		await writeLabelTombstones(this.pid, labelTombstones);
-		for (const note of notesToPersist) await putNote(this.pid, note);
+		for (const note of notesToPersist) {
+			// An edit made while this flight awaited has already queued its own write;
+			// saving the flight's older merge after it would roll the device copy back.
+			const live = this.notes.find((item) => item.id === note.id);
+			const edited = live && live !== currentById.get(note.id);
+			await putNote(this.pid, edited ? mergeTwoNotes(live, note) : note);
+		}
 		for (const id of tombstonedNoteIds) await deleteNote(this.pid, id);
 		for (const id of tombstonedLabelIds) await deleteLabel(this.pid, id);
 		if (labelsChanged) await bulkPutLabels(this.pid, mergedLabels);
@@ -1460,7 +1438,8 @@ export class NotesStore {
 						labelTombstones: this.deletedLabelIds,
 						boardTombstones: kanbanStore.boardTombstonesForSync()
 					},
-					remote
+					remote,
+					editContext
 				);
 				await bulkPutNotes(this.pid, snapshot.notes);
 				await bulkPutLabels(this.pid, snapshot.labels);
@@ -1506,7 +1485,7 @@ export class NotesStore {
 
 	/**
 	 * Sync with the cloud relay, indicating flight progress via the cloud icon.
-	 * Opportunistic pulls (boot, editor open) are throttled; pending local edits
+	 * Opportunistic pulls (boot, foreground) are throttled; pending local edits
 	 * always sync via flushSync.
 	 */
 	async syncWithCloud(indicate = true): Promise<boolean> {

@@ -314,7 +314,7 @@ jobs:
       - name: Build and publish MCP image
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
-          context: recipes/mcp-server
+          context: .
           file: recipes/mcp-server/docker/Dockerfile
           platforms: ${{ github.event_name == 'pull_request' && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
           # Push production tags from master/tags; push dev-* tags from same-repo PRs only.

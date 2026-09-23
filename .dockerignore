@@ -3,6 +3,8 @@
 .svelte-kit
 build
 node_modules
+**/node_modules
+**/dist
 sync-data
 .env
 .env.*

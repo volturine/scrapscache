@@ -4,8 +4,9 @@
 services:
   mcp-server:
     build:
-      context: ../recipes/mcp-server
-      dockerfile: docker/Dockerfile
+      # The repository root: the server compiles the app's shared note model.
+      context: ..
+      dockerfile: recipes/mcp-server/docker/Dockerfile
     restart: unless-stopped
     ports:
       - "${MCP_BIND:-127.0.0.1}:${MCP_PORT:-3001}:3001"

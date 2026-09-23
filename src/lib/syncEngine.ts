@@ -2,7 +2,7 @@
 // attachments from a page that has not yet applied their parent notes.
 import type { KanbanBoard } from '$lib/kanban';
 import type { Label, Note } from '$lib/types';
-import { isTombstoned } from '$lib/noteMerge';
+import { isTombstoned } from '$lib/model';
 import type { SyncRecord } from '$lib/syncRecords';
 
 export type TombstoneMaps = {

@@ -8,6 +8,7 @@ export type SyncImageRef = {
 	mime: string;
 	name?: string;
 	createdAt: number;
+	editedAt?: number;
 	hash: string;
 	width?: number;
 	height?: number;
@@ -99,6 +100,7 @@ export async function splitNoteForSync(
 			mime: image.mime || 'application/octet-stream',
 			createdAt: Number(image.createdAt) || 0,
 			hash,
+			...(image.editedAt != null ? { editedAt: image.editedAt } : {}),
 			...(image.name ? { name: image.name } : {}),
 			...(image.width != null ? { width: image.width } : {}),
 			...(image.height != null ? { height: image.height } : {}),
@@ -106,7 +108,10 @@ export async function splitNoteForSync(
 			...(image.encodingVersion != null ? { encodingVersion: image.encodingVersion } : {})
 		};
 		images.push(meta);
-		if (hasBytes) attachments.push({ ...meta, dataUrl: image.dataUrl });
+		if (hasBytes) {
+			const { editedAt: _editedAt, ...bytes } = meta;
+			attachments.push({ ...bytes, dataUrl: image.dataUrl });
+		}
 	}
 	const { images: _drop, ...rest } = note;
 	return { note: { ...rest, ...(images.length ? { images } : {}) }, attachments };
@@ -143,6 +148,7 @@ export function hydrateNoteImages(
 			mime: image.mime || fallback?.mime || 'application/octet-stream',
 			dataUrl,
 			createdAt: Number(image.createdAt) || fallback?.createdAt || 0,
+			...(image.editedAt != null ? { editedAt: image.editedAt } : {}),
 			...(image.name || fallback?.name ? { name: image.name || fallback?.name } : {}),
 			...((image.width ?? fallback?.width) != null
 				? { width: image.width ?? fallback?.width }
@@ -279,8 +285,30 @@ function isSyncNote(value: unknown): value is SyncNote {
 		createdAt?: unknown;
 		labels?: unknown;
 		images?: unknown;
+		bodyDoc?: unknown;
+		imageTombstones?: unknown;
+		fieldWriters?: unknown;
 	};
 	if (typeof note.title !== 'string' || typeof note.body !== 'string') return false;
+	if (note.bodyDoc != null && typeof note.bodyDoc !== 'string') return false;
+	if (
+		note.imageTombstones != null &&
+		!(
+			object(note.imageTombstones) &&
+			Object.values(note.imageTombstones).every(
+				(time) => typeof time === 'number' && Number.isFinite(time)
+			)
+		)
+	)
+		return false;
+	if (
+		note.fieldWriters != null &&
+		!(
+			object(note.fieldWriters) &&
+			Object.values(note.fieldWriters).every((writer) => typeof writer === 'string')
+		)
+	)
+		return false;
 	if (typeof note.color !== 'string') return false;
 	if (typeof note.pinned !== 'boolean' || typeof note.archived !== 'boolean') return false;
 	if (typeof note.trashed !== 'boolean') return false;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { cloneNote } from './utils';
-import { stableStringify } from './syncHash';
+import { stableStringify } from './model';
 import type { Note } from './types';
 
 function noteWithPhoto(): Note {

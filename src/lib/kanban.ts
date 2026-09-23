@@ -1,5 +1,5 @@
 import type { Note } from '$lib/types';
-import { stableStringify } from '$lib/syncHash';
+import { pickLatest, stableStringify, type EditContext } from '$lib/model';
 import { uid } from '$lib/utils';
 
 export interface KanbanColumn {
@@ -12,6 +12,9 @@ export interface KanbanColumn {
 	 * feed order, so a fresh note is never hidden at the bottom of a long column.
 	 */
 	order: string[];
+	/** When `order` was last arranged, and by whom; each column's order merges on its own. */
+	orderedAt?: number;
+	orderWriter?: string;
 }
 
 export const BacklogFilterMode = {
@@ -34,6 +37,11 @@ export interface BacklogFilter {
 	labelIds: string[];
 }
 
+/** Board settings that merge independently; `columns` is the set and sequence of columns. */
+export type BoardField = 'name' | 'backlogFilter' | 'columns';
+
+const BOARD_FIELDS: BoardField[] = ['name', 'backlogFilter', 'columns'];
+
 export interface KanbanBoard {
 	id: string;
 	name: string;
@@ -41,6 +49,9 @@ export interface KanbanBoard {
 	backlogFilter: BacklogFilter;
 	/** Last configuration edit; this is the board's delta-sync version. */
 	updatedAt: number;
+	/** Per-setting write times and writers; missing times fall back to `updatedAt`. */
+	fieldTimes?: Partial<Record<BoardField, number>>;
+	fieldWriters?: Partial<Record<BoardField, string>>;
 }
 
 export function defaultBacklogFilter(): BacklogFilter {
@@ -64,6 +75,103 @@ export function normalizeBacklogFilter(value: unknown): BacklogFilter {
 			]
 		: [];
 	return { mode, includeUntagged, labelIds };
+}
+
+type StoredBoard = {
+	id?: unknown;
+	name?: unknown;
+	columns?: unknown;
+	backlogFilter?: unknown;
+	updatedAt?: unknown;
+	fieldTimes?: unknown;
+	fieldWriters?: unknown;
+};
+
+function boardFieldMap<T>(
+	value: unknown,
+	parse: (entry: unknown) => T | undefined
+): Partial<Record<BoardField, T>> {
+	if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+	return Object.fromEntries(
+		Object.entries(value).flatMap(([field, entry]) => {
+			const parsed = parse(entry);
+			return (BOARD_FIELDS as string[]).includes(field) && parsed !== undefined
+				? [[field, parsed]]
+				: [];
+		})
+	);
+}
+
+const positiveTime = (value: unknown) =>
+	typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined;
+const writerId = (value: unknown) => (typeof value === 'string' && value ? value : undefined);
+
+/** The one validating copy of a board, for storage, sync, and backups alike. */
+export function normalizeBoard(value: unknown): KanbanBoard | null {
+	if (!value || typeof value !== 'object') return null;
+	const board = value as StoredBoard;
+	if (
+		typeof board.id !== 'string' ||
+		typeof board.name !== 'string' ||
+		!Array.isArray(board.columns)
+	)
+		return null;
+
+	const usedLabels = new Set<string>();
+	let hasBacklog = false;
+	const columns = board.columns.flatMap((column): KanbanColumn[] => {
+		if (!column || typeof column !== 'object') return [];
+		const candidate = column as {
+			id?: unknown;
+			labelId?: unknown;
+			order?: unknown;
+			orderedAt?: unknown;
+			orderWriter?: unknown;
+		};
+		if (
+			typeof candidate.id !== 'string' ||
+			(candidate.labelId !== null && typeof candidate.labelId !== 'string')
+		)
+			return [];
+		const labelId = candidate.labelId;
+		const order = Array.isArray(candidate.order)
+			? [...new Set(candidate.order.filter((id): id is string => typeof id === 'string' && !!id))]
+			: [];
+		if (labelId === null) {
+			if (hasBacklog) return [];
+			hasBacklog = true;
+		} else {
+			if (usedLabels.has(labelId)) return [];
+			usedLabels.add(labelId);
+		}
+		const orderedAt = positiveTime(candidate.orderedAt);
+		const orderWriter = writerId(candidate.orderWriter);
+		return [
+			{
+				id: candidate.id,
+				labelId,
+				order,
+				...(orderedAt !== undefined ? { orderedAt } : {}),
+				...(orderWriter ? { orderWriter } : {})
+			}
+		];
+	});
+	if (!hasBacklog) columns.unshift({ id: uid(), labelId: null, order: [] });
+	const backlogFilter = normalizeBacklogFilter(board.backlogFilter);
+	// A tag cannot be both a column and a backlog filter tag.
+	backlogFilter.labelIds = backlogFilter.labelIds.filter((labelId) => !usedLabels.has(labelId));
+	const fieldTimes = boardFieldMap(board.fieldTimes, positiveTime);
+	const fieldWriters = boardFieldMap(board.fieldWriters, writerId);
+	return {
+		id: board.id,
+		name: board.name.trim() || 'Untitled board',
+		columns,
+		backlogFilter,
+		// Pre-sync boards did not have a version. Persist a one-time local version so they upload.
+		updatedAt: Number(board.updatedAt) || Date.now(),
+		...(Object.keys(fieldTimes).length ? { fieldTimes } : {}),
+		...(Object.keys(fieldWriters).length ? { fieldWriters } : {})
+	};
 }
 
 export function createKanbanBoard(name = 'Untitled board'): KanbanBoard {
@@ -162,27 +270,130 @@ export function slotPosition(carried: boolean[], visibleIndex: number): number {
 	return carried.length;
 }
 
+function boardFieldTime(board: KanbanBoard, field: BoardField): number {
+	return Number(board.fieldTimes?.[field]) || board.updatedAt;
+}
+
+/** The column set and sequence, without card order, which merges per column. */
+function columnLayout(board: KanbanBoard): string {
+	return stableStringify(board.columns.map(({ id, labelId }) => ({ id, labelId })));
+}
+
 /**
- * Keep a hand-arranged column order that the winning copy of a board has
- * nothing to say about.
- *
- * An empty order is no opinion — a column nobody has arranged, or one saved by
- * a device that does not keep card order yet. A filled one is an arrangement
- * somebody made by hand. Letting silence overwrite it loses work every time
- * such a device touches the board, which is how a whole column falls back to
+ * An empty order nobody arranged is no opinion: it never overwrites an
+ * arrangement somebody made by hand, which is how a column would fall back to
  * feed order after a sync.
  */
-function keepColumnOrder(winner: KanbanBoard, loser: KanbanBoard): KanbanBoard {
-	const known = new Map(loser.columns.map((column) => [column.id, column.order]));
+function orderTime(column: KanbanColumn, board: KanbanBoard): number {
+	return column.orderedAt ?? (column.order.length > 0 ? board.updatedAt : 0);
+}
+
+/**
+ * Record an edit to a board: only settings whose value changes are stamped,
+ * and a column's card order carries its own stamp, so edits to different parts
+ * of one board on two devices both survive the merge.
+ */
+export function applyBoardEdit(
+	previous: KanbanBoard,
+	next: KanbanBoard,
+	context: EditContext
+): KanbanBoard {
+	const at = context.now();
+	// Untouched settings keep their current times rather than falling back to the bumped updatedAt.
+	const fieldTimes: Partial<Record<BoardField, number>> = Object.fromEntries(
+		BOARD_FIELDS.map((field) => [field, boardFieldTime(previous, field)])
+	);
+	const fieldWriters = { ...previous.fieldWriters };
+	let changed = false;
+	const stamp = (field: BoardField) => {
+		fieldTimes[field] = Math.max(at, boardFieldTime(previous, field) + 1);
+		fieldWriters[field] = context.writer;
+		changed = true;
+	};
+	if (next.name !== previous.name) stamp('name');
+	if (stableStringify(next.backlogFilter) !== stableStringify(previous.backlogFilter)) {
+		stamp('backlogFilter');
+	}
+	if (columnLayout(next) !== columnLayout(previous)) stamp('columns');
+	const before = new Map(previous.columns.map((column) => [column.id, column]));
+	const columns = next.columns.map((column) => {
+		const old = before.get(column.id);
+		if (stableStringify(column.order) === stableStringify(old?.order ?? [])) return column;
+		changed = true;
+		return {
+			...column,
+			orderedAt: Math.max(at, (old ? orderTime(old, previous) : 0) + 1),
+			orderWriter: context.writer
+		};
+	});
+	if (!changed) return previous;
 	return {
-		...winner,
-		columns: winner.columns.map((column) =>
-			column.order.length > 0 ? column : { ...column, order: known.get(column.id) ?? [] }
-		)
+		...next,
+		columns,
+		updatedAt: Math.max(at, previous.updatedAt + 1, ...Object.values(fieldTimes)),
+		fieldTimes,
+		fieldWriters
 	};
 }
 
-/** Newer boards win; equal timestamps use canonical content ordering on every device. */
+function side<T>(board: KanbanBoard, field: BoardField, value: T) {
+	return { value, time: boardFieldTime(board, field), writer: board.fieldWriters?.[field] };
+}
+
+/** A column from the winning layout, with whichever copy's card order is newer. */
+function mergeColumn(
+	column: KanbanColumn,
+	board: KanbanBoard,
+	copy: KanbanColumn,
+	copyBoard: KanbanBoard
+): KanbanColumn {
+	const arranged = pickLatest(
+		{ value: column, time: orderTime(column, board), writer: column.orderWriter },
+		{ value: copy, time: orderTime(copy, copyBoard), writer: copy.orderWriter }
+	).value;
+	return {
+		id: column.id,
+		labelId: column.labelId,
+		order: [...arranged.order],
+		...(arranged.orderedAt != null ? { orderedAt: arranged.orderedAt } : {}),
+		...(arranged.orderWriter ? { orderWriter: arranged.orderWriter } : {})
+	};
+}
+
+/** Each setting and each column's card order is last-write-wins on its own. */
+export function mergeTwoBoards(left: KanbanBoard, right: KanbanBoard): KanbanBoard {
+	if (left === right) return left;
+	const name = pickLatest(side(left, 'name', left.name), side(right, 'name', right.name));
+	const backlogFilter = pickLatest(
+		side(left, 'backlogFilter', left.backlogFilter),
+		side(right, 'backlogFilter', right.backlogFilter)
+	);
+	const layout = pickLatest(side(left, 'columns', left), side(right, 'columns', right));
+	const other = layout.value === left ? right : left;
+	const otherColumns = new Map(other.columns.map((column) => [column.id, column]));
+	const columns = layout.value.columns.map((column) => {
+		const copy = otherColumns.get(column.id);
+		return copy ? mergeColumn(column, layout.value, copy, other) : column;
+	});
+	const picked = { name, backlogFilter, columns: layout };
+	const fieldTimes: Partial<Record<BoardField, number>> = {};
+	const fieldWriters: Partial<Record<BoardField, string>> = {};
+	for (const field of BOARD_FIELDS) {
+		fieldTimes[field] = picked[field].time;
+		const writer = picked[field].writer;
+		if (writer) fieldWriters[field] = writer;
+	}
+	return {
+		id: left.id,
+		name: name.value,
+		columns,
+		backlogFilter: backlogFilter.value,
+		updatedAt: Math.max(left.updatedAt, right.updatedAt),
+		fieldTimes,
+		...(Object.keys(fieldWriters).length ? { fieldWriters } : {})
+	};
+}
+
 export function mergeKanbanBoards(
 	local: KanbanBoard[],
 	remote: KanbanBoard[],
@@ -191,17 +402,7 @@ export function mergeKanbanBoards(
 	const byId = new Map(local.map((board) => [board.id, board]));
 	for (const board of remote) {
 		const current = byId.get(board.id);
-		if (!current) {
-			byId.set(board.id, board);
-			continue;
-		}
-		const remoteWins =
-			board.updatedAt > current.updatedAt ||
-			(board.updatedAt === current.updatedAt && stableStringify(board) > stableStringify(current));
-		byId.set(
-			board.id,
-			remoteWins ? keepColumnOrder(board, current) : keepColumnOrder(current, board)
-		);
+		byId.set(board.id, current ? mergeTwoBoards(current, board) : board);
 	}
 	return [...byId.values()].filter(
 		(board) => board.updatedAt > (Number(tombstones[board.id]) || 0)

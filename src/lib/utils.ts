@@ -1,4 +1,5 @@
 import { downloadFile } from '@zag-js/file-utils';
+import { copyNote } from '$lib/model';
 // Small utility helpers shared across components and stores.
 
 /** Generate a reasonably unique id (crypto when available, fallback to Math.random). */
@@ -203,51 +204,7 @@ export function activateOnKeyboard(event: KeyboardEvent, activate: () => void): 
 
 /** Deep-clone a note for editing without mutating the stored one. Plain objects only. */
 export function cloneNote(note: import('$lib/types').Note): import('$lib/types').Note {
-	return {
-		id: note.id,
-		title: note.title,
-		body: note.body,
-		color: note.color,
-		pinned: note.pinned,
-		archived: note.archived,
-		trashed: note.trashed,
-		trashedAt: note.trashedAt,
-		...(note.secret ? { secret: true } : {}),
-		createdAt: note.createdAt,
-		updatedAt: note.updatedAt,
-		reminder: note.reminder,
-		labels: [...note.labels],
-		...(note.fieldTimes ? { fieldTimes: { ...note.fieldTimes } } : {}),
-		...(note.images
-			? {
-					images: note.images.map((image) => ({
-						id: image.id,
-						mime: image.mime,
-						dataUrl: image.dataUrl,
-						createdAt: image.createdAt,
-						...(image.name != null ? { name: image.name } : {}),
-						...(image.thumbUrl ? { thumbUrl: image.thumbUrl } : {}),
-						...(image.width != null ? { width: image.width } : {}),
-						...(image.height != null ? { height: image.height } : {}),
-						...(image.byteSize != null ? { byteSize: image.byteSize } : {}),
-						...(image.contentHash ? { contentHash: image.contentHash } : {}),
-						...(image.encodingVersion != null ? { encodingVersion: image.encodingVersion } : {})
-					}))
-				}
-			: {}),
-		...(note.linkPreviews?.length
-			? {
-					linkPreviews: note.linkPreviews.map((preview) => ({
-						url: preview.url,
-						hostname: preview.hostname,
-						title: preview.title,
-						...(preview.description ? { description: preview.description } : {}),
-						...(preview.image ? { image: preview.image } : {}),
-						...(preview.icon ? { icon: preview.icon } : {})
-					}))
-				}
-			: {})
-	};
+	return copyNote(note);
 }
 
 /** Note clone for JSON backup: full note metadata, attachment meta + thumbs, never full image bytes. */

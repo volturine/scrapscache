@@ -765,3 +765,52 @@ describe('notes store sync apply', () => {
 		expect(events.filter((event) => event === 'enter').length).toBeGreaterThanOrEqual(3);
 	});
 });
+
+describe('applying a pulled snapshot during local edits', () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+		notesStore.notes = [];
+	});
+
+	it('does not roll the device copy back behind an edit made while the flight awaited', async () => {
+		await clearAllNotes();
+		const local = remoteNote('racing');
+		notesStore.notes = [local];
+		await putNote(local);
+		let release!: () => void;
+		const gate = new Promise<void>((resolve) => (release = resolve));
+		const write = syncTombstones.writeTombstones;
+		vi.spyOn(syncTombstones, 'writeTombstones').mockImplementation(async (...args) => {
+			await gate;
+			return write(...args);
+		});
+
+		const pulled = {
+			...remoteNote('racing'),
+			title: 'renamed elsewhere',
+			fieldTimes: { title: 5 }
+		};
+		const applying = (
+			notesStore as unknown as {
+				applyPulledSnapshot(snapshot: unknown, pid: string): Promise<unknown>;
+			}
+		).applyPulledSnapshot(
+			{
+				notes: [pulled],
+				labels: [],
+				boards: [],
+				tombstones: {},
+				labelTombstones: {},
+				boardTombstones: {}
+			},
+			LOCAL_PROFILE_ID
+		);
+		notesStore.updateNote('racing', { pinned: true });
+		release();
+		await applying;
+		await idb.waitForDeviceWrites();
+
+		const [stored] = (await getAllNotesMetadata()).filter((note) => note.id === 'racing');
+		expect(stored).toMatchObject({ title: 'renamed elsewhere', pinned: true });
+	});
+});

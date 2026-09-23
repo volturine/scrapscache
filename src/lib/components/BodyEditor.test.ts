@@ -1438,6 +1438,23 @@ async function typeText(editor: HTMLElement, text: string) {
 }
 
 describe('BodyEditor controlled input', () => {
+	it('adopts a synced body only once typed input has settled, without reporting input', async () => {
+		const oninput = vi.fn();
+		const { container, component } = render(BodyEditor, { props: { body: 'Hello', oninput } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+
+		expect(component.adoptBody('Synced\nbody')).toBe(true);
+		await tick();
+		expect(lineTexts(container)).toEqual(['Synced', 'body']);
+		expect(oninput).not.toHaveBeenCalled();
+
+		caretAt(container, 1, 4);
+		await typeText(editor, '!');
+		// The model has not serialized this keystroke yet; replacing it would lose it.
+		expect(component.adoptBody('Other')).toBe(false);
+		expect(lineTexts(container)).toEqual(['Synced', 'body!']);
+	});
+
 	it('reports input from syncBodyNow only when the body changed', async () => {
 		// The note editor's save timer calls syncBodyNow; reporting input for an
 		// unchanged body re-armed that timer and rewrote the note every 800ms.

@@ -3,7 +3,8 @@
 import type { KanbanBoard } from '$lib/kanban';
 import type { Label, Note, NoteImage } from '$lib/types';
 import { mergeKanbanBoards } from '$lib/kanban';
-import { mergeLabelLists, mergeNoteLists, withoutTombstoned } from '$lib/noteMerge';
+import { mergeLabelLists, mergeNoteLists, withoutTombstoned } from '$lib/model';
+import { observeRelayTime } from '$lib/editContext';
 import {
 	currentRecordKeys,
 	fingerprintMapFrom,
@@ -925,13 +926,16 @@ export class SyncStore {
 				};
 			}
 
+			let sentAt = 0;
 			xhr.onload = () => {
+				const receivedAt = Date.now();
 				let data: Record<string, unknown> = {};
 				try {
 					data = JSON.parse(xhr.responseText || '{}') as Record<string, unknown>;
 				} catch {
 					/* handled below */
 				}
+				observeRelayTime(data.serverTime, sentAt, receivedAt);
 				if (xhr.status < 200 || xhr.status >= 300) {
 					resolve({
 						success: false,
@@ -955,6 +959,7 @@ export class SyncStore {
 			xhr.onerror = () => resolve({ success: false, error: 'Sync network error' });
 			xhr.ontimeout = () => resolve({ success: false, error: 'Sync timed out' });
 			xhr.onabort = () => resolve({ success: false, error: 'Sync was cancelled' });
+			sentAt = Date.now();
 			xhr.send(payload);
 		});
 	}

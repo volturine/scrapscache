@@ -1,30 +1,22 @@
 import { decryptSyncPayload, encryptSyncPayload, computeSlot, randomOpaqueId } from './crypto.js';
-import { ScrapscacheSyncClient, type SyncEnvelope } from './syncClient.js';
+import { ScrapscacheSyncClient, type SyncEnvelope, type SyncResult } from './syncClient.js';
+import {
+	applyNoteEdit,
+	createEditContext,
+	mergeTwoLabels,
+	mergeTwoNotes,
+	NOTE_FIELDS,
+	SyncClock,
+	touchNoteFields,
+	type Label,
+	type Note as ModelNote,
+	type NoteColor,
+	type NotePatch
+} from '../../../src/lib/model/index.js';
 
-export type Note = {
-	id: string;
-	title: string;
-	body: string;
-	labels: string[];
-	color: string;
-	pinned: boolean;
-	archived: boolean;
-	trashed?: boolean;
-	trashedAt?: number | null;
-	/** Legacy MCP-created records used `trash`; keep reading them while they migrate. */
-	trash?: boolean;
-	reminder?: number | null;
-	createdAt: number;
-	updatedAt: number;
-	images?: unknown[];
-};
-
-export type Label = {
-	id: string;
-	name: string;
-	createdAt?: number;
-	updatedAt?: number;
-};
+/** Legacy MCP-created records used `trash`; keep reading them while they migrate. */
+export type Note = ModelNote & { trash?: boolean };
+export type { Label };
 
 export type SyncRecordPayload =
 	| { kind: 'note'; value: Note }
@@ -35,6 +27,8 @@ export type SyncRecordPayload =
 	| { kind: 'label-tombstone'; id: string; deletedAt: number }
 	| { kind: 'board-tombstone'; id: string; deletedAt: number }
 	| { kind: 'profile-meta'; value: { name: string } };
+
+type WritableRecord = { kind: 'note'; value: Note } | { kind: 'label'; value: Label };
 
 export const CHECK_RE = /^(\s*)(?:[-*•]\s+)?\[([xX ]?)\]\s*(.*)$/;
 
@@ -347,6 +341,8 @@ export class McpSession {
 	private operationQueue: Promise<void> = Promise.resolve();
 	private sseListeners = new Set<(event: string, data: unknown) => void>();
 	private lastActiveAt = Date.now();
+	private readonly clock = new SyncClock();
+	private readonly editContext = createEditContext(() => this.clock.now());
 
 	constructor(client: ScrapscacheSyncClient, workspaceName = 'Workspace') {
 		this.client = client;
@@ -443,10 +439,18 @@ export class McpSession {
 		}
 	}
 
+	/** One relay round trip; its answer also sets the clock edits are stamped with. */
+	private async delta(uploads: SyncEnvelope[] = []): Promise<SyncResult> {
+		const sentAt = Date.now();
+		const result = await this.client.syncDelta(this.cursor, uploads, [], 100);
+		this.clock.observe(result.serverTime, sentAt, Date.now());
+		return result;
+	}
+
 	private async downloadChanges(): Promise<void> {
 		let hasMore = true;
 		while (hasMore) {
-			const result = await this.client.syncDelta(this.cursor, [], [], 100);
+			const result = await this.delta();
 			if (result.reset) {
 				this.notes.clear();
 				this.labels.clear();
@@ -465,9 +469,24 @@ export class McpSession {
 		await this.downloadChanges();
 	}
 
-	private async commitUploads(uploads: SyncEnvelope[]): Promise<void> {
+	/**
+	 * Write records under optimistic concurrency. When another writer got there
+	 * first, merge with its copy and retry, so neither side's edit is lost.
+	 */
+	private async commitRecords(records: WritableRecord[]): Promise<void> {
+		let pending = records;
 		for (let attempt = 0; attempt < 4; attempt += 1) {
-			const result = await this.client.syncDelta(this.cursor, uploads, [], 100);
+			const envelopes = pending.map((record): SyncEnvelope => {
+				const key = `${record.kind}:${record.value.id}`;
+				const slot = computeSlot(this.syncKey, key);
+				return {
+					id: randomOpaqueId(),
+					slot,
+					ciphertext: encryptSyncPayload(this.syncKey, record, slot),
+					expectedId: this.syncedSlots.get(key)?.id ?? null
+				};
+			});
+			const result = await this.delta(envelopes);
 			if (result.reset) {
 				this.notes.clear();
 				this.labels.clear();
@@ -480,13 +499,21 @@ export class McpSession {
 				await this.downloadChanges();
 			}
 			if (result.writesAccepted) {
+				pending.forEach((record, index) => {
+					if (record.kind === 'note') this.notes.set(record.value.id, record.value);
+					else this.labels.set(record.value.id, record.value);
+					this.syncedSlots.set(`${record.kind}:${record.value.id}`, envelopes[index]);
+				});
 				return;
 			}
-			// Update expected IDs for retrying conflict
-			for (const upload of uploads) {
-				const current = [...this.syncedSlots.values()].find((slot) => slot.slot === upload.slot);
-				upload.expectedId = current?.id ?? null;
-			}
+			pending = pending.map((record): WritableRecord => {
+				if (record.kind === 'note') {
+					const current = this.notes.get(record.value.id);
+					return current ? { kind: 'note', value: mergeTwoNotes(current, record.value) } : record;
+				}
+				const current = this.labels.get(record.value.id);
+				return current ? { kind: 'label', value: mergeTwoLabels(current, record.value) } : record;
+			});
 		}
 		throw new Error('Concurrent modification conflict: write could not be committed');
 	}
@@ -501,29 +528,32 @@ export class McpSession {
 		return note.trashed ?? note.trash ?? false;
 	}
 
-	private resolveLabelIds(names: string[]): string[] {
+	/** Label ids for names; labels that do not exist yet are returned to be written with the note. */
+	private resolveLabelIds(names: string[]): { ids: string[]; created: Label[] } {
 		const ids: string[] = [];
+		const created: Label[] = [];
 		for (const rawName of names) {
 			const name = rawName.trim();
 			if (!name) continue;
-			let found = [...this.labels.values()].find(
-				(l) => l.name.toLowerCase() === name.toLowerCase()
+			const known = [...this.labels.values(), ...created].find(
+				(label) => label.name.toLowerCase() === name.toLowerCase()
 			);
-			if (found) {
-				ids.push(found.id);
-			} else {
-				// We can refer to or create label
-				const newLabel: Label = {
-					id: randomOpaqueId(),
-					name,
-					createdAt: Date.now(),
-					updatedAt: Date.now()
-				};
-				this.labels.set(newLabel.id, newLabel);
-				ids.push(newLabel.id);
+			if (known) {
+				if (!ids.includes(known.id)) ids.push(known.id);
+				continue;
 			}
+			const now = this.clock.now();
+			const label: Label = {
+				id: randomOpaqueId(),
+				name,
+				createdAt: now,
+				updatedAt: now,
+				writer: this.editContext.writer
+			};
+			created.push(label);
+			ids.push(label.id);
 		}
-		return ids;
+		return { ids, created };
 	}
 
 	async searchNotes(args: {
@@ -635,7 +665,7 @@ export class McpSession {
 		reminder?: string | null;
 	}) {
 		await this.ensureHydrated();
-		const now = Date.now();
+		const now = this.clock.now();
 		const noteId = randomOpaqueId();
 		const reminder = reminderTimestamp(args.reminder) ?? null;
 
@@ -645,37 +675,32 @@ export class McpSession {
 			noteBody = noteBody ? `${noteBody}\n${checklistLines}` : checklistLines;
 		}
 
-		const labelIds = args.labels ? this.resolveLabelIds(args.labels) : [];
+		const labels = args.labels ? this.resolveLabelIds(args.labels) : { ids: [], created: [] };
 
-		const note: Note = {
-			id: noteId,
-			title: args.title?.trim() || '',
-			body: noteBody,
-			labels: labelIds,
-			color: args.color || 'default',
-			pinned: !!args.pinned,
-			archived: false,
-			trashed: false,
-			trashedAt: null,
-			reminder,
-			createdAt: now,
-			updatedAt: now
-		};
+		const note = touchNoteFields(
+			{
+				id: noteId,
+				title: args.title?.trim() || '',
+				body: noteBody,
+				labels: labels.ids,
+				color: (args.color || 'default') as NoteColor,
+				pinned: !!args.pinned,
+				archived: false,
+				trashed: false,
+				trashedAt: null,
+				reminder,
+				createdAt: now,
+				updatedAt: now,
+				images: []
+			},
+			NOTE_FIELDS,
+			{ ...this.editContext, now: () => now }
+		);
 
-		const recordKey = `note:${noteId}`;
-		const payload: SyncRecordPayload = { kind: 'note', value: note };
-		const slot = computeSlot(this.syncKey, recordKey);
-		const ciphertext = encryptSyncPayload(this.syncKey, payload, slot);
-
-		const envelope: SyncEnvelope = {
-			id: randomOpaqueId(),
-			slot,
-			ciphertext,
-			expectedId: null
-		};
-
-		await this.commitUploads([envelope]);
-		this.notes.set(note.id, note);
+		await this.commitRecords([
+			...labels.created.map((label): WritableRecord => ({ kind: 'label', value: label })),
+			{ kind: 'note', value: note }
+		]);
 
 		return {
 			success: true,
@@ -737,38 +762,30 @@ export class McpSession {
 		}
 
 		const reminder = reminderTimestamp(args.reminder);
-		const labelIds =
-			args.labels !== undefined ? this.resolveLabelIds(args.labels) : existing.labels;
+		const labels = args.labels !== undefined ? this.resolveLabelIds(args.labels) : null;
 
-		const updatedNote: Note = {
+		const before: Note = {
 			...existing,
 			trashed: existing.trashed ?? existing.trash ?? false,
-			trashedAt: existing.trashedAt ?? null,
-			title: args.title !== undefined ? args.title : existing.title,
+			trashedAt: existing.trashedAt ?? null
+		};
+		const patch: NotePatch = {
 			body: updatedBody,
-			labels: labelIds,
-			color: args.color !== undefined ? args.color : existing.color,
-			pinned: args.pinned !== undefined ? args.pinned : existing.pinned,
-			archived: args.archived !== undefined ? args.archived : existing.archived,
-			...(reminder !== undefined ? { reminder } : {}),
-			updatedAt: Date.now()
+			...(args.title !== undefined ? { title: args.title } : {}),
+			...(labels ? { labels: labels.ids } : {}),
+			...(args.color !== undefined ? { color: args.color as NoteColor } : {}),
+			...(args.pinned !== undefined ? { pinned: args.pinned } : {}),
+			...(args.archived !== undefined ? { archived: args.archived } : {}),
+			...(reminder !== undefined ? { reminder } : {})
 		};
-
-		const recordKey = `note:${existing.id}`;
-		const payload: SyncRecordPayload = { kind: 'note', value: updatedNote };
-		const slot = computeSlot(this.syncKey, recordKey);
-		const ciphertext = encryptSyncPayload(this.syncKey, payload, slot);
-		const currentEnvelope = this.syncedSlots.get(recordKey);
-
-		const envelope: SyncEnvelope = {
-			id: randomOpaqueId(),
-			slot,
-			ciphertext,
-			expectedId: currentEnvelope?.id ?? null
-		};
-
-		await this.commitUploads([envelope]);
-		this.notes.set(updatedNote.id, updatedNote);
+		const updatedNote = applyNoteEdit(before, patch, this.editContext);
+		const createdLabels = labels?.created ?? [];
+		if (updatedNote !== before || createdLabels.length > 0) {
+			await this.commitRecords([
+				...createdLabels.map((label): WritableRecord => ({ kind: 'label', value: label })),
+				{ kind: 'note', value: updatedNote }
+			]);
+		}
 
 		return {
 			success: true,

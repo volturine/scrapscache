@@ -1,5 +1,11 @@
-import { normalizeBacklogFilter, type KanbanBoard } from '$lib/kanban';
-import { NOTE_FIELDS } from './noteMerge';
+import { normalizeBoard, type KanbanBoard } from '$lib/kanban';
+import {
+	copyLabel,
+	isReadableBodyDoc,
+	NOTE_FIELDS,
+	touchNoteFields,
+	type EditContext
+} from './model';
 import type { LinkPreview } from '$lib/linkPreview';
 import type { Layout, View } from '$lib/stores/ui.svelte';
 import type { Label, Note, NoteFieldTimes, NoteImage } from '$lib/types';
@@ -53,28 +59,39 @@ export const BackupOperation = {
 } as const;
 export type BackupOperation = (typeof BackupOperation)[keyof typeof BackupOperation];
 
-/** Make imported notes current; additive imports also need fresh record identities. */
+/**
+ * Make imported notes current under fresh note ids, in the same order as
+ * `notes`. A note body merges with every other copy of its id, so restoring
+ * under the old id would blend the backup into newer synced text instead of
+ * replacing it. Additive imports also need fresh attachment ids.
+ */
 export function prepareImportedNotes(
 	notes: Note[],
 	mode: BackupImportMode,
-	now = Date.now()
+	context: EditContext
 ): Note[] {
-	const fieldTimes = Object.fromEntries(NOTE_FIELDS.map((field) => [field, now]));
+	const now = context.now();
 	return notes.map((source) => {
 		const note = cloneNote(source);
-		return {
-			...note,
-			id: mode === BackupImportMode.Keep ? uid() : note.id,
-			createdAt: now,
-			updatedAt: now,
-			trashedAt: note.trashed ? now : null,
-			fieldTimes: { ...fieldTimes },
-			images: (note.images ?? []).map((image) => ({
-				...image,
-				id: mode === BackupImportMode.Keep ? uid() : image.id,
-				createdAt: now
-			}))
-		};
+		const { imageTombstones: _removed, fieldWriters: _writers, ...rest } = note;
+		return touchNoteFields(
+			{
+				...rest,
+				id: uid(),
+				createdAt: now,
+				updatedAt: now,
+				trashedAt: note.trashed ? now : null,
+				fieldTimes: {},
+				// Distinct times keep the attachments in their original order.
+				images: (note.images ?? []).map((image, index) => ({
+					...image,
+					id: mode === BackupImportMode.Keep ? uid() : image.id,
+					createdAt: now + index
+				}))
+			},
+			NOTE_FIELDS,
+			context
+		);
 	});
 }
 
@@ -119,7 +136,8 @@ function normalizeImage(value: unknown): NoteImage | null {
 			: {}),
 		...(Number.isFinite(image.encodingVersion)
 			? { encodingVersion: Number(image.encodingVersion) }
-			: {})
+			: {}),
+		...(Number.isFinite(image.editedAt) ? { editedAt: Number(image.editedAt) } : {})
 	};
 }
 
@@ -140,27 +158,6 @@ function normalizeLinkPreview(value: unknown): LinkPreview | null {
 		...(typeof preview.description === 'string' ? { description: preview.description } : {}),
 		...(typeof preview.image === 'string' ? { image: preview.image } : {}),
 		...(typeof preview.icon === 'string' ? { icon: preview.icon } : {})
-	};
-}
-
-function normalizeBoard(value: unknown): KanbanBoard | null {
-	if (!value || typeof value !== 'object') return null;
-	const board = value as Partial<KanbanBoard>;
-	if (typeof board.id !== 'string' || !Array.isArray(board.columns)) return null;
-	const columns = board.columns.flatMap((column) => {
-		if (!column || typeof column !== 'object' || typeof column.id !== 'string') return [];
-		if (typeof column.labelId !== 'string' && column.labelId !== null) return [];
-		const order = Array.isArray(column.order)
-			? column.order.filter((id): id is string => typeof id === 'string')
-			: [];
-		return [{ id: column.id, labelId: column.labelId, order }];
-	});
-	return {
-		id: board.id,
-		name: String(board.name ?? ''),
-		columns,
-		backlogFilter: normalizeBacklogFilter(board.backlogFilter),
-		updatedAt: Number(board.updatedAt) || 0
 	};
 }
 
@@ -219,6 +216,7 @@ export function normalizeBackup(data: unknown): ScrapsCacheBackup | null {
 				id: note.id,
 				title: String(note.title ?? ''),
 				body: String(note.body ?? ''),
+				...(isReadableBodyDoc(note.bodyDoc) ? { bodyDoc: note.bodyDoc } : {}),
 				color,
 				pinned: Boolean(note.pinned),
 				archived: Boolean(note.archived),
@@ -233,6 +231,8 @@ export function normalizeBackup(data: unknown): ScrapsCacheBackup | null {
 				...(note.fieldTimes && typeof note.fieldTimes === 'object'
 					? { fieldTimes: asFieldTimes(note.fieldTimes) }
 					: {}),
+				...(note.fieldWriters ? { fieldWriters: note.fieldWriters } : {}),
+				...(note.imageTombstones ? { imageTombstones: note.imageTombstones } : {}),
 				linkPreviews: Array.isArray(note.linkPreviews)
 					? note.linkPreviews.flatMap((preview) => {
 							const normalized = normalizeLinkPreview(preview);
@@ -244,14 +244,7 @@ export function normalizeBackup(data: unknown): ScrapsCacheBackup | null {
 	});
 	const labels = (raw.labels as Label[]).flatMap((label): Label[] => {
 		if (!label || typeof label !== 'object' || typeof label.id !== 'string') return [];
-		return [
-			{
-				id: String(label.id),
-				name: String(label.name ?? ''),
-				createdAt: Number(label.createdAt) || 0,
-				updatedAt: Number(label.updatedAt) || Number(label.createdAt) || 0
-			}
-		];
+		return [copyLabel(label)];
 	});
 	const uiRaw = raw.ui && typeof raw.ui === 'object' ? (raw.ui as Record<string, unknown>) : {};
 	return {

@@ -6,6 +6,7 @@ import { createSyncIdentity } from '$lib/syncPairing';
 import { notesStore, SYNC_LOCK } from './notes.svelte';
 import { profileCoordinator } from './profiles.svelte';
 import { syncStore } from './sync.svelte';
+import { kanbanStore } from './kanban.svelte';
 
 function profile(id: string) {
 	const account = createSyncIdentity();
@@ -157,6 +158,38 @@ describe('backup and Keep import stay in the open workspace', () => {
 		]);
 		expect((await getAllNotesMetadata(workspaceA.id)).map((note) => note.title)).toEqual(['Stay']);
 		expect(await getAllNotesMetadata(LOCAL_PROFILE_ID)).toEqual([]);
+	});
+
+	it('restores a replacement backup under new ids and retires every old id', async () => {
+		await openWorkspace(workspaceA);
+		const existing = notesStore.createNote({ title: 'Before restore' });
+		await waitForDeviceWrites(workspaceA.id);
+		const backup = {
+			...emptyBackup([backupNote('restored')]),
+			boards: [
+				{
+					id: 'board',
+					name: 'Board',
+					createdAt: 1,
+					updatedAt: 1,
+					columns: [{ id: 'column', labelId: null, order: ['restored'] }],
+					backlogFilter: { labelIds: [], search: '' }
+				}
+			]
+		} as unknown as ScrapsCacheBackup;
+
+		const result = await notesStore.importBackup(backup, BackupImportMode.Replace);
+
+		expect(result).toEqual({ success: true });
+		const [restored] = notesStore.notes;
+		// Under the old id, the restored body would merge into newer synced text.
+		expect(restored.title).toBe('restored');
+		expect(restored.id).not.toBe('restored');
+		expect(notesStore.deletedNoteIds).toMatchObject({
+			restored: expect.any(Number),
+			[existing.id]: expect.any(Number)
+		});
+		expect(kanbanStore.boards[0].columns[0].order).toEqual([restored.id]);
 	});
 
 	it('imports Google Keep notes only into the open workspace', async () => {

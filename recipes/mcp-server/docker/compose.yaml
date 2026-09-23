@@ -2,8 +2,9 @@ services:
   scrapscache-mcp:
     image: ghcr.io/volturine/scrapscache-mcp:latest
     build:
-      context: ..
-      dockerfile: docker/Dockerfile
+      # The repository root: the server compiles the app's shared note model.
+      context: ../../..
+      dockerfile: recipes/mcp-server/docker/Dockerfile
     container_name: scrapscache-mcp
     restart: unless-stopped
     ports:

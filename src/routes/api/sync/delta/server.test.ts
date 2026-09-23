@@ -111,7 +111,12 @@ describe('sync delta route', () => {
 			undefined,
 			5_000
 		);
-		expect(await response.json()).toMatchObject({ writesAccepted: true, conflicts: [] });
+		// Clients stamp edits on the relay clock, so it answers with its time.
+		expect(await response.json()).toMatchObject({
+			writesAccepted: true,
+			conflicts: [],
+			serverTime: expect.any(Number)
+		});
 	});
 
 	it.each([

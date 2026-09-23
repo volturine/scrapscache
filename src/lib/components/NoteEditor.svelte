@@ -4,11 +4,12 @@
 	import { dialog, iconButton, input, noteSurface } from 'styled-system/recipes';
 	import { flex, hstack, spacer } from 'styled-system/patterns';
 	import { Dialog } from '@ark-ui/svelte/dialog';
-	import { flushSync, onMount, tick } from 'svelte';
+	import { flushSync, onMount, tick, untrack } from 'svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { noteToPlainText, noteAttachments, splitPastedHeading } from '$lib/checklistBody';
 	import { mergeHydratedImages } from '$lib/noteAttachmentHydration';
-	import type { NoteImage } from '$lib/types';
+	import type { Note, NoteImage } from '$lib/types';
+	import type { NotePatch } from '$lib/model';
 	import ColorPalette from './ColorPalette.svelte';
 	import ReminderPicker from './ReminderPicker.svelte';
 	import { reminderStore } from '$lib/stores/reminders.svelte';
@@ -62,8 +63,8 @@
 
 	let taskFocusLine = $state<number | null>(null);
 
-	// Parent remounts this editor when the note id changes, so the initial
-	// draft is captured once per open note rather than synced from the store.
+	// Parent remounts this editor when the note id changes. The draft starts from
+	// the store and takes later store changes only for fields not being edited.
 	// svelte-ignore state_referenced_locally
 	let title = $state(note?.title ?? '');
 	// svelte-ignore state_referenced_locally
@@ -78,11 +79,18 @@
 	let images = $state<NoteImage[]>(
 		note ? noteAttachments(note).map((attachment) => ({ ...attachment })) : []
 	);
+	/** Edits in this session were committed and need a durable flush on close. */
 	let draftDirty = false;
+	// Only fields edited here are saved. Stamping an untouched field would make
+	// this draft's stale copy beat a newer edit from another device in the merge.
+	let titleEdited = false;
+	let bodyEdited = false;
 	let bodyEditor = $state<{
 		focusDefault(): void;
 		replaceBodyWithText(text: string): Promise<void>;
 		syncBodyNow?(): void;
+		finishInput?(): void;
+		adoptBody?(text: string): boolean;
 	} | null>(null);
 	let footer = $state<{ handlePickedFiles(files: File[]): void } | null>(null);
 	let editorDialog = $state<HTMLDivElement | null>(null);
@@ -425,6 +433,7 @@
 		const split = splitPastedHeading(text);
 		if (!split) return null;
 		title = split.title;
+		titleEdited = true;
 		return split.body;
 	}
 
@@ -438,6 +447,7 @@
 		if (!split) return;
 		event.preventDefault();
 		title = split.title;
+		markTitleEdited();
 		if (split.body) void bodyEditor?.replaceBodyWithText(split.body);
 	}
 
@@ -463,41 +473,91 @@
 		void close();
 	}
 
-	function commit(patch: Record<string, unknown>) {
+	function commit(patch: NotePatch) {
 		if (!note) return;
 		notesStore.updateNote(note.id, patch);
 	}
 
 	let timer: ReturnType<typeof setTimeout> | null = null;
 	function scheduleCommit() {
-		draftDirty = true;
 		if (timer) clearTimeout(timer);
 		timer = setTimeout(() => {
-			if (!note) return;
-			bodyEditor?.syncBodyNow?.();
-			commit({ title, body, images, linkPreviews: [] });
+			timer = null;
+			commitDraft();
 		}, 800);
 	}
 
-	function commitNow(nextImages?: NoteImage[]) {
-		if (!note) return;
-		draftDirty = true;
-		bodyEditor?.syncBodyNow?.();
-		commit({ title, body, images: nextImages ?? images });
+	function markTitleEdited() {
+		titleEdited = true;
+		scheduleCommit();
 	}
+
+	function markBodyEdited() {
+		bodyEdited = true;
+		scheduleCommit();
+	}
+
+	/** Save the fields edited since the last commit, plus any explicit patch. */
+	function commitDraft(patch: NotePatch = {}) {
+		if (!note) return;
+		// Syncing can report input and arm the save timer; this commit covers it.
+		bodyEditor?.syncBodyNow?.();
+		if (timer) clearTimeout(timer);
+		timer = null;
+		const next: NotePatch = { ...patch };
+		if (titleEdited) next.title = title;
+		// Link previews follow the body, so editing it drops imported ones.
+		if (bodyEdited) Object.assign(next, { body, linkPreviews: [] });
+		titleEdited = false;
+		bodyEdited = false;
+		if (Object.keys(next).length === 0) return;
+		draftDirty = true;
+		commit(next);
+	}
+
+	function commitNow(nextImages?: NoteImage[]) {
+		commitDraft({ images: nextImages ?? images });
+	}
+
+	/** Attachment identity and metadata; loaded bytes are not an edit. */
+	function attachmentSignature(attachments: NoteImage[]): string {
+		return JSON.stringify(
+			attachments.map(({ dataUrl: _dataUrl, thumbUrl: _thumbUrl, ...meta }) => meta)
+		);
+	}
+
+	/** Take a store change made elsewhere into every field this draft is not editing. */
+	function adoptStoreNote(current: Note) {
+		if (!titleEdited && current.title !== title) title = current.title;
+		const currentBody = current.body ?? '';
+		if (!bodyEdited && currentBody !== body && bodyEditor?.adoptBody?.(currentBody)) {
+			body = currentBody;
+		}
+		// Attachment edits commit immediately, so the store owns the list; the
+		// draft only contributes bytes it has already loaded.
+		const stored = noteAttachments(current);
+		if (attachmentSignature(stored) !== attachmentSignature(images)) {
+			images = mergeHydratedImages(
+				stored.map((attachment) => ({ ...attachment })),
+				images
+			);
+		}
+	}
+
+	$effect(() => {
+		const current = note;
+		if (current) untrack(() => adoptStoreNote(current));
+	});
 
 	async function close() {
 		// Drop task-focus chrome immediately so dismiss is never gated on focus mode.
 		taskFocusLine = null;
-		// Syncing can report input and arm the save timer, so clear it afterwards;
-		// the commit below saves the same draft.
-		bodyEditor?.syncBodyNow?.();
-		if (timer) clearTimeout(timer);
-		timer = null;
+		// Text still being composed (an accent, a prediction) is on screen but not yet in the body.
+		bodyEditor?.finishInput?.();
+		commitDraft();
 		if (note && draftDirty) {
-			commit({ title, body, images, linkPreviews: [] });
 			try {
-				await notesStore.flushNote(note.id, { title, body, images, linkPreviews: [] });
+				await notesStore.flushNote(note.id);
 			} catch (err) {
 				console.error('[NoteEditor] flush failed:', err);
 			}
@@ -564,7 +624,7 @@
 				target.setSelectionRange(caret, caret);
 			}
 		}
-		scheduleCommit();
+		markTitleEdited();
 	}
 
 	function autoResizeTitle(node: HTMLTextAreaElement, _value?: string) {
@@ -766,7 +826,7 @@
 						<BodyEditor
 							bind:this={bodyEditor}
 							bind:body
-							oninput={scheduleCommit}
+							oninput={markBodyEdited}
 							{transformPaste}
 							placeholder="Take a note… type [ ] for a checklist, - for a bullet, Tab for sub-task"
 							focusLine={taskFocusLine}

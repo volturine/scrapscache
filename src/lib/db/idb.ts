@@ -4,8 +4,8 @@
 // stores, and DB version (v6) identical to master with zero migrations.
 
 import { openDB, type IDBPDatabase, type IDBPTransaction } from 'idb';
-import type { LinkPreview } from '$lib/linkPreview';
-import type { Label, Note, NoteImage } from '$lib/types';
+import { copyImage, copyLabel, copyLinkPreview, copyNote } from '$lib/model';
+import type { Label, LinkPreview, Note, NoteImage } from '$lib/types';
 import type { KanbanBoard } from '$lib/kanban';
 import { blobToDataUrl, dataUrlToBlob } from '$lib/imageBlob';
 
@@ -277,72 +277,13 @@ export async function waitForDeviceWrites(pid?: string): Promise<void> {
 	}
 }
 
-/** Plain clone of an attachment — never hand Svelte proxies to IndexedDB. */
-function plainImage(image: NoteImage): NoteImage {
-	return {
-		id: String(image.id),
-		mime: String(image.mime || 'application/octet-stream'),
-		dataUrl: typeof image.dataUrl === 'string' ? image.dataUrl : '',
-		createdAt: Number(image.createdAt) || 0,
-		...(image.name != null && image.name !== '' ? { name: String(image.name) } : {}),
-		...(typeof image.thumbUrl === 'string' && image.thumbUrl
-			? { thumbUrl: String(image.thumbUrl) }
-			: {}),
-		...(Number.isFinite(image.width) ? { width: Number(image.width) } : {}),
-		...(Number.isFinite(image.height) ? { height: Number(image.height) } : {}),
-		...(Number.isFinite(image.byteSize) ? { byteSize: Number(image.byteSize) } : {}),
-		...(typeof image.contentHash === 'string' && image.contentHash
-			? { contentHash: String(image.contentHash) }
-			: {}),
-		...(Number.isFinite(image.encodingVersion)
-			? { encodingVersion: Number(image.encodingVersion) }
-			: {})
-	};
-}
-
-function plainLinkPreview(preview: LinkPreview): LinkPreview {
-	return {
-		url: String(preview.url),
-		hostname: String(preview.hostname),
-		title: String(preview.title),
-		...(preview.description ? { description: String(preview.description) } : {}),
-		...(preview.image ? { image: String(preview.image) } : {}),
-		...(preview.icon ? { icon: String(preview.icon) } : {})
-	};
-}
-
+/** Plain clone — never hand Svelte proxies to IndexedDB. */
 function plainNote(note: Note): Note {
-	const images = (note.images ?? []).map(plainImage);
-	const linkPreviews = (note.linkPreviews ?? []).map(plainLinkPreview);
-	return {
-		id: String(note.id),
-		title: String(note.title ?? ''),
-		body: String(note.body ?? ''),
-		color: note.color,
-		pinned: Boolean(note.pinned),
-		archived: Boolean(note.archived),
-		trashed: Boolean(note.trashed),
-		trashedAt: note.trashedAt == null ? null : Number(note.trashedAt),
-		// Durable like every other field: the mirror is a fast-boot cache, so a
-		// flag only it carries is lost the moment the mirror is trimmed or evicted.
-		...(note.secret ? { secret: true } : {}),
-		createdAt: Number(note.createdAt) || 0,
-		updatedAt: Number(note.updatedAt) || 0,
-		reminder: note.reminder == null ? null : Number(note.reminder),
-		labels: Array.from(note.labels ?? [], (id) => String(id)),
-		images,
-		...(note.fieldTimes ? { fieldTimes: { ...note.fieldTimes } } : {}),
-		...(linkPreviews.length ? { linkPreviews } : {})
-	};
+	return copyNote(note);
 }
 
 function plainLabel(label: Label): Label {
-	return {
-		id: String(label.id),
-		name: String(label.name),
-		createdAt: Number(label.createdAt) || 0,
-		updatedAt: Number(label.updatedAt) || Number(label.createdAt) || 0
-	};
+	return copyLabel(label);
 }
 
 /** Plain, validated data only: never hand Svelte proxies to IndexedDB.
@@ -408,14 +349,14 @@ async function imageFromStoredValue(
 	noteId: string,
 	meta: NoteImage
 ): Promise<NoteImage | null> {
-	if (meta.dataUrl?.length > 20) return plainImage(meta);
+	if (meta.dataUrl?.length > 20) return copyImage(meta);
 	const blob =
 		(await blobFromStored(await db.get(IMAGES_STORE, `${noteId}::${meta.id}`))) ??
 		(await blobFromStored(await db.get(IMAGES_STORE, `${noteId}:${meta.id}`)));
 	if (!blob) {
-		return plainImage({ ...meta, dataUrl: '' });
+		return copyImage({ ...meta, dataUrl: '' });
 	}
-	return plainImage({
+	return copyImage({
 		...meta,
 		mime: meta.mime || blob.type,
 		dataUrl: await blobToDataUrl(blob)
@@ -822,7 +763,7 @@ export async function getCachedLinkPreview(url: string): Promise<LinkPreview | u
 	const { url: cachedUrl, hostname, title, description, image, icon } = row as LinkPreview;
 	if (typeof cachedUrl !== 'string' || typeof hostname !== 'string' || typeof title !== 'string')
 		return undefined;
-	return plainLinkPreview({
+	return copyLinkPreview({
 		url: cachedUrl,
 		hostname,
 		title,

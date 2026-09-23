@@ -8,8 +8,11 @@ import {
 	moveNoteLabels,
 	noteMatchesBacklog,
 	orderColumnNotes,
+	applyBoardEdit,
+	mergeTwoBoards,
 	type KanbanBoard
 } from './kanban';
+import { BodyAuthor, mergeTwoLabels, stableStringify, type EditContext } from './model';
 import type { Note } from './types';
 
 const board: KanbanBoard = {
@@ -111,7 +114,9 @@ describe('Kanban board tag mapping', () => {
 
 	it('takes the newer board from sync and never revives a tombstoned board', () => {
 		const remote: KanbanBoard = { ...board, name: 'Remote work', updatedAt: 20 };
-		expect(mergeKanbanBoards([board], [remote], {})).toEqual([remote]);
+		expect(mergeKanbanBoards([board], [remote], {})).toMatchObject([
+			{ name: 'Remote work', updatedAt: 20, columns: remote.columns }
+		]);
 		expect(mergeKanbanBoards([remote], [board], { board: 30 })).toEqual([]);
 	});
 
@@ -226,5 +231,81 @@ describe('merging a board whose copy has no card order', () => {
 
 	it('leaves a column nobody ever arranged empty', () => {
 		expect(orderOf(mergeKanbanBoards([boardWith([], 10)], [boardWith([], 20)]))).toEqual([]);
+	});
+});
+
+describe('board merge', () => {
+	const at = (time: number, writer: string): EditContext => ({
+		now: () => time,
+		writer,
+		author: new BodyAuthor()
+	});
+
+	it('keeps a card reorder and a new column made on two devices', () => {
+		const reordered = applyBoardEdit(
+			board,
+			{
+				...board,
+				columns: board.columns.map((column) =>
+					column.id === 'todo' ? { ...column, order: ['b', 'a'] } : column
+				)
+			},
+			at(50, 'phone')
+		);
+		const extended = applyBoardEdit(
+			board,
+			{
+				...board,
+				columns: [...board.columns, { id: 'review', labelId: 'review-label', order: [] }]
+			},
+			at(60, 'laptop')
+		);
+
+		const merged = mergeTwoBoards(reordered, extended);
+		expect(merged.columns.map((column) => column.id)).toEqual([
+			'backlog',
+			'todo',
+			'done',
+			'review'
+		]);
+		expect(merged.columns[1].order).toEqual(['b', 'a']);
+		expect(stableStringify(mergeTwoBoards(extended, reordered))).toBe(stableStringify(merged));
+	});
+
+	it('keeps a rename and a backlog filter change made on two devices', () => {
+		const renamed = applyBoardEdit(board, { ...board, name: 'Sprint' }, at(50, 'phone'));
+		const filtered = applyBoardEdit(
+			board,
+			{ ...board, backlogFilter: { ...board.backlogFilter, includeUntagged: false } },
+			at(40, 'laptop')
+		);
+		const merged = mergeTwoBoards(renamed, filtered);
+		expect(merged.name).toBe('Sprint');
+		expect(merged.backlogFilter.includeUntagged).toBe(false);
+	});
+
+	it('does not let an unarranged column clear a hand-made order', () => {
+		const arranged = {
+			...board,
+			updatedAt: 5,
+			columns: board.columns.map((column) =>
+				column.id === 'todo' ? { ...column, order: ['a', 'b'] } : column
+			)
+		};
+		const newer = { ...board, updatedAt: 90 };
+		expect(mergeTwoBoards(newer, arranged).columns[1].order).toEqual(['a', 'b']);
+	});
+
+	it('stamps nothing when an edit changes nothing', () => {
+		expect(applyBoardEdit(board, { ...board }, at(50, 'phone'))).toBe(board);
+	});
+});
+
+describe('label merge', () => {
+	it('breaks equal rename times by writer, not by name', () => {
+		const left = { id: 'l', name: 'zzz', createdAt: 1, updatedAt: 5, writer: 'a' };
+		const right = { id: 'l', name: 'aaa', createdAt: 1, updatedAt: 5, writer: 'b' };
+		expect(mergeTwoLabels(left, right).name).toBe('aaa');
+		expect(mergeTwoLabels(right, left).name).toBe('aaa');
 	});
 });

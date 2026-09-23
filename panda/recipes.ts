@@ -411,6 +411,8 @@ const noteCardRecipe = defineSlotRecipe({
 			'& > *': { flexShrink: 0 }
 		},
 		metaRow: {
+			// Phone gallery has no useful hover; only desktop shows the stamp.
+			display: { base: 'none', md: 'block' },
 			flexShrink: 0,
 			px: 'md',
 			pb: 0,

@@ -32,6 +32,9 @@ For how to report vulnerabilities, see [SECURITY.md](../SECURITY.md).
 - AAD: binds the account id and the slot, so the cipher itself rejects an
   envelope a relay moved between slots or accounts
 - Server stores only a version byte, the nonce, and the ciphertext
+- Sync history keeps prior encrypted envelopes on the relay for up to 30 days;
+  only a device with the sync key can read their note content. History responses
+  use `Cache-Control: no-store` and are not saved in device storage
 - Envelopes written before slot binding still open, so an upgrade does not
   strand what the relay already holds. Nothing writes that form any more, and a
   client that reads one queues the record for rewrite, so an account migrates

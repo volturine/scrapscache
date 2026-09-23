@@ -16,6 +16,10 @@
 	import LabelMenu from './LabelMenu.svelte';
 	import NoteEditorFooter from './NoteEditorFooter.svelte';
 	import BodyEditor from './BodyEditor.svelte';
+	import TimeTravel from './TimeTravel.svelte';
+	import { syncStore } from '$lib/stores/sync.svelte';
+	import { BackupImportMode, prepareImportedNotes } from '$lib/backup';
+	import type { Note } from '$lib/types';
 	import { appClock } from '$lib/appClock.svelte';
 	import { formatReminder, isReminderOverdue, noteActivity } from '$lib/utils';
 	import ReminderLabel from './ReminderLabel.svelte';
@@ -27,7 +31,8 @@
 		Maximize2,
 		Minimize2,
 		Paperclip,
-		Pin
+		Pin,
+		History
 	} from '@lucide/svelte';
 
 	import { revealEditorField, revealEditorPoint } from '$lib/editorVisibility';
@@ -71,6 +76,7 @@
 	let paletteOpen = $state(false);
 	let reminderOpen = $state(false);
 	let labelOpen = $state(false);
+	let historyOpen = $state(false);
 	let copyFlash = $state(false);
 	let copyFlashTimer: ReturnType<typeof setTimeout> | null = null;
 	// svelte-ignore state_referenced_locally
@@ -485,7 +491,7 @@
 		commit({ title, body, images: nextImages ?? images });
 	}
 
-	async function close() {
+	async function close(preserveEmpty = false) {
 		// Drop task-focus chrome immediately so dismiss is never gated on focus mode.
 		taskFocusLine = null;
 		// Syncing can report input and arm the save timer, so clear it afterwards;
@@ -501,9 +507,32 @@
 				console.error('[NoteEditor] flush failed:', err);
 			}
 		}
-		if (note) await notesStore.discardIfEmpty(note.id);
+		if (note && !preserveEmpty) await notesStore.discardIfEmpty(note.id);
 		onClose();
 		void notesStore.syncPendingChanges();
+	}
+
+	async function restoreNoteVersion(version: Note) {
+		if (!note || version.id !== note.id || !syncStore.account) return;
+		const id = note.id;
+		const accountId = syncStore.account.accountId;
+		await close(true);
+		if (syncStore.account?.accountId !== accountId) return;
+		const restored = prepareImportedNotes([version], BackupImportMode.Keep)[0];
+		const availableLabels = new Set(notesStore.labels.map((label) => label.id));
+		notesStore.updateNote(id, {
+			title: restored.title,
+			body: restored.body,
+			color: restored.color,
+			pinned: restored.pinned,
+			archived: restored.archived,
+			trashed: restored.trashed,
+			secret: restored.secret ?? false,
+			reminder: restored.reminder,
+			labels: restored.labels.filter((labelId) => availableLabels.has(labelId)),
+			images: restored.images,
+			linkPreviews: restored.linkPreviews ?? []
+		});
 	}
 
 	async function copyText() {
@@ -595,7 +624,7 @@
 <svelte:window
 	onkeydown={(e) => {
 		if (!isOpen || e.key !== 'Escape') return;
-		if (paletteOpen || reminderOpen || labelOpen) return;
+		if (paletteOpen || reminderOpen || labelOpen || historyOpen) return;
 		void close();
 	}}
 	onpastecapture={handlePaste}
@@ -644,6 +673,20 @@
 						<div class={spacer()} aria-hidden="true"></div>
 
 						<div class={hstack({ minW: 0, gap: '2xs' })}>
+							{#if syncStore.account}
+								<button
+									type="button"
+									class={iconButton({ variant: 'ghost', size: 'sm' })}
+									title="Note time travel"
+									aria-label="Note time travel"
+									onclick={() => {
+										closePopups();
+										historyOpen = true;
+									}}
+								>
+									<History size={20} aria-hidden="true" />
+								</button>
+							{/if}
 							{#if !note.trashed && !note.archived}
 								{#if note.reminder != null}
 									<button
@@ -895,6 +938,34 @@
 							labelOpen = false;
 						}}
 					/>
+				</Dialog.Content>
+			</Dialog.Positioner>
+		</Dialog.Root>
+	{/if}
+	{#if historyOpen && syncStore.account}
+		<Dialog.Root
+			open
+			onOpenChange={(details) => {
+				if (!details.open) historyOpen = false;
+			}}
+			preventScroll={false}
+		>
+			<Dialog.Backdrop class={dialogBackdrop} />
+			<Dialog.Positioner class={dialogPositioner} data-editor-popup>
+				<Dialog.Content class={styles.popupContent} aria-describedby={undefined}>
+					<Dialog.Title class={subDialog.title}>Note time travel</Dialog.Title>
+					{#key syncStore.account.accountId}
+						<TimeTravel
+							account={syncStore.account}
+							noteId={note.id}
+							onRestoreVersion={restoreNoteVersion}
+						/>
+					{/key}
+					<button
+						type="button"
+						class={iconButton({ variant: 'ghost', size: 'sm' })}
+						onclick={() => (historyOpen = false)}>Close</button
+					>
 				</Dialog.Content>
 			</Dialog.Positioner>
 		</Dialog.Root>

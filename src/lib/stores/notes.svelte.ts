@@ -1269,7 +1269,11 @@ export class NotesStore {
 		};
 	}
 
-	private async applyCloudReplacement(snapshot: SyncSnapshot, pid: string): Promise<SyncSnapshot> {
+	private async applyCloudReplacement(
+		snapshot: SyncSnapshot,
+		pid: string,
+		allowEmpty = false
+	): Promise<SyncSnapshot> {
 		// Replacing this device's notes with the cloud's belongs to one workspace.
 		if (pid !== this.pid) return snapshot;
 		const notes = withoutTombstoned(snapshot.notes, snapshot.tombstones).sort(
@@ -1278,7 +1282,7 @@ export class NotesStore {
 		const labels = withoutTombstoned(snapshot.labels, snapshot.labelTombstones).sort((a, b) =>
 			a.name.localeCompare(b.name)
 		);
-		if (notes.length === 0 && (syncStore.usage?.envelopeCount ?? 0) > 0) {
+		if (!allowEmpty && notes.length === 0 && (syncStore.usage?.envelopeCount ?? 0) > 0) {
 			throw new Error('Could not download synced notes');
 		}
 		if (navigator.storage?.estimate) {
@@ -1289,9 +1293,8 @@ export class NotesStore {
 				);
 			}
 		}
-		await replaceAllDeviceData(this.pid, notes, labels, (note) =>
-			this.compactPersistedNoteImages(note)
-		);
+		await replaceAllDeviceData(pid, notes, labels, (note) => this.compactPersistedNoteImages(note));
+		if (pid !== this.pid) return snapshot;
 		this.notes = notes;
 		this.labels = labels;
 		this.deletedNoteIds = { ...snapshot.tombstones };
@@ -1423,6 +1426,45 @@ export class NotesStore {
 	}
 
 	// Manual sync — caller shows UI feedback (spinning cloud icon).
+	async restoreHistoricalProfile(history: SyncSnapshot, accountId: string): Promise<boolean> {
+		return this.withSyncLock(async () => {
+			const account = syncStore.account;
+			if (!account || account.accountId !== accountId) return false;
+			const pid = this.pid;
+			try {
+				await this.waitForPendingProfileWrites();
+				await syncStore.clearAccountControlPlane(accountId);
+				let remote: SyncSnapshot | undefined;
+				const pulled = await syncStore.sync(
+					[],
+					[],
+					{},
+					{},
+					[],
+					{},
+					true,
+					true,
+					async (snapshot) => {
+						remote = snapshot;
+						return snapshot;
+					}
+				);
+				if (!pulled.success || !remote)
+					throw new Error(pulled.error ?? 'Could not read current profile');
+				if (syncStore.account?.accountId !== accountId || this.pid !== pid) return false;
+				const replacement = buildForcePushSnapshot(history, remote);
+				await this.applyCloudReplacement(replacement, pid, true);
+				if (syncStore.account?.accountId !== accountId || this.pid !== pid) return false;
+				await syncStore.clearAccountControlPlane(accountId);
+				const synced = await this.doSyncLocked(true);
+				return synced && !syncStore.lastError && !this.lastPersistError;
+			} catch (err) {
+				this.recordPersistenceError('Could not restore historical profile', err);
+				return false;
+			}
+		});
+	}
+
 	async forcePushWorkspace(turnstileToken?: string): Promise<boolean> {
 		return this.withSyncLock(async () => {
 			const account = syncStore.account;

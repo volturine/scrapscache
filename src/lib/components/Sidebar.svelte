@@ -14,12 +14,15 @@
 	import { page } from '$app/state';
 	import { fly } from 'svelte/transition';
 	import { notesStore } from '$lib/stores/notes.svelte';
+	import { syncStore } from '$lib/stores/sync.svelte';
+	import GalleryTimeline from './GalleryTimeline.svelte';
 	import { uiStore, type View } from '$lib/stores/ui.svelte';
 	import type { Label } from '$lib/types';
 	import {
 		AlarmClock,
 		Archive,
 		Kanban,
+		History,
 		Pencil,
 		Plus,
 		Search,
@@ -41,9 +44,18 @@
 
 	const { closeNote } = useEditorActions();
 
-	let { onNavigate }: { onNavigate?: () => void } = $props();
+	let {
+		onNavigate,
+		onHistorySelect,
+		selectedHistoryAt
+	}: {
+		onNavigate?: () => void;
+		onHistorySelect?: (at: number) => void;
+		selectedHistoryAt?: number | null;
+	} = $props();
 
 	let query = $state('');
+	let historyOpen = $state(false);
 	let queryInput = $state<HTMLInputElement | null>(null);
 
 	let renamingId = $state<string | null>(null);
@@ -124,6 +136,7 @@
 	}
 
 	function navigate(view: View, labelId: string | null = null) {
+		historyOpen = false;
 		const target = destination(view, labelId);
 		if (!target) return;
 		closeNote();
@@ -282,9 +295,23 @@
 				<span class={sidebarStyles.navLabel}>{item.label}</span>
 			</button>
 		{/each}
+		{#if syncStore.isLoggedIn && syncStore.account}
+			<button
+				type="button"
+				onclick={() => (historyOpen = !historyOpen)}
+				aria-pressed={historyOpen}
+				class={[menuRow, sidebarRow({ navigation: true, active: historyOpen, wide: true })]}
+			>
+				<span class={sidebarIcon({ iconTone: 'nav' })} aria-hidden="true"
+					><History size={18} strokeWidth={1.75} /></span
+				>
+				<span class={sidebarStyles.navLabel}>Time travel</span>
+			</button>
+		{/if}
 	</nav>
 
 	<section
+		style:display={historyOpen ? 'none' : undefined}
 		class={css({
 			mt: 'lg',
 			w: 'full',
@@ -482,6 +509,15 @@
 			{/each}
 		</div>
 	</section>
+	{#if historyOpen && syncStore.account}
+		{#key syncStore.account.accountId}
+			<GalleryTimeline
+				account={syncStore.account}
+				selectedAt={selectedHistoryAt}
+				onSelect={(at) => onHistorySelect?.(at)}
+			/>
+		{/key}
+	{/if}
 </aside>
 
 <svelte:window

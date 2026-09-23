@@ -1,5 +1,6 @@
 import type { D1Database, DurableObjectState, R2Bucket } from '@cloudflare/workers-types';
 import { batch, execute, type SqlStatement } from '../src/lib/server/cloudflare/d1';
+import { HISTORY_MAX_ENTRIES, HISTORY_TTL_MS } from '../src/lib/syncHistory';
 
 type Env = {
 	SCRAPSCACHE_DB: D1Database;
@@ -14,6 +15,7 @@ type EnvelopeRow = {
 	slot: string;
 	r2Key: string;
 	ciphertextBytes: number;
+	createdAt: number;
 };
 type SyncInput = {
 	accountId: string;
@@ -130,8 +132,9 @@ export class AccountCoordinator {
 			await execute(this.env.SCRAPSCACHE_DB, {
 				sql: `SELECT r2_key AS r2Key FROM envelopes WHERE account_id = ?
 					UNION SELECT r2_key FROM deleted_envelopes WHERE account_id = ?
+					UNION SELECT r2_key FROM envelope_history WHERE account_id = ?
 					UNION SELECT r2_key FROM pending_envelopes WHERE account_id = ?`,
-				args: [accountId, accountId, accountId]
+				args: [accountId, accountId, accountId, accountId]
 			})
 		).rows.map(({ r2Key }) => String(r2Key));
 		const results = await batch(this.env.SCRAPSCACHE_DB, [
@@ -151,11 +154,13 @@ export class AccountCoordinator {
 		const account = (
 			await execute(db, {
 				sql: `SELECT next_seq AS nextSeq, envelope_count AS envelopeCount,
-					ciphertext_bytes AS ciphertextBytes
+					ciphertext_bytes AS ciphertextBytes, updated_at AS updatedAt
 				 FROM accounts WHERE account_id = ?`,
 				args: [input.accountId]
 			})
-		).rows[0] as { nextSeq: number; envelopeCount: number; ciphertextBytes: number } | undefined;
+		).rows[0] as
+			| { nextSeq: number; envelopeCount: number; ciphertextBytes: number; updatedAt: number }
+			| undefined;
 		if (!account) return Response.json({ error: 'Sync account does not exist' }, { status: 404 });
 
 		const quota = (
@@ -175,7 +180,7 @@ export class AccountCoordinator {
 			storageBytes: storageBytes(),
 			maxBytes
 		});
-		const now = Date.now();
+		const now = Math.max(Date.now(), Number(account.updatedAt) + 1);
 
 		if (input.cursor > account.nextSeq) {
 			await execute(db, {
@@ -222,7 +227,7 @@ export class AccountCoordinator {
 		const currentRows = slots.length
 			? ((
 					await execute(db, {
-						sql: `SELECT seq, id, slot, r2_key AS r2Key, ciphertext_bytes AS ciphertextBytes
+						sql: `SELECT seq, id, slot, r2_key AS r2Key, ciphertext_bytes AS ciphertextBytes, created_at AS createdAt
 						 FROM envelopes WHERE account_id = ? AND slot IN (${slots.map(() => '?').join(', ')})`,
 						args: [input.accountId, ...slots]
 					})
@@ -289,11 +294,25 @@ export class AccountCoordinator {
 			acceptedUploads.map(({ id }) => [id, `v1/${prefix}/${crypto.randomUUID()}`] as const)
 		);
 		const statements: SqlStatement[] = [];
-		const obsoleteObjects: string[] = [];
+		let deletedAny = false;
 		for (const deletion of input.deletions) {
 			const removed = currentBySlot.get(deletion.slot);
 			if (!removed || removed.id !== deletion.id) continue;
+			deletedAny = true;
 			statements.push(
+				{
+					sql: `INSERT INTO envelope_history(account_id, slot, id, r2_key, ciphertext_bytes, created_at, saved_at)
+						VALUES (?, ?, ?, ?, ?, ?, ?)`,
+					args: [
+						input.accountId,
+						removed.slot,
+						removed.id,
+						removed.r2Key,
+						removed.ciphertextBytes,
+						removed.createdAt,
+						now
+					]
+				},
 				{
 					sql: `INSERT OR REPLACE INTO deleted_envelopes(
 						account_id, slot, id, r2_key, ciphertext_bytes, deleted_at
@@ -330,26 +349,42 @@ export class AccountCoordinator {
 				return Response.json({ error: 'quota' }, { status: 507 });
 			}
 			sequence += 1;
+			if (prior)
+				statements.push({
+					sql: `INSERT INTO envelope_history(account_id, slot, id, r2_key, ciphertext_bytes, created_at, saved_at)
+					VALUES (?, ?, ?, ?, ?, ?, ?)`,
+					args: [
+						input.accountId,
+						prior.slot,
+						prior.id,
+						prior.r2Key,
+						prior.ciphertextBytes,
+						prior.createdAt,
+						now
+					]
+				});
 			statements.push({
-				sql: `INSERT INTO envelopes(account_id, slot, seq, id, r2_key, ciphertext_bytes)
-					VALUES (?, ?, ?, ?, ?, ?)
+				sql: `INSERT INTO envelopes(account_id, slot, seq, id, r2_key, ciphertext_bytes, created_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?)
 					ON CONFLICT(account_id, slot) DO UPDATE SET
 						seq = excluded.seq, id = excluded.id,
-						r2_key = excluded.r2_key, ciphertext_bytes = excluded.ciphertext_bytes`,
+					r2_key = excluded.r2_key, ciphertext_bytes = excluded.ciphertext_bytes,
+					created_at = excluded.created_at`,
 				args: [
 					input.accountId,
 					upload.slot,
 					sequence,
 					upload.id,
 					objectKeys.get(upload.id)!,
-					upload.ciphertext.length
+					upload.ciphertext.length,
+					now
 				]
 			});
 			statements.push({
 				sql: 'DELETE FROM pending_envelopes WHERE account_id = ? AND id = ?',
 				args: [input.accountId, upload.id]
 			});
-			if (prior && prior.r2Key !== objectKeys.get(upload.id)) obsoleteObjects.push(prior.r2Key);
+			// The prior object now belongs to the encrypted history.
 			envelopeCount = projectedCount;
 			ciphertextBytes = projectedBytes;
 			currentBySlot.set(upload.slot, {
@@ -357,13 +392,26 @@ export class AccountCoordinator {
 				id: upload.id,
 				slot: upload.slot,
 				r2Key: objectKeys.get(upload.id)!,
-				ciphertextBytes: upload.ciphertext.length
+				ciphertextBytes: upload.ciphertext.length,
+				createdAt: now
 			});
 		}
+		if (acceptedUploads.length > 0 || deletedAny)
+			statements.push({
+				sql: 'INSERT INTO profile_history_points(account_id, saved_at) VALUES (?, ?)',
+				args: [input.accountId, now]
+			});
 		statements.push({
 			sql: `UPDATE accounts SET next_seq = ?, envelope_count = ?, ciphertext_bytes = ?,
 				updated_at = ?, last_seen_at = ? WHERE account_id = ?`,
-			args: [sequence, envelopeCount, ciphertextBytes, now, now, input.accountId]
+			args: [
+				sequence,
+				envelopeCount,
+				ciphertextBytes,
+				acceptedUploads.length > 0 || deletedAny ? now : account.updatedAt,
+				now,
+				input.accountId
+			]
 		});
 		// The batch fits. Drop what earlier attempts left, reserve the new object
 		// keys, write the bytes, and only then commit: a crash at any point from here
@@ -386,9 +434,9 @@ export class AccountCoordinator {
 		}
 
 		await batch(db, statements);
-		await Promise.all(obsoleteObjects.map((key) => this.env.SCRAPSCACHE_ENVELOPES.delete(key)));
 
-		const mutated = acceptedUploads.length > 0 || input.deletions.length > 0;
+		const mutated = acceptedUploads.length > 0 || deletedAny;
+		if (mutated) await this.pruneHistory(input.accountId, maxBytes, now);
 		if (mutated) {
 			for (const listener of this.listeners) {
 				// The writer already applied this change locally; waking it would
@@ -409,5 +457,50 @@ export class AccountCoordinator {
 			writesAccepted: true,
 			usage: usage()
 		});
+	}
+
+	private async pruneHistory(accountId: string, maxBytes: number, now: number): Promise<void> {
+		const rows = (
+			await execute(this.env.SCRAPSCACHE_DB, {
+				sql: `SELECT history_id AS historyId, r2_key AS r2Key,
+				ciphertext_bytes AS bytes, saved_at AS savedAt
+				FROM envelope_history WHERE account_id = ? ORDER BY history_id DESC`,
+				args: [accountId]
+			})
+		).rows as Array<{ historyId: number; r2Key: string; bytes: number; savedAt: number }>;
+		let retainedBytes = 0;
+		let floor = 0;
+		const expired = rows.filter((row, index) => {
+			retainedBytes += Number(row.bytes) + STORAGE_OVERHEAD_BYTES;
+			const remove =
+				index >= HISTORY_MAX_ENTRIES ||
+				Number(row.savedAt) < now - HISTORY_TTL_MS ||
+				retainedBytes > maxBytes;
+			if (remove) floor = Math.max(floor, Number(row.savedAt));
+			return remove;
+		});
+		await execute(this.env.SCRAPSCACHE_DB, {
+			sql: 'DELETE FROM profile_history_points WHERE account_id = ? AND (saved_at < ? OR saved_at < ?)',
+			args: [accountId, now - HISTORY_TTL_MS, floor]
+		});
+		for (let index = 0; index < expired.length; index += 100)
+			await batch(
+				this.env.SCRAPSCACHE_DB,
+				expired.slice(index, index + 100).map((row) => ({
+					sql: 'DELETE FROM envelope_history WHERE account_id = ? AND history_id = ?',
+					args: [accountId, row.historyId]
+				}))
+			);
+		for (const row of expired) {
+			const reference = (
+				await execute(this.env.SCRAPSCACHE_DB, {
+					sql: `SELECT 1 FROM envelopes WHERE r2_key = ?
+					UNION SELECT 1 FROM deleted_envelopes WHERE r2_key = ?
+					UNION SELECT 1 FROM envelope_history WHERE r2_key = ? LIMIT 1`,
+					args: [row.r2Key, row.r2Key, row.r2Key]
+				})
+			).rows[0];
+			if (!reference) await this.env.SCRAPSCACHE_ENVELOPES.delete(row.r2Key);
+		}
 	}
 }

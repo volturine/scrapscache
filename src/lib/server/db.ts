@@ -31,6 +31,7 @@ const RELAY_DDL = `
 		seq INTEGER NOT NULL,
 		id TEXT NOT NULL,
 		ciphertext TEXT NOT NULL,
+		created_at INTEGER NOT NULL DEFAULT 0,
 		PRIMARY KEY (account_id, slot),
 		UNIQUE (account_id, id),
 		FOREIGN KEY (account_id) REFERENCES accounts(account_id) ON DELETE CASCADE
@@ -69,6 +70,28 @@ const RELAY_DDL = `
 	);
 	CREATE INDEX IF NOT EXISTS deleted_envelopes_deleted_at
 		ON deleted_envelopes(deleted_at);
+	CREATE TABLE IF NOT EXISTS envelope_history (
+		history_id INTEGER PRIMARY KEY AUTOINCREMENT,
+		account_id TEXT NOT NULL,
+		slot TEXT NOT NULL,
+		id TEXT NOT NULL,
+		ciphertext TEXT NOT NULL,
+		created_at INTEGER NOT NULL,
+		saved_at INTEGER NOT NULL,
+		FOREIGN KEY (account_id) REFERENCES accounts(account_id) ON DELETE CASCADE
+	);
+	CREATE INDEX IF NOT EXISTS envelope_history_account_time
+		ON envelope_history(account_id, history_id DESC);
+	CREATE INDEX IF NOT EXISTS envelope_history_saved_at
+		ON envelope_history(saved_at);
+	CREATE TABLE IF NOT EXISTS profile_history_points (
+		account_id TEXT NOT NULL,
+		saved_at INTEGER NOT NULL,
+		PRIMARY KEY (account_id, saved_at),
+		FOREIGN KEY (account_id) REFERENCES accounts(account_id) ON DELETE CASCADE
+	);
+	CREATE INDEX IF NOT EXISTS profile_history_points_time
+		ON profile_history_points(saved_at);
 `;
 
 const OPS_DDL = `
@@ -156,6 +179,21 @@ export function createDb(clients: DbClients): Db {
 			schema ??= (async () => {
 				try {
 					await clients.relay.executeMultiple(RELAY_DDL);
+					for (const [table, column, ddl] of [
+						[
+							'envelopes',
+							'created_at',
+							'ALTER TABLE envelopes ADD COLUMN created_at INTEGER NOT NULL DEFAULT 0'
+						],
+						[
+							'envelope_history',
+							'created_at',
+							'ALTER TABLE envelope_history ADD COLUMN created_at INTEGER NOT NULL DEFAULT 0'
+						]
+					] as const) {
+						const columns = await clients.relay.execute(`PRAGMA table_info(${table})`);
+						if (!columns.rows.some((row) => row.name === column)) await clients.relay.execute(ddl);
+					}
 					await clients.ops.executeMultiple(OPS_DDL);
 				} catch (error) {
 					schema = undefined;

@@ -6,8 +6,6 @@ import {
 	LOCAL_AI_MODELS,
 	localAiBuildFor,
 	localAiModelOf,
-	SUMMARY_INPUT_LIMIT,
-	summaryMessages,
 	visibleReply
 } from './localAi';
 
@@ -26,7 +24,7 @@ describe('local AI models', () => {
 		expect(isValidSRI(model.integrity?.config ?? '')).toBe(true);
 		expect(isValidSRI(model.integrity?.tokenizer?.['tokenizer.json'] ?? '')).toBe(true);
 		expect(isValidSRI(model.integrity?.tokenizer?.['tokenizer_config.json'] ?? '')).toBe(true);
-		// Summaries switch thinking off, which WebLLM supports for Qwen3-family models only.
+		// Replies switch thinking off, which WebLLM supports for Qwen3-family models only.
 		expect(model.model_id).toMatch(/^Qwen3/);
 		expect(model.integrity?.onFailure ?? 'error').toBe('error');
 	});
@@ -54,23 +52,6 @@ describe('local AI models', () => {
 		expect(localAiModelOf(model.f32.model_id)).toBe(model);
 		expect(isLocalAiModelId('Llama-3.2-1B-Instruct-q4f16_1-MLC')).toBe(false);
 		expect(isLocalAiModelId(null)).toBe(false);
-	});
-});
-
-describe('summaryMessages', () => {
-	it('sends the title and body as the user message', () => {
-		const [system, user] = summaryMessages('  Trip  ', 'Pack socks\n');
-		expect(system.role).toBe('system');
-		expect(user).toEqual({ role: 'user', content: 'Title: Trip\n\nPack socks' });
-	});
-
-	it('leaves out an empty title', () => {
-		expect(summaryMessages(' ', 'Body')[1].content).toBe('Body');
-	});
-
-	it('cuts long notes to fit the context window', () => {
-		const content = summaryMessages('', 'x'.repeat(SUMMARY_INPUT_LIMIT * 2))[1].content;
-		expect(content).toHaveLength(SUMMARY_INPUT_LIMIT);
 	});
 });
 

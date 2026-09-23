@@ -1,13 +1,11 @@
 // The engine library is several megabytes, so it is imported only once a
-// download or summary starts, never with the app shell.
-import type { WebWorkerMLCEngine } from '@mlc-ai/web-llm';
+// download or a reply starts, never with the app shell.
+import type { ChatCompletionMessageParam, WebWorkerMLCEngine } from '@mlc-ai/web-llm';
 import {
 	isLocalAiModelId,
 	LOCAL_AI_APP_CONFIG,
 	localAiBuildFor,
 	localAiModelOf,
-	SUMMARY_MAX_TOKENS,
-	summaryMessages,
 	visibleReply,
 	type LocalAiModel
 } from '$lib/localAi';
@@ -83,8 +81,12 @@ export class LocalAiStore {
 		void this.#discard();
 	}
 
-	/** Streams a summary of the note into `onText`, which receives the full text so far. */
-	async summarize(title: string, body: string, onText: (text: string) => void): Promise<string> {
+	/** Streams a reply into `onText`, which receives the full visible text so far. */
+	async generate(
+		messages: ChatCompletionMessageParam[],
+		maxTokens: number,
+		onText: (text: string) => void
+	): Promise<string> {
 		const modelId = this.#modelId;
 		if (this.status !== LocalAiStatus.Ready || !modelId) throw new Error('Local AI is not set up.');
 		let engine: WebWorkerMLCEngine;
@@ -105,11 +107,11 @@ export class LocalAiStore {
 		}
 		if (this.#stopped) return '';
 		const stream = await engine.chat.completions.create({
-			messages: summaryMessages(title, body),
+			messages,
 			stream: true,
 			temperature: 0.2,
-			max_tokens: SUMMARY_MAX_TOKENS,
-			// Every picker model is a Qwen3-family reasoning model; a summary needs no reasoning.
+			max_tokens: maxTokens,
+			// Every picker model is a Qwen3-family reasoning model; note edits need no reasoning.
 			extra_body: { enable_thinking: false }
 		});
 		let text = '';
@@ -120,7 +122,7 @@ export class LocalAiStore {
 		return visibleReply(text).trim();
 	}
 
-	/** Ends the reply early; `summarize` then resolves with what it has so far. */
+	/** Ends the reply early; `generate` then resolves with what it has so far. */
 	stop() {
 		this.#stopped = true;
 		void this.#engine?.then((engine) => engine.interruptGenerate());

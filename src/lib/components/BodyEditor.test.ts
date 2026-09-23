@@ -1600,6 +1600,19 @@ describe('BodyEditor controlled input', () => {
 		// The model has not serialized this keystroke yet; replacing it would lose it.
 		expect(component.adoptBody('Other')).toBe(false);
 		expect(lineTexts(container)).toEqual(['Synced', 'body!']);
+
+	it('undoes a whole-body replacement from outside', async () => {
+		const { container, component } = render(BodyEditor, { props: { body: 'Hello' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+
+		await component.replaceBodyWithText('[ ] Hello');
+		expect(lineTexts(container)).toEqual(['Hello']);
+		expect(container.querySelector('[data-task-row]')).not.toBeNull();
+
+		await fireEvent.keyDown(editor, { key: 'z', ctrlKey: true });
+		await tick();
+		expect(container.querySelector('[data-task-row]')).toBeNull();
+		expect(lineTexts(container)).toEqual(['Hello']);
 	});
 
 	it('reports input from syncBodyNow only when the body changed', async () => {

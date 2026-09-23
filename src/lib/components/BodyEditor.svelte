@@ -1247,8 +1247,10 @@
 		void focusAfterRender(0, lines[0]?.text.length ?? 0, lines[0]?.id ?? null);
 	}
 
-	/** Replace the whole body from outside (e.g. a title paste seeding the body). */
+	/** Replace the whole body from outside (a title paste, an AI rewrite); undo restores the old body. */
 	export async function replaceBodyWithText(text: string) {
+		lastTyping = null;
+		rememberEdit();
 		applyingEdit = true;
 		try {
 			lines = parseBodyToLines(text);

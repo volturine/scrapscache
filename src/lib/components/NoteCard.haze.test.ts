@@ -152,6 +152,40 @@ describe('NoteCard right-click haze', () => {
 		expect(onOpen).not.toHaveBeenCalled();
 	});
 
+	it('dismisses the haze when the mouse pointer leaves the card', async () => {
+		render(NoteCard, { props: { note: note(), onOpen: vi.fn() } });
+
+		await fireEvent.contextMenu(card());
+		await fireEvent.pointerLeave(card(), { pointerType: 'mouse' });
+
+		expect(document.querySelector('[data-card-haze]')).toBeNull();
+	});
+
+	it('keeps the haze open when a touch pointer leaves the card', async () => {
+		render(NoteCard, { props: { note: note(), onOpen: vi.fn() } });
+
+		await fireEvent.contextMenu(card());
+		await fireEvent.pointerLeave(card(), { pointerType: 'touch' });
+
+		expect(document.querySelector('[data-card-haze]')).toBeTruthy();
+	});
+
+	it('opens the label menu from the haze tag button and toggles a label', async () => {
+		notesStore.labels = [{ id: 'label-1', name: 'Work', createdAt: 1, updatedAt: 1 }];
+		const toggleLabel = vi.spyOn(notesStore, 'toggleLabel').mockImplementation(() => {});
+		render(NoteCard, { props: { note: note(), onOpen: vi.fn() } });
+
+		await fireEvent.contextMenu(card());
+		await fireEvent.click(screen.getByRole('button', { name: 'Tag note' }));
+
+		expect(document.querySelector('[data-card-haze]')).toBeNull();
+		const search = screen.getByPlaceholderText('Search or create a label…');
+		expect(search).toBeTruthy();
+
+		await fireEvent.click(screen.getByText('Work'));
+		expect(toggleLabel).toHaveBeenCalledWith('note-1', 'label-1');
+	});
+
 	it('shows exactly 3 quick options for a trashed note: restore, archive, and delete forever', async () => {
 		const restoreSpy = vi.spyOn(notesStore, 'restoreNote').mockImplementation(() => {});
 		const archiveSpy = vi.spyOn(notesStore, 'restoreToArchive').mockImplementation(() => {});

@@ -16,6 +16,7 @@
 	import NoteBodyDisplay from './NoteBodyDisplay.svelte';
 	import ReminderLabel from './ReminderLabel.svelte';
 	import ReminderPicker from './ReminderPicker.svelte';
+	import LabelMenu from './LabelMenu.svelte';
 	import { noteToPlainText } from '$lib/checklistBody';
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { portalToAppOverlay } from '$lib/appViewport';
@@ -28,6 +29,7 @@
 		Pin,
 		Lock,
 		RotateCcw,
+		Tag,
 		Trash2
 	} from '@lucide/svelte';
 	import { onDestroy, onMount } from 'svelte';
@@ -45,6 +47,7 @@
 	let copied = $state(false);
 	let copyTimer: ReturnType<typeof setTimeout> | null = null;
 	let reminderDialogOpen = $state(false);
+	let labelDialogOpen = $state(false);
 
 	function closeHaze() {
 		hazeActive = false;
@@ -129,6 +132,18 @@
 		e.stopPropagation();
 		closeHaze();
 		reminderDialogOpen = true;
+	}
+
+	function handleTag(e: MouseEvent) {
+		e.stopPropagation();
+		closeHaze();
+		labelDialogOpen = true;
+	}
+
+	// A mouse leaving the card dismisses the haze; touch lift also fires
+	// pointerleave, and on touch the haze already closes on the next press.
+	function handleCardPointerLeave(e: PointerEvent) {
+		if (hazeActive && e.pointerType === 'mouse') closeHaze();
 	}
 
 	function openUnlessDrag(e: MouseEvent) {
@@ -317,8 +332,6 @@
 
 	let offsetX = $state(0);
 	let dragging = $state(false);
-	let cardHeight = $state(0);
-	const compactActions = $derived(cardHeight < 140);
 
 	const swipe = createCardSwipe({
 		onSwipeLeft: () => {
@@ -333,15 +346,6 @@
 			offsetX = s.offsetX;
 			dragging = s.dragging;
 		}
-	});
-
-	$effect(() => {
-		if (!cardEl) return;
-		const observer = new ResizeObserver((entries) => {
-			for (const entry of entries) cardHeight = entry.contentRect.height;
-		});
-		observer.observe(cardEl);
-		return () => observer.disconnect();
 	});
 
 	$effect(() => {
@@ -421,7 +425,6 @@
 
 	<div
 		bind:this={cardEl}
-		bind:clientHeight={cardHeight}
 		role="button"
 		tabindex="0"
 		aria-label={openLabel}
@@ -431,6 +434,7 @@
 		onpointermove={onCardPointerMove}
 		onpointerup={onCardPointerUp}
 		onpointercancel={onCardPointerCancel}
+		onpointerleave={handleCardPointerLeave}
 		onclick={openUnlessDrag}
 		oncontextmenu={handleContextMenu}
 		onkeydown={handleKeydown}
@@ -572,37 +576,37 @@
 						<!-- Restore -->
 						<button
 							type="button"
-							class={iconButton({ size: compactActions ? 'compact' : 'standard', variant: 'haze' })}
+							class={iconButton({ size: 'standard', variant: 'haze' })}
 							title="Restore"
 							aria-label="Restore note"
 							onclick={handleRestore}
 						>
-							<RotateCcw size={compactActions ? 16 : 20} aria-hidden="true" />
+							<RotateCcw size={20} aria-hidden="true" />
 						</button>
 
 						<!-- Archive -->
 						<button
 							type="button"
-							class={iconButton({ size: compactActions ? 'compact' : 'standard', variant: 'haze' })}
+							class={iconButton({ size: 'standard', variant: 'haze' })}
 							title="Archive"
 							aria-label="Archive note"
 							onclick={handleRestoreToArchive}
 						>
-							<Archive size={compactActions ? 16 : 20} aria-hidden="true" />
+							<Archive size={20} aria-hidden="true" />
 						</button>
 
 						<!-- Delete forever -->
 						<button
 							type="button"
 							class={iconButton({
-								size: compactActions ? 'compact' : 'standard',
+								size: 'standard',
 								variant: 'hazeRose'
 							})}
 							title="Delete forever"
 							aria-label="Delete forever"
 							onclick={handleDelete}
 						>
-							<Trash2 size={compactActions ? 16 : 20} aria-hidden="true" />
+							<Trash2 size={20} aria-hidden="true" />
 						</button>
 					</div>
 				{:else if note.archived}
@@ -610,89 +614,26 @@
 						<!-- Restore -->
 						<button
 							type="button"
-							class={iconButton({ size: compactActions ? 'compact' : 'standard', variant: 'haze' })}
+							class={iconButton({ size: 'standard', variant: 'haze' })}
 							title="Restore"
 							aria-label="Restore note"
 							onclick={handleArchive}
 						>
-							<ArchiveRestore size={compactActions ? 16 : 20} aria-hidden="true" />
+							<ArchiveRestore size={20} aria-hidden="true" />
 						</button>
 
 						<!-- Delete note -->
 						<button
 							type="button"
 							class={iconButton({
-								size: compactActions ? 'compact' : 'standard',
+								size: 'standard',
 								variant: 'hazeRose'
 							})}
 							title="Delete note"
 							aria-label="Delete note"
 							onclick={handleDelete}
 						>
-							<Trash2 size={compactActions ? 16 : 20} aria-hidden="true" />
-						</button>
-					</div>
-				{:else if compactActions}
-					<div class={hazeGroup.compact}>
-						<button
-							type="button"
-							class={iconButton({ size: 'compact', variant: copied ? 'hazeCopied' : 'haze' })}
-							title={copied ? 'Copied!' : 'Copy note'}
-							aria-label={copied ? 'Copied to clipboard' : 'Copy note'}
-							onclick={handleCopy}
-						>
-							{#if copied}
-								<Check size={16} class={successIcon} aria-hidden="true" />
-							{:else}
-								<Copy size={16} aria-hidden="true" />
-							{/if}
-						</button>
-						<button
-							type="button"
-							class={iconButton({ size: 'compact', variant: note.pinned ? 'hazePinned' : 'haze' })}
-							title={note.pinned ? 'Unpin' : 'Pin'}
-							aria-label={note.pinned ? 'Unpin note' : 'Pin note'}
-							onclick={handlePin}
-						>
-							<Pin size={16} fill={note.pinned ? 'currentColor' : 'none'} aria-hidden="true" />
-						</button>
-						<button
-							type="button"
-							class={iconButton({
-								size: 'compact',
-								variant: note.reminder != null ? 'hazeBlue' : 'haze'
-							})}
-							title={note.reminder != null ? 'Edit reminder' : 'Add reminder'}
-							aria-label={note.reminder != null ? 'Edit reminder' : 'Add reminder'}
-							onclick={handleReminder}
-						>
-							<Bell
-								size={16}
-								fill={note.reminder != null ? 'currentColor' : 'none'}
-								aria-hidden="true"
-							/>
-						</button>
-						<button
-							type="button"
-							class={iconButton({ size: 'compact', variant: 'hazeRose' })}
-							title={note.trashed ? 'Delete forever' : 'Delete note'}
-							aria-label={note.trashed ? 'Delete forever' : 'Delete note'}
-							onclick={handleDelete}
-						>
-							<Trash2 size={16} aria-hidden="true" />
-						</button>
-						<button
-							type="button"
-							class={iconButton({ size: 'compact', variant: 'haze' })}
-							title={note.archived ? 'Unarchive' : 'Archive'}
-							aria-label={note.archived ? 'Unarchive note' : 'Archive note'}
-							onclick={handleArchive}
-						>
-							{#if note.archived}
-								<ArchiveRestore size={16} aria-hidden="true" />
-							{:else}
-								<Archive size={16} aria-hidden="true" />
-							{/if}
+							<Trash2 size={20} aria-hidden="true" />
 						</button>
 					</div>
 				{:else}
@@ -747,6 +688,24 @@
 						</div>
 
 						<div class={hazeGroup.row}>
+							<!-- Tag -->
+							<button
+								type="button"
+								class={iconButton({
+									size: 'standard',
+									variant: note.labels.length ? 'hazeBlue' : 'haze'
+								})}
+								title="Tag"
+								aria-label="Tag note"
+								onclick={handleTag}
+							>
+								<Tag
+									size={20}
+									fill={note.labels.length ? 'currentColor' : 'none'}
+									aria-hidden="true"
+								/>
+							</button>
+
 							<!-- Delete -->
 							<button
 								type="button"
@@ -779,6 +738,43 @@
 		{/if}
 	</div>
 </div>
+
+{#if labelDialogOpen}
+	<Dialog.Root
+		open
+		onOpenChange={(details) => {
+			if (!details.open) labelDialogOpen = false;
+		}}
+		preventScroll={false}
+	>
+		<div
+			{@attach portalToAppOverlay}
+			class={css({ position: 'fixed', inset: 0, zIndex: 70 })}
+			role="presentation"
+		>
+			<Dialog.Backdrop
+				class={css({
+					position: 'fixed',
+					inset: 0,
+					bg: 'scrapscache.backdropSoft',
+					backdropFilter: 'blur(2px)'
+				})}
+			/>
+			<Dialog.Positioner
+				class={flex({ position: 'fixed', inset: 0, align: 'center', justify: 'center', p: 'lg' })}
+			>
+				<Dialog.Content class={css({ outline: 'none' })} onclick={(e) => e.stopPropagation()}>
+					<LabelMenu
+						noteId={note.id}
+						onClose={() => {
+							labelDialogOpen = false;
+						}}
+					/>
+				</Dialog.Content>
+			</Dialog.Positioner>
+		</div>
+	</Dialog.Root>
+{/if}
 
 {#if reminderDialogOpen}
 	<Dialog.Root

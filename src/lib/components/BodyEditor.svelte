@@ -30,6 +30,7 @@
 		parseInlineMarkdown,
 		parseMarkdownBlocks,
 		tokenizeMarkdownTableRow,
+		type CodeToken,
 		type EditorMarkdownBlockInfo,
 		type MarkdownBlock
 	} from '$lib/markdown';
@@ -2338,8 +2339,8 @@
 	{/each}
 {/snippet}
 
-{#snippet codeEditorContent(text: string, block: EditorCodeBlock)}
-	{#each highlightCodeLine(text, block.language) as token, tokenIndex (tokenIndex)}
+{#snippet codeEditorContent(tokens: CodeToken[])}
+	{#each tokens as token, tokenIndex (tokenIndex)}
 		{#if token.kind === 'plain'}
 			{token.text}
 		{:else}
@@ -2430,15 +2431,20 @@
 					{@render tableEditorContent(line.text, tableBlock, index === tableBlock.lineIndex)}
 				</span>
 			{:else if codeBlock && !codeFence}
+				{@const codeTokens = line.text ? highlightCodeLine(line.text, codeBlock.language) : null}
 				<span
 					data-line-text
 					spellcheck="false"
 					class={['markdown-inline-content', 'markdown-editor-code-line', css({ minH: '1lh' })]}
 				>
-					{#if line.text.length === 0}
+					<!-- Most code rows carry no strings, flags, or comments. Writing their text
+					straight in, as plain rows do, spares a block per token on every such row. -->
+					{#if !codeTokens}
 						{CARET_HOLDER}
+					{:else if codeTokens.length === 1 && codeTokens[0].kind === 'plain'}
+						{line.text}
 					{:else}
-						{@render codeEditorContent(line.text, codeBlock)}
+						{@render codeEditorContent(codeTokens)}
 					{/if}
 				</span>
 			{:else if !line.text || !/[*_~`#]/.test(line.text)}
@@ -2459,8 +2465,7 @@
 						uiStore.rawMarkdown && 'markdown-raw',
 						css({ minH: '1lh' }),
 						noteBody({ mode: 'editor', checked: line.checked, indented: line.indent > 0 }).line
-					]}
-					>{#if line.text.length === 0}{CARET_HOLDER}{:else}{line.text}{/if}</span
+					]}>{line.text || CARET_HOLDER}</span
 				>
 			{:else}
 				{@const inlineTokens = parseInlineMarkdown(line.text)}

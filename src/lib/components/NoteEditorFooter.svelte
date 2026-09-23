@@ -62,6 +62,7 @@
 		PenLine,
 		RotateCcw,
 		Share2,
+		Sparkles,
 		Tag,
 		Trash2,
 		X
@@ -82,6 +83,7 @@
 		color = 'default' as NoteColor,
 		onOpenColor,
 		onOpenTags,
+		onSummarize,
 		onCopy,
 		onShare,
 		onRestore,
@@ -105,6 +107,8 @@
 		color?: NoteColor;
 		onOpenColor?: () => void;
 		onOpenTags?: () => void;
+		/** Present only when the on-device model is ready. */
+		onSummarize?: () => void;
 		onCopy?: () => void;
 		/** Shares a link to the note: the system share sheet, or the clipboard without one. */
 		onShare?: () => void;
@@ -907,6 +911,9 @@
 				justify: 'flex-end'
 			})}
 		>
+			{#if onSummarize}
+				{@render footerButton('Summarize', 'Summarize', Sparkles, 'ghost', onSummarize)}
+			{/if}
 			{@render footerButton('Color', 'Color', Palette, 'ghost', () => onOpenColor?.())}
 			{#if showShare}
 				<Menu.Root bind:open={shareOpen} positioning={{ placement: 'top-end' }}>

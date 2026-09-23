@@ -57,6 +57,24 @@ export function parseChecklistItems(body: string): ParsedChecklistItem[] {
 	return items;
 }
 
+const RFC3339_DATETIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/i;
+
+function reminderTimestamp(value: unknown): number | null | undefined {
+	if (value === undefined) return undefined;
+	if (value === null) return null;
+	if (typeof value !== 'string' || !RFC3339_DATETIME_RE.test(value)) {
+		throw new Error(
+			'Reminder must be an ISO 8601 timestamp with a timezone, or null to remove it.'
+		);
+	}
+
+	const timestamp = Date.parse(value);
+	if (!Number.isFinite(timestamp)) {
+		throw new Error('Reminder must be a valid ISO 8601 timestamp with a timezone.');
+	}
+	return timestamp;
+}
+
 const READ_ONLY_ANNOTATIONS = {
 	readOnlyHint: true,
 	destructiveHint: false,
@@ -83,6 +101,30 @@ const NOTE_LIST_OUTPUT_SCHEMA = {
 		hasMore: { type: 'boolean', description: 'Whether additional notes matched' }
 	},
 	required: ['notes', 'total', 'hasMore']
+};
+
+const NOTE_MUTATION_OUTPUT_SCHEMA = {
+	type: 'object',
+	properties: {
+		success: { type: 'boolean' },
+		note: {
+			type: 'object',
+			properties: {
+				id: { type: 'string' },
+				title: { type: 'string' },
+				labels: { type: 'array', items: { type: 'string' } },
+				pinned: { type: 'boolean' },
+				archived: { type: 'boolean' },
+				reminder: {
+					type: ['string', 'null'],
+					format: 'date-time',
+					description: 'ISO 8601 reminder date and time, or null if no reminder is set.'
+				}
+			},
+			required: ['id', 'title', 'labels', 'pinned', 'reminder']
+		}
+	},
+	required: ['success', 'note']
 };
 
 export const MCP_TOOLS = [
@@ -151,7 +193,7 @@ export const MCP_TOOLS = [
 	{
 		name: 'open_note',
 		description:
-			'Read the full plaintext body, checklist, labels, and metadata of one note. Pass an ID returned by search_notes or list_notes.',
+			'Read the full plaintext body, checklist, labels, reminder, and metadata of one note. Pass an ID returned by search_notes or list_notes.',
 		annotations: READ_ONLY_ANNOTATIONS,
 		inputSchema: {
 			type: 'object',
@@ -168,15 +210,21 @@ export const MCP_TOOLS = [
 				body: { type: 'string' },
 				checklist: { type: 'array', items: { type: 'object' } },
 				labels: { type: 'array', items: { type: 'string' } },
+				reminder: {
+					type: ['string', 'null'],
+					format: 'date-time',
+					description:
+						'Reminder date and time as an ISO 8601 timestamp, or null if no reminder is set.'
+				},
 				workspace: { type: 'string' }
 			},
-			required: ['id', 'title', 'body', 'checklist', 'labels']
+			required: ['id', 'title', 'body', 'checklist', 'labels', 'reminder']
 		}
 	},
 	{
 		name: 'create_note',
 		description:
-			'Create a new note in Scraps Cache. Supports title, text body, checklist items, labels, and pinned status.',
+			'Create a new note in Scraps Cache. Supports title, text body, checklist items, labels, a reminder, and pinned status.',
 		annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
 		inputSchema: {
 			type: 'object',
@@ -194,17 +242,24 @@ export const MCP_TOOLS = [
 					description: 'Labels to associate with the note'
 				},
 				pinned: { type: 'boolean', description: 'Whether to pin the note to the top' },
+				reminder: {
+					type: 'string',
+					format: 'date-time',
+					description:
+						'Optional reminder date and time as an ISO 8601 timestamp with a timezone, e.g. 2026-09-24T14:00:00+02:00.'
+				},
 				color: {
 					type: 'string',
 					description: 'Color palette name (e.g. "default", "sand", "sage", "clay", "lavender")'
 				}
 			}
-		}
+		},
+		outputSchema: NOTE_MUTATION_OUTPUT_SCHEMA
 	},
 	{
 		name: 'update_note',
 		description:
-			'Update an existing note by ID. Can replace full body text, update title, append text or checklist items, toggle checklist tasks, update labels or color, or change pinned/archived state.',
+			'Update an existing note by ID. Can replace full body text, update title, append text or checklist items, toggle checklist tasks, update labels, reminder, or color, or change pinned/archived state.',
 		annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
 		inputSchema: {
 			type: 'object',
@@ -234,10 +289,17 @@ export const MCP_TOOLS = [
 						'Change note color palette name (e.g. "default", "sand", "sage", "clay", "lavender")'
 				},
 				pinned: { type: 'boolean', description: 'Pin or unpin the note' },
-				archived: { type: 'boolean', description: 'Archive or unarchive the note' }
+				archived: { type: 'boolean', description: 'Archive or unarchive the note' },
+				reminder: {
+					type: ['string', 'null'],
+					format: 'date-time',
+					description:
+						'Reminder date and time as an ISO 8601 timestamp with a timezone, e.g. 2026-09-24T14:00:00+02:00. Set null to remove the reminder.'
+				}
 			},
 			required: ['id']
-		}
+		},
+		outputSchema: NOTE_MUTATION_OUTPUT_SCHEMA
 	},
 	{
 		name: 'list_labels',
@@ -557,6 +619,7 @@ export class McpSession {
 			pinned: !!note.pinned,
 			archived: !!note.archived,
 			color: note.color || 'default',
+			reminder: note.reminder == null ? null : new Date(note.reminder).toISOString(),
 			createdAt: new Date(note.createdAt).toISOString(),
 			updatedAt: new Date(note.updatedAt).toISOString()
 		};
@@ -569,10 +632,12 @@ export class McpSession {
 		labels?: string[];
 		pinned?: boolean;
 		color?: string;
+		reminder?: string | null;
 	}) {
 		await this.ensureHydrated();
 		const now = Date.now();
 		const noteId = randomOpaqueId();
+		const reminder = reminderTimestamp(args.reminder) ?? null;
 
 		let noteBody = args.body || '';
 		if (args.checklist && args.checklist.length > 0) {
@@ -592,7 +657,7 @@ export class McpSession {
 			archived: false,
 			trashed: false,
 			trashedAt: null,
-			reminder: null,
+			reminder,
 			createdAt: now,
 			updatedAt: now
 		};
@@ -618,7 +683,8 @@ export class McpSession {
 				id: note.id,
 				title: note.title,
 				labels: this.getLabelNames(note.labels),
-				pinned: note.pinned
+				pinned: note.pinned,
+				reminder: note.reminder == null ? null : new Date(note.reminder).toISOString()
 			}
 		};
 	}
@@ -634,6 +700,7 @@ export class McpSession {
 		color?: string;
 		pinned?: boolean;
 		archived?: boolean;
+		reminder?: string | null;
 	}) {
 		await this.ensureHydrated();
 		const existing = this.notes.get(args.id);
@@ -669,6 +736,7 @@ export class McpSession {
 			updatedBody = newLines.join('\n');
 		}
 
+		const reminder = reminderTimestamp(args.reminder);
 		const labelIds =
 			args.labels !== undefined ? this.resolveLabelIds(args.labels) : existing.labels;
 
@@ -682,6 +750,7 @@ export class McpSession {
 			color: args.color !== undefined ? args.color : existing.color,
 			pinned: args.pinned !== undefined ? args.pinned : existing.pinned,
 			archived: args.archived !== undefined ? args.archived : existing.archived,
+			...(reminder !== undefined ? { reminder } : {}),
 			updatedAt: Date.now()
 		};
 
@@ -708,7 +777,8 @@ export class McpSession {
 				title: updatedNote.title,
 				labels: this.getLabelNames(updatedNote.labels),
 				pinned: updatedNote.pinned,
-				archived: updatedNote.archived
+				archived: updatedNote.archived,
+				reminder: updatedNote.reminder == null ? null : new Date(updatedNote.reminder).toISOString()
 			}
 		};
 	}

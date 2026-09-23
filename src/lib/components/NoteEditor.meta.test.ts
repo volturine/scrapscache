@@ -48,7 +48,7 @@ describe('NoteEditor created/updated meta', () => {
 		expect(time?.getAttribute('title')).not.toMatch(/Edited/);
 	});
 
-	it('shows Edited with created and edited absolutes once updatedAt moves', () => {
+	it('shows the edited timestamp once updatedAt moves', () => {
 		const created = new Date(2026, 8, 15, 10, 0).getTime();
 		const updated = new Date(2026, 8, 15, 14, 28).getTime();
 		notesStore.notes = [note({ createdAt: created, updatedAt: updated })];
@@ -57,7 +57,13 @@ describe('NoteEditor created/updated meta', () => {
 		});
 
 		const time = metaTime(container);
-		expect(time?.textContent).toMatch(/^Edited /);
+		expect(time?.textContent).toBe(
+			`Edited ${new Date(updated).toLocaleDateString([], {
+				month: 'short',
+				day: 'numeric',
+				year: 'numeric'
+			})}, ${new Date(updated).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
+		);
 		expect(time?.getAttribute('datetime')).toBe(new Date(updated).toISOString());
 		expect(time?.getAttribute('title')).toMatch(/ · Edited /);
 	});

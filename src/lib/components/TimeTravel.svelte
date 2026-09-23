@@ -2,7 +2,8 @@
 	import { historyStyles as styles } from '$panda/styles';
 	import { button, iconButton } from 'styled-system/recipes';
 	import { onMount, tick } from 'svelte';
-	import { History, Pin, PinOff, X } from '@lucide/svelte';
+	import type { Attachment } from 'svelte/attachments';
+	import { AlignJustify, Pin, PinOff, X } from '@lucide/svelte';
 	import { loadNoteHistory, hydrateHistoryNote, type NoteHistoryEntry } from '$lib/historyClient';
 	import type { Note } from '$lib/types';
 	import { syncStore, type SyncAccount } from '$lib/stores/sync.svelte';
@@ -10,29 +11,28 @@
 	let {
 		account,
 		noteId,
-		onClose,
-		onRestoreVersion
+		onPreviewVersion
 	}: {
 		account: SyncAccount;
 		noteId: string;
-		onClose: () => void;
-		onRestoreVersion: (note: Note) => Promise<void>;
+		onPreviewVersion: (note: Note, entry: NoteHistoryEntry) => void;
 	} = $props();
 	let entries = $state.raw<NoteHistoryEntry[]>([]);
 	let nextBefore = $state<number | null | undefined>(undefined);
 	let selected = $state<NoteHistoryEntry | null>(null);
-	let previewNote = $state.raw<Note | null>(null);
 	let previewLoading = $state(false);
 	let loading = $state(false);
-	let restoring = $state(false);
 	let error = $state('');
 	let canHover = $state(false);
 	let hovering = $state(false);
 	let focused = $state(false);
 	let pinned = $state(false);
+	let touchOpen = $state(false);
+	let dismissed = $state(false);
 	let pointerInteracting = false;
-	let panelOpen = $derived(!canHover || hovering || focused || pinned);
+	let panelOpen = $derived(!dismissed && (focused || (canHover ? hovering || pinned : touchOpen)));
 	let transferringFocus = false;
+	let panelElement: HTMLElement | null = null;
 
 	function currentAccount(): boolean {
 		return syncStore.account?.accountId === account.accountId;
@@ -65,23 +65,26 @@
 
 	function handlePointerEnter(event: PointerEvent) {
 		if (!canHover || (event.pointerType !== 'mouse' && event.pointerType !== 'pen')) return;
+		dismissed = false;
 		hovering = true;
 	}
 
 	function handlePointerDown(event: PointerEvent) {
 		if (event.pointerType !== 'mouse' && event.pointerType !== 'pen') return;
 		pointerInteracting = true;
-		focused = false;
+		if (focused) focused = false;
 	}
 
 	function handlePointerLeave(event: PointerEvent) {
 		if (!canHover || (event.pointerType !== 'mouse' && event.pointerType !== 'pen')) return;
 		hovering = false;
 		pointerInteracting = false;
+		dismissed = false;
 	}
 
 	function handleFocusOut(event: FocusEvent) {
 		if (transferringFocus) return;
+		if (!focused) return;
 		if (event.currentTarget instanceof HTMLElement && event.relatedTarget instanceof Node) {
 			if (event.currentTarget.contains(event.relatedTarget)) return;
 		}
@@ -89,7 +92,8 @@
 	}
 
 	function handleFocusIn(event: FocusEvent) {
-		if (pointerInteracting) return;
+		if (pointerInteracting || transferringFocus) return;
+		dismissed = false;
 		const wasOpen = panelOpen;
 		focused = true;
 		if (!wasOpen && event.currentTarget instanceof HTMLElement) {
@@ -102,32 +106,69 @@
 		}
 	}
 
+	function closePanel() {
+		const returnFocus =
+			panelElement instanceof HTMLElement && panelElement.contains(document.activeElement);
+		pinned = false;
+		hovering = false;
+		focused = false;
+		touchOpen = false;
+		dismissed = true;
+		if (returnFocus) {
+			transferringFocus = true;
+			void tick().then(() => {
+				panelElement?.querySelector<HTMLButtonElement>('[data-history-pin]')?.focus();
+				transferringFocus = false;
+			});
+		}
+	}
+
+	function handleKeyDown(event: KeyboardEvent) {
+		if (event.key !== 'Escape' || !panelOpen) return;
+		event.preventDefault();
+		event.stopPropagation();
+		closePanel();
+	}
+
+	const attachPanelInteractions: Attachment<HTMLElement> = (panel) => {
+		panelElement = panel;
+		const onPointerUp = () => (pointerInteracting = false);
+		panel.addEventListener('pointerenter', handlePointerEnter);
+		panel.addEventListener('pointerleave', handlePointerLeave);
+		panel.addEventListener('pointerdown', handlePointerDown);
+		panel.addEventListener('pointerup', onPointerUp);
+		panel.addEventListener('pointercancel', onPointerUp);
+		panel.addEventListener('focusin', handleFocusIn);
+		panel.addEventListener('focusout', handleFocusOut);
+		panel.addEventListener('keydown', handleKeyDown);
+		return () => {
+			panelElement = null;
+			panel.removeEventListener('pointerenter', handlePointerEnter);
+			panel.removeEventListener('pointerleave', handlePointerLeave);
+			panel.removeEventListener('pointerdown', handlePointerDown);
+			panel.removeEventListener('pointerup', onPointerUp);
+			panel.removeEventListener('pointercancel', onPointerUp);
+			panel.removeEventListener('focusin', handleFocusIn);
+			panel.removeEventListener('focusout', handleFocusOut);
+			panel.removeEventListener('keydown', handleKeyDown);
+		};
+	};
+
 	async function openPreview(entry: NoteHistoryEntry) {
 		selected = entry;
-		previewNote = null;
 		previewLoading = true;
 		error = '';
 		try {
 			const note = await hydrateHistoryNote(account, entry);
-			if (currentAccount() && selected?.historyId === entry.historyId) previewNote = note;
+			if (currentAccount() && selected?.historyId === entry.historyId) {
+				onPreviewVersion(note, entry);
+				if (!canHover) closePanel();
+			}
 		} catch (cause) {
 			if (selected?.historyId === entry.historyId)
 				error = cause instanceof Error ? cause.message : 'Could not load this note version.';
 		} finally {
 			if (selected?.historyId === entry.historyId) previewLoading = false;
-		}
-	}
-
-	async function restoreVersion() {
-		if (!previewNote || restoring || !currentAccount()) return;
-		restoring = true;
-		error = '';
-		try {
-			await onRestoreVersion(previewNote);
-		} catch (cause) {
-			error = cause instanceof Error ? cause.message : 'Could not restore this version.';
-		} finally {
-			restoring = false;
 		}
 	}
 </script>
@@ -138,13 +179,7 @@
 	aria-label="Note history"
 	data-editor-popup
 	data-open={panelOpen}
-	onpointerenter={handlePointerEnter}
-	onpointerleave={handlePointerLeave}
-	onpointerdown={handlePointerDown}
-	onpointerup={() => (pointerInteracting = false)}
-	onpointercancel={() => (pointerInteracting = false)}
-	onfocusin={handleFocusIn}
-	onfocusout={handleFocusOut}
+	{@attach attachPanelInteractions}
 >
 	{#if panelOpen}
 		<header class={styles.panelHeader({ open: true })}>
@@ -158,7 +193,6 @@
 					class={iconButton({ variant: 'ghost', size: 'sm' })}
 					data-history-pin
 					onclick={() => (pinned = !pinned)}
-					disabled={restoring}
 					aria-label={pinned ? 'Unpin note history' : 'Pin note history open'}
 					aria-pressed={pinned}
 					title={pinned ? 'Unpin history' : 'Pin history open'}
@@ -172,8 +206,7 @@
 				<button
 					type="button"
 					class={iconButton({ variant: 'ghost', size: 'sm' })}
-					onclick={onClose}
-					disabled={restoring}
+					onclick={closePanel}
 					aria-label="Close note history"
 					title="Close note history"
 				>
@@ -182,19 +215,29 @@
 			</div>
 		</header>
 	{:else}
-		<header class={styles.panelHeader({ open: false })}>
+		<div class={styles.rail}>
 			<button
 				type="button"
-				class={iconButton({ variant: 'ghost', size: 'sm' })}
-				onclick={() => (pinned = true)}
-				aria-label="Expand note history and pin it open"
+				class={styles.railButton}
+				data-history-pin
+				onclick={() => {
+					if (canHover) pinned = !pinned;
+					else touchOpen = !touchOpen;
+					dismissed = false;
+				}}
+				aria-label={canHover
+					? pinned
+						? 'Unpin note history'
+						: 'Pin note history open'
+					: 'Toggle note history'}
+				aria-pressed={canHover ? pinned : touchOpen}
 				aria-expanded={panelOpen}
 				aria-controls="note-history-content"
-				title="Expand note history"
+				title={canHover ? 'Pin note history open' : 'Show note history dates'}
 			>
-				<History size={18} aria-hidden="true" />
+				<AlignJustify size={18} aria-hidden="true" />
 			</button>
-		</header>
+		</div>
 	{/if}
 
 	<div
@@ -215,6 +258,9 @@
 						<span class={styles.date}>{new Date(entry.savedAt).toLocaleString()}</span>
 					</button>
 				{/each}
+				{#if previewLoading}<p class={styles.previewMeta} role="status">
+						Loading this version…
+					</p>{/if}
 				{#if !loading && entries.length === 0 && nextBefore === null}
 					<p class={styles.empty}>Earlier versions appear here after this synced note changes.</p>
 				{/if}
@@ -231,43 +277,6 @@
 			</div>
 
 			{#if error}<p class={styles.empty} role="alert">{error}</p>{/if}
-			{#if selected}
-				<section class={styles.preview} aria-label="Version preview">
-					<div>
-						<h3 class={styles.previewTitle}>{selected.note.title || 'Untitled note'}</h3>
-						<p class={styles.previewMeta}>Saved {new Date(selected.savedAt).toLocaleString()}</p>
-					</div>
-					<div class={styles.previewBody}>{selected.note.body || 'This note has no text.'}</div>
-					{#if previewLoading}<p class={styles.previewMeta}>Loading attachments…</p>{/if}
-					{#if previewNote?.images?.length}
-						<div class={styles.previewMedia}>
-							{#each previewNote.images as image (image.id)}
-								{#if image.mime.startsWith('image/')}
-									<img
-										class={styles.previewImage}
-										src={image.dataUrl}
-										alt={image.name || 'Note attachment'}
-									/>
-								{:else}
-									<span class={styles.previewMeta}>{image.name || 'Attachment'}</span>
-								{/if}
-							{/each}
-						</div>
-					{/if}
-					<div class={styles.previewActions}>
-						<button
-							type="button"
-							class={button({ variant: 'primary', size: 'sm' })}
-							onclick={() => void restoreVersion()}
-							disabled={restoring || !previewNote}
-						>
-							{restoring ? 'Restoring…' : 'Restore this version'}
-						</button>
-					</div>
-				</section>
-			{:else if entries.length > 0}
-				<p class={styles.empty}>Select a version to preview it before restoring.</p>
-			{/if}
 		{/if}
 	</div>
 </aside>

@@ -1821,14 +1821,11 @@ export const noteEditorStyles = {
 			alignItems: { base: 'flex-start', md: 'center' },
 			justifyContent: 'center'
 		},
-		variants: {
-			expanded: { true: {}, false: { px: 'lg', pb: 'var(--app-sheet-pad-bottom)' } },
-			historyOpen: { true: { gap: { lg: 'md' } }, false: {} }
-		},
-		defaultVariants: { expanded: false, historyOpen: false }
+		variants: { expanded: { true: {}, false: { px: 'lg', pb: 'var(--app-sheet-pad-bottom)' } } },
+		defaultVariants: { expanded: false }
 	}),
 	sheetBox: cva({
-		base: { maxH: 'full', minH: 0, w: 'full' },
+		base: { position: 'relative', maxH: 'full', minH: 0, w: 'full' },
 		variants: {
 			expanded: {
 				true: { h: 'full', maxW: 'none' },
@@ -1839,16 +1836,15 @@ export const noteEditorStyles = {
 					rounded: 'sheet',
 					boxShadow: 'noteSheet'
 				}
-			},
-			historyOpen: { true: { flexShrink: { lg: 1 }, minW: { lg: 0 } }, false: {} }
+			}
 		},
-		defaultVariants: { expanded: false, historyOpen: false }
+		defaultVariants: { expanded: false }
 	}),
 	dialogSurface: css({
 		position: 'relative',
 		...column,
 		...fullSize,
-		overflow: 'hidden',
+		overflow: 'visible',
 		rounded: 'inherit'
 	}),
 	header: hstack({
@@ -1869,6 +1865,40 @@ export const noteEditorStyles = {
 		pt: 'lg',
 		pb: 'md'
 	}),
+	historyPreviewBanner: css({
+		display: 'flex',
+		flexDirection: 'column',
+		gap: 'sm',
+		mb: 'md',
+		p: 'sm',
+		borderWidth: 'hairline',
+		borderColor: 'scrapscache.accent',
+		rounded: 'row',
+		bg: 'scrapscache.accentSubtle'
+	}),
+	historyPreviewTop: css({
+		display: 'flex',
+		alignItems: 'center',
+		justifyContent: 'space-between',
+		gap: 'sm',
+		flexWrap: 'wrap'
+	}),
+	historyPreviewLabel: css({ textStyle: 'captionStrong', color: 'scrapscache.text' }),
+	historyPreviewActions: css({
+		display: 'flex',
+		alignItems: 'center',
+		gap: 'xs',
+		flexWrap: 'wrap'
+	}),
+	historyPreviewTitle: css({
+		mb: 'md',
+		w: 'full',
+		textStyle: 'editorTitle',
+		overflowWrap: 'anywhere'
+	}),
+	historyPreviewMedia: css({ display: 'flex', flexWrap: 'wrap', gap: 'sm', mt: 'lg' }),
+	historyPreviewImage: css({ maxW: '100%', maxH: '22rem', rounded: 'sm', objectFit: 'contain' }),
+	historyPreviewAttachment: css({ textStyle: 'caption', color: 'scrapscache.textMuted' }),
 	scrollerFill: css({ flex: 'initial' }),
 	title: css({
 		mb: 'md',
@@ -2048,33 +2078,65 @@ export const sidebarStyles = {
 export const historyStyles = {
 	panel: cva({
 		base: {
-			position: { base: 'fixed', lg: 'relative' },
-			insetBlock: { base: 0, lg: 'auto' },
+			position: { base: 'fixed', lg: 'absolute' },
+			top: 0,
+			bottom: 0,
 			left: { base: 0, lg: 'auto' },
+			right: { base: 'auto', lg: '100%' },
 			zIndex: { base: 61, lg: 'auto' },
-			flexShrink: { base: 0, lg: 0 },
 			display: 'flex',
 			flexDirection: 'column',
 			w: { base: 'min(88vw, 22rem)', lg: '22rem' },
-			h: { base: '100%', lg: 'max(72vh, 32rem)' },
-			maxH: { base: '100%', lg: '100dvh' },
+			h: { base: '100dvh', lg: '100%' },
+			maxH: '100dvh',
+			mr: { base: 0, lg: 'sm' },
 			borderWidth: 'hairline',
 			borderColor: 'scrapscache.border',
 			bg: 'scrapscache.surface',
 			boxShadow: 'dialog',
 			rounded: { base: 'none', lg: 'dialog' },
 			overflow: 'hidden',
-			transitionProperty: 'width',
-			transitionDuration: '140ms',
+			transitionProperty: 'width, background-color, box-shadow',
+			transitionDuration: '160ms',
 			transitionTimingFunction: 'ease'
 		},
 		variants: {
 			open: {
 				true: { w: { base: 'min(88vw, 22rem)', lg: '22rem' } },
-				false: { w: { base: 'min(88vw, 22rem)', lg: '3.25rem' } }
+				false: {
+					w: '3.25rem',
+					h: { base: '3rem', lg: 'full' },
+					top: { base: '50%', lg: 0 },
+					bottom: { base: 'auto', lg: 0 },
+					transform: { base: 'translateY(-50%)', lg: 'none' },
+					borderWidth: 0,
+					bg: 'transparent',
+					boxShadow: 'none'
+				}
 			}
 		},
 		defaultVariants: { open: true }
+	}),
+	rail: css({
+		display: 'flex',
+		flex: '1',
+		minH: 0,
+		alignItems: 'center',
+		justifyContent: 'center'
+	}),
+	railButton: css({
+		display: 'grid',
+		placeItems: 'center',
+		w: '2.5rem',
+		h: '2.5rem',
+		color: 'scrapscache.textMuted',
+		cursor: 'pointer',
+		rounded: 'row',
+		transitionProperty: 'background-color, color',
+		transitionDuration: '120ms',
+		_hoverable: { bg: 'scrapscache.interactiveHover', color: 'scrapscache.text' },
+		_active: { bg: 'scrapscache.interactiveActive' },
+		_focusVisible: { outline: 'none', ringWidth: '2px', ringColor: 'scrapscache.accent' }
 	}),
 	panelHeader: cva({
 		base: {
@@ -2101,8 +2163,8 @@ export const historyStyles = {
 	}),
 	panelTitle: css({ textStyle: 'label', fontWeight: 'strong' }),
 	list: css({
-		flex: '0 1 11rem',
-		minH: '5rem',
+		flex: '1',
+		minH: 0,
 		overflowY: 'auto',
 		px: 'sm',
 		py: 'sm',
@@ -2139,35 +2201,7 @@ export const historyStyles = {
 	}),
 	date: css({ textStyle: 'caption', color: 'scrapscache.textMuted' }),
 	empty: css({ px: 'sm', py: 'md', textStyle: 'body', color: 'scrapscache.textMuted' }),
-	preview: css({
-		display: 'flex',
-		flexDirection: 'column',
-		gap: 'sm',
-		flex: '1',
-		minH: 0,
-		px: 'md',
-		py: 'md',
-		overflow: 'hidden'
-	}),
-	previewTitle: css({ textStyle: 'label', overflowWrap: 'anywhere' }),
-	previewBody: css({
-		flex: '1',
-		minH: 0,
-		overflowY: 'auto',
-		whiteSpace: 'pre-wrap',
-		overflowWrap: 'anywhere',
-		textStyle: 'body'
-	}),
-	previewMeta: css({ textStyle: 'caption', color: 'scrapscache.textMuted' }),
-	previewActions: css({ display: 'flex', gap: 'sm', justifyContent: 'flex-end', flexWrap: 'wrap' }),
-	previewMedia: css({
-		display: 'flex',
-		flexWrap: 'wrap',
-		gap: 'sm',
-		maxH: '12rem',
-		overflowY: 'auto'
-	}),
-	previewImage: css({ maxW: '100%', maxH: '10rem', rounded: 'sm', objectFit: 'contain' })
+	previewMeta: css({ px: 'sm', py: 'xs', textStyle: 'caption', color: 'scrapscache.textMuted' })
 };
 
 export const topbarStyles = {

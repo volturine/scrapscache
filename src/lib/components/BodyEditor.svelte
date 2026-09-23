@@ -50,6 +50,7 @@
 		oninput,
 		placeholder = '',
 		focusLine = null,
+		readOnly = false,
 		onFocusTask,
 		onExitTaskFocus,
 		transformPaste
@@ -58,6 +59,7 @@
 		oninput?: () => void;
 		placeholder?: string;
 		focusLine?: number | null;
+		readOnly?: boolean;
 		onFocusTask?: (line: number) => void;
 		onExitTaskFocus?: () => void;
 		transformPaste?: (text: string) => string | null;
@@ -1249,11 +1251,13 @@
 	}
 
 	function trackTap(event: PointerEvent) {
+		if (readOnly) return;
 		if (event.pointerType === 'mouse' && event.button !== 0) return;
 		tapOrigin = { id: event.pointerId, x: event.clientX, y: event.clientY };
 	}
 
 	function handleEditorClick(event: MouseEvent) {
+		if (readOnly) return;
 		handFocus(event, true);
 	}
 
@@ -1937,6 +1941,7 @@
 
 	function toggleCheck(lineId: number, event: MouseEvent) {
 		event.stopPropagation();
+		if (readOnly) return;
 		rememberEdit();
 		const targetIndex = lines.findIndex((line) => line.id === lineId);
 		if (targetIndex < 0) return;
@@ -2483,6 +2488,7 @@
 				type="button"
 				contenteditable="false"
 				data-checklist-toggle
+				disabled={readOnly}
 				class={[check.root, editor.check]}
 				onpointerdown={keepEditorFocus}
 				onclick={(event) => toggleCheck(line.id, event)}
@@ -2583,6 +2589,7 @@
 				contenteditable="false"
 				data-add-subtask
 				aria-label="Add sub-task"
+				disabled={readOnly}
 				class={noteBody({ mode: 'editor', indented: line.indent > 0 }).addSubtask}
 				onpointerdown={(event) => activateAddSubtask(event, focusedGroupRows[0]?.index ?? -1)}
 				onclick={(event) => handleAddSubtaskClick(event, focusedGroupRows[0]?.index ?? -1)}
@@ -2597,26 +2604,27 @@
 
 <div
 	bind:this={container}
-	contenteditable="plaintext-only"
+	contenteditable={readOnly ? 'false' : 'plaintext-only'}
 	data-body-editor
 	role="textbox"
 	tabindex="0"
+	aria-readonly={readOnly}
 	aria-multiline="true"
 	aria-label="Note body"
-	spellcheck="true"
+	spellcheck={!readOnly}
 	class={[editor.container, markdownStyles, uiStore.rawMarkdown && 'markdown-raw']}
-	onbeforeinput={handleBeforeInput}
-	oninput={handleInput}
+	onbeforeinput={readOnly ? undefined : handleBeforeInput}
+	oninput={readOnly ? undefined : handleInput}
 	oncopy={handleCopy}
-	oncut={handleCut}
-	onpaste={handlePaste}
-	onkeydown={handleKeydown}
-	onpointerdown={trackTap}
-	onpointerup={finishPointer}
-	onpointercancel={cancelPointer}
-	onclick={handleEditorClick}
-	oncompositionstart={handleCompositionStart}
-	oncompositionend={handleCompositionEnd}
+	oncut={readOnly ? undefined : handleCut}
+	onpaste={readOnly ? undefined : handlePaste}
+	onkeydown={readOnly ? undefined : handleKeydown}
+	onpointerdown={readOnly ? undefined : trackTap}
+	onpointerup={readOnly ? undefined : finishPointer}
+	onpointercancel={readOnly ? undefined : cancelPointer}
+	onclick={readOnly ? undefined : handleEditorClick}
+	oncompositionstart={readOnly ? undefined : handleCompositionStart}
+	oncompositionend={readOnly ? undefined : handleCompositionEnd}
 	onblur={handleEditorBlur}
 >
 	{#each editorItems as item (item.key)}
@@ -2649,6 +2657,7 @@
 							data-code-language={block.lineIndex}
 							class="markdown-code-language"
 							value={block.language}
+							disabled={readOnly}
 							onfocus={() => rememberEdit()}
 							onbeforeinput={(event) => event.stopPropagation()}
 							onkeydown={(event) => onCodeLanguageKeydown(event, block)}

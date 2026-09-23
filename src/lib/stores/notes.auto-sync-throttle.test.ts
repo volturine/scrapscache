@@ -4,7 +4,7 @@ import { notesStore } from './notes.svelte';
 import { syncStore } from './sync.svelte';
 
 /**
- * Issue #86: opportunistic auto syncs (boot, editor open) are throttled by a
+ * Issue #86: opportunistic auto syncs (boot, foreground) are throttled by a
  * staleness window; manual syncs are never throttled.
  */
 describe('auto sync staleness window', () => {
@@ -46,7 +46,7 @@ describe('auto sync staleness window', () => {
 		});
 	}
 
-	it('collapses rapid editor opens into one sync', async () => {
+	it('collapses rapid foreground syncs into one', async () => {
 		const requests: unknown[] = [];
 		mockRelay(requests);
 

@@ -789,6 +789,37 @@
 		syncBody(true);
 	}
 
+	/**
+	 * Show a body that changed elsewhere (another device, MCP). Refused while
+	 * typing is still settling, so input the model has not caught up with is
+	 * never replaced. Undo history belongs to the replaced text, so it is dropped.
+	 */
+	export function adoptBody(text: string): boolean {
+		if (composing || syncBodyTimer) return false;
+		if (text === lastSerializedBody) return true;
+		const caret = container && document.activeElement === container ? editorRange() : null;
+		applyingEdit = true;
+		try {
+			lines = parseBodyToLines(text);
+			draftTaskId = null;
+			ignoredFocusLine = null;
+			lastSerializedBody = text;
+			body = text;
+			undoStack.length = 0;
+			redoStack.length = 0;
+			lastTyping = null;
+			tablesNeedFormat = true;
+			if (caret) {
+				flushSync();
+				const line = Math.min(caret.start.line, lines.length - 1);
+				focusAt(line, Math.min(caret.start.offset, lines[line].text.length));
+			}
+		} finally {
+			applyingEdit = false;
+		}
+		return true;
+	}
+
 	function lineElement(index: number): HTMLElement | null {
 		return container?.querySelector(`[data-editor-line="${index}"]`) as HTMLElement | null;
 	}

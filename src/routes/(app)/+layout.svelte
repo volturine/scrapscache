@@ -37,7 +37,6 @@
 		autoFocusBody = false;
 		editingId = id;
 		applyEditorOpen(true);
-		if (syncStore.isLoggedIn) void notesStore.syncWithCloud();
 	}
 
 	function openNoteFromQuery() {

@@ -1506,7 +1506,7 @@ export class NotesStore {
 
 	/**
 	 * Sync with the cloud relay, indicating flight progress via the cloud icon.
-	 * Opportunistic pulls (boot, editor open) are throttled; pending local edits
+	 * Opportunistic pulls (boot, foreground) are throttled; pending local edits
 	 * always sync via flushSync.
 	 */
 	async syncWithCloud(indicate = true): Promise<boolean> {

@@ -4,9 +4,9 @@ import type { SyncNote } from '$lib/syncRecords';
 type VersionedNote = Omit<SyncNote, 'images'> & { images?: { id: string }[] };
 
 export type NoteVersionChange = {
-	/** Non-blank body lines this version added compared with the one before it. */
+	/** Body lines, blank ones included, this version added compared with the one before it. */
 	added: number;
-	/** Non-blank body lines this version removed compared with the one before it. */
+	/** Body lines, blank ones included, this version removed compared with the one before it. */
 	removed: number;
 	/** One-line description of the most telling change. */
 	summary: string;
@@ -16,15 +16,23 @@ const CHECKBOX = /^\s*(?:[-*+]\s+)?\[([ xX])\]\s+/;
 const MARKER = /^\s*(?:[-*+]\s+|\d+[.)]\s+|#{1,6}\s+|>\s*)?(?:\[[ xX]\]\s+)?/;
 
 function lines(body: string): string[] {
-	return body.split('\n').filter((line) => line.trim() !== '');
+	return body === '' ? [] : body.split('\n');
+}
+
+function blank(line: string): boolean {
+	return line.trim() === '';
 }
 
 function plain(line: string): string {
 	return line.replace(MARKER, '').trim();
 }
 
+function emptyLines(count: number): string {
+	return count === 1 ? 'an empty line' : `${count} empty lines`;
+}
+
 function firstLine(note: VersionedNote): string {
-	const line = lines(note.body)[0];
+	const line = lines(note.body).find((text) => !blank(text));
 	return (line && plain(line)) || note.title.trim() || 'Empty note';
 }
 
@@ -41,21 +49,27 @@ function metadataChange(version: VersionedNote, previous: VersionedNote): string
 	return null;
 }
 
-function sameVisibleNote(a: VersionedNote, b: VersionedNote): boolean {
+/** Whether two notes would look the same in the editor. */
+export function sameVisibleNote(a: VersionedNote, b: VersionedNote): boolean {
 	return a.title === b.title && a.body === b.body && metadataChange(a, b) === null;
 }
 
 /**
- * Drop saves (newest first) that look the same as the save or live note just after them,
- * so each row marks a visible change. Appending older pages never removes existing rows.
+ * Keep the newest of each run of saves (newest first) that look the same, such as a
+ * force sync that re-uploads unchanged content. Appending older pages never removes rows.
  */
-export function distinctNoteVersions<T extends { note: VersionedNote }>(
-	entries: T[],
-	current: VersionedNote
-): T[] {
+export function distinctNoteVersions<T extends { note: VersionedNote }>(entries: T[]): T[] {
 	return entries.filter(
-		(entry, index) => !sameVisibleNote(entry.note, index ? entries[index - 1].note : current)
+		(entry, index) => index === 0 || !sameVisibleNote(entry.note, entries[index - 1].note)
 	);
+}
+
+function titleChange(version: VersionedNote, previous: VersionedNote): string | null {
+	const title = version.title.trim();
+	const before = previous.title.trim();
+	if (title === before) return null;
+	if (!title) return 'Removed the title';
+	return before ? `Renamed “${title}”` : `Titled “${title}”`;
 }
 
 /** Describe what one saved version changed relative to the version saved before it. */
@@ -75,9 +89,10 @@ export function describeNoteVersionChange(
 	}
 	const removedLines = [...remaining].flatMap(([line, count]) => Array(count).fill(line));
 	const change = { added: addedLines.length, removed: removedLines.length };
+	const describe = (summary: string) => ({ ...change, summary });
 
-	if (version.title.trim() !== previous.title.trim())
-		return { ...change, summary: `Renamed “${version.title.trim() || 'Untitled'}”` };
+	const renamed = titleChange(version, previous);
+	if (renamed) return describe(renamed);
 
 	const toggled = addedLines.find((line) => {
 		const text = plain(line);
@@ -87,9 +102,16 @@ export function describeNoteVersionChange(
 	});
 	if (toggled) {
 		const checked = CHECKBOX.exec(toggled)?.[1] !== ' ';
-		return { ...change, summary: `${checked ? 'Checked' : 'Unchecked'} “${plain(toggled)}”` };
+		return describe(`${checked ? 'Checked' : 'Unchecked'} “${plain(toggled)}”`);
 	}
-	if (addedLines.length) return { ...change, summary: plain(addedLines[0]) || 'Edited' };
-	if (removedLines.length) return { ...change, summary: `Removed “${plain(removedLines[0])}”` };
-	return { ...change, summary: metadataChange(version, previous) ?? 'No visible changes' };
+	const added = addedLines.find((line) => !blank(line));
+	if (added) return describe(plain(added) || 'Edited');
+	const removed = removedLines.find((line) => !blank(line));
+	if (removed) return describe(`Removed “${plain(removed)}”`);
+	// Only blank lines changed, or the same lines moved.
+	if (change.added && change.removed) return describe('Changed line spacing');
+	if (change.added) return describe(`Added ${emptyLines(change.added)}`);
+	if (change.removed) return describe(`Removed ${emptyLines(change.removed)}`);
+	if (version.body !== previous.body) return describe('Reordered lines');
+	return describe(metadataChange(version, previous) ?? 'No visible changes');
 }

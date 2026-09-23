@@ -2232,6 +2232,16 @@ export const historyStyles = {
 		'&[aria-current]': { bg: 'scrapscache.accentSubtle' }
 	}),
 	rowTop: css({ ...rowCenter, justifyContent: 'space-between', gap: 'sm', minW: 0 }),
+	rowLabel: css({ ...rowCenter, gap: 'xs', minW: 0 }),
+	rowBadge: css({
+		px: 'xs',
+		textStyle: 'micro',
+		color: 'scrapscache.accent',
+		// Outlined, so it stays visible on the highlighted current row.
+		borderWidth: 'hairline',
+		borderColor: 'currentColor',
+		rounded: 'pill'
+	}),
 	rowTime: css({
 		textStyle: 'label',
 		color: 'scrapscache.text',

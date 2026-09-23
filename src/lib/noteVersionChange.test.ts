@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { SyncNote } from '$lib/syncRecords';
-import { describeNoteVersionChange, distinctNoteVersions } from './noteVersionChange';
+import {
+	describeNoteVersionChange,
+	distinctNoteVersions,
+	sameVisibleNote
+} from './noteVersionChange';
 
 function note(patch: Partial<SyncNote> = {}): SyncNote {
 	return {
@@ -33,9 +37,37 @@ describe('describeNoteVersionChange', () => {
 		const previous = note({ body: 'Antifragile\nSapiens' });
 		const version = note({ body: 'Antifragile\nDeep Work\n\nSeeing Like a State' });
 		expect(describeNoteVersionChange(version, previous)).toEqual({
-			added: 2,
+			added: 3,
 			removed: 1,
 			summary: 'Deep Work'
+		});
+	});
+
+	it('treats a first body on an empty note as additions only', () => {
+		expect(describeNoteVersionChange(note({ body: 'Milk' }), note({ body: '' }))).toEqual({
+			added: 1,
+			removed: 0,
+			summary: 'Milk'
+		});
+	});
+
+	it('describes edits that only add, remove, or move blank lines', () => {
+		const spaced = note({ body: 'alpha\n\ngamma' });
+		expect(describeNoteVersionChange(note({ body: 'alpha\ngamma' }), spaced)).toEqual({
+			added: 0,
+			removed: 1,
+			summary: 'Removed an empty line'
+		});
+		expect(describeNoteVersionChange(note({ body: 'alpha\n\n\n\ngamma' }), spaced).summary).toBe(
+			'Added 2 empty lines'
+		);
+		expect(describeNoteVersionChange(note({ body: 'alpha\n \ngamma' }), spaced).summary).toBe(
+			'Changed line spacing'
+		);
+		expect(describeNoteVersionChange(note({ body: 'gamma\n\nalpha' }), spaced)).toEqual({
+			added: 0,
+			removed: 0,
+			summary: 'Reordered lines'
 		});
 	});
 
@@ -58,9 +90,15 @@ describe('describeNoteVersionChange', () => {
 		);
 	});
 
-	it('prefers a rename over body edits', () => {
+	it('prefers a title change over body edits', () => {
 		const change = describeNoteVersionChange(note({ title: 'Books', body: 'New' }), note());
 		expect(change).toEqual({ added: 1, removed: 1, summary: 'Renamed “Books”' });
+		expect(describeNoteVersionChange(note({ title: 'Plan' }), note({ title: '' })).summary).toBe(
+			'Titled “Plan”'
+		);
+		expect(describeNoteVersionChange(note({ title: '' }), note()).summary).toBe(
+			'Removed the title'
+		);
 	});
 
 	it('describes metadata-only saves', () => {
@@ -81,7 +119,7 @@ describe('distinctNoteVersions', () => {
 		note: note({ updatedAt: historyId, ...patch })
 	});
 
-	it('keeps the newest save of each visible state', () => {
+	it('keeps the newest save of each run of identical saves', () => {
 		const entries = [
 			entry(5, { body: 'C' }),
 			entry(4, { body: 'B' }),
@@ -89,18 +127,23 @@ describe('distinctNoteVersions', () => {
 			entry(2, { body: 'A' }),
 			entry(1, { body: 'A' })
 		];
-		expect(distinctNoteVersions(entries, note({ body: 'D' })).map((e) => e.historyId)).toEqual([
-			5, 4, 2
-		]);
+		expect(distinctNoteVersions(entries).map((e) => e.historyId)).toEqual([5, 4, 2]);
 	});
 
-	it('drops the newest state when the live note already shows it', () => {
-		const entries = [entry(3, { body: 'B' }), entry(2, { body: 'B' }), entry(1, { body: 'A' })];
-		expect(distinctNoteVersions(entries, note({ body: 'B', updatedAt: 9 }))).toEqual([entries[2]]);
+	it('keeps a lone save such as the initial sync', () => {
+		const entries = [entry(1, {})];
+		expect(distinctNoteVersions(entries)).toEqual(entries);
 	});
 
 	it('treats metadata changes as distinct versions', () => {
 		const entries = [entry(2, { pinned: true }), entry(1, {})];
-		expect(distinctNoteVersions(entries, note())).toEqual(entries);
+		expect(distinctNoteVersions(entries)).toEqual(entries);
+	});
+});
+
+describe('sameVisibleNote', () => {
+	it('ignores sync bookkeeping but not blank lines', () => {
+		expect(sameVisibleNote(note({ updatedAt: 9, fieldTimes: { body: 9 } }), note())).toBe(true);
+		expect(sameVisibleNote(note({ body: 'Antifragile\n' }), note())).toBe(false);
 	});
 });

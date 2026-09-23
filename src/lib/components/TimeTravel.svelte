@@ -6,7 +6,12 @@
 	import { button, iconButton } from 'styled-system/recipes';
 	import { appClock } from '$lib/appClock.svelte';
 	import { loadNoteHistory, hydrateHistoryNote, type NoteHistoryEntry } from '$lib/historyClient';
-	import { describeNoteVersionChange, distinctNoteVersions } from '$lib/noteVersionChange';
+	import {
+		describeNoteVersionChange,
+		distinctNoteVersions,
+		sameVisibleNote,
+		type NoteVersionChange
+	} from '$lib/noteVersionChange';
 	import type { Note } from '$lib/types';
 	import { formatActivityRelative } from '$lib/utils';
 	import { syncStore, type SyncAccount } from '$lib/stores/sync.svelte';
@@ -37,6 +42,8 @@
 		onConfirmRestore: () => void;
 	} = $props();
 
+	type Row = { entry: NoteHistoryEntry | null; change: NoteVersionChange | null };
+
 	const MAX_TICKS = 24;
 	const CLOSE_DELAY_MS = 160;
 
@@ -54,21 +61,24 @@
 	let lastPointerType = '';
 	let openRequest = 0;
 
-	const versions = $derived(distinctNoteVersions(entries, note));
-	const changes = $derived(
-		versions.map((entry, index) => describeNoteVersionChange(entry.note, versions[index + 1]?.note))
+	const versions = $derived(distinctNoteVersions(entries));
+	// Row 0 is the live note: its newest save, or "Now" while local edits have not synced.
+	const unsynced = $derived(!versions[0] || !sameVisibleNote(versions[0].note, note));
+	const rows = $derived<Row[]>([
+		...(unsynced ? [{ entry: null, change: null }] : []),
+		...versions.map((entry, index) => ({
+			entry,
+			change: describeNoteVersionChange(entry.note, versions[index + 1]?.note)
+		}))
+	]);
+	const activeRow = $derived(
+		previewEntry ? rows.findIndex((row) => row.entry?.historyId === previewEntry.historyId) : 0
 	);
-	const selectedIndex = $derived(
-		previewEntry ? versions.findIndex((entry) => entry.historyId === previewEntry.historyId) : -1
-	);
-	// Row 0 is the live note; version rows follow newest first.
-	const activeRow = $derived(selectedIndex + 1);
 	const expanded = $derived(hovered || pinned);
 	const visible = $derived(versions.length > 0 || !!error);
-	const tickWidths = $derived([
-		12,
-		...changes.map((change) => 6 + Math.min(4, change.added + change.removed) * 3)
-	]);
+	const tickWidths = $derived(
+		rows.map(({ change }) => (change ? 6 + Math.min(4, change.added + change.removed) * 3 : 12))
+	);
 	const tickStart = $derived(
 		Math.max(0, Math.min(activeRow - MAX_TICKS / 2, tickWidths.length - MAX_TICKS))
 	);
@@ -192,9 +202,10 @@
 		}
 	}
 
-	function selectRow(entry: NoteHistoryEntry | null) {
+	function selectRow(index: number) {
 		if (lastPointerType === 'touch') pinned = false;
-		if (!entry) {
+		const entry = rows[index]?.entry;
+		if (index === 0 || !entry) {
 			openRequest++;
 			openingId = null;
 			if (previewEntry) onCancelPreview();
@@ -204,14 +215,13 @@
 	}
 
 	async function stepOlder() {
-		if (selectedIndex === versions.length - 1) await loadMore();
-		const next = versions[selectedIndex + 1];
+		if (activeRow === rows.length - 1) await loadMore();
+		const next = rows[activeRow + 1]?.entry;
 		if (next) void openVersion(next);
 	}
 
 	function stepNewer() {
-		if (selectedIndex <= 0) selectRow(null);
-		else void openVersion(versions[selectedIndex - 1]);
+		selectRow(activeRow - 1);
 	}
 </script>
 
@@ -232,7 +242,7 @@
 		data-editor-popup
 		data-expanded={expanded || undefined}
 		style:--history-ticks={ticks.length}
-		style:--history-rows={versions.length + 1 + extraRows}
+		style:--history-rows={rows.length + extraRows}
 		onpointerdown={(event) => (lastPointerType = event.pointerType)}
 		onpointerenter={(event) => {
 			if (event.pointerType !== 'mouse' && event.pointerType !== 'pen') return;
@@ -255,7 +265,7 @@
 					bind:this={trigger}
 					type="button"
 					class={styles.trigger}
-					aria-label={`Version history, ${versions.length} earlier ${versions.length === 1 ? 'version' : 'versions'}`}
+					aria-label={`Version history, ${versions.length} saved ${versions.length === 1 ? 'version' : 'versions'}`}
 					aria-expanded={expanded}
 					aria-controls="note-history-versions"
 					onclick={() => void expandFromTrigger()}
@@ -289,31 +299,28 @@
 						bind:this={list}
 						onkeydown={handleListKeyDown}
 					>
-						<button
-							type="button"
-							class={styles.row}
-							data-history-row
-							aria-current={activeRow === 0 ? 'true' : undefined}
-							onclick={() => selectRow(null)}
-						>
-							<span class={styles.rowTop}><span class={styles.rowTime}>Now</span></span>
-							<span class={styles.rowSummary}>Current note</span>
-						</button>
-						{#each versions as entry, index (entry.historyId)}
+						{#each rows as row, index (row.entry?.historyId ?? 'now')}
 							<button
 								type="button"
 								class={styles.row}
 								data-history-row
-								data-loading={openingId === entry.historyId || undefined}
-								aria-current={activeRow === index + 1 ? 'true' : undefined}
-								title={exact(entry.savedAt)}
-								onclick={() => selectRow(entry)}
+								data-loading={(row.entry && openingId === row.entry.historyId) || undefined}
+								aria-current={activeRow === index ? 'true' : undefined}
+								title={row.entry ? exact(row.entry.savedAt) : undefined}
+								onclick={() => selectRow(index)}
 							>
 								<span class={styles.rowTop}>
-									<span class={styles.rowTime}>{relative(entry.savedAt)}</span>
-									{@render stats(changes[index].added, changes[index].removed)}
+									<span class={styles.rowLabel}>
+										<span class={styles.rowTime}
+											>{row.entry ? relative(row.entry.savedAt) : 'Now'}</span
+										>
+										{#if index === 0 && row.entry}
+											<span class={styles.rowBadge}>Current</span>
+										{/if}
+									</span>
+									{#if row.change}{@render stats(row.change.added, row.change.removed)}{/if}
 								</span>
-								<span class={styles.rowSummary}>{changes[index].summary}</span>
+								<span class={styles.rowSummary}>{row.change?.summary ?? 'Not synced yet'}</span>
 							</button>
 						{/each}
 						{#if nextBefore !== null}
@@ -345,7 +352,7 @@
 			title="Older version"
 			onclick={() => void stepOlder()}
 			disabled={restoringPreview ||
-				(selectedIndex >= versions.length - 1 && nextBefore === null) ||
+				(activeRow >= rows.length - 1 && nextBefore === null) ||
 				loading}
 		>
 			<ChevronLeft size={18} aria-hidden="true" />
@@ -359,8 +366,8 @@
 		<button
 			type="button"
 			class={iconButton({ variant: 'ghost', size: 'compact' })}
-			aria-label={selectedIndex <= 0 ? 'Back to current note' : 'Newer version'}
-			title={selectedIndex <= 0 ? 'Back to current note' : 'Newer version'}
+			aria-label={activeRow <= 1 ? 'Back to current note' : 'Newer version'}
+			title={activeRow <= 1 ? 'Back to current note' : 'Newer version'}
 			onclick={stepNewer}
 			disabled={restoringPreview}
 		>

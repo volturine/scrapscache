@@ -102,17 +102,43 @@ afterEach(() => {
 });
 
 describe('TimeTravel', () => {
-	it('stays hidden until the note has an earlier version', async () => {
-		history.loadNoteHistory.mockResolvedValue({ entries: [entries[0]], nextBefore: null });
+	it('stays hidden until the note has been synced', async () => {
+		history.loadNoteHistory.mockResolvedValue({ entries: [], nextBefore: null });
 		const { container } = renderTimeTravel();
 		await waitFor(() => expect(history.loadNoteHistory).toHaveBeenCalled());
 		expect(container.querySelector('nav')).toBeNull();
 	});
 
-	it('marks one tick per visible version with the live note active', async () => {
+	it('shows the initial sync as the current version', async () => {
+		history.loadNoteHistory.mockResolvedValue({ entries: [entries[0]], nextBefore: null });
+		const { container } = renderTimeTravel();
+		await fireEvent.click(await openRail(container));
+		const rows = [...container.querySelectorAll('[data-history-row]')];
+		expect(rows.map((row) => row.textContent?.replace(/\s+/g, ' ').trim())).toEqual([
+			expect.stringMatching(/Current Antifragile$/)
+		]);
+		expect(rows[0].getAttribute('aria-current')).toBe('true');
+	});
+
+	it('adds a Now row while local edits have not synced yet', async () => {
+		const { container } = renderTimeTravel({
+			note: note({ body: 'Antifragile\nSapiens\nDeep Work\nMore' })
+		});
+		await fireEvent.click(await openRail(container));
+		const rows = [...container.querySelectorAll('[data-history-row]')];
+		expect(rows.map((row) => row.textContent?.replace(/\s+/g, ' ').trim())).toEqual([
+			'Now Not synced yet',
+			expect.stringMatching(/\+1 Deep Work$/),
+			expect.stringMatching(/\+1 Sapiens$/),
+			expect.stringMatching(/Antifragile$/)
+		]);
+		expect(rows[0].getAttribute('aria-current')).toBe('true');
+	});
+
+	it('marks one tick per saved version with the current save active', async () => {
 		const { container } = renderTimeTravel();
 		const trigger = await openRail(container);
-		expect(trigger.getAttribute('aria-label')).toBe('Version history, 2 earlier versions');
+		expect(trigger.getAttribute('aria-label')).toBe('Version history, 3 saved versions');
 		const ticks = [...trigger.querySelectorAll('span')];
 		expect(ticks).toHaveLength(3);
 		expect(ticks.map((tick) => tick.hasAttribute('data-active'))).toEqual([true, false, false]);
@@ -126,7 +152,7 @@ describe('TimeTravel', () => {
 		expect(container.querySelector('nav')?.hasAttribute('data-expanded')).toBe(true);
 		const rows = [...container.querySelectorAll<HTMLButtonElement>('[data-history-row]')];
 		expect(rows.map((row) => row.textContent?.replace(/\s+/g, ' ').trim())).toEqual([
-			'Now Current note',
+			expect.stringMatching(/Current \+1 Deep Work$/),
 			expect.stringMatching(/\+1 Sapiens$/),
 			expect.stringMatching(/Antifragile$/)
 		]);

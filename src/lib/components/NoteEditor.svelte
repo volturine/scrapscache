@@ -488,9 +488,12 @@
 	async function close() {
 		// Drop task-focus chrome immediately so dismiss is never gated on focus mode.
 		taskFocusLine = null;
+		// Syncing can report input and arm the save timer, so clear it afterwards;
+		// the commit below saves the same draft.
+		bodyEditor?.syncBodyNow?.();
 		if (timer) clearTimeout(timer);
+		timer = null;
 		if (note && draftDirty) {
-			bodyEditor?.syncBodyNow?.();
 			commit({ title, body, images, linkPreviews: [] });
 			try {
 				await notesStore.flushNote(note.id, { title, body, images, linkPreviews: [] });

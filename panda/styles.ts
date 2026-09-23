@@ -1865,31 +1865,7 @@ export const noteEditorStyles = {
 		pt: 'lg',
 		pb: 'md'
 	}),
-	historyPreviewBanner: css({
-		display: 'flex',
-		flexDirection: 'column',
-		gap: 'sm',
-		mb: 'md',
-		p: 'sm',
-		borderWidth: 'hairline',
-		borderColor: 'scrapscache.accent',
-		rounded: 'row',
-		bg: 'scrapscache.accentSubtle'
-	}),
-	historyPreviewTop: css({
-		display: 'flex',
-		alignItems: 'center',
-		justifyContent: 'space-between',
-		gap: 'sm',
-		flexWrap: 'wrap'
-	}),
-	historyPreviewLabel: css({ textStyle: 'captionStrong', color: 'scrapscache.text' }),
-	historyPreviewActions: css({
-		display: 'flex',
-		alignItems: 'center',
-		gap: 'xs',
-		flexWrap: 'wrap'
-	}),
+	scrollerPreview: css({ pt: { base: 'pageWide', sm: '4xl' } }),
 	historyPreviewTitle: css({
 		mb: 'md',
 		w: 'full',
@@ -2076,132 +2052,148 @@ export const sidebarStyles = {
 };
 
 export const historyStyles = {
-	panel: cva({
-		base: {
-			position: { base: 'fixed', lg: 'absolute' },
-			top: 0,
-			bottom: 0,
-			left: { base: 0, lg: 'auto' },
-			right: { base: 'auto', lg: '100%' },
-			zIndex: { base: 61, lg: 'auto' },
-			display: 'flex',
-			flexDirection: 'column',
-			w: { base: 'min(88vw, 22rem)', lg: '22rem' },
-			h: { base: '100dvh', lg: '100%' },
-			maxH: '100dvh',
-			mr: { base: 0, lg: 'sm' },
-			borderWidth: 'hairline',
-			borderColor: 'scrapscache.border',
-			bg: 'scrapscache.surface',
-			boxShadow: 'dialog',
-			rounded: { base: 'none', lg: 'dialog' },
-			overflow: 'hidden',
-			transitionProperty: 'width, background-color, box-shadow',
-			transitionDuration: '160ms',
-			transitionTimingFunction: 'ease'
-		},
-		variants: {
-			open: {
-				true: { w: { base: 'min(88vw, 22rem)', lg: '22rem' } },
-				false: {
-					w: '3.25rem',
-					h: { base: '3rem', lg: 'full' },
-					top: { base: '50%', lg: 0 },
-					bottom: { base: 'auto', lg: 0 },
-					transform: { base: 'translateY(-50%)', lg: 'none' },
-					borderWidth: 0,
-					bg: 'transparent',
-					boxShadow: 'none'
-				}
-			}
-		},
-		defaultVariants: { open: true }
+	anchor: css({
+		position: 'absolute',
+		top: '50%',
+		right: 'xs',
+		zIndex: 5,
+		transform: 'translateY(-50%)',
+		w: '2rem',
+		h: '6rem'
 	}),
-	rail: css({
-		display: 'flex',
-		flex: '1',
-		minH: 0,
-		alignItems: 'center',
-		justifyContent: 'center'
-	}),
-	railButton: css({
-		display: 'grid',
-		placeItems: 'center',
-		w: '2.5rem',
-		h: '2.5rem',
-		color: 'scrapscache.textMuted',
-		cursor: 'pointer',
-		rounded: 'row',
-		transitionProperty: 'background-color, color',
-		transitionDuration: '120ms',
-		_hoverable: { bg: 'scrapscache.interactiveHover', color: 'scrapscache.text' },
-		_active: { bg: 'scrapscache.interactiveActive' },
-		_focusVisible: { outline: 'none', ringWidth: '2px', ringColor: 'scrapscache.accent' }
-	}),
-	panelHeader: cva({
-		base: {
-			display: 'flex',
-			alignItems: 'center',
-			gap: 'sm',
-			borderBottomWidth: 'hairline',
-			borderColor: 'scrapscache.borderFaint',
-			flexShrink: 0
-		},
-		variants: {
-			open: {
-				true: { justifyContent: 'space-between', px: 'md', py: 'sm' },
-				false: { justifyContent: 'center', p: 'xs' }
-			}
-		},
-		defaultVariants: { open: true }
-	}),
-	panelActions: css({ display: 'flex', alignItems: 'center', gap: '2xs' }),
-	panelContent: cva({
-		base: { display: 'flex', flexDirection: 'column', flex: '1', minH: 0 },
-		variants: { open: { true: {}, false: { display: 'none' } } },
-		defaultVariants: { open: true }
-	}),
-	panelTitle: css({ textStyle: 'label', fontWeight: 'strong' }),
-	list: css({
-		flex: '1',
-		minH: 0,
-		overflowY: 'auto',
-		px: 'sm',
-		py: 'sm',
-		borderBottomWidth: 'hairline',
-		borderColor: 'scrapscache.borderFaint'
-	}),
-	entry: css({
+	marker: css({
 		display: 'flex',
 		flexDirection: 'column',
-		gap: '3xs',
+		alignItems: 'center',
+		justifyContent: 'center',
+		gap: 'xs',
+		w: 'full',
+		h: 'full',
+		cursor: 'pointer',
+		rounded: 'row',
+		transitionProperty: 'background-color',
+		transitionDuration: '120ms',
+		_hoverable: { bg: 'scrapscache.interactiveHover' },
+		_focusVisible: { outline: 'none', ringWidth: '2px', ringColor: 'scrapscache.accent' }
+	}),
+	mark: css({
+		display: 'block',
+		w: '1rem',
+		h: '2px',
+		bg: 'scrapscache.textMuted',
+		opacity: 0.45,
+		rounded: 'full'
+	}),
+	picker: css({
+		position: 'absolute',
+		top: '50%',
+		right: 0,
+		transform: 'translateY(-50%)',
+		w: '12.5rem',
+		maxW: 'calc(100vw - 2rem)',
+		maxH: 'min(22rem, 70dvh)',
+		display: 'flex',
+		flexDirection: 'column',
+		borderWidth: 'hairline',
+		borderColor: 'scrapscache.border',
+		bg: 'scrapscache.surface',
+		rounded: 'card',
+		boxShadow: 'popover',
+		overflow: 'hidden'
+	}),
+	list: css({ overflowY: 'auto', minH: 0, p: 'xs' }),
+	entry: css({
+		display: 'block',
 		w: 'full',
 		px: 'sm',
 		py: 'xs',
 		textAlign: 'left',
-		rounded: 'row',
+		textStyle: 'caption',
+		color: 'scrapscache.text',
+		whiteSpace: 'nowrap',
+		fontVariantNumeric: 'tabular-nums',
 		cursor: 'pointer',
+		rounded: 'row',
 		transitionProperty: 'background-color',
 		transitionDuration: '120ms',
 		_hoverable: { bg: 'scrapscache.interactiveHover' },
 		_active: { bg: 'scrapscache.interactiveActive' },
 		_focusVisible: { outline: 'none', ringWidth: '2px', ringColor: 'scrapscache.accent' }
 	}),
-	entrySelected: css({
-		bg: 'scrapscache.accentSubtle',
-		borderLeftWidth: 'strong',
-		borderColor: 'scrapscache.accent'
+	entrySelected: css({ bg: 'scrapscache.accentSubtle', color: 'scrapscache.accent' }),
+	more: css({
+		w: 'full',
+		px: 'sm',
+		py: 'xs',
+		textAlign: 'left',
+		textStyle: 'caption',
+		color: 'scrapscache.textMuted',
+		cursor: 'pointer',
+		rounded: 'row',
+		_hoverable: { bg: 'scrapscache.interactiveHover' },
+		_focusVisible: { outline: 'none', ringWidth: '2px', ringColor: 'scrapscache.accent' }
 	}),
-	entryTitle: css({
-		textStyle: 'body',
-		fontWeight: 'interactive',
-		overflow: 'hidden',
-		textOverflow: 'ellipsis',
+	empty: css({ px: 'sm', py: 'xs', textStyle: 'caption', color: 'scrapscache.textMuted' }),
+	status: css({ px: 'sm', pb: 'xs', textStyle: 'caption', color: 'scrapscache.textMuted' }),
+	toolbar: css({
+		position: 'absolute',
+		top: '4.25rem',
+		right: 'md',
+		zIndex: 4,
+		display: 'flex',
+		alignItems: 'center',
+		gap: '2xs',
+		maxW: 'calc(100% - 2rem)',
+		px: 'xs',
+		py: '2xs',
+		borderWidth: 'hairline',
+		borderColor: 'scrapscache.border',
+		bg: 'scrapscache.surface',
+		rounded: 'card',
+		boxShadow: 'popover',
+		flexWrap: 'wrap'
+	}),
+	stepper: css({ display: 'flex', alignItems: 'center', gap: '2xs', minW: 0 }),
+	timestamp: css({
+		textStyle: 'caption',
+		color: 'scrapscache.textMuted',
+		fontVariantNumeric: 'tabular-nums',
 		whiteSpace: 'nowrap'
 	}),
-	date: css({ textStyle: 'caption', color: 'scrapscache.textMuted' }),
-	empty: css({ px: 'sm', py: 'md', textStyle: 'body', color: 'scrapscache.textMuted' }),
-	previewMeta: css({ px: 'sm', py: 'xs', textStyle: 'caption', color: 'scrapscache.textMuted' })
+	actions: css({ display: 'flex', alignItems: 'center', gap: '2xs' }),
+	iconAction: css({
+		display: 'grid',
+		placeItems: 'center',
+		w: '1.75rem',
+		h: '1.75rem',
+		color: 'scrapscache.textMuted',
+		cursor: 'pointer',
+		rounded: 'control',
+		_hoverable: { bg: 'scrapscache.interactiveHover', color: 'scrapscache.text' },
+		_disabled: { opacity: 0.35, cursor: 'default' },
+		_focusVisible: { outline: 'none', ringWidth: '2px', ringColor: 'scrapscache.accent' }
+	}),
+	textAction: css({
+		px: 'xs',
+		py: '2xs',
+		textStyle: 'caption',
+		color: 'scrapscache.textMuted',
+		cursor: 'pointer',
+		rounded: 'control',
+		_hoverable: { bg: 'scrapscache.interactiveHover' },
+		_focusVisible: { outline: 'none', ringWidth: '2px', ringColor: 'scrapscache.accent' }
+	}),
+	restoreAction: css({
+		px: 'sm',
+		py: '2xs',
+		textStyle: 'captionStrong',
+		color: 'scrapscache.accent',
+		cursor: 'pointer',
+		rounded: 'control',
+		_hoverable: { bg: 'scrapscache.accentSubtle' },
+		_focusVisible: { outline: 'none', ringWidth: '2px', ringColor: 'scrapscache.accent' }
+	}),
+	toolbarError: css({ w: 'full', px: 'xs', textStyle: 'caption', color: 'scrapscache.textMuted' })
 };
 
 export const topbarStyles = {

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { noteEditorReminderTone, noteEditorStyles as styles } from '$panda/styles';
 	import { cx } from 'styled-system/css';
-	import { button, dialog, iconButton, input, noteSurface } from 'styled-system/recipes';
+	import { dialog, iconButton, input, noteSurface } from 'styled-system/recipes';
 	import { flex, hstack, spacer } from 'styled-system/patterns';
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { flushSync, onMount, tick } from 'svelte';
@@ -739,7 +739,15 @@
 							<TimeTravel
 								account={syncStore.account}
 								noteId={note.id}
+								previewEntry={historyPreview?.entry ?? null}
+								{restoreConfirmOpen}
+								{restoringPreview}
+								restoreError={historyRestoreError}
 								onPreviewVersion={previewHistoryVersion}
+								onCancelPreview={exitHistoryPreview}
+								onStartRestore={beginRestoreConfirmation}
+								onCancelRestore={cancelRestoreConfirmation}
+								onConfirmRestore={() => void confirmHistoryRestore()}
 							/>
 						{/key}
 					{/if}
@@ -831,70 +839,15 @@
 						class={cx(
 							'note-scrollbar-hidden scrollable',
 							styles.scroller,
+							historyPreview && styles.scrollerPreview,
 							uiStore.rawMarkdown && styles.rawScroller,
 							!historyPreview && photosFillEditor ? styles.scrollerFill : undefined
 						)}
 					>
 						{#if historyPreview}
-							<div class={styles.historyPreviewBanner}>
-								<div class={styles.historyPreviewTop}>
-									<p class={styles.historyPreviewLabel}>
-										Viewing version from {new Date(historyPreview.entry.savedAt).toLocaleString()}
-									</p>
-									<div class={styles.historyPreviewActions}>
-										<button
-											type="button"
-											class={button({ variant: 'ghost', size: 'sm' })}
-											onclick={exitHistoryPreview}
-											disabled={restoringPreview}
-										>
-											Return to current
-										</button>
-										{#if restoreConfirmOpen}
-											<button
-												type="button"
-												class={button({ variant: 'ghost', size: 'sm' })}
-												data-history-restore-action="cancel"
-												onclick={cancelRestoreConfirmation}
-												disabled={restoringPreview}
-											>
-												Cancel
-											</button>
-											<button
-												type="button"
-												class={button({ variant: 'primary', size: 'sm' })}
-												data-history-restore-action="confirm"
-												onclick={() => void confirmHistoryRestore()}
-												disabled={restoringPreview}
-											>
-												{restoringPreview ? 'Restoring…' : 'Confirm restore'}
-											</button>
-										{:else}
-											<button
-												type="button"
-												class={button({ variant: 'primary', size: 'sm' })}
-												data-history-restore-action="start"
-												onclick={beginRestoreConfirmation}
-											>
-												Restore this version
-											</button>
-										{/if}
-									</div>
-								</div>
-								{#if restoreConfirmOpen}
-									<p class={styles.meta}>This will replace the current synced note.</p>
-								{/if}
-								{#if historyRestoreError}<p class={styles.meta} role="alert">
-										{historyRestoreError}
-									</p>{/if}
-							</div>
-
 							<h1 class={styles.historyPreviewTitle}>
 								{historyPreview.note.title || 'Untitled note'}
 							</h1>
-							<p class={styles.meta}>
-								Saved {new Date(historyPreview.entry.savedAt).toLocaleString()}
-							</p>
 							{#key historyPreview.entry.historyId}
 								<BodyEditor
 									body={historyPreview.note.body}

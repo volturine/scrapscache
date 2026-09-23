@@ -29,7 +29,8 @@ export interface StoredProfile {
 	createdAt: number;
 }
 
-const LS_PROFILES = 'scrapscache-sync-profiles';
+/** The keyring. Its `storage` event is how other windows learn of a change. */
+export const LS_PROFILES = 'scrapscache-sync-profiles';
 const LS_PROFILES_LEGACY = 'gkc-sync-profiles';
 
 const dbPromises = new Map<string, Promise<IDBPDatabase>>();
@@ -81,14 +82,78 @@ function extractPidFromStateKey(key: string): { pid: string; baseKey: string } {
 	return { pid: LOCAL_PROFILE_ID, baseKey: key };
 }
 
+/** Workspaces the keyring stopped naming. Served again if it names them again. */
+const departedProfiles = new Set<string>();
+/**
+ * Workspaces another window asked to delete. A requested delete cannot be taken
+ * back: the browser finishes it once the last connection closes, even after the
+ * window that asked has given up waiting. So this lasts for the life of the page.
+ */
+const deletedProfiles = new Set<string>();
+let deletedListener: ((pid: string) => void) | null = null;
+
+function closeConnection(pid: string): void {
+	const dbName = resolveDbName(pid);
+	const open = dbPromises.get(dbName);
+	if (!open) return;
+	dbPromises.delete(dbName);
+	void open.then(
+		(db) => db.close(),
+		() => undefined
+	);
+}
+
+/**
+ * Stop serving a workspace the keyring no longer names.
+ *
+ * A window that still has it open must not reach its database again. Opening it
+ * would rebuild the one another window just dropped, and no keyring entry would
+ * name the result: a dataset no workspace owns and no delete can find. Writes
+ * already queued for it fail here instead of landing.
+ */
+export function releaseProfile(pid: string): void {
+	departedProfiles.add(pid);
+	closeConnection(pid);
+}
+
+/**
+ * Serve a workspace again: the keyring names it, so this device holds it. A
+ * workspace whose delete was requested stays refused whatever the keyring says,
+ * since its database is on its way out.
+ */
+export function resumeProfile(pid: string): void {
+	departedProfiles.delete(pid);
+}
+
+export function isProfileReleased(pid: string): boolean {
+	return departedProfiles.has(pid) || deletedProfiles.has(pid);
+}
+
+/** Hear about a workspace another window started deleting, so this one can leave it. */
+export function onProfileDeleted(listener: ((pid: string) => void) | null): void {
+	deletedListener = listener;
+}
+
 export function getDB(pid?: string): Promise<IDBPDatabase> {
 	if (typeof indexedDB === 'undefined') {
 		return Promise.reject(new Error('IndexedDB is not available'));
+	}
+	if (pid && isProfileReleased(pid)) {
+		return Promise.reject(new Error('That workspace is no longer on this device.'));
 	}
 	const dbName = resolveDbName(pid);
 	let promise = dbPromises.get(dbName);
 	if (!promise) {
 		promise = openDB(dbName, DB_VERSION, {
+			// A null blocked version means a delete rather than an upgrade: another
+			// window is removing this workspace, and holding the connection open
+			// would only stall it until its grace runs out.
+			blocking(_currentVersion, blockedVersion) {
+				if (blockedVersion !== null || !pid) return;
+				deletedProfiles.add(pid);
+				closeConnection(pid);
+				deletedListener?.(pid);
+			},
 			upgrade(db) {
 				if (!db.objectStoreNames.contains(NOTES_STORE)) {
 					db.createObjectStore(NOTES_STORE, { keyPath: 'id' });
@@ -115,8 +180,20 @@ export function getDB(pid?: string): Promise<IDBPDatabase> {
 	return promise;
 }
 
-/** How long a delete may stay blocked before it is reported as failed. */
+/** How long a delete may stay blocked before the caller stops waiting on it. */
 const DELETE_BLOCKED_GRACE_MS = 2000;
+
+/**
+ * A delete that stayed blocked past its grace. It has not failed and cannot be
+ * called off: the browser finishes it the moment the last connection closes.
+ * `completion` settles when that happens.
+ */
+export class DeleteBlockedError extends Error {
+	constructor(readonly completion: Promise<void>) {
+		super('Timed out deleting a local database: a connection to it is still open.');
+		this.name = 'DeleteBlockedError';
+	}
+}
 
 /**
  * Delete a database and report what actually happened.
@@ -124,29 +201,35 @@ const DELETE_BLOCKED_GRACE_MS = 2000;
  * A blocked delete is not a success: some connection is still open, and the
  * browser will only finish once it closes. Resolving there would tell a caller
  * their data is gone while all of it is still on the device, so the block is
- * waited out and only a lasting one is an error. The database is never named
- * in that error: its name carries the workspace id.
+ * waited out, and a lasting one rejects with a `DeleteBlockedError` that still
+ * reports when the delete lands. The database is never named in either error:
+ * its name carries the workspace id.
  */
 export function dropDatabase(name: string, graceMs = DELETE_BLOCKED_GRACE_MS): Promise<void> {
 	if (typeof indexedDB === 'undefined') return Promise.resolve();
 	return new Promise<void>((resolve, reject) => {
 		const request = indexedDB.deleteDatabase(name);
 		let blockedTimer: ReturnType<typeof setTimeout> | null = null;
-		const settle = (finish: () => void) => {
-			if (blockedTimer !== null) clearTimeout(blockedTimer);
-			finish();
-		};
-		request.onsuccess = () => settle(resolve);
-		request.onerror = () =>
-			settle(() => reject(request.error ?? new Error('Could not delete a local database.')));
+		const completion = new Promise<void>((finish, fail) => {
+			request.onsuccess = () => finish();
+			request.onerror = () =>
+				fail(request.error ?? new Error('Could not delete a local database.'));
+		});
+		// Once the caller has been told the delete is blocked it may never listen
+		// again; a later failure must not surface as an unhandled rejection.
+		completion.catch(() => undefined);
+		completion.then(
+			() => {
+				if (blockedTimer !== null) clearTimeout(blockedTimer);
+				resolve();
+			},
+			(error: unknown) => {
+				if (blockedTimer !== null) clearTimeout(blockedTimer);
+				reject(error);
+			}
+		);
 		request.onblocked = () => {
-			blockedTimer = setTimeout(
-				() =>
-					reject(
-						new Error('Timed out deleting a local database: a connection to it is still open.')
-					),
-				graceMs
-			);
+			blockedTimer = setTimeout(() => reject(new DeleteBlockedError(completion)), graceMs);
 		};
 	});
 }
@@ -164,6 +247,8 @@ export async function closeDeviceDatabase(): Promise<void> {
 	noteChains.clear();
 	writeGeneration = 0;
 	outboxGenerations.clear();
+	departedProfiles.clear();
+	deletedProfiles.clear();
 	await Promise.all(
 		existing.map((p) =>
 			p.then(
@@ -238,6 +323,9 @@ function plainNote(note: Note): Note {
 		archived: Boolean(note.archived),
 		trashed: Boolean(note.trashed),
 		trashedAt: note.trashedAt == null ? null : Number(note.trashedAt),
+		// Durable like every other field: the mirror is a fast-boot cache, so a
+		// flag only it carries is lost the moment the mirror is trimmed or evicted.
+		...(note.secret ? { secret: true } : {}),
 		createdAt: Number(note.createdAt) || 0,
 		updatedAt: Number(note.updatedAt) || 0,
 		reminder: note.reminder == null ? null : Number(note.reminder),
@@ -1044,7 +1132,17 @@ export async function deleteProfileDatabase(pid: string): Promise<void> {
 			db.close();
 		} catch {}
 	}
-	await dropDatabase(dbName);
+	// Refused from here on, in this window as in every other: an open request
+	// would queue behind the delete and then build an empty database back.
+	deletedProfiles.add(pid);
+	try {
+		await dropDatabase(dbName);
+	} catch (error) {
+		// Only an outright failure leaves the database in place and still usable;
+		// a blocked delete is merely waiting to land.
+		if (!(error instanceof DeleteBlockedError)) deletedProfiles.delete(pid);
+		throw error;
+	}
 }
 
 function removeProfileFromLocalStorage(id: string): void {
@@ -1061,13 +1159,32 @@ function removeProfileFromLocalStorage(id: string): void {
 	} catch {}
 }
 
-/** Removes the keyring entry together with its entire dataset on this device. */
+/**
+ * Removes the keyring entry together with its entire dataset on this device.
+ *
+ * The keyring entry follows the dataset, never leads it: an entry removed while
+ * the data stayed would leave every note on the device, reachable by nothing and
+ * removable by no one. A delete that errors leaves both, and the workspace
+ * whole. A delete that is blocked has only been put off — the browser finishes
+ * it once the other connection closes — so the entry goes when it lands.
+ */
 export async function deleteStoredProfile(id: string): Promise<void> {
-	removeProfileFromLocalStorage(id);
 	// The default workspace shares the device database with link previews, so
 	// it is emptied instead of dropped.
 	if (id === LOCAL_PROFILE_ID) await clearProfileNamespace(id);
-	else await deleteProfileDatabase(id);
+	else {
+		try {
+			await deleteProfileDatabase(id);
+		} catch (error) {
+			if (error instanceof DeleteBlockedError)
+				void error.completion.then(
+					() => removeProfileFromLocalStorage(id),
+					() => undefined
+				);
+			throw error;
+		}
+	}
+	removeProfileFromLocalStorage(id);
 }
 
 /**

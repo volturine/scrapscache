@@ -1,4 +1,3 @@
-import fs from 'node:fs';
 import { fireEvent, render } from '@testing-library/svelte';
 import { flushSync, tick } from 'svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -2033,6 +2032,28 @@ describe('BodyEditor markdown block boundaries', () => {
 	});
 });
 
+/** A long note shaped like a pasted handbook: headings, prose, fenced code, and tables. */
+function largeHandbook(): string {
+	const lines: string[] = [];
+	for (let section = 0; section < 60; section += 1) {
+		lines.push(`## Section ${section}`, `Some *prose* about topic ${section}.`, '```python');
+		for (let row = 0; row < 30; row += 1)
+			lines.push(row % 5 === 0 ? `print("value ${row}")  # note` : `total = total + ${row}`);
+		lines.push('```');
+		if (section % 10 === 0) lines.push('| a | b |', '| --- | --- |', '| 1 | 2 |');
+		lines.push('');
+	}
+	return lines.join('\n');
+}
+
+/** Svelte marks each block it mounts ({#if}, {#each}, {#key}, {@render}) with a comment. */
+function commentAnchors(root: Node): number {
+	const walker = document.createTreeWalker(root, NodeFilter.SHOW_COMMENT);
+	let count = 0;
+	while (walker.nextNode()) count += 1;
+	return count;
+}
+
 describe('BodyEditor markdown block stability', () => {
 	it('preserves code block shell and child DOM nodes when inserting a newline above it', async () => {
 		const source = ['First line', '```python', 'print("hello")', '```', 'Last line'].join('\n');
@@ -2065,21 +2086,39 @@ describe('BodyEditor markdown block stability', () => {
 		]);
 	});
 
-	it('handles large documents like Python handbook without freezing or crashing on newline', async () => {
-		const handbookPath =
-			'/Users/kripso/.t3/userdata/attachments/9c7408dc-9af9-4336-8672-b4b7c5c95f25-e2dea84f-a155-4532-958f-efe7947ee7ae-md.md';
-		if (!fs.existsSync(handbookPath)) return;
-		const source = fs.readFileSync(handbookPath, 'utf8');
-		const { container } = render(BodyEditor, { props: { body: source } });
-		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+	// Opening a note mounts every row, and each Svelte block in a row is a live
+	// effect: the count per row, not the markdown parsing, is what a long note's
+	// open and edit times scale with. Counted rather than timed, so the check holds
+	// on any machine under any load.
+	it('keeps each row of a long note to a handful of render blocks', () => {
+		const { container } = render(BodyEditor, { props: { body: largeHandbook() } });
+		const rows = container.querySelectorAll('[data-editor-line]').length;
 
-		const start = performance.now();
+		expect(rows).toBe(2118);
+		expect(commentAnchors(container) / rows).toBeLessThan(7);
+	});
+
+	it('moves every row of a long note down on Enter instead of rebuilding it', async () => {
+		const { container } = render(BodyEditor, { props: { body: largeHandbook() } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const before = new Map(
+			[...container.querySelectorAll('[data-editor-line]')].map((row) => [
+				row.getAttribute('data-line-id'),
+				row
+			])
+		);
+
 		caretAt(container, 0, 0);
 		await fireEvent.keyDown(editor, { key: 'Enter' });
 		await tick();
-		const elapsed = performance.now() - start;
 
-		expect(container.querySelectorAll('[data-editor-line]')).toHaveLength(2340);
-		expect(elapsed).toBeLessThan(500);
+		const after = [...container.querySelectorAll('[data-editor-line]')];
+		expect(after).toHaveLength(before.size + 1);
+		const rebuilt = after.filter(
+			(row) =>
+				before.has(row.getAttribute('data-line-id')) &&
+				before.get(row.getAttribute('data-line-id')) !== row
+		);
+		expect(rebuilt).toHaveLength(0);
 	});
 });

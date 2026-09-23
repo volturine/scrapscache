@@ -15,7 +15,14 @@ import {
 	type StoredProfile
 } from '$lib/profiles';
 import { identityFromSyncKey, randomOpaqueId } from '$lib/syncPairing';
-import { markSyncOutbox } from '$lib/db/idb';
+import {
+	isProfileReleased,
+	LS_PROFILES,
+	markSyncOutbox,
+	onProfileDeleted,
+	releaseProfile,
+	resumeProfile
+} from '$lib/db/idb';
 import { unregisterReminderDevice } from '$lib/reminderWake';
 
 type Outcome = { success: boolean; error?: string };
@@ -72,7 +79,10 @@ export class ProfileCoordinator {
 
 	private find(profileId: string): StoredProfile {
 		const profile = syncStore.profiles.find((entry) => entry.id === profileId);
-		if (!profile) throw new Error('That workspace is no longer on this device');
+		// A workspace another window is deleting may still be listed until its
+		// delete lands, but it is already gone as far as this window can use it.
+		if (!profile || isProfileReleased(profile.id))
+			throw new Error('That workspace is no longer on this device');
 		return profile;
 	}
 
@@ -199,18 +209,61 @@ export class ProfileCoordinator {
 		return this.handover('Could not delete workspace', async () => {
 			const profile = this.find(profileId);
 			if (syncStore.activeId === profileId) {
-				const next = syncStore.profiles.find((entry) => entry.id !== profileId);
+				const next = syncStore.profiles.find(
+					(entry) => entry.id !== profileId && !isProfileReleased(entry.id)
+				);
 				if (next) await this.activate(next);
 				else await this.createAndActivateEmpty();
 			}
-			if (!(await syncStore.removeProfile(profileId)))
-				return { success: false, error: 'Could not delete workspace' };
+			const removal = await syncStore.removeProfile(profileId);
+			if (removal === 'failed') return { success: false, error: 'Could not delete workspace' };
+			// A pending delete lands the moment the other window lets go, so the
+			// mirrors go now: left behind, they would bring its notes back without
+			// their attachments into the empty database that opening it creates.
 			clearNotesMirror(profileId);
 			clearBoardsMirror(profileId);
 			clearFiredReminderMirror(profileId);
 			if (profile.syncKey)
 				void unregisterReminderDevice(identityFromSyncKey(profile.syncKey)).catch(() => undefined);
+			if (removal === 'pending')
+				return {
+					success: false,
+					error:
+						'This workspace is still open somewhere else. It will finish deleting once that window is closed.'
+				};
 			return { success: true };
+		});
+	}
+
+	/**
+	 * Another window rewrote the keyring. Adopt it, stop serving every workspace
+	 * it no longer names, and leave the open one if it is among them.
+	 */
+	async adoptKeyring(): Promise<void> {
+		const known = syncStore.profiles.map((entry) => entry.id);
+		const named = new Set(syncStore.reloadKeyring().map((entry) => entry.id));
+		// A workspace can come back — the default one is recreated whenever it
+		// still holds notes — so each one the keyring names is served again.
+		for (const id of named) resumeProfile(id);
+		for (const id of [...known, syncStore.activeId]) if (!named.has(id)) releaseProfile(id);
+		await this.leaveReleasedWorkspace();
+	}
+
+	/**
+	 * Move off the open workspace, without asking, once this device no longer
+	 * holds it: its dataset is gone or going, and anything still writing to it
+	 * would build back a dataset no workspace owns. The writes it already queued
+	 * fail, and the reload that lands the new workspace clears their errors.
+	 */
+	async leaveReleasedWorkspace(): Promise<void> {
+		if (!isProfileReleased(syncStore.activeId)) return;
+		await this.exclusive(async () => {
+			// Checked again under the lock: while it waited, this window may have
+			// moved on by itself, or another signal may already have moved it.
+			if (!isProfileReleased(syncStore.activeId)) return;
+			const next = syncStore.profiles.find((entry) => !isProfileReleased(entry.id));
+			if (next) await this.activate(next);
+			else await this.createAndActivateEmpty();
 		});
 	}
 
@@ -285,3 +338,24 @@ export class ProfileCoordinator {
 }
 
 export const profileCoordinator = new ProfileCoordinator();
+
+// The keyring lives in localStorage, so its own `storage` event is the signal:
+// it fires in every other window exactly when the keyring changes, and cannot
+// drift from the write the way a separate broadcast would.
+if (typeof window !== 'undefined') {
+	window.addEventListener('storage', (event) => {
+		// A null key means the origin was cleared, which takes the keyring with it.
+		if (event.key !== null && event.key !== LS_PROFILES) return;
+		void profileCoordinator.adoptKeyring().catch((err) => {
+			console.error('[profiles] could not adopt a keyring change:', err);
+		});
+	});
+	// Another window started deleting a workspace this one had a connection to.
+	// The keyring only changes once that delete lands, which may be never if a
+	// third window holds on, so this is the moment to leave it.
+	onProfileDeleted(() => {
+		void profileCoordinator.leaveReleasedWorkspace().catch((err) => {
+			console.error('[profiles] could not leave a deleted workspace:', err);
+		});
+	});
+}

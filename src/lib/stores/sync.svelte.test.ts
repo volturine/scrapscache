@@ -1408,7 +1408,7 @@ describe('client sync state machine', () => {
 		const { cursor } = syncControlKeys(createSyncIdentity().accountId);
 		await idb.setSyncState(cursor, 7, idb.LOCAL_PROFILE_ID);
 		booted.activateProfile(saved);
-		expect(await booted.removeProfile(idb.LOCAL_PROFILE_ID)).toBe(true);
+		expect(await booted.removeProfile(idb.LOCAL_PROFILE_ID)).toBe('removed');
 		expect(await idb.getAllNotesMetadata(idb.LOCAL_PROFILE_ID)).toEqual([]);
 		expect(await idb.getSyncState(cursor, idb.LOCAL_PROFILE_ID)).toBeUndefined();
 

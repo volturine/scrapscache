@@ -37,6 +37,7 @@
 
 	import { revealEditorField, revealEditorPoint } from '$lib/editorVisibility';
 	import { getClipboardFiles, isImageAttachment } from '$lib/noteImages';
+	import { matchTrailingEmoticon } from '$lib/emoticons';
 	import { isKeyboardField } from '$lib/appViewport';
 
 	let {
@@ -569,14 +570,30 @@
 		}, 1500);
 	}
 	function handleTitleInput(event: Event) {
+		const target = event.target as HTMLTextAreaElement | null;
 		if (title.includes('\n') || title.includes('\r')) {
-			const target = event.target as HTMLTextAreaElement | null;
 			const start = target?.selectionStart ?? 0;
 			const end = target?.selectionEnd ?? 0;
 			title = title.replace(/[\r\n]+/g, ' ');
 			if (target) {
 				target.value = title;
 				target.setSelectionRange(start, end);
+			}
+		}
+		// `:)` + space becomes an emoji when the space is typed at the end.
+		if (
+			target &&
+			title.endsWith(' ') &&
+			target.selectionStart === title.length &&
+			target.selectionEnd === title.length
+		) {
+			const before = title.slice(0, -1);
+			const match = matchTrailingEmoticon(before);
+			if (match) {
+				title = before.slice(0, match.start) + match.emoji + ' ';
+				target.value = title;
+				const caret = match.start + match.emoji.length + 1;
+				target.setSelectionRange(caret, caret);
 			}
 		}
 		scheduleCommit();

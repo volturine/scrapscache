@@ -163,7 +163,8 @@ export const theme = {
 			colors: { palette },
 			fonts: tokenGroup({
 				// A string replaces Panda's preset stack. An array is concatenated after it, so Google Sans would never be chosen.
-				sans: '"Google Sans", "Roboto", system-ui, Arial, sans-serif'
+				// Emoji fonts sit after the generic family so they only take over glyphs the text fonts lack.
+				sans: '"Google Sans", "Roboto", system-ui, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji"'
 			}),
 			borderWidths: tokenGroup({ hairline: '1px', control: '1.5px', strong: '2px' }),
 			fontSizes: tokenGroup({

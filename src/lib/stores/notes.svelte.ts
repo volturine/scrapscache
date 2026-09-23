@@ -1247,7 +1247,11 @@ export class NotesStore {
 		};
 	}
 
-	private async applyCloudReplacement(snapshot: SyncSnapshot, pid: string): Promise<SyncSnapshot> {
+	private async applyCloudReplacement(
+		snapshot: SyncSnapshot,
+		pid: string,
+		allowEmpty = false
+	): Promise<SyncSnapshot> {
 		// Replacing this device's notes with the cloud's belongs to one workspace.
 		if (pid !== this.pid) return snapshot;
 		const notes = withoutTombstoned(snapshot.notes, snapshot.tombstones).sort(
@@ -1256,7 +1260,7 @@ export class NotesStore {
 		const labels = withoutTombstoned(snapshot.labels, snapshot.labelTombstones).sort((a, b) =>
 			a.name.localeCompare(b.name)
 		);
-		if (notes.length === 0 && (syncStore.usage?.envelopeCount ?? 0) > 0) {
+		if (!allowEmpty && notes.length === 0 && (syncStore.usage?.envelopeCount ?? 0) > 0) {
 			throw new Error('Could not download synced notes');
 		}
 		if (navigator.storage?.estimate) {
@@ -1267,9 +1271,8 @@ export class NotesStore {
 				);
 			}
 		}
-		await replaceAllDeviceData(this.pid, notes, labels, (note) =>
-			this.compactPersistedNoteImages(note)
-		);
+		await replaceAllDeviceData(pid, notes, labels, (note) => this.compactPersistedNoteImages(note));
+		if (pid !== this.pid) return snapshot;
 		this.notes = notes;
 		this.labels = labels;
 		this.deletedNoteIds = { ...snapshot.tombstones };
@@ -1400,7 +1403,6 @@ export class NotesStore {
 		}
 	}
 
-	// Manual sync — caller shows UI feedback (spinning cloud icon).
 	async forcePushWorkspace(turnstileToken?: string): Promise<boolean> {
 		return this.withSyncLock(async () => {
 			const account = syncStore.account;

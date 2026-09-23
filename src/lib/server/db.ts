@@ -69,6 +69,19 @@ const RELAY_DDL = `
 	);
 	CREATE INDEX IF NOT EXISTS deleted_envelopes_deleted_at
 		ON deleted_envelopes(deleted_at);
+	CREATE TABLE IF NOT EXISTS envelope_history (
+		history_id INTEGER PRIMARY KEY AUTOINCREMENT,
+		account_id TEXT NOT NULL,
+		slot TEXT NOT NULL,
+		id TEXT NOT NULL,
+		ciphertext TEXT NOT NULL,
+		saved_at INTEGER NOT NULL,
+		FOREIGN KEY (account_id) REFERENCES accounts(account_id) ON DELETE CASCADE
+	);
+	CREATE INDEX IF NOT EXISTS envelope_history_account_time
+		ON envelope_history(account_id, history_id DESC);
+	CREATE INDEX IF NOT EXISTS envelope_history_saved_at
+		ON envelope_history(saved_at);
 `;
 
 const OPS_DDL = `

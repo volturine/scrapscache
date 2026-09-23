@@ -72,6 +72,29 @@ afterEach(() => {
 });
 
 describe('BodyEditor native editing', () => {
+	it('holds a mount-time focus until the chunks have painted once', async () => {
+		const frames: FrameRequestCallback[] = [];
+		const raf = vi
+			.spyOn(window, 'requestAnimationFrame')
+			.mockImplementation((callback) => frames.push(callback));
+		try {
+			const { component, container } = render(BodyEditor, { props: { body: 'Hello' } });
+			const editor = container.querySelector('[data-body-editor]');
+			component.focusDefault();
+			await tick();
+			expect(document.activeElement).not.toBe(editor);
+
+			frames.shift()?.(0);
+			await tick();
+			expect(document.activeElement).not.toBe(editor);
+
+			frames.shift()?.(0);
+			await vi.waitFor(() => expect(document.activeElement).toBe(editor));
+		} finally {
+			raf.mockRestore();
+		}
+	});
+
 	it('renders exactly one block row for each saved newline', () => {
 		const { container } = render(BodyEditor, {
 			props: { body: 'Plain line\n[ ] Task line\nLast line' }

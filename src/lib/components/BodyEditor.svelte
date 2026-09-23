@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { flushSync, tick } from 'svelte';
+	import { flushSync, onMount, tick } from 'svelte';
 	import {
 		adjustTextIndent,
 		BULLET_RE,
@@ -1142,7 +1142,28 @@
 		onExitTaskFocus?.();
 	}
 
+	// WebKit settles whether a content-visibility chunk is on screen in the first
+	// frame that paints it. A chunk focused before then is recorded as offscreen
+	// and stops painting when focus leaves, though it is still in view. Opening a
+	// new note focuses the body on mount, so that focus waits for the first paint.
+	let painted = false;
+	let resolvePainted = () => {};
+	const firstPaint = new Promise<void>((resolve) => (resolvePainted = resolve));
+	onMount(() => {
+		let frame = requestAnimationFrame(() => {
+			frame = requestAnimationFrame(() => {
+				painted = true;
+				resolvePainted();
+			});
+		});
+		return () => cancelAnimationFrame(frame);
+	});
+
 	export function focusDefault() {
+		if (!painted) {
+			void firstPaint.then(focusDefault);
+			return;
+		}
 		const index = focusLine === null ? 0 : Math.max(0, Math.min(focusLine, lines.length - 1));
 		void focusAfterRender(index, lines[index]?.text.length ?? 0, lines[index]?.id ?? null);
 	}

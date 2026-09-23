@@ -4,18 +4,14 @@ const mocks = vi.hoisted(() => ({
 	authenticate: vi.fn((): string | null => 'owner'),
 	listHistory: vi.fn(),
 	getHistory: vi.fn(),
-	getEnvelopeAt: vi.fn(),
-	listProfileHistory: vi.fn(),
-	getProfileSnapshot: vi.fn()
+	getEnvelopeAt: vi.fn()
 }));
 
 vi.mock('$lib/server/syncStore', () => ({
 	getSyncStore: () => ({
 		listHistory: mocks.listHistory,
 		getHistory: mocks.getHistory,
-		getEnvelopeAt: mocks.getEnvelopeAt,
-		listProfileHistory: mocks.listProfileHistory,
-		getProfileSnapshot: mocks.getProfileSnapshot
+		getEnvelopeAt: mocks.getEnvelopeAt
 	})
 }));
 vi.mock('$lib/server/syncAuth', () => ({
@@ -55,8 +51,6 @@ describe('sync history route', () => {
 			ciphertext: 'secret'
 		});
 		mocks.getEnvelopeAt.mockResolvedValue(null);
-		mocks.listProfileHistory.mockResolvedValue({ points: [], nextBefore: null });
-		mocks.getProfileSnapshot.mockResolvedValue({ envelopes: [], nextAfter: null });
 	});
 
 	it('requires an authenticated sync session before reading history', async () => {
@@ -66,10 +60,10 @@ describe('sync history route', () => {
 	});
 
 	it('scopes list and detail reads to the authenticated account', async () => {
-		const page = await get('?before=12');
+		const page = await get(`?noteSlot=${'a'.repeat(64)}&before=12`);
 		expect(page.status).toBe(200);
 		expect(page.headers.get('cache-control')).toBe('no-store');
-		expect(mocks.listHistory).toHaveBeenCalledWith('owner', 12, undefined);
+		expect(mocks.listHistory).toHaveBeenCalledWith('owner', 'a'.repeat(64), 12);
 		expect((await get('?id=9')).status).toBe(200);
 		expect(mocks.getHistory).toHaveBeenCalledWith('owner', 9);
 	});
@@ -77,6 +71,7 @@ describe('sync history route', () => {
 	it('rejects malformed ids and slots before querying storage', async () => {
 		expect((await get('?id=-1')).status).toBe(400);
 		expect((await get('?slot=plain&at=1')).status).toBe(400);
+		expect((await get('?before=12')).status).toBe(400);
 		expect(mocks.getHistory).not.toHaveBeenCalled();
 		expect(mocks.getEnvelopeAt).not.toHaveBeenCalled();
 		expect((await get('?noteSlot=plain')).status).toBe(400);
@@ -84,16 +79,6 @@ describe('sync history route', () => {
 
 	it('filters note version lists by the authenticated opaque slot', async () => {
 		await get(`?noteSlot=${'a'.repeat(64)}`);
-		expect(mocks.listHistory).toHaveBeenCalledWith('owner', undefined, 'a'.repeat(64));
-	});
-
-	it('serves authenticated profile points and snapshot pages without caching', async () => {
-		const points = await get('?points=1&before=123');
-		expect(points.status).toBe(200);
-		expect(mocks.listProfileHistory).toHaveBeenCalledWith('owner', 123);
-		const snapshot = await get(`?profile=123&after=${'a'.repeat(64)}`);
-		expect(snapshot.headers.get('cache-control')).toBe('no-store');
-		expect(mocks.getProfileSnapshot).toHaveBeenCalledWith('owner', 123, 'a'.repeat(64));
-		expect((await get('?profile=0')).status).toBe(400);
+		expect(mocks.listHistory).toHaveBeenCalledWith('owner', 'a'.repeat(64), undefined);
 	});
 });

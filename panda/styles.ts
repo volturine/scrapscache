@@ -1822,9 +1822,10 @@ export const noteEditorStyles = {
 			justifyContent: 'center'
 		},
 		variants: {
-			expanded: { true: {}, false: { px: 'lg', pb: 'var(--app-sheet-pad-bottom)' } }
+			expanded: { true: {}, false: { px: 'lg', pb: 'var(--app-sheet-pad-bottom)' } },
+			historyOpen: { true: { gap: { lg: 'md' } }, false: {} }
 		},
-		defaultVariants: { expanded: false }
+		defaultVariants: { expanded: false, historyOpen: false }
 	}),
 	sheetBox: cva({
 		base: { maxH: 'full', minH: 0, w: 'full' },
@@ -1838,9 +1839,10 @@ export const noteEditorStyles = {
 					rounded: 'sheet',
 					boxShadow: 'noteSheet'
 				}
-			}
+			},
+			historyOpen: { true: { flexShrink: { lg: 1 }, minW: { lg: 0 } }, false: {} }
 		},
-		defaultVariants: { expanded: false }
+		defaultVariants: { expanded: false, historyOpen: false }
 	}),
 	dialogSurface: css({
 		position: 'relative',
@@ -2044,43 +2046,71 @@ export const sidebarStyles = {
 };
 
 export const historyStyles = {
-	root: css({ mt: 'lg', minH: 0, flex: '1', display: 'flex', flexDirection: 'column' }),
-	inlinePreviewPortal: css({ position: 'fixed', inset: 0, zIndex: 90 }),
-	header: css({
-		px: 'lg',
-		pb: 'sm',
-		textStyle: 'captionStrong',
-		textTransform: 'uppercase',
-		letterSpacing: 'eyebrow',
-		color: 'scrapscache.textMuted'
+	panel: cva({
+		base: {
+			position: { base: 'fixed', lg: 'relative' },
+			insetBlock: { base: 0, lg: 'auto' },
+			left: { base: 0, lg: 'auto' },
+			zIndex: { base: 61, lg: 'auto' },
+			flexShrink: { base: 0, lg: 0 },
+			display: 'flex',
+			flexDirection: 'column',
+			w: { base: 'min(88vw, 22rem)', lg: '18rem' },
+			h: { base: '100%', lg: 'max(72vh, 32rem)' },
+			maxH: { base: '100%', lg: '100dvh' },
+			borderWidth: 'hairline',
+			borderColor: 'scrapscache.border',
+			bg: 'scrapscache.surface',
+			boxShadow: 'dialog',
+			rounded: { base: 'none', lg: 'dialog' }
+		},
+		variants: {
+			expanded: { true: { position: 'fixed', insetBlock: 0, left: 0, zIndex: 61 }, false: {} }
+		},
+		defaultVariants: { expanded: false }
 	}),
-	list: css({ minH: 0, overflowY: 'auto', flex: '1', pr: '3xs' }),
+	panelHeader: css({
+		display: 'flex',
+		alignItems: 'center',
+		justifyContent: 'space-between',
+		gap: 'sm',
+		px: 'md',
+		py: 'sm',
+		borderBottomWidth: 'hairline',
+		borderColor: 'scrapscache.borderFaint'
+	}),
+	panelTitle: css({ textStyle: 'label', fontWeight: 'strong' }),
+	list: css({
+		flex: '0 1 11rem',
+		minH: '5rem',
+		overflowY: 'auto',
+		px: 'sm',
+		py: 'sm',
+		borderBottomWidth: 'hairline',
+		borderColor: 'scrapscache.borderFaint'
+	}),
 	entry: css({
 		display: 'flex',
-		alignItems: 'flex-start',
-		gap: 'sm',
+		flexDirection: 'column',
+		gap: '3xs',
 		w: 'full',
-		px: 'lg',
-		py: 'sm',
+		px: 'sm',
+		py: 'xs',
 		textAlign: 'left',
 		rounded: 'row',
 		cursor: 'pointer',
 		transitionProperty: 'background-color',
 		transitionDuration: '120ms',
 		_hoverable: { bg: 'scrapscache.interactiveHover' },
+		_active: { bg: 'scrapscache.interactiveActive' },
 		_focusVisible: { outline: 'none', ringWidth: '2px', ringColor: 'scrapscache.accent' }
 	}),
-	entrySelected: css({ bg: 'scrapscache.accentSubtle', color: 'scrapscache.accent' }),
-	dot: css({
-		mt: 'xs',
-		w: '0.5rem',
-		h: '0.5rem',
-		flexShrink: 0,
-		rounded: 'full',
-		bg: 'scrapscache.accent'
+	entrySelected: css({
+		bg: 'scrapscache.accentSubtle',
+		borderLeftWidth: 'strong',
+		borderColor: 'scrapscache.accent'
 	}),
-	entryContent: css({ minW: 0, flex: '1' }),
-	title: css({
+	entryTitle: css({
 		textStyle: 'body',
 		fontWeight: 'interactive',
 		overflow: 'hidden',
@@ -2088,15 +2118,28 @@ export const historyStyles = {
 		whiteSpace: 'nowrap'
 	}),
 	date: css({ textStyle: 'caption', color: 'scrapscache.textMuted' }),
-	empty: css({ px: 'lg', py: 'md', textStyle: 'body', color: 'scrapscache.textMuted' }),
+	empty: css({ px: 'sm', py: 'md', textStyle: 'body', color: 'scrapscache.textMuted' }),
+	preview: css({
+		display: 'flex',
+		flexDirection: 'column',
+		gap: 'sm',
+		flex: '1',
+		minH: 0,
+		px: 'md',
+		py: 'md',
+		overflow: 'hidden'
+	}),
+	previewTitle: css({ textStyle: 'label', overflowWrap: 'anywhere' }),
 	previewBody: css({
-		maxH: 'min(45vh, 28rem)',
+		flex: '1',
+		minH: 0,
 		overflowY: 'auto',
 		whiteSpace: 'pre-wrap',
 		overflowWrap: 'anywhere',
 		textStyle: 'body'
 	}),
 	previewMeta: css({ textStyle: 'caption', color: 'scrapscache.textMuted' }),
+	previewActions: css({ display: 'flex', gap: 'sm', justifyContent: 'flex-end', flexWrap: 'wrap' }),
 	previewMedia: css({
 		display: 'flex',
 		flexWrap: 'wrap',
@@ -2105,76 +2148,6 @@ export const historyStyles = {
 		overflowY: 'auto'
 	}),
 	previewImage: css({ maxW: '100%', maxH: '10rem', rounded: 'sm', objectFit: 'contain' })
-};
-
-export const historicalGalleryStyles = {
-	root: css({ p: 'lg', pb: '3xl' }),
-	bar: css({
-		display: 'flex',
-		alignItems: 'center',
-		justifyContent: 'space-between',
-		gap: 'md',
-		flexWrap: 'wrap',
-		mb: 'lg'
-	}),
-	heading: css({ textStyle: 'heading', color: 'scrapscache.text' }),
-	meta: css({ textStyle: 'caption', color: 'scrapscache.textMuted' }),
-	actions: css({ display: 'flex', alignItems: 'center', gap: 'sm', flexWrap: 'wrap' }),
-	grid: css({
-		display: 'grid',
-		gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 15rem), 1fr))',
-		gap: 'md'
-	}),
-	card: css({
-		display: 'flex',
-		flexDirection: 'column',
-		gap: 'sm',
-		p: 'lg',
-		rounded: 'card',
-		borderWidth: 'hairline',
-		borderColor: 'scrapscache.border',
-		bg: 'scrapscache.surface',
-		textAlign: 'left',
-		minH: '9rem',
-		transitionProperty: 'background-color, border-color',
-		transitionDuration: '120ms',
-		_hoverable: { bg: 'scrapscache.interactiveHover' },
-		_focusVisible: { outline: 'none', ringWidth: '2px', ringColor: 'scrapscache.accent' }
-	}),
-	cardOpen: css({
-		display: 'flex',
-		flexDirection: 'column',
-		gap: 'sm',
-		textAlign: 'left',
-		w: 'full',
-		flex: '1',
-		cursor: 'pointer',
-		_focusVisible: { outline: 'none', ringWidth: '2px', ringColor: 'scrapscache.accent' }
-	}),
-	selectRow: css({
-		display: 'flex',
-		alignItems: 'center',
-		gap: 'sm',
-		textStyle: 'caption',
-		color: 'scrapscache.textMuted',
-		cursor: 'pointer'
-	}),
-	cardSelected: css({
-		borderColor: 'scrapscache.accent',
-		ringWidth: '1px',
-		ringColor: 'scrapscache.accent'
-	}),
-	cardTitle: css({ textStyle: 'label', overflowWrap: 'anywhere' }),
-	cardBody: css({
-		textStyle: 'body',
-		color: 'scrapscache.textMuted',
-		whiteSpace: 'pre-wrap',
-		overflowWrap: 'anywhere',
-		overflow: 'hidden',
-		maxH: '8rem'
-	}),
-	cardImage: css({ maxW: '100%', maxH: '8rem', objectFit: 'contain', rounded: 'sm' }),
-	status: css({ textStyle: 'body', color: 'scrapscache.textMuted', mb: 'lg' })
 };
 
 export const topbarStyles = {

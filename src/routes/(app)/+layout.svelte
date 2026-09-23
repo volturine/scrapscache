@@ -10,8 +10,6 @@
 	import ReminderAlert from '$lib/components/ReminderAlert.svelte';
 	import BottomNav from '$lib/components/BottomNav.svelte';
 	import AppViews from '$lib/components/AppViews.svelte';
-	import HistoricalGallery from '$lib/components/HistoricalGallery.svelte';
-	import { loadHistoricalProfile, type HistoricalProfile } from '$lib/historyClient';
 	import { reminderStore } from '$lib/stores/reminders.svelte';
 	import { preloadVapidPublicKey } from '$lib/reminderWake';
 	import { provideEditorActions } from '$lib/editorContext';
@@ -29,37 +27,6 @@
 	const mobile = new MediaQuery('max-width: 767px');
 	let editingId = $state<string | null>(null);
 	let autoFocusBody = $state(false);
-	let historicalProfile = $state.raw<HistoricalProfile | null>(null);
-	let historyLoading = $state(false);
-	let historyError = $state('');
-	let historyRequest = 0;
-
-	async function selectHistory(at: number) {
-		const account = syncStore.account;
-		if (!account) return;
-		const request = ++historyRequest;
-		historyLoading = true;
-		historyError = '';
-		try {
-			const result = await loadHistoricalProfile(account, at);
-			if (request === historyRequest && syncStore.account?.accountId === account.accountId) {
-				historicalProfile = result;
-				uiStore.setView('notes');
-			}
-		} catch (cause) {
-			if (request === historyRequest)
-				historyError = cause instanceof Error ? cause.message : 'Could not load this gallery.';
-		} finally {
-			if (request === historyRequest) historyLoading = false;
-		}
-	}
-
-	function closeHistory() {
-		++historyRequest;
-		historicalProfile = null;
-		historyLoading = false;
-		historyError = '';
-	}
 	let closeOpenNote: (() => void) | null = null;
 
 	function applyEditorOpen(open: boolean) {
@@ -286,32 +253,14 @@
 						aria-label="Sidebar"
 						data-sidebar-drawer
 					>
-						<Sidebar
-							onNavigate={() => {
-								closeMobileSidebar();
-								closeHistory();
-							}}
-							selectedHistoryAt={historicalProfile?.accountId === syncStore.account?.accountId
-								? historicalProfile?.at
-								: null}
-							onHistorySelect={(at) => {
-								closeMobileSidebar();
-								void selectHistory(at);
-							}}
-						/>
+						<Sidebar onNavigate={closeMobileSidebar} />
 					</Drawer.Content>
 				</Drawer.Positioner>
 			</Drawer.Root>
 		{:else}
 			{#if uiStore.sidebarOpen}
 				<div class={styles.sidebar}>
-					<Sidebar
-						onNavigate={closeHistory}
-						selectedHistoryAt={historicalProfile?.accountId === syncStore.account?.accountId
-							? historicalProfile?.at
-							: null}
-						onHistorySelect={(at) => void selectHistory(at)}
-					/>
+					<Sidebar />
 				</div>
 			{/if}
 		{/if}
@@ -324,16 +273,7 @@
 					class={cx('app-feed scrollable', styles.feed)}
 					onscroll={rememberFeedScroll}
 				>
-					{#if historicalProfile && historicalProfile.accountId === syncStore.account?.accountId}
-						<HistoricalGallery profile={historicalProfile} onClose={closeHistory} />
-					{:else if historyLoading}
-						<p role="status">Loading historical gallery…</p>
-					{:else if historyError}
-						<p role="alert">{historyError}</p>
-						<button type="button" onclick={closeHistory}>Back to now</button>
-					{:else}
-						<AppViews />
-					{/if}
+					<AppViews />
 				</main>
 				<div class="app-float" data-app-float>
 					<BottomNav />

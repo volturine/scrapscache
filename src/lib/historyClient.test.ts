@@ -2,57 +2,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createSyncIdentity, encryptSyncPayload } from '$lib/syncPairing';
 import { sha256 } from '$lib/syncHash';
 import { syncStore } from '$lib/stores/sync.svelte';
-import { hydrateHistoryNote, loadNoteHistory, loadHistoricalProfile } from './historyClient';
+import { hydrateHistoryNote, loadNoteHistory } from './historyClient';
 
 afterEach(() => vi.restoreAllMocks());
 
 describe('encrypted note history', () => {
-	it('decrypts a profile checkpoint and joins only its matching encrypted attachments', async () => {
-		const account = createSyncIdentity();
-		const at = Date.now();
-		const noteSlot = await sha256(`${account.syncKey}\u0000note:one`);
-		const imageSlot = await sha256(`${account.syncKey}\u0000attachment:photo`);
-		const dataUrl = 'data:image/png;base64,QQ==';
-		const hash = await sha256(dataUrl);
-		const note = {
-			id: 'one',
-			title: 'At this point',
-			body: 'Earlier',
-			color: 'default',
-			pinned: false,
-			archived: false,
-			trashed: false,
-			createdAt: 1,
-			updatedAt: 1,
-			labels: [],
-			images: [{ id: 'photo', mime: 'image/png', createdAt: 1, hash }]
-		};
-		const envelopes = [
-			{
-				id: 'n',
-				slot: noteSlot,
-				ciphertext: encryptSyncPayload(account.syncKey, { kind: 'note', value: note }, noteSlot)
-			},
-			{
-				id: 'a',
-				slot: imageSlot,
-				ciphertext: encryptSyncPayload(
-					account.syncKey,
-					{
-						kind: 'attachment',
-						value: { id: 'photo', mime: 'image/png', createdAt: 1, hash, dataUrl }
-					},
-					imageSlot
-				)
-			}
-		];
-		vi.spyOn(syncStore, 'authorizedFetch').mockResolvedValue(
-			new Response(JSON.stringify({ envelopes, nextAfter: null }))
-		);
-		const profile = await loadHistoricalProfile(account, at);
-		expect(profile.snapshot.notes[0].images?.[0].dataUrl).toBe(dataUrl);
-		expect(profile.snapshot.notes[0].title).toBe('At this point');
-	});
 	it('decrypts note versions and retrieves their matching attachment at that time', async () => {
 		const account = createSyncIdentity();
 		const savedAt = Date.now();
@@ -106,9 +60,8 @@ describe('encrypted note history', () => {
 				headers: { 'content-type': 'application/json' }
 			});
 		});
-		const page = await loadNoteHistory(account);
+		const page = await loadNoteHistory(account, note.id);
 		expect(page.entries.map((entry) => entry.note.title)).toEqual(['Earlier title']);
-		await loadNoteHistory(account, undefined, note.id);
 		expect(fetch).toHaveBeenCalledWith(
 			`/api/sync/history?noteSlot=${noteSlot}`,
 			{ cache: 'no-store' },

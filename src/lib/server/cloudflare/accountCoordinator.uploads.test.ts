@@ -57,10 +57,6 @@ describe('uploads that have to be retried', () => {
 	it('retains prior R2 ciphertext for history and removes it with the account', async () => {
 		const first = await sync([{ id: 'old', slot: SLOT, ciphertext: 'old-bytes' }]);
 		const firstCursor = ((await first.json()) as { cursor: number }).cursor;
-		const firstPoint = await client.execute(
-			'SELECT saved_at AS savedAt FROM profile_history_points'
-		);
-		expect(firstPoint.rows).toHaveLength(1);
 		await sync(
 			[{ id: 'new', slot: SLOT, ciphertext: 'new-bytes', expectedId: 'old' }],
 			100_000_000,
@@ -68,14 +64,8 @@ describe('uploads that have to be retried', () => {
 		);
 		const history = await client.execute('SELECT r2_key AS r2Key FROM envelope_history');
 		expect(history.rows).toHaveLength(1);
-		const versions = await client.execute(
-			'SELECT created_at AS createdAt, saved_at AS savedAt FROM envelope_history'
-		);
-		expect(Number(versions.rows[0].createdAt)).toBe(Number(firstPoint.rows[0].savedAt));
-		expect(Number(versions.rows[0].savedAt)).toBeGreaterThan(Number(firstPoint.rows[0].savedAt));
-		expect((await client.execute('SELECT saved_at FROM profile_history_points')).rows).toHaveLength(
-			2
-		);
+		const versions = await client.execute('SELECT saved_at AS savedAt FROM envelope_history');
+		expect(Number(versions.rows[0].savedAt)).toBeGreaterThan(0);
 		expect(objects.get(String(history.rows[0].r2Key))).toBe('old-bytes');
 		expect(objects.size).toBe(2);
 		await coordinator.fetch(
@@ -85,9 +75,7 @@ describe('uploads that have to be retried', () => {
 			}) as never
 		);
 		expect(objects.size).toBe(0);
-		expect((await client.execute('SELECT saved_at FROM profile_history_points')).rows).toHaveLength(
-			0
-		);
+		expect((await client.execute('SELECT history_id FROM envelope_history')).rows).toHaveLength(0);
 	});
 
 	it('prunes the oldest history object under the account history budget', async () => {

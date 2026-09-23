@@ -26,63 +26,6 @@ function createStore(options?: ConstructorParameters<typeof SyncStore>[1]): {
 }
 
 describe('SQLite sync store', () => {
-	it('reconstructs a whole profile at each checkpoint without later notes or deleted records', async () => {
-		const { store } = createStore();
-		await store.createAccount('owner', 'credential');
-		const first = await store.sync(
-			'owner',
-			0,
-			[
-				{ id: 'note-v1', slot: slot('a'), ciphertext: 'YQ' },
-				{ id: 'image-v1', slot: slot('b'), ciphertext: 'Yg' }
-			],
-			[]
-		);
-		const point1 = (await store.listProfileHistory('owner')).points[0];
-		const second = await store.sync(
-			'owner',
-			first.cursor,
-			[
-				{ id: 'note-v2', slot: slot('a'), ciphertext: 'Yw', expectedId: 'note-v1' },
-				{ id: 'later-note', slot: slot('c'), ciphertext: 'ZA' }
-			],
-			[]
-		);
-		const point2 = (await store.listProfileHistory('owner')).points[0];
-		await store.sync('owner', second.cursor, [], [{ id: 'image-v1', slot: slot('b') }]);
-		expect((await store.getProfileSnapshot('owner', point1))?.envelopes.map((e) => e.id)).toEqual([
-			'note-v1',
-			'image-v1'
-		]);
-		expect((await store.getProfileSnapshot('owner', point2))?.envelopes.map((e) => e.id)).toEqual([
-			'note-v2',
-			'image-v1',
-			'later-note'
-		]);
-		expect(await store.getProfileSnapshot('other', point1)).toBeNull();
-	});
-
-	it('pages a historical profile without omitting or repeating encrypted records', async () => {
-		const { store } = createStore();
-		await store.createAccount('owner', 'credential');
-		await store.sync(
-			'owner',
-			0,
-			Array.from({ length: 60 }, (_, index) => ({
-				id: `record-${index}`,
-				slot: index.toString(16).padStart(64, '0'),
-				ciphertext: 'YQ'
-			})),
-			[]
-		);
-		const at = (await store.listProfileHistory('owner')).points[0];
-		const first = await store.getProfileSnapshot('owner', at);
-		const second = await store.getProfileSnapshot('owner', at, first?.nextAfter ?? '');
-		expect(first?.envelopes).toHaveLength(50);
-		expect(second?.envelopes).toHaveLength(10);
-		expect(second?.nextAfter).toBeNull();
-		expect(new Set([...first!.envelopes, ...second!.envelopes].map((row) => row.id)).size).toBe(60);
-	});
 	it('keeps replaced and deleted encrypted versions for the owner only', async () => {
 		const { store } = createStore();
 		await store.createAccount('owner', 'credential');
@@ -99,7 +42,7 @@ describe('SQLite sync store', () => {
 			[{ id: 'new', slot: slot('a'), ciphertext: 'bmV3', expectedId: 'old' }],
 			[]
 		);
-		const entry = (await store.listHistory('owner')).entries[0];
+		const entry = (await store.listHistory('owner', slot('a'))).entries[0];
 		expect(entry).toMatchObject({ historyId: expect.any(Number), savedAt: expect.any(Number) });
 		expect(await store.getHistory('owner', entry.historyId)).toEqual({
 			id: 'old',
@@ -107,15 +50,15 @@ describe('SQLite sync store', () => {
 			ciphertext: 'b2xk'
 		});
 		expect(await store.getHistory('other', entry.historyId)).toBeNull();
-		expect((await store.listHistory('owner', undefined, slot('a'))).entries).toHaveLength(1);
-		expect((await store.listHistory('owner', undefined, slot('b'))).entries).toHaveLength(0);
+		expect((await store.listHistory('owner', slot('a'))).entries).toHaveLength(1);
+		expect((await store.listHistory('owner', slot('b'))).entries).toHaveLength(0);
 		expect(await store.getEnvelopeAt('owner', slot('a'), entry.savedAt)).toEqual({
 			id: 'old',
 			slot: slot('a'),
 			ciphertext: 'b2xk'
 		});
 		await store.sync('owner', second.cursor, [], [{ id: 'new', slot: slot('a') }]);
-		expect((await store.listHistory('owner')).entries).toHaveLength(2);
+		expect((await store.listHistory('owner', slot('a'))).entries).toHaveLength(2);
 		expect(await store.getEnvelopeAt('owner', slot('a'), Date.now() + 1)).toBeNull();
 	});
 
@@ -128,7 +71,6 @@ describe('SQLite sync store', () => {
 			[{ id: 'one', slot: slot('a'), ciphertext: 'YQ' }],
 			[]
 		);
-		const oldestPoint = (await store.listProfileHistory('owner')).points[0];
 		const second = await store.sync(
 			'owner',
 			first.cursor,
@@ -141,10 +83,9 @@ describe('SQLite sync store', () => {
 			[{ id: 'three', slot: slot('a'), ciphertext: 'Yw', expectedId: 'two' }],
 			[]
 		);
-		const history = (await store.listHistory('owner')).entries;
+		const history = (await store.listHistory('owner', slot('a'))).entries;
 		expect(history).toHaveLength(1);
 		expect(await store.getHistory('owner', history[0].historyId)).toMatchObject({ id: 'two' });
-		expect(await store.getProfileSnapshot('owner', oldestPoint)).toBeNull();
 	});
 	it('creates accounts without overwriting existing credentials', async () => {
 		const { store } = createStore();

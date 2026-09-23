@@ -15,7 +15,6 @@ type EnvelopeRow = {
 	slot: string;
 	r2Key: string;
 	ciphertextBytes: number;
-	createdAt: number;
 };
 type SyncInput = {
 	accountId: string;
@@ -227,7 +226,7 @@ export class AccountCoordinator {
 		const currentRows = slots.length
 			? ((
 					await execute(db, {
-						sql: `SELECT seq, id, slot, r2_key AS r2Key, ciphertext_bytes AS ciphertextBytes, created_at AS createdAt
+						sql: `SELECT seq, id, slot, r2_key AS r2Key, ciphertext_bytes AS ciphertextBytes
 						 FROM envelopes WHERE account_id = ? AND slot IN (${slots.map(() => '?').join(', ')})`,
 						args: [input.accountId, ...slots]
 					})
@@ -301,15 +300,14 @@ export class AccountCoordinator {
 			deletedAny = true;
 			statements.push(
 				{
-					sql: `INSERT INTO envelope_history(account_id, slot, id, r2_key, ciphertext_bytes, created_at, saved_at)
-						VALUES (?, ?, ?, ?, ?, ?, ?)`,
+					sql: `INSERT INTO envelope_history(account_id, slot, id, r2_key, ciphertext_bytes, saved_at)
+						VALUES (?, ?, ?, ?, ?, ?)`,
 					args: [
 						input.accountId,
 						removed.slot,
 						removed.id,
 						removed.r2Key,
 						removed.ciphertextBytes,
-						removed.createdAt,
 						now
 					]
 				},
@@ -351,33 +349,23 @@ export class AccountCoordinator {
 			sequence += 1;
 			if (prior)
 				statements.push({
-					sql: `INSERT INTO envelope_history(account_id, slot, id, r2_key, ciphertext_bytes, created_at, saved_at)
-					VALUES (?, ?, ?, ?, ?, ?, ?)`,
-					args: [
-						input.accountId,
-						prior.slot,
-						prior.id,
-						prior.r2Key,
-						prior.ciphertextBytes,
-						prior.createdAt,
-						now
-					]
+					sql: `INSERT INTO envelope_history(account_id, slot, id, r2_key, ciphertext_bytes, saved_at)
+					VALUES (?, ?, ?, ?, ?, ?)`,
+					args: [input.accountId, prior.slot, prior.id, prior.r2Key, prior.ciphertextBytes, now]
 				});
 			statements.push({
-				sql: `INSERT INTO envelopes(account_id, slot, seq, id, r2_key, ciphertext_bytes, created_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?)
+				sql: `INSERT INTO envelopes(account_id, slot, seq, id, r2_key, ciphertext_bytes)
+				VALUES (?, ?, ?, ?, ?, ?)
 					ON CONFLICT(account_id, slot) DO UPDATE SET
 						seq = excluded.seq, id = excluded.id,
-					r2_key = excluded.r2_key, ciphertext_bytes = excluded.ciphertext_bytes,
-					created_at = excluded.created_at`,
+					r2_key = excluded.r2_key, ciphertext_bytes = excluded.ciphertext_bytes`,
 				args: [
 					input.accountId,
 					upload.slot,
 					sequence,
 					upload.id,
 					objectKeys.get(upload.id)!,
-					upload.ciphertext.length,
-					now
+					upload.ciphertext.length
 				]
 			});
 			statements.push({
@@ -392,15 +380,9 @@ export class AccountCoordinator {
 				id: upload.id,
 				slot: upload.slot,
 				r2Key: objectKeys.get(upload.id)!,
-				ciphertextBytes: upload.ciphertext.length,
-				createdAt: now
+				ciphertextBytes: upload.ciphertext.length
 			});
 		}
-		if (acceptedUploads.length > 0 || deletedAny)
-			statements.push({
-				sql: 'INSERT INTO profile_history_points(account_id, saved_at) VALUES (?, ?)',
-				args: [input.accountId, now]
-			});
 		statements.push({
 			sql: `UPDATE accounts SET next_seq = ?, envelope_count = ?, ciphertext_bytes = ?,
 				updated_at = ?, last_seen_at = ? WHERE account_id = ?`,
@@ -469,19 +451,13 @@ export class AccountCoordinator {
 			})
 		).rows as Array<{ historyId: number; r2Key: string; bytes: number; savedAt: number }>;
 		let retainedBytes = 0;
-		let floor = 0;
 		const expired = rows.filter((row, index) => {
 			retainedBytes += Number(row.bytes) + STORAGE_OVERHEAD_BYTES;
 			const remove =
 				index >= HISTORY_MAX_ENTRIES ||
 				Number(row.savedAt) < now - HISTORY_TTL_MS ||
 				retainedBytes > maxBytes;
-			if (remove) floor = Math.max(floor, Number(row.savedAt));
 			return remove;
-		});
-		await execute(this.env.SCRAPSCACHE_DB, {
-			sql: 'DELETE FROM profile_history_points WHERE account_id = ? AND (saved_at < ? OR saved_at < ?)',
-			args: [accountId, now - HISTORY_TTL_MS, floor]
 		});
 		for (let index = 0; index < expired.length; index += 100)
 			await batch(

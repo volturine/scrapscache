@@ -119,7 +119,7 @@ The keyring itself — id, display name, and sync key per workspace — is held 
 | Sync auth       | `src/lib/server/syncAuth.ts`                             | Ops DB: challenges, sessions, public key auth   |
 | Pairing         | `src/lib/server/pairingSessions.ts`                      | Ops DB: rendezvous for PAKE shares              |
 | Delta API       | `src/routes/api/sync/delta/`                             | Upload/download encrypted records, slot deletes |
-| History API     | `src/routes/api/sync/history/`                           | Owner-only encrypted prior versions             |
+| History API     | `src/routes/api/sync/history/`                           | Owner-only encrypted prior note versions        |
 | Register        | `src/routes/api/sync/register/`                          | Create account credentials                      |
 | Reminder wakes  | `src/routes/api/sync/push/*`                             | Device subscriptions + opaque wake ticks        |
 | Account delete  | `src/routes/api/sync/account/`                           | Wipe cloud ciphertext for an account            |
@@ -145,16 +145,12 @@ The relay can replace or delete by slot without learning whether the payload is
 a note, image, label, or board. The storage quota is ciphertext plus estimated
 per-record database overhead (default 100 MB).
 
-Each accepted sync change creates a profile checkpoint. The relay records when
-each opaque envelope entered and left the profile, so a device can reconstruct
-the complete encrypted profile at a checkpoint. The gallery shows a read-only
-historical profile, supports restoring selected notes as copies, and can replace
-the synced profile across devices. The note editor lists older versions of that
-note and restores one as a copy. The relay retains checkpoints for up to 30 days;
-storage is capped at 500 old envelopes or the account's byte quota. If an old
-envelope is removed, checkpoints that need it are removed too. Historical data
-is decrypted in memory and is never written into IndexedDB. The daily retention
-sweep and account deletion remove expired history and its ciphertext.
+When a synced note changes or is deleted, the relay keeps its previous encrypted
+envelope for up to 30 days, capped at 500 old envelopes or the account's byte
+quota. The note editor lists those versions, previews a selected version, and
+restores it to that note. A device decrypts the version and any matching
+attachments in memory; history is never written into IndexedDB. The daily
+retention sweep and account deletion remove expired history and its ciphertext.
 
 ## Deployment shapes
 

@@ -12,7 +12,6 @@ import {
 	type HistoryEnvelope,
 	type HistoryPage
 } from '$lib/syncHistory';
-import type { ProfileHistoryPage, ProfileSnapshotPage } from '$lib/syncHistory';
 
 export type EncryptedEnvelope = { seq: number; id: string; ciphertext: string; slot: string };
 export type OpaqueUpload = Omit<EncryptedEnvelope, 'seq'> & { expectedId?: string | null };
@@ -87,18 +86,17 @@ export class SyncStore {
 		return this.bindings.SCRAPSCACHE_DB;
 	}
 
-	async listHistory(accountId: string, before?: number, slot?: string): Promise<HistoryPage> {
+	async listHistory(accountId: string, slot: string, before?: number): Promise<HistoryPage> {
 		const rows = (
 			await execute(this.db, {
 				sql: `SELECT history_id AS historyId, saved_at AS savedAt FROM envelope_history
-				WHERE account_id = ? AND saved_at >= ? AND history_id < ? AND (? IS NULL OR slot = ?)
+				WHERE account_id = ? AND saved_at >= ? AND history_id < ? AND slot = ?
 				ORDER BY history_id DESC LIMIT ?`,
 				args: [
 					accountId,
 					Date.now() - HISTORY_TTL_MS,
 					before ?? Number.MAX_SAFE_INTEGER,
-					slot ?? null,
-					slot ?? null,
+					slot,
 					HISTORY_PAGE_SIZE + 1
 				]
 			})
@@ -108,55 +106,6 @@ export class SyncStore {
 			entries,
 			nextBefore: rows.length > HISTORY_PAGE_SIZE ? entries.at(-1)!.historyId : null
 		};
-	}
-
-	async listProfileHistory(accountId: string, before?: number): Promise<ProfileHistoryPage> {
-		const rows = (
-			await execute(this.db, {
-				sql: `SELECT saved_at AS savedAt FROM profile_history_points
-			WHERE account_id = ? AND saved_at >= ? AND saved_at < ?
-			ORDER BY saved_at DESC LIMIT ?`,
-				args: [
-					accountId,
-					Date.now() - HISTORY_TTL_MS,
-					before ?? Number.MAX_SAFE_INTEGER,
-					HISTORY_PAGE_SIZE + 1
-				]
-			})
-		).rows as Array<{ savedAt: number }>;
-		const points = rows.slice(0, HISTORY_PAGE_SIZE).map((row) => Number(row.savedAt));
-		return { points, nextBefore: rows.length > HISTORY_PAGE_SIZE ? points.at(-1)! : null };
-	}
-
-	async getProfileSnapshot(
-		accountId: string,
-		at: number,
-		after = ''
-	): Promise<ProfileSnapshotPage | null> {
-		const point = await execute(this.db, {
-			sql: 'SELECT 1 FROM profile_history_points WHERE account_id = ? AND saved_at = ? AND saved_at >= ?',
-			args: [accountId, at, Date.now() - HISTORY_TTL_MS]
-		});
-		if (!point.rows.length) return null;
-		const rows = (
-			await execute(this.db, {
-				sql: `SELECT id, slot, r2_key AS r2Key FROM envelopes
-			WHERE account_id = ? AND created_at <= ? AND slot > ?
-			UNION ALL SELECT id, slot, r2_key AS r2Key FROM envelope_history
-			WHERE account_id = ? AND created_at <= ? AND saved_at > ? AND slot > ?
-			ORDER BY slot LIMIT ?`,
-				args: [accountId, at, after, accountId, at, at, after, HISTORY_PAGE_SIZE + 1]
-			})
-		).rows as Array<{ id: string; slot: string; r2Key: string }>;
-		const selected = rows.slice(0, HISTORY_PAGE_SIZE);
-		const envelopes = await Promise.all(
-			selected.map(async (row) => {
-				const object = await this.bindings.SCRAPSCACHE_ENVELOPES.get(row.r2Key);
-				if (!object) throw new Error('Encrypted history object is missing');
-				return { id: row.id, slot: row.slot, ciphertext: await object.text() };
-			})
-		);
-		return { envelopes, nextAfter: rows.length > HISTORY_PAGE_SIZE ? selected.at(-1)!.slot : null };
 	}
 
 	async getHistory(accountId: string, historyId: number): Promise<HistoryEnvelope | null> {
@@ -201,10 +150,6 @@ export class SyncStore {
 	}
 
 	async purgeExpiredHistory(now = Date.now()): Promise<number> {
-		await execute(this.db, {
-			sql: 'DELETE FROM profile_history_points WHERE saved_at < ?',
-			args: [now - HISTORY_TTL_MS]
-		});
 		const rows = (
 			await execute(this.db, {
 				sql: 'SELECT history_id AS historyId, r2_key AS r2Key FROM envelope_history WHERE saved_at < ? ORDER BY history_id LIMIT 500',

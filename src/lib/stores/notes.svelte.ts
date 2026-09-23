@@ -1425,46 +1425,6 @@ export class NotesStore {
 		}
 	}
 
-	// Manual sync — caller shows UI feedback (spinning cloud icon).
-	async restoreHistoricalProfile(history: SyncSnapshot, accountId: string): Promise<boolean> {
-		return this.withSyncLock(async () => {
-			const account = syncStore.account;
-			if (!account || account.accountId !== accountId) return false;
-			const pid = this.pid;
-			try {
-				await this.waitForPendingProfileWrites();
-				await syncStore.clearAccountControlPlane(accountId);
-				let remote: SyncSnapshot | undefined;
-				const pulled = await syncStore.sync(
-					[],
-					[],
-					{},
-					{},
-					[],
-					{},
-					true,
-					true,
-					async (snapshot) => {
-						remote = snapshot;
-						return snapshot;
-					}
-				);
-				if (!pulled.success || !remote)
-					throw new Error(pulled.error ?? 'Could not read current profile');
-				if (syncStore.account?.accountId !== accountId || this.pid !== pid) return false;
-				const replacement = buildForcePushSnapshot(history, remote);
-				await this.applyCloudReplacement(replacement, pid, true);
-				if (syncStore.account?.accountId !== accountId || this.pid !== pid) return false;
-				await syncStore.clearAccountControlPlane(accountId);
-				const synced = await this.doSyncLocked(true);
-				return synced && !syncStore.lastError && !this.lastPersistError;
-			} catch (err) {
-				this.recordPersistenceError('Could not restore historical profile', err);
-				return false;
-			}
-		});
-	}
-
 	async forcePushWorkspace(turnstileToken?: string): Promise<boolean> {
 		return this.withSyncLock(async () => {
 			const account = syncStore.account;

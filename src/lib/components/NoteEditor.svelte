@@ -380,7 +380,10 @@
 	}
 
 	function eventInsideEditor(target: EventTarget | null): boolean {
-		return editorDialog != null && target instanceof Node && editorDialog.contains(target);
+		if (!(target instanceof Node)) return false;
+		if (editorDialog?.contains(target)) return true;
+		const element = target instanceof Element ? target : target.parentElement;
+		return !!element?.closest('[data-editor-popup]');
 	}
 
 	function dataTransferHasFiles(dataTransfer: DataTransfer | null): boolean {
@@ -624,7 +627,11 @@
 <svelte:window
 	onkeydown={(e) => {
 		if (!isOpen || e.key !== 'Escape') return;
-		if (paletteOpen || reminderOpen || labelOpen || historyOpen) return;
+		if (historyOpen) {
+			historyOpen = false;
+			return;
+		}
+		if (paletteOpen || reminderOpen || labelOpen) return;
 		void close();
 	}}
 	onpastecapture={handlePaste}
@@ -642,16 +649,32 @@
 		ondragleave={handleFileDragLeave}
 		ondropcapture={handleFileDrop}
 	>
-		<div class={styles.sheetWrap({ expanded })} role="presentation">
+		<div
+			class={styles.sheetWrap({ expanded, historyOpen })}
+			role={historyOpen ? 'dialog' : 'presentation'}
+			aria-modal={historyOpen ? true : undefined}
+			aria-label={historyOpen ? 'Note editor and history' : undefined}
+		>
+			{#if historyOpen && syncStore.account}
+				{#key syncStore.account.accountId}
+					<TimeTravel
+						account={syncStore.account}
+						noteId={note.id}
+						{expanded}
+						onClose={() => (historyOpen = false)}
+						onRestoreVersion={restoreNoteVersion}
+					/>
+				{/key}
+			{/if}
 			<!-- Clicking blank editor chrome is a pointer convenience; keyboard users focus the fields directly. -->
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
-			<div class={styles.sheetBox({ expanded })}>
+			<div class={styles.sheetBox({ expanded, historyOpen })}>
 				<div
 					bind:this={editorDialog}
 					class={editorDialogClass}
-					role="dialog"
+					role={historyOpen ? 'presentation' : 'dialog'}
 					tabindex="-1"
-					aria-modal="true"
+					aria-modal={historyOpen ? undefined : true}
 					onpointerdown={beginEditorTouch}
 					onpointermove={moveEditorTouch}
 					onpointerup={completeEditorTouch}
@@ -938,34 +961,6 @@
 							labelOpen = false;
 						}}
 					/>
-				</Dialog.Content>
-			</Dialog.Positioner>
-		</Dialog.Root>
-	{/if}
-	{#if historyOpen && syncStore.account}
-		<Dialog.Root
-			open
-			onOpenChange={(details) => {
-				if (!details.open) historyOpen = false;
-			}}
-			preventScroll={false}
-		>
-			<Dialog.Backdrop class={dialogBackdrop} />
-			<Dialog.Positioner class={dialogPositioner} data-editor-popup>
-				<Dialog.Content class={styles.popupContent} aria-describedby={undefined}>
-					<Dialog.Title class={subDialog.title}>Note time travel</Dialog.Title>
-					{#key syncStore.account.accountId}
-						<TimeTravel
-							account={syncStore.account}
-							noteId={note.id}
-							onRestoreVersion={restoreNoteVersion}
-						/>
-					{/key}
-					<button
-						type="button"
-						class={iconButton({ variant: 'ghost', size: 'sm' })}
-						onclick={() => (historyOpen = false)}>Close</button
-					>
 				</Dialog.Content>
 			</Dialog.Positioner>
 		</Dialog.Root>

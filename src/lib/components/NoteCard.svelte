@@ -776,7 +776,9 @@
 									aria-hidden="true"
 								/>
 							</button>
+						</div>
 
+						<div class={hazeGroup.row}>
 							<!-- Tag -->
 							<button
 								type="button"
@@ -794,9 +796,7 @@
 									aria-hidden="true"
 								/>
 							</button>
-						</div>
 
-						<div class={hazeGroup.row}>
 							<!-- Delete -->
 							<button
 								type="button"

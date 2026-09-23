@@ -1,7 +1,13 @@
 import { describe, expect, it, beforeEach } from 'vitest';
 import { McpSession, parseChecklistItems } from '../src/engine.js';
 import { ScrapscacheSyncClient, type SyncEnvelope } from '../src/syncClient.js';
-import { bytesToBase64Url, randomBytes } from '../src/crypto.js';
+import {
+	bytesToBase64Url,
+	computeSlot,
+	decryptSyncPayload,
+	encryptSyncPayload,
+	randomBytes
+} from '../src/crypto.js';
 
 describe('MCP session and note engine', () => {
 	const syncKey = bytesToBase64Url(randomBytes(32));
@@ -162,6 +168,100 @@ plain text line`;
 		expect(note.labels).toEqual(['Chores']);
 		expect(note.color).toBe('sage');
 		expect(note.checklist).toEqual([{ text: 'All done', checked: true }]);
+	});
+
+	it('stamps only the fields an update changes, past the app times they replace', async () => {
+		const appTime = Date.now() - 60_000;
+		const appNote = {
+			id: 'app-note',
+			title: 'Groceries',
+			body: 'zzz milk',
+			labels: [],
+			color: 'default',
+			pinned: true,
+			archived: false,
+			trashed: false,
+			trashedAt: null,
+			reminder: null,
+			createdAt: appTime,
+			updatedAt: appTime,
+			fieldTimes: { title: appTime, body: appTime, pinned: appTime, color: appTime }
+		};
+		const slot = computeSlot(syncKey, 'note:app-note');
+		const seeded: SyncEnvelope = {
+			id: 'seed',
+			slot,
+			ciphertext: encryptSyncPayload(syncKey, { kind: 'note', value: appNote }, slot),
+			expectedId: null
+		};
+		let delivered = false;
+		const client = {
+			...mockSyncClient,
+			syncDelta: async (cursor: number, uploads: SyncEnvelope[] = []) => {
+				uploadedEnvelopes.push(...uploads);
+				const envelopes = delivered ? [] : [seeded];
+				delivered = true;
+				return {
+					cursor: cursor + 1,
+					envelopes,
+					conflicts: [],
+					hasMore: false,
+					reset: false,
+					writesAccepted: true
+				};
+			}
+		} as unknown as ScrapscacheSyncClient;
+		const session = new McpSession(client);
+
+		// A rewrite that sorts before the old text and an unpin both lost the
+		// app's equal-time tie-break before MCP stamped the fields it changed.
+		await session.updateNote({
+			id: 'app-note',
+			body: 'aaa eggs',
+			pinned: false,
+			title: 'Groceries'
+		});
+
+		const [upload] = uploadedEnvelopes;
+		const payload = decryptSyncPayload<{ kind: 'note'; value: Record<string, any> }>(
+			syncKey,
+			upload.ciphertext,
+			upload.slot
+		);
+		const { fieldTimes, updatedAt } = payload.value;
+		expect(payload.value.body).toBe('aaa eggs');
+		expect(fieldTimes.body).toBeGreaterThan(appTime);
+		expect(fieldTimes.pinned).toBeGreaterThan(appTime);
+		expect(fieldTimes.title).toBe(appTime);
+		expect(fieldTimes.color).toBe(appTime);
+		expect(updatedAt).toBe(fieldTimes.body);
+	});
+
+	it('gives created notes a time for every field', async () => {
+		const session = new McpSession(mockSyncClient);
+		await session.createNote({ title: 'New' });
+		const [upload] = uploadedEnvelopes;
+		const payload = decryptSyncPayload<{ kind: 'note'; value: Record<string, any> }>(
+			syncKey,
+			upload.ciphertext,
+			upload.slot
+		);
+		expect(Object.keys(payload.value.fieldTimes).sort()).toEqual([
+			'archived',
+			'body',
+			'color',
+			'images',
+			'labels',
+			'linkPreviews',
+			'pinned',
+			'reminder',
+			'secret',
+			'title',
+			'trashed'
+		]);
+		expect(new Set(Object.values(payload.value.fieldTimes))).toEqual(
+			new Set([payload.value.createdAt])
+		);
 	});
 
 	it('lists tags/labels in the note vault', async () => {

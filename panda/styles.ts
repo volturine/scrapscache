@@ -2055,29 +2055,49 @@ export const historyStyles = {
 			flexShrink: { base: 0, lg: 0 },
 			display: 'flex',
 			flexDirection: 'column',
-			w: { base: 'min(88vw, 22rem)', lg: '18rem' },
+			w: { base: 'min(88vw, 22rem)', lg: '22rem' },
 			h: { base: '100%', lg: 'max(72vh, 32rem)' },
 			maxH: { base: '100%', lg: '100dvh' },
 			borderWidth: 'hairline',
 			borderColor: 'scrapscache.border',
 			bg: 'scrapscache.surface',
 			boxShadow: 'dialog',
-			rounded: { base: 'none', lg: 'dialog' }
+			rounded: { base: 'none', lg: 'dialog' },
+			overflow: 'hidden',
+			transitionProperty: 'width',
+			transitionDuration: '140ms',
+			transitionTimingFunction: 'ease'
 		},
 		variants: {
-			expanded: { true: { position: 'fixed', insetBlock: 0, left: 0, zIndex: 61 }, false: {} }
+			open: {
+				true: { w: { base: 'min(88vw, 22rem)', lg: '22rem' } },
+				false: { w: { base: 'min(88vw, 22rem)', lg: '3.25rem' } }
+			}
 		},
-		defaultVariants: { expanded: false }
+		defaultVariants: { open: true }
 	}),
-	panelHeader: css({
-		display: 'flex',
-		alignItems: 'center',
-		justifyContent: 'space-between',
-		gap: 'sm',
-		px: 'md',
-		py: 'sm',
-		borderBottomWidth: 'hairline',
-		borderColor: 'scrapscache.borderFaint'
+	panelHeader: cva({
+		base: {
+			display: 'flex',
+			alignItems: 'center',
+			gap: 'sm',
+			borderBottomWidth: 'hairline',
+			borderColor: 'scrapscache.borderFaint',
+			flexShrink: 0
+		},
+		variants: {
+			open: {
+				true: { justifyContent: 'space-between', px: 'md', py: 'sm' },
+				false: { justifyContent: 'center', p: 'xs' }
+			}
+		},
+		defaultVariants: { open: true }
+	}),
+	panelActions: css({ display: 'flex', alignItems: 'center', gap: '2xs' }),
+	panelContent: cva({
+		base: { display: 'flex', flexDirection: 'column', flex: '1', minH: 0 },
+		variants: { open: { true: {}, false: { display: 'none' } } },
+		defaultVariants: { open: true }
 	}),
 	panelTitle: css({ textStyle: 'label', fontWeight: 'strong' }),
 	list: css({

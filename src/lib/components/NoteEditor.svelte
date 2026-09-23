@@ -371,6 +371,13 @@
 		labelOpen = false;
 	}
 
+	function closeHistory() {
+		historyOpen = false;
+		void tick().then(() =>
+			editorDialog?.querySelector<HTMLButtonElement>('[aria-label="Note time travel"]')?.focus()
+		);
+	}
+
 	function openReminder() {
 		closePopups();
 		reminderOpen = true;
@@ -645,7 +652,7 @@
 	onkeydown={(e) => {
 		if (!isOpen || e.key !== 'Escape') return;
 		if (historyOpen) {
-			historyOpen = false;
+			closeHistory();
 			return;
 		}
 		if (paletteOpen || reminderOpen || labelOpen) return;
@@ -677,8 +684,7 @@
 					<TimeTravel
 						account={syncStore.account}
 						noteId={note.id}
-						{expanded}
-						onClose={() => (historyOpen = false)}
+						onClose={closeHistory}
 						onRestoreVersion={restoreNoteVersion}
 					/>
 				{/key}
@@ -719,9 +725,10 @@
 									class={iconButton({ variant: 'ghost', size: 'sm' })}
 									title="Note time travel"
 									aria-label="Note time travel"
+									aria-expanded={historyOpen}
 									onclick={() => {
 										closePopups();
-										historyOpen = true;
+										historyOpen = !historyOpen;
 									}}
 								>
 									<History size={20} aria-hidden="true" />

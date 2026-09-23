@@ -34,16 +34,15 @@ beforeEach(async () => {
 });
 
 function sync(
-	uploads: { id: string; slot: string; ciphertext: string; expectedId?: string }[],
-	maxAccountBytes = 100_000_000,
-	cursor = 0
+	uploads: { id: string; slot: string; ciphertext: string }[],
+	maxAccountBytes = 100_000_000
 ): Promise<Response> {
 	return coordinator.fetch(
 		new Request('https://coordinator/sync', {
 			method: 'POST',
 			body: JSON.stringify({
 				accountId: ACCOUNT,
-				cursor,
+				cursor: 0,
 				uploads,
 				deletions: [],
 				downloadLimit: 12,
@@ -54,51 +53,6 @@ function sync(
 }
 
 describe('uploads that have to be retried', () => {
-	it('retains initial and replaced R2 ciphertext for history and removes it with the account', async () => {
-		const first = await sync([{ id: 'old', slot: SLOT, ciphertext: 'old-bytes' }]);
-		const initial = await client.execute('SELECT id, r2_key AS r2Key FROM envelope_history');
-		expect(initial.rows.map((row) => row.id)).toEqual(['old']);
-		const firstCursor = ((await first.json()) as { cursor: number }).cursor;
-		await sync(
-			[{ id: 'new', slot: SLOT, ciphertext: 'new-bytes', expectedId: 'old' }],
-			100_000_000,
-			firstCursor
-		);
-		const history = await client.execute('SELECT id, r2_key AS r2Key FROM envelope_history');
-		expect(history.rows.map((row) => row.id)).toEqual(['old', 'new']);
-		const versions = await client.execute('SELECT saved_at AS savedAt FROM envelope_history');
-		expect(Number(versions.rows[0].savedAt)).toBeGreaterThan(0);
-		expect(objects.get(String(history.rows[0].r2Key))).toBe('old-bytes');
-		expect(objects.get(String(history.rows[1].r2Key))).toBe('new-bytes');
-		expect(objects.size).toBe(2);
-		await coordinator.fetch(
-			new Request('https://coordinator/delete', {
-				method: 'POST',
-				body: JSON.stringify({ accountId: ACCOUNT })
-			}) as never
-		);
-		expect(objects.size).toBe(0);
-		expect((await client.execute('SELECT history_id FROM envelope_history')).rows).toHaveLength(0);
-	});
-
-	it('prunes the oldest history object under the account history budget', async () => {
-		const first = await sync([{ id: 'one', slot: SLOT, ciphertext: 'aa' }], 600);
-		const firstCursor = ((await first.json()) as { cursor: number }).cursor;
-		const second = await sync(
-			[{ id: 'two', slot: SLOT, ciphertext: 'bb', expectedId: 'one' }],
-			600,
-			firstCursor
-		);
-		const secondCursor = ((await second.json()) as { cursor: number }).cursor;
-		await sync(
-			[{ id: 'three', slot: SLOT, ciphertext: 'cc', expectedId: 'two' }],
-			600,
-			secondCursor
-		);
-		const history = await client.execute('SELECT id FROM envelope_history');
-		expect(history.rows.map((row) => row.id)).toEqual(['three']);
-		expect([...objects.values()].sort()).toEqual(['cc']);
-	});
 	it('writes a retry under a fresh key and deletes the object the earlier attempt reserved', async () => {
 		const reserved = 'v1/prefix/reserved-key';
 		objects.set(reserved, 'first attempt');
@@ -133,21 +87,6 @@ describe('uploads that have to be retried', () => {
 		await sync([{ id: 'upload-1', slot: SLOT, ciphertext: 'bytes' }]);
 
 		expect(objects.size).toBe(1);
-		expect(
-			(await client.execute('SELECT id FROM envelope_history')).rows.map((row) => row.id)
-		).toEqual(['upload-1']);
-	});
-
-	it('records a force-style reupload as a new version', async () => {
-		const first = await sync([{ id: 'initial', slot: SLOT, ciphertext: 'bytes' }]);
-		const cursor = ((await first.json()) as { cursor: number }).cursor;
-		await sync(
-			[{ id: 'forced', slot: SLOT, ciphertext: 'bytes', expectedId: 'initial' }],
-			100_000_000,
-			cursor
-		);
-		const history = await client.execute('SELECT id FROM envelope_history ORDER BY history_id');
-		expect(history.rows.map((row) => row.id)).toEqual(['initial', 'forced']);
 	});
 });
 

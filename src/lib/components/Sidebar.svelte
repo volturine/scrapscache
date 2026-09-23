@@ -41,11 +41,7 @@
 
 	const { closeNote } = useEditorActions();
 
-	let {
-		onNavigate
-	}: {
-		onNavigate?: () => void;
-	} = $props();
+	let { onNavigate }: { onNavigate?: () => void } = $props();
 
 	let query = $state('');
 	let queryInput = $state<HTMLInputElement | null>(null);

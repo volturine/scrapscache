@@ -18,6 +18,9 @@
 	import Tooltip from './Tooltip.svelte';
 	import PwaInstallSettings from './PwaInstallSettings.svelte';
 	import ReminderNotificationSettings from './ReminderNotificationSettings.svelte';
+	import LocalAiSettings from './LocalAiSettings.svelte';
+	import LocalAiModelDialog from './LocalAiModelDialog.svelte';
+	import { localAiStore } from '$lib/stores/localAi.svelte';
 	import BackupPassphraseDialog from './BackupPassphraseDialog.svelte';
 	import BackupImportModeDialog from './BackupImportModeDialog.svelte';
 	import ImportGuideDialog from './ImportGuideDialog.svelte';
@@ -63,6 +66,7 @@
 
 	let settingsOpen = $state(false);
 	let syncOpen = $state(false);
+	let choosingLocalAiModel = $state(false);
 	let pairingCode = $state('');
 	let importingBackup = $state(false);
 	let backupImportError = $state('');
@@ -368,6 +372,14 @@
 				<div class={styles.deviceSettings}>
 					<PwaInstallSettings />
 					<ReminderNotificationSettings />
+					<LocalAiSettings
+						onChoose={() => {
+							settingsOpen = false;
+							void tick().then(() => {
+								choosingLocalAiModel = true;
+							});
+						}}
+					/>
 				</div>
 				<Menu.Separator class={styles.menuSeparator} />
 				<Menu.Item value="issue">
@@ -427,6 +439,16 @@
 			}}
 		/>
 	{/key}
+{/if}
+
+{#if choosingLocalAiModel}
+	<LocalAiModelDialog
+		onSelect={(model) => {
+			choosingLocalAiModel = false;
+			void localAiStore.download(model);
+		}}
+		onClose={() => (choosingLocalAiModel = false)}
+	/>
 {/if}
 
 <ImportGuideDialog

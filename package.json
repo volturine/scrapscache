@@ -82,6 +82,7 @@
 		"@humanspeak/svelte-markdown": "^1.9.1",
 		"@internationalized/date": "^3.12.4",
 		"@libsql/client": "^0.18.0",
+		"@mlc-ai/web-llm": "^0.2.85",
 		"@noble/ciphers": "^2.4.0",
 		"@noble/curves": "^2.4.0",
 		"@noble/hashes": "^2.3.0",

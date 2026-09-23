@@ -14,6 +14,8 @@
 	import { reminderStore } from '$lib/stores/reminders.svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
 	import LabelMenu from './LabelMenu.svelte';
+	import NoteSummaryDialog from './NoteSummaryDialog.svelte';
+	import { localAiStore, LocalAiStatus } from '$lib/stores/localAi.svelte';
 	import NoteEditorFooter from './NoteEditorFooter.svelte';
 	import BodyEditor from './BodyEditor.svelte';
 	import { appClock } from '$lib/appClock.svelte';
@@ -71,6 +73,7 @@
 	let paletteOpen = $state(false);
 	let reminderOpen = $state(false);
 	let labelOpen = $state(false);
+	let summaryOpen = $state(false);
 	let copyFlash = $state(false);
 	let copyFlashTimer: ReturnType<typeof setTimeout> | null = null;
 	// svelte-ignore state_referenced_locally
@@ -362,6 +365,7 @@
 		paletteOpen = false;
 		reminderOpen = false;
 		labelOpen = false;
+		summaryOpen = false;
 	}
 
 	function openReminder() {
@@ -504,6 +508,21 @@
 		if (note) await notesStore.discardIfEmpty(note.id);
 		onClose();
 		void notesStore.syncPendingChanges();
+	}
+
+	function openSummary() {
+		closePopups();
+		bodyEditor?.syncBodyNow?.();
+		summaryOpen = true;
+	}
+
+	async function addSummary(summary: string) {
+		summaryOpen = false;
+		bodyEditor?.syncBodyNow?.();
+		await bodyEditor?.replaceBodyWithText(
+			body.trim() ? `${body.trimEnd()}\n\n${summary}` : summary
+		);
+		commitNow();
 	}
 
 	async function copyText() {
@@ -798,6 +817,10 @@
 							closePopups();
 							labelOpen = true;
 						}}
+						onSummarize={localAiStore.status === LocalAiStatus.Ready &&
+						(title.trim() || body.trim())
+							? openSummary
+							: undefined}
 						onCopy={() => void copyText()}
 						onRestore={() => {
 							notesStore.restoreNote(note.id);
@@ -819,6 +842,15 @@
 			</div>
 		</div>
 	</div>
+
+	{#if summaryOpen}
+		<NoteSummaryDialog
+			{title}
+			{body}
+			onInsert={(summary) => void addSummary(summary)}
+			onClose={() => (summaryOpen = false)}
+		/>
+	{/if}
 
 	{#if paletteOpen}
 		<Dialog.Root

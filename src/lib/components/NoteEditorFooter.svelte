@@ -38,6 +38,7 @@
 		Paperclip,
 		PenLine,
 		RotateCcw,
+		Sparkles,
 		Tag,
 		Trash2,
 		X
@@ -57,6 +58,7 @@
 		fillPhotos = false,
 		onOpenColor,
 		onOpenTags,
+		onSummarize,
 		onCopy,
 		onRestore,
 		onArchive,
@@ -78,6 +80,8 @@
 		fillPhotos?: boolean;
 		onOpenColor?: () => void;
 		onOpenTags?: () => void;
+		/** Present only when the on-device model is ready. */
+		onSummarize?: () => void;
 		onCopy?: () => void;
 		onRestore?: () => void;
 		onArchive?: () => void;
@@ -659,6 +663,9 @@
 				maxW: 'calc(100% - 5.5rem)'
 			})}
 		>
+			{#if onSummarize}
+				{@render footerButton('Summarize', 'Summarize', Sparkles, 'ghost', onSummarize)}
+			{/if}
 			{@render footerButton('Color', 'Color', Palette, 'ghost', () => onOpenColor?.())}
 			{#if showCopy}
 				<Tooltip content="Copy note">

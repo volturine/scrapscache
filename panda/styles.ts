@@ -1571,6 +1571,27 @@ export const reminderSettingsStyles = {
 	chevron: css({ ...iconSm, flexShrink: 0, ...mutedText })
 };
 
+export const localAiSettingsStyles = {
+	...reminderSettingsStyles,
+	action: iconSmClass,
+	error: css({ px: 'md', pb: 'sm', textStyle: 'label', color: 'scrapscache.danger' })
+};
+
+export const localAiSummaryStyles = {
+	eyebrow: css({ textStyle: 'overline' }),
+	output: css({
+		minH: '4.5rem',
+		maxH: '50vh',
+		overflowY: 'auto',
+		whiteSpace: 'pre-wrap',
+		textStyle: 'body',
+		color: 'scrapscache.text'
+	}),
+	pending: css({ textStyle: 'bodyMuted' }),
+	body: css({ gap: 'lg' }),
+	footer: css({ gap: 'sm', pt: '2xs' })
+};
+
 export const colorPaletteStyles = {
 	swatch: css({
 		...square('2.5rem'),

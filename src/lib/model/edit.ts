@@ -2,7 +2,7 @@
 // goes through applyNoteEdit, so none can stamp a field it did not change: a
 // stamped but unchanged field would carry a stale value past a newer edit made
 // elsewhere.
-import type { Note, NoteField, NoteImage } from './types.js';
+import type { Note, NoteField, NoteFieldTimes, NoteImage } from './types.js';
 import { stableStringify } from './stableStringify.js';
 import { BodyAuthor } from './bodyDoc.js';
 import { NOTE_FIELDS, fieldTime, sortAttachments } from './merge.js';
@@ -24,7 +24,11 @@ export function createEditContext(now: () => number): EditContext {
 /** Stamp fields as written now by this writer, each strictly after its previous time. */
 export function touchNoteFields(note: Note, fields: NoteField[], context: EditContext): Note {
 	const at = context.now();
-	const fieldTimes = { ...note.fieldTimes };
+	// Untouched fields keep the times they have now. Left implicit, they would
+	// fall back to the bumped updatedAt and look as new as this edit.
+	const fieldTimes: NoteFieldTimes = Object.fromEntries(
+		NOTE_FIELDS.map((field) => [field, fieldTime(note, field)])
+	);
 	const fieldWriters = { ...note.fieldWriters };
 	for (const field of fields) {
 		fieldTimes[field] = Math.max(at, fieldTime(note, field) + 1);

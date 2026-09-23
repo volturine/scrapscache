@@ -33,9 +33,10 @@ export function fieldTime(note: Note, field: NoteField): number {
 	return Number(note.fieldTimes?.[field]) || note.updatedAt;
 }
 
-type Side<T> = { value: T; time: number; writer?: string };
+export type Side<T> = { value: T; time: number; writer?: string };
 
-function pickField<T>(left: Side<T>, right: Side<T>): Side<T> {
+/** The later write; equal times go to the larger writer id, then the larger value. */
+export function pickLatest<T>(left: Side<T>, right: Side<T>): Side<T> {
 	if (left.time !== right.time) return left.time > right.time ? left : right;
 	if (left.writer && right.writer && left.writer !== right.writer) {
 		return left.writer > right.writer ? left : right;
@@ -139,11 +140,11 @@ export function mergeTwoNotes(left: Note, right: Note): Note {
 	for (const field of NOTE_FIELDS) {
 		const winner =
 			field === 'secret'
-				? pickField(
+				? pickLatest(
 						side(left, field, Boolean(left.secret)),
 						side(right, field, Boolean(right.secret))
 					)
-				: pickField(side(left, field), side(right, field));
+				: pickLatest(side(left, field), side(right, field));
 		picked[field] = winner.value;
 		fieldTimes[field] = winner.time;
 		if (winner.writer) fieldWriters[field] = winner.writer;
@@ -250,11 +251,10 @@ export function retargetLocalNotes(
 }
 
 export function mergeTwoLabels(primary: Label, secondary: Label): Label {
-	return primary.updatedAt === secondary.updatedAt
-		? equalTimestampWinner(primary, secondary)
-		: primary.updatedAt > secondary.updatedAt
-			? primary
-			: secondary;
+	return pickLatest(
+		{ value: primary, time: primary.updatedAt, writer: primary.writer },
+		{ value: secondary, time: secondary.updatedAt, writer: secondary.writer }
+	).value;
 }
 
 export function mergeLabelLists(primary: Label[], secondary: Label[]): Label[] {

@@ -1,7 +1,9 @@
 import {
+	applyBoardEdit,
 	createKanbanBoard,
 	mergeKanbanBoards,
 	normalizeBacklogFilter,
+	normalizeBoard,
 	type BacklogFilter,
 	type KanbanBoard,
 	type KanbanColumn
@@ -10,6 +12,7 @@ import { LOCAL_PROFILE_ID, scopedStateKey } from '$lib/db/idb';
 import { syncStore } from '$lib/stores/sync.svelte';
 import { loadBoardsFromDevice, writeKanbanState } from '$lib/syncTombstones';
 import { uid } from '$lib/utils';
+import { editContext, syncClock } from '$lib/editContext';
 
 /**
  * Fast-boot mirrors, one set per workspace. The default one keeps the bare keys, as
@@ -20,61 +23,6 @@ import { uid } from '$lib/utils';
 const BOARDS_KEY = 'scrapscache-kanban-boards-v1';
 const ACTIVE_BOARD_KEY = 'scrapscache-kanban-active-board-v1';
 const BOARD_TOMBSTONES_KEY = 'scrapscache-kanban-board-tombstones-v1';
-
-type StoredBoard = {
-	id?: unknown;
-	name?: unknown;
-	columns?: unknown;
-	backlogFilter?: unknown;
-	updatedAt?: unknown;
-};
-
-function normalizeBoard(value: unknown): KanbanBoard | null {
-	if (!value || typeof value !== 'object') return null;
-	const board = value as StoredBoard;
-	if (
-		typeof board.id !== 'string' ||
-		typeof board.name !== 'string' ||
-		!Array.isArray(board.columns)
-	)
-		return null;
-
-	const usedLabels = new Set<string>();
-	let hasBacklog = false;
-	const columns = board.columns.flatMap((column): KanbanColumn[] => {
-		if (!column || typeof column !== 'object') return [];
-		const candidate = column as { id?: unknown; labelId?: unknown; order?: unknown };
-		if (
-			typeof candidate.id !== 'string' ||
-			(candidate.labelId !== null && typeof candidate.labelId !== 'string')
-		)
-			return [];
-		const labelId = candidate.labelId;
-		const order = Array.isArray(candidate.order)
-			? [...new Set(candidate.order.filter((id): id is string => typeof id === 'string' && !!id))]
-			: [];
-		if (labelId === null) {
-			if (hasBacklog) return [];
-			hasBacklog = true;
-		} else {
-			if (usedLabels.has(labelId)) return [];
-			usedLabels.add(labelId);
-		}
-		return [{ id: candidate.id, labelId, order }];
-	});
-	if (!hasBacklog) columns.unshift({ id: uid(), labelId: null, order: [] });
-	const backlogFilter = normalizeBacklogFilter(board.backlogFilter);
-	// A tag cannot be both a column and a backlog filter tag.
-	backlogFilter.labelIds = backlogFilter.labelIds.filter((labelId) => !usedLabels.has(labelId));
-	return {
-		id: board.id,
-		name: board.name.trim() || 'Untitled board',
-		columns,
-		backlogFilter,
-		// Pre-sync boards did not have a version. Persist a one-time local version so they upload.
-		updatedAt: Number(board.updatedAt) || Date.now()
-	};
-}
 
 function normalizeBoards(value: unknown): KanbanBoard[] {
 	return Array.isArray(value)
@@ -394,22 +342,17 @@ export class KanbanStore {
 
 	/** Monotonic version: same-millisecond edits and backward clock jumps must still win. */
 	private nextVersion(previous: number | undefined): number {
-		return Math.max(Date.now(), (previous ?? 0) + 1);
+		return Math.max(syncClock.now(), (previous ?? 0) + 1);
 	}
 
-	private changeBoard(
-		boardId: string,
-		change: (
-			board: KanbanBoard
-		) => Omit<KanbanBoard, 'updatedAt'> & Partial<Pick<KanbanBoard, 'updatedAt'>>
-	): void {
+	/** Board edits stamp only what they change, so each part of a board merges on its own. */
+	private changeBoard(boardId: string, change: (board: KanbanBoard) => KanbanBoard): void {
 		let changed = false;
-		const previous = this.boards.find((board) => board.id === boardId);
-		const updatedAt = this.nextVersion(previous?.updatedAt);
 		this.boards = this.boards.map((board) => {
 			if (board.id !== boardId) return board;
-			changed = true;
-			return { ...change(board), updatedAt };
+			const edited = applyBoardEdit(board, change(board), editContext);
+			changed = edited !== board;
+			return edited;
 		});
 		if (changed) this.requestSync([`board:${boardId}`]);
 	}

@@ -4,7 +4,7 @@
 // stores, and DB version (v6) identical to master with zero migrations.
 
 import { openDB, type IDBPDatabase, type IDBPTransaction } from 'idb';
-import { copyImage, copyLinkPreview, copyNote } from '$lib/model';
+import { copyImage, copyLabel, copyLinkPreview, copyNote } from '$lib/model';
 import type { Label, LinkPreview, Note, NoteImage } from '$lib/types';
 import type { KanbanBoard } from '$lib/kanban';
 import { blobToDataUrl, dataUrlToBlob } from '$lib/imageBlob';
@@ -283,12 +283,7 @@ function plainNote(note: Note): Note {
 }
 
 function plainLabel(label: Label): Label {
-	return {
-		id: String(label.id),
-		name: String(label.name),
-		createdAt: Number(label.createdAt) || 0,
-		updatedAt: Number(label.updatedAt) || Number(label.createdAt) || 0
-	};
+	return copyLabel(label);
 }
 
 /** Plain, validated data only: never hand Svelte proxies to IndexedDB.

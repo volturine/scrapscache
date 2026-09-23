@@ -59,6 +59,17 @@ describe('applyNoteEdit', () => {
 		expect(mergeTwoNotes(pulled, edited).title).toBe('newer edit');
 	});
 
+	it('keeps untouched fields at their old times on notes without field times', () => {
+		// Older records carried only updatedAt; an edit bumps it, and a field left
+		// to fall back on it would look as new as the edit and beat a newer one.
+		const legacy = note({ updatedAt: 10, fieldTimes: undefined });
+		const pinned = applyNoteEdit(legacy, { pinned: true }, context(50, 'phone'));
+		const recolored = applyNoteEdit(legacy, { color: 'red' }, context(40, 'laptop'));
+
+		const merged = mergeTwoNotes(pinned, recolored);
+		expect(merged).toMatchObject({ pinned: true, color: 'red' });
+	});
+
 	it('writes body edits into the body document', () => {
 		const edited = applyNoteEdit(note(), { body: 'Body, edited' }, context(50));
 		expect(edited.body).toBe('Body, edited');

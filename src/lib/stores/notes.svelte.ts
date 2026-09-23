@@ -556,7 +556,13 @@ export class NotesStore {
 		if (!trimmed) return null;
 		if (this.labels.some((l) => l.name.toLowerCase() === trimmed.toLowerCase())) return null;
 		const now = syncClock.now();
-		const label: Label = { id: uid(), name: trimmed, createdAt: now, updatedAt: now };
+		const label: Label = {
+			id: uid(),
+			name: trimmed,
+			createdAt: now,
+			updatedAt: now,
+			writer: editContext.writer
+		};
 		this.labels = [...this.labels, label].sort((a, b) => a.name.localeCompare(b.name));
 		this.mirrorToLS();
 		putLabel(this.pid, label, [`label:${label.id}`]).catch((err) =>
@@ -575,7 +581,8 @@ export class NotesStore {
 			...this.labels[idx],
 			name: trimmed,
 			// Same-millisecond renames and backward clock jumps must still win.
-			updatedAt: Math.max(syncClock.now(), this.labels[idx].updatedAt + 1)
+			updatedAt: Math.max(syncClock.now(), this.labels[idx].updatedAt + 1),
+			writer: editContext.writer
 		};
 		this.labels[idx] = renamed;
 		this.labels.sort((a, b) => a.name.localeCompare(b.name));

@@ -103,4 +103,6 @@ export interface Label {
 	createdAt: number;
 	/** Changes on rename; used for deterministic offline/cloud conflict resolution. */
 	updatedAt: number;
+	/** Writer of the current name; breaks ties between equal times. */
+	writer?: string;
 }

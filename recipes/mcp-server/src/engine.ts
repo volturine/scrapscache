@@ -543,7 +543,13 @@ export class McpSession {
 				continue;
 			}
 			const now = this.clock.now();
-			const label: Label = { id: randomOpaqueId(), name, createdAt: now, updatedAt: now };
+			const label: Label = {
+				id: randomOpaqueId(),
+				name,
+				createdAt: now,
+				updatedAt: now,
+				writer: this.editContext.writer
+			};
 			created.push(label);
 			ids.push(label.id);
 		}

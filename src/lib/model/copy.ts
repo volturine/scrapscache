@@ -1,6 +1,6 @@
 // Plain, complete copies of records. Storage, backups, and sync all copy notes
 // through here, so a field added to Note cannot be dropped by one of them.
-import type { LinkPreview, Note, NoteField, NoteImage } from './types.js';
+import type { Label, LinkPreview, Note, NoteField, NoteImage } from './types.js';
 import { NOTE_FIELDS } from './merge.js';
 
 function finite(value: unknown): number | undefined {
@@ -98,5 +98,15 @@ export function copyNote(note: Note): Note {
 		...(linkPreviews.length ? { linkPreviews } : {}),
 		...(note.fieldTimes ? { fieldTimes } : {}),
 		...(Object.keys(fieldWriters).length ? { fieldWriters } : {})
+	};
+}
+
+export function copyLabel(label: Label): Label {
+	return {
+		id: String(label.id),
+		name: String(label.name ?? ''),
+		createdAt: finite(label.createdAt) ?? 0,
+		updatedAt: finite(label.updatedAt) || finite(label.createdAt) || 0,
+		...(typeof label.writer === 'string' && label.writer ? { writer: label.writer } : {})
 	};
 }

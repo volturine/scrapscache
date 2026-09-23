@@ -332,8 +332,6 @@
 
 	let offsetX = $state(0);
 	let dragging = $state(false);
-	let cardHeight = $state(0);
-	const compactActions = $derived(cardHeight < 140);
 
 	const swipe = createCardSwipe({
 		onSwipeLeft: () => {
@@ -348,15 +346,6 @@
 			offsetX = s.offsetX;
 			dragging = s.dragging;
 		}
-	});
-
-	$effect(() => {
-		if (!cardEl) return;
-		const observer = new ResizeObserver((entries) => {
-			for (const entry of entries) cardHeight = entry.contentRect.height;
-		});
-		observer.observe(cardEl);
-		return () => observer.disconnect();
 	});
 
 	$effect(() => {
@@ -436,7 +425,6 @@
 
 	<div
 		bind:this={cardEl}
-		bind:clientHeight={cardHeight}
 		role="button"
 		tabindex="0"
 		aria-label={openLabel}
@@ -588,37 +576,37 @@
 						<!-- Restore -->
 						<button
 							type="button"
-							class={iconButton({ size: compactActions ? 'compact' : 'standard', variant: 'haze' })}
+							class={iconButton({ size: 'standard', variant: 'haze' })}
 							title="Restore"
 							aria-label="Restore note"
 							onclick={handleRestore}
 						>
-							<RotateCcw size={compactActions ? 16 : 20} aria-hidden="true" />
+							<RotateCcw size={20} aria-hidden="true" />
 						</button>
 
 						<!-- Archive -->
 						<button
 							type="button"
-							class={iconButton({ size: compactActions ? 'compact' : 'standard', variant: 'haze' })}
+							class={iconButton({ size: 'standard', variant: 'haze' })}
 							title="Archive"
 							aria-label="Archive note"
 							onclick={handleRestoreToArchive}
 						>
-							<Archive size={compactActions ? 16 : 20} aria-hidden="true" />
+							<Archive size={20} aria-hidden="true" />
 						</button>
 
 						<!-- Delete forever -->
 						<button
 							type="button"
 							class={iconButton({
-								size: compactActions ? 'compact' : 'standard',
+								size: 'standard',
 								variant: 'hazeRose'
 							})}
 							title="Delete forever"
 							aria-label="Delete forever"
 							onclick={handleDelete}
 						>
-							<Trash2 size={compactActions ? 16 : 20} aria-hidden="true" />
+							<Trash2 size={20} aria-hidden="true" />
 						</button>
 					</div>
 				{:else if note.archived}
@@ -626,105 +614,26 @@
 						<!-- Restore -->
 						<button
 							type="button"
-							class={iconButton({ size: compactActions ? 'compact' : 'standard', variant: 'haze' })}
+							class={iconButton({ size: 'standard', variant: 'haze' })}
 							title="Restore"
 							aria-label="Restore note"
 							onclick={handleArchive}
 						>
-							<ArchiveRestore size={compactActions ? 16 : 20} aria-hidden="true" />
+							<ArchiveRestore size={20} aria-hidden="true" />
 						</button>
 
 						<!-- Delete note -->
 						<button
 							type="button"
 							class={iconButton({
-								size: compactActions ? 'compact' : 'standard',
+								size: 'standard',
 								variant: 'hazeRose'
 							})}
 							title="Delete note"
 							aria-label="Delete note"
 							onclick={handleDelete}
 						>
-							<Trash2 size={compactActions ? 16 : 20} aria-hidden="true" />
-						</button>
-					</div>
-				{:else if compactActions}
-					<div class={hazeGroup.compact}>
-						<button
-							type="button"
-							class={iconButton({ size: 'compact', variant: copied ? 'hazeCopied' : 'haze' })}
-							title={copied ? 'Copied!' : 'Copy note'}
-							aria-label={copied ? 'Copied to clipboard' : 'Copy note'}
-							onclick={handleCopy}
-						>
-							{#if copied}
-								<Check size={16} class={successIcon} aria-hidden="true" />
-							{:else}
-								<Copy size={16} aria-hidden="true" />
-							{/if}
-						</button>
-						<button
-							type="button"
-							class={iconButton({ size: 'compact', variant: note.pinned ? 'hazePinned' : 'haze' })}
-							title={note.pinned ? 'Unpin' : 'Pin'}
-							aria-label={note.pinned ? 'Unpin note' : 'Pin note'}
-							onclick={handlePin}
-						>
-							<Pin size={16} fill={note.pinned ? 'currentColor' : 'none'} aria-hidden="true" />
-						</button>
-						<button
-							type="button"
-							class={iconButton({
-								size: 'compact',
-								variant: note.reminder != null ? 'hazeBlue' : 'haze'
-							})}
-							title={note.reminder != null ? 'Edit reminder' : 'Add reminder'}
-							aria-label={note.reminder != null ? 'Edit reminder' : 'Add reminder'}
-							onclick={handleReminder}
-						>
-							<Bell
-								size={16}
-								fill={note.reminder != null ? 'currentColor' : 'none'}
-								aria-hidden="true"
-							/>
-						</button>
-						<button
-							type="button"
-							class={iconButton({
-								size: 'compact',
-								variant: note.labels.length ? 'hazeBlue' : 'haze'
-							})}
-							title="Tag"
-							aria-label="Tag note"
-							onclick={handleTag}
-						>
-							<Tag
-								size={16}
-								fill={note.labels.length ? 'currentColor' : 'none'}
-								aria-hidden="true"
-							/>
-						</button>
-						<button
-							type="button"
-							class={iconButton({ size: 'compact', variant: 'hazeRose' })}
-							title={note.trashed ? 'Delete forever' : 'Delete note'}
-							aria-label={note.trashed ? 'Delete forever' : 'Delete note'}
-							onclick={handleDelete}
-						>
-							<Trash2 size={16} aria-hidden="true" />
-						</button>
-						<button
-							type="button"
-							class={iconButton({ size: 'compact', variant: 'haze' })}
-							title={note.archived ? 'Unarchive' : 'Archive'}
-							aria-label={note.archived ? 'Unarchive note' : 'Archive note'}
-							onclick={handleArchive}
-						>
-							{#if note.archived}
-								<ArchiveRestore size={16} aria-hidden="true" />
-							{:else}
-								<Archive size={16} aria-hidden="true" />
-							{/if}
+							<Trash2 size={20} aria-hidden="true" />
 						</button>
 					</div>
 				{:else}

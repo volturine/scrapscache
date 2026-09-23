@@ -1,4 +1,4 @@
-import type { AppConfig, ChatCompletionMessageParam, ModelRecord } from '@mlc-ai/web-llm';
+import type { AppConfig, ModelRecord } from '@mlc-ai/web-llm';
 
 /**
  * The on-device models. Weights come from pinned Hugging Face commits and the
@@ -170,12 +170,6 @@ export function isLocalAiModelId(id: string | null): id is string {
 	return localAiModelOf(id) !== undefined;
 }
 
-/** Leaves room for the prompt and the reply inside the 4096-token context window. */
-export const SUMMARY_INPUT_LIMIT = 8000;
-
-/** Caps a reply; small models can fall into a loop that would otherwise run for minutes. */
-export const SUMMARY_MAX_TOKENS = 256;
-
 /**
  * The reply without its reasoning block. With thinking switched off WebLLM
  * still emits an empty `<think></think>` first; while that block is still
@@ -186,19 +180,4 @@ export function visibleReply(text: string): string {
 	if (!trimmed.startsWith('<think>')) return text;
 	const end = trimmed.indexOf('</think>');
 	return end < 0 ? '' : trimmed.slice(end + '</think>'.length).trimStart();
-}
-
-export function summaryMessages(title: string, body: string): ChatCompletionMessageParam[] {
-	const note = [title.trim() && `Title: ${title.trim()}`, body.trim()]
-		.filter(Boolean)
-		.join('\n\n')
-		.slice(0, SUMMARY_INPUT_LIMIT);
-	return [
-		{
-			role: 'system',
-			content:
-				'Summarize the note the user sends. Reply with the summary only: at most three short sentences, in the language of the note. Do not add anything the note does not say.'
-		},
-		{ role: 'user', content: note }
-	];
 }

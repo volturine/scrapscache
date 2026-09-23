@@ -1577,7 +1577,13 @@ export const localAiSettingsStyles = {
 	error: css({ px: 'md', pb: 'sm', textStyle: 'label', color: 'scrapscache.danger' })
 };
 
-export const localAiSummaryStyles = {
+export const noteAiMenuStyles = {
+	positioner: css({ zIndex: 30 }),
+	// The highlighted item shows keyboard focus; the list itself needs no ring.
+	content: css({ w: '15rem', overflow: 'hidden', py: '2xs', outline: 'none' })
+};
+
+export const noteAiDialogStyles = {
 	eyebrow: css({ textStyle: 'overline' }),
 	output: css({
 		minH: '4.5rem',
@@ -1588,6 +1594,7 @@ export const localAiSummaryStyles = {
 		color: 'scrapscache.text'
 	}),
 	pending: css({ textStyle: 'bodyMuted' }),
+	hint: css({ textStyle: 'caption' }),
 	body: css({ gap: 'lg' }),
 	footer: css({ gap: 'sm', pt: '2xs' })
 };

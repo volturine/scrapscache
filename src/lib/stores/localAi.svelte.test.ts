@@ -12,6 +12,7 @@ vi.mock('@mlc-ai/web-llm', () => webllm);
 const { LocalAiStore, LocalAiStatus } = await import('./localAi.svelte');
 
 const STORAGE_KEY = 'scrapscache.localAiModel';
+const MESSAGES = [{ role: 'user' as const, content: 'Pack socks' }];
 const terminate = vi.fn();
 const deleteCache = vi.fn(async (_name: string) => true);
 const WEBLLM_CACHES = ['webllm/model', 'webllm/config', 'webllm/wasm'];
@@ -139,33 +140,34 @@ describe('LocalAiStore', () => {
 		await vi.waitFor(() => expect(deleteCache).toHaveBeenCalledTimes(3));
 	});
 
-	it('streams a summary from the cached model', async () => {
+	it('streams a reply from the cached model', async () => {
 		stubGpu();
 		localStorage.setItem(STORAGE_KEY, SMALL.f16.model_id);
 		const engine = fakeEngine(['<think>\n\n</think>\n\n', 'Pack ', 'socks. ']);
 		webllm.CreateWebWorkerMLCEngine.mockResolvedValue(engine);
 		const store = new LocalAiStore();
 		const seen: string[] = [];
-		await expect(store.summarize('Trip', 'Pack socks', (text) => seen.push(text))).resolves.toBe(
+		await expect(store.generate(MESSAGES, 64, (text) => seen.push(text))).resolves.toBe(
 			'Pack socks.'
 		);
 		expect(seen).toEqual(['', 'Pack ', 'Pack socks. ']);
 		expect(engine.chat.completions.create).toHaveBeenCalledWith(
 			expect.objectContaining({
 				stream: true,
-				max_tokens: expect.any(Number),
+				messages: MESSAGES,
+				max_tokens: 64,
 				extra_body: { enable_thinking: false }
 			})
 		);
 		expect(store.loading).toBe(false);
 	});
 
-	it('never starts a download from a summary when the browser evicted the model', async () => {
+	it('never starts a download from a reply when the browser evicted the model', async () => {
 		stubGpu();
 		localStorage.setItem(STORAGE_KEY, SMALL.f16.model_id);
 		webllm.hasModelInCache.mockResolvedValue(false);
 		const store = new LocalAiStore();
-		await expect(store.summarize('', 'Body', () => {})).rejects.toThrow();
+		await expect(store.generate(MESSAGES, 64, () => {})).rejects.toThrow();
 		expect(webllm.CreateWebWorkerMLCEngine).not.toHaveBeenCalled();
 		expect(store.status).toBe(LocalAiStatus.Absent);
 		expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
@@ -178,7 +180,7 @@ describe('LocalAiStore', () => {
 		const load = deferred<typeof engine>();
 		webllm.CreateWebWorkerMLCEngine.mockReturnValue(load.promise);
 		const store = new LocalAiStore();
-		const summary = store.summarize('', 'Body', () => {});
+		const summary = store.generate(MESSAGES, 64, () => {});
 		await vi.waitFor(() => expect(webllm.CreateWebWorkerMLCEngine).toHaveBeenCalled());
 		store.stop();
 		load.resolve(engine);

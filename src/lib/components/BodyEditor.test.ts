@@ -1588,6 +1588,93 @@ describe('BodyEditor controlled input', () => {
 		expect(lineTexts(container)).toEqual(['aにb']);
 		expect(rawCaretText(container.querySelector('[data-line-text]')!)).toBe('aに');
 	});
+
+	it('inserts an emoji typed through beforeinput', async () => {
+		const { container } = render(BodyEditor, { props: { body: 'ok ' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		caretAt(container, 0, 3);
+
+		await typeText(editor, '😊');
+
+		expect(lineTexts(container)).toEqual(['ok 😊']);
+		expect(rawCaretText(container.querySelector('[data-line-text]')!)).toBe('ok 😊');
+	});
+
+	it('does not cancel a beforeinput insert that carries no payload', () => {
+		const { container } = render(BodyEditor, { props: { body: 'ok' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		caretAt(container, 0, 2);
+
+		// iOS emoji-picker inserts can arrive with data: null; canceling them
+		// would drop the emoji, so the browser must be allowed to write it.
+		const event = input(editor, 'insertText');
+
+		expect(event.defaultPrevented).toBe(false);
+	});
+
+	it('keeps the caret after the browser writes an emoji natively', async () => {
+		const { container } = render(BodyEditor, { props: { body: 'ab' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const line = container.querySelector('[data-line-text]') as HTMLElement;
+		line.firstChild!.textContent = 'a😊b';
+		select(line.firstChild!, 3);
+
+		await fireEvent.input(editor, { inputType: 'insertText' });
+		await tick();
+
+		expect(lineTexts(container)).toEqual(['a😊b']);
+		expect(rawCaretText(container.querySelector('[data-line-text]')!)).toBe('a😊');
+	});
+
+	it('adopts native text when a composition never receives compositionend', async () => {
+		const { container } = render(BodyEditor, { props: { body: 'ab' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const line = container.querySelector('[data-line-text]') as HTMLElement;
+		caretAt(container, 0, 1);
+		await fireEvent.compositionStart(editor);
+
+		line.firstChild!.textContent = 'aにb';
+		await fireEvent.input(editor, { inputType: 'insertCompositionText', isComposing: true });
+		await fireEvent.input(editor, { inputType: 'insertText', isComposing: false });
+		await tick();
+
+		expect(lineTexts(container)).toEqual(['aにb']);
+	});
+
+	it('replaces a trailing emoticon with an emoji when space is typed', async () => {
+		const { container } = render(BodyEditor, { props: { body: '' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		editor.focus();
+		select(container.querySelector('[data-line-text]') as HTMLElement, 0);
+
+		await typeText(editor, ':)');
+		await typeText(editor, ' ');
+
+		expect(lineTexts(container)).toEqual(['🙂 ']);
+		expect(rawCaretText(container.querySelector('[data-line-text]')!)).toBe('🙂 ');
+	});
+
+	it('leaves an emoticon glued to a word alone when space is typed', async () => {
+		const { container } = render(BodyEditor, { props: { body: 'a:)' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		caretAt(container, 0, 3);
+
+		await typeText(editor, ' ');
+
+		expect(lineTexts(container)).toEqual(['a:) ']);
+	});
+
+	it('keeps emoticons literal inside a code block', async () => {
+		const { container } = render(BodyEditor, { props: { body: '```\n\n```' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		editor.focus();
+		select(container.querySelector('[data-editor-line="1"] [data-line-text]') as HTMLElement, 0);
+
+		await typeText(editor, ':)');
+		await typeText(editor, ' ');
+
+		expect(lineTexts(container)[1]).toBe(':) ');
+	});
 });
 
 describe('BodyEditor rendered table writing', () => {

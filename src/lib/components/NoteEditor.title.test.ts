@@ -98,6 +98,38 @@ describe('Title wrapping and single-line preservation', () => {
 		expect(titleElement.value).toBe('Line One Line Two Line Three');
 	});
 
+	it('replaces a trailing emoticon with an emoji when space is typed in the title', async () => {
+		notesStore.notes = [note({ title: 'Hello :)' })];
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+
+		const titleElement = container.querySelector(
+			'textarea[placeholder="Title"]'
+		) as HTMLTextAreaElement;
+		titleElement.value = 'Hello :) ';
+		titleElement.setSelectionRange(titleElement.value.length, titleElement.value.length);
+		await fireEvent.input(titleElement);
+
+		expect(titleElement.value).toBe('Hello 🙂 ');
+	});
+
+	it('leaves an emoticon glued to a word alone in the title', async () => {
+		notesStore.notes = [note({ title: 'Hello' })];
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+
+		const titleElement = container.querySelector(
+			'textarea[placeholder="Title"]'
+		) as HTMLTextAreaElement;
+		titleElement.value = 'smile:) ';
+		titleElement.setSelectionRange(titleElement.value.length, titleElement.value.length);
+		await fireEvent.input(titleElement);
+
+		expect(titleElement.value).toBe('smile:) ');
+	});
+
 	it('auto-resizes textarea when content changes', async () => {
 		notesStore.notes = [note({ title: 'Initial' })];
 		const { container } = render(NoteEditor, {

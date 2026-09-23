@@ -12,6 +12,7 @@
 		toggleCheckEntries
 	} from '$lib/checklistBody';
 	import { revealEditorField } from '$lib/editorVisibility';
+	import { matchTrailingEmoticon } from '$lib/emoticons';
 	import { css } from 'styled-system/css';
 	import { checklist, noteBody } from 'styled-system/recipes';
 	import { markdownStyles } from '$panda/styles';
@@ -1270,7 +1271,11 @@
 	 * input we could not intercept). Changed rows are rebuilt from the model so
 	 * browser-made nodes never linger next to Svelte-owned ones.
 	 */
-	function reconcileDom(caretLine: number | null, caretOffset: number) {
+	function reconcileDom(
+		caretLine: number | null,
+		caretOffset: number,
+		caretIsPostMutation = false
+	) {
 		if (!container) return;
 		let changed = false;
 		let caret = caretOffset;
@@ -1281,7 +1286,9 @@
 			const line = lines[index];
 			if (text === line.text) continue;
 			changed = true;
-			if (index === caretLine) caret += text.length - line.text.length;
+			// The input path reads the caret after the browser already wrote the
+			// text, so only the composition path may add the length delta itself.
+			if (index === caretLine && !caretIsPostMutation) caret += text.length - line.text.length;
 			line.text = text;
 			line.rev++;
 			const consumed = applyLinePrefix(index);
@@ -1305,9 +1312,25 @@
 			if (block?.type === 'code') setCodeLanguage(block, languageField.value);
 			return;
 		}
-		if (applyingEdit || composing || (rawEvent as InputEvent).isComposing) return;
+		if (applyingEdit) return;
+		const event = rawEvent as InputEvent;
+		if (composing) {
+			const stillComposing =
+				event.isComposing ||
+				event.inputType === 'insertCompositionText' ||
+				event.inputType === 'deleteCompositionText';
+			if (stillComposing) return;
+			// iOS can skip compositionend; a plain input means the session is over.
+			composing = false;
+			const start = compositionStart;
+			compositionStart = null;
+			reconcileDom(start?.start.line ?? null, start?.start.offset ?? 0);
+			return;
+		}
+		if (event.isComposing) return;
 		const range = editorRange();
-		reconcileDom(range?.start.line ?? null, range?.start.offset ?? 0);
+		// The browser already wrote the change, so this caret is the final one.
+		reconcileDom(range?.start.line ?? null, range?.start.offset ?? 0, true);
 	}
 
 	function handleCompositionStart() {
@@ -1460,8 +1483,25 @@
 		if (!text || !line) return;
 		// `[ ]` and `- ` become a task or bullet as soon as they match; swallow the space typed next.
 		if (text === ' ' && range.collapsed && (line.isCheck || line.isBullet) && !line.text) return;
-		if (line.id === draftTaskId && text.trim()) draftTaskId = null;
 		let insertRange = range;
+		// `:)` + space becomes an emoji, except in code blocks and table cells.
+		if (
+			text === ' ' &&
+			range.collapsed &&
+			!markdownBlockAt(range.start.line) &&
+			!protectedCellAt(range.start.line, range.start.offset)
+		) {
+			const match = matchTrailingEmoticon(line.text.slice(0, range.start.offset));
+			if (match) {
+				insertRange = {
+					start: { line: range.start.line, offset: match.start },
+					end: { line: range.start.line, offset: range.start.offset },
+					collapsed: false
+				};
+				text = `${match.emoji} `;
+			}
+		}
+		if (line.id === draftTaskId && text.trim()) draftTaskId = null;
 		if (range.collapsed && !text.includes('\n') && text.includes('|')) {
 			const placed = placeTablePipe(range, text);
 			if (placed === 'column') return;
@@ -1644,12 +1684,30 @@
 			if (event.inputType === 'insertReplacementText') rememberEdit();
 			return;
 		}
-		event.preventDefault();
 		const type = event.inputType;
-		if (type === 'historyUndo') return undo();
-		if (type === 'historyRedo') return redo();
+		if (type === 'historyUndo') {
+			event.preventDefault();
+			return undo();
+		}
+		if (type === 'historyRedo') {
+			event.preventDefault();
+			return redo();
+		}
 		const range = inputTargetRange(event);
-		if (!range) return;
+		const payload = event.data ?? event.dataTransfer?.getData('text/plain') ?? '';
+		// iOS delivers software-keyboard and emoji-picker inserts with no payload
+		// or no resolvable caret. Canceling those first would drop the input, so
+		// let the browser write them and adopt the change through reconcileDom.
+		const emptyInsert =
+			type.startsWith('insert') &&
+			type !== 'insertParagraph' &&
+			type !== 'insertLineBreak' &&
+			!payload;
+		if (!range || emptyInsert) {
+			rememberEdit(range);
+			return;
+		}
+		event.preventDefault();
 
 		const kind =
 			type === 'insertText' ? 'insert' : type === 'deleteContentBackward' ? 'delete' : null;

@@ -16,6 +16,7 @@
 	import NoteBodyDisplay from './NoteBodyDisplay.svelte';
 	import ReminderLabel from './ReminderLabel.svelte';
 	import ReminderPicker from './ReminderPicker.svelte';
+	import LabelMenu from './LabelMenu.svelte';
 	import { noteToPlainText } from '$lib/checklistBody';
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { portalToAppOverlay } from '$lib/appViewport';
@@ -28,6 +29,7 @@
 		Pin,
 		Lock,
 		RotateCcw,
+		Tag,
 		Trash2
 	} from '@lucide/svelte';
 	import { onDestroy, onMount } from 'svelte';
@@ -45,6 +47,7 @@
 	let copied = $state(false);
 	let copyTimer: ReturnType<typeof setTimeout> | null = null;
 	let reminderDialogOpen = $state(false);
+	let labelDialogOpen = $state(false);
 
 	function closeHaze() {
 		hazeActive = false;
@@ -129,6 +132,18 @@
 		e.stopPropagation();
 		closeHaze();
 		reminderDialogOpen = true;
+	}
+
+	function handleTag(e: MouseEvent) {
+		e.stopPropagation();
+		closeHaze();
+		labelDialogOpen = true;
+	}
+
+	// A mouse leaving the card dismisses the haze; touch lift also fires
+	// pointerleave, and on touch the haze already closes on the next press.
+	function handleCardPointerLeave(e: PointerEvent) {
+		if (hazeActive && e.pointerType === 'mouse') closeHaze();
 	}
 
 	function openUnlessDrag(e: MouseEvent) {
@@ -431,6 +446,7 @@
 		onpointermove={onCardPointerMove}
 		onpointerup={onCardPointerUp}
 		onpointercancel={onCardPointerCancel}
+		onpointerleave={handleCardPointerLeave}
 		onclick={openUnlessDrag}
 		oncontextmenu={handleContextMenu}
 		onkeydown={handleKeydown}
@@ -674,6 +690,22 @@
 						</button>
 						<button
 							type="button"
+							class={iconButton({
+								size: 'compact',
+								variant: note.labels.length ? 'hazeBlue' : 'haze'
+							})}
+							title="Tag"
+							aria-label="Tag note"
+							onclick={handleTag}
+						>
+							<Tag
+								size={16}
+								fill={note.labels.length ? 'currentColor' : 'none'}
+								aria-hidden="true"
+							/>
+						</button>
+						<button
+							type="button"
 							class={iconButton({ size: 'compact', variant: 'hazeRose' })}
 							title={note.trashed ? 'Delete forever' : 'Delete note'}
 							aria-label={note.trashed ? 'Delete forever' : 'Delete note'}
@@ -744,6 +776,24 @@
 									aria-hidden="true"
 								/>
 							</button>
+
+							<!-- Tag -->
+							<button
+								type="button"
+								class={iconButton({
+									size: 'standard',
+									variant: note.labels.length ? 'hazeBlue' : 'haze'
+								})}
+								title="Tag"
+								aria-label="Tag note"
+								onclick={handleTag}
+							>
+								<Tag
+									size={20}
+									fill={note.labels.length ? 'currentColor' : 'none'}
+									aria-hidden="true"
+								/>
+							</button>
 						</div>
 
 						<div class={hazeGroup.row}>
@@ -779,6 +829,43 @@
 		{/if}
 	</div>
 </div>
+
+{#if labelDialogOpen}
+	<Dialog.Root
+		open
+		onOpenChange={(details) => {
+			if (!details.open) labelDialogOpen = false;
+		}}
+		preventScroll={false}
+	>
+		<div
+			{@attach portalToAppOverlay}
+			class={css({ position: 'fixed', inset: 0, zIndex: 70 })}
+			role="presentation"
+		>
+			<Dialog.Backdrop
+				class={css({
+					position: 'fixed',
+					inset: 0,
+					bg: 'scrapscache.backdropSoft',
+					backdropFilter: 'blur(2px)'
+				})}
+			/>
+			<Dialog.Positioner
+				class={flex({ position: 'fixed', inset: 0, align: 'center', justify: 'center', p: 'lg' })}
+			>
+				<Dialog.Content class={css({ outline: 'none' })} onclick={(e) => e.stopPropagation()}>
+					<LabelMenu
+						noteId={note.id}
+						onClose={() => {
+							labelDialogOpen = false;
+						}}
+					/>
+				</Dialog.Content>
+			</Dialog.Positioner>
+		</div>
+	</Dialog.Root>
+{/if}
 
 {#if reminderDialogOpen}
 	<Dialog.Root

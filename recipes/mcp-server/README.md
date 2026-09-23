@@ -47,6 +47,8 @@ Scraps Cache is end-to-end encrypted and zero-knowledge. This MCP server acts as
 
 Use `search_notes` or `list_notes` to find a note ID, then `open_note` when its full contents are needed. Search results include matching-text previews, the total number of matches, and `hasMore`. Tool results include structured JSON and a text fallback. The optional `workspace` argument appears only when a connection has multiple workspaces.
 
+`create_note` and `update_note` accept a `reminder` date and time as a timezone-aware ISO 8601 timestamp, such as `2026-09-24T14:00:00+02:00`. `update_note` accepts `reminder: null` to remove an existing reminder. `open_note`, `create_note`, and `update_note` return the reminder as an ISO 8601 timestamp or `null`.
+
 ---
 
 ## Recipe 1: Docker Compose

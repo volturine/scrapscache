@@ -53,6 +53,11 @@
 	);
 	const reminderLabel = $derived(formatReminder(note?.reminder ?? null, appClock.now));
 	const activity = $derived(note ? noteActivity(note, appClock.now) : null);
+	const activityLabel = $derived(
+		activity && note && !note.trashed && note.updatedAt > note.createdAt
+			? activity.absoluteLabel
+			: activity?.label
+	);
 
 	let taskFocusLine = $state<number | null>(null);
 
@@ -733,7 +738,7 @@
 						{#if activity}
 							<p class={styles.meta} data-note-meta>
 								<time datetime={new Date(activity.at).toISOString()} title={activity.detail}
-									>{activity.label}</time
+									>{activityLabel}</time
 								>
 							</p>
 						{/if}

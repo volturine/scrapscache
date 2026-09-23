@@ -118,6 +118,8 @@ export const TRASH_PURGE_DAYS = 7;
 export type NoteActivity = {
 	/** Short relative label, e.g. "Edited 2h ago". */
 	label: string;
+	/** Absolute label, e.g. "Edited Mar 3, 2026, 10:32 AM". */
+	absoluteLabel: string;
 	/** Epoch ms the label is relative to. */
 	at: number;
 	/** Absolute detail for tooltips, e.g. "Created Mar 3, 2026, 10:32 AM · …". */
@@ -169,17 +171,24 @@ export function noteActivity(note: NoteActivitySource, nowMs = Date.now()): Note
 	if (deletedAt != null) parts.push(`Deleted ${formatActivityAbsolute(deletedAt)}`);
 	const detail = parts.join(' · ');
 	if (deletedAt != null) {
-		return { label: `Deleted ${formatActivityRelative(deletedAt, nowMs)}`, at: deletedAt, detail };
+		return {
+			label: `Deleted ${formatActivityRelative(deletedAt, nowMs)}`,
+			absoluteLabel: `Deleted ${formatActivityAbsolute(deletedAt)}`,
+			at: deletedAt,
+			detail
+		};
 	}
 	if (neverEdited) {
 		return {
 			label: `Created ${formatActivityRelative(note.createdAt, nowMs)}`,
+			absoluteLabel: `Created ${formatActivityAbsolute(note.createdAt)}`,
 			at: note.createdAt,
 			detail
 		};
 	}
 	return {
 		label: `Edited ${formatActivityRelative(note.updatedAt, nowMs)}`,
+		absoluteLabel: `Edited ${formatActivityAbsolute(note.updatedAt)}`,
 		at: note.updatedAt,
 		detail
 	};

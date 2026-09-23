@@ -17,7 +17,7 @@
 	import NoteEditorFooter from './NoteEditorFooter.svelte';
 	import BodyEditor from './BodyEditor.svelte';
 	import { appClock } from '$lib/appClock.svelte';
-	import { formatReminder, isReminderOverdue } from '$lib/utils';
+	import { formatReminder, isReminderOverdue, noteActivity } from '$lib/utils';
 	import ReminderLabel from './ReminderLabel.svelte';
 	import {
 		Bell,
@@ -52,6 +52,7 @@
 		note?.reminder != null && isReminderOverdue(note.reminder, appClock.now)
 	);
 	const reminderLabel = $derived(formatReminder(note?.reminder ?? null, appClock.now));
+	const activity = $derived(note ? noteActivity(note, appClock.now) : null);
 
 	let taskFocusLine = $state<number | null>(null);
 
@@ -635,20 +636,6 @@
 						<div class={spacer()} aria-hidden="true"></div>
 
 						<div class={hstack({ minW: 0, gap: '2xs' })}>
-							<button
-								type="button"
-								class={iconButton({ variant: 'ghost', size: 'sm' })}
-								title={expanded ? 'Shrink note' : 'Expand note'}
-								onclick={toggleExpanded}
-								aria-label={expanded ? 'Shrink note' : 'Expand note'}
-								aria-pressed={expanded}
-							>
-								{#if expanded}
-									<Minimize2 size={20} aria-hidden="true" />
-								{:else}
-									<Maximize2 size={20} aria-hidden="true" />
-								{/if}
-							</button>
 							{#if !note.trashed && !note.archived}
 								{#if note.reminder != null}
 									<button
@@ -700,6 +687,20 @@
 									{/if}
 								</button>
 							{/if}
+							<button
+								type="button"
+								class={iconButton({ variant: 'ghost', size: 'sm' })}
+								title={expanded ? 'Shrink note' : 'Expand note'}
+								onclick={toggleExpanded}
+								aria-label={expanded ? 'Shrink note' : 'Expand note'}
+								aria-pressed={expanded}
+							>
+								{#if expanded}
+									<Minimize2 size={20} aria-hidden="true" />
+								{:else}
+									<Maximize2 size={20} aria-hidden="true" />
+								{/if}
+							</button>
 						</div>
 					</header>
 
@@ -728,6 +729,14 @@
 							rows="1"
 							class:markdown-raw={uiStore.rawMarkdown}
 							class={titleField}></textarea>
+
+						{#if activity}
+							<p class={styles.meta} data-note-meta>
+								<time datetime={new Date(activity.at).toISOString()} title={activity.detail}
+									>{activity.label}</time
+								>
+							</p>
+						{/if}
 
 						<BodyEditor
 							bind:this={bodyEditor}

@@ -342,6 +342,7 @@ const noteCardRecipe = defineSlotRecipe({
 		'contentPad',
 		'title',
 		'labelsRow',
+		'metaRow',
 		'hazeOverlay',
 		'shield'
 	],
@@ -398,11 +399,38 @@ const noteCardRecipe = defineSlotRecipe({
 		labelsRow: {
 			display: 'flex',
 			flexShrink: 0,
-			flexWrap: 'wrap',
+			flexWrap: 'nowrap',
 			gap: '2xs',
 			px: 'md',
 			pb: 'md',
-			pt: 'sm'
+			pt: 'sm',
+			overflowX: 'auto',
+			overflowY: 'hidden',
+			touchAction: 'pan-x',
+			overscrollBehaviorX: 'contain',
+			'& > *': { flexShrink: 0 }
+		},
+		metaRow: {
+			// Phone gallery has no useful hover; only desktop shows the stamp.
+			display: { base: 'none', md: 'block' },
+			flexShrink: 0,
+			px: 'md',
+			pb: 0,
+			pt: 0,
+			maxHeight: 0,
+			textStyle: 'caption',
+			color: 'scrapscache.textMuted',
+			overflow: 'hidden',
+			textOverflow: 'ellipsis',
+			whiteSpace: 'nowrap',
+			opacity: 0,
+			transition: 'max-height 150ms ease, padding 150ms ease, opacity 150ms ease',
+			_groupHover: {
+				maxHeight: '2.5rem',
+				pb: 'md',
+				pt: '2xs',
+				opacity: 1
+			}
 		},
 		hazeOverlay: {
 			position: 'absolute',

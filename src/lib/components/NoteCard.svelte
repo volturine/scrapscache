@@ -9,7 +9,8 @@
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { reminderStore } from '$lib/stores/reminders.svelte';
 	import type { Note } from '$lib/types';
-	import { activateOnKeyboard, formatReminder, isReminderOverdue } from '$lib/utils';
+	import { activateOnKeyboard, formatReminder, isReminderOverdue, noteActivity } from '$lib/utils';
+	import { appClock } from '$lib/appClock.svelte';
 	import { cardSwipeStyle, createCardSwipe } from '$lib/cardSwipe';
 	import { overflowingTable } from '$lib/tableScroll';
 	import NoteBodyDisplay from './NoteBodyDisplay.svelte';
@@ -221,12 +222,70 @@
 		tableGesture = null;
 	}
 
-	function onCardWheel(event: WheelEvent) {
-		if (!cardEl || Math.abs(event.deltaX) <= Math.abs(event.deltaY)) return;
-		const table = overflowingTable(cardEl, event.clientX, event.clientY);
-		if (!table) return;
-		table.scrollLeft += event.deltaX;
-		event.preventDefault();
+	// Tags live on the swipe surface. When they overflow, keep the press here so
+	// the card does not start a swipe; touch/trackpad then use native overflow-x,
+	// and a mouse drag pans the row by hand.
+	let labelsScrolling = false;
+	let labelsScrollMoved = false;
+	let labelsStartX = 0;
+	let labelsStartY = 0;
+	let labelsStartScroll = 0;
+	let labelsPointerId: number | null = null;
+	let labelsPointerType: string | null = null;
+
+	function labelsOverflowing(el: HTMLElement): boolean {
+		return el.scrollWidth > el.clientWidth + 1;
+	}
+
+	function onLabelsPointerDown(event: PointerEvent) {
+		const el = event.currentTarget as HTMLElement;
+		if (!labelsOverflowing(el) || (event.pointerType === 'mouse' && event.button !== 0)) return;
+		event.stopPropagation();
+		labelsScrolling = true;
+		labelsScrollMoved = false;
+		labelsStartX = event.clientX;
+		labelsStartY = event.clientY;
+		labelsStartScroll = el.scrollLeft;
+		labelsPointerId = event.pointerId;
+		labelsPointerType = event.pointerType;
+		if (event.pointerType === 'mouse') {
+			el.setPointerCapture(event.pointerId);
+		}
+	}
+
+	function onLabelsPointerMove(event: PointerEvent) {
+		if (!labelsScrolling || event.pointerId !== labelsPointerId) return;
+		event.stopPropagation();
+		// Touch pans natively via overflow-x; only a mouse drag drives scrollLeft.
+		if (labelsPointerType !== 'mouse') return;
+		const el = event.currentTarget as HTMLElement;
+		const dx = event.clientX - labelsStartX;
+		const dy = event.clientY - labelsStartY;
+		if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+		if (Math.abs(dy) > Math.abs(dx)) {
+			labelsScrolling = false;
+			labelsPointerId = null;
+			return;
+		}
+		labelsScrollMoved = true;
+		el.scrollLeft = labelsStartScroll - dx;
+	}
+
+	function onLabelsPointerUp(event: PointerEvent) {
+		if (!labelsScrolling || event.pointerId !== labelsPointerId) {
+			labelsPointerId = null;
+			return;
+		}
+		labelsScrolling = false;
+		labelsPointerId = null;
+		event.stopPropagation();
+		if (labelsScrollMoved) {
+			suppressClick = true;
+			if (suppressTimer) clearTimeout(suppressTimer);
+			suppressTimer = setTimeout(() => {
+				suppressClick = false;
+			}, 50);
+		}
 	}
 
 	function handleKeydown(event: KeyboardEvent) {
@@ -305,8 +364,6 @@
 	});
 
 	onMount(() => {
-		const el = cardEl;
-		el?.addEventListener('wheel', onCardWheel, { passive: false });
 		function onOtherHazeOpen(e: Event) {
 			const ce = e as CustomEvent<string>;
 			if (ce.detail !== note.id) {
@@ -315,7 +372,6 @@
 		}
 		window.addEventListener('scrapscache-card-haze-open', onOtherHazeOpen);
 		return () => {
-			el?.removeEventListener('wheel', onCardWheel);
 			window.removeEventListener('scrapscache-card-haze-open', onOtherHazeOpen);
 			if (copyTimer) clearTimeout(copyTimer);
 			if (suppressTimer) clearTimeout(suppressTimer);
@@ -325,6 +381,7 @@
 	onDestroy(() => swipe.dispose());
 
 	const card = $derived(noteCard({ pinned: note.pinned }));
+	const activity = $derived(noteActivity(note, appClock.now));
 </script>
 
 <svelte:window
@@ -368,7 +425,7 @@
 		role="button"
 		tabindex="0"
 		aria-label={openLabel}
-		class={cx(card.cardBody, noteSurface({ color: note.color }))}
+		class={cx(card.cardBody, 'group', noteSurface({ color: note.color }))}
 		style={cardSwipeStyle(offsetX, dragging)}
 		onpointerdown={onCardPointerDown}
 		onpointermove={onCardPointerMove}
@@ -468,8 +525,23 @@
 			</div>
 		</div>
 
+		<div class={card.metaRow} data-note-meta>
+			<time datetime={new Date(activity.at).toISOString()} title={activity.detail}
+				>{activity.label}</time
+			>
+		</div>
+
 		{#if labelsForNote.length}
-			<div class={card.labelsRow}>
+			<!-- Gesture strip: when tags overflow, a sideways pan scrolls them instead of swiping the card. -->
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div
+				class={cx(card.labelsRow, 'note-scrollbar-hidden')}
+				data-card-hscroll
+				onpointerdown={onLabelsPointerDown}
+				onpointermove={onLabelsPointerMove}
+				onpointerup={onLabelsPointerUp}
+				onpointercancel={onLabelsPointerUp}
+			>
 				{#each labelsForNote as label (label.id)}
 					<span class={badge()}>
 						{label.name}

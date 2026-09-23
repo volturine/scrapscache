@@ -1895,7 +1895,15 @@ export const noteEditorStyles = {
 	subDialogBackdrop: css({ bg: 'scrapscache.backdropSoft', backdropFilter: 'none', zIndex: 60 }),
 	popupContent: css({ outline: 'none' }),
 	rawScroller: css({ touchAction: 'pan-x pan-y' }),
-	reminderButton: css({ minW: 0 })
+	reminderButton: css({ minW: 0 }),
+	/** Quiet created/edited/deleted line under the note title. */
+	meta: css({
+		display: 'block',
+		mb: 'sm',
+		textStyle: 'caption',
+		...mutedText,
+		...truncateText
+	})
 };
 
 export const noteEditorReminderTone = {

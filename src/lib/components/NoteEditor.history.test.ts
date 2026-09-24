@@ -54,7 +54,7 @@ beforeEach(() => {
 		pairingCode: 'test-code'
 	};
 	notesStore.notes = [note()];
-	history.loadNoteHistory.mockResolvedValue({ entries: [earlier], nextBefore: null });
+	history.loadNoteHistory.mockResolvedValue([earlier]);
 	history.hydrateHistoryNote.mockImplementation(async (_account, entry: NoteHistoryEntry) => ({
 		...entry.note,
 		images: []
@@ -123,23 +123,20 @@ describe('NoteEditor time travel', () => {
 
 	it('restores content without moving the note to trash or dropping its secret', async () => {
 		notesStore.notes = [note({ secret: true })];
-		history.loadNoteHistory.mockResolvedValue({
-			entries: [
-				{
-					historyId: 10,
-					savedAt: 10_000,
-					// Saved while the note sat in the trash, before it was made secret.
-					note: syncNote({
-						title: 'Books',
-						body: 'Antifragile',
-						trashed: true,
-						trashedAt: 5,
-						updatedAt: 10
-					})
-				}
-			],
-			nextBefore: null
-		});
+		history.loadNoteHistory.mockResolvedValue([
+			{
+				historyId: 10,
+				savedAt: 10_000,
+				// Saved while the note sat in the trash, before it was made secret.
+				note: syncNote({
+					title: 'Books',
+					body: 'Antifragile',
+					trashed: true,
+					trashedAt: 5,
+					updatedAt: 10
+				})
+			}
+		]);
 		const { container } = render(NoteEditor, { props: { noteId: 'note-1', onClose: vi.fn() } });
 		const trigger = await waitFor(() => {
 			const button = container.querySelector<HTMLButtonElement>('nav button');

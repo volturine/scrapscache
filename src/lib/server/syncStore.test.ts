@@ -26,7 +26,7 @@ function createStore(options?: ConstructorParameters<typeof SyncStore>[1]): {
 }
 
 describe('SQLite sync store', () => {
-	it('keeps initial, replaced, and deleted encrypted versions for the owner only', async () => {
+	it('lists initial, replaced, and deleted encrypted versions for the owner only', async () => {
 		const { store } = createStore();
 		await store.createAccount('owner', 'credential');
 		await store.createAccount('other', 'credential');
@@ -36,61 +36,60 @@ describe('SQLite sync store', () => {
 			[{ id: 'old', slot: slot('a'), ciphertext: 'b2xk' }],
 			[]
 		);
-		const initial = (await store.listHistory('owner', slot('a'))).entries;
-		expect(initial).toHaveLength(1);
-		expect(await store.getHistory('owner', initial[0].historyId)).toMatchObject({ id: 'old' });
+		expect((await store.listHistory('owner', slot('a'))).versions).toMatchObject([
+			{ id: 'old', ciphertext: 'b2xk' }
+		]);
 		const second = await store.sync(
 			'owner',
 			first.cursor,
 			[{ id: 'new', slot: slot('a'), ciphertext: 'bmV3', expectedId: 'old' }],
 			[]
 		);
-		const history = (await store.listHistory('owner', slot('a'))).entries;
-		expect(history).toHaveLength(2);
-		const entry = history[1];
-		expect(entry).toMatchObject({ historyId: expect.any(Number), savedAt: expect.any(Number) });
-		expect(await store.getHistory('owner', entry.historyId)).toEqual({
-			id: 'old',
-			slot: slot('a'),
-			ciphertext: 'b2xk'
-		});
-		expect(await store.getHistory('other', entry.historyId)).toBeNull();
-		expect(await store.getHistory('owner', history[0].historyId)).toMatchObject({ id: 'new' });
-		expect((await store.listHistory('owner', slot('b'))).entries).toHaveLength(0);
-		expect(await store.getEnvelopeAt('owner', slot('a'), entry.savedAt)).toEqual({
+		const { versions } = await store.listHistory('owner', slot('a'));
+		expect(versions).toEqual([
+			{ historyId: expect.any(Number), savedAt: expect.any(Number), id: 'new', ciphertext: 'bmV3' },
+			{ historyId: expect.any(Number), savedAt: expect.any(Number), id: 'old', ciphertext: 'b2xk' }
+		]);
+		expect((await store.listHistory('other', slot('a'))).versions).toEqual([]);
+		expect((await store.listHistory('owner', slot('b'))).versions).toEqual([]);
+		expect(await store.getEnvelopeAt('owner', slot('a'), versions[1].savedAt)).toEqual({
 			id: 'old',
 			slot: slot('a'),
 			ciphertext: 'b2xk'
 		});
 		await store.sync('owner', second.cursor, [], [{ id: 'new', slot: slot('a') }]);
-		expect((await store.listHistory('owner', slot('a'))).entries).toHaveLength(2);
+		expect((await store.listHistory('owner', slot('a'))).versions).toHaveLength(2);
 		expect(await store.getEnvelopeAt('owner', slot('a'), Date.now() + 1)).toBeNull();
 	});
 
-	it('drops oldest history when its server budget is exhausted', async () => {
-		const { store } = createStore({ maxAccountBytes: 600 });
+	it('keeps a rolling window of each record’s newest versions, not a shared account cap', async () => {
+		const { store } = createStore({ historyVersions: 3 });
 		await store.createAccount('owner', 'credential');
-		const first = await store.sync(
-			'owner',
-			0,
-			[{ id: 'one', slot: slot('a'), ciphertext: 'YQ' }],
-			[]
-		);
-		const second = await store.sync(
-			'owner',
-			first.cursor,
-			[{ id: 'two', slot: slot('a'), ciphertext: 'Yg', expectedId: 'one' }],
-			[]
-		);
-		await store.sync(
-			'owner',
-			second.cursor,
-			[{ id: 'three', slot: slot('a'), ciphertext: 'Yw', expectedId: 'two' }],
-			[]
-		);
-		const history = (await store.listHistory('owner', slot('a'))).entries;
-		expect(history).toHaveLength(1);
-		expect(await store.getHistory('owner', history[0].historyId)).toMatchObject({ id: 'three' });
+		let cursor = 0;
+		let previous: string | null = null;
+		for (const id of ['one', 'two', 'three', 'four', 'five']) {
+			cursor = (
+				await store.sync(
+					'owner',
+					cursor,
+					[{ id, slot: slot('a'), ciphertext: 'YQ', expectedId: previous }],
+					[]
+				)
+			).cursor;
+			previous = id;
+		}
+		cursor = (
+			await store.sync('owner', cursor, [{ id: 'other', slot: slot('b'), ciphertext: 'Yg' }], [])
+		).cursor;
+		expect((await store.listHistory('owner', slot('a'))).versions.map(({ id }) => id)).toEqual([
+			'five',
+			'four',
+			'three'
+		]);
+		// Another record's saves never evict this one's versions.
+		expect((await store.listHistory('owner', slot('b'))).versions.map(({ id }) => id)).toEqual([
+			'other'
+		]);
 	});
 
 	it('records a forced reupload once and keeps the first sync version', async () => {
@@ -114,15 +113,49 @@ describe('SQLite sync store', () => {
 			[{ id: 'forced', slot: slot('a'), ciphertext: 'YQ' }],
 			[]
 		);
-		const history = (await store.listHistory('owner', slot('a'))).entries;
-		expect(history).toHaveLength(2);
-		expect(
-			await Promise.all(history.map((entry) => store.getHistory('owner', entry.historyId)))
-		).toEqual([
-			{ id: 'forced', slot: slot('a'), ciphertext: 'YQ' },
-			{ id: 'initial', slot: slot('a'), ciphertext: 'YQ' }
+		expect((await store.listHistory('owner', slot('a'))).versions.map(({ id }) => id)).toEqual([
+			'forced',
+			'initial'
 		]);
 	});
+
+	it('drops a deleted record’s history with its deletion grace, unless it came back', async () => {
+		const { store } = createStore();
+		await store.createAccount('owner', 'credential');
+		let cursor = (
+			await store.sync(
+				'owner',
+				0,
+				[
+					{ id: 'gone', slot: slot('a'), ciphertext: 'YQ' },
+					{ id: 'back', slot: slot('b'), ciphertext: 'Yg' }
+				],
+				[]
+			)
+		).cursor;
+		cursor = (
+			await store.sync(
+				'owner',
+				cursor,
+				[],
+				[
+					{ id: 'gone', slot: slot('a') },
+					{ id: 'back', slot: slot('b') }
+				]
+			)
+		).cursor;
+		await store.sync('owner', cursor, [{ id: 'again', slot: slot('b'), ciphertext: 'Yw' }], []);
+
+		await store.purgeExpiredDeletedEnvelopes(Date.now(), 1_000_000);
+		expect((await store.listHistory('owner', slot('a'))).versions).toHaveLength(1);
+		await store.purgeExpiredDeletedEnvelopes(Date.now() + 1, 0);
+		expect((await store.listHistory('owner', slot('a'))).versions).toEqual([]);
+		expect((await store.listHistory('owner', slot('b'))).versions.map(({ id }) => id)).toEqual([
+			'again',
+			'back'
+		]);
+	});
+
 	it('creates accounts without overwriting existing credentials', async () => {
 		const { store } = createStore();
 		expect(await store.createAccount('account', 'first')).toBe(true);

@@ -1,10 +1,12 @@
 import type { D1Database, DurableObjectState, R2Bucket } from '@cloudflare/workers-types';
 import { batch, execute, type SqlStatement } from '../src/lib/server/cloudflare/d1';
-import { HISTORY_MAX_ENTRIES, HISTORY_TTL_MS } from '../src/lib/syncHistory';
+import { parseHistoryVersions } from '../src/lib/server/operatorConfig';
+import { deleteHistoryRows } from '../src/lib/server/cloudflare/history';
 
 type Env = {
 	SCRAPSCACHE_DB: D1Database;
 	SCRAPSCACHE_ENVELOPES: R2Bucket;
+	SCRAPSCACHE_HISTORY_VERSIONS?: string;
 };
 
 type Upload = { id: string; slot: string; ciphertext: string; expectedId?: string | null };
@@ -445,7 +447,10 @@ export class AccountCoordinator {
 		await batch(db, statements);
 
 		const mutated = acceptedUploads.length > 0 || deletedAny;
-		if (mutated) await this.pruneHistory(input.accountId, maxBytes, now);
+		if (mutated)
+			await this.pruneHistory(input.accountId, [
+				...new Set([...acceptedUploads, ...input.deletions].map(({ slot }) => slot))
+			]);
 		if (mutated) {
 			for (const listener of this.listeners) {
 				// The writer already applied this change locally; waking it would
@@ -468,44 +473,20 @@ export class AccountCoordinator {
 		});
 	}
 
-	private async pruneHistory(accountId: string, maxBytes: number, now: number): Promise<void> {
-		const rows = (
+	/** Keep each touched record's newest versions, the live one included. */
+	private async pruneHistory(accountId: string, slots: string[]): Promise<void> {
+		if (slots.length === 0) return;
+		const expired = (
 			await execute(this.env.SCRAPSCACHE_DB, {
-				sql: `SELECT history_id AS historyId, r2_key AS r2Key,
-				ciphertext_bytes AS bytes, saved_at AS savedAt
-				FROM envelope_history WHERE account_id = ? ORDER BY history_id DESC`,
-				args: [accountId]
+				sql: `SELECT historyId, r2Key FROM (
+					SELECT history_id AS historyId, r2_key AS r2Key,
+						ROW_NUMBER() OVER (PARTITION BY slot ORDER BY history_id DESC) AS position
+					FROM envelope_history
+					WHERE account_id = ? AND slot IN (${slots.map(() => '?').join(', ')})
+				) WHERE position > ?`,
+				args: [accountId, ...slots, parseHistoryVersions(this.env.SCRAPSCACHE_HISTORY_VERSIONS)]
 			})
-		).rows as Array<{ historyId: number; r2Key: string; bytes: number; savedAt: number }>;
-		let retainedBytes = 0;
-		const expired = rows.filter((row, index) => {
-			retainedBytes += Number(row.bytes) + STORAGE_OVERHEAD_BYTES;
-			const remove =
-				index >= HISTORY_MAX_ENTRIES ||
-				Number(row.savedAt) < now - HISTORY_TTL_MS ||
-				retainedBytes > maxBytes;
-			return remove;
-		});
-		// Objects go first, rows second: a run cut short leaves a row whose object is already
-		// gone, which the next prune removes, rather than an object nothing points at any more.
-		for (const row of expired) {
-			const reference = (
-				await execute(this.env.SCRAPSCACHE_DB, {
-					sql: `SELECT 1 FROM envelopes WHERE r2_key = ?
-					UNION SELECT 1 FROM deleted_envelopes WHERE r2_key = ?
-					UNION SELECT 1 FROM envelope_history WHERE r2_key = ? AND history_id != ? LIMIT 1`,
-					args: [row.r2Key, row.r2Key, row.r2Key, row.historyId]
-				})
-			).rows[0];
-			if (!reference) await this.env.SCRAPSCACHE_ENVELOPES.delete(row.r2Key);
-		}
-		for (let index = 0; index < expired.length; index += 100)
-			await batch(
-				this.env.SCRAPSCACHE_DB,
-				expired.slice(index, index + 100).map((row) => ({
-					sql: 'DELETE FROM envelope_history WHERE account_id = ? AND history_id = ?',
-					args: [accountId, row.historyId]
-				}))
-			);
+		).rows as Array<{ historyId: number; r2Key: string }>;
+		await deleteHistoryRows(this.env, expired);
 	}
 }

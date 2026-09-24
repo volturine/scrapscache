@@ -6,7 +6,7 @@ import { applyMigrations, testD1, testR2 } from './testBindings';
 const bindings = vi.hoisted(() => ({ value: undefined as unknown }));
 vi.mock('./env', () => ({ cloudflareBindings: () => bindings.value }));
 
-import { PENDING_UPLOAD_GRACE_MS, SyncStore } from './syncStore';
+import { DELETED_SLOT_GRACE_MS, PENDING_UPLOAD_GRACE_MS, SyncStore } from './syncStore';
 
 const NOW = 1_800_000_000_000;
 const ACCOUNT = 'account-abcdefghij';
@@ -129,14 +129,22 @@ describe('reclaiming storage nothing points at', () => {
 	});
 });
 
-describe('expiring encrypted note history', () => {
-	const DAY = 86_400_000;
+describe('history of records deleted for good', () => {
+	const DELETED_AT = NOW - DELETED_SLOT_GRACE_MS - 1;
 
-	async function addHistory(id: string, slot: string, key: string, savedAt: number): Promise<void> {
+	async function addHistory(id: string, slot: string, key: string): Promise<void> {
 		objects.set(key, 'ciphertext');
 		await client.execute({
 			sql: 'INSERT INTO envelope_history(account_id,slot,id,r2_key,ciphertext_bytes,saved_at) VALUES (?,?,?,?,?,?)',
-			args: [ACCOUNT, slot, id, key, 10, savedAt]
+			args: [ACCOUNT, slot, id, key, 10, 1]
+		});
+	}
+
+	async function addDeleted(slot: string, id: string, key: string, deletedAt: number) {
+		objects.set(key, 'ciphertext');
+		await client.execute({
+			sql: 'INSERT INTO deleted_envelopes(account_id,slot,id,r2_key,ciphertext_bytes,deleted_at) VALUES (?,?,?,?,?,?)',
+			args: [ACCOUNT, slot, id, key, 10, deletedAt]
 		});
 	}
 
@@ -146,37 +154,53 @@ describe('expiring encrypted note history', () => {
 		);
 	}
 
-	it('deletes expired versions and their objects, keeping what the live note still uses', async () => {
-		await addHistory('old', 'a'.repeat(64), 'v1/prefix/old', NOW - 31 * DAY);
-		await addEnvelope('live', 'b'.repeat(64), 'v1/prefix/live');
-		await client.execute({
-			sql: 'INSERT INTO envelope_history(account_id,slot,id,r2_key,ciphertext_bytes,saved_at) VALUES (?,?,?,?,?,?)',
-			args: [ACCOUNT, 'b'.repeat(64), 'live', 'v1/prefix/live', 10, NOW - 31 * DAY]
-		});
-		await addHistory('recent', 'c'.repeat(64), 'v1/prefix/recent', NOW - DAY);
+	it('removes a deleted record’s versions and objects once its grace ends', async () => {
+		const gone = 'a'.repeat(64);
+		await addHistory('gone-1', gone, 'v1/prefix/gone-1');
+		await addHistory('gone-2', gone, 'v1/prefix/gone-2');
+		await addDeleted(gone, 'gone-2', 'v1/prefix/gone-2', DELETED_AT);
+		// Deleted, but still inside its grace.
+		const recent = 'b'.repeat(64);
+		await addHistory('recent', recent, 'v1/prefix/recent');
+		await addDeleted(recent, 'recent', 'v1/prefix/recent', NOW);
+		// Deleted, then written again: its history belongs to the live record now.
+		const back = 'c'.repeat(64);
+		await addHistory('back-old', back, 'v1/prefix/back-old');
+		await addDeleted(back, 'back-old', 'v1/prefix/back-old', DELETED_AT);
+		await addEnvelope('back-new', back, 'v1/prefix/back-new');
 
-		expect(await store.purgeExpiredHistory(NOW)).toBe(2);
-		expect(await historyIds()).toEqual(['recent']);
-		expect(objects.has('v1/prefix/old')).toBe(false);
-		expect(objects.has('v1/prefix/live')).toBe(true);
-		expect(objects.has('v1/prefix/recent')).toBe(true);
+		await store.purgeExpiredDeletedEnvelopes(NOW);
+
+		expect(await historyIds()).toEqual(['back-old', 'recent']);
+		expect([...objects.keys()].sort()).toEqual([
+			'v1/prefix/back-new',
+			'v1/prefix/back-old',
+			'v1/prefix/recent'
+		]);
 	});
 
 	it('never leaves an object that no row points at when a sweep is cut short', async () => {
-		await addHistory('old', 'a'.repeat(64), 'v1/prefix/old', NOW - 31 * DAY);
+		const gone = 'a'.repeat(64);
+		await addHistory('gone-1', gone, 'v1/prefix/gone-1');
+		await addDeleted(gone, 'gone-2', 'v1/prefix/gone-2', DELETED_AT);
 		const bucket = (
-			bindings.value as { SCRAPSCACHE_ENVELOPES: { delete(key: string): Promise<void> } }
+			bindings.value as {
+				SCRAPSCACHE_ENVELOPES: { delete(keys: string | string[]): Promise<void> };
+			}
 		).SCRAPSCACHE_ENVELOPES;
 		// The sweep dies mid-way, as a Worker that runs out of subrequests would.
 		const spy = vi.spyOn(bucket, 'delete').mockRejectedValueOnce(new Error('subrequest limit'));
-		await expect(store.purgeExpiredHistory(NOW)).rejects.toThrow('subrequest limit');
+		await expect(store.purgeExpiredDeletedEnvelopes(NOW)).rejects.toThrow('subrequest limit');
 		spy.mockRestore();
-		const keys = (await client.execute('SELECT r2_key AS key FROM envelope_history')).rows.map(
-			(row) => String(row.key)
+		const named = new Set(
+			[
+				...(await client.execute('SELECT r2_key AS key FROM envelope_history')).rows,
+				...(await client.execute('SELECT r2_key AS key FROM deleted_envelopes')).rows
+			].map((row) => String(row.key))
 		);
-		for (const key of objects.keys()) expect(keys).toContain(key);
+		for (const key of objects.keys()) expect(named.has(key)).toBe(true);
 
-		expect(await store.purgeExpiredHistory(NOW)).toBe(1);
+		await store.purgeExpiredDeletedEnvelopes(NOW);
 		expect(await historyIds()).toEqual([]);
 		expect(objects.size).toBe(0);
 	});

@@ -1,17 +1,14 @@
 import {
 	ACTIVITY_WINDOWS_DAYS,
 	DEFAULT_SYNC_PER_MINUTE,
+	parseHistoryVersions,
 	parseMaxAccountBytes
 } from '$lib/server/operatorConfig';
 import { batch, execute, type SqlStatement } from './d1';
 import { cloudflareBindings } from './env';
 import { MAX_CLIENT_SYNC_MUTATIONS_PER_REQUEST } from '$lib/syncLimits';
-import {
-	HISTORY_PAGE_SIZE,
-	HISTORY_TTL_MS,
-	type HistoryEnvelope,
-	type HistoryPage
-} from '$lib/syncHistory';
+import type { HistoryEnvelope, HistoryList } from '$lib/syncHistory';
+import { deleteHistoryRows } from './history';
 
 export type EncryptedEnvelope = { seq: number; id: string; ciphertext: string; slot: string };
 export type OpaqueUpload = Omit<EncryptedEnvelope, 'seq'> & { expectedId?: string | null };
@@ -82,46 +79,39 @@ export class SyncStore {
 	private readonly maxAccountBytes = parseMaxAccountBytes(
 		this.bindings.SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES
 	);
+	private readonly historyVersions = parseHistoryVersions(
+		this.bindings.SCRAPSCACHE_HISTORY_VERSIONS
+	);
 	private get db() {
 		return this.bindings.SCRAPSCACHE_DB;
 	}
 
-	async listHistory(accountId: string, slot: string, before?: number): Promise<HistoryPage> {
+	/** A record's retained encrypted versions, newest first: one D1 query and an R2 read each. */
+	async listHistory(accountId: string, slot: string): Promise<HistoryList> {
 		const rows = (
 			await execute(this.db, {
-				sql: `SELECT history_id AS historyId, saved_at AS savedAt FROM envelope_history
-				WHERE account_id = ? AND saved_at >= ? AND history_id < ? AND slot = ?
+				sql: `SELECT history_id AS historyId, saved_at AS savedAt, id, r2_key AS r2Key
+				FROM envelope_history WHERE account_id = ? AND slot = ?
 				ORDER BY history_id DESC LIMIT ?`,
-				args: [
-					accountId,
-					Date.now() - HISTORY_TTL_MS,
-					before ?? Number.MAX_SAFE_INTEGER,
-					slot,
-					HISTORY_PAGE_SIZE + 1
-				]
+				args: [accountId, slot, this.historyVersions]
 			})
-		).rows as Array<{ historyId: number; savedAt: number }>;
-		const entries = rows.slice(0, HISTORY_PAGE_SIZE);
-		return {
-			entries,
-			nextBefore: rows.length > HISTORY_PAGE_SIZE ? entries.at(-1)!.historyId : null
-		};
+		).rows as Array<{ historyId: number; savedAt: number; id: string; r2Key: string }>;
+		const versions = await Promise.all(
+			rows.map(async (row) => {
+				const object = await this.bindings.SCRAPSCACHE_ENVELOPES.get(row.r2Key);
+				if (!object) throw new Error('Encrypted history object is missing');
+				return {
+					historyId: Number(row.historyId),
+					savedAt: Number(row.savedAt),
+					id: row.id,
+					ciphertext: await object.text()
+				};
+			})
+		);
+		return { versions };
 	}
 
-	async getHistory(accountId: string, historyId: number): Promise<HistoryEnvelope | null> {
-		const row = (
-			await execute(this.db, {
-				sql: `SELECT id, slot, r2_key AS r2Key FROM envelope_history
-				WHERE account_id = ? AND history_id = ? AND saved_at >= ?`,
-				args: [accountId, historyId, Date.now() - HISTORY_TTL_MS]
-			})
-		).rows[0] as { id: string; slot: string; r2Key: string } | undefined;
-		if (!row) return null;
-		const object = await this.bindings.SCRAPSCACHE_ENVELOPES.get(row.r2Key);
-		if (!object) throw new Error('Encrypted history object is missing');
-		return { id: row.id, slot: row.slot, ciphertext: await object.text() };
-	}
-
+	/** The first version of a record saved at or after `at`, else the live one. */
 	async getEnvelopeAt(
 		accountId: string,
 		slot: string,
@@ -130,9 +120,9 @@ export class SyncStore {
 		const historical = (
 			await execute(this.db, {
 				sql: `SELECT id, slot, r2_key AS r2Key FROM envelope_history
-				WHERE account_id = ? AND slot = ? AND saved_at >= ? AND saved_at >= ?
+				WHERE account_id = ? AND slot = ? AND saved_at >= ?
 				ORDER BY saved_at ASC, history_id ASC LIMIT 1`,
-				args: [accountId, slot, at, Date.now() - HISTORY_TTL_MS]
+				args: [accountId, slot, at]
 			})
 		).rows[0] as { id: string; slot: string; r2Key: string } | undefined;
 		const row =
@@ -147,37 +137,6 @@ export class SyncStore {
 		const object = await this.bindings.SCRAPSCACHE_ENVELOPES.get(row.r2Key);
 		if (!object) throw new Error('Encrypted envelope object is missing');
 		return { id: row.id, slot: row.slot, ciphertext: await object.text() };
-	}
-
-	async purgeExpiredHistory(now = Date.now()): Promise<number> {
-		const rows = (
-			await execute(this.db, {
-				sql: 'SELECT history_id AS historyId, r2_key AS r2Key FROM envelope_history WHERE saved_at < ? ORDER BY history_id LIMIT 500',
-				args: [now - HISTORY_TTL_MS]
-			})
-		).rows as Array<{ historyId: number; r2Key: string }>;
-		// Objects go first, rows second: a sweep cut short leaves a row whose object is already
-		// gone, which the next sweep removes, rather than an object nothing points at any more.
-		for (const row of rows) {
-			const reference = (
-				await execute(this.db, {
-					sql: `SELECT 1 FROM envelopes WHERE r2_key = ?
-					UNION SELECT 1 FROM deleted_envelopes WHERE r2_key = ?
-					UNION SELECT 1 FROM envelope_history WHERE r2_key = ? AND history_id != ? LIMIT 1`,
-					args: [row.r2Key, row.r2Key, row.r2Key, row.historyId]
-				})
-			).rows[0];
-			if (!reference) await this.bindings.SCRAPSCACHE_ENVELOPES.delete(row.r2Key);
-		}
-		for (let index = 0; index < rows.length; index += 100)
-			await batch(
-				this.db,
-				rows.slice(index, index + 100).map((row) => ({
-					sql: 'DELETE FROM envelope_history WHERE history_id = ? AND saved_at < ?',
-					args: [row.historyId, now - HISTORY_TTL_MS]
-				}))
-			);
-		return rows.length;
 	}
 
 	async getAuthCredential(accountId: string): Promise<string | null> {
@@ -500,13 +459,22 @@ export class SyncStore {
 				args: [now - graceMs]
 			})
 		).rows;
-		await batch(
-			this.db,
-			rows.map((r) => ({
-				sql: 'DELETE FROM deleted_envelopes WHERE account_id=? AND slot=?',
-				args: [String(r.accountId), String(r.slot)]
-			}))
-		);
+		// A record deleted for good takes its history with it once the grace ends. History goes
+		// first, then objects, then rows, so a sweep cut short resumes rather than orphaning data.
+		const history = (
+			await execute(this.db, {
+				sql: `SELECT history.history_id AS historyId, history.r2_key AS r2Key
+				FROM envelope_history AS history
+				JOIN deleted_envelopes AS deleted
+					ON deleted.account_id = history.account_id AND deleted.slot = history.slot
+				WHERE deleted.deleted_at <= ? AND NOT EXISTS (
+					SELECT 1 FROM envelopes AS live
+					WHERE live.account_id = history.account_id AND live.slot = history.slot
+				)`,
+				args: [now - graceMs]
+			})
+		).rows as Array<{ historyId: number; r2Key: string }>;
+		await deleteHistoryRows(this.bindings, history);
 		for (const row of rows) {
 			const held =
 				(
@@ -517,6 +485,13 @@ export class SyncStore {
 				).rows.length > 0;
 			if (!held) await this.bindings.SCRAPSCACHE_ENVELOPES.delete(String(row.r2Key));
 		}
+		await batch(
+			this.db,
+			rows.map((r) => ({
+				sql: 'DELETE FROM deleted_envelopes WHERE account_id=? AND slot=?',
+				args: [String(r.accountId), String(r.slot)]
+			}))
+		);
 		return rows.length + (await this.purgeAbandonedUploads(now));
 	}
 

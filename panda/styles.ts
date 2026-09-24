@@ -2304,18 +2304,6 @@ export const historyStyles = {
 	added: css({ color: 'scrapscache.success' }),
 	removed: css({ color: 'scrapscache.danger' }),
 	rowSummary: css({ ...truncateText, textStyle: 'caption' }),
-	more: css({
-		w: 'full',
-		h: '2.75rem',
-		px: 'sm',
-		textAlign: 'left',
-		textStyle: 'caption',
-		...interactive,
-		rounded: 'row',
-		_hoverable: { bg: 'scrapscache.interactiveHover', color: 'scrapscache.text' },
-		_focusVisible: historyFocusRing,
-		_disabled: { cursor: 'default' }
-	}),
 	message: css({ px: 'sm', py: 'sm', textStyle: 'caption' }),
 	bar: css({
 		position: 'absolute',

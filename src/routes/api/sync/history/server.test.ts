@@ -3,14 +3,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
 	authenticate: vi.fn((): string | null => 'owner'),
 	listHistory: vi.fn(),
-	getHistory: vi.fn(),
 	getEnvelopeAt: vi.fn()
 }));
 
 vi.mock('$lib/server/syncStore', () => ({
 	getSyncStore: () => ({
 		listHistory: mocks.listHistory,
-		getHistory: mocks.getHistory,
 		getEnvelopeAt: mocks.getEnvelopeAt
 	})
 }));
@@ -41,44 +39,46 @@ async function get(query = ''): Promise<Response> {
 }
 
 describe('sync history route', () => {
+	const slot = 'a'.repeat(64);
+
 	beforeEach(() => {
 		vi.clearAllMocks();
 		mocks.authenticate.mockReturnValue('owner');
-		mocks.listHistory.mockResolvedValue({ entries: [], nextBefore: null });
-		mocks.getHistory.mockResolvedValue({
-			id: 'opaque',
-			slot: 'a'.repeat(64),
-			ciphertext: 'secret'
+		mocks.listHistory.mockResolvedValue({
+			versions: [{ historyId: 1, savedAt: 1, id: 'opaque', ciphertext: 'secret' }]
 		});
-		mocks.getEnvelopeAt.mockResolvedValue(null);
+		mocks.getEnvelopeAt.mockResolvedValue({ id: 'opaque', slot, ciphertext: 'secret' });
 	});
 
 	it('requires an authenticated sync session before reading history', async () => {
 		mocks.authenticate.mockReturnValue(null);
-		expect((await get()).status).toBe(401);
+		expect((await get(`?slot=${slot}`)).status).toBe(401);
 		expect(mocks.listHistory).not.toHaveBeenCalled();
 	});
 
-	it('scopes list and detail reads to the authenticated account', async () => {
-		const page = await get(`?noteSlot=${'a'.repeat(64)}&before=12`);
-		expect(page.status).toBe(200);
-		expect(page.headers.get('cache-control')).toBe('no-store');
-		expect(mocks.listHistory).toHaveBeenCalledWith('owner', 'a'.repeat(64), 12);
-		expect((await get('?id=9')).status).toBe(200);
-		expect(mocks.getHistory).toHaveBeenCalledWith('owner', 9);
+	it('lists a record’s encrypted versions in one private response', async () => {
+		const response = await get(`?slot=${slot}`);
+		expect(response.status).toBe(200);
+		expect(response.headers.get('cache-control')).toBe('no-store');
+		expect(await response.json()).toEqual({
+			versions: [{ historyId: 1, savedAt: 1, id: 'opaque', ciphertext: 'secret' }]
+		});
+		expect(mocks.listHistory).toHaveBeenCalledWith('owner', slot);
 	});
 
-	it('rejects malformed ids and slots before querying storage', async () => {
-		expect((await get('?id=-1')).status).toBe(400);
-		expect((await get('?slot=plain&at=1')).status).toBe(400);
-		expect((await get('?before=12')).status).toBe(400);
-		expect(mocks.getHistory).not.toHaveBeenCalled();
+	it('looks up the version saved at a time for the authenticated account', async () => {
+		expect((await get(`?slot=${slot}&at=12`)).status).toBe(200);
+		expect(mocks.getEnvelopeAt).toHaveBeenCalledWith('owner', slot, 12);
+		mocks.getEnvelopeAt.mockResolvedValue(null);
+		expect((await get(`?slot=${slot}&at=12`)).status).toBe(404);
+	});
+
+	it('rejects missing or malformed slots and times before querying storage', async () => {
+		expect((await get()).status).toBe(400);
+		expect((await get('?slot=plain')).status).toBe(400);
+		expect((await get(`?slot=${slot}&at=-1`)).status).toBe(400);
+		expect((await get(`?slot=${slot}&at=1.5`)).status).toBe(400);
+		expect(mocks.listHistory).not.toHaveBeenCalled();
 		expect(mocks.getEnvelopeAt).not.toHaveBeenCalled();
-		expect((await get('?noteSlot=plain')).status).toBe(400);
-	});
-
-	it('filters note version lists by the authenticated opaque slot', async () => {
-		await get(`?noteSlot=${'a'.repeat(64)}`);
-		expect(mocks.listHistory).toHaveBeenCalledWith('owner', 'a'.repeat(64), undefined);
 	});
 });

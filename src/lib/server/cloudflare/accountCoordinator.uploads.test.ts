@@ -11,6 +11,7 @@ let client: Client;
 let objects: Map<string, string>;
 let writes: () => number;
 let coordinator: AccountCoordinator;
+let bindings: { SCRAPSCACHE_DB: D1Database; SCRAPSCACHE_ENVELOPES: R2Bucket };
 
 const state = {
 	blockConcurrencyWhile: <T>(body: () => Promise<T>) => body()
@@ -27,10 +28,11 @@ beforeEach(async () => {
 		sql: 'INSERT INTO accounts(account_id,credential_hash,updated_at,last_seen_at) VALUES (?,?,?,?)',
 		args: [ACCOUNT, 'public-key', 0, 0]
 	});
-	coordinator = new AccountCoordinator(state, {
+	bindings = {
 		SCRAPSCACHE_DB: d1.db as D1Database,
 		SCRAPSCACHE_ENVELOPES: r2.bucket as R2Bucket
-	});
+	};
+	coordinator = new AccountCoordinator(state, bindings);
 });
 
 function sync(
@@ -81,24 +83,30 @@ describe('uploads that have to be retried', () => {
 		expect((await client.execute('SELECT history_id FROM envelope_history')).rows).toHaveLength(0);
 	});
 
-	it('prunes the oldest history object under the account history budget', async () => {
-		const first = await sync([{ id: 'one', slot: SLOT, ciphertext: 'aa' }], 600);
-		const firstCursor = ((await first.json()) as { cursor: number }).cursor;
-		const second = await sync(
-			[{ id: 'two', slot: SLOT, ciphertext: 'bb', expectedId: 'one' }],
-			600,
-			firstCursor
-		);
-		const secondCursor = ((await second.json()) as { cursor: number }).cursor;
-		await sync(
-			[{ id: 'three', slot: SLOT, ciphertext: 'cc', expectedId: 'two' }],
-			600,
-			secondCursor
-		);
-		const history = await client.execute('SELECT id FROM envelope_history');
-		expect(history.rows.map((row) => row.id)).toEqual(['three']);
-		expect([...objects.values()].sort()).toEqual(['cc']);
+	it('keeps each record’s newest versions and deletes the objects that roll off', async () => {
+		coordinator = new AccountCoordinator(state, { ...bindings, SCRAPSCACHE_HISTORY_VERSIONS: '2' });
+		let cursor = 0;
+		let previous: string | undefined;
+		for (const [id, ciphertext] of [
+			['one', 'aa'],
+			['two', 'bb'],
+			['three', 'cc']
+		]) {
+			const response = await sync(
+				[{ id, slot: SLOT, ciphertext, expectedId: previous }],
+				600,
+				cursor
+			);
+			cursor = ((await response.json()) as { cursor: number }).cursor;
+			previous = id;
+		}
+		await sync([{ id: 'other', slot: 'b'.repeat(64), ciphertext: 'dd' }], 100_000_000, cursor);
+		const history = await client.execute('SELECT id FROM envelope_history ORDER BY history_id');
+		// No account-wide byte budget: a 600-byte quota does not shrink history below the window.
+		expect(history.rows.map((row) => row.id)).toEqual(['two', 'three', 'other']);
+		expect([...objects.values()].sort()).toEqual(['bb', 'cc', 'dd']);
 	});
+
 	it('writes a retry under a fresh key and deletes the object the earlier attempt reserved', async () => {
 		const reserved = 'v1/prefix/reserved-key';
 		objects.set(reserved, 'first attempt');

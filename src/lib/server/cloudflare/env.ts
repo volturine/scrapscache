@@ -6,6 +6,7 @@ export type CloudflareBindings = {
 	SCRAPSCACHE_ENVELOPES: R2Bucket;
 	ACCOUNT_COORDINATOR: DurableObjectNamespace;
 	SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES?: string;
+	SCRAPSCACHE_HISTORY_VERSIONS?: string;
 };
 
 export function cloudflareBindings(): CloudflareBindings {

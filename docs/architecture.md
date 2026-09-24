@@ -149,12 +149,15 @@ The relay can replace or delete by slot without learning whether the payload is
 a note, image, label, or board. The storage quota is ciphertext plus estimated
 per-record database overhead (default 100 MB).
 
-When a synced note changes or is deleted, the relay keeps its previous encrypted
-envelope for up to 30 days, capped at 500 old envelopes or the account's byte
-quota. The note editor lists those versions, previews a selected version, and
-restores it to that note. A device decrypts the version and any matching
-attachments in memory; history is never written into IndexedDB. The daily
-retention sweep and account deletion remove expired history and its ciphertext.
+Each synced record keeps a rolling window of its newest encrypted versions, the
+live one included: 14 by default, set with `SCRAPSCACHE_HISTORY_VERSIONS` (1–40).
+Saving a new version drops the oldest; one record's saves never evict another's.
+The note editor loads a note's versions in one request, previews a selected
+version, and restores it to that note. A device decrypts the version and any
+matching attachments in memory; history is never written into IndexedDB. When a
+record is deleted for good, its history goes with it once the deleted-record
+grace (14 days) ends, and account deletion removes all history and its
+ciphertext.
 
 ## Deployment shapes
 

@@ -48,8 +48,6 @@
 	const MAX_DIFF_LINES = 4;
 
 	let entries = $state.raw<NoteHistoryEntry[]>([]);
-	let nextBefore = $state<number | null | undefined>(undefined);
-	let loading = $state(false);
 	let openingId = $state<number | null>(null);
 	let error = $state('');
 	let pinned = $state(false);
@@ -88,7 +86,7 @@
 	const ticks = $derived(
 		tickWidths.map((width, row) => ({ width, row })).slice(tickStart, tickStart + MAX_TICKS)
 	);
-	const extraRows = $derived((nextBefore !== null ? 1 : 0) + (error ? 1 : 0));
+	const extraRows = $derived(error ? 1 : 0);
 
 	function currentAccount(): boolean {
 		return syncStore.account?.accountId === account.accountId;
@@ -112,24 +110,17 @@
 		return label === 'just now' ? 'Just now' : label;
 	}
 
-	async function loadMore() {
-		if (loading || nextBefore === null || !currentAccount()) return;
-		loading = true;
-		error = '';
+	async function load() {
 		try {
-			const page = await loadNoteHistory(account, note.id, nextBefore);
-			if (!currentAccount()) return;
-			entries = [...entries, ...page.entries.filter((entry) => entry.note.id === note.id)];
-			nextBefore = page.nextBefore;
+			const loaded = await loadNoteHistory(account, note.id);
+			if (currentAccount()) entries = loaded.filter((entry) => entry.note.id === note.id);
 		} catch (cause) {
 			error = cause instanceof Error ? cause.message : 'Could not load note history.';
-		} finally {
-			loading = false;
 		}
 	}
 
 	onMount(() => {
-		void loadMore();
+		void load();
 	});
 
 	// Touch has no hover, so a tap pins the panel open until the next tap elsewhere.
@@ -215,8 +206,7 @@
 		if (entry.historyId !== previewEntry?.historyId) void openVersion(entry);
 	}
 
-	async function stepOlder() {
-		if (activeRow === rows.length - 1) await loadMore();
+	function stepOlder() {
 		const next = rows[activeRow + 1]?.entry;
 		if (next) void openVersion(next);
 	}
@@ -301,7 +291,7 @@
 						<div class={styles.panelHeader}>
 							<span>History</span>
 							<span class={styles.panelCount}
-								>{versions.length}{nextBefore === null ? '' : '+'}
+								>{versions.length}
 								{versions.length === 1 ? 'version' : 'versions'}</span
 							>
 						</div>
@@ -339,16 +329,6 @@
 									<span class={styles.rowSummary}>{row.change?.summary ?? 'Not synced yet'}</span>
 								</button>
 							{/each}
-							{#if nextBefore !== null}
-								<button
-									type="button"
-									class={styles.more}
-									onclick={() => void loadMore()}
-									disabled={loading}
-								>
-									{loading ? 'Loading…' : 'Load older versions'}
-								</button>
-							{/if}
 							{#if error}
 								<p class={styles.message} role="alert">{error}</p>
 							{/if}
@@ -409,10 +389,8 @@
 					class={iconButton({ variant: 'ghost', size: 'compact' })}
 					aria-label="Older version"
 					title="Older version"
-					onclick={() => void stepOlder()}
-					disabled={restoringPreview ||
-						(activeRow >= rows.length - 1 && nextBefore === null) ||
-						loading}
+					onclick={stepOlder}
+					disabled={restoringPreview || activeRow >= rows.length - 1}
 				>
 					<ChevronLeft size={18} aria-hidden="true" />
 				</button>

@@ -78,10 +78,10 @@ const RELAY_DDL = `
 		saved_at INTEGER NOT NULL,
 		FOREIGN KEY (account_id) REFERENCES accounts(account_id) ON DELETE CASCADE
 	);
-	CREATE INDEX IF NOT EXISTS envelope_history_account_time
-		ON envelope_history(account_id, history_id DESC);
-	CREATE INDEX IF NOT EXISTS envelope_history_saved_at
-		ON envelope_history(saved_at);
+	CREATE INDEX IF NOT EXISTS envelope_history_slot
+		ON envelope_history(account_id, slot, history_id DESC);
+	CREATE INDEX IF NOT EXISTS envelope_history_id
+		ON envelope_history(account_id, id);
 `;
 
 const OPS_DDL = `

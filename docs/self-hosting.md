@@ -149,6 +149,7 @@ client-address settings above so rate limits see real client IPs.
 | `SCRAPSCACHE_OPS_DB_URL`                   |        `http://127.0.0.1:8081` | libSQL URL for operational state (rate limits, auth, pairing, push, VAPID)                                              |
 | `SCRAPSCACHE_TICK_SECRET`                  |                       required | Shared secret protecting the `/api/cron/tick` endpoint                                                                  |
 | `SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES`       |                    `100000000` | Relay storage quota per account (100 MB); same default on Workers                                                       |
+| `SCRAPSCACHE_HISTORY_VERSIONS`             |                           `14` | Encrypted versions kept per synced record for note history (1–40); older ones roll off                                  |
 | `SCRAPSCACHE_SYNC_MAX_CONCURRENT_REQUESTS` |                            `8` | Max sync requests in flight. Counted per process, so it is a real ceiling on Node and only a per-isolate one on Workers |
 | `SCRAPSCACHE_ADMIN_TOKEN`                  |                          unset | Enables and protects metrics, JSON status, and retention; unset disables them                                           |
 | `SCRAPSCACHE_RETENTION_INACTIVE_DAYS`      |                            `0` | Delete accounts with no authenticated activity for this many days; `0` disables                                         |

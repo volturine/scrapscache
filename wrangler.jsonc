@@ -25,6 +25,7 @@
 	"vars": {
 		"SCRAPSCACHE_ORIGIN": "https://scrapscache.com",
 		"SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES": "100000000",
+		"SCRAPSCACHE_HISTORY_VERSIONS": "14",
 		"PUBLIC_TURNSTILE_ORIGIN": "https://verify.scrapscache.com",
 		"TURNSTILE_SITEKEY": "0x4AAAAAAEx1iggiE7ZSHoeB",
 		// Siteverify reports the host the widget ran on, which is the challenge host.
@@ -102,6 +103,7 @@
 			"vars": {
 				"SCRAPSCACHE_ORIGIN": "https://dev.scrapscache.com",
 				"SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES": "100000000",
+				"SCRAPSCACHE_HISTORY_VERSIONS": "14",
 				"PUBLIC_TURNSTILE_ORIGIN": "https://verify-dev.scrapscache.com",
 				"TURNSTILE_SITEKEY": "0x4AAAAAAEx1iggiE7ZSHoeB",
 				"TURNSTILE_HOSTNAMES": "verify-dev.scrapscache.com",

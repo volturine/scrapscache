@@ -91,7 +91,7 @@ beforeEach(() => {
 	// jsdom has no layout, so scrolling a row into view is a no-op here.
 	Element.prototype.scrollIntoView = vi.fn();
 	syncStore.account = account;
-	history.loadNoteHistory.mockResolvedValue({ entries, nextBefore: null });
+	history.loadNoteHistory.mockResolvedValue(entries);
 	history.hydrateHistoryNote.mockImplementation(
 		async (_account, item: NoteHistoryEntry) => item.note
 	);
@@ -105,14 +105,14 @@ afterEach(() => {
 
 describe('TimeTravel', () => {
 	it('stays hidden until the note has been synced', async () => {
-		history.loadNoteHistory.mockResolvedValue({ entries: [], nextBefore: null });
+		history.loadNoteHistory.mockResolvedValue([]);
 		const { container } = renderTimeTravel();
 		await waitFor(() => expect(history.loadNoteHistory).toHaveBeenCalled());
 		expect(container.querySelector('nav')).toBeNull();
 	});
 
 	it('shows the initial sync as the current version', async () => {
-		history.loadNoteHistory.mockResolvedValue({ entries: [entries[0]], nextBefore: null });
+		history.loadNoteHistory.mockResolvedValue([entries[0]]);
 		const { container } = renderTimeTravel();
 		await fireEvent.click(await openRail(container));
 		const rows = [...container.querySelectorAll('[data-history-row]')];

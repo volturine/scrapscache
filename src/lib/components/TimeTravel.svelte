@@ -397,78 +397,70 @@
 
 {#if previewEntry}
 	<div class={styles.bar} role="group" aria-label="Time travel" data-editor-popup>
-		<!-- Both states share one grid cell, so the bar keeps its size while confirming. -->
-		<div
-			class={styles.barState}
-			inert={restoreConfirmOpen}
-			data-hidden={restoreConfirmOpen || undefined}
-		>
-			<button
-				type="button"
-				class={iconButton({ variant: 'ghost', size: 'compact' })}
-				aria-label="Older version"
-				title="Older version"
-				onclick={() => void stepOlder()}
-				disabled={restoringPreview ||
-					(activeRow >= rows.length - 1 && nextBefore === null) ||
-					loading}
+		<!-- Only the left side changes while confirming; Restore and X stay put and confirm or cancel. -->
+		<div class={styles.barStack}>
+			<div
+				class={styles.barState}
+				inert={restoreConfirmOpen}
+				data-hidden={restoreConfirmOpen || undefined}
 			>
-				<ChevronLeft size={18} aria-hidden="true" />
-			</button>
-			{#key previewEntry.historyId}
-				<div class={styles.barLabel} aria-live="polite">
-					<span class={styles.barTime}>{relative(previewEntry.savedAt)}</span>
-					<span class={styles.barDate}>{exact(previewEntry.savedAt)}</span>
-				</div>
-			{/key}
-			<button
-				type="button"
-				class={iconButton({ variant: 'ghost', size: 'compact' })}
-				aria-label={activeRow <= 1 ? 'Back to current note' : 'Newer version'}
-				title={activeRow <= 1 ? 'Back to current note' : 'Newer version'}
-				onclick={stepNewer}
-				disabled={restoringPreview}
+				<button
+					type="button"
+					class={iconButton({ variant: 'ghost', size: 'compact' })}
+					aria-label="Older version"
+					title="Older version"
+					onclick={() => void stepOlder()}
+					disabled={restoringPreview ||
+						(activeRow >= rows.length - 1 && nextBefore === null) ||
+						loading}
+				>
+					<ChevronLeft size={18} aria-hidden="true" />
+				</button>
+				{#key previewEntry.historyId}
+					<div class={styles.barLabel} aria-live="polite">
+						<span class={styles.barTime}>{relative(previewEntry.savedAt)}</span>
+						<span class={styles.barDate}>{exact(previewEntry.savedAt)}</span>
+					</div>
+				{/key}
+				<button
+					type="button"
+					class={iconButton({ variant: 'ghost', size: 'compact' })}
+					aria-label={activeRow <= 1 ? 'Back to current note' : 'Newer version'}
+					title={activeRow <= 1 ? 'Back to current note' : 'Newer version'}
+					onclick={stepNewer}
+					disabled={restoringPreview}
+				>
+					<ChevronRight size={18} aria-hidden="true" />
+				</button>
+			</div>
+			<div
+				class={styles.barState}
+				inert={!restoreConfirmOpen}
+				data-hidden={!restoreConfirmOpen || undefined}
 			>
-				<ChevronRight size={18} aria-hidden="true" />
-			</button>
-			<span class={styles.barDivider} aria-hidden="true"></span>
-			<button
-				type="button"
-				class={[button({ variant: 'primary', size: 'xs' }), styles.barAction]}
-				data-history-restore-action="start"
-				onclick={onStartRestore}
-				disabled={openingId !== null}>Restore</button
-			>
-			<button
-				type="button"
-				class={iconButton({ variant: 'ghost', size: 'compact' })}
-				aria-label="Close time travel"
-				title="Close time travel"
-				onclick={onCancelPreview}
-			>
-				<X size={18} aria-hidden="true" />
-			</button>
+				<span class={styles.barPrompt}>Restore this version?</span>
+			</div>
 		</div>
-		<div
-			class={styles.barState}
-			inert={!restoreConfirmOpen}
-			data-hidden={!restoreConfirmOpen || undefined}
+		<span class={styles.barDivider} aria-hidden="true"></span>
+		<button
+			type="button"
+			class={[button({ variant: 'primary', size: 'xs' }), styles.barAction]}
+			data-history-restore-action={restoreConfirmOpen ? 'confirm' : 'start'}
+			aria-label={restoreConfirmOpen ? 'Confirm restore' : undefined}
+			onclick={restoreConfirmOpen ? onConfirmRestore : onStartRestore}
+			disabled={restoringPreview || openingId !== null}
+			>{restoringPreview ? 'Restoring…' : 'Restore'}</button
 		>
-			<span class={styles.barPrompt}>Restore this version?</span>
-			<button
-				type="button"
-				class={[button({ variant: 'quiet', size: 'xs' }), styles.barAction]}
-				onclick={onCancelRestore}
-				disabled={restoringPreview}>Cancel</button
-			>
-			<button
-				type="button"
-				class={[button({ variant: 'primary', size: 'xs' }), styles.barAction]}
-				data-history-restore-action="confirm"
-				onclick={onConfirmRestore}
-				disabled={restoringPreview}>{restoringPreview ? 'Restoring…' : 'Restore'}</button
-			>
-		</div>
+		<button
+			type="button"
+			class={iconButton({ variant: 'ghost', size: 'compact' })}
+			aria-label={restoreConfirmOpen ? 'Cancel restore' : 'Close time travel'}
+			title={restoreConfirmOpen ? 'Cancel restore' : 'Close time travel'}
+			onclick={restoreConfirmOpen ? onCancelRestore : onCancelPreview}
+			disabled={restoringPreview}
+		>
+			<X size={18} aria-hidden="true" />
+		</button>
 		{#if restoreError}<p class={styles.barError} role="alert">{restoreError}</p>{/if}
 	</div>
 {/if}

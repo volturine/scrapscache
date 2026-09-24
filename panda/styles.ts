@@ -2320,12 +2320,17 @@ export const historyStyles = {
 	bar: css({
 		position: 'absolute',
 		bottom: 'lg',
-		left: '50%',
+		// Centred by auto margins, not a transform: the whole width stays available for sizing,
+		// and the entry animation's transform cannot knock it off centre.
+		insetInline: 0,
+		mx: 'auto',
 		zIndex: 4,
-		display: 'grid',
+		display: 'flex',
+		alignItems: 'center',
+		gap: '2xs',
+		w: 'fit-content',
 		maxW: 'calc(100% - 1rem)',
 		p: '2xs',
-		transform: 'translateX(-50%)',
 		borderWidth: 'hairline',
 		borderColor: 'scrapscache.border',
 		bg: 'scrapscache.surface',
@@ -2334,6 +2339,8 @@ export const historyStyles = {
 		animation: 'cardIn',
 		_motionReduce: { animation: 'none' }
 	}),
+	// Stepper and confirmation prompt share one grid cell so the bar keeps its size.
+	barStack: css({ display: 'grid', flex: '1', minW: 0 }),
 	barState: css({
 		gridArea: '1 / 1',
 		display: 'flex',

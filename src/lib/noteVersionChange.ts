@@ -36,6 +36,16 @@ function firstLine(note: VersionedNote): string {
 	return (line && plain(line)) || note.title.trim() || 'Empty note';
 }
 
+/** The first lines of a version's text, flattened for a short preview. */
+export function noteExcerpt(note: VersionedNote, maxLines = 3): string {
+	const text = lines(note.body)
+		.filter((line) => !blank(line))
+		.slice(0, maxLines)
+		.map(plain)
+		.join(' · ');
+	return text || 'No text';
+}
+
 function metadataChange(version: VersionedNote, previous: VersionedNote): string | null {
 	if (version.trashed !== previous.trashed)
 		return version.trashed ? 'Moved to trash' : 'Restored from trash';

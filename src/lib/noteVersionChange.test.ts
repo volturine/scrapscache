@@ -3,6 +3,7 @@ import type { SyncNote } from '$lib/syncRecords';
 import {
 	describeNoteVersionChange,
 	distinctNoteVersions,
+	noteExcerpt,
 	sameVisibleNote
 } from './noteVersionChange';
 
@@ -145,5 +146,14 @@ describe('sameVisibleNote', () => {
 	it('ignores sync bookkeeping but not blank lines', () => {
 		expect(sameVisibleNote(note({ updatedAt: 9, fieldTimes: { body: 9 } }), note())).toBe(true);
 		expect(sameVisibleNote(note({ body: 'Antifragile\n' }), note())).toBe(false);
+	});
+});
+
+describe('noteExcerpt', () => {
+	it('joins the first lines with text, without list markers', () => {
+		expect(noteExcerpt(note({ body: '- [x] Milk\n\n# Bread\nEggs\nButter' }))).toBe(
+			'Milk · Bread · Eggs'
+		);
+		expect(noteExcerpt(note({ body: '\n  ' }))).toBe('No text');
 	});
 });

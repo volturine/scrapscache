@@ -2122,21 +2122,28 @@ const historySwapState = (enter: string, exit: string) => ({
 });
 
 export const historyStyles = {
-	rail: css({
+	// Spans the editor between header and footer so the rail centres and the card can overflow it.
+	railAnchor: css({
 		position: 'absolute',
-		top: '50%',
+		top: '4.5rem',
+		bottom: '4.5rem',
 		right: '2xs',
 		zIndex: 5,
+		display: 'flex',
+		alignItems: 'center',
+		pointerEvents: 'none'
+	}),
+	rail: css({
+		position: 'relative',
 		display: 'grid',
+		pointerEvents: 'auto',
 		w: '1.5rem',
 		// A wider collapsed rail gives fingers a usable target without crowding mouse users.
 		'@media (pointer: coarse)': { w: '2.25rem' },
 		// --history-ticks / --history-rows are per-instance counts; the sizes stay here.
 		h: 'calc(var(--history-ticks) * 7px + 1.25rem)',
-		maxW: 'calc(100% - 1rem)',
-		maxH: 'calc(100% - 9rem)',
+		maxH: 'full',
 		overflow: 'hidden',
-		transform: 'translateY(-50%)',
 		borderWidth: 'hairline',
 		borderColor: 'transparent',
 		rounded: 'card',
@@ -2144,7 +2151,7 @@ export const historyStyles = {
 		transitionProperty: 'width, height, background-color, border-color, box-shadow, border-radius',
 		...historyMotion,
 		'&[data-expanded]': {
-			w: '17rem',
+			w: 'min(17rem, calc(100vw - 2rem))',
 			h: 'calc(var(--history-rows) * 2.75rem + 2.75rem)',
 			bg: 'scrapscache.surface',
 			borderColor: 'scrapscache.border',
@@ -2171,9 +2178,7 @@ export const historyStyles = {
 		px: '2xs',
 		...interactive,
 		rounded: 'card',
-		transitionProperty: 'background-color',
-		transitionDuration: '120ms',
-		_hoverable: { bg: 'scrapscache.interactiveHover' },
+		// The growing tick under the pointer is the hover feedback, as in T3 Code.
 		_focusVisible: historyFocusRing
 	}),
 	tick: css({
@@ -2185,7 +2190,37 @@ export const historyStyles = {
 		rounded: 'pill',
 		transitionProperty: 'width, opacity, background-color',
 		...historyMotion,
-		'&[data-active]': { w: '1rem !important', bg: 'scrapscache.text', opacity: 1 }
+		'&[data-active]': { w: '1rem !important', bg: 'scrapscache.text', opacity: 1 },
+		'&[data-hovered]': { w: '1.25rem !important', bg: 'scrapscache.text', opacity: 0.85 }
+	}),
+	tickCard: css({
+		position: 'absolute',
+		right: 'calc(100% + 0.5rem)',
+		w: '17rem',
+		maxW: 'calc(100vw - 4rem)',
+		px: 'md',
+		py: 'sm',
+		transform: 'translateY(-50%)',
+		borderWidth: 'hairline',
+		borderColor: 'scrapscache.border',
+		bg: 'scrapscache.surface',
+		rounded: 'card',
+		boxShadow: 'popover',
+		pointerEvents: 'none',
+		animation: 'fadeIn 120ms ease-out',
+		transitionProperty: 'top',
+		transitionDuration: '120ms',
+		transitionTimingFunction: 'cubic-bezier(0.2, 0, 0, 1)',
+		_motionReduce: { animation: 'none', transitionDuration: '0ms' }
+	}),
+	tickCardTitle: css({ ...truncateText, textStyle: 'label', fontWeight: 'heading' }),
+	tickCardText: css({ mt: '2xs', textStyle: 'caption', lineClamp: 3 }),
+	tickCardMeta: css({
+		...rowCenter,
+		gap: 'sm',
+		mt: 'xs',
+		textStyle: 'caption',
+		fontVariantNumeric: 'tabular-nums'
 	}),
 	panelLayer: css({
 		...historySwapState('swapIn', 'fadeOut'),
@@ -2279,7 +2314,7 @@ export const historyStyles = {
 		display: 'flex',
 		alignItems: 'center',
 		gap: '2xs',
-		maxW: 'calc(100% - 2rem)',
+		maxW: 'calc(100% - 1rem)',
 		p: '2xs',
 		transform: 'translateX(-50%)',
 		borderWidth: 'hairline',
@@ -2293,14 +2328,27 @@ export const historyStyles = {
 	barLabel: css({
 		...column,
 		alignItems: 'center',
-		minW: '7.5rem',
+		flexShrink: 1,
+		minW: 0,
 		px: 'xs',
 		animation: 'fadeIn 160ms ease-out',
 		_motionReduce: { animation: 'none' }
 	}),
-	barTime: css({ textStyle: 'label', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }),
-	barDate: css({ textStyle: 'caption', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }),
+	barTime: css({
+		...truncateText,
+		maxW: 'full',
+		textStyle: 'label',
+		fontVariantNumeric: 'tabular-nums'
+	}),
+	barDate: css({
+		...truncateText,
+		maxW: 'full',
+		textStyle: 'caption',
+		fontVariantNumeric: 'tabular-nums'
+	}),
 	barDivider: css({
+		// Narrow screens need the room for the version date.
+		display: { base: 'none', sm: 'block' },
 		flexShrink: 0,
 		alignSelf: 'stretch',
 		w: 'hairline',
@@ -2310,7 +2358,7 @@ export const historyStyles = {
 	}),
 	// Concentric with the pill bar.
 	barAction: css({ rounded: 'pill' }),
-	barPrompt: css({ px: 'xs', textStyle: 'label', whiteSpace: 'nowrap' }),
+	barPrompt: css({ ...truncateText, minW: 0, px: 'sm', textStyle: 'label' }),
 	barError: css({
 		position: 'absolute',
 		bottom: 'calc(100% + 0.5rem)',

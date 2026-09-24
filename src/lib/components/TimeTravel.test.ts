@@ -1,4 +1,5 @@
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
+import { tick } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NoteHistoryEntry } from '$lib/historyClient';
 import { syncStore } from '$lib/stores/sync.svelte';
@@ -98,6 +99,7 @@ beforeEach(() => {
 
 afterEach(() => {
 	vi.clearAllMocks();
+	vi.restoreAllMocks();
 	syncStore.account = null;
 });
 
@@ -191,5 +193,37 @@ describe('TimeTravel', () => {
 
 		expect(onPreviewVersion).toHaveBeenCalledTimes(1);
 		expect(onPreviewVersion).toHaveBeenCalledWith(entries[2].note, entries[2]);
+	});
+
+	it('previews the tick under the mouse and opens it on click, like T3 Code', async () => {
+		// jsdom has no layout: give each tick a 7px row so the pointer can find the nearest.
+		vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (
+			this: Element
+		) {
+			const row = Number((this as HTMLElement).dataset?.tick ?? 0);
+			return new DOMRect(0, row * 7, 10, 2);
+		});
+		const pointer = (target: Element, type: string, clientY: number) => {
+			const event = new MouseEvent(type, { bubbles: true, clientY });
+			Object.defineProperty(event, 'pointerType', { value: 'mouse' });
+			target.dispatchEvent(event);
+		};
+		const { container, onPreviewVersion } = renderTimeTravel();
+		const trigger = await openRail(container);
+
+		pointer(trigger, 'pointermove', 7);
+		await tick();
+		const card = container.querySelector('nav + [aria-hidden="true"]');
+		expect(card?.textContent).toContain('Sapiens');
+		expect(trigger.querySelector('[data-tick="1"]')?.hasAttribute('data-hovered')).toBe(true);
+
+		pointer(trigger, 'pointerdown', 7);
+		await fireEvent.click(trigger);
+		await waitFor(() => expect(onPreviewVersion).toHaveBeenCalledWith(entries[1].note, entries[1]));
+		expect(container.querySelector('nav')?.hasAttribute('data-expanded')).toBe(false);
+
+		pointer(trigger, 'pointerleave', 7);
+		await tick();
+		expect(container.querySelector('nav + [aria-hidden="true"]')).toBeNull();
 	});
 });

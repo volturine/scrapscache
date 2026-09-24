@@ -9,6 +9,7 @@
 	import {
 		describeNoteVersionChange,
 		distinctNoteVersions,
+		noteExcerpt,
 		sameVisibleNote,
 		type NoteVersionChange
 	} from '$lib/noteVersionChange';
@@ -45,19 +46,20 @@
 	type Row = { entry: NoteHistoryEntry | null; change: NoteVersionChange | null };
 
 	const MAX_TICKS = 24;
-	const CLOSE_DELAY_MS = 160;
 
 	let entries = $state.raw<NoteHistoryEntry[]>([]);
 	let nextBefore = $state<number | null | undefined>(undefined);
 	let loading = $state(false);
 	let openingId = $state<number | null>(null);
 	let error = $state('');
-	let hovered = $state(false);
 	let pinned = $state(false);
+	// The tick under a mouse pointer and where its preview card sits.
+	let hoveredRow = $state<number | null>(null);
+	let cardTop = $state(0);
+	let anchor = $state<HTMLElement | null>(null);
 	let rail = $state<HTMLElement | null>(null);
 	let trigger = $state<HTMLButtonElement | null>(null);
 	let list = $state<HTMLElement | null>(null);
-	let closeTimer: ReturnType<typeof setTimeout> | undefined;
 	let lastPointerType = '';
 	let openRequest = 0;
 
@@ -74,7 +76,8 @@
 	const activeRow = $derived(
 		previewEntry ? rows.findIndex((row) => row.entry?.historyId === previewEntry.historyId) : 0
 	);
-	const expanded = $derived(hovered || pinned);
+	const expanded = $derived(pinned);
+	const hoveredCard = $derived(hoveredRow === null || expanded ? null : (rows[hoveredRow] ?? null));
 	const visible = $derived(versions.length > 0 || !!error);
 	const tickWidths = $derived(
 		rows.map(({ change }) => (change ? 6 + Math.min(4, change.added + change.removed) * 3 : 12))
@@ -93,10 +96,11 @@
 
 	// Saves are often seconds apart, so the exact time keeps them distinguishable.
 	function exact(at: number): string {
-		return new Date(at).toLocaleString([], {
+		const date = new Date(at);
+		return date.toLocaleString([], {
 			month: 'short',
 			day: 'numeric',
-			year: 'numeric',
+			year: date.getFullYear() === new Date(appClock.now).getFullYear() ? undefined : 'numeric',
 			hour: 'numeric',
 			minute: '2-digit',
 			second: '2-digit'
@@ -126,7 +130,6 @@
 
 	onMount(() => {
 		void loadMore();
-		return () => clearTimeout(closeTimer);
 	});
 
 	// Touch has no hover, so a tap pins the panel open until the next tap elsewhere.
@@ -162,8 +165,6 @@
 	function handleListKeyDown(event: KeyboardEvent) {
 		if (event.key === 'Escape' && expanded) {
 			event.stopPropagation();
-			clearTimeout(closeTimer);
-			hovered = false;
 			pinned = false;
 			return;
 		}
@@ -223,6 +224,31 @@
 	function stepNewer() {
 		selectRow(activeRow - 1);
 	}
+
+	// Like T3 Code's message rail: the nearest tick follows the pointer and shows its card.
+	function trackTick(event: PointerEvent) {
+		if (event.pointerType !== 'mouse' && event.pointerType !== 'pen') return;
+		let nearest: { row: number; center: number; distance: number } | null = null;
+		for (const tick of trigger?.querySelectorAll<HTMLElement>('[data-tick]') ?? []) {
+			const box = tick.getBoundingClientRect();
+			const center = box.top + box.height / 2;
+			const distance = Math.abs(event.clientY - center);
+			if (!nearest || distance < nearest.distance)
+				nearest = { row: Number(tick.dataset.tick), center, distance };
+		}
+		if (!nearest || !anchor) return;
+		hoveredRow = nearest.row;
+		cardTop = nearest.center - anchor.getBoundingClientRect().top;
+	}
+
+	function activateTrigger() {
+		if (lastPointerType === 'mouse' && hoveredRow !== null) selectRow(hoveredRow);
+		else void expandFromTrigger();
+	}
+
+	function excerpt(row: Row): string {
+		return noteExcerpt(row.entry?.note ?? note);
+	}
 </script>
 
 {#snippet stats(added: number, removed: number)}
@@ -235,147 +261,128 @@
 {/snippet}
 
 {#if visible}
-	<nav
-		bind:this={rail}
-		class={styles.rail}
-		aria-label="Note version history"
-		data-editor-popup
-		data-expanded={expanded || undefined}
-		style:--history-ticks={ticks.length}
-		style:--history-rows={rows.length + extraRows}
-		onpointerdown={(event) => (lastPointerType = event.pointerType)}
-		onpointerenter={(event) => {
-			if (event.pointerType !== 'mouse' && event.pointerType !== 'pen') return;
-			clearTimeout(closeTimer);
-			hovered = true;
-		}}
-		onpointerleave={(event) => {
-			if (event.pointerType !== 'mouse' && event.pointerType !== 'pen') return;
-			clearTimeout(closeTimer);
-			closeTimer = setTimeout(() => (hovered = false), CLOSE_DELAY_MS);
-		}}
-		onfocusout={(event) => {
-			if (!(event.relatedTarget instanceof Node) || !rail?.contains(event.relatedTarget))
-				pinned = false;
-		}}
-	>
-		<Swap.Root swap={expanded} class={styles.swap}>
-			<Swap.Indicator type="off" class={styles.ticksLayer}>
-				<button
-					bind:this={trigger}
-					type="button"
-					class={styles.trigger}
-					aria-label={`Version history, ${versions.length} saved ${versions.length === 1 ? 'version' : 'versions'}`}
-					aria-expanded={expanded}
-					aria-controls="note-history-versions"
-					onclick={() => void expandFromTrigger()}
-				>
-					{#each ticks as mark (mark.row)}
-						<span
-							class={styles.tick}
-							style:width="{mark.width}px"
-							data-active={mark.row === activeRow || undefined}
-							aria-hidden="true"
-						></span>
-					{/each}
-				</button>
-			</Swap.Indicator>
-			<Swap.Indicator type="on" class={styles.panelLayer}>
-				<div class={styles.panel}>
-					<div class={styles.panelHeader}>
-						<span>History</span>
-						<span class={styles.panelCount}
-							>{versions.length}{nextBefore === null ? '' : '+'}
-							{versions.length === 1 ? 'version' : 'versions'}</span
-						>
-					</div>
-					<div
-						id="note-history-versions"
-						class={['scrollable note-scrollbar-hidden', styles.list]}
-						role="toolbar"
-						aria-orientation="vertical"
-						aria-label="Saved versions"
-						tabindex="-1"
-						bind:this={list}
-						onkeydown={handleListKeyDown}
+	<div class={styles.railAnchor} bind:this={anchor} data-editor-popup>
+		<nav
+			bind:this={rail}
+			class={styles.rail}
+			aria-label="Note version history"
+			data-expanded={expanded || undefined}
+			style:--history-ticks={ticks.length}
+			style:--history-rows={rows.length + extraRows}
+			onpointerdown={(event) => (lastPointerType = event.pointerType)}
+			onfocusout={(event) => {
+				if (!(event.relatedTarget instanceof Node) || !rail?.contains(event.relatedTarget))
+					pinned = false;
+			}}
+		>
+			<Swap.Root swap={expanded} class={styles.swap}>
+				<Swap.Indicator type="off" class={styles.ticksLayer}>
+					<button
+						bind:this={trigger}
+						type="button"
+						class={styles.trigger}
+						aria-label={`Version history, ${versions.length} saved ${versions.length === 1 ? 'version' : 'versions'}`}
+						aria-expanded={expanded}
+						aria-controls="note-history-versions"
+						onpointermove={trackTick}
+						onpointerleave={() => (hoveredRow = null)}
+						onclick={activateTrigger}
 					>
-						{#each rows as row, index (row.entry?.historyId ?? 'now')}
-							<button
-								type="button"
-								class={styles.row}
-								data-history-row
-								data-loading={(row.entry && openingId === row.entry.historyId) || undefined}
-								aria-current={activeRow === index ? 'true' : undefined}
-								title={row.entry ? exact(row.entry.savedAt) : undefined}
-								onclick={() => selectRow(index)}
-							>
-								<span class={styles.rowTop}>
-									<span class={styles.rowLabel}>
-										<span class={styles.rowTime}
-											>{row.entry ? relative(row.entry.savedAt) : 'Now'}</span
-										>
-										{#if index === 0 && row.entry}
-											<span class={styles.rowBadge}>Current</span>
-										{/if}
-									</span>
-									{#if row.change}{@render stats(row.change.added, row.change.removed)}{/if}
-								</span>
-								<span class={styles.rowSummary}>{row.change?.summary ?? 'Not synced yet'}</span>
-							</button>
+						{#each ticks as mark (mark.row)}
+							<span
+								class={styles.tick}
+								style:width="{mark.width}px"
+								data-tick={mark.row}
+								data-active={mark.row === activeRow || undefined}
+								data-hovered={mark.row === hoveredRow || undefined}
+								aria-hidden="true"
+							></span>
 						{/each}
-						{#if nextBefore !== null}
-							<button
-								type="button"
-								class={styles.more}
-								onclick={() => void loadMore()}
-								disabled={loading}
+					</button>
+				</Swap.Indicator>
+				<Swap.Indicator type="on" class={styles.panelLayer}>
+					<div class={styles.panel}>
+						<div class={styles.panelHeader}>
+							<span>History</span>
+							<span class={styles.panelCount}
+								>{versions.length}{nextBefore === null ? '' : '+'}
+								{versions.length === 1 ? 'version' : 'versions'}</span
 							>
-								{loading ? 'Loading…' : 'Load older versions'}
-							</button>
-						{/if}
-						{#if error}
-							<p class={styles.message} role="alert">{error}</p>
-						{/if}
+						</div>
+						<div
+							id="note-history-versions"
+							class={['scrollable note-scrollbar-hidden', styles.list]}
+							role="toolbar"
+							aria-orientation="vertical"
+							aria-label="Saved versions"
+							tabindex="-1"
+							bind:this={list}
+							onkeydown={handleListKeyDown}
+						>
+							{#each rows as row, index (row.entry?.historyId ?? 'now')}
+								<button
+									type="button"
+									class={styles.row}
+									data-history-row
+									data-loading={(row.entry && openingId === row.entry.historyId) || undefined}
+									aria-current={activeRow === index ? 'true' : undefined}
+									title={row.entry ? exact(row.entry.savedAt) : undefined}
+									onclick={() => selectRow(index)}
+								>
+									<span class={styles.rowTop}>
+										<span class={styles.rowLabel}>
+											<span class={styles.rowTime}
+												>{row.entry ? relative(row.entry.savedAt) : 'Now'}</span
+											>
+											{#if index === 0 && row.entry}
+												<span class={styles.rowBadge}>Current</span>
+											{/if}
+										</span>
+										{#if row.change}{@render stats(row.change.added, row.change.removed)}{/if}
+									</span>
+									<span class={styles.rowSummary}>{row.change?.summary ?? 'Not synced yet'}</span>
+								</button>
+							{/each}
+							{#if nextBefore !== null}
+								<button
+									type="button"
+									class={styles.more}
+									onclick={() => void loadMore()}
+									disabled={loading}
+								>
+									{loading ? 'Loading…' : 'Load older versions'}
+								</button>
+							{/if}
+							{#if error}
+								<p class={styles.message} role="alert">{error}</p>
+							{/if}
+						</div>
 					</div>
-				</div>
-			</Swap.Indicator>
-		</Swap.Root>
-	</nav>
+				</Swap.Indicator>
+			</Swap.Root>
+		</nav>
+		{#if hoveredCard}
+			<!-- Pointer-only preview; the same details are in the keyboard-reachable list. -->
+			<div class={styles.tickCard} style:top="{cardTop}px" aria-hidden="true">
+				<p class={styles.tickCardTitle}>{hoveredCard.change?.summary ?? 'Not synced yet'}</p>
+				<p class={styles.tickCardText}>{excerpt(hoveredCard)}</p>
+				<p class={styles.tickCardMeta}>
+					<span>{hoveredCard.entry ? relative(hoveredCard.entry.savedAt) : 'Now'}</span>
+					{#if hoveredCard.change}{@render stats(
+							hoveredCard.change.added,
+							hoveredCard.change.removed
+						)}{/if}
+				</p>
+			</div>
+		{/if}
+	</div>
 {/if}
 
 {#if previewEntry}
 	<div class={styles.bar} role="group" aria-label="Time travel" data-editor-popup>
-		<button
-			type="button"
-			class={iconButton({ variant: 'ghost', size: 'compact' })}
-			aria-label="Older version"
-			title="Older version"
-			onclick={() => void stepOlder()}
-			disabled={restoringPreview ||
-				(activeRow >= rows.length - 1 && nextBefore === null) ||
-				loading}
-		>
-			<ChevronLeft size={18} aria-hidden="true" />
-		</button>
-		{#key previewEntry.historyId}
-			<div class={styles.barLabel} aria-live="polite">
-				<span class={styles.barTime}>{relative(previewEntry.savedAt)}</span>
-				<span class={styles.barDate}>{exact(previewEntry.savedAt)}</span>
-			</div>
-		{/key}
-		<button
-			type="button"
-			class={iconButton({ variant: 'ghost', size: 'compact' })}
-			aria-label={activeRow <= 1 ? 'Back to current note' : 'Newer version'}
-			title={activeRow <= 1 ? 'Back to current note' : 'Newer version'}
-			onclick={stepNewer}
-			disabled={restoringPreview}
-		>
-			<ChevronRight size={18} aria-hidden="true" />
-		</button>
-		<span class={styles.barDivider} aria-hidden="true"></span>
+		<!-- Confirming replaces the stepper so the bar stays within narrow screens. -->
 		{#if restoreConfirmOpen}
-			<span class={styles.barPrompt}>Replace the current note?</span>
+			<span class={styles.barPrompt}>Restore this version?</span>
 			<button
 				type="button"
 				class={[button({ variant: 'quiet', size: 'xs' }), styles.barAction]}
@@ -390,6 +397,35 @@
 				disabled={restoringPreview}>{restoringPreview ? 'Restoring…' : 'Restore'}</button
 			>
 		{:else}
+			<button
+				type="button"
+				class={iconButton({ variant: 'ghost', size: 'compact' })}
+				aria-label="Older version"
+				title="Older version"
+				onclick={() => void stepOlder()}
+				disabled={restoringPreview ||
+					(activeRow >= rows.length - 1 && nextBefore === null) ||
+					loading}
+			>
+				<ChevronLeft size={18} aria-hidden="true" />
+			</button>
+			{#key previewEntry.historyId}
+				<div class={styles.barLabel} aria-live="polite">
+					<span class={styles.barTime}>{relative(previewEntry.savedAt)}</span>
+					<span class={styles.barDate}>{exact(previewEntry.savedAt)}</span>
+				</div>
+			{/key}
+			<button
+				type="button"
+				class={iconButton({ variant: 'ghost', size: 'compact' })}
+				aria-label={activeRow <= 1 ? 'Back to current note' : 'Newer version'}
+				title={activeRow <= 1 ? 'Back to current note' : 'Newer version'}
+				onclick={stepNewer}
+				disabled={restoringPreview}
+			>
+				<ChevronRight size={18} aria-hidden="true" />
+			</button>
+			<span class={styles.barDivider} aria-hidden="true"></span>
 			<button
 				type="button"
 				class={[button({ variant: 'primary', size: 'xs' }), styles.barAction]}

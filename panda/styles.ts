@@ -1889,7 +1889,13 @@ export const noteEditorStyles = {
 		color: 'scrapscache.textMuted',
 		userSelect: 'none',
 		...interactive,
-		_hoverable: { bg: 'scrapscache.interactiveHover' },
+		// Tint via background-image so the opaque noteSurface background-color
+		// stays underneath; a bg on hover would swap it for translucent white
+		// and let the footer hairline show through the pill.
+		_hoverable: {
+			backgroundImage:
+				'linear-gradient(var(--colors-scrapscache-interactive-hover), var(--colors-scrapscache-interactive-hover))'
+		},
 		_focusVisible: {
 			outline: '2px solid',
 			outlineColor: 'scrapscache.focus',

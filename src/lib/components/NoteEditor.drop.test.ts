@@ -145,6 +145,12 @@ describe('NoteEditor file drop', () => {
 			expect(container.querySelector('[aria-label="Open todo.txt"]')).not.toBeNull();
 		});
 		expect(container.querySelector('[data-file-drop-hint]')).toBeNull();
+		// Attaching auto-expands the preview panel so the new file is visible.
+		expect(
+			container
+				.querySelector('footer button[aria-label="Hide previews"]')
+				?.getAttribute('aria-expanded')
+		).toBe('true');
 	});
 
 	it('asks for photo quality when a dropped file looks like a photo', async () => {

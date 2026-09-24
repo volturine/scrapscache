@@ -247,7 +247,9 @@
 		if (!dialog || !field || dialog.clientHeight === 0) return Infinity;
 		const lineHeight = parseFloat(getComputedStyle(field).lineHeight);
 		if (!(lineHeight > 0)) return Infinity;
-		const chrome = dialog.querySelectorAll<HTMLElement>(':scope > header, :scope > footer');
+		const chrome = dialog.querySelectorAll<HTMLElement>(
+			':scope > header, :scope > footer, :scope > [data-preview-panel]'
+		);
 		let space = dialog.clientHeight;
 		for (const el of chrome) space -= el.offsetHeight;
 		return space / lineHeight;
@@ -867,6 +869,7 @@
 						trashed={note.trashed}
 						{copyFlash}
 						fillPhotos={photosFillEditor}
+						color={note.color}
 						onOpenColor={() => {
 							closePopups();
 							paletteOpen = true;

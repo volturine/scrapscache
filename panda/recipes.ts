@@ -207,7 +207,11 @@ const iconButtonRecipe = defineRecipe({
 		...tapTarget,
 		transition:
 			'background-color 150ms ease, color 150ms ease, opacity 150ms ease, transform 150ms ease',
-		_focusVisible: { outline: 'none', ringWidth: '2px', ringColor: 'scrapscache.focus' },
+		_focusVisible: {
+			outline: '2px solid',
+			outlineColor: 'scrapscache.focus',
+			outlineOffset: '2px'
+		},
 		_active: {
 			transform: 'scale(0.95)'
 		}

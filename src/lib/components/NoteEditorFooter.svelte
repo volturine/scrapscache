@@ -1,7 +1,13 @@
 <script lang="ts">
-	import { canvasPreview, filePreview, iconSizeMd as iconMd, photoPreview } from '$panda/styles';
+	import {
+		canvasPreview,
+		filePreview,
+		iconSizeMd as iconMd,
+		noteEditorStyles,
+		photoPreview
+	} from '$panda/styles';
 	import { css, cx } from 'styled-system/css';
-	import { button, choiceCard, dialog, iconButton } from 'styled-system/recipes';
+	import { button, choiceCard, dialog, iconButton, noteSurface } from 'styled-system/recipes';
 	import { hstack, grid, flex } from 'styled-system/patterns';
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { Format } from '@ark-ui/svelte/format';
@@ -9,7 +15,7 @@
 	import CanvasEditor from '$lib/components/CanvasEditor.svelte';
 	import PhotoFullscreen from '$lib/components/PhotoFullscreen.svelte';
 	import Tooltip from './Tooltip.svelte';
-	import type { NoteImage } from '$lib/types';
+	import type { NoteColor, NoteImage } from '$lib/types';
 	import {
 		fileToNoteImage,
 		isImageAttachment,
@@ -33,6 +39,8 @@
 		Archive,
 		ArchiveRestore,
 		Check,
+		ChevronDown,
+		ChevronUp,
 		Copy,
 		Palette,
 		Paperclip,
@@ -55,6 +63,7 @@
 		trashed = false,
 		copyFlash = false,
 		fillPhotos = false,
+		color = 'default' as NoteColor,
 		onOpenColor,
 		onOpenTags,
 		onCopy,
@@ -76,6 +85,8 @@
 		copyFlash?: boolean;
 		/** Grow the photo strip to the editor's free height (for notes with no body text). */
 		fillPhotos?: boolean;
+		/** Note surface colour, so the preview toggle matches the sheet it sits on. */
+		color?: NoteColor;
 		onOpenColor?: () => void;
 		onOpenTags?: () => void;
 		onCopy?: () => void;
@@ -92,6 +103,7 @@
 	let focusedCanvas = $state<NoteImage | null>(null);
 	let attachError = $state('');
 	let filesAwaitingQuality = $state<File[] | null>(null);
+	let previewsExpanded = $state(false);
 
 	const imageAttachments = $derived(images.filter(isImageAttachment));
 	const canvases = $derived(images.filter(isCanvasAttachment));
@@ -102,6 +114,17 @@
 	const files = $derived(images.filter((a) => !isImageAttachment(a) && !isCanvasAttachment(a)));
 	const links = $derived(extractHttpUrls(body));
 	const photoIndexById = $derived(new Map(photos.map((p, i) => [p.id, i])));
+	const hasPreviews = $derived(
+		canvases.length + files.length + links.length + photos.length + pendingPhotos.length > 0
+	);
+	// Fill mode keeps the panel open on its own; latch it so typing one character
+	// (which ends fill mode) does not hide photos the user was just looking at.
+	const showPreviews = $derived(hasPreviews && (previewsExpanded || fillPhotos));
+	const showPreviewToggle = $derived(hasPreviews && !fillPhotos);
+
+	$effect(() => {
+		if (fillPhotos) previewsExpanded = true;
+	});
 
 	/**
 	 * Normal button: each press creates a one-shot file input in this gesture,
@@ -201,6 +224,7 @@
 				unique.push(att);
 			}
 			if (unique.length === 0) return;
+			previewsExpanded = true;
 			const next = [...images, ...unique];
 			images = next;
 			onImagesChange?.(next);
@@ -312,6 +336,7 @@
 			attachError = 'The synced canvas changed while you were drawing, so both versions were kept.';
 		}
 		const next = merged.attachments;
+		previewsExpanded = true;
 		images = next;
 		onImagesChange?.(next);
 		if (noteId) await notesStore.flushNote(noteId, { images: next });
@@ -350,128 +375,136 @@
 	</p>
 {/if}
 
-{#if canvases.length > 0}
-	<div class={c.strip} aria-label="Canvases">
-		{#each canvases as canvas (canvas.id)}
-			<div class={c.wrap}>
-				<button
-					type="button"
-					class={c.btn}
-					onclick={() => void openCanvas(canvas)}
-					aria-label={`Edit ${canvas.name ?? 'canvas'}`}
-				>
-					{#if displayImageSrc(canvas)}
-						<img
-							src={displayImageSrc(canvas)}
-							alt={canvas.name ?? 'Canvas'}
-							class={c.img}
-							loading="lazy"
-							decoding="async"
-							draggable="false"
-						/>
-					{:else}
-						<div class={c.loading}>Loading canvas…</div>
-					{/if}
-					<span class={c.caption}>
-						{canvas.name ?? 'Canvas'}
-					</span>
-				</button>
-				<button
-					type="button"
-					class={c.delBtn}
-					onclick={() => removeAttachment(canvas.id)}
-					aria-label="Remove canvas"
-				>
-					<X size={12} aria-hidden="true" />
-				</button>
+{#if showPreviews}
+	<div
+		id="note-preview-panel"
+		data-preview-panel
+		class={fillPhotos ? noteEditorStyles.previewPanelFill : noteEditorStyles.previewPanel}
+	>
+		{#if canvases.length > 0}
+			<div class={c.strip} aria-label="Canvases">
+				{#each canvases as canvas (canvas.id)}
+					<div class={c.wrap}>
+						<button
+							type="button"
+							class={c.btn}
+							onclick={() => void openCanvas(canvas)}
+							aria-label={`Edit ${canvas.name ?? 'canvas'}`}
+						>
+							{#if displayImageSrc(canvas)}
+								<img
+									src={displayImageSrc(canvas)}
+									alt={canvas.name ?? 'Canvas'}
+									class={c.img}
+									loading="lazy"
+									decoding="async"
+									draggable="false"
+								/>
+							{:else}
+								<div class={c.loading}>Loading canvas…</div>
+							{/if}
+							<span class={c.caption}>
+								{canvas.name ?? 'Canvas'}
+							</span>
+						</button>
+						<button
+							type="button"
+							class={c.delBtn}
+							onclick={() => removeAttachment(canvas.id)}
+							aria-label="Remove canvas"
+						>
+							<X size={12} aria-hidden="true" />
+						</button>
+					</div>
+				{/each}
 			</div>
-		{/each}
-	</div>
-{/if}
+		{/if}
 
-{#if files.length > 0 || links.length > 0}
-	<ul class={`note-scrollbar-hidden scrollable ${f.list}`} aria-label="Files and links">
-		{#each files as file (file.id)}
-			<li class={f.row}>
-				<span class={f.badge} aria-hidden="true">{fileIconLabel(file.mime, file.name)}</span>
-				<button
-					type="button"
-					class={f.openBtn}
-					onclick={() => void openFile(file)}
-					aria-label={`Open ${file.name ?? 'file'}`}
-				>
-					<div class={f.title}>
-						{file.name || 'Attachment'}
-					</div>
-					<div class={f.size}>
-						<Format.Byte value={dataUrlByteLength(file.dataUrl)} unitSystem="binary" />
-					</div>
-				</button>
-				<button
-					type="button"
-					class={f.removeBtn}
-					onclick={() => removeAttachment(file.id)}
-					aria-label="Remove file"
-				>
-					<X size={14} aria-hidden="true" />
-				</button>
-			</li>
-		{/each}
-		{#each links as url (url)}
-			{@const card = localLinkCard(url)}
-			<li class={f.row}>
-				<span class={f.badge} aria-hidden="true">{card?.badge ?? '↗'}</span>
-				<a
-					href={url}
-					target="_blank"
-					rel="noreferrer noopener"
-					class={f.openBtn}
-					aria-label={`Open ${card?.hostname ?? url}`}
-				>
-					<div class={f.title}>
-						{card?.hostname ?? url}
-					</div>
-					<div class={f.size}>
-						{card?.path || url}
-					</div>
-				</a>
-			</li>
-		{/each}
-	</ul>
-{/if}
+		{#if files.length > 0 || links.length > 0}
+			<ul class={`note-scrollbar-hidden scrollable ${f.list}`} aria-label="Files and links">
+				{#each files as file (file.id)}
+					<li class={f.row}>
+						<span class={f.badge} aria-hidden="true">{fileIconLabel(file.mime, file.name)}</span>
+						<button
+							type="button"
+							class={f.openBtn}
+							onclick={() => void openFile(file)}
+							aria-label={`Open ${file.name ?? 'file'}`}
+						>
+							<div class={f.title}>
+								{file.name || 'Attachment'}
+							</div>
+							<div class={f.size}>
+								<Format.Byte value={dataUrlByteLength(file.dataUrl)} unitSystem="binary" />
+							</div>
+						</button>
+						<button
+							type="button"
+							class={f.removeBtn}
+							onclick={() => removeAttachment(file.id)}
+							aria-label="Remove file"
+						>
+							<X size={14} aria-hidden="true" />
+						</button>
+					</li>
+				{/each}
+				{#each links as url (url)}
+					{@const card = localLinkCard(url)}
+					<li class={f.row}>
+						<span class={f.badge} aria-hidden="true">{card?.badge ?? '↗'}</span>
+						<a
+							href={url}
+							target="_blank"
+							rel="noreferrer noopener"
+							class={f.openBtn}
+							aria-label={`Open ${card?.hostname ?? url}`}
+						>
+							<div class={f.title}>
+								{card?.hostname ?? url}
+							</div>
+							<div class={f.size}>
+								{card?.path || url}
+							</div>
+						</a>
+					</li>
+				{/each}
+			</ul>
+		{/if}
 
-{#if photos.length > 0 || pendingPhotos.length > 0}
-	<div class={p.strip} aria-label="Photos">
-		{#each photos as img (img.id)}
-			<div class={p.wrap}>
-				<button
-					type="button"
-					class={p.btn}
-					onclick={() => void openPhoto(img.id)}
-					aria-label={`Open ${img.name ?? 'photo'}`}
-				>
-					<img
-						src={fillPhotos ? img.dataUrl || displayImageSrc(img) : displayImageSrc(img)}
-						alt={img.name ?? 'Photo'}
-						class={p.img}
-						loading="lazy"
-						decoding="async"
-						draggable="false"
-					/>
-				</button>
-				<button
-					type="button"
-					class={p.delBtn}
-					onclick={() => removeAttachment(img.id)}
-					aria-label="Remove photo"
-				>
-					<X size={14} aria-hidden="true" />
-				</button>
+		{#if photos.length > 0 || pendingPhotos.length > 0}
+			<div class={p.strip} aria-label="Photos">
+				{#each photos as img (img.id)}
+					<div class={p.wrap}>
+						<button
+							type="button"
+							class={p.btn}
+							onclick={() => void openPhoto(img.id)}
+							aria-label={`Open ${img.name ?? 'photo'}`}
+						>
+							<img
+								src={fillPhotos ? img.dataUrl || displayImageSrc(img) : displayImageSrc(img)}
+								alt={img.name ?? 'Photo'}
+								class={p.img}
+								loading="lazy"
+								decoding="async"
+								draggable="false"
+							/>
+						</button>
+						<button
+							type="button"
+							class={p.delBtn}
+							onclick={() => removeAttachment(img.id)}
+							aria-label="Remove photo"
+						>
+							<X size={14} aria-hidden="true" />
+						</button>
+					</div>
+				{/each}
+				{#each pendingPhotos as img (img.id)}
+					<div class={p.skeleton} role="img" aria-label={`Loading ${img.name ?? 'photo'}`}></div>
+				{/each}
 			</div>
-		{/each}
-		{#each pendingPhotos as img (img.id)}
-			<div class={p.skeleton} role="img" aria-label={`Loading ${img.name ?? 'photo'}`}></div>
-		{/each}
+		{/if}
 	</div>
 {/if}
 
@@ -593,18 +626,34 @@
 	</Tooltip>
 {/snippet}
 
+{#snippet previewToggle()}
+	{#if showPreviewToggle}
+		{@const label = previewsExpanded ? 'Hide previews' : 'Show previews'}
+		<Tooltip content={label} class={noteEditorStyles.previewToggleAnchor}>
+			<button
+				type="button"
+				class={cx(noteEditorStyles.previewToggle, noteSurface({ color }))}
+				title={label}
+				aria-label={label}
+				aria-expanded={previewsExpanded}
+				onclick={() => (previewsExpanded = !previewsExpanded)}
+			>
+				{#if previewsExpanded}
+					<ChevronDown size={14} aria-hidden="true" />
+				{:else}
+					<ChevronUp size={14} aria-hidden="true" />
+				{/if}
+			</button>
+		</Tooltip>
+	{/if}
+{/snippet}
+
 {#if trashed}
 	<footer
 		use:footerInteractions
-		class={hstack({
-			justify: 'flex-end',
-			gap: '2xs',
-			px: 'md',
-			py: 'sm',
-			borderTopWidth: 'hairline',
-			borderColor: 'scrapscache.borderFaint'
-		})}
+		class={cx(hstack({ justify: 'flex-end', gap: '2xs' }), noteEditorStyles.footer)}
 	>
+		{@render previewToggle()}
 		{@render footerButton('Restore', 'Restore', RotateCcw, 'ghost', () => onRestore?.())}
 		{@render footerButton('Archive', 'Archive', Archive, 'ghost', () => onArchive?.())}
 		{@render footerButton('Delete forever', 'Delete forever', Trash2, 'danger', () => onDelete?.())}
@@ -612,30 +661,18 @@
 {:else if archived}
 	<footer
 		use:footerInteractions
-		class={hstack({
-			justify: 'flex-end',
-			gap: '2xs',
-			px: 'md',
-			py: 'sm',
-			borderTopWidth: 'hairline',
-			borderColor: 'scrapscache.borderFaint'
-		})}
+		class={cx(hstack({ justify: 'flex-end', gap: '2xs' }), noteEditorStyles.footer)}
 	>
+		{@render previewToggle()}
 		{@render footerButton('Restore', 'Restore', ArchiveRestore, 'ghost', () => onArchive?.())}
 		{@render footerButton('Delete note', 'Delete note', Trash2, 'danger', () => onDelete?.())}
 	</footer>
 {:else}
 	<footer
 		use:footerInteractions
-		class={hstack({
-			justify: 'space-between',
-			gap: 'sm',
-			px: 'md',
-			py: 'sm',
-			borderTopWidth: 'hairline',
-			borderColor: 'scrapscache.borderFaint'
-		})}
+		class={cx(hstack({ justify: 'space-between', gap: 'sm' }), noteEditorStyles.footer)}
 	>
+		{@render previewToggle()}
 		<div class={hstack({ gap: '2xs', flexShrink: 0 })}>
 			{@render footerButton('Attach', 'Attach', Paperclip, 'ghost', openAttach)}
 			{@render footerButton('New canvas', 'New canvas', PenLine, 'ghost', () => void openCanvas())}

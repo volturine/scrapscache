@@ -442,10 +442,7 @@
 	}
 
 	function eventInsideEditor(target: EventTarget | null): boolean {
-		if (!(target instanceof Node)) return false;
-		if (editorDialog?.contains(target)) return true;
-		const element = target instanceof Element ? target : target.parentElement;
-		return !!element?.closest('[data-editor-popup]');
+		return editorDialog != null && target instanceof Node && editorDialog.contains(target);
 	}
 
 	function dataTransferHasFiles(dataTransfer: DataTransfer | null): boolean {
@@ -653,8 +650,10 @@
 			color: restored.color,
 			pinned: restored.pinned,
 			archived: restored.archived,
-			trashed: restored.trashed,
-			secret: restored.secret ?? false,
+			// Restoring brings back content, never trash state: a version saved while the note was
+			// in the trash would otherwise leave it trashed without a trash time, which the purge
+			// treats as expired. A secret note also stays secret.
+			secret: note.secret || restored.secret,
 			reminder: restored.reminder,
 			labels: restored.labels.filter((labelId) => availableLabels.has(labelId)),
 			images: restored.images,

@@ -128,3 +128,56 @@ describe('reclaiming storage nothing points at', () => {
 		expect(objects.has('v1/prefix/recent')).toBe(true);
 	});
 });
+
+describe('expiring encrypted note history', () => {
+	const DAY = 86_400_000;
+
+	async function addHistory(id: string, slot: string, key: string, savedAt: number): Promise<void> {
+		objects.set(key, 'ciphertext');
+		await client.execute({
+			sql: 'INSERT INTO envelope_history(account_id,slot,id,r2_key,ciphertext_bytes,saved_at) VALUES (?,?,?,?,?,?)',
+			args: [ACCOUNT, slot, id, key, 10, savedAt]
+		});
+	}
+
+	async function historyIds(): Promise<string[]> {
+		return (await client.execute('SELECT id FROM envelope_history ORDER BY id')).rows.map((row) =>
+			String(row.id)
+		);
+	}
+
+	it('deletes expired versions and their objects, keeping what the live note still uses', async () => {
+		await addHistory('old', 'a'.repeat(64), 'v1/prefix/old', NOW - 31 * DAY);
+		await addEnvelope('live', 'b'.repeat(64), 'v1/prefix/live');
+		await client.execute({
+			sql: 'INSERT INTO envelope_history(account_id,slot,id,r2_key,ciphertext_bytes,saved_at) VALUES (?,?,?,?,?,?)',
+			args: [ACCOUNT, 'b'.repeat(64), 'live', 'v1/prefix/live', 10, NOW - 31 * DAY]
+		});
+		await addHistory('recent', 'c'.repeat(64), 'v1/prefix/recent', NOW - DAY);
+
+		expect(await store.purgeExpiredHistory(NOW)).toBe(2);
+		expect(await historyIds()).toEqual(['recent']);
+		expect(objects.has('v1/prefix/old')).toBe(false);
+		expect(objects.has('v1/prefix/live')).toBe(true);
+		expect(objects.has('v1/prefix/recent')).toBe(true);
+	});
+
+	it('never leaves an object that no row points at when a sweep is cut short', async () => {
+		await addHistory('old', 'a'.repeat(64), 'v1/prefix/old', NOW - 31 * DAY);
+		const bucket = (
+			bindings.value as { SCRAPSCACHE_ENVELOPES: { delete(key: string): Promise<void> } }
+		).SCRAPSCACHE_ENVELOPES;
+		// The sweep dies mid-way, as a Worker that runs out of subrequests would.
+		const spy = vi.spyOn(bucket, 'delete').mockRejectedValueOnce(new Error('subrequest limit'));
+		await expect(store.purgeExpiredHistory(NOW)).rejects.toThrow('subrequest limit');
+		spy.mockRestore();
+		const keys = (await client.execute('SELECT r2_key AS key FROM envelope_history')).rows.map(
+			(row) => String(row.key)
+		);
+		for (const key of objects.keys()) expect(keys).toContain(key);
+
+		expect(await store.purgeExpiredHistory(NOW)).toBe(1);
+		expect(await historyIds()).toEqual([]);
+		expect(objects.size).toBe(0);
+	});
+});

@@ -120,4 +120,39 @@ describe('NoteEditor time travel', () => {
 			expect(container.querySelector('[data-body-editor]')?.textContent).toContain('Deep Work')
 		);
 	});
+
+	it('restores content without moving the note to trash or dropping its secret', async () => {
+		notesStore.notes = [note({ secret: true })];
+		history.loadNoteHistory.mockResolvedValue({
+			entries: [
+				{
+					historyId: 10,
+					savedAt: 10_000,
+					// Saved while the note sat in the trash, before it was made secret.
+					note: syncNote({
+						title: 'Books',
+						body: 'Antifragile',
+						trashed: true,
+						trashedAt: 5,
+						updatedAt: 10
+					})
+				}
+			],
+			nextBefore: null
+		});
+		const { container } = render(NoteEditor, { props: { noteId: 'note-1', onClose: vi.fn() } });
+		const trigger = await waitFor(() => {
+			const button = container.querySelector<HTMLButtonElement>('nav button');
+			if (!button) throw new Error('rail not rendered');
+			return button;
+		});
+		await fireEvent.click(trigger);
+		await fireEvent.click(container.querySelectorAll('[data-history-row]')[1]);
+		await waitFor(() => expect(container.querySelector('h1')?.textContent?.trim()).toBe('Books'));
+		await fireEvent.click(container.querySelector('[data-history-restore-action="start"]')!);
+		await fireEvent.click(container.querySelector('[data-history-restore-action="confirm"]')!);
+
+		await waitFor(() => expect(notesStore.notes[0]).toMatchObject({ title: 'Books' }));
+		expect(notesStore.notes[0]).toMatchObject({ trashed: false, trashedAt: null, secret: true });
+	});
 });

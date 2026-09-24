@@ -25,8 +25,14 @@ async function readOptional<T>(path: string, account: SyncAccount): Promise<T | 
 	return response.json() as Promise<T>;
 }
 
-function decode(account: SyncAccount, envelope: HistoryEnvelope) {
-	const payload = decryptSyncEnvelope(account.syncKey, envelope.ciphertext, envelope.slot).payload;
+/**
+ * Open a history envelope as the record this device asked for. The slot in the relay's
+ * response is not trusted: binding the requested slot means an envelope moved from another
+ * record fails to decrypt instead of being shown as this one.
+ */
+function decode(account: SyncAccount, envelope: HistoryEnvelope, slot: string) {
+	if (envelope.slot !== slot) throw new Error('Could not read an encrypted history version.');
+	const payload = decryptSyncEnvelope(account.syncKey, envelope.ciphertext, slot).payload;
 	if (!isSyncRecordPayload(payload))
 		throw new Error('Could not read an encrypted history version.');
 	return payload;
@@ -56,7 +62,7 @@ export async function loadNoteHistory(
 					`/api/sync/history?id=${entry.historyId}`,
 					account
 				);
-				const payload = decode(account, envelope);
+				const payload = decode(account, envelope, slot);
 				return payload.kind === 'note' ? { ...entry, note: payload.value } : null;
 			})
 		);
@@ -77,7 +83,7 @@ export async function hydrateHistoryNote(
 			account
 		);
 		const matching = (candidate: HistoryEnvelope) => {
-			const payload = decode(account, candidate);
+			const payload = decode(account, candidate, slot);
 			return payload.kind === 'attachment' &&
 				payload.value.id === image.id &&
 				payload.value.hash === image.hash

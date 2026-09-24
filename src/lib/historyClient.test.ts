@@ -142,4 +142,38 @@ describe('encrypted note history', () => {
 		);
 		expect(fetch.mock.calls.every(([path]) => !String(path).includes(oldImage.hash))).toBe(true);
 	});
+
+	it('rejects an envelope the relay moved from another slot', async () => {
+		const account = createSyncIdentity();
+		const otherSlot = await sha256(`${account.syncKey}\u0000note:other-note`);
+		const note = {
+			id: 'wanted-note',
+			title: 'Other note',
+			body: 'Not this note',
+			color: 'default',
+			pinned: false,
+			archived: false,
+			trashed: false,
+			createdAt: 1,
+			updatedAt: 1,
+			labels: []
+		};
+		// A relay serves another slot's ciphertext and labels it with that slot, so it opens.
+		const moved = {
+			id: 'moved',
+			slot: otherSlot,
+			ciphertext: encryptSyncPayload(account.syncKey, { kind: 'note', value: note }, otherSlot)
+		};
+		vi.spyOn(syncStore, 'authorizedFetch').mockImplementation(async (path) => {
+			const body = String(path).includes('?id=')
+				? moved
+				: { entries: [{ historyId: 1, savedAt: 1 }], nextBefore: null };
+			return new Response(JSON.stringify(body), {
+				headers: { 'content-type': 'application/json' }
+			});
+		});
+		await expect(loadNoteHistory(account, 'wanted-note')).rejects.toThrow(
+			'Could not read an encrypted history version.'
+		);
+	});
 });

@@ -486,6 +486,19 @@ export class AccountCoordinator {
 				retainedBytes > maxBytes;
 			return remove;
 		});
+		// Objects go first, rows second: a run cut short leaves a row whose object is already
+		// gone, which the next prune removes, rather than an object nothing points at any more.
+		for (const row of expired) {
+			const reference = (
+				await execute(this.env.SCRAPSCACHE_DB, {
+					sql: `SELECT 1 FROM envelopes WHERE r2_key = ?
+					UNION SELECT 1 FROM deleted_envelopes WHERE r2_key = ?
+					UNION SELECT 1 FROM envelope_history WHERE r2_key = ? AND history_id != ? LIMIT 1`,
+					args: [row.r2Key, row.r2Key, row.r2Key, row.historyId]
+				})
+			).rows[0];
+			if (!reference) await this.env.SCRAPSCACHE_ENVELOPES.delete(row.r2Key);
+		}
 		for (let index = 0; index < expired.length; index += 100)
 			await batch(
 				this.env.SCRAPSCACHE_DB,
@@ -494,16 +507,5 @@ export class AccountCoordinator {
 					args: [accountId, row.historyId]
 				}))
 			);
-		for (const row of expired) {
-			const reference = (
-				await execute(this.env.SCRAPSCACHE_DB, {
-					sql: `SELECT 1 FROM envelopes WHERE r2_key = ?
-					UNION SELECT 1 FROM deleted_envelopes WHERE r2_key = ?
-					UNION SELECT 1 FROM envelope_history WHERE r2_key = ? LIMIT 1`,
-					args: [row.r2Key, row.r2Key, row.r2Key]
-				})
-			).rows[0];
-			if (!reference) await this.env.SCRAPSCACHE_ENVELOPES.delete(row.r2Key);
-		}
 	}
 }

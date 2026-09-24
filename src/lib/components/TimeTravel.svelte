@@ -257,7 +257,7 @@
 {/snippet}
 
 {#if visible}
-	<div class={styles.railAnchor} bind:this={anchor} data-editor-popup>
+	<div class={styles.railAnchor} bind:this={anchor}>
 		<nav
 			bind:this={rail}
 			class={styles.rail}
@@ -396,7 +396,7 @@
 {/if}
 
 {#if previewEntry}
-	<div class={styles.bar} role="group" aria-label="Time travel" data-editor-popup>
+	<div class={styles.bar} role="group" aria-label="Time travel">
 		<!-- Only the left side changes while confirming; Restore and X stay put and confirm or cancel. -->
 		<div class={styles.barStack}>
 			<div

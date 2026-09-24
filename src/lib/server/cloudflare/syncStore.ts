@@ -156,6 +156,19 @@ export class SyncStore {
 				args: [now - HISTORY_TTL_MS]
 			})
 		).rows as Array<{ historyId: number; r2Key: string }>;
+		// Objects go first, rows second: a sweep cut short leaves a row whose object is already
+		// gone, which the next sweep removes, rather than an object nothing points at any more.
+		for (const row of rows) {
+			const reference = (
+				await execute(this.db, {
+					sql: `SELECT 1 FROM envelopes WHERE r2_key = ?
+					UNION SELECT 1 FROM deleted_envelopes WHERE r2_key = ?
+					UNION SELECT 1 FROM envelope_history WHERE r2_key = ? AND history_id != ? LIMIT 1`,
+					args: [row.r2Key, row.r2Key, row.r2Key, row.historyId]
+				})
+			).rows[0];
+			if (!reference) await this.bindings.SCRAPSCACHE_ENVELOPES.delete(row.r2Key);
+		}
 		for (let index = 0; index < rows.length; index += 100)
 			await batch(
 				this.db,
@@ -164,17 +177,6 @@ export class SyncStore {
 					args: [row.historyId, now - HISTORY_TTL_MS]
 				}))
 			);
-		for (const row of rows) {
-			const reference = (
-				await execute(this.db, {
-					sql: `SELECT 1 FROM envelopes WHERE r2_key = ?
-					UNION SELECT 1 FROM deleted_envelopes WHERE r2_key = ?
-					UNION SELECT 1 FROM envelope_history WHERE r2_key = ? LIMIT 1`,
-					args: [row.r2Key, row.r2Key, row.r2Key]
-				})
-			).rows[0];
-			if (!reference) await this.bindings.SCRAPSCACHE_ENVELOPES.delete(row.r2Key);
-		}
 		return rows.length;
 	}
 

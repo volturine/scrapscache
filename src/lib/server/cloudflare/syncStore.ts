@@ -8,7 +8,7 @@ import { batch, execute, type SqlStatement } from './d1';
 import { cloudflareBindings } from './env';
 import { MAX_CLIENT_SYNC_MUTATIONS_PER_REQUEST } from '$lib/syncLimits';
 import type { HistoryEnvelope, HistoryList } from '$lib/syncHistory';
-import { deleteHistoryRows, OLDER_VERSION } from './history';
+import { deleteHistoryRows, OLDER_VERSION, purgeDeletedRecords } from './history';
 
 export type EncryptedEnvelope = { seq: number; id: string; ciphertext: string; slot: string };
 export type OpaqueUpload = Omit<EncryptedEnvelope, 'seq'> & { expectedId?: string | null };
@@ -60,7 +60,6 @@ export const MAX_PUSH_DEVICES = 32;
 export const MAX_WAKES_PER_ACCOUNT = 1_000;
 export const WAKE_RETAIN_MS = 86_400_000;
 export const WAKE_CLAIM_LEASE_MS = 60_000;
-export const DELETED_SLOT_GRACE_MS = 14 * 86_400_000;
 /** How long an uncommitted upload may sit before the sweep treats it as abandoned.
  * Far longer than any request can live, so an in-flight upload is never reclaimed. */
 export const PENDING_UPLOAD_GRACE_MS = 3_600_000;
@@ -452,57 +451,28 @@ export class SyncStore {
 		return rows.length;
 	}
 	/**
-	 * Reclaim R2 objects no live envelope points at: slots deleted long enough ago
-	 * that every device has seen the deletion, and uploads that reserved an object
-	 * but never committed because the request died between the R2 write and the
-	 * batch that would have promoted them. Both are invisible to account quota, so
+	 * Daily storage upkeep. Deletes already remove a record, its versions and its objects right
+	 * after they commit; this finishes any a cut-short request left, enforces the version window
+	 * everywhere (it may have been lowered), recounts history usage, and reclaims uploads that
+	 * reserved an object but never committed. All of these are invisible to account quota, so
 	 * nothing else would ever notice they were still being paid for.
 	 */
-	async purgeExpiredDeletedEnvelopes(
-		now = Date.now(),
-		graceMs = DELETED_SLOT_GRACE_MS
-	): Promise<number> {
-		const rows = (
+	async reclaimStorage(now = Date.now()): Promise<number> {
+		const deleted = await purgeDeletedRecords(this.bindings);
+		const beyondWindow = (
 			await execute(this.db, {
-				sql: 'SELECT account_id AS accountId,slot,r2_key AS r2Key FROM deleted_envelopes WHERE deleted_at <= ?',
-				args: [now - graceMs]
-			})
-		).rows;
-		// A record deleted for good takes its history with it once the grace ends. History goes
-		// first, then objects, then rows, so a sweep cut short resumes rather than orphaning data.
-		const history = (
-			await execute(this.db, {
-				sql: `SELECT history.history_id AS historyId, history.r2_key AS r2Key
-				FROM envelope_history AS history
-				JOIN deleted_envelopes AS deleted
-					ON deleted.account_id = history.account_id AND deleted.slot = history.slot
-				WHERE deleted.deleted_at <= ? AND NOT EXISTS (
-					SELECT 1 FROM envelopes AS live
-					WHERE live.account_id = history.account_id AND live.slot = history.slot
-				)`,
-				args: [now - graceMs]
+				sql: `SELECT historyId, r2Key FROM (
+					SELECT history_id AS historyId, r2_key AS r2Key, ROW_NUMBER() OVER (
+						PARTITION BY account_id, slot ORDER BY history_id DESC
+					) AS position
+					FROM envelope_history
+				) WHERE position > ?`,
+				args: [this.historyVersions]
 			})
 		).rows as Array<{ historyId: number; r2Key: string }>;
-		await deleteHistoryRows(this.bindings, history);
-		for (const row of rows) {
-			const held =
-				(
-					await execute(this.db, {
-						sql: 'SELECT 1 FROM envelope_history WHERE r2_key = ? LIMIT 1',
-						args: [String(row.r2Key)]
-					})
-				).rows.length > 0;
-			if (!held) await this.bindings.SCRAPSCACHE_ENVELOPES.delete(String(row.r2Key));
-		}
-		await batch(
-			this.db,
-			rows.map((r) => ({
-				sql: 'DELETE FROM deleted_envelopes WHERE account_id=? AND slot=?',
-				args: [String(r.accountId), String(r.slot)]
-			}))
-		);
+		await deleteHistoryRows(this.bindings, beyondWindow);
 		// The coordinator updates history usage after its write batch, so a request cut short
-		// can leave the count off; recount it from the rows once a day.
+		// can leave the count off; recount it from the rows.
 		await batch(this.db, [
 			{ sql: 'DELETE FROM account_history_usage', args: [] },
 			{
@@ -512,7 +482,7 @@ export class SyncStore {
 				args: []
 			}
 		]);
-		return rows.length + (await this.purgeAbandonedUploads(now));
+		return deleted + beyondWindow.length + (await this.purgeAbandonedUploads(now));
 	}
 
 	/** Drop uncommitted uploads and the objects they reserved. An id that reached

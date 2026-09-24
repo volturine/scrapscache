@@ -35,7 +35,7 @@
 		restoreConfirmOpen: boolean;
 		restoringPreview: boolean;
 		restoreError: string;
-		onPreviewVersion: (note: Note, entry: NoteHistoryEntry) => void;
+		onPreviewVersion: (note: Note, entry: NoteHistoryEntry, missingAttachments: number) => void;
 		onCancelPreview: () => void;
 		onStartRestore: () => void;
 		onCancelRestore: () => void;
@@ -183,9 +183,9 @@
 		openingId = entry.historyId;
 		error = '';
 		try {
-			const version = await hydrateHistoryNote(account, entry);
+			const { note: version, missingAttachments } = await hydrateHistoryNote(account, entry);
 			if (request !== openRequest || !currentAccount()) return;
-			onPreviewVersion(version, entry);
+			onPreviewVersion(version, entry, missingAttachments);
 		} catch (cause) {
 			if (request === openRequest)
 				error = cause instanceof Error ? cause.message : 'Could not load this note version.';

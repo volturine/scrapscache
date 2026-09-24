@@ -4,7 +4,8 @@ import { parseHistoryVersions } from '../src/lib/server/operatorConfig';
 import {
 	deleteHistoryRows,
 	OLDER_VERSION,
-	olderVersions
+	olderVersions,
+	purgeDeletedRecords
 } from '../src/lib/server/cloudflare/history';
 
 type Env = {
@@ -313,28 +314,14 @@ export class AccountCoordinator {
 			acceptedUploads.map(({ id }) => [id, `v1/${prefix}/${crypto.randomUUID()}`] as const)
 		);
 		const statements: SqlStatement[] = [];
-		let deletedAny = false;
+		const deletedSlots: string[] = [];
 		for (const deletion of input.deletions) {
 			const removed = currentBySlot.get(deletion.slot);
 			if (!removed || removed.id !== deletion.id) continue;
-			deletedAny = true;
+			deletedSlots.push(removed.slot);
+			// The deleted copy is staged so its object is found again if this request is cut
+			// short; right after the commit it goes, with every version of the record.
 			statements.push(
-				{
-					sql: `INSERT INTO envelope_history(account_id, slot, id, r2_key, ciphertext_bytes, saved_at)
-						SELECT ?, ?, ?, ?, ?, ? WHERE NOT EXISTS (
-							SELECT 1 FROM envelope_history WHERE account_id = ? AND id = ?
-						)`,
-					args: [
-						input.accountId,
-						removed.slot,
-						removed.id,
-						removed.r2Key,
-						removed.ciphertextBytes,
-						now,
-						input.accountId,
-						removed.id
-					]
-				},
 				{
 					sql: `INSERT OR REPLACE INTO deleted_envelopes(
 						account_id, slot, id, r2_key, ciphertext_bytes, deleted_at
@@ -437,7 +424,7 @@ export class AccountCoordinator {
 				sequence,
 				envelopeCount,
 				ciphertextBytes,
-				acceptedUploads.length > 0 || deletedAny ? now : account.updatedAt,
+				acceptedUploads.length > 0 || deletedSlots.length > 0 ? now : account.updatedAt,
 				now,
 				input.accountId
 			]
@@ -466,8 +453,10 @@ export class AccountCoordinator {
 		const olderBefore = await olderVersions(db, input.accountId, touched);
 		await batch(db, statements);
 
-		const mutated = acceptedUploads.length > 0 || deletedAny;
+		const mutated = acceptedUploads.length > 0 || deletedSlots.length > 0;
 		if (mutated) {
+			if (deletedSlots.length > 0)
+				await purgeDeletedRecords(this.env, { accountId: input.accountId, slots: deletedSlots });
 			await this.pruneHistory(input.accountId, touched);
 			const olderAfter = await olderVersions(db, input.accountId, touched);
 			historyVersions += olderAfter.versions - olderBefore.versions;

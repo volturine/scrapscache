@@ -92,9 +92,10 @@ beforeEach(() => {
 	Element.prototype.scrollIntoView = vi.fn();
 	syncStore.account = account;
 	history.loadNoteHistory.mockResolvedValue(entries);
-	history.hydrateHistoryNote.mockImplementation(
-		async (_account, item: NoteHistoryEntry) => item.note
-	);
+	history.hydrateHistoryNote.mockImplementation(async (_account, item: NoteHistoryEntry) => ({
+		note: item.note,
+		missingAttachments: 0
+	}));
 });
 
 afterEach(() => {
@@ -160,7 +161,9 @@ describe('TimeTravel', () => {
 		]);
 
 		await fireEvent.click(getByText('Sapiens'));
-		await waitFor(() => expect(onPreviewVersion).toHaveBeenCalledWith(entries[1].note, entries[1]));
+		await waitFor(() =>
+			expect(onPreviewVersion).toHaveBeenCalledWith(entries[1].note, entries[1], 0)
+		);
 	});
 
 	it('steps older, and newer from the newest version returns to the live note', async () => {
@@ -170,16 +173,21 @@ describe('TimeTravel', () => {
 		await waitFor(() => expect(history.loadNoteHistory).toHaveBeenCalled());
 
 		await fireEvent.click(getByRole('button', { name: 'Older version' }));
-		await waitFor(() => expect(onPreviewVersion).toHaveBeenCalledWith(entries[2].note, entries[2]));
+		await waitFor(() =>
+			expect(onPreviewVersion).toHaveBeenCalledWith(entries[2].note, entries[2], 0)
+		);
 
 		await fireEvent.click(getByRole('button', { name: 'Back to current note' }));
 		expect(onCancelPreview).toHaveBeenCalled();
 	});
 
 	it('only previews the most recently chosen version', async () => {
-		let releaseFirst!: (value: SyncNote) => void;
+		let releaseFirst!: (value: { note: SyncNote; missingAttachments: number }) => void;
 		history.hydrateHistoryNote.mockImplementationOnce(
-			() => new Promise<SyncNote>((resolve) => (releaseFirst = resolve))
+			() =>
+				new Promise<{ note: SyncNote; missingAttachments: number }>(
+					(resolve) => (releaseFirst = resolve)
+				)
 		);
 		const { container, getByText, onPreviewVersion } = renderTimeTravel();
 		const trigger = await openRail(container);
@@ -188,11 +196,11 @@ describe('TimeTravel', () => {
 		await fireEvent.click(getByText('Sapiens'));
 		await fireEvent.click(getByText('Antifragile'));
 		await waitFor(() => expect(onPreviewVersion).toHaveBeenCalledTimes(1));
-		releaseFirst(entries[1].note);
+		releaseFirst({ note: entries[1].note, missingAttachments: 0 });
 		await Promise.resolve();
 
 		expect(onPreviewVersion).toHaveBeenCalledTimes(1);
-		expect(onPreviewVersion).toHaveBeenCalledWith(entries[2].note, entries[2]);
+		expect(onPreviewVersion).toHaveBeenCalledWith(entries[2].note, entries[2], 0);
 	});
 
 	it('previews the tick under the mouse and opens it on click, like T3 Code', async () => {
@@ -219,7 +227,9 @@ describe('TimeTravel', () => {
 
 		pointer(trigger, 'pointerdown', 7);
 		await fireEvent.click(trigger);
-		await waitFor(() => expect(onPreviewVersion).toHaveBeenCalledWith(entries[1].note, entries[1]));
+		await waitFor(() =>
+			expect(onPreviewVersion).toHaveBeenCalledWith(entries[1].note, entries[1], 0)
+		);
 		expect(container.querySelector('nav')?.hasAttribute('data-expanded')).toBe(false);
 
 		pointer(trigger, 'pointerleave', 7);

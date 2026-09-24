@@ -154,15 +154,17 @@ live one included: 14 by default, set with `SCRAPSCACHE_HISTORY_VERSIONS` (1–4
 Saving a new version drops the oldest; one record's saves never evict another's.
 Older versions count toward the account's storage quota alongside live records,
 but never block them: when the two together exceed the quota, the account's
-oldest versions give way. A deleted record's versions do not count, like the
-deleted copy kept during its grace. The daily retention sweep recounts history usage from the
-stored versions.
+oldest versions give way.
 The note editor loads a note's versions in one request, previews a selected
 version, and restores it to that note. A device decrypts the version and any
-matching attachments in memory; history is never written into IndexedDB. When a
-record is deleted for good, its history goes with it once the deleted-record
-grace (14 days) ends, and account deletion removes all history and its
-ciphertext.
+matching attachments in memory; history is never written into IndexedDB.
+
+Deleting a record for good (a note emptied from the trash, a removed attachment)
+removes it and every version of it from the relay in the same request; nothing of
+it is kept. Versions outside the window go on the save that pushes them out.
+The daily retention sweep only finishes what an interrupted request left, applies
+a lowered window, and recounts history usage. Account deletion removes all
+history and its ciphertext.
 
 ## Deployment shapes
 

@@ -58,17 +58,8 @@ const RELAY_DDL = `
 		account_id TEXT PRIMARY KEY,
 		queued_at INTEGER NOT NULL
 	);
-	CREATE TABLE IF NOT EXISTS deleted_envelopes (
-		account_id TEXT NOT NULL,
-		slot TEXT NOT NULL,
-		id TEXT NOT NULL,
-		ciphertext TEXT NOT NULL,
-		deleted_at INTEGER NOT NULL,
-		PRIMARY KEY (account_id, slot),
-		FOREIGN KEY (account_id) REFERENCES accounts(account_id) ON DELETE CASCADE
-	);
-	CREATE INDEX IF NOT EXISTS deleted_envelopes_deleted_at
-		ON deleted_envelopes(deleted_at);
+	-- A deleted record's ciphertext goes with the delete itself; older builds kept a copy.
+	DROP TABLE IF EXISTS deleted_envelopes;
 	CREATE TABLE IF NOT EXISTS envelope_history (
 		history_id INTEGER PRIMARY KEY AUTOINCREMENT,
 		account_id TEXT NOT NULL,

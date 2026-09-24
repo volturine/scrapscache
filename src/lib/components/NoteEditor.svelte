@@ -78,7 +78,11 @@
 	let paletteOpen = $state(false);
 	let reminderOpen = $state(false);
 	let labelOpen = $state(false);
-	let historyPreview = $state.raw<{ note: Note; entry: NoteHistoryEntry } | null>(null);
+	let historyPreview = $state.raw<{
+		note: Note;
+		entry: NoteHistoryEntry;
+		missingAttachments: number;
+	} | null>(null);
 	let restoreConfirmOpen = $state(false);
 	let restoringPreview = $state(false);
 	let historyRestoreError = $state('');
@@ -385,8 +389,12 @@
 		labelOpen = false;
 	}
 
-	function previewHistoryVersion(version: Note, entry: NoteHistoryEntry) {
-		historyPreview = { note: version, entry };
+	function previewHistoryVersion(
+		version: Note,
+		entry: NoteHistoryEntry,
+		missingAttachments: number
+	) {
+		historyPreview = { note: version, entry, missingAttachments };
 		restoreConfirmOpen = false;
 		historyRestoreError = '';
 	}
@@ -946,6 +954,13 @@
 												{/if}
 											{/each}
 										</div>
+									{/if}
+									{#if historyPreview.missingAttachments}
+										<p class={styles.historyPreviewMissing} data-history-missing>
+											{historyPreview.missingAttachments === 1
+												? 'An attachment from this version was deleted and is no longer stored.'
+												: `${historyPreview.missingAttachments} attachments from this version were deleted and are no longer stored.`}
+										</p>
 									{/if}
 								</div>
 							{/key}

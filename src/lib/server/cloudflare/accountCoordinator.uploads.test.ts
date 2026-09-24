@@ -38,7 +38,8 @@ beforeEach(async () => {
 function sync(
 	uploads: { id: string; slot: string; ciphertext: string; expectedId?: string }[],
 	maxAccountBytes = 100_000_000,
-	cursor = 0
+	cursor = 0,
+	deletions: { id: string; slot: string }[] = []
 ): Promise<Response> {
 	return coordinator.fetch(
 		new Request('https://coordinator/sync', {
@@ -47,7 +48,7 @@ function sync(
 				accountId: ACCOUNT,
 				cursor,
 				uploads,
-				deletions: [],
+				deletions,
 				downloadLimit: 12,
 				maxAccountBytes
 			})
@@ -150,6 +151,30 @@ describe('uploads that have to be retried', () => {
 				(row) => [Number(row.versions), Number(row.bytes)]
 			)
 		).toEqual([[1, 2]]);
+	});
+
+	it('deletes a record with every version and object in the same request', async () => {
+		let cursor = 0;
+		let previous: string | undefined;
+		for (const [id, ciphertext] of [
+			['one', 'aa'],
+			['two', 'bb']
+		]) {
+			const response = await sync(
+				[{ id, slot: SLOT, ciphertext, expectedId: previous }],
+				100_000_000,
+				cursor
+			);
+			cursor = ((await response.json()) as { cursor: number }).cursor;
+			previous = id;
+		}
+		expect(objects.size).toBe(2);
+
+		const response = await sync([], 100_000_000, cursor, [{ id: 'two', slot: SLOT }]);
+		expect(((await response.json()) as { writesAccepted: boolean }).writesAccepted).toBe(true);
+		expect(objects.size).toBe(0);
+		for (const table of ['envelopes', 'envelope_history', 'deleted_envelopes'])
+			expect((await client.execute(`SELECT 1 FROM ${table}`)).rows).toEqual([]);
 	});
 
 	it('writes a retry under a fresh key and deletes the object the earlier attempt reserved', async () => {

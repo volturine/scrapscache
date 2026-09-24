@@ -56,8 +56,8 @@ beforeEach(() => {
 	notesStore.notes = [note()];
 	history.loadNoteHistory.mockResolvedValue([earlier]);
 	history.hydrateHistoryNote.mockImplementation(async (_account, entry: NoteHistoryEntry) => ({
-		...entry.note,
-		images: []
+		note: { ...entry.note, images: [] },
+		missingAttachments: 0
 	}));
 });
 
@@ -151,5 +151,26 @@ describe('NoteEditor time travel', () => {
 
 		await waitFor(() => expect(notesStore.notes[0]).toMatchObject({ title: 'Books' }));
 		expect(notesStore.notes[0]).toMatchObject({ trashed: false, trashedAt: null, secret: true });
+	});
+
+	it('previews a version whose attachments were deleted since, saying so', async () => {
+		history.hydrateHistoryNote.mockImplementation(async (_account, entry: NoteHistoryEntry) => ({
+			note: { ...entry.note, images: [] },
+			missingAttachments: 2
+		}));
+		const { container } = render(NoteEditor, { props: { noteId: 'note-1', onClose: vi.fn() } });
+		const trigger = await waitFor(() => {
+			const button = container.querySelector<HTMLButtonElement>('nav button');
+			if (!button) throw new Error('rail not rendered');
+			return button;
+		});
+		await fireEvent.click(trigger);
+		await fireEvent.click(container.querySelectorAll('[data-history-row]')[1]);
+
+		await waitFor(() =>
+			expect(container.querySelector('[data-history-missing]')?.textContent?.trim()).toBe(
+				'2 attachments from this version were deleted and are no longer stored.'
+			)
+		);
 	});
 });

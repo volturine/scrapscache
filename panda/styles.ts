@@ -1926,6 +1926,7 @@ export const noteEditorStyles = {
 	historyPreviewMedia: css({ display: 'flex', flexWrap: 'wrap', gap: 'sm', mt: 'lg' }),
 	historyPreviewImage: css({ maxW: '100%', maxH: '22rem', rounded: 'sm', objectFit: 'contain' }),
 	historyPreviewAttachment: css({ textStyle: 'caption', color: 'scrapscache.textMuted' }),
+	historyPreviewMissing: css({ mt: 'md', textStyle: 'caption' }),
 	scrollerFill: css({ flex: 'initial' }),
 	title: css({
 		mb: 'md',

@@ -10,7 +10,7 @@ describe('runtime retention policy', () => {
 		const db = testDb();
 		const store: RetentionStore = {
 			deleteInactiveAccounts: vi.fn(async () => 2),
-			purgeExpiredDeletedEnvelopes: vi.fn(async () => 0)
+			reclaimStorage: vi.fn(async () => 0)
 		};
 		const info = vi.spyOn(console, 'info').mockImplementation(() => {});
 		const now = 10 * 86_400_000;

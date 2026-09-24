@@ -54,11 +54,16 @@ export async function loadNoteHistory(
 	});
 }
 
+/**
+ * A version with the attachments the relay still holds. An attachment deleted since (removed
+ * from the note, or the note deleted) is gone for good, so it is counted rather than fatal.
+ */
 export async function hydrateHistoryNote(
 	account: SyncAccount,
 	entry: NoteHistoryEntry
-): Promise<Note> {
+): Promise<{ note: Note; missingAttachments: number }> {
 	const images: NoteImage[] = [];
+	let missingAttachments = 0;
 	for (const image of entry.note.images ?? []) {
 		const slot = await sha256(`${account.syncKey}\u0000attachment:${image.id}`);
 		const matching = (ciphertext: string) => {
@@ -81,8 +86,8 @@ export async function hydrateHistoryNote(
 				if (attachment) break;
 			}
 		}
-		if (!attachment) throw new Error('An attachment from this version is no longer available.');
-		images.push(attachmentToImage(attachment));
+		if (attachment) images.push(attachmentToImage(attachment));
+		else missingAttachments += 1;
 	}
-	return { ...entry.note, images } as Note;
+	return { note: { ...entry.note, images } as Note, missingAttachments };
 }

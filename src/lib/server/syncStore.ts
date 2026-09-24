@@ -67,8 +67,6 @@ export const MAX_PUSH_DEVICES = 32;
 export const MAX_WAKES_PER_ACCOUNT = 1_000;
 export const WAKE_RETAIN_MS = 24 * 60 * 60 * 1000;
 export const WAKE_CLAIM_LEASE_MS = 60_000;
-/** Grace window keeping staged slot deletions recoverable while slower devices catch up. */
-export const DELETED_SLOT_GRACE_MS = 14 * 24 * 60 * 60 * 1000;
 export const MAX_SYNC_MUTATIONS_PER_REQUEST = 2_000;
 /** Bound for IN (...) lists so sweeps stay under the SQLite host-parameter limit. */
 const ACCOUNT_CHUNK = 400;
@@ -131,8 +129,7 @@ async function executeInBatches(tx: Transaction, statements: InStatement[]): Pro
 
 /**
  * A history row counted in quota: an older version of a record that still exists. The live
- * copy each record's history holds is already counted, and a deleted record's versions are
- * kept only through its deletion grace, like the deleted copy itself.
+ * copy each record's history holds is already counted.
  */
 const OLDER_VERSION = `EXISTS (
 	SELECT 1 FROM envelopes AS live
@@ -591,30 +588,15 @@ export class SyncStore {
 			}
 
 			const deletionStatements: InStatement[] = [];
-			const deletedAt = Math.max(Date.now(), Number(account.updatedAt) + 1);
+			const writtenAt = Math.max(Date.now(), Number(account.updatedAt) + 1);
 			for (const deletion of deletions) {
 				const removed = currentBySlot.get(deletion.slot);
 				if (!removed || removed.id !== deletion.id) continue;
+				// Deleting a record removes it and every version of it at once.
 				deletionStatements.push(
 					{
-						sql: `INSERT OR REPLACE INTO deleted_envelopes(account_id, slot, id, ciphertext, deleted_at)
-							VALUES (?, ?, ?, ?, ?)`,
-						args: [accountId, removed.slot, removed.id, removed.ciphertext, deletedAt]
-					},
-					{
-						sql: `INSERT INTO envelope_history(account_id, slot, id, ciphertext, saved_at)
-							SELECT ?, ?, ?, ?, ? WHERE NOT EXISTS (
-								SELECT 1 FROM envelope_history WHERE account_id = ? AND id = ?
-							)`,
-						args: [
-							accountId,
-							removed.slot,
-							removed.id,
-							removed.ciphertext,
-							deletedAt,
-							accountId,
-							removed.id
-						]
+						sql: 'DELETE FROM envelope_history WHERE account_id = ? AND slot = ?',
+						args: [accountId, deletion.slot]
 					},
 					{
 						sql: 'DELETE FROM envelopes WHERE account_id = ? AND slot = ? AND id = ?',
@@ -657,7 +639,7 @@ export class SyncStore {
 							prior.slot,
 							prior.id,
 							prior.ciphertext,
-							deletedAt,
+							writtenAt,
 							accountId,
 							prior.id
 						]
@@ -674,7 +656,7 @@ export class SyncStore {
 				uploadStatements.push({
 					sql: `INSERT INTO envelope_history(account_id, slot, id, ciphertext, saved_at)
 						VALUES (?, ?, ?, ?, ?)`,
-					args: [accountId, upload.slot, upload.id, upload.ciphertext, deletedAt]
+					args: [accountId, upload.slot, upload.id, upload.ciphertext, writtenAt]
 				});
 				if (prior) knownIds.delete(prior.id);
 				knownIds.add(upload.id);
@@ -740,7 +722,7 @@ export class SyncStore {
 					args: [accountId, historyVersions, historyBytes]
 				});
 
-			const seenAt = deletedAt;
+			const seenAt = writtenAt;
 			if (added || deletions.length > 0) {
 				await tx.execute({
 					sql: `
@@ -946,40 +928,33 @@ export class SyncStore {
 		return deleted.length;
 	}
 
-	async purgeExpiredDeletedEnvelopes(
-		now = Date.now(),
-		graceMs = DELETED_SLOT_GRACE_MS
-	): Promise<number> {
+	/**
+	 * Daily storage upkeep. Deletes already remove a record and its versions at once, so this
+	 * only enforces the version window everywhere (it may have been lowered) and recounts
+	 * history usage from the rows.
+	 */
+	// `now` keeps the shared store surface; nothing here waits on time.
+	async reclaimStorage(_now?: number): Promise<number> {
 		await this.db.ready;
 		return withTxn(this.relay, async (tx) => {
-			// A record deleted for good takes its history with it once the grace ends. None of
-			// it counts in quota: the record has no live copy.
-			await tx.execute({
+			const pruned = await tx.execute({
 				sql: `DELETE FROM envelope_history WHERE history_id IN (
-					SELECT history_id FROM envelope_history AS history
-					WHERE EXISTS (
-						SELECT 1 FROM deleted_envelopes AS deleted
-						WHERE deleted.account_id = history.account_id
-							AND deleted.slot = history.slot AND deleted.deleted_at <= ?
-					) AND NOT EXISTS (
-						SELECT 1 FROM envelopes AS live
-						WHERE live.account_id = history.account_id AND live.slot = history.slot
-					)
+					SELECT history_id FROM (
+						SELECT history_id, ROW_NUMBER() OVER (
+							PARTITION BY account_id, slot ORDER BY history_id DESC
+						) AS position
+						FROM envelope_history
+					) WHERE position > ?
 				)`,
-				args: [now - graceMs]
+				args: [this.historyVersions]
 			});
-			const result = await tx.execute({
-				sql: 'DELETE FROM deleted_envelopes WHERE deleted_at <= ?',
-				args: [now - graceMs]
-			});
-			// Recount history usage from the rows once a day, so the count cannot stay wrong.
 			await tx.batch([
 				'DELETE FROM account_history_usage',
 				`INSERT INTO account_history_usage(account_id, versions, bytes)
 				SELECT account_id, COUNT(*), SUM(length(ciphertext)) FROM envelope_history AS history
 				WHERE ${OLDER_VERSION} GROUP BY account_id`
 			]);
-			return result.rowsAffected;
+			return pruned.rowsAffected;
 		});
 	}
 

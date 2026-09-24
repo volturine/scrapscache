@@ -84,7 +84,8 @@ describe('encrypted note history', () => {
 		);
 
 		const restored = await hydrateHistoryNote(account, entries[0]);
-		expect(restored.images?.[0].dataUrl).toBe(attachment.dataUrl);
+		expect(restored.missingAttachments).toBe(0);
+		expect(restored.note.images?.[0].dataUrl).toBe(attachment.dataUrl);
 		expect(fetch).toHaveBeenLastCalledWith(
 			`/api/sync/history?slot=${imageSlot}&at=${savedAt}`,
 			{ cache: 'no-store' },
@@ -139,7 +140,7 @@ describe('encrypted note history', () => {
 				images: [{ id: 'image', mime: 'image/png', createdAt: 1, hash: oldImage.hash }]
 			}
 		});
-		expect(restored.images?.[0].dataUrl).toBe(oldImage.dataUrl);
+		expect(restored.note.images?.[0].dataUrl).toBe(oldImage.dataUrl);
 	});
 
 	it('rejects an envelope the relay moved from another slot', async () => {
@@ -165,5 +166,37 @@ describe('encrypted note history', () => {
 		await expect(loadNoteHistory(account, 'wanted-note')).rejects.toThrow(
 			'Could not read an encrypted history version.'
 		);
+	});
+
+	it('opens a version whose attachment was deleted since, counting what is missing', async () => {
+		const account = createSyncIdentity();
+		vi.spyOn(syncStore, 'authorizedFetch').mockImplementation(async (path) =>
+			String(path).includes('&at=')
+				? respond({ error: 'Envelope not found' }, 404)
+				: respond({ versions: [] })
+		);
+		const restored = await hydrateHistoryNote(account, {
+			historyId: 1,
+			savedAt: 1,
+			note: {
+				id: 'note',
+				title: 'Photos',
+				body: '',
+				color: 'default',
+				pinned: false,
+				archived: false,
+				trashed: false,
+				trashedAt: null,
+				createdAt: 1,
+				updatedAt: 1,
+				reminder: null,
+				labels: [],
+				images: [{ id: 'gone', mime: 'image/png', createdAt: 1, hash: 'h' }]
+			}
+		});
+		expect(restored).toMatchObject({
+			missingAttachments: 1,
+			note: { title: 'Photos', images: [] }
+		});
 	});
 });

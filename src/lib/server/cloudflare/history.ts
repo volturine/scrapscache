@@ -38,8 +38,7 @@ export async function deleteHistoryRows(
 
 /**
  * A history row counted in quota: an older version of a record that still exists. The live
- * copy each record's history holds is already counted, and a deleted record's versions are
- * kept only through its deletion grace, like the deleted copy itself.
+ * copy each record's history holds is already counted.
  */
 export const OLDER_VERSION = `EXISTS (
 	SELECT 1 FROM envelopes AS live
@@ -68,4 +67,66 @@ export async function olderVersions(
 		bytes += Number(row?.bytes ?? 0);
 	}
 	return { versions, bytes };
+}
+
+/**
+ * Remove records deleted for good: their remaining versions, then the deleted copies' objects,
+ * then the rows that staged them. The coordinator runs this for its own deletes right after
+ * committing them; the daily sweep runs it for everything a cut-short request left behind.
+ */
+export async function purgeDeletedRecords(
+	env: { SCRAPSCACHE_DB: D1Database; SCRAPSCACHE_ENVELOPES: R2Bucket },
+	scope?: { accountId: string; slots: string[] }
+): Promise<number> {
+	const filter = scope
+		? `deleted.account_id = ? AND deleted.slot IN (${scope.slots.map(() => '?').join(', ')})`
+		: '1 = 1';
+	const args = scope ? [scope.accountId, ...scope.slots] : [];
+	const deleted = (
+		await execute(env.SCRAPSCACHE_DB, {
+			sql: `SELECT account_id AS accountId, slot, r2_key AS r2Key
+			FROM deleted_envelopes AS deleted WHERE ${filter}`,
+			args
+		})
+	).rows as Array<{ accountId: string; slot: string; r2Key: string }>;
+	if (deleted.length === 0) return 0;
+	const history = (
+		await execute(env.SCRAPSCACHE_DB, {
+			sql: `SELECT history.history_id AS historyId, history.r2_key AS r2Key
+			FROM envelope_history AS history
+			JOIN deleted_envelopes AS deleted
+				ON deleted.account_id = history.account_id AND deleted.slot = history.slot
+			WHERE ${filter} AND NOT EXISTS (
+				SELECT 1 FROM envelopes AS live
+				WHERE live.account_id = history.account_id AND live.slot = history.slot
+			)`,
+			args
+		})
+	).rows as Array<{ historyId: number; r2Key: string }>;
+	await deleteHistoryRows(env, history);
+	for (let index = 0; index < deleted.length; index += 40) {
+		const group = deleted.slice(index, index + 40);
+		const keys = group.map((row) => String(row.r2Key));
+		const list = keys.map(() => '?').join(', ');
+		// A record written again may still hold the old object among its versions.
+		const held = new Set(
+			(
+				await execute(env.SCRAPSCACHE_DB, {
+					sql: `SELECT r2_key AS r2Key FROM envelopes WHERE r2_key IN (${list})
+					UNION SELECT r2_key FROM envelope_history WHERE r2_key IN (${list})`,
+					args: [...keys, ...keys]
+				})
+			).rows.map((row) => String(row.r2Key))
+		);
+		const unreferenced = keys.filter((key) => !held.has(key));
+		if (unreferenced.length) await env.SCRAPSCACHE_ENVELOPES.delete(unreferenced);
+		await batch(
+			env.SCRAPSCACHE_DB,
+			group.map((row) => ({
+				sql: 'DELETE FROM deleted_envelopes WHERE account_id = ? AND slot = ? AND r2_key = ?',
+				args: [String(row.accountId), String(row.slot), String(row.r2Key)]
+			}))
+		);
+	}
+	return deleted.length;
 }

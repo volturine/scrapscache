@@ -629,7 +629,7 @@
 {#snippet previewToggle()}
 	{#if showPreviewToggle}
 		{@const label = previewsExpanded ? 'Hide previews' : 'Show previews'}
-		<Tooltip content={label}>
+		<Tooltip content={label} class={noteEditorStyles.previewToggleAnchor}>
 			<button
 				type="button"
 				class={cx(noteEditorStyles.previewToggle, noteSurface({ color }))}

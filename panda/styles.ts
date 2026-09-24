@@ -1867,14 +1867,18 @@ export const noteEditorStyles = {
 	}),
 	previewPanel: css({ ...column, minH: 0 }),
 	previewPanelFill: css({ ...column, ...flexPane }),
-	// Straddles the footer hairline so it reads as part of the line. The note
-	// surface color comes from noteSurface() on the element; keep bg unset here.
-	previewToggle: css({
+	// The tooltip trigger wraps the toggle in an in-flow span; park that span on
+	// the hairline so the footer's flex layout only sees its button groups.
+	previewToggleAnchor: css({
 		position: 'absolute',
 		top: 0,
 		left: '50%',
 		transform: 'translate(-50%, -50%)',
-		zIndex: 1,
+		zIndex: 1
+	}),
+	// Straddles the footer hairline so it reads as part of the line. The note
+	// surface color comes from noteSurface() on the element; keep bg unset here.
+	previewToggle: css({
 		...flexCenter,
 		gap: '3xs',
 		h: '1.5rem',
@@ -1891,7 +1895,7 @@ export const noteEditorStyles = {
 			outlineColor: 'scrapscache.focus',
 			outlineOffset: '1px'
 		},
-		_active: { transform: 'translate(-50%, -50%) scale(0.95)' }
+		_active: { transform: 'scale(0.95)' }
 	}),
 	scroller: css({
 		...flexPane,

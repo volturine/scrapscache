@@ -45,11 +45,14 @@ afterEach(() => {
 });
 
 describe('NoteEditor Keep-style layout', () => {
-	it('docks the merged files-and-links list and the photo strip below the body scroller', () => {
+	it('docks the merged files-and-links list and the photo strip below the body scroller', async () => {
 		notesStore.notes = [note()];
-		const { container } = render(NoteEditor, {
+		const { container, getByRole } = render(NoteEditor, {
 			props: { noteId: 'note-1', onClose: () => {} }
 		});
+
+		// Previews start collapsed behind the footer-line toggle.
+		await fireEvent.click(getByRole('button', { name: 'Show previews' }));
 
 		const scroller = container.querySelector('.note-scrollbar-hidden');
 		const filesAndLinks = container.querySelector('[aria-label="Files and links"]');
@@ -74,15 +77,17 @@ describe('NoteEditor Keep-style layout', () => {
 		).toBeTruthy();
 	});
 
-	it('stacks multiple links as rows in the merged files-and-links list', () => {
+	it('stacks multiple links as rows in the merged files-and-links list', async () => {
 		notesStore.notes = [
 			note({
 				body: 'Multiple links:\nhttps://one.example.com\nhttps://two.example.com\nhttps://three.example.com\nhttps://four.example.com'
 			})
 		];
-		const { container } = render(NoteEditor, {
+		const { container, getByRole } = render(NoteEditor, {
 			props: { noteId: 'note-1', onClose: () => {} }
 		});
+
+		await fireEvent.click(getByRole('button', { name: 'Show previews' }));
 
 		const scroller = container.querySelector('.note-scrollbar-hidden');
 		const title = container.querySelector('textarea[placeholder="Title"]');
@@ -99,6 +104,55 @@ describe('NoteEditor Keep-style layout', () => {
 		expect(
 			title!.compareDocumentPosition(filesAndLinks!) & Node.DOCUMENT_POSITION_FOLLOWING
 		).toBeTruthy();
+	});
+
+	it('keeps the photo strip open without a toggle in fill mode', () => {
+		notesStore.notes = [note({ body: '' })];
+		const { container, queryByRole } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+
+		// Fill mode forces the panel open, so there is nothing for the toggle to do.
+		expect(queryByRole('button', { name: 'Show previews' })).toBeNull();
+		expect(queryByRole('button', { name: 'Hide previews' })).toBeNull();
+		expect(container.querySelector('[data-preview-panel]')).toBeTruthy();
+		expect(container.querySelector('[aria-label="Photos"]')).toBeTruthy();
+	});
+
+	it('toggles collapsed previews from the footer-line button', async () => {
+		notesStore.notes = [note()];
+		const { container, getByRole, queryByRole } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+
+		// Collapsed by default: content hidden, toggle on the line.
+		expect(container.querySelector('[data-preview-panel]')).toBeNull();
+		expect(container.querySelector('[aria-label="Files and links"]')).toBeNull();
+		const show = getByRole('button', { name: 'Show previews' });
+		expect(show.getAttribute('aria-expanded')).toBe('false');
+
+		await fireEvent.click(show);
+
+		expect(container.querySelector('[data-preview-panel]')).toBeTruthy();
+		expect(container.querySelector('[aria-label="Files and links"]')).toBeTruthy();
+		expect(getByRole('button', { name: 'Hide previews' }).getAttribute('aria-expanded')).toBe(
+			'true'
+		);
+
+		await fireEvent.click(getByRole('button', { name: 'Hide previews' }));
+
+		expect(container.querySelector('[data-preview-panel]')).toBeNull();
+		expect(queryByRole('button', { name: 'Show previews' })).toBeTruthy();
+	});
+
+	it('hides the toggle when a note has nothing to preview', () => {
+		notesStore.notes = [note({ body: 'Plain note', images: [] })];
+		const { queryByRole } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+
+		expect(queryByRole('button', { name: 'Show previews' })).toBeNull();
+		expect(queryByRole('button', { name: 'Hide previews' })).toBeNull();
 	});
 
 	it('lets the photo strip pan sideways on touch', () => {

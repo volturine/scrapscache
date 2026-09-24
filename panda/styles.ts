@@ -1857,6 +1857,42 @@ export const noteEditorStyles = {
 		px: 'sm',
 		py: 'sm'
 	}),
+	/** Base of every editor footer variant; justify/gap stay with the hstack call. */
+	footer: css({
+		position: 'relative',
+		px: 'md',
+		py: 'sm',
+		borderTopWidth: 'hairline',
+		borderColor: 'scrapscache.borderFaint'
+	}),
+	previewPanel: css({ ...column, minH: 0 }),
+	previewPanelFill: css({ ...column, ...flexPane }),
+	// Straddles the footer hairline so it reads as part of the line. The note
+	// surface color comes from noteSurface() on the element; keep bg unset here.
+	previewToggle: css({
+		position: 'absolute',
+		top: 0,
+		left: '50%',
+		transform: 'translate(-50%, -50%)',
+		zIndex: 1,
+		...flexCenter,
+		gap: '3xs',
+		h: '1.5rem',
+		px: 'xs',
+		rounded: 'pill',
+		borderWidth: 'hairline',
+		borderColor: 'scrapscache.borderFaint',
+		color: 'scrapscache.textMuted',
+		userSelect: 'none',
+		...interactive,
+		_hoverable: { bg: 'scrapscache.interactiveHover' },
+		_focusVisible: {
+			outline: '2px solid',
+			outlineColor: 'scrapscache.focus',
+			outlineOffset: '1px'
+		},
+		_active: { transform: 'translate(-50%, -50%) scale(0.95)' }
+	}),
 	scroller: css({
 		...flexPane,
 		touchAction: 'pan-y',

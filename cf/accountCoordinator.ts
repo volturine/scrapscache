@@ -1,7 +1,11 @@
 import type { D1Database, DurableObjectState, R2Bucket } from '@cloudflare/workers-types';
 import { batch, execute, type SqlStatement } from '../src/lib/server/cloudflare/d1';
 import { parseHistoryVersions } from '../src/lib/server/operatorConfig';
-import { deleteHistoryRows } from '../src/lib/server/cloudflare/history';
+import {
+	deleteHistoryRows,
+	OLDER_VERSION,
+	olderVersions
+} from '../src/lib/server/cloudflare/history';
 
 type Env = {
 	SCRAPSCACHE_DB: D1Database;
@@ -155,12 +159,21 @@ export class AccountCoordinator {
 		const account = (
 			await execute(db, {
 				sql: `SELECT next_seq AS nextSeq, envelope_count AS envelopeCount,
-					ciphertext_bytes AS ciphertextBytes, updated_at AS updatedAt
-				 FROM accounts WHERE account_id = ?`,
+					ciphertext_bytes AS ciphertextBytes, updated_at AS updatedAt,
+					COALESCE(history.versions, 0) AS historyVersions, COALESCE(history.bytes, 0) AS historyBytes
+				 FROM accounts LEFT JOIN account_history_usage AS history USING (account_id)
+				 WHERE account_id = ?`,
 				args: [input.accountId]
 			})
 		).rows[0] as
-			| { nextSeq: number; envelopeCount: number; ciphertextBytes: number; updatedAt: number }
+			| {
+					nextSeq: number;
+					envelopeCount: number;
+					ciphertextBytes: number;
+					updatedAt: number;
+					historyVersions: number;
+					historyBytes: number;
+			  }
 			| undefined;
 		if (!account) return Response.json({ error: 'Sync account does not exist' }, { status: 404 });
 
@@ -173,12 +186,17 @@ export class AccountCoordinator {
 		const maxBytes = quota?.maxBytes ?? input.maxAccountBytes;
 		let envelopeCount = account.envelopeCount;
 		let ciphertextBytes = account.ciphertextBytes;
+		// Older versions share the quota with live records but never block them: when the two
+		// together exceed it, the oldest versions give way.
+		let historyVersions = Number(account.historyVersions);
+		let historyBytes = Number(account.historyBytes);
 		const storageBytes = (activeCount = envelopeCount, activeBytes = ciphertextBytes) =>
 			activeBytes + activeCount * STORAGE_OVERHEAD_BYTES;
+		const historyStorageBytes = () => historyBytes + historyVersions * STORAGE_OVERHEAD_BYTES;
 		const usage = () => ({
 			envelopeCount,
 			ciphertextBytes,
-			storageBytes: storageBytes(),
+			storageBytes: storageBytes() + historyStorageBytes(),
 			maxBytes
 		});
 		const now = Math.max(Date.now(), Number(account.updatedAt) + 1);
@@ -444,13 +462,45 @@ export class AccountCoordinator {
 			);
 		}
 
+		const touched = [...new Set([...acceptedUploads, ...input.deletions].map(({ slot }) => slot))];
+		const olderBefore = await olderVersions(db, input.accountId, touched);
 		await batch(db, statements);
 
 		const mutated = acceptedUploads.length > 0 || deletedAny;
-		if (mutated)
-			await this.pruneHistory(input.accountId, [
-				...new Set([...acceptedUploads, ...input.deletions].map(({ slot }) => slot))
-			]);
+		if (mutated) {
+			await this.pruneHistory(input.accountId, touched);
+			const olderAfter = await olderVersions(db, input.accountId, touched);
+			historyVersions += olderAfter.versions - olderBefore.versions;
+			historyBytes += olderAfter.bytes - olderBefore.bytes;
+			if (storageBytes() + historyStorageBytes() > maxBytes && historyVersions > 0) {
+				const oldest = (
+					await execute(db, {
+						sql: `SELECT history_id AS historyId, r2_key AS r2Key, ciphertext_bytes AS bytes
+						FROM envelope_history AS history
+						WHERE account_id = ? AND ${OLDER_VERSION}
+						ORDER BY history_id ASC`,
+						args: [input.accountId]
+					})
+				).rows as Array<{ historyId: number; r2Key: string; bytes: number }>;
+				const evicted: typeof oldest = [];
+				for (const row of oldest) {
+					if (storageBytes() + historyStorageBytes() <= maxBytes) break;
+					evicted.push(row);
+					historyVersions -= 1;
+					historyBytes -= Number(row.bytes);
+				}
+				await deleteHistoryRows(this.env, evicted);
+			}
+			if (
+				historyVersions !== Number(account.historyVersions) ||
+				historyBytes !== Number(account.historyBytes)
+			)
+				await execute(db, {
+					sql: `INSERT INTO account_history_usage(account_id, versions, bytes) VALUES (?, ?, ?)
+					ON CONFLICT(account_id) DO UPDATE SET versions = excluded.versions, bytes = excluded.bytes`,
+					args: [input.accountId, historyVersions, historyBytes]
+				});
+		}
 		if (mutated) {
 			for (const listener of this.listeners) {
 				// The writer already applied this change locally; waking it would

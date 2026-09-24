@@ -152,6 +152,11 @@ per-record database overhead (default 100 MB).
 Each synced record keeps a rolling window of its newest encrypted versions, the
 live one included: 14 by default, set with `SCRAPSCACHE_HISTORY_VERSIONS` (1–40).
 Saving a new version drops the oldest; one record's saves never evict another's.
+Older versions count toward the account's storage quota alongside live records,
+but never block them: when the two together exceed the quota, the account's
+oldest versions give way. A deleted record's versions do not count, like the
+deleted copy kept during its grace. The daily retention sweep recounts history usage from the
+stored versions.
 The note editor loads a note's versions in one request, previews a selected
 version, and restores it to that note. A device decrypts the version and any
 matching attachments in memory; history is never written into IndexedDB. When a

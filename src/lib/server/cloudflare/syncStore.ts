@@ -8,7 +8,7 @@ import { batch, execute, type SqlStatement } from './d1';
 import { cloudflareBindings } from './env';
 import { MAX_CLIENT_SYNC_MUTATIONS_PER_REQUEST } from '$lib/syncLimits';
 import type { HistoryEnvelope, HistoryList } from '$lib/syncHistory';
-import { deleteHistoryRows } from './history';
+import { deleteHistoryRows, OLDER_VERSION } from './history';
 
 export type EncryptedEnvelope = { seq: number; id: string; ciphertext: string; slot: string };
 export type OpaqueUpload = Omit<EncryptedEnvelope, 'seq'> & { expectedId?: string | null };
@@ -268,10 +268,12 @@ export class SyncStore {
 			await execute(this.db, {
 				sql: `SELECT a.account_id AS accountId, a.envelope_count AS envelopeCount,
 						a.ciphertext_bytes AS ciphertextBytes, a.last_seen_at AS lastSeenAt,
-						q.max_bytes AS maxBytes, r.sync_per_minute AS syncPerMinute
+						q.max_bytes AS maxBytes, r.sync_per_minute AS syncPerMinute,
+						h.versions AS historyVersions, h.bytes AS historyBytes
 					FROM accounts a
 					LEFT JOIN account_quotas q ON q.account_id = a.account_id
 					LEFT JOIN account_rate_limits r ON r.account_id = a.account_id
+					LEFT JOIN account_history_usage h ON h.account_id = a.account_id
 					${where}
 					ORDER BY a.ciphertext_bytes DESC, a.account_id ASC
 					LIMIT ? OFFSET ?`,
@@ -301,7 +303,11 @@ export class SyncStore {
 			accountId: String(row.accountId),
 			envelopeCount,
 			ciphertextBytes,
-			storageBytes: ciphertextBytes + envelopeCount * ENVELOPE_STORAGE_OVERHEAD_BYTES,
+			storageBytes:
+				ciphertextBytes +
+				envelopeCount * ENVELOPE_STORAGE_OVERHEAD_BYTES +
+				Number(row.historyBytes ?? 0) +
+				Number(row.historyVersions ?? 0) * ENVELOPE_STORAGE_OVERHEAD_BYTES,
 			lastSeenAt: Number(row.lastSeenAt ?? 0),
 			maxBytes: row.maxBytes == null ? defaultMaxAccountBytes : Number(row.maxBytes),
 			maxBytesOverridden: row.maxBytes != null,
@@ -414,7 +420,7 @@ export class SyncStore {
 		).join(',');
 		const row = (
 			await execute(this.db, {
-				sql: `SELECT COUNT(*) accounts,COALESCE(SUM(envelope_count),0) envelopeCount,COALESCE(SUM(ciphertext_bytes),0) ciphertextBytes,${selects},COALESCE(SUM(CASE WHEN last_seen_at < ? THEN 1 ELSE 0 END),0) staleAccounts FROM accounts`,
+				sql: `SELECT COUNT(*) accounts,COALESCE(SUM(envelope_count),0) envelopeCount,COALESCE(SUM(ciphertext_bytes),0) ciphertextBytes,(SELECT COALESCE(SUM(bytes + versions * ${ENVELOPE_STORAGE_OVERHEAD_BYTES}),0) FROM account_history_usage) historyStorageBytes,${selects},COALESCE(SUM(CASE WHEN last_seen_at < ? THEN 1 ELSE 0 END),0) staleAccounts FROM accounts`,
 				args: [...ACTIVITY_WINDOWS_DAYS.map((d) => now - d * 86_400_000), stale ?? 0]
 			})
 		).rows[0]!;
@@ -427,7 +433,10 @@ export class SyncStore {
 			accounts: Number(row.accounts),
 			envelopeCount,
 			ciphertextBytes,
-			storageBytes: ciphertextBytes + envelopeCount * ENVELOPE_STORAGE_OVERHEAD_BYTES,
+			storageBytes:
+				ciphertextBytes +
+				envelopeCount * ENVELOPE_STORAGE_OVERHEAD_BYTES +
+				Number(row.historyStorageBytes),
 			activeByWindowDays,
 			staleAccounts: stale == null ? 0 : Number(row.staleAccounts)
 		};
@@ -492,6 +501,17 @@ export class SyncStore {
 				args: [String(r.accountId), String(r.slot)]
 			}))
 		);
+		// The coordinator updates history usage after its write batch, so a request cut short
+		// can leave the count off; recount it from the rows once a day.
+		await batch(this.db, [
+			{ sql: 'DELETE FROM account_history_usage', args: [] },
+			{
+				sql: `INSERT INTO account_history_usage(account_id, versions, bytes)
+				SELECT account_id, COUNT(*), SUM(ciphertext_bytes) FROM envelope_history AS history
+				WHERE ${OLDER_VERSION} GROUP BY account_id`,
+				args: []
+			}
+		]);
 		return rows.length + (await this.purgeAbandonedUploads(now));
 	}
 

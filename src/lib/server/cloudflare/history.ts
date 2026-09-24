@@ -35,3 +35,37 @@ export async function deleteHistoryRows(
 		);
 	}
 }
+
+/**
+ * A history row counted in quota: an older version of a record that still exists. The live
+ * copy each record's history holds is already counted, and a deleted record's versions are
+ * kept only through its deletion grace, like the deleted copy itself.
+ */
+export const OLDER_VERSION = `EXISTS (
+	SELECT 1 FROM envelopes AS live
+	WHERE live.account_id = history.account_id AND live.slot = history.slot AND live.id != history.id
+)`;
+
+/** Count and bytes of the older versions the given records hold. */
+export async function olderVersions(
+	db: D1Database,
+	accountId: string,
+	slots: string[]
+): Promise<{ versions: number; bytes: number }> {
+	let versions = 0;
+	let bytes = 0;
+	for (let index = 0; index < slots.length; index += 90) {
+		const group = slots.slice(index, index + 90);
+		const row = (
+			await execute(db, {
+				sql: `SELECT COUNT(*) AS versions, COALESCE(SUM(ciphertext_bytes), 0) AS bytes
+				FROM envelope_history AS history
+				WHERE account_id = ? AND slot IN (${group.map(() => '?').join(', ')}) AND ${OLDER_VERSION}`,
+				args: [accountId, ...group]
+			})
+		).rows[0] as { versions: number; bytes: number } | undefined;
+		versions += Number(row?.versions ?? 0);
+		bytes += Number(row?.bytes ?? 0);
+	}
+	return { versions, bytes };
+}

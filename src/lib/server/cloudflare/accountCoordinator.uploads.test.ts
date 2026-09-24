@@ -94,7 +94,7 @@ describe('uploads that have to be retried', () => {
 		]) {
 			const response = await sync(
 				[{ id, slot: SLOT, ciphertext, expectedId: previous }],
-				600,
+				100_000_000,
 				cursor
 			);
 			cursor = ((await response.json()) as { cursor: number }).cursor;
@@ -102,9 +102,54 @@ describe('uploads that have to be retried', () => {
 		}
 		await sync([{ id: 'other', slot: 'b'.repeat(64), ciphertext: 'dd' }], 100_000_000, cursor);
 		const history = await client.execute('SELECT id FROM envelope_history ORDER BY history_id');
-		// No account-wide byte budget: a 600-byte quota does not shrink history below the window.
 		expect(history.rows.map((row) => row.id)).toEqual(['two', 'three', 'other']);
 		expect([...objects.values()].sort()).toEqual(['bb', 'cc', 'dd']);
+	});
+
+	it('counts older versions in quota and lets the oldest give way to live data', async () => {
+		// Room for three stored versions of two bytes each, live or older.
+		const quota = 3 * (512 + 2);
+		let cursor = 0;
+		let previous: string | undefined;
+		let usage: { storageBytes: number } = { storageBytes: 0 };
+		for (const [id, ciphertext] of [
+			['one', 'aa'],
+			['two', 'bb'],
+			['three', 'cc']
+		]) {
+			const response = await sync(
+				[{ id, slot: SLOT, ciphertext, expectedId: previous }],
+				quota,
+				cursor
+			);
+			({ cursor, usage } = (await response.json()) as {
+				cursor: number;
+				usage: { storageBytes: number };
+			});
+			previous = id;
+		}
+		// Live "three" plus older "two" and "one"; the live copy in history is not charged again.
+		expect(usage.storageBytes).toBe(quota);
+
+		const response = await sync(
+			[{ id: 'other', slot: 'b'.repeat(64), ciphertext: 'dd' }],
+			quota,
+			cursor
+		);
+		const result = (await response.json()) as {
+			writesAccepted: boolean;
+			usage: { storageBytes: number };
+		};
+		expect(result.writesAccepted).toBe(true);
+		expect(result.usage.storageBytes).toBe(quota);
+		const history = await client.execute('SELECT id FROM envelope_history ORDER BY history_id');
+		expect(history.rows.map((row) => row.id)).toEqual(['two', 'three', 'other']);
+		expect([...objects.values()].sort()).toEqual(['bb', 'cc', 'dd']);
+		expect(
+			(await client.execute('SELECT versions, bytes FROM account_history_usage')).rows.map(
+				(row) => [Number(row.versions), Number(row.bytes)]
+			)
+		).toEqual([[1, 2]]);
 	});
 
 	it('writes a retry under a fresh key and deletes the object the earlier attempt reserved', async () => {

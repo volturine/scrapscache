@@ -82,6 +82,13 @@ const RELAY_DDL = `
 		ON envelope_history(account_id, slot, history_id DESC);
 	CREATE INDEX IF NOT EXISTS envelope_history_id
 		ON envelope_history(account_id, id);
+	-- Older versions (not the live copy each record's history also holds), counted in quota.
+	CREATE TABLE IF NOT EXISTS account_history_usage (
+		account_id TEXT PRIMARY KEY,
+		versions INTEGER NOT NULL DEFAULT 0,
+		bytes INTEGER NOT NULL DEFAULT 0,
+		FOREIGN KEY (account_id) REFERENCES accounts(account_id) ON DELETE CASCADE
+	);
 `;
 
 const OPS_DDL = `

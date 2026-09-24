@@ -129,6 +129,39 @@ async function executeInBatches(tx: Transaction, statements: InStatement[]): Pro
 	for (const batch of chunk(statements)) await tx.batch(batch);
 }
 
+/**
+ * A history row counted in quota: an older version of a record that still exists. The live
+ * copy each record's history holds is already counted, and a deleted record's versions are
+ * kept only through its deletion grace, like the deleted copy itself.
+ */
+const OLDER_VERSION = `EXISTS (
+	SELECT 1 FROM envelopes AS live
+	WHERE live.account_id = history.account_id AND live.slot = history.slot AND live.id != history.id
+)`;
+
+/** Count and bytes of the older versions the given records hold. */
+async function olderVersions(
+	tx: Transaction,
+	accountId: string,
+	slots: string[]
+): Promise<{ versions: number; bytes: number }> {
+	let versions = 0;
+	let bytes = 0;
+	for (const slotBatch of chunk(slots)) {
+		const row = (
+			await tx.execute({
+				sql: `SELECT COUNT(*) AS versions, COALESCE(SUM(length(ciphertext)), 0) AS bytes
+				FROM envelope_history AS history
+				WHERE account_id = ? AND slot IN (${slotBatch.map(() => '?').join(', ')}) AND ${OLDER_VERSION}`,
+				args: [accountId, ...slotBatch]
+			})
+		).rows[0] as unknown as { versions: number; bytes: number };
+		versions += Number(row.versions);
+		bytes += Number(row.bytes);
+	}
+	return { versions, bytes };
+}
+
 export class SyncStore {
 	private readonly db: Db;
 	private readonly maxAccountBytes: number;
@@ -335,10 +368,12 @@ export class SyncStore {
 			await this.relay.execute({
 				sql: `SELECT a.account_id AS accountId, a.envelope_count AS envelopeCount,
 						a.ciphertext_bytes AS ciphertextBytes, a.last_seen_at AS lastSeenAt,
-						q.max_bytes AS maxBytes, r.sync_per_minute AS syncPerMinute
+						q.max_bytes AS maxBytes, r.sync_per_minute AS syncPerMinute,
+						h.versions AS historyVersions, h.bytes AS historyBytes
 					FROM accounts a
 					LEFT JOIN account_quotas q ON q.account_id = a.account_id
 					LEFT JOIN account_rate_limits r ON r.account_id = a.account_id
+					LEFT JOIN account_history_usage h ON h.account_id = a.account_id
 					${where}
 					ORDER BY a.ciphertext_bytes DESC, a.account_id ASC
 					LIMIT ? OFFSET ?`,
@@ -368,7 +403,11 @@ export class SyncStore {
 			accountId: String(row.accountId),
 			envelopeCount,
 			ciphertextBytes,
-			storageBytes: ciphertextBytes + envelopeCount * ENVELOPE_STORAGE_OVERHEAD_BYTES,
+			storageBytes:
+				ciphertextBytes +
+				envelopeCount * ENVELOPE_STORAGE_OVERHEAD_BYTES +
+				Number(row.historyBytes ?? 0) +
+				Number(row.historyVersions ?? 0) * ENVELOPE_STORAGE_OVERHEAD_BYTES,
 			lastSeenAt: Number(row.lastSeenAt ?? 0),
 			maxBytes: row.maxBytes == null ? defaultMaxAccountBytes : Number(row.maxBytes),
 			maxBytesOverridden: row.maxBytes != null,
@@ -429,25 +468,35 @@ export class SyncStore {
 				await tx.execute({
 					sql: `
 				SELECT credential_hash AS credentialHash, next_seq AS nextSeq, envelope_count AS envelopeCount,
-					ciphertext_bytes AS ciphertextBytes, updated_at AS updatedAt
+					ciphertext_bytes AS ciphertextBytes, updated_at AS updatedAt,
+					COALESCE(history.versions, 0) AS historyVersions, COALESCE(history.bytes, 0) AS historyBytes
 				FROM accounts
+				LEFT JOIN account_history_usage AS history USING (account_id)
 				WHERE account_id = ?
 			`,
 					args: [accountId]
 				})
-			).rows[0] as unknown as AccountRow | undefined;
+			).rows[0] as unknown as
+				| (AccountRow & { updatedAt: number; historyVersions: number; historyBytes: number })
+				| undefined;
 			if (!account) throw new Error('Sync account does not exist');
 			const quotaRow = await this.accountByteQuota(tx, accountId);
 			const maxAccountBytes = quotaRow?.maxBytes ?? defaultMaxAccountBytes;
 
 			let envelopeCount = account.envelopeCount;
 			let ciphertextBytes = account.ciphertextBytes;
+			// Older versions share the quota with live records but never block them: when the two
+			// together exceed it, the oldest versions give way.
+			let historyVersions = Number(account.historyVersions);
+			let historyBytes = Number(account.historyBytes);
 			const storageBytes = (activeCount = envelopeCount, activeBytes = ciphertextBytes): number =>
 				activeBytes + activeCount * ENVELOPE_STORAGE_OVERHEAD_BYTES;
+			const historyStorageBytes = () =>
+				historyBytes + historyVersions * ENVELOPE_STORAGE_OVERHEAD_BYTES;
 			const usage = (): UsageRow & { maxBytes: number } => ({
 				envelopeCount,
 				ciphertextBytes,
-				storageBytes: storageBytes(),
+				storageBytes: storageBytes() + historyStorageBytes(),
 				maxBytes: maxAccountBytes
 			});
 			if (cursor > account.nextSeq) {
@@ -527,6 +576,8 @@ export class SyncStore {
 				};
 			}
 
+			const olderBefore = await olderVersions(tx, accountId, slots);
+
 			const knownIds = new Set<string>();
 			for (const idBatch of chunk([...new Set(uploads.map(({ id }) => id))])) {
 				const placeholders = idBatch.map(() => '?').join(', ');
@@ -540,10 +591,7 @@ export class SyncStore {
 			}
 
 			const deletionStatements: InStatement[] = [];
-			const deletedAt = Math.max(
-				Date.now(),
-				Number((account as AccountRow & { updatedAt: number }).updatedAt) + 1
-			);
+			const deletedAt = Math.max(Date.now(), Number(account.updatedAt) + 1);
 			for (const deletion of deletions) {
 				const removed = currentBySlot.get(deletion.slot);
 				if (!removed || removed.id !== deletion.id) continue;
@@ -653,6 +701,44 @@ export class SyncStore {
 					args: [accountId, ...slots, this.historyVersions]
 				});
 			await executeInBatches(tx, uploadStatements);
+
+			const olderAfter = await olderVersions(tx, accountId, slots);
+			historyVersions += olderAfter.versions - olderBefore.versions;
+			historyBytes += olderAfter.bytes - olderBefore.bytes;
+			if (storageBytes() + historyStorageBytes() > maxAccountBytes && historyVersions > 0) {
+				const oldest = (
+					await tx.execute({
+						sql: `SELECT history_id AS historyId, length(ciphertext) AS bytes
+						FROM envelope_history AS history
+						WHERE account_id = ? AND ${OLDER_VERSION}
+						ORDER BY history_id ASC`,
+						args: [accountId]
+					})
+				).rows as unknown as Array<{ historyId: number; bytes: number }>;
+				const evicted: number[] = [];
+				for (const row of oldest) {
+					if (storageBytes() + historyStorageBytes() <= maxAccountBytes) break;
+					evicted.push(row.historyId);
+					historyVersions -= 1;
+					historyBytes -= Number(row.bytes);
+				}
+				await executeInBatches(
+					tx,
+					chunk(evicted).map((ids) => ({
+						sql: `DELETE FROM envelope_history WHERE history_id IN (${ids.map(() => '?').join(', ')})`,
+						args: ids
+					}))
+				);
+			}
+			if (
+				historyVersions !== Number(account.historyVersions) ||
+				historyBytes !== Number(account.historyBytes)
+			)
+				await tx.execute({
+					sql: `INSERT INTO account_history_usage(account_id, versions, bytes) VALUES (?, ?, ?)
+					ON CONFLICT(account_id) DO UPDATE SET versions = excluded.versions, bytes = excluded.bytes`,
+					args: [accountId, historyVersions, historyBytes]
+				});
 
 			const seenAt = deletedAt;
 			if (added || deletions.length > 0) {
@@ -809,6 +895,8 @@ export class SyncStore {
 				COUNT(*) AS accounts,
 				COALESCE(SUM(envelope_count), 0) AS envelopeCount,
 				COALESCE(SUM(ciphertext_bytes), 0) AS ciphertextBytes,
+				(SELECT COALESCE(SUM(bytes + versions * ${ENVELOPE_STORAGE_OVERHEAD_BYTES}), 0)
+					FROM account_history_usage) AS historyStorageBytes,
 				${activeSelects ? `${activeSelects},` : ''}
 				COALESCE(SUM(CASE WHEN last_seen_at < ? THEN 1 ELSE 0 END), 0) AS staleAccounts
 			FROM accounts
@@ -827,7 +915,10 @@ export class SyncStore {
 			accounts: row.accounts,
 			envelopeCount: row.envelopeCount,
 			ciphertextBytes: row.ciphertextBytes,
-			storageBytes: row.ciphertextBytes + row.envelopeCount * ENVELOPE_STORAGE_OVERHEAD_BYTES,
+			storageBytes:
+				row.ciphertextBytes +
+				row.envelopeCount * ENVELOPE_STORAGE_OVERHEAD_BYTES +
+				Number(row.historyStorageBytes),
 			activeByWindowDays,
 			staleAccounts: staleBefore == null ? 0 : row.staleAccounts
 		};
@@ -861,15 +952,19 @@ export class SyncStore {
 	): Promise<number> {
 		await this.db.ready;
 		return withTxn(this.relay, async (tx) => {
-			// A record deleted for good takes its history with it once the grace ends.
+			// A record deleted for good takes its history with it once the grace ends. None of
+			// it counts in quota: the record has no live copy.
 			await tx.execute({
-				sql: `DELETE FROM envelope_history WHERE EXISTS (
-					SELECT 1 FROM deleted_envelopes AS deleted
-					WHERE deleted.account_id = envelope_history.account_id
-						AND deleted.slot = envelope_history.slot AND deleted.deleted_at <= ?
-				) AND NOT EXISTS (
-					SELECT 1 FROM envelopes AS live
-					WHERE live.account_id = envelope_history.account_id AND live.slot = envelope_history.slot
+				sql: `DELETE FROM envelope_history WHERE history_id IN (
+					SELECT history_id FROM envelope_history AS history
+					WHERE EXISTS (
+						SELECT 1 FROM deleted_envelopes AS deleted
+						WHERE deleted.account_id = history.account_id
+							AND deleted.slot = history.slot AND deleted.deleted_at <= ?
+					) AND NOT EXISTS (
+						SELECT 1 FROM envelopes AS live
+						WHERE live.account_id = history.account_id AND live.slot = history.slot
+					)
 				)`,
 				args: [now - graceMs]
 			});
@@ -877,6 +972,13 @@ export class SyncStore {
 				sql: 'DELETE FROM deleted_envelopes WHERE deleted_at <= ?',
 				args: [now - graceMs]
 			});
+			// Recount history usage from the rows once a day, so the count cannot stay wrong.
+			await tx.batch([
+				'DELETE FROM account_history_usage',
+				`INSERT INTO account_history_usage(account_id, versions, bytes)
+				SELECT account_id, COUNT(*), SUM(length(ciphertext)) FROM envelope_history AS history
+				WHERE ${OLDER_VERSION} GROUP BY account_id`
+			]);
 			return result.rowsAffected;
 		});
 	}

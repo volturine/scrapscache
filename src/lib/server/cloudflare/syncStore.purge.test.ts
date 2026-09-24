@@ -204,4 +204,21 @@ describe('history of records deleted for good', () => {
 		expect(await historyIds()).toEqual([]);
 		expect(objects.size).toBe(0);
 	});
+
+	it('recounts history usage from the rows, correcting a count a cut-short request left off', async () => {
+		const slot = 'd'.repeat(64);
+		await addEnvelope('live', slot, 'v1/prefix/live');
+		await addHistory('live', slot, 'v1/prefix/live');
+		await addHistory('older', slot, 'v1/prefix/older');
+		await client.execute({
+			sql: 'INSERT INTO account_history_usage(account_id, versions, bytes) VALUES (?, ?, ?)',
+			args: [ACCOUNT, 7, 7_000]
+		});
+
+		await store.purgeExpiredDeletedEnvelopes(NOW);
+
+		const rows = (await client.execute('SELECT versions, bytes FROM account_history_usage')).rows;
+		// Only the older version counts; the live copy is already in the account's usage.
+		expect(rows.map((row) => [Number(row.versions), Number(row.bytes)])).toEqual([[1, 10]]);
+	});
 });

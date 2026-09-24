@@ -24,7 +24,13 @@ export const DELETE: RequestHandler = async ({ request, getClientAddress }) => {
 		await getSyncAuth().revokeSyncSessions(accountId);
 		return new Response(null, { status: 204 });
 	} catch (error) {
-		console.error('[sync] account deletion failed');
+		console.error(
+			JSON.stringify({
+				level: 'error',
+				event: 'account_deletion_failed',
+				message: error instanceof Error ? error.message : 'Account deletion failed'
+			})
+		);
 		return json({ error: 'Sync storage is temporarily unavailable' }, { status: 503 });
 	}
 };

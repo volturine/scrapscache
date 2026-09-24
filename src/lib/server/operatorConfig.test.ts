@@ -2,23 +2,24 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
 	bytesToGigabytes,
+	DEFAULT_HISTORY_VERSIONS,
 	DEFAULT_MAX_ACCOUNT_BYTES,
+	MAX_HISTORY_VERSIONS,
+	parseHistoryVersions,
 	parseMaxAccountBytes,
 	parseRetentionInactiveDays,
 	staleBeforeMs
 } from './operatorConfig';
 
-type WranglerVars = { SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES?: string };
+type WranglerVars = Record<string, string | undefined>;
 type WranglerConfig = {
 	vars?: WranglerVars;
 	env?: Record<string, { vars?: WranglerVars }>;
 };
 
-function composeFallback(source: string): string {
-	const match = source.match(
-		/SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES: "\$\{SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES:-(\d+)\}"/
-	);
-	if (!match) throw new Error('Compose fallback for SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES is missing');
+function composeFallback(source: string, name: string): string {
+	const match = source.match(new RegExp(`${name}: "\\$\\{${name}:-(\\d+)\\}"`));
+	if (!match) throw new Error(`Compose fallback for ${name} is missing`);
 	return match[1];
 }
 
@@ -54,22 +55,33 @@ describe('operator config', () => {
 		expect(parseMaxAccountBytes('200000000')).toBe(200_000_000);
 	});
 
-	it('keeps self-host and Workers default account quotas aligned', () => {
-		const expected = String(DEFAULT_MAX_ACCOUNT_BYTES);
-		const example = readFileSync('docker/.env.example', 'utf8');
-		expect(example).toMatch(new RegExp(`^SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES=${expected}$`, 'm'));
+	it('keeps 14 history versions unless an operator sets 1 to 40', () => {
+		expect(DEFAULT_HISTORY_VERSIONS).toBe(14);
+		expect(MAX_HISTORY_VERSIONS).toBe(40);
+		expect(parseHistoryVersions(undefined)).toBe(14);
+		expect(parseHistoryVersions('0')).toBe(14);
+		expect(parseHistoryVersions('41')).toBe(14);
+		expect(parseHistoryVersions('2.5')).toBe(14);
+		expect(parseHistoryVersions('1')).toBe(1);
+		expect(parseHistoryVersions('40')).toBe(40);
+	});
 
-		expect(composeFallback(readFileSync('docker/compose.yaml', 'utf8'))).toBe(expected);
-		expect(composeFallback(readFileSync('docker/compose.dev.yaml', 'utf8'))).toBe(expected);
+	it.each([
+		['SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES', String(DEFAULT_MAX_ACCOUNT_BYTES)],
+		['SCRAPSCACHE_HISTORY_VERSIONS', String(DEFAULT_HISTORY_VERSIONS)]
+	])('keeps the self-host and Workers default for %s aligned', (name, expected) => {
+		const example = readFileSync('docker/.env.example', 'utf8');
+		expect(example).toMatch(new RegExp(`^${name}=${expected}$`, 'm'));
+
+		expect(composeFallback(readFileSync('docker/compose.yaml', 'utf8'), name)).toBe(expected);
+		expect(composeFallback(readFileSync('docker/compose.dev.yaml', 'utf8'), name)).toBe(expected);
 
 		const wrangler = readWranglerConfig('wrangler.jsonc');
-		expect(wrangler.vars?.SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES).toBe(expected);
+		expect(wrangler.vars?.[name]).toBe(expected);
 		const environments = Object.entries(wrangler.env ?? {});
 		expect(environments.length).toBeGreaterThan(0);
 		expect(
-			Object.fromEntries(
-				environments.map(([name, env]) => [name, env.vars?.SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES])
-			)
-		).toEqual(Object.fromEntries(environments.map(([name]) => [name, expected])));
+			Object.fromEntries(environments.map(([env, config]) => [env, config.vars?.[name]]))
+		).toEqual(Object.fromEntries(environments.map(([env]) => [env, expected])));
 	});
 });

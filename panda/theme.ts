@@ -157,7 +157,11 @@ export const theme = {
 			},
 			pulse: {
 				'50%': { opacity: 0.5 }
-			}
+			},
+			fadeIn: { from: { opacity: 0 } },
+			fadeOut: { to: { opacity: 0 } },
+			swapIn: { from: { opacity: 0, transform: 'scale(0.96)' } },
+			swapOut: { to: { opacity: 0, transform: 'scale(0.96)' } }
 		},
 		tokens: {
 			colors: { palette },

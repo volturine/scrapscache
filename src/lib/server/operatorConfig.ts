@@ -5,10 +5,22 @@ export const ACTIVITY_WINDOWS_DAYS = [1, 7, 30] as const;
 /** Sync requests an account may make per minute before an operator override. */
 export const DEFAULT_SYNC_PER_MINUTE = 60;
 const DAY_MS = 24 * 60 * 60 * 1000;
+/** Versions the relay keeps per record, the live one included. */
+export const DEFAULT_HISTORY_VERSIONS = 14;
+/** One history read is a D1 query plus an R2 read per version; stay inside a free
+ * Workers invocation's 50 subrequests. */
+export const MAX_HISTORY_VERSIONS = 40;
 
 export function parseMaxAccountBytes(value: string | undefined): number {
 	const parsed = Number(value);
 	return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : DEFAULT_MAX_ACCOUNT_BYTES;
+}
+
+export function parseHistoryVersions(value: string | undefined): number {
+	const parsed = Number(value);
+	return Number.isSafeInteger(parsed) && parsed > 0 && parsed <= MAX_HISTORY_VERSIONS
+		? parsed
+		: DEFAULT_HISTORY_VERSIONS;
 }
 
 export function parseRetentionInactiveDays(value: string | undefined): number {

@@ -20,7 +20,7 @@ export type RetentionStatus = {
 
 export type RetentionStore = {
 	deleteInactiveAccounts(staleBefore: number): Promise<number>;
-	purgeExpiredDeletedEnvelopes(now?: number): Promise<number>;
+	reclaimStorage(now?: number): Promise<number>;
 };
 
 export type RetentionSweepOptions = {
@@ -67,8 +67,8 @@ export async function getRetentionStatus(
 	}
 }
 
-/** Purge grace-expired deleted slots and remove long-inactive accounts, at most
- * once per day unless forced. Status persists in the ops store so every isolate
+/** Reclaim storage nothing needs any more and remove long-inactive accounts, at
+ * most once per day unless forced. Status persists in the ops store so every isolate
  * and the operator endpoints observe the same sweep history. */
 export async function runRetentionSweep(
 	options: RetentionSweepOptions = {}
@@ -81,7 +81,7 @@ export async function runRetentionSweep(
 	const previous = await getRetentionStatus(db, inactiveDays);
 	if (!options.force && now - previous.lastRunAt < RETENTION_INTERVAL_MS) return null;
 	try {
-		const purgedSlots = await store.purgeExpiredDeletedEnvelopes(now);
+		const purgedSlots = await store.reclaimStorage(now);
 		let deletedAccounts = 0;
 		const cutoff = staleBeforeMs(inactiveDays, now);
 		if (cutoff != null) deletedAccounts = await store.deleteInactiveAccounts(cutoff);

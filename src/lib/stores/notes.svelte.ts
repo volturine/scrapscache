@@ -1267,9 +1267,8 @@ export class NotesStore {
 				);
 			}
 		}
-		await replaceAllDeviceData(this.pid, notes, labels, (note) =>
-			this.compactPersistedNoteImages(note)
-		);
+		await replaceAllDeviceData(pid, notes, labels, (note) => this.compactPersistedNoteImages(note));
+		if (pid !== this.pid) return snapshot;
 		this.notes = notes;
 		this.labels = labels;
 		this.deletedNoteIds = { ...snapshot.tombstones };
@@ -1400,7 +1399,6 @@ export class NotesStore {
 		}
 	}
 
-	// Manual sync — caller shows UI feedback (spinning cloud icon).
 	async forcePushWorkspace(turnstileToken?: string): Promise<boolean> {
 		return this.withSyncLock(async () => {
 			const account = syncStore.account;

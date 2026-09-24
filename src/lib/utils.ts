@@ -134,7 +134,7 @@ type NoteActivitySource = {
 	trashedAt?: number | null;
 };
 
-function formatActivityRelative(ts: number, nowMs: number): string {
+export function formatActivityRelative(ts: number, nowMs: number): string {
 	const delta = nowMs - ts;
 	if (delta < 60_000) return 'just now';
 	if (delta < 3_600_000) return `${Math.floor(delta / 60_000)}m ago`;

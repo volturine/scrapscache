@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
 	SyncQuotaExceededError,
 	SyncStore,
-	DELETED_SLOT_GRACE_MS,
 	ENVELOPE_STORAGE_OVERHEAD_BYTES,
 	WAKE_CLAIM_LEASE_MS
 } from './syncStore';
@@ -26,6 +25,207 @@ function createStore(options?: ConstructorParameters<typeof SyncStore>[1]): {
 }
 
 describe('SQLite sync store', () => {
+	it('lists initial and replaced encrypted versions for the owner only', async () => {
+		const { store } = createStore();
+		await store.createAccount('owner', 'credential');
+		await store.createAccount('other', 'credential');
+		const first = await store.sync(
+			'owner',
+			0,
+			[{ id: 'old', slot: slot('a'), ciphertext: 'b2xk' }],
+			[]
+		);
+		expect((await store.listHistory('owner', slot('a'))).versions).toMatchObject([
+			{ id: 'old', ciphertext: 'b2xk' }
+		]);
+		const second = await store.sync(
+			'owner',
+			first.cursor,
+			[{ id: 'new', slot: slot('a'), ciphertext: 'bmV3', expectedId: 'old' }],
+			[]
+		);
+		const { versions } = await store.listHistory('owner', slot('a'));
+		expect(versions).toEqual([
+			{ historyId: expect.any(Number), savedAt: expect.any(Number), id: 'new', ciphertext: 'bmV3' },
+			{ historyId: expect.any(Number), savedAt: expect.any(Number), id: 'old', ciphertext: 'b2xk' }
+		]);
+		expect((await store.listHistory('other', slot('a'))).versions).toEqual([]);
+		expect((await store.listHistory('owner', slot('b'))).versions).toEqual([]);
+		expect(await store.getEnvelopeAt('owner', slot('a'), versions[1].savedAt)).toEqual({
+			id: 'old',
+			slot: slot('a'),
+			ciphertext: 'b2xk'
+		});
+		await store.sync('owner', second.cursor, [], [{ id: 'new', slot: slot('a') }]);
+		// Deleting the record takes every version with it.
+		expect((await store.listHistory('owner', slot('a'))).versions).toEqual([]);
+		expect(await store.getEnvelopeAt('owner', slot('a'), 0)).toBeNull();
+	});
+
+	it('keeps a rolling window of each record’s newest versions, not a shared account cap', async () => {
+		const { store } = createStore({ historyVersions: 3 });
+		await store.createAccount('owner', 'credential');
+		let cursor = 0;
+		let previous: string | null = null;
+		for (const id of ['one', 'two', 'three', 'four', 'five']) {
+			cursor = (
+				await store.sync(
+					'owner',
+					cursor,
+					[{ id, slot: slot('a'), ciphertext: 'YQ', expectedId: previous }],
+					[]
+				)
+			).cursor;
+			previous = id;
+		}
+		cursor = (
+			await store.sync('owner', cursor, [{ id: 'other', slot: slot('b'), ciphertext: 'Yg' }], [])
+		).cursor;
+		expect((await store.listHistory('owner', slot('a'))).versions.map(({ id }) => id)).toEqual([
+			'five',
+			'four',
+			'three'
+		]);
+		// Another record's saves never evict this one's versions.
+		expect((await store.listHistory('owner', slot('b'))).versions.map(({ id }) => id)).toEqual([
+			'other'
+		]);
+	});
+
+	it('counts older versions in quota once, without the live copy', async () => {
+		const { store } = createStore();
+		await store.createAccount('owner', 'credential');
+		const overhead = ENVELOPE_STORAGE_OVERHEAD_BYTES;
+		const first = await store.sync(
+			'owner',
+			0,
+			[{ id: 'v1', slot: slot('a'), ciphertext: 'aaaa' }],
+			[]
+		);
+		expect(first.usage.storageBytes).toBe(4 + overhead);
+		const second = await store.sync(
+			'owner',
+			first.cursor,
+			[{ id: 'v2', slot: slot('a'), ciphertext: 'bbbbbb', expectedId: 'v1' }],
+			[]
+		);
+		// Live v2 plus the older v1; the history row that mirrors v2 is not charged again.
+		expect(second.usage).toMatchObject({
+			ciphertextBytes: 6,
+			storageBytes: 6 + overhead + 4 + overhead
+		});
+		expect((await store.listAccounts({})).accounts[0].storageBytes).toBe(10 + 2 * overhead);
+		expect((await store.operatorUsage()).storageBytes).toBe(10 + 2 * overhead);
+
+		// Deleting the record removes its versions and frees their quota at once.
+		const deleted = await store.sync('owner', second.cursor, [], [{ id: 'v2', slot: slot('a') }]);
+		expect(deleted.usage.storageBytes).toBe(0);
+		expect((await store.listHistory('owner', slot('a'))).versions).toEqual([]);
+	});
+
+	it('lets the oldest versions give way when live data needs the quota', async () => {
+		const overhead = ENVELOPE_STORAGE_OVERHEAD_BYTES;
+		// Room for three stored versions in all, live or older.
+		const { store } = createStore({ maxAccountBytes: 3 * (overhead + 4) });
+		await store.createAccount('owner', 'credential');
+		let cursor = 0;
+		let previous: string | null = null;
+		for (const id of ['a1', 'a2', 'a3']) {
+			cursor = (
+				await store.sync(
+					'owner',
+					cursor,
+					[{ id, slot: slot('a'), ciphertext: 'aaaa', expectedId: previous }],
+					[]
+				)
+			).cursor;
+			previous = id;
+		}
+		expect((await store.listHistory('owner', slot('a'))).versions.map(({ id }) => id)).toEqual([
+			'a3',
+			'a2',
+			'a1'
+		]);
+		// A new record needs the room: the oldest version gives way instead of the save failing.
+		const result = await store.sync(
+			'owner',
+			cursor,
+			[{ id: 'b1', slot: slot('b'), ciphertext: 'bbbb' }],
+			[]
+		);
+		expect(result.writesAccepted).toBe(true);
+		expect(result.usage.storageBytes).toBe(3 * (overhead + 4));
+		expect((await store.listHistory('owner', slot('a'))).versions.map(({ id }) => id)).toEqual([
+			'a3',
+			'a2'
+		]);
+	});
+
+	it('recounts history usage from the rows in the daily sweep', async () => {
+		const { store, db } = createStore();
+		await store.createAccount('owner', 'credential');
+		const first = await store.sync(
+			'owner',
+			0,
+			[{ id: 'v1', slot: slot('a'), ciphertext: 'aaaa' }],
+			[]
+		);
+		await store.sync(
+			'owner',
+			first.cursor,
+			[{ id: 'v2', slot: slot('a'), ciphertext: 'bb', expectedId: 'v1' }],
+			[]
+		);
+		await db.relay.execute('UPDATE account_history_usage SET versions = 9, bytes = 999');
+
+		await store.reclaimStorage();
+
+		const row = (await db.relay.execute('SELECT versions, bytes FROM account_history_usage'))
+			.rows[0];
+		expect([Number(row.versions), Number(row.bytes)]).toEqual([1, 4]);
+	});
+
+	it('records a forced reupload once and keeps the first sync version', async () => {
+		const { store } = createStore();
+		await store.createAccount('owner', 'credential');
+		const first = await store.sync(
+			'owner',
+			0,
+			[{ id: 'initial', slot: slot('a'), ciphertext: 'YQ' }],
+			[]
+		);
+		await store.sync(
+			'owner',
+			first.cursor,
+			[{ id: 'forced', slot: slot('a'), ciphertext: 'YQ', expectedId: 'initial' }],
+			[]
+		);
+		await store.sync(
+			'owner',
+			first.cursor,
+			[{ id: 'forced', slot: slot('a'), ciphertext: 'YQ' }],
+			[]
+		);
+		expect((await store.listHistory('owner', slot('a'))).versions.map(({ id }) => id)).toEqual([
+			'forced',
+			'initial'
+		]);
+	});
+
+	it('keeps no versions of a deleted record, and starts afresh if it is written again', async () => {
+		const { store } = createStore();
+		await store.createAccount('owner', 'credential');
+		let cursor = (
+			await store.sync('owner', 0, [{ id: 'back', slot: slot('b'), ciphertext: 'Yg' }], [])
+		).cursor;
+		cursor = (await store.sync('owner', cursor, [], [{ id: 'back', slot: slot('b') }])).cursor;
+		expect((await store.listHistory('owner', slot('b'))).versions).toEqual([]);
+		await store.sync('owner', cursor, [{ id: 'again', slot: slot('b'), ciphertext: 'Yw' }], []);
+		expect((await store.listHistory('owner', slot('b'))).versions.map(({ id }) => id)).toEqual([
+			'again'
+		]);
+	});
+
 	it('creates accounts without overwriting existing credentials', async () => {
 		const { store } = createStore();
 		expect(await store.createAccount('account', 'first')).toBe(true);
@@ -210,7 +410,7 @@ describe('SQLite sync store', () => {
 		await store.sync('account', 0, uploads, [], 10);
 
 		expect(executeCalls).toBeLessThan(20);
-		expect(batchCalls).toBeLessThanOrEqual(2);
+		expect(batchCalls).toBeLessThanOrEqual(3);
 	});
 
 	it('finishes paginated downloads before accepting simultaneous uploads', async () => {
@@ -383,7 +583,7 @@ describe('SQLite sync store', () => {
 		expect(removed.usage).toMatchObject({ envelopeCount: 0, ciphertextBytes: 0, storageBytes: 0 });
 	});
 
-	it('hides deleted slots from downloads immediately but keeps their ciphertext during grace', async () => {
+	it('removes a deleted slot and all its ciphertext at once', async () => {
 		const { store, db } = createStore();
 		await store.createAccount('account', 'credential');
 		const uploaded = await store.sync(
@@ -415,19 +615,18 @@ describe('SQLite sync store', () => {
 			'note'
 		]);
 
-		const raw = await db.relay.execute({
-			sql: 'SELECT id, ciphertext FROM deleted_envelopes WHERE account_id = ? AND slot = ?',
-			args: ['account', slot('b')]
+		// Nothing of the deleted record stays on the relay: not the record, not a version.
+		const left = await db.relay.execute({
+			sql: `SELECT (SELECT COUNT(*) FROM envelopes WHERE slot = ?) +
+				(SELECT COUNT(*) FROM envelope_history WHERE slot = ?) AS count`,
+			args: [slot('b'), slot('b')]
 		});
-		expect(raw.rows[0] as unknown as { id: string; ciphertext: string }).toEqual({
-			id: 'photo',
-			ciphertext: 'cipher-photo'
-		});
+		expect(Number(left.rows[0].count)).toBe(0);
 	});
 
 	it('charges record overhead and frees quota as soon as a slot is deleted', async () => {
 		const maxAccountBytes = ENVELOPE_STORAGE_OVERHEAD_BYTES + 5;
-		const { store, db } = createStore({ maxAccountBytes });
+		const { store } = createStore({ maxAccountBytes });
 		await store.createAccount('account', 'credential');
 		await expect(
 			store.sync('account', 0, [{ id: 'too-large', slot: slot('z'), ciphertext: '123456' }], [], 10)
@@ -448,8 +647,6 @@ describe('SQLite sync store', () => {
 			10
 		);
 		expect(deleted.usage).toMatchObject({ envelopeCount: 0, ciphertextBytes: 0, storageBytes: 0 });
-		const retained = await db.relay.execute('SELECT COUNT(*) AS count FROM deleted_envelopes');
-		expect((retained.rows[0] as unknown as { count: number }).count).toBe(1);
 
 		const replacement = await store.sync(
 			'account',
@@ -459,27 +656,31 @@ describe('SQLite sync store', () => {
 			10
 		);
 		expect(replacement.usage.storageBytes).toBe(maxAccountBytes);
-		const raw = await db.relay.execute('SELECT COUNT(*) AS count FROM deleted_envelopes');
-		expect((raw.rows[0] as unknown as { count: number }).count).toBe(1);
 	});
 
-	it('purges staged slot deletions only after the grace window', async () => {
-		const { store, db } = createStore();
-		await store.createAccount('account', 'credential');
-		const uploaded = await store.sync(
-			'account',
-			0,
-			[{ id: 'photo', slot: slot('a'), ciphertext: 'opaque' }],
-			[],
-			10
-		);
-		await store.sync('account', uploaded.cursor, [], [{ id: 'photo', slot: slot('a') }], 10);
-
-		const raw = await db.relay.execute('SELECT deleted_at AS deletedAt FROM deleted_envelopes');
-		const { deletedAt } = raw.rows[0] as unknown as { deletedAt: number };
-
-		expect(await store.purgeExpiredDeletedEnvelopes(deletedAt + DELETED_SLOT_GRACE_MS - 1)).toBe(0);
-		expect(await store.purgeExpiredDeletedEnvelopes(deletedAt + DELETED_SLOT_GRACE_MS)).toBe(1);
+	it('enforces a lowered version window in the daily sweep', async () => {
+		const db = testDb();
+		const before = new SyncStore(db, { historyVersions: 4 });
+		await before.createAccount('account', 'credential');
+		let cursor = 0;
+		let previous: string | null = null;
+		for (const id of ['one', 'two', 'three', 'four']) {
+			cursor = (
+				await before.sync(
+					'account',
+					cursor,
+					[{ id, slot: slot('a'), ciphertext: 'opaque', expectedId: previous }],
+					[]
+				)
+			).cursor;
+			previous = id;
+		}
+		const after = new SyncStore(db, { historyVersions: 2 });
+		expect(await after.reclaimStorage()).toBe(2);
+		expect((await after.listHistory('account', slot('a'))).versions.map(({ id }) => id)).toEqual([
+			'four',
+			'three'
+		]);
 	});
 
 	it('returns the current slot and rejects a stale conditional replacement', async () => {

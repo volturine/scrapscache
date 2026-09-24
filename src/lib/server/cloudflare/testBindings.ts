@@ -52,7 +52,10 @@ export function testR2(): {
 			objects.set(key, value);
 		},
 		get: async (key: string) => (objects.has(key) ? { text: async () => objects.get(key)! } : null),
-		delete: async (key: string) => void objects.delete(key)
+		// Like R2, one call deletes a single key or a list of them.
+		delete: async (keys: string | string[]) => {
+			for (const key of Array.isArray(keys) ? keys : [keys]) objects.delete(key);
+		}
 	};
 	return { bucket: bucket as unknown as R2Bucket, objects, writes: () => writes };
 }

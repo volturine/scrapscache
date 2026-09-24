@@ -1821,13 +1821,11 @@ export const noteEditorStyles = {
 			alignItems: { base: 'flex-start', md: 'center' },
 			justifyContent: 'center'
 		},
-		variants: {
-			expanded: { true: {}, false: { px: 'lg', pb: 'var(--app-sheet-pad-bottom)' } }
-		},
+		variants: { expanded: { true: {}, false: { px: 'lg', pb: 'var(--app-sheet-pad-bottom)' } } },
 		defaultVariants: { expanded: false }
 	}),
 	sheetBox: cva({
-		base: { maxH: 'full', minH: 0, w: 'full' },
+		base: { position: 'relative', maxH: 'full', minH: 0, w: 'full' },
 		variants: {
 			expanded: {
 				true: { h: 'full', maxW: 'none' },
@@ -1846,7 +1844,7 @@ export const noteEditorStyles = {
 		position: 'relative',
 		...column,
 		...fullSize,
-		overflow: 'hidden',
+		overflow: 'visible',
 		rounded: 'inherit'
 	}),
 	header: hstack({
@@ -1913,6 +1911,24 @@ export const noteEditorStyles = {
 		pt: 'lg',
 		pb: 'md'
 	}),
+	scrollerPreview: css({ pb: '5rem' }),
+	// Text rows end clear of the history rail, so a tap near a line's end reaches the text
+	// rather than the rail (touch browsers snap taps to nearby buttons).
+	scrollerWithHistory: css({ pr: '2.25rem', '@media (pointer: coarse)': { pr: '3.75rem' } }),
+	historyPreviewTitle: css({
+		mb: 'md',
+		w: 'full',
+		textStyle: 'editorTitle',
+		overflowWrap: 'anywhere'
+	}),
+	historyPreviewContent: css({
+		animation: 'fadeIn 180ms ease-out',
+		_motionReduce: { animation: 'none' }
+	}),
+	historyPreviewMedia: css({ display: 'flex', flexWrap: 'wrap', gap: 'sm', mt: 'lg' }),
+	historyPreviewImage: css({ maxW: '100%', maxH: '22rem', rounded: 'sm', objectFit: 'contain' }),
+	historyPreviewAttachment: css({ textStyle: 'caption', color: 'scrapscache.textMuted' }),
+	historyPreviewMissing: css({ mt: 'md', textStyle: 'caption' }),
 	scrollerFill: css({ flex: 'initial' }),
 	title: css({
 		mb: 'md',
@@ -2086,6 +2102,305 @@ export const sidebarStyles = {
 		backdropFilter: 'blur(8px)',
 		rounded: 'row',
 		transition: 'opacity 150ms ease'
+	})
+};
+
+// One container morphs between the tick rail and the version list (Ark's TOC hover pattern).
+const historyMotion = {
+	transitionDuration: '240ms',
+	transitionTimingFunction: 'cubic-bezier(0.2, 0, 0, 1)',
+	_motionReduce: { transitionDuration: '0ms' }
+} as const;
+// The rail clips its overflow, so focus outlines sit inside each control.
+const historyFocusRing = {
+	outline: '2px solid',
+	outlineColor: 'scrapscache.focus',
+	outlineOffset: '-2px'
+} as const;
+const historySwapState = (enter: string, exit: string) => ({
+	'&[data-state=open]': { animation: `${enter} 200ms cubic-bezier(0.2, 0, 0, 1)` },
+	'&[data-state=closed]': { animation: `${exit} 120ms ease-in` },
+	_motionReduce: { animation: 'none !important' },
+	_hidden: { display: 'none !important' }
+});
+
+export const historyStyles = {
+	// Spans the editor between header and footer so the rail centres and the card can overflow it.
+	railAnchor: css({
+		position: 'absolute',
+		top: '4.5rem',
+		bottom: '4.5rem',
+		right: '2xs',
+		'@media (pointer: coarse)': { right: 0 },
+		zIndex: 5,
+		display: 'flex',
+		alignItems: 'center',
+		pointerEvents: 'none'
+	}),
+	rail: css({
+		position: 'relative',
+		display: 'grid',
+		pointerEvents: 'auto',
+		w: '1.5rem',
+		// A wider rail with more space between ticks gives fingers a usable scrubbing strip.
+		'@media (pointer: coarse)': { w: '2.25rem', h: 'calc(var(--history-ticks) * 12px + 1.25rem)' },
+		// --history-ticks / --history-rows are per-instance counts; the sizes stay here.
+		h: 'calc(var(--history-ticks) * 7px + 1.25rem)',
+		maxH: 'full',
+		overflow: 'hidden',
+		borderWidth: 'hairline',
+		borderColor: 'transparent',
+		rounded: 'card',
+		animation: 'fadeIn 200ms ease-out',
+		transitionProperty: 'width, height, background-color, border-color, box-shadow, border-radius',
+		...historyMotion,
+		'&[data-expanded]': {
+			w: 'min(17rem, calc(100vw - 2rem))',
+			h: 'calc(var(--history-rows) * 2.75rem + 2.75rem)',
+			bg: 'scrapscache.surface',
+			borderColor: 'scrapscache.border',
+			boxShadow: 'popover',
+			rounded: 'dialog'
+		}
+	}),
+	swap: css({
+		w: 'full',
+		h: 'full',
+		minH: 0,
+		// Pin the track to the rail so the fixed-width panel overflows leftward while it expands.
+		gridTemplateColumns: 'minmax(0, 1fr)',
+		gridTemplateRows: 'minmax(0, 1fr)'
+	}),
+	ticksLayer: css({ ...historySwapState('fadeIn', 'fadeOut'), w: 'full', h: 'full' }),
+	trigger: css({
+		...column,
+		alignItems: 'flex-end',
+		justifyContent: 'center',
+		gap: '5px',
+		w: 'full',
+		h: 'full',
+		px: '2xs',
+		...interactive,
+		// Dragging along the rail scrubs versions instead of scrolling the note.
+		touchAction: 'none',
+		'@media (pointer: coarse)': { gap: '10px' },
+		rounded: 'card',
+		// The growing tick under the pointer is the hover feedback, as in T3 Code.
+		_focusVisible: historyFocusRing
+	}),
+	tick: css({
+		display: 'block',
+		flexShrink: 0,
+		h: '2px',
+		bg: 'scrapscache.textMuted',
+		opacity: 0.5,
+		rounded: 'pill',
+		transitionProperty: 'width, opacity, background-color',
+		...historyMotion,
+		'&[data-active]': { w: '1rem !important', bg: 'scrapscache.text', opacity: 1 },
+		'&[data-hovered]': { w: '1.25rem !important', bg: 'scrapscache.text', opacity: 0.85 }
+	}),
+	tickCard: css({
+		position: 'absolute',
+		right: 'calc(100% + 0.5rem)',
+		w: '17rem',
+		maxW: 'calc(100vw - 4rem)',
+		px: 'md',
+		py: 'sm',
+		transform: 'translateY(-50%)',
+		borderWidth: 'hairline',
+		borderColor: 'scrapscache.border',
+		bg: 'scrapscache.surface',
+		rounded: 'card',
+		boxShadow: 'popover',
+		pointerEvents: 'none',
+		animation: 'fadeIn 120ms ease-out',
+		transitionProperty: 'top',
+		transitionDuration: '120ms',
+		transitionTimingFunction: 'cubic-bezier(0.2, 0, 0, 1)',
+		_motionReduce: { animation: 'none', transitionDuration: '0ms' }
+	}),
+	tickCardTitle: css({
+		...rowCenter,
+		justifyContent: 'space-between',
+		gap: 'sm',
+		textStyle: 'label',
+		fontWeight: 'heading',
+		fontVariantNumeric: 'tabular-nums'
+	}),
+	tickCardText: css({ ...truncateText, mt: '3xs', textStyle: 'caption' }),
+	tickDiff: css({
+		...column,
+		gap: '3xs',
+		mt: 'xs',
+		pt: 'xs',
+		borderTopWidth: 'hairline',
+		borderColor: 'scrapscache.border',
+		textStyle: 'caption'
+	}),
+	tickDiffLine: css({ ...truncateText }),
+	tickDiffMore: css({ textStyle: 'caption' }),
+	panelLayer: css({
+		...historySwapState('swapIn', 'fadeOut'),
+		justifySelf: 'end',
+		w: '17rem',
+		maxW: 'calc(100vw - 1rem)',
+		h: 'full',
+		minH: 0,
+		transformOrigin: 'right center'
+	}),
+	panel: css({ ...column, w: 'full', h: 'full', minH: 0 }),
+	panelHeader: css({
+		...rowCenter,
+		justifyContent: 'space-between',
+		flexShrink: 0,
+		h: '2.25rem',
+		px: 'md',
+		textStyle: 'overline'
+	}),
+	panelCount: css({ textStyle: 'caption', fontVariantNumeric: 'tabular-nums' }),
+	list: css({
+		minH: 0,
+		flex: '1',
+		overflowY: 'auto',
+		px: '2xs',
+		pb: '2xs'
+	}),
+	row: css({
+		...column,
+		justifyContent: 'center',
+		w: 'full',
+		h: '2.75rem',
+		px: 'sm',
+		textAlign: 'left',
+		...interactive,
+		rounded: 'row',
+		outline: 'none',
+		transitionProperty: 'background-color, opacity',
+		transitionDuration: '120ms',
+		_hoverable: { bg: 'scrapscache.interactiveHover' },
+		_active: { bg: 'scrapscache.interactiveActive' },
+		_focusVisible: historyFocusRing,
+		'&[data-loading]': { opacity: 0.55, animation: 'pulse 1.2s ease-in-out infinite' },
+		'&[aria-current]': { bg: 'scrapscache.accentSubtle' }
+	}),
+	rowTop: css({ ...rowCenter, justifyContent: 'space-between', gap: 'sm', minW: 0 }),
+	rowLabel: css({ ...rowCenter, gap: 'xs', minW: 0 }),
+	rowBadge: css({
+		px: 'xs',
+		textStyle: 'micro',
+		color: 'scrapscache.accent',
+		// Outlined, so it stays visible on the highlighted current row.
+		borderWidth: 'hairline',
+		borderColor: 'currentColor',
+		rounded: 'pill'
+	}),
+	rowTime: css({
+		textStyle: 'label',
+		color: 'scrapscache.text',
+		fontVariantNumeric: 'tabular-nums',
+		'[aria-current] &': { color: 'scrapscache.accent' }
+	}),
+	rowStats: css({
+		display: 'flex',
+		gap: '2xs',
+		flexShrink: 0,
+		textStyle: 'caption',
+		fontVariantNumeric: 'tabular-nums'
+	}),
+	added: css({ color: 'scrapscache.success' }),
+	removed: css({ color: 'scrapscache.danger' }),
+	rowSummary: css({ ...truncateText, textStyle: 'caption' }),
+	message: css({ px: 'sm', py: 'sm', textStyle: 'caption' }),
+	bar: css({
+		position: 'absolute',
+		bottom: 'lg',
+		// Centred by auto margins, not a transform: the whole width stays available for sizing,
+		// and the entry animation's transform cannot knock it off centre.
+		insetInline: 0,
+		mx: 'auto',
+		zIndex: 4,
+		display: 'flex',
+		alignItems: 'center',
+		gap: '2xs',
+		w: 'fit-content',
+		maxW: 'calc(100% - 1rem)',
+		p: '2xs',
+		borderWidth: 'hairline',
+		borderColor: 'scrapscache.border',
+		bg: 'scrapscache.surface',
+		rounded: 'pill',
+		boxShadow: 'popover',
+		animation: 'cardIn',
+		_motionReduce: { animation: 'none' }
+	}),
+	// Stepper and confirmation prompt share one grid cell so the bar keeps its size.
+	barStack: css({ display: 'grid', flex: '1', minW: 0 }),
+	barState: css({
+		gridArea: '1 / 1',
+		display: 'flex',
+		alignItems: 'center',
+		gap: '2xs',
+		minW: 0,
+		transitionProperty: 'opacity',
+		transitionDuration: '150ms',
+		// Hiding delays visibility until the fade ends; showing is visible at once, so the
+		// incoming state can take focus immediately.
+		'&[data-hidden]': {
+			opacity: 0,
+			visibility: 'hidden',
+			transitionProperty: 'opacity, visibility'
+		},
+		_motionReduce: { transitionDuration: '0ms' }
+	}),
+	barLabel: css({
+		...column,
+		alignItems: 'center',
+		flexShrink: 1,
+		minW: 0,
+		px: 'xs',
+		animation: 'fadeIn 160ms ease-out',
+		_motionReduce: { animation: 'none' }
+	}),
+	barTime: css({
+		...truncateText,
+		maxW: 'full',
+		textStyle: 'label',
+		fontVariantNumeric: 'tabular-nums'
+	}),
+	barDate: css({
+		...truncateText,
+		maxW: 'full',
+		textStyle: 'caption',
+		fontVariantNumeric: 'tabular-nums'
+	}),
+	barDivider: css({
+		// Narrow screens need the room for the version date.
+		display: { base: 'none', sm: 'block' },
+		flexShrink: 0,
+		alignSelf: 'stretch',
+		w: 'hairline',
+		my: 'xs',
+		mx: '2xs',
+		bg: 'scrapscache.border'
+	}),
+	// Concentric with the pill bar.
+	barAction: css({ rounded: 'pill' }),
+	barPrompt: css({ ...truncateText, flex: '1', minW: 0, px: 'sm', textStyle: 'label' }),
+	barError: css({
+		position: 'absolute',
+		bottom: 'calc(100% + 0.5rem)',
+		left: '50%',
+		transform: 'translateX(-50%)',
+		w: 'max-content',
+		maxW: '18rem',
+		px: 'sm',
+		py: '2xs',
+		textStyle: 'caption',
+		color: 'scrapscache.danger',
+		bg: 'scrapscache.surface',
+		rounded: 'control',
+		boxShadow: 'popover'
 	})
 };
 

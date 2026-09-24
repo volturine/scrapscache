@@ -1,9 +1,18 @@
 import type { D1Database, DurableObjectState, R2Bucket } from '@cloudflare/workers-types';
 import { batch, execute, type SqlStatement } from '../src/lib/server/cloudflare/d1';
+import { parseHistoryVersions } from '../src/lib/server/operatorConfig';
+import {
+	deleteHistoryRows,
+	deleteObjects,
+	OLDER_VERSION,
+	olderVersions,
+	purgeDeletedRecords
+} from '../src/lib/server/cloudflare/history';
 
 type Env = {
 	SCRAPSCACHE_DB: D1Database;
 	SCRAPSCACHE_ENVELOPES: R2Bucket;
+	SCRAPSCACHE_HISTORY_VERSIONS?: string;
 };
 
 type Upload = { id: string; slot: string; ciphertext: string; expectedId?: string | null };
@@ -73,12 +82,25 @@ export class AccountCoordinator {
 			if (request.method !== 'POST') {
 				return Response.json({ error: 'Not found' }, { status: 404 });
 			}
-			const path = new URL(request.url).pathname;
-			if (path === '/sync') return this.sync((await request.json()) as SyncInput);
-			if (path === '/delete') {
-				return this.deleteAccount(
-					String(((await request.json()) as { accountId?: unknown }).accountId)
+			try {
+				if (path === '/sync') return await this.sync((await request.json()) as SyncInput);
+				if (path === '/delete') {
+					return await this.deleteAccount(
+						String(((await request.json()) as { accountId?: unknown }).accountId)
+					);
+				}
+			} catch (error) {
+				// The Worker only sees a failed status, so the cause is recorded here. The message
+				// names the storage error; nothing about the account or its data goes in.
+				console.error(
+					JSON.stringify({
+						level: 'error',
+						event: 'account_coordinator_failed',
+						operation: path,
+						message: error instanceof Error ? error.message : 'Account coordinator failed'
+					})
 				);
+				return Response.json({ error: 'Account coordinator failed' }, { status: 500 });
 			}
 			return Response.json({ error: 'Not found' }, { status: 404 });
 		});
@@ -130,10 +152,14 @@ export class AccountCoordinator {
 			await execute(this.env.SCRAPSCACHE_DB, {
 				sql: `SELECT r2_key AS r2Key FROM envelopes WHERE account_id = ?
 					UNION SELECT r2_key FROM deleted_envelopes WHERE account_id = ?
+					UNION SELECT r2_key FROM envelope_history WHERE account_id = ?
 					UNION SELECT r2_key FROM pending_envelopes WHERE account_id = ?`,
-				args: [accountId, accountId, accountId]
+				args: [accountId, accountId, accountId, accountId]
 			})
 		).rows.map(({ r2Key }) => String(r2Key));
+		// Objects first, in bulk: one subrequest per thousand, however much history the account
+		// kept, and a deletion cut short leaves rows to retry against rather than orphaned objects.
+		await deleteObjects(this.env.SCRAPSCACHE_ENVELOPES, keys);
 		const results = await batch(this.env.SCRAPSCACHE_DB, [
 			{ sql: 'DELETE FROM accounts WHERE account_id = ?', args: [accountId] },
 			{ sql: 'DELETE FROM pending_envelopes WHERE account_id = ?', args: [accountId] },
@@ -142,7 +168,6 @@ export class AccountCoordinator {
 			{ sql: 'DELETE FROM reminder_wake_revisions WHERE account_id = ?', args: [accountId] },
 			{ sql: 'DELETE FROM reminder_wake_deliveries WHERE account_id = ?', args: [accountId] }
 		]);
-		await Promise.all(keys.map((key) => this.env.SCRAPSCACHE_ENVELOPES.delete(key)));
 		return Response.json({ deleted: results[0]?.rowsAffected === 1 });
 	}
 
@@ -151,11 +176,22 @@ export class AccountCoordinator {
 		const account = (
 			await execute(db, {
 				sql: `SELECT next_seq AS nextSeq, envelope_count AS envelopeCount,
-					ciphertext_bytes AS ciphertextBytes
-				 FROM accounts WHERE account_id = ?`,
+					ciphertext_bytes AS ciphertextBytes, updated_at AS updatedAt,
+					COALESCE(history.versions, 0) AS historyVersions, COALESCE(history.bytes, 0) AS historyBytes
+				 FROM accounts LEFT JOIN account_history_usage AS history USING (account_id)
+				 WHERE account_id = ?`,
 				args: [input.accountId]
 			})
-		).rows[0] as { nextSeq: number; envelopeCount: number; ciphertextBytes: number } | undefined;
+		).rows[0] as
+			| {
+					nextSeq: number;
+					envelopeCount: number;
+					ciphertextBytes: number;
+					updatedAt: number;
+					historyVersions: number;
+					historyBytes: number;
+			  }
+			| undefined;
 		if (!account) return Response.json({ error: 'Sync account does not exist' }, { status: 404 });
 
 		const quota = (
@@ -167,15 +203,20 @@ export class AccountCoordinator {
 		const maxBytes = quota?.maxBytes ?? input.maxAccountBytes;
 		let envelopeCount = account.envelopeCount;
 		let ciphertextBytes = account.ciphertextBytes;
+		// Older versions share the quota with live records but never block them: when the two
+		// together exceed it, the oldest versions give way.
+		let historyVersions = Number(account.historyVersions);
+		let historyBytes = Number(account.historyBytes);
 		const storageBytes = (activeCount = envelopeCount, activeBytes = ciphertextBytes) =>
 			activeBytes + activeCount * STORAGE_OVERHEAD_BYTES;
+		const historyStorageBytes = () => historyBytes + historyVersions * STORAGE_OVERHEAD_BYTES;
 		const usage = () => ({
 			envelopeCount,
 			ciphertextBytes,
-			storageBytes: storageBytes(),
+			storageBytes: storageBytes() + historyStorageBytes(),
 			maxBytes
 		});
-		const now = Date.now();
+		const now = Math.max(Date.now(), Number(account.updatedAt) + 1);
 
 		if (input.cursor > account.nextSeq) {
 			await execute(db, {
@@ -289,10 +330,13 @@ export class AccountCoordinator {
 			acceptedUploads.map(({ id }) => [id, `v1/${prefix}/${crypto.randomUUID()}`] as const)
 		);
 		const statements: SqlStatement[] = [];
-		const obsoleteObjects: string[] = [];
+		const deletedSlots: string[] = [];
 		for (const deletion of input.deletions) {
 			const removed = currentBySlot.get(deletion.slot);
 			if (!removed || removed.id !== deletion.id) continue;
+			deletedSlots.push(removed.slot);
+			// The deleted copy is staged so its object is found again if this request is cut
+			// short; right after the commit it goes, with every version of the record.
 			statements.push(
 				{
 					sql: `INSERT OR REPLACE INTO deleted_envelopes(
@@ -330,12 +374,29 @@ export class AccountCoordinator {
 				return Response.json({ error: 'quota' }, { status: 507 });
 			}
 			sequence += 1;
+			if (prior)
+				statements.push({
+					sql: `INSERT INTO envelope_history(account_id, slot, id, r2_key, ciphertext_bytes, saved_at)
+						SELECT ?, ?, ?, ?, ?, ? WHERE NOT EXISTS (
+							SELECT 1 FROM envelope_history WHERE account_id = ? AND id = ?
+						)`,
+					args: [
+						input.accountId,
+						prior.slot,
+						prior.id,
+						prior.r2Key,
+						prior.ciphertextBytes,
+						now,
+						input.accountId,
+						prior.id
+					]
+				});
 			statements.push({
 				sql: `INSERT INTO envelopes(account_id, slot, seq, id, r2_key, ciphertext_bytes)
-					VALUES (?, ?, ?, ?, ?, ?)
+				VALUES (?, ?, ?, ?, ?, ?)
 					ON CONFLICT(account_id, slot) DO UPDATE SET
 						seq = excluded.seq, id = excluded.id,
-						r2_key = excluded.r2_key, ciphertext_bytes = excluded.ciphertext_bytes`,
+					r2_key = excluded.r2_key, ciphertext_bytes = excluded.ciphertext_bytes`,
 				args: [
 					input.accountId,
 					upload.slot,
@@ -346,10 +407,22 @@ export class AccountCoordinator {
 				]
 			});
 			statements.push({
+				sql: `INSERT INTO envelope_history(account_id, slot, id, r2_key, ciphertext_bytes, saved_at)
+					VALUES (?, ?, ?, ?, ?, ?)`,
+				args: [
+					input.accountId,
+					upload.slot,
+					upload.id,
+					objectKeys.get(upload.id)!,
+					upload.ciphertext.length,
+					now
+				]
+			});
+			statements.push({
 				sql: 'DELETE FROM pending_envelopes WHERE account_id = ? AND id = ?',
 				args: [input.accountId, upload.id]
 			});
-			if (prior && prior.r2Key !== objectKeys.get(upload.id)) obsoleteObjects.push(prior.r2Key);
+			// History and the live record can reference the same encrypted object.
 			envelopeCount = projectedCount;
 			ciphertextBytes = projectedBytes;
 			currentBySlot.set(upload.slot, {
@@ -363,7 +436,14 @@ export class AccountCoordinator {
 		statements.push({
 			sql: `UPDATE accounts SET next_seq = ?, envelope_count = ?, ciphertext_bytes = ?,
 				updated_at = ?, last_seen_at = ? WHERE account_id = ?`,
-			args: [sequence, envelopeCount, ciphertextBytes, now, now, input.accountId]
+			args: [
+				sequence,
+				envelopeCount,
+				ciphertextBytes,
+				acceptedUploads.length > 0 || deletedSlots.length > 0 ? now : account.updatedAt,
+				now,
+				input.accountId
+			]
 		});
 		// The batch fits. Drop what earlier attempts left, reserve the new object
 		// keys, write the bytes, and only then commit: a crash at any point from here
@@ -385,10 +465,47 @@ export class AccountCoordinator {
 			);
 		}
 
+		const touched = [...new Set([...acceptedUploads, ...input.deletions].map(({ slot }) => slot))];
+		const olderBefore = await olderVersions(db, input.accountId, touched);
 		await batch(db, statements);
-		await Promise.all(obsoleteObjects.map((key) => this.env.SCRAPSCACHE_ENVELOPES.delete(key)));
 
-		const mutated = acceptedUploads.length > 0 || input.deletions.length > 0;
+		const mutated = acceptedUploads.length > 0 || deletedSlots.length > 0;
+		if (mutated) {
+			if (deletedSlots.length > 0)
+				await purgeDeletedRecords(this.env, { accountId: input.accountId, slots: deletedSlots });
+			await this.pruneHistory(input.accountId, touched);
+			const olderAfter = await olderVersions(db, input.accountId, touched);
+			historyVersions += olderAfter.versions - olderBefore.versions;
+			historyBytes += olderAfter.bytes - olderBefore.bytes;
+			if (storageBytes() + historyStorageBytes() > maxBytes && historyVersions > 0) {
+				const oldest = (
+					await execute(db, {
+						sql: `SELECT history_id AS historyId, r2_key AS r2Key, ciphertext_bytes AS bytes
+						FROM envelope_history AS history
+						WHERE account_id = ? AND ${OLDER_VERSION}
+						ORDER BY history_id ASC`,
+						args: [input.accountId]
+					})
+				).rows as Array<{ historyId: number; r2Key: string; bytes: number }>;
+				const evicted: typeof oldest = [];
+				for (const row of oldest) {
+					if (storageBytes() + historyStorageBytes() <= maxBytes) break;
+					evicted.push(row);
+					historyVersions -= 1;
+					historyBytes -= Number(row.bytes);
+				}
+				await deleteHistoryRows(this.env, evicted);
+			}
+			if (
+				historyVersions !== Number(account.historyVersions) ||
+				historyBytes !== Number(account.historyBytes)
+			)
+				await execute(db, {
+					sql: `INSERT INTO account_history_usage(account_id, versions, bytes) VALUES (?, ?, ?)
+					ON CONFLICT(account_id) DO UPDATE SET versions = excluded.versions, bytes = excluded.bytes`,
+					args: [input.accountId, historyVersions, historyBytes]
+				});
+		}
 		if (mutated) {
 			for (const listener of this.listeners) {
 				// The writer already applied this change locally; waking it would
@@ -409,5 +526,22 @@ export class AccountCoordinator {
 			writesAccepted: true,
 			usage: usage()
 		});
+	}
+
+	/** Keep each touched record's newest versions, the live one included. */
+	private async pruneHistory(accountId: string, slots: string[]): Promise<void> {
+		if (slots.length === 0) return;
+		const expired = (
+			await execute(this.env.SCRAPSCACHE_DB, {
+				sql: `SELECT historyId, r2Key FROM (
+					SELECT history_id AS historyId, r2_key AS r2Key,
+						ROW_NUMBER() OVER (PARTITION BY slot ORDER BY history_id DESC) AS position
+					FROM envelope_history
+					WHERE account_id = ? AND slot IN (${slots.map(() => '?').join(', ')})
+				) WHERE position > ?`,
+				args: [accountId, ...slots, parseHistoryVersions(this.env.SCRAPSCACHE_HISTORY_VERSIONS)]
+			})
+		).rows as Array<{ historyId: number; r2Key: string }>;
+		await deleteHistoryRows(this.env, expired);
 	}
 }

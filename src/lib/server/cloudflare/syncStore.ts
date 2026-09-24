@@ -1,11 +1,14 @@
 import {
 	ACTIVITY_WINDOWS_DAYS,
 	DEFAULT_SYNC_PER_MINUTE,
+	parseHistoryVersions,
 	parseMaxAccountBytes
 } from '$lib/server/operatorConfig';
 import { batch, execute, type SqlStatement } from './d1';
 import { cloudflareBindings } from './env';
 import { MAX_CLIENT_SYNC_MUTATIONS_PER_REQUEST } from '$lib/syncLimits';
+import type { HistoryEnvelope, HistoryList } from '$lib/syncHistory';
+import { deleteHistoryRows, OLDER_VERSION, purgeDeletedRecords } from './history';
 
 export type EncryptedEnvelope = { seq: number; id: string; ciphertext: string; slot: string };
 export type OpaqueUpload = Omit<EncryptedEnvelope, 'seq'> & { expectedId?: string | null };
@@ -57,7 +60,6 @@ export const MAX_PUSH_DEVICES = 32;
 export const MAX_WAKES_PER_ACCOUNT = 1_000;
 export const WAKE_RETAIN_MS = 86_400_000;
 export const WAKE_CLAIM_LEASE_MS = 60_000;
-export const DELETED_SLOT_GRACE_MS = 14 * 86_400_000;
 /** How long an uncommitted upload may sit before the sweep treats it as abandoned.
  * Far longer than any request can live, so an in-flight upload is never reclaimed. */
 export const PENDING_UPLOAD_GRACE_MS = 3_600_000;
@@ -76,8 +78,64 @@ export class SyncStore {
 	private readonly maxAccountBytes = parseMaxAccountBytes(
 		this.bindings.SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES
 	);
+	private readonly historyVersions = parseHistoryVersions(
+		this.bindings.SCRAPSCACHE_HISTORY_VERSIONS
+	);
 	private get db() {
 		return this.bindings.SCRAPSCACHE_DB;
+	}
+
+	/** A record's retained encrypted versions, newest first: one D1 query and an R2 read each. */
+	async listHistory(accountId: string, slot: string): Promise<HistoryList> {
+		const rows = (
+			await execute(this.db, {
+				sql: `SELECT history_id AS historyId, saved_at AS savedAt, id, r2_key AS r2Key
+				FROM envelope_history WHERE account_id = ? AND slot = ?
+				ORDER BY history_id DESC LIMIT ?`,
+				args: [accountId, slot, this.historyVersions]
+			})
+		).rows as Array<{ historyId: number; savedAt: number; id: string; r2Key: string }>;
+		const versions = await Promise.all(
+			rows.map(async (row) => {
+				const object = await this.bindings.SCRAPSCACHE_ENVELOPES.get(row.r2Key);
+				if (!object) throw new Error('Encrypted history object is missing');
+				return {
+					historyId: Number(row.historyId),
+					savedAt: Number(row.savedAt),
+					id: row.id,
+					ciphertext: await object.text()
+				};
+			})
+		);
+		return { versions };
+	}
+
+	/** The first version of a record saved at or after `at`, else the live one. */
+	async getEnvelopeAt(
+		accountId: string,
+		slot: string,
+		at: number
+	): Promise<HistoryEnvelope | null> {
+		const historical = (
+			await execute(this.db, {
+				sql: `SELECT id, slot, r2_key AS r2Key FROM envelope_history
+				WHERE account_id = ? AND slot = ? AND saved_at >= ?
+				ORDER BY saved_at ASC, history_id ASC LIMIT 1`,
+				args: [accountId, slot, at]
+			})
+		).rows[0] as { id: string; slot: string; r2Key: string } | undefined;
+		const row =
+			historical ??
+			((
+				await execute(this.db, {
+					sql: 'SELECT id, slot, r2_key AS r2Key FROM envelopes WHERE account_id = ? AND slot = ?',
+					args: [accountId, slot]
+				})
+			).rows[0] as { id: string; slot: string; r2Key: string } | undefined);
+		if (!row) return null;
+		const object = await this.bindings.SCRAPSCACHE_ENVELOPES.get(row.r2Key);
+		if (!object) throw new Error('Encrypted envelope object is missing');
+		return { id: row.id, slot: row.slot, ciphertext: await object.text() };
 	}
 
 	async getAuthCredential(accountId: string): Promise<string | null> {
@@ -209,10 +267,12 @@ export class SyncStore {
 			await execute(this.db, {
 				sql: `SELECT a.account_id AS accountId, a.envelope_count AS envelopeCount,
 						a.ciphertext_bytes AS ciphertextBytes, a.last_seen_at AS lastSeenAt,
-						q.max_bytes AS maxBytes, r.sync_per_minute AS syncPerMinute
+						q.max_bytes AS maxBytes, r.sync_per_minute AS syncPerMinute,
+						h.versions AS historyVersions, h.bytes AS historyBytes
 					FROM accounts a
 					LEFT JOIN account_quotas q ON q.account_id = a.account_id
 					LEFT JOIN account_rate_limits r ON r.account_id = a.account_id
+					LEFT JOIN account_history_usage h ON h.account_id = a.account_id
 					${where}
 					ORDER BY a.ciphertext_bytes DESC, a.account_id ASC
 					LIMIT ? OFFSET ?`,
@@ -242,7 +302,11 @@ export class SyncStore {
 			accountId: String(row.accountId),
 			envelopeCount,
 			ciphertextBytes,
-			storageBytes: ciphertextBytes + envelopeCount * ENVELOPE_STORAGE_OVERHEAD_BYTES,
+			storageBytes:
+				ciphertextBytes +
+				envelopeCount * ENVELOPE_STORAGE_OVERHEAD_BYTES +
+				Number(row.historyBytes ?? 0) +
+				Number(row.historyVersions ?? 0) * ENVELOPE_STORAGE_OVERHEAD_BYTES,
 			lastSeenAt: Number(row.lastSeenAt ?? 0),
 			maxBytes: row.maxBytes == null ? defaultMaxAccountBytes : Number(row.maxBytes),
 			maxBytesOverridden: row.maxBytes != null,
@@ -355,7 +419,7 @@ export class SyncStore {
 		).join(',');
 		const row = (
 			await execute(this.db, {
-				sql: `SELECT COUNT(*) accounts,COALESCE(SUM(envelope_count),0) envelopeCount,COALESCE(SUM(ciphertext_bytes),0) ciphertextBytes,${selects},COALESCE(SUM(CASE WHEN last_seen_at < ? THEN 1 ELSE 0 END),0) staleAccounts FROM accounts`,
+				sql: `SELECT COUNT(*) accounts,COALESCE(SUM(envelope_count),0) envelopeCount,COALESCE(SUM(ciphertext_bytes),0) ciphertextBytes,(SELECT COALESCE(SUM(bytes + versions * ${ENVELOPE_STORAGE_OVERHEAD_BYTES}),0) FROM account_history_usage) historyStorageBytes,${selects},COALESCE(SUM(CASE WHEN last_seen_at < ? THEN 1 ELSE 0 END),0) staleAccounts FROM accounts`,
 				args: [...ACTIVITY_WINDOWS_DAYS.map((d) => now - d * 86_400_000), stale ?? 0]
 			})
 		).rows[0]!;
@@ -368,7 +432,10 @@ export class SyncStore {
 			accounts: Number(row.accounts),
 			envelopeCount,
 			ciphertextBytes,
-			storageBytes: ciphertextBytes + envelopeCount * ENVELOPE_STORAGE_OVERHEAD_BYTES,
+			storageBytes:
+				ciphertextBytes +
+				envelopeCount * ENVELOPE_STORAGE_OVERHEAD_BYTES +
+				Number(row.historyStorageBytes),
 			activeByWindowDays,
 			staleAccounts: stale == null ? 0 : Number(row.staleAccounts)
 		};
@@ -384,31 +451,38 @@ export class SyncStore {
 		return rows.length;
 	}
 	/**
-	 * Reclaim R2 objects no live envelope points at: slots deleted long enough ago
-	 * that every device has seen the deletion, and uploads that reserved an object
-	 * but never committed because the request died between the R2 write and the
-	 * batch that would have promoted them. Both are invisible to account quota, so
+	 * Daily storage upkeep. Deletes already remove a record, its versions and its objects right
+	 * after they commit; this finishes any a cut-short request left, enforces the version window
+	 * everywhere (it may have been lowered), recounts history usage, and reclaims uploads that
+	 * reserved an object but never committed. All of these are invisible to account quota, so
 	 * nothing else would ever notice they were still being paid for.
 	 */
-	async purgeExpiredDeletedEnvelopes(
-		now = Date.now(),
-		graceMs = DELETED_SLOT_GRACE_MS
-	): Promise<number> {
-		const rows = (
+	async reclaimStorage(now = Date.now()): Promise<number> {
+		const deleted = await purgeDeletedRecords(this.bindings);
+		const beyondWindow = (
 			await execute(this.db, {
-				sql: 'SELECT account_id AS accountId,slot,r2_key AS r2Key FROM deleted_envelopes WHERE deleted_at <= ?',
-				args: [now - graceMs]
+				sql: `SELECT historyId, r2Key FROM (
+					SELECT history_id AS historyId, r2_key AS r2Key, ROW_NUMBER() OVER (
+						PARTITION BY account_id, slot ORDER BY history_id DESC
+					) AS position
+					FROM envelope_history
+				) WHERE position > ?`,
+				args: [this.historyVersions]
 			})
-		).rows;
-		await batch(
-			this.db,
-			rows.map((r) => ({
-				sql: 'DELETE FROM deleted_envelopes WHERE account_id=? AND slot=?',
-				args: [String(r.accountId), String(r.slot)]
-			}))
-		);
-		await Promise.all(rows.map((r) => this.bindings.SCRAPSCACHE_ENVELOPES.delete(String(r.r2Key))));
-		return rows.length + (await this.purgeAbandonedUploads(now));
+		).rows as Array<{ historyId: number; r2Key: string }>;
+		await deleteHistoryRows(this.bindings, beyondWindow);
+		// The coordinator updates history usage after its write batch, so a request cut short
+		// can leave the count off; recount it from the rows.
+		await batch(this.db, [
+			{ sql: 'DELETE FROM account_history_usage', args: [] },
+			{
+				sql: `INSERT INTO account_history_usage(account_id, versions, bytes)
+				SELECT account_id, COUNT(*), SUM(ciphertext_bytes) FROM envelope_history AS history
+				WHERE ${OLDER_VERSION} GROUP BY account_id`,
+				args: []
+			}
+		]);
+		return deleted + beyondWindow.length + (await this.purgeAbandonedUploads(now));
 	}
 
 	/** Drop uncommitted uploads and the objects they reserved. An id that reached

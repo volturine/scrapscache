@@ -17,6 +17,11 @@
 	import LabelMenu from './LabelMenu.svelte';
 	import NoteEditorFooter from './NoteEditorFooter.svelte';
 	import BodyEditor from './BodyEditor.svelte';
+	import TimeTravel from './TimeTravel.svelte';
+	import { syncStore } from '$lib/stores/sync.svelte';
+	import type { NoteHistoryEntry } from '$lib/historyClient';
+	import { BackupImportMode, prepareImportedNotes } from '$lib/backup';
+	import { editContext } from '$lib/editContext';
 	import { appClock } from '$lib/appClock.svelte';
 	import { formatReminder, isReminderOverdue, noteActivity } from '$lib/utils';
 	import ReminderLabel from './ReminderLabel.svelte';
@@ -73,6 +78,14 @@
 	let paletteOpen = $state(false);
 	let reminderOpen = $state(false);
 	let labelOpen = $state(false);
+	let historyPreview = $state.raw<{
+		note: Note;
+		entry: NoteHistoryEntry;
+		missingAttachments: number;
+	} | null>(null);
+	let restoreConfirmOpen = $state(false);
+	let restoringPreview = $state(false);
+	let historyRestoreError = $state('');
 	let copyFlash = $state(false);
 	let copyFlashTimer: ReturnType<typeof setTimeout> | null = null;
 	// svelte-ignore state_referenced_locally
@@ -120,6 +133,7 @@
 	}
 
 	function focusBodyFromPage(event: MouseEvent) {
+		if (historyPreview) return;
 		const target = event.target;
 		const el = target instanceof Element ? target : null;
 		// Task rows and the focused envelope manage their own chrome.
@@ -375,6 +389,60 @@
 		labelOpen = false;
 	}
 
+	function previewHistoryVersion(
+		version: Note,
+		entry: NoteHistoryEntry,
+		missingAttachments: number
+	) {
+		historyPreview = { note: version, entry, missingAttachments };
+		restoreConfirmOpen = false;
+		historyRestoreError = '';
+	}
+
+	function exitHistoryPreview() {
+		historyPreview = null;
+		restoreConfirmOpen = false;
+		historyRestoreError = '';
+		// Never place a caret (or raise a phone keyboard) on the way back. When the control that
+		// had focus went away with the preview, keep keyboard focus inside the note instead.
+		void tick().then(() => {
+			const active = document.activeElement;
+			if (!active || active === document.body) editorDialog?.focus({ preventScroll: true });
+		});
+	}
+
+	function beginRestoreConfirmation() {
+		restoreConfirmOpen = true;
+		void tick().then(() =>
+			editorDialog
+				?.querySelector<HTMLButtonElement>('[data-history-restore-action="confirm"]')
+				?.focus()
+		);
+	}
+
+	function cancelRestoreConfirmation() {
+		restoreConfirmOpen = false;
+		void tick().then(() =>
+			editorDialog
+				?.querySelector<HTMLButtonElement>('[data-history-restore-action="start"]')
+				?.focus()
+		);
+	}
+
+	async function confirmHistoryRestore() {
+		if (!historyPreview || restoringPreview) return;
+		restoringPreview = true;
+		historyRestoreError = '';
+		try {
+			await restoreNoteVersion(historyPreview.note);
+		} catch (cause) {
+			historyRestoreError =
+				cause instanceof Error ? cause.message : 'Could not restore this note version.';
+		} finally {
+			restoringPreview = false;
+		}
+	}
+
 	function openReminder() {
 		closePopups();
 		reminderOpen = true;
@@ -532,7 +600,12 @@
 	function adoptStoreNote(current: Note) {
 		if (!titleEdited && current.title !== title) title = current.title;
 		const currentBody = current.body ?? '';
-		if (!bodyEdited && currentBody !== body && bodyEditor?.adoptBody?.(currentBody)) {
+		// With no editor mounted (a history preview is showing), nothing is mid-typing.
+		if (
+			!bodyEdited &&
+			currentBody !== body &&
+			(!bodyEditor || bodyEditor.adoptBody?.(currentBody))
+		) {
 			body = currentBody;
 		}
 		// Attachment edits commit immediately, so the store owns the list; the
@@ -551,9 +624,7 @@
 		if (current) untrack(() => adoptStoreNote(current));
 	});
 
-	async function close() {
-		// Drop task-focus chrome immediately so dismiss is never gated on focus mode.
-		taskFocusLine = null;
+	async function flushDraft() {
 		// Text still being composed (an accent, a prediction) is on screen but not yet in the body.
 		bodyEditor?.finishInput?.();
 		commitDraft();
@@ -564,8 +635,43 @@
 				console.error('[NoteEditor] flush failed:', err);
 			}
 		}
-		if (note) await notesStore.discardIfEmpty(note.id);
+		draftDirty = false;
+	}
+
+	async function close(preserveEmpty = false) {
+		// Drop task-focus chrome immediately so dismiss is never gated on focus mode.
+		taskFocusLine = null;
+		await flushDraft();
+		if (note && !preserveEmpty) await notesStore.discardIfEmpty(note.id);
 		onClose();
+		void notesStore.syncPendingChanges();
+	}
+
+	async function restoreNoteVersion(version: Note) {
+		if (!note || version.id !== note.id || !syncStore.account) return;
+		const id = note.id;
+		const accountId = syncStore.account.accountId;
+		await flushDraft();
+		if (syncStore.account?.accountId !== accountId || !note) return;
+		const restored = prepareImportedNotes([version], BackupImportMode.Keep, editContext)[0];
+		const availableLabels = new Set(notesStore.labels.map((label) => label.id));
+		notesStore.updateNote(id, {
+			title: restored.title,
+			body: restored.body,
+			color: restored.color,
+			pinned: restored.pinned,
+			archived: restored.archived,
+			// Restoring brings back content, never trash state: a version saved while the note was
+			// in the trash would otherwise leave it trashed without a trash time, which the purge
+			// treats as expired. A secret note also stays secret.
+			secret: note.secret || restored.secret,
+			reminder: restored.reminder,
+			labels: restored.labels.filter((labelId) => availableLabels.has(labelId)),
+			images: restored.images,
+			linkPreviews: restored.linkPreviews ?? []
+		});
+		// adoptStoreNote carries the restored fields into the draft.
+		exitHistoryPreview();
 		void notesStore.syncPendingChanges();
 	}
 
@@ -674,6 +780,10 @@
 <svelte:window
 	onkeydown={(e) => {
 		if (!isOpen || e.key !== 'Escape') return;
+		if (historyPreview) {
+			exitHistoryPreview();
+			return;
+		}
 		if (paletteOpen || reminderOpen || labelOpen) return;
 		void close();
 	}}
@@ -702,12 +812,30 @@
 					role="dialog"
 					tabindex="-1"
 					aria-modal="true"
+					aria-label="Note editor"
 					onpointerdown={beginEditorTouch}
 					onpointermove={moveEditorTouch}
 					onpointerup={completeEditorTouch}
 					onpointercancel={cancelEditorTouch}
 					onclick={focusBodyFromPage}
 				>
+					{#if syncStore.account}
+						{#key syncStore.account.accountId}
+							<TimeTravel
+								account={syncStore.account}
+								{note}
+								previewEntry={historyPreview?.entry ?? null}
+								{restoreConfirmOpen}
+								{restoringPreview}
+								restoreError={historyRestoreError}
+								onPreviewVersion={previewHistoryVersion}
+								onCancelPreview={exitHistoryPreview}
+								onStartRestore={beginRestoreConfirmation}
+								onCancelRestore={cancelRestoreConfirmation}
+								onConfirmRestore={() => void confirmHistoryRestore()}
+							/>
+						{/key}
+					{/if}
 					<!-- Header -->
 					<header class={styles.header}>
 						<button
@@ -723,7 +851,7 @@
 						<div class={spacer()} aria-hidden="true"></div>
 
 						<div class={hstack({ minW: 0, gap: '2xs' })}>
-							{#if !note.trashed && !note.archived}
+							{#if !historyPreview && !note.trashed && !note.archived}
 								{#if note.reminder != null}
 									<button
 										type="button"
@@ -796,105 +924,149 @@
 						class={cx(
 							'note-scrollbar-hidden scrollable',
 							styles.scroller,
+							historyPreview && styles.scrollerPreview,
+							syncStore.account && styles.scrollerWithHistory,
 							uiStore.rawMarkdown && styles.rawScroller,
-							photosFillEditor ? styles.scrollerFill : undefined
+							!historyPreview && photosFillEditor ? styles.scrollerFill : undefined
 						)}
 					>
-						<textarea
-							use:autoResizeTitle={title}
-							placeholder="Title"
-							bind:value={title}
-							oninput={handleTitleInput}
-							onpaste={handleTitlePaste}
-							onfocus={exitTaskFocus}
-							onkeydown={(e) => {
-								if (e.key === 'Enter') {
-									e.preventDefault();
-									bodyEditor?.focusDefault();
-								}
-							}}
-							rows="1"
-							class:markdown-raw={uiStore.rawMarkdown}
-							class={titleField}></textarea>
+						{#if historyPreview}
+							{#key historyPreview.entry.historyId}
+								<div class={styles.historyPreviewContent}>
+									<h1 class={styles.historyPreviewTitle}>
+										{historyPreview.note.title || 'Untitled note'}
+									</h1>
+									<BodyEditor
+										body={historyPreview.note.body}
+										readOnly
+										placeholder="This note has no text."
+									/>
+									{#if historyPreview.note.images?.length}
+										<div class={styles.historyPreviewMedia}>
+											{#each historyPreview.note.images as image (image.id)}
+												{#if image.mime.startsWith('image/')}
+													<img
+														class={styles.historyPreviewImage}
+														src={image.dataUrl}
+														alt={image.name || 'Note attachment'}
+													/>
+												{:else}
+													<span class={styles.historyPreviewAttachment}
+														>{image.name || 'Attachment'}</span
+													>
+												{/if}
+											{/each}
+										</div>
+									{/if}
+									{#if historyPreview.missingAttachments}
+										<p class={styles.historyPreviewMissing} data-history-missing>
+											{historyPreview.missingAttachments === 1
+												? 'An attachment from this version was deleted and is no longer stored.'
+												: `${historyPreview.missingAttachments} attachments from this version were deleted and are no longer stored.`}
+										</p>
+									{/if}
+								</div>
+							{/key}
+						{:else}
+							<textarea
+								use:autoResizeTitle={title}
+								data-note-title
+								placeholder="Title"
+								bind:value={title}
+								oninput={handleTitleInput}
+								onpaste={handleTitlePaste}
+								onfocus={exitTaskFocus}
+								onkeydown={(e) => {
+									if (e.key === 'Enter') {
+										e.preventDefault();
+										bodyEditor?.focusDefault();
+									}
+								}}
+								rows="1"
+								class:markdown-raw={uiStore.rawMarkdown}
+								class={titleField}></textarea>
 
-						{#if activity}
-							<p class={styles.meta} data-note-meta>
-								<time datetime={new Date(activity.at).toISOString()} title={activity.detail}
-									>{activityLabel}</time
-								>
-							</p>
+							{#if activity}
+								<p class={styles.meta} data-note-meta>
+									<time datetime={new Date(activity.at).toISOString()} title={activity.detail}
+										>{activityLabel}</time
+									>
+								</p>
+							{/if}
+
+							<BodyEditor
+								bind:this={bodyEditor}
+								bind:body
+								oninput={markBodyEdited}
+								{transformPaste}
+								placeholder="Take a note… type [ ] for a checklist, - for a bullet, Tab for sub-task"
+								focusLine={taskFocusLine}
+								onFocusTask={focusTask}
+								onExitTaskFocus={exitTaskFocus}
+							/>
 						{/if}
-
-						<BodyEditor
-							bind:this={bodyEditor}
-							bind:body
-							oninput={markBodyEdited}
-							{transformPaste}
-							placeholder="Take a note… type [ ] for a checklist, - for a bullet, Tab for sub-task"
-							focusLine={taskFocusLine}
-							onFocusTask={focusTask}
-							onExitTaskFocus={exitTaskFocus}
-						/>
 					</div>
 
-					{#if fileDropActive}
-						<div class={styles.fileDropHint} data-file-drop-hint aria-hidden="true">
-							<div
-								class={hstack({
-									gap: 'sm',
-									rounded: 'pill',
-									bg: 'scrapscache.surface',
-									px: 'lg',
-									py: 'sm',
-									textStyle: 'button',
-									boxShadow: 'sm'
-								})}
-							>
-								<Paperclip size={16} aria-hidden="true" />
-								Drop to attach
+					{#if !historyPreview}
+						{#if fileDropActive}
+							<div class={styles.fileDropHint} data-file-drop-hint aria-hidden="true">
+								<div
+									class={hstack({
+										gap: 'sm',
+										rounded: 'pill',
+										bg: 'scrapscache.surface',
+										px: 'lg',
+										py: 'sm',
+										textStyle: 'button',
+										boxShadow: 'sm'
+									})}
+								>
+									<Paperclip size={16} aria-hidden="true" />
+									Drop to attach
+								</div>
 							</div>
-						</div>
-					{/if}
+						{/if}
 
-					<NoteEditorFooter
-						bind:this={footer}
-						bind:images
-						bind:body
-						noteId={note.id}
-						hasLabels={(note.labels?.length ?? 0) > 0}
-						showCopy={true}
-						showArchive={true}
-						showDelete={true}
-						archived={note.archived}
-						trashed={note.trashed}
-						{copyFlash}
-						fillPhotos={photosFillEditor}
-						color={note.color}
-						onOpenColor={() => {
-							closePopups();
-							paletteOpen = true;
-						}}
-						onOpenTags={() => {
-							closePopups();
-							labelOpen = true;
-						}}
-						onCopy={() => void copyText()}
-						onRestore={() => {
-							notesStore.restoreNote(note.id);
-							void close();
-						}}
-						onArchive={() => {
-							if (note.trashed) notesStore.restoreToArchive(note.id);
-							else notesStore.toggleArchive(note.id);
-							void close();
-						}}
-						onDelete={() => {
-							if (note.trashed) void notesStore.deleteNoteForever(note.id);
-							else notesStore.trashNote(note.id);
-							close();
-						}}
-						onImagesChange={(imgs) => commitNow(imgs)}
-					/>
+						<NoteEditorFooter
+							bind:this={footer}
+							bind:images
+							bind:body
+							noteId={note.id}
+							hasLabels={(note.labels?.length ?? 0) > 0}
+							showCopy={true}
+							showArchive={true}
+							showDelete={true}
+							archived={note.archived}
+							trashed={note.trashed}
+							{copyFlash}
+							fillPhotos={photosFillEditor}
+							color={note.color}
+							onOpenColor={() => {
+								closePopups();
+								paletteOpen = true;
+							}}
+							onOpenTags={() => {
+								closePopups();
+								labelOpen = true;
+							}}
+							onCopy={() => void copyText()}
+							onRestore={() => {
+								notesStore.restoreNote(note.id);
+								void close();
+							}}
+							onArchive={() => {
+								if (note.trashed) notesStore.restoreToArchive(note.id);
+								else notesStore.toggleArchive(note.id);
+								void close();
+							}}
+							onDelete={() => {
+								if (note.trashed) void notesStore.deleteNoteForever(note.id);
+								else notesStore.trashNote(note.id);
+								close();
+							}}
+							onImagesChange={(imgs) => commitNow(imgs)}
+						/>
+					{/if}
 				</div>
 			</div>
 		</div>

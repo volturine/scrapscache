@@ -123,6 +123,7 @@ The keyring itself — id, display name, and sync key per workspace — is held 
 | Sync auth       | `src/lib/server/syncAuth.ts`                             | Ops DB: challenges, sessions, public key auth   |
 | Pairing         | `src/lib/server/pairingSessions.ts`                      | Ops DB: rendezvous for PAKE shares              |
 | Delta API       | `src/routes/api/sync/delta/`                             | Upload/download encrypted records, slot deletes |
+| History API     | `src/routes/api/sync/history/`                           | Owner-only encrypted prior note versions        |
 | Register        | `src/routes/api/sync/register/`                          | Create account credentials                      |
 | Reminder wakes  | `src/routes/api/sync/push/*`                             | Device subscriptions + opaque wake ticks        |
 | Account delete  | `src/routes/api/sync/account/`                           | Wipe cloud ciphertext for an account            |
@@ -147,6 +148,25 @@ Each synced logical record is uploaded as:
 The relay can replace or delete by slot without learning whether the payload is
 a note, image, label, or board. The storage quota is ciphertext plus estimated
 per-record database overhead (default 100 MB).
+
+Each synced record keeps a rolling window of its newest encrypted versions, the
+live one included: 14 by default, set with `SCRAPSCACHE_HISTORY_VERSIONS` (1–40).
+Saving a new version drops the oldest; one record's saves never evict another's.
+Older versions count toward the account's storage quota alongside live records,
+but never block them: when the two together exceed the quota, the account's
+oldest versions give way.
+The note editor loads a note's versions in one request, previews a selected
+version, and restores it to that note. A device decrypts the version and any
+matching attachments in memory; history is never written into IndexedDB.
+
+Deleting a record for good (a note emptied from the trash, an attachment nothing
+needs any more) removes it and every version of it from the relay in the same
+request; nothing of it is kept. An image removed from a note stays while a
+retained version of that note still shows it, so restoring that version brings
+it back; it goes on the first sync after the last such version rolls off. Versions outside the window go on the save that pushes them out.
+The daily retention sweep only finishes what an interrupted request left, applies
+a lowered window, and recounts history usage. Account deletion removes all
+history and its ciphertext.
 
 ## Deployment shapes
 

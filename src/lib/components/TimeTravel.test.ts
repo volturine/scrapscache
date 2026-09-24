@@ -281,19 +281,22 @@ describe('TimeTravel', () => {
 			expect(container.querySelector('nav + [aria-hidden="true"]')).toBeNull();
 		});
 
-		it('opens the list on a tap without taking focus from the note', async () => {
-			const { container } = renderTimeTravel();
+		it('opens the version under a tap, like a click, without opening the list', async () => {
+			const { container, onPreviewVersion } = renderTimeTravel();
 			const trigger = await openRail(container);
 			const outside = document.createElement('div');
 			outside.tabIndex = 0;
 			document.body.append(outside);
 			outside.focus();
 
-			touch(trigger, 'pointerdown', 0);
-			touch(trigger, 'pointerup', 0);
-			await tick();
+			touch(trigger, 'pointerdown', 12);
+			touch(trigger, 'pointerup', 12);
+			await fireEvent.click(trigger, { detail: 1 });
 
-			expect(container.querySelector('nav')?.hasAttribute('data-expanded')).toBe(true);
+			await waitFor(() =>
+				expect(onPreviewVersion).toHaveBeenCalledWith(entries[1].note, entries[1], 0)
+			);
+			expect(container.querySelector('nav')?.hasAttribute('data-expanded')).toBe(false);
 			expect(document.activeElement).toBe(outside);
 			outside.remove();
 		});

@@ -224,15 +224,15 @@
 		cardTop = nearest.center - anchor.getBoundingClientRect().top;
 	}
 
-	// A finger drags along the rail to scrub versions and lifts to open one; a tap opens the list.
-	const SCRUB_SLOP = 6;
-	let scrub: { pointerId: number; startY: number; moved: boolean } | null = null;
+	// A finger works like the mouse: drag along the rail to scrub versions, lift (or tap) to open
+	// the one under it. The list opens only from the keyboard.
+	let scrub: { pointerId: number } | null = null;
 	// The click a lift produces, if any, is already handled by the lift.
 	let liftClickUntil = 0;
 
 	function handleTriggerPointerDown(event: PointerEvent) {
 		if (event.pointerType !== 'touch') return;
-		scrub = { pointerId: event.pointerId, startY: event.clientY, moved: false };
+		scrub = { pointerId: event.pointerId };
 		trigger?.setPointerCapture(event.pointerId);
 		trackTick(event.clientY);
 	}
@@ -243,19 +243,16 @@
 			return;
 		}
 		if (!scrub || event.pointerId !== scrub.pointerId) return;
-		if (Math.abs(event.clientY - scrub.startY) > SCRUB_SLOP) scrub.moved = true;
 		trackTick(event.clientY);
 	}
 
 	function handleTriggerPointerUp(event: PointerEvent) {
 		if (!scrub || event.pointerId !== scrub.pointerId) return;
 		const row = hoveredRow;
-		const moved = scrub.moved;
 		scrub = null;
 		hoveredRow = null;
 		liftClickUntil = event.timeStamp + 500;
-		if (moved && row !== null) selectRow(row);
-		else pinned = true;
+		if (row !== null) selectRow(row);
 	}
 
 	function cancelScrub() {
@@ -268,7 +265,6 @@
 		// Enter or Space on the focused rail: open the list and move into it.
 		if (event.detail === 0) void expandFromKeyboard();
 		else if (hoveredRow !== null) selectRow(hoveredRow);
-		else pinned = true;
 	}
 </script>
 

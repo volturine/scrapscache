@@ -3,6 +3,7 @@ import { batch, execute, type SqlStatement } from '../src/lib/server/cloudflare/
 import { parseHistoryVersions } from '../src/lib/server/operatorConfig';
 import {
 	deleteHistoryRows,
+	deleteObjects,
 	OLDER_VERSION,
 	olderVersions,
 	purgeDeletedRecords
@@ -143,6 +144,9 @@ export class AccountCoordinator {
 				args: [accountId, accountId, accountId, accountId]
 			})
 		).rows.map(({ r2Key }) => String(r2Key));
+		// Objects first, in bulk: one subrequest per thousand, however much history the account
+		// kept, and a deletion cut short leaves rows to retry against rather than orphaned objects.
+		await deleteObjects(this.env.SCRAPSCACHE_ENVELOPES, keys);
 		const results = await batch(this.env.SCRAPSCACHE_DB, [
 			{ sql: 'DELETE FROM accounts WHERE account_id = ?', args: [accountId] },
 			{ sql: 'DELETE FROM pending_envelopes WHERE account_id = ?', args: [accountId] },
@@ -151,7 +155,6 @@ export class AccountCoordinator {
 			{ sql: 'DELETE FROM reminder_wake_revisions WHERE account_id = ?', args: [accountId] },
 			{ sql: 'DELETE FROM reminder_wake_deliveries WHERE account_id = ?', args: [accountId] }
 		]);
-		await Promise.all(keys.map((key) => this.env.SCRAPSCACHE_ENVELOPES.delete(key)));
 		return Response.json({ deleted: results[0]?.rowsAffected === 1 });
 	}
 

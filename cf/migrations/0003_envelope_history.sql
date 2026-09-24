@@ -11,6 +11,9 @@ CREATE TABLE envelope_history (
 CREATE INDEX envelope_history_slot ON envelope_history(account_id, slot, history_id DESC);
 CREATE INDEX envelope_history_id ON envelope_history(account_id, id);
 CREATE INDEX envelope_history_r2_key ON envelope_history(r2_key);
+-- Reference checks before deleting an object look it up within its account.
+CREATE INDEX envelopes_r2_key ON envelopes(account_id, r2_key);
+CREATE INDEX deleted_envelopes_r2_key ON deleted_envelopes(account_id, r2_key);
 -- Older versions (not the live copy each record's history also holds), counted in quota.
 CREATE TABLE account_history_usage (
 	account_id TEXT PRIMARY KEY,

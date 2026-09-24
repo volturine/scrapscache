@@ -306,3 +306,94 @@ describe('change streams', () => {
 		expect((await stream()).status).toBe(200);
 	});
 });
+
+describe('staying inside a free Workers invocation', () => {
+	/** Count every D1 query and R2 call the coordinator makes, as Workers counts subrequests. */
+	function countSubrequests(): { count: number } {
+		const counter = { count: 0 };
+		// The test D1 runs a batch statement by statement; D1 bills the batch once.
+		let inBatch = false;
+		const db = bindings.SCRAPSCACHE_DB as unknown as {
+			prepare(sql: string): { run(): unknown; bind(...args: unknown[]): { run(): unknown } };
+			batch(statements: unknown[]): unknown;
+		};
+		const prepare = db.prepare.bind(db);
+		const counted = <T extends { run(): unknown }>(statement: T): T => {
+			const run = statement.run.bind(statement);
+			statement.run = () => {
+				if (inBatch) return run();
+				counter.count += 1;
+				return run();
+			};
+			return statement;
+		};
+		db.prepare = (sql: string) => {
+			const statement = counted(prepare(sql));
+			const bind = statement.bind.bind(statement);
+			statement.bind = (...args: unknown[]) => counted(bind(...args));
+			return statement;
+		};
+		const runBatch = db.batch.bind(db);
+		db.batch = async (statements: unknown[]) => {
+			counter.count += 1;
+			inBatch = true;
+			try {
+				return await runBatch(statements);
+			} finally {
+				inBatch = false;
+			}
+		};
+		const bucket = bindings.SCRAPSCACHE_ENVELOPES as unknown as Record<string, unknown>;
+		for (const method of ['get', 'put', 'delete', 'head', 'list']) {
+			const original = bucket[method] as ((...args: unknown[]) => unknown) | undefined;
+			if (!original) continue;
+			bucket[method] = (...args: unknown[]) => {
+				counter.count += 1;
+				return original.apply(bucket, args);
+			};
+		}
+		return counter;
+	}
+
+	it('saves and deletes a full batch of records with long histories in 50 subrequests or fewer', async () => {
+		const slots = Array.from({ length: 8 }, (_, index) => String(index).repeat(64));
+		let cursor = 0;
+		const previous = new Map<string, string>();
+		const round = async (version: number) => {
+			const response = await sync(
+				slots.map((slot) => ({
+					id: `${slot.slice(0, 1)}-${version}`,
+					slot,
+					ciphertext: 'x'.repeat(40),
+					expectedId: previous.get(slot)
+				})),
+				100_000_000,
+				cursor
+			);
+			cursor = ((await response.json()) as { cursor: number }).cursor;
+			for (const slot of slots) previous.set(slot, `${slot.slice(0, 1)}-${version}`);
+		};
+		for (let version = 0; version < 14; version += 1) await round(version);
+		expect(
+			Number((await client.execute('SELECT COUNT(*) AS n FROM envelope_history')).rows[0].n)
+		).toBe(8 * 14);
+
+		// Every record saved once more: each save pushes its oldest version out of the window.
+		const saving = countSubrequests();
+		await round(14);
+		expect(saving.count).toBeLessThanOrEqual(50);
+
+		// Every record deleted for good, with all of its versions.
+		const deleting = countSubrequests();
+		const response = await sync(
+			[],
+			100_000_000,
+			cursor,
+			slots.map((slot) => ({ id: previous.get(slot)!, slot }))
+		);
+		expect(((await response.json()) as { writesAccepted: boolean }).writesAccepted).toBe(true);
+		expect(deleting.count).toBeLessThanOrEqual(50);
+		expect(objects.size).toBe(0);
+		expect((await client.execute('SELECT 1 FROM envelope_history')).rows).toEqual([]);
+	});
+});

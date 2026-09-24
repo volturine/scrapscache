@@ -5,6 +5,13 @@
 	"compatibility_date": "2026-08-28",
 	"workers_dev": false,
 	"preview_urls": false,
+	// Workers Logs keeps console output and exceptions so failures can be read afterwards.
+	// Invocation logs stay off: they record request details, including the tick secret's
+	// bearer header, and nothing here may log secrets. Environments do not inherit this.
+	"observability": {
+		"enabled": true,
+		"logs": { "invocation_logs": false }
+	},
 	"services": [
 		{
 			"binding": "APP",
@@ -16,6 +23,10 @@
 	},
 	"env": {
 		"dev": {
+			"observability": {
+				"enabled": true,
+				"logs": { "invocation_logs": false }
+			},
 			"services": [
 				{
 					"binding": "APP",

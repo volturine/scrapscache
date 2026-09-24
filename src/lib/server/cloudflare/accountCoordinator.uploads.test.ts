@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Client } from '@libsql/client/node';
 import type { D1Database, DurableObjectState, R2Bucket } from '@cloudflare/workers-types';
 import { applyMigrations, testD1, testR2 } from './testBindings';
@@ -395,5 +395,28 @@ describe('staying inside a free Workers invocation', () => {
 		expect(deleting.count).toBeLessThanOrEqual(50);
 		expect(objects.size).toBe(0);
 		expect((await client.execute('SELECT 1 FROM envelope_history')).rows).toEqual([]);
+	});
+});
+
+describe('when storage fails', () => {
+	it('records the cause without the account, and reports a failure', async () => {
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+		vi.spyOn(bindings.SCRAPSCACHE_DB, 'prepare').mockImplementation(() => {
+			throw new Error('D1_ERROR: storage unavailable');
+		});
+
+		const response = await sync([{ id: 'one', slot: SLOT, ciphertext: 'aa' }]);
+
+		expect(response.status).toBe(500);
+		expect(logged).toHaveBeenCalledTimes(1);
+		const entry = JSON.parse(String(logged.mock.calls[0][0]));
+		expect(entry).toEqual({
+			level: 'error',
+			event: 'account_coordinator_failed',
+			operation: '/sync',
+			message: 'D1_ERROR: storage unavailable'
+		});
+		expect(String(logged.mock.calls[0][0])).not.toContain(ACCOUNT);
+		vi.restoreAllMocks();
 	});
 });

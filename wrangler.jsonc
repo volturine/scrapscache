@@ -8,6 +8,13 @@
 	// Version preview URLs bind the same D1, R2 and Durable Object as production
 	// while bypassing every zone-level WAF and rate-limiting rule. Keep them off.
 	"preview_urls": false,
+	// Workers Logs keeps console output and exceptions so failures can be read afterwards.
+	// Invocation logs stay off: they record request details, which include session tokens,
+	// and nothing here may log secrets. Environments do not inherit this; each sets it.
+	"observability": {
+		"enabled": true,
+		"logs": { "invocation_logs": false }
+	},
 	"routes": [
 		{
 			"pattern": "scrapscache.com/*",
@@ -68,6 +75,10 @@
 	],
 	"env": {
 		"dev": {
+			"observability": {
+				"enabled": true,
+				"logs": { "invocation_logs": false }
+			},
 			"d1_databases": [
 				{
 					"binding": "SCRAPSCACHE_DB",

@@ -82,12 +82,25 @@ export class AccountCoordinator {
 			if (request.method !== 'POST') {
 				return Response.json({ error: 'Not found' }, { status: 404 });
 			}
-			const path = new URL(request.url).pathname;
-			if (path === '/sync') return this.sync((await request.json()) as SyncInput);
-			if (path === '/delete') {
-				return this.deleteAccount(
-					String(((await request.json()) as { accountId?: unknown }).accountId)
+			try {
+				if (path === '/sync') return await this.sync((await request.json()) as SyncInput);
+				if (path === '/delete') {
+					return await this.deleteAccount(
+						String(((await request.json()) as { accountId?: unknown }).accountId)
+					);
+				}
+			} catch (error) {
+				// The Worker only sees a failed status, so the cause is recorded here. The message
+				// names the storage error; nothing about the account or its data goes in.
+				console.error(
+					JSON.stringify({
+						level: 'error',
+						event: 'account_coordinator_failed',
+						operation: path,
+						message: error instanceof Error ? error.message : 'Account coordinator failed'
+					})
 				);
+				return Response.json({ error: 'Account coordinator failed' }, { status: 500 });
 			}
 			return Response.json({ error: 'Not found' }, { status: 404 });
 		});

@@ -173,4 +173,30 @@ describe('NoteEditor time travel', () => {
 			)
 		);
 	});
+
+	it('returns to the current note without putting a caret in the title', async () => {
+		const { container, getByRole } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: vi.fn() }
+		});
+		const trigger = await waitFor(() => {
+			const button = container.querySelector<HTMLButtonElement>('nav button');
+			if (!button) throw new Error('rail not rendered');
+			return button;
+		});
+		await fireEvent.click(trigger);
+		await fireEvent.click(container.querySelectorAll('[data-history-row]')[1]);
+		await waitFor(() => expect(container.querySelector('h1')?.textContent?.trim()).toBe('Books'));
+		const close = getByRole('button', { name: 'Close time travel' });
+		close.focus();
+
+		await fireEvent.click(close);
+		await tick();
+		await tick();
+
+		const title = container.querySelector('[data-note-title]');
+		expect(title).not.toBeNull();
+		expect(document.activeElement).not.toBe(title);
+		// The close button left with the preview, so focus stays on the note, not the page.
+		expect(document.activeElement).toBe(container.querySelector('[aria-label="Note editor"]'));
+	});
 });

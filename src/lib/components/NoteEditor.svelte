@@ -403,9 +403,12 @@
 		historyPreview = null;
 		restoreConfirmOpen = false;
 		historyRestoreError = '';
-		void tick().then(() =>
-			editorDialog?.querySelector<HTMLTextAreaElement>('[data-note-title]')?.focus()
-		);
+		// Never place a caret (or raise a phone keyboard) on the way back. When the control that
+		// had focus went away with the preview, keep keyboard focus inside the note instead.
+		void tick().then(() => {
+			const active = document.activeElement;
+			if (!active || active === document.body) editorDialog?.focus({ preventScroll: true });
+		});
 	}
 
 	function beginRestoreConfirmation() {

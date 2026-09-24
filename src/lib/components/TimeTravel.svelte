@@ -133,20 +133,13 @@
 		return () => document.removeEventListener('pointerdown', dismiss, true);
 	});
 
-	// Keep keyboard focus on a control that stays visible when the panel collapses.
-	$effect(() => {
-		if (expanded || !rail?.contains(document.activeElement) || document.activeElement === trigger)
-			return;
-		void tick().then(() => trigger?.focus({ preventScroll: true }));
-	});
-
 	function rowButtons(): HTMLButtonElement[] {
 		return [...(list?.querySelectorAll<HTMLButtonElement>('[data-history-row]') ?? [])];
 	}
 
-	async function expandFromTrigger() {
+	/** Keyboard only: a tap or click must never move focus out of the note. */
+	async function expandFromKeyboard() {
 		pinned = true;
-		if (lastPointerType === 'mouse') return;
 		await tick();
 		const rows = rowButtons();
 		(rows[activeRow] ?? rows[0])?.focus({ preventScroll: true });
@@ -157,6 +150,7 @@
 		if (event.key === 'Escape' && expanded) {
 			event.stopPropagation();
 			pinned = false;
+			void tick().then(() => trigger?.focus({ preventScroll: true }));
 			return;
 		}
 		const rows = rowButtons();
@@ -216,13 +210,12 @@
 	}
 
 	// Like T3 Code's message rail: the nearest tick follows the pointer and shows its card.
-	function trackTick(event: PointerEvent) {
-		if (event.pointerType !== 'mouse' && event.pointerType !== 'pen') return;
+	function trackTick(clientY: number) {
 		let nearest: { row: number; center: number; distance: number } | null = null;
 		for (const tick of trigger?.querySelectorAll<HTMLElement>('[data-tick]') ?? []) {
 			const box = tick.getBoundingClientRect();
 			const center = box.top + box.height / 2;
-			const distance = Math.abs(event.clientY - center);
+			const distance = Math.abs(clientY - center);
 			if (!nearest || distance < nearest.distance)
 				nearest = { row: Number(tick.dataset.tick), center, distance };
 		}
@@ -231,9 +224,51 @@
 		cardTop = nearest.center - anchor.getBoundingClientRect().top;
 	}
 
-	function activateTrigger() {
-		if (lastPointerType === 'mouse' && hoveredRow !== null) selectRow(hoveredRow);
-		else void expandFromTrigger();
+	// A finger drags along the rail to scrub versions and lifts to open one; a tap opens the list.
+	const SCRUB_SLOP = 6;
+	let scrub: { pointerId: number; startY: number; moved: boolean } | null = null;
+	// The click a lift produces, if any, is already handled by the lift.
+	let liftClickUntil = 0;
+
+	function handleTriggerPointerDown(event: PointerEvent) {
+		if (event.pointerType !== 'touch') return;
+		scrub = { pointerId: event.pointerId, startY: event.clientY, moved: false };
+		trigger?.setPointerCapture(event.pointerId);
+		trackTick(event.clientY);
+	}
+
+	function handleTriggerPointerMove(event: PointerEvent) {
+		if (event.pointerType === 'mouse' || event.pointerType === 'pen') {
+			trackTick(event.clientY);
+			return;
+		}
+		if (!scrub || event.pointerId !== scrub.pointerId) return;
+		if (Math.abs(event.clientY - scrub.startY) > SCRUB_SLOP) scrub.moved = true;
+		trackTick(event.clientY);
+	}
+
+	function handleTriggerPointerUp(event: PointerEvent) {
+		if (!scrub || event.pointerId !== scrub.pointerId) return;
+		const row = hoveredRow;
+		const moved = scrub.moved;
+		scrub = null;
+		hoveredRow = null;
+		liftClickUntil = event.timeStamp + 500;
+		if (moved && row !== null) selectRow(row);
+		else pinned = true;
+	}
+
+	function cancelScrub() {
+		scrub = null;
+		hoveredRow = null;
+	}
+
+	function handleTriggerClick(event: MouseEvent) {
+		if (event.timeStamp < liftClickUntil) return;
+		// Enter or Space on the focused rail: open the list and move into it.
+		if (event.detail === 0) void expandFromKeyboard();
+		else if (hoveredRow !== null) selectRow(hoveredRow);
+		else pinned = true;
 	}
 </script>
 
@@ -270,9 +305,14 @@
 						aria-label={`Version history, ${versions.length} saved ${versions.length === 1 ? 'version' : 'versions'}`}
 						aria-expanded={expanded}
 						aria-controls="note-history-versions"
-						onpointermove={trackTick}
-						onpointerleave={() => (hoveredRow = null)}
-						onclick={activateTrigger}
+						onpointerdown={handleTriggerPointerDown}
+						onpointermove={handleTriggerPointerMove}
+						onpointerup={handleTriggerPointerUp}
+						onpointercancel={cancelScrub}
+						onpointerleave={() => {
+							if (!scrub) hoveredRow = null;
+						}}
+						onclick={handleTriggerClick}
 					>
 						{#each ticks as mark (mark.row)}
 							<span

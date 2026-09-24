@@ -15,6 +15,7 @@ import {
 	syncControlKeys
 } from '$lib/syncEngine';
 import { SyncEventsClient } from '$lib/syncEventsClient';
+import { withoutAttachmentsHistoryNeeds } from '$lib/attachmentRetention';
 import {
 	attachmentToImage,
 	buildSyncRecords,
@@ -190,6 +191,8 @@ export class SyncStore {
 	private pendingOutboxWrites: Promise<void> = Promise.resolve();
 	private session: { accountId: string; accessToken: string; expiresAt: number } | null = null;
 	private pendingSessions = new Map<string, Promise<string>>();
+	/** Attachment ids a note's retained versions list, as of the note's last change. */
+	private versionAttachments = new Map<string, { updatedAt: number; ids: Set<string> }>();
 	private authenticationGeneration = 0;
 
 	// Non-reactive callbacks avoid re-rendering the note grid for cloud feedback.
@@ -839,6 +842,28 @@ export class SyncStore {
 			this.session = null;
 	}
 
+	/** Attachment ids the note's retained history lists; null when it cannot be read. */
+	private async versionAttachmentIds(
+		account: SyncAccount,
+		note: Note
+	): Promise<Set<string> | null> {
+		const key = `${account.accountId}\u0000${note.id}`;
+		const cached = this.versionAttachments.get(key);
+		if (cached?.updatedAt === note.updatedAt) return cached.ids;
+		try {
+			// Loaded on demand: the history client itself fetches through this store.
+			const { loadNoteHistory } = await import('$lib/historyClient');
+			const versions = await loadNoteHistory(account, note.id);
+			const ids = new Set(
+				versions.flatMap((version) => (version.note.images ?? []).map((image) => image.id))
+			);
+			this.versionAttachments.set(key, { updatedAt: note.updatedAt, ids });
+			return ids;
+		} catch {
+			return null;
+		}
+	}
+
 	async authorizedFetch(
 		input: RequestInfo | URL,
 		init: RequestInit = {},
@@ -1146,15 +1171,22 @@ export class SyncStore {
 					).then((entries) => new Map(entries));
 					return (await knownSlotMap).get(slot);
 				};
-				const deletableKeys = planDeletableKeys({
-					recordIds,
-					notes: mergedNotes,
-					labels: mergedLabels,
-					boards: mergedBoards,
-					tombstones: tombstoneMaps,
-					pullOnly,
-					catchUpComplete: downloadsDrained
-				})
+				const deletableKeys = (
+					await withoutAttachmentsHistoryNeeds(
+						planDeletableKeys({
+							recordIds,
+							notes: mergedNotes,
+							labels: mergedLabels,
+							boards: mergedBoards,
+							tombstones: tombstoneMaps,
+							pullOnly,
+							catchUpComplete: downloadsDrained
+						}),
+						mergedNotes,
+						tombstoneMaps.notes,
+						(note) => this.versionAttachmentIds(account, note)
+					)
+				)
 					.filter((key) => key !== PROFILE_META_KEY)
 					.slice(0, MAX_CLIENT_SYNC_MUTATIONS_PER_REQUEST - outbound.length);
 				const deleteSlots = await Promise.all(

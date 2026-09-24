@@ -159,9 +159,11 @@ The note editor loads a note's versions in one request, previews a selected
 version, and restores it to that note. A device decrypts the version and any
 matching attachments in memory; history is never written into IndexedDB.
 
-Deleting a record for good (a note emptied from the trash, a removed attachment)
-removes it and every version of it from the relay in the same request; nothing of
-it is kept. Versions outside the window go on the save that pushes them out.
+Deleting a record for good (a note emptied from the trash, an attachment nothing
+needs any more) removes it and every version of it from the relay in the same
+request; nothing of it is kept. An image removed from a note stays while a
+retained version of that note still shows it, so restoring that version brings
+it back; it goes on the first sync after the last such version rolls off. Versions outside the window go on the save that pushes them out.
 The daily retention sweep only finishes what an interrupted request left, applies
 a lowered window, and recounts history usage. Account deletion removes all
 history and its ciphertext.

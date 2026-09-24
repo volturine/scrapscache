@@ -1912,7 +1912,9 @@ export const noteEditorStyles = {
 		pb: 'md'
 	}),
 	scrollerPreview: css({ pb: '5rem' }),
-	scrollerWithHistory: css({ pr: '2.25rem' }),
+	// Text rows end clear of the history rail, so a tap near a line's end reaches the text
+	// rather than the rail (touch browsers snap taps to nearby buttons).
+	scrollerWithHistory: css({ pr: '2.25rem', '@media (pointer: coarse)': { pr: '3.75rem' } }),
 	historyPreviewTitle: css({
 		mb: 'md',
 		w: 'full',
@@ -2129,6 +2131,7 @@ export const historyStyles = {
 		top: '4.5rem',
 		bottom: '4.5rem',
 		right: '2xs',
+		'@media (pointer: coarse)': { right: 0 },
 		zIndex: 5,
 		display: 'flex',
 		alignItems: 'center',
@@ -2139,8 +2142,8 @@ export const historyStyles = {
 		display: 'grid',
 		pointerEvents: 'auto',
 		w: '1.5rem',
-		// A wider collapsed rail gives fingers a usable target without crowding mouse users.
-		'@media (pointer: coarse)': { w: '2.25rem' },
+		// A wider rail with more space between ticks gives fingers a usable scrubbing strip.
+		'@media (pointer: coarse)': { w: '2.25rem', h: 'calc(var(--history-ticks) * 12px + 1.25rem)' },
 		// --history-ticks / --history-rows are per-instance counts; the sizes stay here.
 		h: 'calc(var(--history-ticks) * 7px + 1.25rem)',
 		maxH: 'full',
@@ -2178,6 +2181,9 @@ export const historyStyles = {
 		h: 'full',
 		px: '2xs',
 		...interactive,
+		// Dragging along the rail scrubs versions instead of scrolling the note.
+		touchAction: 'none',
+		'@media (pointer: coarse)': { gap: '10px' },
 		rounded: 'card',
 		// The growing tick under the pointer is the hover feedback, as in T3 Code.
 		_focusVisible: historyFocusRing

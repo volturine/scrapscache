@@ -226,7 +226,8 @@ describe('TimeTravel', () => {
 		expect(trigger.querySelector('[data-tick="1"]')?.hasAttribute('data-hovered')).toBe(true);
 
 		pointer(trigger, 'pointerdown', 7);
-		await fireEvent.click(trigger);
+		// A real mouse click counts one press; detail 0 is keyboard activation.
+		await fireEvent.click(trigger, { detail: 1 });
 		await waitFor(() =>
 			expect(onPreviewVersion).toHaveBeenCalledWith(entries[1].note, entries[1], 0)
 		);
@@ -235,5 +236,77 @@ describe('TimeTravel', () => {
 		pointer(trigger, 'pointerleave', 7);
 		await tick();
 		expect(container.querySelector('nav + [aria-hidden="true"]')).toBeNull();
+	});
+
+	describe('on touch', () => {
+		function touch(target: Element, type: string, clientY: number) {
+			const event = new MouseEvent(type, { bubbles: true, clientY });
+			Object.defineProperties(event, {
+				pointerType: { value: 'touch' },
+				pointerId: { value: 3 }
+			});
+			target.dispatchEvent(event);
+		}
+
+		beforeEach(() => {
+			vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (
+				this: Element
+			) {
+				const row = Number((this as HTMLElement).dataset?.tick ?? 0);
+				return new DOMRect(0, row * 12, 10, 2);
+			});
+			Element.prototype.setPointerCapture = vi.fn();
+		});
+
+		it('scrubs versions with a drag and opens the one under the finger on lift', async () => {
+			const { container, onPreviewVersion } = renderTimeTravel();
+			const trigger = await openRail(container);
+
+			touch(trigger, 'pointerdown', 0);
+			await tick();
+			expect(trigger.querySelector('[data-tick="0"]')?.hasAttribute('data-hovered')).toBe(true);
+			touch(trigger, 'pointermove', 24);
+			await tick();
+			expect(container.querySelector('nav + [aria-hidden="true"]')?.textContent).toContain(
+				'Antifragile'
+			);
+			touch(trigger, 'pointerup', 24);
+			// The click a lift produces is already handled.
+			await fireEvent.click(trigger, { detail: 1 });
+
+			await waitFor(() =>
+				expect(onPreviewVersion).toHaveBeenCalledWith(entries[2].note, entries[2], 0)
+			);
+			expect(container.querySelector('nav')?.hasAttribute('data-expanded')).toBe(false);
+			expect(container.querySelector('nav + [aria-hidden="true"]')).toBeNull();
+		});
+
+		it('opens the list on a tap without taking focus from the note', async () => {
+			const { container } = renderTimeTravel();
+			const trigger = await openRail(container);
+			const outside = document.createElement('div');
+			outside.tabIndex = 0;
+			document.body.append(outside);
+			outside.focus();
+
+			touch(trigger, 'pointerdown', 0);
+			touch(trigger, 'pointerup', 0);
+			await tick();
+
+			expect(container.querySelector('nav')?.hasAttribute('data-expanded')).toBe(true);
+			expect(document.activeElement).toBe(outside);
+			outside.remove();
+		});
+	});
+
+	it('moves focus into the list only when opened from the keyboard', async () => {
+		const { container } = renderTimeTravel();
+		const trigger = await openRail(container);
+		trigger.focus();
+		// Enter or Space activates a button with a click whose detail is 0.
+		await fireEvent.click(trigger, { detail: 0 });
+		await waitFor(() =>
+			expect(document.activeElement?.hasAttribute('data-history-row')).toBe(true)
+		);
 	});
 });

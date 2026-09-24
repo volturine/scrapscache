@@ -9,7 +9,6 @@
 	import {
 		describeNoteVersionChange,
 		distinctNoteVersions,
-		noteExcerpt,
 		sameVisibleNote,
 		type NoteVersionChange
 	} from '$lib/noteVersionChange';
@@ -46,6 +45,7 @@
 	type Row = { entry: NoteHistoryEntry | null; change: NoteVersionChange | null };
 
 	const MAX_TICKS = 24;
+	const MAX_DIFF_LINES = 4;
 
 	let entries = $state.raw<NoteHistoryEntry[]>([]);
 	let nextBefore = $state<number | null | undefined>(undefined);
@@ -245,10 +245,6 @@
 		if (lastPointerType === 'mouse' && hoveredRow !== null) selectRow(hoveredRow);
 		else void expandFromTrigger();
 	}
-
-	function excerpt(row: Row): string {
-		return noteExcerpt(row.entry?.note ?? note);
-	}
 </script>
 
 {#snippet stats(added: number, removed: number)}
@@ -364,15 +360,36 @@
 		{#if hoveredCard}
 			<!-- Pointer-only preview; the same details are in the keyboard-reachable list. -->
 			<div class={styles.tickCard} style:top="{cardTop}px" aria-hidden="true">
-				<p class={styles.tickCardTitle}>{hoveredCard.change?.summary ?? 'Not synced yet'}</p>
-				<p class={styles.tickCardText}>{excerpt(hoveredCard)}</p>
-				<p class={styles.tickCardMeta}>
+				<p class={styles.tickCardTitle}>
 					<span>{hoveredCard.entry ? relative(hoveredCard.entry.savedAt) : 'Now'}</span>
 					{#if hoveredCard.change}{@render stats(
 							hoveredCard.change.added,
 							hoveredCard.change.removed
 						)}{/if}
 				</p>
+				{#if !hoveredCard.change?.summaryInDiff}
+					<p class={styles.tickCardText}>{hoveredCard.change?.summary ?? 'Not synced yet'}</p>
+				{/if}
+				{#if hoveredCard.change?.diff.length}
+					{@const diff = hoveredCard.change.diff}
+					<ul class={styles.tickDiff}>
+						{#each diff.slice(0, MAX_DIFF_LINES) as line, index (index)}
+							<li
+								class={[styles.tickDiffLine, line.kind === 'added' ? styles.added : styles.removed]}
+							>
+								{line.kind === 'added' ? '+' : '−'}
+								{line.text}
+							</li>
+						{/each}
+						{#if diff.length > MAX_DIFF_LINES}
+							<li class={styles.tickDiffMore}>
+								{diff.length - MAX_DIFF_LINES} more {diff.length - MAX_DIFF_LINES === 1
+									? 'line'
+									: 'lines'}
+							</li>
+						{/if}
+					</ul>
+				{/if}
 			</div>
 		{/if}
 	</div>
@@ -380,23 +397,12 @@
 
 {#if previewEntry}
 	<div class={styles.bar} role="group" aria-label="Time travel" data-editor-popup>
-		<!-- Confirming replaces the stepper so the bar stays within narrow screens. -->
-		{#if restoreConfirmOpen}
-			<span class={styles.barPrompt}>Restore this version?</span>
-			<button
-				type="button"
-				class={[button({ variant: 'quiet', size: 'xs' }), styles.barAction]}
-				onclick={onCancelRestore}
-				disabled={restoringPreview}>Cancel</button
-			>
-			<button
-				type="button"
-				class={[button({ variant: 'primary', size: 'xs' }), styles.barAction]}
-				data-history-restore-action="confirm"
-				onclick={onConfirmRestore}
-				disabled={restoringPreview}>{restoringPreview ? 'Restoring…' : 'Restore'}</button
-			>
-		{:else}
+		<!-- Both states share one grid cell, so the bar keeps its size while confirming. -->
+		<div
+			class={styles.barState}
+			inert={restoreConfirmOpen}
+			data-hidden={restoreConfirmOpen || undefined}
+		>
 			<button
 				type="button"
 				class={iconButton({ variant: 'ghost', size: 'compact' })}
@@ -442,7 +448,27 @@
 			>
 				<X size={18} aria-hidden="true" />
 			</button>
-		{/if}
+		</div>
+		<div
+			class={styles.barState}
+			inert={!restoreConfirmOpen}
+			data-hidden={!restoreConfirmOpen || undefined}
+		>
+			<span class={styles.barPrompt}>Restore this version?</span>
+			<button
+				type="button"
+				class={[button({ variant: 'quiet', size: 'xs' }), styles.barAction]}
+				onclick={onCancelRestore}
+				disabled={restoringPreview}>Cancel</button
+			>
+			<button
+				type="button"
+				class={[button({ variant: 'primary', size: 'xs' }), styles.barAction]}
+				data-history-restore-action="confirm"
+				onclick={onConfirmRestore}
+				disabled={restoringPreview}>{restoringPreview ? 'Restoring…' : 'Restore'}</button
+			>
+		</div>
 		{#if restoreError}<p class={styles.barError} role="alert">{restoreError}</p>{/if}
 	</div>
 {/if}

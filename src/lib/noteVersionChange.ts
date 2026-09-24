@@ -10,7 +10,13 @@ export type NoteVersionChange = {
 	removed: number;
 	/** One-line description of the most telling change. */
 	summary: string;
+	/** Changed lines that hold text, removals first, for a compact diff. */
+	diff: NoteDiffLine[];
+	/** The summary only restates a line of the diff, so a diff view can omit it. */
+	summaryInDiff: boolean;
 };
+
+export type NoteDiffLine = { kind: 'added' | 'removed'; text: string };
 
 const CHECKBOX = /^\s*(?:[-*+]\s+)?\[([ xX])\]\s+/;
 const MARKER = /^\s*(?:[-*+]\s+|\d+[.)]\s+|#{1,6}\s+|>\s*)?(?:\[[ xX]\]\s+)?/;
@@ -34,16 +40,6 @@ function emptyLines(count: number): string {
 function firstLine(note: VersionedNote): string {
 	const line = lines(note.body).find((text) => !blank(text));
 	return (line && plain(line)) || note.title.trim() || 'Empty note';
-}
-
-/** The first lines of a version's text, flattened for a short preview. */
-export function noteExcerpt(note: VersionedNote, maxLines = 3): string {
-	const text = lines(note.body)
-		.filter((line) => !blank(line))
-		.slice(0, maxLines)
-		.map(plain)
-		.join(' · ');
-	return text || 'No text';
 }
 
 function metadataChange(version: VersionedNote, previous: VersionedNote): string | null {
@@ -87,7 +83,8 @@ export function describeNoteVersionChange(
 	version: VersionedNote,
 	previous: VersionedNote | undefined
 ): NoteVersionChange {
-	if (!previous) return { added: 0, removed: 0, summary: firstLine(version) };
+	if (!previous)
+		return { added: 0, removed: 0, summary: firstLine(version), diff: [], summaryInDiff: false };
 
 	const remaining = new Map<string, number>();
 	for (const line of lines(previous.body)) remaining.set(line, (remaining.get(line) ?? 0) + 1);
@@ -99,7 +96,26 @@ export function describeNoteVersionChange(
 	}
 	const removedLines = [...remaining].flatMap(([line, count]) => Array(count).fill(line));
 	const change = { added: addedLines.length, removed: removedLines.length };
-	const describe = (summary: string) => ({ ...change, summary });
+	const diff: NoteDiffLine[] = [
+		...removedLines
+			.filter((line) => !blank(line))
+			.map((line) => ({
+				kind: 'removed' as const,
+				text: line.trim()
+			})),
+		...addedLines
+			.filter((line) => !blank(line))
+			.map((line) => ({
+				kind: 'added' as const,
+				text: line.trim()
+			}))
+	];
+	const describe = (summary: string, summaryInDiff = false) => ({
+		...change,
+		summary,
+		diff,
+		summaryInDiff
+	});
 
 	const renamed = titleChange(version, previous);
 	if (renamed) return describe(renamed);
@@ -115,9 +131,9 @@ export function describeNoteVersionChange(
 		return describe(`${checked ? 'Checked' : 'Unchecked'} “${plain(toggled)}”`);
 	}
 	const added = addedLines.find((line) => !blank(line));
-	if (added) return describe(plain(added) || 'Edited');
+	if (added) return describe(plain(added) || 'Edited', true);
 	const removed = removedLines.find((line) => !blank(line));
-	if (removed) return describe(`Removed “${plain(removed)}”`);
+	if (removed) return describe(`Removed “${plain(removed)}”`, true);
 	// Only blank lines changed, or the same lines moved.
 	if (change.added && change.removed) return describe('Changed line spacing');
 	if (change.added) return describe(`Added ${emptyLines(change.added)}`);

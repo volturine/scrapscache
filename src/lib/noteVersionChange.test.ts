@@ -3,7 +3,6 @@ import type { SyncNote } from '$lib/syncRecords';
 import {
 	describeNoteVersionChange,
 	distinctNoteVersions,
-	noteExcerpt,
 	sameVisibleNote
 } from './noteVersionChange';
 
@@ -27,7 +26,9 @@ function note(patch: Partial<SyncNote> = {}): SyncNote {
 
 describe('describeNoteVersionChange', () => {
 	it('summarises the earliest loaded version by its first line', () => {
-		expect(describeNoteVersionChange(note({ body: '\n- [ ] Milk\nBread' }), undefined)).toEqual({
+		expect(
+			describeNoteVersionChange(note({ body: '\n- [ ] Milk\nBread' }), undefined)
+		).toMatchObject({
 			added: 0,
 			removed: 0,
 			summary: 'Milk'
@@ -37,7 +38,7 @@ describe('describeNoteVersionChange', () => {
 	it('counts added and removed lines and leads with the first added line', () => {
 		const previous = note({ body: 'Antifragile\nSapiens' });
 		const version = note({ body: 'Antifragile\nDeep Work\n\nSeeing Like a State' });
-		expect(describeNoteVersionChange(version, previous)).toEqual({
+		expect(describeNoteVersionChange(version, previous)).toMatchObject({
 			added: 3,
 			removed: 1,
 			summary: 'Deep Work'
@@ -45,7 +46,7 @@ describe('describeNoteVersionChange', () => {
 	});
 
 	it('treats a first body on an empty note as additions only', () => {
-		expect(describeNoteVersionChange(note({ body: 'Milk' }), note({ body: '' }))).toEqual({
+		expect(describeNoteVersionChange(note({ body: 'Milk' }), note({ body: '' }))).toMatchObject({
 			added: 1,
 			removed: 0,
 			summary: 'Milk'
@@ -54,7 +55,7 @@ describe('describeNoteVersionChange', () => {
 
 	it('describes edits that only add, remove, or move blank lines', () => {
 		const spaced = note({ body: 'alpha\n\ngamma' });
-		expect(describeNoteVersionChange(note({ body: 'alpha\ngamma' }), spaced)).toEqual({
+		expect(describeNoteVersionChange(note({ body: 'alpha\ngamma' }), spaced)).toMatchObject({
 			added: 0,
 			removed: 1,
 			summary: 'Removed an empty line'
@@ -65,7 +66,7 @@ describe('describeNoteVersionChange', () => {
 		expect(describeNoteVersionChange(note({ body: 'alpha\n \ngamma' }), spaced).summary).toBe(
 			'Changed line spacing'
 		);
-		expect(describeNoteVersionChange(note({ body: 'gamma\n\nalpha' }), spaced)).toEqual({
+		expect(describeNoteVersionChange(note({ body: 'gamma\n\nalpha' }), spaced)).toMatchObject({
 			added: 0,
 			removed: 0,
 			summary: 'Reordered lines'
@@ -74,7 +75,7 @@ describe('describeNoteVersionChange', () => {
 
 	it('names removals and treats duplicate lines as a multiset', () => {
 		const previous = note({ body: 'Milk\nMilk\nBread' });
-		expect(describeNoteVersionChange(note({ body: 'Milk\nBread' }), previous)).toEqual({
+		expect(describeNoteVersionChange(note({ body: 'Milk\nBread' }), previous)).toMatchObject({
 			added: 0,
 			removed: 1,
 			summary: 'Removed “Milk”'
@@ -93,7 +94,7 @@ describe('describeNoteVersionChange', () => {
 
 	it('prefers a title change over body edits', () => {
 		const change = describeNoteVersionChange(note({ title: 'Books', body: 'New' }), note());
-		expect(change).toEqual({ added: 1, removed: 1, summary: 'Renamed “Books”' });
+		expect(change).toMatchObject({ added: 1, removed: 1, summary: 'Renamed “Books”' });
 		expect(describeNoteVersionChange(note({ title: 'Plan' }), note({ title: '' })).summary).toBe(
 			'Titled “Plan”'
 		);
@@ -149,11 +150,36 @@ describe('sameVisibleNote', () => {
 	});
 });
 
-describe('noteExcerpt', () => {
-	it('joins the first lines with text, without list markers', () => {
-		expect(noteExcerpt(note({ body: '- [x] Milk\n\n# Bread\nEggs\nButter' }))).toBe(
-			'Milk · Bread · Eggs'
-		);
-		expect(noteExcerpt(note({ body: '\n  ' }))).toBe('No text');
+describe('version diff lines', () => {
+	it('lists removed then added lines that hold text', () => {
+		const previous = note({ body: 'Antifragile\n\n- [ ] Milk\nSapiens' });
+		const version = note({ body: 'Antifragile\n- [x] Milk\nDeep Work  ' });
+		expect(describeNoteVersionChange(version, previous).diff).toEqual([
+			{ kind: 'removed', text: '- [ ] Milk' },
+			{ kind: 'removed', text: 'Sapiens' },
+			{ kind: 'added', text: '- [x] Milk' },
+			{ kind: 'added', text: 'Deep Work' }
+		]);
+	});
+
+	it('has no lines for the earliest version or blank-only edits', () => {
+		expect(describeNoteVersionChange(note(), undefined).diff).toEqual([]);
+		const spaced = note({ body: 'alpha\n\ngamma' });
+		expect(describeNoteVersionChange(note({ body: 'alpha\ngamma' }), spaced).diff).toEqual([]);
+	});
+
+	it('flags summaries that only restate a diff line', () => {
+		const previous = note({ body: 'Milk\n[ ] Bread' });
+		expect(
+			describeNoteVersionChange(note({ body: 'Milk\n[ ] Bread\nEggs' }), previous)
+		).toMatchObject({
+			summary: 'Eggs',
+			summaryInDiff: true
+		});
+		expect(describeNoteVersionChange(note({ body: 'Milk' }), previous).summaryInDiff).toBe(true);
+		expect(describeNoteVersionChange(note({ body: 'Milk\n[x] Bread' }), previous)).toMatchObject({
+			summary: 'Checked “Bread”',
+			summaryInDiff: false
+		});
 	});
 });

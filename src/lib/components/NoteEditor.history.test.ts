@@ -70,7 +70,7 @@ afterEach(() => {
 describe('NoteEditor time travel', () => {
 	it('restores a version in place and keeps editing the restored note', async () => {
 		const onClose = vi.fn();
-		const { container, getByRole } = render(NoteEditor, {
+		const { container } = render(NoteEditor, {
 			props: { noteId: 'note-1', onClose }
 		});
 
@@ -83,8 +83,9 @@ describe('NoteEditor time travel', () => {
 		await fireEvent.click(container.querySelectorAll('[data-history-row]')[1]);
 		await waitFor(() => expect(container.querySelector('h1')?.textContent?.trim()).toBe('Books'));
 
-		await fireEvent.click(getByRole('button', { name: 'Restore' }));
-		await fireEvent.click(getByRole('button', { name: 'Restore' }));
+		// Both bar states stay mounted (one inert), so pick each step's button explicitly.
+		await fireEvent.click(container.querySelector('[data-history-restore-action="start"]')!);
+		await fireEvent.click(container.querySelector('[data-history-restore-action="confirm"]')!);
 
 		await waitFor(() => expect(notesStore.notes[0]).toMatchObject({ title: 'Books' }));
 		expect(notesStore.notes[0].body).toBe('Antifragile');

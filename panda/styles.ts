@@ -2213,15 +2213,26 @@ export const historyStyles = {
 		transitionTimingFunction: 'cubic-bezier(0.2, 0, 0, 1)',
 		_motionReduce: { animation: 'none', transitionDuration: '0ms' }
 	}),
-	tickCardTitle: css({ ...truncateText, textStyle: 'label', fontWeight: 'heading' }),
-	tickCardText: css({ mt: '2xs', textStyle: 'caption', lineClamp: 3 }),
-	tickCardMeta: css({
+	tickCardTitle: css({
 		...rowCenter,
+		justifyContent: 'space-between',
 		gap: 'sm',
-		mt: 'xs',
-		textStyle: 'caption',
+		textStyle: 'label',
+		fontWeight: 'heading',
 		fontVariantNumeric: 'tabular-nums'
 	}),
+	tickCardText: css({ ...truncateText, mt: '3xs', textStyle: 'caption' }),
+	tickDiff: css({
+		...column,
+		gap: '3xs',
+		mt: 'xs',
+		pt: 'xs',
+		borderTopWidth: 'hairline',
+		borderColor: 'scrapscache.border',
+		textStyle: 'caption'
+	}),
+	tickDiffLine: css({ ...truncateText }),
+	tickDiffMore: css({ textStyle: 'caption' }),
 	panelLayer: css({
 		...historySwapState('swapIn', 'fadeOut'),
 		justifySelf: 'end',
@@ -2311,9 +2322,7 @@ export const historyStyles = {
 		bottom: 'lg',
 		left: '50%',
 		zIndex: 4,
-		display: 'flex',
-		alignItems: 'center',
-		gap: '2xs',
+		display: 'grid',
 		maxW: 'calc(100% - 1rem)',
 		p: '2xs',
 		transform: 'translateX(-50%)',
@@ -2324,6 +2333,23 @@ export const historyStyles = {
 		boxShadow: 'popover',
 		animation: 'cardIn',
 		_motionReduce: { animation: 'none' }
+	}),
+	barState: css({
+		gridArea: '1 / 1',
+		display: 'flex',
+		alignItems: 'center',
+		gap: '2xs',
+		minW: 0,
+		transitionProperty: 'opacity',
+		transitionDuration: '150ms',
+		// Hiding delays visibility until the fade ends; showing is visible at once, so the
+		// incoming state can take focus immediately.
+		'&[data-hidden]': {
+			opacity: 0,
+			visibility: 'hidden',
+			transitionProperty: 'opacity, visibility'
+		},
+		_motionReduce: { transitionDuration: '0ms' }
 	}),
 	barLabel: css({
 		...column,
@@ -2358,7 +2384,7 @@ export const historyStyles = {
 	}),
 	// Concentric with the pill bar.
 	barAction: css({ rounded: 'pill' }),
-	barPrompt: css({ ...truncateText, minW: 0, px: 'sm', textStyle: 'label' }),
+	barPrompt: css({ ...truncateText, flex: '1', minW: 0, px: 'sm', textStyle: 'label' }),
 	barError: css({
 		position: 'absolute',
 		bottom: 'calc(100% + 0.5rem)',

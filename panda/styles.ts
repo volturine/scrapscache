@@ -92,14 +92,22 @@ export const appLayout = {
 		bg: 'scrapscache.bg',
 		color: 'scrapscache.text'
 	}),
-	// Catches taps outside the drawer without tinting the page behind it.
-	backdrop: css({ position: 'fixed', inset: 0, zIndex: 20 }),
-	drawerPositioner: css({ position: 'fixed', insetY: 0, left: 0, zIndex: 30, h: 'full' }),
+	// Catches taps outside the drawer with soft dimming.
+	backdrop: css({ position: 'fixed', inset: 0, zIndex: 50, bg: 'scrapscache.backdropSoft' }),
+	drawerPositioner: css({
+		position: 'fixed',
+		insetY: 0,
+		left: 0,
+		zIndex: 55,
+		h: 'full',
+		maxW: 'calc(100vw - 3.5rem)'
+	}),
 	// No edge of its own: the surface is what sets the panel apart from the body,
 	// and a border would stop where the frame does while the surface carries on.
 	drawer: css({
 		h: 'full',
-		w: DRAWER_WIDTH,
+		w: '18rem',
+		maxW: 'calc(100vw - 3.5rem)',
 		bg: 'scrapscache.surface'
 	}),
 	// The app frame stops at the safe rect, so an open drawer stops short of the
@@ -109,10 +117,10 @@ export const appLayout = {
 		position: 'fixed',
 		left: 0,
 		bottom: 0,
-		w: `calc(${DRAWER_WIDTH} + var(--app-inset-left))`,
+		w: 'min(calc(18rem + var(--app-inset-left)), calc(100vw - 3.5rem + var(--app-inset-left)))',
 		h: 'var(--app-inset-bottom)',
 		bg: 'scrapscache.surface',
-		zIndex: 40,
+		zIndex: 56,
 		pointerEvents: 'none'
 	}),
 	// Same panel as the drawer on a phone: its surface is what sets it apart.
@@ -1887,7 +1895,7 @@ export const noteEditorStyles = {
 	/** Base of every editor footer variant; justify/gap stay with the hstack call. */
 	footer: css({
 		position: 'relative',
-		px: 'md',
+		px: { base: 'xs', sm: 'md' },
 		py: 'sm',
 		borderTopWidth: 'hairline',
 		borderColor: 'scrapscache.borderFaint'

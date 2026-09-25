@@ -794,7 +794,7 @@
 	<Tooltip {content}>
 		<button
 			type="button"
-			class={iconButton({ variant, size: 'standard' })}
+			class={iconButton({ variant, size: { base: 'compact', sm: 'standard' } })}
 			title={label}
 			aria-label={label}
 			onclick={action}
@@ -851,7 +851,14 @@
 {:else}
 	<footer
 		use:footerInteractions
-		class={cx(hstack({ justify: 'space-between', gap: 'sm' }), noteEditorStyles.footer)}
+		class={cx(
+			hstack({
+				justify: 'space-between',
+				gap: { base: '2xs', sm: 'sm' },
+				flexWrap: 'nowrap'
+			}),
+			noteEditorStyles.footer
+		)}
 	>
 		<div class={hstack({ gap: '2xs', flexShrink: 0 })}>
 			{@render footerButton('Attach', 'Attach', Paperclip, 'ghost', openAttach)}
@@ -859,7 +866,7 @@
 			<Tooltip content="Labels">
 				<button
 					type="button"
-					class={iconButton({ variant: 'ghost', size: 'standard' })}
+					class={iconButton({ variant: 'ghost', size: { base: 'compact', sm: 'standard' } })}
 					title="Labels"
 					onclick={openTags}
 					aria-label="Labels"
@@ -871,9 +878,8 @@
 		<div
 			class={hstack({
 				gap: '2xs',
-				flexWrap: 'wrap',
-				justify: 'flex-end',
-				maxW: 'calc(100% - 5.5rem)'
+				flexShrink: 0,
+				justify: 'flex-end'
 			})}
 		>
 			{@render footerButton('Color', 'Color', Palette, 'ghost', () => onOpenColor?.())}
@@ -881,7 +887,7 @@
 				<Tooltip content="Copy note">
 					<button
 						type="button"
-						class={iconButton({ variant: 'ghost', size: 'standard' })}
+						class={iconButton({ variant: 'ghost', size: { base: 'compact', sm: 'standard' } })}
 						title="Copy note"
 						aria-label="Copy note"
 						onclick={() => onCopy?.()}

@@ -293,4 +293,15 @@ describe('Sidebar labels section', () => {
 		await tick();
 		expect(section.querySelector('[data-label-haze]')).toBeNull();
 	});
+
+	it('renders mobile close button and calls onNavigate when clicked', async () => {
+		const onNavigate = vi.fn();
+		const { container } = render(Sidebar, { props: { onNavigate } });
+		const closeBtn = container.querySelector(
+			'button[aria-label="Close sidebar"]'
+		) as HTMLButtonElement;
+		expect(closeBtn).toBeTruthy();
+		await fireEvent.click(closeBtn);
+		expect(onNavigate).toHaveBeenCalledTimes(1);
+	});
 });

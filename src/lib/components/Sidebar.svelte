@@ -26,7 +26,6 @@
 		StickyNote,
 		Tag,
 		Trash2,
-		X,
 		type LucideIcon
 	} from '@lucide/svelte';
 	import { Dialog } from '@ark-ui/svelte/dialog';
@@ -269,35 +268,6 @@
 	})}
 	transition:fly={{ x: -20, duration: 120 }}
 >
-	{#if onNavigate}
-		<div
-			class={hstack({
-				justify: 'space-between',
-				alignItems: 'center',
-				mb: 'xs',
-				px: '2xs'
-			})}
-		>
-			<span
-				class={css({
-					fontWeight: 'semibold',
-					textStyle: 'title',
-					color: 'scrapscache.text'
-				})}
-			>
-				Scraps Cache
-			</span>
-			<button
-				type="button"
-				class={iconButton({ variant: 'ghost', size: 'compact' })}
-				aria-label="Close sidebar"
-				title="Close sidebar"
-				onclick={onNavigate}
-			>
-				<X size={18} />
-			</button>
-		</div>
-	{/if}
 	<nav class={vstack({ gap: '3xs', flexShrink: 0, w: 'full' })} aria-label="Main navigation">
 		{#each navItems as item (item.view)}
 			{@const NavIcon = item.icon}

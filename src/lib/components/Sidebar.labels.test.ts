@@ -294,14 +294,12 @@ describe('Sidebar labels section', () => {
 		expect(section.querySelector('[data-label-haze]')).toBeNull();
 	});
 
-	it('renders mobile close button and calls onNavigate when clicked', async () => {
+	it('calls onNavigate when a view is selected on mobile', async () => {
 		const onNavigate = vi.fn();
-		const { container } = render(Sidebar, { props: { onNavigate } });
-		const closeBtn = container.querySelector(
-			'button[aria-label="Close sidebar"]'
-		) as HTMLButtonElement;
-		expect(closeBtn).toBeTruthy();
-		await fireEvent.click(closeBtn);
+		const { getByRole } = render(Sidebar, { props: { onNavigate } });
+		const kanbanBtn = getByRole('button', { name: 'Kanban' });
+		expect(kanbanBtn).toBeTruthy();
+		await fireEvent.click(kanbanBtn);
 		expect(onNavigate).toHaveBeenCalledTimes(1);
 	});
 });

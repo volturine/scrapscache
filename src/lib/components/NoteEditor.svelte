@@ -66,8 +66,6 @@
 			: activity?.label
 	);
 
-	let taskFocusLine = $state<number | null>(null);
-
 	// Parent remounts this editor when the note id changes. The draft starts from
 	// the store and takes later store changes only for fields not being edited.
 	// svelte-ignore state_referenced_locally
@@ -135,10 +133,6 @@
 	/** Window width the auto-expand decision was last measured at. */
 	let autoExpandWidth = 0;
 	const photosFillEditor = $derived(body.trim() === '' && images.some(isImageAttachment));
-	function exitTaskFocus() {
-		taskFocusLine = null;
-	}
-
 	function focusBodyFromPage(event: MouseEvent) {
 		if (historyPreview) return;
 		const target = event.target;
@@ -154,11 +148,9 @@
 			// Android keeps a contenteditable focused after its software-keyboard
 			// dismiss action. Treat a tap on empty note chrome like the header buttons:
 			// explicitly blur the field so the keyboard can close reliably.
-			exitTaskFocus();
 			active.blur();
 			return;
 		}
-		if (taskFocusLine !== null) exitTaskFocus();
 		bodyEditor?.focusDefault();
 	}
 
@@ -377,12 +369,6 @@
 			field.focus();
 		}
 		lockPageScroll();
-	}
-
-	function focusTask(line: number) {
-		// The task row stays mounted, so the browser already owns the exact caret
-		// and keyboard focus from the tap. Only update the inline focus chrome.
-		taskFocusLine = line;
 	}
 
 	function handleBack() {
@@ -652,8 +638,6 @@
 
 	async function close(preserveEmpty = false) {
 		closing = true;
-		// Drop task-focus chrome immediately so dismiss is never gated on focus mode.
-		taskFocusLine = null;
 		await flushDraft();
 		if (note && !preserveEmpty) await notesStore.discardIfEmpty(note.id);
 		onClose();
@@ -993,7 +977,6 @@
 								bind:value={title}
 								oninput={handleTitleInput}
 								onpaste={handleTitlePaste}
-								onfocus={exitTaskFocus}
 								onkeydown={(e) => {
 									if (e.key === 'Enter') {
 										e.preventDefault();
@@ -1018,9 +1001,6 @@
 								oninput={markBodyEdited}
 								{transformPaste}
 								placeholder="Take a note… type [ ] for a checklist, - for a bullet, Tab for sub-task"
-								focusLine={taskFocusLine}
-								onFocusTask={focusTask}
-								onExitTaskFocus={exitTaskFocus}
 							/>
 						{/if}
 					</div>

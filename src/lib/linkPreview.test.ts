@@ -53,6 +53,9 @@ describe('localLinkCard', () => {
 		['https://www.youtube.com/@veritasium', '@veritasium'],
 		['https://en.wikipedia.org/wiki/Black_swan_theory', 'Black swan theory'],
 		['https://de.wikipedia.org/wiki/K%C3%B6ln', 'Köln'],
+		['https://en.wikipedia.org/wiki/a', 'a'],
+		['https://evil-wikipedia.org/wiki/a', 'Wiki'],
+		['https://evilwikipedia.org/wiki/a', 'Wiki'],
 		[
 			'https://www.reddit.com/r/sveltejs/comments/abc123/runes_are_great/',
 			'Runes are great · r/sveltejs'

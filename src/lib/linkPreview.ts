@@ -102,7 +102,7 @@ function siteTitle(host: string, parts: string[], url: URL): string | null {
 		if (host === 'youtu.be' || url.searchParams.has('v')) return 'YouTube video';
 		return null;
 	}
-	if (host.endsWith('wikipedia.org') && first === 'wiki' && second) {
+	if ((host === 'wikipedia.org' || host.endsWith('.wikipedia.org')) && first === 'wiki' && second) {
 		return decodeSegment(second).replace(/_/g, ' ');
 	}
 	if (host === 'reddit.com' || host === 'old.reddit.com') {

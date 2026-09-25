@@ -15,7 +15,14 @@ type Env = {
 	SCRAPSCACHE_HISTORY_VERSIONS?: string;
 };
 
-type Upload = { id: string; slot: string; ciphertext: string; expectedId?: string | null };
+type Upload = {
+	id: string;
+	slot: string;
+	ciphertext: string;
+	expectedId?: string | null;
+	/** The upload continues the version it replaces, which then leaves the history. */
+	continues?: boolean;
+};
 type Deletion = { id: string; slot: string };
 type EnvelopeRow = {
 	seq: number;
@@ -362,6 +369,7 @@ export class AccountCoordinator {
 		}
 
 		let sequence = account.nextSeq;
+		const continuedIds: string[] = [];
 		for (const upload of acceptedUploads) {
 			const prior = currentBySlot.get(upload.slot);
 			const projectedCount = envelopeCount + (prior ? 0 : 1);
@@ -374,6 +382,7 @@ export class AccountCoordinator {
 				return Response.json({ error: 'quota' }, { status: 507 });
 			}
 			sequence += 1;
+			if (prior && upload.continues) continuedIds.push(prior.id);
 			if (prior)
 				statements.push({
 					sql: `INSERT INTO envelope_history(account_id, slot, id, r2_key, ciphertext_bytes, saved_at)
@@ -473,7 +482,7 @@ export class AccountCoordinator {
 		if (mutated) {
 			if (deletedSlots.length > 0)
 				await purgeDeletedRecords(this.env, { accountId: input.accountId, slots: deletedSlots });
-			await this.pruneHistory(input.accountId, touched);
+			await this.pruneHistory(input.accountId, touched, continuedIds);
 			const olderAfter = await olderVersions(db, input.accountId, touched);
 			historyVersions += olderAfter.versions - olderBefore.versions;
 			historyBytes += olderAfter.bytes - olderBefore.bytes;
@@ -528,18 +537,40 @@ export class AccountCoordinator {
 		});
 	}
 
-	/** Keep each touched record's newest versions, the live one included. */
-	private async pruneHistory(accountId: string, slots: string[]): Promise<void> {
+	/**
+	 * Keep each touched record's newest versions, the live one included, and drop the
+	 * versions that uploads continued. Objects go before rows, as in every cleanup.
+	 */
+	private async pruneHistory(
+		accountId: string,
+		slots: string[],
+		continuedIds: string[]
+	): Promise<void> {
 		if (slots.length === 0) return;
+		const continued = continuedIds.map(() => '?').join(', ');
+		// The window counts only the versions that stay, as if the continued ones were gone.
 		const expired = (
 			await execute(this.env.SCRAPSCACHE_DB, {
 				sql: `SELECT historyId, r2Key FROM (
 					SELECT history_id AS historyId, r2_key AS r2Key,
 						ROW_NUMBER() OVER (PARTITION BY slot ORDER BY history_id DESC) AS position
 					FROM envelope_history
-					WHERE account_id = ? AND slot IN (${slots.map(() => '?').join(', ')})
-				) WHERE position > ?`,
-				args: [accountId, ...slots, parseHistoryVersions(this.env.SCRAPSCACHE_HISTORY_VERSIONS)]
+					WHERE account_id = ? AND slot IN (${slots.map(() => '?').join(', ')})${
+						continuedIds.length ? ` AND id NOT IN (${continued})` : ''
+					}
+				) WHERE position > ?${
+					continuedIds.length
+						? ` UNION ALL SELECT history_id, r2_key FROM envelope_history
+							WHERE account_id = ? AND id IN (${continued})`
+						: ''
+				}`,
+				args: [
+					accountId,
+					...slots,
+					...continuedIds,
+					parseHistoryVersions(this.env.SCRAPSCACHE_HISTORY_VERSIONS),
+					...(continuedIds.length ? [accountId, ...continuedIds] : [])
+				]
 			})
 		).rows as Array<{ historyId: number; r2Key: string }>;
 		await deleteHistoryRows(this.env, expired);

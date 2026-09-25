@@ -12,6 +12,8 @@ import {
 import { syncControlKeys } from '$lib/syncEngine';
 import { sha256 } from '$lib/syncHash';
 import * as idb from '$lib/db/idb';
+import { MAX_CLIENT_SYNC_MUTATIONS_PER_REQUEST } from '$lib/syncLimits';
+import { buildSyncRecords } from '$lib/syncRecords';
 import { SyncStore, type SyncSnapshot } from './sync.svelte';
 import { legacySyncEnvelope } from '../../tests/legacyEnvelope';
 
@@ -702,23 +704,25 @@ describe('client sync state machine', () => {
 	});
 
 	it('keeps every upload round within the hosted relay mutation limit', async () => {
-		const notes = Array.from({ length: 17 }, (_, index) => note(`note-${index}`));
+		const limit = MAX_CLIENT_SYNC_MUTATIONS_PER_REQUEST;
+		const notes = Array.from({ length: limit * 2 + 1 }, (_, index) => note(`note-${index}`));
 		const { store, requests } = createHarness((_request, index) => ({
 			success: true,
-			data: emptyData({ cursor: index === 0 ? 0 : index * 8 })
+			data: emptyData({ cursor: index === 0 ? 0 : index * limit })
 		}));
 
 		const result = await store.sync(notes, [], {}, {}, [], {}, false, false, passthrough);
 
 		expect(result.success, result.error).toBe(true);
-		expect(requests.map((request) => request.envelopes.length)).toEqual([0, 8, 8, 1]);
+		expect(requests.map((request) => request.envelopes.length)).toEqual([0, limit, limit, 1]);
 		expect(
-			requests.every((request) => request.envelopes.length + request.deleteSlots.length <= 8)
+			requests.every((request) => request.envelopes.length + request.deleteSlots.length <= limit)
 		).toBe(true);
 	});
 
 	it('shares the hosted relay limit between uploads and deletions', async () => {
-		const notes = Array.from({ length: 9 }, (_, index) => note(`note-${index}`));
+		const limit = MAX_CLIENT_SYNC_MUTATIONS_PER_REQUEST;
+		const notes = Array.from({ length: limit + 1 }, (_, index) => note(`note-${index}`));
 		const { store, account, requests } = createHarness((_request, index) => ({
 			success: true,
 			data: emptyData({ cursor: index })
@@ -732,7 +736,7 @@ describe('client sync state machine', () => {
 		expect(result.success, result.error).toBe(true);
 		expect(requests.some((request) => request.deleteSlots.length > 0)).toBe(true);
 		expect(
-			requests.every((request) => request.envelopes.length + request.deleteSlots.length <= 8)
+			requests.every((request) => request.envelopes.length + request.deleteSlots.length <= limit)
 		).toBe(true);
 	});
 
@@ -1518,6 +1522,89 @@ describe('client sync state machine', () => {
 		);
 
 		expect((await store.getMcpWorkspaceStatuses())[profile.id]).toEqual({ state: 'ready' });
+	});
+
+	it('clears a queued record the relay already holds as it is', async () => {
+		// Pinning and unpinning before the sync, for one, queues a record that ends up
+		// unchanged. Left queued, it made every note close run a sync for nothing.
+		const local = note('note-1', { body: 'unchanged' });
+		const [record] = await buildSyncRecords([local], [], []);
+		const { store, account, requests } = createHarness(() => ({
+			success: true,
+			data: emptyData({ cursor: 1 })
+		}));
+		await seedControl(account.accountId, {
+			cursor: 1,
+			baseline: { 'note:note-1': record.fingerprint },
+			recordIds: { 'note:note-1': 'cloud-id' },
+			outbox: ['note:note-1']
+		});
+
+		const result = await store.sync([local], [], {}, {}, [], {});
+
+		expect(result.success, result.error).toBe(true);
+		expect(requests.flatMap((request) => request.envelopes)).toEqual([]);
+		expect(await idb.getSyncOutboxKeys(idb.LOCAL_PROFILE_ID)).toEqual([]);
+	});
+
+	it('waits out a throttled round and sends it again instead of failing the sync', async () => {
+		const sentAt: number[] = [];
+		const { store, account, requests } = createHarness((_request, index) => {
+			sentAt.push(performance.now());
+			return index === 0
+				? ({
+						success: false,
+						status: 429,
+						error: 'Too many requests',
+						retryAfterSeconds: 0.2
+					} as unknown as RequestResult)
+				: { success: true, data: emptyData({ cursor: 1 }) };
+		});
+		await seedControl(account.accountId, {
+			cursor: 1,
+			baseline: { 'note:note-1': 'saved' },
+			recordIds: { 'note:note-1': 'saved-id' },
+			outbox: ['note:note-1']
+		});
+
+		const result = await store.sync([note('note-1', { body: 'edited' })], [], {}, {}, [], {});
+
+		expect(result.success, result.error).toBe(true);
+		// The throttled catch-up round goes again after the wait, then the edit uploads.
+		expect(requests.map((request) => request.envelopes.length)).toEqual([0, 0, 1]);
+		expect(sentAt[1] - sentAt[0]).toBeGreaterThanOrEqual(190);
+	});
+
+	it('continues one version while a note is open in the editor', async () => {
+		const { store, account, requests } = createHarness(() => ({
+			success: true,
+			data: emptyData({ cursor: 1 })
+		}));
+		await seedControl(account.accountId, {
+			cursor: 1,
+			baseline: { 'note:note-1': 'saved' },
+			recordIds: { 'note:note-1': 'before-open' }
+		});
+		const save = async (body: string) => {
+			await idb.markSyncOutbox(idb.LOCAL_PROFILE_ID, ['note:note-1']);
+			const result = await store.sync([note('note-1', { body })], [], {}, {}, [], {});
+			expect(result.success, result.error).toBe(true);
+			return requests.at(-1)!.envelopes[0] as RequestPayload['envelopes'][number] & {
+				continues?: boolean;
+			};
+		};
+
+		const endSession = store.beginEditSession('note-1');
+		const first = await save('draft');
+		// The version saved before the note opened stays in the history.
+		expect(first).toMatchObject({ expectedId: 'before-open' });
+		expect(first.continues).toBeUndefined();
+		const second = await save('more');
+		expect(second).toMatchObject({ expectedId: first.id, continues: true });
+		endSession();
+		const later = await save('after closing');
+		expect(later).toMatchObject({ expectedId: second.id });
+		expect(later.continues).toBeUndefined();
 	});
 });
 

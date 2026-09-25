@@ -96,6 +96,8 @@ export function reconcileBaseline(input: {
 	merged: Record<string, string>;
 	currentKeys: Set<string>;
 	referencedAttachments: Set<string>;
+	/** Every remote change has been downloaded, so an attachment no note shows is an orphan. */
+	catchUpComplete: boolean;
 }): { baseline: Record<string, string>; dirtyKeys: string[]; ackKeys: string[] } {
 	const baseline = { ...input.previous };
 	const dirtyKeys: string[] = [];
@@ -119,7 +121,10 @@ export function reconcileBaseline(input: {
 			ackKeys.push(key);
 			continue;
 		}
-		delete baseline[key];
+		// An attachment can download before the note that shows it. Until catch-up ends
+		// it is the cloud's copy; forgetting that re-uploaded it unchanged.
+		if (key.startsWith('attachment:') && !input.catchUpComplete) baseline[key] = remoteFingerprint;
+		else delete baseline[key];
 		ackKeys.push(key);
 	}
 
@@ -134,7 +139,8 @@ export function reconcileBaseline(input: {
 	for (const key of Object.keys(baseline)) {
 		if (key.startsWith('attachment:')) {
 			const attachmentId = key.slice('attachment:'.length);
-			if (!input.referencedAttachments.has(attachmentId)) delete baseline[key];
+			if (input.catchUpComplete && !input.referencedAttachments.has(attachmentId))
+				delete baseline[key];
 			continue;
 		}
 		if (!input.currentKeys.has(key) && !(key in input.uploaded)) delete baseline[key];

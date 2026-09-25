@@ -93,7 +93,12 @@ describe('sync delta route', () => {
 	});
 
 	it('passes validated conditional writes and bounded cursors to the relay', async () => {
-		const replacement = { ...validEnvelope, id: 'replacement', expectedId: 'current-id' };
+		const replacement = {
+			...validEnvelope,
+			id: 'replacement',
+			expectedId: 'current-id',
+			continues: true
+		};
 		const response = await post({
 			cursor: -1,
 			limit: 999,
@@ -117,6 +122,13 @@ describe('sync delta route', () => {
 			conflicts: [],
 			serverTime: expect.any(Number)
 		});
+	});
+
+	it.each([1, 'yes', null])('rejects a continues flag of %s', async (continues) => {
+		const response = await post({ envelopes: [{ ...validEnvelope, continues }], deleteSlots: [] });
+
+		expect(response.status).toBe(400);
+		expect(mocks.sync).not.toHaveBeenCalled();
 	});
 
 	it.each([

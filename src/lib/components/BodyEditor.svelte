@@ -165,7 +165,7 @@
 	let lastTyping: { kind: 'insert' | 'delete'; line: number; at: number } | null = null;
 	/** An edit happened since tables were last formatted. */
 	let tablesNeedFormat = false;
-	/** First line id of the table holding the caret, so leaving it can format it. */
+	/** First line id of the table edited with the caret in it, so leaving it formats it. */
 	let caretTableId: number | null = null;
 	const undoStack: HistoryEntry[] = [];
 	const redoStack: HistoryEntry[] = [];
@@ -276,8 +276,10 @@
 		const current = range ? tableSpanAt(range.start.line) : null;
 		const currentId = current ? (lines[current.start]?.id ?? null) : null;
 		const leftTable = caretTableId !== null && caretTableId !== currentId;
-		caretTableId = currentId;
 		if (!tablesNeedFormat && !leftTable) return;
+		// The table holding the caret is skipped below; it formats once the caret leaves it.
+		// Only an edit makes it wait: stepping through a table never rewrites it.
+		caretTableId = tablesNeedFormat ? currentId : null;
 		tablesNeedFormat = false;
 
 		let changed = false;
@@ -762,27 +764,40 @@
 	}
 
 	let lastSerializedBody = body;
+	/**
+	 * The body as it was loaded, and as these rows spell it. The editor writes some
+	 * Markdown its own way (`- [ ]` as `[ ]`, `*` bullets as `-`), so rows that still
+	 * spell the loaded body are no edit and keep its text.
+	 */
+	// svelte-ignore state_referenced_locally
+	let loaded = { body, rows: serializeLines(lines) };
+	function serializedBody(): string {
+		const rows = serializeLines(lines.filter((line) => line.id !== draftTaskId));
+		return rows === loaded.rows ? loaded.body : rows;
+	}
+
 	let syncBodyTimer: ReturnType<typeof setTimeout> | null = null;
 	function syncBody(immediate = false) {
-		tablesNeedFormat = true;
 		if (immediate) {
 			if (syncBodyTimer) {
 				clearTimeout(syncBodyTimer);
 				syncBodyTimer = null;
 			}
-			lastSerializedBody = serializeLines(lines.filter((line) => line.id !== draftTaskId));
+			lastSerializedBody = serializedBody();
 			// Only a real change is input. The owner's save timer calls syncBodyNow,
 			// and reporting input there re-armed that timer forever.
 			if (lastSerializedBody === body) return;
+			tablesNeedFormat = true;
 			body = lastSerializedBody;
 			oninput?.();
 			return;
 		}
+		tablesNeedFormat = true;
 		oninput?.();
 		if (syncBodyTimer) clearTimeout(syncBodyTimer);
 		syncBodyTimer = setTimeout(() => {
 			syncBodyTimer = null;
-			lastSerializedBody = serializeLines(lines.filter((line) => line.id !== draftTaskId));
+			lastSerializedBody = serializedBody();
 			body = lastSerializedBody;
 		}, 300);
 	}
@@ -816,12 +831,15 @@
 			lines = parseBodyToLines(text);
 			draftTaskId = null;
 			ignoredFocusLine = null;
+			loaded = { body: text, rows: serializeLines(lines) };
 			lastSerializedBody = text;
 			body = text;
 			undoStack.length = 0;
 			redoStack.length = 0;
 			lastTyping = null;
-			tablesNeedFormat = true;
+			// A body from elsewhere is shown as written; tables format after the next edit.
+			tablesNeedFormat = false;
+			caretTableId = null;
 			if (caret) {
 				flushSync();
 				const line = Math.min(caret.start.line, lines.length - 1);

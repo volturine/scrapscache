@@ -121,6 +121,39 @@ describe('NoteEditor time travel', () => {
 		);
 	});
 
+	it('uploads what came before a restore as its own version, then starts a new one', async () => {
+		const ends = [vi.fn(), vi.fn()];
+		const begin = vi
+			.spyOn(syncStore, 'beginEditSession')
+			.mockReturnValueOnce(ends[0])
+			.mockReturnValueOnce(ends[1]);
+		const order: string[] = [];
+		vi.spyOn(notesStore, 'syncPendingChanges').mockImplementation(async () => {
+			order.push('sync');
+			return true;
+		});
+		const update = vi.spyOn(notesStore, 'updateNote');
+		update.mockImplementation(() => void order.push('restore'));
+		ends[0].mockImplementation(() => order.push('end session'));
+
+		const { container } = render(NoteEditor, { props: { noteId: 'note-1', onClose: vi.fn() } });
+		const trigger = await waitFor(() => {
+			const button = container.querySelector<HTMLButtonElement>('nav button');
+			if (!button) throw new Error('rail not rendered');
+			return button;
+		});
+		await fireEvent.click(trigger);
+		await fireEvent.click(container.querySelectorAll('[data-history-row]')[1]);
+		await waitFor(() => expect(container.querySelector('h1')?.textContent?.trim()).toBe('Books'));
+		await fireEvent.click(container.querySelector('[data-history-restore-action="start"]')!);
+		await fireEvent.click(container.querySelector('[data-history-restore-action="confirm"]')!);
+
+		await waitFor(() => expect(order).toContain('restore'));
+		expect(order.slice(0, 3)).toEqual(['sync', 'end session', 'restore']);
+		expect(begin).toHaveBeenCalledTimes(2);
+		expect(ends[1]).not.toHaveBeenCalled();
+	});
+
 	it('restores content without moving the note to trash or dropping its secret', async () => {
 		notesStore.notes = [note({ secret: true })];
 		history.loadNoteHistory.mockResolvedValue([

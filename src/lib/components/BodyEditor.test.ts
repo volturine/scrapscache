@@ -1474,6 +1474,53 @@ describe('BodyEditor controlled input', () => {
 		expect(oninput).toHaveBeenCalledTimes(1);
 	});
 
+	it('reads a note it did not write without rewriting its Markdown or tables', async () => {
+		// Opening and closing a note is no edit: saving the editor's own spelling of
+		// its tasks, bullets and tables made every such close sync.
+		const source = ['- [ ] one', '* bullet', '', '| a | b |', '|---|---|', '| long value | x |'];
+		const oninput = vi.fn();
+		const { container, component } = render(BodyEditor, {
+			props: { body: source.join('\n'), oninput }
+		});
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+
+		editor.focus();
+		caretAt(container, 5, 3);
+		document.dispatchEvent(new Event('selectionchange'));
+		caretAt(container, 1, 2);
+		document.dispatchEvent(new Event('selectionchange'));
+		await fireEvent.blur(editor);
+		component.finishInput();
+		await tick();
+
+		expect(oninput).not.toHaveBeenCalled();
+		expect(lineTexts(container).slice(3)).toEqual(source.slice(3));
+
+		caretAt(container, 1, 'bullet'.length);
+		await typeText(editor, '!');
+		component.syncBodyNow();
+		expect(oninput).toHaveBeenCalled();
+	});
+
+	it('shows a synced body as written until it is edited', async () => {
+		const oninput = vi.fn();
+		const { container, component } = render(BodyEditor, { props: { body: 'Hello', oninput } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const table = ['| a | b |', '|---|---|', '| long value | x |'];
+
+		expect(component.adoptBody(['- [x] done', ...table].join('\n'))).toBe(true);
+		await tick();
+		editor.focus();
+		caretAt(container, 3, 3);
+		document.dispatchEvent(new Event('selectionchange'));
+		await fireEvent.blur(editor);
+		component.finishInput();
+		await tick();
+
+		expect(oninput).not.toHaveBeenCalled();
+		expect(lineTexts(container).slice(1)).toEqual(table);
+	});
+
 	it('applies typed text to the model instead of letting the browser edit styled DOM', async () => {
 		const oninput = vi.fn();
 		const { container } = render(BodyEditor, { props: { body: 'Hello', oninput } });

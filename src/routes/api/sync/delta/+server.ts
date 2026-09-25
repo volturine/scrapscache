@@ -21,7 +21,13 @@ import { recordSqliteError, recordSyncBatch } from '$lib/server/metrics';
 const MAX_ENVELOPE_BYTES = 16_000_000;
 const MAX_REQUEST_BYTES = MAX_ENVELOPE_BYTES + 1_000_000;
 const DEFAULT_DOWNLOAD_LIMIT = 12;
-type OpaqueEnvelope = { id: string; ciphertext: string; slot: string; expectedId: string | null };
+type OpaqueEnvelope = {
+	id: string;
+	ciphertext: string;
+	slot: string;
+	expectedId: string | null;
+	continues?: boolean;
+};
 type OpaqueDelete = { id: string; slot: string };
 
 function isOpaqueEnvelope(value: unknown): value is OpaqueEnvelope {
@@ -35,6 +41,8 @@ function isOpaqueEnvelope(value: unknown): value is OpaqueEnvelope {
 			(typeof (value as OpaqueEnvelope).expectedId === 'string' &&
 				/^[A-Za-z0-9_-]+$/.test((value as OpaqueEnvelope).expectedId!) &&
 				(value as OpaqueEnvelope).expectedId!.length <= 128)) &&
+		((value as OpaqueEnvelope).continues === undefined ||
+			typeof (value as OpaqueEnvelope).continues === 'boolean') &&
 		(value as OpaqueEnvelope).id.length <= 128 &&
 		(value as OpaqueEnvelope).ciphertext.length <= MAX_ENVELOPE_BYTES &&
 		/^[A-Za-z0-9_-]+$/.test((value as OpaqueEnvelope).id) &&

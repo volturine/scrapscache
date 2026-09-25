@@ -116,11 +116,50 @@ describe('incremental sync engine', () => {
 			remote: { 'note:n1': 'stale-fp' },
 			merged: { 'note:n1': 'local-fp' },
 			currentKeys: new Set(['note:n1']),
-			referencedAttachments: new Set()
+			referencedAttachments: new Set(),
+			catchUpComplete: true
 		});
 		expect(result.dirtyKeys).toEqual(['note:n1']);
 		expect(result.baseline['note:n1']).toBe('stale-fp');
 		expect(result.ackKeys).toEqual([]);
+	});
+
+	it('keeps an attachment downloaded before its note as the cloud copy until catch-up ends', () => {
+		const early = reconcileBaseline({
+			previous: {},
+			uploaded: {},
+			remote: { 'attachment:a1': 'cloud-fp' },
+			merged: {},
+			currentKeys: new Set(),
+			referencedAttachments: new Set(),
+			catchUpComplete: false
+		});
+		expect(early.baseline).toEqual({ 'attachment:a1': 'cloud-fp' });
+		expect(early.dirtyKeys).toEqual([]);
+
+		// The note arrives later, so the attachment is not re-uploaded.
+		const withNote = reconcileBaseline({
+			previous: early.baseline,
+			uploaded: {},
+			remote: { 'note:n1': 'note-fp' },
+			merged: { 'note:n1': 'note-fp' },
+			currentKeys: new Set(['note:n1', 'attachment:a1']),
+			referencedAttachments: new Set(['a1']),
+			catchUpComplete: true
+		});
+		expect(withNote.baseline).toEqual({ 'note:n1': 'note-fp', 'attachment:a1': 'cloud-fp' });
+
+		// One no note ever shows is forgotten once catch-up ends.
+		const orphan = reconcileBaseline({
+			previous: early.baseline,
+			uploaded: {},
+			remote: {},
+			merged: {},
+			currentKeys: new Set(),
+			referencedAttachments: new Set(),
+			catchUpComplete: true
+		});
+		expect(orphan.baseline).toEqual({});
 	});
 
 	it('acks an outbox key only when merged state matches the upload', () => {
@@ -130,7 +169,8 @@ describe('incremental sync engine', () => {
 			remote: {},
 			merged: { 'note:n1': 'sent-fp' },
 			currentKeys: new Set(['note:n1']),
-			referencedAttachments: new Set()
+			referencedAttachments: new Set(),
+			catchUpComplete: true
 		});
 		expect(result.ackKeys).toEqual(['note:n1']);
 		expect(result.dirtyKeys).toEqual([]);

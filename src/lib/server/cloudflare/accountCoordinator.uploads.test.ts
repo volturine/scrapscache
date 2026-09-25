@@ -3,6 +3,7 @@ import type { Client } from '@libsql/client/node';
 import type { D1Database, DurableObjectState, R2Bucket } from '@cloudflare/workers-types';
 import { applyMigrations, testD1, testR2 } from './testBindings';
 import { AccountCoordinator } from '../../../../cf/accountCoordinator';
+import { MAX_CLIENT_SYNC_MUTATIONS_PER_REQUEST } from '$lib/syncLimits';
 
 const ACCOUNT = 'account-abcdefghij';
 const SLOT = 'a'.repeat(64);
@@ -36,7 +37,13 @@ beforeEach(async () => {
 });
 
 function sync(
-	uploads: { id: string; slot: string; ciphertext: string; expectedId?: string }[],
+	uploads: {
+		id: string;
+		slot: string;
+		ciphertext: string;
+		expectedId?: string;
+		continues?: boolean;
+	}[],
 	maxAccountBytes = 100_000_000,
 	cursor = 0,
 	deletions: { id: string; slot: string }[] = []
@@ -105,6 +112,26 @@ describe('uploads that have to be retried', () => {
 		const history = await client.execute('SELECT id FROM envelope_history ORDER BY history_id');
 		expect(history.rows.map((row) => row.id)).toEqual(['two', 'three', 'other']);
 		expect([...objects.values()].sort()).toEqual(['bb', 'cc', 'dd']);
+	});
+
+	it('replaces the version an upload continues and deletes its object', async () => {
+		let cursor = 0;
+		for (const [id, ciphertext, expectedId, continues] of [
+			['before', 'aa', undefined, false],
+			['draft', 'bb', 'before', false],
+			['more', 'cc', 'draft', true],
+			['final', 'dd', 'more', true]
+		] as const) {
+			const response = await sync(
+				[{ id, slot: SLOT, ciphertext, expectedId, continues }],
+				100_000_000,
+				cursor
+			);
+			cursor = ((await response.json()) as { cursor: number }).cursor;
+		}
+		const history = await client.execute('SELECT id FROM envelope_history ORDER BY history_id');
+		expect(history.rows.map((row) => row.id)).toEqual(['before', 'final']);
+		expect([...objects.values()].sort()).toEqual(['aa', 'dd']);
 	});
 
 	it('counts older versions in quota and lets the oldest give way to live data', async () => {
@@ -356,32 +383,43 @@ describe('staying inside a free Workers invocation', () => {
 	}
 
 	it('saves and deletes a full batch of records with long histories in 50 subrequests or fewer', async () => {
-		const slots = Array.from({ length: 8 }, (_, index) => String(index).repeat(64));
+		const slots = Array.from({ length: MAX_CLIENT_SYNC_MUTATIONS_PER_REQUEST }, (_, index) =>
+			index.toString(36).padStart(64, 'z')
+		);
 		let cursor = 0;
 		const previous = new Map<string, string>();
-		const round = async (version: number) => {
+		const round = async (version: number, continues = false) => {
 			const response = await sync(
 				slots.map((slot) => ({
-					id: `${slot.slice(0, 1)}-${version}`,
+					id: `${slot.slice(-1)}-${version}`,
 					slot,
 					ciphertext: 'x'.repeat(40),
-					expectedId: previous.get(slot)
+					expectedId: previous.get(slot),
+					continues
 				})),
 				100_000_000,
 				cursor
 			);
 			cursor = ((await response.json()) as { cursor: number }).cursor;
-			for (const slot of slots) previous.set(slot, `${slot.slice(0, 1)}-${version}`);
+			for (const slot of slots) previous.set(slot, `${slot.slice(-1)}-${version}`);
 		};
 		for (let version = 0; version < 14; version += 1) await round(version);
 		expect(
 			Number((await client.execute('SELECT COUNT(*) AS n FROM envelope_history')).rows[0].n)
-		).toBe(8 * 14);
+		).toBe(slots.length * 14);
 
 		// Every record saved once more: each save pushes its oldest version out of the window.
 		const saving = countSubrequests();
 		await round(14);
 		expect(saving.count).toBeLessThanOrEqual(50);
+
+		// Every save continuing its version drops that one too.
+		const continuing = countSubrequests();
+		await round(15, true);
+		expect(continuing.count).toBeLessThanOrEqual(50);
+		expect(
+			Number((await client.execute('SELECT COUNT(*) AS n FROM envelope_history')).rows[0].n)
+		).toBe(slots.length * 14);
 
 		// Every record deleted for good, with all of its versions.
 		const deleting = countSubrequests();

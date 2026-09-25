@@ -343,6 +343,7 @@ const noteCardRecipe = defineSlotRecipe({
 		'swipeRestore',
 		'swipeTrash',
 		'cardBody',
+		'bodyFrame',
 		'contentPad',
 		'title',
 		'labelsRow',
@@ -387,6 +388,12 @@ const noteCardRecipe = defineSlotRecipe({
 				boxShadow: 'md'
 			}
 		},
+		bodyFrame: {
+			position: 'relative',
+			...column,
+			flex: '1',
+			minH: 0
+		},
 		contentPad: {
 			display: 'block',
 			w: 'full',
@@ -418,22 +425,23 @@ const noteCardRecipe = defineSlotRecipe({
 		metaRow: {
 			// Phone gallery has no useful hover; only desktop shows the stamp.
 			display: { base: 'none', md: 'block' },
-			flexShrink: 0,
+			// Drawn over the bottom of the body so hovering never resizes the card.
+			position: 'absolute',
+			insetX: 0,
+			bottom: 0,
+			// Above the secret-note lock (10), below the action haze (20).
+			zIndex: 15,
 			px: 'md',
-			pb: 0,
-			pt: 0,
-			maxHeight: 0,
+			pt: 'xs',
+			pb: 'sm',
 			textStyle: 'caption',
 			color: 'scrapscache.textMuted',
 			overflow: 'hidden',
 			textOverflow: 'ellipsis',
 			whiteSpace: 'nowrap',
 			opacity: 0,
-			transition: 'max-height 150ms ease, padding 150ms ease, opacity 150ms ease',
+			transition: 'opacity 150ms ease',
 			_groupHover: {
-				maxHeight: '2.5rem',
-				pb: 'md',
-				pt: '2xs',
 				opacity: 1
 			}
 		},

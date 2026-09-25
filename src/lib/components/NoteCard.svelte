@@ -445,97 +445,99 @@
 			</div>
 		{/if}
 
-		<!-- A long preview scrolls inside its card, then hands the swipe to the
-		     gallery. Overscroll containment here stopped Android from ever scrolling
-		     the gallery from a card. -->
-		<div
-			class={cx(
-				'note-scrollbar-hidden',
-				css({
-					minH: 0,
-					flex: '1',
-					overflowX: 'hidden',
-					overflowY: note.secret ? 'hidden' : 'auto',
-					touchAction: 'pan-y'
-				}),
-				note.secret && css({ display: 'flex', flexDirection: 'column' })
-			)}
-			data-secret-body={note.secret ? '' : undefined}
-		>
+		<div class={card.bodyFrame}>
+			<!-- A long preview scrolls inside its card, then hands the swipe to the
+			     gallery. Overscroll containment here stopped Android from ever scrolling
+			     the gallery from a card. -->
 			<div
 				class={cx(
-					css({ position: 'relative' }),
-					note.secret && css({ flex: '1', minH: 0, display: 'flex', flexDirection: 'column' })
+					'note-scrollbar-hidden',
+					css({
+						minH: 0,
+						flex: '1',
+						overflowX: 'hidden',
+						overflowY: note.secret ? 'hidden' : 'auto',
+						touchAction: 'pan-y'
+					}),
+					note.secret && css({ display: 'flex', flexDirection: 'column' })
 				)}
+				data-secret-body={note.secret ? '' : undefined}
 			>
 				<div
 					class={cx(
-						note.secret
-							? css({ flex: '1', minH: 0, display: 'flex', flexDirection: 'column' })
-							: card.contentPad
+						css({ position: 'relative' }),
+						note.secret && css({ flex: '1', minH: 0, display: 'flex', flexDirection: 'column' })
 					)}
 				>
-					{#if note.title}
-						<h3
-							class={cx(
-								card.title,
-								css({ flexShrink: 0 }),
-								note.secret && css({ px: 'md', pt: 'md', pb: 'sm' })
-							)}
-						>
-							{note.title}
-						</h3>
-					{/if}
 					<div
 						class={cx(
-							css({ position: 'relative', minH: '3rem' }),
-							note.secret && css({ flex: '1', minH: 0, overflow: 'hidden' })
+							note.secret
+								? css({ flex: '1', minH: 0, display: 'flex', flexDirection: 'column' })
+								: card.contentPad
 						)}
 					>
-						<div
-							class={note.secret
-								? css({
-										filter: 'blur(4px)',
-										userSelect: 'none',
-										h: 'full',
-										overflow: 'hidden',
-										px: 'md',
-										pb: 'md',
-										pt: !note.title ? 'sm' : 0
-									})
-								: undefined}
-							data-secret-content={note.secret ? '' : undefined}
-						>
-							<NoteBodyDisplay {note} />
-						</div>
-						{#if note.secret}
-							<div
-								class={cx(card.hazeOverlay, css({ pointerEvents: 'none', zIndex: 10 }))}
-								data-secret-overlay
-								aria-hidden="true"
+						{#if note.title}
+							<h3
+								class={cx(
+									card.title,
+									css({ flexShrink: 0 }),
+									note.secret && css({ px: 'md', pt: 'md', pb: 'sm' })
+								)}
 							>
-								<Lock
-									class={css({
-										w: '1.5rem',
-										h: '1.5rem',
-										color: 'scrapscache.textMuted',
-										filter: 'drop-shadow(0 1px 2px rgb(0 0 0 / 0.35))'
-									})}
-								/>
-							</div>
+								{note.title}
+							</h3>
 						{/if}
+						<div
+							class={cx(
+								css({ position: 'relative', minH: '3rem' }),
+								note.secret && css({ flex: '1', minH: 0, overflow: 'hidden' })
+							)}
+						>
+							<div
+								class={note.secret
+									? css({
+											filter: 'blur(4px)',
+											userSelect: 'none',
+											h: 'full',
+											overflow: 'hidden',
+											px: 'md',
+											pb: 'md',
+											pt: !note.title ? 'sm' : 0
+										})
+									: undefined}
+								data-secret-content={note.secret ? '' : undefined}
+							>
+								<NoteBodyDisplay {note} />
+							</div>
+							{#if note.secret}
+								<div
+									class={cx(card.hazeOverlay, css({ pointerEvents: 'none', zIndex: 10 }))}
+									data-secret-overlay
+									aria-hidden="true"
+								>
+									<Lock
+										class={css({
+											w: '1.5rem',
+											h: '1.5rem',
+											color: 'scrapscache.textMuted',
+											filter: 'drop-shadow(0 1px 2px rgb(0 0 0 / 0.35))'
+										})}
+									/>
+								</div>
+							{/if}
+						</div>
 					</div>
+					<!-- Every press lands here, so links, photos, canvases and files can
+					     never swallow a swipe or start a drag of their own. -->
+					<div class={card.shield} data-card-shield aria-hidden="true"></div>
 				</div>
-				<!-- Every press lands here, so links, photos, canvases and files can
-				     never swallow a swipe or start a drag of their own. -->
-				<div class={card.shield} data-card-shield aria-hidden="true"></div>
 			</div>
-		</div>
 
-		<div class={card.metaRow} data-note-meta>
-			<time datetime={new Date(activity.at).toISOString()} title={activity.detail}
-				>{activity.label}</time
-			>
+			<div class={cx(card.metaRow, noteSurface({ color: note.color }))} data-note-meta>
+				<time datetime={new Date(activity.at).toISOString()} title={activity.detail}
+					>{activity.label}</time
+				>
+			</div>
 		</div>
 
 		{#if labelsForNote.length}

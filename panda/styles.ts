@@ -1792,7 +1792,7 @@ export const syncStyles = {
 	}),
 	timerText: css({ fontVariantNumeric: 'tabular-nums' }),
 	fullButton: css({ w: 'full' }),
-	growButton: css({ flex: '1 1 0px', minW: 0, w: 'full' }),
+	growButton: css({ flex: '1' }),
 	spinner: css({ animation: 'spin' }),
 	bodySpacing: css({ mt: '2xs' })
 };

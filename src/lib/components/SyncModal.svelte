@@ -748,7 +748,7 @@
 										class={cx(button({ variant: 'primary', size: 'md' }), styles.growButton)}
 										><RefreshCw
 											size={16}
-											class={cx(css({ flexShrink: 0 }), syncing ? styles.spinner : '')}
+											class={syncing ? styles.spinner : ''}
 											aria-hidden="true"
 										/>{operation === 'sync'
 											? 'Syncing…'

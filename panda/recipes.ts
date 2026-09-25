@@ -109,9 +109,6 @@ const buttonRecipe = defineRecipe({
 		...rowCenter,
 		justifyContent: 'center',
 		textStyle: 'button',
-		lineHeight: '1',
-		py: '0',
-		boxSizing: 'border-box',
 		whiteSpace: 'nowrap',
 		rounded: 'control',
 		...tapTarget,
@@ -791,13 +788,13 @@ const dialogRecipe = defineSlotRecipe({
 					inset: 0,
 					...rowCenter,
 					justifyContent: 'center',
-					p: { base: '2xs', sm: 'lg' }
+					p: { base: 'sm', sm: 'lg' }
 				},
 				panel: {
 					maxH: 'calc(100dvh - 2rem)',
 					overflowX: 'hidden',
 					overflowY: 'auto',
-					p: { base: 'sm', sm: 'xl' }
+					p: { base: 'md', sm: 'xl' }
 				},
 				header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
 				title: { ...rowCenter, gap: 'sm', fontWeight: 'interactive' }

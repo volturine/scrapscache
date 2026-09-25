@@ -58,14 +58,7 @@
 			bind:this={frame}
 			{src}
 			title="Human verification"
-			class={css({
-				display: 'block',
-				h: '65px',
-				w: 'full',
-				maxW: 'full',
-				border: '0',
-				overflow: 'hidden'
-			})}
+			class={css({ display: 'block', h: '65px', w: 'full', border: '0' })}
 			sandbox="allow-scripts allow-same-origin allow-popups"
 			referrerpolicy="no-referrer"
 		></iframe>

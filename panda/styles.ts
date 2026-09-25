@@ -92,8 +92,8 @@ export const appLayout = {
 		bg: 'scrapscache.bg',
 		color: 'scrapscache.text'
 	}),
-	// Catches taps outside the drawer with soft dimming.
-	backdrop: css({ position: 'fixed', inset: 0, zIndex: 50, bg: 'scrapscache.backdropSoft' }),
+	// Catches taps outside the drawer without tinting the page behind it.
+	backdrop: css({ position: 'fixed', inset: 0, zIndex: 50 }),
 	drawerPositioner: css({
 		position: 'fixed',
 		insetY: 0,
@@ -106,7 +106,7 @@ export const appLayout = {
 	// and a border would stop where the frame does while the surface carries on.
 	drawer: css({
 		h: 'full',
-		w: '18rem',
+		w: DRAWER_WIDTH,
 		maxW: 'calc(100vw - 3.5rem)',
 		bg: 'scrapscache.surface'
 	}),
@@ -117,7 +117,7 @@ export const appLayout = {
 		position: 'fixed',
 		left: 0,
 		bottom: 0,
-		w: 'min(calc(18rem + var(--app-inset-left)), calc(100vw - 3.5rem + var(--app-inset-left)))',
+		w: `min(calc(${DRAWER_WIDTH} + var(--app-inset-left)), calc(100vw - 3.5rem + var(--app-inset-left)))`,
 		h: 'var(--app-inset-bottom)',
 		bg: 'scrapscache.surface',
 		zIndex: 56,
@@ -1008,19 +1008,11 @@ export const kanbanViewStyles = {
 		overflowX: 'auto',
 		overscrollBehaviorX: 'contain',
 		WebkitOverflowScrolling: 'touch',
-		scrollSnapType: 'x mandatory',
-		scrollPaddingX: '1rem',
 		px: 'lg',
 		pb: 'lg'
 	}),
 	columnsTrack: flex({ minW: 'max-content', align: 'flex-start', gap: 'md' }),
-	column: css({
-		...kanbanColumnSize,
-		scrollSnapAlign: 'start',
-		rounded: 'sheet',
-		bg: 'scrapscache.surfaceSubtle',
-		p: 'md'
-	}),
+	column: css({ ...kanbanColumnSize, rounded: 'sheet', bg: 'scrapscache.surfaceSubtle', p: 'md' }),
 	columnTarget: css({
 		boxShadow:
 			'inset 0 0 0 2px color-mix(in srgb, token(colors.scrapscache.accent) 35%, transparent)'
@@ -1064,12 +1056,7 @@ export const kanbanViewStyles = {
 		borderColor: 'scrapscache.borderSubtle',
 		pl: 'sm'
 	}),
-	addColWrap: css({
-		position: 'relative',
-		...kanbanColumnSize,
-		scrollSnapAlign: 'start',
-		pt: '2xs'
-	}),
+	addColWrap: css({ position: 'relative', ...kanbanColumnSize, pt: '2xs' }),
 	radioOption: css({ ...filterOption, alignItems: 'flex-start' }),
 	checkRow: css({ ...filterOption, alignItems: 'center' }),
 	checkControl: css({
@@ -1736,6 +1723,7 @@ const syncRowBase = {
 } as const;
 
 export const syncStyles = {
+	waitingLayout: vstack({ gap: { base: 'md', sm: 'xl' }, alignItems: 'stretch' }),
 	workspaceRow: hstack({
 		...syncRowBase,
 		position: 'relative',
@@ -1771,11 +1759,17 @@ export const syncStyles = {
 	}),
 	digits: css({
 		fontFamily: 'mono',
-		fontSize: 'pairing',
+		fontSize: { base: 'subtitle', sm: 'pairing' },
 		fontWeight: 'heading',
-		letterSpacing: 'eyebrow'
+		letterSpacing: 'status'
 	}),
-	qrCode: css({ ...square('220px'), ...cardRadius, bg: 'scrapscache.qrSurface', p: 'sm' }),
+	qrCode: css({
+		w: { base: '10rem', sm: '220px' },
+		aspectRatio: '1',
+		...cardRadius,
+		bg: 'scrapscache.qrSurface',
+		p: 'sm'
+	}),
 	qrScanner: css({
 		w: 'full',
 		aspectRatio: '1 / 1',
@@ -1784,7 +1778,22 @@ export const syncStyles = {
 		...border,
 		bg: 'scrapscache.bg'
 	}),
-	pairingCode: css({ rounded: 'dialog', ...border, bg: 'scrapscache.bg', px: 'sm', py: 'xl' }),
+	pairingCode: css({
+		rounded: 'dialog',
+		...border,
+		bg: 'scrapscache.bg',
+		px: 'sm',
+		minW: 0,
+		py: { base: 'md', sm: 'xl' }
+	}),
+	pairingGroups: hstack({
+		justify: 'center',
+		gap: { base: '3xs', sm: '2xs' },
+		flexWrap: 'wrap',
+		minW: 0
+	}),
+	pairingGroup: hstack({ alignItems: 'center', whiteSpace: 'nowrap', flexShrink: 0 }),
+	pairingSeparator: css({ pl: '3xs', color: 'scrapscache.textMuted' }),
 	copySuccess: css({
 		borderColor: 'scrapscache.success',
 		bg: 'scrapscache.success',
@@ -1792,7 +1801,23 @@ export const syncStyles = {
 	}),
 	timerText: css({ fontVariantNumeric: 'tabular-nums' }),
 	fullButton: css({ w: 'full' }),
-	growButton: css({ flex: '1' }),
+	growButton: css({ flex: '1', minW: 0, px: { base: 'xs', sm: 'lg' } }),
+	buttonLabel: css({
+		minW: 0,
+		// Centre on cap height and baseline so the label lines up with its icon on every platform font.
+		textBox: 'trim-both cap alphabetic',
+		// Room for descenders inside the ellipsis clip; symmetric so the centring holds.
+		py: '2xs',
+		whiteSpace: 'nowrap',
+		overflow: 'hidden',
+		textOverflow: 'ellipsis'
+	}),
+	pressableButton: css({ _active: { transform: 'scale(0.96)' } }),
+	filledSecondaryButton: css({
+		bg: 'scrapscache.controlSubtle',
+		borderColor: 'transparent',
+		_hoverable: { bg: 'scrapscache.controlSubtleHover' }
+	}),
 	spinner: css({ animation: 'spin' }),
 	bodySpacing: css({ mt: '2xs' })
 };

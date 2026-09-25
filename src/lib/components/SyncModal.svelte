@@ -745,27 +745,39 @@
 											else void syncNow();
 										}}
 										disabled={busy}
-										class={cx(button({ variant: 'primary', size: 'md' }), styles.growButton)}
+										class={cx(
+											button({ variant: 'primary', size: 'md' }),
+											styles.growButton,
+											styles.pressableButton
+										)}
 										><RefreshCw
 											size={16}
 											class={syncing ? styles.spinner : ''}
 											aria-hidden="true"
-										/>{operation === 'sync'
-											? 'Syncing…'
-											: syncStore.keyRetired
-												? 'Create new sync key'
-												: authenticationFailed
-													? 'Force resync'
-													: 'Sync now'}</button
+										/>
+										<span class={styles.buttonLabel}
+											>{operation === 'sync'
+												? 'Syncing…'
+												: syncStore.keyRetired
+													? 'Create new sync key'
+													: authenticationFailed
+														? 'Force resync'
+														: 'Sync now'}</span
+										></button
 									>
 									{#if !authenticationFailed}
 										<button
 											type="button"
 											onclick={() => void startExistingConnection()}
 											disabled={busy}
-											class={cx(button({ variant: 'secondary', size: 'md' }), styles.growButton)}
+											class={cx(
+												button({ variant: 'secondary', size: 'md' }),
+												styles.growButton,
+												styles.filledSecondaryButton,
+												styles.pressableButton
+											)}
 											aria-label="Connect device"
-											title="Connect device">Connect</button
+											title="Connect device"><span class={styles.buttonLabel}>Connect</span></button
 										>
 									{/if}
 								</div>
@@ -979,10 +991,15 @@
 							type="button"
 							onclick={() => (scanningQr = !scanningQr)}
 							disabled={busy}
-							class={cx(button({ variant: 'secondary', size: 'md' }), styles.fullButton)}
+							class={cx(
+								button({ variant: 'secondary', size: 'md' }),
+								styles.fullButton,
+								styles.pressableButton
+							)}
 						>
 							<ScanQrCode size={16} aria-hidden="true" />
-							{scanningQr ? 'Stop scanning' : 'Scan QR code'}
+							<span class={styles.buttonLabel}>{scanningQr ? 'Stop scanning' : 'Scan QR code'}</span
+							>
 						</button>
 						<input
 							type="text"
@@ -1014,7 +1031,7 @@
 				{:else if mode === 'pairing'}
 					<p role="status">Connected. Syncing workspace…</p>
 				{:else if mode === 'waiting'}
-					<div class={vstack({ gap: 'xl', alignItems: 'stretch' })}>
+					<div class={styles.waitingLayout}>
 						{#if waiting?.role === 'existing'}
 							<div>
 								<p class={syncMutedLead}>On the new device</p>
@@ -1028,15 +1045,14 @@
 								</div>
 							{/if}
 							<div class={styles.pairingCode} aria-label="One-time pairing code">
-								<div class={hstack({ justify: 'center', gap: '2xs' })}>
+								<div class={styles.pairingGroups}>
 									{#each pairingGroups(waiting.syncCode) as group, index (index)}
-										{#if index > 0}
-											<span
-												class={css({ px: '3xs', color: 'scrapscache.textMuted' })}
-												aria-hidden="true">·</span
-											>
-										{/if}
-										<span class={styles.digits}>{group}</span>
+										<span class={styles.pairingGroup}>
+											<span class={styles.digits}>{group}</span>
+											{#if index < 3}
+												<span class={styles.pairingSeparator} aria-hidden="true">·</span>
+											{/if}
+										</span>
 									{/each}
 								</div>
 							</div>

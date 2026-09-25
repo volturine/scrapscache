@@ -109,7 +109,6 @@ const buttonRecipe = defineRecipe({
 		...rowCenter,
 		justifyContent: 'center',
 		textStyle: 'button',
-		whiteSpace: 'nowrap',
 		rounded: 'control',
 		...tapTarget,
 		transition:
@@ -732,6 +731,7 @@ const dialogRecipe = defineSlotRecipe({
 		footer: {
 			...rowCenter,
 			justifyContent: 'flex-end',
+			flexWrap: 'wrap',
 			gap: 'md',
 			pt: 'sm'
 		},

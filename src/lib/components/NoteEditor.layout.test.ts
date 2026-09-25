@@ -1,4 +1,4 @@
-import { fireEvent, render } from '@testing-library/svelte';
+import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Note } from '$lib/types';
 import { notesStore } from '$lib/stores/notes.svelte';
@@ -119,30 +119,50 @@ describe('NoteEditor Keep-style layout', () => {
 		expect(container.querySelector('[aria-label="Photos"]')).toBeTruthy();
 	});
 
-	it('toggles collapsed previews from the footer-line button', async () => {
+	it('expands previews as a card that carries its toggle on its top edge', async () => {
 		notesStore.notes = [note()];
 		const { container, getByRole, queryByRole } = render(NoteEditor, {
 			props: { noteId: 'note-1', onClose: () => {} }
 		});
 
-		// Collapsed by default: content hidden, toggle on the line.
+		// Collapsed by default: content hidden, toggle alone in the empty dock
+		// right above the footer, so it sits on the footer line.
+		const dock = container.querySelector('[data-preview-dock]');
+		expect(dock?.nextElementSibling?.tagName).toBe('FOOTER');
 		expect(container.querySelector('[data-preview-panel]')).toBeNull();
 		expect(container.querySelector('[aria-label="Files and links"]')).toBeNull();
 		const show = getByRole('button', { name: 'Show previews' });
 		expect(show.getAttribute('aria-expanded')).toBe('false');
+		expect(dock!.contains(show)).toBe(true);
+		expect(container.querySelector('footer')!.contains(show)).toBe(false);
 
 		await fireEvent.click(show);
 
-		expect(container.querySelector('[data-preview-panel]')).toBeTruthy();
+		// The card opens inside the same dock, below the toggle, so the toggle
+		// rides the card's top edge instead of staying on the footer line.
+		const panel = container.querySelector('[data-preview-panel]');
+		expect(panel?.parentElement).toBe(dock);
 		expect(container.querySelector('[aria-label="Files and links"]')).toBeTruthy();
-		expect(getByRole('button', { name: 'Hide previews' }).getAttribute('aria-expanded')).toBe(
-			'true'
-		);
+		const hide = getByRole('button', { name: 'Hide previews' });
+		expect(hide.getAttribute('aria-expanded')).toBe('true');
+		expect(hide.compareDocumentPosition(panel!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
-		await fireEvent.click(getByRole('button', { name: 'Hide previews' }));
+		await fireEvent.click(hide);
 
-		expect(container.querySelector('[data-preview-panel]')).toBeNull();
+		await waitFor(() => expect(container.querySelector('[data-preview-panel]')).toBeNull());
 		expect(queryByRole('button', { name: 'Show previews' })).toBeTruthy();
+	});
+
+	it('summarises what the collapsed toggle hides', () => {
+		notesStore.notes = [note()];
+		const { getByRole } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+
+		// One link and one photo in the fixture note.
+		expect(getByRole('button', { name: 'Show previews' }).textContent?.replace(/\s/g, '')).toBe(
+			'11'
+		);
 	});
 
 	it('hides the toggle when a note has nothing to preview', () => {

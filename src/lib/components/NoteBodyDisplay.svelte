@@ -8,6 +8,7 @@
 	import { extractHttpUrls, localLinkCard } from '$lib/linkPreview';
 	import { isImageAttachment, fileIconLabel } from '$lib/noteImages';
 	import { displayImageSrc } from '$lib/imageThumb';
+	import LinkBadge from './LinkBadge.svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { onMount } from 'svelte';
 	import { isCanvasAttachment } from '$lib/canvasAttachment';
@@ -39,7 +40,12 @@
 	const files = $derived(
 		attachments.filter((a) => !isImageAttachment(a) && !isCanvasAttachment(a))
 	);
-	const links = $derived(extractHttpUrls(note.body ?? ''));
+	const links = $derived(
+		extractHttpUrls(note.body ?? '').flatMap((url) => {
+			const card = localLinkCard(url);
+			return card ? [card] : [];
+		})
+	);
 	let contentElement: HTMLDivElement | null = $state(null);
 
 	onMount(() => {
@@ -208,11 +214,10 @@
 				<span class={f.title}>{file.name || 'File'}</span>
 			</div>
 		{/each}
-		{#each links as url (url)}
-			{@const card = localLinkCard(url)}
+		{#each links as card (card.url)}
 			<div class={f.row}>
-				<span class={f.badge} aria-hidden="true">{card?.badge ?? '↗'}</span>
-				<span class={f.title}>{card?.hostname ?? url}</span>
+				<LinkBadge {card} size="display" />
+				<span class={f.title}>{card.title}</span>
 			</div>
 		{/each}
 	</div>

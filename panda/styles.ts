@@ -719,6 +719,7 @@ const filePreviewDisplay = {
 } as const;
 const filePreviewShared = {
 	size: css(filePreviewBase.size),
+	address: css({ ...filePreviewBase.size, ...truncateText }),
 	openBtn: css(filePreviewBase.openBtn),
 	removeBtn: css(filePreviewBase.removeBtn)
 };
@@ -737,6 +738,23 @@ export const filePreview = {
 		title: css(filePreviewDisplay.title),
 		...filePreviewShared
 	}
+};
+
+// Link badges take their fill from a separate class (a neutral tile behind a
+// brand glyph, or the noteSurface tint behind a monogram), so no bg here.
+const linkBadgeBase = {
+	...gridCenter,
+	flexShrink: 0,
+	borderWidth: 'hairline',
+	borderColor: 'scrapscache.borderSubtle',
+	color: 'scrapscache.text',
+	fontWeight: 'strong'
+} as const;
+export const linkBadge = {
+	editor: css({ ...linkBadgeBase, ...filePreviewEditor.badge, fontSize: 'label' }),
+	display: css({ ...linkBadgeBase, ...filePreviewDisplay.badge, fontSize: 'micro' }),
+	brand: css({ bg: 'scrapscache.bg' }),
+	glyph: css({ ...square('55%'), fill: 'currentColor' })
 };
 
 const photoPreviewBase = {
@@ -1863,10 +1881,26 @@ export const noteEditorStyles = {
 		borderTopWidth: 'hairline',
 		borderColor: 'scrapscache.borderFaint'
 	}),
-	previewPanel: css({ ...column, minH: 0 }),
+	// Holds the preview card and its toggle. Collapsed it has no height, so the
+	// toggle sits on the footer hairline; expanded it rides the card's top edge.
+	previewDock: css({ position: 'relative', flexShrink: 0 }),
+	previewDockFill: css({ position: 'relative', ...column, ...flexPane }),
+	// A card rising out of the footer: open at the bottom so it reads as one
+	// piece with the footer line, with room at the top for the toggle.
+	previewPanel: css({
+		...column,
+		minH: 0,
+		mx: 'sm',
+		pt: 'lg',
+		roundedTop: 'card',
+		borderWidth: 'hairline',
+		borderBottomWidth: 0,
+		borderColor: 'scrapscache.borderSubtle',
+		boxShadow: 'previewCard'
+	}),
 	previewPanelFill: css({ ...column, ...flexPane }),
 	// The tooltip trigger wraps the toggle in an in-flow span; park that span on
-	// the hairline so the footer's flex layout only sees its button groups.
+	// the dock's top edge so it moves with the card.
 	previewToggleAnchor: css({
 		position: 'absolute',
 		top: 0,
@@ -1900,6 +1934,14 @@ export const noteEditorStyles = {
 			outlineOffset: '1px'
 		},
 		_active: { transform: 'scale(0.95)' }
+	}),
+	previewToggleCount: css({
+		display: 'inline-flex',
+		alignItems: 'center',
+		gap: '3xs',
+		fontSize: 'caption',
+		fontWeight: 'interactive',
+		fontVariantNumeric: 'tabular-nums'
 	}),
 	scroller: css({
 		...flexPane,

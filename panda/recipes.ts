@@ -535,21 +535,26 @@ const noteBodyRecipe = defineSlotRecipe({
 		bullet: { flexShrink: 0, userSelect: 'none' },
 		paragraph: { whiteSpace: 'pre-wrap', wordBreak: 'break-word', py: '3xs' },
 		spacer: { py: '2xs' },
+		// The button takes its own line under the group, but only its label adds a
+		// sub-task; the rest of the line puts the caret back on the group.
 		addSubtask: {
-			...rowCenter,
+			display: 'flex',
 			flexBasis: 'full',
-			rounded: 'compact',
-			py: '2xs',
 			textAlign: 'left',
 			textStyle: 'label',
 			color: 'scrapscache.textMuted',
 			...tapTarget,
-			minH: { base: '32px', sm: 0 },
+			cursor: 'text',
 			whiteSpace: 'nowrap',
-			transition: 'colors 120ms ease',
-			_hoverable: {
-				bg: 'scrapscache.interactiveHover',
-				color: 'scrapscache.text'
+			'& > span': {
+				rounded: 'compact',
+				px: '2xs',
+				py: '2xs',
+				cursor: 'pointer',
+				transitionProperty: 'background-color, color',
+				transitionDuration: '120ms',
+				transitionTimingFunction: 'ease',
+				_hoverable: { bg: 'scrapscache.interactiveHover', color: 'scrapscache.text' }
 			},
 			// Child only. This slot styles the button, so a button ::before paints a second label.
 			'& > span::before': { content: '"+  Add sub-task"' }
@@ -563,7 +568,8 @@ const noteBodyRecipe = defineSlotRecipe({
 				// Skipping offscreen chunks keeps typing cost independent of note length.
 				// The inline padding keeps focused rows' bleed outside the paint clip.
 				chunk: { display: 'block', contentVisibility: 'auto', mx: '-sm', px: 'sm' },
-				row: { flexWrap: 'wrap' },
+				// Only Add sub-task wraps; it sits right under its task, not a gap away.
+				row: { flexWrap: 'wrap', rowGap: 0 },
 				line: {
 					display: 'block',
 					whiteSpace: 'pre-wrap',
@@ -580,8 +586,8 @@ const noteBodyRecipe = defineSlotRecipe({
 			true: { line: { textDecoration: 'line-through', opacity: 0.5 } }
 		},
 		indented: {
-			true: { line: { fontSize: 'compact' }, addSubtask: { pl: '2xs' } },
-			false: { addSubtask: { pl: '2xl' } }
+			true: { line: { fontSize: 'compact' }, addSubtask: { pl: 0 } },
+			false: { addSubtask: { pl: 'xl' } }
 		},
 		focused: {
 			true: { row: { bg: 'scrapscache.surfaceSubtle' } }

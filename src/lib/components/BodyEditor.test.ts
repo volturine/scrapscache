@@ -62,6 +62,21 @@ function caretAt(container: HTMLElement, line: number, offset: number) {
 	throw new Error(`Offset ${offset} is outside editor line ${line}`);
 }
 
+/** jsdom has no PointerEvent; a MouseEvent carries the pointer fields the editor reads. */
+function touchPointer(
+	target: Element,
+	type: 'pointerdown' | 'pointerup' | 'pointercancel',
+	pointerId = 1
+): MouseEvent {
+	const event = new MouseEvent(type, { bubbles: true, cancelable: true });
+	Object.defineProperties(event, {
+		pointerType: { value: 'touch' },
+		pointerId: { value: pointerId }
+	});
+	target.dispatchEvent(event);
+	return event;
+}
+
 function selectedEditorText(): string {
 	return window.getSelection()?.toString() ?? '';
 }
@@ -1155,12 +1170,9 @@ describe('BodyEditor task focus chrome', () => {
 			'scrapscache-note-body__row--last_true'
 		);
 
-		await fireEvent.pointerDown(
-			container.querySelector('[data-add-subtask]') as HTMLButtonElement,
-			{
-				pointerType: 'touch'
-			}
-		);
+		await fireEvent.pointerDown(container.querySelector('[data-add-subtask] > span') as Element, {
+			pointerType: 'touch'
+		});
 
 		expect(container.querySelectorAll('[data-task-row]')).toHaveLength(4);
 		expect(container.querySelector('[data-editor-line="0"]')?.className).not.toContain(
@@ -1227,7 +1239,10 @@ describe('BodyEditor task focus chrome', () => {
 		const addBtn = container.querySelector('[data-add-subtask]') as HTMLButtonElement;
 		expect(addBtn).not.toBeNull();
 
-		await fireEvent.pointerDown(addBtn, { pointerId: 42, pointerType: 'touch' });
+		await fireEvent.pointerDown(addBtn.firstElementChild as Element, {
+			pointerId: 42,
+			pointerType: 'touch'
+		});
 		expect(container.querySelectorAll('[data-task-row]')).toHaveLength(4);
 
 		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
@@ -1236,6 +1251,106 @@ describe('BodyEditor task focus chrome', () => {
 		expect(container.querySelectorAll('[data-task-row]')).toHaveLength(4);
 
 		await fireEvent.pointerUp(editor, { pointerId: 42, pointerType: 'touch' });
+	});
+
+	it('adds a sub-task only from its label, and a tap beside it returns to the group', async () => {
+		const onFocusTask = vi.fn();
+		const { container } = render(BodyEditor, {
+			props: { body: '[ ] Avocados\n  [ ] Hass\n[ ] Dark chocolate', focusLine: 0, onFocusTask }
+		});
+		await tick();
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		editor.focus();
+		caretAt(container, 0, 2);
+
+		const beside = touchPointer(
+			container.querySelector('[data-add-subtask]') as Element,
+			'pointerdown'
+		);
+		expect(beside.defaultPrevented).toBe(true);
+		expect(container.querySelectorAll('[data-task-row]')).toHaveLength(3);
+		expect(selectionLine()).toBe(1);
+		expect(window.getSelection()?.focusOffset).toBe('Hass'.length);
+		touchPointer(editor, 'pointerup');
+		await Promise.resolve();
+
+		touchPointer(container.querySelector('[data-add-subtask] > span') as Element, 'pointerdown');
+		expect(container.querySelectorAll('[data-task-row]')).toHaveLength(4);
+		expect(selectionLine()).toBe(2);
+	});
+
+	it('drops an empty sub-task once the caret leaves it', async () => {
+		const { container } = render(BodyEditor, {
+			props: { body: '[ ] Avocados\n[ ] Dark chocolate', focusLine: 0 }
+		});
+		await tick();
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		editor.focus();
+		touchPointer(container.querySelector('[data-add-subtask] > span') as Element, 'pointerdown', 9);
+		touchPointer(editor, 'pointerup', 9);
+		await Promise.resolve();
+		expect(lineTexts(container)).toEqual(['Avocados', '', 'Dark chocolate']);
+
+		caretAt(container, 2, 3);
+		document.dispatchEvent(new Event('selectionchange'));
+		await tick();
+
+		expect(lineTexts(container)).toEqual(['Avocados', 'Dark chocolate']);
+		expect(selectionLine()).toBe(1);
+	});
+
+	it('moves task focus with the caret, never while a tap is still being placed', async () => {
+		const onFocusTask = vi.fn();
+		const { container } = render(BodyEditor, {
+			props: { body: '[ ] First\n[ ] Second\nPlain', focusLine: 0, onFocusTask }
+		});
+		await tick();
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const second = container.querySelector('[data-editor-line="1"] [data-line-text]') as Element;
+		editor.focus();
+		caretAt(container, 0, 2);
+
+		touchPointer(second, 'pointerdown', 3);
+		touchPointer(second, 'pointerup', 3);
+		// The page may focus the host first; the rows must not move under the finger.
+		caretAt(container, 0, 0);
+		document.dispatchEvent(new Event('selectionchange'));
+		expect(onFocusTask).not.toHaveBeenCalled();
+
+		// The browser places the caret, then clicks.
+		caretAt(container, 1, 3);
+		await fireEvent.click(second);
+		expect(onFocusTask).toHaveBeenLastCalledWith(1);
+
+		// A caret moved from the keyboard carries the focus as well.
+		const onExitTaskFocus = vi.fn();
+		const { container: plain } = render(BodyEditor, {
+			props: { body: '[ ] First\nPlain', focusLine: 0, onExitTaskFocus }
+		});
+		await tick();
+		(plain.querySelector('[data-body-editor]') as HTMLElement).focus();
+		caretAt(plain, 1, 2);
+		document.dispatchEvent(new Event('selectionchange'));
+		expect(onExitTaskFocus).toHaveBeenCalled();
+	});
+
+	it('settles task focus after a press that never clicks, wherever it is released', async () => {
+		const onFocusTask = vi.fn();
+		const { container } = render(BodyEditor, {
+			props: { body: '[ ] First\n[ ] Second', focusLine: 0, onFocusTask }
+		});
+		await tick();
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const second = container.querySelector('[data-editor-line="1"] [data-line-text]') as Element;
+		editor.focus();
+
+		touchPointer(second, 'pointerdown', 4);
+		touchPointer(document.body, 'pointerup', 4);
+		caretAt(container, 1, 1);
+		document.dispatchEvent(new Event('selectionchange'));
+		expect(onFocusTask).not.toHaveBeenCalled();
+
+		await vi.waitFor(() => expect(onFocusTask).toHaveBeenLastCalledWith(1));
 	});
 
 	it('ignores editor click when target is the add subtask button', async () => {

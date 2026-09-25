@@ -760,7 +760,9 @@
 		const line = editorRange()?.start.line;
 		const inBlock = line !== undefined && markdownBlockAt(line) !== null;
 		container.spellcheck = !inBlock;
-		if (document.activeElement === container) formatSettledTables();
+		if (document.activeElement !== container) return;
+		formatSettledTables();
+		followCaret();
 	}
 
 	let lastSerializedBody = body;
@@ -1253,12 +1255,75 @@
 		return lines[root]?.isCheck ? lines[root].id : null;
 	});
 
-	// A second tap inside an already-focused plaintext editor often never fires
-	// click, so the highlight would stay on the previously focused task.
-	const TAP_SLOP = 8;
-	let tapOrigin: { id: number; x: number; y: number } | null = null;
+	/**
+	 * Task focus follows the caret, and only once the browser has placed it. Moving
+	 * the focus chrome sooner reflows the rows under a finger that is still down:
+	 * the tap then lands on another row, or on the Add sub-task button that just
+	 * appeared, and the highlight and caret end up on different tasks.
+	 */
+	let pointerGesture: number | null = null;
+	let gestureSettleTimer: ReturnType<typeof setTimeout> | null = null;
+	/** Click usually ends a tap. A tap in an already-focused editing host may never send one. */
+	const GESTURE_SETTLE_MS = 250;
 
-	function lineIndexFromEvent(event: MouseEvent, allowSelection: boolean): number | null {
+	function beginPointerGesture(event: PointerEvent) {
+		if (event.pointerType === 'mouse' && event.button !== 0) return;
+		if (gestureSettleTimer) clearTimeout(gestureSettleTimer);
+		gestureSettleTimer = null;
+		pointerGesture = event.pointerId;
+	}
+
+	/** Watched on the window: a press can end outside the editor it started in. */
+	function releasePointerGesture(event: PointerEvent) {
+		if (event.pointerId !== pointerGesture) return;
+		if (event.type === 'pointercancel') {
+			settlePointerGesture();
+			return;
+		}
+		// A touch places its caret after release, so wait for the click.
+		if (gestureSettleTimer) clearTimeout(gestureSettleTimer);
+		gestureSettleTimer = setTimeout(settlePointerGesture, GESTURE_SETTLE_MS);
+	}
+
+	function settlePointerGesture() {
+		if (gestureSettleTimer) clearTimeout(gestureSettleTimer);
+		gestureSettleTimer = null;
+		pointerGesture = null;
+		followCaret();
+	}
+
+	onMount(() => () => {
+		if (gestureSettleTimer) clearTimeout(gestureSettleTimer);
+	});
+
+	function followCaret() {
+		if (!container || document.activeElement !== container) return;
+		if (composing || applyingEdit || pointerGesture !== null) return;
+		if (checklistPointerId !== null || subtaskPointerId !== null) return;
+		let range = editorRange();
+		if (!range?.collapsed) return;
+		// An empty sub-task left behind is not part of the note.
+		if (draftTaskId !== null && lines[range.start.line]?.id !== draftTaskId) {
+			discardEmptyDraft();
+			flushSync();
+			range = editorRange();
+			if (!range?.collapsed) return;
+		}
+		const index = range.start.line;
+		const root = parentTaskIndex(index);
+		const rootId = lines[root]?.isCheck ? lines[root].id : null;
+		if (rootId === focusedRootId) return;
+		// Keep the caret's row still while the chrome above it opens or closes.
+		const row = lineElement(index);
+		const scroller = container.closest('.scrollable') as HTMLElement | null;
+		const anchorTop = row?.getBoundingClientRect().top;
+		focusTask(index);
+		flushSync();
+		if (scroller && row && anchorTop !== undefined)
+			scroller.scrollTop += row.getBoundingClientRect().top - anchorTop;
+	}
+
+	function lineIndexFromEvent(event: MouseEvent): number | null {
 		const direct = lineIndexOfElement(event.target instanceof Node ? event.target : null);
 		if (direct !== null) return direct;
 		// The hit can land on a chunk wrapper. Resolve the line from the tap point,
@@ -1268,11 +1333,11 @@
 			const index = lineIndexOfElement(fromPoint.startContainer);
 			if (index !== null) return index;
 		}
-		if (!allowSelection) return null;
 		return lineIndexOfElement(window.getSelection()?.focusNode ?? null);
 	}
 
-	function handFocus(event: MouseEvent, allowSelection: boolean) {
+	/** A click on block chrome rather than a row lands on the block's first editable row. */
+	function placeCaretInBlock(event: MouseEvent) {
 		// A touch can start on the checkbox and finish over the editable label. In
 		// that case Safari may retarget its synthetic click to the task row. Keep
 		// the whole gesture owned by the checkbox so it cannot open the keyboard.
@@ -1283,7 +1348,7 @@
 			)
 		)
 			return;
-		let index = lineIndexFromEvent(event, allowSelection);
+		const index = lineIndexFromEvent(event);
 		if (index === null) {
 			const shell = (event.target as Element | null)?.closest?.('[data-markdown-block-line]');
 			if (!shell || (event.target as Element | null)?.closest?.('button, [data-editor-line]')) {
@@ -1299,26 +1364,12 @@
 		const code = markdownBlockAt(index);
 		if (code?.type === 'code' && !isCodeFenceLine(code, index) && lines[index].text.length === 0) {
 			focusLineAt(index, 0);
-			return;
 		}
-		const row = lineElement(index);
-		const scroller = container?.closest('.scrollable') as HTMLElement | null;
-		const anchorTop = row?.getBoundingClientRect().top;
-		focusTask(index);
-		flushSync();
-		if (scroller && row && anchorTop !== undefined)
-			scroller.scrollTop += row.getBoundingClientRect().top - anchorTop;
-	}
-
-	function trackTap(event: PointerEvent) {
-		if (readOnly) return;
-		if (event.pointerType === 'mouse' && event.button !== 0) return;
-		tapOrigin = { id: event.pointerId, x: event.clientX, y: event.clientY };
 	}
 
 	function handleEditorClick(event: MouseEvent) {
-		if (readOnly) return;
-		handFocus(event, true);
+		placeCaretInBlock(event);
+		settlePointerGesture();
 	}
 
 	/**
@@ -2027,8 +2078,6 @@
 	}
 
 	function finishPointer(event: PointerEvent) {
-		const origin = tapOrigin?.id === event.pointerId ? tapOrigin : null;
-		if (origin) tapOrigin = null;
 		if (event.pointerId === checklistPointerId) {
 			queueMicrotask(() => {
 				if (checklistPointerId === event.pointerId) checklistPointerId = null;
@@ -2039,15 +2088,9 @@
 				if (subtaskPointerId === event.pointerId) subtaskPointerId = null;
 			});
 		}
-		// Move the highlight before the browser places the caret, while the id of a
-		// checkbox or add-subtask gesture is still set and can veto it.
-		if (event.pointerType !== 'touch' || !origin) return;
-		if (Math.hypot(event.clientX - origin.x, event.clientY - origin.y) > TAP_SLOP) return;
-		handFocus(event, false);
 	}
 
 	function cancelPointer(event: PointerEvent) {
-		if (tapOrigin?.id === event.pointerId) tapOrigin = null;
 		if (event.pointerId === checklistPointerId) checklistPointerId = null;
 		if (event.pointerId === subtaskPointerId) subtaskPointerId = null;
 	}
@@ -2365,14 +2408,30 @@
 		} catch {
 			// Best-effort on older Safari versions.
 		}
-		addSubtask(rootIndex);
+		if (onAddSubtaskLabel(event)) addSubtask(rootIndex);
+		else focusGroupEnd();
 	}
 
 	function handleAddSubtaskClick(event: MouseEvent, rootIndex: number) {
 		event.preventDefault();
 		event.stopPropagation();
 		if (subtaskPointerId !== null) return;
-		addSubtask(rootIndex);
+		// A keyboard press has no pointer position and always means the button.
+		if (event.detail === 0 || onAddSubtaskLabel(event)) addSubtask(rootIndex);
+		else focusGroupEnd();
+	}
+
+	/**
+	 * Only the label adds a sub-task. The rest of its line is the task group's own
+	 * space, where a stray tap must not leave an empty sub-task behind.
+	 */
+	function onAddSubtaskLabel(event: MouseEvent): boolean {
+		return event.target instanceof Element && !!event.target.closest('[data-add-subtask] > span');
+	}
+
+	function focusGroupEnd() {
+		const last = focusedGroupRows.at(-1);
+		if (last) focusAt(last.index, null, last.line.id);
 	}
 
 	function discardEmptyDraft() {
@@ -2661,6 +2720,7 @@
 {/snippet}
 
 <svelte:document onselectionchange={handleSelectionChange} />
+<svelte:window onpointerup={releasePointerGesture} onpointercancel={releasePointerGesture} />
 
 <div
 	bind:this={container}
@@ -2679,7 +2739,7 @@
 	oncut={readOnly ? undefined : handleCut}
 	onpaste={readOnly ? undefined : handlePaste}
 	onkeydown={readOnly ? undefined : handleKeydown}
-	onpointerdown={readOnly ? undefined : trackTap}
+	onpointerdown={readOnly ? undefined : beginPointerGesture}
 	onpointerup={readOnly ? undefined : finishPointer}
 	onpointercancel={readOnly ? undefined : cancelPointer}
 	onclick={readOnly ? undefined : handleEditorClick}

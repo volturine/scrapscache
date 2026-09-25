@@ -240,7 +240,9 @@ describe('NoteEditor Keep-style layout', () => {
 	});
 
 	describe('auto-expand', () => {
-		function layOut(dialogHeight: number) {
+		let dialogHeight = 0;
+		function layOut(height: number) {
+			dialogHeight = height;
 			vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function (
 				this: HTMLElement
 			) {
@@ -272,6 +274,38 @@ describe('NoteEditor Keep-style layout', () => {
 
 			await fireEvent.click(getByRole('button', { name: 'Shrink note' }));
 			expect(getByRole('button', { name: 'Expand note' })).toBeTruthy();
+		});
+
+		it('keeps its layout on a touch screen until the width changes', async () => {
+			const frames = async () => {
+				await new Promise((resolve) => requestAnimationFrame(resolve));
+				await new Promise((resolve) => requestAnimationFrame(resolve));
+			};
+			const width = window.innerWidth;
+			Object.defineProperty(navigator, 'maxTouchPoints', { configurable: true, value: 5 });
+			try {
+				layOut(100 + 17 * 24);
+				notesStore.notes = [note()];
+				const { getByRole } = render(NoteEditor, {
+					props: { noteId: 'note-1', onClose: () => {} }
+				});
+				await frames();
+				expect(getByRole('button', { name: 'Expand note' })).toBeTruthy();
+
+				// The keyboard shrinks the window while focus is briefly out of the note.
+				dialogHeight = 100 + 8 * 24;
+				window.dispatchEvent(new Event('resize'));
+				await frames();
+				expect(getByRole('button', { name: 'Expand note' })).toBeTruthy();
+
+				// Turning the phone does re-decide.
+				Object.defineProperty(window, 'innerWidth', { configurable: true, value: width + 200 });
+				window.dispatchEvent(new Event('resize'));
+				await vi.waitFor(() => expect(getByRole('button', { name: 'Shrink note' })).toBeTruthy());
+			} finally {
+				Object.defineProperty(window, 'innerWidth', { configurable: true, value: width });
+				delete (navigator as { maxTouchPoints?: number }).maxTouchPoints;
+			}
 		});
 
 		it('keeps the normal sheet when more than sixteen lines fit', async () => {

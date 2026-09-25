@@ -38,14 +38,27 @@ export const GET: RequestHandler = ({ url }) => {
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex">
 <title>Human verification</title>
-<style>html,body{margin:0;background:transparent;overflow:hidden}</style>
+<style>html,body{margin:0;padding:0;background:transparent;overflow:hidden;width:100%;height:100%;display:flex;justify-content:center;align-items:center}#widget{transform-origin:center center;transition:transform 0.1s ease}</style>
 <script nonce="${scriptNonce}">
 (function () {
 	var appOrigin = ${scriptValue(challenge.appOrigin)};
 	function send(token) {
 		parent.postMessage({ type: ${scriptValue(TURNSTILE_MESSAGE)}, token: token }, appOrigin);
 	}
+	function fitWidget() {
+		var el = document.getElementById('widget');
+		if (!el) return;
+		var w = window.innerWidth;
+		if (w > 0 && w < 300) {
+			var scale = Math.max(0.6, w / 300);
+			el.style.transform = 'scale(' + scale + ')';
+		} else {
+			el.style.transform = '';
+		}
+	}
+	window.addEventListener('resize', fitWidget);
 	window.onTurnstileLoad = function () {
+		fitWidget();
 		turnstile.render('#widget', {
 			sitekey: ${scriptValue(challenge.sitekey)},
 			action: ${scriptValue(action)},
@@ -55,6 +68,7 @@ export const GET: RequestHandler = ({ url }) => {
 			'expired-callback': function () { send(''); },
 			'error-callback': function () { send(''); }
 		});
+		setTimeout(fitWidget, 50);
 	};
 })();
 </script>

@@ -192,7 +192,13 @@ export const theme = {
 				pageTitleWide: '2.25rem'
 			}),
 			fontWeights: tokenGroup({ body: '400', interactive: '500', heading: '600', strong: '700' }),
-			lineHeights: tokenGroup({ body: '1.5', caption: '1rem', compact: '1.375' }),
+			lineHeights: tokenGroup({
+				none: '1',
+				tight: '1.25',
+				compact: '1.375',
+				body: '1.5',
+				caption: '1rem'
+			}),
 			radii: tokenGroup({
 				compact: '0.375rem',
 				control: '0.5rem',
@@ -225,11 +231,11 @@ export const theme = {
 			sizes: tokenGroup({ indicator: '3px' }),
 			letterSpacings: tokenGroup({ eyebrow: '0.14em', status: '0.05em', code: '0.16em' }),
 			animations: tokenGroup({ cardIn: 'cardIn 180ms ease-out backwards' })
-		},
-		textStyles,
-		semanticTokens: {
-			colors: { scrapscache: scrapscacheColors, note: noteColors },
-			shadows
 		}
+	},
+	textStyles,
+	semanticTokens: {
+		colors: { scrapscache: scrapscacheColors, note: noteColors },
+		shadows
 	}
 };

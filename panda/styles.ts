@@ -1000,11 +1000,19 @@ export const kanbanViewStyles = {
 		overflowX: 'auto',
 		overscrollBehaviorX: 'contain',
 		WebkitOverflowScrolling: 'touch',
+		scrollSnapType: 'x mandatory',
+		scrollPaddingX: '1rem',
 		px: 'lg',
 		pb: 'lg'
 	}),
 	columnsTrack: flex({ minW: 'max-content', align: 'flex-start', gap: 'md' }),
-	column: css({ ...kanbanColumnSize, rounded: 'sheet', bg: 'scrapscache.surfaceSubtle', p: 'md' }),
+	column: css({
+		...kanbanColumnSize,
+		scrollSnapAlign: 'start',
+		rounded: 'sheet',
+		bg: 'scrapscache.surfaceSubtle',
+		p: 'md'
+	}),
 	columnTarget: css({
 		boxShadow:
 			'inset 0 0 0 2px color-mix(in srgb, token(colors.scrapscache.accent) 35%, transparent)'
@@ -1048,7 +1056,12 @@ export const kanbanViewStyles = {
 		borderColor: 'scrapscache.borderSubtle',
 		pl: 'sm'
 	}),
-	addColWrap: css({ position: 'relative', ...kanbanColumnSize, pt: '2xs' }),
+	addColWrap: css({
+		position: 'relative',
+		...kanbanColumnSize,
+		scrollSnapAlign: 'start',
+		pt: '2xs'
+	}),
 	radioOption: css({ ...filterOption, alignItems: 'flex-start' }),
 	checkRow: css({ ...filterOption, alignItems: 'center' }),
 	checkControl: css({
@@ -1832,7 +1845,12 @@ export const noteEditorStyles = {
 			alignItems: { base: 'flex-start', md: 'center' },
 			justifyContent: 'center'
 		},
-		variants: { expanded: { true: {}, false: { px: 'lg', pb: 'var(--app-sheet-pad-bottom)' } } },
+		variants: {
+			expanded: {
+				true: {},
+				false: { px: { base: 'sm', sm: 'md', md: 'lg' }, pb: 'var(--app-sheet-pad-bottom)' }
+			}
+		},
 		defaultVariants: { expanded: false }
 	}),
 	sheetBox: cva({

@@ -17,8 +17,15 @@ export type EditContext = {
 	author: BodyAuthor;
 };
 
+function generateWriterId(): string {
+	if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+		return crypto.randomUUID();
+	}
+	return Date.now().toString(36) + Math.random().toString(36).slice(2);
+}
+
 export function createEditContext(now: () => number): EditContext {
-	return { now, writer: crypto.randomUUID(), author: new BodyAuthor() };
+	return { now, writer: generateWriterId(), author: new BodyAuthor() };
 }
 
 /** Stamp fields as written now by this writer, each strictly after its previous time. */

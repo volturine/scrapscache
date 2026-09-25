@@ -126,7 +126,7 @@
 		  }
 		| undefined;
 	const TOUCH_TAP_SLOP = 8;
-	const AUTO_EXPAND_MAX_LINES = 8;
+	const AUTO_EXPAND_MAX_LINES = 16;
 	let autoExpanded = $state(false);
 	// The header toggle applies to this open note only and overrides auto-expand.
 	let manualExpanded = $state<boolean | null>(null);

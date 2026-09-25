@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { Note, NoteImage } from './types';
-import { applyNoteEdit, touchNoteFields, type EditContext } from './edit';
+import { applyNoteEdit, createEditContext, touchNoteFields, type EditContext } from './edit';
 import { BodyAuthor } from './bodyDoc';
 import { mergeTwoNotes } from './merge';
 
@@ -32,6 +32,28 @@ function note(partial: Partial<Note> = {}): Note {
 function image(id: string, partial: Partial<NoteImage> = {}): NoteImage {
 	return { id, mime: 'image/png', dataUrl: '', createdAt: 1, ...partial };
 }
+
+describe('createEditContext', () => {
+	it('generates a unique writer id when crypto.randomUUID is available', () => {
+		const ctx = createEditContext(() => 100);
+		expect(ctx.writer).toBeTruthy();
+		expect(ctx.now()).toBe(100);
+	});
+
+	it('falls back gracefully when crypto.randomUUID is not available (insecure origin)', () => {
+		const original = crypto.randomUUID;
+		// @ts-expect-error simulating browser environment where randomUUID is absent
+		crypto.randomUUID = undefined;
+		try {
+			const ctx = createEditContext(() => 200);
+			expect(ctx.writer).toBeTruthy();
+			expect(typeof ctx.writer).toBe('string');
+			expect(ctx.now()).toBe(200);
+		} finally {
+			crypto.randomUUID = original;
+		}
+	});
+});
 
 describe('applyNoteEdit', () => {
 	it('stamps only fields whose value changes', () => {

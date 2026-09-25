@@ -126,7 +126,7 @@
 		  }
 		| undefined;
 	const TOUCH_TAP_SLOP = 8;
-	const AUTO_EXPAND_MAX_LINES = 8;
+	const AUTO_EXPAND_MAX_LINES = 16;
 	let autoExpanded = $state(false);
 	// The header toggle applies to this open note only and overrides auto-expand.
 	let manualExpanded = $state<boolean | null>(null);
@@ -455,7 +455,11 @@
 	}
 
 	function keepEditorFocused(event: PointerEvent) {
-		if (event.pointerType === 'touch') event.preventDefault();
+		if (event.pointerType === 'touch') {
+			const target = event.target instanceof Element ? event.target : null;
+			if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
+			event.preventDefault();
+		}
 	}
 
 	function eventInsideEditor(target: EventTarget | null): boolean {

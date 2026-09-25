@@ -232,7 +232,7 @@
 >
 	<Tooltip content="Toggle sidebar">
 		<button
-			class={iconButton({ variant: 'ghost', size: 'standard' })}
+			class={iconButton({ variant: 'ghost', size: { base: 'compact', sm: 'standard' } })}
 			title="Toggle sidebar"
 			onclick={() => uiStore.toggleSidebar()}
 			aria-label="Toggle sidebar"
@@ -243,17 +243,17 @@
 
 	<div
 		class={hstack({
-			h: '2.5rem',
-			minH: '2.5rem',
-			maxH: '2.5rem',
+			h: { base: '2rem', sm: '2.5rem' },
+			minH: { base: '2rem', sm: '2.5rem' },
+			maxH: { base: '2rem', sm: '2.5rem' },
 			minW: 0,
 			flex: '1',
 			rounded: 'pill',
 			borderWidth: 'hairline',
 			borderColor: 'scrapscache.border',
 			bg: 'scrapscache.surface',
-			px: 'md',
-			gap: 'sm'
+			px: { base: 'sm', sm: 'md' },
+			gap: { base: 'xs', sm: 'sm' }
 		})}
 	>
 		<Search class={cx(iconSm, styles.searchIcon)} aria-hidden="true" />
@@ -279,7 +279,7 @@
 	<Tooltip content={syncControlLabel}>
 		<button
 			type="button"
-			class={iconButton({ variant: 'ghost', size: 'standard' })}
+			class={iconButton({ variant: 'ghost', size: { base: 'compact', sm: 'standard' } })}
 			title={syncControlLabel}
 			onclick={() => {
 				pairingCode = '';
@@ -309,7 +309,7 @@
 
 	<Tooltip content={uiStore.layout === 'grid' ? 'List view' : 'Grid view'}>
 		<button
-			class={iconButton({ variant: 'ghost', size: 'standard' })}
+			class={iconButton({ variant: 'ghost', size: { base: 'compact', sm: 'standard' } })}
 			title="Toggle layout"
 			onclick={() => uiStore.toggleLayout()}
 			aria-label="Toggle layout"
@@ -329,7 +329,7 @@
 	>
 		<Tooltip content="Settings">
 			<Menu.Trigger
-				class={iconButton({ variant: 'ghost', size: 'standard' })}
+				class={iconButton({ variant: 'ghost', size: { base: 'compact', sm: 'standard' } })}
 				title="Settings"
 				aria-label="Settings"
 			>

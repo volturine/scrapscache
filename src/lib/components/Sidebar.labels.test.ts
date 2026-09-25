@@ -293,4 +293,13 @@ describe('Sidebar labels section', () => {
 		await tick();
 		expect(section.querySelector('[data-label-haze]')).toBeNull();
 	});
+
+	it('calls onNavigate when a view is selected on mobile', async () => {
+		const onNavigate = vi.fn();
+		const { getByRole } = render(Sidebar, { props: { onNavigate } });
+		const kanbanBtn = getByRole('button', { name: 'Kanban' });
+		expect(kanbanBtn).toBeTruthy();
+		await fireEvent.click(kanbanBtn);
+		expect(onNavigate).toHaveBeenCalledTimes(1);
+	});
 });

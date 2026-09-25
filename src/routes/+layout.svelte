@@ -1,4 +1,6 @@
 <script lang="ts">
+	import '@fontsource-variable/google-sans';
+	import '@fontsource-variable/google-sans/wght-italic.css';
 	import '../app.css';
 	import type { Snippet } from 'svelte';
 

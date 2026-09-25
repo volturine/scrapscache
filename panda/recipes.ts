@@ -731,6 +731,7 @@ const dialogRecipe = defineSlotRecipe({
 		footer: {
 			...rowCenter,
 			justifyContent: 'flex-end',
+			flexWrap: 'wrap',
 			gap: 'md',
 			pt: 'sm'
 		},
@@ -775,7 +776,7 @@ const dialogRecipe = defineSlotRecipe({
 				portal: {
 					position: 'fixed',
 					inset: 0,
-					zIndex: 50
+					zIndex: 100
 				},
 				backdrop: {
 					position: 'absolute',
@@ -787,13 +788,13 @@ const dialogRecipe = defineSlotRecipe({
 					inset: 0,
 					...rowCenter,
 					justifyContent: 'center',
-					p: 'lg'
+					p: { base: 'sm', sm: 'lg' }
 				},
 				panel: {
 					maxH: 'calc(100dvh - 2rem)',
 					overflowX: 'hidden',
 					overflowY: 'auto',
-					p: 'xl'
+					p: { base: 'md', sm: 'xl' }
 				},
 				header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
 				title: { ...rowCenter, gap: 'sm', fontWeight: 'interactive' }

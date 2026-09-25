@@ -160,7 +160,7 @@
 
 	async function save() {
 		await requestReminderPermission();
-		await ensurePushSubscription();
+		void ensurePushSubscription();
 		apply(selected.getTime());
 	}
 	function clear() {

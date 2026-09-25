@@ -93,13 +93,21 @@ export const appLayout = {
 		color: 'scrapscache.text'
 	}),
 	// Catches taps outside the drawer without tinting the page behind it.
-	backdrop: css({ position: 'fixed', inset: 0, zIndex: 20 }),
-	drawerPositioner: css({ position: 'fixed', insetY: 0, left: 0, zIndex: 30, h: 'full' }),
+	backdrop: css({ position: 'fixed', inset: 0, zIndex: 50 }),
+	drawerPositioner: css({
+		position: 'fixed',
+		insetY: 0,
+		left: 0,
+		zIndex: 55,
+		h: 'full',
+		maxW: 'calc(100vw - 3.5rem)'
+	}),
 	// No edge of its own: the surface is what sets the panel apart from the body,
 	// and a border would stop where the frame does while the surface carries on.
 	drawer: css({
 		h: 'full',
 		w: DRAWER_WIDTH,
+		maxW: 'calc(100vw - 3.5rem)',
 		bg: 'scrapscache.surface'
 	}),
 	// The app frame stops at the safe rect, so an open drawer stops short of the
@@ -109,10 +117,10 @@ export const appLayout = {
 		position: 'fixed',
 		left: 0,
 		bottom: 0,
-		w: `calc(${DRAWER_WIDTH} + var(--app-inset-left))`,
+		w: `min(calc(${DRAWER_WIDTH} + var(--app-inset-left)), calc(100vw - 3.5rem + var(--app-inset-left)))`,
 		h: 'var(--app-inset-bottom)',
 		bg: 'scrapscache.surface',
-		zIndex: 40,
+		zIndex: 56,
 		pointerEvents: 'none'
 	}),
 	// Same panel as the drawer on a phone: its surface is what sets it apart.
@@ -1715,6 +1723,7 @@ const syncRowBase = {
 } as const;
 
 export const syncStyles = {
+	waitingLayout: vstack({ gap: { base: 'md', sm: 'xl' }, alignItems: 'stretch' }),
 	workspaceRow: hstack({
 		...syncRowBase,
 		position: 'relative',
@@ -1750,11 +1759,17 @@ export const syncStyles = {
 	}),
 	digits: css({
 		fontFamily: 'mono',
-		fontSize: 'pairing',
+		fontSize: { base: 'subtitle', sm: 'pairing' },
 		fontWeight: 'heading',
-		letterSpacing: 'eyebrow'
+		letterSpacing: 'status'
 	}),
-	qrCode: css({ ...square('220px'), ...cardRadius, bg: 'scrapscache.qrSurface', p: 'sm' }),
+	qrCode: css({
+		w: { base: '10rem', sm: '220px' },
+		aspectRatio: '1',
+		...cardRadius,
+		bg: 'scrapscache.qrSurface',
+		p: 'sm'
+	}),
 	qrScanner: css({
 		w: 'full',
 		aspectRatio: '1 / 1',
@@ -1763,7 +1778,22 @@ export const syncStyles = {
 		...border,
 		bg: 'scrapscache.bg'
 	}),
-	pairingCode: css({ rounded: 'dialog', ...border, bg: 'scrapscache.bg', px: 'sm', py: 'xl' }),
+	pairingCode: css({
+		rounded: 'dialog',
+		...border,
+		bg: 'scrapscache.bg',
+		px: 'sm',
+		minW: 0,
+		py: { base: 'md', sm: 'xl' }
+	}),
+	pairingGroups: hstack({
+		justify: 'center',
+		gap: { base: '3xs', sm: '2xs' },
+		flexWrap: 'wrap',
+		minW: 0
+	}),
+	pairingGroup: hstack({ alignItems: 'center', whiteSpace: 'nowrap', flexShrink: 0 }),
+	pairingSeparator: css({ pl: '3xs', color: 'scrapscache.textMuted' }),
 	copySuccess: css({
 		borderColor: 'scrapscache.success',
 		bg: 'scrapscache.success',
@@ -1771,7 +1801,23 @@ export const syncStyles = {
 	}),
 	timerText: css({ fontVariantNumeric: 'tabular-nums' }),
 	fullButton: css({ w: 'full' }),
-	growButton: css({ flex: '1' }),
+	growButton: css({ flex: '1', minW: 0, px: { base: 'xs', sm: 'lg' } }),
+	buttonLabel: css({
+		minW: 0,
+		// Centre on cap height and baseline so the label lines up with its icon on every platform font.
+		textBox: 'trim-both cap alphabetic',
+		// Room for descenders inside the ellipsis clip; symmetric so the centring holds.
+		py: '2xs',
+		whiteSpace: 'nowrap',
+		overflow: 'hidden',
+		textOverflow: 'ellipsis'
+	}),
+	pressableButton: css({ _active: { transform: 'scale(0.96)' } }),
+	filledSecondaryButton: css({
+		bg: 'scrapscache.controlSubtle',
+		borderColor: 'transparent',
+		_hoverable: { bg: 'scrapscache.controlSubtleHover' }
+	}),
 	spinner: css({ animation: 'spin' }),
 	bodySpacing: css({ mt: '2xs' })
 };
@@ -1832,7 +1878,12 @@ export const noteEditorStyles = {
 			alignItems: { base: 'flex-start', md: 'center' },
 			justifyContent: 'center'
 		},
-		variants: { expanded: { true: {}, false: { px: 'lg', pb: 'var(--app-sheet-pad-bottom)' } } },
+		variants: {
+			expanded: {
+				true: {},
+				false: { px: { base: 'sm', sm: 'md', md: 'lg' }, pb: 'var(--app-sheet-pad-bottom)' }
+			}
+		},
 		defaultVariants: { expanded: false }
 	}),
 	sheetBox: cva({
@@ -1869,7 +1920,7 @@ export const noteEditorStyles = {
 	/** Base of every editor footer variant; justify/gap stay with the hstack call. */
 	footer: css({
 		position: 'relative',
-		px: 'md',
+		px: { base: 'xs', sm: 'md' },
 		py: 'sm',
 		borderTopWidth: 'hairline',
 		borderColor: 'scrapscache.borderFaint'

@@ -243,7 +243,12 @@
 				lazyMount
 				unmountOnExit
 			>
-				<Drawer.Backdrop data-sidebar-backdrop aria-label="Close sidebar" class={styles.backdrop} />
+				<Drawer.Backdrop
+					data-sidebar-backdrop
+					aria-label="Close sidebar"
+					class={styles.backdrop}
+					onclick={closeMobileSidebar}
+				/>
 				<Drawer.Positioner class={styles.drawerPositioner}>
 					<Drawer.Content
 						draggable={false}

@@ -575,6 +575,7 @@ describe('NoteEditor task focus', () => {
 		const input = popup.querySelector(
 			'input[placeholder="Search or create a label…"]'
 		) as HTMLInputElement;
+		expect(dispatchTouchPointer(input, 'pointerdown').defaultPrevented).toBe(false);
 		input.focus();
 		await fireEvent.input(input, { target: { value: 'Personal' } });
 		await tick();
@@ -620,6 +621,7 @@ describe('NoteEditor task focus', () => {
 		const input = popup.querySelector(
 			'input[placeholder="Search or create a label…"]'
 		) as HTMLInputElement;
+		expect(dispatchTouchPointer(input, 'pointerdown').defaultPrevented).toBe(false);
 		input.focus();
 		await fireEvent.input(input, { target: { value: 'First label' } });
 		await tick();
@@ -659,5 +661,21 @@ describe('NoteEditor task focus', () => {
 		expect(document.activeElement).not.toBe(editor);
 		const picker = document.body.querySelector('input[type="file"]') as HTMLInputElement;
 		picker.dispatchEvent(new Event('change'));
+	});
+
+	it('renders all footer action buttons in a single row without wrapping', () => {
+		notesStore.notes = [note({ body: 'Plain note' })];
+		const { getByRole, container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+		expect(getByRole('button', { name: 'Attach' })).toBeTruthy();
+		expect(getByRole('button', { name: 'New canvas' })).toBeTruthy();
+		expect(getByRole('button', { name: 'Labels' })).toBeTruthy();
+		expect(getByRole('button', { name: 'Color' })).toBeTruthy();
+		expect(getByRole('button', { name: 'Copy note' })).toBeTruthy();
+		expect(getByRole('button', { name: 'Archive' })).toBeTruthy();
+		expect(getByRole('button', { name: 'Delete note' })).toBeTruthy();
+		const footer = container.querySelector('footer');
+		expect(footer).toBeTruthy();
 	});
 });

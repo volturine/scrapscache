@@ -261,8 +261,8 @@ describe('NoteEditor Keep-style layout', () => {
 			});
 		}
 
-		it('expands when the note area fits eight body lines or fewer', async () => {
-			layOut(100 + 8 * 24);
+		it('expands when the note area fits sixteen body lines or fewer', async () => {
+			layOut(100 + 16 * 24);
 			notesStore.notes = [note()];
 			const { getByRole } = render(NoteEditor, {
 				props: { noteId: 'note-1', onClose: () => {} }
@@ -274,8 +274,8 @@ describe('NoteEditor Keep-style layout', () => {
 			expect(getByRole('button', { name: 'Expand note' })).toBeTruthy();
 		});
 
-		it('keeps the normal sheet when more than eight lines fit', async () => {
-			layOut(100 + 9 * 24);
+		it('keeps the normal sheet when more than sixteen lines fit', async () => {
+			layOut(100 + 17 * 24);
 			notesStore.notes = [note()];
 			const { getByRole } = render(NoteEditor, {
 				props: { noteId: 'note-1', onClose: () => {} }

@@ -92,6 +92,46 @@ describe('SQLite sync store', () => {
 		]);
 	});
 
+	it('replaces the version an upload continues, and only the live one', async () => {
+		const { store } = createStore();
+		await store.createAccount('owner', 'credential');
+		const save = async (
+			cursor: number,
+			id: string,
+			expectedId: string | null,
+			continues?: boolean
+		) =>
+			(
+				await store.sync(
+					'owner',
+					cursor,
+					[{ id, slot: slot('a'), ciphertext: 'YQ', expectedId, continues }],
+					[]
+				)
+			).cursor;
+		let cursor = await save(0, 'before', null);
+		// An editing session: its first save adds a version, the next ones continue it.
+		cursor = await save(cursor, 'draft', 'before');
+		cursor = await save(cursor, 'more', 'draft', true);
+		cursor = await save(cursor, 'final', 'more', true);
+		expect((await store.listHistory('owner', slot('a'))).versions.map(({ id }) => id)).toEqual([
+			'final',
+			'before'
+		]);
+		// A stale continue loses the write conflict instead of dropping another version.
+		const stale = await store.sync(
+			'owner',
+			cursor,
+			[{ id: 'late', slot: slot('a'), ciphertext: 'YQ', expectedId: 'more', continues: true }],
+			[]
+		);
+		expect(stale.writesAccepted).toBe(false);
+		expect((await store.listHistory('owner', slot('a'))).versions.map(({ id }) => id)).toEqual([
+			'final',
+			'before'
+		]);
+	});
+
 	it('counts older versions in quota once, without the live copy', async () => {
 		const { store } = createStore();
 		await store.createAccount('owner', 'credential');

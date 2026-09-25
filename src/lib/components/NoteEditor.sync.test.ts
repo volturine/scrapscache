@@ -3,6 +3,7 @@ import { tick } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Note } from '$lib/types';
 import { notesStore } from '$lib/stores/notes.svelte';
+import { syncStore } from '$lib/stores/sync.svelte';
 import NoteEditor from './NoteEditor.svelte';
 
 function note(partial: Partial<Note> = {}): Note {
@@ -98,6 +99,40 @@ afterEach(() => {
 });
 
 describe('NoteEditor draft and synced changes', () => {
+	it('closes a note that was only read without saving it', async () => {
+		// Markdown the editor spells its own way, and a table it would align.
+		notesStore.notes = [note({ body: '- [ ] task\n* item\n| a | b |\n|---|---|\n| 1 | 2 |' })];
+		const update = vi.spyOn(notesStore, 'updateNote');
+		const { container, close } = openEditor();
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+
+		editor.focus();
+		caretAtEnd(container);
+		await fireEvent.blur(editor);
+		await close();
+
+		expect(update).not.toHaveBeenCalled();
+	});
+
+	it('keeps one history version open until the closing sync has uploaded', async () => {
+		const endSession = vi.fn();
+		const begin = vi.spyOn(syncStore, 'beginEditSession').mockReturnValue(endSession);
+		let finishSync!: (synced: boolean) => void;
+		vi.spyOn(notesStore, 'syncPendingChanges').mockReturnValue(
+			new Promise((resolve) => (finishSync = resolve))
+		);
+		const { container, close, unmount } = openEditor();
+		expect(begin).toHaveBeenCalledWith('note-1');
+
+		await typeBody(container, '!');
+		await close();
+		unmount();
+		expect(endSession).not.toHaveBeenCalled();
+
+		finishSync(true);
+		await vi.waitFor(() => expect(endSession).toHaveBeenCalledTimes(1));
+	});
+
 	it('shows a synced edit that arrives while the note is open', async () => {
 		const { container } = openEditor();
 		receiveSynced({ title: 'Synced title', body: 'Synced body' });

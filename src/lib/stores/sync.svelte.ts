@@ -137,6 +137,8 @@ type SyncResult = {
 	error?: string;
 	/** HTTP status of a failed request; lets callers react to codes, not message text. */
 	status?: number;
+	/** How long a throttled or busy relay asked the client to wait before trying again. */
+	retryAfterSeconds?: number;
 };
 
 export type SyncSnapshot = {
@@ -193,6 +195,8 @@ export class SyncStore {
 	private pendingSessions = new Map<string, Promise<string>>();
 	/** Attachment ids a note's retained versions list, as of the note's last change. */
 	private versionAttachments = new Map<string, { updatedAt: number; ids: Set<string> }>();
+	/** Notes open in the editor, by record key, with the envelope id each session last uploaded. */
+	private editSessions = new Map<string, { uploadedId: string | null }>();
 	private authenticationGeneration = 0;
 
 	// Non-reactive callbacks avoid re-rendering the note grid for cloud feedback.
@@ -842,6 +846,19 @@ export class SyncStore {
 			this.session = null;
 	}
 
+	/**
+	 * Start one history version for a note opened in the editor: every upload until the
+	 * returned function ends the session continues that version instead of adding one.
+	 */
+	beginEditSession(noteId: string): () => void {
+		const key = `note:${noteId}`;
+		const session = { uploadedId: null };
+		this.editSessions.set(key, session);
+		return () => {
+			if (this.editSessions.get(key) === session) this.editSessions.delete(key);
+		};
+	}
+
 	/** Attachment ids the note's retained history lists; null when it cannot be read. */
 	private async versionAttachmentIds(
 		account: SyncAccount,
@@ -962,11 +979,17 @@ export class SyncStore {
 				}
 				observeRelayTime(data.serverTime, sentAt, receivedAt);
 				if (xhr.status < 200 || xhr.status >= 300) {
+					const retryAfter = Number(xhr.getResponseHeader('retry-after'));
 					resolve({
 						success: false,
 						status: xhr.status,
 						error:
-							typeof data.error === 'string' ? data.error : `Sync request failed (${xhr.status})`
+							typeof data.error === 'string' ? data.error : `Sync request failed (${xhr.status})`,
+						...((xhr.status === 429 || xhr.status === 503) &&
+						Number.isFinite(retryAfter) &&
+						retryAfter >= 0
+							? { retryAfterSeconds: retryAfter }
+							: {})
 					});
 					return;
 				}
@@ -1022,7 +1045,9 @@ export class SyncStore {
 			const ATTACHMENT_UPLOAD_BUDGET = 2;
 			const DOWNLOAD_LIMIT = 12;
 			const MAX_RESET_RETRIES = 3;
+			const MAX_THROTTLED_WAITS = 5;
 			let resetRetries = 0;
+			let throttledWaits = 0;
 			const quotaBlockedKeys = new Set<string>();
 			let quotaSingleUpload = false;
 			const keys = syncControlKeys(account.accountId);
@@ -1140,10 +1165,15 @@ export class SyncStore {
 						// infer whether this is a note, attachment, board, or its plaintext identity.
 						const slot = await sha256(`${account.syncKey}\u0000${record.key}`);
 						sentSlots.set(slot, record.key);
+						const expectedId = recordIds[record.key] ?? null;
+						// Only a version this editing session uploaded is continued; one another
+						// device or an earlier session wrote stays in the history.
+						const uploadedId = this.editSessions.get(record.key)?.uploadedId;
 						return {
 							id,
 							slot,
-							expectedId: recordIds[record.key] ?? null,
+							expectedId,
+							...(uploadedId && uploadedId === expectedId ? { continues: true } : {}),
 							ciphertext: encryptSyncPayload(account.syncKey, record.payload, slot)
 						};
 					})
@@ -1221,7 +1251,21 @@ export class SyncStore {
 					hasMore = true;
 					continue;
 				}
+				// A large sync can outrun the relay's per-minute budget. Nothing was written,
+				// so it waits as long as the relay asks and sends the round again.
+				if (
+					!response.success &&
+					response.retryAfterSeconds !== undefined &&
+					throttledWaits < MAX_THROTTLED_WAITS
+				) {
+					throttledWaits += 1;
+					await new Promise((resolve) =>
+						setTimeout(resolve, Math.min(response.retryAfterSeconds!, 30) * 1000)
+					);
+					continue;
+				}
 				if (!response.success || !response.data) return this.fail(response);
+				throttledWaits = 0;
 				const remoteUsage = response.data.usage;
 				if (remoteUsage && typeof remoteUsage === 'object') {
 					const candidate = remoteUsage as Partial<SyncUsage>;
@@ -1240,7 +1284,11 @@ export class SyncStore {
 				if (writesAccepted) {
 					stalledWrites = 0;
 					for (const key of deletableKeys) delete recordIds[key];
-					for (const [key, id] of sentRecordIds) recordIds[key] = id;
+					for (const [key, id] of sentRecordIds) {
+						recordIds[key] = id;
+						const session = this.editSessions.get(key);
+						if (session) session.uploadedId = id;
+					}
 					for (const key of deletableKeys) acknowledgedOutbox.add(key);
 				}
 				if (response.data.reset === true) {
@@ -1430,18 +1478,20 @@ export class SyncStore {
 				const uploadedFingerprints = writesAccepted
 					? Object.fromEntries(outgoing.map((record) => [record.key, record.fingerprint]))
 					: {};
+				const mergedFingerprints = fingerprintMapFrom(mergedRecords);
 				const reconciled = reconcileBaseline({
 					previous: baseline,
 					uploaded: uploadedFingerprints,
 					remote: remoteFingerprints,
-					merged: fingerprintMapFrom(mergedRecords),
+					merged: mergedFingerprints,
 					currentKeys: currentRecordKeys(
 						mergedNotes,
 						mergedLabels,
 						mergedBoards,
 						appliedTombstoneMaps
 					),
-					referencedAttachments: referencedAttachmentIds(mergedNotes, mergedTombstones)
+					referencedAttachments: referencedAttachmentIds(mergedNotes, mergedTombstones),
+					catchUpComplete: downloadsDrained
 				});
 				baseline = reconciled.baseline;
 				for (const key of reconciled.ackKeys) acknowledgedOutbox.add(key);
@@ -1456,6 +1506,14 @@ export class SyncStore {
 				if (downloadsDrained) {
 					for (const key of outboxKeys) {
 						if (!currentKeys.has(key)) {
+							acknowledgedOutbox.add(key);
+						} else if (
+							// Queued, but the relay already holds it as it is (pinned and unpinned
+							// before a sync, say): nothing is left to send.
+							recordIds[key] &&
+							mergedFingerprints[key] !== undefined &&
+							mergedFingerprints[key] === baseline[key]
+						) {
 							acknowledgedOutbox.add(key);
 						}
 					}

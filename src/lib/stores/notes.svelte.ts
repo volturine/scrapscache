@@ -16,6 +16,7 @@ import {
 	replaceAllDeviceData,
 	getSyncOutboxKeys,
 	clearSyncOutbox,
+	markSyncOutbox,
 	pruneOrphanImageBlobs,
 	isProfileReleased,
 	waitForDeviceWrites
@@ -71,6 +72,7 @@ import {
 } from '$lib/backup';
 import { stableStringify } from '$lib/model';
 import { buildForcePushSnapshot } from '$lib/syncForcePush';
+import { currentRecordKeys } from '$lib/syncEngine';
 
 /** Minimum gap between opportunistic auto syncs; manual syncs are never throttled. */
 const AUTO_SYNC_MIN_INTERVAL_MS = 30_000;
@@ -1450,7 +1452,16 @@ export class NotesStore {
 				await writeLabelTombstones(this.pid, snapshot.labelTombstones);
 				await kanbanStore.persistSyncState(this.pid);
 				this.mirrorToLS();
-				await syncStore.clearAccountControlPlane(account.accountId);
+				// The pull left this device holding the cloud's ids and fingerprints. Queue every
+				// record so the upload sends each one the cloud does not already hold, without
+				// downloading the whole account a second time.
+				await markSyncOutbox(this.pid, [
+					...currentRecordKeys(snapshot.notes, snapshot.labels, snapshot.boards, {
+						notes: snapshot.tombstones,
+						labels: snapshot.labelTombstones,
+						boards: snapshot.boardTombstones
+					})
+				]);
 				const synced = await this.doSyncLocked(true);
 				return synced && !syncStore.lastError && !this.lastPersistError;
 			} catch (err) {

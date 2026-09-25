@@ -68,6 +68,7 @@ describe('notes store sync apply', () => {
 		notesStore.notes = [local];
 		await putNote(local);
 		vi.spyOn(syncStore, 'reauthenticateForRecovery').mockResolvedValue();
+		const clearControl = vi.spyOn(syncStore, 'clearAccountControlPlane');
 		const remote = {
 			notes: [
 				{
@@ -106,6 +107,12 @@ describe('notes store sync apply', () => {
 					expect(notes[0].fieldTimes!.title).toBeGreaterThan(6000);
 					expect(tombstones!['cloud-only']).toBeGreaterThan(6000);
 					expect((await getAllNotesMetadata())[0].title).toBe('This device wins');
+					// The pull's cursor and ids are kept, and every record is queued, so the
+					// upload sends what differs from the cloud without downloading it again.
+					expect(clearControl).toHaveBeenCalledTimes(1);
+					expect(await getSyncOutboxKeys(LOCAL_PROFILE_ID)).toEqual(
+						expect.arrayContaining(['note:shared', 'note-tombstone:cloud-only'])
+					);
 					return {
 						success: true,
 						notes,

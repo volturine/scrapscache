@@ -38,7 +38,10 @@ For how to report vulnerabilities, see [SECURITY.md](../SECURITY.md).
   envelope off as another's. History responses use `Cache-Control: no-store` and
   are not saved in device storage. Deleting a record removes it and all its
   versions from the relay at once, and versions outside the window go as they
-  roll off
+  roll off. An upload may say it continues the version it replaces (one editing
+  session); the relay then drops that version, which can only be the live one the
+  upload's conditional write replaces. Devices set this only for a version their
+  own open editing session uploaded
 - Envelopes written before slot binding still open, so an upgrade does not
   strand what the relay already holds. Nothing writes that form any more, and a
   client that reads one queues the record for rewrite, so an account migrates

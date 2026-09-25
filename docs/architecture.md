@@ -152,6 +152,11 @@ per-record database overhead (default 100 MB).
 Each synced record keeps a rolling window of its newest encrypted versions, the
 live one included: 14 by default, set with `SCRAPSCACHE_HISTORY_VERSIONS` (1–40).
 Saving a new version drops the oldest; one record's saves never evict another's.
+A note open in the editor makes one version from open to close: its uploads while
+open mark themselves as continuing the version this session uploaded last, and the
+relay replaces that version instead of adding one. Only a version the session wrote
+itself is continued, so another device's save in between stays in the history, and
+a restore uploads what came before it as its own version first.
 Older versions count toward the account's storage quota alongside live records,
 but never block them: when the two together exceed the quota, the account's
 oldest versions give way.

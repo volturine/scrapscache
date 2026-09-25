@@ -11,7 +11,11 @@ import type { HistoryEnvelope, HistoryList } from '$lib/syncHistory';
 import { deleteHistoryRows, OLDER_VERSION, purgeDeletedRecords } from './history';
 
 export type EncryptedEnvelope = { seq: number; id: string; ciphertext: string; slot: string };
-export type OpaqueUpload = Omit<EncryptedEnvelope, 'seq'> & { expectedId?: string | null };
+export type OpaqueUpload = Omit<EncryptedEnvelope, 'seq'> & {
+	expectedId?: string | null;
+	/** The upload continues the version it replaces, which then leaves the history. */
+	continues?: boolean;
+};
 export type OpaqueDelete = { id: string; slot: string };
 export type SyncResult = {
 	cursor: number;

@@ -94,6 +94,11 @@
 	);
 	/** Edits in this session were committed and need a durable flush on close. */
 	let draftDirty = false;
+	// Everything this note uploads while it is open continues one history version.
+	// svelte-ignore state_referenced_locally
+	let endEditSession = noteId ? syncStore.beginEditSession(noteId) : () => {};
+	/** Closing hands the session to its final sync, whose upload still belongs to it. */
+	let closing = false;
 	// Only fields edited here are saved. Stamping an untouched field would make
 	// this draft's stale copy beat a newer edit from another device in the merge.
 	let titleEdited = false;
@@ -233,6 +238,7 @@
 			viewport?.removeEventListener('scroll', onOuterScroll);
 			if (revealTimer !== null) clearTimeout(revealTimer);
 			if (copyFlashTimer !== null) clearTimeout(copyFlashTimer);
+			if (!closing) endEditSession();
 		};
 	});
 
@@ -639,12 +645,13 @@
 	}
 
 	async function close(preserveEmpty = false) {
+		closing = true;
 		// Drop task-focus chrome immediately so dismiss is never gated on focus mode.
 		taskFocusLine = null;
 		await flushDraft();
 		if (note && !preserveEmpty) await notesStore.discardIfEmpty(note.id);
 		onClose();
-		void notesStore.syncPendingChanges();
+		void notesStore.syncPendingChanges().finally(endEditSession);
 	}
 
 	async function restoreNoteVersion(version: Note) {
@@ -652,7 +659,12 @@
 		const id = note.id;
 		const accountId = syncStore.account.accountId;
 		await flushDraft();
+		// What was written before the restore stays a version of its own: it uploads
+		// with this session, and the restore starts the next one.
+		await notesStore.syncPendingChanges();
 		if (syncStore.account?.accountId !== accountId || !note) return;
+		endEditSession();
+		endEditSession = syncStore.beginEditSession(id);
 		const restored = prepareImportedNotes([version], BackupImportMode.Keep, editContext)[0];
 		const availableLabels = new Set(notesStore.labels.map((label) => label.id));
 		notesStore.updateNote(id, {

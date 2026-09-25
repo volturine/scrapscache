@@ -575,6 +575,7 @@ describe('NoteEditor task focus', () => {
 		const input = popup.querySelector(
 			'input[placeholder="Search or create a label…"]'
 		) as HTMLInputElement;
+		expect(dispatchTouchPointer(input, 'pointerdown').defaultPrevented).toBe(false);
 		input.focus();
 		await fireEvent.input(input, { target: { value: 'Personal' } });
 		await tick();
@@ -620,6 +621,7 @@ describe('NoteEditor task focus', () => {
 		const input = popup.querySelector(
 			'input[placeholder="Search or create a label…"]'
 		) as HTMLInputElement;
+		expect(dispatchTouchPointer(input, 'pointerdown').defaultPrevented).toBe(false);
 		input.focus();
 		await fireEvent.input(input, { target: { value: 'First label' } });
 		await tick();

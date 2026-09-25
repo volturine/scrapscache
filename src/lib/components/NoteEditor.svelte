@@ -455,7 +455,11 @@
 	}
 
 	function keepEditorFocused(event: PointerEvent) {
-		if (event.pointerType === 'touch') event.preventDefault();
+		if (event.pointerType === 'touch') {
+			const target = event.target instanceof Element ? event.target : null;
+			if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
+			event.preventDefault();
+		}
 	}
 
 	function eventInsideEditor(target: EventTarget | null): boolean {

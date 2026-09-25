@@ -31,7 +31,7 @@
 		Trash2,
 		X
 	} from '@lucide/svelte';
-	import { portalToAppFloat } from '$lib/appViewport';
+	import { portalToAppOverlay } from '$lib/appViewport';
 
 	let { onClose, initialPairingCode = '' }: { onClose: () => void; initialPairingCode?: string } =
 		$props();
@@ -570,7 +570,7 @@
 	closeOnEscape={false}
 	closeOnInteractOutside={false}
 >
-	<div {@attach portalToAppFloat} class={d.portal} role="presentation">
+	<div {@attach portalToAppOverlay} class={d.portal} role="presentation">
 		<Dialog.Backdrop class={d.backdrop} onclick={() => close()} />
 		<Dialog.Positioner
 			class={d.positioner}
@@ -736,7 +736,13 @@
 									pt: 'lg'
 								})}
 							>
-								<div class={hstack({ gap: 'sm' })}>
+								<div
+									class={css({
+										display: 'flex',
+										flexDirection: { base: 'column', sm: 'row' },
+										gap: 'sm'
+									})}
+								>
 									<button
 										type="button"
 										onclick={() => {
@@ -828,7 +834,13 @@
 						{#if error}<p class={syncDanger} role="alert">
 								{error}
 							</p>{/if}
-						<div class={hstack({ gap: 'sm' })}>
+						<div
+							class={css({
+								display: 'flex',
+								flexDirection: { base: 'column', sm: 'row' },
+								gap: 'sm'
+							})}
+						>
 							<button
 								type="button"
 								class={cx(button({ variant: 'secondary', size: 'sm' }), styles.growButton)}

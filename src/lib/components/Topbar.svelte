@@ -243,17 +243,17 @@
 
 	<div
 		class={hstack({
-			h: '2.5rem',
-			minH: '2.5rem',
-			maxH: '2.5rem',
+			h: { base: '2rem', sm: '2.5rem' },
+			minH: { base: '2rem', sm: '2.5rem' },
+			maxH: { base: '2rem', sm: '2.5rem' },
 			minW: 0,
 			flex: '1',
 			rounded: 'pill',
 			borderWidth: 'hairline',
 			borderColor: 'scrapscache.border',
 			bg: 'scrapscache.surface',
-			px: 'md',
-			gap: 'sm'
+			px: { base: 'sm', sm: 'md' },
+			gap: { base: 'xs', sm: 'sm' }
 		})}
 	>
 		<Search class={cx(iconSm, styles.searchIcon)} aria-hidden="true" />

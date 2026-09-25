@@ -386,6 +386,126 @@
 
 	const qualityCompressedCard = choiceCard({ kind: 'compressed' });
 	const qualityHdCard = choiceCard();
+	const MIN_PANEL_HEIGHT = 100;
+	let panelHeight = $state<number | null>(null);
+	let dragging = $state(false);
+	let dragStartY = 0;
+	let dragStartHeight = 0;
+	let panelEl = $state<HTMLElement | null>(null);
+	let toggleDragMoved = false;
+
+	function getMaxPanelHeight(): number {
+		if (typeof window === 'undefined') return 600;
+		const editor = panelEl?.closest('[role="dialog"]');
+		const fallbackH = window.innerHeight > 0 ? window.innerHeight * 0.7 : 600;
+		const editorH = editor && editor.clientHeight > 0 ? editor.clientHeight - 100 : fallbackH;
+		const winMax = window.innerHeight > 0 ? window.innerHeight * 0.8 : 800;
+		return Math.max(MIN_PANEL_HEIGHT, Math.min(winMax, editorH));
+	}
+
+	function onResizePointerDown(e: PointerEvent) {
+		if (e.button !== 0 && e.pointerType === 'mouse') return;
+		if (!panelEl) return;
+		dragStartY = e.clientY;
+		dragStartHeight = panelEl.getBoundingClientRect().height;
+		dragging = true;
+		try {
+			(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+		} catch {
+			/* ignore */
+		}
+	}
+
+	function onResizePointerMove(e: PointerEvent) {
+		if (!dragging || !panelEl) return;
+		const deltaY = dragStartY - e.clientY;
+		const maxH = getMaxPanelHeight();
+		const next = Math.max(MIN_PANEL_HEIGHT, Math.min(maxH, dragStartHeight + deltaY));
+		panelHeight = Math.round(next);
+	}
+
+	function onResizePointerUp(e: PointerEvent) {
+		if (!dragging) return;
+		dragging = false;
+		try {
+			(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+		} catch {
+			/* ignore */
+		}
+	}
+
+	function resetPanelHeight() {
+		panelHeight = null;
+	}
+
+	function onResizeKeydown(e: KeyboardEvent) {
+		const current =
+			panelHeight ??
+			(panelEl && panelEl.getBoundingClientRect().height > 0
+				? panelEl.getBoundingClientRect().height
+				: 240);
+		const maxH = getMaxPanelHeight();
+		if (e.key === 'ArrowUp') {
+			e.preventDefault();
+			panelHeight = Math.min(maxH, current + 24);
+		} else if (e.key === 'ArrowDown') {
+			e.preventDefault();
+			panelHeight = Math.max(MIN_PANEL_HEIGHT, current - 24);
+		} else if (e.key === 'Home') {
+			e.preventDefault();
+			panelHeight = MIN_PANEL_HEIGHT;
+		} else if (e.key === 'End') {
+			e.preventDefault();
+			panelHeight = maxH;
+		} else if (e.key === 'Enter' || e.key === ' ') {
+			e.preventDefault();
+			resetPanelHeight();
+		}
+	}
+
+	function onTogglePointerDown(e: PointerEvent) {
+		if (e.button !== 0 && e.pointerType === 'mouse') return;
+		if (!previewsExpanded || !panelEl || fillPhotos) return;
+		toggleDragMoved = false;
+		dragStartY = e.clientY;
+		dragStartHeight = panelEl.getBoundingClientRect().height;
+		dragging = true;
+		try {
+			(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+		} catch {
+			/* ignore */
+		}
+	}
+
+	function onTogglePointerMove(e: PointerEvent) {
+		if (!dragging || !panelEl) return;
+		const dy = Math.abs(e.clientY - dragStartY);
+		if (dy > 4) toggleDragMoved = true;
+		if (toggleDragMoved) {
+			const deltaY = dragStartY - e.clientY;
+			const maxH = getMaxPanelHeight();
+			const next = Math.max(MIN_PANEL_HEIGHT, Math.min(maxH, dragStartHeight + deltaY));
+			panelHeight = Math.round(next);
+		}
+	}
+
+	function onTogglePointerUp(e: PointerEvent) {
+		if (!dragging) return;
+		dragging = false;
+		try {
+			(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+		} catch {
+			/* ignore */
+		}
+	}
+
+	function onToggleClick() {
+		if (toggleDragMoved) {
+			toggleDragMoved = false;
+			return;
+		}
+		previewsExpanded = !previewsExpanded;
+	}
 </script>
 
 {#if attachError}
@@ -399,19 +519,44 @@
 		data-preview-dock
 		class={fillPhotos ? noteEditorStyles.previewDockFill : noteEditorStyles.previewDock}
 	>
-		{@render previewToggle()}
+		{#if !showPreviews}
+			{@render previewToggle()}
+		{/if}
 		{#if showPreviews}
 			<div
+				bind:this={panelEl}
 				id="note-preview-panel"
 				data-preview-panel
 				class={fillPhotos
 					? noteEditorStyles.previewPanelFill
 					: cx(noteEditorStyles.previewPanel, noteSurface({ color }))}
+				style={!fillPhotos && panelHeight != null
+					? `height: ${panelHeight}px; max-height: none;${dragging ? ' transition: none; user-select: none;' : ''}`
+					: undefined}
 				transition:slide={{
 					duration: prefersReducedMotion.current ? 0 : 200,
 					easing: cubicOut
 				}}
 			>
+				{@render previewToggle()}
+				{#if !fillPhotos}
+					<div
+						role="slider"
+						aria-orientation="horizontal"
+						aria-label="Resize preview panel"
+						aria-valuenow={panelHeight ?? 240}
+						aria-valuemin={MIN_PANEL_HEIGHT}
+						aria-valuemax={600}
+						tabindex="0"
+						class={noteEditorStyles.previewResizeHandle}
+						onpointerdown={onResizePointerDown}
+						onpointermove={onResizePointerMove}
+						onpointerup={onResizePointerUp}
+						onpointercancel={onResizePointerUp}
+						ondblclick={resetPanelHeight}
+						onkeydown={onResizeKeydown}
+					></div>
+				{/if}
 				{#if canvases.length > 0}
 					<div class={c.strip} aria-label="Canvases">
 						{#each canvases as canvas (canvas.id)}

@@ -145,12 +145,45 @@ describe('NoteEditor Keep-style layout', () => {
 		expect(container.querySelector('[aria-label="Files and links"]')).toBeTruthy();
 		const hide = getByRole('button', { name: 'Hide previews' });
 		expect(hide.getAttribute('aria-expanded')).toBe('true');
-		expect(hide.compareDocumentPosition(panel!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		expect(panel!.contains(hide)).toBe(true);
+		// Dock remains at 0 in-flow height so the preview card overlays the note without expanding it.
+		expect(dock!.clientHeight).toBe(0);
 
 		await fireEvent.click(hide);
 
 		await waitFor(() => expect(container.querySelector('[data-preview-panel]')).toBeNull());
 		expect(queryByRole('button', { name: 'Show previews' })).toBeTruthy();
+	});
+
+	it('allows resizing the preview card via the top resize handle', async () => {
+		notesStore.notes = [note()];
+		const { container, getByRole } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+
+		await fireEvent.click(getByRole('button', { name: 'Show previews' }));
+
+		const slider = getByRole('slider', { name: 'Resize preview panel' });
+		expect(slider).toBeTruthy();
+
+		// Initial height defaults to 240
+		expect(slider.getAttribute('aria-valuenow')).toBe('240');
+
+		// ArrowUp increases height
+		await fireEvent.keyDown(slider, { key: 'ArrowUp' });
+		expect(slider.getAttribute('aria-valuenow')).toBe('264');
+
+		// ArrowDown decreases height
+		await fireEvent.keyDown(slider, { key: 'ArrowDown' });
+		expect(slider.getAttribute('aria-valuenow')).toBe('240');
+
+		// Home sets to minimum height (100)
+		await fireEvent.keyDown(slider, { key: 'Home' });
+		expect(slider.getAttribute('aria-valuenow')).toBe('100');
+
+		// Enter resets custom height
+		await fireEvent.keyDown(slider, { key: 'Enter' });
+		expect(slider.getAttribute('aria-valuenow')).toBe('240');
 	});
 
 	it('summarises what the collapsed toggle hides', () => {

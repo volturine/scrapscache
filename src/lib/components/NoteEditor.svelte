@@ -268,7 +268,7 @@
 		const lineHeight = parseFloat(getComputedStyle(field).lineHeight);
 		if (!(lineHeight > 0)) return Infinity;
 		const chrome = dialog.querySelectorAll<HTMLElement>(
-			':scope > header, :scope > footer, :scope > [data-preview-panel]'
+			':scope > header, :scope > footer, :scope > [data-preview-dock]'
 		);
 		let space = dialog.clientHeight;
 		for (const el of chrome) space -= el.offsetHeight;

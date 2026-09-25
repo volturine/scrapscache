@@ -35,11 +35,27 @@ describe('normalizePreviewUrl', () => {
 
 describe('localLinkCard', () => {
 	it('derives a useful card without fetching remote metadata', () => {
-		expect(localLinkCard('https://www.github.com/org/repo?tab=readme#top')).toEqual({
-			url: 'https://www.github.com/org/repo?tab=readme',
+		expect(localLinkCard('https://www.github.com/org/my-project?tab=readme#top')).toEqual({
+			url: 'https://www.github.com/org/my-project?tab=readme',
 			hostname: 'github.com',
-			path: '/org/repo?tab=readme',
-			badge: 'G'
+			title: 'My project',
+			address: 'github.com/org/my-project?tab=readme'
 		});
+	});
+
+	it.each([
+		[
+			'https://blog.example.com/posts/how-to-build-offline-first-apps',
+			'How to build offline first apps'
+		],
+		['https://en.wikipedia.org/wiki/Black_swan_theory', 'Black swan theory'],
+		['https://de.wikipedia.org/wiki/K%C3%B6ln', 'Köln'],
+		['https://example.com/docs/getting_started.html', 'Getting started'],
+		['https://example.com/guide/quick-start', 'Quick start'],
+		['https://example.com/p/9f86d081884c7d659a2f', 'example.com'],
+		['https://example.com/', 'example.com'],
+		['https://example.com/12345', 'example.com']
+	])('reads a generic title for %s from URL slugs alone', (url, title) => {
+		expect(localLinkCard(url)?.title).toBe(title);
 	});
 });

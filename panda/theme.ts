@@ -141,6 +141,10 @@ const shadows = tokenGroup({
 	popover: mode('0 8px 24px rgba(0, 0, 0, 0.14)', '0 8px 24px rgba(0, 0, 0, 0.35)'),
 	dialog: mode('0 20px 48px rgba(0, 0, 0, 0.24)', '0 20px 48px rgba(0, 0, 0, 0.55)'),
 	noteSheet: mode('0 0 24px 2px rgba(0, 0, 0, 0.22)', '0 0 24px 2px rgba(0, 0, 0, 0.55)'),
+	previewCard: mode(
+		'0 -8px 20px -12px rgba(0, 0, 0, 0.22)',
+		'0 -8px 20px -12px rgba(0, 0, 0, 0.6)'
+	),
 	kanbanDrag: '0 1px 2px rgba(0, 0, 0, 0.12)',
 	kanbanDragLifted: '0 18px 40px -12px rgba(0, 0, 0, 0.45), 0 6px 14px -6px rgba(0, 0, 0, 0.3)',
 	cropMask: '0 0 0 9999px rgba(0, 0, 0, 0.65)',

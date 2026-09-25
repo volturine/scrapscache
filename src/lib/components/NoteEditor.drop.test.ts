@@ -148,7 +148,7 @@ describe('NoteEditor file drop', () => {
 		// Attaching auto-expands the preview panel so the new file is visible.
 		expect(
 			container
-				.querySelector('footer button[aria-label="Hide previews"]')
+				.querySelector('[data-preview-dock] button[aria-label="Hide previews"]')
 				?.getAttribute('aria-expanded')
 		).toBe('true');
 	});

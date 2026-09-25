@@ -13,16 +13,23 @@ vi.mock('$env/dynamic/public', () => ({ env: {} }));
 installHorizontalWheel();
 
 if (typeof Element !== 'undefined' && !Element.prototype.animate) {
-	Element.prototype.animate = (() => ({
-		cancel: () => {},
-		finish: () => {},
-		pause: () => {},
-		play: () => {},
-		reverse: () => {},
-		finished: Promise.resolve(),
-		addEventListener: () => {},
-		removeEventListener: () => {}
-	})) as unknown as typeof Element.prototype.animate;
+	Element.prototype.animate = (() => {
+		const animation = {
+			onfinish: null as (() => void) | null,
+			cancel: () => {},
+			finish: () => {},
+			pause: () => {},
+			play: () => {},
+			reverse: () => {},
+			finished: Promise.resolve(),
+			addEventListener: () => {},
+			removeEventListener: () => {}
+		};
+		// Finish on the next task, as a real animation would, so Svelte outros
+		// remove their elements instead of waiting forever.
+		setTimeout(() => animation.onfinish?.());
+		return animation;
+	}) as unknown as typeof Element.prototype.animate;
 }
 
 // jsdom has no pointer capture; gestures call it on every press.

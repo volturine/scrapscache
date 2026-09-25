@@ -11,8 +11,12 @@
 	import { hstack, grid, flex } from 'styled-system/patterns';
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { Format } from '@ark-ui/svelte/format';
+	import { slide } from 'svelte/transition';
+	import { cubicOut } from 'svelte/easing';
+	import { prefersReducedMotion } from 'svelte/motion';
 	import AttachmentFullscreen from '$lib/components/AttachmentFullscreen.svelte';
 	import CanvasEditor from '$lib/components/CanvasEditor.svelte';
+	import LinkBadge from '$lib/components/LinkBadge.svelte';
 	import PhotoFullscreen from '$lib/components/PhotoFullscreen.svelte';
 	import Tooltip from './Tooltip.svelte';
 	import type { NoteColor, NoteImage } from '$lib/types';
@@ -42,6 +46,8 @@
 		ChevronDown,
 		ChevronUp,
 		Copy,
+		Image,
+		Link,
 		Palette,
 		Paperclip,
 		PenLine,
@@ -112,7 +118,12 @@
 		imageAttachments.filter((attachment) => !displayImageSrc(attachment))
 	);
 	const files = $derived(images.filter((a) => !isImageAttachment(a) && !isCanvasAttachment(a)));
-	const links = $derived(extractHttpUrls(body));
+	const links = $derived(
+		extractHttpUrls(body).flatMap((url) => {
+			const card = localLinkCard(url);
+			return card ? [card] : [];
+		})
+	);
 	const photoIndexById = $derived(new Map(photos.map((p, i) => [p.id, i])));
 	const hasPreviews = $derived(
 		canvases.length + files.length + links.length + photos.length + pendingPhotos.length > 0
@@ -121,6 +132,14 @@
 	// (which ends fill mode) does not hide photos the user was just looking at.
 	const showPreviews = $derived(hasPreviews && (previewsExpanded || fillPhotos));
 	const showPreviewToggle = $derived(hasPreviews && !fillPhotos);
+	// What the collapsed toggle is hiding, so it says more than "something".
+	const previewCounts = $derived(
+		[
+			{ icon: Link, count: links.length },
+			{ icon: Paperclip, count: files.length },
+			{ icon: Image, count: canvases.length + photos.length + pendingPhotos.length }
+		].filter((entry) => entry.count > 0)
+	);
 
 	$effect(() => {
 		if (fillPhotos) previewsExpanded = true;
@@ -367,6 +386,126 @@
 
 	const qualityCompressedCard = choiceCard({ kind: 'compressed' });
 	const qualityHdCard = choiceCard();
+	const MIN_PANEL_HEIGHT = 100;
+	let panelHeight = $state<number | null>(null);
+	let dragging = $state(false);
+	let dragStartY = 0;
+	let dragStartHeight = 0;
+	let panelEl = $state<HTMLElement | null>(null);
+	let toggleDragMoved = false;
+
+	function getMaxPanelHeight(): number {
+		if (typeof window === 'undefined') return 600;
+		const editor = panelEl?.closest('[role="dialog"]');
+		const fallbackH = window.innerHeight > 0 ? window.innerHeight * 0.7 : 600;
+		const editorH = editor && editor.clientHeight > 0 ? editor.clientHeight - 100 : fallbackH;
+		const winMax = window.innerHeight > 0 ? window.innerHeight * 0.8 : 800;
+		return Math.max(MIN_PANEL_HEIGHT, Math.min(winMax, editorH));
+	}
+
+	function onResizePointerDown(e: PointerEvent) {
+		if (e.button !== 0 && e.pointerType === 'mouse') return;
+		if (!panelEl) return;
+		dragStartY = e.clientY;
+		dragStartHeight = panelEl.getBoundingClientRect().height;
+		dragging = true;
+		try {
+			(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+		} catch {
+			/* ignore */
+		}
+	}
+
+	function onResizePointerMove(e: PointerEvent) {
+		if (!dragging || !panelEl) return;
+		const deltaY = dragStartY - e.clientY;
+		const maxH = getMaxPanelHeight();
+		const next = Math.max(MIN_PANEL_HEIGHT, Math.min(maxH, dragStartHeight + deltaY));
+		panelHeight = Math.round(next);
+	}
+
+	function onResizePointerUp(e: PointerEvent) {
+		if (!dragging) return;
+		dragging = false;
+		try {
+			(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+		} catch {
+			/* ignore */
+		}
+	}
+
+	function resetPanelHeight() {
+		panelHeight = null;
+	}
+
+	function onResizeKeydown(e: KeyboardEvent) {
+		const current =
+			panelHeight ??
+			(panelEl && panelEl.getBoundingClientRect().height > 0
+				? panelEl.getBoundingClientRect().height
+				: 240);
+		const maxH = getMaxPanelHeight();
+		if (e.key === 'ArrowUp') {
+			e.preventDefault();
+			panelHeight = Math.min(maxH, current + 24);
+		} else if (e.key === 'ArrowDown') {
+			e.preventDefault();
+			panelHeight = Math.max(MIN_PANEL_HEIGHT, current - 24);
+		} else if (e.key === 'Home') {
+			e.preventDefault();
+			panelHeight = MIN_PANEL_HEIGHT;
+		} else if (e.key === 'End') {
+			e.preventDefault();
+			panelHeight = maxH;
+		} else if (e.key === 'Enter' || e.key === ' ') {
+			e.preventDefault();
+			resetPanelHeight();
+		}
+	}
+
+	function onTogglePointerDown(e: PointerEvent) {
+		if (e.button !== 0 && e.pointerType === 'mouse') return;
+		if (!previewsExpanded || !panelEl || fillPhotos) return;
+		toggleDragMoved = false;
+		dragStartY = e.clientY;
+		dragStartHeight = panelEl.getBoundingClientRect().height;
+		dragging = true;
+		try {
+			(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+		} catch {
+			/* ignore */
+		}
+	}
+
+	function onTogglePointerMove(e: PointerEvent) {
+		if (!dragging || !panelEl) return;
+		const dy = Math.abs(e.clientY - dragStartY);
+		if (dy > 4) toggleDragMoved = true;
+		if (toggleDragMoved) {
+			const deltaY = dragStartY - e.clientY;
+			const maxH = getMaxPanelHeight();
+			const next = Math.max(MIN_PANEL_HEIGHT, Math.min(maxH, dragStartHeight + deltaY));
+			panelHeight = Math.round(next);
+		}
+	}
+
+	function onTogglePointerUp(e: PointerEvent) {
+		if (!dragging) return;
+		dragging = false;
+		try {
+			(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+		} catch {
+			/* ignore */
+		}
+	}
+
+	function onToggleClick() {
+		if (toggleDragMoved) {
+			toggleDragMoved = false;
+			return;
+		}
+		previewsExpanded = !previewsExpanded;
+	}
 </script>
 
 {#if attachError}
@@ -375,134 +514,173 @@
 	</p>
 {/if}
 
-{#if showPreviews}
+{#if hasPreviews}
 	<div
-		id="note-preview-panel"
-		data-preview-panel
-		class={fillPhotos ? noteEditorStyles.previewPanelFill : noteEditorStyles.previewPanel}
+		data-preview-dock
+		class={fillPhotos ? noteEditorStyles.previewDockFill : noteEditorStyles.previewDock}
 	>
-		{#if canvases.length > 0}
-			<div class={c.strip} aria-label="Canvases">
-				{#each canvases as canvas (canvas.id)}
-					<div class={c.wrap}>
-						<button
-							type="button"
-							class={c.btn}
-							onclick={() => void openCanvas(canvas)}
-							aria-label={`Edit ${canvas.name ?? 'canvas'}`}
-						>
-							{#if displayImageSrc(canvas)}
-								<img
-									src={displayImageSrc(canvas)}
-									alt={canvas.name ?? 'Canvas'}
-									class={c.img}
-									loading="lazy"
-									decoding="async"
-									draggable="false"
-								/>
-							{:else}
-								<div class={c.loading}>Loading canvas…</div>
-							{/if}
-							<span class={c.caption}>
-								{canvas.name ?? 'Canvas'}
-							</span>
-						</button>
-						<button
-							type="button"
-							class={c.delBtn}
-							onclick={() => removeAttachment(canvas.id)}
-							aria-label="Remove canvas"
-						>
-							<X size={12} aria-hidden="true" />
-						</button>
-					</div>
-				{/each}
-			</div>
+		{#if !showPreviews}
+			{@render previewToggle()}
 		{/if}
-
-		{#if files.length > 0 || links.length > 0}
-			<ul class={`note-scrollbar-hidden scrollable ${f.list}`} aria-label="Files and links">
-				{#each files as file (file.id)}
-					<li class={f.row}>
-						<span class={f.badge} aria-hidden="true">{fileIconLabel(file.mime, file.name)}</span>
-						<button
-							type="button"
-							class={f.openBtn}
-							onclick={() => void openFile(file)}
-							aria-label={`Open ${file.name ?? 'file'}`}
-						>
-							<div class={f.title}>
-								{file.name || 'Attachment'}
+		{#if showPreviews}
+			<div
+				bind:this={panelEl}
+				id="note-preview-panel"
+				data-preview-panel
+				class={fillPhotos
+					? noteEditorStyles.previewPanelFill
+					: cx(noteEditorStyles.previewPanel, noteSurface({ color }))}
+				style={!fillPhotos && panelHeight != null
+					? `height: ${panelHeight}px; max-height: none;${dragging ? ' transition: none; user-select: none;' : ''}`
+					: undefined}
+				transition:slide={{
+					duration: prefersReducedMotion.current ? 0 : 200,
+					easing: cubicOut
+				}}
+			>
+				{@render previewToggle()}
+				{#if !fillPhotos}
+					<div
+						role="slider"
+						aria-orientation="horizontal"
+						aria-label="Resize preview panel"
+						aria-valuenow={panelHeight ?? 240}
+						aria-valuemin={MIN_PANEL_HEIGHT}
+						aria-valuemax={600}
+						tabindex="0"
+						class={noteEditorStyles.previewResizeHandle}
+						onpointerdown={onResizePointerDown}
+						onpointermove={onResizePointerMove}
+						onpointerup={onResizePointerUp}
+						onpointercancel={onResizePointerUp}
+						ondblclick={resetPanelHeight}
+						onkeydown={onResizeKeydown}
+					></div>
+				{/if}
+				{#if canvases.length > 0}
+					<div class={c.strip} aria-label="Canvases">
+						{#each canvases as canvas (canvas.id)}
+							<div class={c.wrap}>
+								<button
+									type="button"
+									class={c.btn}
+									onclick={() => void openCanvas(canvas)}
+									aria-label={`Edit ${canvas.name ?? 'canvas'}`}
+								>
+									{#if displayImageSrc(canvas)}
+										<img
+											src={displayImageSrc(canvas)}
+											alt={canvas.name ?? 'Canvas'}
+											class={c.img}
+											loading="lazy"
+											decoding="async"
+											draggable="false"
+										/>
+									{:else}
+										<div class={c.loading}>Loading canvas…</div>
+									{/if}
+									<span class={c.caption}>
+										{canvas.name ?? 'Canvas'}
+									</span>
+								</button>
+								<button
+									type="button"
+									class={c.delBtn}
+									onclick={() => removeAttachment(canvas.id)}
+									aria-label="Remove canvas"
+								>
+									<X size={12} aria-hidden="true" />
+								</button>
 							</div>
-							<div class={f.size}>
-								<Format.Byte value={dataUrlByteLength(file.dataUrl)} unitSystem="binary" />
-							</div>
-						</button>
-						<button
-							type="button"
-							class={f.removeBtn}
-							onclick={() => removeAttachment(file.id)}
-							aria-label="Remove file"
-						>
-							<X size={14} aria-hidden="true" />
-						</button>
-					</li>
-				{/each}
-				{#each links as url (url)}
-					{@const card = localLinkCard(url)}
-					<li class={f.row}>
-						<span class={f.badge} aria-hidden="true">{card?.badge ?? '↗'}</span>
-						<a
-							href={url}
-							target="_blank"
-							rel="noreferrer noopener"
-							class={f.openBtn}
-							aria-label={`Open ${card?.hostname ?? url}`}
-						>
-							<div class={f.title}>
-								{card?.hostname ?? url}
-							</div>
-							<div class={f.size}>
-								{card?.path || url}
-							</div>
-						</a>
-					</li>
-				{/each}
-			</ul>
-		{/if}
-
-		{#if photos.length > 0 || pendingPhotos.length > 0}
-			<div class={p.strip} aria-label="Photos">
-				{#each photos as img (img.id)}
-					<div class={p.wrap}>
-						<button
-							type="button"
-							class={p.btn}
-							onclick={() => void openPhoto(img.id)}
-							aria-label={`Open ${img.name ?? 'photo'}`}
-						>
-							<img
-								src={fillPhotos ? img.dataUrl || displayImageSrc(img) : displayImageSrc(img)}
-								alt={img.name ?? 'Photo'}
-								class={p.img}
-								loading="lazy"
-								decoding="async"
-								draggable="false"
-							/>
-						</button>
-						<button
-							type="button"
-							class={p.delBtn}
-							onclick={() => removeAttachment(img.id)}
-							aria-label="Remove photo"
-						>
-							<X size={14} aria-hidden="true" />
-						</button>
+						{/each}
 					</div>
-				{/each}
-				{#each pendingPhotos as img (img.id)}
-					<div class={p.skeleton} role="img" aria-label={`Loading ${img.name ?? 'photo'}`}></div>
-				{/each}
+				{/if}
+
+				{#if files.length > 0 || links.length > 0}
+					<ul class={`note-scrollbar-hidden scrollable ${f.list}`} aria-label="Files and links">
+						{#each files as file (file.id)}
+							<li class={f.row}>
+								<span class={f.badge} aria-hidden="true">{fileIconLabel(file.mime, file.name)}</span
+								>
+								<button
+									type="button"
+									class={f.openBtn}
+									onclick={() => void openFile(file)}
+									aria-label={`Open ${file.name ?? 'file'}`}
+								>
+									<div class={f.title}>
+										{file.name || 'Attachment'}
+									</div>
+									<div class={f.size}>
+										<Format.Byte value={dataUrlByteLength(file.dataUrl)} unitSystem="binary" />
+									</div>
+								</button>
+								<button
+									type="button"
+									class={f.removeBtn}
+									onclick={() => removeAttachment(file.id)}
+									aria-label="Remove file"
+								>
+									<X size={14} aria-hidden="true" />
+								</button>
+							</li>
+						{/each}
+						{#each links as card (card.url)}
+							<li class={f.row}>
+								<LinkBadge {card} size="editor" />
+								<a
+									href={card.url}
+									target="_blank"
+									rel="noreferrer noopener"
+									class={f.openBtn}
+									aria-label={`Open ${card.title}`}
+								>
+									<div class={f.title}>{card.title}</div>
+									<div class={f.address}>{card.address}</div>
+								</a>
+							</li>
+						{/each}
+					</ul>
+				{/if}
+
+				{#if photos.length > 0 || pendingPhotos.length > 0}
+					<div class={p.strip} aria-label="Photos">
+						{#each photos as img (img.id)}
+							<div class={p.wrap}>
+								<button
+									type="button"
+									class={p.btn}
+									onclick={() => void openPhoto(img.id)}
+									aria-label={`Open ${img.name ?? 'photo'}`}
+								>
+									<img
+										src={fillPhotos ? img.dataUrl || displayImageSrc(img) : displayImageSrc(img)}
+										alt={img.name ?? 'Photo'}
+										class={p.img}
+										loading="lazy"
+										decoding="async"
+										draggable="false"
+									/>
+								</button>
+								<button
+									type="button"
+									class={p.delBtn}
+									onclick={() => removeAttachment(img.id)}
+									aria-label="Remove photo"
+								>
+									<X size={14} aria-hidden="true" />
+								</button>
+							</div>
+						{/each}
+						{#each pendingPhotos as img (img.id)}
+							<div
+								class={p.skeleton}
+								role="img"
+								aria-label={`Loading ${img.name ?? 'photo'}`}
+							></div>
+						{/each}
+					</div>
+				{/if}
 			</div>
 		{/if}
 	</div>
@@ -642,6 +820,11 @@
 					<ChevronDown size={14} aria-hidden="true" />
 				{:else}
 					<ChevronUp size={14} aria-hidden="true" />
+					{#each previewCounts as { icon: Icon, count } (Icon)}
+						<span class={noteEditorStyles.previewToggleCount} aria-hidden="true">
+							<Icon size={12} />{count}
+						</span>
+					{/each}
 				{/if}
 			</button>
 		</Tooltip>
@@ -653,7 +836,6 @@
 		use:footerInteractions
 		class={cx(hstack({ justify: 'flex-end', gap: '2xs' }), noteEditorStyles.footer)}
 	>
-		{@render previewToggle()}
 		{@render footerButton('Restore', 'Restore', RotateCcw, 'ghost', () => onRestore?.())}
 		{@render footerButton('Archive', 'Archive', Archive, 'ghost', () => onArchive?.())}
 		{@render footerButton('Delete forever', 'Delete forever', Trash2, 'danger', () => onDelete?.())}
@@ -663,7 +845,6 @@
 		use:footerInteractions
 		class={cx(hstack({ justify: 'flex-end', gap: '2xs' }), noteEditorStyles.footer)}
 	>
-		{@render previewToggle()}
 		{@render footerButton('Restore', 'Restore', ArchiveRestore, 'ghost', () => onArchive?.())}
 		{@render footerButton('Delete note', 'Delete note', Trash2, 'danger', () => onDelete?.())}
 	</footer>
@@ -672,7 +853,6 @@
 		use:footerInteractions
 		class={cx(hstack({ justify: 'space-between', gap: 'sm' }), noteEditorStyles.footer)}
 	>
-		{@render previewToggle()}
 		<div class={hstack({ gap: '2xs', flexShrink: 0 })}>
 			{@render footerButton('Attach', 'Attach', Paperclip, 'ghost', openAttach)}
 			{@render footerButton('New canvas', 'New canvas', PenLine, 'ghost', () => void openCanvas())}

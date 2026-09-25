@@ -736,13 +736,7 @@
 									pt: 'lg'
 								})}
 							>
-								<div
-									class={css({
-										display: 'flex',
-										flexDirection: { base: 'column', sm: 'row' },
-										gap: 'sm'
-									})}
-								>
+								<div class={hstack({ gap: 'sm' })}>
 									<button
 										type="button"
 										onclick={() => {
@@ -770,7 +764,8 @@
 											onclick={() => void startExistingConnection()}
 											disabled={busy}
 											class={cx(button({ variant: 'secondary', size: 'md' }), styles.growButton)}
-											>Connect device</button
+											aria-label="Connect device"
+											title="Connect device">Connect</button
 										>
 									{/if}
 								</div>
@@ -834,13 +829,7 @@
 						{#if error}<p class={syncDanger} role="alert">
 								{error}
 							</p>{/if}
-						<div
-							class={css({
-								display: 'flex',
-								flexDirection: { base: 'column', sm: 'row' },
-								gap: 'sm'
-							})}
-						>
+						<div class={hstack({ gap: 'sm' })}>
 							<button
 								type="button"
 								class={cx(button({ variant: 'secondary', size: 'sm' }), styles.growButton)}

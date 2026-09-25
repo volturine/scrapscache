@@ -221,30 +221,29 @@ describe('NoteEditor task focus', () => {
 		expect(scroller.scrollTop).toBe(640);
 	});
 
-	it('moves task focus when a touch retargets to another task without a click', async () => {
+	it('moves task focus to where a tap put the caret, and only after it did', async () => {
 		notesStore.notes = [note({ body: '[ ] First task\n[ ] Last task' })];
 		const { container } = render(NoteEditor, {
 			props: { noteId: 'note-1', onClose: () => {} }
 		});
 		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
 		const tasks = container.querySelectorAll('[data-task-row] [data-line-text]');
+		const focusedTask = () =>
+			container.querySelector('[data-focus-group] [data-line-text]')?.textContent;
 		editor.focus();
-
-		dispatchTouchPointer(tasks[0], 'pointerdown', { clientY: 20 });
-		dispatchTouchPointer(tasks[0], 'pointerup', { clientY: 22 });
-		await tick();
-
-		expect(container.querySelector('[data-focus-group] [data-line-text]')?.textContent).toBe(
-			'First task'
-		);
+		setCaret(tasks[0], 2);
+		await fireEvent.click(tasks[0]);
+		expect(focusedTask()).toBe('First task');
 
 		dispatchTouchPointer(tasks[1], 'pointerdown', { clientY: 80 });
 		dispatchTouchPointer(tasks[1], 'pointerup', { clientY: 82 });
 		await tick();
+		// Reflowing the rows now would move the tap onto another row.
+		expect(focusedTask()).toBe('First task');
 
-		expect(container.querySelector('[data-focus-group] [data-line-text]')?.textContent).toBe(
-			'Last task'
-		);
+		// The browser places the caret; no click follows in a focused editing host.
+		setCaret(tasks[1], 2);
+		await vi.waitFor(() => expect(focusedTask()).toBe('Last task'));
 		expect(document.activeElement).toBe(editor);
 	});
 

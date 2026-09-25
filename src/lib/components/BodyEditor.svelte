@@ -49,19 +49,13 @@
 		body = $bindable(''),
 		oninput,
 		placeholder = '',
-		focusLine = null,
 		readOnly = false,
-		onFocusTask,
-		onExitTaskFocus,
 		transformPaste
 	}: {
 		body?: string;
 		oninput?: () => void;
 		placeholder?: string;
-		focusLine?: number | null;
 		readOnly?: boolean;
-		onFocusTask?: (line: number) => void;
-		onExitTaskFocus?: () => void;
 		transformPaste?: (text: string) => string | null;
 	} = $props();
 
@@ -153,8 +147,13 @@
 		});
 	});
 	let container: HTMLDivElement | null = $state(null);
+	/**
+	 * An empty task the editor opened (Enter, Add sub-task). It is not part of the
+	 * note until it has text, and goes away once the caret leaves it.
+	 */
 	let draftTaskId = $state<number | null>(null);
-	let ignoredFocusLine = $state<number | null>(null);
+	/** The task holding the caret while the editor has focus. Its group shows the focus chrome. */
+	let focusedTaskId = $state<number | null>(null);
 	let checklistPointerId: number | null = null;
 	let subtaskPointerId: number | null = null;
 	let composing = false;
@@ -499,7 +498,6 @@
 			return true;
 		}
 		if (focusNeighboringBlock(target, direction, column)) return true;
-		focusTask(target);
 		focusAt(target, direction < 0 ? lines[target].text.length : 0, lines[target].id);
 		return true;
 	}
@@ -515,7 +513,6 @@
 	function focusLineAt(index: number, offset: number) {
 		const line = lines[index];
 		if (!line) return;
-		focusTask(index);
 		focusAt(index, offset, line.id);
 	}
 
@@ -760,7 +757,9 @@
 		const line = editorRange()?.start.line;
 		const inBlock = line !== undefined && markdownBlockAt(line) !== null;
 		container.spellcheck = !inBlock;
-		if (document.activeElement === container) formatSettledTables();
+		if (document.activeElement !== container) return;
+		formatSettledTables();
+		followCaret();
 	}
 
 	let lastSerializedBody = body;
@@ -771,8 +770,13 @@
 	 */
 	// svelte-ignore state_referenced_locally
 	let loaded = { body, rows: serializeLines(lines) };
+	/** Every row but an empty draft task. */
+	function savedLines(): Line[] {
+		return lines.filter((line) => line.id !== draftTaskId || line.text.trim() !== '');
+	}
+
 	function serializedBody(): string {
-		const rows = serializeLines(lines.filter((line) => line.id !== draftTaskId));
+		const rows = serializeLines(savedLines());
 		return rows === loaded.rows ? loaded.body : rows;
 	}
 
@@ -830,7 +834,6 @@
 		try {
 			lines = parseBodyToLines(text);
 			draftTaskId = null;
-			ignoredFocusLine = null;
 			loaded = { body: text, rows: serializeLines(lines) };
 			lastSerializedBody = text;
 			body = text;
@@ -1010,9 +1013,7 @@
 	}
 
 	function historyEntry(range = editorRange()): HistoryEntry {
-		const snapshotBody = syncBodyTimer
-			? serializeLines(lines.filter((line) => line.id !== draftTaskId))
-			: lastSerializedBody;
+		const snapshotBody = syncBodyTimer ? serializeLines(savedLines()) : lastSerializedBody;
 		const fallbackLine = Math.max(0, lines.length - 1);
 		const fallbackOffset = lines[fallbackLine]?.text.length ?? 0;
 		return {
@@ -1036,12 +1037,10 @@
 		try {
 			lines = parseBodyToLines(entry.body);
 			draftTaskId = null;
-			ignoredFocusLine = null;
 			syncBody();
 			await tick();
 			const startLine = Math.min(entry.startLine, lines.length - 1);
 			const endLine = Math.min(entry.endLine, lines.length - 1);
-			focusTask(endLine);
 			selectAt(startLine, entry.startOffset, endLine, entry.endOffset);
 		} finally {
 			applyingEdit = false;
@@ -1152,9 +1151,11 @@
 		const selection = window.getSelection();
 		if (reversed) selection?.setBaseAndExtent(end.node, end.offset, start.node, start.offset);
 		else selection?.setBaseAndExtent(start.node, start.offset, end.node, end.offset);
+		const caretLine = Math.max(0, Math.min(reversed ? startLine : endLine, lines.length - 1));
+		const row = lineElement(caretLine);
+		followLine(caretLine);
 		const scroller = container.closest('.scrollable') as HTMLElement | null;
-		const row = lineElement(reversed ? startLine : endLine);
-		if (scroller && row) revealEditorField(scroller, row);
+		if (scroller && row?.isConnected) revealEditorField(scroller, row);
 	}
 
 	function focusAt(index: number, offset: number | null = 0, lineId: number | null = null) {
@@ -1189,19 +1190,27 @@
 		return index;
 	}
 
-	function focusTask(index: number) {
-		ignoredFocusLine = null;
+	/**
+	 * The caret is on `index`. Its task group takes the focus chrome, and an empty
+	 * draft it left behind goes away. Every caret placement ends here: the editor's
+	 * own through selectAt, the browser's through followCaret.
+	 */
+	function followLine(index: number) {
 		const line = lines[index];
-		if (!line?.isCheck) {
-			onExitTaskFocus?.();
-			return;
-		}
-		onFocusTask?.(index);
-	}
-
-	function dropTaskFocus() {
-		ignoredFocusLine = focusLine;
-		onExitTaskFocus?.();
+		// A read-only preview is never edited, so it never shows task chrome.
+		if (!line || !container || readOnly) return;
+		const leavesDraft = draftTaskId !== null && line.id !== draftTaskId;
+		const taskId = line.isCheck ? line.id : null;
+		if (!leavesDraft && taskId === focusedTaskId) return;
+		// Keep the caret's row still while chrome above it opens or closes.
+		const row = lineElement(index);
+		const anchorTop = row?.getBoundingClientRect().top;
+		if (leavesDraft) discardEmptyDraft();
+		focusedTaskId = taskId;
+		flushSync();
+		const scroller = container.closest('.scrollable') as HTMLElement | null;
+		if (scroller && row?.isConnected && anchorTop !== undefined)
+			scroller.scrollTop += row.getBoundingClientRect().top - anchorTop;
 	}
 
 	// WebKit settles whether a content-visibility chunk is on screen in the first
@@ -1226,8 +1235,7 @@
 			void firstPaint.then(focusDefault);
 			return;
 		}
-		const index = focusLine === null ? 0 : Math.max(0, Math.min(focusLine, lines.length - 1));
-		void focusAfterRender(index, lines[index]?.text.length ?? 0, lines[index]?.id ?? null);
+		void focusAfterRender(0, lines[0]?.text.length ?? 0, lines[0]?.id ?? null);
 	}
 
 	/** Replace the whole body from outside (e.g. a title paste seeding the body). */
@@ -1236,7 +1244,6 @@
 		try {
 			lines = parseBodyToLines(text);
 			draftTaskId = null;
-			ignoredFocusLine = null;
 			syncBody();
 			await tick();
 			const last = lines.length - 1;
@@ -1246,19 +1253,65 @@
 		}
 	}
 
+	// Resolved from the id on every edit, so an indent or outdent regroups it.
 	const focusedRootId = $derived.by(() => {
-		if (focusLine === null || focusLine === ignoredFocusLine) return null;
-		const index = Math.max(0, Math.min(focusLine, lines.length - 1));
+		if (focusedTaskId === null) return null;
+		const index = lines.findIndex((line) => line.id === focusedTaskId);
+		if (index < 0) return null;
 		const root = parentTaskIndex(index);
 		return lines[root]?.isCheck ? lines[root].id : null;
 	});
 
-	// A second tap inside an already-focused plaintext editor often never fires
-	// click, so the highlight would stay on the previously focused task.
-	const TAP_SLOP = 8;
-	let tapOrigin: { id: number; x: number; y: number } | null = null;
+	/**
+	 * Task focus follows the caret, and only once the browser has placed it. Moving
+	 * the focus chrome sooner reflows the rows under a finger that is still down:
+	 * the tap then lands on another row, or on the Add sub-task button that just
+	 * appeared, and the highlight and caret end up on different tasks.
+	 */
+	let pointerGesture: number | null = null;
+	let gestureSettleTimer: ReturnType<typeof setTimeout> | null = null;
+	/** Click usually ends a tap. A tap in an already-focused editing host may never send one. */
+	const GESTURE_SETTLE_MS = 250;
 
-	function lineIndexFromEvent(event: MouseEvent, allowSelection: boolean): number | null {
+	function beginPointerGesture(event: PointerEvent) {
+		if (event.pointerType === 'mouse' && event.button !== 0) return;
+		if (gestureSettleTimer) clearTimeout(gestureSettleTimer);
+		gestureSettleTimer = null;
+		pointerGesture = event.pointerId;
+	}
+
+	/** Watched on the window: a press can end outside the editor it started in. */
+	function releasePointerGesture(event: PointerEvent) {
+		if (event.pointerId !== pointerGesture) return;
+		if (event.type === 'pointercancel') {
+			settlePointerGesture();
+			return;
+		}
+		// A touch places its caret after release, so wait for the click.
+		if (gestureSettleTimer) clearTimeout(gestureSettleTimer);
+		gestureSettleTimer = setTimeout(settlePointerGesture, GESTURE_SETTLE_MS);
+	}
+
+	function settlePointerGesture() {
+		if (gestureSettleTimer) clearTimeout(gestureSettleTimer);
+		gestureSettleTimer = null;
+		pointerGesture = null;
+		followCaret();
+	}
+
+	onMount(() => () => {
+		if (gestureSettleTimer) clearTimeout(gestureSettleTimer);
+	});
+
+	function followCaret() {
+		if (!container || document.activeElement !== container) return;
+		if (composing || applyingEdit || pointerGesture !== null) return;
+		if (checklistPointerId !== null || subtaskPointerId !== null) return;
+		const range = editorRange();
+		if (range?.collapsed) followLine(range.start.line);
+	}
+
+	function lineIndexFromEvent(event: MouseEvent): number | null {
 		const direct = lineIndexOfElement(event.target instanceof Node ? event.target : null);
 		if (direct !== null) return direct;
 		// The hit can land on a chunk wrapper. Resolve the line from the tap point,
@@ -1268,11 +1321,11 @@
 			const index = lineIndexOfElement(fromPoint.startContainer);
 			if (index !== null) return index;
 		}
-		if (!allowSelection) return null;
 		return lineIndexOfElement(window.getSelection()?.focusNode ?? null);
 	}
 
-	function handFocus(event: MouseEvent, allowSelection: boolean) {
+	/** A click on block chrome rather than a row lands on the block's first editable row. */
+	function placeCaretInBlock(event: MouseEvent) {
 		// A touch can start on the checkbox and finish over the editable label. In
 		// that case Safari may retarget its synthetic click to the task row. Keep
 		// the whole gesture owned by the checkbox so it cannot open the keyboard.
@@ -1283,7 +1336,7 @@
 			)
 		)
 			return;
-		let index = lineIndexFromEvent(event, allowSelection);
+		const index = lineIndexFromEvent(event);
 		if (index === null) {
 			const shell = (event.target as Element | null)?.closest?.('[data-markdown-block-line]');
 			if (!shell || (event.target as Element | null)?.closest?.('button, [data-editor-line]')) {
@@ -1299,26 +1352,12 @@
 		const code = markdownBlockAt(index);
 		if (code?.type === 'code' && !isCodeFenceLine(code, index) && lines[index].text.length === 0) {
 			focusLineAt(index, 0);
-			return;
 		}
-		const row = lineElement(index);
-		const scroller = container?.closest('.scrollable') as HTMLElement | null;
-		const anchorTop = row?.getBoundingClientRect().top;
-		focusTask(index);
-		flushSync();
-		if (scroller && row && anchorTop !== undefined)
-			scroller.scrollTop += row.getBoundingClientRect().top - anchorTop;
-	}
-
-	function trackTap(event: PointerEvent) {
-		if (readOnly) return;
-		if (event.pointerType === 'mouse' && event.button !== 0) return;
-		tapOrigin = { id: event.pointerId, x: event.clientX, y: event.clientY };
 	}
 
 	function handleEditorClick(event: MouseEvent) {
-		if (readOnly) return;
-		handFocus(event, true);
+		placeCaretInBlock(event);
+		settlePointerGesture();
 	}
 
 	/**
@@ -1337,8 +1376,6 @@
 			line.checked = check.checked;
 			line.indent = Math.min(MAX_TASK_INDENT, check.indent);
 			line.text = check.text;
-			ignoredFocusLine = null;
-			onFocusTask?.(index);
 			return consumed;
 		}
 		if (line.isBullet || !BULLET_RE.test(line.text)) return 0;
@@ -1520,8 +1557,6 @@
 	}
 
 	function finishEdit(caret: EditorPoint) {
-		const targetRoot = parentTaskIndex(caret.line);
-		if (lines[targetRoot]?.id !== focusedRootId) focusTask(caret.line);
 		focusAt(caret.line, caret.offset, lines[caret.line]?.id ?? null);
 	}
 
@@ -1869,7 +1904,6 @@
 		if (!range) return;
 		rememberEdit(range);
 		const caret = replaceSelectedRange(range);
-		focusTask(caret.line);
 		focusAt(caret.line, caret.offset, lines[caret.line]?.id ?? null);
 	}
 
@@ -2027,8 +2061,6 @@
 	}
 
 	function finishPointer(event: PointerEvent) {
-		const origin = tapOrigin?.id === event.pointerId ? tapOrigin : null;
-		if (origin) tapOrigin = null;
 		if (event.pointerId === checklistPointerId) {
 			queueMicrotask(() => {
 				if (checklistPointerId === event.pointerId) checklistPointerId = null;
@@ -2039,15 +2071,9 @@
 				if (subtaskPointerId === event.pointerId) subtaskPointerId = null;
 			});
 		}
-		// Move the highlight before the browser places the caret, while the id of a
-		// checkbox or add-subtask gesture is still set and can veto it.
-		if (event.pointerType !== 'touch' || !origin) return;
-		if (Math.hypot(event.clientX - origin.x, event.clientY - origin.y) > TAP_SLOP) return;
-		handFocus(event, false);
 	}
 
 	function cancelPointer(event: PointerEvent) {
-		if (tapOrigin?.id === event.pointerId) tapOrigin = null;
 		if (event.pointerId === checklistPointerId) checklistPointerId = null;
 		if (event.pointerId === subtaskPointerId) subtaskPointerId = null;
 	}
@@ -2105,23 +2131,11 @@
 		applyingEdit = true;
 		try {
 			syncBody();
-			const focusLine = reversed ? startLine : endLine;
-			if (lines[focusLine]?.isCheck) focusTask(focusLine);
 			const restoreStart = !range.collapsed && startOffset === 0 ? 0 : startOffset + startDelta;
 			selectAt(startLine, restoreStart, endLine, endOffset + endDelta, reversed);
 		} finally {
 			applyingEdit = false;
 		}
-	}
-
-	function previousTaskIndex(index: number): number {
-		const indent = lines[index]?.isCheck ? lines[index].indent : 0;
-		for (let cursor = index - 1; cursor >= 0; cursor--) {
-			const candidate = lines[cursor];
-			if (!candidate.isCheck) continue;
-			if (indent > 0 ? candidate.indent <= indent : candidate.indent === 0) return cursor;
-		}
-		return Math.max(0, index - 1);
 	}
 
 	function handleEnter(range: EditorRange) {
@@ -2140,15 +2154,20 @@
 				const replacement = newLine();
 				lines.splice(index, 1, replacement);
 				if (line.id === draftTaskId) draftTaskId = null;
-				dropTaskFocus();
 				syncBody();
 				focusAt(index, 0, replacement.id);
 				return;
 			}
+			// Leaving a sub-list: the task moves below its later siblings, which keep their parent.
 			line.indent = 0;
+			let end = index + 1;
+			while (end < lines.length && lines[end].isCheck && lines[end].indent > 0) end++;
+			if (end > index + 1) {
+				lines.splice(index, 1);
+				lines.splice(end - 1, 0, line);
+			}
 			syncBody();
-			focusTask(index);
-			focusAt(index, 0, line.id);
+			focusAt(end - 1, 0, line.id);
 			return;
 		}
 		if (line.isBullet && line.text.trim() === '') {
@@ -2165,21 +2184,34 @@
 			return;
 		}
 
+		if (line.isCheck && offset === 0 && line.text.length > 0) {
+			// Enter before a task's text opens an empty task above it. The task keeps
+			// its text, its checkmark and its sub-tasks.
+			lines.splice(index, 0, newLine('', true, false, line.indent));
+			syncBody();
+			focusAt(index + 1, 0, line.id);
+			return;
+		}
+
 		const before = line.text.slice(0, offset);
 		const after = line.text.slice(offset);
 		line.text = before;
-		const splitIntoSubtask = line.isCheck && line.indent === 0 && after.length > 0;
+		// A parent's next task opens its sub-list, so its sub-tasks keep their parent.
+		const opensSubList =
+			line.isCheck &&
+			line.indent === 0 &&
+			!!lines[index + 1]?.isCheck &&
+			lines[index + 1].indent > 0;
 		const next = newLine(
 			after,
 			line.isCheck,
 			false,
-			splitIntoSubtask ? 1 : line.isCheck || line.isBullet ? line.indent : 0,
+			opensSubList ? 1 : line.isCheck || line.isBullet ? line.indent : 0,
 			line.isBullet
 		);
 		lines.splice(index + 1, 0, next);
 		if (line.isCheck && !after.trim()) draftTaskId = next.id;
 		syncBody();
-		if (next.isCheck) focusTask(index + 1);
 		focusAt(index + 1, 0, next.id);
 	}
 
@@ -2200,19 +2232,17 @@
 			const replacement = newLine();
 			lines.splice(0, 1, replacement);
 			if (line.id === draftTaskId) draftTaskId = null;
-			if (line.isCheck) dropTaskFocus();
 			syncBody();
 			focusAt(0, 0, replacement.id);
 			return true;
 		}
 		if (line.isCheck && line.text.trim() === '') {
-			const targetIndex = previousTaskIndex(index);
-			const target = lines[targetIndex];
+			// The caret lands on the row just above, as it would in any text.
+			const target = lines[index - 1];
 			lines.splice(index, 1);
 			if (line.id === draftTaskId) draftTaskId = null;
 			syncBody();
-			focusTask(targetIndex);
-			focusAt(targetIndex, target.text.length, target.id);
+			focusAt(index - 1, target.text.length, target.id);
 			return true;
 		}
 		if (line.isBullet && line.text.trim() === '') {
@@ -2232,7 +2262,6 @@
 		if (line.isCheck && line.indent > 0) {
 			line.indent = 0;
 			syncBody();
-			focusTask(index);
 			focusAt(index, 0, line.id);
 			return true;
 		}
@@ -2241,7 +2270,6 @@
 		previous.text += line.text;
 		lines.splice(index, 1);
 		syncBody();
-		focusTask(index - 1);
 		focusAt(index - 1, join, previous.id);
 		return true;
 	}
@@ -2348,8 +2376,6 @@
 		rememberEdit();
 		lines.splice(insertAt, 0, draft);
 		draftTaskId = draft.id;
-		ignoredFocusLine = null;
-		onFocusTask?.(insertAt);
 		focusAt(insertAt, 0, draft.id);
 	}
 
@@ -2365,14 +2391,30 @@
 		} catch {
 			// Best-effort on older Safari versions.
 		}
-		addSubtask(rootIndex);
+		if (onAddSubtaskLabel(event)) addSubtask(rootIndex);
+		else focusGroupEnd();
 	}
 
 	function handleAddSubtaskClick(event: MouseEvent, rootIndex: number) {
 		event.preventDefault();
 		event.stopPropagation();
 		if (subtaskPointerId !== null) return;
-		addSubtask(rootIndex);
+		// A keyboard press has no pointer position and always means the button.
+		if (event.detail === 0 || onAddSubtaskLabel(event)) addSubtask(rootIndex);
+		else focusGroupEnd();
+	}
+
+	/**
+	 * Only the label adds a sub-task. The rest of its line is the task group's own
+	 * space, where a stray tap must not leave an empty sub-task behind.
+	 */
+	function onAddSubtaskLabel(event: MouseEvent): boolean {
+		return event.target instanceof Element && !!event.target.closest('[data-add-subtask] > span');
+	}
+
+	function focusGroupEnd() {
+		const last = focusedGroupRows.at(-1);
+		if (last) focusAt(last.index, null, last.line.id);
 	}
 
 	function discardEmptyDraft() {
@@ -2393,7 +2435,7 @@
 		syncBody(true);
 		if (event.relatedTarget instanceof Node && container?.contains(event.relatedTarget)) return;
 		formatSettledTables(false);
-		dropTaskFocus();
+		focusedTaskId = null;
 	}
 
 	const focusedGroupRows = $derived.by(() => {
@@ -2661,6 +2703,7 @@
 {/snippet}
 
 <svelte:document onselectionchange={handleSelectionChange} />
+<svelte:window onpointerup={releasePointerGesture} onpointercancel={releasePointerGesture} />
 
 <div
 	bind:this={container}
@@ -2679,7 +2722,7 @@
 	oncut={readOnly ? undefined : handleCut}
 	onpaste={readOnly ? undefined : handlePaste}
 	onkeydown={readOnly ? undefined : handleKeydown}
-	onpointerdown={readOnly ? undefined : trackTap}
+	onpointerdown={readOnly ? undefined : beginPointerGesture}
 	onpointerup={readOnly ? undefined : finishPointer}
 	onpointercancel={readOnly ? undefined : cancelPointer}
 	onclick={readOnly ? undefined : handleEditorClick}

@@ -1881,7 +1881,7 @@ export const noteEditorStyles = {
 		variants: {
 			expanded: {
 				true: {},
-				false: { px: { base: 'sm', sm: 'md', md: 'lg' }, pb: 'var(--app-sheet-pad-bottom)' }
+				false: { px: { base: 'sm', sm: 'md', md: 'lg' }, pb: { base: 'sm', sm: 'md', md: 'lg' } }
 			}
 		},
 		defaultVariants: { expanded: false }
@@ -2192,6 +2192,14 @@ export const sidebarStyles = {
 	// The drawer is a transformed, clipped box; its dialogs belong to the app
 	// frame instead.
 	dialogPortal: css({ position: 'absolute', inset: 0, zIndex: 80 }),
+	// Three actions never fit the small dialog's row, and wrapping strands the
+	// last one under the others. Stack them instead, Cancel (the first) at the bottom.
+	stackedDialogActions: css({
+		flexDirection: 'column',
+		alignItems: 'stretch',
+		gap: 'xs',
+		'& > :first-child': { order: 1 }
+	}),
 	dialogPositioner: css({
 		position: 'absolute',
 		inset: 0,

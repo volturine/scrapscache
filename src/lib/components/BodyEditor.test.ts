@@ -62,6 +62,34 @@ function caretAt(container: HTMLElement, line: number, offset: number) {
 	throw new Error(`Offset ${offset} is outside editor line ${line}`);
 }
 
+/** Put the caret on a row as a person would; the task focus follows it. */
+function showTask(container: HTMLElement, line: number, offset = 0) {
+	(container.querySelector('[data-body-editor]') as HTMLElement).focus();
+	caretAt(container, line, offset);
+	document.dispatchEvent(new Event('selectionchange'));
+	flushSync();
+}
+
+/** The root task of the focused group, or null without one. */
+function focusedRoot(container: HTMLElement): string | null {
+	return container.querySelector('[data-focus-group] [data-line-text]')?.textContent ?? null;
+}
+
+/** jsdom has no PointerEvent; a MouseEvent carries the pointer fields the editor reads. */
+function touchPointer(
+	target: Element,
+	type: 'pointerdown' | 'pointerup' | 'pointercancel',
+	pointerId = 1
+): MouseEvent {
+	const event = new MouseEvent(type, { bubbles: true, cancelable: true });
+	Object.defineProperties(event, {
+		pointerType: { value: 'touch' },
+		pointerId: { value: pointerId }
+	});
+	target.dispatchEvent(event);
+	return event;
+}
+
 function selectedEditorText(): string {
 	return window.getSelection()?.toString() ?? '';
 }
@@ -125,10 +153,7 @@ describe('BodyEditor native editing', () => {
 	});
 
 	it('does not focus a task when a checkbox touch ends over its label', () => {
-		const onFocusTask = vi.fn();
-		const { container } = render(BodyEditor, {
-			props: { body: '[ ] Task', onFocusTask }
-		});
+		const { container } = render(BodyEditor, { props: { body: '[ ] Task' } });
 		const toggle = container.querySelector('[data-checklist-toggle]') as HTMLButtonElement;
 		const label = container.querySelector('[data-line-text]') as HTMLElement;
 		const pointer = (type: string, target: Element) => {
@@ -144,7 +169,6 @@ describe('BodyEditor native editing', () => {
 		pointer('pointerup', label);
 		label.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
 
-		expect(onFocusTask).not.toHaveBeenCalled();
 		expect(container.querySelector('[data-focus-group]')).toBeNull();
 	});
 
@@ -319,10 +343,10 @@ describe('BodyEditor native editing', () => {
 	});
 
 	it('keeps task focus when selected text is deleted from the focused task', async () => {
-		const onExitTaskFocus = vi.fn();
 		const { container } = render(BodyEditor, {
-			props: { body: '[ ] Focused task', focusLine: 0, onExitTaskFocus }
+			props: { body: '[ ] Focused task' }
 		});
+		showTask(container, 0);
 		await tick();
 		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
 		const task = container.querySelector('[data-line-text]') as HTMLElement;
@@ -340,20 +364,16 @@ describe('BodyEditor native editing', () => {
 		expect(container.querySelector('[data-focus-group]')).not.toBeNull();
 		expect(document.activeElement).toBe(editor);
 		expect(window.getSelection()?.anchorOffset).toBe(0);
-		expect(onExitTaskFocus).not.toHaveBeenCalled();
+		expect(focusedRoot(container)).toBe('task');
 	});
 
 	it('keeps task focus when selected text is deleted from a subtask and can undo the deletion', async () => {
-		const onExitTaskFocus = vi.fn();
-		const onFocusTask = vi.fn();
 		const { container } = render(BodyEditor, {
 			props: {
-				body: '[ ] Parent\n  [ ] Focused subtask',
-				focusLine: 0,
-				onFocusTask,
-				onExitTaskFocus
+				body: '[ ] Parent\n  [ ] Focused subtask'
 			}
 		});
+		showTask(container, 0);
 		await tick();
 		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
 		const subtask = container.querySelectorAll('[data-line-text]')[1];
@@ -371,8 +391,7 @@ describe('BodyEditor native editing', () => {
 		expect(lineTexts(container)).toEqual(['Parent', 'Focused task']);
 		expect(container.querySelector('[data-focus-group]')).not.toBeNull();
 		expect(document.activeElement).toBe(editor);
-		expect(onFocusTask).not.toHaveBeenCalled();
-		expect(onExitTaskFocus).not.toHaveBeenCalled();
+		expect(focusedRoot(container)).toBe('Parent');
 
 		await fireEvent.keyDown(editor, { key: 'z', ctrlKey: true });
 		await tick();
@@ -383,8 +402,9 @@ describe('BodyEditor native editing', () => {
 
 	it('removes a fully selected task row', async () => {
 		const { container } = render(BodyEditor, {
-			props: { body: '[ ] Remove task\n[ ] Keep task', focusLine: 0 }
+			props: { body: '[ ] Remove task\n[ ] Keep task' }
 		});
+		showTask(container, 0);
 		await tick();
 		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
 		const task = container.querySelector('[data-line-text]') as HTMLElement;
@@ -404,10 +424,10 @@ describe('BodyEditor native editing', () => {
 	});
 
 	it('turns an empty first-row task back into a plain line with Backspace', async () => {
-		const onExitTaskFocus = vi.fn();
 		const { container } = render(BodyEditor, {
-			props: { body: '[ ] \nAfter', focusLine: 0, onExitTaskFocus }
+			props: { body: '[ ] \nAfter' }
 		});
+		showTask(container, 0);
 		await tick();
 		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
 		const task = container.querySelector('[data-line-text]') as HTMLElement;
@@ -417,13 +437,14 @@ describe('BodyEditor native editing', () => {
 
 		expect(lineTexts(container)).toEqual(['', 'After']);
 		expect(container.querySelector('[data-editor-line="0"] [data-checklist-toggle]')).toBeNull();
-		expect(onExitTaskFocus).toHaveBeenCalledOnce();
+		expect(container.querySelector('[data-focus-group]')).toBeNull();
 	});
 
 	it('undoes and redoes a selected-text deletion while restoring the caret', async () => {
 		const { container } = render(BodyEditor, {
-			props: { body: '[ ] Focused task', focusLine: 0 }
+			props: { body: '[ ] Focused task' }
 		});
+		showTask(container, 0);
 		await tick();
 		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
 		const task = container.querySelector('[data-line-text]') as HTMLElement;
@@ -452,14 +473,12 @@ describe('BodyEditor native editing', () => {
 	});
 
 	it('cuts the selected task rows from the model', async () => {
-		const onExitTaskFocus = vi.fn();
 		const { container } = render(BodyEditor, {
 			props: {
-				body: '[ ] First task\n[ ] Second task\n[ ] Keep',
-				focusLine: 0,
-				onExitTaskFocus
+				body: '[ ] First task\n[ ] Second task\n[ ] Keep'
 			}
 		});
+		showTask(container, 0);
 		await tick();
 		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
 		const tasks = container.querySelectorAll('[data-line-text]');
@@ -475,14 +494,14 @@ describe('BodyEditor native editing', () => {
 		expect(setData).toHaveBeenCalledWith('text/plain', '[ ] First task\n[ ] Second task');
 		expect(lineTexts(container)).toEqual(['Keep']);
 		expect(container.querySelectorAll('[data-task-row]')).toHaveLength(1);
-		expect(container.querySelector('[data-focus-group]')).not.toBeNull();
-		expect(onExitTaskFocus).not.toHaveBeenCalled();
+		expect(focusedRoot(container)).toBe('Keep');
 	});
 
 	it('removes a fully selected single row instead of leaving a micro row', async () => {
 		const { container } = render(BodyEditor, {
-			props: { body: '[ ] Keep before\nplain row to remove\n[ ] Keep after', focusLine: 1 }
+			props: { body: '[ ] Keep before\nplain row to remove\n[ ] Keep after' }
 		});
+		showTask(container, 1);
 		await tick();
 		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
 		const row = container.querySelector('[data-editor-line="1"] [data-line-text]') as HTMLElement;
@@ -1114,8 +1133,9 @@ describe('BodyEditor markdown bullets', () => {
 describe('BodyEditor task focus chrome', () => {
 	it('keeps every line in the same native editing host when a task receives focus', async () => {
 		const { container } = render(BodyEditor, {
-			props: { body: '[ ] Parent\ncontext between tasks\n  [ ] Child', focusLine: 0 }
+			props: { body: '[ ] Parent\ncontext between tasks\n  [ ] Child' }
 		});
+		showTask(container, 0);
 		await tick();
 
 		expect(lineTexts(container)).toEqual(['Parent', 'context between tasks', 'Child']);
@@ -1123,10 +1143,7 @@ describe('BodyEditor task focus chrome', () => {
 	});
 
 	it('hands focus to the line under a chunk click once the caret is there', async () => {
-		const onFocusTask = vi.fn();
-		const { container } = render(BodyEditor, {
-			props: { body: '[ ] First\n[ ] Second', onFocusTask }
-		});
+		const { container } = render(BodyEditor, { props: { body: '[ ] First\n[ ] Second' } });
 		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
 		const second = container.querySelectorAll('[data-line-text]')[1];
 		editor.focus();
@@ -1134,13 +1151,14 @@ describe('BodyEditor task focus chrome', () => {
 
 		await fireEvent.click(container.querySelector('[data-editor-chunk]') as HTMLElement);
 
-		expect(onFocusTask).toHaveBeenCalledWith(1);
+		expect(focusedRoot(container)).toBe('Second');
 	});
 
 	it('shows Add sub-task on the focused root and drops it when focus leaves', async () => {
-		const { container, rerender } = render(BodyEditor, {
-			props: { body: '[ ] Avocados\n  [ ] tes\n[ ] Dark chocolate', focusLine: 0 }
+		const { container } = render(BodyEditor, {
+			props: { body: '[ ] Avocados\n  [ ] tes\n[ ] Dark chocolate' }
 		});
+		showTask(container, 0);
 		await tick();
 
 		expect(container.querySelector('[data-focus-group]')).not.toBeNull();
@@ -1155,12 +1173,10 @@ describe('BodyEditor task focus chrome', () => {
 			'scrapscache-note-body__row--last_true'
 		);
 
-		await fireEvent.pointerDown(
-			container.querySelector('[data-add-subtask]') as HTMLButtonElement,
-			{
-				pointerType: 'touch'
-			}
-		);
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		touchPointer(container.querySelector('[data-add-subtask] > span') as Element, 'pointerdown', 5);
+		touchPointer(editor, 'pointerup', 5);
+		await Promise.resolve();
 
 		expect(container.querySelectorAll('[data-task-row]')).toHaveLength(4);
 		expect(container.querySelector('[data-editor-line="0"]')?.className).not.toContain(
@@ -1185,7 +1201,7 @@ describe('BodyEditor task focus chrome', () => {
 		await tick();
 		expect(draft.textContent).toBe('a');
 
-		await rerender({ body: '[ ] Avocados\n  [ ] tes\n[ ] Dark chocolate', focusLine: null });
+		editor.blur();
 		await tick();
 
 		expect(container.querySelector('[data-focus-group]')).toBeNull();
@@ -1194,8 +1210,9 @@ describe('BodyEditor task focus chrome', () => {
 
 	it('aligns Add sub-task with subtask indentation and avoids double indenting under existing subtasks', async () => {
 		const { container: c1 } = render(BodyEditor, {
-			props: { body: '[ ] Avocados\n[ ] Dark chocolate', focusLine: 0 }
+			props: { body: '[ ] Avocados\n[ ] Dark chocolate' }
 		});
+		showTask(c1, 0);
 		await tick();
 
 		const buttonNoSub = c1.querySelector('[data-add-subtask]') as HTMLButtonElement;
@@ -1205,8 +1222,9 @@ describe('BodyEditor task focus chrome', () => {
 		expect(buttonNoSub.querySelector('[class*="addSubtask"]')).toBeNull();
 
 		const { container: c2 } = render(BodyEditor, {
-			props: { body: '[ ] Avocados\n  [ ] Hass\n[ ] Dark chocolate', focusLine: 0 }
+			props: { body: '[ ] Avocados\n  [ ] Hass\n[ ] Dark chocolate' }
 		});
+		showTask(c2, 0);
 		await tick();
 
 		const buttonWithSub = c2.querySelector('[data-add-subtask]') as HTMLButtonElement;
@@ -1218,16 +1236,19 @@ describe('BodyEditor task focus chrome', () => {
 	});
 
 	it('preserves the subtask draft across mobile pointerdown and blur cycles', async () => {
-		const onFocusTask = vi.fn();
 		const { container } = render(BodyEditor, {
-			props: { body: '[ ] Avocados\n  [ ] Hass\n[ ] Dark chocolate', focusLine: 0, onFocusTask }
+			props: { body: '[ ] Avocados\n  [ ] Hass\n[ ] Dark chocolate' }
 		});
+		showTask(container, 0);
 		await tick();
 
 		const addBtn = container.querySelector('[data-add-subtask]') as HTMLButtonElement;
 		expect(addBtn).not.toBeNull();
 
-		await fireEvent.pointerDown(addBtn, { pointerId: 42, pointerType: 'touch' });
+		await fireEvent.pointerDown(addBtn.firstElementChild as Element, {
+			pointerId: 42,
+			pointerType: 'touch'
+		});
 		expect(container.querySelectorAll('[data-task-row]')).toHaveLength(4);
 
 		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
@@ -1238,15 +1259,115 @@ describe('BodyEditor task focus chrome', () => {
 		await fireEvent.pointerUp(editor, { pointerId: 42, pointerType: 'touch' });
 	});
 
-	it('ignores editor click when target is the add subtask button', async () => {
-		const onFocusTask = vi.fn();
+	it('adds a sub-task only from its label, and a tap beside it returns to the group', async () => {
 		const { container } = render(BodyEditor, {
-			props: { body: '[ ] Avocados\n  [ ] Hass\n[ ] Dark chocolate', focusLine: 0, onFocusTask }
+			props: { body: '[ ] Avocados\n  [ ] Hass\n[ ] Dark chocolate' }
 		});
+		showTask(container, 0);
+		await tick();
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		editor.focus();
+		caretAt(container, 0, 2);
+
+		const beside = touchPointer(
+			container.querySelector('[data-add-subtask]') as Element,
+			'pointerdown'
+		);
+		expect(beside.defaultPrevented).toBe(true);
+		expect(container.querySelectorAll('[data-task-row]')).toHaveLength(3);
+		expect(selectionLine()).toBe(1);
+		expect(window.getSelection()?.focusOffset).toBe('Hass'.length);
+		touchPointer(editor, 'pointerup');
+		await Promise.resolve();
+
+		touchPointer(container.querySelector('[data-add-subtask] > span') as Element, 'pointerdown');
+		expect(container.querySelectorAll('[data-task-row]')).toHaveLength(4);
+		expect(selectionLine()).toBe(2);
+	});
+
+	it('drops an empty sub-task once the caret leaves it', async () => {
+		const { container } = render(BodyEditor, {
+			props: { body: '[ ] Avocados\n[ ] Dark chocolate' }
+		});
+		showTask(container, 0);
+		await tick();
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		editor.focus();
+		touchPointer(container.querySelector('[data-add-subtask] > span') as Element, 'pointerdown', 9);
+		touchPointer(editor, 'pointerup', 9);
+		await Promise.resolve();
+		expect(lineTexts(container)).toEqual(['Avocados', '', 'Dark chocolate']);
+
+		caretAt(container, 2, 3);
+		document.dispatchEvent(new Event('selectionchange'));
+		await tick();
+
+		expect(lineTexts(container)).toEqual(['Avocados', 'Dark chocolate']);
+		expect(selectionLine()).toBe(1);
+	});
+
+	it('moves task focus with the caret, never while a tap is still being placed', async () => {
+		const { container } = render(BodyEditor, {
+			props: { body: '[ ] First\n[ ] Second\nPlain' }
+		});
+		showTask(container, 0);
+		await tick();
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const second = container.querySelector('[data-editor-line="1"] [data-line-text]') as Element;
+		editor.focus();
+		caretAt(container, 0, 2);
+
+		touchPointer(second, 'pointerdown', 3);
+		touchPointer(second, 'pointerup', 3);
+		// The page may focus the host first; the rows must not move under the finger.
+		caretAt(container, 0, 0);
+		document.dispatchEvent(new Event('selectionchange'));
+		expect(focusedRoot(container)).toBe('First');
+
+		// The browser places the caret, then clicks.
+		caretAt(container, 1, 3);
+		await fireEvent.click(second);
+		expect(focusedRoot(container)).toBe('Second');
+
+		// A caret moved from the keyboard carries the focus as well.
+		const { container: plain } = render(BodyEditor, {
+			props: { body: '[ ] First\nPlain' }
+		});
+		showTask(plain, 0);
+		await tick();
+		(plain.querySelector('[data-body-editor]') as HTMLElement).focus();
+		caretAt(plain, 1, 2);
+		document.dispatchEvent(new Event('selectionchange'));
+		expect(focusedRoot(plain)).toBeNull();
+	});
+
+	it('settles task focus after a press that never clicks, wherever it is released', async () => {
+		const { container } = render(BodyEditor, {
+			props: { body: '[ ] First\n[ ] Second' }
+		});
+		showTask(container, 0);
+		await tick();
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const second = container.querySelector('[data-editor-line="1"] [data-line-text]') as Element;
+		editor.focus();
+
+		touchPointer(second, 'pointerdown', 4);
+		touchPointer(document.body, 'pointerup', 4);
+		caretAt(container, 1, 1);
+		document.dispatchEvent(new Event('selectionchange'));
+		expect(focusedRoot(container)).toBe('First');
+
+		await vi.waitFor(() => expect(focusedRoot(container)).toBe('Second'));
+	});
+
+	it('ignores editor click when target is the add subtask button', async () => {
+		const { container } = render(BodyEditor, {
+			props: { body: '[ ] Avocados\n  [ ] Hass\n[ ] Dark chocolate' }
+		});
+		showTask(container, 0);
 		await tick();
 
 		const addBtn = container.querySelector('[data-add-subtask]') as HTMLButtonElement;
-		onFocusTask.mockClear();
 
 		// Clicking the button directly should not trigger container's handleEditorClick row refocus
 		await fireEvent.click(addBtn);
@@ -1594,10 +1715,10 @@ describe('BodyEditor controlled input', () => {
 				},
 				set body(next: string) {
 					body = next;
-				},
-				focusLine: 0
+				}
 			}
 		});
+		showTask(container, 0);
 		await tick();
 		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
 		await fireEvent.click(container.querySelector('[data-add-subtask]') as HTMLElement);
@@ -2313,5 +2434,124 @@ describe('BodyEditor markdown block stability', () => {
 				before.get(row.getAttribute('data-line-id')) !== row
 		);
 		expect(rebuilt).toHaveLength(0);
+	});
+});
+
+describe('BodyEditor task lists', () => {
+	it('never shows task chrome in a read-only preview', async () => {
+		const { container } = render(BodyEditor, { props: { body: '[ ] Oat milk', readOnly: true } });
+		showTask(container, 0, 2);
+		await tick();
+
+		expect(container.querySelector('[data-focus-group]')).toBeNull();
+		expect(container.querySelector('[data-add-subtask]')).toBeNull();
+	});
+
+	function taskList(initial: string) {
+		let body = initial;
+		const { container, component } = render(BodyEditor, {
+			props: {
+				get body() {
+					return body;
+				},
+				set body(next: string) {
+					body = next;
+				}
+			}
+		});
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const saved = () => {
+			component.syncBodyNow();
+			return body;
+		};
+		const press = async (key: string, init: KeyboardEventInit = {}) => {
+			await fireEvent.keyDown(editor, { key, ...init });
+			await tick();
+		};
+		return { container, editor, saved, press };
+	}
+
+	it('opens an empty task above when Enter is pressed before a task', async () => {
+		const list = taskList('[x] Done\n  [ ] Part\n[ ] Next');
+		showTask(list.container, 0, 0);
+		await list.press('Enter');
+
+		expect(list.saved()).toBe('[ ] \n[x] Done\n  [ ] Part\n[ ] Next');
+		expect(selectionLine()).toBe(1);
+		expect(focusedRoot(list.container)).toBe('Done');
+	});
+
+	it("opens a parent's sub-list with Enter, so its sub-tasks keep their parent", async () => {
+		const list = taskList('[ ] Oat milk\n  [ ] Oatly\n[ ] Bread');
+		showTask(list.container, 0, 'Oat milk'.length);
+		await list.press('Enter');
+		await typeText(list.editor, 'Alpro');
+
+		expect(list.saved()).toBe('[ ] Oat milk\n  [ ] Alpro\n  [ ] Oatly\n[ ] Bread');
+		expect(focusedRoot(list.container)).toBe('Oat milk');
+	});
+
+	it('splits a task without sub-tasks into two tasks', async () => {
+		const list = taskList('[ ] Oat milk\n[ ] Bread');
+		showTask(list.container, 0, 'Oat'.length);
+		await list.press('Enter');
+
+		expect(list.saved()).toBe('[ ] Oat\n[ ]  milk\n[ ] Bread');
+		expect(focusedRoot(list.container)).toBe(' milk');
+	});
+
+	it('leaves a sub-list below its remaining sub-tasks when Enter is pressed on an empty one', async () => {
+		const list = taskList('[ ] Oat milk\n  [ ] Oatly\n  [ ] Alpro\n[ ] Bread');
+		showTask(list.container, 1, 'Oatly'.length);
+		await list.press('Enter');
+		await list.press('Enter');
+		await typeText(list.editor, 'Rice');
+
+		expect(list.saved()).toBe('[ ] Oat milk\n  [ ] Oatly\n  [ ] Alpro\n[ ] Rice\n[ ] Bread');
+		expect(focusedRoot(list.container)).toBe('Rice');
+	});
+
+	it('puts the caret on the row just above when an empty task is removed', async () => {
+		const list = taskList('[ ] Oat milk\n  [ ] Oatly\n[ ] ');
+		showTask(list.container, 2, 0);
+		await list.press('Backspace');
+
+		expect(list.saved()).toBe('[ ] Oat milk\n  [ ] Oatly');
+		expect(selectionLine()).toBe(1);
+		expect(focusedRoot(list.container)).toBe('Oat milk');
+	});
+
+	it('moves the focus chrome with the caret in the same step as an edit', async () => {
+		const list = taskList('[ ] Oat milk\n[ ] Bread');
+		showTask(list.container, 1, 'Bread'.length);
+		await list.press('Tab');
+		// No selectionchange has run yet: the edit itself regrouped the task.
+		expect(focusedRoot(list.container)).toBe('Oat milk');
+
+		await list.press('Tab', { shiftKey: true });
+		expect(focusedRoot(list.container)).toBe('Bread');
+	});
+
+	it('saves text pasted into an empty draft task', async () => {
+		const list = taskList('[ ] Parent\n[ ] Next');
+		showTask(list.container, 0, 'Parent'.length);
+		await list.press('Enter');
+		const paste = new Event('paste', { bubbles: true, cancelable: true });
+		Object.defineProperty(paste, 'clipboardData', {
+			value: { getData: () => 'Pasted' }
+		});
+		list.editor.dispatchEvent(paste);
+		await tick();
+
+		expect(list.saved()).toBe('[ ] Parent\n[ ] Pasted\n[ ] Next');
+	});
+
+	it('never saves an empty draft task', async () => {
+		const list = taskList('[ ] Parent');
+		showTask(list.container, 0, 'Parent'.length);
+		await list.press('Enter');
+
+		expect(lineTexts(list.container)).toEqual(['Parent', '']);
+		expect(list.saved()).toBe('[ ] Parent');
 	});
 });

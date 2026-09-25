@@ -516,7 +516,7 @@
 							No notes currently use this label.
 						{/if}
 					</Dialog.Description>
-					<div class={d.footer}>
+					<div class={cx(d.footer, taggedCount > 0 && sidebarStyles.stackedDialogActions)}>
 						<button
 							type="button"
 							class={button({ variant: 'ghost', size: 'sm' })}

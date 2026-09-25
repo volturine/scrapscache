@@ -12,11 +12,12 @@
 	--app-topbar-height: 3.5rem;
 	--app-fab-bottom: 2rem;
 	--app-fab-size: 3.5rem;
-	--app-sheet-pad-bottom: calc(var(--app-fab-bottom) + var(--app-fab-size) + 0.5rem);
 	--note-card-width: 18rem;
 }
 
-html.editor-expanded .new-note-fab {
+/* An open note owns the screen; the new-note button would only crowd it and,
+ * on a phone, sit between the note and the keyboard. */
+html.editor-open .new-note-fab {
 	visibility: hidden;
 	pointer-events: none;
 }
@@ -36,16 +37,6 @@ html.editor-open .app-float {
 html.editor-expanded,
 html.editor-expanded body {
 	background-color: var(--editor-page-bg) !important;
-}
-
-@media (max-width: 767px) {
-	html.keyboard-open {
-		--app-sheet-pad-bottom: 0.5rem;
-	}
-	html.keyboard-open .new-note-fab {
-		visibility: hidden;
-		pointer-events: none;
-	}
 }
 
 /* Outside the note editor a drag must act on gestures (swipes, context

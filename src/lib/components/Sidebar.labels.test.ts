@@ -270,6 +270,42 @@ describe('Sidebar labels section', () => {
 		expect(removeLabel).toHaveBeenCalledWith('work', { deleteNotes: false });
 	});
 
+	it('stacks the delete actions, Cancel last, when a third one is offered', async () => {
+		const { section } = setup([label('Work')]);
+		notesStore.notes = [
+			{
+				id: 'n1',
+				title: '',
+				body: 'Tagged',
+				color: 'default',
+				pinned: false,
+				archived: false,
+				trashed: false,
+				trashedAt: null,
+				createdAt: 1,
+				updatedAt: 1,
+				reminder: null,
+				labels: ['work']
+			}
+		];
+		await fireEvent.contextMenu(section.querySelector('button[aria-label="Work"]') as Element);
+		await tick();
+		await fireEvent.click(section.querySelector('button[aria-label="Delete Work"]') as Element);
+		await tick();
+
+		const actions = [...document.querySelectorAll('[role="dialog"] button')].filter((button) =>
+			/Cancel|Delete label/.test(button.textContent ?? '')
+		);
+		expect(actions.map((button) => button.textContent?.trim())).toEqual([
+			'Cancel',
+			'Delete label only',
+			'Delete label and notes'
+		]);
+		const footer = actions[0].parentElement as HTMLElement;
+		expect(footer.className).toMatch(/flex-d_column/);
+		expect(footer.firstElementChild).toBe(actions[0]);
+	});
+
 	it('dismisses haze overlay on Escape key or outside click', async () => {
 		const { section } = setup([label('Work')]);
 		const workBtn = section.querySelector('button[aria-label="Work"]') as HTMLButtonElement;

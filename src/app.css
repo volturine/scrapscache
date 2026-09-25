@@ -28,7 +28,8 @@ html.editor-open .new-note-fab {
 html.editor-expanded .app-canvas {
 	position: static;
 }
-html.editor-expanded .app-float {
+/* Keep the editor above positioned feed content, including the reminders calendar. */
+html.editor-open .app-float {
 	z-index: 25;
 }
 /* Safe areas sit outside .app-viewport; match them to the full-page note.

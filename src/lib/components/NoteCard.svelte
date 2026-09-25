@@ -445,15 +445,18 @@
 			</div>
 		{/if}
 
+		<!-- A long preview scrolls inside its card, then hands the swipe to the
+		     gallery. Overscroll containment here stopped Android from ever scrolling
+		     the gallery from a card. -->
 		<div
 			class={cx(
 				'note-scrollbar-hidden',
-				!note.secret && 'scrollable',
 				css({
 					minH: 0,
 					flex: '1',
 					overflowX: 'hidden',
-					overflowY: note.secret ? 'hidden' : 'auto'
+					overflowY: note.secret ? 'hidden' : 'auto',
+					touchAction: 'pan-y'
 				}),
 				note.secret && css({ display: 'flex', flexDirection: 'column' })
 			)}

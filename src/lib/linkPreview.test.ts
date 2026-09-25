@@ -35,49 +35,27 @@ describe('normalizePreviewUrl', () => {
 
 describe('localLinkCard', () => {
 	it('derives a useful card without fetching remote metadata', () => {
-		expect(localLinkCard('https://www.github.com/org/repo?tab=readme#top')).toEqual({
-			url: 'https://www.github.com/org/repo?tab=readme',
+		expect(localLinkCard('https://www.github.com/org/my-project?tab=readme#top')).toEqual({
+			url: 'https://www.github.com/org/my-project?tab=readme',
 			hostname: 'github.com',
-			title: 'org/repo',
-			address: 'github.com/org/repo?tab=readme',
-			badge: 'G',
-			tone: expect.any(String)
+			title: 'My project',
+			address: 'github.com/org/my-project?tab=readme'
 		});
 	});
 
 	it.each([
-		['https://github.com/sveltejs/kit/pull/12345', 'sveltejs/kit · PR #12345'],
-		['https://github.com/sveltejs/kit/issues/7', 'sveltejs/kit · Issue #7'],
-		['https://www.youtube.com/watch?v=dQw4w9WgXcQ', 'YouTube video'],
-		['https://youtu.be/dQw4w9WgXcQ', 'YouTube video'],
-		['https://www.youtube.com/@veritasium', '@veritasium'],
-		['https://en.wikipedia.org/wiki/Black_swan_theory', 'Black swan theory'],
-		['https://de.wikipedia.org/wiki/K%C3%B6ln', 'Köln'],
-		['https://en.wikipedia.org/wiki/a', 'a'],
-		['https://evil-wikipedia.org/wiki/a', 'Wiki'],
-		['https://evilwikipedia.org/wiki/a', 'Wiki'],
-		[
-			'https://www.reddit.com/r/sveltejs/comments/abc123/runes_are_great/',
-			'Runes are great · r/sveltejs'
-		],
-		['https://x.com/sveltejs/status/1234567890', 'Post by @sveltejs'],
 		[
 			'https://blog.example.com/posts/how-to-build-offline-first-apps',
 			'How to build offline first apps'
 		],
+		['https://en.wikipedia.org/wiki/Black_swan_theory', 'Black swan theory'],
+		['https://de.wikipedia.org/wiki/K%C3%B6ln', 'Köln'],
 		['https://example.com/docs/getting_started.html', 'Getting started'],
+		['https://example.com/guide/quick-start', 'Quick start'],
 		['https://example.com/p/9f86d081884c7d659a2f', 'example.com'],
 		['https://example.com/', 'example.com'],
 		['https://example.com/12345', 'example.com']
-	])('reads a title for %s from the URL alone', (url, title) => {
+	])('reads a generic title for %s from URL slugs alone', (url, title) => {
 		expect(localLinkCard(url)?.title).toBe(title);
-	});
-
-	it('names and tints a site by its registrable domain', () => {
-		const blog = localLinkCard('https://blog.example.com/a');
-		const root = localLinkCard('https://example.com/b');
-		expect(blog?.badge).toBe('E');
-		expect(blog?.tone).toBe(root?.tone);
-		expect(localLinkCard('https://www.bbc.co.uk/news')?.badge).toBe('B');
 	});
 });

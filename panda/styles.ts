@@ -740,21 +740,13 @@ export const filePreview = {
 	}
 };
 
-// Link badges take their fill from a separate class (a neutral tile behind a
-// brand glyph, or the noteSurface tint behind a monogram), so no bg here.
 const linkBadgeBase = {
-	...gridCenter,
-	flexShrink: 0,
-	borderWidth: 'hairline',
-	borderColor: 'scrapscache.borderSubtle',
-	color: 'scrapscache.text',
-	fontWeight: 'strong'
+	...filePreviewBase.badge
 } as const;
 export const linkBadge = {
-	editor: css({ ...linkBadgeBase, ...filePreviewEditor.badge, fontSize: 'label' }),
-	display: css({ ...linkBadgeBase, ...filePreviewDisplay.badge, fontSize: 'micro' }),
-	brand: css({ bg: 'scrapscache.bg' }),
-	glyph: css({ ...square('55%'), fill: 'currentColor' })
+	editor: css({ ...linkBadgeBase, ...filePreviewEditor.badge }),
+	display: css({ ...linkBadgeBase, ...filePreviewDisplay.badge }),
+	glyph: css({ stroke: 'currentColor', opacity: 0.85 })
 };
 
 const photoPreviewBase = {

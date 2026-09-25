@@ -92,7 +92,6 @@
 		"qrcode": "^1.5.4",
 		"react": "^19.3.0",
 		"react-dom": "^19.3.0",
-		"simple-icons": "^16.32.0",
 		"string-width": "^7.2.0",
 		"yjs": "^13.6.33"
 	},

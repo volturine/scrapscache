@@ -261,9 +261,9 @@
 		if (!dialog || !field || dialog.clientHeight === 0) return Infinity;
 		const lineHeight = parseFloat(getComputedStyle(field).lineHeight);
 		if (!(lineHeight > 0)) return Infinity;
-		const chrome = dialog.querySelectorAll<HTMLElement>(
-			':scope > header, :scope > footer, :scope > [data-preview-dock]'
-		);
+		// The preview dock is not chrome: collapsed it has no height, and a photo-only
+		// note's photos fill the very area being measured.
+		const chrome = dialog.querySelectorAll<HTMLElement>(':scope > header, :scope > footer');
 		let space = dialog.clientHeight;
 		for (const el of chrome) space -= el.offsetHeight;
 		return space / lineHeight;

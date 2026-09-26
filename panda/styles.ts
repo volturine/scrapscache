@@ -1928,6 +1928,10 @@ export const noteEditorStyles = {
 	// Holds the preview card and its toggle. Collapsed it has no height, so the
 	// toggle sits on the footer hairline; expanded it sits at height 0 so the
 	// card draws over the note body instead of expanding or reflowing the note.
+	// Sits over the note, above the footer it opens from.
+	shareMenuPositioner: css({ zIndex: 30 }),
+	// The panel takes focus on open; its items show the highlight, not the panel.
+	shareMenu: css({ minW: '11rem', overflow: 'hidden', py: '2xs', outline: 'none' }),
 	previewDock: css({ position: 'relative', flexShrink: 0, h: 0 }),
 	previewDockFill: css({ position: 'relative', ...column, ...flexPane }),
 	// A card rising out of the footer: open at the bottom so it reads as one

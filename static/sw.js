@@ -285,7 +285,7 @@ self.addEventListener('notificationclick', (event) => {
 	event.notification.close();
 	const noteId = event.notification.data && event.notification.data.noteId;
 	const path =
-		typeof noteId === 'string' && noteId ? '/?note=' + encodeURIComponent(noteId) : '/reminders';
+		typeof noteId === 'string' && noteId ? '/#note=' + encodeURIComponent(noteId) : '/reminders';
 	event.waitUntil(
 		self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
 			for (const client of clients) {

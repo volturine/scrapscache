@@ -6,6 +6,8 @@ import { notesStore } from '$lib/stores/notes.svelte';
 import { uiStore } from '$lib/stores/ui.svelte';
 import { formatReminder } from '$lib/utils';
 import NoteEditor from './NoteEditor.svelte';
+import { syncStore } from '$lib/stores/sync.svelte';
+import { readNoteLink, workspaceLinkTag } from '$lib/noteLinks';
 
 function note(partial: Partial<Note> = {}): Note {
 	return {
@@ -671,10 +673,64 @@ describe('NoteEditor task focus', () => {
 		expect(getByRole('button', { name: 'New canvas' })).toBeTruthy();
 		expect(getByRole('button', { name: 'Labels' })).toBeTruthy();
 		expect(getByRole('button', { name: 'Color' })).toBeTruthy();
-		expect(getByRole('button', { name: 'Copy note' })).toBeTruthy();
+		expect(getByRole('button', { name: 'Share' })).toBeTruthy();
 		expect(getByRole('button', { name: 'Archive' })).toBeTruthy();
 		expect(getByRole('button', { name: 'Delete note' })).toBeTruthy();
 		const footer = container.querySelector('footer');
 		expect(footer).toBeTruthy();
+	});
+});
+
+describe('NoteEditor share menu', () => {
+	const workspace = { id: 'ws-1', name: 'Home', syncKey: 'A'.repeat(43), createdAt: 1 };
+
+	afterEach(() => {
+		delete (navigator as { share?: unknown }).share;
+	});
+
+	/** Ark selects a menu item from a press followed by a click. */
+	async function choose(item: Element) {
+		await fireEvent.pointerDown(item, { pointerType: 'mouse' });
+		await fireEvent.click(item);
+	}
+
+	async function openShareMenu() {
+		vi.spyOn(syncStore, 'activeProfile', 'get').mockReturnValue(workspace);
+		notesStore.notes = [note()];
+		const view = render(NoteEditor, { props: { noteId: 'note-1', onClose: () => {} } });
+		await fireEvent.click(view.getByRole('button', { name: 'Share' }));
+		await tick();
+		return view;
+	}
+
+	it('shares a link to the note through the system share sheet', async () => {
+		const share = vi.fn().mockResolvedValue(undefined);
+		Object.defineProperty(navigator, 'share', { configurable: true, value: share });
+		const { findByRole } = await openShareMenu();
+
+		await choose(await findByRole('menuitem', { name: 'Share note' }));
+
+		await vi.waitFor(() => expect(share).toHaveBeenCalledOnce());
+		const link = new URL(share.mock.calls[0][0].url);
+		expect(share.mock.calls[0][0].title).toBe('Groceries');
+		expect(readNoteLink(link)).toEqual({
+			noteId: 'note-1',
+			workspaceTag: workspaceLinkTag(workspace)
+		});
+	});
+
+	it('copies the link where there is no share sheet, and still copies the note text', async () => {
+		const writeText = vi.fn().mockResolvedValue(undefined);
+		Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+		const { findByRole, getByRole } = await openShareMenu();
+
+		await choose(await findByRole('menuitem', { name: 'Copy link' }));
+		await vi.waitFor(() => expect(writeText).toHaveBeenCalledOnce());
+		expect(readNoteLink(new URL(writeText.mock.calls[0][0]))?.noteId).toBe('note-1');
+
+		await fireEvent.click(getByRole('button', { name: 'Share' }));
+		await choose(await findByRole('menuitem', { name: 'Copy note' }));
+		await vi.waitFor(() => expect(writeText).toHaveBeenCalledTimes(2));
+		expect(writeText.mock.calls[1][0]).toContain('Oat milk');
 	});
 });

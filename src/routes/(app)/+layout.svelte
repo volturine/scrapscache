@@ -24,6 +24,7 @@
 	import { replaceState } from '$app/navigation';
 	import { page } from '$app/state';
 	import { profileCoordinator } from '$lib/stores/profiles.svelte';
+	import type { StoredProfile } from '$lib/profiles';
 	import NoteLinkNotice from '$lib/components/NoteLinkNotice.svelte';
 	import type { Snippet } from 'svelte';
 
@@ -32,7 +33,7 @@
 	const mobile = new MediaQuery('max-width: 767px');
 	let editingId = $state<string | null>(null);
 	let autoFocusBody = $state(false);
-	let closeOpenNote: (() => void) | null = null;
+	let closeOpenNote: (() => Promise<void>) | null = null;
 
 	function applyEditorOpen(open: boolean) {
 		document.documentElement.classList.toggle('editor-open', open);
@@ -50,17 +51,19 @@
 
 	// The address names the open note and its workspace, so copying it shares
 	// the note and reloading reopens it. Replaced, not pushed: opening a note
-	// adds no history entry.
+	// adds no history entry, and replaceState fires no hashchange.
 	$effect(() => {
 		if (!addressFollowsNote) return;
 		const noteId = editingId;
 		const workspace = syncStore.activeProfile;
-		untrack(() => {
-			const url = new URL(window.location.href);
-			const next = withNoteLink(url, noteId && workspace ? { profile: workspace, noteId } : null);
-			if (next !== `${url.pathname}${url.search}${url.hash}`) replaceState(next, page.state);
-		});
+		untrack(() => showNoteInAddress(noteId, workspace));
 	});
+
+	function showNoteInAddress(noteId: string | null, workspace: StoredProfile | null) {
+		const url = new URL(window.location.href);
+		const next = withNoteLink(url, noteId && workspace ? { profile: workspace, noteId } : null);
+		if (next !== `${url.pathname}${url.search}${url.hash}`) replaceState(next, page.state);
+	}
 
 	/**
 	 * Open the note a link points at, in the workspace the link names. Runs once
@@ -77,7 +80,9 @@
 
 	async function followNoteLink() {
 		const link = readNoteLink(new URL(window.location.href));
-		if (!link) return;
+		if (!link || link.noteId === editingId) return;
+		// A link pasted into an open tab lands while another note may be open: save it first.
+		if (editingId !== null) await closeOpenNote?.();
 		if (link.workspaceTag) {
 			const workspace = profileForWorkspaceTag(syncStore.profiles, link.workspaceTag);
 			if (!workspace) {
@@ -111,6 +116,14 @@
 			if (syncStore.isLoggedIn) await notesStore.syncWithCloud();
 			await openNoteFromLink();
 		});
+		// Pasting a link into this tab only changes the fragment; nothing reloads.
+		const onHashChange = async () => {
+			if (!addressFollowsNote) return;
+			await followNoteLink();
+			// A link that could not open leaves the address as the open note has it.
+			showNoteInAddress(editingId, syncStore.activeProfile);
+		};
+		window.addEventListener('hashchange', onHashChange);
 		const onForeground = () => {
 			if (document.visibilityState === 'hidden') return;
 			if (syncStore.isLoggedIn) void notesStore.syncWithCloud();
@@ -139,6 +152,7 @@
 			}
 		}
 		return () => {
+			window.removeEventListener('hashchange', onHashChange);
 			stopSyncEvents();
 			notesStore.onProfileReload = null;
 			uiStore.viewChangeHandler = null;
@@ -184,7 +198,7 @@
 	}
 
 	function requestCloseEditor() {
-		closeOpenNote?.();
+		void closeOpenNote?.();
 	}
 
 	provideEditorActions({ openNote: openEditor, startNewNote, closeNote: requestCloseEditor });

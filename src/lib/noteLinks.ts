@@ -1,8 +1,8 @@
-// The address of an open note: it names the note and the workspace it lives in,
-// so copying it gives a link that opens the note on any device holding that
-// workspace. A link names the workspace by a one-way tag: it reveals
-// neither the sync key nor the account id, and the relay, which never sees
-// sync keys, cannot map it back to an account.
+// The address of an open note: its fragment names the note and the workspace
+// it lives in, so the address is a link that opens the note on any device
+// holding that workspace. It lives in the fragment, which never leaves the
+// browser, so no server or proxy log sees it. The workspace is named by a
+// one-way tag: it reveals neither the sync key nor the account id.
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
 import type { StoredProfile } from '$lib/profiles';
@@ -24,29 +24,36 @@ export function workspaceLinkTag(profile: Pick<StoredProfile, 'id' | 'syncKey'>)
 
 export type NoteLinkTarget = { noteId: string; workspaceTag: string | null };
 
-/** The note a URL points at. Links without a workspace (reminder notifications) open in the active one. */
+/** The note an address points at. A reminder link names no workspace and opens in the active one. */
 export function readNoteLink(url: URL): NoteLinkTarget | null {
-	const noteId = url.searchParams.get(NOTE_PARAM);
+	const params = new URLSearchParams(url.hash.slice(1));
+	const noteId = params.get(NOTE_PARAM);
 	if (!noteId) return null;
-	return { noteId, workspaceTag: url.searchParams.get(WORKSPACE_PARAM) || null };
+	return { noteId, workspaceTag: params.get(WORKSPACE_PARAM) || null };
 }
 
+type OpenNote = { profile: Pick<StoredProfile, 'id' | 'syncKey'>; noteId: string };
+
 /**
- * The address for this URL with `note` open in `profile`, or with no note when
- * `note` is null. Only the link parameters change; path, other params and hash stay.
+ * This address with `note` open, or with no note when `note` is null. Only the
+ * note's own fragment parameters change; the view path, query and any other
+ * fragment parameter (a pairing code) stay.
  */
-export function withNoteLink(
-	url: URL,
-	note: { profile: Pick<StoredProfile, 'id' | 'syncKey'>; noteId: string } | null
-): string {
-	const next = new URL(url);
-	next.searchParams.delete(WORKSPACE_PARAM);
-	next.searchParams.delete(NOTE_PARAM);
+export function withNoteLink(url: URL, note: OpenNote | null): string {
+	const params = new URLSearchParams(url.hash.slice(1));
+	params.delete(WORKSPACE_PARAM);
+	params.delete(NOTE_PARAM);
 	if (note) {
-		next.searchParams.set(WORKSPACE_PARAM, workspaceLinkTag(note.profile));
-		next.searchParams.set(NOTE_PARAM, note.noteId);
+		params.set(WORKSPACE_PARAM, workspaceLinkTag(note.profile));
+		params.set(NOTE_PARAM, note.noteId);
 	}
-	return `${next.pathname}${next.search}${next.hash}`;
+	const hash = params.toString();
+	return `${url.pathname}${url.search}${hash ? `#${hash}` : ''}`;
+}
+
+/** A link to share: the app's home with the note in its fragment. */
+export function noteShareLink(origin: string, note: OpenNote): string {
+	return new URL(withNoteLink(new URL('/', origin), note), origin).toString();
 }
 
 export function profileForWorkspaceTag<T extends Pick<StoredProfile, 'id' | 'syncKey'>>(

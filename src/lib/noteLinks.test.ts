@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { profileForWorkspaceTag, readNoteLink, withNoteLink, workspaceLinkTag } from './noteLinks';
+import {
+	noteShareLink,
+	profileForWorkspaceTag,
+	readNoteLink,
+	withNoteLink,
+	workspaceLinkTag
+} from './noteLinks';
 import { identityFromSyncKey } from './syncPairing';
 
 const KEY_A = 'A'.repeat(43);
@@ -43,18 +49,29 @@ describe('note addresses', () => {
 	});
 
 	it('reads a reminder link, which carries no workspace', () => {
-		expect(readNoteLink(new URL('https://scrapscache.com/?note=n1'))).toEqual({
+		expect(readNoteLink(new URL('https://scrapscache.com/#note=n1'))).toEqual({
 			noteId: 'n1',
 			workspaceTag: null
 		});
-		expect(readNoteLink(new URL('https://scrapscache.com/?pair=x'))).toBeNull();
+		expect(readNoteLink(new URL('https://scrapscache.com/#pair=x'))).toBeNull();
 	});
 
-	it('changes only the note in the address, keeping the view and anything else', () => {
-		const archive = new URL('https://scrapscache.com/archive?w=old&note=n0&pair=x#top');
+	it('keeps the note in the fragment, which never reaches a server', () => {
+		const link = new URL(
+			noteShareLink('https://scrapscache.com', { profile: synced, noteId: 'n1' })
+		);
+
+		expect(link.pathname).toBe('/');
+		expect(link.search).toBe('');
+		expect(readNoteLink(link)).toEqual({ noteId: 'n1', workspaceTag: workspaceLinkTag(synced) });
+	});
+
+	it('changes only the note in the address, keeping the view, query and a pairing code', () => {
+		const archive = new URL('https://scrapscache.com/archive?x=1#pair=code&w=old&note=n0');
 		const opened = withNoteLink(archive, { profile: synced, noteId: 'n1' });
 
-		expect(opened).toBe(`/archive?pair=x&w=${workspaceLinkTag(synced)}&note=n1#top`);
-		expect(withNoteLink(new URL(opened, archive), null)).toBe('/archive?pair=x#top');
+		expect(opened).toBe(`/archive?x=1#pair=code&w=${workspaceLinkTag(synced)}&note=n1`);
+		expect(withNoteLink(new URL(opened, archive), null)).toBe('/archive?x=1#pair=code');
+		expect(withNoteLink(new URL('https://scrapscache.com/#note=n1'), null)).toBe('/');
 	});
 });

@@ -195,6 +195,6 @@ describe('reminder service worker', () => {
 			close: vi.fn(),
 			data: { type: 'reminder', noteId: 'note 10', wakeId: 'w' }
 		});
-		expect(clients.openWindow).toHaveBeenCalledWith('/?note=note%2010');
+		expect(clients.openWindow).toHaveBeenCalledWith('/#note=note%2010');
 	});
 });

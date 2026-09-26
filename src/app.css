@@ -12,6 +12,8 @@
 	--app-topbar-height: 3.5rem;
 	--app-fab-bottom: 2rem;
 	--app-fab-size: 3.5rem;
+	/* Room under a note sheet: a place to tap outside the note and close it. */
+	--app-sheet-pad-bottom: calc(var(--app-fab-bottom) + var(--app-fab-size) + 0.5rem);
 	--note-card-width: 18rem;
 }
 
@@ -20,6 +22,13 @@
 html.editor-open .new-note-fab {
 	visibility: hidden;
 	pointer-events: none;
+}
+
+/* With the keyboard up a phone has no room to spare under the note. */
+@media (max-width: 767px) {
+	html.keyboard-open {
+		--app-sheet-pad-bottom: 0.5rem;
+	}
 }
 
 /* An expanded note is a full page: its overlay host escapes the canvas and

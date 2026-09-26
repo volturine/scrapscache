@@ -229,6 +229,13 @@
 		input.click();
 	}
 
+	// A menu stays open when the same tap opens a dialog (the dialog blocks the
+	// outside press that would dismiss it), so every footer action closes it.
+	let shareOpen = $state(false);
+	export function closeMenus() {
+		shareOpen = false;
+	}
+
 	export function handlePickedFiles(picked: File[]) {
 		if (picked.length === 0) return;
 		if (picked.some(looksLikePhoto)) {
@@ -304,6 +311,7 @@
 
 	function openTags(e: MouseEvent) {
 		e.stopPropagation();
+		closeMenus();
 		if (!noteId) {
 			attachError = 'Save the note first to add labels';
 			return;
@@ -813,7 +821,10 @@
 			class={iconButton({ variant, size: { base: 'compact', sm: 'standard' } })}
 			title={label}
 			aria-label={label}
-			onclick={action}
+			onclick={() => {
+				closeMenus();
+				action();
+			}}
 		>
 			<Icon class={iconMd} aria-hidden="true" />
 		</button>
@@ -900,7 +911,7 @@
 		>
 			{@render footerButton('Color', 'Color', Palette, 'ghost', () => onOpenColor?.())}
 			{#if showShare}
-				<Menu.Root positioning={{ placement: 'top-end' }}>
+				<Menu.Root bind:open={shareOpen} positioning={{ placement: 'top-end' }}>
 					<Tooltip content="Share">
 						<Menu.Trigger
 							class={iconButton({ variant: 'ghost', size: { base: 'compact', sm: 'standard' } })}

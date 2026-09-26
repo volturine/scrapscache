@@ -110,7 +110,7 @@
 		finishInput?(): void;
 		adoptBody?(text: string): boolean;
 	} | null>(null);
-	let footer = $state<{ handlePickedFiles(files: File[]): void } | null>(null);
+	let footer = $state<{ handlePickedFiles(files: File[]): void; closeMenus(): void } | null>(null);
 	let editorDialog = $state<HTMLDivElement | null>(null);
 	let fileDropActive = $state(false);
 	let editorScroller = $state<HTMLDivElement | null>(null);
@@ -382,6 +382,7 @@
 		paletteOpen = false;
 		reminderOpen = false;
 		labelOpen = false;
+		footer?.closeMenus();
 	}
 
 	function previewHistoryVersion(

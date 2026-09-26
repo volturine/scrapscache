@@ -81,6 +81,7 @@
 		const found = pairingCodeFromUrl(window.location.href);
 		if (!found) return;
 		pairingCode = found;
+		settingsOpen = false;
 		syncOpen = true;
 		void goto(resolve('/'), { replaceState: true, noScroll: true, keepFocus: true });
 	}
@@ -283,6 +284,7 @@
 			title={syncControlLabel}
 			onclick={() => {
 				pairingCode = '';
+				settingsOpen = false;
 				syncOpen = true;
 			}}
 			aria-label={syncControlLabel}

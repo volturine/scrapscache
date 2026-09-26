@@ -152,6 +152,32 @@ describe('BodyEditor native editing', () => {
 		expect(toggle.getAttribute('aria-pressed')).toBe('true');
 	});
 
+	it('toggles a checkbox on touch release without focusing the editor', async () => {
+		const { container } = render(BodyEditor, { props: { body: '[ ] Task' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const toggle = container.querySelector('[data-checklist-toggle]') as HTMLButtonElement;
+		const pointer = (type: string) => {
+			const event = new MouseEvent(type, { bubbles: true, cancelable: true });
+			Object.defineProperties(event, {
+				pointerId: { value: 3 },
+				pointerType: { value: 'touch' }
+			});
+			toggle.dispatchEvent(event);
+		};
+
+		pointer('pointerdown');
+		pointer('pointerup');
+		await tick();
+		const touchEnd = new Event('touchend', { bubbles: true, cancelable: true });
+		toggle.dispatchEvent(touchEnd);
+		// A browser that still sends the tap's click must not toggle it back.
+		await fireEvent.click(toggle);
+
+		expect(touchEnd.defaultPrevented).toBe(true);
+		expect(document.activeElement).not.toBe(editor);
+		expect(toggle.getAttribute('aria-pressed')).toBe('true');
+	});
+
 	it('does not focus a task when a checkbox touch ends over its label', () => {
 		const { container } = render(BodyEditor, { props: { body: '[ ] Task' } });
 		const toggle = container.querySelector('[data-checklist-toggle]') as HTMLButtonElement;

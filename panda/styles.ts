@@ -1881,7 +1881,7 @@ export const noteEditorStyles = {
 		variants: {
 			expanded: {
 				true: {},
-				false: { px: { base: 'sm', sm: 'md', md: 'lg' }, pb: { base: 'sm', sm: 'md', md: 'lg' } }
+				false: { px: { base: 'sm', sm: 'md', md: 'lg' }, pb: 'var(--app-sheet-pad-bottom)' }
 			}
 		},
 		defaultVariants: { expanded: false }

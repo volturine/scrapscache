@@ -733,4 +733,13 @@ describe('NoteEditor share menu', () => {
 		await vi.waitFor(() => expect(writeText).toHaveBeenCalledTimes(2));
 		expect(writeText.mock.calls[1][0]).toContain('Oat milk');
 	});
+
+	it('closes when another footer action opens its own panel', async () => {
+		const { getByRole, findByRole, queryByRole } = await openShareMenu();
+		await findByRole('menuitem', { name: 'Copy note' });
+
+		await fireEvent.click(getByRole('button', { name: 'Color' }));
+
+		await vi.waitFor(() => expect(queryByRole('menuitem', { name: 'Copy note' })).toBeNull());
+	});
 });

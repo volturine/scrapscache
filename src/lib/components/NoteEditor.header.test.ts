@@ -6,6 +6,8 @@ import { notesStore } from '$lib/stores/notes.svelte';
 import { uiStore } from '$lib/stores/ui.svelte';
 import { formatReminder } from '$lib/utils';
 import NoteEditor from './NoteEditor.svelte';
+import { syncStore } from '$lib/stores/sync.svelte';
+import { workspaceLinkTag } from '$lib/noteLinks';
 
 function note(partial: Partial<Note> = {}): Note {
 	return {
@@ -95,6 +97,7 @@ describe('NoteEditor header reminder controls', () => {
 			'Reminder',
 			'Pin',
 			'Make secret',
+			'Copy link to note',
 			'Expand note'
 		]);
 		expect(container.querySelector('header')?.textContent).not.toMatch(/Today|Tomorrow|AM|PM/);
@@ -113,6 +116,7 @@ describe('NoteEditor header reminder controls', () => {
 			'Reminder',
 			'Pin',
 			'Make secret',
+			'Copy link to note',
 			'Expand note'
 		]);
 		expect(container.querySelector('header')?.textContent).toContain(formatReminder(reminder));
@@ -676,5 +680,30 @@ describe('NoteEditor task focus', () => {
 		expect(getByRole('button', { name: 'Delete note' })).toBeTruthy();
 		const footer = container.querySelector('footer');
 		expect(footer).toBeTruthy();
+	});
+});
+
+describe('NoteEditor note link', () => {
+	it('copies a link that opens this note in its workspace', async () => {
+		const workspace = { id: 'ws-1', name: 'Home', syncKey: 'A'.repeat(43), createdAt: 1 };
+		vi.spyOn(syncStore, 'activeProfile', 'get').mockReturnValue(workspace);
+		const writeText = vi.fn().mockResolvedValue(undefined);
+		Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+		notesStore.notes = [note()];
+		const { getByRole } = render(NoteEditor, { props: { noteId: 'note-1', onClose: () => {} } });
+
+		await fireEvent.click(getByRole('button', { name: 'Copy link to note' }));
+
+		await vi.waitFor(() => expect(getByRole('button', { name: 'Link copied' })).toBeTruthy());
+		const link = new URL(writeText.mock.calls[0][0]);
+		expect(link.searchParams.get('note')).toBe('note-1');
+		expect(link.searchParams.get('w')).toBe(workspaceLinkTag(workspace));
+	});
+
+	it('offers no link for a note in the trash', () => {
+		notesStore.notes = [note({ trashed: true, trashedAt: 1 })];
+		const { queryByRole } = render(NoteEditor, { props: { noteId: 'note-1', onClose: () => {} } });
+
+		expect(queryByRole('button', { name: 'Copy link to note' })).toBeNull();
 	});
 });

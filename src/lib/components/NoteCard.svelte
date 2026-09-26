@@ -9,7 +9,13 @@
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { reminderStore } from '$lib/stores/reminders.svelte';
 	import type { Note } from '$lib/types';
-	import { activateOnKeyboard, formatReminder, isReminderOverdue, noteActivity } from '$lib/utils';
+	import {
+		activateOnKeyboard,
+		formatReminder,
+		isReminderOverdue,
+		noteActivity,
+		writeClipboardText
+	} from '$lib/utils';
 	import { appClock } from '$lib/appClock.svelte';
 	import { cardSwipeStyle, createCardSwipe } from '$lib/cardSwipe';
 	import { overflowingTable } from '$lib/tableScroll';
@@ -92,24 +98,7 @@
 
 	async function handleCopy(e: MouseEvent) {
 		e.stopPropagation();
-		const text = noteToPlainText(note);
-		let ok = false;
-		try {
-			await navigator.clipboard.writeText(text);
-			ok = true;
-		} catch {
-			const ta = document.createElement('textarea');
-			ta.value = text;
-			ta.style.position = 'fixed';
-			ta.style.opacity = '0';
-			document.body.appendChild(ta);
-			ta.select();
-			try {
-				ok = document.execCommand('copy');
-			} catch {}
-			document.body.removeChild(ta);
-		}
-		if (ok) {
+		if (await writeClipboardText(noteToPlainText(note))) {
 			copied = true;
 			if (copyTimer) clearTimeout(copyTimer);
 			copyTimer = setTimeout(() => {

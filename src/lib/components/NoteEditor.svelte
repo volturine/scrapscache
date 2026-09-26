@@ -23,11 +23,14 @@
 	import { BackupImportMode, prepareImportedNotes } from '$lib/backup';
 	import { editContext } from '$lib/editContext';
 	import { appClock } from '$lib/appClock.svelte';
-	import { formatReminder, isReminderOverdue, noteActivity } from '$lib/utils';
+	import { formatReminder, isReminderOverdue, noteActivity, writeClipboardText } from '$lib/utils';
+	import { noteLink } from '$lib/noteLinks';
 	import ReminderLabel from './ReminderLabel.svelte';
 	import {
 		Bell,
+		Check,
 		ChevronLeft,
+		Link,
 		Lock,
 		LockOpen,
 		Maximize2,
@@ -86,6 +89,8 @@
 	let historyRestoreError = $state('');
 	let copyFlash = $state(false);
 	let copyFlashTimer: ReturnType<typeof setTimeout> | null = null;
+	let linkFlash = $state(false);
+	let linkFlashTimer: ReturnType<typeof setTimeout> | null = null;
 	// svelte-ignore state_referenced_locally
 	let images = $state<NoteImage[]>(
 		note ? noteAttachments(note).map((attachment) => ({ ...attachment })) : []
@@ -232,6 +237,7 @@
 			viewport?.removeEventListener('scroll', onOuterScroll);
 			if (revealTimer !== null) clearTimeout(revealTimer);
 			if (copyFlashTimer !== null) clearTimeout(copyFlashTimer);
+			if (linkFlashTimer !== null) clearTimeout(linkFlashTimer);
 			if (!closing) endEditSession();
 		};
 	});
@@ -680,31 +686,27 @@
 	async function copyText() {
 		if (!note) return;
 		bodyEditor?.syncBodyNow?.();
-		const text = noteToPlainText({ ...note, title, body });
-		let copied = false;
-		try {
-			await navigator.clipboard.writeText(text);
-			copied = true;
-		} catch {
-			const ta = document.createElement('textarea');
-			ta.value = text;
-			ta.style.position = 'fixed';
-			ta.style.opacity = '0';
-			document.body.appendChild(ta);
-			ta.select();
-			try {
-				copied = document.execCommand('copy');
-			} catch {}
-			document.body.removeChild(ta);
-		}
 		// Only confirm when the write actually landed; the button must not claim a
 		// copy that failed (e.g. insecure origins where the async API is missing).
-		if (!copied) return;
+		if (!(await writeClipboardText(noteToPlainText({ ...note, title, body })))) return;
 		copyFlash = true;
 		if (copyFlashTimer !== null) clearTimeout(copyFlashTimer);
 		copyFlashTimer = setTimeout(() => {
 			copyFlash = false;
 			copyFlashTimer = null;
+		}, 1500);
+	}
+
+	/** Copy a link that opens this note in its workspace on any device that holds it. */
+	async function copyLink() {
+		const workspace = syncStore.activeProfile;
+		if (!note || !workspace) return;
+		if (!(await writeClipboardText(noteLink(window.location.origin, workspace, note.id)))) return;
+		linkFlash = true;
+		if (linkFlashTimer !== null) clearTimeout(linkFlashTimer);
+		linkFlashTimer = setTimeout(() => {
+			linkFlash = false;
+			linkFlashTimer = null;
 		}, 1500);
 	}
 	function handleTitleInput(event: Event) {
@@ -901,6 +903,19 @@
 										<Lock size={20} class={noteEditorReminderTone.active} aria-hidden="true" />
 									{:else}
 										<LockOpen size={20} aria-hidden="true" />
+									{/if}
+								</button>
+								<button
+									type="button"
+									class={iconButton({ variant: 'ghost', size: 'sm' })}
+									title={linkFlash ? 'Link copied' : 'Copy link to note'}
+									onclick={() => void copyLink()}
+									aria-label={linkFlash ? 'Link copied' : 'Copy link to note'}
+								>
+									{#if linkFlash}
+										<Check size={20} aria-hidden="true" />
+									{:else}
+										<Link size={20} aria-hidden="true" />
 									{/if}
 								</button>
 							{/if}

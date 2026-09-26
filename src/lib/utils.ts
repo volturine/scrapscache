@@ -195,6 +195,31 @@ export function noteActivity(note: NoteActivitySource, nowMs = Date.now()): Note
 	};
 }
 
+/**
+ * Put text on the clipboard. Falls back to a hidden textarea where the async
+ * API is missing (insecure origins). True only when the write landed.
+ */
+export async function writeClipboardText(text: string): Promise<boolean> {
+	try {
+		await navigator.clipboard.writeText(text);
+		return true;
+	} catch {
+		const area = document.createElement('textarea');
+		area.value = text;
+		area.style.position = 'fixed';
+		area.style.opacity = '0';
+		document.body.appendChild(area);
+		area.select();
+		try {
+			return document.execCommand('copy');
+		} catch {
+			return false;
+		} finally {
+			document.body.removeChild(area);
+		}
+	}
+}
+
 /** Give pointer-activated card surfaces an equivalent keyboard interaction. */
 export function activateOnKeyboard(event: KeyboardEvent, activate: () => void): void {
 	if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return;

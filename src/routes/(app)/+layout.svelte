@@ -20,6 +20,9 @@
 	import { attachSyncCloudIndicator } from '$lib/syncCloudIndicator';
 	import { attachAppViewport } from '$lib/appViewport';
 	import { dayKey, reminderTimeForDay } from '$lib/utils';
+	import { profileForWorkspaceTag, readNoteLink, withoutNoteLink } from '$lib/noteLinks';
+	import { profileCoordinator } from '$lib/stores/profiles.svelte';
+	import NoteLinkNotice from '$lib/components/NoteLinkNotice.svelte';
 	import type { Snippet } from 'svelte';
 
 	let { children }: { children: Snippet } = $props();
@@ -39,15 +42,36 @@
 		applyEditorOpen(true);
 	}
 
-	function openNoteFromQuery() {
-		const noteId = new URL(window.location.href).searchParams.get('note');
-		if (!noteId || !notesStore.notes.some((note) => note.id === noteId)) return;
-		autoFocusBody = false;
-		editingId = noteId;
-		applyEditorOpen(true);
-		const next = new URL(window.location.href);
-		next.searchParams.delete('note');
-		history.replaceState(history.state, '', `${next.pathname}${next.search}${next.hash}`);
+	let noteLinkProblem = $state<string | null>(null);
+
+	/**
+	 * Open the note a link points at, in the workspace the link names. Runs once
+	 * the boot workspace has loaded and synced. A link without a workspace (a
+	 * reminder notification) opens in the active one.
+	 */
+	async function openNoteFromLink() {
+		const url = new URL(window.location.href);
+		const link = readNoteLink(url);
+		if (!link) return;
+		history.replaceState(history.state, '', withoutNoteLink(url));
+		if (link.workspaceTag) {
+			const workspace = profileForWorkspaceTag(syncStore.profiles, link.workspaceTag);
+			if (!workspace) {
+				noteLinkProblem =
+					"This note is in a workspace that isn't on this device. Connect this device to that workspace first, then open the link again.";
+				return;
+			}
+			const switched = await profileCoordinator.switchTo(workspace.id);
+			if (!switched.success) {
+				noteLinkProblem = switched.error ?? `Could not switch to ${workspace.name}.`;
+				return;
+			}
+		}
+		if (!notesStore.notes.some((note) => note.id === link.noteId)) {
+			noteLinkProblem = `This note isn't in ${syncStore.activeProfile?.name ?? 'this workspace'}. It may have been deleted, or it hasn't synced to this device yet.`;
+			return;
+		}
+		openEditor(link.noteId);
 	}
 
 	onMount(() => {
@@ -61,7 +85,7 @@
 		void notesStore.init().then(async () => {
 			await notesStore.refreshProfileEffects();
 			if (syncStore.isLoggedIn) await notesStore.syncWithCloud();
-			openNoteFromQuery();
+			await openNoteFromLink();
 		});
 		const onForeground = () => {
 			if (document.visibilityState === 'hidden') return;
@@ -301,4 +325,7 @@
 	<div class={styles.drawerSafeArea} aria-hidden="true"></div>
 {/if}
 <div class="app-overlay" data-app-overlay></div>
+{#if noteLinkProblem}
+	<NoteLinkNotice message={noteLinkProblem} onClose={() => (noteLinkProblem = null)} />
+{/if}
 {@render children()}

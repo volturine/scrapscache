@@ -85,6 +85,10 @@ export function buildForcePushSnapshot(
 		backlogFilter: {
 			...board.backlogFilter,
 			labelIds: board.backlogFilter.labelIds.map((id) => labelIds.get(id) ?? id)
+		},
+		noteFilter: {
+			...board.noteFilter,
+			labelIds: board.noteFilter.labelIds.map((id) => labelIds.get(id) ?? id)
 		}
 	}));
 	function deletions(

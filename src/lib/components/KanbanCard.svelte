@@ -3,6 +3,7 @@
 	import type { Note } from '$lib/types';
 	import { activateOnKeyboard } from '$lib/utils';
 	import KanbanCardBody from './KanbanCardBody.svelte';
+	import NoteQuickActions from './NoteQuickActions.svelte';
 	import { css } from 'styled-system/css';
 
 	let {
@@ -21,6 +22,7 @@
 	} = $props();
 
 	let card = $state<HTMLElement | null>(null);
+	let quickActionsOpen = $state(false);
 
 	function press(event: PointerEvent) {
 		if (!card) return;
@@ -32,18 +34,37 @@
 		if (kanbanDrag.suppressedClick) return;
 		onOpen(note.id);
 	}
+
+	function showQuickActions(event: MouseEvent) {
+		event.preventDefault();
+		event.stopPropagation();
+		quickActionsOpen = true;
+	}
+
+	function handleKeydown(event: KeyboardEvent) {
+		// The quick actions close themselves on Escape; nothing else may open the note under them.
+		if (quickActionsOpen) return;
+		activateOnKeyboard(event, () => onOpen(note.id));
+	}
 </script>
 
 <div
 	bind:this={card}
 	role="button"
 	tabindex="0"
-	class={css({ cursor: 'grab', rounded: 'dialog', _active: { cursor: 'grabbing' } })}
+	class={css({
+		position: 'relative',
+		cursor: 'grab',
+		rounded: 'dialog',
+		_active: { cursor: 'grabbing' }
+	})}
 	onpointerdown={press}
 	ondragstart={(event) => event.preventDefault()}
 	onclick={open}
-	onkeydown={(event) => activateOnKeyboard(event, () => onOpen(note.id))}
+	oncontextmenu={showQuickActions}
+	onkeydown={handleKeydown}
 	aria-label={`Open ${note.title || 'untitled note'}`}
 >
 	<KanbanCardBody {note} shield />
+	<NoteQuickActions {note} bind:open={quickActionsOpen} />
 </div>

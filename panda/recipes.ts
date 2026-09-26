@@ -448,6 +448,8 @@ const noteCardRecipe = defineSlotRecipe({
 		hazeOverlay: {
 			position: 'absolute',
 			inset: 0,
+			// Follows whichever card it covers, so the blur never shows square corners.
+			rounded: 'inherit',
 			zIndex: 20,
 			...column,
 			alignItems: 'center',

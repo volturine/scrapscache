@@ -37,16 +37,40 @@ export interface BacklogFilter {
 	labelIds: string[];
 }
 
-/** Board settings that merge independently; `columns` is the set and sequence of columns. */
-export type BoardField = 'name' | 'backlogFilter' | 'columns';
+export const BoardNoteFilterAction = {
+	Keep: 'keep',
+	Remove: 'remove'
+} as const;
+export type BoardNoteFilterAction =
+	(typeof BoardNoteFilterAction)[keyof typeof BoardNoteFilterAction];
 
-const BOARD_FIELDS: BoardField[] = ['name', 'backlogFilter', 'columns'];
+/**
+ * Controls which notes appear anywhere on a board, backlog included, by label.
+ * Every column stays on show; only the notes in them are filtered.
+ *
+ * The labels and the action are chosen independently: `keep` shows only notes
+ * carrying one of `labelIds`, `remove` hides them. With no labels selected the
+ * filter is off, whichever action is set.
+ *
+ * Column labels are never part of it: a column already chooses its notes by
+ * its own label.
+ */
+export interface BoardNoteFilter {
+	action: BoardNoteFilterAction;
+	labelIds: string[];
+}
+
+/** Board settings that merge independently; `columns` is the set and sequence of columns. */
+export type BoardField = 'name' | 'backlogFilter' | 'noteFilter' | 'columns';
+
+const BOARD_FIELDS: BoardField[] = ['name', 'backlogFilter', 'noteFilter', 'columns'];
 
 export interface KanbanBoard {
 	id: string;
 	name: string;
 	columns: KanbanColumn[];
 	backlogFilter: BacklogFilter;
+	noteFilter: BoardNoteFilter;
 	/** Last configuration edit; this is the board's delta-sync version. */
 	updatedAt: number;
 	/** Per-setting write times and writers; missing times fall back to `updatedAt`. */
@@ -58,6 +82,16 @@ export function defaultBacklogFilter(): BacklogFilter {
 	return { mode: BacklogFilterMode.AllNonColumn, includeUntagged: true, labelIds: [] };
 }
 
+export function defaultBoardNoteFilter(): BoardNoteFilter {
+	return { action: BoardNoteFilterAction.Keep, labelIds: [] };
+}
+
+function uniqueIds(value: unknown): string[] {
+	return Array.isArray(value)
+		? [...new Set(value.filter((id): id is string => typeof id === 'string' && id.length > 0))]
+		: [];
+}
+
 export function normalizeBacklogFilter(value: unknown): BacklogFilter {
 	const fallback = defaultBacklogFilter();
 	if (!value || typeof value !== 'object' || Array.isArray(value)) return fallback;
@@ -67,14 +101,17 @@ export function normalizeBacklogFilter(value: unknown): BacklogFilter {
 			? BacklogFilterMode.Custom
 			: BacklogFilterMode.AllNonColumn;
 	const includeUntagged = raw.includeUntagged !== false;
-	const labelIds = Array.isArray(raw.labelIds)
-		? [
-				...new Set(
-					raw.labelIds.filter((id): id is string => typeof id === 'string' && id.length > 0)
-				)
-			]
-		: [];
-	return { mode, includeUntagged, labelIds };
+	return { mode, includeUntagged, labelIds: uniqueIds(raw.labelIds) };
+}
+
+export function normalizeBoardNoteFilter(value: unknown): BoardNoteFilter {
+	if (!value || typeof value !== 'object' || Array.isArray(value)) return defaultBoardNoteFilter();
+	const raw = value as Partial<BoardNoteFilter>;
+	const action =
+		raw.action === BoardNoteFilterAction.Remove
+			? BoardNoteFilterAction.Remove
+			: BoardNoteFilterAction.Keep;
+	return { action, labelIds: uniqueIds(raw.labelIds) };
 }
 
 type StoredBoard = {
@@ -82,6 +119,7 @@ type StoredBoard = {
 	name?: unknown;
 	columns?: unknown;
 	backlogFilter?: unknown;
+	noteFilter?: unknown;
 	updatedAt?: unknown;
 	fieldTimes?: unknown;
 	fieldWriters?: unknown;
@@ -167,6 +205,7 @@ export function normalizeBoard(value: unknown): KanbanBoard | null {
 		name: board.name.trim() || 'Untitled board',
 		columns,
 		backlogFilter,
+		noteFilter: normalizeBoardNoteFilter(board.noteFilter),
 		// Pre-sync boards did not have a version. Persist a one-time local version so they upload.
 		updatedAt: Number(board.updatedAt) || Date.now(),
 		...(Object.keys(fieldTimes).length ? { fieldTimes } : {}),
@@ -181,6 +220,7 @@ export function createKanbanBoard(name = 'Untitled board'): KanbanBoard {
 		name: name.trim() || 'Untitled board',
 		columns: [{ id: uid(), labelId: null, order: [] }],
 		backlogFilter: defaultBacklogFilter(),
+		noteFilter: defaultBoardNoteFilter(),
 		updatedAt: now
 	};
 }
@@ -190,6 +230,20 @@ export function boardColumnLabelIds(board: KanbanBoard): Set<string> {
 	return new Set(
 		board.columns.flatMap((candidate) => (candidate.labelId === null ? [] : [candidate.labelId]))
 	);
+}
+
+/** The labels the board's note filter acts on: the selected ones that are not a column. */
+export function noteFilterLabelIds(board: KanbanBoard): string[] {
+	const columnLabels = boardColumnLabelIds(board);
+	return board.noteFilter.labelIds.filter((labelId) => !columnLabels.has(labelId));
+}
+
+/** The notes the board's note filter lets onto the board at all. */
+export function boardNotes(board: KanbanBoard, notes: Note[]): Note[] {
+	const selected = new Set(noteFilterLabelIds(board));
+	if (selected.size === 0) return notes;
+	const keep = board.noteFilter.action === BoardNoteFilterAction.Keep;
+	return notes.filter((note) => note.labels.some((labelId) => selected.has(labelId)) === keep);
 }
 
 /**
@@ -220,13 +274,15 @@ export function orderColumnNotes(notes: Note[], order: string[]): Note[] {
 
 /**
  * A tag column contains notes with that tag. The backlog uses {@link noteMatchesBacklog}.
+ * Either way, only notes the board's note filter lets on.
  */
 export function columnNotes(board: KanbanBoard, column: KanbanColumn, notes: Note[]): Note[] {
 	const columnLabelId = column.labelId;
+	const onBoard = boardNotes(board, notes);
 	const members =
 		columnLabelId !== null
-			? notes.filter((note) => note.labels.includes(columnLabelId))
-			: notes.filter((note) => noteMatchesBacklog(board, note));
+			? onBoard.filter((note) => note.labels.includes(columnLabelId))
+			: onBoard.filter((note) => noteMatchesBacklog(board, note));
 	return orderColumnNotes(members, column.order);
 }
 
@@ -314,6 +370,9 @@ export function applyBoardEdit(
 	if (stableStringify(next.backlogFilter) !== stableStringify(previous.backlogFilter)) {
 		stamp('backlogFilter');
 	}
+	if (stableStringify(next.noteFilter) !== stableStringify(previous.noteFilter)) {
+		stamp('noteFilter');
+	}
 	if (columnLayout(next) !== columnLayout(previous)) stamp('columns');
 	const before = new Map(previous.columns.map((column) => [column.id, column]));
 	const columns = next.columns.map((column) => {
@@ -368,6 +427,10 @@ export function mergeTwoBoards(left: KanbanBoard, right: KanbanBoard): KanbanBoa
 		side(left, 'backlogFilter', left.backlogFilter),
 		side(right, 'backlogFilter', right.backlogFilter)
 	);
+	const noteFilter = pickLatest(
+		side(left, 'noteFilter', left.noteFilter),
+		side(right, 'noteFilter', right.noteFilter)
+	);
 	const layout = pickLatest(side(left, 'columns', left), side(right, 'columns', right));
 	const other = layout.value === left ? right : left;
 	const otherColumns = new Map(other.columns.map((column) => [column.id, column]));
@@ -375,7 +438,7 @@ export function mergeTwoBoards(left: KanbanBoard, right: KanbanBoard): KanbanBoa
 		const copy = otherColumns.get(column.id);
 		return copy ? mergeColumn(column, layout.value, copy, other) : column;
 	});
-	const picked = { name, backlogFilter, columns: layout };
+	const picked = { name, backlogFilter, noteFilter, columns: layout };
 	const fieldTimes: Partial<Record<BoardField, number>> = {};
 	const fieldWriters: Partial<Record<BoardField, string>> = {};
 	for (const field of BOARD_FIELDS) {
@@ -388,6 +451,7 @@ export function mergeTwoBoards(left: KanbanBoard, right: KanbanBoard): KanbanBoa
 		name: name.value,
 		columns,
 		backlogFilter: backlogFilter.value,
+		noteFilter: noteFilter.value,
 		updatedAt: Math.max(left.updatedAt, right.updatedAt),
 		fieldTimes,
 		...(Object.keys(fieldWriters).length ? { fieldWriters } : {})

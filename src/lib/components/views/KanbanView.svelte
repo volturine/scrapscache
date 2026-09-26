@@ -1,12 +1,15 @@
 <script lang="ts">
 	import KanbanCard from '$lib/components/KanbanCard.svelte';
 	import KanbanCardBody from '$lib/components/KanbanCardBody.svelte';
+	import LabelChecklist from '$lib/components/LabelChecklist.svelte';
 	import {
 		BacklogFilterMode,
+		BoardNoteFilterAction,
 		columnNotes,
 		defaultBacklogFilter,
 		insertIntoOrder,
 		moveNoteLabels,
+		noteFilterLabelIds,
 		slotPosition,
 		type BacklogFilter,
 		type KanbanColumn
@@ -19,14 +22,21 @@
 	import { uiStore } from '$lib/stores/ui.svelte';
 	import { Checkbox } from '@ark-ui/svelte/checkbox';
 	import { Menu } from '@ark-ui/svelte/menu';
+	import { SegmentGroup } from '@ark-ui/svelte/segment-group';
 	import { Dialog } from '@ark-ui/svelte/dialog';
-	import { Check, ChevronDown, Pencil, Plus, Trash2, X } from '@lucide/svelte';
+	import { Check, ChevronDown, ListFilter, Pencil, Plus, Trash2, X } from '@lucide/svelte';
 	import { flip, type FlipParams } from 'svelte/animate';
 	import { onDestroy } from 'svelte';
 	import type { Note } from '$lib/types';
 	import { css, cx } from 'styled-system/css';
 	import { vstack } from 'styled-system/patterns';
-	import { iconSizeSm as iconSm, kanbanViewStyles, popover, viewPage } from '$panda/styles';
+	import {
+		iconSizeSm as iconSm,
+		kanbanViewStyles,
+		labelChecklistStyles as checklist,
+		popover,
+		viewPage
+	} from '$panda/styles';
 	import {
 		button,
 		dialog,
@@ -48,6 +58,12 @@
 			(label) => !board.columns.some((column) => column.labelId === label.id)
 		)
 	);
+	const noteFilter = $derived(board.noteFilter);
+	/** Names of the labels the note filter acts on; none means the filter is off. */
+	const noteFilterNames = $derived(
+		noteFilterLabelIds(board).flatMap((id) => notesStore.labelsById.get(id)?.name ?? [])
+	);
+	const noteFilterActive = $derived(noteFilterNames.length > 0);
 	/** Labels that can be used in the backlog filter (not already a column). */
 	const backlogFilterTags = $derived(unusedTags);
 	const backlogFilter = $derived(board.backlogFilter ?? defaultBacklogFilter());
@@ -64,14 +80,20 @@
 	let boardMenuOpen = $state(false);
 	let pendingDelete = $state(false);
 	let backlogFilterOpen = $state(false);
+	let noteFilterOpen = $state(false);
 	let tagPickerOpen = $state(false);
 
 	const menuItemClass = menuItem({ density: 'compact' });
+	const noteFilterActions = [
+		{ action: BoardNoteFilterAction.Keep, title: 'Show only' },
+		{ action: BoardNoteFilterAction.Remove, title: 'Hide' }
+	];
 	const d = dialog({ size: 'sm' });
 
 	function resetBoardUi() {
 		renamingBoard = false;
 		backlogFilterOpen = false;
+		noteFilterOpen = false;
 		tagPickerOpen = false;
 	}
 
@@ -158,6 +180,29 @@
 			includeUntagged: backlogFilter.includeUntagged,
 			labelIds
 		});
+	}
+
+	function setNoteFilterAction(action: BoardNoteFilterAction) {
+		kanbanStore.setNoteFilter(board.id, { action, labelIds: [...noteFilter.labelIds] });
+	}
+
+	function toggleNoteFilterLabel(labelId: string) {
+		const labelIds = noteFilter.labelIds.includes(labelId)
+			? noteFilter.labelIds.filter((id) => id !== labelId)
+			: [...noteFilter.labelIds, labelId];
+		kanbanStore.setNoteFilter(board.id, { action: noteFilter.action, labelIds });
+	}
+
+	function clearNoteFilter() {
+		kanbanStore.setNoteFilter(board.id, { action: noteFilter.action, labelIds: [] });
+	}
+
+	function noteFilterSummary(): string {
+		if (!noteFilterActive) return 'All notes. Tick labels to filter.';
+		const names = noteFilterNames.join(', ');
+		return noteFilter.action === BoardNoteFilterAction.Keep
+			? `Only notes with ${names}`
+			: `All notes except ${names}`;
 	}
 
 	function backlogFilterSummary(): string {
@@ -301,7 +346,61 @@
 				</Menu.Positioner>
 			</Menu.Root>
 		{/if}
+		<button
+			type="button"
+			class={cx(
+				iconButton({ variant: 'ghost', size: 'sm' }),
+				k.boardFilterTrigger,
+				noteFilterActive && k.filterActive
+			)}
+			onclick={() => (noteFilterOpen = !noteFilterOpen)}
+			aria-expanded={noteFilterOpen}
+			aria-label={noteFilterActive ? 'Board filter (on)' : 'Board filter'}
+			title={noteFilterActive ? 'Board filter (on)' : 'Board filter'}
+		>
+			<ListFilter class={iconSm} aria-hidden="true" />
+		</button>
 	</div>
+
+	{#if noteFilterOpen}
+		<div class={k.boardFilterGroup} role="group" aria-label="Board filter options">
+			<div class={k.filterHeader}>
+				<SegmentGroup.Root
+					value={noteFilter.action}
+					onValueChange={(details) => {
+						if (details.value) setNoteFilterAction(details.value as BoardNoteFilterAction);
+					}}
+					class={k.actionSegment}
+					aria-label="What the selected labels do"
+				>
+					{#each noteFilterActions as option (option.action)}
+						<SegmentGroup.Item value={option.action} class={k.actionSegmentItem}>
+							<SegmentGroup.ItemText>{option.title}</SegmentGroup.ItemText>
+							<SegmentGroup.ItemHiddenInput />
+						</SegmentGroup.Item>
+					{/each}
+				</SegmentGroup.Root>
+				{#if noteFilterActive}
+					<button
+						type="button"
+						class={button({ variant: 'ghost', size: 'xs' })}
+						onclick={clearNoteFilter}
+					>
+						Clear
+					</button>
+				{/if}
+			</div>
+			<LabelChecklist
+				labels={unusedTags}
+				selected={noteFilter.labelIds}
+				onToggle={toggleNoteFilterLabel}
+				label="Board filter labels"
+			/>
+			<p class={k.filterSummary} title={noteFilterSummary()}>
+				{noteFilterSummary()}
+			</p>
+		</div>
+	{/if}
 
 	<div class={['kanban-columns', k.columnsContainer]}>
 		<div class={k.columnsTrack}>
@@ -322,9 +421,7 @@
 								class={cx(
 									button({ variant: 'ghost', size: 'xs' }),
 									css({ rounded: 'card' }),
-									backlogFilterActive
-										? css({ bg: 'scrapscache.accentSubtle', color: 'scrapscache.accentHover' })
-										: undefined
+									backlogFilterActive && k.filterActive
 								)}
 								onclick={() => (backlogFilterOpen = !backlogFilterOpen)}
 								aria-expanded={backlogFilterOpen}
@@ -381,35 +478,20 @@
 									<Checkbox.Root
 										checked={backlogFilter.includeUntagged}
 										onCheckedChange={toggleBacklogUntagged}
-										class={k.checkRow}
+										class={checklist.row}
 									>
-										<Checkbox.Control class={k.checkControl}>
-											<Checkbox.Indicator class={k.checkMark}>✓</Checkbox.Indicator>
+										<Checkbox.Control class={checklist.control}>
+											<Checkbox.Indicator class={checklist.mark}>✓</Checkbox.Indicator>
 										</Checkbox.Control>
 										<Checkbox.Label>No labels</Checkbox.Label>
 										<Checkbox.HiddenInput />
 									</Checkbox.Root>
-									{#each backlogFilterTags as label (label.id)}
-										<Checkbox.Root
-											checked={backlogFilter.labelIds.includes(label.id)}
-											onCheckedChange={() => toggleBacklogLabel(label.id)}
-											class={k.checkRow}
-										>
-											<Checkbox.Control class={k.checkControl}>
-												<Checkbox.Indicator class={k.checkMark}>✓</Checkbox.Indicator>
-											</Checkbox.Control>
-											<Checkbox.Label class={k.tagLabel}>
-												{label.name}
-											</Checkbox.Label>
-											<Checkbox.HiddenInput />
-										</Checkbox.Root>
-									{/each}
-									{#if backlogFilterTags.length === 0}
-										<p class={k.emptyTags}>
-											No other labels available. Create labels on notes, or remove a label column
-											first.
-										</p>
-									{/if}
+									<LabelChecklist
+										labels={backlogFilterTags}
+										selected={backlogFilter.labelIds}
+										onToggle={toggleBacklogLabel}
+										label="Backlog filter labels"
+									/>
 								</div>
 							{/if}
 

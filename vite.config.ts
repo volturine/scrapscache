@@ -34,6 +34,11 @@ const cloudflarePlatform = {
 
 export default defineConfig({
 	plugins: [cloudflarePlatform, sveltekit()],
+	build: {
+		// Keep imported fonts as same-origin files to match font-src 'self'.
+		assetsInlineLimit: (filePath) =>
+			/\.(?:woff2?|ttf|otf)$/i.test(filePath) ? false : undefined
+	},
 	server: {
 		watch: {
 			// Don't reload the page when the sync server writes to sync-data/.

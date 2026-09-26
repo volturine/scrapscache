@@ -4,7 +4,9 @@ import {
 	mergeKanbanBoards,
 	normalizeBacklogFilter,
 	normalizeBoard,
+	normalizeBoardLabelFilter,
 	type BacklogFilter,
+	type BoardLabelFilter,
 	type KanbanBoard,
 	type KanbanColumn
 } from '$lib/kanban';
@@ -183,7 +185,8 @@ export class KanbanStore {
 			backlogFilter: {
 				...board.backlogFilter,
 				labelIds: [...board.backlogFilter.labelIds]
-			}
+			},
+			labelFilter: { ...board.labelFilter, labelIds: [...board.labelFilter.labelIds] }
 		}));
 	}
 
@@ -338,6 +341,12 @@ export class KanbanStore {
 		const next = normalizeBacklogFilter(filter);
 		next.labelIds = next.labelIds.filter((labelId) => !columnLabels.has(labelId));
 		this.changeBoard(boardId, (candidate) => ({ ...candidate, backlogFilter: next }));
+	}
+
+	/** Replace which labels a board shows. */
+	setLabelFilter(boardId: string, filter: BoardLabelFilter): void {
+		const labelFilter = normalizeBoardLabelFilter(filter);
+		this.changeBoard(boardId, (board) => ({ ...board, labelFilter }));
 	}
 
 	/** Monotonic version: same-millisecond edits and backward clock jumps must still win. */

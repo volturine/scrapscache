@@ -1320,7 +1320,8 @@ export class NotesStore {
 						backlogFilter: {
 							...board.backlogFilter,
 							labelIds: [...board.backlogFilter.labelIds]
-						}
+						},
+						labelFilter: { ...board.labelFilter, labelIds: [...board.labelFilter.labelIds] }
 					})),
 					tombstones: { ...snapshot.tombstones },
 					labelTombstones: { ...snapshot.labelTombstones },

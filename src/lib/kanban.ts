@@ -37,16 +37,35 @@ export interface BacklogFilter {
 	labelIds: string[];
 }
 
-/** Board settings that merge independently; `columns` is the set and sequence of columns. */
-export type BoardField = 'name' | 'backlogFilter' | 'columns';
+export const BoardLabelFilterMode = {
+	All: 'all',
+	Custom: 'custom'
+} as const;
+export type BoardLabelFilterMode = (typeof BoardLabelFilterMode)[keyof typeof BoardLabelFilterMode];
 
-const BOARD_FIELDS: BoardField[] = ['name', 'backlogFilter', 'columns'];
+/**
+ * Controls which labels a board shows: on its cards, in the label-column
+ * picker, and among the backlog filter's choices. Column labels always show.
+ *
+ * - `all` (default): every label
+ * - `custom`: only `labelIds`, plus the board's column labels
+ */
+export interface BoardLabelFilter {
+	mode: BoardLabelFilterMode;
+	labelIds: string[];
+}
+
+/** Board settings that merge independently; `columns` is the set and sequence of columns. */
+export type BoardField = 'name' | 'backlogFilter' | 'labelFilter' | 'columns';
+
+const BOARD_FIELDS: BoardField[] = ['name', 'backlogFilter', 'labelFilter', 'columns'];
 
 export interface KanbanBoard {
 	id: string;
 	name: string;
 	columns: KanbanColumn[];
 	backlogFilter: BacklogFilter;
+	labelFilter: BoardLabelFilter;
 	/** Last configuration edit; this is the board's delta-sync version. */
 	updatedAt: number;
 	/** Per-setting write times and writers; missing times fall back to `updatedAt`. */
@@ -58,6 +77,16 @@ export function defaultBacklogFilter(): BacklogFilter {
 	return { mode: BacklogFilterMode.AllNonColumn, includeUntagged: true, labelIds: [] };
 }
 
+export function defaultBoardLabelFilter(): BoardLabelFilter {
+	return { mode: BoardLabelFilterMode.All, labelIds: [] };
+}
+
+function uniqueIds(value: unknown): string[] {
+	return Array.isArray(value)
+		? [...new Set(value.filter((id): id is string => typeof id === 'string' && id.length > 0))]
+		: [];
+}
+
 export function normalizeBacklogFilter(value: unknown): BacklogFilter {
 	const fallback = defaultBacklogFilter();
 	if (!value || typeof value !== 'object' || Array.isArray(value)) return fallback;
@@ -67,14 +96,15 @@ export function normalizeBacklogFilter(value: unknown): BacklogFilter {
 			? BacklogFilterMode.Custom
 			: BacklogFilterMode.AllNonColumn;
 	const includeUntagged = raw.includeUntagged !== false;
-	const labelIds = Array.isArray(raw.labelIds)
-		? [
-				...new Set(
-					raw.labelIds.filter((id): id is string => typeof id === 'string' && id.length > 0)
-				)
-			]
-		: [];
-	return { mode, includeUntagged, labelIds };
+	return { mode, includeUntagged, labelIds: uniqueIds(raw.labelIds) };
+}
+
+export function normalizeBoardLabelFilter(value: unknown): BoardLabelFilter {
+	if (!value || typeof value !== 'object' || Array.isArray(value)) return defaultBoardLabelFilter();
+	const raw = value as Partial<BoardLabelFilter>;
+	return raw.mode === BoardLabelFilterMode.Custom
+		? { mode: BoardLabelFilterMode.Custom, labelIds: uniqueIds(raw.labelIds) }
+		: defaultBoardLabelFilter();
 }
 
 type StoredBoard = {
@@ -82,6 +112,7 @@ type StoredBoard = {
 	name?: unknown;
 	columns?: unknown;
 	backlogFilter?: unknown;
+	labelFilter?: unknown;
 	updatedAt?: unknown;
 	fieldTimes?: unknown;
 	fieldWriters?: unknown;
@@ -167,6 +198,7 @@ export function normalizeBoard(value: unknown): KanbanBoard | null {
 		name: board.name.trim() || 'Untitled board',
 		columns,
 		backlogFilter,
+		labelFilter: normalizeBoardLabelFilter(board.labelFilter),
 		// Pre-sync boards did not have a version. Persist a one-time local version so they upload.
 		updatedAt: Number(board.updatedAt) || Date.now(),
 		...(Object.keys(fieldTimes).length ? { fieldTimes } : {}),
@@ -181,6 +213,7 @@ export function createKanbanBoard(name = 'Untitled board'): KanbanBoard {
 		name: name.trim() || 'Untitled board',
 		columns: [{ id: uid(), labelId: null, order: [] }],
 		backlogFilter: defaultBacklogFilter(),
+		labelFilter: defaultBoardLabelFilter(),
 		updatedAt: now
 	};
 }
@@ -192,9 +225,19 @@ export function boardColumnLabelIds(board: KanbanBoard): Set<string> {
 	);
 }
 
+/** Whether the board's label filter lets `labelId` show; column labels always do. */
+export function boardShowsLabel(board: KanbanBoard, labelId: string): boolean {
+	const filter = board.labelFilter;
+	if (filter.mode !== BoardLabelFilterMode.Custom) return true;
+	return (
+		filter.labelIds.includes(labelId) || board.columns.some((column) => column.labelId === labelId)
+	);
+}
+
 /**
  * A note belongs in the backlog when it does not carry any board tag-column
- * label, and it matches the board's backlog filter.
+ * label, and it matches the board's backlog filter. Backlog filter labels the
+ * board hides stay stored, but select nothing until the board shows them again.
  */
 export function noteMatchesBacklog(board: KanbanBoard, note: Note): boolean {
 	const columnLabels = boardColumnLabelIds(board);
@@ -206,8 +249,7 @@ export function noteMatchesBacklog(board: KanbanBoard, note: Note): boolean {
 	}
 
 	if (filter.includeUntagged && note.labels.length === 0) return true;
-	if (filter.labelIds.length === 0) return false;
-	const allowed = new Set(filter.labelIds);
+	const allowed = new Set(filter.labelIds.filter((labelId) => boardShowsLabel(board, labelId)));
 	return note.labels.some((labelId) => allowed.has(labelId));
 }
 
@@ -314,6 +356,9 @@ export function applyBoardEdit(
 	if (stableStringify(next.backlogFilter) !== stableStringify(previous.backlogFilter)) {
 		stamp('backlogFilter');
 	}
+	if (stableStringify(next.labelFilter) !== stableStringify(previous.labelFilter)) {
+		stamp('labelFilter');
+	}
 	if (columnLayout(next) !== columnLayout(previous)) stamp('columns');
 	const before = new Map(previous.columns.map((column) => [column.id, column]));
 	const columns = next.columns.map((column) => {
@@ -368,6 +413,10 @@ export function mergeTwoBoards(left: KanbanBoard, right: KanbanBoard): KanbanBoa
 		side(left, 'backlogFilter', left.backlogFilter),
 		side(right, 'backlogFilter', right.backlogFilter)
 	);
+	const labelFilter = pickLatest(
+		side(left, 'labelFilter', left.labelFilter),
+		side(right, 'labelFilter', right.labelFilter)
+	);
 	const layout = pickLatest(side(left, 'columns', left), side(right, 'columns', right));
 	const other = layout.value === left ? right : left;
 	const otherColumns = new Map(other.columns.map((column) => [column.id, column]));
@@ -375,7 +424,7 @@ export function mergeTwoBoards(left: KanbanBoard, right: KanbanBoard): KanbanBoa
 		const copy = otherColumns.get(column.id);
 		return copy ? mergeColumn(column, layout.value, copy, other) : column;
 	});
-	const picked = { name, backlogFilter, columns: layout };
+	const picked = { name, backlogFilter, labelFilter, columns: layout };
 	const fieldTimes: Partial<Record<BoardField, number>> = {};
 	const fieldWriters: Partial<Record<BoardField, string>> = {};
 	for (const field of BOARD_FIELDS) {
@@ -388,6 +437,7 @@ export function mergeTwoBoards(left: KanbanBoard, right: KanbanBoard): KanbanBoa
 		name: name.value,
 		columns,
 		backlogFilter: backlogFilter.value,
+		labelFilter: labelFilter.value,
 		updatedAt: Math.max(left.updatedAt, right.updatedAt),
 		fieldTimes,
 		...(Object.keys(fieldWriters).length ? { fieldWriters } : {})

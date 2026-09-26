@@ -3,8 +3,11 @@
 	import KanbanCardBody from '$lib/components/KanbanCardBody.svelte';
 	import {
 		BacklogFilterMode,
+		BoardLabelFilterMode,
+		boardShowsLabel,
 		columnNotes,
 		defaultBacklogFilter,
+		defaultBoardLabelFilter,
 		insertIntoOrder,
 		moveNoteLabels,
 		slotPosition,
@@ -43,11 +46,16 @@
 			? notesStore.search(uiStore.search, notesStore.activeNotes)
 			: notesStore.activeNotes
 	);
-	const unusedTags = $derived(
+	const labelFilter = $derived(board.labelFilter);
+	const labelFilterActive = $derived(labelFilter.mode === BoardLabelFilterMode.Custom);
+	/** Labels that are not a column, whether or not the board shows them. */
+	const nonColumnTags = $derived(
 		notesStore.labels.filter(
 			(label) => !board.columns.some((column) => column.labelId === label.id)
 		)
 	);
+	/** Labels this board shows that are not a column yet. */
+	const unusedTags = $derived(nonColumnTags.filter((label) => boardShowsLabel(board, label.id)));
 	/** Labels that can be used in the backlog filter (not already a column). */
 	const backlogFilterTags = $derived(unusedTags);
 	const backlogFilter = $derived(board.backlogFilter ?? defaultBacklogFilter());
@@ -64,6 +72,7 @@
 	let boardMenuOpen = $state(false);
 	let pendingDelete = $state(false);
 	let backlogFilterOpen = $state(false);
+	let labelFilterOpen = $state(false);
 	let tagPickerOpen = $state(false);
 
 	const menuItemClass = menuItem({ density: 'compact' });
@@ -72,6 +81,7 @@
 	function resetBoardUi() {
 		renamingBoard = false;
 		backlogFilterOpen = false;
+		labelFilterOpen = false;
 		tagPickerOpen = false;
 	}
 
@@ -160,11 +170,35 @@
 		});
 	}
 
+	function setLabelFilterMode(mode: BoardLabelFilterMode) {
+		kanbanStore.setLabelFilter(
+			board.id,
+			mode === BoardLabelFilterMode.All
+				? defaultBoardLabelFilter()
+				: { mode, labelIds: [...labelFilter.labelIds] }
+		);
+	}
+
+	function toggleBoardLabel(labelId: string) {
+		const labelIds = labelFilter.labelIds.includes(labelId)
+			? labelFilter.labelIds.filter((id) => id !== labelId)
+			: [...labelFilter.labelIds, labelId];
+		kanbanStore.setLabelFilter(board.id, { mode: BoardLabelFilterMode.Custom, labelIds });
+	}
+
+	function labelFilterSummary(): string {
+		if (labelFilter.mode !== BoardLabelFilterMode.Custom) return 'All labels';
+		const names = nonColumnTags
+			.filter((label) => labelFilter.labelIds.includes(label.id))
+			.map((label) => label.name);
+		return names.length ? names.join(', ') : 'Column labels only';
+	}
+
 	function backlogFilterSummary(): string {
 		if (backlogFilter.mode !== BacklogFilterMode.Custom) return 'All non-column notes';
 		const parts: string[] = [];
 		if (backlogFilter.includeUntagged) parts.push('No labels');
-		for (const id of backlogFilter.labelIds) {
+		for (const id of backlogFilter.labelIds.filter((id) => boardShowsLabel(board, id))) {
 			parts.push(notesStore.labels.find((label) => label.id === id)?.name ?? 'Deleted label');
 		}
 		return parts.length ? parts.join(', ') : 'Nothing selected';
@@ -301,7 +335,77 @@
 				</Menu.Positioner>
 			</Menu.Root>
 		{/if}
+		<button
+			type="button"
+			class={cx(
+				button({ variant: 'ghost', size: 'xs' }),
+				k.boardFilterTrigger,
+				labelFilterActive && k.filterActive
+			)}
+			onclick={() => (labelFilterOpen = !labelFilterOpen)}
+			aria-expanded={labelFilterOpen}
+			aria-label="Board label filter"
+			title="Board label filter"
+		>
+			Labels
+		</button>
 	</div>
+
+	{#if labelFilterOpen}
+		<div class={k.boardFilterGroup} role="group" aria-label="Board label filter options">
+			<p class={k.explain}>
+				Choose which labels this board shows on cards, in the column picker, and in the backlog
+				filter. Label columns always show.
+			</p>
+			<label class={k.radioOption}>
+				<input
+					type="radio"
+					name="board-labels-mode-{board.id}"
+					checked={labelFilter.mode === BoardLabelFilterMode.All}
+					onchange={() => setLabelFilterMode(BoardLabelFilterMode.All)}
+					class={k.radioInput}
+				/>
+				<span class={k.radioTitle}>All labels</span>
+			</label>
+			<label class={k.radioOption}>
+				<input
+					type="radio"
+					name="board-labels-mode-{board.id}"
+					checked={labelFilter.mode === BoardLabelFilterMode.Custom}
+					onchange={() => setLabelFilterMode(BoardLabelFilterMode.Custom)}
+					class={k.radioInput}
+				/>
+				<span class={k.radioTitle}>Only selected…</span>
+			</label>
+
+			{#if labelFilter.mode === BoardLabelFilterMode.Custom}
+				<div class={k.filterIndent}>
+					{#each nonColumnTags as label (label.id)}
+						<Checkbox.Root
+							checked={labelFilter.labelIds.includes(label.id)}
+							onCheckedChange={() => toggleBoardLabel(label.id)}
+							class={k.checkRow}
+						>
+							<Checkbox.Control class={k.checkControl}>
+								<Checkbox.Indicator class={k.checkMark}>✓</Checkbox.Indicator>
+							</Checkbox.Control>
+							<Checkbox.Label class={k.tagLabel}>
+								{label.name}
+							</Checkbox.Label>
+							<Checkbox.HiddenInput />
+						</Checkbox.Root>
+					{/each}
+					{#if nonColumnTags.length === 0}
+						<p class={k.emptyTags}>Every label is already a column on this board.</p>
+					{/if}
+				</div>
+			{/if}
+
+			<p class={k.filterSummary} title={labelFilterSummary()}>
+				Showing: {labelFilterSummary()}
+			</p>
+		</div>
+	{/if}
 
 	<div class={['kanban-columns', k.columnsContainer]}>
 		<div class={k.columnsTrack}>
@@ -322,9 +426,7 @@
 								class={cx(
 									button({ variant: 'ghost', size: 'xs' }),
 									css({ rounded: 'card' }),
-									backlogFilterActive
-										? css({ bg: 'scrapscache.accentSubtle', color: 'scrapscache.accentHover' })
-										: undefined
+									backlogFilterActive && k.filterActive
 								)}
 								onclick={() => (backlogFilterOpen = !backlogFilterOpen)}
 								aria-expanded={backlogFilterOpen}
@@ -406,8 +508,8 @@
 									{/each}
 									{#if backlogFilterTags.length === 0}
 										<p class={k.emptyTags}>
-											No other labels available. Create labels on notes, or remove a label column
-											first.
+											No other labels available. Create labels on notes, show more labels on this
+											board, or remove a label column first.
 										</p>
 									{/if}
 								</div>

@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+	boardShowsLabel,
 	columnNotes,
 	defaultBacklogFilter,
+	defaultBoardLabelFilter,
+	normalizeBoard,
 	insertIntoOrder,
 	slotPosition,
 	mergeKanbanBoards,
@@ -20,6 +23,7 @@ const board: KanbanBoard = {
 	name: 'Work',
 	updatedAt: 10,
 	backlogFilter: defaultBacklogFilter(),
+	labelFilter: defaultBoardLabelFilter(),
 	columns: [
 		{ id: 'backlog', labelId: null, order: [] },
 		{ id: 'todo', labelId: 'todo-label', order: [] },
@@ -96,6 +100,42 @@ describe('Kanban board tag mapping', () => {
 		expect(columnNotes(custom, custom.columns[0], notes).map((item) => item.id)).toEqual([
 			'personal'
 		]);
+	});
+
+	it('shows every label until the board narrows them, and always its column labels', () => {
+		expect(boardShowsLabel(board, 'personal-label')).toBe(true);
+		const narrowed: KanbanBoard = {
+			...board,
+			labelFilter: { mode: 'custom', labelIds: ['work-label'] }
+		};
+		expect(boardShowsLabel(narrowed, 'work-label')).toBe(true);
+		expect(boardShowsLabel(narrowed, 'todo-label')).toBe(true);
+		expect(boardShowsLabel(narrowed, 'personal-label')).toBe(false);
+	});
+
+	it('selects nothing in the backlog with a filter label the board hides', () => {
+		const custom: KanbanBoard = {
+			...board,
+			backlogFilter: {
+				mode: 'custom',
+				includeUntagged: false,
+				labelIds: ['personal-label', 'work-label']
+			},
+			labelFilter: { mode: 'custom', labelIds: ['work-label'] }
+		};
+		const notes = [note('personal', ['personal-label']), note('work', ['work-label'])];
+		expect(columnNotes(custom, custom.columns[0], notes).map((item) => item.id)).toEqual(['work']);
+	});
+
+	it('reads a board without a label filter as showing every label', () => {
+		const { labelFilter: _, ...stored } = board;
+		expect(normalizeBoard(stored)?.labelFilter).toEqual(defaultBoardLabelFilter());
+		expect(
+			normalizeBoard({
+				...board,
+				labelFilter: { mode: 'custom', labelIds: ['a', 'a', '', 7] }
+			})?.labelFilter
+		).toEqual({ mode: 'custom', labelIds: ['a'] });
 	});
 
 	it('moves only the exact source column tag and retains unrelated labels', () => {
@@ -282,6 +322,23 @@ describe('board merge', () => {
 		const merged = mergeTwoBoards(renamed, filtered);
 		expect(merged.name).toBe('Sprint');
 		expect(merged.backlogFilter.includeUntagged).toBe(false);
+	});
+
+	it('keeps a backlog filter change and a board label filter change made on two devices', () => {
+		const backlog = applyBoardEdit(
+			board,
+			{ ...board, backlogFilter: { ...board.backlogFilter, includeUntagged: false } },
+			at(50, 'phone')
+		);
+		const labels = applyBoardEdit(
+			board,
+			{ ...board, labelFilter: { mode: 'custom', labelIds: ['work-label'] } },
+			at(40, 'laptop')
+		);
+		const merged = mergeTwoBoards(backlog, labels);
+		expect(merged.backlogFilter.includeUntagged).toBe(false);
+		expect(merged.labelFilter).toEqual({ mode: 'custom', labelIds: ['work-label'] });
+		expect(stableStringify(mergeTwoBoards(labels, backlog))).toBe(stableStringify(merged));
 	});
 
 	it('does not let an unarranged column clear a hand-made order', () => {

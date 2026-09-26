@@ -2,6 +2,8 @@
 	// The look of a Kanban card, with no interaction of its own. The board renders
 	// it twice: once in the column, once inside the ghost that follows a drag, so
 	// the card the user carries is the card they see land.
+	import { boardShowsLabel } from '$lib/kanban';
+	import { kanbanStore } from '$lib/stores/kanban.svelte';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import type { Note } from '$lib/types';
 	import NoteBodyDisplay from './NoteBodyDisplay.svelte';
@@ -12,8 +14,10 @@
 
 	let { note, shield = false }: { note: Note; shield?: boolean } = $props();
 
+	// Only the labels the board shows: a board narrowed to a few labels keeps its cards quiet.
 	const labelsForNote = $derived(
 		note.labels
+			.filter((id) => boardShowsLabel(kanbanStore.activeBoard, id))
 			.map((id) => notesStore.labelsById.get(id))
 			.filter((label): label is NonNullable<typeof label> => !!label)
 	);

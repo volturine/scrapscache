@@ -54,6 +54,16 @@ const kanbanColumnSize = {
 	w: 'min(calc(var(--note-card-width) + 1.5rem), calc(100vw - 2rem))',
 	flexShrink: 0
 } as const;
+const filterPanel = {
+	direction: 'column',
+	gap: 'sm',
+	...cardRadius,
+	borderWidth: 'hairline',
+	borderColor: 'scrapscache.borderSubtle',
+	bg: 'scrapscache.surface',
+	p: 'sm',
+	fontSize: 'label'
+} as const;
 const filterOption = {
 	display: 'flex',
 	gap: 'sm',
@@ -926,7 +936,11 @@ export const fullscreen = {
 
 // Static view contracts stay class maps; CVA below is reserved for live state.
 export const kanbanViewStyles = {
-	controls: css({ mb: 'lg', minH: '2.5rem', ...rowCenter }),
+	controls: css({ mb: 'lg', minH: '2.5rem', ...rowCenter, gap: 'sm' }),
+	// Pushes the board label filter to the far end of the controls row.
+	boardFilterTrigger: css({ ml: 'auto', flexShrink: 0, rounded: 'card' }),
+	filterActive: css({ bg: 'scrapscache.accentSubtle', color: 'scrapscache.accentHover' }),
+	boardFilterGroup: flex({ ...filterPanel, mb: 'lg', w: 'min(24rem, 100%)' }),
 	// The trigger and the rename field share one box, so renaming never nudges the board.
 	boardTrigger: css({
 		...rowCenter,
@@ -1037,17 +1051,7 @@ export const kanbanViewStyles = {
 		textAlign: 'center',
 		textStyle: 'caption'
 	}),
-	backlogGroup: flex({
-		mb: 'sm',
-		direction: 'column',
-		gap: 'sm',
-		...cardRadius,
-		borderWidth: 'hairline',
-		borderColor: 'scrapscache.borderSubtle',
-		bg: 'scrapscache.surface',
-		p: 'sm',
-		fontSize: 'label'
-	}),
+	backlogGroup: flex({ ...filterPanel, mb: 'sm' }),
 	filterIndent: flex({
 		ml: '2xs',
 		direction: 'column',

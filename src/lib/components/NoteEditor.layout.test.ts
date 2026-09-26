@@ -251,7 +251,12 @@ describe('NoteEditor Keep-style layout', () => {
 			vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function (
 				this: HTMLElement
 			) {
-				return this.matches('[role="dialog"] > header, [role="dialog"] > footer') ? 50 : 0;
+				if (this.matches('[role="dialog"] > header, [role="dialog"] > footer')) return 50;
+				// A photo-only note's open photo panel fills the note area.
+				if (this.matches('[data-preview-dock]') && this.querySelector('[data-preview-panel]')) {
+					return dialogHeight - 100;
+				}
+				return 0;
 			});
 			const computed = window.getComputedStyle;
 			vi.spyOn(window, 'getComputedStyle').mockImplementation((el, pseudo) => {
@@ -317,6 +322,19 @@ describe('NoteEditor Keep-style layout', () => {
 
 			await new Promise((resolve) => requestAnimationFrame(resolve));
 			await new Promise((resolve) => requestAnimationFrame(resolve));
+			expect(getByRole('button', { name: 'Expand note' })).toBeTruthy();
+		});
+
+		it('keeps the normal sheet for a photo-only note on a tall screen', async () => {
+			layOut(100 + 17 * 24);
+			notesStore.notes = [note({ body: '' })];
+			const { container, getByRole } = render(NoteEditor, {
+				props: { noteId: 'note-1', onClose: () => {} }
+			});
+
+			await new Promise((resolve) => requestAnimationFrame(resolve));
+			await new Promise((resolve) => requestAnimationFrame(resolve));
+			expect(container.querySelector('[aria-label="Photos"]')).toBeTruthy();
 			expect(getByRole('button', { name: 'Expand note' })).toBeTruthy();
 		});
 	});

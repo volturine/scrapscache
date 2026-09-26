@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Note } from '$lib/types';
 import { notesStore } from '$lib/stores/notes.svelte';
 import NoteCard from './NoteCard.svelte';
+import { slotRecipes } from '../../../panda/recipes';
 
 const PNG =
 	'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
@@ -86,5 +87,25 @@ describe('NoteCard content shield', () => {
 		expect(content.querySelector('a')).toBeNull();
 		// The card body still reads as text for assistive technology.
 		expect(content.textContent).toContain('webassembly.org');
+	});
+});
+
+describe('NoteCard gallery scrolling', () => {
+	afterEach(() => {
+		notesStore.notes = [];
+	});
+
+	it('lets a long preview hand a swipe to the gallery once it runs out', () => {
+		render(NoteCard, { props: { note: note({ images: [] }), onOpen: vi.fn() } });
+		const scroller = document.querySelector('[class*="ov-y_auto"]') as HTMLElement;
+
+		expect(scroller.className).toMatch(/tch-a_pan-y/);
+		// The shared .scrollable contains overscroll, which stopped Android from
+		// scrolling the gallery from a card.
+		expect(scroller.classList.contains('scrollable')).toBe(false);
+	});
+
+	it('lets a vertical swipe on the tag row scroll the gallery', () => {
+		expect(slotRecipes.noteCard.base?.labelsRow?.touchAction).toBe('pan-x pan-y');
 	});
 });

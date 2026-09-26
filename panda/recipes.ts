@@ -417,7 +417,8 @@ const noteCardRecipe = defineSlotRecipe({
 			pt: 'sm',
 			overflowX: 'auto',
 			overflowY: 'hidden',
-			touchAction: 'pan-x',
+			// pan-x alone would forbid Android from scrolling the gallery from here.
+			touchAction: 'pan-x pan-y',
 			overscrollBehaviorX: 'contain',
 			'& > *': { flexShrink: 0 }
 		},

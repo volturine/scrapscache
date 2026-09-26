@@ -3,11 +3,9 @@
 	import KanbanCardBody from '$lib/components/KanbanCardBody.svelte';
 	import {
 		BacklogFilterMode,
-		BoardLabelFilterMode,
-		boardShowsLabel,
+		BoardNoteFilterMode,
 		columnNotes,
 		defaultBacklogFilter,
-		defaultBoardLabelFilter,
 		insertIntoOrder,
 		moveNoteLabels,
 		slotPosition,
@@ -46,16 +44,19 @@
 			? notesStore.search(uiStore.search, notesStore.activeNotes)
 			: notesStore.activeNotes
 	);
-	const labelFilter = $derived(board.labelFilter);
-	const labelFilterActive = $derived(labelFilter.mode === BoardLabelFilterMode.Custom);
-	/** Labels that are not a column, whether or not the board shows them. */
-	const nonColumnTags = $derived(
+	const unusedTags = $derived(
 		notesStore.labels.filter(
 			(label) => !board.columns.some((column) => column.labelId === label.id)
 		)
 	);
-	/** Labels this board shows that are not a column yet. */
-	const unusedTags = $derived(nonColumnTags.filter((label) => boardShowsLabel(board, label.id)));
+	const noteFilter = $derived(board.noteFilter);
+	/** Labels the note filter acts on: the selected ones that are not a column. */
+	const noteFilterLabels = $derived(
+		unusedTags.filter((label) => noteFilter.labelIds.includes(label.id))
+	);
+	const noteFilterActive = $derived(
+		noteFilter.mode !== BoardNoteFilterMode.All && noteFilterLabels.length > 0
+	);
 	/** Labels that can be used in the backlog filter (not already a column). */
 	const backlogFilterTags = $derived(unusedTags);
 	const backlogFilter = $derived(board.backlogFilter ?? defaultBacklogFilter());
@@ -72,16 +73,21 @@
 	let boardMenuOpen = $state(false);
 	let pendingDelete = $state(false);
 	let backlogFilterOpen = $state(false);
-	let labelFilterOpen = $state(false);
+	let noteFilterOpen = $state(false);
 	let tagPickerOpen = $state(false);
 
 	const menuItemClass = menuItem({ density: 'compact' });
+	const noteFilterModes = [
+		{ mode: BoardNoteFilterMode.All, title: 'All notes' },
+		{ mode: BoardNoteFilterMode.Keep, title: 'Only notes with…' },
+		{ mode: BoardNoteFilterMode.Remove, title: 'Hide notes with…' }
+	];
 	const d = dialog({ size: 'sm' });
 
 	function resetBoardUi() {
 		renamingBoard = false;
 		backlogFilterOpen = false;
-		labelFilterOpen = false;
+		noteFilterOpen = false;
 		tagPickerOpen = false;
 	}
 
@@ -170,35 +176,30 @@
 		});
 	}
 
-	function setLabelFilterMode(mode: BoardLabelFilterMode) {
-		kanbanStore.setLabelFilter(
-			board.id,
-			mode === BoardLabelFilterMode.All
-				? defaultBoardLabelFilter()
-				: { mode, labelIds: [...labelFilter.labelIds] }
-		);
+	function setNoteFilterMode(mode: BoardNoteFilterMode) {
+		kanbanStore.setNoteFilter(board.id, { mode, labelIds: [...noteFilter.labelIds] });
 	}
 
-	function toggleBoardLabel(labelId: string) {
-		const labelIds = labelFilter.labelIds.includes(labelId)
-			? labelFilter.labelIds.filter((id) => id !== labelId)
-			: [...labelFilter.labelIds, labelId];
-		kanbanStore.setLabelFilter(board.id, { mode: BoardLabelFilterMode.Custom, labelIds });
+	function toggleNoteFilterLabel(labelId: string) {
+		const labelIds = noteFilter.labelIds.includes(labelId)
+			? noteFilter.labelIds.filter((id) => id !== labelId)
+			: [...noteFilter.labelIds, labelId];
+		kanbanStore.setNoteFilter(board.id, { mode: noteFilter.mode, labelIds });
 	}
 
-	function labelFilterSummary(): string {
-		if (labelFilter.mode !== BoardLabelFilterMode.Custom) return 'All labels';
-		const names = nonColumnTags
-			.filter((label) => labelFilter.labelIds.includes(label.id))
-			.map((label) => label.name);
-		return names.length ? names.join(', ') : 'Column labels only';
+	function noteFilterSummary(): string {
+		if (!noteFilterActive) return 'All notes';
+		const names = noteFilterLabels.map((label) => label.name).join(', ');
+		return noteFilter.mode === BoardNoteFilterMode.Keep
+			? `Only notes with ${names}`
+			: `All notes except ${names}`;
 	}
 
 	function backlogFilterSummary(): string {
 		if (backlogFilter.mode !== BacklogFilterMode.Custom) return 'All non-column notes';
 		const parts: string[] = [];
 		if (backlogFilter.includeUntagged) parts.push('No labels');
-		for (const id of backlogFilter.labelIds.filter((id) => boardShowsLabel(board, id))) {
+		for (const id of backlogFilter.labelIds) {
 			parts.push(notesStore.labels.find((label) => label.id === id)?.name ?? 'Deleted label');
 		}
 		return parts.length ? parts.join(', ') : 'Nothing selected';
@@ -340,50 +341,42 @@
 			class={cx(
 				button({ variant: 'ghost', size: 'xs' }),
 				k.boardFilterTrigger,
-				labelFilterActive && k.filterActive
+				noteFilterActive && k.filterActive
 			)}
-			onclick={() => (labelFilterOpen = !labelFilterOpen)}
-			aria-expanded={labelFilterOpen}
-			aria-label="Board label filter"
-			title="Board label filter"
+			onclick={() => (noteFilterOpen = !noteFilterOpen)}
+			aria-expanded={noteFilterOpen}
+			aria-label="Board filter"
+			title="Board filter"
 		>
-			Labels
+			Filter board
 		</button>
 	</div>
 
-	{#if labelFilterOpen}
-		<div class={k.boardFilterGroup} role="group" aria-label="Board label filter options">
+	{#if noteFilterOpen}
+		<div class={k.boardFilterGroup} role="group" aria-label="Board filter options">
 			<p class={k.explain}>
-				Choose which labels this board shows on cards, in the column picker, and in the backlog
-				filter. Label columns always show.
+				Choose which notes show anywhere on this board, backlog included. Every column stays on
+				show.
 			</p>
-			<label class={k.radioOption}>
-				<input
-					type="radio"
-					name="board-labels-mode-{board.id}"
-					checked={labelFilter.mode === BoardLabelFilterMode.All}
-					onchange={() => setLabelFilterMode(BoardLabelFilterMode.All)}
-					class={k.radioInput}
-				/>
-				<span class={k.radioTitle}>All labels</span>
-			</label>
-			<label class={k.radioOption}>
-				<input
-					type="radio"
-					name="board-labels-mode-{board.id}"
-					checked={labelFilter.mode === BoardLabelFilterMode.Custom}
-					onchange={() => setLabelFilterMode(BoardLabelFilterMode.Custom)}
-					class={k.radioInput}
-				/>
-				<span class={k.radioTitle}>Only selected…</span>
-			</label>
+			{#each noteFilterModes as option (option.mode)}
+				<label class={k.radioOption}>
+					<input
+						type="radio"
+						name="board-filter-mode-{board.id}"
+						checked={noteFilter.mode === option.mode}
+						onchange={() => setNoteFilterMode(option.mode)}
+						class={k.radioInput}
+					/>
+					<span class={k.radioTitle}>{option.title}</span>
+				</label>
+			{/each}
 
-			{#if labelFilter.mode === BoardLabelFilterMode.Custom}
+			{#if noteFilter.mode !== BoardNoteFilterMode.All}
 				<div class={k.filterIndent}>
-					{#each nonColumnTags as label (label.id)}
+					{#each unusedTags as label (label.id)}
 						<Checkbox.Root
-							checked={labelFilter.labelIds.includes(label.id)}
-							onCheckedChange={() => toggleBoardLabel(label.id)}
+							checked={noteFilter.labelIds.includes(label.id)}
+							onCheckedChange={() => toggleNoteFilterLabel(label.id)}
 							class={k.checkRow}
 						>
 							<Checkbox.Control class={k.checkControl}>
@@ -395,14 +388,14 @@
 							<Checkbox.HiddenInput />
 						</Checkbox.Root>
 					{/each}
-					{#if nonColumnTags.length === 0}
+					{#if unusedTags.length === 0}
 						<p class={k.emptyTags}>Every label is already a column on this board.</p>
 					{/if}
 				</div>
 			{/if}
 
-			<p class={k.filterSummary} title={labelFilterSummary()}>
-				Showing: {labelFilterSummary()}
+			<p class={k.filterSummary} title={noteFilterSummary()}>
+				Showing: {noteFilterSummary()}
 			</p>
 		</div>
 	{/if}
@@ -508,8 +501,8 @@
 									{/each}
 									{#if backlogFilterTags.length === 0}
 										<p class={k.emptyTags}>
-											No other labels available. Create labels on notes, show more labels on this
-											board, or remove a label column first.
+											No other labels available. Create labels on notes, or remove a label column
+											first.
 										</p>
 									{/if}
 								</div>

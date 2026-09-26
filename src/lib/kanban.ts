@@ -37,27 +37,26 @@ export interface BacklogFilter {
 	labelIds: string[];
 }
 
-export const BoardNoteFilterMode = {
-	All: 'all',
+export const BoardNoteFilterAction = {
 	Keep: 'keep',
 	Remove: 'remove'
 } as const;
-export type BoardNoteFilterMode = (typeof BoardNoteFilterMode)[keyof typeof BoardNoteFilterMode];
+export type BoardNoteFilterAction =
+	(typeof BoardNoteFilterAction)[keyof typeof BoardNoteFilterAction];
 
 /**
  * Controls which notes appear anywhere on a board, backlog included, by label.
  * Every column stays on show; only the notes in them are filtered.
  *
- * - `all` (default): every note
- * - `keep`: only notes carrying one of `labelIds`
- * - `remove`: every note except those carrying one of `labelIds`
+ * The labels and the action are chosen independently: `keep` shows only notes
+ * carrying one of `labelIds`, `remove` hides them. With no labels selected the
+ * filter is off, whichever action is set.
  *
  * Column labels are never part of it: a column already chooses its notes by
- * its own label. An empty selection filters nothing, and the selection is kept
- * across modes so switching between them never loses it.
+ * its own label.
  */
 export interface BoardNoteFilter {
-	mode: BoardNoteFilterMode;
+	action: BoardNoteFilterAction;
 	labelIds: string[];
 }
 
@@ -84,7 +83,7 @@ export function defaultBacklogFilter(): BacklogFilter {
 }
 
 export function defaultBoardNoteFilter(): BoardNoteFilter {
-	return { mode: BoardNoteFilterMode.All, labelIds: [] };
+	return { action: BoardNoteFilterAction.Keep, labelIds: [] };
 }
 
 function uniqueIds(value: unknown): string[] {
@@ -105,16 +104,14 @@ export function normalizeBacklogFilter(value: unknown): BacklogFilter {
 	return { mode, includeUntagged, labelIds: uniqueIds(raw.labelIds) };
 }
 
-const NOTE_FILTER_MODES: string[] = Object.values(BoardNoteFilterMode);
-
 export function normalizeBoardNoteFilter(value: unknown): BoardNoteFilter {
 	if (!value || typeof value !== 'object' || Array.isArray(value)) return defaultBoardNoteFilter();
 	const raw = value as Partial<BoardNoteFilter>;
-	const mode =
-		typeof raw.mode === 'string' && NOTE_FILTER_MODES.includes(raw.mode)
-			? (raw.mode as BoardNoteFilterMode)
-			: BoardNoteFilterMode.All;
-	return { mode, labelIds: uniqueIds(raw.labelIds) };
+	const action =
+		raw.action === BoardNoteFilterAction.Remove
+			? BoardNoteFilterAction.Remove
+			: BoardNoteFilterAction.Keep;
+	return { action, labelIds: uniqueIds(raw.labelIds) };
 }
 
 type StoredBoard = {
@@ -235,15 +232,18 @@ export function boardColumnLabelIds(board: KanbanBoard): Set<string> {
 	);
 }
 
-/** Whether the board's note filter lets `note` onto the board at all. */
-export function noteOnBoard(board: KanbanBoard, note: Note): boolean {
-	const filter = board.noteFilter;
-	if (filter.mode === BoardNoteFilterMode.All) return true;
+/** The labels the board's note filter acts on: the selected ones that are not a column. */
+export function noteFilterLabelIds(board: KanbanBoard): string[] {
 	const columnLabels = boardColumnLabelIds(board);
-	const selected = new Set(filter.labelIds.filter((labelId) => !columnLabels.has(labelId)));
-	if (selected.size === 0) return true;
-	const carries = note.labels.some((labelId) => selected.has(labelId));
-	return filter.mode === BoardNoteFilterMode.Keep ? carries : !carries;
+	return board.noteFilter.labelIds.filter((labelId) => !columnLabels.has(labelId));
+}
+
+/** The notes the board's note filter lets onto the board at all. */
+export function boardNotes(board: KanbanBoard, notes: Note[]): Note[] {
+	const selected = new Set(noteFilterLabelIds(board));
+	if (selected.size === 0) return notes;
+	const keep = board.noteFilter.action === BoardNoteFilterAction.Keep;
+	return notes.filter((note) => note.labels.some((labelId) => selected.has(labelId)) === keep);
 }
 
 /**
@@ -278,7 +278,7 @@ export function orderColumnNotes(notes: Note[], order: string[]): Note[] {
  */
 export function columnNotes(board: KanbanBoard, column: KanbanColumn, notes: Note[]): Note[] {
 	const columnLabelId = column.labelId;
-	const onBoard = notes.filter((note) => noteOnBoard(board, note));
+	const onBoard = boardNotes(board, notes);
 	const members =
 		columnLabelId !== null
 			? onBoard.filter((note) => note.labels.includes(columnLabelId))

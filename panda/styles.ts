@@ -934,6 +934,31 @@ export const fullscreen = {
 	}
 };
 
+/** A searchable, height-capped checklist of labels, shared by the Kanban filters. */
+export const labelChecklistStyles = {
+	root: css({ ...column, gap: '2xs' }),
+	// About seven rows: long enough to scan, short enough to keep the board in view.
+	list: css({
+		...column,
+		gap: '3xs',
+		maxH: '14rem',
+		overflowY: 'auto',
+		overscrollBehavior: 'contain'
+	}),
+	row: css({ ...filterOption, alignItems: 'center' }),
+	control: css({
+		...flexCenter,
+		...iconSm,
+		flexShrink: 0,
+		rounded: 'compact',
+		...border,
+		'&[data-state=checked]': { borderColor: 'scrapscache.accent', bg: 'scrapscache.accent' }
+	}),
+	mark: css({ fontSize: 'micro', color: 'scrapscache.accentForeground' }),
+	name: css(truncateText),
+	empty: css({ px: '2xs', py: 'xs', ...mutedText, textStyle: 'caption' })
+};
+
 // Static view contracts stay class maps; CVA below is reserved for live state.
 export const kanbanViewStyles = {
 	controls: css({ mb: 'lg', minH: '2.5rem', ...rowCenter, gap: 'sm' }),
@@ -1062,15 +1087,34 @@ export const kanbanViewStyles = {
 	}),
 	addColWrap: css({ position: 'relative', ...kanbanColumnSize, pt: '2xs' }),
 	radioOption: css({ ...filterOption, alignItems: 'flex-start' }),
-	checkRow: css({ ...filterOption, alignItems: 'center' }),
-	checkControl: css({
-		...flexCenter,
-		...iconSm,
-		rounded: 'compact',
-		...border,
-		'&[data-state=checked]': { borderColor: 'scrapscache.accent', bg: 'scrapscache.accent' }
+	filterHeader: css({ ...rowCenter, justifyContent: 'space-between', gap: 'sm' }),
+	// Show only / Hide: a two-way switch on the panel surface, not a list of options.
+	actionSegment: css({
+		...rowCenter,
+		gap: '3xs',
+		...cardRadius,
+		bg: 'scrapscache.controlSubtle',
+		p: '3xs'
 	}),
-	checkMark: css({ fontSize: 'micro', color: 'scrapscache.accentForeground' }),
+	actionSegmentItem: css({
+		...clickable,
+		rounded: 'compact',
+		px: 'sm',
+		py: '2xs',
+		textStyle: 'button',
+		outline: 'none',
+		transition: 'background-color 120ms ease, color 120ms ease',
+		'&[data-state=unchecked]': {
+			...mutedText,
+			_hoverable: { color: 'scrapscache.text' }
+		},
+		'&[data-state=checked]': {
+			bg: 'scrapscache.surface',
+			color: 'scrapscache.text',
+			boxShadow: 'sm'
+		},
+		'&[data-focus-visible]': { outline: '2px solid', outlineColor: 'scrapscache.focus' }
+	}),
 	filterSummary: css({ ...truncateText, px: '2xs', textStyle: 'micro' }),
 	menuItem: css({
 		display: 'block',
@@ -1085,8 +1129,6 @@ export const kanbanViewStyles = {
 	radioInput: css({ mt: '3xs' }),
 	radioTitle: css({ textStyle: 'button' }),
 	radioSubtitle: css({ mt: '3xs', display: 'block', textStyle: 'caption' }),
-	tagLabel: css(truncateText),
-	emptyTags: css({ px: '2xs', py: '2xs', ...mutedText }),
 	tagPickerPositioner: css({ zIndex: 20, w: 'var(--reference-width)' }),
 	tagPickerContent: css({ maxH: '16rem', overflowY: 'auto', py: '2xs' }),
 	dragGhost: css({

@@ -114,58 +114,53 @@ describe('Kanban board tag mapping', () => {
 	it('keeps only notes with the selected labels, in every column', () => {
 		const kept: KanbanBoard = {
 			...board,
-			noteFilter: { mode: 'keep', labelIds: ['work-label'] }
+			noteFilter: { action: 'keep', labelIds: ['work-label'] }
 		};
 		expect(ids(kept, 0)).toEqual(['work']);
 		expect(ids(kept, 1)).toEqual(['work-todo']);
 		expect(kept.columns).toHaveLength(3);
 	});
 
-	it('removes notes with the selected labels, in every column', () => {
-		const removed: KanbanBoard = {
+	it('hides notes with the selected labels, in every column', () => {
+		const hidden: KanbanBoard = {
 			...board,
-			noteFilter: { mode: 'remove', labelIds: ['work-label'] }
+			noteFilter: { action: 'remove', labelIds: ['work-label'] }
 		};
-		expect(ids(removed, 0)).toEqual(['plain', 'personal']);
-		expect(ids(removed, 1)).toEqual(['personal-todo']);
+		expect(ids(hidden, 0)).toEqual(['plain', 'personal']);
+		expect(ids(hidden, 1)).toEqual(['personal-todo']);
 	});
 
 	it('filters nothing with no selection, or with only column labels selected', () => {
-		for (const mode of ['keep', 'remove'] as const) {
+		for (const action of ['keep', 'remove'] as const) {
 			for (const labelIds of [[], ['todo-label']]) {
-				const filtered: KanbanBoard = { ...board, noteFilter: { mode, labelIds } };
+				const filtered: KanbanBoard = { ...board, noteFilter: { action, labelIds } };
 				expect(ids(filtered, 0)).toEqual(['plain', 'work', 'personal']);
 				expect(ids(filtered, 1)).toEqual(['work-todo', 'personal-todo']);
 			}
 		}
 	});
 
-	it('ignores the selection while the board shows all notes', () => {
-		const all: KanbanBoard = { ...board, noteFilter: { mode: 'all', labelIds: ['work-label'] } };
-		expect(ids(all, 0)).toEqual(['plain', 'work', 'personal']);
-	});
-
 	it('applies the board filter on top of the backlog filter', () => {
 		const both: KanbanBoard = {
 			...board,
 			backlogFilter: { mode: 'custom', includeUntagged: true, labelIds: ['work-label'] },
-			noteFilter: { mode: 'remove', labelIds: ['work-label'] }
+			noteFilter: { action: 'remove', labelIds: ['work-label'] }
 		};
 		expect(ids(both, 0)).toEqual(['plain']);
 	});
 
-	it('reads a board without a note filter as showing every note', () => {
+	it('reads a board without a note filter as filtering nothing', () => {
 		const { noteFilter: _, ...stored } = board;
 		expect(normalizeBoard(stored)?.noteFilter).toEqual(defaultBoardNoteFilter());
 		expect(
 			normalizeBoard({
 				...board,
-				noteFilter: { mode: 'remove', labelIds: ['a', 'a', '', 7] }
+				noteFilter: { action: 'remove', labelIds: ['a', 'a', '', 7] }
 			})?.noteFilter
-		).toEqual({ mode: 'remove', labelIds: ['a'] });
+		).toEqual({ action: 'remove', labelIds: ['a'] });
 		expect(
-			normalizeBoard({ ...board, noteFilter: { mode: 'bogus', labelIds: ['a'] } })?.noteFilter
-		).toEqual({ mode: 'all', labelIds: ['a'] });
+			normalizeBoard({ ...board, noteFilter: { action: 'bogus', labelIds: ['a'] } })?.noteFilter
+		).toEqual({ action: 'keep', labelIds: ['a'] });
 	});
 
 	it('moves only the exact source column tag and retains unrelated labels', () => {
@@ -362,12 +357,12 @@ describe('board merge', () => {
 		);
 		const notes = applyBoardEdit(
 			board,
-			{ ...board, noteFilter: { mode: 'remove', labelIds: ['work-label'] } },
+			{ ...board, noteFilter: { action: 'remove', labelIds: ['work-label'] } },
 			at(40, 'laptop')
 		);
 		const merged = mergeTwoBoards(backlog, notes);
 		expect(merged.backlogFilter.includeUntagged).toBe(false);
-		expect(merged.noteFilter).toEqual({ mode: 'remove', labelIds: ['work-label'] });
+		expect(merged.noteFilter).toEqual({ action: 'remove', labelIds: ['work-label'] });
 		expect(stableStringify(mergeTwoBoards(notes, backlog))).toBe(stableStringify(merged));
 	});
 

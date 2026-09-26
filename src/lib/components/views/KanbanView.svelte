@@ -1,13 +1,15 @@
 <script lang="ts">
 	import KanbanCard from '$lib/components/KanbanCard.svelte';
 	import KanbanCardBody from '$lib/components/KanbanCardBody.svelte';
+	import LabelChecklist from '$lib/components/LabelChecklist.svelte';
 	import {
 		BacklogFilterMode,
-		BoardNoteFilterMode,
+		BoardNoteFilterAction,
 		columnNotes,
 		defaultBacklogFilter,
 		insertIntoOrder,
 		moveNoteLabels,
+		noteFilterLabelIds,
 		slotPosition,
 		type BacklogFilter,
 		type KanbanColumn
@@ -20,6 +22,7 @@
 	import { uiStore } from '$lib/stores/ui.svelte';
 	import { Checkbox } from '@ark-ui/svelte/checkbox';
 	import { Menu } from '@ark-ui/svelte/menu';
+	import { SegmentGroup } from '@ark-ui/svelte/segment-group';
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { Check, ChevronDown, Pencil, Plus, Trash2, X } from '@lucide/svelte';
 	import { flip, type FlipParams } from 'svelte/animate';
@@ -27,7 +30,13 @@
 	import type { Note } from '$lib/types';
 	import { css, cx } from 'styled-system/css';
 	import { vstack } from 'styled-system/patterns';
-	import { iconSizeSm as iconSm, kanbanViewStyles, popover, viewPage } from '$panda/styles';
+	import {
+		iconSizeSm as iconSm,
+		kanbanViewStyles,
+		labelChecklistStyles as checklist,
+		popover,
+		viewPage
+	} from '$panda/styles';
 	import {
 		button,
 		dialog,
@@ -50,13 +59,11 @@
 		)
 	);
 	const noteFilter = $derived(board.noteFilter);
-	/** Labels the note filter acts on: the selected ones that are not a column. */
-	const noteFilterLabels = $derived(
-		unusedTags.filter((label) => noteFilter.labelIds.includes(label.id))
+	/** Names of the labels the note filter acts on; none means the filter is off. */
+	const noteFilterNames = $derived(
+		noteFilterLabelIds(board).flatMap((id) => notesStore.labelsById.get(id)?.name ?? [])
 	);
-	const noteFilterActive = $derived(
-		noteFilter.mode !== BoardNoteFilterMode.All && noteFilterLabels.length > 0
-	);
+	const noteFilterActive = $derived(noteFilterNames.length > 0);
 	/** Labels that can be used in the backlog filter (not already a column). */
 	const backlogFilterTags = $derived(unusedTags);
 	const backlogFilter = $derived(board.backlogFilter ?? defaultBacklogFilter());
@@ -77,10 +84,9 @@
 	let tagPickerOpen = $state(false);
 
 	const menuItemClass = menuItem({ density: 'compact' });
-	const noteFilterModes = [
-		{ mode: BoardNoteFilterMode.All, title: 'All notes' },
-		{ mode: BoardNoteFilterMode.Keep, title: 'Only notes with…' },
-		{ mode: BoardNoteFilterMode.Remove, title: 'Hide notes with…' }
+	const noteFilterActions = [
+		{ action: BoardNoteFilterAction.Keep, title: 'Show only' },
+		{ action: BoardNoteFilterAction.Remove, title: 'Hide' }
 	];
 	const d = dialog({ size: 'sm' });
 
@@ -176,21 +182,25 @@
 		});
 	}
 
-	function setNoteFilterMode(mode: BoardNoteFilterMode) {
-		kanbanStore.setNoteFilter(board.id, { mode, labelIds: [...noteFilter.labelIds] });
+	function setNoteFilterAction(action: BoardNoteFilterAction) {
+		kanbanStore.setNoteFilter(board.id, { action, labelIds: [...noteFilter.labelIds] });
 	}
 
 	function toggleNoteFilterLabel(labelId: string) {
 		const labelIds = noteFilter.labelIds.includes(labelId)
 			? noteFilter.labelIds.filter((id) => id !== labelId)
 			: [...noteFilter.labelIds, labelId];
-		kanbanStore.setNoteFilter(board.id, { mode: noteFilter.mode, labelIds });
+		kanbanStore.setNoteFilter(board.id, { action: noteFilter.action, labelIds });
+	}
+
+	function clearNoteFilter() {
+		kanbanStore.setNoteFilter(board.id, { action: noteFilter.action, labelIds: [] });
 	}
 
 	function noteFilterSummary(): string {
-		if (!noteFilterActive) return 'All notes';
-		const names = noteFilterLabels.map((label) => label.name).join(', ');
-		return noteFilter.mode === BoardNoteFilterMode.Keep
+		if (!noteFilterActive) return 'All notes. Tick labels to filter.';
+		const names = noteFilterNames.join(', ');
+		return noteFilter.action === BoardNoteFilterAction.Keep
 			? `Only notes with ${names}`
 			: `All notes except ${names}`;
 	}
@@ -354,48 +364,40 @@
 
 	{#if noteFilterOpen}
 		<div class={k.boardFilterGroup} role="group" aria-label="Board filter options">
-			<p class={k.explain}>
-				Choose which notes show anywhere on this board, backlog included. Every column stays on
-				show.
-			</p>
-			{#each noteFilterModes as option (option.mode)}
-				<label class={k.radioOption}>
-					<input
-						type="radio"
-						name="board-filter-mode-{board.id}"
-						checked={noteFilter.mode === option.mode}
-						onchange={() => setNoteFilterMode(option.mode)}
-						class={k.radioInput}
-					/>
-					<span class={k.radioTitle}>{option.title}</span>
-				</label>
-			{/each}
-
-			{#if noteFilter.mode !== BoardNoteFilterMode.All}
-				<div class={k.filterIndent}>
-					{#each unusedTags as label (label.id)}
-						<Checkbox.Root
-							checked={noteFilter.labelIds.includes(label.id)}
-							onCheckedChange={() => toggleNoteFilterLabel(label.id)}
-							class={k.checkRow}
-						>
-							<Checkbox.Control class={k.checkControl}>
-								<Checkbox.Indicator class={k.checkMark}>✓</Checkbox.Indicator>
-							</Checkbox.Control>
-							<Checkbox.Label class={k.tagLabel}>
-								{label.name}
-							</Checkbox.Label>
-							<Checkbox.HiddenInput />
-						</Checkbox.Root>
+			<div class={k.filterHeader}>
+				<SegmentGroup.Root
+					value={noteFilter.action}
+					onValueChange={(details) => {
+						if (details.value) setNoteFilterAction(details.value as BoardNoteFilterAction);
+					}}
+					class={k.actionSegment}
+					aria-label="What the selected labels do"
+				>
+					{#each noteFilterActions as option (option.action)}
+						<SegmentGroup.Item value={option.action} class={k.actionSegmentItem}>
+							<SegmentGroup.ItemText>{option.title}</SegmentGroup.ItemText>
+							<SegmentGroup.ItemHiddenInput />
+						</SegmentGroup.Item>
 					{/each}
-					{#if unusedTags.length === 0}
-						<p class={k.emptyTags}>Every label is already a column on this board.</p>
-					{/if}
-				</div>
-			{/if}
-
+				</SegmentGroup.Root>
+				{#if noteFilterActive}
+					<button
+						type="button"
+						class={button({ variant: 'ghost', size: 'xs' })}
+						onclick={clearNoteFilter}
+					>
+						Clear
+					</button>
+				{/if}
+			</div>
+			<LabelChecklist
+				labels={unusedTags}
+				selected={noteFilter.labelIds}
+				onToggle={toggleNoteFilterLabel}
+				label="Board filter labels"
+			/>
 			<p class={k.filterSummary} title={noteFilterSummary()}>
-				Showing: {noteFilterSummary()}
+				{noteFilterSummary()}
 			</p>
 		</div>
 	{/if}
@@ -476,35 +478,20 @@
 									<Checkbox.Root
 										checked={backlogFilter.includeUntagged}
 										onCheckedChange={toggleBacklogUntagged}
-										class={k.checkRow}
+										class={checklist.row}
 									>
-										<Checkbox.Control class={k.checkControl}>
-											<Checkbox.Indicator class={k.checkMark}>✓</Checkbox.Indicator>
+										<Checkbox.Control class={checklist.control}>
+											<Checkbox.Indicator class={checklist.mark}>✓</Checkbox.Indicator>
 										</Checkbox.Control>
 										<Checkbox.Label>No labels</Checkbox.Label>
 										<Checkbox.HiddenInput />
 									</Checkbox.Root>
-									{#each backlogFilterTags as label (label.id)}
-										<Checkbox.Root
-											checked={backlogFilter.labelIds.includes(label.id)}
-											onCheckedChange={() => toggleBacklogLabel(label.id)}
-											class={k.checkRow}
-										>
-											<Checkbox.Control class={k.checkControl}>
-												<Checkbox.Indicator class={k.checkMark}>✓</Checkbox.Indicator>
-											</Checkbox.Control>
-											<Checkbox.Label class={k.tagLabel}>
-												{label.name}
-											</Checkbox.Label>
-											<Checkbox.HiddenInput />
-										</Checkbox.Root>
-									{/each}
-									{#if backlogFilterTags.length === 0}
-										<p class={k.emptyTags}>
-											No other labels available. Create labels on notes, or remove a label column
-											first.
-										</p>
-									{/if}
+									<LabelChecklist
+										labels={backlogFilterTags}
+										selected={backlogFilter.labelIds}
+										onToggle={toggleBacklogLabel}
+										label="Backlog filter labels"
+									/>
 								</div>
 							{/if}
 

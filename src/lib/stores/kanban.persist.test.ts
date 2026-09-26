@@ -8,14 +8,14 @@ describe('board note filter persistence', () => {
 	it('survives a reload, from the fast-boot mirror and from IndexedDB alike', async () => {
 		const store = new KanbanStore();
 		const boardId = store.activeBoard.id;
-		store.setNoteFilter(boardId, { mode: 'remove', labelIds: ['work-label'] });
+		store.setNoteFilter(boardId, { action: 'remove', labelIds: ['work-label'] });
 		await store.waitForPendingWrites();
 
 		const reloaded = new KanbanStore();
-		expect(reloaded.activeBoard.noteFilter).toEqual({ mode: 'remove', labelIds: ['work-label'] });
+		expect(reloaded.activeBoard.noteFilter).toEqual({ action: 'remove', labelIds: ['work-label'] });
 
 		const stored = await loadBoardsFromDevice<unknown[]>(syncStore.activePid, []);
 		const fromDevice = stored.map(normalizeBoard).find((board) => board?.id === boardId);
-		expect(fromDevice?.noteFilter).toEqual({ mode: 'remove', labelIds: ['work-label'] });
+		expect(fromDevice?.noteFilter).toEqual({ action: 'remove', labelIds: ['work-label'] });
 	});
 });

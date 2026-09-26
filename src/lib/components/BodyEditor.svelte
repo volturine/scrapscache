@@ -2033,9 +2033,42 @@
 		focusAt(caret.line, caret.offset, lines[caret.line]?.id ?? null);
 	}
 
+	// When a touch toggled a checkbox, the time of that toggle, so a click the
+	// browser still sends for the same tap does not toggle it back.
+	let touchToggledAt = 0;
+	const TOUCH_CLICK_WINDOW_MS = 800;
+
 	function toggleCheck(lineId: number, event: MouseEvent) {
 		event.stopPropagation();
 		if (readOnly) return;
+		if (performance.now() - touchToggledAt < TOUCH_CLICK_WINDOW_MS) return;
+		toggleLine(lineId);
+	}
+
+	/**
+	 * A touch toggles on release, not on the click. iOS answers a tap inside the
+	 * editing host with synthetic mouse events that focus it and raise the
+	 * keyboard even when the press was cancelled; only a cancelled touchend
+	 * stops them, and that also stops the click.
+	 */
+	function toggleCheckOnRelease(lineId: number, event: PointerEvent) {
+		if (event.pointerType === 'mouse' || event.pointerId !== checklistPointerId) return;
+		if (readOnly) return;
+		const box = (event.currentTarget as HTMLElement).getBoundingClientRect();
+		const slop = 8;
+		if (
+			event.clientX < box.left - slop ||
+			event.clientX > box.right + slop ||
+			event.clientY < box.top - slop ||
+			event.clientY > box.bottom + slop
+		) {
+			return;
+		}
+		touchToggledAt = performance.now();
+		toggleLine(lineId);
+	}
+
+	function toggleLine(lineId: number) {
 		rememberEdit();
 		const targetIndex = lines.findIndex((line) => line.id === lineId);
 		if (targetIndex < 0) return;
@@ -2593,6 +2626,8 @@
 				disabled={readOnly}
 				class={[check.root, editor.check]}
 				onpointerdown={keepEditorFocus}
+				onpointerup={(event) => toggleCheckOnRelease(line.id, event)}
+				ontouchend={(event) => event.cancelable && event.preventDefault()}
 				onclick={(event) => toggleCheck(line.id, event)}
 				aria-label={line.indent > 0 ? 'Toggle sub-task' : 'Toggle item'}
 				aria-pressed={line.checked}

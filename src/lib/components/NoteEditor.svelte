@@ -23,7 +23,8 @@
 	import { BackupImportMode, prepareImportedNotes } from '$lib/backup';
 	import { editContext } from '$lib/editContext';
 	import { appClock } from '$lib/appClock.svelte';
-	import { formatReminder, isReminderOverdue, noteActivity } from '$lib/utils';
+	import { formatReminder, isReminderOverdue, noteActivity, writeClipboardText } from '$lib/utils';
+	import { noteShareLink } from '$lib/noteLinks';
 	import ReminderLabel from './ReminderLabel.svelte';
 	import {
 		Bell,
@@ -49,7 +50,8 @@
 	}: {
 		noteId: string | null;
 		onClose: () => void;
-		registerClose?: (close: () => void) => void;
+		/** Hands the owner a close that saves the draft first and settles once the note is closed. */
+		registerClose?: (close: () => Promise<void>) => void;
 		autofocusBody?: boolean;
 	} = $props();
 
@@ -108,7 +110,7 @@
 		finishInput?(): void;
 		adoptBody?(text: string): boolean;
 	} | null>(null);
-	let footer = $state<{ handlePickedFiles(files: File[]): void } | null>(null);
+	let footer = $state<{ handlePickedFiles(files: File[]): void; closeMenus(): void } | null>(null);
 	let editorDialog = $state<HTMLDivElement | null>(null);
 	let fileDropActive = $state(false);
 	let editorScroller = $state<HTMLDivElement | null>(null);
@@ -138,7 +140,8 @@
 		const target = event.target;
 		const el = target instanceof Element ? target : null;
 		// Task rows and the focused envelope manage their own chrome.
-		if (el?.closest('[data-focus-group], [data-task-row], [data-add-subtask]')) return;
+		if (el?.closest('[data-focus-group], [data-task-row], [data-add-subtask], [role="menu"]'))
+			return;
 
 		// Match any contenteditable host (including plaintext-only). A strict ="true"
 		// check lets page clicks steal focus and collapse multi-line iOS selections.
@@ -181,9 +184,7 @@
 	}
 
 	onMount(() => {
-		registerClose?.(() => {
-			if (isOpen) void close();
-		});
+		registerClose?.(() => (isOpen ? close() : Promise.resolve()));
 		const viewport = window.visualViewport;
 		const onViewportChange = () => {
 			if (!isOpen) return;
@@ -221,7 +222,7 @@
 			});
 		}
 		return () => {
-			registerClose?.(() => {});
+			registerClose?.(() => Promise.resolve());
 			viewport?.removeEventListener('resize', onViewportChange);
 			viewport?.removeEventListener('scroll', onViewportChange);
 			window.removeEventListener('resize', onViewportChange);
@@ -381,6 +382,7 @@
 		paletteOpen = false;
 		reminderOpen = false;
 		labelOpen = false;
+		footer?.closeMenus();
 	}
 
 	function previewHistoryVersion(
@@ -680,26 +682,30 @@
 	async function copyText() {
 		if (!note) return;
 		bodyEditor?.syncBodyNow?.();
-		const text = noteToPlainText({ ...note, title, body });
-		let copied = false;
-		try {
-			await navigator.clipboard.writeText(text);
-			copied = true;
-		} catch {
-			const ta = document.createElement('textarea');
-			ta.value = text;
-			ta.style.position = 'fixed';
-			ta.style.opacity = '0';
-			document.body.appendChild(ta);
-			ta.select();
-			try {
-				copied = document.execCommand('copy');
-			} catch {}
-			document.body.removeChild(ta);
-		}
 		// Only confirm when the write actually landed; the button must not claim a
 		// copy that failed (e.g. insecure origins where the async API is missing).
-		if (!copied) return;
+		if (await writeClipboardText(noteToPlainText({ ...note, title, body }))) flashCopied();
+	}
+
+	/** Share a link that opens this note in its workspace on any device that holds it. */
+	async function shareNote() {
+		const workspace = syncStore.activeProfile;
+		if (!note || !workspace) return;
+		const url = noteShareLink(window.location.origin, { profile: workspace, noteId: note.id });
+		if (typeof navigator.share === 'function') {
+			// Only the link: a title would make iOS build the preview itself, without
+			// the app's icon, and would hand the note's title to the target app.
+			try {
+				await navigator.share({ url });
+			} catch {
+				// Dismissing the share sheet is not an error worth showing.
+			}
+			return;
+		}
+		if (await writeClipboardText(url)) flashCopied();
+	}
+
+	function flashCopied() {
 		copyFlash = true;
 		if (copyFlashTimer !== null) clearTimeout(copyFlashTimer);
 		copyFlashTimer = setTimeout(() => {
@@ -1031,7 +1037,7 @@
 							bind:body
 							noteId={note.id}
 							hasLabels={(note.labels?.length ?? 0) > 0}
-							showCopy={true}
+							showShare={true}
 							showArchive={true}
 							showDelete={true}
 							archived={note.archived}
@@ -1048,6 +1054,7 @@
 								labelOpen = true;
 							}}
 							onCopy={() => void copyText()}
+							onShare={() => void shareNote()}
 							onRestore={() => {
 								notesStore.restoreNote(note.id);
 								void close();

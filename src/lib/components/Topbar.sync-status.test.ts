@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/svelte';
+import { fireEvent, render, screen } from '@testing-library/svelte';
 import { tick } from 'svelte';
 
 const navigationMocks = vi.hoisted(() => ({ goto: vi.fn() }));
@@ -27,6 +27,22 @@ afterEach(() => {
 });
 
 describe('Topbar sync status', () => {
+	it('closes the settings menu when the sync dialog opens', async () => {
+		render(Topbar);
+		await fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+		await screen.findByRole('menu');
+
+		// A press that opens a modal dialog lands below it, so the menu's own
+		// outside-press handling skips it.
+		const sync = screen.getByRole('button', { name: 'Sync settings' });
+		await fireEvent.pointerDown(sync, { pointerType: 'mouse' });
+		await fireEvent.pointerUp(sync, { pointerType: 'mouse' });
+		await fireEvent.click(sync);
+		await tick();
+
+		await vi.waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
+	});
+
 	it('does not leave full-screen overlays over the app while dialogs are closed', () => {
 		render(Topbar);
 		const overlays = [...document.querySelectorAll('[role="presentation"]')].filter((el) =>

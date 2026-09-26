@@ -15,11 +15,17 @@
 	import { provideEditorActions } from '$lib/editorContext';
 	import { splitPastedHeading } from '$lib/checklistBody';
 	import { Drawer } from '@ark-ui/svelte/drawer';
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { MediaQuery } from 'svelte/reactivity';
 	import { attachSyncCloudIndicator } from '$lib/syncCloudIndicator';
 	import { attachAppViewport } from '$lib/appViewport';
 	import { dayKey, reminderTimeForDay } from '$lib/utils';
+	import { profileForWorkspaceTag, readNoteLink, withNoteLink } from '$lib/noteLinks';
+	import { replaceState } from '$app/navigation';
+	import { page } from '$app/state';
+	import { profileCoordinator } from '$lib/stores/profiles.svelte';
+	import type { StoredProfile } from '$lib/profiles';
+	import NoteLinkNotice from '$lib/components/NoteLinkNotice.svelte';
 	import type { Snippet } from 'svelte';
 
 	let { children }: { children: Snippet } = $props();
@@ -27,7 +33,7 @@
 	const mobile = new MediaQuery('max-width: 767px');
 	let editingId = $state<string | null>(null);
 	let autoFocusBody = $state(false);
-	let closeOpenNote: (() => void) | null = null;
+	let closeOpenNote: (() => Promise<void>) | null = null;
 
 	function applyEditorOpen(open: boolean) {
 		document.documentElement.classList.toggle('editor-open', open);
@@ -39,15 +45,62 @@
 		applyEditorOpen(true);
 	}
 
-	function openNoteFromQuery() {
-		const noteId = new URL(window.location.href).searchParams.get('note');
-		if (!noteId || !notesStore.notes.some((note) => note.id === noteId)) return;
-		autoFocusBody = false;
-		editingId = noteId;
-		applyEditorOpen(true);
-		const next = new URL(window.location.href);
-		next.searchParams.delete('note');
-		history.replaceState(history.state, '', `${next.pathname}${next.search}${next.hash}`);
+	let noteLinkProblem = $state<string | null>(null);
+	/** Off until the address this window opened with has been read. */
+	let addressFollowsNote = $state(false);
+
+	// The address names the open note and its workspace, so copying it shares
+	// the note and reloading reopens it. Replaced, not pushed: opening a note
+	// adds no history entry, and replaceState fires no hashchange.
+	$effect(() => {
+		if (!addressFollowsNote) return;
+		const noteId = editingId;
+		const workspace = syncStore.activeProfile;
+		untrack(() => showNoteInAddress(noteId, workspace));
+	});
+
+	function showNoteInAddress(noteId: string | null, workspace: StoredProfile | null) {
+		const url = new URL(window.location.href);
+		const next = withNoteLink(url, noteId && workspace ? { profile: workspace, noteId } : null);
+		if (next !== `${url.pathname}${url.search}${url.hash}`) replaceState(next, page.state);
+	}
+
+	/**
+	 * Open the note a link points at, in the workspace the link names. Runs once
+	 * the boot workspace has loaded and synced. A link without a workspace (a
+	 * reminder notification) opens in the active one.
+	 */
+	async function openNoteFromLink() {
+		try {
+			await followNoteLink();
+		} finally {
+			addressFollowsNote = true;
+		}
+	}
+
+	async function followNoteLink() {
+		const link = readNoteLink(new URL(window.location.href));
+		if (!link || link.noteId === editingId) return;
+		// A link pasted into an open tab lands while another note may be open: save it first.
+		if (editingId !== null) await closeOpenNote?.();
+		if (link.workspaceTag) {
+			const workspace = profileForWorkspaceTag(syncStore.profiles, link.workspaceTag);
+			if (!workspace) {
+				noteLinkProblem =
+					"This note is in a workspace that isn't on this device. Connect this device to that workspace first, then open the link again.";
+				return;
+			}
+			const switched = await profileCoordinator.switchTo(workspace.id);
+			if (!switched.success) {
+				noteLinkProblem = switched.error ?? `Could not switch to ${workspace.name}.`;
+				return;
+			}
+		}
+		if (!notesStore.notes.some((note) => note.id === link.noteId)) {
+			noteLinkProblem = `This note isn't in ${syncStore.activeProfile?.name ?? 'this workspace'}. It may have been deleted, or it hasn't synced to this device yet.`;
+			return;
+		}
+		openEditor(link.noteId);
 	}
 
 	onMount(() => {
@@ -61,8 +114,16 @@
 		void notesStore.init().then(async () => {
 			await notesStore.refreshProfileEffects();
 			if (syncStore.isLoggedIn) await notesStore.syncWithCloud();
-			openNoteFromQuery();
+			await openNoteFromLink();
 		});
+		// Pasting a link into this tab only changes the fragment; nothing reloads.
+		const onHashChange = async () => {
+			if (!addressFollowsNote) return;
+			await followNoteLink();
+			// A link that could not open leaves the address as the open note has it.
+			showNoteInAddress(editingId, syncStore.activeProfile);
+		};
+		window.addEventListener('hashchange', onHashChange);
 		const onForeground = () => {
 			if (document.visibilityState === 'hidden') return;
 			if (syncStore.isLoggedIn) void notesStore.syncWithCloud();
@@ -91,6 +152,7 @@
 			}
 		}
 		return () => {
+			window.removeEventListener('hashchange', onHashChange);
 			stopSyncEvents();
 			notesStore.onProfileReload = null;
 			uiStore.viewChangeHandler = null;
@@ -136,7 +198,7 @@
 	}
 
 	function requestCloseEditor() {
-		closeOpenNote?.();
+		void closeOpenNote?.();
 	}
 
 	provideEditorActions({ openNote: openEditor, startNewNote, closeNote: requestCloseEditor });
@@ -301,4 +363,7 @@
 	<div class={styles.drawerSafeArea} aria-hidden="true"></div>
 {/if}
 <div class="app-overlay" data-app-overlay></div>
+{#if noteLinkProblem}
+	<NoteLinkNotice message={noteLinkProblem} onClose={() => (noteLinkProblem = null)} />
+{/if}
 {@render children()}

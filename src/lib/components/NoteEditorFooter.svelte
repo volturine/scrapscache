@@ -4,12 +4,21 @@
 		filePreview,
 		iconSizeMd as iconMd,
 		noteEditorStyles,
-		photoPreview
+		photoPreview,
+		popover
 	} from '$panda/styles';
 	import { css, cx } from 'styled-system/css';
-	import { button, choiceCard, dialog, iconButton, noteSurface } from 'styled-system/recipes';
+	import {
+		button,
+		choiceCard,
+		dialog,
+		iconButton,
+		menuItem,
+		noteSurface
+	} from 'styled-system/recipes';
 	import { hstack, grid, flex } from 'styled-system/patterns';
 	import { Dialog } from '@ark-ui/svelte/dialog';
+	import { Menu } from '@ark-ui/svelte/menu';
 	import { Format } from '@ark-ui/svelte/format';
 	import { slide } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
@@ -52,6 +61,7 @@
 		Paperclip,
 		PenLine,
 		RotateCcw,
+		Share2,
 		Tag,
 		Trash2,
 		X
@@ -62,7 +72,7 @@
 		body = $bindable(''),
 		noteId = null as string | null,
 		hasLabels = false,
-		showCopy = false,
+		showShare = false,
 		showArchive = false,
 		showDelete = false,
 		archived = false,
@@ -73,6 +83,7 @@
 		onOpenColor,
 		onOpenTags,
 		onCopy,
+		onShare,
 		onRestore,
 		onArchive,
 		onDelete,
@@ -83,7 +94,7 @@
 		body?: string;
 		noteId?: string | null;
 		hasLabels?: boolean;
-		showCopy?: boolean;
+		showShare?: boolean;
 		showArchive?: boolean;
 		showDelete?: boolean;
 		archived?: boolean;
@@ -96,12 +107,17 @@
 		onOpenColor?: () => void;
 		onOpenTags?: () => void;
 		onCopy?: () => void;
+		/** Shares a link to the note: the system share sheet, or the clipboard without one. */
+		onShare?: () => void;
 		onRestore?: () => void;
 		onArchive?: () => void;
 		onDelete?: () => void;
 		onImagesChange?: (images: NoteImage[]) => void;
 		onClose?: () => void;
 	} = $props();
+
+	// Phones and most desktop browsers have a system share sheet; others copy the link.
+	const canShareSheet = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
 
 	let focusedImageIndex = $state<number | null>(null);
 	let focusedAttachment = $state<NoteImage | null>(null);
@@ -213,6 +229,13 @@
 		input.click();
 	}
 
+	// A menu stays open when the same tap opens a dialog (the dialog blocks the
+	// outside press that would dismiss it), so every footer action closes it.
+	let shareOpen = $state(false);
+	export function closeMenus() {
+		shareOpen = false;
+	}
+
 	export function handlePickedFiles(picked: File[]) {
 		if (picked.length === 0) return;
 		if (picked.some(looksLikePhoto)) {
@@ -288,6 +311,7 @@
 
 	function openTags(e: MouseEvent) {
 		e.stopPropagation();
+		closeMenus();
 		if (!noteId) {
 			attachError = 'Save the note first to add labels';
 			return;
@@ -797,7 +821,10 @@
 			class={iconButton({ variant, size: { base: 'compact', sm: 'standard' } })}
 			title={label}
 			aria-label={label}
-			onclick={action}
+			onclick={() => {
+				closeMenus();
+				action();
+			}}
 		>
 			<Icon class={iconMd} aria-hidden="true" />
 		</button>
@@ -883,21 +910,35 @@
 			})}
 		>
 			{@render footerButton('Color', 'Color', Palette, 'ghost', () => onOpenColor?.())}
-			{#if showCopy}
-				<Tooltip content="Copy note">
-					<button
-						type="button"
-						class={iconButton({ variant: 'ghost', size: { base: 'compact', sm: 'standard' } })}
-						title="Copy note"
-						aria-label="Copy note"
-						onclick={() => onCopy?.()}
-					>
-						{#if copyFlash}<Check class={iconMd} aria-hidden="true" />{:else}<Copy
-								class={iconMd}
-								aria-hidden="true"
-							/>{/if}
-					</button>
-				</Tooltip>
+			{#if showShare}
+				<Menu.Root bind:open={shareOpen} positioning={{ placement: 'top-end' }}>
+					<Tooltip content="Share">
+						<Menu.Trigger
+							class={iconButton({ variant: 'ghost', size: { base: 'compact', sm: 'standard' } })}
+							title="Share"
+							aria-label="Share"
+						>
+							{#if copyFlash}<Check class={iconMd} aria-hidden="true" />{:else}<Share2
+									class={iconMd}
+									aria-hidden="true"
+								/>{/if}
+						</Menu.Trigger>
+					</Tooltip>
+					<Menu.Positioner class={noteEditorStyles.shareMenuPositioner}>
+						<Menu.Content class={cx(popover, noteEditorStyles.shareMenu)} aria-label="Share">
+							<Menu.Item value="copy" class={menuItem()} onSelect={() => onCopy?.()}>
+								<Copy class={iconMd} aria-hidden="true" />Copy note
+							</Menu.Item>
+							<Menu.Item value="share" class={menuItem()} onSelect={() => onShare?.()}>
+								{#if canShareSheet}
+									<Share2 class={iconMd} aria-hidden="true" />Share note
+								{:else}
+									<Link class={iconMd} aria-hidden="true" />Copy link
+								{/if}
+							</Menu.Item>
+						</Menu.Content>
+					</Menu.Positioner>
+				</Menu.Root>
 			{/if}
 			{#if showArchive}
 				{@render footerButton(

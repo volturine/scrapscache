@@ -4,16 +4,23 @@ import { SyncQuotaExceededError, SyncStore as RelayStore } from '$lib/server/syn
 import { createSyncIdentity, decryptSyncPayload, type SyncIdentity } from '$lib/syncPairing';
 import {
 	closeDeviceDatabase,
-	DEVICE_DB_NAME,
 	dropDatabase,
 	getAllNotesMetadata,
 	hydrateNoteAttachments,
 	markSyncOutbox,
 	putNote,
-	LOCAL_PROFILE_ID
+	resolveDbName
 } from '$lib/db/idb';
-import { SyncStore, type SyncSnapshot } from './sync.svelte';
+import { SyncStore } from './sync.svelte';
+import { syncSnapshot, type SyncSnapshot } from '$lib/syncRecords';
 import type { Note, NoteImage } from '$lib/types';
+import { sha256 } from '$lib/syncHash';
+import { reminderWakeId } from '$lib/reminderNotify';
+import { reminderHistoryKey, type ReminderHistoryEntry } from '$lib/reminderHistory';
+import type { CanvasLibraryEntry } from '$lib/canvasLibrary';
+import { seedTestKeyring, TEST_WORKSPACE } from '../../tests/workspace';
+import { openDB } from 'idb';
+import { LEGACY_DB_NAME, moveLegacyWorkspace } from '$lib/workspaceMove';
 
 afterEach(() => cleanupTestDbs());
 
@@ -59,7 +66,7 @@ function noteWithPhoto(image: NoteImage): Note {
 
 async function wipeDevice(): Promise<void> {
 	await closeDeviceDatabase();
-	await dropDatabase(DEVICE_DB_NAME);
+	await dropDatabase(resolveDbName(TEST_WORKSPACE));
 }
 
 function wire(
@@ -104,13 +111,14 @@ function wire(
 }
 
 async function applyToDevice(snapshot: SyncSnapshot): Promise<SyncSnapshot> {
-	for (const item of snapshot.notes) await putNote(item);
+	for (const item of snapshot.notes) await putNote(TEST_WORKSPACE, item);
 	return snapshot;
 }
 
 describe('client sync against the sqlite relay', () => {
 	beforeEach(() => {
 		localStorage.clear();
+		seedTestKeyring();
 		vi.restoreAllMocks();
 	});
 
@@ -128,8 +136,13 @@ describe('client sync against the sqlite relay', () => {
 			deleteSlots: Array<{ id: string; slot: string }>;
 		}> = [];
 		wire(deviceA, relay, requestsA);
-		await putNote(local, [`note:${local.id}`, `attachment:${image.id}`]);
-		const uploaded = await deviceA.sync([local], [], {}, {}, [], {}, false, false, applyToDevice);
+		await putNote(TEST_WORKSPACE, local, [`note:${local.id}`, `attachment:${image.id}`]);
+		const uploaded = await deviceA.sync(
+			syncSnapshot({ notes: [local] }),
+			false,
+			false,
+			applyToDevice
+		);
 		expect(uploaded.success, uploaded.error).toBe(true);
 
 		await wipeDevice();
@@ -140,12 +153,12 @@ describe('client sync against the sqlite relay', () => {
 			deleteSlots: Array<{ id: string; slot: string }>;
 		}> = [];
 		wire(deviceB, relay, requestsB);
-		const pulled = await deviceB.sync([], [], {}, {}, [], {}, false, false, applyToDevice);
+		const pulled = await deviceB.sync(syncSnapshot(), false, false, applyToDevice);
 		expect(pulled.success, pulled.error).toBe(true);
 
-		const stored = (await getAllNotesMetadata()).find((item) => item.id === 'note-1');
+		const stored = (await getAllNotesMetadata(TEST_WORKSPACE)).find((item) => item.id === 'note-1');
 		expect(stored).toBeDefined();
-		const hydrated = await hydrateNoteAttachments(stored!);
+		const hydrated = await hydrateNoteAttachments(TEST_WORKSPACE, stored!);
 		expect(hydrated.images?.[0]?.dataUrl).toBe(image.dataUrl);
 	});
 
@@ -164,9 +177,9 @@ describe('client sync against the sqlite relay', () => {
 			deleteSlots: Array<{ id: string; slot: string }>;
 		}> = [];
 		wire(client, relay, requests as never);
-		await putNote(original, [`note:${original.id}`, `attachment:${oldImage.id}`]);
+		await putNote(TEST_WORKSPACE, original, [`note:${original.id}`, `attachment:${oldImage.id}`]);
 		expect(
-			(await client.sync([original], [], {}, {}, [], {}, false, false, applyToDevice)).success
+			(await client.sync(syncSnapshot({ notes: [original] }), false, false, applyToDevice)).success
 		).toBe(true);
 
 		const oldSlot = requests
@@ -187,7 +200,7 @@ describe('client sync against the sqlite relay', () => {
 		const replaced = noteWithPhoto(newImage);
 		replaced.updatedAt = 2;
 		replaced.fieldTimes = { ...original.fieldTimes, images: 2, title: 1 };
-		await putNote(replaced, [`note:${replaced.id}`, `attachment:${newImage.id}`]);
+		await putNote(TEST_WORKSPACE, replaced, [`note:${replaced.id}`, `attachment:${newImage.id}`]);
 		let replacementStored = false;
 		vi.spyOn(
 			client as unknown as {
@@ -249,12 +262,7 @@ describe('client sync against the sqlite relay', () => {
 		});
 
 		const afterReplace = await client.sync(
-			[replaced],
-			[],
-			{},
-			{},
-			[],
-			{},
+			syncSnapshot({ notes: [replaced] }),
 			false,
 			false,
 			applyToDevice
@@ -276,21 +284,21 @@ describe('client sync against the sqlite relay', () => {
 			deleteSlots: Array<{ id: string; slot: string }>;
 		}> = [];
 		wire(client, relay, requests);
-		await putNote(local, [`note:${local.id}`, `attachment:${image.id}`]);
+		await putNote(TEST_WORKSPACE, local, [`note:${local.id}`, `attachment:${image.id}`]);
 
-		const uploaded = await client.sync([local], [], {}, {}, [], {}, false, false, applyToDevice);
+		const uploaded = await client.sync(
+			syncSnapshot({ notes: [local] }),
+			false,
+			false,
+			applyToDevice
+		);
 		expect(uploaded.success, uploaded.error).toBe(true);
 		const afterAdd = client.usage?.storageBytes ?? 0;
 		expect(afterAdd).toBeGreaterThan(1_000);
 
-		await markSyncOutbox(LOCAL_PROFILE_ID, [`note-tombstone:${local.id}`]);
+		await markSyncOutbox(TEST_WORKSPACE, [`note-tombstone:${local.id}`]);
 		const deleted = await client.sync(
-			[],
-			[],
-			{ [local.id]: Date.now() },
-			{},
-			[],
-			{},
+			syncSnapshot({ tombstones: { [local.id]: Date.now() } }),
 			false,
 			false,
 			applyToDevice
@@ -299,5 +307,228 @@ describe('client sync against the sqlite relay', () => {
 		expect(requests.some((request) => request.deleteSlots.length > 0)).toBe(true);
 		expect(client.usage?.storageBytes ?? afterAdd).toBeLessThan(afterAdd);
 		expect(client.usage?.envelopeCount).toBe(1);
+	});
+});
+
+describe('workspace library and reminder history across devices', () => {
+	type Requests = Array<{ envelopes: unknown[]; deleteSlots: Array<{ id: string; slot: string }> }>;
+	const passthrough = async (snapshot: SyncSnapshot) => snapshot;
+
+	/** Two devices on one account, each with its own device database. */
+	async function pair() {
+		const relay = new RelayStore(testDb());
+		const identity = createSyncIdentity();
+		await relay.createAccount(identity.accountId, 'credential');
+		const devices = [];
+		for (const pid of ['device-a', 'device-b']) {
+			const client = new SyncStore();
+			await client.ensureProfilesLoaded();
+			client.account = identity;
+			client.activeId = pid;
+			const requests: Requests = [];
+			wire(client, relay, requests);
+			devices.push({ client, pid, requests });
+		}
+		const slot = (key: string) => sha256(`${identity.syncKey}\u0000${key}`);
+		return { devices, slot };
+	}
+
+	function libraryEntry(id: string, updatedAt: number): CanvasLibraryEntry {
+		return {
+			id,
+			updatedAt,
+			item: { id, status: 'unpublished', created: 1, elements: [{ id: `${id}-shape` }] }
+		};
+	}
+
+	beforeEach(() => {
+		localStorage.clear();
+		seedTestKeyring();
+		vi.restoreAllMocks();
+	});
+
+	it('adds a library item on one device and removes it from the other', async () => {
+		const { devices, slot } = await pair();
+		const [a, b] = devices;
+		const star = libraryEntry('star', 10);
+
+		const first = await a.client.sync(
+			syncSnapshot({ libraryItems: [star] }),
+			false,
+			false,
+			passthrough
+		);
+		expect(first.success, first.error).toBe(true);
+		const pulled = await b.client.sync(syncSnapshot(), false, false, passthrough);
+		expect(pulled.snapshot?.libraryItems).toEqual([star]);
+
+		await markSyncOutbox(a.pid, ['library-item-tombstone:star']);
+		const deleted = await a.client.sync(
+			syncSnapshot({ libraryTombstones: { star: 20 } }),
+			false,
+			false,
+			passthrough
+		);
+		expect(deleted.success, deleted.error).toBe(true);
+		const starSlot = await slot('library-item:star');
+		expect(a.requests.flatMap((request) => request.deleteSlots.map((item) => item.slot))).toContain(
+			starSlot
+		);
+
+		// Device B still holds the item it pulled; the delete reaches it anyway.
+		const synced = await b.client.sync(
+			syncSnapshot({ libraryItems: [star] }),
+			false,
+			false,
+			passthrough
+		);
+		expect(synced.snapshot?.libraryItems).toEqual([]);
+		expect(synced.snapshot?.libraryTombstones).toEqual({ star: 20 });
+	});
+
+	it('keeps the newer edit of a library item from either device', async () => {
+		const { devices } = await pair();
+		const [a, b] = devices;
+		await a.client.sync(
+			syncSnapshot({ libraryItems: [libraryEntry('star', 10)] }),
+			false,
+			false,
+			passthrough
+		);
+		await b.client.sync(syncSnapshot(), false, false, passthrough);
+
+		const edited = {
+			...libraryEntry('star', 30),
+			item: { ...libraryEntry('star', 30).item, name: 'Star' }
+		};
+		await markSyncOutbox(b.pid, ['library-item:star']);
+		await b.client.sync(syncSnapshot({ libraryItems: [edited] }), false, false, passthrough);
+
+		const pulled = await a.client.sync(
+			syncSnapshot({ libraryItems: [libraryEntry('star', 10)] }),
+			false,
+			false,
+			passthrough
+		);
+		expect(pulled.snapshot?.libraryItems).toEqual([edited]);
+	});
+
+	it('shares fired and dismissed reminders and forgets them with their note', async () => {
+		const { devices, slot } = await pair();
+		const [a, b] = devices;
+		const reminder = 1_000;
+		const note = {
+			...noteWithPhoto(photo('pic', 'data:image/png;base64,QQ==')),
+			reminder,
+			images: []
+		};
+		const wake = reminderWakeId(note.id, reminder);
+		const fired: ReminderHistoryEntry = { id: wake, noteId: note.id, firedAt: 2_000 };
+
+		await a.client.sync(
+			syncSnapshot({ notes: [note], reminderHistory: [fired] }),
+			false,
+			false,
+			passthrough
+		);
+		const onB = await b.client.sync(syncSnapshot(), false, false, passthrough);
+		expect(onB.snapshot?.reminderHistory).toEqual([fired]);
+
+		const dismissed = { ...fired, dismissedAt: 3_000 };
+		await markSyncOutbox(b.pid, [reminderHistoryKey(dismissed)]);
+		await b.client.sync(
+			syncSnapshot({ notes: [note], reminderHistory: [dismissed] }),
+			false,
+			false,
+			passthrough
+		);
+		const onA = await a.client.sync(
+			syncSnapshot({ notes: [note], reminderHistory: [fired] }),
+			false,
+			false,
+			passthrough
+		);
+		expect(onA.snapshot?.reminderHistory).toEqual([dismissed]);
+
+		await markSyncOutbox(a.pid, [`note-tombstone:${note.id}`]);
+		const gone = await a.client.sync(
+			syncSnapshot({ tombstones: { [note.id]: 4_000 }, reminderHistory: [dismissed] }),
+			false,
+			false,
+			passthrough
+		);
+		expect(gone.snapshot?.reminderHistory).toEqual([]);
+		expect(a.requests.flatMap((request) => request.deleteSlots.map((item) => item.slot))).toContain(
+			await slot(reminderHistoryKey(dismissed))
+		);
+	});
+});
+
+describe('the old default workspace after its one-time move', () => {
+	beforeEach(() => {
+		localStorage.clear();
+		vi.restoreAllMocks();
+	});
+
+	it('keeps syncing where it left off, sending nothing it already sent', async () => {
+		const relay = new RelayStore(testDb());
+		const identity = createSyncIdentity();
+		await relay.createAccount(identity.accountId, 'credential');
+		const local = { ...noteWithPhoto(photo('pic', 'data:image/png;base64,QQ==')), images: [] };
+
+		// A synced workspace as a pre-move build kept it: in the bare database.
+		const before = new SyncStore();
+		await before.ensureProfilesLoaded();
+		before.account = identity;
+		before.activeId = 'staging';
+		wire(before, relay, []);
+		const first = await before.sync(syncSnapshot({ notes: [local] }), false, false, async (s) => {
+			for (const item of s.notes) await putNote('staging', item);
+			return s;
+		});
+		expect(first.success, first.error).toBe(true);
+		const staged = await openDB(resolveDbName('staging'));
+		const legacy = await openDB(LEGACY_DB_NAME, 6, {
+			upgrade(db) {
+				for (const name of staged.objectStoreNames) {
+					const keyPath = staged.transaction(name).store.keyPath;
+					db.createObjectStore(name, keyPath ? { keyPath } : undefined);
+				}
+			}
+		});
+		for (const name of staged.objectStoreNames) {
+			const keys = await staged.getAllKeys(name);
+			const inline = staged.transaction(name).store.keyPath != null;
+			for (const key of keys) {
+				const value = await staged.get(name, key);
+				if (inline) await legacy.put(name, value);
+				else await legacy.put(name, value, key);
+			}
+		}
+		staged.close();
+		legacy.close();
+		localStorage.setItem(
+			'scrapscache-sync-profiles',
+			JSON.stringify([
+				{ id: 'device-local', name: 'Home', syncKey: identity.syncKey, createdAt: 0 }
+			])
+		);
+
+		await moveLegacyWorkspace();
+
+		const after = new SyncStore();
+		await after.ensureProfilesLoaded();
+		expect(after.activeProfile).toMatchObject({ name: 'Home', syncKey: identity.syncKey });
+		const requests: Array<{
+			envelopes: unknown[];
+			deleteSlots: Array<{ id: string; slot: string }>;
+		}> = [];
+		wire(after, relay, requests);
+		const notes = await getAllNotesMetadata(after.activePid);
+		const second = await after.sync(syncSnapshot({ notes }), false, false, async (s) => s);
+
+		expect(second.success, second.error).toBe(true);
+		expect(requests.flatMap((request) => request.envelopes)).toEqual([]);
+		expect(requests.flatMap((request) => request.deleteSlots)).toEqual([]);
 	});
 });

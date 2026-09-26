@@ -12,8 +12,8 @@ import {
 	markSyncOutbox,
 	putLabel,
 	putNote,
-	scopedStateKey,
-	setFiredReminderKeys
+	addFiredReminderKeys,
+	writeSyncStateWithOutbox
 } from '$lib/db/idb';
 import {
 	buildProfileNotesExport,
@@ -64,13 +64,13 @@ describe('profile namespaces', () => {
 		await putLabel('p-one', label('label-1'));
 		await markSyncOutbox('p-one', ['note:shared-id']);
 		await writeTombstones('p-one', { gone: 5 });
-		await setFiredReminderKeys('p-one', ['wake-1']);
+		await addFiredReminderKeys('p-one', ['wake-1']);
 
 		expect((await getAllNotesMetadata('p-one')).map(({ id }) => id)).toEqual(['shared-id']);
 		expect((await getAllNotesMetadata('p-two')).map(({ id }) => id)).toEqual(['other-note']);
 		expect((await getAllLabels('p-two')).map(({ id }) => id)).toEqual([]);
 		expect(await getSyncOutboxKeys('p-two')).toEqual([]);
-		expect(await getSyncState(scopedStateKey(NOTE_IDB, 'p-two'))).toBeUndefined();
+		expect(await getSyncState('p-two', NOTE_IDB)).toBeUndefined();
 		expect(await getFiredReminderKeys('p-two')).toEqual([]);
 		await hydrateTombstones('p-two');
 		expect((await hydrateTombstones('p-two')).notes).toEqual({});
@@ -97,8 +97,26 @@ describe('single-profile export', () => {
 		expect(backup?.notes.map(({ id }) => id)).toEqual(['exported']);
 		expect(backup?.labels.map(({ id }) => id)).toEqual(['exp-label']);
 		expect(backup?.tombstones).toEqual({ 'gone-exp': 9 });
-		expect(backup?.version).toBe(4);
+		expect(backup?.version).toBe(5);
 		expect(await buildProfileNotesExport('p-other')).toBeNull();
+	});
+
+	it('carries the canvas library and reminder history of a workspace that is not open', async () => {
+		const shape = { id: 'star', status: 'unpublished', created: 1, elements: [] };
+		const entry = { id: 'e'.repeat(43), noteId: 'n', firedAt: 3 };
+		await writeSyncStateWithOutbox(
+			'p-shapes',
+			[
+				['scrapscache-canvas-library', [{ id: 'star', updatedAt: 2, item: shape }]],
+				['scrapscache-reminder-history', [entry]]
+			],
+			[]
+		);
+
+		const backup = await buildProfileNotesExport('p-shapes');
+
+		expect(backup?.canvasLibrary).toEqual([shape]);
+		expect(backup?.reminderHistory).toEqual([entry]);
 	});
 
 	// Backing up a workspace that is not open reads the device store and nothing

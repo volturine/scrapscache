@@ -82,7 +82,9 @@ For how to report vulnerabilities, see [SECURITY.md](../SECURITY.md).
 - AAD binds format version, KDF params, chunk index, and count
 - Passphrase is confirmed on export and **never persisted** by the app
 
-Only current version 4 backup payloads are accepted; new exports are encrypted only.
+Version 5 backup payloads are exported and accepted, and version 4 payloads still import
+(without a canvas library or reminder history). New exports are encrypted only. A
+backup carries the workspace's canvas library and reminder history along with its notes.
 
 ### Images
 

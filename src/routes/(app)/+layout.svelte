@@ -11,6 +11,8 @@
 	import BottomNav from '$lib/components/BottomNav.svelte';
 	import AppViews from '$lib/components/AppViews.svelte';
 	import { reminderStore } from '$lib/stores/reminders.svelte';
+	import { reminderHistoryStore } from '$lib/stores/reminderHistory';
+	import { getAllNotesMetadata } from '$lib/db/idb';
 	import { preloadVapidPublicKey } from '$lib/reminderWake';
 	import { provideEditorActions } from '$lib/editorContext';
 	import { splitPastedHeading } from '$lib/checklistBody';
@@ -45,6 +47,36 @@
 		applyEditorOpen(true);
 	}
 
+	/** Open a note in its own workspace: a reminder from another one switches to it first. */
+	async function openNoteInWorkspace(pid: string, noteId: string) {
+		if (pid !== syncStore.activeId) {
+			if (editingId !== null) await closeOpenNote?.();
+			const switched = await profileCoordinator.switchTo(pid);
+			if (!switched.success) {
+				noteLinkProblem = switched.error ?? 'Could not open that workspace.';
+				return;
+			}
+		}
+		openEditor(noteId);
+	}
+
+	/** A workspace that is not open learns its reminder history without syncing. */
+	function reconcileReminders(pid: string) {
+		if (pid === syncStore.activeId) {
+			void notesStore.reconcileWithCloud();
+			return;
+		}
+		const profile = syncStore.profiles.find((entry) => entry.id === pid);
+		if (!profile) return;
+		void syncStore
+			.peekReminderHistory(profile)
+			.then((found) => {
+				if (found) reminderHistoryStore.learnRemote(pid, found.history, found.tombstones);
+			})
+			.catch(() => undefined)
+			.finally(() => reminderStore.cloudSettled(pid));
+	}
+
 	let noteLinkProblem = $state<string | null>(null);
 	/** Off until the address this window opened with has been read. */
 	let addressFollowsNote = $state(false);
@@ -67,8 +99,8 @@
 
 	/**
 	 * Open the note a link points at, in the workspace the link names. Runs once
-	 * the boot workspace has loaded and synced. A link without a workspace (a
-	 * reminder notification) opens in the active one.
+	 * the boot workspace has loaded and synced. A link without a workspace opens
+	 * in the active one.
 	 */
 	async function openNoteFromLink() {
 		try {
@@ -109,6 +141,7 @@
 		uiStore.viewChangeHandler = restoreFeedScroll;
 		attachSyncCloudIndicator(syncStore);
 		notesStore.onAfterSync = () => reminderStore.publish(notesStore.notes);
+		notesStore.onSyncSettled = (pid) => reminderStore.cloudSettled(pid);
 		notesStore.onProfileReload = (pid, notes) => reminderStore.activateProfile(pid, notes);
 		if (mobile.current) uiStore.sidebarOpen = false;
 		void notesStore.init().then(async () => {
@@ -132,7 +165,13 @@
 		const stopSyncEvents = syncEventsClient.subscribe((seq?: number) => {
 			void notesStore.triggerSync(seq);
 		});
-		const stopReminders = reminderStore.attach(openEditor);
+		const stopReminders = reminderStore.attach({
+			workspaces: () =>
+				syncStore.profiles.map((profile) => ({ id: profile.id, linked: !!profile.syncKey })),
+			loadNotes: (pid) => getAllNotesMetadata(pid),
+			reconcile: reconcileReminders,
+			openNote: (pid, noteId) => void openNoteInWorkspace(pid, noteId)
+		});
 		void preloadVapidPublicKey();
 		if ('serviceWorker' in navigator) {
 			if (import.meta.env.PROD) {
@@ -155,6 +194,7 @@
 			window.removeEventListener('hashchange', onHashChange);
 			stopSyncEvents();
 			notesStore.onProfileReload = null;
+			notesStore.onSyncSettled = null;
 			uiStore.viewChangeHandler = null;
 			stopViewport();
 			applyEditorOpen(false);

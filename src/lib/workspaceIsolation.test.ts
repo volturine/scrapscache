@@ -16,7 +16,6 @@ import {
 	getAllLabels,
 	getAllNotesMetadata,
 	hydrateNoteAttachments,
-	LOCAL_PROFILE_ID,
 	putLabel,
 	putNote
 } from '$lib/db/idb';
@@ -37,6 +36,7 @@ import {
 } from '$lib/noteStorage';
 import { createKanbanBoard } from '$lib/kanban';
 import type { Label, Note } from '$lib/types';
+import { TEST_WORKSPACE } from '../tests/workspace';
 
 const MINE = 'workspace-mine';
 const THEIRS = 'workspace-theirs';
@@ -70,11 +70,11 @@ describe('notes stay in the workspace that saved them', () => {
 	it('keeps each workspace to its own notes', async () => {
 		await putNote(MINE, note('mine-1'));
 		await putNote(THEIRS, note('theirs-1'));
-		await putNote(LOCAL_PROFILE_ID, note('anonymous-1'));
+		await putNote(TEST_WORKSPACE, note('anonymous-1'));
 
 		expect((await getAllNotesMetadata(MINE)).map((n) => n.id)).toEqual(['mine-1']);
 		expect((await getAllNotesMetadata(THEIRS)).map((n) => n.id)).toEqual(['theirs-1']);
-		expect((await getAllNotesMetadata(LOCAL_PROFILE_ID)).map((n) => n.id)).toEqual(['anonymous-1']);
+		expect((await getAllNotesMetadata(TEST_WORKSPACE)).map((n) => n.id)).toEqual(['anonymous-1']);
 	});
 
 	it('deletes from the workspace it was told, and no other', async () => {
@@ -110,7 +110,7 @@ describe('labels stay in the workspace that saved them', () => {
 
 describe('boards stay in the workspace that saved them', () => {
 	it('reads back its own boards, whatever the fallback is', async () => {
-		await saveBoardsToDevice(LOCAL_PROFILE_ID, [
+		await saveBoardsToDevice(TEST_WORKSPACE, [
 			{ ...createKanbanBoard('Anonymous'), id: 'anon-board' }
 		]);
 		await saveBoardsToDevice(MINE, [{ ...createKanbanBoard('Mine'), id: 'my-board' }]);
@@ -202,7 +202,7 @@ describe('switching workspaces leaves each one as it was', () => {
 		const activePid = vi.spyOn(syncStore, 'activePid', 'get');
 
 		// The anonymous workspace has a board of its own on this device.
-		await saveBoardsToDevice(LOCAL_PROFILE_ID, [
+		await saveBoardsToDevice(TEST_WORKSPACE, [
 			{ ...createKanbanBoard('Anonymous plans'), id: 'anon-board', updatedAt: 1 }
 		]);
 
@@ -213,8 +213,8 @@ describe('switching workspaces leaves each one as it was', () => {
 		store.renameBoard(store.boards[0].id, 'Synced plans');
 
 		// Switching back must show the anonymous workspace's own board.
-		activePid.mockReturnValue(LOCAL_PROFILE_ID);
-		await store.hydrateFromDevice(LOCAL_PROFILE_ID);
+		activePid.mockReturnValue(TEST_WORKSPACE);
+		await store.hydrateFromDevice(TEST_WORKSPACE);
 
 		expect(store.boards.map((board) => board.name)).toEqual(['Anonymous plans']);
 		activePid.mockRestore();
@@ -225,7 +225,7 @@ describe('switching workspaces leaves each one as it was', () => {
 		const { syncStore } = await import('$lib/stores/sync.svelte');
 		const activePid = vi.spyOn(syncStore, 'activePid', 'get');
 
-		await saveBoardsToDevice(LOCAL_PROFILE_ID, [
+		await saveBoardsToDevice(TEST_WORKSPACE, [
 			{ ...createKanbanBoard('Anonymous plans'), id: 'shared-board-id', updatedAt: 1 }
 		]);
 
@@ -237,8 +237,8 @@ describe('switching workspaces leaves each one as it was', () => {
 		store.boards = [{ ...createKanbanBoard('Synced'), id: 'shared-board-id', updatedAt: 2 }];
 		store.deleteBoard('shared-board-id');
 
-		activePid.mockReturnValue(LOCAL_PROFILE_ID);
-		await store.hydrateFromDevice(LOCAL_PROFILE_ID);
+		activePid.mockReturnValue(TEST_WORKSPACE);
+		await store.hydrateFromDevice(TEST_WORKSPACE);
 
 		expect(store.boards.map((board) => board.name)).toEqual(['Anonymous plans']);
 		activePid.mockRestore();

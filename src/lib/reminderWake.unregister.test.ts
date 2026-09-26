@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { unregisterReminderDevice } from './reminderWake';
 import { syncStore } from '$lib/stores/sync.svelte';
+import { createSyncIdentity, identityFromSyncKey } from '$lib/syncPairing';
 
 /**
  * Issue #85: the server-side device unsubscribe must be observable. A failed
@@ -12,12 +13,8 @@ describe('unregisterReminderDevice failure visibility', () => {
 		vi.restoreAllMocks();
 	});
 
-	const account = {
-		syncKey: 'key',
-		accountId: 'acct',
-		authPublicKey: 'secret',
-		pairingCode: ''
-	};
+	const workspace = { id: 'home', syncKey: createSyncIdentity().syncKey };
+	const account = identityFromSyncKey(workspace.syncKey);
 
 	function stubBrowser() {
 		vi.stubGlobal('Notification', { permission: 'default' });
@@ -33,11 +30,11 @@ describe('unregisterReminderDevice failure visibility', () => {
 			.spyOn(syncStore, 'authorizedFetch')
 			.mockResolvedValue(new Response(null, { status: 204 }));
 
-		await expect(unregisterReminderDevice(account)).resolves.toBeUndefined();
+		await expect(unregisterReminderDevice(workspace)).resolves.toBeUndefined();
 		expect(fetchMock).toHaveBeenCalledWith(
 			'/api/sync/push/wakes',
 			expect.objectContaining({ method: 'DELETE', keepalive: true }),
-			account
+			expect.objectContaining({ accountId: account.accountId })
 		);
 	});
 
@@ -45,13 +42,13 @@ describe('unregisterReminderDevice failure visibility', () => {
 		stubBrowser();
 		vi.spyOn(syncStore, 'authorizedFetch').mockResolvedValue(new Response(null, { status: 500 }));
 
-		await expect(unregisterReminderDevice(account)).rejects.toThrow(/500/);
+		await expect(unregisterReminderDevice(workspace)).rejects.toThrow(/500/);
 	});
 
 	it('rejects when the request never leaves the device', async () => {
 		stubBrowser();
 		vi.spyOn(syncStore, 'authorizedFetch').mockRejectedValue(new TypeError('Failed to fetch'));
 
-		await expect(unregisterReminderDevice(account)).rejects.toThrow(/relay/);
+		await expect(unregisterReminderDevice(workspace)).rejects.toThrow(/relay/);
 	});
 });

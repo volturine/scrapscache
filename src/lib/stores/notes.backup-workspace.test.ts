@@ -1,12 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { strToU8 } from 'fflate';
-import { getAllNotesMetadata, LOCAL_PROFILE_ID, waitForDeviceWrites } from '$lib/db/idb';
+import { getAllNotesMetadata, waitForDeviceWrites } from '$lib/db/idb';
 import { BackupImportMode, type ScrapsCacheBackup } from '$lib/backup';
 import { createSyncIdentity } from '$lib/syncPairing';
 import { notesStore, SYNC_LOCK } from './notes.svelte';
 import { profileCoordinator } from './profiles.svelte';
 import { syncStore } from './sync.svelte';
 import { kanbanStore } from './kanban.svelte';
+import { canvasLibraryStore } from './canvasLibrary';
+import { reminderHistoryStore } from './reminderHistory';
+import { reminderWakeId } from '$lib/reminderNotify';
+import { TEST_WORKSPACE } from '../../tests/workspace';
 
 function profile(id: string) {
 	const account = createSyncIdentity();
@@ -15,7 +19,7 @@ function profile(id: string) {
 
 function emptyBackup(notes: ScrapsCacheBackup['notes'] = []): ScrapsCacheBackup {
 	return {
-		version: 4,
+		version: 5,
 		exportedAt: 1,
 		notes,
 		labels: [],
@@ -24,6 +28,8 @@ function emptyBackup(notes: ScrapsCacheBackup['notes'] = []): ScrapsCacheBackup 
 		tombstones: {},
 		labelTombstones: {},
 		boardTombstones: {},
+		canvasLibrary: [],
+		reminderHistory: [],
 		ui: { sidebarOpen: true, dark: null, layout: 'grid', view: 'notes', rawMarkdown: false }
 	};
 }
@@ -111,10 +117,12 @@ describe('backup and Keep import stay in the open workspace', () => {
 			'activeBoardId',
 			'boardTombstones',
 			'boards',
+			'canvasLibrary',
 			'exportedAt',
 			'labelTombstones',
 			'labels',
 			'notes',
+			'reminderHistory',
 			'tombstones',
 			'ui',
 			'version'
@@ -157,7 +165,7 @@ describe('backup and Keep import stay in the open workspace', () => {
 			'Incoming'
 		]);
 		expect((await getAllNotesMetadata(workspaceA.id)).map((note) => note.title)).toEqual(['Stay']);
-		expect(await getAllNotesMetadata(LOCAL_PROFILE_ID)).toEqual([]);
+		expect(await getAllNotesMetadata(TEST_WORKSPACE)).toEqual([]);
 	});
 
 	it('restores a replacement backup under new ids and retires every old id', async () => {
@@ -192,6 +200,38 @@ describe('backup and Keep import stay in the open workspace', () => {
 		expect(kanbanStore.boards[0].columns[0].order).toEqual([restored.id]);
 	});
 
+	it('carries the canvas library and reminder history through a backup', async () => {
+		await openWorkspace(workspaceA);
+		const shape = { id: 'star', status: 'unpublished', created: 1, elements: [] };
+		canvasLibraryStore.applyEditorChange([], [shape]);
+		const reminder = 5_000;
+		const noted = notesStore.createNote({ title: 'Call back', reminder });
+		const wake = reminderWakeId(noted.id, reminder);
+		reminderHistoryStore.recordDismissed(workspaceA.id, { id: wake, noteId: noted.id }, 9);
+		await waitForDeviceWrites(workspaceA.id);
+
+		const backup = await notesStore.exportBackup();
+		expect(backup.canvasLibrary).toEqual([shape]);
+		expect(backup.reminderHistory).toEqual([
+			{ id: wake, noteId: noted.id, firedAt: 9, dismissedAt: 9 }
+		]);
+
+		await openWorkspace(workspaceB);
+		canvasLibraryStore.applyEditorChange([], [{ ...shape, id: 'other' }]);
+		expect(await notesStore.importBackup(backup, BackupImportMode.Replace)).toEqual({
+			success: true
+		});
+
+		expect(canvasLibraryStore.items()).toEqual([shape]);
+		expect(canvasLibraryStore.tombstonesForSync()).toHaveProperty('other');
+		const [restored] = notesStore.notes;
+		// Already dismissed before the backup, so the restored note does not remind again.
+		expect(reminderHistoryStore.get(reminderWakeId(restored.id, reminder))).toMatchObject({
+			noteId: restored.id,
+			dismissedAt: 9
+		});
+	});
+
 	it('imports Google Keep notes only into the open workspace', async () => {
 		await openWorkspace(workspaceA);
 		notesStore.createNote({ title: 'Stay' });
@@ -222,7 +262,7 @@ describe('backup and Keep import stay in the open workspace', () => {
 			'Keep note'
 		]);
 		expect((await getAllNotesMetadata(workspaceA.id)).map((note) => note.title)).toEqual(['Stay']);
-		expect(await getAllNotesMetadata(LOCAL_PROFILE_ID)).toEqual([]);
+		expect(await getAllNotesMetadata(TEST_WORKSPACE)).toEqual([]);
 	});
 
 	it('keeps a running import in its workspace and blocks switching until it finishes', async () => {

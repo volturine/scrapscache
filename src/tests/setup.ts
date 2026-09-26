@@ -5,6 +5,10 @@ import { afterEach, vi } from 'vitest';
 import { closeDeviceDatabase, DEVICE_DB_NAME, dropDatabase } from '$lib/db/idb';
 import { resetTombstoneCaches } from '$lib/syncTombstones';
 import { installHorizontalWheel } from '$lib/horizontalWheel';
+import { seedTestKeyring } from './workspace';
+
+// Stores boot on the keyring's workspace; every test file starts on the same one.
+seedTestKeyring();
 
 // Browser-side $env/dynamic/public reads globals that only a SvelteKit page defines.
 vi.mock('$env/dynamic/public', () => ({ env: {} }));

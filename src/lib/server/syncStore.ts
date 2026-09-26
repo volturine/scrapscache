@@ -1089,7 +1089,8 @@ export class SyncStore {
 		return accepted;
 	}
 
-	async claimDueWakes(now: number, limit = 100): Promise<DueWake[]> {
+	/** Claim wakes due by `now`, of one account when `accountId` is given. */
+	async claimDueWakes(now: number, limit = 100, accountId?: string): Promise<DueWake[]> {
 		await this.db.ready;
 		return withTxn(this.ops, async (tx) => {
 			const rows = (
@@ -1111,9 +1112,10 @@ export class SyncStore {
 				 WHERE w.fire_at <= ?
 					AND x.delivered_at IS NULL
 					AND (x.claimed_at IS NULL OR x.claimed_at <= ?)
+					AND (? IS NULL OR w.account_id = ?)
 				 ORDER BY w.fire_at ASC, w.wake_id ASC, d.device_id ASC
 				 LIMIT ?`,
-					args: [now, now - WAKE_CLAIM_LEASE_MS, limit]
+					args: [now, now - WAKE_CLAIM_LEASE_MS, accountId ?? null, accountId ?? null, limit]
 				})
 			).rows as unknown as DueWake[];
 			for (const row of rows) {
@@ -1129,6 +1131,25 @@ export class SyncStore {
 			}
 			return rows;
 		});
+	}
+
+	/**
+	 * When the next wake some device still waits for comes due, after `after`, of
+	 * one account when `accountId` is given.
+	 */
+	async nextWakeAt(after: number, accountId?: string): Promise<number | null> {
+		await this.db.ready;
+		const row = (
+			await this.ops.execute({
+				sql: `SELECT MIN(w.fire_at) AS fireAt
+				 FROM reminder_wakes w
+				 WHERE w.fire_at > ?
+					AND (? IS NULL OR w.account_id = ?)
+					AND EXISTS (SELECT 1 FROM reminder_push_devices d WHERE d.account_id = w.account_id)`,
+				args: [after, accountId ?? null, accountId ?? null]
+			})
+		).rows[0] as { fireAt?: number | null } | undefined;
+		return row?.fireAt == null ? null : Number(row.fireAt);
 	}
 
 	async markWakeDelivered(

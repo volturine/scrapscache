@@ -10,6 +10,9 @@ import type { LinkPreview } from '$lib/linkPreview';
 import type { Layout, View } from '$lib/stores/ui.svelte';
 import type { Label, Note, NoteFieldTimes, NoteImage } from '$lib/types';
 import { cloneNote, uid } from '$lib/utils';
+import { isCanvasLibraryItem, type CanvasLibraryItem } from '$lib/canvasLibrary';
+import { isReminderHistoryEntry, type ReminderHistoryEntry } from '$lib/reminderHistory';
+import { reminderWakeId } from '$lib/reminderNotify';
 
 const NOTE_COLORS = new Set<Note['color']>([
 	'default',
@@ -29,7 +32,7 @@ const VIEWS = new Set<View>(['notes', 'kanban', 'reminders', 'archive', 'trash',
 
 /** Current-workspace snapshot, including full-resolution attachments. Never carries sync identity. */
 export type ScrapsCacheBackup = {
-	version: 4;
+	version: 5;
 	exportedAt: number;
 	notes: Note[];
 	labels: Label[];
@@ -38,6 +41,10 @@ export type ScrapsCacheBackup = {
 	tombstones: Record<string, number>;
 	labelTombstones: Record<string, number>;
 	boardTombstones: Record<string, number>;
+	/** The workspace's reusable canvas shapes, as Excalidraw keeps them. */
+	canvasLibrary: CanvasLibraryItem[];
+	/** Reminders already shown or dismissed, so a restore does not show them again. */
+	reminderHistory: ReminderHistoryEntry[];
 	ui: {
 		sidebarOpen: boolean;
 		dark: boolean | null;
@@ -92,6 +99,26 @@ export function prepareImportedNotes(
 			NOTE_FIELDS,
 			context
 		);
+	});
+}
+
+/**
+ * Carry reminder history over to the ids a restore gives its notes. Only the
+ * history of each note's current reminder matters; the rest described
+ * reminders the note no longer has.
+ */
+export function importedReminderHistory(
+	backupNotes: Note[],
+	importedNotes: Note[],
+	history: ReminderHistoryEntry[]
+): ReminderHistoryEntry[] {
+	const byId = new Map(history.map((entry) => [entry.id, entry]));
+	return backupNotes.flatMap((source, index): ReminderHistoryEntry[] => {
+		const imported = importedNotes[index];
+		if (source.reminder == null || !imported || imported.reminder !== source.reminder) return [];
+		const entry = byId.get(reminderWakeId(source.id, source.reminder));
+		if (!entry) return [];
+		return [{ ...entry, id: reminderWakeId(imported.id, imported.reminder), noteId: imported.id }];
 	});
 }
 
@@ -161,8 +188,9 @@ function normalizeLinkPreview(value: unknown): LinkPreview | null {
 	};
 }
 
+/** Version 4 predates the canvas library and reminder history; it imports with neither. */
 type CurrentBackupRaw = Record<string, unknown> & {
-	version: 4;
+	version: 4 | 5;
 	exportedAt: number;
 	notes: unknown[];
 	labels: unknown[];
@@ -171,12 +199,14 @@ type CurrentBackupRaw = Record<string, unknown> & {
 	tombstones: object;
 	labelTombstones: object;
 	boardTombstones: object;
+	canvasLibrary?: unknown[];
+	reminderHistory?: unknown[];
 	ui: object;
 };
 
 function isCurrentBackupRaw(raw: Record<string, unknown>): raw is CurrentBackupRaw {
 	const valid =
-		raw.version === 4 &&
+		(raw.version === 4 || raw.version === 5) &&
 		typeof raw.exportedAt === 'number' &&
 		Array.isArray(raw.notes) &&
 		Array.isArray(raw.labels) &&
@@ -188,6 +218,8 @@ function isCurrentBackupRaw(raw: Record<string, unknown>): raw is CurrentBackupR
 		typeof raw.labelTombstones === 'object' &&
 		!!raw.boardTombstones &&
 		typeof raw.boardTombstones === 'object' &&
+		(raw.version === 4 ||
+			(Array.isArray(raw.canvasLibrary) && Array.isArray(raw.reminderHistory))) &&
 		!!raw.ui &&
 		typeof raw.ui === 'object';
 	return valid;
@@ -248,7 +280,7 @@ export function normalizeBackup(data: unknown): ScrapsCacheBackup | null {
 	});
 	const uiRaw = raw.ui && typeof raw.ui === 'object' ? (raw.ui as Record<string, unknown>) : {};
 	return {
-		version: 4,
+		version: 5,
 		exportedAt: Number(raw.exportedAt) || Date.now(),
 		notes,
 		labels,
@@ -260,6 +292,8 @@ export function normalizeBackup(data: unknown): ScrapsCacheBackup | null {
 		tombstones: asTombstoneMap(raw.tombstones),
 		labelTombstones: asTombstoneMap(raw.labelTombstones),
 		boardTombstones: asTombstoneMap(raw.boardTombstones),
+		canvasLibrary: (raw.canvasLibrary ?? []).filter(isCanvasLibraryItem),
+		reminderHistory: (raw.reminderHistory ?? []).filter(isReminderHistoryEntry),
 		ui: {
 			sidebarOpen: typeof uiRaw.sidebarOpen === 'boolean' ? uiRaw.sidebarOpen : true,
 			dark:

@@ -13,6 +13,7 @@
 	import { isMissingModuleError, reloadOnceForMissingModule } from '$lib/staleModuleReload';
 	import type { NoteImage } from '$lib/types';
 	import { uiStore } from '$lib/stores/ui.svelte';
+	import { canvasLibraryStore } from '$lib/stores/canvasLibrary';
 	import { portalToAppOverlay } from '$lib/appViewport';
 
 	let {
@@ -29,6 +30,7 @@
 
 	let hostNode = $state<HTMLDivElement | null>(null);
 	let host: ExcalidrawHost | null = null;
+	let stopLibrary: (() => void) | null = null;
 	let loading = $state(true);
 	let saving = $state(false);
 	let dirty = $state(false);
@@ -50,13 +52,18 @@
 				const mounted = await mountExcalidraw(hostNode, {
 					initialScene,
 					dark: uiStore.effectiveDark,
-					readOnly
+					readOnly,
+					library: canvasLibraryStore.items(),
+					onLibraryChange: (previous, next) => canvasLibraryStore.applyEditorChange(previous, next)
 				});
 				if (cancelled) {
 					mounted.destroy();
 					return;
 				}
 				host = mounted;
+				// Another device's library changes land while the editor is open.
+				stopLibrary = canvasLibraryStore.subscribe((items) => mounted.showLibrary(items));
+				mounted.showLibrary(canvasLibraryStore.items());
 			} catch (cause) {
 				if (reloadOnceForMissingModule(cause)) return;
 				staleModule = isMissingModuleError(cause);
@@ -74,7 +81,10 @@
 		};
 	});
 
-	onDestroy(() => host?.destroy());
+	onDestroy(() => {
+		stopLibrary?.();
+		host?.destroy();
+	});
 
 	function close() {
 		if (saving) return;

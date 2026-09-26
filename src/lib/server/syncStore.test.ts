@@ -872,6 +872,45 @@ describe('SQLite sync store', () => {
 		expect(await store.claimDueWakes(1_000)).toEqual([]);
 	});
 
+	it('reports the next wake a registered device still waits for', async () => {
+		const { store } = createStore();
+		await store.createAccount('account', 'credential');
+		await store.replaceReminderWakes('account', [wake('a', 1_000), wake('b', 5_000)]);
+		// Nothing is waiting without a device to wake.
+		expect(await store.nextWakeAt(0)).toBeNull();
+		await store.savePushDevice({
+			deviceId: 'device-aaaaaaaaaaaa',
+			endpoint: 'https://push.example/sub-a',
+			p256dh: 'p'.repeat(20),
+			auth: 'a'.repeat(16),
+			accountId: 'account'
+		});
+		expect(await store.nextWakeAt(0)).toBe(1_000);
+		expect(await store.nextWakeAt(1_000)).toBe(5_000);
+		expect(await store.nextWakeAt(5_000)).toBeNull();
+		expect(await store.nextWakeAt(0, 'account')).toBe(1_000);
+		expect(await store.nextWakeAt(0, 'someone-else')).toBeNull();
+	});
+
+	it("claims one account's due wakes without touching another's", async () => {
+		const { store } = createStore();
+		for (const account of ['first', 'second']) {
+			await store.createAccount(account, 'credential');
+			await store.savePushDevice({
+				deviceId: `device-${account}`.padEnd(16, 'x'),
+				endpoint: `https://push.example/${account}`,
+				p256dh: 'p'.repeat(20),
+				auth: 'a'.repeat(16),
+				accountId: account
+			});
+			await store.replaceReminderWakes(account, [wake(account === 'first' ? 'f' : 's', 1_000)]);
+		}
+		expect((await store.claimDueWakes(1_000, 100, 'first')).map((w) => w.accountId)).toEqual([
+			'first'
+		]);
+		expect((await store.claimDueWakes(1_000)).map((w) => w.accountId)).toEqual(['second']);
+	});
+
 	it('re-claims an undelivered wake after the claim lease expires', async () => {
 		const { store } = createStore();
 		await store.createAccount('account', 'credential');

@@ -3,6 +3,8 @@ import type { Note, NoteImage } from '$lib/types';
 import { createSyncIdentity, decryptSyncPayload } from '$lib/syncPairing';
 import * as idb from '$lib/db/idb';
 import { SyncStore } from './sync.svelte';
+import { syncSnapshot } from '$lib/syncRecords';
+import { seedTestKeyring, TEST_WORKSPACE } from '../../tests/workspace';
 
 type RequestResult = { success: boolean; data?: Record<string, unknown>; error?: string };
 
@@ -55,6 +57,7 @@ function attachment(id: string): NoteImage {
 describe('quota isolation independent of server error wording', () => {
 	beforeEach(() => {
 		localStorage.clear();
+		seedTestKeyring();
 		vi.restoreAllMocks();
 	});
 
@@ -91,17 +94,13 @@ describe('quota isolation independent of server error wording', () => {
 				data: { cursor: 1 + request.envelopes.length, writesAccepted: true }
 			} satisfies RequestResult;
 		});
-		await idb.markSyncOutbox(idb.LOCAL_PROFILE_ID, [
-			'note:note-1',
-			'attachment:ok',
-			'attachment:huge'
-		]);
+		await idb.markSyncOutbox(TEST_WORKSPACE, ['note:note-1', 'attachment:ok', 'attachment:huge']);
 
-		const result = await store.sync([local], [], {}, {}, [], {}, false, false, async (s) => s);
+		const result = await store.sync(syncSnapshot({ notes: [local] }), false, false, async (s) => s);
 
 		expect(result.success).toBe(false);
 		expect(result.error).toMatch(/quota/);
 		expect(store.lastError).toMatch(/limit|quota/);
-		expect(await idb.getSyncOutboxKeys()).toEqual(['attachment:huge']);
+		expect(await idb.getSyncOutboxKeys(TEST_WORKSPACE)).toEqual(['attachment:huge']);
 	});
 });

@@ -17,6 +17,8 @@ from collections.abc import Mapping, Sequence
 
 DATABASE = "SCRAPSCACHE_DB"
 DEV_ENV = "dev"
+# Accounts whose reminder alarm fired, from the reminders Worker to the app Worker.
+WAKE_QUEUE = "scrapscache-reminder-wakes-dev"
 LIST_OBJECTS = (
     "SELECT type, name FROM sqlite_master WHERE type IN ('table', 'view') "
     "AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%'"
@@ -91,6 +93,16 @@ def delete_worker(args: Sequence[str], env: Mapping[str, str] | None = None) -> 
     raise SystemExit(result.returncode)
 
 
+def ensure_queue(name: str, env: Mapping[str, str] | None = None) -> None:
+    """Queues outlive Workers; create it only when this account lacks it."""
+    if wrangler(["queues", "info", name], env).returncode == 0:
+        return
+    created = wrangler(["queues", "create", name], env)
+    echo(created)
+    if created.returncode != 0:
+        raise SystemExit(created.returncode)
+
+
 def wipe_d1(env: Mapping[str, str] | None = None) -> None:
     listed = wrangler(
         [
@@ -137,8 +149,12 @@ def wipe_d1(env: Mapping[str, str] | None = None) -> None:
 
 
 def main() -> int:
+    # Dependents first: the cron Worker calls the app, and the app binds the
+    # reminders Worker's schedulers.
     delete_worker(["--config", "cf/wrangler.cron.jsonc", "--env", DEV_ENV, "--force"])
     delete_worker(["--env", DEV_ENV, "--force"])
+    delete_worker(["--config", "cf/wrangler.reminders.jsonc", "--env", DEV_ENV, "--force"])
+    ensure_queue(WAKE_QUEUE)
     wipe_d1()
     return 0
 

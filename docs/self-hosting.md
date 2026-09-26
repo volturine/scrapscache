@@ -222,16 +222,21 @@ may override them.
 | `GET /api/admin/settings`   | same bearer token                                | Effective runtime settings, defaults, and overrides       |
 | `PATCH /api/admin/settings` | same bearer token                                | Set or clear non-secret runtime overrides                 |
 | `POST /api/cron/tick`       | `Authorization: Bearer $SCRAPSCACHE_TICK_SECRET` | Run scheduled tasks (cron endpoint)                       |
+| `POST /api/cron/wakes`      | same bearer token                                | Deliver one account's due reminder wakes (Workers only)   |
 
 With no `SCRAPSCACHE_ADMIN_TOKEN` configured, the token-protected endpoints
 return 404 — the admin API is disabled.
 
-The cron endpoint (`/api/cron/tick`) is the scheduler entry point. The included
-Cloudflare scheduler Worker calls it through a private service binding every
-minute. For self-hosted deployments, add a crontab entry:
+The cron endpoint (`/api/cron/tick`) runs maintenance only: the daily
+retention sweep and pruning of expired sessions, rate limits, pairing codes and
+old reminder wakes. Hourly is enough. Reminders never wait for it: the server
+delivers each wake at its own time from an in-process timer, which it sets when
+it starts, whenever a device stores its reminders or registers for push, and
+after each delivery (a failed push is retried a minute later). For self-hosted
+deployments, add a crontab entry:
 
 ```sh
-* * * * * curl -sf -X POST -H "Authorization: Bearer $SCRAPSCACHE_TICK_SECRET" http://localhost:3000/api/cron/tick || echo "cron tick failed" >&2
+0 * * * * curl -sf -X POST -H "Authorization: Bearer $SCRAPSCACHE_TICK_SECRET" http://localhost:3000/api/cron/tick || echo "cron tick failed" >&2
 ```
 
 `GET /api/admin/status` is the JSON companion to `/metrics`. It reports

@@ -7,7 +7,8 @@ const cloudflareModules = new Map([
 	['$lib/server/pairingSessions', './src/lib/server/cloudflare/pairingSessions.ts'],
 	['$lib/server/db', './src/lib/server/cloudflare/db.ts'],
 	['$lib/server/metrics', './src/lib/server/cloudflare/metrics.ts'],
-	['$lib/server/telemetryQuery', './src/lib/server/cloudflare/telemetryQuery.ts']
+	['$lib/server/telemetryQuery', './src/lib/server/cloudflare/telemetryQuery.ts'],
+	['$lib/server/wakeTimer', './src/lib/server/cloudflare/wakeTimer.ts']
 ]);
 const cloudflareResolvedModules = new Map(
 	[...cloudflareModules].map(([source, target]) => [

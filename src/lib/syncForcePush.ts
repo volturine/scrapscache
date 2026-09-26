@@ -1,4 +1,5 @@
-import type { SyncSnapshot } from '$lib/stores/sync.svelte';
+import { mergeReminderHistory } from '$lib/reminderHistory';
+import type { SyncSnapshot } from '$lib/syncRecords';
 import {
 	mergeBodies,
 	NOTE_FIELDS,
@@ -47,9 +48,14 @@ export function buildForcePushSnapshot(
 				...Object.values(note.fieldTimes ?? {}).map((time) => time + 1)
 			);
 		}
-		for (const record of [...snapshot.labels, ...snapshot.boards])
+		for (const record of [...snapshot.labels, ...snapshot.boards, ...snapshot.libraryItems])
 			at = Math.max(at, record.updatedAt + 1);
-		for (const map of [snapshot.tombstones, snapshot.labelTombstones, snapshot.boardTombstones]) {
+		for (const map of [
+			snapshot.tombstones,
+			snapshot.labelTombstones,
+			snapshot.boardTombstones,
+			snapshot.libraryTombstones
+		]) {
 			for (const time of Object.values(map)) at = Math.max(at, time + 1);
 		}
 	}
@@ -91,6 +97,7 @@ export function buildForcePushSnapshot(
 			labelIds: board.noteFilter.labelIds.map((id) => labelIds.get(id) ?? id)
 		}
 	}));
+	const libraryItems = local.libraryItems.map((entry) => ({ ...entry, updatedAt: at }));
 	function deletions(
 		localMap: Record<string, number>,
 		remoteMap: Record<string, number>,
@@ -103,17 +110,33 @@ export function buildForcePushSnapshot(
 		for (const id of ids) delete result[id];
 		return result;
 	}
+	const tombstones = deletions(local.tombstones, remote.tombstones, notes, remote.notes);
 	return {
 		notes,
 		labels,
 		boards,
-		tombstones: deletions(local.tombstones, remote.tombstones, notes, remote.notes),
+		tombstones,
 		labelTombstones: deletions(
 			local.labelTombstones,
 			remote.labelTombstones,
 			labels,
 			remote.labels
 		),
-		boardTombstones: deletions(local.boardTombstones, remote.boardTombstones, boards, remote.boards)
+		boardTombstones: deletions(
+			local.boardTombstones,
+			remote.boardTombstones,
+			boards,
+			remote.boards
+		),
+		// Library items are last-write-wins by id, so a later version outlives any delete.
+		libraryItems,
+		libraryTombstones: deletions(
+			local.libraryTombstones,
+			remote.libraryTombstones,
+			libraryItems,
+			remote.libraryItems
+		),
+		// History is a record of what happened; the cloud's half of it stays true.
+		reminderHistory: mergeReminderHistory(local.reminderHistory, remote.reminderHistory, tombstones)
 	};
 }

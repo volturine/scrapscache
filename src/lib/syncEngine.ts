@@ -1,69 +1,76 @@
 // Incremental sync decisions. Upload only dirty records; never infer "unused"
 // attachments from a page that has not yet applied their parent notes.
-import type { KanbanBoard } from '$lib/kanban';
-import type { Label, Note } from '$lib/types';
+import type { Note } from '$lib/types';
 import { isTombstoned } from '$lib/model';
-import type { SyncRecord } from '$lib/syncRecords';
+import { reminderHistoryKey, reminderHistoryNoteId } from '$lib/reminderHistory';
+import type { SyncRecord, SyncSnapshot } from '$lib/syncRecords';
 
-export type TombstoneMaps = {
-	notes: Record<string, number>;
-	labels: Record<string, number>;
-	boards: Record<string, number>;
-};
-
-export function currentRecordKeys(
-	notes: Note[],
-	labels: Label[],
-	boards: KanbanBoard[],
-	tombstones: TombstoneMaps
-): Set<string> {
+export function currentRecordKeys(snapshot: SyncSnapshot): Set<string> {
 	const keys = new Set<string>();
-	for (const note of notes) {
-		if (isTombstoned(note.id, tombstones.notes)) continue;
+	for (const note of snapshot.notes) {
+		if (isTombstoned(note.id, snapshot.tombstones)) continue;
 		keys.add(`note:${note.id}`);
 		for (const image of note.images ?? []) keys.add(`attachment:${image.id}`);
 	}
-	for (const label of labels) {
-		if (!isTombstoned(label.id, tombstones.labels)) keys.add(`label:${label.id}`);
+	for (const label of snapshot.labels) {
+		if (!isTombstoned(label.id, snapshot.labelTombstones)) keys.add(`label:${label.id}`);
 	}
-	for (const board of boards) {
-		if (!isTombstoned(board.id, tombstones.boards)) keys.add(`board:${board.id}`);
+	for (const board of snapshot.boards) {
+		if (!isTombstoned(board.id, snapshot.boardTombstones)) keys.add(`board:${board.id}`);
 	}
-	for (const id of Object.keys(tombstones.notes)) keys.add(`note-tombstone:${id}`);
-	for (const id of Object.keys(tombstones.labels)) keys.add(`label-tombstone:${id}`);
-	for (const id of Object.keys(tombstones.boards)) keys.add(`board-tombstone:${id}`);
+	for (const entry of snapshot.libraryItems) {
+		if (entry.updatedAt > (Number(snapshot.libraryTombstones[entry.id]) || 0))
+			keys.add(`library-item:${entry.id}`);
+	}
+	for (const entry of snapshot.reminderHistory) {
+		if (!isTombstoned(entry.noteId, snapshot.tombstones)) keys.add(reminderHistoryKey(entry));
+	}
+	for (const id of Object.keys(snapshot.tombstones)) keys.add(`note-tombstone:${id}`);
+	for (const id of Object.keys(snapshot.labelTombstones)) keys.add(`label-tombstone:${id}`);
+	for (const id of Object.keys(snapshot.boardTombstones)) keys.add(`board-tombstone:${id}`);
+	for (const id of Object.keys(snapshot.libraryTombstones))
+		keys.add(`library-item-tombstone:${id}`);
 	return keys;
 }
 
 /**
  * Slot deletes are incremental GC, not catch-up. Attachments are only removed
  * after this device has finished downloading (`catchUpComplete`) and no live
- * applied note still lists them. Tombstone slots stay on the relay.
+ * applied note still lists them. A deleted note takes its reminder history
+ * with it. Tombstone slots stay on the relay.
  */
 export function planDeletableKeys(input: {
 	recordIds: Record<string, string>;
-	notes: Note[];
-	labels: Label[];
-	boards: KanbanBoard[];
-	tombstones: TombstoneMaps;
+	snapshot: SyncSnapshot;
 	pullOnly: boolean;
 	catchUpComplete: boolean;
 }): string[] {
 	if (input.pullOnly) return [];
-	const current = currentRecordKeys(input.notes, input.labels, input.boards, input.tombstones);
+	const { snapshot } = input;
+	const current = currentRecordKeys(snapshot);
 	const deletable: string[] = [];
 	for (const key of Object.keys(input.recordIds)) {
 		if (current.has(key)) continue;
 		if (key.startsWith('note:')) {
-			if (isTombstoned(key.slice('note:'.length), input.tombstones.notes)) deletable.push(key);
+			if (isTombstoned(key.slice('note:'.length), snapshot.tombstones)) deletable.push(key);
 			continue;
 		}
 		if (key.startsWith('label:')) {
-			if (isTombstoned(key.slice('label:'.length), input.tombstones.labels)) deletable.push(key);
+			if (isTombstoned(key.slice('label:'.length), snapshot.labelTombstones)) deletable.push(key);
 			continue;
 		}
 		if (key.startsWith('board:')) {
-			if (isTombstoned(key.slice('board:'.length), input.tombstones.boards)) deletable.push(key);
+			if (isTombstoned(key.slice('board:'.length), snapshot.boardTombstones)) deletable.push(key);
+			continue;
+		}
+		if (key.startsWith('library-item:')) {
+			if (isTombstoned(key.slice('library-item:'.length), snapshot.libraryTombstones))
+				deletable.push(key);
+			continue;
+		}
+		const historyNoteId = reminderHistoryNoteId(key);
+		if (historyNoteId !== null) {
+			if (isTombstoned(historyNoteId, snapshot.tombstones)) deletable.push(key);
 			continue;
 		}
 		if (key.startsWith('attachment:')) {

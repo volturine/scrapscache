@@ -1,15 +1,115 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
 	publishReminderWakes,
-	registerReminderDevice,
-	unregisterReminderDevice
+	registerAllReminderDevices,
+	reminderDeviceId,
+	unregisterReminderDevice,
+	workspacePushScope
 } from './reminderWake';
 import { syncStore } from '$lib/stores/sync.svelte';
-import { createSyncIdentity } from '$lib/syncPairing';
+import { createSyncIdentity, identityFromSyncKey } from '$lib/syncPairing';
+
+const ORIGIN = window.location.origin;
+
+/**
+ * A browser's service worker registrations: one per scope, each with a push
+ * subscription and address of its own, as the browser keeps them.
+ */
+function fakeServiceWorkers(existing: string[] = []) {
+	const registrations = new Map<string, ReturnType<typeof registrationFor>>();
+	let next = 0;
+	function registrationFor(scope: string) {
+		let subscription: {
+			endpoint: string;
+			options: { applicationServerKey: ArrayBuffer };
+			unsubscribe: ReturnType<typeof vi.fn>;
+			toJSON: () => unknown;
+		} | null = null;
+		const registration = {
+			scope,
+			active: {},
+			unregister: vi.fn(async () => registrations.delete(scope)),
+			pushManager: {
+				getSubscription: vi.fn(async () => subscription),
+				subscribe: vi.fn(async () => {
+					const endpoint = `https://push.example/${(next += 1)}`;
+					subscription = {
+						endpoint,
+						options: { applicationServerKey: new Uint8Array([1, 2, 3]).buffer },
+						unsubscribe: vi.fn(async () => {
+							subscription = null;
+							return true;
+						}),
+						toJSON: () => ({ endpoint, keys: { p256dh: 'public-key', auth: 'auth-key' } })
+					};
+					return subscription;
+				})
+			}
+		};
+		return registration;
+	}
+	const container = {
+		register: vi.fn(async (_script: string, options: { scope: string }) => {
+			const scope = new URL(options.scope, ORIGIN).href;
+			const registration = registrations.get(scope) ?? registrationFor(scope);
+			registrations.set(scope, registration);
+			return registration;
+		}),
+		// Like the browser: the registration whose scope best matches, else none.
+		getRegistration: vi.fn(async (url: string) => {
+			const matches = [...registrations.values()].filter((registration) =>
+				String(url).startsWith(registration.scope)
+			);
+			return matches.sort((a, b) => b.scope.length - a.scope.length)[0];
+		}),
+		getRegistrations: vi.fn(async () => [...registrations.values()])
+	};
+	for (const scope of existing) container.register('/sw.js', { scope });
+	return { container, registrations };
+}
+
+function workspace(id: string) {
+	return { id, name: id, syncKey: createSyncIdentity().syncKey, createdAt: 1 };
+}
+
+function stubBrowser(container: object) {
+	vi.stubGlobal('Notification', { permission: 'granted' });
+	vi.stubGlobal('PushManager', function PushManager() {});
+	vi.stubGlobal('navigator', { serviceWorker: container });
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async (input: string | URL | Request) =>
+			String(input).endsWith('/vapid')
+				? new Response(JSON.stringify({ publicKey: 'AQID' }))
+				: new Response(null, { status: 404 })
+		)
+	);
+}
+
+type RegistrationPost = { account: string; deviceId: string; subscription: { endpoint: string } };
+
+function registrationPosts(requestMock: { mock: { calls: unknown[][] } }): RegistrationPost[] {
+	return (requestMock.mock.calls as [string, RequestInit | undefined, unknown][])
+		.filter(([path, init]) => path === '/api/sync/push/wakes' && init?.method === 'POST')
+		.map(([, init, account]) => ({
+			account: (account as { accountId: string }).accountId,
+			...(JSON.parse(String((init as RequestInit).body)) as {
+				deviceId: string;
+				subscription: { endpoint: string };
+			})
+		}));
+}
 
 describe('reminder wake requests', () => {
+	let profiles: typeof syncStore.profiles;
+
+	beforeEach(() => {
+		profiles = syncStore.profiles;
+	});
+
 	afterEach(() => {
 		syncStore.account = null;
+		syncStore.profiles = profiles;
 		vi.unstubAllGlobals();
 		vi.restoreAllMocks();
 	});
@@ -62,129 +162,110 @@ describe('reminder wake requests', () => {
 		revision = 4;
 		expect(await publishReminderWakes(notes)).toHaveLength(1);
 		expect(requestMock).toHaveBeenCalledTimes(2);
-		const requests = requestMock.mock.calls;
-		expect(JSON.parse(String(requests[1]?.[1]?.body)) as { revision: number }).toMatchObject({
-			revision: 4
-		});
+		expect(
+			JSON.parse(String(requestMock.mock.calls[1]?.[1]?.body)) as { revision: number }
+		).toMatchObject({ revision: 4 });
 	});
 
-	it('does not register the same push device after every sync', async () => {
-		syncStore.account = createSyncIdentity();
-		const key = new Uint8Array([1, 2, 3]);
-		const subscription = {
-			options: { applicationServerKey: key.buffer },
-			toJSON: () => ({
-				endpoint: 'https://push.example/device',
-				keys: { p256dh: 'public-key', auth: 'auth-key' }
-			})
-		};
-		const registration = {
-			pushManager: {
-				getSubscription: vi.fn(async () => subscription)
-			}
-		};
-		vi.stubGlobal('Notification', { permission: 'granted' });
-		vi.stubGlobal('PushManager', function PushManager() {});
-		vi.stubGlobal('navigator', {
-			serviceWorker: {
-				getRegistration: vi.fn(async () => registration),
-				ready: Promise.resolve(registration)
-			}
-		});
-		const fetchMock = vi.fn(async (input: string | URL | Request, _init?: RequestInit) => {
-			const path = String(input);
-			return path.endsWith('/vapid')
-				? new Response(JSON.stringify({ publicKey: 'AQID' }))
-				: new Response(null, { status: 404 });
-		});
-		vi.stubGlobal('fetch', fetchMock);
+	it('gives every synced workspace a subscription and device id of its own', async () => {
+		const { container, registrations } = fakeServiceWorkers();
+		stubBrowser(container);
+		const home = workspace('home');
+		const work = workspace('work');
+		syncStore.profiles = [home, work, { ...workspace('private'), syncKey: '' }];
 		const requestMock = vi
 			.spyOn(syncStore, 'authorizedFetch')
 			.mockResolvedValue(new Response(JSON.stringify({ ok: true })));
 
-		expect(await registerReminderDevice()).toBe(true);
-		expect(await registerReminderDevice()).toBe(true);
+		expect(await registerAllReminderDevices()).toBe(true);
+
+		expect([...registrations.keys()].sort()).toEqual([
+			new URL(workspacePushScope('home'), ORIGIN).href,
+			new URL(workspacePushScope('work'), ORIGIN).href
+		]);
+		const posts = registrationPosts(requestMock);
+		expect(posts.map((post) => post.account).sort()).toEqual(
+			[
+				identityFromSyncKey(home.syncKey).accountId,
+				identityFromSyncKey(work.syncKey).accountId
+			].sort()
+		);
+		// Nothing the relay sees ties the two accounts to one browser.
+		expect(new Set(posts.map((post) => post.subscription.endpoint)).size).toBe(2);
+		expect(new Set(posts.map((post) => post.deviceId)).size).toBe(2);
 		expect(
-			requestMock.mock.calls.filter(
-				([path, init]) => path === '/api/sync/push/wakes' && init?.method === 'POST'
-			)
-		).toHaveLength(1);
+			posts.find((post) => post.account === identityFromSyncKey(home.syncKey).accountId)
+		).toMatchObject({
+			deviceId: reminderDeviceId(identityFromSyncKey(home.syncKey).accountId)
+		});
 	});
 
-	it('registers again when the push endpoint changes', async () => {
-		syncStore.account = createSyncIdentity();
-		const key = new Uint8Array([1, 2, 3]);
-		const subscription = {
-			options: { applicationServerKey: key.buffer },
-			endpoint: 'https://push.example/device-a',
-			toJSON: () => ({
-				endpoint: 'https://push.example/device-a',
-				keys: { p256dh: 'public-key', auth: 'auth-key' }
-			})
-		};
-		const registration = {
-			pushManager: {
-				getSubscription: vi.fn(async () => subscription)
-			}
-		};
-		vi.stubGlobal('Notification', { permission: 'granted' });
-		vi.stubGlobal('PushManager', function PushManager() {});
-		vi.stubGlobal('navigator', {
-			serviceWorker: {
-				getRegistration: vi.fn(async () => registration),
-				ready: Promise.resolve(registration)
-			}
-		});
-		const fetchMock = vi.fn(async (input: string | URL | Request, _init?: RequestInit) => {
-			const path = String(input);
-			return path.endsWith('/vapid')
-				? new Response(JSON.stringify({ publicKey: 'AQID' }))
-				: new Response(null, { status: 404 });
-		});
-		vi.stubGlobal('fetch', fetchMock);
+	it('does not register a workspace again after every sync', async () => {
+		const { container } = fakeServiceWorkers();
+		stubBrowser(container);
+		syncStore.profiles = [workspace('home')];
 		const requestMock = vi
 			.spyOn(syncStore, 'authorizedFetch')
 			.mockResolvedValue(new Response(JSON.stringify({ ok: true })));
 
-		expect(await registerReminderDevice()).toBe(true);
-		subscription.endpoint = 'https://push.example/device-b';
-		subscription.toJSON = () => ({
-			endpoint: 'https://push.example/device-b',
-			keys: { p256dh: 'public-key', auth: 'auth-key' }
-		});
-		expect(await registerReminderDevice()).toBe(true);
-		expect(
-			requestMock.mock.calls.filter(
-				([path, init]) => path === '/api/sync/push/wakes' && init?.method === 'POST'
-			)
-		).toHaveLength(2);
+		expect(await registerAllReminderDevices()).toBe(true);
+		expect(await registerAllReminderDevices()).toBe(true);
+		expect(registrationPosts(requestMock)).toHaveLength(1);
 	});
 
-	it('does not wait for a service worker that never registers', async () => {
-		const getRegistration = vi.fn(async () => undefined);
-		const ready = new Promise<never>(() => {});
+	it('does nothing until notifications are allowed', async () => {
+		const { container, registrations } = fakeServiceWorkers();
+		stubBrowser(container);
 		vi.stubGlobal('Notification', { permission: 'default' });
-		vi.stubGlobal('PushManager', function PushManager() {});
-		vi.stubGlobal('navigator', {
-			serviceWorker: { getRegistration, ready }
-		});
-		const fetchMock = vi
-			.spyOn(syncStore, 'authorizedFetch')
-			.mockResolvedValue(new Response(null, { status: 204 }));
+		syncStore.profiles = [workspace('home')];
+		const requestMock = vi.spyOn(syncStore, 'authorizedFetch');
 
-		const started = Date.now();
-		await unregisterReminderDevice({
-			syncKey: 'key',
-			accountId: 'acct',
-			authPublicKey: 'secret',
-			pairingCode: ''
-		});
-		expect(Date.now() - started).toBeLessThan(500);
-		expect(getRegistration).toHaveBeenCalled();
-		expect(fetchMock).toHaveBeenCalledWith(
+		expect(await registerAllReminderDevices()).toBe(false);
+		expect(registrations.size).toBe(0);
+		expect(requestMock).not.toHaveBeenCalled();
+	});
+
+	it('drops the shared subscription and those of workspaces no longer synced here', async () => {
+		const { container, registrations } = fakeServiceWorkers(['/', workspacePushScope('gone')]);
+		for (const registration of registrations.values()) await registration.pushManager.subscribe();
+		const root = registrations.get(`${ORIGIN}/`)!;
+		stubBrowser(container);
+		syncStore.profiles = [workspace('home')];
+		vi.spyOn(syncStore, 'authorizedFetch').mockResolvedValue(
+			new Response(JSON.stringify({ ok: true }))
+		);
+
+		await registerAllReminderDevices();
+
+		expect(await root.pushManager.getSubscription()).toBeNull();
+		expect(registrations.has(`${ORIGIN}/`)).toBe(true);
+		expect(registrations.has(new URL(workspacePushScope('gone'), ORIGIN).href)).toBe(false);
+		expect(registrations.has(new URL(workspacePushScope('home'), ORIGIN).href)).toBe(true);
+	});
+
+	it("removes only that workspace's subscription and tells the relay", async () => {
+		const { container, registrations } = fakeServiceWorkers();
+		stubBrowser(container);
+		const home = workspace('home');
+		const work = workspace('work');
+		syncStore.profiles = [home, work];
+		const requestMock = vi
+			.spyOn(syncStore, 'authorizedFetch')
+			.mockResolvedValue(new Response(JSON.stringify({ ok: true })));
+		await registerAllReminderDevices();
+
+		await unregisterReminderDevice(home);
+
+		expect([...registrations.keys()]).toEqual([new URL(workspacePushScope('work'), ORIGIN).href]);
+		const account = identityFromSyncKey(home.syncKey);
+		expect(requestMock).toHaveBeenCalledWith(
 			'/api/sync/push/wakes',
-			expect.objectContaining({ method: 'DELETE', keepalive: true }),
-			expect.any(Object)
+			expect.objectContaining({
+				method: 'DELETE',
+				keepalive: true,
+				body: JSON.stringify({ deviceId: reminderDeviceId(account.accountId) })
+			}),
+			expect.objectContaining({ accountId: account.accountId })
 		);
 	});
 });

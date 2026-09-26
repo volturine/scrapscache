@@ -4,7 +4,7 @@ import { runInNewContext } from 'node:vm';
 import { webcrypto } from 'node:crypto';
 import { indexedDB } from 'fake-indexeddb';
 import { reminderWakeId } from './reminderNotify';
-import { DEVICE_DB_NAME } from '$lib/db/idb';
+import { DEVICE_DB_NAME, resolveDbName } from '$lib/db/idb';
 
 function request<T>(operation: IDBRequest<T>): Promise<T> {
 	return new Promise((resolve, reject) => {
@@ -13,24 +13,43 @@ function request<T>(operation: IDBRequest<T>): Promise<T> {
 	});
 }
 
-async function seedNotes(notes: unknown[]): Promise<void> {
+async function done(tx: IDBTransaction): Promise<void> {
+	await new Promise<void>((resolve, reject) => {
+		tx.oncomplete = () => resolve();
+		tx.onerror = () => reject(tx.error);
+	});
+}
+
+/** The device list the app keeps: one `{ id, tag }` row per workspace. */
+async function seedRegistry(workspaces: { id: string; tag: string }[]): Promise<void> {
 	const opened = indexedDB.open(DEVICE_DB_NAME, 1);
+	opened.onupgradeneeded = () => {
+		opened.result.createObjectStore('workspaces', { keyPath: 'id' });
+		opened.result.createObjectStore('link-previews', { keyPath: 'url' });
+	};
+	const db = await request(opened);
+	const tx = db.transaction('workspaces', 'readwrite');
+	for (const workspace of workspaces) tx.objectStore('workspaces').put(workspace);
+	await done(tx);
+	db.close();
+}
+
+async function seedWorkspace(id: string, notes: unknown[], history: unknown[] = []): Promise<void> {
+	const opened = indexedDB.open(resolveDbName(id), 1);
 	opened.onupgradeneeded = () => {
 		opened.result.createObjectStore('notes', { keyPath: 'id' });
 		opened.result.createObjectStore('sync-state');
 	};
 	const db = await request(opened);
-	const tx = db.transaction('notes', 'readwrite');
+	const tx = db.transaction(['notes', 'sync-state'], 'readwrite');
 	for (const note of notes) tx.objectStore('notes').put(note);
-	await new Promise<void>((resolve, reject) => {
-		tx.oncomplete = () => resolve();
-		tx.onerror = () => reject(tx.error);
-	});
+	if (history.length) tx.objectStore('sync-state').put(history, 'scrapscache-reminder-history');
+	await done(tx);
 	db.close();
 }
 
-async function firedWakeIds(): Promise<string[]> {
-	const db = await request(indexedDB.open(DEVICE_DB_NAME));
+async function firedWakeIds(workspace: string): Promise<string[]> {
+	const db = await request(indexedDB.open(resolveDbName(workspace)));
 	const stored = await request(
 		db.transaction('sync-state').objectStore('sync-state').get('scrapscache-fired-reminders')
 	);
@@ -38,14 +57,20 @@ async function firedWakeIds(): Promise<string[]> {
 	return Array.isArray(stored) ? stored : [];
 }
 
+function reminderNote(id: string, title: string, reminder: number) {
+	return { id, title, body: '', reminder, archived: false, trashed: false };
+}
+
 function loadServiceWorker(
 	showNotification: ReturnType<typeof vi.fn>,
-	clients: Record<string, unknown> = {}
+	clients: Record<string, unknown> = {},
+	scope = 'https://scrapscache.example/',
+	caches: Record<string, unknown> = { open: vi.fn(), keys: vi.fn() }
 ) {
 	const listeners = new Map<string, (event: unknown) => void>();
 	const self = {
 		location: { origin: 'https://scrapscache.example' },
-		registration: { showNotification },
+		registration: { showNotification, scope },
 		clients,
 		addEventListener(type: string, listener: (event: unknown) => void) {
 			listeners.set(type, listener);
@@ -58,10 +83,11 @@ function loadServiceWorker(
 		crypto: webcrypto,
 		TextEncoder,
 		URL,
+		URLSearchParams,
 		Request,
 		Response,
 		fetch: vi.fn(),
-		caches: { open: vi.fn(), keys: vi.fn() },
+		caches,
 		setTimeout,
 		clearTimeout,
 		btoa
@@ -69,8 +95,8 @@ function loadServiceWorker(
 	return listeners;
 }
 
-function loadPushHandler(showNotification: ReturnType<typeof vi.fn>) {
-	const handler = loadServiceWorker(showNotification).get('push');
+function loadPushHandler(showNotification: ReturnType<typeof vi.fn>, scope?: string) {
+	const handler = loadServiceWorker(showNotification, {}, scope).get('push');
 	if (!handler) throw new Error('Service worker did not register a push handler');
 	return async (payload: unknown) => {
 		let completion: Promise<unknown> | null = null;
@@ -102,52 +128,131 @@ function loadClickHandler(clients: Record<string, unknown>) {
 }
 
 describe('reminder service worker', () => {
-	it('shows local note content for a matching opaque wake', async () => {
-		const note = {
-			id: '550e8400-e29b-41d4-a716-446655440000',
-			title: 'Pick up groceries',
-			body: '',
-			reminder: 1_000,
-			archived: false,
-			trashed: false
-		};
-		await seedNotes([note]);
+	it('shows the note from whichever workspace holds it, and claims it there', async () => {
+		const note = reminderNote('550e8400-e29b-41d4-a716-446655440000', 'Pick up groceries', 1_000);
+		await seedWorkspace('work', []);
+		await seedWorkspace('home', [note]);
+		await seedRegistry([
+			{ id: 'work', tag: 'work-tag' },
+			{ id: 'home', tag: 'home-tag' }
+		]);
 		const show = vi.fn().mockResolvedValue(undefined);
 		const push = loadPushHandler(show);
 		const id = reminderWakeId(note.id, note.reminder);
+
 		await push({ type: 'reminder-wake', id, fireAt: note.reminder });
+
 		expect(show).toHaveBeenCalledWith(
 			'Pick up groceries',
 			expect.objectContaining({
 				tag: `scrapscache-reminder:${id}`,
-				data: { type: 'reminder', noteId: note.id, wakeId: id }
+				data: {
+					type: 'reminder',
+					noteId: note.id,
+					wakeId: id,
+					workspaceId: 'home',
+					workspaceTag: 'home-tag'
+				}
 			})
 		);
-		expect(await firedWakeIds()).toEqual([id]);
+		expect(await firedWakeIds('home')).toEqual([id]);
+		expect(await firedWakeIds('work')).toEqual([]);
 	});
 
-	it('shows a repeated wake only once when the note has not synced', async () => {
-		await seedNotes([]);
+	it('shows a repeated wake only once', async () => {
+		const note = reminderNote('note-1', 'Call back', 2_000);
+		await seedWorkspace('home', [note]);
+		await seedRegistry([{ id: 'home', tag: 'home-tag' }]);
 		const show = vi.fn().mockResolvedValue(undefined);
 		const push = loadPushHandler(show);
+		const payload = { type: 'reminder-wake', id: reminderWakeId(note.id, 2_000), fireAt: 2_000 };
+		await push(payload);
+		await push(payload);
+		expect(show).toHaveBeenCalledOnce();
+	});
+
+	it('stays quiet for a reminder another device already handled', async () => {
+		const note = reminderNote('note-2', 'Water plants', 3_000);
+		const id = reminderWakeId(note.id, 3_000);
+		await seedWorkspace(
+			'home',
+			[note],
+			[{ id, noteId: note.id, firedAt: 3_000, dismissedAt: 3_100 }]
+		);
+		await seedRegistry([{ id: 'home', tag: 'home-tag' }]);
+		const show = vi.fn().mockResolvedValue(undefined);
+		await loadPushHandler(show)({ type: 'reminder-wake', id, fireAt: 3_000 });
+		expect(show).not.toHaveBeenCalled();
+	});
+
+	it("searches only its own workspace when registered under that workspace's push scope", async () => {
+		const note = reminderNote('note-3', 'Stand-up', 4_000);
+		await seedWorkspace('home', [note]);
+		await seedWorkspace('work', []);
+		await seedRegistry([
+			{ id: 'home', tag: 'home-tag' },
+			{ id: 'work', tag: 'work-tag' }
+		]);
+		const id = reminderWakeId(note.id, 4_000);
+
+		const workShow = vi.fn().mockResolvedValue(undefined);
+		await loadPushHandler(
+			workShow,
+			'https://scrapscache.example/push/work/'
+		)({
+			type: 'reminder-wake',
+			id,
+			fireAt: 4_000
+		});
+		expect(workShow).toHaveBeenCalledWith('Reminder', expect.anything());
+
+		const homeShow = vi.fn().mockResolvedValue(undefined);
+		await loadPushHandler(
+			homeShow,
+			'https://scrapscache.example/push/home/'
+		)({
+			type: 'reminder-wake',
+			id,
+			fireAt: 4_000
+		});
+		expect(homeShow).toHaveBeenCalledWith(
+			'Stand-up',
+			expect.objectContaining({ data: expect.objectContaining({ workspaceId: 'home' }) })
+		);
+	});
+
+	it("leaves the app's cache alone when installed for a workspace's push", async () => {
+		const caches = { open: vi.fn(), keys: vi.fn() };
+		const install = loadServiceWorker(
+			vi.fn(),
+			{},
+			'https://scrapscache.example/push/home/',
+			caches
+		).get('install')!;
+		let completion: Promise<unknown> | null = null;
+		install({ waitUntil: (promise: Promise<unknown>) => (completion = promise) });
+		await completion;
+		expect(caches.open).not.toHaveBeenCalled();
+	});
+
+	it('says only that something is due for a note this device does not hold yet', async () => {
+		await seedWorkspace('home', []);
+		await seedRegistry([{ id: 'home', tag: 'home-tag' }]);
+		const show = vi.fn().mockResolvedValue(undefined);
 		const id = reminderWakeId('missing-note', 2_000);
-		const payload = { type: 'reminder-wake', id, fireAt: 2_000 };
-		await Promise.all([push(payload), push(payload)]);
-		expect(show).toHaveBeenCalledTimes(1);
-		for (const call of show.mock.calls) {
-			expect(call).toEqual([
-				'Reminder',
-				expect.objectContaining({
-					body: 'Open Scraps Cache to check your notes.',
-					tag: `scrapscache-reminder:${id}`
-				})
-			]);
-		}
-		expect(await firedWakeIds()).toEqual([id]);
+		await loadPushHandler(show)({ type: 'reminder-wake', id, fireAt: 2_000 });
+		expect(show).toHaveBeenCalledWith(
+			'Reminder',
+			expect.objectContaining({
+				body: 'Open Scraps Cache to check your notes.',
+				tag: `scrapscache-reminder:${id}`
+			})
+		);
+		// Nothing claimed: the app still shows the real reminder once the note syncs.
+		expect(await firedWakeIds('home')).toEqual([]);
 	});
 
 	it('falls back to the generic reminder for malformed payloads without crashing', async () => {
-		await seedNotes([]);
 		const show = vi.fn().mockResolvedValue(undefined);
 		const push = loadPushHandler(show);
 		const malformed: unknown[] = [
@@ -178,9 +283,17 @@ describe('reminder service worker', () => {
 		const clients = { matchAll: vi.fn(async () => [client]), openWindow: vi.fn() };
 		const click = loadClickHandler(clients);
 		const close = vi.fn();
-		await click({ close, data: { type: 'reminder', noteId: 'note-9', wakeId: 'w' } });
+		await click({
+			close,
+			data: { type: 'reminder', noteId: 'note-9', wakeId: 'w', workspaceId: 'home' }
+		});
 		expect(close).toHaveBeenCalled();
-		expect(client.postMessage).toHaveBeenCalledWith({ type: 'open-note', noteId: 'note-9' });
+		expect(client.postMessage).toHaveBeenCalledWith({
+			type: 'open-note',
+			noteId: 'note-9',
+			wakeId: 'w',
+			workspaceId: 'home'
+		});
 		expect(client.focus).toHaveBeenCalled();
 		expect(clients.openWindow).not.toHaveBeenCalled();
 	});
@@ -193,8 +306,9 @@ describe('reminder service worker', () => {
 		expect(clients.openWindow).toHaveBeenCalledWith('/reminders');
 		await click({
 			close: vi.fn(),
-			data: { type: 'reminder', noteId: 'note 10', wakeId: 'w' }
+			data: { type: 'reminder', noteId: 'note 10', wakeId: 'w', workspaceTag: 'home-tag' }
 		});
-		expect(clients.openWindow).toHaveBeenCalledWith('/#note=note%2010');
+		// The link names the workspace, so the app opens the note in it.
+		expect(clients.openWindow).toHaveBeenCalledWith('/#w=home-tag&note=note+10');
 	});
 });

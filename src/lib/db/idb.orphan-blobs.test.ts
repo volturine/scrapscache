@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { openDB } from 'idb';
 import {
-	DEVICE_DB_NAME,
 	getAllNotesMetadata,
+	resolveDbName,
 	hydrateNoteAttachments,
 	pruneOrphanImageBlobs,
 	putNote
 } from '$lib/db/idb';
 import type { Note, NoteImage } from '$lib/types';
+import { TEST_WORKSPACE } from '../../tests/workspace';
 
 function image(id: string, dataUrl: string): NoteImage {
 	return {
@@ -38,7 +39,7 @@ function note(id: string, images: NoteImage[]): Note {
 }
 
 async function storedImageKeys(): Promise<string[]> {
-	const db = await openDB(DEVICE_DB_NAME);
+	const db = await openDB(resolveDbName(TEST_WORKSPACE));
 	try {
 		return (await db.getAllKeys('note-images')).map(String).sort();
 	} finally {
@@ -57,11 +58,11 @@ describe('orphaned image blob reclamation', () => {
 			image('kept', 'data:image/png;base64,QQ=='),
 			image('gone', 'data:image/png;base64,Qg==')
 		]);
-		await putNote(original);
+		await putNote(TEST_WORKSPACE, original);
 		expect(await storedImageKeys()).toEqual(['n1::gone', 'n1::kept']);
 
 		// Crash-recovery style replay: byte-less metadata listing only 'kept'.
-		await putNote({
+		await putNote(TEST_WORKSPACE, {
 			...original,
 			title: 'replayed from mirror',
 			images: [image('kept', '')]
@@ -69,24 +70,24 @@ describe('orphaned image blob reclamation', () => {
 		// The write itself must not drop bytes it cannot verify (crash safety).
 		expect(await storedImageKeys()).toEqual(['n1::gone', 'n1::kept']);
 
-		await pruneOrphanImageBlobs();
+		await pruneOrphanImageBlobs(TEST_WORKSPACE);
 
 		expect(await storedImageKeys()).toEqual(['n1::kept']);
-		const stored = (await getAllNotesMetadata()).find((item) => item.id === 'n1');
+		const stored = (await getAllNotesMetadata(TEST_WORKSPACE)).find((item) => item.id === 'n1');
 		expect(stored?.images?.map(({ id }) => id)).toEqual(['kept']);
-		const hydrated = await hydrateNoteAttachments(stored!);
+		const hydrated = await hydrateNoteAttachments(TEST_WORKSPACE, stored!);
 		expect(hydrated.images?.[0]?.dataUrl?.startsWith('data:image/png')).toBe(true);
 	});
 
 	it('keeps blobs that are still referenced after recovery reattaches them', async () => {
-		await getAllNotesMetadata();
-		const db = await openDB(DEVICE_DB_NAME);
+		await getAllNotesMetadata(TEST_WORKSPACE);
+		const db = await openDB(resolveDbName(TEST_WORKSPACE));
 		await db.put('note-images', { mime: 'image/png', bytes: Uint8Array.from([65]) }, 'lost::pic');
 		db.close();
 
 		const lost = note('lost', [image('pic', '')]);
-		await putNote(lost);
-		await pruneOrphanImageBlobs();
+		await putNote(TEST_WORKSPACE, lost);
+		await pruneOrphanImageBlobs(TEST_WORKSPACE);
 
 		expect(await storedImageKeys()).toEqual(['lost::pic']);
 	});

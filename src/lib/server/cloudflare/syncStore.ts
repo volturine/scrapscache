@@ -576,11 +576,12 @@ export class SyncStore {
 		await this.touchAccount(accountId);
 		return true;
 	}
-	async claimDueWakes(now: number, limit = 100): Promise<DueWake[]> {
+	/** Claim wakes due by `now`, of one account when `accountId` is given. */
+	async claimDueWakes(now: number, limit = 100, accountId?: string): Promise<DueWake[]> {
 		const rows = (
 			await execute(this.db, {
-				sql: 'SELECT d.account_id accountId,d.device_id deviceId,w.wake_id wakeId,w.fire_at fireAt,d.endpoint,d.p256dh,d.auth FROM reminder_wakes w JOIN reminder_push_devices d ON d.account_id=w.account_id LEFT JOIN reminder_wake_deliveries x ON x.account_id=d.account_id AND x.device_id=d.device_id AND x.wake_id=w.wake_id WHERE w.fire_at<=? AND x.delivered_at IS NULL AND (x.claimed_at IS NULL OR x.claimed_at<=?) ORDER BY w.fire_at,w.wake_id,d.device_id LIMIT ?',
-				args: [now, now - WAKE_CLAIM_LEASE_MS, limit]
+				sql: 'SELECT d.account_id accountId,d.device_id deviceId,w.wake_id wakeId,w.fire_at fireAt,d.endpoint,d.p256dh,d.auth FROM reminder_wakes w JOIN reminder_push_devices d ON d.account_id=w.account_id LEFT JOIN reminder_wake_deliveries x ON x.account_id=d.account_id AND x.device_id=d.device_id AND x.wake_id=w.wake_id WHERE w.fire_at<=? AND x.delivered_at IS NULL AND (x.claimed_at IS NULL OR x.claimed_at<=?) AND (? IS NULL OR w.account_id=?) ORDER BY w.fire_at,w.wake_id,d.device_id LIMIT ?',
+				args: [now, now - WAKE_CLAIM_LEASE_MS, accountId ?? null, accountId ?? null, limit]
 			})
 		).rows as unknown as DueWake[];
 		await batch(
@@ -591,6 +592,19 @@ export class SyncStore {
 			}))
 		);
 		return rows;
+	}
+	/**
+	 * When the next wake some device still waits for comes due, after `after`, of
+	 * one account when `accountId` is given.
+	 */
+	async nextWakeAt(after: number, accountId?: string): Promise<number | null> {
+		const row = (
+			await execute(this.db, {
+				sql: 'SELECT MIN(w.fire_at) fireAt FROM reminder_wakes w WHERE w.fire_at>? AND (? IS NULL OR w.account_id=?) AND EXISTS (SELECT 1 FROM reminder_push_devices d WHERE d.account_id=w.account_id)',
+				args: [after, accountId ?? null, accountId ?? null]
+			})
+		).rows[0] as { fireAt?: number | null } | undefined;
+		return row?.fireAt == null ? null : Number(row.fireAt);
 	}
 	async markWakeDelivered(
 		w: Pick<DueWake, 'accountId' | 'deviceId' | 'wakeId'>,

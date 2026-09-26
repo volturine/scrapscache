@@ -7,12 +7,17 @@ const wakeMocks = vi.hoisted(() => ({
 
 vi.mock('$lib/reminderWake', () => ({
 	publishReminderWakes: wakeMocks.publish,
-	registerReminderDevice: wakeMocks.register
+	registerAllReminderDevices: wakeMocks.register
 }));
 
-import { ReminderStore } from './reminders.svelte';
+import { ReminderStore, type ReminderHost } from './reminders.svelte';
+import { ReminderHistoryStore } from './reminderHistory';
 import { reminderWakeId, type ReminderNote } from '$lib/reminderNotify';
-import { getFiredReminderKeys, setFiredReminderKeys, LOCAL_PROFILE_ID } from '$lib/db/idb';
+import { readReminderHistory } from '$lib/reminderHistory';
+import { deleteSyncState, getFiredReminderKeys, getSyncOutboxKeys } from '$lib/db/idb';
+import { TEST_WORKSPACE } from '../../tests/workspace';
+
+const OTHER = 'reminders-other';
 
 function note(partial: Partial<ReminderNote> = {}): ReminderNote {
 	return {
@@ -24,6 +29,36 @@ function note(partial: Partial<ReminderNote> = {}): ReminderNote {
 		trashed: false,
 		...partial
 	};
+}
+
+/** The app shell, with `others` as the notes of workspaces that are not open. */
+function testHost(
+	options: { others?: Record<string, ReminderNote[]>; linked?: string[] } = {}
+): ReminderHost & {
+	opened: [string, string][];
+	reconcile: ReturnType<typeof vi.fn<(pid: string) => void>>;
+} {
+	const others = options.others ?? {};
+	const linked = new Set(options.linked ?? []);
+	const opened: [string, string][] = [];
+	return {
+		opened,
+		workspaces: () =>
+			[TEST_WORKSPACE, ...Object.keys(others)].map((id) => ({ id, linked: linked.has(id) })),
+		loadNotes: async (pid) => others[pid] ?? [],
+		reconcile: vi.fn<(pid: string) => void>(),
+		openNote: (pid, noteId) => opened.push([pid, noteId])
+	};
+}
+
+/** Each store gets its own history, as each page load does. */
+function newStore() {
+	const history = new ReminderHistoryStore();
+	return { store: new ReminderStore(history), history };
+}
+
+async function settle(): Promise<void> {
+	await new Promise((resolve) => setTimeout(resolve, 20));
 }
 
 beforeEach(() => {
@@ -40,11 +75,12 @@ afterEach(() => {
 
 describe('ReminderStore', () => {
 	it('raises an in-app alert when system notifications are unavailable', async () => {
-		const store = new ReminderStore();
-		store.sync([note({ reminder: 100 })]);
-		await store.whenReady();
+		const { store } = newStore();
+		await store.activateProfile(TEST_WORKSPACE, [note({ reminder: 100 })]);
 		await vi.waitFor(() =>
-			expect(store.alerts).toEqual([expect.objectContaining({ noteId: 'n1', title: 'Groceries' })])
+			expect(store.alerts).toEqual([
+				expect.objectContaining({ noteId: 'n1', title: 'Groceries', workspaceId: TEST_WORKSPACE })
+			])
 		);
 	});
 
@@ -58,8 +94,8 @@ describe('ReminderStore', () => {
 		const wakeId = reminderWakeId(due.id, due.reminder as number);
 		wakeMocks.publish.mockResolvedValue([{ id: wakeId, fireAt: due.reminder }]);
 		wakeMocks.register.mockResolvedValue(false);
-		const store = new ReminderStore();
-		await store.whenReady();
+		const { store } = newStore();
+		await store.activateProfile(TEST_WORKSPACE, []);
 
 		store.publish([due]);
 
@@ -69,26 +105,25 @@ describe('ReminderStore', () => {
 	});
 
 	it('does not re-alert a reminder the user already dismissed', async () => {
-		const store = new ReminderStore();
-		store.sync([note({ reminder: 100 })]);
-		await store.whenReady();
+		const { store } = newStore();
+		const due = note({ reminder: 100 });
+		await store.activateProfile(TEST_WORKSPACE, [due]);
 		await vi.waitFor(() => expect(store.alerts).toHaveLength(1));
-		store.dismiss('n1');
-		store.sync([note({ reminder: 100 })]);
+		store.dismiss(reminderWakeId(due.id, 100));
+		store.sync([due]);
 		expect(store.alerts).toEqual([]);
 	});
 
 	it('does not replay an in-app alert after reload using only local device state', async () => {
 		const due = note({ id: 'local-reload-reminder', reminder: 100 });
-		const firstLoad = new ReminderStore();
-		firstLoad.sync([due]);
-		await firstLoad.whenReady();
-		await vi.waitFor(() => expect(firstLoad.alerts).toHaveLength(1));
+		const first = newStore().store;
+		await first.activateProfile(TEST_WORKSPACE, [due]);
+		await vi.waitFor(() => expect(first.alerts).toHaveLength(1));
 
-		await setFiredReminderKeys(LOCAL_PROFILE_ID, []);
-		const reloaded = new ReminderStore();
-		reloaded.sync([due]);
-		await reloaded.whenReady();
+		await deleteSyncState(TEST_WORKSPACE, 'scrapscache-fired-reminders');
+		const reloaded = new ReminderStore(new ReminderHistoryStore());
+		await reloaded.activateProfile(TEST_WORKSPACE, [due]);
+		await settle();
 
 		expect(reloaded.alerts).toEqual([]);
 	});
@@ -96,7 +131,7 @@ describe('ReminderStore', () => {
 	it('persists a system notification before displaying it and does not replay it after reload', async () => {
 		const deliveredWithFiredKeys: string[][] = [];
 		const showNotification = vi.fn(async () => {
-			deliveredWithFiredKeys.push(await getFiredReminderKeys());
+			deliveredWithFiredKeys.push(await getFiredReminderKeys(TEST_WORKSPACE));
 		});
 		vi.stubGlobal('Notification', { permission: 'granted' });
 		vi.stubGlobal('navigator', {
@@ -105,56 +140,204 @@ describe('ReminderStore', () => {
 
 		const due = note({ id: 'reload-reminder', reminder: 100 });
 		const wakeId = reminderWakeId(due.id, due.reminder as number);
-		const firstLoad = new ReminderStore();
-		firstLoad.sync([due]);
-		await firstLoad.whenReady();
+		await newStore().store.activateProfile(TEST_WORKSPACE, [due]);
 		await vi.waitFor(() => expect(showNotification).toHaveBeenCalledOnce());
 
 		expect(deliveredWithFiredKeys).toEqual([[wakeId]]);
 
-		const reloaded = new ReminderStore();
-		reloaded.sync([due]);
-		await reloaded.whenReady();
+		await newStore().store.activateProfile(TEST_WORKSPACE, [due]);
+		await settle();
 		expect(showNotification).toHaveBeenCalledOnce();
 	});
 
-	it('opens the note and clears the alert', async () => {
-		const opened: string[] = [];
-		const store = new ReminderStore();
-		const stop = store.attach((id) => opened.push(id));
-		store.sync([note({ reminder: 100 })]);
-		await store.whenReady();
+	it('opens the note in its workspace and clears the alert', async () => {
+		const { store } = newStore();
+		const host = testHost();
+		const stop = store.attach(host);
+		const due = note({ reminder: 100 });
+		await store.activateProfile(TEST_WORKSPACE, [due]);
 		await vi.waitFor(() => expect(store.alerts).toHaveLength(1));
-		store.open('n1');
-		expect(opened).toEqual(['n1']);
+		store.open(reminderWakeId(due.id, 100));
+		expect(host.opened).toEqual([[TEST_WORKSPACE, 'n1']]);
 		expect(store.alerts).toEqual([]);
 		stop();
 	});
 
 	it('fires a later reminder after the scheduled time', async () => {
 		const now = Date.now();
-		const store = new ReminderStore();
-		store.sync([note({ reminder: now + 5_000 })]);
-		await store.whenReady();
+		const { store } = newStore();
+		await store.activateProfile(TEST_WORKSPACE, [note({ reminder: now + 5_000 })]);
 		expect(store.alerts).toEqual([]);
 		vi.useFakeTimers({ now });
 		store.sync([note({ reminder: now + 5_000 })]);
 		await vi.advanceTimersByTimeAsync(5_000);
 		await vi.waitFor(() => expect(store.alerts[0]?.noteId).toBe('n1'));
+		// The fire is also written to the synced history; that write runs on the fake clock.
+		await vi.runAllTimersAsync();
 	});
 
-	it('hydrates and claims fired reminders independently for each profile', async () => {
-		const store = new ReminderStore();
-		await store.whenReady();
-		const internals = store as unknown as { claimFired(key: string): Promise<boolean> };
-
+	it('claims fired reminders independently for each workspace', async () => {
+		const { store } = newStore();
+		const internals = store as unknown as {
+			claimFired(alert: { workspaceId: string; wakeId: string; noteId: string }): Promise<boolean>;
+		};
 		await store.activateProfile('reminders-a', []);
-		await expect(internals.claimFired('shared-wake')).resolves.toBe(true);
+		const claim = (workspaceId: string) =>
+			internals.claimFired({ workspaceId, wakeId: 'shared-wake', noteId: 'n1' });
+		await expect(claim('reminders-a')).resolves.toBe(true);
 		expect(await getFiredReminderKeys('reminders-a')).toEqual(['shared-wake']);
 		expect(await getFiredReminderKeys('reminders-b')).toEqual([]);
 
 		await store.activateProfile('reminders-b', []);
-		await expect(internals.claimFired('shared-wake')).resolves.toBe(true);
+		await expect(claim('reminders-b')).resolves.toBe(true);
 		expect(await getFiredReminderKeys('reminders-b')).toEqual(['shared-wake']);
+	});
+
+	describe('every workspace on the device', () => {
+		it('alerts a due reminder from a workspace that is not open, and opens it there', async () => {
+			const { store } = newStore();
+			const elsewhere = note({ id: 'elsewhere', title: 'Dentist', reminder: 100 });
+			const host = testHost({ others: { [OTHER]: [elsewhere] } });
+			const stop = store.attach(host);
+			await store.activateProfile(TEST_WORKSPACE, []);
+			await vi.waitFor(() =>
+				expect(store.alerts).toEqual([
+					expect.objectContaining({ noteId: 'elsewhere', workspaceId: OTHER })
+				])
+			);
+
+			store.open(reminderWakeId('elsewhere', 100));
+
+			expect(host.opened).toEqual([[OTHER, 'elsewhere']]);
+			stop();
+		});
+
+		it("records a reminder in its own workspace's history and outbox", async () => {
+			const { store } = newStore();
+			const elsewhere = note({ id: 'elsewhere', reminder: 100 });
+			const wakeId = reminderWakeId('elsewhere', 100);
+			const stop = store.attach(testHost({ others: { [OTHER]: [elsewhere] } }));
+			await store.activateProfile(TEST_WORKSPACE, []);
+			await vi.waitFor(() => expect(store.alerts).toHaveLength(1));
+
+			store.dismiss(wakeId);
+
+			await vi.waitFor(async () =>
+				expect(await readReminderHistory(OTHER)).toEqual([
+					expect.objectContaining({
+						id: wakeId,
+						noteId: 'elsewhere',
+						dismissedAt: expect.any(Number)
+					})
+				])
+			);
+			expect(await getSyncOutboxKeys(OTHER)).toContain(`reminder-history:elsewhere:${wakeId}`);
+			expect(await readReminderHistory(TEST_WORKSPACE)).toEqual([]);
+			expect(await getFiredReminderKeys(OTHER)).toEqual([wakeId]);
+			stop();
+		});
+
+		it('asks a synced workspace that is not open about a reminder it missed', async () => {
+			const { store } = newStore();
+			const missed = note({ id: 'missed', reminder: Date.now() - 10 * 60_000 });
+			const host = testHost({ others: { [OTHER]: [missed] }, linked: [OTHER] });
+			const stop = store.attach(host);
+			await store.activateProfile(TEST_WORKSPACE, []);
+			await vi.waitFor(() => expect(host.reconcile).toHaveBeenCalledWith(OTHER));
+			expect(store.alerts).toEqual([]);
+
+			store.cloudSettled(OTHER);
+
+			await vi.waitFor(() =>
+				expect(store.alerts).toEqual([expect.objectContaining({ workspaceId: OTHER })])
+			);
+			stop();
+		});
+	});
+
+	describe('synced history', () => {
+		it('records a reminder it shows and the user dismissing it', async () => {
+			const { store, history } = newStore();
+			const due = note({ reminder: 100 });
+			const wakeId = reminderWakeId(due.id, 100);
+			await history.hydrate(TEST_WORKSPACE);
+			await store.activateProfile(TEST_WORKSPACE, [due]);
+			await vi.waitFor(() => expect(store.alerts).toHaveLength(1));
+			await vi.waitFor(() => expect(history.get(wakeId)?.firedAt).toBeGreaterThan(0));
+
+			store.dismiss(wakeId);
+			expect(history.get(wakeId)?.dismissedAt).toBeGreaterThan(0);
+			expect(history.get(wakeId)?.noteId).toBe(due.id);
+		});
+
+		it('does not show a reminder another device already showed', async () => {
+			const { store, history } = newStore();
+			await history.hydrate(TEST_WORKSPACE);
+			const due = note({ reminder: 100 });
+			history.applySync([{ id: reminderWakeId(due.id, 100), noteId: due.id, firedAt: 150 }], {});
+			await store.activateProfile(TEST_WORKSPACE, [due]);
+			await settle();
+			expect(store.alerts).toEqual([]);
+		});
+
+		it('takes down an alert another device dismissed', async () => {
+			const { store, history } = newStore();
+			await history.hydrate(TEST_WORKSPACE);
+			const due = note({ reminder: 100 });
+			const wakeId = reminderWakeId(due.id, 100);
+			await store.activateProfile(TEST_WORKSPACE, [due]);
+			await vi.waitFor(() => expect(store.alerts).toHaveLength(1));
+
+			history.applySync([{ id: wakeId, noteId: due.id, firedAt: 150, dismissedAt: 200 }], {});
+			expect(store.alerts).toEqual([]);
+			await vi.waitFor(async () =>
+				expect(await getFiredReminderKeys(TEST_WORKSPACE)).toContain(wakeId)
+			);
+		});
+
+		it('holds a reminder missed here until a sync settles, then shows it if nobody handled it', async () => {
+			const { store } = newStore();
+			const host = testHost({ linked: [TEST_WORKSPACE] });
+			const stop = store.attach(host);
+			const missed = note({ reminder: Date.now() - 10 * 60_000 });
+			await store.activateProfile(TEST_WORKSPACE, [missed]);
+			await settle();
+			expect(store.alerts).toEqual([]);
+			expect(host.reconcile).toHaveBeenCalledOnce();
+
+			store.sync([missed]);
+			expect(host.reconcile).toHaveBeenCalledOnce();
+
+			store.cloudSettled(TEST_WORKSPACE);
+			await vi.waitFor(() => expect(store.alerts).toHaveLength(1));
+			stop();
+		});
+
+		it('drops a held reminder the sync reports as handled elsewhere', async () => {
+			const { store, history } = newStore();
+			await history.hydrate(TEST_WORKSPACE);
+			const stop = store.attach(testHost({ linked: [TEST_WORKSPACE] }));
+			const missed = note({ reminder: Date.now() - 10 * 60_000 });
+			await store.activateProfile(TEST_WORKSPACE, [missed]);
+
+			history.applySync(
+				[{ id: reminderWakeId(missed.id, missed.reminder!), noteId: missed.id, firedAt: 1 }],
+				{}
+			);
+			store.cloudSettled(TEST_WORKSPACE);
+			await settle();
+			expect(store.alerts).toEqual([]);
+			stop();
+		});
+
+		it('shows a reminder on time without waiting for the cloud', async () => {
+			const { store } = newStore();
+			const host = testHost({ linked: [TEST_WORKSPACE] });
+			const stop = store.attach(host);
+			await store.activateProfile(TEST_WORKSPACE, [note({ reminder: Date.now() - 1 })]);
+			await vi.waitFor(() => expect(store.alerts).toHaveLength(1));
+			expect(host.reconcile).not.toHaveBeenCalled();
+			stop();
+		});
 	});
 });

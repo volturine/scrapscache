@@ -5,7 +5,9 @@ import {
 	changedRecords,
 	fingerprintMap,
 	hydrateNoteImages,
-	splitNoteForSync
+	isSyncRecordPayload,
+	splitNoteForSync,
+	syncSnapshot
 } from './syncRecords';
 import type { Note, NoteImage } from './types';
 import { createCanvasAttachment } from './canvasAttachment';
@@ -34,31 +36,43 @@ function note(id: string, updatedAt: number, body = '', images: NoteImage[] = []
 
 describe('opaque per-record sync payloads', () => {
 	it('sends no payloads for an unchanged established device', async () => {
-		const records = await buildSyncRecords([note('one', 1, 'photo-free text')], [], []);
+		const records = await buildSyncRecords(
+			syncSnapshot({ notes: [note('one', 1, 'photo-free text')] })
+		);
 		expect(changedRecords(records, fingerprintMap(records))).toEqual([]);
 	});
 
 	it('selects exactly the changed note rather than every note', async () => {
-		const before = await buildSyncRecords([note('one', 1), note('two', 1)], [], []);
-		const after = await buildSyncRecords([note('one', 2, 'edited'), note('two', 1)], [], []);
+		const before = await buildSyncRecords(
+			syncSnapshot({ notes: [note('one', 1), note('two', 1)] })
+		);
+		const after = await buildSyncRecords(
+			syncSnapshot({ notes: [note('one', 2, 'edited'), note('two', 1)] })
+		);
 		expect(changedRecords(after, fingerprintMap(before)).map((record) => record.key)).toEqual([
 			'note:one'
 		]);
 	});
 
 	it('sends a tombstone without re-sending its stale deleted record', async () => {
-		const records = await buildSyncRecords([note('gone', 10)], [], [], { gone: 20 });
+		const records = await buildSyncRecords(
+			syncSnapshot({ notes: [note('gone', 10)], tombstones: { gone: 20 } })
+		);
 		expect(records.map((record) => record.key)).toEqual(['note-tombstone:gone']);
 	});
 
 	it('does not revive a permanently deleted note that has a newer local timestamp', async () => {
-		const records = await buildSyncRecords([note('gone', 50)], [], [], { gone: 20 });
+		const records = await buildSyncRecords(
+			syncSnapshot({ notes: [note('gone', 50)], tombstones: { gone: 20 } })
+		);
 		expect(records.map((record) => record.key)).toEqual(['note-tombstone:gone']);
 	});
 
 	it('stores each photo as its own attachment record and keeps only a ref on the note', async () => {
 		const photo = image('pic', `data:image/jpeg;base64,${'A'.repeat(20_000)}`);
-		const records = await buildSyncRecords([note('n1', 1, 'has photo', [photo])], [], []);
+		const records = await buildSyncRecords(
+			syncSnapshot({ notes: [note('n1', 1, 'has photo', [photo])] })
+		);
 		expect(records.map((record) => record.key).sort()).toEqual(['attachment:pic', 'note:n1']);
 		const notePayload = records.find((record) => record.key === 'note:n1')!.payload;
 		expect(notePayload.kind).toBe('note');
@@ -76,7 +90,9 @@ describe('opaque per-record sync payloads', () => {
 			},
 			'data:image/webp;base64,AA=='
 		);
-		const records = await buildSyncRecords([note('canvas-note', 1, '', [canvas])], [], []);
+		const records = await buildSyncRecords(
+			syncSnapshot({ notes: [note('canvas-note', 1, '', [canvas])] })
+		);
 		const noteRecord = records.find((record) => record.key === 'note:canvas-note');
 		const attachmentRecord = records.find((record) => record.key === `attachment:${canvas.id}`);
 
@@ -93,8 +109,12 @@ describe('opaque per-record sync payloads', () => {
 
 	it('title-only edits upload the small note, not the photo bytes again', async () => {
 		const photo = image('pic', `data:image/jpeg;base64,${'B'.repeat(50_000)}`);
-		const before = await buildSyncRecords([note('n1', 1, 'old title', [photo])], [], []);
-		const after = await buildSyncRecords([note('n1', 2, 'new title', [photo])], [], []);
+		const before = await buildSyncRecords(
+			syncSnapshot({ notes: [note('n1', 1, 'old title', [photo])] })
+		);
+		const after = await buildSyncRecords(
+			syncSnapshot({ notes: [note('n1', 2, 'new title', [photo])] })
+		);
 		const changed = changedRecords(after, fingerprintMap(before));
 		expect(changed.map((record) => record.key)).toEqual(['note:n1']);
 		expect(approximatePayloadBytes(changed)).toBeLessThan(2_000);
@@ -103,8 +123,10 @@ describe('opaque per-record sync payloads', () => {
 
 	it('new photos upload as attachment records once', async () => {
 		const photo = image('pic', `data:image/jpeg;base64,${'C'.repeat(10_000)}`);
-		const before = await buildSyncRecords([note('n1', 1, 'plain')], [], []);
-		const after = await buildSyncRecords([note('n1', 2, 'plain', [photo])], [], []);
+		const before = await buildSyncRecords(syncSnapshot({ notes: [note('n1', 1, 'plain')] }));
+		const after = await buildSyncRecords(
+			syncSnapshot({ notes: [note('n1', 2, 'plain', [photo])] })
+		);
 		const changed = changedRecords(after, fingerprintMap(before))
 			.map((record) => record.key)
 			.sort();
@@ -129,12 +151,7 @@ describe('opaque per-record sync payloads', () => {
 
 	it('builds only durable outbox keys during an ordinary sync', async () => {
 		const records = await buildSyncRecords(
-			[note('one', 1), note('two', 1)],
-			[],
-			[],
-			{},
-			{},
-			{},
+			syncSnapshot({ notes: [note('one', 1), note('two', 1)] }),
 			new Set(['note:two'])
 		);
 		expect(records.map((record) => record.key)).toEqual(['note:two']);
@@ -142,8 +159,61 @@ describe('opaque per-record sync payloads', () => {
 
 	it('keeps a baseline after a no-op merge so the next sync uploads zero bytes', async () => {
 		const local = [note('photo', 5, 'x'.repeat(1000))];
-		const records = await buildSyncRecords(local, [], []);
+		const records = await buildSyncRecords(syncSnapshot({ notes: local }));
 		const baseline = fingerprintMap(records);
-		expect(changedRecords(await buildSyncRecords(local, [], []), baseline)).toEqual([]);
+		expect(
+			changedRecords(await buildSyncRecords(syncSnapshot({ notes: local })), baseline)
+		).toEqual([]);
+	});
+});
+
+describe('workspace library and reminder history records', () => {
+	const wake = 'b'.repeat(43);
+	const libraryItem = {
+		id: 'star',
+		updatedAt: 5,
+		item: { id: 'star', status: 'unpublished', created: 1, elements: [] }
+	};
+
+	it('syncs live library items, library deletes, and history for notes that still exist', async () => {
+		const records = await buildSyncRecords(
+			syncSnapshot({
+				libraryItems: [
+					libraryItem,
+					{ ...libraryItem, id: 'gone', item: { ...libraryItem.item, id: 'gone' } }
+				],
+				libraryTombstones: { gone: 9 },
+				tombstones: { deleted: 3 },
+				reminderHistory: [
+					{ id: wake, noteId: 'kept', firedAt: 1 },
+					{ id: 'c'.repeat(43), noteId: 'deleted', firedAt: 1 }
+				]
+			})
+		);
+		expect(records.map((record) => record.key).sort()).toEqual([
+			'library-item-tombstone:gone',
+			'library-item:star',
+			'note-tombstone:deleted',
+			`reminder-history:kept:${wake}`
+		]);
+	});
+
+	it('accepts only well-formed library and history payloads', () => {
+		expect(isSyncRecordPayload({ kind: 'library-item', value: libraryItem })).toBe(true);
+		expect(
+			isSyncRecordPayload({ kind: 'library-item', value: { ...libraryItem, id: 'other' } })
+		).toBe(false);
+		expect(isSyncRecordPayload({ kind: 'library-item-tombstone', id: 'star', deletedAt: 3 })).toBe(
+			true
+		);
+		expect(
+			isSyncRecordPayload({
+				kind: 'reminder-history',
+				value: { id: wake, noteId: 'n', firedAt: 1, dismissedAt: 2 }
+			})
+		).toBe(true);
+		expect(
+			isSyncRecordPayload({ kind: 'reminder-history', value: { id: wake, noteId: 'n' } })
+		).toBe(false);
 	});
 });

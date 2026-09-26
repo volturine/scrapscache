@@ -6,6 +6,7 @@ from unittest.mock import patch
 from scripts.reset_cloudflare_dev import (
     delete_worker,
     drop_sql,
+    ensure_queue,
     is_missing_worker,
     parse_d1_rows,
     quote_ident,
@@ -90,6 +91,35 @@ class DeleteWorkerTests(unittest.TestCase):
         with self.assertRaises(SystemExit) as raised:
             delete_worker(["--env", "dev", "--force"])
         self.assertEqual(raised.exception.code, 1)
+
+
+class EnsureQueueTests(unittest.TestCase):
+    @patch("scripts.reset_cloudflare_dev.echo")
+    @patch("scripts.reset_cloudflare_dev.wrangler")
+    def test_leaves_an_existing_queue(self, wrangler, _echo):
+        wrangler.return_value = SimpleNamespace(returncode=0, stdout="", stderr="")
+        ensure_queue("wakes")
+        wrangler.assert_called_once_with(["queues", "info", "wakes"], None)
+
+    @patch("scripts.reset_cloudflare_dev.echo")
+    @patch("scripts.reset_cloudflare_dev.wrangler")
+    def test_creates_a_missing_queue(self, wrangler, _echo):
+        wrangler.side_effect = [
+            SimpleNamespace(returncode=1, stdout="", stderr="Queue not found"),
+            SimpleNamespace(returncode=0, stdout="Created", stderr=""),
+        ]
+        ensure_queue("wakes")
+        self.assertEqual(wrangler.call_args_list[1].args[0], ["queues", "create", "wakes"])
+
+    @patch("scripts.reset_cloudflare_dev.echo")
+    @patch("scripts.reset_cloudflare_dev.wrangler")
+    def test_propagates_a_failed_create(self, wrangler, _echo):
+        wrangler.side_effect = [
+            SimpleNamespace(returncode=1, stdout="", stderr="Queue not found"),
+            SimpleNamespace(returncode=1, stdout="", stderr="Unauthorized"),
+        ]
+        with self.assertRaises(SystemExit):
+            ensure_queue("wakes")
 
 
 if __name__ == "__main__":

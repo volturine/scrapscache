@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { LOCAL_PROFILE_ID } from '$lib/db/idb';
 import { loadBoardsFromDevice, saveBoardsToDevice } from './syncTombstones';
+import { TEST_WORKSPACE } from '../tests/workspace';
 
 describe('kanban board persistence', () => {
 	it('stores a structured-cloneable snapshot so reactive proxies cannot fail IndexedDB', async () => {
@@ -14,8 +14,8 @@ describe('kanban board persistence', () => {
 			}
 		];
 		const proxied = new Proxy(boards, {});
-		await expect(saveBoardsToDevice(LOCAL_PROFILE_ID, proxied)).resolves.toBeUndefined();
-		const stored = await loadBoardsFromDevice(LOCAL_PROFILE_ID, null);
+		await expect(saveBoardsToDevice(TEST_WORKSPACE, proxied)).resolves.toBeUndefined();
+		const stored = await loadBoardsFromDevice(TEST_WORKSPACE, null);
 		expect(stored).toEqual(boards);
 		expect(structuredClone(stored)).toEqual(boards);
 	});

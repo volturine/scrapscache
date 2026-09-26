@@ -1,0 +1,78 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { cleanupTestDbs, testDb } from '$lib/server/testDb';
+import { SyncStore, WAKE_CLAIM_LEASE_MS, type DueWake } from '$lib/server/syncStore';
+import { dispatchDueWakes } from './wakeDispatch';
+
+vi.mock('$lib/server/metrics', async (original) => ({
+	...(await original<typeof import('$lib/server/metrics')>()),
+	recordReminderWake: vi.fn()
+}));
+
+afterEach(() => cleanupTestDbs());
+
+const wake = (index: number, fireAt: number) => ({
+	id: String(index).padStart(43, 'w'),
+	fireAt
+});
+
+async function account(store: SyncStore, id: string, wakes: { id: string; fireAt: number }[]) {
+	await store.createAccount(id, 'credential');
+	await store.savePushDevice({
+		accountId: id,
+		deviceId: `device-${id}`.padEnd(16, 'x'),
+		endpoint: `https://push.example/${id}`,
+		p256dh: 'p'.repeat(20),
+		auth: 'a'.repeat(16)
+	});
+	await store.replaceReminderWakes(id, wakes);
+}
+
+describe('delivering reminder wakes', () => {
+	it("delivers only the account's own wakes and says when its next one is due", async () => {
+		const store = new SyncStore(testDb());
+		await account(store, 'account-aaaaaaaaaaaa', [wake(1, 1_000), wake(2, 9_000)]);
+		await account(store, 'account-bbbbbbbbbbbb', [wake(3, 1_000), wake(4, 5_000)]);
+		const sent: DueWake[] = [];
+
+		const result = await dispatchDueWakes({
+			store,
+			accountId: 'account-aaaaaaaaaaaa',
+			now: () => 2_000,
+			send: async (device) => {
+				sent.push(device);
+				return 'sent';
+			}
+		});
+
+		expect(sent.map((device) => device.accountId)).toEqual(['account-aaaaaaaaaaaa']);
+		expect(result).toEqual({ sent: 1, failed: 0, gone: 0, next: 9_000 });
+	});
+
+	it('delivers every wake due at the same moment, however many there are', async () => {
+		const store = new SyncStore(testDb());
+		await account(
+			store,
+			'account-aaaaaaaaaaaa',
+			Array.from({ length: 250 }, (_, index) => wake(index, 60_000))
+		);
+		const send = vi.fn(async () => 'sent' as const);
+
+		const result = await dispatchDueWakes({ store, now: () => 60_000, send });
+
+		expect(send).toHaveBeenCalledTimes(250);
+		expect(result.next).toBeNull();
+	});
+
+	it('comes back for a failed send once its claim lease runs out', async () => {
+		const store = new SyncStore(testDb());
+		await account(store, 'account-aaaaaaaaaaaa', [wake(1, 1_000), wake(2, 900_000)]);
+
+		const result = await dispatchDueWakes({
+			store,
+			now: () => 2_000,
+			send: async () => 'failed'
+		});
+
+		expect(result).toMatchObject({ failed: 1, next: 2_000 + WAKE_CLAIM_LEASE_MS });
+	});
+});

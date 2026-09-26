@@ -122,13 +122,19 @@ describe('system notifications', () => {
 		});
 		const wakeId = reminderWakeId('n1', 1);
 		await expect(
-			showReminderNotification({ wakeId, noteId: 'n1', reminder: 1, title: 'Groceries' })
+			showReminderNotification({
+				workspaceId: 'home',
+				wakeId,
+				noteId: 'n1',
+				reminder: 1,
+				title: 'Groceries'
+			})
 		).resolves.toBe(true);
 		expect(show).toHaveBeenCalledWith(
 			'Groceries',
 			expect.objectContaining({
 				tag: `scrapscache-reminder:${wakeId}`,
-				data: { type: 'reminder', noteId: 'n1', wakeId }
+				data: { type: 'reminder', noteId: 'n1', wakeId, workspaceId: 'home' }
 			})
 		);
 	});
@@ -137,6 +143,7 @@ describe('system notifications', () => {
 		vi.stubGlobal('Notification', { permission: 'denied' });
 		await expect(
 			showReminderNotification({
+				workspaceId: 'home',
 				wakeId: reminderWakeId('n1', 1),
 				noteId: 'n1',
 				reminder: 1,

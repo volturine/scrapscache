@@ -7,7 +7,7 @@
 	import DatePickerViews from './DatePickerViews.svelte';
 	import { AlarmClock, ChevronLeft, ChevronRight } from '@lucide/svelte';
 	import { requestReminderPermission } from '$lib/reminderNotify';
-	import { ensurePushSubscription } from '$lib/reminderWake';
+	import { registerAllReminderDevices } from '$lib/reminderWake';
 	import { formatReminderCountdown } from '$lib/utils';
 	import { PHONE_MEDIA } from '$lib/appViewport';
 	import { css, cx } from 'styled-system/css';
@@ -160,7 +160,7 @@
 
 	async function save() {
 		await requestReminderPermission();
-		void ensurePushSubscription();
+		void registerAllReminderDevices();
 		apply(selected.getTime());
 	}
 	function clear() {

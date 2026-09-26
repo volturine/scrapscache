@@ -53,7 +53,7 @@ The same SvelteKit app serves the UI and the sync API when self-hosted.
 | Backups        | `src/lib/backup.ts`, `backupCrypto.ts`                     | Export/import encrypted `.scraps-cache-backup`                  |
 | Images         | `src/lib/imageOptimize.ts`                                 | Resize, WebP, strip EXIF before store/sync                      |
 | App viewport   | `src/lib/appViewport.ts`                                   | Safe area + keyboard frame; overlay host                        |
-| Reminder wakes | `src/lib/server/wakeDispatch.ts`, `webPush.ts`             | Contentless Web Push ticks; SW reads notes locally              |
+| Reminder wakes | `src/lib/server/wakeDispatch.ts`, `webPush.ts`             | Contentless Web Push ticks; SW finds the note in any workspace  |
 
 ### Local data model (conceptual)
 
@@ -67,8 +67,17 @@ The same SvelteKit app serves the UI and the sync API when self-hosted.
   timestamps. Each enabled device has independent delivery state, and a device
   does not need the encrypted note before receiving a generic alert. The relay
   never receives note IDs or text.
+- **Reminder history** — which reminders a workspace has shown or dismissed,
+  one encrypted record per reminder, merged by the earliest time each happened.
+  A device shows a reminder only if no device has handled it yet. One that came
+  due while the device was not watching waits until a sync settles, so a
+  reminder handled elsewhere is not shown again. A permanently deleted note
+  takes its history with it.
 - **Labels** — named tags with update timestamps for conflict resolution.
 - **Boards** — kanban structures + tombstones for cross-device deletion.
+- **Canvas library** — the workspace's reusable Excalidraw shapes, one record per
+  item. The newest version of an item wins, and a delete wins over every version
+  it saw. An open canvas editor picks up changes from other devices.
 - **Sync outbox** — changed record keys scheduled for upload (not a full
   mirror of every field into `localStorage`).
 - **Attachments** — full bytes loaded when needed; grid/list may keep thumbnails
@@ -105,9 +114,34 @@ two without its notes moving:
 - **Delete workspace** removes it and its notes from this device. Deleting the
   last workspace leaves a fresh empty one.
 
-The first workspace on a device uses the original `scrapscache` database; the
-others use `scrapscache-profile-<id>`. That is a storage detail only: the
-first workspace is an ordinary keyring entry with the same actions as any other.
+Every workspace uses its own `scrapscache-profile-<id>` database, and none is
+special: a fresh device starts with one private workspace created like any
+other. A device that still has the old default workspace (the bare `scrapscache`
+database, keyring id `device-local`) moves it once, on its first boot of this
+version, into an ordinary workspace with a new id. Its notes, attachments, sync
+cursor, baseline and outbox come along, so it neither re-downloads nor
+re-uploads (`src/lib/workspaceMove.ts`).
+
+A small device database, `scrapscache-device`, lists the workspaces by id and
+one-way link tag, never by name or sync key, and caches link previews. The
+service worker reads it to find which workspace a reminder push belongs to.
+
+Reminders are equal across workspaces. While the app is open it watches every
+workspace, not only the open one: a due reminder from another workspace alerts
+with that workspace's name, and opening it switches there. Each workspace keeps
+its own fired ledger and synced history. With the app closed, the relay pushes
+a synced workspace's wakes to every browser registered under its account; the
+service worker finds the note in that workspace, shows its title, and skips a
+reminder any device already handled. Private workspaces get the same alerts
+while the app is open; only closed-app push needs the relay.
+
+Notifications are one switch for the whole app (the browser's permission), but
+each synced workspace gets a push subscription of its own: a service worker
+registration under `/push/<workspace id>/`, with its own push address and a
+device id derived per account from a secret that never leaves the device. The
+relay therefore cannot tell that two accounts belong to the same browser; the
+push provider still can. Removing or unlinking a workspace removes its
+subscription only.
 
 The keyring itself — id, display name, and sync key per workspace — is held in
 `localStorage`; see the residual-risk note in
@@ -131,8 +165,9 @@ The keyring itself — id, display name, and sync key per workspace — is held 
 | Metrics         | `src/lib/server/metrics.ts`, `/metrics`                  | Operator metrics (admin token)                  |
 | Operator status | `src/lib/server/operatorMonitor.ts`, `/api/admin/status` | Anonymous JSON usage + activity                 |
 | Wake dispatch   | `src/lib/server/wakeDispatch.ts`                         | Pull-based wake claiming and push delivery      |
+| Wake timer      | `src/lib/server/wakeTimer.ts`, `cf/reminders.ts`         | Delivers each wake at its time (timer or alarm) |
 | Retention sweep | `src/lib/server/retentionSweep.ts`                       | Optional inactive-account sweep (daily gate)    |
-| Cron tick       | `src/lib/server/cronTick.ts`                             | Orchestrator for wake + retention + prune       |
+| Cron tick       | `src/lib/server/cronTick.ts`                             | Hourly maintenance: retention + prune           |
 | Cron endpoint   | `src/routes/api/cron/tick/`                              | Scheduler entry point for cron triggers         |
 | Health          | `/health/live`, `/health/ready`                          | Liveness and readiness probes                   |
 | Hooks           | `src/hooks.server.ts`                                    | Security headers, request IDs                   |
@@ -175,15 +210,15 @@ history and its ciphertext.
 
 ## Deployment shapes
 
-| Mode               | How                             | Notes                                                    |
-| ------------------ | ------------------------------- | -------------------------------------------------------- |
-| Dev                | `npm run dev`                   | Vite + HMR; sqld required locally                        |
-| Workers dev        | `npm run cf:dev`                | Wrangler dev server with workerd runtime                 |
-| Local prod build   | `npm run build && npm start`    | Node adapter; same env vars as Docker                    |
-| Workers prod       | `npm run cf:deploy`             | App + scheduler Workers with D1, R2, and Durable Objects |
-| Compose            | `docker/compose.yaml`           | Pull pinned GHCR image; isolated relay/ops sqld stores   |
-| PR preview Compose | `docker/compose.dev.yaml`       | Pull GHCR `dev-*` image on port 3000, isolated volumes   |
-| Tailscale overlay  | `docker/compose.tailscale.yaml` | Sidecar Serve HTTPS on `*.ts.net` (tailnet only)         |
+| Mode               | How                             | Notes                                                  |
+| ------------------ | ------------------------------- | ------------------------------------------------------ |
+| Dev                | `npm run dev`                   | Vite + HMR; sqld required locally                      |
+| Workers dev        | `npm run cf:dev`                | Wrangler dev server with workerd runtime               |
+| Local prod build   | `npm run build && npm start`    | Node adapter; same env vars as Docker                  |
+| Workers prod       | `npm run cf:deploy`             | App, reminders and cron Workers; D1, R2, DOs, a Queue  |
+| Compose            | `docker/compose.yaml`           | Pull pinned GHCR image; isolated relay/ops sqld stores |
+| PR preview Compose | `docker/compose.dev.yaml`       | Pull GHCR `dev-*` image on port 3000, isolated volumes |
+| Tailscale overlay  | `docker/compose.tailscale.yaml` | Sidecar Serve HTTPS on `*.ts.net` (tailnet only)       |
 
 ## Related docs
 

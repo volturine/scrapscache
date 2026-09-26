@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildForcePushSnapshot } from './syncForcePush';
 import { applyNoteEdit, createEditContext, mergeNoteLists, withoutTombstoned } from './model';
-import type { SyncSnapshot } from './stores/sync.svelte';
+import { syncSnapshot, type SyncSnapshot } from './syncRecords';
 import type { Note } from './types';
 
 function note(id: string, title: string, at: number): Note {
@@ -22,14 +22,7 @@ function note(id: string, title: string, at: number): Note {
 	};
 }
 function snapshot(notes: Note[]): SyncSnapshot {
-	return {
-		notes,
-		labels: [],
-		boards: [],
-		tombstones: {},
-		labelTombstones: {},
-		boardTombstones: {}
-	};
+	return syncSnapshot({ notes });
 }
 
 describe('force push workspace', () => {
@@ -105,5 +98,30 @@ describe('force push workspace', () => {
 		);
 		expect(forced.notes).toEqual([]);
 		expect(forced.tombstones).toEqual({ cloud: 100 });
+	});
+
+	it('publishes the local library over the cloud and keeps both halves of the reminder history', () => {
+		const wake = (letter: string) => letter.repeat(43);
+		const item = (id: string, updatedAt: number) => ({
+			id,
+			updatedAt,
+			item: { id, created: 1, elements: [] }
+		});
+		const local = syncSnapshot({
+			libraryItems: [item('mine', 5)],
+			reminderHistory: [{ id: wake('a'), noteId: 'n', firedAt: 1 }]
+		});
+		const remote = syncSnapshot({
+			libraryItems: [item('mine', 50), item('cloud-only', 60)],
+			reminderHistory: [{ id: wake('b'), noteId: 'n', firedAt: 2 }]
+		});
+		const pushed = buildForcePushSnapshot(
+			local,
+			remote,
+			createEditContext(() => 100)
+		);
+		expect(pushed.libraryItems).toEqual([{ ...item('mine', 5), updatedAt: 100 }]);
+		expect(pushed.libraryTombstones).toEqual({ 'cloud-only': 100 });
+		expect(pushed.reminderHistory.map((entry) => entry.id)).toEqual([wake('a'), wake('b')]);
 	});
 });

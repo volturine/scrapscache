@@ -8,6 +8,7 @@ import { notesStore } from '$lib/stores/notes.svelte';
 import { profileCoordinator } from '$lib/stores/profiles.svelte';
 import { syncStore, type StartedDeviceLink } from '$lib/stores/sync.svelte';
 import SyncModal from './SyncModal.svelte';
+import { TEST_WORKSPACE } from '../../tests/workspace';
 
 function profile(id: string, name: string, createdAt: number): StoredProfile {
 	return { id, name, createdAt, syncKey: createSyncIdentity().syncKey };
@@ -304,7 +305,7 @@ describe('SyncModal profile interactions', () => {
 		const syncedClass = screen.getByRole('button', { name: '+ New workspace' }).className;
 		unmount();
 
-		syncStore.activateLocalWorkspace();
+		syncStore.activateLocalWorkspace(TEST_WORKSPACE);
 		render(SyncModal, { props: { onClose: vi.fn() } });
 
 		const create = screen.getByRole('button', { name: '+ New workspace' });
@@ -444,7 +445,7 @@ describe('SyncModal profile interactions', () => {
 				})
 			);
 		try {
-			syncStore.activateLocalWorkspace();
+			syncStore.activateLocalWorkspace(TEST_WORKSPACE);
 			render(SyncModal, { props: { onClose: vi.fn() } });
 			await expand('Home');
 			await fireEvent.click(screen.getByRole('button', { name: /sync this workspace/i }));
@@ -482,7 +483,7 @@ describe('SyncModal profile interactions', () => {
 		render(SyncModal, { props: { onClose: vi.fn() } });
 		expect(screen.queryByRole('button', { name: 'Sync now' })).toBeNull();
 		expect(screen.getByRole('button', { name: 'Force resync' })).toBeTruthy();
-		syncStore.activateLocalWorkspace();
+		syncStore.activateLocalWorkspace(TEST_WORKSPACE);
 		await tick();
 		await expand('Home');
 		await fireEvent.click(screen.getByRole('button', { name: /sync this workspace/i }));
@@ -599,7 +600,7 @@ describe('SyncModal profile interactions', () => {
 			const receive = vi
 				.spyOn(profileCoordinator, 'receiveLinkedKey')
 				.mockReturnValue(handover.promise);
-			syncStore.activateLocalWorkspace();
+			syncStore.activateLocalWorkspace(TEST_WORKSPACE);
 			render(SyncModal, { props: { onClose: vi.fn() } });
 			await fireEvent.click(screen.getByRole('button', { name: '+ New workspace' }));
 			await fireEvent.click(screen.getByRole('button', { name: /Join a synced workspace/ }));

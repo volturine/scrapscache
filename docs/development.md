@@ -69,13 +69,27 @@ Worker. `SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES` and `SCRAPSCACHE_HISTORY_VERSIONS` 
 and `DEFAULT_HISTORY_VERSIONS` in `src/lib/server/operatorConfig.ts` and the Docker
 Compose fallbacks).
 
-The app and scheduled worker are deliberately separate. Use
-`npm run cf:cron:dev` to exercise the Cron Trigger through the private `APP`
-service binding. For local multi-worker testing, put the app variables in
-`.dev.vars` and the scheduler's matching `SCRAPSCACHE_TICK_SECRET` in
-`cf/.dev.vars`; both files are ignored by Git. Configure the secret for both
-production Workers before deployment; `npm run cf:deploy` deploys the app first
-and then the scheduler.
+Cloudflare runs three Workers, deliberately separate:
+
+- **App** (`wrangler.jsonc`): the site, API and push sending.
+- **Reminders** (`cf/wrangler.reminders.jsonc`): scheduling only. One
+  `ReminderScheduler` Durable Object per synced account holds an alarm for that
+  account's next reminder. When it fires, it puts the account on the
+  `scrapscache-reminder-wakes` queue; the app consumes the queue, sends the
+  account's due wakes, and sets the account's next alarm. Bindings run one way
+  (app -> schedulers -> queue -> app), so neither Worker needs the other
+  deployed first.
+- **Maintenance cron** (`cf/wrangler.cron.jsonc`): calls `/api/cron/tick`
+  hourly through the private `APP` service binding. It never touches reminders.
+
+`npm run cf:dev` runs the app and reminders Workers together; use
+`npm run cf:cron:dev` to exercise the Cron Trigger. For local multi-worker
+testing, put the app variables in `.dev.vars` and the cron Worker's matching
+`SCRAPSCACHE_TICK_SECRET` in `cf/.dev.vars`; both files are ignored by Git.
+Configure the secret for the app and cron Workers before deployment.
+`npm run cf:deploy` creates the queue if it is missing, then deploys the
+reminders Worker, the app and the cron Worker, in that order. The Cloudflare API
+token CI uses needs Queues edit permission.
 
 ```sh
 npx wrangler secret put SCRAPSCACHE_TICK_SECRET
@@ -115,7 +129,7 @@ The sole open pull request labeled `deploy-dev` deploys the development Workers
 to `dev.scrapscache.com` after validation succeeds. Move the label to switch the
 shared development environment to another pull request. Deployment fails if
 more than one open pull request has the label. Each development deploy deletes
-those Workers and wipes D1, then recreates them from the pull request, so
+those Workers (app, reminders and cron) and wipes D1, then recreates them from the pull request, so
 Durable Object and D1 migrations from another PR cannot block it. R2 object
 bytes are left in place. Deleting the Workers also drops their secrets, so CI
 and `npm run cf:deploy:dev` put `SCRAPSCACHE_TICK_SECRET` and `TURNSTILE_SECRET`

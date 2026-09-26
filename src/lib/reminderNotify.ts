@@ -17,6 +17,8 @@ export type ReminderWake = {
 };
 
 export type ReminderAlert = {
+	/** The workspace the note is in, which need not be the open one. */
+	workspaceId: string;
 	wakeId: string;
 	noteId: string;
 	reminder: number;
@@ -119,7 +121,12 @@ export async function showReminderNotification(
 		body: formatReminder(alert.reminder),
 		tag: `scrapscache-reminder:${alert.wakeId}`,
 		icon: '/icon-192.png',
-		data: { type: 'reminder', noteId: alert.noteId, wakeId: alert.wakeId }
+		data: {
+			type: 'reminder',
+			noteId: alert.noteId,
+			wakeId: alert.wakeId,
+			workspaceId: alert.workspaceId
+		}
 	};
 	try {
 		const registration = await navigator.serviceWorker?.ready.catch(() => undefined);
@@ -136,5 +143,21 @@ export async function showReminderNotification(
 		return true;
 	} catch {
 		return false;
+	}
+}
+
+/** Take down system notifications for reminders that were dismissed elsewhere. */
+export async function closeReminderNotifications(wakeIds: ReadonlySet<string>): Promise<void> {
+	if (!wakeIds.size || typeof navigator === 'undefined' || !navigator.serviceWorker) return;
+	try {
+		const registration = await navigator.serviceWorker.getRegistration();
+		const shown = (await registration?.getNotifications()) ?? [];
+		for (const notification of shown) {
+			const data = notification.data as { type?: unknown; wakeId?: unknown } | null;
+			if (data?.type === 'reminder' && typeof data.wakeId === 'string' && wakeIds.has(data.wakeId))
+				notification.close();
+		}
+	} catch {
+		/* Notifications stay up; the user can still dismiss them. */
 	}
 }

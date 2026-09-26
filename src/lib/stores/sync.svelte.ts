@@ -1,8 +1,9 @@
 // Client-side account, sync status, and real transfer progress for full-size photo backups.
 
-import type { KanbanBoard } from '$lib/kanban';
-import type { Label, Note, NoteImage } from '$lib/types';
+import type { Note, NoteImage } from '$lib/types';
 import { mergeKanbanBoards } from '$lib/kanban';
+import { mergeCanvasLibrary } from '$lib/canvasLibrary';
+import { mergeReminderHistory, type ReminderHistoryEntry } from '$lib/reminderHistory';
 import { mergeLabelLists, mergeNoteLists, withoutTombstoned } from '$lib/model';
 import { observeRelayTime } from '$lib/editContext';
 import {
@@ -24,7 +25,8 @@ import {
 	isSyncRecordPayload,
 	syncRecordKey,
 	type SyncRecord,
-	type SyncRecordPayload
+	type SyncRecordPayload,
+	type SyncSnapshot
 } from '$lib/syncRecords';
 import { MAX_CLIENT_SYNC_MUTATIONS_PER_REQUEST } from '$lib/syncLimits';
 import { sha256 } from '$lib/syncHash';
@@ -54,9 +56,9 @@ import {
 	getSyncOutboxKeys,
 	getSyncState,
 	markSyncOutbox,
-	namespaceHasData,
-	LOCAL_PROFILE_ID
+	setRegisteredWorkspaces
 } from '$lib/db/idb';
+import { LEGACY_WORKSPACE_ID, moveLegacyWorkspace } from '$lib/workspaceMove';
 import {
 	getLastActiveProfileId,
 	isLocalWorkspace,
@@ -127,27 +129,14 @@ export interface SyncUsage {
 
 type SyncResult = {
 	success: boolean;
-	notes?: Note[];
-	labels?: Label[];
-	boards?: KanbanBoard[];
-	tombstones?: Record<string, number>;
-	labelTombstones?: Record<string, number>;
-	boardTombstones?: Record<string, number>;
+	/** The workspace as the sync left it. */
+	snapshot?: SyncSnapshot;
 	data?: Record<string, unknown>;
 	error?: string;
 	/** HTTP status of a failed request; lets callers react to codes, not message text. */
 	status?: number;
 	/** How long a throttled or busy relay asked the client to wait before trying again. */
 	retryAfterSeconds?: number;
-};
-
-export type SyncSnapshot = {
-	notes: Note[];
-	labels: Label[];
-	boards: KanbanBoard[];
-	tombstones: Record<string, number>;
-	labelTombstones: Record<string, number>;
-	boardTombstones: Record<string, number>;
 };
 
 /**
@@ -187,7 +176,8 @@ export class SyncStore {
 	/** Every workspace on this device. Synced ones carry a sync key. */
 	profiles = $state<StoredProfile[]>([]);
 	/** The workspace this window reads and writes. */
-	activeId = $state(LOCAL_PROFILE_ID);
+	/** Empty until the keyring names a workspace for this window. */
+	activeId = $state('');
 	private profilesReady: Promise<void> | null = null;
 	private bootstrapRequested = false;
 	private pendingOutboxWrites: Promise<void> = Promise.resolve();
@@ -212,16 +202,20 @@ export class SyncStore {
 		void this.ensureProfilesLoaded();
 	}
 
+	/**
+	 * Fast boot from the keyring. The old default workspace is left out: it is
+	 * not a workspace database until `ensureProfilesLoaded` has moved it, so
+	 * nothing may open it before then.
+	 */
 	private initFromLocalStorage(): void {
 		try {
-			this.profiles = readProfiles();
+			this.profiles = readProfiles().filter((entry) => entry.id !== LEGACY_WORKSPACE_ID);
 			const pointerId = getLastActiveProfileId();
 			const pointed = pointerId
 				? (this.profiles.find((entry) => entry.id === pointerId) ?? null)
 				: null;
 			const chosen = pointed ?? pickBootProfile(this.profiles);
 			if (chosen) this.activateProfile(chosen);
-			else this.restoreStatus(LOCAL_PROFILE_ID);
 		} catch (err) {
 			console.error('[sync] could not restore profiles on boot:', err);
 		}
@@ -241,14 +235,19 @@ export class SyncStore {
 	}
 
 	/**
-	 * Per-window boot: restore the keyring, adopt installs that predate
-	 * profiles, and activate the last-used profile. Windows opened later start
-	 * on the same default profile but can switch independently.
+	 * Per-window boot: move the old default workspace if this device still has
+	 * one, restore the keyring, adopt installs that predate profiles, and
+	 * activate the last-used profile. A device with no workspace gets a private
+	 * one. Windows opened later start on the same profile but can switch
+	 * independently.
 	 */
 	ensureProfilesLoaded(): Promise<void> {
 		this.profilesReady ??= (async () => {
 			try {
-				let profiles = await loadProfiles();
+				await moveLegacyWorkspace().catch((err) =>
+					console.error('[sync] could not move the old default workspace:', err)
+				);
+				let profiles = (await loadProfiles()).filter((entry) => entry.id !== LEGACY_WORKSPACE_ID);
 				// Left in place on purpose: it is the only pointer a build without
 				// profiles can use to find this device's account. It is cleared when
 				// that account is unlinked, not when it is adopted.
@@ -272,21 +271,18 @@ export class SyncStore {
 				} catch {
 					/* unreadable legacy mirror is ignored */
 				}
-				// The default namespace is an ordinary workspace. It gets a keyring
-				// entry on a fresh device, or whenever it still holds notes.
-				if (
-					!profiles.some((profile) => profile.id === LOCAL_PROFILE_ID) &&
-					(profiles.length === 0 || (await namespaceHasData(LOCAL_PROFILE_ID).catch(() => false)))
-				) {
+				if (profiles.length === 0) {
 					const workspace: StoredProfile = {
-						id: LOCAL_PROFILE_ID,
+						id: randomOpaqueId(),
 						name: nextProfileName(profiles),
 						syncKey: '',
-						createdAt: 0
+						createdAt: Date.now()
 					};
 					await saveProfile(workspace);
-					profiles = [...profiles, workspace];
+					profiles = [workspace];
 				}
+				// The service worker finds workspaces through this list, so it follows the keyring.
+				void setRegisteredWorkspaces(profiles).catch(() => undefined);
 				this.profiles = profiles.sort((a, b) => a.createdAt - b.createdAt);
 				this.migrateLegacySyncStatus(this.profiles, legacySyncKey);
 
@@ -484,7 +480,7 @@ export class SyncStore {
 		this.usage = null;
 		this.syncedCursor = 0;
 		const keys = syncControlKeys(identityFromSyncKey(profile.syncKey).accountId);
-		void getSyncState<number>(keys.cursor, profile.id).then((c) => {
+		void getSyncState<number>(profile.id, keys.cursor).then((c) => {
 			if (
 				typeof c === 'number' &&
 				generation === this.authenticationGeneration &&
@@ -497,7 +493,7 @@ export class SyncStore {
 	}
 
 	/** Activate a local-only namespace without removing any saved sync keys. */
-	activateLocalWorkspace(id: string = LOCAL_PROFILE_ID): void {
+	activateLocalWorkspace(id: string): void {
 		this.authenticationGeneration += 1;
 		this.pendingSessions.clear();
 		this.session = null;
@@ -993,16 +989,7 @@ export class SyncStore {
 					});
 					return;
 				}
-				resolve({
-					success: true,
-					notes: data.notes as Note[],
-					labels: data.labels as Label[],
-					boards: data.boards as KanbanBoard[],
-					tombstones: data.tombstones as Record<string, number> | undefined,
-					labelTombstones: data.labelTombstones as Record<string, number> | undefined,
-					boardTombstones: data.boardTombstones as Record<string, number> | undefined,
-					data
-				});
+				resolve({ success: true, data });
 			};
 			xhr.onerror = () => resolve({ success: false, error: 'Sync network error' });
 			xhr.ontimeout = () => resolve({ success: false, error: 'Sync timed out' });
@@ -1026,12 +1013,7 @@ export class SyncStore {
 
 	/** End-to-end encrypted per-record delta. Uploads only dirty outbox keys. */
 	async sync(
-		notes: Note[],
-		labels: Label[],
-		tombstones: Record<string, number> = {},
-		labelTombstones: Record<string, number> = {},
-		boards: KanbanBoard[] = [],
-		boardTombstones: Record<string, number> = {},
+		local: SyncSnapshot,
 		indicate = false,
 		pullOnly = false,
 		applyPulled?: ApplyPulled
@@ -1053,7 +1035,7 @@ export class SyncStore {
 			const keys = syncControlKeys(account.accountId);
 			let baseline: Record<string, string> = {};
 			try {
-				const durable = await getSyncState<unknown>(keys.baseline, pid);
+				const durable = await getSyncState<unknown>(pid, keys.baseline);
 				if (durable && typeof durable === 'object' && !Array.isArray(durable))
 					baseline = Object.fromEntries(
 						Object.entries(durable).filter(
@@ -1065,24 +1047,25 @@ export class SyncStore {
 			}
 			const firstFullUpload = Object.keys(baseline).length === 0;
 			let recordIds =
-				(await getSyncState<Record<string, string>>(keys.recordIds, pid).catch(() => undefined)) ??
+				(await getSyncState<Record<string, string>>(pid, keys.recordIds).catch(() => undefined)) ??
 				{};
 			if (!recordIds || typeof recordIds !== 'object' || Array.isArray(recordIds)) recordIds = {};
 			const outboxSnapshotAt = await getOutboxGeneration(pid);
 			let outboxKeys = new Set(await getSyncOutboxKeys(pid).catch(() => []));
 			let cursor = Number(
-				(await getSyncState<number>(keys.cursor, pid).catch(() => undefined)) || 0
+				(await getSyncState<number>(pid, keys.cursor).catch(() => undefined)) || 0
 			);
 			if (firstFullUpload && cursor > 0) cursor = 0;
 
-			let mergedNotes = notes,
-				mergedLabels = labels,
-				mergedBoards = boards;
-			let mergedTombstones = { ...tombstones },
-				mergedLabelTombstones = { ...labelTombstones },
-				mergedBoardTombstones = { ...boardTombstones };
+			let merged: SyncSnapshot = {
+				...local,
+				tombstones: { ...local.tombstones },
+				labelTombstones: { ...local.labelTombstones },
+				boardTombstones: { ...local.boardTombstones },
+				libraryTombstones: { ...local.libraryTombstones }
+			};
 			const attachments = new Map<string, NoteImage>();
-			for (const note of notes) {
+			for (const note of local.notes) {
 				for (const image of note.images ?? []) {
 					if (image.dataUrl?.length) attachments.set(image.id, image);
 				}
@@ -1101,26 +1084,13 @@ export class SyncStore {
 			while (hasMore) {
 				if (syncCancelled()) return { success: false, error: 'Sync was cancelled' };
 				const startedWithDownloadsDrained = downloadsDrained;
-				const tombstoneMaps = {
-					notes: mergedTombstones,
-					labels: mergedLabelTombstones,
-					boards: mergedBoardTombstones
-				};
 				const uploadKeys =
 					pullOnly || !downloadsDrained
 						? new Set<string>()
 						: firstFullUpload
 							? undefined
 							: outboxKeys;
-				const currentRecords = await buildSyncRecords(
-					mergedNotes,
-					mergedLabels,
-					mergedBoards,
-					mergedTombstones,
-					mergedLabelTombstones,
-					mergedBoardTombstones,
-					uploadKeys
-				);
+				const currentRecords = await buildSyncRecords(merged, uploadKeys);
 				const metaUploadDue =
 					!pullOnly &&
 					downloadsDrained &&
@@ -1178,12 +1148,7 @@ export class SyncStore {
 						};
 					})
 				);
-				const currentKeys = currentRecordKeys(
-					mergedNotes,
-					mergedLabels,
-					mergedBoards,
-					tombstoneMaps
-				);
+				const currentKeys = currentRecordKeys(merged);
 				if (recordIds[PROFILE_META_KEY] || sentRecordIds.has(PROFILE_META_KEY) || metaUploadDue)
 					currentKeys.add(PROFILE_META_KEY);
 				// Slot tokens are keyed hashes of record keys, so an unreadable envelope can
@@ -1205,15 +1170,12 @@ export class SyncStore {
 					await withoutAttachmentsHistoryNeeds(
 						planDeletableKeys({
 							recordIds,
-							notes: mergedNotes,
-							labels: mergedLabels,
-							boards: mergedBoards,
-							tombstones: tombstoneMaps,
+							snapshot: merged,
 							pullOnly,
 							catchUpComplete: downloadsDrained
 						}),
-						mergedNotes,
-						tombstoneMaps.notes,
+						merged.notes,
+						merged.tombstones,
 						(note) => this.versionAttachmentIds(account, note)
 					)
 				)
@@ -1317,23 +1279,46 @@ export class SyncStore {
 							pendingNotes.push(hydrateNoteImages(record.value, attachments));
 							break;
 						case 'label':
-							mergedLabels = mergeLabelLists(mergedLabels, [record.value]);
+							merged.labels = mergeLabelLists(merged.labels, [record.value]);
 							break;
 						case 'board':
-							mergedBoards = mergeKanbanBoards(mergedBoards, [record.value], mergedBoardTombstones);
+							merged.boards = mergeKanbanBoards(
+								merged.boards,
+								[record.value],
+								merged.boardTombstones
+							);
+							break;
+						case 'library-item':
+							merged.libraryItems = mergeCanvasLibrary(
+								merged.libraryItems,
+								[record.value],
+								merged.libraryTombstones
+							);
+							break;
+						case 'reminder-history':
+							merged.reminderHistory = mergeReminderHistory(
+								merged.reminderHistory,
+								[record.value],
+								merged.tombstones
+							);
 							break;
 						case 'note-tombstone':
-							mergedTombstones = mergeTombstoneMaps(mergedTombstones, {
+							merged.tombstones = mergeTombstoneMaps(merged.tombstones, {
 								[record.id]: record.deletedAt
 							});
 							break;
 						case 'label-tombstone':
-							mergedLabelTombstones = mergeTombstoneMaps(mergedLabelTombstones, {
+							merged.labelTombstones = mergeTombstoneMaps(merged.labelTombstones, {
 								[record.id]: record.deletedAt
 							});
 							break;
 						case 'board-tombstone':
-							mergedBoardTombstones = mergeTombstoneMaps(mergedBoardTombstones, {
+							merged.boardTombstones = mergeTombstoneMaps(merged.boardTombstones, {
+								[record.id]: record.deletedAt
+							});
+							break;
+						case 'library-item-tombstone':
+							merged.libraryTombstones = mergeTombstoneMaps(merged.libraryTombstones, {
 								[record.id]: record.deletedAt
 							});
 							break;
@@ -1416,63 +1401,43 @@ export class SyncStore {
 					}
 				}
 				if (pendingNotes.length) {
-					mergedNotes = mergeNoteLists(
-						mergedNotes,
+					merged.notes = mergeNoteLists(
+						merged.notes,
 						pendingNotes.map((note) => hydrateNoteImages(note, attachments))
 					);
 				}
-				mergedNotes = mergedNotes.map((note) => hydrateNoteImages(note, attachments));
+				merged.notes = merged.notes.map((note) => hydrateNoteImages(note, attachments));
 
 				if (typeof response.data.cursor === 'number') {
 					cursor = response.data.cursor;
 				}
 				downloadsDrained = response.data.hasMore !== true;
 
-				mergedNotes = withoutTombstoned(mergedNotes, mergedTombstones);
-				mergedLabels = withoutTombstoned(mergedLabels, mergedLabelTombstones);
-				mergedBoards = withoutTombstoned(mergedBoards, mergedBoardTombstones);
+				merged.notes = withoutTombstoned(merged.notes, merged.tombstones);
+				merged.labels = withoutTombstoned(merged.labels, merged.labelTombstones);
+				merged.boards = withoutTombstoned(merged.boards, merged.boardTombstones);
+				merged.libraryItems = mergeCanvasLibrary([], merged.libraryItems, merged.libraryTombstones);
+				merged.reminderHistory = mergeReminderHistory(
+					[],
+					merged.reminderHistory,
+					merged.tombstones
+				);
 				if (
 					downloadsDrained &&
 					(!startedWithDownloadsDrained || envelopes.length > 0) &&
 					applyPulled
 				) {
 					if (syncCancelled()) return { success: false, error: 'Sync was cancelled' };
-					const applied = await applyPulled(
-						{
-							notes: mergedNotes,
-							labels: mergedLabels,
-							boards: mergedBoards,
-							tombstones: mergedTombstones,
-							labelTombstones: mergedLabelTombstones,
-							boardTombstones: mergedBoardTombstones
-						},
-						pid
-					);
-					mergedNotes = applied.notes;
-					mergedLabels = applied.labels;
-					mergedBoards = applied.boards;
-					mergedTombstones = applied.tombstones;
-					mergedLabelTombstones = applied.labelTombstones;
-					mergedBoardTombstones = applied.boardTombstones;
-					for (const note of mergedNotes) {
+					merged = await applyPulled(merged, pid);
+					for (const note of merged.notes) {
 						for (const image of note.images ?? []) {
 							if (image.dataUrl?.length) attachments.set(image.id, image);
 						}
 					}
 				}
 				if (syncCancelled()) return { success: false, error: 'Sync was cancelled' };
-				const appliedTombstoneMaps = {
-					notes: mergedTombstones,
-					labels: mergedLabelTombstones,
-					boards: mergedBoardTombstones
-				};
 				const mergedRecords = await buildSyncRecords(
-					mergedNotes,
-					mergedLabels,
-					mergedBoards,
-					mergedTombstones,
-					mergedLabelTombstones,
-					mergedBoardTombstones,
+					merged,
 					new Set([...sentRecordKeys, ...Object.keys(remoteFingerprints), ...outboxKeys])
 				);
 				const uploadedFingerprints = writesAccepted
@@ -1484,13 +1449,8 @@ export class SyncStore {
 					uploaded: uploadedFingerprints,
 					remote: remoteFingerprints,
 					merged: mergedFingerprints,
-					currentKeys: currentRecordKeys(
-						mergedNotes,
-						mergedLabels,
-						mergedBoards,
-						appliedTombstoneMaps
-					),
-					referencedAttachments: referencedAttachmentIds(mergedNotes, mergedTombstones),
+					currentKeys: currentRecordKeys(merged),
+					referencedAttachments: referencedAttachmentIds(merged.notes, merged.tombstones),
 					catchUpComplete: downloadsDrained
 				});
 				baseline = reconciled.baseline;
@@ -1559,10 +1519,7 @@ export class SyncStore {
 					downloadsDrained &&
 					planDeletableKeys({
 						recordIds,
-						notes: mergedNotes,
-						labels: mergedLabels,
-						boards: mergedBoards,
-						tombstones: appliedTombstoneMaps,
+						snapshot: merged,
 						pullOnly,
 						catchUpComplete: true
 					}).length > 0;
@@ -1588,15 +1545,7 @@ export class SyncStore {
 			}
 			this.lastSync = Date.now();
 			this.saveStatus();
-			return {
-				success: true,
-				notes: mergedNotes,
-				labels: mergedLabels,
-				boards: mergedBoards,
-				tombstones: mergedTombstones,
-				labelTombstones: mergedLabelTombstones,
-				boardTombstones: mergedBoardTombstones
-			};
+			return { success: true, snapshot: merged };
 		} catch (err) {
 			if (syncCancelled()) return { success: false, error: 'Sync was cancelled' };
 			return this.fail({
@@ -1608,6 +1557,57 @@ export class SyncStore {
 			if (indicate) this.progress = null;
 			if (indicate) this.onSyncEnd?.();
 		}
+	}
+
+	/**
+	 * What the relay holds of a workspace's reminder history, read without syncing
+	 * it: nothing is written back and its cursor stays where it was, so the
+	 * workspace still downloads all of it when it is next opened. A workspace that
+	 * is not open uses this to learn, before it shows a reminder it missed, whether
+	 * another device already handled it.
+	 */
+	async peekReminderHistory(
+		profile: StoredProfile
+	): Promise<{ history: ReminderHistoryEntry[]; tombstones: Record<string, number> } | null> {
+		if (!profile.syncKey) return null;
+		const account = identityFromSyncKey(profile.syncKey);
+		const keys = syncControlKeys(account.accountId);
+		let cursor = Number(
+			(await getSyncState<number>(profile.id, keys.cursor).catch(() => undefined)) || 0
+		);
+		const history: ReminderHistoryEntry[] = [];
+		const tombstones: Record<string, number> = {};
+		for (let page = 0; page < 200; page += 1) {
+			const payload = JSON.stringify({ cursor, limit: 50, envelopes: [], deleteSlots: [] });
+			const response = await this.sendSyncRequest(
+				'/api/sync/delta',
+				payload,
+				payload.length,
+				false,
+				account
+			);
+			if (!response.success || !response.data) return null;
+			const envelopes = Array.isArray(response.data.envelopes) ? response.data.envelopes : [];
+			for (const envelope of envelopes as { ciphertext?: unknown; slot?: unknown }[]) {
+				if (typeof envelope?.ciphertext !== 'string') continue;
+				try {
+					const { payload: record } = decryptSyncEnvelope(
+						account.syncKey,
+						envelope.ciphertext,
+						typeof envelope.slot === 'string' ? envelope.slot : ''
+					);
+					if (!isSyncRecordPayload(record)) continue;
+					if (record.kind === 'reminder-history') history.push(record.value);
+					if (record.kind === 'note-tombstone')
+						tombstones[record.id] = Math.max(tombstones[record.id] ?? 0, record.deletedAt);
+				} catch {
+					/* an unreadable record is the next sync's to report */
+				}
+			}
+			if (typeof response.data.cursor === 'number') cursor = response.data.cursor;
+			if (response.data.hasMore !== true) return { history, tombstones };
+		}
+		return { history, tombstones };
 	}
 
 	private fail(result: SyncResult): SyncResult {
@@ -1624,8 +1624,8 @@ export class SyncStore {
 	async needsCurrentStateBootstrap(): Promise<boolean> {
 		if (!this.account) return false;
 		const baseline = await getSyncState<Record<string, string>>(
-			syncControlKeys(this.account.accountId).baseline,
-			this.activePid
+			this.activePid,
+			syncControlKeys(this.account.accountId).baseline
 		).catch(() => undefined);
 		return !baseline || Object.keys(baseline).length === 0;
 	}
@@ -1633,8 +1633,8 @@ export class SyncStore {
 	async committedRevision(): Promise<number | null> {
 		if (!this.account) return null;
 		const cursor = await getSyncState<number>(
-			syncControlKeys(this.account.accountId).cursor,
-			this.activePid
+			this.activePid,
+			syncControlKeys(this.account.accountId).cursor
 		).catch(() => undefined);
 		return Number.isSafeInteger(cursor) && Number(cursor) >= 0 ? Number(cursor) : null;
 	}
@@ -1642,9 +1642,9 @@ export class SyncStore {
 	async clearAccountControlPlane(accountId: string, pid: string = this.activePid): Promise<void> {
 		const keys = syncControlKeys(accountId);
 		await Promise.all([
-			deleteSyncState(keys.cursor, pid),
-			deleteSyncState(keys.baseline, pid),
-			deleteSyncState(keys.recordIds, pid)
+			deleteSyncState(pid, keys.cursor),
+			deleteSyncState(pid, keys.baseline),
+			deleteSyncState(pid, keys.recordIds)
 		]);
 	}
 

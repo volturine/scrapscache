@@ -693,8 +693,10 @@
 		if (!note || !workspace) return;
 		const url = noteShareLink(window.location.origin, { profile: workspace, noteId: note.id });
 		if (typeof navigator.share === 'function') {
+			// Only the link: a title would make iOS build the preview itself, without
+			// the app's icon, and would hand the note's title to the target app.
 			try {
-				await navigator.share({ title: title.trim() || 'Note', url });
+				await navigator.share({ url });
 			} catch {
 				// Dismissing the share sheet is not an error worth showing.
 			}

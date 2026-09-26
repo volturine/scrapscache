@@ -703,7 +703,7 @@ describe('NoteEditor share menu', () => {
 		return view;
 	}
 
-	it('shares a link to the note through the system share sheet', async () => {
+	it('shares only a link to the note through the system share sheet', async () => {
 		const share = vi.fn().mockResolvedValue(undefined);
 		Object.defineProperty(navigator, 'share', { configurable: true, value: share });
 		const { findByRole } = await openShareMenu();
@@ -712,7 +712,7 @@ describe('NoteEditor share menu', () => {
 
 		await vi.waitFor(() => expect(share).toHaveBeenCalledOnce());
 		const link = new URL(share.mock.calls[0][0].url);
-		expect(share.mock.calls[0][0].title).toBe('Groceries');
+		expect(share.mock.calls[0][0]).toEqual({ url: expect.any(String) });
 		expect(readNoteLink(link)).toEqual({
 			noteId: 'note-1',
 			workspaceTag: workspaceLinkTag(workspace)

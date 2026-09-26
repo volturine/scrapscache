@@ -24,7 +24,7 @@
 	import { Menu } from '@ark-ui/svelte/menu';
 	import { SegmentGroup } from '@ark-ui/svelte/segment-group';
 	import { Dialog } from '@ark-ui/svelte/dialog';
-	import { Check, ChevronDown, Pencil, Plus, Trash2, X } from '@lucide/svelte';
+	import { Check, ChevronDown, ListFilter, Pencil, Plus, Trash2, X } from '@lucide/svelte';
 	import { flip, type FlipParams } from 'svelte/animate';
 	import { onDestroy } from 'svelte';
 	import type { Note } from '$lib/types';
@@ -349,16 +349,16 @@
 		<button
 			type="button"
 			class={cx(
-				button({ variant: 'ghost', size: 'xs' }),
+				iconButton({ variant: 'ghost', size: 'sm' }),
 				k.boardFilterTrigger,
 				noteFilterActive && k.filterActive
 			)}
 			onclick={() => (noteFilterOpen = !noteFilterOpen)}
 			aria-expanded={noteFilterOpen}
-			aria-label="Board filter"
-			title="Board filter"
+			aria-label={noteFilterActive ? 'Board filter (on)' : 'Board filter'}
+			title={noteFilterActive ? 'Board filter (on)' : 'Board filter'}
 		>
-			Filter board
+			<ListFilter class={iconSm} aria-hidden="true" />
 		</button>
 	</div>
 

@@ -962,8 +962,7 @@ export const labelChecklistStyles = {
 // Static view contracts stay class maps; CVA below is reserved for live state.
 export const kanbanViewStyles = {
 	controls: css({ mb: 'lg', minH: '2.5rem', ...rowCenter, gap: 'sm' }),
-	// Pushes the board label filter to the far end of the controls row.
-	boardFilterTrigger: css({ ml: 'auto', flexShrink: 0, rounded: 'card' }),
+	boardFilterTrigger: css({ flexShrink: 0 }),
 	filterActive: css({ bg: 'scrapscache.accentSubtle', color: 'scrapscache.accentHover' }),
 	boardFilterGroup: flex({ ...filterPanel, mb: 'lg', w: 'min(24rem, 100%)' }),
 	// The trigger and the rename field share one box, so renaming never nudges the board.

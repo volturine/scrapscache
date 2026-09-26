@@ -15,12 +15,14 @@
 	import { provideEditorActions } from '$lib/editorContext';
 	import { splitPastedHeading } from '$lib/checklistBody';
 	import { Drawer } from '@ark-ui/svelte/drawer';
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { MediaQuery } from 'svelte/reactivity';
 	import { attachSyncCloudIndicator } from '$lib/syncCloudIndicator';
 	import { attachAppViewport } from '$lib/appViewport';
 	import { dayKey, reminderTimeForDay } from '$lib/utils';
-	import { profileForWorkspaceTag, readNoteLink, withoutNoteLink } from '$lib/noteLinks';
+	import { profileForWorkspaceTag, readNoteLink, withNoteLink } from '$lib/noteLinks';
+	import { replaceState } from '$app/navigation';
+	import { page } from '$app/state';
 	import { profileCoordinator } from '$lib/stores/profiles.svelte';
 	import NoteLinkNotice from '$lib/components/NoteLinkNotice.svelte';
 	import type { Snippet } from 'svelte';
@@ -43,6 +45,22 @@
 	}
 
 	let noteLinkProblem = $state<string | null>(null);
+	/** Off until the address this window opened with has been read. */
+	let addressFollowsNote = $state(false);
+
+	// The address names the open note and its workspace, so copying it shares
+	// the note and reloading reopens it. Replaced, not pushed: opening a note
+	// adds no history entry.
+	$effect(() => {
+		if (!addressFollowsNote) return;
+		const noteId = editingId;
+		const workspace = syncStore.activeProfile;
+		untrack(() => {
+			const url = new URL(window.location.href);
+			const next = withNoteLink(url, noteId && workspace ? { profile: workspace, noteId } : null);
+			if (next !== `${url.pathname}${url.search}${url.hash}`) replaceState(next, page.state);
+		});
+	});
 
 	/**
 	 * Open the note a link points at, in the workspace the link names. Runs once
@@ -50,10 +68,16 @@
 	 * reminder notification) opens in the active one.
 	 */
 	async function openNoteFromLink() {
-		const url = new URL(window.location.href);
-		const link = readNoteLink(url);
+		try {
+			await followNoteLink();
+		} finally {
+			addressFollowsNote = true;
+		}
+	}
+
+	async function followNoteLink() {
+		const link = readNoteLink(new URL(window.location.href));
 		if (!link) return;
-		history.replaceState(history.state, '', withoutNoteLink(url));
 		if (link.workspaceTag) {
 			const workspace = profileForWorkspaceTag(syncStore.profiles, link.workspaceTag);
 			if (!workspace) {

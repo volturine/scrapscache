@@ -1,5 +1,6 @@
-// Links that open one note in the workspace it lives in, on any device that
-// holds that workspace. A link names the workspace by a one-way tag: it reveals
+// The address of an open note: it names the note and the workspace it lives in,
+// so copying it gives a link that opens the note on any device holding that
+// workspace. A link names the workspace by a one-way tag: it reveals
 // neither the sync key nor the account id, and the relay, which never sees
 // sync keys, cannot map it back to an account.
 import { sha256 } from '@noble/hashes/sha2.js';
@@ -21,17 +22,6 @@ export function workspaceLinkTag(profile: Pick<StoredProfile, 'id' | 'syncKey'>)
 	return bytesToHex(sha256(encoder.encode(source)).slice(0, 12));
 }
 
-export function noteLink(
-	origin: string,
-	profile: Pick<StoredProfile, 'id' | 'syncKey'>,
-	noteId: string
-): string {
-	const url = new URL('/', origin);
-	url.searchParams.set(WORKSPACE_PARAM, workspaceLinkTag(profile));
-	url.searchParams.set(NOTE_PARAM, noteId);
-	return url.toString();
-}
-
 export type NoteLinkTarget = { noteId: string; workspaceTag: string | null };
 
 /** The note a URL points at. Links without a workspace (reminder notifications) open in the active one. */
@@ -41,11 +31,21 @@ export function readNoteLink(url: URL): NoteLinkTarget | null {
 	return { noteId, workspaceTag: url.searchParams.get(WORKSPACE_PARAM) || null };
 }
 
-/** The same URL without its note link, for replaceState once the link is handled. */
-export function withoutNoteLink(url: URL): string {
+/**
+ * The address for this URL with `note` open in `profile`, or with no note when
+ * `note` is null. Only the link parameters change; path, other params and hash stay.
+ */
+export function withNoteLink(
+	url: URL,
+	note: { profile: Pick<StoredProfile, 'id' | 'syncKey'>; noteId: string } | null
+): string {
 	const next = new URL(url);
 	next.searchParams.delete(WORKSPACE_PARAM);
 	next.searchParams.delete(NOTE_PARAM);
+	if (note) {
+		next.searchParams.set(WORKSPACE_PARAM, workspaceLinkTag(note.profile));
+		next.searchParams.set(NOTE_PARAM, note.noteId);
+	}
 	return `${next.pathname}${next.search}${next.hash}`;
 }
 

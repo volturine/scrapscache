@@ -19,7 +19,7 @@ const MAX_RETRY_DELAY_MS = 30 * 60_000;
  * A failed send waits about as long as its wake is already overdue: a minute at
  * first, doubling with each failure, at most half an hour.
  */
-export function wakeRetryAt(fireAt: number, now: number): number {
+function wakeRetryAt(fireAt: number, now: number): number {
 	return now + Math.min(Math.max(now - fireAt, WAKE_CLAIM_LEASE_MS), MAX_RETRY_DELAY_MS);
 }
 

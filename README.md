@@ -27,7 +27,7 @@ Visit [scrapscache.com](https://scrapscache.com).
 - **Notes** — title, body, colors, pins, archive, trash
 - **Checklists** — `[ ]` / `[x]` lines in the note body
 - **Labels** — organize and filter notes
-- **Reminders** — one alert per reminder across your devices: dismissing it on one device clears it everywhere; sync can wake every enabled device without sending note content
+- **Reminders** — one alert per reminder across your devices: one dismissed on a device is not shown again on the others; sync can wake every enabled device without sending note content
 - **Attachments** — photos and files; images optimized client-side (EXIF stripped)
 - **Kanban** — boards with custom backlog filters
 - **Search** — local full-text style filtering on your device

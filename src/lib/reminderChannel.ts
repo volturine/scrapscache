@@ -42,7 +42,7 @@ function isNoteId(value: unknown): value is string {
 	return typeof value === 'string' && value.length > 0;
 }
 
-export function isReminderEvent(value: unknown): value is ReminderEvent {
+function isReminderEvent(value: unknown): value is ReminderEvent {
 	const event = value as ReminderEvent | null;
 	if (!event || typeof event !== 'object') return false;
 	if (event.kind === 'handled') return isReminderHistoryEntry(event.value);

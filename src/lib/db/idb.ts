@@ -15,7 +15,7 @@ import { workspaceLinkTag } from '$lib/noteLinks';
  * v7 stores workspace state under plain keys. Earlier versions wrote some of it
  * as `<key>:<workspace id>`; the upgrade renames those in place.
  */
-export const WORKSPACE_DB_VERSION = 7;
+const WORKSPACE_DB_VERSION = 7;
 export const NOTES_STORE = 'notes';
 export const LABELS_STORE = 'labels';
 export const IMAGES_STORE = 'note-images';
@@ -717,23 +717,6 @@ export async function writeSyncStateWithOutbox(
 			throw error;
 		}
 	});
-}
-
-/**
- * Read, merge and write one state value in a single transaction, queueing the
- * outbox keys the merge asks for. For state more than one window or workspace
- * writes: a separate read and write could drop what another wrote in between.
- */
-export async function mergeSyncStateWithOutbox<T>(
-	pid: string,
-	key: string,
-	merge: (current: unknown) => { value: T; outboxKeys: Iterable<string> }
-): Promise<T> {
-	const result = await mergeWorkspaceState(pid, [key], (current) => {
-		const { value, outboxKeys } = merge(current[key]);
-		return { value: { [key]: value }, outboxKeys };
-	});
-	return result[key];
 }
 
 export async function mergeWorkspaceState<T extends Record<string, unknown>>(

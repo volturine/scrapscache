@@ -1,4 +1,11 @@
-import type { D1Database, DurableObjectState, R2Bucket } from '@cloudflare/workers-types';
+import type {
+	D1Database,
+	DurableObjectState,
+	R2Bucket,
+	WebSocket as WorkerSocket,
+	WebSocketPair as WorkerSocketPair,
+	WebSocketRequestResponsePair as WorkerAutoResponse
+} from '@cloudflare/workers-types';
 import { batch, execute, type SqlStatement } from '../src/lib/server/cloudflare/d1';
 import { parseHistoryVersions } from '../src/lib/server/operatorConfig';
 import {
@@ -43,10 +50,21 @@ type SyncInput = {
 };
 
 const STORAGE_OVERHEAD_BYTES = 512;
-/** Concurrent change streams one account may hold open. Comfortably above a real
- * user's devices and tabs, and low enough that a session cannot grow this object's
- * memory or its timer count without bound. */
-const MAX_EVENT_STREAMS = 16;
+/** Concurrent change sockets one account may hold open. Comfortably above a real
+ * user's devices and tabs, and low enough that a session cannot hold this object's
+ * connections without bound. */
+const MAX_EVENT_SOCKETS = 16;
+/** Sent by the client to keep the connection open; the runtime answers it without waking this object. */
+export const SOCKET_PING = 'ping';
+export const SOCKET_PONG = 'pong';
+/** Closes a socket whose sign-in has expired, so the client reconnects with a fresh one. */
+export const SOCKET_SESSION_EXPIRED = 4401;
+type SocketAttachment = { clientId?: string; expiresAt: number };
+/** Workers runtime globals; the types package declares them without providing values. */
+const runtime = globalThis as unknown as {
+	WebSocketPair: typeof WorkerSocketPair;
+	WebSocketRequestResponsePair?: typeof WorkerAutoResponse;
+};
 const encoder = new TextEncoder();
 
 function hex(bytes: ArrayBuffer): string {
@@ -74,17 +92,25 @@ async function hydrated(env: Env, rows: EnvelopeRow[]) {
 	);
 }
 
+/**
+ * Live change sockets use the WebSocket Hibernation API: while they sit idle the
+ * object can be evicted and is not billed, and heartbeats are answered by the
+ * runtime. The object wakes only for uploads, which it serves anyway.
+ */
 export class AccountCoordinator {
-	private readonly listeners = new Set<{ clientId?: string; send: (seq: number) => void }>();
-
 	constructor(
 		private readonly state: DurableObjectState,
 		private readonly env: Env
-	) {}
+	) {
+		if (runtime.WebSocketRequestResponsePair)
+			state.setWebSocketAutoResponse(
+				new runtime.WebSocketRequestResponsePair(SOCKET_PING, SOCKET_PONG)
+			);
+	}
 
 	fetch(request: Request): Promise<Response> {
 		const path = new URL(request.url).pathname;
-		if (path === '/events') return Promise.resolve(this.events(request));
+		if (path === '/socket') return Promise.resolve(this.socket(request));
 		return this.state.blockConcurrencyWhile(async () => {
 			if (request.method !== 'POST') {
 				return Response.json({ error: 'Not found' }, { status: 404 });
@@ -113,45 +139,68 @@ export class AccountCoordinator {
 		});
 	}
 
-	private events(request: Request): Response {
-		if (this.listeners.size >= MAX_EVENT_STREAMS) {
+	/** Accept a change socket for a session the app Worker already authenticated. */
+	private socket(request: Request): Response {
+		if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket')
+			return Response.json({ error: 'Expected a WebSocket upgrade' }, { status: 426 });
+		if (this.state.getWebSockets().length >= MAX_EVENT_SOCKETS) {
 			return Response.json(
 				{ error: 'Too many open change streams' },
 				{ status: 429, headers: { 'retry-after': '5' } }
 			);
 		}
-		const encoder = new TextEncoder();
-		const clientId = new URL(request.url).searchParams.get('clientId') ?? undefined;
-		const { readable, writable } = new TransformStream();
-		const writer = writable.getWriter();
-		void writer.write(encoder.encode(': ok\n\n'));
-		let ping: ReturnType<typeof setInterval> | undefined;
-		const cleanup = () => {
-			if (ping !== undefined) clearInterval(ping);
-			this.listeners.delete(listener);
-			void writer.close().catch(() => {});
+		const url = new URL(request.url);
+		const expiresAt = Number(url.searchParams.get('expiresAt'));
+		if (!Number.isSafeInteger(expiresAt) || expiresAt <= Date.now())
+			return Response.json({ error: 'Session expired' }, { status: 401 });
+		const pair = new runtime.WebSocketPair();
+		const [client, server] = [pair[0], pair[1]];
+		this.state.acceptWebSocket(server);
+		const attachment: SocketAttachment = {
+			clientId: url.searchParams.get('clientId') ?? undefined,
+			expiresAt
 		};
-		// A write only fails once the peer is gone. Dropping the stream here matters
-		// because the abort signal is the sole other exit, and a stream that outlives
-		// its client would otherwise hold a slot against the cap for good.
-		const listener = {
-			clientId,
-			send: (seq: number) => {
-				void writer.write(encoder.encode(`data: ${JSON.stringify({ seq })}\n\n`)).catch(cleanup);
+		server.serializeAttachment(attachment);
+		return new Response(null, { status: 101, webSocket: client } as ResponseInit);
+	}
+
+	/** Clients send only heartbeats, which the runtime answers; anything else is ignored. */
+	webSocketMessage(): void {}
+
+	webSocketClose(socket: WorkerSocket, code: number, reason: string): void {
+		try {
+			socket.close(code, reason);
+		} catch {
+			/* already closed */
+		}
+	}
+
+	webSocketError(socket: WorkerSocket): void {
+		try {
+			socket.close(1011, 'Socket error');
+		} catch {
+			/* already closed */
+		}
+	}
+
+	/** Tell every other open socket that the account changed, closing expired ones. */
+	private announce(sequence: number, senderClientId?: string): void {
+		const now = Date.now();
+		for (const socket of this.state.getWebSockets()) {
+			const attachment = socket.deserializeAttachment() as SocketAttachment | null;
+			try {
+				if (!attachment || attachment.expiresAt <= now) {
+					socket.close(SOCKET_SESSION_EXPIRED, 'Session expired');
+					continue;
+				}
+				// The writer already applied this change locally; waking it would
+				// only make it sync again for nothing.
+				if (senderClientId && attachment.clientId === senderClientId) continue;
+				socket.send(JSON.stringify({ seq: sequence }));
+			} catch {
+				/* a socket that is closing needs no signal */
 			}
-		};
-		this.listeners.add(listener);
-		ping = setInterval(() => {
-			void writer.write(encoder.encode(': ping\n\n')).catch(cleanup);
-		}, 25_000);
-		request.signal?.addEventListener('abort', cleanup);
-		return new Response(readable, {
-			headers: {
-				'Content-Type': 'text/event-stream',
-				'Cache-Control': 'no-cache, no-transform',
-				Connection: 'keep-alive'
-			}
-		});
+		}
 	}
 
 	private async deleteAccount(accountId: string): Promise<Response> {
@@ -175,6 +224,13 @@ export class AccountCoordinator {
 			{ sql: 'DELETE FROM reminder_wake_revisions WHERE account_id = ?', args: [accountId] },
 			{ sql: 'DELETE FROM reminder_wake_deliveries WHERE account_id = ?', args: [accountId] }
 		]);
+		for (const socket of this.state.getWebSockets()) {
+			try {
+				socket.close(SOCKET_SESSION_EXPIRED, 'Account deleted');
+			} catch {
+				/* already closed */
+			}
+		}
 		return Response.json({ deleted: results[0]?.rowsAffected === 1 });
 	}
 
@@ -515,16 +571,7 @@ export class AccountCoordinator {
 					args: [input.accountId, historyVersions, historyBytes]
 				});
 		}
-		if (mutated) {
-			for (const listener of this.listeners) {
-				// The writer already applied this change locally; waking it would
-				// only make it sync again for nothing.
-				if (input.senderClientId && listener.clientId === input.senderClientId) continue;
-				try {
-					listener.send(sequence);
-				} catch {}
-			}
-		}
+		if (mutated) this.announce(sequence, input.senderClientId);
 
 		return Response.json({
 			cursor: Math.max(input.cursor, sequence),

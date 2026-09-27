@@ -16,6 +16,14 @@ export function parseMaxAccountBytes(value: string | undefined): number {
 	return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : DEFAULT_MAX_ACCOUNT_BYTES;
 }
 
+/** Default reminder receipt storage per account, apart from the note-sync quota. */
+export const DEFAULT_REMINDER_MAX_ACCOUNT_BYTES = 10_000_000;
+
+export function parseReminderMaxAccountBytes(value: string | undefined): number {
+	const parsed = Number(value);
+	return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : DEFAULT_REMINDER_MAX_ACCOUNT_BYTES;
+}
+
 export function parseHistoryVersions(value: string | undefined): number {
 	const parsed = Number(value);
 	return Number.isSafeInteger(parsed) && parsed > 0 && parsed <= MAX_HISTORY_VERSIONS

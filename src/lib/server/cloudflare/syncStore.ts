@@ -1,3 +1,4 @@
+import { SYNC_EVENTS_PROTOCOL } from '$lib/syncEventsProtocol';
 import {
 	ACTIVITY_WINDOWS_DAYS,
 	DEFAULT_SYNC_PER_MINUTE,
@@ -656,27 +657,46 @@ export class SyncStore {
 		);
 		return Number(r.rows[0]?.count ?? 0);
 	}
+	/** Workers serve live changes over a hibernating WebSocket only; see `createEventSocket`. */
 	async createEventStream(
+		_accountId: string,
+		_signal?: AbortSignal,
+		_clientId?: string
+	): Promise<Response> {
+		return Response.json(
+			{ error: 'Live changes use a WebSocket here' },
+			{ status: 426, headers: { upgrade: 'websocket' } }
+		);
+	}
+
+	/**
+	 * Hand an authenticated WebSocket upgrade to the account's coordinator, which
+	 * holds it with the Hibernation API. The socket closes when `expiresAt` passes.
+	 */
+	async createEventSocket(
 		accountId: string,
-		signal?: AbortSignal,
+		expiresAt: number,
 		clientId?: string
 	): Promise<Response> {
 		const stub = this.bindings.ACCOUNT_COORDINATOR.get(
 			this.bindings.ACCOUNT_COORDINATOR.idFromName(accountId)
 		);
-		const url = new URL('https://coordinator/events');
+		const url = new URL('https://coordinator/socket');
+		url.searchParams.set('expiresAt', String(expiresAt));
 		if (clientId) url.searchParams.set('clientId', clientId);
-		const res = await stub.fetch(url.toString(), {
-			signal: (signal ?? null) as any
-		});
-		// A response that came back from fetch() has immutable headers, and the
-		// server hook sets security headers on everything it returns. Hand back a
-		// response this app owns rather than the coordinator's own object.
-		return new Response(res.body as unknown as BodyInit | null, {
-			status: res.status,
-			statusText: res.statusText,
-			headers: new Headers(res.headers as unknown as HeadersInit)
-		});
+		const res = await stub.fetch(url.toString(), { headers: { upgrade: 'websocket' } });
+		if (res.status !== 101 || !res.webSocket) {
+			return new Response(res.body as unknown as BodyInit | null, {
+				status: res.status,
+				headers: new Headers(res.headers as unknown as HeadersInit)
+			});
+		}
+		// Only our own protocol is echoed: the token offered beside it stays unanswered.
+		return new Response(null, {
+			status: 101,
+			webSocket: res.webSocket,
+			headers: { 'sec-websocket-protocol': SYNC_EVENTS_PROTOCOL }
+		} as ResponseInit);
 	}
 
 	async isReady(): Promise<boolean> {

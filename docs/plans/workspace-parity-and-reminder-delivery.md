@@ -269,9 +269,11 @@ Phase 1 alone would orphan existing default data) → 3.
 Reminder history now uses its own encrypted endpoint, persistent queue and cursor
 (see `docs/architecture.md`). It no longer travels in note-sync snapshots or uses
 their outbox/lock. The relay keeps one row per note, so its storage follows the
-notes with reminders rather than how often they fire. Only the open workspace
-holds a reminder-only SSE stream; other linked workspaces exchange when they
-have receipts queued or a missed reminder to check. Backup restore enqueues
+notes with reminders rather than how often they fire. No connection is held
+for receipts: workspaces exchange after a local receipt, before a missed
+reminder, and at startup, focus, visibility and reconnect. On Workers, live
+note-sync changes moved from SSE to a hibernating WebSocket, so an idle open
+window no longer keeps a Durable Object awake. Backup restore enqueues
 restored history on this channel. Existing device-wide canvas libraries are
 intentionally not imported on upgrade.
 

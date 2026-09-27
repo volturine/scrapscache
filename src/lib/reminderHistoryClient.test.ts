@@ -6,7 +6,6 @@ import { syncStore } from '$lib/stores/sync.svelte';
 import { getSyncOutboxKeys, getSyncState, setSyncState } from '$lib/db/idb';
 import { readReminderHistory, RECEIPTS_PER_NOTE } from '$lib/reminderHistory';
 import { sealNoteReceipts, openNoteReceipts, type ReminderPacket } from '$lib/reminderChannel';
-import { openReminderEvents } from '$lib/server/reminderEvents';
 import { exchangeReminderHistory } from '$lib/server/reminderHistoryRelay';
 import { SyncStore } from '$lib/server/syncStore';
 import { testDb, cleanupTestDbs } from '$lib/server/testDb';
@@ -160,40 +159,6 @@ describe('independent reminder delivery', () => {
 		await clientA.exchange(profiles[0].id);
 		expect((await db.relay.execute('SELECT note FROM reminder_receipts')).rows).toHaveLength(1);
 		expect(await getSyncOutboxKeys(profiles[0].id)).toEqual([]);
-	});
-	it('learns a second device dismissal from SSE without manually fetching or invoking note sync', async () => {
-		const { a, b, profiles, send, account } = await setup();
-		const requestNotes = vi.spyOn(syncStore, 'requestAutoSync').mockImplementation(() => undefined);
-		const open = (_profile: unknown, clientId: string, signal?: AbortSignal) =>
-			openReminderEvents(account.accountId, signal, clientId);
-		const clientA = new ReminderHistoryClient(
-			a,
-			() => [profiles[0]],
-			() => profiles[0].id,
-			send,
-			open
-		);
-		const clientB = new ReminderHistoryClient(
-			b,
-			() => [profiles[1]],
-			() => profiles[1].id,
-			send,
-			open
-		);
-		const stopA = clientA.attach(),
-			stopB = clientB.attach();
-		try {
-			await vi.waitFor(() => expect(send.mock.calls.length).toBeGreaterThanOrEqual(2));
-			a.recordDismissed(profiles[0].id, fired, 6000);
-			await vi.waitFor(() => expect(b.get(fired.id)?.dismissedAt).toBe(6000));
-			expect(requestNotes).not.toHaveBeenCalled();
-			expect(await getSyncOutboxKeys(profiles[0].id)).toEqual([]);
-		} finally {
-			stopA();
-			stopB();
-			await a.waitForPendingWrites();
-			await b.waitForPendingWrites();
-		}
 	});
 	it('starts a new identity exchange after an old in-flight request without waiting for another event', async () => {
 		const { a, profiles, db, account } = await setup();

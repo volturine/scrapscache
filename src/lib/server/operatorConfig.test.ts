@@ -4,9 +4,11 @@ import {
 	bytesToGigabytes,
 	DEFAULT_HISTORY_VERSIONS,
 	DEFAULT_MAX_ACCOUNT_BYTES,
+	DEFAULT_REMINDER_MAX_ACCOUNT_BYTES,
 	MAX_HISTORY_VERSIONS,
 	parseHistoryVersions,
 	parseMaxAccountBytes,
+	parseReminderMaxAccountBytes,
 	parseRetentionInactiveDays,
 	staleBeforeMs
 } from './operatorConfig';
@@ -55,6 +57,13 @@ describe('operator config', () => {
 		expect(parseMaxAccountBytes('200000000')).toBe(200_000_000);
 	});
 
+	it('keeps 10 MB of reminder receipts unless an operator sets a positive limit', () => {
+		expect(parseReminderMaxAccountBytes(undefined)).toBe(DEFAULT_REMINDER_MAX_ACCOUNT_BYTES);
+		expect(parseReminderMaxAccountBytes('0')).toBe(DEFAULT_REMINDER_MAX_ACCOUNT_BYTES);
+		expect(parseReminderMaxAccountBytes('1.5')).toBe(DEFAULT_REMINDER_MAX_ACCOUNT_BYTES);
+		expect(parseReminderMaxAccountBytes('50000000')).toBe(50_000_000);
+	});
+
 	it('keeps 14 history versions unless an operator sets 1 to 40', () => {
 		expect(DEFAULT_HISTORY_VERSIONS).toBe(14);
 		expect(MAX_HISTORY_VERSIONS).toBe(40);
@@ -68,6 +77,7 @@ describe('operator config', () => {
 
 	it.each([
 		['SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES', String(DEFAULT_MAX_ACCOUNT_BYTES)],
+		['SCRAPSCACHE_REMINDER_MAX_ACCOUNT_BYTES', String(DEFAULT_REMINDER_MAX_ACCOUNT_BYTES)],
 		['SCRAPSCACHE_HISTORY_VERSIONS', String(DEFAULT_HISTORY_VERSIONS)]
 	])('keeps the self-host and Workers default for %s aligned', (name, expected) => {
 		const example = readFileSync('docker/.env.example', 'utf8');

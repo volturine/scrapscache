@@ -75,12 +75,14 @@ The same SvelteKit app serves the UI and the sync API when self-hosted.
   otherwise that row comes back, is merged, and is sent again, so every device
   converges without losing receipts. Every linked workspace has its own durable
   receipt queue and cursor. Dismissing an alert never starts or waits for note
-  sync, even in the active workspace. The client sends immediately after a
-  local write. The open workspace listens on a reminder-only SSE stream and
-  catches up when it connects or reconnects; another workspace exchanges only
-  when it has receipts queued (checked at startup, focus and reconnect) or is
-  about to show a missed reminder. Nothing polls. Failures retry with backoff,
-  except a full account, which waits for the next change. System notifications
+  sync, even in the active workspace. Nothing stays connected and nothing
+  polls: the client sends immediately after a local write, and exchanges before
+  showing a missed reminder and when the app starts, is shown again or comes
+  back online. There the open workspace catches up, and another workspace sends
+  only what it has queued. A dismissal on one device therefore clears the other
+  device's alert the next time that device is looked at, not instantly.
+  Failures retry with backoff, except a full account, which waits for the next
+  change. System notifications
   write into the same local queue; with the app closed, receipts upload when it
   next opens. Backups include history. A note deleted after it had receipts
   gets an encrypted deletion marker that erases them and rejects stale offline
@@ -173,7 +175,7 @@ The keyring itself — id, display name, and sync key per workspace — is held 
 | History API       | `src/routes/api/sync/history/`                                             | Owner-only encrypted prior note versions                  |
 | Register          | `src/routes/api/sync/register/`                                            | Create account credentials                                |
 | Reminder wakes    | `src/routes/api/sync/push/*`                                               | Device subscriptions + opaque wake ticks                  |
-| Reminder receipts | `src/routes/api/sync/reminders/`, `src/lib/server/reminderHistoryRelay.ts` | Independent encrypted receipt delivery; 8 MiB per account |
+| Reminder receipts | `src/routes/api/sync/reminders/`, `src/lib/server/reminderHistoryRelay.ts` | Independent encrypted receipt delivery; 10 MB per account |
 | Account delete    | `src/routes/api/sync/account/`                                             | Wipe cloud ciphertext for an account                      |
 | Rate limits       | `src/lib/server/rateLimit.ts`                                              | Atomic SQL token bucket on ops DB                         |
 | Metrics           | `src/lib/server/metrics.ts`, `/metrics`                                    | Operator metrics (admin token)                            |
@@ -240,13 +242,13 @@ history and its ciphertext.
 - [self-hosting.md](self-hosting.md) — operator runbook
 - [development.md](development.md) — contributor workflow
 
-Reminder SSE uses `/api/sync/reminders/events`, opened only for the workspace a
-window has open, so a window holds at most this stream and the note-sync one.
-Server messages contain only an empty change signal, and the window whose upload
-caused it is left out; clients download encrypted receipts through the receipt
-endpoint. A signal arriving while another is still queued for a slow reader is
-dropped rather than closing the stream. These messages never enter the
-note-sync event stream. Node fans out in process, while Workers use the
-per-account `ReminderScheduler` Durable Object, outside the note-sync
-coordinator and scheduling lock. Each connection has a 25-second transport
-heartbeat; reconnecting performs one catch-up from the persisted receipt cursor.
+Live note-sync changes reach an open, visible window over `/api/sync/events`,
+carrying only the new cursor. Node serves server-sent events from its process.
+Workers serve a WebSocket held by the account's `AccountCoordinator` with the
+Hibernation API: an idle socket lets the object be evicted and is not billed,
+the runtime answers the client's 30-second heartbeat without waking it, and the
+object wakes only for uploads, which it serves anyway. This keeps live sync
+inside the Workers free plan's daily Durable Object allowance, which an
+always-awake stream per open window would use up. The browser picks the
+transport at build time (`$lib/syncEventsTransport`). A window whose tab is
+hidden disconnects and catches up when shown again.

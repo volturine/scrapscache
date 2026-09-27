@@ -276,6 +276,24 @@ describe('client sync state machine', () => {
 		expect(privateStore.session).toBeNull();
 	});
 
+	it('hands the live socket a token that a refusal drops', async () => {
+		const account = createSyncIdentity();
+		const store = new SyncStore();
+		store.account = account;
+		const privateStore = store as unknown as {
+			session: { accountId: string; accessToken: string; expiresAt: number } | null;
+		};
+		privateStore.session = {
+			accountId: account.accountId,
+			accessToken: 'cached-token',
+			expiresAt: Date.now() + 60_000
+		};
+		const { token, refused } = await store.connectionToken();
+		expect(token).toBe('cached-token');
+		refused();
+		expect(privateStore.session).toBeNull();
+	});
+
 	it('keeps a background workspace token that finishes after a workspace switch', async () => {
 		const background = createSyncIdentity();
 		const store = new SyncStore();

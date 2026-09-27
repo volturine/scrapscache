@@ -1222,6 +1222,15 @@ export class SyncStore {
 	// Async so both deployments expose the same shape; see
 	// syncStore.contract.test.ts. The Cloudflare store has to await its
 	// coordinator before it can hand back a stream.
+	/** Node serves live changes as server-sent events; it has no WebSocket upgrade. */
+	async createEventSocket(
+		_accountId: string,
+		_expiresAt: number,
+		_clientId?: string
+	): Promise<Response> {
+		return Response.json({ error: 'Live changes use server-sent events here' }, { status: 426 });
+	}
+
 	async createEventStream(
 		accountId: string,
 		signal?: AbortSignal,

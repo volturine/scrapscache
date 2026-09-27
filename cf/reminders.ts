@@ -1,12 +1,11 @@
-// The reminders Worker: wake scheduling and reminder-only change notifications. Each synced account has one
+// The reminders Worker: scheduling only. Each synced account has one
 // ReminderScheduler, which holds an alarm for that account's next reminder wake
-// alongside a separate receipt-change stream. When the alarm fires, it queues the account;
+// and nothing else. When the alarm fires, it puts the account on the wake queue;
 // the app Worker consumes it, delivers the account's due wakes, and sets the next
 // alarm. Sending stays in the app Worker, which holds the database and push keys.
 //
 // Bindings run one way only (app -> schedulers, schedulers -> queue -> app), so
 // each Worker can be deployed without the other deployed first.
-import { ReminderEventChannel, validReminderClientId } from '../src/lib/server/reminderEventStream';
 import type { DurableObjectState, Queue } from '@cloudflare/workers-types';
 
 type Env = {
@@ -23,7 +22,6 @@ const GENERATION_KEY = 'generation';
 export const RETRY_AFTER_MS = 10 * 60_000;
 
 export class ReminderScheduler {
-	private readonly events = new ReminderEventChannel();
 	constructor(
 		private readonly state: DurableObjectState,
 		private readonly env: Env
@@ -35,21 +33,7 @@ export class ReminderScheduler {
 	 * `POST /set { accountId, at, generation }`: finish only that generation.
 	 */
 	async fetch(request: Request): Promise<Response> {
-		const url = new URL(request.url);
-		const path = url.pathname;
-		// These paths never acquire the scheduling lock or the note-sync coordinator.
-		if (request.method === 'GET' && path === '/events') {
-			const clientId = url.searchParams.get('clientId');
-			return this.events.stream(
-				request.signal,
-				validReminderClientId(clientId) ? clientId : undefined
-			);
-		}
-		if (request.method === 'POST' && path === '/notify') {
-			const { clientId } = (await request.json().catch(() => ({}))) as { clientId?: unknown };
-			this.events.notify(validReminderClientId(clientId) ? clientId : undefined);
-			return new Response(null, { status: 204 });
-		}
+		const path = new URL(request.url).pathname;
 		if (request.method !== 'POST' || (path !== '/arm' && path !== '/set' && path !== '/begin')) {
 			return Response.json({ error: 'Not found' }, { status: 404 });
 		}

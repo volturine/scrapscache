@@ -9,7 +9,8 @@ const cloudflareModules = new Map([
 	['$lib/server/metrics', './src/lib/server/cloudflare/metrics.ts'],
 	['$lib/server/telemetryQuery', './src/lib/server/cloudflare/telemetryQuery.ts'],
 	['$lib/server/wakeTimer', './src/lib/server/cloudflare/wakeTimer.ts'],
-	['$lib/server/reminderEvents', './src/lib/server/cloudflare/reminderEvents.ts']
+	// The browser's live note-sync transport: WebSocket on Workers, SSE on Node.
+	['$lib/syncEventsTransport', './src/lib/cloudflare/syncEventsTransport.ts']
 ]);
 const cloudflareResolvedModules = new Map(
 	[...cloudflareModules].map(([source, target]) => [

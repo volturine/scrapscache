@@ -3,9 +3,10 @@ import { testDb, cleanupTestDbs } from './testDb';
 import { SyncStore } from './syncStore';
 import {
 	exchangeReminderHistory,
-	MAX_REMINDER_HISTORY_BYTES,
+	reminderMaxAccountBytes,
 	ReminderHistoryQuotaError
 } from './reminderHistoryRelay';
+import { DEFAULT_REMINDER_MAX_ACCOUNT_BYTES } from './operatorConfig';
 import { REMINDER_BATCH_SIZE, type ReminderPacket } from '$lib/reminderChannel';
 
 afterEach(cleanupTestDbs);
@@ -88,16 +89,18 @@ describe('encrypted reminder relay', () => {
 	});
 	it('refuses what does not fit without losing the stored row, and lets deletion reclaim space', async () => {
 		const db = await setup();
-		const large = 'x'.repeat(MAX_REMINDER_HISTORY_BYTES - 256);
+		// An operator-set limit; the stored row fills it exactly.
+		const quota = 4096;
+		const large = 'x'.repeat(quota - 256);
 		await db.relay.execute({
 			sql: 'INSERT INTO reminder_receipts(account_id, note, deleted, ciphertext) VALUES (?, ?, 0, ?)',
 			args: ['a', packet(1).note, large]
 		});
-		await expect(exchangeReminderHistory('a', 0, [packet(2)], db)).rejects.toBeInstanceOf(
+		await expect(exchangeReminderHistory('a', 0, [packet(2)], db, quota)).rejects.toBeInstanceOf(
 			ReminderHistoryQuotaError
 		);
 		// Replacing a note's own row counts only the new size.
-		await exchangeReminderHistory('a', await seen(db), [packet(1, false, 'e')], db);
+		await exchangeReminderHistory('a', await seen(db), [packet(1, false, 'e')], db, quota);
 		expect((await rows(db))[0].ciphertext).toBe('e'.repeat(100));
 
 		await db.relay.execute({
@@ -109,14 +112,18 @@ describe('encrypted reminder relay', () => {
 			args: ['a', packet(3).note, 'y'.repeat(200)]
 		});
 		await expect(
-			exchangeReminderHistory('a', await seen(db), [packet(3, false, 'z'.repeat(3))], db)
+			exchangeReminderHistory('a', await seen(db), [packet(3, false, 'z'.repeat(3))], db, quota)
 		).rejects.toBeInstanceOf(ReminderHistoryQuotaError);
 		expect((await rows(db)).map((row) => row.ciphertext)).toContain('y'.repeat(200));
 
-		await exchangeReminderHistory('a', 0, [packet(1, true)], db);
-		await exchangeReminderHistory('a', 0, [packet(2)], db);
+		await exchangeReminderHistory('a', 0, [packet(1, true)], db, quota);
+		await exchangeReminderHistory('a', 0, [packet(2)], db, quota);
 		const stored = await rows(db);
 		expect(stored.map((row) => row.deleted)).toEqual([0, 1, 0]);
+	});
+	it('defaults the receipt quota to 10 MB', () => {
+		expect(DEFAULT_REMINDER_MAX_ACCOUNT_BYTES).toBe(10_000_000);
+		expect(reminderMaxAccountBytes()).toBe(DEFAULT_REMINDER_MAX_ACCOUNT_BYTES);
 	});
 	it('asks a device ahead of the relay to rebuild', async () => {
 		const db = await setup();

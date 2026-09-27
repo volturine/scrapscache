@@ -1,9 +1,15 @@
-import { notifyReminderEvents } from '$lib/server/reminderEvents';
+import { env } from '$env/dynamic/private';
 import { getDb, type Db } from '$lib/server/db';
+import { parseReminderMaxAccountBytes } from '$lib/server/operatorConfig';
 import { REMINDER_BATCH_SIZE, type ReminderPacket, type ReminderPage } from '$lib/reminderChannel';
 
-/** Independent of note quota/cursors. Bounds retained receipt ciphertext per account. */
-export const MAX_REMINDER_HISTORY_BYTES = 8 * 1024 * 1024;
+/**
+ * Receipt storage per account, apart from the note-sync quota:
+ * `SCRAPSCACHE_REMINDER_MAX_ACCOUNT_BYTES`, 10 MB by default.
+ */
+export function reminderMaxAccountBytes(): number {
+	return parseReminderMaxAccountBytes(env.SCRAPSCACHE_REMINDER_MAX_ACCOUNT_BYTES);
+}
 /** Accounted per row on top of its ciphertext, for the tag and index. */
 const ROW_OVERHEAD_BYTES = 256;
 export class ReminderHistoryQuotaError extends Error {}
@@ -41,7 +47,7 @@ export async function exchangeReminderHistory(
 	cursor: number,
 	notes: ReminderPacket[],
 	db: Db = getDb(),
-	senderClientId?: string
+	maxBytes = reminderMaxAccountBytes()
 ): Promise<ReminderPage> {
 	await db.ready;
 	const latest = (
@@ -51,51 +57,44 @@ export async function exchangeReminderHistory(
 		})
 	).rows[0];
 	if (cursor > Number(latest.cursor)) return { cursor: 0, hasMore: false, notes: [], reset: true };
-	try {
-		for (const row of notes) {
-			const size = row.ciphertext.length + ROW_OVERHEAD_BYTES;
-			const fits = [accountId, row.note, size, MAX_REMINDER_HISTORY_BYTES];
-			const unseen = [accountId, row.note, cursor];
-			// Atomic on SQLite and D1. The live row is replaced only when the new one
-			// fits and was seen, so a full account keeps what it has; a deletion always frees it.
-			const [, inserted] = await db.relay.batch(
-				[
-					{
-						sql: `DELETE FROM reminder_receipts WHERE account_id = ? AND note = ? AND deleted = 0
+	for (const row of notes) {
+		const size = row.ciphertext.length + ROW_OVERHEAD_BYTES;
+		const fits = [accountId, row.note, size, maxBytes];
+		const unseen = [accountId, row.note, cursor];
+		// Atomic on SQLite and D1. The live row is replaced only when the new one
+		// fits and was seen, so a full account keeps what it has; a deletion always frees it.
+		const [, inserted] = await db.relay.batch(
+			[
+				{
+					sql: `DELETE FROM reminder_receipts WHERE account_id = ? AND note = ? AND deleted = 0
    AND (? = 1 OR (${FITS} AND NOT ${UNSEEN}))`,
-						args: [accountId, row.note, Number(row.deleted), ...fits, ...unseen]
-					},
-					{
-						sql: `INSERT INTO reminder_receipts(account_id, note, deleted, ciphertext)
+					args: [accountId, row.note, Number(row.deleted), ...fits, ...unseen]
+				},
+				{
+					sql: `INSERT INTO reminder_receipts(account_id, note, deleted, ciphertext)
    SELECT ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM reminder_receipts WHERE account_id = ? AND note = ?)
    AND ${FITS}`,
-						args: [
-							accountId,
-							row.note,
-							Number(row.deleted),
-							row.ciphertext,
-							accountId,
-							row.note,
-							...fits
-						]
-					}
-				],
-				'write'
-			);
-			if (inserted.rowsAffected > 0 || row.deleted) continue;
-			// Receipts for a deleted note are dropped on purpose, and an unseen row is
-			// this page's to deliver; anything else did not fit.
-			const kept = await db.relay.execute({
-				sql: `SELECT 1 FROM reminder_receipts WHERE account_id = ? AND note = ? AND (deleted = 1 OR seq > ?)`,
-				args: [accountId, row.note, cursor]
-			});
-			if (!kept.rows.length)
-				throw new ReminderHistoryQuotaError('Reminder history storage is full');
-		}
-	} finally {
-		// Notify after writes, including partial batches. Retry uploads notify again,
-		// so a failed notification never leaves a committed receipt invisible.
-		if (notes.length) await notifyReminderEvents(accountId, senderClientId);
+					args: [
+						accountId,
+						row.note,
+						Number(row.deleted),
+						row.ciphertext,
+						accountId,
+						row.note,
+						...fits
+					]
+				}
+			],
+			'write'
+		);
+		if (inserted.rowsAffected > 0 || row.deleted) continue;
+		// Receipts for a deleted note are dropped on purpose, and an unseen row is
+		// this page's to deliver; anything else did not fit.
+		const kept = await db.relay.execute({
+			sql: `SELECT 1 FROM reminder_receipts WHERE account_id = ? AND note = ? AND (deleted = 1 OR seq > ?)`,
+			args: [accountId, row.note, cursor]
+		});
+		if (!kept.rows.length) throw new ReminderHistoryQuotaError('Reminder history storage is full');
 	}
 
 	await db.relay.execute({

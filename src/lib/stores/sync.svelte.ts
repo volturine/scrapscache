@@ -851,6 +851,14 @@ export class SyncStore {
 		return issued.accessToken;
 	}
 
+	/** A token for the live change socket, which cannot send the `Authorization` header. */
+	async connectionToken(): Promise<{ token: string; refused(): void }> {
+		const account = this.account;
+		if (!account) throw new Error('Sync is not set up on this device');
+		const token = await this.accessToken(account);
+		return { token, refused: () => this.invalidateSession(account.accountId, token) };
+	}
+
 	private invalidateSession(accountId: string, accessToken: string): void {
 		if (this.backgroundSessions.get(accountId)?.accessToken === accessToken)
 			this.backgroundSessions.delete(accountId);

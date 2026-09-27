@@ -8,7 +8,6 @@ import {
 	validReminderPacket,
 	ReminderHistoryQuotaError
 } from '$lib/server/reminderHistoryRelay';
-import { validReminderClientId } from '$lib/server/reminderEventStream';
 import { REMINDER_BATCH_SIZE } from '$lib/reminderChannel';
 
 export const POST: RequestHandler = async ({ request, getClientAddress }) => {
@@ -25,7 +24,7 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 		refillWindowMs: 60_000
 	});
 	if (!account.allowed) return rateLimitResponse(account);
-	let body: { cursor?: unknown; notes?: unknown; clientId?: unknown } | null;
+	let body: { cursor?: unknown; notes?: unknown } | null;
 	try {
 		body = (await readJsonBody(request, 65_536)) as typeof body;
 	} catch {
@@ -38,18 +37,11 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 		!Array.isArray(body.notes) ||
 		body.notes.length > REMINDER_BATCH_SIZE ||
 		!body.notes.every(validReminderPacket) ||
-		new Set(body.notes.map((row) => row.note)).size !== body.notes.length ||
-		(body.clientId !== undefined && !validReminderClientId(body.clientId))
+		new Set(body.notes.map((row) => row.note)).size !== body.notes.length
 	)
 		return json({ error: 'Invalid reminder receipts' }, { status: 400 });
 	try {
-		const page = await exchangeReminderHistory(
-			accountId,
-			Number(body.cursor),
-			body.notes,
-			undefined,
-			body.clientId as string | undefined
-		);
+		const page = await exchangeReminderHistory(accountId, Number(body.cursor), body.notes);
 		return json(page, {
 			headers: { 'cache-control': 'no-store' }
 		});

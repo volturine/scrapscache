@@ -184,10 +184,21 @@ export class SyncAuth {
 	}
 
 	async authenticateSyncRequest(request: Request): Promise<string | null> {
-		await this.db.ready;
 		const authorization = request.headers.get('authorization');
 		if (!authorization?.startsWith('Bearer ')) return null;
-		const token = authorization.slice('Bearer '.length);
+		return (
+			(await this.authenticateSyncToken(authorization.slice('Bearer '.length)))?.accountId ?? null
+		);
+	}
+
+	/**
+	 * The live session behind an access token, however it arrived: the
+	 * `Authorization` header, or the WebSocket subprotocol a browser must use instead.
+	 */
+	async authenticateSyncToken(
+		token: string
+	): Promise<{ accountId: string; expiresAt: number } | null> {
+		await this.db.ready;
 		if (!/^[A-Za-z0-9_-]{43}$/.test(token)) return null;
 		const hash = tokenHash(token);
 		const result = await this.db.ops.execute({
@@ -204,7 +215,7 @@ export class SyncAuth {
 			});
 			return null;
 		}
-		return session.accountId;
+		return { accountId: String(session.accountId), expiresAt: Number(session.expiresAt) };
 	}
 
 	async revokeSyncSessions(accountId: string): Promise<void> {

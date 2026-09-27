@@ -9,49 +9,30 @@ import { syncStore } from '$lib/stores/sync.svelte';
 import { identityFromSyncKey } from '$lib/syncPairing';
 import { isProfileReleased } from '$lib/db/idb';
 import type { StoredProfile } from '$lib/profiles';
-import { SyncEventsClient } from '$lib/syncEventsClient';
 
 type Workspace = Pick<StoredProfile, 'id' | 'syncKey'>;
-type Watch = { pid: string; syncKey: string; events: SyncEventsClient };
 type Retry = { timer: ReturnType<typeof setTimeout> | null; backoff: number };
 
 /** The relay's receipt storage for this account is full; retrying will not help until something changes. */
 export class ReminderStorageFullError extends Error {}
 
-function newClientId(): string {
-	return typeof crypto !== 'undefined' && crypto.randomUUID
-		? crypto.randomUUID()
-		: Math.random().toString(36).slice(2);
-}
-
 /**
  * Independent of note-sync flights and their lock, cursor, outbox and status indicator.
- * Only the open workspace keeps a live change stream; another workspace exchanges
- * when it has receipts to send or is about to show a missed reminder.
+ * Nothing stays connected and nothing polls: a workspace exchanges right after a
+ * local receipt, before it shows a missed reminder, and when the app starts, is
+ * shown again or comes back online. The open workspace then catches up; another
+ * sends only what it has queued.
  */
 export class ReminderHistoryClient {
 	private flights = new Map<string, { syncKey: string; promise: Promise<void> }>();
 	private again = new Set<string>();
 	private attached = false;
-	private watch: Watch | null = null;
 	private retries = new Map<string, Retry>();
-	/** This window: the relay leaves it out when announcing its own uploads. */
-	readonly clientId = newClientId();
 	constructor(
 		private history: ReminderHistoryStore,
 		private profiles: () => Workspace[],
 		private activeId: () => string,
-		private send: (profile: Workspace, body: string) => Promise<Response>,
-		private openEvents: (
-			profile: Workspace,
-			clientId: string,
-			signal?: AbortSignal
-		) => Promise<Response> = (profile, clientId, signal) =>
-			syncStore.authorizedFetch(
-				`/api/sync/reminders/events?clientId=${encodeURIComponent(clientId)}`,
-				{ signal },
-				identityFromSyncKey(profile.syncKey)
-			)
+		private send: (profile: Workspace, body: string) => Promise<Response>
 	) {}
 	exchange(pid: string): Promise<void> {
 		const current = this.profiles().find((profile) => profile.id === pid && profile.syncKey);
@@ -82,7 +63,7 @@ export class ReminderHistoryClient {
 					if (!valid()) return;
 					const response = await this.send(
 						profile,
-						JSON.stringify({ cursor: outbox.cursor, notes, clientId: this.clientId })
+						JSON.stringify({ cursor: outbox.cursor, notes })
 					);
 					if (response.status === 507) throw new ReminderStorageFullError();
 					if (!response.ok) throw new Error('Reminder receipt delivery failed');
@@ -127,43 +108,6 @@ export class ReminderHistoryClient {
 		this.flights.set(pid, { syncKey: profile.syncKey, promise: flight });
 		return flight;
 	}
-	/**
-	 * Follow the open workspace: watch it, and stop watching one that is closed or
-	 * unlinked. Says whether a new watch started; it catches up once connected.
-	 */
-	updateProfiles(): boolean {
-		if (!this.attached) return false;
-		const profiles = this.profiles();
-		for (const [pid, retry] of this.retries) {
-			if (profiles.some((profile) => profile.id === pid && profile.syncKey)) continue;
-			if (retry.timer !== null) clearTimeout(retry.timer);
-			this.retries.delete(pid);
-		}
-		const active = profiles.find((profile) => profile.id === this.activeId() && profile.syncKey);
-		if (this.watch && active?.id === this.watch.pid && active.syncKey === this.watch.syncKey)
-			return false;
-		this.watch?.events.destroy();
-		this.watch = null;
-		if (!active) return false;
-		const workspace = { id: active.id, syncKey: active.syncKey };
-		const events = new SyncEventsClient(
-			{
-				get isLoggedIn() {
-					return !!workspace.syncKey;
-				},
-				authorizedFetch: (_url, init) =>
-					this.openEvents(workspace, this.clientId, init?.signal ?? undefined)
-			},
-			this.clientId,
-			{
-				path: '/api/sync/reminders/events',
-				onConnected: () => this.requestExchange(workspace.id)
-			}
-		);
-		this.watch = { pid: workspace.id, syncKey: workspace.syncKey, events };
-		events.subscribe(() => this.requestExchange(workspace.id));
-		return true;
-	}
 	private sendQueued(pid: string): void {
 		void this.history
 			.hasPending(pid)
@@ -174,6 +118,13 @@ export class ReminderHistoryClient {
 	}
 	private requestExchange(pid: string): void {
 		if (!this.attached) return;
+		// A workspace removed or unlinked since stops retrying.
+		if (!this.profiles().some((profile) => profile.id === pid && profile.syncKey)) {
+			const stale = this.retries.get(pid);
+			if (stale?.timer != null) clearTimeout(stale.timer);
+			this.retries.delete(pid);
+			return;
+		}
 		const retry = this.retries.get(pid) ?? { timer: null, backoff: 2000 };
 		this.retries.set(pid, retry);
 		if (retry.timer !== null) {
@@ -201,15 +152,21 @@ export class ReminderHistoryClient {
 	}
 	attach(): () => void {
 		this.attached = true;
+		let refreshedAt = -Infinity;
 		// The open workspace catches up; another sends only what it has queued,
 		// such as receipts the service worker recorded while the app was closed.
 		const refresh = () => {
-			const connecting = this.updateProfiles();
+			// Focus and visibility often arrive together when the app comes back.
+			if (Date.now() - refreshedAt < 1000) return;
+			refreshedAt = Date.now();
 			for (const profile of this.profiles()) {
 				if (!profile.syncKey) continue;
-				if (profile.id !== this.watch?.pid) this.sendQueued(profile.id);
-				else if (!connecting) this.requestExchange(profile.id);
+				if (profile.id === this.activeId()) this.requestExchange(profile.id);
+				else this.sendQueued(profile.id);
 			}
+		};
+		const onVisible = () => {
+			if (document.visibilityState === 'visible') refresh();
 		};
 		this.history.onPending = (pid) => this.requestExchange(pid);
 		const onMessage = (event: MessageEvent) => {
@@ -222,17 +179,17 @@ export class ReminderHistoryClient {
 		navigator.serviceWorker?.addEventListener('message', onMessage);
 		window.addEventListener('online', refresh);
 		window.addEventListener('focus', refresh);
+		document.addEventListener('visibilitychange', onVisible);
 		refresh();
 		return () => {
 			this.attached = false;
-			this.watch?.events.destroy();
-			this.watch = null;
 			for (const retry of this.retries.values()) {
 				if (retry.timer !== null) clearTimeout(retry.timer);
 			}
 			this.retries.clear();
 			window.removeEventListener('online', refresh);
 			window.removeEventListener('focus', refresh);
+			document.removeEventListener('visibilitychange', onVisible);
 			this.history.onPending = null;
 			navigator.serviceWorker?.removeEventListener('message', onMessage);
 		};

@@ -231,7 +231,7 @@ describe('ReminderStore', () => {
 					})
 				])
 			);
-			expect(await getSyncOutboxKeys(OTHER)).toContain(`reminder-history:elsewhere:${wakeId}`);
+			expect(await getSyncOutboxKeys(OTHER)).toEqual([]);
 			expect(await readReminderHistory(TEST_WORKSPACE)).toEqual([]);
 			expect(await getFiredReminderKeys(OTHER)).toEqual([wakeId]);
 			stop();
@@ -246,7 +246,7 @@ describe('ReminderStore', () => {
 			await vi.waitFor(() => expect(host.reconcile).toHaveBeenCalledWith(OTHER));
 			expect(store.alerts).toEqual([]);
 
-			store.cloudSettled(OTHER);
+			store.receiptsSettled(OTHER);
 
 			await vi.waitFor(() =>
 				expect(store.alerts).toEqual([expect.objectContaining({ workspaceId: OTHER })])
@@ -274,7 +274,16 @@ describe('ReminderStore', () => {
 			const { store, history } = newStore();
 			await history.hydrate(TEST_WORKSPACE);
 			const due = note({ reminder: 100 });
-			history.applySync([{ id: reminderWakeId(due.id, 100), noteId: due.id, firedAt: 150 }], {});
+			await history.receive(
+				TEST_WORKSPACE,
+				'',
+				[{ id: reminderWakeId(due.id, 100), noteId: due.id, firedAt: 150 }].map((value) => ({
+					kind: 'handled' as const,
+					value
+				})),
+				[],
+				0
+			);
 			await store.activateProfile(TEST_WORKSPACE, [due]);
 			await settle();
 			expect(store.alerts).toEqual([]);
@@ -288,14 +297,23 @@ describe('ReminderStore', () => {
 			await store.activateProfile(TEST_WORKSPACE, [due]);
 			await vi.waitFor(() => expect(store.alerts).toHaveLength(1));
 
-			history.applySync([{ id: wakeId, noteId: due.id, firedAt: 150, dismissedAt: 200 }], {});
+			await history.receive(
+				TEST_WORKSPACE,
+				'',
+				[{ id: wakeId, noteId: due.id, firedAt: 150, dismissedAt: 200 }].map((value) => ({
+					kind: 'handled' as const,
+					value
+				})),
+				[],
+				0
+			);
 			expect(store.alerts).toEqual([]);
 			await vi.waitFor(async () =>
 				expect(await getFiredReminderKeys(TEST_WORKSPACE)).toContain(wakeId)
 			);
 		});
 
-		it('holds a reminder missed here until a sync settles, then shows it if nobody handled it', async () => {
+		it('holds a reminder missed here until a receipt exchange settles, then shows it if nobody handled it', async () => {
 			const { store } = newStore();
 			const host = testHost({ linked: [TEST_WORKSPACE] });
 			const stop = store.attach(host);
@@ -308,23 +326,35 @@ describe('ReminderStore', () => {
 			store.sync([missed]);
 			expect(host.reconcile).toHaveBeenCalledOnce();
 
-			store.cloudSettled(TEST_WORKSPACE);
+			store.receiptsSettled(TEST_WORKSPACE);
 			await vi.waitFor(() => expect(store.alerts).toHaveLength(1));
 			stop();
 		});
 
-		it('drops a held reminder the sync reports as handled elsewhere', async () => {
+		it('drops a held reminder the receipt channel reports as handled elsewhere', async () => {
 			const { store, history } = newStore();
 			await history.hydrate(TEST_WORKSPACE);
 			const stop = store.attach(testHost({ linked: [TEST_WORKSPACE] }));
 			const missed = note({ reminder: Date.now() - 10 * 60_000 });
 			await store.activateProfile(TEST_WORKSPACE, [missed]);
 
-			history.applySync(
-				[{ id: reminderWakeId(missed.id, missed.reminder!), noteId: missed.id, firedAt: 1 }],
-				{}
+			await history.receive(
+				TEST_WORKSPACE,
+				'',
+				[
+					{
+						kind: 'handled',
+						value: {
+							id: reminderWakeId(missed.id, missed.reminder!),
+							noteId: missed.id,
+							firedAt: 1
+						}
+					}
+				],
+				[],
+				0
 			);
-			store.cloudSettled(TEST_WORKSPACE);
+			store.receiptsSettled(TEST_WORKSPACE);
 			await settle();
 			expect(store.alerts).toEqual([]);
 			stop();

@@ -3,13 +3,14 @@ import {
 	CANVAS_LIBRARY_TOMBSTONES_KEY,
 	diffCanvasLibrary,
 	isCanvasLibraryItem,
+	isCanvasLibraryEntry,
 	libraryItemsFor,
 	mergeCanvasLibrary,
 	readCanvasLibrary,
 	type CanvasLibraryEntry,
 	type CanvasLibraryItem
 } from '$lib/canvasLibrary';
-import { writeSyncStateWithOutbox } from '$lib/db/idb';
+import { mergeWorkspaceState } from '$lib/db/idb';
 import { syncClock } from '$lib/editContext';
 import { syncStore } from '$lib/stores/sync.svelte';
 import { BackupImportMode } from '$lib/backup';
@@ -32,6 +33,8 @@ export class CanvasLibraryStore {
 	private entries: CanvasLibraryEntry[] = [];
 	private tombstones: Record<string, number> = {};
 	private generation = 0;
+	private revision = 0;
+	private replacePending = false;
 	private listeners = new Set<(items: CanvasLibraryItem[]) => void>();
 	private pendingWrites: Promise<void> = Promise.resolve();
 
@@ -44,6 +47,7 @@ export class CanvasLibraryStore {
 		this.pid = pid;
 		this.entries = [];
 		this.tombstones = {};
+		this.replacePending = false;
 		const stored = await readCanvasLibrary(pid);
 		if (generation !== this.generation) return;
 		this.entries = stored.entries;
@@ -88,6 +92,7 @@ export class CanvasLibraryStore {
 			keys.push(`library-item-tombstone:${id}`);
 		}
 		if (!keys.length) return;
+		this.revision += 1;
 		this.entries = [...byId.values()];
 		this.tombstones = tombstones;
 		this.notify();
@@ -151,6 +156,7 @@ export class CanvasLibraryStore {
 
 	/** Used when this device takes the cloud's copy instead of its own. */
 	replaceWithCloud(remote: CanvasLibraryEntry[], remoteTombstones: Record<string, number>): void {
+		this.replacePending = true;
 		const tombstones = sanitizeTombstones(remoteTombstones);
 		this.set(mergeCanvasLibrary([], remote, tombstones), tombstones);
 	}
@@ -166,17 +172,47 @@ export class CanvasLibraryStore {
 	}
 
 	private set(entries: CanvasLibraryEntry[], tombstones: Record<string, number>): void {
+		this.revision += 1;
 		this.entries = entries;
 		this.tombstones = tombstones;
 		this.notify();
 	}
 
 	private persist(pid: string, keys: string[]): void {
-		const state: [string, unknown][] = [
-			[CANVAS_LIBRARY_STATE_KEY, plain(this.entries)],
-			[CANVAS_LIBRARY_TOMBSTONES_KEY, { ...this.tombstones }]
-		];
-		const write = this.pendingWrites.then(() => writeSyncStateWithOutbox(pid, state, keys));
+		const entries = plain(this.entries);
+		const tombstones = { ...this.tombstones };
+		const generation = this.generation;
+		const revision = this.revision;
+		const replace = this.replacePending;
+		this.replacePending = false;
+		const write = this.pendingWrites.then(async () => {
+			const state = await mergeWorkspaceState(
+				pid,
+				[CANVAS_LIBRARY_STATE_KEY, CANVAS_LIBRARY_TOMBSTONES_KEY],
+				(current) => {
+					const deleted = sanitizeTombstones(replace ? {} : current[CANVAS_LIBRARY_TOMBSTONES_KEY]);
+					for (const [id, at] of Object.entries(tombstones))
+						deleted[id] = Math.max(deleted[id] ?? 0, at);
+					const stored = replace ? [] : current[CANVAS_LIBRARY_STATE_KEY];
+					return {
+						value: {
+							[CANVAS_LIBRARY_STATE_KEY]: mergeCanvasLibrary(
+								Array.isArray(stored) ? stored.filter(isCanvasLibraryEntry) : [],
+								entries,
+								deleted
+							),
+							[CANVAS_LIBRARY_TOMBSTONES_KEY]: deleted
+						},
+						outboxKeys: keys
+					};
+				}
+			);
+			if (pid === this.pid && generation === this.generation && revision === this.revision)
+				this.applySync(
+					state[CANVAS_LIBRARY_STATE_KEY] as CanvasLibraryEntry[],
+					state[CANVAS_LIBRARY_TOMBSTONES_KEY] as Record<string, number>
+				);
+		});
 		this.pendingWrites = write.catch((err) => {
 			console.error('[canvas library] could not save the library:', err);
 		});

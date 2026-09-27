@@ -37,7 +37,7 @@ export type ReminderHost = {
 	workspaces(): { id: string; linked: boolean }[];
 	/** Reminder fields of a workspace that is not open. */
 	loadNotes(pid: string): Promise<ReminderNote[]>;
-	/** Settle a workspace with the cloud once; `cloudSettled(pid)` follows either way. */
+	/** Exchange a workspace’s reminder receipts once; `receiptsSettled(pid)` follows either way. */
 	reconcile(pid: string): void;
 	/** Open a note in its own workspace, switching to it first if need be. */
 	openNote(pid: string, noteId: string): void;
@@ -55,7 +55,7 @@ type WorkspaceReminders = {
 	seen: Set<string>;
 	/** The relay will push these to this device, so the scan leaves them to the push. */
 	armed: Set<string>;
-	/** When a sync of the workspace last finished, whether or not it reached the cloud. */
+	/** When a receipt exchange last finished, whether or not it reached the cloud. */
 	reconciledAt: number;
 	reconcileRequested: boolean;
 };
@@ -144,8 +144,8 @@ export class ReminderStore {
 		return this.activation;
 	}
 
-	/** A sync of a workspace finished, whether or not it reached the cloud. */
-	cloudSettled(pid: string): void {
+	/** A receipt exchange finished, whether or not it reached the cloud. */
+	receiptsSettled(pid: string): void {
 		const workspace = this.workspaces.get(pid);
 		if (!workspace) return;
 		workspace.reconciledAt = Date.now();

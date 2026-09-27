@@ -163,7 +163,7 @@ describe('incremental sync engine', () => {
 		expect(result.baseline['note:n1']).toBe('sent-fp');
 	});
 
-	it('deletes a library item slot once the item is deleted, and history once its note is', () => {
+	it('deletes library slots without touching the independent reminder channel', () => {
 		const wake = 'd'.repeat(43);
 		const recordIds = {
 			'library-item:star': 'env-1',
@@ -184,6 +184,6 @@ describe('incremental sync engine', () => {
 			pullOnly: false,
 			catchUpComplete: true
 		});
-		expect(planned.sort()).toEqual(['library-item:star', `reminder-history:gone:${wake}`]);
+		expect(planned.sort()).toEqual(['library-item:star']);
 	});
 });

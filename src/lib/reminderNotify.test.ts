@@ -152,3 +152,28 @@ describe('system notifications', () => {
 		).resolves.toBe(false);
 	});
 });
+
+describe('closing reminders across workspace subscriptions', () => {
+	it('closes matching notifications in the root and workspace registrations', async () => {
+		const { closeReminderNotifications } = await import('./reminderNotify');
+		const root = { data: { type: 'reminder', wakeId: 'handled' }, close: vi.fn() };
+		const workspace = { data: { type: 'reminder', wakeId: 'handled' }, close: vi.fn() };
+		const other = { data: { type: 'reminder', wakeId: 'unhandled' }, close: vi.fn() };
+		vi.stubGlobal('navigator', {
+			serviceWorker: {
+				getRegistrations: async () => [
+					{ getNotifications: async () => [root] },
+					{ getNotifications: async () => [workspace, other] }
+				]
+			}
+		});
+		try {
+			await closeReminderNotifications(new Set(['handled']));
+			expect(root.close).toHaveBeenCalledOnce();
+			expect(workspace.close).toHaveBeenCalledOnce();
+			expect(other.close).not.toHaveBeenCalled();
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
+});

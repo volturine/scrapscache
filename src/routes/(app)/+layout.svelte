@@ -11,7 +11,7 @@
 	import BottomNav from '$lib/components/BottomNav.svelte';
 	import AppViews from '$lib/components/AppViews.svelte';
 	import { reminderStore } from '$lib/stores/reminders.svelte';
-	import { reminderHistoryStore } from '$lib/stores/reminderHistory';
+	import { reminderHistoryClient } from '$lib/reminderHistoryClient';
 	import { getAllNotesMetadata } from '$lib/db/idb';
 	import { preloadVapidPublicKey } from '$lib/reminderWake';
 	import { provideEditorActions } from '$lib/editorContext';
@@ -60,22 +60,18 @@
 		openEditor(noteId);
 	}
 
-	/** A workspace that is not open learns its reminder history without syncing. */
+	/** Receipts reconcile on their own channel, even while note sync is busy. */
 	function reconcileReminders(pid: string) {
-		if (pid === syncStore.activeId) {
-			void notesStore.reconcileWithCloud();
-			return;
-		}
-		const profile = syncStore.profiles.find((entry) => entry.id === pid);
-		if (!profile) return;
-		void syncStore
-			.peekReminderHistory(profile)
-			.then((found) => {
-				if (found) reminderHistoryStore.learnRemote(pid, found.history, found.tombstones);
-			})
+		void reminderHistoryClient
+			.exchange(pid)
 			.catch(() => undefined)
-			.finally(() => reminderStore.cloudSettled(pid));
+			.finally(() => reminderStore.receiptsSettled(pid));
 	}
+
+	$effect(() => {
+		const profiles = syncStore.profiles.map(({ id, syncKey }) => ({ id, syncKey }));
+		untrack(() => reminderHistoryClient.updateProfiles(profiles));
+	});
 
 	let noteLinkProblem = $state<string | null>(null);
 	/** Off until the address this window opened with has been read. */
@@ -141,7 +137,6 @@
 		uiStore.viewChangeHandler = restoreFeedScroll;
 		attachSyncCloudIndicator(syncStore);
 		notesStore.onAfterSync = () => reminderStore.publish(notesStore.notes);
-		notesStore.onSyncSettled = (pid) => reminderStore.cloudSettled(pid);
 		notesStore.onProfileReload = (pid, notes) => reminderStore.activateProfile(pid, notes);
 		if (mobile.current) uiStore.sidebarOpen = false;
 		void notesStore.init().then(async () => {
@@ -165,6 +160,7 @@
 		const stopSyncEvents = syncEventsClient.subscribe((seq?: number) => {
 			void notesStore.triggerSync(seq);
 		});
+		const stopReminderHistory = reminderHistoryClient.attach();
 		const stopReminders = reminderStore.attach({
 			workspaces: () =>
 				syncStore.profiles.map((profile) => ({ id: profile.id, linked: !!profile.syncKey })),
@@ -194,12 +190,12 @@
 			window.removeEventListener('hashchange', onHashChange);
 			stopSyncEvents();
 			notesStore.onProfileReload = null;
-			notesStore.onSyncSettled = null;
 			uiStore.viewChangeHandler = null;
 			stopViewport();
 			applyEditorOpen(false);
 			document.removeEventListener('visibilitychange', onForeground);
 			stopReminders();
+			stopReminderHistory();
 		};
 	});
 

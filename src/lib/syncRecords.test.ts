@@ -167,7 +167,7 @@ describe('opaque per-record sync payloads', () => {
 	});
 });
 
-describe('workspace library and reminder history records', () => {
+describe('workspace library records', () => {
 	const wake = 'b'.repeat(43);
 	const libraryItem = {
 		id: 'star',
@@ -175,7 +175,7 @@ describe('workspace library and reminder history records', () => {
 		item: { id: 'star', status: 'unpublished', created: 1, elements: [] }
 	};
 
-	it('syncs live library items, library deletes, and history for notes that still exist', async () => {
+	it('syncs live library items and library deletes', async () => {
 		const records = await buildSyncRecords(
 			syncSnapshot({
 				libraryItems: [
@@ -183,18 +183,13 @@ describe('workspace library and reminder history records', () => {
 					{ ...libraryItem, id: 'gone', item: { ...libraryItem.item, id: 'gone' } }
 				],
 				libraryTombstones: { gone: 9 },
-				tombstones: { deleted: 3 },
-				reminderHistory: [
-					{ id: wake, noteId: 'kept', firedAt: 1 },
-					{ id: 'c'.repeat(43), noteId: 'deleted', firedAt: 1 }
-				]
+				tombstones: { deleted: 3 }
 			})
 		);
 		expect(records.map((record) => record.key).sort()).toEqual([
 			'library-item-tombstone:gone',
 			'library-item:star',
-			'note-tombstone:deleted',
-			`reminder-history:kept:${wake}`
+			'note-tombstone:deleted'
 		]);
 	});
 
@@ -211,7 +206,7 @@ describe('workspace library and reminder history records', () => {
 				kind: 'reminder-history',
 				value: { id: wake, noteId: 'n', firedAt: 1, dismissedAt: 2 }
 			})
-		).toBe(true);
+		).toBe(false);
 		expect(
 			isSyncRecordPayload({ kind: 'reminder-history', value: { id: wake, noteId: 'n' } })
 		).toBe(false);

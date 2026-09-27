@@ -695,19 +695,35 @@ export async function mergeSyncStateWithOutbox<T>(
 	key: string,
 	merge: (current: unknown) => { value: T; outboxKeys: Iterable<string> }
 ): Promise<T> {
+	const result = await mergeWorkspaceState(pid, [key], (current) => {
+		const { value, outboxKeys } = merge(current[key]);
+		return { value: { [key]: value }, outboxKeys };
+	});
+	return result[key];
+}
+
+export async function mergeWorkspaceState<T extends Record<string, unknown>>(
+	pid: string,
+	keys: readonly string[],
+	merge: (current: Record<string, unknown>) => { value: T; outboxKeys?: Iterable<string> }
+): Promise<T> {
 	const dbName = resolveDbName(pid);
-	const previousGeneration = outboxGenerations.get(dbName) ?? null;
 	return enqueueDeviceWrite(async () => {
 		const db = await getDB(pid);
+		const previousGeneration = outboxGenerations.get(dbName) ?? null;
 		const tx = db.transaction([SYNC_STATE_STORE, SYNC_OUTBOX_STORE], 'readwrite');
 		try {
 			const state = tx.objectStore(SYNC_STATE_STORE);
-			const { value, outboxKeys } = merge(await state.get(key));
-			await state.put(value, key);
-			const keys = uniqueOutboxKeys(outboxKeys);
-			if (keys.length) {
+			const current = Object.fromEntries(
+				await Promise.all(keys.map(async (key) => [key, await state.get(key)]))
+			);
+			const { value, outboxKeys = [] } = merge(current);
+			for (const [key, item] of Object.entries(value)) await state.put(item, key);
+			const dirtyKeys = uniqueOutboxKeys(outboxKeys);
+			if (dirtyKeys.length) {
 				const next = await nextOutboxGeneration(tx, dbName);
-				for (const outboxKey of keys) await tx.objectStore(SYNC_OUTBOX_STORE).put(next, outboxKey);
+				for (const outboxKey of dirtyKeys)
+					await tx.objectStore(SYNC_OUTBOX_STORE).put(next, outboxKey);
 			}
 			await tx.done;
 			return value;

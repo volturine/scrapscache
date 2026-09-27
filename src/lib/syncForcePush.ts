@@ -1,4 +1,3 @@
-import { mergeReminderHistory } from '$lib/reminderHistory';
 import type { SyncSnapshot } from '$lib/syncRecords';
 import {
 	mergeBodies,
@@ -135,8 +134,6 @@ export function buildForcePushSnapshot(
 			remote.libraryTombstones,
 			libraryItems,
 			remote.libraryItems
-		),
-		// History is a record of what happened; the cloud's half of it stays true.
-		reminderHistory: mergeReminderHistory(local.reminderHistory, remote.reminderHistory, tombstones)
+		)
 	};
 }

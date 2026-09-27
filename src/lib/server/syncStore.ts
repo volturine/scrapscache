@@ -1133,20 +1133,18 @@ export class SyncStore {
 		});
 	}
 
-	/**
-	 * When the next wake some device still waits for comes due, after `after`, of
-	 * one account when `accountId` is given.
-	 */
-	async nextWakeAt(after: number, accountId?: string): Promise<number | null> {
+	/** Next undelivered wake, including overdue wakes and claims awaiting their lease. */
+	async nextWakeAt(now: number, accountId?: string): Promise<number | null> {
 		await this.db.ready;
 		const row = (
 			await this.ops.execute({
-				sql: `SELECT MIN(w.fire_at) AS fireAt
-				 FROM reminder_wakes w
-				 WHERE w.fire_at > ?
-					AND (? IS NULL OR w.account_id = ?)
-					AND EXISTS (SELECT 1 FROM reminder_push_devices d WHERE d.account_id = w.account_id)`,
-				args: [after, accountId ?? null, accountId ?? null]
+				sql: `SELECT MIN(MAX(w.fire_at, COALESCE(x.claimed_at + ?, 0), ?)) AS fireAt
+			 FROM reminder_wakes w
+			 JOIN reminder_push_devices d ON d.account_id = w.account_id
+			 LEFT JOIN reminder_wake_deliveries x ON x.account_id = d.account_id
+			 AND x.device_id = d.device_id AND x.wake_id = w.wake_id
+			 WHERE x.delivered_at IS NULL AND (? IS NULL OR w.account_id = ?)`,
+				args: [WAKE_CLAIM_LEASE_MS, now, accountId ?? null, accountId ?? null]
 			})
 		).rows[0] as { fireAt?: number | null } | undefined;
 		return row?.fireAt == null ? null : Number(row.fireAt);

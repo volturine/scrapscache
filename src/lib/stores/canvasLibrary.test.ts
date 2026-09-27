@@ -76,4 +76,32 @@ describe('workspace canvas library', () => {
 		expect(store.items()).toEqual([]);
 		expect(await getSyncOutboxKeys('library-e')).toEqual([]);
 	});
+	it('merges additions and deletions from two tabs atomically on disk', async () => {
+		const a = new CanvasLibraryStore(),
+			b = new CanvasLibraryStore();
+		await a.hydrate('two-tabs');
+		await b.hydrate('two-tabs');
+		a.applyEditorChange([], [item('a')]);
+		b.applyEditorChange([], [item('b')]);
+		await Promise.all([a.waitForPendingWrites(), b.waitForPendingWrites()]);
+		const reloaded = new CanvasLibraryStore();
+		await reloaded.hydrate('two-tabs');
+		expect(
+			reloaded
+				.items()
+				.map((item) => item.id)
+				.sort()
+		).toEqual(['a', 'b']);
+		reloaded.applyEditorChange(reloaded.items(), [item('b')]);
+		await reloaded.waitForPendingWrites();
+		a.applyEditorChange([item('a')], [item('a'), item('c')]);
+		await a.waitForPendingWrites();
+		await b.hydrate('two-tabs');
+		expect(
+			b
+				.items()
+				.map((item) => item.id)
+				.sort()
+		).toEqual(['b', 'c']);
+	});
 });

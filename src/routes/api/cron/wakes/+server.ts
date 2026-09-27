@@ -5,7 +5,7 @@ import { isAdminAuthorized, unauthorizedAdminResponse } from '$lib/server/adminA
 import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '$lib/server/rateLimit';
 import { getDb } from '$lib/server/db';
 import { dispatchDueWakes } from '$lib/server/wakeDispatch';
-import { rescheduleWakeTimer } from '$lib/server/wakeTimer';
+import { beginWakeDelivery, rescheduleWakeTimer } from '$lib/server/wakeTimer';
 import { ACCOUNT_ID_RE } from '$lib/server/pushWakes';
 
 /**
@@ -32,8 +32,9 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	}
 	try {
 		await getDb().ready;
+		const generation = await beginWakeDelivery(body.accountId);
 		const result = await dispatchDueWakes({ accountId: body.accountId });
-		await rescheduleWakeTimer(body.accountId, result.next);
+		await rescheduleWakeTimer(body.accountId, result.next, generation);
 		return json(result, { headers: { 'cache-control': 'no-store' } });
 	} catch (error) {
 		console.error(

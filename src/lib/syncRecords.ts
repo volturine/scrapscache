@@ -2,11 +2,6 @@ import type { KanbanBoard } from '$lib/kanban';
 import type { Label, Note, NoteImage } from '$lib/types';
 import { sha256 } from '$lib/syncHash';
 import { isCanvasLibraryEntry, type CanvasLibraryEntry } from '$lib/canvasLibrary';
-import {
-	isReminderHistoryEntry,
-	reminderHistoryKey,
-	type ReminderHistoryEntry
-} from '$lib/reminderHistory';
 
 /** Everything of a workspace that syncs. */
 export type SyncSnapshot = {
@@ -18,7 +13,6 @@ export type SyncSnapshot = {
 	boardTombstones: Record<string, number>;
 	libraryItems: CanvasLibraryEntry[];
 	libraryTombstones: Record<string, number>;
-	reminderHistory: ReminderHistoryEntry[];
 };
 
 export function syncSnapshot(parts: Partial<SyncSnapshot> = {}): SyncSnapshot {
@@ -31,7 +25,6 @@ export function syncSnapshot(parts: Partial<SyncSnapshot> = {}): SyncSnapshot {
 		boardTombstones: {},
 		libraryItems: [],
 		libraryTombstones: {},
-		reminderHistory: [],
 		...parts
 	};
 }
@@ -66,7 +59,6 @@ export type SyncRecordPayload =
 	| { kind: 'board-tombstone'; id: string; deletedAt: number }
 	| { kind: 'library-item'; value: CanvasLibraryEntry }
 	| { kind: 'library-item-tombstone'; id: string; deletedAt: number }
-	| { kind: 'reminder-history'; value: ReminderHistoryEntry }
 	/** The profile's local display name; exactly one per account, key `profile-meta`. */
 	| { kind: 'profile-meta'; value: { name: string } };
 
@@ -94,8 +86,6 @@ export function syncRecordKey(payload: SyncRecordPayload): string {
 			return `library-item:${payload.value.id}`;
 		case 'library-item-tombstone':
 			return `library-item-tombstone:${payload.id}`;
-		case 'reminder-history':
-			return reminderHistoryKey(payload.value);
 		case 'profile-meta':
 			return PROFILE_META_RECORD_KEY;
 	}
@@ -227,8 +217,7 @@ export async function buildSyncRecords(
 		labelTombstones,
 		boardTombstones,
 		libraryItems,
-		libraryTombstones,
-		reminderHistory
+		libraryTombstones
 	} = snapshot;
 	const values: { key: string; payload: SyncRecordPayload }[] = [];
 	const seenAttachments = new Set<string>();
@@ -295,12 +284,6 @@ export async function buildSyncRecords(
 			key: `library-item-tombstone:${id}`,
 			payload: { kind: 'library-item-tombstone', id, deletedAt }
 		});
-	}
-	for (const entry of reminderHistory) {
-		if (Number(tombstones[entry.noteId]) || 0) continue;
-		const key = reminderHistoryKey(entry);
-		if (onlyKeys && !onlyKeys.has(key)) continue;
-		values.push({ key, payload: { kind: 'reminder-history', value: entry } });
 	}
 
 	return Promise.all(
@@ -415,7 +398,6 @@ export function isSyncRecordPayload(value: unknown): value is SyncRecordPayload 
 		return object(meta) && typeof meta.name === 'string';
 	}
 	if (value.kind === 'library-item') return isCanvasLibraryEntry(value.value);
-	if (value.kind === 'reminder-history') return isReminderHistoryEntry(value.value);
 	const tombstone = value as { id?: unknown; deletedAt?: unknown };
 	return (
 		(value.kind === 'note-tombstone' ||

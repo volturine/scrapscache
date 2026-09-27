@@ -14,19 +14,7 @@ export type ReminderHistoryEntry = {
 	dismissedAt?: number;
 };
 
-const PREFIX = 'reminder-history:';
 const WAKE_ID = /^[A-Za-z0-9_-]{43}$/;
-
-/** The note id is part of the key so a deleted note's history can be found without the entry. */
-export function reminderHistoryKey(entry: Pick<ReminderHistoryEntry, 'id' | 'noteId'>): string {
-	return `${PREFIX}${entry.noteId}:${entry.id}`;
-}
-
-export function reminderHistoryNoteId(key: string): string | null {
-	if (!key.startsWith(PREFIX)) return null;
-	const separator = key.lastIndexOf(':');
-	return separator > PREFIX.length ? key.slice(PREFIX.length, separator) : null;
-}
 
 function time(value: unknown): value is number {
 	return typeof value === 'number' && Number.isFinite(value) && value > 0;

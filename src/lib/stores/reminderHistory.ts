@@ -1,193 +1,242 @@
-import { mergeSyncStateWithOutbox } from '$lib/db/idb';
+import { mergeWorkspaceState } from '$lib/db/idb';
 import {
 	isReminderHistoryEntry,
 	mergeReminderEntries,
 	mergeReminderHistory,
 	readReminderHistory,
 	REMINDER_HISTORY_STATE_KEY,
-	reminderHistoryKey,
 	type ReminderHistoryEntry
 } from '$lib/reminderHistory';
-import { syncStore } from '$lib/stores/sync.svelte';
+import {
+	channelState,
+	REMINDER_CHANNEL_KEY,
+	mergeEvents,
+	eventNote,
+	type ReminderChannelState,
+	type ReminderEvent
+} from '$lib/reminderChannel';
 import { stableStringify } from '$lib/model/stableStringify';
 
 type Listener = (entries: ReminderHistoryEntry[], pid: string) => void;
+const entriesIn = (value: unknown): ReminderHistoryEntry[] =>
+	Array.isArray(value) ? value.filter(isReminderHistoryEntry) : [];
 
-function storedEntries(value: unknown): ReminderHistoryEntry[] {
-	return Array.isArray(value) ? value.filter(isReminderHistoryEntry) : [];
-}
-
-/**
- * Reminder history: what a workspace's devices have shown and dismissed. The open
- * workspace's history is held here for its sync; any workspace's can be recorded
- * to, straight to its own database. Every write merges into what is on disk, so
- * another window's entries are never written over.
- */
+/** Independent durable reminder receipts. Never writes the note-sync outbox. */
 export class ReminderHistoryStore {
 	private pid = '';
 	private entries = new Map<string, ReminderHistoryEntry>();
-	/** The open workspace's permanently deleted notes, whose history is dropped. */
-	private noteTombstones: Record<string, number> = {};
 	private generation = 0;
 	private listeners = new Set<Listener>();
 	private pendingWrites: Promise<void> = Promise.resolve();
-
+	onPending: ((pid: string) => void) | null = null;
 	get activePid(): string {
 		return this.pid;
 	}
-
-	/** Load a workspace's history. Nothing of the previous workspace's survives the switch. */
 	async hydrate(pid: string): Promise<void> {
 		const generation = ++this.generation;
-		// What this window saved last must be on disk before it is read back.
 		await this.pendingWrites;
 		if (generation !== this.generation) return;
 		this.pid = pid;
-		this.entries = new Map();
-		this.noteTombstones = {};
 		const entries = await readReminderHistory(pid);
 		if (generation !== this.generation) return;
 		this.entries = new Map(entries.map((entry) => [entry.id, entry]));
 		this.notify(entries, pid);
 	}
-
-	/** Listeners hear the entries that changed, with the workspace they belong to. */
 	subscribe(listener: Listener): () => void {
 		this.listeners.add(listener);
 		return () => this.listeners.delete(listener);
 	}
-
-	/** An entry of the open workspace. */
 	get(id: string): ReminderHistoryEntry | undefined {
 		return this.entries.get(id);
 	}
-
-	/** The open workspace's entries. */
 	ids(): string[] {
 		return [...this.entries.keys()];
 	}
-
-	recordFired(pid: string, fired: ReminderHistoryEntry[]): void {
+	entriesForBackup(): ReminderHistoryEntry[] {
+		return [...this.entries.values()].map((entry) => ({ ...entry }));
+	}
+	recordFired(pid: string, entries: ReminderHistoryEntry[]): void {
 		this.record(
 			pid,
-			pid === this.pid ? fired.filter((entry) => !this.entries.has(entry.id)) : fired
+			pid === this.pid ? entries.filter((entry) => !this.entries.has(entry.id)) : entries
 		);
 	}
-
-	/** Entries a backup brings back, dismissals included. */
 	restore(pid: string, entries: ReminderHistoryEntry[]): void {
 		this.record(pid, entries);
 	}
-
 	recordDismissed(pid: string, entry: { id: string; noteId: string }, at: number): void {
 		const current = pid === this.pid ? this.entries.get(entry.id) : undefined;
 		if (current?.dismissedAt !== undefined) return;
 		this.record(pid, [{ ...entry, firedAt: current?.firedAt ?? at, dismissedAt: at }]);
 	}
-
-	/**
-	 * History another device recorded for a workspace, learned without syncing it.
-	 * It came from the relay, so nothing is queued to go back.
-	 */
-	learnRemote(
-		pid: string,
-		remote: ReminderHistoryEntry[],
-		noteTombstones: Record<string, number>
-	): void {
-		if (pid === this.pid) {
-			this.applySync(remote, { ...this.noteTombstones, ...noteTombstones });
-			void this.persistSyncState(pid);
-			return;
-		}
-		const entries = mergeReminderHistory([], remote, noteTombstones);
-		if (!entries.length) return;
-		this.write(pid, entries, [], noteTombstones);
-		this.notify(entries, pid);
+	private record(pid: string, entries: ReminderHistoryEntry[]): void {
+		if (!pid) return;
+		const updates = entries.filter(isReminderHistoryEntry).filter((entry) => {
+			const current = pid === this.pid ? this.entries.get(entry.id) : undefined;
+			return (
+				!current ||
+				stableStringify(current) !== stableStringify(mergeReminderEntries(current, entry))
+			);
+		});
+		if (!updates.length) return;
+		if (pid === this.pid) this.adopt(mergeReminderHistory(this.entries.values(), updates, {}), pid);
+		else this.notify(updates, pid);
+		this.enqueue(() =>
+			this.commit(
+				pid,
+				updates.map((value) => ({ kind: 'handled', value })),
+				true
+			).then(() => {
+				this.onPending?.(pid);
+			})
+		);
 	}
-
-	entriesForSync(): ReminderHistoryEntry[] {
-		return [...this.entries.values()].map((entry) => ({ ...entry }));
+	/** Note deletion removes its receipts through this channel, not the note-sync outbox. */
+	forgetNotes(pid: string, tombstones: Record<string, number>): void {
+		const events: ReminderEvent[] = Object.keys(tombstones).map((noteId) => ({
+			kind: 'deleted',
+			noteId
+		}));
+		if (!events.length) return;
+		if (pid === this.pid)
+			this.adopt(mergeReminderHistory(this.entries.values(), [], tombstones), pid);
+		this.enqueue(() =>
+			this.commit(pid, events, true).then(() => {
+				this.onPending?.(pid);
+			})
+		);
 	}
-
-	/** Merge what a sync pulled without scheduling another upload. */
-	applySync(remote: ReminderHistoryEntry[], noteTombstones: Record<string, number>): void {
-		this.noteTombstones = { ...noteTombstones };
-		this.adopt(mergeReminderHistory(this.entries.values(), remote, noteTombstones));
-	}
-
-	async persistSyncState(pid: string, syncOutboxKeys: Iterable<string> = []): Promise<void> {
-		if (pid !== this.pid) return;
-		this.write(pid, [...this.entries.values()], [...syncOutboxKeys], this.noteTombstones);
-		await this.pendingWrites;
-	}
-
 	waitForPendingWrites(): Promise<void> {
 		return this.pendingWrites;
 	}
-
-	private record(pid: string, updates: ReminderHistoryEntry[]): void {
-		if (!pid) return;
-		const valid = updates.filter(isReminderHistoryEntry);
-		if (pid !== this.pid) {
-			// A workspace that is not open: its database is the only copy here.
-			if (!valid.length) return;
-			this.write(pid, valid, valid.map(reminderHistoryKey), {});
-			this.notify(valid, pid);
-			return;
-		}
-		const changed: ReminderHistoryEntry[] = [];
-		for (const update of valid) {
-			const current = this.entries.get(update.id);
-			const next = current ? mergeReminderEntries(current, update) : update;
-			if (stableStringify(current) === stableStringify(next)) continue;
-			this.entries.set(next.id, next);
-			changed.push(next);
-		}
-		if (!changed.length) return;
-		this.notify(changed, pid);
-		this.write(
+	async prepare(pid: string, accountId: string): Promise<ReminderChannelState> {
+		await this.pendingWrites;
+		const state = await mergeWorkspaceState(
 			pid,
-			[...this.entries.values()],
-			changed.map(reminderHistoryKey),
-			this.noteTombstones
+			[REMINDER_HISTORY_STATE_KEY, REMINDER_CHANNEL_KEY],
+			(current) => {
+				const channel = channelState(current[REMINDER_CHANNEL_KEY]);
+				if (channel.accountId === accountId) return { value: { [REMINDER_CHANNEL_KEY]: channel } };
+				const pending = mergeEvents(
+					channel.pending,
+					entriesIn(current[REMINDER_HISTORY_STATE_KEY]).map((value) => ({
+						kind: 'handled' as const,
+						value
+					})),
+					Object.keys(channel.deletedNotes).map((noteId) => ({ kind: 'deleted' as const, noteId }))
+				);
+				return { value: { [REMINDER_CHANNEL_KEY]: { ...channel, accountId, cursor: 0, pending } } };
+			}
 		);
-		syncStore.requestAutoSync([]);
+		return state[REMINDER_CHANNEL_KEY];
+	}
+	/** A relay reset rebuilds only receipt state, without touching note sync. */
+	async resetChannel(pid: string, accountId: string): Promise<void> {
+		await mergeWorkspaceState(
+			pid,
+			[REMINDER_CHANNEL_KEY, REMINDER_HISTORY_STATE_KEY],
+			(current) => {
+				const channel = channelState(current[REMINDER_CHANNEL_KEY]);
+				if (channel.accountId !== accountId) return { value: current };
+				const pending = mergeEvents(
+					channel.pending,
+					entriesIn(current[REMINDER_HISTORY_STATE_KEY]).map((value) => ({
+						kind: 'handled' as const,
+						value
+					})),
+					Object.keys(channel.deletedNotes).map((noteId) => ({ kind: 'deleted' as const, noteId }))
+				);
+				return { value: { [REMINDER_CHANNEL_KEY]: { ...channel, cursor: 0, pending } } };
+			}
+		);
 	}
 
-	private write(
+	async receive(
 		pid: string,
-		entries: ReminderHistoryEntry[],
-		outboxKeys: string[],
-		noteTombstones: Record<string, number>
-	): void {
-		const write = this.pendingWrites.then(async () => {
-			const merged = await mergeSyncStateWithOutbox(pid, REMINDER_HISTORY_STATE_KEY, (current) => ({
-				value: mergeReminderHistory(storedEntries(current), entries, noteTombstones),
-				outboxKeys
-			}));
-			// Another window may have recorded something in between; adopt it.
-			if (pid === this.pid) this.adopt(merged);
-		});
-		this.pendingWrites = write.catch((err) => {
-			console.error('[reminders] could not save reminder history:', err);
-		});
+		accountId: string,
+		events: ReminderEvent[],
+		acknowledged: ReminderEvent[],
+		cursor: number
+	): Promise<void> {
+		await this.commit(pid, events, false, { accountId, acknowledged, cursor });
 	}
-
-	private adopt(merged: ReminderHistoryEntry[]): void {
-		const changed = merged.filter(
-			(entry) => stableStringify(this.entries.get(entry.id)) !== stableStringify(entry)
+	private async commit(
+		pid: string,
+		events: ReminderEvent[],
+		local: boolean,
+		received?: { accountId: string; acknowledged: ReminderEvent[]; cursor: number }
+	): Promise<void> {
+		const result = await mergeWorkspaceState(
+			pid,
+			[REMINDER_HISTORY_STATE_KEY, REMINDER_CHANNEL_KEY],
+			(current) => {
+				const channel = channelState(current[REMINDER_CHANNEL_KEY]);
+				if (received && channel.accountId !== received.accountId) return { value: current };
+				const deleted = { ...channel.deletedNotes };
+				const newEvents: ReminderEvent[] = [];
+				const stored = entriesIn(current[REMINDER_HISTORY_STATE_KEY]);
+				for (const event of events) {
+					if (event.kind === 'deleted') {
+						if (!deleted[event.noteId]) newEvents.push(event);
+						deleted[event.noteId] = 1;
+					} else if (!deleted[event.value.noteId]) {
+						const previous = stored.find((entry) => entry.id === event.value.id);
+						if (
+							!previous ||
+							stableStringify(previous) !==
+								stableStringify(mergeReminderEntries(previous, event.value))
+						)
+							newEvents.push(event);
+					}
+				}
+				const entries = mergeReminderHistory(
+					stored,
+					events.flatMap((event) => (event.kind === 'handled' ? [event.value] : [])),
+					deleted
+				);
+				const ack = new Set(received?.acknowledged.map((event) => stableStringify(event)) ?? []);
+				const pending = mergeEvents(
+					channel.pending.filter((event) => !ack.has(stableStringify(event))),
+					local ? newEvents : []
+				).filter((event) => event.kind === 'deleted' || !deleted[eventNote(event)]);
+				return {
+					value: {
+						[REMINDER_HISTORY_STATE_KEY]: entries,
+						[REMINDER_CHANNEL_KEY]: {
+							...channel,
+							deletedNotes: deleted,
+							pending,
+							cursor: received ? Math.max(channel.cursor, received.cursor) : channel.cursor
+						}
+					}
+				};
+			}
 		);
-		const kept = new Set(merged.map((entry) => entry.id));
-		const dropped = [...this.entries.keys()].some((id) => !kept.has(id));
-		if (!changed.length && !dropped) return;
-		this.entries = new Map(merged.map((entry) => [entry.id, entry]));
-		this.notify(changed, this.pid);
+		const deleted = channelState(result[REMINDER_CHANNEL_KEY]).deletedNotes;
+		this.adopt(
+			mergeReminderHistory(
+				pid === this.pid ? this.entries.values() : [],
+				entriesIn(result[REMINDER_HISTORY_STATE_KEY]),
+				deleted
+			),
+			pid
+		);
 	}
-
+	private enqueue(run: () => Promise<void>): void {
+		this.pendingWrites = this.pendingWrites.then(run).catch(() => {
+			// No payloads or note identifiers in logs.
+			console.error('[reminders] could not persist reminder receipts');
+		});
+	}
+	private adopt(entries: ReminderHistoryEntry[], pid: string): void {
+		if (pid === this.pid) {
+			// Preserve immediate UI changes whose writes are still queued.
+			this.entries = new Map(entries.map((entry) => [entry.id, entry]));
+		}
+		this.notify(entries, pid);
+	}
 	private notify(entries: ReminderHistoryEntry[], pid: string): void {
-		if (!entries.length) return;
 		for (const listener of this.listeners) listener(entries, pid);
 	}
 }
-
 export const reminderHistoryStore = new ReminderHistoryStore();

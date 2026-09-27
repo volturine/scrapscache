@@ -242,7 +242,7 @@ Phase 1 alone would orphan existing default data) → 3.
 
 ## As built (revised after review)
 
-- **Reminder delivery on Workers** runs in a separate scheduling-only Worker
+- **Reminder delivery on Workers** runs in a separate reminder Worker
   (`cf/reminders.ts`). Each synced account has its own `ReminderScheduler`
   Durable Object holding that account's next wake as an alarm.
   - When the alarm fires, the scheduler puts the account on the
@@ -263,3 +263,17 @@ Phase 1 alone would orphan existing default data) → 3.
   `/push/<id>/`, and so its own push address, plus a per-account device id.
   The relay already allowed one account per push address, so a shared
   subscription could only ever serve one account.
+
+## Follow-up: independent receipts and concurrency fixes
+
+Reminder history now uses its own encrypted endpoint, persistent queue and cursor
+(see `docs/architecture.md`). It no longer travels in note-sync snapshots or uses
+their outbox/lock. Every linked workspace exchanges receipts independently over reminder-only SSE notifications, and
+backup restore enqueues restored history on this channel. Existing device-wide
+canvas libraries are intentionally not imported on upgrade.
+
+Wake dispatch computes the earliest outstanding delivery, including overdue wakes
+and claim leases. Failed sends retain their lease to avoid immediate retry loops.
+The Cloudflare scheduler versions `/arm` and `/begin` requests; `/set` may finish
+only the generation it began, preserving newer arms and deliveries. Canvas writes
+merge both entries and deletion timestamps atomically across tabs.

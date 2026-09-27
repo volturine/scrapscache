@@ -3,7 +3,6 @@
 import type { Note, NoteImage } from '$lib/types';
 import { mergeKanbanBoards } from '$lib/kanban';
 import { mergeCanvasLibrary } from '$lib/canvasLibrary';
-import { mergeReminderHistory, type ReminderHistoryEntry } from '$lib/reminderHistory';
 import { mergeLabelLists, mergeNoteLists, withoutTombstoned } from '$lib/model';
 import { observeRelayTime } from '$lib/editContext';
 import {
@@ -181,6 +180,7 @@ export class SyncStore {
 	private profilesReady: Promise<void> | null = null;
 	private bootstrapRequested = false;
 	private pendingOutboxWrites: Promise<void> = Promise.resolve();
+	private backgroundSessions = new Map<string, { accessToken: string; expiresAt: number }>();
 	private session: { accountId: string; accessToken: string; expiresAt: number } | null = null;
 	private pendingSessions = new Map<string, Promise<string>>();
 	/** Attachment ids a note's retained versions list, as of the note's last change. */
@@ -521,6 +521,7 @@ export class SyncStore {
 	async reauthenticateForRecovery(turnstileToken?: string): Promise<void> {
 		const account = this.account;
 		if (!account) throw new Error('No synced workspace is active');
+		this.backgroundSessions.delete(account.accountId);
 		this.authenticationGeneration += 1;
 		this.pendingSessions.clear();
 		this.session = null;
@@ -745,6 +746,9 @@ export class SyncStore {
 			this.session.expiresAt - Date.now() > 5_000
 		)
 			return this.session.accessToken;
+		const backgroundSession = this.backgroundSessions.get(account.accountId);
+		if (backgroundSession && backgroundSession.expiresAt - Date.now() > 5_000)
+			return backgroundSession.accessToken;
 		const pendingSession = this.pendingSessions.get(account.accountId);
 		if (pendingSession) return pendingSession;
 		const generation = this.authenticationGeneration;
@@ -834,10 +838,16 @@ export class SyncStore {
 				expiresAt: issued.expiresAt
 			};
 		}
+		this.backgroundSessions.set(account.accountId, {
+			accessToken: issued.accessToken,
+			expiresAt: issued.expiresAt
+		});
 		return issued.accessToken;
 	}
 
 	private invalidateSession(accountId: string, accessToken: string): void {
+		if (this.backgroundSessions.get(accountId)?.accessToken === accessToken)
+			this.backgroundSessions.delete(accountId);
 		if (this.session?.accountId === accountId && this.session.accessToken === accessToken)
 			this.session = null;
 	}
@@ -1295,13 +1305,6 @@ export class SyncStore {
 								merged.libraryTombstones
 							);
 							break;
-						case 'reminder-history':
-							merged.reminderHistory = mergeReminderHistory(
-								merged.reminderHistory,
-								[record.value],
-								merged.tombstones
-							);
-							break;
 						case 'note-tombstone':
 							merged.tombstones = mergeTombstoneMaps(merged.tombstones, {
 								[record.id]: record.deletedAt
@@ -1417,11 +1420,6 @@ export class SyncStore {
 				merged.labels = withoutTombstoned(merged.labels, merged.labelTombstones);
 				merged.boards = withoutTombstoned(merged.boards, merged.boardTombstones);
 				merged.libraryItems = mergeCanvasLibrary([], merged.libraryItems, merged.libraryTombstones);
-				merged.reminderHistory = mergeReminderHistory(
-					[],
-					merged.reminderHistory,
-					merged.tombstones
-				);
 				if (
 					downloadsDrained &&
 					(!startedWithDownloadsDrained || envelopes.length > 0) &&
@@ -1557,57 +1555,6 @@ export class SyncStore {
 			if (indicate) this.progress = null;
 			if (indicate) this.onSyncEnd?.();
 		}
-	}
-
-	/**
-	 * What the relay holds of a workspace's reminder history, read without syncing
-	 * it: nothing is written back and its cursor stays where it was, so the
-	 * workspace still downloads all of it when it is next opened. A workspace that
-	 * is not open uses this to learn, before it shows a reminder it missed, whether
-	 * another device already handled it.
-	 */
-	async peekReminderHistory(
-		profile: StoredProfile
-	): Promise<{ history: ReminderHistoryEntry[]; tombstones: Record<string, number> } | null> {
-		if (!profile.syncKey) return null;
-		const account = identityFromSyncKey(profile.syncKey);
-		const keys = syncControlKeys(account.accountId);
-		let cursor = Number(
-			(await getSyncState<number>(profile.id, keys.cursor).catch(() => undefined)) || 0
-		);
-		const history: ReminderHistoryEntry[] = [];
-		const tombstones: Record<string, number> = {};
-		for (let page = 0; page < 200; page += 1) {
-			const payload = JSON.stringify({ cursor, limit: 50, envelopes: [], deleteSlots: [] });
-			const response = await this.sendSyncRequest(
-				'/api/sync/delta',
-				payload,
-				payload.length,
-				false,
-				account
-			);
-			if (!response.success || !response.data) return null;
-			const envelopes = Array.isArray(response.data.envelopes) ? response.data.envelopes : [];
-			for (const envelope of envelopes as { ciphertext?: unknown; slot?: unknown }[]) {
-				if (typeof envelope?.ciphertext !== 'string') continue;
-				try {
-					const { payload: record } = decryptSyncEnvelope(
-						account.syncKey,
-						envelope.ciphertext,
-						typeof envelope.slot === 'string' ? envelope.slot : ''
-					);
-					if (!isSyncRecordPayload(record)) continue;
-					if (record.kind === 'reminder-history') history.push(record.value);
-					if (record.kind === 'note-tombstone')
-						tombstones[record.id] = Math.max(tombstones[record.id] ?? 0, record.deletedAt);
-				} catch {
-					/* an unreadable record is the next sync's to report */
-				}
-			}
-			if (typeof response.data.cursor === 'number') cursor = response.data.cursor;
-			if (response.data.hasMore !== true) return { history, tombstones };
-		}
-		return { history, tombstones };
 	}
 
 	private fail(result: SyncResult): SyncResult {

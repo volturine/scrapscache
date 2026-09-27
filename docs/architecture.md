@@ -67,17 +67,23 @@ The same SvelteKit app serves the UI and the sync API when self-hosted.
   timestamps. Each enabled device has independent delivery state, and a device
   does not need the encrypted note before receiving a generic alert. The relay
   never receives note IDs or text.
-- **Reminder history** — which reminders a workspace has shown or dismissed,
-  one encrypted record per reminder, merged by the earliest time each happened.
-  A device shows a reminder only if no device has handled it yet. One that came
-  due while the device was not watching waits until a sync settles, so a
-  reminder handled elsewhere is not shown again. A permanently deleted note
-  takes its history with it.
+- **Reminder history** — immutable encrypted receipts on a separate channel,
+  `/api/sync/reminders`, merged by the earliest fire/dismissal time. Every linked
+  workspace has its own durable receipt queue and cursor. Dismissing an alert
+  never starts or waits for note sync, even in the active workspace. The client
+  sends immediately after a local write, listens on a reminder-only SSE stream, and catches up once when it connects
+  or reconnects. Receipt failures retry with backoff; idle streams make no
+  periodic receipt requests. Missed reminders wait for one receipt
+  exchange, rather than a note sync. System notifications write into the same
+  local queue; with the app closed, receipts upload when it next opens.
+  Backups include history. Encrypted note-deletion markers erase that note's
+  retained receipts and reject stale offline uploads.
 - **Labels** — named tags with update timestamps for conflict resolution.
 - **Boards** — kanban structures + tombstones for cross-device deletion.
 - **Canvas library** — the workspace's reusable Excalidraw shapes, one record per
   item. The newest version of an item wins, and a delete wins over every version
-  it saw. An open canvas editor picks up changes from other devices.
+  it saw. An open canvas editor picks up changes from other devices. Local writes
+  merge with persisted entries and tombstones in one transaction across tabs.
 - **Sync outbox** — changed record keys scheduled for upload (not a full
   mirror of every field into `localStorage`).
 - **Attachments** — full bytes loaded when needed; grid/list may keep thumbnails
@@ -149,28 +155,29 @@ The keyring itself — id, display name, and sync key per workspace — is held 
 
 ## Server
 
-| Area            | Location                                                 | Responsibility                                  |
-| --------------- | -------------------------------------------------------- | ----------------------------------------------- |
-| DB layer        | `src/lib/server/db.ts`                                   | sqld/libSQL clients, withTxn, DDL, meta helpers |
-| Sync store      | `src/lib/server/syncStore.ts`                            | Relay DB: accounts, envelopes, quotas           |
-| Workers store   | `src/lib/server/cloudflare/`, `cf/accountCoordinator.ts` | D1/R2 storage + serialized account sync         |
-| Sync auth       | `src/lib/server/syncAuth.ts`                             | Ops DB: challenges, sessions, public key auth   |
-| Pairing         | `src/lib/server/pairingSessions.ts`                      | Ops DB: rendezvous for PAKE shares              |
-| Delta API       | `src/routes/api/sync/delta/`                             | Upload/download encrypted records, slot deletes |
-| History API     | `src/routes/api/sync/history/`                           | Owner-only encrypted prior note versions        |
-| Register        | `src/routes/api/sync/register/`                          | Create account credentials                      |
-| Reminder wakes  | `src/routes/api/sync/push/*`                             | Device subscriptions + opaque wake ticks        |
-| Account delete  | `src/routes/api/sync/account/`                           | Wipe cloud ciphertext for an account            |
-| Rate limits     | `src/lib/server/rateLimit.ts`                            | Atomic SQL token bucket on ops DB               |
-| Metrics         | `src/lib/server/metrics.ts`, `/metrics`                  | Operator metrics (admin token)                  |
-| Operator status | `src/lib/server/operatorMonitor.ts`, `/api/admin/status` | Anonymous JSON usage + activity                 |
-| Wake dispatch   | `src/lib/server/wakeDispatch.ts`                         | Pull-based wake claiming and push delivery      |
-| Wake timer      | `src/lib/server/wakeTimer.ts`, `cf/reminders.ts`         | Delivers each wake at its time (timer or alarm) |
-| Retention sweep | `src/lib/server/retentionSweep.ts`                       | Optional inactive-account sweep (daily gate)    |
-| Cron tick       | `src/lib/server/cronTick.ts`                             | Hourly maintenance: retention + prune           |
-| Cron endpoint   | `src/routes/api/cron/tick/`                              | Scheduler entry point for cron triggers         |
-| Health          | `/health/live`, `/health/ready`                          | Liveness and readiness probes                   |
-| Hooks           | `src/hooks.server.ts`                                    | Security headers, request IDs                   |
+| Area              | Location                                                                   | Responsibility                                            |
+| ----------------- | -------------------------------------------------------------------------- | --------------------------------------------------------- |
+| DB layer          | `src/lib/server/db.ts`                                                     | sqld/libSQL clients, withTxn, DDL, meta helpers           |
+| Sync store        | `src/lib/server/syncStore.ts`                                              | Relay DB: accounts, envelopes, quotas                     |
+| Workers store     | `src/lib/server/cloudflare/`, `cf/accountCoordinator.ts`                   | D1/R2 storage + serialized account sync                   |
+| Sync auth         | `src/lib/server/syncAuth.ts`                                               | Ops DB: challenges, sessions, public key auth             |
+| Pairing           | `src/lib/server/pairingSessions.ts`                                        | Ops DB: rendezvous for PAKE shares                        |
+| Delta API         | `src/routes/api/sync/delta/`                                               | Upload/download encrypted records, slot deletes           |
+| History API       | `src/routes/api/sync/history/`                                             | Owner-only encrypted prior note versions                  |
+| Register          | `src/routes/api/sync/register/`                                            | Create account credentials                                |
+| Reminder wakes    | `src/routes/api/sync/push/*`                                               | Device subscriptions + opaque wake ticks                  |
+| Reminder receipts | `src/routes/api/sync/reminders/`, `src/lib/server/reminderHistoryRelay.ts` | Independent encrypted receipt delivery; 8 MiB per account |
+| Account delete    | `src/routes/api/sync/account/`                                             | Wipe cloud ciphertext for an account                      |
+| Rate limits       | `src/lib/server/rateLimit.ts`                                              | Atomic SQL token bucket on ops DB                         |
+| Metrics           | `src/lib/server/metrics.ts`, `/metrics`                                    | Operator metrics (admin token)                            |
+| Operator status   | `src/lib/server/operatorMonitor.ts`, `/api/admin/status`                   | Anonymous JSON usage + activity                           |
+| Wake dispatch     | `src/lib/server/wakeDispatch.ts`                                           | Pull-based wake claiming and push delivery                |
+| Wake timer        | `src/lib/server/wakeTimer.ts`, `cf/reminders.ts`                           | Delivers each wake at its time (timer or alarm)           |
+| Retention sweep   | `src/lib/server/retentionSweep.ts`                                         | Optional inactive-account sweep (daily gate)              |
+| Cron tick         | `src/lib/server/cronTick.ts`                                               | Hourly maintenance: retention + prune                     |
+| Cron endpoint     | `src/routes/api/cron/tick/`                                                | Scheduler entry point for cron triggers                   |
+| Health            | `/health/live`, `/health/ready`                                            | Liveness and readiness probes                             |
+| Hooks             | `src/hooks.server.ts`                                                      | Security headers, request IDs                             |
 
 ### Opaque envelopes
 
@@ -225,3 +232,11 @@ history and its ciphertext.
 - [security.md](security.md) — security model and crypto choices
 - [self-hosting.md](self-hosting.md) — operator runbook
 - [development.md](development.md) — contributor workflow
+
+Reminder SSE uses `/api/sync/reminders/events`, authenticated independently for
+all linked workspaces. Server messages contain only an empty change signal;
+clients download encrypted receipts through the receipt endpoint. These messages
+never enter the note-sync event stream. Node fans out in process, while Workers
+use the per-account `ReminderScheduler` Durable Object, outside the note-sync
+coordinator and scheduling lock. Each connection has a 25-second transport
+heartbeat; reconnecting performs one catch-up from the persisted receipt cursor.

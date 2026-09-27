@@ -8,7 +8,8 @@ const cloudflareModules = new Map([
 	['$lib/server/db', './src/lib/server/cloudflare/db.ts'],
 	['$lib/server/metrics', './src/lib/server/cloudflare/metrics.ts'],
 	['$lib/server/telemetryQuery', './src/lib/server/cloudflare/telemetryQuery.ts'],
-	['$lib/server/wakeTimer', './src/lib/server/cloudflare/wakeTimer.ts']
+	['$lib/server/wakeTimer', './src/lib/server/cloudflare/wakeTimer.ts'],
+	['$lib/server/reminderEvents', './src/lib/server/cloudflare/reminderEvents.ts']
 ]);
 const cloudflareResolvedModules = new Map(
 	[...cloudflareModules].map(([source, target]) => [

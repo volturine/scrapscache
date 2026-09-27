@@ -15,8 +15,6 @@ import { SyncStore } from './sync.svelte';
 import { syncSnapshot, type SyncSnapshot } from '$lib/syncRecords';
 import type { Note, NoteImage } from '$lib/types';
 import { sha256 } from '$lib/syncHash';
-import { reminderWakeId } from '$lib/reminderNotify';
-import { reminderHistoryKey, type ReminderHistoryEntry } from '$lib/reminderHistory';
 import type { CanvasLibraryEntry } from '$lib/canvasLibrary';
 import { seedTestKeyring, TEST_WORKSPACE } from '../../tests/workspace';
 import { openDB } from 'idb';
@@ -411,56 +409,6 @@ describe('workspace library and reminder history across devices', () => {
 			passthrough
 		);
 		expect(pulled.snapshot?.libraryItems).toEqual([edited]);
-	});
-
-	it('shares fired and dismissed reminders and forgets them with their note', async () => {
-		const { devices, slot } = await pair();
-		const [a, b] = devices;
-		const reminder = 1_000;
-		const note = {
-			...noteWithPhoto(photo('pic', 'data:image/png;base64,QQ==')),
-			reminder,
-			images: []
-		};
-		const wake = reminderWakeId(note.id, reminder);
-		const fired: ReminderHistoryEntry = { id: wake, noteId: note.id, firedAt: 2_000 };
-
-		await a.client.sync(
-			syncSnapshot({ notes: [note], reminderHistory: [fired] }),
-			false,
-			false,
-			passthrough
-		);
-		const onB = await b.client.sync(syncSnapshot(), false, false, passthrough);
-		expect(onB.snapshot?.reminderHistory).toEqual([fired]);
-
-		const dismissed = { ...fired, dismissedAt: 3_000 };
-		await markSyncOutbox(b.pid, [reminderHistoryKey(dismissed)]);
-		await b.client.sync(
-			syncSnapshot({ notes: [note], reminderHistory: [dismissed] }),
-			false,
-			false,
-			passthrough
-		);
-		const onA = await a.client.sync(
-			syncSnapshot({ notes: [note], reminderHistory: [fired] }),
-			false,
-			false,
-			passthrough
-		);
-		expect(onA.snapshot?.reminderHistory).toEqual([dismissed]);
-
-		await markSyncOutbox(a.pid, [`note-tombstone:${note.id}`]);
-		const gone = await a.client.sync(
-			syncSnapshot({ tombstones: { [note.id]: 4_000 }, reminderHistory: [dismissed] }),
-			false,
-			false,
-			passthrough
-		);
-		expect(gone.snapshot?.reminderHistory).toEqual([]);
-		expect(a.requests.flatMap((request) => request.deleteSlots.map((item) => item.slot))).toContain(
-			await slot(reminderHistoryKey(dismissed))
-		);
 	});
 });
 

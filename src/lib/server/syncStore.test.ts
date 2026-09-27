@@ -886,8 +886,8 @@ describe('SQLite sync store', () => {
 			accountId: 'account'
 		});
 		expect(await store.nextWakeAt(0)).toBe(1_000);
-		expect(await store.nextWakeAt(1_000)).toBe(5_000);
-		expect(await store.nextWakeAt(5_000)).toBeNull();
+		expect(await store.nextWakeAt(1_000)).toBe(1_000);
+		expect(await store.nextWakeAt(5_000)).toBe(5_000);
 		expect(await store.nextWakeAt(0, 'account')).toBe(1_000);
 		expect(await store.nextWakeAt(0, 'someone-else')).toBeNull();
 	});

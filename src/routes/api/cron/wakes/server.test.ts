@@ -15,7 +15,10 @@ vi.mock('$lib/server/rateLimit', () => ({
 }));
 vi.mock('$lib/server/db', () => ({ getDb: () => ({ ready: Promise.resolve() }) }));
 vi.mock('$lib/server/wakeDispatch', () => ({ dispatchDueWakes: mocks.dispatch }));
-vi.mock('$lib/server/wakeTimer', () => ({ rescheduleWakeTimer: mocks.reschedule }));
+vi.mock('$lib/server/wakeTimer', () => ({
+	rescheduleWakeTimer: mocks.reschedule,
+	beginWakeDelivery: async () => 7
+}));
 
 import { POST } from './+server';
 
@@ -49,7 +52,7 @@ describe('wake delivery endpoint', () => {
 		expect(response.status).toBe(200);
 		expect(await response.json()).toMatchObject({ sent: 1, next: 120_000 });
 		expect(mocks.dispatch).toHaveBeenCalledWith({ accountId: ACCOUNT });
-		expect(mocks.reschedule).toHaveBeenCalledWith(ACCOUNT, 120_000);
+		expect(mocks.reschedule).toHaveBeenCalledWith(ACCOUNT, 120_000, 7);
 		// Every account's alarm lands here at once; the secret holder is never throttled.
 		expect(mocks.limit).not.toHaveBeenCalled();
 	});

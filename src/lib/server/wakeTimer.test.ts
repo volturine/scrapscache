@@ -50,7 +50,7 @@ describe('self-hosted wake timer', () => {
 		dispatch.mockImplementationOnce(() => new Promise((resolve) => (finish = resolve)));
 		await armWakeTimer('a', 0);
 		await vi.advanceTimersByTimeAsync(0);
-		await rescheduleWakeTimer('b', 0);
+		await rescheduleWakeTimer('b', 0, 0);
 		finish(delivered(null));
 		await vi.advanceTimersByTimeAsync(0);
 		expect(dispatch).toHaveBeenCalledTimes(2);

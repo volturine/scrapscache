@@ -227,3 +227,22 @@ app is in use; browser storage isolation is the boundary.
 | Account retention        | `src/lib/server/retentionSweep.ts`             |
 | CSP                      | `svelte.config.js`                             |
 | Security headers         | `src/hooks.server.ts`                          |
+
+### Independent reminder receipts
+
+Reminder history uses authenticated `/api/sync/reminders` requests, separate from
+note delta sync. The relay stores only slot-bound encrypted receipts, keyed-hash
+identifiers for events and notes, and deletion flags. This reveals receipt timing
+and which receipts concern the same opaque note, but never note ids, text or keys.
+Receipts have their own 8 MiB per-account bound (including row overhead), a
+4 KiB ciphertext limit, 12-event pages, and independent request rate limits.
+Concurrent retries deduplicate by event id. Deletion keeps an opaque marker to
+reject later uploads from an offline device. Account deletion cascades to receipts.
+Service workers queue local receipts without access to sync keys; the app encrypts
+and uploads them when running. Note sync cursors and outboxes are not involved.
+
+Reminder change streams use the same account authentication and a separate
+connection rate limit. They carry no receipt content, note ids or sync cursors.
+Each account allows at most 64 reminder streams; cancellation, disconnection and
+slow readers release their resources. Workers route these streams through the
+reminder scheduler binding, never the public scheduler Worker fetch entrypoint.

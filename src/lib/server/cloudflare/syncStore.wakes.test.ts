@@ -29,8 +29,8 @@ describe('Workers reminder wake schedule', () => {
 			accountId: 'account'
 		});
 		expect(await store.nextWakeAt(0)).toBe(1_000);
-		expect(await store.nextWakeAt(1_000)).toBe(5_000);
-		expect(await store.nextWakeAt(5_000)).toBeNull();
+		expect(await store.nextWakeAt(1_000)).toBe(1_000);
+		expect(await store.nextWakeAt(5_000)).toBe(5_000);
 		expect(await store.nextWakeAt(0, 'account')).toBe(1_000);
 		expect(await store.nextWakeAt(0, 'someone-else')).toBeNull();
 		expect((await store.claimDueWakes(1_000, 100, 'someone-else')).length).toBe(0);

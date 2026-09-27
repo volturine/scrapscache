@@ -75,4 +75,28 @@ describe('delivering reminder wakes', () => {
 
 		expect(result).toMatchObject({ failed: 1, next: 2_000 + WAKE_CLAIM_LEASE_MS });
 	});
+	it('rearms immediately for a wake becoming due during a partial batch', async () => {
+		const store = new SyncStore(testDb());
+		await account(store, 'account-aaaaaaaaaaaa', [wake(1, 1000), wake(2, 1500)]);
+		let clock = 1000;
+		const result = await dispatchDueWakes({
+			store,
+			now: () => clock,
+			send: async () => {
+				clock = 2000;
+				return 'sent';
+			}
+		});
+		expect(result.next).toBe(2000);
+		expect(
+			(await dispatchDueWakes({ store, now: () => clock, send: async () => 'sent' })).sent
+		).toBe(1);
+	});
+	it('rearms for a lease held by an interrupted delivery', async () => {
+		const store = new SyncStore(testDb());
+		await account(store, 'account-aaaaaaaaaaaa', [wake(1, 1000)]);
+		await store.claimDueWakes(1000);
+		const result = await dispatchDueWakes({ store, now: () => 2000, send: async () => 'sent' });
+		expect(result).toMatchObject({ sent: 0, next: 1000 + WAKE_CLAIM_LEASE_MS });
+	});
 });

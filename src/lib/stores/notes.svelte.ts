@@ -149,8 +149,6 @@ export class NotesStore {
 	);
 	/** Called after cloud notes replace local state. Used to refresh reminder wakes. */
 	onAfterSync: (() => void) | null = null;
-	/** Called when a sync of a workspace finishes, whether or not it reached the cloud. */
-	onSyncSettled: ((pid: string) => void) | null = null;
 	/** Refreshes profile-dependent services after local state changes namespace. */
 	onProfileReload: ((pid: string, notes: Note[]) => void | Promise<void>) | null = null;
 
@@ -550,6 +548,7 @@ export class NotesStore {
 		const next = { ...this.deletedNoteIds, [id]: deletedAt };
 		await writeTombstones(this.pid, next);
 		this.deletedNoteIds = next;
+		reminderHistoryStore.forgetNotes(this.pid, next);
 		this.notes = this.notes.filter((n) => n.id !== id);
 		this.mirrorToLS();
 		await deleteNote(this.pid, id).catch((err) =>
@@ -690,7 +689,7 @@ export class NotesStore {
 			labelTombstones: { ...this.deletedLabelIds },
 			boardTombstones: kanbanStore.boardTombstonesForSync(),
 			canvasLibrary: canvasLibraryStore.items(),
-			reminderHistory: reminderHistoryStore.entriesForSync(),
+			reminderHistory: reminderHistoryStore.entriesForBackup(),
 			ui: {
 				sidebarOpen: uiStore.sidebarOpen,
 				dark: uiStore.dark,
@@ -1039,6 +1038,7 @@ export class NotesStore {
 		for (const id of ids) next[id] = deletedAt;
 		await writeTombstones(this.pid, next);
 		this.deletedNoteIds = next;
+		reminderHistoryStore.forgetNotes(this.pid, next);
 		this.notes = this.notes.filter((n) => !ids.includes(n.id));
 		this.mirrorToLS();
 		this.dirty = true;
@@ -1237,7 +1237,7 @@ export class NotesStore {
 
 		kanbanStore.applySync(snapshot.boards, snapshot.boardTombstones);
 		canvasLibraryStore.applySync(snapshot.libraryItems, snapshot.libraryTombstones);
-		reminderHistoryStore.applySync(snapshot.reminderHistory, tombstones);
+		reminderHistoryStore.forgetNotes(this.pid, tombstones);
 		await writeTombstones(this.pid, tombstones);
 		await writeLabelTombstones(this.pid, labelTombstones);
 		for (const note of notesToPersist) {
@@ -1252,7 +1252,7 @@ export class NotesStore {
 		if (labelsChanged) await bulkPutLabels(this.pid, mergedLabels);
 		await kanbanStore.persistSyncState(this.pid);
 		await canvasLibraryStore.persistSyncState(this.pid);
-		await reminderHistoryStore.persistSyncState(this.pid);
+		await reminderHistoryStore.waitForPendingWrites();
 
 		// Preserve edits made while the device writes were in flight.
 		durableNotes = withoutTombstoned(mergeNoteLists(this.notes, durableNotes), tombstones).sort(
@@ -1281,8 +1281,7 @@ export class NotesStore {
 			labelTombstones: { ...this.deletedLabelIds },
 			boardTombstones: kanbanStore.boardTombstonesForSync(),
 			libraryItems: canvasLibraryStore.entriesForSync(),
-			libraryTombstones: canvasLibraryStore.tombstonesForSync(),
-			reminderHistory: reminderHistoryStore.entriesForSync()
+			libraryTombstones: canvasLibraryStore.tombstonesForSync()
 		};
 	}
 
@@ -1315,12 +1314,12 @@ export class NotesStore {
 		kanbanStore.replaceWithCloud(snapshot.boards, snapshot.boardTombstones);
 		canvasLibraryStore.replaceWithCloud(snapshot.libraryItems, snapshot.libraryTombstones);
 		// History only ever grows: what this device already showed stays shown.
-		reminderHistoryStore.applySync(snapshot.reminderHistory, this.deletedNoteIds);
+		reminderHistoryStore.forgetNotes(this.pid, this.deletedNoteIds);
 		await writeTombstones(this.pid, this.deletedNoteIds);
 		await writeLabelTombstones(this.pid, this.deletedLabelIds);
 		await kanbanStore.persistSyncState(this.pid);
 		await canvasLibraryStore.persistSyncState(this.pid);
-		await reminderHistoryStore.persistSyncState(this.pid);
+		await reminderHistoryStore.waitForPendingWrites();
 		this.mirrorToLS();
 		return this.syncSnapshot({ notes, labels });
 	}
@@ -1363,8 +1362,7 @@ export class NotesStore {
 					labelTombstones: { ...snapshot.labelTombstones },
 					boardTombstones: { ...snapshot.boardTombstones },
 					libraryItems: snapshot.libraryItems.map((entry) => ({ ...entry })),
-					libraryTombstones: { ...snapshot.libraryTombstones },
-					reminderHistory: snapshot.reminderHistory.map((entry) => ({ ...entry }))
+					libraryTombstones: { ...snapshot.libraryTombstones }
 				});
 				return snapshot;
 			});
@@ -1472,12 +1470,12 @@ export class NotesStore {
 				this.deletedLabelIds = snapshot.labelTombstones;
 				kanbanStore.replaceWithCloud(snapshot.boards, snapshot.boardTombstones);
 				canvasLibraryStore.replaceWithCloud(snapshot.libraryItems, snapshot.libraryTombstones);
-				reminderHistoryStore.applySync(snapshot.reminderHistory, snapshot.tombstones);
+				reminderHistoryStore.forgetNotes(this.pid, snapshot.tombstones);
 				await writeTombstones(this.pid, snapshot.tombstones);
 				await writeLabelTombstones(this.pid, snapshot.labelTombstones);
 				await kanbanStore.persistSyncState(this.pid);
 				await canvasLibraryStore.persistSyncState(this.pid);
-				await reminderHistoryStore.persistSyncState(this.pid);
+				await reminderHistoryStore.waitForPendingWrites();
 				this.mirrorToLS();
 				// The pull left this device holding the cloud's ids and fingerprints. Queue every
 				// record so the upload sends each one the cloud does not already hold, without
@@ -1548,7 +1546,6 @@ export class NotesStore {
 			}
 			return this.syncFlight;
 		}
-		const pid = this.pid;
 		this.syncFlight = (async () => {
 			if (indicate) syncStore.onSyncStart?.();
 			try {
@@ -1569,7 +1566,6 @@ export class NotesStore {
 				return success;
 			} finally {
 				if (indicate) syncStore.onSyncEnd?.();
-				this.onSyncSettled?.(pid);
 			}
 		})().finally(() => {
 			this.syncFlight = null;
@@ -1595,6 +1591,8 @@ export class NotesStore {
 		if (await syncStore.needsCurrentStateBootstrap()) await this.hydrateAllAttachments();
 		// Only pull a few full attachments into memory per normal cycle for upload readiness.
 		await this.hydrateAttachmentsForSync();
+		// Merge other tabs' library writes before taking a sync snapshot.
+		await canvasLibraryStore.persistSyncState(this.pid);
 		const localNotes = this.notes.map(cloneNote);
 		const localLabels = [...this.labels];
 		try {

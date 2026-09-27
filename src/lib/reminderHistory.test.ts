@@ -2,8 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
 	isReminderHistoryEntry,
 	mergeReminderHistory,
-	reminderHistoryKey,
-	reminderHistoryNoteId,
 	type ReminderHistoryEntry
 } from './reminderHistory';
 
@@ -27,13 +25,6 @@ describe('reminder history', () => {
 
 	it('forgets the history of a note deleted for good', () => {
 		expect(mergeReminderHistory([entry()], [], { 'note-1': 5 })).toEqual([]);
-	});
-
-	it('finds the note a history record belongs to from its key alone', () => {
-		const key = reminderHistoryKey(entry({ noteId: 'with:colon' }));
-		expect(key).toBe(`reminder-history:with:colon:${wake}`);
-		expect(reminderHistoryNoteId(key)).toBe('with:colon');
-		expect(reminderHistoryNoteId('note:note-1')).toBeNull();
 	});
 
 	it('rejects malformed entries', () => {

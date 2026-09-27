@@ -1,11 +1,12 @@
-// The reminders Worker: scheduling only. Each synced account has one
+// The reminders Worker: wake scheduling and reminder-only change notifications. Each synced account has one
 // ReminderScheduler, which holds an alarm for that account's next reminder wake
-// and nothing else. When the alarm fires, it puts the account on the wake queue;
+// alongside a separate receipt-change stream. When the alarm fires, it queues the account;
 // the app Worker consumes it, delivers the account's due wakes, and sets the next
 // alarm. Sending stays in the app Worker, which holds the database and push keys.
 //
 // Bindings run one way only (app -> schedulers, schedulers -> queue -> app), so
 // each Worker can be deployed without the other deployed first.
+import { ReminderEventChannel } from '../src/lib/server/reminderEventStream';
 import type { DurableObjectState, Queue } from '@cloudflare/workers-types';
 
 type Env = {
@@ -13,6 +14,7 @@ type Env = {
 };
 
 const ACCOUNT_KEY = 'accountId';
+const GENERATION_KEY = 'generation';
 /**
  * Handing an account to the app also sets this retry. Delivering replaces it with
  * the account's next wake; if the app could not deliver, the account comes round
@@ -21,6 +23,7 @@ const ACCOUNT_KEY = 'accountId';
 export const RETRY_AFTER_MS = 10 * 60_000;
 
 export class ReminderScheduler {
+	private readonly events = new ReminderEventChannel();
 	constructor(
 		private readonly state: DurableObjectState,
 		private readonly env: Env
@@ -28,30 +31,49 @@ export class ReminderScheduler {
 
 	/**
 	 * `POST /arm { accountId, at }`: run no later than `at`.
-	 * `POST /set { accountId, at }`: run at `at` exactly, or never when `at` is null.
+	 * `POST /begin { accountId }`: start a delivery generation.
+	 * `POST /set { accountId, at, generation }`: finish only that generation.
 	 */
 	async fetch(request: Request): Promise<Response> {
 		const path = new URL(request.url).pathname;
-		if (request.method !== 'POST' || (path !== '/arm' && path !== '/set')) {
+		// These paths never acquire the scheduling lock or the note-sync coordinator.
+		if (request.method === 'GET' && path === '/events') return this.events.stream(request.signal);
+		if (request.method === 'POST' && path === '/notify') {
+			this.events.notify();
+			return new Response(null, { status: 204 });
+		}
+		if (request.method !== 'POST' || (path !== '/arm' && path !== '/set' && path !== '/begin')) {
 			return Response.json({ error: 'Not found' }, { status: 404 });
 		}
-		const { accountId, at } = (await request.json().catch(() => ({}))) as {
+		const { accountId, at, generation } = (await request.json().catch(() => ({}))) as {
 			accountId?: unknown;
 			at?: unknown;
+			generation?: unknown;
 		};
 		if (typeof accountId !== 'string' || !accountId) {
 			return Response.json({ error: 'An account id is required' }, { status: 400 });
 		}
-		const time = typeof at === 'number' && Number.isSafeInteger(at) && at >= 0 ? at : null;
-		if (time === null && (path === '/arm' || at !== null)) {
-			return Response.json({ error: 'A wake time is required' }, { status: 400 });
-		}
-		// The object is named after the account; it keeps the id to act on at alarm time.
-		await this.state.storage.put(ACCOUNT_KEY, accountId);
-		if (path === '/arm') await this.armNoLaterThan(time as number);
-		else if (time === null) await this.state.storage.deleteAlarm();
-		else await this.state.storage.setAlarm(time);
-		return new Response(null, { status: 204 });
+		return this.state.blockConcurrencyWhile(async () => {
+			let currentGeneration = (await this.state.storage.get<number>(GENERATION_KEY)) ?? 0;
+			if (path === '/begin') {
+				await this.state.storage.put(GENERATION_KEY, ++currentGeneration);
+				return Response.json({ generation: currentGeneration });
+			}
+			if (path === '/set' && generation !== currentGeneration)
+				return new Response(null, { status: 204 });
+			const time = typeof at === 'number' && Number.isSafeInteger(at) && at >= 0 ? at : null;
+			if (time === null && (path === '/arm' || at !== null)) {
+				return Response.json({ error: 'A wake time is required' }, { status: 400 });
+			}
+			// The object is named after the account; it keeps the id to act on at alarm time.
+			await this.state.storage.put(ACCOUNT_KEY, accountId);
+			if (path === '/arm') {
+				await this.state.storage.put(GENERATION_KEY, ++currentGeneration);
+				await this.armNoLaterThan(time as number);
+			} else if (time === null) await this.state.storage.deleteAlarm();
+			else await this.state.storage.setAlarm(time);
+			return new Response(null, { status: 204 });
+		});
 	}
 
 	async alarm(): Promise<void> {

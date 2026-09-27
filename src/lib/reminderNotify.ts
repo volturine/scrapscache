@@ -150,8 +150,12 @@ export async function showReminderNotification(
 export async function closeReminderNotifications(wakeIds: ReadonlySet<string>): Promise<void> {
 	if (!wakeIds.size || typeof navigator === 'undefined' || !navigator.serviceWorker) return;
 	try {
-		const registration = await navigator.serviceWorker.getRegistration();
-		const shown = (await registration?.getNotifications()) ?? [];
+		const registrations = await navigator.serviceWorker.getRegistrations();
+		const shown = (
+			await Promise.all(
+				registrations.map((registration) => registration.getNotifications().catch(() => []))
+			)
+		).flat();
 		for (const notification of shown) {
 			const data = notification.data as { type?: unknown; wakeId?: unknown } | null;
 			if (data?.type === 'reminder' && typeof data.wakeId === 'string' && wakeIds.has(data.wakeId))

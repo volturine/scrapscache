@@ -72,7 +72,8 @@ Compose fallbacks).
 Cloudflare runs three Workers, deliberately separate:
 
 - **App** (`wrangler.jsonc`): the site, API and push sending.
-- **Reminders** (`cf/wrangler.reminders.jsonc`): scheduling only. One
+- **Reminders** (`cf/wrangler.reminders.jsonc`): wake scheduling and reminder-only
+  SSE fan-out. Receipt changes bypass the note-sync coordinator. One
   `ReminderScheduler` Durable Object per synced account holds an alarm for that
   account's next reminder. When it fires, it puts the account on the
   `scrapscache-reminder-wakes` queue; the app consumes the queue, sends the

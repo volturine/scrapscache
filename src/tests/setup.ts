@@ -13,6 +13,9 @@ seedTestKeyring();
 // Browser-side $env/dynamic/public reads globals that only a SvelteKit page defines.
 vi.mock('$env/dynamic/public', () => ({ env: {} }));
 
+// jsdom does not implement viewport scrolling; component navigation still calls it.
+if (typeof window !== 'undefined') window.scrollTo = vi.fn();
+
 // Same Shift+wheel path the app installs in hooks.client.
 installHorizontalWheel();
 

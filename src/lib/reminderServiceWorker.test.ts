@@ -312,3 +312,37 @@ describe('reminder service worker', () => {
 		expect(clients.openWindow).toHaveBeenCalledWith('/#w=home-tag&note=note+10');
 	});
 });
+
+describe('service worker receipt queue', () => {
+	it('records a system dismissal without invoking note sync', async () => {
+		const pid = 'system-dismiss';
+		const note = reminderNote('note-system', 'System reminder', 1000);
+		await seedWorkspace(pid, [note]);
+		const wakeId = reminderWakeId(note.id, 1000);
+		const postMessage = vi.fn();
+		const listeners = loadServiceWorker(vi.fn(), { matchAll: async () => [{ postMessage }] });
+		let completion: Promise<void> | undefined;
+		listeners.get('notificationclose')!({
+			notification: { data: { workspaceId: pid, noteId: note.id, wakeId } },
+			waitUntil: (promise: Promise<void>) => {
+				completion = promise;
+			}
+		});
+		await completion;
+		const db = await request(indexedDB.open(resolveDbName(pid)));
+		const stored = await request(
+			db.transaction('sync-state').objectStore('sync-state').get('scrapscache-reminder-channel')
+		);
+		db.close();
+		expect(stored.pending).toEqual([
+			expect.objectContaining({
+				kind: 'handled',
+				value: expect.objectContaining({ id: wakeId, dismissedAt: expect.any(Number) })
+			})
+		]);
+		expect(postMessage).toHaveBeenCalledWith({
+			type: 'reminder-history-pending',
+			workspaceId: pid
+		});
+	});
+});

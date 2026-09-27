@@ -19,7 +19,11 @@ export async function armWakeTimer(_accountId: string, at: number): Promise<void
 }
 
 /** After delivering: the timer already follows on to the next wake by itself. */
-export async function rescheduleWakeTimer(_accountId: string, next: number | null): Promise<void> {
+export async function rescheduleWakeTimer(
+	_accountId: string,
+	next: number | null,
+	_generation: number
+): Promise<void> {
 	if (next !== null) arm(next);
 }
 
@@ -78,4 +82,8 @@ export function resetWakeTimer(): void {
 	armedFor = null;
 	running = false;
 	rerun = null;
+}
+
+export async function beginWakeDelivery(_accountId: string): Promise<number> {
+	return 0;
 }

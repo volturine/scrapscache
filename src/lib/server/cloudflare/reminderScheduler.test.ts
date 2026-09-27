@@ -16,12 +16,21 @@ function scheduler() {
 		}
 	};
 	const queue = { send: vi.fn(async () => undefined) };
-	const object = new ReminderScheduler({ storage } as never, { WAKE_QUEUE: queue } as never);
+	let chain: Promise<unknown> = Promise.resolve();
+	const blockConcurrencyWhile = <T>(run: () => Promise<T>) => {
+		const next = chain.then(run);
+		chain = next.catch(() => undefined);
+		return next;
+	};
+	const object = new ReminderScheduler(
+		{ storage, blockConcurrencyWhile } as never,
+		{ WAKE_QUEUE: queue } as never
+	);
 	const call = (path: string, body: unknown) =>
 		object.fetch(
 			new Request(`https://reminder-scheduler${path}`, {
 				method: 'POST',
-				body: JSON.stringify(body)
+				body: JSON.stringify({ generation: stored.get('generation'), ...(body as object) })
 			})
 		);
 	return { object, queue, call, alarm: () => alarm };
@@ -77,5 +86,36 @@ describe("an account's reminder scheduler", () => {
 		const { object, queue } = scheduler();
 		await object.alarm();
 		expect(queue.send).not.toHaveBeenCalled();
+	});
+	it('does not let a stale completion erase a newer arm or delivery', async () => {
+		const { call, alarm, object } = scheduler();
+		await call('/arm', { accountId: 'account', at: 100 });
+		const { generation } = (await (await call('/begin', { accountId: 'account' })).json()) as {
+			generation: number;
+		};
+		await call('/arm', { accountId: 'account', at: 50 });
+		await object.fetch(
+			new Request('https://scheduler.test/set', {
+				method: 'POST',
+				body: JSON.stringify({ accountId: 'account', at: null, generation })
+			})
+		);
+		expect(alarm()).toBe(50);
+		await call('/begin', { accountId: 'account' });
+		await object.fetch(
+			new Request('https://scheduler.test/set', {
+				method: 'POST',
+				body: JSON.stringify({ accountId: 'account', at: 999999, generation })
+			})
+		);
+		expect(alarm()).toBe(50);
+	});
+	it('serializes simultaneous arms so the earliest one wins', async () => {
+		const { call, alarm } = scheduler();
+		await Promise.all([
+			call('/arm', { accountId: 'account', at: 10 }),
+			call('/arm', { accountId: 'account', at: 20 })
+		]);
+		expect(alarm()).toBe(10);
 	});
 });

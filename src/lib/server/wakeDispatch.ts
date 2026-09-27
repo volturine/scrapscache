@@ -57,7 +57,7 @@ export async function dispatchDueWakes(
 			for (const [index, device] of batch.entries()) {
 				const sendResult = results[index];
 				if (sendResult === 'failed') {
-					await store.releaseWakeClaim(device);
+					// Keep the claim until its lease expires, preventing an immediate retry loop.
 					recordReminderWake('failed');
 					result.failed += 1;
 					continue;

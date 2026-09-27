@@ -2,7 +2,6 @@
 // attachments from a page that has not yet applied their parent notes.
 import type { Note } from '$lib/types';
 import { isTombstoned } from '$lib/model';
-import { reminderHistoryKey, reminderHistoryNoteId } from '$lib/reminderHistory';
 import type { SyncRecord, SyncSnapshot } from '$lib/syncRecords';
 
 export function currentRecordKeys(snapshot: SyncSnapshot): Set<string> {
@@ -21,9 +20,6 @@ export function currentRecordKeys(snapshot: SyncSnapshot): Set<string> {
 	for (const entry of snapshot.libraryItems) {
 		if (entry.updatedAt > (Number(snapshot.libraryTombstones[entry.id]) || 0))
 			keys.add(`library-item:${entry.id}`);
-	}
-	for (const entry of snapshot.reminderHistory) {
-		if (!isTombstoned(entry.noteId, snapshot.tombstones)) keys.add(reminderHistoryKey(entry));
 	}
 	for (const id of Object.keys(snapshot.tombstones)) keys.add(`note-tombstone:${id}`);
 	for (const id of Object.keys(snapshot.labelTombstones)) keys.add(`label-tombstone:${id}`);
@@ -66,11 +62,6 @@ export function planDeletableKeys(input: {
 		if (key.startsWith('library-item:')) {
 			if (isTombstoned(key.slice('library-item:'.length), snapshot.libraryTombstones))
 				deletable.push(key);
-			continue;
-		}
-		const historyNoteId = reminderHistoryNoteId(key);
-		if (historyNoteId !== null) {
-			if (isTombstoned(historyNoteId, snapshot.tombstones)) deletable.push(key);
 			continue;
 		}
 		if (key.startsWith('attachment:')) {

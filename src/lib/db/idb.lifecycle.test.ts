@@ -17,6 +17,7 @@ import {
 	dropDatabase,
 	getAllLabels,
 	getAllNotesMetadata,
+	getDeviceDB,
 	getSyncState,
 	isProfileReleased,
 	putLabel,
@@ -25,7 +26,8 @@ import {
 	readStoredProfiles,
 	releaseProfile,
 	resolveDbName,
-	resumeProfile
+	resumeProfile,
+	setSyncState
 } from './idb';
 import type { Label, Note } from '$lib/types';
 import { TEST_WORKSPACE } from '../../tests/workspace';
@@ -78,6 +80,42 @@ describe('closeDeviceDatabase', () => {
 		await dropDatabase(PROFILE_DB);
 
 		expect(await databaseNames()).not.toContain(PROFILE_DB);
+	});
+});
+
+describe('the device database across builds', () => {
+	it('steps aside when a newer build in another window upgrades it', async () => {
+		await getDeviceDB();
+		const newer = await Promise.race([
+			openDB(DEVICE_DB_NAME, 99),
+			new Promise<null>((resolve) => setTimeout(() => resolve(null), 1000))
+		]);
+		expect(newer).not.toBeNull();
+		newer?.close();
+	});
+
+	it('keeps workspace writes moving while its own upgrade waits on an older window', async () => {
+		await closeDeviceDatabase();
+		await dropDatabase(DEVICE_DB_NAME);
+		// An older build that never lets go of version 1.
+		const older = await new Promise<IDBDatabase>((resolve, reject) => {
+			const request = indexedDB.open(DEVICE_DB_NAME, 1);
+			request.onupgradeneeded = () =>
+				request.result.createObjectStore('workspaces', { keyPath: 'id' });
+			request.onsuccess = () => resolve(request.result);
+			request.onerror = () => reject(request.error);
+		});
+		const registry = setRegisteredWorkspaces([{ id: PROFILE, syncKey: '' }]);
+
+		await expect(
+			Promise.race([
+				setSyncState(PROFILE, 'still-moving', 1).then(() => 'written'),
+				new Promise((resolve) => setTimeout(() => resolve('stuck'), 1000))
+			])
+		).resolves.toBe('written');
+
+		older.close();
+		await registry;
 	});
 });
 

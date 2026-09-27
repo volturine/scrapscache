@@ -187,7 +187,14 @@ export function getDeviceDB(): Promise<IDBPDatabase> {
 	if (typeof indexedDB === 'undefined') {
 		return Promise.reject(new Error('IndexedDB is not available'));
 	}
-	deviceDbPromise ??= openDB(DEVICE_DB_NAME, DEVICE_DB_VERSION, {
+	if (deviceDbPromise) return deviceDbPromise;
+	const opening: Promise<IDBPDatabase> = openDB(DEVICE_DB_NAME, DEVICE_DB_VERSION, {
+		// A newer build in another window needs a newer schema. Let it upgrade, and
+		// reopen on next use, rather than leave that window waiting on this one.
+		blocking() {
+			if (deviceDbPromise === opening) deviceDbPromise = null;
+			void opening.then((db) => db.close()).catch(() => undefined);
+		},
 		upgrade(db) {
 			if (!db.objectStoreNames.contains(WORKSPACES_STORE))
 				db.createObjectStore(WORKSPACES_STORE, { keyPath: 'id' });
@@ -197,7 +204,8 @@ export function getDeviceDB(): Promise<IDBPDatabase> {
 				db.createObjectStore(DEVICE_STATE_STORE);
 		}
 	});
-	return deviceDbPromise;
+	deviceDbPromise = opening;
+	return opening;
 }
 
 export async function getDeviceState<T>(key: string): Promise<T | undefined> {
@@ -210,9 +218,11 @@ export async function getDeviceState<T>(key: string): Promise<T | undefined> {
  * localStorage lazily, so a record that later IndexedDB writes depend on
  * belongs here.
  */
-export function setDeviceState(key: string, value: unknown): Promise<void> {
+export async function setDeviceState(key: string, value: unknown): Promise<void> {
+	// Opened before joining the write queue: an open that waits on another window
+	// must not hold every workspace write queued behind it.
+	const db = await getDeviceDB();
 	return enqueueDeviceWrite(async () => {
-		const db = await getDeviceDB();
 		const tx = db.transaction(DEVICE_STATE_STORE, 'readwrite', { durability: 'strict' });
 		await tx.store.put(value, key);
 		await tx.done;
@@ -227,14 +237,15 @@ export function setDeviceState(key: string, value: unknown): Promise<void> {
 export type RegisteredWorkspace = { id: string; tag: string };
 
 /** Keep the service worker's list of workspace databases the same as the keyring. */
-export function setRegisteredWorkspaces(
+export async function setRegisteredWorkspaces(
 	profiles: Iterable<Pick<StoredProfile, 'id' | 'syncKey'>>
 ): Promise<void> {
 	const rows = new Map(
 		[...profiles].map((profile) => [profile.id, { id: profile.id, tag: workspaceLinkTag(profile) }])
 	);
+	// Opened outside the write queue, for the same reason as `setDeviceState`.
+	const db = await getDeviceDB();
 	return enqueueDeviceWrite(async () => {
-		const db = await getDeviceDB();
 		const tx = db.transaction(WORKSPACES_STORE, 'readwrite');
 		for (const id of (await tx.store.getAllKeys()) as string[]) {
 			if (!rows.has(id)) await tx.store.delete(id);

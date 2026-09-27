@@ -68,9 +68,11 @@
 			.finally(() => reminderStore.receiptsSettled(pid));
 	}
 
+	// The receipt stream follows the open workspace and its sync key.
 	$effect(() => {
-		const profiles = syncStore.profiles.map(({ id, syncKey }) => ({ id, syncKey }));
-		untrack(() => reminderHistoryClient.updateProfiles(profiles));
+		void syncStore.activeId;
+		for (const { id, syncKey } of syncStore.profiles) void [id, syncKey];
+		untrack(() => reminderHistoryClient.updateProfiles());
 	});
 
 	let noteLinkProblem = $state<string | null>(null);

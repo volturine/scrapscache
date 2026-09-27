@@ -276,6 +276,44 @@ describe('client sync state machine', () => {
 		expect(privateStore.session).toBeNull();
 	});
 
+	it('keeps a background workspace token that finishes after a workspace switch', async () => {
+		const background = createSyncIdentity();
+		const store = new SyncStore();
+		await store.ensureProfilesLoaded();
+		store.profiles = [
+			{ id: 'background', name: 'Background', syncKey: background.syncKey, createdAt: 1 }
+		];
+		let releaseChallenge: ((response: Response) => void) | undefined;
+		const challenge = new Promise<Response>((resolve) => {
+			releaseChallenge = resolve;
+		});
+		vi.stubGlobal(
+			'fetch',
+			vi
+				.fn()
+				.mockImplementationOnce(() => challenge)
+				.mockResolvedValueOnce(
+					new Response(
+						JSON.stringify({ accessToken: 'background-token', expiresAt: Date.now() + 60_000 })
+					)
+				)
+		);
+		const privateStore = store as unknown as {
+			accessToken(account: typeof background): Promise<string>;
+			session: { accountId: string; accessToken: string; expiresAt: number } | null;
+		};
+		const pending = privateStore.accessToken(background);
+		store.activateLocalWorkspace(TEST_WORKSPACE);
+		releaseChallenge?.(
+			new Response(JSON.stringify({ challengeId: 'late', challenge: 'challenge' }))
+		);
+
+		await expect(pending).resolves.toBe('background-token');
+		expect(privateStore.session).toBeNull();
+		// Cached for the next background request, with no second sign-in.
+		await expect(privateStore.accessToken(background)).resolves.toBe('background-token');
+	});
+
 	it('reauthenticates and retries an authorized request once after a rejected session', async () => {
 		const account = createSyncIdentity();
 		const store = new SyncStore();

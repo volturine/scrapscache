@@ -22,11 +22,14 @@ beforeEach(() => {
 	mocks.allowed = true;
 	mocks.open.mockClear();
 });
-const get = () =>
-	GET({
-		request: new Request('https://example.test/api/sync/reminders/events'),
+const get = (query = '') => {
+	const url = new URL(`https://example.test/api/sync/reminders/events${query}`);
+	return GET({
+		request: new Request(url),
+		url,
 		getClientAddress: () => 'test'
 	} as never) as Promise<Response>;
+};
 describe('reminder SSE endpoint', () => {
 	it('requires authentication and limits connection attempts', async () => {
 		mocks.account = null;
@@ -35,9 +38,13 @@ describe('reminder SSE endpoint', () => {
 		expect((await get()).status).toBe(429);
 		expect(mocks.open).not.toHaveBeenCalled();
 	});
-	it('opens only the authenticated account stream', async () => {
-		const response = await get();
+	it('opens only the authenticated account stream, for the window that asked', async () => {
+		const response = await get('?clientId=window-1');
 		expect(response.headers.get('content-type')).toBe('text/event-stream');
-		expect(mocks.open).toHaveBeenCalledWith('account', expect.any(AbortSignal));
+		expect(mocks.open).toHaveBeenCalledWith('account', expect.any(AbortSignal), 'window-1');
+	});
+	it('rejects a malformed client id', async () => {
+		expect((await get('?clientId=%3Cscript%3E')).status).toBe(400);
+		expect(mocks.open).not.toHaveBeenCalled();
 	});
 });

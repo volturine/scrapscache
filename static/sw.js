@@ -129,6 +129,7 @@ const NOTES_STORE = 'notes';
 const SYNC_STATE_STORE = 'sync-state';
 const FIRED_KEY = 'scrapscache-fired-reminders';
 const HISTORY_KEY = 'scrapscache-reminder-history';
+const RECEIPT_CHANNEL_KEY = 'scrapscache-reminder-channel';
 const WAKE_ID_RE = /^[A-Za-z0-9_-]{43}$/;
 const WAKE_DOMAIN = 'scraps-cache-reminder-wake:v1\0';
 const LOOKUP_BUDGET_MS = 1_500;
@@ -300,33 +301,57 @@ async function claimFiredWake(workspaceId, wakeId) {
 
 /** Receipt queue shared with the app; no sync key is exposed to the worker. */
 async function recordReminderReceipt(data, dismissed = false) {
- if (!data || typeof data.workspaceId !== 'string' || typeof data.noteId !== 'string' || !WAKE_ID_RE.test(data.wakeId)) return;
- const db = await openWorkspaceDb(data.workspaceId);
- if (!db) return;
- try {
-  const tx = db.transaction(SYNC_STATE_STORE, 'readwrite');
-  const done = idbTransaction(tx);
-  const store = tx.objectStore(SYNC_STATE_STORE);
-  const channelKey = 'scrapscache-reminder-channel';
-  const stored = await idbRequest(store.get(HISTORY_KEY));
-  const history = Array.isArray(stored) ? stored : [];
-  const channel = (await idbRequest(store.get(channelKey))) || {accountId: '', cursor: 0, pending: [], deletedNotes: {}};
-  if (!channel.deletedNotes[data.noteId]) {
-   const previous = history.find(entry => entry.id === data.wakeId);
-   if (!previous || (dismissed && previous.dismissedAt === undefined)) {
-    const at = Date.now();
-    const value = {id: data.wakeId, noteId: data.noteId, firedAt: previous?.firedAt || at, ...(dismissed ? {dismissedAt: at} : {})};
-    await idbRequest(store.put([...history.filter(entry => entry.id !== data.wakeId), value], HISTORY_KEY));
-    channel.pending.push({kind: 'handled', value});
-    await idbRequest(store.put(channel, channelKey));
-   }
-  }
-  await done;
- } finally {db.close();}
- if (self.clients.matchAll) {
-  const clients = await self.clients.matchAll({type: 'window', includeUncontrolled: true});
-  for (const client of clients) client.postMessage({type: 'reminder-history-pending', workspaceId: data.workspaceId});
- }
+	if (
+		!data ||
+		typeof data.workspaceId !== 'string' ||
+		typeof data.noteId !== 'string' ||
+		!WAKE_ID_RE.test(data.wakeId) ||
+		typeof data.reminder !== 'number' ||
+		!(data.reminder > 0)
+	)
+		return;
+	const db = await openWorkspaceDb(data.workspaceId);
+	if (!db) return;
+	try {
+		const tx = db.transaction(SYNC_STATE_STORE, 'readwrite');
+		const done = idbTransaction(tx);
+		const store = tx.objectStore(SYNC_STATE_STORE);
+		const stored = await idbRequest(store.get(HISTORY_KEY));
+		const history = Array.isArray(stored) ? stored : [];
+		const saved = await idbRequest(store.get(RECEIPT_CHANNEL_KEY));
+		const channel = {
+			accountId: typeof saved?.accountId === 'string' ? saved.accountId : '',
+			cursor: Number.isSafeInteger(saved?.cursor) ? saved.cursor : 0,
+			pending: Array.isArray(saved?.pending) ? saved.pending : [],
+			deletedNotes:
+				saved?.deletedNotes && typeof saved.deletedNotes === 'object' ? saved.deletedNotes : {}
+		};
+		if (!channel.deletedNotes[data.noteId]) {
+			const previous = history.find((entry) => entry?.id === data.wakeId);
+			if (!previous || (dismissed && previous.dismissedAt === undefined)) {
+				// Receipts record when the reminder was due, the same on every device.
+				const value = {
+					id: data.wakeId,
+					noteId: data.noteId,
+					firedAt: previous?.firedAt || data.reminder,
+					...(dismissed ? { dismissedAt: Date.now() } : {})
+				};
+				// The app trims each note's history when it next merges.
+				await idbRequest(
+					store.put([...history.filter((entry) => entry?.id !== data.wakeId), value], HISTORY_KEY)
+				);
+				channel.pending.push({ kind: 'handled', value });
+				await idbRequest(store.put(channel, RECEIPT_CHANNEL_KEY));
+			}
+		}
+		await done;
+	} finally {
+		db.close();
+	}
+	if (!self.clients?.matchAll) return;
+	const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+	for (const client of clients)
+		client.postMessage({ type: 'reminder-history-pending', workspaceId: data.workspaceId });
 }
 
 async function findReminder(wake) {
@@ -370,10 +395,16 @@ async function showReminderWake(wake) {
 			noteId: found.note.id,
 			wakeId: wake.id,
 			workspaceId: found.workspace.id,
-			workspaceTag: typeof found.workspace.tag === 'string' ? found.workspace.tag : null
+			workspaceTag: typeof found.workspace.tag === 'string' ? found.workspace.tag : null,
+			reminder: found.note.reminder
 		}
 	});
-	await recordReminderReceipt({workspaceId: found.workspace.id, noteId: found.note.id, wakeId: wake.id});
+	await recordReminderReceipt({
+		workspaceId: found.workspace.id,
+		noteId: found.note.id,
+		wakeId: wake.id,
+		reminder: found.note.reminder
+	});
 }
 
 self.addEventListener('push', (event) => {
@@ -412,26 +443,30 @@ self.addEventListener('notificationclick', (event) => {
 	const data = event.notification.data || {};
 	const text = (value) => (typeof value === 'string' ? value : null);
 	event.waitUntil(
-		recordReminderReceipt(data, true).catch(() => undefined).then(() => self.clients.matchAll({ type: 'window', includeUncontrolled: true })).then((clients) => {
-			for (const client of clients) {
-				try {
-					if (new URL(client.url).origin !== self.location.origin) continue;
-				} catch {
-					continue;
+		recordReminderReceipt(data, true)
+			.catch(() => undefined)
+			.then(() => self.clients.matchAll({ type: 'window', includeUncontrolled: true }))
+			.then((clients) => {
+				for (const client of clients) {
+					try {
+						if (new URL(client.url).origin !== self.location.origin) continue;
+					} catch {
+						continue;
+					}
+					client.postMessage({
+						type: 'open-note',
+						noteId: text(data.noteId),
+						wakeId: text(data.wakeId),
+						workspaceId: text(data.workspaceId),
+						reminder: typeof data.reminder === 'number' ? data.reminder : null
+					});
+					if ('focus' in client) return client.focus();
 				}
-				client.postMessage({
-					type: 'open-note',
-					noteId: text(data.noteId),
-					wakeId: text(data.wakeId),
-					workspaceId: text(data.workspaceId)
-				});
-				if ('focus' in client) return client.focus();
-			}
-			if (self.clients.openWindow) return self.clients.openWindow(notePath(data));
-		})
+				if (self.clients.openWindow) return self.clients.openWindow(notePath(data));
+			})
 	);
 });
 
-self.addEventListener('notificationclose', event => {
- event.waitUntil(recordReminderReceipt(event.notification.data, true).catch(() => undefined));
+self.addEventListener('notificationclose', (event) => {
+	event.waitUntil(recordReminderReceipt(event.notification.data, true).catch(() => undefined));
 });

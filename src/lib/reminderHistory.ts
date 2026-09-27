@@ -8,7 +8,10 @@ export type ReminderHistoryEntry = {
 	/** Wake id: a hash of the note id and the reminder time. */
 	id: string;
 	noteId: string;
-	/** When a device first showed it. */
+	/**
+	 * When it was due. Every device records the same time for a wake, so they all
+	 * keep the same latest receipts of a note.
+	 */
 	firedAt: number;
 	/** When a device first dismissed it. */
 	dismissedAt?: number;
@@ -53,7 +56,18 @@ export function mergeReminderEntries(
 	};
 }
 
-/** Merge remote entries in, dropping every entry whose note was deleted for good. */
+/**
+ * A note has one reminder at a time, so only its latest receipt still matters.
+ * A few older ones are kept so a device that changed the reminder while offline
+ * cannot push the current one out.
+ */
+export const RECEIPTS_PER_NOTE = 4;
+
+/**
+ * Merge remote entries in, dropping every entry whose note was deleted for good
+ * and keeping each note's latest receipts. Any two devices merge to the same
+ * result, whatever order they learn things in.
+ */
 export function mergeReminderHistory(
 	local: Iterable<ReminderHistoryEntry>,
 	remote: Iterable<ReminderHistoryEntry>,
@@ -65,7 +79,29 @@ export function mergeReminderHistory(
 		const current = byId.get(entry.id);
 		byId.set(entry.id, current ? mergeReminderEntries(current, entry) : entry);
 	}
-	return [...byId.values()].sort((left, right) => left.id.localeCompare(right.id));
+	const byNote = new Map<string, ReminderHistoryEntry[]>();
+	for (const entry of byId.values()) {
+		byNote.set(entry.noteId, [...(byNote.get(entry.noteId) ?? []), entry]);
+	}
+	return [...byNote.values()]
+		.flatMap((entries) =>
+			entries
+				.sort((left, right) => right.firedAt - left.firedAt || left.id.localeCompare(right.id))
+				.slice(0, RECEIPTS_PER_NOTE)
+		)
+		.sort((left, right) => left.id.localeCompare(right.id));
+}
+
+/** One note's receipts, as its relay row carries them. */
+export function noteReceiptEntries(
+	entries: Iterable<ReminderHistoryEntry>,
+	noteId: string
+): ReminderHistoryEntry[] {
+	return mergeReminderHistory(
+		[...entries].filter((entry) => entry.noteId === noteId),
+		[],
+		{}
+	);
 }
 
 /** A workspace's history as this device saved it, whether or not it is the open one. */

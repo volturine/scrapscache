@@ -134,7 +134,7 @@ describe('system notifications', () => {
 			'Groceries',
 			expect.objectContaining({
 				tag: `scrapscache-reminder:${wakeId}`,
-				data: { type: 'reminder', noteId: 'n1', wakeId, workspaceId: 'home' }
+				data: { type: 'reminder', noteId: 'n1', wakeId, workspaceId: 'home', reminder: 1 }
 			})
 		);
 	});

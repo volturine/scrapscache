@@ -125,7 +125,8 @@ export async function showReminderNotification(
 			type: 'reminder',
 			noteId: alert.noteId,
 			wakeId: alert.wakeId,
-			workspaceId: alert.workspaceId
+			workspaceId: alert.workspaceId,
+			reminder: alert.reminder
 		}
 	};
 	try {

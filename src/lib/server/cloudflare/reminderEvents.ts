@@ -6,9 +6,11 @@ function scheduler(accountId: string) {
 }
 export async function openReminderEvents(
 	accountId: string,
-	signal?: AbortSignal
+	signal?: AbortSignal,
+	clientId?: string
 ): Promise<Response> {
-	const response = await scheduler(accountId).fetch('https://reminder-scheduler/events', {
+	const query = clientId ? `?clientId=${encodeURIComponent(clientId)}` : '';
+	const response = await scheduler(accountId).fetch(`https://reminder-scheduler/events${query}`, {
 		signal: signal as unknown as import('@cloudflare/workers-types').AbortSignal
 	});
 	// Own the headers: the app's hooks add security headers to the response.
@@ -17,9 +19,14 @@ export async function openReminderEvents(
 		headers: new Headers(response.headers as unknown as HeadersInit)
 	});
 }
-export async function notifyReminderEvents(accountId: string): Promise<void> {
+export async function notifyReminderEvents(
+	accountId: string,
+	senderClientId?: string
+): Promise<void> {
 	const response = await scheduler(accountId).fetch('https://reminder-scheduler/notify', {
-		method: 'POST'
+		method: 'POST',
+		headers: { 'content-type': 'application/json' },
+		body: JSON.stringify({ clientId: senderClientId })
 	});
 	if (!response.ok) throw new Error('Reminder event notification failed');
 }

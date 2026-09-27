@@ -277,10 +277,13 @@ describe('ReminderStore', () => {
 			await history.receive(
 				TEST_WORKSPACE,
 				'',
-				[{ id: reminderWakeId(due.id, 100), noteId: due.id, firedAt: 150 }].map((value) => ({
-					kind: 'handled' as const,
-					value
-				})),
+				[
+					{
+						kind: 'handled',
+						noteId: due.id,
+						entries: [{ id: reminderWakeId(due.id, 100), noteId: due.id, firedAt: 150 }]
+					}
+				],
 				[],
 				0
 			);
@@ -300,10 +303,13 @@ describe('ReminderStore', () => {
 			await history.receive(
 				TEST_WORKSPACE,
 				'',
-				[{ id: wakeId, noteId: due.id, firedAt: 150, dismissedAt: 200 }].map((value) => ({
-					kind: 'handled' as const,
-					value
-				})),
+				[
+					{
+						kind: 'handled',
+						noteId: due.id,
+						entries: [{ id: wakeId, noteId: due.id, firedAt: 150, dismissedAt: 200 }]
+					}
+				],
 				[],
 				0
 			);
@@ -344,11 +350,14 @@ describe('ReminderStore', () => {
 				[
 					{
 						kind: 'handled',
-						value: {
-							id: reminderWakeId(missed.id, missed.reminder!),
-							noteId: missed.id,
-							firedAt: 1
-						}
+						noteId: missed.id,
+						entries: [
+							{
+								id: reminderWakeId(missed.id, missed.reminder!),
+								noteId: missed.id,
+								firedAt: 1
+							}
+						]
 					}
 				],
 				[],

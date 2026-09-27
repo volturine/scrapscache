@@ -67,17 +67,24 @@ The same SvelteKit app serves the UI and the sync API when self-hosted.
   timestamps. Each enabled device has independent delivery state, and a device
   does not need the encrypted note before receiving a generic alert. The relay
   never receives note IDs or text.
-- **Reminder history** — immutable encrypted receipts on a separate channel,
-  `/api/sync/reminders`, merged by the earliest fire/dismissal time. Every linked
-  workspace has its own durable receipt queue and cursor. Dismissing an alert
-  never starts or waits for note sync, even in the active workspace. The client
-  sends immediately after a local write, listens on a reminder-only SSE stream, and catches up once when it connects
-  or reconnects. Receipt failures retry with backoff; idle streams make no
-  periodic receipt requests. Missed reminders wait for one receipt
-  exchange, rather than a note sync. System notifications write into the same
-  local queue; with the app closed, receipts upload when it next opens.
-  Backups include history. Encrypted note-deletion markers erase that note's
-  retained receipts and reject stale offline uploads.
+- **Reminder history** — encrypted receipts on a separate channel,
+  `/api/sync/reminders`, with one relay row per note: the note's latest
+  receipts, keyed by when each reminder was due and merged by the earliest
+  dismissal. Storage follows the number of notes with reminders, not how often
+  they fire. An upload replaces only a row its device has already seen;
+  otherwise that row comes back, is merged, and is sent again, so every device
+  converges without losing receipts. Every linked workspace has its own durable
+  receipt queue and cursor. Dismissing an alert never starts or waits for note
+  sync, even in the active workspace. The client sends immediately after a
+  local write. The open workspace listens on a reminder-only SSE stream and
+  catches up when it connects or reconnects; another workspace exchanges only
+  when it has receipts queued (checked at startup, focus and reconnect) or is
+  about to show a missed reminder. Nothing polls. Failures retry with backoff,
+  except a full account, which waits for the next change. System notifications
+  write into the same local queue; with the app closed, receipts upload when it
+  next opens. Backups include history. A note deleted after it had receipts
+  gets an encrypted deletion marker that erases them and rejects stale offline
+  uploads.
 - **Labels** — named tags with update timestamps for conflict resolution.
 - **Boards** — kanban structures + tombstones for cross-device deletion.
 - **Canvas library** — the workspace's reusable Excalidraw shapes, one record per
@@ -233,10 +240,13 @@ history and its ciphertext.
 - [self-hosting.md](self-hosting.md) — operator runbook
 - [development.md](development.md) — contributor workflow
 
-Reminder SSE uses `/api/sync/reminders/events`, authenticated independently for
-all linked workspaces. Server messages contain only an empty change signal;
-clients download encrypted receipts through the receipt endpoint. These messages
-never enter the note-sync event stream. Node fans out in process, while Workers
-use the per-account `ReminderScheduler` Durable Object, outside the note-sync
+Reminder SSE uses `/api/sync/reminders/events`, opened only for the workspace a
+window has open, so a window holds at most this stream and the note-sync one.
+Server messages contain only an empty change signal, and the window whose upload
+caused it is left out; clients download encrypted receipts through the receipt
+endpoint. A signal arriving while another is still queued for a slow reader is
+dropped rather than closing the stream. These messages never enter the
+note-sync event stream. Node fans out in process, while Workers use the
+per-account `ReminderScheduler` Durable Object, outside the note-sync
 coordinator and scheduling lock. Each connection has a 25-second transport
 heartbeat; reconnecting performs one catch-up from the persisted receipt cursor.

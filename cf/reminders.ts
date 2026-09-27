@@ -6,7 +6,7 @@
 //
 // Bindings run one way only (app -> schedulers, schedulers -> queue -> app), so
 // each Worker can be deployed without the other deployed first.
-import { ReminderEventChannel } from '../src/lib/server/reminderEventStream';
+import { ReminderEventChannel, validReminderClientId } from '../src/lib/server/reminderEventStream';
 import type { DurableObjectState, Queue } from '@cloudflare/workers-types';
 
 type Env = {
@@ -35,11 +35,19 @@ export class ReminderScheduler {
 	 * `POST /set { accountId, at, generation }`: finish only that generation.
 	 */
 	async fetch(request: Request): Promise<Response> {
-		const path = new URL(request.url).pathname;
+		const url = new URL(request.url);
+		const path = url.pathname;
 		// These paths never acquire the scheduling lock or the note-sync coordinator.
-		if (request.method === 'GET' && path === '/events') return this.events.stream(request.signal);
+		if (request.method === 'GET' && path === '/events') {
+			const clientId = url.searchParams.get('clientId');
+			return this.events.stream(
+				request.signal,
+				validReminderClientId(clientId) ? clientId : undefined
+			);
+		}
 		if (request.method === 'POST' && path === '/notify') {
-			this.events.notify();
+			const { clientId } = (await request.json().catch(() => ({}))) as { clientId?: unknown };
+			this.events.notify(validReminderClientId(clientId) ? clientId : undefined);
 			return new Response(null, { status: 204 });
 		}
 		if (request.method !== 'POST' || (path !== '/arm' && path !== '/set' && path !== '/begin')) {

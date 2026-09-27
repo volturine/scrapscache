@@ -75,6 +75,21 @@ describe('delivering reminder wakes', () => {
 
 		expect(result).toMatchObject({ failed: 1, next: 2_000 + WAKE_CLAIM_LEASE_MS });
 	});
+	it('backs off a device whose push keeps failing, up to half an hour', async () => {
+		const store = new SyncStore(testDb());
+		await account(store, 'account-aaaaaaaaaaaa', [wake(1, 1_000)]);
+		const send = vi.fn(async () => 'failed' as const);
+		let clock = 1_000 + 10 * 60_000;
+		const first = await dispatchDueWakes({ store, now: () => clock, send });
+		expect(first.next).toBe(clock + 10 * 60_000);
+		// Not retried before its time.
+		clock += 10 * 60_000 - 1;
+		expect((await dispatchDueWakes({ store, now: () => clock, send })).failed).toBe(0);
+		clock = 1_000 + 5 * 60 * 60_000;
+		const later = await dispatchDueWakes({ store, now: () => clock, send });
+		expect(later).toMatchObject({ failed: 1, next: clock + 30 * 60_000 });
+		expect(send).toHaveBeenCalledTimes(2);
+	});
 	it('rearms immediately for a wake becoming due during a partial batch', async () => {
 		const store = new SyncStore(testDb());
 		await account(store, 'account-aaaaaaaaaaaa', [wake(1, 1000), wake(2, 1500)]);

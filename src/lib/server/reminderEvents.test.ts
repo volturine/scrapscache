@@ -30,7 +30,7 @@ describe('reminder-only server events', () => {
 			await exchangeReminderHistory(
 				'account-a',
 				0,
-				[{ id: 'a'.repeat(64), note: 'b'.repeat(64), deleted: false, ciphertext: 'c'.repeat(100) }],
+				[{ note: 'b'.repeat(64), deleted: false, ciphertext: 'c'.repeat(100) }],
 				db
 			);
 			expect(text((await next).value)).toBe('data: {}\n\n');
@@ -49,6 +49,31 @@ describe('reminder-only server events', () => {
 			await b.cancel();
 			await other;
 			stopNotes();
+		}
+	});
+	it('leaves the uploading window out, and keeps a slow reader connected through bursts', async () => {
+		const sender = (await openReminderEvents('burst', undefined, 'sender')).body!.getReader();
+		const other = (await openReminderEvents('burst', undefined, 'other')).body!.getReader();
+		await sender.read();
+		await other.read();
+		try {
+			for (let index = 0; index < 5; index += 1) await notifyReminderEvents('burst', 'sender');
+			const first = await other.read();
+			expect(text(first.value)).toBe('data: {}\n\n');
+			// The burst coalesced into one message and the stream stayed open.
+			const next = other.read();
+			await notifyReminderEvents('burst', 'sender');
+			expect(text((await next).value)).toBe('data: {}\n\n');
+			let senderSignalled = false;
+			const own = sender.read().then((result) => {
+				senderSignalled = !result.done;
+			});
+			await sender.cancel();
+			await own;
+			expect(senderSignalled).toBe(false);
+		} finally {
+			await sender.cancel();
+			await other.cancel();
 		}
 	});
 	it('sends only heartbeats while idle, and closes aborted streams', async () => {

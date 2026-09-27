@@ -231,18 +231,23 @@ app is in use; browser storage isolation is the boundary.
 ### Independent reminder receipts
 
 Reminder history uses authenticated `/api/sync/reminders` requests, separate from
-note delta sync. The relay stores only slot-bound encrypted receipts, keyed-hash
-identifiers for events and notes, and deletion flags. This reveals receipt timing
-and which receipts concern the same opaque note, but never note ids, text or keys.
-Receipts have their own 8 MiB per-account bound (including row overhead), a
-4 KiB ciphertext limit, 12-event pages, and independent request rate limits.
-Concurrent retries deduplicate by event id. Deletion keeps an opaque marker to
-reject later uploads from an offline device. Account deletion cascades to receipts.
+note delta sync. The relay stores one encrypted row per note, bound to a keyed
+hash of the note id, plus a deletion flag. It can tell when a note's receipts
+change, and so roughly how often that note's reminders fire or are dismissed,
+much as note-sync slots reveal when a record changes. It never sees note ids,
+text, reminder times or keys. Receipts have their own 8 MiB per-account bound
+(including row overhead), a 4 KiB ciphertext limit, 12-note pages, and
+independent request rate limits. A replacement is written only if it fits, so a
+full account keeps what it has; deleting a note always frees its row. An upload
+never replaces a row its device has not downloaded. Deletion keeps an opaque
+marker to reject later uploads from an offline device. Account deletion cascades
+to receipts.
 Service workers queue local receipts without access to sync keys; the app encrypts
 and uploads them when running. Note sync cursors and outboxes are not involved.
 
 Reminder change streams use the same account authentication and a separate
-connection rate limit. They carry no receipt content, note ids or sync cursors.
+connection rate limit. They carry no receipt content, note ids or sync cursors;
+the client id a window sends only keeps its own uploads from signalling it.
 Each account allows at most 64 reminder streams; cancellation, disconnection and
 slow readers release their resources. Workers route these streams through the
 reminder scheduler binding, never the public scheduler Worker fetch entrypoint.

@@ -1,7 +1,7 @@
 import {
 	REMINDER_BATCH_SIZE,
-	openReminderEvent,
-	sealReminderEvent,
+	openNoteReceipts,
+	sealNoteReceipts,
 	type ReminderPage
 } from '$lib/reminderChannel';
 import { reminderHistoryStore, type ReminderHistoryStore } from '$lib/stores/reminderHistory';
@@ -12,28 +12,43 @@ import type { StoredProfile } from '$lib/profiles';
 import { SyncEventsClient } from '$lib/syncEventsClient';
 
 type Workspace = Pick<StoredProfile, 'id' | 'syncKey'>;
-type Watch = {
-	syncKey: string;
-	events: SyncEventsClient;
-	retry: ReturnType<typeof setTimeout> | null;
-	backoff: number;
-};
-/** Independent of note-sync flights and their lock, cursor, outbox and status indicator. */
+type Watch = { pid: string; syncKey: string; events: SyncEventsClient };
+type Retry = { timer: ReturnType<typeof setTimeout> | null; backoff: number };
+
+/** The relay's receipt storage for this account is full; retrying will not help until something changes. */
+export class ReminderStorageFullError extends Error {}
+
+function newClientId(): string {
+	return typeof crypto !== 'undefined' && crypto.randomUUID
+		? crypto.randomUUID()
+		: Math.random().toString(36).slice(2);
+}
+
+/**
+ * Independent of note-sync flights and their lock, cursor, outbox and status indicator.
+ * Only the open workspace keeps a live change stream; another workspace exchanges
+ * when it has receipts to send or is about to show a missed reminder.
+ */
 export class ReminderHistoryClient {
 	private flights = new Map<string, { syncKey: string; promise: Promise<void> }>();
 	private again = new Set<string>();
 	private attached = false;
-	private watches = new Map<string, Watch>();
+	private watch: Watch | null = null;
+	private retries = new Map<string, Retry>();
+	/** This window: the relay leaves it out when announcing its own uploads. */
+	readonly clientId = newClientId();
 	constructor(
 		private history: ReminderHistoryStore,
 		private profiles: () => Workspace[],
+		private activeId: () => string,
 		private send: (profile: Workspace, body: string) => Promise<Response>,
-		private openEvents: (profile: Workspace, signal?: AbortSignal) => Promise<Response> = (
-			profile,
-			signal
-		) =>
+		private openEvents: (
+			profile: Workspace,
+			clientId: string,
+			signal?: AbortSignal
+		) => Promise<Response> = (profile, clientId, signal) =>
 			syncStore.authorizedFetch(
-				'/api/sync/reminders/events',
+				`/api/sync/reminders/events?clientId=${encodeURIComponent(clientId)}`,
 				{ signal },
 				identityFromSyncKey(profile.syncKey)
 			)
@@ -60,39 +75,45 @@ export class ReminderHistoryClient {
 				this.again.delete(pid);
 				let more = true;
 				while (more && valid()) {
-					const state = await this.history.prepare(pid, accountId);
-					const sent = state.pending.slice(0, REMINDER_BATCH_SIZE);
-					const events = await Promise.all(
-						sent.map((event) => sealReminderEvent(profile.syncKey, event))
+					const outbox = await this.history.prepare(pid, accountId);
+					const notes = await Promise.all(
+						outbox.notes.map((receipts) => sealNoteReceipts(profile.syncKey, receipts))
 					);
 					if (!valid()) return;
 					const response = await this.send(
 						profile,
-						JSON.stringify({ cursor: state.cursor, events })
+						JSON.stringify({ cursor: outbox.cursor, notes, clientId: this.clientId })
 					);
+					if (response.status === 507) throw new ReminderStorageFullError();
 					if (!response.ok) throw new Error('Reminder receipt delivery failed');
 					const page = (await response.json()) as ReminderPage;
 					if (page.reset === true) {
-						if (state.cursor === 0) throw new Error('Invalid reminder receipt reset');
+						if (outbox.cursor === 0) throw new Error('Invalid reminder receipt reset');
 						if (!valid()) return;
 						await this.history.resetChannel(pid, accountId);
 						continue;
 					}
 					if (
 						!Number.isSafeInteger(page.cursor) ||
-						page.cursor < state.cursor ||
-						!Array.isArray(page.events) ||
-						page.events.length > REMINDER_BATCH_SIZE ||
+						page.cursor < outbox.cursor ||
+						!Array.isArray(page.notes) ||
+						page.notes.length > REMINDER_BATCH_SIZE ||
 						typeof page.hasMore !== 'boolean' ||
-						(page.hasMore && page.cursor <= state.cursor)
+						(page.hasMore && page.cursor <= outbox.cursor)
 					)
 						throw new Error('Invalid reminder receipt page');
 					const received = await Promise.all(
-						page.events.map((event) => openReminderEvent(profile.syncKey, event))
+						page.notes.map((row) => openNoteReceipts(profile.syncKey, row))
 					);
 					if (!valid()) return;
-					await this.history.receive(pid, accountId, received, sent, page.cursor);
-					more = page.hasMore || state.pending.length > sent.length;
+					const answered = await this.history.receive(
+						pid,
+						accountId,
+						received,
+						outbox.sent,
+						page.cursor
+					);
+					more = page.hasMore || outbox.more || answered;
 				}
 			} while (this.again.has(pid) && valid());
 		};
@@ -106,71 +127,91 @@ export class ReminderHistoryClient {
 		this.flights.set(pid, { syncKey: profile.syncKey, promise: flight });
 		return flight;
 	}
-	/** Reconcile subscriptions when the keyring changes, including inactive workspaces. */
-	updateProfiles(profiles: Workspace[] = this.profiles()): void {
-		if (!this.attached) return;
-		for (const [pid, watch] of this.watches) {
-			if (profiles.some((profile) => profile.id === pid && profile.syncKey === watch.syncKey))
-				continue;
-			watch.events.destroy();
-			if (watch.retry !== null) clearTimeout(watch.retry);
-			this.watches.delete(pid);
+	/**
+	 * Follow the open workspace: watch it, and stop watching one that is closed or
+	 * unlinked. Says whether a new watch started; it catches up once connected.
+	 */
+	updateProfiles(): boolean {
+		if (!this.attached) return false;
+		const profiles = this.profiles();
+		for (const [pid, retry] of this.retries) {
+			if (profiles.some((profile) => profile.id === pid && profile.syncKey)) continue;
+			if (retry.timer !== null) clearTimeout(retry.timer);
+			this.retries.delete(pid);
 		}
-		for (const profile of profiles) {
-			if (!profile.syncKey || this.watches.has(profile.id)) continue;
-			const events = new SyncEventsClient(
-				{
-					get isLoggedIn() {
-						return !!profile.syncKey;
-					},
-					authorizedFetch: (_url, init) => this.openEvents(profile, init?.signal ?? undefined)
+		const active = profiles.find((profile) => profile.id === this.activeId() && profile.syncKey);
+		if (this.watch && active?.id === this.watch.pid && active.syncKey === this.watch.syncKey)
+			return false;
+		this.watch?.events.destroy();
+		this.watch = null;
+		if (!active) return false;
+		const workspace = { id: active.id, syncKey: active.syncKey };
+		const events = new SyncEventsClient(
+			{
+				get isLoggedIn() {
+					return !!workspace.syncKey;
 				},
-				undefined,
-				{ path: '/api/sync/reminders/events', onConnected: () => this.requestExchange(profile.id) }
-			);
-			this.watches.set(profile.id, {
-				syncKey: profile.syncKey,
-				events,
-				retry: null,
-				backoff: 2000
-			});
-			events.subscribe(() => this.requestExchange(profile.id));
-		}
+				authorizedFetch: (_url, init) =>
+					this.openEvents(workspace, this.clientId, init?.signal ?? undefined)
+			},
+			this.clientId,
+			{
+				path: '/api/sync/reminders/events',
+				onConnected: () => this.requestExchange(workspace.id)
+			}
+		);
+		this.watch = { pid: workspace.id, syncKey: workspace.syncKey, events };
+		events.subscribe(() => this.requestExchange(workspace.id));
+		return true;
+	}
+	private sendQueued(pid: string): void {
+		void this.history
+			.hasPending(pid)
+			.then((pending) => {
+				if (pending) this.requestExchange(pid);
+			})
+			.catch(() => undefined);
 	}
 	private requestExchange(pid: string): void {
-		const watch = this.watches.get(pid);
-		if (!watch) return;
-		if (watch.retry !== null) {
-			clearTimeout(watch.retry);
-			watch.retry = null;
+		if (!this.attached) return;
+		const retry = this.retries.get(pid) ?? { timer: null, backoff: 2000 };
+		this.retries.set(pid, retry);
+		if (retry.timer !== null) {
+			clearTimeout(retry.timer);
+			retry.timer = null;
 		}
 		void this.exchange(pid)
 			.then(() => {
-				if (this.watches.get(pid) !== watch) return;
-				if (watch.retry !== null) clearTimeout(watch.retry);
-				watch.retry = null;
-				watch.backoff = 2000;
+				if (this.retries.get(pid) !== retry) return;
+				if (retry.timer !== null) clearTimeout(retry.timer);
+				retry.timer = null;
+				retry.backoff = 2000;
 			})
-			.catch(() => {
-				if (this.watches.get(pid) !== watch || watch.retry !== null) return;
+			.catch((error: unknown) => {
+				if (this.retries.get(pid) !== retry || retry.timer !== null) return;
+				// A full relay stays full: the next receipt, focus or reconnect tries again.
+				if (error instanceof ReminderStorageFullError) return;
 				// Failure retries only. Successful idle streams never fetch on a timer.
-				watch.retry = setTimeout(() => {
-					watch.retry = null;
+				retry.timer = setTimeout(() => {
+					retry.timer = null;
 					this.requestExchange(pid);
-				}, watch.backoff);
-				watch.backoff = Math.min(watch.backoff * 2, 30_000);
+				}, retry.backoff);
+				retry.backoff = Math.min(retry.backoff * 2, 30_000);
 			});
 	}
 	attach(): () => void {
 		this.attached = true;
+		// The open workspace catches up; another sends only what it has queued,
+		// such as receipts the service worker recorded while the app was closed.
 		const refresh = () => {
-			this.updateProfiles();
-			for (const pid of this.watches.keys()) this.requestExchange(pid);
+			const connecting = this.updateProfiles();
+			for (const profile of this.profiles()) {
+				if (!profile.syncKey) continue;
+				if (profile.id !== this.watch?.pid) this.sendQueued(profile.id);
+				else if (!connecting) this.requestExchange(profile.id);
+			}
 		};
-		this.history.onPending = (pid) => {
-			this.updateProfiles();
-			this.requestExchange(pid);
-		};
+		this.history.onPending = (pid) => this.requestExchange(pid);
 		const onMessage = (event: MessageEvent) => {
 			if (
 				event.data?.type === 'reminder-history-pending' &&
@@ -181,14 +222,15 @@ export class ReminderHistoryClient {
 		navigator.serviceWorker?.addEventListener('message', onMessage);
 		window.addEventListener('online', refresh);
 		window.addEventListener('focus', refresh);
-		this.updateProfiles();
+		refresh();
 		return () => {
 			this.attached = false;
-			for (const watch of this.watches.values()) {
-				watch.events.destroy();
-				if (watch.retry !== null) clearTimeout(watch.retry);
+			this.watch?.events.destroy();
+			this.watch = null;
+			for (const retry of this.retries.values()) {
+				if (retry.timer !== null) clearTimeout(retry.timer);
 			}
-			this.watches.clear();
+			this.retries.clear();
 			window.removeEventListener('online', refresh);
 			window.removeEventListener('focus', refresh);
 			this.history.onPending = null;
@@ -199,6 +241,7 @@ export class ReminderHistoryClient {
 export const reminderHistoryClient = new ReminderHistoryClient(
 	reminderHistoryStore,
 	() => syncStore.profiles,
+	() => syncStore.activeId,
 	(profile, body) =>
 		syncStore.authorizedFetch(
 			'/api/sync/reminders',

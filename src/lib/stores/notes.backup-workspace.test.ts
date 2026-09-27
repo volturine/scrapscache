@@ -207,13 +207,17 @@ describe('backup and Keep import stay in the open workspace', () => {
 		const reminder = 5_000;
 		const noted = notesStore.createNote({ title: 'Call back', reminder });
 		const wake = reminderWakeId(noted.id, reminder);
-		reminderHistoryStore.recordDismissed(workspaceA.id, { id: wake, noteId: noted.id }, 9);
+		reminderHistoryStore.recordDismissed(
+			workspaceA.id,
+			{ id: wake, noteId: noted.id, firedAt: reminder },
+			9
+		);
 		await waitForDeviceWrites(workspaceA.id);
 
 		const backup = await notesStore.exportBackup();
 		expect(backup.canvasLibrary).toEqual([shape]);
 		expect(backup.reminderHistory).toEqual([
-			{ id: wake, noteId: noted.id, firedAt: 9, dismissedAt: 9 }
+			{ id: wake, noteId: noted.id, firedAt: reminder, dismissedAt: 9 }
 		]);
 
 		await openWorkspace(workspaceB);

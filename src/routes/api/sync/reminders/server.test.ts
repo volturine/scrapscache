@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
 	account: 'account' as string | null,
-	exchange: vi.fn(async () => ({ cursor: 1, hasMore: false, events: [] }))
+	exchange: vi.fn(async () => ({ cursor: 1, hasMore: false, notes: [] }))
 }));
 vi.mock('$lib/server/syncAuth', () => ({
 	getSyncAuth: () => ({ authenticateSyncRequest: async () => mocks.account })
@@ -31,25 +31,28 @@ const call = (body: unknown) =>
 describe('reminder receipt endpoint', () => {
 	it('requires authentication', async () => {
 		mocks.account = null;
-		expect((await call({ cursor: 0, events: [] })).status).toBe(401);
+		expect((await call({ cursor: 0, notes: [] })).status).toBe(401);
 		expect(mocks.exchange).not.toHaveBeenCalled();
 	});
-	it('rejects invalid cursors, plaintext and oversized batches', async () => {
+	it('rejects invalid cursors, plaintext, repeated notes, bad client ids and oversized batches', async () => {
+		const row = { note: 'a'.repeat(64), deleted: false, ciphertext: 'c'.repeat(100) };
 		for (const body of [
 			null,
 			{},
-			{ cursor: -1, events: [] },
-			{ cursor: 0, events: [{ noteId: 'plaintext' }] },
-			{ cursor: 0, events: Array(51).fill({}) }
+			{ cursor: -1, notes: [] },
+			{ cursor: 0, notes: [{ noteId: 'plaintext' }] },
+			{ cursor: 0, notes: [row, row] },
+			{ cursor: 0, notes: [], clientId: 'not a client id!' },
+			{ cursor: 0, notes: Array(51).fill(row) }
 		])
 			expect((await call(body)).status).toBe(400);
 		expect(mocks.exchange).not.toHaveBeenCalled();
 	});
 	it('returns the separate receipt cursor without cacheability', async () => {
-		const response = await call({ cursor: 0, events: [] });
+		const response = await call({ cursor: 0, notes: [], clientId: 'window-1' });
 		expect(response.status).toBe(200);
-		expect(await response.json()).toEqual({ cursor: 1, hasMore: false, events: [] });
+		expect(await response.json()).toEqual({ cursor: 1, hasMore: false, notes: [] });
 		expect(response.headers.get('cache-control')).toBe('no-store');
-		expect(mocks.exchange).toHaveBeenCalledWith('account', 0, []);
+		expect(mocks.exchange).toHaveBeenCalledWith('account', 0, [], undefined, 'window-1');
 	});
 });

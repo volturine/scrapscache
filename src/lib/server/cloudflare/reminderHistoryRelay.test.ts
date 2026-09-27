@@ -17,24 +17,21 @@ describe('D1 reminder receipts', () => {
 			batch: (statements: Parameters<typeof batch>[1]) => batch(db, statements)
 		};
 		const database = { relay: adapter, ops: adapter, ready: Promise.resolve() } as unknown as Db;
-		const receipt = {
-			id: 'a'.repeat(64),
-			note: 'b'.repeat(64),
-			deleted: false,
-			ciphertext: 'c'.repeat(100)
-		};
-		await exchangeReminderHistory('a', 0, [receipt], database);
-		await exchangeReminderHistory('a', 0, [receipt], database);
-		expect((await exchangeReminderHistory('a', 0, [], database)).events).toHaveLength(1);
-		expect((await exchangeReminderHistory('b', 0, [], database)).events).toEqual([]);
+		const receipt = { note: 'b'.repeat(64), deleted: false, ciphertext: 'c'.repeat(100) };
+		const first = await exchangeReminderHistory('a', 0, [receipt], database);
 		await exchangeReminderHistory(
 			'a',
-			0,
-			[{ ...receipt, id: 'd'.repeat(64), deleted: true }],
+			first.cursor,
+			[{ ...receipt, ciphertext: 'd'.repeat(100) }],
 			database
 		);
+		expect((await exchangeReminderHistory('a', 0, [], database)).notes).toEqual([
+			expect.objectContaining({ ciphertext: 'd'.repeat(100) })
+		]);
+		expect((await exchangeReminderHistory('b', 0, [], database)).notes).toEqual([]);
+		await exchangeReminderHistory('a', 0, [{ ...receipt, deleted: true }], database);
 		await exchangeReminderHistory('a', 0, [receipt], database);
-		expect((await exchangeReminderHistory('a', 0, [], database)).events).toEqual([
+		expect((await exchangeReminderHistory('a', 0, [], database)).notes).toEqual([
 			expect.objectContaining({ deleted: true })
 		]);
 		client.close();

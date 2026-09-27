@@ -26,10 +26,19 @@ describe('Workers reminder event routing', () => {
 		const b = (await openReminderEvents('b')).body!.getReader();
 		await a.read();
 		await b.read();
+		const sender = (await openReminderEvents('a', undefined, 'sender')).body!.getReader();
+		await sender.read();
 		try {
 			const next = a.read();
-			await notifyReminderEvents('a');
+			let senderNotified = false;
+			const own = sender.read().then((value) => {
+				senderNotified = !value.done;
+			});
+			await notifyReminderEvents('a', 'sender');
 			expect(new TextDecoder().decode((await next).value)).toBe('data: {}\n\n');
+			await sender.cancel();
+			await own;
+			expect(senderNotified).toBe(false);
 			let otherNotified = false;
 			const other = b.read().then((value) => {
 				otherNotified = !value.done;
@@ -40,6 +49,7 @@ describe('Workers reminder event routing', () => {
 		} finally {
 			await a.cancel();
 			await b.cancel();
+			await sender.cancel();
 		}
 	});
 });

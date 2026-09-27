@@ -1162,12 +1162,16 @@ export class SyncStore {
 		});
 	}
 
-	async releaseWakeClaim(wake: Pick<DueWake, 'accountId' | 'deviceId' | 'wakeId'>): Promise<void> {
+	/** Hold a failed delivery's claim until `retryAt`, when it becomes due again. */
+	async deferWakeRetry(
+		wake: Pick<DueWake, 'accountId' | 'deviceId' | 'wakeId'>,
+		retryAt: number
+	): Promise<void> {
 		await this.db.ready;
 		await this.ops.execute({
-			sql: `DELETE FROM reminder_wake_deliveries
+			sql: `UPDATE reminder_wake_deliveries SET claimed_at = ?
 			 WHERE account_id = ? AND device_id = ? AND wake_id = ? AND delivered_at IS NULL`,
-			args: [wake.accountId, wake.deviceId, wake.wakeId]
+			args: [retryAt - WAKE_CLAIM_LEASE_MS, wake.accountId, wake.deviceId, wake.wakeId]
 		});
 	}
 

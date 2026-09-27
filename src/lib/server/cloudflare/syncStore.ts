@@ -618,10 +618,14 @@ export class SyncStore {
 			args: [now, w.accountId, w.deviceId, w.wakeId]
 		});
 	}
-	async releaseWakeClaim(w: Pick<DueWake, 'accountId' | 'deviceId' | 'wakeId'>): Promise<void> {
+	/** Hold a failed delivery's claim until `retryAt`, when it becomes due again. */
+	async deferWakeRetry(
+		w: Pick<DueWake, 'accountId' | 'deviceId' | 'wakeId'>,
+		retryAt: number
+	): Promise<void> {
 		await execute(this.db, {
-			sql: 'DELETE FROM reminder_wake_deliveries WHERE account_id=? AND device_id=? AND wake_id=? AND delivered_at IS NULL',
-			args: [w.accountId, w.deviceId, w.wakeId]
+			sql: 'UPDATE reminder_wake_deliveries SET claimed_at=? WHERE account_id=? AND device_id=? AND wake_id=? AND delivered_at IS NULL',
+			args: [retryAt - WAKE_CLAIM_LEASE_MS, w.accountId, w.deviceId, w.wakeId]
 		});
 	}
 	async pruneStaleWakes(now: number, retainMs = WAKE_RETAIN_MS): Promise<void> {

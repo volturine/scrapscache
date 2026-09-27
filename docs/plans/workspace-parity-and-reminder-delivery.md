@@ -268,12 +268,16 @@ Phase 1 alone would orphan existing default data) → 3.
 
 Reminder history now uses its own encrypted endpoint, persistent queue and cursor
 (see `docs/architecture.md`). It no longer travels in note-sync snapshots or uses
-their outbox/lock. Every linked workspace exchanges receipts independently over reminder-only SSE notifications, and
-backup restore enqueues restored history on this channel. Existing device-wide
-canvas libraries are intentionally not imported on upgrade.
+their outbox/lock. The relay keeps one row per note, so its storage follows the
+notes with reminders rather than how often they fire. Only the open workspace
+holds a reminder-only SSE stream; other linked workspaces exchange when they
+have receipts queued or a missed reminder to check. Backup restore enqueues
+restored history on this channel. Existing device-wide canvas libraries are
+intentionally not imported on upgrade.
 
 Wake dispatch computes the earliest outstanding delivery, including overdue wakes
-and claim leases. Failed sends retain their lease to avoid immediate retry loops.
+and deferred retries. A failed send waits about as long as its wake is already
+overdue, from one minute up to half an hour.
 The Cloudflare scheduler versions `/arm` and `/begin` requests; `/set` may finish
 only the generation it began, preserving newer arms and deliveries. Canvas writes
 merge both entries and deletion timestamps atomically across tabs.

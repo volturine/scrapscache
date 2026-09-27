@@ -151,7 +151,8 @@ describe('reminder service worker', () => {
 					noteId: note.id,
 					wakeId: id,
 					workspaceId: 'home',
-					workspaceTag: 'home-tag'
+					workspaceTag: 'home-tag',
+					reminder: note.reminder
 				}
 			})
 		);
@@ -292,7 +293,8 @@ describe('reminder service worker', () => {
 			type: 'open-note',
 			noteId: 'note-9',
 			wakeId: 'w',
-			workspaceId: 'home'
+			workspaceId: 'home',
+			reminder: null
 		});
 		expect(client.focus).toHaveBeenCalled();
 		expect(clients.openWindow).not.toHaveBeenCalled();
@@ -323,7 +325,7 @@ describe('service worker receipt queue', () => {
 		const listeners = loadServiceWorker(vi.fn(), { matchAll: async () => [{ postMessage }] });
 		let completion: Promise<void> | undefined;
 		listeners.get('notificationclose')!({
-			notification: { data: { workspaceId: pid, noteId: note.id, wakeId } },
+			notification: { data: { workspaceId: pid, noteId: note.id, wakeId, reminder: 1000 } },
 			waitUntil: (promise: Promise<void>) => {
 				completion = promise;
 			}
@@ -337,7 +339,12 @@ describe('service worker receipt queue', () => {
 		expect(stored.pending).toEqual([
 			expect.objectContaining({
 				kind: 'handled',
-				value: expect.objectContaining({ id: wakeId, dismissedAt: expect.any(Number) })
+				// The due time, as every device records it.
+				value: expect.objectContaining({
+					id: wakeId,
+					firedAt: 1000,
+					dismissedAt: expect.any(Number)
+				})
 			})
 		]);
 		expect(postMessage).toHaveBeenCalledWith({

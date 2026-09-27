@@ -328,11 +328,13 @@ export class ReminderStore {
 	}
 
 	/** The user answered a reminder, so no device needs to show it again. */
-	private acknowledge(alert: Pick<ReminderAlert, 'workspaceId' | 'wakeId' | 'noteId'>): void {
+	private acknowledge(
+		alert: Pick<ReminderAlert, 'workspaceId' | 'wakeId' | 'noteId' | 'reminder'>
+	): void {
 		void this.claimFired(alert);
 		this.history.recordDismissed(
 			alert.workspaceId,
-			{ id: alert.wakeId, noteId: alert.noteId },
+			{ id: alert.wakeId, noteId: alert.noteId, firedAt: alert.reminder },
 			Date.now()
 		);
 	}
@@ -374,7 +376,7 @@ export class ReminderStore {
 			if (note.reminder == null) continue;
 			const id = reminderWakeId(note.id, note.reminder);
 			if (!workspace.fired.has(id) || workspace.recorded.has(id)) continue;
-			fired.push({ id, noteId: note.id, firedAt: Math.max(1, Math.min(now, note.reminder)) });
+			fired.push({ id, noteId: note.id, firedAt: note.reminder });
 		}
 		if (fired.length) this.history.recordFired(workspace.pid, fired);
 	}
@@ -439,7 +441,7 @@ export class ReminderStore {
 	}
 
 	private openFromNotification(
-		alert: Pick<ReminderAlert, 'workspaceId' | 'wakeId' | 'noteId'>
+		alert: Pick<ReminderAlert, 'workspaceId' | 'wakeId' | 'noteId' | 'reminder'>
 	): void {
 		this.acknowledge(alert);
 		this.alerts = this.alerts.filter((item) => item.wakeId !== alert.wakeId);
@@ -468,7 +470,7 @@ export class ReminderStore {
 	}
 
 	private async claimFired(
-		alert: Pick<ReminderAlert, 'workspaceId' | 'wakeId' | 'noteId'>
+		alert: Pick<ReminderAlert, 'workspaceId' | 'wakeId' | 'noteId' | 'reminder'>
 	): Promise<boolean> {
 		const pid = alert.workspaceId;
 		const workspace = this.workspaces.get(pid);
@@ -486,7 +488,7 @@ export class ReminderStore {
 		// Recorded after the claim: history also lands in the ledger, which would
 		// make this device's own claim look like one the service worker made.
 		this.history.recordFired(pid, [
-			{ id: alert.wakeId, noteId: alert.noteId, firedAt: Date.now() }
+			{ id: alert.wakeId, noteId: alert.noteId, firedAt: alert.reminder }
 		]);
 		return claimed;
 	}
@@ -497,11 +499,17 @@ export class ReminderStore {
 			noteId?: unknown;
 			wakeId?: unknown;
 			workspaceId?: unknown;
+			reminder?: unknown;
 		} | null;
 		if (data?.type !== 'open-note' || typeof data.noteId !== 'string') return;
 		const workspaceId = typeof data.workspaceId === 'string' ? data.workspaceId : this.activePid;
-		if (typeof data.wakeId === 'string')
-			this.openFromNotification({ workspaceId, wakeId: data.wakeId, noteId: data.noteId });
+		if (typeof data.wakeId === 'string' && typeof data.reminder === 'number')
+			this.openFromNotification({
+				workspaceId,
+				wakeId: data.wakeId,
+				noteId: data.noteId,
+				reminder: data.reminder
+			});
 		else this.host?.openNote(workspaceId, data.noteId);
 	};
 

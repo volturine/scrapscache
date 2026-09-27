@@ -829,9 +829,15 @@ export class SyncStore {
 		) {
 			throw new Error('Sync authentication failed');
 		}
-		if (generation !== this.authenticationGeneration)
+		const active = this.account?.accountId === account.accountId;
+		// A switch, logout or recovery cancels what would become the open workspace's
+		// session. A token for another workspace still saved here stays good.
+		if (
+			generation !== this.authenticationGeneration &&
+			(active || !this.profiles.some((profile) => profile.syncKey === account.syncKey))
+		)
 			throw new Error('Sync authentication was cancelled');
-		if (this.account?.accountId === account.accountId) {
+		if (active) {
 			this.session = {
 				accountId: account.accountId,
 				accessToken: issued.accessToken,

@@ -12,6 +12,16 @@ const SEND_CONCURRENCY = 8;
 const CLAIM_LIMIT = 100;
 /** Rounds per dispatch. What is still due after them is sent by the next dispatch, at once. */
 const MAX_ROUNDS = 10;
+/** Longest wait between attempts for a device whose push keeps failing. */
+const MAX_RETRY_DELAY_MS = 30 * 60_000;
+
+/**
+ * A failed send waits about as long as its wake is already overdue: a minute at
+ * first, doubling with each failure, at most half an hour.
+ */
+export function wakeRetryAt(fireAt: number, now: number): number {
+	return now + Math.min(Math.max(now - fireAt, WAKE_CLAIM_LEASE_MS), MAX_RETRY_DELAY_MS);
+}
 
 export type WakeSender = (device: DueWake) => Promise<WakeSendResult>;
 export type WakeDispatchResult = {
@@ -19,8 +29,8 @@ export type WakeDispatchResult = {
 	failed: number;
 	gone: number;
 	/**
-	 * When the next dispatch is needed: now while some are still due, a claim
-	 * lease from now to retry a failed send, or the next wake's time.
+	 * When the next dispatch is needed: now while some are still due, when a
+	 * failed send is retried, or the next wake's time.
 	 */
 	next: number | null;
 };
@@ -32,8 +42,8 @@ function earliest(...times: (number | null)[]): number | null {
 
 /**
  * Deliver every wake due now, of one account when `accountId` is given, and say
- * when to run again. A failed send is released for the retry; a push endpoint
- * the push service no longer knows is dropped.
+ * when to run again. A failed send is retried with backoff; a push endpoint the
+ * push service no longer knows is dropped.
  */
 export async function dispatchDueWakes(
 	options: { store?: SyncStore; send?: WakeSender; now?: () => number; accountId?: string } = {}
@@ -57,7 +67,7 @@ export async function dispatchDueWakes(
 			for (const [index, device] of batch.entries()) {
 				const sendResult = results[index];
 				if (sendResult === 'failed') {
-					// Keep the claim until its lease expires, preventing an immediate retry loop.
+					await store.deferWakeRetry(device, wakeRetryAt(Number(device.fireAt), now()));
 					recordReminderWake('failed');
 					result.failed += 1;
 					continue;
@@ -76,10 +86,7 @@ export async function dispatchDueWakes(
 		moreDue = due.length === CLAIM_LIMIT;
 		if (!moreDue) break;
 	}
-	result.next = earliest(
-		moreDue ? now() : null,
-		result.failed ? now() + WAKE_CLAIM_LEASE_MS : null,
-		await store.nextWakeAt(now(), options.accountId)
-	);
+	// A deferred claim counts from its retry time, so the next wake covers retries.
+	result.next = earliest(moreDue ? now() : null, await store.nextWakeAt(now(), options.accountId));
 	return result;
 }

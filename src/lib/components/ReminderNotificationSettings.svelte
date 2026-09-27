@@ -3,7 +3,7 @@
 	import { onMount } from 'svelte';
 	import { Bell, ChevronRight } from '@lucide/svelte';
 	import { notificationPermission, requestReminderPermission } from '$lib/reminderNotify';
-	import { registerReminderDevice } from '$lib/reminderWake';
+	import { registerAllReminderDevices } from '$lib/reminderWake';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { reminderStore } from '$lib/stores/reminders.svelte';
 	import { cx } from 'styled-system/css';
@@ -26,7 +26,7 @@
 	async function enable() {
 		permission = await requestReminderPermission();
 		if (permission !== 'granted') return;
-		if (await registerReminderDevice()) reminderStore.publish(notesStore.notes);
+		if (await registerAllReminderDevices()) reminderStore.publish(notesStore.notes);
 	}
 </script>
 

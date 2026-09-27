@@ -17,6 +17,9 @@ from collections.abc import Mapping, Sequence
 
 DATABASE = "SCRAPSCACHE_DB"
 DEV_ENV = "dev"
+DEV_WORKER = "scrapscache-dev"
+# Accounts whose reminder alarm fired, from the reminders Worker to the app Worker.
+WAKE_QUEUE = "scrapscache-reminder-wakes-dev"
 LIST_OBJECTS = (
     "SELECT type, name FROM sqlite_master WHERE type IN ('table', 'view') "
     "AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%'"
@@ -91,6 +94,31 @@ def delete_worker(args: Sequence[str], env: Mapping[str, str] | None = None) -> 
     raise SystemExit(result.returncode)
 
 
+def detach_queue_consumer(env: Mapping[str, str] | None = None) -> None:
+    """Detach the development app before deleting it; tolerate a fresh/reset account."""
+    # The script name already includes the deployment suffix. --env would select
+    # a service environment rather than this independently deployed Worker.
+    result = wrangler(["queues", "consumer", "remove", WAKE_QUEUE, DEV_WORKER], env)
+    echo(result)
+    output = result.stdout + result.stderr
+    missing = (
+        f'Queue "{WAKE_QUEUE}" does not exist' in output
+        or f"No worker consumer '{DEV_WORKER}' exists for queue {WAKE_QUEUE}" in output
+    )
+    if result.returncode != 0 and not missing:
+        raise SystemExit(result.returncode)
+
+
+def ensure_queue(name: str, env: Mapping[str, str] | None = None) -> None:
+    """Queues outlive Workers; create it only when this account lacks it."""
+    if wrangler(["queues", "info", name], env).returncode == 0:
+        return
+    created = wrangler(["queues", "create", name], env)
+    echo(created)
+    if created.returncode != 0:
+        raise SystemExit(created.returncode)
+
+
 def wipe_d1(env: Mapping[str, str] | None = None) -> None:
     listed = wrangler(
         [
@@ -137,8 +165,14 @@ def wipe_d1(env: Mapping[str, str] | None = None) -> None:
 
 
 def main() -> int:
+    # Cloudflare rejects deleting a Worker while a queue still names it as a consumer.
+    detach_queue_consumer()
+    # Dependents first: the cron Worker calls the app, and the app binds the
+    # reminders Worker's schedulers.
     delete_worker(["--config", "cf/wrangler.cron.jsonc", "--env", DEV_ENV, "--force"])
     delete_worker(["--env", DEV_ENV, "--force"])
+    delete_worker(["--config", "cf/wrangler.reminders.jsonc", "--env", DEV_ENV, "--force"])
+    ensure_queue(WAKE_QUEUE)
     wipe_d1()
     return 0
 

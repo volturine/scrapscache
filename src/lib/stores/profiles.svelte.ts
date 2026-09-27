@@ -14,7 +14,7 @@ import {
 	profileForSyncKey,
 	type StoredProfile
 } from '$lib/profiles';
-import { identityFromSyncKey, randomOpaqueId } from '$lib/syncPairing';
+import { randomOpaqueId } from '$lib/syncPairing';
 import {
 	isProfileReleased,
 	LS_PROFILES,
@@ -191,10 +191,11 @@ export class ProfileCoordinator {
 				if (!result.success) return result;
 			} else {
 				await syncStore.unlinkProfile(profile);
-				// Best effort: an unreachable relay here must not surface as an
-				// unhandled rejection.
-				void unregisterReminderDevice(identityFromSyncKey(profile.syncKey)).catch(() => undefined);
 			}
+			// Its push subscription goes either way. Best effort: an unreachable relay
+			// (or one that already deleted the account) must not surface as an
+			// unhandled rejection.
+			void unregisterReminderDevice(profile).catch(() => undefined);
 			if (syncStore.activeId === profileId) await notesStore.reloadForProfile();
 			return { success: true };
 		});
@@ -223,8 +224,7 @@ export class ProfileCoordinator {
 			clearNotesMirror(profileId);
 			clearBoardsMirror(profileId);
 			clearFiredReminderMirror(profileId);
-			if (profile.syncKey)
-				void unregisterReminderDevice(identityFromSyncKey(profile.syncKey)).catch(() => undefined);
+			if (profile.syncKey) void unregisterReminderDevice(profile).catch(() => undefined);
 			if (removal === 'pending')
 				return {
 					success: false,

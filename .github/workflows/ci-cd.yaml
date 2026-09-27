@@ -59,8 +59,10 @@ jobs:
 
       - name: Validate Cloudflare deployments
         run: |
+          npx wrangler deploy --dry-run --config cf/wrangler.reminders.jsonc --env=""
           npx wrangler deploy --dry-run --env=""
           npx wrangler deploy --dry-run --config cf/wrangler.cron.jsonc --env=""
+          npx wrangler deploy --dry-run --config cf/wrangler.reminders.jsonc --env dev
           npx wrangler deploy --dry-run --env dev
           npx wrangler deploy --dry-run --config cf/wrangler.cron.jsonc --env dev
           npx wrangler deploy --dry-run --config recipes/mcp-server/cloudflare/wrangler.jsonc --env=""
@@ -116,6 +118,8 @@ jobs:
           npm run build:cloudflare
           python3 scripts/reset_cloudflare_dev.py
           npx wrangler d1 migrations apply SCRAPSCACHE_DB --remote --env dev
+          # The app binds the reminders Worker's schedulers, so that Worker goes first.
+          npx wrangler deploy --config cf/wrangler.reminders.jsonc --env dev
           npx wrangler deploy --env dev
           printf '%s' "$SCRAPSCACHE_ADMIN_TOKEN" | npx wrangler secret put SCRAPSCACHE_ADMIN_TOKEN --env dev
           printf '%s' "$SCRAPSCACHE_TICK_SECRET" | npx wrangler secret put SCRAPSCACHE_TICK_SECRET --env dev
@@ -166,6 +170,10 @@ jobs:
           test -n "$TURNSTILE_SECRET"
           npm run build:cloudflare
           npx wrangler d1 migrations apply SCRAPSCACHE_DB --remote --env=""
+          # The reminders Worker queues due accounts for the app, and the app binds its
+          # schedulers: the queue, then the reminders Worker, then the app.
+          npx wrangler queues info scrapscache-reminder-wakes >/dev/null 2>&1 || npx wrangler queues create scrapscache-reminder-wakes
+          npx wrangler deploy --config cf/wrangler.reminders.jsonc --env=""
           npx wrangler deploy --env=""
           printf '%s' "$SCRAPSCACHE_ADMIN_TOKEN" | npx wrangler secret put SCRAPSCACHE_ADMIN_TOKEN --env=""
           printf '%s' "$SCRAPSCACHE_TICK_SECRET" | npx wrangler secret put SCRAPSCACHE_TICK_SECRET --env=""

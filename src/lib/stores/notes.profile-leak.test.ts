@@ -8,11 +8,13 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { getAllNotesMetadata, LOCAL_PROFILE_ID } from '$lib/db/idb';
+import { getAllNotesMetadata } from '$lib/db/idb';
 import { readNotesMirror } from '$lib/noteStorage';
 import { notesStore } from './notes.svelte';
 import { syncStore } from './sync.svelte';
 import type { Note } from '$lib/types';
+import { syncSnapshot, type SyncSnapshot } from '$lib/syncRecords';
+import { TEST_WORKSPACE } from '../../tests/workspace';
 
 const OTHER = 'workspace-other';
 
@@ -40,29 +42,12 @@ function applyPulled(snapshot: Parameters<typeof callApply>[0], pid: string) {
 }
 const callApply = (
 	notesStore as unknown as {
-		applyPulledSnapshot: (
-			snapshot: {
-				notes: Note[];
-				labels: never[];
-				boards: never[];
-				tombstones: Record<string, number>;
-				labelTombstones: Record<string, number>;
-				boardTombstones: Record<string, number>;
-			},
-			pid: string
-		) => Promise<unknown>;
+		applyPulledSnapshot: (snapshot: SyncSnapshot, pid: string) => Promise<unknown>;
 	}
 ).applyPulledSnapshot.bind(notesStore);
 
 function snapshotOf(notes: Note[]) {
-	return {
-		notes,
-		labels: [] as never[],
-		boards: [] as never[],
-		tombstones: {},
-		labelTombstones: {},
-		boardTombstones: {}
-	};
+	return syncSnapshot({ notes });
 }
 
 beforeEach(() => {
@@ -75,31 +60,31 @@ describe('a sync flight cannot write into another workspace', () => {
 	it('drops what it pulled when the window moved on', async () => {
 		// The window is on the anonymous workspace; a flight for another one
 		// finishes downloading and tries to apply.
-		vi.spyOn(syncStore, 'activePid', 'get').mockReturnValue(LOCAL_PROFILE_ID);
+		vi.spyOn(syncStore, 'activePid', 'get').mockReturnValue(TEST_WORKSPACE);
 
 		await applyPulled(snapshotOf([note('secret-1', 'from the other workspace')]), OTHER);
 
-		expect(await getAllNotesMetadata(LOCAL_PROFILE_ID)).toEqual([]);
+		expect(await getAllNotesMetadata(TEST_WORKSPACE)).toEqual([]);
 		expect(notesStore.notes).toEqual([]);
-		expect(readNotesMirror(LOCAL_PROFILE_ID)).toEqual([]);
+		expect(readNotesMirror(TEST_WORKSPACE)).toEqual([]);
 		vi.restoreAllMocks();
 	});
 
 	it('applies what it pulled for the workspace still on screen', async () => {
-		vi.spyOn(syncStore, 'activePid', 'get').mockReturnValue(LOCAL_PROFILE_ID);
+		vi.spyOn(syncStore, 'activePid', 'get').mockReturnValue(TEST_WORKSPACE);
 
-		await applyPulled(snapshotOf([note('mine-1', 'my own note')]), LOCAL_PROFILE_ID);
+		await applyPulled(snapshotOf([note('mine-1', 'my own note')]), TEST_WORKSPACE);
 
-		expect((await getAllNotesMetadata(LOCAL_PROFILE_ID)).map((n) => n.id)).toEqual(['mine-1']);
+		expect((await getAllNotesMetadata(TEST_WORKSPACE)).map((n) => n.id)).toEqual(['mine-1']);
 		expect(notesStore.notes.map((n) => n.id)).toEqual(['mine-1']);
 		vi.restoreAllMocks();
 	});
 
 	it('leaves the other workspace empty either way', async () => {
-		vi.spyOn(syncStore, 'activePid', 'get').mockReturnValue(LOCAL_PROFILE_ID);
+		vi.spyOn(syncStore, 'activePid', 'get').mockReturnValue(TEST_WORKSPACE);
 
 		await applyPulled(snapshotOf([note('secret-2')]), OTHER);
-		await applyPulled(snapshotOf([note('mine-2')]), LOCAL_PROFILE_ID);
+		await applyPulled(snapshotOf([note('mine-2')]), TEST_WORKSPACE);
 
 		expect(await getAllNotesMetadata(OTHER)).toEqual([]);
 		vi.restoreAllMocks();

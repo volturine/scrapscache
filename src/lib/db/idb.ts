@@ -1,27 +1,36 @@
 // Device persistence. IndexedDB is the durable source of truth; localStorage is handled
 // separately as a blob-free fast-boot mirror by noteStorage.ts.
-// Each profile has its own isolated IndexedDB database, keeping the schema,
-// stores, and DB version (v6) identical to master with zero migrations.
+// Every workspace has its own database, `scrapscache-profile-<id>`, and none is special.
+// One small device database, `scrapscache-device`, lists them for the service worker
+// and caches link previews.
 
 import { openDB, type IDBPDatabase, type IDBPTransaction } from 'idb';
 import { copyImage, copyLabel, copyLinkPreview, copyNote } from '$lib/model';
 import type { Label, LinkPreview, Note, NoteImage } from '$lib/types';
 import type { KanbanBoard } from '$lib/kanban';
 import { blobToDataUrl, dataUrlToBlob } from '$lib/imageBlob';
+import { workspaceLinkTag } from '$lib/noteLinks';
 
-const DB_NAME = 'scrapscache';
-const DB_VERSION = 6;
+/**
+ * v7 stores workspace state under plain keys. Earlier versions wrote some of it
+ * as `<key>:<workspace id>`; the upgrade renames those in place.
+ */
+const WORKSPACE_DB_VERSION = 7;
 export const NOTES_STORE = 'notes';
 export const LABELS_STORE = 'labels';
 export const IMAGES_STORE = 'note-images';
-const LINK_PREVIEWS_STORE = 'link-previews';
-const SYNC_STATE_STORE = 'sync-state';
+export const SYNC_STATE_STORE = 'sync-state';
 export const SYNC_OUTBOX_STORE = 'sync-outbox';
 
-/** Namespace for notes created before any sync key exists. */
-export const LOCAL_PROFILE_ID = 'device-local';
+/** Lists this device's workspaces for the service worker; never names or sync keys. */
+export const DEVICE_DB_NAME = 'scrapscache-device';
+const DEVICE_DB_VERSION = 2;
+export const WORKSPACES_STORE = 'workspaces';
+const LINK_PREVIEWS_STORE = 'link-previews';
+/** Small device-wide facts that must survive a killed browser, unlike localStorage. */
+const DEVICE_STATE_STORE = 'device-state';
 
-/** One saved sync key ("profile") on this device. */
+/** One workspace on this device. Private ones have an empty sync key. */
 export interface StoredProfile {
 	id: string;
 	name: string;
@@ -34,6 +43,7 @@ export const LS_PROFILES = 'scrapscache-sync-profiles';
 const LS_PROFILES_LEGACY = 'gkc-sync-profiles';
 
 const dbPromises = new Map<string, Promise<IDBPDatabase>>();
+let deviceDbPromise: Promise<IDBPDatabase> | null = null;
 const noteChains = new Map<string, Promise<void>>();
 let deviceWriteChain: Promise<void> = Promise.resolve();
 let writeGeneration = 0;
@@ -48,38 +58,14 @@ function enqueueDeviceWrite<T>(operation: () => Promise<T>): Promise<T> {
 	return run;
 }
 
-export const DEVICE_DB_NAME = DB_NAME;
-
-/** Each profile owns its own database; the no-key namespace keeps the device name. */
-export function resolveDbName(pid?: string): string {
-	if (!pid || pid === LOCAL_PROFILE_ID) return DEVICE_DB_NAME;
-	return `${DEVICE_DB_NAME}-profile-${pid}`;
+export function resolveDbName(pid: string): string {
+	if (!pid) throw new Error('A workspace is required');
+	return `scrapscache-profile-${pid}`;
 }
 
-export function scopedStateKey(base: string, pid?: string): string {
-	return pid && pid !== LOCAL_PROFILE_ID ? `${base}:${pid}` : base;
-}
-
-const KANBAN_BOARDS_STATE_KEY = 'scrapscache-idb-kanban-boards';
-
-const SCOPED_STATE_PREFIXES = [
-	'scrapscache-idb-note-tombstones',
-	'scrapscache-idb-label-tombstones',
-	'scrapscache-idb-board-tombstones',
-	KANBAN_BOARDS_STATE_KEY,
-	'scrapscache-fired-reminders'
-];
-
-function extractPidFromStateKey(key: string): { pid: string; baseKey: string } {
-	for (const prefix of SCOPED_STATE_PREFIXES) {
-		if (key.startsWith(prefix + ':')) {
-			return {
-				pid: key.slice(prefix.length + 1),
-				baseKey: prefix
-			};
-		}
-	}
-	return { pid: LOCAL_PROFILE_ID, baseKey: key };
+/** A per-workspace localStorage key. */
+export function workspaceKey(base: string, pid: string): string {
+	return `${base}:${pid}`;
 }
 
 /** Workspaces the keyring stopped naming. Served again if it names them again. */
@@ -134,50 +120,144 @@ export function onProfileDeleted(listener: ((pid: string) => void) | null): void
 	deletedListener = listener;
 }
 
-export function getDB(pid?: string): Promise<IDBPDatabase> {
+/** Create the workspace stores, and move pre-v7 `<key>:<id>` state to plain keys. */
+async function upgradeWorkspace(
+	db: IDBPDatabase,
+	oldVersion: number,
+	tx: IDBPTransaction<unknown, string[], 'versionchange'>,
+	pid: string
+): Promise<void> {
+	for (const name of [NOTES_STORE, LABELS_STORE]) {
+		if (!db.objectStoreNames.contains(name)) db.createObjectStore(name, { keyPath: 'id' });
+	}
+	for (const name of [IMAGES_STORE, SYNC_STATE_STORE, SYNC_OUTBOX_STORE]) {
+		if (!db.objectStoreNames.contains(name)) db.createObjectStore(name);
+	}
+	if (oldVersion === 0 || oldVersion >= 7) return;
+	// The suffixed copy was the one kept current, so it replaces the plain one.
+	const suffix = `:${pid}`;
+	const state = tx.objectStore(SYNC_STATE_STORE);
+	let cursor = await state.openCursor();
+	while (cursor) {
+		const key = String(cursor.key);
+		if (key.endsWith(suffix)) {
+			await state.put(cursor.value, key.slice(0, -suffix.length));
+			await cursor.delete();
+		}
+		cursor = await cursor.continue();
+	}
+}
+
+export function getDB(pid: string): Promise<IDBPDatabase> {
 	if (typeof indexedDB === 'undefined') {
 		return Promise.reject(new Error('IndexedDB is not available'));
 	}
-	if (pid && isProfileReleased(pid)) {
+	if (!pid) return Promise.reject(new Error('A workspace is required'));
+	if (isProfileReleased(pid)) {
 		return Promise.reject(new Error('That workspace is no longer on this device.'));
 	}
 	const dbName = resolveDbName(pid);
 	let promise = dbPromises.get(dbName);
 	if (!promise) {
-		promise = openDB(dbName, DB_VERSION, {
+		promise = openDB(dbName, WORKSPACE_DB_VERSION, {
 			// A null blocked version means a delete rather than an upgrade: another
 			// window is removing this workspace, and holding the connection open
 			// would only stall it until its grace runs out.
 			blocking(_currentVersion, blockedVersion) {
-				if (blockedVersion !== null || !pid) return;
+				if (blockedVersion !== null) return;
 				deletedProfiles.add(pid);
 				closeConnection(pid);
 				deletedListener?.(pid);
 			},
-			upgrade(db) {
-				if (!db.objectStoreNames.contains(NOTES_STORE)) {
-					db.createObjectStore(NOTES_STORE, { keyPath: 'id' });
-				}
-				if (!db.objectStoreNames.contains(LABELS_STORE)) {
-					db.createObjectStore(LABELS_STORE, { keyPath: 'id' });
-				}
-				if (!db.objectStoreNames.contains(IMAGES_STORE)) {
-					db.createObjectStore(IMAGES_STORE);
-				}
-				if (!db.objectStoreNames.contains(LINK_PREVIEWS_STORE)) {
-					db.createObjectStore(LINK_PREVIEWS_STORE, { keyPath: 'url' });
-				}
-				if (!db.objectStoreNames.contains(SYNC_STATE_STORE)) {
-					db.createObjectStore(SYNC_STATE_STORE);
-				}
-				if (!db.objectStoreNames.contains(SYNC_OUTBOX_STORE)) {
-					db.createObjectStore(SYNC_OUTBOX_STORE);
-				}
+			upgrade(db, oldVersion, _newVersion, tx) {
+				return upgradeWorkspace(
+					db,
+					oldVersion,
+					tx as unknown as IDBPTransaction<unknown, string[], 'versionchange'>,
+					pid
+				);
 			}
 		});
 		dbPromises.set(dbName, promise);
 	}
 	return promise;
+}
+
+export function getDeviceDB(): Promise<IDBPDatabase> {
+	if (typeof indexedDB === 'undefined') {
+		return Promise.reject(new Error('IndexedDB is not available'));
+	}
+	if (deviceDbPromise) return deviceDbPromise;
+	const opening: Promise<IDBPDatabase> = openDB(DEVICE_DB_NAME, DEVICE_DB_VERSION, {
+		// A newer build in another window needs a newer schema. Let it upgrade, and
+		// reopen on next use, rather than leave that window waiting on this one.
+		blocking() {
+			if (deviceDbPromise === opening) deviceDbPromise = null;
+			void opening.then((db) => db.close()).catch(() => undefined);
+		},
+		upgrade(db) {
+			if (!db.objectStoreNames.contains(WORKSPACES_STORE))
+				db.createObjectStore(WORKSPACES_STORE, { keyPath: 'id' });
+			if (!db.objectStoreNames.contains(LINK_PREVIEWS_STORE))
+				db.createObjectStore(LINK_PREVIEWS_STORE, { keyPath: 'url' });
+			if (!db.objectStoreNames.contains(DEVICE_STATE_STORE))
+				db.createObjectStore(DEVICE_STATE_STORE);
+		}
+	});
+	deviceDbPromise = opening;
+	return opening;
+}
+
+export async function getDeviceState<T>(key: string): Promise<T | undefined> {
+	const db = await getDeviceDB();
+	return (await db.get(DEVICE_STATE_STORE, key)) as T | undefined;
+}
+
+/**
+ * Write a device-wide fact durably before returning. Browsers flush
+ * localStorage lazily, so a record that later IndexedDB writes depend on
+ * belongs here.
+ */
+export async function setDeviceState(key: string, value: unknown): Promise<void> {
+	// Opened before joining the write queue: an open that waits on another window
+	// must not hold every workspace write queued behind it.
+	const db = await getDeviceDB();
+	return enqueueDeviceWrite(async () => {
+		const tx = db.transaction(DEVICE_STATE_STORE, 'readwrite', { durability: 'strict' });
+		await tx.store.put(value, key);
+		await tx.done;
+	});
+}
+
+/**
+ * A workspace as the service worker sees it: the id names its database, and the
+ * tag is the one-way link tag a notification click opens it by. Never a name or
+ * a sync key.
+ */
+export type RegisteredWorkspace = { id: string; tag: string };
+
+/** Keep the service worker's list of workspace databases the same as the keyring. */
+export async function setRegisteredWorkspaces(
+	profiles: Iterable<Pick<StoredProfile, 'id' | 'syncKey'>>
+): Promise<void> {
+	const rows = new Map(
+		[...profiles].map((profile) => [profile.id, { id: profile.id, tag: workspaceLinkTag(profile) }])
+	);
+	// Opened outside the write queue, for the same reason as `setDeviceState`.
+	const db = await getDeviceDB();
+	return enqueueDeviceWrite(async () => {
+		const tx = db.transaction(WORKSPACES_STORE, 'readwrite');
+		for (const id of (await tx.store.getAllKeys()) as string[]) {
+			if (!rows.has(id)) await tx.store.delete(id);
+		}
+		for (const row of rows.values()) await tx.store.put(row);
+		await tx.done;
+	});
+}
+
+export async function getRegisteredWorkspaces(): Promise<RegisteredWorkspace[]> {
+	const db = await getDeviceDB();
+	return (await db.getAll(WORKSPACES_STORE)) as RegisteredWorkspace[];
 }
 
 /** How long a delete may stay blocked before the caller stops waiting on it. */
@@ -241,8 +321,9 @@ export function dropDatabase(name: string, graceMs = DELETE_BLOCKED_GRACE_MS): P
  */
 export async function closeDeviceDatabase(): Promise<void> {
 	await waitForDeviceWrites();
-	const existing = Array.from(dbPromises.values());
+	const existing = [...dbPromises.values(), ...(deviceDbPromise ? [deviceDbPromise] : [])];
 	dbPromises.clear();
+	deviceDbPromise = null;
 	deviceWriteChain = Promise.resolve();
 	noteChains.clear();
 	writeGeneration = 0;
@@ -439,22 +520,19 @@ function enqueueNote<T>(pid: string, noteId: string, operation: () => Promise<T>
 
 // --- Notes API --------------------------------------------------------------
 
-export async function getAllNotesMetadata(pid: string = LOCAL_PROFILE_ID): Promise<Note[]> {
+export async function getAllNotesMetadata(pid: string): Promise<Note[]> {
 	const db = await getDB(pid);
 	return ((await db.getAll(NOTES_STORE)) as Note[]).map(plainNote);
 }
 
-export async function getNote(
-	id: string,
-	pid: string = LOCAL_PROFILE_ID
-): Promise<Note | undefined> {
+export async function getNote(pid: string, id: string): Promise<Note | undefined> {
 	const db = await getDB(pid);
 	const stored = (await db.get(NOTES_STORE, id)) as Note | undefined;
 	if (!stored) return undefined;
 	return plainNote(stored);
 }
 
-export async function pruneOrphanImageBlobs(pid: string = LOCAL_PROFILE_ID): Promise<void> {
+export async function pruneOrphanImageBlobs(pid: string): Promise<void> {
 	await enqueueDeviceWrite(async () => {
 		const db = await getDB(pid);
 		const notes = (await db.getAll(NOTES_STORE)) as Note[];
@@ -473,25 +551,12 @@ export async function pruneOrphanImageBlobs(pid: string = LOCAL_PROFILE_ID): Pro
 	});
 }
 
-export async function hydrateNoteAttachments(
-	pidOrNote: string | Note,
-	maybeNote?: Note
-): Promise<Note> {
-	const pid = typeof pidOrNote === 'string' ? pidOrNote : LOCAL_PROFILE_ID;
-	const note = typeof pidOrNote === 'string' ? maybeNote! : pidOrNote;
+export async function hydrateNoteAttachments(pid: string, note: Note): Promise<Note> {
 	const db = await getDB(pid);
 	return hydrateNoteImages(db, note);
 }
 
-export async function putNote(
-	pidOrNote: string | Note,
-	noteOrKeys?: Note | Iterable<string>,
-	maybeKeys?: Iterable<string>
-): Promise<void> {
-	const pid = typeof pidOrNote === 'string' ? pidOrNote : LOCAL_PROFILE_ID;
-	const note = typeof pidOrNote === 'string' ? (noteOrKeys as Note) : pidOrNote;
-	const keys =
-		typeof pidOrNote === 'string' ? (maybeKeys ?? []) : ((noteOrKeys as Iterable<string>) ?? []);
+export async function putNote(pid: string, note: Note, keys: Iterable<string> = []): Promise<void> {
 	const snapshot = plainNote(note);
 	const outboxKeys = uniqueOutboxKeys(keys);
 	const generation = writeGeneration;
@@ -524,20 +589,16 @@ export function deleteNote(pid: string, id: string): Promise<void> {
 
 // --- Labels API -------------------------------------------------------------
 
-export async function getAllLabels(pid: string = LOCAL_PROFILE_ID): Promise<Label[]> {
+export async function getAllLabels(pid: string): Promise<Label[]> {
 	const db = await getDB(pid);
 	return ((await db.getAll(LABELS_STORE)) as Label[]).map(plainLabel);
 }
 
 export async function putLabel(
-	pidOrLabel: string | Label,
-	labelOrKeys?: Label | Iterable<string>,
-	maybeKeys?: Iterable<string>
+	pid: string,
+	label: Label,
+	syncOutboxKeys: Iterable<string> = []
 ): Promise<void> {
-	const pid = typeof pidOrLabel === 'string' ? pidOrLabel : LOCAL_PROFILE_ID;
-	const label = typeof pidOrLabel === 'string' ? (labelOrKeys as Label) : pidOrLabel;
-	const syncOutboxKeys =
-		typeof pidOrLabel === 'string' ? (maybeKeys ?? []) : ((labelOrKeys as Iterable<string>) ?? []);
 	const outboxKeys = uniqueOutboxKeys(syncOutboxKeys);
 	const lean = plainLabel(label);
 	const dbName = resolveDbName(pid);
@@ -594,18 +655,11 @@ export async function deleteLabel(
 }
 
 export async function deleteLabelWithSyncState(
-	pidOrId: string,
-	idOrState: string | Iterable<readonly [key: string, value: unknown]>,
-	stateOrKeys?: Iterable<readonly [key: string, value: unknown]> | Iterable<string>,
-	maybeKeys?: Iterable<string>
+	pid: string,
+	id: string,
+	state: Iterable<readonly [key: string, value: unknown]>,
+	syncOutboxKeys: Iterable<string> = []
 ): Promise<void> {
-	const isScoped = typeof idOrState === 'string';
-	const pid = isScoped ? pidOrId : LOCAL_PROFILE_ID;
-	const id = isScoped ? idOrState : pidOrId;
-	const state = isScoped
-		? (stateOrKeys as Iterable<readonly [key: string, value: unknown]>)
-		: (idOrState as Iterable<readonly [key: string, value: unknown]>);
-	const syncOutboxKeys = isScoped ? (maybeKeys ?? []) : ((stateOrKeys as Iterable<string>) ?? []);
 	const outboxKeys = uniqueOutboxKeys(syncOutboxKeys);
 	const entries = [...state];
 	const dbName = resolveDbName(pid);
@@ -621,7 +675,7 @@ export async function deleteLabelWithSyncState(
 		try {
 			await tx.objectStore(LABELS_STORE).delete(id);
 			const syncState = tx.objectStore(SYNC_STATE_STORE);
-			for (const [key, value] of entries) await syncState.put(value, scopedStateKey(key, pid));
+			for (const [key, value] of entries) await syncState.put(value, key);
 			if (outboxKeys.length) {
 				const generation = await nextOutboxGeneration(tx, dbName);
 				const outbox = tx.objectStore(SYNC_OUTBOX_STORE);
@@ -636,16 +690,10 @@ export async function deleteLabelWithSyncState(
 }
 
 export async function writeSyncStateWithOutbox(
-	pidOrState: string | Iterable<readonly [key: string, value: unknown]>,
-	stateOrKeys?: Iterable<readonly [key: string, value: unknown]> | Iterable<string>,
-	maybeKeys?: Iterable<string>
+	pid: string,
+	state: Iterable<readonly [key: string, value: unknown]>,
+	syncOutboxKeys: Iterable<string> = []
 ): Promise<void> {
-	const isScoped = typeof pidOrState === 'string';
-	const pid = isScoped ? pidOrState : LOCAL_PROFILE_ID;
-	const state = isScoped
-		? (stateOrKeys as Iterable<readonly [key: string, value: unknown]>)
-		: (pidOrState as Iterable<readonly [key: string, value: unknown]>);
-	const syncOutboxKeys = isScoped ? (maybeKeys ?? []) : ((stateOrKeys as Iterable<string>) ?? []);
 	const entries = [...state];
 	const outboxKeys = uniqueOutboxKeys(syncOutboxKeys);
 	const dbName = resolveDbName(pid);
@@ -658,7 +706,7 @@ export async function writeSyncStateWithOutbox(
 		);
 		try {
 			const store = tx.objectStore(SYNC_STATE_STORE);
-			for (const [key, value] of entries) await store.put(value, scopedStateKey(key, pid));
+			for (const [key, value] of entries) await store.put(value, key);
 			if (outboxKeys.length) {
 				const next = await nextOutboxGeneration(tx, dbName);
 				for (const key of outboxKeys) await tx.objectStore(SYNC_OUTBOX_STORE).put(next, key);
@@ -671,23 +719,45 @@ export async function writeSyncStateWithOutbox(
 	});
 }
 
-export async function bulkPutNotes(
-	pidOrNotes: string | Note[],
-	maybeNotes?: Note[]
-): Promise<void> {
-	const pid = typeof pidOrNotes === 'string' ? pidOrNotes : LOCAL_PROFILE_ID;
-	const notes = typeof pidOrNotes === 'string' ? (maybeNotes ?? []) : pidOrNotes;
+export async function mergeWorkspaceState<T extends Record<string, unknown>>(
+	pid: string,
+	keys: readonly string[],
+	merge: (current: Record<string, unknown>) => { value: T; outboxKeys?: Iterable<string> }
+): Promise<T> {
+	const dbName = resolveDbName(pid);
+	return enqueueDeviceWrite(async () => {
+		const db = await getDB(pid);
+		const previousGeneration = outboxGenerations.get(dbName) ?? null;
+		const tx = db.transaction([SYNC_STATE_STORE, SYNC_OUTBOX_STORE], 'readwrite');
+		try {
+			const state = tx.objectStore(SYNC_STATE_STORE);
+			const current = Object.fromEntries(
+				await Promise.all(keys.map(async (key) => [key, await state.get(key)]))
+			);
+			const { value, outboxKeys = [] } = merge(current);
+			for (const [key, item] of Object.entries(value)) await state.put(item, key);
+			const dirtyKeys = uniqueOutboxKeys(outboxKeys);
+			if (dirtyKeys.length) {
+				const next = await nextOutboxGeneration(tx, dbName);
+				for (const outboxKey of dirtyKeys)
+					await tx.objectStore(SYNC_OUTBOX_STORE).put(next, outboxKey);
+			}
+			await tx.done;
+			return value;
+		} catch (error) {
+			await abortWrite(tx, dbName, previousGeneration);
+			throw error;
+		}
+	});
+}
+
+export async function bulkPutNotes(pid: string, notes: Note[]): Promise<void> {
 	for (const note of notes) {
 		await putNote(pid, note);
 	}
 }
 
-export async function bulkPutLabels(
-	pidOrLabels: string | Label[],
-	maybeLabels?: Label[]
-): Promise<void> {
-	const pid = typeof pidOrLabels === 'string' ? pidOrLabels : LOCAL_PROFILE_ID;
-	const labels = typeof pidOrLabels === 'string' ? (maybeLabels ?? []) : pidOrLabels;
+export async function bulkPutLabels(pid: string, labels: Label[]): Promise<void> {
 	const generation = writeGeneration;
 	await enqueueDeviceWrite(async () => {
 		if (generation !== writeGeneration) return;
@@ -698,7 +768,7 @@ export async function bulkPutLabels(
 	});
 }
 
-export async function clearAllNotes(pid: string = LOCAL_PROFILE_ID): Promise<void> {
+export async function clearAllNotes(pid: string): Promise<void> {
 	await enqueueDeviceWrite(async () => {
 		const db = await getDB(pid);
 		const tx = db.transaction([NOTES_STORE, IMAGES_STORE], 'readwrite');
@@ -708,7 +778,7 @@ export async function clearAllNotes(pid: string = LOCAL_PROFILE_ID): Promise<voi
 	});
 }
 
-export async function clearAllLabels(pid: string = LOCAL_PROFILE_ID): Promise<void> {
+export async function clearAllLabels(pid: string): Promise<void> {
 	await enqueueDeviceWrite(async () => {
 		const db = await getDB(pid);
 		await db.clear(LABELS_STORE);
@@ -716,19 +786,11 @@ export async function clearAllLabels(pid: string = LOCAL_PROFILE_ID): Promise<vo
 }
 
 export function replaceAllDeviceData(
-	pidOrNotes: string | Note[],
-	notesOrLabels: Note[] | Label[],
-	labelsOrCb?: Label[] | ((note: Note) => void | Promise<void>),
-	maybeCb?: (note: Note) => void | Promise<void>
+	pid: string,
+	notes: Note[],
+	labels: Label[],
+	onNoteCommitted?: (note: Note) => void | Promise<void>
 ): Promise<void> {
-	const isScoped = typeof pidOrNotes === 'string';
-	const pid = isScoped ? pidOrNotes : LOCAL_PROFILE_ID;
-	const notes = isScoped ? (notesOrLabels as Note[]) : (pidOrNotes as Note[]);
-	const labels = isScoped ? (labelsOrCb as Label[]) : (notesOrLabels as Label[]);
-	const onNoteCommitted = isScoped
-		? maybeCb
-		: (labelsOrCb as ((note: Note) => void | Promise<void>) | undefined);
-
 	const generation = ++writeGeneration;
 	return enqueueDeviceWrite(async () => {
 		if (generation !== writeGeneration) return;
@@ -754,10 +816,10 @@ export function replaceAllDeviceData(
 	});
 }
 
-// --- Link previews (shared cache, not profile-scoped) -----------------------
+// --- Link previews (device cache, shared by every workspace) ----------------
 
 export async function getCachedLinkPreview(url: string): Promise<LinkPreview | undefined> {
-	const db = await getDB();
+	const db = await getDeviceDB();
 	const row = await db.get(LINK_PREVIEWS_STORE, url);
 	if (!row || typeof row !== 'object') return undefined;
 	const { url: cachedUrl, hostname, title, description, image, icon } = row as LinkPreview;
@@ -774,7 +836,7 @@ export async function getCachedLinkPreview(url: string): Promise<LinkPreview | u
 }
 
 export async function putCachedLinkPreview(preview: LinkPreview): Promise<void> {
-	const db = await getDB();
+	const db = await getDeviceDB();
 	await db.put(LINK_PREVIEWS_STORE, {
 		url: String(preview.url),
 		hostname: String(preview.hostname),
@@ -788,81 +850,58 @@ export async function putCachedLinkPreview(preview: LinkPreview): Promise<void> 
 
 // --- Sync state KV ----------------------------------------------------------
 
-export async function getSyncState<T>(key: string, pid?: string): Promise<T | undefined> {
-	const { pid: extractedPid, baseKey } = extractPidFromStateKey(key);
-	const resolvedPid = pid ?? extractedPid;
-	const db = await getDB(resolvedPid);
-	const val = (await db.get(SYNC_STATE_STORE, key)) as T | undefined;
-	if (val !== undefined) return val;
-	if (baseKey !== key) {
-		return (await db.get(SYNC_STATE_STORE, baseKey)) as T | undefined;
-	}
-	return undefined;
+export async function getSyncState<T>(pid: string, key: string): Promise<T | undefined> {
+	const db = await getDB(pid);
+	return (await db.get(SYNC_STATE_STORE, key)) as T | undefined;
 }
 
-export async function setSyncState(key: string, value: unknown, pid?: string): Promise<void> {
-	const { pid: extractedPid, baseKey } = extractPidFromStateKey(key);
-	const resolvedPid = pid ?? extractedPid;
+export async function setSyncState(pid: string, key: string, value: unknown): Promise<void> {
 	await enqueueDeviceWrite(async () => {
-		const db = await getDB(resolvedPid);
-		const tx = db.transaction(SYNC_STATE_STORE, 'readwrite');
-		tx.objectStore(SYNC_STATE_STORE).put(value, key);
-		if (baseKey !== key) {
-			tx.objectStore(SYNC_STATE_STORE).put(value, baseKey);
-		}
-		await tx.done;
+		const db = await getDB(pid);
+		await db.put(SYNC_STATE_STORE, value, key);
 	});
 }
 
-export async function deleteSyncState(key: string, pid?: string): Promise<void> {
-	const { pid: extractedPid, baseKey } = extractPidFromStateKey(key);
-	const resolvedPid = pid ?? extractedPid;
+export async function deleteSyncState(pid: string, key: string): Promise<void> {
 	await enqueueDeviceWrite(async () => {
-		const db = await getDB(resolvedPid);
-		const tx = db.transaction(SYNC_STATE_STORE, 'readwrite');
-		tx.objectStore(SYNC_STATE_STORE).delete(key);
-		if (baseKey !== key) {
-			tx.objectStore(SYNC_STATE_STORE).delete(baseKey);
-		}
-		await tx.done;
+		const db = await getDB(pid);
+		await db.delete(SYNC_STATE_STORE, key);
 	});
 }
 
 const FIRED_REMINDERS_KEY = 'scrapscache-fired-reminders';
 
-export async function getFiredReminderKeys(pid: string = LOCAL_PROFILE_ID): Promise<string[]> {
-	const stored = await getSyncState<unknown>(scopedStateKey(FIRED_REMINDERS_KEY, pid), pid);
+export async function getFiredReminderKeys(pid: string): Promise<string[]> {
+	const stored = await getSyncState<unknown>(pid, FIRED_REMINDERS_KEY);
 	return Array.isArray(stored)
 		? stored.filter((item): item is string => typeof item === 'string')
 		: [];
 }
 
-export async function setFiredReminderKeys(pid: string, keys: Iterable<string>): Promise<void> {
-	const clean = [...new Set(keys)].filter((item): item is string => typeof item === 'string');
-	await setSyncState(scopedStateKey(FIRED_REMINDERS_KEY, pid), clean, pid);
-}
-
-export async function claimFiredReminderKey(
-	key: string,
-	pid: string = LOCAL_PROFILE_ID
-): Promise<boolean> {
+/**
+ * Add to the fired-reminder ledger in one transaction. The service worker writes
+ * the same ledger, so reading it and writing it back separately could drop a
+ * reminder it claimed in between. Resolves to the keys that were not there yet.
+ */
+export async function addFiredReminderKeys(pid: string, keys: Iterable<string>): Promise<string[]> {
+	const wanted = [...new Set(keys)];
 	return enqueueDeviceWrite(async () => {
 		const db = await getDB(pid);
-		const storeKey = scopedStateKey(FIRED_REMINDERS_KEY, pid);
+		const storeKey = FIRED_REMINDERS_KEY;
 		const tx = db.transaction(SYNC_STATE_STORE, 'readwrite');
 		const stored = await tx.store.get(storeKey);
-		const keys = new Set(
+		const fired = new Set(
 			Array.isArray(stored) ? stored.filter((item): item is string => typeof item === 'string') : []
 		);
-		if (keys.has(key)) {
-			await tx.done;
-			return false;
-		}
-		keys.add(key);
-		await tx.store.put([...keys], storeKey);
+		const added = wanted.filter((key) => !fired.has(key));
+		if (added.length) await tx.store.put([...fired, ...added], storeKey);
 		await tx.done;
-		return true;
+		return added;
 	});
+}
+
+export async function claimFiredReminderKey(pid: string, key: string): Promise<boolean> {
+	return (await addFiredReminderKeys(pid, [key])).length > 0;
 }
 
 // --- Outbox -----------------------------------------------------------------
@@ -912,7 +951,7 @@ async function nextOutboxGeneration(
 	return generation;
 }
 
-export function getOutboxGeneration(pid: string = LOCAL_PROFILE_ID): Promise<number> {
+export function getOutboxGeneration(pid: string): Promise<number> {
 	const dbName = resolveDbName(pid);
 	return enqueueDeviceWrite(async () => loadOutboxGeneration(await getDB(pid), dbName));
 }
@@ -947,7 +986,7 @@ export async function markSyncOutbox(pid: string, keys: Iterable<string>): Promi
 	});
 }
 
-export async function getSyncOutboxKeys(pid: string = LOCAL_PROFILE_ID): Promise<string[]> {
+export async function getSyncOutboxKeys(pid: string): Promise<string[]> {
 	const db = await getDB(pid);
 	const keys = await db.getAllKeys(SYNC_OUTBOX_STORE);
 	return keys.map(String);
@@ -1037,6 +1076,17 @@ export async function listStoredProfiles(): Promise<StoredProfile[]> {
 	return readStoredProfiles();
 }
 
+/** Write the keyring and bring the service worker's workspace list in line with it. */
+export function writeStoredProfiles(profiles: StoredProfile[]): void {
+	if (typeof localStorage === 'undefined') return;
+	try {
+		localStorage.setItem(LS_PROFILES, JSON.stringify(profiles));
+	} catch {
+		// local storage quota or error
+	}
+	void setRegisteredWorkspaces(profiles).catch(() => undefined);
+}
+
 export async function putStoredProfile(profile: StoredProfile): Promise<void> {
 	if (typeof localStorage === 'undefined') return;
 	const current = await listStoredProfiles();
@@ -1052,15 +1102,10 @@ export async function putStoredProfile(profile: StoredProfile): Promise<void> {
 	} else {
 		current.push(stored);
 	}
-	try {
-		localStorage.setItem(LS_PROFILES, JSON.stringify(current));
-	} catch {
-		// local storage quota or error
-	}
+	writeStoredProfiles(current);
 }
 
 export async function deleteProfileDatabase(pid: string): Promise<void> {
-	if (!pid || pid === LOCAL_PROFILE_ID) return;
 	const dbName = resolveDbName(pid);
 	// A write still queued for this workspace would reopen the database midway
 	// through removing it, so let the queue drain before the connection goes.
@@ -1087,17 +1132,7 @@ export async function deleteProfileDatabase(pid: string): Promise<void> {
 }
 
 function removeProfileFromLocalStorage(id: string): void {
-	if (typeof localStorage === 'undefined') return;
-	try {
-		const raw = localStorage.getItem(LS_PROFILES) ?? localStorage.getItem(LS_PROFILES_LEGACY);
-		if (raw) {
-			const parsed = JSON.parse(raw);
-			if (Array.isArray(parsed)) {
-				const next = parsed.filter((p: StoredProfile) => p.id !== id);
-				localStorage.setItem(LS_PROFILES, JSON.stringify(next));
-			}
-		}
-	} catch {}
+	writeStoredProfiles(readStoredProfiles().filter((profile) => profile.id !== id));
 }
 
 /**
@@ -1110,45 +1145,17 @@ function removeProfileFromLocalStorage(id: string): void {
  * it once the other connection closes — so the entry goes when it lands.
  */
 export async function deleteStoredProfile(id: string): Promise<void> {
-	// The default workspace shares the device database with link previews, so
-	// it is emptied instead of dropped.
-	if (id === LOCAL_PROFILE_ID) await clearProfileNamespace(id);
-	else {
-		try {
-			await deleteProfileDatabase(id);
-		} catch (error) {
-			if (error instanceof DeleteBlockedError)
-				void error.completion.then(
-					() => removeProfileFromLocalStorage(id),
-					() => undefined
-				);
-			throw error;
-		}
+	try {
+		await deleteProfileDatabase(id);
+	} catch (error) {
+		if (error instanceof DeleteBlockedError)
+			void error.completion.then(
+				() => removeProfileFromLocalStorage(id),
+				() => undefined
+			);
+		throw error;
 	}
 	removeProfileFromLocalStorage(id);
-}
-
-/**
- * Empty one namespace: notes, attachments, labels, its outbox, and all of its
- * sync state, including the cursor and baseline of any key it was synced with.
- * Every database belongs to exactly one workspace, so nothing else lives here.
- */
-export async function clearProfileNamespace(pid: string): Promise<void> {
-	await clearAllNotes(pid);
-	await clearAllLabels(pid);
-	await enqueueDeviceWrite(async () => {
-		const db = await getDB(pid);
-		await db.clear(SYNC_OUTBOX_STORE);
-		await db.clear(SYNC_STATE_STORE);
-	});
-}
-
-export async function namespaceHasData(pid: string): Promise<boolean> {
-	const db = await getDB(pid);
-	const noteCount = await db.count(NOTES_STORE);
-	if (noteCount > 0) return true;
-	const labelCount = await db.count(LABELS_STORE);
-	return labelCount > 0;
 }
 
 /**

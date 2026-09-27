@@ -1,3 +1,4 @@
+import { SYNC_EVENTS_PROTOCOL } from '$lib/syncEventsProtocol';
 import {
 	ACTIVITY_WINDOWS_DAYS,
 	DEFAULT_SYNC_PER_MINUTE,
@@ -576,11 +577,12 @@ export class SyncStore {
 		await this.touchAccount(accountId);
 		return true;
 	}
-	async claimDueWakes(now: number, limit = 100): Promise<DueWake[]> {
+	/** Claim wakes due by `now`, of one account when `accountId` is given. */
+	async claimDueWakes(now: number, limit = 100, accountId?: string): Promise<DueWake[]> {
 		const rows = (
 			await execute(this.db, {
-				sql: 'SELECT d.account_id accountId,d.device_id deviceId,w.wake_id wakeId,w.fire_at fireAt,d.endpoint,d.p256dh,d.auth FROM reminder_wakes w JOIN reminder_push_devices d ON d.account_id=w.account_id LEFT JOIN reminder_wake_deliveries x ON x.account_id=d.account_id AND x.device_id=d.device_id AND x.wake_id=w.wake_id WHERE w.fire_at<=? AND x.delivered_at IS NULL AND (x.claimed_at IS NULL OR x.claimed_at<=?) ORDER BY w.fire_at,w.wake_id,d.device_id LIMIT ?',
-				args: [now, now - WAKE_CLAIM_LEASE_MS, limit]
+				sql: 'SELECT d.account_id accountId,d.device_id deviceId,w.wake_id wakeId,w.fire_at fireAt,d.endpoint,d.p256dh,d.auth FROM reminder_wakes w JOIN reminder_push_devices d ON d.account_id=w.account_id LEFT JOIN reminder_wake_deliveries x ON x.account_id=d.account_id AND x.device_id=d.device_id AND x.wake_id=w.wake_id WHERE w.fire_at<=? AND x.delivered_at IS NULL AND (x.claimed_at IS NULL OR x.claimed_at<=?) AND (? IS NULL OR w.account_id=?) ORDER BY w.fire_at,w.wake_id,d.device_id LIMIT ?',
+				args: [now, now - WAKE_CLAIM_LEASE_MS, accountId ?? null, accountId ?? null, limit]
 			})
 		).rows as unknown as DueWake[];
 		await batch(
@@ -592,6 +594,22 @@ export class SyncStore {
 		);
 		return rows;
 	}
+	/** Next undelivered wake, including overdue wakes and claims awaiting their lease. */
+	async nextWakeAt(now: number, accountId?: string): Promise<number | null> {
+		const row = (
+			await execute(this.db, {
+				sql: `SELECT MIN(MAX(w.fire_at, COALESCE(x.claimed_at + ?, 0), ?)) AS fireAt
+			 FROM reminder_wakes w
+			 JOIN reminder_push_devices d ON d.account_id = w.account_id
+			 LEFT JOIN reminder_wake_deliveries x ON x.account_id = d.account_id
+			 AND x.device_id = d.device_id AND x.wake_id = w.wake_id
+			 WHERE x.delivered_at IS NULL AND (? IS NULL OR w.account_id = ?)`,
+				args: [WAKE_CLAIM_LEASE_MS, now, accountId ?? null, accountId ?? null]
+			})
+		).rows[0] as { fireAt?: number | null } | undefined;
+		return row?.fireAt == null ? null : Number(row.fireAt);
+	}
+
 	async markWakeDelivered(
 		w: Pick<DueWake, 'accountId' | 'deviceId' | 'wakeId'>,
 		now: number
@@ -601,10 +619,14 @@ export class SyncStore {
 			args: [now, w.accountId, w.deviceId, w.wakeId]
 		});
 	}
-	async releaseWakeClaim(w: Pick<DueWake, 'accountId' | 'deviceId' | 'wakeId'>): Promise<void> {
+	/** Hold a failed delivery's claim until `retryAt`, when it becomes due again. */
+	async deferWakeRetry(
+		w: Pick<DueWake, 'accountId' | 'deviceId' | 'wakeId'>,
+		retryAt: number
+	): Promise<void> {
 		await execute(this.db, {
-			sql: 'DELETE FROM reminder_wake_deliveries WHERE account_id=? AND device_id=? AND wake_id=? AND delivered_at IS NULL',
-			args: [w.accountId, w.deviceId, w.wakeId]
+			sql: 'UPDATE reminder_wake_deliveries SET claimed_at=? WHERE account_id=? AND device_id=? AND wake_id=? AND delivered_at IS NULL',
+			args: [retryAt - WAKE_CLAIM_LEASE_MS, w.accountId, w.deviceId, w.wakeId]
 		});
 	}
 	async pruneStaleWakes(now: number, retainMs = WAKE_RETAIN_MS): Promise<void> {
@@ -635,27 +657,46 @@ export class SyncStore {
 		);
 		return Number(r.rows[0]?.count ?? 0);
 	}
+	/** Workers serve live changes over a hibernating WebSocket only; see `createEventSocket`. */
 	async createEventStream(
+		_accountId: string,
+		_signal?: AbortSignal,
+		_clientId?: string
+	): Promise<Response> {
+		return Response.json(
+			{ error: 'Live changes use a WebSocket here' },
+			{ status: 426, headers: { upgrade: 'websocket' } }
+		);
+	}
+
+	/**
+	 * Hand an authenticated WebSocket upgrade to the account's coordinator, which
+	 * holds it with the Hibernation API. The socket closes when `expiresAt` passes.
+	 */
+	async createEventSocket(
 		accountId: string,
-		signal?: AbortSignal,
+		expiresAt: number,
 		clientId?: string
 	): Promise<Response> {
 		const stub = this.bindings.ACCOUNT_COORDINATOR.get(
 			this.bindings.ACCOUNT_COORDINATOR.idFromName(accountId)
 		);
-		const url = new URL('https://coordinator/events');
+		const url = new URL('https://coordinator/socket');
+		url.searchParams.set('expiresAt', String(expiresAt));
 		if (clientId) url.searchParams.set('clientId', clientId);
-		const res = await stub.fetch(url.toString(), {
-			signal: (signal ?? null) as any
-		});
-		// A response that came back from fetch() has immutable headers, and the
-		// server hook sets security headers on everything it returns. Hand back a
-		// response this app owns rather than the coordinator's own object.
-		return new Response(res.body as unknown as BodyInit | null, {
-			status: res.status,
-			statusText: res.statusText,
-			headers: new Headers(res.headers as unknown as HeadersInit)
-		});
+		const res = await stub.fetch(url.toString(), { headers: { upgrade: 'websocket' } });
+		if (res.status !== 101 || !res.webSocket) {
+			return new Response(res.body as unknown as BodyInit | null, {
+				status: res.status,
+				headers: new Headers(res.headers as unknown as HeadersInit)
+			});
+		}
+		// Only our own protocol is echoed: the token offered beside it stays unanswered.
+		return new Response(null, {
+			status: 101,
+			webSocket: res.webSocket,
+			headers: { 'sec-websocket-protocol': SYNC_EVENTS_PROTOCOL }
+		} as ResponseInit);
 	}
 
 	async isReady(): Promise<boolean> {

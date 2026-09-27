@@ -3,9 +3,14 @@ import { createRoot, type Root } from 'react-dom/client';
 import { Excalidraw, exportToCanvas, loadFromBlob } from '@excalidraw/excalidraw';
 import '@excalidraw/excalidraw/index.css';
 import type { ExcalidrawElement } from '@excalidraw/excalidraw/element/types';
-import type { AppState, BinaryFiles, LibraryItems } from '@excalidraw/excalidraw/types';
+import type {
+	AppState,
+	BinaryFiles,
+	ExcalidrawImperativeAPI,
+	LibraryItems
+} from '@excalidraw/excalidraw/types';
 import type { CanvasElement, CanvasFile, CanvasScene } from './canvasAttachment';
-import { loadCanvasLibrary, saveCanvasLibrary } from './canvasLibrary';
+import { stableStringify } from './model/stableStringify';
 
 const THUMBNAIL_WIDTH = 480;
 const THUMBNAIL_HEIGHT = 360;
@@ -14,12 +19,17 @@ export interface ExcalidrawHost {
 	destroy(): void;
 	snapshot(): CanvasScene;
 	thumbnail(): Promise<{ dataUrl: string; width: number; height: number }>;
+	/** Show a library that changed outside this editor. */
+	showLibrary(items: readonly unknown[]): void;
 }
 
 interface HostOptions {
 	initialScene?: CanvasScene;
 	dark: boolean;
 	readOnly?: boolean;
+	library: readonly unknown[];
+	/** The library as this editor last showed it, and as the user has now left it. */
+	onLibraryChange(previous: readonly unknown[], next: readonly unknown[]): void;
 }
 
 const SAVED_ELEMENT_TYPES = new Set([
@@ -171,6 +181,12 @@ export function mountExcalidraw(node: HTMLElement, options: HostOptions): Promis
 		);
 		let appState = (options.initialScene?.appState ?? {}) as Partial<AppState>;
 		let files: BinaryFiles = sceneFiles(options.initialScene?.files);
+		let api: ExcalidrawImperativeAPI | null = null;
+		let shownLibrary: readonly unknown[] = options.library;
+		// Excalidraw reports every library it is given back through onLibraryChange,
+		// normalized. That report is its copy of ours, not something the user did.
+		let loadingLibrary = true;
+		let libraryPushes = 0;
 
 		const buildHost = (): ExcalidrawHost => ({
 			destroy() {
@@ -191,6 +207,18 @@ export function mountExcalidraw(node: HTMLElement, options: HostOptions): Promis
 					appState: appState as Record<string, unknown>,
 					files: snapshotFiles(elements, files)
 				});
+			},
+			showLibrary(items) {
+				if (!api || stableStringify(items) === stableStringify(shownLibrary)) return;
+				shownLibrary = items;
+				libraryPushes += 1;
+				// Settles only after Excalidraw has reported the library it was given.
+				void api
+					.updateLibrary({ libraryItems: items as LibraryItems, merge: false })
+					.catch(() => undefined)
+					.finally(() => {
+						libraryPushes -= 1;
+					});
 			}
 		});
 
@@ -208,16 +236,25 @@ export function mountExcalidraw(node: HTMLElement, options: HostOptions): Promis
 								files: sceneFiles(options.initialScene.files)
 							}
 						: {}),
-					libraryItems: loadCanvasLibrary() as LibraryItems
+					libraryItems: options.library as LibraryItems
 				},
-				excalidrawAPI: () => resolve(buildHost()),
+				excalidrawAPI: (instance) => {
+					api = instance;
+					resolve(buildHost());
+				},
 				onChange: (nextElements, nextAppState, nextFiles) => {
 					elements = nextElements.filter((element) => SAVED_ELEMENT_TYPES.has(element.type));
 					appState = nextAppState;
 					files = nextFiles;
 				},
 				onLibraryChange: (items) => {
-					saveCanvasLibrary(items);
+					const previous = shownLibrary;
+					shownLibrary = items;
+					if (loadingLibrary || libraryPushes > 0) {
+						loadingLibrary = false;
+						return;
+					}
+					options.onLibraryChange(previous, items);
 				},
 				autoFocus: true,
 				detectScroll: false,

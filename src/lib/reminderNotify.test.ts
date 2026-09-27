@@ -122,13 +122,19 @@ describe('system notifications', () => {
 		});
 		const wakeId = reminderWakeId('n1', 1);
 		await expect(
-			showReminderNotification({ wakeId, noteId: 'n1', reminder: 1, title: 'Groceries' })
+			showReminderNotification({
+				workspaceId: 'home',
+				wakeId,
+				noteId: 'n1',
+				reminder: 1,
+				title: 'Groceries'
+			})
 		).resolves.toBe(true);
 		expect(show).toHaveBeenCalledWith(
 			'Groceries',
 			expect.objectContaining({
 				tag: `scrapscache-reminder:${wakeId}`,
-				data: { type: 'reminder', noteId: 'n1', wakeId }
+				data: { type: 'reminder', noteId: 'n1', wakeId, workspaceId: 'home', reminder: 1 }
 			})
 		);
 	});
@@ -137,11 +143,37 @@ describe('system notifications', () => {
 		vi.stubGlobal('Notification', { permission: 'denied' });
 		await expect(
 			showReminderNotification({
+				workspaceId: 'home',
 				wakeId: reminderWakeId('n1', 1),
 				noteId: 'n1',
 				reminder: 1,
 				title: 'Groceries'
 			})
 		).resolves.toBe(false);
+	});
+});
+
+describe('closing reminders across workspace subscriptions', () => {
+	it('closes matching notifications in the root and workspace registrations', async () => {
+		const { closeReminderNotifications } = await import('./reminderNotify');
+		const root = { data: { type: 'reminder', wakeId: 'handled' }, close: vi.fn() };
+		const workspace = { data: { type: 'reminder', wakeId: 'handled' }, close: vi.fn() };
+		const other = { data: { type: 'reminder', wakeId: 'unhandled' }, close: vi.fn() };
+		vi.stubGlobal('navigator', {
+			serviceWorker: {
+				getRegistrations: async () => [
+					{ getNotifications: async () => [root] },
+					{ getNotifications: async () => [workspace, other] }
+				]
+			}
+		});
+		try {
+			await closeReminderNotifications(new Set(['handled']));
+			expect(root.close).toHaveBeenCalledOnce();
+			expect(workspace.close).toHaveBeenCalledOnce();
+			expect(other.close).not.toHaveBeenCalled();
+		} finally {
+			vi.unstubAllGlobals();
+		}
 	});
 });

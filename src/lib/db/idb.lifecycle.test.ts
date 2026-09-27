@@ -11,22 +11,26 @@ import {
 	closeDeviceDatabase,
 	DeleteBlockedError,
 	DEVICE_DB_NAME,
+	setRegisteredWorkspaces,
 	deleteProfileDatabase,
 	deleteStoredProfile,
 	dropDatabase,
 	getAllLabels,
 	getAllNotesMetadata,
+	getDeviceDB,
+	getSyncState,
 	isProfileReleased,
-	LOCAL_PROFILE_ID,
 	putLabel,
 	putNote,
 	putStoredProfile,
 	readStoredProfiles,
 	releaseProfile,
 	resolveDbName,
-	resumeProfile
+	resumeProfile,
+	setSyncState
 } from './idb';
 import type { Label, Note } from '$lib/types';
+import { TEST_WORKSPACE } from '../../tests/workspace';
 
 const PROFILE = 'workspace-lifecycle';
 const PROFILE_DB = resolveDbName(PROFILE);
@@ -76,6 +80,42 @@ describe('closeDeviceDatabase', () => {
 		await dropDatabase(PROFILE_DB);
 
 		expect(await databaseNames()).not.toContain(PROFILE_DB);
+	});
+});
+
+describe('the device database across builds', () => {
+	it('steps aside when a newer build in another window upgrades it', async () => {
+		await getDeviceDB();
+		const newer = await Promise.race([
+			openDB(DEVICE_DB_NAME, 99),
+			new Promise<null>((resolve) => setTimeout(() => resolve(null), 1000))
+		]);
+		expect(newer).not.toBeNull();
+		newer?.close();
+	});
+
+	it('keeps workspace writes moving while its own upgrade waits on an older window', async () => {
+		await closeDeviceDatabase();
+		await dropDatabase(DEVICE_DB_NAME);
+		// An older build that never lets go of version 1.
+		const older = await new Promise<IDBDatabase>((resolve, reject) => {
+			const request = indexedDB.open(DEVICE_DB_NAME, 1);
+			request.onupgradeneeded = () =>
+				request.result.createObjectStore('workspaces', { keyPath: 'id' });
+			request.onsuccess = () => resolve(request.result);
+			request.onerror = () => reject(request.error);
+		});
+		const registry = setRegisteredWorkspaces([{ id: PROFILE, syncKey: '' }]);
+
+		await expect(
+			Promise.race([
+				setSyncState(PROFILE, 'still-moving', 1).then(() => 'written'),
+				new Promise((resolve) => setTimeout(() => resolve('stuck'), 1000))
+			])
+		).resolves.toBe('written');
+
+		older.close();
+		await registry;
 	});
 });
 
@@ -144,16 +184,18 @@ describe('deleteProfileDatabase', () => {
 		expect(await databaseNames()).not.toContain(PROFILE_DB);
 	});
 
-	it('never touches the device database the default workspace shares', async () => {
-		await putNote(LOCAL_PROFILE_ID, note('anonymous'));
+	it('leaves every other workspace and the device database alone', async () => {
+		await putNote(TEST_WORKSPACE, note('other'));
 		await putNote(PROFILE, note('scoped'));
+		await setRegisteredWorkspaces([
+			{ id: TEST_WORKSPACE, syncKey: '' },
+			{ id: PROFILE, syncKey: '' }
+		]);
 
 		await deleteProfileDatabase(PROFILE);
 
 		expect(await databaseNames()).toContain(DEVICE_DB_NAME);
-		expect((await getAllNotesMetadata(LOCAL_PROFILE_ID)).map((item) => item.id)).toEqual([
-			'anonymous'
-		]);
+		expect((await getAllNotesMetadata(TEST_WORKSPACE)).map((item) => item.id)).toEqual(['other']);
 	});
 });
 
@@ -196,14 +238,12 @@ describe('deleteStoredProfile', () => {
 describe('releasing a workspace another window removed', () => {
 	it('refuses to open it again, and leaves the shared device database alone', async () => {
 		await putNote(PROFILE, note('released'));
-		await putNote(LOCAL_PROFILE_ID, note('device'));
+		await putNote(TEST_WORKSPACE, note('device'));
 
 		releaseProfile(PROFILE);
 
 		await expect(getAllNotesMetadata(PROFILE)).rejects.toThrow(/no longer on this device/);
-		expect((await getAllNotesMetadata(LOCAL_PROFILE_ID)).map((item) => item.id)).toEqual([
-			'device'
-		]);
+		expect((await getAllNotesMetadata(TEST_WORKSPACE)).map((item) => item.id)).toEqual(['device']);
 	});
 
 	it('serves it again once a keyring entry names it', async () => {
@@ -237,5 +277,31 @@ describe('releasing a workspace another window removed', () => {
 		expect(isProfileReleased(PROFILE)).toBe(true);
 		await expect(getAllNotesMetadata(PROFILE)).rejects.toThrow(/no longer on this device/);
 		expect(await databaseNames()).not.toContain(PROFILE_DB);
+	});
+});
+
+describe('workspace database v7', () => {
+	it('moves state an earlier version kept as <key>:<workspace id> to plain keys', async () => {
+		const pid = 'upgraded';
+		const old = await openDB(resolveDbName(pid), 6, {
+			upgrade(db) {
+				db.createObjectStore('notes', { keyPath: 'id' });
+				db.createObjectStore('labels', { keyPath: 'id' });
+				db.createObjectStore('note-images');
+				db.createObjectStore('sync-state');
+				db.createObjectStore('sync-outbox');
+			}
+		});
+		// The suffixed copy was the one kept current; the plain one could be stale.
+		await old.put('sync-state', { current: 2 }, `scrapscache-idb-label-tombstones:${pid}`);
+		await old.put('sync-state', { stale: 1 }, 'scrapscache-idb-label-tombstones');
+		await old.put('sync-state', [{ id: 'star' }], `scrapscache-canvas-library:${pid}`);
+		await old.put('sync-state', 7, 'scrapscache-sync-cursor:account');
+		old.close();
+
+		expect(await getSyncState(pid, 'scrapscache-idb-label-tombstones')).toEqual({ current: 2 });
+		expect(await getSyncState(pid, 'scrapscache-canvas-library')).toEqual([{ id: 'star' }]);
+		expect(await getSyncState(pid, 'scrapscache-sync-cursor:account')).toBe(7);
+		expect(await getSyncState(pid, `scrapscache-idb-label-tombstones:${pid}`)).toBeUndefined();
 	});
 });

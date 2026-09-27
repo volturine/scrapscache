@@ -5,6 +5,7 @@ import { getSyncAuth } from '$lib/server/syncAuth';
 import { readJsonBody } from '$lib/server/request';
 import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '$lib/server/rateLimit';
 import { recordSqliteError } from '$lib/server/metrics';
+import { armWakeTimer } from '$lib/server/wakeTimer';
 import {
 	DEVICE_ID_RE,
 	isPublicEndpoint,
@@ -19,6 +20,22 @@ function checkAddressLimit(getClientAddress: () => string) {
 		capacity: 40,
 		refillWindowMs: 60_000
 	});
+}
+
+/**
+ * Deliver the account's due wakes now; delivery then sets the timer for its next
+ * one. Its wakes or browsers just changed, so any timer it had may be wrong.
+ */
+async function scheduleDelivery(accountId: string): Promise<void> {
+	await armWakeTimer(accountId, Date.now()).catch((error: unknown) =>
+		console.error(
+			JSON.stringify({
+				level: 'error',
+				event: 'wake_timer_arm_failed',
+				message: error instanceof Error ? error.message : 'Could not arm the wake timer'
+			})
+		)
+	);
 }
 
 /** Register or refresh this device without changing the account wake snapshot. */
@@ -55,6 +72,8 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 			p256dh: body.subscription.keys.p256dh,
 			auth: body.subscription.keys.auth
 		});
+		// A browser that registers after a wake came due still gets it.
+		await scheduleDelivery(accountId);
 		return json({ ok: true });
 	} catch (error) {
 		recordSqliteError(error);
@@ -86,6 +105,7 @@ export const PUT: RequestHandler = async ({ request, getClientAddress }) => {
 			Number(body.revision)
 		);
 		if (!accepted) return json({ error: 'Stale reminder snapshot' }, { status: 409 });
+		await scheduleDelivery(accountId);
 		return json({ ok: true, wakes: wakes.length });
 	} catch (error) {
 		recordSqliteError(error);

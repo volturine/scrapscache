@@ -1,11 +1,12 @@
 import { tick } from 'svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createKanbanBoard, type KanbanBoard } from '$lib/kanban';
-import { getSyncOutboxKeys, LOCAL_PROFILE_ID } from '$lib/db/idb';
+import { getSyncOutboxKeys } from '$lib/db/idb';
 import { createSyncIdentity } from '$lib/syncPairing';
 import { loadBoardsFromDevice, saveBoardsToDevice } from '$lib/syncTombstones';
 import { KanbanStore } from './kanban.svelte';
 import { syncStore } from './sync.svelte';
+import { TEST_WORKSPACE } from '../../tests/workspace';
 
 describe('kanban persist during sync', () => {
 	beforeEach(() => {
@@ -16,14 +17,14 @@ describe('kanban persist during sync', () => {
 		const store = new KanbanStore();
 		store.selectBoard(store.boards[0].id);
 		await tick();
-		expect(await loadBoardsFromDevice(LOCAL_PROFILE_ID, null)).toBeNull();
-		expect(await getSyncOutboxKeys()).toEqual([]);
+		expect(await loadBoardsFromDevice(TEST_WORKSPACE, null)).toBeNull();
+		expect(await getSyncOutboxKeys(TEST_WORKSPACE)).toEqual([]);
 	});
 
 	it('writes $state boards to IndexedDB without throwing DataCloneError', async () => {
 		const store = new KanbanStore();
-		await expect(store.persistSyncState(LOCAL_PROFILE_ID)).resolves.toBeUndefined();
-		const stored = await loadBoardsFromDevice<unknown>(LOCAL_PROFILE_ID, null);
+		await expect(store.persistSyncState(TEST_WORKSPACE)).resolves.toBeUndefined();
+		const stored = await loadBoardsFromDevice<unknown>(TEST_WORKSPACE, null);
 		expect(stored).toEqual(
 			expect.arrayContaining([
 				expect.objectContaining({
@@ -52,11 +53,11 @@ describe('kanban persist during sync', () => {
 		const store = new KanbanStore();
 		const base = store.boardsForSync()[0];
 		store.boards = [{ ...base, name: 'stale', updatedAt: 1 }];
-		await store.persistSyncState(LOCAL_PROFILE_ID);
+		await store.persistSyncState(TEST_WORKSPACE);
 		store.boards = [{ ...base, name: 'from-ls', updatedAt: 2 }];
-		await store.hydrateFromDevice(LOCAL_PROFILE_ID);
+		await store.hydrateFromDevice(TEST_WORKSPACE);
 		expect(store.boards[0]?.name).toBe('from-ls');
-		expect((await loadBoardsFromDevice(LOCAL_PROFILE_ID, store.boardsForSync()))[0]?.name).toBe(
+		expect((await loadBoardsFromDevice(TEST_WORKSPACE, store.boardsForSync()))[0]?.name).toBe(
 			'from-ls'
 		);
 	});
@@ -116,7 +117,7 @@ describe('replaceWithCloud', () => {
 describe('boards belong to the workspace that saved them', () => {
 	it('reads back what a signed-in workspace saved, not the anonymous one', async () => {
 		// The anonymous workspace has boards of its own on this device.
-		await saveBoardsToDevice(LOCAL_PROFILE_ID, [
+		await saveBoardsToDevice(TEST_WORKSPACE, [
 			{ ...createKanbanBoard('Anonymous board'), id: 'anon-board' }
 		]);
 		const arranged = {
@@ -133,7 +134,7 @@ describe('boards belong to the workspace that saved them', () => {
 	});
 
 	it('reports nothing rather than another workspace\u2019s boards when it has none', async () => {
-		await saveBoardsToDevice(LOCAL_PROFILE_ID, [createKanbanBoard('Anonymous board')]);
+		await saveBoardsToDevice(TEST_WORKSPACE, [createKanbanBoard('Anonymous board')]);
 
 		expect(await loadBoardsFromDevice('workspace-2', undefined)).toBeUndefined();
 	});

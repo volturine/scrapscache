@@ -6,6 +6,7 @@ import {
 	writeNotesMirror
 } from './noteStorage';
 import type { Note } from '$lib/types';
+import { TEST_WORKSPACE } from '../tests/workspace';
 
 function note(id: string, updatedAt: number): Note {
 	return {
@@ -32,8 +33,8 @@ describe('notes mirror quota fallback (#83)', () => {
 
 	it('keeps the most recent notes when the full mirror exceeds the quota', () => {
 		const notes = Array.from({ length: 200 }, (_, index) => note(`n${index}`, index));
-		writeNotesMirror(notes);
-		expect(readNotesMirror()).toHaveLength(200);
+		writeNotesMirror(notes, TEST_WORKSPACE);
+		expect(readNotesMirror(TEST_WORKSPACE)).toHaveLength(200);
 
 		// Simulate a quota that fits only small payloads.
 		const real = Storage.prototype.setItem;
@@ -43,10 +44,10 @@ describe('notes mirror quota fallback (#83)', () => {
 		});
 		const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
-		writeNotesMirror(notes);
+		writeNotesMirror(notes, TEST_WORKSPACE);
 		logged.mockRestore();
 
-		const mirrored = readNotesMirror().map(({ id }) => id);
+		const mirrored = readNotesMirror(TEST_WORKSPACE).map(({ id }) => id);
 		expect(mirrored).toHaveLength(MIRROR_FALLBACK_LIMIT);
 		expect(mirrored).toEqual(
 			notes
@@ -57,19 +58,19 @@ describe('notes mirror quota fallback (#83)', () => {
 	});
 
 	it('leaves the previous mirror in place when even the fallback exceeds the quota', () => {
-		writeNotesMirror([note('old', 1)]);
-		expect(readNotesMirror().map(({ id }) => id)).toEqual(['old']);
+		writeNotesMirror([note('old', 1)], TEST_WORKSPACE);
+		expect(readNotesMirror(TEST_WORKSPACE).map(({ id }) => id)).toEqual(['old']);
 
 		const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
 			throw new DOMException('QuotaExceededError');
 		});
 		const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
-		expect(writeNotesMirror([note('new', 2)])).toBe(false);
+		expect(writeNotesMirror([note('new', 2)], TEST_WORKSPACE)).toBe(false);
 		setItem.mockRestore();
 		logged.mockRestore();
 
-		expect(readNotesMirror().map(({ id }) => id)).toEqual(['old']);
-		expect(localStorage.getItem(NOTES_MIRROR_KEY)).toContain('old');
+		expect(readNotesMirror(TEST_WORKSPACE).map(({ id }) => id)).toEqual(['old']);
+		expect(localStorage.getItem(`${NOTES_MIRROR_KEY}:${TEST_WORKSPACE}`)).toContain('old');
 	});
 });

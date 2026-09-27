@@ -1,7 +1,6 @@
 // Rune-based notes & labels store. Persists to IndexedDB from explicit write paths.
 import type { Note, Label, NoteColor } from '$lib/types';
 import {
-	LOCAL_PROFILE_ID,
 	getAllNotesMetadata,
 	hydrateNoteAttachments,
 	putNote,
@@ -35,8 +34,11 @@ import {
 import { editContext, syncClock } from '$lib/editContext';
 import { mergeHydratedImages } from '$lib/noteAttachmentHydration';
 import { AttachmentHydrationQueue } from '$lib/attachmentHydrationQueue';
-import { syncStore, type SyncSnapshot } from '$lib/stores/sync.svelte';
+import { syncStore } from '$lib/stores/sync.svelte';
 import { kanbanStore } from '$lib/stores/kanban.svelte';
+import { canvasLibraryStore } from '$lib/stores/canvasLibrary';
+import { reminderHistoryStore } from '$lib/stores/reminderHistory';
+import { syncSnapshot, type SyncSnapshot } from '$lib/syncRecords';
 import { uiStore } from '$lib/stores/ui.svelte';
 import { uid, daysSinceTrashed, TRASH_PURGE_DAYS, cloneNote } from '$lib/utils';
 import { noteAttachments, toggleLineAt } from '$lib/checklistBody';
@@ -66,6 +68,7 @@ import { replacementFitsStorage } from '$lib/storageCapacity';
 import { formatStorageError } from '$lib/imageBlob';
 import {
 	BackupImportMode,
+	importedReminderHistory,
 	normalizeBackup,
 	prepareImportedNotes,
 	type ScrapsCacheBackup
@@ -228,13 +231,20 @@ export class NotesStore {
 		this.deletedNoteIds = tombstones.notes;
 		this.deletedLabelIds = tombstones.labels;
 		await kanbanStore.hydrateFromDevice(this.pid, tombstones.boards);
+		// Loaded before any sync reads them: a sync treats what is missing here as gone.
+		await Promise.all([
+			canvasLibraryStore.hydrate(this.pid),
+			reminderHistoryStore.hydrate(this.pid)
+		]).catch((err) =>
+			this.recordPersistenceError('Could not read the canvas library or reminder history', err)
+		);
 
 		if (
 			notes.length === 0 &&
 			labels.length === 0 &&
+			// Starter notes greet a device once, in its first workspace.
 			!seededFlag &&
-			!syncStore.isLoggedIn &&
-			this.pid === LOCAL_PROFILE_ID
+			!syncStore.isLoggedIn
 		) {
 			localStorage?.setItem('scrapscache-seeded', '1');
 			this.notes = this.seedNotes();
@@ -281,6 +291,10 @@ export class NotesStore {
 				this.deletedLabelIds
 			).sort((a, b) => a.name.localeCompare(b.name));
 			this.mirrorToLS();
+			await Promise.all([
+				canvasLibraryStore.hydrate(this.pid),
+				reminderHistoryStore.hydrate(this.pid)
+			]);
 		} catch (err) {
 			this.recordPersistenceError('Could not rehydrate from IndexedDB', err);
 		}
@@ -534,6 +548,7 @@ export class NotesStore {
 		const next = { ...this.deletedNoteIds, [id]: deletedAt };
 		await writeTombstones(this.pid, next);
 		this.deletedNoteIds = next;
+		reminderHistoryStore.forgetNotes(this.pid, next);
 		this.notes = this.notes.filter((n) => n.id !== id);
 		this.mirrorToLS();
 		await deleteNote(this.pid, id).catch((err) =>
@@ -651,8 +666,8 @@ export class NotesStore {
 	// Backup ---------------------------------------------------------------
 	/**
 	 * Snapshot of the open workspace only: its notes (with full-resolution
-	 * attachments), labels, boards, tombstones, and UI prefs. Never carries
-	 * sync identity.
+	 * attachments), labels, boards, tombstones, canvas library, reminder
+	 * history, and UI prefs. Never carries sync identity.
 	 */
 	async exportBackup(): Promise<ScrapsCacheBackup> {
 		const pid = this.pid;
@@ -664,7 +679,7 @@ export class NotesStore {
 			);
 		}
 		return {
-			version: 4,
+			version: 5,
 			exportedAt: Date.now(),
 			notes: fullNotes,
 			labels: this.labels.map((label) => ({ ...label })),
@@ -673,6 +688,8 @@ export class NotesStore {
 			tombstones: { ...this.deletedNoteIds },
 			labelTombstones: { ...this.deletedLabelIds },
 			boardTombstones: kanbanStore.boardTombstonesForSync(),
+			canvasLibrary: canvasLibraryStore.items(),
+			reminderHistory: reminderHistoryStore.entriesForBackup(),
 			ui: {
 				sidebarOpen: uiStore.sidebarOpen,
 				dark: uiStore.dark,
@@ -726,6 +743,12 @@ export class NotesStore {
 						};
 					}
 				}
+				// Recorded before the notes land, so reminders a device already handled stay handled.
+				reminderHistoryStore.restore(
+					pid,
+					importedReminderHistory(backup.notes, importedNotes, backup.reminderHistory)
+				);
+				canvasLibraryStore.restore(pid, backup.canvasLibrary, mode);
 				if (mode === BackupImportMode.Keep) {
 					const labelsByName = new Map(
 						this.labels.map((label) => [label.name.trim().toLowerCase(), label])
@@ -982,6 +1005,8 @@ export class NotesStore {
 		}
 		await syncStore.waitForOutboxWrites();
 		await kanbanStore.waitForPendingWrites();
+		await canvasLibraryStore.waitForPendingWrites();
+		await reminderHistoryStore.waitForPendingWrites();
 		await waitForDeviceWrites(this.pid);
 	}
 
@@ -1013,6 +1038,7 @@ export class NotesStore {
 		for (const id of ids) next[id] = deletedAt;
 		await writeTombstones(this.pid, next);
 		this.deletedNoteIds = next;
+		reminderHistoryStore.forgetNotes(this.pid, next);
 		this.notes = this.notes.filter((n) => !ids.includes(n.id));
 		this.mirrorToLS();
 		this.dirty = true;
@@ -1210,6 +1236,8 @@ export class NotesStore {
 			.map((label) => label.id);
 
 		kanbanStore.applySync(snapshot.boards, snapshot.boardTombstones);
+		canvasLibraryStore.applySync(snapshot.libraryItems, snapshot.libraryTombstones);
+		reminderHistoryStore.forgetNotes(this.pid, tombstones);
 		await writeTombstones(this.pid, tombstones);
 		await writeLabelTombstones(this.pid, labelTombstones);
 		for (const note of notesToPersist) {
@@ -1223,6 +1251,8 @@ export class NotesStore {
 		for (const id of tombstonedLabelIds) await deleteLabel(this.pid, id);
 		if (labelsChanged) await bulkPutLabels(this.pid, mergedLabels);
 		await kanbanStore.persistSyncState(this.pid);
+		await canvasLibraryStore.persistSyncState(this.pid);
+		await reminderHistoryStore.waitForPendingWrites();
 
 		// Preserve edits made while the device writes were in flight.
 		durableNotes = withoutTombstoned(mergeNoteLists(this.notes, durableNotes), tombstones).sort(
@@ -1239,13 +1269,19 @@ export class NotesStore {
 		this.mirrorToLS();
 		this.lastPersistError = null;
 
+		return this.syncSnapshot({ notes: durableNotes, labels: mergedLabels });
+	}
+
+	/** This workspace as a sync sees it. */
+	private syncSnapshot(parts: Pick<SyncSnapshot, 'notes' | 'labels'>): SyncSnapshot {
 		return {
-			notes: durableNotes,
-			labels: mergedLabels,
+			...parts,
 			boards: kanbanStore.boardsForSync(),
-			tombstones: { ...tombstones },
-			labelTombstones: { ...labelTombstones },
-			boardTombstones: kanbanStore.boardTombstonesForSync()
+			tombstones: { ...this.deletedNoteIds },
+			labelTombstones: { ...this.deletedLabelIds },
+			boardTombstones: kanbanStore.boardTombstonesForSync(),
+			libraryItems: canvasLibraryStore.entriesForSync(),
+			libraryTombstones: canvasLibraryStore.tombstonesForSync()
 		};
 	}
 
@@ -1276,18 +1312,16 @@ export class NotesStore {
 		this.deletedNoteIds = { ...snapshot.tombstones };
 		this.deletedLabelIds = { ...snapshot.labelTombstones };
 		kanbanStore.replaceWithCloud(snapshot.boards, snapshot.boardTombstones);
+		canvasLibraryStore.replaceWithCloud(snapshot.libraryItems, snapshot.libraryTombstones);
+		// History only ever grows: what this device already showed stays shown.
+		reminderHistoryStore.forgetNotes(this.pid, this.deletedNoteIds);
 		await writeTombstones(this.pid, this.deletedNoteIds);
 		await writeLabelTombstones(this.pid, this.deletedLabelIds);
 		await kanbanStore.persistSyncState(this.pid);
+		await canvasLibraryStore.persistSyncState(this.pid);
+		await reminderHistoryStore.waitForPendingWrites();
 		this.mirrorToLS();
-		return {
-			notes,
-			labels,
-			boards: kanbanStore.boardsForSync(),
-			tombstones: { ...this.deletedNoteIds },
-			labelTombstones: { ...this.deletedLabelIds },
-			boardTombstones: kanbanStore.boardTombstonesForSync()
-		};
+		return this.syncSnapshot({ notes, labels });
 	}
 
 	/** Pairing merge: keep every local note and every account note. Same ids get a new local id. */
@@ -1310,8 +1344,9 @@ export class NotesStore {
 			if (leftover.length) await clearSyncOutbox(this.pid, leftover);
 			await syncStore.clearAccountControlPlane(account.accountId);
 			const pulledSnapshots: SyncSnapshot[] = [];
-			const pulled = await syncStore.sync([], [], {}, {}, [], {}, true, true, async (snapshot) => {
+			const pulled = await syncStore.sync(syncSnapshot(), true, true, async (snapshot) => {
 				pulledSnapshots.push({
+					...snapshot,
 					notes: snapshot.notes.map(cloneNote),
 					labels: snapshot.labels.map((label) => ({ ...label })),
 					boards: snapshot.boards.map((board) => ({
@@ -1325,7 +1360,9 @@ export class NotesStore {
 					})),
 					tombstones: { ...snapshot.tombstones },
 					labelTombstones: { ...snapshot.labelTombstones },
-					boardTombstones: { ...snapshot.boardTombstones }
+					boardTombstones: { ...snapshot.boardTombstones },
+					libraryItems: snapshot.libraryItems.map((entry) => ({ ...entry })),
+					libraryTombstones: { ...snapshot.libraryTombstones }
 				});
 				return snapshot;
 			});
@@ -1385,10 +1422,10 @@ export class NotesStore {
 			const leftover = await getSyncOutboxKeys(this.pid).catch(() => []);
 			if (leftover.length) await clearSyncOutbox(this.pid, leftover);
 			await syncStore.clearAccountControlPlane(syncStore.account.accountId);
-			const result = await syncStore.sync([], [], {}, {}, [], {}, true, true, (snapshot, pid) =>
+			const result = await syncStore.sync(syncSnapshot(), true, true, (snapshot, pid) =>
 				this.applyCloudReplacement(snapshot, pid)
 			);
-			if (!result.success || !result.notes) {
+			if (!result.success || !result.snapshot) {
 				this.recordPersistenceError(result.error || 'Cloud sync returned no notes', result.error);
 				return false;
 			}
@@ -1414,31 +1451,14 @@ export class NotesStore {
 				await syncStore.reauthenticateForRecovery(turnstileToken);
 				await syncStore.clearAccountControlPlane(account.accountId);
 				let remote: SyncSnapshot | undefined;
-				const pulled = await syncStore.sync(
-					[],
-					[],
-					{},
-					{},
-					[],
-					{},
-					true,
-					true,
-					async (snapshot) => {
-						remote = snapshot;
-						return snapshot;
-					}
-				);
+				const pulled = await syncStore.sync(syncSnapshot(), true, true, async (snapshot) => {
+					remote = snapshot;
+					return snapshot;
+				});
 				if (!pulled.success || !remote)
 					throw new Error(pulled.error ?? 'Could not read cloud state before force resync');
 				const snapshot = buildForcePushSnapshot(
-					{
-						notes: this.notes.map(cloneNote),
-						labels: [...this.labels],
-						boards: kanbanStore.boardsForSync(),
-						tombstones: this.deletedNoteIds,
-						labelTombstones: this.deletedLabelIds,
-						boardTombstones: kanbanStore.boardTombstonesForSync()
-					},
+					this.syncSnapshot({ notes: this.notes.map(cloneNote), labels: [...this.labels] }),
 					remote,
 					editContext
 				);
@@ -1449,20 +1469,18 @@ export class NotesStore {
 				this.deletedNoteIds = snapshot.tombstones;
 				this.deletedLabelIds = snapshot.labelTombstones;
 				kanbanStore.replaceWithCloud(snapshot.boards, snapshot.boardTombstones);
+				canvasLibraryStore.replaceWithCloud(snapshot.libraryItems, snapshot.libraryTombstones);
+				reminderHistoryStore.forgetNotes(this.pid, snapshot.tombstones);
 				await writeTombstones(this.pid, snapshot.tombstones);
 				await writeLabelTombstones(this.pid, snapshot.labelTombstones);
 				await kanbanStore.persistSyncState(this.pid);
+				await canvasLibraryStore.persistSyncState(this.pid);
+				await reminderHistoryStore.waitForPendingWrites();
 				this.mirrorToLS();
 				// The pull left this device holding the cloud's ids and fingerprints. Queue every
 				// record so the upload sends each one the cloud does not already hold, without
 				// downloading the whole account a second time.
-				await markSyncOutbox(this.pid, [
-					...currentRecordKeys(snapshot.notes, snapshot.labels, snapshot.boards, {
-						notes: snapshot.tombstones,
-						labels: snapshot.labelTombstones,
-						boards: snapshot.boardTombstones
-					})
-				]);
+				await markSyncOutbox(this.pid, [...currentRecordKeys(snapshot)]);
 				const synced = await this.doSyncLocked(true);
 				return synced && !syncStore.lastError && !this.lastPersistError;
 			} catch (err) {
@@ -1474,6 +1492,11 @@ export class NotesStore {
 
 	async syncWithCloudManual(): Promise<boolean> {
 		return this.flushSync(true);
+	}
+
+	/** Settle with the cloud once: join the sync in flight, or start one. */
+	reconcileWithCloud(): Promise<boolean> {
+		return this.syncFlight ?? this.queueSync(false);
 	}
 
 	/**
@@ -1568,21 +1591,18 @@ export class NotesStore {
 		if (await syncStore.needsCurrentStateBootstrap()) await this.hydrateAllAttachments();
 		// Only pull a few full attachments into memory per normal cycle for upload readiness.
 		await this.hydrateAttachmentsForSync();
+		// Merge other tabs' library writes before taking a sync snapshot.
+		await canvasLibraryStore.persistSyncState(this.pid);
 		const localNotes = this.notes.map(cloneNote);
 		const localLabels = [...this.labels];
 		try {
 			const result = await syncStore.sync(
-				localNotes,
-				localLabels,
-				this.deletedNoteIds,
-				this.deletedLabelIds,
-				kanbanStore.boardsForSync(),
-				kanbanStore.boardTombstonesForSync(),
+				this.syncSnapshot({ notes: localNotes, labels: localLabels }),
 				indicate,
 				false,
 				(snapshot, pid) => this.applyPulledSnapshot(snapshot, pid)
 			);
-			if (!result.success || !result.notes) {
+			if (!result.success || !result.snapshot) {
 				this.recordPersistenceError(result.error || 'Cloud sync returned no notes', result.error);
 				return false;
 			}

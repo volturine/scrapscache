@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Note } from '$lib/types';
 import { planDeletableKeys, reconcileBaseline, syncRoundHasMore } from './syncEngine';
+import { syncSnapshot } from './syncRecords';
 
 function note(id: string, imageIds: string[] = []): Note {
 	return {
@@ -29,10 +30,7 @@ describe('incremental sync engine', () => {
 	it('does not delete attachments until catch-up has drained', () => {
 		const planned = planDeletableKeys({
 			recordIds: { 'attachment:pic': 'env-1', 'note:n1': 'env-2' },
-			notes: [],
-			labels: [],
-			boards: [],
-			tombstones: { notes: {}, labels: {}, boards: {} },
+			snapshot: syncSnapshot(),
 			pullOnly: false,
 			catchUpComplete: false
 		});
@@ -42,10 +40,7 @@ describe('incremental sync engine', () => {
 	it('deletes an unused attachment only after catch-up completes', () => {
 		const planned = planDeletableKeys({
 			recordIds: { 'attachment:pic': 'env-1', 'note:n1': 'env-2' },
-			notes: [note('n1')],
-			labels: [],
-			boards: [],
-			tombstones: { notes: {}, labels: {}, boards: {} },
+			snapshot: syncSnapshot({ notes: [note('n1')] }),
 			pullOnly: false,
 			catchUpComplete: true
 		});
@@ -55,10 +50,7 @@ describe('incremental sync engine', () => {
 	it('does not delete an old photo while a replacement is not yet on the relay', () => {
 		const planned = planDeletableKeys({
 			recordIds: { 'attachment:old': 'env-1', 'note:n1': 'env-2' },
-			notes: [note('n1', ['new'])],
-			labels: [],
-			boards: [],
-			tombstones: { notes: {}, labels: {}, boards: {} },
+			snapshot: syncSnapshot({ notes: [note('n1', ['new'])] }),
 			pullOnly: false,
 			catchUpComplete: true
 		});
@@ -68,10 +60,7 @@ describe('incremental sync engine', () => {
 	it('never deletes slots during pull-only replace', () => {
 		const planned = planDeletableKeys({
 			recordIds: { 'attachment:pic': 'env-1', 'note:n1': 'env-2' },
-			notes: [],
-			labels: [],
-			boards: [],
-			tombstones: { notes: {}, labels: {}, boards: {} },
+			snapshot: syncSnapshot(),
 			pullOnly: true,
 			catchUpComplete: true
 		});
@@ -82,10 +71,7 @@ describe('incremental sync engine', () => {
 		const pendingDeletes =
 			planDeletableKeys({
 				recordIds: { 'attachment:pic': 'env-1', 'note:n1': 'env-2' },
-				notes: [],
-				labels: [],
-				boards: [],
-				tombstones: { notes: { n1: 2 }, labels: {}, boards: {} },
+				snapshot: syncSnapshot({ tombstones: { n1: 2 } }),
 				pullOnly: false,
 				catchUpComplete: true
 			}).length > 0;
@@ -175,5 +161,29 @@ describe('incremental sync engine', () => {
 		expect(result.ackKeys).toEqual(['note:n1']);
 		expect(result.dirtyKeys).toEqual([]);
 		expect(result.baseline['note:n1']).toBe('sent-fp');
+	});
+
+	it('deletes library slots without touching the independent reminder channel', () => {
+		const wake = 'd'.repeat(43);
+		const recordIds = {
+			'library-item:star': 'env-1',
+			'library-item:kept': 'env-2',
+			[`reminder-history:gone:${wake}`]: 'env-3',
+			[`reminder-history:kept:${wake}`]: 'env-4'
+		};
+		const planned = planDeletableKeys({
+			recordIds,
+			snapshot: syncSnapshot({
+				notes: [note('kept')],
+				tombstones: { gone: 2 },
+				libraryItems: [
+					{ id: 'kept', updatedAt: 1, item: { id: 'kept', created: 1, elements: [] } }
+				],
+				libraryTombstones: { star: 3 }
+			}),
+			pullOnly: false,
+			catchUpComplete: true
+		});
+		expect(planned.sort()).toEqual(['library-item:star']);
 	});
 });

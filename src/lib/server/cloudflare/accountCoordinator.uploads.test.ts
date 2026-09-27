@@ -2,7 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Client } from '@libsql/client/node';
 import type { D1Database, DurableObjectState, R2Bucket } from '@cloudflare/workers-types';
 import { applyMigrations, testD1, testR2 } from './testBindings';
-import { AccountCoordinator } from '../../../../cf/accountCoordinator';
+import {
+	AccountCoordinator,
+	SOCKET_PING,
+	SOCKET_PONG,
+	SOCKET_SESSION_EXPIRED
+} from '../../../../cf/accountCoordinator';
 import { MAX_CLIENT_SYNC_MUTATIONS_PER_REQUEST } from '$lib/syncLimits';
 
 const ACCOUNT = 'account-abcdefghij';
@@ -14,11 +19,37 @@ let writes: () => number;
 let coordinator: AccountCoordinator;
 let bindings: { SCRAPSCACHE_DB: D1Database; SCRAPSCACHE_ENVELOPES: R2Bucket };
 
+/** A hibernatable socket as the coordinator sees it. */
+class FakeSocket {
+	attachment: unknown = null;
+	sent: string[] = [];
+	closed: { code: number; reason: string } | null = null;
+	serializeAttachment(value: unknown) {
+		this.attachment = structuredClone(value);
+	}
+	deserializeAttachment() {
+		return this.attachment;
+	}
+	send(message: string) {
+		if (this.closed) throw new Error('Socket is closed');
+		this.sent.push(message);
+	}
+	close(code: number, reason: string) {
+		this.closed ??= { code, reason };
+		sockets.splice(sockets.indexOf(this), 1);
+	}
+}
+let sockets: FakeSocket[] = [];
+const autoResponse = vi.fn();
 const state = {
-	blockConcurrencyWhile: <T>(body: () => Promise<T>) => body()
+	blockConcurrencyWhile: <T>(body: () => Promise<T>) => body(),
+	acceptWebSocket: (socket: FakeSocket) => sockets.push(socket),
+	getWebSockets: () => [...sockets],
+	setWebSocketAutoResponse: autoResponse
 } as unknown as DurableObjectState;
 
 beforeEach(async () => {
+	sockets = [];
 	const d1 = testD1();
 	const r2 = testR2();
 	client = d1.client;
@@ -291,46 +322,124 @@ describe('uploads that do not fit', () => {
 	});
 });
 
-describe('change streams', () => {
-	const open: AbortController[] = [];
+describe('change sockets', () => {
+	/** Node's Response refuses status 101, which the Workers runtime allows for upgrades. */
+	class UpgradeResponse extends Response {
+		private readonly upgrade?: number;
+		readonly webSocket?: unknown;
+		constructor(body?: BodyInit | null, init?: ResponseInit & { webSocket?: unknown }) {
+			super(body, init?.status === 101 ? { ...init, status: 200 } : init);
+			if (init?.status === 101) this.upgrade = 101;
+			this.webSocket = init?.webSocket;
+		}
+		override get status() {
+			return this.upgrade ?? super.status;
+		}
+	}
 
-	afterEach(() => {
-		for (const controller of open) controller.abort();
-		open.length = 0;
+	beforeEach(() => {
+		vi.stubGlobal('Response', UpgradeResponse);
+		vi.stubGlobal(
+			'WebSocketPair',
+			class {
+				0 = new FakeSocket();
+				1 = new FakeSocket();
+			}
+		);
+		vi.stubGlobal(
+			'WebSocketRequestResponsePair',
+			class {
+				constructor(
+					readonly request: string,
+					readonly response: string
+				) {}
+			}
+		);
+		coordinator = new AccountCoordinator(state, bindings);
 	});
+	afterEach(() => vi.unstubAllGlobals());
 
-	function stream(): Promise<Response> {
-		const controller = new AbortController();
-		open.push(controller);
+	function connect(
+		clientId = 'tab',
+		expiresAt = Date.now() + 60_000,
+		upgrade = 'websocket'
+	): Promise<Response> {
 		return coordinator.fetch(
-			new Request('https://coordinator/events?clientId=tab', {
-				signal: controller.signal
+			new Request(`https://coordinator/socket?clientId=${clientId}&expiresAt=${expiresAt}`, {
+				headers: { upgrade }
 			}) as never
 		) as unknown as Promise<Response>;
 	}
 
-	it('opens a stream for a normal client', async () => {
-		const response = await stream();
-		expect(response.status).toBe(200);
-		expect(response.headers.get('Content-Type')).toBe('text/event-stream');
+	function upload(senderClientId: string): Promise<Response> {
+		return coordinator.fetch(
+			new Request('https://coordinator/sync', {
+				method: 'POST',
+				body: JSON.stringify({
+					accountId: ACCOUNT,
+					cursor: 0,
+					uploads: [{ id: `id-${senderClientId}`, slot: SLOT, ciphertext: 'bytes' }],
+					deletions: [],
+					downloadLimit: 12,
+					maxAccountBytes: 100_000_000,
+					senderClientId
+				})
+			}) as never
+		) as unknown as Promise<Response>;
+	}
+
+	it('hibernates sockets and lets the runtime answer heartbeats', async () => {
+		const response = await connect();
+		expect(response.status).toBe(101);
+		expect(sockets).toHaveLength(1);
+		expect(autoResponse).toHaveBeenCalledWith(
+			expect.objectContaining({ request: SOCKET_PING, response: SOCKET_PONG })
+		);
 	});
 
-	it('refuses to grow this account beyond the stream cap', async () => {
-		for (let index = 0; index < 16; index++) expect((await stream()).status).toBe(200);
+	it('refuses a request that is not an upgrade, or a session already expired', async () => {
+		expect((await connect('tab', Date.now() + 60_000, 'h2c')).status).toBe(426);
+		expect((await connect('tab', Date.now() - 1)).status).toBe(401);
+		expect(sockets).toHaveLength(0);
+	});
 
-		const refused = await stream();
+	it('refuses to grow this account beyond the socket cap, and frees a slot on close', async () => {
+		for (let index = 0; index < 16; index++) expect((await connect()).status).toBe(101);
+		const refused = await connect();
 		expect(refused.status).toBe(429);
 		expect(refused.headers.get('retry-after')).toBe('5');
+
+		coordinator.webSocketClose(sockets[0] as never, 1000, 'bye');
+		expect((await connect()).status).toBe(101);
 	});
 
-	it('frees the slot again when a client disconnects', async () => {
-		for (let index = 0; index < 16; index++) await stream();
-		expect((await stream()).status).toBe(429);
+	it('signals other windows of an upload, not the uploader, and closes expired sessions', async () => {
+		await connect('writer');
+		await connect('reader');
+		await connect('stale');
+		const [writer, reader, stale] = sockets;
+		(stale.attachment as { expiresAt: number }).expiresAt = Date.now() - 1;
 
-		open.shift()!.abort();
-		await Promise.resolve();
+		const cursor = ((await (await upload('writer')).json()) as { cursor: number }).cursor;
+		expect(writer.sent).toEqual([]);
+		expect(reader.sent).toEqual([JSON.stringify({ seq: cursor })]);
+		expect(stale.closed?.code).toBe(SOCKET_SESSION_EXPIRED);
+	});
 
-		expect((await stream()).status).toBe(200);
+	it('closes every socket when the account is deleted', async () => {
+		await connect('one');
+		await connect('two');
+		const open = [...sockets];
+		await coordinator.fetch(
+			new Request('https://coordinator/delete', {
+				method: 'POST',
+				body: JSON.stringify({ accountId: ACCOUNT })
+			}) as never
+		);
+		expect(open.map((socket) => socket.closed?.code)).toEqual([
+			SOCKET_SESSION_EXPIRED,
+			SOCKET_SESSION_EXPIRED
+		]);
 	});
 });
 

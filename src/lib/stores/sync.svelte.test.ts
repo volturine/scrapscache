@@ -14,8 +14,10 @@ import { sha256 } from '$lib/syncHash';
 import * as idb from '$lib/db/idb';
 import { MAX_CLIENT_SYNC_MUTATIONS_PER_REQUEST } from '$lib/syncLimits';
 import { buildSyncRecords } from '$lib/syncRecords';
-import { SyncStore, type SyncSnapshot } from './sync.svelte';
+import { SyncStore } from './sync.svelte';
+import { syncSnapshot, type SyncSnapshot } from '$lib/syncRecords';
 import { legacySyncEnvelope } from '../../tests/legacyEnvelope';
+import { seedTestKeyring, TEST_WORKSPACE } from '../../tests/workspace';
 
 type RequestPayload = {
 	cursor: number;
@@ -149,15 +151,16 @@ async function seedControl(
 	}
 ): Promise<void> {
 	const keys = syncControlKeys(accountId);
-	if (state.cursor != null) await idb.setSyncState(keys.cursor, state.cursor);
-	if (state.baseline) await idb.setSyncState(keys.baseline, state.baseline);
-	if (state.recordIds) await idb.setSyncState(keys.recordIds, state.recordIds);
-	if (state.outbox?.length) await idb.markSyncOutbox(idb.LOCAL_PROFILE_ID, state.outbox);
+	if (state.cursor != null) await idb.setSyncState(TEST_WORKSPACE, keys.cursor, state.cursor);
+	if (state.baseline) await idb.setSyncState(TEST_WORKSPACE, keys.baseline, state.baseline);
+	if (state.recordIds) await idb.setSyncState(TEST_WORKSPACE, keys.recordIds, state.recordIds);
+	if (state.outbox?.length) await idb.markSyncOutbox(TEST_WORKSPACE, state.outbox);
 }
 
 describe('client sync state machine', () => {
 	beforeEach(() => {
 		localStorage.clear();
+		seedTestKeyring();
 		vi.restoreAllMocks();
 	});
 	afterEach(() => vi.unstubAllGlobals());
@@ -264,13 +267,69 @@ describe('client sync state machine', () => {
 			session: { accountId: string; accessToken: string; expiresAt: number } | null;
 		};
 		const pending = privateStore.accessToken();
-		store.activateLocalWorkspace();
+		store.activateLocalWorkspace(TEST_WORKSPACE);
 		releaseChallenge?.(
 			new Response(JSON.stringify({ challengeId: 'late', challenge: 'challenge' }))
 		);
 
 		await expect(pending).rejects.toThrow('Sync authentication was cancelled');
 		expect(privateStore.session).toBeNull();
+	});
+
+	it('hands the live socket a token that a refusal drops', async () => {
+		const account = createSyncIdentity();
+		const store = new SyncStore();
+		store.account = account;
+		const privateStore = store as unknown as {
+			session: { accountId: string; accessToken: string; expiresAt: number } | null;
+		};
+		privateStore.session = {
+			accountId: account.accountId,
+			accessToken: 'cached-token',
+			expiresAt: Date.now() + 60_000
+		};
+		const { token, refused } = await store.connectionToken();
+		expect(token).toBe('cached-token');
+		refused();
+		expect(privateStore.session).toBeNull();
+	});
+
+	it('keeps a background workspace token that finishes after a workspace switch', async () => {
+		const background = createSyncIdentity();
+		const store = new SyncStore();
+		await store.ensureProfilesLoaded();
+		store.profiles = [
+			{ id: 'background', name: 'Background', syncKey: background.syncKey, createdAt: 1 }
+		];
+		let releaseChallenge: ((response: Response) => void) | undefined;
+		const challenge = new Promise<Response>((resolve) => {
+			releaseChallenge = resolve;
+		});
+		vi.stubGlobal(
+			'fetch',
+			vi
+				.fn()
+				.mockImplementationOnce(() => challenge)
+				.mockResolvedValueOnce(
+					new Response(
+						JSON.stringify({ accessToken: 'background-token', expiresAt: Date.now() + 60_000 })
+					)
+				)
+		);
+		const privateStore = store as unknown as {
+			accessToken(account: typeof background): Promise<string>;
+			session: { accountId: string; accessToken: string; expiresAt: number } | null;
+		};
+		const pending = privateStore.accessToken(background);
+		store.activateLocalWorkspace(TEST_WORKSPACE);
+		releaseChallenge?.(
+			new Response(JSON.stringify({ challengeId: 'late', challenge: 'challenge' }))
+		);
+
+		await expect(pending).resolves.toBe('background-token');
+		expect(privateStore.session).toBeNull();
+		// Cached for the next background request, with no second sign-in.
+		await expect(privateStore.accessToken(background)).resolves.toBe('background-token');
 	});
 
 	it('reauthenticates and retries an authorized request once after a rejected session', async () => {
@@ -391,10 +450,10 @@ describe('client sync state machine', () => {
 		await expect(store.queueOutbox(['note:note-1'])).rejects.toThrow(
 			'IndexedDB transaction aborted'
 		);
-		expect(await idb.getSyncOutboxKeys()).toEqual([]);
+		expect(await idb.getSyncOutboxKeys(TEST_WORKSPACE)).toEqual([]);
 
 		await store.queueOutbox(['note:note-1']);
-		expect(await idb.getSyncOutboxKeys()).toEqual(['note:note-1']);
+		expect(await idb.getSyncOutboxKeys(TEST_WORKSPACE)).toEqual(['note:note-1']);
 	});
 
 	it('durably applies a downloaded page before committing its cursor', async () => {
@@ -407,15 +466,15 @@ describe('client sync state machine', () => {
 		}));
 		const keys = syncControlKeys(account.accountId);
 
-		const result = await store.sync([], [], {}, {}, [], {}, false, true, async (snapshot) => {
-			expect(await idb.getSyncState(keys.cursor)).toBeUndefined();
-			for (const item of snapshot.notes) await idb.putNote(item);
+		const result = await store.sync(syncSnapshot(), false, true, async (snapshot) => {
+			expect(await idb.getSyncState(TEST_WORKSPACE, keys.cursor)).toBeUndefined();
+			for (const item of snapshot.notes) await idb.putNote(TEST_WORKSPACE, item);
 			return snapshot;
 		});
 
 		expect(result.success, result.error).toBe(true);
-		expect((await idb.getAllNotesMetadata()).map(({ id }) => id)).toEqual(['note-1']);
-		expect(await idb.getSyncState(keys.cursor)).toBe(1);
+		expect((await idb.getAllNotesMetadata(TEST_WORKSPACE)).map(({ id }) => id)).toEqual(['note-1']);
+		expect(await idb.getSyncState(TEST_WORKSPACE, keys.cursor)).toBe(1);
 	});
 
 	it('leaves all control state untouched when durable application fails', async () => {
@@ -428,15 +487,15 @@ describe('client sync state machine', () => {
 		}));
 		const keys = syncControlKeys(account.accountId);
 
-		const result = await store.sync([], [], {}, {}, [], {}, false, true, async () => {
+		const result = await store.sync(syncSnapshot(), false, true, async () => {
 			throw new Error('IndexedDB write failed');
 		});
 
 		expect(result).toMatchObject({ success: false });
-		expect(await idb.getSyncState(keys.cursor)).toBeUndefined();
-		expect(await idb.getSyncState(keys.baseline)).toBeUndefined();
-		expect(await idb.getSyncState(keys.recordIds)).toBeUndefined();
-		expect(await idb.getAllNotesMetadata()).toEqual([]);
+		expect(await idb.getSyncState(TEST_WORKSPACE, keys.cursor)).toBeUndefined();
+		expect(await idb.getSyncState(TEST_WORKSPACE, keys.baseline)).toBeUndefined();
+		expect(await idb.getSyncState(TEST_WORKSPACE, keys.recordIds)).toBeUndefined();
+		expect(await idb.getAllNotesMetadata(TEST_WORKSPACE)).toEqual([]);
 	});
 
 	it('drains every page before applying or committing, including cross-page attachments', async () => {
@@ -468,7 +527,10 @@ describe('client sync state machine', () => {
 					})
 				};
 			}
-			cursorAtSecondRequest = await idb.getSyncState(syncControlKeys(account.accountId).cursor);
+			cursorAtSecondRequest = await idb.getSyncState(
+				TEST_WORKSPACE,
+				syncControlKeys(account.accountId).cursor
+			);
 			return {
 				success: true,
 				data: emptyData({
@@ -489,7 +551,7 @@ describe('client sync state machine', () => {
 			};
 		});
 
-		const result = await store.sync([], [], {}, {}, [], {}, false, true, async (snapshot) => {
+		const result = await store.sync(syncSnapshot(), false, true, async (snapshot) => {
 			applied.push(snapshot);
 			return snapshot;
 		});
@@ -500,7 +562,9 @@ describe('client sync state machine', () => {
 		expect(cursorAtSecondRequest).toBeUndefined();
 		expect(applied).toHaveLength(1);
 		expect(applied[0].notes[0]?.images?.[0]?.dataUrl).toBe('data:image/png;base64,QQ==');
-		expect(await idb.getSyncState(syncControlKeys(account.accountId).cursor)).toBe(2);
+		expect(await idb.getSyncState(TEST_WORKSPACE, syncControlKeys(account.accountId).cursor)).toBe(
+			2
+		);
 	});
 
 	it('merges downloaded state before building the first conditional upload', async () => {
@@ -530,9 +594,9 @@ describe('client sync state machine', () => {
 			}
 			return { success: true, data: emptyData({ cursor: 2 }) };
 		});
-		await idb.markSyncOutbox(idb.LOCAL_PROFILE_ID, [`note:note-1`]);
+		await idb.markSyncOutbox(TEST_WORKSPACE, [`note:note-1`]);
 
-		const result = await store.sync([local], [], {}, {}, [], {}, false, false, passthrough);
+		const result = await store.sync(syncSnapshot({ notes: [local] }), false, false, passthrough);
 
 		expect(result.success, result.error).toBe(true);
 		expect(requests[0].envelopes).toEqual([]);
@@ -586,14 +650,14 @@ describe('client sync state machine', () => {
 			outbox: ['note:note-1']
 		});
 
-		const result = await store.sync([local], [], {}, {}, [], {}, false, false, passthrough);
+		const result = await store.sync(syncSnapshot({ notes: [local] }), false, false, passthrough);
 
 		expect(result.success, result.error).toBe(true);
 		expect(requests).toHaveLength(3);
 		expect(requests[1].envelopes[0].expectedId).toBe('old-id');
 		expect(requests[2].envelopes[0].expectedId).toBe('current-id');
 		expect(requests[2].envelopes[0].id).not.toBe(requests[1].envelopes[0].id);
-		expect(await idb.getSyncOutboxKeys()).toEqual([]);
+		expect(await idb.getSyncOutboxKeys(TEST_WORKSPACE)).toEqual([]);
 	});
 
 	it('recovers from an accepted upload whose response was lost without uploading it twice', async () => {
@@ -617,17 +681,19 @@ describe('client sync state machine', () => {
 			}
 			return { success: true, data: emptyData({ cursor: 1 }) };
 		});
-		await idb.markSyncOutbox(idb.LOCAL_PROFILE_ID, [`note:note-1`]);
+		await idb.markSyncOutbox(TEST_WORKSPACE, [`note:note-1`]);
 
-		const failed = await store.sync([local], [], {}, {}, [], {}, false, false, passthrough);
+		const failed = await store.sync(syncSnapshot({ notes: [local] }), false, false, passthrough);
 		expect(failed).toMatchObject({ success: false, error: 'Sync timed out' });
-		expect(await idb.getSyncOutboxKeys()).toEqual(['note:note-1']);
+		expect(await idb.getSyncOutboxKeys(TEST_WORKSPACE)).toEqual(['note:note-1']);
 
-		const retried = await store.sync([local], [], {}, {}, [], {}, false, false, passthrough);
+		const retried = await store.sync(syncSnapshot({ notes: [local] }), false, false, passthrough);
 		expect(retried.success, retried.error).toBe(true);
 		expect(requests.filter((request) => request.envelopes.length > 0)).toHaveLength(1);
-		expect(await idb.getSyncOutboxKeys()).toEqual([]);
-		expect(await idb.getSyncState(syncControlKeys(account.accountId).recordIds)).toEqual({
+		expect(await idb.getSyncOutboxKeys(TEST_WORKSPACE)).toEqual([]);
+		expect(
+			await idb.getSyncState(TEST_WORKSPACE, syncControlKeys(account.accountId).recordIds)
+		).toEqual({
 			'note:note-1': accepted!.id
 		});
 	});
@@ -655,11 +721,11 @@ describe('client sync state machine', () => {
 		});
 		await seedControl(account.accountId, { cursor: 9 });
 
-		const result = await store.sync([], [], {}, {}, [], {}, false, true, passthrough);
+		const result = await store.sync(syncSnapshot(), false, true, passthrough);
 
 		expect(result.success, result.error).toBe(true);
 		expect(requests[0]?.cursor).toBe(0);
-		expect(result.notes?.map((item) => item.id)).toEqual(['note-1']);
+		expect(result.snapshot?.notes.map((item) => item.id)).toEqual(['note-1']);
 	});
 
 	it('resets stale control state and rebuilds it on the requested bootstrap pass', async () => {
@@ -686,7 +752,7 @@ describe('client sync state machine', () => {
 			recordIds: { 'note:note-1': 'stale-id' }
 		});
 
-		const reset = await store.sync([local], [], {}, {}, [], {}, false, false, passthrough);
+		const reset = await store.sync(syncSnapshot({ notes: [local] }), false, false, passthrough);
 
 		expect(reset.success, reset.error).toBe(true);
 		expect(store.consumeCurrentStateBootstrapRequest()).toBe(true);
@@ -694,7 +760,7 @@ describe('client sync state machine', () => {
 		const resetRequestCount = requests.length;
 		expect(resetRequestCount).toBe(2);
 
-		const rebuilt = await store.sync([local], [], {}, {}, [], {}, false, false, passthrough);
+		const rebuilt = await store.sync(syncSnapshot({ notes: [local] }), false, false, passthrough);
 		expect(rebuilt.success, rebuilt.error).toBe(true);
 		const rebuiltUploads = requests
 			.slice(resetRequestCount)
@@ -711,7 +777,7 @@ describe('client sync state machine', () => {
 			data: emptyData({ cursor: index === 0 ? 0 : index * limit })
 		}));
 
-		const result = await store.sync(notes, [], {}, {}, [], {}, false, false, passthrough);
+		const result = await store.sync(syncSnapshot({ notes: notes }), false, false, passthrough);
 
 		expect(result.success, result.error).toBe(true);
 		expect(requests.map((request) => request.envelopes.length)).toEqual([0, limit, limit, 1]);
@@ -731,7 +797,7 @@ describe('client sync state machine', () => {
 			recordIds: { 'attachment:orphan': 'orphan-id' }
 		});
 
-		const result = await store.sync(notes, [], {}, {}, [], {}, false, false, passthrough);
+		const result = await store.sync(syncSnapshot({ notes: notes }), false, false, passthrough);
 
 		expect(result.success, result.error).toBe(true);
 		expect(requests.some((request) => request.deleteSlots.length > 0)).toBe(true);
@@ -751,7 +817,7 @@ describe('client sync state machine', () => {
 			data: emptyData({ cursor: index === 0 ? 0 : index + request.envelopes.length })
 		}));
 
-		const result = await store.sync([local], [], {}, {}, [], {}, false, false, passthrough);
+		const result = await store.sync(syncSnapshot({ notes: [local] }), false, false, passthrough);
 		const kinds = requests
 			.slice(1)
 			.map((request) =>
@@ -785,7 +851,7 @@ describe('client sync state machine', () => {
 			outbox: ['note:note-1', 'attachment:new']
 		});
 
-		const result = await store.sync([local], [], {}, {}, [], {}, false, false, passthrough);
+		const result = await store.sync(syncSnapshot({ notes: [local] }), false, false, passthrough);
 
 		expect(result.success, result.error).toBe(true);
 		let replacementAccepted = false;
@@ -817,12 +883,12 @@ describe('client sync state machine', () => {
 			recordIds: { 'attachment:orphan': 'orphan-id' }
 		});
 
-		const result = await store.sync([], [], {}, {}, [], {}, false, false, passthrough);
+		const result = await store.sync(syncSnapshot(), false, false, passthrough);
 
 		expect(result.success, result.error).toBe(true);
 		expect(requests[0].deleteSlots).toEqual([]);
 		expect(requests[1].deleteSlots).toEqual([expect.objectContaining({ id: 'orphan-id' })]);
-		expect(await idb.getSyncState(keys.recordIds)).toEqual({});
+		expect(await idb.getSyncState(TEST_WORKSPACE, keys.recordIds)).toEqual({});
 	});
 
 	it('skips unreadable ciphertext without applying it and records a warning', async () => {
@@ -835,7 +901,7 @@ describe('client sync state machine', () => {
 		}));
 		const applied: SyncSnapshot[] = [];
 
-		const result = await store.sync([], [], {}, {}, [], {}, false, true, async (snapshot) => {
+		const result = await store.sync(syncSnapshot(), false, true, async (snapshot) => {
 			applied.push(snapshot);
 			return snapshot;
 		});
@@ -843,7 +909,9 @@ describe('client sync state machine', () => {
 		expect(result.success, result.error).toBe(true);
 		expect(applied[0].notes).toEqual([]);
 		expect(store.lastError).toBe('Skipped 1 unreadable sync record');
-		expect(await idb.getSyncState(syncControlKeys(account.accountId).cursor)).toBe(1);
+		expect(await idb.getSyncState(TEST_WORKSPACE, syncControlKeys(account.accountId).cursor)).toBe(
+			1
+		);
 	});
 
 	it('adopts an identifiable unreadable slot so the next upload replaces it', async () => {
@@ -871,16 +939,18 @@ describe('client sync state machine', () => {
 		});
 		const local = note('note-1', { title: 'local replacement' });
 		const poisonedSlot = await sha256(`${account.syncKey}\u0000note:note-1`);
-		await idb.markSyncOutbox(idb.LOCAL_PROFILE_ID, ['note:note-1']);
+		await idb.markSyncOutbox(TEST_WORKSPACE, ['note:note-1']);
 
-		const pull = await store.sync([local], [], {}, {}, [], {}, false, true, passthrough);
+		const pull = await store.sync(syncSnapshot({ notes: [local] }), false, true, passthrough);
 		expect(pull.success, pull.error).toBe(true);
 		expect(store.lastError).toBe('Skipped 1 unreadable sync record');
-		expect(await idb.getSyncState(syncControlKeys(account.accountId).recordIds)).toEqual({
+		expect(
+			await idb.getSyncState(TEST_WORKSPACE, syncControlKeys(account.accountId).recordIds)
+		).toEqual({
 			'note:note-1': 'poison'
 		});
 
-		const push = await store.sync([local], [], {}, {}, [], {}, false, false, passthrough);
+		const push = await store.sync(syncSnapshot({ notes: [local] }), false, false, passthrough);
 		expect(push.success, push.error).toBe(true);
 		const upload = requests.at(-1)?.envelopes[0];
 		expect(upload?.expectedId).toBe('poison');
@@ -905,10 +975,12 @@ describe('client sync state machine', () => {
 			recordIds: { 'note:note-1': 'tracked-id' }
 		});
 
-		const result = await store.sync([local], [], {}, {}, [], {}, false, true, passthrough);
+		const result = await store.sync(syncSnapshot({ notes: [local] }), false, true, passthrough);
 
 		expect(result.success, result.error).toBe(true);
-		expect(await idb.getSyncState(syncControlKeys(account.accountId).recordIds)).toEqual({
+		expect(
+			await idb.getSyncState(TEST_WORKSPACE, syncControlKeys(account.accountId).recordIds)
+		).toEqual({
 			'note:note-1': 'tracked-id'
 		});
 	});
@@ -943,7 +1015,7 @@ describe('client sync state machine', () => {
 			outbox: ['note:note-1']
 		});
 
-		const result = await store.sync([local], [], {}, {}, [], {}, false, false, passthrough);
+		const result = await store.sync(syncSnapshot({ notes: [local] }), false, false, passthrough);
 
 		expect(result.success, result.error).toBe(true);
 		expect(requests.map((request) => request.envelopes[0]?.expectedId)).toEqual([
@@ -951,7 +1023,9 @@ describe('client sync state machine', () => {
 			'old-id',
 			'current-id'
 		]);
-		expect(await idb.getSyncState(syncControlKeys(account.accountId).recordIds)).toEqual({
+		expect(
+			await idb.getSyncState(TEST_WORKSPACE, syncControlKeys(account.accountId).recordIds)
+		).toEqual({
 			'note:note-1': requests[2].envelopes[0].id
 		});
 	});
@@ -984,7 +1058,7 @@ describe('client sync state machine', () => {
 			outbox: ['note:note-1']
 		});
 
-		const result = await store.sync([local], [], {}, {}, [], {}, false, false, passthrough);
+		const result = await store.sync(syncSnapshot({ notes: [local] }), false, false, passthrough);
 
 		expect(result.success, result.error).toBe(true);
 		expect(requests.length).toBeGreaterThanOrEqual(5);
@@ -1013,7 +1087,7 @@ describe('client sync state machine', () => {
 			outbox: ['note:note-1']
 		});
 
-		const result = await store.sync([local], [], {}, {}, [], {}, false, false, passthrough);
+		const result = await store.sync(syncSnapshot({ notes: [local] }), false, false, passthrough);
 
 		expect(result.success).toBe(false);
 		expect(result.error).toMatch(/repeated conflicts/);
@@ -1043,7 +1117,7 @@ describe('client sync state machine', () => {
 			return { success: true, data: emptyData({ cursor: 1, writesAccepted: true }) };
 		});
 
-		const result = await store.sync([local], [], {}, {}, [], {}, false, false, passthrough);
+		const result = await store.sync(syncSnapshot({ notes: [local] }), false, false, passthrough);
 		const uploaded = requests.flatMap((request) =>
 			request.envelopes.map((item) => {
 				const payload = decryptSyncPayload(account.syncKey, item.ciphertext, item.slot) as {
@@ -1059,7 +1133,7 @@ describe('client sync state machine', () => {
 		expect(uploaded).toContain('note');
 		expect(uploaded).toContain('attachment:ok');
 		expect(store.lastError).toMatch(/quota/);
-		expect(await idb.getSyncOutboxKeys()).toEqual(['attachment:huge']);
+		expect(await idb.getSyncOutboxKeys(TEST_WORKSPACE)).toEqual(['attachment:huge']);
 	});
 
 	it('returns to batched uploads after an oversized record is isolated', async () => {
@@ -1078,7 +1152,7 @@ describe('client sync state machine', () => {
 			return { success: true, data: emptyData({ cursor: 1, writesAccepted: true }) };
 		});
 
-		const result = await store.sync([local], [], {}, {}, [], {}, false, false, passthrough);
+		const result = await store.sync(syncSnapshot({ notes: [local] }), false, false, passthrough);
 		expect(result.success).toBe(false);
 		expect(result.error).toMatch(/quota/);
 
@@ -1103,7 +1177,7 @@ describe('client sync state machine', () => {
 	it('aborts cleanly when the account is logged out mid-sync', async () => {
 		const { store, account } = createHarness((_request, index) => {
 			if (index === 0) {
-				store.activateLocalWorkspace();
+				store.activateLocalWorkspace(TEST_WORKSPACE);
 				return { success: true, data: emptyData({ cursor: 1, hasMore: true }) };
 			}
 			return { success: true, data: emptyData({ cursor: 2 }) };
@@ -1111,11 +1185,11 @@ describe('client sync state machine', () => {
 		const keys = syncControlKeys(account.accountId);
 		await seedControl(account.accountId, { cursor: 0 });
 
-		const result = await store.sync([], [], {}, {}, [], {}, false, true, passthrough);
+		const result = await store.sync(syncSnapshot(), false, true, passthrough);
 
 		expect(result).toEqual({ success: false, error: 'Sync was cancelled' });
 		expect(store.lastError).toBeNull();
-		expect(await idb.getSyncState(keys.cursor)).toBe(0);
+		expect(await idb.getSyncState(TEST_WORKSPACE, keys.cursor)).toBe(0);
 	});
 
 	it('stops after repeated relay reset requests instead of looping forever', async () => {
@@ -1125,7 +1199,7 @@ describe('client sync state machine', () => {
 			data: emptyData({ cursor: 0, reset: true, writesAccepted: false })
 		}));
 
-		const result = await store.sync([local], [], {}, {}, [], {}, false, false, passthrough);
+		const result = await store.sync(syncSnapshot({ notes: [local] }), false, false, passthrough);
 
 		expect(result.success).toBe(false);
 		expect(result.error).toMatch(/reset/);
@@ -1141,7 +1215,7 @@ describe('client sync state machine', () => {
 				: { success: false, status: 507, error: 'Sync account storage quota exceeded' }
 		);
 
-		const result = await store.sync(notes, [], {}, {}, [], {}, false, false, passthrough);
+		const result = await store.sync(syncSnapshot({ notes: notes }), false, false, passthrough);
 
 		expect(result.success).toBe(false);
 		expect(result.error).toMatch(/quota/i);
@@ -1161,13 +1235,15 @@ describe('client sync state machine', () => {
 		expect(requests).toHaveLength(9);
 		expect(requests.at(-1)?.envelopes).toEqual([]);
 		expect(store.lastSync).toBe(0);
-		expect(await idb.getSyncOutboxKeys()).toEqual(notes.map(({ id }) => `note:${id}`));
+		expect(await idb.getSyncOutboxKeys(TEST_WORKSPACE)).toEqual(
+			notes.map(({ id }) => `note:${id}`)
+		);
 
 		rejectWrites = false;
-		const retry = await store.sync(notes, [], {}, {}, [], {}, false, false, passthrough);
+		const retry = await store.sync(syncSnapshot({ notes: notes }), false, false, passthrough);
 
 		expect(retry.success, retry.error).toBe(true);
-		expect(await idb.getSyncOutboxKeys()).toEqual([]);
+		expect(await idb.getSyncOutboxKeys(TEST_WORKSPACE)).toEqual([]);
 		expect(store.lastSync).toBeGreaterThan(0);
 	});
 	it('clears outbox keys properly for custom profile using profile generation', async () => {
@@ -1189,12 +1265,7 @@ describe('client sync state machine', () => {
 		expect(await idb.getSyncOutboxKeys(pid)).toEqual(['note:custom-1']);
 
 		const result = await store.sync(
-			[note('custom-1')],
-			[],
-			{},
-			{},
-			[],
-			{},
+			syncSnapshot({ notes: [note('custom-1')] }),
 			false,
 			false,
 			passthrough
@@ -1213,7 +1284,7 @@ describe('client sync state machine', () => {
 		const cursorB = new Promise<number | undefined>((resolve) => {
 			resolveB = resolve;
 		});
-		vi.spyOn(idb, 'getSyncState').mockImplementation(((_key: string, pid?: string) => {
+		vi.spyOn(idb, 'getSyncState').mockImplementation(((pid: string) => {
 			if (pid === 'cursor-a') return cursorA;
 			if (pid === 'cursor-b') return cursorB;
 			return Promise.resolve(undefined);
@@ -1262,7 +1333,7 @@ describe('client sync state machine', () => {
 		await idb.markSyncOutbox(pid, ['attachment:non-existent']);
 		expect(await idb.getSyncOutboxKeys(pid)).toEqual(['attachment:non-existent']);
 
-		const result = await store.sync([], [], {}, {}, [], {}, false, false, passthrough);
+		const result = await store.sync(syncSnapshot(), false, false, passthrough);
 
 		expect(result.success, result.error).toBe(true);
 		expect(await idb.getSyncOutboxKeys(pid)).toEqual([]);
@@ -1272,10 +1343,11 @@ describe('client sync state machine', () => {
 		localStorage.clear();
 		const store1 = new SyncStore();
 		await store1.ensureProfilesLoaded();
-		// A fresh device starts with one private workspace and no sync key.
+		// A fresh device starts with one private workspace, like any other, and no sync key.
 		expect(store1.profiles.map(({ id, syncKey }) => [id, syncKey])).toEqual([
-			[idb.LOCAL_PROFILE_ID, '']
+			[expect.any(String), '']
 		]);
+		expect(store1.activeProfile).toEqual(store1.profiles[0]);
 		expect(store1.isLoggedIn).toBe(false);
 
 		// Create a profile
@@ -1368,58 +1440,8 @@ describe('client sync state machine', () => {
 		expect(statuses['pending-mcp']).toEqual({ state: 'ready' });
 		expect(statuses['ready-mcp']).toEqual({ state: 'ready' });
 		expect(statuses['unavailable-mcp']).toEqual({ state: 'unavailable' });
-		expect(statuses[idb.LOCAL_PROFILE_ID]).toEqual({ state: 'local' });
-	});
-
-	it('lists the default namespace as its own workspace when it holds notes', async () => {
-		localStorage.clear();
-		const profile = {
-			id: 'paired-empty',
-			name: 'Paired',
-			syncKey: createSyncIdentity().syncKey,
-			createdAt: 1
-		};
-		const store = new SyncStore();
-		await store.ensureProfilesLoaded();
-		await store.addKeyringEntry(profile);
-		store.activateProfile(profile);
-		await idb.putNote(idb.LOCAL_PROFILE_ID, note('anonymous-only'));
-		for (let boot = 0; boot < 2; boot++) {
-			const restored = new SyncStore();
-			await restored.ensureProfilesLoaded();
-			expect(restored.activePid).toBe(profile.id);
-			expect(restored.profiles.map(({ id }) => id).sort()).toEqual(
-				[idb.LOCAL_PROFILE_ID, profile.id].sort()
-			);
-			expect(await idb.getAllNotesMetadata(profile.id)).toEqual([]);
-			expect((await idb.getAllNotesMetadata(idb.LOCAL_PROFILE_ID)).map(({ id }) => id)).toEqual([
-				'anonymous-only'
-			]);
-		}
-	});
-
-	it('lists default-namespace notes next to saved workspaces, and not once it is deleted', async () => {
-		localStorage.clear();
-		await idb.clearProfileNamespace(idb.LOCAL_PROFILE_ID);
-		const saved = { id: 'saved-only', name: 'Saved', syncKey: '', createdAt: 5 };
-		await idb.putStoredProfile(saved);
-		await idb.putNote(idb.LOCAL_PROFILE_ID, note('left-behind'));
-
-		const booted = new SyncStore();
-		await booted.ensureProfilesLoaded();
-		expect(booted.profiles.map(({ id }) => id)).toEqual([idb.LOCAL_PROFILE_ID, 'saved-only']);
-
-		const { cursor } = syncControlKeys(createSyncIdentity().accountId);
-		await idb.setSyncState(cursor, 7, idb.LOCAL_PROFILE_ID);
-		booted.activateProfile(saved);
-		expect(await booted.removeProfile(idb.LOCAL_PROFILE_ID)).toBe('removed');
-		expect(await idb.getAllNotesMetadata(idb.LOCAL_PROFILE_ID)).toEqual([]);
-		expect(await idb.getSyncState(cursor, idb.LOCAL_PROFILE_ID)).toBeUndefined();
-
-		const rebooted = new SyncStore();
-		await rebooted.ensureProfilesLoaded();
-		expect(rebooted.profiles).toEqual([saved]);
-		expect(rebooted.activeProfile).toEqual(saved);
+		const local = store.profiles.find((profile) => !profile.syncKey)!;
+		expect(statuses[local.id]).toEqual({ state: 'local' });
 	});
 
 	it('keeps the legacy account pointer after adopting it, without re-adopting', async () => {
@@ -1528,7 +1550,7 @@ describe('client sync state machine', () => {
 		// Pinning and unpinning before the sync, for one, queues a record that ends up
 		// unchanged. Left queued, it made every note close run a sync for nothing.
 		const local = note('note-1', { body: 'unchanged' });
-		const [record] = await buildSyncRecords([local], [], []);
+		const [record] = await buildSyncRecords(syncSnapshot({ notes: [local] }));
 		const { store, account, requests } = createHarness(() => ({
 			success: true,
 			data: emptyData({ cursor: 1 })
@@ -1540,11 +1562,11 @@ describe('client sync state machine', () => {
 			outbox: ['note:note-1']
 		});
 
-		const result = await store.sync([local], [], {}, {}, [], {});
+		const result = await store.sync(syncSnapshot({ notes: [local] }));
 
 		expect(result.success, result.error).toBe(true);
 		expect(requests.flatMap((request) => request.envelopes)).toEqual([]);
-		expect(await idb.getSyncOutboxKeys(idb.LOCAL_PROFILE_ID)).toEqual([]);
+		expect(await idb.getSyncOutboxKeys(TEST_WORKSPACE)).toEqual([]);
 	});
 
 	it('waits out a throttled round and sends it again instead of failing the sync', async () => {
@@ -1567,7 +1589,7 @@ describe('client sync state machine', () => {
 			outbox: ['note:note-1']
 		});
 
-		const result = await store.sync([note('note-1', { body: 'edited' })], [], {}, {}, [], {});
+		const result = await store.sync(syncSnapshot({ notes: [note('note-1', { body: 'edited' })] }));
 
 		expect(result.success, result.error).toBe(true);
 		// The throttled catch-up round goes again after the wait, then the edit uploads.
@@ -1586,8 +1608,8 @@ describe('client sync state machine', () => {
 			recordIds: { 'note:note-1': 'before-open' }
 		});
 		const save = async (body: string) => {
-			await idb.markSyncOutbox(idb.LOCAL_PROFILE_ID, ['note:note-1']);
-			const result = await store.sync([note('note-1', { body })], [], {}, {}, [], {});
+			await idb.markSyncOutbox(TEST_WORKSPACE, ['note:note-1']);
+			const result = await store.sync(syncSnapshot({ notes: [note('note-1', { body })] }));
 			expect(result.success, result.error).toBe(true);
 			return requests.at(-1)!.envelopes[0] as RequestPayload['envelopes'][number] & {
 				continues?: boolean;
@@ -1611,6 +1633,7 @@ describe('client sync state machine', () => {
 describe('records the relay still holds unbound to their slot', () => {
 	beforeEach(() => {
 		localStorage.clear();
+		seedTestKeyring();
 		vi.restoreAllMocks();
 	});
 
@@ -1636,10 +1659,10 @@ describe('records the relay still holds unbound to their slot', () => {
 					}
 				: { success: true, data: emptyData({ cursor: 1, writesAccepted: true }) }
 		);
-		const result = await store.sync([], [], {}, {}, [], {}, false, false, passthrough);
+		const result = await store.sync(syncSnapshot(), false, false, passthrough);
 		expect(result.success, result.error).toBe(true);
 		await store.waitForOutboxWrites();
-		return idb.getSyncOutboxKeys(idb.LOCAL_PROFILE_ID);
+		return idb.getSyncOutboxKeys(TEST_WORKSPACE);
 	}
 
 	const pulled = { kind: 'note', value: note('note-1', { title: 'pulled' }) };

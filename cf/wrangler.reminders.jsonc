@@ -1,0 +1,60 @@
+{
+	"$schema": "../node_modules/wrangler/config-schema.json",
+	// Scheduling only: per-account reminder alarms. Sending stays in the app Worker.
+	"name": "scrapscache-reminders",
+	"main": "reminders.ts",
+	"compatibility_date": "2026-08-28",
+	"workers_dev": false,
+	"preview_urls": false,
+	"observability": {
+		"enabled": true,
+		"logs": { "invocation_logs": false }
+	},
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "REMINDER_SCHEDULER",
+				"class_name": "ReminderScheduler"
+			}
+		]
+	},
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": ["ReminderScheduler"]
+		}
+	],
+	// Due accounts go to the app Worker through this queue, never a binding back to it.
+	"queues": {
+		"producers": [
+			{
+				"queue": "scrapscache-reminder-wakes",
+				"binding": "WAKE_QUEUE"
+			}
+		]
+	},
+	"env": {
+		"dev": {
+			"observability": {
+				"enabled": true,
+				"logs": { "invocation_logs": false }
+			},
+			"durable_objects": {
+				"bindings": [
+					{
+						"name": "REMINDER_SCHEDULER",
+						"class_name": "ReminderScheduler"
+					}
+				]
+			},
+			"queues": {
+				"producers": [
+					{
+						"queue": "scrapscache-reminder-wakes-dev",
+						"binding": "WAKE_QUEUE"
+					}
+				]
+			}
+		}
+	}
+}

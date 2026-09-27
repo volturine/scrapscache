@@ -6,10 +6,8 @@ import {
 	getAllNotesMetadata,
 	getSyncOutboxKeys,
 	isProfileReleased,
-	LOCAL_PROFILE_ID,
 	putNote,
-	resolveDbName,
-	scopedStateKey
+	resolveDbName
 } from '$lib/db/idb';
 import { readNotesMirror, writeNotesMirror } from '$lib/noteStorage';
 import { readProfiles, saveProfile, type StoredProfile } from '$lib/profiles';
@@ -19,6 +17,7 @@ import { unregisterReminderDevice } from '$lib/reminderWake';
 import { ProfileCoordinator, profileCoordinator } from './profiles.svelte';
 import { notesStore, SYNC_LOCK } from './notes.svelte';
 import { PROFILE_META_KEY, syncStore } from './sync.svelte';
+import { TEST_WORKSPACE } from '../../tests/workspace';
 
 vi.mock('$lib/reminderWake', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('$lib/reminderWake')>();
@@ -77,7 +76,7 @@ function stubHandover() {
 describe('workspace handovers', () => {
 	afterEach(() => {
 		vi.restoreAllMocks();
-		syncStore.activateLocalWorkspace();
+		syncStore.activateLocalWorkspace(TEST_WORKSPACE);
 		syncStore.profiles = [];
 		notesStore.notes = [];
 		notesStore.labels = [];
@@ -85,7 +84,7 @@ describe('workspace handovers', () => {
 	});
 
 	it('starts syncing the active workspace in place', async () => {
-		const local = workspace(LOCAL_PROFILE_ID, false, 0);
+		const local = workspace(TEST_WORKSPACE, false, 0);
 		syncStore.profiles = [local, workspace('other', false, 2)];
 		syncStore.activateProfile(local);
 		await putNote(local.id, note('local-note'));
@@ -96,11 +95,11 @@ describe('workspace handovers', () => {
 		const result = await new ProfileCoordinator().startSync(local.id, 'Field notes');
 
 		expect(result).toEqual({ success: true });
-		expect(syncStore.profiles.map(({ id }) => id)).toEqual([LOCAL_PROFILE_ID, 'other']);
-		expect(syncStore.activeProfile?.id).toBe(LOCAL_PROFILE_ID);
+		expect(syncStore.profiles.map(({ id }) => id)).toEqual([TEST_WORKSPACE, 'other']);
+		expect(syncStore.activeProfile?.id).toBe(TEST_WORKSPACE);
 		expect(syncStore.activeProfile?.name).toBe('Field notes');
 		expect(syncStore.activeProfile?.syncKey).toBe(syncStore.account?.syncKey);
-		expect(readProfiles().find(({ id }) => id === LOCAL_PROFILE_ID)?.syncKey).toBe(
+		expect(readProfiles().find(({ id }) => id === TEST_WORKSPACE)?.syncKey).toBe(
 			syncStore.account?.syncKey
 		);
 		expect(sync).toHaveBeenCalledOnce();
@@ -171,7 +170,7 @@ describe('workspace handovers', () => {
 	});
 
 	it('unlinks the active workspace into a private one that keeps its notes', async () => {
-		const active = workspace(LOCAL_PROFILE_ID, true, 0);
+		const active = workspace(TEST_WORKSPACE, true, 0);
 		syncStore.profiles = [active];
 		syncStore.activateProfile(active);
 		await putNote(active.id, note('synced-note'));
@@ -247,7 +246,7 @@ describe('workspace handovers', () => {
 	});
 
 	it.each([
-		['the default private', LOCAL_PROFILE_ID, false],
+		['a private', 'private-remove', false],
 		['a synced', 'synced-remove', true]
 	])('deletes %s workspace like any other', async (_label, id, synced) => {
 		const target = workspace(id, synced, 0);
@@ -266,10 +265,7 @@ describe('workspace handovers', () => {
 			'scrapscache-sync-status'
 		];
 		for (const base of cached) {
-			const key =
-				base === 'scrapscache-sync-status'
-					? `${base}:${target.id}`
-					: scopedStateKey(base, target.id);
+			const key = `${base}:${target.id}`;
 			localStorage.setItem(key, '["removed"]');
 			localStorage.setItem(`${base}:${other.id}`, '["kept"]');
 		}
@@ -282,22 +278,20 @@ describe('workspace handovers', () => {
 		expect(syncStore.activeId).toBe(other.id);
 		expect(syncStore.account).toBeNull();
 		expect(reload).toHaveBeenCalledOnce();
-		// The default workspace is emptied inside the device database it shares;
-		// any other is dropped, and this window never opens it again.
-		if (target.id === LOCAL_PROFILE_ID) expect(await noteIds(target.id)).toEqual([]);
-		else expect(await databaseNames()).not.toContain(resolveDbName(target.id));
+		// Its database is dropped, and this window never opens it again.
+		expect(await databaseNames()).not.toContain(resolveDbName(target.id));
 		expect(await noteIds(other.id)).toEqual(['remaining-note']);
 		// Nothing of the deleted workspace stays behind in this device's caches.
 		const statusKey = `scrapscache-sync-status:${target.id}`;
 		for (const base of cached) {
-			const key = base === 'scrapscache-sync-status' ? statusKey : scopedStateKey(base, target.id);
+			const key = base === 'scrapscache-sync-status' ? statusKey : `${base}:${target.id}`;
 			expect(localStorage.getItem(key), key).toBeNull();
 			expect(localStorage.getItem(`${base}:${other.id}`), base).not.toBeNull();
 		}
 	});
 
 	it('leaves a fresh empty workspace when the last one is deleted', async () => {
-		const only = workspace(LOCAL_PROFILE_ID, false, 0);
+		const only = workspace(TEST_WORKSPACE, false, 0);
 		syncStore.profiles = [only];
 		syncStore.activateProfile(only);
 		await putNote(only.id, note('last-note'));
@@ -307,13 +301,13 @@ describe('workspace handovers', () => {
 
 		expect(result).toEqual({ success: true });
 		expect(syncStore.profiles).toHaveLength(1);
-		expect(syncStore.profiles[0].id).not.toBe(LOCAL_PROFILE_ID);
+		expect(syncStore.profiles[0].id).not.toBe(TEST_WORKSPACE);
 		expect(syncStore.activeId).toBe(syncStore.profiles[0].id);
-		expect(await noteIds(LOCAL_PROFILE_ID)).toEqual([]);
+		expect(await databaseNames()).not.toContain(resolveDbName(TEST_WORKSPACE));
 	});
 
 	it('creates an empty private workspace without registering', async () => {
-		const current = workspace(LOCAL_PROFILE_ID, false, 0);
+		const current = workspace(TEST_WORKSPACE, false, 0);
 		syncStore.profiles = [current];
 		syncStore.activateProfile(current);
 		await putNote(current.id, note('stay'));
@@ -326,15 +320,15 @@ describe('workspace handovers', () => {
 		expect(register).not.toHaveBeenCalled();
 		expect(syncStore.profiles).toHaveLength(2);
 		expect(syncStore.activeProfile?.syncKey).toBe('');
-		expect(syncStore.activeId).not.toBe(LOCAL_PROFILE_ID);
+		expect(syncStore.activeId).not.toBe(TEST_WORKSPACE);
 		expect(reload).toHaveBeenCalledOnce();
-		expect(await noteIds(LOCAL_PROFILE_ID)).toEqual(['stay']);
+		expect(await noteIds(TEST_WORKSPACE)).toEqual(['stay']);
 		expect(await noteIds(syncStore.activeId)).toEqual([]);
 	});
 
 	it('switches between private and synced workspaces without changing either', async () => {
 		const synced = workspace('switch-synced', true);
-		const local = workspace(LOCAL_PROFILE_ID, false, 0);
+		const local = workspace(TEST_WORKSPACE, false, 0);
 		syncStore.profiles = [local, synced];
 		syncStore.activateProfile(synced);
 		const reload = stubHandover();
@@ -354,7 +348,7 @@ describe('workspace handovers', () => {
 	});
 
 	it('force pushes the active synced workspace', async () => {
-		const active = workspace(LOCAL_PROFILE_ID, true, 0);
+		const active = workspace(TEST_WORKSPACE, true, 0);
 		syncStore.profiles = [active];
 		syncStore.activateProfile(active);
 		stubHandover();
@@ -420,8 +414,8 @@ describe('workspace handovers', () => {
 				}
 			});
 			try {
-				syncStore.activateLocalWorkspace();
-				await putNote(LOCAL_PROFILE_ID, note('keep-local'));
+				syncStore.activateLocalWorkspace(TEST_WORKSPACE);
+				await putNote(TEST_WORKSPACE, note('keep-local'));
 				stubHandover();
 				const coordinator = new ProfileCoordinator();
 				const pull = vi.spyOn(notesStore, 'replaceWithCloudManual').mockImplementation(async () => {
@@ -440,7 +434,7 @@ describe('workspace handovers', () => {
 				expect(merge).not.toHaveBeenCalled();
 				expect(coordinator.switching).toBe(false);
 				expect(await getAllNotesMetadata(syncStore.activePid)).toEqual([]);
-				expect(await noteIds(LOCAL_PROFILE_ID)).toContain('keep-local');
+				expect(await noteIds(TEST_WORKSPACE)).toContain('keep-local');
 			} finally {
 				vi.unstubAllGlobals();
 			}
@@ -457,7 +451,7 @@ describe('workspace handovers', () => {
 describe('a workspace removed in another window', () => {
 	afterEach(() => {
 		vi.restoreAllMocks();
-		syncStore.activateLocalWorkspace();
+		syncStore.activateLocalWorkspace(TEST_WORKSPACE);
 		syncStore.profiles = [];
 		notesStore.notes = [];
 		notesStore.labels = [];

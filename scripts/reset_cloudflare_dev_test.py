@@ -4,9 +4,14 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from scripts.reset_cloudflare_dev import (
+    DEV_WORKER,
+    WAKE_QUEUE,
     delete_worker,
+    detach_queue_consumer,
     drop_sql,
+    ensure_queue,
     is_missing_worker,
+    main,
     parse_d1_rows,
     quote_ident,
 )
@@ -90,6 +95,96 @@ class DeleteWorkerTests(unittest.TestCase):
         with self.assertRaises(SystemExit) as raised:
             delete_worker(["--env", "dev", "--force"])
         self.assertEqual(raised.exception.code, 1)
+
+
+class DetachQueueConsumerTests(unittest.TestCase):
+    @patch("scripts.reset_cloudflare_dev.echo")
+    @patch("scripts.reset_cloudflare_dev.wrangler")
+    def test_removes_only_the_development_worker_consumer(self, wrangler, _echo):
+        wrangler.return_value = SimpleNamespace(returncode=0, stdout="Removed", stderr="")
+        detach_queue_consumer()
+        wrangler.assert_called_once_with(
+            ["queues", "consumer", "remove", WAKE_QUEUE, DEV_WORKER], None
+        )
+
+    @patch("scripts.reset_cloudflare_dev.echo")
+    @patch("scripts.reset_cloudflare_dev.wrangler")
+    def test_tolerates_missing_queue_or_consumer_on_a_repeated_reset(self, wrangler, _echo):
+        for message in (
+            f'Queue "{WAKE_QUEUE}" does not exist. To create it, run: wrangler queues create {WAKE_QUEUE}',
+            f"No worker consumer '{DEV_WORKER}' exists for queue {WAKE_QUEUE}",
+        ):
+            with self.subTest(message=message):
+                wrangler.return_value = SimpleNamespace(returncode=1, stdout="", stderr=message)
+                detach_queue_consumer()
+
+    @patch("scripts.reset_cloudflare_dev.echo")
+    @patch("scripts.reset_cloudflare_dev.wrangler")
+    def test_aborts_before_deleting_any_worker_on_unexpected_failure(self, wrangler, _echo):
+        for message in ("Unauthorized", "Queue lookup timed out", "Account does not exist"):
+            with self.subTest(message=message):
+                wrangler.reset_mock()
+                wrangler.return_value = SimpleNamespace(returncode=1, stdout="", stderr=message)
+                with self.assertRaises(SystemExit) as raised:
+                    main()
+                self.assertEqual(raised.exception.code, 1)
+                wrangler.assert_called_once_with(
+                    ["queues", "consumer", "remove", WAKE_QUEUE, DEV_WORKER], None
+                )
+
+    @patch("scripts.reset_cloudflare_dev.echo")
+    @patch("scripts.reset_cloudflare_dev.wrangler")
+    def test_reset_detaches_before_cloudflare_allows_worker_deletion(self, wrangler, _echo):
+        attached = True
+        commands = []
+
+        def run(args, env=None):
+            nonlocal attached
+            commands.append(args)
+            if args == ["queues", "consumer", "remove", WAKE_QUEUE, DEV_WORKER]:
+                attached = False
+            if args == ["delete", "--env", "dev", "--force"] and attached:
+                return SimpleNamespace(
+                    returncode=1,
+                    stdout="",
+                    stderr="Cannot delete this Worker as it is a consumer for a Queue. [code: 10064]",
+                )
+            return SimpleNamespace(returncode=0, stdout="[]" if args[0] == "d1" else "", stderr="")
+
+        wrangler.side_effect = run
+        self.assertEqual(main(), 0)
+        self.assertEqual(commands[0], ["queues", "consumer", "remove", WAKE_QUEUE, DEV_WORKER])
+        self.assertIn(["delete", "--env", "dev", "--force"], commands)
+        self.assertTrue(any(command[0] == "d1" for command in commands))
+
+
+class EnsureQueueTests(unittest.TestCase):
+    @patch("scripts.reset_cloudflare_dev.echo")
+    @patch("scripts.reset_cloudflare_dev.wrangler")
+    def test_leaves_an_existing_queue(self, wrangler, _echo):
+        wrangler.return_value = SimpleNamespace(returncode=0, stdout="", stderr="")
+        ensure_queue("wakes")
+        wrangler.assert_called_once_with(["queues", "info", "wakes"], None)
+
+    @patch("scripts.reset_cloudflare_dev.echo")
+    @patch("scripts.reset_cloudflare_dev.wrangler")
+    def test_creates_a_missing_queue(self, wrangler, _echo):
+        wrangler.side_effect = [
+            SimpleNamespace(returncode=1, stdout="", stderr="Queue not found"),
+            SimpleNamespace(returncode=0, stdout="Created", stderr=""),
+        ]
+        ensure_queue("wakes")
+        self.assertEqual(wrangler.call_args_list[1].args[0], ["queues", "create", "wakes"])
+
+    @patch("scripts.reset_cloudflare_dev.echo")
+    @patch("scripts.reset_cloudflare_dev.wrangler")
+    def test_propagates_a_failed_create(self, wrangler, _echo):
+        wrangler.side_effect = [
+            SimpleNamespace(returncode=1, stdout="", stderr="Queue not found"),
+            SimpleNamespace(returncode=1, stdout="", stderr="Unauthorized"),
+        ]
+        with self.assertRaises(SystemExit):
+            ensure_queue("wakes")
 
 
 if __name__ == "__main__":

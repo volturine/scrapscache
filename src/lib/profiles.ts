@@ -1,6 +1,6 @@
-// Profile keyring: saved sync keys ("profiles"). Each profile owns a
-// namespaced dataset directly in the shared object stores, so switching is a
-// pointer change plus an in-memory reload — no data copying.
+// Workspace keyring: every workspace on this device, private or synced. Each one
+// owns its own database, so switching is a pointer change plus an in-memory
+// reload — no data copying.
 import {
 	deleteStoredProfile,
 	listStoredProfiles,
@@ -9,14 +9,15 @@ import {
 	getAllNotesMetadata,
 	getAllLabels,
 	getSyncState,
-	hydrateNoteAttachments,
-	scopedStateKey
+	hydrateNoteAttachments
 } from '$lib/db/idb';
 import { BOARDS_IDB, BOARD_IDB, LABEL_IDB, NOTE_IDB } from '$lib/syncTombstones';
 import type { KanbanBoard } from '$lib/kanban';
 import type { Note } from '$lib/types';
 import type { ScrapsCacheBackup } from '$lib/backup';
 import { randomWorkspaceName } from '$lib/workspaceNames';
+import { libraryItemsFor, readCanvasLibrary } from '$lib/canvasLibrary';
+import { readReminderHistory } from '$lib/reminderHistory';
 
 export type { StoredProfile } from '$lib/db/idb';
 import type { StoredProfile } from '$lib/db/idb';
@@ -155,18 +156,21 @@ export function pickBootProfile(profiles: StoredProfile[]): StoredProfile | null
  */
 export async function buildProfileNotesExport(pid: string): Promise<ScrapsCacheBackup | null> {
 	const noteRows = await getAllNotesMetadata(pid);
-	if (!noteRows.length && !(await getAllLabels(pid)).length) return null;
+	const [labels, boards, tombstones, labelTombstones, boardTombstones, library, reminderHistory] =
+		await Promise.all([
+			getAllLabels(pid),
+			getSyncState<KanbanBoard[]>(pid, BOARDS_IDB),
+			getSyncState<Record<string, number>>(pid, NOTE_IDB),
+			getSyncState<Record<string, number>>(pid, LABEL_IDB),
+			getSyncState<Record<string, number>>(pid, BOARD_IDB),
+			readCanvasLibrary(pid),
+			readReminderHistory(pid)
+		]);
+	if (!noteRows.length && !labels.length && !library.entries.length) return null;
 	const notes: Note[] = [];
 	for (const row of noteRows) notes.push(await hydrateNoteAttachments(pid, row));
-	const [labels, boards, tombstones, labelTombstones, boardTombstones] = await Promise.all([
-		getAllLabels(pid),
-		getSyncState<KanbanBoard[]>(scopedStateKey(BOARDS_IDB, pid)),
-		getSyncState<Record<string, number>>(scopedStateKey(NOTE_IDB, pid)),
-		getSyncState<Record<string, number>>(scopedStateKey(LABEL_IDB, pid)),
-		getSyncState<Record<string, number>>(scopedStateKey(BOARD_IDB, pid))
-	]);
 	return {
-		version: 4,
+		version: 5,
 		exportedAt: Date.now(),
 		notes,
 		labels,
@@ -175,6 +179,8 @@ export async function buildProfileNotesExport(pid: string): Promise<ScrapsCacheB
 		tombstones: tombstones ?? {},
 		labelTombstones: labelTombstones ?? {},
 		boardTombstones: boardTombstones ?? {},
+		canvasLibrary: libraryItemsFor(library.entries),
+		reminderHistory,
 		ui: { sidebarOpen: true, dark: null, layout: 'grid', view: 'notes', rawMarkdown: false }
 	};
 }

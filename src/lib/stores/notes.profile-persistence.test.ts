@@ -3,6 +3,7 @@ import { getAllNotesMetadata, getSyncOutboxKeys, waitForDeviceWrites } from '$li
 import { createSyncIdentity } from '$lib/syncPairing';
 import { notesStore } from './notes.svelte';
 import { syncStore } from './sync.svelte';
+import { TEST_WORKSPACE } from '../../tests/workspace';
 
 describe('profile-scoped note persistence', () => {
 	beforeEach(() => {
@@ -41,8 +42,8 @@ describe('profile-scoped note persistence', () => {
 		expect((await getAllNotesMetadata('profile-notes')).map((note) => note.id)).toEqual([
 			created.id
 		]);
-		expect(await getAllNotesMetadata()).toEqual([]);
+		expect(await getAllNotesMetadata(TEST_WORKSPACE)).toEqual([]);
 		expect(await getSyncOutboxKeys('profile-notes')).toEqual([`note:${created.id}`]);
-		expect(await getSyncOutboxKeys()).toEqual([]);
+		expect(await getSyncOutboxKeys(TEST_WORKSPACE)).toEqual([]);
 	});
 });

@@ -1,9 +1,26 @@
+import { openSyncEvents } from '$lib/syncEventsTransport';
+
 export type SyncNudgeListener = (seq?: number) => void;
 
 export interface SyncStoreLike {
 	readonly isLoggedIn: boolean;
 	authorizedFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
+	/**
+	 * An access token for a connection that cannot carry the `Authorization`
+	 * header. `refused` drops it, so the next connection signs in again.
+	 */
+	connectionToken?(): Promise<{ token: string; refused(): void }>;
 }
+
+/** One live connection, whichever transport carries it. */
+export type SyncEventsConnection = {
+	store: SyncStoreLike;
+	clientId: string;
+	signal: AbortSignal;
+	/** The connection is open. False when it is no longer wanted and should close. */
+	onOpen(): boolean;
+	onSeq(seq?: number): void;
+};
 
 export class SyncEventsClient {
 	private abortController: AbortController | null = null;
@@ -118,36 +135,20 @@ export class SyncEventsClient {
 		const signal = controller.signal;
 
 		try {
-			const url = `/api/sync/events?clientId=${encodeURIComponent(this.clientId)}`;
-			const response = await this.syncStore.authorizedFetch(url, { signal });
-			if (!response.ok || !response.body) {
-				throw new Error(`SSE error: ${response.status}`);
-			}
-			this.backoffMs = 2_000;
-
-			const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
-			let buffer = '';
-
-			while (!signal.aborted) {
-				const { value, done } = await reader.read();
-				if (done) break;
-				buffer += value;
-				const lines = buffer.split('\n');
-				buffer = lines.pop() ?? '';
-
-				for (const line of lines) {
-					if (line.startsWith('data:')) {
-						try {
-							const payload = JSON.parse(line.slice(5).trim()) as { seq?: number };
-							for (const listener of this.listeners) {
-								listener(payload.seq);
-							}
-						} catch {
-							/* malformed line */
-						}
-					}
+			// Resolves when the connection ends; SSE on Node, a WebSocket on Workers.
+			await openSyncEvents({
+				store: this.syncStore,
+				clientId: this.clientId,
+				signal,
+				onOpen: () => {
+					if (signal.aborted || generation !== this.connectionGeneration) return false;
+					this.backoffMs = 2_000;
+					return true;
+				},
+				onSeq: (seq) => {
+					for (const listener of this.listeners) listener(seq);
 				}
-			}
+			});
 		} catch {
 			/* abort or network disruption */
 		} finally {

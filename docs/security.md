@@ -82,7 +82,9 @@ For how to report vulnerabilities, see [SECURITY.md](../SECURITY.md).
 - AAD binds format version, KDF params, chunk index, and count
 - Passphrase is confirmed on export and **never persisted** by the app
 
-Only current version 4 backup payloads are accepted; new exports are encrypted only.
+Version 5 backup payloads are exported and accepted, and version 4 payloads still import
+(without a canvas library or reminder history). New exports are encrypted only. A
+backup carries the workspace's canvas library and reminder history along with its notes.
 
 ### Images
 
@@ -225,3 +227,36 @@ app is in use; browser storage isolation is the boundary.
 | Account retention        | `src/lib/server/retentionSweep.ts`             |
 | CSP                      | `svelte.config.js`                             |
 | Security headers         | `src/hooks.server.ts`                          |
+
+### Independent reminder receipts
+
+Reminder history uses authenticated `/api/sync/reminders` requests, separate from
+note delta sync. The relay stores one encrypted row per note, bound to a keyed
+hash of the note id, plus a deletion flag. It can tell when a note's receipts
+change, and so roughly how often that note's reminders fire or are dismissed,
+much as note-sync slots reveal when a record changes. It never sees note ids,
+text, reminder times or keys. Receipts have their own per-account bound,
+`SCRAPSCACHE_REMINDER_MAX_ACCOUNT_BYTES` (10 MB by default, including row
+overhead), apart from the note quota, a 4 KiB ciphertext limit, 12-note pages, and
+independent request rate limits. A replacement is written only if it fits, so a
+full account keeps what it has; deleting a note always frees its row. An upload
+never replaces a row its device has not downloaded. Deletion keeps an opaque
+marker to reject later uploads from an offline device. Account deletion cascades
+to receipts.
+Service workers queue local receipts without access to sync keys; the app encrypts
+and uploads them when running. Note sync cursors and outboxes are not involved.
+
+### Live change sockets (Workers)
+
+Browsers cannot set headers on a WebSocket, so the note-sync socket offers the
+access token as its second subprotocol: `Sec-WebSocket-Protocol:
+scrapscache-sync, <token>`. The token therefore travels in a request header,
+as with `Authorization`, and never in the URL or access logs; the relay answers
+with `scrapscache-sync` alone, never echoing the token. The token is checked
+against the same session table as every sync request. Upgrades whose `Origin`
+is not the app's own are refused before authentication, and a malformed client
+id is refused outright. The coordinator records the session's expiry with each
+socket and closes it (code 4401) once passed, so the client signs in again;
+deleting the account closes its sockets. Each account holds at most 16 sockets,
+and connection attempts share the events endpoint's rate limit. Sockets carry
+only cursors, never ciphertext.

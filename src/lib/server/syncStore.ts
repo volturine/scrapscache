@@ -1089,7 +1089,8 @@ export class SyncStore {
 		return accepted;
 	}
 
-	async claimDueWakes(now: number, limit = 100): Promise<DueWake[]> {
+	/** Claim wakes due by `now`, of one account when `accountId` is given. */
+	async claimDueWakes(now: number, limit = 100, accountId?: string): Promise<DueWake[]> {
 		await this.db.ready;
 		return withTxn(this.ops, async (tx) => {
 			const rows = (
@@ -1111,9 +1112,10 @@ export class SyncStore {
 				 WHERE w.fire_at <= ?
 					AND x.delivered_at IS NULL
 					AND (x.claimed_at IS NULL OR x.claimed_at <= ?)
+					AND (? IS NULL OR w.account_id = ?)
 				 ORDER BY w.fire_at ASC, w.wake_id ASC, d.device_id ASC
 				 LIMIT ?`,
-					args: [now, now - WAKE_CLAIM_LEASE_MS, limit]
+					args: [now, now - WAKE_CLAIM_LEASE_MS, accountId ?? null, accountId ?? null, limit]
 				})
 			).rows as unknown as DueWake[];
 			for (const row of rows) {
@@ -1131,6 +1133,23 @@ export class SyncStore {
 		});
 	}
 
+	/** Next undelivered wake, including overdue wakes and claims awaiting their lease. */
+	async nextWakeAt(now: number, accountId?: string): Promise<number | null> {
+		await this.db.ready;
+		const row = (
+			await this.ops.execute({
+				sql: `SELECT MIN(MAX(w.fire_at, COALESCE(x.claimed_at + ?, 0), ?)) AS fireAt
+			 FROM reminder_wakes w
+			 JOIN reminder_push_devices d ON d.account_id = w.account_id
+			 LEFT JOIN reminder_wake_deliveries x ON x.account_id = d.account_id
+			 AND x.device_id = d.device_id AND x.wake_id = w.wake_id
+			 WHERE x.delivered_at IS NULL AND (? IS NULL OR w.account_id = ?)`,
+				args: [WAKE_CLAIM_LEASE_MS, now, accountId ?? null, accountId ?? null]
+			})
+		).rows[0] as { fireAt?: number | null } | undefined;
+		return row?.fireAt == null ? null : Number(row.fireAt);
+	}
+
 	async markWakeDelivered(
 		wake: Pick<DueWake, 'accountId' | 'deviceId' | 'wakeId'>,
 		now: number
@@ -1143,12 +1162,16 @@ export class SyncStore {
 		});
 	}
 
-	async releaseWakeClaim(wake: Pick<DueWake, 'accountId' | 'deviceId' | 'wakeId'>): Promise<void> {
+	/** Hold a failed delivery's claim until `retryAt`, when it becomes due again. */
+	async deferWakeRetry(
+		wake: Pick<DueWake, 'accountId' | 'deviceId' | 'wakeId'>,
+		retryAt: number
+	): Promise<void> {
 		await this.db.ready;
 		await this.ops.execute({
-			sql: `DELETE FROM reminder_wake_deliveries
+			sql: `UPDATE reminder_wake_deliveries SET claimed_at = ?
 			 WHERE account_id = ? AND device_id = ? AND wake_id = ? AND delivered_at IS NULL`,
-			args: [wake.accountId, wake.deviceId, wake.wakeId]
+			args: [retryAt - WAKE_CLAIM_LEASE_MS, wake.accountId, wake.deviceId, wake.wakeId]
 		});
 	}
 
@@ -1199,6 +1222,15 @@ export class SyncStore {
 	// Async so both deployments expose the same shape; see
 	// syncStore.contract.test.ts. The Cloudflare store has to await its
 	// coordinator before it can hand back a stream.
+	/** Node serves live changes as server-sent events; it has no WebSocket upgrade. */
+	async createEventSocket(
+		_accountId: string,
+		_expiresAt: number,
+		_clientId?: string
+	): Promise<Response> {
+		return Response.json({ error: 'Live changes use server-sent events here' }, { status: 426 });
+	}
+
 	async createEventStream(
 		accountId: string,
 		signal?: AbortSignal,

@@ -1,6 +1,33 @@
 import type { KanbanBoard } from '$lib/kanban';
 import type { Label, Note, NoteImage } from '$lib/types';
 import { sha256 } from '$lib/syncHash';
+import { isCanvasLibraryEntry, type CanvasLibraryEntry } from '$lib/canvasLibrary';
+
+/** Everything of a workspace that syncs. */
+export type SyncSnapshot = {
+	notes: Note[];
+	labels: Label[];
+	boards: KanbanBoard[];
+	tombstones: Record<string, number>;
+	labelTombstones: Record<string, number>;
+	boardTombstones: Record<string, number>;
+	libraryItems: CanvasLibraryEntry[];
+	libraryTombstones: Record<string, number>;
+};
+
+export function syncSnapshot(parts: Partial<SyncSnapshot> = {}): SyncSnapshot {
+	return {
+		notes: [],
+		labels: [],
+		boards: [],
+		tombstones: {},
+		labelTombstones: {},
+		boardTombstones: {},
+		libraryItems: [],
+		libraryTombstones: {},
+		...parts
+	};
+}
 
 /** Note image metadata on the wire — bytes live in a separate attachment record. */
 export type SyncImageRef = {
@@ -30,6 +57,8 @@ export type SyncRecordPayload =
 	| { kind: 'note-tombstone'; id: string; deletedAt: number }
 	| { kind: 'label-tombstone'; id: string; deletedAt: number }
 	| { kind: 'board-tombstone'; id: string; deletedAt: number }
+	| { kind: 'library-item'; value: CanvasLibraryEntry }
+	| { kind: 'library-item-tombstone'; id: string; deletedAt: number }
 	/** The profile's local display name; exactly one per account, key `profile-meta`. */
 	| { kind: 'profile-meta'; value: { name: string } };
 
@@ -53,6 +82,10 @@ export function syncRecordKey(payload: SyncRecordPayload): string {
 			return `label-tombstone:${payload.id}`;
 		case 'board-tombstone':
 			return `board-tombstone:${payload.id}`;
+		case 'library-item':
+			return `library-item:${payload.value.id}`;
+		case 'library-item-tombstone':
+			return `library-item-tombstone:${payload.id}`;
 		case 'profile-meta':
 			return PROFILE_META_RECORD_KEY;
 	}
@@ -173,14 +206,19 @@ export function hydrateNoteImages(
  * Photos are global attachment records; notes only reference them by id+hash.
  */
 export async function buildSyncRecords(
-	notes: Note[],
-	labels: Label[],
-	boards: KanbanBoard[],
-	tombstones: Record<string, number> = {},
-	labelTombstones: Record<string, number> = {},
-	boardTombstones: Record<string, number> = {},
+	snapshot: SyncSnapshot,
 	onlyKeys?: ReadonlySet<string>
 ): Promise<SyncRecord[]> {
+	const {
+		notes,
+		labels,
+		boards,
+		tombstones,
+		labelTombstones,
+		boardTombstones,
+		libraryItems,
+		libraryTombstones
+	} = snapshot;
 	const values: { key: string; payload: SyncRecordPayload }[] = [];
 	const seenAttachments = new Set<string>();
 
@@ -230,6 +268,21 @@ export async function buildSyncRecords(
 		values.push({
 			key: `board-tombstone:${id}`,
 			payload: { kind: 'board-tombstone', id, deletedAt }
+		});
+	}
+	for (const entry of libraryItems) {
+		if (entry.updatedAt <= (Number(libraryTombstones[entry.id]) || 0)) continue;
+		if (onlyKeys && !onlyKeys.has(`library-item:${entry.id}`)) continue;
+		values.push({
+			key: `library-item:${entry.id}`,
+			payload: { kind: 'library-item', value: entry }
+		});
+	}
+	for (const [id, deletedAt] of validTombstones(libraryTombstones)) {
+		if (onlyKeys && !onlyKeys.has(`library-item-tombstone:${id}`)) continue;
+		values.push({
+			key: `library-item-tombstone:${id}`,
+			payload: { kind: 'library-item-tombstone', id, deletedAt }
 		});
 	}
 
@@ -344,11 +397,13 @@ export function isSyncRecordPayload(value: unknown): value is SyncRecordPayload 
 		const meta = value.value as { name?: unknown };
 		return object(meta) && typeof meta.name === 'string';
 	}
+	if (value.kind === 'library-item') return isCanvasLibraryEntry(value.value);
 	const tombstone = value as { id?: unknown; deletedAt?: unknown };
 	return (
 		(value.kind === 'note-tombstone' ||
 			value.kind === 'label-tombstone' ||
-			value.kind === 'board-tombstone') &&
+			value.kind === 'board-tombstone' ||
+			value.kind === 'library-item-tombstone') &&
 		typeof tombstone.id === 'string' &&
 		typeof tombstone.deletedAt === 'number' &&
 		Number.isFinite(tombstone.deletedAt) &&

@@ -19,7 +19,7 @@ import { notesStore } from '$lib/stores/notes.svelte';
 import Topbar from './Topbar.svelte';
 
 const decryptedBackup = {
-	version: 4,
+	version: 5,
 	exportedAt: 1,
 	notes: [],
 	labels: [],
@@ -28,6 +28,8 @@ const decryptedBackup = {
 	tombstones: {},
 	labelTombstones: {},
 	boardTombstones: {},
+	canvasLibrary: [],
+	reminderHistory: [],
 	ui: { sidebarOpen: true, dark: null, layout: 'grid', view: 'notes', rawMarkdown: false }
 };
 

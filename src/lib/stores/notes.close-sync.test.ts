@@ -4,12 +4,13 @@ import {
 	clearSyncOutbox,
 	getSyncOutboxKeys,
 	markSyncOutbox,
-	putNote,
-	LOCAL_PROFILE_ID
+	putNote
 } from '$lib/db/idb';
 import { syncStore } from './sync.svelte';
+import { syncSnapshot } from '$lib/syncRecords';
 import { notesStore } from './notes.svelte';
 import type { Note } from '$lib/types';
+import { TEST_WORKSPACE } from '../../tests/workspace';
 
 function noteWithPhoto(dataUrl: string): Note {
 	return {
@@ -45,7 +46,7 @@ async function settleIndexedDb(): Promise<void> {
 
 describe('syncing when a note closes', () => {
 	beforeEach(async () => {
-		await clearSyncOutbox(LOCAL_PROFILE_ID, await getSyncOutboxKeys());
+		await clearSyncOutbox(TEST_WORKSPACE, await getSyncOutboxKeys(TEST_WORKSPACE));
 		syncStore.account = {
 			syncKey: 'test-key',
 			accountId: 'test-account',
@@ -71,8 +72,8 @@ describe('syncing when a note closes', () => {
 		(
 			notesStore as unknown as { attachmentHydrationFailures: Set<string> }
 		).attachmentHydrationFailures.clear();
-		await clearAllNotes();
-		await clearSyncOutbox(LOCAL_PROFILE_ID, await getSyncOutboxKeys());
+		await clearAllNotes(TEST_WORKSPACE);
+		await clearSyncOutbox(TEST_WORKSPACE, await getSyncOutboxKeys(TEST_WORKSPACE));
 	});
 
 	it('skips the cloud request when there are no pending records', async () => {
@@ -83,7 +84,7 @@ describe('syncing when a note closes', () => {
 	});
 
 	it('flushes the debounce immediately when a record is pending', async () => {
-		await markSyncOutbox(LOCAL_PROFILE_ID, ['note:note-1']);
+		await markSyncOutbox(TEST_WORKSPACE, ['note:note-1']);
 		const flush = vi.spyOn(notesStore, 'flushSync').mockResolvedValue(true);
 
 		expect(await notesStore.syncPendingChanges()).toBe(true);
@@ -92,20 +93,19 @@ describe('syncing when a note closes', () => {
 	});
 
 	it('asks the cloud request to spin the icon', async () => {
-		await markSyncOutbox(LOCAL_PROFILE_ID, ['note:note-1']);
+		await markSyncOutbox(TEST_WORKSPACE, ['note:note-1']);
 		vi.spyOn(syncStore, 'needsCurrentStateBootstrap').mockResolvedValue(false);
 		const sync = vi.spyOn(syncStore, 'sync').mockResolvedValue({
 			success: true,
-			notes: [],
-			labels: []
+			snapshot: syncSnapshot()
 		});
 
 		expect(await notesStore.syncPendingChanges()).toBe(true);
-		expect(sync.mock.calls[0]?.[6]).toBe(true);
+		expect(sync.mock.calls[0]?.[1]).toBe(true);
 	});
 
 	it('manual sync cancels the pending automatic pass and settles dirty state', async () => {
-		await markSyncOutbox(LOCAL_PROFILE_ID, ['note:note-1']);
+		await markSyncOutbox(TEST_WORKSPACE, ['note:note-1']);
 		(notesStore as unknown as { dirty: boolean }).dirty = true;
 		(notesStore as unknown as { scheduleSyncPush(): void }).scheduleSyncPush();
 		vi.spyOn(
@@ -113,7 +113,7 @@ describe('syncing when a note closes', () => {
 			'queueSync'
 		).mockImplementation(async (indicate) => {
 			expect(indicate).toBe(true);
-			await clearSyncOutbox(LOCAL_PROFILE_ID, ['note:note-1']);
+			await clearSyncOutbox(TEST_WORKSPACE, ['note:note-1']);
 			return true;
 		});
 
@@ -127,7 +127,7 @@ describe('syncing when a note closes', () => {
 
 	it('treats attachment metadata without its IndexedDB blob as a hydration failure', async () => {
 		const note = noteWithPhoto('');
-		await putNote(note);
+		await putNote(TEST_WORKSPACE, note);
 		notesStore.notes = [note];
 
 		await notesStore.ensureNoteAttachments(note.id);
@@ -171,7 +171,7 @@ describe('syncing when a note closes', () => {
 		(
 			notesStore as unknown as { attachmentHydrationFailures: Set<string> }
 		).attachmentHydrationFailures.add('photo-note');
-		await markSyncOutbox(LOCAL_PROFILE_ID, ['attachment:photo-1']);
+		await markSyncOutbox(TEST_WORKSPACE, ['attachment:photo-1']);
 		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
 		(notesStore as unknown as { dirty: boolean }).dirty = true;
 		const queue = vi.spyOn(
@@ -187,7 +187,7 @@ describe('syncing when a note closes', () => {
 	});
 
 	it('keeps dirty flag on relay failure without background timer polling', async () => {
-		await markSyncOutbox(LOCAL_PROFILE_ID, ['note:note-1']);
+		await markSyncOutbox(TEST_WORKSPACE, ['note:note-1']);
 		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
 		(notesStore as unknown as { dirty: boolean }).dirty = true;
 		const queue = vi.spyOn(
@@ -203,7 +203,7 @@ describe('syncing when a note closes', () => {
 	});
 
 	it('does not automatically retry a quota failure', async () => {
-		await markSyncOutbox(LOCAL_PROFILE_ID, ['note:note-1']);
+		await markSyncOutbox(TEST_WORKSPACE, ['note:note-1']);
 		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
 		(notesStore as unknown as { dirty: boolean }).dirty = true;
 		syncStore.lastError = 'Sync account storage quota exceeded';
@@ -220,7 +220,7 @@ describe('syncing when a note closes', () => {
 	});
 
 	it('retries dirty sync immediately when the browser comes online', async () => {
-		await markSyncOutbox(LOCAL_PROFILE_ID, ['note:note-1']);
+		await markSyncOutbox(TEST_WORKSPACE, ['note:note-1']);
 		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
 		(notesStore as unknown as { dirty: boolean }).dirty = true;
 		const queue = vi
@@ -230,7 +230,7 @@ describe('syncing when a note closes', () => {
 			)
 			.mockResolvedValueOnce(false)
 			.mockImplementationOnce(async () => {
-				await clearSyncOutbox(LOCAL_PROFILE_ID, ['note:note-1']);
+				await clearSyncOutbox(TEST_WORKSPACE, ['note:note-1']);
 				return true;
 			});
 		await notesStore.flushSync();
@@ -251,12 +251,7 @@ describe('syncing when a note closes', () => {
 		};
 		syncStore.lastError =
 			'Synced, but some photos could not be prepared for upload. They will retry on the next sync.';
-		vi.spyOn(syncStore, 'sync').mockResolvedValue({
-			success: true,
-			notes: [],
-			labels: [],
-			boards: []
-		});
+		vi.spyOn(syncStore, 'sync').mockResolvedValue({ success: true, snapshot: syncSnapshot() });
 		(
 			notesStore as unknown as { attachmentHydrationFailures: Set<string> }
 		).attachmentHydrationFailures.clear();

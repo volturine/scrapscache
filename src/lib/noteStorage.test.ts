@@ -7,6 +7,7 @@ import {
 } from './noteStorage';
 import { mergeNoteLists } from './model';
 import type { Note } from './types';
+import { TEST_WORKSPACE } from '../tests/workspace';
 
 describe('fast-boot note mirror', () => {
 	afterEach(() => {
@@ -66,8 +67,10 @@ describe('fast-boot note mirror', () => {
 			reminder: null,
 			labels: []
 		}));
-		writeNotesMirror(notes);
-		expect(readNotesMirror().map((item) => item.id)).toEqual(notes.map((item) => item.id));
+		writeNotesMirror(notes, TEST_WORKSPACE);
+		expect(readNotesMirror(TEST_WORKSPACE).map((item) => item.id)).toEqual(
+			notes.map((item) => item.id)
+		);
 	});
 
 	it('never writes thumbs or photo bytes into the notes mirror', () => {
@@ -95,14 +98,16 @@ describe('fast-boot note mirror', () => {
 				}
 			]
 		};
-		writeNotesMirror([note]);
-		const stored = JSON.parse(localStorage.getItem(NOTES_MIRROR_KEY) || '[]') as Array<{
+		writeNotesMirror([note], TEST_WORKSPACE);
+		const stored = JSON.parse(
+			localStorage.getItem(`${NOTES_MIRROR_KEY}:${TEST_WORKSPACE}`) || '[]'
+		) as Array<{
 			images?: Array<{ thumbUrl?: string; dataUrl?: string }>;
 		}>;
 		expect(stored[0]?.images?.[0]?.thumbUrl).toBeUndefined();
 		expect(stored[0]?.images?.[0]?.dataUrl).toBeUndefined();
-		expect(readNotesMirror()[0]?.id).toBe('n1');
-		expect(readNotesMirror()[0]?.images?.[0]?.id).toBe('pic');
+		expect(readNotesMirror(TEST_WORKSPACE)[0]?.id).toBe('n1');
+		expect(readNotesMirror(TEST_WORKSPACE)[0]?.images?.[0]?.id).toBe('pic');
 	});
 
 	it('strips link-preview media from the notes mirror but keeps text fields', () => {
@@ -132,16 +137,16 @@ describe('fast-boot note mirror', () => {
 				}
 			]
 		};
-		writeNotesMirror([note]);
-		expect(readNotesMirror()[0]?.linkPreviews?.[0]).toEqual({
+		writeNotesMirror([note], TEST_WORKSPACE);
+		expect(readNotesMirror(TEST_WORKSPACE)[0]?.linkPreviews?.[0]).toEqual({
 			url: 'https://example.com',
 			hostname: 'example.com',
 			title: 'Example',
 			description: 'A page'
 		});
-		expect(localStorage.getItem(NOTES_MIRROR_KEY)).not.toContain('base64');
+		expect(localStorage.getItem(`${NOTES_MIRROR_KEY}:${TEST_WORKSPACE}`)).not.toContain('base64');
 
-		const merged = mergeNoteLists(readNotesMirror(), [note])[0];
+		const merged = mergeNoteLists(readNotesMirror(TEST_WORKSPACE), [note])[0];
 		expect(merged?.linkPreviews?.[0]?.url).toBe('https://example.com');
 	});
 });

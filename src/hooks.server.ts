@@ -1,5 +1,6 @@
-import type { Handle } from '@sveltejs/kit';
+import type { Handle, ServerInit } from '@sveltejs/kit';
 import { recordHttpRequest } from '$lib/server/metrics';
+import { startWakeTimer } from '$lib/server/wakeTimer';
 import { turnstileChallenge } from '$lib/server/turnstile';
 
 const SECURITY_HEADERS: ReadonlyArray<readonly [string, string]> = [
@@ -32,6 +33,11 @@ function allowChallengeFrame(policy: string, origin: string): string {
 		})
 		.join('; ');
 }
+
+/** Reminder wakes stored before this server started are delivered from here on. */
+export const init: ServerInit = async () => {
+	await startWakeTimer();
+};
 
 export const handle: Handle = async ({ event, resolve }) => {
 	const startedAt = performance.now();

@@ -32,6 +32,7 @@
 	"vars": {
 		"SCRAPSCACHE_ORIGIN": "https://scrapscache.com",
 		"SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES": "100000000",
+		"SCRAPSCACHE_REMINDER_MAX_ACCOUNT_BYTES": "10000000",
 		"SCRAPSCACHE_HISTORY_VERSIONS": "14",
 		"PUBLIC_TURNSTILE_ORIGIN": "https://verify.scrapscache.com",
 		"TURNSTILE_SITEKEY": "0x4AAAAAAEx1iggiE7ZSHoeB",
@@ -64,6 +65,24 @@
 			{
 				"name": "ACCOUNT_COORDINATOR",
 				"class_name": "AccountCoordinator"
+			},
+			{
+				// Per-account reminder alarms, in the separate reminders Worker.
+				"name": "REMINDER_SCHEDULER",
+				"class_name": "ReminderScheduler",
+				"script_name": "scrapscache-reminders"
+			}
+		]
+	},
+	"queues": {
+		"consumers": [
+			{
+				// Accounts whose reminder alarm fired; the app delivers their due wakes.
+				"queue": "scrapscache-reminder-wakes",
+				"max_batch_size": 20,
+				"max_batch_timeout": 1,
+				"max_retries": 10,
+				"retry_delay": 30
 			}
 		]
 	},
@@ -98,6 +117,23 @@
 					{
 						"name": "ACCOUNT_COORDINATOR",
 						"class_name": "AccountCoordinator"
+					},
+					{
+						"name": "REMINDER_SCHEDULER",
+						"class_name": "ReminderScheduler",
+						"script_name": "scrapscache-reminders-dev"
+					}
+				]
+			},
+			"queues": {
+				"consumers": [
+					{
+						// Accounts whose reminder alarm fired; the app delivers their due wakes.
+						"queue": "scrapscache-reminder-wakes-dev",
+						"max_batch_size": 20,
+						"max_batch_timeout": 1,
+						"max_retries": 10,
+						"retry_delay": 30
 					}
 				]
 			},
@@ -114,6 +150,8 @@
 			"vars": {
 				"SCRAPSCACHE_ORIGIN": "https://dev.scrapscache.com",
 				"SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES": "100000000",
+				"SCRAPSCACHE_REMINDER_MAX_ACCOUNT_BYTES": "10000000",
+				"SCRAPSCACHE_REMINDER_MAX_ACCOUNT_BYTES": "10000000",
 				"SCRAPSCACHE_HISTORY_VERSIONS": "14",
 				"PUBLIC_TURNSTILE_ORIGIN": "https://verify-dev.scrapscache.com",
 				"TURNSTILE_SITEKEY": "0x4AAAAAAEx1iggiE7ZSHoeB",

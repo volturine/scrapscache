@@ -149,6 +149,7 @@ client-address settings above so rate limits see real client IPs.
 | `SCRAPSCACHE_OPS_DB_URL`                   |        `http://127.0.0.1:8081` | libSQL URL for operational state (rate limits, auth, pairing, push, VAPID)                                              |
 | `SCRAPSCACHE_TICK_SECRET`                  |                       required | Shared secret protecting the `/api/cron/tick` endpoint                                                                  |
 | `SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES`       |                    `100000000` | Relay storage quota per account (100 MB), older note versions included; same default on Workers                         |
+| `SCRAPSCACHE_REMINDER_MAX_ACCOUNT_BYTES`   |                     `10000000` | Reminder receipt storage per account (10 MB), apart from the note quota; about one small row per note with reminders    |
 | `SCRAPSCACHE_HISTORY_VERSIONS`             |                           `14` | Encrypted versions kept per synced record for note history (1–40); older ones roll off                                  |
 | `SCRAPSCACHE_SYNC_MAX_CONCURRENT_REQUESTS` |                            `8` | Max sync requests in flight. Counted per process, so it is a real ceiling on Node and only a per-isolate one on Workers |
 | `SCRAPSCACHE_ADMIN_TOKEN`                  |                          unset | Enables and protects metrics, JSON status, and retention; unset disables them                                           |
@@ -222,16 +223,21 @@ may override them.
 | `GET /api/admin/settings`   | same bearer token                                | Effective runtime settings, defaults, and overrides       |
 | `PATCH /api/admin/settings` | same bearer token                                | Set or clear non-secret runtime overrides                 |
 | `POST /api/cron/tick`       | `Authorization: Bearer $SCRAPSCACHE_TICK_SECRET` | Run scheduled tasks (cron endpoint)                       |
+| `POST /api/cron/wakes`      | same bearer token                                | Deliver one account's due reminder wakes (Workers only)   |
 
 With no `SCRAPSCACHE_ADMIN_TOKEN` configured, the token-protected endpoints
 return 404 — the admin API is disabled.
 
-The cron endpoint (`/api/cron/tick`) is the scheduler entry point. The included
-Cloudflare scheduler Worker calls it through a private service binding every
-minute. For self-hosted deployments, add a crontab entry:
+The cron endpoint (`/api/cron/tick`) runs maintenance only: the daily
+retention sweep and pruning of expired sessions, rate limits, pairing codes and
+old reminder wakes. Hourly is enough. Reminders never wait for it: the server
+delivers each wake at its own time from an in-process timer, which it sets when
+it starts, whenever a device stores its reminders or registers for push, and
+after each delivery (a failed push is retried a minute later). For self-hosted
+deployments, add a crontab entry:
 
 ```sh
-* * * * * curl -sf -X POST -H "Authorization: Bearer $SCRAPSCACHE_TICK_SECRET" http://localhost:3000/api/cron/tick || echo "cron tick failed" >&2
+0 * * * * curl -sf -X POST -H "Authorization: Bearer $SCRAPSCACHE_TICK_SECRET" http://localhost:3000/api/cron/tick || echo "cron tick failed" >&2
 ```
 
 `GET /api/admin/status` is the JSON companion to `/metrics`. It reports

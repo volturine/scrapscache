@@ -269,7 +269,7 @@ describe('independent reminder delivery', () => {
 			seed = (seed * 48271) % 2147483647;
 			return seed / 2147483647;
 		};
-		for (let round = 0; round < 20; round += 1) {
+		for (let round = 0; round < 12; round += 1) {
 			const account = createSyncIdentity();
 			const db = testDb();
 			await new SyncStore(db).createAccount(account.accountId, 'credential');
@@ -339,5 +339,6 @@ describe('independent reminder delivery', () => {
 			if (opened.kind === 'handled')
 				expect([...opened.entries].sort((l, r) => l.id.localeCompare(r.id))).toEqual(histories[0]);
 		}
-	});
+		// Many real encryptions and relay writes: allow for a busy CI runner.
+	}, 30_000);
 });

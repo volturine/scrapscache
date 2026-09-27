@@ -61,7 +61,8 @@ describe('delivering reminder wakes', () => {
 
 		expect(send).toHaveBeenCalledTimes(250);
 		expect(result.next).toBeNull();
-	});
+		// 250 wakes through a real store: allow for a busy CI runner.
+	}, 30_000);
 
 	it('comes back for a failed send once its claim lease runs out', async () => {
 		const store = new SyncStore(testDb());

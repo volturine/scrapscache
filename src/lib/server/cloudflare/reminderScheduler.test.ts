@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ReminderScheduler, RETRY_AFTER_MS } from '../../../../cf/reminders';
+import { ReminderScheduler, RETRY_AFTER_MS } from '../../../../cf/reminderScheduler';
 
 function scheduler() {
 	let alarm: number | null = null;

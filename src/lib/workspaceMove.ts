@@ -6,10 +6,12 @@ import {
 	DeleteBlockedError,
 	dropDatabase,
 	getDB,
+	getDeviceState,
 	IMAGES_STORE,
 	LABELS_STORE,
 	NOTES_STORE,
 	readStoredProfiles,
+	setDeviceState,
 	SYNC_OUTBOX_STORE,
 	SYNC_STATE_STORE,
 	workspaceKey,
@@ -22,8 +24,12 @@ import { getLastActiveProfileId, nextProfileName, setLastActiveProfileId } from 
 export const LEGACY_WORKSPACE_ID = 'device-local';
 export const LEGACY_DB_NAME = 'scrapscache';
 const MOVE_LOCK = 'scrapscache-workspace-move';
-/** `{ to, phase }` while a move is under way, so an interrupted one resumes with the same id. */
-export const MOVE_MARKER_KEY = 'scrapscache-workspace-move';
+/**
+ * `{ to, phase }` in the device database, kept for good. It is written before
+ * the copy and survives a browser killed at any point; the keyring and the
+ * localStorage mirrors may not, since browsers flush localStorage lazily.
+ */
+export const MOVE_RECORD_KEY = 'legacy-workspace-move';
 /** Set once nothing is left to move, so later boots skip the probe. */
 export const MOVE_DONE_KEY = 'scrapscache-workspace-move-done';
 
@@ -47,24 +53,16 @@ const COPIED_STORES = [
 /** Attachments are copied a few at a time so a large workspace never sits in memory at once. */
 const COPY_BATCH = 25;
 
-type MoveMarker = { to: string; phase: 'copying' | 'moved' };
+type MoveRecord = { to: string; phase: 'copying' | 'copied' };
 
-function readMarker(): MoveMarker | null {
-	try {
-		const parsed = JSON.parse(localStorage.getItem(MOVE_MARKER_KEY) ?? 'null') as unknown;
-		if (!parsed || typeof parsed !== 'object') return null;
-		const { to, phase } = parsed as Partial<MoveMarker>;
-		return typeof to === 'string' && to && (phase === 'copying' || phase === 'moved')
-			? { to, phase }
-			: null;
-	} catch {
-		return null;
-	}
-}
-
-function writeMarker(marker: MoveMarker | null): void {
-	if (marker) localStorage.setItem(MOVE_MARKER_KEY, JSON.stringify(marker));
-	else localStorage.removeItem(MOVE_MARKER_KEY);
+async function readRecord(): Promise<MoveRecord | null> {
+	const stored = await getDeviceState<Partial<MoveRecord>>(MOVE_RECORD_KEY);
+	return stored &&
+		typeof stored.to === 'string' &&
+		stored.to &&
+		(stored.phase === 'copying' || stored.phase === 'copied')
+		? { to: stored.to, phase: stored.phase }
+		: null;
 }
 
 /** Whether the old database is on this device, without creating it by asking. */
@@ -145,47 +143,50 @@ async function retireLegacyDatabase(): Promise<void> {
 }
 
 function finish(): void {
-	writeMarker(null);
 	localStorage.setItem(MOVE_DONE_KEY, '1');
 }
 
 async function moveLocked(): Promise<void> {
-	let marker = readMarker();
-	if (marker?.phase === 'moved') {
-		await retireLegacyDatabase();
-		return;
-	}
 	const keyringNamesLegacy = readStoredProfiles().some(
 		(profile) => profile.id === LEGACY_WORKSPACE_ID
 	);
-	if (!marker && !keyringNamesLegacy && localStorage.getItem(MOVE_DONE_KEY)) return;
-	if (!marker && (await legacyDatabaseExists()) === false) {
-		// Nothing to copy. A keyring entry for it named an empty workspace.
-		if (keyringNamesLegacy) {
-			const to = randomOpaqueId();
-			adoptInKeyring(to);
-			moveMirrors(to);
-		}
+	if (!keyringNamesLegacy && localStorage.getItem(MOVE_DONE_KEY)) return;
+	const exists = await legacyDatabaseExists();
+	// No old database and no keyring entry for it: nothing is left to move.
+	if (exists === false && !keyringNamesLegacy) {
 		finish();
 		return;
 	}
-
-	const legacy = await openDB(LEGACY_DB_NAME);
-	try {
-		if (!marker && !keyringNamesLegacy && !(await legacyHasData(legacy))) {
+	let record = await readRecord();
+	if (!record) {
+		if (exists !== false) {
+			const legacy = await openDB(LEGACY_DB_NAME);
+			const worthMoving = keyringNamesLegacy || (await legacyHasData(legacy));
 			legacy.close();
-			await retireLegacyDatabase();
-			return;
+			if (!worthMoving) {
+				await retireLegacyDatabase();
+				return;
+			}
 		}
-		marker ??= { to: randomOpaqueId(), phase: 'copying' };
-		writeMarker(marker);
-		await copyStores(legacy, await getDB(marker.to));
-	} finally {
-		legacy.close();
+		// A keyring entry whose database is gone names an empty workspace: nothing to copy.
+		record = { to: randomOpaqueId(), phase: exists === false ? 'copied' : 'copying' };
+		await setDeviceState(MOVE_RECORD_KEY, record);
 	}
-	adoptInKeyring(marker.to);
-	moveMirrors(marker.to);
-	writeMarker({ to: marker.to, phase: 'moved' });
+	if (record.phase === 'copying') {
+		// Nothing uses the copy yet: the keyring names it only once it is whole.
+		const legacy = await openDB(LEGACY_DB_NAME);
+		try {
+			await copyStores(legacy, await getDB(record.to));
+		} finally {
+			legacy.close();
+		}
+		record = { to: record.to, phase: 'copied' };
+		await setDeviceState(MOVE_RECORD_KEY, record);
+	}
+	// Every step from here repeats safely, and never copies again: a boot that lost
+	// the keyring change still finds the same workspace, with what was written to it since.
+	adoptInKeyring(record.to);
+	moveMirrors(record.to);
 	await retireLegacyDatabase();
 }
 

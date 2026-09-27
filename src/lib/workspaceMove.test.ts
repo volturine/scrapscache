@@ -3,18 +3,21 @@ import { openDB } from 'idb';
 import {
 	DeleteBlockedError,
 	getAllNotesMetadata,
+	getDeviceState,
 	getRegisteredWorkspaces,
 	getSyncOutboxKeys,
 	getSyncState,
 	LS_PROFILES,
+	putNote,
 	readStoredProfiles,
-	resolveDbName
+	resolveDbName,
+	setDeviceState
 } from '$lib/db/idb';
 import {
 	LEGACY_DB_NAME,
 	LEGACY_WORKSPACE_ID,
 	MOVE_DONE_KEY,
-	MOVE_MARKER_KEY,
+	MOVE_RECORD_KEY,
 	moveLegacyWorkspace
 } from './workspaceMove';
 import { getLastActiveProfileId } from './profiles';
@@ -135,7 +138,7 @@ describe('moving the old default workspace', () => {
 		expect(localStorage.getItem(`scrapscache-sync-status:${id}`)).toBe('{"lastSync":9}');
 		expect(await databaseNames()).not.toContain(LEGACY_DB_NAME);
 		expect(await getRegisteredWorkspaces()).toEqual([expect.objectContaining({ id })]);
-		expect(localStorage.getItem(MOVE_MARKER_KEY)).toBeNull();
+		expect(await getDeviceState(MOVE_RECORD_KEY)).toEqual({ to: id, phase: 'copied' });
 		expect(localStorage.getItem(MOVE_DONE_KEY)).toBe('1');
 	});
 
@@ -169,7 +172,7 @@ describe('moving the old default workspace', () => {
 	it('resumes an interrupted move under the id it started with', async () => {
 		await seedLegacy([note('n1')]);
 		legacyKeyring();
-		localStorage.setItem(MOVE_MARKER_KEY, JSON.stringify({ to: 'started', phase: 'copying' }));
+		await setDeviceState(MOVE_RECORD_KEY, { to: 'started', phase: 'copying' });
 
 		await moveLegacyWorkspace();
 
@@ -186,10 +189,7 @@ describe('moving the old default workspace', () => {
 
 		const id = movedId();
 		expect((await getAllNotesMetadata(id)).map((item) => item.id)).toEqual(['n1']);
-		expect(JSON.parse(localStorage.getItem(MOVE_MARKER_KEY) ?? 'null')).toEqual({
-			to: id,
-			phase: 'moved'
-		});
+		expect(await getDeviceState(MOVE_RECORD_KEY)).toEqual({ to: id, phase: 'copied' });
 
 		holder.close();
 		await moveLegacyWorkspace().catch((error: unknown) => {
@@ -211,5 +211,62 @@ describe('moving the old default workspace', () => {
 		expect(
 			(await databaseNames()).filter((name) => name.startsWith('scrapscache-profile-'))
 		).toEqual([resolveDbName(id)]);
+	});
+
+	// Browsers flush localStorage lazily, so one killed right after the move can
+	// come back with the old keyring while IndexedDB kept the copy.
+	function forgetLocalStorage(snapshot: Record<string, string>): void {
+		localStorage.clear();
+		for (const [key, value] of Object.entries(snapshot)) localStorage.setItem(key, value);
+	}
+	function localStorageSnapshot(): Record<string, string> {
+		return Object.fromEntries(
+			Array.from({ length: localStorage.length }, (_, index) => {
+				const key = localStorage.key(index) as string;
+				return [key, localStorage.getItem(key) as string];
+			})
+		);
+	}
+	async function profileDatabases(): Promise<string[]> {
+		return (await databaseNames()).filter((name) => name.startsWith('scrapscache-profile-'));
+	}
+
+	it('keeps one copy, and what was written to it, when the browser forgot the keyring change', async () => {
+		await seedLegacy([note('n1')]);
+		legacyKeyring('sync-key');
+		localStorage.setItem('scrapscache-notes-mirror', '[{"id":"n1"}]');
+		const before = localStorageSnapshot();
+		await moveLegacyWorkspace();
+		const id = movedId();
+		await putNote(id, { ...note('written-after-the-move'), updatedAt: 2 });
+
+		// Killed before either the keyring or the old database's deletion reached disk.
+		forgetLocalStorage(before);
+		await seedLegacy([note('n1')]);
+		await moveLegacyWorkspace();
+
+		expect(readStoredProfiles()).toEqual([{ id, name: 'Home', syncKey: 'sync-key', createdAt: 0 }]);
+		expect(await profileDatabases()).toEqual([resolveDbName(id)]);
+		expect((await getAllNotesMetadata(id)).map((item) => item.id).sort()).toEqual([
+			'n1',
+			'written-after-the-move'
+		]);
+		expect(await databaseNames()).not.toContain(LEGACY_DB_NAME);
+	});
+
+	it('does not open an empty workspace when the old database is gone but the keyring still names it', async () => {
+		await seedLegacy([note('n1')]);
+		legacyKeyring('sync-key');
+		const before = localStorageSnapshot();
+		await moveLegacyWorkspace();
+		const id = movedId();
+
+		// The deletion reached disk; the keyring change did not.
+		forgetLocalStorage(before);
+		await moveLegacyWorkspace();
+
+		expect(readStoredProfiles().map((profile) => profile.id)).toEqual([id]);
+		expect(await profileDatabases()).toEqual([resolveDbName(id)]);
+		expect((await getAllNotesMetadata(id)).map((item) => item.id)).toEqual(['n1']);
 	});
 });

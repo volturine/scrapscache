@@ -122,7 +122,7 @@ self.addEventListener('fetch', (event) => {
 // `scrapscache-profile-<id>`; the device database lists them. A wake names no
 // workspace, so each is searched for the note it belongs to.
 const DEVICE_DB = 'scrapscache-device';
-const DEVICE_DB_VERSION = 1;
+const DEVICE_DB_VERSION = 2;
 const WORKSPACES_STORE = 'workspaces';
 const LINK_PREVIEWS_STORE = 'link-previews';
 const NOTES_STORE = 'notes';
@@ -174,6 +174,7 @@ function openDeviceDb() {
 			db.createObjectStore(WORKSPACES_STORE, { keyPath: 'id' });
 		if (!db.objectStoreNames.contains(LINK_PREVIEWS_STORE))
 			db.createObjectStore(LINK_PREVIEWS_STORE, { keyPath: 'url' });
+		if (!db.objectStoreNames.contains('device-state')) db.createObjectStore('device-state');
 	};
 	return idbRequest(request);
 }

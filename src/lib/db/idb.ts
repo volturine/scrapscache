@@ -24,9 +24,11 @@ export const SYNC_OUTBOX_STORE = 'sync-outbox';
 
 /** Lists this device's workspaces for the service worker; never names or sync keys. */
 export const DEVICE_DB_NAME = 'scrapscache-device';
-const DEVICE_DB_VERSION = 1;
+const DEVICE_DB_VERSION = 2;
 export const WORKSPACES_STORE = 'workspaces';
 const LINK_PREVIEWS_STORE = 'link-previews';
+/** Small device-wide facts that must survive a killed browser, unlike localStorage. */
+const DEVICE_STATE_STORE = 'device-state';
 
 /** One workspace on this device. Private ones have an empty sync key. */
 export interface StoredProfile {
@@ -191,9 +193,30 @@ export function getDeviceDB(): Promise<IDBPDatabase> {
 				db.createObjectStore(WORKSPACES_STORE, { keyPath: 'id' });
 			if (!db.objectStoreNames.contains(LINK_PREVIEWS_STORE))
 				db.createObjectStore(LINK_PREVIEWS_STORE, { keyPath: 'url' });
+			if (!db.objectStoreNames.contains(DEVICE_STATE_STORE))
+				db.createObjectStore(DEVICE_STATE_STORE);
 		}
 	});
 	return deviceDbPromise;
+}
+
+export async function getDeviceState<T>(key: string): Promise<T | undefined> {
+	const db = await getDeviceDB();
+	return (await db.get(DEVICE_STATE_STORE, key)) as T | undefined;
+}
+
+/**
+ * Write a device-wide fact durably before returning. Browsers flush
+ * localStorage lazily, so a record that later IndexedDB writes depend on
+ * belongs here.
+ */
+export function setDeviceState(key: string, value: unknown): Promise<void> {
+	return enqueueDeviceWrite(async () => {
+		const db = await getDeviceDB();
+		const tx = db.transaction(DEVICE_STATE_STORE, 'readwrite', { durability: 'strict' });
+		await tx.store.put(value, key);
+		await tx.done;
+	});
 }
 
 /**

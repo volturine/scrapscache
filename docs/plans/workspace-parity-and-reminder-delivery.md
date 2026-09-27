@@ -82,9 +82,14 @@ database, under a Web Lock (`scrapscache-workspace-move`) so two tabs cannot rac
 
 1. Detect: the keyring has an entry with id `device-local`, **or** a `scrapscache`
    database exists with notes, labels or sync state (installs that predate the keyring).
-2. Pick `newId = randomOpaqueId()` and record the intent in localStorage:
-   `scrapscache-workspace-move = { from: 'device-local', to: newId }`. An interrupted
-   move then resumes with the same id.
+2. Pick `newId = randomOpaqueId()` and record it durably in the device database
+   (`scrapscache-device`, `device-state` store, key `legacy-workspace-move`):
+   `{ to: newId, phase: 'copying' }`, then `'copied'` once the copy is whole. It is
+   written with strict durability and kept for good. Browsers flush localStorage
+   lazily, so a browser killed just after the move can come back with the old
+   keyring while IndexedDB kept the copy; the record makes the next boot adopt the
+   same copy, with what was written to it since, instead of copying again or
+   opening an empty workspace.
 3. Copy the `scrapscache` database into `scrapscache-profile-<newId>`, store by store:
    notes, labels, note images (blobs), link previews, sync state and sync outbox.
    Rename the scoped state keys to plain names while copying (Phase 1.2). This keeps:
@@ -96,9 +101,9 @@ database, under a Web Lock (`scrapscache-workspace-move`) so two tabs cannot rac
    - rewrite the keyring entry (`id: newId`, same name, sync key and `createdAt`);
    - move localStorage mirrors from bare keys to `:<newId>`;
    - repoint `scrapscache-last-active-profile`.
-5. Delete the `scrapscache` database and the move marker. If the delete is blocked by
-   another tab, leave the marker with a `copied` flag and finish the delete on the next
-   boot. The keyring no longer names the old database, so nothing opens it.
+5. Delete the `scrapscache` database. Every step after the copy repeats safely, so a
+   delete blocked by another tab finishes on a later boot. The keyring no longer
+   names the old database, so nothing opens it.
 6. Nothing changes relay-side. Account id, push subscription and wake ids depend on the
    sync key and note ids, not on the workspace id.
 7. Old note links (`#note=<id>` without a workspace tag, or with the old tag) resolve

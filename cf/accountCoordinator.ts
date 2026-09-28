@@ -56,6 +56,11 @@ const STORAGE_OVERHEAD_BYTES = 512;
  * user's devices and tabs, and low enough that a session cannot hold this object's
  * connections without bound. */
 const MAX_EVENT_SOCKETS = 16;
+/** How long one mutating round may hold the write lock before the object resets.
+ * Far beyond any real round, whose storage writes take milliseconds, and short of
+ * the client's five-minute request timeout, so a round stuck on a call that never
+ * returns fails and is retried instead of stalling every later upload. */
+export const MAX_WRITE_ROUND_MS = 120_000;
 /** Sent by the client to keep the connection open; the runtime answers it without waking this object. */
 export const SOCKET_PING = 'ping';
 export const SOCKET_PONG = 'pong';
@@ -168,7 +173,9 @@ export class AccountCoordinator {
 	/**
 	 * Runs one mutating request behind the previous one. The chain never rejects:
 	 * a failed round still releases the next waiter, so one bad write cannot
-	 * strand every later one behind an unhandled rejection.
+	 * strand every later one behind an unhandled rejection. A round that holds the
+	 * lock past `MAX_WRITE_ROUND_MS` resets the object — the only way to cancel
+	 * its storage calls — and it and every waiter fail, to be retried by clients.
 	 */
 	private async exclusive(path: string, work: () => Promise<Response>): Promise<Response> {
 		const previous = this.writeLock;
@@ -180,12 +187,20 @@ export class AccountCoordinator {
 			() => gate,
 			() => gate
 		);
+		let watchdog: ReturnType<typeof setTimeout> | undefined;
 		try {
 			await previous;
+			watchdog = setTimeout(() => {
+				console.error(
+					JSON.stringify({ level: 'error', event: 'account_coordinator_stuck', operation: path })
+				);
+				this.state.abort('A write round held the lock too long');
+			}, MAX_WRITE_ROUND_MS);
 			return await work();
 		} catch (error) {
 			return this.failure(path, error);
 		} finally {
+			clearTimeout(watchdog);
 			release();
 		}
 	}

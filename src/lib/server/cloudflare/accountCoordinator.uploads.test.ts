@@ -4,6 +4,7 @@ import type { D1Database, DurableObjectState, R2Bucket } from '@cloudflare/worke
 import { applyMigrations, testD1, testR2 } from './testBindings';
 import {
 	AccountCoordinator,
+	MAX_WRITE_ROUND_MS,
 	SOCKET_PING,
 	SOCKET_PONG,
 	SOCKET_SESSION_EXPIRED
@@ -41,7 +42,9 @@ class FakeSocket {
 }
 let sockets: FakeSocket[] = [];
 const autoResponse = vi.fn();
+const abort = vi.fn();
 const state = {
+	abort,
 	acceptWebSocket: (socket: FakeSocket) => sockets.push(socket),
 	getWebSockets: () => [...sockets],
 	setWebSocketAutoResponse: autoResponse
@@ -49,6 +52,7 @@ const state = {
 
 beforeEach(async () => {
 	sockets = [];
+	abort.mockClear();
 	const d1 = testD1();
 	const r2 = testR2();
 	client = d1.client;
@@ -476,6 +480,43 @@ describe('overlapping rounds', () => {
 		expect(((await (await upload).json()) as Round).writesAccepted).toBe(true);
 		await expectCountersMatchRows();
 		vi.restoreAllMocks();
+	});
+});
+
+describe('a write round that never finishes', () => {
+	afterEach(() => {
+		vi.useRealTimers();
+		vi.restoreAllMocks();
+	});
+
+	it('resets the object once the round has held the lock too long', async () => {
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+		const stalled = vi
+			.spyOn(bindings.SCRAPSCACHE_ENVELOPES, 'put')
+			.mockImplementation(() => new Promise(() => {}));
+		void sync([{ id: 'one', slot: SLOT, ciphertext: 'aaaa' }]);
+		// Not vi.waitFor: it advances fake timers while it polls.
+		while (stalled.mock.calls.length === 0) await new Promise((resolve) => setImmediate(resolve));
+
+		vi.advanceTimersByTime(MAX_WRITE_ROUND_MS - 1);
+		expect(abort).not.toHaveBeenCalled();
+		vi.advanceTimersByTime(1);
+		expect(abort).toHaveBeenCalledTimes(1);
+		expect(JSON.parse(String(logged.mock.calls[0][0]))).toEqual({
+			level: 'error',
+			event: 'account_coordinator_stuck',
+			operation: '/sync'
+		});
+		expect(String(logged.mock.calls[0][0])).not.toContain(ACCOUNT);
+	});
+
+	it('leaves the object alone after a round that finished', async () => {
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+		expect((await sync([{ id: 'one', slot: SLOT, ciphertext: 'aaaa' }])).status).toBe(200);
+
+		vi.advanceTimersByTime(MAX_WRITE_ROUND_MS * 2);
+		expect(abort).not.toHaveBeenCalled();
 	});
 });
 

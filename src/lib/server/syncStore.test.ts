@@ -406,6 +406,32 @@ describe('SQLite sync store', () => {
 		expect(seen).toBe(600);
 	});
 
+	it('stops a download page at the byte budget and delivers the rest on later pages', async () => {
+		const { store } = createStore();
+		await store.createAccount('account', 'credential');
+		// Three 10 MB photos and a note: the photos alone overflow one 24 MB page.
+		const photo = 'x'.repeat(10_000_000);
+		await store.sync(
+			'account',
+			0,
+			[
+				{ id: 'photo-1', slot: slot('a'), ciphertext: photo },
+				{ id: 'photo-2', slot: slot('b'), ciphertext: photo },
+				{ id: 'photo-3', slot: slot('c'), ciphertext: photo },
+				{ id: 'note', slot: slot('d'), ciphertext: 'bm90ZQ' }
+			],
+			[],
+			50
+		);
+
+		const first = await store.sync('account', 0, [], [], 50);
+		expect(first.envelopes.map(({ id }) => id)).toEqual(['photo-1', 'photo-2']);
+		expect(first.hasMore).toBe(true);
+		const second = await store.sync('account', first.cursor, [], [], 50);
+		expect(second.envelopes.map(({ id }) => id)).toEqual(['photo-3', 'note']);
+		expect(second.hasMore).toBe(false);
+	});
+
 	it('processes a maximum normal upload batch with bounded database round trips', async () => {
 		const db = testDb();
 		let executeCalls = 0;

@@ -42,7 +42,6 @@ class FakeSocket {
 let sockets: FakeSocket[] = [];
 const autoResponse = vi.fn();
 const state = {
-	blockConcurrencyWhile: <T>(body: () => Promise<T>) => body(),
 	acceptWebSocket: (socket: FakeSocket) => sockets.push(socket),
 	getWebSockets: () => [...sockets],
 	setWebSocketAutoResponse: autoResponse
@@ -319,6 +318,138 @@ describe('uploads that do not fit', () => {
 		expect(response.status).toBe(507);
 		expect(writes()).toBe(0);
 		expect(objects.size).toBe(0);
+	});
+});
+
+describe('download pages', () => {
+	it('stops a page at the byte budget and reports each round’s object reads', async () => {
+		await sync([
+			{ id: 'photo-1', slot: 'a'.repeat(64), ciphertext: 'p1' },
+			{ id: 'photo-2', slot: 'b'.repeat(64), ciphertext: 'p2' },
+			{ id: 'photo-3', slot: 'c'.repeat(64), ciphertext: 'p3' },
+			{ id: 'note', slot: 'd'.repeat(64), ciphertext: 'n' }
+		]);
+		// Three 10 MB photos overflow one 24 MB page; the note rides with the last.
+		await client.execute(
+			"UPDATE envelopes SET ciphertext_bytes = 10000000 WHERE id LIKE 'photo-%'"
+		);
+		const pull = async (cursor: number) =>
+			(await (
+				await coordinator.fetch(
+					new Request('https://coordinator/sync', {
+						method: 'POST',
+						body: JSON.stringify({
+							accountId: ACCOUNT,
+							cursor,
+							uploads: [],
+							deletions: [],
+							downloadLimit: 50,
+							maxAccountBytes: 100_000_000
+						})
+					}) as never
+				)
+			).json()) as {
+				cursor: number;
+				envelopes: { id: string; ciphertext: string }[];
+				hasMore: boolean;
+				timings: Record<string, number>;
+			};
+
+		const first = await pull(0);
+		expect(first.envelopes.map(({ id }) => id)).toEqual(['photo-1', 'photo-2']);
+		expect(first.hasMore).toBe(true);
+		expect(first.timings['sync_calls phase:r2_get']).toBe(2);
+		const second = await pull(first.cursor);
+		expect(second.envelopes).toMatchObject([
+			{ id: 'photo-3', ciphertext: 'p3' },
+			{ id: 'note', ciphertext: 'n' }
+		]);
+		expect(second.hasMore).toBe(false);
+	});
+});
+
+describe('overlapping rounds', () => {
+	type Round = { writesAccepted: boolean; envelopes: { id: string }[] };
+
+	async function expectCountersMatchRows() {
+		const account = (
+			await client.execute(
+				'SELECT next_seq AS nextSeq, envelope_count AS count, ciphertext_bytes AS bytes FROM accounts'
+			)
+		).rows[0];
+		const rows = (
+			await client.execute(
+				'SELECT MAX(seq) AS seq, COUNT(*) AS count, SUM(ciphertext_bytes) AS bytes FROM envelopes'
+			)
+		).rows[0];
+		expect(Number(account.nextSeq)).toBe(Number(rows.seq));
+		expect(Number(account.count)).toBe(Number(rows.count));
+		expect(Number(account.bytes)).toBe(Number(rows.bytes));
+	}
+
+	it('runs two uploads one after the other so neither loses the other’s counters', async () => {
+		const results = await Promise.all([
+			sync([{ id: 'one', slot: 'a'.repeat(64), ciphertext: 'aaaa' }]),
+			sync([{ id: 'two', slot: 'b'.repeat(64), ciphertext: 'bbbbbbbb' }])
+		]);
+		const [first, second] = (await Promise.all(results.map((r) => r.json()))) as Round[];
+
+		// The later round sees the earlier one's record and downloads it first.
+		expect(first.writesAccepted).toBe(true);
+		expect(second.writesAccepted).toBe(false);
+		expect(second.envelopes.map(({ id }) => id)).toEqual(['one']);
+		await expectCountersMatchRows();
+	});
+
+	it('lets the next upload run after one fails', async () => {
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+		vi.spyOn(bindings.SCRAPSCACHE_ENVELOPES, 'put').mockRejectedValueOnce(
+			new Error('R2 unavailable')
+		);
+
+		const [failed, next] = await Promise.all([
+			sync([{ id: 'one', slot: 'a'.repeat(64), ciphertext: 'aaaa' }]),
+			sync([{ id: 'two', slot: 'b'.repeat(64), ciphertext: 'bbbb' }])
+		]);
+
+		expect(failed.status).toBe(500);
+		expect(logged).toHaveBeenCalledTimes(1);
+		expect(next.status).toBe(200);
+		expect(((await next.json()) as Round).writesAccepted).toBe(true);
+		await expectCountersMatchRows();
+		vi.restoreAllMocks();
+	});
+
+	it('answers a download-only round while an upload is still writing', async () => {
+		await sync([{ id: 'one', slot: 'a'.repeat(64), ciphertext: 'aaaa' }]);
+		let release!: () => void;
+		const held = new Promise<void>((resolve) => (release = resolve));
+		const put = bindings.SCRAPSCACHE_ENVELOPES.put.bind(bindings.SCRAPSCACHE_ENVELOPES);
+		const stalled = vi
+			.spyOn(bindings.SCRAPSCACHE_ENVELOPES, 'put')
+			.mockImplementation(async (...args) => {
+				await held;
+				return put(...args);
+			});
+		let uploaded = false;
+		const upload = sync(
+			[{ id: 'two', slot: 'b'.repeat(64), ciphertext: 'bbbb' }],
+			100_000_000,
+			1
+		).then((response) => {
+			uploaded = true;
+			return response;
+		});
+		await vi.waitFor(() => expect(stalled).toHaveBeenCalled());
+
+		const pull = (await (await sync([], 100_000_000, 0)).json()) as Round;
+		expect(pull.envelopes.map(({ id }) => id)).toEqual(['one']);
+		expect(uploaded).toBe(false);
+
+		release();
+		expect(((await (await upload).json()) as Round).writesAccepted).toBe(true);
+		await expectCountersMatchRows();
+		vi.restoreAllMocks();
 	});
 });
 

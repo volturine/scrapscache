@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { reminderSettingsRow, reminderSettingsStyles } from '$panda/styles';
 	import { onMount } from 'svelte';
+	import { Menu } from '@ark-ui/svelte/menu';
 	import { Bell, ChevronRight } from '@lucide/svelte';
 	import { notificationPermission, requestReminderPermission } from '$lib/reminderNotify';
 	import { registerAllReminderDevices } from '$lib/reminderWake';
@@ -32,21 +33,18 @@
 
 <section aria-label="Notifications">
 	{#if permission === 'default'}
-		<button
-			type="button"
-			onclick={() => void enable()}
-			class={cx(
-				menuItem({ density: 'compact' }),
-				reminderSettingsRow.base,
-				reminderSettingsRow.interactive
-			)}
+		<Menu.Item
+			value="notifications-enable"
+			closeOnSelect={false}
+			onSelect={() => void enable()}
+			class={cx(menuItem({ density: 'compact' }), reminderSettingsRow.base)}
 			aria-label="Turn on notifications"
 		>
 			<Bell class={reminderSettingsStyles.icon} aria-hidden="true" />
 			<span class={reminderSettingsStyles.label}>Notifications</span>
 			<span class={reminderSettingsStyles.status}>Not set</span>
 			<ChevronRight class={reminderSettingsStyles.chevron} aria-hidden="true" />
-		</button>
+		</Menu.Item>
 	{:else}
 		<div class={reminderSettingsRow.base}>
 			<Bell class={reminderSettingsStyles.icon} aria-hidden="true" />

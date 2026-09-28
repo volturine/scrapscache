@@ -297,18 +297,7 @@
 		aria-label="Labels"
 	>
 		<div class={hstack({ mb: '2xs', h: '2rem', gap: 'sm', pl: 'lg', pr: 'sm', flexShrink: 0 })}>
-			<span
-				class={css({
-					minW: 0,
-					flex: '1',
-					textStyle: 'captionStrong',
-					textTransform: 'uppercase',
-					letterSpacing: 'eyebrow',
-					color: 'scrapscache.textMuted'
-				})}
-			>
-				Labels
-			</span>
+			<span class={css({ minW: 0, flex: '1', textStyle: 'overline' })}>Labels</span>
 		</div>
 
 		<!-- Search / create label input -->

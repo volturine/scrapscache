@@ -15,6 +15,7 @@ const column = { display: 'flex', flexDirection: 'column' } as const;
 const iconSm = square('1rem');
 const iconMd = square('1.25rem');
 const iconXs = square('0.875rem');
+const iconLg = square('1.5rem');
 const rowCenter = { display: 'flex', alignItems: 'center' } as const;
 const rowGapSm = { ...rowCenter, gap: 'sm' } as const;
 const rowGapMd = { ...rowCenter, gap: 'md' } as const;
@@ -366,6 +367,180 @@ export const publicPageStyles = {
 	thankYouFooter: css({ mt: 'page', fontSize: 'label', ...mutedText })
 };
 
+/** MCP authorize surface. Single-purpose page, so these stay one flat set of
+ * contracts; controls still come from the shared recipes. */
+export const mcpAuthorizeStyles = {
+	shell: css({
+		position: 'fixed',
+		inset: 0,
+		zIndex: 100,
+		display: 'flex',
+		alignItems: 'center',
+		justifyContent: 'center',
+		overflowY: 'auto',
+		bg: 'scrapscache.bg',
+		color: 'scrapscache.text',
+		px: 'lg',
+		py: '3xl'
+	}),
+	frame: css({ w: 'full', maxW: '28rem' }),
+	back: css({
+		display: 'inline-flex',
+		alignItems: 'center',
+		gap: 'sm',
+		mb: 'lg',
+		textStyle: 'body',
+		color: 'scrapscache.textMuted',
+		_hoverable: { color: 'scrapscache.text' }
+	}),
+	card: css({
+		overflow: 'hidden',
+		rounded: 'dialog',
+		borderWidth: 'hairline',
+		borderColor: 'scrapscache.border',
+		bg: 'scrapscache.surface',
+		boxShadow: 'popover'
+	}),
+	header: css({
+		borderBottomWidth: 'hairline',
+		borderColor: 'scrapscache.border',
+		px: 'xl',
+		py: 'xl'
+	}),
+	shield: css({
+		display: 'grid',
+		placeItems: 'center',
+		...square('2.75rem'),
+		mb: 'md',
+		rounded: 'control',
+		bg: 'scrapscache.accent',
+		color: 'scrapscache.accentForeground'
+	}),
+	eyebrow: css({ mb: '2xs', textStyle: 'overline' }),
+	title: css({ textStyle: 'display', letterSpacing: 'tight' }),
+	body: css({
+		display: 'flex',
+		flexDirection: 'column',
+		gap: 'lg',
+		px: 'xl',
+		py: 'xl'
+	}),
+	origin: css({
+		rounded: 'control',
+		borderWidth: 'hairline',
+		borderColor: 'scrapscache.border',
+		bg: 'scrapscache.surfaceSubtle',
+		p: 'md'
+	}),
+	originLabel: css({
+		display: 'flex',
+		alignItems: 'center',
+		gap: 'xs',
+		mb: '2xs',
+		textStyle: 'captionStrong',
+		color: 'scrapscache.text'
+	}),
+	originUrl: css({
+		overflow: 'hidden',
+		textOverflow: 'ellipsis',
+		whiteSpace: 'nowrap',
+		fontFamily: 'mono',
+		textStyle: 'caption',
+		color: 'scrapscache.textMuted'
+	}),
+	copy: css({
+		display: 'flex',
+		flexDirection: 'column',
+		gap: 'sm',
+		textStyle: 'bodyMuted',
+		'& strong': { color: 'scrapscache.text', fontWeight: 'heading' }
+	}),
+	fine: css({ textStyle: 'caption' }),
+	iconSm: css({ ...iconSm, flexShrink: 0 }),
+	iconLg: css(iconLg),
+	notice: (tone: 'danger' | 'warning') =>
+		css({
+			display: 'flex',
+			alignItems: 'flex-start',
+			gap: 'sm',
+			rounded: 'control',
+			borderWidth: 'hairline',
+			borderColor: tone === 'danger' ? 'scrapscache.danger' : 'scrapscache.warning',
+			bg: tone === 'danger' ? 'scrapscache.dangerSubtle' : 'scrapscache.warningSubtle',
+			p: 'md',
+			textStyle: 'body',
+			color: 'scrapscache.text'
+		}),
+	workspaces: css({
+		display: 'flex',
+		flexDirection: 'column',
+		gap: 'sm',
+		m: 0,
+		minW: 0,
+		p: 0,
+		border: 'none'
+	}),
+	workspaceToolbar: css({
+		display: 'flex',
+		alignItems: 'center',
+		justifyContent: 'space-between',
+		gap: 'sm'
+	}),
+	workspaceList: css({
+		display: 'flex',
+		flexDirection: 'column',
+		gap: 'sm',
+		maxHeight: 'min(16rem, 45dvh)',
+		overflowY: 'auto',
+		overscrollBehavior: 'contain',
+		rounded: 'control',
+		borderWidth: 'hairline',
+		borderColor: 'scrapscache.border',
+		p: 'sm'
+	}),
+	legend: css({ textStyle: 'overline' }),
+	option: css({
+		display: 'flex',
+		alignItems: 'flex-start',
+		gap: 'sm',
+		rounded: 'control',
+		borderWidth: 'hairline',
+		borderColor: 'scrapscache.border',
+		bg: 'scrapscache.bg',
+		px: 'md',
+		py: 'md',
+		cursor: 'pointer',
+		_hoverable: { bg: 'scrapscache.interactiveHover' },
+		'&:has(input:checked)': {
+			borderColor: 'scrapscache.accent',
+			bg: 'scrapscache.accentSubtle'
+		},
+		'&:has(input:focus-visible)': {
+			outline: '2px solid',
+			outlineColor: 'scrapscache.focus',
+			outlineOffset: '2px'
+		}
+	}),
+	radio: css({ mt: '3xs', accentColor: 'scrapscache.accent' }),
+	optionText: css({ display: 'flex', flexDirection: 'column', gap: '3xs', minW: 0 }),
+	optionName: css({ textStyle: 'bodyStrong' }),
+	optionCaption: css({ textStyle: 'caption' }),
+	localRow: css({
+		display: 'flex',
+		alignItems: 'flex-start',
+		gap: 'sm',
+		rounded: 'control',
+		borderWidth: 'hairline',
+		borderColor: 'scrapscache.border',
+		px: 'md',
+		py: 'md',
+		opacity: 0.72
+	}),
+	actions: css({ display: 'flex', gap: 'md' }),
+	action: css({ flex: '1' }),
+	hint: css({ textStyle: 'caption', color: 'scrapscache.textMuted' })
+};
+
 /** Operator dashboard layout contracts; controls still use the shared recipes. */
 export const adminPageStyles = {
 	root: css({ minH: '100dvh', p: { base: 'lg', sm: '3xl' } }),
@@ -375,6 +550,17 @@ export const adminPageStyles = {
 	title: css({ fontSize: 'pageSection', fontWeight: 'heading' }),
 	loading: css({ ...mutedText }),
 	error: css({ fontSize: 'body', color: 'scrapscache.danger' }),
+	saved: css({ fontSize: 'body', color: 'scrapscache.success', fontWeight: 'interactive' }),
+	skeletonCard: css({ gap: 'sm' }),
+	skeletonBar: css({
+		display: 'block',
+		h: '0.875rem',
+		w: '40%',
+		rounded: 'row',
+		bg: 'scrapscache.interactiveActive',
+		animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite'
+	}),
+	skeletonRow: css({ opacity: 0.6 }),
 	signIn: vstack({ maxW: 'sm', gap: 'sm', alignItems: 'stretch' }),
 	field: vstack({ gap: '2xs', fontSize: 'body', alignItems: 'stretch' }),
 	fieldLabel: css({ display: 'block', ...mutedText }),
@@ -539,18 +725,7 @@ export const pwaStyles = {
 		fontWeight: 'strong'
 	}),
 	iosAction: css({ color: 'scrapscache.text', fontWeight: 'interactive' }),
-	iosDone: css({
-		mt: 'xl',
-		w: 'full',
-		py: 'sm',
-		rounded: 'control',
-		bg: 'scrapscache.accent',
-		color: 'scrapscache.accentForeground',
-		textStyle: 'label',
-		fontWeight: 'heading',
-		...clickable,
-		_hoverable: { opacity: 0.9 }
-	})
+	iosDoneLayout: css({ mt: 'xl', w: 'full' })
 };
 
 const notesShellBase = css({
@@ -567,7 +742,8 @@ export const popover = css({
 	...border,
 	bg: 'scrapscache.surface',
 	...cardRadius,
-	boxShadow: 'popover'
+	boxShadow: 'popover',
+	animation: 'swapIn 140ms cubic-bezier(0.16, 1, 0.3, 1)'
 });
 
 export const tooltip = css({
@@ -587,7 +763,7 @@ export const tooltip = css({
 export const sectionHeaderStyles = {
 	row: hstack({ mb: 'md', gap: 'md', px: 'sm' }),
 	label: css({ textStyle: 'overline' }),
-	count: css({ textStyle: 'caption', opacity: 0.6 }),
+	count: css({ textStyle: 'caption', ...mutedText }),
 	spacer: css({ flex: '1' })
 };
 
@@ -651,7 +827,9 @@ const canvasPreviewBase = {
 		py: '3xs',
 		fontSize: 'label',
 		color: 'scrapscache.mediaText',
-		...interactive
+		...interactive,
+		...mediaHover,
+		_active: { transform: 'scale(0.92)' }
 	}
 } as const;
 const canvasPreviewEditor = {
@@ -703,7 +881,7 @@ const filePreviewBase = {
 		fontWeight: 'strong'
 	},
 	size: { fontSize: 'micro', ...mutedText },
-	openBtn: { ...flexFill, textAlign: 'left', ...interactive },
+	openBtn: { ...flexFill, textAlign: 'left', ...interactive, ...subtleHover },
 	removeBtn: {
 		flexShrink: 0,
 		rounded: 'pill',
@@ -712,7 +890,8 @@ const filePreviewBase = {
 		fontSize: 'label',
 		...mutedText,
 		...interactive,
-		...subtleHover
+		...subtleHover,
+		_active: { transform: 'scale(0.92)' }
 	}
 } as const;
 const filePreviewEditor = {
@@ -788,7 +967,9 @@ const photoPreviewBase = {
 		rounded: 'pill',
 		bg: 'scrapscache.mediaSurfaceMuted',
 		color: 'scrapscache.mediaText',
-		...interactive
+		...interactive,
+		...mediaHover,
+		_active: { transform: 'scale(0.92)' }
 	}
 } as const;
 const photoPreviewEditor = {
@@ -1016,9 +1197,7 @@ export const kanbanViewStyles = {
 		px: 'md',
 		pt: 'xs',
 		pb: '2xs',
-		textStyle: 'captionStrong',
-		textTransform: 'uppercase',
-		letterSpacing: 'eyebrow'
+		textStyle: 'overline'
 	}),
 	boardMenuName: css({ minW: 0, flex: '1', ...truncateText }),
 	boardMenuCheck: css({ flexShrink: 0, ...iconSm, color: 'scrapscache.accent' }),
@@ -1219,32 +1398,7 @@ export const workspaceStyles = {
 	}),
 	glyph: css({ ...gridCenter, flexShrink: 0, ...mutedText }),
 	content: css(flexFill),
-	caption: css({ display: 'block', mt: '3xs', textStyle: 'caption' }),
-	iconButton: css({
-		...gridCenter,
-		w: '30px',
-		h: '30px',
-		rounded: 'action',
-		...mutedText,
-		...subtleHover
-	})
-};
-
-const workspacePanelBtnBase = {
-	py: 'action',
-	px: 'md',
-	rounded: 'action',
-	fontSize: 'compact',
-	whiteSpace: 'nowrap'
-} as const;
-export const workspacePanelBtn = {
-	neutral: css({ ...workspacePanelBtnBase, _hoverable: { bg: 'scrapscache.interactiveHover' } }),
-	danger: css({
-		...workspacePanelBtnBase,
-		bg: 'scrapscache.danger',
-		color: 'scrapscache.dangerForeground',
-		fontWeight: 'interactive'
-	})
+	caption: css({ display: 'block', mt: '3xs', textStyle: 'caption' })
 };
 
 const wheelItemBase = { ...flexCenter, fontVariantNumeric: 'tabular-nums', ...clickable };
@@ -1556,13 +1710,7 @@ export const photoThumbBtn = {
 // Shared component contracts. Flat groups stay class maps; CVA is reserved for real variants.
 
 export const backupStyles = {
-	eyebrow: css({
-		fontSize: 'caption',
-		fontWeight: 'heading',
-		textTransform: 'uppercase',
-		letterSpacing: 'code',
-		...mutedText
-	}),
+	eyebrow: css({ textStyle: 'overline' }),
 	description: css({ lineHeight: 'relaxed' }),
 	form: css({ gap: 'lg' }),
 	label: css({ display: 'block' }),
@@ -1582,14 +1730,13 @@ export const emptyStateStyles = {
 		...mutedText
 	}),
 	description: css({ mt: 'md', textStyle: 'bodyMuted' }),
-	action: css({
+	tagline: css({
 		mt: 'md',
-		h: 'auto',
-		rounded: 'pill',
-		py: 'xs',
-		transition: 'background-color 150ms ease',
-		_hoverable: { bg: 'scrapscache.borderFaint' }
-	})
+		textStyle: 'title',
+		color: 'scrapscache.text',
+		textWrap: 'balance'
+	}),
+	action: css({ mt: 'md' })
 };
 
 export const reminderAlertStyles = {
@@ -1624,8 +1771,7 @@ export const reminderAlertStyles = {
 };
 
 export const reminderSettingsRow = {
-	base: hstack({ h: '2rem', gap: 'list', px: 'md' }),
-	interactive: css({ w: 'full', textAlign: 'left', ...interactive, ...subtleHover })
+	base: hstack({ h: '2rem', gap: 'list', px: 'md' })
 };
 
 export const reminderSettingsStyles = {
@@ -1662,11 +1808,7 @@ export const labelMenuStyles = {
 	checkIndicator: css({ flexShrink: 0, color: 'scrapscache.accent' }),
 	heading: css({
 		...flexFill,
-		fontSize: 'caption',
-		fontWeight: 'heading',
-		textTransform: 'uppercase',
-		letterSpacing: 'eyebrow',
-		...mutedText
+		textStyle: 'overline'
 	}),
 	searchWrap: css({ position: 'relative', mb: '2xs' }),
 	searchIcon: css({
@@ -1686,7 +1828,7 @@ export const datePickerStyles = {
 		direction: 'column',
 		'& [data-part="view"]:not([hidden])': column,
 		'& .calendar-table-fill [data-part="table-body"]': { h: '100%' },
-		'& .calendar-table-fill [data-part="table-row"]': { h: 'calc(13.5rem / 3)' },
+		'& .calendar-table-fill [data-part="table-row"]': { h: 'calc(15rem / 3)' },
 		'& .calendar-table-fill [data-part="table-cell"]': { h: 'inherit', verticalAlign: 'middle' }
 	}),
 	viewControl: hstack({ mb: 'sm', h: '2.25rem', justify: 'space-between' }),
@@ -1699,7 +1841,7 @@ export const datePickerStyles = {
 		transition: 'colors 150ms ease',
 		...subtleHover
 	}),
-	table: css({ w: 'full', tableLayout: 'fixed', h: '13.5rem' }),
+	table: css({ w: 'full', tableLayout: 'fixed', h: '15rem' }),
 	weekHeader: css({ h: '1.5rem', textAlign: 'center', textStyle: 'captionStrong' }),
 	weekRow: css({ textAlign: 'center' }),
 	dayCell: css({
@@ -1742,7 +1884,7 @@ const datePickerGridBase = {
 export const datePickerGridBtn = {
 	day: css({
 		...datePickerGridBase,
-		...square('2rem'),
+		...square('2.25rem'),
 		rounded: 'pill',
 		'&[data-in-range]:not([data-range-start]):not([data-range-end])': {
 			bg: 'transparent',
@@ -1846,6 +1988,20 @@ export const syncStyles = {
 	}),
 	timerText: css({ fontVariantNumeric: 'tabular-nums' }),
 	fullButton: css({ w: 'full' }),
+	/** Text-styled navigation button (Back / Cancel). Same feedback contract as
+	 * every other button, at text weight, so busy state still reads. */
+	linkAction: css({
+		w: 'full',
+		touchAction: 'manipulation',
+		cursor: 'pointer',
+		textAlign: 'center',
+		rounded: 'control',
+		py: '2xs',
+		transition: 'color 120ms ease, background-color 120ms ease, opacity 120ms ease',
+		_hoverable: { bg: 'scrapscache.interactiveHover', color: 'scrapscache.text' },
+		_active: { opacity: 0.7 },
+		_disabled: { opacity: 0.5, cursor: 'not-allowed' }
+	}),
 	growButton: css({ flex: '1', minW: 0, px: { base: 'xs', sm: 'lg' } }),
 	buttonLabel: css({
 		minW: 0,
@@ -2608,7 +2764,7 @@ export const markdownStyles = css({
 		lineHeight: 'tight',
 		color: 'scrapscache.text'
 	},
-	'& h1': { fontSize: '1.4em', mt: 'md', mb: 'xs' },
+	'& h1': { fontSize: '1.35em', mt: 'md', mb: 'xs' },
 	'& h2': { fontSize: '1.2em', mt: 'md', mb: 'xs' },
 	'& h3': { fontSize: '1.05em', mt: 'sm', mb: '2xs' },
 	'& h4, & h5, & h6': { fontSize: '1em', mt: 'xs', mb: '2xs' },
@@ -2834,7 +2990,7 @@ export const markdownStyles = css({
 		display: 'table-cell',
 		minW: '4ch',
 		minH: '1lh',
-		padding: '0.4rem 0.625rem',
+		padding: 'xs list',
 		borderBottomWidth: 'hairline',
 		borderColor: 'scrapscache.border',
 		verticalAlign: 'top',
@@ -2861,7 +3017,7 @@ export const markdownStyles = css({
 		{ fontWeight: 'strong' },
 	'& .markdown-token-heading-1': { fontSize: '1.35em' },
 	'& .markdown-token-heading-2': { fontSize: '1.2em' },
-	'& .markdown-token-heading-3': { fontSize: '1.08em' },
+	'& .markdown-token-heading-3': { fontSize: '1.05em' },
 	'& .markdown-token-marker': { color: 'scrapscache.accent' },
 	'& .markdown-token-marker-code': { color: 'scrapscache.warning' },
 	'& .markdown-token-marker-heading': { color: 'scrapscache.warning' },

@@ -41,6 +41,18 @@ const tapTarget = {
 	...gestureTarget,
 	userSelect: 'none'
 } as const;
+/** Grows the pointer target to the 44px guideline without changing the visual
+ * size or layout; scoped to touch pointers, so fine pointers hit what they see. */
+const touchHit = {
+	position: 'relative',
+	_touch: {
+		_before: {
+			content: '""',
+			position: 'absolute',
+			inset: '-6px'
+		}
+	}
+} as const;
 const rowCenter = { display: 'flex', alignItems: 'center' } as const;
 const gridCenter = { display: 'grid', placeItems: 'center' } as const;
 const column = { display: 'flex', flexDirection: 'column' } as const;
@@ -76,7 +88,12 @@ const menuItemRecipe = defineRecipe({
 		transition: 'background-color 120ms ease, color 120ms ease',
 		_hoverable: { bg: 'scrapscache.interactiveHover' },
 		_active: { bg: 'scrapscache.interactiveActive' },
-		_focusVisible: { bg: 'scrapscache.interactiveHover' },
+		_focusVisible: {
+			bg: 'scrapscache.interactiveHover',
+			outline: '2px solid',
+			outlineColor: 'scrapscache.focus',
+			outlineOffset: '-2px'
+		},
 		_disabled: { opacity: 0.55, cursor: 'not-allowed' }
 	},
 	variants: {
@@ -111,12 +128,16 @@ const buttonRecipe = defineRecipe({
 		textStyle: 'button',
 		rounded: 'control',
 		...tapTarget,
+		...touchHit,
 		transition:
 			'background-color 120ms ease, border-color 120ms ease, color 120ms ease, box-shadow 120ms ease, transform 120ms ease',
 		_focusVisible: {
 			outline: '2px solid',
 			outlineColor: 'scrapscache.focus',
 			outlineOffset: '2px'
+		},
+		_active: {
+			transform: 'scale(0.97)'
 		},
 		_disabled: {
 			opacity: 0.5,
@@ -205,6 +226,7 @@ const iconButtonRecipe = defineRecipe({
 		justifyContent: 'center',
 		rounded: 'pill',
 		...tapTarget,
+		...touchHit,
 		transition:
 			'background-color 150ms ease, color 150ms ease, opacity 150ms ease, transform 150ms ease',
 		_focusVisible: {
@@ -214,6 +236,9 @@ const iconButtonRecipe = defineRecipe({
 		},
 		_active: {
 			transform: 'scale(0.95)'
+		},
+		_disabled: {
+			opacity: 0.45
 		}
 	},
 	variants: {
@@ -594,7 +619,7 @@ const noteBodyRecipe = defineSlotRecipe({
 			}
 		},
 		checked: {
-			true: { line: { textDecoration: 'line-through', opacity: 0.5 } }
+			true: { line: { textDecoration: 'line-through', opacity: 0.68 } }
 		},
 		indented: {
 			true: { line: { fontSize: 'compact' }, addSubtask: { pl: 0 } },
@@ -714,7 +739,8 @@ const dialogRecipe = defineSlotRecipe({
 			zIndex: 100,
 			...rowCenter,
 			justifyContent: 'center',
-			p: 'lg'
+			p: 'lg',
+			animation: 'fadeIn 180ms ease-out'
 		},
 		panel: {
 			position: 'relative',
@@ -729,7 +755,8 @@ const dialogRecipe = defineSlotRecipe({
 			p: '2xl',
 			...column,
 			gap: 'lg',
-			zIndex: 101
+			zIndex: 101,
+			animation: 'swapIn 200ms cubic-bezier(0.16, 1, 0.3, 1)'
 		},
 		header: {
 			...column,

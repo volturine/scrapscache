@@ -1,9 +1,13 @@
 <script lang="ts">
-	import { truncate, workspaceStyles, workspacePanelBtn as panelBtn } from '$panda/styles';
+	import { truncate, workspaceStyles } from '$panda/styles';
 	import type { Snippet } from 'svelte';
 	import { Check, ChevronDown, CloudOff, Download, Pencil, TriangleAlert, X } from '@lucide/svelte';
 	import { css, cx } from 'styled-system/css';
-	import { input as inputRecipe } from 'styled-system/recipes';
+	import {
+		button,
+		iconButton as iconButtonRecipe,
+		input as inputRecipe
+	} from 'styled-system/recipes';
 	import { hstack } from 'styled-system/patterns';
 
 	let {
@@ -127,7 +131,11 @@
 
 	function onKeyDown(event: KeyboardEvent) {
 		if (event.key !== 'Escape' || (mode === 'idle' && !expanded)) return;
+		// Claiming the Escape here is what keeps the modal open: the workspace
+		// sheet's own handler runs later on window, once this row's state has
+		// already settled, and it must not see a second unclaimed Escape.
 		event.preventDefault();
+		event.stopPropagation();
 		if (mode !== 'idle') cancel();
 		else onexpand();
 	}
@@ -155,7 +163,7 @@
 				<div class={`panel-actions ${hstack({ gap: 'xs', flexShrink: 0 })}`}>
 					<button
 						type="button"
-						class={panelBtn.neutral}
+						class={button({ variant: 'quiet', size: 'sm' })}
 						{@attach takeFocus}
 						disabled={working !== null}
 						aria-label="Keep {name} linked"
@@ -163,7 +171,7 @@
 					>
 					<button
 						type="button"
-						class={panelBtn.danger}
+						class={button({ variant: 'destructive', size: 'sm' })}
 						disabled={locked}
 						aria-label="Unlink {name} from this device"
 						onclick={() => void confirmUnlink()}
@@ -200,14 +208,14 @@
 				<div class={`panel-actions ${hstack({ gap: 'xs', flexShrink: 0 })}`}>
 					<button
 						type="button"
-						class={styles.iconButton}
+						class={iconButtonRecipe({ size: 'compact' })}
 						disabled={working !== null}
 						aria-label="Cancel renaming {name}"
 						onclick={cancel}><X size={16} aria-hidden="true" /></button
 					>
 					<button
 						type="submit"
-						class={cx(styles.iconButton, css({ color: 'scrapscache.success' }))}
+						class={cx(iconButtonRecipe({ size: 'compact' }), css({ color: 'scrapscache.success' }))}
 						disabled={locked || !draft.trim()}
 						aria-label="Save name"><Check size={16} aria-hidden="true" /></button
 					>
@@ -231,7 +239,7 @@
 		<div class={`tools ${hstack({ gap: '3xs', flexShrink: 0 })}`} hidden={mode !== 'idle'}>
 			<button
 				type="button"
-				class={styles.iconButton}
+				class={iconButtonRecipe({ size: 'compact' })}
 				disabled={locked}
 				title="Export notes"
 				aria-label="Export {name}"
@@ -242,7 +250,7 @@
 			>
 			<button
 				type="button"
-				class={styles.iconButton}
+				class={iconButtonRecipe({ size: 'compact' })}
 				disabled={locked}
 				title={expanded ? 'Hide workspace options' : 'Show workspace options'}
 				aria-label={expanded ? `Collapse ${name}` : `Expand ${name}`}

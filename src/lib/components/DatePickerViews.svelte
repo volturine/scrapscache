@@ -24,7 +24,7 @@
 		onDayContextMenu?: (day: DateValue, e: MouseEvent) => void;
 	} = $props();
 
-	const navBtn = iconButton({ variant: 'ghost', size: 'xs' });
+	const navBtn = iconButton({ variant: 'ghost', size: 'compact' });
 </script>
 
 <div class={styles.panel}>

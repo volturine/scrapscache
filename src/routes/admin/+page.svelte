@@ -24,6 +24,11 @@
 	let tokenInput = $state('');
 	let error = $state('');
 	let loading = $state(false);
+	let signingIn = $state(false);
+	let limitsError = $state('');
+	let settingsError = $state('');
+	let limitsSaved = $state(false);
+	let settingsSaved = $state(false);
 
 	let snapshot = $state<OperatorSnapshot | null>(null);
 	let telemetry = $state<TelemetryReport | null>(null);
@@ -68,10 +73,13 @@
 
 	function signIn(event: SubmitEvent) {
 		event.preventDefault();
-		if (!tokenInput.trim()) return;
+		if (!tokenInput.trim() || signingIn) return;
 		adminClient.remember(tokenInput);
 		tokenInput = '';
-		void loadAll();
+		signingIn = true;
+		loadAll().finally(() => {
+			signingIn = false;
+		});
 	}
 
 	async function reloadAccounts() {
@@ -102,9 +110,11 @@
 		const maxBytes = limitFrom(String(data.get('maxBytes') ?? ''));
 		const syncPerMinute = limitFrom(String(data.get('syncPerMinute') ?? ''));
 		if (maxBytes === undefined || syncPerMinute === undefined) {
-			error = 'Limits must be whole numbers above zero, or blank for the default';
+			limitsError = 'Limits must be whole numbers above zero, or blank for the default';
 			return;
 		}
+		limitsError = '';
+		limitsSaved = false;
 		await guard(async () => {
 			selected = await adminClient.updateAccount({
 				accountId: selected!.accountId,
@@ -112,6 +122,8 @@
 				syncPerMinute
 			});
 			await reloadAccounts();
+			limitsSaved = true;
+			setTimeout(() => (limitsSaved = false), 3000);
 		});
 	}
 
@@ -136,9 +148,11 @@
 			maxConcurrentSyncRequests === undefined ||
 			retentionInactiveDays === undefined
 		) {
-			error = 'Numeric settings must be whole numbers; only retention may be zero';
+			settingsError = 'Numeric settings must be whole numbers; only retention may be zero';
 			return;
 		}
+		settingsError = '';
+		settingsSaved = false;
 		const indexing = String(data.get('allowIndexing') ?? '');
 		const vapidSubject = String(data.get('vapidSubject') ?? '').trim() || null;
 		await guard(async () => {
@@ -157,6 +171,8 @@
 			snapshot = nextSnapshot;
 			accounts = page.accounts;
 			accountTotal = page.total;
+			settingsSaved = true;
+			setTimeout(() => (settingsSaved = false), 3000);
 		});
 	}
 
@@ -191,7 +207,7 @@
 			{/if}
 		</header>
 
-		{#if error}
+		{#if error && adminClient.signedIn}
 			<p class={styles.error} role="alert">{error}</p>
 		{/if}
 
@@ -201,10 +217,15 @@
 					<span class={styles.fieldLabel}>Admin token</span>
 					<input bind:value={tokenInput} type="password" autocomplete="off" class={wideInput} />
 				</label>
-				<button class={primaryButton} type="submit">Sign in</button>
+				<button class={primaryButton} type="submit" disabled={signingIn}>
+					{signingIn ? 'Signing in…' : 'Sign in'}
+				</button>
+				{#if error}
+					<p class={styles.error} role="alert">{error}</p>
+				{/if}
 			</form>
 		{:else if snapshot}
-			<section class={styles.statGrid}>
+			<section class={styles.statGrid} aria-hidden={loading}>
 				<div class={styles.statCard}>
 					<div class={styles.statLabel}>Stored</div>
 					<div class={styles.statValue}>{formatBytes(snapshot.storage.storageBytes)}</div>
@@ -336,13 +357,18 @@
 							/>
 						</label>
 						<div class={styles.settingsSubmit}>
+							{#if settingsError}
+								<p class={styles.error} role="alert">{settingsError}</p>
+							{:else if settingsSaved}
+								<p class={styles.saved} role="status">Settings saved.</p>
+							{/if}
 							<button class={primaryButton} type="submit">Save settings</button>
 						</div>
 					</form>
 				</section>
 			{/if}
 
-			<section class={styles.accounts}>
+			<section class={styles.accounts} aria-busy={loading}>
 				<div class={styles.accountControls}>
 					<h2 class={styles.sectionTitle}>Accounts</h2>
 					<input
@@ -370,7 +396,14 @@
 						</thead>
 						<tbody>
 							{#each accounts as account (account.accountId)}
-								<tr class={styles.tableRow} onclick={() => void open(account.accountId)}>
+								<tr
+									class={styles.tableRow}
+									tabindex="0"
+									role="button"
+									aria-label={`View ${account.accountId}`}
+									onclick={() => void open(account.accountId)}
+									onkeydown={(event) => event.key === 'Enter' && void open(account.accountId)}
+								>
 									<td class={cx(styles.tableCell, styles.accountId)}>{account.accountId}</td>
 									<td class={styles.tableCell}>{formatBytes(account.storageBytes)}</td>
 									<td class={styles.tableCell}>
@@ -382,7 +415,21 @@
 									<td class={styles.tableCell}>{formatAgo(account.lastSeenAt)}</td>
 								</tr>
 							{:else}
-								<tr><td class={styles.emptyCell} colspan="5">No accounts match.</td></tr>
+								{#if loading}
+									{#each Array(PAGE_SIZE), i (i)}
+										<tr class={styles.skeletonRow}>
+											<td class={cx(styles.tableCell, styles.accountId)}
+												><span class={styles.skeletonBar}></span></td
+											>
+											<td class={styles.tableCell}><span class={styles.skeletonBar}></span></td>
+											<td class={styles.tableCell}><span class={styles.skeletonBar}></span></td>
+											<td class={styles.tableCell}><span class={styles.skeletonBar}></span></td>
+											<td class={styles.tableCell}><span class={styles.skeletonBar}></span></td>
+										</tr>
+									{/each}
+								{:else}
+									<tr><td class={styles.emptyCell} colspan="5">No accounts match.</td></tr>
+								{/if}
 							{/each}
 						</tbody>
 					</table>
@@ -445,11 +492,27 @@
 								value={selected.syncPerMinuteOverridden ? String(selected.syncPerMinute) : ''}
 							/>
 						</label>
+						{#if limitsError}
+							<p class={styles.error} role="alert">{limitsError}</p>
+						{:else if limitsSaved}
+							<p class={styles.saved} role="status">Limits saved.</p>
+						{/if}
 						<button class={primaryButton} type="submit">Save limits</button>
 						<span class={styles.selectedHint}>Blank restores the shared default.</span>
 					</form>
 				</section>
 			{/if}
+		{:else if loading}
+			<section class={styles.statGrid} aria-busy="true">
+				{#each Array(4), i (i)}
+					<div class={cx(styles.statCard, styles.skeletonCard)}>
+						<span class={styles.skeletonBar}></span>
+						<span class={cx(styles.skeletonBar, css({ h: '1.5rem', w: '60%' }))}></span>
+					</div>
+				{/each}
+			</section>
+		{:else}
+			<p class={styles.emptyCell}>Nothing loaded. Try refreshing.</p>
 		{/if}
 	</div>
 </div>

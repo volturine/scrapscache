@@ -19,11 +19,13 @@
 
 	let frame = $state<HTMLIFrameElement>();
 	let generation = $state(0);
+	let loading = $state(true);
 
 	/** Tokens are single-use: call after every request that carried one. A fresh
 	 * frame is a fresh challenge. */
 	export function reset() {
 		token = '';
+		loading = true;
 		generation += 1;
 	}
 
@@ -54,14 +56,34 @@
 
 {#if isolated}
 	{#key generation}
-		<iframe
-			bind:this={frame}
-			{src}
-			title="Human verification"
-			class={css({ display: 'block', h: '65px', w: 'full', border: '0' })}
-			sandbox="allow-scripts allow-same-origin allow-popups"
-			referrerpolicy="no-referrer"
-		></iframe>
+		<div class={css({ position: 'relative' })}>
+			<iframe
+				bind:this={frame}
+				{src}
+				title="Human verification"
+				class={css({ display: 'block', h: '65px', w: 'full', border: '0' })}
+				sandbox="allow-scripts allow-same-origin allow-popups"
+				referrerpolicy="no-referrer"
+				onload={() => (loading = false)}
+			></iframe>
+			{#if loading}
+				<div
+					class={css({
+						position: 'absolute',
+						inset: 0,
+						display: 'grid',
+						placeItems: 'center',
+						fontSize: 'label',
+						color: 'scrapscache.textMuted',
+						bg: 'scrapscache.surfaceSubtle',
+						rounded: 'control'
+					})}
+					aria-hidden="true"
+				>
+					Loading verification…
+				</div>
+			{/if}
+		</div>
 	{/key}
 {:else}
 	<p class={cx(css({ textAlign: 'center' }), text({ tone: 'danger' }))} role="alert">

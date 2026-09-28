@@ -419,7 +419,7 @@
 							<button
 								type="button"
 								class={cx(
-									button({ variant: 'ghost', size: 'xs' }),
+									button({ variant: 'ghost', size: 'sm' }),
 									css({ rounded: 'card' }),
 									backlogFilterActive && k.filterActive
 								)}
@@ -434,7 +434,7 @@
 							<button
 								type="button"
 								onclick={() => kanbanStore.removeTagColumn(board.id, column.id)}
-								class={iconButton({ variant: 'danger', size: 'xs' })}
+								class={iconButton({ variant: 'danger', size: 'compact' })}
 								aria-label={`Remove ${columnName(column)} label column`}
 								title="Remove label column"
 							>

@@ -545,7 +545,11 @@
 	}
 
 	function onWindowKeyDown(event: KeyboardEvent) {
-		if (event.key !== 'Escape' || event.defaultPrevented || busy || rowOwnsEscape) return;
+		// Ark's dialog marks every Escape defaultPrevented when closeOnEscape is
+		// false, yet it never acts on it — that flag exists only so the modal can
+		// own Escape itself. Nothing inside consumes it, so the guard below is the
+		// real owner: busy operations and row editing hold it, everything else closes.
+		if (event.key !== 'Escape' || busy || rowOwnsEscape) return;
 		event.preventDefault();
 		close();
 	}
@@ -557,7 +561,8 @@
 	const syncDanger = text({ tone: 'danger' });
 	const syncBackLink = cx(
 		text({ style: 'caption' }),
-		css({ w: 'full', touchAction: 'manipulation', cursor: 'pointer', textAlign: 'center' })
+		css({ color: 'scrapscache.textMuted' }),
+		styles.linkAction
 	);
 </script>
 
@@ -911,7 +916,7 @@
 									action="register"
 								/>
 							{/if}
-							{#if error}<p class={syncDanger}>{error}</p>{/if}
+							{#if error}<p class={syncDanger} role="alert">{error}</p>{/if}
 							<button
 								type="button"
 								onclick={() => void create()}
@@ -922,17 +927,7 @@
 						</div>
 						<div class={hstack({ gap: 'md', alignItems: 'center' })} aria-hidden="true">
 							<span class={styles.dividerLine}></span>
-							<span
-								class={css({
-									fontSize: 'caption',
-									fontWeight: 'heading',
-									textTransform: 'uppercase',
-									letterSpacing: 'status',
-									color: 'scrapscache.textMuted'
-								})}
-							>
-								or
-							</span>
+							<span class={css({ textStyle: 'overline' })}>or</span>
 							<span class={styles.dividerLine}></span>
 						</div>
 						<button
@@ -1012,7 +1007,7 @@
 							aria-invalid={Boolean(error)}
 							class={cx(input({ variant: 'outline', size: 'md' }), styles.pairingInput)}
 							onkeydown={(event) => event.key === 'Enter' && void beginLink()}
-						/>{#if error}<p class={syncDanger}>{error}</p>{/if}<button
+						/>{#if error}<p class={syncDanger} role="alert">{error}</p>{/if}<button
 							type="button"
 							onclick={() => void beginLink()}
 							disabled={busy}

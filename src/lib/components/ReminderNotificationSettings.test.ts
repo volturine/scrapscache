@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import ReminderNotificationSettings from './ReminderNotificationSettings.svelte';
+import ReminderNotificationSettings from './ReminderNotificationSettingsMenuHost.svelte';
 
 afterEach(() => {
 	vi.unstubAllGlobals();
@@ -18,27 +18,30 @@ describe('ReminderNotificationSettings', () => {
 		vi.stubGlobal('Notification', notification);
 
 		render(ReminderNotificationSettings);
+		await fireEvent.click(screen.getByRole('button', { name: 'Open settings menu' }));
 		expect(screen.getByText('Not set')).toBeTruthy();
-		await fireEvent.click(screen.getByRole('button', { name: 'Turn on notifications' }));
+		const enableItem = screen.getByRole('menuitem', { name: 'Turn on notifications' });
+		await fireEvent.pointerDown(enableItem, { pointerType: 'mouse' });
+		await fireEvent.click(enableItem);
 
 		await waitFor(() => {
 			expect(screen.getByText('Enabled')).toBeTruthy();
 		});
 		expect(notification.requestPermission).toHaveBeenCalledOnce();
-		expect(screen.queryByRole('button', { name: 'Turn on notifications' })).toBeNull();
+		expect(screen.queryByRole('menuitem', { name: 'Turn on notifications' })).toBeNull();
 	});
 
-	it('shows denied permission as disabled without recovery instructions', () => {
+	it('shows denied permission as disabled without recovery instructions', async () => {
 		vi.stubGlobal('Notification', {
 			permission: 'denied',
 			requestPermission: vi.fn()
 		});
 
 		render(ReminderNotificationSettings);
+		await fireEvent.click(screen.getByRole('button', { name: 'Open settings menu' }));
 
 		expect(screen.getByText('Disabled')).toBeTruthy();
-		expect(screen.queryByText(/settings/i)).toBeNull();
-		expect(screen.queryByRole('button', { name: 'Turn on notifications' })).toBeNull();
+		expect(screen.queryByText('Not set')).toBeNull();
 	});
 
 	it('refreshes after permission is changed in device settings', async () => {
@@ -48,6 +51,7 @@ describe('ReminderNotificationSettings', () => {
 		};
 		vi.stubGlobal('Notification', notification);
 		render(ReminderNotificationSettings);
+		await fireEvent.click(screen.getByRole('button', { name: 'Open settings menu' }));
 
 		notification.permission = 'granted';
 		window.dispatchEvent(new Event('focus'));

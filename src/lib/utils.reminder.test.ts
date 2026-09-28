@@ -26,6 +26,31 @@ describe('reminderTimeForDay', () => {
 			reminder.getMilliseconds()
 		]).toEqual([2026, 8, 21, 7, 0, 0, 0]);
 	});
+
+	// Seeding rolls to the next full hour, then pins the calendar day back. Late
+	// in the day that lands in the past, and a note created in /reminders would
+	// be born already overdue.
+	it('never seeds a today reminder in the past when the next hour rolls past midnight', () => {
+		const now = new Date(2026, 7, 13, 23, 50).getTime();
+		const reminder = reminderTimeForDay(dayKey(now), now);
+
+		expect(reminder).toBeGreaterThan(now);
+	});
+
+	it('keeps the next-hour time for today seeds earlier in the day', () => {
+		const now = new Date(2026, 7, 13, 17, 50).getTime();
+		const reminder = new Date(reminderTimeForDay(dayKey(now), now));
+
+		expect([reminder.getHours(), reminder.getMinutes()]).toEqual([18, 0]);
+		expect(isReminderOverdue(reminder.getTime(), now)).toBe(false);
+	});
+
+	it('still honors an explicitly chosen past day', () => {
+		const now = new Date(2026, 7, 13, 17, 50).getTime();
+		const reminder = new Date(reminderTimeForDay('2026-08-01', now));
+
+		expect(reminder.getDate()).toBe(1);
+	});
 });
 
 describe('isReminderOverdue', () => {

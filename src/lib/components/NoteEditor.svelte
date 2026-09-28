@@ -793,6 +793,9 @@
 			return;
 		}
 		if (paletteOpen || reminderOpen || labelOpen) return;
+		// The body keeps its caret by design; the keyboard way out is Escape (this
+		// handler) and, once back on the card, the context-menu key opens the same
+		// quick actions (archive, labels, delete) the footer exposes.
 		void close();
 	}}
 	onpastecapture={handlePaste}
@@ -1045,6 +1048,7 @@
 							{copyFlash}
 							fillPhotos={photosFillEditor}
 							color={note.color}
+							onClose={() => void close()}
 							onOpenColor={() => {
 								closePopups();
 								paletteOpen = true;

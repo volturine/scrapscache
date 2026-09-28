@@ -28,7 +28,8 @@ export default defineConfig({
 	conditions: {
 		extend: {
 			dark: '&:where(.dark, .dark *)',
-			hoverable: ['@media (hover: hover) and (pointer: fine)', '&:hover']
+			hoverable: ['@media (hover: hover) and (pointer: fine)', '&:hover'],
+			touch: '@media (pointer: coarse)'
 		}
 	},
 	theme: {

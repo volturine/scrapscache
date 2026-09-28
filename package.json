@@ -103,10 +103,11 @@
 		"*": "prettier --write --ignore-unknown"
 	},
 	"allowScripts": {
-		"workerd@1.20260828.1": true,
 		"simple-git-hooks@2.14.0": true,
 		"esbuild@0.28.1": true,
-		"fsevents@2.3.3": true
+		"fsevents@2.3.3": true,
+		"esbuild@0.25.12": true,
+		"workerd@1.20260923.1": true
 	},
 	"overrides": {
 		"devalue": "5.9.1",

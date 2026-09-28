@@ -268,6 +268,12 @@ export class ProfileCoordinator {
 	}
 
 	/** Point this window at another workspace. */
+	/**
+	 * Switch, then sync the workspace arrived in without holding up the caller:
+	 * the switch is done once its notes are loaded. A caller that needs the synced
+	 * state joins the flight with `notesStore.reconcileWithCloud()`; a failed sync
+	 * shows on the sync indicator like any background sync.
+	 */
 	async switchTo(profileId: string): Promise<Outcome> {
 		if (profileId === syncStore.activeId) return { success: true };
 		let shouldSync = false;
@@ -277,16 +283,7 @@ export class ProfileCoordinator {
 			shouldSync = !isLocalWorkspace(target);
 			return { success: true };
 		});
-		if (!result.success || !shouldSync) return result;
-		const synced = await notesStore.syncWithCloudManual();
-		if (!synced)
-			return {
-				success: true,
-				error:
-					syncStore.lastError ??
-					notesStore.lastPersistError ??
-					'Switched workspace, but sync did not finish'
-			};
+		if (result.success && shouldSync) void notesStore.syncWithCloudManual();
 		return result;
 	}
 

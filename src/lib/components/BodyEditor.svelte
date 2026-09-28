@@ -2354,6 +2354,21 @@
 			!primaryModifier
 		) {
 			const direction = event.key === 'ArrowUp' ? -1 : 1;
+			// A vertical arrow first parks the caret at the row's edge — its Home or
+			// End position, cell-aware in tables — and the next press changes rows.
+			const cells = tableSpanAt(range.start.line)
+				? markdownTableCellRanges(lines[range.start.line].text)
+				: [];
+			const edge =
+				direction < 0
+					? (cells[0]?.start ?? 0)
+					: (cells.at(-1)?.end ?? lines[range.start.line].text.length);
+			if (range.start.offset !== edge) {
+				event.preventDefault();
+				selectAt(range.start.line, edge);
+				lockCaret(range.start.line, edge);
+				return;
+			}
 			if (
 				moveTableRow(range, direction) ||
 				moveCodeRow(range, direction) ||

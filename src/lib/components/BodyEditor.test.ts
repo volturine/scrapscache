@@ -2073,15 +2073,17 @@ describe('BodyEditor rendered table writing', () => {
 		);
 	});
 
-	it('moves between rows in the same column and skips the delimiter row', async () => {
+	it('parks at the cell start, then moves to the row above in the same column', async () => {
 		const { container } = render(BodyEditor, { props: { body: table.join('\n') } });
 		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
-		caretAt(container, 2, '| tea  | 2'.length);
+		caretAt(container, 2, 9);
+
+		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
+		expect(selectionLine()).toBe(2);
 
 		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
 		await typeText(editor, '!');
-
-		expect(lineTexts(container)[0]).toBe('| Name | Q!ty |');
+		expect(lineTexts(container)[0]).toBe('| !Name | Qty |');
 	});
 
 	it('opens a paragraph below a table that ends the note', async () => {
@@ -2089,6 +2091,7 @@ describe('BodyEditor rendered table writing', () => {
 		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
 		caretAt(container, 2, 3);
 
+		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
 		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
 		await typeText(editor, 'after');
 
@@ -2104,6 +2107,7 @@ describe('BodyEditor rendered table writing', () => {
 		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
 		caretAt(container, 2, 3);
 
+		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
 		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
 		await typeText(editor, 'after');
 
@@ -2187,13 +2191,15 @@ describe('BodyEditor code block writing', () => {
 		caretAt(container, 0, 0);
 
 		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
+		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
 		await typeText(editor, '!');
-		expect(lineTexts(container)[2]).toBe('!alpha');
+		expect(lineTexts(container)[2]).toBe('alpha!');
 
 		caretAt(container, 3, 1);
 		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
+		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
 		await typeText(editor, '!');
-		expect(lineTexts(container)[2]).toBe('!!alpha');
+		expect(lineTexts(container)[2]).toBe('!alpha!');
 
 		caretAt(container, 3, 4);
 		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
@@ -2201,8 +2207,9 @@ describe('BodyEditor code block writing', () => {
 		expect(lineTexts(container)[5]).toBe('afte!r');
 
 		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
+		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
 		await typeText(editor, '!');
-		expect(lineTexts(container)[3]).toBe('beta!');
+		expect(lineTexts(container)[3]).toBe('!beta');
 	});
 
 	it('moves the caret onto a blank note line instead of skipping it', async () => {
@@ -2210,6 +2217,8 @@ describe('BodyEditor code block writing', () => {
 		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
 		caretAt(container, 0, 0);
 
+		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
+		expect(selectionLine()).toBe(0);
 		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
 		expect(selectionLine()).toBe(1);
 		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
@@ -2225,6 +2234,8 @@ describe('BodyEditor code block writing', () => {
 		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
 		caretAt(container, 1, 0);
 
+		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
+		expect(selectionLine()).toBe(1);
 		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
 		expect(selectionLine()).toBe(2);
 		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
@@ -2262,7 +2273,8 @@ describe('BodyEditor code block writing', () => {
 		caretAt(container, 2, 2);
 
 		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
-
+		expect(selectionLine()).toBe(2);
+		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
 		expect(selectionLine()).toBe(3);
 		await typeText(editor, 'new');
 		expect(lineTexts(container)[3]).toContain('new');
@@ -2346,6 +2358,7 @@ describe('BodyEditor markdown block boundaries', () => {
 		caretAt(container, 0, 0);
 
 		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
+		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
 		await typeText(editor, 'x');
 		expect(lineTexts(container)[1]).toContain('x');
 		expect(
@@ -2369,6 +2382,57 @@ describe('BodyEditor markdown block boundaries', () => {
 		await typeText(editor, 'above');
 
 		expect(lineTexts(container)).toEqual(['above', '```', 'code', '```']);
+	});
+});
+
+describe('BodyEditor arrow key row parking', () => {
+	const body = ['first', 'second', 'third'].join('\n');
+
+	function row(container: HTMLElement, index: number): Element {
+		return container.querySelector(`[data-editor-line="${index}"] [data-line-text]`)!;
+	}
+
+	it('parks at the start of the row before moving to the row above', async () => {
+		const { container } = render(BodyEditor, { props: { body } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		caretAt(container, 1, 3);
+
+		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
+		expect(selectionLine()).toBe(1);
+		expect(rawCaretText(row(container, 1))).toBe('');
+
+		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
+		expect(selectionLine()).toBe(0);
+		expect(rawCaretText(row(container, 0))).toBe('first');
+	});
+
+	it('parks at the end of the row before moving to the row below', async () => {
+		const { container } = render(BodyEditor, { props: { body } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		caretAt(container, 0, 2);
+
+		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
+		expect(selectionLine()).toBe(0);
+		expect(rawCaretText(row(container, 0))).toBe('first');
+
+		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
+		expect(selectionLine()).toBe(1);
+		expect(rawCaretText(row(container, 1))).toBe('secon');
+	});
+
+	it('moves between rows right away from the row edges', async () => {
+		const { container } = render(BodyEditor, { props: { body } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+
+		caretAt(container, 1, 0);
+		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
+		expect(selectionLine()).toBe(0);
+		expect(rawCaretText(row(container, 0))).toBe('first');
+
+		caretAt(container, 1, 'second'.length);
+		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
+		expect(selectionLine()).toBe(2);
+		expect(rawCaretText(row(container, 2))).toBe('third');
 	});
 });
 

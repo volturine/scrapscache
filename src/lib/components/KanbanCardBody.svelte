@@ -19,6 +19,7 @@
 	);
 
 	const card = noteCard();
+	const titleOnly = $derived(note.title.trim().length > 0 && !(note.body ?? '').trim());
 	let labelsOwnsPointer: number | null = null;
 </script>
 
@@ -74,7 +75,7 @@
 			{/if}
 			<div
 				class={cx(
-					css({ position: 'relative', minH: '3rem' }),
+					css({ position: 'relative', minH: titleOnly ? 'calc(3rem + 2px)' : '3rem' }),
 					note.secret && css({ flex: '1', minH: 0, overflow: 'hidden' })
 				)}
 			>

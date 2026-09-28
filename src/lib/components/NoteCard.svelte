@@ -249,6 +249,7 @@
 
 	const card = $derived(noteCard({ pinned: note.pinned }));
 	const activity = $derived(noteActivity(note, appClock.now));
+	const titleOnly = $derived(note.title.trim().length > 0 && !(note.body ?? '').trim());
 </script>
 
 <div class={cx(card.cardOuter, css({ _motionSafe: { animation: 'cardIn' } }))}>
@@ -334,7 +335,7 @@
 						{/if}
 						<div
 							class={cx(
-								css({ position: 'relative', minH: '3rem' }),
+								css({ position: 'relative', minH: titleOnly ? 'calc(3rem + 2px)' : '3rem' }),
 								note.secret && css({ flex: '1', minH: 0, overflow: 'hidden' })
 							)}
 						>

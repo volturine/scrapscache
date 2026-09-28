@@ -86,11 +86,14 @@ describe('backup and Keep import stay in the open workspace', () => {
 		notesStore.labels = [];
 	});
 
-	afterEach(() => {
+	afterEach(async () => {
 		const internals = notesStore as unknown as {
 			dirty: boolean;
 			syncPushTimer: ReturnType<typeof setTimeout> | null;
+			syncFlight: Promise<boolean> | null;
 		};
+		// A switch leaves its sync running; let it settle before the next test.
+		await internals.syncFlight?.catch(() => false);
 		if (internals.syncPushTimer) clearTimeout(internals.syncPushTimer);
 		internals.syncPushTimer = null;
 		internals.dirty = false;

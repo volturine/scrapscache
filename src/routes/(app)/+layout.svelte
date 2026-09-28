@@ -152,6 +152,9 @@
 				noteLinkProblem = switched.error ?? `Could not switch to ${workspace.name}.`;
 				return;
 			}
+			// The switch syncs in the background; a note only on the relay arrives with it.
+			if (!notesStore.notes.some((note) => note.id === link.noteId))
+				await notesStore.reconcileWithCloud();
 		}
 		if (!notesStore.notes.some((note) => note.id === link.noteId)) {
 			noteLinkProblem = `This note isn't in ${syncStore.activeProfile?.name ?? 'this workspace'}. It may have been deleted, or it hasn't synced to this device yet.`;

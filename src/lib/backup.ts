@@ -9,7 +9,8 @@ import {
 import type { LinkPreview } from '$lib/linkPreview';
 import type { Layout, View } from '$lib/stores/ui.svelte';
 import type { Label, Note, NoteFieldTimes, NoteImage } from '$lib/types';
-import { cloneNote, uid } from '$lib/utils';
+import { cloneNote } from '$lib/utils';
+import { uid } from '$lib/uid';
 import { isCanvasLibraryItem, type CanvasLibraryItem } from '$lib/canvasLibrary';
 import { isReminderHistoryEntry, type ReminderHistoryEntry } from '$lib/reminderHistory';
 import { reminderWakeId } from '$lib/reminderNotify';

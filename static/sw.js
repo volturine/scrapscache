@@ -50,10 +50,7 @@ self.addEventListener('activate', (event) => {
 });
 
 function isImmutableAsset(url) {
-	return (
-		url.pathname.startsWith('/_app/immutable/') ||
-		url.pathname.startsWith('/excalidraw-assets/')
-	);
+	return url.pathname.startsWith('/_app/immutable/');
 }
 
 self.addEventListener('fetch', (event) => {

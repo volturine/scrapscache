@@ -2339,6 +2339,7 @@
 			lastTyping = null;
 			if (moveTableCell(range, event.shiftKey ? -1 : 1)) return;
 			indentRange(range, event.shiftKey || event.ctrlKey ? -1 : 1);
+			return;
 		}
 		const range = editorRange();
 		if (!range) return;

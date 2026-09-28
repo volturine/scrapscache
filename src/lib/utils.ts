@@ -2,8 +2,6 @@ import { downloadFile } from '@zag-js/file-utils';
 import { copyNote } from '$lib/model';
 // Small utility helpers shared across components and stores.
 
-export { uid } from './uid';
-
 /** Format epoch ms as a human-friendly relative-ish string. */
 export function formatReminder(ts: number | null, nowMs = Date.now()): string {
 	if (ts == null) return '';

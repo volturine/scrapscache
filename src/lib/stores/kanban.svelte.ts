@@ -13,7 +13,7 @@ import {
 import { workspaceKey } from '$lib/db/idb';
 import { syncStore } from '$lib/stores/sync.svelte';
 import { loadBoardsFromDevice, writeKanbanState } from '$lib/syncTombstones';
-import { uid } from '$lib/utils';
+import { uid } from '$lib/uid';
 import { editContext, syncClock } from '$lib/editContext';
 
 /**

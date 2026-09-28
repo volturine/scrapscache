@@ -1,4 +1,4 @@
-import { uid } from './utils';
+import { uid } from './uid';
 import type { NoteImage } from './types';
 import { extractDngJpeg, isDngFile, jpegName } from './dngCanonical';
 import { dataUrlToBlob } from './imageBlob';

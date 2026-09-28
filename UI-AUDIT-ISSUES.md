@@ -92,12 +92,12 @@ Core flows verified working end-to-end with mouse/touch: notes, checklists, mark
 All 37 proposed fixes implemented and verified. Validation: svelte-check 0 errors · 1514/1514 tests · build clean.
 
 - #12 fixed with a guarded writer-id fallback in `src/lib/model/edit.ts` + regression test (`edit.writer.test.ts`)
-- #13 fixed in `src/app.html`
+- #13 fixed in `src/app.html`: Android pinch-zoom is no longer capped; iOS alone gets `maximum-scale=1`, which it ignores for pinch-zoom but honours against zooming into sub-16px fields on focus
 - #1–#11, #19–#24, #26–#28 fixed across `panda/recipes.ts`, `panda/styles.ts`, and the named components; `mcp/authorize` now consumes the new `mcpAuthorizeStyles` registry
 - #14–#17: icon buttons keep desktop size but grow to ~44px touch targets under `pointer: coarse` (new `_touch` condition + `touchHit` in `panda/recipes.ts`); calendar cells 2.25rem/15rem grid; kanban filters and Today/Clear raised to `sm`/2rem; topbar search 2.5rem on mobile
 - #20 `button` recipe gained `_active`; icon buttons gained `_disabled`
 - #21 dialog slot recipe animates (backdrop `fadeIn`, panel `swapIn`); `popover` contract animates
-- Group-5: G1 Esc closes SyncModal (window handler no longer trusts Ark's synthetic `defaultPrevented`; `WorkspaceRow` claims its Escapes with `stopPropagation` — 37/37 SyncModal tests pass); G2 reminder Save shows the permission-prompt wait; G4/G6 settings rows are real `Menu.Item`s; G7 Excalidraw fonts self-hosted at `static/fonts` (CSP untouched); G8 reminder seeding can no longer be born overdue (+3 tests); G9 footer Done wired; G5 focus rings on `menuItem` + kanban cards + hover lift
+- Group-5: G1 Esc closes SyncModal (window handler no longer trusts Ark's synthetic `defaultPrevented`; `WorkspaceRow` claims its Escapes with `stopPropagation` — 37/37 SyncModal tests pass); G2 reminder Save shows the permission-prompt wait; G4/G6 settings rows are real `Menu.Item`s; G7 Excalidraw fonts served at `/fonts`, copied from the installed `@excalidraw/excalidraw` package at build time by `vite-plugin-static-copy` (CSP untouched; the stale, unreferenced `static/excalidraw-assets` was removed); G8 reminder seeding can no longer be born overdue (+3 tests); G9 footer Done wired; G5 focus rings on `menuItem` + kanban cards + hover lift
 - #29 value proposition line added to the home empty state (`EmptyState` `tagline` prop)
 - #18 (bottom tab bar) and #25 (view transitions) held by design, as agreed
 - DESIGN.md written (the design contract the checklist asks for)
@@ -109,4 +109,4 @@ Held by design decision: note-body keeps its caret on Escape (Tab indents by des
 
 ## Post-audit scope correction (2026-09-28)
 
-Only the MCP **UI** was removed at the owner's direction: the `/mcp/authorize` consent page and its `mcpAuthorizeStyles` registry contracts (the page had no in-app entry point). The MCP **functionality** was retained in full: `src/lib/mcpHandshake.ts` (protocol crypto), the sync store's `getMcpWorkspaceStatuses()` probe, `mcpWorkspaceGrant()` in profiles, the self-hostable server under `recipes/mcp-server`, `docker/compose.mcp.yaml`, `docs/mcp.md`, and all MCP CI deploy/image jobs. An initial over-removal of the whole feature was caught and reverted from git before any commit.
+The `/mcp/authorize` consent page was removed by mistake and has been restored: the self-hostable MCP server (`recipes/mcp-server`) redirects every OAuth handshake to it, so it is the only place a grant is approved and encrypted. Its styles now live in the `mcpAuthorizeStyles` registry, closing #1.

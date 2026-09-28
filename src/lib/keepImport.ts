@@ -3,7 +3,7 @@ import { blobToDataUrl } from './imageBlob';
 import { localLinkCard, normalizePreviewUrl, type LinkPreview } from './linkPreview';
 import { NOTE_FIELDS } from './model';
 import type { Label, Note, NoteColor, NoteImage } from './types';
-import { uid } from './utils';
+import { uid } from './uid';
 
 export type KeepParsedNote = {
 	title: string;

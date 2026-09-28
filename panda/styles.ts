@@ -434,6 +434,12 @@ export const adminPageStyles = {
 	}),
 	tableCell: css({ p: 'sm' }),
 	accountId: css({ fontFamily: 'mono', fontSize: 'label', wordBreak: 'break-all' }),
+	accountOpen: css({
+		textAlign: 'left',
+		rounded: 'row',
+		...clickable,
+		_focusVisible: { outline: '2px solid', outlineColor: 'scrapscache.focus', outlineOffset: '2px' }
+	}),
 	emptyCell: css({ p: 'md', ...mutedText }),
 	pagination: hstack({ gap: 'sm', fontSize: 'body' }),
 	selected: css({ display: 'grid', gap: 'sm', ...cardRadius, ...border, p: 'lg' }),
@@ -489,6 +495,111 @@ export const importGuideStyles = {
 	}),
 	note: css({ mt: 'md', color: 'scrapscache.textMuted', textStyle: 'caption', lineHeight: 'body' }),
 	noteStrong: css({ color: 'scrapscache.text', fontWeight: 'interactive' })
+};
+
+const mcpChoiceRow = {
+	display: 'flex',
+	alignItems: 'flex-start',
+	gap: 'sm',
+	...controlRadius,
+	...border,
+	p: 'md'
+} as const;
+const mcpSection = { ...column, px: 'xl', py: 'xl' } as const;
+
+export const mcpAuthorizeStyles = {
+	shell: css({
+		position: 'fixed',
+		inset: 0,
+		zIndex: 100,
+		...flexCenter,
+		overflowY: 'auto',
+		bg: 'scrapscache.bg',
+		color: 'scrapscache.text',
+		px: 'lg',
+		py: '3xl'
+	}),
+	frame: css({ w: 'full', maxW: '28rem' }),
+	back: css({
+		display: 'inline-flex',
+		alignItems: 'center',
+		gap: 'sm',
+		mb: 'lg',
+		textStyle: 'bodyMuted',
+		...colorTransition,
+		_hoverable: { color: 'scrapscache.text' }
+	}),
+	card: css({
+		overflow: 'hidden',
+		rounded: 'dialog',
+		...border,
+		bg: 'scrapscache.surface',
+		boxShadow: 'popover'
+	}),
+	header: css({ ...mcpSection, borderBottomWidth: 'hairline', borderColor: 'scrapscache.border' }),
+	shield: css({
+		...gridCenter,
+		...square('2.75rem'),
+		mb: 'md',
+		...controlRadius,
+		bg: 'scrapscache.accent',
+		color: 'scrapscache.accentForeground'
+	}),
+	eyebrow: css({ mb: '2xs', textStyle: 'overline', color: 'scrapscache.accent' }),
+	title: css({ textStyle: 'display' }),
+	body: css({ ...mcpSection, gap: 'lg' }),
+	origin: css({ ...controlRadius, ...border, bg: 'scrapscache.surfaceSubtle', p: 'md' }),
+	originLabel: css({ ...rowCenter, gap: 'xs', mb: '2xs', textStyle: 'captionStrong' }),
+	originUrl: css({ ...truncateText, fontFamily: 'mono', textStyle: 'caption' }),
+	copy: css({
+		...column,
+		gap: 'sm',
+		textStyle: 'bodyMuted',
+		'& strong': { color: 'scrapscache.text', fontWeight: 'heading' }
+	}),
+	fine: css({ textStyle: 'caption' }),
+	notice: cva({
+		base: { ...mcpChoiceRow, textStyle: 'body', color: 'scrapscache.text' },
+		variants: {
+			tone: {
+				danger: { borderColor: 'scrapscache.danger', bg: 'scrapscache.dangerSubtle' },
+				warning: { borderColor: 'scrapscache.warning', bg: 'scrapscache.warningSubtle' }
+			}
+		}
+	}),
+	noticeIcon: css({ ...iconSm, flexShrink: 0, mt: '3xs' }),
+	workspaces: css({ ...column, gap: 'sm', m: 0, minW: 0, p: 0, border: 'none' }),
+	legend: css({ textStyle: 'overline' }),
+	workspaceList: css({
+		...column,
+		gap: 'sm',
+		maxH: 'min(16rem, 45dvh)',
+		overflowY: 'auto',
+		overscrollBehavior: 'contain',
+		...controlRadius,
+		...border,
+		p: 'sm'
+	}),
+	option: css({
+		...mcpChoiceRow,
+		bg: 'scrapscache.bg',
+		...clickable,
+		transition: 'background-color 120ms ease, border-color 120ms ease',
+		...subtleHover,
+		'&:has(input:checked)': { borderColor: 'scrapscache.accent', bg: 'scrapscache.accentSubtle' },
+		'&:has(input:focus-visible)': {
+			outline: '2px solid',
+			outlineColor: 'scrapscache.focus',
+			outlineOffset: '2px'
+		}
+	}),
+	unavailableOption: css({ ...mcpChoiceRow, opacity: 0.72 }),
+	radio: css({ mt: '3xs', accentColor: 'scrapscache.accent' }),
+	optionText: css({ ...column, gap: '3xs', minW: 0 }),
+	optionName: css({ textStyle: 'bodyStrong' }),
+	optionCaption: css({ textStyle: 'caption' }),
+	actions: css({ display: 'flex', gap: 'md' }),
+	action: css({ flex: '1' })
 };
 
 export const pwaStyles = {
@@ -2815,7 +2926,8 @@ export const markdownStyles = css({
 		display: 'table-cell',
 		minW: '4ch',
 		minH: '1lh',
-		padding: 'xs list',
+		py: 'xs',
+		px: 'list',
 		borderBottomWidth: 'hairline',
 		borderColor: 'scrapscache.border',
 		verticalAlign: 'top',

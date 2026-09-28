@@ -1,4 +1,5 @@
 import { sveltekit } from '@sveltejs/kit/vite';
+import { viteStaticCopy } from 'vite-plugin-static-copy';
 import { defineConfig } from 'vitest/config';
 import { fileURLToPath } from 'node:url';
 
@@ -36,7 +37,23 @@ const cloudflarePlatform = {
 };
 
 export default defineConfig({
-	plugins: [cloudflarePlatform, sveltekit()],
+	plugins: [
+		cloudflarePlatform,
+		sveltekit(),
+		// Excalidraw fetches its fonts from EXCALIDRAW_ASSET_PATH ('/'), and font-src
+		// 'self' rules out its CDN default. Serve the installed package's own copy,
+		// so the fonts always match the Excalidraw version in the lockfile.
+		viteStaticCopy({
+			targets: [
+				{
+					src: 'node_modules/@excalidraw/excalidraw/dist/prod/fonts/**/*.woff2',
+					dest: 'fonts',
+					// Drop node_modules/@excalidraw/excalidraw/dist/prod/fonts, keep the family folder.
+					rename: { stripBase: 6 }
+				}
+			]
+		})
+	],
 	build: {
 		// Keep imported fonts as same-origin files to match font-src 'self'.
 		assetsInlineLimit: (filePath) => (/\.(?:woff2?|ttf|otf)$/i.test(filePath) ? false : undefined)

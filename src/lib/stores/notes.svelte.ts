@@ -40,7 +40,8 @@ import { canvasLibraryStore } from '$lib/stores/canvasLibrary';
 import { reminderHistoryStore } from '$lib/stores/reminderHistory';
 import { syncSnapshot, type SyncSnapshot } from '$lib/syncRecords';
 import { uiStore } from '$lib/stores/ui.svelte';
-import { uid, daysSinceTrashed, TRASH_PURGE_DAYS, cloneNote } from '$lib/utils';
+import { daysSinceTrashed, TRASH_PURGE_DAYS, cloneNote } from '$lib/utils';
+import { uid } from '$lib/uid';
 import { noteAttachments, toggleLineAt } from '$lib/checklistBody';
 import {
 	readLabelsMirror,

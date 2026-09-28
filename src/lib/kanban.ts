@@ -1,6 +1,6 @@
 import type { Note } from '$lib/types';
 import { pickLatest, stableStringify, type EditContext } from '$lib/model';
-import { uid } from '$lib/utils';
+import { uid } from '$lib/uid';
 
 export interface KanbanColumn {
 	id: string;

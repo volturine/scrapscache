@@ -72,6 +72,17 @@
 		<link rel="alternate icon" type="image/png" href="/apple-touch-icon.png" />
 
 		<script nonce="%sveltekit.nonce%">
+			// iOS zooms into any focused field under 16px unless maximum-scale caps
+			// it, and it never lets that cap block pinch-zoom. Android does honour
+			// the cap for pinch-zoom, so it is applied on iOS alone. (iPadOS reports
+			// itself as a Mac; touch points tell it apart.)
+			(function () {
+				var ua = navigator.userAgent;
+				var ios =
+					/iP(hone|od|ad)/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+				var viewport = document.querySelector('meta[name="viewport"]');
+				if (ios && viewport) viewport.content += ', maximum-scale=1';
+			})();
 			// Apply theme + background BEFORE CSS loads to prevent white flash.
 			// iOS reloads the page when returning to a standalone web app, and with
 			// ssr=false the body is empty until Svelte boots. This sets the correct

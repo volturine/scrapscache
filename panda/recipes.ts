@@ -42,14 +42,17 @@ const tapTarget = {
 	userSelect: 'none'
 } as const;
 /** Grows the pointer target to the 44px guideline without changing the visual
- * size or layout; scoped to touch pointers, so fine pointers hit what they see. */
+ * size or layout; scoped to touch pointers, so fine pointers hit what they see.
+ * Each side grows only by what the control lacks (inset percentages resolve
+ * against the control itself), so controls already 44px or larger stay put and
+ * never reach over their neighbours. */
 const touchHit = {
 	position: 'relative',
 	_touch: {
 		_before: {
 			content: '""',
 			position: 'absolute',
-			inset: '-6px'
+			inset: 'min(0px, calc((100% - 44px) / 2))'
 		}
 	}
 } as const;

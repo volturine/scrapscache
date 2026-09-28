@@ -244,9 +244,9 @@
 
 	<div
 		class={hstack({
-			h: { base: '2.5rem', sm: '2.5rem' },
-			minH: { base: '2.5rem', sm: '2.5rem' },
-			maxH: { base: '2.5rem', sm: '2.5rem' },
+			h: '2.5rem',
+			minH: '2.5rem',
+			maxH: '2.5rem',
 			minW: 0,
 			flex: '1',
 			rounded: 'pill',

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import { adminPageStyles as styles } from '$panda/styles';
 	import { css, cx } from 'styled-system/css';
 	import { button, input } from 'styled-system/recipes';
@@ -29,6 +29,12 @@
 	let settingsError = $state('');
 	let limitsSaved = $state(false);
 	let settingsSaved = $state(false);
+	let limitsSavedTimer: ReturnType<typeof setTimeout> | undefined;
+	let settingsSavedTimer: ReturnType<typeof setTimeout> | undefined;
+	onDestroy(() => {
+		clearTimeout(limitsSavedTimer);
+		clearTimeout(settingsSavedTimer);
+	});
 
 	let snapshot = $state<OperatorSnapshot | null>(null);
 	let telemetry = $state<TelemetryReport | null>(null);
@@ -123,7 +129,8 @@
 			});
 			await reloadAccounts();
 			limitsSaved = true;
-			setTimeout(() => (limitsSaved = false), 3000);
+			clearTimeout(limitsSavedTimer);
+			limitsSavedTimer = setTimeout(() => (limitsSaved = false), 3000);
 		});
 	}
 
@@ -172,7 +179,8 @@
 			accounts = page.accounts;
 			accountTotal = page.total;
 			settingsSaved = true;
-			setTimeout(() => (settingsSaved = false), 3000);
+			clearTimeout(settingsSavedTimer);
+			settingsSavedTimer = setTimeout(() => (settingsSaved = false), 3000);
 		});
 	}
 
@@ -396,15 +404,12 @@
 						</thead>
 						<tbody>
 							{#each accounts as account (account.accountId)}
-								<tr
-									class={styles.tableRow}
-									tabindex="0"
-									role="button"
-									aria-label={`View ${account.accountId}`}
-									onclick={() => void open(account.accountId)}
-									onkeydown={(event) => event.key === 'Enter' && void open(account.accountId)}
-								>
-									<td class={cx(styles.tableCell, styles.accountId)}>{account.accountId}</td>
+								<!-- The whole row opens the account for pointers; keyboard users reach
+								     the same action through the ID button, whose click bubbles here. -->
+								<tr class={styles.tableRow} onclick={() => void open(account.accountId)}>
+									<td class={cx(styles.tableCell, styles.accountId)}>
+										<button type="button" class={styles.accountOpen}>{account.accountId}</button>
+									</td>
 									<td class={styles.tableCell}>{formatBytes(account.storageBytes)}</td>
 									<td class={styles.tableCell}>
 										{formatBytes(account.maxBytes)}{account.maxBytesOverridden ? ' *' : ''}

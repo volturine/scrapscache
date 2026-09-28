@@ -1,7 +1,8 @@
 <script lang="ts">
+	import { Menu } from '@ark-ui/svelte/menu';
 	import { iconSizeSm, iconSizeXs, pwaStyles as styles } from '$panda/styles';
 	import { css, cx } from 'styled-system/css';
-	import { menuItem } from 'styled-system/recipes';
+	import { button, menuItem } from 'styled-system/recipes';
 	import { Download, Share, Smartphone, X } from '@lucide/svelte';
 	import { pwaInstallStore } from '$lib/stores/pwaInstall.svelte';
 
@@ -11,17 +12,16 @@
 </script>
 
 {#if pwaInstallStore.canPrompt}
-	<section aria-label="Install app">
-		<button
-			type="button"
-			onclick={install}
-			class={menuItem({ density: 'compact', feedback: 'none' })}
-			aria-label="Install app"
-		>
-			<Download class={cx(iconSizeSm, css({ color: 'scrapscache.accent' }))} aria-hidden="true" />
-			<span>Install app</span>
-		</button>
-	</section>
+	<Menu.Item
+		value="install-app"
+		closeOnSelect={false}
+		onSelect={install}
+		class={menuItem({ density: 'compact' })}
+		aria-label="Install app"
+	>
+		<Download class={cx(iconSizeSm, css({ color: 'scrapscache.accent' }))} aria-hidden="true" />
+		<span>Install app</span>
+	</Menu.Item>
 {/if}
 
 {#if pwaInstallStore.showIOSHelp}
@@ -69,7 +69,11 @@
 				</p>
 			</div>
 
-			<button type="button" onclick={() => pwaInstallStore.closeIOSHelp()} class={styles.iosDone}>
+			<button
+				type="button"
+				onclick={() => pwaInstallStore.closeIOSHelp()}
+				class={cx(button({ variant: 'primary' }), styles.iosDoneLayout)}
+			>
 				Got it
 			</button>
 		</div>

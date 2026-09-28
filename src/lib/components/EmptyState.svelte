@@ -7,17 +7,22 @@
 
 	type Props = {
 		icon: LucideIcon;
+		/** What the product is, in one line; shown above the description. */
+		tagline?: string;
 		description: string;
 		actionLabel?: string;
 		onAction?: () => void;
 		href?: '/';
 	};
 
-	let { icon: Icon, description, actionLabel, onAction, href }: Props = $props();
+	let { icon: Icon, tagline, description, actionLabel, onAction, href }: Props = $props();
 </script>
 
 <div class={cx(notesShell(), emptyStateStyles.root)}>
 	<Icon size={24} strokeWidth={1.5} aria-hidden="true" />
+	{#if tagline}
+		<p class={emptyStateStyles.tagline}>{tagline}</p>
+	{/if}
 	<p class={emptyStateStyles.description}>{description}</p>
 	{#if actionLabel && href}
 		<a

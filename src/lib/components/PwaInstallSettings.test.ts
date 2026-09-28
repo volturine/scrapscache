@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import PwaInstallSettings from './PwaInstallSettings.svelte';
+import PwaInstallSettings from './PwaInstallSettingsMenuHost.svelte';
 import { pwaInstallStore, type BeforeInstallPromptEvent } from '$lib/stores/pwaInstall.svelte';
 
 function resetStore() {
@@ -20,12 +20,14 @@ describe('PwaInstallSettings', () => {
 		} as unknown as BeforeInstallPromptEvent;
 
 		render(PwaInstallSettings);
-		const installButton = screen.getByRole('button', { name: 'Install app' });
-		expect(installButton.className).toContain('scrapscache-menu-item--feedback_none');
+		await fireEvent.click(screen.getByRole('button', { name: 'Open settings menu' }));
+		const installButton = screen.getByRole('menuitem', { name: 'Install app' });
+		expect(installButton.className).toContain('scrapscache-menu-item');
+		await fireEvent.pointerDown(installButton, { pointerType: 'mouse' });
 		await fireEvent.click(installButton);
 
 		expect(prompt).toHaveBeenCalledOnce();
-		await waitFor(() => expect(screen.queryByRole('button', { name: 'Install app' })).toBeNull());
+		await waitFor(() => expect(screen.queryByRole('menuitem', { name: 'Install app' })).toBeNull());
 	});
 
 	it('removes the install action after the app is installed', async () => {
@@ -35,11 +37,12 @@ describe('PwaInstallSettings', () => {
 		} as unknown as BeforeInstallPromptEvent;
 
 		render(PwaInstallSettings);
-		expect(screen.getByRole('button', { name: 'Install app' })).toBeTruthy();
+		await fireEvent.click(screen.getByRole('button', { name: 'Open settings menu' }));
+		expect(screen.getByRole('menuitem', { name: 'Install app' })).toBeTruthy();
 
 		window.dispatchEvent(new Event('appinstalled'));
 
-		await waitFor(() => expect(screen.queryByRole('button', { name: 'Install app' })).toBeNull());
+		await waitFor(() => expect(screen.queryByRole('menuitem', { name: 'Install app' })).toBeNull());
 	});
 
 	it('does not render a dismiss control', async () => {
@@ -49,7 +52,8 @@ describe('PwaInstallSettings', () => {
 		} as unknown as BeforeInstallPromptEvent;
 
 		render(PwaInstallSettings);
-		expect(screen.getByRole('button', { name: 'Install app' })).toBeTruthy();
+		await fireEvent.click(screen.getByRole('button', { name: 'Open settings menu' }));
+		expect(screen.getByRole('menuitem', { name: 'Install app' })).toBeTruthy();
 		expect(screen.queryByRole('button', { name: 'Dismiss install prompt' })).toBeNull();
 	});
 });

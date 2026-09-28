@@ -100,10 +100,9 @@
 	const footerBtnClass = cx(
 		button({ variant: 'ghost' }),
 		css({
-			h: 'auto',
+			h: '2rem',
 			rounded: 'pill',
 			px: 'sm',
-			py: '3xs',
 			fontSize: 'inherit',
 			lineHeight: 'compact',
 			_disabled: { opacity: 0.4, pointerEvents: 'none' }

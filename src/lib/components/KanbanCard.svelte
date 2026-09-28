@@ -55,7 +55,14 @@
 	class={css({
 		position: 'relative',
 		cursor: 'grab',
-		rounded: 'dialog',
+		rounded: 'card',
+		transition: 'box-shadow 150ms ease, transform 150ms ease',
+		_hoverable: { boxShadow: 'md', transform: 'translateY(-1px)' },
+		_focusVisible: {
+			outline: '2px solid',
+			outlineColor: 'scrapscache.focus',
+			outlineOffset: '2px'
+		},
 		_active: { cursor: 'grabbing' }
 	})}
 	onpointerdown={press}

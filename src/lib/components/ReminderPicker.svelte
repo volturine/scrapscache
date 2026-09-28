@@ -108,6 +108,8 @@
 
 	const showRemove = $derived(reminder != null);
 	const primaryIsSave = $derived(uiStatus !== 'active');
+	/** Waiting on the browser's notification permission prompt. */
+	let awaitingPermission = $state(false);
 
 	const hours24 = $derived(selected.getHours());
 	const minutes = $derived(selected.getMinutes());
@@ -159,7 +161,15 @@
 	}
 
 	async function save() {
-		await requestReminderPermission();
+		// A first save triggers the browser's permission prompt, which stays open
+		// until the user answers it. Save must show that wait, not sit silent.
+		if (awaitingPermission) return;
+		awaitingPermission = true;
+		try {
+			await requestReminderPermission();
+		} finally {
+			awaitingPermission = false;
+		}
 		void registerAllReminderDevices();
 		apply(selected.getTime());
 	}
@@ -464,9 +474,10 @@
 			<button
 				type="button"
 				onclick={save}
+				disabled={awaitingPermission}
 				class={cx(button({ variant: 'primary', size: 'md' }), css({ minW: '5.5rem', ml: 'auto' }))}
 			>
-				Save
+				{awaitingPermission ? 'Allow in the browser prompt…' : 'Save'}
 			</button>
 		{/if}
 	</div>

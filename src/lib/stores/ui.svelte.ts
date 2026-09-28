@@ -20,12 +20,17 @@ function prefersDark(): boolean {
 
 function applyDocumentTheme(dark: boolean) {
 	if (typeof document === 'undefined' || !document.body) return;
-	const bg = dark ? '#1a1a1a' : '#ffffff';
 	const root = document.documentElement;
 	root.classList.toggle('dark', dark);
 	root.style.colorScheme = dark ? 'dark' : 'light';
-	root.style.backgroundColor = bg;
-	document.body.style.backgroundColor = bg;
+	// Single-source the palette: read the token Panda published instead of
+	// re-declaring the hex here (app.html keeps its own static copy because it
+	// must paint before any stylesheet or script bundle loads).
+	const bg = getComputedStyle(root).getPropertyValue('--colors-scrapscache-bg').trim();
+	if (bg) {
+		root.style.backgroundColor = bg;
+		document.body.style.backgroundColor = bg;
+	}
 }
 
 const LS_KEY = 'scrapscache-ui-state';

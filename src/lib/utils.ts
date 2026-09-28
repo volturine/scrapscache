@@ -99,7 +99,11 @@ export function reminderTimeForDay(key: string, nowMs = Date.now()): number {
 	if (Number.isFinite(year) && Number.isFinite(month) && Number.isFinite(day)) {
 		reminder.setFullYear(year, month - 1, day);
 	}
-	return reminder.getTime();
+	// Rolling to the next hour can cross midnight; the day is then forced back
+	// onto today and the time lands in the past. A seeded reminder must never be
+	// born overdue, so late-evening seeds become an hour from now instead.
+	const seeded = reminder.getTime();
+	return seeded < nowMs && key === dayKey(nowMs) ? nowMs + 3_600_000 : seeded;
 }
 
 /** True when a reminder timestamp is in the past. */

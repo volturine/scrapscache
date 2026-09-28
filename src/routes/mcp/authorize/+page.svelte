@@ -3,8 +3,9 @@
 	import { resolve } from '$app/paths';
 	import { onMount } from 'svelte';
 	import { ArrowLeft, ShieldCheck, Sparkles, AlertCircle } from '@lucide/svelte';
-	import { css, cx } from 'styled-system/css';
+	import { cx } from 'styled-system/css';
 	import { button } from 'styled-system/recipes';
+	import { mcpAuthorizeStyles as styles } from '$panda/styles';
 	import { syncStore, type McpWorkspaceStatus } from '$lib/stores/sync.svelte';
 	import { encryptHandshakePayload } from '$lib/mcpHandshake';
 	import { isLocalWorkspace, mcpWorkspaceGrant } from '$lib/profiles';
@@ -53,199 +54,6 @@
 			callbackOrigin
 		};
 	}
-
-	const shell = css({
-		position: 'fixed',
-		inset: 0,
-		zIndex: 100,
-		display: 'flex',
-		alignItems: 'center',
-		justifyContent: 'center',
-		overflowY: 'auto',
-		bg: 'scrapscache.bg',
-		color: 'scrapscache.text',
-		px: 'lg',
-		py: '3xl'
-	});
-	const frame = css({ w: 'full', maxW: '28rem' });
-	const back = css({
-		display: 'inline-flex',
-		alignItems: 'center',
-		gap: 'sm',
-		mb: 'lg',
-		textStyle: 'body',
-		color: 'scrapscache.textMuted',
-		_hoverable: { color: 'scrapscache.text' }
-	});
-	const card = css({
-		overflow: 'hidden',
-		rounded: 'dialog',
-		borderWidth: 'hairline',
-		borderColor: 'scrapscache.border',
-		bg: 'scrapscache.surface',
-		boxShadow: 'popover'
-	});
-	const header = css({
-		borderBottomWidth: 'hairline',
-		borderColor: 'scrapscache.border',
-		px: 'xl',
-		py: 'xl'
-	});
-	const shield = css({
-		display: 'grid',
-		placeItems: 'center',
-		w: '2.75rem',
-		h: '2.75rem',
-		mb: 'md',
-		rounded: 'control',
-		bg: 'scrapscache.accent',
-		color: 'scrapscache.accentForeground'
-	});
-	const eyebrow = css({
-		mb: '2xs',
-		textStyle: 'micro',
-		fontWeight: 'heading',
-		letterSpacing: 'eyebrow',
-		textTransform: 'uppercase',
-		color: 'scrapscache.accent'
-	});
-	const title = css({ textStyle: 'display', letterSpacing: '-0.02em' });
-	const body = css({
-		display: 'flex',
-		flexDirection: 'column',
-		gap: 'lg',
-		px: 'xl',
-		py: 'xl'
-	});
-	const origin = css({
-		rounded: 'control',
-		borderWidth: 'hairline',
-		borderColor: 'scrapscache.border',
-		bg: 'scrapscache.surfaceSubtle',
-		p: 'md'
-	});
-	const originLabel = css({
-		display: 'flex',
-		alignItems: 'center',
-		gap: 'xs',
-		mb: '2xs',
-		textStyle: 'captionStrong',
-		color: 'scrapscache.text'
-	});
-	const originUrl = css({
-		overflow: 'hidden',
-		textOverflow: 'ellipsis',
-		whiteSpace: 'nowrap',
-		fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-		textStyle: 'caption',
-		color: 'scrapscache.textMuted'
-	});
-	const copy = css({
-		display: 'flex',
-		flexDirection: 'column',
-		gap: 'sm',
-		textStyle: 'bodyMuted',
-		'& strong': { color: 'scrapscache.text', fontWeight: 'heading' }
-	});
-	const fine = css({ textStyle: 'caption' });
-	const iconSm = css({ w: '1rem', h: '1rem', flexShrink: 0 });
-	const iconMd = css({ w: '1.5rem', h: '1.5rem' });
-	const noticeDanger = css({
-		display: 'flex',
-		alignItems: 'flex-start',
-		gap: 'sm',
-		rounded: 'control',
-		borderWidth: 'hairline',
-		borderColor: 'scrapscache.danger',
-		bg: 'scrapscache.dangerSubtle',
-		p: 'md',
-		textStyle: 'body',
-		color: 'scrapscache.text'
-	});
-	const noticeWarning = css({
-		display: 'flex',
-		alignItems: 'flex-start',
-		gap: 'sm',
-		rounded: 'control',
-		borderWidth: 'hairline',
-		borderColor: 'scrapscache.warning',
-		bg: 'scrapscache.warningSubtle',
-		p: 'md',
-		textStyle: 'body',
-		color: 'scrapscache.text'
-	});
-	const workspaces = css({
-		display: 'flex',
-		flexDirection: 'column',
-		gap: 'sm',
-		m: 0,
-		minW: 0,
-		p: 0,
-		border: 'none'
-	});
-	const workspaceToolbar = css({
-		display: 'flex',
-		alignItems: 'center',
-		justifyContent: 'space-between',
-		gap: 'sm'
-	});
-	const workspaceList = css({
-		display: 'flex',
-		flexDirection: 'column',
-		gap: 'sm',
-		maxHeight: 'min(16rem, 45dvh)',
-		overflowY: 'auto',
-		overscrollBehavior: 'contain',
-		rounded: 'control',
-		borderWidth: 'hairline',
-		borderColor: 'scrapscache.border',
-		p: 'sm'
-	});
-	const legend = css({
-		textStyle: 'captionStrong',
-		letterSpacing: 'eyebrow',
-		textTransform: 'uppercase',
-		color: 'scrapscache.text'
-	});
-	const option = css({
-		display: 'flex',
-		alignItems: 'flex-start',
-		gap: 'sm',
-		rounded: 'control',
-		borderWidth: 'hairline',
-		borderColor: 'scrapscache.border',
-		bg: 'scrapscache.bg',
-		px: 'md',
-		py: 'md',
-		cursor: 'pointer',
-		_hoverable: { bg: 'scrapscache.interactiveHover' },
-		'&:has(input:checked)': {
-			borderColor: 'scrapscache.accent',
-			bg: 'scrapscache.accentSubtle'
-		},
-		'&:has(input:focus-visible)': {
-			outline: '2px solid',
-			outlineColor: 'scrapscache.focus',
-			outlineOffset: '2px'
-		}
-	});
-	const radio = css({ mt: '3xs', accentColor: 'scrapscache.accent' });
-	const optionText = css({ display: 'flex', flexDirection: 'column', gap: '3xs', minW: 0 });
-	const optionName = css({ textStyle: 'bodyStrong' });
-	const optionCaption = css({ textStyle: 'caption' });
-	const localRow = css({
-		display: 'flex',
-		alignItems: 'flex-start',
-		gap: 'sm',
-		rounded: 'control',
-		borderWidth: 'hairline',
-		borderColor: 'scrapscache.border',
-		px: 'md',
-		py: 'md',
-		opacity: 0.72
-	});
-	const actions = css({ display: 'flex', gap: 'md' });
-	const action = css({ flex: '1' });
 
 	let params = $derived(parseParams(page.url));
 	let busy = $state(false);
@@ -353,37 +161,37 @@
 	<meta name="robots" content="noindex" />
 </svelte:head>
 
-<div class={shell}>
-	<div class={frame}>
-		<a href={resolve('/')} class={back}>
-			<ArrowLeft class={iconSm} aria-hidden="true" />
+<div class={styles.shell}>
+	<div class={styles.frame}>
+		<a href={resolve('/')} class={styles.back}>
+			<ArrowLeft class={styles.iconSm} aria-hidden="true" />
 			Back to Scraps Cache
 		</a>
 
-		<section class={card}>
-			<div class={header}>
-				<div class={shield}>
-					<ShieldCheck class={iconMd} aria-hidden="true" />
+		<section class={styles.card}>
+			<div class={styles.header}>
+				<div class={styles.shield}>
+					<ShieldCheck class={styles.iconLg} aria-hidden="true" />
 				</div>
-				<p class={eyebrow}>MCP AI Authorization</p>
-				<h1 class={title}>Connect {params.clientName} to your notes?</h1>
+				<p class={styles.eyebrow}>MCP AI Authorization</p>
+				<h1 class={styles.title}>Connect {params.clientName} to your notes?</h1>
 			</div>
 
-			<div class={body}>
+			<div class={styles.body}>
 				{#snippet workspaceChoices()}
 					{#each notReady as workspace (workspace.id)}
-						<label class={localRow}>
-							<input class={radio} type="radio" disabled />
-							<span class={optionText}>
-								<span class={optionName}>{workspace.name}</span>
-								<span class={optionCaption}>{statusCaption(mcpStatuses[workspace.id])}</span>
+						<label class={styles.localRow}>
+							<input class={styles.radio} type="radio" disabled />
+							<span class={styles.optionText}>
+								<span class={styles.optionName}>{workspace.name}</span>
+								<span class={styles.optionCaption}>{statusCaption(mcpStatuses[workspace.id])}</span>
 							</span>
 						</label>
 					{/each}
 					{#each synced as workspace (workspace.id)}
-						<label class={option}>
+						<label class={styles.option}>
 							<input
-								class={radio}
+								class={styles.radio}
 								type="radio"
 								name="mcp-workspace"
 								value={workspace.id}
@@ -391,46 +199,48 @@
 								aria-describedby="mcp-workspace-hint"
 								onchange={() => (selectedWorkspaceId = workspace.id)}
 							/>
-							<span class={optionText}>
-								<span class={optionName}>{workspace.name}</span>
-								<span class={optionCaption}>
+							<span class={styles.optionText}>
+								<span class={styles.optionName}>{workspace.name}</span>
+								<span class={styles.optionCaption}>
 									{workspace.id === syncStore.activeId ? 'Open on this device' : 'Synced'}
 								</span>
 							</span>
 						</label>
 					{/each}
 					{#each localOnly as workspace (workspace.id)}
-						<label class={localRow}>
-							<input class={radio} type="radio" disabled />
-							<span class={optionText}>
-								<span class={optionName}>{workspace.name}</span>
-								<span class={optionCaption}>On this device only</span>
+						<label class={styles.localRow}>
+							<input class={styles.radio} type="radio" disabled />
+							<span class={styles.optionText}>
+								<span class={styles.optionName}>{workspace.name}</span>
+								<span class={styles.optionCaption}>On this device only</span>
 							</span>
 						</label>
 					{/each}
 				{/snippet}
 
 				{#if !params.valid}
-					<div class={noticeDanger}>
-						<AlertCircle class={iconSm} aria-hidden="true" />
+					<div class={styles.notice('danger')}>
+						<AlertCircle class={styles.iconSm} aria-hidden="true" />
 						<p>This authorization handshake request is invalid or missing required parameters.</p>
 					</div>
 				{:else if checkingWorkspaces}
-					<div class={noticeWarning}>
+					<div class={styles.notice('warning')}>
 						<div>
-							<p class={optionName}>Checking synced workspaces…</p>
-							<p class={fine}>Scraps Cache is verifying that each synced workspace is reachable.</p>
+							<p class={styles.optionName}>Checking synced workspaces…</p>
+							<p class={styles.fine}>
+								Scraps Cache is verifying that each synced workspace is reachable.
+							</p>
 						</div>
 					</div>
 				{:else if synced.length === 0}
-					<div class={noticeWarning}>
+					<div class={styles.notice('warning')}>
 						<div>
-							<p class={optionName}>
+							<p class={styles.optionName}>
 								{notReady.length > 0
 									? 'No reachable synced workspace is available for MCP.'
 									: 'No synced workspace on this device.'}
 							</p>
-							<p class={fine}>
+							<p class={styles.fine}>
 								{notReady.length > 0
 									? `Repair the unavailable cloud account, then refresh this page to connect ${params.clientName}.`
 									: `Set up sync for a workspace in Scraps Cache, then refresh this page to connect ${params.clientName}.`}
@@ -439,50 +249,52 @@
 						</div>
 					</div>
 					{#if notReady.length > 0 || localOnly.length > 0}
-						<fieldset class={workspaces} aria-labelledby="mcp-workspace-label">
-							<div class={workspaceToolbar}>
-								<span id="mcp-workspace-label" class={legend}>Workspace status</span>
+						<fieldset class={styles.workspaces} aria-labelledby="mcp-workspace-label">
+							<div class={styles.workspaceToolbar}>
+								<span id="mcp-workspace-label" class={styles.legend}>Workspace status</span>
 							</div>
-							<p id="mcp-workspace-hint" class={fine}>
+							<p id="mcp-workspace-hint" class={styles.fine}>
 								Only synced workspaces with a reachable cloud account can be selected.
 							</p>
-							<div class={workspaceList}>{@render workspaceChoices()}</div>
+							<div class={styles.workspaceList}>{@render workspaceChoices()}</div>
 						</fieldset>
 					{/if}
 				{:else}
 					{#if notReady.length > 0}
-						<div class={noticeWarning}>
+						<div class={styles.notice('warning')}>
 							<div>
-								<p class={optionName}>Some workspaces are unavailable for MCP.</p>
-								<p class={fine}>
+								<p class={styles.optionName}>Some workspaces are unavailable for MCP.</p>
+								<p class={styles.fine}>
 									Only synced workspaces with a reachable cloud account can be selected. The
 									unavailable workspaces below are disabled.
 								</p>
 							</div>
 						</div>
 					{/if}
-					<div class={origin}>
-						<div class={originLabel}>
-							<Sparkles class={iconSm} aria-hidden="true" />
+					<div class={styles.origin}>
+						<div class={styles.originLabel}>
+							<Sparkles class={styles.iconSm} aria-hidden="true" />
 							<span>MCP Server Origin</span>
 						</div>
-						<div class={originUrl}>{params.callbackOrigin}</div>
+						<div class={styles.originUrl}>{params.callbackOrigin}</div>
 					</div>
 
-					<fieldset class={workspaces} aria-labelledby="mcp-workspace-label">
-						<div class={workspaceToolbar}>
-							<span id="mcp-workspace-label" class={legend}>Workspace for this connection</span>
+					<fieldset class={styles.workspaces} aria-labelledby="mcp-workspace-label">
+						<div class={styles.workspaceToolbar}>
+							<span id="mcp-workspace-label" class={styles.legend}
+								>Workspace for this connection</span
+							>
 						</div>
-						<p id="mcp-workspace-hint" class={fine}>
+						<p id="mcp-workspace-hint" class={styles.fine}>
 							Choose one synced workspace. To connect another workspace, create a separate MCP
 							connection.
 						</p>
-						<div class={workspaceList}>
+						<div class={styles.workspaceList}>
 							{@render workspaceChoices()}
 						</div>
 					</fieldset>
 
-					<div class={copy}>
+					<div class={styles.copy}>
 						{#if selected}
 							<p>
 								<strong>{params.clientName}</strong> will be granted access to notes in
@@ -491,7 +303,7 @@
 						{:else}
 							<p>Select one workspace before allowing access.</p>
 						{/if}
-						<p class={fine}>
+						<p class={styles.fine}>
 							Your notes remain end-to-end encrypted in your cloud sync. The MCP server decrypts
 							requested note records only in ephemeral memory when your AI assistant requests them.
 						</p>
@@ -499,13 +311,13 @@
 				{/if}
 
 				{#if error}
-					<div class={noticeDanger} role="alert">{error}</div>
+					<div class={styles.notice('danger')} role="alert">{error}</div>
 				{/if}
 
-				<div class={actions}>
+				<div class={styles.actions}>
 					<button
 						type="button"
-						class={cx(button({ variant: 'secondary', size: 'md' }), action)}
+						class={cx(button({ variant: 'secondary', size: 'md' }), styles.action)}
 						onclick={deny}
 						disabled={busy}
 					>
@@ -513,9 +325,10 @@
 					</button>
 					<button
 						type="button"
-						class={cx(button({ variant: 'primary', size: 'md' }), action)}
+						class={cx(button({ variant: 'primary', size: 'md' }), styles.action)}
 						onclick={() => void approve()}
 						disabled={busy || checkingWorkspaces || !params.valid || !selected}
+						aria-describedby={selected ? undefined : 'mcp-workspace-hint'}
 					>
 						{busy ? 'Connecting…' : 'Allow access'}
 					</button>

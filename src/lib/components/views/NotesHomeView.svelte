@@ -22,6 +22,9 @@
 	{#if filteredPinned.length === 0 && filteredOthers.length === 0}
 		<EmptyState
 			icon={StickyNote}
+			tagline={search
+				? undefined
+				: 'Private, offline-first notes with optional end-to-end encrypted sync.'}
 			description={search
 				? 'No notes found'
 				: 'Capture an idea, task, or anything you want to keep.'}

@@ -25,6 +25,8 @@
 		<EmptyState
 			icon={Trash2}
 			description="Deleted notes stay here for 7 days before they are deleted forever."
+			actionLabel="Back to notes"
+			href="/"
 		/>
 	{:else}
 		<SectionHeader label="Trash" count={trashed.length}>

@@ -29,7 +29,7 @@
 		noteSurface({ color: note.color }),
 		css({
 			overflow: 'hidden',
-			rounded: 'dialog',
+			rounded: 'card',
 			borderWidth: 'hairline',
 			borderColor: 'scrapscache.borderFaint',
 			boxShadow: 'sm',

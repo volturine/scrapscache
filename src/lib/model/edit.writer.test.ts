@@ -19,8 +19,11 @@ describe('createEditContext writer id', () => {
 			const insecureCrypto = crypto as unknown as RandomUUIDCrypto;
 			delete insecureCrypto.randomUUID;
 			const context = createEditContext(() => 0);
-			expect(context.writer).toBeTruthy();
-			expect(typeof context.writer).toBe('string');
+			// The fallback builds a UUID v4 from getRandomValues, which insecure
+			// contexts do have; assert the shape so a silent downgrade can't slip in.
+			expect(context.writer).toMatch(
+				/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+			);
 		} finally {
 			crypto.randomUUID = randomUUID;
 		}

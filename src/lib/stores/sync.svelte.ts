@@ -5,6 +5,7 @@ import { mergeKanbanBoards } from '$lib/kanban';
 import { mergeCanvasLibrary } from '$lib/canvasLibrary';
 import { mergeLabelLists, mergeNoteLists, withoutTombstoned } from '$lib/model';
 import { observeRelayTime } from '$lib/editContext';
+import { uid } from '$lib/uid';
 import {
 	currentRecordKeys,
 	fingerprintMapFrom,
@@ -167,10 +168,7 @@ export class SyncStore {
 	keyRetired = $state(false);
 	progress = $state<SyncProgress | null>(null);
 	usage = $state<SyncUsage | null>(null);
-	readonly syncClientId =
-		typeof crypto !== 'undefined' && crypto.randomUUID
-			? crypto.randomUUID()
-			: Math.random().toString(36).slice(2);
+	readonly syncClientId = uid();
 	syncedCursor = $state<number>(0);
 	/** Every workspace on this device. Synced ones carry a sync key. */
 	profiles = $state<StoredProfile[]>([]);
@@ -405,6 +403,10 @@ export class SyncStore {
 		}
 	}
 
+	private restoreStatus(pid: string): void {
+		this.lastSync = this.readStatus(pid).lastSync;
+	}
+
 	/**
 	 * Check which workspaces can be included in a new MCP grant. A synced
 	 * workspace is identified by its sync key; authenticating that key against
@@ -438,10 +440,6 @@ export class SyncStore {
 		);
 
 		return statuses;
-	}
-
-	private restoreStatus(pid: string): void {
-		this.lastSync = this.readStatus(pid).lastSync;
 	}
 
 	private clearLegacyAccountStorage(): void {

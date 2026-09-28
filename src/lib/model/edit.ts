@@ -6,6 +6,7 @@ import type { Note, NoteField, NoteFieldTimes, NoteImage } from './types.js';
 import { stableStringify } from './stableStringify.js';
 import { BodyAuthor } from './bodyDoc.js';
 import { NOTE_FIELDS, fieldTime, sortAttachments } from './merge.js';
+import { uid } from '../uid.js';
 
 export type NotePatch = Partial<Pick<Note, NoteField | 'trashedAt'>>;
 
@@ -17,18 +18,8 @@ export type EditContext = {
 	author: BodyAuthor;
 };
 
-/** uuid where the API exists (secure origins), else a random equivalent. Insecure
- * contexts (plain-HTTP LAN access) lack crypto.randomUUID; a writer id only
- * needs uniqueness among this device's writers, not global randomness. */
-function createWriterId(): string {
-	if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-		return crypto.randomUUID();
-	}
-	return Date.now().toString(36) + Math.random().toString(36).slice(2);
-}
-
 export function createEditContext(now: () => number): EditContext {
-	return { now, writer: createWriterId(), author: new BodyAuthor() };
+	return { now, writer: uid(), author: new BodyAuthor() };
 }
 
 /** Stamp fields as written now by this writer, each strictly after its previous time. */

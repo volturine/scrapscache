@@ -1049,7 +1049,9 @@ export class SyncStore {
 		if (indicate) this.onSyncStart?.();
 		try {
 			const ATTACHMENT_UPLOAD_BUDGET = 2;
-			const DOWNLOAD_LIMIT = 12;
+			// A large page is bounded by the relay's own byte cap, so notes pull
+			// tens at once while photos keep their own rounds small.
+			const DOWNLOAD_LIMIT = 50;
 			const MAX_RESET_RETRIES = 3;
 			const MAX_THROTTLED_WAITS = 5;
 			let resetRetries = 0;

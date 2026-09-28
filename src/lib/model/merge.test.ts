@@ -76,6 +76,40 @@ describe('mergeTwoNotes', () => {
 		expect(mergeTwoNotes(right, left).title).toBe('aaa');
 	});
 
+	it('gives both devices the same note when only one copy records who wrote a field', () => {
+		// The same body at the same time; one device's copy lost its writer.
+		const stamped = {
+			...note(5, []),
+			body: 'same text',
+			fieldTimes: { body: 5 },
+			fieldWriters: { body: 'phone' }
+		};
+		const unstamped = { ...note(5, []), body: 'same text', fieldTimes: { body: 5 } };
+
+		const onPhone = mergeTwoNotes(stamped, unstamped);
+		const onDesktop = mergeTwoNotes(unstamped, stamped);
+		expect(stableStringify(onDesktop)).toBe(stableStringify(onPhone));
+		expect(onPhone.fieldWriters).toEqual({ body: 'phone' });
+	});
+
+	it('merges to the same bytes in either order, whatever ties the two copies share', () => {
+		const variants: Note[] = [];
+		for (const time of [5, 6])
+			for (const writer of [undefined, 'a', 'b'])
+				for (const title of ['same', 'other'])
+					variants.push({
+						...note(time, []),
+						title,
+						fieldTimes: { title: time },
+						...(writer ? { fieldWriters: { title: writer } } : {})
+					});
+		for (const left of variants)
+			for (const right of variants)
+				expect(stableStringify(mergeTwoNotes(right, left))).toBe(
+					stableStringify(mergeTwoNotes(left, right))
+				);
+	});
+
 	it('keeps a newer body when the other device only changed pin', () => {
 		const edited = { ...note(10, []), body: 'edited', fieldTimes: { body: 20, pinned: 10 } };
 		const pinned = {

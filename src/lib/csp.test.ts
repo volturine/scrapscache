@@ -16,6 +16,19 @@ describe('attachment CSP', () => {
 	});
 });
 
+describe('font CSP', () => {
+	it("allows this origin and Excalidraw's esm.sh font fallback, nothing broader", () => {
+		// Excalidraw registers every font with an esm.sh fallback after /fonts;
+		// blocking it only produces a console violation per font.
+		expect(svelteConfig).toMatch(/'font-src':\s*\['self',\s*'https:\/\/esm\.sh\/@excalidraw\/'\]/);
+		// No other directive may reach esm.sh; scripts in particular stay same-origin.
+		const reachingEsm = [...svelteConfig.matchAll(/'([a-z-]+)':\s*\[[^\]]*esm\.sh[^\]]*\]/g)].map(
+			(match) => match[1]
+		);
+		expect(reachingEsm).toEqual(['font-src']);
+	});
+});
+
 describe('script CSP', () => {
 	it('allows scripts from this origin only, with no third party', () => {
 		// Anything allowed to run here can read the sync keys. Turnstile is framed

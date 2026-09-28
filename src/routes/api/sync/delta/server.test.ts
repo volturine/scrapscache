@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => {
 		QuotaError,
 		authenticate: vi.fn((): string | null => 'account-123456789'),
 		sync: vi.fn(),
+		recordSyncPhases: vi.fn(),
 		accountRateLimit: vi.fn(async (): Promise<number | null> => null),
 		enterSyncRequest: vi.fn(() => vi.fn()),
 		settings: {
@@ -46,7 +47,8 @@ vi.mock('$lib/server/runtimeSettings', () => ({
 }));
 vi.mock('$lib/server/metrics', () => ({
 	recordSqliteError: vi.fn(),
-	recordSyncBatch: vi.fn()
+	recordSyncBatch: vi.fn(),
+	recordSyncPhases: mocks.recordSyncPhases
 }));
 
 import { POST } from './+server';
@@ -122,6 +124,25 @@ describe('sync delta route', () => {
 			conflicts: [],
 			serverTime: expect.any(Number)
 		});
+	});
+
+	it('records the relay’s phase timings without sending them to the client', async () => {
+		const phaseTimings = { 'sync_ms phase:reads': 4, 'sync_calls phase:r2_get': 1 };
+		mocks.sync.mockReturnValueOnce({
+			cursor: 2,
+			envelopes: [],
+			conflicts: [],
+			hasMore: false,
+			reset: false,
+			writesAccepted: true,
+			phaseTimings
+		});
+
+		const response = await post({ envelopes: [], deleteSlots: [] });
+
+		expect(response.status).toBe(200);
+		expect(mocks.recordSyncPhases).toHaveBeenCalledWith(phaseTimings);
+		expect(await response.json()).not.toHaveProperty('phaseTimings');
 	});
 
 	it.each([1, 'yes', null])('rejects a continues flag of %s', async (continues) => {

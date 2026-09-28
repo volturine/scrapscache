@@ -352,19 +352,45 @@ describe('download pages', () => {
 				cursor: number;
 				envelopes: { id: string; ciphertext: string }[];
 				hasMore: boolean;
-				timings: Record<string, number>;
+				phaseTimings: Record<string, number>;
 			};
 
 		const first = await pull(0);
 		expect(first.envelopes.map(({ id }) => id)).toEqual(['photo-1', 'photo-2']);
 		expect(first.hasMore).toBe(true);
-		expect(first.timings['sync_calls phase:r2_get']).toBe(2);
+		expect(first.phaseTimings['sync_calls phase:r2_get']).toBe(2);
 		const second = await pull(first.cursor);
 		expect(second.envelopes).toMatchObject([
 			{ id: 'photo-3', ciphertext: 'p3' },
 			{ id: 'note', ciphertext: 'n' }
 		]);
 		expect(second.hasMore).toBe(false);
+	});
+});
+
+describe('round timings', () => {
+	it('reports every phase an upload round goes through', async () => {
+		// Each clock read moves 10 ms on, so every phase that starts takes time.
+		let clock = 1_000_000;
+		vi.spyOn(Date, 'now').mockImplementation(() => (clock += 10));
+
+		const response = await sync([{ id: 'one', slot: SLOT, ciphertext: 'aaaa' }]);
+		const { phaseTimings: timings } = (await response.json()) as {
+			phaseTimings: Record<string, number>;
+		};
+
+		expect(
+			Object.keys(timings)
+				.filter((key) => key.startsWith('sync_ms'))
+				.sort()
+		).toEqual([
+			'sync_ms phase:commit',
+			'sync_ms phase:r2_put',
+			'sync_ms phase:reads',
+			'sync_ms phase:tail'
+		]);
+		expect(timings['sync_calls phase:r2_put']).toBe(1);
+		vi.restoreAllMocks();
 	});
 });
 

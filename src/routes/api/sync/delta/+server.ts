@@ -15,7 +15,6 @@ import {
 } from '$lib/server/rateLimit';
 import { getRuntimeSettings } from '$lib/server/runtimeSettings';
 import { recordSqliteError, recordSyncBatch, recordSyncPhases } from '$lib/server/metrics';
-import type { SyncResult } from '$lib/server/syncStore';
 
 // Clients re-encode attachments to ~4 MiB before upload (imageOptimize.ts);
 // 16 MB leaves ample headroom for base64 expansion and encoding variance.
@@ -131,7 +130,7 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 				refillWindowMs: 60_000
 			});
 			if (!accountLimit.allowed) return rateLimitResponse(accountLimit);
-			const { phaseTimings: relayPhases, ...result } = (await store.sync(
+			const { phaseTimings, ...result } = await store.sync(
 				accountId,
 				cursor,
 				envelopes,
@@ -139,8 +138,8 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 				limit,
 				senderClientId,
 				settings.maxAccountBytes
-			)) as SyncResult & { phaseTimings?: Record<string, number> };
-			if (relayPhases) recordSyncPhases(relayPhases);
+			);
+			if (phaseTimings) recordSyncPhases(phaseTimings);
 			// Writers stamp edits on this clock, so device clock skew cannot decide conflicts.
 			return json({ ...result, serverTime: Date.now() });
 		} catch (error) {

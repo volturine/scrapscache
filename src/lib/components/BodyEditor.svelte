@@ -467,25 +467,24 @@
 
 	/**
 	 * ArrowUp / ArrowDown open a paragraph when a table touches the note's edge.
-	 * In a rendered table they also keep the column and skip the hidden delimiter row.
+	 * In a rendered table they also keep the cell column and skip the hidden
+	 * delimiter row, landing on the cell's edge like plain rows do.
 	 */
 	function moveTableRow(range: EditorRange, direction: 1 | -1): boolean {
 		if (!range.collapsed) return false;
 		const index = range.start.line;
 		const span = tableSpanAt(index);
 		if (!span) return false;
-		const atEdge = direction < 0 ? index === 0 : index === lines.length - 1;
 		const cells = markdownTableCellRanges(lines[index].text);
 		const found = cells.findIndex((cell) => range.start.offset <= cell.end);
 		const cellIndex = found < 0 ? cells.length - 1 : found;
-		const column = Math.max(0, range.start.offset - (cells[cellIndex]?.start ?? 0));
 		let target = index + direction;
 		if (target === span.start + 1) target += direction;
 
 		if (target >= span.start && target < span.end) {
 			const targetCells = markdownTableCellRanges(lines[target].text);
 			const cell = targetCells[Math.min(cellIndex, targetCells.length - 1)];
-			selectAt(target, cell ? Math.min(cell.start + column, cell.end) : 0);
+			selectAt(target, cell ? (direction < 0 ? cell.start : cell.end) : 0);
 			return true;
 		}
 		if (target < 0 || target >= lines.length) {
@@ -497,8 +496,8 @@
 			focusAt(insertAt, 0, line.id);
 			return true;
 		}
-		if (focusNeighboringBlock(target, direction, column)) return true;
-		focusAt(target, direction < 0 ? lines[target].text.length : 0, lines[target].id);
+		if (focusNeighboringBlock(target, direction)) return true;
+		focusRowEdge(target, direction);
 		return true;
 	}
 
@@ -514,6 +513,11 @@
 		const line = lines[index];
 		if (!line) return;
 		focusAt(index, offset, line.id);
+	}
+
+	/** Vertical arrows keep the row edge: a row's start when moving up, its end when moving down. */
+	function focusRowEdge(index: number, direction: 1 | -1) {
+		focusLineAt(index, direction < 0 ? 0 : lines[index].text.length);
 	}
 
 	function focusCodeEdge(block: EditorCodeBlock, edge: 'start' | 'end', column: number): boolean {
@@ -534,10 +538,15 @@
 	}
 
 	/** Land inside a table or code block instead of on its hidden fence or delimiter. */
-	function focusNeighboringBlock(index: number, direction: 1 | -1, column: number): boolean {
+	function focusNeighboringBlock(index: number, direction: 1 | -1): boolean {
 		const block = markdownBlockAt(index);
-		if (block?.type === 'code')
-			return focusCodeEdge(block, direction > 0 ? 'start' : 'end', column);
+		if (block?.type === 'code') {
+			const body = codeBodyIndexes(block);
+			const target = direction > 0 ? body[0] : body[body.length - 1];
+			if (target === undefined) return false;
+			focusRowEdge(target, direction);
+			return true;
+		}
 		const table = tableSpanAt(index);
 		if (table) return focusTableEdge(table, direction > 0 ? 'start' : 'end');
 		const opener = bareCodeOpenerIndex(index);
@@ -619,10 +628,14 @@
 		const index = range.start.line;
 		const block = markdownBlockAt(index);
 		if (block?.type !== 'code') return false;
-		const column = range.start.offset;
 		const body = codeBodyIndexes(block);
 		const position = body.indexOf(index);
-		if (position < 0) return focusCodeEdge(block, direction > 0 ? 'start' : 'end', column);
+		if (position < 0) {
+			const target = direction > 0 ? body[0] : body[body.length - 1];
+			if (target === undefined) return false;
+			focusRowEdge(target, direction);
+			return true;
+		}
 		if (direction < 0 && position === 0) {
 			const field = codeLanguageField(block);
 			if (field) {
@@ -633,7 +646,7 @@
 		}
 		const next = position + direction;
 		if (next >= 0 && next < body.length) {
-			focusLineAt(body[next], Math.min(column, lines[body[next]].text.length));
+			focusRowEdge(body[next], direction);
 			return true;
 		}
 		const outside = direction < 0 ? block.lineIndex - 1 : block.end;
@@ -646,11 +659,8 @@
 			focusLineAt(insertAt, 0);
 			return true;
 		}
-		if (focusNeighboringBlock(outside, direction, column)) return true;
-		focusLineAt(
-			outside,
-			direction < 0 ? lines[outside].text.length : Math.min(column, lines[outside].text.length)
-		);
+		if (focusNeighboringBlock(outside, direction)) return true;
+		focusRowEdge(outside, direction);
 		return true;
 	}
 
@@ -658,9 +668,8 @@
 		if (!range.collapsed || markdownBlockAt(range.start.line)) return false;
 		const next = range.start.line + direction;
 		if (next < 0 || next >= lines.length) return true;
-		if (focusNeighboringBlock(next, direction, range.start.offset)) return true;
-		const length = lines[next].text.length;
-		focusLineAt(next, direction < 0 ? length : Math.min(range.start.offset, length));
+		if (focusNeighboringBlock(next, direction)) return true;
+		focusRowEdge(next, direction);
 		return true;
 	}
 
@@ -683,7 +692,7 @@
 			return openCodeBlockAt(index);
 		}
 		if (neighbor < 0) return false;
-		return focusNeighboringBlock(neighbor, direction, range.start.offset);
+		return focusNeighboringBlock(neighbor, direction);
 	}
 
 	function openCodeBlock(range: EditorRange): boolean {
@@ -720,7 +729,7 @@
 				const previous = markdownBlockAt(index - 1);
 				const landing =
 					previous?.type === 'code' ? (codeBodyIndexes(previous).at(-1) ?? index - 1) : index - 1;
-				focusNeighboringBlock(index - 1, -1, lines[landing]?.text.length ?? 0);
+				focusLineAt(landing, lines[landing]?.text.length ?? 0);
 				return true;
 			}
 			return false;
@@ -2354,15 +2363,17 @@
 			!primaryModifier
 		) {
 			const direction = event.key === 'ArrowUp' ? -1 : 1;
-			// A vertical arrow first parks the caret at the row's edge — its Home or
-			// End position, cell-aware in tables — and the next press changes rows.
+			// A vertical arrow first parks the caret at the row's edge — the cell's
+			// start or end in tables — and the next press changes rows, keeping
+			// that edge on every following row.
 			const cells = tableSpanAt(range.start.line)
 				? markdownTableCellRanges(lines[range.start.line].text)
 				: [];
+			const caretCell = cells.findIndex((cell) => range.start.offset <= cell.end);
 			const edge =
 				direction < 0
-					? (cells[0]?.start ?? 0)
-					: (cells.at(-1)?.end ?? lines[range.start.line].text.length);
+					? (cells[caretCell]?.start ?? 0)
+					: (cells[caretCell]?.end ?? cells.at(-1)?.end ?? lines[range.start.line].text.length);
 			if (range.start.offset !== edge) {
 				event.preventDefault();
 				selectAt(range.start.line, edge);

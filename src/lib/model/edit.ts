@@ -6,7 +6,7 @@ import type { Note, NoteField, NoteFieldTimes, NoteImage } from './types.js';
 import { stableStringify } from './stableStringify.js';
 import { BodyAuthor } from './bodyDoc.js';
 import { NOTE_FIELDS, fieldTime, sortAttachments } from './merge.js';
-import { uid } from '../uid.js';
+import { uid } from './uid.js';
 
 export type NotePatch = Partial<Pick<Note, NoteField | 'trashedAt'>>;
 

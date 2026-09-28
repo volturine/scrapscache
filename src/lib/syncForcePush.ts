@@ -4,10 +4,10 @@ import {
 	NOTE_FIELDS,
 	retargetLocalNotes,
 	touchNoteFields,
+	uid,
 	type EditContext
 } from '$lib/model';
 import type { Note } from '$lib/types';
-import { uid } from '$lib/uid';
 
 /**
  * Local content over the cloud copy. Body and attachments merge rather than

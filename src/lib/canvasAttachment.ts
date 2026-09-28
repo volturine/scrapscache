@@ -1,7 +1,7 @@
 import { blobToDataUrl, dataUrlToBlob } from './imageBlob';
 import { sha256 } from './syncHash';
 import type { NoteImage } from './types';
-import { uid } from './uid';
+import { uid } from './model';
 
 export const CANVAS_MIME = 'application/vnd.scrapscache.canvas+json';
 export const CANVAS_ENCODING_VERSION = 1;

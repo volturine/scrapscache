@@ -8,7 +8,7 @@ import { relayReminderWakes, type ReminderNote, type ReminderWake } from '$lib/r
 import { syncStore } from '$lib/stores/sync.svelte';
 import type { StoredProfile } from '$lib/profiles';
 import { identityFromSyncKey } from '$lib/syncPairing';
-import { uid } from '$lib/uid';
+import { uid } from '$lib/model';
 
 const DEVICE_SECRET_KEY = 'scrapscache-push-device';
 const PUSH_SCOPE_PREFIX = '/push/';

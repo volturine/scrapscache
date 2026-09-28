@@ -3,9 +3,8 @@
 import type { Note, NoteImage } from '$lib/types';
 import { mergeKanbanBoards } from '$lib/kanban';
 import { mergeCanvasLibrary } from '$lib/canvasLibrary';
-import { mergeLabelLists, mergeNoteLists, withoutTombstoned } from '$lib/model';
+import { mergeLabelLists, mergeNoteLists, uid, withoutTombstoned } from '$lib/model';
 import { observeRelayTime } from '$lib/editContext';
-import { uid } from '$lib/uid';
 import {
 	currentRecordKeys,
 	fingerprintMapFrom,

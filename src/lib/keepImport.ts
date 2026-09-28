@@ -1,9 +1,8 @@
 import { unzip } from 'fflate';
 import { blobToDataUrl } from './imageBlob';
 import { localLinkCard, normalizePreviewUrl, type LinkPreview } from './linkPreview';
-import { NOTE_FIELDS } from './model';
+import { NOTE_FIELDS, uid } from './model';
 import type { Label, Note, NoteColor, NoteImage } from './types';
-import { uid } from './uid';
 
 export type KeepParsedNote = {
 	title: string;

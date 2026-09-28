@@ -1,5 +1,5 @@
 import { openSyncEvents } from '$lib/syncEventsTransport';
-import { uid } from '$lib/uid';
+import { uid } from '$lib/model';
 
 export type SyncNudgeListener = (seq?: number) => void;
 

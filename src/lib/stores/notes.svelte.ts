@@ -28,6 +28,7 @@ import {
 	NOTE_FIELDS,
 	retargetLocalNotes,
 	touchNoteFields,
+	uid,
 	withoutTombstoned,
 	type NotePatch
 } from '$lib/model';
@@ -41,7 +42,6 @@ import { reminderHistoryStore } from '$lib/stores/reminderHistory';
 import { syncSnapshot, type SyncSnapshot } from '$lib/syncRecords';
 import { uiStore } from '$lib/stores/ui.svelte';
 import { daysSinceTrashed, TRASH_PURGE_DAYS, cloneNote } from '$lib/utils';
-import { uid } from '$lib/uid';
 import { noteAttachments, toggleLineAt } from '$lib/checklistBody';
 import {
 	readLabelsMirror,

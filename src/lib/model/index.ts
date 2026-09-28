@@ -5,3 +5,4 @@ export * from './bodyDoc.js';
 export * from './merge.js';
 export * from './edit.js';
 export * from './copy.js';
+export * from './uid.js';

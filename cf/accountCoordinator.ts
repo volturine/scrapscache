@@ -57,10 +57,10 @@ const STORAGE_OVERHEAD_BYTES = 512;
  * connections without bound. */
 const MAX_EVENT_SOCKETS = 16;
 /** How long one mutating round may hold the write lock before the object resets.
- * Far beyond any real round, whose storage writes take milliseconds, and short of
- * the client's five-minute request timeout, so a round stuck on a call that never
- * returns fails and is retried instead of stalling every later upload. */
-export const MAX_WRITE_ROUND_MS = 120_000;
+ * Real rounds average about half a second, so this leaves wide headroom, while a
+ * round stuck on a call that never returns fails within 30 seconds instead of
+ * holding every device's sync spinner and uploads behind it. */
+export const MAX_WRITE_ROUND_MS = 30_000;
 /** Sent by the client to keep the connection open; the runtime answers it without waking this object. */
 export const SOCKET_PING = 'ping';
 export const SOCKET_PONG = 'pong';

@@ -84,6 +84,29 @@ describe('per-profile size estimation', () => {
 		await putNote('p-full', note('n1'));
 		expect(await estimateProfileBytes('p-full')).toBeGreaterThan(0);
 	});
+
+	it('shows the same size on every device, whatever previews each one rendered', async () => {
+		const photo = (thumbUrl?: string) => ({
+			...note('photo-note'),
+			images: [
+				{
+					id: 'photo',
+					mime: 'image/jpeg',
+					dataUrl: '',
+					createdAt: 1,
+					byteSize: 50_000,
+					...(thumbUrl ? { thumbUrl } : {})
+				}
+			]
+		});
+		// Different browsers encode the preview differently; one may not have made it yet.
+		await putNote('p-phone', photo(`data:image/jpeg;base64,${'a'.repeat(4_000)}`));
+		await putNote('p-desktop', photo(`data:image/jpeg;base64,${'b'.repeat(3_000)}`));
+		await putNote('p-new', photo());
+		const phone = await estimateProfileBytes('p-phone');
+		expect(await estimateProfileBytes('p-desktop')).toBe(phone);
+		expect(await estimateProfileBytes('p-new')).toBe(phone);
+	});
 });
 
 describe('single-profile export', () => {

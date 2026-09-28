@@ -1159,9 +1159,10 @@ export async function deleteStoredProfile(id: string): Promise<void> {
 }
 
 /**
- * Approximate on-device footprint. Attachment sizes come from the `byteSize`
- * recorded on each note's image metadata, so the blob store is only read for
- * the attachments that predate that field.
+ * Approximate size of a workspace's synced content. Attachment sizes come from
+ * the `byteSize` recorded on each note's image metadata, so the blob store is
+ * only read for the attachments that predate that field. Previews each device
+ * renders for itself are left out, so every device shows the same figure.
  */
 export async function estimateProfileBytes(pid: string): Promise<number> {
 	const db = await getDB(pid);
@@ -1169,7 +1170,10 @@ export async function estimateProfileBytes(pid: string): Promise<number> {
 	const unsized: string[] = [];
 	const notes = (await db.getAll(NOTES_STORE)) as Note[];
 	for (const note of notes) {
-		bytes += JSON.stringify(note).length;
+		bytes += JSON.stringify({
+			...note,
+			images: (note.images ?? []).map(({ thumbUrl: _preview, ...image }) => image)
+		}).length;
 		for (const image of note.images ?? []) {
 			if (Number.isFinite(image.byteSize)) bytes += Number(image.byteSize);
 			else unsized.push(`${note.id}::${image.id}`);

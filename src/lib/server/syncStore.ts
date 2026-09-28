@@ -32,6 +32,9 @@ export type SyncResult = {
 	hasMore: boolean;
 	reset: boolean;
 	writesAccepted: boolean;
+	/** Where the relay round's time went, for server metrics only; the route
+	 * records it and never sends it to the client. */
+	phaseTimings?: Record<string, number>;
 };
 
 export type SyncStoreOptions = {

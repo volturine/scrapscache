@@ -305,7 +305,7 @@ export class AccountCoordinator {
 
 	/** Builds the round's response with its per-phase timings attached. */
 	private round(timings: SyncTimings, body: Record<string, unknown>): Response {
-		return Response.json({ ...body, timings: timings.timings() });
+		return Response.json({ ...body, phaseTimings: timings.timings() });
 	}
 
 	/**
@@ -365,6 +365,7 @@ export class AccountCoordinator {
 					args: [input.accountId, ...slots]
 				});
 			}
+			timings.start('reads');
 			const readResults = await batch(db, readQueries);
 			timings.stop('reads');
 			const accountRead = readResults[0];
@@ -643,6 +644,7 @@ export class AccountCoordinator {
 				}
 			}
 
+			timings.start('commit');
 			try {
 				await batch(db, committed);
 			} finally {

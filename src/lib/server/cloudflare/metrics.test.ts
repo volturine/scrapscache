@@ -23,7 +23,8 @@ import {
 	recordRateLimit,
 	recordReminderWake,
 	recordSqliteError,
-	recordSyncBatch
+	recordSyncBatch,
+	recordSyncPhases
 } from './metrics';
 
 let client: Client;
@@ -80,6 +81,16 @@ describe('Workers telemetry', () => {
 		});
 		const hours = await client.execute('SELECT DISTINCT hour FROM activity_hours');
 		expect(hours.rows.map((row) => Number(row.hour))).toEqual([Math.floor(Date.now() / HOUR_MS)]);
+	});
+
+	it('adds a relay round’s phase timings to this hour', async () => {
+		recordSyncPhases({ 'sync_ms phase:reads': 12.4, 'sync_calls phase:r2_put': 2 });
+		recordSyncPhases({ 'sync_ms phase:reads': 8, 'sync_ms phase:tail': 0 });
+
+		expect(await counters()).toEqual({
+			'sync_calls phase:r2_put': 2,
+			'sync_ms phase:reads': 20
+		});
 	});
 
 	it('writes after the response, not in the way of it', async () => {

@@ -1,7 +1,6 @@
 import { getRequestEvent } from '$app/server';
 import type { D1Database } from '@cloudflare/workers-types';
 import type { MetricsSnapshot, ProcessActivity } from '$lib/server/metricsRender';
-import { createSyncTimings, type SyncPhase, type SyncTimings } from '$lib/server/syncMetrics';
 
 /** Per-phase keys for one relay sync round, written into `activity_hours`. */
 export function recordSyncPhases(phases: Record<string, number>): void {
@@ -90,37 +89,8 @@ export function recordSyncBatch(uploadCount: number, deleteCount: number): void 
 	add({ sync: 1, uploads: uploadCount, deletes: deleteCount });
 }
 
-/**
- * One relay sync round's per-phase wall time and call counts, flushed with the
- * same after-the-response rules as every other counter.
- */
-export function createSyncTimingRecorder(): SyncTimings & { flush(): void } {
-	const timings = createSyncTimings();
-	return {
-		start(phase: SyncPhase) {
-			timings.start(phase);
-		},
-		stop(phase: SyncPhase) {
-			timings.stop(phase);
-		},
-		count(phase: SyncPhase, calls: number) {
-			timings.count(phase, calls);
-		},
-		timings: timings.timings,
-		flush() {
-			add(timings.timings());
-		}
-	};
-}
-
 export function recordSqliteBusy(): void {
 	add({ storage_busy: 1 });
-}
-
-/** Where the admin telemetry view reads phase timings from; the Workers build
- * keeps them in `activity_hours`, so nothing to add here. */
-export function syncPhaseSamples(): Array<{ phase: string; totalMs: number; calls: number }> {
-	return [];
 }
 
 export function recordReminderWake(result: 'sent' | 'gone' | 'failed'): void {

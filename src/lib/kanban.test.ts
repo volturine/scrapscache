@@ -306,6 +306,18 @@ describe('board merge', () => {
 		author: new BodyAuthor()
 	});
 
+	it('gives both devices the same board when only one copy records who renamed it', () => {
+		const stamped: KanbanBoard = {
+			...board,
+			fieldTimes: { name: 20 },
+			fieldWriters: { name: 'phone' }
+		};
+		const unstamped: KanbanBoard = { ...board, fieldTimes: { name: 20 } };
+		expect(stableStringify(mergeTwoBoards(unstamped, stamped))).toBe(
+			stableStringify(mergeTwoBoards(stamped, unstamped))
+		);
+	});
+
 	it('keeps a card reorder and a new column made on two devices', () => {
 		const reordered = applyBoardEdit(
 			board,

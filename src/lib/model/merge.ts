@@ -35,12 +35,16 @@ export function fieldTime(note: Note, field: NoteField): number {
 
 export type Side<T> = { value: T; time: number; writer?: string };
 
-/** The later write; equal times go to the larger writer id, then the larger value. */
+/**
+ * The later write; equal times go to the larger writer id, then the larger value.
+ * A missing writer counts as the smallest, so both devices pick the same side
+ * whichever merges: otherwise each keeps its own copy and they re-upload forever.
+ */
 export function pickLatest<T>(left: Side<T>, right: Side<T>): Side<T> {
 	if (left.time !== right.time) return left.time > right.time ? left : right;
-	if (left.writer && right.writer && left.writer !== right.writer) {
-		return left.writer > right.writer ? left : right;
-	}
+	const leftWriter = left.writer ?? '';
+	const rightWriter = right.writer ?? '';
+	if (leftWriter !== rightWriter) return leftWriter > rightWriter ? left : right;
 	return equalTimestampWinner(left.value, right.value) === left.value ? left : right;
 }
 

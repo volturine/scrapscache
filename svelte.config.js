@@ -47,7 +47,11 @@ const config = {
 				'connect-src': ['self'],
 				'img-src': ['self', 'data:', 'blob:'],
 				'media-src': ['self', 'data:', 'blob:'],
-				'font-src': ['self'],
+				// Excalidraw lists its esm.sh copy after ours as a fallback for every font
+				// (/fonts, see vite.config.ts), and Chrome logs a violation for each
+				// blocked fallback when a canvas opens, even though ours loads. Fonts
+				// cannot run code; the path keeps the allowance to Excalidraw's package.
+				'font-src': ['self', 'https://esm.sh/@excalidraw/'],
 				// Chrome's PDF viewer treats an iframe PDF as a plugin, so blob
 				// frames need both frame-src and object-src. Third-party frames
 				// stay blocked; the Turnstile challenge origin is added at request time

@@ -40,9 +40,9 @@ export default defineConfig({
 	plugins: [
 		cloudflarePlatform,
 		sveltekit(),
-		// Excalidraw fetches its fonts from EXCALIDRAW_ASSET_PATH ('/'), and font-src
-		// 'self' rules out its CDN default. Serve the installed package's own copy,
-		// so the fonts always match the Excalidraw version in the lockfile.
+		// Excalidraw fetches its fonts from EXCALIDRAW_ASSET_PATH ('/') first and
+		// its esm.sh copy only as a fallback. Serve the installed package's own copy,
+		// so canvases work offline and the fonts match the version in the lockfile.
 		viteStaticCopy({
 			targets: [
 				{

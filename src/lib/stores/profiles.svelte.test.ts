@@ -347,6 +347,21 @@ describe('workspace handovers', () => {
 		expect(syncStore.profiles).toEqual([local, synced]);
 	});
 
+	it('finishes a switch without waiting for the arrived workspace to sync', async () => {
+		const synced = workspace('switch-background-sync', true);
+		const local = workspace(TEST_WORKSPACE, false, 0);
+		syncStore.profiles = [local, synced];
+		syncStore.activateProfile(local);
+		stubHandover();
+		const sync = vi
+			.spyOn(notesStore, 'syncWithCloudManual')
+			.mockReturnValue(new Promise(() => undefined));
+
+		expect(await new ProfileCoordinator().switchTo(synced.id)).toEqual({ success: true });
+		expect(syncStore.activeId).toBe(synced.id);
+		expect(sync).toHaveBeenCalledOnce();
+	});
+
 	it('force pushes the active synced workspace', async () => {
 		const active = workspace(TEST_WORKSPACE, true, 0);
 		syncStore.profiles = [active];

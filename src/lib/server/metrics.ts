@@ -1,4 +1,15 @@
 import type { HttpSample, MetricsSnapshot, ProcessActivity } from '$lib/server/metricsRender';
+import { createSyncTimings, type SyncPhase, type SyncTimings } from '$lib/server/syncMetrics';
+
+/** Per-phase timings for one relay sync round; empty where nothing ran. */
+export function recordSyncPhases(phases: Record<string, number>): void {
+	for (const [key, value] of Object.entries(phases)) {
+		const metric = phaseMetrics.get(key) ?? { totalMs: 0, calls: 0 };
+		if (key.startsWith('sync_ms ')) metric.totalMs += value;
+		else if (key.startsWith('sync_calls ')) metric.calls += value;
+		phaseMetrics.set(key, metric);
+	}
+}
 
 export { renderMetrics } from '$lib/server/metricsRender';
 export type { ProcessActivity, MetricsSnapshot } from '$lib/server/metricsRender';
@@ -69,6 +80,45 @@ export function recordSyncBatch(uploadCount: number, deleteCount: number): void 
 	syncRequests += 1;
 	syncUploadEnvelopes += uploadCount;
 	syncDeleteSlots += deleteCount;
+}
+
+/** One relay sync round's per-phase timings, counted in this process's memory. */
+export function createSyncTimingRecorder(): SyncTimings & { flush(): void } {
+	const timings = createSyncTimings();
+	return {
+		start(phase: SyncPhase) {
+			timings.start(phase);
+		},
+		stop(phase: SyncPhase) {
+			timings.stop(phase);
+		},
+		count(phase: SyncPhase, calls: number) {
+			timings.count(phase, calls);
+		},
+		timings: timings.timings,
+		flush() {
+			for (const [key, value] of Object.entries(timings.timings())) {
+				const metric = phaseMetrics.get(key) ?? { totalMs: 0, calls: 0 };
+				if (key.startsWith('sync_ms ')) metric.totalMs += value;
+				else if (key.startsWith('sync_calls ')) metric.calls += value;
+				phaseMetrics.set(key, metric);
+			}
+		}
+	};
+}
+
+const phaseMetrics = new Map<string, { totalMs: number; calls: number }>();
+
+/** Per-phase timings for the admin telemetry view; empty until a sync ran. */
+export function syncPhaseSamples(): Array<{ phase: string; totalMs: number; calls: number }> {
+	return [...phaseMetrics]
+		.filter(([key]) => key.startsWith('sync_ms '))
+		.sort(([left], [right]) => left.localeCompare(right))
+		.map(([key, metric]) => ({
+			phase: key.slice('sync_ms phase:'.length),
+			totalMs: metric.totalMs,
+			calls: metric.calls
+		}));
 }
 
 export function recordSqliteBusy(): void {

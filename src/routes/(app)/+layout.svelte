@@ -22,6 +22,7 @@
 	import { attachSyncCloudIndicator } from '$lib/syncCloudIndicator';
 	import { attachAppViewport } from '$lib/appViewport';
 	import { dayKey, reminderTimeForDay } from '$lib/utils';
+	import { noteAddressHistory } from '$lib/noteAddressHistory';
 	import { profileForWorkspaceTag, readNoteLink, withNoteLink } from '$lib/noteLinks';
 	import { replaceState } from '$app/navigation';
 	import { page } from '$app/state';
@@ -71,10 +72,17 @@
 	let noteLinkProblem = $state<string | null>(null);
 	/** Off until the address this window opened with has been read. */
 	let addressFollowsNote = $state(false);
+	/** History entry pushed so Back closes the note instead of leaving the page. */
+	let noteEntry: string | null = null;
+	/** Back already popped the note entry; don't push it again while the editor saves and closes. */
+	let notePopped = false;
+	/** Forward or back landed on a note entry that is already in history. */
+	let noteFromHistory = false;
 
 	// The address names the open note and its workspace, so copying it shares
-	// the note and reloading reopens it. Replaced, not pushed: opening a note
-	// adds no history entry, and replaceState fires no hashchange.
+	// the note and reloading reopens it. The note gets its own history entry
+	// so Back closes it. Later changes to that entry are replaced, which does
+	// not fire hashchange.
 	$effect(() => {
 		if (!addressFollowsNote) return;
 		const noteId = editingId;
@@ -82,10 +90,36 @@
 		untrack(() => showNoteInAddress(noteId, workspace));
 	});
 
+	function addressOf(url: URL): string {
+		return `${url.pathname}${url.search}${url.hash}`;
+	}
+
 	function showNoteInAddress(noteId: string | null, workspace: StoredProfile | null) {
+		if (notePopped) {
+			if (!noteId) notePopped = false;
+			return;
+		}
 		const url = new URL(window.location.href);
+		const current = addressOf(url);
 		const next = withNoteLink(url, noteId && workspace ? { profile: workspace, noteId } : null);
-		if (next !== `${url.pathname}${url.search}${url.hash}`) replaceState(next, page.state);
+		if (noteFromHistory && noteId) {
+			noteFromHistory = false;
+			noteEntry = next;
+			return;
+		}
+		const update = noteAddressHistory({
+			current,
+			next,
+			closed: withNoteLink(url, null),
+			open: noteId !== null,
+			covering: noteEntry
+		});
+		noteEntry = update.covering;
+		if (update.replace) replaceState(update.replace, page.state);
+		// Same history index as the page underneath, so SvelteKit treats Back as
+		// a hash change and does not navigate away.
+		if (update.push) history.pushState({ ...history.state }, '', update.push);
+		if (update.back) history.back();
 	}
 
 	/**
@@ -147,6 +181,18 @@
 			showNoteInAddress(editingId, syncStore.activeProfile);
 		};
 		window.addEventListener('hashchange', onHashChange);
+		const onPopState = () => {
+			const here = addressOf(new URL(window.location.href));
+			if (editingId !== null && noteEntry !== null && here !== noteEntry) {
+				noteEntry = null;
+				notePopped = true;
+				if (closeOpenNote) void closeOpenNote();
+				else closeEditor();
+				return;
+			}
+			if (editingId === null && readNoteLink(new URL(window.location.href))) noteFromHistory = true;
+		};
+		window.addEventListener('popstate', onPopState);
 		const onForeground = () => {
 			if (document.visibilityState === 'hidden') return;
 			if (syncStore.isLoggedIn) void notesStore.syncWithCloud();
@@ -183,6 +229,7 @@
 		}
 		return () => {
 			window.removeEventListener('hashchange', onHashChange);
+			window.removeEventListener('popstate', onPopState);
 			stopSyncEvents();
 			notesStore.onProfileReload = null;
 			uiStore.viewChangeHandler = null;

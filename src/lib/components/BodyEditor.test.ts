@@ -2076,7 +2076,7 @@ describe('BodyEditor rendered table writing', () => {
 	it('parks at the cell start, then moves to the row above in the same column', async () => {
 		const { container } = render(BodyEditor, { props: { body: table.join('\n') } });
 		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
-		caretAt(container, 2, 9);
+		caretAt(container, 2, 3);
 
 		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
 		expect(selectionLine()).toBe(2);
@@ -2204,7 +2204,7 @@ describe('BodyEditor code block writing', () => {
 		caretAt(container, 3, 4);
 		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
 		await typeText(editor, '!');
-		expect(lineTexts(container)[5]).toBe('afte!r');
+		expect(lineTexts(container)[5]).toBe('after!');
 
 		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
 		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
@@ -2222,6 +2222,8 @@ describe('BodyEditor code block writing', () => {
 		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
 		expect(selectionLine()).toBe(1);
 		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
+		expect(selectionLine()).toBe(2);
+		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
 		expect(selectionLine()).toBe(2);
 		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
 		expect(selectionLine()).toBe(1);
@@ -2403,7 +2405,8 @@ describe('BodyEditor arrow key row parking', () => {
 
 		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
 		expect(selectionLine()).toBe(0);
-		expect(rawCaretText(row(container, 0))).toBe('first');
+		await typeText(editor, '!');
+		expect(lineTexts(container)[0]).toBe('!first');
 	});
 
 	it('parks at the end of the row before moving to the row below', async () => {
@@ -2417,7 +2420,32 @@ describe('BodyEditor arrow key row parking', () => {
 
 		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
 		expect(selectionLine()).toBe(1);
-		expect(rawCaretText(row(container, 1))).toBe('secon');
+		expect(rawCaretText(row(container, 1))).toBe('second');
+	});
+
+	it('keeps the row edge on consecutive arrows', async () => {
+		const { container } = render(BodyEditor, { props: { body } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		caretAt(container, 0, 2);
+
+		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
+		expect(rawCaretText(row(container, 0))).toBe('first');
+		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
+		expect(selectionLine()).toBe(1);
+		expect(rawCaretText(row(container, 1))).toBe('second');
+		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
+		expect(selectionLine()).toBe(2);
+		expect(rawCaretText(row(container, 2))).toBe('third');
+
+		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
+		expect(selectionLine()).toBe(2);
+		expect(rawCaretText(row(container, 2))).toBe('');
+		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
+		expect(selectionLine()).toBe(1);
+		expect(rawCaretText(row(container, 1))).toBe('');
+		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
+		expect(selectionLine()).toBe(0);
+		expect(rawCaretText(row(container, 0))).toBe('');
 	});
 
 	it('moves between rows right away from the row edges', async () => {
@@ -2427,7 +2455,7 @@ describe('BodyEditor arrow key row parking', () => {
 		caretAt(container, 1, 0);
 		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
 		expect(selectionLine()).toBe(0);
-		expect(rawCaretText(row(container, 0))).toBe('first');
+		expect(rawCaretText(row(container, 0))).toBe('');
 
 		caretAt(container, 1, 'second'.length);
 		await fireEvent.keyDown(editor, { key: 'ArrowDown' });

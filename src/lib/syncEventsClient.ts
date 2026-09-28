@@ -1,4 +1,5 @@
 import { openSyncEvents } from '$lib/syncEventsTransport';
+import { uid } from '$lib/uid';
 
 export type SyncNudgeListener = (seq?: number) => void;
 
@@ -36,11 +37,7 @@ export class SyncEventsClient {
 		private readonly syncStore: SyncStoreLike,
 		clientId?: string
 	) {
-		this.clientId =
-			clientId ??
-			(typeof crypto !== 'undefined' && crypto.randomUUID
-				? crypto.randomUUID()
-				: Math.random().toString(36).slice(2));
+		this.clientId = clientId ?? uid();
 
 		if (typeof window !== 'undefined' && typeof document !== 'undefined') {
 			const onVisibility = () => this.updateState();

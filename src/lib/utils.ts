@@ -2,13 +2,7 @@ import { downloadFile } from '@zag-js/file-utils';
 import { copyNote } from '$lib/model';
 // Small utility helpers shared across components and stores.
 
-/** Generate a reasonably unique id (crypto when available, fallback to Math.random). */
-export function uid(): string {
-	if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-		return crypto.randomUUID();
-	}
-	return Date.now().toString(36) + Math.random().toString(36).slice(2);
-}
+export { uid } from './uid';
 
 /** Format epoch ms as a human-friendly relative-ish string. */
 export function formatReminder(ts: number | null, nowMs = Date.now()): string {

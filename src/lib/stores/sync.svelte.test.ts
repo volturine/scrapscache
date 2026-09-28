@@ -1380,6 +1380,37 @@ describe('client sync state machine', () => {
 		expect(store3.activeProfile).toEqual({ ...p1, syncKey: '' });
 	});
 
+	it('keeps the legacy account pointer after adopting it, without re-adopting', async () => {
+		localStorage.clear();
+		const legacyIdentity = createSyncIdentity();
+		localStorage.setItem('scrapscache-sync-account', JSON.stringify(legacyIdentity));
+
+		// First boot adopts legacy account once
+		const store1 = new SyncStore();
+		await store1.ensureProfilesLoaded();
+		expect(store1.profiles.length).toBe(1);
+		expect(store1.profiles[0].syncKey).toBe(legacyIdentity.syncKey);
+		// Retained so a build without profiles can still find this account.
+		expect(localStorage.getItem('scrapscache-sync-account')).not.toBeNull();
+
+		// Hard refresh: the retained pointer must not adopt a second time
+		const store2 = new SyncStore();
+		await store2.ensureProfilesLoaded();
+		expect(store2.profiles.length).toBe(1);
+		expect(store2.profiles[0].syncKey).toBe(legacyIdentity.syncKey);
+
+		// Unlinking is what clears the pointer: it must not outlive its account
+		await store2.unlinkProfile(store2.profiles[0]);
+		expect(store2.profiles.filter((profile) => profile.syncKey)).toEqual([]);
+		expect(localStorage.getItem('scrapscache-sync-account')).toBeNull();
+
+		// Subsequent boot (hard refresh): no sync key is re-adopted
+		const store3 = new SyncStore();
+		await store3.ensureProfilesLoaded();
+		expect(store3.profiles.filter((profile) => profile.syncKey)).toEqual([]);
+		expect(store3.isLoggedIn).toBe(false);
+	});
+
 	it('marks reachable synced workspaces as MCP-ready', async () => {
 		localStorage.clear();
 		const pending = createSyncIdentity();
@@ -1444,37 +1475,6 @@ describe('client sync state machine', () => {
 		expect(statuses[local.id]).toEqual({ state: 'local' });
 	});
 
-	it('keeps the legacy account pointer after adopting it, without re-adopting', async () => {
-		localStorage.clear();
-		const legacyIdentity = createSyncIdentity();
-		localStorage.setItem('scrapscache-sync-account', JSON.stringify(legacyIdentity));
-
-		// First boot adopts legacy account once
-		const store1 = new SyncStore();
-		await store1.ensureProfilesLoaded();
-		expect(store1.profiles.length).toBe(1);
-		expect(store1.profiles[0].syncKey).toBe(legacyIdentity.syncKey);
-		// Retained so a build without profiles can still find this account.
-		expect(localStorage.getItem('scrapscache-sync-account')).not.toBeNull();
-
-		// Hard refresh: the retained pointer must not adopt a second time
-		const store2 = new SyncStore();
-		await store2.ensureProfilesLoaded();
-		expect(store2.profiles.length).toBe(1);
-		expect(store2.profiles[0].syncKey).toBe(legacyIdentity.syncKey);
-
-		// Unlinking is what clears the pointer: it must not outlive its account
-		await store2.unlinkProfile(store2.profiles[0]);
-		expect(store2.profiles.filter((profile) => profile.syncKey)).toEqual([]);
-		expect(localStorage.getItem('scrapscache-sync-account')).toBeNull();
-
-		// Subsequent boot (hard refresh): no sync key is re-adopted
-		const store3 = new SyncStore();
-		await store3.ensureProfilesLoaded();
-		expect(store3.profiles.filter((profile) => profile.syncKey)).toEqual([]);
-		expect(store3.isLoggedIn).toBe(false);
-	});
-
 	it('migrates the legacy sync marker to an adopted workspace for MCP', async () => {
 		localStorage.clear();
 		const legacyIdentity = createSyncIdentity();
@@ -1489,7 +1489,6 @@ describe('client sync state machine', () => {
 		expect(localStorage.getItem(`scrapscache-sync-status:${profile?.id}`)).toBe(
 			JSON.stringify({ lastSync })
 		);
-
 		vi.stubGlobal(
 			'fetch',
 			vi.fn(async (input: RequestInfo | URL) => {
@@ -1525,7 +1524,6 @@ describe('client sync state machine', () => {
 		await store.ensureProfilesLoaded();
 
 		expect(localStorage.getItem(`scrapscache-sync-status:${profile.id}`)).toBeNull();
-
 		vi.stubGlobal(
 			'fetch',
 			vi.fn(async (input: RequestInfo | URL) => {

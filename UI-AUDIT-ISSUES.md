@@ -106,3 +106,7 @@ All 37 proposed fixes implemented and verified. Validation: svelte-check 0 error
 Keyboard verification (live, headless Chrome): Ctrl+/ creates a note, typing persists, Esc closes the editor; Esc closes the Workspaces modal; Esc closes the settings menu; no console errors on any route (the ~30 CSP font failures per canvas open are gone).
 
 Held by design decision: note-body keeps its caret on Escape (Tab indents by design); card quick actions remain reachable via context-menu key after Esc.
+
+## Post-audit scope correction (2026-09-28)
+
+Only the MCP **UI** was removed at the owner's direction: the `/mcp/authorize` consent page and its `mcpAuthorizeStyles` registry contracts (the page had no in-app entry point). The MCP **functionality** was retained in full: `src/lib/mcpHandshake.ts` (protocol crypto), the sync store's `getMcpWorkspaceStatuses()` probe, `mcpWorkspaceGrant()` in profiles, the self-hostable server under `recipes/mcp-server`, `docker/compose.mcp.yaml`, `docs/mcp.md`, and all MCP CI deploy/image jobs. An initial over-removal of the whole feature was caught and reverted from git before any commit.

@@ -87,8 +87,7 @@
 		onRestore,
 		onArchive,
 		onDelete,
-		onImagesChange,
-		onClose
+		onImagesChange
 	}: {
 		images?: NoteImage[];
 		body?: string;
@@ -113,7 +112,6 @@
 		onArchive?: () => void;
 		onDelete?: () => void;
 		onImagesChange?: (images: NoteImage[]) => void;
-		onClose?: () => void;
 	} = $props();
 
 	// Phones and most desktop browsers have a system share sheet; others copy the link.
@@ -951,9 +949,6 @@
 			{/if}
 			{#if showDelete}
 				{@render footerButton('Delete note', 'Delete note', Trash2, 'danger', () => onDelete?.())}
-			{/if}
-			{#if onClose}
-				{@render footerButton('Done', 'Done', Check, 'ghost', () => onClose?.())}
 			{/if}
 		</div>
 	</footer>

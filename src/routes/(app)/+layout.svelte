@@ -24,7 +24,7 @@
 	import { dayKey, reminderTimeForDay } from '$lib/utils';
 	import { noteAddressHistory } from '$lib/noteAddressHistory';
 	import { profileForWorkspaceTag, readNoteLink, withNoteLink } from '$lib/noteLinks';
-	import { replaceState } from '$app/navigation';
+	import { pushState, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
 	import { profileCoordinator } from '$lib/stores/profiles.svelte';
 	import type { StoredProfile } from '$lib/profiles';
@@ -116,9 +116,9 @@
 		});
 		noteEntry = update.covering;
 		if (update.replace) replaceState(update.replace, page.state);
-		// Same history index as the page underneath, so SvelteKit treats Back as
-		// a hash change and does not navigate away.
-		if (update.push) history.pushState({ ...history.state }, '', update.push);
+		// Only the hash changes, so SvelteKit treats Back to the page underneath as
+		// shallow routing: it restores the address and state without navigating.
+		if (update.push) pushState(update.push, page.state);
 		if (update.back) history.back();
 	}
 

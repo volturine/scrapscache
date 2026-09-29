@@ -170,6 +170,7 @@ describe('LocalAiStore', () => {
 		await store.download(SMALL);
 		expect(store.status).toBe(LocalAiStatus.Absent);
 		expect(store.error).toMatch(/Setup failed/);
+		expect(store.error).toContain('network');
 		expect(terminate).toHaveBeenCalled();
 		expect(deleteCache.mock.calls.map(([name]) => name)).toEqual(WEBLLM_CACHES);
 		expect(localStorage.getItem(STORAGE_KEY)).toBeNull();

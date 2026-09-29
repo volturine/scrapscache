@@ -55,6 +55,13 @@ describe('local AI models', () => {
 		expect(localAiBuildFor(model, new Set())).toBe(model.f32);
 	});
 
+	it('caps the phone model context to reduce GPU memory use', () => {
+		for (const build of [LOCAL_AI_MODELS[0].f16, LOCAL_AI_MODELS[0].f32]) {
+			expect(build.overrides?.context_window_size).toBe(2048);
+		}
+		expect(LOCAL_AI_MODELS[1].f16.overrides?.context_window_size).toBe(4096);
+	});
+
 	it('maps a downloaded build back to its picker entry', () => {
 		const model = LOCAL_AI_MODELS[2];
 		expect(localAiModelOf(model.f16.model_id)).toBe(model);

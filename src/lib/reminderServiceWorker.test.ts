@@ -128,6 +128,31 @@ function loadClickHandler(clients: Record<string, unknown>) {
 }
 
 describe('reminder service worker', () => {
+	it('cleans up only old app-shell caches when the worker activates', async () => {
+		const cacheNames = [
+			'scrapscache-v2',
+			'scrapscache-v3',
+			'scrapscache-v4',
+			'webllm/model',
+			'webllm/config',
+			'webllm/wasm'
+		];
+		const caches = {
+			open: vi.fn(),
+			keys: vi.fn(async () => cacheNames),
+			delete: vi.fn(async () => true)
+		};
+		const activate = loadServiceWorker(vi.fn(), { claim: vi.fn() }, undefined, caches).get(
+			'activate'
+		);
+		if (!activate) throw new Error('Service worker did not register an activate handler');
+		let completion: Promise<unknown> | null = null;
+		activate({ waitUntil: (promise: Promise<unknown>) => (completion = promise) });
+		await completion;
+
+		expect(caches.delete.mock.calls).toEqual([['scrapscache-v2'], ['scrapscache-v3']]);
+	});
+
 	it('shows the note from whichever workspace holds it, and claims it there', async () => {
 		const note = reminderNote('550e8400-e29b-41d4-a716-446655440000', 'Pick up groceries', 1_000);
 		await seedWorkspace('work', []);

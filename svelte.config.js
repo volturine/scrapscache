@@ -35,7 +35,7 @@ const config = {
 			process.env.DEPLOY_TARGET === 'cloudflare'
 				? adapterCloudflare({ config: 'cf/wrangler.svelte.jsonc' })
 				: adapterNode(),
-		version: { name: buildVersion() },
+		version: { name: buildVersion(), pollInterval: 30_000 },
 		csp: {
 			mode: 'nonce',
 			directives: {

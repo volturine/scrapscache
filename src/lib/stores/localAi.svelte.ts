@@ -103,7 +103,8 @@ export class LocalAiStore {
 			if (run !== this.#run) return;
 			console.error('[localAi] download failed:', err);
 			await this.#discard();
-			this.error = 'Setup failed. Check your connection, or pick a smaller model.';
+			const reason = err instanceof Error ? `${err.name}: ${err.message}`.replace(/\s+/g, ' ') : '';
+			this.error = `Setup failed${reason ? `: ${reason.slice(0, 160)}` : ''}. Check your connection, or pick a smaller model.`;
 		}
 	}
 

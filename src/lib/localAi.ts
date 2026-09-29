@@ -72,7 +72,7 @@ export const LOCAL_AI_MODELS: readonly LocalAiModel[] = [
 					'tokenizer_config.json': QWEN35_SMALL_TOKENIZER_CONFIG
 				}
 			},
-			{ max_history_size: 1 }
+			{ max_history_size: 1, context_window_size: 2048 }
 		),
 		f32: build(
 			'Qwen3.5-0.8B-q4f32_1-MLC',
@@ -86,7 +86,7 @@ export const LOCAL_AI_MODELS: readonly LocalAiModel[] = [
 					'tokenizer_config.json': QWEN35_SMALL_TOKENIZER_CONFIG
 				}
 			},
-			{ max_history_size: 1 }
+			{ max_history_size: 1, context_window_size: 2048 }
 		)
 	},
 	{

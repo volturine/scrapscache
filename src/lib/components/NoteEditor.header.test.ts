@@ -254,7 +254,7 @@ describe('NoteEditor header reminder controls', () => {
 		await fireEvent.input(screen.getByRole('textbox', { name: 'Edit instruction' }), {
 			target: { value: 'Replace the selected phrase' }
 		});
-		await fireEvent.click(screen.getByRole('button', { name: 'Propose' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Send' }));
 		await screen.findByText('Proposal · nothing has changed yet');
 
 		notesStore.notes = [note({ body: 'Synced body' })];

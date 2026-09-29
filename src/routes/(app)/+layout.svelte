@@ -25,7 +25,8 @@
 	import { noteAddressHistory } from '$lib/noteAddressHistory';
 	import { profileForWorkspaceTag, readNoteLink, withNoteLink } from '$lib/noteLinks';
 	import { pushState, replaceState } from '$app/navigation';
-	import { page } from '$app/state';
+	import { page, updated } from '$app/state';
+	import { version } from '$app/environment';
 	import { profileCoordinator } from '$lib/stores/profiles.svelte';
 	import type { StoredProfile } from '$lib/profiles';
 	import NoteLinkNotice from '$lib/components/NoteLinkNotice.svelte';
@@ -37,6 +38,13 @@
 	let editingId = $state<string | null>(null);
 	let autoFocusBody = $state(false);
 	let closeOpenNote: (() => Promise<void>) | null = null;
+	let reloadingForUpdate = false;
+
+	$effect(() => {
+		if (!updated.current || editingId !== null || reloadingForUpdate) return;
+		reloadingForUpdate = true;
+		window.location.reload();
+	});
 
 	function applyEditorOpen(open: boolean) {
 		document.documentElement.classList.toggle('editor-open', open);
@@ -215,9 +223,8 @@
 		void preloadVapidPublicKey();
 		if ('serviceWorker' in navigator) {
 			if (import.meta.env.PROD) {
-				// Version query forces browsers to re-fetch sw.js after deploys.
 				void navigator.serviceWorker
-					.register('/sw.js', { updateViaCache: 'none' })
+					.register(`/sw.js?v=${encodeURIComponent(version)}`, { updateViaCache: 'none' })
 					.then((reg) => reg.update())
 					.then(() => reminderStore.sync(notesStore.notes))
 					.catch(() => undefined);

@@ -1719,6 +1719,8 @@ export const reminderSettingsStyles = {
 
 export const localAiSettingsStyles = {
 	...reminderSettingsStyles,
+	label: css({ ...flexFill, ...truncateText, textStyle: 'button' }),
+	status: css({ ...truncateText, maxW: '45%', flexShrink: 0, textStyle: 'captionStrong' }),
 	action: iconSmClass,
 	error: css({ px: 'md', pb: 'sm', textStyle: 'label', color: 'scrapscache.danger' }),
 	toggle: css({
@@ -1732,7 +1734,7 @@ export const localAiSettingsStyles = {
 		cursor: 'pointer',
 		rounded: 'md',
 		_hoverable: { bg: 'scrapscache.surfaceSubtle' },
-		'&[data-focus-visible]': {
+		'&[data-focus-visible] [data-part=control]': {
 			outline: '2px solid',
 			outlineColor: 'scrapscache.focus',
 			outlineOffset: '2px'

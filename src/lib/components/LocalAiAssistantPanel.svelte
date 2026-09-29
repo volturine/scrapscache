@@ -40,16 +40,22 @@
 	let copied = $state(false);
 	let quickActionsOpen = $state(false);
 	let promptField = $state<HTMLInputElement | null>(null);
+	let focusReturnTarget: HTMLElement | null = null;
 	let nextTurnId = 0;
 	let requestId = 0;
 	const progress = $derived(Math.round(localAiStore.progress * 100));
 
 	onMount(() => {
+		focusReturnTarget =
+			document.activeElement instanceof HTMLElement ? document.activeElement : null;
 		quickActionsOpen = commandMenu;
 		promptField?.focus();
 	});
 	onDestroy(() => {
 		if (resultState === 'working') stop();
+		if (focusReturnTarget?.isConnected && !focusReturnTarget.matches(':disabled')) {
+			focusReturnTarget.focus({ preventScroll: true });
+		}
 	});
 
 	async function generate(request: string) {
@@ -81,10 +87,8 @@
 				resultState = 'proposal';
 			} else {
 				turns = [...turns, { id: ++nextTurnId, question: trimmed, answer: output }].slice(-4);
-				promptText = '';
+				if (promptText.trim() === trimmed) promptText = '';
 				resultState = 'answer';
-				await tick();
-				promptField?.blur();
 			}
 		} catch (cause) {
 			if (id !== requestId) return;
@@ -98,6 +102,8 @@
 
 	function submit(event: SubmitEvent) {
 		event.preventDefault();
+		if (resultState === 'working') return;
+		promptField?.focus({ preventScroll: true });
 		void generate(promptText);
 	}
 
@@ -265,7 +271,6 @@
 				: turns.length
 					? 'Ask a follow-up'
 					: 'Question about this note'}
-			disabled={resultState === 'working'}
 		/>
 		{#if resultState === 'working'}
 			<span class={styles.status} role="status">
@@ -278,7 +283,7 @@
 			<button
 				type="submit"
 				class={button({ variant: 'primary', size: 'sm' })}
-				disabled={!promptText.trim()}>{mode === 'edit' ? 'Propose' : 'Ask'}</button
+				disabled={!promptText.trim()}>Send</button
 			>
 		{/if}
 	</form>

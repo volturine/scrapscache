@@ -4,7 +4,6 @@
 		filePreview,
 		iconSizeMd as iconMd,
 		iconSizeSm as iconSm,
-		noteAiMenuStyles,
 		noteEditorStyles,
 		photoPreview,
 		popover
@@ -50,7 +49,6 @@
 	import { isKeyboardField } from '$lib/appViewport';
 	import { isCanvasAttachment, mergeCanvasEdit } from '$lib/canvasAttachment';
 	import { mergeHydratedImages } from '$lib/noteAttachmentHydration';
-	import { NoteAiAction, noteAiLabel, translationLanguage } from '$lib/noteAiActions';
 	import {
 		Archive,
 		ArchiveRestore,
@@ -87,8 +85,7 @@
 		onOpenColor,
 		onOpenTags,
 		onAskAi,
-		onAiActionPointerDown,
-		onAiAction,
+		onAskAiPointerDown,
 		onCopy,
 		onShare,
 		onRestore,
@@ -113,10 +110,7 @@
 		onOpenColor?: () => void;
 		onOpenTags?: () => void;
 		onAskAi?: () => void;
-		/** Captures a text selection before the menu trigger receives focus. */
-		onAiActionPointerDown?: () => void;
-		/** Present only when the on-device model is ready and the note has text to work on. */
-		onAiAction?: (action: NoteAiAction) => void;
+		onAskAiPointerDown?: () => void;
 		onCopy?: () => void;
 		/** Shares a link to the note: the system share sheet, or the clipboard without one. */
 		onShare?: () => void;
@@ -920,45 +914,19 @@
 				justify: 'flex-end'
 			})}
 		>
-			{#if onAiAction || onAskAi}
-				{@const language = translationLanguage(navigator.language)}
-				<Menu.Root
-					positioning={{ placement: 'top-end' }}
-					onSelect={(details) => {
-						if (details.value === 'ask-or-edit') onAskAi?.();
-						else onAiAction?.(details.value as NoteAiAction);
-					}}
-					onEscapeKeyDown={(event) => {
-						// Escape closes this menu only, not the note.
-						event.stopPropagation();
-					}}
-				>
-					<Tooltip content="AI actions">
-						<Menu.Trigger
-							class={iconButton({ variant: 'ghost', size: 'standard' })}
-							title="AI actions"
-							aria-label="AI actions"
-							onpointerdown={() => onAiActionPointerDown?.()}
-						>
-							<Sparkles class={iconMd} aria-hidden="true" />
-						</Menu.Trigger>
-					</Tooltip>
-					<Menu.Positioner class={noteAiMenuStyles.positioner}>
-						<Menu.Content class={cx(popover, noteAiMenuStyles.content)}>
-							{#if onAskAi}
-								<Menu.Item value="ask-or-edit" class={menuItem({ density: 'compact' })}>
-									<Sparkles class={iconSm} aria-hidden="true" />Ask or edit this note
-								</Menu.Item>
-							{/if}
-							{#each Object.values(NoteAiAction) as action (action)}
-								<Menu.Item value={action} class={menuItem({ density: 'compact' })}>
-									<Sparkles class={iconSm} aria-hidden="true" />
-									{noteAiLabel(action, language)}
-								</Menu.Item>
-							{/each}
-						</Menu.Content>
-					</Menu.Positioner>
-				</Menu.Root>
+			{#if onAskAi}
+				<Tooltip content="Ask AI">
+					<button
+						type="button"
+						class={iconButton({ variant: 'ghost', size: 'standard' })}
+						title="Ask AI about this note"
+						aria-label="Ask AI about this note"
+						onpointerdown={() => onAskAiPointerDown?.()}
+						onclick={onAskAi}
+					>
+						<Sparkles class={iconMd} aria-hidden="true" />
+					</button>
+				</Tooltip>
 			{/if}
 			{@render footerButton('Color', 'Color', Palette, 'ghost', () => onOpenColor?.())}
 			{#if showShare}

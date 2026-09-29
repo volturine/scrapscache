@@ -1,6 +1,9 @@
 import type { AppConfig, ModelRecord } from '@mlc-ai/web-llm';
 
 /**
+ * Keep @mlc-ai/web-llm pinned to 0.2.85 with the shape-tuple lifetime patch in
+ * patches/ until that fix is included in an upstream release.
+ *
  * The on-device models. Weights come from pinned Hugging Face commits and the
  * compiled WebGPU libraries from a pinned binary-mlc-llm-libs commit. A library
  * runs as code in this origin, so its hash is verified before it is loaded, as
@@ -10,18 +13,14 @@ import type { AppConfig, ModelRecord } from '@mlc-ai/web-llm';
 const MODEL_LIB_BASE =
 	'https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/025bcaf3780fa8254f5e5efd3bfea0a5397248f4/web-llm-models/v0_2_84/base/';
 
-const QWEN3_TOKENIZER = {
-	'tokenizer.json': 'sha256-rrEzB6cazY/oGGHZStVKtonfdzMYgJ7tPL55S0SS2uQ=',
-	'vocab.json': 'sha256-yhDX6fs+0YV13R4neiV5wW0QjjLydDloSvoOELFECRA=',
-	'merges.txt': 'sha256-iDHk8aBERxNA98CoPXvXEwaluGfpX9hw900MUwipBNU='
-};
-
 const QWEN35_TOKENIZER = {
 	'tokenizer.json': 'sha256-X55NSQGpK5l+RjwfRgVQiLbMpcphplItG59kxLuBy0I=',
 	'vocab.json': 'sha256-zpm0yymD0RiAbOCot3ejWwk+IAClA+veJYUyhMnfoAM=',
-	'merges.txt': 'sha256-qdNW173x70lJ4+dI6VuOEK2dTi6Djt3Digp7a5TR240=',
-	'tokenizer_config.json': 'sha256-MWIw1qgJcB9NteqPj8hivDpvMinJN8F05nT/PKCmSsg='
+	'merges.txt': 'sha256-qdNW173x70lJ4+dI6VuOEK2dTi6Djt3Digp7a5TR240='
 };
+
+const QWEN35_SMALL_TOKENIZER_CONFIG = 'sha256-SeK245X5WfB38emSsziRnA1KlzL8bmE5leBlV/hDUAw=';
+const QWEN35_4B_TOKENIZER_CONFIG = 'sha256-MWIw1qgJcB9NteqPj8hivDpvMinJN8F05nT/PKCmSsg=';
 
 function build(
 	modelId: string,
@@ -44,8 +43,8 @@ function build(
 
 /**
  * One model the user can pick, in a half-precision build for GPUs with
- * shader-f16 and a full-precision one for the rest. All are Qwen3-family
- * hybrid reasoning models; summaries run with thinking switched off.
+ * shader-f16 and a full-precision one for the rest. All are Qwen3.5 models;
+ * summaries run with thinking switched off.
  */
 export interface LocalAiModel {
 	name: string;
@@ -58,71 +57,75 @@ export interface LocalAiModel {
 
 export const LOCAL_AI_MODELS: readonly LocalAiModel[] = [
 	{
-		name: 'Qwen3 1.7B',
-		size: '1 GB',
-		description: 'Accurate summaries in most languages. Runs on most laptops.',
+		name: 'Qwen3.5 0.8B',
+		size: '425 MB',
+		description: 'Smallest and fastest. Recommended for phones and older devices.',
 		f16: build(
-			'Qwen3-1.7B-q4f16_1-MLC',
-			'80b3abcec6c3b3f5355dc0cc99cc4fb578f192bc',
-			{ MB: 2036.66, lowResource: true },
+			'Qwen3.5-0.8B-q4f16_1-MLC',
+			'0ec138972555613c1d7812a821778ad0398c8790',
+			{ MB: 1629.49, lowResource: true },
 			{
-				config: 'sha256-9ecmtQNj/6roPwY61A3bZzlOfaCQ0lHPVJpp1fiZ1Yo=',
-				model_lib: 'sha256-gWGqpLQLzPGfztsvLowiHrnvty0hmGgfGVjJweBaaC8=',
+				config: 'sha256-Hqk8K4s5ajdUUW0MS29LaIHCkwyizGyyzwDlEea+hqk=',
+				model_lib: 'sha256-PdjP8Em/RZm/u1BYgK6hG6lfhfOSS34XH5Z9HxNIrik=',
 				tokenizer: {
-					...QWEN3_TOKENIZER,
-					'tokenizer_config.json': 'sha256-WnMD/LGift5jE0osvWHVKCwkfKbXac5HRtT/oSSu3WM='
+					...QWEN35_TOKENIZER,
+					'tokenizer_config.json': QWEN35_SMALL_TOKENIZER_CONFIG
 				}
-			}
+			},
+			{ max_history_size: 1 }
 		),
 		f32: build(
-			'Qwen3-1.7B-q4f32_1-MLC',
-			'bddd4d584cabe19113f7e4ff46fd9e73b4d3dc89',
-			{ MB: 2635.44, lowResource: true },
+			'Qwen3.5-0.8B-q4f32_1-MLC',
+			'4ed017713f04c91ffe55a9dca8c7ac853c41314d',
+			{ MB: 1894.19, lowResource: true },
 			{
-				config: 'sha256-8zsy82cfjzivLUXJwSXXSa/qqrhi0uYClW/t9bYPJXs=',
-				model_lib: 'sha256-qAyg0kXtnOSSSXkYr9IewdQ904c7Y1kSVbAb2cQa32U=',
+				config: 'sha256-9d/M+tq7mYqa59Np1R5WEb3a5fTgGiv3yyRWc61YlHA=',
+				model_lib: 'sha256-SCMuw7x1ZSFGPKm8Sf8DbYLqnHkw0qQe9tm/sg5caE0=',
 				tokenizer: {
-					...QWEN3_TOKENIZER,
-					'tokenizer_config.json': 'sha256-WnMD/LGift5jE0osvWHVKCwkfKbXac5HRtT/oSSu3WM='
+					...QWEN35_TOKENIZER,
+					'tokenizer_config.json': QWEN35_SMALL_TOKENIZER_CONFIG
 				}
-			}
+			},
+			{ max_history_size: 1 }
 		)
 	},
 	{
-		name: 'Qwen3 0.6B',
-		size: '350 MB',
-		description: 'Smallest and fastest. For phones and older devices.',
+		name: 'Qwen3.5 2B',
+		size: '1.1 GB',
+		description: 'More capable summaries. Needs up to 2.6 GB of GPU memory.',
 		f16: build(
-			'Qwen3-0.6B-q4f16_1-MLC',
-			'8c14ce481d4c692769976ad52afea453a102df19',
-			{ MB: 1403.34, lowResource: true },
+			'Qwen3.5-2B-q4f16_1-MLC',
+			'dd74e9c8a20c4546df85c844103bff87b6dcacad',
+			{ MB: 2245.44, lowResource: false },
 			{
-				config: 'sha256-GQpRxWuaB6jYchJm+ORZvNGxaJvN/ylHlc0r/6ID/y0=',
-				model_lib: 'sha256-TbgAskEZIE4aA4booS4ITVASqmD3fFv/rTYvIEmN+RI=',
+				config: 'sha256-Q1d7bemkxizw/pxe5XvFLrsvxIfGSiG/eNYkMRhrSwE=',
+				model_lib: 'sha256-sPlR1BHk/Vn+Kvdr6TKJBa4wVJ5XChkqhByViyk+zVM=',
 				tokenizer: {
-					...QWEN3_TOKENIZER,
-					'tokenizer_config.json': 'sha256-u8LAieO++HU/YzSMEFlXZ76JmLxsp8fryq2jRtQB+6g='
+					...QWEN35_TOKENIZER,
+					'tokenizer_config.json': QWEN35_SMALL_TOKENIZER_CONFIG
 				}
-			}
+			},
+			{ max_history_size: 1 }
 		),
 		f32: build(
-			'Qwen3-0.6B-q4f32_1-MLC',
-			'9b4f0b05b08c692ea86fe151ea878406ad22f428',
-			{ MB: 1924.98, lowResource: true },
+			'Qwen3.5-2B-q4f32_1-MLC',
+			'd835e5c41aa56174d915e8a3940cde599d3f5a30',
+			{ MB: 2591.55, lowResource: false },
 			{
-				config: 'sha256-5S/NMvOOqp2Ihv0+ng8PEzNCJnhKn9j02yrP//AWU88=',
-				model_lib: 'sha256-Nh8TEK5haGO8y8Y48HX3SEgWtF6zD/7PCFOScqGyrh4=',
+				config: 'sha256-V7HcLkj2pHewv8gi6vNjNqQFvo/3t2BYySIoWpK3EQ8=',
+				model_lib: 'sha256-D8czY635ucgfZSQhE4thvsI4oTh7Acj8z/2dPqRb6d0=',
 				tokenizer: {
-					...QWEN3_TOKENIZER,
-					'tokenizer_config.json': 'sha256-u8LAieO++HU/YzSMEFlXZ76JmLxsp8fryq2jRtQB+6g='
+					...QWEN35_TOKENIZER,
+					'tokenizer_config.json': QWEN35_SMALL_TOKENIZER_CONFIG
 				}
-			}
+			},
+			{ max_history_size: 1 }
 		)
 	},
 	{
 		name: 'Qwen3.5 4B',
 		size: '2.4 GB',
-		description: 'Best summaries. Needs a recent GPU with 4 GB of memory.',
+		description: 'Best summaries. Needs up to 4.7 GB of GPU memory.',
 		f16: build(
 			'Qwen3.5-4B-q4f16_1-MLC',
 			'44b42469f9e192814bfd90440e3b377d89ba7a13',
@@ -130,7 +133,10 @@ export const LOCAL_AI_MODELS: readonly LocalAiModel[] = [
 			{
 				config: 'sha256-uU1Tv95bSW2NliOb9GhOJLU5QgnlrvkSeGbvpFQ5VlE=',
 				model_lib: 'sha256-fo+YldqnEKg5Uu+sTVxvNun4ncaEslAidG2IG9yQRxI=',
-				tokenizer: QWEN35_TOKENIZER
+				tokenizer: {
+					...QWEN35_TOKENIZER,
+					'tokenizer_config.json': QWEN35_4B_TOKENIZER_CONFIG
+				}
 			},
 			{ max_history_size: 1 }
 		),
@@ -141,7 +147,10 @@ export const LOCAL_AI_MODELS: readonly LocalAiModel[] = [
 			{
 				config: 'sha256-DQc+M5Q6+yHmhIZfYscw4ByJT+m90isggi5L2b4oTi4=',
 				model_lib: 'sha256-liYxo1zfCR7S1PIZnR6iL8O7nNAusEJuD9XaX9tTdc0=',
-				tokenizer: QWEN35_TOKENIZER
+				tokenizer: {
+					...QWEN35_TOKENIZER,
+					'tokenizer_config.json': QWEN35_4B_TOKENIZER_CONFIG
+				}
 			},
 			{ max_history_size: 1 }
 		)

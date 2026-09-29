@@ -26,7 +26,7 @@ describe('LocalAiModelDialog', () => {
 		expect(screen.getByRole('heading', { name: 'Set up on-device AI' })).toBeTruthy();
 		expect(screen.getByText(/No external AI provider, account, or API key/)).toBeTruthy();
 		expect(screen.queryByRole('textbox')).toBeNull();
-		await fireEvent.click(screen.getByRole('button', { name: /Qwen3 1.7B/ }));
+		await fireEvent.click(screen.getByRole('button', { name: /Qwen3\.5 0\.8B/ }));
 
 		expect(onSelect).toHaveBeenCalledWith(LOCAL_AI_MODELS[0]);
 		expect(onClose).not.toHaveBeenCalled();

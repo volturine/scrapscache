@@ -132,14 +132,19 @@ describe('LocalAiStore', () => {
 		expect(new LocalAiStore().status).toBe(LocalAiStatus.Unsupported);
 	});
 
-	it('restores a finished download and ignores unknown model ids', () => {
+	it('restores a finished download and removes cache for unsupported old models', async () => {
 		stubGpu();
 		localStorage.setItem(STORAGE_KEY, SMALL.f32.model_id);
 		const restored = new LocalAiStore();
 		expect(restored.status).toBe(LocalAiStatus.Ready);
 		expect(restored.model).toBe(SMALL);
-		localStorage.setItem(STORAGE_KEY, 'some-other-model');
-		expect(new LocalAiStore().status).toBe(LocalAiStatus.Absent);
+		localStorage.setItem(STORAGE_KEY, 'Qwen3-0.6B-q4f16_1-MLC');
+		const unsupported = new LocalAiStore();
+		expect(unsupported.status).toBe(LocalAiStatus.Absent);
+		expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+		await vi.waitFor(() =>
+			expect(deleteCache.mock.calls.map(([name]) => name)).toEqual(WEBLLM_CACHES)
+		);
 	});
 
 	it('downloads the picked model in the build the GPU supports and remembers it', async () => {

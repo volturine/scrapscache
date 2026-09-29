@@ -48,8 +48,16 @@ export class LocalAiStore {
 		if (typeof window === 'undefined' || typeof navigator === 'undefined') return;
 		this.enabled = localStorage.getItem(ENABLED_STORAGE_KEY) !== 'false';
 		window.addEventListener('storage', this.#onStorage);
-		if (!navigator.gpu) return;
 		const saved = localStorage.getItem(STORAGE_KEY);
+		if (saved !== null && !isLocalAiModelId(saved)) {
+			localStorage.removeItem(STORAGE_KEY);
+			void Promise.resolve()
+				.then(() => Promise.all(WEBLLM_CACHES.map((name) => caches.delete(name))))
+				.catch((err) => {
+					console.error('[localAi] could not delete the unsupported cached model:', err);
+				});
+		}
+		if (!navigator.gpu) return;
 		this.#modelId = isLocalAiModelId(saved) ? saved : null;
 		this.status = this.#modelId ? LocalAiStatus.Ready : LocalAiStatus.Absent;
 	}

@@ -10,6 +10,15 @@ import {
 } from './localAi';
 
 describe('local AI models', () => {
+	it('offers Qwen3.5 sizes from phone to larger GPUs', () => {
+		expect(LOCAL_AI_MODELS.map((model) => model.name)).toEqual([
+			'Qwen3.5 0.8B',
+			'Qwen3.5 2B',
+			'Qwen3.5 4B'
+		]);
+		expect(LOCAL_AI_MODELS[0].description).toMatch(/phones/);
+	});
+
 	it.each(LOCAL_AI_APP_CONFIG.model_list)('pins $model_id to fixed artifacts', (model) => {
 		expect(model.model).toMatch(
 			/^https:\/\/huggingface\.co\/mlc-ai\/[^/]+\/resolve\/[0-9a-f]{40}\/$/
@@ -24,8 +33,8 @@ describe('local AI models', () => {
 		expect(isValidSRI(model.integrity?.config ?? '')).toBe(true);
 		expect(isValidSRI(model.integrity?.tokenizer?.['tokenizer.json'] ?? '')).toBe(true);
 		expect(isValidSRI(model.integrity?.tokenizer?.['tokenizer_config.json'] ?? '')).toBe(true);
-		// Replies switch thinking off, which WebLLM supports for Qwen3-family models only.
-		expect(model.model_id).toMatch(/^Qwen3/);
+		// Replies switch thinking off for Qwen3.5-family models.
+		expect(model.model_id).toMatch(/^Qwen3\.5/);
 		expect(model.integrity?.onFailure ?? 'error').toBe('error');
 	});
 

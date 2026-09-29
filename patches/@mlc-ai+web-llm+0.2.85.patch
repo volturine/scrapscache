@@ -1,0 +1,29 @@
+diff --git a/node_modules/@mlc-ai/web-llm/lib/index.js b/node_modules/@mlc-ai/web-llm/lib/index.js
+index 77e7eaf..e31f923 100644
+--- a/node_modules/@mlc-ai/web-llm/lib/index.js
++++ b/node_modules/@mlc-ai/web-llm/lib/index.js
+@@ -5139,7 +5139,8 @@ fn fragment_clear(@location(0) uv : vec2<f32>) -> @location(0) vec4<f32> {
+ 		     */
+ 		    class CacheState {
+ 		        constructor(shapeCacheSize = 256) {
+-		            this.shapeCache = new LRUCache(shapeCacheSize, (_key, value) => value.dispose());
++		            this.evictedShapeTuples = new Set();
++		            this.shapeCache = new LRUCache(shapeCacheSize, (_key, value) => this.evictedShapeTuples.add(value));
+ 		        }
+ 		        /**
+ 		         * Compute the cache key for a shape tuple.
+@@ -5155,9 +5156,13 @@ fn fragment_clear(@location(0) uv : vec2<f32>) -> @location(0) vec4<f32> {
+ 		         */
+ 		        dispose() {
+ 		            for (const obj of this.shapeCache.values()) {
+-		                obj.dispose();
++		                this.evictedShapeTuples.add(obj);
+ 		            }
+ 		            this.shapeCache.invalidate();
++		            for (const obj of this.evictedShapeTuples) {
++		                obj.dispose();
++		            }
++		            this.evictedShapeTuples.clear();
+ 		        }
+ 		    }
+ 

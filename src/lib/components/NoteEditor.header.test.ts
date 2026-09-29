@@ -203,7 +203,7 @@ describe('NoteEditor header reminder controls', () => {
 			props: { noteId: 'note-1', onClose: () => {} }
 		});
 
-		expect(container.querySelector('button[aria-label="AI actions"]')).toBeNull();
+		expect(container.querySelector('button[aria-label="Ask AI about this note"]')).toBeNull();
 	});
 
 	it('hides per-note AI controls when AI is disabled for this browser', () => {
@@ -214,31 +214,24 @@ describe('NoteEditor header reminder controls', () => {
 			props: { noteId: 'note-1', onClose: () => {} }
 		});
 
-		expect(container.querySelector('button[aria-label="AI actions"]')).toBeNull();
+		expect(container.querySelector('button[aria-label="Ask AI about this note"]')).toBeNull();
 		window.dispatchEvent(new KeyboardEvent('keydown', { key: 'j', metaKey: true, bubbles: true }));
 		expect(container.querySelector('[data-local-ai-assistant]')).toBeNull();
 	});
 
-	it('persists an AI-suggested title', async () => {
+	it('opens the note chat directly from the footer AI button', async () => {
 		localAiStore.status = LocalAiStatus.Ready;
-		const generate = vi.spyOn(localAiStore, 'generate').mockResolvedValue('A better title');
-		notesStore.notes = [note({ title: 'Old title', body: 'Oat milk' })];
+		notesStore.notes = [note({ body: 'Oat milk' })];
 		const { container } = render(NoteEditor, {
 			props: { noteId: 'note-1', onClose: () => {} }
 		});
 		await tick();
 
-		const aiActions = container.querySelector('button[aria-label="AI actions"]');
-		expect(aiActions).not.toBeNull();
-		await fireEvent.click(aiActions!);
-		const suggestTitle = screen.getByRole('menuitem', { name: 'Suggest a title' });
-		await fireEvent.pointerDown(suggestTitle);
-		await fireEvent.click(suggestTitle);
-		await screen.findByText('A better title');
-		expect(generate).toHaveBeenCalledOnce();
-		await fireEvent.click(screen.getByRole('button', { name: 'Use as title' }));
-
-		await vi.waitFor(() => expect(notesStore.notes[0].title).toBe('A better title'));
+		const askAi = container.querySelector('button[aria-label="Ask AI about this note"]');
+		expect(askAi).not.toBeNull();
+		await fireEvent.click(askAi!);
+		expect(container.querySelector('[data-local-ai-assistant]')).not.toBeNull();
+		expect(screen.queryByRole('menuitem')).toBeNull();
 	});
 
 	it('keeps a synced text edit when an AI selection proposal is stale', async () => {
@@ -252,12 +245,10 @@ describe('NoteEditor header reminder controls', () => {
 		const line = container.querySelector('[data-line-text]');
 		if (!line) throw new Error('Expected a body line');
 		selectText(line, 6, 14);
-		const aiActions = container.querySelector('button[aria-label="AI actions"]');
-		expect(aiActions).not.toBeNull();
-		await fireEvent.click(aiActions!);
-		const askOrEdit = screen.getByRole('menuitem', { name: 'Ask or edit this note' });
-		await fireEvent.pointerDown(askOrEdit);
-		await fireEvent.click(askOrEdit);
+		const askAi = container.querySelector('button[aria-label="Ask AI about this note"]');
+		expect(askAi).not.toBeNull();
+		await fireEvent.pointerDown(askAi!);
+		await fireEvent.click(askAi!);
 		expect(container.querySelector('[data-local-ai-assistant]')).not.toBeNull();
 
 		await fireEvent.input(screen.getByRole('textbox', { name: 'Edit instruction' }), {

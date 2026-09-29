@@ -20,13 +20,15 @@
 		action,
 		title,
 		body,
+		selected = false,
 		onApply,
 		onClose
 	}: {
 		action: NoteAiAction;
 		title: string;
 		body: string;
-		onApply: (result: string) => void;
+		selected?: boolean;
+		onApply: (result: string) => boolean | void | Promise<boolean | void>;
 		onClose: () => void;
 	} = $props();
 
@@ -42,6 +44,11 @@
 	const language = translationLanguage(navigator.language);
 	// svelte-ignore state_referenced_locally
 	const heading = noteAiLabel(action, language);
+	const applyLabel = $derived(
+		selected && spec.apply === NoteAiApply.ReplaceBody
+			? 'Replace selected text'
+			: APPLY_LABEL[spec.apply]
+	);
 
 	let result = $state('');
 	let error = $state('');
@@ -67,7 +74,9 @@
 			.finally(() => {
 				done = true;
 			});
-		return () => localAiStore.stop();
+		return () => {
+			if (!done) localAiStore.stop();
+		};
 	});
 
 	async function copy() {
@@ -76,6 +85,17 @@
 			copied = true;
 		} catch {
 			error = 'Could not copy the result.';
+		}
+	}
+
+	async function applyResult() {
+		error = '';
+		try {
+			if ((await onApply(result)) === false) {
+				error = 'The note changed while this result was open. Close it and run the action again.';
+			}
+		} catch {
+			error = 'Could not apply this result. The note was not changed.';
 		}
 	}
 
@@ -116,7 +136,11 @@
 					{/if}
 
 					{#if done && result && spec.apply === NoteAiApply.ReplaceBody}
-						<p class={styles.hint}>Replaces the note text. Undo in the note restores it.</p>
+						<p class={styles.hint}>
+							{selected
+								? 'Replaces the selected text. Undo restores it.'
+								: 'Replaces the note text. Undo restores it.'}
+						</p>
 					{/if}
 
 					<div class={cx(d.footer, styles.footer)}>
@@ -135,9 +159,9 @@
 							>
 							<button
 								type="button"
-								onclick={() => onApply(result)}
+								onclick={() => void applyResult()}
 								disabled={!result}
-								class={button({ variant: 'primary', size: 'md' })}>{APPLY_LABEL[spec.apply]}</button
+								class={button({ variant: 'primary', size: 'md' })}>{applyLabel}</button
 							>
 						{:else}
 							<button

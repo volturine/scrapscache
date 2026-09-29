@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { Switch } from '@ark-ui/svelte/switch';
 	import { localAiSettingsStyles as styles, reminderSettingsRow } from '$panda/styles';
 	import { ChevronRight, Sparkles, Trash2, X } from '@lucide/svelte';
 	import { cx } from 'styled-system/css';
@@ -10,51 +11,74 @@
 	const percent = $derived(Math.round(localAiStore.progress * 100));
 </script>
 
-<section aria-label="Local AI">
-	{#if localAiStore.status === LocalAiStatus.Absent}
-		<button
-			type="button"
-			onclick={onChoose}
-			class={cx(menuItem({ density: 'compact' }), reminderSettingsRow.base)}
-			aria-label="Choose a local AI model"
-		>
-			<Sparkles class={styles.icon} aria-hidden="true" />
-			<span class={styles.label}>Local AI</span>
-			<span class={styles.status}>Choose model</span>
-			<ChevronRight class={styles.chevron} aria-hidden="true" />
-		</button>
-	{:else}
-		<div class={reminderSettingsRow.base}>
-			<Sparkles class={styles.icon} aria-hidden="true" />
-			<span class={styles.label}>Local AI</span>
-			{#if localAiStore.status === LocalAiStatus.Downloading}
-				<span class={styles.status} role="status">{localAiStore.model?.name} · {percent}%</span>
-				<button
-					type="button"
-					class={iconButton({ variant: 'ghost', size: 'xs' })}
-					onclick={() => localAiStore.cancel()}
-					aria-label="Cancel download"
-					title="Cancel download"
-				>
-					<X class={styles.action} aria-hidden="true" />
-				</button>
-			{:else if localAiStore.status === LocalAiStatus.Ready}
-				<span class={styles.status}>{localAiStore.model?.name}</span>
-				<button
-					type="button"
-					class={iconButton({ variant: 'danger', size: 'xs' })}
-					onclick={() => localAiStore.remove()}
-					aria-label="Remove local AI model"
-					title="Remove model"
-				>
-					<Trash2 class={styles.action} aria-hidden="true" />
-				</button>
-			{:else}
-				<span class={styles.status}>Needs WebGPU</span>
-			{/if}
-		</div>
-	{/if}
-	{#if localAiStore.error}
-		<p class={styles.error} role="alert">{localAiStore.error}</p>
+<section aria-label="On-device AI">
+	<Switch.Root
+		checked={localAiStore.enabled}
+		onCheckedChange={({ checked }) => localAiStore.setEnabled(checked)}
+		class={styles.toggle}
+	>
+		<span class={styles.toggleCopy}>
+			<Switch.Label class={styles.toggleLabel}>AI features</Switch.Label>
+			<span id="local-ai-toggle-description" class={styles.toggleDescription}>
+				{localAiStore.enabled
+					? 'Show the on-device assistant in this browser.'
+					: 'AI controls are hidden in this browser.'}
+			</span>
+		</span>
+		<Switch.Control class={styles.switchControl}>
+			<Switch.Thumb class={styles.switchThumb} />
+		</Switch.Control>
+		<Switch.HiddenInput aria-describedby="local-ai-toggle-description" />
+	</Switch.Root>
+
+	{#if localAiStore.enabled}
+		{#if localAiStore.status === LocalAiStatus.Absent}
+			<button
+				type="button"
+				onclick={onChoose}
+				class={cx(menuItem({ density: 'compact' }), reminderSettingsRow.base)}
+				aria-label="Choose a local AI model"
+			>
+				<Sparkles class={styles.icon} aria-hidden="true" />
+				<span class={styles.label}>On-device model</span>
+				<span class={styles.status}>Choose model</span>
+				<ChevronRight class={styles.chevron} aria-hidden="true" />
+			</button>
+		{:else}
+			<div class={reminderSettingsRow.base}>
+				<Sparkles class={styles.icon} aria-hidden="true" />
+				<span class={styles.label}>On-device model</span>
+				{#if localAiStore.status === LocalAiStatus.Downloading}
+					<span class={styles.status} role="status">
+						{localAiStore.model?.name} · {percent}%
+					</span>
+					<button
+						type="button"
+						class={iconButton({ variant: 'ghost', size: 'xs' })}
+						onclick={() => localAiStore.cancel()}
+						aria-label="Cancel download"
+						title="Cancel download"
+					>
+						<X class={styles.action} aria-hidden="true" />
+					</button>
+				{:else if localAiStore.status === LocalAiStatus.Ready}
+					<span class={styles.status}>{localAiStore.model?.name}</span>
+					<button
+						type="button"
+						class={iconButton({ variant: 'danger', size: 'xs' })}
+						onclick={() => localAiStore.remove()}
+						aria-label="Remove local AI model"
+						title="Remove model"
+					>
+						<Trash2 class={styles.action} aria-hidden="true" />
+					</button>
+				{:else}
+					<span class={styles.status}>Needs WebGPU</span>
+				{/if}
+			</div>
+		{/if}
+		{#if localAiStore.error}
+			<p class={styles.error} role="alert">{localAiStore.error}</p>
+		{/if}
 	{/if}
 </section>

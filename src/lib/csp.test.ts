@@ -8,6 +8,11 @@ const svelteConfig = readFileSync(
 	'utf8'
 );
 
+function directiveSources(name: string): string[] {
+	const declaration = new RegExp(`'${name}':\\s*\\[([\\s\\S]*?)\\]`).exec(svelteConfig)?.[1];
+	return declaration?.match(/'[^']+'/g)?.map((source) => source.slice(1, -1)) ?? [];
+}
+
 describe('attachment CSP', () => {
 	it('allows same-origin blob PDFs in the in-app viewer', () => {
 		expect(svelteConfig).toMatch(/'frame-src':\s*\['self',\s*'blob:'\]/);
@@ -30,10 +35,22 @@ describe('font CSP', () => {
 });
 
 describe('script CSP', () => {
-	it('allows scripts from this origin only, with no third party', () => {
+	it('allows same-origin JavaScript and WebLLM WebAssembly, with no third-party scripts', () => {
 		// Anything allowed to run here can read the sync keys. Turnstile is framed
-		// from its own origin instead.
-		expect(svelteConfig).toMatch(/'script-src':\s*\['self'\]/);
-		expect(svelteConfig).not.toMatch(/challenges\.cloudflare\.com/);
+		// from its own origin instead. wasm-unsafe-eval permits WebAssembly compilation,
+		// not JavaScript eval or scripts from another origin.
+		expect(directiveSources('script-src')).toEqual(['self', 'wasm-unsafe-eval']);
+	});
+});
+
+describe('WebLLM model CSP', () => {
+	it('allows only the pinned model download hosts in connect-src', () => {
+		expect(directiveSources('connect-src')).toEqual([
+			'self',
+			'https://huggingface.co',
+			'https://*.huggingface.co',
+			'https://*.hf.co',
+			'https://raw.githubusercontent.com'
+		]);
 	});
 });

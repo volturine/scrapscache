@@ -40,11 +40,20 @@ const config = {
 			mode: 'nonce',
 			directives: {
 				'default-src': ['self'],
-				// No third-party script, ever: anything that runs here can read the sync
-				// keys. Turnstile runs on its own origin, framed; see src/routes/turnstile.
-				'script-src': ['self'],
+				// No third-party JavaScript. WebLLM executes its integrity-checked WASM
+				// model libraries, so allow WebAssembly compilation without enabling eval.
+				// Turnstile runs on its own origin, framed; see src/routes/turnstile.
+				'script-src': ['self', 'wasm-unsafe-eval'],
 				'style-src': ['self', 'unsafe-inline'],
-				'connect-src': ['self'],
+				// WebLLM downloads model files from Hugging Face and its CDN, plus the
+				// pinned compiled model libraries from GitHub. Prompts are never fetched.
+				'connect-src': [
+					'self',
+					'https://huggingface.co',
+					'https://*.huggingface.co',
+					'https://*.hf.co',
+					'https://raw.githubusercontent.com'
+				],
 				'img-src': ['self', 'data:', 'blob:'],
 				'media-src': ['self', 'data:', 'blob:'],
 				// Excalidraw lists its esm.sh copy after ours as a fallback for every font

@@ -9,9 +9,10 @@ const webllm = vi.hoisted(() => ({
 }));
 vi.mock('@mlc-ai/web-llm', () => webllm);
 
-const { LocalAiStore, LocalAiStatus } = await import('./localAi.svelte');
+const { LocalAiStore, LocalAiStatus, localAiStore } = await import('./localAi.svelte');
 
 const STORAGE_KEY = 'scrapscache.localAiModel';
+const ENABLED_STORAGE_KEY = 'scrapscache.localAiEnabled';
 const MESSAGES = [{ role: 'user' as const, content: 'Pack socks' }];
 const terminate = vi.fn();
 const deleteCache = vi.fn(async (_name: string) => true);
@@ -62,11 +63,71 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+	localAiStore.enabled = true;
+	localAiStore.status = LocalAiStatus.Unsupported;
 	vi.unstubAllGlobals();
 	vi.clearAllMocks();
 });
 
 describe('LocalAiStore', () => {
+	it('persists this browser’s AI setting without removing the downloaded model', () => {
+		stubGpu();
+		localStorage.setItem(STORAGE_KEY, SMALL.f16.model_id);
+		const store = new LocalAiStore();
+
+		expect(store.enabled).toBe(true);
+		store.setEnabled(false);
+		expect(store.enabled).toBe(false);
+		expect(localStorage.getItem(ENABLED_STORAGE_KEY)).toBe('false');
+		expect(store.status).toBe(LocalAiStatus.Ready);
+		expect(store.model).toBe(SMALL);
+
+		store.setEnabled(true);
+		expect(store.enabled).toBe(true);
+		expect(localStorage.getItem(ENABLED_STORAGE_KEY)).toBe('true');
+	});
+
+	it('applies an AI setting change made in another tab', () => {
+		const store = new LocalAiStore();
+		window.dispatchEvent(
+			new StorageEvent('storage', { key: ENABLED_STORAGE_KEY, newValue: 'false' })
+		);
+
+		expect(store.enabled).toBe(false);
+	});
+
+	it('blocks model download and generation while AI is disabled', async () => {
+		stubGpu();
+		localStorage.setItem(ENABLED_STORAGE_KEY, 'false');
+		const store = new LocalAiStore();
+		await store.download(SMALL);
+		expect(webllm.CreateWebWorkerMLCEngine).not.toHaveBeenCalled();
+		expect(store.status).toBe(LocalAiStatus.Absent);
+
+		localStorage.setItem(STORAGE_KEY, SMALL.f16.model_id);
+		const restored = new LocalAiStore();
+		await expect(restored.generate(MESSAGES, 64, () => {})).rejects.toThrow(/disabled/);
+		expect(webllm.CreateWebWorkerMLCEngine).not.toHaveBeenCalled();
+	});
+
+	it('cancels setup if AI is disabled while the browser is requesting an adapter', async () => {
+		const adapter = deferred<{ features: Set<string> }>();
+		vi.stubGlobal('navigator', {
+			...navigator,
+			gpu: { requestAdapter: vi.fn(() => adapter.promise) }
+		});
+		const store = new LocalAiStore();
+		const download = store.download(SMALL);
+
+		store.setEnabled(false);
+		adapter.resolve({ features: new Set(['shader-f16']) });
+		await download;
+
+		expect(store.status).toBe(LocalAiStatus.Absent);
+		expect(store.model).toBeUndefined();
+		expect(webllm.CreateWebWorkerMLCEngine).not.toHaveBeenCalled();
+	});
+
 	it('is unsupported without WebGPU', () => {
 		expect(new LocalAiStore().status).toBe(LocalAiStatus.Unsupported);
 	});
@@ -186,5 +247,25 @@ describe('LocalAiStore', () => {
 		load.resolve(engine);
 		await expect(summary).resolves.toBe('');
 		expect(engine.chat.completions.create).not.toHaveBeenCalled();
+	});
+
+	it('does not interrupt a replacement reply when stop happens during model loading', async () => {
+		stubGpu();
+		localStorage.setItem(STORAGE_KEY, SMALL.f16.model_id);
+		const engine = fakeEngine(['Replacement reply']);
+		const load = deferred<typeof engine>();
+		webllm.CreateWebWorkerMLCEngine.mockReturnValue(load.promise);
+		const store = new LocalAiStore();
+
+		const stoppedReply = store.generate(MESSAGES, 64, () => {});
+		await vi.waitFor(() => expect(webllm.CreateWebWorkerMLCEngine).toHaveBeenCalled());
+		store.stop();
+		const replacementReply = store.generate(MESSAGES, 64, () => {});
+		load.resolve(engine);
+
+		await expect(stoppedReply).resolves.toBe('');
+		await expect(replacementReply).resolves.toBe('Replacement reply');
+		expect(engine.chat.completions.create).toHaveBeenCalledOnce();
+		expect(engine.interruptGenerate).not.toHaveBeenCalled();
 	});
 });

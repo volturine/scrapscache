@@ -12,6 +12,7 @@ vi.mock('$lib/editorContext', () => ({
 
 import { syncStore, type StartedDeviceLink } from '$lib/stores/sync.svelte';
 import { notesStore } from '$lib/stores/notes.svelte';
+import { localAiStore, LocalAiStatus } from '$lib/stores/localAi.svelte';
 import Topbar from './Topbar.svelte';
 
 afterEach(() => {
@@ -23,6 +24,8 @@ afterEach(() => {
 	syncStore.onSyncEnd = null;
 	(notesStore as unknown as { syncFlight: Promise<boolean> | null }).syncFlight = null;
 	(notesStore as unknown as { lastAutoSyncAt: number }).lastAutoSyncAt = 0;
+	localAiStore.enabled = true;
+	localAiStore.status = LocalAiStatus.Unsupported;
 	vi.restoreAllMocks();
 });
 
@@ -49,6 +52,33 @@ describe('Topbar sync status', () => {
 			el.className.includes('inset-0')
 		);
 		expect(overlays).toEqual([]);
+	});
+
+	it('hides the global AI entry when AI is disabled for this browser', () => {
+		localAiStore.enabled = false;
+		localAiStore.status = LocalAiStatus.Ready;
+		const { container } = render(Topbar);
+
+		expect(container.querySelector('button[aria-label="Ask across notes"]')).toBeNull();
+	});
+
+	it('closes Ask across notes when another tab disables AI', async () => {
+		localAiStore.enabled = true;
+		localAiStore.status = LocalAiStatus.Ready;
+		render(Topbar);
+		await fireEvent.click(screen.getByRole('button', { name: 'Ask across notes' }));
+		expect(screen.getByRole('dialog', { name: 'Ask across notes' })).toBeTruthy();
+
+		window.dispatchEvent(
+			new StorageEvent('storage', {
+				key: 'scrapscache.localAiEnabled',
+				newValue: 'false'
+			})
+		);
+
+		await vi.waitFor(() =>
+			expect(screen.queryByRole('dialog', { name: 'Ask across notes' })).toBeNull()
+		);
 	});
 
 	it('consumes a pairing link when iOS resumes an already-open page', async () => {

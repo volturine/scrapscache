@@ -50,10 +50,11 @@
 					internet.
 				</p>
 				<p class={styles.sectionCopy}>
-					The optional local AI runs its language model inside your browser. Downloading it from
-					Settings fetches the model files from Hugging Face and GitHub, which see your IP address
-					as with any download. Summaries are generated on your device, and note content is never
-					sent to them or to us.
+					The optional on-device AI runs its downloaded language model inside your browser. Setting
+					it up fetches model files from Hugging Face and GitHub, which see your IP address as with
+					any download. Prompts and note content are processed on your device and are never sent to
+					those hosts or to us. The AI setting and model choice are stored only in this browser and
+					are not synced or backed up.
 				</p>
 			</section>
 

@@ -1,8 +1,9 @@
-import { fireEvent, render } from '@testing-library/svelte';
+import { fireEvent, render, screen } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Note } from '$lib/types';
 import { notesStore } from '$lib/stores/notes.svelte';
+import { localAiStore, LocalAiStatus } from '$lib/stores/localAi.svelte';
 import { uiStore } from '$lib/stores/ui.svelte';
 import { formatReminder } from '$lib/utils';
 import NoteEditor from './NoteEditor.svelte';
@@ -61,12 +62,25 @@ function setCaret(element: Element, offset: number) {
 	selection?.addRange(range);
 }
 
+function selectText(element: Element, start: number, end: number) {
+	const range = document.createRange();
+	const node = element.firstChild ?? element;
+	range.setStart(node, start);
+	range.setEnd(node, end);
+	const selection = window.getSelection();
+	selection?.removeAllRanges();
+	selection?.addRange(range);
+	document.dispatchEvent(new Event('selectionchange'));
+}
+
 beforeEach(() => {
 	vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
 });
 
 afterEach(() => {
 	vi.restoreAllMocks();
+	localAiStore.enabled = true;
+	localAiStore.status = LocalAiStatus.Unsupported;
 	notesStore.notes = [];
 	notesStore.labels = [];
 	uiStore.rawMarkdown = false;
@@ -180,6 +194,86 @@ describe('NoteEditor header reminder controls', () => {
 		await fireEvent.click(removeSecretBtn);
 		await tick();
 		expect(notesStore.notes[0].secret).toBeUndefined();
+	});
+
+	it('does not expose note AI controls for secret notes', () => {
+		localAiStore.status = LocalAiStatus.Ready;
+		notesStore.notes = [note({ secret: true })];
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+
+		expect(container.querySelector('button[aria-label="AI actions"]')).toBeNull();
+	});
+
+	it('hides per-note AI controls when AI is disabled for this browser', () => {
+		localAiStore.enabled = false;
+		localAiStore.status = LocalAiStatus.Ready;
+		notesStore.notes = [note()];
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+
+		expect(container.querySelector('button[aria-label="AI actions"]')).toBeNull();
+		window.dispatchEvent(new KeyboardEvent('keydown', { key: 'j', metaKey: true, bubbles: true }));
+		expect(container.querySelector('[data-local-ai-assistant]')).toBeNull();
+	});
+
+	it('persists an AI-suggested title', async () => {
+		localAiStore.status = LocalAiStatus.Ready;
+		const generate = vi.spyOn(localAiStore, 'generate').mockResolvedValue('A better title');
+		notesStore.notes = [note({ title: 'Old title', body: 'Oat milk' })];
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+		await tick();
+
+		const aiActions = container.querySelector('button[aria-label="AI actions"]');
+		expect(aiActions).not.toBeNull();
+		await fireEvent.click(aiActions!);
+		const suggestTitle = screen.getByRole('menuitem', { name: 'Suggest a title' });
+		await fireEvent.pointerDown(suggestTitle);
+		await fireEvent.click(suggestTitle);
+		await screen.findByText('A better title');
+		expect(generate).toHaveBeenCalledOnce();
+		await fireEvent.click(screen.getByRole('button', { name: 'Use as title' }));
+
+		await vi.waitFor(() => expect(notesStore.notes[0].title).toBe('A better title'));
+	});
+
+	it('keeps a synced text edit when an AI selection proposal is stale', async () => {
+		localAiStore.status = LocalAiStatus.Ready;
+		vi.spyOn(localAiStore, 'generate').mockResolvedValue('Replacement');
+		notesStore.notes = [note({ body: 'First selected last' })];
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+		await tick();
+		const line = container.querySelector('[data-line-text]');
+		if (!line) throw new Error('Expected a body line');
+		selectText(line, 6, 14);
+		const aiActions = container.querySelector('button[aria-label="AI actions"]');
+		expect(aiActions).not.toBeNull();
+		await fireEvent.click(aiActions!);
+		const askOrEdit = screen.getByRole('menuitem', { name: 'Ask or edit this note' });
+		await fireEvent.pointerDown(askOrEdit);
+		await fireEvent.click(askOrEdit);
+		expect(container.querySelector('[data-local-ai-assistant]')).not.toBeNull();
+
+		await fireEvent.input(screen.getByRole('textbox', { name: 'Edit instruction' }), {
+			target: { value: 'Replace the selected phrase' }
+		});
+		await fireEvent.click(screen.getByRole('button', { name: 'Propose' }));
+		await screen.findByText('Proposal · nothing has changed yet');
+
+		notesStore.notes = [note({ body: 'Synced body' })];
+		await tick();
+		await fireEvent.click(screen.getByRole('button', { name: 'Accept' }));
+
+		expect((await screen.findByRole('alert')).textContent).toContain(
+			'The note changed while this result was open.'
+		);
+		expect(notesStore.notes[0].body).toBe('Synced body');
 	});
 
 	it('autofocuses the note body when autofocusBody is true', async () => {

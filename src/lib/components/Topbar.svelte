@@ -20,7 +20,8 @@
 	import ReminderNotificationSettings from './ReminderNotificationSettings.svelte';
 	import LocalAiSettings from './LocalAiSettings.svelte';
 	import LocalAiModelDialog from './LocalAiModelDialog.svelte';
-	import { localAiStore } from '$lib/stores/localAi.svelte';
+	import AskAcrossNotesDialog from './AskAcrossNotesDialog.svelte';
+	import { localAiStore, LocalAiStatus } from '$lib/stores/localAi.svelte';
 	import BackupPassphraseDialog from './BackupPassphraseDialog.svelte';
 	import BackupImportModeDialog from './BackupImportModeDialog.svelte';
 	import ImportGuideDialog from './ImportGuideDialog.svelte';
@@ -50,6 +51,7 @@
 		Moon,
 		Search,
 		Settings,
+		Sparkles,
 		Shield,
 		Sun,
 		Upload,
@@ -67,6 +69,7 @@
 	let settingsOpen = $state(false);
 	let syncOpen = $state(false);
 	let choosingLocalAiModel = $state(false);
+	let askAcrossNotesOpen = $state(false);
 	let pairingCode = $state('');
 	let importingBackup = $state(false);
 	let backupImportError = $state('');
@@ -80,6 +83,31 @@
 	let keepImportReady = $state(false);
 	let syncStatus = $derived(resolveSyncStatus(syncStore.lastError, syncStore.usage));
 	let syncControlLabel = $derived(SYNC_CONTROL_LABEL[syncStatus]);
+	let localAiProgress = $derived(Math.round(localAiStore.progress * 100));
+	let canAskAcrossNotes = $derived(
+		localAiStore.enabled && localAiStore.status === LocalAiStatus.Ready
+	);
+	let askAcrossNotesDisabled = $derived(
+		localAiStore.status === LocalAiStatus.Unsupported ||
+			localAiStore.status === LocalAiStatus.Downloading
+	);
+	let askAcrossNotesLabel = $derived(
+		canAskAcrossNotes
+			? 'Ask across notes'
+			: localAiStore.status === LocalAiStatus.Absent
+				? 'Choose and download a local AI model'
+				: localAiStore.status === LocalAiStatus.Downloading
+					? `Downloading ${localAiStore.model?.name ?? 'local model'} · ${localAiProgress}%`
+					: 'Local AI requires WebGPU in this browser'
+	);
+
+	// A setting changed in another tab can disable AI while a dialog is open; don't
+	// let that stale dialog reappear if AI is enabled again later.
+	$effect(() => {
+		if (localAiStore.enabled) return;
+		choosingLocalAiModel = false;
+		askAcrossNotesOpen = false;
+	});
 
 	function openPairingLink() {
 		const found = pairingCodeFromUrl(window.location.href);
@@ -279,6 +307,23 @@
 				<X class={iconSm} aria-hidden="true" />
 			</button>
 		{/if}
+		{#if localAiStore.enabled}
+			<Tooltip content={askAcrossNotesLabel}>
+				<button
+					type="button"
+					class={iconButton({ variant: 'ghost', size: { base: 'compact', sm: 'standard' } })}
+					title={askAcrossNotesLabel}
+					aria-label={askAcrossNotesLabel}
+					disabled={askAcrossNotesDisabled}
+					onclick={() => {
+						if (canAskAcrossNotes) askAcrossNotesOpen = true;
+						else choosingLocalAiModel = true;
+					}}
+				>
+					<Sparkles class={iconMd} aria-hidden="true" />
+				</button>
+			</Tooltip>
+		{/if}
 	</div>
 
 	<Tooltip content={syncControlLabel}>
@@ -443,13 +488,19 @@
 	{/key}
 {/if}
 
-{#if choosingLocalAiModel}
+{#if choosingLocalAiModel && localAiStore.enabled}
 	<LocalAiModelDialog
 		onSelect={(model) => {
-			choosingLocalAiModel = false;
 			void localAiStore.download(model);
 		}}
 		onClose={() => (choosingLocalAiModel = false)}
+	/>
+{/if}
+
+{#if askAcrossNotesOpen && localAiStore.enabled}
+	<AskAcrossNotesDialog
+		notes={notesStore.activeNotes}
+		onClose={() => (askAcrossNotesOpen = false)}
 	/>
 {/if}
 

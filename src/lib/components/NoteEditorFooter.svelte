@@ -86,6 +86,8 @@
 		color = 'default' as NoteColor,
 		onOpenColor,
 		onOpenTags,
+		onAskAi,
+		onAiActionPointerDown,
 		onAiAction,
 		onCopy,
 		onShare,
@@ -110,6 +112,9 @@
 		color?: NoteColor;
 		onOpenColor?: () => void;
 		onOpenTags?: () => void;
+		onAskAi?: () => void;
+		/** Captures a text selection before the menu trigger receives focus. */
+		onAiActionPointerDown?: () => void;
 		/** Present only when the on-device model is ready and the note has text to work on. */
 		onAiAction?: (action: NoteAiAction) => void;
 		onCopy?: () => void;
@@ -657,6 +662,7 @@
 						{#each links as card (card.url)}
 							<li class={f.row}>
 								<LinkBadge {card} size="editor" />
+								<!-- Link cards are normalized absolute HTTP(S) URLs; resolve() is for app routes. -->
 								<a
 									href={card.url}
 									target="_blank"
@@ -914,11 +920,14 @@
 				justify: 'flex-end'
 			})}
 		>
-			{#if onAiAction}
+			{#if onAiAction || onAskAi}
 				{@const language = translationLanguage(navigator.language)}
 				<Menu.Root
 					positioning={{ placement: 'top-end' }}
-					onSelect={(details) => onAiAction(details.value as NoteAiAction)}
+					onSelect={(details) => {
+						if (details.value === 'ask-or-edit') onAskAi?.();
+						else onAiAction?.(details.value as NoteAiAction);
+					}}
 					onEscapeKeyDown={(event) => {
 						// Escape closes this menu only, not the note.
 						event.stopPropagation();
@@ -929,12 +938,18 @@
 							class={iconButton({ variant: 'ghost', size: 'standard' })}
 							title="AI actions"
 							aria-label="AI actions"
+							onpointerdown={() => onAiActionPointerDown?.()}
 						>
 							<Sparkles class={iconMd} aria-hidden="true" />
 						</Menu.Trigger>
 					</Tooltip>
 					<Menu.Positioner class={noteAiMenuStyles.positioner}>
 						<Menu.Content class={cx(popover, noteAiMenuStyles.content)}>
+							{#if onAskAi}
+								<Menu.Item value="ask-or-edit" class={menuItem({ density: 'compact' })}>
+									<Sparkles class={iconSm} aria-hidden="true" />Ask or edit this note
+								</Menu.Item>
+							{/if}
 							{#each Object.values(NoteAiAction) as action (action)}
 								<Menu.Item value={action} class={menuItem({ density: 'compact' })}>
 									<Sparkles class={iconSm} aria-hidden="true" />

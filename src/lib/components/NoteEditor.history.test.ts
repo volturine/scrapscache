@@ -3,6 +3,7 @@ import { tick } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NoteHistoryEntry } from '$lib/historyClient';
 import { notesStore } from '$lib/stores/notes.svelte';
+import { localAiStore, LocalAiStatus } from '$lib/stores/localAi.svelte';
 import { syncStore } from '$lib/stores/sync.svelte';
 import type { SyncNote } from '$lib/syncRecords';
 import type { Note } from '$lib/types';
@@ -63,11 +64,37 @@ beforeEach(() => {
 
 afterEach(() => {
 	vi.restoreAllMocks();
+	localAiStore.status = LocalAiStatus.Unsupported;
 	syncStore.account = null;
 	notesStore.notes = [];
 });
 
 describe('NoteEditor time travel', () => {
+	it('closes the assistant before history preview and does not reopen it afterward', async () => {
+		localAiStore.status = LocalAiStatus.Ready;
+		const { container, getByRole } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: vi.fn() }
+		});
+		window.dispatchEvent(new KeyboardEvent('keydown', { key: 'j', metaKey: true, bubbles: true }));
+		await waitFor(() =>
+			expect(container.querySelector('[data-local-ai-assistant]')).not.toBeNull()
+		);
+
+		const trigger = await waitFor(() => {
+			const button = container.querySelector<HTMLButtonElement>('nav button');
+			if (!button) throw new Error('rail not rendered');
+			return button;
+		});
+		await fireEvent.click(trigger);
+		await fireEvent.click(container.querySelectorAll('[data-history-row]')[1]);
+		await waitFor(() => expect(container.querySelector('h1')?.textContent?.trim()).toBe('Books'));
+		expect(container.querySelector('[data-local-ai-assistant]')).toBeNull();
+
+		await fireEvent.click(getByRole('button', { name: 'Close time travel' }));
+		await tick();
+		expect(container.querySelector('[data-local-ai-assistant]')).toBeNull();
+	});
+
 	it('restores a version in place and keeps editing the restored note', async () => {
 		const onClose = vi.fn();
 		const { container } = render(NoteEditor, {

@@ -1048,7 +1048,6 @@
 							{copyFlash}
 							fillPhotos={photosFillEditor}
 							color={note.color}
-							onClose={() => void close()}
 							onOpenColor={() => {
 								closePopups();
 								paletteOpen = true;

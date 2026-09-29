@@ -1083,8 +1083,8 @@
 								labelOpen = true;
 							}}
 							onAiAction={localAiStore.status === LocalAiStatus.Ready && body.trim()
-							? openAiAction
-							: undefined}
+								? openAiAction
+								: undefined}
 							onCopy={() => void copyText()}
 							onShare={() => void shareNote()}
 							onRestore={() => {

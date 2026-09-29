@@ -15,11 +15,7 @@
 		<button
 			type="button"
 			onclick={onChoose}
-			class={cx(
-				menuItem({ density: 'compact' }),
-				reminderSettingsRow.base,
-				reminderSettingsRow.interactive
-			)}
+			class={cx(menuItem({ density: 'compact' }), reminderSettingsRow.base)}
 			aria-label="Choose a local AI model"
 		>
 			<Sparkles class={styles.icon} aria-hidden="true" />

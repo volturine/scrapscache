@@ -1600,6 +1600,7 @@ describe('BodyEditor controlled input', () => {
 		// The model has not serialized this keystroke yet; replacing it would lose it.
 		expect(component.adoptBody('Other')).toBe(false);
 		expect(lineTexts(container)).toEqual(['Synced', 'body!']);
+	});
 
 	it('undoes a whole-body replacement from outside', async () => {
 		const { container, component } = render(BodyEditor, { props: { body: 'Hello' } });

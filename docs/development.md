@@ -83,6 +83,13 @@ Cloudflare runs three Workers, deliberately separate:
 - **Maintenance cron** (`cf/wrangler.cron.jsonc`): calls `/api/cron/tick`
   hourly through the private `APP` service binding. It never touches reminders.
 
+Each of those Workers sets `observability.issues.enabled` for production and
+`dev`. After the next deploy, Workers Issues groups new exceptions, HTTP 5xx
+responses, and error logs in the Cloudflare dashboard. Routing an issue to an
+agent, chat, or webhook is a separate automation in that dashboard. Invocation
+logs stay off. Nothing may log secrets or note content. An expected
+storage-quota response is HTTP 507, so those responses are grouped too.
+
 `npm run cf:dev` runs the app and reminders Workers together; use
 `npm run cf:cron:dev` to exercise the Cron Trigger. For local multi-worker
 testing, put the app variables in `.dev.vars` and the cron Worker's matching

@@ -9,11 +9,13 @@
 	// while bypassing every zone-level WAF and rate-limiting rule. Keep them off.
 	"preview_urls": false,
 	// Workers Logs keeps console output and exceptions so failures can be read afterwards.
-	// Invocation logs stay off: they record request details, which include session tokens,
-	// and nothing here may log secrets. Environments do not inherit this; each sets it.
+	// Issues groups those failures. Invocation logs stay off: they record request details,
+	// which include session tokens, and nothing here may log secrets. Environments do not
+	// inherit this; each sets it.
 	"observability": {
 		"enabled": true,
-		"logs": { "invocation_logs": false }
+		"logs": { "invocation_logs": false },
+		"issues": { "enabled": true }
 	},
 	"routes": [
 		{
@@ -96,7 +98,8 @@
 		"dev": {
 			"observability": {
 				"enabled": true,
-				"logs": { "invocation_logs": false }
+				"logs": { "invocation_logs": false },
+				"issues": { "enabled": true }
 			},
 			"d1_databases": [
 				{

@@ -2349,6 +2349,165 @@ describe('BodyEditor code block writing', () => {
 	});
 });
 
+describe('BodyEditor taps under the last row', () => {
+	function box(bottom: number): DOMRect {
+		return {
+			x: 0,
+			y: 0,
+			top: 0,
+			left: 0,
+			right: 160,
+			bottom,
+			width: 160,
+			height: Math.max(0, bottom),
+			toJSON() {
+				return {};
+			}
+		} as DOMRect;
+	}
+
+	function stubBottom(element: Element, bottom: number) {
+		element.getBoundingClientRect = () => box(bottom);
+	}
+
+	/** Phone tap: the click often never arrives once the editor is already focused. */
+	function tap(target: Element, clientY: number) {
+		for (const type of ['pointerdown', 'pointerup'] as const) {
+			const event = new MouseEvent(type, {
+				bubbles: true,
+				cancelable: true,
+				clientX: 24,
+				clientY
+			});
+			Object.defineProperty(event, 'pointerId', { value: 1 });
+			Object.defineProperty(event, 'pointerType', { value: 'touch' });
+			target.dispatchEvent(event);
+		}
+	}
+
+	function stubRows(editor: HTMLElement, bottom: number) {
+		for (const child of editor.children) stubBottom(child, bottom);
+	}
+
+	it('puts the caret at the end of the last line when the empty area is tapped', async () => {
+		const { container } = render(BodyEditor, { props: { body: 'Hello\nworld' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		stubRows(editor, 48);
+
+		tap(editor, 180);
+		await fireEvent.click(editor, { clientY: 180 });
+		await typeText(editor, '!');
+
+		expect(lineTexts(container)).toEqual(['Hello', 'world!']);
+	});
+
+	it('opens a paragraph under a code block that ends the note', async () => {
+		const { container } = render(BodyEditor, { props: { body: '```\ncode\n```' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		stubRows(editor, 80);
+
+		tap(editor, 200);
+		await fireEvent.click(editor, { clientY: 200 });
+		await typeText(editor, 'after');
+
+		expect(lineTexts(container)).toEqual(['```', 'code', '```', 'after']);
+		expect(container.querySelector('[data-markdown-editor-code-block]')?.textContent).not.toContain(
+			'after'
+		);
+	});
+
+	it('opens a paragraph under a table that ends the note', async () => {
+		const table = ['| Name | Qty |', '| ---- | --- |', '| tea  | 2   |'];
+		const { container } = render(BodyEditor, { props: { body: table.join('\n') } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		stubRows(editor, 80);
+
+		tap(editor, 200);
+		await typeText(editor, 'after');
+
+		expect(lineTexts(container)).toEqual([...table, 'after']);
+		expect(
+			container.querySelectorAll('[data-markdown-editor-table] [data-editor-line]')
+		).toHaveLength(3);
+	});
+
+	it('focuses the paragraph that already follows a block', async () => {
+		const { container } = render(BodyEditor, { props: { body: '```\ncode\n```\nnext' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		stubRows(editor, 90);
+
+		tap(editor, 200);
+		await typeText(editor, '!');
+
+		expect(lineTexts(container)).toEqual(['```', 'code', '```', 'next!']);
+	});
+
+	it('does not add another paragraph when the empty area is tapped twice', async () => {
+		const { container } = render(BodyEditor, { props: { body: '```\ncode\n```' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		stubRows(editor, 80);
+		tap(editor, 200);
+		stubRows(editor, 100);
+		tap(editor, 200);
+
+		expect(lineTexts(container)).toEqual(['```', 'code', '```', '']);
+	});
+
+	it('keeps a tap on the block itself inside the block', async () => {
+		const { container } = render(BodyEditor, { props: { body: '```\ncode\n```' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const shell = container.querySelector('.markdown-block-shell') as HTMLElement;
+		stubRows(editor, 160);
+
+		tap(shell, 40);
+		await fireEvent.click(shell, { clientY: 40 });
+		await typeText(editor, '!');
+
+		expect(lineTexts(container)).toEqual(['```', '!code', '```']);
+	});
+
+	it('does not open a paragraph when the finger was scrolling', async () => {
+		const { container } = render(BodyEditor, { props: { body: '```\ncode\n```' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		stubRows(editor, 80);
+		const down = new MouseEvent('pointerdown', {
+			bubbles: true,
+			cancelable: true,
+			clientX: 24,
+			clientY: 200
+		});
+		const up = new MouseEvent('pointerup', {
+			bubbles: true,
+			cancelable: true,
+			clientX: 24,
+			clientY: 240
+		});
+		for (const event of [down, up]) {
+			Object.defineProperty(event, 'pointerId', { value: 1 });
+			Object.defineProperty(event, 'pointerType', { value: 'touch' });
+		}
+		editor.dispatchEvent(down);
+		editor.dispatchEvent(up);
+
+		expect(lineTexts(container)).toEqual(['```', 'code', '```']);
+	});
+
+	it('puts the caret on the last line when the sheet padding under the editor is tapped', async () => {
+		const { container } = render(BodyEditor, { props: { body: 'Hello\nworld' } });
+		container.classList.add('scrollable');
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		stubBottom(editor, 36);
+
+		container.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 12, clientY: 8 }));
+		expect(lineTexts(container)).toEqual(['Hello', 'world']);
+
+		container.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 12, clientY: 120 }));
+		await typeText(editor, '!');
+
+		expect(lineTexts(container)).toEqual(['Hello', 'world!']);
+	});
+});
+
 describe('BodyEditor markdown block boundaries', () => {
 	const table = ['| Name | Qty |', '| ---- | --- |', '| tea  | 2   |'];
 

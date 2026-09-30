@@ -602,7 +602,15 @@ const noteBodyRecipe = defineSlotRecipe({
 	variants: {
 		mode: {
 			editor: {
-				container: { display: 'block', w: 'full', minW: 0, lineHeight: 'relaxed', outline: 'none' },
+				container: {
+					display: 'block',
+					w: 'full',
+					minW: 0,
+					// Grow into the sheet so the empty area under a short note belongs to the editor.
+					flex: '1 0 auto',
+					lineHeight: 'relaxed',
+					outline: 'none'
+				},
 				// iOS WebKit walks the rendered text after the caret on every keystroke.
 				// Skipping offscreen chunks keeps typing cost independent of note length.
 				// The inline padding keeps focused rows' bleed outside the paint clip.

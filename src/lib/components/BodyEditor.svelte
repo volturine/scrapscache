@@ -1236,7 +1236,19 @@
 				resolvePainted();
 			});
 		});
-		return () => cancelAnimationFrame(frame);
+		// The sheet's padding sits outside the editor. A tap there is still "under the note".
+		const onScrollerClick = (event: MouseEvent) => {
+			if (readOnly || event.button !== 0 || !container) return;
+			const scroller = container.closest('.scrollable');
+			if (!scroller || event.target !== scroller) return;
+			if (event.clientY <= container.getBoundingClientRect().bottom) return;
+			placeCaretPastEnd();
+		};
+		document.addEventListener('click', onScrollerClick);
+		return () => {
+			cancelAnimationFrame(frame);
+			document.removeEventListener('click', onScrollerClick);
+		};
 	});
 
 	export function focusDefault() {
@@ -1279,19 +1291,39 @@
 	 */
 	let pointerGesture: number | null = null;
 	let gestureSettleTimer: ReturnType<typeof setTimeout> | null = null;
+	/** A press that started in the empty area under the last row, so the release can place the caret. */
+	let belowPress: { x: number; y: number; id: number } | null = null;
+	/** Set once that release has placed the caret, so the click that follows does not place it again. */
+	let belowPressHandled = false;
 	/** Click usually ends a tap. A tap in an already-focused editing host may never send one. */
 	const GESTURE_SETTLE_MS = 250;
+	/** A finger can drift this far and still be a tap, not a scroll. */
+	const TAP_MOVE_PX = 8;
 
 	function beginPointerGesture(event: PointerEvent) {
 		if (event.pointerType === 'mouse' && event.button !== 0) return;
 		if (gestureSettleTimer) clearTimeout(gestureSettleTimer);
 		gestureSettleTimer = null;
 		pointerGesture = event.pointerId;
+		belowPressHandled = false;
+		belowPress = eventBelowLastRow(event)
+			? { x: event.clientX, y: event.clientY, id: event.pointerId }
+			: null;
 	}
 
 	/** Watched on the window: a press can end outside the editor it started in. */
 	function releasePointerGesture(event: PointerEvent) {
 		if (event.pointerId !== pointerGesture) return;
+		if (belowPress && event.pointerId === belowPress.id) {
+			const moved =
+				Math.hypot(event.clientX - belowPress.x, event.clientY - belowPress.y) > TAP_MOVE_PX;
+			belowPress = null;
+			// A focused contenteditable often never sends the click, so the caret has to land here.
+			if (event.type !== 'pointercancel' && !moved) {
+				placeCaretPastEnd();
+				belowPressHandled = true;
+			}
+		}
 		if (event.type === 'pointercancel') {
 			settlePointerGesture();
 			return;
@@ -1305,6 +1337,8 @@
 		if (gestureSettleTimer) clearTimeout(gestureSettleTimer);
 		gestureSettleTimer = null;
 		pointerGesture = null;
+		// A tap that never sent a click still has to leave the next tap free to place the caret.
+		belowPressHandled = false;
 		followCaret();
 	}
 
@@ -1331,6 +1365,65 @@
 			if (index !== null) return index;
 		}
 		return lineIndexOfElement(window.getSelection()?.focusNode ?? null);
+	}
+
+	function eventTargetElement(event: Event): Element | null {
+		const target = event.target;
+		if (target instanceof Element) return target;
+		return target instanceof Node ? target.parentElement : null;
+	}
+
+	/** Bottom of the last rendered row. Hidden fences and separators contribute no box. */
+	function contentBottom(): number {
+		if (!container) return 0;
+		let bottom = container.getBoundingClientRect().top;
+		for (const child of container.children) {
+			const rect = child.getBoundingClientRect();
+			if (rect.height === 0) continue;
+			if (rect.bottom > bottom) bottom = rect.bottom;
+		}
+		return bottom;
+	}
+
+	/**
+	 * True when the event is in the editor's empty area under the last row, not on a
+	 * row, button, or field. The note sheet is taller than a short note, and that
+	 * gap is the only place a phone can put the caret once a block fills the line.
+	 */
+	function eventBelowLastRow(event: MouseEvent): boolean {
+		if (!container) return false;
+		const target = eventTargetElement(event);
+		if (
+			target?.closest(
+				'button, input, textarea, [data-editor-line], [data-code-language], [data-add-subtask], [data-checklist-toggle]'
+			)
+		) {
+			return false;
+		}
+		return event.clientY > contentBottom();
+	}
+
+	/**
+	 * A tap under the last row. The caret goes to the end of that row. A code block
+	 * or table that ends the note has nothing under it — ArrowDown opens a paragraph
+	 * there, and this tap does the same so a phone is not stuck inside the block.
+	 */
+	function placeCaretPastEnd() {
+		const last = lines.length - 1;
+		if (last < 0) return;
+		const block = markdownBlockAt(last);
+		if (block && block.end === last + 1) {
+			rememberEdit();
+			const line = newLine();
+			lines.splice(block.end, 0, line);
+			syncBody();
+			focusLineAt(block.end, 0);
+			lockCaret(block.end, 0);
+			return;
+		}
+		const offset = lines[last].text.length;
+		focusAt(last, offset, lines[last].id);
+		lockCaret(last, offset);
 	}
 
 	/** A click on block chrome rather than a row lands on the block's first editable row. */
@@ -1365,7 +1458,15 @@
 	}
 
 	function handleEditorClick(event: MouseEvent) {
-		placeCaretInBlock(event);
+		// The release already placed the caret when the browser sent one. If it did not,
+		// or the click's default action moved it, put it back and keep that action from winning.
+		if (belowPressHandled || eventBelowLastRow(event)) {
+			event.preventDefault();
+			if (!belowPressHandled) placeCaretPastEnd();
+			belowPressHandled = false;
+		} else {
+			placeCaretInBlock(event);
+		}
 		settlePointerGesture();
 	}
 

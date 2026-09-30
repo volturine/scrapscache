@@ -2152,8 +2152,12 @@ export const noteEditorStyles = {
 		fontWeight: 'interactive',
 		fontVariantNumeric: 'tabular-nums'
 	}),
+	// A column so the note body can grow to the bottom of the sheet. Taps under the
+	// last line then land in the editor instead of on the empty scroller.
 	scroller: css({
 		...flexPane,
+		display: 'flex',
+		flexDirection: 'column',
 		touchAction: 'pan-y',
 		overflowY: 'auto',
 		overflowX: 'hidden',
@@ -2184,6 +2188,7 @@ export const noteEditorStyles = {
 	title: css({
 		mb: 'md',
 		display: 'block',
+		flexShrink: 0,
 		w: 'full',
 		resize: 'none',
 		overflow: 'hidden',
@@ -2212,6 +2217,7 @@ export const noteEditorStyles = {
 	/** Quiet created/edited/deleted line under the note title. */
 	meta: css({
 		display: 'block',
+		flexShrink: 0,
 		mb: 'sm',
 		textStyle: 'caption',
 		...mutedText,

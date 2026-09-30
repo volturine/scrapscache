@@ -19,6 +19,7 @@
 	import { useEditorActions } from '$lib/editorContext';
 	import { notesStore } from '$lib/stores/notes.svelte';
 	import { kanbanStore } from '$lib/stores/kanban.svelte';
+	import { actionUndo } from '$lib/stores/actionUndo.svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
 	import { Checkbox } from '@ark-ui/svelte/checkbox';
 	import { Menu } from '@ark-ui/svelte/menu';
@@ -221,8 +222,16 @@
 		const destination = board.columns.find((column) => column.id === destinationColumnId);
 		const note = notesStore.notes.find((candidate) => candidate.id === noteId);
 		if (!source || !destination || !note) return;
-		notesStore.updateNote(note.id, {
-			labels: moveNoteLabels(note.labels, source.labelId, destination.labelId)
+		const before = [...note.labels];
+		const labels = moveNoteLabels(note.labels, source.labelId, destination.labelId);
+		if (before.join() === labels.join()) return;
+		notesStore.updateNote(note.id, { labels });
+		// Column order is recorded with this. Time travel keeps the tag change, but not the slot.
+		actionUndo.push({
+			message: null,
+			noteIds: [note.id],
+			undo: () => notesStore.updateNote(note.id, { labels: before }),
+			redo: () => notesStore.updateNote(note.id, { labels })
 		});
 	}
 
@@ -281,8 +290,10 @@
 			noteId,
 			target.index
 		);
-		if (target.columnId !== sourceColumnId) moveNote(noteId, sourceColumnId, target.columnId);
-		kanbanStore.placeCard(board.id, noteId, sourceColumnId, target.columnId, order);
+		actionUndo.transact(null, () => {
+			if (target.columnId !== sourceColumnId) moveNote(noteId, sourceColumnId, target.columnId);
+			kanbanStore.placeCard(board.id, noteId, sourceColumnId, target.columnId, order);
+		});
 	}
 </script>
 

@@ -4,6 +4,7 @@ import { createKanbanBoard, type KanbanBoard } from '$lib/kanban';
 import { getSyncOutboxKeys } from '$lib/db/idb';
 import { createSyncIdentity } from '$lib/syncPairing';
 import { loadBoardsFromDevice, saveBoardsToDevice } from '$lib/syncTombstones';
+import { actionUndo } from './actionUndo.svelte';
 import { KanbanStore } from './kanban.svelte';
 import { syncStore } from './sync.svelte';
 import { TEST_WORKSPACE } from '../../tests/workspace';
@@ -131,6 +132,24 @@ describe('boards belong to the workspace that saved them', () => {
 
 		expect(mine?.map((board) => board.id)).toEqual(['work-board']);
 		expect(mine?.[0].columns[0].order).toEqual(['n2', 'n1']);
+	});
+
+	it('puts a deleted board back', () => {
+		const store = new KanbanStore();
+		const original = store.boards[0].id;
+		store.createBoard('Extra');
+		actionUndo.clear();
+
+		store.deleteBoard(original);
+
+		expect(actionUndo.bar).toBe('Board deleted');
+		expect(store.boards.some((board) => board.id === original)).toBe(false);
+
+		actionUndo.undo();
+
+		expect(store.boards.some((board) => board.id === original)).toBe(true);
+		expect(actionUndo.bar).toBeNull();
+		actionUndo.clear();
 	});
 
 	it('reports nothing rather than another workspace\u2019s boards when it has none', async () => {

@@ -1,5 +1,5 @@
 // Rune-based notes & labels store. Persists to IndexedDB from explicit write paths.
-import type { Note, Label, NoteColor } from '$lib/types';
+import type { Note, Label, NoteColor, NoteImage } from '$lib/types';
 import {
 	getAllNotesMetadata,
 	hydrateNoteAttachments,
@@ -37,6 +37,9 @@ import { mergeHydratedImages } from '$lib/noteAttachmentHydration';
 import { AttachmentHydrationQueue } from '$lib/attachmentHydrationQueue';
 import { syncStore } from '$lib/stores/sync.svelte';
 import { kanbanStore } from '$lib/stores/kanban.svelte';
+import { actionUndo } from '$lib/stores/actionUndo.svelte';
+import { reminderStore } from '$lib/stores/reminders.svelte';
+import { yieldNoteDraft } from '$lib/noteDraftYield';
 import { canvasLibraryStore } from '$lib/stores/canvasLibrary';
 import { reminderHistoryStore } from '$lib/stores/reminderHistory';
 import { syncSnapshot, type SyncSnapshot } from '$lib/syncRecords';
@@ -86,6 +89,10 @@ export const SYNC_LOCK = 'scrapscache-sync';
 
 const IMPORT_TARGET_GONE =
 	'The workspace this import was meant for is no longer open here. Nothing was imported.';
+
+function cloneImages(images: NoteImage[] | undefined): NoteImage[] {
+	return (images ?? []).map((image) => ({ ...image }));
+}
 
 function durableNoteSignature(note: Note): string {
 	return stableStringify({
@@ -417,7 +424,11 @@ export class NotesStore {
 	async flushNote(id: string, patch: NotePatch = {}): Promise<void> {
 		const idx = this.notes.findIndex((x) => x.id === id);
 		if (idx === -1) return;
-		this.notes[idx] = applyNoteEdit(this.notes[idx], patch, editContext);
+		const beforeImages = 'images' in patch ? cloneImages(this.notes[idx].images) : null;
+		const next = applyNoteEdit(this.notes[idx], patch, editContext);
+		const changed = next !== this.notes[idx];
+		if (changed) this.notes[idx] = next;
+		if (changed && beforeImages) this.rememberImages(id, beforeImages, cloneImages(next.images));
 		const note = this.notes[idx];
 		this.mirrorToLS();
 		try {
@@ -482,36 +493,57 @@ export class NotesStore {
 		const idx = this.notes.findIndex((n) => n.id === id);
 		if (idx === -1) return;
 		const current = this.notes[idx];
+		const beforeImages = 'images' in patch ? cloneImages(current.images) : null;
 		const next = applyNoteEdit(current, patch, editContext);
 		if (next === current) return;
 		this.notes[idx] = next;
 		this.persist(id);
+		if (beforeImages) this.rememberImages(id, beforeImages, cloneImages(next.images));
 	}
 
 	togglePin(id: string): void {
 		const n = this.notes.find((x) => x.id === id);
 		if (!n) return;
-		this.updateNote(id, { pinned: !n.pinned });
+		const before = { pinned: n.pinned };
+		const after = { pinned: !n.pinned };
+		this.updateNote(id, after);
+		this.rememberFields(id, null, before, after);
 	}
 
 	toggleArchive(id: string): void {
 		const n = this.notes.find((x) => x.id === id);
 		if (!n) return;
-		this.updateNote(id, { archived: !n.archived, pinned: false });
+		const before = { archived: n.archived, pinned: n.pinned };
+		const after = { archived: !n.archived, pinned: false };
+		this.updateNote(id, after);
+		this.rememberFields(id, after.archived ? 'Note archived' : 'Note unarchived', before, after);
 	}
 
 	toggleSecret(id: string): void {
 		const n = this.notes.find((x) => x.id === id);
 		if (!n) return;
-		this.updateNote(id, { secret: !n.secret });
+		const before = { secret: Boolean(n.secret) };
+		const after = { secret: !n.secret };
+		this.updateNote(id, after);
+		this.rememberFields(id, null, before, after);
 	}
 
 	setColor(id: string, color: NoteColor): void {
-		this.updateNote(id, { color });
+		const n = this.notes.find((x) => x.id === id);
+		if (!n || n.color === color) return;
+		const before = { color: n.color };
+		const after = { color };
+		this.updateNote(id, after);
+		this.rememberFields(id, null, before, after);
 	}
 
 	setReminder(id: string, reminder: number | null): void {
-		this.updateNote(id, { reminder });
+		const n = this.notes.find((x) => x.id === id);
+		if (!n || (n.reminder ?? null) === reminder) return;
+		const before = { reminder: n.reminder };
+		const after = { reminder };
+		this.updateNote(id, after);
+		this.rememberFields(id, null, before, after);
 	}
 
 	/** Toggle `[ ]` / `[x]` line in unified body text. */
@@ -533,18 +565,39 @@ export class NotesStore {
 
 	// Trash ----------------------------------------------------------------
 	trashNote(id: string): void {
-		this.updateNote(id, { trashed: true, trashedAt: Date.now(), pinned: false });
+		const n = this.notes.find((x) => x.id === id);
+		if (!n) return;
+		const before = { trashed: n.trashed, trashedAt: n.trashedAt, pinned: n.pinned };
+		const after = { trashed: true, trashedAt: Date.now(), pinned: false };
+		this.updateNote(id, after);
+		this.rememberFields(id, 'Moved to trash', before, after);
 	}
 
 	restoreNote(id: string): void {
-		this.updateNote(id, { trashed: false, trashedAt: null, archived: false });
+		const n = this.notes.find((x) => x.id === id);
+		if (!n) return;
+		const before = { trashed: n.trashed, trashedAt: n.trashedAt, archived: n.archived };
+		const after = { trashed: false, trashedAt: null, archived: false };
+		this.updateNote(id, after);
+		this.rememberFields(id, 'Note restored', before, after);
 	}
 
 	restoreToArchive(id: string): void {
-		this.updateNote(id, { trashed: false, trashedAt: null, archived: true, pinned: false });
+		const n = this.notes.find((x) => x.id === id);
+		if (!n) return;
+		const before = {
+			trashed: n.trashed,
+			trashedAt: n.trashedAt,
+			archived: n.archived,
+			pinned: n.pinned
+		};
+		const after = { trashed: false, trashedAt: null, archived: true, pinned: false };
+		this.updateNote(id, after);
+		this.rememberFields(id, 'Note restored to archive', before, after);
 	}
 
 	async deleteNoteForever(id: string): Promise<void> {
+		actionUndo.dropNotes([id]);
 		const deletedAt = Date.now();
 		const next = { ...this.deletedNoteIds, [id]: deletedAt };
 		await writeTombstones(this.pid, next);
@@ -595,6 +648,8 @@ export class NotesStore {
 		if (!trimmed) return;
 		const idx = this.labels.findIndex((l) => l.id === id);
 		if (idx === -1) return;
+		const previousName = this.labels[idx].name;
+		if (previousName === trimmed) return;
 		const renamed = {
 			...this.labels[idx],
 			name: trimmed,
@@ -609,10 +664,28 @@ export class NotesStore {
 			this.recordPersistenceError('Could not rename label', err)
 		);
 		this.markLabelsDirty([`label:${renamed.id}`]);
+		if (actionUndo.holding()) return;
+		actionUndo.push({
+			message: null,
+			noteIds: [],
+			undo: () => this.renameLabel(id, previousName),
+			redo: () => this.renameLabel(id, trimmed)
+		});
 	}
 
 	removeLabel(id: string, options: { deleteNotes?: boolean } = {}): void {
-		if (!this.labels.some((label) => label.id === id)) return;
+		const label = this.labels.find((item) => item.id === id);
+		if (!label) return;
+		const snapshots = this.notes
+			.filter((note) => note.labels.includes(id))
+			.map((note) => ({
+				id: note.id,
+				labels: [...note.labels],
+				trashed: note.trashed,
+				trashedAt: note.trashedAt,
+				pinned: note.pinned,
+				archived: note.archived
+			}));
 		const deletedAt = Date.now();
 		const affected = this.notes.filter((note) => note.labels.includes(id));
 
@@ -628,27 +701,27 @@ export class NotesStore {
 					editContext
 				);
 			});
-			this.labels = this.labels.filter((label) => label.id !== id);
+			this.labels = this.labels.filter((item) => item.id !== id);
 			this.mirrorToLS();
 			for (const note of affected) this.persist(note.id);
 			this.markLabelsDeleted([id], deletedAt);
-			return;
+		} else {
+			this.labels = this.labels.filter((item) => item.id !== id);
+			const affectedNoteIds: string[] = [];
+			this.notes = this.notes.map((note) => {
+				if (!note.labels.includes(id)) return note;
+				affectedNoteIds.push(note.id);
+				return applyNoteEdit(
+					note,
+					{ labels: note.labels.filter((labelId) => labelId !== id) },
+					editContext
+				);
+			});
+			this.mirrorToLS();
+			for (const noteId of affectedNoteIds) this.persist(noteId);
+			this.markLabelsDeleted([id], deletedAt);
 		}
-
-		this.labels = this.labels.filter((label) => label.id !== id);
-		const affectedNoteIds: string[] = [];
-		this.notes = this.notes.map((note) => {
-			if (!note.labels.includes(id)) return note;
-			affectedNoteIds.push(note.id);
-			return applyNoteEdit(
-				note,
-				{ labels: note.labels.filter((labelId) => labelId !== id) },
-				editContext
-			);
-		});
-		this.mirrorToLS();
-		for (const noteId of affectedNoteIds) this.persist(noteId);
-		this.markLabelsDeleted([id], deletedAt);
+		this.rememberRemovedLabel(label, snapshots, options);
 	}
 
 	// Search ---------------------------------------------------------------
@@ -718,6 +791,7 @@ export class NotesStore {
 		// Claimed before the lock is requested so a workspace switch is refused
 		// outright rather than queueing behind an import that may run for minutes.
 		this.importing = true;
+		actionUndo.clear();
 		try {
 			// Under the sync lock: a flight that landed partway through an import
 			// would write the notes it pulled over the imported ones and push the
@@ -859,6 +933,7 @@ export class NotesStore {
 		// Claimed before the lock is requested so a workspace switch is refused
 		// outright rather than queueing behind an import that may run for minutes.
 		this.importing = true;
+		actionUndo.clear();
 		try {
 			// Under the sync lock: a flight that landed partway through an import
 			// would write the notes it pulled over the imported ones and push the
@@ -972,6 +1047,7 @@ export class NotesStore {
 	 * to the previous profile and reloads from storage.
 	 */
 	async reloadForProfile(): Promise<void> {
+		actionUndo.clear();
 		if (this.syncPushTimer) clearTimeout(this.syncPushTimer);
 		this.syncPushTimer = null;
 		for (const timer of this.noteRetryTimers.values()) clearTimeout(timer);
@@ -1032,8 +1108,87 @@ export class NotesStore {
 
 	// Persistence helpers --------------------------------------------------
 
+	private rememberFields(
+		id: string,
+		message: string | null,
+		before: NotePatch,
+		after: NotePatch
+	): void {
+		if (actionUndo.holding()) return;
+		actionUndo.push({
+			message,
+			noteIds: [id],
+			undo: () => this.writeUndone(id, before),
+			redo: () => this.writeUndone(id, after)
+		});
+	}
+
+	private rememberImages(id: string, before: NoteImage[], after: NoteImage[]): void {
+		if (actionUndo.holding()) return;
+		actionUndo.push({
+			message: null,
+			noteIds: [id],
+			undo: () => this.writeUndone(id, { images: before }),
+			redo: () => this.writeUndone(id, { images: after })
+		});
+	}
+
+	private writeUndone(id: string, patch: NotePatch): void {
+		yieldNoteDraft(id);
+		this.updateNote(id, patch);
+		if ('reminder' in patch) reminderStore.sync(this.notes);
+	}
+
+	private ensureLabel(name: string): Label | null {
+		return (
+			this.labels.find((label) => label.name.toLowerCase() === name.toLowerCase()) ??
+			this.createLabel(name)
+		);
+	}
+
+	private rememberRemovedLabel(
+		label: Label,
+		snapshots: {
+			id: string;
+			labels: string[];
+			trashed: boolean;
+			trashedAt: number | null;
+			pinned: boolean;
+			archived: boolean;
+		}[],
+		options: { deleteNotes?: boolean }
+	): void {
+		if (actionUndo.holding()) return;
+		let revivedId: string | null = null;
+		actionUndo.push({
+			message: 'Label deleted',
+			noteIds: snapshots.map((snap) => snap.id),
+			undo: () => {
+				const revived = this.ensureLabel(label.name);
+				if (!revived) return;
+				revivedId = revived.id;
+				for (const snap of snapshots) {
+					const labels = [
+						...new Set(snap.labels.map((labelId) => (labelId === label.id ? revived.id : labelId)))
+					];
+					this.writeUndone(snap.id, {
+						labels,
+						trashed: snap.trashed,
+						trashedAt: snap.trashedAt,
+						pinned: snap.pinned,
+						archived: snap.archived
+					});
+				}
+			},
+			redo: () => {
+				if (revivedId) this.removeLabel(revivedId, options);
+			}
+		});
+	}
+
 	private async persistDeletedNotes(ids: string[]): Promise<void> {
 		if (ids.length === 0) return;
+		actionUndo.dropNotes(ids);
 		const deletedAt = Date.now();
 		const next = { ...this.deletedNoteIds };
 		for (const id of ids) next[id] = deletedAt;
@@ -1419,6 +1574,7 @@ export class NotesStore {
 
 	private async replaceWithCloudLocked(): Promise<boolean> {
 		if (!syncStore.isLoggedIn || !syncStore.account) return false;
+		actionUndo.clear();
 		try {
 			const leftover = await getSyncOutboxKeys(this.pid).catch(() => []);
 			if (leftover.length) await clearSyncOutbox(this.pid, leftover);

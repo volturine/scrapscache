@@ -41,6 +41,8 @@
 	import { getClipboardFiles, isImageAttachment } from '$lib/noteImages';
 	import { matchTrailingEmoticon } from '$lib/emoticons';
 	import { isKeyboardField } from '$lib/appViewport';
+	import { actionUndo, setEditorUndo, undoChord } from '$lib/stores/actionUndo.svelte';
+	import { setNoteDraftYield, yieldNoteDraft } from '$lib/noteDraftYield';
 
 	let {
 		noteId = $bindable(),
@@ -109,6 +111,13 @@
 		syncBodyNow?(): void;
 		finishInput?(): void;
 		adoptBody?(text: string): boolean;
+		undo(): boolean;
+		redo(): boolean;
+		noteTitleEdit(
+			before: string,
+			selection: { start: number; end: number },
+			inputType: string
+		): void;
 	} | null>(null);
 	let footer = $state<{ handlePickedFiles(files: File[]): void; closeMenus(): void } | null>(null);
 	let editorDialog = $state<HTMLDivElement | null>(null);
@@ -184,6 +193,15 @@
 	}
 
 	onMount(() => {
+		const releaseDraftYield = setNoteDraftYield((id) => {
+			if (id !== note?.id) return;
+			titleEdited = false;
+			bodyEdited = false;
+		});
+		const releaseEditorUndo = setEditorUndo((redo) => {
+			if (!isOpen || !bodyEditor) return;
+			return redo ? bodyEditor.redo() : bodyEditor.undo();
+		});
 		registerClose?.(() => (isOpen ? close() : Promise.resolve()));
 		const viewport = window.visualViewport;
 		const onViewportChange = () => {
@@ -222,6 +240,8 @@
 			});
 		}
 		return () => {
+			releaseDraftYield();
+			releaseEditorUndo();
 			registerClose?.(() => Promise.resolve());
 			viewport?.removeEventListener('resize', onViewportChange);
 			viewport?.removeEventListener('scroll', onViewportChange);
@@ -659,7 +679,20 @@
 		endEditSession = syncStore.beginEditSession(id);
 		const restored = prepareImportedNotes([version], BackupImportMode.Keep, editContext)[0];
 		const availableLabels = new Set(notesStore.labels.map((label) => label.id));
-		notesStore.updateNote(id, {
+		const current = note;
+		const before: NotePatch = {
+			title: current.title,
+			body: current.body,
+			color: current.color,
+			pinned: current.pinned,
+			archived: current.archived,
+			secret: Boolean(current.secret),
+			reminder: current.reminder,
+			labels: [...current.labels],
+			images: (current.images ?? []).map((image) => ({ ...image })),
+			linkPreviews: (current.linkPreviews ?? []).map((preview) => ({ ...preview }))
+		};
+		const after: NotePatch = {
 			title: restored.title,
 			body: restored.body,
 			color: restored.color,
@@ -668,11 +701,26 @@
 			// Restoring brings back content, never trash state: a version saved while the note was
 			// in the trash would otherwise leave it trashed without a trash time, which the purge
 			// treats as expired. A secret note also stays secret.
-			secret: note.secret || restored.secret,
+			secret: current.secret || restored.secret,
 			reminder: restored.reminder,
 			labels: restored.labels.filter((labelId) => availableLabels.has(labelId)),
 			images: restored.images,
 			linkPreviews: restored.linkPreviews ?? []
+		};
+		actionUndo.holdFor(() => notesStore.updateNote(id, after));
+		actionUndo.push({
+			message: null,
+			noteIds: [id],
+			undo: () => {
+				yieldNoteDraft(id);
+				notesStore.updateNote(id, before);
+				reminderStore.sync(notesStore.notes);
+			},
+			redo: () => {
+				yieldNoteDraft(id);
+				notesStore.updateNote(id, after);
+				reminderStore.sync(notesStore.notes);
+			}
 		});
 		// adoptStoreNote carries the restored fields into the draft.
 		exitHistoryPreview();
@@ -713,6 +761,46 @@
 			copyFlashTimer = null;
 		}, 1500);
 	}
+	function restoreTitle(next: string, selection: { start: number; end: number } | null) {
+		title = next;
+		markTitleEdited();
+		if (!selection) return;
+		void tick().then(() => {
+			const field = editorDialog?.querySelector<HTMLTextAreaElement>('[data-note-title]');
+			if (!field) return;
+			field.focus();
+			field.setSelectionRange(selection.start, selection.end);
+		});
+	}
+
+	function handleTitleBeforeInput(event: Event) {
+		const input = event as InputEvent;
+		if (input.inputType === 'historyUndo' || input.inputType === 'historyRedo') {
+			const did = input.inputType === 'historyRedo' ? bodyEditor?.redo() : bodyEditor?.undo();
+			if (did) event.preventDefault();
+			return;
+		}
+		const field = event.currentTarget;
+		if (!(field instanceof HTMLTextAreaElement)) return;
+		bodyEditor?.noteTitleEdit(
+			title,
+			{ start: field.selectionStart ?? 0, end: field.selectionEnd ?? 0 },
+			input.inputType
+		);
+	}
+
+	function handleTitleKeydown(event: KeyboardEvent) {
+		if (event.key === 'Enter') {
+			event.preventDefault();
+			bodyEditor?.focusDefault();
+			return;
+		}
+		const chord = undoChord(event);
+		if (!chord) return;
+		const did = chord === 'redo' ? bodyEditor?.redo() : bodyEditor?.undo();
+		if (did) event.preventDefault();
+	}
+
 	function handleTitleInput(event: Event) {
 		const target = event.target as HTMLTextAreaElement | null;
 		if (title.includes('\n') || title.includes('\r')) {
@@ -894,7 +982,7 @@
 									type="button"
 									class={iconButton({ variant: 'ghost', size: 'sm' })}
 									title={note.pinned ? 'Unpin' : 'Pin'}
-									onclick={() => commit({ pinned: !note.pinned })}
+									onclick={() => notesStore.togglePin(note.id)}
 									aria-label="Pin"
 								>
 									<Pin size={20} fill={note.pinned ? 'currentColor' : 'none'} aria-hidden="true" />
@@ -903,7 +991,7 @@
 									type="button"
 									class={iconButton({ variant: 'ghost', size: 'sm' })}
 									title={note.secret ? 'Remove secret' : 'Make secret'}
-									onclick={() => commit({ secret: !note.secret })}
+									onclick={() => notesStore.toggleSecret(note.id)}
 									aria-label={note.secret ? 'Remove secret' : 'Make secret'}
 								>
 									{#if note.secret}
@@ -984,14 +1072,10 @@
 								data-note-title
 								placeholder="Title"
 								bind:value={title}
+								onbeforeinput={handleTitleBeforeInput}
 								oninput={handleTitleInput}
 								onpaste={handleTitlePaste}
-								onkeydown={(e) => {
-									if (e.key === 'Enter') {
-										e.preventDefault();
-										bodyEditor?.focusDefault();
-									}
-								}}
+								onkeydown={handleTitleKeydown}
 								rows="1"
 								class:markdown-raw={uiStore.rawMarkdown}
 								class={titleField}></textarea>
@@ -1007,6 +1091,8 @@
 							<BodyEditor
 								bind:this={bodyEditor}
 								bind:body
+								{title}
+								onRestoreTitle={restoreTitle}
 								oninput={markBodyEdited}
 								{transformPaste}
 								placeholder="Take a note… type [ ] for a checklist, - for a bullet, Tab for sub-task"
@@ -1098,7 +1184,7 @@
 					<ColorPalette
 						color={note.color}
 						onSelect={(c) => {
-							commit({ color: c });
+							notesStore.setColor(note.id, c);
 							paletteOpen = false;
 						}}
 					/>
@@ -1121,7 +1207,7 @@
 					<ReminderPicker
 						reminder={note.reminder}
 						onApply={(r) => {
-							commit({ reminder: r });
+							notesStore.setReminder(note.id, r);
 							reminderStore.sync(notesStore.notes);
 							void notesStore.flushSync();
 						}}

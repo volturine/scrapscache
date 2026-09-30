@@ -36,6 +36,7 @@
 		type MarkdownBlock
 	} from '$lib/markdown';
 	import { uiStore } from '$lib/stores/ui.svelte';
+	import { actionUndo } from '$lib/stores/actionUndo.svelte';
 	import { tableScroll } from '$lib/tableScroll';
 	import MarkdownCopyButton from './MarkdownCopyButton.svelte';
 
@@ -47,12 +48,17 @@
 
 	let {
 		body = $bindable(''),
+		title = '',
+		onRestoreTitle,
 		oninput,
 		placeholder = '',
 		readOnly = false,
 		transformPaste
 	}: {
 		body?: string;
+		title?: string;
+		/** Title restored by undo. A selection means the caret belongs in the title. */
+		onRestoreTitle?: (title: string, selection: { start: number; end: number } | null) => void;
 		oninput?: () => void;
 		placeholder?: string;
 		readOnly?: boolean;
@@ -73,6 +79,10 @@
 	type EditorRange = { start: EditorPoint; end: EditorPoint; collapsed: boolean };
 	type HistoryEntry = {
 		body: string;
+		title: string;
+		origin: 'body' | 'title';
+		titleStart: number;
+		titleEnd: number;
 		startLine: number;
 		startOffset: number;
 		endLine: number;
@@ -162,6 +172,8 @@
 	let compositionStart: EditorRange | null = null;
 	/** Consecutive typing on one row shares an undo step. */
 	let lastTyping: { kind: 'insert' | 'delete'; line: number; at: number } | null = null;
+	/** Consecutive title typing shares an undo step. */
+	let lastTitleTyping: { kind: 'insert' | 'delete'; at: number } | null = null;
 	/** An edit happened since tables were last formatted. */
 	let tablesNeedFormat = false;
 	/** First line id of the table edited with the caret in it, so leaving it formats it. */
@@ -1027,6 +1039,10 @@
 		const fallbackOffset = lines[fallbackLine]?.text.length ?? 0;
 		return {
 			body: snapshotBody,
+			title,
+			origin: 'body',
+			titleStart: 0,
+			titleEnd: 0,
 			startLine: range?.start.line ?? fallbackLine,
 			startOffset: range?.start.offset ?? fallbackOffset,
 			endLine: range?.end.line ?? fallbackLine,
@@ -1034,9 +1050,48 @@
 		};
 	}
 
+	function sameSnapshot(entry: HistoryEntry, current: HistoryEntry): boolean {
+		return entry.body === current.body && entry.title === current.title;
+	}
+
 	function rememberEdit(range = editorRange()) {
+		lastTitleTyping = null;
 		const entry = historyEntry(range);
-		if (undoStack.at(-1)?.body !== entry.body) undoStack.push(entry);
+		const previous = undoStack.at(-1);
+		if (!previous || !sameSnapshot(previous, entry)) undoStack.push(entry);
+		if (undoStack.length > 100) undoStack.shift();
+		redoStack.length = 0;
+	}
+
+	/** Title text before the browser applies this input. Consecutive typing is one step. */
+	export function noteTitleEdit(
+		before: string,
+		selection: { start: number; end: number },
+		inputType: string
+	) {
+		if (readOnly) return;
+		const kind =
+			inputType === 'insertText' ||
+			inputType === 'insertCompositionText' ||
+			inputType === 'insertReplacementText'
+				? 'insert'
+				: inputType.startsWith('delete')
+					? 'delete'
+					: null;
+		const now = Date.now();
+		const continues =
+			kind !== null && lastTitleTyping?.kind === kind && now - lastTitleTyping.at < 1000;
+		lastTitleTyping = kind ? { kind, at: now } : null;
+		if (continues) return;
+		lastTyping = null;
+		const entry = historyEntry();
+		entry.title = before;
+		entry.origin = 'title';
+		entry.titleStart = selection.start;
+		entry.titleEnd = selection.end;
+		const previous = undoStack.at(-1);
+		if (previous && sameSnapshot(previous, entry)) return;
+		undoStack.push(entry);
 		if (undoStack.length > 100) undoStack.shift();
 		redoStack.length = 0;
 	}
@@ -1044,9 +1099,19 @@
 	async function restoreHistory(entry: HistoryEntry) {
 		applyingEdit = true;
 		try {
-			lines = parseBodyToLines(entry.body);
-			draftTaskId = null;
-			syncBody();
+			if (entry.title !== title || entry.origin === 'title') {
+				onRestoreTitle?.(
+					entry.title,
+					entry.origin === 'title' ? { start: entry.titleStart, end: entry.titleEnd } : null
+				);
+			}
+			const bodyNow = historyEntry().body;
+			if (entry.body !== bodyNow) {
+				lines = parseBodyToLines(entry.body);
+				draftTaskId = null;
+				syncBody();
+			}
+			if (entry.origin === 'title') return;
 			await tick();
 			const startLine = Math.min(entry.startLine, lines.length - 1);
 			const endLine = Math.min(entry.endLine, lines.length - 1);
@@ -1056,29 +1121,33 @@
 		}
 	}
 
-	/** Pop the newest entry that differs from the current body; no-op edits leave duplicates. */
-	function popChanged(stack: HistoryEntry[], current: string): HistoryEntry | undefined {
+	/** Pop the newest entry that differs from the current text; no-op edits leave duplicates. */
+	function popChanged(stack: HistoryEntry[], current: HistoryEntry): HistoryEntry | undefined {
 		let entry = stack.pop();
-		while (entry && entry.body === current) entry = stack.pop();
+		while (entry && sameSnapshot(entry, current)) entry = stack.pop();
 		return entry;
 	}
 
-	function undo() {
+	export function undo(): boolean {
 		lastTyping = null;
+		lastTitleTyping = null;
 		const current = historyEntry();
-		const entry = popChanged(undoStack, current.body);
-		if (!entry) return;
+		const entry = popChanged(undoStack, current);
+		if (!entry) return actionUndo.undo();
 		redoStack.push(current);
 		void restoreHistory(entry);
+		return true;
 	}
 
-	function redo() {
+	export function redo(): boolean {
 		lastTyping = null;
+		lastTitleTyping = null;
 		const current = historyEntry();
-		const entry = popChanged(redoStack, current.body);
-		if (!entry) return;
+		const entry = popChanged(redoStack, current);
+		if (!entry) return actionUndo.redo();
 		undoStack.push(current);
 		void restoreHistory(entry);
+		return true;
 	}
 
 	type DomPoint = { node: Node; offset: number };
@@ -1916,12 +1985,12 @@
 		}
 		const type = event.inputType;
 		if (type === 'historyUndo') {
-			event.preventDefault();
-			return undo();
+			if (undo()) event.preventDefault();
+			return;
 		}
 		if (type === 'historyRedo') {
-			event.preventDefault();
-			return redo();
+			if (redo()) event.preventDefault();
+			return;
 		}
 		const range = inputTargetRange(event);
 		const payload = event.data ?? event.dataTransfer?.getData('text/plain') ?? '';
@@ -2421,14 +2490,12 @@
 		const primaryModifier = event.ctrlKey || event.metaKey;
 		if (composing || event.isComposing) return;
 		if (primaryModifier && !event.altKey && event.key.toLowerCase() === 'z') {
-			event.preventDefault();
-			if (event.shiftKey) redo();
-			else undo();
+			const did = event.shiftKey ? redo() : undo();
+			if (did) event.preventDefault();
 			return;
 		}
 		if (event.ctrlKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'y') {
-			event.preventDefault();
-			redo();
+			if (redo()) event.preventDefault();
 			return;
 		}
 		if (event.key === 'Tab' && !event.altKey && !event.metaKey) {

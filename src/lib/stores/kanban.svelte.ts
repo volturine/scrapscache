@@ -15,6 +15,7 @@ import { syncStore } from '$lib/stores/sync.svelte';
 import { loadBoardsFromDevice, writeKanbanState } from '$lib/syncTombstones';
 import { uid } from '$lib/model';
 import { editContext, syncClock } from '$lib/editContext';
+import { actionUndo } from '$lib/stores/actionUndo.svelte';
 
 /**
  * Fast-boot mirrors, one set per workspace, each key suffixed with the workspace
@@ -232,17 +233,22 @@ export class KanbanStore {
 	}
 
 	createBoard(name = 'Untitled board'): KanbanBoard {
-		const board = createKanbanBoard(name);
-		this.boards = [...this.boards, board];
-		this.activeBoardId = board.id;
-		this.requestSync([`board:${board.id}`]);
+		let board!: KanbanBoard;
+		this.watchBoard(null, () => {
+			board = createKanbanBoard(name);
+			this.boards = [...this.boards, board];
+			this.activeBoardId = board.id;
+			this.requestSync([`board:${board.id}`]);
+		});
 		return board;
 	}
 
 	renameBoard(boardId: string, name: string): void {
 		const nextName = name.trim();
 		if (!nextName) return;
-		this.changeBoard(boardId, (board) => ({ ...board, name: nextName }));
+		this.watchBoard(null, () => {
+			this.changeBoard(boardId, (board) => ({ ...board, name: nextName }));
+		});
 	}
 
 	/**
@@ -251,6 +257,12 @@ export class KanbanStore {
 	 * untitled board is created so the Kanban view stays usable.
 	 */
 	deleteBoard(boardId: string): void {
+		const existing = this.boards.find((board) => board.id === boardId);
+		if (!existing) return;
+		this.watchBoard('Board deleted', () => this.removeBoard(boardId));
+	}
+
+	private removeBoard(boardId: string): void {
 		const existing = this.boards.find((board) => board.id === boardId);
 		if (!existing) return;
 
@@ -276,16 +288,19 @@ export class KanbanStore {
 		const board = this.boards.find((candidate) => candidate.id === boardId);
 		if (!board || !labelId || board.columns.some((column) => column.labelId === labelId))
 			return null;
-		const column: KanbanColumn = { id: uid(), labelId, order: [] };
-		this.changeBoard(boardId, (candidate) => ({
-			...candidate,
-			columns: [...candidate.columns, column],
-			// A column tag leaves the backlog filter (it lives in its own column).
-			backlogFilter: {
-				...candidate.backlogFilter,
-				labelIds: candidate.backlogFilter.labelIds.filter((id) => id !== labelId)
-			}
-		}));
+		let column: KanbanColumn | null = null;
+		this.watchBoard(null, () => {
+			column = { id: uid(), labelId, order: [] };
+			this.changeBoard(boardId, (candidate) => ({
+				...candidate,
+				columns: [...candidate.columns, column!],
+				// A column tag leaves the backlog filter (it lives in its own column).
+				backlogFilter: {
+					...candidate.backlogFilter,
+					labelIds: candidate.backlogFilter.labelIds.filter((id) => id !== labelId)
+				}
+			}));
+		});
 		return column;
 	}
 
@@ -293,10 +308,12 @@ export class KanbanStore {
 		const board = this.boards.find((candidate) => candidate.id === boardId);
 		const column = board?.columns.find((candidate) => candidate.id === columnId);
 		if (!board || !column || column.labelId === null) return;
-		this.changeBoard(boardId, (candidate) => ({
-			...candidate,
-			columns: candidate.columns.filter((item) => item.id !== columnId)
-		}));
+		this.watchBoard(null, () => {
+			this.changeBoard(boardId, (candidate) => ({
+				...candidate,
+				columns: candidate.columns.filter((item) => item.id !== columnId)
+			}));
+		});
 	}
 
 	/**
@@ -305,6 +322,18 @@ export class KanbanStore {
 	 * is not pinned to a stale slot.
 	 */
 	placeCard(
+		boardId: string,
+		noteId: string,
+		sourceColumnId: string,
+		destinationColumnId: string,
+		order: string[]
+	): void {
+		this.watchBoard(null, () =>
+			this.placeCardNow(boardId, noteId, sourceColumnId, destinationColumnId, order)
+		);
+	}
+
+	private placeCardNow(
 		boardId: string,
 		noteId: string,
 		sourceColumnId: string,
@@ -343,6 +372,69 @@ export class KanbanStore {
 	/** Monotonic version: same-millisecond edits and backward clock jumps must still win. */
 	private nextVersion(previous: number | undefined): number {
 		return Math.max(syncClock.now(), (previous ?? 0) + 1);
+	}
+
+	private boardSnapshot(): {
+		boards: KanbanBoard[];
+		activeBoardId: string;
+		tombstones: Record<string, number>;
+	} {
+		return {
+			boards: JSON.parse(JSON.stringify(this.boards)) as KanbanBoard[],
+			activeBoardId: this.activeBoardId,
+			tombstones: { ...this.boardTombstones }
+		};
+	}
+
+	/**
+	 * Put a previous board list back. A board the other snapshot deleted is stamped
+	 * newer than that tombstone, and a board that only existed there is tombstoned,
+	 * so a sync that still has the delete does not undo the undo.
+	 */
+	private installBoards(
+		snapshot: ReturnType<KanbanStore['boardSnapshot']>,
+		other: ReturnType<KanbanStore['boardSnapshot']>
+	): void {
+		const boards = snapshot.boards.map((board) => {
+			const buried = Number(other.tombstones[board.id]) || 0;
+			return buried >= board.updatedAt ? { ...board, updatedAt: buried + 1 } : board;
+		});
+		const tombstones = { ...snapshot.tombstones };
+		const present = new Set(boards.map((board) => board.id));
+		for (const board of other.boards) {
+			if (present.has(board.id)) continue;
+			tombstones[board.id] = Math.max(
+				syncClock.now(),
+				board.updatedAt + 1,
+				tombstones[board.id] ?? 0
+			);
+		}
+		this.boards = boards.length ? boards : [createKanbanBoard()];
+		this.boardTombstones = tombstones;
+		this.activeBoardId = this.boards.some((board) => board.id === snapshot.activeBoardId)
+			? snapshot.activeBoardId
+			: this.boards[0].id;
+		this.requestSync([
+			...this.boards.map((board) => `board:${board.id}`),
+			...Object.keys(tombstones).map((id) => `board-tombstone:${id}`)
+		]);
+	}
+
+	private watchBoard(message: string | null, run: () => void): void {
+		if (actionUndo.holding()) {
+			run();
+			return;
+		}
+		const before = this.boardSnapshot();
+		run();
+		const after = this.boardSnapshot();
+		if (JSON.stringify(before) === JSON.stringify(after)) return;
+		actionUndo.push({
+			message,
+			noteIds: [],
+			undo: () => this.installBoards(before, after),
+			redo: () => this.installBoards(after, before)
+		});
 	}
 
 	/** Board edits stamp only what they change, so each part of a board merges on its own. */

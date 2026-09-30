@@ -5,6 +5,7 @@
 // - The body is a CRDT text document: both sides' edits survive.
 // - Attachments merge by id: adds from both sides survive, removals are
 //   remembered, and two copies of one attachment keep the later content edit.
+//   A later images edit that still contains an attachment puts it back.
 // - Every other field is last-write-wins on its own time. Times come from the
 //   relay-corrected clock (clock.ts); equal times fall back to the writer id.
 import type { Label, Note, NoteField, NoteFieldTimes, NoteImage } from './types.js';
@@ -127,9 +128,20 @@ function mergeImages(
 	right: Note
 ): { images: NoteImage[]; imageTombstones: Record<string, number> } {
 	const imageTombstones = mergeTimes(left.imageTombstones, right.imageTombstones);
+	const leftTime = fieldTime(left, 'images');
+	const rightTime = fieldTime(right, 'images');
+	const leftIds = new Set((left.images ?? []).map((image) => image.id));
+	const rightIds = new Set((right.images ?? []).map((image) => image.id));
 	const byId = new Map<string, NoteImage>();
 	for (const image of [...(left.images ?? []), ...(right.images ?? [])]) {
-		if (imageTombstones[image.id]) continue;
+		const buriedAt = imageTombstones[image.id] ?? 0;
+		// Undo (or any newer images edit) that still lists the attachment wins.
+		const restored =
+			buriedAt > 0 &&
+			((leftIds.has(image.id) && leftTime > buriedAt) ||
+				(rightIds.has(image.id) && rightTime > buriedAt));
+		if (buriedAt > 0 && !restored) continue;
+		if (restored) delete imageTombstones[image.id];
 		const existing = byId.get(image.id);
 		byId.set(image.id, existing ? pickImage(existing, image) : image);
 	}

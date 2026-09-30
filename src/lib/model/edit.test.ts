@@ -85,6 +85,14 @@ describe('applyNoteEdit', () => {
 		expect(edited.imageTombstones).toEqual({ drop: 50 });
 	});
 
+	it('clears a tombstone when an edit puts that attachment back', () => {
+		const stored = note({ images: [], imageTombstones: { back: 40 } });
+		const edited = applyNoteEdit(stored, { images: [image('back')] }, context(50));
+
+		expect(edited.images?.map((item) => item.id)).toEqual(['back']);
+		expect(edited.imageTombstones).toBeUndefined();
+	});
+
 	it('records when an attachment content changes', () => {
 		const stored = note({ images: [image('one', { contentHash: 'old' })] });
 		const edited = applyNoteEdit(

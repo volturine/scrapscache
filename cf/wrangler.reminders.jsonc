@@ -8,7 +8,8 @@
 	"preview_urls": false,
 	"observability": {
 		"enabled": true,
-		"logs": { "invocation_logs": false }
+		"logs": { "invocation_logs": false },
+		"issues": { "enabled": true }
 	},
 	"durable_objects": {
 		"bindings": [
@@ -37,7 +38,8 @@
 		"dev": {
 			"observability": {
 				"enabled": true,
-				"logs": { "invocation_logs": false }
+				"logs": { "invocation_logs": false },
+				"issues": { "enabled": true }
 			},
 			"durable_objects": {
 				"bindings": [

@@ -5,7 +5,6 @@
 // cannot tell that two accounts belong to the same browser.
 import { sha256 } from '@noble/hashes/sha2.js';
 import { relayReminderWakes, type ReminderNote, type ReminderWake } from '$lib/reminderNotify';
-export type { ReminderWake };
 import { syncStore } from '$lib/stores/sync.svelte';
 import type { StoredProfile } from '$lib/profiles';
 import { identityFromSyncKey } from '$lib/syncPairing';

@@ -898,6 +898,20 @@ describe('SQLite sync store', () => {
 		expect(await store.claimDueWakes(1_000)).toEqual([]);
 	});
 
+	it("lists an account's wakes with their revision, soonest first", async () => {
+		const { store } = createStore();
+		await store.createAccount('account', 'credential');
+		await store.createAccount('other', 'credential');
+		expect(await store.getReminderWakes('account')).toEqual({ revision: null, wakes: [] });
+		await store.replaceReminderWakes('account', [wake('b', 5_000), wake('a', 1_000)], 7);
+		await store.replaceReminderWakes('other', [wake('c', 2_000)], 3);
+		expect(await store.getReminderWakes('account')).toEqual({
+			revision: 7,
+			wakes: [wake('a', 1_000), wake('b', 5_000)]
+		});
+		expect(await store.getReminderWakes('missing')).toEqual({ revision: null, wakes: [] });
+	});
+
 	it('reports the next wake a registered device still waits for', async () => {
 		const { store } = createStore();
 		await store.createAccount('account', 'credential');

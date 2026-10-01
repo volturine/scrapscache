@@ -197,19 +197,13 @@ async function openWorkspaceDb(id) {
 	return idbRequest(indexedDB.open(name));
 }
 
-function showGenericReminder(wakeId, workspaceId, workspaceTag) {
-	const wsId = workspaceId || PUSH_WORKSPACE || null;
+function showGenericReminder(wakeId) {
 	return self.registration.showNotification('Reminder', {
 		body: 'Open Scraps Cache to check your notes.',
 		tag: 'scrapscache-reminder:' + wakeId,
 		renotify: false,
 		icon: '/icon-192.png',
-		data: {
-			type: 'reminder',
-			wakeId,
-			workspaceId: wsId,
-			workspaceTag: workspaceTag || null
-		}
+		data: { type: 'reminder', wakeId, workspaceId: PUSH_WORKSPACE }
 	});
 }
 
@@ -380,7 +374,7 @@ async function showReminderWake(wake) {
 	// A note this device does not hold yet: say only that something is due. Nothing
 	// is claimed, so the app still shows the real reminder once the note arrives.
 	if (!found) {
-		await showGenericReminder(wake.id, PUSH_WORKSPACE);
+		await showGenericReminder(wake.id);
 		self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
 			for (const client of clients) {
 				try {
@@ -391,9 +385,7 @@ async function showReminderWake(wake) {
 				client.postMessage({
 					type: 'reminder-wake',
 					wakeId: wake.id,
-					workspaceId: PUSH_WORKSPACE,
-					noteId: null,
-					reminder: wake.fireAt
+					workspaceId: PUSH_WORKSPACE
 				});
 			}
 		});

@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
+	check: vi.fn(() => ({ allowed: true })),
+	authenticate: vi.fn(async (): Promise<string | null> => 'account-aaaaaaaaaaaa'),
 	arm: vi.fn(async () => undefined),
 	savePushDevice: vi.fn(async () => undefined),
 	replaceReminderWakes: vi.fn(async () => true),
@@ -12,11 +14,11 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('$lib/server/rateLimit', () => ({
 	clientAddress: (get: () => string) => get(),
-	getPublicApiLimiter: () => ({ check: () => ({ allowed: true }) }),
+	getPublicApiLimiter: () => ({ check: mocks.check }),
 	rateLimitResponse: () => new Response(null, { status: 429 })
 }));
 vi.mock('$lib/server/syncAuth', () => ({
-	getSyncAuth: () => ({ authenticateSyncRequest: async () => 'account-aaaaaaaaaaaa' })
+	getSyncAuth: () => ({ authenticateSyncRequest: mocks.authenticate })
 }));
 vi.mock('$lib/server/syncStore', async (original) => ({
 	...(await original<typeof import('$lib/server/syncStore')>()),
@@ -48,7 +50,11 @@ function call(handler: unknown, method: string, body: unknown): Promise<Response
 }
 
 describe('reminder wake registration', () => {
-	afterEach(() => vi.clearAllMocks());
+	afterEach(() => {
+		vi.clearAllMocks();
+		mocks.check.mockReturnValue({ allowed: true });
+		mocks.authenticate.mockResolvedValue('account-aaaaaaaaaaaa');
+	});
 
 	it('schedules delivery when an account stores its wakes', async () => {
 		const response = await call(PUT, 'PUT', {
@@ -92,5 +98,31 @@ describe('reminder wake registration', () => {
 		expect(data.revision).toBe(1);
 		expect(data.wakes).toEqual([{ id: 'a'.repeat(43), fireAt: 12345 }]);
 		expect(mocks.getReminderWakes).toHaveBeenCalledWith('account-aaaaaaaaaaaa');
+	});
+
+	const get = () =>
+		(GET as Handler)({
+			request: new Request('https://example.test/api/sync/push/wakes'),
+			getClientAddress: () => '203.0.113.9'
+		});
+
+	it('refuses to list wakes without a valid sync session', async () => {
+		mocks.authenticate.mockResolvedValue(null);
+		expect((await get()).status).toBe(401);
+		expect(mocks.getReminderWakes).not.toHaveBeenCalled();
+	});
+
+	it('rate limits listing wakes by address', async () => {
+		mocks.check.mockReturnValue({ allowed: false });
+		expect((await get()).status).toBe(429);
+		expect(mocks.authenticate).not.toHaveBeenCalled();
+		expect(mocks.getReminderWakes).not.toHaveBeenCalled();
+	});
+
+	it('reports the schedule as unavailable when the store fails', async () => {
+		const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+		mocks.getReminderWakes.mockRejectedValueOnce(new Error('db down'));
+		expect((await get()).status).toBe(503);
+		error.mockRestore();
 	});
 });

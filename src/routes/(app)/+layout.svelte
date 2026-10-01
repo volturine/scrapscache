@@ -50,23 +50,23 @@
 		applyEditorOpen(true);
 	}
 
+	/** Make `pid` the open workspace, closing an open note first. */
+	async function switchToWorkspace(pid: string): Promise<boolean> {
+		if (pid === syncStore.activeId) return true;
+		if (editingId !== null) await closeOpenNote?.();
+		const switched = await profileCoordinator.switchTo(pid);
+		if (!switched.success) noteLinkProblem = switched.error ?? 'Could not open that workspace.';
+		return switched.success;
+	}
+
 	/** Open a note in its own workspace: a reminder from another one switches to it first. */
 	async function openNoteInWorkspace(pid: string, noteId: string) {
-		if (pid !== syncStore.activeId) {
-			if (editingId !== null) await closeOpenNote?.();
-			const switched = await profileCoordinator.switchTo(pid);
-			if (!switched.success) {
-				noteLinkProblem = switched.error ?? 'Could not open that workspace.';
-				return;
-			}
-		}
-		if (noteId) {
-			openEditor(noteId);
-		} else {
-			void notesStore.syncWithCloudManual().then(() => {
-				reminderStore.scan();
-			});
-		}
+		if (await switchToWorkspace(pid)) openEditor(noteId);
+	}
+
+	/** Open a workspace whose reminder fired before its note synced, and pull that note. */
+	async function openWorkspace(pid: string) {
+		if (await switchToWorkspace(pid)) void notesStore.triggerSync();
 	}
 
 	/** Receipts reconcile on their own channel, even while note sync is busy. */
@@ -211,17 +211,22 @@
 		document.addEventListener('visibilitychange', onForeground);
 		const stopSyncEvents = syncEventsClient.subscribe((seq?: number) => {
 			void notesStore.triggerSync(seq);
-			void reminderStore.syncAllRemoteWakes();
+			if (syncStore.activeId) void reminderStore.syncRemoteWakes(syncStore.activeId);
 		});
 		const stopReminderHistory = reminderHistoryClient.attach();
 		const stopReminders = reminderStore.attach({
 			workspaces: () =>
-				syncStore.profiles.map((profile) => ({ id: profile.id, linked: !!profile.syncKey })),
+				syncStore.profiles.map((profile) => ({
+					id: profile.id,
+					name: profile.name,
+					syncKey: profile.syncKey || null
+				})),
 			loadNotes: (pid) => getAllNotesMetadata(pid),
 			reconcile: reconcileReminders,
 			openNote: (pid, noteId) => void openNoteInWorkspace(pid, noteId),
+			openWorkspace: (pid) => void openWorkspace(pid),
 			triggerSync: (pid) => {
-				if (pid === syncStore.activeId) void notesStore.syncWithCloud();
+				if (pid === syncStore.activeId) void notesStore.triggerSync();
 			}
 		});
 		void preloadVapidPublicKey();

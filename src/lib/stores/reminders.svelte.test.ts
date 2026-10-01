@@ -18,7 +18,6 @@ import { reminderWakeId, type ReminderNote } from '$lib/reminderNotify';
 import { readReminderHistory } from '$lib/reminderHistory';
 import { deleteSyncState, getFiredReminderKeys, getSyncOutboxKeys } from '$lib/db/idb';
 import { TEST_WORKSPACE } from '../../tests/workspace';
-import { syncStore } from '$lib/stores/sync.svelte';
 
 const OTHER = 'reminders-other';
 
@@ -39,20 +38,28 @@ function testHost(
 	options: { others?: Record<string, ReminderNote[]>; linked?: string[] } = {}
 ): ReminderHost & {
 	opened: [string, string][];
+	openedWorkspaces: string[];
 	reconcile: ReturnType<typeof vi.fn<(pid: string) => void>>;
 	triggerSync: ReturnType<typeof vi.fn<(pid: string) => void>>;
 } {
 	const others = options.others ?? {};
 	const linked = new Set(options.linked ?? []);
 	const opened: [string, string][] = [];
+	const openedWorkspaces: string[] = [];
 	return {
 		opened,
+		openedWorkspaces,
 		workspaces: () =>
-			[TEST_WORKSPACE, ...Object.keys(others)].map((id) => ({ id, linked: linked.has(id) })),
+			[TEST_WORKSPACE, ...Object.keys(others)].map((id) => ({
+				id,
+				name: 'Personal',
+				syncKey: linked.has(id) ? 'dummy-key' : null
+			})),
 		loadNotes: async (pid) => others[pid] ?? [],
 		reconcile: vi.fn<(pid: string) => void>(),
 		triggerSync: vi.fn<(pid: string) => void>(),
-		openNote: (pid, noteId) => opened.push([pid, noteId])
+		openNote: (pid, noteId) => opened.push([pid, noteId]),
+		openWorkspace: (pid) => openedWorkspaces.push(pid)
 	};
 }
 
@@ -386,70 +393,103 @@ describe('ReminderStore', () => {
 	});
 
 	describe('cross-device unsynced reminder wakes', () => {
-		beforeEach(() => {
-			syncStore.profiles = [
-				{ id: TEST_WORKSPACE, name: 'Personal', syncKey: 'dummy-key', createdAt: 1 }
-			];
-		});
+		const dueTime = () => Date.now() - 1000;
 
-		it('shows a notification for a due wake created on another device before the note syncs', async () => {
-			const { store } = newStore();
-			const host = testHost({ linked: [TEST_WORKSPACE] });
-			const stop = store.attach(host);
-			const dueTime = Date.now() - 1000;
-			const remoteWakeId = 'w'.repeat(43);
-			wakeMocks.fetch.mockResolvedValue({
-				revision: 1,
-				wakes: [{ id: remoteWakeId, fireAt: dueTime }]
-			});
-
+		async function showRemoteWake(store: ReminderStore, wakeId: string, fireAt: number) {
+			wakeMocks.fetch.mockResolvedValue({ revision: 1, wakes: [{ id: wakeId, fireAt }] });
 			await store.activateProfile(TEST_WORKSPACE, []);
 			await store.syncRemoteWakes(TEST_WORKSPACE);
 			await vi.waitFor(() => expect(store.alerts).toHaveLength(1));
+		}
 
-			const alert = store.alerts[0];
-			expect(alert.wakeId).toBe(remoteWakeId);
-			expect(alert.noteId).toBe('');
-			expect(alert.title).toContain('Reminder');
+		it('alerts for a due wake whose note has not synced, and keeps the alert until it does', async () => {
+			const { store } = newStore();
+			const host = testHost({ linked: [TEST_WORKSPACE] });
+			const stop = store.attach(host);
+			const fireAt = dueTime();
+			const arrived = note({ id: 'remote-note-1', reminder: fireAt });
+			const wakeId = reminderWakeId(arrived.id, fireAt);
+
+			await showRemoteWake(store, wakeId, fireAt);
+			expect(store.alerts[0]).toMatchObject({ wakeId, noteId: '', title: 'Reminder (Personal)' });
 			expect(host.triggerSync).toHaveBeenCalledWith(TEST_WORKSPACE);
 
-			// Now note arrives via sync
-			const arrivedNote = note({ id: 'remote-note-1', reminder: dueTime });
-			const calculatedWakeId = reminderWakeId(arrivedNote.id, dueTime);
-			store.alerts[0].wakeId = calculatedWakeId;
-			wakeMocks.fetch.mockResolvedValue({
-				revision: 2,
-				wakes: [{ id: calculatedWakeId, fireAt: dueTime }]
+			// Other notes arriving first, as a pull usually delivers them, leave the alert alone.
+			store.sync([note({ id: 'unrelated', reminder: null })]);
+			expect(store.alerts).toHaveLength(1);
+
+			store.sync([arrived]);
+			expect(store.alerts[0]).toMatchObject({
+				wakeId,
+				noteId: 'remote-note-1',
+				title: 'Groceries'
 			});
-			await store.syncRemoteWakes(TEST_WORKSPACE);
-			store.sync([arrivedNote]);
 
-			expect(store.alerts[0].noteId).toBe('remote-note-1');
-			expect(store.alerts[0].title).toBe('Groceries');
-
-			store.open(calculatedWakeId);
+			store.open(wakeId);
 			expect(host.opened).toContainEqual([TEST_WORKSPACE, 'remote-note-1']);
 			stop();
 		});
 
-		it('opens the workspace and requests sync when opening an alert for an unsynced note', async () => {
+		it('opens the workspace to pull the note when an alert has none yet', async () => {
 			const { store } = newStore();
 			const host = testHost({ linked: [TEST_WORKSPACE] });
 			const stop = store.attach(host);
-			const dueTime = Date.now() - 1000;
-			const remoteWakeId = 'u'.repeat(43);
-			wakeMocks.fetch.mockResolvedValue({
-				revision: 1,
-				wakes: [{ id: remoteWakeId, fireAt: dueTime }]
-			});
+			const fireAt = dueTime();
+			const wakeId = reminderWakeId('unsynced-note', fireAt);
+			await showRemoteWake(store, wakeId, fireAt);
 
-			await store.activateProfile(TEST_WORKSPACE, []);
-			await store.syncRemoteWakes(TEST_WORKSPACE);
-			await vi.waitFor(() => expect(store.alerts).toHaveLength(1));
-
-			store.open(remoteWakeId);
-			expect(host.opened).toContainEqual([TEST_WORKSPACE, '']);
+			store.open(wakeId);
+			expect(host.openedWorkspaces).toEqual([TEST_WORKSPACE]);
+			expect(host.opened).toEqual([]);
 			expect(store.alerts).toHaveLength(0);
+			stop();
+		});
+
+		it('drops an alert whose note arrives archived or trashed', async () => {
+			const { store } = newStore();
+			const stop = store.attach(testHost({ linked: [TEST_WORKSPACE] }));
+			const fireAt = dueTime();
+			const arrived = note({ id: 'remote-note-1', reminder: fireAt, trashed: true });
+			await showRemoteWake(store, reminderWakeId(arrived.id, fireAt), fireAt);
+
+			store.sync([arrived]);
+			expect(store.alerts).toHaveLength(0);
+			stop();
+		});
+
+		it.each([{ archived: true }, { trashed: true }])(
+			'ignores a stale relay wake for a note held here as %o',
+			async (state) => {
+				const { store } = newStore();
+				const host = testHost({ linked: [TEST_WORKSPACE] });
+				const stop = store.attach(host);
+				const fireAt = dueTime();
+				const held = note({ id: 'held-note', reminder: fireAt, ...state });
+				wakeMocks.fetch.mockResolvedValue({
+					revision: 1,
+					wakes: [{ id: reminderWakeId(held.id, fireAt), fireAt }]
+				});
+
+				await store.activateProfile(TEST_WORKSPACE, [held]);
+				await store.syncRemoteWakes(TEST_WORKSPACE);
+				await settle();
+				expect(store.alerts).toHaveLength(0);
+				expect(host.triggerSync).not.toHaveBeenCalled();
+				stop();
+			}
+		);
+
+		it('joins a fetch already in flight', async () => {
+			const { store } = newStore();
+			const stop = store.attach(testHost({ linked: [TEST_WORKSPACE] }));
+			wakeMocks.fetch.mockClear();
+			wakeMocks.fetch.mockResolvedValue({ revision: 1, wakes: [] });
+			await store.activateProfile(TEST_WORKSPACE, []);
+			await Promise.all([
+				store.syncRemoteWakes(TEST_WORKSPACE),
+				store.syncRemoteWakes(TEST_WORKSPACE)
+			]);
+			expect(wakeMocks.fetch).toHaveBeenCalledTimes(1);
 			stop();
 		});
 	});

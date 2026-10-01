@@ -60,7 +60,13 @@
 				return;
 			}
 		}
-		openEditor(noteId);
+		if (noteId) {
+			openEditor(noteId);
+		} else {
+			void notesStore.syncWithCloudManual().then(() => {
+				reminderStore.scan();
+			});
+		}
 	}
 
 	/** Receipts reconcile on their own channel, even while note sync is busy. */
@@ -205,6 +211,7 @@
 		document.addEventListener('visibilitychange', onForeground);
 		const stopSyncEvents = syncEventsClient.subscribe((seq?: number) => {
 			void notesStore.triggerSync(seq);
+			void reminderStore.syncAllRemoteWakes();
 		});
 		const stopReminderHistory = reminderHistoryClient.attach();
 		const stopReminders = reminderStore.attach({
@@ -212,7 +219,10 @@
 				syncStore.profiles.map((profile) => ({ id: profile.id, linked: !!profile.syncKey })),
 			loadNotes: (pid) => getAllNotesMetadata(pid),
 			reconcile: reconcileReminders,
-			openNote: (pid, noteId) => void openNoteInWorkspace(pid, noteId)
+			openNote: (pid, noteId) => void openNoteInWorkspace(pid, noteId),
+			triggerSync: (pid) => {
+				if (pid === syncStore.activeId) void notesStore.syncWithCloud();
+			}
 		});
 		void preloadVapidPublicKey();
 		if ('serviceWorker' in navigator) {

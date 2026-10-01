@@ -18,6 +18,7 @@ const registeredDevices = new Set<string>();
 const registrationFlights = new Map<string, Promise<boolean>>();
 let publishedWakes: { accountId: string; revision: number; signature: string } | null = null;
 let publishFlight: { key: string; promise: Promise<ReminderWake[] | null> } | null = null;
+const WAKE_ID_RE = /^[A-Za-z0-9_-]{43}$/;
 
 type Workspace = Pick<StoredProfile, 'id' | 'syncKey'>;
 
@@ -262,6 +263,38 @@ export async function publishReminderWakes(notes: ReminderNote[]): Promise<Remin
 	return promise.finally(() => {
 		if (publishFlight?.promise === promise) publishFlight = null;
 	});
+}
+
+/** Fetch the wakes stored on the relay for one workspace. */
+export async function fetchReminderWakes(
+	workspace: Workspace
+): Promise<{ revision: number | null; wakes: ReminderWake[] } | null> {
+	if (!workspace.syncKey) return null;
+	const account = identityFromSyncKey(workspace.syncKey);
+	try {
+		const response = await syncStore.authorizedFetch(
+			'/api/sync/push/wakes',
+			{ method: 'GET' },
+			account
+		);
+		if (!response.ok) return null;
+		const data = (await response.json()) as { revision?: unknown; wakes?: unknown };
+		const wakes = Array.isArray(data.wakes)
+			? data.wakes.filter(
+					(wake): wake is ReminderWake =>
+						wake &&
+						typeof wake.id === 'string' &&
+						WAKE_ID_RE.test(wake.id) &&
+						Number.isSafeInteger(wake.fireAt)
+				)
+			: [];
+		return {
+			revision: typeof data.revision === 'number' ? data.revision : null,
+			wakes
+		};
+	} catch {
+		return null;
+	}
 }
 
 /**

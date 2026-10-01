@@ -2,12 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const wakeMocks = vi.hoisted(() => ({
 	publish: vi.fn(),
-	register: vi.fn()
+	register: vi.fn(),
+	fetch: vi.fn()
 }));
 
 vi.mock('$lib/reminderWake', () => ({
 	publishReminderWakes: wakeMocks.publish,
-	registerAllReminderDevices: wakeMocks.register
+	registerAllReminderDevices: wakeMocks.register,
+	fetchReminderWakes: wakeMocks.fetch
 }));
 
 import { ReminderStore, type ReminderHost } from './reminders.svelte';
@@ -16,6 +18,7 @@ import { reminderWakeId, type ReminderNote } from '$lib/reminderNotify';
 import { readReminderHistory } from '$lib/reminderHistory';
 import { deleteSyncState, getFiredReminderKeys, getSyncOutboxKeys } from '$lib/db/idb';
 import { TEST_WORKSPACE } from '../../tests/workspace';
+import { syncStore } from '$lib/stores/sync.svelte';
 
 const OTHER = 'reminders-other';
 
@@ -37,6 +40,7 @@ function testHost(
 ): ReminderHost & {
 	opened: [string, string][];
 	reconcile: ReturnType<typeof vi.fn<(pid: string) => void>>;
+	triggerSync: ReturnType<typeof vi.fn<(pid: string) => void>>;
 } {
 	const others = options.others ?? {};
 	const linked = new Set(options.linked ?? []);
@@ -47,6 +51,7 @@ function testHost(
 			[TEST_WORKSPACE, ...Object.keys(others)].map((id) => ({ id, linked: linked.has(id) })),
 		loadNotes: async (pid) => others[pid] ?? [],
 		reconcile: vi.fn<(pid: string) => void>(),
+		triggerSync: vi.fn<(pid: string) => void>(),
 		openNote: (pid, noteId) => opened.push([pid, noteId])
 	};
 }
@@ -376,6 +381,75 @@ describe('ReminderStore', () => {
 			await store.activateProfile(TEST_WORKSPACE, [note({ reminder: Date.now() - 1 })]);
 			await vi.waitFor(() => expect(store.alerts).toHaveLength(1));
 			expect(host.reconcile).not.toHaveBeenCalled();
+			stop();
+		});
+	});
+
+	describe('cross-device unsynced reminder wakes', () => {
+		beforeEach(() => {
+			syncStore.profiles = [
+				{ id: TEST_WORKSPACE, name: 'Personal', syncKey: 'dummy-key', createdAt: 1 }
+			];
+		});
+
+		it('shows a notification for a due wake created on another device before the note syncs', async () => {
+			const { store } = newStore();
+			const host = testHost({ linked: [TEST_WORKSPACE] });
+			const stop = store.attach(host);
+			const dueTime = Date.now() - 1000;
+			const remoteWakeId = 'w'.repeat(43);
+			wakeMocks.fetch.mockResolvedValue({
+				revision: 1,
+				wakes: [{ id: remoteWakeId, fireAt: dueTime }]
+			});
+
+			await store.activateProfile(TEST_WORKSPACE, []);
+			await store.syncRemoteWakes(TEST_WORKSPACE);
+			await vi.waitFor(() => expect(store.alerts).toHaveLength(1));
+
+			const alert = store.alerts[0];
+			expect(alert.wakeId).toBe(remoteWakeId);
+			expect(alert.noteId).toBe('');
+			expect(alert.title).toContain('Reminder');
+			expect(host.triggerSync).toHaveBeenCalledWith(TEST_WORKSPACE);
+
+			// Now note arrives via sync
+			const arrivedNote = note({ id: 'remote-note-1', reminder: dueTime });
+			const calculatedWakeId = reminderWakeId(arrivedNote.id, dueTime);
+			store.alerts[0].wakeId = calculatedWakeId;
+			wakeMocks.fetch.mockResolvedValue({
+				revision: 2,
+				wakes: [{ id: calculatedWakeId, fireAt: dueTime }]
+			});
+			await store.syncRemoteWakes(TEST_WORKSPACE);
+			store.sync([arrivedNote]);
+
+			expect(store.alerts[0].noteId).toBe('remote-note-1');
+			expect(store.alerts[0].title).toBe('Groceries');
+
+			store.open(calculatedWakeId);
+			expect(host.opened).toContainEqual([TEST_WORKSPACE, 'remote-note-1']);
+			stop();
+		});
+
+		it('opens the workspace and requests sync when opening an alert for an unsynced note', async () => {
+			const { store } = newStore();
+			const host = testHost({ linked: [TEST_WORKSPACE] });
+			const stop = store.attach(host);
+			const dueTime = Date.now() - 1000;
+			const remoteWakeId = 'u'.repeat(43);
+			wakeMocks.fetch.mockResolvedValue({
+				revision: 1,
+				wakes: [{ id: remoteWakeId, fireAt: dueTime }]
+			});
+
+			await store.activateProfile(TEST_WORKSPACE, []);
+			await store.syncRemoteWakes(TEST_WORKSPACE);
+			await vi.waitFor(() => expect(store.alerts).toHaveLength(1));
+
+			store.open(remoteWakeId);
+			expect(host.opened).toContainEqual([TEST_WORKSPACE, '']);
+			expect(store.alerts).toHaveLength(0);
 			stop();
 		});
 	});

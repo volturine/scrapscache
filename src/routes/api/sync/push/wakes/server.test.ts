@@ -3,7 +3,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
 	arm: vi.fn(async () => undefined),
 	savePushDevice: vi.fn(async () => undefined),
-	replaceReminderWakes: vi.fn(async () => true)
+	replaceReminderWakes: vi.fn(async () => true),
+	getReminderWakes: vi.fn(async () => ({
+		revision: 1,
+		wakes: [{ id: 'a'.repeat(43), fireAt: 12345 }]
+	}))
 }));
 
 vi.mock('$lib/server/rateLimit', () => ({
@@ -18,7 +22,8 @@ vi.mock('$lib/server/syncStore', async (original) => ({
 	...(await original<typeof import('$lib/server/syncStore')>()),
 	getSyncStore: () => ({
 		savePushDevice: mocks.savePushDevice,
-		replaceReminderWakes: mocks.replaceReminderWakes
+		replaceReminderWakes: mocks.replaceReminderWakes,
+		getReminderWakes: mocks.getReminderWakes
 	})
 }));
 vi.mock('$lib/server/pushWakes', async (original) => ({
@@ -27,7 +32,7 @@ vi.mock('$lib/server/pushWakes', async (original) => ({
 }));
 vi.mock('$lib/server/wakeTimer', () => ({ armWakeTimer: mocks.arm }));
 
-import { POST, PUT } from './+server';
+import { GET, POST, PUT } from './+server';
 
 type Handler = (event: { request: Request; getClientAddress(): string }) => Promise<Response>;
 
@@ -73,5 +78,19 @@ describe('reminder wake registration', () => {
 		expect(response.status).toBe(200);
 		expect(mocks.replaceReminderWakes).toHaveBeenCalled();
 		error.mockRestore();
+	});
+
+	it('fetches wakes for the authenticated account', async () => {
+		const response = await (GET as Handler)({
+			request: new Request('https://example.test/api/sync/push/wakes', {
+				method: 'GET'
+			}),
+			getClientAddress: () => '203.0.113.9'
+		});
+		expect(response.status).toBe(200);
+		const data = await response.json();
+		expect(data.revision).toBe(1);
+		expect(data.wakes).toEqual([{ id: 'a'.repeat(43), fireAt: 12345 }]);
+		expect(mocks.getReminderWakes).toHaveBeenCalledWith('account-aaaaaaaaaaaa');
 	});
 });

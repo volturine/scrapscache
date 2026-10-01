@@ -2,6 +2,7 @@ import { fireEvent, render } from '@testing-library/svelte';
 import { flushSync, tick } from 'svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import BodyEditor from './BodyEditor.svelte';
+import { actionUndo } from '$lib/stores/actionUndo.svelte';
 import { uiStore } from '$lib/stores/ui.svelte';
 
 function textNode(element: Node): Node {
@@ -97,6 +98,7 @@ function selectedEditorText(): string {
 afterEach(() => {
 	uiStore.rawMarkdown = false;
 	vi.unstubAllGlobals();
+	actionUndo.clear();
 });
 
 describe('BodyEditor native editing', () => {
@@ -2830,5 +2832,142 @@ describe('BodyEditor task lists', () => {
 
 		expect(lineTexts(list.container)).toEqual(['Parent', '']);
 		expect(list.saved()).toBe('[ ] Parent');
+	});
+});
+
+describe('BodyEditor shared undo', () => {
+	it('restores the title from the same stack as the body', async () => {
+		const restored: string[] = [];
+		const { component, rerender } = render(BodyEditor, {
+			props: {
+				body: 'Hello',
+				title: 'Old',
+				onRestoreTitle: (title: string) => restored.push(title)
+			}
+		});
+		component.noteTitleEdit('Old', { start: 3, end: 3 }, 'insertText');
+		await rerender({ title: 'Older' });
+
+		expect(component.undo()).toBe(true);
+		expect(restored).toEqual(['Old']);
+	});
+
+	it('falls through to an action when the text stack is empty', () => {
+		const undone = vi.fn();
+		actionUndo.push({
+			message: 'Note archived',
+			noteIds: [],
+			undo: undone,
+			redo: () => {}
+		});
+		const { container } = render(BodyEditor, { props: { body: 'Hello' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const event = new KeyboardEvent('keydown', {
+			key: 'z',
+			ctrlKey: true,
+			bubbles: true,
+			cancelable: true
+		});
+
+		editor.dispatchEvent(event);
+
+		expect(undone).toHaveBeenCalledOnce();
+		expect(event.defaultPrevented).toBe(true);
+	});
+
+	it('undoes a newer action before older text, and redoes in reverse', async () => {
+		const order: string[] = [];
+		const { component, rerender } = render(BodyEditor, {
+			props: {
+				body: 'Hello',
+				title: 'Old',
+				onRestoreTitle: (title: string) => order.push(`title:${title}`)
+			}
+		});
+		component.noteTitleEdit('Old', { start: 3, end: 3 }, 'insertText');
+		await rerender({ title: 'New' });
+		actionUndo.push({
+			message: 'Attachment removed',
+			noteIds: [],
+			undo: () => order.push('restore attachment'),
+			redo: () => order.push('remove attachment')
+		});
+
+		component.undo();
+		expect(order).toEqual(['restore attachment']);
+		component.undo();
+		expect(order).toEqual(['restore attachment', 'title:Old']);
+		await rerender({ title: 'Old' });
+
+		component.redo();
+		expect(order.at(-1)).toBe('title:New');
+		await rerender({ title: 'New' });
+		component.redo();
+		expect(order.at(-1)).toBe('remove attachment');
+	});
+
+	it('ends text redo when an action happens after the undo', async () => {
+		const restored: string[] = [];
+		const { component, rerender } = render(BodyEditor, {
+			props: {
+				body: 'Hello',
+				title: 'Old',
+				onRestoreTitle: (title: string) => restored.push(title)
+			}
+		});
+		component.noteTitleEdit('Old', { start: 3, end: 3 }, 'insertText');
+		await rerender({ title: 'New' });
+		component.undo();
+		await rerender({ title: 'Old' });
+		actionUndo.push({ message: 'Note archived', noteIds: [], undo() {}, redo() {} });
+
+		expect(component.redo()).toBe(false);
+		expect(restored).toEqual(['Old']);
+	});
+
+	it('keeps native undo out of the editor when there is nothing to undo', () => {
+		const { container } = render(BodyEditor, { props: { body: 'Hello' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const key = new KeyboardEvent('keydown', {
+			key: 'z',
+			ctrlKey: true,
+			bubbles: true,
+			cancelable: true
+		});
+		const input = new InputEvent('beforeinput', {
+			bubbles: true,
+			cancelable: true,
+			inputType: 'historyUndo'
+		});
+
+		editor.dispatchEvent(key);
+		editor.dispatchEvent(input);
+
+		expect(key.defaultPrevented).toBe(true);
+		expect(input.defaultPrevented).toBe(true);
+	});
+
+	it('cancels historyUndo when it undoes text', async () => {
+		const restored: string[] = [];
+		const { component, container, rerender } = render(BodyEditor, {
+			props: {
+				body: 'Hello',
+				title: 'Old',
+				onRestoreTitle: (title: string) => restored.push(title)
+			}
+		});
+		component.noteTitleEdit('Old', { start: 0, end: 0 }, 'insertText');
+		await rerender({ title: 'New' });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const event = new InputEvent('beforeinput', {
+			bubbles: true,
+			cancelable: true,
+			inputType: 'historyUndo'
+		});
+
+		editor.dispatchEvent(event);
+
+		expect(event.defaultPrevented).toBe(true);
+		expect(restored).toEqual(['Old']);
 	});
 });

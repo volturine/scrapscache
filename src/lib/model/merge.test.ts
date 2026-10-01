@@ -148,6 +148,37 @@ describe('mergeTwoNotes', () => {
 		expect(mergeTwoNotes(removed, both).images?.map((item) => item.id)).toEqual(['keep']);
 	});
 
+	it('lets a later images edit that still has the attachment beat an older tombstone', () => {
+		const base = applyNoteEdit(
+			note(1, []),
+			{ images: [image('photo', 'data:p')] },
+			context('a', 5)
+		);
+		const removed = applyNoteEdit(base, { images: [] }, context('a', 10));
+		const restored = applyNoteEdit(
+			removed,
+			{ images: [image('photo', 'data:p')] },
+			context('a', 20)
+		);
+
+		expect(mergeTwoNotes(restored, removed).images?.map((item) => item.id)).toEqual(['photo']);
+		expect(mergeTwoNotes(restored, removed).imageTombstones).toBeUndefined();
+		expect(mergeTwoNotes(removed, restored).images?.map((item) => item.id)).toEqual(['photo']);
+	});
+
+	it('does not resurrect an attachment from an older images edit', () => {
+		const base = applyNoteEdit(
+			note(1, []),
+			{ images: [image('photo', 'data:p')] },
+			context('a', 5)
+		);
+		const removed = applyNoteEdit(base, { images: [] }, context('a', 10));
+
+		expect(mergeTwoNotes(base, removed).images ?? []).toEqual([]);
+		expect(mergeTwoNotes(base, removed).imageTombstones?.photo).toBeGreaterThan(0);
+		expect(mergeTwoNotes(removed, base).images ?? []).toEqual([]);
+	});
+
 	it('keeps the later content edit of one attachment', () => {
 		const original = note(1, [{ ...image('one', ''), contentHash: 'old' }]);
 		const cropped = applyNoteEdit(

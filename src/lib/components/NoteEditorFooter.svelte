@@ -297,14 +297,16 @@
 	}
 
 	function removeAttachment(id: string) {
-		const next = images.filter((i) => i.id !== id);
-		images = next;
-		onImagesChange?.(next);
-		if (noteId) {
-			notesStore.flushNote(noteId, { images: next }).catch((err) => {
+		const removed = images.find((i) => i.id === id);
+		// The store records the undo step, so it writes before the draft catches up.
+		if (noteId && removed) {
+			notesStore.removeAttachment(noteId, removed).catch((err) => {
 				console.error('[footer] remove attachment flush:', err);
 			});
 		}
+		const next = images.filter((i) => i.id !== id);
+		images = next;
+		onImagesChange?.(next);
 	}
 
 	function openTags(e: MouseEvent) {

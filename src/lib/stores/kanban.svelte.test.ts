@@ -4,6 +4,7 @@ import { createKanbanBoard, type KanbanBoard } from '$lib/kanban';
 import { getSyncOutboxKeys } from '$lib/db/idb';
 import { createSyncIdentity } from '$lib/syncPairing';
 import { loadBoardsFromDevice, saveBoardsToDevice } from '$lib/syncTombstones';
+import { actionUndo } from './actionUndo.svelte';
 import { KanbanStore } from './kanban.svelte';
 import { syncStore } from './sync.svelte';
 import { TEST_WORKSPACE } from '../../tests/workspace';
@@ -131,6 +132,45 @@ describe('boards belong to the workspace that saved them', () => {
 
 		expect(mine?.map((board) => board.id)).toEqual(['work-board']);
 		expect(mine?.[0].columns[0].order).toEqual(['n2', 'n1']);
+	});
+
+	it('puts a deleted board back', () => {
+		const store = new KanbanStore();
+		const original = store.boards[0].id;
+		store.createBoard('Extra');
+		actionUndo.clear();
+
+		store.deleteBoard(original);
+
+		expect(actionUndo.bar).toBe('Board deleted');
+		expect(store.boards.some((board) => board.id === original)).toBe(false);
+
+		actionUndo.undo();
+
+		expect(store.boards[0].id).toBe(original);
+		// Newer than its tombstone, so a sync that still has the delete keeps it.
+		expect(store.boards[0].updatedAt).toBeGreaterThan(store.boardTombstonesForSync()[original]);
+		expect(actionUndo.bar).toBeNull();
+		actionUndo.clear();
+	});
+
+	it('brings back the last board and drops its stand-in', () => {
+		localStorage.clear();
+		const store = new KanbanStore();
+		const only = store.boards[0].id;
+		actionUndo.clear();
+		store.deleteBoard(only);
+		const standIn = store.boards[0].id;
+
+		actionUndo.undo();
+
+		expect(store.boards.map((board) => board.id)).toEqual([only]);
+		expect(store.activeBoardId).toBe(only);
+		expect(store.boardTombstonesForSync()[standIn]).toBeGreaterThan(0);
+		actionUndo.redo();
+		expect(store.boards).toHaveLength(1);
+		expect(store.boards[0].id).not.toBe(only);
+		actionUndo.clear();
 	});
 
 	it('reports nothing rather than another workspace\u2019s boards when it has none', async () => {

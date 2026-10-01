@@ -15,6 +15,7 @@ import { syncStore } from '$lib/stores/sync.svelte';
 import { loadBoardsFromDevice, writeKanbanState } from '$lib/syncTombstones';
 import { uid } from '$lib/model';
 import { editContext, syncClock } from '$lib/editContext';
+import { actionUndo } from '$lib/stores/actionUndo.svelte';
 
 /**
  * Fast-boot mirrors, one set per workspace, each key suffixed with the workspace
@@ -248,19 +249,40 @@ export class KanbanStore {
 	/**
 	 * Delete a board locally and sync a tombstone so other devices drop it too.
 	 * Always leaves at least one board: if the last board is removed, a fresh
-	 * untitled board is created so the Kanban view stays usable.
+	 * untitled board is created so the Kanban view stays usable. Undo puts it back.
 	 */
 	deleteBoard(boardId: string): void {
+		const index = this.boards.findIndex((board) => board.id === boardId);
+		if (index === -1) return;
+		const board = $state.snapshot(this.boards[index]) as KanbanBoard;
+		const wasActive = this.activeBoardId === boardId;
+		let standIn = this.removeBoard(boardId);
+		actionUndo.push({
+			message: 'Board deleted',
+			noteIds: [],
+			undo: () => {
+				this.restoreBoard(board, index, wasActive);
+				if (standIn) this.removeBoard(standIn);
+			},
+			redo: () => {
+				standIn = this.removeBoard(boardId);
+			}
+		});
+	}
+
+	/** Returns the untitled board created when the last one goes, if any. */
+	private removeBoard(boardId: string): string | null {
 		const existing = this.boards.find((board) => board.id === boardId);
-		if (!existing) return;
+		if (!existing) return null;
 
 		const deletedAt = this.nextVersion(existing.updatedAt);
 		this.boardTombstones = { ...this.boardTombstones, [boardId]: deletedAt };
 		const remaining = this.boards.filter((board) => board.id !== boardId);
 		const syncKeys = [`board-tombstone:${boardId}`];
+		let replacement: KanbanBoard | null = null;
 
 		if (remaining.length === 0) {
-			const replacement = createKanbanBoard();
+			replacement = createKanbanBoard();
 			this.boards = [replacement];
 			this.activeBoardId = replacement.id;
 			syncKeys.push(`board:${replacement.id}`);
@@ -270,6 +292,20 @@ export class KanbanStore {
 		}
 
 		this.requestSync(syncKeys);
+		return replacement?.id ?? null;
+	}
+
+	/** A board comes back newer than its tombstone, so a sync that has the delete keeps it. */
+	private restoreBoard(board: KanbanBoard, index: number, select: boolean): void {
+		if (this.boards.some((candidate) => candidate.id === board.id)) return;
+		const buried = Number(this.boardTombstones[board.id]) || 0;
+		const restored = {
+			...board,
+			updatedAt: Math.max(this.nextVersion(board.updatedAt), buried + 1)
+		};
+		this.boards = [...this.boards.slice(0, index), restored, ...this.boards.slice(index)];
+		if (select) this.activeBoardId = board.id;
+		this.requestSync([`board:${board.id}`]);
 	}
 
 	addTagColumn(boardId: string, labelId: string): KanbanColumn | null {

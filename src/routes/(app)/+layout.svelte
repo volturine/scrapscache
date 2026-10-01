@@ -29,6 +29,8 @@
 	import { profileCoordinator } from '$lib/stores/profiles.svelte';
 	import type { StoredProfile } from '$lib/profiles';
 	import NoteLinkNotice from '$lib/components/NoteLinkNotice.svelte';
+	import UndoBar from '$lib/components/UndoBar.svelte';
+	import { runUndoChord } from '$lib/stores/actionUndo.svelte';
 	import type { Snippet } from 'svelte';
 
 	let { children }: { children: Snippet } = $props();
@@ -372,7 +374,7 @@
 	<meta name="theme-color" content={uiStore.effectiveDark ? '#1a1a1a' : '#ffffff'} />
 </svelte:head>
 
-<svelte:window onpaste={handleGalleryPaste} />
+<svelte:window onpaste={handleGalleryPaste} onkeydown={runUndoChord} />
 
 <div class="app-viewport">
 	<div class={cx('app-shell', styles.shell)}>
@@ -443,7 +445,9 @@
 {#if mobile.current && uiStore.sidebarOpen}
 	<div class={styles.drawerSafeArea} aria-hidden="true"></div>
 {/if}
-<div class="app-overlay" data-app-overlay></div>
+<div class="app-overlay" data-app-overlay>
+	<UndoBar />
+</div>
 {#if noteLinkProblem}
 	<NoteLinkNotice message={noteLinkProblem} onClose={() => (noteLinkProblem = null)} />
 {/if}

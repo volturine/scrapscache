@@ -3010,3 +3010,25 @@ export const markdownStyles = css({
 		}
 	}
 });
+
+export const undoBarStyles = {
+	bar: css({
+		position: 'fixed',
+		zIndex: 70,
+		left: 'lg',
+		bottom: 'var(--app-fab-bottom)',
+		...rowCenter,
+		gap: 'sm',
+		// Clear of the floating new-note button on the right.
+		maxW: 'calc(100vw - var(--app-fab-size) - 3rem)',
+		px: 'md',
+		py: 'xs',
+		...border,
+		rounded: 'card',
+		bg: 'scrapscache.surface',
+		color: 'scrapscache.text',
+		boxShadow: 'popover',
+		textStyle: 'label'
+	}),
+	message: css({ minW: 0, ...truncateText })
+};

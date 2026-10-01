@@ -83,6 +83,8 @@ function editAttachments(note: Note, next: NoteImage[], at: number): Partial<Not
 	const kept = new Set(next.map((image) => image.id));
 	const imageTombstones = { ...note.imageTombstones };
 	for (const id of before.keys()) if (!kept.has(id)) imageTombstones[id] = at;
+	// An edit that still lists an attachment is putting it back, tombstone or not.
+	for (const id of kept) delete imageTombstones[id];
 	const images = next.map((image) => {
 		const previous = before.get(image.id);
 		if (!previous) return { ...image };
@@ -113,9 +115,13 @@ export function applyNoteEdit(note: Note, patch: NotePatch, context: EditContext
 			case 'body':
 				Object.assign(next, context.author.edit(note.id, note, patch.body ?? ''));
 				break;
-			case 'images':
-				Object.assign(next, editAttachments(note, patch.images ?? [], at));
+			case 'images': {
+				const attachments = editAttachments(note, patch.images ?? [], at);
+				Object.assign(next, attachments);
+				// Assigning does not remove a key the edit cleared.
+				if (!attachments.imageTombstones) delete next.imageTombstones;
 				break;
+			}
 			case 'secret':
 				if (patch.secret) next.secret = true;
 				else delete next.secret;

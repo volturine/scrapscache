@@ -41,6 +41,7 @@
 	import { getClipboardFiles, isImageAttachment } from '$lib/noteImages';
 	import { matchTrailingEmoticon } from '$lib/emoticons';
 	import { isKeyboardField } from '$lib/appViewport';
+	import { setEditorUndo, undoChord } from '$lib/stores/actionUndo.svelte';
 
 	let {
 		noteId = $bindable(),
@@ -109,6 +110,13 @@
 		syncBodyNow?(): void;
 		finishInput?(): void;
 		adoptBody?(text: string): boolean;
+		undo(): boolean;
+		redo(): boolean;
+		noteTitleEdit(
+			before: string,
+			selection: { start: number; end: number },
+			inputType: string
+		): void;
 	} | null>(null);
 	let footer = $state<{ handlePickedFiles(files: File[]): void; closeMenus(): void } | null>(null);
 	let editorDialog = $state<HTMLDivElement | null>(null);
@@ -184,6 +192,10 @@
 	}
 
 	onMount(() => {
+		const releaseEditorUndo = setEditorUndo((redo) => {
+			if (!isOpen || !bodyEditor) return;
+			return redo ? bodyEditor.redo() : bodyEditor.undo();
+		});
 		registerClose?.(() => (isOpen ? close() : Promise.resolve()));
 		const viewport = window.visualViewport;
 		const onViewportChange = () => {
@@ -222,6 +234,7 @@
 			});
 		}
 		return () => {
+			releaseEditorUndo();
 			registerClose?.(() => Promise.resolve());
 			viewport?.removeEventListener('resize', onViewportChange);
 			viewport?.removeEventListener('scroll', onViewportChange);
@@ -713,6 +726,46 @@
 			copyFlashTimer = null;
 		}, 1500);
 	}
+	function restoreTitle(next: string, selection: { start: number; end: number } | null) {
+		title = next;
+		markTitleEdited();
+		if (!selection) return;
+		void tick().then(() => {
+			const field = editorDialog?.querySelector<HTMLTextAreaElement>('[data-note-title]');
+			if (!field) return;
+			field.focus();
+			field.setSelectionRange(selection.start, selection.end);
+		});
+	}
+
+	function handleTitleBeforeInput(event: Event) {
+		const input = event as InputEvent;
+		if (input.inputType === 'historyUndo' || input.inputType === 'historyRedo') {
+			const did = input.inputType === 'historyRedo' ? bodyEditor?.redo() : bodyEditor?.undo();
+			if (did) event.preventDefault();
+			return;
+		}
+		const field = event.currentTarget;
+		if (!(field instanceof HTMLTextAreaElement)) return;
+		bodyEditor?.noteTitleEdit(
+			title,
+			{ start: field.selectionStart ?? 0, end: field.selectionEnd ?? 0 },
+			input.inputType
+		);
+	}
+
+	function handleTitleKeydown(event: KeyboardEvent) {
+		if (event.key === 'Enter') {
+			event.preventDefault();
+			bodyEditor?.focusDefault();
+			return;
+		}
+		const chord = undoChord(event);
+		if (!chord) return;
+		const did = chord === 'redo' ? bodyEditor?.redo() : bodyEditor?.undo();
+		if (did) event.preventDefault();
+	}
+
 	function handleTitleInput(event: Event) {
 		const target = event.target as HTMLTextAreaElement | null;
 		if (title.includes('\n') || title.includes('\r')) {
@@ -984,14 +1037,10 @@
 								data-note-title
 								placeholder="Title"
 								bind:value={title}
+								onbeforeinput={handleTitleBeforeInput}
 								oninput={handleTitleInput}
 								onpaste={handleTitlePaste}
-								onkeydown={(e) => {
-									if (e.key === 'Enter') {
-										e.preventDefault();
-										bodyEditor?.focusDefault();
-									}
-								}}
+								onkeydown={handleTitleKeydown}
 								rows="1"
 								class:markdown-raw={uiStore.rawMarkdown}
 								class={titleField}></textarea>
@@ -1007,6 +1056,8 @@
 							<BodyEditor
 								bind:this={bodyEditor}
 								bind:body
+								{title}
+								onRestoreTitle={restoreTitle}
 								oninput={markBodyEdited}
 								{transformPaste}
 								placeholder="Take a note… type [ ] for a checklist, - for a bullet, Tab for sub-task"

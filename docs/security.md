@@ -97,9 +97,12 @@ the long-term attachment format.
 - **Build version** — every build is stamped with the commit it came from, served
   at `/_app/version.json`, so a deployment names the code it runs
 - **CSP** (nonce mode) in `svelte.config.js`: default `self`, no third-party
-  scripts; `data:`/`blob:` only where attachments need them
-  (`img-src`, `media-src`, and PDF `frame-src`/`object-src`). The only third-party
-  frame allowed is the configured Turnstile challenge origin
+  JavaScript. `wasm-unsafe-eval` is enabled for WebLLM's integrity-checked model
+  libraries, while `connect-src` allows only the app and Hugging Face/GitHub model
+  download hosts. Prompts and note text are never sent to those hosts.
+  `data:`/`blob:` are allowed only where attachments need them (`img-src`,
+  `media-src`, and PDF `frame-src`/`object-src`). The only third-party frame
+  allowed is the configured Turnstile challenge origin
 - **Turnstile isolation** — Turnstile's script runs only on a separate challenge
   origin, which the app frames and which can pass back nothing but a token.
   Nothing third-party ever runs on the origin that holds the sync keys, so the

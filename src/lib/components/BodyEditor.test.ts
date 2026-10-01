@@ -1587,6 +1587,57 @@ async function typeText(editor: HTMLElement, text: string) {
 }
 
 describe('BodyEditor controlled input', () => {
+	it('leaves slash available to type when no AI command is available', () => {
+		const { container } = render(BodyEditor, { props: { body: '' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		caretAt(container, 0, 0);
+		const event = new KeyboardEvent('keydown', {
+			key: '/',
+			bubbles: true,
+			cancelable: true
+		});
+
+		editor.dispatchEvent(event);
+
+		expect(event.defaultPrevented).toBe(false);
+	});
+
+	it('opens the slash command only when the AI callback is available', () => {
+		const onSlashCommand = vi.fn();
+		const { container } = render(BodyEditor, { props: { body: '', onSlashCommand } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		caretAt(container, 0, 0);
+		const event = new KeyboardEvent('keydown', {
+			key: '/',
+			bubbles: true,
+			cancelable: true
+		});
+
+		editor.dispatchEvent(event);
+
+		expect(event.defaultPrevented).toBe(true);
+		expect(onSlashCommand).toHaveBeenCalledOnce();
+	});
+
+	it('captures and replaces a selection as one undoable edit', async () => {
+		const { container, component } = render(BodyEditor, { props: { body: 'First second' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const text = container.querySelector('[data-line-text]')?.firstChild;
+		if (!text) throw new Error('Expected body text');
+
+		select(text, 6, text, 12);
+		document.dispatchEvent(new Event('selectionchange'));
+		const selection = component.getSelectionSnapshot();
+		expect(selection?.text).toBe('second');
+		if (!selection) throw new Error('Expected text selection');
+
+		await component.replaceTextRange(selection.start, selection.end, 'third');
+		expect(lineTexts(container)).toEqual(['First third']);
+		await fireEvent.keyDown(editor, { key: 'z', ctrlKey: true });
+		await tick();
+		expect(lineTexts(container)).toEqual(['First second']);
+	});
+
 	it('adopts a synced body only once typed input has settled, without reporting input', async () => {
 		const oninput = vi.fn();
 		const { container, component } = render(BodyEditor, { props: { body: 'Hello', oninput } });
@@ -1602,6 +1653,20 @@ describe('BodyEditor controlled input', () => {
 		// The model has not serialized this keystroke yet; replacing it would lose it.
 		expect(component.adoptBody('Other')).toBe(false);
 		expect(lineTexts(container)).toEqual(['Synced', 'body!']);
+	});
+
+	it('undoes a whole-body replacement from outside', async () => {
+		const { container, component } = render(BodyEditor, { props: { body: 'Hello' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+
+		await component.replaceBodyWithText('[ ] Hello');
+		expect(lineTexts(container)).toEqual(['Hello']);
+		expect(container.querySelector('[data-task-row]')).not.toBeNull();
+
+		await fireEvent.keyDown(editor, { key: 'z', ctrlKey: true });
+		await tick();
+		expect(container.querySelector('[data-task-row]')).toBeNull();
+		expect(lineTexts(container)).toEqual(['Hello']);
 	});
 
 	it('reports input from syncBodyNow only when the body changed', async () => {

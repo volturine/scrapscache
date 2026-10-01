@@ -9,6 +9,7 @@ COPY package.json package-lock.json svelte.config.js tsconfig.json vite.config.t
 RUN npm ci --ignore-scripts
 
 COPY . .
+RUN ./node_modules/.bin/patch-package
 RUN npm run build
 
 FROM node:24-alpine AS prod-deps

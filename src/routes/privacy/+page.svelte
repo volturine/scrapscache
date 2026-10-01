@@ -49,6 +49,13 @@
 					connecting to any server, and without sending a single byte of note data over the
 					internet.
 				</p>
+				<p class={styles.sectionCopy}>
+					The optional on-device AI runs its downloaded language model inside your browser. Setting
+					it up fetches model files from Hugging Face and GitHub, which see your IP address as with
+					any download. Prompts and note content are processed on your device and are never sent to
+					those hosts or to us. The AI setting and model choice are stored only in this browser and
+					are not synced or backed up.
+				</p>
 			</section>
 
 			<section class={styles.section}>

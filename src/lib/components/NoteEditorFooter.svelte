@@ -3,6 +3,7 @@
 		canvasPreview,
 		filePreview,
 		iconSizeMd as iconMd,
+		iconSizeSm as iconSm,
 		noteEditorStyles,
 		photoPreview,
 		popover
@@ -62,6 +63,7 @@
 		PenLine,
 		RotateCcw,
 		Share2,
+		Sparkles,
 		Tag,
 		Trash2,
 		X
@@ -82,6 +84,8 @@
 		color = 'default' as NoteColor,
 		onOpenColor,
 		onOpenTags,
+		onAskAi,
+		onAskAiPointerDown,
 		onCopy,
 		onShare,
 		onRestore,
@@ -105,6 +109,8 @@
 		color?: NoteColor;
 		onOpenColor?: () => void;
 		onOpenTags?: () => void;
+		onAskAi?: () => void;
+		onAskAiPointerDown?: () => void;
 		onCopy?: () => void;
 		/** Shares a link to the note: the system share sheet, or the clipboard without one. */
 		onShare?: () => void;
@@ -652,6 +658,7 @@
 						{#each links as card (card.url)}
 							<li class={f.row}>
 								<LinkBadge {card} size="editor" />
+								<!-- Link cards are normalized absolute HTTP(S) URLs; resolve() is for app routes. -->
 								<a
 									href={card.url}
 									target="_blank"
@@ -909,6 +916,20 @@
 				justify: 'flex-end'
 			})}
 		>
+			{#if onAskAi}
+				<Tooltip content="Ask AI">
+					<button
+						type="button"
+						class={iconButton({ variant: 'ghost', size: 'standard' })}
+						title="Ask AI about this note"
+						aria-label="Ask AI about this note"
+						onpointerdown={() => onAskAiPointerDown?.()}
+						onclick={onAskAi}
+					>
+						<Sparkles class={iconMd} aria-hidden="true" />
+					</button>
+				</Tooltip>
+			{/if}
 			{@render footerButton('Color', 'Color', Palette, 'ghost', () => onOpenColor?.())}
 			{#if showShare}
 				<Menu.Root bind:open={shareOpen} positioning={{ placement: 'top-end' }}>

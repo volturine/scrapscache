@@ -53,7 +53,9 @@
 		oninput,
 		placeholder = '',
 		readOnly = false,
-		transformPaste
+		transformPaste,
+		onSelectionChange,
+		onSlashCommand
 	}: {
 		body?: string;
 		title?: string;
@@ -63,6 +65,8 @@
 		placeholder?: string;
 		readOnly?: boolean;
 		transformPaste?: (text: string) => string | null;
+		onSelectionChange?: (selection: { start: number; end: number; text: string } | null) => void;
+		onSlashCommand?: () => void;
 	} = $props();
 
 	type Line = {
@@ -777,6 +781,14 @@
 
 	function handleSelectionChange() {
 		if (!container) return;
+		const nativeSelection = window.getSelection();
+		const inEditor =
+			nativeSelection?.anchorNode != null &&
+			nativeSelection.focusNode != null &&
+			container.contains(nativeSelection.anchorNode) &&
+			container.contains(nativeSelection.focusNode);
+		if (inEditor) onSelectionChange?.(selectionSnapshot());
+		else if (document.activeElement === container) onSelectionChange?.(null);
 		const line = editorRange()?.start.line;
 		const inBlock = line !== undefined && markdownBlockAt(line) !== null;
 		container.spellcheck = !inBlock;
@@ -1033,6 +1045,26 @@
 			}
 		}
 		return { start, end, collapsed };
+	}
+
+	function selectionSnapshot(): { start: number; end: number; text: string } | null {
+		const range = editorRange();
+		if (!range || range.collapsed) return null;
+		const lineOffset = (point: EditorPoint) => {
+			let offset = 0;
+			for (let index = 0; index < point.line; index++) {
+				const previous = lines[index];
+				if (previous) offset += serializeLines([previous]).length + 1;
+			}
+			const line = lines[point.line];
+			if (!line) return offset;
+			const prefix = Math.max(0, serializeLines([line]).length - line.text.length);
+			return offset + prefix + point.offset;
+		};
+		const start = lineOffset(range.start);
+		const end = lineOffset(range.end);
+		const text = serializedBody().slice(start, end);
+		return text ? { start, end, text } : null;
 	}
 
 	function historyEntry(range = editorRange()): HistoryEntry {
@@ -1344,8 +1376,10 @@
 		void focusAfterRender(0, lines[0]?.text.length ?? 0, lines[0]?.id ?? null);
 	}
 
-	/** Replace the whole body from outside (e.g. a title paste seeding the body). */
+	/** Replace the whole body from outside (a title paste, an AI rewrite); undo restores the old body. */
 	export async function replaceBodyWithText(text: string) {
+		lastTyping = null;
+		rememberEdit();
 		applyingEdit = true;
 		try {
 			lines = parseBodyToLines(text);
@@ -1357,6 +1391,18 @@
 		} finally {
 			applyingEdit = false;
 		}
+	}
+
+	export function getSelectionSnapshot(): { start: number; end: number; text: string } | null {
+		return selectionSnapshot();
+	}
+
+	/** Replace a saved body range; this uses the same single-step undo path as a full rewrite. */
+	export async function replaceTextRange(start: number, end: number, text: string) {
+		const current = serializedBody();
+		const from = Math.max(0, Math.min(start, current.length));
+		const to = Math.max(from, Math.min(end, current.length));
+		await replaceBodyWithText(current.slice(0, from) + text + current.slice(to));
 	}
 
 	// Resolved from the id on every edit, so an indent or outdent regroups it.
@@ -2508,6 +2554,20 @@
 	function handleKeydown(event: KeyboardEvent) {
 		const primaryModifier = event.ctrlKey || event.metaKey;
 		if (composing || event.isComposing) return;
+		if (
+			onSlashCommand &&
+			event.key === '/' &&
+			!event.altKey &&
+			!primaryModifier &&
+			!event.shiftKey
+		) {
+			const range = editorRange();
+			if (range?.collapsed && !lines[range.start.line]?.text.trim()) {
+				event.preventDefault();
+				onSlashCommand?.();
+				return;
+			}
+		}
 		if (primaryModifier && !event.altKey && event.key.toLowerCase() === 'z') {
 			event.preventDefault();
 			if (event.shiftKey) redo();

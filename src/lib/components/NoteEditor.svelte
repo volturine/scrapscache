@@ -15,6 +15,8 @@
 	import { reminderStore } from '$lib/stores/reminders.svelte';
 	import { uiStore } from '$lib/stores/ui.svelte';
 	import LabelMenu from './LabelMenu.svelte';
+	import LocalAiAssistantPanel from './LocalAiAssistantPanel.svelte';
+	import { localAiStore, LocalAiStatus } from '$lib/stores/localAi.svelte';
 	import NoteEditorFooter from './NoteEditorFooter.svelte';
 	import BodyEditor from './BodyEditor.svelte';
 	import TimeTravel from './TimeTravel.svelte';
@@ -58,6 +60,12 @@
 
 	const note = $derived(noteId ? notesStore.notes.find((n) => n.id === noteId) : null);
 	const isOpen = $derived(noteId !== null && note !== null);
+	const canUseLocalAi = $derived(
+		note != null &&
+			!note.secret &&
+			localAiStore.enabled &&
+			localAiStore.status === LocalAiStatus.Ready
+	);
 	const reminderOverdue = $derived(
 		note?.reminder != null && isReminderOverdue(note.reminder, appClock.now)
 	);
@@ -87,6 +95,14 @@
 	let restoreConfirmOpen = $state(false);
 	let restoringPreview = $state(false);
 	let historyRestoreError = $state('');
+	let localAiAssistantOpen = $state(false);
+	let assistantCommandMenu = $state(false);
+	let assistantContext = $state.raw<{
+		title: string;
+		body: string;
+		selection: { start: number; end: number; text: string } | null;
+	} | null>(null);
+	let selectedBodyRange = $state.raw<{ start: number; end: number; text: string } | null>(null);
 	let copyFlash = $state(false);
 	let copyFlashTimer: ReturnType<typeof setTimeout> | null = null;
 	// svelte-ignore state_referenced_locally
@@ -107,6 +123,8 @@
 	let bodyEditor = $state<{
 		focusDefault(): void;
 		replaceBodyWithText(text: string): Promise<void>;
+		replaceTextRange(start: number, end: number, text: string): Promise<void>;
+		getSelectionSnapshot(): { start: number; end: number; text: string } | null;
 		syncBodyNow?(): void;
 		finishInput?(): void;
 		adoptBody?(text: string): boolean;
@@ -391,11 +409,41 @@
 		void close();
 	}
 
+	function handleEditorKeydown(event: KeyboardEvent) {
+		if (!isOpen) return;
+		if (
+			(event.metaKey || event.ctrlKey) &&
+			!event.altKey &&
+			!event.shiftKey &&
+			!historyPreview &&
+			event.key.toLowerCase() === 'j'
+		) {
+			event.preventDefault();
+			if (localAiAssistantOpen) closeLocalAiAssistant();
+			else openLocalAiAssistant();
+			return;
+		}
+		if (event.key !== 'Escape') return;
+		if (historyPreview) {
+			exitHistoryPreview();
+			return;
+		}
+		if (localAiAssistantOpen) {
+			closeLocalAiAssistant();
+			return;
+		}
+		if (paletteOpen || reminderOpen || labelOpen) return;
+		void close();
+	}
+
 	function closePopups() {
 		paletteOpen = false;
 		reminderOpen = false;
 		labelOpen = false;
 		footer?.closeMenus();
+		localAiAssistantOpen = false;
+		assistantCommandMenu = false;
+		assistantContext = null;
 	}
 
 	function previewHistoryVersion(
@@ -403,6 +451,7 @@
 		entry: NoteHistoryEntry,
 		missingAttachments: number
 	) {
+		closeLocalAiAssistant();
 		historyPreview = { note: version, entry, missingAttachments };
 		restoreConfirmOpen = false;
 		historyRestoreError = '';
@@ -692,6 +741,53 @@
 		void notesStore.syncPendingChanges();
 	}
 
+	function trackBodySelection(selection: { start: number; end: number; text: string } | null) {
+		if (selection?.text.trim()) selectedBodyRange = selection;
+		else selectedBodyRange = null;
+	}
+
+	function captureAssistantSelection() {
+		const selection = bodyEditor?.getSelectionSnapshot();
+		if (selection?.text.trim()) selectedBodyRange = selection;
+	}
+
+	function openLocalAiAssistant(fromSlash = false) {
+		if (!canUseLocalAi || historyPreview) return;
+		bodyEditor?.syncBodyNow?.();
+		const selection = bodyEditor?.getSelectionSnapshot() ?? selectedBodyRange;
+		assistantContext = { title, body, selection };
+		paletteOpen = false;
+		reminderOpen = false;
+		labelOpen = false;
+		footer?.closeMenus();
+		assistantCommandMenu = fromSlash;
+		localAiAssistantOpen = true;
+	}
+
+	function closeLocalAiAssistant() {
+		localAiAssistantOpen = false;
+		assistantCommandMenu = false;
+		assistantContext = null;
+	}
+
+	function applyLocalAiResult(result: string, mode: 'edit' | 'ask'): boolean {
+		const context = assistantContext;
+		bodyEditor?.syncBodyNow?.();
+		if (!context || body !== context.body || title !== context.title) return false;
+		closeLocalAiAssistant();
+		const selection = context.selection;
+		if (mode === 'edit' && selection) {
+			void bodyEditor
+				?.replaceTextRange(selection.start, selection.end, result)
+				.then(() => commitNow());
+			return true;
+		}
+		const next =
+			mode === 'ask' && context.body.trim() ? `${context.body.trimEnd()}\n\n${result}` : result;
+		void bodyEditor?.replaceBodyWithText(next).then(() => commitNow());
+		return true;
+	}
+
 	async function copyText() {
 		if (!note) return;
 		bodyEditor?.syncBodyNow?.();
@@ -836,23 +932,19 @@
 		align: 'center',
 		justify: 'center'
 	});
+
+	// Sync can mark an open note secret from another device; tear down any UI that
+	// could keep its title or body in a model prompt. A browser setting change also
+	// needs to stop and clear an active panel before it can be re-enabled.
+	$effect(() => {
+		if (!note?.secret && localAiStore.enabled) return;
+		localAiAssistantOpen = false;
+		assistantCommandMenu = false;
+		assistantContext = null;
+	});
 </script>
 
-<svelte:window
-	onkeydown={(e) => {
-		if (!isOpen || e.key !== 'Escape') return;
-		if (historyPreview) {
-			exitHistoryPreview();
-			return;
-		}
-		if (paletteOpen || reminderOpen || labelOpen) return;
-		// The body keeps its caret by design; the keyboard way out is Escape (this
-		// handler) and, once back on the card, the context-menu key opens the same
-		// quick actions (archive, labels, delete) the footer exposes.
-		void close();
-	}}
-	onpastecapture={handlePaste}
-/>
+<svelte:window onkeydown={handleEditorKeydown} onpastecapture={handlePaste} />
 
 {#if isOpen && note}
 	<div
@@ -956,7 +1048,12 @@
 									type="button"
 									class={iconButton({ variant: 'ghost', size: 'sm' })}
 									title={note.secret ? 'Remove secret' : 'Make secret'}
-									onclick={() => commit({ secret: !note.secret })}
+									onclick={() => {
+										if (!note.secret) {
+											closeLocalAiAssistant();
+										}
+										commit({ secret: !note.secret });
+									}}
 									aria-label={note.secret ? 'Remove secret' : 'Make secret'}
 								>
 									{#if note.secret}
@@ -1059,6 +1156,8 @@
 								{title}
 								onRestoreTitle={restoreTitle}
 								oninput={markBodyEdited}
+								onSelectionChange={trackBodySelection}
+								onSlashCommand={canUseLocalAi ? () => openLocalAiAssistant(true) : undefined}
 								{transformPaste}
 								placeholder="Take a note… type [ ] for a checklist, - for a bullet, Tab for sub-task"
 							/>
@@ -1084,6 +1183,16 @@
 								</div>
 							</div>
 						{/if}
+						{#if localAiAssistantOpen && assistantContext && canUseLocalAi}
+							<LocalAiAssistantPanel
+								title={assistantContext.title}
+								body={assistantContext.body}
+								selection={assistantContext.selection?.text ?? ''}
+								commandMenu={assistantCommandMenu}
+								onApply={applyLocalAiResult}
+								onDismiss={closeLocalAiAssistant}
+							/>
+						{/if}
 
 						<NoteEditorFooter
 							bind:this={footer}
@@ -1107,6 +1216,8 @@
 								closePopups();
 								labelOpen = true;
 							}}
+							onAskAi={canUseLocalAi ? () => openLocalAiAssistant() : undefined}
+							onAskAiPointerDown={captureAssistantSelection}
 							onCopy={() => void copyText()}
 							onShare={() => void shareNote()}
 							onRestore={() => {

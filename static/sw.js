@@ -2,7 +2,8 @@
 // JS/CSS must not be cache-first forever: hashed builds change filenames, but
 // a stale shell HTML or long-lived module cache leaves phones on old UI bugs.
 
-const CACHE_NAME = 'scrapscache-v3';
+const CACHE_PREFIX = 'scrapscache-v';
+const CACHE_NAME = 'scrapscache-v4';
 
 // The app registers this script twice over: once for the whole app (the shell
 // cache), and once per synced workspace under `/push/<workspace id>/`, which
@@ -44,7 +45,11 @@ self.addEventListener('activate', (event) => {
 	}
 	event.waitUntil(
 		caches.keys().then((keys) =>
-			Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
+			Promise.all(
+				keys
+					.filter((k) => k.startsWith(CACHE_PREFIX) && k !== CACHE_NAME)
+					.map((k) => caches.delete(k))
+			)
 		).then(() => self.clients.claim())
 	);
 });

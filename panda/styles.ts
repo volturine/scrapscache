@@ -1717,6 +1717,152 @@ export const reminderSettingsStyles = {
 	chevron: css({ ...iconSm, flexShrink: 0, ...mutedText })
 };
 
+export const localAiSettingsStyles = {
+	...reminderSettingsStyles,
+	label: css({ ...flexFill, ...truncateText, textStyle: 'button' }),
+	status: css({ ...truncateText, maxW: '45%', flexShrink: 0, textStyle: 'captionStrong' }),
+	action: iconSmClass,
+	error: css({ px: 'md', pb: 'sm', textStyle: 'label', color: 'scrapscache.danger' }),
+	toggle: css({
+		display: 'flex',
+		alignItems: 'center',
+		justifyContent: 'space-between',
+		gap: 'sm',
+		w: 'full',
+		px: 'md',
+		py: 'sm',
+		cursor: 'pointer',
+		rounded: 'md',
+		_hoverable: { bg: 'scrapscache.surfaceSubtle' },
+		'&[data-focus-visible] [data-part=control]': {
+			outline: '2px solid',
+			outlineColor: 'scrapscache.focus',
+			outlineOffset: '2px'
+		},
+		'&[data-disabled]': { cursor: 'not-allowed', opacity: 0.5 }
+	}),
+	toggleCopy: css({ display: 'grid', gap: '3xs', minW: 0, flex: '1' }),
+	toggleLabel: css({ textStyle: 'button' }),
+	toggleDescription: css({ textStyle: 'caption', color: 'scrapscache.textMuted' }),
+	switchControl: css({
+		display: 'inline-flex',
+		alignItems: 'center',
+		w: '2.25rem',
+		h: '1.25rem',
+		p: '3xs',
+		flexShrink: 0,
+		borderWidth: 'hairline',
+		borderColor: 'scrapscache.borderSubtle',
+		rounded: 'pill',
+		bg: 'scrapscache.controlSubtle',
+		transition: 'background-color 120ms ease, border-color 120ms ease',
+		'&[data-state=checked]': {
+			bg: 'scrapscache.accent',
+			borderColor: 'scrapscache.accent'
+		},
+		'&[data-active]': { transform: 'scale(0.98)' }
+	}),
+	switchThumb: css({
+		w: '1rem',
+		h: '1rem',
+		flexShrink: 0,
+		rounded: 'pill',
+		bg: 'scrapscache.surface',
+		boxShadow: 'sm',
+		transition: 'transform 120ms ease',
+		'&[data-state=checked]': { transform: 'translateX(1rem)' }
+	})
+};
+
+export const localAiModelDialogStyles = {
+	statusCard: css({
+		display: 'grid',
+		gap: 'sm',
+		p: 'sm',
+		borderWidth: 'hairline',
+		borderColor: 'scrapscache.borderSubtle',
+		rounded: 'card',
+		bg: 'scrapscache.surfaceSubtle'
+	}),
+	status: css({ textStyle: 'label' }),
+	detail: css({ textStyle: 'caption', color: 'scrapscache.textMuted' }),
+	error: css({ textStyle: 'label', color: 'scrapscache.danger' })
+};
+
+export const noteAiMenuStyles = {
+	positioner: css({ zIndex: 30 }),
+	// The highlighted item shows keyboard focus; the list itself needs no ring.
+	content: css({ w: '15rem', overflow: 'hidden', py: '2xs', outline: 'none' })
+};
+
+export const noteAiDialogStyles = {
+	eyebrow: css({ textStyle: 'overline' }),
+	output: css({
+		minH: '4.5rem',
+		maxH: '50vh',
+		overflowY: 'auto',
+		whiteSpace: 'pre-wrap',
+		textStyle: 'body',
+		color: 'scrapscache.text'
+	}),
+	pending: css({ textStyle: 'bodyMuted' }),
+	hint: css({ textStyle: 'caption' }),
+	body: css({ gap: 'lg' }),
+	footer: css({ gap: 'sm', pt: '2xs' })
+};
+
+export const localAiAssistantStyles = {
+	panel: css({
+		display: 'grid',
+		gap: 'sm',
+		p: 'sm',
+		borderWidth: 'hairline',
+		borderColor: 'scrapscache.borderSubtle',
+		rounded: 'card',
+		bg: 'scrapscache.surface',
+		boxShadow: 'sm'
+	}),
+	header: hstack({ minW: 0, gap: 'xs', alignItems: 'center' }),
+	icon: css({ ...iconSm, flexShrink: 0, color: 'scrapscache.accent' }),
+	label: css({ flex: '1', minW: 0, textStyle: 'label' }),
+	privacy: css({ textStyle: 'caption', color: 'scrapscache.textMuted' }),
+	modeRow: hstack({ gap: '2xs' }),
+	quickActions: hstack({ gap: '2xs', flexWrap: 'wrap' }),
+	prompt: css({ minW: 0, flex: '1', textStyle: 'body', px: 'sm', py: 'xs' }),
+	output: css({
+		maxH: '12rem',
+		overflowY: 'auto',
+		whiteSpace: 'pre-wrap',
+		textStyle: 'body',
+		color: 'scrapscache.text'
+	}),
+	oldText: css({
+		whiteSpace: 'pre-wrap',
+		textStyle: 'body',
+		color: 'scrapscache.textMuted',
+		textDecoration: 'line-through'
+	}),
+	proposal: css({
+		display: 'grid',
+		gap: 'sm',
+		p: 'sm',
+		borderWidth: 'hairline',
+		borderColor: 'scrapscache.accent/25',
+		rounded: 'card',
+		bg: 'scrapscache.accentSubtle'
+	}),
+	status: css({ textStyle: 'bodyMuted' }),
+	footer: hstack({ gap: 'xs', flexWrap: 'wrap', justify: 'flex-end' }),
+	conversation: css({ display: 'grid', gap: 'xs', maxH: '10rem', overflowY: 'auto' }),
+	turn: css({
+		display: 'grid',
+		gap: '3xs',
+		p: 'xs',
+		rounded: 'md',
+		bg: 'scrapscache.surfaceSubtle'
+	})
+};
+
 export const colorPaletteStyles = {
 	swatch: css({
 		...square('2.5rem'),

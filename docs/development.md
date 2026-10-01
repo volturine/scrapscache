@@ -203,8 +203,9 @@ weekly.
 
 ## Debugging tips
 
-- CSP is strict in production config; if a new asset source is required, update
-  `svelte.config.js` deliberately and document why.
+- CSP is strict in production config. WebLLM's downloaded model assets are the
+  only external `connect-src` entries, and WebAssembly compilation is explicitly
+  allowed for the integrity-checked model runtime; keep both allowances narrow.
 - Admin endpoints need `SCRAPSCACHE_ADMIN_TOKEN` once you leave the dev Compose
   default.
 - Structured logs on API errors include `requestId` — pass `x-request-id` from

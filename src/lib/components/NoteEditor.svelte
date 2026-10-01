@@ -41,8 +41,7 @@
 	import { getClipboardFiles, isImageAttachment } from '$lib/noteImages';
 	import { matchTrailingEmoticon } from '$lib/emoticons';
 	import { isKeyboardField } from '$lib/appViewport';
-	import { actionUndo, setEditorUndo, undoChord } from '$lib/stores/actionUndo.svelte';
-	import { setNoteDraftYield, yieldNoteDraft } from '$lib/noteDraftYield';
+	import { setEditorUndo, undoChord } from '$lib/stores/actionUndo.svelte';
 
 	let {
 		noteId = $bindable(),
@@ -193,11 +192,6 @@
 	}
 
 	onMount(() => {
-		const releaseDraftYield = setNoteDraftYield((id) => {
-			if (id !== note?.id) return;
-			titleEdited = false;
-			bodyEdited = false;
-		});
 		const releaseEditorUndo = setEditorUndo((redo) => {
 			if (!isOpen || !bodyEditor) return;
 			return redo ? bodyEditor.redo() : bodyEditor.undo();
@@ -240,7 +234,6 @@
 			});
 		}
 		return () => {
-			releaseDraftYield();
 			releaseEditorUndo();
 			registerClose?.(() => Promise.resolve());
 			viewport?.removeEventListener('resize', onViewportChange);
@@ -679,20 +672,7 @@
 		endEditSession = syncStore.beginEditSession(id);
 		const restored = prepareImportedNotes([version], BackupImportMode.Keep, editContext)[0];
 		const availableLabels = new Set(notesStore.labels.map((label) => label.id));
-		const current = note;
-		const before: NotePatch = {
-			title: current.title,
-			body: current.body,
-			color: current.color,
-			pinned: current.pinned,
-			archived: current.archived,
-			secret: Boolean(current.secret),
-			reminder: current.reminder,
-			labels: [...current.labels],
-			images: (current.images ?? []).map((image) => ({ ...image })),
-			linkPreviews: (current.linkPreviews ?? []).map((preview) => ({ ...preview }))
-		};
-		const after: NotePatch = {
+		notesStore.updateNote(id, {
 			title: restored.title,
 			body: restored.body,
 			color: restored.color,
@@ -701,26 +681,11 @@
 			// Restoring brings back content, never trash state: a version saved while the note was
 			// in the trash would otherwise leave it trashed without a trash time, which the purge
 			// treats as expired. A secret note also stays secret.
-			secret: current.secret || restored.secret,
+			secret: note.secret || restored.secret,
 			reminder: restored.reminder,
 			labels: restored.labels.filter((labelId) => availableLabels.has(labelId)),
 			images: restored.images,
 			linkPreviews: restored.linkPreviews ?? []
-		};
-		actionUndo.holdFor(() => notesStore.updateNote(id, after));
-		actionUndo.push({
-			message: null,
-			noteIds: [id],
-			undo: () => {
-				yieldNoteDraft(id);
-				notesStore.updateNote(id, before);
-				reminderStore.sync(notesStore.notes);
-			},
-			redo: () => {
-				yieldNoteDraft(id);
-				notesStore.updateNote(id, after);
-				reminderStore.sync(notesStore.notes);
-			}
 		});
 		// adoptStoreNote carries the restored fields into the draft.
 		exitHistoryPreview();
@@ -982,7 +947,7 @@
 									type="button"
 									class={iconButton({ variant: 'ghost', size: 'sm' })}
 									title={note.pinned ? 'Unpin' : 'Pin'}
-									onclick={() => notesStore.togglePin(note.id)}
+									onclick={() => commit({ pinned: !note.pinned })}
 									aria-label="Pin"
 								>
 									<Pin size={20} fill={note.pinned ? 'currentColor' : 'none'} aria-hidden="true" />
@@ -991,7 +956,7 @@
 									type="button"
 									class={iconButton({ variant: 'ghost', size: 'sm' })}
 									title={note.secret ? 'Remove secret' : 'Make secret'}
-									onclick={() => notesStore.toggleSecret(note.id)}
+									onclick={() => commit({ secret: !note.secret })}
 									aria-label={note.secret ? 'Remove secret' : 'Make secret'}
 								>
 									{#if note.secret}
@@ -1184,7 +1149,7 @@
 					<ColorPalette
 						color={note.color}
 						onSelect={(c) => {
-							notesStore.setColor(note.id, c);
+							commit({ color: c });
 							paletteOpen = false;
 						}}
 					/>
@@ -1207,7 +1172,7 @@
 					<ReminderPicker
 						reminder={note.reminder}
 						onApply={(r) => {
-							notesStore.setReminder(note.id, r);
+							commit({ reminder: r });
 							reminderStore.sync(notesStore.notes);
 							void notesStore.flushSync();
 						}}

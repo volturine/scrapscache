@@ -36,7 +36,7 @@
 		type MarkdownBlock
 	} from '$lib/markdown';
 	import { uiStore } from '$lib/stores/ui.svelte';
-	import { actionUndo } from '$lib/stores/actionUndo.svelte';
+	import { actionUndo, undoStamp } from '$lib/stores/actionUndo.svelte';
 	import { tableScroll } from '$lib/tableScroll';
 	import MarkdownCopyButton from './MarkdownCopyButton.svelte';
 
@@ -87,6 +87,8 @@
 		startOffset: number;
 		endLine: number;
 		endOffset: number;
+		/** Shared with app actions, so undo takes whichever step is newer. */
+		at: number;
 	};
 
 	let lineIdCounter = 0;
@@ -1046,7 +1048,8 @@
 			startLine: range?.start.line ?? fallbackLine,
 			startOffset: range?.start.offset ?? fallbackOffset,
 			endLine: range?.end.line ?? fallbackLine,
-			endOffset: range?.end.offset ?? fallbackOffset
+			endOffset: range?.end.offset ?? fallbackOffset,
+			at: undoStamp()
 		};
 	}
 
@@ -1061,6 +1064,7 @@
 		if (!previous || !sameSnapshot(previous, entry)) undoStack.push(entry);
 		if (undoStack.length > 100) undoStack.shift();
 		redoStack.length = 0;
+		actionUndo.recordEdit();
 	}
 
 	/** Title text before the browser applies this input. Consecutive typing is one step. */
@@ -1094,6 +1098,7 @@
 		undoStack.push(entry);
 		if (undoStack.length > 100) undoStack.shift();
 		redoStack.length = 0;
+		actionUndo.recordEdit();
 	}
 
 	async function restoreHistory(entry: HistoryEntry) {
@@ -1133,7 +1138,10 @@
 		lastTitleTyping = null;
 		const current = historyEntry();
 		const entry = popChanged(undoStack, current);
-		if (!entry) return actionUndo.undo();
+		if (!entry || actionUndo.newestUndo() > entry.at) {
+			if (entry) undoStack.push(entry);
+			return actionUndo.undo();
+		}
 		redoStack.push(current);
 		void restoreHistory(entry);
 		return true;
@@ -1143,8 +1151,16 @@
 		lastTyping = null;
 		lastTitleTyping = null;
 		const current = historyEntry();
-		const entry = popChanged(redoStack, current);
-		if (!entry) return actionUndo.redo();
+		let entry = popChanged(redoStack, current);
+		// A step made since this was undone ends its redo.
+		if (entry && entry.at < actionUndo.editedAt) {
+			redoStack.length = 0;
+			entry = undefined;
+		}
+		if (!entry || actionUndo.newestRedo() > entry.at) {
+			if (entry) redoStack.push(entry);
+			return actionUndo.redo();
+		}
 		undoStack.push(current);
 		void restoreHistory(entry);
 		return true;
@@ -1984,12 +2000,15 @@
 			return;
 		}
 		const type = event.inputType;
+		// The editor owns the DOM: native undo would rewrite it behind the model.
 		if (type === 'historyUndo') {
-			if (undo()) event.preventDefault();
+			event.preventDefault();
+			undo();
 			return;
 		}
 		if (type === 'historyRedo') {
-			if (redo()) event.preventDefault();
+			event.preventDefault();
+			redo();
 			return;
 		}
 		const range = inputTargetRange(event);
@@ -2490,12 +2509,14 @@
 		const primaryModifier = event.ctrlKey || event.metaKey;
 		if (composing || event.isComposing) return;
 		if (primaryModifier && !event.altKey && event.key.toLowerCase() === 'z') {
-			const did = event.shiftKey ? redo() : undo();
-			if (did) event.preventDefault();
+			event.preventDefault();
+			if (event.shiftKey) redo();
+			else undo();
 			return;
 		}
 		if (event.ctrlKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'y') {
-			if (redo()) event.preventDefault();
+			event.preventDefault();
+			redo();
 			return;
 		}
 		if (event.key === 'Tab' && !event.altKey && !event.metaKey) {

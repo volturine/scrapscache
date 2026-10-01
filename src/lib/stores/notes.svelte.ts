@@ -38,8 +38,6 @@ import { AttachmentHydrationQueue } from '$lib/attachmentHydrationQueue';
 import { syncStore } from '$lib/stores/sync.svelte';
 import { kanbanStore } from '$lib/stores/kanban.svelte';
 import { actionUndo } from '$lib/stores/actionUndo.svelte';
-import { reminderStore } from '$lib/stores/reminders.svelte';
-import { yieldNoteDraft } from '$lib/noteDraftYield';
 import { canvasLibraryStore } from '$lib/stores/canvasLibrary';
 import { reminderHistoryStore } from '$lib/stores/reminderHistory';
 import { syncSnapshot, type SyncSnapshot } from '$lib/syncRecords';
@@ -90,9 +88,8 @@ export const SYNC_LOCK = 'scrapscache-sync';
 const IMPORT_TARGET_GONE =
 	'The workspace this import was meant for is no longer open here. Nothing was imported.';
 
-function cloneImages(images: NoteImage[] | undefined): NoteImage[] {
-	return (images ?? []).map((image) => ({ ...image }));
-}
+/** What deleting a label with its notes changes on each note. */
+type NoteTrashState = Pick<Note, 'id' | 'trashed' | 'trashedAt' | 'pinned' | 'archived'>;
 
 function durableNoteSignature(note: Note): string {
 	return stableStringify({
@@ -424,11 +421,7 @@ export class NotesStore {
 	async flushNote(id: string, patch: NotePatch = {}): Promise<void> {
 		const idx = this.notes.findIndex((x) => x.id === id);
 		if (idx === -1) return;
-		const beforeImages = 'images' in patch ? cloneImages(this.notes[idx].images) : null;
-		const next = applyNoteEdit(this.notes[idx], patch, editContext);
-		const changed = next !== this.notes[idx];
-		if (changed) this.notes[idx] = next;
-		if (changed && beforeImages) this.rememberImages(id, beforeImages, cloneImages(next.images));
+		this.notes[idx] = applyNoteEdit(this.notes[idx], patch, editContext);
 		const note = this.notes[idx];
 		this.mirrorToLS();
 		try {
@@ -493,21 +486,16 @@ export class NotesStore {
 		const idx = this.notes.findIndex((n) => n.id === id);
 		if (idx === -1) return;
 		const current = this.notes[idx];
-		const beforeImages = 'images' in patch ? cloneImages(current.images) : null;
 		const next = applyNoteEdit(current, patch, editContext);
 		if (next === current) return;
 		this.notes[idx] = next;
 		this.persist(id);
-		if (beforeImages) this.rememberImages(id, beforeImages, cloneImages(next.images));
 	}
 
 	togglePin(id: string): void {
 		const n = this.notes.find((x) => x.id === id);
 		if (!n) return;
-		const before = { pinned: n.pinned };
-		const after = { pinned: !n.pinned };
-		this.updateNote(id, after);
-		this.rememberFields(id, null, before, after);
+		this.updateNote(id, { pinned: !n.pinned });
 	}
 
 	toggleArchive(id: string): void {
@@ -516,34 +504,22 @@ export class NotesStore {
 		const before = { archived: n.archived, pinned: n.pinned };
 		const after = { archived: !n.archived, pinned: false };
 		this.updateNote(id, after);
-		this.rememberFields(id, after.archived ? 'Note archived' : 'Note unarchived', before, after);
+		// Unarchiving is undone by archiving again; archiving takes the note out of view.
+		if (after.archived) this.rememberFields(id, 'Note archived', before, after);
 	}
 
 	toggleSecret(id: string): void {
 		const n = this.notes.find((x) => x.id === id);
 		if (!n) return;
-		const before = { secret: Boolean(n.secret) };
-		const after = { secret: !n.secret };
-		this.updateNote(id, after);
-		this.rememberFields(id, null, before, after);
+		this.updateNote(id, { secret: !n.secret });
 	}
 
 	setColor(id: string, color: NoteColor): void {
-		const n = this.notes.find((x) => x.id === id);
-		if (!n || n.color === color) return;
-		const before = { color: n.color };
-		const after = { color };
-		this.updateNote(id, after);
-		this.rememberFields(id, null, before, after);
+		this.updateNote(id, { color });
 	}
 
 	setReminder(id: string, reminder: number | null): void {
-		const n = this.notes.find((x) => x.id === id);
-		if (!n || (n.reminder ?? null) === reminder) return;
-		const before = { reminder: n.reminder };
-		const after = { reminder };
-		this.updateNote(id, after);
-		this.rememberFields(id, null, before, after);
+		this.updateNote(id, { reminder });
 	}
 
 	/** Toggle `[ ]` / `[x]` line in unified body text. */
@@ -574,26 +550,11 @@ export class NotesStore {
 	}
 
 	restoreNote(id: string): void {
-		const n = this.notes.find((x) => x.id === id);
-		if (!n) return;
-		const before = { trashed: n.trashed, trashedAt: n.trashedAt, archived: n.archived };
-		const after = { trashed: false, trashedAt: null, archived: false };
-		this.updateNote(id, after);
-		this.rememberFields(id, 'Note restored', before, after);
+		this.updateNote(id, { trashed: false, trashedAt: null, archived: false });
 	}
 
 	restoreToArchive(id: string): void {
-		const n = this.notes.find((x) => x.id === id);
-		if (!n) return;
-		const before = {
-			trashed: n.trashed,
-			trashedAt: n.trashedAt,
-			archived: n.archived,
-			pinned: n.pinned
-		};
-		const after = { trashed: false, trashedAt: null, archived: true, pinned: false };
-		this.updateNote(id, after);
-		this.rememberFields(id, 'Note restored to archive', before, after);
+		this.updateNote(id, { trashed: false, trashedAt: null, archived: true, pinned: false });
 	}
 
 	async deleteNoteForever(id: string): Promise<void> {
@@ -648,8 +609,6 @@ export class NotesStore {
 		if (!trimmed) return;
 		const idx = this.labels.findIndex((l) => l.id === id);
 		if (idx === -1) return;
-		const previousName = this.labels[idx].name;
-		if (previousName === trimmed) return;
 		const renamed = {
 			...this.labels[idx],
 			name: trimmed,
@@ -664,23 +623,15 @@ export class NotesStore {
 			this.recordPersistenceError('Could not rename label', err)
 		);
 		this.markLabelsDirty([`label:${renamed.id}`]);
-		if (actionUndo.holding()) return;
-		actionUndo.push({
-			message: null,
-			noteIds: [],
-			undo: () => this.renameLabel(id, previousName),
-			redo: () => this.renameLabel(id, trimmed)
-		});
 	}
 
 	removeLabel(id: string, options: { deleteNotes?: boolean } = {}): void {
 		const label = this.labels.find((item) => item.id === id);
 		if (!label) return;
-		const snapshots = this.notes
+		const snapshots: NoteTrashState[] = this.notes
 			.filter((note) => note.labels.includes(id))
 			.map((note) => ({
 				id: note.id,
-				labels: [...note.labels],
 				trashed: note.trashed,
 				trashedAt: note.trashedAt,
 				pinned: note.pinned,
@@ -1108,35 +1059,41 @@ export class NotesStore {
 
 	// Persistence helpers --------------------------------------------------
 
-	private rememberFields(
-		id: string,
-		message: string | null,
-		before: NotePatch,
-		after: NotePatch
-	): void {
-		if (actionUndo.holding()) return;
+	private rememberFields(id: string, message: string, before: NotePatch, after: NotePatch): void {
 		actionUndo.push({
 			message,
 			noteIds: [id],
-			undo: () => this.writeUndone(id, before),
-			redo: () => this.writeUndone(id, after)
+			undo: () => this.updateNote(id, before),
+			redo: () => this.updateNote(id, after)
 		});
 	}
 
-	private rememberImages(id: string, before: NoteImage[], after: NoteImage[]): void {
-		if (actionUndo.holding()) return;
-		actionUndo.push({
-			message: null,
-			noteIds: [id],
-			undo: () => this.writeUndone(id, { images: before }),
-			redo: () => this.writeUndone(id, { images: after })
-		});
-	}
-
-	private writeUndone(id: string, patch: NotePatch): void {
-		yieldNoteDraft(id);
-		this.updateNote(id, patch);
-		if ('reminder' in patch) reminderStore.sync(this.notes);
+	/**
+	 * Remove one attachment. Its bytes are dropped from the device with it, so the
+	 * undo step keeps the copy the caller has on screen.
+	 */
+	removeAttachment(id: string, attachment: NoteImage): Promise<void> {
+		const note = this.notes.find((item) => item.id === id);
+		if (!note?.images?.some((image) => image.id === attachment.id)) return Promise.resolve();
+		const without = (images: NoteImage[] = []) =>
+			images.filter((image) => image.id !== attachment.id);
+		const saved = this.flushNote(id, { images: without(note.images) });
+		if (attachment.dataUrl) {
+			const kept = { ...attachment };
+			actionUndo.push({
+				message: 'Attachment removed',
+				noteIds: [id],
+				undo: () => {
+					const current = this.notes.find((item) => item.id === id);
+					if (current) this.updateNote(id, { images: [...without(current.images), kept] });
+				},
+				redo: () => {
+					const current = this.notes.find((item) => item.id === id);
+					if (current) this.updateNote(id, { images: without(current.images) });
+				}
+			});
+		}
+		return saved;
 	}
 
 	private ensureLabel(name: string): Label | null {
@@ -1146,19 +1103,12 @@ export class NotesStore {
 		);
 	}
 
+	/** Undo brings the label back by name and tags its notes again; notes it trashed come back. */
 	private rememberRemovedLabel(
 		label: Label,
-		snapshots: {
-			id: string;
-			labels: string[];
-			trashed: boolean;
-			trashedAt: number | null;
-			pinned: boolean;
-			archived: boolean;
-		}[],
+		snapshots: NoteTrashState[],
 		options: { deleteNotes?: boolean }
 	): void {
-		if (actionUndo.holding()) return;
 		let revivedId: string | null = null;
 		actionUndo.push({
 			message: 'Label deleted',
@@ -1167,16 +1117,12 @@ export class NotesStore {
 				const revived = this.ensureLabel(label.name);
 				if (!revived) return;
 				revivedId = revived.id;
-				for (const snap of snapshots) {
-					const labels = [
-						...new Set(snap.labels.map((labelId) => (labelId === label.id ? revived.id : labelId)))
-					];
-					this.writeUndone(snap.id, {
-						labels,
-						trashed: snap.trashed,
-						trashedAt: snap.trashedAt,
-						pinned: snap.pinned,
-						archived: snap.archived
+				for (const { id, ...trashState } of snapshots) {
+					const current = this.notes.find((note) => note.id === id);
+					if (!current) continue;
+					this.updateNote(id, {
+						labels: [...new Set([...current.labels, revived.id])],
+						...(options.deleteNotes ? trashState : {})
 					});
 				}
 			},

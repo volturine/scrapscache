@@ -61,29 +61,13 @@ describe('actionUndo', () => {
 		expect(actionUndo.bar).toBeNull();
 	});
 
-	it('groups a transaction into one step, undone last-first', () => {
-		const order: string[] = [];
-		actionUndo.transact(null, () => {
-			actionUndo.push({
-				message: 'a',
-				noteIds: ['1'],
-				undo: () => order.push('undo-a'),
-				redo: () => order.push('redo-a')
-			});
-			actionUndo.push({
-				message: 'b',
-				noteIds: ['2'],
-				undo: () => order.push('undo-b'),
-				redo: () => order.push('redo-b')
-			});
-		});
-
-		expect(actionUndo.bar).toBeNull();
-		expect(actionUndo.past).toHaveLength(1);
+	it('ends redo when a new step is recorded', () => {
+		actionUndo.push({ message: 'Note archived', noteIds: [], undo() {}, redo() {} });
 		actionUndo.undo();
-		expect(order).toEqual(['undo-b', 'undo-a']);
-		actionUndo.redo();
-		expect(order).toEqual(['undo-b', 'undo-a', 'redo-a', 'redo-b']);
+
+		actionUndo.recordEdit();
+
+		expect(actionUndo.redo()).toBe(false);
 	});
 
 	it('drops a step that mentions a permanently deleted note', () => {
@@ -94,14 +78,6 @@ describe('actionUndo', () => {
 
 		expect(actionUndo.past.map((entry) => entry.noteIds)).toEqual([['older']]);
 		expect(actionUndo.bar).toBeNull();
-	});
-
-	it('hides the bar when the latest action has no message', () => {
-		actionUndo.push({ message: 'Note archived', noteIds: [], undo() {}, redo() {} });
-		actionUndo.push({ message: null, noteIds: [], undo() {}, redo() {} });
-
-		expect(actionUndo.bar).toBeNull();
-		expect(actionUndo.past).toHaveLength(2);
 	});
 
 	it('undoes from a shortcut outside a text field', () => {

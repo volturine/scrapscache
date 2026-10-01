@@ -233,46 +233,56 @@ export class KanbanStore {
 	}
 
 	createBoard(name = 'Untitled board'): KanbanBoard {
-		let board!: KanbanBoard;
-		this.watchBoard(null, () => {
-			board = createKanbanBoard(name);
-			this.boards = [...this.boards, board];
-			this.activeBoardId = board.id;
-			this.requestSync([`board:${board.id}`]);
-		});
+		const board = createKanbanBoard(name);
+		this.boards = [...this.boards, board];
+		this.activeBoardId = board.id;
+		this.requestSync([`board:${board.id}`]);
 		return board;
 	}
 
 	renameBoard(boardId: string, name: string): void {
 		const nextName = name.trim();
 		if (!nextName) return;
-		this.watchBoard(null, () => {
-			this.changeBoard(boardId, (board) => ({ ...board, name: nextName }));
-		});
+		this.changeBoard(boardId, (board) => ({ ...board, name: nextName }));
 	}
 
 	/**
 	 * Delete a board locally and sync a tombstone so other devices drop it too.
 	 * Always leaves at least one board: if the last board is removed, a fresh
-	 * untitled board is created so the Kanban view stays usable.
+	 * untitled board is created so the Kanban view stays usable. Undo puts it back.
 	 */
 	deleteBoard(boardId: string): void {
-		const existing = this.boards.find((board) => board.id === boardId);
-		if (!existing) return;
-		this.watchBoard('Board deleted', () => this.removeBoard(boardId));
+		const index = this.boards.findIndex((board) => board.id === boardId);
+		if (index === -1) return;
+		const board = $state.snapshot(this.boards[index]) as KanbanBoard;
+		const wasActive = this.activeBoardId === boardId;
+		let standIn = this.removeBoard(boardId);
+		actionUndo.push({
+			message: 'Board deleted',
+			noteIds: [],
+			undo: () => {
+				this.restoreBoard(board, index, wasActive);
+				if (standIn) this.removeBoard(standIn);
+			},
+			redo: () => {
+				standIn = this.removeBoard(boardId);
+			}
+		});
 	}
 
-	private removeBoard(boardId: string): void {
+	/** Returns the untitled board created when the last one goes, if any. */
+	private removeBoard(boardId: string): string | null {
 		const existing = this.boards.find((board) => board.id === boardId);
-		if (!existing) return;
+		if (!existing) return null;
 
 		const deletedAt = this.nextVersion(existing.updatedAt);
 		this.boardTombstones = { ...this.boardTombstones, [boardId]: deletedAt };
 		const remaining = this.boards.filter((board) => board.id !== boardId);
 		const syncKeys = [`board-tombstone:${boardId}`];
+		let replacement: KanbanBoard | null = null;
 
 		if (remaining.length === 0) {
-			const replacement = createKanbanBoard();
+			replacement = createKanbanBoard();
 			this.boards = [replacement];
 			this.activeBoardId = replacement.id;
 			syncKeys.push(`board:${replacement.id}`);
@@ -282,25 +292,36 @@ export class KanbanStore {
 		}
 
 		this.requestSync(syncKeys);
+		return replacement?.id ?? null;
+	}
+
+	/** A board comes back newer than its tombstone, so a sync that has the delete keeps it. */
+	private restoreBoard(board: KanbanBoard, index: number, select: boolean): void {
+		if (this.boards.some((candidate) => candidate.id === board.id)) return;
+		const buried = Number(this.boardTombstones[board.id]) || 0;
+		const restored = {
+			...board,
+			updatedAt: Math.max(this.nextVersion(board.updatedAt), buried + 1)
+		};
+		this.boards = [...this.boards.slice(0, index), restored, ...this.boards.slice(index)];
+		if (select) this.activeBoardId = board.id;
+		this.requestSync([`board:${board.id}`]);
 	}
 
 	addTagColumn(boardId: string, labelId: string): KanbanColumn | null {
 		const board = this.boards.find((candidate) => candidate.id === boardId);
 		if (!board || !labelId || board.columns.some((column) => column.labelId === labelId))
 			return null;
-		let column: KanbanColumn | null = null;
-		this.watchBoard(null, () => {
-			column = { id: uid(), labelId, order: [] };
-			this.changeBoard(boardId, (candidate) => ({
-				...candidate,
-				columns: [...candidate.columns, column!],
-				// A column tag leaves the backlog filter (it lives in its own column).
-				backlogFilter: {
-					...candidate.backlogFilter,
-					labelIds: candidate.backlogFilter.labelIds.filter((id) => id !== labelId)
-				}
-			}));
-		});
+		const column: KanbanColumn = { id: uid(), labelId, order: [] };
+		this.changeBoard(boardId, (candidate) => ({
+			...candidate,
+			columns: [...candidate.columns, column],
+			// A column tag leaves the backlog filter (it lives in its own column).
+			backlogFilter: {
+				...candidate.backlogFilter,
+				labelIds: candidate.backlogFilter.labelIds.filter((id) => id !== labelId)
+			}
+		}));
 		return column;
 	}
 
@@ -308,12 +329,10 @@ export class KanbanStore {
 		const board = this.boards.find((candidate) => candidate.id === boardId);
 		const column = board?.columns.find((candidate) => candidate.id === columnId);
 		if (!board || !column || column.labelId === null) return;
-		this.watchBoard(null, () => {
-			this.changeBoard(boardId, (candidate) => ({
-				...candidate,
-				columns: candidate.columns.filter((item) => item.id !== columnId)
-			}));
-		});
+		this.changeBoard(boardId, (candidate) => ({
+			...candidate,
+			columns: candidate.columns.filter((item) => item.id !== columnId)
+		}));
 	}
 
 	/**
@@ -322,18 +341,6 @@ export class KanbanStore {
 	 * is not pinned to a stale slot.
 	 */
 	placeCard(
-		boardId: string,
-		noteId: string,
-		sourceColumnId: string,
-		destinationColumnId: string,
-		order: string[]
-	): void {
-		this.watchBoard(null, () =>
-			this.placeCardNow(boardId, noteId, sourceColumnId, destinationColumnId, order)
-		);
-	}
-
-	private placeCardNow(
 		boardId: string,
 		noteId: string,
 		sourceColumnId: string,
@@ -372,69 +379,6 @@ export class KanbanStore {
 	/** Monotonic version: same-millisecond edits and backward clock jumps must still win. */
 	private nextVersion(previous: number | undefined): number {
 		return Math.max(syncClock.now(), (previous ?? 0) + 1);
-	}
-
-	private boardSnapshot(): {
-		boards: KanbanBoard[];
-		activeBoardId: string;
-		tombstones: Record<string, number>;
-	} {
-		return {
-			boards: JSON.parse(JSON.stringify(this.boards)) as KanbanBoard[],
-			activeBoardId: this.activeBoardId,
-			tombstones: { ...this.boardTombstones }
-		};
-	}
-
-	/**
-	 * Put a previous board list back. A board the other snapshot deleted is stamped
-	 * newer than that tombstone, and a board that only existed there is tombstoned,
-	 * so a sync that still has the delete does not undo the undo.
-	 */
-	private installBoards(
-		snapshot: ReturnType<KanbanStore['boardSnapshot']>,
-		other: ReturnType<KanbanStore['boardSnapshot']>
-	): void {
-		const boards = snapshot.boards.map((board) => {
-			const buried = Number(other.tombstones[board.id]) || 0;
-			return buried >= board.updatedAt ? { ...board, updatedAt: buried + 1 } : board;
-		});
-		const tombstones = { ...snapshot.tombstones };
-		const present = new Set(boards.map((board) => board.id));
-		for (const board of other.boards) {
-			if (present.has(board.id)) continue;
-			tombstones[board.id] = Math.max(
-				syncClock.now(),
-				board.updatedAt + 1,
-				tombstones[board.id] ?? 0
-			);
-		}
-		this.boards = boards.length ? boards : [createKanbanBoard()];
-		this.boardTombstones = tombstones;
-		this.activeBoardId = this.boards.some((board) => board.id === snapshot.activeBoardId)
-			? snapshot.activeBoardId
-			: this.boards[0].id;
-		this.requestSync([
-			...this.boards.map((board) => `board:${board.id}`),
-			...Object.keys(tombstones).map((id) => `board-tombstone:${id}`)
-		]);
-	}
-
-	private watchBoard(message: string | null, run: () => void): void {
-		if (actionUndo.holding()) {
-			run();
-			return;
-		}
-		const before = this.boardSnapshot();
-		run();
-		const after = this.boardSnapshot();
-		if (JSON.stringify(before) === JSON.stringify(after)) return;
-		actionUndo.push({
-			message,
-			noteIds: [],
-			undo: () => this.installBoards(before, after),
-			redo: () => this.installBoards(after, before)
-		});
 	}
 
 	/** Board edits stamp only what they change, so each part of a board merges on its own. */

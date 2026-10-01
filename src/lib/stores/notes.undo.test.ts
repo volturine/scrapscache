@@ -80,14 +80,20 @@ describe('note undo', () => {
 		expect(note(created.id)).toMatchObject({ trashed: false, pinned: true, trashedAt: null });
 	});
 
-	it('hides the bar for a pin', () => {
+	it('does not record actions the same control reverses', () => {
 		const created = notesStore.createNote({ title: 'Note' });
 		notesStore.toggleArchive(created.id);
-		notesStore.togglePin(created.id);
+		actionUndo.clear();
 
-		expect(note(created.id)?.pinned).toBe(true);
+		notesStore.togglePin(created.id);
+		notesStore.setColor(created.id, 'red');
+		notesStore.toggleSecret(created.id);
+		notesStore.setReminder(created.id, 5_000);
+		notesStore.toggleArchive(created.id);
+
+		expect(note(created.id)).toMatchObject({ pinned: false, color: 'red', archived: false });
+		expect(actionUndo.past).toHaveLength(0);
 		expect(actionUndo.bar).toBeNull();
-		expect(actionUndo.past).toHaveLength(2);
 	});
 
 	it('does not record tagging or creating a label', () => {
@@ -138,15 +144,39 @@ describe('note undo', () => {
 		expect(actionUndo.bar).toBeNull();
 	});
 
-	it('removes a photo that was just added', () => {
+	it('puts back a removed attachment and does not record adding one', async () => {
 		const created = notesStore.createNote({ title: 'Photo' });
+		notesStore.updateNote(created.id, { images: [photo('keep'), photo('shot')] });
+		expect(actionUndo.past).toHaveLength(0);
 
-		notesStore.updateNote(created.id, { images: [photo('shot')] });
+		await notesStore.removeAttachment(created.id, photo('shot'));
 
-		expect(actionUndo.bar).toBeNull();
-		expect(note(created.id)?.images?.map((image) => image.id)).toEqual(['shot']);
+		expect(actionUndo.bar).toBe('Attachment removed');
+		expect(note(created.id)?.images?.map((image) => image.id)).toEqual(['keep']);
 
 		actionUndo.undo();
-		expect(note(created.id)?.images ?? []).toEqual([]);
+		expect(
+			note(created.id)
+				?.images?.map((image) => image.id)
+				.sort()
+		).toEqual(['keep', 'shot']);
+		expect(note(created.id)?.imageTombstones?.shot).toBeUndefined();
+
+		actionUndo.redo();
+		expect(note(created.id)?.images?.map((image) => image.id)).toEqual(['keep']);
+	});
+
+	it('keeps tags added after a label was deleted', () => {
+		const work = notesStore.createLabel('Work');
+		const home = notesStore.createLabel('Home');
+		const created = notesStore.createNote({ title: 'Tagged', labels: [work!.id] });
+		notesStore.removeLabel(work!.id);
+		notesStore.toggleLabel(created.id, home!.id);
+
+		actionUndo.undo();
+
+		const revived = notesStore.labels.find((item) => item.name === 'Work');
+		expect(note(created.id)?.labels.sort()).toEqual([home!.id, revived!.id].sort());
+		expect(note(created.id)?.trashed).toBe(false);
 	});
 });

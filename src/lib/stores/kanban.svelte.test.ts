@@ -147,8 +147,29 @@ describe('boards belong to the workspace that saved them', () => {
 
 		actionUndo.undo();
 
-		expect(store.boards.some((board) => board.id === original)).toBe(true);
+		expect(store.boards[0].id).toBe(original);
+		// Newer than its tombstone, so a sync that still has the delete keeps it.
+		expect(store.boards[0].updatedAt).toBeGreaterThan(store.boardTombstonesForSync()[original]);
 		expect(actionUndo.bar).toBeNull();
+		actionUndo.clear();
+	});
+
+	it('brings back the last board and drops its stand-in', () => {
+		localStorage.clear();
+		const store = new KanbanStore();
+		const only = store.boards[0].id;
+		actionUndo.clear();
+		store.deleteBoard(only);
+		const standIn = store.boards[0].id;
+
+		actionUndo.undo();
+
+		expect(store.boards.map((board) => board.id)).toEqual([only]);
+		expect(store.activeBoardId).toBe(only);
+		expect(store.boardTombstonesForSync()[standIn]).toBeGreaterThan(0);
+		actionUndo.redo();
+		expect(store.boards).toHaveLength(1);
+		expect(store.boards[0].id).not.toBe(only);
 		actionUndo.clear();
 	});
 

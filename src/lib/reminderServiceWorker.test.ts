@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { webcrypto } from 'node:crypto';
 import { indexedDB } from 'fake-indexeddb';
-import { reminderWakeId } from './reminderNotify';
+import { reminderWakeId } from '$lib/model';
 import { DEVICE_DB_NAME, resolveDbName } from '$lib/db/idb';
 
 function request<T>(operation: IDBRequest<T>): Promise<T> {

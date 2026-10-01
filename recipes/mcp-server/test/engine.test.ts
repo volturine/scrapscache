@@ -1,5 +1,6 @@
-import { describe, expect, it, beforeEach } from 'vitest';
+import { describe, expect, it, beforeEach, vi } from 'vitest';
 import { McpSession, parseChecklistItems } from '../src/engine.js';
+import { reminderWakeId } from '../../../src/lib/model/index.js';
 import { ScrapscacheSyncClient, type SyncEnvelope } from '../src/syncClient.js';
 import {
 	bytesToBase64Url,
@@ -26,7 +27,8 @@ describe('MCP session and note engine', () => {
 				reset: false,
 				writesAccepted: true
 			};
-		}
+		},
+		putReminderWakes: async () => true
 	} as unknown as ScrapscacheSyncClient;
 
 	beforeEach(() => {
@@ -394,5 +396,79 @@ plain text line`;
 		await expect(session.callTool('list_recent_notes', {})).rejects.toThrow(
 			'Unknown tool: list_recent_notes'
 		);
+	});
+
+	describe('reminder wakes', () => {
+		const due = Date.parse('2030-01-01T09:00:00Z');
+
+		function wakeClient(put = vi.fn(async (_revision: number, _wakes: unknown[]) => true)) {
+			const client = {
+				...mockSyncClient,
+				putReminderWakes: put
+			} as unknown as ScrapscacheSyncClient;
+			return { client, put };
+		}
+
+		it('publishes a new reminder so devices without the note are woken', async () => {
+			const { client, put } = wakeClient();
+			const session = new McpSession(client);
+			const { note } = await session.createNote({
+				title: 'Call back',
+				reminder: '2030-01-01T09:00:00Z'
+			});
+
+			// The relay cursor after the write, so the snapshot supersedes older ones.
+			expect(put).toHaveBeenCalledTimes(1);
+			expect(put).toHaveBeenCalledWith(1, [{ id: reminderWakeId(note.id, due), fireAt: due }]);
+		});
+
+		it('republishes only when the wakes change', async () => {
+			const { client, put } = wakeClient();
+			const session = new McpSession(client);
+			const { note } = await session.createNote({
+				title: 'Call back',
+				reminder: '2030-01-01T09:00:00Z'
+			});
+			await session.updateNote({ id: note.id, title: 'Call Ana back' });
+			expect(put).toHaveBeenCalledTimes(1);
+
+			await session.updateNote({ id: note.id, reminder: '2030-01-02T09:00:00Z' });
+			const moved = Date.parse('2030-01-02T09:00:00Z');
+			expect(put).toHaveBeenLastCalledWith(expect.any(Number), [
+				{ id: reminderWakeId(note.id, moved), fireAt: moved }
+			]);
+
+			await session.updateNote({ id: note.id, archived: true });
+			expect(put).toHaveBeenLastCalledWith(expect.any(Number), []);
+			expect(put).toHaveBeenCalledTimes(3);
+		});
+
+		it('keeps the note when the relay cannot take the wakes, and retries on the next write', async () => {
+			const put = vi.fn(async () => true);
+			put.mockRejectedValueOnce(new Error('relay down'));
+			const { client } = wakeClient(put);
+			const session = new McpSession(client);
+			const { note } = await session.createNote({
+				title: 'Call back',
+				reminder: '2030-01-01T09:00:00Z'
+			});
+			expect((await session.readNote({ id: note.id })).title).toBe('Call back');
+
+			await session.updateNote({ id: note.id, title: 'Call Ana back' });
+			expect(put).toHaveBeenCalledTimes(2);
+		});
+
+		it('retries after the relay held a newer snapshot', async () => {
+			const put = vi.fn(async () => true);
+			put.mockResolvedValueOnce(false);
+			const { client } = wakeClient(put);
+			const session = new McpSession(client);
+			const { note } = await session.createNote({
+				title: 'Call back',
+				reminder: '2030-01-01T09:00:00Z'
+			});
+			await session.updateNote({ id: note.id, title: 'Call Ana back' });
+			expect(put).toHaveBeenCalledTimes(2);
+		});
 	});
 });

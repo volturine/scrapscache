@@ -6,6 +6,7 @@ import {
 	mergeTwoLabels,
 	mergeTwoNotes,
 	NOTE_FIELDS,
+	relayReminderWakes,
 	SyncClock,
 	touchNoteFields,
 	type Label,
@@ -338,6 +339,8 @@ export class McpSession {
 	private readonly syncedSlots = new Map<string, SyncEnvelope>();
 	private cursor = 0;
 	private hydrated = false;
+	/** The wake list the relay last accepted from this session. */
+	private publishedWakes: string | null = null;
 	private operationQueue: Promise<void> = Promise.resolve();
 	private sseListeners = new Set<(event: string, data: unknown) => void>();
 	private lastActiveAt = Date.now();
@@ -394,6 +397,7 @@ export class McpSession {
 		this.labels.clear();
 		this.syncedSlots.clear();
 		this.cursor = 0;
+		this.publishedWakes = null;
 		this.hydrated = false;
 	}
 
@@ -456,6 +460,7 @@ export class McpSession {
 				this.labels.clear();
 				this.syncedSlots.clear();
 				this.cursor = 0;
+				this.publishedWakes = null;
 			}
 			this.applyEnvelopes([...result.envelopes, ...result.conflicts]);
 			this.cursor = result.cursor;
@@ -492,6 +497,7 @@ export class McpSession {
 				this.labels.clear();
 				this.syncedSlots.clear();
 				this.cursor = 0;
+				this.publishedWakes = null;
 			}
 			this.applyEnvelopes([...result.envelopes, ...result.conflicts]);
 			this.cursor = result.cursor;
@@ -504,6 +510,7 @@ export class McpSession {
 					else this.labels.set(record.value.id, record.value);
 					this.syncedSlots.set(`${record.kind}:${record.value.id}`, envelopes[index]);
 				});
+				if (pending.some((record) => record.kind === 'note')) await this.publishReminderWakes();
 				return;
 			}
 			pending = pending.map((record): WritableRecord => {
@@ -516,6 +523,30 @@ export class McpSession {
 			});
 		}
 		throw new Error('Concurrent modification conflict: write could not be committed');
+	}
+
+	/**
+	 * Hand the relay this account's reminder wakes, as the app does after it syncs,
+	 * so devices that have not synced the note yet are still woken when it is due.
+	 * The relay accepted the write, so this session holds every note up to its cursor.
+	 */
+	private async publishReminderWakes(): Promise<void> {
+		const wakes = relayReminderWakes(
+			[...this.notes.values()].map((note) => ({
+				id: note.id,
+				reminder: note.reminder ?? null,
+				archived: !!note.archived,
+				trashed: this.isTrashed(note)
+			})),
+			Date.now()
+		);
+		const signature = JSON.stringify(wakes);
+		if (signature === this.publishedWakes) return;
+		try {
+			if (await this.client.putReminderWakes(this.cursor, wakes)) this.publishedWakes = signature;
+		} catch {
+			// The note is saved either way; the next publish, from here or any app, carries its wake.
+		}
 	}
 
 	private getLabelNames(labelIds: string[] = []): string[] {

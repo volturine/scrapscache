@@ -14,7 +14,8 @@ vi.mock('$lib/reminderWake', () => ({
 
 import { ReminderStore, type ReminderHost } from './reminders.svelte';
 import { ReminderHistoryStore } from './reminderHistory';
-import { reminderWakeId, type ReminderNote } from '$lib/reminderNotify';
+import { reminderWakeId } from '$lib/model';
+import type { ReminderNote } from '$lib/reminderNotify';
 import { readReminderHistory } from '$lib/reminderHistory';
 import { deleteSyncState, getFiredReminderKeys, getSyncOutboxKeys } from '$lib/db/idb';
 import { TEST_WORKSPACE } from '../../tests/workspace';

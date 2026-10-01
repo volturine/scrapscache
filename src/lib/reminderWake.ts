@@ -4,7 +4,8 @@
 // own push address and a device id derived for its account. The relay therefore
 // cannot tell that two accounts belong to the same browser.
 import { sha256 } from '@noble/hashes/sha2.js';
-import { relayReminderWakes, type ReminderNote, type ReminderWake } from '$lib/reminderNotify';
+import { relayReminderWakes, type ReminderWake } from '$lib/model';
+import type { ReminderNote } from '$lib/reminderNotify';
 import { syncStore } from '$lib/stores/sync.svelte';
 import type { StoredProfile } from '$lib/profiles';
 import { identityFromSyncKey } from '$lib/syncPairing';

@@ -5,18 +5,16 @@ import {
 	getFiredReminderKeys,
 	workspaceKey
 } from '$lib/db/idb';
+import { relayReminderWakes, reminderWakeId, type ReminderWake } from '$lib/model';
 import {
 	closeReminderNotifications,
 	nextReminderAt,
 	notificationPermission,
-	relayReminderWakes,
 	reminderPreview,
-	reminderWakeId,
 	showReminderNotification,
 	unfiredDueReminders,
 	type ReminderAlert,
-	type ReminderNote,
-	type ReminderWake
+	type ReminderNote
 } from '$lib/reminderNotify';
 import {
 	fetchReminderWakes,

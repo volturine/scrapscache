@@ -19,8 +19,14 @@ function escapingImports(source: string): string[] {
 		.filter((specifier) =>
 			specifier.startsWith('.')
 				? specifier.startsWith('../') || specifier.includes('/', 2)
-				: !allowedPackages.has(specifier)
+				: !allowedPackages.has(packageName(specifier))
 		);
+}
+
+/** `@scope/name` or `name`, without a subpath such as `/sha2.js`. */
+function packageName(specifier: string): string {
+	const parts = specifier.split('/');
+	return parts.slice(0, specifier.startsWith('@') ? 2 : 1).join('/');
 }
 
 describe('model module boundary', () => {
@@ -32,14 +38,16 @@ describe('model module boundary', () => {
 		expect(escapingImports(readFileSync(join(modelDir, file), 'utf8'))).toEqual([]);
 	});
 
-	it('rejects parent-directory, $lib and unlisted package imports', () => {
+	it('rejects parent-directory, $lib and unlisted package imports, allowing listed subpaths', () => {
 		const source = [
 			"import { uid } from '../uid.js';",
 			"import { dayKey } from '$lib/utils';",
 			"import { nanoid } from 'nanoid';",
+			"import { x } from 'nanoid/sub.js';",
+			"import { sha256 } from '@noble/hashes/sha2.js';",
 			"import * as Y from 'yjs';",
 			"import { merge } from './merge.js';"
 		].join('\n');
-		expect(escapingImports(source)).toEqual(['../uid.js', '$lib/utils', 'nanoid']);
+		expect(escapingImports(source)).toEqual(['../uid.js', '$lib/utils', 'nanoid', 'nanoid/sub.js']);
 	});
 });

@@ -2,14 +2,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
 	dueReminderNotes,
 	nextReminderAt,
-	relayReminderWakes,
-	RELAY_WAKE_RETAIN_MS,
 	reminderPreview,
-	reminderWakeId,
 	requestReminderPermission,
 	showReminderNotification,
 	unfiredDueReminders
 } from './reminderNotify';
+import { reminderWakeId } from '$lib/model';
 
 function note(
 	partial: Partial<{
@@ -49,39 +47,8 @@ describe('reminderPreview', () => {
 	});
 });
 
-describe('reminder wake identity and scheduling', () => {
+describe('reminder scheduling', () => {
 	const now = 1_000;
-
-	it('derives one stable opaque id per note and scheduled time', () => {
-		const first = reminderWakeId('note-a', 10);
-		expect(first).toMatch(/^[A-Za-z0-9_-]{43}$/);
-		expect(reminderWakeId('note-a', 10)).toBe(first);
-		expect(reminderWakeId('note-a', 11)).not.toBe(first);
-		expect(reminderWakeId('note-b', 10)).not.toBe(first);
-	});
-
-	it('keeps distinct reminders at the same timestamp', () => {
-		const wakes = relayReminderWakes(
-			[note({ id: 'note-a', reminder: now + 10 }), note({ id: 'note-b', reminder: now + 10 })],
-			now
-		);
-		expect(wakes).toHaveLength(2);
-		expect(new Set(wakes.map((wake) => wake.id)).size).toBe(2);
-		expect(wakes.map((wake) => wake.fireAt)).toEqual([now + 10, now + 10]);
-	});
-
-	it('uploads upcoming and recently due wakes but excludes stale and hidden notes', () => {
-		const wakes = relayReminderWakes(
-			[
-				note({ id: 'due', reminder: now }),
-				note({ id: 'soon', reminder: now + 10 }),
-				note({ id: 'old', reminder: now - RELAY_WAKE_RETAIN_MS }),
-				note({ id: 'arch', reminder: now, archived: true })
-			],
-			now
-		);
-		expect(wakes.map((wake) => wake.fireAt)).toEqual([now, now + 10]);
-	});
 
 	it('detects due reminders and skips a fired wake id', () => {
 		const due = note({ reminder: now });

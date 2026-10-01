@@ -117,4 +117,38 @@ describe('ScrapscacheSyncClient', () => {
 		expect(deltaAttempts).toBe(2);
 		expect(result.cursor).toBe(5);
 	});
+
+	it('publishes reminder wakes under the sync session and reports a stale snapshot', async () => {
+		const client = new ScrapscacheSyncClient(baseUrl, syncKey);
+		const wake = { id: 'a'.repeat(43), fireAt: 1_900_000_000_000 };
+		const bodies: unknown[] = [];
+		let status = 200;
+
+		globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			const urlStr = typeof input === 'string' ? input : input.toString();
+			if (urlStr.includes('/api/sync/auth/challenge')) {
+				return new Response(JSON.stringify({ challengeId: 'chal', challenge: 'nonce' }), {
+					status: 200
+				});
+			}
+			if (urlStr.includes('/api/sync/auth/session')) {
+				return new Response(
+					JSON.stringify({ accessToken: 'token', expiresAt: Date.now() + 3600_000 }),
+					{ status: 200 }
+				);
+			}
+			expect(urlStr).toBe(`${baseUrl}/api/sync/push/wakes`);
+			expect(init?.method).toBe('PUT');
+			expect((init?.headers as Record<string, string>).Authorization).toBe('Bearer token');
+			bodies.push(JSON.parse(String(init?.body)));
+			return new Response(null, { status });
+		}) as typeof fetch;
+
+		expect(await client.putReminderWakes(7, [wake])).toBe(true);
+		expect(bodies).toEqual([{ revision: 7, wakes: [wake] }]);
+		status = 409;
+		expect(await client.putReminderWakes(6, [])).toBe(false);
+		status = 503;
+		await expect(client.putReminderWakes(8, [])).rejects.toThrow('status 503');
+	});
 });

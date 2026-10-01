@@ -13,7 +13,7 @@ import type { Label, Note, NoteFieldTimes, NoteImage } from '$lib/types';
 import { cloneNote } from '$lib/utils';
 import { isCanvasLibraryItem, type CanvasLibraryItem } from '$lib/canvasLibrary';
 import { isReminderHistoryEntry, type ReminderHistoryEntry } from '$lib/reminderHistory';
-import { reminderWakeId } from '$lib/reminderNotify';
+import { reminderWakeId } from '$lib/model';
 
 const NOTE_COLORS = new Set<Note['color']>([
 	'default',

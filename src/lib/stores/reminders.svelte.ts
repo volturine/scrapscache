@@ -5,19 +5,22 @@ import {
 	getFiredReminderKeys,
 	workspaceKey
 } from '$lib/db/idb';
+import { relayReminderWakes, reminderWakeId, type ReminderWake } from '$lib/model';
 import {
 	closeReminderNotifications,
 	nextReminderAt,
 	notificationPermission,
-	relayReminderWakes,
 	reminderPreview,
-	reminderWakeId,
 	showReminderNotification,
 	unfiredDueReminders,
 	type ReminderAlert,
 	type ReminderNote
 } from '$lib/reminderNotify';
-import { publishReminderWakes, registerAllReminderDevices } from '$lib/reminderWake';
+import {
+	fetchReminderWakes,
+	publishReminderWakes,
+	registerAllReminderDevices
+} from '$lib/reminderWake';
 import { readReminderHistory, type ReminderHistoryEntry } from '$lib/reminderHistory';
 import { reminderHistoryStore, type ReminderHistoryStore } from '$lib/stores/reminderHistory';
 
@@ -34,13 +37,17 @@ const SYNC_CHANNEL = 'scrapscache-sync-channel';
 /** What reminders need from the app shell. Every workspace on the device takes part. */
 export type ReminderHost = {
 	/** Every workspace on this device, and whether it syncs. */
-	workspaces(): { id: string; linked: boolean }[];
+	workspaces(): { id: string; name: string; syncKey: string | null }[];
 	/** Reminder fields of a workspace that is not open. */
 	loadNotes(pid: string): Promise<ReminderNote[]>;
 	/** Exchange a workspace’s reminder receipts once; `receiptsSettled(pid)` follows either way. */
 	reconcile(pid: string): void;
 	/** Open a note in its own workspace, switching to it first if need be. */
 	openNote(pid: string, noteId: string): void;
+	/** Open a workspace without a note, switching to it first, and pull its notes from the relay. */
+	openWorkspace(pid: string): void;
+	/** Pull notes from the relay when `pid` is the open workspace; other workspaces sync once opened. */
+	triggerSync(pid: string): void;
 };
 
 /** One workspace's reminders, as this window tracks them. */
@@ -55,6 +62,8 @@ type WorkspaceReminders = {
 	seen: Set<string>;
 	/** The relay will push these to this device, so the scan leaves them to the push. */
 	armed: Set<string>;
+	/** Active wakes known from the relay, including those whose notes are not synced yet. */
+	remoteWakes: Map<string, ReminderWake>;
 	/** When a receipt exchange last finished, whether or not it reached the cloud. */
 	reconciledAt: number;
 	reconcileRequested: boolean;
@@ -90,6 +99,14 @@ function writeFiredReminderMirror(pid: string, keys: Iterable<string>): void {
 	}
 }
 
+/** The note a relay wake was derived from, in whatever state it is. */
+function noteForWake(notes: ReminderNote[], wakeId: string, fireAt: number): ReminderNote | null {
+	return (
+		notes.find((note) => note.reminder === fireAt && reminderWakeId(note.id, fireAt) === wakeId) ??
+		null
+	);
+}
+
 function emptyWorkspace(pid: string): WorkspaceReminders {
 	return {
 		pid,
@@ -98,6 +115,7 @@ function emptyWorkspace(pid: string): WorkspaceReminders {
 		recorded: new Set(),
 		seen: new Set(),
 		armed: new Set(),
+		remoteWakes: new Map(),
 		reconciledAt: 0,
 		reconcileRequested: false
 	};
@@ -119,6 +137,7 @@ export class ReminderStore {
 	private channel: BroadcastChannel | null = null;
 	private attached = false;
 	private readonly history: ReminderHistoryStore;
+	private readonly wakeFlights = new Map<string, Promise<void>>();
 
 	constructor(history: ReminderHistoryStore = reminderHistoryStore) {
 		this.history = history;
@@ -140,6 +159,9 @@ export class ReminderStore {
 			this.scan();
 			this.arm();
 			void this.refreshOthers();
+			if (this.linked(pid)) {
+				void this.syncRemoteWakes(pid);
+			}
 		})();
 		return this.activation;
 	}
@@ -159,6 +181,7 @@ export class ReminderStore {
 		if (this.attached) return () => this.detach();
 		this.attached = true;
 		tickAppClock();
+		void this.syncAllRemoteWakes();
 		this.clock = setInterval(() => {
 			tickAppClock();
 			this.scan();
@@ -168,6 +191,7 @@ export class ReminderStore {
 			if (document.visibilityState === 'hidden') return;
 			void this.refreshAll().then(() => {
 				tickAppClock();
+				void this.syncAllRemoteWakes();
 				this.scan();
 				this.arm();
 				void registerAllReminderDevices();
@@ -200,6 +224,32 @@ export class ReminderStore {
 		this.setNotes(workspace, notes);
 		this.scan();
 		this.arm();
+	}
+
+	/** Fetch the relay's wakes for one linked workspace; callers during a fetch join it. */
+	syncRemoteWakes(pid: string): Promise<void> {
+		const inFlight = this.wakeFlights.get(pid);
+		if (inFlight) return inFlight;
+		const flight = this.fetchRemoteWakes(pid).finally(() => this.wakeFlights.delete(pid));
+		this.wakeFlights.set(pid, flight);
+		return flight;
+	}
+
+	private async fetchRemoteWakes(pid: string): Promise<void> {
+		const syncKey = this.host?.workspaces().find((workspace) => workspace.id === pid)?.syncKey;
+		if (!syncKey) return;
+		const remote = await fetchReminderWakes({ id: pid, syncKey });
+		const workspace = this.workspaces.get(pid);
+		if (!remote || !workspace) return;
+		workspace.remoteWakes = new Map(remote.wakes.map((wake) => [wake.id, wake]));
+		this.scan();
+		this.arm();
+	}
+
+	/** Fetch remote wakes for all linked workspaces on this device. */
+	async syncAllRemoteWakes(): Promise<void> {
+		const linked = this.host?.workspaces().filter((workspace) => workspace.syncKey) ?? [];
+		await Promise.all(linked.map((workspace) => this.syncRemoteWakes(workspace.id)));
 	}
 
 	/** Publish only state that has completed cloud reconciliation. */
@@ -236,7 +286,13 @@ export class ReminderStore {
 	open(wakeId: string): void {
 		const alert = this.alerts.find((item) => item.wakeId === wakeId);
 		this.dismiss(wakeId);
-		if (alert) this.host?.openNote(alert.workspaceId, alert.noteId);
+		if (alert) this.openTarget(alert.workspaceId, alert.noteId);
+	}
+
+	/** An alert opens its note, or just its workspace while the note has yet to sync. */
+	private openTarget(workspaceId: string, noteId: string): void {
+		if (noteId) this.host?.openNote(workspaceId, noteId);
+		else this.host?.openWorkspace(workspaceId);
 	}
 
 	private resetArmed(workspace: WorkspaceReminders, candidateIds: Set<string>): void {
@@ -248,14 +304,28 @@ export class ReminderStore {
 	private setNotes(workspace: WorkspaceReminders, notes: ReminderNote[]): void {
 		workspace.notes = notes;
 		const current = new Set(relayReminderWakes(notes, Date.now()).map((wake) => wake.id));
+		for (const wakeId of workspace.remoteWakes.keys()) current.add(wakeId);
 		workspace.seen = new Set([...workspace.seen].filter((id) => current.has(id)));
 		workspace.armed = new Set([...workspace.armed].filter((id) => current.has(id)));
-		const kept = this.alerts.filter((alert) => {
-			if (alert.workspaceId !== workspace.pid) return true;
-			const note = notes.find((item) => item.id === alert.noteId);
-			return note != null && note.reminder === alert.reminder && !note.archived && !note.trashed;
-		});
-		if (kept.length !== this.alerts.length) this.alerts = kept;
+		const kept: ReminderAlert[] = [];
+		for (const alert of this.alerts) {
+			if (alert.workspaceId !== workspace.pid) {
+				kept.push(alert);
+			} else if (!alert.noteId) {
+				// Shown before its note synced: it waits for the note, and the user dismisses it.
+				const note = noteForWake(notes, alert.wakeId, alert.reminder);
+				if (!note) kept.push(alert);
+				else if (!note.archived && !note.trashed) {
+					kept.push({ ...alert, noteId: note.id, title: reminderPreview(note) });
+				}
+			} else {
+				const note = notes.find((item) => item.id === alert.noteId);
+				if (note?.reminder === alert.reminder && !note.archived && !note.trashed) kept.push(alert);
+			}
+		}
+		if (kept.length !== this.alerts.length || kept.some((alert, i) => alert !== this.alerts[i])) {
+			this.alerts = kept;
+		}
 	}
 
 	/** Read a workspace's ledger and history before any of its reminders are scanned. */
@@ -265,7 +335,8 @@ export class ReminderStore {
 		const workspace: WorkspaceReminders = {
 			...previous,
 			seen: new Set(previous.seen),
-			armed: new Set(previous.armed)
+			armed: new Set(previous.armed),
+			remoteWakes: new Map(previous.remoteWakes)
 		};
 		const fired = new Set([...previous.fired, ...readFiredReminderMirror(pid)]);
 		const recorded = new Set(previous.recorded);
@@ -302,6 +373,9 @@ export class ReminderStore {
 		this.workspaces.set(pid, loaded);
 		this.scan();
 		this.arm();
+		if (this.linked(pid)) {
+			void this.syncRemoteWakes(pid);
+		}
 	}
 
 	private async refreshOthers(): Promise<void> {
@@ -418,6 +492,29 @@ export class ReminderStore {
 			}
 			void this.showSystemNotification(alert);
 		}
+		// Remote wakes for notes that have not synced to this device yet
+		for (const wake of workspace.remoteWakes.values()) {
+			if (wake.fireAt > now) continue;
+			if (workspace.fired.has(wake.id) || workspace.seen.has(wake.id)) continue;
+			// A note held here, even archived or trashed, owns its wake: the scan above decides.
+			if (noteForWake(workspace.notes, wake.id, wake.fireAt)) continue;
+			workspace.seen.add(wake.id);
+			if (workspace.armed.has(wake.id)) continue;
+			const name = this.host?.workspaces().find((item) => item.id === workspace.pid)?.name;
+			const alert: ReminderAlert = {
+				workspaceId: workspace.pid,
+				wakeId: wake.id,
+				noteId: '',
+				reminder: wake.fireAt,
+				title: name ? `Reminder (${name})` : 'Reminder'
+			};
+			if (notificationPermission() !== 'granted') {
+				void this.addFallbackAlert(alert);
+			} else {
+				void this.showSystemNotification(alert);
+			}
+			this.host?.triggerSync(workspace.pid);
+		}
 		if (waiting && !workspace.reconcileRequested && this.host) {
 			workspace.reconcileRequested = true;
 			this.host.reconcile(workspace.pid);
@@ -425,7 +522,7 @@ export class ReminderStore {
 	}
 
 	private linked(pid: string): boolean {
-		return !!this.host?.workspaces().some((workspace) => workspace.id === pid && workspace.linked);
+		return !!this.host?.workspaces().some((workspace) => workspace.id === pid && workspace.syncKey);
 	}
 
 	private awaitsCloud(workspace: WorkspaceReminders, reminder: number, now: number): boolean {
@@ -445,7 +542,7 @@ export class ReminderStore {
 	): void {
 		this.acknowledge(alert);
 		this.alerts = this.alerts.filter((item) => item.wakeId !== alert.wakeId);
-		this.host?.openNote(alert.workspaceId, alert.noteId);
+		this.openTarget(alert.workspaceId, alert.noteId);
 	}
 
 	private arm(): void {
@@ -458,6 +555,11 @@ export class ReminderStore {
 		for (const workspace of this.workspaces.values()) {
 			const at = nextReminderAt(workspace.notes, now);
 			if (at != null && (next == null || at < next)) next = at;
+			for (const wake of workspace.remoteWakes.values()) {
+				if (wake.fireAt > now && !workspace.fired.has(wake.id)) {
+					if (next == null || wake.fireAt < next) next = wake.fireAt;
+				}
+			}
 		}
 		if (next == null) return;
 		const delay = Math.min(Math.max(next - now, 0), MAX_TIMER_MS);
@@ -485,11 +587,13 @@ export class ReminderStore {
 		} catch {
 			// Keep once-per-session behavior when IndexedDB is unavailable.
 		}
-		// Recorded after the claim: history also lands in the ledger, which would
-		// make this device's own claim look like one the service worker made.
-		this.history.recordFired(pid, [
-			{ id: alert.wakeId, noteId: alert.noteId, firedAt: alert.reminder }
-		]);
+		// If noteId is known, record in history. If the note hasn't synced yet,
+		// backfillHistory will record it once the note arrives.
+		if (alert.noteId) {
+			this.history.recordFired(pid, [
+				{ id: alert.wakeId, noteId: alert.noteId, firedAt: alert.reminder }
+			]);
+		}
 		return claimed;
 	}
 
@@ -501,16 +605,28 @@ export class ReminderStore {
 			workspaceId?: unknown;
 			reminder?: unknown;
 		} | null;
-		if (data?.type !== 'open-note' || typeof data.noteId !== 'string') return;
+		if (!data || typeof data.type !== 'string') return;
 		const workspaceId = typeof data.workspaceId === 'string' ? data.workspaceId : this.activePid;
-		if (typeof data.wakeId === 'string' && typeof data.reminder === 'number')
-			this.openFromNotification({
-				workspaceId,
-				wakeId: data.wakeId,
-				noteId: data.noteId,
-				reminder: data.reminder
-			});
-		else this.host?.openNote(workspaceId, data.noteId);
+		if (data.type === 'reminder-wake') {
+			void this.syncRemoteWakes(workspaceId);
+			return;
+		}
+		if (data.type !== 'open-note') return;
+		if (typeof data.noteId === 'string' && data.noteId) {
+			if (typeof data.wakeId === 'string' && typeof data.reminder === 'number')
+				this.openFromNotification({
+					workspaceId,
+					wakeId: data.wakeId,
+					noteId: data.noteId,
+					reminder: data.reminder
+				});
+			else this.openTarget(workspaceId, data.noteId);
+		} else {
+			if (typeof data.wakeId === 'string') {
+				this.alerts = this.alerts.filter((item) => item.wakeId !== data.wakeId);
+			}
+			this.host?.openWorkspace(workspaceId);
+		}
 	};
 
 	private listenForNotificationClicks(): void {

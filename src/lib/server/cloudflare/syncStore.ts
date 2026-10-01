@@ -577,6 +577,27 @@ export class SyncStore {
 		await this.touchAccount(accountId);
 		return true;
 	}
+	async getReminderWakes(
+		accountId: string
+	): Promise<{ revision: number | null; wakes: ReminderWakeInput[] }> {
+		if (!(await this.getAuthCredential(accountId))) return { revision: null, wakes: [] };
+		const revisionRow = (
+			await execute(this.db, {
+				sql: 'SELECT revision FROM reminder_wake_revisions WHERE account_id=?',
+				args: [accountId]
+			})
+		).rows[0];
+		const wakeRows = (
+			await execute(this.db, {
+				sql: 'SELECT wake_id AS id, fire_at AS fireAt FROM reminder_wakes WHERE account_id=? ORDER BY fire_at ASC, wake_id ASC',
+				args: [accountId]
+			})
+		).rows as unknown as ReminderWakeInput[];
+		return {
+			revision: revisionRow?.revision != null ? Number(revisionRow.revision) : null,
+			wakes: wakeRows.map((row) => ({ id: String(row.id), fireAt: Number(row.fireAt) }))
+		};
+	}
 	/** Claim wakes due by `now`, of one account when `accountId` is given. */
 	async claimDueWakes(now: number, limit = 100, accountId?: string): Promise<DueWake[]> {
 		const rows = (

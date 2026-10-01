@@ -38,4 +38,13 @@ describe('Workers reminder wake schedule', () => {
 			'a'.repeat(43)
 		]);
 	});
+
+	it('returns wakes and revision for an account', async () => {
+		await store.createAccount('account-wakes', 'credential');
+		const wake = (letter: string, fireAt: number) => ({ id: letter.repeat(43), fireAt });
+		await store.replaceReminderWakes('account-wakes', [wake('a', 1_000), wake('b', 5_000)], 42);
+		const result = await store.getReminderWakes('account-wakes');
+		expect(result.revision).toBe(42);
+		expect(result.wakes).toEqual([wake('a', 1_000), wake('b', 5_000)]);
+	});
 });

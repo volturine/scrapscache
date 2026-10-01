@@ -203,7 +203,7 @@ function showGenericReminder(wakeId) {
 		tag: 'scrapscache-reminder:' + wakeId,
 		renotify: false,
 		icon: '/icon-192.png',
-		data: { type: 'reminder', wakeId }
+		data: { type: 'reminder', wakeId, workspaceId: PUSH_WORKSPACE }
 	});
 }
 
@@ -375,6 +375,20 @@ async function showReminderWake(wake) {
 	// is claimed, so the app still shows the real reminder once the note arrives.
 	if (!found) {
 		await showGenericReminder(wake.id);
+		self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+			for (const client of clients) {
+				try {
+					if (new URL(client.url).origin !== self.location.origin) continue;
+				} catch {
+					continue;
+				}
+				client.postMessage({
+					type: 'reminder-wake',
+					wakeId: wake.id,
+					workspaceId: PUSH_WORKSPACE
+				});
+			}
+		});
 		return;
 	}
 	if (found.handled) return;
@@ -455,7 +469,7 @@ self.addEventListener('notificationclick', (event) => {
 						type: 'open-note',
 						noteId: text(data.noteId),
 						wakeId: text(data.wakeId),
-						workspaceId: text(data.workspaceId),
+						workspaceId: text(data.workspaceId) || PUSH_WORKSPACE,
 						reminder: typeof data.reminder === 'number' ? data.reminder : null
 					});
 					if ('focus' in client) return client.focus();

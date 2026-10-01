@@ -9,7 +9,7 @@ import { syncStore } from './sync.svelte';
 import { kanbanStore } from './kanban.svelte';
 import { canvasLibraryStore } from './canvasLibrary';
 import { reminderHistoryStore } from './reminderHistory';
-import { reminderWakeId } from '$lib/reminderNotify';
+import { reminderWakeId } from '$lib/model';
 import { TEST_WORKSPACE } from '../../tests/workspace';
 
 function profile(id: string) {

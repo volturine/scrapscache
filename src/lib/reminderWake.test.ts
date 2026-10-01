@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+	fetchReminderWakes,
 	publishReminderWakes,
 	registerAllReminderDevices,
 	reminderDeviceId,
@@ -266,6 +267,22 @@ describe('reminder wake requests', () => {
 				body: JSON.stringify({ deviceId: reminderDeviceId(account.accountId) })
 			}),
 			expect.objectContaining({ accountId: account.accountId })
+		);
+	});
+
+	it('fetches wakes for a synced workspace', async () => {
+		const home = workspace('home');
+		const wake = { id: 'a'.repeat(43), fireAt: 12345 };
+		const requestMock = vi
+			.spyOn(syncStore, 'authorizedFetch')
+			.mockResolvedValue(new Response(JSON.stringify({ revision: 5, wakes: [wake] })));
+
+		const result = await fetchReminderWakes(home);
+		expect(result).toEqual({ revision: 5, wakes: [wake] });
+		expect(requestMock).toHaveBeenCalledWith(
+			'/api/sync/push/wakes',
+			{ method: 'GET' },
+			expect.objectContaining({ accountId: identityFromSyncKey(home.syncKey).accountId })
 		);
 	});
 });

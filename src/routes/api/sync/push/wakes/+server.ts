@@ -38,6 +38,21 @@ async function scheduleDelivery(accountId: string): Promise<void> {
 	);
 }
 
+/** Fetch the current reminder wakes and revision for this account. */
+export const GET: RequestHandler = async ({ request, getClientAddress }) => {
+	const addressLimit = await checkAddressLimit(getClientAddress);
+	if (!addressLimit.allowed) return rateLimitResponse(addressLimit);
+	const accountId = await getSyncAuth().authenticateSyncRequest(request);
+	if (!accountId) return json({ error: 'Invalid sync session' }, { status: 401 });
+	try {
+		const result = await getSyncStore().getReminderWakes(accountId);
+		return json(result);
+	} catch (error) {
+		recordSqliteError(error);
+		return json({ error: 'Reminder scheduling is temporarily unavailable' }, { status: 503 });
+	}
+};
+
 /** Register or refresh this device without changing the account wake snapshot. */
 export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	const addressLimit = await checkAddressLimit(getClientAddress);

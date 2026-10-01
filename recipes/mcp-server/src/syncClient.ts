@@ -1,4 +1,5 @@
 import { identityFromSyncKey, signSyncChallenge, randomOpaqueId } from './crypto.js';
+import type { ReminderWake } from '../../../src/lib/model/index.js';
 
 export type SyncEnvelope = {
 	id: string;
@@ -105,41 +106,38 @@ export class ScrapscacheSyncClient {
 		return this.authPromise;
 	}
 
-	async syncDelta(
-		cursor: number,
-		uploads: SyncEnvelope[] = [],
-		deleteSlots: string[] = [],
-		limit = 100
-	): Promise<SyncResult> {
-		let token = await this.getAccessToken();
-
-		const doRequest = async (authToken: string) => {
-			const url = `${this.baseUrl}/api/sync/delta`;
-			return fetch(url, {
-				method: 'POST',
+	/** A JSON request under the sync session, re-authenticating once if the relay expired it. */
+	private async authorizedRequest(path: string, method: string, body: unknown): Promise<Response> {
+		const send = async (authToken: string) =>
+			fetch(`${this.baseUrl}${path}`, {
+				method,
 				headers: {
 					'Content-Type': 'application/json',
 					Accept: 'application/json',
 					Authorization: `Bearer ${authToken}`,
 					'x-sync-client-id': this.clientId
 				},
-				body: JSON.stringify({
-					cursor,
-					limit,
-					envelopes: uploads,
-					deleteSlots
-				})
+				body: JSON.stringify(body)
 			});
-		};
+		const res = await send(await this.getAccessToken());
+		if (res.status !== 401) return res;
+		// Token might have expired on server side; clear and re-authenticate
+		this.token = null;
+		return send(await this.getAccessToken());
+	}
 
-		let res = await doRequest(token);
-		if (res.status === 401) {
-			// Token might have expired on server side; clear and re-authenticate
-			this.token = null;
-			token = await this.getAccessToken();
-			res = await doRequest(token);
-		}
-
+	async syncDelta(
+		cursor: number,
+		uploads: SyncEnvelope[] = [],
+		deleteSlots: string[] = [],
+		limit = 100
+	): Promise<SyncResult> {
+		const res = await this.authorizedRequest('/api/sync/delta', 'POST', {
+			cursor,
+			limit,
+			envelopes: uploads,
+			deleteSlots
+		});
 		if (!res.ok) {
 			throw new Error(`Sync delta failed with status ${res.status}: ${await res.text()}`);
 		}
@@ -163,5 +161,16 @@ export class ScrapscacheSyncClient {
 			writesAccepted: data.writesAccepted ?? true,
 			...(typeof data.serverTime === 'number' ? { serverTime: data.serverTime } : {})
 		};
+	}
+
+	/**
+	 * Replace the account's reminder wakes (opaque ids and due times) as of `revision`.
+	 * False when the relay already holds a snapshot from a newer revision.
+	 */
+	async putReminderWakes(revision: number, wakes: ReminderWake[]): Promise<boolean> {
+		const res = await this.authorizedRequest('/api/sync/push/wakes', 'PUT', { revision, wakes });
+		if (res.status === 409) return false;
+		if (!res.ok) throw new Error(`Reminder wake publish failed with status ${res.status}`);
+		return true;
 	}
 }

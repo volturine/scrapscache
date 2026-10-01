@@ -2,17 +2,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const wakeMocks = vi.hoisted(() => ({
 	publish: vi.fn(),
-	register: vi.fn()
+	register: vi.fn(),
+	fetch: vi.fn()
 }));
 
 vi.mock('$lib/reminderWake', () => ({
 	publishReminderWakes: wakeMocks.publish,
-	registerAllReminderDevices: wakeMocks.register
+	registerAllReminderDevices: wakeMocks.register,
+	fetchReminderWakes: wakeMocks.fetch
 }));
 
 import { ReminderStore, type ReminderHost } from './reminders.svelte';
 import { ReminderHistoryStore } from './reminderHistory';
-import { reminderWakeId, type ReminderNote } from '$lib/reminderNotify';
+import { reminderWakeId } from '$lib/model';
+import type { ReminderNote } from '$lib/reminderNotify';
 import { readReminderHistory } from '$lib/reminderHistory';
 import { deleteSyncState, getFiredReminderKeys, getSyncOutboxKeys } from '$lib/db/idb';
 import { TEST_WORKSPACE } from '../../tests/workspace';
@@ -36,18 +39,28 @@ function testHost(
 	options: { others?: Record<string, ReminderNote[]>; linked?: string[] } = {}
 ): ReminderHost & {
 	opened: [string, string][];
+	openedWorkspaces: string[];
 	reconcile: ReturnType<typeof vi.fn<(pid: string) => void>>;
+	triggerSync: ReturnType<typeof vi.fn<(pid: string) => void>>;
 } {
 	const others = options.others ?? {};
 	const linked = new Set(options.linked ?? []);
 	const opened: [string, string][] = [];
+	const openedWorkspaces: string[] = [];
 	return {
 		opened,
+		openedWorkspaces,
 		workspaces: () =>
-			[TEST_WORKSPACE, ...Object.keys(others)].map((id) => ({ id, linked: linked.has(id) })),
+			[TEST_WORKSPACE, ...Object.keys(others)].map((id) => ({
+				id,
+				name: 'Personal',
+				syncKey: linked.has(id) ? 'dummy-key' : null
+			})),
 		loadNotes: async (pid) => others[pid] ?? [],
 		reconcile: vi.fn<(pid: string) => void>(),
-		openNote: (pid, noteId) => opened.push([pid, noteId])
+		triggerSync: vi.fn<(pid: string) => void>(),
+		openNote: (pid, noteId) => opened.push([pid, noteId]),
+		openWorkspace: (pid) => openedWorkspaces.push(pid)
 	};
 }
 
@@ -376,6 +389,108 @@ describe('ReminderStore', () => {
 			await store.activateProfile(TEST_WORKSPACE, [note({ reminder: Date.now() - 1 })]);
 			await vi.waitFor(() => expect(store.alerts).toHaveLength(1));
 			expect(host.reconcile).not.toHaveBeenCalled();
+			stop();
+		});
+	});
+
+	describe('cross-device unsynced reminder wakes', () => {
+		const dueTime = () => Date.now() - 1000;
+
+		async function showRemoteWake(store: ReminderStore, wakeId: string, fireAt: number) {
+			wakeMocks.fetch.mockResolvedValue({ revision: 1, wakes: [{ id: wakeId, fireAt }] });
+			await store.activateProfile(TEST_WORKSPACE, []);
+			await store.syncRemoteWakes(TEST_WORKSPACE);
+			await vi.waitFor(() => expect(store.alerts).toHaveLength(1));
+		}
+
+		it('alerts for a due wake whose note has not synced, and keeps the alert until it does', async () => {
+			const { store } = newStore();
+			const host = testHost({ linked: [TEST_WORKSPACE] });
+			const stop = store.attach(host);
+			const fireAt = dueTime();
+			const arrived = note({ id: 'remote-note-1', reminder: fireAt });
+			const wakeId = reminderWakeId(arrived.id, fireAt);
+
+			await showRemoteWake(store, wakeId, fireAt);
+			expect(store.alerts[0]).toMatchObject({ wakeId, noteId: '', title: 'Reminder (Personal)' });
+			expect(host.triggerSync).toHaveBeenCalledWith(TEST_WORKSPACE);
+
+			// Other notes arriving first, as a pull usually delivers them, leave the alert alone.
+			store.sync([note({ id: 'unrelated', reminder: null })]);
+			expect(store.alerts).toHaveLength(1);
+
+			store.sync([arrived]);
+			expect(store.alerts[0]).toMatchObject({
+				wakeId,
+				noteId: 'remote-note-1',
+				title: 'Groceries'
+			});
+
+			store.open(wakeId);
+			expect(host.opened).toContainEqual([TEST_WORKSPACE, 'remote-note-1']);
+			stop();
+		});
+
+		it('opens the workspace to pull the note when an alert has none yet', async () => {
+			const { store } = newStore();
+			const host = testHost({ linked: [TEST_WORKSPACE] });
+			const stop = store.attach(host);
+			const fireAt = dueTime();
+			const wakeId = reminderWakeId('unsynced-note', fireAt);
+			await showRemoteWake(store, wakeId, fireAt);
+
+			store.open(wakeId);
+			expect(host.openedWorkspaces).toEqual([TEST_WORKSPACE]);
+			expect(host.opened).toEqual([]);
+			expect(store.alerts).toHaveLength(0);
+			stop();
+		});
+
+		it('drops an alert whose note arrives archived or trashed', async () => {
+			const { store } = newStore();
+			const stop = store.attach(testHost({ linked: [TEST_WORKSPACE] }));
+			const fireAt = dueTime();
+			const arrived = note({ id: 'remote-note-1', reminder: fireAt, trashed: true });
+			await showRemoteWake(store, reminderWakeId(arrived.id, fireAt), fireAt);
+
+			store.sync([arrived]);
+			expect(store.alerts).toHaveLength(0);
+			stop();
+		});
+
+		it.each([{ archived: true }, { trashed: true }])(
+			'ignores a stale relay wake for a note held here as %o',
+			async (state) => {
+				const { store } = newStore();
+				const host = testHost({ linked: [TEST_WORKSPACE] });
+				const stop = store.attach(host);
+				const fireAt = dueTime();
+				const held = note({ id: 'held-note', reminder: fireAt, ...state });
+				wakeMocks.fetch.mockResolvedValue({
+					revision: 1,
+					wakes: [{ id: reminderWakeId(held.id, fireAt), fireAt }]
+				});
+
+				await store.activateProfile(TEST_WORKSPACE, [held]);
+				await store.syncRemoteWakes(TEST_WORKSPACE);
+				await settle();
+				expect(store.alerts).toHaveLength(0);
+				expect(host.triggerSync).not.toHaveBeenCalled();
+				stop();
+			}
+		);
+
+		it('joins a fetch already in flight', async () => {
+			const { store } = newStore();
+			const stop = store.attach(testHost({ linked: [TEST_WORKSPACE] }));
+			wakeMocks.fetch.mockClear();
+			wakeMocks.fetch.mockResolvedValue({ revision: 1, wakes: [] });
+			await store.activateProfile(TEST_WORKSPACE, []);
+			await Promise.all([
+				store.syncRemoteWakes(TEST_WORKSPACE),
+				store.syncRemoteWakes(TEST_WORKSPACE)
+			]);
+			expect(wakeMocks.fetch).toHaveBeenCalledTimes(1);
 			stop();
 		});
 	});

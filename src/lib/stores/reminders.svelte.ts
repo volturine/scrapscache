@@ -15,13 +15,13 @@ import {
 	showReminderNotification,
 	unfiredDueReminders,
 	type ReminderAlert,
-	type ReminderNote
+	type ReminderNote,
+	type ReminderWake
 } from '$lib/reminderNotify';
 import {
 	fetchReminderWakes,
 	publishReminderWakes,
-	registerAllReminderDevices,
-	type ReminderWake
+	registerAllReminderDevices
 } from '$lib/reminderWake';
 import { readReminderHistory, type ReminderHistoryEntry } from '$lib/reminderHistory';
 import { reminderHistoryStore, type ReminderHistoryStore } from '$lib/stores/reminderHistory';
@@ -292,7 +292,7 @@ export class ReminderStore {
 				const matching = notes.find(
 					(item) =>
 						item.reminder === alert.reminder &&
-						reminderWakeId(item.id, item.reminder) === alert.wakeId &&
+						reminderWakeId(item.id, alert.reminder) === alert.wakeId &&
 						!item.archived &&
 						!item.trashed
 				);
@@ -448,7 +448,7 @@ export class ReminderStore {
 		}
 	}
 
-	private scan(): void {
+	scan(): void {
 		const now = Date.now();
 		for (const workspace of this.workspaces.values()) this.scanWorkspace(workspace, now);
 	}
@@ -485,7 +485,7 @@ export class ReminderStore {
 			const hasLocalNote = workspace.notes.some(
 				(item) =>
 					item.reminder === wake.fireAt &&
-					reminderWakeId(item.id, item.reminder) === wake.id &&
+					reminderWakeId(item.id, wake.fireAt) === wake.id &&
 					!item.archived &&
 					!item.trashed
 			);

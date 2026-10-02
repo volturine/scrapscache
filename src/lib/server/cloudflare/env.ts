@@ -1,5 +1,6 @@
-import { getRequestEvent } from '$app/server';
+import { env } from 'cloudflare:workers';
 import type { D1Database, DurableObjectNamespace, R2Bucket } from '@cloudflare/workers-types';
+import { getRequestEvent } from '$app/server';
 
 export type CloudflareBindings = {
 	SCRAPSCACHE_DB: D1Database;
@@ -12,7 +13,15 @@ export type CloudflareBindings = {
 };
 
 export function cloudflareBindings(): CloudflareBindings {
-	const bindings = (getRequestEvent().platform as { env?: unknown } | undefined)?.env;
-	if (!bindings) throw new Error('Cloudflare platform bindings are unavailable');
-	return bindings as unknown as CloudflareBindings;
+	if (typeof env !== 'undefined' && env && Object.keys(env).length > 0) {
+		return env as unknown as CloudflareBindings;
+	}
+	try {
+		const platformEnv = (getRequestEvent()?.platform as { env?: unknown } | undefined)?.env;
+		if (platformEnv) return platformEnv as unknown as CloudflareBindings;
+	} catch {
+		// Outside request context
+	}
+	if (env && Object.keys(env).length > 0) return env as unknown as CloudflareBindings;
+	throw new Error('Cloudflare platform bindings are unavailable');
 }

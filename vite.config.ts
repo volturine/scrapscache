@@ -73,9 +73,10 @@ export default defineConfig({
 	plugins: [
 		cloudflarePlatform,
 		sveltekit({
+			compilerOptions: {
+				runes: true
+			},
 			preprocess: vitePreprocess(),
-			alias: { 'styled-system': './styled-system', $panda: './panda' },
-			// Self-hosted Node builds are the default; DEPLOY_TARGET=cloudflare builds the Workers bundle.
 			adapter:
 				process.env.DEPLOY_TARGET === 'cloudflare'
 					? adapterCloudflare({ config: 'cf/wrangler.svelte.jsonc' })
@@ -135,7 +136,27 @@ export default defineConfig({
 	},
 	resolve: {
 		// Excalidraw's index.css export only matches development/production.
-		conditions: ['browser', 'development|production']
+		conditions: ['browser', 'development|production'],
+		alias: [
+			{
+				find: 'styled-system',
+				replacement: fileURLToPath(new URL('./styled-system', import.meta.url))
+			},
+			{
+				find: '$panda',
+				replacement: fileURLToPath(new URL('./panda', import.meta.url))
+			},
+			...(process.env.DEPLOY_TARGET === 'cloudflare'
+				? []
+				: [
+						{
+							find: 'cloudflare:workers',
+							replacement: fileURLToPath(
+								new URL('./src/lib/server/cloudflare/workersStub.ts', import.meta.url)
+							)
+						}
+					])
+		]
 	},
 	test: {
 		include: ['src/**/*.{test,spec}.{js,ts}', 'recipes/**/*.{test,spec}.{js,ts}'],

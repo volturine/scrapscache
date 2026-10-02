@@ -1,6 +1,8 @@
 import { getRequestEvent } from '$app/server';
 import type { D1Database } from '@cloudflare/workers-types';
 import type { MetricsSnapshot, ProcessActivity } from '#lib/server/metricsRender.js';
+import { cloudflareBindings } from './env';
+import { waitUntil } from 'cloudflare:workers';
 
 /** Per-phase keys for one relay sync round, written into `activity_hours`. */
 export function recordSyncPhases(phases: Record<string, number>): void {
@@ -42,16 +44,33 @@ const INCREMENT_SQL = `INSERT INTO activity_hours(hour, key, value) VALUES (?, ?
  */
 function add(counts: Record<string, number>, now = Date.now()): void {
 	try {
-		const platform = getRequestEvent().platform as Platform | undefined;
-		const db = platform?.env?.SCRAPSCACHE_DB;
-		const context = platform?.context;
-		if (!db || !context) return;
+		let platform: Platform | undefined;
+		try {
+			platform = getRequestEvent().platform as Platform | undefined;
+		} catch {
+			// Outside of a request event context
+		}
+
+		let db = platform?.env?.SCRAPSCACHE_DB;
+		let wait = platform?.context?.waitUntil?.bind(platform?.context);
+
+		if (!db || !wait) {
+			try {
+				const bindings = cloudflareBindings();
+				db = bindings.SCRAPSCACHE_DB;
+				wait = waitUntil;
+			} catch {
+				// Cloudflare bindings unavailable
+			}
+		}
+
+		if (!db || !wait) return;
 		const hour = Math.floor(now / HOUR_MS);
 		const statements = Object.entries(counts)
 			.filter(([, value]) => value > 0)
 			.map(([key, value]) => db.prepare(INCREMENT_SQL).bind(hour, key, value));
 		if (statements.length === 0) return;
-		context.waitUntil(db.batch(statements).catch(() => undefined));
+		wait(db.batch(statements).catch(() => undefined));
 	} catch {
 		// A dropped count is not worth failing a request over.
 	}

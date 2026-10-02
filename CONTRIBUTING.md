@@ -133,7 +133,7 @@ Changes that touch any of the following need extra care and tests:
 - `src/lib/syncPairing.ts`, `src/lib/backupCrypto.ts`, `@noble/*` usage
 - Sync merge, tombstones, and conflict resolution
 - Rate limiting, auth, and admin token checks
-- CSP / security headers in `svelte.config.js` and `hooks.server.ts`
+- CSP / security headers in `vite.config.ts` and `hooks.server.ts`
 - Encrypted client backup export and import paths
 
 Report vulnerabilities privately per [SECURITY.md](SECURITY.md).

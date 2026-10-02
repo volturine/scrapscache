@@ -204,7 +204,7 @@ weekly.
 ## Debugging tips
 
 - CSP is strict in production config; if a new asset source is required, update
-  `svelte.config.js` deliberately and document why.
+  `vite.config.ts` deliberately and document why.
 - Admin endpoints need `SCRAPSCACHE_ADMIN_TOKEN` once you leave the dev Compose
   default.
 - Structured logs on API errors include `requestId` — pass `x-request-id` from

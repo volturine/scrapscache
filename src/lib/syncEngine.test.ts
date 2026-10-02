@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import type { Note } from '$lib/types';
-import { planDeletableKeys, reconcileBaseline, syncRoundHasMore } from './syncEngine';
+import type { Note } from '#lib/types.js';
+import {
+	createSyncRetrySchedule,
+	executeWithSyncRetry,
+	planDeletableKeys,
+	reconcileBaseline,
+	syncRoundHasMore
+} from './syncEngine';
 import { syncSnapshot } from './syncRecords';
 
 function note(id: string, imageIds: string[] = []): Note {
@@ -185,5 +191,58 @@ describe('incremental sync engine', () => {
 			catchUpComplete: true
 		});
 		expect(planned.sort()).toEqual(['library-item:star']);
+	});
+
+	describe('Effect sync retry scheduler', () => {
+		it('retries transient failures and returns the successful value', async () => {
+			let attempts = 0;
+			const result = await executeWithSyncRetry(
+				async () => {
+					attempts += 1;
+					if (attempts < 3) throw new Error('transient network issue');
+					return 'synced';
+				},
+				{ initialDelayMs: 5, maxDelayMs: 20, maxRetries: 3 }
+			);
+
+			expect(result).toBe('synced');
+			expect(attempts).toBe(3);
+		});
+
+		it('fails after exhausting max retries', async () => {
+			let attempts = 0;
+			await expect(
+				executeWithSyncRetry(
+					async () => {
+						attempts += 1;
+						throw new Error('persistent outage');
+					},
+					{ initialDelayMs: 2, maxDelayMs: 10, maxRetries: 2 }
+				)
+			).rejects.toThrow();
+
+			expect(attempts).toBe(3); // 1 initial + 2 retries
+		});
+
+		it('aborts immediately when shouldRetry predicate returns false', async () => {
+			let attempts = 0;
+			class QuotaExceededError extends Error {}
+
+			await expect(
+				executeWithSyncRetry(
+					async () => {
+						attempts += 1;
+						throw new QuotaExceededError('413 Payload Too Large');
+					},
+					{
+						initialDelayMs: 2,
+						maxRetries: 5,
+						shouldRetry: (err) => !(err instanceof QuotaExceededError)
+					}
+				)
+			).rejects.toThrow();
+
+			expect(attempts).toBe(1);
+		});
 	});
 });

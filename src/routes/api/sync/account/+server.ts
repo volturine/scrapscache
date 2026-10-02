@@ -1,8 +1,8 @@
 import type { RequestHandler } from './$types';
 import { json } from '@sveltejs/kit';
-import { getSyncStore } from '$lib/server/syncStore';
-import { getSyncAuth } from '$lib/server/syncAuth';
-import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '$lib/server/rateLimit';
+import { getSyncStore } from '#lib/server/syncStore.js';
+import { getSyncAuth } from '#lib/server/syncAuth.js';
+import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '#lib/server/rateLimit.js';
 
 export const DELETE: RequestHandler = async ({ request, getClientAddress }) => {
 	const limited = await getPublicApiLimiter().check(

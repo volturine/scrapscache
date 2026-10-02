@@ -1,8 +1,9 @@
+import { Option, Schema } from 'effect';
 import {
 	MAX_WAKES_PER_ACCOUNT,
 	WAKE_RETAIN_MS,
 	type ReminderWakeInput
-} from '$lib/server/syncStore';
+} from '#lib/server/syncStore.js';
 
 const TWENTY_YEARS_MS = 20 * 365 * 24 * 60 * 60 * 1000;
 export const DEVICE_ID_RE = /^[A-Za-z0-9_-]{16,128}$/;
@@ -124,41 +125,44 @@ export async function isPublicEndpoint(
 	}
 }
 
-export function isPushSubscription(value: unknown): value is PushSubscriptionBody {
-	if (!value || typeof value !== 'object') return false;
-	const subscription = value as Partial<PushSubscriptionBody>;
-	const keys = subscription.keys;
-	return (
-		typeof subscription.endpoint === 'string' &&
-		isHttpsEndpoint(subscription.endpoint) &&
-		!!keys &&
-		typeof keys === 'object' &&
-		typeof keys.p256dh === 'string' &&
-		typeof keys.auth === 'string' &&
-		keys.p256dh.length >= 16 &&
-		keys.p256dh.length <= 256 &&
-		keys.auth.length >= 8 &&
-		keys.auth.length <= 128 &&
-		PUSH_KEY.test(keys.p256dh) &&
-		PUSH_KEY.test(keys.auth)
-	);
-}
+export const PushKeysSchema = Schema.Struct({
+	p256dh: Schema.String.pipe(
+		Schema.check(Schema.isPattern(PUSH_KEY)),
+		Schema.check(Schema.isBetweenLength(16, 256))
+	),
+	auth: Schema.String.pipe(
+		Schema.check(Schema.isPattern(PUSH_KEY)),
+		Schema.check(Schema.isBetweenLength(8, 128))
+	)
+});
+
+export const PushSubscriptionSchema = Schema.Struct({
+	endpoint: Schema.String.pipe(
+		Schema.refine((endpoint): endpoint is string => isHttpsEndpoint(endpoint))
+	),
+	keys: PushKeysSchema
+});
+
+export const isPushSubscription = (value: unknown): value is PushSubscriptionBody =>
+	Schema.is(PushSubscriptionSchema)(value);
+
+export const WakeItemSchema = Schema.Struct({
+	id: Schema.String.pipe(Schema.check(Schema.isPattern(WAKE_ID_RE))),
+	fireAt: Schema.Number.pipe(Schema.check(Schema.isInt()))
+});
+
+export const ReminderWakesPayloadSchema = Schema.Array(WakeItemSchema).pipe(
+	Schema.check(Schema.isMaxLength(MAX_WAKES_PER_ACCOUNT))
+);
+
+const decodeReminderWakes = Schema.decodeUnknownOption(ReminderWakesPayloadSchema);
 
 export function parseReminderWakes(value: unknown, now: number): ReminderWakeInput[] | null {
-	if (!Array.isArray(value) || value.length > MAX_WAKES_PER_ACCOUNT) return null;
+	const decoded = Option.getOrNull(decodeReminderWakes(value));
+	if (!decoded) return null;
 	const seen = new Set<string>();
 	const wakes = new Map<string, ReminderWakeInput>();
-	for (const item of value) {
-		if (!item || typeof item !== 'object') return null;
-		const wake = item as { id?: unknown; fireAt?: unknown };
-		if (
-			typeof wake.id !== 'string' ||
-			!WAKE_ID_RE.test(wake.id) ||
-			typeof wake.fireAt !== 'number' ||
-			!Number.isSafeInteger(wake.fireAt)
-		) {
-			return null;
-		}
+	for (const wake of decoded) {
 		if (seen.has(wake.id)) return null;
 		seen.add(wake.id);
 		if (wake.fireAt <= now - WAKE_RETAIN_MS || wake.fireAt > now + TWENTY_YEARS_MS) continue;

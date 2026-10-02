@@ -1,9 +1,9 @@
-import { getDb } from '$lib/server/db';
-import { countThrottledCallers } from '$lib/server/rateLimit';
-import { HOUR_MS } from './metrics';
+import { getDb } from '#lib/server/db.js';
+import { countThrottledCallers } from '#lib/server/rateLimit.js';
+export const HOUR_MS = 3_600_000;
 
-export type { ActivityCounts, TelemetryReport } from '$lib/server/telemetryQuery';
-import type { ActivityCounts, TelemetryReport } from '$lib/server/telemetryQuery';
+export type { ActivityCounts, TelemetryReport } from '#lib/server/telemetryQuery.js';
+import type { ActivityCounts, TelemetryReport } from '#lib/server/telemetryQuery.js';
 
 /** Longest window the dashboard can ask for, and how long counters are kept. */
 const MAX_HOURS = 168;

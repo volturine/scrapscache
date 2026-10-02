@@ -1,14 +1,35 @@
+import type { RequestEvent } from '@sveltejs/kit';
+import type { ResolveOptions } from '@sveltejs/kit/hooks';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const env = vi.hoisted(() => ({
 	private: {} as Record<string, string | undefined>,
 	public: {} as Record<string, string | undefined>
 }));
-vi.mock('$lib/server/metrics', () => ({ recordHttpRequest: vi.fn() }));
-vi.mock('$env/dynamic/private', () => ({ env: env.private }));
-vi.mock('$env/dynamic/public', () => ({ env: env.public }));
+vi.mock('#lib/server/metrics.js', () => ({ recordHttpRequest: vi.fn() }));
+vi.mock('$app/env/private', () => ({
+	get TURNSTILE_SITEKEY() {
+		return env.private.TURNSTILE_SITEKEY;
+	},
+	get SCRAPSCACHE_ORIGIN() {
+		return env.private.SCRAPSCACHE_ORIGIN;
+	},
+	get ORIGIN() {
+		return env.private.ORIGIN;
+	},
+	get TURNSTILE_SECRET() {
+		return env.private.TURNSTILE_SECRET;
+	},
+	get TURNSTILE_HOSTNAMES() {
+		return env.private.TURNSTILE_HOSTNAMES;
+	}
+}));
+vi.mock('$app/env/public', () => ({
+	get PUBLIC_TURNSTILE_ORIGIN() {
+		return env.public.PUBLIC_TURNSTILE_ORIGIN;
+	}
+}));
 
-import type { RequestEvent, ResolveOptions } from '@sveltejs/kit';
 import { handle } from './hooks.server';
 
 function respond(requestHeaders: Record<string, string> = {}): Promise<Response> {
@@ -50,14 +71,21 @@ describe('security headers', () => {
 			'https://example.test/',
 			() =>
 				new Response('<html></html>', {
-					headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'private' }
+					headers: {
+						'content-type': 'text/html; charset=utf-8',
+						'cache-control': 'private'
+					}
 				})
 		);
+
 		const api = await visit(
 			'https://example.test/api/status',
 			() =>
 				new Response('{}', {
-					headers: { 'content-type': 'application/json', 'cache-control': 'no-store' }
+					headers: {
+						'content-type': 'application/json',
+						'cache-control': 'no-store'
+					}
 				})
 		);
 
@@ -161,12 +189,9 @@ describe('link previews', () => {
 			.fn()
 			.mockImplementation(async (_event: RequestEvent, opts?: ResolveOptions) => {
 				if (opts?.transformPageChunk) {
-					transformedHtml =
-						(await opts.transformPageChunk({
-							html: sampleHtml,
-							done: true
-						})) ?? '';
+					transformedHtml = (await opts.transformPageChunk({ html: sampleHtml, done: true })) ?? '';
 				}
+
 				return new Response(transformedHtml, {
 					status: 200,
 					headers: { 'Content-Type': 'text/html' }

@@ -1,4 +1,4 @@
-import type { View } from '$lib/stores/ui.svelte';
+import type { View } from '#lib/stores/ui.svelte.js';
 
 /** Single source of truth for the URL ↔ view mapping. */
 export function pathForView(view: View, labelId: string | null = null): string | null {

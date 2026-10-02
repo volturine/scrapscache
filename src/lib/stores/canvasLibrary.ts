@@ -9,11 +9,11 @@ import {
 	readCanvasLibrary,
 	type CanvasLibraryEntry,
 	type CanvasLibraryItem
-} from '$lib/canvasLibrary';
-import { mergeWorkspaceState } from '$lib/db/idb';
-import { syncClock } from '$lib/editContext';
-import { syncStore } from '$lib/stores/sync.svelte';
-import { BackupImportMode } from '$lib/backup';
+} from '#lib/canvasLibrary.js';
+import { mergeWorkspaceState } from '#lib/db/idb.js';
+import { syncClock } from '#lib/editContext.js';
+import { syncStore } from '#lib/stores/sync.svelte.js';
+import { BackupImportMode } from '#lib/backup.js';
 
 function sanitizeTombstones(value: unknown): Record<string, number> {
 	if (!value || typeof value !== 'object' || Array.isArray(value)) return {};

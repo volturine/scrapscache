@@ -1,11 +1,12 @@
+import { Effect } from 'effect';
 import {
 	getSyncStore,
 	WAKE_CLAIM_LEASE_MS,
 	type DueWake,
 	type SyncStore
-} from '$lib/server/syncStore';
-import { sendReminderTick, type WakeSendResult } from '$lib/server/webPush';
-import { recordReminderWake } from '$lib/server/metrics';
+} from '#lib/server/syncStore.js';
+import { sendReminderTick, type WakeSendResult } from '#lib/server/webPush.js';
+import { recordReminderWake } from '#lib/server/metrics.js';
 
 const SEND_CONCURRENCY = 8;
 /** Wakes claimed per round. A full round means more may be due. */
@@ -53,34 +54,39 @@ export async function dispatchDueWakes(
 	const now = options.now ?? Date.now;
 	const result: WakeDispatchResult = { sent: 0, failed: 0, gone: 0, next: null };
 	let moreDue = false;
+
+	const processDevice = (device: DueWake) =>
+		Effect.gen(function* () {
+			const sendResult = yield* Effect.tryPromise({
+				try: () => send(device),
+				catch: (): WakeSendResult => 'failed'
+			});
+			if (sendResult === 'failed') {
+				yield* Effect.tryPromise(() =>
+					store.deferWakeRetry(device, wakeRetryAt(Number(device.fireAt), now()))
+				);
+				recordReminderWake('failed');
+				return 'failed' as const;
+			}
+			if (sendResult === 'gone') {
+				yield* Effect.tryPromise(() => store.deletePushDevice(device.accountId, device.deviceId));
+				recordReminderWake('gone');
+				return 'gone' as const;
+			}
+			yield* Effect.tryPromise(() => store.markWakeDelivered(device, now()));
+			recordReminderWake('sent');
+			return 'sent' as const;
+		});
+
 	for (let round = 0; round < MAX_ROUNDS; round += 1) {
 		const due = await store.claimDueWakes(now(), CLAIM_LIMIT, options.accountId);
 		for (let offset = 0; offset < due.length; offset += SEND_CONCURRENCY) {
 			const batch = due.slice(offset, offset + SEND_CONCURRENCY);
-			const results = await Promise.all(
-				batch.map((device) =>
-					Promise.resolve()
-						.then(() => send(device))
-						.catch((): WakeSendResult => 'failed')
-				)
+			const batchOutcomes = await Effect.runPromise(
+				Effect.forEach(batch, processDevice, { concurrency: SEND_CONCURRENCY })
 			);
-			for (const [index, device] of batch.entries()) {
-				const sendResult = results[index];
-				if (sendResult === 'failed') {
-					await store.deferWakeRetry(device, wakeRetryAt(Number(device.fireAt), now()));
-					recordReminderWake('failed');
-					result.failed += 1;
-					continue;
-				}
-				if (sendResult === 'gone') {
-					await store.deletePushDevice(device.accountId, device.deviceId);
-					recordReminderWake('gone');
-					result.gone += 1;
-					continue;
-				}
-				await store.markWakeDelivered(device, now());
-				recordReminderWake('sent');
-				result.sent += 1;
+			for (const outcome of batchOutcomes) {
+				result[outcome] += 1;
 			}
 		}
 		moreDue = due.length === CLAIM_LIMIT;

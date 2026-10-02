@@ -1,12 +1,11 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { env as publicEnv } from '$env/dynamic/public';
-import { createSyncIdentity } from '$lib/syncPairing';
-import type { StoredProfile } from '$lib/profiles';
-import { notesStore } from '$lib/stores/notes.svelte';
-import { profileCoordinator } from '$lib/stores/profiles.svelte';
-import { syncStore, type StartedDeviceLink } from '$lib/stores/sync.svelte';
+import { createSyncIdentity } from '#lib/syncPairing.js';
+import type { StoredProfile } from '#lib/profiles.js';
+import { notesStore } from '#lib/stores/notes.svelte.js';
+import { profileCoordinator } from '#lib/stores/profiles.svelte.js';
+import { syncStore, type StartedDeviceLink } from '#lib/stores/sync.svelte.js';
 import SyncModal from './SyncModal.svelte';
 import { TEST_WORKSPACE } from '../../tests/workspace';
 
@@ -82,8 +81,8 @@ describe('SyncModal profile interactions', () => {
 			.spyOn(syncStore, 'renameProfile')
 			.mockResolvedValueOnce(null)
 			.mockResolvedValueOnce({ ...side, name: 'Studio' });
-		render(SyncModal, { props: { onClose: vi.fn() } });
 
+		render(SyncModal, { props: { onClose: vi.fn() } });
 		await expand('Side');
 		await fireEvent.click(screen.getByRole('button', { name: 'Rename Side' }));
 		const field = screen.getByRole('textbox', { name: 'Workspace name' }) as HTMLInputElement;
@@ -275,13 +274,13 @@ describe('SyncModal profile interactions', () => {
 			syncStore.lastError = 'This sync key was deleted from the cloud.';
 			return false;
 		});
+
 		const replace = vi
 			.spyOn(profileCoordinator, 'replaceRetiredKey')
 			.mockResolvedValue({ success: true });
+
 		render(SyncModal, { props: { onClose: vi.fn() } });
-
 		await fireEvent.click(screen.getByRole('button', { name: 'Sync now' }));
-
 		expect(
 			await screen.findByText(/sync key was deleted from the cloud, so it can no longer sync/)
 		).toBeTruthy();
@@ -430,7 +429,8 @@ describe('SyncModal profile interactions', () => {
 	});
 
 	it('starts sync only with a token from the isolated challenge frame, then resets it', async () => {
-		publicEnv.PUBLIC_TURNSTILE_ORIGIN = 'https://verify.scrapscache.com';
+		(globalThis as any).__sveltekit_dev.env.PUBLIC_TURNSTILE_ORIGIN =
+			'https://verify.scrapscache.com';
 		const create = vi.spyOn(profileCoordinator, 'startSync').mockResolvedValue({ success: false });
 		const post = (
 			frame: HTMLIFrameElement,
@@ -474,7 +474,7 @@ describe('SyncModal profile interactions', () => {
 			await waitFor(() => expect(screen.getByTitle('Human verification')).not.toBe(frame));
 			expect(submit.disabled).toBe(true);
 		} finally {
-			delete publicEnv.PUBLIC_TURNSTILE_ORIGIN;
+			delete (globalThis as any).__sveltekit_dev.env.PUBLIC_TURNSTILE_ORIGIN;
 		}
 	});
 

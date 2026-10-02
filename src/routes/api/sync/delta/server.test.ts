@@ -23,7 +23,7 @@ const mocks = vi.hoisted(() => {
 	};
 });
 
-vi.mock('$lib/server/syncStore', () => ({
+vi.mock('#lib/server/syncStore.js', () => ({
 	SyncQuotaExceededError: mocks.QuotaError,
 	MAX_SYNC_MUTATIONS_PER_REQUEST: 2_000,
 	getSyncStore: () => ({
@@ -31,10 +31,10 @@ vi.mock('$lib/server/syncStore', () => ({
 		accountRateLimit: mocks.accountRateLimit
 	})
 }));
-vi.mock('$lib/server/syncAuth', () => ({
+vi.mock('#lib/server/syncAuth.js', () => ({
 	getSyncAuth: () => ({ authenticateSyncRequest: mocks.authenticate })
 }));
-vi.mock('$lib/server/rateLimit', () => ({
+vi.mock('#lib/server/rateLimit.js', () => ({
 	clientAddress: () => '127.0.0.1',
 	enterSyncRequest: mocks.enterSyncRequest,
 	getPublicApiLimiter: () => ({
@@ -42,10 +42,10 @@ vi.mock('$lib/server/rateLimit', () => ({
 	}),
 	rateLimitResponse: () => new Response(null, { status: 429 })
 }));
-vi.mock('$lib/server/runtimeSettings', () => ({
+vi.mock('#lib/server/runtimeSettings.js', () => ({
 	getRuntimeSettings: async () => mocks.settings
 }));
-vi.mock('$lib/server/metrics', () => ({
+vi.mock('#lib/server/metrics.js', () => ({
 	recordSqliteError: vi.fn(),
 	recordSyncBatch: vi.fn(),
 	recordSyncPhases: mocks.recordSyncPhases

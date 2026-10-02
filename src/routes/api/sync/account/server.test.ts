@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
 	remove: vi.fn(async () => true)
 }));
 
-vi.mock('$lib/server/syncStore', () => ({
+vi.mock('#lib/server/syncStore.js', () => ({
 	getSyncStore: () => ({
 		retireAccount: async (id: string) => {
 			mocks.calls.push(`retire ${id}`);
@@ -19,13 +19,13 @@ vi.mock('$lib/server/syncStore', () => ({
 		}
 	})
 }));
-vi.mock('$lib/server/syncAuth', () => ({
+vi.mock('#lib/server/syncAuth.js', () => ({
 	getSyncAuth: () => ({
 		authenticateSyncRequest: mocks.authenticate,
 		revokeSyncSessions: async () => undefined
 	})
 }));
-vi.mock('$lib/server/rateLimit', () => ({
+vi.mock('#lib/server/rateLimit.js', () => ({
 	clientAddress: () => '127.0.0.1',
 	getPublicApiLimiter: () => ({ check: async () => ({ allowed: true }) }),
 	rateLimitResponse: () => new Response(null, { status: 429 })

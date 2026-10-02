@@ -1,10 +1,10 @@
 import type { RequestHandler } from './$types';
-import { isAdminAuthorized, unauthorizedAdminResponse } from '$lib/server/adminAuth';
-import { metricsSnapshot, renderMetrics } from '$lib/server/metrics';
-import { bytesToGigabytes, staleBeforeMs } from '$lib/server/operatorConfig';
-import { getRetentionStatus } from '$lib/server/retentionSweep';
-import { getRuntimeSettings } from '$lib/server/runtimeSettings';
-import { getSyncStore } from '$lib/server/syncStore';
+import { isAdminAuthorized, unauthorizedAdminResponse } from '#lib/server/adminAuth.js';
+import { metricsSnapshot, renderMetrics } from '#lib/server/metrics.js';
+import { bytesToGigabytes, staleBeforeMs } from '#lib/server/operatorConfig.js';
+import { getRetentionStatus } from '#lib/server/retentionSweep.js';
+import { getRuntimeSettings } from '#lib/server/runtimeSettings.js';
+import { getSyncStore } from '#lib/server/syncStore.js';
 
 export const GET: RequestHandler = async ({ request }) => {
 	if (!isAdminAuthorized(request)) return unauthorizedAdminResponse();

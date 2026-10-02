@@ -1,14 +1,14 @@
-import { SYNC_EVENTS_PROTOCOL } from '$lib/syncEventsProtocol';
+import { SYNC_EVENTS_PROTOCOL } from '#lib/syncEventsProtocol.js';
 import {
 	ACTIVITY_WINDOWS_DAYS,
 	DEFAULT_SYNC_PER_MINUTE,
 	parseHistoryVersions,
 	parseMaxAccountBytes
-} from '$lib/server/operatorConfig';
+} from '#lib/server/operatorConfig.js';
 import { batch, execute, type SqlStatement } from './d1';
 import { cloudflareBindings } from './env';
-import { MAX_CLIENT_SYNC_MUTATIONS_PER_REQUEST } from '$lib/syncLimits';
-import type { HistoryEnvelope, HistoryList } from '$lib/syncHistory';
+import { MAX_CLIENT_SYNC_MUTATIONS_PER_REQUEST } from '#lib/syncLimits.js';
+import type { HistoryEnvelope, HistoryList } from '#lib/syncHistory.js';
 import { deleteHistoryRows, OLDER_VERSION, purgeDeletedRecords } from './history';
 
 export type EncryptedEnvelope = { seq: number; id: string; ciphertext: string; slot: string };

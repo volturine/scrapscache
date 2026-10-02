@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanupTestDbs, testDb } from '$lib/server/testDb';
-import { SyncStore, WAKE_CLAIM_LEASE_MS, type DueWake } from '$lib/server/syncStore';
+import { cleanupTestDbs, testDb } from '#lib/server/testDb.js';
+import { SyncStore, WAKE_CLAIM_LEASE_MS, type DueWake } from '#lib/server/syncStore.js';
 import { dispatchDueWakes } from './wakeDispatch';
 
-vi.mock('$lib/server/metrics', async (original) => ({
-	...(await original<typeof import('$lib/server/metrics')>()),
+vi.mock('#lib/server/metrics.js', async (original) => ({
+	...(await original<typeof import('#lib/server/metrics.js')>()),
 	recordReminderWake: vi.fn()
 }));
 

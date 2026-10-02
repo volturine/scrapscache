@@ -4,13 +4,34 @@ const env = vi.hoisted(() => ({
 	private: {} as Record<string, string | undefined>,
 	public: {} as Record<string, string | undefined>
 }));
-vi.mock('$env/dynamic/private', () => ({ env: env.private }));
-vi.mock('$env/dynamic/public', () => ({ env: env.public }));
+vi.mock('$app/env/private', () => ({
+	get TURNSTILE_SITEKEY() {
+		return env.private.TURNSTILE_SITEKEY;
+	},
+	get SCRAPSCACHE_ORIGIN() {
+		return env.private.SCRAPSCACHE_ORIGIN;
+	},
+	get ORIGIN() {
+		return env.private.ORIGIN;
+	},
+	get TURNSTILE_SECRET() {
+		return env.private.TURNSTILE_SECRET;
+	},
+	get TURNSTILE_HOSTNAMES() {
+		return env.private.TURNSTILE_HOSTNAMES;
+	}
+}));
+vi.mock('$app/env/public', () => ({
+	get PUBLIC_TURNSTILE_ORIGIN() {
+		return env.public.PUBLIC_TURNSTILE_ORIGIN;
+	}
+}));
 
 import { GET } from './+server';
 
 const CHALLENGE = 'https://verify.scrapscache.com';
 const APP = 'https://scrapscache.com';
+const SCRIPT_CLOSE = '<\x2fscript>';
 
 function get(url: string): Response {
 	return (GET as unknown as (event: { url: URL }) => Response)({ url: new URL(url) });
@@ -100,11 +121,11 @@ describe('the Turnstile challenge page', () => {
 	});
 
 	it('cannot be broken out of by a configured value', async () => {
-		env.private.TURNSTILE_SITEKEY = '</script><script>steal()</script>';
+		env.private.TURNSTILE_SITEKEY = `${SCRIPT_CLOSE}<script>steal()${SCRIPT_CLOSE}`;
 		const html = await get(`${CHALLENGE}/turnstile?action=register`).text();
 
-		expect(html).not.toContain('</script><script>steal()');
-		expect(html).toContain('\\u003c/script>');
+		expect(html).not.toContain(`${SCRIPT_CLOSE}<script>steal()`);
+		expect(html).toContain('\\u003c\x2fscript>');
 	});
 
 	it('is not cached', () => {

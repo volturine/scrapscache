@@ -5,8 +5,8 @@ import { tick } from 'svelte';
 const navigationMocks = vi.hoisted(() => ({ goto: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('$app/navigation', () => navigationMocks);
 import Sidebar from './Sidebar.svelte';
-import { notesStore } from '$lib/stores/notes.svelte';
-import type { Label } from '$lib/types';
+import { notesStore } from '#lib/stores/notes.svelte.js';
+import type { Label } from '#lib/types.js';
 
 function label(name: string, id = name.toLowerCase()): Label {
 	return { id, name, createdAt: 1, updatedAt: 1 };

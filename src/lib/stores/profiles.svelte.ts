@@ -5,7 +5,7 @@
 // sync web lock so no sync flight can interleave with the handover.
 import { syncStore, PROFILE_META_KEY } from './sync.svelte';
 import { notesStore, SYNC_LOCK } from './notes.svelte';
-import { clearNotesMirror } from '$lib/noteStorage';
+import { clearNotesMirror } from '#lib/noteStorage.js';
 import { clearBoardsMirror } from './kanban.svelte';
 import { clearFiredReminderMirror } from './reminders.svelte';
 import {
@@ -13,8 +13,8 @@ import {
 	nextProfileName,
 	profileForSyncKey,
 	type StoredProfile
-} from '$lib/profiles';
-import { randomOpaqueId } from '$lib/syncPairing';
+} from '#lib/profiles.js';
+import { randomOpaqueId } from '#lib/syncPairing.js';
 import {
 	isProfileReleased,
 	LS_PROFILES,
@@ -22,8 +22,8 @@ import {
 	onProfileDeleted,
 	releaseProfile,
 	resumeProfile
-} from '$lib/db/idb';
-import { unregisterReminderDevice } from '$lib/reminderWake';
+} from '#lib/db/idb.js';
+import { unregisterReminderDevice } from '#lib/reminderWake.js';
 
 type Outcome = { success: boolean; error?: string };
 

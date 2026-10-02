@@ -1,8 +1,9 @@
 // Incremental sync decisions. Upload only dirty records; never infer "unused"
 // attachments from a page that has not yet applied their parent notes.
-import type { Note } from '$lib/types';
-import { isTombstoned } from '$lib/model';
-import type { SyncRecord, SyncSnapshot } from '$lib/syncRecords';
+import { Duration, Effect, Schedule } from 'effect';
+import type { Note } from '#lib/types.js';
+import { isTombstoned } from '#lib/model/index.js';
+import type { SyncRecord, SyncSnapshot } from '#lib/syncRecords.js';
 
 export function currentRecordKeys(snapshot: SyncSnapshot): Set<string> {
 	const keys = new Set<string>();
@@ -173,4 +174,49 @@ export function syncControlKeys(accountId: string): {
 		baseline: `scrapscache-sync-record-fingerprints:${accountId}`,
 		recordIds: `scrapscache-sync-record-ids:${accountId}`
 	};
+}
+
+export interface SyncRetryOptions {
+	initialDelayMs?: number;
+	maxDelayMs?: number;
+	maxRetries?: number;
+	timeoutMs?: number;
+}
+
+/**
+ * Creates an Effect Schedule with exponential backoff, jitter, and a maximum retry count.
+ */
+export function createSyncRetrySchedule(options?: SyncRetryOptions) {
+	const initial = Duration.millis(options?.initialDelayMs ?? 500);
+	const max = Duration.millis(options?.maxDelayMs ?? 30_000);
+	const maxRetries = options?.maxRetries ?? 5;
+
+	return Schedule.exponential(initial).pipe(
+		Schedule.jittered,
+		Schedule.upTo({ duration: max, times: maxRetries })
+	);
+}
+
+/**
+ * Executes an async sync operation wrapped in an Effect with exponential retry and timeout.
+ */
+export function executeWithSyncRetry<T>(
+	operation: () => Promise<T>,
+	options?: SyncRetryOptions & { shouldRetry?: (error: unknown) => boolean }
+): Promise<T> {
+	const schedule = createSyncRetrySchedule(options);
+	const timeout = Duration.millis(options?.timeoutMs ?? 15_000);
+
+	const effect = Effect.tryPromise({
+		try: operation,
+		catch: (error) => error
+	}).pipe(
+		Effect.retry({
+			schedule,
+			while: (err) => (options?.shouldRetry ? options.shouldRetry(err) : true)
+		}),
+		Effect.timeout(timeout)
+	);
+
+	return Effect.runPromise(effect as Effect.Effect<T>);
 }

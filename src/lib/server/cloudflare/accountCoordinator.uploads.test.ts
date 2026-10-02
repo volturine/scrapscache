@@ -9,7 +9,7 @@ import {
 	SOCKET_PONG,
 	SOCKET_SESSION_EXPIRED
 } from '../../../../cf/accountCoordinator';
-import { MAX_CLIENT_SYNC_MUTATIONS_PER_REQUEST } from '$lib/syncLimits';
+import { MAX_CLIENT_SYNC_MUTATIONS_PER_REQUEST } from '#lib/syncLimits.js';
 
 const ACCOUNT = 'account-abcdefghij';
 const SLOT = 'a'.repeat(64);

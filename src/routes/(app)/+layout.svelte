@@ -1,36 +1,36 @@
 <script lang="ts">
 	import { appLayout as styles } from '$panda/styles';
 	import { cx } from 'styled-system/css';
-	import { uiStore, type View } from '$lib/stores/ui.svelte';
-	import { notesStore } from '$lib/stores/notes.svelte';
-	import { syncStore, syncEventsClient } from '$lib/stores/sync.svelte';
-	import Sidebar from '$lib/components/Sidebar.svelte';
-	import Topbar from '$lib/components/Topbar.svelte';
-	import NoteEditor from '$lib/components/NoteEditor.svelte';
-	import ReminderAlert from '$lib/components/ReminderAlert.svelte';
-	import BottomNav from '$lib/components/BottomNav.svelte';
-	import AppViews from '$lib/components/AppViews.svelte';
-	import { reminderStore } from '$lib/stores/reminders.svelte';
-	import { reminderHistoryClient } from '$lib/reminderHistoryClient';
-	import { getAllNotesMetadata } from '$lib/db/idb';
-	import { preloadVapidPublicKey } from '$lib/reminderWake';
-	import { provideEditorActions } from '$lib/editorContext';
-	import { splitPastedHeading } from '$lib/checklistBody';
+	import { uiStore, type View } from '#lib/stores/ui.svelte.js';
+	import { notesStore } from '#lib/stores/notes.svelte.js';
+	import { syncStore, syncEventsClient } from '#lib/stores/sync.svelte.js';
+	import Sidebar from '#lib/components/Sidebar.svelte';
+	import Topbar from '#lib/components/Topbar.svelte';
+	import NoteEditor from '#lib/components/NoteEditor.svelte';
+	import ReminderAlert from '#lib/components/ReminderAlert.svelte';
+	import BottomNav from '#lib/components/BottomNav.svelte';
+	import AppViews from '#lib/components/AppViews.svelte';
+	import { reminderStore } from '#lib/stores/reminders.svelte.js';
+	import { reminderHistoryClient } from '#lib/reminderHistoryClient.js';
+	import { getAllNotesMetadata } from '#lib/db/idb.js';
+	import { preloadVapidPublicKey } from '#lib/reminderWake.js';
+	import { provideEditorActions } from '#lib/editorContext.js';
+	import { splitPastedHeading } from '#lib/checklistBody.js';
 	import { Drawer } from '@ark-ui/svelte/drawer';
 	import { onMount, untrack } from 'svelte';
 	import { MediaQuery } from 'svelte/reactivity';
-	import { attachSyncCloudIndicator } from '$lib/syncCloudIndicator';
-	import { attachAppViewport } from '$lib/appViewport';
-	import { dayKey, reminderTimeForDay } from '$lib/utils';
-	import { noteAddressHistory } from '$lib/noteAddressHistory';
-	import { profileForWorkspaceTag, readNoteLink, withNoteLink } from '$lib/noteLinks';
-	import { pushState, replaceState } from '$app/navigation';
+	import { attachSyncCloudIndicator } from '#lib/syncCloudIndicator.js';
+	import { attachAppViewport } from '#lib/appViewport.js';
+	import { dayKey, reminderTimeForDay } from '#lib/utils.js';
+	import { noteAddressHistory } from '#lib/noteAddressHistory.js';
+	import { profileForWorkspaceTag, readNoteLink, withNoteLink } from '#lib/noteLinks.js';
+	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { profileCoordinator } from '$lib/stores/profiles.svelte';
-	import type { StoredProfile } from '$lib/profiles';
-	import NoteLinkNotice from '$lib/components/NoteLinkNotice.svelte';
-	import UndoBar from '$lib/components/UndoBar.svelte';
-	import { runUndoChord } from '$lib/stores/actionUndo.svelte';
+	import { profileCoordinator } from '#lib/stores/profiles.svelte.js';
+	import type { StoredProfile } from '#lib/profiles.js';
+	import NoteLinkNotice from '#lib/components/NoteLinkNotice.svelte';
+	import UndoBar from '#lib/components/UndoBar.svelte';
+	import { runUndoChord } from '#lib/stores/actionUndo.svelte.js';
 	import type { Snippet } from 'svelte';
 
 	let { children }: { children: Snippet } = $props();
@@ -123,10 +123,10 @@
 			covering: noteEntry
 		});
 		noteEntry = update.covering;
-		if (update.replace) replaceState(update.replace, page.state);
+		if (update.replace) goto(update.replace, { shallow: true, replace: true, state: page.state });
 		// Only the hash changes, so SvelteKit treats Back to the page underneath as
 		// shallow routing: it restores the address and state without navigating.
-		if (update.push) pushState(update.push, page.state);
+		if (update.push) goto(update.push, { shallow: true, state: page.state });
 		if (update.back) history.back();
 	}
 
@@ -447,7 +447,7 @@
 							noteId={editingId}
 							autofocusBody={autoFocusBody}
 							onClose={closeEditor}
-							registerClose={(fn) => {
+							registerClose={(fn: () => Promise<void>) => {
 								closeOpenNote = fn;
 							}}
 						/>

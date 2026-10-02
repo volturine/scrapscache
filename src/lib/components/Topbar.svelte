@@ -9,11 +9,11 @@
 	import { css, cx } from 'styled-system/css';
 	import { iconButton, input, menuItem } from 'styled-system/recipes';
 	import { hstack } from 'styled-system/patterns';
-	import { uiStore } from '$lib/stores/ui.svelte';
-	import { notesStore } from '$lib/stores/notes.svelte';
-	import { downloadJSON } from '$lib/utils';
-	import { syncStore } from '$lib/stores/sync.svelte';
-	import { profileCoordinator } from '$lib/stores/profiles.svelte';
+	import { uiStore } from '#lib/stores/ui.svelte.js';
+	import { notesStore } from '#lib/stores/notes.svelte.js';
+	import { downloadJSON } from '#lib/utils.js';
+	import { syncStore } from '#lib/stores/sync.svelte.js';
+	import { profileCoordinator } from '#lib/stores/profiles.svelte.js';
 	import SyncModal from './SyncModal.svelte';
 	import Tooltip from './Tooltip.svelte';
 	import PwaInstallSettings from './PwaInstallSettings.svelte';
@@ -21,11 +21,11 @@
 	import BackupPassphraseDialog from './BackupPassphraseDialog.svelte';
 	import BackupImportModeDialog from './BackupImportModeDialog.svelte';
 	import ImportGuideDialog from './ImportGuideDialog.svelte';
-	import { BackupImportMode, BackupOperation } from '$lib/backup';
-	import { isZipBytes, readKeepTakeout, unzipKeepTakeout } from '$lib/keepImport';
-	import { resolveSyncStatus, SyncStatus } from '$lib/syncStatus';
-	import { useEditorActions } from '$lib/editorContext';
-	import { pairingCodeFromUrl } from '$lib/syncPairing';
+	import { BackupImportMode, BackupOperation } from '#lib/backup.js';
+	import { isZipBytes, readKeepTakeout, unzipKeepTakeout } from '#lib/keepImport.js';
+	import { resolveSyncStatus, SyncStatus } from '#lib/syncStatus.js';
+	import { useEditorActions } from '#lib/editorContext.js';
+	import { pairingCodeFromUrl } from '#lib/syncPairing.js';
 	import { onMount, tick } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -34,7 +34,7 @@
 		encryptBackup,
 		isEncryptedScrapsCacheBackup,
 		type EncryptedScrapsCacheBackup
-	} from '$lib/backupCrypto';
+	} from '#lib/backupCrypto.js';
 	import { Menu } from '@ark-ui/svelte/menu';
 	import {
 		Cloud,
@@ -83,7 +83,7 @@
 		pairingCode = found;
 		settingsOpen = false;
 		syncOpen = true;
-		void goto(resolve('/'), { replaceState: true, noScroll: true, keepFocus: true });
+		void goto('/', { replace: true, reset: false });
 	}
 
 	onMount(openPairingLink);
@@ -388,7 +388,7 @@
 				</Menu.Item>
 				<Menu.Item value="privacy">
 					{#snippet asChild(props)}
-						<a {...props()} href={resolve('/privacy')} class={menuItemClass}>
+						<a {...props()} href={resolve('privacy')} class={menuItemClass}>
 							<Shield class={iconSm} aria-hidden="true" />
 							Privacy policy
 						</a>
@@ -396,7 +396,7 @@
 				</Menu.Item>
 				<Menu.Item value="terms">
 					{#snippet asChild(props)}
-						<a {...props()} href={resolve('/terms')} class={menuItemClass}>
+						<a {...props()} href={resolve('terms')} class={menuItemClass}>
 							<FileText class={iconSm} aria-hidden="true" />
 							Terms of service
 						</a>
@@ -417,7 +417,8 @@
 	onfocus={openPairingLink}
 	onpopstate={openPairingLink}
 />
-<svelte:document onvisibilitychange={openPairingLink} />
+
+<svelte:document onvisibilitychange={openPairingLink}></svelte:document>
 
 {#if syncOpen}
 	{#key pairingCode}

@@ -1,4 +1,4 @@
-import { LS_PROFILES } from '$lib/db/idb';
+import { LS_PROFILES } from '#lib/db/idb.js';
 
 /** The workspace every store starts on in tests. */
 export const TEST_WORKSPACE = 'test-workspace';

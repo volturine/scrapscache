@@ -2,9 +2,9 @@
 	import { reminderAlertStyles } from '$panda/styles';
 	import { fly } from 'svelte/transition';
 	import { AlarmClock, X } from '@lucide/svelte';
-	import { reminderStore } from '$lib/stores/reminders.svelte';
-	import { syncStore } from '$lib/stores/sync.svelte';
-	import { formatReminder } from '$lib/utils';
+	import { reminderStore } from '#lib/stores/reminders.svelte.js';
+	import { syncStore } from '#lib/stores/sync.svelte.js';
+	import { formatReminder } from '#lib/utils.js';
 	import { iconButton } from 'styled-system/recipes';
 
 	const alerts = $derived(reminderStore.alerts);

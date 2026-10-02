@@ -2,16 +2,24 @@
 import 'vitest';
 import 'fake-indexeddb/auto';
 import { afterEach, vi } from 'vitest';
-import { closeDeviceDatabase, DEVICE_DB_NAME, dropDatabase } from '$lib/db/idb';
-import { resetTombstoneCaches } from '$lib/syncTombstones';
-import { installHorizontalWheel } from '$lib/horizontalWheel';
+import { closeDeviceDatabase, DEVICE_DB_NAME, dropDatabase } from '#lib/db/idb.js';
+import { resetTombstoneCaches } from '#lib/syncTombstones.js';
+import { installHorizontalWheel } from '#lib/horizontalWheel.js';
 import { seedTestKeyring } from './workspace';
 
 // Stores boot on the keyring's workspace; every test file starts on the same one.
 seedTestKeyring();
 
-// Browser-side $env/dynamic/public reads globals that only a SvelteKit page defines.
-vi.mock('$env/dynamic/public', () => ({ env: {} }));
+// Browser-side $app/env/public reads globals that only a SvelteKit page defines.
+if (!(globalThis as any).__sveltekit_dev) {
+	(globalThis as any).__sveltekit_dev = { env: {} };
+}
+vi.mock('$app/env/public', () => ({
+	get PUBLIC_TURNSTILE_ORIGIN() {
+		return (globalThis as any).__sveltekit_dev?.env?.PUBLIC_TURNSTILE_ORIGIN ?? '';
+	}
+}));
+vi.mock('$env/dynamic/public', () => ({ env: (globalThis as any).__sveltekit_dev.env }));
 
 // jsdom does not implement viewport scrolling; component navigation still calls it.
 if (typeof window !== 'undefined') window.scrollTo = vi.fn();
@@ -98,11 +106,10 @@ afterEach(async () => {
 	if (typeof sessionStorage !== 'undefined') sessionStorage.clear();
 	await closeDeviceDatabase();
 	// Every name is read before the first delete: a delete that stays blocked
-	// also holds up the listing behind it, and the point here is to report the
-	// leak, not to hang on it.
-	const names = new Set([DEVICE_DB_NAME]);
-	if (typeof indexedDB !== 'undefined' && 'databases' in indexedDB) {
-		for (const db of await indexedDB.databases()) if (db.name) names.add(db.name);
+	// can otherwise prevent another delete from finishing.
+	const names = (await indexedDB.databases?.()) ?? [];
+	for (const { name } of names) {
+		if (name && name !== DEVICE_DB_NAME) await dropDatabase(name);
 	}
-	for (const name of names) await dropDatabase(name);
+	await dropDatabase(DEVICE_DB_NAME);
 });

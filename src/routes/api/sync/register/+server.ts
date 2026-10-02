@@ -1,11 +1,11 @@
 import type { RequestHandler } from './$types';
 import { json } from '@sveltejs/kit';
-import { getSyncStore } from '$lib/server/syncStore';
-import { verifySyncRegistration } from '$lib/server/syncAuth';
-import { readJsonBody } from '$lib/server/request';
-import { verifyTurnstile } from '$lib/server/turnstile';
-import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '$lib/server/rateLimit';
-import { retiredKeyResponse } from '$lib/server/retiredKey';
+import { getSyncStore } from '#lib/server/syncStore.js';
+import { verifySyncRegistration } from '#lib/server/syncAuth.js';
+import { readJsonBody } from '#lib/server/request.js';
+import { verifyTurnstile } from '#lib/server/turnstile.js';
+import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '#lib/server/rateLimit.js';
+import { retiredKeyResponse } from '#lib/server/retiredKey.js';
 
 export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	const limited = await getPublicApiLimiter().check(

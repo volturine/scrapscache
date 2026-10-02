@@ -4,64 +4,60 @@ import {
 	getSyncStore,
 	MAX_SYNC_MUTATIONS_PER_REQUEST,
 	SyncQuotaExceededError
-} from '$lib/server/syncStore';
-import { getSyncAuth } from '$lib/server/syncAuth';
-import { readJsonBody } from '$lib/server/request';
+} from '#lib/server/syncStore.js';
+import { getSyncAuth } from '#lib/server/syncAuth.js';
+import { readJsonBody } from '#lib/server/request.js';
 import {
 	clientAddress,
 	enterSyncRequest,
 	getPublicApiLimiter,
 	rateLimitResponse
-} from '$lib/server/rateLimit';
-import { getRuntimeSettings } from '$lib/server/runtimeSettings';
-import { recordSqliteError, recordSyncBatch, recordSyncPhases } from '$lib/server/metrics';
+} from '#lib/server/rateLimit.js';
+import { getRuntimeSettings } from '#lib/server/runtimeSettings.js';
+import { recordSqliteError, recordSyncBatch, recordSyncPhases } from '#lib/server/metrics.js';
+import { Schema } from 'effect';
 
 // Clients re-encode attachments to ~4 MiB before upload (imageOptimize.ts);
 // 16 MB leaves ample headroom for base64 expansion and encoding variance.
 const MAX_ENVELOPE_BYTES = 16_000_000;
 const MAX_REQUEST_BYTES = MAX_ENVELOPE_BYTES + 1_000_000;
 const DEFAULT_DOWNLOAD_LIMIT = 12;
-type OpaqueEnvelope = {
-	id: string;
-	ciphertext: string;
-	slot: string;
-	expectedId: string | null;
-	continues?: boolean;
-};
-type OpaqueDelete = { id: string; slot: string };
 
-function isOpaqueEnvelope(value: unknown): value is OpaqueEnvelope {
-	return (
-		!!value &&
-		typeof value === 'object' &&
-		typeof (value as OpaqueEnvelope).id === 'string' &&
-		typeof (value as OpaqueEnvelope).ciphertext === 'string' &&
-		typeof (value as OpaqueEnvelope).slot === 'string' &&
-		((value as OpaqueEnvelope).expectedId === null ||
-			(typeof (value as OpaqueEnvelope).expectedId === 'string' &&
-				/^[A-Za-z0-9_-]+$/.test((value as OpaqueEnvelope).expectedId!) &&
-				(value as OpaqueEnvelope).expectedId!.length <= 128)) &&
-		((value as OpaqueEnvelope).continues === undefined ||
-			typeof (value as OpaqueEnvelope).continues === 'boolean') &&
-		(value as OpaqueEnvelope).id.length <= 128 &&
-		(value as OpaqueEnvelope).ciphertext.length <= MAX_ENVELOPE_BYTES &&
-		/^[A-Za-z0-9_-]+$/.test((value as OpaqueEnvelope).id) &&
-		/^[a-f0-9]{64}$/.test((value as OpaqueEnvelope).slot) &&
-		/^[A-Za-z0-9_-]+$/.test((value as OpaqueEnvelope).ciphertext)
-	);
-}
+const BASE64URL_PATTERN = /^[A-Za-z0-9_-]+$/;
+const HEX64_PATTERN = /^[a-f0-9]{64}$/;
 
-function isOpaqueDelete(value: unknown): value is OpaqueDelete {
-	return (
-		!!value &&
-		typeof value === 'object' &&
-		typeof (value as OpaqueDelete).id === 'string' &&
-		typeof (value as OpaqueDelete).slot === 'string' &&
-		(value as OpaqueDelete).id.length <= 128 &&
-		/^[A-Za-z0-9_-]+$/.test((value as OpaqueDelete).id) &&
-		/^[a-f0-9]{64}$/.test((value as OpaqueDelete).slot)
-	);
-}
+const OpaqueEnvelopeSchema = Schema.Struct({
+	id: Schema.String.pipe(
+		Schema.check(Schema.isMaxLength(128)),
+		Schema.check(Schema.isPattern(BASE64URL_PATTERN))
+	),
+	ciphertext: Schema.String.pipe(
+		Schema.check(Schema.isMaxLength(MAX_ENVELOPE_BYTES)),
+		Schema.check(Schema.isPattern(BASE64URL_PATTERN))
+	),
+	slot: Schema.String.pipe(Schema.check(Schema.isPattern(HEX64_PATTERN))),
+	expectedId: Schema.NullOr(
+		Schema.String.pipe(
+			Schema.check(Schema.isMaxLength(128)),
+			Schema.check(Schema.isPattern(BASE64URL_PATTERN))
+		)
+	),
+	continues: Schema.optional(Schema.Boolean)
+});
+
+const OpaqueDeleteSchema = Schema.Struct({
+	id: Schema.String.pipe(
+		Schema.check(Schema.isMaxLength(128)),
+		Schema.check(Schema.isPattern(BASE64URL_PATTERN))
+	),
+	slot: Schema.String.pipe(Schema.check(Schema.isPattern(HEX64_PATTERN)))
+});
+
+type OpaqueEnvelope = Schema.Schema.Type<typeof OpaqueEnvelopeSchema>;
+type OpaqueDelete = Schema.Schema.Type<typeof OpaqueDeleteSchema>;
+
+const isOpaqueEnvelope = Schema.is(OpaqueEnvelopeSchema);
+const isOpaqueDelete = Schema.is(OpaqueDeleteSchema);
 
 /** Current-state opaque relay: each keyed slot holds one latest ciphertext only. */
 export const POST: RequestHandler = async ({ request, getClientAddress }) => {

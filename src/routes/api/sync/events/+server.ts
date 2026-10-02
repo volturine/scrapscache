@@ -1,9 +1,9 @@
 import type { RequestHandler } from './$types';
 import { json } from '@sveltejs/kit';
-import { getSyncStore } from '$lib/server/syncStore';
-import { getSyncAuth } from '$lib/server/syncAuth';
-import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '$lib/server/rateLimit';
-import { syncEventsToken, validSyncClientId } from '$lib/syncEventsProtocol';
+import { getSyncStore } from '#lib/server/syncStore.js';
+import { getSyncAuth } from '#lib/server/syncAuth.js';
+import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '#lib/server/rateLimit.js';
+import { syncEventsToken, validSyncClientId } from '#lib/syncEventsProtocol.js';
 
 /**
  * Live note-sync change signals: a hibernating WebSocket on Workers, server-sent

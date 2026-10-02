@@ -1,6 +1,6 @@
 import type { RequestHandler } from './$types';
-import { turnstileChallenge } from '$lib/server/turnstile';
-import { TURNSTILE_MESSAGE } from '$lib/turnstileMessage';
+import { turnstileChallenge } from '#lib/server/turnstile.js';
+import { TURNSTILE_MESSAGE } from '#lib/turnstileMessage.js';
 
 const TURNSTILE = 'https://challenges.cloudflare.com';
 /** Actions a token may be requested for. The server checks the same name. */

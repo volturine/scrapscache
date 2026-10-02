@@ -4,8 +4,28 @@ const env = vi.hoisted(() => ({
 	private: {} as Record<string, string | undefined>,
 	public: {} as Record<string, string | undefined>
 }));
-vi.mock('$env/dynamic/private', () => ({ env: env.private }));
-vi.mock('$env/dynamic/public', () => ({ env: env.public }));
+vi.mock('$app/env/private', () => ({
+	get TURNSTILE_SITEKEY() {
+		return env.private.TURNSTILE_SITEKEY;
+	},
+	get SCRAPSCACHE_ORIGIN() {
+		return env.private.SCRAPSCACHE_ORIGIN;
+	},
+	get ORIGIN() {
+		return env.private.ORIGIN;
+	},
+	get TURNSTILE_SECRET() {
+		return env.private.TURNSTILE_SECRET;
+	},
+	get TURNSTILE_HOSTNAMES() {
+		return env.private.TURNSTILE_HOSTNAMES;
+	}
+}));
+vi.mock('$app/env/public', () => ({
+	get PUBLIC_TURNSTILE_ORIGIN() {
+		return env.public.PUBLIC_TURNSTILE_ORIGIN;
+	}
+}));
 
 import { turnstileChallenge, verifyTurnstile } from './turnstile';
 

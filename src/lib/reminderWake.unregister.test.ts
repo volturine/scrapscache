@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { unregisterReminderDevice } from './reminderWake';
-import { syncStore } from '$lib/stores/sync.svelte';
-import { createSyncIdentity, identityFromSyncKey } from '$lib/syncPairing';
+import { syncStore } from '#lib/stores/sync.svelte.js';
+import { createSyncIdentity, identityFromSyncKey } from '#lib/syncPairing.js';
 
 /**
  * Issue #85: the server-side device unsubscribe must be observable. A failed

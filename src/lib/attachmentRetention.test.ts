@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { Note } from '$lib/types';
+import type { Note } from '#lib/types.js';
 import { withoutAttachmentsHistoryNeeds } from './attachmentRetention';
 
 function note(id: string, imageTombstones?: Record<string, number>): Note {

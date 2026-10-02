@@ -7,20 +7,20 @@
 	import WorkspaceRow from './WorkspaceRow.svelte';
 	import TurnstileWidget from './TurnstileWidget.svelte';
 	import PairingQrScanner from './PairingQrScanner.svelte';
-	import { env } from '$env/dynamic/public';
+	import { PUBLIC_TURNSTILE_ORIGIN } from '$app/env/public';
 	import { onDestroy, onMount } from 'svelte';
 	import QRCode from 'qrcode';
 	import { Clipboard } from '@ark-ui/svelte/clipboard';
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { Format } from '@ark-ui/svelte/format';
 	import { Progress } from '@ark-ui/svelte/progress';
-	import { createPairingUrl, formatPairingCode, normalizePairingCode } from '$lib/syncPairing';
-	import { syncStore, type StartedDeviceLink } from '$lib/stores/sync.svelte';
-	import { profileCoordinator } from '$lib/stores/profiles.svelte';
-	import { notesStore } from '$lib/stores/notes.svelte';
-	import { buildProfileNotesExport, isLocalWorkspace } from '$lib/profiles';
-	import { estimateProfileBytes } from '$lib/db/idb';
-	import { downloadJSON } from '$lib/utils';
+	import { createPairingUrl, formatPairingCode, normalizePairingCode } from '#lib/syncPairing.js';
+	import { syncStore, type StartedDeviceLink } from '#lib/stores/sync.svelte.js';
+	import { profileCoordinator } from '#lib/stores/profiles.svelte.js';
+	import { notesStore } from '#lib/stores/notes.svelte.js';
+	import { buildProfileNotesExport, isLocalWorkspace } from '#lib/profiles.js';
+	import { estimateProfileBytes } from '#lib/db/idb.js';
+	import { downloadJSON } from '#lib/utils.js';
 	import {
 		Cloud,
 		CloudOff,
@@ -31,7 +31,7 @@
 		Trash2,
 		X
 	} from '@lucide/svelte';
-	import { portalToAppOverlay } from '$lib/appViewport';
+	import { portalToAppOverlay } from '#lib/appViewport.js';
 
 	let { onClose, initialPairingCode = '' }: { onClose: () => void; initialPairingCode?: string } =
 		$props();
@@ -68,7 +68,7 @@
 	let promoteSource = $state<string | null>(null);
 	// Account creation, including recovery that may recreate the account, needs a Turnstile token
 	// when this deployment configures a challenge origin. Each surface owns its own single-use widget.
-	const turnstileOrigin = env.PUBLIC_TURNSTILE_ORIGIN?.trim() ?? '';
+	const turnstileOrigin = PUBLIC_TURNSTILE_ORIGIN?.trim() ?? '';
 	let registerCheck = $state<TurnstileWidget>();
 	let registerToken = $state('');
 	let confirmCheck = $state<TurnstileWidget>();
@@ -627,9 +627,7 @@
 								{@const synced = !isLocalWorkspace(profile)}
 								<WorkspaceRow
 									name={profile.name}
-									caption={`${synced ? 'Synced' : 'Only on this device'}${
-										sizeLabel(profile.id) ? ' · ' + sizeLabel(profile.id) : ''
-									}`}
+									caption={`${synced ? 'Synced' : 'Only on this device'}${sizeLabel(profile.id) ? ' · ' + sizeLabel(profile.id) : ''}`}
 									{active}
 									disabled={busy}
 									expanded={expandedId === profile.id}
@@ -680,11 +678,14 @@
 												class={styles.manageRow}
 												disabled={busy}
 												onclick={() => startPromote(profile.id)}
-												><Cloud size={16} aria-hidden="true" /><span
-													>Sync this workspace<small>Keep these notes and start cloud sync</small
-													></span
-												></button
 											>
+												<Cloud size={16} aria-hidden="true" />
+
+												<span>
+													Sync this workspace
+													<small>Keep these notes and start cloud sync</small>
+												</span>
+											</button>
 										{/if}
 									{/snippet}
 									{#snippet danger()}
@@ -694,25 +695,33 @@
 												class={cx(styles.manageRow, syncDanger)}
 												disabled={busy}
 												onclick={() => confirm('delete', profile.id)}
-												><CloudOff size={16} aria-hidden="true" /><span
-													>Delete cloud data<small>Stop syncing everywhere. Notes stay here.</small
-													></span
-												></button
 											>
+												<CloudOff size={16} aria-hidden="true" />
+
+												<span>
+													Delete cloud data
+													<small>Stop syncing everywhere. Notes stay here.</small>
+												</span>
+											</button>
 										{/if}
 										<button
 											type="button"
 											class={cx(styles.manageRow, syncDanger)}
 											disabled={busy}
 											onclick={() => confirm('remove', profile.id)}
-											><Trash2 size={16} aria-hidden="true" /><span
-												>Delete workspace<small
-													>{synced
-														? 'Remove it from this device. Cloud notes stay.'
-														: 'Remove it and its notes from this device'}</small
-												></span
-											></button
 										>
+											<Trash2 size={16} aria-hidden="true" />
+
+											<span>
+												Delete workspace
+
+												<small>
+													{synced
+														? 'Remove it from this device. Cloud notes stay.'
+														: 'Remove it and its notes from this device'}
+												</small>
+											</span>
+										</button>
 									{/snippet}
 								</WorkspaceRow>
 							{/each}

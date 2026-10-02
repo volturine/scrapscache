@@ -6,13 +6,20 @@ const mocks = vi.hoisted(() => ({
 	runCronTick: vi.fn(async () => ({ wakes: { sent: 1, failed: 0, gone: 0 } }))
 }));
 
-vi.mock('$env/dynamic/private', () => ({ env: envMock }));
-vi.mock('$lib/server/rateLimit', () => ({
+vi.mock('$app/env/private', () => ({
+	get SCRAPSCACHE_TICK_SECRET() {
+		return envMock.SCRAPSCACHE_TICK_SECRET;
+	},
+	get SCRAPSCACHE_ADMIN_TOKEN() {
+		return envMock.SCRAPSCACHE_ADMIN_TOKEN;
+	}
+}));
+vi.mock('#lib/server/rateLimit.js', () => ({
 	clientAddress: (get: () => string) => get(),
 	getPublicApiLimiter: () => ({ check: (key: string) => mocks.limit(key) }),
 	rateLimitResponse: () => new Response(null, { status: 429 })
 }));
-vi.mock('$lib/server/cronTick', () => ({ runCronTick: mocks.runCronTick }));
+vi.mock('#lib/server/cronTick.js', () => ({ runCronTick: mocks.runCronTick }));
 
 import { POST } from './+server';
 

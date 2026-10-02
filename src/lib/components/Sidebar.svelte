@@ -10,12 +10,11 @@
 	import { button, dialog, iconButton, input, menuItem } from 'styled-system/recipes';
 	import { hstack, vstack } from 'styled-system/patterns';
 	import { goto } from '$app/navigation';
-	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { fly } from 'svelte/transition';
-	import { notesStore } from '$lib/stores/notes.svelte';
-	import { uiStore, type View } from '$lib/stores/ui.svelte';
-	import type { Label } from '$lib/types';
+	import { notesStore } from '#lib/stores/notes.svelte.js';
+	import { uiStore, type View } from '#lib/stores/ui.svelte.js';
+	import type { Label } from '#lib/types.js';
 	import {
 		AlarmClock,
 		Archive,
@@ -29,15 +28,15 @@
 		type LucideIcon
 	} from '@lucide/svelte';
 	import { Dialog } from '@ark-ui/svelte/dialog';
-	import { portalToAppOverlay } from '$lib/appViewport';
+	import { portalToAppOverlay } from '#lib/appViewport.js';
 	import {
 		createLabelSwipe,
 		labelSwipeStyle,
 		labelTrayStyle,
 		LABEL_TRAY_PX
-	} from '$lib/labelSwipe';
-	import { pathForView } from '$lib/viewRoutes';
-	import { useEditorActions } from '$lib/editorContext';
+	} from '#lib/labelSwipe.js';
+	import { pathForView } from '#lib/viewRoutes.js';
+	import { useEditorActions } from '#lib/editorContext.js';
 
 	const { closeNote } = useEditorActions();
 
@@ -134,7 +133,7 @@
 		// Navigate immediately; pendingPath only covers the highlight until
 		// the route's own URL state catches up.
 		uiStore.pendingPath = target;
-		void goto(resolve(target)).finally(() => {
+		void goto(target).finally(() => {
 			if (uiStore.pendingPath === target) uiStore.pendingPath = null;
 		});
 	}

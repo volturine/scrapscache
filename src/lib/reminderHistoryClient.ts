@@ -3,12 +3,12 @@ import {
 	openNoteReceipts,
 	sealNoteReceipts,
 	type ReminderPage
-} from '$lib/reminderChannel';
-import { reminderHistoryStore, type ReminderHistoryStore } from '$lib/stores/reminderHistory';
-import { syncStore } from '$lib/stores/sync.svelte';
-import { identityFromSyncKey } from '$lib/syncPairing';
-import { isProfileReleased } from '$lib/db/idb';
-import type { StoredProfile } from '$lib/profiles';
+} from '#lib/reminderChannel.js';
+import { reminderHistoryStore, type ReminderHistoryStore } from '#lib/stores/reminderHistory.js';
+import { syncStore } from '#lib/stores/sync.svelte.js';
+import { identityFromSyncKey } from '#lib/syncPairing.js';
+import { isProfileReleased } from '#lib/db/idb.js';
+import type { StoredProfile } from '#lib/profiles.js';
 
 type Workspace = Pick<StoredProfile, 'id' | 'syncKey'>;
 type Retry = { timer: ReturnType<typeof setTimeout> | null; backoff: number };

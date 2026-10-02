@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Note } from '$lib/types';
+import type { Note } from '#lib/types.js';
 import { noteIsBlank } from './notes.svelte';
 
 function note(partial: Partial<Note> = {}): Note {

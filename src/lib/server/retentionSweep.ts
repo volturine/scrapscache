@@ -1,7 +1,7 @@
-import { staleBeforeMs } from '$lib/server/operatorConfig';
-import { getDb, getMeta, setMeta, type Db } from '$lib/server/db';
-import { getRuntimeSettings } from '$lib/server/runtimeSettings';
-import { getSyncStore, type SyncStore } from '$lib/server/syncStore';
+import { staleBeforeMs } from '#lib/server/operatorConfig.js';
+import { getDb, getMeta, setMeta, type Db } from '#lib/server/db.js';
+import { getRuntimeSettings } from '#lib/server/runtimeSettings.js';
+import { getSyncStore, type SyncStore } from '#lib/server/syncStore.js';
 
 const RETENTION_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const STATUS_META_KEY = 'retention-status-v1';

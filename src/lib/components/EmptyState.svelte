@@ -12,7 +12,7 @@
 		description: string;
 		actionLabel?: string;
 		onAction?: () => void;
-		href?: '/';
+		href?: string;
 	};
 
 	let { icon: Icon, tagline, description, actionLabel, onAction, href }: Props = $props();
@@ -26,7 +26,7 @@
 	<p class={emptyStateStyles.description}>{description}</p>
 	{#if actionLabel && href}
 		<a
-			href={resolve(href)}
+			href={href === '/' || href === '' ? resolve('') : href}
 			class={cx(button({ variant: 'secondary', size: 'sm' }), emptyStateStyles.action)}
 		>
 			{actionLabel}

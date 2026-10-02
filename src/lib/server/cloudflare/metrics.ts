@@ -1,6 +1,6 @@
 import { getRequestEvent } from '$app/server';
 import type { D1Database } from '@cloudflare/workers-types';
-import type { MetricsSnapshot, ProcessActivity } from '$lib/server/metricsRender';
+import type { MetricsSnapshot, ProcessActivity } from '#lib/server/metricsRender.js';
 
 /** Per-phase keys for one relay sync round, written into `activity_hours`. */
 export function recordSyncPhases(phases: Record<string, number>): void {
@@ -10,8 +10,8 @@ export function recordSyncPhases(phases: Record<string, number>): void {
 	add(counts);
 }
 
-export { renderMetrics } from '$lib/server/metricsRender';
-export type { ProcessActivity, MetricsSnapshot } from '$lib/server/metricsRender';
+export { renderMetrics } from '#lib/server/metricsRender.js';
+export type { ProcessActivity, MetricsSnapshot } from '#lib/server/metricsRender.js';
 
 export const HOUR_MS = 3_600_000;
 

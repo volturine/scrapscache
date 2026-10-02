@@ -6,12 +6,12 @@ const navigationMocks = vi.hoisted(() => ({ goto: vi.fn() }));
 
 vi.mock('$app/navigation', () => navigationMocks);
 
-vi.mock('$lib/editorContext', () => ({
+vi.mock('#lib/editorContext.js', () => ({
 	useEditorActions: () => ({ startNewNote: vi.fn(), closeNote: vi.fn() })
 }));
 
-import { syncStore, type StartedDeviceLink } from '$lib/stores/sync.svelte';
-import { notesStore } from '$lib/stores/notes.svelte';
+import { syncStore, type StartedDeviceLink } from '#lib/stores/sync.svelte.js';
+import { notesStore } from '#lib/stores/notes.svelte.js';
 import Topbar from './Topbar.svelte';
 
 afterEach(() => {
@@ -68,9 +68,8 @@ describe('Topbar sync status', () => {
 
 		await vi.waitFor(() => expect(start).toHaveBeenCalledWith(link.syncCode));
 		expect(navigationMocks.goto).toHaveBeenCalledWith('/', {
-			keepFocus: true,
-			noScroll: true,
-			replaceState: true
+			replace: true,
+			reset: false
 		});
 		expect(screen.getByText('Expires in')).toBeTruthy();
 	});

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Label, Note, NoteImage } from '$lib/types';
+import type { Label, Note, NoteImage } from '#lib/types.js';
 import { getAllLabels, getAllNotesMetadata, putNote, replaceAllDeviceData } from './idb';
 import { TEST_WORKSPACE } from '../../tests/workspace';
 

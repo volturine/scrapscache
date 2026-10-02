@@ -1,12 +1,12 @@
 import type { RequestHandler } from './$types';
 import { json } from '@sveltejs/kit';
-import { requireAdmin } from '$lib/server/adminAuth';
-import { readJsonBody } from '$lib/server/request';
+import { requireAdmin } from '#lib/server/adminAuth.js';
+import { readJsonBody } from '#lib/server/request.js';
 import {
 	getRuntimeSettingsState,
 	parseRuntimeSettingsPatch,
 	updateRuntimeSettings
-} from '$lib/server/runtimeSettings';
+} from '#lib/server/runtimeSettings.js';
 
 const MAX_REQUEST_BYTES = 8_192;
 const NO_STORE = { headers: { 'cache-control': 'no-store' } };

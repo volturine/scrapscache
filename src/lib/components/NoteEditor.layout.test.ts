@@ -1,7 +1,7 @@
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Note } from '$lib/types';
-import { notesStore } from '$lib/stores/notes.svelte';
+import type { Note } from '#lib/types.js';
+import { notesStore } from '#lib/stores/notes.svelte.js';
 import NoteEditor from './NoteEditor.svelte';
 
 const PNG =

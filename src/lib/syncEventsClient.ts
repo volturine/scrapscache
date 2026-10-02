@@ -1,5 +1,6 @@
-import { openSyncEvents } from '$lib/syncEventsTransport';
-import { uid } from '$lib/model';
+import { openSyncEvents } from '#lib/syncEventsTransport.js';
+import { uid } from '#lib/model/index.js';
+import { Duration } from 'effect';
 
 export type SyncNudgeListener = (seq?: number) => void;
 
@@ -23,11 +24,19 @@ export type SyncEventsConnection = {
 	onSeq(seq?: number): void;
 };
 
+const INITIAL_BACKOFF_MS = Duration.toMillis(Duration.seconds(2));
+const MAX_BACKOFF_MS = Duration.toMillis(Duration.seconds(30));
+
+export function computeNextReconnectBackoff(currentMs: number): number {
+	const multiplied = Duration.millis(Math.round(currentMs * 1.5));
+	return Duration.toMillis(Duration.min(multiplied, Duration.millis(MAX_BACKOFF_MS)));
+}
+
 export class SyncEventsClient {
 	private abortController: AbortController | null = null;
 	private active = false;
 	private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-	private backoffMs = 2_000;
+	private backoffMs = INITIAL_BACKOFF_MS;
 	private connectionGeneration = 0;
 	private readonly listeners = new Set<SyncNudgeListener>();
 	private cleanupDomListeners: (() => void) | null = null;
@@ -101,7 +110,7 @@ export class SyncEventsClient {
 			this.abortController.abort();
 			this.abortController = null;
 		}
-		this.backoffMs = 2_000;
+		this.backoffMs = INITIAL_BACKOFF_MS;
 	}
 
 	accountChanged(): void {
@@ -139,7 +148,7 @@ export class SyncEventsClient {
 				signal,
 				onOpen: () => {
 					if (signal.aborted || generation !== this.connectionGeneration) return false;
-					this.backoffMs = 2_000;
+					this.backoffMs = INITIAL_BACKOFF_MS;
 					return true;
 				},
 				onSeq: (seq) => {
@@ -162,7 +171,7 @@ export class SyncEventsClient {
 		if (this.reconnectTimer || !this.active) return;
 		this.reconnectTimer = setTimeout(() => {
 			this.reconnectTimer = null;
-			this.backoffMs = Math.min(this.backoffMs * 1.5, 30_000);
+			this.backoffMs = computeNextReconnectBackoff(this.backoffMs);
 			this.beginConnection();
 		}, this.backoffMs);
 	}

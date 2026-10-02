@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { getAllNotesMetadata, getSyncOutboxKeys, waitForDeviceWrites } from '$lib/db/idb';
-import { createSyncIdentity } from '$lib/syncPairing';
+import { getAllNotesMetadata, getSyncOutboxKeys, waitForDeviceWrites } from '#lib/db/idb.js';
+import { createSyncIdentity } from '#lib/syncPairing.js';
 import { notesStore } from './notes.svelte';
 import { syncStore } from './sync.svelte';
 import { TEST_WORKSPACE } from '../../tests/workspace';

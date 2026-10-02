@@ -1,4 +1,4 @@
-import { normalizeBoard, type KanbanBoard } from '$lib/kanban';
+import { normalizeBoard, type KanbanBoard } from '#lib/kanban.js';
 import {
 	copyLabel,
 	isReadableBodyDoc,
@@ -7,13 +7,14 @@ import {
 	uid,
 	type EditContext
 } from './model';
-import type { LinkPreview } from '$lib/linkPreview';
-import type { Layout, View } from '$lib/stores/ui.svelte';
-import type { Label, Note, NoteFieldTimes, NoteImage } from '$lib/types';
-import { cloneNote } from '$lib/utils';
-import { isCanvasLibraryItem, type CanvasLibraryItem } from '$lib/canvasLibrary';
-import { isReminderHistoryEntry, type ReminderHistoryEntry } from '$lib/reminderHistory';
-import { reminderWakeId } from '$lib/model';
+import type { LinkPreview } from '#lib/linkPreview.js';
+import type { Layout, View } from '#lib/stores/ui.svelte.js';
+import type { Label, Note, NoteFieldTimes, NoteImage } from '#lib/types.js';
+import { cloneNote } from '#lib/utils.js';
+import { isCanvasLibraryItem, type CanvasLibraryItem } from '#lib/canvasLibrary.js';
+import { isReminderHistoryEntry, type ReminderHistoryEntry } from '#lib/reminderHistory.js';
+import { reminderWakeId } from '#lib/model/index.js';
+import { Schema } from 'effect';
 
 const NOTE_COLORS = new Set<Note['color']>([
 	'default',
@@ -189,48 +190,44 @@ function normalizeLinkPreview(value: unknown): LinkPreview | null {
 	};
 }
 
-/** Version 4 predates the canvas library and reminder history; it imports with neither. */
-type CurrentBackupRaw = Record<string, unknown> & {
-	version: 4 | 5;
-	exportedAt: number;
-	notes: unknown[];
-	labels: unknown[];
-	boards: unknown[];
-	activeBoardId: string;
-	tombstones: object;
-	labelTombstones: object;
-	boardTombstones: object;
-	canvasLibrary?: unknown[];
-	reminderHistory?: unknown[];
-	ui: object;
-};
+const CurrentBackupRawSchema = Schema.Union([
+	Schema.Struct({
+		version: Schema.Literal(4),
+		exportedAt: Schema.Number,
+		notes: Schema.Array(Schema.Unknown),
+		labels: Schema.Array(Schema.Unknown),
+		boards: Schema.Array(Schema.Unknown),
+		activeBoardId: Schema.String,
+		tombstones: Schema.Record(Schema.String, Schema.Unknown),
+		labelTombstones: Schema.Record(Schema.String, Schema.Unknown),
+		boardTombstones: Schema.Record(Schema.String, Schema.Unknown),
+		canvasLibrary: Schema.optional(Schema.Array(Schema.Unknown)),
+		reminderHistory: Schema.optional(Schema.Array(Schema.Unknown)),
+		ui: Schema.Record(Schema.String, Schema.Unknown)
+	}),
+	Schema.Struct({
+		version: Schema.Literal(5),
+		exportedAt: Schema.Number,
+		notes: Schema.Array(Schema.Unknown),
+		labels: Schema.Array(Schema.Unknown),
+		boards: Schema.Array(Schema.Unknown),
+		activeBoardId: Schema.String,
+		tombstones: Schema.Record(Schema.String, Schema.Unknown),
+		labelTombstones: Schema.Record(Schema.String, Schema.Unknown),
+		boardTombstones: Schema.Record(Schema.String, Schema.Unknown),
+		canvasLibrary: Schema.Array(Schema.Unknown),
+		reminderHistory: Schema.Array(Schema.Unknown),
+		ui: Schema.Record(Schema.String, Schema.Unknown)
+	})
+]);
 
-function isCurrentBackupRaw(raw: Record<string, unknown>): raw is CurrentBackupRaw {
-	const valid =
-		(raw.version === 4 || raw.version === 5) &&
-		typeof raw.exportedAt === 'number' &&
-		Array.isArray(raw.notes) &&
-		Array.isArray(raw.labels) &&
-		Array.isArray(raw.boards) &&
-		typeof raw.activeBoardId === 'string' &&
-		!!raw.tombstones &&
-		typeof raw.tombstones === 'object' &&
-		!!raw.labelTombstones &&
-		typeof raw.labelTombstones === 'object' &&
-		!!raw.boardTombstones &&
-		typeof raw.boardTombstones === 'object' &&
-		(raw.version === 4 ||
-			(Array.isArray(raw.canvasLibrary) && Array.isArray(raw.reminderHistory))) &&
-		!!raw.ui &&
-		typeof raw.ui === 'object';
-	return valid;
-}
+type CurrentBackupRaw = Schema.Schema.Type<typeof CurrentBackupRawSchema>;
+const isCurrentBackupRaw = Schema.is(CurrentBackupRawSchema);
 
 /** Validate and normalize the current backup format into a safe in-memory shape. */
 export function normalizeBackup(data: unknown): ScrapsCacheBackup | null {
-	if (!data || typeof data !== 'object') return null;
-	const raw = data as Record<string, unknown>;
-	if (!isCurrentBackupRaw(raw)) return null;
+	if (!isCurrentBackupRaw(data)) return null;
+	const raw = data;
 	const notes = (raw.notes as unknown[]).flatMap((item): Note[] => {
 		if (!item || typeof item !== 'object') return [];
 		const note = item as Partial<Note>;
@@ -285,7 +282,7 @@ export function normalizeBackup(data: unknown): ScrapsCacheBackup | null {
 		exportedAt: Number(raw.exportedAt) || Date.now(),
 		notes,
 		labels,
-		boards: raw.boards.flatMap((board) => {
+		boards: (raw.boards as unknown[]).flatMap((board) => {
 			const normalized = normalizeBoard(board);
 			return normalized ? [normalized] : [];
 		}),
@@ -293,8 +290,8 @@ export function normalizeBackup(data: unknown): ScrapsCacheBackup | null {
 		tombstones: asTombstoneMap(raw.tombstones),
 		labelTombstones: asTombstoneMap(raw.labelTombstones),
 		boardTombstones: asTombstoneMap(raw.boardTombstones),
-		canvasLibrary: (raw.canvasLibrary ?? []).filter(isCanvasLibraryItem),
-		reminderHistory: (raw.reminderHistory ?? []).filter(isReminderHistoryEntry),
+		canvasLibrary: ((raw.canvasLibrary ?? []) as unknown[]).filter(isCanvasLibraryItem),
+		reminderHistory: ((raw.reminderHistory ?? []) as unknown[]).filter(isReminderHistoryEntry),
 		ui: {
 			sidebarOpen: typeof uiRaw.sidebarOpen === 'boolean' ? uiRaw.sidebarOpen : true,
 			dark:

@@ -1,14 +1,14 @@
 import type { RequestHandler } from './$types';
 import { json } from '@sveltejs/kit';
-import { getSyncAuth } from '$lib/server/syncAuth';
-import { readJsonBody } from '$lib/server/request';
-import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '$lib/server/rateLimit';
+import { getSyncAuth } from '#lib/server/syncAuth.js';
+import { readJsonBody } from '#lib/server/request.js';
+import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '#lib/server/rateLimit.js';
 import {
 	exchangeReminderHistory,
 	validReminderPacket,
 	ReminderHistoryQuotaError
-} from '$lib/server/reminderHistoryRelay';
-import { REMINDER_BATCH_SIZE } from '$lib/reminderChannel';
+} from '#lib/server/reminderHistoryRelay.js';
+import { REMINDER_BATCH_SIZE } from '#lib/reminderChannel.js';
 
 export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	const limiter = getPublicApiLimiter();

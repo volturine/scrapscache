@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { actionUndo } from '$lib/stores/actionUndo.svelte';
+	import { actionUndo } from '#lib/stores/actionUndo.svelte.js';
 	import { undoBarStyles as styles } from '$panda/styles';
 	import { button } from 'styled-system/recipes';
 </script>

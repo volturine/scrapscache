@@ -9,16 +9,23 @@ const storeMock = vi.hoisted(() => ({
 	vapidSubject: 'https://scrapscache.com'
 }));
 
-vi.mock('$env/dynamic/private', () => ({ env: envMock }));
+vi.mock('$app/env/private', () => ({
+	get SCRAPSCACHE_VAPID_PUBLIC_KEY() {
+		return envMock.SCRAPSCACHE_VAPID_PUBLIC_KEY;
+	},
+	get SCRAPSCACHE_VAPID_PRIVATE_KEY() {
+		return envMock.SCRAPSCACHE_VAPID_PRIVATE_KEY;
+	}
+}));
 
-vi.mock('$lib/server/syncStore', () => ({
+vi.mock('#lib/server/syncStore.js', () => ({
 	getSyncStore: () => ({ countPushDevices: storeMock.countPushDevices })
 }));
-vi.mock('$lib/server/runtimeSettings', () => ({
+vi.mock('#lib/server/runtimeSettings.js', () => ({
 	getRuntimeSettings: async () => ({ vapidSubject: storeMock.vapidSubject })
 }));
 
-vi.mock('$lib/server/db', () => ({
+vi.mock('#lib/server/db.js', () => ({
 	getDb: () => ({ ready: Promise.resolve() }),
 	getMeta: (_db: unknown, key: string) => storeMock.getMeta(key),
 	setMetaIfAbsent: (_db: unknown, key: string, value: string) =>
@@ -32,17 +39,24 @@ function setEnv(name: string, value: string | undefined): void {
 
 async function importFreshWebPush() {
 	vi.resetModules();
-	vi.doMock('$lib/server/db', () => ({
+	vi.doMock('#lib/server/db.js', () => ({
 		getDb: () => ({ ready: Promise.resolve() }),
 		getMeta: (_db: unknown, key: string) => storeMock.getMeta(key),
 		setMetaIfAbsent: (_db: unknown, key: string, value: string) =>
 			storeMock.setMetaIfAbsent(key, value)
 	}));
-	vi.doMock('$lib/server/syncStore', () => ({
+	vi.doMock('#lib/server/syncStore.js', () => ({
 		getSyncStore: () => ({ countPushDevices: storeMock.countPushDevices })
 	}));
-	vi.doMock('$env/dynamic/private', () => ({ env: envMock }));
-	vi.doMock('$lib/server/runtimeSettings', () => ({
+	vi.doMock('$app/env/private', () => ({
+		get SCRAPSCACHE_VAPID_PUBLIC_KEY() {
+			return envMock.SCRAPSCACHE_VAPID_PUBLIC_KEY;
+		},
+		get SCRAPSCACHE_VAPID_PRIVATE_KEY() {
+			return envMock.SCRAPSCACHE_VAPID_PRIVATE_KEY;
+		}
+	}));
+	vi.doMock('#lib/server/runtimeSettings.js', () => ({
 		getRuntimeSettings: async () => ({ vapidSubject: storeMock.vapidSubject })
 	}));
 	return await import('./webPush');

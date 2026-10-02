@@ -1,17 +1,17 @@
 import type { RequestHandler } from './$types';
 import { json } from '@sveltejs/kit';
-import { getSyncStore } from '$lib/server/syncStore';
-import { getSyncAuth } from '$lib/server/syncAuth';
-import { readJsonBody } from '$lib/server/request';
-import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '$lib/server/rateLimit';
-import { recordSqliteError } from '$lib/server/metrics';
-import { armWakeTimer } from '$lib/server/wakeTimer';
+import { getSyncStore } from '#lib/server/syncStore.js';
+import { getSyncAuth } from '#lib/server/syncAuth.js';
+import { readJsonBody } from '#lib/server/request.js';
+import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '#lib/server/rateLimit.js';
+import { recordSqliteError } from '#lib/server/metrics.js';
+import { armWakeTimer } from '#lib/server/wakeTimer.js';
 import {
 	DEVICE_ID_RE,
 	isPublicEndpoint,
 	isPushSubscription,
 	parseReminderWakes
-} from '$lib/server/pushWakes';
+} from '#lib/server/pushWakes.js';
 
 const MAX_REQUEST_BYTES = 128_000;
 

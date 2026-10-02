@@ -1,7 +1,7 @@
-import type { Handle, ServerInit } from '@sveltejs/kit';
-import { recordHttpRequest } from '$lib/server/metrics';
-import { startWakeTimer } from '$lib/server/wakeTimer';
-import { turnstileChallenge } from '$lib/server/turnstile';
+import type { Handle, ServerInit } from '@sveltejs/kit/hooks';
+import { recordHttpRequest } from '#lib/server/metrics.js';
+import { startWakeTimer } from '#lib/server/wakeTimer.js';
+import { turnstileChallenge } from '#lib/server/turnstile.js';
 
 const SECURITY_HEADERS: ReadonlyArray<readonly [string, string]> = [
 	['referrer-policy', 'no-referrer'],
@@ -20,6 +20,7 @@ function frameAncestors(policy: string | null): string | null {
 		?.split(';')
 		.map((part) => part.trim())
 		.find((part) => part.startsWith('frame-ancestors '));
+
 	return directive ? directive.slice('frame-ancestors '.length).trim() : null;
 }
 
@@ -45,7 +46,6 @@ export const handle: Handle = async ({ event, resolve }) => {
 	const requestId = /^[A-Za-z0-9._-]{1,128}$/.test(suppliedRequestId)
 		? suppliedRequestId
 		: crypto.randomUUID();
-
 	const challenge = turnstileChallenge();
 	const onChallengeOrigin =
 		challenge !== null && event.url.origin.toLowerCase() === challenge.origin.toLowerCase();
@@ -75,6 +75,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 		const preventsSharedCaching = directives.some((directive) =>
 			/^(?:private|no-cache|no-store)(?:[= ]|$)/.test(directive)
 		);
+
 		if (!preventsSharedCaching) {
 			// The HTML shell contains build-specific asset URLs. Keep it out of
 			// shared caches so a deploy cannot leave clients on a stale shell.

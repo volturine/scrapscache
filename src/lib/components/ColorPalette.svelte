@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { colorPaletteStyles, popover } from '$panda/styles';
 	import { ToggleGroup } from '@ark-ui/svelte/toggle-group';
-	import { NOTE_COLOR_ORDER, type NoteColor } from '$lib/types';
+	import { NOTE_COLOR_ORDER, type NoteColor } from '#lib/types.js';
 	import { cx } from 'styled-system/css';
 	import { grid } from 'styled-system/patterns';
 	import { noteSurface } from 'styled-system/recipes';

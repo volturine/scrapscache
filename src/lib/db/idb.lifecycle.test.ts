@@ -29,7 +29,7 @@ import {
 	resumeProfile,
 	setSyncState
 } from './idb';
-import type { Label, Note } from '$lib/types';
+import type { Label, Note } from '#lib/types.js';
 import { TEST_WORKSPACE } from '../../tests/workspace';
 
 const PROFILE = 'workspace-lifecycle';

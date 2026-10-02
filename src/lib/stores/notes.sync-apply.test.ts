@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('$lib/imageThumb', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('$lib/imageThumb')>();
+vi.mock('#lib/imageThumb.js', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('#lib/imageThumb.js')>();
 	return { ...actual, makeImageThumbDataUrl: vi.fn(async () => null) };
 });
 
-import { createSyncIdentity, encryptSyncPayload } from '$lib/syncPairing';
-import { syncControlKeys } from '$lib/syncEngine';
+import { createSyncIdentity, encryptSyncPayload } from '#lib/syncPairing.js';
+import { syncControlKeys } from '#lib/syncEngine.js';
 import {
 	clearAllLabels,
 	clearAllNotes,
@@ -20,16 +20,16 @@ import {
 	hydrateNoteAttachments,
 	putNote,
 	setSyncState
-} from '$lib/db/idb';
-import * as idb from '$lib/db/idb';
+} from '#lib/db/idb.js';
+import * as idb from '#lib/db/idb.js';
 import { openDB } from 'idb';
-import { loadBoardsFromDevice } from '$lib/syncTombstones';
-import * as syncTombstones from '$lib/syncTombstones';
-import { writeNotesMirror } from '$lib/noteStorage';
+import { loadBoardsFromDevice } from '#lib/syncTombstones.js';
+import * as syncTombstones from '#lib/syncTombstones.js';
+import { writeNotesMirror } from '#lib/noteStorage.js';
 import { notesStore } from './notes.svelte';
 import { syncStore } from './sync.svelte';
-import { syncSnapshot } from '$lib/syncRecords';
-import type { Note } from '$lib/types';
+import { syncSnapshot } from '#lib/syncRecords.js';
+import type { Note } from '#lib/types.js';
 import { TEST_WORKSPACE } from '../../tests/workspace';
 
 function remoteNote(id = 'note-1'): Note {

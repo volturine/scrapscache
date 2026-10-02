@@ -13,12 +13,16 @@ const mocks = vi.hoisted(() => ({
 	}))
 }));
 
-vi.mock('$env/dynamic/private', () => ({ env: envMock }));
-vi.mock('$lib/server/rateLimit', () => ({
+vi.mock('$app/env/private', () => ({
+	get SCRAPSCACHE_ADMIN_TOKEN() {
+		return envMock.SCRAPSCACHE_ADMIN_TOKEN;
+	}
+}));
+vi.mock('#lib/server/rateLimit.js', () => ({
 	checkAdminApiLimit: () => mocks.limit(),
 	rateLimitResponse: () => new Response(null, { status: 429 })
 }));
-vi.mock('$lib/server/telemetryQuery', () => ({ queryTelemetry: mocks.queryTelemetry }));
+vi.mock('#lib/server/telemetryQuery.js', () => ({ queryTelemetry: mocks.queryTelemetry }));
 
 import { GET } from './+server';
 

@@ -41,13 +41,13 @@ describe('model module boundary', () => {
 	it('rejects parent-directory, $lib and unlisted package imports, allowing listed subpaths', () => {
 		const source = [
 			"import { uid } from '../uid.js';",
-			"import { dayKey } from '$lib/utils';",
+			"import { dayKey } from '#lib/utils';",
 			"import { nanoid } from 'nanoid';",
 			"import { x } from 'nanoid/sub.js';",
 			"import { sha256 } from '@noble/hashes/sha2.js';",
 			"import * as Y from 'yjs';",
 			"import { merge } from './merge.js';"
 		].join('\n');
-		expect(escapingImports(source)).toEqual(['../uid.js', '$lib/utils', 'nanoid', 'nanoid/sub.js']);
+		expect(escapingImports(source)).toEqual(['../uid.js', '#lib/utils', 'nanoid', 'nanoid/sub.js']);
 	});
 });

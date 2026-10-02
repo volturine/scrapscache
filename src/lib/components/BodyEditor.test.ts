@@ -2,8 +2,8 @@ import { fireEvent, render } from '@testing-library/svelte';
 import { flushSync, tick } from 'svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import BodyEditor from './BodyEditor.svelte';
-import { actionUndo } from '$lib/stores/actionUndo.svelte';
-import { uiStore } from '$lib/stores/ui.svelte';
+import { actionUndo } from '#lib/stores/actionUndo.svelte.js';
+import { uiStore } from '#lib/stores/ui.svelte.js';
 
 function textNode(element: Node): Node {
 	return element instanceof Element ? (element.firstChild ?? element) : element;

@@ -1,12 +1,13 @@
-import { env } from '$env/dynamic/private';
+import { SCRAPSCACHE_VAPID_PUBLIC_KEY, SCRAPSCACHE_VAPID_PRIVATE_KEY } from '$app/env/private';
+import { Effect, Option, Schema } from 'effect';
 import { gcm } from '@noble/ciphers/aes.js';
 import { p256 } from '@noble/curves/nist.js';
 import { hkdf } from '@noble/hashes/hkdf.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { concatBytes } from '@noble/hashes/utils.js';
-import { getMeta, getDb, setMetaIfAbsent, type Db } from '$lib/server/db';
-import { getRuntimeSettings } from '$lib/server/runtimeSettings';
-import { getSyncStore, type DueWake } from '$lib/server/syncStore';
+import { getMeta, getDb, setMetaIfAbsent, type Db } from '#lib/server/db.js';
+import { getRuntimeSettings } from '#lib/server/runtimeSettings.js';
+import { getSyncStore, type DueWake } from '#lib/server/syncStore.js';
 
 export const VAPID_KEY_PAIR_META_KEY = 'vapid-key-pair-v1';
 
@@ -28,6 +29,7 @@ function bytesToBase64Url(bytes: Uint8Array): string {
 function base64UrlToBytes(value: string): Uint8Array {
 	const padded =
 		value.replaceAll('-', '+').replaceAll('_', '/') + '='.repeat((4 - (value.length % 4)) % 4);
+
 	return Uint8Array.from(atob(padded), (character) => character.charCodeAt(0));
 }
 
@@ -61,24 +63,20 @@ function warnKeyRegeneration(registeredDevices: number): void {
 	);
 }
 
+const VapidKeyPairSchema = Schema.Struct({
+	publicKey: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
+	privateKey: Schema.String.pipe(Schema.check(Schema.isMinLength(1)))
+});
+
 function parseVapidKeyPair(value: string): { publicKey: string; privateKey: string } {
-	let parsed: unknown;
 	try {
-		parsed = JSON.parse(value);
+		const parsed = JSON.parse(value);
+		const decoded = Option.getOrNull(Schema.decodeUnknownOption(VapidKeyPairSchema)(parsed));
+		if (!decoded) throw new Error('Stored VAPID key pair is invalid');
+		return decoded;
 	} catch {
 		throw new Error('Stored VAPID key pair is invalid');
 	}
-	if (
-		!parsed ||
-		typeof parsed !== 'object' ||
-		typeof (parsed as { publicKey?: unknown }).publicKey !== 'string' ||
-		typeof (parsed as { privateKey?: unknown }).privateKey !== 'string' ||
-		(parsed as { publicKey: string }).publicKey.length === 0 ||
-		(parsed as { privateKey: string }).privateKey.length === 0
-	) {
-		throw new Error('Stored VAPID key pair is invalid');
-	}
-	return parsed as { publicKey: string; privateKey: string };
 }
 
 function generateVapidKeyPair(): { publicKey: string; privateKey: string } {
@@ -93,8 +91,8 @@ export async function getVapidKeys(
 	db: Db = getDb()
 ): Promise<{ publicKey: string; privateKey: string }> {
 	await db.ready;
-	const fromEnvPublic = env.SCRAPSCACHE_VAPID_PUBLIC_KEY?.trim();
-	const fromEnvPrivate = env.SCRAPSCACHE_VAPID_PRIVATE_KEY?.trim();
+	const fromEnvPublic = SCRAPSCACHE_VAPID_PUBLIC_KEY?.trim();
+	const fromEnvPrivate = SCRAPSCACHE_VAPID_PRIVATE_KEY?.trim();
 	if (Boolean(fromEnvPublic) !== Boolean(fromEnvPrivate)) {
 		throw new Error(
 			'Both SCRAPSCACHE_VAPID_PUBLIC_KEY and SCRAPSCACHE_VAPID_PRIVATE_KEY are required'
@@ -190,13 +188,15 @@ function vapidAuthorization(
 	return `vapid t=${signingInput}.${bytesToBase64Url(signature)}, k=${bytesToBase64Url(base64UrlToBytes(keys.publicKey))}`;
 }
 
-export async function sendReminderTick(device: DueWake): Promise<WakeSendResult> {
-	try {
-		const [keys, subject] = await Promise.all([getVapidKeys(), vapidSubject()]);
+export const sendReminderTickEffect = (device: DueWake): Effect.Effect<WakeSendResult> =>
+	Effect.gen(function* () {
+		const [keys, subject] = yield* Effect.tryPromise(() =>
+			Promise.all([getVapidKeys(), vapidSubject()])
+		);
 		const userPublicKey = base64UrlToBytes(device.p256dh);
 		const authSecret = base64UrlToBytes(device.auth);
 		if (userPublicKey.length !== 65 || authSecret.length < 16) {
-			throw new Error('Push subscription keys are invalid');
+			return yield* Effect.fail(new Error('Push subscription keys are invalid'));
 		}
 		const salt = new Uint8Array(16);
 		crypto.getRandomValues(salt);
@@ -211,19 +211,21 @@ export async function sendReminderTick(device: DueWake): Promise<WakeSendResult>
 				salt
 			})
 		);
-		const response = await fetch(device.endpoint, {
-			method: 'POST',
-			headers: {
-				TTL: '86400',
-				Urgency: 'high',
-				Authorization: vapidAuthorization(new URL(device.endpoint).origin, subject, keys),
-				'Content-Encoding': 'aes128gcm',
-				'Content-Type': 'application/octet-stream'
-			},
-			body,
-			signal: AbortSignal.timeout(10_000)
-		});
-		if (response.ok) return 'sent';
+		const response = yield* Effect.tryPromise(() =>
+			fetch(device.endpoint, {
+				method: 'POST',
+				headers: {
+					TTL: '86400',
+					Urgency: 'high',
+					Authorization: vapidAuthorization(new URL(device.endpoint).origin, subject, keys),
+					'Content-Encoding': 'aes128gcm',
+					'Content-Type': 'application/octet-stream'
+				},
+				body,
+				signal: AbortSignal.timeout(10_000)
+			})
+		);
+		if (response.ok) return 'sent' as const;
 		console.info(
 			JSON.stringify({
 				level: 'info',
@@ -231,17 +233,22 @@ export async function sendReminderTick(device: DueWake): Promise<WakeSendResult>
 				status: response.status
 			})
 		);
-		if (response.status === 404 || response.status === 410) return 'gone';
-		return 'failed';
-	} catch (error) {
-		console.info(
-			JSON.stringify({
-				level: 'info',
-				event: 'reminder_wake_failed',
-				status: null,
-				message: error instanceof Error ? error.message : 'Web Push delivery failed'
-			})
-		);
-		return 'failed';
-	}
+		if (response.status === 404 || response.status === 410) return 'gone' as const;
+		return 'failed' as const;
+	}).pipe(
+		Effect.catch((error) => {
+			console.info(
+				JSON.stringify({
+					level: 'info',
+					event: 'reminder_wake_failed',
+					status: null,
+					message: error instanceof Error ? error.message : 'Web Push delivery failed'
+				})
+			);
+			return Effect.succeed('failed' as const);
+		})
+	);
+
+export async function sendReminderTick(device: DueWake): Promise<WakeSendResult> {
+	return Effect.runPromise(sendReminderTickEffect(device));
 }

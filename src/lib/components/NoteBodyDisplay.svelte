@@ -2,16 +2,16 @@
 	// A read-only preview of a note. Cards cover it with a shield so a press
 	// anywhere drags the card and a click opens the note; attachments, links and
 	// checklists are interactive in the editor instead.
-	import type { Note } from '$lib/types';
+	import type { Note } from '#lib/types.js';
 	import { noteBody } from 'styled-system/recipes';
-	import { noteAttachments, type BodySegment } from '$lib/checklistBody';
-	import { extractHttpUrls, localLinkCard } from '$lib/linkPreview';
-	import { isImageAttachment, fileIconLabel } from '$lib/noteImages';
-	import { displayImageSrc } from '$lib/imageThumb';
+	import { noteAttachments, type BodySegment } from '#lib/checklistBody.js';
+	import { extractHttpUrls, localLinkCard } from '#lib/linkPreview.js';
+	import { isImageAttachment, fileIconLabel } from '#lib/noteImages.js';
+	import { displayImageSrc } from '#lib/imageThumb.js';
 	import LinkBadge from './LinkBadge.svelte';
-	import { notesStore } from '$lib/stores/notes.svelte';
+	import { notesStore } from '#lib/stores/notes.svelte.js';
 	import { onMount } from 'svelte';
-	import { isCanvasAttachment } from '$lib/canvasAttachment';
+	import { isCanvasAttachment } from '#lib/canvasAttachment.js';
 	import { canvasPreview, filePreview, photoPreview, markdownStyles } from '$panda/styles';
 	import { checklist } from 'styled-system/recipes';
 	import {
@@ -19,9 +19,9 @@
 		markdownTokenClass,
 		parseInlineMarkdown,
 		parseMarkdownBlocks
-	} from '$lib/markdown';
-	import { uiStore } from '$lib/stores/ui.svelte';
-	import { tableScroll } from '$lib/tableScroll';
+	} from '#lib/markdown.js';
+	import { uiStore } from '#lib/stores/ui.svelte.js';
+	import { tableScroll } from '#lib/tableScroll.js';
 
 	let { note }: { note: Note } = $props();
 

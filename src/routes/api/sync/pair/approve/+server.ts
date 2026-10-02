@@ -1,8 +1,8 @@
 import type { RequestHandler } from './$types';
 import { json } from '@sveltejs/kit';
-import { getPairingSessions } from '$lib/server/pairingSessions';
-import { readJsonBody } from '$lib/server/request';
-import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '$lib/server/rateLimit';
+import { getPairingSessions } from '#lib/server/pairingSessions.js';
+import { readJsonBody } from '#lib/server/request.js';
+import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '#lib/server/rateLimit.js';
 
 export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	const limited = await getPublicApiLimiter().check(`pair:${clientAddress(getClientAddress)}`, {

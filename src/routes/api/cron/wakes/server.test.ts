@@ -7,15 +7,22 @@ const mocks = vi.hoisted(() => ({
 	limit: vi.fn(() => ({ allowed: true }))
 }));
 
-vi.mock('$env/dynamic/private', () => ({ env: envMock }));
-vi.mock('$lib/server/rateLimit', () => ({
+vi.mock('$app/env/private', () => ({
+	get SCRAPSCACHE_TICK_SECRET() {
+		return envMock.SCRAPSCACHE_TICK_SECRET;
+	},
+	get SCRAPSCACHE_ADMIN_TOKEN() {
+		return envMock.SCRAPSCACHE_ADMIN_TOKEN;
+	}
+}));
+vi.mock('#lib/server/rateLimit.js', () => ({
 	clientAddress: (get: () => string) => get(),
 	getPublicApiLimiter: () => ({ check: mocks.limit }),
 	rateLimitResponse: () => new Response(null, { status: 429 })
 }));
-vi.mock('$lib/server/db', () => ({ getDb: () => ({ ready: Promise.resolve() }) }));
-vi.mock('$lib/server/wakeDispatch', () => ({ dispatchDueWakes: mocks.dispatch }));
-vi.mock('$lib/server/wakeTimer', () => ({
+vi.mock('#lib/server/db.js', () => ({ getDb: () => ({ ready: Promise.resolve() }) }));
+vi.mock('#lib/server/wakeDispatch.js', () => ({ dispatchDueWakes: mocks.dispatch }));
+vi.mock('#lib/server/wakeTimer.js', () => ({
 	rescheduleWakeTimer: mocks.reschedule,
 	beginWakeDelivery: async () => 7
 }));

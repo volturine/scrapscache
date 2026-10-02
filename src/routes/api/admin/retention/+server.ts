@@ -1,7 +1,7 @@
 import type { RequestHandler } from './$types';
 import { json } from '@sveltejs/kit';
-import { requireAdmin } from '$lib/server/adminAuth';
-import { runRetentionSweep } from '$lib/server/retentionSweep';
+import { requireAdmin } from '#lib/server/adminAuth.js';
+import { runRetentionSweep } from '#lib/server/retentionSweep.js';
 
 export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	const rejected = await requireAdmin(request, getClientAddress);

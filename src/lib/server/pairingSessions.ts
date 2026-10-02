@@ -3,8 +3,8 @@ import {
 	PairingState,
 	type PairingGrant,
 	type PairingPoll
-} from '$lib/pairingProtocol';
-import { getDb, withTxn, type Db } from '$lib/server/db';
+} from '#lib/pairingProtocol.js';
+import { getDb, withTxn, type Db } from '#lib/server/db.js';
 
 export type PairingParticipant = { id: string; expiresAt: number; role: PairingRole };
 

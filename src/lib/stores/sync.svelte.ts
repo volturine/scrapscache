@@ -1,10 +1,10 @@
 // Client-side account, sync status, and real transfer progress for full-size photo backups.
 
-import type { Note, NoteImage } from '$lib/types';
-import { mergeKanbanBoards } from '$lib/kanban';
-import { mergeCanvasLibrary } from '$lib/canvasLibrary';
-import { mergeLabelLists, mergeNoteLists, uid, withoutTombstoned } from '$lib/model';
-import { observeRelayTime } from '$lib/editContext';
+import type { Note, NoteImage } from '#lib/types.js';
+import { mergeKanbanBoards } from '#lib/kanban.js';
+import { mergeCanvasLibrary } from '#lib/canvasLibrary.js';
+import { mergeLabelLists, mergeNoteLists, uid, withoutTombstoned } from '#lib/model/index.js';
+import { observeRelayTime } from '#lib/editContext.js';
 import {
 	currentRecordKeys,
 	fingerprintMapFrom,
@@ -13,9 +13,9 @@ import {
 	referencedAttachmentIds,
 	syncRoundHasMore,
 	syncControlKeys
-} from '$lib/syncEngine';
-import { SyncEventsClient } from '$lib/syncEventsClient';
-import { withoutAttachmentsHistoryNeeds } from '$lib/attachmentRetention';
+} from '#lib/syncEngine.js';
+import { SyncEventsClient } from '#lib/syncEventsClient.js';
+import { withoutAttachmentsHistoryNeeds } from '#lib/attachmentRetention.js';
 import {
 	attachmentToImage,
 	buildSyncRecords,
@@ -26,9 +26,9 @@ import {
 	type SyncRecord,
 	type SyncRecordPayload,
 	type SyncSnapshot
-} from '$lib/syncRecords';
-import { MAX_CLIENT_SYNC_MUTATIONS_PER_REQUEST } from '$lib/syncLimits';
-import { sha256 } from '$lib/syncHash';
+} from '#lib/syncRecords.js';
+import { MAX_CLIENT_SYNC_MUTATIONS_PER_REQUEST } from '#lib/syncLimits.js';
+import { sha256 } from '#lib/syncHash.js';
 import {
 	createOneTimePairingCode,
 	createPairingRequestKey,
@@ -44,8 +44,8 @@ import {
 	encryptSyncPayload,
 	decryptSyncEnvelope,
 	randomOpaqueId
-} from '$lib/syncPairing';
-import { PairingRole, PairingState, type PairingPoll } from '$lib/pairingProtocol';
+} from '#lib/syncPairing.js';
+import { PairingRole, PairingState, type PairingPoll } from '#lib/pairingProtocol.js';
 import {
 	clearSyncOutbox,
 	commitSyncControl,
@@ -56,8 +56,8 @@ import {
 	getSyncState,
 	markSyncOutbox,
 	setRegisteredWorkspaces
-} from '$lib/db/idb';
-import { LEGACY_WORKSPACE_ID, moveLegacyWorkspace } from '$lib/workspaceMove';
+} from '#lib/db/idb.js';
+import { LEGACY_WORKSPACE_ID, moveLegacyWorkspace } from '#lib/workspaceMove.js';
 import {
 	getLastActiveProfileId,
 	isLocalWorkspace,
@@ -69,7 +69,7 @@ import {
 	saveProfile,
 	setLastActiveProfileId,
 	type StoredProfile
-} from '$lib/profiles';
+} from '#lib/profiles.js';
 
 const LS_LEGACY_ACCOUNT_KEY = 'scrapscache-sync-account';
 const LS_LEGACY_ACCOUNT_OLD = 'gkc-sync-account';
@@ -886,7 +886,7 @@ export class SyncStore {
 		if (cached?.updatedAt === note.updatedAt) return cached.ids;
 		try {
 			// Loaded on demand: the history client itself fetches through this store.
-			const { loadNoteHistory } = await import('$lib/historyClient');
+			const { loadNoteHistory } = await import('#lib/historyClient.js');
 			const versions = await loadNoteHistory(account, note.id);
 			const ids = new Set(
 				versions.flatMap((version) => (version.note.images ?? []).map((image) => image.id))

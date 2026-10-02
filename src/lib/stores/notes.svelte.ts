@@ -1,5 +1,5 @@
 // Rune-based notes & labels store. Persists to IndexedDB from explicit write paths.
-import type { Note, Label, NoteColor, NoteImage } from '$lib/types';
+import type { Note, Label, NoteColor, NoteImage } from '#lib/types.js';
 import {
 	getAllNotesMetadata,
 	hydrateNoteAttachments,
@@ -19,7 +19,7 @@ import {
 	pruneOrphanImageBlobs,
 	isProfileReleased,
 	waitForDeviceWrites
-} from '$lib/db/idb';
+} from '#lib/db/idb.js';
 import {
 	applyNoteEdit,
 	mergeLabelLists,
@@ -31,25 +31,25 @@ import {
 	uid,
 	withoutTombstoned,
 	type NotePatch
-} from '$lib/model';
-import { editContext, syncClock } from '$lib/editContext';
-import { mergeHydratedImages } from '$lib/noteAttachmentHydration';
-import { AttachmentHydrationQueue } from '$lib/attachmentHydrationQueue';
-import { syncStore } from '$lib/stores/sync.svelte';
-import { kanbanStore } from '$lib/stores/kanban.svelte';
-import { actionUndo } from '$lib/stores/actionUndo.svelte';
-import { canvasLibraryStore } from '$lib/stores/canvasLibrary';
-import { reminderHistoryStore } from '$lib/stores/reminderHistory';
-import { syncSnapshot, type SyncSnapshot } from '$lib/syncRecords';
-import { uiStore } from '$lib/stores/ui.svelte';
-import { daysSinceTrashed, TRASH_PURGE_DAYS, cloneNote } from '$lib/utils';
-import { noteAttachments, toggleLineAt } from '$lib/checklistBody';
+} from '#lib/model/index.js';
+import { editContext, syncClock } from '#lib/editContext.js';
+import { mergeHydratedImages } from '#lib/noteAttachmentHydration.js';
+import { AttachmentHydrationQueue } from '#lib/attachmentHydrationQueue.js';
+import { syncStore } from '#lib/stores/sync.svelte.js';
+import { kanbanStore } from '#lib/stores/kanban.svelte.js';
+import { actionUndo } from '#lib/stores/actionUndo.svelte.js';
+import { canvasLibraryStore } from '#lib/stores/canvasLibrary.js';
+import { reminderHistoryStore } from '#lib/stores/reminderHistory.js';
+import { syncSnapshot, type SyncSnapshot } from '#lib/syncRecords.js';
+import { uiStore } from '#lib/stores/ui.svelte.js';
+import { daysSinceTrashed, TRASH_PURGE_DAYS, cloneNote } from '#lib/utils.js';
+import { noteAttachments, toggleLineAt } from '#lib/checklistBody.js';
 import {
 	readLabelsMirror,
 	readNotesMirror,
 	writeLabelsMirror,
 	writeNotesMirror
-} from '$lib/noteStorage';
+} from '#lib/noteStorage.js';
 import {
 	hydrateTombstones,
 	deleteLabelWithTombstone,
@@ -58,26 +58,26 @@ import {
 	readTombstones,
 	writeLabelTombstones,
 	writeTombstones
-} from '$lib/syncTombstones';
+} from '#lib/syncTombstones.js';
 import {
 	ensureAttachmentPreview,
 	fileToNoteImage,
 	prepareAttachmentForMemory
-} from '$lib/noteImages';
-import { materializeKeepTakeout, readKeepTakeout } from '$lib/keepImport';
-import { isCanvasAttachment } from '$lib/canvasAttachment';
-import { replacementFitsStorage } from '$lib/storageCapacity';
-import { formatStorageError } from '$lib/imageBlob';
+} from '#lib/noteImages.js';
+import { materializeKeepTakeout, readKeepTakeout } from '#lib/keepImport.js';
+import { isCanvasAttachment } from '#lib/canvasAttachment.js';
+import { replacementFitsStorage } from '#lib/storageCapacity.js';
+import { formatStorageError } from '#lib/imageBlob.js';
 import {
 	BackupImportMode,
 	importedReminderHistory,
 	normalizeBackup,
 	prepareImportedNotes,
 	type ScrapsCacheBackup
-} from '$lib/backup';
-import { stableStringify } from '$lib/model';
-import { buildForcePushSnapshot } from '$lib/syncForcePush';
-import { currentRecordKeys } from '$lib/syncEngine';
+} from '#lib/backup.js';
+import { stableStringify } from '#lib/model/index.js';
+import { buildForcePushSnapshot } from '#lib/syncForcePush.js';
+import { currentRecordKeys } from '#lib/syncEngine.js';
 
 /** Minimum gap between opportunistic auto syncs; manual syncs are never throttled. */
 const AUTO_SYNC_MIN_INTERVAL_MS = 30_000;

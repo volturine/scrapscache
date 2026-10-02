@@ -1,9 +1,9 @@
-import { processActivity, type ProcessActivity } from '$lib/server/metrics';
-import { bytesToGigabytes, staleBeforeMs } from '$lib/server/operatorConfig';
-import { getDb } from '$lib/server/db';
-import { getRetentionStatus, type RetentionStatus } from '$lib/server/retentionSweep';
-import { getRuntimeSettings } from '$lib/server/runtimeSettings';
-import { getSyncStore, type OperatorUsage, type SyncQuotas } from '$lib/server/syncStore';
+import { processActivity, type ProcessActivity } from '#lib/server/metrics.js';
+import { bytesToGigabytes, staleBeforeMs } from '#lib/server/operatorConfig.js';
+import { getDb } from '#lib/server/db.js';
+import { getRetentionStatus, type RetentionStatus } from '#lib/server/retentionSweep.js';
+import { getRuntimeSettings } from '#lib/server/runtimeSettings.js';
+import { getSyncStore, type OperatorUsage, type SyncQuotas } from '#lib/server/syncStore.js';
 
 export type OperatorSnapshot = {
 	generatedAt: number;

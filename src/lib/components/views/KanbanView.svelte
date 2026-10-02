@@ -1,7 +1,7 @@
 <script lang="ts">
-	import KanbanCard from '$lib/components/KanbanCard.svelte';
-	import KanbanCardBody from '$lib/components/KanbanCardBody.svelte';
-	import LabelChecklist from '$lib/components/LabelChecklist.svelte';
+	import KanbanCard from '#lib/components/KanbanCard.svelte';
+	import KanbanCardBody from '#lib/components/KanbanCardBody.svelte';
+	import LabelChecklist from '#lib/components/LabelChecklist.svelte';
 	import {
 		BacklogFilterMode,
 		BoardNoteFilterAction,
@@ -13,13 +13,13 @@
 		slotPosition,
 		type BacklogFilter,
 		type KanbanColumn
-	} from '$lib/kanban';
-	import { kanbanDrag, type KanbanDropTarget } from '$lib/kanbanDrag.svelte';
-	import { portalToAppOverlay, portalToBody } from '$lib/appViewport';
-	import { useEditorActions } from '$lib/editorContext';
-	import { notesStore } from '$lib/stores/notes.svelte';
-	import { kanbanStore } from '$lib/stores/kanban.svelte';
-	import { uiStore } from '$lib/stores/ui.svelte';
+	} from '#lib/kanban.js';
+	import { kanbanDrag, type KanbanDropTarget } from '#lib/kanbanDrag.svelte.js';
+	import { portalToAppOverlay, portalToBody } from '#lib/appViewport.js';
+	import { useEditorActions } from '#lib/editorContext.js';
+	import { notesStore } from '#lib/stores/notes.svelte.js';
+	import { kanbanStore } from '#lib/stores/kanban.svelte.js';
+	import { uiStore } from '#lib/stores/ui.svelte.js';
 	import { Checkbox } from '@ark-ui/svelte/checkbox';
 	import { Menu } from '@ark-ui/svelte/menu';
 	import { SegmentGroup } from '@ark-ui/svelte/segment-group';
@@ -27,7 +27,7 @@
 	import { Check, ChevronDown, ListFilter, Pencil, Plus, Trash2, X } from '@lucide/svelte';
 	import { flip, type FlipParams } from 'svelte/animate';
 	import { onDestroy } from 'svelte';
-	import type { Note } from '$lib/types';
+	import type { Note } from '#lib/types.js';
 	import { css, cx } from 'styled-system/css';
 	import { vstack } from 'styled-system/patterns';
 	import {

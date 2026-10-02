@@ -1,10 +1,10 @@
 import type { RequestHandler } from './$types';
 import { json } from '@sveltejs/kit';
-import { requireAdmin } from '$lib/server/adminAuth';
-import { readJsonBody } from '$lib/server/request';
-import { getSyncStore } from '$lib/server/syncStore';
-import { ACCOUNT_ID_RE } from '$lib/server/pushWakes';
-import { getRuntimeSettings } from '$lib/server/runtimeSettings';
+import { requireAdmin } from '#lib/server/adminAuth.js';
+import { readJsonBody } from '#lib/server/request.js';
+import { getSyncStore } from '#lib/server/syncStore.js';
+import { ACCOUNT_ID_RE } from '#lib/server/pushWakes.js';
+import { getRuntimeSettings } from '#lib/server/runtimeSettings.js';
 
 const MAX_REQUEST_BYTES = 8_192;
 

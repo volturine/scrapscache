@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { TURNSTILE_MESSAGE } from '$lib/turnstileMessage';
+	import { TURNSTILE_MESSAGE } from '#lib/turnstileMessage.js';
 	import { css, cx } from 'styled-system/css';
 	import { text } from 'styled-system/recipes';
 

@@ -10,9 +10,9 @@
 		parseBulletLine,
 		parseCheckLine,
 		toggleCheckEntries
-	} from '$lib/checklistBody';
-	import { revealEditorField } from '$lib/editorVisibility';
-	import { matchTrailingEmoticon } from '$lib/emoticons';
+	} from '#lib/checklistBody.js';
+	import { revealEditorField } from '#lib/editorVisibility.js';
+	import { matchTrailingEmoticon } from '#lib/emoticons.js';
 	import { css } from 'styled-system/css';
 	import { checklist, noteBody } from 'styled-system/recipes';
 	import { markdownStyles } from '$panda/styles';
@@ -34,10 +34,10 @@
 		type CodeToken,
 		type EditorMarkdownBlockInfo,
 		type MarkdownBlock
-	} from '$lib/markdown';
-	import { uiStore } from '$lib/stores/ui.svelte';
-	import { actionUndo, undoStamp } from '$lib/stores/actionUndo.svelte';
-	import { tableScroll } from '$lib/tableScroll';
+	} from '#lib/markdown.js';
+	import { uiStore } from '#lib/stores/ui.svelte.js';
+	import { actionUndo, undoStamp } from '#lib/stores/actionUndo.svelte.js';
+	import { tableScroll } from '#lib/tableScroll.js';
 	import MarkdownCopyButton from './MarkdownCopyButton.svelte';
 
 	const MAX_TASK_INDENT = 1;

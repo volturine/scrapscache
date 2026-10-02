@@ -1,9 +1,9 @@
-import { decryptSyncEnvelope } from '$lib/syncPairing';
-import { attachmentToImage, isSyncRecordPayload, type SyncNote } from '$lib/syncRecords';
-import { sha256 } from '$lib/syncHash';
-import type { Note, NoteImage } from '$lib/types';
-import type { HistoryEnvelope, HistoryList } from '$lib/syncHistory';
-import { syncStore, type SyncAccount } from '$lib/stores/sync.svelte';
+import { decryptSyncEnvelope } from '#lib/syncPairing.js';
+import { attachmentToImage, isSyncRecordPayload, type SyncNote } from '#lib/syncRecords.js';
+import { sha256 } from '#lib/syncHash.js';
+import type { Note, NoteImage } from '#lib/types.js';
+import type { HistoryEnvelope, HistoryList } from '#lib/syncHistory.js';
+import { syncStore, type SyncAccount } from '#lib/stores/sync.svelte.js';
 
 export type NoteHistoryEntry = { historyId: number; savedAt: number; note: SyncNote };
 

@@ -8,13 +8,13 @@
 		createCanvasAttachment,
 		decodeCanvasAttachment,
 		type CanvasScene
-	} from '$lib/canvasAttachment';
-	import type { ExcalidrawHost } from '$lib/excalidrawHost';
-	import { isMissingModuleError, reloadOnceForMissingModule } from '$lib/staleModuleReload';
-	import type { NoteImage } from '$lib/types';
-	import { uiStore } from '$lib/stores/ui.svelte';
-	import { canvasLibraryStore } from '$lib/stores/canvasLibrary';
-	import { portalToAppOverlay } from '$lib/appViewport';
+	} from '#lib/canvasAttachment.js';
+	import type { ExcalidrawHost } from '#lib/excalidrawHost.js';
+	import { isMissingModuleError, reloadOnceForMissingModule } from '#lib/staleModuleReload.js';
+	import type { NoteImage } from '#lib/types.js';
+	import { uiStore } from '#lib/stores/ui.svelte.js';
+	import { canvasLibraryStore } from '#lib/stores/canvasLibrary.js';
+	import { portalToAppOverlay } from '#lib/appViewport.js';
 
 	let {
 		attachment = null,
@@ -47,7 +47,7 @@
 				if (attachment) initialScene = await decodeCanvasAttachment(attachment);
 				if (cancelled || !hostNode) return;
 				(window as Window & { EXCALIDRAW_ASSET_PATH?: string }).EXCALIDRAW_ASSET_PATH = '/';
-				const { mountExcalidraw } = await import('$lib/excalidrawHost');
+				const { mountExcalidraw } = await import('#lib/excalidrawHost.js');
 				if (cancelled || !hostNode) return;
 				const mounted = await mountExcalidraw(hostNode, {
 					initialScene,

@@ -1,5 +1,5 @@
 import type { RequestHandler } from './$types';
-import { getRuntimeSettings } from '$lib/server/runtimeSettings';
+import { getRuntimeSettings } from '#lib/server/runtimeSettings.js';
 
 /**
  * Only the canonical public deployment invites crawlers. Preview and self-hosted

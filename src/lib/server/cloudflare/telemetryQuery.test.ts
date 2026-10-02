@@ -4,7 +4,7 @@ import { applyMigrations, testD1 } from './testBindings';
 
 const harness = vi.hoisted(() => ({ client: undefined as unknown, fail: false }));
 
-vi.mock('$lib/server/db', () => {
+vi.mock('#lib/server/db.js', () => {
 	const ops = {
 		execute: (statement: unknown) => {
 			if (harness.fail) return Promise.reject(new Error('D1_ERROR: unavailable'));
@@ -14,7 +14,7 @@ vi.mock('$lib/server/db', () => {
 	return { getDb: () => ({ relay: ops, ops, ready: Promise.resolve() }) };
 });
 
-import { HOUR_MS } from './metrics';
+import { HOUR_MS } from './telemetryQuery';
 import { queryTelemetry } from './telemetryQuery';
 
 let client: Client;

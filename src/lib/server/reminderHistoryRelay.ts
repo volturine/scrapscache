@@ -1,20 +1,25 @@
-import { env } from '$env/dynamic/private';
-import { getDb, type Db } from '$lib/server/db';
-import { parseReminderMaxAccountBytes } from '$lib/server/operatorConfig';
-import { REMINDER_BATCH_SIZE, type ReminderPacket, type ReminderPage } from '$lib/reminderChannel';
+import { SCRAPSCACHE_REMINDER_MAX_ACCOUNT_BYTES } from '$app/env/private';
+import { getDb, type Db } from '#lib/server/db.js';
+import { parseReminderMaxAccountBytes } from '#lib/server/operatorConfig.js';
+import {
+	REMINDER_BATCH_SIZE,
+	type ReminderPacket,
+	type ReminderPage
+} from '#lib/reminderChannel.js';
 
 /**
  * Receipt storage per account, apart from the note-sync quota:
  * `SCRAPSCACHE_REMINDER_MAX_ACCOUNT_BYTES`, 10 MB by default.
  */
 export function reminderMaxAccountBytes(): number {
-	return parseReminderMaxAccountBytes(env.SCRAPSCACHE_REMINDER_MAX_ACCOUNT_BYTES);
+	return parseReminderMaxAccountBytes(SCRAPSCACHE_REMINDER_MAX_ACCOUNT_BYTES);
 }
 /** Accounted per row on top of its ciphertext, for the tag and index. */
 const ROW_OVERHEAD_BYTES = 256;
 export class ReminderHistoryQuotaError extends Error {}
 export function validReminderPacket(value: unknown): value is ReminderPacket {
 	const row = value as ReminderPacket | null;
+
 	return (
 		!!row &&
 		typeof row.note === 'string' &&

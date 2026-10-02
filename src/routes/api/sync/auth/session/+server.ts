@@ -1,9 +1,9 @@
 import type { RequestHandler } from './$types';
 import { json } from '@sveltejs/kit';
-import { getSyncAuth } from '$lib/server/syncAuth';
-import { getSyncStore } from '$lib/server/syncStore';
-import { readJsonBody } from '$lib/server/request';
-import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '$lib/server/rateLimit';
+import { getSyncAuth } from '#lib/server/syncAuth.js';
+import { getSyncStore } from '#lib/server/syncStore.js';
+import { readJsonBody } from '#lib/server/request.js';
+import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '#lib/server/rateLimit.js';
 
 export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	const limited = await getPublicApiLimiter().check(`auth-ip:${clientAddress(getClientAddress)}`, {

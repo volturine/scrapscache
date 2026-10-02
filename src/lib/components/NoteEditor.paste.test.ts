@@ -1,8 +1,8 @@
 import { render } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Note } from '$lib/types';
-import { notesStore } from '$lib/stores/notes.svelte';
+import type { Note } from '#lib/types.js';
+import { notesStore } from '#lib/stores/notes.svelte.js';
 import NoteEditor from './NoteEditor.svelte';
 
 function note(partial: Partial<Note> = {}): Note {

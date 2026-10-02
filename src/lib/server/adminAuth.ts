@@ -1,6 +1,6 @@
 import { timingSafeEqual } from 'node:crypto';
-import { env } from '$env/dynamic/private';
-import { checkAdminApiLimit, rateLimitResponse } from '$lib/server/rateLimit';
+import { SCRAPSCACHE_ADMIN_TOKEN } from '$app/env/private';
+import { checkAdminApiLimit, rateLimitResponse } from '#lib/server/rateLimit.js';
 
 export function timingSafeStringEqual(left: string, right: string): boolean {
 	const leftBuf = Buffer.from(left);
@@ -13,10 +13,7 @@ export function timingSafeStringEqual(left: string, right: string): boolean {
 	return timingSafeEqual(paddedLeft, paddedRight) && leftBuf.length === rightBuf.length;
 }
 
-export function isAdminAuthorized(
-	request: Request,
-	expected = env.SCRAPSCACHE_ADMIN_TOKEN
-): boolean {
+export function isAdminAuthorized(request: Request, expected = SCRAPSCACHE_ADMIN_TOKEN): boolean {
 	if (!expected) return false;
 	return timingSafeStringEqual(request.headers.get('authorization') ?? '', `Bearer ${expected}`);
 }

@@ -1,4 +1,4 @@
-import type { SyncSnapshot } from '$lib/syncRecords';
+import type { SyncSnapshot } from '#lib/syncRecords.js';
 import {
 	mergeBodies,
 	NOTE_FIELDS,
@@ -6,8 +6,8 @@ import {
 	touchNoteFields,
 	uid,
 	type EditContext
-} from '$lib/model';
-import type { Note } from '$lib/types';
+} from '#lib/model/index.js';
+import type { Note } from '#lib/types.js';
 
 /**
  * Local content over the cloud copy. Body and attachments merge rather than

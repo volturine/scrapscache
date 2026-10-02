@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { useEditorActions } from '$lib/editorContext';
+	import { useEditorActions } from '#lib/editorContext.js';
 	import { Plus } from '@lucide/svelte';
 	import { css, cx } from 'styled-system/css';
 	import { iconButton } from 'styled-system/recipes';

@@ -3,7 +3,11 @@ import { isAdminAuthorized, timingSafeStringEqual, unauthorizedAdminResponse } f
 
 const envMock = vi.hoisted(() => ({}) as Record<string, string | undefined>);
 
-vi.mock('$env/dynamic/private', () => ({ env: envMock }));
+vi.mock('$app/env/private', () => ({
+	get SCRAPSCACHE_ADMIN_TOKEN() {
+		return envMock.SCRAPSCACHE_ADMIN_TOKEN;
+	}
+}));
 
 describe('admin auth', () => {
 	afterEach(() => {

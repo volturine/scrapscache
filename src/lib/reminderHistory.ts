@@ -1,6 +1,6 @@
 // Which reminders a workspace has already shown or dismissed. It syncs, so a
 // reminder handled on one device is not shown again on another.
-import { getSyncState } from '$lib/db/idb';
+import { getSyncState } from '#lib/db/idb.js';
 
 export const REMINDER_HISTORY_STATE_KEY = 'scrapscache-reminder-history';
 

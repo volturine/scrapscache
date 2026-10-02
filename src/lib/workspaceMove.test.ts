@@ -12,7 +12,7 @@ import {
 	readStoredProfiles,
 	resolveDbName,
 	setDeviceState
-} from '$lib/db/idb';
+} from '#lib/db/idb.js';
 import {
 	LEGACY_DB_NAME,
 	LEGACY_WORKSPACE_ID,

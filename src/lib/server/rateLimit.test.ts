@@ -5,7 +5,7 @@ import type { Db } from './db';
 
 let mockDb: Db;
 
-vi.mock('$lib/server/db', async (importOriginal) => {
+vi.mock('#lib/server/db.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('./db')>();
 	return {
 		...actual,

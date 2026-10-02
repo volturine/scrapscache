@@ -1,11 +1,11 @@
-import { tickAppClock } from '$lib/appClock.svelte';
+import { tickAppClock } from '#lib/appClock.svelte.js';
 import {
 	addFiredReminderKeys,
 	claimFiredReminderKey,
 	getFiredReminderKeys,
 	workspaceKey
-} from '$lib/db/idb';
-import { relayReminderWakes, reminderWakeId, type ReminderWake } from '$lib/model';
+} from '#lib/db/idb.js';
+import { relayReminderWakes, reminderWakeId, type ReminderWake } from '#lib/model/index.js';
 import {
 	closeReminderNotifications,
 	nextReminderAt,
@@ -15,14 +15,14 @@ import {
 	unfiredDueReminders,
 	type ReminderAlert,
 	type ReminderNote
-} from '$lib/reminderNotify';
+} from '#lib/reminderNotify.js';
 import {
 	fetchReminderWakes,
 	publishReminderWakes,
 	registerAllReminderDevices
-} from '$lib/reminderWake';
-import { readReminderHistory, type ReminderHistoryEntry } from '$lib/reminderHistory';
-import { reminderHistoryStore, type ReminderHistoryStore } from '$lib/stores/reminderHistory';
+} from '#lib/reminderWake.js';
+import { readReminderHistory, type ReminderHistoryEntry } from '#lib/reminderHistory.js';
+import { reminderHistoryStore, type ReminderHistoryStore } from '#lib/stores/reminderHistory.js';
 
 const MAX_TIMER_MS = 60_000;
 const FIRED_REMINDERS_MIRROR_KEY = 'scrapscache-fired-reminders-mirror';

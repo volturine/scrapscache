@@ -1,7 +1,7 @@
 <script lang="ts">
-	import { kanbanDrag, type KanbanDropTarget } from '$lib/kanbanDrag.svelte';
-	import type { Note } from '$lib/types';
-	import { activateOnKeyboard } from '$lib/utils';
+	import { kanbanDrag, type KanbanDropTarget } from '#lib/kanbanDrag.svelte.js';
+	import type { Note } from '#lib/types.js';
+	import { activateOnKeyboard } from '#lib/utils.js';
 	import KanbanCardBody from './KanbanCardBody.svelte';
 	import NoteQuickActions from './NoteQuickActions.svelte';
 	import { css } from 'styled-system/css';

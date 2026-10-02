@@ -6,7 +6,7 @@ const wakeMocks = vi.hoisted(() => ({
 	fetch: vi.fn()
 }));
 
-vi.mock('$lib/reminderWake', () => ({
+vi.mock('#lib/reminderWake.js', () => ({
 	publishReminderWakes: wakeMocks.publish,
 	registerAllReminderDevices: wakeMocks.register,
 	fetchReminderWakes: wakeMocks.fetch
@@ -14,10 +14,10 @@ vi.mock('$lib/reminderWake', () => ({
 
 import { ReminderStore, type ReminderHost } from './reminders.svelte';
 import { ReminderHistoryStore } from './reminderHistory';
-import { reminderWakeId } from '$lib/model';
-import type { ReminderNote } from '$lib/reminderNotify';
-import { readReminderHistory } from '$lib/reminderHistory';
-import { deleteSyncState, getFiredReminderKeys, getSyncOutboxKeys } from '$lib/db/idb';
+import { reminderWakeId } from '#lib/model/index.js';
+import type { ReminderNote } from '#lib/reminderNotify.js';
+import { readReminderHistory } from '#lib/reminderHistory.js';
+import { deleteSyncState, getFiredReminderKeys, getSyncOutboxKeys } from '#lib/db/idb.js';
 import { TEST_WORKSPACE } from '../../tests/workspace';
 
 const OTHER = 'reminders-other';

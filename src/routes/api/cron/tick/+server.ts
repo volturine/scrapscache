@@ -1,9 +1,9 @@
 import type { RequestHandler } from './$types';
 import { json } from '@sveltejs/kit';
-import { env } from '$env/dynamic/private';
-import { isAdminAuthorized, unauthorizedAdminResponse } from '$lib/server/adminAuth';
-import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '$lib/server/rateLimit';
-import { runCronTick } from '$lib/server/cronTick';
+import { SCRAPSCACHE_TICK_SECRET } from '$app/env/private';
+import { isAdminAuthorized, unauthorizedAdminResponse } from '#lib/server/adminAuth.js';
+import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '#lib/server/rateLimit.js';
+import { runCronTick } from '#lib/server/cronTick.js';
 
 /** Scheduler entry point for Workers Cron Triggers and self-host crontabs. */
 export const POST: RequestHandler = async ({ request, getClientAddress }) => {
@@ -15,8 +15,8 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 		refillWindowMs: 60_000
 	});
 	if (!limited.allowed) return rateLimitResponse(limited);
-	if (!env.SCRAPSCACHE_TICK_SECRET) return unauthorizedAdminResponse();
-	if (!isAdminAuthorized(request, env.SCRAPSCACHE_TICK_SECRET)) return unauthorizedAdminResponse();
+	if (!SCRAPSCACHE_TICK_SECRET) return unauthorizedAdminResponse();
+	if (!isAdminAuthorized(request, SCRAPSCACHE_TICK_SECRET)) return unauthorizedAdminResponse();
 	try {
 		return json(await runCronTick(), { headers: { 'cache-control': 'no-store' } });
 	} catch (error) {

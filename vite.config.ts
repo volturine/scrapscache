@@ -1,33 +1,46 @@
+import adapterCloudflare from '@sveltejs/adapter-cloudflare';
+import adapterNode from '@sveltejs/adapter-node';
 import { sveltekit } from '@sveltejs/kit/vite';
-import { viteStaticCopy } from 'vite-plugin-static-copy';
-import { defineConfig } from 'vitest/config';
+import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
+import { execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import type { Plugin } from 'vite';
+import { defineConfig } from 'vitest/config';
+import { viteStaticCopy } from 'vite-plugin-static-copy';
 
+/**
+ * Cloudflare Workers builds route server-side modules through Cloudflare-specific
+ * implementations (D1, Queues, Workers runtime env) instead of the Node/SQLite ones.
+ * The mapping is kept here so the rest of the application imports from the same
+ * paths in both environments.
+ */
 const cloudflareModules = new Map([
-	['$lib/server/syncStore', './src/lib/server/cloudflare/syncStore.ts'],
-	['$lib/server/pairingSessions', './src/lib/server/cloudflare/pairingSessions.ts'],
-	['$lib/server/db', './src/lib/server/cloudflare/db.ts'],
-	['$lib/server/metrics', './src/lib/server/cloudflare/metrics.ts'],
-	['$lib/server/telemetryQuery', './src/lib/server/cloudflare/telemetryQuery.ts'],
-	['$lib/server/wakeTimer', './src/lib/server/cloudflare/wakeTimer.ts'],
-	// The browser's live note-sync transport: WebSocket on Workers, SSE on Node.
-	['$lib/syncEventsTransport', './src/lib/cloudflare/syncEventsTransport.ts']
+	['#lib/server/db.js', './src/lib/server/cloudflare/db.ts'],
+	['#lib/server/syncStore.js', './src/lib/server/cloudflare/syncStore.ts'],
+	['#lib/server/pairingSessions.js', './src/lib/server/cloudflare/pairingSessions.ts'],
+	['#lib/server/wakeTimer.js', './src/lib/server/cloudflare/wakeTimer.ts'],
+	['#lib/server/telemetryQuery.js', './src/lib/server/cloudflare/telemetryQuery.ts'],
+	['#lib/server/metrics.js', './src/lib/server/cloudflare/metrics.ts'],
+	['#lib/syncEventsTransport.js', './src/lib/cloudflare/syncEventsTransport.ts']
 ]);
+
 const cloudflareResolvedModules = new Map(
-	[...cloudflareModules].map(([source, target]) => [
-		fileURLToPath(new URL(source.replace('$lib', './src/lib') + '.ts', import.meta.url)),
+	Array.from(cloudflareModules.entries()).map(([source, target]) => [
+		fileURLToPath(
+			new URL(source.replace('#lib', './src/lib').replace(/\.js$/, '.ts'), import.meta.url)
+		),
 		fileURLToPath(new URL(target, import.meta.url))
 	])
 );
 
-const cloudflarePlatform = {
-	name: 'scrapscache-cloudflare-platform',
-	enforce: 'pre' as const,
+const cloudflarePlatform: Plugin = {
+	name: 'cloudflare-platform',
+	enforce: 'pre',
 	resolveId(source: string) {
 		if (process.env.DEPLOY_TARGET !== 'cloudflare') return null;
 		const target = cloudflareModules.get(source);
 		if (target) return fileURLToPath(new URL(target, import.meta.url));
-		return cloudflareResolvedModules.get(source) ?? null;
+		return null;
 	},
 	load(id: string) {
 		if (process.env.DEPLOY_TARGET !== 'cloudflare') return null;
@@ -36,13 +49,69 @@ const cloudflarePlatform = {
 	}
 };
 
+/**
+ * The commit a build came from. SvelteKit otherwise stamps each build with the
+ * current time, which lands inside a chunk and changes every hash that depends on
+ * it, so two builds of the same commit could never be compared. Using the commit
+ * makes the client bundle reproducible and names what is deployed.
+ */
+function buildVersion() {
+	if (process.env.SCRAPSCACHE_BUILD_VERSION) return process.env.SCRAPSCACHE_BUILD_VERSION;
+
+	try {
+		return execSync('git rev-parse HEAD', { stdio: ['ignore', 'pipe', 'ignore'] })
+			.toString()
+			.trim();
+	} catch {
+		// Container builds have no .git. A fixed value keeps them deterministic;
+		// the published image carries its own provenance.
+		return 'unversioned';
+	}
+}
+
 export default defineConfig({
 	plugins: [
 		cloudflarePlatform,
-		sveltekit(),
+		sveltekit({
+			preprocess: vitePreprocess(),
+			alias: { 'styled-system': './styled-system', $panda: './panda' },
+			// Self-hosted Node builds are the default; DEPLOY_TARGET=cloudflare builds the Workers bundle.
+			adapter:
+				process.env.DEPLOY_TARGET === 'cloudflare'
+					? adapterCloudflare({ config: 'cf/wrangler.svelte.jsonc' })
+					: adapterNode(),
+			version: { name: buildVersion() },
+			csp: {
+				mode: 'nonce',
+				directives: {
+					'default-src': ['self'],
+					// No third-party script, ever: anything that runs here can read the sync
+					// keys. Turnstile runs on its own origin, framed; see src/routes/turnstile.
+					'script-src': ['self'],
+					'style-src': ['self', 'unsafe-inline'],
+					'connect-src': ['self'],
+					'img-src': ['self', 'data:', 'blob:'],
+					'media-src': ['self', 'data:', 'blob:'],
+					// Excalidraw lists its esm.sh copy after ours as a fallback for every font
+					// (/fonts, see vite.config.ts), and Chrome logs a violation for each
+					// blocked fallback when a canvas opens, even though ours loads. Fonts
+					// cannot run code; the path keeps the allowance to Excalidraw's package.
+					'font-src': ['self', 'https://esm.sh/@excalidraw/'],
+					// Chrome's PDF viewer treats an iframe PDF as a plugin, so blob
+					// frames need both frame-src and object-src. Third-party frames
+					// stay blocked; the Turnstile challenge origin is added at request time
+					// from configuration, because it differs per deployment.
+					'frame-src': ['self', 'blob:'],
+					'object-src': ['self', 'blob:']
+				}
+			}
+		}),
+
 		// Excalidraw fetches its fonts from EXCALIDRAW_ASSET_PATH ('/') first and
 		// its esm.sh copy only as a fallback. Serve the installed package's own copy,
 		// so canvases work offline and the fonts match the version in the lockfile.
+		// Runs in every command (build and dev) so the client bundle is never
+		// stranded on external network calls.
 		viteStaticCopy({
 			targets: [
 				{

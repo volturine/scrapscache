@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createSyncIdentity, identityFromSyncKey } from '$lib/syncPairing';
-import { syncStore } from '$lib/stores/sync.svelte';
+import { createSyncIdentity, identityFromSyncKey } from '#lib/syncPairing.js';
+import { syncStore } from '#lib/stores/sync.svelte.js';
 import AuthorizePage from './+page.svelte';
 
 vi.mock('$app/state', () => ({

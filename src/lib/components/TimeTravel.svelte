@@ -4,17 +4,21 @@
 	import { ChevronLeft, ChevronRight, X } from '@lucide/svelte';
 	import { onMount, tick } from 'svelte';
 	import { button, iconButton } from 'styled-system/recipes';
-	import { appClock } from '$lib/appClock.svelte';
-	import { loadNoteHistory, hydrateHistoryNote, type NoteHistoryEntry } from '$lib/historyClient';
+	import { appClock } from '#lib/appClock.svelte.js';
+	import {
+		loadNoteHistory,
+		hydrateHistoryNote,
+		type NoteHistoryEntry
+	} from '#lib/historyClient.js';
 	import {
 		describeNoteVersionChange,
 		distinctNoteVersions,
 		sameVisibleNote,
 		type NoteVersionChange
-	} from '$lib/noteVersionChange';
-	import type { Note } from '$lib/types';
-	import { formatActivityRelative } from '$lib/utils';
-	import { syncStore, type SyncAccount } from '$lib/stores/sync.svelte';
+	} from '#lib/noteVersionChange.js';
+	import type { Note } from '#lib/types.js';
+	import { formatActivityRelative } from '#lib/utils.js';
+	import { syncStore, type SyncAccount } from '#lib/stores/sync.svelte.js';
 
 	let {
 		account,

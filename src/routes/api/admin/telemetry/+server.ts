@@ -1,7 +1,7 @@
 import type { RequestHandler } from './$types';
 import { json } from '@sveltejs/kit';
-import { requireAdmin } from '$lib/server/adminAuth';
-import { queryTelemetry } from '$lib/server/telemetryQuery';
+import { requireAdmin } from '#lib/server/adminAuth.js';
+import { queryTelemetry } from '#lib/server/telemetryQuery.js';
 
 /** Request counts and operational counters over a window, from wherever this
  * deployment keeps them. Aggregates only, same as the rest of the admin API. */

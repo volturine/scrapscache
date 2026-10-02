@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 const svelteConfig = readFileSync(
-	join(dirname(fileURLToPath(import.meta.url)), '../../svelte.config.js'),
+	join(dirname(fileURLToPath(import.meta.url)), '../../vite.config.ts'),
 	'utf8'
 );
 

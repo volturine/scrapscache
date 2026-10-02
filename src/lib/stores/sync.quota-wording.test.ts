@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Note, NoteImage } from '$lib/types';
-import { createSyncIdentity, decryptSyncPayload } from '$lib/syncPairing';
-import * as idb from '$lib/db/idb';
+import type { Note, NoteImage } from '#lib/types.js';
+import { createSyncIdentity, decryptSyncPayload } from '#lib/syncPairing.js';
+import * as idb from '#lib/db/idb.js';
 import { SyncStore } from './sync.svelte';
-import { syncSnapshot } from '$lib/syncRecords';
+import { syncSnapshot } from '#lib/syncRecords.js';
 import { seedTestKeyring, TEST_WORKSPACE } from '../../tests/workspace';
 
 type RequestResult = { success: boolean; data?: Record<string, unknown>; error?: string };

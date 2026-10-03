@@ -4,7 +4,7 @@
 	import { css, cx } from 'styled-system/css';
 	import { button, menuItem } from 'styled-system/recipes';
 	import { Download, Share, Smartphone, X } from '@lucide/svelte';
-	import { pwaInstallStore } from '$lib/stores/pwaInstall.svelte';
+	import { pwaInstallStore } from '#lib/stores/pwaInstall.svelte.js';
 
 	function install() {
 		void pwaInstallStore.promptInstall();

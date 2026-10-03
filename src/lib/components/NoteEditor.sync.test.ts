@@ -1,9 +1,9 @@
 import { fireEvent, render } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Note } from '$lib/types';
-import { notesStore } from '$lib/stores/notes.svelte';
-import { syncStore } from '$lib/stores/sync.svelte';
+import type { Note } from '#lib/types.js';
+import { notesStore } from '#lib/stores/notes.svelte.js';
+import { syncStore } from '#lib/stores/sync.svelte.js';
 import NoteEditor from './NoteEditor.svelte';
 
 function note(partial: Partial<Note> = {}): Note {

@@ -5,26 +5,31 @@
 	import { flex, hstack, spacer } from 'styled-system/patterns';
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { flushSync, onMount, tick, untrack } from 'svelte';
-	import { notesStore } from '$lib/stores/notes.svelte';
-	import { noteToPlainText, noteAttachments, splitPastedHeading } from '$lib/checklistBody';
-	import { mergeHydratedImages } from '$lib/noteAttachmentHydration';
-	import type { Note, NoteImage } from '$lib/types';
-	import type { NotePatch } from '$lib/model';
+	import { notesStore } from '#lib/stores/notes.svelte.js';
+	import { noteToPlainText, noteAttachments, splitPastedHeading } from '#lib/checklistBody.js';
+	import { mergeHydratedImages } from '#lib/noteAttachmentHydration.js';
+	import type { Note, NoteImage } from '#lib/types.js';
+	import type { NotePatch } from '#lib/model/index.js';
 	import ColorPalette from './ColorPalette.svelte';
 	import ReminderPicker from './ReminderPicker.svelte';
-	import { reminderStore } from '$lib/stores/reminders.svelte';
-	import { uiStore } from '$lib/stores/ui.svelte';
+	import { reminderStore } from '#lib/stores/reminders.svelte.js';
+	import { uiStore } from '#lib/stores/ui.svelte.js';
 	import LabelMenu from './LabelMenu.svelte';
 	import NoteEditorFooter from './NoteEditorFooter.svelte';
 	import BodyEditor from './BodyEditor.svelte';
 	import TimeTravel from './TimeTravel.svelte';
-	import { syncStore } from '$lib/stores/sync.svelte';
-	import type { NoteHistoryEntry } from '$lib/historyClient';
-	import { BackupImportMode, prepareImportedNotes } from '$lib/backup';
-	import { editContext } from '$lib/editContext';
-	import { appClock } from '$lib/appClock.svelte';
-	import { formatReminder, isReminderOverdue, noteActivity, writeClipboardText } from '$lib/utils';
-	import { noteShareLink } from '$lib/noteLinks';
+	import { syncStore } from '#lib/stores/sync.svelte.js';
+	import type { NoteHistoryEntry } from '#lib/historyClient.js';
+	import { BackupImportMode, prepareImportedNotes } from '#lib/backup.js';
+	import { editContext } from '#lib/editContext.js';
+	import { appClock } from '#lib/appClock.svelte.js';
+	import {
+		formatReminder,
+		isReminderOverdue,
+		noteActivity,
+		writeClipboardText
+	} from '#lib/utils.js';
+	import { noteShareLink } from '#lib/noteLinks.js';
 	import ReminderLabel from './ReminderLabel.svelte';
 	import {
 		Bell,
@@ -37,11 +42,11 @@
 		Pin
 	} from '@lucide/svelte';
 
-	import { revealEditorField, revealEditorPoint } from '$lib/editorVisibility';
-	import { getClipboardFiles, isImageAttachment } from '$lib/noteImages';
-	import { matchTrailingEmoticon } from '$lib/emoticons';
-	import { isKeyboardField } from '$lib/appViewport';
-	import { setEditorUndo, undoChord } from '$lib/stores/actionUndo.svelte';
+	import { revealEditorField, revealEditorPoint } from '#lib/editorVisibility.js';
+	import { getClipboardFiles, isImageAttachment } from '#lib/noteImages.js';
+	import { matchTrailingEmoticon } from '#lib/emoticons.js';
+	import { isKeyboardField } from '#lib/appViewport.js';
+	import { setEditorUndo, undoChord } from '#lib/stores/actionUndo.svelte.js';
 
 	let {
 		noteId = $bindable(),

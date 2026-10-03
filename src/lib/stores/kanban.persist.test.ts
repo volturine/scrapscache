@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeBoard } from '$lib/kanban';
-import { syncStore } from '$lib/stores/sync.svelte';
-import { loadBoardsFromDevice } from '$lib/syncTombstones';
+import { normalizeBoard } from '#lib/kanban.js';
+import { syncStore } from '#lib/stores/sync.svelte.js';
+import { loadBoardsFromDevice } from '#lib/syncTombstones.js';
 import { KanbanStore } from './kanban.svelte';
 
 describe('board note filter persistence', () => {

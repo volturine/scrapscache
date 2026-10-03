@@ -1,9 +1,10 @@
 <script lang="ts">
-	import NotesFeed from '$lib/components/NotesFeed.svelte';
-	import { notesStore } from '$lib/stores/notes.svelte';
-	import { uiStore } from '$lib/stores/ui.svelte';
-	import { useEditorActions } from '$lib/editorContext';
-	import EmptyState from '$lib/components/EmptyState.svelte';
+	import { resolve } from '$app/paths';
+	import NotesFeed from '#lib/components/NotesFeed.svelte';
+	import { notesStore } from '#lib/stores/notes.svelte.js';
+	import { uiStore } from '#lib/stores/ui.svelte.js';
+	import { useEditorActions } from '#lib/editorContext.js';
+	import EmptyState from '#lib/components/EmptyState.svelte';
 	import { Tag } from '@lucide/svelte';
 	import { css } from 'styled-system/css';
 	import { hstack } from 'styled-system/patterns';
@@ -28,7 +29,7 @@
 			icon={Tag}
 			description="This label no longer exists."
 			actionLabel="Go to Notes"
-			href="/"
+			href={resolve('')}
 		/>
 	{:else if notes.length === 0}
 		<EmptyState

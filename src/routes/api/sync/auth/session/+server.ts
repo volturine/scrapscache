@@ -1,9 +1,8 @@
 import type { RequestHandler } from './$types';
-import { json } from '@sveltejs/kit';
-import { getSyncAuth } from '$lib/server/syncAuth';
-import { getSyncStore } from '$lib/server/syncStore';
-import { readJsonBody } from '$lib/server/request';
-import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '$lib/server/rateLimit';
+import { getSyncAuth } from '#lib/server/syncAuth.js';
+import { getSyncStore } from '#lib/server/syncStore.js';
+import { readJsonBody } from '#lib/server/request.js';
+import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '#lib/server/rateLimit.js';
 
 export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	const limited = await getPublicApiLimiter().check(`auth-ip:${clientAddress(getClientAddress)}`, {
@@ -15,14 +14,14 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	try {
 		body = (await readJsonBody(request, 8_192)) as typeof body;
 	} catch {
-		return json({ error: 'Invalid request' }, { status: 400 });
+		return Response.json({ error: 'Invalid request' }, { status: 400 });
 	}
 	if (
 		typeof body.accountId !== 'string' ||
 		typeof body.challengeId !== 'string' ||
 		typeof body.signature !== 'string'
 	) {
-		return json({ error: 'Authentication failed' }, { status: 401 });
+		return Response.json({ error: 'Authentication failed' }, { status: 401 });
 	}
 	const publicKey = await getSyncStore().getAuthCredential(body.accountId);
 	const session =
@@ -33,6 +32,6 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 			body.challengeId,
 			body.signature
 		));
-	if (!session) return json({ error: 'Authentication failed' }, { status: 401 });
-	return json(session);
+	if (!session) return Response.json({ error: 'Authentication failed' }, { status: 401 });
+	return Response.json(session);
 };

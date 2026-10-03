@@ -5,7 +5,7 @@
 // one-way tag: it reveals neither the sync key nor the account id.
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
-import type { StoredProfile } from '$lib/profiles';
+import type { StoredProfile } from '#lib/profiles.js';
 
 const WORKSPACE_PARAM = 'w';
 const NOTE_PARAM = 'note';

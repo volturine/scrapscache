@@ -129,6 +129,10 @@ Terminate HTTPS at your proxy (Caddy, nginx, Traefik, etc.) and proxy to
      `SCRAPSCACHE_ADDRESS_HEADER=x-forwarded-for` and `SCRAPSCACHE_XFF_DEPTH=1`, and
      configure the proxy to **replace** (not append untrusted) `X-Forwarded-For`.
    - Increase depth only for a known multi-proxy chain.
+4. Request URLs are built as `https://` plus the `Host` header. If the proxy
+   rewrites `Host` (nginx does unless told `proxy_set_header Host $host`), set
+   `SCRAPSCACHE_HOST_HEADER=x-forwarded-host` and
+   `SCRAPSCACHE_PROTOCOL_HEADER=x-forwarded-proto`, and have the proxy set both.
 
 ### Cloudflare Tunnel
 
@@ -163,9 +167,11 @@ client-address settings above so rate limits see real client IPs.
 | `TURNSTILE_SECRET`                         |                          unset | Turnstile secret used for server-side siteverify                                                                        |
 | `TURNSTILE_HOSTNAMES`                      |                          unset | Hostname(s) of the challenge origin, which siteverify must report                                                       |
 | `ADDRESS_HEADER` / `XFF_DEPTH`             |                   direct / `1` | Trusted proxy client-address configuration                                                                              |
+| `HOST_HEADER` / `PROTOCOL_HEADER`          |               `Host` / `https` | Headers a trusted proxy uses to pass the original host and scheme                                                       |
 
-Compose maps `SCRAPSCACHE_ADDRESS_HEADER` → `ADDRESS_HEADER` and
-`SCRAPSCACHE_XFF_DEPTH` → `XFF_DEPTH`.
+Compose maps `SCRAPSCACHE_ADDRESS_HEADER` → `ADDRESS_HEADER`,
+`SCRAPSCACHE_XFF_DEPTH` → `XFF_DEPTH`, `SCRAPSCACHE_HOST_HEADER` → `HOST_HEADER`
+and `SCRAPSCACHE_PROTOCOL_HEADER` → `PROTOCOL_HEADER`.
 
 Turnstile is off when all four `TURNSTILE` variables are unset. Setting any of
 them turns it on for account registration, and registration then fails closed
@@ -237,8 +243,11 @@ after each delivery (a failed push is retried a minute later). For self-hosted
 deployments, add a crontab entry:
 
 ```sh
-0 * * * * curl -sf -X POST -H "Authorization: Bearer $SCRAPSCACHE_TICK_SECRET" http://localhost:3000/api/cron/tick || echo "cron tick failed" >&2
+0 * * * * curl -sf -X POST -H "Authorization: Bearer $SCRAPSCACHE_TICK_SECRET" -H "Content-Type: application/json" http://localhost:3000/api/cron/tick || echo "cron tick failed" >&2
 ```
+
+The `Content-Type` header is required: SvelteKit refuses a `POST` without one,
+as a possible cross-site form, unless it comes from the app's own origin.
 
 `GET /api/admin/status` is the JSON companion to `/metrics`. It reports
 ciphertext bytes and decimal GB, account totals, activity in the last 1 / 7 / 30

@@ -1,8 +1,8 @@
 // The reusable Excalidraw shape library. Each workspace has its own, and each
 // item syncs as its own record: the newest version of an item wins, and a
 // delete wins over every version it saw.
-import { stableStringify } from '$lib/model/stableStringify';
-import { getSyncState } from '$lib/db/idb';
+import { stableStringify } from '#lib/model/stableStringify.js';
+import { getSyncState } from '#lib/db/idb.js';
 
 export const CANVAS_LIBRARY_STATE_KEY = 'scrapscache-canvas-library';
 export const CANVAS_LIBRARY_TOMBSTONES_KEY = 'scrapscache-canvas-library-tombstones';

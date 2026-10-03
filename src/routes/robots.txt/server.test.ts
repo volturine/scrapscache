@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({ allowIndexing: false }));
-vi.mock('$lib/server/runtimeSettings', () => ({
+vi.mock('#lib/server/runtimeSettings.js', () => ({
 	getRuntimeSettings: async () => ({ allowIndexing: mocks.allowIndexing })
 }));
 

@@ -7,8 +7,8 @@ import {
 	unregisterReminderDevice,
 	workspacePushScope
 } from './reminderWake';
-import { syncStore } from '$lib/stores/sync.svelte';
-import { createSyncIdentity, identityFromSyncKey } from '$lib/syncPairing';
+import { syncStore } from '#lib/stores/sync.svelte.js';
+import { createSyncIdentity, identityFromSyncKey } from '#lib/syncPairing.js';
 
 const ORIGIN = window.location.origin;
 

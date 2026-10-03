@@ -1,13 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { privateEnv } from '../../tests/env';
 import { isAdminAuthorized, timingSafeStringEqual, unauthorizedAdminResponse } from './adminAuth';
-
-const envMock = vi.hoisted(() => ({}) as Record<string, string | undefined>);
-
-vi.mock('$env/dynamic/private', () => ({ env: envMock }));
 
 describe('admin auth', () => {
 	afterEach(() => {
-		delete envMock.SCRAPSCACHE_ADMIN_TOKEN;
+		delete privateEnv.SCRAPSCACHE_ADMIN_TOKEN;
 	});
 
 	it('accepts only the exact bearer token', () => {
@@ -47,9 +44,9 @@ describe('admin auth', () => {
 			headers: { authorization: 'Bearer secret-token' }
 		});
 		expect(isAdminAuthorized(request)).toBe(false);
-		envMock.SCRAPSCACHE_ADMIN_TOKEN = '';
+		privateEnv.SCRAPSCACHE_ADMIN_TOKEN = '';
 		expect(isAdminAuthorized(request)).toBe(false);
-		envMock.SCRAPSCACHE_ADMIN_TOKEN = 'secret-token';
+		privateEnv.SCRAPSCACHE_ADMIN_TOKEN = 'secret-token';
 		expect(isAdminAuthorized(request)).toBe(true);
 	});
 });

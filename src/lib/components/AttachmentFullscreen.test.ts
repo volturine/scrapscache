@@ -1,7 +1,7 @@
 import { render, waitFor } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
 import AttachmentFullscreen from './AttachmentFullscreen.svelte';
-import type { NoteImage } from '$lib/types';
+import type { NoteImage } from '#lib/types.js';
 
 function pdfAttachment(partial: Partial<NoteImage> = {}): NoteImage {
 	return {

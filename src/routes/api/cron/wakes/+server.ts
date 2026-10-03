@@ -1,12 +1,11 @@
 import type { RequestHandler } from './$types';
-import { json } from '@sveltejs/kit';
-import { env } from '$env/dynamic/private';
-import { isAdminAuthorized, unauthorizedAdminResponse } from '$lib/server/adminAuth';
-import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '$lib/server/rateLimit';
-import { getDb } from '$lib/server/db';
-import { dispatchDueWakes } from '$lib/server/wakeDispatch';
-import { beginWakeDelivery, rescheduleWakeTimer } from '$lib/server/wakeTimer';
-import { ACCOUNT_ID_RE } from '$lib/server/pushWakes';
+import { SCRAPSCACHE_TICK_SECRET } from '$app/env/private';
+import { isAdminAuthorized, unauthorizedAdminResponse } from '#lib/server/adminAuth.js';
+import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '#lib/server/rateLimit.js';
+import { getDb } from '#lib/server/db.js';
+import { dispatchDueWakes } from '#lib/server/wakeDispatch.js';
+import { beginWakeDelivery, rescheduleWakeTimer } from '#lib/server/wakeTimer.js';
+import { ACCOUNT_ID_RE } from '#lib/server/pushWakes.js';
 
 /**
  * Deliver an account's due reminder wakes and set its next delivery. On Workers,
@@ -18,7 +17,7 @@ import { ACCOUNT_ID_RE } from '$lib/server/pushWakes';
  * failed attempts are throttled, per address.
  */
 export const POST: RequestHandler = async ({ request, getClientAddress }) => {
-	const secret = env.SCRAPSCACHE_TICK_SECRET;
+	const secret = SCRAPSCACHE_TICK_SECRET;
 	if (!secret || !isAdminAuthorized(request, secret)) {
 		const limited = await getPublicApiLimiter().check(
 			`wakes-denied:${clientAddress(getClientAddress)}`,
@@ -28,14 +27,14 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	}
 	const body = (await request.json().catch(() => ({}))) as { accountId?: unknown };
 	if (typeof body.accountId !== 'string' || !ACCOUNT_ID_RE.test(body.accountId)) {
-		return json({ error: 'An account id is required' }, { status: 400 });
+		return Response.json({ error: 'An account id is required' }, { status: 400 });
 	}
 	try {
 		await getDb().ready;
 		const generation = await beginWakeDelivery(body.accountId);
 		const result = await dispatchDueWakes({ accountId: body.accountId });
 		await rescheduleWakeTimer(body.accountId, result.next, generation);
-		return json(result, { headers: { 'cache-control': 'no-store' } });
+		return Response.json(result, { headers: { 'cache-control': 'no-store' } });
 	} catch (error) {
 		console.error(
 			JSON.stringify({
@@ -44,6 +43,6 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 				message: error instanceof Error ? error.message : 'Wake dispatch failed'
 			})
 		);
-		return json({ error: 'Wake dispatch failed' }, { status: 503 });
+		return Response.json({ error: 'Wake dispatch failed' }, { status: 503 });
 	}
 };

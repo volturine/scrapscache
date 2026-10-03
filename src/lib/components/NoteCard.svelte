@@ -1,12 +1,17 @@
 <script lang="ts">
 	import { css, cx } from 'styled-system/css';
 	import { badge, noteCard, noteSurface } from 'styled-system/recipes';
-	import { notesStore } from '$lib/stores/notes.svelte';
-	import type { Note } from '$lib/types';
-	import { activateOnKeyboard, formatReminder, isReminderOverdue, noteActivity } from '$lib/utils';
-	import { appClock } from '$lib/appClock.svelte';
-	import { cardSwipeStyle, createCardSwipe } from '$lib/cardSwipe';
-	import { overflowingTable } from '$lib/tableScroll';
+	import { notesStore } from '#lib/stores/notes.svelte.js';
+	import type { Note } from '#lib/types.js';
+	import {
+		activateOnKeyboard,
+		formatReminder,
+		isReminderOverdue,
+		noteActivity
+	} from '#lib/utils.js';
+	import { appClock } from '#lib/appClock.svelte.js';
+	import { cardSwipeStyle, createCardSwipe } from '#lib/cardSwipe.js';
+	import { overflowingTable } from '#lib/tableScroll.js';
 	import NoteBodyDisplay from './NoteBodyDisplay.svelte';
 	import NoteQuickActions from './NoteQuickActions.svelte';
 	import ReminderLabel from './ReminderLabel.svelte';

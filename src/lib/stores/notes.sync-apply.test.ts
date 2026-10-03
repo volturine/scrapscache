@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('$lib/imageThumb', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('$lib/imageThumb')>();
+vi.mock('#lib/imageThumb.js', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('#lib/imageThumb.js')>();
 	return { ...actual, makeImageThumbDataUrl: vi.fn(async () => null) };
 });
 
-import { createSyncIdentity, encryptSyncPayload } from '$lib/syncPairing';
-import { syncControlKeys } from '$lib/syncEngine';
+import { createSyncIdentity, encryptSyncPayload } from '#lib/syncPairing.js';
+import { syncControlKeys } from '#lib/syncEngine.js';
 import {
 	clearAllLabels,
 	clearAllNotes,
@@ -20,16 +20,16 @@ import {
 	hydrateNoteAttachments,
 	putNote,
 	setSyncState
-} from '$lib/db/idb';
-import * as idb from '$lib/db/idb';
+} from '#lib/db/idb.js';
+import * as idb from '#lib/db/idb.js';
 import { openDB } from 'idb';
-import { loadBoardsFromDevice } from '$lib/syncTombstones';
-import * as syncTombstones from '$lib/syncTombstones';
-import { writeNotesMirror } from '$lib/noteStorage';
+import { loadBoardsFromDevice } from '#lib/syncTombstones.js';
+import * as syncTombstones from '#lib/syncTombstones.js';
+import { writeNotesMirror } from '#lib/noteStorage.js';
 import { notesStore } from './notes.svelte';
 import { syncStore } from './sync.svelte';
-import { syncSnapshot } from '$lib/syncRecords';
-import type { Note } from '$lib/types';
+import { syncSnapshot } from '#lib/syncRecords.js';
+import type { Note } from '#lib/types.js';
 import { TEST_WORKSPACE } from '../../tests/workspace';
 
 function remoteNote(id = 'note-1'): Note {
@@ -85,7 +85,7 @@ describe('notes store sync apply', () => {
 			.spyOn(syncStore, 'sync')
 			.mockImplementation(async (local, _indicate, pullOnly, apply) => {
 				if (pullOnly) {
-					await apply!(remote, TEST_WORKSPACE);
+					await apply!(remote, TEST_WORKSPACE, { readEnvelopes: remote.notes.length });
 					return { success: true, snapshot: remote };
 				}
 				const { notes, tombstones } = local;
@@ -546,6 +546,102 @@ describe('notes store sync apply', () => {
 		expect(await notesStore.replaceWithCloudManual()).toBe(true);
 		expect(notesStore.notes.map((item) => item.id)).toEqual(['cloud-1']);
 		expect((await getAllNotesMetadata(TEST_WORKSPACE)).map(({ id }) => id)).toEqual(['cloud-1']);
+	});
+
+	/** A relay holding exactly these records, answering a pull from the start in one page. */
+	function relayWith(
+		account: ReturnType<typeof createSyncIdentity>,
+		records: { slot: string; payload: unknown; syncKey?: string }[]
+	) {
+		vi.spyOn(
+			syncStore as unknown as {
+				sendSyncRequest(
+					path: string,
+					payload: string
+				): Promise<{ success: boolean; data?: Record<string, unknown>; error?: string }>;
+			},
+			'sendSyncRequest'
+		).mockImplementation(async (_path, payload) => {
+			const request = JSON.parse(payload) as { cursor: number };
+			return {
+				success: true,
+				data: {
+					cursor: records.length,
+					envelopes:
+						request.cursor > 0
+							? []
+							: records.map((record, index) => ({
+									seq: index + 1,
+									id: `id-${index}`,
+									slot: record.slot,
+									ciphertext: encryptSyncPayload(
+										record.syncKey ?? account.syncKey,
+										record.payload,
+										record.slot
+									)
+								})),
+					conflicts: [],
+					hasMore: false,
+					reset: false,
+					writesAccepted: true,
+					usage: {
+						ciphertextBytes: 20 * records.length,
+						storageBytes: 532 * records.length,
+						envelopeCount: records.length,
+						maxBytes: 1000_000
+					}
+				}
+			};
+		});
+	}
+
+	it('replace-with-cloud accepts a workspace that has no notes yet', async () => {
+		// Every synced workspace uploads its name, so a new one is never without envelopes.
+		const account = createSyncIdentity();
+		syncStore.account = account;
+		const local = remoteNote('local-only');
+		await putNote(TEST_WORKSPACE, local);
+		notesStore.notes = [local];
+		relayWith(account, [
+			{ slot: 'b'.repeat(64), payload: { kind: 'profile-meta', value: { name: 'Sunny Marten' } } }
+		]);
+
+		expect(await notesStore.replaceWithCloudManual()).toBe(true);
+		expect(syncStore.lastError).toBeNull();
+		expect(notesStore.notes).toEqual([]);
+	});
+
+	it('replace-with-cloud accepts a workspace whose notes were all deleted', async () => {
+		const account = createSyncIdentity();
+		syncStore.account = account;
+		notesStore.notes = [];
+		relayWith(account, [
+			{ slot: 'c'.repeat(64), payload: { kind: 'note-tombstone', id: 'gone', deletedAt: 5 } }
+		]);
+
+		expect(await notesStore.replaceWithCloudManual()).toBe(true);
+		expect(syncStore.lastError).toBeNull();
+		expect(notesStore.notes).toEqual([]);
+	});
+
+	it('replace-with-cloud keeps local notes when nothing the account holds could be read', async () => {
+		const account = createSyncIdentity();
+		syncStore.account = account;
+		const local = remoteNote('local-only');
+		await putNote(TEST_WORKSPACE, local);
+		notesStore.notes = [local];
+		const stranger = createSyncIdentity();
+		relayWith(account, [
+			{
+				slot: 'd'.repeat(64),
+				payload: { kind: 'note', value: remoteNote('foreign') },
+				syncKey: stranger.syncKey
+			}
+		]);
+
+		expect(await notesStore.replaceWithCloudManual()).toBe(false);
+		expect(notesStore.notes.map(({ id }) => id)).toEqual(['local-only']);
+		expect((await getAllNotesMetadata(TEST_WORKSPACE)).map(({ id }) => id)).toEqual(['local-only']);
 	});
 
 	it('serializes replacement with normal sync before local notes can upload', async () => {

@@ -5,7 +5,7 @@ import NotesHomeView from './NotesHomeView.svelte';
 const startNewNote = vi.fn();
 const openNote = vi.fn();
 
-vi.mock('$lib/editorContext', () => ({
+vi.mock('#lib/editorContext.js', () => ({
 	useEditorActions: () => ({
 		startNewNote,
 		openNote,

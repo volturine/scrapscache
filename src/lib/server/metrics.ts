@@ -1,11 +1,11 @@
-import type { HttpSample, MetricsSnapshot, ProcessActivity } from '$lib/server/metricsRender';
+import type { HttpSample, MetricsSnapshot, ProcessActivity } from '#lib/server/metricsRender.js';
 
 /** The self-hosted store does not time its phases; only the Workers relay
  * reports them, and that build swaps in its own metrics module. */
 export function recordSyncPhases(_phases: Record<string, number>): void {}
 
-export { renderMetrics } from '$lib/server/metricsRender';
-export type { ProcessActivity, MetricsSnapshot } from '$lib/server/metricsRender';
+export { renderMetrics } from '#lib/server/metricsRender.js';
+export type { ProcessActivity, MetricsSnapshot } from '#lib/server/metricsRender.js';
 
 /** One Node process serves every request, so in-memory counters are the whole
  * story here. The Workers build swaps this module for one that keeps hourly

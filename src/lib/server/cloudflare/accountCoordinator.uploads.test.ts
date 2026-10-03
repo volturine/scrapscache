@@ -9,7 +9,7 @@ import {
 	SOCKET_PONG,
 	SOCKET_SESSION_EXPIRED
 } from '../../../../cf/accountCoordinator';
-import { MAX_CLIENT_SYNC_MUTATIONS_PER_REQUEST } from '$lib/syncLimits';
+import { MAX_CLIENT_SYNC_MUTATIONS_PER_REQUEST } from '#lib/syncLimits.js';
 
 const ACCOUNT = 'account-abcdefghij';
 const SLOT = 'a'.repeat(64);
@@ -621,7 +621,32 @@ describe('change sockets', () => {
 		const cursor = ((await (await upload('writer')).json()) as { cursor: number }).cursor;
 		expect(writer.sent).toEqual([]);
 		expect(reader.sent).toEqual([JSON.stringify({ seq: cursor })]);
+		// Its client reconnects with a fresh session; without the signal it would not
+		// know this change happened until something else made it sync.
+		expect(stale.sent).toEqual([JSON.stringify({ seq: cursor })]);
 		expect(stale.closed?.code).toBe(SOCKET_SESSION_EXPIRED);
+	});
+
+	it('closes the uploader’s expired session without signalling it', async () => {
+		await connect('writer');
+		const [writer] = sockets;
+		(writer.attachment as { expiresAt: number }).expiresAt = Date.now() - 1;
+
+		await upload('writer');
+		expect(writer.sent).toEqual([]);
+		expect(writer.closed?.code).toBe(SOCKET_SESSION_EXPIRED);
+	});
+
+	it('still closes an expired session that can no longer take the signal', async () => {
+		await connect('reader');
+		const [reader] = sockets;
+		(reader.attachment as { expiresAt: number }).expiresAt = Date.now() - 1;
+		reader.send = () => {
+			throw new Error('Socket is closing');
+		};
+
+		await upload('writer');
+		expect(reader.closed?.code).toBe(SOCKET_SESSION_EXPIRED);
 	});
 
 	it('closes every socket when the account is deleted', async () => {
@@ -763,5 +788,52 @@ describe('when storage fails', () => {
 		});
 		expect(String(logged.mock.calls[0][0])).not.toContain(ACCOUNT);
 		vi.restoreAllMocks();
+	});
+});
+
+describe('writes that change nothing', () => {
+	const accepted = async (response: Promise<Response>) =>
+		(await (await response).json()) as {
+			writesAccepted: boolean;
+			conflicts: unknown[];
+			cursor: number;
+		};
+
+	// A client that is told these were refused finds no conflict to merge and nothing to
+	// download, counts the round as stalled, and stays stuck while its plan never changes.
+	it('accepts an upload the account already holds', async () => {
+		const first = await accepted(sync([{ id: 'held', slot: SLOT, ciphertext: 'bytes' }]));
+		const again = await accepted(
+			sync([{ id: 'held', slot: SLOT, ciphertext: 'bytes' }], 100_000_000, first.cursor)
+		);
+		expect(first.writesAccepted).toBe(true);
+		expect(again).toMatchObject({ writesAccepted: true, conflicts: [] });
+	});
+
+	it('accepts deleting a slot that is already gone, or never existed', async () => {
+		const stored = await accepted(sync([{ id: 'gone', slot: SLOT, ciphertext: 'bytes' }]));
+		const deleted = await accepted(
+			sync([], 100_000_000, stored.cursor, [{ id: 'gone', slot: SLOT }])
+		);
+		const repeated = await accepted(
+			sync([], 100_000_000, deleted.cursor, [{ id: 'gone', slot: SLOT }])
+		);
+		const unknown = await accepted(
+			sync([], 100_000_000, repeated.cursor, [{ id: 'never', slot: 'b'.repeat(64) }])
+		);
+		expect([deleted, repeated, unknown].map((round) => round.writesAccepted)).toEqual([
+			true,
+			true,
+			true
+		]);
+	});
+
+	it('still refuses a write that conflicts with a newer version', async () => {
+		const first = await accepted(sync([{ id: 'one', slot: SLOT, ciphertext: 'one' }]));
+		const stale = await accepted(
+			sync([{ id: 'two', slot: SLOT, ciphertext: 'two' }], 100_000_000, first.cursor)
+		);
+		expect(stale).toMatchObject({ writesAccepted: false });
+		expect(stale.conflicts).toHaveLength(1);
 	});
 });

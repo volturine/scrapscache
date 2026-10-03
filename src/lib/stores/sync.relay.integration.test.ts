@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { testDb, cleanupTestDbs } from '$lib/server/testDb';
-import { SyncQuotaExceededError, SyncStore as RelayStore } from '$lib/server/syncStore';
-import { createSyncIdentity, decryptSyncPayload, type SyncIdentity } from '$lib/syncPairing';
+import { testDb, cleanupTestDbs } from '#lib/server/testDb.js';
+import { SyncQuotaExceededError, SyncStore as RelayStore } from '#lib/server/syncStore.js';
+import { createSyncIdentity, decryptSyncPayload, type SyncIdentity } from '#lib/syncPairing.js';
 import {
 	closeDeviceDatabase,
 	dropDatabase,
@@ -10,15 +10,15 @@ import {
 	markSyncOutbox,
 	putNote,
 	resolveDbName
-} from '$lib/db/idb';
+} from '#lib/db/idb.js';
 import { SyncStore } from './sync.svelte';
-import { syncSnapshot, type SyncSnapshot } from '$lib/syncRecords';
-import type { Note, NoteImage } from '$lib/types';
-import { sha256 } from '$lib/syncHash';
-import type { CanvasLibraryEntry } from '$lib/canvasLibrary';
+import { syncSnapshot, type SyncSnapshot } from '#lib/syncRecords.js';
+import type { Note, NoteImage } from '#lib/types.js';
+import { sha256 } from '#lib/syncHash.js';
+import type { CanvasLibraryEntry } from '#lib/canvasLibrary.js';
 import { seedTestKeyring, TEST_WORKSPACE } from '../../tests/workspace';
 import { openDB } from 'idb';
-import { LEGACY_DB_NAME, moveLegacyWorkspace } from '$lib/workspaceMove';
+import { LEGACY_DB_NAME, moveLegacyWorkspace } from '#lib/workspaceMove.js';
 
 afterEach(() => cleanupTestDbs());
 

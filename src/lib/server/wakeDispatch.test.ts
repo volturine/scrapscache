@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanupTestDbs, testDb } from '$lib/server/testDb';
-import { SyncStore, WAKE_CLAIM_LEASE_MS, type DueWake } from '$lib/server/syncStore';
+import { cleanupTestDbs, testDb } from '#lib/server/testDb.js';
+import { SyncStore, WAKE_CLAIM_LEASE_MS, type DueWake } from '#lib/server/syncStore.js';
 import { dispatchDueWakes } from './wakeDispatch';
 
-vi.mock('$lib/server/metrics', async (original) => ({
-	...(await original<typeof import('$lib/server/metrics')>()),
+vi.mock('#lib/server/metrics.js', async (original) => ({
+	...(await original<typeof import('#lib/server/metrics.js')>()),
 	recordReminderWake: vi.fn()
 }));
 
@@ -76,6 +76,59 @@ describe('delivering reminder wakes', () => {
 
 		expect(result).toMatchObject({ failed: 1, next: 2_000 + WAKE_CLAIM_LEASE_MS });
 	});
+	it('defers a send that throws, without failing the rest of the dispatch', async () => {
+		const store = new SyncStore(testDb());
+		await account(store, 'account-aaaaaaaaaaaa', [wake(1, 1_000)]);
+		await account(store, 'account-bbbbbbbbbbbb', [wake(2, 1_000)]);
+
+		const result = await dispatchDueWakes({
+			store,
+			now: () => 2_000,
+			send: async (device) => {
+				if (device.accountId === 'account-aaaaaaaaaaaa') throw new Error('push service down');
+				return 'sent';
+			}
+		});
+
+		expect(result).toMatchObject({ sent: 1, failed: 1, gone: 0 });
+	});
+
+	it("fails with the store's own error when a delivery cannot be recorded", async () => {
+		const store = new SyncStore(testDb());
+		await account(store, 'account-aaaaaaaaaaaa', [wake(1, 1_000)]);
+		vi.spyOn(store, 'markWakeDelivered').mockRejectedValue(new Error('SQLITE_BUSY: locked'));
+
+		await expect(
+			dispatchDueWakes({ store, now: () => 2_000, send: async () => 'sent' })
+		).rejects.toThrow('SQLITE_BUSY: locked');
+	});
+
+	it('keeps other sends going while one push service is slow', async () => {
+		const store = new SyncStore(testDb());
+		const ids = Array.from(
+			{ length: 12 },
+			(_, index) => `account-${String(index).padStart(12, 'a')}`
+		);
+		for (const [index, id] of ids.entries()) await account(store, id, [wake(index, 1_000)]);
+		let release!: () => void;
+		const slow = new Promise<void>((resolve) => (release = resolve));
+		const started: string[] = [];
+
+		const dispatch = dispatchDueWakes({
+			store,
+			now: () => 2_000,
+			send: async (device) => {
+				started.push(device.accountId);
+				if (started.length === 1) await slow;
+				return 'sent';
+			}
+		});
+		await vi.waitFor(() => expect(started).toHaveLength(12));
+		release();
+
+		expect(await dispatch).toMatchObject({ sent: 12, failed: 0 });
+	});
+
 	it('backs off a device whose push keeps failing, up to half an hour', async () => {
 		const store = new SyncStore(testDb());
 		await account(store, 'account-aaaaaaaaaaaa', [wake(1, 1_000)]);

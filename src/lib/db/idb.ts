@@ -5,11 +5,11 @@
 // and caches link previews.
 
 import { openDB, type IDBPDatabase, type IDBPTransaction } from 'idb';
-import { copyImage, copyLabel, copyLinkPreview, copyNote } from '$lib/model';
-import type { Label, LinkPreview, Note, NoteImage } from '$lib/types';
-import type { KanbanBoard } from '$lib/kanban';
-import { blobToDataUrl, dataUrlToBlob } from '$lib/imageBlob';
-import { workspaceLinkTag } from '$lib/noteLinks';
+import { copyImage, copyLabel, copyLinkPreview, copyNote } from '#lib/model/index.js';
+import type { Label, LinkPreview, Note, NoteImage } from '#lib/types.js';
+import type { KanbanBoard } from '#lib/kanban.js';
+import { blobToDataUrl, dataUrlToBlob } from '#lib/imageBlob.js';
+import { workspaceLinkTag } from '#lib/noteLinks.js';
 
 /**
  * v7 stores workspace state under plain keys. Earlier versions wrote some of it

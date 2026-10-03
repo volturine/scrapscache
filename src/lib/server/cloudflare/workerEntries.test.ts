@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 /**
  * workerd treats every named export of a Worker's entry module as an entrypoint,
@@ -23,5 +23,24 @@ describe('Worker entry modules', () => {
 		const source = readFileSync('cf/app.ts', 'utf8');
 		const named = [...source.matchAll(/^export\s+(?!default\b)(.*)$/gm)].map((match) => match[1]);
 		expect(named).toEqual(["{ AccountCoordinator } from './accountCoordinator';"]);
+	});
+
+	it('sends the maintenance tick as JSON, which SvelteKit does not treat as a form', async () => {
+		const { default: cron } = (await import('../../../../cf/cron')) as {
+			default: { scheduled(controller: unknown, env: unknown, context: unknown): void };
+		};
+		const fetch = vi.fn(async (_request: Request) => new Response(null, { status: 200 }));
+		const pending: Promise<unknown>[] = [];
+		cron.scheduled(
+			{},
+			{ APP: { fetch }, SCRAPSCACHE_TICK_SECRET: 'secret' },
+			{ waitUntil: (promise: Promise<unknown>) => pending.push(promise) }
+		);
+		await Promise.all(pending);
+
+		const request = fetch.mock.calls[0][0];
+		expect(request.method).toBe('POST');
+		expect(request.headers.get('content-type')).toBe('application/json');
+		expect(request.headers.get('authorization')).toBe('Bearer secret');
 	});
 });

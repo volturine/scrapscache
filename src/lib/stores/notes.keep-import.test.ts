@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { strToU8 } from 'fflate';
-import { waitForDeviceWrites } from '$lib/db/idb';
-import { BackupImportMode } from '$lib/backup';
+import { waitForDeviceWrites } from '#lib/db/idb.js';
+import { BackupImportMode } from '#lib/backup.js';
 import { notesStore } from './notes.svelte';
 import { syncStore } from './sync.svelte';
 

@@ -1,11 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-
-const env = vi.hoisted(() => ({
-	private: {} as Record<string, string | undefined>,
-	public: {} as Record<string, string | undefined>
-}));
-vi.mock('$env/dynamic/private', () => ({ env: env.private }));
-vi.mock('$env/dynamic/public', () => ({ env: env.public }));
+import { privateEnv, publicEnv } from '../../tests/env';
 
 import { turnstileChallenge, verifyTurnstile } from './turnstile';
 
@@ -17,26 +11,26 @@ function siteverify(body: unknown, status = 200) {
 
 describe('verifyTurnstile', () => {
 	beforeEach(() => {
-		env.public.PUBLIC_TURNSTILE_ORIGIN = 'https://verify.scrapscache.com';
-		env.private.TURNSTILE_SITEKEY = 'sitekey';
-		env.private.SCRAPSCACHE_ORIGIN = 'https://scrapscache.com';
-		env.private.TURNSTILE_SECRET = 'secret';
-		env.private.TURNSTILE_HOSTNAMES = 'scrapscache.com, dev.scrapscache.com';
+		publicEnv.PUBLIC_TURNSTILE_ORIGIN = 'https://verify.scrapscache.com';
+		privateEnv.TURNSTILE_SITEKEY = 'sitekey';
+		privateEnv.SCRAPSCACHE_ORIGIN = 'https://scrapscache.com';
+		privateEnv.TURNSTILE_SECRET = 'secret';
+		privateEnv.TURNSTILE_HOSTNAMES = 'scrapscache.com, dev.scrapscache.com';
 		fetchMock.mockReset();
 		vi.stubGlobal('fetch', fetchMock);
 	});
 
 	afterEach(() => {
 		vi.unstubAllGlobals();
-		for (const key of Object.keys(env.private)) delete env.private[key];
-		for (const key of Object.keys(env.public)) delete env.public[key];
+		for (const key of Object.keys(privateEnv)) delete privateEnv[key];
+		for (const key of Object.keys(publicEnv)) delete publicEnv[key];
 	});
 
 	it('is disabled only when every setting is unset', async () => {
-		delete env.public.PUBLIC_TURNSTILE_ORIGIN;
-		delete env.private.TURNSTILE_SITEKEY;
-		delete env.private.TURNSTILE_SECRET;
-		delete env.private.TURNSTILE_HOSTNAMES;
+		delete publicEnv.PUBLIC_TURNSTILE_ORIGIN;
+		delete privateEnv.TURNSTILE_SITEKEY;
+		delete privateEnv.TURNSTILE_SECRET;
+		delete privateEnv.TURNSTILE_HOSTNAMES;
 		expect(await verifyTurnstile(undefined, 'register', '203.0.113.1')).toBe('disabled');
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
@@ -47,8 +41,8 @@ describe('verifyTurnstile', () => {
 		'TURNSTILE_SECRET',
 		'TURNSTILE_HOSTNAMES'
 	])('fails closed when %s is missing', async (missing) => {
-		delete env.public[missing];
-		delete env.private[missing];
+		delete publicEnv[missing];
+		delete privateEnv[missing];
 		expect(await verifyTurnstile('token', 'register', '203.0.113.1')).toBe('misconfigured');
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
@@ -100,7 +94,7 @@ describe('verifyTurnstile', () => {
 
 	it('fails closed when the challenge would run on the app origin itself', async () => {
 		// Turnstile's script would then share an origin with the sync keys.
-		env.public.PUBLIC_TURNSTILE_ORIGIN = 'https://scrapscache.com';
+		publicEnv.PUBLIC_TURNSTILE_ORIGIN = 'https://scrapscache.com';
 		expect(await verifyTurnstile('token', 'register', '203.0.113.1')).toBe('misconfigured');
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
@@ -108,14 +102,14 @@ describe('verifyTurnstile', () => {
 
 describe('turnstileChallenge', () => {
 	afterEach(() => {
-		for (const key of Object.keys(env.private)) delete env.private[key];
-		for (const key of Object.keys(env.public)) delete env.public[key];
+		for (const key of Object.keys(privateEnv)) delete privateEnv[key];
+		for (const key of Object.keys(publicEnv)) delete publicEnv[key];
 	});
 
 	function configure(origin: string, appOrigin = 'https://scrapscache.com') {
-		env.public.PUBLIC_TURNSTILE_ORIGIN = origin;
-		env.private.TURNSTILE_SITEKEY = 'sitekey';
-		env.private.SCRAPSCACHE_ORIGIN = appOrigin;
+		publicEnv.PUBLIC_TURNSTILE_ORIGIN = origin;
+		privateEnv.TURNSTILE_SITEKEY = 'sitekey';
+		privateEnv.SCRAPSCACHE_ORIGIN = appOrigin;
 	}
 
 	it('describes a challenge on its own origin', () => {

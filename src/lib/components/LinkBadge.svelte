@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { linkBadge } from '$panda/styles';
 	import { Globe } from '@lucide/svelte';
-	import type { LocalLinkCard } from '$lib/linkPreview';
+	import type { LocalLinkCard } from '#lib/linkPreview.js';
 
 	let { card: _card, size }: { card?: LocalLinkCard; size: 'editor' | 'display' } = $props();
 </script>

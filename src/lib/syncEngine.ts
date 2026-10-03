@@ -1,8 +1,8 @@
 // Incremental sync decisions. Upload only dirty records; never infer "unused"
 // attachments from a page that has not yet applied their parent notes.
-import type { Note } from '$lib/types';
-import { isTombstoned } from '$lib/model';
-import type { SyncRecord, SyncSnapshot } from '$lib/syncRecords';
+import type { Note } from '#lib/types.js';
+import { isTombstoned } from '#lib/model/index.js';
+import type { SyncRecord, SyncSnapshot } from '#lib/syncRecords.js';
 
 export function currentRecordKeys(snapshot: SyncSnapshot): Set<string> {
 	const keys = new Set<string>();

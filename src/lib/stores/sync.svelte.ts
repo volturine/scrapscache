@@ -1,10 +1,10 @@
 // Client-side account, sync status, and real transfer progress for full-size photo backups.
 
-import type { Note, NoteImage } from '$lib/types';
-import { mergeKanbanBoards } from '$lib/kanban';
-import { mergeCanvasLibrary } from '$lib/canvasLibrary';
-import { mergeLabelLists, mergeNoteLists, uid, withoutTombstoned } from '$lib/model';
-import { observeRelayTime } from '$lib/editContext';
+import type { Note, NoteImage } from '#lib/types.js';
+import { mergeKanbanBoards } from '#lib/kanban.js';
+import { mergeCanvasLibrary } from '#lib/canvasLibrary.js';
+import { mergeLabelLists, mergeNoteLists, uid, withoutTombstoned } from '#lib/model/index.js';
+import { observeRelayTime } from '#lib/editContext.js';
 import {
 	currentRecordKeys,
 	fingerprintMapFrom,
@@ -13,9 +13,9 @@ import {
 	referencedAttachmentIds,
 	syncRoundHasMore,
 	syncControlKeys
-} from '$lib/syncEngine';
-import { SyncEventsClient } from '$lib/syncEventsClient';
-import { withoutAttachmentsHistoryNeeds } from '$lib/attachmentRetention';
+} from '#lib/syncEngine.js';
+import { SyncEventsClient } from '#lib/syncEventsClient.js';
+import { withoutAttachmentsHistoryNeeds } from '#lib/attachmentRetention.js';
 import {
 	attachmentToImage,
 	buildSyncRecords,
@@ -26,9 +26,10 @@ import {
 	type SyncRecord,
 	type SyncRecordPayload,
 	type SyncSnapshot
-} from '$lib/syncRecords';
-import { MAX_CLIENT_SYNC_MUTATIONS_PER_REQUEST } from '$lib/syncLimits';
-import { sha256 } from '$lib/syncHash';
+} from '#lib/syncRecords.js';
+import { MAX_CLIENT_SYNC_MUTATIONS_PER_REQUEST } from '#lib/syncLimits.js';
+import { retryTransient } from '#lib/syncRetry.js';
+import { sha256 } from '#lib/syncHash.js';
 import {
 	createOneTimePairingCode,
 	createPairingRequestKey,
@@ -44,8 +45,8 @@ import {
 	encryptSyncPayload,
 	decryptSyncEnvelope,
 	randomOpaqueId
-} from '$lib/syncPairing';
-import { PairingRole, PairingState, type PairingPoll } from '$lib/pairingProtocol';
+} from '#lib/syncPairing.js';
+import { PairingRole, PairingState, type PairingPoll } from '#lib/pairingProtocol.js';
 import {
 	clearSyncOutbox,
 	commitSyncControl,
@@ -56,8 +57,8 @@ import {
 	getSyncState,
 	markSyncOutbox,
 	setRegisteredWorkspaces
-} from '$lib/db/idb';
-import { LEGACY_WORKSPACE_ID, moveLegacyWorkspace } from '$lib/workspaceMove';
+} from '#lib/db/idb.js';
+import { LEGACY_WORKSPACE_ID, moveLegacyWorkspace } from '#lib/workspaceMove.js';
 import {
 	getLastActiveProfileId,
 	isLocalWorkspace,
@@ -69,7 +70,7 @@ import {
 	saveProfile,
 	setLastActiveProfileId,
 	type StoredProfile
-} from '$lib/profiles';
+} from '#lib/profiles.js';
 
 const LS_LEGACY_ACCOUNT_KEY = 'scrapscache-sync-account';
 const LS_LEGACY_ACCOUNT_OLD = 'gkc-sync-account';
@@ -136,14 +137,21 @@ type SyncResult = {
 	status?: number;
 	/** How long a throttled or busy relay asked the client to wait before trying again. */
 	retryAfterSeconds?: number;
+	/** The relay was not reached or could not serve the request; sending it again is safe. */
+	transient?: boolean;
 };
 
 /**
  * Applies what a flight pulled. The workspace is handed over with it: a flight
  * belongs to the workspace it started in, and the window may have moved to
- * another one by the time the bytes are decrypted.
+ * another one by the time the bytes are decrypted. `readEnvelopes` counts the
+ * envelopes this flight decrypted, whatever records they held.
  */
-type ApplyPulled = (snapshot: SyncSnapshot, pid: string) => Promise<SyncSnapshot>;
+type ApplyPulled = (
+	snapshot: SyncSnapshot,
+	pid: string,
+	pulled: { readEnvelopes: number }
+) => Promise<SyncSnapshot>;
 
 function mergeTombstoneMaps(
 	local: Record<string, number>,
@@ -886,7 +894,7 @@ export class SyncStore {
 		if (cached?.updatedAt === note.updatedAt) return cached.ids;
 		try {
 			// Loaded on demand: the history client itself fetches through this store.
-			const { loadNoteHistory } = await import('$lib/historyClient');
+			const { loadNoteHistory } = await import('#lib/historyClient.js');
 			const versions = await loadNoteHistory(account, note.id);
 			const ids = new Set(
 				versions.flatMap((version) => (version.note.images ?? []).map((image) => image.id))
@@ -934,12 +942,14 @@ export class SyncStore {
 					error: error instanceof Error ? error.message : 'Authentication failed'
 				};
 			}
-			const result = await this.sendSyncRequestWithToken(
-				path,
-				payload,
-				uploadBytes,
-				indicate,
-				accessToken
+			// A delta round is idempotent: an upload the relay already stored carries
+			// the same envelope id when it is sent again, which is not a conflict.
+			const result = await retryTransient(
+				() =>
+					this.account === account
+						? this.sendSyncRequestWithToken(path, payload, uploadBytes, indicate, accessToken)
+						: Promise.resolve({ success: false, error: 'Sync was cancelled' }),
+				(response) => response.transient === true && this.account === account
 			);
 			if (result.status !== 401 || attempt === 1) return result;
 			this.invalidateSession(account.accountId, accessToken);
@@ -996,23 +1006,26 @@ export class SyncStore {
 				}
 				observeRelayTime(data.serverTime, sentAt, receivedAt);
 				if (xhr.status < 200 || xhr.status >= 300) {
-					const retryAfter = Number(xhr.getResponseHeader('retry-after'));
+					const header = xhr.getResponseHeader('retry-after');
+					const retryAfter = header === null ? NaN : Number(header);
+					const throttled =
+						(xhr.status === 429 || xhr.status === 503) &&
+						Number.isFinite(retryAfter) &&
+						retryAfter >= 0;
 					resolve({
 						success: false,
 						status: xhr.status,
 						error:
 							typeof data.error === 'string' ? data.error : `Sync request failed (${xhr.status})`,
-						...((xhr.status === 429 || xhr.status === 503) &&
-						Number.isFinite(retryAfter) &&
-						retryAfter >= 0
-							? { retryAfterSeconds: retryAfter }
-							: {})
+						...(throttled ? { retryAfterSeconds: retryAfter } : {}),
+						// A relay that asks for a wait is waited for by the sync loop instead.
+						...(!throttled && xhr.status >= 502 && xhr.status <= 504 ? { transient: true } : {})
 					});
 					return;
 				}
 				resolve({ success: true, data });
 			};
-			xhr.onerror = () => resolve({ success: false, error: 'Sync network error' });
+			xhr.onerror = () => resolve({ success: false, error: 'Sync network error', transient: true });
 			xhr.ontimeout = () => resolve({ success: false, error: 'Sync timed out' });
 			xhr.onabort = () => resolve({ success: false, error: 'Sync was cancelled' });
 			sentAt = Date.now();
@@ -1099,6 +1112,7 @@ export class SyncStore {
 			const acknowledgedOutbox = new Set<string>();
 			const internallyMarkedOutbox = new Map<string, number>();
 			let poisonCount = 0;
+			let readEnvelopes = 0;
 			let stalledWrites = 0;
 			/** Records the relay still holds in the pre-slot-binding format. Rewriting
 			 * them is how that format leaves an account, and the only thing that can
@@ -1393,6 +1407,7 @@ export class SyncStore {
 						continue;
 					}
 					decodedAny = true;
+					readEnvelopes += 1;
 					const ordered = [
 						...decodedRecords.filter((record) => record.kind === 'attachment'),
 						...decodedRecords.filter((record) => record.kind !== 'attachment')
@@ -1439,7 +1454,7 @@ export class SyncStore {
 					applyPulled
 				) {
 					if (syncCancelled()) return { success: false, error: 'Sync was cancelled' };
-					merged = await applyPulled(merged, pid);
+					merged = await applyPulled(merged, pid, { readEnvelopes });
 					for (const note of merged.notes) {
 						for (const image of note.images ?? []) {
 							if (image.dataUrl?.length) attachments.set(image.id, image);
@@ -1631,7 +1646,8 @@ export class SyncStore {
 		try {
 			const response = await this.authorizedFetch(
 				'/api/sync/account',
-				{ method: 'DELETE' },
+				// Typed, so SvelteKit's form-CSRF check never depends on how a proxy names the host.
+				{ method: 'DELETE', headers: { 'content-type': 'application/json' } },
 				identityFromSyncKey(profile.syncKey)
 			);
 			if (!response.ok) {

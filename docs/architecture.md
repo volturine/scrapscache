@@ -250,5 +250,5 @@ the runtime answers the client's 30-second heartbeat without waking it, and the
 object wakes only for uploads, which it serves anyway. This keeps live sync
 inside the Workers free plan's daily Durable Object allowance, which an
 always-awake stream per open window would use up. The browser picks the
-transport at build time (`$lib/syncEventsTransport`). A window whose tab is
+transport at build time (`#lib/syncEventsTransport.js`). A window whose tab is
 hidden disconnects and catches up when shown again.

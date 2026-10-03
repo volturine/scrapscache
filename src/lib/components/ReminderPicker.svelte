@@ -6,10 +6,10 @@
 	import WheelPicker from './WheelPicker.svelte';
 	import DatePickerViews from './DatePickerViews.svelte';
 	import { AlarmClock, ChevronLeft, ChevronRight } from '@lucide/svelte';
-	import { requestReminderPermission } from '$lib/reminderNotify';
-	import { registerAllReminderDevices } from '$lib/reminderWake';
-	import { formatReminderCountdown } from '$lib/utils';
-	import { PHONE_MEDIA } from '$lib/appViewport';
+	import { requestReminderPermission } from '#lib/reminderNotify.js';
+	import { registerAllReminderDevices } from '#lib/reminderWake.js';
+	import { formatReminderCountdown } from '#lib/utils.js';
+	import { PHONE_MEDIA } from '#lib/appViewport.js';
 	import { css, cx } from 'styled-system/css';
 	import { badge, button, dialog, iconButton } from 'styled-system/recipes';
 	import { hstack, flex } from 'styled-system/patterns';

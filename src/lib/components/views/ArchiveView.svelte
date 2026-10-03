@@ -1,9 +1,9 @@
 <script lang="ts">
-	import NotesFeed from '$lib/components/NotesFeed.svelte';
-	import SectionHeader from '$lib/components/SectionHeader.svelte';
-	import { notesStore } from '$lib/stores/notes.svelte';
-	import { useEditorActions } from '$lib/editorContext';
-	import EmptyState from '$lib/components/EmptyState.svelte';
+	import NotesFeed from '#lib/components/NotesFeed.svelte';
+	import SectionHeader from '#lib/components/SectionHeader.svelte';
+	import { notesStore } from '#lib/stores/notes.svelte.js';
+	import { useEditorActions } from '#lib/editorContext.js';
+	import EmptyState from '#lib/components/EmptyState.svelte';
 	import { Archive } from '@lucide/svelte';
 	import { viewPage } from '$panda/styles';
 

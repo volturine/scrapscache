@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createSyncIdentity, encryptSyncPayload } from '$lib/syncPairing';
-import { sha256 } from '$lib/syncHash';
-import { syncStore } from '$lib/stores/sync.svelte';
+import { createSyncIdentity, encryptSyncPayload } from '#lib/syncPairing.js';
+import { sha256 } from '#lib/syncHash.js';
+import { syncStore } from '#lib/stores/sync.svelte.js';
 import { hydrateHistoryNote, loadNoteHistory } from './historyClient';
 
 afterEach(() => vi.restoreAllMocks());

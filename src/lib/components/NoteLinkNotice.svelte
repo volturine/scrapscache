@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Dialog } from '@ark-ui/svelte/dialog';
-	import { portalToAppOverlay } from '$lib/appViewport';
+	import { portalToAppOverlay } from '#lib/appViewport.js';
 	import { button, dialog } from 'styled-system/recipes';
 
 	let { message, onClose }: { message: string; onClose: () => void } = $props();

@@ -2,16 +2,18 @@
 import 'vitest';
 import 'fake-indexeddb/auto';
 import { afterEach, vi } from 'vitest';
-import { closeDeviceDatabase, DEVICE_DB_NAME, dropDatabase } from '$lib/db/idb';
-import { resetTombstoneCaches } from '$lib/syncTombstones';
-import { installHorizontalWheel } from '$lib/horizontalWheel';
+import { closeDeviceDatabase, DEVICE_DB_NAME, dropDatabase } from '#lib/db/idb.js';
+import { resetTombstoneCaches } from '#lib/syncTombstones.js';
+import { installHorizontalWheel } from '#lib/horizontalWheel.js';
+import { resetEnv } from './env';
 import { seedTestKeyring } from './workspace';
 
 // Stores boot on the keyring's workspace; every test file starts on the same one.
 seedTestKeyring();
 
-// Browser-side $env/dynamic/public reads globals that only a SvelteKit page defines.
-vi.mock('$env/dynamic/public', () => ({ env: {} }));
+// `$app/env/*` are generated per app; tests set values through `./env`.
+vi.mock('$app/env/private', async () => (await import('./env')).envModule(false));
+vi.mock('$app/env/public', async () => (await import('./env')).envModule(true));
 
 // jsdom does not implement viewport scrolling; component navigation still calls it.
 if (typeof window !== 'undefined') window.scrollTo = vi.fn();
@@ -94,6 +96,7 @@ if (typeof window !== 'undefined' && !window.matchMedia) {
 // case to trip over.
 afterEach(async () => {
 	vi.useRealTimers();
+	resetEnv();
 	resetTombstoneCaches();
 	if (typeof sessionStorage !== 'undefined') sessionStorage.clear();
 	await closeDeviceDatabase();

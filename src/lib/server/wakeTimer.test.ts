@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const dispatch = vi.hoisted(() => vi.fn());
-vi.mock('$lib/server/wakeDispatch', () => ({ dispatchDueWakes: dispatch }));
+vi.mock('#lib/server/wakeDispatch.js', () => ({ dispatchDueWakes: dispatch }));
 
 import { armWakeTimer, rescheduleWakeTimer, resetWakeTimer, startWakeTimer } from './wakeTimer';
 

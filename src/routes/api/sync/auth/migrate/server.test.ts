@@ -8,13 +8,13 @@ const mocks = vi.hoisted(() => ({
 	rateLimit: vi.fn((): { allowed: boolean; retryAfterSeconds?: number } => ({ allowed: true }))
 }));
 
-vi.mock('$lib/server/syncStore', () => ({
+vi.mock('#lib/server/syncStore.js', () => ({
 	getSyncStore: () => ({
 		getAuthCredential: mocks.credential,
 		replaceAuthCredential: mocks.replace
 	})
 }));
-vi.mock('$lib/server/syncAuth', () => ({
+vi.mock('#lib/server/syncAuth.js', () => ({
 	getSyncAuth: () => ({
 		createSyncSession: () => ({ accessToken: 'token', expiresAt: 123 })
 	}),
@@ -22,7 +22,7 @@ vi.mock('$lib/server/syncAuth', () => ({
 	sameLegacySyncSecret: mocks.sameSecret,
 	verifySyncMigration: mocks.verifySignature
 }));
-vi.mock('$lib/server/rateLimit', () => ({
+vi.mock('#lib/server/rateLimit.js', () => ({
 	clientAddress: () => '127.0.0.1',
 	getPublicApiLimiter: () => ({ check: mocks.rateLimit }),
 	rateLimitResponse: () => new Response(null, { status: 429 })

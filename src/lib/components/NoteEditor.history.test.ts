@@ -1,18 +1,18 @@
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NoteHistoryEntry } from '$lib/historyClient';
-import { notesStore } from '$lib/stores/notes.svelte';
-import { syncStore } from '$lib/stores/sync.svelte';
-import type { SyncNote } from '$lib/syncRecords';
-import type { Note } from '$lib/types';
+import type { NoteHistoryEntry } from '#lib/historyClient.js';
+import { notesStore } from '#lib/stores/notes.svelte.js';
+import { syncStore } from '#lib/stores/sync.svelte.js';
+import type { SyncNote } from '#lib/syncRecords.js';
+import type { Note } from '#lib/types.js';
 import NoteEditor from './NoteEditor.svelte';
 
 const history = vi.hoisted(() => ({
 	loadNoteHistory: vi.fn(),
 	hydrateHistoryNote: vi.fn()
 }));
-vi.mock('$lib/historyClient', () => history);
+vi.mock('#lib/historyClient.js', () => history);
 
 function note(partial: Partial<Note> = {}): Note {
 	return {

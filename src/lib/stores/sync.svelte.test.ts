@@ -1,6 +1,6 @@
-import { saveProfile } from '$lib/profiles';
+import { saveProfile } from '#lib/profiles.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Note, NoteImage } from '$lib/types';
+import type { Note, NoteImage } from '#lib/types.js';
 import {
 	createSyncIdentity,
 	decryptSyncEnvelope,
@@ -8,14 +8,14 @@ import {
 	encryptSyncPayload,
 	legacyAuthSecret,
 	type SyncIdentity
-} from '$lib/syncPairing';
-import { syncControlKeys } from '$lib/syncEngine';
-import { sha256 } from '$lib/syncHash';
-import * as idb from '$lib/db/idb';
-import { MAX_CLIENT_SYNC_MUTATIONS_PER_REQUEST } from '$lib/syncLimits';
-import { buildSyncRecords } from '$lib/syncRecords';
+} from '#lib/syncPairing.js';
+import { syncControlKeys } from '#lib/syncEngine.js';
+import { sha256 } from '#lib/syncHash.js';
+import * as idb from '#lib/db/idb.js';
+import { MAX_CLIENT_SYNC_MUTATIONS_PER_REQUEST } from '#lib/syncLimits.js';
+import { buildSyncRecords } from '#lib/syncRecords.js';
 import { SyncStore } from './sync.svelte';
-import { syncSnapshot, type SyncSnapshot } from '$lib/syncRecords';
+import { syncSnapshot, type SyncSnapshot } from '#lib/syncRecords.js';
 import { legacySyncEnvelope } from '../../tests/legacyEnvelope';
 import { seedTestKeyring, TEST_WORKSPACE } from '../../tests/workspace';
 

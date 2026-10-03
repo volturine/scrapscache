@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Label, Note } from '$lib/types';
+import type { Label, Note } from '#lib/types.js';
 import { readNotesMirror, writeNotesMirror, clearNotesMirror } from './noteStorage';
 import { readProfiles } from './profiles';
 import {
@@ -14,7 +14,7 @@ import {
 	putNote,
 	addFiredReminderKeys,
 	writeSyncStateWithOutbox
-} from '$lib/db/idb';
+} from '#lib/db/idb.js';
 import {
 	buildProfileNotesExport,
 	getLastActiveProfileId,

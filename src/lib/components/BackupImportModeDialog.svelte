@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Dialog } from '@ark-ui/svelte/dialog';
-	import { portalToAppOverlay } from '$lib/appViewport';
-	import type { BackupImportMode } from '$lib/backup';
+	import { portalToAppOverlay } from '#lib/appViewport.js';
+	import type { BackupImportMode } from '#lib/backup.js';
 	import { button, dialog } from 'styled-system/recipes';
 	import ImportModeChoices from './ImportModeChoices.svelte';
 

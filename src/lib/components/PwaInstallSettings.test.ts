@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import PwaInstallSettings from './PwaInstallSettingsMenuHost.svelte';
-import { pwaInstallStore, type BeforeInstallPromptEvent } from '$lib/stores/pwaInstall.svelte';
+import { pwaInstallStore, type BeforeInstallPromptEvent } from '#lib/stores/pwaInstall.svelte.js';
 
 function resetStore() {
 	pwaInstallStore.deferredPrompt = null;

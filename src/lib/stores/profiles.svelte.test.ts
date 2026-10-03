@@ -8,19 +8,19 @@ import {
 	isProfileReleased,
 	putNote,
 	resolveDbName
-} from '$lib/db/idb';
-import { readNotesMirror, writeNotesMirror } from '$lib/noteStorage';
-import { readProfiles, saveProfile, type StoredProfile } from '$lib/profiles';
-import { createSyncIdentity } from '$lib/syncPairing';
-import type { Note } from '$lib/types';
-import { unregisterReminderDevice } from '$lib/reminderWake';
+} from '#lib/db/idb.js';
+import { readNotesMirror, writeNotesMirror } from '#lib/noteStorage.js';
+import { readProfiles, saveProfile, type StoredProfile } from '#lib/profiles.js';
+import { createSyncIdentity } from '#lib/syncPairing.js';
+import type { Note } from '#lib/types.js';
+import { unregisterReminderDevice } from '#lib/reminderWake.js';
 import { ProfileCoordinator, profileCoordinator } from './profiles.svelte';
 import { notesStore, SYNC_LOCK } from './notes.svelte';
 import { PROFILE_META_KEY, syncStore } from './sync.svelte';
 import { TEST_WORKSPACE } from '../../tests/workspace';
 
-vi.mock('$lib/reminderWake', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('$lib/reminderWake')>();
+vi.mock('#lib/reminderWake.js', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('#lib/reminderWake.js')>();
 	return { ...actual, unregisterReminderDevice: vi.fn().mockResolvedValue(undefined) };
 });
 
@@ -221,7 +221,7 @@ describe('workspace handovers', () => {
 		expect(result).toEqual({ success: true });
 		expect(request).toHaveBeenCalledWith(
 			'/api/sync/account',
-			{ method: 'DELETE' },
+			{ method: 'DELETE', headers: { 'content-type': 'application/json' } },
 			expect.objectContaining({ syncKey: active.syncKey })
 		);
 		expect(syncStore.profiles).toEqual([{ ...active, syncKey: '' }]);

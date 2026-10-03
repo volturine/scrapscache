@@ -2,13 +2,13 @@
 // The relay keeps one sealed row per note: what is known of that note's latest
 // receipts. A new upload replaces the row, so storage follows the number of notes
 // with reminders, not how often they fire.
-import { sha256 } from '$lib/syncHash';
-import { encryptSyncPayload, decryptSyncEnvelope } from '$lib/syncPairing';
+import { sha256 } from '#lib/syncHash.js';
+import { encryptSyncPayload, decryptSyncEnvelope } from '#lib/syncPairing.js';
 import {
 	isReminderHistoryEntry,
 	RECEIPTS_PER_NOTE,
 	type ReminderHistoryEntry
-} from '$lib/reminderHistory';
+} from '#lib/reminderHistory.js';
 
 export const REMINDER_CHANNEL_KEY = 'scrapscache-reminder-channel';
 /** Notes per upload and per downloaded page. */

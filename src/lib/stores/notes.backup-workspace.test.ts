@@ -1,15 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { strToU8 } from 'fflate';
-import { getAllNotesMetadata, waitForDeviceWrites } from '$lib/db/idb';
-import { BackupImportMode, type ScrapsCacheBackup } from '$lib/backup';
-import { createSyncIdentity } from '$lib/syncPairing';
+import { getAllNotesMetadata, waitForDeviceWrites } from '#lib/db/idb.js';
+import { BackupImportMode, type ScrapsCacheBackup } from '#lib/backup.js';
+import { createSyncIdentity } from '#lib/syncPairing.js';
 import { notesStore, SYNC_LOCK } from './notes.svelte';
 import { profileCoordinator } from './profiles.svelte';
 import { syncStore } from './sync.svelte';
 import { kanbanStore } from './kanban.svelte';
 import { canvasLibraryStore } from './canvasLibrary';
 import { reminderHistoryStore } from './reminderHistory';
-import { reminderWakeId } from '$lib/model';
+import { reminderWakeId } from '#lib/model/index.js';
 import { TEST_WORKSPACE } from '../../tests/workspace';
 
 function profile(id: string) {

@@ -7,7 +7,7 @@ import {
 	showReminderNotification,
 	unfiredDueReminders
 } from './reminderNotify';
-import { reminderWakeId } from '$lib/model';
+import { reminderWakeId } from '#lib/model/index.js';
 
 function note(
 	partial: Partial<{

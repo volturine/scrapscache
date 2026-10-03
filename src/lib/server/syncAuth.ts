@@ -8,7 +8,7 @@ import {
 	type ScryptOptions
 } from 'node:crypto';
 import { promisify } from 'node:util';
-import { getDb, type Db } from '$lib/server/db';
+import { getDb, type Db } from '#lib/server/db.js';
 
 const encoder = new TextEncoder();
 const CHALLENGE_TTL_MS = 60_000;

@@ -1,14 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ReminderHistoryStore } from '$lib/stores/reminderHistory';
-import { ReminderHistoryClient } from '$lib/reminderHistoryClient';
-import { createSyncIdentity, identityFromSyncKey } from '$lib/syncPairing';
-import { syncStore } from '$lib/stores/sync.svelte';
-import { getSyncOutboxKeys, getSyncState, setSyncState } from '$lib/db/idb';
-import { readReminderHistory, RECEIPTS_PER_NOTE } from '$lib/reminderHistory';
-import { sealNoteReceipts, openNoteReceipts, type ReminderPacket } from '$lib/reminderChannel';
-import { exchangeReminderHistory } from '$lib/server/reminderHistoryRelay';
-import { SyncStore } from '$lib/server/syncStore';
-import { testDb, cleanupTestDbs } from '$lib/server/testDb';
+import { ReminderHistoryStore } from '#lib/stores/reminderHistory.js';
+import { ReminderHistoryClient } from '#lib/reminderHistoryClient.js';
+import { createSyncIdentity, identityFromSyncKey } from '#lib/syncPairing.js';
+import { syncStore } from '#lib/stores/sync.svelte.js';
+import { getSyncOutboxKeys, getSyncState, setSyncState } from '#lib/db/idb.js';
+import { readReminderHistory, RECEIPTS_PER_NOTE } from '#lib/reminderHistory.js';
+import { sealNoteReceipts, openNoteReceipts, type ReminderPacket } from '#lib/reminderChannel.js';
+import { exchangeReminderHistory } from '#lib/server/reminderHistoryRelay.js';
+import { SyncStore } from '#lib/server/syncStore.js';
+import { testDb, cleanupTestDbs } from '#lib/server/testDb.js';
 
 afterEach(() => {
 	vi.restoreAllMocks();

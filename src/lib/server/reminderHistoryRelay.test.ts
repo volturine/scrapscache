@@ -7,7 +7,7 @@ import {
 	ReminderHistoryQuotaError
 } from './reminderHistoryRelay';
 import { DEFAULT_REMINDER_MAX_ACCOUNT_BYTES } from './operatorConfig';
-import { REMINDER_BATCH_SIZE, type ReminderPacket } from '$lib/reminderChannel';
+import { REMINDER_BATCH_SIZE, type ReminderPacket } from '#lib/reminderChannel.js';
 
 afterEach(cleanupTestDbs);
 const packet = (note: number, deleted = false, fill = 'c'): ReminderPacket => ({

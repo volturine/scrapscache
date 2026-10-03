@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import { uiStore } from '$lib/stores/ui.svelte';
+	import { uiStore } from '#lib/stores/ui.svelte.js';
 	import { Format } from '@ark-ui/svelte/format';
 	import { notesShell, sectionHeaderStyles as classes } from '$panda/styles';
 

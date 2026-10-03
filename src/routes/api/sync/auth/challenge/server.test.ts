@@ -5,14 +5,14 @@ const mocks = vi.hoisted(() => ({
 	retired: vi.fn(async () => false)
 }));
 
-vi.mock('$lib/server/syncStore', () => ({
+vi.mock('#lib/server/syncStore.js', () => ({
 	getSyncStore: () => ({ getAuthCredential: mocks.credential, isAccountRetired: mocks.retired })
 }));
-vi.mock('$lib/server/syncAuth', () => ({
+vi.mock('#lib/server/syncAuth.js', () => ({
 	getSyncAuth: () => ({ createSyncChallenge: async () => ({ challengeId: 'id', challenge: 'c' }) }),
 	isLegacySyncCredential: () => false
 }));
-vi.mock('$lib/server/rateLimit', () => ({
+vi.mock('#lib/server/rateLimit.js', () => ({
 	clientAddress: () => '127.0.0.1',
 	getPublicApiLimiter: () => ({ check: async () => ({ allowed: true }) }),
 	rateLimitResponse: () => new Response(null, { status: 429 })

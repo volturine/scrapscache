@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Tooltip } from '@ark-ui/svelte/tooltip';
 	import type { Snippet } from 'svelte';
-	import { portalToAppOverlay } from '$lib/appViewport';
+	import { portalToAppOverlay } from '#lib/appViewport.js';
 	import type { Placement } from '@zag-js/tooltip';
 	import { css } from 'styled-system/css';
 	import { tooltip } from '$panda/styles';

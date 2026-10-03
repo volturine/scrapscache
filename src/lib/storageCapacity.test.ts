@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Note } from '$lib/types';
+import type { Note } from '#lib/types.js';
 import {
 	attachmentStorageBytes,
 	dataUrlByteLength,

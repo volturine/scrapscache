@@ -1,14 +1,10 @@
+import type { RequestEvent } from '@sveltejs/kit';
+import type { ResolveOptions } from '@sveltejs/kit/hooks';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { privateEnv, publicEnv } from './tests/env';
 
-const env = vi.hoisted(() => ({
-	private: {} as Record<string, string | undefined>,
-	public: {} as Record<string, string | undefined>
-}));
-vi.mock('$lib/server/metrics', () => ({ recordHttpRequest: vi.fn() }));
-vi.mock('$env/dynamic/private', () => ({ env: env.private }));
-vi.mock('$env/dynamic/public', () => ({ env: env.public }));
+vi.mock('#lib/server/metrics.js', () => ({ recordHttpRequest: vi.fn() }));
 
-import type { RequestEvent, ResolveOptions } from '@sveltejs/kit';
 import { handle } from './hooks.server';
 
 function respond(requestHeaders: Record<string, string> = {}): Promise<Response> {
@@ -50,14 +46,21 @@ describe('security headers', () => {
 			'https://example.test/',
 			() =>
 				new Response('<html></html>', {
-					headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'private' }
+					headers: {
+						'content-type': 'text/html; charset=utf-8',
+						'cache-control': 'private'
+					}
 				})
 		);
+
 		const api = await visit(
 			'https://example.test/api/status',
 			() =>
 				new Response('{}', {
-					headers: { 'content-type': 'application/json', 'cache-control': 'no-store' }
+					headers: {
+						'content-type': 'application/json',
+						'cache-control': 'no-store'
+					}
 				})
 		);
 
@@ -93,14 +96,14 @@ function page(policy = APP_POLICY) {
 
 describe('the Turnstile challenge origin', () => {
 	afterEach(() => {
-		for (const key of Object.keys(env.private)) delete env.private[key];
-		for (const key of Object.keys(env.public)) delete env.public[key];
+		for (const key of Object.keys(privateEnv)) delete privateEnv[key];
+		for (const key of Object.keys(publicEnv)) delete publicEnv[key];
 	});
 
 	function configure() {
-		env.public.PUBLIC_TURNSTILE_ORIGIN = CHALLENGE;
-		env.private.TURNSTILE_SITEKEY = 'sitekey';
-		env.private.SCRAPSCACHE_ORIGIN = APP;
+		publicEnv.PUBLIC_TURNSTILE_ORIGIN = CHALLENGE;
+		privateEnv.TURNSTILE_SITEKEY = 'sitekey';
+		privateEnv.SCRAPSCACHE_ORIGIN = APP;
 	}
 
 	it('serves nothing but the challenge page, so the app never runs there', async () => {
@@ -161,12 +164,9 @@ describe('link previews', () => {
 			.fn()
 			.mockImplementation(async (_event: RequestEvent, opts?: ResolveOptions) => {
 				if (opts?.transformPageChunk) {
-					transformedHtml =
-						(await opts.transformPageChunk({
-							html: sampleHtml,
-							done: true
-						})) ?? '';
+					transformedHtml = (await opts.transformPageChunk({ html: sampleHtml, done: true })) ?? '';
 				}
+
 				return new Response(transformedHtml, {
 					status: 200,
 					headers: { 'Content-Type': 'text/html' }

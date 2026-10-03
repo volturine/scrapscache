@@ -4,7 +4,7 @@ import BottomNav from './BottomNav.svelte';
 
 const startNewNote = vi.fn();
 
-vi.mock('$lib/editorContext', () => ({
+vi.mock('#lib/editorContext.js', () => ({
 	useEditorActions: () => ({
 		startNewNote,
 		openNote: vi.fn(),

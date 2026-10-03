@@ -1,5 +1,5 @@
 // Rune-based notes & labels store. Persists to IndexedDB from explicit write paths.
-import type { Note, Label, NoteColor, NoteImage } from '$lib/types';
+import type { Note, Label, NoteColor, NoteImage } from '#lib/types.js';
 import {
 	getAllNotesMetadata,
 	hydrateNoteAttachments,
@@ -19,7 +19,7 @@ import {
 	pruneOrphanImageBlobs,
 	isProfileReleased,
 	waitForDeviceWrites
-} from '$lib/db/idb';
+} from '#lib/db/idb.js';
 import {
 	applyNoteEdit,
 	mergeLabelLists,
@@ -31,25 +31,25 @@ import {
 	uid,
 	withoutTombstoned,
 	type NotePatch
-} from '$lib/model';
-import { editContext, syncClock } from '$lib/editContext';
-import { mergeHydratedImages } from '$lib/noteAttachmentHydration';
-import { AttachmentHydrationQueue } from '$lib/attachmentHydrationQueue';
-import { syncStore } from '$lib/stores/sync.svelte';
-import { kanbanStore } from '$lib/stores/kanban.svelte';
-import { actionUndo } from '$lib/stores/actionUndo.svelte';
-import { canvasLibraryStore } from '$lib/stores/canvasLibrary';
-import { reminderHistoryStore } from '$lib/stores/reminderHistory';
-import { syncSnapshot, type SyncSnapshot } from '$lib/syncRecords';
-import { uiStore } from '$lib/stores/ui.svelte';
-import { daysSinceTrashed, TRASH_PURGE_DAYS, cloneNote } from '$lib/utils';
-import { noteAttachments, toggleLineAt } from '$lib/checklistBody';
+} from '#lib/model/index.js';
+import { editContext, syncClock } from '#lib/editContext.js';
+import { mergeHydratedImages } from '#lib/noteAttachmentHydration.js';
+import { AttachmentHydrationQueue } from '#lib/attachmentHydrationQueue.js';
+import { syncStore } from '#lib/stores/sync.svelte.js';
+import { kanbanStore } from '#lib/stores/kanban.svelte.js';
+import { actionUndo } from '#lib/stores/actionUndo.svelte.js';
+import { canvasLibraryStore } from '#lib/stores/canvasLibrary.js';
+import { reminderHistoryStore } from '#lib/stores/reminderHistory.js';
+import { syncSnapshot, type SyncSnapshot } from '#lib/syncRecords.js';
+import { uiStore } from '#lib/stores/ui.svelte.js';
+import { daysSinceTrashed, TRASH_PURGE_DAYS, cloneNote } from '#lib/utils.js';
+import { noteAttachments, toggleLineAt } from '#lib/checklistBody.js';
 import {
 	readLabelsMirror,
 	readNotesMirror,
 	writeLabelsMirror,
 	writeNotesMirror
-} from '$lib/noteStorage';
+} from '#lib/noteStorage.js';
 import {
 	hydrateTombstones,
 	deleteLabelWithTombstone,
@@ -58,26 +58,26 @@ import {
 	readTombstones,
 	writeLabelTombstones,
 	writeTombstones
-} from '$lib/syncTombstones';
+} from '#lib/syncTombstones.js';
 import {
 	ensureAttachmentPreview,
 	fileToNoteImage,
 	prepareAttachmentForMemory
-} from '$lib/noteImages';
-import { materializeKeepTakeout, readKeepTakeout } from '$lib/keepImport';
-import { isCanvasAttachment } from '$lib/canvasAttachment';
-import { replacementFitsStorage } from '$lib/storageCapacity';
-import { formatStorageError } from '$lib/imageBlob';
+} from '#lib/noteImages.js';
+import { materializeKeepTakeout, readKeepTakeout } from '#lib/keepImport.js';
+import { isCanvasAttachment } from '#lib/canvasAttachment.js';
+import { replacementFitsStorage } from '#lib/storageCapacity.js';
+import { formatStorageError } from '#lib/imageBlob.js';
 import {
 	BackupImportMode,
 	importedReminderHistory,
 	normalizeBackup,
 	prepareImportedNotes,
 	type ScrapsCacheBackup
-} from '$lib/backup';
-import { stableStringify } from '$lib/model';
-import { buildForcePushSnapshot } from '$lib/syncForcePush';
-import { currentRecordKeys } from '$lib/syncEngine';
+} from '#lib/backup.js';
+import { stableStringify } from '#lib/model/index.js';
+import { buildForcePushSnapshot } from '#lib/syncForcePush.js';
+import { currentRecordKeys } from '#lib/syncEngine.js';
 
 /** Minimum gap between opportunistic auto syncs; manual syncs are never throttled. */
 const AUTO_SYNC_MIN_INTERVAL_MS = 30_000;
@@ -169,13 +169,12 @@ export class NotesStore {
 			if ('BroadcastChannel' in window) {
 				this.syncBroadcastChannel = new BroadcastChannel('scrapscache-sync-channel');
 				this.syncBroadcastChannel.onmessage = (event) => {
-					if (event.data?.type === 'local-sync-complete' && event.data?.pid === this.pid) {
-						void this.rehydrateFromIDB();
-					}
+					if (event.data?.type === 'local-sync-complete') this.otherWindowSynced(event.data?.pid);
 				};
 			}
 			window.addEventListener('visibilitychange', () => {
 				if (document.visibilityState === 'hidden') this.mirrorToLS();
+				else if (this.staleWhileHidden === this.pid) void this.rehydrateFromIDB();
 			});
 			window.addEventListener('pagehide', () => this.mirrorToLS());
 			window.addEventListener('online', () => {
@@ -204,6 +203,7 @@ export class NotesStore {
 
 	// --- Lifecycle -------------------------------------------------------
 	async init() {
+		this.staleWhileHidden = null;
 		await syncStore.ensureProfilesLoaded();
 
 		const mirrorNotes = readNotesMirror(this.pid);
@@ -279,7 +279,20 @@ export class NotesStore {
 		this.loaded = true;
 	}
 
+	/**
+	 * Another window saved what it synced. The browser may freeze a hidden window in
+	 * the middle of re-reading it, and its open transactions then hold every other
+	 * window's writes to this workspace until it thaws. A hidden window has nothing to
+	 * show, so it catches up once it is shown again, or before it syncs.
+	 */
+	private otherWindowSynced(pid: unknown): void {
+		if (pid !== this.pid) return;
+		if (document.visibilityState === 'hidden') this.staleWhileHidden = this.pid;
+		else void this.rehydrateFromIDB();
+	}
+
 	private async rehydrateFromIDB() {
+		this.staleWhileHidden = null;
 		try {
 			const [dbNotes, dbLabels] = await Promise.all([
 				getAllNotesMetadata(this.pid),
@@ -1171,6 +1184,8 @@ export class NotesStore {
 		// A workspace removed in another window keeps no mirror either: writing
 		// one back would leave note text behind for a workspace that is gone.
 		if (isProfileReleased(this.pid)) return;
+		// Another window has written newer notes than this one holds.
+		if (this.staleWhileHidden === this.pid) return;
 		if (!writeNotesMirror(this.notes, this.pid)) {
 			this.recordPersistenceError(
 				'Could not update the local notes mirror',
@@ -1193,6 +1208,8 @@ export class NotesStore {
 	private syncFlight = $state<Promise<boolean> | null>(null);
 	private syncFollowupRequested = false;
 	private syncBroadcastChannel: BroadcastChannel | null = null;
+	/** The workspace another window synced while this one was hidden and skipped re-reading. */
+	private staleWhileHidden: string | null = null;
 
 	private scheduleNoteRetry(id: string): void {
 		if (this.noteRetryTimers.has(id)) return;
@@ -1387,7 +1404,11 @@ export class NotesStore {
 		};
 	}
 
-	private async applyCloudReplacement(snapshot: SyncSnapshot, pid: string): Promise<SyncSnapshot> {
+	private async applyCloudReplacement(
+		snapshot: SyncSnapshot,
+		pid: string,
+		pulled: { readEnvelopes: number }
+	): Promise<SyncSnapshot> {
 		// Replacing this device's notes with the cloud's belongs to one workspace.
 		if (pid !== this.pid) return snapshot;
 		const notes = withoutTombstoned(snapshot.notes, snapshot.tombstones).sort(
@@ -1396,7 +1417,10 @@ export class NotesStore {
 		const labels = withoutTombstoned(snapshot.labels, snapshot.labelTombstones).sort((a, b) =>
 			a.name.localeCompare(b.name)
 		);
-		if (notes.length === 0 && (syncStore.usage?.envelopeCount ?? 0) > 0) {
+		// Replacing wipes this device, so a pull that read nothing of an account that
+		// holds envelopes must not stand in for it. An account without notes is fine:
+		// every synced workspace stores at least its name.
+		if (pulled.readEnvelopes === 0 && (syncStore.usage?.envelopeCount ?? 0) > 0) {
 			throw new Error('Could not download synced notes');
 		}
 		if (navigator.storage?.estimate) {
@@ -1525,8 +1549,8 @@ export class NotesStore {
 			const leftover = await getSyncOutboxKeys(this.pid).catch(() => []);
 			if (leftover.length) await clearSyncOutbox(this.pid, leftover);
 			await syncStore.clearAccountControlPlane(syncStore.account.accountId);
-			const result = await syncStore.sync(syncSnapshot(), true, true, (snapshot, pid) =>
-				this.applyCloudReplacement(snapshot, pid)
+			const result = await syncStore.sync(syncSnapshot(), true, true, (snapshot, pid, pulled) =>
+				this.applyCloudReplacement(snapshot, pid, pulled)
 			);
 			if (!result.success || !result.snapshot) {
 				this.recordPersistenceError(result.error || 'Cloud sync returned no notes', result.error);
@@ -1689,6 +1713,8 @@ export class NotesStore {
 
 	private async doSyncLocked(indicate = true): Promise<boolean> {
 		if (!syncStore.isLoggedIn) return false;
+		// A flight snapshots these notes, so they must not lag what another window saved.
+		if (this.staleWhileHidden === this.pid) await this.rehydrateFromIDB();
 		// A newly reset relay needs one current-state bootstrap from this source device.
 		// Bytes are returned to thumb-only memory immediately after reconciliation below.
 		if (await syncStore.needsCurrentStateBootstrap()) await this.hydrateAllAttachments();

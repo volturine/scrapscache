@@ -1,12 +1,13 @@
-import { env } from '$env/dynamic/private';
+import { SCRAPSCACHE_VAPID_PUBLIC_KEY, SCRAPSCACHE_VAPID_PRIVATE_KEY } from '$app/env/private';
+import { Effect, Option, Schema } from 'effect';
 import { gcm } from '@noble/ciphers/aes.js';
 import { p256 } from '@noble/curves/nist.js';
 import { hkdf } from '@noble/hashes/hkdf.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { concatBytes } from '@noble/hashes/utils.js';
-import { getMeta, getDb, setMetaIfAbsent, type Db } from '$lib/server/db';
-import { getRuntimeSettings } from '$lib/server/runtimeSettings';
-import { getSyncStore, type DueWake } from '$lib/server/syncStore';
+import { getMeta, getDb, setMetaIfAbsent, type Db } from '#lib/server/db.js';
+import { getRuntimeSettings } from '#lib/server/runtimeSettings.js';
+import { getSyncStore, type DueWake } from '#lib/server/syncStore.js';
 
 export const VAPID_KEY_PAIR_META_KEY = 'vapid-key-pair-v1';
 
@@ -28,6 +29,7 @@ function bytesToBase64Url(bytes: Uint8Array): string {
 function base64UrlToBytes(value: string): Uint8Array {
 	const padded =
 		value.replaceAll('-', '+').replaceAll('_', '/') + '='.repeat((4 - (value.length % 4)) % 4);
+
 	return Uint8Array.from(atob(padded), (character) => character.charCodeAt(0));
 }
 
@@ -61,24 +63,16 @@ function warnKeyRegeneration(registeredDevices: number): void {
 	);
 }
 
+const decodeVapidKeyPair = Schema.decodeUnknownOption(
+	Schema.fromJsonString(
+		Schema.Struct({ publicKey: Schema.NonEmptyString, privateKey: Schema.NonEmptyString })
+	)
+);
+
 function parseVapidKeyPair(value: string): { publicKey: string; privateKey: string } {
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(value);
-	} catch {
-		throw new Error('Stored VAPID key pair is invalid');
-	}
-	if (
-		!parsed ||
-		typeof parsed !== 'object' ||
-		typeof (parsed as { publicKey?: unknown }).publicKey !== 'string' ||
-		typeof (parsed as { privateKey?: unknown }).privateKey !== 'string' ||
-		(parsed as { publicKey: string }).publicKey.length === 0 ||
-		(parsed as { privateKey: string }).privateKey.length === 0
-	) {
-		throw new Error('Stored VAPID key pair is invalid');
-	}
-	return parsed as { publicKey: string; privateKey: string };
+	const decoded = Option.getOrNull(decodeVapidKeyPair(value));
+	if (!decoded) throw new Error('Stored VAPID key pair is invalid');
+	return decoded;
 }
 
 function generateVapidKeyPair(): { publicKey: string; privateKey: string } {
@@ -93,8 +87,8 @@ export async function getVapidKeys(
 	db: Db = getDb()
 ): Promise<{ publicKey: string; privateKey: string }> {
 	await db.ready;
-	const fromEnvPublic = env.SCRAPSCACHE_VAPID_PUBLIC_KEY?.trim();
-	const fromEnvPrivate = env.SCRAPSCACHE_VAPID_PRIVATE_KEY?.trim();
+	const fromEnvPublic = SCRAPSCACHE_VAPID_PUBLIC_KEY?.trim();
+	const fromEnvPrivate = SCRAPSCACHE_VAPID_PRIVATE_KEY?.trim();
 	if (Boolean(fromEnvPublic) !== Boolean(fromEnvPrivate)) {
 		throw new Error(
 			'Both SCRAPSCACHE_VAPID_PUBLIC_KEY and SCRAPSCACHE_VAPID_PRIVATE_KEY are required'
@@ -190,17 +184,29 @@ function vapidAuthorization(
 	return `vapid t=${signingInput}.${bytesToBase64Url(signature)}, k=${bytesToBase64Url(base64UrlToBytes(keys.publicKey))}`;
 }
 
-export async function sendReminderTick(device: DueWake): Promise<WakeSendResult> {
-	try {
-		const [keys, subject] = await Promise.all([getVapidKeys(), vapidSubject()]);
-		const userPublicKey = base64UrlToBytes(device.p256dh);
-		const authSecret = base64UrlToBytes(device.auth);
-		if (userPublicKey.length !== 65 || authSecret.length < 16) {
-			throw new Error('Push subscription keys are invalid');
-		}
-		const salt = new Uint8Array(16);
-		crypto.getRandomValues(salt);
-		const body = new Uint8Array(
+/** The encrypted push that wakes a device for one reminder. */
+function wakeRequest(
+	device: DueWake,
+	keys: { publicKey: string; privateKey: string },
+	subject: string
+): RequestInit {
+	const userPublicKey = base64UrlToBytes(device.p256dh);
+	const authSecret = base64UrlToBytes(device.auth);
+	if (userPublicKey.length !== 65 || authSecret.length < 16) {
+		throw new Error('Push subscription keys are invalid');
+	}
+	const salt = new Uint8Array(16);
+	crypto.getRandomValues(salt);
+	return {
+		method: 'POST',
+		headers: {
+			TTL: '86400',
+			Urgency: 'high',
+			Authorization: vapidAuthorization(new URL(device.endpoint).origin, subject, keys),
+			'Content-Encoding': 'aes128gcm',
+			'Content-Type': 'application/octet-stream'
+		},
+		body: new Uint8Array(
 			encryptWebPushPayload({
 				plaintext: encoder.encode(
 					JSON.stringify({ type: 'reminder-wake', id: device.wakeId, fireAt: device.fireAt })
@@ -210,38 +216,45 @@ export async function sendReminderTick(device: DueWake): Promise<WakeSendResult>
 				serverPrivateKey: p256.utils.randomSecretKey(),
 				salt
 			})
-		);
-		const response = await fetch(device.endpoint, {
-			method: 'POST',
-			headers: {
-				TTL: '86400',
-				Urgency: 'high',
-				Authorization: vapidAuthorization(new URL(device.endpoint).origin, subject, keys),
-				'Content-Encoding': 'aes128gcm',
-				'Content-Type': 'application/octet-stream'
-			},
-			body,
-			signal: AbortSignal.timeout(10_000)
-		});
-		if (response.ok) return 'sent';
-		console.info(
-			JSON.stringify({
-				level: 'info',
-				event: 'reminder_wake_failed',
-				status: response.status
+		)
+	};
+}
+
+function logWakeFailure(status: number | null, message?: string): void {
+	console.info(
+		JSON.stringify({
+			level: 'info',
+			event: 'reminder_wake_failed',
+			status,
+			...(message === undefined ? {} : { message })
+		})
+	);
+}
+
+/** Every failure is the send's own: it is logged and reported, never thrown. */
+export function sendReminderTick(device: DueWake): Promise<WakeSendResult> {
+	return Effect.runPromise(
+		Effect.gen(function* () {
+			const [keys, subject] = yield* Effect.tryPromise({
+				try: () => Promise.all([getVapidKeys(), vapidSubject()]),
+				catch: (error) => error
+			});
+			const request = yield* Effect.try({
+				try: () => wakeRequest(device, keys, subject),
+				catch: (error) => error
+			});
+			const response = yield* Effect.tryPromise({
+				try: (signal) => fetch(device.endpoint, { ...request, signal }),
+				catch: (error) => error
+			}).pipe(Effect.timeout('10 seconds'));
+			if (response.ok) return 'sent';
+			logWakeFailure(response.status);
+			return response.status === 404 || response.status === 410 ? 'gone' : 'failed';
+		}).pipe(
+			Effect.catch((error) => {
+				logWakeFailure(null, error instanceof Error ? error.message : 'Web Push delivery failed');
+				return Effect.succeed<WakeSendResult>('failed');
 			})
-		);
-		if (response.status === 404 || response.status === 410) return 'gone';
-		return 'failed';
-	} catch (error) {
-		console.info(
-			JSON.stringify({
-				level: 'info',
-				event: 'reminder_wake_failed',
-				status: null,
-				message: error instanceof Error ? error.message : 'Web Push delivery failed'
-			})
-		);
-		return 'failed';
-	}
+		)
+	);
 }

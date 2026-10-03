@@ -4,7 +4,7 @@ import {
 	getSyncState,
 	setSyncState,
 	writeSyncStateWithOutbox
-} from '$lib/db/idb';
+} from '#lib/db/idb.js';
 
 export const NOTE_IDB = 'scrapscache-idb-note-tombstones';
 export const LABEL_IDB = 'scrapscache-idb-label-tombstones';

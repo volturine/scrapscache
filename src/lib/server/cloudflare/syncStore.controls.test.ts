@@ -6,7 +6,7 @@ const bindings = vi.hoisted(() => ({ value: undefined as unknown }));
 vi.mock('./env', () => ({ cloudflareBindings: () => bindings.value }));
 
 import { SyncStore } from './syncStore';
-import { DEFAULT_SYNC_PER_MINUTE } from '$lib/server/operatorConfig';
+import { DEFAULT_SYNC_PER_MINUTE } from '#lib/server/operatorConfig.js';
 
 const MAX_BYTES = 100_000_000;
 

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { TurnstileResult } from '$lib/server/turnstile';
+import type { TurnstileResult } from '#lib/server/turnstile.js';
 
 const mocks = vi.hoisted(() => ({
 	createAccount: vi.fn(async () => true),
@@ -10,15 +10,15 @@ const mocks = vi.hoisted(() => ({
 	)
 }));
 
-vi.mock('$lib/server/syncStore', () => ({
+vi.mock('#lib/server/syncStore.js', () => ({
 	getSyncStore: () => ({
 		createAccount: mocks.createAccount,
 		isAccountRetired: mocks.isAccountRetired
 	})
 }));
-vi.mock('$lib/server/syncAuth', () => ({ verifySyncRegistration: mocks.verifyRegistration }));
-vi.mock('$lib/server/turnstile', () => ({ verifyTurnstile: mocks.verifyTurnstile }));
-vi.mock('$lib/server/rateLimit', () => ({
+vi.mock('#lib/server/syncAuth.js', () => ({ verifySyncRegistration: mocks.verifyRegistration }));
+vi.mock('#lib/server/turnstile.js', () => ({ verifyTurnstile: mocks.verifyTurnstile }));
+vi.mock('#lib/server/rateLimit.js', () => ({
 	clientAddress: () => '203.0.113.1',
 	getPublicApiLimiter: () => ({ check: async () => ({ allowed: true }) }),
 	rateLimitResponse: () => new Response(null, { status: 429 })

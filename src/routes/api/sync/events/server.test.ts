@@ -18,21 +18,21 @@ const mocks = vi.hoisted(() => ({
 	}))
 }));
 
-vi.mock('$lib/server/syncStore', () => ({
+vi.mock('#lib/server/syncStore.js', () => ({
 	getSyncStore: () => ({
 		createEventStream: mocks.createEventStream,
 		createEventSocket: mocks.createEventSocket
 	})
 }));
 
-vi.mock('$lib/server/syncAuth', () => ({
+vi.mock('#lib/server/syncAuth.js', () => ({
 	getSyncAuth: () => ({
 		authenticateSyncRequest: mocks.authenticate,
 		authenticateSyncToken: mocks.authenticateToken
 	})
 }));
 
-vi.mock('$lib/server/rateLimit', () => ({
+vi.mock('#lib/server/rateLimit.js', () => ({
 	clientAddress: () => '127.0.0.1',
 	getPublicApiLimiter: () => ({ check: (key: string) => mocks.limitChecks(key) }),
 	rateLimitResponse: () => new Response(null, { status: 429 })

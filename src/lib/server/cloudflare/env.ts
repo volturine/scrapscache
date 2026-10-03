@@ -1,4 +1,4 @@
-import { getRequestEvent } from '$app/server';
+import { env } from 'cloudflare:workers';
 import type { D1Database, DurableObjectNamespace, R2Bucket } from '@cloudflare/workers-types';
 
 export type CloudflareBindings = {
@@ -11,8 +11,8 @@ export type CloudflareBindings = {
 	SCRAPSCACHE_HISTORY_VERSIONS?: string;
 };
 
+/** SvelteKit 3 no longer passes bindings on `platform`; the Workers runtime exposes them. */
 export function cloudflareBindings(): CloudflareBindings {
-	const bindings = (getRequestEvent().platform as { env?: unknown } | undefined)?.env;
-	if (!bindings) throw new Error('Cloudflare platform bindings are unavailable');
-	return bindings as unknown as CloudflareBindings;
+	if (!env.SCRAPSCACHE_DB) throw new Error('Cloudflare platform bindings are unavailable');
+	return env as unknown as CloudflareBindings;
 }

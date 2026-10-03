@@ -5,7 +5,7 @@
 	import { vstack } from 'styled-system/patterns';
 	import { ImageUp } from '@lucide/svelte';
 	import { syncStyles as styles } from '$panda/styles';
-	import { pairingCodeFromImageData } from '$lib/pairingQr';
+	import { pairingCodeFromImageData } from '#lib/pairingQr.js';
 
 	let { onCode }: { onCode: (code: string) => void } = $props();
 

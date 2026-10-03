@@ -5,7 +5,7 @@ import {
 	readNotesMirror,
 	writeNotesMirror
 } from './noteStorage';
-import type { Note } from '$lib/types';
+import type { Note } from '#lib/types.js';
 import { TEST_WORKSPACE } from '../tests/workspace';
 
 function note(id: string, updatedAt: number): Note {

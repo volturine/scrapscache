@@ -1,11 +1,12 @@
+import { Effect } from 'effect';
 import {
 	getSyncStore,
 	WAKE_CLAIM_LEASE_MS,
 	type DueWake,
 	type SyncStore
-} from '$lib/server/syncStore';
-import { sendReminderTick, type WakeSendResult } from '$lib/server/webPush';
-import { recordReminderWake } from '$lib/server/metrics';
+} from '#lib/server/syncStore.js';
+import { sendReminderTick, type WakeSendResult } from '#lib/server/webPush.js';
+import { recordReminderWake } from '#lib/server/metrics.js';
 
 const SEND_CONCURRENCY = 8;
 /** Wakes claimed per round. A full round means more may be due. */
@@ -53,36 +54,32 @@ export async function dispatchDueWakes(
 	const now = options.now ?? Date.now;
 	const result: WakeDispatchResult = { sent: 0, failed: 0, gone: 0, next: null };
 	let moreDue = false;
+
+	// A store write that fails ends the dispatch with the store's own error, which
+	// the caller logs and retries; a send that fails only defers its own wake.
+	const write = <A>(run: () => Promise<A>) => Effect.tryPromise({ try: run, catch: (e) => e });
+	const deliver = (device: DueWake) =>
+		Effect.gen(function* () {
+			const outcome = yield* Effect.tryPromise(() => send(device)).pipe(
+				Effect.orElseSucceed((): WakeSendResult => 'failed')
+			);
+			if (outcome === 'failed') {
+				yield* write(() => store.deferWakeRetry(device, wakeRetryAt(Number(device.fireAt), now())));
+			} else if (outcome === 'gone') {
+				yield* write(() => store.deletePushDevice(device.accountId, device.deviceId));
+			} else {
+				yield* write(() => store.markWakeDelivered(device, now()));
+			}
+			recordReminderWake(outcome);
+			result[outcome] += 1;
+		});
+
 	for (let round = 0; round < MAX_ROUNDS; round += 1) {
 		const due = await store.claimDueWakes(now(), CLAIM_LIMIT, options.accountId);
-		for (let offset = 0; offset < due.length; offset += SEND_CONCURRENCY) {
-			const batch = due.slice(offset, offset + SEND_CONCURRENCY);
-			const results = await Promise.all(
-				batch.map((device) =>
-					Promise.resolve()
-						.then(() => send(device))
-						.catch((): WakeSendResult => 'failed')
-				)
-			);
-			for (const [index, device] of batch.entries()) {
-				const sendResult = results[index];
-				if (sendResult === 'failed') {
-					await store.deferWakeRetry(device, wakeRetryAt(Number(device.fireAt), now()));
-					recordReminderWake('failed');
-					result.failed += 1;
-					continue;
-				}
-				if (sendResult === 'gone') {
-					await store.deletePushDevice(device.accountId, device.deviceId);
-					recordReminderWake('gone');
-					result.gone += 1;
-					continue;
-				}
-				await store.markWakeDelivered(device, now());
-				recordReminderWake('sent');
-				result.sent += 1;
-			}
-		}
+		// A slow push service holds up only its own slot, not a whole batch.
+		await Effect.runPromise(
+			Effect.forEach(due, deliver, { concurrency: SEND_CONCURRENCY, discard: true })
+		);
 		moreDue = due.length === CLAIM_LIMIT;
 		if (!moreDue) break;
 	}

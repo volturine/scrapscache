@@ -1,9 +1,9 @@
 import { tick } from 'svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createKanbanBoard, type KanbanBoard } from '$lib/kanban';
-import { getSyncOutboxKeys } from '$lib/db/idb';
-import { createSyncIdentity } from '$lib/syncPairing';
-import { loadBoardsFromDevice, saveBoardsToDevice } from '$lib/syncTombstones';
+import { createKanbanBoard, type KanbanBoard } from '#lib/kanban.js';
+import { getSyncOutboxKeys } from '#lib/db/idb.js';
+import { createSyncIdentity } from '#lib/syncPairing.js';
+import { loadBoardsFromDevice, saveBoardsToDevice } from '#lib/syncTombstones.js';
 import { actionUndo } from './actionUndo.svelte';
 import { KanbanStore } from './kanban.svelte';
 import { syncStore } from './sync.svelte';

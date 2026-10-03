@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/svelte';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { Note } from '$lib/types';
-import { notesStore } from '$lib/stores/notes.svelte';
+import type { Note } from '#lib/types.js';
+import { notesStore } from '#lib/stores/notes.svelte.js';
 import NoteCard from './NoteCard.svelte';
 
 function note(partial: Partial<Note> = {}): Note {

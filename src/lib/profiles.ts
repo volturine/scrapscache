@@ -10,17 +10,17 @@ import {
 	getAllLabels,
 	getSyncState,
 	hydrateNoteAttachments
-} from '$lib/db/idb';
-import { BOARDS_IDB, BOARD_IDB, LABEL_IDB, NOTE_IDB } from '$lib/syncTombstones';
-import type { KanbanBoard } from '$lib/kanban';
-import type { Note } from '$lib/types';
-import type { ScrapsCacheBackup } from '$lib/backup';
-import { randomWorkspaceName } from '$lib/workspaceNames';
-import { libraryItemsFor, readCanvasLibrary } from '$lib/canvasLibrary';
-import { readReminderHistory } from '$lib/reminderHistory';
+} from '#lib/db/idb.js';
+import { BOARDS_IDB, BOARD_IDB, LABEL_IDB, NOTE_IDB } from '#lib/syncTombstones.js';
+import type { KanbanBoard } from '#lib/kanban.js';
+import type { Note } from '#lib/types.js';
+import type { ScrapsCacheBackup } from '#lib/backup.js';
+import { randomWorkspaceName } from '#lib/workspaceNames.js';
+import { libraryItemsFor, readCanvasLibrary } from '#lib/canvasLibrary.js';
+import { readReminderHistory } from '#lib/reminderHistory.js';
 
-export type { StoredProfile } from '$lib/db/idb';
-import type { StoredProfile } from '$lib/db/idb';
+export type { StoredProfile } from '#lib/db/idb.js';
+import type { StoredProfile } from '#lib/db/idb.js';
 
 const LS_LAST_ACTIVE = 'scrapscache-last-active-profile';
 const LS_LAST_ACTIVE_LEGACY = 'gkc-last-active-profile';

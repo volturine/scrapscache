@@ -1,5 +1,11 @@
 import { createClient, type Client, type Transaction } from '@libsql/client/web';
-import { env } from '$env/dynamic/private';
+
+import {
+	SCRAPSCACHE_RELAY_DB_URL,
+	SCRAPSCACHE_RELAY_DB_AUTH_TOKEN,
+	SCRAPSCACHE_OPS_DB_URL,
+	SCRAPSCACHE_OPS_DB_AUTH_TOKEN
+} from '$app/env/private';
 
 /** Server-side storage split: the relay DB holds account-scoped sync state worth
  * backing up (credentials, ciphertext envelopes); the ops DB holds disposable
@@ -202,12 +208,12 @@ let singleton: Db | undefined;
 export function getDb(): Db {
 	singleton ??= createDb({
 		relay: createClient({
-			url: dbUrl(env.SCRAPSCACHE_RELAY_DB_URL, 'http://127.0.0.1:8080', 'SCRAPSCACHE_RELAY_DB_URL'),
-			authToken: env.SCRAPSCACHE_RELAY_DB_AUTH_TOKEN || undefined
+			url: dbUrl(SCRAPSCACHE_RELAY_DB_URL, 'http://127.0.0.1:8080', 'SCRAPSCACHE_RELAY_DB_URL'),
+			authToken: SCRAPSCACHE_RELAY_DB_AUTH_TOKEN || undefined
 		}),
 		ops: createClient({
-			url: dbUrl(env.SCRAPSCACHE_OPS_DB_URL, 'http://127.0.0.1:8081', 'SCRAPSCACHE_OPS_DB_URL'),
-			authToken: env.SCRAPSCACHE_OPS_DB_AUTH_TOKEN || undefined
+			url: dbUrl(SCRAPSCACHE_OPS_DB_URL, 'http://127.0.0.1:8081', 'SCRAPSCACHE_OPS_DB_URL'),
+			authToken: SCRAPSCACHE_OPS_DB_AUTH_TOKEN || undefined
 		})
 	});
 	return singleton;

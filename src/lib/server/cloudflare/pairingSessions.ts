@@ -3,7 +3,7 @@ import {
 	PairingState,
 	type PairingGrant,
 	type PairingPoll
-} from '$lib/pairingProtocol';
+} from '#lib/pairingProtocol.js';
 import { getDb, type Db } from './db';
 
 export type PairingParticipant = { id: string; expiresAt: number; role: PairingRole };

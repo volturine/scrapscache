@@ -13,7 +13,7 @@
 		type OperatorSnapshot,
 		type RuntimeSettingsState,
 		type TelemetryReport
-	} from '$lib/admin/adminClient.svelte';
+	} from '#lib/admin/adminClient.svelte.js';
 
 	const PAGE_SIZE = 25;
 	const primaryButton = button({ variant: 'primary', size: 'sm' });

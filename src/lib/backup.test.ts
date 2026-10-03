@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Note } from './types';
 import { importedReminderHistory, normalizeBackup, prepareImportedNotes } from './backup';
-import { reminderWakeId } from '$lib/model';
+import { reminderWakeId } from '#lib/model/index.js';
 import { createEditContext } from './model';
 
 const sourceNote: Note = {

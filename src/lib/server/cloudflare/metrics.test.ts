@@ -3,15 +3,18 @@ import type { Client } from '@libsql/client/node';
 import { applyMigrations, testD1 } from './testBindings';
 
 const harness = vi.hoisted(() => ({
-	platform: undefined as unknown,
+	env: {} as Record<string, unknown>,
 	pending: [] as Promise<unknown>[],
 	throwOutsideRequest: false
 }));
 
-vi.mock('$app/server', () => ({
-	getRequestEvent: () => {
+vi.mock('cloudflare:workers', () => ({
+	get env() {
+		return harness.env;
+	},
+	waitUntil: (promise: Promise<unknown>) => {
 		if (harness.throwOutsideRequest) throw new Error('no request context');
-		return { platform: harness.platform };
+		harness.pending.push(promise);
 	}
 }));
 
@@ -42,17 +45,14 @@ beforeEach(async () => {
 	await applyMigrations(client);
 	writes = 0;
 	const batch = d1.db.batch.bind(d1.db);
-	harness.platform = {
-		env: {
-			SCRAPSCACHE_DB: {
-				prepare: d1.db.prepare.bind(d1.db),
-				batch: (statements: never[]) => {
-					writes += 1;
-					return batch(statements);
-				}
+	harness.env = {
+		SCRAPSCACHE_DB: {
+			prepare: d1.db.prepare.bind(d1.db),
+			batch: (statements: never[]) => {
+				writes += 1;
+				return batch(statements);
 			}
-		},
-		context: { waitUntil: (promise: Promise<unknown>) => harness.pending.push(promise) }
+		}
 	};
 	harness.pending = [];
 	harness.throwOutsideRequest = false;
@@ -119,21 +119,20 @@ describe('Workers telemetry', () => {
 	});
 
 	it('stays silent rather than failing a request when D1 is unavailable', async () => {
-		harness.platform = { env: {}, context: { waitUntil: () => undefined } };
+		const db = harness.env;
+		harness.env = {};
 		expect(() => recordSyncBatch(1, 1)).not.toThrow();
 
+		harness.env = db;
 		harness.throwOutsideRequest = true;
 		expect(() => recordHttpRequest('/api/sync/delta', 500, 1)).not.toThrow();
 
 		harness.throwOutsideRequest = false;
-		harness.platform = {
-			env: {
-				SCRAPSCACHE_DB: {
-					prepare: () => ({ bind: () => ({}) }),
-					batch: () => Promise.reject(new Error('down'))
-				}
-			},
-			context: { waitUntil: (promise: Promise<unknown>) => harness.pending.push(promise) }
+		harness.env = {
+			SCRAPSCACHE_DB: {
+				prepare: () => ({ bind: () => ({}) }),
+				batch: () => Promise.reject(new Error('down'))
+			}
 		};
 		recordSyncBatch(1, 1);
 		await expect(Promise.all(harness.pending)).resolves.toBeDefined();

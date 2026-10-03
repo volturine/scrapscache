@@ -621,7 +621,32 @@ describe('change sockets', () => {
 		const cursor = ((await (await upload('writer')).json()) as { cursor: number }).cursor;
 		expect(writer.sent).toEqual([]);
 		expect(reader.sent).toEqual([JSON.stringify({ seq: cursor })]);
+		// Its client reconnects with a fresh session; without the signal it would not
+		// know this change happened until something else made it sync.
+		expect(stale.sent).toEqual([JSON.stringify({ seq: cursor })]);
 		expect(stale.closed?.code).toBe(SOCKET_SESSION_EXPIRED);
+	});
+
+	it('closes the uploader’s expired session without signalling it', async () => {
+		await connect('writer');
+		const [writer] = sockets;
+		(writer.attachment as { expiresAt: number }).expiresAt = Date.now() - 1;
+
+		await upload('writer');
+		expect(writer.sent).toEqual([]);
+		expect(writer.closed?.code).toBe(SOCKET_SESSION_EXPIRED);
+	});
+
+	it('still closes an expired session that can no longer take the signal', async () => {
+		await connect('reader');
+		const [reader] = sockets;
+		(reader.attachment as { expiresAt: number }).expiresAt = Date.now() - 1;
+		reader.send = () => {
+			throw new Error('Socket is closing');
+		};
+
+		await upload('writer');
+		expect(reader.closed?.code).toBe(SOCKET_SESSION_EXPIRED);
 	});
 
 	it('closes every socket when the account is deleted', async () => {

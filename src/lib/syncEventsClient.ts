@@ -133,6 +133,10 @@ export class SyncEventsClient {
 					onOpen: () => {
 						if (signal.aborted) return false;
 						opened = true;
+						// Nothing signalled changes made while no connection was open
+						// (a dropped socket, an expired session, a hidden tab), so
+						// every connection starts by pulling once.
+						for (const listener of this.listeners) listener();
 						return true;
 					},
 					onSeq: (seq) => {

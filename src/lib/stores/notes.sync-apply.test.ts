@@ -85,7 +85,7 @@ describe('notes store sync apply', () => {
 			.spyOn(syncStore, 'sync')
 			.mockImplementation(async (local, _indicate, pullOnly, apply) => {
 				if (pullOnly) {
-					await apply!(remote, TEST_WORKSPACE);
+					await apply!(remote, TEST_WORKSPACE, { readEnvelopes: remote.notes.length });
 					return { success: true, snapshot: remote };
 				}
 				const { notes, tombstones } = local;
@@ -546,6 +546,102 @@ describe('notes store sync apply', () => {
 		expect(await notesStore.replaceWithCloudManual()).toBe(true);
 		expect(notesStore.notes.map((item) => item.id)).toEqual(['cloud-1']);
 		expect((await getAllNotesMetadata(TEST_WORKSPACE)).map(({ id }) => id)).toEqual(['cloud-1']);
+	});
+
+	/** A relay holding exactly these records, answering a pull from the start in one page. */
+	function relayWith(
+		account: ReturnType<typeof createSyncIdentity>,
+		records: { slot: string; payload: unknown; syncKey?: string }[]
+	) {
+		vi.spyOn(
+			syncStore as unknown as {
+				sendSyncRequest(
+					path: string,
+					payload: string
+				): Promise<{ success: boolean; data?: Record<string, unknown>; error?: string }>;
+			},
+			'sendSyncRequest'
+		).mockImplementation(async (_path, payload) => {
+			const request = JSON.parse(payload) as { cursor: number };
+			return {
+				success: true,
+				data: {
+					cursor: records.length,
+					envelopes:
+						request.cursor > 0
+							? []
+							: records.map((record, index) => ({
+									seq: index + 1,
+									id: `id-${index}`,
+									slot: record.slot,
+									ciphertext: encryptSyncPayload(
+										record.syncKey ?? account.syncKey,
+										record.payload,
+										record.slot
+									)
+								})),
+					conflicts: [],
+					hasMore: false,
+					reset: false,
+					writesAccepted: true,
+					usage: {
+						ciphertextBytes: 20 * records.length,
+						storageBytes: 532 * records.length,
+						envelopeCount: records.length,
+						maxBytes: 1000_000
+					}
+				}
+			};
+		});
+	}
+
+	it('replace-with-cloud accepts a workspace that has no notes yet', async () => {
+		// Every synced workspace uploads its name, so a new one is never without envelopes.
+		const account = createSyncIdentity();
+		syncStore.account = account;
+		const local = remoteNote('local-only');
+		await putNote(TEST_WORKSPACE, local);
+		notesStore.notes = [local];
+		relayWith(account, [
+			{ slot: 'b'.repeat(64), payload: { kind: 'profile-meta', value: { name: 'Sunny Marten' } } }
+		]);
+
+		expect(await notesStore.replaceWithCloudManual()).toBe(true);
+		expect(syncStore.lastError).toBeNull();
+		expect(notesStore.notes).toEqual([]);
+	});
+
+	it('replace-with-cloud accepts a workspace whose notes were all deleted', async () => {
+		const account = createSyncIdentity();
+		syncStore.account = account;
+		notesStore.notes = [];
+		relayWith(account, [
+			{ slot: 'c'.repeat(64), payload: { kind: 'note-tombstone', id: 'gone', deletedAt: 5 } }
+		]);
+
+		expect(await notesStore.replaceWithCloudManual()).toBe(true);
+		expect(syncStore.lastError).toBeNull();
+		expect(notesStore.notes).toEqual([]);
+	});
+
+	it('replace-with-cloud keeps local notes when nothing the account holds could be read', async () => {
+		const account = createSyncIdentity();
+		syncStore.account = account;
+		const local = remoteNote('local-only');
+		await putNote(TEST_WORKSPACE, local);
+		notesStore.notes = [local];
+		const stranger = createSyncIdentity();
+		relayWith(account, [
+			{
+				slot: 'd'.repeat(64),
+				payload: { kind: 'note', value: remoteNote('foreign') },
+				syncKey: stranger.syncKey
+			}
+		]);
+
+		expect(await notesStore.replaceWithCloudManual()).toBe(false);
+		expect(notesStore.notes.map(({ id }) => id)).toEqual(['local-only']);
+		expect((await getAllNotesMetadata(TEST_WORKSPACE)).map(({ id }) => id)).toEqual(['local-only']);
 	});
 
 	it('serializes replacement with normal sync before local notes can upload', async () => {

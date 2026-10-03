@@ -1387,7 +1387,11 @@ export class NotesStore {
 		};
 	}
 
-	private async applyCloudReplacement(snapshot: SyncSnapshot, pid: string): Promise<SyncSnapshot> {
+	private async applyCloudReplacement(
+		snapshot: SyncSnapshot,
+		pid: string,
+		pulled: { readEnvelopes: number }
+	): Promise<SyncSnapshot> {
 		// Replacing this device's notes with the cloud's belongs to one workspace.
 		if (pid !== this.pid) return snapshot;
 		const notes = withoutTombstoned(snapshot.notes, snapshot.tombstones).sort(
@@ -1396,7 +1400,10 @@ export class NotesStore {
 		const labels = withoutTombstoned(snapshot.labels, snapshot.labelTombstones).sort((a, b) =>
 			a.name.localeCompare(b.name)
 		);
-		if (notes.length === 0 && (syncStore.usage?.envelopeCount ?? 0) > 0) {
+		// Replacing wipes this device, so a pull that read nothing of an account that
+		// holds envelopes must not stand in for it. An account without notes is fine:
+		// every synced workspace stores at least its name.
+		if (pulled.readEnvelopes === 0 && (syncStore.usage?.envelopeCount ?? 0) > 0) {
 			throw new Error('Could not download synced notes');
 		}
 		if (navigator.storage?.estimate) {
@@ -1525,8 +1532,8 @@ export class NotesStore {
 			const leftover = await getSyncOutboxKeys(this.pid).catch(() => []);
 			if (leftover.length) await clearSyncOutbox(this.pid, leftover);
 			await syncStore.clearAccountControlPlane(syncStore.account.accountId);
-			const result = await syncStore.sync(syncSnapshot(), true, true, (snapshot, pid) =>
-				this.applyCloudReplacement(snapshot, pid)
+			const result = await syncStore.sync(syncSnapshot(), true, true, (snapshot, pid, pulled) =>
+				this.applyCloudReplacement(snapshot, pid, pulled)
 			);
 			if (!result.success || !result.snapshot) {
 				this.recordPersistenceError(result.error || 'Cloud sync returned no notes', result.error);

@@ -144,9 +144,14 @@ type SyncResult = {
 /**
  * Applies what a flight pulled. The workspace is handed over with it: a flight
  * belongs to the workspace it started in, and the window may have moved to
- * another one by the time the bytes are decrypted.
+ * another one by the time the bytes are decrypted. `readEnvelopes` counts the
+ * envelopes this flight decrypted, whatever records they held.
  */
-type ApplyPulled = (snapshot: SyncSnapshot, pid: string) => Promise<SyncSnapshot>;
+type ApplyPulled = (
+	snapshot: SyncSnapshot,
+	pid: string,
+	pulled: { readEnvelopes: number }
+) => Promise<SyncSnapshot>;
 
 function mergeTombstoneMaps(
 	local: Record<string, number>,
@@ -1107,6 +1112,7 @@ export class SyncStore {
 			const acknowledgedOutbox = new Set<string>();
 			const internallyMarkedOutbox = new Map<string, number>();
 			let poisonCount = 0;
+			let readEnvelopes = 0;
 			let stalledWrites = 0;
 			/** Records the relay still holds in the pre-slot-binding format. Rewriting
 			 * them is how that format leaves an account, and the only thing that can
@@ -1401,6 +1407,7 @@ export class SyncStore {
 						continue;
 					}
 					decodedAny = true;
+					readEnvelopes += 1;
 					const ordered = [
 						...decodedRecords.filter((record) => record.kind === 'attachment'),
 						...decodedRecords.filter((record) => record.kind !== 'attachment')
@@ -1447,7 +1454,7 @@ export class SyncStore {
 					applyPulled
 				) {
 					if (syncCancelled()) return { success: false, error: 'Sync was cancelled' };
-					merged = await applyPulled(merged, pid);
+					merged = await applyPulled(merged, pid, { readEnvelopes });
 					for (const note of merged.notes) {
 						for (const image of note.images ?? []) {
 							if (image.dataUrl?.length) attachments.set(image.id, image);

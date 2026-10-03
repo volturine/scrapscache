@@ -494,4 +494,62 @@ describe('ReminderStore', () => {
 			stop();
 		});
 	});
+
+	describe('a hidden window', () => {
+		function hide(): void {
+			vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+		}
+		afterEach(() => vi.restoreAllMocks());
+
+		it('does not notify a reminder that another window has since removed', async () => {
+			hide();
+			const { store } = newStore();
+			// Storage holds the note without its reminder; this window still has the old copy.
+			const host = testHost({ others: { [TEST_WORKSPACE]: [note({ reminder: null })] } });
+			const stop = store.attach(host);
+			await store.activateProfile(TEST_WORKSPACE, [note({ reminder: 100 })]);
+			await settle();
+			expect(store.alerts).toEqual([]);
+			expect(await getFiredReminderKeys(TEST_WORKSPACE)).toEqual([]);
+			stop();
+		});
+
+		it('still notifies a reminder that storage confirms', async () => {
+			hide();
+			const { store } = newStore();
+			const due = note({ reminder: 100 });
+			const stop = store.attach(testHost({ others: { [TEST_WORKSPACE]: [due] } }));
+			await store.activateProfile(TEST_WORKSPACE, [due]);
+			await vi.waitFor(() =>
+				expect(store.alerts).toEqual([expect.objectContaining({ noteId: 'n1' })])
+			);
+			stop();
+		});
+
+		/** Reads of `OTHER` after another window reports syncing it. */
+		async function readsAfterOtherWindowSynced(): Promise<number> {
+			const { store } = newStore();
+			const host = testHost({ others: { [OTHER]: [] } });
+			const loadNotes = vi.spyOn(host, 'loadNotes');
+			const stop = store.attach(host);
+			await store.activateProfile(TEST_WORKSPACE, []);
+			await settle();
+			loadNotes.mockClear();
+			const other = new BroadcastChannel('scrapscache-sync-channel');
+			other.postMessage({ type: 'local-sync-complete', pid: OTHER });
+			await settle();
+			other.close();
+			stop();
+			return loadNotes.mock.calls.filter(([pid]) => pid === OTHER).length;
+		}
+
+		it("leaves re-reading another window's sync until it is shown", async () => {
+			hide();
+			expect(await readsAfterOtherWindowSynced()).toBe(0);
+		});
+
+		it("re-reads another window's sync at once while visible", async () => {
+			expect(await readsAfterOtherWindowSynced()).toBe(1);
+		});
+	});
 });

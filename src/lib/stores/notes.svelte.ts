@@ -169,13 +169,12 @@ export class NotesStore {
 			if ('BroadcastChannel' in window) {
 				this.syncBroadcastChannel = new BroadcastChannel('scrapscache-sync-channel');
 				this.syncBroadcastChannel.onmessage = (event) => {
-					if (event.data?.type === 'local-sync-complete' && event.data?.pid === this.pid) {
-						void this.rehydrateFromIDB();
-					}
+					if (event.data?.type === 'local-sync-complete') this.otherWindowSynced(event.data?.pid);
 				};
 			}
 			window.addEventListener('visibilitychange', () => {
 				if (document.visibilityState === 'hidden') this.mirrorToLS();
+				else if (this.staleWhileHidden === this.pid) void this.rehydrateFromIDB();
 			});
 			window.addEventListener('pagehide', () => this.mirrorToLS());
 			window.addEventListener('online', () => {
@@ -204,6 +203,7 @@ export class NotesStore {
 
 	// --- Lifecycle -------------------------------------------------------
 	async init() {
+		this.staleWhileHidden = null;
 		await syncStore.ensureProfilesLoaded();
 
 		const mirrorNotes = readNotesMirror(this.pid);
@@ -279,7 +279,20 @@ export class NotesStore {
 		this.loaded = true;
 	}
 
+	/**
+	 * Another window saved what it synced. The browser may freeze a hidden window in
+	 * the middle of re-reading it, and its open transactions then hold every other
+	 * window's writes to this workspace until it thaws. A hidden window has nothing to
+	 * show, so it catches up once it is shown again, or before it syncs.
+	 */
+	private otherWindowSynced(pid: unknown): void {
+		if (pid !== this.pid) return;
+		if (document.visibilityState === 'hidden') this.staleWhileHidden = this.pid;
+		else void this.rehydrateFromIDB();
+	}
+
 	private async rehydrateFromIDB() {
+		this.staleWhileHidden = null;
 		try {
 			const [dbNotes, dbLabels] = await Promise.all([
 				getAllNotesMetadata(this.pid),
@@ -1171,6 +1184,8 @@ export class NotesStore {
 		// A workspace removed in another window keeps no mirror either: writing
 		// one back would leave note text behind for a workspace that is gone.
 		if (isProfileReleased(this.pid)) return;
+		// Another window has written newer notes than this one holds.
+		if (this.staleWhileHidden === this.pid) return;
 		if (!writeNotesMirror(this.notes, this.pid)) {
 			this.recordPersistenceError(
 				'Could not update the local notes mirror',
@@ -1193,6 +1208,8 @@ export class NotesStore {
 	private syncFlight = $state<Promise<boolean> | null>(null);
 	private syncFollowupRequested = false;
 	private syncBroadcastChannel: BroadcastChannel | null = null;
+	/** The workspace another window synced while this one was hidden and skipped re-reading. */
+	private staleWhileHidden: string | null = null;
 
 	private scheduleNoteRetry(id: string): void {
 		if (this.noteRetryTimers.has(id)) return;
@@ -1696,6 +1713,8 @@ export class NotesStore {
 
 	private async doSyncLocked(indicate = true): Promise<boolean> {
 		if (!syncStore.isLoggedIn) return false;
+		// A flight snapshots these notes, so they must not lag what another window saved.
+		if (this.staleWhileHidden === this.pid) await this.rehydrateFromIDB();
 		// A newly reset relay needs one current-state bootstrap from this source device.
 		// Bytes are returned to thumb-only memory immediately after reconciliation below.
 		if (await syncStore.needsCurrentStateBootstrap()) await this.hydrateAllAttachments();

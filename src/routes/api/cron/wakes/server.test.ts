@@ -1,20 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { privateEnv } from '../../../../tests/env';
 
-const envMock = vi.hoisted(() => ({}) as Record<string, string | undefined>);
 const mocks = vi.hoisted(() => ({
 	dispatch: vi.fn(async () => ({ sent: 1, failed: 0, gone: 0, next: 120_000 })),
 	reschedule: vi.fn(async () => undefined),
 	limit: vi.fn(() => ({ allowed: true }))
 }));
 
-vi.mock('$app/env/private', () => ({
-	get SCRAPSCACHE_TICK_SECRET() {
-		return envMock.SCRAPSCACHE_TICK_SECRET;
-	},
-	get SCRAPSCACHE_ADMIN_TOKEN() {
-		return envMock.SCRAPSCACHE_ADMIN_TOKEN;
-	}
-}));
 vi.mock('#lib/server/rateLimit.js', () => ({
 	clientAddress: (get: () => string) => get(),
 	getPublicApiLimiter: () => ({ check: mocks.limit }),
@@ -49,12 +41,12 @@ function post(token?: string, body: unknown = { accountId: ACCOUNT }): Promise<R
 
 describe('wake delivery endpoint', () => {
 	afterEach(() => {
-		delete envMock.SCRAPSCACHE_TICK_SECRET;
+		delete privateEnv.SCRAPSCACHE_TICK_SECRET;
 		vi.clearAllMocks();
 	});
 
 	it("delivers the account's due wakes and sets its next delivery", async () => {
-		envMock.SCRAPSCACHE_TICK_SECRET = 'tick-secret';
+		privateEnv.SCRAPSCACHE_TICK_SECRET = 'tick-secret';
 		const response = await post('tick-secret');
 		expect(response.status).toBe(200);
 		expect(await response.json()).toMatchObject({ sent: 1, next: 120_000 });
@@ -65,13 +57,13 @@ describe('wake delivery endpoint', () => {
 	});
 
 	it('requires an account', async () => {
-		envMock.SCRAPSCACHE_TICK_SECRET = 'tick-secret';
+		privateEnv.SCRAPSCACHE_TICK_SECRET = 'tick-secret';
 		expect((await post('tick-secret', {})).status).toBe(400);
 		expect(mocks.dispatch).not.toHaveBeenCalled();
 	});
 
 	it('refuses callers without the tick secret, and throttles them', async () => {
-		envMock.SCRAPSCACHE_TICK_SECRET = 'tick-secret';
+		privateEnv.SCRAPSCACHE_TICK_SECRET = 'tick-secret';
 		expect((await post('wrong')).status).toBe(404);
 		expect((await post()).status).toBe(404);
 		mocks.limit.mockReturnValueOnce({ allowed: false });

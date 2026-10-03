@@ -1,5 +1,4 @@
 import type { RequestHandler } from './$types';
-import { json } from '@sveltejs/kit';
 import { getPairingSessions } from '#lib/server/pairingSessions.js';
 import { readJsonBody } from '#lib/server/request.js';
 import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '#lib/server/rateLimit.js';
@@ -15,7 +14,7 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	try {
 		body = (await readJsonBody(request, 16_384)) as typeof body;
 	} catch {
-		return json({ error: 'Invalid JSON body' }, { status: 400 });
+		return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
 	}
 	if (
 		typeof body.codeTag !== 'string' ||
@@ -24,11 +23,11 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 		typeof body.publicKey !== 'string' ||
 		!/^[A-Za-z0-9_-]{43}$/.test(body.publicKey)
 	)
-		return json({ error: 'Invalid pairing request' }, { status: 400 });
+		return Response.json({ error: 'Invalid pairing request' }, { status: 400 });
 	try {
-		return json(await getPairingSessions().start(body.codeTag, body.role, body.publicKey));
+		return Response.json(await getPairingSessions().start(body.codeTag, body.role, body.publicKey));
 	} catch {
-		return json(
+		return Response.json(
 			{ error: 'Pairing rendezvous is busy' },
 			{ status: 503, headers: { 'retry-after': '2' } }
 		);

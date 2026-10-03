@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { emptyStateStyles, notesShell } from '$panda/styles';
-	import { resolve } from '$app/paths';
+	import type { ResolvedPathname } from '$app/types';
 	import type { LucideIcon } from '@lucide/svelte';
 	import { cx } from 'styled-system/css';
 	import { button } from 'styled-system/recipes';
@@ -12,7 +12,8 @@
 		description: string;
 		actionLabel?: string;
 		onAction?: () => void;
-		href?: string;
+		/** Where the action goes, already passed through `resolve`. */
+		href?: ResolvedPathname;
 	};
 
 	let { icon: Icon, tagline, description, actionLabel, onAction, href }: Props = $props();
@@ -25,10 +26,7 @@
 	{/if}
 	<p class={emptyStateStyles.description}>{description}</p>
 	{#if actionLabel && href}
-		<a
-			href={href === '/' || href === '' ? resolve('') : href}
-			class={cx(button({ variant: 'secondary', size: 'sm' }), emptyStateStyles.action)}
-		>
+		<a {href} class={cx(button({ variant: 'secondary', size: 'sm' }), emptyStateStyles.action)}>
 			{actionLabel}
 		</a>
 	{:else if actionLabel && onAction}

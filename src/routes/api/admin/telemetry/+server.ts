@@ -1,5 +1,4 @@
 import type { RequestHandler } from './$types';
-import { json } from '@sveltejs/kit';
 import { requireAdmin } from '#lib/server/adminAuth.js';
 import { queryTelemetry } from '#lib/server/telemetryQuery.js';
 
@@ -9,7 +8,7 @@ export const GET: RequestHandler = async ({ request, url, getClientAddress }) =>
 	const rejected = await requireAdmin(request, getClientAddress);
 	if (rejected) return rejected;
 	const hours = Number(url.searchParams.get('hours'));
-	return json(await queryTelemetry(Number.isFinite(hours) && hours > 0 ? hours : 24), {
+	return Response.json(await queryTelemetry(Number.isFinite(hours) && hours > 0 ? hours : 24), {
 		headers: { 'cache-control': 'no-store' }
 	});
 };

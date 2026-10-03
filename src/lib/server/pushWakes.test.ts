@@ -46,6 +46,33 @@ describe('blind wake request validation', () => {
 		).toBeNull();
 	});
 
+	it.each([
+		['a plain http endpoint', { endpoint: 'http://fcm.googleapis.com/fcm/send/abc' }],
+		['a private endpoint', { endpoint: 'https://10.0.0.8/push/abcdef' }],
+		['a short p256dh key', { keys: { p256dh: 'B'.repeat(15), auth: 'a'.repeat(16) } }],
+		['a long auth secret', { keys: { p256dh: 'B'.repeat(20), auth: 'a'.repeat(129) } }],
+		['a key outside base64url', { keys: { p256dh: 'B'.repeat(19) + '+', auth: 'a'.repeat(16) } }],
+		['no keys', { keys: undefined }]
+	])('refuses a push subscription with %s', (_label, change) => {
+		expect(
+			isPushSubscription({
+				endpoint: 'https://updates.push.services.mozilla.com/wpush/v2/token',
+				keys: { p256dh: 'B'.repeat(20), auth: 'a'.repeat(16) },
+				...change
+			})
+		).toBe(false);
+	});
+
+	it.each([
+		['a fractional time', [{ id: 'a'.repeat(43), fireAt: 150.5 }]],
+		['an unsafe integer time', [{ id: 'a'.repeat(43), fireAt: 2 ** 53 }]],
+		['a time given as text', [{ id: 'a'.repeat(43), fireAt: '150' }]],
+		['a wake that is not an object', ['a'.repeat(43)]],
+		['a list that is not a list', { id: 'a'.repeat(43), fireAt: 150 }]
+	])('refuses a wake list with %s', (_label, wakes) => {
+		expect(parseReminderWakes(wakes, 100)).toBeNull();
+	});
+
 	it('rejects duplicate wake ids instead of conflating reminders', () => {
 		expect(
 			parseReminderWakes(

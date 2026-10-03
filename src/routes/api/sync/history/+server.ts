@@ -1,11 +1,10 @@
 import type { RequestHandler } from './$types';
-import { json } from '@sveltejs/kit';
 import { getSyncAuth } from '#lib/server/syncAuth.js';
 import { getSyncStore } from '#lib/server/syncStore.js';
 import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '#lib/server/rateLimit.js';
 
 const privateResponse = (body: unknown, status = 200) =>
-	json(body, { status, headers: { 'cache-control': 'no-store' } });
+	Response.json(body, { status, headers: { 'cache-control': 'no-store' } });
 
 /**
  * `?slot=` lists a record's retained encrypted versions, newest first, in one response.

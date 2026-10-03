@@ -5,21 +5,15 @@ import { afterEach, vi } from 'vitest';
 import { closeDeviceDatabase, DEVICE_DB_NAME, dropDatabase } from '#lib/db/idb.js';
 import { resetTombstoneCaches } from '#lib/syncTombstones.js';
 import { installHorizontalWheel } from '#lib/horizontalWheel.js';
+import { resetEnv } from './env';
 import { seedTestKeyring } from './workspace';
 
 // Stores boot on the keyring's workspace; every test file starts on the same one.
 seedTestKeyring();
 
-// Browser-side $app/env/public reads globals that only a SvelteKit page defines.
-if (!(globalThis as any).__sveltekit_dev) {
-	(globalThis as any).__sveltekit_dev = { env: {} };
-}
-vi.mock('$app/env/public', () => ({
-	get PUBLIC_TURNSTILE_ORIGIN() {
-		return (globalThis as any).__sveltekit_dev?.env?.PUBLIC_TURNSTILE_ORIGIN ?? '';
-	}
-}));
-vi.mock('$env/dynamic/public', () => ({ env: (globalThis as any).__sveltekit_dev.env }));
+// `$app/env/*` are generated per app; tests set values through `./env`.
+vi.mock('$app/env/private', async () => (await import('./env')).envModule(false));
+vi.mock('$app/env/public', async () => (await import('./env')).envModule(true));
 
 // jsdom does not implement viewport scrolling; component navigation still calls it.
 if (typeof window !== 'undefined') window.scrollTo = vi.fn();
@@ -102,14 +96,16 @@ if (typeof window !== 'undefined' && !window.matchMedia) {
 // case to trip over.
 afterEach(async () => {
 	vi.useRealTimers();
+	resetEnv();
 	resetTombstoneCaches();
 	if (typeof sessionStorage !== 'undefined') sessionStorage.clear();
 	await closeDeviceDatabase();
 	// Every name is read before the first delete: a delete that stays blocked
-	// can otherwise prevent another delete from finishing.
-	const names = (await indexedDB.databases?.()) ?? [];
-	for (const { name } of names) {
-		if (name && name !== DEVICE_DB_NAME) await dropDatabase(name);
+	// also holds up the listing behind it, and the point here is to report the
+	// leak, not to hang on it.
+	const names = new Set([DEVICE_DB_NAME]);
+	if (typeof indexedDB !== 'undefined' && 'databases' in indexedDB) {
+		for (const db of await indexedDB.databases()) if (db.name) names.add(db.name);
 	}
-	await dropDatabase(DEVICE_DB_NAME);
+	for (const name of names) await dropDatabase(name);
 });

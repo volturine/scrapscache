@@ -86,7 +86,7 @@ describe('listing accounts', () => {
 	});
 
 	it('hides everything behind the admin guard', async () => {
-		mcks: mocks.requireAdmin.mockResolvedValue(new Response(null, { status: 404 }));
+		mocks.requireAdmin.mockResolvedValue(new Response(null, { status: 404 }));
 		expect((await get()).status).toBe(404);
 		expect(mocks.listAccounts).not.toHaveBeenCalled();
 	});

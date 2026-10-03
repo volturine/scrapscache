@@ -1,5 +1,4 @@
 import type { RequestHandler } from './$types';
-import { json } from '@sveltejs/kit';
 import { getSyncStore } from '#lib/server/syncStore.js';
 import { getSyncAuth } from '#lib/server/syncAuth.js';
 import { readJsonBody } from '#lib/server/request.js';
@@ -43,13 +42,16 @@ export const GET: RequestHandler = async ({ request, getClientAddress }) => {
 	const addressLimit = await checkAddressLimit(getClientAddress);
 	if (!addressLimit.allowed) return rateLimitResponse(addressLimit);
 	const accountId = await getSyncAuth().authenticateSyncRequest(request);
-	if (!accountId) return json({ error: 'Invalid sync session' }, { status: 401 });
+	if (!accountId) return Response.json({ error: 'Invalid sync session' }, { status: 401 });
 	try {
 		const result = await getSyncStore().getReminderWakes(accountId);
-		return json(result);
+		return Response.json(result);
 	} catch (error) {
 		recordSqliteError(error);
-		return json({ error: 'Reminder scheduling is temporarily unavailable' }, { status: 503 });
+		return Response.json(
+			{ error: 'Reminder scheduling is temporarily unavailable' },
+			{ status: 503 }
+		);
 	}
 };
 
@@ -61,18 +63,21 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	try {
 		body = (await readJsonBody(request, MAX_REQUEST_BYTES)) as typeof body;
 	} catch {
-		return json({ error: 'Invalid JSON body' }, { status: 400 });
+		return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
 	}
 	if (typeof body.deviceId !== 'string' || !DEVICE_ID_RE.test(body.deviceId)) {
-		return json({ error: 'A device id is required' }, { status: 400 });
+		return Response.json({ error: 'A device id is required' }, { status: 400 });
 	}
 	if (!isPushSubscription(body.subscription)) {
-		return json({ error: 'A push subscription is required' }, { status: 400 });
+		return Response.json({ error: 'A push subscription is required' }, { status: 400 });
 	}
 	const accountId = await getSyncAuth().authenticateSyncRequest(request);
-	if (!accountId) return json({ error: 'Invalid sync session' }, { status: 401 });
+	if (!accountId) return Response.json({ error: 'Invalid sync session' }, { status: 401 });
 	if (!(await isPublicEndpoint(body.subscription.endpoint))) {
-		return json({ error: 'The push endpoint must be a public https origin' }, { status: 400 });
+		return Response.json(
+			{ error: 'The push endpoint must be a public https origin' },
+			{ status: 400 }
+		);
 	}
 	const deviceLimit = await getPublicApiLimiter().check(`push-device:${body.deviceId}`, {
 		capacity: 20,
@@ -89,10 +94,13 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 		});
 		// A browser that registers after a wake came due still gets it.
 		await scheduleDelivery(accountId);
-		return json({ ok: true });
+		return Response.json({ ok: true });
 	} catch (error) {
 		recordSqliteError(error);
-		return json({ error: 'Push registration is temporarily unavailable' }, { status: 503 });
+		return Response.json(
+			{ error: 'Push registration is temporarily unavailable' },
+			{ status: 503 }
+		);
 	}
 };
 
@@ -104,14 +112,14 @@ export const PUT: RequestHandler = async ({ request, getClientAddress }) => {
 	try {
 		body = (await readJsonBody(request, MAX_REQUEST_BYTES)) as typeof body;
 	} catch {
-		return json({ error: 'Invalid JSON body' }, { status: 400 });
+		return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
 	}
 	const accountId = await getSyncAuth().authenticateSyncRequest(request);
-	if (!accountId) return json({ error: 'Invalid sync session' }, { status: 401 });
+	if (!accountId) return Response.json({ error: 'Invalid sync session' }, { status: 401 });
 	const wakes = parseReminderWakes(body.wakes, Date.now());
-	if (!wakes) return json({ error: 'Invalid reminder wakes' }, { status: 400 });
+	if (!wakes) return Response.json({ error: 'Invalid reminder wakes' }, { status: 400 });
 	if (!Number.isSafeInteger(body.revision) || Number(body.revision) < 0) {
-		return json({ error: 'A sync revision is required' }, { status: 400 });
+		return Response.json({ error: 'A sync revision is required' }, { status: 400 });
 	}
 	try {
 		const accepted = await getSyncStore().replaceReminderWakes(
@@ -119,12 +127,15 @@ export const PUT: RequestHandler = async ({ request, getClientAddress }) => {
 			wakes,
 			Number(body.revision)
 		);
-		if (!accepted) return json({ error: 'Stale reminder snapshot' }, { status: 409 });
+		if (!accepted) return Response.json({ error: 'Stale reminder snapshot' }, { status: 409 });
 		await scheduleDelivery(accountId);
-		return json({ ok: true, wakes: wakes.length });
+		return Response.json({ ok: true, wakes: wakes.length });
 	} catch (error) {
 		recordSqliteError(error);
-		return json({ error: 'Reminder scheduling is temporarily unavailable' }, { status: 503 });
+		return Response.json(
+			{ error: 'Reminder scheduling is temporarily unavailable' },
+			{ status: 503 }
+		);
 	}
 };
 
@@ -136,18 +147,21 @@ export const DELETE: RequestHandler = async ({ request, getClientAddress }) => {
 	try {
 		body = (await readJsonBody(request, MAX_REQUEST_BYTES)) as typeof body;
 	} catch {
-		return json({ error: 'Invalid JSON body' }, { status: 400 });
+		return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
 	}
 	if (typeof body.deviceId !== 'string' || !DEVICE_ID_RE.test(body.deviceId)) {
-		return json({ error: 'A device id is required' }, { status: 400 });
+		return Response.json({ error: 'A device id is required' }, { status: 400 });
 	}
 	const accountId = await getSyncAuth().authenticateSyncRequest(request);
-	if (!accountId) return json({ error: 'Invalid sync session' }, { status: 401 });
+	if (!accountId) return Response.json({ error: 'Invalid sync session' }, { status: 401 });
 	try {
 		await getSyncStore().deletePushDevice(accountId, body.deviceId);
 		return new Response(null, { status: 204 });
 	} catch (error) {
 		recordSqliteError(error);
-		return json({ error: 'Push registration is temporarily unavailable' }, { status: 503 });
+		return Response.json(
+			{ error: 'Push registration is temporarily unavailable' },
+			{ status: 503 }
+		);
 	}
 };

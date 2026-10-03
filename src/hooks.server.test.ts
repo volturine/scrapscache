@@ -1,34 +1,9 @@
 import type { RequestEvent } from '@sveltejs/kit';
 import type { ResolveOptions } from '@sveltejs/kit/hooks';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { privateEnv, publicEnv } from './tests/env';
 
-const env = vi.hoisted(() => ({
-	private: {} as Record<string, string | undefined>,
-	public: {} as Record<string, string | undefined>
-}));
 vi.mock('#lib/server/metrics.js', () => ({ recordHttpRequest: vi.fn() }));
-vi.mock('$app/env/private', () => ({
-	get TURNSTILE_SITEKEY() {
-		return env.private.TURNSTILE_SITEKEY;
-	},
-	get SCRAPSCACHE_ORIGIN() {
-		return env.private.SCRAPSCACHE_ORIGIN;
-	},
-	get ORIGIN() {
-		return env.private.ORIGIN;
-	},
-	get TURNSTILE_SECRET() {
-		return env.private.TURNSTILE_SECRET;
-	},
-	get TURNSTILE_HOSTNAMES() {
-		return env.private.TURNSTILE_HOSTNAMES;
-	}
-}));
-vi.mock('$app/env/public', () => ({
-	get PUBLIC_TURNSTILE_ORIGIN() {
-		return env.public.PUBLIC_TURNSTILE_ORIGIN;
-	}
-}));
 
 import { handle } from './hooks.server';
 
@@ -121,14 +96,14 @@ function page(policy = APP_POLICY) {
 
 describe('the Turnstile challenge origin', () => {
 	afterEach(() => {
-		for (const key of Object.keys(env.private)) delete env.private[key];
-		for (const key of Object.keys(env.public)) delete env.public[key];
+		for (const key of Object.keys(privateEnv)) delete privateEnv[key];
+		for (const key of Object.keys(publicEnv)) delete publicEnv[key];
 	});
 
 	function configure() {
-		env.public.PUBLIC_TURNSTILE_ORIGIN = CHALLENGE;
-		env.private.TURNSTILE_SITEKEY = 'sitekey';
-		env.private.SCRAPSCACHE_ORIGIN = APP;
+		publicEnv.PUBLIC_TURNSTILE_ORIGIN = CHALLENGE;
+		privateEnv.TURNSTILE_SITEKEY = 'sitekey';
+		privateEnv.SCRAPSCACHE_ORIGIN = APP;
 	}
 
 	it('serves nothing but the challenge page, so the app never runs there', async () => {

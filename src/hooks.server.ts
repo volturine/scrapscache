@@ -1,6 +1,7 @@
 import type { Handle, ServerInit } from '@sveltejs/kit/hooks';
 import { recordHttpRequest } from '#lib/server/metrics.js';
 import { startWakeTimer } from '#lib/server/wakeTimer.js';
+import { configuredOrigin } from '#lib/server/publicOrigin.js';
 import { turnstileChallenge } from '#lib/server/turnstile.js';
 
 const SECURITY_HEADERS: ReadonlyArray<readonly [string, string]> = [
@@ -57,8 +58,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 			? new Response('Not found\n', { status: 404 })
 			: await resolve(event, {
 					transformPageChunk: ({ html }) => {
-						const origin = event.url.origin;
-						if (!origin) return html;
+						const origin = configuredOrigin() ?? event.url.origin;
 						const canonical = `${origin}${event.url.pathname}`;
 						return html
 							.replaceAll('https://scrapscache.com/og-preview.png', `${origin}/og-preview.png`)

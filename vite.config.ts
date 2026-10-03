@@ -73,9 +73,10 @@ export default defineConfig({
 	plugins: [
 		cloudflarePlatform,
 		sveltekit({
-			compilerOptions: {
-				runes: true
-			},
+			// Every component in this app uses runes. Dependencies keep their own mode,
+			// so a package still written in legacy syntax compiles as it ships.
+			dynamicCompileOptions: ({ filename }) =>
+				filename.includes('/node_modules/') ? undefined : { runes: true },
 			preprocess: vitePreprocess(),
 			adapter:
 				process.env.DEPLOY_TARGET === 'cloudflare'
@@ -94,7 +95,7 @@ export default defineConfig({
 					'img-src': ['self', 'data:', 'blob:'],
 					'media-src': ['self', 'data:', 'blob:'],
 					// Excalidraw lists its esm.sh copy after ours as a fallback for every font
-					// (/fonts, see vite.config.ts), and Chrome logs a violation for each
+					// (/fonts, see viteStaticCopy below), and Chrome logs a violation for each
 					// blocked fallback when a canvas opens, even though ours loads. Fonts
 					// cannot run code; the path keeps the allowance to Excalidraw's package.
 					'font-src': ['self', 'https://esm.sh/@excalidraw/'],
@@ -103,7 +104,10 @@ export default defineConfig({
 					// stay blocked; the Turnstile challenge origin is added at request time
 					// from configuration, because it differs per deployment.
 					'frame-src': ['self', 'blob:'],
-					'object-src': ['self', 'blob:']
+					'object-src': ['self', 'blob:'],
+					'base-uri': ['none'],
+					'form-action': ['self'],
+					'frame-ancestors': ['none']
 				}
 			}
 		}),
@@ -145,23 +149,20 @@ export default defineConfig({
 			{
 				find: '$panda',
 				replacement: fileURLToPath(new URL('./panda', import.meta.url))
-			},
-			...(process.env.DEPLOY_TARGET === 'cloudflare'
-				? []
-				: [
-						{
-							find: 'cloudflare:workers',
-							replacement: fileURLToPath(
-								new URL('./src/lib/server/cloudflare/workersStub.ts', import.meta.url)
-							)
-						}
-					])
+			}
 		]
 	},
 	test: {
 		include: ['src/**/*.{test,spec}.{js,ts}', 'recipes/**/*.{test,spec}.{js,ts}'],
 		environment: 'jsdom',
 		globals: true,
-		setupFiles: ['src/tests/setup.ts']
+		setupFiles: ['src/tests/setup.ts'],
+		alias: {
+			// The Workers runtime module exists only inside workerd; the Cloudflare
+			// modules under test read their bindings through mocks instead.
+			'cloudflare:workers': fileURLToPath(
+				new URL('./src/tests/cloudflareWorkers.ts', import.meta.url)
+			)
+		}
 	}
 });

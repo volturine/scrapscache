@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import NotesFeed from '#lib/components/NotesFeed.svelte';
 	import SectionHeader from '#lib/components/SectionHeader.svelte';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
@@ -26,7 +27,7 @@
 			icon={Trash2}
 			description="Deleted notes stay here for 7 days before they are deleted forever."
 			actionLabel="Back to notes"
-			href=""
+			href={resolve('')}
 		/>
 	{:else}
 		<SectionHeader label="Trash" count={trashed.length}>

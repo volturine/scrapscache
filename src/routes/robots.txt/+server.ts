@@ -1,4 +1,5 @@
 import type { RequestHandler } from './$types';
+import { configuredOrigin } from '#lib/server/publicOrigin.js';
 import { getRuntimeSettings } from '#lib/server/runtimeSettings.js';
 
 /**
@@ -10,7 +11,7 @@ export const GET: RequestHandler = async ({ url }) => {
 	const settings = await getRuntimeSettings();
 	return new Response(
 		settings.allowIndexing
-			? `User-agent: *\nDisallow:\n\nSitemap: ${url.origin}/sitemap.xml\n`
+			? `User-agent: *\nDisallow:\n\nSitemap: ${configuredOrigin() ?? url.origin}/sitemap.xml\n`
 			: 'User-agent: *\nDisallow: /\n',
 		{ headers: { 'content-type': 'text/plain; charset=utf-8' } }
 	);

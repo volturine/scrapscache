@@ -1,5 +1,4 @@
 import type { RequestHandler } from './$types';
-import { json } from '@sveltejs/kit';
 import { getPairingSessions } from '#lib/server/pairingSessions.js';
 import { readJsonBody } from '#lib/server/request.js';
 import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '#lib/server/rateLimit.js';
@@ -14,7 +13,7 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	try {
 		body = (await readJsonBody(request, 16_384)) as typeof body;
 	} catch {
-		return json({ error: 'Invalid JSON body' }, { status: 400 });
+		return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
 	}
 	const grant = body.grant as { ciphertext?: unknown } | undefined;
 	if (
@@ -25,12 +24,12 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 		grant.ciphertext.length > 8_192 ||
 		!/^[A-Za-z0-9_-]+$/.test(grant.ciphertext)
 	) {
-		return json({ error: 'Invalid encrypted rendezvous grant' }, { status: 400 });
+		return Response.json({ error: 'Invalid encrypted rendezvous grant' }, { status: 400 });
 	}
 	const result = await getPairingSessions().submitGrant(body.sessionId, {
 		ciphertext: grant.ciphertext
 	});
 	return result.success
-		? json({ ok: true })
-		: json({ error: 'Rendezvous no longer active' }, { status: 404 });
+		? Response.json({ ok: true })
+		: Response.json({ error: 'Rendezvous no longer active' }, { status: 404 });
 };

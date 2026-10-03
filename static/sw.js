@@ -84,11 +84,22 @@ self.addEventListener('fetch', (event) => {
 		return;
 	}
 
-	// Hashed build assets are immutable and served with Cache-Control: public, immutable, max-age=31536000.
-	// Bypassing event.respondWith() lets the browser native HTTP cache handle preloads and module
-	// execution directly without triggering Chromium cross-world service worker resource mismatches or
-	// duplicate network fetches.
-	if (isImmutableAsset(url)) return;
+	// Hashed build assets are immutable: cache-first is safe once fetched.
+	if (isImmutableAsset(url)) {
+		event.respondWith(
+			caches.match(req).then((cached) => {
+				if (cached) return cached;
+				return fetch(req).then((res) => {
+					if (res.ok) {
+						const copy = res.clone();
+						caches.open(CACHE_NAME).then((cache) => cache.put(req, copy));
+					}
+					return res;
+				});
+			})
+		);
+		return;
+	}
 
 	// Other same-origin GETs (CSS from shell, icons, etc.): network first, cache fallback.
 	event.respondWith(

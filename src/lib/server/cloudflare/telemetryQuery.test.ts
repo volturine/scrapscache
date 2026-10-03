@@ -14,7 +14,7 @@ vi.mock('#lib/server/db.js', () => {
 	return { getDb: () => ({ relay: ops, ops, ready: Promise.resolve() }) };
 });
 
-import { HOUR_MS } from './telemetryQuery';
+import { HOUR_MS } from './metrics';
 import { queryTelemetry } from './telemetryQuery';
 
 let client: Client;

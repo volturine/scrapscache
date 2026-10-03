@@ -1,5 +1,4 @@
 import type { RequestHandler } from './$types';
-import { json } from '@sveltejs/kit';
 import { SCRAPSCACHE_TICK_SECRET } from '$app/env/private';
 import { isAdminAuthorized, unauthorizedAdminResponse } from '#lib/server/adminAuth.js';
 import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '#lib/server/rateLimit.js';
@@ -18,7 +17,7 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	if (!SCRAPSCACHE_TICK_SECRET) return unauthorizedAdminResponse();
 	if (!isAdminAuthorized(request, SCRAPSCACHE_TICK_SECRET)) return unauthorizedAdminResponse();
 	try {
-		return json(await runCronTick(), { headers: { 'cache-control': 'no-store' } });
+		return Response.json(await runCronTick(), { headers: { 'cache-control': 'no-store' } });
 	} catch (error) {
 		console.error(
 			JSON.stringify({
@@ -27,6 +26,6 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 				message: error instanceof Error ? error.message : 'Cron tick failed'
 			})
 		);
-		return json({ error: 'Cron tick failed' }, { status: 503 });
+		return Response.json({ error: 'Cron tick failed' }, { status: 503 });
 	}
 };

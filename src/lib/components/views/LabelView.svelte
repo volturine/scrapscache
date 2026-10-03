@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import NotesFeed from '#lib/components/NotesFeed.svelte';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
 	import { uiStore } from '#lib/stores/ui.svelte.js';
@@ -28,7 +29,7 @@
 			icon={Tag}
 			description="This label no longer exists."
 			actionLabel="Go to Notes"
-			href=""
+			href={resolve('')}
 		/>
 	{:else if notes.length === 0}
 		<EmptyState

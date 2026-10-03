@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { privateEnv } from '../../../../tests/env';
 
-const envMock = vi.hoisted(() => ({}) as Record<string, string | undefined>);
 const mocks = vi.hoisted(() => ({
 	limit: vi.fn<() => { allowed: boolean }>(() => ({ allowed: true })),
 	queryTelemetry: vi.fn(async (hours: number) => ({
@@ -13,11 +13,6 @@ const mocks = vi.hoisted(() => ({
 	}))
 }));
 
-vi.mock('$app/env/private', () => ({
-	get SCRAPSCACHE_ADMIN_TOKEN() {
-		return envMock.SCRAPSCACHE_ADMIN_TOKEN;
-	}
-}));
 vi.mock('#lib/server/rateLimit.js', () => ({
 	checkAdminApiLimit: () => mocks.limit(),
 	rateLimitResponse: () => new Response(null, { status: 429 })
@@ -44,12 +39,12 @@ function get(token?: string, query = ''): Promise<Response> {
 
 describe('admin telemetry endpoint', () => {
 	afterEach(() => {
-		delete envMock.SCRAPSCACHE_ADMIN_TOKEN;
+		delete privateEnv.SCRAPSCACHE_ADMIN_TOKEN;
 		vi.clearAllMocks();
 	});
 
 	it('returns the report for the configured admin token', async () => {
-		envMock.SCRAPSCACHE_ADMIN_TOKEN = 'admin-token';
+		privateEnv.SCRAPSCACHE_ADMIN_TOKEN = 'admin-token';
 		const response = await get('admin-token', '?hours=6');
 
 		expect(response.status).toBe(200);
@@ -58,7 +53,7 @@ describe('admin telemetry endpoint', () => {
 	});
 
 	it('defaults to a day when the window is missing or nonsense', async () => {
-		envMock.SCRAPSCACHE_ADMIN_TOKEN = 'admin-token';
+		privateEnv.SCRAPSCACHE_ADMIN_TOKEN = 'admin-token';
 		await get('admin-token');
 		await get('admin-token', '?hours=-3');
 		await get('admin-token', '?hours=banana');
@@ -67,17 +62,17 @@ describe('admin telemetry endpoint', () => {
 	});
 
 	it('hides itself from anyone without the token, and when none is set', async () => {
-		envMock.SCRAPSCACHE_ADMIN_TOKEN = 'admin-token';
+		privateEnv.SCRAPSCACHE_ADMIN_TOKEN = 'admin-token';
 		expect((await get('wrong-token')).status).toBe(404);
 		expect((await get()).status).toBe(404);
 
-		delete envMock.SCRAPSCACHE_ADMIN_TOKEN;
+		delete privateEnv.SCRAPSCACHE_ADMIN_TOKEN;
 		expect((await get('admin-token')).status).toBe(404);
 		expect(mocks.queryTelemetry).not.toHaveBeenCalled();
 	});
 
 	it('throttles before it authenticates', async () => {
-		envMock.SCRAPSCACHE_ADMIN_TOKEN = 'admin-token';
+		privateEnv.SCRAPSCACHE_ADMIN_TOKEN = 'admin-token';
 		mocks.limit.mockReturnValueOnce({ allowed: false });
 
 		expect((await get('admin-token')).status).toBe(429);

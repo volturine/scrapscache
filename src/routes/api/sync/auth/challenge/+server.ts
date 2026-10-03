@@ -1,5 +1,4 @@
 import type { RequestHandler } from './$types';
-import { json } from '@sveltejs/kit';
 import { getSyncAuth, isLegacySyncCredential } from '#lib/server/syncAuth.js';
 import { getSyncStore } from '#lib/server/syncStore.js';
 import { readJsonBody } from '#lib/server/request.js';
@@ -16,22 +15,22 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	try {
 		body = (await readJsonBody(request, 4_096)) as typeof body;
 	} catch {
-		return json({ error: 'Invalid request' }, { status: 400 });
+		return Response.json({ error: 'Invalid request' }, { status: 400 });
 	}
 	if (typeof body.accountId !== 'string' || !/^[A-Za-z0-9_-]{16,128}$/.test(body.accountId)) {
-		return json({ error: 'Sync account not found' }, { status: 404 });
+		return Response.json({ error: 'Sync account not found' }, { status: 404 });
 	}
 	const store = getSyncStore();
 	const credential = await store.getAuthCredential(body.accountId);
 	if (!credential) {
 		if (await store.isAccountRetired(body.accountId)) return retiredKeyResponse();
-		return json({ error: 'Sync account not found' }, { status: 404 });
+		return Response.json({ error: 'Sync account not found' }, { status: 404 });
 	}
 	if (isLegacySyncCredential(credential)) {
-		return json(
+		return Response.json(
 			{ error: 'Sync authentication upgrade required', migrationRequired: true },
 			{ status: 409 }
 		);
 	}
-	return json(await getSyncAuth().createSyncChallenge(body.accountId));
+	return Response.json(await getSyncAuth().createSyncChallenge(body.accountId));
 };

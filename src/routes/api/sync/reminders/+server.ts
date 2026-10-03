@@ -1,5 +1,4 @@
 import type { RequestHandler } from './$types';
-import { json } from '@sveltejs/kit';
 import { getSyncAuth } from '#lib/server/syncAuth.js';
 import { readJsonBody } from '#lib/server/request.js';
 import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '#lib/server/rateLimit.js';
@@ -18,7 +17,7 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	});
 	if (!address.allowed) return rateLimitResponse(address);
 	const accountId = await getSyncAuth().authenticateSyncRequest(request);
-	if (!accountId) return json({ error: 'Invalid sync session' }, { status: 401 });
+	if (!accountId) return Response.json({ error: 'Invalid sync session' }, { status: 401 });
 	const account = await limiter.check(`reminders-account:${accountId}`, {
 		capacity: 120,
 		refillWindowMs: 60_000
@@ -28,7 +27,7 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	try {
 		body = (await readJsonBody(request, 65_536)) as typeof body;
 	} catch {
-		return json({ error: 'Invalid JSON body' }, { status: 400 });
+		return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
 	}
 	if (
 		!body ||
@@ -39,14 +38,14 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 		!body.notes.every(validReminderPacket) ||
 		new Set(body.notes.map((row) => row.note)).size !== body.notes.length
 	)
-		return json({ error: 'Invalid reminder receipts' }, { status: 400 });
+		return Response.json({ error: 'Invalid reminder receipts' }, { status: 400 });
 	try {
 		const page = await exchangeReminderHistory(accountId, Number(body.cursor), body.notes);
-		return json(page, {
+		return Response.json(page, {
 			headers: { 'cache-control': 'no-store' }
 		});
 	} catch (error) {
-		return json(
+		return Response.json(
 			{
 				error:
 					error instanceof ReminderHistoryQuotaError

@@ -1,12 +1,11 @@
 import type { RequestHandler } from './$types';
-import { json } from '@sveltejs/kit';
 import { getVapidKeys } from '#lib/server/webPush.js';
 
 /** Public VAPID key for PushManager.subscribe. The private key never leaves the server. */
 export const GET: RequestHandler = async () => {
 	try {
-		return json({ publicKey: (await getVapidKeys()).publicKey });
+		return Response.json({ publicKey: (await getVapidKeys()).publicKey });
 	} catch {
-		return json({ error: 'Push is temporarily unavailable' }, { status: 503 });
+		return Response.json({ error: 'Push is temporarily unavailable' }, { status: 503 });
 	}
 };

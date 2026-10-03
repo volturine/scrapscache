@@ -1,31 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-
-const env = vi.hoisted(() => ({
-	private: {} as Record<string, string | undefined>,
-	public: {} as Record<string, string | undefined>
-}));
-vi.mock('$app/env/private', () => ({
-	get TURNSTILE_SITEKEY() {
-		return env.private.TURNSTILE_SITEKEY;
-	},
-	get SCRAPSCACHE_ORIGIN() {
-		return env.private.SCRAPSCACHE_ORIGIN;
-	},
-	get ORIGIN() {
-		return env.private.ORIGIN;
-	},
-	get TURNSTILE_SECRET() {
-		return env.private.TURNSTILE_SECRET;
-	},
-	get TURNSTILE_HOSTNAMES() {
-		return env.private.TURNSTILE_HOSTNAMES;
-	}
-}));
-vi.mock('$app/env/public', () => ({
-	get PUBLIC_TURNSTILE_ORIGIN() {
-		return env.public.PUBLIC_TURNSTILE_ORIGIN;
-	}
-}));
+import { privateEnv, publicEnv } from '../../tests/env';
 
 import { GET } from './+server';
 
@@ -51,14 +25,14 @@ function directives(response: Response): Map<string, string> {
 }
 
 beforeEach(() => {
-	env.public.PUBLIC_TURNSTILE_ORIGIN = CHALLENGE;
-	env.private.TURNSTILE_SITEKEY = 'sitekey-1';
-	env.private.SCRAPSCACHE_ORIGIN = APP;
+	publicEnv.PUBLIC_TURNSTILE_ORIGIN = CHALLENGE;
+	privateEnv.TURNSTILE_SITEKEY = 'sitekey-1';
+	privateEnv.SCRAPSCACHE_ORIGIN = APP;
 });
 
 afterEach(() => {
-	for (const key of Object.keys(env.private)) delete env.private[key];
-	for (const key of Object.keys(env.public)) delete env.public[key];
+	for (const key of Object.keys(privateEnv)) delete privateEnv[key];
+	for (const key of Object.keys(publicEnv)) delete publicEnv[key];
 });
 
 describe('the Turnstile challenge page', () => {
@@ -77,12 +51,12 @@ describe('the Turnstile challenge page', () => {
 	});
 
 	it('does not exist when Turnstile is not configured', () => {
-		delete env.public.PUBLIC_TURNSTILE_ORIGIN;
+		delete publicEnv.PUBLIC_TURNSTILE_ORIGIN;
 		expect(get(`${CHALLENGE}/turnstile?action=register`).status).toBe(404);
 	});
 
 	it('does not exist when configured onto the app origin', () => {
-		env.public.PUBLIC_TURNSTILE_ORIGIN = APP;
+		publicEnv.PUBLIC_TURNSTILE_ORIGIN = APP;
 		expect(get(`${APP}/turnstile?action=register`).status).toBe(404);
 	});
 
@@ -121,7 +95,7 @@ describe('the Turnstile challenge page', () => {
 	});
 
 	it('cannot be broken out of by a configured value', async () => {
-		env.private.TURNSTILE_SITEKEY = `${SCRIPT_CLOSE}<script>steal()${SCRIPT_CLOSE}`;
+		privateEnv.TURNSTILE_SITEKEY = `${SCRIPT_CLOSE}<script>steal()${SCRIPT_CLOSE}`;
 		const html = await get(`${CHALLENGE}/turnstile?action=register`).text();
 
 		expect(html).not.toContain(`${SCRIPT_CLOSE}<script>steal()`);

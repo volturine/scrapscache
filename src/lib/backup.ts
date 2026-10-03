@@ -190,45 +190,43 @@ function normalizeLinkPreview(value: unknown): LinkPreview | null {
 	};
 }
 
-const CurrentBackupRawSchema = Schema.Union([
-	Schema.Struct({
-		version: Schema.Literal(4),
-		exportedAt: Schema.Number,
-		notes: Schema.Array(Schema.Unknown),
-		labels: Schema.Array(Schema.Unknown),
-		boards: Schema.Array(Schema.Unknown),
-		activeBoardId: Schema.String,
-		tombstones: Schema.Record(Schema.String, Schema.Unknown),
-		labelTombstones: Schema.Record(Schema.String, Schema.Unknown),
-		boardTombstones: Schema.Record(Schema.String, Schema.Unknown),
-		canvasLibrary: Schema.optional(Schema.Array(Schema.Unknown)),
-		reminderHistory: Schema.optional(Schema.Array(Schema.Unknown)),
-		ui: Schema.Record(Schema.String, Schema.Unknown)
-	}),
-	Schema.Struct({
-		version: Schema.Literal(5),
-		exportedAt: Schema.Number,
-		notes: Schema.Array(Schema.Unknown),
-		labels: Schema.Array(Schema.Unknown),
-		boards: Schema.Array(Schema.Unknown),
-		activeBoardId: Schema.String,
-		tombstones: Schema.Record(Schema.String, Schema.Unknown),
-		labelTombstones: Schema.Record(Schema.String, Schema.Unknown),
-		boardTombstones: Schema.Record(Schema.String, Schema.Unknown),
-		canvasLibrary: Schema.Array(Schema.Unknown),
-		reminderHistory: Schema.Array(Schema.Unknown),
-		ui: Schema.Record(Schema.String, Schema.Unknown)
-	})
-]);
+const Items = Schema.Array(Schema.Unknown);
+const Fields = Schema.Record(Schema.String, Schema.Unknown);
+const backupFields = {
+	exportedAt: Schema.Number,
+	notes: Items,
+	labels: Items,
+	boards: Items,
+	activeBoardId: Schema.String,
+	tombstones: Fields,
+	labelTombstones: Fields,
+	boardTombstones: Fields,
+	ui: Fields
+};
 
-type CurrentBackupRaw = Schema.Schema.Type<typeof CurrentBackupRawSchema>;
-const isCurrentBackupRaw = Schema.is(CurrentBackupRawSchema);
+const isCurrentBackupRaw = Schema.is(
+	Schema.Union([
+		/** Version 4 predates the canvas library and reminder history; it imports with neither. */
+		Schema.Struct({
+			...backupFields,
+			version: Schema.Literal(4),
+			canvasLibrary: Schema.optional(Items),
+			reminderHistory: Schema.optional(Items)
+		}),
+		Schema.Struct({
+			...backupFields,
+			version: Schema.Literal(5),
+			canvasLibrary: Items,
+			reminderHistory: Items
+		})
+	])
+);
 
 /** Validate and normalize the current backup format into a safe in-memory shape. */
 export function normalizeBackup(data: unknown): ScrapsCacheBackup | null {
 	if (!isCurrentBackupRaw(data)) return null;
 	const raw = data;
-	const notes = (raw.notes as unknown[]).flatMap((item): Note[] => {
+	const notes = raw.notes.flatMap((item): Note[] => {
 		if (!item || typeof item !== 'object') return [];
 		const note = item as Partial<Note>;
 		if (typeof note.id !== 'string') return [];
@@ -276,13 +274,13 @@ export function normalizeBackup(data: unknown): ScrapsCacheBackup | null {
 		if (!label || typeof label !== 'object' || typeof label.id !== 'string') return [];
 		return [copyLabel(label)];
 	});
-	const uiRaw = raw.ui && typeof raw.ui === 'object' ? (raw.ui as Record<string, unknown>) : {};
+	const uiRaw = raw.ui;
 	return {
 		version: 5,
 		exportedAt: Number(raw.exportedAt) || Date.now(),
 		notes,
 		labels,
-		boards: (raw.boards as unknown[]).flatMap((board) => {
+		boards: raw.boards.flatMap((board) => {
 			const normalized = normalizeBoard(board);
 			return normalized ? [normalized] : [];
 		}),
@@ -290,8 +288,8 @@ export function normalizeBackup(data: unknown): ScrapsCacheBackup | null {
 		tombstones: asTombstoneMap(raw.tombstones),
 		labelTombstones: asTombstoneMap(raw.labelTombstones),
 		boardTombstones: asTombstoneMap(raw.boardTombstones),
-		canvasLibrary: ((raw.canvasLibrary ?? []) as unknown[]).filter(isCanvasLibraryItem),
-		reminderHistory: ((raw.reminderHistory ?? []) as unknown[]).filter(isReminderHistoryEntry),
+		canvasLibrary: (raw.canvasLibrary ?? []).filter(isCanvasLibraryItem),
+		reminderHistory: (raw.reminderHistory ?? []).filter(isReminderHistoryEntry),
 		ui: {
 			sidebarOpen: typeof uiRaw.sidebarOpen === 'boolean' ? uiRaw.sidebarOpen : true,
 			dark:

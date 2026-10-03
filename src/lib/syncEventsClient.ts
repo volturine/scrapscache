@@ -1,6 +1,7 @@
+import { Effect, Fiber, Random } from 'effect';
 import { openSyncEvents } from '#lib/syncEventsTransport.js';
 import { uid } from '#lib/model/index.js';
-import { Duration } from 'effect';
+import { reconnectBackoff } from '#lib/syncRetry.js';
 
 export type SyncNudgeListener = (seq?: number) => void;
 
@@ -24,20 +25,14 @@ export type SyncEventsConnection = {
 	onSeq(seq?: number): void;
 };
 
-const INITIAL_BACKOFF_MS = Duration.toMillis(Duration.seconds(2));
-const MAX_BACKOFF_MS = Duration.toMillis(Duration.seconds(30));
-
-export function computeNextReconnectBackoff(currentMs: number): number {
-	const multiplied = Duration.millis(Math.round(currentMs * 1.5));
-	return Duration.toMillis(Duration.min(multiplied, Duration.millis(MAX_BACKOFF_MS)));
+/** A connection that ended before it opened; the next attempt backs off further. */
+class NeverOpened {
+	readonly _tag = 'NeverOpened';
 }
 
 export class SyncEventsClient {
-	private abortController: AbortController | null = null;
 	private active = false;
-	private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-	private backoffMs = INITIAL_BACKOFF_MS;
-	private connectionGeneration = 0;
+	private connection: Fiber.Fiber<void> | null = null;
 	private readonly listeners = new Set<SyncNudgeListener>();
 	private cleanupDomListeners: (() => void) | null = null;
 	readonly clientId: string;
@@ -96,21 +91,15 @@ export class SyncEventsClient {
 	start(): void {
 		if (this.active) return;
 		this.active = true;
-		this.beginConnection();
+		this.connection = Effect.runFork(this.stayConnected());
 	}
 
 	stop(): void {
 		this.active = false;
-		this.connectionGeneration += 1;
-		if (this.reconnectTimer) {
-			clearTimeout(this.reconnectTimer);
-			this.reconnectTimer = null;
-		}
-		if (this.abortController) {
-			this.abortController.abort();
-			this.abortController = null;
-		}
-		this.backoffMs = INITIAL_BACKOFF_MS;
+		const connection = this.connection;
+		this.connection = null;
+		// Interrupting aborts the open connection and any pending reconnect wait.
+		if (connection) Effect.runFork(Fiber.interrupt(connection));
 	}
 
 	accountChanged(): void {
@@ -127,52 +116,49 @@ export class SyncEventsClient {
 		}
 	}
 
-	private beginConnection(): void {
-		const generation = ++this.connectionGeneration;
-		void this.connect(generation);
+	private wanted(): boolean {
+		const isVisible = typeof document === 'undefined' || document.visibilityState === 'visible';
+		return this.active && this.syncStore.isLoggedIn && isVisible;
 	}
 
-	private async connect(generation: number): Promise<void> {
-		if (!this.active || !this.syncStore.isLoggedIn) return;
-		if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
-
-		const controller = new AbortController();
-		this.abortController = controller;
-		const signal = controller.signal;
-
-		try {
-			// Resolves when the connection ends; SSE on Node, a WebSocket on Workers.
-			await openSyncEvents({
-				store: this.syncStore,
-				clientId: this.clientId,
-				signal,
-				onOpen: () => {
-					if (signal.aborted || generation !== this.connectionGeneration) return false;
-					this.backoffMs = INITIAL_BACKOFF_MS;
-					return true;
-				},
-				onSeq: (seq) => {
-					for (const listener of this.listeners) listener(seq);
-				}
-			});
-		} catch {
-			/* abort or network disruption */
-		} finally {
-			if (generation !== this.connectionGeneration) return;
-			if (this.abortController === controller) this.abortController = null;
-			const isVisible = typeof document === 'undefined' || document.visibilityState === 'visible';
-			if (this.active && this.syncStore.isLoggedIn && isVisible) {
-				this.scheduleReconnect();
-			}
-		}
+	/** One connection, for as long as it lasts: SSE on Node, a WebSocket on Workers. */
+	private session(): Effect.Effect<void, NeverOpened> {
+		return Effect.suspend(() => {
+			let opened = false;
+			return Effect.tryPromise((signal) =>
+				openSyncEvents({
+					store: this.syncStore,
+					clientId: this.clientId,
+					signal,
+					onOpen: () => {
+						if (signal.aborted) return false;
+						opened = true;
+						return true;
+					},
+					onSeq: (seq) => {
+						for (const listener of this.listeners) listener(seq);
+					}
+				})
+			).pipe(
+				// Abort or network disruption: either way the connection is over.
+				Effect.ignore,
+				Effect.andThen(() => (opened ? Effect.void : Effect.fail(new NeverOpened())))
+			);
+		});
 	}
 
-	private scheduleReconnect(): void {
-		if (this.reconnectTimer || !this.active) return;
-		this.reconnectTimer = setTimeout(() => {
-			this.reconnectTimer = null;
-			this.backoffMs = computeNextReconnectBackoff(this.backoffMs);
-			this.beginConnection();
-		}, this.backoffMs);
+	/**
+	 * Stay connected while wanted. Connections that fail to open back off from
+	 * 2 to 30 seconds; one that opened and later dropped starts that over after a
+	 * single short pause, so a relay restart is not met by every device at once.
+	 */
+	private stayConnected(): Effect.Effect<void> {
+		const pause = Random.nextBetween(1_600, 2_400).pipe(Effect.flatMap(Effect.sleep));
+		return Effect.suspend(() => (this.wanted() ? this.session() : Effect.void)).pipe(
+			Effect.retry({ schedule: reconnectBackoff, while: () => this.wanted() }),
+			Effect.andThen(Effect.suspend(() => (this.wanted() ? pause : Effect.void))),
+			Effect.repeat({ while: () => this.wanted() }),
+			Effect.ignore
+		);
 	}
 }

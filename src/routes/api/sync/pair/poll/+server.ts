@@ -1,5 +1,4 @@
 import type { RequestHandler } from './$types';
-import { json } from '@sveltejs/kit';
 import { getPairingSessions } from '#lib/server/pairingSessions.js';
 import { readJsonBody } from '#lib/server/request.js';
 import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '#lib/server/rateLimit.js';
@@ -14,9 +13,9 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	try {
 		body = (await readJsonBody(request, 4_096)) as typeof body;
 	} catch {
-		return json({ error: 'Invalid JSON body' }, { status: 400 });
+		return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
 	}
 	if (typeof body.sessionId !== 'string' || !body.sessionId || body.sessionId.length > 128)
-		return json({ error: 'Invalid pairing request' }, { status: 400 });
-	return json(await getPairingSessions().poll(body.sessionId));
+		return Response.json({ error: 'Invalid pairing request' }, { status: 400 });
+	return Response.json(await getPairingSessions().poll(body.sessionId));
 };

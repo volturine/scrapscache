@@ -63,20 +63,16 @@ function warnKeyRegeneration(registeredDevices: number): void {
 	);
 }
 
-const VapidKeyPairSchema = Schema.Struct({
-	publicKey: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
-	privateKey: Schema.String.pipe(Schema.check(Schema.isMinLength(1)))
-});
+const decodeVapidKeyPair = Schema.decodeUnknownOption(
+	Schema.fromJsonString(
+		Schema.Struct({ publicKey: Schema.NonEmptyString, privateKey: Schema.NonEmptyString })
+	)
+);
 
 function parseVapidKeyPair(value: string): { publicKey: string; privateKey: string } {
-	try {
-		const parsed = JSON.parse(value);
-		const decoded = Option.getOrNull(Schema.decodeUnknownOption(VapidKeyPairSchema)(parsed));
-		if (!decoded) throw new Error('Stored VAPID key pair is invalid');
-		return decoded;
-	} catch {
-		throw new Error('Stored VAPID key pair is invalid');
-	}
+	const decoded = Option.getOrNull(decodeVapidKeyPair(value));
+	if (!decoded) throw new Error('Stored VAPID key pair is invalid');
+	return decoded;
 }
 
 function generateVapidKeyPair(): { publicKey: string; privateKey: string } {
@@ -188,19 +184,29 @@ function vapidAuthorization(
 	return `vapid t=${signingInput}.${bytesToBase64Url(signature)}, k=${bytesToBase64Url(base64UrlToBytes(keys.publicKey))}`;
 }
 
-export const sendReminderTickEffect = (device: DueWake): Effect.Effect<WakeSendResult> =>
-	Effect.gen(function* () {
-		const [keys, subject] = yield* Effect.tryPromise(() =>
-			Promise.all([getVapidKeys(), vapidSubject()])
-		);
-		const userPublicKey = base64UrlToBytes(device.p256dh);
-		const authSecret = base64UrlToBytes(device.auth);
-		if (userPublicKey.length !== 65 || authSecret.length < 16) {
-			return yield* Effect.fail(new Error('Push subscription keys are invalid'));
-		}
-		const salt = new Uint8Array(16);
-		crypto.getRandomValues(salt);
-		const body = new Uint8Array(
+/** The encrypted push that wakes a device for one reminder. */
+function wakeRequest(
+	device: DueWake,
+	keys: { publicKey: string; privateKey: string },
+	subject: string
+): RequestInit {
+	const userPublicKey = base64UrlToBytes(device.p256dh);
+	const authSecret = base64UrlToBytes(device.auth);
+	if (userPublicKey.length !== 65 || authSecret.length < 16) {
+		throw new Error('Push subscription keys are invalid');
+	}
+	const salt = new Uint8Array(16);
+	crypto.getRandomValues(salt);
+	return {
+		method: 'POST',
+		headers: {
+			TTL: '86400',
+			Urgency: 'high',
+			Authorization: vapidAuthorization(new URL(device.endpoint).origin, subject, keys),
+			'Content-Encoding': 'aes128gcm',
+			'Content-Type': 'application/octet-stream'
+		},
+		body: new Uint8Array(
 			encryptWebPushPayload({
 				plaintext: encoder.encode(
 					JSON.stringify({ type: 'reminder-wake', id: device.wakeId, fireAt: device.fireAt })
@@ -210,45 +216,45 @@ export const sendReminderTickEffect = (device: DueWake): Effect.Effect<WakeSendR
 				serverPrivateKey: p256.utils.randomSecretKey(),
 				salt
 			})
-		);
-		const response = yield* Effect.tryPromise(() =>
-			fetch(device.endpoint, {
-				method: 'POST',
-				headers: {
-					TTL: '86400',
-					Urgency: 'high',
-					Authorization: vapidAuthorization(new URL(device.endpoint).origin, subject, keys),
-					'Content-Encoding': 'aes128gcm',
-					'Content-Type': 'application/octet-stream'
-				},
-				body,
-				signal: AbortSignal.timeout(10_000)
-			})
-		);
-		if (response.ok) return 'sent' as const;
-		console.info(
-			JSON.stringify({
-				level: 'info',
-				event: 'reminder_wake_failed',
-				status: response.status
-			})
-		);
-		if (response.status === 404 || response.status === 410) return 'gone' as const;
-		return 'failed' as const;
-	}).pipe(
-		Effect.catch((error) => {
-			console.info(
-				JSON.stringify({
-					level: 'info',
-					event: 'reminder_wake_failed',
-					status: null,
-					message: error instanceof Error ? error.message : 'Web Push delivery failed'
-				})
-			);
-			return Effect.succeed('failed' as const);
+		)
+	};
+}
+
+function logWakeFailure(status: number | null, message?: string): void {
+	console.info(
+		JSON.stringify({
+			level: 'info',
+			event: 'reminder_wake_failed',
+			status,
+			...(message === undefined ? {} : { message })
 		})
 	);
+}
 
-export async function sendReminderTick(device: DueWake): Promise<WakeSendResult> {
-	return Effect.runPromise(sendReminderTickEffect(device));
+/** Every failure is the send's own: it is logged and reported, never thrown. */
+export function sendReminderTick(device: DueWake): Promise<WakeSendResult> {
+	return Effect.runPromise(
+		Effect.gen(function* () {
+			const [keys, subject] = yield* Effect.tryPromise({
+				try: () => Promise.all([getVapidKeys(), vapidSubject()]),
+				catch: (error) => error
+			});
+			const request = yield* Effect.try({
+				try: () => wakeRequest(device, keys, subject),
+				catch: (error) => error
+			});
+			const response = yield* Effect.tryPromise({
+				try: (signal) => fetch(device.endpoint, { ...request, signal }),
+				catch: (error) => error
+			}).pipe(Effect.timeout('10 seconds'));
+			if (response.ok) return 'sent';
+			logWakeFailure(response.status);
+			return response.status === 404 || response.status === 410 ? 'gone' : 'failed';
+		}).pipe(
+			Effect.catch((error) => {
+				logWakeFailure(null, error instanceof Error ? error.message : 'Web Push delivery failed');
+				return Effect.succeed<WakeSendResult>('failed');
+			})
+		)
+	);
 }

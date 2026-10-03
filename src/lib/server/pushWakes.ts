@@ -125,40 +125,42 @@ export async function isPublicEndpoint(
 	}
 }
 
-export const PushKeysSchema = Schema.Struct({
-	p256dh: Schema.String.pipe(
-		Schema.check(Schema.isPattern(PUSH_KEY)),
-		Schema.check(Schema.isBetweenLength(16, 256))
-	),
-	auth: Schema.String.pipe(
-		Schema.check(Schema.isPattern(PUSH_KEY)),
-		Schema.check(Schema.isBetweenLength(8, 128))
-	)
-});
+const pushKey = (minLength: number, maxLength: number) =>
+	Schema.String.pipe(
+		Schema.check(Schema.isBetweenLength(minLength, maxLength), Schema.isPattern(PUSH_KEY))
+	);
 
-export const PushSubscriptionSchema = Schema.Struct({
-	endpoint: Schema.String.pipe(
-		Schema.refine((endpoint): endpoint is string => isHttpsEndpoint(endpoint))
-	),
-	keys: PushKeysSchema
-});
-
-export const isPushSubscription = (value: unknown): value is PushSubscriptionBody =>
-	Schema.is(PushSubscriptionSchema)(value);
-
-export const WakeItemSchema = Schema.Struct({
-	id: Schema.String.pipe(Schema.check(Schema.isPattern(WAKE_ID_RE))),
-	fireAt: Schema.Number.pipe(Schema.check(Schema.isInt()))
-});
-
-export const ReminderWakesPayloadSchema = Schema.Array(WakeItemSchema).pipe(
-	Schema.check(Schema.isMaxLength(MAX_WAKES_PER_ACCOUNT))
+const isPushSubscriptionBody = Schema.is(
+	Schema.Struct({
+		endpoint: Schema.String.pipe(
+			Schema.refine((endpoint): endpoint is string => isHttpsEndpoint(endpoint))
+		),
+		keys: Schema.Struct({ p256dh: pushKey(16, 256), auth: pushKey(8, 128) })
+	})
 );
 
-const decodeReminderWakes = Schema.decodeUnknownOption(ReminderWakesPayloadSchema);
+export function isPushSubscription(value: unknown): value is PushSubscriptionBody {
+	return isPushSubscriptionBody(value);
+}
+
+const decodeWakes = Schema.decodeUnknownOption(
+	Schema.Array(
+		Schema.Struct({
+			id: Schema.String.pipe(Schema.check(Schema.isPattern(WAKE_ID_RE))),
+			fireAt: Schema.Number.pipe(
+				Schema.check(
+					Schema.isInt(),
+					Schema.isBetween({ minimum: Number.MIN_SAFE_INTEGER, maximum: Number.MAX_SAFE_INTEGER })
+				)
+			)
+		})
+	)
+);
 
 export function parseReminderWakes(value: unknown, now: number): ReminderWakeInput[] | null {
-	const decoded = Option.getOrNull(decodeReminderWakes(value));
+	// Counted before any item is read, so an oversized list costs nothing.
+	if (!Array.isArray(value) || value.length > MAX_WAKES_PER_ACCOUNT) return null;
+	const decoded = Option.getOrNull(decodeWakes(value));
 	if (!decoded) return null;
 	const seen = new Set<string>();
 	const wakes = new Map<string, ReminderWakeInput>();

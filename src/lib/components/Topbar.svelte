@@ -83,7 +83,7 @@
 		pairingCode = found;
 		settingsOpen = false;
 		syncOpen = true;
-		void goto('/', { replace: true, reset: false });
+		void goto(resolve(''), { replace: true, reset: false });
 	}
 
 	onMount(openPairingLink);
@@ -417,8 +417,7 @@
 	onfocus={openPairingLink}
 	onpopstate={openPairingLink}
 />
-
-<svelte:document onvisibilitychange={openPairingLink}></svelte:document>
+<svelte:document onvisibilitychange={openPairingLink} />
 
 {#if syncOpen}
 	{#key pairingCode}

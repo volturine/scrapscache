@@ -1,14 +1,12 @@
 import {
 	SCRAPSCACHE_VAPID_SUBJECT,
-	SCRAPSCACHE_ORIGIN,
-	ORIGIN,
 	SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES,
 	SCRAPSCACHE_SYNC_MAX_CONCURRENT_REQUESTS,
 	SCRAPSCACHE_RETENTION_INACTIVE_DAYS,
 	SCRAPSCACHE_ALLOW_INDEXING
 } from '$app/env/private';
-
 import { getDb, type Db } from '#lib/server/db.js';
+import { configuredOrigin } from '#lib/server/publicOrigin.js';
 import {
 	DEFAULT_SYNC_PER_MINUTE,
 	parseMaxAccountBytes,
@@ -57,10 +55,8 @@ function defaultVapidSubject(): string {
 	if (configured && (/^mailto:/i.test(configured) || /^https:/i.test(configured))) {
 		return configured;
 	}
-	const origin = SCRAPSCACHE_ORIGIN?.trim() || ORIGIN?.trim();
-	return origin && /^https:/i.test(origin)
-		? origin.replace(/\/$/, '')
-		: 'mailto:scrapscache@localhost';
+	const origin = configuredOrigin();
+	return origin && /^https:/i.test(origin) ? origin : 'mailto:scrapscache@localhost';
 }
 
 export function defaultRuntimeSettings(): RuntimeSettings {

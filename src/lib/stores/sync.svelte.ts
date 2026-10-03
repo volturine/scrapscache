@@ -28,6 +28,7 @@ import {
 	type SyncSnapshot
 } from '#lib/syncRecords.js';
 import { MAX_CLIENT_SYNC_MUTATIONS_PER_REQUEST } from '#lib/syncLimits.js';
+import { retryTransient } from '#lib/syncRetry.js';
 import { sha256 } from '#lib/syncHash.js';
 import {
 	createOneTimePairingCode,
@@ -136,6 +137,8 @@ type SyncResult = {
 	status?: number;
 	/** How long a throttled or busy relay asked the client to wait before trying again. */
 	retryAfterSeconds?: number;
+	/** The relay was not reached or could not serve the request; sending it again is safe. */
+	transient?: boolean;
 };
 
 /**
@@ -934,12 +937,14 @@ export class SyncStore {
 					error: error instanceof Error ? error.message : 'Authentication failed'
 				};
 			}
-			const result = await this.sendSyncRequestWithToken(
-				path,
-				payload,
-				uploadBytes,
-				indicate,
-				accessToken
+			// A delta round is idempotent: an upload the relay already stored carries
+			// the same envelope id when it is sent again, which is not a conflict.
+			const result = await retryTransient(
+				() =>
+					this.account === account
+						? this.sendSyncRequestWithToken(path, payload, uploadBytes, indicate, accessToken)
+						: Promise.resolve({ success: false, error: 'Sync was cancelled' }),
+				(response) => response.transient === true && this.account === account
 			);
 			if (result.status !== 401 || attempt === 1) return result;
 			this.invalidateSession(account.accountId, accessToken);
@@ -996,23 +1001,26 @@ export class SyncStore {
 				}
 				observeRelayTime(data.serverTime, sentAt, receivedAt);
 				if (xhr.status < 200 || xhr.status >= 300) {
-					const retryAfter = Number(xhr.getResponseHeader('retry-after'));
+					const header = xhr.getResponseHeader('retry-after');
+					const retryAfter = header === null ? NaN : Number(header);
+					const throttled =
+						(xhr.status === 429 || xhr.status === 503) &&
+						Number.isFinite(retryAfter) &&
+						retryAfter >= 0;
 					resolve({
 						success: false,
 						status: xhr.status,
 						error:
 							typeof data.error === 'string' ? data.error : `Sync request failed (${xhr.status})`,
-						...((xhr.status === 429 || xhr.status === 503) &&
-						Number.isFinite(retryAfter) &&
-						retryAfter >= 0
-							? { retryAfterSeconds: retryAfter }
-							: {})
+						...(throttled ? { retryAfterSeconds: retryAfter } : {}),
+						// A relay that asks for a wait is waited for by the sync loop instead.
+						...(!throttled && xhr.status >= 502 && xhr.status <= 504 ? { transient: true } : {})
 					});
 					return;
 				}
 				resolve({ success: true, data });
 			};
-			xhr.onerror = () => resolve({ success: false, error: 'Sync network error' });
+			xhr.onerror = () => resolve({ success: false, error: 'Sync network error', transient: true });
 			xhr.ontimeout = () => resolve({ success: false, error: 'Sync timed out' });
 			xhr.onabort = () => resolve({ success: false, error: 'Sync was cancelled' });
 			sentAt = Date.now();
@@ -1631,7 +1639,8 @@ export class SyncStore {
 		try {
 			const response = await this.authorizedFetch(
 				'/api/sync/account',
-				{ method: 'DELETE' },
+				// Typed, so SvelteKit's form-CSRF check never depends on how a proxy names the host.
+				{ method: 'DELETE', headers: { 'content-type': 'application/json' } },
 				identityFromSyncKey(profile.syncKey)
 			);
 			if (!response.ok) {

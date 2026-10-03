@@ -1,5 +1,4 @@
 import type { RequestHandler } from './$types';
-import { json } from '@sveltejs/kit';
 import { getSyncStore } from '#lib/server/syncStore.js';
 import { verifySyncRegistration } from '#lib/server/syncAuth.js';
 import { readJsonBody } from '#lib/server/request.js';
@@ -23,17 +22,17 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	try {
 		body = (await readJsonBody(request, 16_384)) as typeof body;
 	} catch {
-		return json({ error: 'Invalid JSON body' }, { status: 400 });
+		return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
 	}
 	if (typeof body.accountId !== 'string' || !/^[A-Za-z0-9_-]{16,128}$/.test(body.accountId)) {
-		return json({ error: 'Invalid account identity' }, { status: 400 });
+		return Response.json({ error: 'Invalid account identity' }, { status: 400 });
 	}
 	if (
 		typeof body.authPublicKey !== 'string' ||
 		typeof body.signature !== 'string' ||
 		!verifySyncRegistration(body.accountId, body.authPublicKey, body.signature)
 	) {
-		return json({ error: 'Invalid account credential' }, { status: 400 });
+		return Response.json({ error: 'Invalid account credential' }, { status: 400 });
 	}
 	// Checked after the local signature so malformed requests never spend a siteverify call.
 	const human = await verifyTurnstile(
@@ -43,20 +42,23 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	);
 	if (human === 'misconfigured') {
 		console.error('[sync] register: Turnstile configuration is incomplete');
-		return json({ error: 'Human verification is unavailable' }, { status: 503 });
+		return Response.json({ error: 'Human verification is unavailable' }, { status: 503 });
 	}
 	if (human === 'rejected')
-		return json({ error: 'Human verification failed. Try again.' }, { status: 403 });
+		return Response.json({ error: 'Human verification failed. Try again.' }, { status: 403 });
 	try {
 		const store = getSyncStore();
 		const created = await store.createAccount(body.accountId, body.authPublicKey);
 		if (!created) {
 			if (await store.isAccountRetired(body.accountId)) return retiredKeyResponse();
-			return json({ error: 'This sync account already exists on this device.' }, { status: 409 });
+			return Response.json(
+				{ error: 'This sync account already exists on this device.' },
+				{ status: 409 }
+			);
 		}
-		return json({ accountId: body.accountId });
+		return Response.json({ accountId: body.accountId });
 	} catch (err) {
 		console.error('[sync] register failed:', err);
-		return json({ error: 'Sync storage is temporarily unavailable' }, { status: 503 });
+		return Response.json({ error: 'Sync storage is temporarily unavailable' }, { status: 503 });
 	}
 };

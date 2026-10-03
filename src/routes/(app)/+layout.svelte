@@ -123,10 +123,11 @@
 			covering: noteEntry
 		});
 		noteEntry = update.covering;
-		if (update.replace) goto(update.replace, { shallow: true, replace: true, state: page.state });
+		if (update.replace)
+			void goto(update.replace, { shallow: true, replace: true, state: page.state });
 		// Only the hash changes, so SvelteKit treats Back to the page underneath as
 		// shallow routing: it restores the address and state without navigating.
-		if (update.push) goto(update.push, { shallow: true, state: page.state });
+		if (update.push) void goto(update.push, { shallow: true, state: page.state });
 		if (update.back) history.back();
 	}
 

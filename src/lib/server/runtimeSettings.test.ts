@@ -1,29 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-
-const envMock = vi.hoisted(() => ({}) as Record<string, string | undefined>);
-vi.mock('$app/env/private', () => ({
-	get SCRAPSCACHE_VAPID_SUBJECT() {
-		return envMock.SCRAPSCACHE_VAPID_SUBJECT;
-	},
-	get SCRAPSCACHE_ORIGIN() {
-		return envMock.SCRAPSCACHE_ORIGIN;
-	},
-	get ORIGIN() {
-		return envMock.ORIGIN;
-	},
-	get SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES() {
-		return envMock.SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES;
-	},
-	get SCRAPSCACHE_SYNC_MAX_CONCURRENT_REQUESTS() {
-		return envMock.SCRAPSCACHE_SYNC_MAX_CONCURRENT_REQUESTS;
-	},
-	get SCRAPSCACHE_RETENTION_INACTIVE_DAYS() {
-		return envMock.SCRAPSCACHE_RETENTION_INACTIVE_DAYS;
-	},
-	get SCRAPSCACHE_ALLOW_INDEXING() {
-		return envMock.SCRAPSCACHE_ALLOW_INDEXING;
-	}
-}));
+import { privateEnv } from '../../tests/env';
 
 import { cleanupTestDbs, testDb } from './testDb';
 import {
@@ -33,17 +9,17 @@ import {
 } from './runtimeSettings';
 
 afterEach(() => {
-	for (const key of Object.keys(envMock)) delete envMock[key];
+	for (const key of Object.keys(privateEnv)) delete privateEnv[key];
 	cleanupTestDbs();
 });
 
 describe('runtime settings', () => {
 	it('uses deployment defaults until an operator saves overrides', async () => {
-		envMock.SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES = '5000';
-		envMock.SCRAPSCACHE_SYNC_MAX_CONCURRENT_REQUESTS = '4';
-		envMock.SCRAPSCACHE_RETENTION_INACTIVE_DAYS = '365';
-		envMock.SCRAPSCACHE_ALLOW_INDEXING = 'true';
-		envMock.SCRAPSCACHE_ORIGIN = 'https://notes.example';
+		privateEnv.SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES = '5000';
+		privateEnv.SCRAPSCACHE_SYNC_MAX_CONCURRENT_REQUESTS = '4';
+		privateEnv.SCRAPSCACHE_RETENTION_INACTIVE_DAYS = '365';
+		privateEnv.SCRAPSCACHE_ALLOW_INDEXING = 'true';
+		privateEnv.SCRAPSCACHE_ORIGIN = 'https://notes.example';
 		const db = testDb();
 
 		const initial = await getRuntimeSettingsState(db);
@@ -78,7 +54,7 @@ describe('runtime settings', () => {
 	});
 
 	it('removes overrides when a field is reset to null', async () => {
-		envMock.SCRAPSCACHE_RETENTION_INACTIVE_DAYS = '365';
+		privateEnv.SCRAPSCACHE_RETENTION_INACTIVE_DAYS = '365';
 		const db = testDb();
 		await updateRuntimeSettings({ retentionInactiveDays: 30 }, db);
 

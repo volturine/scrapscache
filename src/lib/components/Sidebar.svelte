@@ -116,14 +116,8 @@
 	);
 	const canCreate = $derived(trimmed !== '' && !exactMatch);
 
-	type Destination = '/' | '/kanban' | '/reminders' | '/archive' | '/trash' | `/label/${string}`;
-
-	function destination(view: View, labelId: string | null = null): Destination | null {
-		return pathForView(view, labelId) as Destination | null;
-	}
-
 	function navigate(view: View, labelId: string | null = null) {
-		const target = destination(view, labelId);
+		const target = pathForView(view, labelId);
 		if (!target) return;
 		closeNote();
 		uiStore.setView(view, labelId);
@@ -139,7 +133,7 @@
 	}
 
 	function isActive(view: View, labelId: string | null = null): boolean {
-		const target = destination(view, labelId);
+		const target = pathForView(view, labelId);
 		if (!target) return false;
 		return uiStore.pendingPath ? uiStore.pendingPath === target : page.url.pathname === target;
 	}

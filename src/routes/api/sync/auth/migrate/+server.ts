@@ -1,5 +1,4 @@
 import type { RequestHandler } from './$types';
-import { json } from '@sveltejs/kit';
 import {
 	getSyncAuth,
 	isLegacySyncCredential,
@@ -28,7 +27,7 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	try {
 		body = (await readJsonBody(request, 8_192)) as typeof body;
 	} catch {
-		return json({ error: 'Authentication upgrade failed' }, { status: 401 });
+		return Response.json({ error: 'Authentication upgrade failed' }, { status: 401 });
 	}
 	if (
 		typeof body.accountId !== 'string' ||
@@ -40,7 +39,7 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 		typeof body.signature !== 'string' ||
 		!verifySyncMigration(body.accountId, body.authPublicKey, body.signature)
 	) {
-		return json({ error: 'Authentication upgrade failed' }, { status: 401 });
+		return Response.json({ error: 'Authentication upgrade failed' }, { status: 401 });
 	}
 	const accountLimited = await getPublicApiLimiter().check(
 		`auth-migrate-account:${body.accountId}`,
@@ -58,7 +57,7 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 		!(await sameLegacySyncSecret(credential, body.authSecret)) ||
 		!(await store.replaceAuthCredential(body.accountId, credential, body.authPublicKey))
 	) {
-		return json({ error: 'Authentication upgrade failed' }, { status: 401 });
+		return Response.json({ error: 'Authentication upgrade failed' }, { status: 401 });
 	}
-	return json(await getSyncAuth().createSyncSession(body.accountId));
+	return Response.json(await getSyncAuth().createSyncSession(body.accountId));
 };

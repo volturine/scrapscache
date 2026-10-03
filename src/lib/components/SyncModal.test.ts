@@ -7,6 +7,7 @@ import { notesStore } from '#lib/stores/notes.svelte.js';
 import { profileCoordinator } from '#lib/stores/profiles.svelte.js';
 import { syncStore, type StartedDeviceLink } from '#lib/stores/sync.svelte.js';
 import SyncModal from './SyncModal.svelte';
+import { publicEnv } from '../../tests/env';
 import { TEST_WORKSPACE } from '../../tests/workspace';
 
 function profile(id: string, name: string, createdAt: number): StoredProfile {
@@ -429,8 +430,7 @@ describe('SyncModal profile interactions', () => {
 	});
 
 	it('starts sync only with a token from the isolated challenge frame, then resets it', async () => {
-		(globalThis as any).__sveltekit_dev.env.PUBLIC_TURNSTILE_ORIGIN =
-			'https://verify.scrapscache.com';
+		publicEnv.PUBLIC_TURNSTILE_ORIGIN = 'https://verify.scrapscache.com';
 		const create = vi.spyOn(profileCoordinator, 'startSync').mockResolvedValue({ success: false });
 		const post = (
 			frame: HTMLIFrameElement,
@@ -444,38 +444,34 @@ describe('SyncModal profile interactions', () => {
 					data: { type: 'scrapscache-turnstile', token }
 				})
 			);
-		try {
-			syncStore.activateLocalWorkspace(TEST_WORKSPACE);
-			render(SyncModal, { props: { onClose: vi.fn() } });
-			await expand('Home');
-			await fireEvent.click(screen.getByRole('button', { name: /sync this workspace/i }));
-			const submit = screen.getByRole('button', { name: 'Start sync' }) as HTMLButtonElement;
-			const frame = screen.getByTitle('Human verification') as HTMLIFrameElement;
+		syncStore.activateLocalWorkspace(TEST_WORKSPACE);
+		render(SyncModal, { props: { onClose: vi.fn() } });
+		await expand('Home');
+		await fireEvent.click(screen.getByRole('button', { name: /sync this workspace/i }));
+		const submit = screen.getByRole('button', { name: 'Start sync' }) as HTMLButtonElement;
+		const frame = screen.getByTitle('Human verification') as HTMLIFrameElement;
 
-			// The widget is a frame on the challenge origin, never a script in this page.
-			expect(frame.getAttribute('src')).toBe(
-				'https://verify.scrapscache.com/turnstile?action=register'
-			);
-			expect(document.querySelector('script[src*="challenges.cloudflare.com"]')).toBeNull();
-			expect(submit.disabled).toBe(true);
+		// The widget is a frame on the challenge origin, never a script in this page.
+		expect(frame.getAttribute('src')).toBe(
+			'https://verify.scrapscache.com/turnstile?action=register'
+		);
+		expect(document.querySelector('script[src*="challenges.cloudflare.com"]')).toBeNull();
+		expect(submit.disabled).toBe(true);
 
-			// A token from any other origin is ignored.
-			post(frame, 'forged', 'https://evil.example');
-			await tick();
-			expect(submit.disabled).toBe(true);
+		// A token from any other origin is ignored.
+		post(frame, 'forged', 'https://evil.example');
+		await tick();
+		expect(submit.disabled).toBe(true);
 
-			post(frame, 'token-1');
-			await tick();
-			expect(submit.disabled).toBe(false);
-			await fireEvent.click(submit);
+		post(frame, 'token-1');
+		await tick();
+		expect(submit.disabled).toBe(false);
+		await fireEvent.click(submit);
 
-			await waitFor(() => expect(create).toHaveBeenCalledWith('device-local', '', 'token-1'));
-			// Single-use: the frame is replaced for a fresh challenge.
-			await waitFor(() => expect(screen.getByTitle('Human verification')).not.toBe(frame));
-			expect(submit.disabled).toBe(true);
-		} finally {
-			delete (globalThis as any).__sveltekit_dev.env.PUBLIC_TURNSTILE_ORIGIN;
-		}
+		await waitFor(() => expect(create).toHaveBeenCalledWith('device-local', '', 'token-1'));
+		// Single-use: the frame is replaced for a fresh challenge.
+		await waitFor(() => expect(screen.getByTitle('Human verification')).not.toBe(frame));
+		expect(submit.disabled).toBe(true);
 	});
 
 	it('offers recovery for authentication failure and places joining under new workspace only', async () => {

@@ -1,21 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-
-const envMock = vi.hoisted(() => ({}) as Record<string, string | undefined>);
+import { envModule, privateEnv } from '../../tests/env';
 
 const storeMock = vi.hoisted(() => ({
 	getMeta: vi.fn<(key: string) => string | null>(() => null),
 	setMetaIfAbsent: vi.fn<(key: string, value: string) => string>((_key, value) => value),
 	countPushDevices: vi.fn<() => number>(() => 0),
 	vapidSubject: 'https://scrapscache.com'
-}));
-
-vi.mock('$app/env/private', () => ({
-	get SCRAPSCACHE_VAPID_PUBLIC_KEY() {
-		return envMock.SCRAPSCACHE_VAPID_PUBLIC_KEY;
-	},
-	get SCRAPSCACHE_VAPID_PRIVATE_KEY() {
-		return envMock.SCRAPSCACHE_VAPID_PRIVATE_KEY;
-	}
 }));
 
 vi.mock('#lib/server/syncStore.js', () => ({
@@ -33,8 +23,8 @@ vi.mock('#lib/server/db.js', () => ({
 }));
 
 function setEnv(name: string, value: string | undefined): void {
-	if (value === undefined) delete envMock[name];
-	else envMock[name] = value;
+	if (value === undefined) delete privateEnv[name];
+	else privateEnv[name] = value;
 }
 
 async function importFreshWebPush() {
@@ -48,14 +38,7 @@ async function importFreshWebPush() {
 	vi.doMock('#lib/server/syncStore.js', () => ({
 		getSyncStore: () => ({ countPushDevices: storeMock.countPushDevices })
 	}));
-	vi.doMock('$app/env/private', () => ({
-		get SCRAPSCACHE_VAPID_PUBLIC_KEY() {
-			return envMock.SCRAPSCACHE_VAPID_PUBLIC_KEY;
-		},
-		get SCRAPSCACHE_VAPID_PRIVATE_KEY() {
-			return envMock.SCRAPSCACHE_VAPID_PRIVATE_KEY;
-		}
-	}));
+	vi.doMock('$app/env/private', () => envModule(false));
 	vi.doMock('#lib/server/runtimeSettings.js', () => ({
 		getRuntimeSettings: async () => ({ vapidSubject: storeMock.vapidSubject })
 	}));
@@ -296,6 +279,46 @@ describe('sendReminderTick', () => {
 		const { sendReminderTick } = await importFreshWebPush();
 		await expect(sendReminderTick(await validDevice())).resolves.toBe('failed');
 		expect(info).toHaveBeenCalled();
-		expect(String(info.mock.calls[0]?.[0])).toContain('reminder_wake_failed');
+		expect(JSON.parse(String(info.mock.calls[0]?.[0]))).toMatchObject({
+			event: 'reminder_wake_failed',
+			status: null,
+			message: 'network'
+		});
+	});
+
+	it('returns failed for a subscription whose keys cannot encrypt a push', async () => {
+		const fetchMock = vi.fn();
+		vi.stubGlobal('fetch', fetchMock);
+		const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+		const { sendReminderTick } = await importFreshWebPush();
+		const device = { ...(await validDevice()), p256dh: 'AAAA' };
+
+		await expect(sendReminderTick(device)).resolves.toBe('failed');
+		expect(fetchMock).not.toHaveBeenCalled();
+		expect(String(info.mock.calls[0]?.[0])).toContain('Push subscription keys are invalid');
+	});
+
+	it('gives up on a push service that does not answer within 10 seconds', async () => {
+		const signals: AbortSignal[] = [];
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(
+				(_url: string, init: RequestInit) =>
+					new Promise((_resolve, reject) => {
+						signals.push(init.signal!);
+						init.signal!.addEventListener('abort', () => reject(init.signal!.reason));
+					})
+			)
+		);
+		vi.spyOn(console, 'info').mockImplementation(() => {});
+		const { sendReminderTick } = await importFreshWebPush();
+		const device = await validDevice();
+		vi.useFakeTimers();
+
+		const result = sendReminderTick(device);
+		await vi.advanceTimersByTimeAsync(10_000);
+
+		await expect(result).resolves.toBe('failed');
+		expect(signals[0]?.aborted).toBe(true);
 	});
 });

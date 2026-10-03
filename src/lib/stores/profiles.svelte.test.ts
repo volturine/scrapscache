@@ -221,7 +221,7 @@ describe('workspace handovers', () => {
 		expect(result).toEqual({ success: true });
 		expect(request).toHaveBeenCalledWith(
 			'/api/sync/account',
-			{ method: 'DELETE' },
+			{ method: 'DELETE', headers: { 'content-type': 'application/json' } },
 			expect.objectContaining({ syncKey: active.syncKey })
 		);
 		expect(syncStore.profiles).toEqual([{ ...active, syncKey: '' }]);

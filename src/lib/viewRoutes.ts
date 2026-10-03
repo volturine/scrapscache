@@ -1,7 +1,8 @@
+import type { ResolvedPathname } from '$app/types';
 import type { View } from '#lib/stores/ui.svelte.js';
 
-/** Single source of truth for the URL ↔ view mapping. */
-export function pathForView(view: View, labelId: string | null = null): string | null {
+/** Single source of truth for the URL ↔ view mapping. The app has no base path. */
+export function pathForView(view: View, labelId: string | null = null): ResolvedPathname | null {
 	switch (view) {
 		case 'notes':
 			return '/';

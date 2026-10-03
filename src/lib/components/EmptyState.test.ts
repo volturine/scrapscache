@@ -27,7 +27,7 @@ describe('EmptyState', () => {
 				icon: StickyNote,
 				description: 'This label is gone.',
 				actionLabel: 'Go to Notes',
-				href: '/'
+				href: '/' as const
 			}
 		});
 

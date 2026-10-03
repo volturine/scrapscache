@@ -55,40 +55,31 @@ export async function dispatchDueWakes(
 	const result: WakeDispatchResult = { sent: 0, failed: 0, gone: 0, next: null };
 	let moreDue = false;
 
-	const processDevice = (device: DueWake) =>
+	// A store write that fails ends the dispatch with the store's own error, which
+	// the caller logs and retries; a send that fails only defers its own wake.
+	const write = <A>(run: () => Promise<A>) => Effect.tryPromise({ try: run, catch: (e) => e });
+	const deliver = (device: DueWake) =>
 		Effect.gen(function* () {
-			const sendResult = yield* Effect.tryPromise({
-				try: () => send(device),
-				catch: (): WakeSendResult => 'failed'
-			});
-			if (sendResult === 'failed') {
-				yield* Effect.tryPromise(() =>
-					store.deferWakeRetry(device, wakeRetryAt(Number(device.fireAt), now()))
-				);
-				recordReminderWake('failed');
-				return 'failed' as const;
+			const outcome = yield* Effect.tryPromise(() => send(device)).pipe(
+				Effect.orElseSucceed((): WakeSendResult => 'failed')
+			);
+			if (outcome === 'failed') {
+				yield* write(() => store.deferWakeRetry(device, wakeRetryAt(Number(device.fireAt), now())));
+			} else if (outcome === 'gone') {
+				yield* write(() => store.deletePushDevice(device.accountId, device.deviceId));
+			} else {
+				yield* write(() => store.markWakeDelivered(device, now()));
 			}
-			if (sendResult === 'gone') {
-				yield* Effect.tryPromise(() => store.deletePushDevice(device.accountId, device.deviceId));
-				recordReminderWake('gone');
-				return 'gone' as const;
-			}
-			yield* Effect.tryPromise(() => store.markWakeDelivered(device, now()));
-			recordReminderWake('sent');
-			return 'sent' as const;
+			recordReminderWake(outcome);
+			result[outcome] += 1;
 		});
 
 	for (let round = 0; round < MAX_ROUNDS; round += 1) {
 		const due = await store.claimDueWakes(now(), CLAIM_LIMIT, options.accountId);
-		for (let offset = 0; offset < due.length; offset += SEND_CONCURRENCY) {
-			const batch = due.slice(offset, offset + SEND_CONCURRENCY);
-			const batchOutcomes = await Effect.runPromise(
-				Effect.forEach(batch, processDevice, { concurrency: SEND_CONCURRENCY })
-			);
-			for (const outcome of batchOutcomes) {
-				result[outcome] += 1;
-			}
-		}
+		// A slow push service holds up only its own slot, not a whole batch.
+		await Effect.runPromise(
+			Effect.forEach(due, deliver, { concurrency: SEND_CONCURRENCY, discard: true })
+		);
 		moreDue = due.length === CLAIM_LIMIT;
 		if (!moreDue) break;
 	}

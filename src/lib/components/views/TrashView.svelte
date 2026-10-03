@@ -1,9 +1,10 @@
 <script lang="ts">
-	import NotesFeed from '$lib/components/NotesFeed.svelte';
-	import SectionHeader from '$lib/components/SectionHeader.svelte';
-	import { notesStore } from '$lib/stores/notes.svelte';
-	import { useEditorActions } from '$lib/editorContext';
-	import EmptyState from '$lib/components/EmptyState.svelte';
+	import { resolve } from '$app/paths';
+	import NotesFeed from '#lib/components/NotesFeed.svelte';
+	import SectionHeader from '#lib/components/SectionHeader.svelte';
+	import { notesStore } from '#lib/stores/notes.svelte.js';
+	import { useEditorActions } from '#lib/editorContext.js';
+	import EmptyState from '#lib/components/EmptyState.svelte';
 	import { Trash2 } from '@lucide/svelte';
 	import { css } from 'styled-system/css';
 	import { button, text } from 'styled-system/recipes';
@@ -26,7 +27,7 @@
 			icon={Trash2}
 			description="Deleted notes stay here for 7 days before they are deleted forever."
 			actionLabel="Back to notes"
-			href="/"
+			href={resolve('')}
 		/>
 	{:else}
 		<SectionHeader label="Trash" count={trashed.length}>

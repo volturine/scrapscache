@@ -1,67 +1,42 @@
 import type { RequestHandler } from './$types';
-import { json } from '@sveltejs/kit';
 import {
 	getSyncStore,
 	MAX_SYNC_MUTATIONS_PER_REQUEST,
 	SyncQuotaExceededError
-} from '$lib/server/syncStore';
-import { getSyncAuth } from '$lib/server/syncAuth';
-import { readJsonBody } from '$lib/server/request';
+} from '#lib/server/syncStore.js';
+import { getSyncAuth } from '#lib/server/syncAuth.js';
+import { readJsonBody } from '#lib/server/request.js';
 import {
 	clientAddress,
 	enterSyncRequest,
 	getPublicApiLimiter,
 	rateLimitResponse
-} from '$lib/server/rateLimit';
-import { getRuntimeSettings } from '$lib/server/runtimeSettings';
-import { recordSqliteError, recordSyncBatch, recordSyncPhases } from '$lib/server/metrics';
+} from '#lib/server/rateLimit.js';
+import { getRuntimeSettings } from '#lib/server/runtimeSettings.js';
+import { recordSqliteError, recordSyncBatch, recordSyncPhases } from '#lib/server/metrics.js';
+import { Schema } from 'effect';
 
 // Clients re-encode attachments to ~4 MiB before upload (imageOptimize.ts);
 // 16 MB leaves ample headroom for base64 expansion and encoding variance.
 const MAX_ENVELOPE_BYTES = 16_000_000;
 const MAX_REQUEST_BYTES = MAX_ENVELOPE_BYTES + 1_000_000;
 const DEFAULT_DOWNLOAD_LIMIT = 12;
-type OpaqueEnvelope = {
-	id: string;
-	ciphertext: string;
-	slot: string;
-	expectedId: string | null;
-	continues?: boolean;
-};
-type OpaqueDelete = { id: string; slot: string };
 
-function isOpaqueEnvelope(value: unknown): value is OpaqueEnvelope {
-	return (
-		!!value &&
-		typeof value === 'object' &&
-		typeof (value as OpaqueEnvelope).id === 'string' &&
-		typeof (value as OpaqueEnvelope).ciphertext === 'string' &&
-		typeof (value as OpaqueEnvelope).slot === 'string' &&
-		((value as OpaqueEnvelope).expectedId === null ||
-			(typeof (value as OpaqueEnvelope).expectedId === 'string' &&
-				/^[A-Za-z0-9_-]+$/.test((value as OpaqueEnvelope).expectedId!) &&
-				(value as OpaqueEnvelope).expectedId!.length <= 128)) &&
-		((value as OpaqueEnvelope).continues === undefined ||
-			typeof (value as OpaqueEnvelope).continues === 'boolean') &&
-		(value as OpaqueEnvelope).id.length <= 128 &&
-		(value as OpaqueEnvelope).ciphertext.length <= MAX_ENVELOPE_BYTES &&
-		/^[A-Za-z0-9_-]+$/.test((value as OpaqueEnvelope).id) &&
-		/^[a-f0-9]{64}$/.test((value as OpaqueEnvelope).slot) &&
-		/^[A-Za-z0-9_-]+$/.test((value as OpaqueEnvelope).ciphertext)
-	);
-}
+const BASE64URL = Schema.isPattern(/^[A-Za-z0-9_-]+$/);
+const RecordId = Schema.String.pipe(Schema.check(Schema.isMaxLength(128), BASE64URL));
+const Slot = Schema.String.pipe(Schema.check(Schema.isPattern(/^[a-f0-9]{64}$/)));
 
-function isOpaqueDelete(value: unknown): value is OpaqueDelete {
-	return (
-		!!value &&
-		typeof value === 'object' &&
-		typeof (value as OpaqueDelete).id === 'string' &&
-		typeof (value as OpaqueDelete).slot === 'string' &&
-		(value as OpaqueDelete).id.length <= 128 &&
-		/^[A-Za-z0-9_-]+$/.test((value as OpaqueDelete).id) &&
-		/^[a-f0-9]{64}$/.test((value as OpaqueDelete).slot)
-	);
-}
+const isOpaqueEnvelope = Schema.is(
+	Schema.Struct({
+		id: RecordId,
+		ciphertext: Schema.String.pipe(Schema.check(Schema.isMaxLength(MAX_ENVELOPE_BYTES), BASE64URL)),
+		slot: Slot,
+		expectedId: Schema.NullOr(RecordId),
+		continues: Schema.optional(Schema.Boolean)
+	})
+);
+
+const isOpaqueDelete = Schema.is(Schema.Struct({ id: RecordId, slot: Slot }));
 
 /** Current-state opaque relay: each keyed slot holds one latest ciphertext only. */
 export const POST: RequestHandler = async ({ request, getClientAddress }) => {
@@ -76,11 +51,14 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	const settings = await getRuntimeSettings();
 	const release = enterSyncRequest(settings.maxConcurrentSyncRequests);
 	if (!release) {
-		return json({ error: 'Sync server is busy' }, { status: 503, headers: { 'retry-after': '2' } });
+		return Response.json(
+			{ error: 'Sync server is busy' },
+			{ status: 503, headers: { 'retry-after': '2' } }
+		);
 	}
 	try {
 		const accountId = await getSyncAuth().authenticateSyncRequest(request);
-		if (!accountId) return json({ error: 'Invalid sync session' }, { status: 401 });
+		if (!accountId) return Response.json({ error: 'Invalid sync session' }, { status: 401 });
 		let body: {
 			cursor?: unknown;
 			envelopes?: unknown;
@@ -90,7 +68,7 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 		try {
 			body = (await readJsonBody(request, MAX_REQUEST_BYTES)) as typeof body;
 		} catch {
-			return json({ error: 'Invalid JSON body' }, { status: 400 });
+			return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
 		}
 		const cursor =
 			typeof body.cursor === 'number' && Number.isInteger(body.cursor) && body.cursor >= 0
@@ -102,7 +80,7 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 			envelopes.length > MAX_SYNC_MUTATIONS_PER_REQUEST ||
 			!envelopes.every(isOpaqueEnvelope)
 		) {
-			return json({ error: 'Invalid encrypted envelope batch' }, { status: 400 });
+			return Response.json({ error: 'Invalid encrypted envelope batch' }, { status: 400 });
 		}
 		const deleteSlots = body.deleteSlots == null ? [] : body.deleteSlots;
 		if (
@@ -110,7 +88,7 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 			deleteSlots.length > MAX_SYNC_MUTATIONS_PER_REQUEST ||
 			!deleteSlots.every(isOpaqueDelete)
 		) {
-			return json({ error: 'Invalid encrypted deletion batch' }, { status: 400 });
+			return Response.json({ error: 'Invalid encrypted deletion batch' }, { status: 400 });
 		}
 		const limit =
 			typeof body.limit === 'number' && Number.isInteger(body.limit) && body.limit > 0
@@ -141,14 +119,14 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 			);
 			if (phaseTimings) recordSyncPhases(phaseTimings);
 			// Writers stamp edits on this clock, so device clock skew cannot decide conflicts.
-			return json({ ...result, serverTime: Date.now() });
+			return Response.json({ ...result, serverTime: Date.now() });
 		} catch (error) {
 			recordSqliteError(error);
 			if (error instanceof SyncQuotaExceededError) {
-				return json({ error: 'Sync account storage quota exceeded' }, { status: 507 });
+				return Response.json({ error: 'Sync account storage quota exceeded' }, { status: 507 });
 			}
 			console.error('[sync] current-state relay failed:', error);
-			return json({ error: 'Sync storage is temporarily unavailable' }, { status: 503 });
+			return Response.json({ error: 'Sync storage is temporarily unavailable' }, { status: 503 });
 		}
 	} finally {
 		release();

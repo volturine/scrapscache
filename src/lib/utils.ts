@@ -1,5 +1,6 @@
+import type { Note } from '#lib/types.js';
 import { downloadFile } from '@zag-js/file-utils';
-import { copyNote } from '$lib/model';
+import { copyNote } from '#lib/model/index.js';
 // Small utility helpers shared across components and stores.
 
 /** Format epoch ms as a human-friendly relative-ish string. */
@@ -224,12 +225,12 @@ export function activateOnKeyboard(event: KeyboardEvent, activate: () => void): 
 }
 
 /** Deep-clone a note for editing without mutating the stored one. Plain objects only. */
-export function cloneNote(note: import('$lib/types').Note): import('$lib/types').Note {
+export function cloneNote(note: Note): Note {
 	return copyNote(note);
 }
 
 /** Note clone for JSON backup: full note metadata, attachment meta + thumbs, never full image bytes. */
-export function cloneNoteForBackup(note: import('$lib/types').Note): import('$lib/types').Note {
+export function cloneNoteForBackup(note: Note): Note {
 	const cloned = cloneNote(note);
 	return {
 		...cloned,

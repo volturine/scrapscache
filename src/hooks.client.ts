@@ -1,5 +1,5 @@
-import { installHorizontalWheel } from '$lib/horizontalWheel';
-import { reloadOnceForMissingModule } from '$lib/staleModuleReload';
+import { installHorizontalWheel } from '#lib/horizontalWheel.js';
+import { reloadOnceForMissingModule } from '#lib/staleModuleReload.js';
 
 export function init() {
 	installHorizontalWheel();

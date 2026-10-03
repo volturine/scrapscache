@@ -1,6 +1,6 @@
 // Self-hosted: one in-process timer for the next reminder wake of any account, so
 // each is delivered at its own time. It arms itself when the server starts.
-import { dispatchDueWakes } from '$lib/server/wakeDispatch';
+import { dispatchDueWakes } from '#lib/server/wakeDispatch.js';
 
 /** setTimeout's largest delay; a later wake is re-armed when this one fires. */
 const MAX_DELAY_MS = 2 ** 31 - 1;

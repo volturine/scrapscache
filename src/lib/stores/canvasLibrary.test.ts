@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { getSyncOutboxKeys } from '$lib/db/idb';
+import { getSyncOutboxKeys } from '#lib/db/idb.js';
 import { CanvasLibraryStore } from './canvasLibrary';
 import { syncStore } from './sync.svelte';
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Note } from '$lib/types';
+import type { Note } from '#lib/types.js';
 import { noteNeedsDurableWrite } from './notes.svelte';
 
 function note(body: string, bodyTime: number): Note {

@@ -1,4 +1,4 @@
-import type { SyncEventsConnection } from '$lib/syncEventsClient';
+import type { SyncEventsConnection } from '#lib/syncEventsClient.js';
 
 /** Server-sent events, as the Node relay serves them. Resolves when the stream ends. */
 export async function openSyncEvents(connection: SyncEventsConnection): Promise<void> {

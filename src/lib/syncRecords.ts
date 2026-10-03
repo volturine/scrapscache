@@ -1,7 +1,7 @@
-import type { KanbanBoard } from '$lib/kanban';
-import type { Label, Note, NoteImage } from '$lib/types';
-import { sha256 } from '$lib/syncHash';
-import { isCanvasLibraryEntry, type CanvasLibraryEntry } from '$lib/canvasLibrary';
+import type { KanbanBoard } from '#lib/kanban.js';
+import type { Label, Note, NoteImage } from '#lib/types.js';
+import { sha256 } from '#lib/syncHash.js';
+import { isCanvasLibraryEntry, type CanvasLibraryEntry } from '#lib/canvasLibrary.js';
 
 /** Everything of a workspace that syncs. */
 export type SyncSnapshot = {

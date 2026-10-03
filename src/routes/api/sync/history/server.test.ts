@@ -6,16 +6,16 @@ const mocks = vi.hoisted(() => ({
 	getEnvelopeAt: vi.fn()
 }));
 
-vi.mock('$lib/server/syncStore', () => ({
+vi.mock('#lib/server/syncStore.js', () => ({
 	getSyncStore: () => ({
 		listHistory: mocks.listHistory,
 		getEnvelopeAt: mocks.getEnvelopeAt
 	})
 }));
-vi.mock('$lib/server/syncAuth', () => ({
+vi.mock('#lib/server/syncAuth.js', () => ({
 	getSyncAuth: () => ({ authenticateSyncRequest: mocks.authenticate })
 }));
-vi.mock('$lib/server/rateLimit', () => ({
+vi.mock('#lib/server/rateLimit.js', () => ({
 	clientAddress: () => '127.0.0.1',
 	getPublicApiLimiter: () => ({ check: async () => ({ allowed: true }) }),
 	rateLimitResponse: () => new Response(null, { status: 429 })

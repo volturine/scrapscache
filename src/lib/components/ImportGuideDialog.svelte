@@ -3,9 +3,9 @@
 	import { css } from 'styled-system/css';
 	import { button, dialog } from 'styled-system/recipes';
 	import { Dialog } from '@ark-ui/svelte/dialog';
-	import { portalToAppOverlay } from '$lib/appViewport';
+	import { portalToAppOverlay } from '#lib/appViewport.js';
 	import { ArchiveRestore, FileArchive } from '@lucide/svelte';
-	import type { BackupImportMode } from '$lib/backup';
+	import type { BackupImportMode } from '#lib/backup.js';
 	import ImportModeChoices from './ImportModeChoices.svelte';
 
 	let {

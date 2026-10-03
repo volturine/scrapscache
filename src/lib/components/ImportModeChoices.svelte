@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { CopyPlus, Replace } from '@lucide/svelte';
-	import { BackupImportMode } from '$lib/backup';
+	import { BackupImportMode } from '#lib/backup.js';
 	import ChoiceCard from './ChoiceCard.svelte';
 	import { css } from 'styled-system/css';
 

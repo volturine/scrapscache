@@ -15,7 +15,12 @@ async function tick(env: Env): Promise<void> {
 	const response = await env.APP.fetch(
 		new Request('https://scrapscache.internal/api/cron/tick', {
 			method: 'POST',
-			headers: { authorization: `Bearer ${env.SCRAPSCACHE_TICK_SECRET ?? ''}` }
+			// SvelteKit refuses a POST without a content type unless it comes from the
+			// app's own origin, as it could be a cross-site form.
+			headers: {
+				authorization: `Bearer ${env.SCRAPSCACHE_TICK_SECRET ?? ''}`,
+				'content-type': 'application/json'
+			}
 		})
 	);
 	if (!response.ok) {

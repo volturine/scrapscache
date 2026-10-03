@@ -16,7 +16,7 @@
 <div class={styles.root}>
 	<header class={styles.header}>
 		<div class={styles.headerInner}>
-			<a href={resolve('/')} class={styles.backLink}>
+			<a href={resolve('')} class={styles.backLink}>
 				<ArrowLeft class={styles.iconSm} aria-hidden="true" />
 				Back to Notes
 			</a>
@@ -141,8 +141,9 @@
 		<footer class={styles.footer}>
 			<p>© Scraps Cache. MIT Licensed.</p>
 			<div class={styles.footerLinks}>
-				<a href={resolve('/privacy')} class={styles.footerLink}>Privacy Policy</a>
-				<a href={resolve('/')} class={styles.footerLink}>Home</a>
+				<a href={resolve('privacy')} class={styles.footerLink}>Privacy Policy</a>
+
+				<a href={resolve('')} class={styles.footerLink}>Home</a>
 			</div>
 		</footer>
 	</main>

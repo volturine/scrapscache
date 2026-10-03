@@ -7,8 +7,8 @@
 	import { DatePicker } from '@ark-ui/svelte/date-picker';
 	import { parseDate, type DateValue } from '@internationalized/date';
 	import DatePickerViews from './DatePickerViews.svelte';
-	import type { Note } from '$lib/types';
-	import { dayKey } from '$lib/utils';
+	import type { Note } from '#lib/types.js';
+	import { dayKey } from '#lib/utils.js';
 	import { truncate } from '$panda/styles';
 	import { css, cx } from 'styled-system/css';
 	import { flex, hstack } from 'styled-system/patterns';

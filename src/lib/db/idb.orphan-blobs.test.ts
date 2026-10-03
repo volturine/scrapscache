@@ -6,8 +6,8 @@ import {
 	hydrateNoteAttachments,
 	pruneOrphanImageBlobs,
 	putNote
-} from '$lib/db/idb';
-import type { Note, NoteImage } from '$lib/types';
+} from '#lib/db/idb.js';
+import type { Note, NoteImage } from '#lib/types.js';
 import { TEST_WORKSPACE } from '../../tests/workspace';
 
 function image(id: string, dataUrl: string): NoteImage {

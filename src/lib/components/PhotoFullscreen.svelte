@@ -7,7 +7,7 @@
 		photoThumbBtn as thumbBtn,
 		fullscreen
 	} from '$panda/styles';
-	import type { NoteImage } from '$lib/types';
+	import type { NoteImage } from '#lib/types.js';
 	import {
 		Check,
 		ChevronLeft,
@@ -23,12 +23,12 @@
 	import { DownloadTrigger } from '@ark-ui/svelte/download-trigger';
 	import { SegmentGroup } from '@ark-ui/svelte/segment-group';
 	import Tooltip from './Tooltip.svelte';
-	import { portalToAppOverlay } from '$lib/appViewport';
+	import { portalToAppOverlay } from '#lib/appViewport.js';
 	import { cx } from 'styled-system/css';
 	import { button, iconButton } from 'styled-system/recipes';
 	import { center, hstack } from 'styled-system/patterns';
-	import { displayImageSrc } from '$lib/imageThumb';
-	import { noteImageFromCroppedDataUrl } from '$lib/noteImages';
+	import { displayImageSrc } from '#lib/imageThumb.js';
+	import { noteImageFromCroppedDataUrl } from '#lib/noteImages.js';
 
 	let {
 		images,

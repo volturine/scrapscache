@@ -270,17 +270,25 @@ export class AccountCoordinator {
 		const now = Date.now();
 		for (const socket of this.state.getWebSockets()) {
 			const attachment = socket.deserializeAttachment() as SocketAttachment | null;
-			try {
-				if (!attachment || attachment.expiresAt <= now) {
-					socket.close(SOCKET_SESSION_EXPIRED, 'Session expired');
-					continue;
+			// The writer already applied this change locally; waking it would
+			// only make it sync again for nothing.
+			const writer = Boolean(senderClientId) && attachment?.clientId === senderClientId;
+			// An expired session still hears of this change before it closes: its
+			// client reconnects with a fresh session, and nothing else would tell
+			// it the account moved on in between.
+			if (attachment && !writer) {
+				try {
+					socket.send(JSON.stringify({ seq: sequence }));
+				} catch {
+					/* a socket that is closing needs no signal */
 				}
-				// The writer already applied this change locally; waking it would
-				// only make it sync again for nothing.
-				if (senderClientId && attachment.clientId === senderClientId) continue;
-				socket.send(JSON.stringify({ seq: sequence }));
-			} catch {
-				/* a socket that is closing needs no signal */
+			}
+			if (!attachment || attachment.expiresAt <= now) {
+				try {
+					socket.close(SOCKET_SESSION_EXPIRED, 'Session expired');
+				} catch {
+					/* already closed */
+				}
 			}
 		}
 	}
@@ -733,7 +741,13 @@ export class AccountCoordinator {
 				conflicts: [],
 				hasMore: false,
 				reset: false,
-				writesAccepted: acceptedUploads.length > 0 || deletedSlots.length > 0,
+				// Unseen downloads, conflicts and resets all returned above, so every write
+				// asked for is now in effect. That includes one that changed nothing: an
+				// upload the account already holds, or a slot already deleted. Reporting
+				// those as refused leaves the client no conflict to merge and nothing to
+				// pull, so it counts the round as stalled and, with the same deletion
+				// planned every round, never leaves that state.
+				writesAccepted: true,
 				usage: usage()
 			});
 		} catch (error) {

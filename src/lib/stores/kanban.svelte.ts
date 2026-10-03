@@ -9,13 +9,13 @@ import {
 	type BoardNoteFilter,
 	type KanbanBoard,
 	type KanbanColumn
-} from '$lib/kanban';
-import { workspaceKey } from '$lib/db/idb';
-import { syncStore } from '$lib/stores/sync.svelte';
-import { loadBoardsFromDevice, writeKanbanState } from '$lib/syncTombstones';
-import { uid } from '$lib/model';
-import { editContext, syncClock } from '$lib/editContext';
-import { actionUndo } from '$lib/stores/actionUndo.svelte';
+} from '#lib/kanban.js';
+import { workspaceKey } from '#lib/db/idb.js';
+import { syncStore } from '#lib/stores/sync.svelte.js';
+import { loadBoardsFromDevice, writeKanbanState } from '#lib/syncTombstones.js';
+import { uid } from '#lib/model/index.js';
+import { editContext, syncClock } from '#lib/editContext.js';
+import { actionUndo } from '#lib/stores/actionUndo.svelte.js';
 
 /**
  * Fast-boot mirrors, one set per workspace, each key suffixed with the workspace

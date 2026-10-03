@@ -1,7 +1,7 @@
-import { getDb } from '$lib/server/db';
-import { metricsSnapshot } from '$lib/server/metrics';
-import type { HttpSample, ProcessActivity } from '$lib/server/metricsRender';
-import { countThrottledCallers } from '$lib/server/rateLimit';
+import { getDb } from '#lib/server/db.js';
+import { metricsSnapshot } from '#lib/server/metrics.js';
+import type { HttpSample, ProcessActivity } from '#lib/server/metricsRender.js';
+import { countThrottledCallers } from '#lib/server/rateLimit.js';
 
 export type ActivityCounts = Omit<ProcessActivity, 'rateLimited'>;
 

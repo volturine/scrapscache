@@ -33,7 +33,7 @@
 				: 'An unexpected error occurred. Your local notes remain safe.'}
 		</p>
 		<a
-			href={resolve('/')}
+			href={resolve('')}
 			class={cx(button({ variant: 'primary', size: 'md' }), styles.errorAction)}
 		>
 			<ArrowLeft class={styles.errorActionGlyph} strokeWidth={2} aria-hidden="true" />

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Note } from '$lib/types';
+	import type { Note } from '#lib/types.js';
 	import type { Snippet } from 'svelte';
 	import { onMount } from 'svelte';
 	import NoteCard from './NoteCard.svelte';

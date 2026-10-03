@@ -1,12 +1,12 @@
 <script lang="ts">
-	import NotesFeed from '$lib/components/NotesFeed.svelte';
-	import ReminderCalendar from '$lib/components/ReminderCalendar.svelte';
-	import { notesStore } from '$lib/stores/notes.svelte';
-	import { uiStore } from '$lib/stores/ui.svelte';
-	import { useEditorActions } from '$lib/editorContext';
-	import EmptyState from '$lib/components/EmptyState.svelte';
+	import NotesFeed from '#lib/components/NotesFeed.svelte';
+	import ReminderCalendar from '#lib/components/ReminderCalendar.svelte';
+	import { notesStore } from '#lib/stores/notes.svelte.js';
+	import { uiStore } from '#lib/stores/ui.svelte.js';
+	import { useEditorActions } from '#lib/editorContext.js';
+	import EmptyState from '#lib/components/EmptyState.svelte';
 	import { AlarmClock } from '@lucide/svelte';
-	import { dayKey } from '$lib/utils';
+	import { dayKey } from '#lib/utils.js';
 	import { MediaQuery } from 'svelte/reactivity';
 	import { css } from 'styled-system/css';
 	import { notesShell, viewPage } from '$panda/styles';

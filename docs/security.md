@@ -96,7 +96,7 @@ the long-term attachment format.
 
 - **Build version** — every build is stamped with the commit it came from, served
   at `/_app/version.json`, so a deployment names the code it runs
-- **CSP** (nonce mode) in `svelte.config.js`: default `self`, no third-party
+- **CSP** (nonce mode) in `vite.config.ts`: default `self`, no third-party
   scripts; `data:`/`blob:` only where attachments need them
   (`img-src`, `media-src`, and PDF `frame-src`/`object-src`). The only third-party
   frame allowed is the configured Turnstile challenge origin
@@ -225,7 +225,7 @@ app is in use; browser storage isolation is the boundary.
 | Admin auth               | `src/lib/server/adminAuth.ts`                  |
 | Operator status          | `src/lib/server/operatorMonitor.ts`            |
 | Account retention        | `src/lib/server/retentionSweep.ts`             |
-| CSP                      | `svelte.config.js`                             |
+| CSP                      | `vite.config.ts`                               |
 | Security headers         | `src/hooks.server.ts`                          |
 
 ### Independent reminder receipts

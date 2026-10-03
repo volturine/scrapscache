@@ -1,4 +1,4 @@
-import type { SyncNote } from '$lib/syncRecords';
+import type { SyncNote } from '#lib/syncRecords.js';
 
 /** A saved version or the live note; attachments are compared by id only. */
 type VersionedNote = Omit<SyncNote, 'images'> & { images?: { id: string }[] };

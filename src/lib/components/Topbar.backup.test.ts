@@ -9,13 +9,13 @@ const cryptoMocks = vi.hoisted(() => ({
 }));
 
 vi.mock('$app/navigation', () => navigationMocks);
-vi.mock('$lib/editorContext', () => ({
+vi.mock('#lib/editorContext.js', () => ({
 	useEditorActions: () => ({ startNewNote: vi.fn(), closeNote: vi.fn() })
 }));
-vi.mock('$lib/backupCrypto', () => cryptoMocks);
+vi.mock('#lib/backupCrypto.js', () => cryptoMocks);
 
-import { BackupImportMode } from '$lib/backup';
-import { notesStore } from '$lib/stores/notes.svelte';
+import { BackupImportMode } from '#lib/backup.js';
+import { notesStore } from '#lib/stores/notes.svelte.js';
 import Topbar from './Topbar.svelte';
 
 const decryptedBackup = {

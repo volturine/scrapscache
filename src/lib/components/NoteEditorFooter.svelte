@@ -23,12 +23,12 @@
 	import { slide } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 	import { prefersReducedMotion } from 'svelte/motion';
-	import AttachmentFullscreen from '$lib/components/AttachmentFullscreen.svelte';
-	import CanvasEditor from '$lib/components/CanvasEditor.svelte';
-	import LinkBadge from '$lib/components/LinkBadge.svelte';
-	import PhotoFullscreen from '$lib/components/PhotoFullscreen.svelte';
+	import AttachmentFullscreen from '#lib/components/AttachmentFullscreen.svelte';
+	import CanvasEditor from '#lib/components/CanvasEditor.svelte';
+	import LinkBadge from '#lib/components/LinkBadge.svelte';
+	import PhotoFullscreen from '#lib/components/PhotoFullscreen.svelte';
 	import Tooltip from './Tooltip.svelte';
-	import type { NoteColor, NoteImage } from '$lib/types';
+	import type { NoteColor, NoteImage } from '#lib/types.js';
 	import {
 		fileToNoteImage,
 		isImageAttachment,
@@ -38,16 +38,16 @@
 		dataUrlByteLength,
 		openAttachment,
 		looksLikePhoto
-	} from '$lib/noteImages';
-	import { displayImageSrc } from '$lib/imageThumb';
-	import type { ImageQuality } from '$lib/imageOptimize';
-	import { extractHttpUrls, localLinkCard } from '$lib/linkPreview';
-	import { notesStore } from '$lib/stores/notes.svelte';
-	import { sha256 } from '$lib/syncHash';
-	import { formatStorageError } from '$lib/imageBlob';
-	import { isKeyboardField } from '$lib/appViewport';
-	import { isCanvasAttachment, mergeCanvasEdit } from '$lib/canvasAttachment';
-	import { mergeHydratedImages } from '$lib/noteAttachmentHydration';
+	} from '#lib/noteImages.js';
+	import { displayImageSrc } from '#lib/imageThumb.js';
+	import type { ImageQuality } from '#lib/imageOptimize.js';
+	import { extractHttpUrls, localLinkCard } from '#lib/linkPreview.js';
+	import { notesStore } from '#lib/stores/notes.svelte.js';
+	import { sha256 } from '#lib/syncHash.js';
+	import { formatStorageError } from '#lib/imageBlob.js';
+	import { isKeyboardField } from '#lib/appViewport.js';
+	import { isCanvasAttachment, mergeCanvasEdit } from '#lib/canvasAttachment.js';
+	import { mergeHydratedImages } from '#lib/noteAttachmentHydration.js';
 	import {
 		Archive,
 		ArchiveRestore,

@@ -5,8 +5,8 @@ import {
 	getOutboxGeneration,
 	getSyncOutboxKeys,
 	putNote
-} from '$lib/db/idb';
-import type { Note } from '$lib/types';
+} from '#lib/db/idb.js';
+import type { Note } from '#lib/types.js';
 import { TEST_WORKSPACE } from '../../tests/workspace';
 
 function note(title: string): Note {

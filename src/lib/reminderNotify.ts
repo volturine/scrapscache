@@ -1,5 +1,5 @@
 // Local reminder display. The relay receives only opaque wake ids and timestamps.
-import { reminderWakeId } from '$lib/model';
+import { reminderWakeId } from '#lib/model/index.js';
 import { formatReminder } from './utils';
 
 export type ReminderNote = {

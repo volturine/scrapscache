@@ -8,12 +8,12 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { getAllNotesMetadata } from '$lib/db/idb';
-import { readNotesMirror } from '$lib/noteStorage';
+import { getAllNotesMetadata } from '#lib/db/idb.js';
+import { readNotesMirror } from '#lib/noteStorage.js';
 import { notesStore } from './notes.svelte';
 import { syncStore } from './sync.svelte';
-import type { Note } from '$lib/types';
-import { syncSnapshot, type SyncSnapshot } from '$lib/syncRecords';
+import type { Note } from '#lib/types.js';
+import { syncSnapshot, type SyncSnapshot } from '#lib/syncRecords.js';
 import { TEST_WORKSPACE } from '../../tests/workspace';
 
 const OTHER = 'workspace-other';

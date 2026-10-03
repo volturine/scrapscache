@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { backupStyles } from '$panda/styles';
 	import { Dialog } from '@ark-ui/svelte/dialog';
-	import { portalToAppOverlay } from '$lib/appViewport';
-	import { BackupOperation } from '$lib/backup';
+	import { portalToAppOverlay } from '#lib/appViewport.js';
+	import { BackupOperation } from '#lib/backup.js';
 	import { css, cx } from 'styled-system/css';
 	import { button, dialog, input } from 'styled-system/recipes';
 

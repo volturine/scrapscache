@@ -1,5 +1,5 @@
-import type { Note } from '$lib/types';
-import { pickLatest, stableStringify, uid, type EditContext } from '$lib/model';
+import type { Note } from '#lib/types.js';
+import { pickLatest, stableStringify, uid, type EditContext } from '#lib/model/index.js';
 
 export interface KanbanColumn {
 	id: string;

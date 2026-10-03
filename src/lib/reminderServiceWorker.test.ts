@@ -3,8 +3,8 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { webcrypto } from 'node:crypto';
 import { indexedDB } from 'fake-indexeddb';
-import { reminderWakeId } from '$lib/model';
-import { DEVICE_DB_NAME, resolveDbName } from '$lib/db/idb';
+import { reminderWakeId } from '#lib/model/index.js';
+import { DEVICE_DB_NAME, resolveDbName } from '#lib/db/idb.js';
 
 function request<T>(operation: IDBRequest<T>): Promise<T> {
 	return new Promise((resolve, reject) => {

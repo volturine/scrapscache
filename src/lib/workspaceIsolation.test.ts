@@ -18,7 +18,7 @@ import {
 	hydrateNoteAttachments,
 	putLabel,
 	putNote
-} from '$lib/db/idb';
+} from '#lib/db/idb.js';
 import {
 	hydrateTombstones,
 	loadBoardsFromDevice,
@@ -26,16 +26,16 @@ import {
 	writeLabelTombstones,
 	writeTombstones,
 	writeKanbanState
-} from '$lib/syncTombstones';
+} from '#lib/syncTombstones.js';
 import {
 	clearNotesMirror,
 	readLabelsMirror,
 	readNotesMirror,
 	writeLabelsMirror,
 	writeNotesMirror
-} from '$lib/noteStorage';
-import { createKanbanBoard } from '$lib/kanban';
-import type { Label, Note } from '$lib/types';
+} from '#lib/noteStorage.js';
+import { createKanbanBoard } from '#lib/kanban.js';
+import type { Label, Note } from '#lib/types.js';
 import { TEST_WORKSPACE } from '../tests/workspace';
 
 const MINE = 'workspace-mine';
@@ -175,8 +175,8 @@ describe('fast-boot mirrors stay in the workspace that wrote them', () => {
 	});
 
 	it('gives each workspace its own mirrored Kanban boards', async () => {
-		const { KanbanStore } = await import('$lib/stores/kanban.svelte');
-		const { syncStore } = await import('$lib/stores/sync.svelte');
+		const { KanbanStore } = await import('#lib/stores/kanban.svelte.js');
+		const { syncStore } = await import('#lib/stores/sync.svelte.js');
 		const activePid = vi.spyOn(syncStore, 'activePid', 'get');
 
 		activePid.mockReturnValue(MINE);
@@ -197,8 +197,8 @@ describe('fast-boot mirrors stay in the workspace that wrote them', () => {
 
 describe('switching workspaces leaves each one as it was', () => {
 	it('does not carry the boards of the workspace being left', async () => {
-		const { KanbanStore } = await import('$lib/stores/kanban.svelte');
-		const { syncStore } = await import('$lib/stores/sync.svelte');
+		const { KanbanStore } = await import('#lib/stores/kanban.svelte.js');
+		const { syncStore } = await import('#lib/stores/sync.svelte.js');
 		const activePid = vi.spyOn(syncStore, 'activePid', 'get');
 
 		// The anonymous workspace has a board of its own on this device.
@@ -221,8 +221,8 @@ describe('switching workspaces leaves each one as it was', () => {
 	});
 
 	it('does not carry board deletions into the workspace being entered', async () => {
-		const { KanbanStore } = await import('$lib/stores/kanban.svelte');
-		const { syncStore } = await import('$lib/stores/sync.svelte');
+		const { KanbanStore } = await import('#lib/stores/kanban.svelte.js');
+		const { syncStore } = await import('#lib/stores/sync.svelte.js');
 		const activePid = vi.spyOn(syncStore, 'activePid', 'get');
 
 		await saveBoardsToDevice(TEST_WORKSPACE, [

@@ -1,8 +1,8 @@
 import { fireEvent, render } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Note } from '$lib/types';
-import { kanbanDrag } from '$lib/kanbanDrag.svelte';
-import { notesStore } from '$lib/stores/notes.svelte';
+import type { Note } from '#lib/types.js';
+import { kanbanDrag } from '#lib/kanbanDrag.svelte.js';
+import { notesStore } from '#lib/stores/notes.svelte.js';
 import KanbanCard from './KanbanCard.svelte';
 
 function note(partial: Partial<Note> = {}): Note {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { SyncNote } from '$lib/syncRecords';
+import type { SyncNote } from '#lib/syncRecords.js';
 import {
 	describeNoteVersionChange,
 	distinctNoteVersions,

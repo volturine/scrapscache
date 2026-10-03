@@ -3,7 +3,7 @@ import { cpace } from '@cipherman/pake-js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
 import { ed25519 } from '@noble/curves/ed25519.js';
-import type { PairingGrant } from '$lib/pairingProtocol';
+import type { PairingGrant } from '#lib/pairingProtocol.js';
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();

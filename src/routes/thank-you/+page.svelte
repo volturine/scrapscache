@@ -31,7 +31,7 @@
 <div class={styles.root}>
 	<header class={styles.header}>
 		<div class={styles.headerInner}>
-			<a href={resolve('/')} class={styles.backLink}>
+			<a href={resolve('')} class={styles.backLink}>
 				<ArrowLeft class={styles.iconSm} aria-hidden="true" />
 				Back to Notes
 			</a>
@@ -102,9 +102,7 @@
 					{/if}
 				</button>
 
-				<a href={resolve('/')} class={button({ variant: 'ghost', size: 'md' })}>
-					Return to Notes
-				</a>
+				<a href={resolve('')} class={button({ variant: 'ghost', size: 'md' })}> Return to Notes </a>
 			</div>
 		</div>
 

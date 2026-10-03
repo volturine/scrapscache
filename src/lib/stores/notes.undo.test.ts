@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { NoteImage } from '$lib/types';
-import { createSyncIdentity } from '$lib/syncPairing';
+import type { NoteImage } from '#lib/types.js';
+import { createSyncIdentity } from '#lib/syncPairing.js';
 import { actionUndo } from './actionUndo.svelte';
 import { notesStore } from './notes.svelte';
 import { syncStore } from './sync.svelte';

@@ -1,5 +1,5 @@
 import jsQR from 'jsqr';
-import { normalizePairingCode, pairingCodeFromUrl } from '$lib/syncPairing';
+import { normalizePairingCode, pairingCodeFromUrl } from '#lib/syncPairing.js';
 
 /** Read a one-time pairing code from a scanned QR payload: a pairing link or the bare code. */
 export function pairingCodeFromQrText(text: string): string | null {

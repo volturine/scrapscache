@@ -3,7 +3,7 @@ import type { SyncStore as NodeSyncStore } from './syncStore';
 import type { SyncStore as CloudflareSyncStore } from './cloudflare/syncStore';
 
 /**
- * `vite.config.ts` swaps `$lib/server/syncStore` for the Cloudflare module when
+ * `vite.config.ts` swaps `#lib/server/syncStore.js` for the Cloudflare module when
  * `DEPLOY_TARGET=cloudflare`, so exactly one implementation is live per
  * deployment and no call site ever type-checks against the Cloudflare one. That
  * let the two drift apart silently: `sync` and `createEventStream` both gained

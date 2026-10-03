@@ -2,8 +2,8 @@
 	// The look of a Kanban card, with no interaction of its own. The board renders
 	// it twice: once in the column, once inside the ghost that follows a drag, so
 	// the card the user carries is the card they see land.
-	import { notesStore } from '$lib/stores/notes.svelte';
-	import type { Note } from '$lib/types';
+	import { notesStore } from '#lib/stores/notes.svelte.js';
+	import type { Note } from '#lib/types.js';
 	import NoteBodyDisplay from './NoteBodyDisplay.svelte';
 	import ReminderLabel from './ReminderLabel.svelte';
 	import { Lock } from '@lucide/svelte';

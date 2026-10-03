@@ -1,13 +1,13 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { env as publicEnv } from '$env/dynamic/public';
-import { createSyncIdentity } from '$lib/syncPairing';
-import type { StoredProfile } from '$lib/profiles';
-import { notesStore } from '$lib/stores/notes.svelte';
-import { profileCoordinator } from '$lib/stores/profiles.svelte';
-import { syncStore, type StartedDeviceLink } from '$lib/stores/sync.svelte';
+import { createSyncIdentity } from '#lib/syncPairing.js';
+import type { StoredProfile } from '#lib/profiles.js';
+import { notesStore } from '#lib/stores/notes.svelte.js';
+import { profileCoordinator } from '#lib/stores/profiles.svelte.js';
+import { syncStore, type StartedDeviceLink } from '#lib/stores/sync.svelte.js';
 import SyncModal from './SyncModal.svelte';
+import { publicEnv } from '../../tests/env';
 import { TEST_WORKSPACE } from '../../tests/workspace';
 
 function profile(id: string, name: string, createdAt: number): StoredProfile {
@@ -82,8 +82,8 @@ describe('SyncModal profile interactions', () => {
 			.spyOn(syncStore, 'renameProfile')
 			.mockResolvedValueOnce(null)
 			.mockResolvedValueOnce({ ...side, name: 'Studio' });
-		render(SyncModal, { props: { onClose: vi.fn() } });
 
+		render(SyncModal, { props: { onClose: vi.fn() } });
 		await expand('Side');
 		await fireEvent.click(screen.getByRole('button', { name: 'Rename Side' }));
 		const field = screen.getByRole('textbox', { name: 'Workspace name' }) as HTMLInputElement;
@@ -275,13 +275,13 @@ describe('SyncModal profile interactions', () => {
 			syncStore.lastError = 'This sync key was deleted from the cloud.';
 			return false;
 		});
+
 		const replace = vi
 			.spyOn(profileCoordinator, 'replaceRetiredKey')
 			.mockResolvedValue({ success: true });
+
 		render(SyncModal, { props: { onClose: vi.fn() } });
-
 		await fireEvent.click(screen.getByRole('button', { name: 'Sync now' }));
-
 		expect(
 			await screen.findByText(/sync key was deleted from the cloud, so it can no longer sync/)
 		).toBeTruthy();
@@ -444,38 +444,34 @@ describe('SyncModal profile interactions', () => {
 					data: { type: 'scrapscache-turnstile', token }
 				})
 			);
-		try {
-			syncStore.activateLocalWorkspace(TEST_WORKSPACE);
-			render(SyncModal, { props: { onClose: vi.fn() } });
-			await expand('Home');
-			await fireEvent.click(screen.getByRole('button', { name: /sync this workspace/i }));
-			const submit = screen.getByRole('button', { name: 'Start sync' }) as HTMLButtonElement;
-			const frame = screen.getByTitle('Human verification') as HTMLIFrameElement;
+		syncStore.activateLocalWorkspace(TEST_WORKSPACE);
+		render(SyncModal, { props: { onClose: vi.fn() } });
+		await expand('Home');
+		await fireEvent.click(screen.getByRole('button', { name: /sync this workspace/i }));
+		const submit = screen.getByRole('button', { name: 'Start sync' }) as HTMLButtonElement;
+		const frame = screen.getByTitle('Human verification') as HTMLIFrameElement;
 
-			// The widget is a frame on the challenge origin, never a script in this page.
-			expect(frame.getAttribute('src')).toBe(
-				'https://verify.scrapscache.com/turnstile?action=register'
-			);
-			expect(document.querySelector('script[src*="challenges.cloudflare.com"]')).toBeNull();
-			expect(submit.disabled).toBe(true);
+		// The widget is a frame on the challenge origin, never a script in this page.
+		expect(frame.getAttribute('src')).toBe(
+			'https://verify.scrapscache.com/turnstile?action=register'
+		);
+		expect(document.querySelector('script[src*="challenges.cloudflare.com"]')).toBeNull();
+		expect(submit.disabled).toBe(true);
 
-			// A token from any other origin is ignored.
-			post(frame, 'forged', 'https://evil.example');
-			await tick();
-			expect(submit.disabled).toBe(true);
+		// A token from any other origin is ignored.
+		post(frame, 'forged', 'https://evil.example');
+		await tick();
+		expect(submit.disabled).toBe(true);
 
-			post(frame, 'token-1');
-			await tick();
-			expect(submit.disabled).toBe(false);
-			await fireEvent.click(submit);
+		post(frame, 'token-1');
+		await tick();
+		expect(submit.disabled).toBe(false);
+		await fireEvent.click(submit);
 
-			await waitFor(() => expect(create).toHaveBeenCalledWith('device-local', '', 'token-1'));
-			// Single-use: the frame is replaced for a fresh challenge.
-			await waitFor(() => expect(screen.getByTitle('Human verification')).not.toBe(frame));
-			expect(submit.disabled).toBe(true);
-		} finally {
-			delete publicEnv.PUBLIC_TURNSTILE_ORIGIN;
-		}
+		await waitFor(() => expect(create).toHaveBeenCalledWith('device-local', '', 'token-1'));
+		// Single-use: the frame is replaced for a fresh challenge.
+		await waitFor(() => expect(screen.getByTitle('Human verification')).not.toBe(frame));
+		expect(submit.disabled).toBe(true);
 	});
 
 	it('offers recovery for authentication failure and places joining under new workspace only', async () => {

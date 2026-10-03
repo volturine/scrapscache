@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { css, cx } from 'styled-system/css';
 	import { iconButton } from 'styled-system/recipes';
-	import type { NoteImage } from '$lib/types';
-	import { dataUrlToBlob } from '$lib/imageBlob';
+	import type { NoteImage } from '#lib/types.js';
+	import { dataUrlToBlob } from '#lib/imageBlob.js';
 	import { ChevronLeft, Download } from '@lucide/svelte';
 	import { DownloadTrigger } from '@ark-ui/svelte/download-trigger';
-	import { portalToAppFloat } from '$lib/appViewport';
+	import { portalToAppFloat } from '#lib/appViewport.js';
 	import { onDestroy, onMount } from 'svelte';
 	import { fullscreen } from '$panda/styles';
 

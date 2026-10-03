@@ -1,11 +1,11 @@
-import { tickAppClock } from '$lib/appClock.svelte';
+import { tickAppClock } from '#lib/appClock.svelte.js';
 import {
 	addFiredReminderKeys,
 	claimFiredReminderKey,
 	getFiredReminderKeys,
 	workspaceKey
-} from '$lib/db/idb';
-import { relayReminderWakes, reminderWakeId, type ReminderWake } from '$lib/model';
+} from '#lib/db/idb.js';
+import { relayReminderWakes, reminderWakeId, type ReminderWake } from '#lib/model/index.js';
 import {
 	closeReminderNotifications,
 	nextReminderAt,
@@ -15,14 +15,14 @@ import {
 	unfiredDueReminders,
 	type ReminderAlert,
 	type ReminderNote
-} from '$lib/reminderNotify';
+} from '#lib/reminderNotify.js';
 import {
 	fetchReminderWakes,
 	publishReminderWakes,
 	registerAllReminderDevices
-} from '$lib/reminderWake';
-import { readReminderHistory, type ReminderHistoryEntry } from '$lib/reminderHistory';
-import { reminderHistoryStore, type ReminderHistoryStore } from '$lib/stores/reminderHistory';
+} from '#lib/reminderWake.js';
+import { readReminderHistory, type ReminderHistoryEntry } from '#lib/reminderHistory.js';
+import { reminderHistoryStore, type ReminderHistoryStore } from '#lib/stores/reminderHistory.js';
 
 const MAX_TIMER_MS = 60_000;
 const FIRED_REMINDERS_MIRROR_KEY = 'scrapscache-fired-reminders-mirror';
@@ -204,6 +204,11 @@ export class ReminderStore {
 		if (typeof BroadcastChannel !== 'undefined') {
 			this.channel = new BroadcastChannel(SYNC_CHANNEL);
 			this.channel.onmessage = (event) => {
+				// A hidden window re-reads nothing here: the browser may freeze it in the
+				// middle of the read and hold other windows' writes until it thaws. It
+				// refreshes every workspace when shown again, and checks a reminder
+				// against storage before notifying.
+				if (document.visibilityState === 'hidden') return;
 				const pid = (event.data as { type?: string; pid?: unknown } | null)?.pid;
 				if (typeof pid === 'string' && pid !== this.activePid) void this.refreshWorkspace(pid);
 			};
@@ -456,6 +461,7 @@ export class ReminderStore {
 	}
 
 	private async addFallbackAlert(alert: ReminderAlert, alreadyClaimed = false): Promise<void> {
+		if (!alreadyClaimed && !(await this.stillDue(alert))) return;
 		if (!alreadyClaimed && !(await this.claimFired(alert))) return;
 		if (!this.alerts.some((item) => item.wakeId === alert.wakeId)) {
 			this.alerts = [...this.alerts, alert];
@@ -532,9 +538,25 @@ export class ReminderStore {
 	}
 
 	private async showSystemNotification(alert: ReminderAlert): Promise<void> {
+		if (!(await this.stillDue(alert))) return;
 		if (!(await this.claimFired(alert))) return;
 		const shown = await showReminderNotification(alert, () => this.openFromNotification(alert));
 		if (!shown) await this.addFallbackAlert(alert, true);
+	}
+
+	/**
+	 * A hidden window skips re-reading notes another window saved, so the reminder
+	 * it holds may since have moved or gone. Storage decides before it notifies.
+	 */
+	private async stillDue(alert: ReminderAlert): Promise<boolean> {
+		if (!alert.noteId || document.visibilityState !== 'hidden' || !this.host) return true;
+		const notes = await this.host.loadNotes(alert.workspaceId).catch(() => null);
+		if (!notes) return true;
+		return unfiredDueReminders(
+			notes.filter((note) => note.id === alert.noteId),
+			[],
+			Date.now()
+		).some((note) => reminderWakeId(note.id, note.reminder as number) === alert.wakeId);
 	}
 
 	private openFromNotification(

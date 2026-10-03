@@ -3,10 +3,10 @@
 	import { onMount } from 'svelte';
 	import { Menu } from '@ark-ui/svelte/menu';
 	import { Bell, ChevronRight } from '@lucide/svelte';
-	import { notificationPermission, requestReminderPermission } from '$lib/reminderNotify';
-	import { registerAllReminderDevices } from '$lib/reminderWake';
-	import { notesStore } from '$lib/stores/notes.svelte';
-	import { reminderStore } from '$lib/stores/reminders.svelte';
+	import { notificationPermission, requestReminderPermission } from '#lib/reminderNotify.js';
+	import { registerAllReminderDevices } from '#lib/reminderWake.js';
+	import { notesStore } from '#lib/stores/notes.svelte.js';
+	import { reminderStore } from '#lib/stores/reminders.svelte.js';
 	import { cx } from 'styled-system/css';
 	import { menuItem } from 'styled-system/recipes';
 

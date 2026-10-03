@@ -1,10 +1,10 @@
 <script lang="ts">
-	import type { Note } from '$lib/types';
+	import type { Note } from '#lib/types.js';
 	import type { Snippet } from 'svelte';
 	import { onMount } from 'svelte';
 	import NoteCard from './NoteCard.svelte';
 	import MasonryGrid from './MasonryGrid.svelte';
-	import { uiStore } from '$lib/stores/ui.svelte';
+	import { uiStore } from '#lib/stores/ui.svelte.js';
 	import { hstack, vstack } from 'styled-system/patterns';
 	import { button, text } from 'styled-system/recipes';
 	import { notesShell } from '$panda/styles';

@@ -23,7 +23,7 @@ const mocks = vi.hoisted(() => {
 	};
 });
 
-vi.mock('$lib/server/syncStore', () => ({
+vi.mock('#lib/server/syncStore.js', () => ({
 	SyncQuotaExceededError: mocks.QuotaError,
 	MAX_SYNC_MUTATIONS_PER_REQUEST: 2_000,
 	getSyncStore: () => ({
@@ -31,10 +31,10 @@ vi.mock('$lib/server/syncStore', () => ({
 		accountRateLimit: mocks.accountRateLimit
 	})
 }));
-vi.mock('$lib/server/syncAuth', () => ({
+vi.mock('#lib/server/syncAuth.js', () => ({
 	getSyncAuth: () => ({ authenticateSyncRequest: mocks.authenticate })
 }));
-vi.mock('$lib/server/rateLimit', () => ({
+vi.mock('#lib/server/rateLimit.js', () => ({
 	clientAddress: () => '127.0.0.1',
 	enterSyncRequest: mocks.enterSyncRequest,
 	getPublicApiLimiter: () => ({
@@ -42,10 +42,10 @@ vi.mock('$lib/server/rateLimit', () => ({
 	}),
 	rateLimitResponse: () => new Response(null, { status: 429 })
 }));
-vi.mock('$lib/server/runtimeSettings', () => ({
+vi.mock('#lib/server/runtimeSettings.js', () => ({
 	getRuntimeSettings: async () => mocks.settings
 }));
-vi.mock('$lib/server/metrics', () => ({
+vi.mock('#lib/server/metrics.js', () => ({
 	recordSqliteError: vi.fn(),
 	recordSyncBatch: vi.fn(),
 	recordSyncPhases: mocks.recordSyncPhases
@@ -175,6 +175,34 @@ describe('sync delta route', () => {
 			id: `envelope-${index}`
 		}));
 		const response = await post({ envelopes, deleteSlots: [] });
+
+		expect(response.status).toBe(400);
+		expect(mocks.sync).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		['an empty id', { id: '' }],
+		['an id over 128 characters', { id: 'a'.repeat(129) }],
+		['an id outside base64url', { id: 'envelope/id' }],
+		['a slot that is not a SHA-256 hex digest', { slot: 'A'.repeat(64) }],
+		['ciphertext outside base64url', { ciphertext: 'opaque+data=' }],
+		['empty ciphertext', { ciphertext: '' }],
+		['an expected id outside base64url', { expectedId: 'current id' }],
+		['no expected id at all', { expectedId: undefined }],
+		['a non-boolean continuation flag', { continues: 'yes' }],
+		['a numeric id', { id: 42 }]
+	])('rejects an envelope with %s', async (_label, change) => {
+		const response = await post({ envelopes: [{ ...validEnvelope, ...change }], deleteSlots: [] });
+
+		expect(response.status).toBe(400);
+		expect(mocks.sync).not.toHaveBeenCalled();
+	});
+
+	it('rejects ciphertext over the envelope cap', async () => {
+		const response = await post({
+			envelopes: [{ ...validEnvelope, ciphertext: 'a'.repeat(16_000_001) }],
+			deleteSlots: []
+		});
 
 		expect(response.status).toBe(400);
 		expect(mocks.sync).not.toHaveBeenCalled();

@@ -2,7 +2,7 @@
 	// A searchable, height-capped list of labels to tick, for filters that pick
 	// labels out of a workspace that may hold dozens of them.
 	import { labelChecklistStyles as styles, labelMenuStyles } from '$panda/styles';
-	import type { Label } from '$lib/types';
+	import type { Label } from '#lib/types.js';
 	import { Checkbox } from '@ark-ui/svelte/checkbox';
 	import { Search } from '@lucide/svelte';
 	import { cx } from 'styled-system/css';

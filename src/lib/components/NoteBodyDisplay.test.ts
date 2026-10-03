@@ -1,9 +1,9 @@
 import { render } from '@testing-library/svelte';
 import { afterEach, describe, expect, it } from 'vitest';
 import NoteBodyDisplay from './NoteBodyDisplay.svelte';
-import type { Note } from '$lib/types';
-import { notesStore } from '$lib/stores/notes.svelte';
-import { uiStore } from '$lib/stores/ui.svelte';
+import type { Note } from '#lib/types.js';
+import { notesStore } from '#lib/stores/notes.svelte.js';
+import { uiStore } from '#lib/stores/ui.svelte.js';
 
 const PNG =
 	'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';

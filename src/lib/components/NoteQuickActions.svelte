@@ -9,15 +9,15 @@
 	import { css } from 'styled-system/css';
 	import { iconButton, noteCard } from 'styled-system/recipes';
 	import { flex } from 'styled-system/patterns';
-	import { notesStore } from '$lib/stores/notes.svelte';
-	import { reminderStore } from '$lib/stores/reminders.svelte';
-	import type { Note } from '$lib/types';
-	import { writeClipboardText } from '$lib/utils';
+	import { notesStore } from '#lib/stores/notes.svelte.js';
+	import { reminderStore } from '#lib/stores/reminders.svelte.js';
+	import type { Note } from '#lib/types.js';
+	import { writeClipboardText } from '#lib/utils.js';
 	import ReminderPicker from './ReminderPicker.svelte';
 	import LabelMenu from './LabelMenu.svelte';
-	import { noteToPlainText } from '$lib/checklistBody';
+	import { noteToPlainText } from '#lib/checklistBody.js';
 	import { Dialog } from '@ark-ui/svelte/dialog';
-	import { portalToAppOverlay } from '$lib/appViewport';
+	import { portalToAppOverlay } from '#lib/appViewport.js';
 	import {
 		Archive,
 		ArchiveRestore,

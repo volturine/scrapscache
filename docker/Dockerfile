@@ -5,7 +5,7 @@ FROM --platform=$BUILDPLATFORM node:24-alpine AS build
 
 WORKDIR /app
 
-COPY package.json package-lock.json svelte.config.js tsconfig.json vite.config.ts ./
+COPY package.json package-lock.json tsconfig.json vite.config.ts ./
 RUN npm ci --ignore-scripts
 
 COPY . .

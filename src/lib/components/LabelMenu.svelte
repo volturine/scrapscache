@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { labelMenuStyles as styles, popover } from '$panda/styles';
 	import { Checkbox } from '@ark-ui/svelte/checkbox';
-	import { notesStore } from '$lib/stores/notes.svelte';
+	import { notesStore } from '#lib/stores/notes.svelte.js';
 	import { Check, Plus, Search, Tag } from '@lucide/svelte';
 	import { css, cx } from 'styled-system/css';
 	import { button, input, menuItem } from 'styled-system/recipes';

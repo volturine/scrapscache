@@ -1,4 +1,4 @@
-import { getSyncState, mergeWorkspaceState } from '$lib/db/idb';
+import { getSyncState, mergeWorkspaceState } from '#lib/db/idb.js';
 import {
 	isReminderHistoryEntry,
 	mergeReminderEntries,
@@ -7,7 +7,7 @@ import {
 	readReminderHistory,
 	REMINDER_HISTORY_STATE_KEY,
 	type ReminderHistoryEntry
-} from '$lib/reminderHistory';
+} from '#lib/reminderHistory.js';
 import {
 	channelState,
 	REMINDER_BATCH_SIZE,
@@ -16,8 +16,8 @@ import {
 	type NoteReceipts,
 	type ReminderChannelState,
 	type ReminderEvent
-} from '$lib/reminderChannel';
-import { stableStringify } from '$lib/model/stableStringify';
+} from '#lib/reminderChannel.js';
+import { stableStringify } from '#lib/model/stableStringify.js';
 
 type Listener = (entries: ReminderHistoryEntry[], pid: string) => void;
 const entriesIn = (value: unknown): ReminderHistoryEntry[] =>

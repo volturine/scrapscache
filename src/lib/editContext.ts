@@ -1,4 +1,4 @@
-import { SyncClock, createEditContext } from '$lib/model';
+import { SyncClock, createEditContext } from '#lib/model/index.js';
 
 const CLOCK_OFFSET_KEY = 'scrapscache-clock-offset';
 

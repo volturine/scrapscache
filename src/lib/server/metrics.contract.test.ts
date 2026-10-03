@@ -5,7 +5,7 @@ import type * as NodeTelemetry from './telemetryQuery';
 import type * as CloudflareTelemetry from './cloudflare/telemetryQuery';
 
 /**
- * `vite.config.ts` swaps `$lib/server/metrics` for the Cloudflare module when
+ * `vite.config.ts` swaps `#lib/server/metrics.js` for the Cloudflare module when
  * `DEPLOY_TARGET=cloudflare`, so only one is ever in the build graph and no call
  * site type-checks against the other. The sync store surfaces drifted that way
  * once already; this keeps the recording functions from doing the same, since a

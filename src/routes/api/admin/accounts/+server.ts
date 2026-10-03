@@ -1,10 +1,9 @@
 import type { RequestHandler } from './$types';
-import { json } from '@sveltejs/kit';
-import { requireAdmin } from '$lib/server/adminAuth';
-import { readJsonBody } from '$lib/server/request';
-import { getSyncStore } from '$lib/server/syncStore';
-import { ACCOUNT_ID_RE } from '$lib/server/pushWakes';
-import { getRuntimeSettings } from '$lib/server/runtimeSettings';
+import { requireAdmin } from '#lib/server/adminAuth.js';
+import { readJsonBody } from '#lib/server/request.js';
+import { getSyncStore } from '#lib/server/syncStore.js';
+import { ACCOUNT_ID_RE } from '#lib/server/pushWakes.js';
+import { getRuntimeSettings } from '#lib/server/runtimeSettings.js';
 
 const MAX_REQUEST_BYTES = 8_192;
 
@@ -37,15 +36,16 @@ export const GET: RequestHandler = async ({ request, url, getClientAddress }) =>
 
 	const accountId = url.searchParams.get('accountId');
 	if (accountId) {
-		if (!ACCOUNT_ID_RE.test(accountId)) return json({ error: 'Invalid account' }, { status: 400 });
+		if (!ACCOUNT_ID_RE.test(accountId))
+			return Response.json({ error: 'Invalid account' }, { status: 400 });
 		const [account] = (await store.listAccounts({ accountId, ...defaults })).accounts;
-		if (!account) return json({ error: 'Sync account not found' }, { status: 404 });
-		return json(account, { headers: { 'cache-control': 'no-store' } });
+		if (!account) return Response.json({ error: 'Sync account not found' }, { status: 404 });
+		return Response.json(account, { headers: { 'cache-control': 'no-store' } });
 	}
 
 	const limit = Number(url.searchParams.get('limit'));
 	const offset = Number(url.searchParams.get('offset'));
-	return json(
+	return Response.json(
 		await store.listAccounts({
 			limit: Number.isFinite(limit) && limit > 0 ? limit : undefined,
 			offset: Number.isFinite(offset) && offset > 0 ? offset : undefined,
@@ -74,27 +74,30 @@ export const PATCH: RequestHandler = async ({ request, getClientAddress }) => {
 	try {
 		body = (await readJsonBody(request, MAX_REQUEST_BYTES)) as Patch;
 	} catch {
-		return json({ error: 'Invalid JSON body' }, { status: 400 });
+		return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
 	}
 	if (typeof body.accountId !== 'string' || !ACCOUNT_ID_RE.test(body.accountId)) {
-		return json({ error: 'Invalid account' }, { status: 400 });
+		return Response.json({ error: 'Invalid account' }, { status: 400 });
 	}
 	const accountId = body.accountId;
 
 	const maxBytes = limitValue(body.maxBytes);
 	if (body.maxBytes !== undefined && maxBytes === undefined) {
-		return json({ error: 'maxBytes must be a positive integer or null' }, { status: 400 });
+		return Response.json({ error: 'maxBytes must be a positive integer or null' }, { status: 400 });
 	}
 	const syncPerMinute = limitValue(body.syncPerMinute);
 	if (body.syncPerMinute !== undefined && syncPerMinute === undefined) {
-		return json({ error: 'syncPerMinute must be a positive integer or null' }, { status: 400 });
+		return Response.json(
+			{ error: 'syncPerMinute must be a positive integer or null' },
+			{ status: 400 }
+		);
 	}
 
 	const store = getSyncStore();
 	// Existence is checked once here so a request naming an unknown account fails
 	// as a whole, rather than partly applying and reporting success.
 	if (!(await store.getAuthCredential(accountId))) {
-		return json({ error: 'Sync account not found' }, { status: 404 });
+		return Response.json({ error: 'Sync account not found' }, { status: 404 });
 	}
 
 	try {
@@ -104,10 +107,11 @@ export const PATCH: RequestHandler = async ({ request, getClientAddress }) => {
 		if (syncPerMinute === null) await store.clearAccountRateLimit(accountId);
 		else if (syncPerMinute !== undefined) await store.setAccountRateLimit(accountId, syncPerMinute);
 	} catch (error) {
-		if (error instanceof RangeError) return json({ error: error.message }, { status: 400 });
+		if (error instanceof RangeError)
+			return Response.json({ error: error.message }, { status: 400 });
 		throw error;
 	}
 
 	const [account] = (await store.listAccounts({ accountId, ...defaults })).accounts;
-	return json(account, { headers: { 'cache-control': 'no-store' } });
+	return Response.json(account, { headers: { 'cache-control': 'no-store' } });
 };

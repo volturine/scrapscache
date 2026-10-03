@@ -1,8 +1,10 @@
 import type { RequestHandler } from './$types';
-import { json } from '@sveltejs/kit';
-import { getSyncStore } from '$lib/server/syncStore';
+import { getSyncStore } from '#lib/server/syncStore.js';
 
 export const GET: RequestHandler = async () => {
 	const ready = await getSyncStore().isReady();
-	return json({ ready }, { status: ready ? 200 : 503, headers: { 'cache-control': 'no-store' } });
+	return Response.json(
+		{ ready },
+		{ status: ready ? 200 : 503, headers: { 'cache-control': 'no-store' } }
+	);
 };

@@ -1,8 +1,7 @@
 import type { RequestHandler } from './$types';
-import { json } from '@sveltejs/kit';
-import { getSyncStore } from '$lib/server/syncStore';
-import { getSyncAuth } from '$lib/server/syncAuth';
-import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '$lib/server/rateLimit';
+import { getSyncStore } from '#lib/server/syncStore.js';
+import { getSyncAuth } from '#lib/server/syncAuth.js';
+import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '#lib/server/rateLimit.js';
 
 export const DELETE: RequestHandler = async ({ request, getClientAddress }) => {
 	const limited = await getPublicApiLimiter().check(
@@ -14,7 +13,7 @@ export const DELETE: RequestHandler = async ({ request, getClientAddress }) => {
 	);
 	if (!limited.allowed) return rateLimitResponse(limited);
 	const accountId = await getSyncAuth().authenticateSyncRequest(request);
-	if (!accountId) return json({ error: 'Account could not be deleted' }, { status: 401 });
+	if (!accountId) return Response.json({ error: 'Account could not be deleted' }, { status: 401 });
 	try {
 		const store = getSyncStore();
 		// Deleting cloud data retires the key: any device still holding it, a lost
@@ -31,6 +30,6 @@ export const DELETE: RequestHandler = async ({ request, getClientAddress }) => {
 				message: error instanceof Error ? error.message : 'Account deletion failed'
 			})
 		);
-		return json({ error: 'Sync storage is temporarily unavailable' }, { status: 503 });
+		return Response.json({ error: 'Sync storage is temporarily unavailable' }, { status: 503 });
 	}
 };

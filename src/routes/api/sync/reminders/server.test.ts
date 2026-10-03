@@ -3,16 +3,16 @@ const mocks = vi.hoisted(() => ({
 	account: 'account' as string | null,
 	exchange: vi.fn(async () => ({ cursor: 1, hasMore: false, notes: [] }))
 }));
-vi.mock('$lib/server/syncAuth', () => ({
+vi.mock('#lib/server/syncAuth.js', () => ({
 	getSyncAuth: () => ({ authenticateSyncRequest: async () => mocks.account })
 }));
-vi.mock('$lib/server/rateLimit', () => ({
+vi.mock('#lib/server/rateLimit.js', () => ({
 	clientAddress: () => 'test',
 	getPublicApiLimiter: () => ({ check: async () => ({ allowed: true }) }),
 	rateLimitResponse: () => new Response(null, { status: 429 })
 }));
-vi.mock('$lib/server/reminderHistoryRelay', async (original) => ({
-	...(await original<typeof import('$lib/server/reminderHistoryRelay')>()),
+vi.mock('#lib/server/reminderHistoryRelay.js', async (original) => ({
+	...(await original<typeof import('#lib/server/reminderHistoryRelay.js')>()),
 	exchangeReminderHistory: mocks.exchange
 }));
 import { POST } from './+server';

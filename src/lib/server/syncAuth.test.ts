@@ -11,7 +11,7 @@ import {
 	signSyncChallenge,
 	signSyncMigration,
 	signSyncRegistration
-} from '$lib/syncPairing';
+} from '#lib/syncPairing.js';
 import { testDb, cleanupTestDbs } from './testDb';
 import type { Db } from './db';
 

@@ -1,5 +1,5 @@
-import { recordRateLimit } from '$lib/server/metrics';
-import { getDb, type Db } from '$lib/server/db';
+import { recordRateLimit } from '#lib/server/metrics.js';
+import { getDb, type Db } from '#lib/server/db.js';
 
 export type RateLimitPolicy = {
 	capacity: number;

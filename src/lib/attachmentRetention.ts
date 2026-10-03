@@ -1,5 +1,5 @@
-import { isTombstoned } from '$lib/model';
-import type { Note } from '$lib/types';
+import { isTombstoned } from '#lib/model/index.js';
+import type { Note } from '#lib/types.js';
 
 const ATTACHMENT = 'attachment:';
 

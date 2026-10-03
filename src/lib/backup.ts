@@ -1,4 +1,4 @@
-import { normalizeBoard, type KanbanBoard } from '$lib/kanban';
+import { normalizeBoard, type KanbanBoard } from '#lib/kanban.js';
 import {
 	copyLabel,
 	isReadableBodyDoc,
@@ -7,13 +7,14 @@ import {
 	uid,
 	type EditContext
 } from './model';
-import type { LinkPreview } from '$lib/linkPreview';
-import type { Layout, View } from '$lib/stores/ui.svelte';
-import type { Label, Note, NoteFieldTimes, NoteImage } from '$lib/types';
-import { cloneNote } from '$lib/utils';
-import { isCanvasLibraryItem, type CanvasLibraryItem } from '$lib/canvasLibrary';
-import { isReminderHistoryEntry, type ReminderHistoryEntry } from '$lib/reminderHistory';
-import { reminderWakeId } from '$lib/model';
+import type { LinkPreview } from '#lib/linkPreview.js';
+import type { Layout, View } from '#lib/stores/ui.svelte.js';
+import type { Label, Note, NoteFieldTimes, NoteImage } from '#lib/types.js';
+import { cloneNote } from '#lib/utils.js';
+import { isCanvasLibraryItem, type CanvasLibraryItem } from '#lib/canvasLibrary.js';
+import { isReminderHistoryEntry, type ReminderHistoryEntry } from '#lib/reminderHistory.js';
+import { reminderWakeId } from '#lib/model/index.js';
+import { Schema } from 'effect';
 
 const NOTE_COLORS = new Set<Note['color']>([
 	'default',
@@ -189,49 +190,43 @@ function normalizeLinkPreview(value: unknown): LinkPreview | null {
 	};
 }
 
-/** Version 4 predates the canvas library and reminder history; it imports with neither. */
-type CurrentBackupRaw = Record<string, unknown> & {
-	version: 4 | 5;
-	exportedAt: number;
-	notes: unknown[];
-	labels: unknown[];
-	boards: unknown[];
-	activeBoardId: string;
-	tombstones: object;
-	labelTombstones: object;
-	boardTombstones: object;
-	canvasLibrary?: unknown[];
-	reminderHistory?: unknown[];
-	ui: object;
+const Items = Schema.Array(Schema.Unknown);
+const Fields = Schema.Record(Schema.String, Schema.Unknown);
+const backupFields = {
+	exportedAt: Schema.Number,
+	notes: Items,
+	labels: Items,
+	boards: Items,
+	activeBoardId: Schema.String,
+	tombstones: Fields,
+	labelTombstones: Fields,
+	boardTombstones: Fields,
+	ui: Fields
 };
 
-function isCurrentBackupRaw(raw: Record<string, unknown>): raw is CurrentBackupRaw {
-	const valid =
-		(raw.version === 4 || raw.version === 5) &&
-		typeof raw.exportedAt === 'number' &&
-		Array.isArray(raw.notes) &&
-		Array.isArray(raw.labels) &&
-		Array.isArray(raw.boards) &&
-		typeof raw.activeBoardId === 'string' &&
-		!!raw.tombstones &&
-		typeof raw.tombstones === 'object' &&
-		!!raw.labelTombstones &&
-		typeof raw.labelTombstones === 'object' &&
-		!!raw.boardTombstones &&
-		typeof raw.boardTombstones === 'object' &&
-		(raw.version === 4 ||
-			(Array.isArray(raw.canvasLibrary) && Array.isArray(raw.reminderHistory))) &&
-		!!raw.ui &&
-		typeof raw.ui === 'object';
-	return valid;
-}
+const isCurrentBackupRaw = Schema.is(
+	Schema.Union([
+		/** Version 4 predates the canvas library and reminder history; it imports with neither. */
+		Schema.Struct({
+			...backupFields,
+			version: Schema.Literal(4),
+			canvasLibrary: Schema.optional(Items),
+			reminderHistory: Schema.optional(Items)
+		}),
+		Schema.Struct({
+			...backupFields,
+			version: Schema.Literal(5),
+			canvasLibrary: Items,
+			reminderHistory: Items
+		})
+	])
+);
 
 /** Validate and normalize the current backup format into a safe in-memory shape. */
 export function normalizeBackup(data: unknown): ScrapsCacheBackup | null {
-	if (!data || typeof data !== 'object') return null;
-	const raw = data as Record<string, unknown>;
-	if (!isCurrentBackupRaw(raw)) return null;
-	const notes = (raw.notes as unknown[]).flatMap((item): Note[] => {
+	if (!isCurrentBackupRaw(data)) return null;
+	const raw = data;
+	const notes = raw.notes.flatMap((item): Note[] => {
 		if (!item || typeof item !== 'object') return [];
 		const note = item as Partial<Note>;
 		if (typeof note.id !== 'string') return [];
@@ -279,7 +274,7 @@ export function normalizeBackup(data: unknown): ScrapsCacheBackup | null {
 		if (!label || typeof label !== 'object' || typeof label.id !== 'string') return [];
 		return [copyLabel(label)];
 	});
-	const uiRaw = raw.ui && typeof raw.ui === 'object' ? (raw.ui as Record<string, unknown>) : {};
+	const uiRaw = raw.ui;
 	return {
 		version: 5,
 		exportedAt: Number(raw.exportedAt) || Date.now(),

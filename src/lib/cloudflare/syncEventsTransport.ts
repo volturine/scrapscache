@@ -1,5 +1,5 @@
-import type { SyncEventsConnection } from '$lib/syncEventsClient';
-import { SYNC_EVENTS_PROTOCOL } from '$lib/syncEventsProtocol';
+import type { SyncEventsConnection } from '#lib/syncEventsClient.js';
+import { SYNC_EVENTS_PROTOCOL } from '#lib/syncEventsProtocol.js';
 
 /** Keeps the socket open through proxies; the Worker runtime answers it without waking anything. */
 export const SOCKET_PING_MS = 30_000;

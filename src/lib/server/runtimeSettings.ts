@@ -1,10 +1,17 @@
-import { env } from '$env/dynamic/private';
-import { getDb, type Db } from '$lib/server/db';
+import {
+	SCRAPSCACHE_VAPID_SUBJECT,
+	SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES,
+	SCRAPSCACHE_SYNC_MAX_CONCURRENT_REQUESTS,
+	SCRAPSCACHE_RETENTION_INACTIVE_DAYS,
+	SCRAPSCACHE_ALLOW_INDEXING
+} from '$app/env/private';
+import { getDb, type Db } from '#lib/server/db.js';
+import { configuredOrigin } from '#lib/server/publicOrigin.js';
 import {
 	DEFAULT_SYNC_PER_MINUTE,
 	parseMaxAccountBytes,
 	parseRetentionInactiveDays
-} from '$lib/server/operatorConfig';
+} from '#lib/server/operatorConfig.js';
 
 export const DEFAULT_MAX_CONCURRENT_SYNC_REQUESTS = 8;
 
@@ -44,26 +51,24 @@ function positiveInteger(value: string | undefined, fallback: number): number {
 }
 
 function defaultVapidSubject(): string {
-	const configured = env.SCRAPSCACHE_VAPID_SUBJECT?.trim();
+	const configured = SCRAPSCACHE_VAPID_SUBJECT?.trim();
 	if (configured && (/^mailto:/i.test(configured) || /^https:/i.test(configured))) {
 		return configured;
 	}
-	const origin = env.SCRAPSCACHE_ORIGIN?.trim() || env.ORIGIN?.trim();
-	return origin && /^https:/i.test(origin)
-		? origin.replace(/\/$/, '')
-		: 'mailto:scrapscache@localhost';
+	const origin = configuredOrigin();
+	return origin && /^https:/i.test(origin) ? origin : 'mailto:scrapscache@localhost';
 }
 
 export function defaultRuntimeSettings(): RuntimeSettings {
 	return {
-		maxAccountBytes: parseMaxAccountBytes(env.SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES),
+		maxAccountBytes: parseMaxAccountBytes(SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES),
 		syncPerMinute: DEFAULT_SYNC_PER_MINUTE,
 		maxConcurrentSyncRequests: positiveInteger(
-			env.SCRAPSCACHE_SYNC_MAX_CONCURRENT_REQUESTS,
+			SCRAPSCACHE_SYNC_MAX_CONCURRENT_REQUESTS,
 			DEFAULT_MAX_CONCURRENT_SYNC_REQUESTS
 		),
-		retentionInactiveDays: parseRetentionInactiveDays(env.SCRAPSCACHE_RETENTION_INACTIVE_DAYS),
-		allowIndexing: env.SCRAPSCACHE_ALLOW_INDEXING === 'true',
+		retentionInactiveDays: parseRetentionInactiveDays(SCRAPSCACHE_RETENTION_INACTIVE_DAYS),
+		allowIndexing: SCRAPSCACHE_ALLOW_INDEXING === 'true',
 		vapidSubject: defaultVapidSubject()
 	};
 }

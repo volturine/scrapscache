@@ -5,11 +5,11 @@ import {
 	getSyncOutboxKeys,
 	markSyncOutbox,
 	putNote
-} from '$lib/db/idb';
+} from '#lib/db/idb.js';
 import { syncStore } from './sync.svelte';
-import { syncSnapshot } from '$lib/syncRecords';
+import { syncSnapshot } from '#lib/syncRecords.js';
 import { notesStore } from './notes.svelte';
-import type { Note } from '$lib/types';
+import type { Note } from '#lib/types.js';
 import { TEST_WORKSPACE } from '../../tests/workspace';
 
 function noteWithPhoto(dataUrl: string): Note {

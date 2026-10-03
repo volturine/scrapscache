@@ -10,9 +10,12 @@ const mocks = vi.hoisted(() => ({
 	clearAccountRateLimit: vi.fn(async () => true)
 }));
 
-vi.mock('$lib/server/adminAuth', () => ({ requireAdmin: mocks.requireAdmin }));
-vi.mock('$lib/server/syncStore', () => ({ getSyncStore: () => mocks }));
-vi.mock('$lib/server/runtimeSettings', () => ({
+vi.mock('#lib/server/adminAuth.js', () => ({ requireAdmin: mocks.requireAdmin }));
+vi.mock('#lib/server/syncStore.js', async (importOriginal) => ({
+	...(await importOriginal<typeof import('#lib/server/syncStore.js')>()),
+	getSyncStore: () => mocks
+}));
+vi.mock('#lib/server/runtimeSettings.js', () => ({
 	getRuntimeSettings: async () => ({ maxAccountBytes: 5_000, syncPerMinute: 12 })
 }));
 

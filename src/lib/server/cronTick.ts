@@ -1,13 +1,13 @@
-import { getDb } from '$lib/server/db';
-import { getSyncAuth } from '$lib/server/syncAuth';
-import { getPairingSessions } from '$lib/server/pairingSessions';
-import { pruneRateBuckets } from '$lib/server/rateLimit';
-import { getSyncStore } from '$lib/server/syncStore';
+import { getDb } from '#lib/server/db.js';
+import { getSyncAuth } from '#lib/server/syncAuth.js';
+import { getPairingSessions } from '#lib/server/pairingSessions.js';
+import { pruneRateBuckets } from '#lib/server/rateLimit.js';
+import { getSyncStore } from '#lib/server/syncStore.js';
 import {
 	getRetentionStatus,
 	runRetentionSweep,
 	type RetentionStatus
-} from '$lib/server/retentionSweep';
+} from '#lib/server/retentionSweep.js';
 
 export type CronTickResult = {
 	retention: RetentionStatus;

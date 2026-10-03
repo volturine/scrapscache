@@ -6,9 +6,9 @@
 	import { cx } from 'styled-system/css';
 	import { iconSizeMd, iconSizeSm, mcpAuthorizeStyles as styles } from '$panda/styles';
 	import { button } from 'styled-system/recipes';
-	import { syncStore, type McpWorkspaceStatus } from '$lib/stores/sync.svelte';
-	import { encryptHandshakePayload } from '$lib/mcpHandshake';
-	import { isLocalWorkspace, mcpWorkspaceGrant } from '$lib/profiles';
+	import { syncStore, type McpWorkspaceStatus } from '#lib/stores/sync.svelte.js';
+	import { encryptHandshakePayload } from '#lib/mcpHandshake.js';
+	import { isLocalWorkspace, mcpWorkspaceGrant } from '#lib/profiles.js';
 
 	type AuthorizeParams = {
 		valid: boolean;
@@ -23,7 +23,9 @@
 		return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
 	}
 
-	function parseParams(url: URL): AuthorizeParams {
+	function parseParams(url: {
+		searchParams: { get(name: string): string | null };
+	}): AuthorizeParams {
 		const sessionId = url.searchParams.get('session_id') || '';
 		const mcpPublicKey = url.searchParams.get('mcp_public_key') || '';
 		const mcpCallback = url.searchParams.get('mcp_callback') || '';
@@ -163,7 +165,7 @@
 
 <div class={styles.shell}>
 	<div class={styles.frame}>
-		<a href={resolve('/')} class={styles.back}>
+		<a href={resolve('')} class={styles.back}>
 			<ArrowLeft class={iconSizeSm} aria-hidden="true" />
 			Back to Scraps Cache
 		</a>

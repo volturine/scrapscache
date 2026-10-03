@@ -12,27 +12,27 @@ const mocks = vi.hoisted(() => ({
 	}))
 }));
 
-vi.mock('$lib/server/rateLimit', () => ({
+vi.mock('#lib/server/rateLimit.js', () => ({
 	clientAddress: (get: () => string) => get(),
 	getPublicApiLimiter: () => ({ check: mocks.check }),
 	rateLimitResponse: () => new Response(null, { status: 429 })
 }));
-vi.mock('$lib/server/syncAuth', () => ({
+vi.mock('#lib/server/syncAuth.js', () => ({
 	getSyncAuth: () => ({ authenticateSyncRequest: mocks.authenticate })
 }));
-vi.mock('$lib/server/syncStore', async (original) => ({
-	...(await original<typeof import('$lib/server/syncStore')>()),
+vi.mock('#lib/server/syncStore.js', async (original) => ({
+	...(await original<typeof import('#lib/server/syncStore.js')>()),
 	getSyncStore: () => ({
 		savePushDevice: mocks.savePushDevice,
 		replaceReminderWakes: mocks.replaceReminderWakes,
 		getReminderWakes: mocks.getReminderWakes
 	})
 }));
-vi.mock('$lib/server/pushWakes', async (original) => ({
-	...(await original<typeof import('$lib/server/pushWakes')>()),
+vi.mock('#lib/server/pushWakes.js', async (original) => ({
+	...(await original<typeof import('#lib/server/pushWakes.js')>()),
 	isPublicEndpoint: async () => true
 }));
-vi.mock('$lib/server/wakeTimer', () => ({ armWakeTimer: mocks.arm }));
+vi.mock('#lib/server/wakeTimer.js', () => ({ armWakeTimer: mocks.arm }));
 
 import { GET, POST, PUT } from './+server';
 

@@ -6,9 +6,9 @@ const mocks = vi.hoisted(() => ({
 	update: vi.fn(async (patch: unknown) => ({ values: patch, defaults: {}, overrides: patch }))
 }));
 
-vi.mock('$lib/server/adminAuth', () => ({ requireAdmin: mocks.requireAdmin }));
-vi.mock('$lib/server/runtimeSettings', async (original) => {
-	const actual = await original<typeof import('$lib/server/runtimeSettings')>();
+vi.mock('#lib/server/adminAuth.js', () => ({ requireAdmin: mocks.requireAdmin }));
+vi.mock('#lib/server/runtimeSettings.js', async (original) => {
+	const actual = await original<typeof import('#lib/server/runtimeSettings.js')>();
 	return {
 		...actual,
 		getRuntimeSettingsState: mocks.getState,

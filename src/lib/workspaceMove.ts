@@ -17,9 +17,9 @@ import {
 	workspaceKey,
 	writeStoredProfiles,
 	type StoredProfile
-} from '$lib/db/idb';
-import { randomOpaqueId } from '$lib/syncPairing';
-import { getLastActiveProfileId, nextProfileName, setLastActiveProfileId } from '$lib/profiles';
+} from '#lib/db/idb.js';
+import { randomOpaqueId } from '#lib/syncPairing.js';
+import { getLastActiveProfileId, nextProfileName, setLastActiveProfileId } from '#lib/profiles.js';
 
 export const LEGACY_WORKSPACE_ID = 'device-local';
 export const LEGACY_DB_NAME = 'scrapscache';

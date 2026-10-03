@@ -733,7 +733,13 @@ export class AccountCoordinator {
 				conflicts: [],
 				hasMore: false,
 				reset: false,
-				writesAccepted: acceptedUploads.length > 0 || deletedSlots.length > 0,
+				// Unseen downloads, conflicts and resets all returned above, so every write
+				// asked for is now in effect. That includes one that changed nothing: an
+				// upload the account already holds, or a slot already deleted. Reporting
+				// those as refused leaves the client no conflict to merge and nothing to
+				// pull, so it counts the round as stalled and, with the same deletion
+				// planned every round, never leaves that state.
+				writesAccepted: true,
 				usage: usage()
 			});
 		} catch (error) {

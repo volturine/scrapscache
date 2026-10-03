@@ -765,3 +765,50 @@ describe('when storage fails', () => {
 		vi.restoreAllMocks();
 	});
 });
+
+describe('writes that change nothing', () => {
+	const accepted = async (response: Promise<Response>) =>
+		(await (await response).json()) as {
+			writesAccepted: boolean;
+			conflicts: unknown[];
+			cursor: number;
+		};
+
+	// A client that is told these were refused finds no conflict to merge and nothing to
+	// download, counts the round as stalled, and stays stuck while its plan never changes.
+	it('accepts an upload the account already holds', async () => {
+		const first = await accepted(sync([{ id: 'held', slot: SLOT, ciphertext: 'bytes' }]));
+		const again = await accepted(
+			sync([{ id: 'held', slot: SLOT, ciphertext: 'bytes' }], 100_000_000, first.cursor)
+		);
+		expect(first.writesAccepted).toBe(true);
+		expect(again).toMatchObject({ writesAccepted: true, conflicts: [] });
+	});
+
+	it('accepts deleting a slot that is already gone, or never existed', async () => {
+		const stored = await accepted(sync([{ id: 'gone', slot: SLOT, ciphertext: 'bytes' }]));
+		const deleted = await accepted(
+			sync([], 100_000_000, stored.cursor, [{ id: 'gone', slot: SLOT }])
+		);
+		const repeated = await accepted(
+			sync([], 100_000_000, deleted.cursor, [{ id: 'gone', slot: SLOT }])
+		);
+		const unknown = await accepted(
+			sync([], 100_000_000, repeated.cursor, [{ id: 'never', slot: 'b'.repeat(64) }])
+		);
+		expect([deleted, repeated, unknown].map((round) => round.writesAccepted)).toEqual([
+			true,
+			true,
+			true
+		]);
+	});
+
+	it('still refuses a write that conflicts with a newer version', async () => {
+		const first = await accepted(sync([{ id: 'one', slot: SLOT, ciphertext: 'one' }]));
+		const stale = await accepted(
+			sync([{ id: 'two', slot: SLOT, ciphertext: 'two' }], 100_000_000, first.cursor)
+		);
+		expect(stale).toMatchObject({ writesAccepted: false });
+		expect(stale.conflicts).toHaveLength(1);
+	});
+});

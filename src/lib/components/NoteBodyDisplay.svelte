@@ -103,13 +103,7 @@
 			data-check-line={seg.lineIndex}
 			style={seg.indent > 0 ? `padding-left: ${seg.indent * 1.25}rem` : undefined}
 		>
-			<span class={[check.root, body.check]} aria-hidden="true">
-				{#if seg.checked}
-					<svg viewBox="0 0 16 16" class={check.mark}>
-						<path d="M3.5 8.5 6.5 11.5 12.5 4.5" />
-					</svg>
-				{/if}
-			</span>
+			<span class={[check.root, body.check]} aria-hidden="true"></span>
 			<span class={noteBody({ checked: seg.checked, indented: seg.indent > 0 }).line}>
 				{@render inlineContent(seg.text)}
 			</span>

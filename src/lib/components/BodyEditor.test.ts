@@ -154,6 +154,16 @@ describe('BodyEditor native editing', () => {
 		expect(toggle.getAttribute('aria-pressed')).toBe('true');
 	});
 
+	it('keeps a checked box empty so selecting the row above stops at its end', () => {
+		// WebKit extends a row selection over inline content in the next row's
+		// checkbox, so the check mark has to be painted rather than a child node.
+		const { container } = render(BodyEditor, { props: { body: '[ ] First\n[x] Done' } });
+		const toggles = container.querySelectorAll('[data-checklist-toggle]');
+
+		expect(toggles[1].getAttribute('aria-pressed')).toBe('true');
+		expect(toggles[1].childNodes).toHaveLength(0);
+	});
+
 	it('toggles a checkbox on touch release without focusing the editor', async () => {
 		const { container } = render(BodyEditor, { props: { body: '[ ] Task' } });
 		const editor = container.querySelector('[data-body-editor]') as HTMLElement;

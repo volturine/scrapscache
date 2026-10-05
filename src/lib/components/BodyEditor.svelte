@@ -2846,13 +2846,7 @@
 				onclick={(event) => toggleCheck(line.id, event)}
 				aria-label={line.indent > 0 ? 'Toggle sub-task' : 'Toggle item'}
 				aria-pressed={line.checked}
-			>
-				{#if line.checked}
-					<svg viewBox="0 0 16 16" class={check.mark} aria-hidden="true">
-						<path d="M3.5 8.5 6.5 11.5 12.5 4.5" />
-					</svg>
-				{/if}
-			</button>
+			></button>
 		{:else if line.isBullet}
 			<span contenteditable="false" class={editor.bullet} aria-hidden="true">•</span>
 		{/if}

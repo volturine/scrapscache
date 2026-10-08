@@ -153,6 +153,24 @@ jobs:
           curl --fail-with-body --retry 12 --retry-delay 5 --retry-all-errors
           https://dev.scrapscache.com/health/ready
 
+      # The release rehearsal: the same browser smoke tests, against the deployed
+      # Workers. Registration stays out because Turnstile is on there.
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Browser smoke tests against development
+        run: npm run test:e2e
+        env:
+          PLAYWRIGHT_BASE_URL: https://dev.scrapscache.com
+
+      - name: Upload development smoke test report
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: playwright-report-development
+          path: playwright-report/
+          retention-days: 7
+
   deploy-cloudflare-production:
     name: Deploy Cloudflare production
     if: >-

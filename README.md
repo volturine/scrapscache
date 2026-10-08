@@ -50,7 +50,7 @@ npm run dev -- --host 0.0.0.0
 Open `http://localhost:5173/` (or your LAN / Tailscale IP on port `5173`).
 
 ```sh
-npm run validate   # check + format + tests + production build
+npm run validate   # check + format + tests + production build + browser smoke tests
 npm run build && npm start   # production Node adapter on port 3000 by default
 ```
 

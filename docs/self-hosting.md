@@ -149,7 +149,7 @@ client-address settings above so rate limits see real client IPs.
 
 | Variable                                   |                        Default | Purpose                                                                                                                 |
 | ------------------------------------------ | -----------------------------: | ----------------------------------------------------------------------------------------------------------------------- |
-| `SCRAPSCACHE_RELAY_DB_URL`                 |        `http://127.0.0.1:8080` | libSQL URL for relay (accounts, envelopes, note history, quotas)                                                        |
+| `SCRAPSCACHE_RELAY_DB_URL`                 |        `http://127.0.0.1:8080` | libSQL URL for relay (accounts, envelopes, note history, quotas); `file:` paths work without sqld                       |
 | `SCRAPSCACHE_OPS_DB_URL`                   |        `http://127.0.0.1:8081` | libSQL URL for operational state (rate limits, auth, pairing, push, VAPID)                                              |
 | `SCRAPSCACHE_TICK_SECRET`                  |                       required | Shared secret protecting the `/api/cron/tick` endpoint                                                                  |
 | `SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES`       |                    `100000000` | Relay storage quota per account (100 MB), older note versions included; same default on Workers                         |

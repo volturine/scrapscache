@@ -21,11 +21,21 @@
 		type FindMatch,
 		type FindShortcut
 	} from '#lib/findInNote.js';
+	import {
+		allOccurrences,
+		applyCursorEdit,
+		multiCursorShortcut,
+		nextOccurrence,
+		sameCursor,
+		wordAt,
+		type Cursor,
+		type CursorEdit
+	} from '#lib/multiCursor.js';
 	import { isApplePlatform } from '#lib/platform.js';
 	import { matchTrailingEmoticon } from '#lib/emoticons.js';
 	import { css } from 'styled-system/css';
 	import { checklist, noteBody } from 'styled-system/recipes';
-	import { editorFindStyles, markdownStyles } from '$panda/styles';
+	import { editorFindStyles, markdownStyles, multiCursorStyles } from '$panda/styles';
 	import {
 		emptyMarkdownTableRow,
 		formatMarkdownTable,
@@ -1012,6 +1022,165 @@
 		};
 	});
 
+	/**
+	 * Mod+D cursors. The primary cursor is the DOM selection; the extra ones live in
+	 * the model, are drawn by the highlight API and a caret layer, and take every
+	 * typed character, Backspace, Delete, and single-line paste with the primary.
+	 */
+	let extraCursors = $state<Cursor[]>([]);
+	let primaryCursor: Cursor | null = null;
+	let lastAddedCursor: Cursor | null = null;
+	/** Mod+D from a bare caret matches whole words, as in VS Code. */
+	let cursorWholeWord = false;
+	/** The run of edits since the cursors were placed shares one undo step per kind. */
+	let cursorEditKind: CursorEdit['kind'] | null = null;
+	let cursorLayer = $state<HTMLElement>();
+	let cursorMarks = $state<{ left: number; top: number; height: number }[]>([]);
+
+	function cursorFromRange(range: EditorRange | null): Cursor | null {
+		if (!range || range.start.line !== range.end.line) return null;
+		return { line: range.start.line, start: range.start.offset, end: range.end.offset };
+	}
+
+	function placeCursors(primary: Cursor, extras: Cursor[]) {
+		primaryCursor = primary;
+		extraCursors = extras;
+		cursorEditKind = null;
+		selectAt(primary.line, primary.start, primary.line, primary.end);
+	}
+
+	function clearExtraCursors() {
+		if (extraCursors.length === 0) return;
+		extraCursors = [];
+		lastAddedCursor = null;
+		cursorEditKind = null;
+	}
+
+	/** The selection Mod+D and Mod+Shift+L search for: the selected text, or the word at the caret. */
+	function cursorNeedle(): { cursor: Cursor; wholeWord: boolean } | null {
+		const current = cursorFromRange(editorRange());
+		if (!current) return null;
+		if (current.start !== current.end) return { cursor: current, wholeWord: false };
+		const word = wordAt(lines[current.line].text, current.start);
+		return word ? { cursor: { line: current.line, ...word }, wholeWord: true } : null;
+	}
+
+	function addNextOccurrence() {
+		const current = cursorFromRange(editorRange());
+		if (!current) return;
+		if (current.start === current.end) {
+			const needle = cursorNeedle();
+			if (!needle) return;
+			cursorWholeWord = true;
+			lastAddedCursor = needle.cursor;
+			placeCursors(needle.cursor, []);
+			return;
+		}
+		if (!primaryCursor || !sameCursor(primaryCursor, current)) {
+			primaryCursor = current;
+			extraCursors = [];
+			cursorWholeWord = false;
+			lastAddedCursor = current;
+		}
+		const rows = lines.map((line) => line.text);
+		const needle = rows[current.line].slice(current.start, current.end);
+		const next = nextOccurrence(
+			rows,
+			needle,
+			lastAddedCursor ?? current,
+			[current, ...extraCursors],
+			cursorWholeWord
+		);
+		if (!next) return;
+		lastAddedCursor = next;
+		cursorEditKind = null;
+		extraCursors = [...extraCursors, next];
+		revealMatch(next);
+	}
+
+	function selectAllOccurrences() {
+		const needle = cursorNeedle();
+		if (!needle) return;
+		const { line, start, end } = needle.cursor;
+		const occurrences = allOccurrences(
+			lines.map((row) => row.text),
+			lines[line].text.slice(start, end),
+			needle.wholeWord
+		);
+		cursorWholeWord = needle.wholeWord;
+		lastAddedCursor = occurrences.at(-1) ?? null;
+		placeCursors(
+			needle.cursor,
+			occurrences.filter((cursor) => !sameCursor(cursor, needle.cursor))
+		);
+	}
+
+	function editAllCursors(primary: Cursor, edit: CursorEdit) {
+		if (cursorEditKind !== edit.kind) rememberEdit();
+		cursorEditKind = edit.kind;
+		lastTyping = null;
+		const result = applyCursorEdit(
+			lines.map((line) => line.text),
+			[primary, ...extraCursors],
+			edit
+		);
+		for (const [line, text] of result.changed) lines[line].text = text;
+		syncBody();
+		const [next, ...rest] = result.cursors;
+		primaryCursor = next;
+		extraCursors = rest;
+		selectAt(next.line, next.end);
+	}
+
+	/** Typing, Backspace, and Delete at every cursor. False for any other input, which ends the extra cursors. */
+	function inputAtAllCursors(event: InputEvent): boolean {
+		const type = event.inputType;
+		let edit: CursorEdit | null = null;
+		if (type === 'insertText' && event.data && !/[\r\n]/.test(event.data)) {
+			edit = { kind: 'insert', text: event.data };
+		} else if (type === 'deleteContentBackward') edit = { kind: 'deleteBackward' };
+		else if (type === 'deleteContentForward') edit = { kind: 'deleteForward' };
+		const primary = cursorFromRange(editorRange());
+		if (!edit || !primary) return false;
+		event.preventDefault();
+		editAllCursors(primary, edit);
+		return true;
+	}
+
+	function paintCursors() {
+		if (!cursorLayer || extraCursors.length === 0) {
+			cursorMarks = [];
+			return;
+		}
+		const origin = cursorLayer.getBoundingClientRect();
+		cursorMarks = extraCursors.flatMap((cursor) => {
+			const rect = caretRect(cursor.line, cursor.end);
+			if (!rect) return [];
+			return [{ left: rect.left - origin.left, top: rect.top - origin.top, height: rect.height }];
+		});
+	}
+
+	$effect(() => {
+		void editorItems;
+		void uiStore.rawMarkdown;
+		paintCursors();
+		if (typeof CSS === 'undefined' || !('highlights' in CSS)) return;
+		const selections = new Highlight();
+		for (const cursor of extraCursors) {
+			const range = cursor.start === cursor.end ? null : matchRange(cursor);
+			if (range) selections.add(range);
+		}
+		CSS.highlights.set('note-extra-selection', selections);
+		return () => CSS.highlights.delete('note-extra-selection');
+	});
+
+	onMount(() => {
+		if (!container) return;
+		const observer = new ResizeObserver(() => paintCursors());
+		observer.observe(container);
+		return () => observer.disconnect();
+	});
+
 	function lockCaret(line: number, offset: number) {
 		requestAnimationFrame(() => {
 			if (document.activeElement !== container) return;
@@ -1106,6 +1275,11 @@
 		const inBlock = line !== undefined && markdownBlockAt(line) !== null;
 		container.spellcheck = !inBlock;
 		if (document.activeElement !== container) return;
+		// A selection the cursors did not place, from a drag or the keyboard, ends them.
+		if (extraCursors.length > 0) {
+			const primary = cursorFromRange(editorRange());
+			if (!primary || !primaryCursor || !sameCursor(primary, primaryCursor)) clearExtraCursors();
+		}
 		formatSettledTables();
 		followCaret();
 	}
@@ -1177,6 +1351,7 @@
 	export function adoptBody(text: string): boolean {
 		if (composing || syncBodyTimer) return false;
 		if (text === lastSerializedBody) return true;
+		clearExtraCursors();
 		const caret = container && document.activeElement === container ? editorRange() : null;
 		applyingEdit = true;
 		try {
@@ -1459,6 +1634,7 @@
 	}
 
 	export function undo(): boolean {
+		clearExtraCursors();
 		lastTyping = null;
 		lastTitleTyping = null;
 		const current = historyEntry();
@@ -1473,6 +1649,7 @@
 	}
 
 	export function redo(): boolean {
+		clearExtraCursors();
 		lastTyping = null;
 		lastTitleTyping = null;
 		const current = historyEntry();
@@ -1719,6 +1896,7 @@
 	const TAP_MOVE_PX = 8;
 
 	function beginPointerGesture(event: PointerEvent) {
+		clearExtraCursors();
 		if (event.pointerType === 'mouse' && event.button !== 0) return;
 		if (gestureSettleTimer) clearTimeout(gestureSettleTimer);
 		gestureSettleTimer = null;
@@ -2007,6 +2185,7 @@
 	}
 
 	function handleCompositionStart() {
+		clearExtraCursors();
 		rememberEdit();
 		lastTyping = null;
 		compositionStart = editorRange();
@@ -2351,6 +2530,10 @@
 			event.preventDefault();
 			return;
 		}
+		if (extraCursors.length > 0) {
+			if (!composing && !event.isComposing && inputAtAllCursors(event)) return;
+			clearExtraCursors();
+		}
 		if (composing || event.isComposing || NATIVE_INPUT_TYPES.has(event.inputType)) {
 			if (event.inputType === 'insertReplacementText') rememberEdit();
 			return;
@@ -2454,6 +2637,7 @@
 	}
 
 	function handleCut(event: ClipboardEvent) {
+		clearExtraCursors();
 		const range = writeSelectionToClipboard(event);
 		if (!range) return;
 		rememberEdit(range);
@@ -2560,6 +2744,15 @@
 		const text = event.clipboardData.getData('text/plain');
 		if (!text) return;
 		const range = editorRange();
+		if (extraCursors.length > 0) {
+			const primary = cursorFromRange(range);
+			if (primary && !/[\r\n]/.test(text)) {
+				event.preventDefault();
+				editAllCursors(primary, { kind: 'insert', text });
+				return;
+			}
+			clearExtraCursors();
+		}
 
 		if (!range) {
 			// The caret could not be resolved inside the editor. Normal editing
@@ -2864,6 +3057,30 @@
 	function handleKeydown(event: KeyboardEvent) {
 		const primaryModifier = event.ctrlKey || event.metaKey;
 		if (composing || event.isComposing) return;
+		const cursorShortcut = multiCursorShortcut(event, applePlatform);
+		if (cursorShortcut) {
+			event.preventDefault();
+			if (cursorShortcut === 'addNext') addNextOccurrence();
+			else selectAllOccurrences();
+			return;
+		}
+		if (extraCursors.length > 0) {
+			if (event.key === 'Escape') {
+				event.preventDefault();
+				event.stopPropagation();
+				clearExtraCursors();
+				return;
+			}
+			// beforeinput deletes at every cursor; the row-start Backspace below would only act on one.
+			if (event.key === 'Backspace' || event.key === 'Delete') return;
+			if (
+				/^(Arrow|Home$|End$|Page)/.test(event.key) ||
+				event.key === 'Enter' ||
+				event.key === 'Tab'
+			) {
+				clearExtraCursors();
+			}
+		}
 		const shortcut = findShortcut(event, applePlatform);
 		if (shortcut && runFindShortcut(shortcut)) {
 			event.preventDefault();
@@ -3297,7 +3514,10 @@
 	</div>
 {/snippet}
 
-<svelte:document onselectionchange={handleSelectionChange} />
+<svelte:document
+	onselectionchange={handleSelectionChange}
+	onscrollcapture={extraCursors.length > 0 ? paintCursors : undefined}
+/>
 <svelte:window onpointerup={releasePointerGesture} onpointercancel={releasePointerGesture} />
 
 {#if findOpen}
@@ -3331,6 +3551,7 @@
 		editor.container,
 		markdownStyles,
 		editorFindStyles.highlights,
+		multiCursorStyles.highlights,
 		uiStore.rawMarkdown && 'markdown-raw'
 	]}
 	onbeforeinput={readOnly ? undefined : handleBeforeInput}
@@ -3407,3 +3628,21 @@
 		{/if}
 	{/each}
 </div>
+
+{#if extraCursors.length > 0}
+	<div
+		bind:this={cursorLayer}
+		class={multiCursorStyles.layer}
+		aria-hidden="true"
+		data-extra-cursors
+	>
+		{#each cursorMarks as mark, index (index)}
+			<span
+				class={multiCursorStyles.caret}
+				style:left="{mark.left}px"
+				style:top="{mark.top}px"
+				style:height="{mark.height}px"
+			></span>
+		{/each}
+	</div>
+{/if}

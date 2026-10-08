@@ -1,6 +1,6 @@
 import { fireEvent, render } from '@testing-library/svelte';
 import { flushSync, tick } from 'svelte';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import BodyEditor from './BodyEditor.svelte';
 import { actionUndo } from '#lib/stores/actionUndo.svelte.js';
 import { uiStore } from '#lib/stores/ui.svelte.js';
@@ -17,6 +17,46 @@ function select(start: Node, startOffset: number, end: Node = start, endOffset =
 	selection?.removeAllRanges();
 	selection?.addRange(range);
 }
+
+/**
+ * jsdom lays nothing out. The editor's arrow keys measure where the caret is drawn,
+ * so tests get a fixed-width layout: each character is 8px wide, each row starts a
+ * new 20px line, and a row wraps every `layout.wrapAt` characters.
+ */
+const layout = { wrapAt: Infinity };
+
+function fakePosition(node: Node, offset: number): { x: number; top: number } | null {
+	const element = node instanceof Element ? node : node.parentElement;
+	const text = element?.closest('[data-line-text]');
+	const row = text?.closest('[data-editor-line]');
+	if (!text || !row) return null;
+	const before = document.createRange();
+	before.selectNodeContents(text);
+	before.setEnd(node, offset);
+	const column = before.toString().replaceAll('\u200b', '').length;
+	const wraps = Number.isFinite(layout.wrapAt) ? Math.floor(column / layout.wrapAt) : 0;
+	const x = wraps === 0 ? column : column - wraps * layout.wrapAt;
+	return { x: x * 8, top: Number(row.getAttribute('data-editor-line')) * 200 + wraps * 20 };
+}
+
+/** A collapsed range is a caret; a one-line range is the box of its characters. */
+function fakeCaretRects(this: Range): DOMRect[] {
+	const start = fakePosition(this.startContainer, this.startOffset);
+	if (!start) return [];
+	const end = this.collapsed ? start : fakePosition(this.endContainer, this.endOffset);
+	const width = end && end.top === start.top ? end.x - start.x : 0;
+	return [new DOMRect(start.x, start.top, width, 20)];
+}
+
+beforeEach(() => {
+	layout.wrapAt = Infinity;
+	Range.prototype.getClientRects = function (this: Range) {
+		return fakeCaretRects.call(this) as unknown as DOMRectList;
+	};
+	Range.prototype.getBoundingClientRect = function (this: Range) {
+		return fakeCaretRects.call(this)[0] ?? new DOMRect();
+	};
+});
 
 function lineTexts(container: HTMLElement): string[] {
 	return [...container.querySelectorAll('[data-line-text]')].map((line) =>
@@ -2143,17 +2183,15 @@ describe('BodyEditor rendered table writing', () => {
 		);
 	});
 
-	it('parks at the cell start, then moves to the row above in the same column', async () => {
+	it('moves to the row above in the same cell and column', async () => {
 		const { container } = render(BodyEditor, { props: { body: table.join('\n') } });
 		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
 		caretAt(container, 2, 3);
 
 		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
-		expect(selectionLine()).toBe(2);
-
-		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
+		expect(selectionLine()).toBe(0);
 		await typeText(editor, '!');
-		expect(lineTexts(container)[0]).toBe('| !Name | Qty |');
+		expect(lineTexts(container)[0]).toBe('| N!ame | Qty |');
 	});
 
 	it('opens a paragraph below a table that ends the note', async () => {
@@ -2261,25 +2299,22 @@ describe('BodyEditor code block writing', () => {
 		caretAt(container, 0, 0);
 
 		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
-		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
 		await typeText(editor, '!');
-		expect(lineTexts(container)[2]).toBe('alpha!');
+		expect(lineTexts(container)[2]).toBe('!alpha');
 
 		caretAt(container, 3, 1);
 		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
-		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
-		await typeText(editor, '!');
-		expect(lineTexts(container)[2]).toBe('!alpha!');
+		await typeText(editor, '?');
+		expect(lineTexts(container)[2]).toBe('!?alpha');
 
 		caretAt(container, 3, 4);
 		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
 		await typeText(editor, '!');
-		expect(lineTexts(container)[5]).toBe('after!');
+		expect(lineTexts(container)[5]).toBe('afte!r');
 
 		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
-		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
 		await typeText(editor, '!');
-		expect(lineTexts(container)[3]).toBe('!beta');
+		expect(lineTexts(container)[3]).toBe('beta!');
 	});
 
 	it('moves the caret onto a blank note line instead of skipping it', async () => {
@@ -2288,12 +2323,8 @@ describe('BodyEditor code block writing', () => {
 		caretAt(container, 0, 0);
 
 		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
-		expect(selectionLine()).toBe(0);
-		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
 		expect(selectionLine()).toBe(1);
 		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
-		expect(selectionLine()).toBe(2);
-		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
 		expect(selectionLine()).toBe(2);
 		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
 		expect(selectionLine()).toBe(1);
@@ -2307,13 +2338,13 @@ describe('BodyEditor code block writing', () => {
 		caretAt(container, 1, 0);
 
 		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
-		expect(selectionLine()).toBe(1);
-		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
 		expect(selectionLine()).toBe(2);
 		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
 		expect(selectionLine()).toBe(3);
+		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
+		expect(selectionLine()).toBe(4);
 		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
-		expect(selectionLine()).toBe(2);
+		expect(selectionLine()).toBe(3);
 	});
 
 	it('edits the code language after the block exists', async () => {
@@ -2344,8 +2375,6 @@ describe('BodyEditor code block writing', () => {
 		expect(emptyCell?.textContent).toBe('\u200b');
 		caretAt(container, 2, 2);
 
-		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
-		expect(selectionLine()).toBe(2);
 		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
 		expect(selectionLine()).toBe(3);
 		await typeText(editor, 'new');
@@ -2589,7 +2618,6 @@ describe('BodyEditor markdown block boundaries', () => {
 		caretAt(container, 0, 0);
 
 		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
-		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
 		await typeText(editor, 'x');
 		expect(lineTexts(container)[1]).toContain('x');
 		expect(
@@ -2616,80 +2644,103 @@ describe('BodyEditor markdown block boundaries', () => {
 	});
 });
 
-describe('BodyEditor arrow key row parking', () => {
-	const body = ['first', 'second', 'third'].join('\n');
-
-	function row(container: HTMLElement, index: number): Element {
-		return container.querySelector(`[data-editor-line="${index}"] [data-line-text]`)!;
+describe('BodyEditor vertical arrow keys', () => {
+	function caretOffset(): number | null {
+		const line = selectionLine();
+		if (line === null) return null;
+		const text = document.querySelector(`[data-editor-line="${line}"] [data-line-text]`)!;
+		return rawCaretText(text).replaceAll('\u200b', '').length;
 	}
 
-	it('parks at the start of the row before moving to the row above', async () => {
+	async function press(editor: HTMLElement, key: string, init: KeyboardEventInit = {}) {
+		await fireEvent.keyDown(editor, { key, ...init });
+		return [selectionLine(), caretOffset()];
+	}
+
+	function renderBody(body: string) {
 		const { container } = render(BodyEditor, { props: { body } });
-		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		return { container, editor: container.querySelector('[data-body-editor]') as HTMLElement };
+	}
+
+	it('keeps the caret column when moving between rows', async () => {
+		const { container, editor } = renderBody('first\nsecond\nthird');
 		caretAt(container, 1, 3);
 
-		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
-		expect(selectionLine()).toBe(1);
-		expect(rawCaretText(row(container, 1))).toBe('');
-
-		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
-		expect(selectionLine()).toBe(0);
-		await typeText(editor, '!');
-		expect(lineTexts(container)[0]).toBe('!first');
+		expect(await press(editor, 'ArrowUp')).toEqual([0, 3]);
+		expect(await press(editor, 'ArrowDown')).toEqual([1, 3]);
+		expect(await press(editor, 'ArrowDown')).toEqual([2, 3]);
 	});
 
-	it('parks at the end of the row before moving to the row below', async () => {
-		const { container } = render(BodyEditor, { props: { body } });
-		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
-		caretAt(container, 0, 2);
+	it('remembers the column across a shorter row', async () => {
+		const { container, editor } = renderBody('a long line\nab\nanother line');
+		caretAt(container, 0, 8);
 
-		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
-		expect(selectionLine()).toBe(0);
-		expect(rawCaretText(row(container, 0))).toBe('first');
-
-		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
-		expect(selectionLine()).toBe(1);
-		expect(rawCaretText(row(container, 1))).toBe('second');
+		expect(await press(editor, 'ArrowDown')).toEqual([1, 2]);
+		expect(await press(editor, 'ArrowDown')).toEqual([2, 8]);
+		expect(await press(editor, 'ArrowUp')).toEqual([1, 2]);
+		expect(await press(editor, 'ArrowUp')).toEqual([0, 8]);
 	});
 
-	it('keeps the row edge on consecutive arrows', async () => {
-		const { container } = render(BodyEditor, { props: { body } });
-		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
-		caretAt(container, 0, 2);
+	it('goes to the start of the first row and the end of the last, then back to the column', async () => {
+		const { container, editor } = renderBody('first\nsecond');
+		caretAt(container, 1, 3);
 
-		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
-		expect(rawCaretText(row(container, 0))).toBe('first');
-		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
-		expect(selectionLine()).toBe(1);
-		expect(rawCaretText(row(container, 1))).toBe('second');
-		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
-		expect(selectionLine()).toBe(2);
-		expect(rawCaretText(row(container, 2))).toBe('third');
-
-		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
-		expect(selectionLine()).toBe(2);
-		expect(rawCaretText(row(container, 2))).toBe('');
-		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
-		expect(selectionLine()).toBe(1);
-		expect(rawCaretText(row(container, 1))).toBe('');
-		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
-		expect(selectionLine()).toBe(0);
-		expect(rawCaretText(row(container, 0))).toBe('');
+		expect(await press(editor, 'ArrowUp')).toEqual([0, 3]);
+		expect(await press(editor, 'ArrowUp')).toEqual([0, 0]);
+		expect(await press(editor, 'ArrowDown')).toEqual([1, 3]);
+		expect(await press(editor, 'ArrowDown')).toEqual([1, 6]);
+		expect(await press(editor, 'ArrowUp')).toEqual([0, 3]);
 	});
 
-	it('moves between rows right away from the row edges', async () => {
-		const { container } = render(BodyEditor, { props: { body } });
-		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+	it('walks a wrapped row one visual line at a time', async () => {
+		layout.wrapAt = 10;
+		const { container, editor } = renderBody('aaaaaaaaa bbbbbbbbb ccccccccc\nnext');
+		caretAt(container, 0, 25);
 
-		caretAt(container, 1, 0);
-		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
-		expect(selectionLine()).toBe(0);
-		expect(rawCaretText(row(container, 0))).toBe('');
+		expect(await press(editor, 'ArrowUp')).toEqual([0, 15]);
+		expect(await press(editor, 'ArrowUp')).toEqual([0, 5]);
+		expect(await press(editor, 'ArrowDown')).toEqual([0, 15]);
+		expect(await press(editor, 'ArrowDown')).toEqual([0, 25]);
+		expect(await press(editor, 'ArrowDown')).toEqual([1, 4]);
+	});
 
-		caretAt(container, 1, 'second'.length);
-		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
-		expect(selectionLine()).toBe(2);
-		expect(rawCaretText(row(container, 2))).toBe('third');
+	it('enters a wrapped row on its last visual line going up', async () => {
+		layout.wrapAt = 10;
+		const { container, editor } = renderBody('aaaaaaaaa bbbbbbbbb ccccccccc\nnext');
+		caretAt(container, 1, 2);
+
+		expect(await press(editor, 'ArrowUp')).toEqual([0, 22]);
+	});
+
+	it('moves Home and End to the visual line first, then the whole row', async () => {
+		layout.wrapAt = 10;
+		const { container, editor } = renderBody('aaaaaaaaa bbbbbbbbb ccccccccc');
+		caretAt(container, 0, 15);
+
+		expect(await press(editor, 'End')).toEqual([0, 19]);
+		expect(await press(editor, 'End')).toEqual([0, 29]);
+		caretAt(container, 0, 15);
+		expect(await press(editor, 'Home')).toEqual([0, 10]);
+		expect(await press(editor, 'Home')).toEqual([0, 0]);
+	});
+
+	it('toggles Home between the first character and the row start', async () => {
+		const { container, editor } = renderBody('    indented');
+		caretAt(container, 0, 8);
+
+		expect(await press(editor, 'Home')).toEqual([0, 4]);
+		expect(await press(editor, 'Home')).toEqual([0, 0]);
+		expect(await press(editor, 'Home')).toEqual([0, 4]);
+	});
+
+	it('extends a selection with Shift+End from where it started', async () => {
+		const { container, editor } = renderBody('hello world');
+		const text = container.querySelector('[data-line-text]')!;
+		select(text, 2, text, 5);
+
+		await fireEvent.keyDown(editor, { key: 'End', shiftKey: true });
+
+		expect(window.getSelection()?.toString()).toBe('llo world');
 	});
 });
 

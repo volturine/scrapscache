@@ -12,11 +12,20 @@
 		toggleCheckEntries
 	} from '#lib/checklistBody.js';
 	import { offsetNearestX, sameVisualLine, type CaretStop } from '#lib/caretLines.js';
-	import { revealEditorField } from '#lib/editorVisibility.js';
+	import { revealEditorField, scrollTopForReveal } from '#lib/editorVisibility.js';
+	import {
+		findMatches,
+		findShortcut,
+		matchFrom,
+		replaceInRow,
+		type FindMatch,
+		type FindShortcut
+	} from '#lib/findInNote.js';
+	import { isApplePlatform } from '#lib/platform.js';
 	import { matchTrailingEmoticon } from '#lib/emoticons.js';
 	import { css } from 'styled-system/css';
 	import { checklist, noteBody } from 'styled-system/recipes';
-	import { markdownStyles } from '$panda/styles';
+	import { editorFindStyles, markdownStyles } from '$panda/styles';
 	import {
 		emptyMarkdownTableRow,
 		formatMarkdownTable,
@@ -39,6 +48,7 @@
 	import { uiStore } from '#lib/stores/ui.svelte.js';
 	import { actionUndo, undoStamp } from '#lib/stores/actionUndo.svelte.js';
 	import { tableScroll } from '#lib/tableScroll.js';
+	import EditorFindBar from './EditorFindBar.svelte';
 	import MarkdownCopyButton from './MarkdownCopyButton.svelte';
 
 	const MAX_TASK_INDENT = 1;
@@ -848,6 +858,159 @@
 		const lineEnd = visualLineAt(point.line, point.offset).at(-1)?.offset ?? length;
 		return point.offset === lineEnd ? length : lineEnd;
 	}
+
+	const applePlatform = isApplePlatform();
+	let findOpen = $state(false);
+	let findQuery = $state('');
+	let findReplacement = $state('');
+	let findCaseSensitive = $state(false);
+	let findReplaceOpen = $state(false);
+	let findCurrent = $state(-1);
+	let findField = $state<HTMLInputElement>();
+	let replaceField = $state<HTMLInputElement>();
+	/** Where the caret was when find opened; a new query searches from here, as in VS Code. */
+	let findOrigin: EditorPoint = { line: 0, offset: 0 };
+	const findResults = $derived(
+		findOpen
+			? findMatches(
+					lines.map((line) => line.text),
+					findQuery,
+					findCaseSensitive
+				)
+			: []
+	);
+	const findIndex = $derived(
+		findResults.length === 0 ? -1 : Math.min(Math.max(findCurrent, 0), findResults.length - 1)
+	);
+
+	async function openFind(withReplace: boolean) {
+		const range = editorRange();
+		if (range && !range.collapsed && range.start.line === range.end.line) {
+			findQuery = lines[range.start.line].text.slice(range.start.offset, range.end.offset);
+		}
+		findOrigin = range?.start ?? { line: 0, offset: 0 };
+		findOpen = true;
+		if (withReplace) findReplaceOpen = true;
+		findCurrent = matchFrom(findResults, findOrigin.line, findOrigin.offset);
+		await tick();
+		const field = withReplace && findQuery.length > 0 ? replaceField : findField;
+		field?.focus();
+		field?.select();
+	}
+
+	function closeFind(selectMatch: boolean) {
+		const match = findResults[findIndex];
+		findOpen = false;
+		if (selectMatch && match) selectAt(match.line, match.start, match.line, match.end);
+		else if (selectMatch) selectAt(findOrigin.line, findOrigin.offset);
+	}
+
+	function searchFromOrigin() {
+		findCurrent = matchFrom(findResults, findOrigin.line, findOrigin.offset);
+		revealMatch(findResults[findIndex]);
+	}
+
+	function stepMatch(direction: 1 | -1) {
+		const total = findResults.length;
+		if (total === 0) return;
+		findCurrent = (findIndex + direction + total) % total;
+		const match = findResults[findCurrent];
+		findOrigin = { line: match.line, offset: match.start };
+		// From the editor the match becomes the selection; from the bar the bar keeps focus.
+		if (document.activeElement === container) {
+			selectAt(match.line, match.start, match.line, match.end);
+		}
+		revealMatch(match);
+	}
+
+	function replaceCurrentMatch() {
+		const match = findResults[findIndex];
+		if (!match) return;
+		rememberEdit();
+		lines[match.line].text = replaceInRow(lines[match.line].text, [match], findReplacement);
+		syncBody();
+		findOrigin = { line: match.line, offset: match.start + findReplacement.length };
+		searchFromOrigin();
+	}
+
+	function replaceAllMatches() {
+		if (findResults.length === 0) return;
+		rememberEdit();
+		const byLine = new Map<number, FindMatch[]>();
+		for (const match of findResults)
+			byLine.set(match.line, [...(byLine.get(match.line) ?? []), match]);
+		for (const [line, matches] of byLine) {
+			lines[line].text = replaceInRow(lines[line].text, matches, findReplacement);
+		}
+		syncBody();
+		findCurrent = -1;
+	}
+
+	/** Runs a find shortcut. False when it does not apply, so the key keeps its usual meaning. */
+	function runFindShortcut(shortcut: FindShortcut): boolean {
+		if (shortcut === 'find' || shortcut === 'replace') {
+			void openFind(shortcut === 'replace');
+			return true;
+		}
+		if (shortcut === 'replaceAll') {
+			if (!findOpen) return false;
+			replaceAllMatches();
+			return true;
+		}
+		if (!findOpen) {
+			void openFind(false);
+			return true;
+		}
+		stepMatch(shortcut === 'next' ? 1 : -1);
+		return true;
+	}
+
+	function matchRange(match: FindMatch): Range | null {
+		const start = caretNode(match.line, match.start);
+		const end = caretNode(match.line, match.end);
+		if (!start || !end) return null;
+		const range = document.createRange();
+		try {
+			range.setStart(start.node, start.offset);
+			range.setEnd(end.node, end.offset);
+		} catch {
+			return null;
+		}
+		return range;
+	}
+
+	/** Scrolls the note so a match sits below the find bar. */
+	function revealMatch(match: FindMatch | undefined) {
+		const scroller = container?.closest('.scrollable') as HTMLElement | null;
+		const range = match ? matchRange(match) : null;
+		if (!scroller || !range) return;
+		const viewport = scroller.getBoundingClientRect();
+		const bar = findField?.closest('[data-editor-find]');
+		const padding = (bar?.getBoundingClientRect().height ?? 0) + 24;
+		scroller.scrollTop = scrollTopForReveal(
+			scroller.scrollTop,
+			range.getBoundingClientRect(),
+			viewport,
+			padding
+		);
+	}
+
+	$effect(() => {
+		if (!findOpen || typeof CSS === 'undefined' || !('highlights' in CSS)) return;
+		void editorItems;
+		const matches = new Highlight();
+		const current = new Highlight();
+		findResults.forEach((match, index) => {
+			const range = matchRange(match);
+			if (range) (index === findIndex ? current : matches).add(range);
+		});
+		CSS.highlights.set('note-find-match', matches);
+		CSS.highlights.set('note-find-current', current);
+		return () => {
+			CSS.highlights.delete('note-find-match');
+			CSS.highlights.delete('note-find-current');
+		};
+	});
 
 	function lockCaret(line: number, offset: number) {
 		requestAnimationFrame(() => {
@@ -2701,6 +2864,17 @@
 	function handleKeydown(event: KeyboardEvent) {
 		const primaryModifier = event.ctrlKey || event.metaKey;
 		if (composing || event.isComposing) return;
+		const shortcut = findShortcut(event, applePlatform);
+		if (shortcut && runFindShortcut(shortcut)) {
+			event.preventDefault();
+			return;
+		}
+		if (event.key === 'Escape' && findOpen) {
+			event.preventDefault();
+			event.stopPropagation();
+			closeFind(false);
+			return;
+		}
 		if (primaryModifier && !event.altKey && event.key.toLowerCase() === 'z') {
 			event.preventDefault();
 			if (event.shiftKey) redo();
@@ -3126,6 +3300,23 @@
 <svelte:document onselectionchange={handleSelectionChange} />
 <svelte:window onpointerup={releasePointerGesture} onpointercancel={releasePointerGesture} />
 
+{#if findOpen}
+	<EditorFindBar
+		bind:query={findQuery}
+		bind:replacement={findReplacement}
+		bind:caseSensitive={findCaseSensitive}
+		bind:replaceOpen={findReplaceOpen}
+		bind:findField
+		bind:replaceField
+		total={findResults.length}
+		current={findIndex}
+		onquery={searchFromOrigin}
+		onshortcut={runFindShortcut}
+		onreplace={replaceCurrentMatch}
+		onclose={() => closeFind(true)}
+	/>
+{/if}
+
 <div
 	bind:this={container}
 	contenteditable={readOnly ? 'false' : 'plaintext-only'}
@@ -3136,7 +3327,12 @@
 	aria-multiline="true"
 	aria-label="Note body"
 	spellcheck={!readOnly}
-	class={[editor.container, markdownStyles, uiStore.rawMarkdown && 'markdown-raw']}
+	class={[
+		editor.container,
+		markdownStyles,
+		editorFindStyles.highlights,
+		uiStore.rawMarkdown && 'markdown-raw'
+	]}
 	onbeforeinput={readOnly ? undefined : handleBeforeInput}
 	oninput={readOnly ? undefined : handleInput}
 	oncopy={handleCopy}

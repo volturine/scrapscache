@@ -11,6 +11,7 @@
 		parseCheckLine,
 		toggleCheckEntries
 	} from '#lib/checklistBody.js';
+	import { offsetNearestX, sameVisualLine, type CaretStop } from '#lib/caretLines.js';
 	import { revealEditorField } from '#lib/editorVisibility.js';
 	import { matchTrailingEmoticon } from '#lib/emoticons.js';
 	import { css } from 'styled-system/css';
@@ -498,7 +499,10 @@
 		if (target >= span.start && target < span.end) {
 			const targetCells = markdownTableCellRanges(lines[target].text);
 			const cell = targetCells[Math.min(cellIndex, targetCells.length - 1)];
-			selectAt(target, cell ? (direction < 0 ? cell.start : cell.end) : 0);
+			// The caret keeps its column within the cell, measured or counted from the cell's start.
+			const goal = goalFor(range.start);
+			const inCell = { ...goal, column: range.start.offset - (cells[cellIndex]?.start ?? 0) };
+			landVertical(target, offsetAtGoal(target, direction, inCell, cell?.start, cell?.end), goal);
 			return true;
 		}
 		if (target < 0 || target >= lines.length) {
@@ -510,8 +514,9 @@
 			focusAt(insertAt, 0, line.id);
 			return true;
 		}
-		if (focusNeighboringBlock(target, direction)) return true;
-		focusRowEdge(target, direction);
+		const goal = goalFor(range.start);
+		if (focusNeighboringBlock(target, direction, goal)) return true;
+		focusRowAtGoal(target, direction, goal);
 		return true;
 	}
 
@@ -552,13 +557,13 @@
 	}
 
 	/** Land inside a table or code block instead of on its hidden fence or delimiter. */
-	function focusNeighboringBlock(index: number, direction: 1 | -1): boolean {
+	function focusNeighboringBlock(index: number, direction: 1 | -1, goal: VerticalGoal): boolean {
 		const block = markdownBlockAt(index);
 		if (block?.type === 'code') {
 			const body = codeBodyIndexes(block);
 			const target = direction > 0 ? body[0] : body[body.length - 1];
 			if (target === undefined) return false;
-			focusRowEdge(target, direction);
+			focusRowAtGoal(target, direction, goal);
 			return true;
 		}
 		const table = tableSpanAt(index);
@@ -660,7 +665,7 @@
 		}
 		const next = position + direction;
 		if (next >= 0 && next < body.length) {
-			focusRowEdge(body[next], direction);
+			focusRowAtGoal(body[next], direction, goalFor(range.start));
 			return true;
 		}
 		const outside = direction < 0 ? block.lineIndex - 1 : block.end;
@@ -673,18 +678,175 @@
 			focusLineAt(insertAt, 0);
 			return true;
 		}
-		if (focusNeighboringBlock(outside, direction)) return true;
-		focusRowEdge(outside, direction);
+		const goal = goalFor(range.start);
+		if (focusNeighboringBlock(outside, direction, goal)) return true;
+		focusRowAtGoal(outside, direction, goal);
 		return true;
 	}
 
 	function movePlainRow(range: EditorRange, direction: 1 | -1): boolean {
 		if (!range.collapsed || markdownBlockAt(range.start.line)) return false;
-		const next = range.start.line + direction;
-		if (next < 0 || next >= lines.length) return true;
-		if (focusNeighboringBlock(next, direction)) return true;
-		focusRowEdge(next, direction);
+		const index = range.start.line;
+		const next = index + direction;
+		if (next < 0 || next >= lines.length) {
+			// The first line's ArrowUp goes to its start and the last line's ArrowDown to its end.
+			if (moveIntoMarkdownBlock(range, direction)) return true;
+			landVertical(index, direction < 0 ? 0 : lines[index].text.length, goalFor(range.start));
+			return true;
+		}
+		if (moveIntoMarkdownBlock(range, direction)) return true;
+		focusRowAtGoal(next, direction, goalFor(range.start));
 		return true;
+	}
+
+	/**
+	 * Where the caret is drawn for a text offset, or null when that offset has no box.
+	 * It is read from the neighbouring character's box: a collapsed caret at a soft
+	 * wrap is drawn at the end of the line above, though the text after it starts the next.
+	 */
+	function caretRect(index: number, offset: number): DOMRect | null {
+		const length = lines[index]?.text.length ?? 0;
+		const after = offset < length ? characterBox(index, offset) : null;
+		if (after) return new DOMRect(after.left, after.top, 0, after.height);
+		const before = offset > 0 ? characterBox(index, offset - 1) : null;
+		if (before) return new DOMRect(before.right, before.top, 0, before.height);
+		const point = caretNode(index, offset);
+		if (!point) return null;
+		const range = document.createRange();
+		try {
+			range.setStart(point.node, point.offset);
+		} catch {
+			return null;
+		}
+		const rect = range.getClientRects()[0] ?? range.getBoundingClientRect();
+		return rect.height > 0 ? rect : null;
+	}
+
+	function characterBox(index: number, offset: number): DOMRect | null {
+		const start = caretNode(index, offset);
+		const end = caretNode(index, offset + 1);
+		if (!start || !end) return null;
+		const range = document.createRange();
+		try {
+			range.setStart(start.node, start.offset);
+			range.setEnd(end.node, end.offset);
+		} catch {
+			return null;
+		}
+		return [...range.getClientRects()].find((rect) => rect.width > 0 && rect.height > 0) ?? null;
+	}
+
+	function caretStop(index: number, offset: number): CaretStop | null {
+		const rect = caretRect(index, offset);
+		return rect ? { offset, x: rect.left, top: rect.top, bottom: rect.bottom } : null;
+	}
+
+	/**
+	 * The caret stops of the visual line holding `offset`, within `from`…`to` of the row.
+	 * It measures outward from `offset` until the line changes, so a long wrapped
+	 * paragraph costs one visual line, not the whole row.
+	 */
+	function visualLineAt(
+		index: number,
+		offset: number,
+		from = 0,
+		to = lines[index]?.text.length ?? 0
+	): CaretStop[] {
+		const anchor = caretStop(index, offset);
+		if (!anchor) return [];
+		const before: CaretStop[] = [];
+		for (let cursor = offset - 1; cursor >= from; cursor--) {
+			const stop = caretStop(index, cursor);
+			if (!stop) continue;
+			if (!sameVisualLine(anchor, stop)) break;
+			before.push(stop);
+		}
+		const after: CaretStop[] = [];
+		for (let cursor = offset + 1; cursor <= to; cursor++) {
+			const stop = caretStop(index, cursor);
+			if (!stop) continue;
+			if (!sameVisualLine(anchor, stop)) break;
+			after.push(stop);
+		}
+		return [...before.reverse(), anchor, ...after];
+	}
+
+	/**
+	 * The horizontal position a run of ArrowUp / ArrowDown aims for. It is kept while each
+	 * press lands where the last one left the caret, so a short row does not pull later rows
+	 * to its end. `column` stands in for `x` where the browser draws nothing to measure.
+	 */
+	type VerticalGoal = { lineId: number; offset: number; x: number | null; column: number };
+	let verticalGoal: VerticalGoal | null = null;
+
+	function goalFor(point: EditorPoint): VerticalGoal {
+		const lineId = lines[point.line]?.id ?? -1;
+		if (verticalGoal?.lineId === lineId && verticalGoal.offset === point.offset)
+			return verticalGoal;
+		return {
+			lineId,
+			offset: point.offset,
+			x: caretRect(point.line, point.offset)?.left ?? null,
+			column: point.offset
+		};
+	}
+
+	function landVertical(index: number, offset: number, goal: VerticalGoal) {
+		focusLineAt(index, offset);
+		verticalGoal = { ...goal, lineId: lines[index]?.id ?? -1, offset };
+	}
+
+	/** The offset in `from`…`to` of a row nearest the goal, on its first visual line going down or last going up. */
+	function offsetAtGoal(
+		index: number,
+		direction: 1 | -1,
+		goal: VerticalGoal,
+		from = 0,
+		to = lines[index]?.text.length ?? 0
+	): number {
+		const visualLine =
+			goal.x === null ? [] : visualLineAt(index, direction > 0 ? from : to, from, to);
+		if (visualLine.length > 0 && goal.x !== null) return offsetNearestX(visualLine, goal.x);
+		return Math.min(from + goal.column, to);
+	}
+
+	function focusRowAtGoal(index: number, direction: 1 | -1, goal: VerticalGoal) {
+		landVertical(index, offsetAtGoal(index, direction, goal), goal);
+	}
+
+	/** ArrowUp / ArrowDown inside a row that wraps: the caret moves one visual line and stays in the row. */
+	function moveWithinRow(range: EditorRange, direction: 1 | -1): boolean {
+		if (!range.collapsed || tableSpanAt(range.start.line)) return false;
+		const { line, offset } = range.start;
+		const current = visualLineAt(line, offset);
+		if (current.length === 0) return false;
+		// The next visual line starts past this one's edge; hidden markdown there has no box.
+		let target: CaretStop[] = [];
+		let edge = direction < 0 ? current[0].offset - 1 : current.at(-1)!.offset + 1;
+		for (; edge >= 0 && edge <= lines[line].text.length; edge += direction) {
+			target = visualLineAt(line, edge);
+			if (target.length > 0) break;
+		}
+		if (target.length === 0) return false;
+		const goal = goalFor(range.start);
+		landVertical(line, goal.x === null ? edge : offsetNearestX(target, goal.x), goal);
+		return true;
+	}
+
+	/** Home as in VS Code: the start of the visual line, then the first non-blank character, then column 0. */
+	function homeOffset(point: EditorPoint): number {
+		const text = lines[point.line]?.text ?? '';
+		const firstText = text.length - text.trimStart().length;
+		const lineStart = visualLineAt(point.line, point.offset)[0]?.offset ?? 0;
+		if (lineStart > 0 && point.offset !== lineStart) return lineStart;
+		return point.offset === firstText ? 0 : firstText;
+	}
+
+	/** End as in VS Code: the end of the visual line, then the end of the row. */
+	function endOffset(point: EditorPoint): number {
+		const length = lines[point.line]?.text.length ?? 0;
+		const lineEnd = visualLineAt(point.line, point.offset).at(-1)?.offset ?? length;
+		return point.offset === lineEnd ? length : lineEnd;
 	}
 
 	function lockCaret(line: number, offset: number) {
@@ -706,7 +868,7 @@
 			return openCodeBlockAt(index);
 		}
 		if (neighbor < 0) return false;
-		return focusNeighboringBlock(neighbor, direction);
+		return focusNeighboringBlock(neighbor, direction, goalFor(range.start));
 	}
 
 	function openCodeBlock(range: EditorRange): boolean {
@@ -1260,6 +1422,14 @@
 		}
 		const caret = offset ?? lines[resolved]?.text.length ?? 0;
 		selectAt(resolved, caret);
+	}
+
+	function selectionEnds(): { anchor: EditorPoint; focus: EditorPoint } | null {
+		const selection = window.getSelection();
+		if (!selection || selection.rangeCount === 0) return null;
+		const anchor = pointFromDom(selection.anchorNode, selection.anchorOffset);
+		const focus = pointFromDom(selection.focusNode, selection.focusOffset);
+		return anchor && focus ? { anchor, focus } : null;
 	}
 
 	function selectionIsReversed(): boolean {
@@ -2557,15 +2727,14 @@
 		if (!range) return;
 		if ((event.key === 'Home' || event.key === 'End') && !event.altKey && !primaryModifier) {
 			event.preventDefault();
-			const cells = tableSpanAt(range.start.line)
-				? markdownTableCellRanges(lines[range.start.line].text)
-				: [];
-			const offset =
-				event.key === 'Home'
-					? (cells[0]?.start ?? 0)
-					: (cells.at(-1)?.end ?? lines[range.start.line]?.text.length ?? 0);
-			if (event.shiftKey) selectAt(range.start.line, range.start.offset, range.start.line, offset);
-			else selectAt(range.start.line, offset);
+			const ends = selectionEnds() ?? { anchor: range.start, focus: range.start };
+			const { anchor, focus } = ends;
+			const cells = tableSpanAt(focus.line) ? markdownTableCellRanges(lines[focus.line].text) : [];
+			let offset: number;
+			if (cells.length > 0) offset = event.key === 'Home' ? cells[0].start : cells.at(-1)!.end;
+			else offset = event.key === 'Home' ? homeOffset(focus) : endOffset(focus);
+			if (event.shiftKey) selectAt(anchor.line, anchor.offset, focus.line, offset);
+			else selectAt(focus.line, offset);
 			return;
 		}
 		if (
@@ -2575,27 +2744,12 @@
 			!primaryModifier
 		) {
 			const direction = event.key === 'ArrowUp' ? -1 : 1;
-			// A vertical arrow first parks the caret at the row's edge — the cell's
-			// start or end in tables — and the next press changes rows, keeping
-			// that edge on every following row.
-			const cells = tableSpanAt(range.start.line)
-				? markdownTableCellRanges(lines[range.start.line].text)
-				: [];
-			const caretCell = cells.findIndex((cell) => range.start.offset <= cell.end);
-			const edge =
-				direction < 0
-					? (cells[caretCell]?.start ?? 0)
-					: (cells[caretCell]?.end ?? cells.at(-1)?.end ?? lines[range.start.line].text.length);
-			if (range.start.offset !== edge) {
-				event.preventDefault();
-				selectAt(range.start.line, edge);
-				lockCaret(range.start.line, edge);
-				return;
-			}
+			// As in VS Code, a vertical arrow moves one visual line and keeps the caret's
+			// horizontal position across a run of presses.
 			if (
+				moveWithinRow(range, direction) ||
 				moveTableRow(range, direction) ||
 				moveCodeRow(range, direction) ||
-				moveIntoMarkdownBlock(range, direction) ||
 				movePlainRow(range, direction)
 			) {
 				event.preventDefault();

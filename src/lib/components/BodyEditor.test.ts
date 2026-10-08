@@ -164,17 +164,42 @@ describe('BodyEditor native editing', () => {
 		expect(toggles[1].childNodes).toHaveLength(0);
 	});
 
-	it('selects the whole task on a repeated click when a completed task is below', async () => {
+	it('keeps the word on a double click and selects the whole task on a third', async () => {
 		const { container } = render(BodyEditor, {
 			props: { body: '[ ] Parent task with words\n[x] Done' }
 		});
 		const line = container.querySelector('[data-line-text]') as HTMLElement;
+		window.getSelection()?.setBaseAndExtent(textNode(line), 7, textNode(line), 11);
 
 		await fireEvent.click(line, { detail: 2 });
-		expect(selectedEditorText()).toBe('Parent task with words');
+		expect(selectedEditorText()).toBe('task');
 
 		await fireEvent.click(line, { detail: 3 });
 		expect(selectedEditorText()).toBe('Parent task with words');
+	});
+
+	it('selects the whole task on a third click past the end of its text', async () => {
+		const { container } = render(BodyEditor, {
+			props: { body: '[ ] Parent task with words\n[x] Done' }
+		});
+		const row = container.querySelector('[data-editor-line]') as HTMLElement;
+
+		await fireEvent.click(row, { detail: 3 });
+
+		expect(selectedEditorText()).toBe('Parent task with words');
+	});
+
+	it('keeps a multi-click drag across rows when it ends on a task', async () => {
+		const { container } = render(BodyEditor, {
+			props: { body: '[ ] Parent task\n[x] Done\n[ ] Tail' }
+		});
+		const texts = [...container.querySelectorAll('[data-line-text]')] as HTMLElement[];
+		window.getSelection()?.setBaseAndExtent(textNode(texts[0]), 0, textNode(texts[2]), 4);
+
+		await fireEvent.click(texts[2], { detail: 3 });
+
+		expect(selectedEditorText()).toContain('Parent task');
+		expect(selectedEditorText()).toContain('Tail');
 	});
 
 	it('keeps a single click on a task from selecting the whole line', async () => {
@@ -188,11 +213,11 @@ describe('BodyEditor native editing', () => {
 		expect(selectedEditorText()).toBe('');
 	});
 
-	it('leaves a repeated click on a paragraph alone', async () => {
+	it('leaves a third click on a paragraph alone', async () => {
 		const { container } = render(BodyEditor, { props: { body: 'Hello world' } });
 		const line = container.querySelector('[data-line-text]') as HTMLElement;
 
-		await fireEvent.click(line, { detail: 2 });
+		await fireEvent.click(line, { detail: 3 });
 
 		expect(selectedEditorText()).toBe('');
 	});

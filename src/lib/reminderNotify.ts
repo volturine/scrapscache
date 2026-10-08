@@ -92,8 +92,10 @@ export async function showReminderNotification(
 		}
 	};
 	try {
-		const registration = await navigator.serviceWorker?.ready.catch(() => undefined);
-		if (registration) {
+		// `ready` never settles while no worker is active (development, a first
+		// visit still installing), so ask for the registration as it is now.
+		const registration = await navigator.serviceWorker?.getRegistration();
+		if (registration?.active) {
 			await registration.showNotification(alert.title, payload);
 			return true;
 		}

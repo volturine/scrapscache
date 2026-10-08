@@ -260,7 +260,6 @@ export class ReminderStore {
 	/** Publish only state that has completed cloud reconciliation. */
 	publish(notes: ReminderNote[]): void {
 		const pid = this.activePid;
-		const candidateIds = new Set(relayReminderWakes(notes, Date.now()).map((wake) => wake.id));
 		this.sync(notes);
 		const registration =
 			notificationPermission() === 'granted'
@@ -274,11 +273,11 @@ export class ReminderStore {
 					workspace.armed = new Set(wakes.map((wake) => wake.id));
 					return;
 				}
-				this.resetArmed(workspace, candidateIds);
+				this.resetArmed(workspace);
 			})
 			.catch(() => {
 				const workspace = this.workspaces.get(pid);
-				if (workspace) this.resetArmed(workspace, candidateIds);
+				if (workspace) this.resetArmed(workspace);
 			});
 	}
 
@@ -300,9 +299,10 @@ export class ReminderStore {
 		else this.host?.openWorkspace(workspaceId);
 	}
 
-	private resetArmed(workspace: WorkspaceReminders, candidateIds: Set<string>): void {
+	/** The push is not coming: the scan looks again at what it left to the push. */
+	private resetArmed(workspace: WorkspaceReminders): void {
+		for (const id of workspace.armed) workspace.seen.delete(id);
 		workspace.armed = new Set();
-		for (const id of candidateIds) workspace.seen.delete(id);
 		this.scan();
 	}
 
@@ -460,9 +460,18 @@ export class ReminderStore {
 		if (fired.length) this.history.recordFired(workspace.pid, fired);
 	}
 
-	private async addFallbackAlert(alert: ReminderAlert, alreadyClaimed = false): Promise<void> {
-		if (!alreadyClaimed && !(await this.stillDue(alert))) return;
-		if (!alreadyClaimed && !(await this.claimFired(alert))) return;
+	private async addFallbackAlert(alert: ReminderAlert): Promise<void> {
+		if (!(await this.stillDue(alert)) || this.handled(alert)) return;
+		this.showInApp(alert);
+		await this.claimFired(alert);
+	}
+
+	/** Shown or dismissed elsewhere while this window was deciding. */
+	private handled(alert: Pick<ReminderAlert, 'workspaceId' | 'wakeId'>): boolean {
+		return this.workspaces.get(alert.workspaceId)?.fired.has(alert.wakeId) ?? false;
+	}
+
+	private showInApp(alert: ReminderAlert): void {
 		if (!this.alerts.some((item) => item.wakeId === alert.wakeId)) {
 			this.alerts = [...this.alerts, alert];
 		}
@@ -537,11 +546,16 @@ export class ReminderStore {
 		);
 	}
 
+	/**
+	 * The reminder is claimed, for every window and device, only once it is on
+	 * screen here: a claim without a display would silence it everywhere.
+	 */
 	private async showSystemNotification(alert: ReminderAlert): Promise<void> {
-		if (!(await this.stillDue(alert))) return;
-		if (!(await this.claimFired(alert))) return;
+		if (!(await this.stillDue(alert)) || this.handled(alert)) return;
 		const shown = await showReminderNotification(alert, () => this.openFromNotification(alert));
-		if (!shown) await this.addFallbackAlert(alert, true);
+		if (this.handled(alert)) return;
+		if (!shown) this.showInApp(alert);
+		await this.claimFired(alert);
 	}
 
 	/**

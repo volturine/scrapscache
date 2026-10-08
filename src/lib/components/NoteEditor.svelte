@@ -251,7 +251,13 @@
 			viewport?.removeEventListener('scroll', onOuterScroll);
 			if (revealTimer !== null) clearTimeout(revealTimer);
 			if (copyFlashTimer !== null) clearTimeout(copyFlashTimer);
-			if (!closing) endEditSession();
+			if (!closing) {
+				// Another note taking this place (a reminder, a link) unmounts this
+				// editor with its save timer pending: the store takes the draft now.
+				commitEdits();
+				endEditSession();
+			}
+			if (timer) clearTimeout(timer);
 		};
 	});
 
@@ -642,10 +648,15 @@
 		if (current) untrack(() => adoptStoreNote(current));
 	});
 
-	async function flushDraft() {
-		// Text still being composed (an accent, a prediction) is on screen but not yet in the body.
+	/** Hand every edit on screen to the store, text still being composed included. */
+	function commitEdits() {
+		// An accent or a prediction mid-composition is on screen but not yet in the body.
 		bodyEditor?.finishInput?.();
 		commitDraft();
+	}
+
+	async function flushDraft() {
+		commitEdits();
 		if (note && draftDirty) {
 			try {
 				await notesStore.flushNote(note.id);

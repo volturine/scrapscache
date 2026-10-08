@@ -619,7 +619,7 @@ describe('SyncModal profile interactions', () => {
 		}
 	);
 
-	it('starts pairing immediately from a shared link code', async () => {
+	it('fills in a shared link code but joins only when the person starts the connection', async () => {
 		const link: StartedDeviceLink = {
 			id: 'shared-link',
 			expiresAt: Date.now() + 60_000,
@@ -634,6 +634,18 @@ describe('SyncModal profile interactions', () => {
 			props: { onClose: vi.fn(), initialPairingCode: 'ABCD-1234-EFGH-5678' }
 		});
 
+		// A link anyone can send must not join their account by itself.
+		await waitFor(() =>
+			expect((screen.getByPlaceholderText('XXXX-XXXX-XXXX-XXXX') as HTMLInputElement).value).toBe(
+				'ABCD-1234-EFGH-5678'
+			)
+		);
+		expect(screen.getByRole('status').textContent).toMatch(/another account/i);
+		await tick();
+		expect(start).not.toHaveBeenCalled();
+		expect(screen.queryByText('Expires in')).toBeNull();
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Start connection' }));
 		await waitFor(() => expect(screen.getByText('Expires in')).toBeTruthy());
 		expect(start).toHaveBeenCalledWith(link.syncCode);
 	});

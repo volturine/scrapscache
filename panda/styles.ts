@@ -3070,3 +3070,12 @@ export const editorFindStyles = {
 		'& ::highlight(note-find-current)': { bg: 'scrapscache.warning', color: 'scrapscache.bg' }
 	})
 };
+
+/** Extra cursors from Mod+D, drawn beside the editable text so its DOM stays the editor's own. */
+export const multiCursorStyles = {
+	layer: css({ position: 'absolute', w: 0, h: 0, pointerEvents: 'none' }),
+	caret: css({ position: 'absolute', w: '2px', ml: '-1px', bg: 'scrapscache.text' }),
+	highlights: css({
+		'& ::highlight(note-extra-selection)': { bg: 'scrapscache.accentSubtle' }
+	})
+};

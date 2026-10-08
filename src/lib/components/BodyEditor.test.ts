@@ -3206,3 +3206,113 @@ describe('BodyEditor find and replace', () => {
 		expect(container.querySelector('[data-editor-find]')).toBeNull();
 	});
 });
+
+describe('BodyEditor multiple cursors', () => {
+	function renderBody(body: string) {
+		const { container } = render(BodyEditor, { props: { body } });
+		return { container, editor: container.querySelector('[data-body-editor]') as HTMLElement };
+	}
+
+	async function press(editor: HTMLElement, init: KeyboardEventInit) {
+		const event = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init });
+		editor.dispatchEvent(event);
+		await tick();
+		return event;
+	}
+
+	const addNext = { key: 'd', code: 'KeyD', ctrlKey: true };
+	const selectAll = { key: 'L', code: 'KeyL', ctrlKey: true, shiftKey: true };
+
+	it('selects the word at the caret, then adds each next whole-word match', async () => {
+		const { container, editor } = renderBody('cat and cat\ncategory cat');
+		caretAt(container, 0, 1);
+
+		expect((await press(editor, addNext)).defaultPrevented).toBe(true);
+		expect(window.getSelection()?.toString()).toBe('cat');
+		await press(editor, addNext);
+		await press(editor, addNext);
+		await press(editor, addNext);
+		await typeText(editor, 'dog');
+
+		expect(lineTexts(container)).toEqual(['dog and dog', 'category dog']);
+	});
+
+	it('deletes backward at every cursor', async () => {
+		const { container, editor } = renderBody('ab ab\nab');
+		caretAt(container, 0, 0);
+		await press(editor, selectAll);
+		await typeText(editor, 'xy');
+		expect(lineTexts(container)).toEqual(['xy xy', 'xy']);
+
+		input(editor, 'deleteContentBackward');
+		await tick();
+		expect(lineTexts(container)).toEqual(['x x', 'x']);
+	});
+
+	it('deletes forward at every cursor, first the selections and then a character', async () => {
+		const { container, editor } = renderBody('xab xab\nxab');
+		const first = container.querySelector('[data-line-text]')!;
+		select(first, 0, first, 1);
+		await press(editor, selectAll);
+
+		input(editor, 'deleteContentForward');
+		await tick();
+		expect(lineTexts(container)).toEqual(['ab ab', 'ab']);
+
+		input(editor, 'deleteContentForward');
+		await tick();
+		expect(lineTexts(container)).toEqual(['b b', 'b']);
+	});
+
+	it('pastes a single line at every cursor', async () => {
+		const { container, editor } = renderBody('a b a');
+		caretAt(container, 0, 0);
+		await press(editor, selectAll);
+		const paste = new Event('paste', { bubbles: true, cancelable: true });
+		Object.defineProperty(paste, 'clipboardData', { value: { getData: () => 'zz' } });
+		editor.dispatchEvent(paste);
+		await tick();
+
+		expect(lineTexts(container)).toEqual(['zz b zz']);
+	});
+
+	it('ends the extra cursors on Escape without closing the note', async () => {
+		const { container, editor } = renderBody('one one');
+		caretAt(container, 0, 0);
+		await press(editor, selectAll);
+		const outside = vi.fn();
+		document.addEventListener('keydown', outside);
+
+		await press(editor, { key: 'Escape' });
+		document.removeEventListener('keydown', outside);
+		await typeText(editor, 'two');
+
+		expect(outside).not.toHaveBeenCalled();
+		expect(lineTexts(container)).toEqual(['two one']);
+	});
+
+	it('ends the extra cursors on Enter and edits only at the caret', async () => {
+		const { container, editor } = renderBody('one one');
+		caretAt(container, 0, 0);
+		await press(editor, selectAll);
+		await typeText(editor, '1');
+
+		await press(editor, { key: 'Enter' });
+		await typeText(editor, 'x');
+
+		expect(lineTexts(container)).toEqual(['1', 'x 1']);
+	});
+
+	it('undoes a typed run at every cursor in one step and keeps one cursor', async () => {
+		const { container, editor } = renderBody('cat cat');
+		caretAt(container, 0, 0);
+		await press(editor, selectAll);
+		await typeText(editor, 'dog');
+
+		await press(editor, { key: 'z', ctrlKey: true });
+		expect(lineTexts(container)).toEqual(['cat cat']);
+		await typeText(editor, 'x');
+		expect(lineTexts(container)).toHaveLength(1);
+		expect(lineTexts(container)[0].match(/x/g)).toHaveLength(1);
+	});
+});

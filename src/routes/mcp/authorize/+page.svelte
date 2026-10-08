@@ -17,6 +17,12 @@
 		mcpCallback: string;
 		clientName: string;
 		callbackOrigin: string;
+		/** Exact host (with port) that receives the encrypted sync key. */
+		callbackHost: string;
+		/** Set by the MCP server: false when the client registered itself. */
+		clientVerified: boolean;
+		/** Host the MCP server will send the authorization code to, as it reported it. */
+		clientRedirectHost: string;
 	};
 
 	function isLoopbackHost(hostname: string): boolean {
@@ -30,12 +36,16 @@
 		const mcpPublicKey = url.searchParams.get('mcp_public_key') || '';
 		const mcpCallback = url.searchParams.get('mcp_callback') || '';
 		const clientName = (url.searchParams.get('client_name') || 'AI Client').trim();
+		const clientVerified = url.searchParams.get('client_verified') === 'true';
+		const clientRedirectHost = (url.searchParams.get('client_redirect') || '').trim().slice(0, 253);
 
 		let callbackOrigin = '';
+		let callbackHost = '';
 		let validCallback = false;
 		try {
 			const parsed = new URL(mcpCallback);
 			callbackOrigin = parsed.origin;
+			callbackHost = parsed.host;
 			validCallback =
 				(parsed.protocol === 'https:' ||
 					(parsed.protocol === 'http:' && isLoopbackHost(parsed.hostname))) &&
@@ -53,7 +63,10 @@
 			mcpPublicKey,
 			mcpCallback,
 			clientName: clientName.slice(0, 60),
-			callbackOrigin
+			callbackOrigin,
+			callbackHost,
+			clientVerified,
+			clientRedirectHost
 		};
 	}
 
@@ -61,6 +74,10 @@
 	let busy = $state(false);
 	let error = $state('');
 	let selectedWorkspaceId = $state<string | null>(null);
+	// Scraps Cache keeps no registry of MCP servers, so every callback origin is
+	// unknown to it. The sync key leaves this page only after the user has read
+	// the exact host and confirmed that the server there is theirs.
+	let originConfirmed = $state(false);
 	let checkingWorkspaces = $state(true);
 	let mcpStatuses = $state<Record<string, McpWorkspaceStatus>>({});
 
@@ -117,7 +134,7 @@
 	}
 
 	async function approve() {
-		if (!params.valid || checkingWorkspaces || !selected || busy) return;
+		if (!params.valid || checkingWorkspaces || !selected || busy || !originConfirmed) return;
 		const grantWorkspaces = mcpWorkspaceGrant([selected]);
 		busy = true;
 		error = '';
@@ -279,6 +296,52 @@
 						<div class={styles.originUrl}>{params.callbackOrigin}</div>
 					</div>
 
+					<div class={styles.notice({ tone: 'danger' })} role="alert">
+						<AlertCircle class={styles.noticeIcon} aria-hidden="true" />
+						<div>
+							<p class={styles.optionName}>
+								Allowing sends your sync key to {params.callbackHost}
+							</p>
+							<p class={styles.fine}>
+								Scraps Cache cannot verify this server. Whoever runs
+								<strong>{params.callbackHost}</strong> can read and change every note in the workspace
+								you choose, and the key cannot be revoked later. Continue only if you deployed the MCP
+								server at this exact address yourself.
+							</p>
+						</div>
+					</div>
+
+					<label class={styles.option}>
+						<input class={styles.radio} type="checkbox" bind:checked={originConfirmed} />
+						<span class={styles.optionText}>
+							<span class={styles.optionName}>I run the MCP server at {params.callbackHost}</span>
+							<span class={styles.optionCaption}>Required before access can be allowed</span>
+						</span>
+					</label>
+
+					{#if params.clientVerified}
+						<p class={styles.fine}>
+							<strong>{params.clientName}</strong> is a verified client.
+							{#if params.clientRedirectHost}
+								The MCP server sends its authorization code to {params.clientRedirectHost}.
+							{/if}
+						</p>
+					{:else}
+						<div class={styles.notice({ tone: 'warning' })}>
+							<AlertCircle class={styles.noticeIcon} aria-hidden="true" />
+							<div>
+								<p class={styles.optionName}>Unverified client</p>
+								<p class={styles.fine}>
+									"{params.clientName}" registered itself with the MCP server, so its name is not
+									verified. After you allow, the MCP server sends the authorization code to
+									{params.clientRedirectHost
+										? params.clientRedirectHost
+										: 'a redirect address this request did not disclose'}.
+								</p>
+							</div>
+						</div>
+					{/if}
+
 					<fieldset class={styles.workspaces} aria-labelledby="mcp-workspace-label">
 						<span id="mcp-workspace-label" class={styles.legend}>Workspace for this connection</span
 						>
@@ -324,7 +387,7 @@
 						type="button"
 						class={cx(button({ variant: 'primary', size: 'md' }), styles.action)}
 						onclick={() => void approve()}
-						disabled={busy || checkingWorkspaces || !params.valid || !selected}
+						disabled={busy || checkingWorkspaces || !params.valid || !selected || !originConfirmed}
 					>
 						{busy ? 'Connecting…' : 'Allow access'}
 					</button>

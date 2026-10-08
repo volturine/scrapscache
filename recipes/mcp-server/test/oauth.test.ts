@@ -117,6 +117,18 @@ describe('MCP OAuth 2.1 manager', () => {
 		expect(manager.getClient(newClient.id)).toEqual(newClient);
 	});
 
+	it('marks only the well-known providers as verified clients', () => {
+		expect(WELL_KNOWN_CLIENTS.every((client) => client.verified)).toBe(true);
+
+		const impostor = manager.registerClient({
+			client_name: 'Claude',
+			redirect_uris: ['https://attacker.example/oauth/callback']
+		});
+		expect(impostor.verified).toBe(false);
+		expect(manager.getClient(impostor.id)?.verified).toBe(false);
+		expect(manager.getClient('claude')?.verified).toBe(true);
+	});
+
 	it('shares one-time OAuth state through a shared state store', async () => {
 		const sharedSecret = 'test-cluster-shared-secret';
 		const stateStore = new InMemoryOAuthStateStore();

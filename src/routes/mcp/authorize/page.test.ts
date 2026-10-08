@@ -2,15 +2,15 @@ import { fireEvent, render, screen } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createSyncIdentity, identityFromSyncKey } from '#lib/syncPairing.js';
 import { syncStore } from '#lib/stores/sync.svelte.js';
+import { bytesToBase64Url } from '#lib/mcpHandshake.js';
+import { x25519 } from '@noble/curves/ed25519.js';
 import AuthorizePage from './+page.svelte';
 
-vi.mock('$app/state', () => ({
-	page: {
-		url: new URL(
-			'https://scrapscache.com/mcp/authorize?session_id=test-session&mcp_public_key=abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGH&mcp_callback=https%3A%2F%2Fscrapscache-mcp.kripso.workers.dev%2Foauth%2Fcallback&client_name=ChatGPT'
-		)
-	}
-}));
+const AUTHORIZE_URL =
+	'https://scrapscache.com/mcp/authorize?session_id=test-session&mcp_public_key=abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGH&mcp_callback=https%3A%2F%2Fscrapscache-mcp.kripso.workers.dev%2Foauth%2Fcallback&client_name=ChatGPT';
+
+const pageState = vi.hoisted(() => ({ url: new URL('https://scrapscache.com/mcp/authorize') }));
+vi.mock('$app/state', () => ({ page: pageState }));
 
 vi.mock('$app/paths', () => ({ resolve: (path: string) => path }));
 
@@ -44,8 +44,15 @@ describe('MCP workspace authorization', () => {
 			{ id: 'second', name: 'Work', syncKey: createSyncIdentity().syncKey, createdAt: 2 }
 		];
 		syncStore.activeId = 'first';
+		pageState.url = new URL(AUTHORIZE_URL);
 	});
 	afterEach(() => vi.unstubAllGlobals());
+
+	function confirmOrigin() {
+		return fireEvent.click(
+			screen.getByRole('checkbox', { name: /I run the MCP server at scrapscache-mcp/ })
+		);
+	}
 
 	it('offers two reachable workspaces even without local sync status markers', async () => {
 		const fetch = mockRelay();
@@ -65,6 +72,7 @@ describe('MCP workspace authorization', () => {
 		await fireEvent.click(work);
 		expect(work.checked).toBe(true);
 		expect(personal.checked).toBe(false);
+		await confirmOrigin();
 		expect(allow.disabled).toBe(false);
 		expect(screen.getByText('Work', { selector: 'strong' })).toBeTruthy();
 	});
@@ -77,6 +85,7 @@ describe('MCP workspace authorization', () => {
 		expect(
 			((await screen.findByRole('radio', { name: /Personal/ })) as HTMLInputElement).checked
 		).toBe(true);
+		await confirmOrigin();
 		expect(
 			(screen.getByRole('button', { name: 'Allow access' }) as HTMLButtonElement).disabled
 		).toBe(false);
@@ -110,5 +119,64 @@ describe('MCP workspace authorization', () => {
 			true
 		);
 		expect(fetch).not.toHaveBeenCalled();
+	});
+
+	it('names the callback host and withholds the key until the user confirms it', async () => {
+		syncStore.profiles = syncStore.profiles.filter((profile) => profile.id !== 'second');
+		// The handshake seals the grant to the MCP server's key, so it must be a real one.
+		const mcpPublicKey = bytesToBase64Url(
+			x25519.getPublicKey(crypto.getRandomValues(new Uint8Array(32)))
+		);
+		pageState.url = new URL(AUTHORIZE_URL);
+		pageState.url.searchParams.set('mcp_public_key', mcpPublicKey);
+		mockRelay();
+		const replace = vi.fn();
+		Object.defineProperty(window, 'location', {
+			configurable: true,
+			value: { ...window.location, replace, assign: vi.fn() }
+		});
+		render(AuthorizePage);
+
+		await screen.findByRole('radio', { name: /Personal/ });
+		const allow = screen.getByRole('button', { name: 'Allow access' }) as HTMLButtonElement;
+		expect(
+			screen.getByText('Allowing sends your sync key to scrapscache-mcp.kripso.workers.dev')
+		).toBeTruthy();
+		expect(allow.disabled).toBe(true);
+		await fireEvent.click(allow);
+		expect(replace).not.toHaveBeenCalled();
+
+		await confirmOrigin();
+		expect(allow.disabled).toBe(false);
+		await fireEvent.click(allow);
+		expect(replace).toHaveBeenCalledTimes(1);
+		const target = new URL(replace.mock.calls[0][0] as string);
+		expect(target.host).toBe('scrapscache-mcp.kripso.workers.dev');
+		expect(new URLSearchParams(target.hash.slice(1)).get('session_id')).toBe('test-session');
+	});
+
+	it('flags a client the MCP server did not verify and shows where the code goes', async () => {
+		pageState.url = new URL(
+			`${AUTHORIZE_URL}&client_name=Claude&client_verified=false&client_redirect=attacker.example`
+		);
+		mockRelay();
+		render(AuthorizePage);
+
+		await screen.findByRole('radio', { name: /Personal/ });
+		expect(screen.getByText('Unverified client')).toBeTruthy();
+		expect(screen.getByText(/sends the authorization code to attacker\.example/)).toBeTruthy();
+	});
+
+	it('shows a verified provider client without the warning', async () => {
+		pageState.url = new URL(
+			`${AUTHORIZE_URL}&client_name=Claude&client_verified=true&client_redirect=claude.ai`
+		);
+		mockRelay();
+		render(AuthorizePage);
+
+		await screen.findByRole('radio', { name: /Personal/ });
+		expect(screen.queryByText('Unverified client')).toBeNull();
+		expect(screen.getByText(/is a verified client/)).toBeTruthy();
+		expect(screen.getByText(/authorization code to claude\.ai/)).toBeTruthy();
 	});
 });

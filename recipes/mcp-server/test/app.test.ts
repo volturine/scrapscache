@@ -251,4 +251,41 @@ describe('OAuth authorize across isolated workers', () => {
 			'https://dev.scrapscache.com/mcp/authorize'
 		);
 	});
+
+	it('tells the consent screen where the code goes and that a registered client is unverified', async () => {
+		const instance = isolatedApp(secret);
+		const reg = await instance.handleRequest(
+			new Request('http://localhost:3001/oauth/register', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({
+					client_name: 'Claude',
+					redirect_uris: ['https://attacker.example/oauth/callback']
+				})
+			})
+		);
+		const { client_id } = (await reg.json()) as { client_id: string };
+
+		const authorize = async (clientId: string, redirectUri: string) => {
+			const url = new URL('http://localhost:3001/oauth/authorize');
+			url.searchParams.set('response_type', 'code');
+			url.searchParams.set('client_id', clientId);
+			url.searchParams.set('redirect_uri', redirectUri);
+			url.searchParams.set('state', 'abc');
+			url.searchParams.set('code_challenge', challenge);
+			url.searchParams.set('code_challenge_method', 'S256');
+			const res = await instance.handleRequest(new Request(url));
+			expect(res.status).toBe(302);
+			return new URL(res.headers.get('Location') || '').searchParams;
+		};
+
+		const impostor = await authorize(client_id, 'https://attacker.example/oauth/callback');
+		expect(impostor.get('client_name')).toBe('Claude');
+		expect(impostor.get('client_verified')).toBe('false');
+		expect(impostor.get('client_redirect')).toBe('attacker.example');
+
+		const claude = await authorize('claude', 'https://claude.ai/api/mcp/auth_callback');
+		expect(claude.get('client_verified')).toBe('true');
+		expect(claude.get('client_redirect')).toBe('claude.ai');
+	});
 });

@@ -1542,6 +1542,28 @@
 		}
 	}
 
+	/**
+	 * A third click selects that task's text. Chrome drops it to a caret at the start
+	 * of the line, so the task ends up with no selection.
+	 * A multi-click drag across rows also ends in this click, so its selection is kept.
+	 */
+	function selectWholeTask(event: MouseEvent) {
+		if (event.detail < 3 || event.button !== 0 || event.shiftKey) return;
+		const range = editorRange();
+		if (range && range.start.line !== range.end.line) return;
+		if (
+			eventTargetElement(event)?.closest(
+				'button, input, textarea, [data-add-subtask], [data-checklist-toggle], [data-code-language]'
+			)
+		) {
+			return;
+		}
+		const index = lineIndexFromEvent(event);
+		const line = index === null ? undefined : lines[index];
+		if (index === null || !line?.isCheck) return;
+		selectAt(index, 0, index, line.text.length);
+	}
+
 	function handleEditorClick(event: MouseEvent) {
 		// The release already placed the caret when the browser sent one. If it did not,
 		// or the click's default action moved it, put it back and keep that action from winning.
@@ -1551,6 +1573,7 @@
 			belowPressHandled = false;
 		} else {
 			placeCaretInBlock(event);
+			selectWholeTask(event);
 		}
 		settlePointerGesture();
 	}

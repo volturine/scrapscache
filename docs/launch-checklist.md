@@ -1,7 +1,7 @@
 # Launch checklist
 
 The public launch of [scrapscache.com](https://scrapscache.com) is the first time
-people arrive from advertising instead of from the repository. This page names the
+people arrive from a post or a share instead of from the repository. This page names the
 flows that must not break for them and the launch-specific risks that normal
 development does not exercise. Each box is ticked by a person or a CI run; nothing
 here is assumed.
@@ -39,7 +39,7 @@ until then they are a manual pass on the release candidate.
 
 ## Launch risks
 
-These are the things a traffic spike or an ad click exposes that a developer's own
+These are the things a traffic spike or a shared link exposes that a developer's own
 usage never does.
 
 ### Capacity and cost
@@ -56,21 +56,19 @@ usage never does.
 - [ ] **Account retention** — `SCRAPSCACHE_RETENTION_INACTIVE_DAYS` is set and the
       daily sweep runs, so abandoned trial accounts do not accumulate forever.
 
-### Advertising surface
+### Promotion
 
-- [ ] **Ads stay off the app** — `/privacy` promises no third-party advertising
-      scripts, tracking pixels or analytics, and the nonce CSP would block them
-      anyway. Campaigns point at the landing page from outside; no ad or analytics
-      script is added to the origin. Changing that means rewriting the privacy
-      page, adding consent and opening the CSP first.
+There are no ads, in the app or anywhere else: `/privacy` promises no third-party
+advertising or tracking scripts, and the nonce CSP enforces it. People hear about
+the app through posts, shares and the repository.
+
 - [ ] **Language** — the UI is English only (`lang="en"`, no string extraction),
-      so the campaigns and the store listing say so rather than promising a
-      localized app.
-- [ ] **Links** — every ad destination resolves to the canonical origin with no
-      redirect chain, and campaign parameters in the URL are dropped by the app
-      rather than stored or forwarded.
+      so the launch posts say so rather than promising a localized app.
+- [ ] **Links** — every link in a launch post resolves to the canonical origin with
+      no redirect chain, and any tracking parameters a platform appends to the URL
+      are dropped by the app rather than stored or forwarded.
 - [ ] **Previews** — `og-preview.png`, the title and the description in
-      `src/app.html` match what the ad promises.
+      `src/app.html` match what the posts promise.
 - [ ] **Indexing** — `SCRAPSCACHE_ALLOW_INDEXING` is `true` only on production;
       `robots.txt` and `sitemap.xml` list the canonical origin and nothing from dev.
 - [ ] **Legal pages** — `/privacy` and `/terms` are current and linked from the

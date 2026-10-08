@@ -57,6 +57,20 @@ describe('splitPastedHeading', () => {
 		expect(splitPastedHeading('# Solo')).toEqual({ title: 'Solo', body: '' });
 	});
 
+	it('splits CRLF text from a Windows clipboard', () => {
+		expect(splitPastedHeading('# Trip\r\npacking list\r\nsocks')).toEqual({
+			title: 'Trip',
+			body: 'packing list\nsocks'
+		});
+	});
+
+	it('skips blank lines around the heading of a markdown file', () => {
+		expect(splitPastedHeading('\n# Trip\n\npacking list\n\nsocks')).toEqual({
+			title: 'Trip',
+			body: 'packing list\n\nsocks'
+		});
+	});
+
 	it('requires the first line to be a top-level heading', () => {
 		expect(splitPastedHeading('plain first line\n## Not a doc heading')).toBeNull();
 		expect(splitPastedHeading('## Subhead without the h1\nbody')).toBeNull();

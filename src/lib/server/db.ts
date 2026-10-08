@@ -1,4 +1,4 @@
-import { createClient, type Client, type Transaction } from '@libsql/client';
+import { createClient, type Client, type Transaction } from '@libsql/client/web';
 
 import {
 	SCRAPSCACHE_RELAY_DB_URL,
@@ -196,7 +196,7 @@ export function createDb(clients: DbClients): Db {
 
 function dbUrl(value: string | undefined, fallback: string, name: string): string {
 	const url = value?.trim() || fallback;
-	if (!/^(?:https?|wss?|libsql):\/\/|^file:/i.test(url)) {
+	if (!/^(?:https?|wss?|libsql):\/\//i.test(url)) {
 		throw new Error(`${name} must be a libSQL URL`);
 	}
 	return url;

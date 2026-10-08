@@ -41,9 +41,7 @@ The dev server reads `http://127.0.0.1:8080` and
 `http://127.0.0.1:8081` by default (env vars
 `SCRAPSCACHE_RELAY_DB_URL` and `SCRAPSCACHE_OPS_DB_URL`).
 
-Tests use `@libsql/client/node` with `file:` URLs (no sqld required). The server
-accepts `file:` URLs too, so `SCRAPSCACHE_RELAY_DB_URL=file:relay.db` and
-`SCRAPSCACHE_OPS_DB_URL=file:ops.db` run it without sqld.
+Tests use `@libsql/client/node` with `file:` URLs (no sqld required).
 
 ## Browser smoke tests
 
@@ -52,11 +50,14 @@ first visit with a clean console, notes offline, checklists, pin, archive, trash
 search, labels, kanban, a due reminder, pairing two browser contexts and syncing
 edits and deletes between them, an encrypted backup restored in a fresh browser,
 and workspaces. They run against the production build (`npm run build` first), so
-`npm run test:e2e` starts `node build` itself on throwaway file-backed databases
-with Turnstile off. Install the browser once with `npx playwright install chromium`.
+`npm run test:e2e` starts `node build` itself, with Turnstile off, against the two
+local sqld processes above (or whatever `SCRAPSCACHE_RELAY_DB_URL` and
+`SCRAPSCACHE_OPS_DB_URL` point at). The sync test registers an account, which the
+relay limits to five per hour, so restart sqld between many runs. Install the
+browser once with `npx playwright install chromium`.
 Each test starts from an empty workspace through `openEmptyApp`, and
 `createNote` waits for the editor to settle before typing. CI runs the suite in the
-`validate` job after the production build.
+`validate` job after the production build, with sqld as service containers.
 
 When developing sync features, use two browser profiles (or a normal window +
 a private window) against the same origin and exercise pairing in the Sync UI.

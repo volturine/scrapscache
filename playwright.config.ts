@@ -1,15 +1,12 @@
 import { defineConfig, devices } from '@playwright/test';
-import { mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 
 /**
  * Browser smoke tests against the production build (`npm run build` first).
- * The relay runs on throwaway file-backed databases, so no sqld is needed,
- * and Turnstile stays off because none of its variables are set.
+ * The server needs the two local sqld processes from docs/development.md
+ * (SCRAPSCACHE_RELAY_DB_URL and SCRAPSCACHE_OPS_DB_URL pass through), and
+ * Turnstile stays off because none of its variables are set.
  */
 const port = 4173;
-const dbDir = mkdtempSync(join(tmpdir(), 'scrapscache-e2e-'));
 
 /** Set PLAYWRIGHT_BASE_URL to run the suite against a deployment instead of a local build. */
 const remote = process.env.PLAYWRIGHT_BASE_URL;
@@ -40,9 +37,7 @@ export default defineConfig({
 				env: {
 					PORT: String(port),
 					HOST: '127.0.0.1',
-					SCRAPSCACHE_ORIGIN: `http://127.0.0.1:${port}`,
-					SCRAPSCACHE_RELAY_DB_URL: `file:${join(dbDir, 'relay.db')}`,
-					SCRAPSCACHE_OPS_DB_URL: `file:${join(dbDir, 'ops.db')}`
+					SCRAPSCACHE_ORIGIN: `http://127.0.0.1:${port}`
 				}
 			}
 });

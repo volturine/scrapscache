@@ -25,6 +25,17 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    # The browser smoke tests run the production server against the same sqld
+    # image docs/development.md uses locally, on the ports the server defaults to.
+    services:
+      relay-db:
+        image: ghcr.io/tursodatabase/libsql-server@sha256:6dd3eb276d9d3604e4a48ac4a999a2e267814732d57d7e94c04ba71482333a67
+        ports:
+          - 8080:8080
+      ops-db:
+        image: ghcr.io/tursodatabase/libsql-server@sha256:6dd3eb276d9d3604e4a48ac4a999a2e267814732d57d7e94c04ba71482333a67
+        ports:
+          - 8081:8080
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

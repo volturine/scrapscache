@@ -75,7 +75,7 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	if (!accountId) return Response.json({ error: 'Invalid sync session' }, { status: 401 });
 	if (!(await isPublicEndpoint(body.subscription.endpoint))) {
 		return Response.json(
-			{ error: 'The push endpoint must be a public https origin' },
+			{ error: 'The push endpoint must be on a known push service' },
 			{ status: 400 }
 		);
 	}

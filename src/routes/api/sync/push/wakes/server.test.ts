@@ -69,7 +69,7 @@ describe('reminder wake registration', () => {
 		const response = await call(POST, 'POST', {
 			deviceId: 'device-aaaaaaaaaaaa',
 			subscription: {
-				endpoint: 'https://push.example/device',
+				endpoint: 'https://fcm.googleapis.com/fcm/send/device',
 				keys: { p256dh: 'p'.repeat(20), auth: 'a'.repeat(16) }
 			}
 		});

@@ -141,28 +141,34 @@ export const REGISTER_ADDRESS_POLICY: RateLimitPolicy = {
 	refillWindowMs: 60 * 60_000
 };
 /**
- * All addresses together: a hundred at once, then ten a minute. A launch-day
- * peak is a few a minute, so real signups never meet it, while a flood from many
- * addresses cannot run the store's writes up faster than this.
+ * All verified registrations together: a hundred at once, then ten a minute. A
+ * launch-day peak is a few a minute, so real signups never meet it, while a
+ * flood from many addresses cannot run the store's writes up faster than this.
  */
 export const REGISTER_GLOBAL_POLICY: RateLimitPolicy = {
 	capacity: 100,
 	refillWindowMs: 10 * 60_000
 };
 
-/** The caller's own registration allowance, then everyone's. */
-export async function checkRegisterLimit(
+/** The caller's own registration allowance; checked before anything is read. */
+export function checkRegisterLimit(
 	getClientAddress: () => string,
 	now = Date.now()
 ): Promise<RateLimitResult> {
-	const limiter = new TokenBucketLimiter(getDb());
-	const address = await limiter.check(
+	return new TokenBucketLimiter(getDb()).check(
 		`register:${clientAddress(getClientAddress)}`,
 		REGISTER_ADDRESS_POLICY,
 		now
 	);
-	if (!address.allowed) return address;
-	return limiter.check('register-global', REGISTER_GLOBAL_POLICY, now);
+}
+
+/**
+ * Everyone's registration allowance. Charged only for a request whose
+ * credential and human check already passed, so junk from many addresses
+ * cannot drain it and lock real signups out.
+ */
+export function chargeRegisterGlobalLimit(now = Date.now()): Promise<RateLimitResult> {
+	return new TokenBucketLimiter(getDb()).check('register-global', REGISTER_GLOBAL_POLICY, now);
 }
 
 export function rateLimitResponse(result: Exclude<RateLimitResult, { allowed: true }>): Response {

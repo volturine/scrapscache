@@ -252,7 +252,7 @@ describe('OAuth authorize across isolated workers', () => {
 		);
 	});
 
-	it('tells the consent screen where the code goes and that a registered client is unverified', async () => {
+	it('tells the consent screen where the code goes', async () => {
 		const instance = isolatedApp(secret);
 		const reg = await instance.handleRequest(
 			new Request('http://localhost:3001/oauth/register', {
@@ -281,11 +281,9 @@ describe('OAuth authorize across isolated workers', () => {
 
 		const impostor = await authorize(client_id, 'https://attacker.example/oauth/callback');
 		expect(impostor.get('client_name')).toBe('Claude');
-		expect(impostor.get('client_verified')).toBe('false');
 		expect(impostor.get('client_redirect')).toBe('attacker.example');
 
 		const claude = await authorize('claude', 'https://claude.ai/api/mcp/auth_callback');
-		expect(claude.get('client_verified')).toBe('true');
 		expect(claude.get('client_redirect')).toBe('claude.ai');
 	});
 });

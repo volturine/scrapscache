@@ -17,12 +17,6 @@ export const MCP_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 export type OAuthClientInfo = {
 	id: string;
 	name: string;
-	/**
-	 * True only for the well-known clients above, whose callbacks are fixed
-	 * provider endpoints. A client that registered itself chose its own name
-	 * and redirect, so the consent screen must not present it as that provider.
-	 */
-	verified: boolean;
 	redirectUris: string[];
 	/**
 	 * Callbacks that cannot be written as fixed strings: a per-connection id in
@@ -51,7 +45,6 @@ export const WELL_KNOWN_CLIENTS: OAuthClientInfo[] = [
 	{
 		id: 'claude',
 		name: 'Claude',
-		verified: true,
 		redirectUris: [
 			'https://claude.ai/api/mcp/auth_callback',
 			'https://claude.com/api/mcp/auth_callback'
@@ -61,28 +54,24 @@ export const WELL_KNOWN_CLIENTS: OAuthClientInfo[] = [
 	{
 		id: 'chatgpt',
 		name: 'ChatGPT',
-		verified: true,
 		redirectUris: ['https://chatgpt.com/connector_platform_oauth_redirect'],
 		redirectPatterns: [CHATGPT_REDIRECT_RE]
 	},
 	{
 		id: 'grok',
 		name: 'Grok',
-		verified: true,
 		redirectUris: ['https://grok.com/connectors-oauth-exchange-code'],
 		redirectPatterns: [GROK_REDIRECT_RE]
 	},
 	{
 		id: 'perplexity',
 		name: 'Perplexity',
-		verified: true,
 		redirectUris: ['https://www.perplexity.ai/rest/connections/oauth_callback'],
 		redirectPatterns: [PERPLEXITY_REDIRECT_RE]
 	},
 	{
 		id: 'hermes',
 		name: 'Hermes Agent',
-		verified: true,
 		redirectUris: ['http://localhost:8080/callback', 'http://127.0.0.1:8080/callback'],
 		redirectPatterns: [LOOPBACK_REDIRECT_RE]
 	}
@@ -238,7 +227,6 @@ export class OAuthManager {
 		return {
 			id,
 			name,
-			verified: false,
 			redirectUris
 		};
 	}
@@ -264,7 +252,6 @@ export class OAuthManager {
 				return {
 					id: clientId,
 					name: data.name!.trim(),
-					verified: false,
 					redirectUris: data.redirectUris!.map((uri) => uri.trim())
 				};
 			}

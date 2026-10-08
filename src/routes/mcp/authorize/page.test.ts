@@ -155,28 +155,16 @@ describe('MCP workspace authorization', () => {
 		expect(new URLSearchParams(target.hash.slice(1)).get('session_id')).toBe('test-session');
 	});
 
-	it('flags a client the MCP server did not verify and shows where the code goes', async () => {
+	it('repeats where the MCP server says the code goes, without vouching for the client', async () => {
 		pageState.url = new URL(
-			`${AUTHORIZE_URL}&client_name=Claude&client_verified=false&client_redirect=attacker.example`
+			`${AUTHORIZE_URL}&client_name=Claude&client_verified=true&client_redirect=attacker.example`
 		);
 		mockRelay();
 		render(AuthorizePage);
 
 		await screen.findByRole('radio', { name: /Personal/ });
-		expect(screen.getByText('Unverified client')).toBeTruthy();
-		expect(screen.getByText(/sends the authorization code to attacker\.example/)).toBeTruthy();
-	});
-
-	it('shows a verified provider client without the warning', async () => {
-		pageState.url = new URL(
-			`${AUTHORIZE_URL}&client_name=Claude&client_verified=true&client_redirect=claude.ai`
-		);
-		mockRelay();
-		render(AuthorizePage);
-
-		await screen.findByRole('radio', { name: /Personal/ });
-		expect(screen.queryByText('Unverified client')).toBeNull();
-		expect(screen.getByText(/is a verified client/)).toBeTruthy();
-		expect(screen.getByText(/authorization code to claude\.ai/)).toBeTruthy();
+		expect(screen.getByText(/authorization code for/)).toBeTruthy();
+		expect(screen.getByText(/to attacker\.example/)).toBeTruthy();
+		expect(screen.queryByText(/verified/i)).toBeNull();
 	});
 });

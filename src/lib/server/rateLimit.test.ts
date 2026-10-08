@@ -3,6 +3,7 @@ import {
 	TokenBucketLimiter,
 	REGISTER_GLOBAL_POLICY,
 	checkAdminApiLimit,
+	chargeRegisterGlobalLimit,
 	checkRegisterLimit,
 	clientAddress
 } from './rateLimit';
@@ -162,17 +163,25 @@ describe('registration limiter', () => {
 		expect((await checkRegisterLimit(() => '2001:db8:1:3::1', 0)).allowed).toBe(true);
 	});
 
-	it('refuses every address once the shared allowance is spent, then recovers', async () => {
+	it('refuses every registration once the shared allowance is spent, then recovers', async () => {
 		const { capacity, refillWindowMs } = REGISTER_GLOBAL_POLICY;
-		const address = (i: number) => `198.51.${Math.floor(i / 200)}.${i % 200}`;
 		for (let i = 0; i < capacity; i++) {
-			expect((await checkRegisterLimit(() => address(i), 0)).allowed).toBe(true);
+			expect((await chargeRegisterGlobalLimit(0)).allowed).toBe(true);
 		}
-		const refused = await checkRegisterLimit(() => address(capacity), 0);
+		const refused = await chargeRegisterGlobalLimit(0);
 		expect(refused.allowed).toBe(false);
 		if (!refused.allowed) expect(refused.retryAfterSeconds).toBeGreaterThanOrEqual(1);
 		const later = refillWindowMs / capacity;
-		expect((await checkRegisterLimit(() => address(capacity + 1), later)).allowed).toBe(true);
-		expect((await checkRegisterLimit(() => address(capacity + 2), later)).allowed).toBe(false);
+		expect((await chargeRegisterGlobalLimit(later)).allowed).toBe(true);
+		expect((await chargeRegisterGlobalLimit(later)).allowed).toBe(false);
+	});
+
+	it('does not spend the shared allowance on the address check', async () => {
+		const { capacity } = REGISTER_GLOBAL_POLICY;
+		const address = (i: number) => `198.51.${Math.floor(i / 200)}.${i % 200}`;
+		for (let i = 0; i < capacity + 10; i++) {
+			expect((await checkRegisterLimit(() => address(i), 0)).allowed).toBe(true);
+		}
+		expect((await chargeRegisterGlobalLimit(0)).allowed).toBe(true);
 	});
 });

@@ -19,8 +19,6 @@
 		callbackOrigin: string;
 		/** Exact host (with port) that receives the encrypted sync key. */
 		callbackHost: string;
-		/** Set by the MCP server: false when the client registered itself. */
-		clientVerified: boolean;
 		/** Host the MCP server will send the authorization code to, as it reported it. */
 		clientRedirectHost: string;
 	};
@@ -36,7 +34,6 @@
 		const mcpPublicKey = url.searchParams.get('mcp_public_key') || '';
 		const mcpCallback = url.searchParams.get('mcp_callback') || '';
 		const clientName = (url.searchParams.get('client_name') || 'AI Client').trim();
-		const clientVerified = url.searchParams.get('client_verified') === 'true';
 		const clientRedirectHost = (url.searchParams.get('client_redirect') || '').trim().slice(0, 253);
 
 		let callbackOrigin = '';
@@ -65,7 +62,6 @@
 			clientName: clientName.slice(0, 60),
 			callbackOrigin,
 			callbackHost,
-			clientVerified,
 			clientRedirectHost
 		};
 	}
@@ -319,27 +315,12 @@
 						</span>
 					</label>
 
-					{#if params.clientVerified}
+					{#if params.clientRedirectHost}
 						<p class={styles.fine}>
-							<strong>{params.clientName}</strong> is a verified client.
-							{#if params.clientRedirectHost}
-								The MCP server sends its authorization code to {params.clientRedirectHost}.
-							{/if}
+							The MCP server says it will send the authorization code for
+							<strong>{params.clientName}</strong> to {params.clientRedirectHost}. Scraps Cache
+							cannot check either claim.
 						</p>
-					{:else}
-						<div class={styles.notice({ tone: 'warning' })}>
-							<AlertCircle class={styles.noticeIcon} aria-hidden="true" />
-							<div>
-								<p class={styles.optionName}>Unverified client</p>
-								<p class={styles.fine}>
-									"{params.clientName}" registered itself with the MCP server, so its name is not
-									verified. After you allow, the MCP server sends the authorization code to
-									{params.clientRedirectHost
-										? params.clientRedirectHost
-										: 'a redirect address this request did not disclose'}.
-								</p>
-							</div>
-						</div>
 					{/if}
 
 					<fieldset class={styles.workspaces} aria-labelledby="mcp-workspace-label">

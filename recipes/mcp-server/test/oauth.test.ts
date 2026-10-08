@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { OAuthManager, WELL_KNOWN_CLIENTS, isRedirectAllowed, verifyPkce } from '../src/oauth.js';
+import { OAuthManager, isRedirectAllowed, verifyPkce } from '../src/oauth.js';
 import { bytesToBase64Url, randomBytes, sha256Base64Url } from '../src/crypto.js';
 import { InMemoryOAuthStateStore } from '../src/oauthState.js';
 
@@ -115,18 +115,6 @@ describe('MCP OAuth 2.1 manager', () => {
 		expect(newClient.id).toMatch(/^client_/);
 		expect(newClient.name).toBe('Custom AI Assistant');
 		expect(manager.getClient(newClient.id)).toEqual(newClient);
-	});
-
-	it('marks only the well-known providers as verified clients', () => {
-		expect(WELL_KNOWN_CLIENTS.every((client) => client.verified)).toBe(true);
-
-		const impostor = manager.registerClient({
-			client_name: 'Claude',
-			redirect_uris: ['https://attacker.example/oauth/callback']
-		});
-		expect(impostor.verified).toBe(false);
-		expect(manager.getClient(impostor.id)?.verified).toBe(false);
-		expect(manager.getClient('claude')?.verified).toBe(true);
 	});
 
 	it('shares one-time OAuth state through a shared state store', async () => {

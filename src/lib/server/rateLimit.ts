@@ -98,12 +98,71 @@ export async function countThrottledCallers(db: Db, now = Date.now()): Promise<n
 	return Number(row?.callers ?? 0);
 }
 
+/**
+ * The address a client is limited as. An IPv6 client is keyed by its /64, the
+ * least an ISP hands a subscriber, as every address in it would otherwise be a
+ * bucket of its own. IPv4 addresses, including those a dual-stack socket reports
+ * as IPv4-mapped IPv6, stay as they are.
+ */
 export function clientAddress(getClientAddress: () => string): string {
+	let address: string;
 	try {
-		return getClientAddress();
+		address = getClientAddress();
 	} catch {
 		return 'unknown';
 	}
+	return ipv6Network(address) ?? address;
+}
+
+const IPV4_MAPPED = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i;
+const HEXTET = /^[0-9a-f]{1,4}$/i;
+
+/** The /64 of an IPv6 address as its network address, the IPv4 inside a mapped
+ * address, or null when `address` is not IPv6. */
+function ipv6Network(address: string): string | null {
+	if (!address.includes(':')) return null;
+	const mapped = IPV4_MAPPED.exec(address);
+	if (mapped) return mapped[1];
+	const halves = address.split('%')[0].split('::');
+	if (halves.length > 2) return null;
+	const head = halves[0] ? halves[0].split(':') : [];
+	const tail = halves[1] ? halves[1].split(':') : [];
+	// A dotted quad at the end stands for two hextets.
+	const given = [...head, ...tail].reduce((n, part) => n + (part.includes('.') ? 2 : 1), 0);
+	if (halves.length === 1 ? given !== 8 : given > 7) return null;
+	const hextets = [...head, ...Array<string>(8 - given).fill('0'), ...tail].slice(0, 4);
+	if (!hextets.every((hextet) => HEXTET.test(hextet))) return null;
+	return `${hextets.map((hextet) => parseInt(hextet, 16).toString(16)).join(':')}::`;
+}
+
+/** Each address: five at once, then one every twelve minutes. */
+export const REGISTER_ADDRESS_POLICY: RateLimitPolicy = {
+	capacity: 5,
+	refillWindowMs: 60 * 60_000
+};
+/**
+ * All addresses together: a hundred at once, then ten a minute. A launch-day
+ * peak is a few a minute, so real signups never meet it, while a flood from many
+ * addresses cannot run the store's writes up faster than this.
+ */
+export const REGISTER_GLOBAL_POLICY: RateLimitPolicy = {
+	capacity: 100,
+	refillWindowMs: 10 * 60_000
+};
+
+/** The caller's own registration allowance, then everyone's. */
+export async function checkRegisterLimit(
+	getClientAddress: () => string,
+	now = Date.now()
+): Promise<RateLimitResult> {
+	const limiter = new TokenBucketLimiter(getDb());
+	const address = await limiter.check(
+		`register:${clientAddress(getClientAddress)}`,
+		REGISTER_ADDRESS_POLICY,
+		now
+	);
+	if (!address.allowed) return address;
+	return limiter.check('register-global', REGISTER_GLOBAL_POLICY, now);
 }
 
 export function rateLimitResponse(result: Exclude<RateLimitResult, { allowed: true }>): Response {

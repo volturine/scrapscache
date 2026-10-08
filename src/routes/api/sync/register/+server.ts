@@ -3,15 +3,11 @@ import { getSyncStore } from '#lib/server/syncStore.js';
 import { verifySyncRegistration } from '#lib/server/syncAuth.js';
 import { readJsonBody } from '#lib/server/request.js';
 import { verifyTurnstile } from '#lib/server/turnstile.js';
-import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '#lib/server/rateLimit.js';
+import { checkRegisterLimit, clientAddress, rateLimitResponse } from '#lib/server/rateLimit.js';
 import { retiredKeyResponse } from '#lib/server/retiredKey.js';
 
 export const POST: RequestHandler = async ({ request, getClientAddress }) => {
-	const limited = await getPublicApiLimiter().check(
-		`register:${clientAddress(getClientAddress)}`,
-		// Five tokens immediately, then refill five tokens per hour (1 token every 12 minutes).
-		{ capacity: 5, refillWindowMs: 60 * 60 * 1000 }
-	);
+	const limited = await checkRegisterLimit(getClientAddress);
 	if (!limited.allowed) return rateLimitResponse(limited);
 	let body: {
 		accountId?: unknown;

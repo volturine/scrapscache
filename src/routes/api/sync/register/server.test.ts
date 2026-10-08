@@ -20,7 +20,7 @@ vi.mock('#lib/server/syncAuth.js', () => ({ verifySyncRegistration: mocks.verify
 vi.mock('#lib/server/turnstile.js', () => ({ verifyTurnstile: mocks.verifyTurnstile }));
 vi.mock('#lib/server/rateLimit.js', () => ({
 	clientAddress: () => '203.0.113.1',
-	getPublicApiLimiter: () => ({ check: async () => ({ allowed: true }) }),
+	checkRegisterLimit: async () => ({ allowed: true }),
 	rateLimitResponse: () => new Response(null, { status: 429 })
 }));
 

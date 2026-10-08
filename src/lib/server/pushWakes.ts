@@ -59,18 +59,38 @@ function isPrivateIp(hostname: string): boolean {
 	return false;
 }
 
+/**
+ * The push services browsers subscribe through. A push endpoint is accepted only
+ * on one of them, at registration and again at send time, so the relay never
+ * POSTs to a host an account chose: not to internal services, and not in bulk
+ * to anyone else.
+ */
+export const PUSH_SERVICE_HOSTS: readonly string[] = [
+	// Firefox: Mozilla autopush.
+	'updates.push.services.mozilla.com',
+	// Chrome, Edge on Android, Brave, Opera, Vivaldi, Samsung Internet: FCM.
+	'fcm.googleapis.com',
+	// Safari on macOS and iOS.
+	'web.push.apple.com'
+];
+/** Edge on Windows: WNS nodes such as `wns2-par02p.notify.windows.com`. */
+export const PUSH_SERVICE_HOST_SUFFIXES: readonly string[] = ['.notify.windows.com'];
+
+export function isPushServiceHost(hostname: string): boolean {
+	const name = hostname.toLowerCase();
+	return (
+		PUSH_SERVICE_HOSTS.includes(name) ||
+		PUSH_SERVICE_HOST_SUFFIXES.some((suffix) => name.endsWith(suffix))
+	);
+}
+
+/** An https URL on a known push service, with no credentials. */
 export function isHttpsEndpoint(value: string): boolean {
 	if (value.length < 16 || value.length > 2048) return false;
 	try {
 		const url = new URL(value);
-		const hostname = url.hostname.toLowerCase();
 		return (
-			url.protocol === 'https:' &&
-			!url.username &&
-			!url.password &&
-			hostname !== 'localhost' &&
-			!hostname.endsWith('.localhost') &&
-			!isPrivateIp(hostname)
+			url.protocol === 'https:' && !url.username && !url.password && isPushServiceHost(url.hostname)
 		);
 	} catch {
 		return false;
@@ -107,18 +127,16 @@ export const dohResolve: EndpointResolver = async (hostname) => {
 
 /**
  * Endpoint hostnames must resolve to public addresses at registration time.
- * Literal-level checks alone cannot see DNS answers, so a name the registrant
- * controls could otherwise target private infrastructure at send time.
+ * The host allowlist already keeps endpoints on push services; this guards
+ * against a DNS answer that would still point one of them at private space.
  */
 export async function isPublicEndpoint(
 	value: string,
 	resolve: EndpointResolver = dohResolve
 ): Promise<boolean> {
 	if (!isHttpsEndpoint(value)) return false;
-	const hostname = new URL(value).hostname.replace(/^\[|\]$/g, '').toLowerCase();
-	if (ipVersion(hostname)) return !isPrivateIp(hostname);
 	try {
-		const addresses = await resolve(hostname);
+		const addresses = await resolve(new URL(value).hostname.toLowerCase());
 		return addresses.length > 0 && addresses.every(({ address }) => !isPrivateIp(address));
 	} catch {
 		return false;

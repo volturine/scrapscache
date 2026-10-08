@@ -1,6 +1,7 @@
 import { Effect } from 'effect';
 import {
 	getSyncStore,
+	WAKE_CLAIM_ACCOUNT_LIMIT,
 	WAKE_CLAIM_LEASE_MS,
 	type DueWake,
 	type SyncStore
@@ -9,7 +10,10 @@ import { sendReminderTick, type WakeSendResult } from '#lib/server/webPush.js';
 import { recordReminderWake } from '#lib/server/metrics.js';
 
 const SEND_CONCURRENCY = 8;
-/** Wakes claimed per round. A full round means more may be due. */
+/**
+ * Wakes claimed per round, at most `WAKE_CLAIM_ACCOUNT_LIMIT` of any one
+ * account's. A full round, or an account's full share, means more may be due.
+ */
 const CLAIM_LIMIT = 100;
 /** Rounds per dispatch. What is still due after them is sent by the next dispatch, at once. */
 const MAX_ROUNDS = 10;
@@ -35,6 +39,17 @@ export type WakeDispatchResult = {
 	 */
 	next: number | null;
 };
+
+/** Whether some account was handed its whole share of the round. */
+function accountHitShare(due: DueWake[]): boolean {
+	const claimed = new Map<string, number>();
+	for (const device of due) {
+		const count = (claimed.get(device.accountId) ?? 0) + 1;
+		if (count >= WAKE_CLAIM_ACCOUNT_LIMIT) return true;
+		claimed.set(device.accountId, count);
+	}
+	return false;
+}
 
 function earliest(...times: (number | null)[]): number | null {
 	const known = times.filter((time): time is number => time !== null);
@@ -80,7 +95,7 @@ export async function dispatchDueWakes(
 		await Effect.runPromise(
 			Effect.forEach(due, deliver, { concurrency: SEND_CONCURRENCY, discard: true })
 		);
-		moreDue = due.length === CLAIM_LIMIT;
+		moreDue = due.length === CLAIM_LIMIT || accountHitShare(due);
 		if (!moreDue) break;
 	}
 	// A deferred claim counts from its retry time, so the next wake covers retries.

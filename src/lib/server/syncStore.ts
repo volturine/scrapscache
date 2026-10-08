@@ -77,6 +77,12 @@ export const MAX_PUSH_DEVICES = 32;
 export const MAX_WAKES_PER_ACCOUNT = 1_000;
 export const WAKE_RETAIN_MS = 24 * 60 * 60 * 1000;
 export const WAKE_CLAIM_LEASE_MS = 60_000;
+/**
+ * Wakes claimed per account per round: enough to wake every device it may have
+ * once. The rest wait for a later round, so an account with thousands of
+ * back-dated wakes shares each round with everyone else instead of filling it.
+ */
+export const WAKE_CLAIM_ACCOUNT_LIMIT = MAX_PUSH_DEVICES;
 export const MAX_SYNC_MUTATIONS_PER_REQUEST = 2_000;
 /** Bound for IN (...) lists so sweeps stay under the SQLite host-parameter limit. */
 const ACCOUNT_CHUNK = 400;
@@ -1147,27 +1153,40 @@ export class SyncStore {
 		return withTxn(this.ops, async (tx) => {
 			const rows = (
 				await tx.execute({
-					sql: `SELECT
-					d.account_id AS accountId,
-					d.device_id AS deviceId,
-					w.wake_id AS wakeId,
-					w.fire_at AS fireAt,
-					d.endpoint AS endpoint,
-					d.p256dh AS p256dh,
-					d.auth AS auth
-				 FROM reminder_wakes w
-				 INNER JOIN reminder_push_devices d ON d.account_id = w.account_id
-				 LEFT JOIN reminder_wake_deliveries x
-					ON x.account_id = d.account_id
-					AND x.device_id = d.device_id
-					AND x.wake_id = w.wake_id
-				 WHERE w.fire_at <= ?
-					AND x.delivered_at IS NULL
-					AND (x.claimed_at IS NULL OR x.claimed_at <= ?)
-					AND (? IS NULL OR w.account_id = ?)
-				 ORDER BY w.fire_at ASC, w.wake_id ASC, d.device_id ASC
+					sql: `SELECT accountId, deviceId, wakeId, fireAt, endpoint, p256dh, auth FROM (
+					SELECT
+						d.account_id AS accountId,
+						d.device_id AS deviceId,
+						w.wake_id AS wakeId,
+						w.fire_at AS fireAt,
+						d.endpoint AS endpoint,
+						d.p256dh AS p256dh,
+						d.auth AS auth,
+						ROW_NUMBER() OVER (
+							PARTITION BY w.account_id ORDER BY w.fire_at ASC, w.wake_id ASC, d.device_id ASC
+						) AS accountRank
+					FROM reminder_wakes w
+					INNER JOIN reminder_push_devices d ON d.account_id = w.account_id
+					LEFT JOIN reminder_wake_deliveries x
+						ON x.account_id = d.account_id
+						AND x.device_id = d.device_id
+						AND x.wake_id = w.wake_id
+					WHERE w.fire_at <= ?
+						AND x.delivered_at IS NULL
+						AND (x.claimed_at IS NULL OR x.claimed_at <= ?)
+						AND (? IS NULL OR w.account_id = ?)
+				 )
+				 WHERE accountRank <= ?
+				 ORDER BY fireAt ASC, wakeId ASC, deviceId ASC
 				 LIMIT ?`,
-					args: [now, now - WAKE_CLAIM_LEASE_MS, accountId ?? null, accountId ?? null, limit]
+					args: [
+						now,
+						now - WAKE_CLAIM_LEASE_MS,
+						accountId ?? null,
+						accountId ?? null,
+						WAKE_CLAIM_ACCOUNT_LIMIT,
+						limit
+					]
 				})
 			).rows as unknown as DueWake[];
 			for (const row of rows) {

@@ -3,7 +3,8 @@ import {
 	SyncQuotaExceededError,
 	SyncStore,
 	ENVELOPE_STORAGE_OVERHEAD_BYTES,
-	WAKE_CLAIM_LEASE_MS
+	WAKE_CLAIM_LEASE_MS,
+	WAKE_CLAIM_ACCOUNT_LIMIT
 } from './syncStore';
 import { DEFAULT_MAX_ACCOUNT_BYTES } from './operatorConfig';
 import { testDb, cleanupTestDbs } from './testDb';
@@ -949,6 +950,37 @@ describe('SQLite sync store', () => {
 			'first'
 		]);
 		expect((await store.claimDueWakes(1_000)).map((w) => w.accountId)).toEqual(['second']);
+	});
+
+	it("claims at most an account's share of a round, leaving room for other accounts", async () => {
+		const { store } = createStore();
+		for (const account of ['flood', 'other']) {
+			await store.createAccount(account, 'credential');
+			await store.savePushDevice({
+				deviceId: `device-${account}`.padEnd(16, 'x'),
+				endpoint: `https://push.example/${account}`,
+				p256dh: 'p'.repeat(20),
+				auth: 'a'.repeat(16),
+				accountId: account
+			});
+		}
+		await store.replaceReminderWakes(
+			'flood',
+			Array.from({ length: WAKE_CLAIM_ACCOUNT_LIMIT + 8 }, (_, index) => ({
+				id: String(index).padStart(43, 'w'),
+				fireAt: 1_000 + index
+			}))
+		);
+		await store.replaceReminderWakes('other', [wake('o', 2_000)]);
+
+		const claimed = await store.claimDueWakes(5_000, 100);
+
+		expect(claimed.filter((w) => w.accountId === 'flood')).toHaveLength(WAKE_CLAIM_ACCOUNT_LIMIT);
+		expect(claimed.filter((w) => w.accountId === 'other')).toHaveLength(1);
+		// The rest of the flood is still due, for a later round.
+		expect((await store.claimDueWakes(5_000, 100)).map((w) => w.accountId)).toEqual(
+			Array<string>(8).fill('flood')
+		);
 	});
 
 	it('re-claims an undelivered wake after the claim lease expires', async () => {

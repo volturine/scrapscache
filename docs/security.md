@@ -109,9 +109,14 @@ the long-term attachment format.
   `Permissions-Policy`, and `Cache-Control: no-transform` on HTML so a CDN cannot
   inject scripts into the key-bearing origin
 - **Rate limiting** — atomic SQL token buckets for register, auth, pairing, sync,
-  push, and admin. Durable and shared across isolates, at the cost of one database
-  write per request — size the store accordingly and put edge rate limiting in
-  front of it on a usage-billed platform
+  push, and admin, keyed by client address with IPv6 clients bucketed by their
+  /64, plus one shared bucket for registrations. Durable and shared across
+  isolates, at the cost of one database write per request — size the store
+  accordingly and put edge rate limiting in front of it on a usage-billed platform
+- **Web Push** — a push endpoint is accepted only on the browsers' own push
+  services (Mozilla, FCM, Apple, WNS), checked again at send time; sends never
+  follow redirects, and one dispatch round wakes at most an account's device
+  allowance, so the relay cannot be pointed at other hosts or used to flood one
 - **Admin token** — required for `/metrics` and every `/api/admin/*` endpoint in
   production Compose
 - **Metrics** — process counters on Node, where one process sees every request.

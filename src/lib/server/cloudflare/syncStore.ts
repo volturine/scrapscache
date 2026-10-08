@@ -65,6 +65,8 @@ export const MAX_PUSH_DEVICES = 32;
 export const MAX_WAKES_PER_ACCOUNT = 1_000;
 export const WAKE_RETAIN_MS = 86_400_000;
 export const WAKE_CLAIM_LEASE_MS = 60_000;
+/** Wakes claimed per account per round; see the Node store. */
+export const WAKE_CLAIM_ACCOUNT_LIMIT = MAX_PUSH_DEVICES;
 /** How long an uncommitted upload may sit before the sweep treats it as abandoned.
  * Far longer than any request can live, so an in-flight upload is never reclaimed. */
 export const PENDING_UPLOAD_GRACE_MS = 3_600_000;
@@ -602,8 +604,15 @@ export class SyncStore {
 	async claimDueWakes(now: number, limit = 100, accountId?: string): Promise<DueWake[]> {
 		const rows = (
 			await execute(this.db, {
-				sql: 'SELECT d.account_id accountId,d.device_id deviceId,w.wake_id wakeId,w.fire_at fireAt,d.endpoint,d.p256dh,d.auth FROM reminder_wakes w JOIN reminder_push_devices d ON d.account_id=w.account_id LEFT JOIN reminder_wake_deliveries x ON x.account_id=d.account_id AND x.device_id=d.device_id AND x.wake_id=w.wake_id WHERE w.fire_at<=? AND x.delivered_at IS NULL AND (x.claimed_at IS NULL OR x.claimed_at<=?) AND (? IS NULL OR w.account_id=?) ORDER BY w.fire_at,w.wake_id,d.device_id LIMIT ?',
-				args: [now, now - WAKE_CLAIM_LEASE_MS, accountId ?? null, accountId ?? null, limit]
+				sql: 'SELECT accountId,deviceId,wakeId,fireAt,endpoint,p256dh,auth FROM (SELECT d.account_id accountId,d.device_id deviceId,w.wake_id wakeId,w.fire_at fireAt,d.endpoint,d.p256dh,d.auth,ROW_NUMBER() OVER (PARTITION BY w.account_id ORDER BY w.fire_at,w.wake_id,d.device_id) accountRank FROM reminder_wakes w JOIN reminder_push_devices d ON d.account_id=w.account_id LEFT JOIN reminder_wake_deliveries x ON x.account_id=d.account_id AND x.device_id=d.device_id AND x.wake_id=w.wake_id WHERE w.fire_at<=? AND x.delivered_at IS NULL AND (x.claimed_at IS NULL OR x.claimed_at<=?) AND (? IS NULL OR w.account_id=?)) WHERE accountRank<=? ORDER BY fireAt,wakeId,deviceId LIMIT ?',
+				args: [
+					now,
+					now - WAKE_CLAIM_LEASE_MS,
+					accountId ?? null,
+					accountId ?? null,
+					WAKE_CLAIM_ACCOUNT_LIMIT,
+					limit
+				]
 			})
 		).rows as unknown as DueWake[];
 		await batch(

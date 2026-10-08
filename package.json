@@ -116,17 +116,18 @@
 		"workerd@1.20260923.1": true
 	},
 	"overrides": {
-		"devalue": "5.9.1",
 		"lodash-es": "4.18.1",
 		"@excalidraw/excalidraw": {
 			"nanoid": "3.3.19",
 			"@excalidraw/mermaid-to-excalidraw": {
 				"nanoid": "5.1.16"
-			}
+			},
+			"sass": "1.105.1"
 		},
 		"browserslist": "4.29.0",
 		"postcss": "$postcss",
-		"postcss-selector-parser": "7.1.6"
+		"postcss-selector-parser": "7.1.6",
+		"katex": "0.19.0"
 	},
 	"imports": {
 		"#lib": "./src/lib/index.js",

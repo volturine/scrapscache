@@ -1,6 +1,6 @@
 import { fireEvent, render } from '@testing-library/svelte';
 import { flushSync, tick } from 'svelte';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import BodyEditor from './BodyEditor.svelte';
 import { actionUndo } from '#lib/stores/actionUndo.svelte.js';
 import { uiStore } from '#lib/stores/ui.svelte.js';
@@ -17,6 +17,46 @@ function select(start: Node, startOffset: number, end: Node = start, endOffset =
 	selection?.removeAllRanges();
 	selection?.addRange(range);
 }
+
+/**
+ * jsdom lays nothing out. The editor's arrow keys measure where the caret is drawn,
+ * so tests get a fixed-width layout: each character is 8px wide, each row starts a
+ * new 20px line, and a row wraps every `layout.wrapAt` characters.
+ */
+const layout = { wrapAt: Infinity };
+
+function fakePosition(node: Node, offset: number): { x: number; top: number } | null {
+	const element = node instanceof Element ? node : node.parentElement;
+	const text = element?.closest('[data-line-text]');
+	const row = text?.closest('[data-editor-line]');
+	if (!text || !row) return null;
+	const before = document.createRange();
+	before.selectNodeContents(text);
+	before.setEnd(node, offset);
+	const column = before.toString().replaceAll('\u200b', '').length;
+	const wraps = Number.isFinite(layout.wrapAt) ? Math.floor(column / layout.wrapAt) : 0;
+	const x = wraps === 0 ? column : column - wraps * layout.wrapAt;
+	return { x: x * 8, top: Number(row.getAttribute('data-editor-line')) * 200 + wraps * 20 };
+}
+
+/** A collapsed range is a caret; a one-line range is the box of its characters. */
+function fakeCaretRects(this: Range): DOMRect[] {
+	const start = fakePosition(this.startContainer, this.startOffset);
+	if (!start) return [];
+	const end = this.collapsed ? start : fakePosition(this.endContainer, this.endOffset);
+	const width = end && end.top === start.top ? end.x - start.x : 0;
+	return [new DOMRect(start.x, start.top, width, 20)];
+}
+
+beforeEach(() => {
+	layout.wrapAt = Infinity;
+	Range.prototype.getClientRects = function (this: Range) {
+		return fakeCaretRects.call(this) as unknown as DOMRectList;
+	};
+	Range.prototype.getBoundingClientRect = function (this: Range) {
+		return fakeCaretRects.call(this)[0] ?? new DOMRect();
+	};
+});
 
 function lineTexts(container: HTMLElement): string[] {
 	return [...container.querySelectorAll('[data-line-text]')].map((line) =>
@@ -152,6 +192,74 @@ describe('BodyEditor native editing', () => {
 		expect(pointerDown.defaultPrevented).toBe(true);
 		expect(document.activeElement).toBe(editor);
 		expect(toggle.getAttribute('aria-pressed')).toBe('true');
+	});
+
+	it('keeps a checked box empty so selecting the row above stops at its end', () => {
+		// WebKit extends a row selection over inline content in the next row's
+		// checkbox, so the check mark has to be painted rather than a child node.
+		const { container } = render(BodyEditor, { props: { body: '[ ] First\n[x] Done' } });
+		const toggles = container.querySelectorAll('[data-checklist-toggle]');
+
+		expect(toggles[1].getAttribute('aria-pressed')).toBe('true');
+		expect(toggles[1].childNodes).toHaveLength(0);
+	});
+
+	it('keeps the word on a double click and selects the whole task on a third', async () => {
+		const { container } = render(BodyEditor, {
+			props: { body: '[ ] Parent task with words\n[x] Done' }
+		});
+		const line = container.querySelector('[data-line-text]') as HTMLElement;
+		window.getSelection()?.setBaseAndExtent(textNode(line), 7, textNode(line), 11);
+
+		await fireEvent.click(line, { detail: 2 });
+		expect(selectedEditorText()).toBe('task');
+
+		await fireEvent.click(line, { detail: 3 });
+		expect(selectedEditorText()).toBe('Parent task with words');
+	});
+
+	it('selects the whole task on a third click past the end of its text', async () => {
+		const { container } = render(BodyEditor, {
+			props: { body: '[ ] Parent task with words\n[x] Done' }
+		});
+		const row = container.querySelector('[data-editor-line]') as HTMLElement;
+
+		await fireEvent.click(row, { detail: 3 });
+
+		expect(selectedEditorText()).toBe('Parent task with words');
+	});
+
+	it('keeps a multi-click drag across rows when it ends on a task', async () => {
+		const { container } = render(BodyEditor, {
+			props: { body: '[ ] Parent task\n[x] Done\n[ ] Tail' }
+		});
+		const texts = [...container.querySelectorAll('[data-line-text]')] as HTMLElement[];
+		window.getSelection()?.setBaseAndExtent(textNode(texts[0]), 0, textNode(texts[2]), 4);
+
+		await fireEvent.click(texts[2], { detail: 3 });
+
+		expect(selectedEditorText()).toContain('Parent task');
+		expect(selectedEditorText()).toContain('Tail');
+	});
+
+	it('keeps a single click on a task from selecting the whole line', async () => {
+		const { container } = render(BodyEditor, {
+			props: { body: '[ ] Parent task with words\n[x] Done' }
+		});
+		const line = container.querySelector('[data-line-text]') as HTMLElement;
+
+		await fireEvent.click(line, { detail: 1 });
+
+		expect(selectedEditorText()).toBe('');
+	});
+
+	it('leaves a third click on a paragraph alone', async () => {
+		const { container } = render(BodyEditor, { props: { body: 'Hello world' } });
+		const line = container.querySelector('[data-line-text]') as HTMLElement;
+
+		await fireEvent.click(line, { detail: 3 });
+
+		expect(selectedEditorText()).toBe('');
 	});
 
 	it('toggles a checkbox on touch release without focusing the editor', async () => {
@@ -2075,17 +2183,15 @@ describe('BodyEditor rendered table writing', () => {
 		);
 	});
 
-	it('parks at the cell start, then moves to the row above in the same column', async () => {
+	it('moves to the row above in the same cell and column', async () => {
 		const { container } = render(BodyEditor, { props: { body: table.join('\n') } });
 		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
 		caretAt(container, 2, 3);
 
 		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
-		expect(selectionLine()).toBe(2);
-
-		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
+		expect(selectionLine()).toBe(0);
 		await typeText(editor, '!');
-		expect(lineTexts(container)[0]).toBe('| !Name | Qty |');
+		expect(lineTexts(container)[0]).toBe('| N!ame | Qty |');
 	});
 
 	it('opens a paragraph below a table that ends the note', async () => {
@@ -2193,25 +2299,22 @@ describe('BodyEditor code block writing', () => {
 		caretAt(container, 0, 0);
 
 		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
-		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
 		await typeText(editor, '!');
-		expect(lineTexts(container)[2]).toBe('alpha!');
+		expect(lineTexts(container)[2]).toBe('!alpha');
 
 		caretAt(container, 3, 1);
 		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
-		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
-		await typeText(editor, '!');
-		expect(lineTexts(container)[2]).toBe('!alpha!');
+		await typeText(editor, '?');
+		expect(lineTexts(container)[2]).toBe('!?alpha');
 
 		caretAt(container, 3, 4);
 		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
 		await typeText(editor, '!');
-		expect(lineTexts(container)[5]).toBe('after!');
+		expect(lineTexts(container)[5]).toBe('afte!r');
 
 		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
-		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
 		await typeText(editor, '!');
-		expect(lineTexts(container)[3]).toBe('!beta');
+		expect(lineTexts(container)[3]).toBe('beta!');
 	});
 
 	it('moves the caret onto a blank note line instead of skipping it', async () => {
@@ -2220,12 +2323,8 @@ describe('BodyEditor code block writing', () => {
 		caretAt(container, 0, 0);
 
 		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
-		expect(selectionLine()).toBe(0);
-		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
 		expect(selectionLine()).toBe(1);
 		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
-		expect(selectionLine()).toBe(2);
-		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
 		expect(selectionLine()).toBe(2);
 		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
 		expect(selectionLine()).toBe(1);
@@ -2239,13 +2338,13 @@ describe('BodyEditor code block writing', () => {
 		caretAt(container, 1, 0);
 
 		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
-		expect(selectionLine()).toBe(1);
-		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
 		expect(selectionLine()).toBe(2);
 		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
 		expect(selectionLine()).toBe(3);
+		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
+		expect(selectionLine()).toBe(4);
 		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
-		expect(selectionLine()).toBe(2);
+		expect(selectionLine()).toBe(3);
 	});
 
 	it('edits the code language after the block exists', async () => {
@@ -2276,8 +2375,6 @@ describe('BodyEditor code block writing', () => {
 		expect(emptyCell?.textContent).toBe('\u200b');
 		caretAt(container, 2, 2);
 
-		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
-		expect(selectionLine()).toBe(2);
 		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
 		expect(selectionLine()).toBe(3);
 		await typeText(editor, 'new');
@@ -2521,7 +2618,6 @@ describe('BodyEditor markdown block boundaries', () => {
 		caretAt(container, 0, 0);
 
 		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
-		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
 		await typeText(editor, 'x');
 		expect(lineTexts(container)[1]).toContain('x');
 		expect(
@@ -2548,80 +2644,103 @@ describe('BodyEditor markdown block boundaries', () => {
 	});
 });
 
-describe('BodyEditor arrow key row parking', () => {
-	const body = ['first', 'second', 'third'].join('\n');
-
-	function row(container: HTMLElement, index: number): Element {
-		return container.querySelector(`[data-editor-line="${index}"] [data-line-text]`)!;
+describe('BodyEditor vertical arrow keys', () => {
+	function caretOffset(): number | null {
+		const line = selectionLine();
+		if (line === null) return null;
+		const text = document.querySelector(`[data-editor-line="${line}"] [data-line-text]`)!;
+		return rawCaretText(text).replaceAll('\u200b', '').length;
 	}
 
-	it('parks at the start of the row before moving to the row above', async () => {
+	async function press(editor: HTMLElement, key: string, init: KeyboardEventInit = {}) {
+		await fireEvent.keyDown(editor, { key, ...init });
+		return [selectionLine(), caretOffset()];
+	}
+
+	function renderBody(body: string) {
 		const { container } = render(BodyEditor, { props: { body } });
-		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		return { container, editor: container.querySelector('[data-body-editor]') as HTMLElement };
+	}
+
+	it('keeps the caret column when moving between rows', async () => {
+		const { container, editor } = renderBody('first\nsecond\nthird');
 		caretAt(container, 1, 3);
 
-		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
-		expect(selectionLine()).toBe(1);
-		expect(rawCaretText(row(container, 1))).toBe('');
-
-		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
-		expect(selectionLine()).toBe(0);
-		await typeText(editor, '!');
-		expect(lineTexts(container)[0]).toBe('!first');
+		expect(await press(editor, 'ArrowUp')).toEqual([0, 3]);
+		expect(await press(editor, 'ArrowDown')).toEqual([1, 3]);
+		expect(await press(editor, 'ArrowDown')).toEqual([2, 3]);
 	});
 
-	it('parks at the end of the row before moving to the row below', async () => {
-		const { container } = render(BodyEditor, { props: { body } });
-		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
-		caretAt(container, 0, 2);
+	it('remembers the column across a shorter row', async () => {
+		const { container, editor } = renderBody('a long line\nab\nanother line');
+		caretAt(container, 0, 8);
 
-		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
-		expect(selectionLine()).toBe(0);
-		expect(rawCaretText(row(container, 0))).toBe('first');
-
-		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
-		expect(selectionLine()).toBe(1);
-		expect(rawCaretText(row(container, 1))).toBe('second');
+		expect(await press(editor, 'ArrowDown')).toEqual([1, 2]);
+		expect(await press(editor, 'ArrowDown')).toEqual([2, 8]);
+		expect(await press(editor, 'ArrowUp')).toEqual([1, 2]);
+		expect(await press(editor, 'ArrowUp')).toEqual([0, 8]);
 	});
 
-	it('keeps the row edge on consecutive arrows', async () => {
-		const { container } = render(BodyEditor, { props: { body } });
-		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
-		caretAt(container, 0, 2);
+	it('goes to the start of the first row and the end of the last, then back to the column', async () => {
+		const { container, editor } = renderBody('first\nsecond');
+		caretAt(container, 1, 3);
 
-		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
-		expect(rawCaretText(row(container, 0))).toBe('first');
-		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
-		expect(selectionLine()).toBe(1);
-		expect(rawCaretText(row(container, 1))).toBe('second');
-		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
-		expect(selectionLine()).toBe(2);
-		expect(rawCaretText(row(container, 2))).toBe('third');
-
-		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
-		expect(selectionLine()).toBe(2);
-		expect(rawCaretText(row(container, 2))).toBe('');
-		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
-		expect(selectionLine()).toBe(1);
-		expect(rawCaretText(row(container, 1))).toBe('');
-		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
-		expect(selectionLine()).toBe(0);
-		expect(rawCaretText(row(container, 0))).toBe('');
+		expect(await press(editor, 'ArrowUp')).toEqual([0, 3]);
+		expect(await press(editor, 'ArrowUp')).toEqual([0, 0]);
+		expect(await press(editor, 'ArrowDown')).toEqual([1, 3]);
+		expect(await press(editor, 'ArrowDown')).toEqual([1, 6]);
+		expect(await press(editor, 'ArrowUp')).toEqual([0, 3]);
 	});
 
-	it('moves between rows right away from the row edges', async () => {
-		const { container } = render(BodyEditor, { props: { body } });
-		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+	it('walks a wrapped row one visual line at a time', async () => {
+		layout.wrapAt = 10;
+		const { container, editor } = renderBody('aaaaaaaaa bbbbbbbbb ccccccccc\nnext');
+		caretAt(container, 0, 25);
 
-		caretAt(container, 1, 0);
-		await fireEvent.keyDown(editor, { key: 'ArrowUp' });
-		expect(selectionLine()).toBe(0);
-		expect(rawCaretText(row(container, 0))).toBe('');
+		expect(await press(editor, 'ArrowUp')).toEqual([0, 15]);
+		expect(await press(editor, 'ArrowUp')).toEqual([0, 5]);
+		expect(await press(editor, 'ArrowDown')).toEqual([0, 15]);
+		expect(await press(editor, 'ArrowDown')).toEqual([0, 25]);
+		expect(await press(editor, 'ArrowDown')).toEqual([1, 4]);
+	});
 
-		caretAt(container, 1, 'second'.length);
-		await fireEvent.keyDown(editor, { key: 'ArrowDown' });
-		expect(selectionLine()).toBe(2);
-		expect(rawCaretText(row(container, 2))).toBe('third');
+	it('enters a wrapped row on its last visual line going up', async () => {
+		layout.wrapAt = 10;
+		const { container, editor } = renderBody('aaaaaaaaa bbbbbbbbb ccccccccc\nnext');
+		caretAt(container, 1, 2);
+
+		expect(await press(editor, 'ArrowUp')).toEqual([0, 22]);
+	});
+
+	it('moves Home and End to the visual line first, then the whole row', async () => {
+		layout.wrapAt = 10;
+		const { container, editor } = renderBody('aaaaaaaaa bbbbbbbbb ccccccccc');
+		caretAt(container, 0, 15);
+
+		expect(await press(editor, 'End')).toEqual([0, 19]);
+		expect(await press(editor, 'End')).toEqual([0, 29]);
+		caretAt(container, 0, 15);
+		expect(await press(editor, 'Home')).toEqual([0, 10]);
+		expect(await press(editor, 'Home')).toEqual([0, 0]);
+	});
+
+	it('toggles Home between the first character and the row start', async () => {
+		const { container, editor } = renderBody('    indented');
+		caretAt(container, 0, 8);
+
+		expect(await press(editor, 'Home')).toEqual([0, 4]);
+		expect(await press(editor, 'Home')).toEqual([0, 0]);
+		expect(await press(editor, 'Home')).toEqual([0, 4]);
+	});
+
+	it('extends a selection with Shift+End from where it started', async () => {
+		const { container, editor } = renderBody('hello world');
+		const text = container.querySelector('[data-line-text]')!;
+		select(text, 2, text, 5);
+
+		await fireEvent.keyDown(editor, { key: 'End', shiftKey: true });
+
+		expect(window.getSelection()?.toString()).toBe('llo world');
 	});
 });
 
@@ -2969,5 +3088,231 @@ describe('BodyEditor shared undo', () => {
 
 		expect(event.defaultPrevented).toBe(true);
 		expect(restored).toEqual(['Old']);
+	});
+});
+
+describe('BodyEditor find and replace', () => {
+	function findCount(container: HTMLElement): string | null | undefined {
+		return container.querySelector('[data-editor-find-count]')?.textContent;
+	}
+
+	async function openFind(editor: HTMLElement, init: KeyboardEventInit = {}) {
+		await fireEvent.keyDown(editor, { key: 'f', code: 'KeyF', ctrlKey: true, ...init });
+		await tick();
+	}
+
+	it('opens with Ctrl+F, seeded from the selection, and counts the matches', async () => {
+		const { container } = render(BodyEditor, { props: { body: 'Tea and tea\nmore TEA' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const first = container.querySelector('[data-line-text]')!;
+		select(first, 0, first, 3);
+
+		await openFind(editor);
+
+		const query = container.querySelector('[data-editor-find-query]') as HTMLInputElement;
+		expect(query.value).toBe('Tea');
+		expect(document.activeElement).toBe(query);
+		expect(findCount(container)).toBe('1 of 3');
+	});
+
+	it('steps through matches with Enter and Shift+Enter, wrapping at the ends', async () => {
+		const { container } = render(BodyEditor, { props: { body: 'a x\nx b x' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		caretAt(container, 0, 0);
+		await openFind(editor);
+		const query = container.querySelector('[data-editor-find-query]') as HTMLInputElement;
+		await fireEvent.input(query, { target: { value: 'x' } });
+		expect(findCount(container)).toBe('1 of 3');
+
+		await fireEvent.keyDown(query, { key: 'Enter' });
+		expect(findCount(container)).toBe('2 of 3');
+		await fireEvent.keyDown(query, { key: 'Enter' });
+		await fireEvent.keyDown(query, { key: 'Enter' });
+		expect(findCount(container)).toBe('1 of 3');
+		await fireEvent.keyDown(query, { key: 'Enter', shiftKey: true });
+		expect(findCount(container)).toBe('3 of 3');
+	});
+
+	it('closes on Escape without closing the note, selecting the current match', async () => {
+		const { container } = render(BodyEditor, { props: { body: 'one two two' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		caretAt(container, 0, 5);
+		await openFind(editor);
+		const query = container.querySelector('[data-editor-find-query]') as HTMLInputElement;
+		await fireEvent.input(query, { target: { value: 'two' } });
+		const outside = vi.fn();
+		document.addEventListener('keydown', outside);
+
+		await fireEvent.keyDown(query, { key: 'Escape' });
+		await tick();
+		document.removeEventListener('keydown', outside);
+
+		expect(outside).not.toHaveBeenCalled();
+		expect(container.querySelector('[data-editor-find]')).toBeNull();
+		expect(document.activeElement).toBe(editor);
+		expect(window.getSelection()?.toString()).toBe('two');
+		expect(rawCaretText(container.querySelector('[data-line-text]')!)).toBe('one two ');
+	});
+
+	it('matches case when toggled', async () => {
+		const { container } = render(BodyEditor, { props: { body: 'Tea tea' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		await openFind(editor);
+		const query = container.querySelector('[data-editor-find-query]') as HTMLInputElement;
+		await fireEvent.input(query, { target: { value: 'tea' } });
+		expect(findCount(container)).toBe('1 of 2');
+
+		await fireEvent.click(container.querySelector('[aria-label="Match case"]')!);
+		expect(findCount(container)).toBe('1 of 1');
+	});
+
+	it('replaces one match at a time and then every match, each as one undo step', async () => {
+		const { container } = render(BodyEditor, { props: { body: 'tea, tea\n[ ] buy tea' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		caretAt(container, 0, 0);
+		await openFind(editor, { code: 'KeyH', key: 'h' });
+		const query = container.querySelector('[data-editor-find-query]') as HTMLInputElement;
+		await fireEvent.input(query, { target: { value: 'tea' } });
+		const replacement = container.querySelector(
+			'[data-editor-find-replacement]'
+		) as HTMLInputElement;
+		await fireEvent.input(replacement, { target: { value: 'coffee' } });
+
+		await fireEvent.keyDown(replacement, { key: 'Enter' });
+		expect(lineTexts(container)).toEqual(['coffee, tea', 'buy tea']);
+		expect(findCount(container)).toBe('1 of 2');
+
+		await fireEvent.keyDown(replacement, { key: 'Enter', ctrlKey: true, altKey: true });
+		expect(lineTexts(container)).toEqual(['coffee, coffee', 'buy coffee']);
+		expect(findCount(container)).toBe('No results');
+
+		await fireEvent.keyDown(editor, { key: 'z', ctrlKey: true });
+		await tick();
+		expect(lineTexts(container)).toEqual(['coffee, tea', 'buy tea']);
+	});
+
+	it('leaves the browser its own find when the editor is not focused', async () => {
+		const { container } = render(BodyEditor, { props: { body: 'text' } });
+		const event = new KeyboardEvent('keydown', {
+			key: 'f',
+			code: 'KeyF',
+			ctrlKey: true,
+			bubbles: true,
+			cancelable: true
+		});
+		document.body.dispatchEvent(event);
+
+		expect(event.defaultPrevented).toBe(false);
+		expect(container.querySelector('[data-editor-find]')).toBeNull();
+	});
+});
+
+describe('BodyEditor multiple cursors', () => {
+	function renderBody(body: string) {
+		const { container } = render(BodyEditor, { props: { body } });
+		return { container, editor: container.querySelector('[data-body-editor]') as HTMLElement };
+	}
+
+	async function press(editor: HTMLElement, init: KeyboardEventInit) {
+		const event = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init });
+		editor.dispatchEvent(event);
+		await tick();
+		return event;
+	}
+
+	const addNext = { key: 'd', code: 'KeyD', ctrlKey: true };
+	const selectAll = { key: 'L', code: 'KeyL', ctrlKey: true, shiftKey: true };
+
+	it('selects the word at the caret, then adds each next whole-word match', async () => {
+		const { container, editor } = renderBody('cat and cat\ncategory cat');
+		caretAt(container, 0, 1);
+
+		expect((await press(editor, addNext)).defaultPrevented).toBe(true);
+		expect(window.getSelection()?.toString()).toBe('cat');
+		await press(editor, addNext);
+		await press(editor, addNext);
+		await press(editor, addNext);
+		await typeText(editor, 'dog');
+
+		expect(lineTexts(container)).toEqual(['dog and dog', 'category dog']);
+	});
+
+	it('deletes backward at every cursor', async () => {
+		const { container, editor } = renderBody('ab ab\nab');
+		caretAt(container, 0, 0);
+		await press(editor, selectAll);
+		await typeText(editor, 'xy');
+		expect(lineTexts(container)).toEqual(['xy xy', 'xy']);
+
+		input(editor, 'deleteContentBackward');
+		await tick();
+		expect(lineTexts(container)).toEqual(['x x', 'x']);
+	});
+
+	it('deletes forward at every cursor, first the selections and then a character', async () => {
+		const { container, editor } = renderBody('xab xab\nxab');
+		const first = container.querySelector('[data-line-text]')!;
+		select(first, 0, first, 1);
+		await press(editor, selectAll);
+
+		input(editor, 'deleteContentForward');
+		await tick();
+		expect(lineTexts(container)).toEqual(['ab ab', 'ab']);
+
+		input(editor, 'deleteContentForward');
+		await tick();
+		expect(lineTexts(container)).toEqual(['b b', 'b']);
+	});
+
+	it('pastes a single line at every cursor', async () => {
+		const { container, editor } = renderBody('a b a');
+		caretAt(container, 0, 0);
+		await press(editor, selectAll);
+		const paste = new Event('paste', { bubbles: true, cancelable: true });
+		Object.defineProperty(paste, 'clipboardData', { value: { getData: () => 'zz' } });
+		editor.dispatchEvent(paste);
+		await tick();
+
+		expect(lineTexts(container)).toEqual(['zz b zz']);
+	});
+
+	it('ends the extra cursors on Escape without closing the note', async () => {
+		const { container, editor } = renderBody('one one');
+		caretAt(container, 0, 0);
+		await press(editor, selectAll);
+		const outside = vi.fn();
+		document.addEventListener('keydown', outside);
+
+		await press(editor, { key: 'Escape' });
+		document.removeEventListener('keydown', outside);
+		await typeText(editor, 'two');
+
+		expect(outside).not.toHaveBeenCalled();
+		expect(lineTexts(container)).toEqual(['two one']);
+	});
+
+	it('ends the extra cursors on Enter and edits only at the caret', async () => {
+		const { container, editor } = renderBody('one one');
+		caretAt(container, 0, 0);
+		await press(editor, selectAll);
+		await typeText(editor, '1');
+
+		await press(editor, { key: 'Enter' });
+		await typeText(editor, 'x');
+
+		expect(lineTexts(container)).toEqual(['1', 'x 1']);
+	});
+
+	it('undoes a typed run at every cursor in one step and keeps one cursor', async () => {
+		const { container, editor } = renderBody('cat cat');
+		caretAt(container, 0, 0);
+		await press(editor, selectAll);
+		await typeText(editor, 'dog');
+
+		await press(editor, { key: 'z', ctrlKey: true });
+		expect(lineTexts(container)).toEqual(['cat cat']);
+		await typeText(editor, 'x');
+		expect(lineTexts(container)).toHaveLength(1);
+		expect(lineTexts(container)[0].match(/x/g)).toHaveLength(1);
 	});
 });

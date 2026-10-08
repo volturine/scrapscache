@@ -220,8 +220,12 @@ const PASTE_HEADING_RE = /^#\s+(.+)$/;
  * when the text carries no leading heading.
  */
 export function splitPastedHeading(text: string): { title: string; body: string } | null {
-	const [first = '', ...rest] = text.split('\n');
+	// Windows clipboards carry CRLF; blank lines may surround the heading.
+	const [first = '', ...rest] = text
+		.replace(/\r\n?/g, '\n')
+		.replace(/^\s*\n/, '')
+		.split('\n');
 	const heading = first.match(PASTE_HEADING_RE);
 	if (!heading) return null;
-	return { title: heading[1].trim(), body: rest.join('\n') };
+	return { title: heading[1].trim(), body: rest.join('\n').replace(/^\s*\n/, '') };
 }

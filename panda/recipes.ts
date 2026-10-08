@@ -502,9 +502,17 @@ const noteCardRecipe = defineSlotRecipe({
 	}
 });
 
+/**
+ * The check mark is painted, not an <svg> inside the box. In an editable body, WebKit
+ * counts an inline <svg> as content, so selecting a row ran on into a checked row below it.
+ */
+const checkMark = `url("data:image/svg+xml,${encodeURIComponent(
+	'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5 6.5 11.5 12.5 4.5"/></svg>'
+)}")`;
+
 const checklistRecipe = defineSlotRecipe({
 	className: 'scrapscache-checklist',
-	slots: ['root', 'mark'],
+	slots: ['root'],
 	base: {
 		root: {
 			position: 'relative',
@@ -523,28 +531,23 @@ const checklistRecipe = defineSlotRecipe({
 				content: '""',
 				position: 'absolute',
 				inset: '-0.4375rem'
+			},
+			'&::after': {
+				...square('0.7rem'),
+				bg: 'currentColor',
+				mask: `${checkMark} center / contain no-repeat`,
+				transform: 'translateY(0.5px)'
 			}
-		},
-		mark: {
-			...square('0.7rem'),
-			display: 'block',
-			fill: 'none',
-			stroke: 'currentColor',
-			strokeWidth: '2.25',
-			strokeLinecap: 'round',
-			strokeLinejoin: 'round',
-			transform: 'translateY(0.5px)'
 		}
 	},
 	variants: {
 		indented: {
 			true: {
-				root: { ...square('0.9375rem'), mt: '0.22rem' },
-				mark: square('0.55rem')
+				root: { ...square('0.9375rem'), mt: '0.22rem', '&::after': square('0.55rem') }
 			}
 		},
 		checked: {
-			true: { root: { bg: 'scrapscache.interactiveActive' } }
+			true: { root: { bg: 'scrapscache.interactiveActive', '&::after': { content: '""' } } }
 		}
 	}
 });

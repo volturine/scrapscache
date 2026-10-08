@@ -3032,3 +3032,50 @@ export const undoBarStyles = {
 	}),
 	message: css({ minW: 0, ...truncateText })
 };
+
+/** VS Code-style find and replace bar pinned to the top of the note body while it scrolls. */
+export const editorFindStyles = {
+	bar: css({
+		position: 'sticky',
+		top: 'xs',
+		zIndex: 2,
+		display: 'flex',
+		flexDirection: 'column',
+		gap: '2xs',
+		w: 'fit-content',
+		maxW: 'full',
+		ml: 'auto',
+		mb: 'sm',
+		p: '2xs',
+		...border,
+		rounded: 'card',
+		bg: 'scrapscache.surface',
+		boxShadow: 'popover'
+	}),
+	row: css({ ...rowCenter, gap: '2xs' }),
+	field: css({ w: '13rem', maxW: '40vw' }),
+	count: css({
+		minW: '4.5rem',
+		textAlign: 'center',
+		textStyle: 'caption',
+		fontVariantNumeric: 'tabular-nums',
+		whiteSpace: 'nowrap'
+	}),
+	toggle: css({
+		'&[aria-pressed="true"]': { bg: 'scrapscache.accentSubtle', color: 'scrapscache.accent' }
+	}),
+	/** Matches drawn through the CSS Custom Highlight API, so the note's own DOM is untouched. */
+	highlights: css({
+		'& ::highlight(note-find-match)': { bg: 'scrapscache.warningSubtle' },
+		'& ::highlight(note-find-current)': { bg: 'scrapscache.warning', color: 'scrapscache.bg' }
+	})
+};
+
+/** Extra cursors from Mod+D, drawn beside the editable text so its DOM stays the editor's own. */
+export const multiCursorStyles = {
+	layer: css({ position: 'absolute', w: 0, h: 0, pointerEvents: 'none' }),
+	caret: css({ position: 'absolute', w: '2px', ml: '-1px', bg: 'scrapscache.text' }),
+	highlights: css({
+		'& ::highlight(note-extra-selection)': { bg: 'scrapscache.accentSubtle' }
+	})
+};

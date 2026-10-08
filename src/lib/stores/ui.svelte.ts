@@ -1,4 +1,6 @@
 // Rune-based UI store: sidebar open, dark mode, density, Markdown mode, active view, search.
+import { writeMirror } from '#lib/db/idb.js';
+
 export type Layout = 'grid' | 'list';
 export type View = 'notes' | 'kanban' | 'reminders' | 'archive' | 'trash' | 'label';
 
@@ -182,7 +184,9 @@ export class UIStore {
 			view: this.#view,
 			rawMarkdown: this.#rawMarkdown
 		};
-		localStorage.setItem(LS_KEY, JSON.stringify(snap));
+		// Preferences only: a full localStorage must not abort the sync or import
+		// that is restoring them.
+		writeMirror(LS_KEY, JSON.stringify(snap));
 	}
 
 	get effectiveDark(): boolean {

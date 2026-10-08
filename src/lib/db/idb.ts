@@ -68,6 +68,30 @@ export function workspaceKey(base: string, pid: string): string {
 	return `${base}:${pid}`;
 }
 
+function isQuotaExceeded(error: unknown): boolean {
+	return (
+		error instanceof DOMException &&
+		(error.name === 'QuotaExceededError' || error.name === 'NS_ERROR_DOM_QUOTA_REACHED')
+	);
+}
+
+/**
+ * Write a fast-boot mirror to localStorage. A full localStorage is not the
+ * caller's failure: the mirror only speeds the next boot, and the sync or
+ * import that wrote it has its durable copy elsewhere. Returns whether the
+ * write landed; any other error is the caller's to see.
+ */
+export function writeMirror(key: string, value: string): boolean {
+	try {
+		localStorage.setItem(key, value);
+		return true;
+	} catch (error) {
+		if (!isQuotaExceeded(error)) throw error;
+		console.warn('[storage] localStorage is full; mirror not updated:', key);
+		return false;
+	}
+}
+
 /** Workspaces the keyring stopped naming. Served again if it names them again. */
 const departedProfiles = new Set<string>();
 /**
@@ -148,6 +172,21 @@ async function upgradeWorkspace(
 	}
 }
 
+/** How long an open may wait on a window that holds an older version before it gives up. */
+const OPEN_BLOCKED_GRACE_MS = 5000;
+
+/**
+ * A newer build in another window has moved this workspace's schema on, so this
+ * window can neither read nor write it any more: it reloads into the new build.
+ * Tests replace the reload, since jsdom cannot navigate.
+ */
+let reloadOutdatedWindow: () => void = () => {
+	if (typeof location !== 'undefined') location.reload();
+};
+export function onWorkspaceOutdated(reload: () => void): void {
+	reloadOutdatedWindow = reload;
+}
+
 export function getDB(pid: string): Promise<IDBPDatabase> {
 	if (typeof indexedDB === 'undefined') {
 		return Promise.reject(new Error('IndexedDB is not available'));
@@ -159,15 +198,57 @@ export function getDB(pid: string): Promise<IDBPDatabase> {
 	const dbName = resolveDbName(pid);
 	let promise = dbPromises.get(dbName);
 	if (!promise) {
-		promise = openDB(dbName, WORKSPACE_DB_VERSION, {
-			// A null blocked version means a delete rather than an upgrade: another
-			// window is removing this workspace, and holding the connection open
-			// would only stall it until its grace runs out.
+		promise = openWorkspaceDB(pid, dbName);
+		dbPromises.set(dbName, promise);
+	}
+	return promise;
+}
+
+/**
+ * Open a workspace database, whatever other windows are doing with it.
+ *
+ * Another window may hold an older version open and never let go, so an open
+ * that stays blocked rejects after a grace instead of hanging the boot; the
+ * cached entry goes with it, so the next use tries again, and a connection
+ * that arrives after the caller gave up is closed rather than leaked. The
+ * browser can also close a connection on its own (Safari does, under storage
+ * pressure); that too drops the cached entry so the next use reopens.
+ */
+function openWorkspaceDB(pid: string, dbName: string): Promise<IDBPDatabase> {
+	const promise = new Promise<IDBPDatabase>((resolve, reject) => {
+		let blockedTimer: ReturnType<typeof setTimeout> | null = null;
+		// Set once the caller has been told the open failed: a connection that
+		// arrives after that has no one left to close it.
+		let abandoned = false;
+		const cached = () => dbPromises.get(dbName) === promise;
+		const opening = openDB(dbName, WORKSPACE_DB_VERSION, {
+			blocked() {
+				blockedTimer = setTimeout(() => {
+					abandoned = true;
+					if (cached()) dbPromises.delete(dbName);
+					reject(
+						new Error(
+							'Another window is running an older version of Scraps Cache. Close or reload it, then try again.'
+						)
+					);
+				}, OPEN_BLOCKED_GRACE_MS);
+			},
 			blocking(_currentVersion, blockedVersion) {
-				if (blockedVersion !== null) return;
-				deletedProfiles.add(pid);
-				closeConnection(pid);
-				deletedListener?.(pid);
+				if (cached()) closeConnection(pid);
+				// A null blocked version means a delete rather than an upgrade: another
+				// window is removing this workspace, and holding the connection open
+				// would only stall it until its grace runs out.
+				if (blockedVersion === null) {
+					deletedProfiles.add(pid);
+					deletedListener?.(pid);
+					return;
+				}
+				// An upgrade: a newer build in another window. Letting go unblocks it;
+				// this window's build cannot use the new schema, so it reloads.
+				reloadOutdatedWindow();
+			},
+			terminated() {
+				if (cached()) dbPromises.delete(dbName);
 			},
 			upgrade(db, oldVersion, _newVersion, tx) {
 				return upgradeWorkspace(
@@ -178,8 +259,22 @@ export function getDB(pid: string): Promise<IDBPDatabase> {
 				);
 			}
 		});
-		dbPromises.set(dbName, promise);
-	}
+		opening.then(
+			(db) => {
+				if (blockedTimer !== null) clearTimeout(blockedTimer);
+				if (abandoned) {
+					db.close();
+					return;
+				}
+				resolve(db);
+			},
+			(error: unknown) => {
+				if (blockedTimer !== null) clearTimeout(blockedTimer);
+				if (cached()) dbPromises.delete(dbName);
+				reject(error);
+			}
+		);
+	});
 	return promise;
 }
 
@@ -785,6 +880,15 @@ export async function clearAllLabels(pid: string): Promise<void> {
 	});
 }
 
+/**
+ * Replace everything in a workspace with the given notes and labels, all at once.
+ *
+ * The clear and every write share one transaction: a quota error or a killed
+ * tab part-way through leaves the workspace exactly as it was, never half of
+ * the new set over none of the old one. Attachments are decoded before the
+ * transaction opens, since awaiting anything but a request would commit it.
+ * `onNoteCommitted` runs for each note once the whole set is durable.
+ */
 export function replaceAllDeviceData(
 	pid: string,
 	notes: Note[],
@@ -795,24 +899,40 @@ export function replaceAllDeviceData(
 	return enqueueDeviceWrite(async () => {
 		if (generation !== writeGeneration) return;
 		const db = await getDB(pid);
-		const clear = db.transaction([NOTES_STORE, IMAGES_STORE, LABELS_STORE], 'readwrite');
-		clear.objectStore(NOTES_STORE).clear();
-		clear.objectStore(IMAGES_STORE).clear();
-		clear.objectStore(LABELS_STORE).clear();
-		await clear.done;
-		let firstError: unknown = null;
+		const rows: Array<{ lean: Note; blobs: Array<{ key: string; value: unknown }> }> = [];
 		for (const note of notes) {
-			try {
-				await putNoteSnapshot(pid, plainNote(note));
-				await onNoteCommitted?.(note);
-			} catch (error) {
-				firstError ??= error;
+			const plain = plainNote(note);
+			const blobs: Array<{ key: string; value: unknown }> = [];
+			for (const image of plain.images ?? []) {
+				if (!image.dataUrl) continue;
+				const blob = await dataUrlToBlob(image.dataUrl);
+				const bytes = new Uint8Array(await blob.arrayBuffer());
+				blobs.push({ key: `${plain.id}::${image.id}`, value: { mime: blob.type, bytes } });
 			}
+			rows.push({ lean: detachNote(plain), blobs });
 		}
-		const labelWrite = db.transaction(LABELS_STORE, 'readwrite');
-		for (const label of labels) labelWrite.store.put(plainLabel(label));
-		await labelWrite.done;
-		if (firstError) throw firstError;
+		const tx = db.transaction([NOTES_STORE, IMAGES_STORE, LABELS_STORE], 'readwrite');
+		try {
+			const noteStore = tx.objectStore(NOTES_STORE);
+			const imageStore = tx.objectStore(IMAGES_STORE);
+			const labelStore = tx.objectStore(LABELS_STORE);
+			await Promise.all([noteStore.clear(), imageStore.clear(), labelStore.clear()]);
+			for (const row of rows) {
+				for (const blob of row.blobs) await imageStore.put(blob.value, blob.key);
+				await noteStore.put(row.lean);
+			}
+			for (const label of labels) await labelStore.put(plainLabel(label));
+			await tx.done;
+		} catch (error) {
+			try {
+				tx.abort();
+			} catch {
+				// The transaction may already have aborted after a failed request.
+			}
+			await tx.done.catch(() => undefined);
+			throw error;
+		}
+		for (const note of notes) await onNoteCommitted?.(note);
 	});
 }
 

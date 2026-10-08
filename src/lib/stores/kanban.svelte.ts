@@ -10,7 +10,7 @@ import {
 	type KanbanBoard,
 	type KanbanColumn
 } from '#lib/kanban.js';
-import { workspaceKey } from '#lib/db/idb.js';
+import { workspaceKey, writeMirror } from '#lib/db/idb.js';
 import { syncStore } from '#lib/stores/sync.svelte.js';
 import { loadBoardsFromDevice, writeKanbanState } from '#lib/syncTombstones.js';
 import { uid } from '#lib/model/index.js';
@@ -121,17 +121,21 @@ export class KanbanStore {
 		this.#persistable = true;
 	}
 
+	/** The fast-boot mirror; IndexedDB holds the durable copy, so a full localStorage only skips it. */
 	#persist() {
 		const pid = syncStore.activePid;
 		if (!this.#persistable || typeof localStorage === 'undefined' || !pid) return;
-		localStorage.setItem(workspaceKey(BOARDS_KEY, pid), JSON.stringify(this.#boards));
-		localStorage.setItem(workspaceKey(ACTIVE_BOARD_KEY, pid), this.#activeBoardId);
-		localStorage.setItem(
-			workspaceKey(BOARD_TOMBSTONES_KEY, pid),
-			JSON.stringify(this.#boardTombstones)
-		);
+		writeMirror(workspaceKey(BOARDS_KEY, pid), JSON.stringify(this.#boards));
+		writeMirror(workspaceKey(ACTIVE_BOARD_KEY, pid), this.#activeBoardId);
+		writeMirror(workspaceKey(BOARD_TOMBSTONES_KEY, pid), JSON.stringify(this.#boardTombstones));
 	}
 
+	/**
+	 * Load this workspace's boards. When the device store cannot be read (private
+	 * modes, storage blocked) the mirror alone is shown, so the workspace is still
+	 * usable, and the read error is rethrown once the state is in place so the
+	 * caller can report it.
+	 */
 	async hydrateFromDevice(
 		pid: string,
 		remoteTombstones: Record<string, number> = {}
@@ -141,7 +145,13 @@ export class KanbanStore {
 		// to the workspace being left.
 		const mirroredBoards = readBoards(pid);
 		const mirroredTombstones = readTombstones(pid);
-		const stored = await loadBoardsFromDevice<KanbanBoard[] | undefined>(pid, undefined);
+		let stored: KanbanBoard[] | undefined;
+		let deviceReadError: unknown = null;
+		try {
+			stored = await loadBoardsFromDevice<KanbanBoard[] | undefined>(pid, undefined);
+		} catch (error) {
+			deviceReadError = error;
+		}
 		// Normalized on read: boards stored before a field existed must not reach
 		// the reactive state half-shaped.
 		const fromIdb = normalizeBoards(stored);
@@ -160,10 +170,12 @@ export class KanbanStore {
 			const current = idbById.get(board.id);
 			return !current || current.updatedAt < board.updatedAt;
 		});
-		if (recovered.length) {
+		// With no device copy to compare against, nothing is known to be missing there.
+		if (recovered.length && deviceReadError === null) {
 			this.requestSync(recovered.map((board) => `board:${board.id}`));
 		}
 		await this.pendingDeviceWrites;
+		if (deviceReadError !== null) throw deviceReadError;
 	}
 
 	get activeBoard(): KanbanBoard {

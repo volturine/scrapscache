@@ -3090,3 +3090,119 @@ describe('BodyEditor shared undo', () => {
 		expect(restored).toEqual(['Old']);
 	});
 });
+
+describe('BodyEditor find and replace', () => {
+	function findCount(container: HTMLElement): string | null | undefined {
+		return container.querySelector('[data-editor-find-count]')?.textContent;
+	}
+
+	async function openFind(editor: HTMLElement, init: KeyboardEventInit = {}) {
+		await fireEvent.keyDown(editor, { key: 'f', code: 'KeyF', ctrlKey: true, ...init });
+		await tick();
+	}
+
+	it('opens with Ctrl+F, seeded from the selection, and counts the matches', async () => {
+		const { container } = render(BodyEditor, { props: { body: 'Tea and tea\nmore TEA' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const first = container.querySelector('[data-line-text]')!;
+		select(first, 0, first, 3);
+
+		await openFind(editor);
+
+		const query = container.querySelector('[data-editor-find-query]') as HTMLInputElement;
+		expect(query.value).toBe('Tea');
+		expect(document.activeElement).toBe(query);
+		expect(findCount(container)).toBe('1 of 3');
+	});
+
+	it('steps through matches with Enter and Shift+Enter, wrapping at the ends', async () => {
+		const { container } = render(BodyEditor, { props: { body: 'a x\nx b x' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		caretAt(container, 0, 0);
+		await openFind(editor);
+		const query = container.querySelector('[data-editor-find-query]') as HTMLInputElement;
+		await fireEvent.input(query, { target: { value: 'x' } });
+		expect(findCount(container)).toBe('1 of 3');
+
+		await fireEvent.keyDown(query, { key: 'Enter' });
+		expect(findCount(container)).toBe('2 of 3');
+		await fireEvent.keyDown(query, { key: 'Enter' });
+		await fireEvent.keyDown(query, { key: 'Enter' });
+		expect(findCount(container)).toBe('1 of 3');
+		await fireEvent.keyDown(query, { key: 'Enter', shiftKey: true });
+		expect(findCount(container)).toBe('3 of 3');
+	});
+
+	it('closes on Escape without closing the note, selecting the current match', async () => {
+		const { container } = render(BodyEditor, { props: { body: 'one two two' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		caretAt(container, 0, 5);
+		await openFind(editor);
+		const query = container.querySelector('[data-editor-find-query]') as HTMLInputElement;
+		await fireEvent.input(query, { target: { value: 'two' } });
+		const outside = vi.fn();
+		document.addEventListener('keydown', outside);
+
+		await fireEvent.keyDown(query, { key: 'Escape' });
+		await tick();
+		document.removeEventListener('keydown', outside);
+
+		expect(outside).not.toHaveBeenCalled();
+		expect(container.querySelector('[data-editor-find]')).toBeNull();
+		expect(document.activeElement).toBe(editor);
+		expect(window.getSelection()?.toString()).toBe('two');
+		expect(rawCaretText(container.querySelector('[data-line-text]')!)).toBe('one two ');
+	});
+
+	it('matches case when toggled', async () => {
+		const { container } = render(BodyEditor, { props: { body: 'Tea tea' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		await openFind(editor);
+		const query = container.querySelector('[data-editor-find-query]') as HTMLInputElement;
+		await fireEvent.input(query, { target: { value: 'tea' } });
+		expect(findCount(container)).toBe('1 of 2');
+
+		await fireEvent.click(container.querySelector('[aria-label="Match case"]')!);
+		expect(findCount(container)).toBe('1 of 1');
+	});
+
+	it('replaces one match at a time and then every match, each as one undo step', async () => {
+		const { container } = render(BodyEditor, { props: { body: 'tea, tea\n[ ] buy tea' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		caretAt(container, 0, 0);
+		await openFind(editor, { code: 'KeyH', key: 'h' });
+		const query = container.querySelector('[data-editor-find-query]') as HTMLInputElement;
+		await fireEvent.input(query, { target: { value: 'tea' } });
+		const replacement = container.querySelector(
+			'[data-editor-find-replacement]'
+		) as HTMLInputElement;
+		await fireEvent.input(replacement, { target: { value: 'coffee' } });
+
+		await fireEvent.keyDown(replacement, { key: 'Enter' });
+		expect(lineTexts(container)).toEqual(['coffee, tea', 'buy tea']);
+		expect(findCount(container)).toBe('1 of 2');
+
+		await fireEvent.keyDown(replacement, { key: 'Enter', ctrlKey: true, altKey: true });
+		expect(lineTexts(container)).toEqual(['coffee, coffee', 'buy coffee']);
+		expect(findCount(container)).toBe('No results');
+
+		await fireEvent.keyDown(editor, { key: 'z', ctrlKey: true });
+		await tick();
+		expect(lineTexts(container)).toEqual(['coffee, tea', 'buy tea']);
+	});
+
+	it('leaves the browser its own find when the editor is not focused', async () => {
+		const { container } = render(BodyEditor, { props: { body: 'text' } });
+		const event = new KeyboardEvent('keydown', {
+			key: 'f',
+			code: 'KeyF',
+			ctrlKey: true,
+			bubbles: true,
+			cancelable: true
+		});
+		document.body.dispatchEvent(event);
+
+		expect(event.defaultPrevented).toBe(false);
+		expect(container.querySelector('[data-editor-find]')).toBeNull();
+	});
+});

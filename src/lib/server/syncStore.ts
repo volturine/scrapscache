@@ -1,6 +1,6 @@
 // Server-side opaque sync storage. The server authenticates accounts but never receives
 // notes, labels, images, tombstones, or any decryptable user payload.
-import type { Client, InStatement, Transaction } from '@libsql/client/web';
+import type { Client, InStatement, Transaction } from '@libsql/client';
 
 import { SCRAPSCACHE_SYNC_MAX_ACCOUNT_BYTES, SCRAPSCACHE_HISTORY_VERSIONS } from '$app/env/private';
 

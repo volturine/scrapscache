@@ -39,12 +39,13 @@
 		"test": "vitest run",
 		"test:mcp": "vitest run recipes",
 		"test:watch": "vitest",
-		"validate": "npm run check && npm run format:check && npm test && npm run build",
+		"validate": "npm run check && npm run format:check && npm test && npm run build && npm run test:e2e",
 		"prepare": "svelte-kit sync && panda codegen || echo \"\" && simple-git-hooks || true",
 		"check": "svelte-kit sync && panda codegen && svelte-check --tsconfig ./tsconfig.json --tsgo",
 		"check:watch": "svelte-kit sync && panda codegen && svelte-check --tsconfig ./tsconfig.json --watch",
 		"format": "prettier --write .",
-		"format:check": "prettier --check ."
+		"format:check": "prettier --check .",
+		"test:e2e": "playwright test"
 	},
 	"devDependencies": {
 		"@cloudflare/workers-types": "^5.20261001.1",
@@ -52,6 +53,7 @@
 		"@pandacss/dev": "^2.0.1",
 		"@pandacss/preset-base": "^2.0.1",
 		"@pandacss/preset-panda": "^2.0.1",
+		"@playwright/test": "^1.64.0",
 		"@sveltejs/adapter-cloudflare": "^8.0.0",
 		"@sveltejs/adapter-node": "^6.0.0",
 		"@sveltejs/kit": "^3.0.0",

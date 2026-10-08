@@ -19,7 +19,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Required PR status check: typecheck + Prettier + full Vitest suite + production build.
+  # Required PR status check: typecheck + Prettier + full Vitest suite + production build + browser smoke tests.
   validate:
     name: Validate application
     runs-on: ubuntu-latest
@@ -53,6 +53,20 @@ jobs:
 
       - name: Production build
         run: npm run build
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Browser smoke tests
+        run: npm run test:e2e
+
+      - name: Upload browser test report
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
 
       - name: Cloudflare Workers build
         run: npm run build:cloudflare

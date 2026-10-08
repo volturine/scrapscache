@@ -3311,7 +3311,7 @@
 
 	const editor = noteBody({ mode: 'editor' });
 
-	function rowClass(line: Line): string {
+	function rowClass(line: Line): string | undefined {
 		if (!focusedGroupIds.has(line.id)) return editor.row;
 		const isRoot = line.id === focusedRootId;
 		const isLast = line.id === focusedGroupLastId;

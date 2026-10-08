@@ -3,6 +3,7 @@ import { recipes, slotRecipes } from './panda/recipes';
 import { theme } from './panda/theme';
 
 export default defineConfig({
+	presets: ['@pandacss/preset-base', '@pandacss/preset-panda'],
 	preflight: true,
 	globalCss: {
 		body: {
@@ -28,7 +29,11 @@ export default defineConfig({
 	conditions: {
 		extend: {
 			dark: '&:where(.dark, .dark *)',
-			hoverable: ['@media (hover: hover) and (pointer: fine)', '&:hover'],
+			hoverable: {
+				'@media (hover: hover) and (pointer: fine)': {
+					'&:hover': '@slot'
+				}
+			},
 			touch: '@media (pointer: coarse)'
 		}
 	},

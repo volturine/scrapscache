@@ -268,6 +268,36 @@ describe('sendReminderTick', () => {
 		expect(payload.sub).toBe('mailto:ops@example.com');
 	});
 
+	it('does not follow a redirect from the push service', async () => {
+		const fetchMock = vi.fn(
+			async () =>
+				new Response(null, { status: 307, headers: { location: 'https://10.0.0.8/push' } })
+		);
+		vi.stubGlobal('fetch', fetchMock);
+		vi.spyOn(console, 'info').mockImplementation(() => {});
+		const { sendReminderTick } = await importFreshWebPush();
+
+		await expect(sendReminderTick(await validDevice())).resolves.toBe('failed');
+
+		expect(fetchMock).toHaveBeenCalledOnce();
+		const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+		expect(init.redirect).toBe('manual');
+	});
+
+	it('drops a stored endpoint that is not on a push service without contacting it', async () => {
+		const fetchMock = vi.fn();
+		vi.stubGlobal('fetch', fetchMock);
+		const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+		const { sendReminderTick } = await importFreshWebPush();
+		const device = { ...(await validDevice()), endpoint: 'https://push.attacker.example/sub' };
+
+		await expect(sendReminderTick(device)).resolves.toBe('gone');
+
+		expect(fetchMock).not.toHaveBeenCalled();
+		expect(info).toHaveBeenCalledOnce();
+		expect(String(info.mock.calls[0]?.[0])).not.toContain('attacker');
+	});
+
 	it('returns failed when fetch throws', async () => {
 		vi.stubGlobal(
 			'fetch',

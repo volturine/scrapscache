@@ -19,12 +19,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Required PR status check: typecheck + Prettier + full Vitest suite + production build.
+  # Required PR status check: typecheck + Prettier + full Vitest suite + production build + browser smoke tests.
   validate:
     name: Validate application
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    # The browser smoke tests run the production server against the same sqld
+    # image docs/development.md uses locally, on the ports the server defaults to.
+    services:
+      relay-db:
+        image: ghcr.io/tursodatabase/libsql-server@sha256:6dd3eb276d9d3604e4a48ac4a999a2e267814732d57d7e94c04ba71482333a67
+        ports:
+          - 8080:8080
+      ops-db:
+        image: ghcr.io/tursodatabase/libsql-server@sha256:6dd3eb276d9d3604e4a48ac4a999a2e267814732d57d7e94c04ba71482333a67
+        ports:
+          - 8081:8080
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -53,6 +64,20 @@ jobs:
 
       - name: Production build
         run: npm run build
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Browser smoke tests
+        run: npm run test:e2e
+
+      - name: Upload browser test report
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
 
       - name: Cloudflare Workers build
         run: npm run build:cloudflare
@@ -138,6 +163,24 @@ jobs:
         run: >-
           curl --fail-with-body --retry 12 --retry-delay 5 --retry-all-errors
           https://dev.scrapscache.com/health/ready
+
+      # The release rehearsal: the same browser smoke tests, against the deployed
+      # Workers. Registration stays out because Turnstile is on there.
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Browser smoke tests against development
+        run: npm run test:e2e
+        env:
+          PLAYWRIGHT_BASE_URL: https://dev.scrapscache.com
+
+      - name: Upload development smoke test report
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: playwright-report-development
+          path: playwright-report/
+          retention-days: 7
 
   deploy-cloudflare-production:
     name: Deploy Cloudflare production

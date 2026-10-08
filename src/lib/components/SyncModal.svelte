@@ -171,11 +171,14 @@
 		if (copyFlashTimer !== null) clearTimeout(copyFlashTimer);
 	});
 
+	// A pairing link can come from anyone. It fills in the code; joining the
+	// account behind it waits for the person to start the connection.
 	onMount(() => {
 		if (!initialPairingCode) return;
 		code = formatPairingCode(initialPairingCode);
 		mode = 'link';
-		void beginLink();
+		info =
+			'This link joins a workspace on another account. New notes you write in it sync to that account. Start the connection only if the link came from you or someone you trust.';
 	});
 
 	function secondsLeft(): number {
@@ -988,6 +991,7 @@
 							On your other device open Sync and choose Connect device. Scan the QR code or enter
 							the one-time code shown there.
 						</p>
+						{#if info}<p class={syncMuted} role="status">{info}</p>{/if}
 						{#if scanningQr}
 							<PairingQrScanner onCode={handleScannedCode} />
 						{/if}

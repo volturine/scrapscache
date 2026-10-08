@@ -235,7 +235,14 @@ export class NotesStore {
 		}));
 		this.deletedNoteIds = tombstones.notes;
 		this.deletedLabelIds = tombstones.labels;
-		await kanbanStore.hydrateFromDevice(this.pid, tombstones.boards);
+		// The boards hydrate from their mirror even when the device store cannot be
+		// read; the rest of the boot must still run, or reminders, the first sync
+		// and note links never start.
+		try {
+			await kanbanStore.hydrateFromDevice(this.pid, tombstones.boards);
+		} catch (err) {
+			this.recordPersistenceError('Could not read the boards from IndexedDB', err);
+		}
 		// Loaded before any sync reads them: a sync treats what is missing here as gone.
 		await Promise.all([
 			canvasLibraryStore.hydrate(this.pid),
@@ -1258,6 +1265,12 @@ export class NotesStore {
 		if (!note) return;
 		// Preserve a crash-safe, blob-free copy synchronously before async IDB work.
 		this.mirrorToLS();
+		// The attachments whose bytes this write carries. Only those may be released
+		// from memory once it lands: a photo added while this write was queued has
+		// its own write, which may still fail and retry from what is in memory.
+		const written = new Set(
+			(note.images ?? []).filter((image) => image.dataUrl).map((image) => image.id)
+		);
 		putNote(this.pid, note, noteSyncKeys(note))
 			.then(async () => {
 				this.lastPersistError = null;
@@ -1265,7 +1278,11 @@ export class NotesStore {
 				const idx = this.notes.findIndex((item) => item.id === id);
 				if (idx < 0) return;
 				const current = this.notes[idx];
-				const images = await Promise.all((current.images ?? []).map(prepareAttachmentForMemory));
+				const images = await Promise.all(
+					(current.images ?? []).map((image) =>
+						written.has(image.id) ? prepareAttachmentForMemory(image) : image
+					)
+				);
 				if (images.some((image, i) => image !== current.images?.[i])) {
 					this.notes[idx] = { ...current, images };
 					this.mirrorToLS();

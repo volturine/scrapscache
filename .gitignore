@@ -30,6 +30,7 @@ sync-data
 
 # Playwright
 test-results/
+playwright-report/
 :memory:*
 
 # Python

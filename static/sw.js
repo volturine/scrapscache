@@ -2,7 +2,8 @@
 // JS/CSS must not be cache-first forever: hashed builds change filenames, but
 // a stale shell HTML or long-lived module cache leaves phones on old UI bugs.
 
-const CACHE_NAME = 'scrapscache-v3';
+// v4: earlier versions could cache an error page as the shell.
+const CACHE_NAME = 'scrapscache-v4';
 
 // The app registers this script twice over: once for the whole app (the shell
 // cache), and once per synced workspace under `/push/<workspace id>/`, which
@@ -71,12 +72,18 @@ self.addEventListener('fetch', (event) => {
 	}
 
 	// Navigation: network first so deploys replace the shell HTML promptly.
+	// Only a good page may stand in for the shell offline: a 5xx during a deploy
+	// would otherwise be served for as long as the cache lives. A redirected
+	// response is left out too, since a navigation cannot be answered with one
+	// from the cache.
 	if (req.mode === 'navigate') {
 		event.respondWith(
 			fetch(req)
 				.then((res) => {
-					const copy = res.clone();
-					caches.open(CACHE_NAME).then((cache) => cache.put(req, copy));
+					if (res.ok && !res.redirected) {
+						const copy = res.clone();
+						caches.open(CACHE_NAME).then((cache) => cache.put(req, copy));
+					}
 					return res;
 				})
 				.catch(() => caches.match(req).then((res) => res || caches.match('/')))

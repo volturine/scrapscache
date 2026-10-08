@@ -115,8 +115,8 @@ export async function fileToNoteImage(file: File, imageQuality: ImageQuality): P
 		try {
 			const result = await optimizeImageBlob(image, imageQuality);
 			image = result.blob;
-			mime = 'image/webp';
-			name = optimizedImageName(name);
+			mime = result.mime;
+			name = optimizedImageName(name, result.mime);
 			optimized = {
 				width: result.width,
 				height: result.height,
@@ -151,6 +151,7 @@ export async function noteImageFromCroppedDataUrl(
 	dataUrl: string
 ): Promise<NoteImage> {
 	const blob = await dataUrlToBlob(dataUrl);
+	// The cropper asks for WebP; a browser without that encoder hands back PNG.
 	const mime = blob.type || 'image/webp';
 	const contentHash = await sha256(dataUrl);
 	const thumbUrl = isImageMime(mime)
@@ -159,6 +160,7 @@ export async function noteImageFromCroppedDataUrl(
 	return {
 		...source,
 		mime,
+		...(source.name ? { name: optimizedImageName(source.name, mime) } : {}),
 		dataUrl,
 		contentHash,
 		byteSize: blob.size,

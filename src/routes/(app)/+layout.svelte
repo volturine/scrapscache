@@ -50,10 +50,15 @@
 		applyEditorOpen(true);
 	}
 
+	/** Save and close the open note, so what it holds is not lost with it. */
+	async function closeEditingNote() {
+		if (editingId !== null) await closeOpenNote?.();
+	}
+
 	/** Make `pid` the open workspace, closing an open note first. */
 	async function switchToWorkspace(pid: string): Promise<boolean> {
 		if (pid === syncStore.activeId) return true;
-		if (editingId !== null) await closeOpenNote?.();
+		await closeEditingNote();
 		const switched = await profileCoordinator.switchTo(pid);
 		if (!switched.success) noteLinkProblem = switched.error ?? 'Could not open that workspace.';
 		return switched.success;
@@ -61,7 +66,9 @@
 
 	/** Open a note in its own workspace: a reminder from another one switches to it first. */
 	async function openNoteInWorkspace(pid: string, noteId: string) {
-		if (await switchToWorkspace(pid)) openEditor(noteId);
+		if (!(await switchToWorkspace(pid))) return;
+		if (editingId !== noteId) await closeEditingNote();
+		openEditor(noteId);
 	}
 
 	/** Open a workspace whose reminder fired before its note synced, and pull that note. */
@@ -148,7 +155,7 @@
 		const link = readNoteLink(new URL(window.location.href));
 		if (!link || link.noteId === editingId) return;
 		// A link pasted into an open tab lands while another note may be open: save it first.
-		if (editingId !== null) await closeOpenNote?.();
+		await closeEditingNote();
 		if (link.workspaceTag) {
 			const workspace = profileForWorkspaceTag(syncStore.profiles, link.workspaceTag);
 			if (!workspace) {

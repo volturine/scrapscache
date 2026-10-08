@@ -14,7 +14,7 @@ npm run format              # Prettier write
 npm run format:check        # Prettier check
 npm test                    # Vitest unit tests
 npm run build               # production build
-npm run validate            # check + format + tests + production build
+npm run validate            # check + format + tests + production build + browser smoke tests
 ```
 
 - Use npm commands for dependency changes; do not hand-edit `package.json` or the lockfile.

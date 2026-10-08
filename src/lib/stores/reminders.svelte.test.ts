@@ -101,7 +101,7 @@ describe('ReminderStore', () => {
 		const showNotification = vi.fn(async () => undefined);
 		vi.stubGlobal('Notification', { permission: 'granted' });
 		vi.stubGlobal('navigator', {
-			serviceWorker: { ready: Promise.resolve({ showNotification }) }
+			serviceWorker: { getRegistration: async () => ({ active: {}, showNotification }) }
 		});
 		const due = note({ id: 'registration-failed', reminder: Date.now() - 1 });
 		const wakeId = reminderWakeId(due.id, due.reminder as number);
@@ -141,14 +141,14 @@ describe('ReminderStore', () => {
 		expect(reloaded.alerts).toEqual([]);
 	});
 
-	it('persists a system notification before displaying it and does not replay it after reload', async () => {
+	it('claims a system notification once it is displayed and does not replay it after reload', async () => {
 		const deliveredWithFiredKeys: string[][] = [];
 		const showNotification = vi.fn(async () => {
 			deliveredWithFiredKeys.push(await getFiredReminderKeys(TEST_WORKSPACE));
 		});
 		vi.stubGlobal('Notification', { permission: 'granted' });
 		vi.stubGlobal('navigator', {
-			serviceWorker: { ready: Promise.resolve({ showNotification }) }
+			serviceWorker: { getRegistration: async () => ({ active: {}, showNotification }) }
 		});
 
 		const due = note({ id: 'reload-reminder', reminder: 100 });
@@ -156,11 +156,50 @@ describe('ReminderStore', () => {
 		await newStore().store.activateProfile(TEST_WORKSPACE, [due]);
 		await vi.waitFor(() => expect(showNotification).toHaveBeenCalledOnce());
 
-		expect(deliveredWithFiredKeys).toEqual([[wakeId]]);
+		// The claim follows the display: a display that never happens claims nothing.
+		expect(deliveredWithFiredKeys).toEqual([[]]);
+		await vi.waitFor(async () =>
+			expect(await getFiredReminderKeys(TEST_WORKSPACE)).toEqual([wakeId])
+		);
+		await vi.waitFor(async () =>
+			expect((await readReminderHistory(TEST_WORKSPACE)).map((entry) => entry.id)).toEqual([wakeId])
+		);
 
 		await newStore().store.activateProfile(TEST_WORKSPACE, [due]);
 		await settle();
 		expect(showNotification).toHaveBeenCalledOnce();
+	});
+
+	it('does not claim a reminder whose system notification never shows', async () => {
+		vi.stubGlobal('Notification', { permission: 'granted' });
+		vi.stubGlobal('navigator', {
+			serviceWorker: {
+				getRegistration: async () => ({
+					active: {},
+					showNotification: () => new Promise(() => undefined)
+				})
+			}
+		});
+
+		const due = note({ id: 'hung-reminder', reminder: 100 });
+		const { store } = newStore();
+		await store.activateProfile(TEST_WORKSPACE, [due]);
+		await settle();
+
+		expect(await getFiredReminderKeys(TEST_WORKSPACE)).toEqual([]);
+		expect(await readReminderHistory(TEST_WORKSPACE)).toEqual([]);
+		expect(store.alerts).toEqual([]);
+	});
+
+	it('claims an in-app alert only once it is on screen', async () => {
+		const due = note({ id: 'fallback-reminder', reminder: 100 });
+		const wakeId = reminderWakeId(due.id, due.reminder as number);
+		const { store } = newStore();
+		await store.activateProfile(TEST_WORKSPACE, [due]);
+		await vi.waitFor(() => expect(store.alerts).toHaveLength(1));
+		await vi.waitFor(async () =>
+			expect(await getFiredReminderKeys(TEST_WORKSPACE)).toEqual([wakeId])
+		);
 	});
 
 	it('opens the note in its workspace and clears the alert', async () => {

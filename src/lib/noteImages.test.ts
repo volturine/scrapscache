@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
 	CANVAS_MIME,
 	createCanvasAttachment,
@@ -11,6 +11,7 @@ import {
 	getClipboardFiles,
 	isInlinePreviewable,
 	looksLikePhoto,
+	noteImageFromCroppedDataUrl,
 	prepareAttachmentForMemory
 } from './noteImages';
 
@@ -166,5 +167,92 @@ describe('excalidraw file transformation', () => {
 		expect(decoded.elements).toHaveLength(1);
 		expect(decoded.elements[0].id).toBe('box-1');
 		expect(decoded.appState.viewBackgroundColor).toBe('#121212');
+	});
+});
+
+describe('photos on a browser without a WebP encoder', () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+		vi.unstubAllGlobals();
+	});
+
+	it('stores the type and extension the browser actually produced', async () => {
+		vi.stubGlobal(
+			'createImageBitmap',
+			vi.fn(async () => ({ width: 800, height: 600, close: () => {} }))
+		);
+		// Thumbnails decode through an <img>, which jsdom never loads.
+		vi.stubGlobal(
+			'Image',
+			class {
+				width = 800;
+				height = 600;
+				onload: (() => void) | null = null;
+				set src(_value: string) {
+					queueMicrotask(() => this.onload?.());
+				}
+			}
+		);
+		vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+			drawImage: () => {}
+		} as unknown as CanvasRenderingContext2D);
+		vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue(
+			'data:image/jpeg;base64,AA=='
+		);
+		vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(function (
+			callback: BlobCallback,
+			type?: string
+		) {
+			const produced = type === 'image/jpeg' ? 'image/jpeg' : 'image/png';
+			callback(new Blob([new Uint8Array(16)], { type: produced }));
+		});
+
+		const image = await fileToNoteImage(
+			new File(['photo'], 'IMG_0001.HEIC', { type: 'image/heic' }),
+			'compressed'
+		);
+
+		expect(image.mime).toBe('image/jpeg');
+		expect(image.name).toBe('IMG_0001.jpg');
+		expect(image.dataUrl.startsWith('data:image/jpeg;')).toBe(true);
+	});
+});
+
+describe('cropping a photo', () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+		vi.unstubAllGlobals();
+	});
+
+	it('names the result after the type the browser produced', async () => {
+		// Thumbnails decode through an <img>, which jsdom never loads.
+		vi.stubGlobal(
+			'Image',
+			class {
+				width = 8;
+				height = 8;
+				onload: (() => void) | null = null;
+				set src(_value: string) {
+					queueMicrotask(() => this.onload?.());
+				}
+			}
+		);
+		vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+			drawImage: () => {}
+		} as unknown as CanvasRenderingContext2D);
+		vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue(
+			'data:image/jpeg;base64,AA=='
+		);
+		const source = {
+			id: 'img-1',
+			mime: 'image/webp',
+			name: 'IMG_0001.webp',
+			dataUrl: 'data:image/webp;base64,AA==',
+			createdAt: 1
+		};
+		// Safari has no WebP encoder, so the cropper hands back a PNG data URL.
+		const cropped = await noteImageFromCroppedDataUrl(source, 'data:image/png;base64,AA==');
+		expect(cropped.mime).toBe('image/png');
+		expect(cropped.name).toBe('IMG_0001.png');
 	});
 });

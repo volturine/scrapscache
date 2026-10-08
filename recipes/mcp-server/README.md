@@ -202,7 +202,7 @@ In Claude Web or ChatGPT Custom Connectors:
 
 - **Server URL**: `https://your-mcp-server-domain.com`
 - **Authentication**: OAuth 2.1
-- Complete the 1-click consent prompt in Scraps Cache. Done!
+- Confirm in Scraps Cache that the MCP server shown is yours, pick a workspace and allow access. Done!
 
 ### 2. Claude Desktop
 

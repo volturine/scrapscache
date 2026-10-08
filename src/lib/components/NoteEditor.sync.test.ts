@@ -133,6 +133,19 @@ describe('NoteEditor draft and synced changes', () => {
 		await vi.waitFor(() => expect(endSession).toHaveBeenCalledTimes(1));
 	});
 
+	it('saves a pending draft when another note takes its place', async () => {
+		// A reminder or a note link opens another note: this editor unmounts with
+		// its save timer still pending.
+		const { container, unmount } = openEditor();
+		await typeTitle(container, 'Edited title');
+		await typeBody(container, '!');
+
+		unmount();
+
+		expect(stored().title).toBe('Edited title');
+		expect(stored().body).toBe('Body!');
+	});
+
 	it('shows a synced edit that arrives while the note is open', async () => {
 		const { container } = openEditor();
 		receiveSynced({ title: 'Synced title', body: 'Synced body' });

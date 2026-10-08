@@ -327,6 +327,8 @@ export class McpApp {
 				authorizeUrl.searchParams.set('mcp_public_key', session.mcpPublicKey);
 				authorizeUrl.searchParams.set('mcp_callback', callbackUrl);
 				authorizeUrl.searchParams.set('client_name', client.name);
+				// The consent screen repeats where the authorization code will go.
+				authorizeUrl.searchParams.set('client_redirect', new URL(redirectUri).host);
 				return noStoreRedirect(authorizeUrl.toString());
 			}
 

@@ -33,6 +33,8 @@ export function imageOptimizationRecipe(quality: ImageQuality): ImageOptimizatio
 
 export type OptimizedImage = {
 	blob: Blob;
+	/** The type the browser actually encoded, never the one that was requested. */
+	mime: string;
 	width: number;
 	height: number;
 	byteSize: number;
@@ -56,11 +58,21 @@ export function fitImageDimensions(
 	};
 }
 
-function canvasBlob(canvas: HTMLCanvasElement, quality: number): Promise<Blob> {
+const PREFERRED_MIME = 'image/webp';
+// Every browser encodes JPEG, and JPEG honours the quality argument.
+const FALLBACK_MIME = 'image/jpeg';
+
+const EXTENSION_BY_MIME: Record<string, string> = {
+	'image/webp': 'webp',
+	'image/jpeg': 'jpg',
+	'image/png': 'png'
+};
+
+function canvasBlob(canvas: HTMLCanvasElement, mime: string, quality: number): Promise<Blob> {
 	return new Promise((resolve, reject) => {
 		canvas.toBlob(
 			(blob) => (blob ? resolve(blob) : reject(new Error('Browser could not encode this image'))),
-			'image/webp',
+			mime,
 			quality
 		);
 	});
@@ -104,6 +116,7 @@ export async function optimizeImageBlob(
 		let dimensions = fitImageDimensions(drawable.width, drawable.height, recipe.maxLongEdge);
 		let encodeQuality = recipe.initialQuality;
 		let encoded: Blob | null = null;
+		let requestedMime = PREFERRED_MIME;
 
 		for (let attempt = 0; attempt < 8; attempt++) {
 			const canvas = document.createElement('canvas');
@@ -114,10 +127,19 @@ export async function optimizeImageBlob(
 			context.imageSmoothingEnabled = true;
 			context.imageSmoothingQuality = 'high';
 			context.drawImage(drawable, 0, 0, dimensions.width, dimensions.height);
-			encoded = await canvasBlob(canvas, encodeQuality);
+			encoded = await canvasBlob(canvas, requestedMime, encodeQuality);
+			// `toBlob` silently substitutes PNG for a type the browser cannot encode
+			// (Safari has no WebP encoder), so the blob's own type is the truth.
+			if (requestedMime === PREFERRED_MIME && encoded.type !== PREFERRED_MIME) {
+				requestedMime = FALLBACK_MIME;
+				encoded = await canvasBlob(canvas, requestedMime, encodeQuality);
+			}
 			canvas.width = 1;
 			canvas.height = 1;
 			if (encoded.size <= recipe.targetBytes) break;
+			// An encoder that substituted its own format ignores quality too;
+			// another pass would only shrink the image without reducing its bytes.
+			if (encoded.type !== requestedMime) break;
 
 			if (encodeQuality > recipe.minQuality) {
 				encodeQuality = Math.max(recipe.minQuality, encodeQuality - 0.05);
@@ -133,6 +155,7 @@ export async function optimizeImageBlob(
 		if (!encoded) throw new Error('Browser could not encode this image');
 		return {
 			blob: encoded,
+			mime: encoded.type || requestedMime,
 			width: dimensions.width,
 			height: dimensions.height,
 			byteSize: encoded.size,
@@ -143,7 +166,8 @@ export async function optimizeImageBlob(
 	}
 }
 
-export function optimizedImageName(name: string): string {
+export function optimizedImageName(name: string, mime: string): string {
 	const stem = name.replace(/\.[^.]+$/, '') || 'image';
-	return `${stem}.webp`;
+	const extension = EXTENSION_BY_MIME[mime] ?? mime.replace(/^image\//, '');
+	return `${stem}.${extension}`;
 }

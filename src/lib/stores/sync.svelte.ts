@@ -1004,7 +1004,6 @@ export class SyncStore {
 				} catch {
 					/* handled below */
 				}
-				observeRelayTime(data.serverTime, sentAt, receivedAt);
 				if (xhr.status < 200 || xhr.status >= 300) {
 					const header = xhr.getResponseHeader('retry-after');
 					const retryAfter = header === null ? NaN : Number(header);
@@ -1023,6 +1022,8 @@ export class SyncStore {
 					});
 					return;
 				}
+				// Only the relay's own answer sets the clock; an error page is anyone's.
+				observeRelayTime(data.serverTime, sentAt, receivedAt);
 				resolve({ success: true, data });
 			};
 			xhr.onerror = () => resolve({ success: false, error: 'Sync network error', transient: true });

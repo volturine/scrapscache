@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { OAuthManager, WELL_KNOWN_CLIENTS, isRedirectAllowed, verifyPkce } from '../src/oauth.js';
+import { OAuthManager, isRedirectAllowed, verifyPkce } from '../src/oauth.js';
 import { bytesToBase64Url, randomBytes, sha256Base64Url } from '../src/crypto.js';
 import { InMemoryOAuthStateStore } from '../src/oauthState.js';
 

@@ -85,7 +85,7 @@ describe('system notifications', () => {
 		const show = vi.fn().mockResolvedValue(undefined);
 		vi.stubGlobal('Notification', { permission: 'granted' });
 		vi.stubGlobal('navigator', {
-			serviceWorker: { ready: Promise.resolve({ showNotification: show }) }
+			serviceWorker: { getRegistration: async () => ({ active: {}, showNotification: show }) }
 		});
 		const wakeId = reminderWakeId('n1', 1);
 		await expect(
@@ -104,6 +104,63 @@ describe('system notifications', () => {
 				data: { type: 'reminder', noteId: 'n1', wakeId, workspaceId: 'home', reminder: 1 }
 			})
 		);
+	});
+
+	it('falls back to a page notification without waiting for a worker to control the page', async () => {
+		const shown: string[] = [];
+		class PageNotification {
+			static permission = 'granted';
+			onclick: (() => void) | null = null;
+			constructor(title: string) {
+				shown.push(title);
+			}
+			close() {}
+		}
+		vi.stubGlobal('Notification', PageNotification);
+		// Nothing registered: `ready` stays pending for the life of the page.
+		vi.stubGlobal('navigator', {
+			serviceWorker: { ready: new Promise(() => undefined), getRegistration: async () => undefined }
+		});
+		const timeout = new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), 200));
+		const result = showReminderNotification({
+			workspaceId: 'home',
+			wakeId: reminderWakeId('n1', 1),
+			noteId: 'n1',
+			reminder: 1,
+			title: 'Groceries'
+		});
+		await expect(Promise.race([result, timeout])).resolves.toBe(true);
+		expect(shown).toEqual(['Groceries']);
+	});
+
+	it('uses the page notification while a registered worker is still installing', async () => {
+		const shown: string[] = [];
+		class PageNotification {
+			static permission = 'granted';
+			constructor(title: string) {
+				shown.push(title);
+			}
+			close() {}
+		}
+		vi.stubGlobal('Notification', PageNotification);
+		const show = vi.fn();
+		vi.stubGlobal('navigator', {
+			serviceWorker: {
+				ready: new Promise(() => undefined),
+				getRegistration: async () => ({ active: null, showNotification: show })
+			}
+		});
+		await expect(
+			showReminderNotification({
+				workspaceId: 'home',
+				wakeId: reminderWakeId('n1', 1),
+				noteId: 'n1',
+				reminder: 1,
+				title: 'Groceries'
+			})
+		).resolves.toBe(true);
+		expect(show).not.toHaveBeenCalled();
+		expect(shown).toEqual(['Groceries']);
 	});
 
 	it('does not show a system notification without permission', async () => {

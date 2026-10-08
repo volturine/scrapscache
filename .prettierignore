@@ -6,3 +6,6 @@ static
 docker
 sync-data
 test-results
+
+# Playwright
+playwright-report/

@@ -66,11 +66,19 @@ describe('Topbar sync status', () => {
 		location.hash = `pair=${link.syncCode}`;
 		window.dispatchEvent(new PageTransitionEvent('pageshow'));
 
-		await vi.waitFor(() => expect(start).toHaveBeenCalledWith(link.syncCode));
+		// The code is filled in; joining the account waits for the person's own click.
+		await vi.waitFor(() =>
+			expect((screen.getByPlaceholderText('XXXX-XXXX-XXXX-XXXX') as HTMLInputElement).value).toBe(
+				'ABCD-1234-EFGH-5678'
+			)
+		);
 		expect(navigationMocks.goto).toHaveBeenCalledWith('/', {
 			replace: true,
 			reset: false
 		});
+		expect(start).not.toHaveBeenCalled();
+		await fireEvent.click(screen.getByRole('button', { name: 'Start connection' }));
+		await vi.waitFor(() => expect(start).toHaveBeenCalledWith(link.syncCode));
 		expect(screen.getByText('Expires in')).toBeTruthy();
 	});
 

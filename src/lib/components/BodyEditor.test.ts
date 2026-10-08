@@ -194,6 +194,19 @@ describe('BodyEditor native editing', () => {
 		expect(toggle.getAttribute('aria-pressed')).toBe('true');
 	});
 
+	it('toggles a checklist item clicked in the first moments of the page', async () => {
+		// A click within the touch window of time zero must not read as a tap's echo.
+		const now = vi.spyOn(performance, 'now').mockReturnValue(120);
+		try {
+			const { container } = render(BodyEditor, { props: { body: '[ ] Task' } });
+			const toggle = container.querySelector('[data-checklist-toggle]') as HTMLButtonElement;
+			await fireEvent.click(toggle);
+			expect(toggle.getAttribute('aria-pressed')).toBe('true');
+		} finally {
+			now.mockRestore();
+		}
+	});
+
 	it('keeps a checked box empty so selecting the row above stops at its end', () => {
 		// WebKit extends a row selection over inline content in the next row's
 		// checkbox, so the check mark has to be painted rather than a child node.

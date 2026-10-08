@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TurnstileResult } from '#lib/server/turnstile.js';
+import type { RateLimitResult } from '#lib/server/rateLimit.js';
 
 const mocks = vi.hoisted(() => ({
+	chargeGlobal: vi.fn(async (): Promise<RateLimitResult> => ({ allowed: true })),
 	createAccount: vi.fn(async () => true),
 	isAccountRetired: vi.fn(async () => false),
 	verifyRegistration: vi.fn(() => true),
@@ -20,7 +22,8 @@ vi.mock('#lib/server/syncAuth.js', () => ({ verifySyncRegistration: mocks.verify
 vi.mock('#lib/server/turnstile.js', () => ({ verifyTurnstile: mocks.verifyTurnstile }));
 vi.mock('#lib/server/rateLimit.js', () => ({
 	clientAddress: () => '203.0.113.1',
-	getPublicApiLimiter: () => ({ check: async () => ({ allowed: true }) }),
+	checkRegisterLimit: async () => ({ allowed: true }),
+	chargeRegisterGlobalLimit: mocks.chargeGlobal,
 	rateLimitResponse: () => new Response(null, { status: 429 })
 }));
 
@@ -51,6 +54,7 @@ async function post(body: unknown): Promise<Response> {
 
 describe('POST /api/sync/register', () => {
 	beforeEach(() => {
+		mocks.chargeGlobal.mockClear();
 		mocks.createAccount.mockClear();
 		mocks.verifyRegistration.mockReset().mockReturnValue(true);
 		mocks.verifyTurnstile.mockReset().mockResolvedValue('verified');
@@ -106,5 +110,19 @@ describe('POST /api/sync/register', () => {
 		const response = await post(validBody);
 		expect(response.status).toBe(400);
 		expect(mocks.verifyTurnstile).not.toHaveBeenCalled();
+	});
+
+	it("spends everyone's allowance only on a request that proved itself", async () => {
+		mocks.verifyRegistration.mockReturnValue(false);
+		expect((await post(validBody)).status).toBe(400);
+		mocks.verifyRegistration.mockReturnValue(true);
+		mocks.verifyTurnstile.mockResolvedValue('rejected');
+		expect((await post(validBody)).status).toBe(403);
+		expect(mocks.chargeGlobal).not.toHaveBeenCalled();
+
+		mocks.verifyTurnstile.mockResolvedValue('verified');
+		mocks.chargeGlobal.mockResolvedValueOnce({ allowed: false, retryAfterSeconds: 6 });
+		expect((await post(validBody)).status).toBe(429);
+		expect(mocks.createAccount).not.toHaveBeenCalled();
 	});
 });

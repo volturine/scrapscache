@@ -21,6 +21,17 @@ describe('blind wake request validation', () => {
 		).toBe(true);
 	});
 
+	it('accepts endpoints only on the known push services', () => {
+		expect(isHttpsEndpoint('https://web.push.apple.com/QAbcdefghijk')).toBe(true);
+		expect(isHttpsEndpoint('https://wns2-par02p.notify.windows.com/w/?token=abc')).toBe(true);
+		expect(isHttpsEndpoint('https://FCM.googleapis.com/fcm/send/abc')).toBe(true);
+		expect(isHttpsEndpoint('https://push.attacker.example/fcm.googleapis.com/send')).toBe(false);
+		expect(isHttpsEndpoint('https://fcm.googleapis.com.attacker.example/send')).toBe(false);
+		expect(isHttpsEndpoint('https://notify.windows.com/w/?token=abc')).toBe(false);
+		expect(isHttpsEndpoint('https://93.184.216.34/push/abcdef')).toBe(false);
+		expect(isHttpsEndpoint('https://user:pass@fcm.googleapis.com/fcm/send/abc')).toBe(false);
+	});
+
 	it('validates, sorts, and retains recently due opaque wakes', () => {
 		expect(
 			parseReminderWakes(

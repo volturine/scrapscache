@@ -24,7 +24,8 @@ Contributor-oriented notes for working on Scraps Cache. Also read
 | `npm run format:check`     | Prettier check (also runs in CI / `validate`)                    |
 | `npm test`                 | Run the Vitest suite                                             |
 | `npm run test:watch`       | Vitest watch mode                                                |
-| `npm run validate`         | check + format + test + build                                    |
+| `npm run test:e2e`         | Playwright smoke tests against the production build              |
+| `npm run validate`         | check + format + test + build + e2e                              |
 
 ## Local development
 
@@ -41,6 +42,22 @@ The dev server reads `http://127.0.0.1:8080` and
 `SCRAPSCACHE_RELAY_DB_URL` and `SCRAPSCACHE_OPS_DB_URL`).
 
 Tests use `@libsql/client/node` with `file:` URLs (no sqld required).
+
+## Browser smoke tests
+
+`e2e/` holds Playwright tests for the flows a first-time visitor relies on: a
+first visit with a clean console, notes offline, checklists, pin, archive, trash,
+search, labels, kanban, a due reminder, pairing two browser contexts and syncing
+edits and deletes between them, an encrypted backup restored in a fresh browser,
+and workspaces. They run against the production build (`npm run build` first), so
+`npm run test:e2e` starts `node build` itself, with Turnstile off, against the two
+local sqld processes above (or whatever `SCRAPSCACHE_RELAY_DB_URL` and
+`SCRAPSCACHE_OPS_DB_URL` point at). The sync test registers an account, which the
+relay limits to five per hour, so restart sqld between many runs. Install the
+browser once with `npx playwright install chromium`.
+Each test starts from an empty workspace through `openEmptyApp`, and
+`createNote` waits for the editor to settle before typing. CI runs the suite in the
+`validate` job after the production build, with sqld as service containers.
 
 When developing sync features, use two browser profiles (or a normal window +
 a private window) against the same origin and exercise pairing in the Sync UI.
@@ -144,7 +161,24 @@ and `npm run cf:deploy:dev` put `SCRAPSCACHE_TICK_SECRET` and `TURNSTILE_SECRET`
 back after deploy.
 Pushes to `master` deploy the production Workers to `scrapscache.com`. Both use
 Worker routes on the existing proxied DNS records, so the records must remain
-in place during the cutover.
+in place during the cutover. The development deploy ends by running the browser
+smoke tests against `dev.scrapscache.com`, so a labeled pull request is a full
+release rehearsal: a red run there means the change is not ready for `master`.
+
+## Releasing and rolling back
+
+1. Label the release candidate's pull request `deploy-dev` and wait for the
+   development deploy, smoke tests included, to pass.
+2. Merge to `master`. The production deploy verifies `/health/ready`; the commit it
+   runs is served at `https://scrapscache.com/_app/version.json`.
+3. Tag the merge commit `vX.Y.Z` so the container images carry a version tag and
+   self-hosters can pin it.
+4. Watch `https://scrapscache.com/health/ready`, the Workers Logs and Issues
+   panels, and `GET /api/admin/status` for the first hours.
+5. To roll back, push a revert of the merge to `master`: the production deploy is
+   driven by the branch, so reverting is one more deploy of a known-good commit.
+   D1 migrations only add tables and columns, so the previous code keeps working
+   on the newer schema; never roll back by editing the database.
 
 ### Migrating an existing SQLite relay to Cloudflare
 

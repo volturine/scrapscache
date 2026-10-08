@@ -8,6 +8,7 @@ import { concatBytes } from '@noble/hashes/utils.js';
 import { getMeta, getDb, setMetaIfAbsent, type Db } from '#lib/server/db.js';
 import { getRuntimeSettings } from '#lib/server/runtimeSettings.js';
 import { getSyncStore, type DueWake } from '#lib/server/syncStore.js';
+import { isHttpsEndpoint } from '#lib/server/pushWakes.js';
 
 export const VAPID_KEY_PAIR_META_KEY = 'vapid-key-pair-v1';
 
@@ -199,6 +200,9 @@ function wakeRequest(
 	crypto.getRandomValues(salt);
 	return {
 		method: 'POST',
+		// A push service answers in place. A redirect would carry the POST to a host
+		// the endpoint check never saw, so it is a failed send instead.
+		redirect: 'manual',
 		headers: {
 			TTL: '86400',
 			Urgency: 'high',
@@ -231,8 +235,16 @@ function logWakeFailure(status: number | null, message?: string): void {
 	);
 }
 
-/** Every failure is the send's own: it is logged and reported, never thrown. */
+/**
+ * Every failure is the send's own: it is logged and reported, never thrown. An
+ * endpoint that is no longer on a push service is treated as gone, so the
+ * device is dropped rather than retried.
+ */
 export function sendReminderTick(device: DueWake): Promise<WakeSendResult> {
+	if (!isHttpsEndpoint(device.endpoint)) {
+		logWakeFailure(null, 'Push endpoint is not on a known push service');
+		return Promise.resolve<WakeSendResult>('gone');
+	}
 	return Effect.runPromise(
 		Effect.gen(function* () {
 			const [keys, subject] = yield* Effect.tryPromise({

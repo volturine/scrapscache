@@ -2782,8 +2782,10 @@
 
 	// When a touch toggled a checkbox, the time of that toggle, so a click the
 	// browser still sends for the same tap does not toggle it back.
-	let touchToggledAt = 0;
 	const TOUCH_CLICK_WINDOW_MS = 800;
+	// Far enough back that a click in the page's first moments is not mistaken for
+	// the click that follows a touch toggle.
+	let touchToggledAt = -TOUCH_CLICK_WINDOW_MS;
 
 	function toggleCheck(lineId: number, event: MouseEvent) {
 		event.stopPropagation();

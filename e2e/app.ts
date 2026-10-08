@@ -22,8 +22,10 @@ export async function createNote(page: Page, title: string, body?: string): Prom
 	const dialog = editor(page);
 	await expect(dialog).toBeVisible();
 	const bodyBox = dialog.getByRole('textbox', { name: 'Note body' });
-	// A new note focuses its body a moment after opening; typing before that lands there.
+	// A new note focuses its body on open and again 50 ms later; a title typed in
+	// between lands in the body, so let the second focus pass first.
 	await expect(bodyBox).toBeFocused();
+	await page.waitForTimeout(100);
 	await dialog.getByPlaceholder('Title', { exact: true }).fill(title);
 	if (body) {
 		await bodyBox.click();

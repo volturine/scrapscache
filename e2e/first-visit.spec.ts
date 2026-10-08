@@ -24,11 +24,8 @@ test('the shell is installable and the relay reports ready', async ({ page, requ
 	expect(manifest.ok()).toBe(true);
 	expect((await manifest.json()).name).toContain('Scraps Cache');
 
-	const registered = await page.evaluate(async () => {
-		const registration = await navigator.serviceWorker.getRegistration();
-		return Boolean(registration);
-	});
-	expect(registered).toBe(true);
+	// The worker registers after the first paint, later still on a remote deployment.
+	await page.waitForFunction(async () => Boolean(await navigator.serviceWorker.getRegistration()));
 
 	const ready = await request.get('/health/ready');
 	expect(ready.ok()).toBe(true);

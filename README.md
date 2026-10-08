@@ -112,16 +112,15 @@ Details, threat model, and limits: **[docs/security.md](docs/security.md)**.
 
 ## Documentation
 
-| Doc                                                  | Contents                                     |
-| ---------------------------------------------------- | -------------------------------------------- |
-| [docs/architecture.md](docs/architecture.md)         | System layout, data flow, major modules      |
-| [docs/security.md](docs/security.md)                 | Crypto, threat model, headers, logging rules |
-| [docs/self-hosting.md](docs/self-hosting.md)         | Docker, environment variables, and metrics   |
-| [docs/development.md](docs/development.md)           | Local workflow, testing, CI                  |
-| [docs/launch-checklist.md](docs/launch-checklist.md) | Public launch flows and risks                |
-| [CONTRIBUTING.md](CONTRIBUTING.md)                   | How to contribute                            |
-| [SECURITY.md](SECURITY.md)                           | Vulnerability reporting                      |
-| [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)             | Community standards                          |
+| Doc                                          | Contents                                     |
+| -------------------------------------------- | -------------------------------------------- |
+| [docs/architecture.md](docs/architecture.md) | System layout, data flow, major modules      |
+| [docs/security.md](docs/security.md)         | Crypto, threat model, headers, logging rules |
+| [docs/self-hosting.md](docs/self-hosting.md) | Docker, environment variables, and metrics   |
+| [docs/development.md](docs/development.md)   | Local workflow, testing, CI                  |
+| [CONTRIBUTING.md](CONTRIBUTING.md)           | How to contribute                            |
+| [SECURITY.md](SECURITY.md)                   | Vulnerability reporting                      |
+| [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)     | Community standards                          |
 
 ## Stack
 

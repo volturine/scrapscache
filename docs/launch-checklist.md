@@ -58,6 +58,14 @@ usage never does.
 
 ### Advertising surface
 
+- [ ] **Ads stay off the app** — `/privacy` promises no third-party advertising
+      scripts, tracking pixels or analytics, and the nonce CSP would block them
+      anyway. Campaigns point at the landing page from outside; no ad or analytics
+      script is added to the origin. Changing that means rewriting the privacy
+      page, adding consent and opening the CSP first.
+- [ ] **Language** — the UI is English only (`lang="en"`, no string extraction),
+      so the campaigns and the store listing say so rather than promising a
+      localized app.
 - [ ] **Links** — every ad destination resolves to the canonical origin with no
       redirect chain, and campaign parameters in the URL are dropped by the app
       rather than stored or forwarded.
@@ -70,6 +78,9 @@ usage never does.
 
 ### Trust
 
+- [ ] **Dependency advisories** — `npm audit --omit=dev --audit-level=high` is
+      clean. The `devalue` override currently pins a version with open
+      advisories, and `svelte` and `@sveltejs/kit` have fixes available.
 - [ ] **Security headers** — the CSP, `Referrer-Policy`, `X-Frame-Options` and
       `Permissions-Policy` on production match `docs/security.md`, checked with a
       fresh `curl -I`.
@@ -93,6 +104,70 @@ usage never does.
       hours after the deploy, alongside the Workers error rate.
 - [ ] **Self-host image** — the `latest` and version tags on GHCR point at the
       launched commit, so people who read the README get the same build.
+
+## Fixes before launch
+
+The release-readiness audit of 2026-10-08 traced these through the code. Each is a
+bug a first-time visitor can hit, so each needs a fix, a regression test and a tick
+here before the release candidate is cut.
+
+### Core features
+
+- [ ] **Safari photos** — `canvas.toBlob(…, 'image/webp')` falls back to PNG where
+      WebP encoding is missing, but the code still labels the blob `image/webp` and
+      the quality loop shrinks the image five times. Take the type from the blob
+      and fall back to JPEG (`src/lib/imageOptimize.ts`, `src/lib/noteImages.ts`).
+- [ ] **Reminders marked fired but never shown** — `claimFired()` records and syncs
+      the fire before awaiting `navigator.serviceWorker.ready`, which never settles
+      when no worker controls the page, so neither the notification nor the in-app
+      fallback appears (`src/lib/stores/reminders.svelte.ts`,
+      `src/lib/reminderNotify.ts`). Claim only after showing.
+- [ ] **Edits lost when a reminder opens another note** — switching within the same
+      workspace skips `closeOpenNote`, and the editor unmount does not flush the
+      draft timer (`src/routes/(app)/+layout.svelte`, `NoteEditor.svelte`).
+- [ ] **Photo bytes lost after a failed save** — an earlier save strips image bytes
+      from in-memory notes, including a photo whose own save then fails and retries
+      from the stripped copy (`src/lib/stores/notes.svelte.ts`).
+- [ ] **Replace-all is not atomic** — backup Replace and cloud replacement clear
+      first and write note by note, so a quota error or a killed tab leaves a
+      half-written set (`src/lib/db/idb.ts`).
+- [ ] **Database version bump hangs new tabs** — an old open tab blocks `openDB`
+      forever because the workspace database has no `blocked` or `terminated`
+      handling. Every deploy that bumps the version risks a "won't load" report
+      (`src/lib/db/idb.ts`).
+- [ ] **Half-boot without IndexedDB** — in private modes the kanban hydrate rejects
+      with no catch, so reminders, first sync and note links never start
+      (`src/lib/stores/notes.svelte.ts`, `+layout.svelte`).
+- [ ] **Full localStorage throws inside sync and import**
+      (`stores/kanban.svelte.ts`, `stores/ui.svelte.ts`).
+- [ ] **Service worker caches error pages as the shell** — a 5xx during a deploy is
+      served offline afterwards; cache only `res.ok` (`static/sw.js`).
+
+### Relay and abuse
+
+- [ ] **Web Push SSRF and fan-out** — the push endpoint is checked only at
+      registration, `fetch` follows redirects and DNS is resolved again at send
+      time, and one account can fan out thousands of wakes to hosts it picks.
+      Allowlist push-service hosts, pass `redirect: 'manual'`, and cap wakes per
+      account per round (`src/lib/server/webPush.ts`, `pushWakes.ts`,
+      `wakeDispatch.ts`).
+- [ ] **Rate limits key on the full IP** — one IPv6 /64 gets unlimited buckets.
+      Normalize to /64 and add a global registration limit
+      (`src/lib/server/rateLimit.ts`, `pairingSessions.ts`).
+- [ ] **Pairing link joins an account with no confirmation** — `#pair=CODE` runs
+      `beginLink()` on load; pre-fill the code but require a click
+      (`SyncModal.svelte`, `profiles.svelte.ts`).
+- [ ] **Unbounded relay clock offset** — clamp to a day and ignore error responses
+      (`src/lib/model/clock.ts`).
+
+### MCP (only if the MCP recipe is promoted at launch)
+
+- [ ] **`/mcp/authorize` hands the sync key to any HTTPS callback** whose path
+      contains `/oauth/callback`. Require a registered origin or a hard warning for
+      unknown ones (`src/routes/mcp/authorize/+page.svelte`).
+- [ ] **Open client registration with a consent screen that hides the redirect**
+      (`recipes/mcp-server/src/oauth.ts`). Show the redirect host and mark
+      dynamically registered clients as unverified.
 
 ## Out of scope for launch
 

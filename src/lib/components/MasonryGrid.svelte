@@ -88,25 +88,56 @@
 		return cols;
 	});
 
+	/** Container width at which every rendered card was last measured; 0 while
+	 *  that measurement is pending. */
+	let settledWidth = $state(0);
+	/** Offscreen cards skip style, layout and paint once their height is known,
+	 *  so a page-wide restyle (the theme switch, a font load) only touches the
+	 *  cards in view. Measured heights stand in for the skipped content, which
+	 *  keeps the columns exactly where they were. */
+	const skipOffscreen = $derived(settledWidth > 0);
+
 	onMount(() => {
 		const root = gridEl;
 		if (!root || typeof ResizeObserver === 'undefined') return;
+		let frame: number | undefined;
 		const measure = () => {
 			const cards = root.querySelectorAll<HTMLElement>('[data-note-height]');
 			let changed = measuredHeights.size !== cards.length;
 			const next = new Map<string, number>();
 			for (const el of cards) {
 				const id = el.dataset.noteHeight!;
-				const h = Math.round(el.getBoundingClientRect().height);
+				// Exact, not rounded: a skipped card stands at this height, and
+				// rounding would drift the column by a pixel per card.
+				const h = el.getBoundingClientRect().height;
 				next.set(id, h);
 				if (measuredHeights.get(id) !== h) changed = true;
 			}
 			if (changed) measuredHeights = next;
 		};
-		measure();
-		const observer = new ResizeObserver(measure);
+		const settle = () => {
+			const width = root.clientWidth;
+			if (width === settledWidth) {
+				measure();
+				return;
+			}
+			// A new column width changes every card's height, and a skipped card
+			// still reports the old one: render them all once before measuring.
+			settledWidth = 0;
+			if (frame !== undefined) cancelAnimationFrame(frame);
+			frame = requestAnimationFrame(() => {
+				frame = undefined;
+				measure();
+				settledWidth = root.clientWidth;
+			});
+		};
+		settle();
+		const observer = new ResizeObserver(settle);
 		observer.observe(root);
-		return () => observer.disconnect();
+		return () => {
+			observer.disconnect();
+			if (frame !== undefined) cancelAnimationFrame(frame);
+		};
 	});
 </script>
 
@@ -145,7 +176,14 @@
 				style:margin-top={i < leadSpan ? `${leadOffset}px` : undefined}
 			>
 				{#each col as note (note.id)}
-					<div data-note-height={note.id}>
+					{@const skipHeight = skipOffscreen ? measuredHeights.get(note.id) : undefined}
+					<div
+						data-note-height={note.id}
+						style:content-visibility={skipHeight === undefined ? undefined : 'auto'}
+						style:contain-intrinsic-size={skipHeight === undefined
+							? undefined
+							: `auto ${skipHeight}px`}
+					>
 						{#if children}
 							{@render children(note)}
 						{:else}

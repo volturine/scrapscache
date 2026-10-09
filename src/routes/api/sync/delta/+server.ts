@@ -8,9 +8,11 @@ import { getSyncAuth } from '#lib/server/syncAuth.js';
 import { readJsonBody } from '#lib/server/request.js';
 import {
 	clientAddress,
+	enterSyncBody,
 	enterSyncRequest,
 	getPublicApiLimiter,
-	rateLimitResponse
+	rateLimitResponse,
+	SYNC_BODY_SLOTS_PER_SYNC_SLOT
 } from '#lib/server/rateLimit.js';
 import { getRuntimeSettings } from '#lib/server/runtimeSettings.js';
 import { recordSqliteError, recordSyncBatch, recordSyncPhases } from '#lib/server/metrics.js';
@@ -37,6 +39,9 @@ const isOpaqueEnvelope = Schema.is(
 );
 
 const isOpaqueDelete = Schema.is(Schema.Struct({ id: RecordId, slot: Slot }));
+
+const busy = () =>
+	Response.json({ error: 'Sync server is busy' }, { status: 503, headers: { 'retry-after': '2' } });
 
 /** Current-state opaque relay: each keyed slot holds one latest ciphertext only. */
 export const POST: RequestHandler = async ({ request, getClientAddress }) => {
@@ -77,10 +82,19 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 		deleteSlots?: unknown;
 		limit?: unknown;
 	};
+	// A body slot is held only while the bytes are read and parsed, so slow
+	// uploads are bounded in memory without taking a sync slot from a round
+	// that is ready to run.
+	const releaseBody = enterSyncBody(
+		settings.maxConcurrentSyncRequests * SYNC_BODY_SLOTS_PER_SYNC_SLOT
+	);
+	if (!releaseBody) return busy();
 	try {
 		body = (await readJsonBody(request, MAX_REQUEST_BYTES)) as typeof body;
 	} catch {
 		return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
+	} finally {
+		releaseBody();
 	}
 	const cursor =
 		typeof body.cursor === 'number' && Number.isInteger(body.cursor) && body.cursor >= 0
@@ -107,12 +121,7 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 			? Math.min(body.limit, 50)
 			: DEFAULT_DOWNLOAD_LIMIT;
 	const release = enterSyncRequest(settings.maxConcurrentSyncRequests);
-	if (!release) {
-		return Response.json(
-			{ error: 'Sync server is busy' },
-			{ status: 503, headers: { 'retry-after': '2' } }
-		);
-	}
+	if (!release) return busy();
 	recordSyncBatch(envelopes.length, deleteSlots.length);
 	const senderClientId = request.headers.get('x-sync-client-id') ?? undefined;
 	try {

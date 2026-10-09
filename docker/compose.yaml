@@ -35,6 +35,8 @@ services:
       - sqld-relay
       - sqld-ops
     ports:
+      # Binding to 0.0.0.0 requires SCRAPSCACHE_ADDRESS_HEADER= (empty): a directly
+      # connected client can forge X-Forwarded-For, which is trusted by default.
       - "${SCRAPSCACHE_BIND:-127.0.0.1}:${SCRAPSCACHE_PORT:-3000}:3000"
     environment:
       SCRAPSCACHE_ORIGIN: "${SCRAPSCACHE_ORIGIN:-http://localhost:3000}"

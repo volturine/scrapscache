@@ -290,6 +290,10 @@ only cursors, never ciphertext.
 
 A sync round authenticates, charges the account's rate limit and reads its whole
 body before it takes one of the process's sync slots, so a slow upload cannot
-hold a slot while its bytes arrive. Download pages and history listings read
+hold a slot while its bytes arrive. The bodies themselves are bounded by a
+separate set of slots, twice the sync slot count (16 by default, so at most
+16 × 17 MB buffered), each held only while one body is read and parsed; a
+request past either bound is answered 503 with `Retry-After` before any byte
+of it is read. Download pages and history listings read
 record sizes first and load only the ciphertexts inside the 24 MB page budget
 (always at least one record), the same budget Workers applies.

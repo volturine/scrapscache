@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => {
 		recordSyncPhases: vi.fn(),
 		accountRateLimit: vi.fn(async (): Promise<number | null> => null),
 		enterSyncRequest: vi.fn(() => vi.fn()),
+		enterSyncBody: vi.fn(() => vi.fn()),
 		settings: {
 			maxAccountBytes: 5_000,
 			syncPerMinute: 12,
@@ -37,6 +38,8 @@ vi.mock('#lib/server/syncAuth.js', () => ({
 vi.mock('#lib/server/rateLimit.js', () => ({
 	clientAddress: () => '127.0.0.1',
 	enterSyncRequest: mocks.enterSyncRequest,
+	enterSyncBody: mocks.enterSyncBody,
+	SYNC_BODY_SLOTS_PER_SYNC_SLOT: 2,
 	getPublicApiLimiter: () => ({
 		check: (key: string, policy: unknown) => mocks.limitChecks(key, policy)
 	}),
@@ -267,6 +270,50 @@ describe('sync delta route', () => {
 			capacity: 12,
 			refillWindowMs: 60_000
 		});
+	});
+
+	it('holds a body slot only while the body is read, releasing it before the sync slot', async () => {
+		const releaseBody = vi.fn();
+		mocks.enterSyncBody.mockReturnValueOnce(releaseBody);
+		mocks.enterSyncRequest.mockImplementationOnce(() => {
+			// Taking the sync slot comes after the body is parsed and its slot is free.
+			expect(releaseBody).toHaveBeenCalledOnce();
+			return vi.fn();
+		});
+
+		const response = await post({ envelopes: [validEnvelope] });
+
+		expect(response.status).toBe(200);
+		expect(mocks.enterSyncBody).toHaveBeenCalledWith(6);
+		expect(mocks.enterSyncRequest).toHaveBeenCalledOnce();
+		expect(mocks.enterSyncBody.mock.invocationCallOrder[0]).toBeLessThan(
+			mocks.enterSyncRequest.mock.invocationCallOrder[0]
+		);
+	});
+
+	it('releases the body slot when the body is malformed', async () => {
+		const releaseBody = vi.fn();
+		mocks.enterSyncBody.mockReturnValueOnce(releaseBody);
+		expect((await postRaw('{not json')).status).toBe(400);
+		expect(releaseBody).toHaveBeenCalledOnce();
+		expect(mocks.enterSyncRequest).not.toHaveBeenCalled();
+	});
+
+	it('answers busy before reading a byte when every body slot is taken', async () => {
+		mocks.enterSyncBody.mockReturnValueOnce(null as never);
+		const request = new Request('http://localhost/api/sync/delta', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json', authorization: 'Bearer token' },
+			body: JSON.stringify({ envelopes: [validEnvelope] })
+		});
+
+		const response = await handle(request);
+
+		expect(response.status).toBe(503);
+		expect(response.headers.get('retry-after')).toBe('2');
+		expect(request.bodyUsed).toBe(false);
+		expect(mocks.enterSyncRequest).not.toHaveBeenCalled();
+		expect(mocks.sync).not.toHaveBeenCalled();
 	});
 
 	it('takes a sync slot under the runtime limit and releases it after the round', async () => {

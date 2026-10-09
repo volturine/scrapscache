@@ -179,15 +179,43 @@ export function rateLimitResponse(result: Exclude<RateLimitResult, { allowed: tr
 	);
 }
 
-let activeSyncRequests = 0;
-
-export function enterSyncRequest(maxConcurrent = 8): (() => void) | null {
-	if (activeSyncRequests >= maxConcurrent) return null;
-	activeSyncRequests += 1;
-	let released = false;
-	return () => {
-		if (released) return;
-		released = true;
-		activeSyncRequests = Math.max(0, activeSyncRequests - 1);
+/** In-process slots: `enter` takes one or returns null when all are taken. */
+function slots(): { enter(maxConcurrent: number): (() => void) | null; active(): number } {
+	let active = 0;
+	return {
+		active: () => active,
+		enter(maxConcurrent) {
+			if (active >= maxConcurrent) return null;
+			active += 1;
+			let released = false;
+			return () => {
+				if (released) return;
+				released = true;
+				active = Math.max(0, active - 1);
+			};
+		}
 	};
+}
+
+const syncRequests = slots();
+const syncBodies = slots();
+
+/**
+ * Sync request bodies buffered at once, as a multiple of the sync slots. A
+ * body is held only while it is read and parsed, before the round takes a
+ * sync slot, so slow uploads are bounded without taking the slots from rounds
+ * that are ready to run.
+ */
+export const SYNC_BODY_SLOTS_PER_SYNC_SLOT = 2;
+
+/** One of the sync slots, which bound the relay rounds in flight. */
+export function enterSyncRequest(maxConcurrent = 8): (() => void) | null {
+	return syncRequests.enter(maxConcurrent);
+}
+
+/** One of the body slots, which bound the request bodies buffered in memory. */
+export function enterSyncBody(
+	maxConcurrent = 8 * SYNC_BODY_SLOTS_PER_SYNC_SLOT
+): (() => void) | null {
+	return syncBodies.enter(maxConcurrent);
 }

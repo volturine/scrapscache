@@ -16,7 +16,11 @@ import {
 	olderVersions,
 	purgeDeletedRecords
 } from '../src/lib/server/cloudflare/history';
-import { MAX_DOWNLOAD_PAGE_BYTES, fitDownloadPage } from '../src/lib/syncLimits';
+import {
+	MAX_DOWNLOAD_PAGE_BYTES,
+	MAX_SYNC_EVENT_CONNECTIONS,
+	fitDownloadPage
+} from '../src/lib/syncLimits';
 
 type Env = {
 	SCRAPSCACHE_DB: D1Database;
@@ -52,10 +56,6 @@ type SyncInput = {
 };
 
 const STORAGE_OVERHEAD_BYTES = 512;
-/** Concurrent change sockets one account may hold open. Comfortably above a real
- * user's devices and tabs, and low enough that a session cannot hold this object's
- * connections without bound. */
-const MAX_EVENT_SOCKETS = 16;
 /** How long one mutating round may hold the write lock before the object resets.
  * Real rounds average about half a second, so this leaves wide headroom, while a
  * round stuck on a call that never returns fails within 30 seconds instead of
@@ -225,7 +225,7 @@ export class AccountCoordinator {
 	private socket(request: Request): Response {
 		if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket')
 			return Response.json({ error: 'Expected a WebSocket upgrade' }, { status: 426 });
-		if (this.state.getWebSockets().length >= MAX_EVENT_SOCKETS) {
+		if (this.state.getWebSockets().length >= MAX_SYNC_EVENT_CONNECTIONS) {
 			return Response.json(
 				{ error: 'Too many open change streams' },
 				{ status: 429, headers: { 'retry-after': '5' } }

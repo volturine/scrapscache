@@ -5,7 +5,9 @@ import {
 	checkAdminApiLimit,
 	chargeRegisterGlobalLimit,
 	checkRegisterLimit,
-	clientAddress
+	clientAddress,
+	enterSyncBody,
+	enterSyncRequest
 } from './rateLimit';
 import { testDb, cleanupTestDbs } from './testDb';
 import type { Db } from './db';
@@ -183,5 +185,27 @@ describe('registration limiter', () => {
 			expect((await checkRegisterLimit(() => address(i), 0)).allowed).toBe(true);
 		}
 		expect((await chargeRegisterGlobalLimit(0)).allowed).toBe(true);
+	});
+});
+
+describe('in-process sync slots', () => {
+	it('bounds buffered bodies and relay rounds separately, each released on its own', () => {
+		const bodies = [enterSyncBody(2), enterSyncBody(2)];
+		expect(bodies.every((release) => release !== null)).toBe(true);
+		// Both body slots are held, yet a round that is ready still gets a sync slot.
+		expect(enterSyncBody(2)).toBeNull();
+		const round = enterSyncRequest(1);
+		expect(round).not.toBeNull();
+		expect(enterSyncRequest(1)).toBeNull();
+
+		// Freeing a body slot admits the next body, and does not touch the sync slots.
+		bodies[0]!();
+		bodies[0]!();
+		expect(enterSyncBody(2)).not.toBeNull();
+		expect(enterSyncBody(2)).toBeNull();
+		expect(enterSyncRequest(1)).toBeNull();
+
+		round!();
+		expect(enterSyncRequest(1)).not.toBeNull();
 	});
 });

@@ -7,7 +7,11 @@ import {
 } from '#lib/server/operatorConfig.js';
 import { batch, execute, type SqlStatement } from './d1';
 import { cloudflareBindings } from './env';
-import { MAX_CLIENT_SYNC_MUTATIONS_PER_REQUEST } from '#lib/syncLimits.js';
+import {
+	MAX_CLIENT_SYNC_MUTATIONS_PER_REQUEST,
+	MAX_DOWNLOAD_PAGE_BYTES,
+	fitDownloadPage
+} from '#lib/syncLimits.js';
 import type { HistoryEnvelope, HistoryList } from '#lib/syncHistory.js';
 import { deleteHistoryRows, OLDER_VERSION, purgeDeletedRecords } from './history';
 
@@ -92,16 +96,33 @@ export class SyncStore {
 		return this.bindings.SCRAPSCACHE_DB;
 	}
 
-	/** A record's retained encrypted versions, newest first: one D1 query and an R2 read each. */
+	/**
+	 * A record's retained encrypted versions, newest first, within one download
+	 * page's byte budget: one D1 query, then an R2 read for each version that
+	 * fits. The newest version always travels, however large.
+	 */
 	async listHistory(accountId: string, slot: string): Promise<HistoryList> {
-		const rows = (
+		const candidates = (
 			await execute(this.db, {
-				sql: `SELECT history_id AS historyId, saved_at AS savedAt, id, r2_key AS r2Key
+				sql: `SELECT history_id AS historyId, saved_at AS savedAt, id, r2_key AS r2Key,
+					ciphertext_bytes AS bytes
 				FROM envelope_history WHERE account_id = ? AND slot = ?
 				ORDER BY history_id DESC LIMIT ?`,
 				args: [accountId, slot, this.historyVersions]
 			})
-		).rows as Array<{ historyId: number; savedAt: number; id: string; r2Key: string }>;
+		).rows as Array<{
+			historyId: number;
+			savedAt: number;
+			id: string;
+			r2Key: string;
+			bytes: number;
+		}>;
+		const { page: rows } = fitDownloadPage(
+			candidates,
+			candidates.length,
+			MAX_DOWNLOAD_PAGE_BYTES,
+			(row) => Number(row.bytes)
+		);
 		const versions = await Promise.all(
 			rows.map(async (row) => {
 				const object = await this.bindings.SCRAPSCACHE_ENVELOPES.get(row.r2Key);
@@ -676,6 +697,7 @@ export class SyncStore {
 	/** Workers serve live changes over a hibernating WebSocket only; see `createEventSocket`. */
 	async createEventStream(
 		_accountId: string,
+		_expiresAt: number,
 		_signal?: AbortSignal,
 		_clientId?: string
 	): Promise<Response> {

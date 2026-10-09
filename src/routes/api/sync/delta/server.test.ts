@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => {
 		recordSyncPhases: vi.fn(),
 		accountRateLimit: vi.fn(async (): Promise<number | null> => null),
 		enterSyncRequest: vi.fn(() => vi.fn()),
+		enterSyncBody: vi.fn(() => vi.fn()),
 		settings: {
 			maxAccountBytes: 5_000,
 			syncPerMinute: 12,
@@ -37,6 +38,8 @@ vi.mock('#lib/server/syncAuth.js', () => ({
 vi.mock('#lib/server/rateLimit.js', () => ({
 	clientAddress: () => '127.0.0.1',
 	enterSyncRequest: mocks.enterSyncRequest,
+	enterSyncBody: mocks.enterSyncBody,
+	SYNC_BODY_SLOTS_PER_SYNC_SLOT: 2,
 	getPublicApiLimiter: () => ({
 		check: (key: string, policy: unknown) => mocks.limitChecks(key, policy)
 	}),
@@ -62,20 +65,27 @@ const validEnvelope = {
 	ciphertext: 'opaque'
 };
 
-async function post(body: unknown): Promise<Response> {
+function handle(request: Request): Promise<Response> {
 	return (
 		POST as unknown as (event: {
 			request: Request;
 			getClientAddress(): string;
 		}) => Promise<Response>
-	)({
-		request: new Request('http://localhost/api/sync/delta', {
+	)({ request, getClientAddress: () => '127.0.0.1' });
+}
+
+function postRaw(body: string): Promise<Response> {
+	return handle(
+		new Request('http://localhost/api/sync/delta', {
 			method: 'POST',
 			headers: { 'content-type': 'application/json', authorization: 'Bearer token' },
-			body: JSON.stringify(body)
-		}),
-		getClientAddress: () => '127.0.0.1'
-	});
+			body
+		})
+	);
+}
+
+function post(body: unknown): Promise<Response> {
+	return postRaw(JSON.stringify(body));
 }
 
 describe('sync delta route', () => {
@@ -262,9 +272,93 @@ describe('sync delta route', () => {
 		});
 	});
 
-	it('applies the runtime concurrency limit before authentication', async () => {
-		await post({ envelopes: [], deleteSlots: [] });
+	it('holds a body slot only while the body is read, releasing it before the sync slot', async () => {
+		const releaseBody = vi.fn();
+		mocks.enterSyncBody.mockReturnValueOnce(releaseBody);
+		mocks.enterSyncRequest.mockImplementationOnce(() => {
+			// Taking the sync slot comes after the body is parsed and its slot is free.
+			expect(releaseBody).toHaveBeenCalledOnce();
+			return vi.fn();
+		});
+
+		const response = await post({ envelopes: [validEnvelope] });
+
+		expect(response.status).toBe(200);
+		expect(mocks.enterSyncBody).toHaveBeenCalledWith(6);
+		expect(mocks.enterSyncRequest).toHaveBeenCalledOnce();
+		expect(mocks.enterSyncBody.mock.invocationCallOrder[0]).toBeLessThan(
+			mocks.enterSyncRequest.mock.invocationCallOrder[0]
+		);
+	});
+
+	it('releases the body slot when the body is malformed', async () => {
+		const releaseBody = vi.fn();
+		mocks.enterSyncBody.mockReturnValueOnce(releaseBody);
+		expect((await postRaw('{not json')).status).toBe(400);
+		expect(releaseBody).toHaveBeenCalledOnce();
+		expect(mocks.enterSyncRequest).not.toHaveBeenCalled();
+	});
+
+	it('answers busy before reading a byte when every body slot is taken', async () => {
+		mocks.enterSyncBody.mockReturnValueOnce(null as never);
+		const request = new Request('http://localhost/api/sync/delta', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json', authorization: 'Bearer token' },
+			body: JSON.stringify({ envelopes: [validEnvelope] })
+		});
+
+		const response = await handle(request);
+
+		expect(response.status).toBe(503);
+		expect(response.headers.get('retry-after')).toBe('2');
+		expect(request.bodyUsed).toBe(false);
+		expect(mocks.enterSyncRequest).not.toHaveBeenCalled();
+		expect(mocks.sync).not.toHaveBeenCalled();
+	});
+
+	it('takes a sync slot under the runtime limit and releases it after the round', async () => {
+		const release = vi.fn();
+		mocks.enterSyncRequest.mockReturnValueOnce(release);
+		const response = await post({ envelopes: [], deleteSlots: [] });
+		expect(response.status).toBe(200);
 		expect(mocks.enterSyncRequest).toHaveBeenCalledWith(3);
+		expect(release).toHaveBeenCalledOnce();
+	});
+
+	it('answers busy without touching the relay when every slot is taken', async () => {
+		mocks.enterSyncRequest.mockReturnValueOnce(null as never);
+		const response = await post({ envelopes: [validEnvelope] });
+		expect(response.status).toBe(503);
+		expect(response.headers.get('retry-after')).toBe('2');
+		expect(mocks.sync).not.toHaveBeenCalled();
+	});
+
+	it('takes no sync slot until the session, account budget and whole body pass', async () => {
+		mocks.authenticate.mockReturnValueOnce(null);
+		expect((await post({ envelopes: [] })).status).toBe(401);
+
+		mocks.limitChecks.mockImplementation((key) =>
+			key.startsWith('sync-account:') ? ({ allowed: false } as never) : { allowed: true }
+		);
+		expect((await post({ envelopes: [] })).status).toBe(429);
+		mocks.limitChecks.mockImplementation(() => ({ allowed: true }));
+
+		expect((await post({ envelopes: [{ ...validEnvelope, id: '' }] })).status).toBe(400);
+		expect((await postRaw('{not json')).status).toBe(400);
+
+		expect(mocks.enterSyncRequest).not.toHaveBeenCalled();
+	});
+
+	it('reads the body only after the session is authenticated', async () => {
+		mocks.authenticate.mockReturnValueOnce(null);
+		const request = new Request('http://localhost/api/sync/delta', {
+			method: 'POST',
+			headers: { authorization: 'Bearer token' },
+			body: JSON.stringify({ envelopes: [] })
+		});
+		const response = await handle(request);
+		expect(response.status).toBe(401);
+		expect(request.bodyUsed).toBe(false);
 	});
 
 	it('maps an atomic relay quota rejection to HTTP 507', async () => {

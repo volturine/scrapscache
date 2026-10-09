@@ -63,6 +63,8 @@ describe('Workers live change sockets', () => {
 			})
 		);
 		expect((await new SyncStore().createEventSocket('account-1', 9_000)).status).toBe(429);
-		expect((await new SyncStore().createEventStream('account-1')).status).toBe(426);
+		expect((await new SyncStore().createEventStream('account-1', Date.now() + 60_000)).status).toBe(
+			426
+		);
 	});
 });

@@ -32,6 +32,23 @@ describe('security headers', () => {
 		expect(response.headers.get('permissions-policy')).toContain('camera=(self)');
 	});
 
+	it('isolates the app from other sites’ windows and subresource loads', async () => {
+		const response = await respond();
+		expect(response.headers.get('cross-origin-opener-policy')).toBe('same-origin');
+		expect(response.headers.get('cross-origin-resource-policy')).toBe('same-origin');
+	});
+
+	it('keeps the opener for the MCP authorize page, which an OAuth popup chain passes through', async () => {
+		const response = await visit('https://example.test/mcp/authorize?session_id=x', page());
+		expect(response.headers.get('cross-origin-opener-policy')).toBeNull();
+		expect(response.headers.get('cross-origin-resource-policy')).toBe('same-origin');
+		expect(
+			(await visit('https://example.test/mcp/authorize/other', page())).headers.get(
+				'cross-origin-opener-policy'
+			)
+		).toBe('same-origin');
+	});
+
 	it('echoes a well-formed request id and replaces a malformed one', async () => {
 		const echoed = await respond({ 'x-request-id': 'abc-123_XYZ.1' });
 		expect(echoed.headers.get('x-request-id')).toBe('abc-123_XYZ.1');

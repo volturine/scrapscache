@@ -7,10 +7,12 @@ vi.mock('./env', () => ({ cloudflareBindings: () => bindings.value }));
 
 import { SyncStore } from './syncStore';
 import { DEFAULT_SYNC_PER_MINUTE } from '#lib/server/operatorConfig.js';
+import { MAX_DOWNLOAD_PAGE_BYTES } from '#lib/syncLimits.js';
 
 const MAX_BYTES = 100_000_000;
 
 let client: Client;
+let r2: ReturnType<typeof testR2>;
 let store: SyncStore;
 
 async function addAccount(accountId: string, bytes = 0, envelopes = 0): Promise<void> {
@@ -23,7 +25,7 @@ async function addAccount(accountId: string, bytes = 0, envelopes = 0): Promise<
 
 beforeEach(async () => {
 	const d1 = testD1();
-	const r2 = testR2();
+	r2 = testR2();
 	client = d1.client;
 	await applyMigrations(client);
 	bindings.value = {
@@ -149,5 +151,40 @@ describe('retired accounts', () => {
 		expect(await store.isAccountRetired('account-retired')).toBe(true);
 		expect(await store.createAccount('account-fresh', 'public-key')).toBe(true);
 		expect(await store.isAccountRetired('account-fresh')).toBe(false);
+	});
+});
+
+describe('record history', () => {
+	async function addVersion(id: string, bytes: number, savedAt: number): Promise<void> {
+		const slot = 'a'.repeat(64);
+		await client.execute({
+			sql: `INSERT INTO envelope_history(account_id, slot, id, r2_key, ciphertext_bytes, saved_at)
+				VALUES (?, ?, ?, ?, ?, ?)`,
+			args: ['account-history', slot, id, `object-${id}`, bytes, savedAt]
+		});
+		r2.objects.set(`object-${id}`, id);
+	}
+
+	it('lists versions newest first within the page budget, reading no object past it', async () => {
+		await addAccount('account-history');
+		await addVersion('v1', 10_000_000, 1);
+		await addVersion('v2', 10_000_000, 2);
+		await addVersion('v3', 10_000_000, 3);
+		const get = vi.spyOn(r2.bucket, 'get');
+
+		const { versions } = await store.listHistory('account-history', 'a'.repeat(64));
+
+		expect(versions.map(({ id }) => id)).toEqual(['v3', 'v2']);
+		expect(get.mock.calls.map(([key]) => key)).toEqual(['object-v3', 'object-v2']);
+	});
+
+	it('always lists the newest version, however large', async () => {
+		await addAccount('account-history');
+		await addVersion('v1', 1_000, 1);
+		await addVersion('v2', MAX_DOWNLOAD_PAGE_BYTES + 1, 2);
+
+		const { versions } = await store.listHistory('account-history', 'a'.repeat(64));
+
+		expect(versions.map(({ id }) => id)).toEqual(['v2']);
 	});
 });

@@ -1,7 +1,10 @@
 # syntax=docker/dockerfile:1
 
+# Base images are pinned by digest (multi-arch index) as well as tag, so a
+# rebuild cannot pick up a different image. Bump the tag and digest together.
+
 # Compile JS on the native builder. Vite/Rolldown SIGILL under QEMU arm64 (CI exit 132).
-FROM --platform=$BUILDPLATFORM node:24-alpine AS build
+FROM --platform=$BUILDPLATFORM node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS build
 
 WORKDIR /app
 
@@ -11,21 +14,24 @@ RUN npm ci --ignore-scripts
 COPY . .
 RUN npm run build
 
-FROM node:24-alpine AS prod-deps
+FROM node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS prod-deps
 
 WORKDIR /app
 
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts
 
-FROM alpine:3.24 AS runtime
+FROM alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS runtime
 
-COPY --from=node:24-alpine /usr/local/bin/node /usr/local/bin/node
+COPY --from=node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 /usr/local/bin/node /usr/local/bin/node
 
+# BODY_SIZE_LIMIT: the largest request the app accepts is one sync round, capped at
+# 17,000,000 bytes (a 16 MB envelope plus 1 MB of JSON, src/routes/api/sync/delta).
+# 18M is 18,874,368 bytes: just above that, so the app's own cap decides.
 ENV NODE_ENV=production \
 	HOST=0.0.0.0 \
 	PORT=3000 \
-	BODY_SIZE_LIMIT=110M
+	BODY_SIZE_LIMIT=18M
 
 WORKDIR /app
 

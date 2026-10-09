@@ -9,8 +9,18 @@ updates:
         patterns:
           - '*'
 
+  # Base images and Compose services are pinned by digest; these keep them moving.
   - package-ecosystem: docker
-    directory: /
+    directory: /docker
+    schedule:
+      interval: weekly
+    groups:
+      weekly-batch:
+        patterns:
+          - '*'
+
+  - package-ecosystem: docker-compose
+    directory: /docker
     schedule:
       interval: weekly
     groups:

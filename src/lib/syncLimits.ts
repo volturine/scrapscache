@@ -38,3 +38,11 @@ export function fitDownloadPage<T>(
 	}
 	return { page, hasMore: rows.length > page.length };
 }
+
+/**
+ * Live change connections one account may hold open at once (WebSockets on
+ * Workers, server-sent event streams on Node). Comfortably above a real user's
+ * devices and tabs, and low enough that one session cannot hold the relay's
+ * connections without bound.
+ */
+export const MAX_SYNC_EVENT_CONNECTIONS = 16;

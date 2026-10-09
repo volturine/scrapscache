@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
 	SyncQuotaExceededError,
 	SyncStore,
@@ -9,12 +9,41 @@ import {
 import { DEFAULT_MAX_ACCOUNT_BYTES } from './operatorConfig';
 import { testDb, cleanupTestDbs } from './testDb';
 import type { Db } from './db';
-import type { Client, Transaction, TransactionMode } from '@libsql/client/node';
+import type { Client, ResultSet, Transaction, TransactionMode } from '@libsql/client/node';
+import { MAX_DOWNLOAD_PAGE_BYTES, MAX_SYNC_EVENT_CONNECTIONS } from '#lib/syncLimits.js';
+import { SyncAuth } from './syncAuth';
+import { syncEventEmitter } from './syncEvents';
 
 const slot = (character: string) => character.repeat(64);
 const wake = (character: string, fireAt: number) => ({ id: character.repeat(43), fireAt });
 
 afterEach(() => cleanupTestDbs());
+
+/** A store whose relay reads are tallied: `loaded.bytes` sums every string value returned. */
+function measuredStore(): { store: SyncStore; loaded: { bytes: number } } {
+	const db = testDb();
+	const loaded = { bytes: 0 };
+	const tally = (result: ResultSet): ResultSet => {
+		for (const row of result.rows)
+			for (const value of Object.values(row))
+				if (typeof value === 'string') loaded.bytes += value.length;
+		return result;
+	};
+	const measure = <T extends Client | Transaction>(target: T): T =>
+		new Proxy(target, {
+			get(inner, property) {
+				if (property === 'execute')
+					return async (...args: Parameters<Transaction['execute']>) =>
+						tally(await inner.execute(...args));
+				if (property === 'transaction' && 'transaction' in inner)
+					return async (mode?: TransactionMode) => measure(await inner.transaction(mode));
+				const value = Reflect.get(inner, property, inner) as unknown;
+				return typeof value === 'function' ? value.bind(inner) : value;
+			}
+		});
+	const store = new SyncStore({ relay: measure(db.relay), ops: db.ops, ready: db.ready });
+	return { store, loaded };
+}
 
 function createStore(options?: ConstructorParameters<typeof SyncStore>[1]): {
 	store: SyncStore;
@@ -423,6 +452,110 @@ describe('SQLite sync store', () => {
 		expect(second.envelopes.map(({ id }) => id)).toEqual(['photo-3', 'note']);
 		expect(second.hasMore).toBe(false);
 	});
+
+	it('reads only the rows inside a download page’s byte budget', async () => {
+		const { store, loaded } = measuredStore();
+		await store.createAccount('account', 'credential');
+		const photo = 'x'.repeat(10_000_000);
+		await store.sync(
+			'account',
+			0,
+			[
+				{ id: 'photo-1', slot: slot('a'), ciphertext: photo },
+				{ id: 'photo-2', slot: slot('b'), ciphertext: photo },
+				{ id: 'photo-3', slot: slot('c'), ciphertext: photo },
+				{ id: 'photo-4', slot: slot('d'), ciphertext: photo }
+			],
+			[],
+			50
+		);
+
+		loaded.bytes = 0;
+		const first = await store.sync('account', 0, [], [], 50);
+		expect(first.envelopes.map(({ id }) => id)).toEqual(['photo-1', 'photo-2']);
+		// Photos 3 and 4 were sized, never read.
+		expect(loaded.bytes).toBeLessThanOrEqual(MAX_DOWNLOAD_PAGE_BYTES);
+	}, 30_000);
+
+	it('always delivers a record larger than the whole page budget', async () => {
+		const { store } = createStore();
+		await store.createAccount('account', 'credential');
+		const huge = 'x'.repeat(MAX_DOWNLOAD_PAGE_BYTES + 1);
+		await store.sync(
+			'account',
+			0,
+			[
+				{ id: 'huge', slot: slot('a'), ciphertext: huge },
+				{ id: 'note', slot: slot('b'), ciphertext: 'bm90ZQ' }
+			],
+			[],
+			50
+		);
+
+		const first = await store.sync('account', 0, [], [], 50);
+		expect(first.envelopes.map(({ id }) => id)).toEqual(['huge']);
+		expect(first.hasMore).toBe(true);
+		const second = await store.sync('account', first.cursor, [], [], 50);
+		expect(second.envelopes.map(({ id }) => id)).toEqual(['note']);
+		expect(second.hasMore).toBe(false);
+	}, 30_000);
+
+	it('lists history newest first within the page budget, reading no version past it', async () => {
+		const { store, loaded } = measuredStore();
+		await store.createAccount('account', 'credential');
+		let cursor = 0;
+		let previous: string | null = null;
+		for (const version of ['v1', 'v2', 'v3']) {
+			const result = await store.sync(
+				'account',
+				cursor,
+				[
+					{
+						id: version,
+						slot: slot('a'),
+						ciphertext: version.repeat(5_000_000),
+						expectedId: previous
+					}
+				],
+				[]
+			);
+			cursor = result.cursor;
+			previous = version;
+		}
+
+		loaded.bytes = 0;
+		const { versions } = await store.listHistory('account', slot('a'));
+		expect(versions.map(({ id }) => id)).toEqual(['v3', 'v2']);
+		expect(loaded.bytes).toBeLessThanOrEqual(MAX_DOWNLOAD_PAGE_BYTES);
+	}, 30_000);
+
+	it('lists the newest version even when it alone is over the page budget', async () => {
+		const { store } = createStore();
+		await store.createAccount('account', 'credential');
+		const first = await store.sync(
+			'account',
+			0,
+			[{ id: 'v1', slot: slot('a'), ciphertext: 'djE' }],
+			[]
+		);
+		await store.sync(
+			'account',
+			first.cursor,
+			[
+				{
+					id: 'v2',
+					slot: slot('a'),
+					ciphertext: 'x'.repeat(MAX_DOWNLOAD_PAGE_BYTES + 1),
+					expectedId: 'v1'
+				}
+			],
+			[]
+		);
+
+		expect((await store.listHistory('account', slot('a'))).versions.map(({ id }) => id)).toEqual([
+			'v2'
+		]);
+	}, 30_000);
 
 	it('processes a maximum normal upload batch with bounded database round trips', async () => {
 		const db = testDb();
@@ -1316,5 +1449,128 @@ describe('SQLite sync store', () => {
 		expect(
 			(await db.relay.execute('SELECT account_id FROM pending_ops_deletions')).rows
 		).toHaveLength(0);
+	});
+});
+
+describe('Node change streams', () => {
+	const decoder = new TextDecoder();
+
+	function read(response: Response): {
+		next(): Promise<string | null>;
+		cancel(): Promise<void>;
+	} {
+		const reader = response.body!.getReader();
+		return {
+			async next() {
+				const { value, done } = await reader.read();
+				return done ? null : decoder.decode(value);
+			},
+			cancel: () => reader.cancel()
+		};
+	}
+
+	afterEach(() => {
+		vi.useRealTimers();
+		syncEventEmitter.clear();
+	});
+
+	it('signals other writers’ changes and stays quiet for the writer itself', async () => {
+		const { store } = createStore();
+		await store.createAccount('account', 'credential');
+		const stream = read(
+			await store.createEventStream('account', Date.now() + 60_000, undefined, 'tab-a')
+		);
+		expect(await stream.next()).toBe(': ok\n\n');
+
+		await store.sync(
+			'account',
+			0,
+			[{ id: 'mine', slot: slot('a'), ciphertext: 'YQ' }],
+			[],
+			10,
+			'tab-a'
+		);
+		await store.sync(
+			'account',
+			1,
+			[{ id: 'theirs', slot: slot('b'), ciphertext: 'Yg' }],
+			[],
+			10,
+			'tab-b'
+		);
+
+		expect(await stream.next()).toBe('data: {"seq":2}\n\n');
+		await stream.cancel();
+		expect(syncEventEmitter.listenerCount('account')).toBe(0);
+	});
+
+	it('refuses streams past the per-account cap, without counting other accounts', async () => {
+		const { store } = createStore();
+		const expiresAt = Date.now() + 60_000;
+		const open = await Promise.all(
+			Array.from({ length: MAX_SYNC_EVENT_CONNECTIONS }, () =>
+				store.createEventStream('account', expiresAt)
+			)
+		);
+		expect(open.every((response) => response.status === 200)).toBe(true);
+
+		const refused = await store.createEventStream('account', expiresAt);
+		expect(refused.status).toBe(429);
+		expect(refused.headers.get('retry-after')).toBe('5');
+		expect((await store.createEventStream('other', expiresAt)).status).toBe(200);
+
+		// Closing one frees its place.
+		await open[0].body!.cancel();
+		expect((await store.createEventStream('account', expiresAt)).status).toBe(200);
+	});
+
+	it('refuses a session that has already expired', async () => {
+		const { store } = createStore();
+		const response = await store.createEventStream('account', Date.now() - 1);
+		expect(response.status).toBe(401);
+		expect(syncEventEmitter.listenerCount('account')).toBe(0);
+	});
+
+	it('ends the stream when its session expires', async () => {
+		vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'Date'] });
+		const { store } = createStore();
+		const stream = read(await store.createEventStream('account', Date.now() + 30_000));
+		expect(await stream.next()).toBe(': ok\n\n');
+
+		vi.advanceTimersByTime(25_000);
+		expect(await stream.next()).toBe(': ping\n\n');
+		vi.advanceTimersByTime(5_000);
+
+		expect(await stream.next()).toBeNull();
+		expect(syncEventEmitter.listenerCount('account')).toBe(0);
+	});
+
+	it('ends every stream of an account when its sessions are revoked', async () => {
+		const db = testDb();
+		const store = new SyncStore(db);
+		const auth = new SyncAuth(db);
+		const expiresAt = Date.now() + 60_000;
+		const mine = read(await store.createEventStream('account', expiresAt));
+		const other = read(await store.createEventStream('other', expiresAt));
+		await mine.next();
+		await other.next();
+
+		await auth.revokeSyncSessions('account');
+
+		expect(await mine.next()).toBeNull();
+		expect(syncEventEmitter.listenerCount('account')).toBe(0);
+		expect(syncEventEmitter.listenerCount('other')).toBe(1);
+		await other.cancel();
+	});
+
+	it('releases its subscription when the request is aborted', async () => {
+		const { store } = createStore();
+		const controller = new AbortController();
+		await store.createEventStream('account', Date.now() + 60_000, controller.signal);
+		expect(syncEventEmitter.listenerCount('account')).toBe(1);
+
+		controller.abort();
+
+		expect(syncEventEmitter.listenerCount('account')).toBe(0);
 	});
 });

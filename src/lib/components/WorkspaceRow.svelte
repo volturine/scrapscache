@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { truncate, workspaceStyles } from '$panda/styles';
-	import type { Snippet } from 'svelte';
+	import { tick, type Snippet } from 'svelte';
 	import { Check, ChevronDown, CloudOff, Download, Pencil, TriangleAlert, X } from '@lucide/svelte';
 	import { css, cx } from 'styled-system/css';
 	import {
@@ -70,7 +70,10 @@
 		node.focus();
 		return () => {
 			const focused = document.activeElement;
-			if (focused === node || focused === document.body || focused === null) trigger?.focus();
+			if (focused !== node && focused !== document.body && focused !== null) return;
+			// The panel is torn down before the menu holding the trigger is shown
+			// again, and a hidden control cannot take focus, so wait for the flush.
+			void tick().then(() => trigger?.focus());
 		};
 	}
 

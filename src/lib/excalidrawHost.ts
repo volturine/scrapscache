@@ -1,7 +1,10 @@
 import React from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { Excalidraw, exportToCanvas, loadFromBlob } from '@excalidraw/excalidraw';
-import '@excalidraw/excalidraw/index.css';
+// A `<link>` added when a canvas mounts, not a CSS import: SvelteKit attaches the
+// stylesheets of every lazily imported module to the page that can load them, so an
+// import here would block the first paint of every notes page on 140 KB of CSS.
+import stylesheetUrl from '@excalidraw/excalidraw/index.css?url';
 import type { ExcalidrawElement } from '@excalidraw/excalidraw/element/types';
 import type {
 	AppState,
@@ -11,6 +14,7 @@ import type {
 } from '@excalidraw/excalidraw/types';
 import type { CanvasElement, CanvasFile, CanvasScene } from './canvasAttachment';
 import { stableStringify } from './model/stableStringify';
+import { linkStylesheet } from './stylesheetLink';
 
 const THUMBNAIL_WIDTH = 480;
 const THUMBNAIL_HEIGHT = 360;
@@ -173,7 +177,11 @@ export async function restoreSceneFromBlob(blob: Blob): Promise<CanvasScene> {
 	};
 }
 
-export function mountExcalidraw(node: HTMLElement, options: HostOptions): Promise<ExcalidrawHost> {
+export async function mountExcalidraw(
+	node: HTMLElement,
+	options: HostOptions
+): Promise<ExcalidrawHost> {
+	await linkStylesheet(stylesheetUrl);
 	return new Promise((resolve) => {
 		let root: Root | null = createRoot(node);
 		let elements: readonly ExcalidrawElement[] = sceneElements(

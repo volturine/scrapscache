@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 const navigationMocks = vi.hoisted(() => ({ goto: vi.fn() }));
 const cryptoMocks = vi.hoisted(() => ({
@@ -42,6 +42,10 @@ function assignFile(input: HTMLInputElement, file: File) {
 }
 
 describe('Topbar backup import', () => {
+	// Topbar loads the Keep reader when a file is chosen. Loading it here keeps its
+	// first transform out of the test's waits.
+	beforeAll(() => import('#lib/keepImport.js'), 30_000);
+
 	afterEach(() => {
 		vi.restoreAllMocks();
 	});

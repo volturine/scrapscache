@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { tick } from 'svelte';
 
@@ -13,6 +13,10 @@ vi.mock('#lib/editorContext.js', () => ({
 import { syncStore, type StartedDeviceLink } from '#lib/stores/sync.svelte.js';
 import { notesStore } from '#lib/stores/notes.svelte.js';
 import Topbar from './Topbar.svelte';
+
+// Topbar loads the sync dialog when it first opens. Loading it here keeps the
+// first transform of the dialog and its QR libraries out of each test's waits.
+beforeAll(() => import('./SyncModal.svelte'), 30_000);
 
 afterEach(() => {
 	history.replaceState({}, '', '/');

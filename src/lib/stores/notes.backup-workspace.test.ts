@@ -10,7 +10,22 @@ import { kanbanStore } from './kanban.svelte';
 import { canvasLibraryStore } from './canvasLibrary';
 import { reminderHistoryStore } from './reminderHistory';
 import { reminderWakeId } from '#lib/model/index.js';
+import { STALE_MODULE_MESSAGE } from '#lib/staleModuleReload.js';
 import { TEST_WORKSPACE } from '../../tests/workspace';
+
+// The import's code loads on demand; `chunk.missing` stands in for a deploy
+// that no longer serves it, after the one reload that did not help.
+const chunk = vi.hoisted(() => ({ missing: false }));
+vi.mock('#lib/staleModuleReload.js', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('#lib/staleModuleReload.js')>();
+	return {
+		...actual,
+		loadLazyModule: <T>(load: () => Promise<T>) =>
+			chunk.missing
+				? Promise.reject(new Error(actual.STALE_MODULE_MESSAGE))
+				: actual.loadLazyModule(load)
+	};
+});
 
 function profile(id: string) {
 	const account = createSyncIdentity();
@@ -354,16 +369,71 @@ describe('backup and Keep import stay in the open workspace', () => {
 			const flight = navigator.locks.request(SYNC_LOCK, async () => {
 				order.push('flight');
 			});
+			// The import loads its validation before asking for the lock, so the flight
+			// may land first; what matters is that it never lands during the import.
+			await vi.waitFor(() => expect(order).toContain('import'));
+			const during = order.length;
 			for (let tick = 0; tick < 10; tick += 1) await Promise.resolve();
-			expect(order).toEqual(['import']);
+			expect(order).toHaveLength(during);
+			expect(order.at(-1)).toBe('import');
 
 			releaseEstimate();
 			expect(await running).toEqual({ success: true });
 			await flight;
 
-			expect(order).toEqual(['import', 'flight']);
+			expect(order.sort()).toEqual(['flight', 'import']);
 		} finally {
 			vi.unstubAllGlobals();
+		}
+	});
+
+	it('refuses a bad file before waiting for the lock and leaves the workspace alone', async () => {
+		await openWorkspace(workspaceA);
+		notesStore.createNote({ title: 'A note' });
+		await waitForDeviceWrites(workspaceA.id);
+		vi.stubGlobal('navigator', { ...navigator, locks: serialLocks() });
+		try {
+			let releaseFlight!: () => void;
+			const flight = navigator.locks.request(
+				SYNC_LOCK,
+				() => new Promise<void>((resolve) => (releaseFlight = resolve))
+			);
+			const result = await notesStore.importBackup({ version: 1 }, BackupImportMode.Replace);
+			expect(result).toEqual({
+				success: false,
+				error: 'That file is not a valid Scraps Cache full backup.'
+			});
+			expect(notesStore.importing).toBe(false);
+			releaseFlight();
+			await flight;
+			expect((await getAllNotesMetadata(workspaceA.id)).map((note) => note.title)).toEqual([
+				'A note'
+			]);
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
+
+	// The import's code loads on demand. When the deployed app no longer serves
+	// that chunk, nothing has been written, so it is not a persistence error.
+	it('reports a chunk that failed to load without touching the workspace', async () => {
+		await openWorkspace(workspaceA);
+		notesStore.createNote({ title: 'A note' });
+		await waitForDeviceWrites(workspaceA.id);
+		const hardResync = vi.spyOn(notesStore, 'hardResync');
+		chunk.missing = true;
+		try {
+			const result = await notesStore.importBackup(emptyBackup(), BackupImportMode.Replace);
+			expect(result).toEqual({ success: false, error: STALE_MODULE_MESSAGE });
+			expect(hardResync).not.toHaveBeenCalled();
+			expect(notesStore.lastPersistError).toBeNull();
+			expect(notesStore.importing).toBe(false);
+			expect((await getAllNotesMetadata(workspaceA.id)).map((note) => note.title)).toEqual([
+				'A note'
+			]);
+		} finally {
+			chunk.missing = false;
+			vi.restoreAllMocks();
 		}
 	});
 

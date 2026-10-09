@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Note } from './types';
-import { importedReminderHistory, normalizeBackup, prepareImportedNotes } from './backup';
+import { importedReminderHistory, prepareImportedNotes } from './backup';
+import { normalizeBackup } from './backupNormalize';
 import { reminderWakeId } from '#lib/model/index.js';
 import { createEditContext } from './model';
 

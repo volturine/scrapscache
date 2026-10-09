@@ -19,7 +19,7 @@ const ORIGIN = window.location.origin;
 function fakeServiceWorkers(existing: string[] = []) {
 	const registrations = new Map<string, ReturnType<typeof registrationFor>>();
 	let next = 0;
-	function registrationFor(scope: string) {
+	function registrationFor(scope: string, script: string) {
 		let subscription: {
 			endpoint: string;
 			options: { applicationServerKey: ArrayBuffer };
@@ -28,7 +28,7 @@ function fakeServiceWorkers(existing: string[] = []) {
 		} | null = null;
 		const registration = {
 			scope,
-			active: {},
+			active: { scriptURL: new URL(script, ORIGIN).href },
 			unregister: vi.fn(async () => registrations.delete(scope)),
 			pushManager: {
 				getSubscription: vi.fn(async () => subscription),
@@ -50,9 +50,11 @@ function fakeServiceWorkers(existing: string[] = []) {
 		return registration;
 	}
 	const container = {
-		register: vi.fn(async (_script: string, options: { scope: string }) => {
+		// Like the browser: one registration per scope, moved onto the script registered last.
+		register: vi.fn(async (script: string, options: { scope: string }) => {
 			const scope = new URL(options.scope, ORIGIN).href;
-			const registration = registrations.get(scope) ?? registrationFor(scope);
+			const registration = registrations.get(scope) ?? registrationFor(scope, script);
+			registration.active = { scriptURL: new URL(script, ORIGIN).href };
 			registrations.set(scope, registration);
 			return registration;
 		}),
@@ -65,7 +67,7 @@ function fakeServiceWorkers(existing: string[] = []) {
 		}),
 		getRegistrations: vi.fn(async () => [...registrations.values()])
 	};
-	for (const scope of existing) container.register('/sw.js', { scope });
+	for (const scope of existing) void container.register('/service-worker.js', { scope });
 	return { container, registrations };
 }
 
@@ -199,6 +201,28 @@ describe('reminder wake requests', () => {
 		).toMatchObject({
 			deviceId: reminderDeviceId(identityFromSyncKey(home.syncKey).accountId)
 		});
+	});
+
+	it("moves a workspace's push registration from the old /sw.js onto /service-worker.js", async () => {
+		const { container, registrations } = fakeServiceWorkers();
+		const scope = new URL(workspacePushScope('home'), ORIGIN).href;
+		// What an earlier build registered: its static script at the workspace's scope.
+		await container.register('/sw.js', { scope: workspacePushScope('home') });
+		expect(registrations.get(scope)?.active.scriptURL).toBe(`${ORIGIN}/sw.js`);
+		stubBrowser(container);
+		syncStore.profiles = [workspace('home')];
+		vi.spyOn(syncStore, 'authorizedFetch').mockResolvedValue(
+			new Response(JSON.stringify({ ok: true }))
+		);
+
+		expect(await registerAllReminderDevices()).toBe(true);
+
+		expect([...registrations.keys()]).toEqual([scope]);
+		expect(registrations.get(scope)?.active.scriptURL).toBe(`${ORIGIN}/service-worker.js`);
+		expect(container.register).toHaveBeenLastCalledWith(
+			'/service-worker.js',
+			expect.objectContaining({ scope: workspacePushScope('home'), type: 'module' })
+		);
 	});
 
 	it('does not register a workspace again after every sync', async () => {

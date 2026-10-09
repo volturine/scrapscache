@@ -14,6 +14,7 @@
 	import { reminderHistoryClient } from '#lib/reminderHistoryClient.js';
 	import { getAllNotesMetadata } from '#lib/db/idb.js';
 	import { preloadVapidPublicKey } from '#lib/reminderWake.js';
+	import { registerServiceWorker } from '#lib/serviceWorker.js';
 	import { provideEditorActions } from '#lib/editorContext.js';
 	import { splitPastedHeading } from '#lib/checklistBody.js';
 	import { Drawer } from '@ark-ui/svelte/drawer';
@@ -241,9 +242,7 @@
 		void preloadVapidPublicKey();
 		if ('serviceWorker' in navigator) {
 			if (import.meta.env.PROD) {
-				// Version query forces browsers to re-fetch sw.js after deploys.
-				void navigator.serviceWorker
-					.register('/sw.js', { updateViaCache: 'none' })
+				void registerServiceWorker()
 					.then((reg) => reg.update())
 					.then(() => reminderStore.sync(notesStore.notes))
 					.catch(() => undefined);

@@ -10,6 +10,7 @@ import { syncStore } from '#lib/stores/sync.svelte.js';
 import type { StoredProfile } from '#lib/profiles.js';
 import { identityFromSyncKey } from '#lib/syncPairing.js';
 import { uid } from '#lib/model/index.js';
+import { registerServiceWorker } from '#lib/serviceWorker.js';
 
 const DEVICE_SECRET_KEY = 'scrapscache-push-device';
 const PUSH_SCOPE_PREFIX = '/push/';
@@ -124,11 +125,9 @@ async function findWorkspaceRegistration(
 async function workspaceRegistration(
 	workspaceId: string
 ): Promise<ServiceWorkerRegistration | null> {
-	const registration =
-		(await findWorkspaceRegistration(workspaceId)) ??
-		(await navigator.serviceWorker
-			.register('/sw.js', { scope: workspacePushScope(workspaceId), updateViaCache: 'none' })
-			.catch(() => null));
+	const registration = await registerServiceWorker(workspacePushScope(workspaceId)).catch(
+		() => null
+	);
 	return registration ? whenActive(registration) : null;
 }
 

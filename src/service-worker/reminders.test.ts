@@ -1,10 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { runInNewContext } from 'node:vm';
-import { webcrypto } from 'node:crypto';
 import { indexedDB } from 'fake-indexeddb';
-import { reminderWakeId } from '#lib/model/index.js';
-import { DEVICE_DB_NAME, resolveDbName } from '#lib/db/idb.js';
+import { reminderWakeId } from '#lib/model/reminderWakes.js';
+import { DEVICE_DB_NAME, resolveDbName } from '#lib/db/names.js';
+import { startServiceWorker } from './worker';
 
 function request<T>(operation: IDBRequest<T>): Promise<T> {
 	return new Promise((resolve, reject) => {
@@ -68,29 +66,22 @@ function loadServiceWorker(
 	caches: Record<string, unknown> = { open: vi.fn(), keys: vi.fn() }
 ) {
 	const listeners = new Map<string, (event: unknown) => void>();
-	const self = {
+	const sw = {
 		location: { origin: 'https://scrapscache.example' },
 		registration: { showNotification, scope },
 		clients,
+		indexedDB,
+		crypto,
+		caches,
+		fetch: vi.fn(),
 		addEventListener(type: string, listener: (event: unknown) => void) {
 			listeners.set(type, listener);
 		},
 		skipWaiting: vi.fn()
 	};
-	runInNewContext(readFileSync('static/sw.js', 'utf8'), {
-		self,
-		indexedDB,
-		crypto: webcrypto,
-		TextEncoder,
-		URL,
-		URLSearchParams,
-		Request,
-		Response,
-		fetch: vi.fn(),
-		caches,
-		setTimeout,
-		clearTimeout,
-		btoa
+	startServiceWorker(sw as unknown as ServiceWorkerGlobalScope, {
+		version: 'test',
+		precache: ['/']
 	});
 	return listeners;
 }

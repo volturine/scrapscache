@@ -8,21 +8,28 @@
 		/>
 		<meta name="text-scale" content="scale" />
 
-		<!-- Basic Metadata & SEO -->
+		<!-- page-meta: the client-only app's title and description. A server-rendered page
+		     sets its own (PageMeta.svelte), and hooks.server.ts drops these from it. -->
 		<title>Scraps Cache</title>
 		<meta
 			name="description"
 			content="Offline-first notes with optional end-to-end encrypted multi-device sync. Private by design, fast, and self-hostable."
 		/>
-
-		<!-- Open Graph / WhatsApp / Telegram / Signal / Facebook / iMessage Link Preview -->
-		<meta property="og:type" content="website" />
-		<meta property="og:site_name" content="Scraps Cache" />
 		<meta property="og:title" content="Scraps Cache" />
 		<meta
 			property="og:description"
 			content="Offline-first notes with optional end-to-end encrypted multi-device sync. Private by design, fast, and self-hostable."
 		/>
+		<meta name="twitter:title" content="Scraps Cache" />
+		<meta
+			name="twitter:description"
+			content="Offline-first notes with optional end-to-end encrypted multi-device sync. Private by design, fast, and self-hostable."
+		/>
+		<!-- /page-meta -->
+
+		<!-- Open Graph / WhatsApp / Telegram / Signal / Facebook / iMessage Link Preview -->
+		<meta property="og:type" content="website" />
+		<meta property="og:site_name" content="Scraps Cache" />
 		<meta property="og:image" content="https://scrapscache.com/og-preview.png" />
 		<meta property="og:image:secure_url" content="https://scrapscache.com/og-preview.png" />
 		<meta property="og:image:type" content="image/png" />
@@ -36,11 +43,6 @@
 
 		<!-- Twitter / X Card Link Preview -->
 		<meta name="twitter:card" content="summary_large_image" />
-		<meta name="twitter:title" content="Scraps Cache" />
-		<meta
-			name="twitter:description"
-			content="Offline-first notes with optional end-to-end encrypted multi-device sync. Private by design, fast, and self-hostable."
-		/>
 		<meta name="twitter:image" content="https://scrapscache.com/og-preview.png" />
 		<meta
 			name="twitter:image:alt"

@@ -90,6 +90,8 @@ export const truncate = css(truncateText);
 // Application layout primitives
 /** Shared page and feed layout classes. These are layout primitives, not component recipes. */
 export const viewPage = css({ pt: 'lg', pb: '3xl' });
+/** A view's name for assistive technology where the page shows it another way. */
+export const viewHeading = css({ srOnly: true });
 
 /** One width for the mobile drawer and the safe-area strip that continues it. */
 const DRAWER_WIDTH = '18rem';

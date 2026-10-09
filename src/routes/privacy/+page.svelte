@@ -1,16 +1,14 @@
 <script lang="ts">
+	import PageMeta from '#lib/components/PageMeta.svelte';
 	import { resolve } from '$app/paths';
 	import { publicPageStyles as styles } from '$panda/styles';
 	import { ArrowLeft, ShieldCheck, Lock, HardDrive, EyeOff, Server } from '@lucide/svelte';
 </script>
 
-<svelte:head>
-	<title>Privacy Policy · Scraps Cache</title>
-	<meta
-		name="description"
-		content="Learn how Scraps Cache protects your privacy with local-first storage, zero telemetry, and end-to-end encryption."
-	/>
-</svelte:head>
+<PageMeta
+	title="Privacy Policy · Scraps Cache"
+	description="Learn how Scraps Cache protects your privacy with local-first storage, zero telemetry, and end-to-end encryption."
+/>
 
 <div class={styles.root}>
 	<header class={styles.header}>

@@ -1,17 +1,15 @@
 <script lang="ts">
+	import PageMeta from '#lib/components/PageMeta.svelte';
 	import { resolve } from '$app/paths';
 	import { publicPageStyles as styles } from '$panda/styles';
 	import { cx } from 'styled-system/css';
 	import { ArrowLeft, FileText, CheckCircle2, AlertTriangle, ShieldCheck } from '@lucide/svelte';
 </script>
 
-<svelte:head>
-	<title>Terms of Service · Scraps Cache</title>
-	<meta
-		name="description"
-		content="Terms of service and acceptable use guidelines for Scraps Cache."
-	/>
-</svelte:head>
+<PageMeta
+	title="Terms of Service · Scraps Cache"
+	description="Terms of service and acceptable use guidelines for Scraps Cache."
+/>
 
 <div class={styles.root}>
 	<header class={styles.header}>

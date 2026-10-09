@@ -344,22 +344,34 @@ const badgeRecipe = defineRecipe({
 	}
 });
 
+/** Tokens a coloured note re-points to its own foregrounds (onNote in panda/theme.ts). */
+const onNoteForegrounds = {
+	'--colors-scrapscache-text-muted': 'token(colors.onNote.muted)',
+	'--colors-scrapscache-badge-text': 'token(colors.onNote.badgeText)',
+	'--colors-scrapscache-overdue': 'token(colors.onNote.overdue)',
+	'--colors-scrapscache-accent': 'token(colors.onNote.accent)',
+	'--colors-scrapscache-focus': 'token(colors.onNote.focus)'
+} as const;
+
+const colouredNote = (bg: string) => ({ bg, ...onNoteForegrounds });
+
 const noteSurfaceRecipe = defineRecipe({
 	className: 'scrapscache-note-surface',
 	variants: {
 		color: {
+			// The default note is the page colour, which the app tokens are tuned for.
 			default: { bg: 'note.default' },
-			red: { bg: 'note.red' },
-			orange: { bg: 'note.orange' },
-			yellow: { bg: 'note.yellow' },
-			green: { bg: 'note.green' },
-			teal: { bg: 'note.teal' },
-			blue: { bg: 'note.blue' },
-			darkblue: { bg: 'note.darkblue' },
-			purple: { bg: 'note.purple' },
-			pink: { bg: 'note.pink' },
-			brown: { bg: 'note.brown' },
-			gray: { bg: 'note.gray' }
+			red: colouredNote('note.red'),
+			orange: colouredNote('note.orange'),
+			yellow: colouredNote('note.yellow'),
+			green: colouredNote('note.green'),
+			teal: colouredNote('note.teal'),
+			blue: colouredNote('note.blue'),
+			darkblue: colouredNote('note.darkblue'),
+			purple: colouredNote('note.purple'),
+			pink: colouredNote('note.pink'),
+			brown: colouredNote('note.brown'),
+			gray: colouredNote('note.gray')
 		}
 	}
 });

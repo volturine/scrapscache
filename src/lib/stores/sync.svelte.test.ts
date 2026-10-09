@@ -3,10 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Note, NoteImage } from '#lib/types.js';
 import {
 	createSyncIdentity,
-	decryptSyncEnvelope,
 	decryptSyncPayload,
 	encryptSyncPayload,
-	legacyAuthSecret,
+	signSyncChallenge,
 	type SyncIdentity
 } from '#lib/syncPairing.js';
 import { syncControlKeys } from '#lib/syncEngine.js';
@@ -16,7 +15,7 @@ import { MAX_CLIENT_SYNC_MUTATIONS_PER_REQUEST } from '#lib/syncLimits.js';
 import { buildSyncRecords } from '#lib/syncRecords.js';
 import { SyncStore } from './sync.svelte';
 import { syncSnapshot, type SyncSnapshot } from '#lib/syncRecords.js';
-import { legacySyncEnvelope } from '../../tests/legacyEnvelope';
+import { unboundSyncEnvelope } from '../../tests/unboundEnvelope';
 import { seedTestKeyring, TEST_WORKSPACE } from '../../tests/workspace';
 
 type RequestPayload = {
@@ -165,26 +164,17 @@ describe('client sync state machine', () => {
 	});
 	afterEach(() => vi.unstubAllGlobals());
 
-	it('migrates a legacy credential once and caches the issued session', async () => {
+	it('signs one challenge and caches the issued session', async () => {
 		const account = createSyncIdentity();
 		const store = new SyncStore();
 		store.account = account;
 		const fetchMock = vi
 			.fn()
 			.mockResolvedValueOnce(
-				new Response(JSON.stringify({ migrationRequired: true }), {
-					status: 409,
-					headers: { 'content-type': 'application/json' }
-				})
+				Response.json({ challengeId: 'challenge-id', challenge: 'challenge-value' })
 			)
 			.mockResolvedValueOnce(
-				new Response(
-					JSON.stringify({ accessToken: 'session-token', expiresAt: Date.now() + 60_000 }),
-					{
-						status: 200,
-						headers: { 'content-type': 'application/json' }
-					}
-				)
+				Response.json({ accessToken: 'session-token', expiresAt: Date.now() + 60_000 })
 			);
 		vi.stubGlobal('fetch', fetchMock);
 		const privateStore = store as unknown as { accessToken(): Promise<string> };
@@ -192,16 +182,31 @@ describe('client sync state machine', () => {
 		await expect(privateStore.accessToken()).resolves.toBe('session-token');
 		await expect(privateStore.accessToken()).resolves.toBe('session-token');
 		expect(fetchMock).toHaveBeenCalledTimes(2);
-		const migration = JSON.parse(String(fetchMock.mock.calls[1][1]?.body)) as {
-			authSecret: string;
-			authPublicKey: string;
+		expect(fetchMock.mock.calls.map(([path]) => path)).toEqual([
+			'/api/sync/auth/challenge',
+			'/api/sync/auth/session'
+		]);
+		const exchange = JSON.parse(String(fetchMock.mock.calls[1][1]?.body)) as {
+			challengeId: string;
 			signature: string;
 		};
-		expect(migration).toMatchObject({
-			authSecret: legacyAuthSecret(account.syncKey),
-			authPublicKey: account.authPublicKey
-		});
-		expect(migration.signature).toMatch(/^[A-Za-z0-9_-]+$/);
+		expect(exchange.challengeId).toBe('challenge-id');
+		expect(exchange.signature).toBe(
+			signSyncChallenge(account.syncKey, account.accountId, 'challenge-value')
+		);
+	});
+
+	it('does not offer a credential upgrade when the relay answers with a conflict', async () => {
+		const store = new SyncStore();
+		store.account = createSyncIdentity();
+		const fetchMock = vi
+			.fn()
+			.mockResolvedValueOnce(Response.json({ migrationRequired: true }, { status: 409 }));
+		vi.stubGlobal('fetch', fetchMock);
+		const privateStore = store as unknown as { accessToken(): Promise<string> };
+
+		await expect(privateStore.accessToken()).rejects.toThrow('Could not start sync authentication');
+		expect(fetchMock).toHaveBeenCalledTimes(1);
 	});
 
 	it('keeps concurrent authentication scoped to the requested account', async () => {
@@ -1290,6 +1295,8 @@ describe('client sync state machine', () => {
 			return Promise.resolve(undefined);
 		}) as typeof idb.getSyncState);
 		const store = new SyncStore();
+		// Let boot settle first, so its own activation cannot land between the two below.
+		await store.ensureProfilesLoaded();
 		const profileA = {
 			id: 'cursor-a',
 			name: 'A',
@@ -1380,37 +1387,6 @@ describe('client sync state machine', () => {
 		expect(store3.activeProfile).toEqual({ ...p1, syncKey: '' });
 	});
 
-	it('keeps the legacy account pointer after adopting it, without re-adopting', async () => {
-		localStorage.clear();
-		const legacyIdentity = createSyncIdentity();
-		localStorage.setItem('scrapscache-sync-account', JSON.stringify(legacyIdentity));
-
-		// First boot adopts legacy account once
-		const store1 = new SyncStore();
-		await store1.ensureProfilesLoaded();
-		expect(store1.profiles.length).toBe(1);
-		expect(store1.profiles[0].syncKey).toBe(legacyIdentity.syncKey);
-		// Retained so a build without profiles can still find this account.
-		expect(localStorage.getItem('scrapscache-sync-account')).not.toBeNull();
-
-		// Hard refresh: the retained pointer must not adopt a second time
-		const store2 = new SyncStore();
-		await store2.ensureProfilesLoaded();
-		expect(store2.profiles.length).toBe(1);
-		expect(store2.profiles[0].syncKey).toBe(legacyIdentity.syncKey);
-
-		// Unlinking is what clears the pointer: it must not outlive its account
-		await store2.unlinkProfile(store2.profiles[0]);
-		expect(store2.profiles.filter((profile) => profile.syncKey)).toEqual([]);
-		expect(localStorage.getItem('scrapscache-sync-account')).toBeNull();
-
-		// Subsequent boot (hard refresh): no sync key is re-adopted
-		const store3 = new SyncStore();
-		await store3.ensureProfilesLoaded();
-		expect(store3.profiles.filter((profile) => profile.syncKey)).toEqual([]);
-		expect(store3.isLoggedIn).toBe(false);
-	});
-
 	it('marks reachable synced workspaces as MCP-ready', async () => {
 		localStorage.clear();
 		const pending = createSyncIdentity();
@@ -1473,75 +1449,6 @@ describe('client sync state machine', () => {
 		expect(statuses['unavailable-mcp']).toEqual({ state: 'unavailable' });
 		const local = store.profiles.find((profile) => !profile.syncKey)!;
 		expect(statuses[local.id]).toEqual({ state: 'local' });
-	});
-
-	it('migrates the legacy sync marker to an adopted workspace for MCP', async () => {
-		localStorage.clear();
-		const legacyIdentity = createSyncIdentity();
-		const lastSync = Date.now();
-		localStorage.setItem('scrapscache-sync-account', JSON.stringify(legacyIdentity));
-		localStorage.setItem('scrapscache-sync-status', JSON.stringify({ lastSync }));
-
-		const store = new SyncStore();
-		await store.ensureProfilesLoaded();
-		const profile = store.profiles.find((entry) => entry.syncKey === legacyIdentity.syncKey);
-		expect(profile).toBeDefined();
-		expect(localStorage.getItem(`scrapscache-sync-status:${profile?.id}`)).toBe(
-			JSON.stringify({ lastSync })
-		);
-		vi.stubGlobal(
-			'fetch',
-			vi.fn(async (input: RequestInfo | URL) => {
-				const path = new URL(String(input), 'http://localhost').pathname;
-				if (path.endsWith('/auth/challenge')) {
-					return new Response(JSON.stringify({ challengeId: 'challenge', challenge: 'value' }), {
-						status: 200,
-						headers: { 'content-type': 'application/json' }
-					});
-				}
-				return new Response(
-					JSON.stringify({ accessToken: 'token', expiresAt: Date.now() + 60_000 }),
-					{ status: 200, headers: { 'content-type': 'application/json' } }
-				);
-			})
-		);
-
-		expect((await store.getMcpWorkspaceStatuses())[profile!.id]).toEqual({ state: 'ready' });
-	});
-
-	it('does not apply an unowned legacy sync marker to a current profile', async () => {
-		localStorage.clear();
-		const profile = {
-			id: 'current-profile',
-			name: 'Current',
-			syncKey: createSyncIdentity().syncKey,
-			createdAt: 1
-		};
-		localStorage.setItem('scrapscache-sync-profiles', JSON.stringify([profile]));
-		localStorage.setItem('scrapscache-sync-status', JSON.stringify({ lastSync: Date.now() }));
-
-		const store = new SyncStore();
-		await store.ensureProfilesLoaded();
-
-		expect(localStorage.getItem(`scrapscache-sync-status:${profile.id}`)).toBeNull();
-		vi.stubGlobal(
-			'fetch',
-			vi.fn(async (input: RequestInfo | URL) => {
-				const path = new URL(String(input), 'http://localhost').pathname;
-				if (path.endsWith('/auth/challenge')) {
-					return new Response(JSON.stringify({ challengeId: 'challenge', challenge: 'value' }), {
-						status: 200,
-						headers: { 'content-type': 'application/json' }
-					});
-				}
-				return new Response(
-					JSON.stringify({ accessToken: 'token', expiresAt: Date.now() + 60_000 }),
-					{ status: 200, headers: { 'content-type': 'application/json' } }
-				);
-			})
-		);
-
-		expect((await store.getMcpWorkspaceStatuses())[profile.id]).toEqual({ state: 'ready' });
 	});
 
 	it('clears a queued record the relay already holds as it is', async () => {
@@ -1628,52 +1535,66 @@ describe('client sync state machine', () => {
 	});
 });
 
-describe('records the relay still holds unbound to their slot', () => {
+describe('envelopes not bound to the slot they arrive in', () => {
 	beforeEach(() => {
 		localStorage.clear();
 		seedTestKeyring();
 		vi.restoreAllMocks();
 	});
 
-	/** Runs one pull of a single envelope and reports what the sync queued for
-	 * re-upload. The outbox is the mechanism under test: whether the record then
-	 * happens to be re-sent for some unrelated reason says nothing about it. */
-	async function outboxAfterPull(ciphertextFor: (account: SyncIdentity) => string) {
+	/** Pulls a single envelope at `slot` and reports what the sync applied and queued. */
+	async function pullOne(ciphertextFor: (account: SyncIdentity) => string) {
+		const slot = 'a'.repeat(64);
 		const { store, account } = createHarness((_request, index) =>
 			index === 0
 				? {
 						success: true,
 						data: emptyData({
 							cursor: 1,
-							envelopes: [
-								{
-									seq: 1,
-									id: 'remote-id',
-									slot: 'a'.repeat(64),
-									ciphertext: ciphertextFor(account)
-								}
-							]
+							envelopes: [{ seq: 1, id: 'remote-id', slot, ciphertext: ciphertextFor(account) }]
 						})
 					}
 				: { success: true, data: emptyData({ cursor: 1, writesAccepted: true }) }
 		);
-		const result = await store.sync(syncSnapshot(), false, false, passthrough);
-		expect(result.success, result.error).toBe(true);
+		const applied: SyncSnapshot[] = [];
+		const result = await store.sync(syncSnapshot(), false, false, async (snapshot) => {
+			applied.push(snapshot);
+			return snapshot;
+		});
 		await store.waitForOutboxWrites();
-		return idb.getSyncOutboxKeys(TEST_WORKSPACE);
+		return {
+			result,
+			error: store.lastError,
+			notes: applied.flatMap((snapshot) => snapshot.notes),
+			queued: await idb.getSyncOutboxKeys(TEST_WORKSPACE)
+		};
 	}
 
 	const pulled = { kind: 'note', value: note('note-1', { title: 'pulled' }) };
 
-	it('queues one it read for rewrite, so the format leaves the account on its own', async () => {
-		const queued = await outboxAfterPull((account) => legacySyncEnvelope(account.syncKey, pulled));
-		expect(queued).toContain('note:note-1');
-	});
-
-	it('queues nothing when the record was already bound to its slot', async () => {
-		const queued = await outboxAfterPull((account) =>
+	it('applies a record sealed for the slot it arrives in', async () => {
+		const { notes, queued } = await pullOne((account) =>
 			encryptSyncPayload(account.syncKey, pulled, 'a'.repeat(64))
 		);
+		expect(notes.map((entry) => entry.id)).toEqual(['note-1']);
 		expect(queued).not.toContain('note:note-1');
+	});
+
+	it('rejects a pre-slot-binding envelope as unreadable', async () => {
+		const { result, error, notes, queued } = await pullOne((account) =>
+			unboundSyncEnvelope(account.syncKey, pulled)
+		);
+		expect(result.success, result.error).toBe(true);
+		expect(notes).toEqual([]);
+		expect(error).toBe('Skipped 1 unreadable sync record');
+		expect(queued).not.toContain('note:note-1');
+	});
+
+	it('rejects a record the relay moved from another slot', async () => {
+		const { error, notes } = await pullOne((account) =>
+			encryptSyncPayload(account.syncKey, pulled, 'b'.repeat(64))
+		);
+		expect(notes).toEqual([]);
+		expect(error).toBe('Skipped 1 unreadable sync record');
 	});
 });

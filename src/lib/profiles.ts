@@ -23,9 +23,6 @@ export type { StoredProfile } from '#lib/db/idb.js';
 import type { StoredProfile } from '#lib/db/idb.js';
 
 const LS_LAST_ACTIVE = 'scrapscache-last-active-profile';
-const LS_LAST_ACTIVE_LEGACY = 'gkc-last-active-profile';
-const LS_LEGACY_ACCOUNT = 'scrapscache-sync-account';
-const LS_LEGACY_ACCOUNT_OLD = 'gkc-sync-account';
 export function readProfiles(): StoredProfile[] {
 	const profiles = readStoredProfiles();
 	return profiles.sort((a, b) => a.createdAt - b.createdAt);
@@ -95,7 +92,7 @@ export function getLastActiveProfileId(): string | null {
 			const tabPointer = sessionStorage.getItem(SS_LAST_ACTIVE);
 			if (tabPointer) return tabPointer;
 		}
-		return localStorage.getItem(LS_LAST_ACTIVE) ?? localStorage.getItem(LS_LAST_ACTIVE_LEGACY);
+		return localStorage.getItem(LS_LAST_ACTIVE);
 	} catch {
 		return null;
 	}
@@ -108,12 +105,8 @@ export function setLastActiveProfileId(id: string | null): void {
 			if (id) sessionStorage.setItem(SS_LAST_ACTIVE, id);
 			else sessionStorage.removeItem(SS_LAST_ACTIVE);
 		}
-		if (id) {
-			localStorage.setItem(LS_LAST_ACTIVE, id);
-		} else {
-			localStorage.removeItem(LS_LAST_ACTIVE);
-			localStorage.removeItem(LS_LAST_ACTIVE_LEGACY);
-		}
+		if (id) localStorage.setItem(LS_LAST_ACTIVE, id);
+		else localStorage.removeItem(LS_LAST_ACTIVE);
 	} catch (err) {
 		console.error('[profiles] could not save the last active profile:', err);
 	}
@@ -121,7 +114,7 @@ export function setLastActiveProfileId(id: string | null): void {
 
 /**
  * Boot selection: the last active pointer when it still exists in the keyring,
- * else the legacy single-account mirror's entry, else the oldest entry.
+ * else the oldest entry.
  */
 export function pickBootProfile(profiles: StoredProfile[]): StoredProfile | null {
 	if (!profiles.length) return null;
@@ -129,21 +122,6 @@ export function pickBootProfile(profiles: StoredProfile[]): StoredProfile | null
 	if (pointer) {
 		const pointed = profiles.find((profile) => profile.id === pointer);
 		if (pointed) return pointed;
-	}
-	let wantedSyncKey: string | null = null;
-	try {
-		const raw =
-			typeof localStorage !== 'undefined'
-				? (localStorage.getItem(LS_LEGACY_ACCOUNT) ?? localStorage.getItem(LS_LEGACY_ACCOUNT_OLD))
-				: null;
-		const parsed = raw ? (JSON.parse(raw) as { syncKey?: unknown }) : null;
-		if (parsed && typeof parsed.syncKey === 'string') wantedSyncKey = parsed.syncKey;
-	} catch {
-		/* unreadable mirror falls through */
-	}
-	if (wantedSyncKey) {
-		const match = profileForSyncKey(profiles, wantedSyncKey);
-		if (match) return match;
 	}
 	return profiles[0];
 }

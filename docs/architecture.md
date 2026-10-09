@@ -110,10 +110,6 @@ Payload encryption key material is also derived from the sync key. The server
 verifies signed one-time challenges and issues 30-minute sessions, but cannot
 decrypt envelopes.
 
-Accounts created before proof-of-possession authentication upgrade automatically
-replace their stored scrypt credential with the public key after one final legacy
-authentication. The account ID and encrypted relay data do not move.
-
 ### Workspaces
 
 A device can hold several **workspaces**. Each one owns its own isolated
@@ -131,11 +127,7 @@ two without its notes moving:
 
 Every workspace uses its own `scrapscache-profile-<id>` database, and none is
 special: a fresh device starts with one private workspace created like any
-other. A device that still has the old default workspace (the bare `scrapscache`
-database, keyring id `device-local`) moves it once, on its first boot of this
-version, into an ordinary workspace with a new id. Its notes, attachments, sync
-cursor, baseline and outbox come along, so it neither re-downloads nor
-re-uploads (`src/lib/workspaceMove.ts`).
+other.
 
 A small device database, `scrapscache-device`, lists the workspaces by id and
 one-way link tag, never by name or sync key, and caches link previews. The

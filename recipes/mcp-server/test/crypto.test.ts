@@ -8,6 +8,7 @@ import {
 	randomBytes,
 	bytesToBase64Url
 } from '../src/crypto.js';
+import { unboundSyncEnvelope } from '../../../src/tests/unboundEnvelope.js';
 
 describe('MCP crypto primitives', () => {
 	const sampleSyncKey = bytesToBase64Url(randomBytes(32));
@@ -46,6 +47,18 @@ describe('MCP crypto primitives', () => {
 		const decrypted = decryptSyncPayload<typeof payload>(sampleSyncKey, ciphertext, slot);
 		expect(decrypted).toEqual(payload);
 		expect(() => decryptSyncPayload(sampleSyncKey, ciphertext, 'f'.repeat(64))).toThrow();
+	});
+
+	it('refuses an envelope sealed without a slot binding', () => {
+		const slot = computeSlot(sampleSyncKey, 'note:test-123');
+		const payload = { kind: 'note', value: { id: 'test-123' } };
+		const markerNonce = randomBytes(24);
+		markerNonce[0] = 2;
+		for (const envelope of [
+			unboundSyncEnvelope(sampleSyncKey, payload),
+			unboundSyncEnvelope(sampleSyncKey, payload, markerNonce)
+		])
+			expect(() => decryptSyncPayload(sampleSyncKey, envelope, slot)).toThrow();
 	});
 
 	it('computes deterministic slot identifiers', () => {

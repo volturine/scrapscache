@@ -187,7 +187,7 @@ describe('keyring boot selection', () => {
 		sessionStorage.clear();
 		expect(pickBootProfile([first, second])).toBe(first);
 
-		localStorage.setItem('gkc-last-active-profile', 'b');
+		localStorage.setItem('scrapscache-last-active-profile', 'b');
 		expect(pickBootProfile([first, second])).toBe(second);
 		// A generated name is a fresh two-word pair, never one already on the device.
 		const generated = nextProfileName([first, second]);

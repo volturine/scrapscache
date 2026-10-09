@@ -42,21 +42,18 @@ For how to report vulnerabilities, see [SECURITY.md](../SECURITY.md).
   session); the relay then drops that version, which can only be the live one the
   upload's conditional write replaces. Devices set this only for a version their
   own open editing session uploaded
-- Envelopes written before slot binding still open, so an upgrade does not
-  strand what the relay already holds. Nothing writes that form any more, and a
-  client that reads one queues the record for rewrite, so an account migrates
-  itself as it syncs and the old read path can eventually be deleted
+- Every envelope carries a version byte and is bound to its account and slot as
+  AEAD associated data. Clients (the app, history, reminder receipts and the MCP
+  recipe) open only that form; an envelope without the binding, or one the relay
+  moved from another slot, fails to authenticate and is skipped as unreadable
 
 ### Account authentication
 
 - The sync key deterministically derives an Ed25519 signing key with domain separation
-- The existing sync-key-derived `accountId` remains stable across the authentication upgrade
-- The relay stores only the signing public key after new registration or one-time migration
+- The relay stores only the signing public key, set when the account registers
 - Clients sign a one-time, 60-second challenge to obtain a bearer session
 - Sessions are stored as token hashes in the ops database and expire after 30 minutes
 - The signing private key and reusable authentication material never leave the client
-- Existing accounts present their legacy secret once over HTTPS to atomically replace its scrypt hash
-  with a verified public key; the legacy credential cannot be used again
 - Deleting cloud data retires the sync key: the relay keeps the deleted `accountId`
   and refuses to register it again. A device still holding the key, such as a lost
   one, cannot recreate the account and read what another device would upload

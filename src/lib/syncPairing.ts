@@ -92,11 +92,6 @@ export function identityFromSyncKey(syncKey: string): SyncIdentity {
 	};
 }
 
-export function legacyAuthSecret(syncKey: string): string {
-	identityFromSyncKey(syncKey);
-	return bytesToBase64Url(sha256(encoder.encode(`scraps-cache-account-auth:v1:${syncKey}`)));
-}
-
 function signSyncAuthMessage(syncKey: string, message: string): string {
 	const authPrivateKey = sha256(encoder.encode(`scraps-cache-account-auth:v2:${syncKey}`));
 	return bytesToBase64Url(ed25519.sign(encoder.encode(message), authPrivateKey));
@@ -113,20 +108,6 @@ export function signSyncRegistration(
 	return signSyncAuthMessage(
 		syncKey,
 		`scraps-cache-auth-registration:v1:${accountId}:${authPublicKey}`
-	);
-}
-
-export function signSyncMigration(
-	syncKey: string,
-	accountId: string,
-	authPublicKey: string
-): string {
-	const identity = identityFromSyncKey(syncKey);
-	if (identity.accountId !== accountId || identity.authPublicKey !== authPublicKey)
-		throw new Error('Invalid sync account identity');
-	return signSyncAuthMessage(
-		syncKey,
-		`scraps-cache-auth-migration:v1:${accountId}:${authPublicKey}`
 	);
 }
 
@@ -215,9 +196,7 @@ function syncPayloadKey(syncKey: string): Uint8Array {
 	return sha256(encoder.encode(`scraps-cache-sync-payload:v1:${syncKey}`));
 }
 
-/** Leading byte of a packed envelope. v1 envelopes have no marker and start
- * straight into the nonce, so a v1 nonce beginning 0x02 is indistinguishable
- * here; decryption resolves it, since only one version will authenticate. */
+/** Leading byte of a packed envelope, naming the slot-bound format. */
 const ENVELOPE_V2 = 2;
 
 /**
@@ -245,51 +224,22 @@ export function encryptSyncPayload(syncKey: string, payload: unknown, slot: stri
 	return bytesToBase64Url(packed);
 }
 
-export type OpenedSyncEnvelope = {
-	payload: unknown;
-	/** True when this opened through the pre-slot-binding path. The caller is
-	 * expected to rewrite the record, which is what eventually empties the relay
-	 * of unbound envelopes and lets that path be deleted. Reading the version byte
-	 * from outside cannot answer this: a v1 nonce starting 0x02 looks like a v2
-	 * marker, and only attempting decryption settles it. */
-	legacy: boolean;
-};
-
-export function decryptSyncEnvelope(
-	syncKey: string,
-	envelope: string,
-	slot: string
-): OpenedSyncEnvelope {
-	const packed = base64UrlToBytes(envelope);
-	const key = syncPayloadKey(syncKey);
-	if (packed[0] === ENVELOPE_V2 && packed.length > 25) {
-		try {
-			return {
-				payload: JSON.parse(
-					decoder.decode(
-						xchacha20poly1305(key, packed.slice(1, 25), syncPayloadAad(syncKey, slot)).decrypt(
-							packed.slice(25)
-						)
-					)
-				),
-				legacy: false
-			};
-		} catch {
-			// Fall through: a v1 envelope whose nonce happens to open with 0x02.
-		}
-	}
-	// Envelopes written before slot binding existed. This path goes away once no
-	// account still has one; until then dropping it would make every record
-	// uploaded before the change unreadable.
-	if (packed.length <= 24) throw new Error('Invalid encrypted sync envelope');
-	return {
-		payload: JSON.parse(
-			decoder.decode(xchacha20poly1305(key, packed.slice(0, 24)).decrypt(packed.slice(24)))
-		),
-		legacy: true
-	};
-}
-
+/**
+ * Opens an envelope written for this account and slot. Anything else, including
+ * an envelope moved from another slot or one without a slot binding, fails to
+ * authenticate and throws.
+ */
 export function decryptSyncPayload(syncKey: string, envelope: string, slot: string): unknown {
-	return decryptSyncEnvelope(syncKey, envelope, slot).payload;
+	const packed = base64UrlToBytes(envelope);
+	if (packed[0] !== ENVELOPE_V2 || packed.length <= 25)
+		throw new Error('Invalid encrypted sync envelope');
+	return JSON.parse(
+		decoder.decode(
+			xchacha20poly1305(
+				syncPayloadKey(syncKey),
+				packed.slice(1, 25),
+				syncPayloadAad(syncKey, slot)
+			).decrypt(packed.slice(25))
+		)
+	);
 }

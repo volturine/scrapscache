@@ -1,31 +1,12 @@
 import { ed25519 } from '@noble/curves/ed25519.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
-import {
-	randomBytes,
-	scrypt as scryptCallback,
-	timingSafeEqual,
-	type ScryptOptions
-} from 'node:crypto';
-import { promisify } from 'node:util';
+import { randomBytes } from 'node:crypto';
 import { getDb, type Db } from '#lib/server/db.js';
 
 const encoder = new TextEncoder();
 const CHALLENGE_TTL_MS = 60_000;
 export const SESSION_TTL_MS = 30 * 60 * 1000;
-const scrypt = promisify(scryptCallback) as (
-	secret: string | Buffer,
-	salt: string | Buffer,
-	keyLength: number,
-	options: ScryptOptions
-) => Promise<Buffer>;
-const LEGACY_SCRYPT_PARAMS: ScryptOptions = {
-	N: 16384,
-	r: 8,
-	p: 1,
-	maxmem: 128 * 1024 * 1024
-};
-
 function base64Url(bytes: Uint8Array): string {
 	return Buffer.from(bytes).toString('base64url');
 }
@@ -74,49 +55,6 @@ export function verifySyncRegistration(
 		signature,
 		`scraps-cache-auth-registration:v1:${accountId}:${publicKey}`
 	);
-}
-
-export function verifySyncMigration(
-	accountId: string,
-	publicKey: string,
-	signature: string
-): boolean {
-	return verifySignature(
-		publicKey,
-		signature,
-		`scraps-cache-auth-migration:v1:${accountId}:${publicKey}`
-	);
-}
-
-export function isLegacySyncCredential(credential: string): boolean {
-	return credential.startsWith('scrypt:v1:');
-}
-
-export async function legacySyncSecretHash(secret: string): Promise<string> {
-	const salt = randomBytes(16);
-	const derived = await scrypt(secret, salt, 32, LEGACY_SCRYPT_PARAMS);
-	return `scrypt:v1:16384:8:1:${salt.toString('hex')}:${derived.toString('hex')}`;
-}
-
-export async function sameLegacySyncSecret(hash: string, secret: string): Promise<boolean> {
-	const parts = hash.split(':');
-	if (
-		parts.length !== 7 ||
-		parts[0] !== 'scrypt' ||
-		parts[1] !== 'v1' ||
-		parts[2] !== '16384' ||
-		parts[3] !== '8' ||
-		parts[4] !== '1' ||
-		!/^[0-9a-f]{32}$/.test(parts[5]) ||
-		!/^[0-9a-f]{64}$/.test(parts[6])
-	)
-		return false;
-	try {
-		const actual = await scrypt(secret, Buffer.from(parts[5], 'hex'), 32, LEGACY_SCRYPT_PARAMS);
-		return timingSafeEqual(actual, Buffer.from(parts[6], 'hex'));
-	} catch {
-		return false;
-	}
 }
 
 /** Shared auth state: challenge/response login and bearer sessions, durable across

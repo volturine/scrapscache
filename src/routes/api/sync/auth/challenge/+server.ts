@@ -1,5 +1,5 @@
 import type { RequestHandler } from './$types';
-import { getSyncAuth, isLegacySyncCredential } from '#lib/server/syncAuth.js';
+import { getSyncAuth } from '#lib/server/syncAuth.js';
 import { getSyncStore } from '#lib/server/syncStore.js';
 import { readJsonBody } from '#lib/server/request.js';
 import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '#lib/server/rateLimit.js';
@@ -25,12 +25,6 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	if (!credential) {
 		if (await store.isAccountRetired(body.accountId)) return retiredKeyResponse();
 		return Response.json({ error: 'Sync account not found' }, { status: 404 });
-	}
-	if (isLegacySyncCredential(credential)) {
-		return Response.json(
-			{ error: 'Sync authentication upgrade required', migrationRequired: true },
-			{ status: 409 }
-		);
 	}
 	return Response.json(await getSyncAuth().createSyncChallenge(body.accountId));
 };

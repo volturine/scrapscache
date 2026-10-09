@@ -1,4 +1,4 @@
-import { decryptSyncEnvelope } from '#lib/syncPairing.js';
+import { decryptSyncPayload } from '#lib/syncPairing.js';
 import { attachmentToImage, isSyncRecordPayload, type SyncNote } from '#lib/syncRecords.js';
 import { sha256 } from '#lib/syncHash.js';
 import type { Note, NoteImage } from '#lib/types.js';
@@ -28,7 +28,7 @@ async function readOptional<T>(path: string, account: SyncAccount): Promise<T | 
 function decode(account: SyncAccount, ciphertext: string, slot: string) {
 	let payload: unknown;
 	try {
-		payload = decryptSyncEnvelope(account.syncKey, ciphertext, slot).payload;
+		payload = decryptSyncPayload(account.syncKey, ciphertext, slot);
 	} catch {
 		payload = null;
 	}

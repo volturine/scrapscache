@@ -17,8 +17,6 @@ import type { Note, NoteImage } from '#lib/types.js';
 import { sha256 } from '#lib/syncHash.js';
 import type { CanvasLibraryEntry } from '#lib/canvasLibrary.js';
 import { seedTestKeyring, TEST_WORKSPACE } from '../../tests/workspace';
-import { openDB } from 'idb';
-import { LEGACY_DB_NAME, moveLegacyWorkspace } from '#lib/workspaceMove.js';
 
 afterEach(() => cleanupTestDbs());
 
@@ -409,74 +407,5 @@ describe('workspace library and reminder history across devices', () => {
 			passthrough
 		);
 		expect(pulled.snapshot?.libraryItems).toEqual([edited]);
-	});
-});
-
-describe('the old default workspace after its one-time move', () => {
-	beforeEach(() => {
-		localStorage.clear();
-		vi.restoreAllMocks();
-	});
-
-	it('keeps syncing where it left off, sending nothing it already sent', async () => {
-		const relay = new RelayStore(testDb());
-		const identity = createSyncIdentity();
-		await relay.createAccount(identity.accountId, 'credential');
-		const local = { ...noteWithPhoto(photo('pic', 'data:image/png;base64,QQ==')), images: [] };
-
-		// A synced workspace as a pre-move build kept it: in the bare database.
-		const before = new SyncStore();
-		await before.ensureProfilesLoaded();
-		before.account = identity;
-		before.activeId = 'staging';
-		wire(before, relay, []);
-		const first = await before.sync(syncSnapshot({ notes: [local] }), false, false, async (s) => {
-			for (const item of s.notes) await putNote('staging', item);
-			return s;
-		});
-		expect(first.success, first.error).toBe(true);
-		const staged = await openDB(resolveDbName('staging'));
-		const legacy = await openDB(LEGACY_DB_NAME, 6, {
-			upgrade(db) {
-				for (const name of staged.objectStoreNames) {
-					const keyPath = staged.transaction(name).store.keyPath;
-					db.createObjectStore(name, keyPath ? { keyPath } : undefined);
-				}
-			}
-		});
-		for (const name of staged.objectStoreNames) {
-			const keys = await staged.getAllKeys(name);
-			const inline = staged.transaction(name).store.keyPath != null;
-			for (const key of keys) {
-				const value = await staged.get(name, key);
-				if (inline) await legacy.put(name, value);
-				else await legacy.put(name, value, key);
-			}
-		}
-		staged.close();
-		legacy.close();
-		localStorage.setItem(
-			'scrapscache-sync-profiles',
-			JSON.stringify([
-				{ id: 'device-local', name: 'Home', syncKey: identity.syncKey, createdAt: 0 }
-			])
-		);
-
-		await moveLegacyWorkspace();
-
-		const after = new SyncStore();
-		await after.ensureProfilesLoaded();
-		expect(after.activeProfile).toMatchObject({ name: 'Home', syncKey: identity.syncKey });
-		const requests: Array<{
-			envelopes: unknown[];
-			deleteSlots: Array<{ id: string; slot: string }>;
-		}> = [];
-		wire(after, relay, requests);
-		const notes = await getAllNotesMetadata(after.activePid);
-		const second = await after.sync(syncSnapshot({ notes }), false, false, async (s) => s);
-
-		expect(second.success, second.error).toBe(true);
-		expect(requests.flatMap((request) => request.envelopes)).toEqual([]);
-		expect(requests.flatMap((request) => request.deleteSlots)).toEqual([]);
 	});
 });

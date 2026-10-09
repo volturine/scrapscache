@@ -35,15 +35,13 @@ import {
 	createPairingRequestKey,
 	createSyncIdentity,
 	identityFromSyncKey,
-	legacyAuthSecret,
 	openSyncKeyFromPeer,
 	pairingCodeTag,
 	sealSyncKeyForPeer,
 	signSyncChallenge,
-	signSyncMigration,
 	signSyncRegistration,
 	encryptSyncPayload,
-	decryptSyncEnvelope,
+	decryptSyncPayload,
 	randomOpaqueId
 } from '#lib/syncPairing.js';
 import { PairingRole, PairingState, type PairingPoll } from '#lib/pairingProtocol.js';
@@ -58,7 +56,6 @@ import {
 	markSyncOutbox,
 	setRegisteredWorkspaces
 } from '#lib/db/idb.js';
-import { LEGACY_WORKSPACE_ID, moveLegacyWorkspace } from '#lib/workspaceMove.js';
 import {
 	getLastActiveProfileId,
 	isLocalWorkspace,
@@ -72,10 +69,7 @@ import {
 	type StoredProfile
 } from '#lib/profiles.js';
 
-const LS_LEGACY_ACCOUNT_KEY = 'scrapscache-sync-account';
-const LS_LEGACY_ACCOUNT_OLD = 'gkc-sync-account';
 const LS_SYNC_STATUS_PREFIX = 'scrapscache-sync-status';
-const LS_SYNC_STATUS_OLD = 'gkc-sync-status';
 
 /** Encrypted profile-name record; the name follows its sync key across devices. */
 export const PROFILE_META_KEY = 'profile-meta';
@@ -100,10 +94,6 @@ interface SyncStatus {
 }
 
 export type McpWorkspaceStatus = { state: 'local' } | { state: 'ready' } | { state: 'unavailable' };
-
-function isSyncAccount(value: unknown): value is Pick<SyncAccount, 'syncKey'> {
-	return !!value && typeof value === 'object' && typeof (value as SyncAccount).syncKey === 'string';
-}
 
 function parseLastSync(raw: string | null): number {
 	if (!raw) return 0;
@@ -207,14 +197,10 @@ export class SyncStore {
 		void this.ensureProfilesLoaded();
 	}
 
-	/**
-	 * Fast boot from the keyring. The old default workspace is left out: it is
-	 * not a workspace database until `ensureProfilesLoaded` has moved it, so
-	 * nothing may open it before then.
-	 */
+	/** Fast boot from the keyring. */
 	private initFromLocalStorage(): void {
 		try {
-			this.profiles = readProfiles().filter((entry) => entry.id !== LEGACY_WORKSPACE_ID);
+			this.profiles = readProfiles();
 			const pointerId = getLastActiveProfileId();
 			const pointed = pointerId
 				? (this.profiles.find((entry) => entry.id === pointerId) ?? null)
@@ -240,42 +226,14 @@ export class SyncStore {
 	}
 
 	/**
-	 * Per-window boot: move the old default workspace if this device still has
-	 * one, restore the keyring, adopt installs that predate profiles, and
-	 * activate the last-used profile. A device with no workspace gets a private
-	 * one. Windows opened later start on the same profile but can switch
-	 * independently.
+	 * Per-window boot: restore the keyring and activate the last-used profile.
+	 * A device with no workspace gets a private one. Windows opened later start
+	 * on the same profile but can switch independently.
 	 */
 	ensureProfilesLoaded(): Promise<void> {
 		this.profilesReady ??= (async () => {
 			try {
-				await moveLegacyWorkspace().catch((err) =>
-					console.error('[sync] could not move the old default workspace:', err)
-				);
-				let profiles = (await loadProfiles()).filter((entry) => entry.id !== LEGACY_WORKSPACE_ID);
-				// Left in place on purpose: it is the only pointer a build without
-				// profiles can use to find this device's account. It is cleared when
-				// that account is unlinked, not when it is adopted.
-				const rawLegacy =
-					localStorage.getItem(LS_LEGACY_ACCOUNT_KEY) ??
-					localStorage.getItem(LS_LEGACY_ACCOUNT_OLD);
-				let legacySyncKey: string | null = null;
-				try {
-					const parsed: unknown = rawLegacy ? JSON.parse(rawLegacy) : null;
-					if (isSyncAccount(parsed)) legacySyncKey = parsed.syncKey;
-					if (isSyncAccount(parsed) && !profiles.some((p) => p.syncKey === parsed.syncKey)) {
-						const adopted: StoredProfile = {
-							id: randomOpaqueId(),
-							name: nextProfileName(profiles),
-							syncKey: parsed.syncKey,
-							createdAt: Date.now()
-						};
-						await saveProfile(adopted);
-						profiles = [...profiles, adopted];
-					}
-				} catch {
-					/* unreadable legacy mirror is ignored */
-				}
+				let profiles = await loadProfiles();
 				if (profiles.length === 0) {
 					const workspace: StoredProfile = {
 						id: randomOpaqueId(),
@@ -289,7 +247,6 @@ export class SyncStore {
 				// The service worker finds workspaces through this list, so it follows the keyring.
 				void setRegisteredWorkspaces(profiles).catch(() => undefined);
 				this.profiles = profiles.sort((a, b) => a.createdAt - b.createdAt);
-				this.migrateLegacySyncStatus(this.profiles, legacySyncKey);
 
 				const pointerId = getLastActiveProfileId();
 				const pointed = pointerId
@@ -358,7 +315,6 @@ export class SyncStore {
 
 	private forgetProfile(id: string): void {
 		this.profiles = this.profiles.filter((entry) => entry.id !== id);
-		this.clearLegacyAccountStorage();
 		try {
 			localStorage.removeItem(`${LS_SYNC_STATUS_PREFIX}:${id}`);
 		} catch {
@@ -390,24 +346,6 @@ export class SyncStore {
 	private readStatus(pid: string): SyncStatus {
 		if (typeof localStorage === 'undefined') return { lastSync: 0 };
 		return { lastSync: parseLastSync(localStorage.getItem(`${LS_SYNC_STATUS_PREFIX}:${pid}`)) };
-	}
-
-	/** Move the single-workspace sync marker to the adopted profile exactly once. */
-	private migrateLegacySyncStatus(profiles: StoredProfile[], legacySyncKey: string | null): void {
-		if (typeof localStorage === 'undefined' || !legacySyncKey) return;
-		const profile = profiles.find((entry) => entry.syncKey === legacySyncKey);
-		if (!profile || this.readStatus(profile.id).lastSync > 0) return;
-
-		const legacyStatus =
-			localStorage.getItem(LS_SYNC_STATUS_PREFIX) ?? localStorage.getItem(LS_SYNC_STATUS_OLD);
-		const lastSync = parseLastSync(legacyStatus);
-		if (lastSync <= 0) return;
-
-		try {
-			localStorage.setItem(`${LS_SYNC_STATUS_PREFIX}:${profile.id}`, JSON.stringify({ lastSync }));
-		} catch {
-			/* status is only a display cache; a later sync will write it again */
-		}
 	}
 
 	private restoreStatus(pid: string): void {
@@ -447,16 +385,6 @@ export class SyncStore {
 		);
 
 		return statuses;
-	}
-
-	private clearLegacyAccountStorage(): void {
-		if (typeof localStorage === 'undefined') return;
-		try {
-			localStorage.removeItem(LS_LEGACY_ACCOUNT_KEY);
-			localStorage.removeItem(LS_LEGACY_ACCOUNT_OLD);
-		} catch (err) {
-			console.error('[sync] could not clear legacy account storage:', err);
-		}
 	}
 
 	private saveStatus(): void {
@@ -510,7 +438,6 @@ export class SyncStore {
 		this.usage = null;
 		this.syncedCursor = 0;
 		setLastActiveProfileId(id);
-		this.clearLegacyAccountStorage();
 		this.restoreStatus(id);
 		this.onAccountChange?.();
 	}
@@ -620,7 +547,6 @@ export class SyncStore {
 				};
 			const profile: StoredProfile = { ...workspace, syncKey: account.syncKey };
 			await this.replaceKeyringEntry(profile);
-			this.clearLegacyAccountStorage();
 			return { success: true, profile };
 		} catch (err) {
 			return { success: false, error: err instanceof Error ? err.message : 'Network error' };
@@ -766,24 +692,10 @@ export class SyncStore {
 			const challenge = (await challengeResponse.json().catch(() => ({}))) as {
 				challengeId?: unknown;
 				challenge?: unknown;
-				migrationRequired?: unknown;
 				retired?: unknown;
 			};
 			if (challengeResponse.status === 410 && challenge.retired === true) {
 				throw this.retired(account);
-			}
-			if (challengeResponse.status === 409 && challenge.migrationRequired === true) {
-				const migrationResponse = await fetch('/api/sync/auth/migrate', {
-					method: 'POST',
-					headers: { 'content-type': 'application/json' },
-					body: JSON.stringify({
-						accountId: account.accountId,
-						authSecret: legacyAuthSecret(account.syncKey),
-						authPublicKey: account.authPublicKey,
-						signature: signSyncMigration(account.syncKey, account.accountId, account.authPublicKey)
-					})
-				});
-				return this.acceptIssuedSession(account, migrationResponse, generation);
 			}
 			if (
 				!challengeResponse.ok ||
@@ -1115,10 +1027,6 @@ export class SyncStore {
 			let poisonCount = 0;
 			let readEnvelopes = 0;
 			let stalledWrites = 0;
-			/** Records the relay still holds in the pre-slot-binding format. Rewriting
-			 * them is how that format leaves an account, and the only thing that can
-			 * ever make the read path for it safe to delete. */
-			const unboundRecordKeys = new Set<string>();
 			while (hasMore) {
 				if (syncCancelled()) return { success: false, error: 'Sync was cancelled' };
 				const startedWithDownloadsDrained = downloadsDrained;
@@ -1386,15 +1294,13 @@ export class SyncStore {
 						continue;
 					}
 					let decodedRecords: SyncRecordPayload[] | null = null;
-					let decodedUnbound = false;
 					try {
-						const remote = decryptSyncEnvelope(
+						const payload = decryptSyncPayload(
 							account.syncKey,
 							(envelope as { ciphertext: string }).ciphertext,
 							slot
 						);
-						decodedUnbound = remote.legacy;
-						decodedRecords = isSyncRecordPayload(remote.payload) ? [remote.payload] : null;
+						decodedRecords = isSyncRecordPayload(payload) ? [payload] : null;
 					} catch {
 						decodedRecords = null;
 					}
@@ -1419,7 +1325,6 @@ export class SyncStore {
 						recordIds[key] = id;
 						remoteFingerprints[key] = await sha256(record);
 						currentKeys.add(key);
-						if (decodedUnbound) unboundRecordKeys.add(key);
 					}
 				}
 				if (!writesAccepted && (outgoing.length > 0 || deleteSlots.length > 0)) {
@@ -1558,10 +1463,6 @@ export class SyncStore {
 			}
 
 			if (syncCancelled()) return { success: false, error: 'Sync was cancelled' };
-			// Queued rather than uploaded here: the next pass carries them like any
-			// other change, so a large account migrates over several syncs instead of
-			// one oversized one.
-			if (unboundRecordKeys.size > 0) await this.queueOutbox(unboundRecordKeys);
 			if (poisonCount > 0) {
 				this.lastError = `Skipped ${poisonCount} unreadable sync record${poisonCount === 1 ? '' : 's'}`;
 			} else if (quotaBlockedKeys.size > 0) {
@@ -1634,7 +1535,6 @@ export class SyncStore {
 		const unlinked: StoredProfile = { ...profile, syncKey: '' };
 		await this.replaceKeyringEntry(unlinked);
 		if (this.activeId === profile.id) this.activateLocalWorkspace(profile.id);
-		this.clearLegacyAccountStorage();
 		await this.clearAccountControlPlane(accountId, profile.id);
 		const pending = await getSyncOutboxKeys(profile.id).catch(() => []);
 		await clearSyncOutbox(profile.id, pending);

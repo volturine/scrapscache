@@ -102,49 +102,24 @@ export function encryptSyncPayload(syncKey: string, payload: unknown, slot: stri
 	return bytesToBase64Url(envelope);
 }
 
-export type OpenedSyncEnvelope<T = unknown> = {
-	payload: T;
-	legacy: boolean;
-};
-
-export function decryptSyncEnvelope<T = unknown>(
-	syncKey: string,
-	envelope: string,
-	slot: string
-): OpenedSyncEnvelope<T> {
-	const bytes = base64UrlToBytes(envelope);
-	const key = syncPayloadKey(syncKey);
-	if (bytes[0] === ENVELOPE_V2 && bytes.length > 25) {
-		try {
-			return {
-				payload: JSON.parse(
-					decoder.decode(
-						xchacha20poly1305(key, bytes.slice(1, 25), syncPayloadAad(syncKey, slot)).decrypt(
-							bytes.slice(25)
-						)
-					)
-				) as T,
-				legacy: false
-			};
-		} catch {
-			// A legacy nonce can begin with the v2 marker byte. Try the legacy format below.
-		}
-	}
-	if (bytes.length <= 24) throw new Error('Encrypted payload too short');
-	return {
-		payload: JSON.parse(
-			decoder.decode(xchacha20poly1305(key, bytes.slice(0, 24)).decrypt(bytes.slice(24)))
-		) as T,
-		legacy: true
-	};
-}
-
+/** Opens an envelope sealed for this account and slot; anything else throws. */
 export function decryptSyncPayload<T = unknown>(
 	syncKey: string,
 	envelope: string,
 	slot: string
 ): T {
-	return decryptSyncEnvelope<T>(syncKey, envelope, slot).payload;
+	const bytes = base64UrlToBytes(envelope);
+	if (bytes[0] !== ENVELOPE_V2 || bytes.length <= 25)
+		throw new Error('Invalid encrypted sync envelope');
+	return JSON.parse(
+		decoder.decode(
+			xchacha20poly1305(
+				syncPayloadKey(syncKey),
+				bytes.slice(1, 25),
+				syncPayloadAad(syncKey, slot)
+			).decrypt(bytes.slice(25))
+		)
+	) as T;
 }
 
 export function computeSlot(syncKey: string, recordKey: string): string {

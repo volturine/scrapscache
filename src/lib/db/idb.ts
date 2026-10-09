@@ -40,7 +40,6 @@ export interface StoredProfile {
 
 /** The keyring. Its `storage` event is how other windows learn of a change. */
 export const LS_PROFILES = 'scrapscache-sync-profiles';
-const LS_PROFILES_LEGACY = 'gkc-sync-profiles';
 
 const dbPromises = new Map<string, Promise<IDBPDatabase>>();
 let deviceDbPromise: Promise<IDBPDatabase> | null = null;
@@ -144,31 +143,13 @@ export function onProfileDeleted(listener: ((pid: string) => void) | null): void
 	deletedListener = listener;
 }
 
-/** Create the workspace stores, and move pre-v7 `<key>:<id>` state to plain keys. */
-async function upgradeWorkspace(
-	db: IDBPDatabase,
-	oldVersion: number,
-	tx: IDBPTransaction<unknown, string[], 'versionchange'>,
-	pid: string
-): Promise<void> {
+/** Create the workspace stores. */
+function upgradeWorkspace(db: IDBPDatabase): void {
 	for (const name of [NOTES_STORE, LABELS_STORE]) {
 		if (!db.objectStoreNames.contains(name)) db.createObjectStore(name, { keyPath: 'id' });
 	}
 	for (const name of [IMAGES_STORE, SYNC_STATE_STORE, SYNC_OUTBOX_STORE]) {
 		if (!db.objectStoreNames.contains(name)) db.createObjectStore(name);
-	}
-	if (oldVersion === 0 || oldVersion >= 7) return;
-	// The suffixed copy was the one kept current, so it replaces the plain one.
-	const suffix = `:${pid}`;
-	const state = tx.objectStore(SYNC_STATE_STORE);
-	let cursor = await state.openCursor();
-	while (cursor) {
-		const key = String(cursor.key);
-		if (key.endsWith(suffix)) {
-			await state.put(cursor.value, key.slice(0, -suffix.length));
-			await cursor.delete();
-		}
-		cursor = await cursor.continue();
 	}
 }
 
@@ -250,13 +231,8 @@ function openWorkspaceDB(pid: string, dbName: string): Promise<IDBPDatabase> {
 			terminated() {
 				if (cached()) dbPromises.delete(dbName);
 			},
-			upgrade(db, oldVersion, _newVersion, tx) {
-				return upgradeWorkspace(
-					db,
-					oldVersion,
-					tx as unknown as IDBPTransaction<unknown, string[], 'versionchange'>,
-					pid
-				);
+			upgrade(db) {
+				upgradeWorkspace(db);
 			}
 		});
 		opening.then(
@@ -476,48 +452,16 @@ function detachNote(note: Note): Note {
 	};
 }
 
-function bytesFromStored(value: unknown): Uint8Array | null {
-	if (value instanceof Uint8Array) return value;
-	if (value instanceof ArrayBuffer) return new Uint8Array(value);
-	if (ArrayBuffer.isView(value)) {
-		return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
-	}
-	if (Array.isArray(value) && value.every((item) => typeof item === 'number')) {
-		return Uint8Array.from(value);
-	}
-	return null;
-}
+/** Image rows are written by `putImageBlobs` and `replaceAllNotes` as `{ mime, bytes }`. */
+type StoredImage = { mime: string; bytes: Uint8Array };
 
-async function blobFromStored(stored: unknown): Promise<Blob | null> {
-	if (stored instanceof Blob) return stored;
-	if (!stored || typeof stored !== 'object') return null;
-	const record = stored as {
-		mime?: unknown;
-		type?: unknown;
-		bytes?: unknown;
-		buffer?: unknown;
-		dataUrl?: unknown;
-		blob?: unknown;
-	};
-	if (record.blob instanceof Blob) return record.blob;
-	const bytes = bytesFromStored(record.bytes) ?? bytesFromStored(record.buffer);
-	if (bytes) {
-		const type =
-			typeof record.mime === 'string'
-				? record.mime
-				: typeof record.type === 'string'
-					? record.type
-					: 'application/octet-stream';
-		return new Blob([bytes.slice()], { type });
-	}
-	if (typeof record.dataUrl === 'string' && record.dataUrl) {
-		try {
-			return await dataUrlToBlob(record.dataUrl);
-		} catch {
-			return null;
-		}
-	}
-	return null;
+/** The bytes of a stored image row, or null when the row is missing or malformed.
+ * `isView` rather than `instanceof`: a structured clone may come from another realm. */
+function storedImageBytes(value: unknown): Uint8Array | null {
+	if (!value || typeof value !== 'object') return null;
+	const { mime, bytes } = value as Partial<StoredImage>;
+	if (typeof mime !== 'string' || !ArrayBuffer.isView(bytes)) return null;
+	return new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 }
 
 async function imageFromStoredValue(
@@ -526,12 +470,12 @@ async function imageFromStoredValue(
 	meta: NoteImage
 ): Promise<NoteImage | null> {
 	if (meta.dataUrl?.length > 20) return copyImage(meta);
-	const blob =
-		(await blobFromStored(await db.get(IMAGES_STORE, `${noteId}::${meta.id}`))) ??
-		(await blobFromStored(await db.get(IMAGES_STORE, `${noteId}:${meta.id}`)));
-	if (!blob) {
+	const stored: unknown = await db.get(IMAGES_STORE, `${noteId}::${meta.id}`);
+	const bytes = storedImageBytes(stored);
+	if (!bytes) {
 		return copyImage({ ...meta, dataUrl: '' });
 	}
+	const blob = new Blob([bytes.slice()], { type: (stored as StoredImage).mime });
 	return copyImage({
 		...meta,
 		mime: meta.mime || blob.type,
@@ -1182,7 +1126,7 @@ function isStoredProfile(value: unknown): value is StoredProfile {
 export function readStoredProfiles(): StoredProfile[] {
 	if (typeof localStorage === 'undefined') return [];
 	try {
-		const raw = localStorage.getItem(LS_PROFILES) ?? localStorage.getItem(LS_PROFILES_LEGACY);
+		const raw = localStorage.getItem(LS_PROFILES);
 		if (!raw) return [];
 		const parsed = JSON.parse(raw);
 		if (Array.isArray(parsed)) return parsed.filter(isStoredProfile);
@@ -1310,13 +1254,5 @@ export async function estimateProfileBytes(pid: string): Promise<number> {
 }
 
 function storedByteLength(value: unknown): number {
-	if (value instanceof Blob) return value.size;
-	const bytes = bytesFromStored(value);
-	if (bytes) return bytes.byteLength;
-	if (value && typeof value === 'object') {
-		const record = value as { bytes?: unknown; blob?: unknown };
-		if (record.blob instanceof Blob) return record.blob.size;
-		return bytesFromStored(record.bytes)?.byteLength ?? 0;
-	}
-	return 0;
+	return storedImageBytes(value)?.byteLength ?? 0;
 }

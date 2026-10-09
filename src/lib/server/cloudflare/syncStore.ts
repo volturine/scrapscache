@@ -154,20 +154,6 @@ export class SyncStore {
 		).rows[0];
 		return row ? String(row.credentialHash) : null;
 	}
-	async replaceAuthCredential(
-		accountId: string,
-		expected: string,
-		replacement: string
-	): Promise<boolean> {
-		return (
-			(
-				await execute(this.db, {
-					sql: 'UPDATE accounts SET credential_hash = ?, updated_at = ? WHERE account_id = ? AND credential_hash = ?',
-					args: [replacement, Date.now(), accountId, expected]
-				})
-			).rowsAffected === 1
-		);
-	}
 	async createAccount(
 		accountId: string,
 		authPublicKey: string,

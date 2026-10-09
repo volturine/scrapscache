@@ -3,7 +3,7 @@
 // receipts. A new upload replaces the row, so storage follows the number of notes
 // with reminders, not how often they fire.
 import { sha256 } from '#lib/syncHash.js';
-import { encryptSyncPayload, decryptSyncEnvelope } from '#lib/syncPairing.js';
+import { encryptSyncPayload, decryptSyncPayload } from '#lib/syncPairing.js';
 import {
 	isReminderHistoryEntry,
 	RECEIPTS_PER_NOTE,
@@ -106,9 +106,8 @@ export async function sealNoteReceipts(
 }
 
 export async function openNoteReceipts(key: string, packet: ReminderPacket): Promise<NoteReceipts> {
-	const opened = decryptSyncEnvelope(key, packet.ciphertext, packet.note);
-	const receipts = opened.payload as unknown;
-	if (opened.legacy || !isNoteReceipts(receipts)) throw new Error('Invalid reminder receipt');
+	const receipts = decryptSyncPayload(key, packet.ciphertext, packet.note);
+	if (!isNoteReceipts(receipts)) throw new Error('Invalid reminder receipt');
 	if (
 		(await noteToken(key, receipts.noteId)) !== packet.note ||
 		(receipts.kind === 'deleted') !== packet.deleted

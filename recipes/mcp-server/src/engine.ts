@@ -10,14 +10,12 @@ import {
 	SyncClock,
 	touchNoteFields,
 	type Label,
-	type Note as ModelNote,
+	type Note,
 	type NoteColor,
 	type NotePatch
 } from '../../../src/lib/model/index.js';
 
-/** Legacy MCP-created records used `trash`; keep reading them while they migrate. */
-export type Note = ModelNote & { trash?: boolean };
-export type { Label };
+export type { Label, Note };
 
 export type SyncRecordPayload =
 	| { kind: 'note'; value: Note }
@@ -556,7 +554,7 @@ export class McpSession {
 	}
 
 	private isTrashed(note: Note): boolean {
-		return note.trashed ?? note.trash ?? false;
+		return note.trashed ?? false;
 	}
 
 	/** Label ids for names; labels that do not exist yet are returned to be written with the note. */
@@ -797,7 +795,7 @@ export class McpSession {
 
 		const before: Note = {
 			...existing,
-			trashed: existing.trashed ?? existing.trash ?? false,
+			trashed: existing.trashed ?? false,
 			trashedAt: existing.trashedAt ?? null
 		};
 		const patch: NotePatch = {

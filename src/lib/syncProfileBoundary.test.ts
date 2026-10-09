@@ -8,10 +8,9 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { legacySyncEnvelope } from '../tests/legacyEnvelope';
+import { unboundSyncEnvelope } from '../tests/unboundEnvelope';
 import {
 	createSyncIdentity,
-	decryptSyncEnvelope,
 	decryptSyncPayload,
 	encryptSyncPayload,
 	identityFromSyncKey,
@@ -66,28 +65,21 @@ describe('one workspace cannot read another workspace', () => {
 	});
 });
 
-describe('envelopes written before slot binding', () => {
+describe('envelopes without a slot binding', () => {
 	const slot = 'a'.repeat(64);
+	const secret = { kind: 'note', value: { id: 'old' } };
 
-	it('still opens, so upgrading does not strand what the relay already holds', () => {
-		const secret = { kind: 'note', value: { id: 'old' } };
-		expect(
-			decryptSyncPayload(mine.syncKey, legacySyncEnvelope(mine.syncKey, secret), slot)
-		).toEqual(secret);
+	it('are refused, even under the account key that sealed them', () => {
+		expect(() =>
+			decryptSyncPayload(mine.syncKey, unboundSyncEnvelope(mine.syncKey, secret), slot)
+		).toThrow();
 	});
 
-	it('stays unreadable to another workspace', () => {
-		const sealed = legacySyncEnvelope(mine.syncKey, { kind: 'note' });
-		expect(() => decryptSyncPayload(theirs.syncKey, sealed, slot)).toThrow();
-	});
-
-	it('says which path opened it, so the reader knows to rewrite it', () => {
-		const payload = { kind: 'note', value: { id: 'old' } };
-		expect(
-			decryptSyncEnvelope(mine.syncKey, legacySyncEnvelope(mine.syncKey, payload), slot)
-		).toEqual({ payload, legacy: true });
-		expect(
-			decryptSyncEnvelope(mine.syncKey, encryptSyncPayload(mine.syncKey, payload, slot), slot)
-		).toEqual({ payload, legacy: false });
+	it('are refused when the nonce happens to start with the v2 marker', () => {
+		const nonce = crypto.getRandomValues(new Uint8Array(24));
+		nonce[0] = 2;
+		expect(() =>
+			decryptSyncPayload(mine.syncKey, unboundSyncEnvelope(mine.syncKey, secret, nonce), slot)
+		).toThrow();
 	});
 });

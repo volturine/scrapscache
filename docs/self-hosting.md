@@ -41,6 +41,13 @@ default (`SCRAPSCACHE_BIND` to override). The production template:
 
 - Runs with a read-only application filesystem
 - Runs physically separate sqld services and named volumes for relay and ops state
+- Runs sqld without authentication, reachable only by the app on the internal
+  Compose network and from the host on `127.0.0.1` (for backups and inspection).
+  The template has no setting that publishes sqld further; never forward those
+  ports off the host
+- Trusts `X-Forwarded-For` for client addresses, because the loopback-only port
+  means every request reaches the app through something on the host (see
+  [client address](#reverse-proxy-and-tls) below)
 
 ### Build locally instead of pulling
 
@@ -123,11 +130,18 @@ Terminate HTTPS at your proxy (Caddy, nginx, Traefik, etc.) and proxy to
 1. Set `SCRAPSCACHE_ORIGIN` to the **exact** external HTTPS origin (scheme + host,
    no trailing path).
 2. Set HSTS on the proxy only after HTTPS works end-to-end.
-3. Client address for rate limits:
-   - **Direct** exposure (no proxy): leave `SCRAPSCACHE_ADDRESS_HEADER` empty.
-   - **One trusted proxy**: set
-     `SCRAPSCACHE_ADDRESS_HEADER=x-forwarded-for` and `SCRAPSCACHE_XFF_DEPTH=1`, and
-     configure the proxy to **replace** (not append untrusted) `X-Forwarded-For`.
+3. Client address for rate limits. Compose defaults to
+   `SCRAPSCACHE_ADDRESS_HEADER=x-forwarded-for` with `SCRAPSCACHE_XFF_DEPTH=1`:
+   the app port is published on loopback only, so a request can arrive only
+   through a reverse proxy, Cloudflare Tunnel or the Tailscale Serve sidecar,
+   all of which set `X-Forwarded-For`. Without it, every visitor would share the
+   proxy's single rate-limit bucket.
+   - **One trusted proxy** (the default): configure the proxy to **replace** (not
+     append untrusted) `X-Forwarded-For`.
+   - **Direct** exposure (`SCRAPSCACHE_BIND=0.0.0.0`, no proxy): set
+     `SCRAPSCACHE_ADDRESS_HEADER=` to an empty value. A directly connected client
+     can write its own `X-Forwarded-For`, so trusting it would let one client
+     spread its requests over as many rate-limit buckets as it likes.
    - Increase depth only for a known multi-proxy chain.
 4. Request URLs are built as `https://` plus the `Host` header. If the proxy
    rewrites `Host` (nginx does unless told `proxy_set_header Host $host`), set
@@ -166,7 +180,7 @@ client-address settings above so rate limits see real client IPs.
 | `TURNSTILE_SITEKEY`                        |                          unset | Cloudflare Turnstile sitekey, used only by the challenge page                                                           |
 | `TURNSTILE_SECRET`                         |                          unset | Turnstile secret used for server-side siteverify                                                                        |
 | `TURNSTILE_HOSTNAMES`                      |                          unset | Hostname(s) of the challenge origin, which siteverify must report                                                       |
-| `ADDRESS_HEADER` / `XFF_DEPTH`             |                   direct / `1` | Trusted proxy client-address configuration                                                                              |
+| `ADDRESS_HEADER` / `XFF_DEPTH`             |                   direct / `1` | Trusted proxy client-address configuration (Compose defaults to `x-forwarded-for`)                                      |
 | `HOST_HEADER` / `PROTOCOL_HEADER`          |               `Host` / `https` | Headers a trusted proxy uses to pass the original host and scheme                                                       |
 
 Compose maps `SCRAPSCACHE_ADDRESS_HEADER` → `ADDRESS_HEADER`,
@@ -203,9 +217,9 @@ variables explicitly.
 | `SCRAPSCACHE_PORT`            |                  `3000` | Host port published by Compose (loopback by default)          |
 | `SCRAPSCACHE_IMAGE`           |         required (prod) | Pinned image tag or digest                                    |
 | `SCRAPSCACHE_ORIGIN`          | `http://localhost:3000` | Exact public origin used by SvelteKit                         |
-| `SCRAPSCACHE_BODY_SIZE_LIMIT` |                  `110M` | Node adapter request limit; must exceed the 101 MB sync cap   |
-| `SCRAPSCACHE_RELAY_SQLD_PORT` |                  `8080` | Host port for the relay sqld HTTP interface                   |
-| `SCRAPSCACHE_OPS_SQLD_PORT`   |                  `8081` | Host port for the ops sqld HTTP interface                     |
+| `SCRAPSCACHE_BODY_SIZE_LIMIT` |                   `18M` | Node adapter request limit; must exceed the 17 MB sync cap    |
+| `SCRAPSCACHE_RELAY_SQLD_PORT` |                  `8080` | Loopback port for the relay sqld HTTP interface (no auth)     |
+| `SCRAPSCACHE_OPS_SQLD_PORT`   |                  `8081` | Loopback port for the ops sqld HTTP interface (no auth)       |
 | `TS_HOSTNAME`                 |           `scrapscache` | Tailnet machine name (`https://<name>.<tailnet>.ts.net`)      |
 | `TS_AUTHKEY`                  |                       — | Auth key or OAuth secret; required with the Tailscale overlay |
 | `TS_EXTRA_ARGS`               |                       — | Extra `tailscale up` flags (OAuth tag advertisement)          |
@@ -213,6 +227,11 @@ variables explicitly.
 Inside Compose, `HOST`, `PORT`, `SCRAPSCACHE_RELAY_DB_URL`, and
 `SCRAPSCACHE_OPS_DB_URL` are fixed to their respective sqld services. Direct `docker run`
 may override them.
+
+`SCRAPSCACHE_BODY_SIZE_LIMIT` (`M` is MiB) only needs to clear the largest request
+the app accepts: one sync round, capped at 17,000,000 bytes (a 16 MB encrypted
+attachment plus 1 MB of JSON). `18M` is 18,874,368 bytes, so the app's own limit
+decides and the adapter refuses anything far beyond it before reading it.
 
 ## Health, metrics, and administration
 

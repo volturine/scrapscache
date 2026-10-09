@@ -101,10 +101,19 @@ the long-term attachment format.
   origin, which the app frames and which can pass back nothing but a token.
   Nothing third-party ever runs on the origin that holds the sync keys, so the
   deployment verification below covers all code that can reach them
-- **Headers** in `hooks.server.ts`: `Referrer-Policy: no-referrer`,
-  `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, restrictive
-  `Permissions-Policy`, and `Cache-Control: no-transform` on HTML so a CDN cannot
-  inject scripts into the key-bearing origin
+- **Headers** in `hooks.server.ts`, on both Node and Workers:
+  `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff`,
+  `X-Frame-Options: DENY`, restrictive `Permissions-Policy`,
+  `Cross-Origin-Resource-Policy: same-origin`, and `Cache-Control: no-transform`
+  on HTML so a CDN cannot inject scripts into the key-bearing origin.
+  `Cross-Origin-Opener-Policy: same-origin` keeps other sites' windows from
+  holding a reference to an app window. The one exception is `/mcp/authorize`,
+  which an MCP client's OAuth flow may run inside a popup it opened and watches;
+  it keeps the opener so that flow can finish. Nothing else needs a cross-origin
+  window: the Turnstile challenge is a framed page (opener policy does not apply
+  to frames) that answers with `postMessage`, and push runs in the service
+  worker. Static files (the bundle, icons, the link-preview image) are served
+  before the hook, so they carry none of these and stay embeddable
 - **Rate limiting** — atomic SQL token buckets for register, auth, pairing, sync,
   push, and admin, keyed by client address with IPv6 clients bucketed by their
   /64, plus one shared bucket for registrations. Durable and shared across
@@ -115,7 +124,8 @@ the long-term attachment format.
   follow redirects, and one dispatch round wakes at most an account's device
   allowance, so the relay cannot be pointed at other hosts or used to flood one
 - **Admin token** — required for `/metrics` and every `/api/admin/*` endpoint in
-  production Compose
+  production Compose. Every one of them charges the per-address admin bucket
+  before it compares the token, so the token cannot be guessed at request speed
 - **Metrics** — process counters on Node, where one process sees every request.
   On Workers, where no isolate does, the build swaps in a module that adds to
   hourly counters in D1, and the endpoints report `activity: null` rather than
@@ -206,13 +216,17 @@ app is in use; browser storage isolation is the boundary.
 1. Terminate **HTTPS** at a reverse proxy; set `SCRAPSCACHE_ORIGIN` to the public URL.
 2. Set a strong random **`SCRAPSCACHE_ADMIN_TOKEN`**.
 3. Pin **`SCRAPSCACHE_IMAGE`** to a release tag or digest.
-4. Configure trusted proxy headers only when appropriate
-   (`SCRAPSCACHE_ADDRESS_HEADER` / `SCRAPSCACHE_XFF_DEPTH`).
-5. Set **`SCRAPSCACHE_TICK_SECRET`**; without it the scheduler endpoint is disabled
+4. Match the client-address header to how traffic arrives
+   (`SCRAPSCACHE_ADDRESS_HEADER` / `SCRAPSCACHE_XFF_DEPTH`). Compose trusts
+   `X-Forwarded-For` because its port is loopback-only; set the header empty if
+   clients reach Node directly.
+5. Keep sqld on the internal network. It runs without authentication; Compose
+   publishes it only on the host's `127.0.0.1`.
+6. Set **`SCRAPSCACHE_TICK_SECRET`**; without it the scheduler endpoint is disabled
    and reminders, pruning, and retention never run.
-6. Pin **VAPID keys** in the environment rather than letting them be generated into
+7. Pin **VAPID keys** in the environment rather than letting them be generated into
    the database, so push survives a rebuilt data store.
-7. On a usage-billed platform, configure **spend alerts and edge rate limiting**
+8. On a usage-billed platform, configure **spend alerts and edge rate limiting**
    before opening registration to the internet.
 
 ## Related source
@@ -262,3 +276,20 @@ socket and closes it (code 4401) once passed, so the client signs in again;
 deleting the account closes its sockets. Each account holds at most 16 sockets,
 and connection attempts share the events endpoint's rate limit. Sockets carry
 only cursors, never ciphertext.
+
+### Live change streams (Node)
+
+Node serves the same signals as server-sent events, authenticated with the
+`Authorization` header like any sync request, under the same rules: at most 16
+open streams per account (`MAX_SYNC_EVENT_CONNECTIONS`), each ended when its
+session expires so the client signs in again, and every stream of an account
+ended at once when its sessions are revoked (account deletion). Streams carry
+only cursors, never ciphertext.
+
+### Relay memory bounds (Node)
+
+A sync round authenticates, charges the account's rate limit and reads its whole
+body before it takes one of the process's sync slots, so a slow upload cannot
+hold a slot while its bytes arrive. Download pages and history listings read
+record sizes first and load only the ciphertexts inside the 24 MB page budget
+(always at least one record), the same budget Workers applies.

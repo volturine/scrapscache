@@ -48,7 +48,64 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 		}
 	);
 	if (!addressLimit.allowed) return rateLimitResponse(addressLimit);
+	// Authenticate, charge the account and read the whole body before taking a
+	// sync slot: the slots bound concurrent relay work, and a slow or junk upload
+	// must not hold one while its bytes trickle in.
+	const accountId = await getSyncAuth().authenticateSyncRequest(request);
+	if (!accountId) return Response.json({ error: 'Invalid sync session' }, { status: 401 });
 	const settings = await getRuntimeSettings();
+	const store = getSyncStore();
+	let accountCapacity: number;
+	try {
+		// One relay read per sync, to pick up an operator override. Deliberately
+		// not cached and not carried on the session: the session lives in the ops
+		// store and the override in the relay, which are separate databases when
+		// self-hosted, so there is nothing to join it onto.
+		accountCapacity = (await store.accountRateLimit(accountId)) ?? settings.syncPerMinute;
+	} catch (error) {
+		recordSqliteError(error);
+		return Response.json({ error: 'Sync storage is temporarily unavailable' }, { status: 503 });
+	}
+	const accountLimit = await getPublicApiLimiter().check(`sync-account:${accountId}`, {
+		capacity: accountCapacity,
+		refillWindowMs: 60_000
+	});
+	if (!accountLimit.allowed) return rateLimitResponse(accountLimit);
+	let body: {
+		cursor?: unknown;
+		envelopes?: unknown;
+		deleteSlots?: unknown;
+		limit?: unknown;
+	};
+	try {
+		body = (await readJsonBody(request, MAX_REQUEST_BYTES)) as typeof body;
+	} catch {
+		return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
+	}
+	const cursor =
+		typeof body.cursor === 'number' && Number.isInteger(body.cursor) && body.cursor >= 0
+			? body.cursor
+			: 0;
+	const envelopes = body.envelopes == null ? [] : body.envelopes;
+	if (
+		!Array.isArray(envelopes) ||
+		envelopes.length > MAX_SYNC_MUTATIONS_PER_REQUEST ||
+		!envelopes.every(isOpaqueEnvelope)
+	) {
+		return Response.json({ error: 'Invalid encrypted envelope batch' }, { status: 400 });
+	}
+	const deleteSlots = body.deleteSlots == null ? [] : body.deleteSlots;
+	if (
+		!Array.isArray(deleteSlots) ||
+		deleteSlots.length > MAX_SYNC_MUTATIONS_PER_REQUEST ||
+		!deleteSlots.every(isOpaqueDelete)
+	) {
+		return Response.json({ error: 'Invalid encrypted deletion batch' }, { status: 400 });
+	}
+	const limit =
+		typeof body.limit === 'number' && Number.isInteger(body.limit) && body.limit > 0
+			? Math.min(body.limit, 50)
+			: DEFAULT_DOWNLOAD_LIMIT;
 	const release = enterSyncRequest(settings.maxConcurrentSyncRequests);
 	if (!release) {
 		return Response.json(
@@ -56,78 +113,28 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 			{ status: 503, headers: { 'retry-after': '2' } }
 		);
 	}
+	recordSyncBatch(envelopes.length, deleteSlots.length);
+	const senderClientId = request.headers.get('x-sync-client-id') ?? undefined;
 	try {
-		const accountId = await getSyncAuth().authenticateSyncRequest(request);
-		if (!accountId) return Response.json({ error: 'Invalid sync session' }, { status: 401 });
-		let body: {
-			cursor?: unknown;
-			envelopes?: unknown;
-			deleteSlots?: unknown;
-			limit?: unknown;
-		};
-		try {
-			body = (await readJsonBody(request, MAX_REQUEST_BYTES)) as typeof body;
-		} catch {
-			return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
+		const { phaseTimings, ...result } = await store.sync(
+			accountId,
+			cursor,
+			envelopes,
+			deleteSlots,
+			limit,
+			senderClientId,
+			settings.maxAccountBytes
+		);
+		if (phaseTimings) recordSyncPhases(phaseTimings);
+		// Writers stamp edits on this clock, so device clock skew cannot decide conflicts.
+		return Response.json({ ...result, serverTime: Date.now() });
+	} catch (error) {
+		recordSqliteError(error);
+		if (error instanceof SyncQuotaExceededError) {
+			return Response.json({ error: 'Sync account storage quota exceeded' }, { status: 507 });
 		}
-		const cursor =
-			typeof body.cursor === 'number' && Number.isInteger(body.cursor) && body.cursor >= 0
-				? body.cursor
-				: 0;
-		const envelopes = body.envelopes == null ? [] : body.envelopes;
-		if (
-			!Array.isArray(envelopes) ||
-			envelopes.length > MAX_SYNC_MUTATIONS_PER_REQUEST ||
-			!envelopes.every(isOpaqueEnvelope)
-		) {
-			return Response.json({ error: 'Invalid encrypted envelope batch' }, { status: 400 });
-		}
-		const deleteSlots = body.deleteSlots == null ? [] : body.deleteSlots;
-		if (
-			!Array.isArray(deleteSlots) ||
-			deleteSlots.length > MAX_SYNC_MUTATIONS_PER_REQUEST ||
-			!deleteSlots.every(isOpaqueDelete)
-		) {
-			return Response.json({ error: 'Invalid encrypted deletion batch' }, { status: 400 });
-		}
-		const limit =
-			typeof body.limit === 'number' && Number.isInteger(body.limit) && body.limit > 0
-				? Math.min(body.limit, 50)
-				: DEFAULT_DOWNLOAD_LIMIT;
-		recordSyncBatch(envelopes.length, deleteSlots.length);
-		const senderClientId = request.headers.get('x-sync-client-id') ?? undefined;
-		try {
-			const store = getSyncStore();
-			// One relay read per sync, to pick up an operator override. Deliberately
-			// not cached and not carried on the session: the session lives in the ops
-			// store and the override in the relay, which are separate databases when
-			// self-hosted, so there is nothing to join it onto. This runs only after
-			// authentication, on a path that already makes several calls.
-			const accountLimit = await getPublicApiLimiter().check(`sync-account:${accountId}`, {
-				capacity: (await store.accountRateLimit(accountId)) ?? settings.syncPerMinute,
-				refillWindowMs: 60_000
-			});
-			if (!accountLimit.allowed) return rateLimitResponse(accountLimit);
-			const { phaseTimings, ...result } = await store.sync(
-				accountId,
-				cursor,
-				envelopes,
-				deleteSlots,
-				limit,
-				senderClientId,
-				settings.maxAccountBytes
-			);
-			if (phaseTimings) recordSyncPhases(phaseTimings);
-			// Writers stamp edits on this clock, so device clock skew cannot decide conflicts.
-			return Response.json({ ...result, serverTime: Date.now() });
-		} catch (error) {
-			recordSqliteError(error);
-			if (error instanceof SyncQuotaExceededError) {
-				return Response.json({ error: 'Sync account storage quota exceeded' }, { status: 507 });
-			}
-			console.error('[sync] current-state relay failed:', error);
-			return Response.json({ error: 'Sync storage is temporarily unavailable' }, { status: 503 });
-		}
+		console.error('[sync] current-state relay failed:', error);
+		return Response.json({ error: 'Sync storage is temporarily unavailable' }, { status: 503 });
 	} finally {
 		release();
 	}

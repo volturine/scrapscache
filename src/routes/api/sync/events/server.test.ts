@@ -2,13 +2,16 @@ import { describe, expect, it, vi } from 'vitest';
 
 const VALID_TOKEN = vi.hoisted(() => 'a'.repeat(43));
 const mocks = vi.hoisted(() => ({
-	authenticate: vi.fn((): string | null => 'account-123456789'),
+	authenticate: vi.fn((): { accountId: string; expiresAt: number } | null => ({
+		accountId: 'account-123456789',
+		expiresAt: 7_000
+	})),
 	authenticateToken: vi.fn(
 		async (token: string): Promise<{ accountId: string; expiresAt: number } | null> =>
 			token === VALID_TOKEN ? { accountId: 'account-123456789', expiresAt: 9_000 } : null
 	),
 	createEventSocket: vi.fn(async () => new Response(null, { status: 200 })),
-	createEventStream: vi.fn((_accountId: string, _signal?: AbortSignal) => {
+	createEventStream: vi.fn((_accountId: string, _expiresAt: number, _signal?: AbortSignal) => {
 		return new Response(': ok\n\n', {
 			headers: { 'Content-Type': 'text/event-stream' }
 		});
@@ -27,7 +30,7 @@ vi.mock('#lib/server/syncStore.js', () => ({
 
 vi.mock('#lib/server/syncAuth.js', () => ({
 	getSyncAuth: () => ({
-		authenticateSyncRequest: mocks.authenticate,
+		authenticateSyncSession: mocks.authenticate,
 		authenticateSyncToken: mocks.authenticateToken
 	})
 }));
@@ -58,22 +61,23 @@ async function get(clientId?: string): Promise<Response> {
 
 describe('GET /api/sync/events', () => {
 	it('returns event stream response for authenticated requests', async () => {
-		mocks.authenticate.mockReturnValueOnce('account-123456789');
 		const res = await get();
 		expect(res.status).toBe(200);
 		expect(res.headers.get('content-type')).toBe('text/event-stream');
+		// The session's expiry goes with it, so the stream ends when the session does.
 		expect(mocks.createEventStream).toHaveBeenCalledWith(
 			'account-123456789',
+			7_000,
 			expect.any(Object),
 			undefined
 		);
 	});
 
 	it('forwards the client id so the stream can suppress self-echo', async () => {
-		mocks.authenticate.mockReturnValueOnce('account-123456789');
 		await get('device-abc');
 		expect(mocks.createEventStream).toHaveBeenCalledWith(
 			'account-123456789',
+			7_000,
 			expect.any(Object),
 			'device-abc'
 		);
@@ -96,6 +100,7 @@ describe('GET /api/sync/events', () => {
 		const res = await get('not a client id!');
 		expect(res.status).toBe(400);
 		expect(mocks.createEventStream).not.toHaveBeenCalledWith(
+			expect.anything(),
 			expect.anything(),
 			expect.anything(),
 			'not a client id!'

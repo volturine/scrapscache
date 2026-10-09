@@ -3,6 +3,7 @@ import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
 import { randomBytes } from 'node:crypto';
 import { getDb, type Db } from '#lib/server/db.js';
+import { syncEventEmitter } from '#lib/server/syncEvents.js';
 
 const encoder = new TextEncoder();
 const CHALLENGE_TTL_MS = 60_000;
@@ -122,11 +123,16 @@ export class SyncAuth {
 	}
 
 	async authenticateSyncRequest(request: Request): Promise<string | null> {
+		return (await this.authenticateSyncSession(request))?.accountId ?? null;
+	}
+
+	/** The live session behind a request's `Authorization` bearer token. */
+	async authenticateSyncSession(
+		request: Request
+	): Promise<{ accountId: string; expiresAt: number } | null> {
 		const authorization = request.headers.get('authorization');
 		if (!authorization?.startsWith('Bearer ')) return null;
-		return (
-			(await this.authenticateSyncToken(authorization.slice('Bearer '.length)))?.accountId ?? null
-		);
+		return this.authenticateSyncToken(authorization.slice('Bearer '.length));
 	}
 
 	/**
@@ -162,6 +168,8 @@ export class SyncAuth {
 			sql: 'DELETE FROM auth_sessions WHERE account_id = ?',
 			args: [accountId]
 		});
+		// Live change streams were opened on those sessions; they end with them.
+		syncEventEmitter.endAccount(accountId);
 	}
 
 	async pruneExpired(now = Date.now()): Promise<void> {

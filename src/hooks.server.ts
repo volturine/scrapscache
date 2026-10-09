@@ -12,8 +12,19 @@ const SECURITY_HEADERS: ReadonlyArray<readonly [string, string]> = [
 	['strict-transport-security', 'max-age=31536000'],
 	['x-content-type-options', 'nosniff'],
 	// The pairing scanner reads a QR code with this origin's camera; frames get none.
-	['permissions-policy', 'camera=(self), geolocation=(), microphone=(), payment=(), usb=()']
+	['permissions-policy', 'camera=(self), geolocation=(), microphone=(), payment=(), usb=()'],
+	// No other site may load these responses as a subresource. Static files are
+	// served before this hook runs, so link-preview images stay embeddable.
+	['cross-origin-resource-policy', 'same-origin']
 ];
+
+/**
+ * Pages opened by another site's window keep that link, so the opener can watch
+ * the OAuth popup it started complete. Every other page drops cross-origin
+ * window references, keeping the origin that holds the sync keys out of reach
+ * of other sites' windows.
+ */
+const OPENER_KEPT = new Set(['/mcp/authorize']);
 
 /** The frame-ancestors a response declares for itself, if any. */
 function frameAncestors(policy: string | null): string | null {
@@ -68,6 +79,8 @@ export const handle: Handle = async ({ event, resolve }) => {
 				});
 
 	for (const [name, value] of SECURITY_HEADERS) response.headers.set(name, value);
+	if (!OPENER_KEPT.has(event.url.pathname))
+		response.headers.set('cross-origin-opener-policy', 'same-origin');
 	if (response.headers.get('content-type')?.toLowerCase().startsWith('text/html')) {
 		const cacheControl = response.headers.get('cache-control');
 		const directives =

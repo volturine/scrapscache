@@ -33,7 +33,12 @@ export const GET: RequestHandler = async ({ request, url, getClientAddress }) =>
 		return getSyncStore().createEventSocket(session.accountId, session.expiresAt, clientId);
 	}
 
-	const accountId = await getSyncAuth().authenticateSyncRequest(request);
-	if (!accountId) return Response.json({ error: 'Invalid sync session' }, { status: 401 });
-	return getSyncStore().createEventStream(accountId, request.signal, clientId);
+	const session = await getSyncAuth().authenticateSyncSession(request);
+	if (!session) return Response.json({ error: 'Invalid sync session' }, { status: 401 });
+	return getSyncStore().createEventStream(
+		session.accountId,
+		session.expiresAt,
+		request.signal,
+		clientId
+	);
 };

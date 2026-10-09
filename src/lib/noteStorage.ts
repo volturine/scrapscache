@@ -1,11 +1,26 @@
+import { mergeNoteLists } from './model/merge';
 import type { Label, Note, NoteImage } from './types';
 
-/** Canonical fast-boot mirrors. IndexedDB remains the durable device store. */
+/**
+ * Fast-boot mirrors, so notes show before IndexedDB answers. IndexedDB remains
+ * the durable device store, and the notes mirror may lag it: every boot merges
+ * the two.
+ */
 export const NOTES_MIRROR_KEY = 'scrapscache-notes-mirror';
 export const LABELS_MIRROR_KEY = 'scrapscache-labels-mirror';
+/**
+ * The notes whose IndexedDB write has not landed yet, keyed by id. Written
+ * synchronously before each write starts, so an edit survives a crash that
+ * comes before the write commits; the next boot replays it.
+ */
+export const PENDING_NOTES_KEY = 'scrapscache-notes-pending';
 
 function notesMirrorKey(pid: string): string {
 	return `${NOTES_MIRROR_KEY}:${pid}`;
+}
+
+function pendingNotesKey(pid: string): string {
+	return `${PENDING_NOTES_KEY}:${pid}`;
 }
 
 function labelsMirrorKey(pid: string): string {
@@ -77,18 +92,92 @@ function writeJson<T>(key: string, value: T[]): boolean {
 	}
 }
 
+function fromMirror(note: MirroredNote): Note {
+	const { images, ...rest } = note;
+	return {
+		...rest,
+		images: (images ?? []).map((image) => ({
+			...image,
+			dataUrl: ''
+		}))
+	};
+}
+
+/** The mirrored notes, with every pending write laid over them. */
 export function readNotesMirror(pid: string): Note[] {
 	if (!pid) return [];
-	return readJson<MirroredNote>(notesMirrorKey(pid)).map((note) => {
-		const { images, ...rest } = note;
-		return {
-			...rest,
-			images: (images ?? []).map((image) => ({
-				...image,
-				dataUrl: ''
-			}))
-		};
-	});
+	const mirrored = readJson<MirroredNote>(notesMirrorKey(pid)).map(fromMirror);
+	const pending = Object.values(readPendingNotes(pid)).map(fromMirror);
+	return pending.length ? mergeNoteLists(pending, mirrored) : mirrored;
+}
+
+export type PendingNotes = Record<string, MirroredNote>;
+
+/** The pending-write journal as stored: one entry per note id. */
+export function readPendingNotes(pid: string): PendingNotes {
+	if (!pid || typeof localStorage === 'undefined') return {};
+	try {
+		const parsed: unknown = JSON.parse(localStorage.getItem(pendingNotesKey(pid)) ?? '{}');
+		return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+			? (parsed as PendingNotes)
+			: {};
+	} catch (err) {
+		console.error('[storage] read pending notes failed:', err);
+		return {};
+	}
+}
+
+function writePendingNotes(pid: string, entries: PendingNotes): boolean {
+	if (typeof localStorage === 'undefined') return false;
+	const key = pendingNotesKey(pid);
+	try {
+		if (Object.keys(entries).length) localStorage.setItem(key, JSON.stringify(entries));
+		else localStorage.removeItem(key);
+		return true;
+	} catch (err) {
+		console.error('[storage] write pending notes failed:', err);
+		return false;
+	}
+}
+
+/**
+ * Journal notes before their IndexedDB writes start. Read, changed and written
+ * back, so the entries another window of the same workspace journaled stay.
+ * False when the journal could not be written.
+ */
+export function journalPendingNotes(notes: Note[], pid: string): boolean {
+	if (!pid) return false;
+	if (notes.length === 0) return true;
+	const entries = readPendingNotes(pid);
+	for (const note of notes) entries[note.id] = noteForLocalStorage(note);
+	if (writePendingNotes(pid, entries)) return true;
+	// The fast-boot mirror can fill the quota. Unsaved edits come first: drop the
+	// mirror, which only costs the next boot a moment, and journal again.
+	try {
+		localStorage.removeItem(notesMirrorKey(pid));
+	} catch {
+		return false;
+	}
+	return writePendingNotes(pid, entries);
+}
+
+/**
+ * Drop the entries whose writes landed. An entry only goes when it still holds
+ * what was written: a later edit, from this window or another, journaled its
+ * own copy and keeps it until its own write lands.
+ */
+export function settlePendingNotes(landed: PendingNotes, pid: string): void {
+	if (!pid) return;
+	const entries = readPendingNotes(pid);
+	let changed = false;
+	for (const [id, written] of Object.entries(landed)) {
+		const entry = entries[id];
+		if (entry && JSON.stringify(entry) === JSON.stringify(written)) {
+			delete entries[id];
+			changed = true;
+		}
+	}
+	if (changed) writePendingNotes(pid, entries);
 }
 
 /** Fallback mirror size when the full write exceeds the localStorage quota. */
@@ -123,6 +212,7 @@ export function clearNotesMirror(pid: string): void {
 	if (typeof localStorage === 'undefined') return;
 	try {
 		localStorage.removeItem(notesMirrorKey(pid));
+		localStorage.removeItem(pendingNotesKey(pid));
 		localStorage.removeItem(labelsMirrorKey(pid));
 	} catch {}
 }

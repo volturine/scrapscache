@@ -83,6 +83,9 @@ export default defineConfig({
 					? adapterCloudflare({ config: 'cf/wrangler.svelte.jsonc' })
 					: adapterNode(),
 			version: { name: buildVersion() },
+			// The app registers src/service-worker itself: once for the shell, and once
+			// per synced workspace for its push subscription (see #lib/serviceWorker).
+			serviceWorker: { register: false },
 			csp: {
 				mode: 'nonce',
 				directives: {

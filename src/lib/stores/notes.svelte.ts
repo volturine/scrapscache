@@ -45,10 +45,15 @@ import { uiStore } from '#lib/stores/ui.svelte.js';
 import { daysSinceTrashed, TRASH_PURGE_DAYS, cloneNote } from '#lib/utils.js';
 import { noteAttachments, toggleLineAt } from '#lib/checklistBody.js';
 import {
+	journalPendingNotes,
+	noteForLocalStorage,
 	readLabelsMirror,
 	readNotesMirror,
+	readPendingNotes,
+	settlePendingNotes,
 	writeLabelsMirror,
-	writeNotesMirror
+	writeNotesMirror,
+	type PendingNotes
 } from '#lib/noteStorage.js';
 import {
 	hydrateTombstones,
@@ -97,6 +102,9 @@ function durableNoteSignature(note: Note): string {
 		images: (note.images ?? []).map(({ dataUrl: _dataUrl, thumbUrl: _thumbUrl, ...image }) => image)
 	});
 }
+
+/** How long the fast-boot mirror may trail the notes in memory. */
+const MIRROR_DELAY_MS = 2_000;
 
 export function noteNeedsDurableWrite(current: Note | undefined, candidate: Note): boolean {
 	if (!current || durableNoteSignature(current) !== durableNoteSignature(candidate)) return true;
@@ -273,7 +281,10 @@ export class NotesStore {
 			this.mirrorToLS();
 			if (!deviceReadFailed) {
 				try {
+					const pending = readPendingNotes(this.pid);
 					await this.recoverMirrorIntoIndexedDB(dbNotes, dbLabels);
+					// Every journaled edit is in IndexedDB now.
+					settlePendingNotes(pending, this.pid);
 				} catch (err) {
 					this.recordPersistenceError('Could not restore IndexedDB from mirror', err);
 				}
@@ -443,9 +454,12 @@ export class NotesStore {
 		if (idx === -1) return;
 		this.notes[idx] = applyNoteEdit(this.notes[idx], patch, editContext);
 		const note = this.notes[idx];
-		this.mirrorToLS();
+		const pid = this.pid;
+		this.journal([note]);
+		this.scheduleMirror();
 		try {
-			await putNote(this.pid, note, noteSyncKeys(note));
+			await putNote(pid, note, noteSyncKeys(note));
+			settlePendingNotes({ [note.id]: noteForLocalStorage(note) }, pid);
 			this.lastPersistError = null;
 			this.dirty = true;
 			this.scheduleSyncPush();
@@ -585,7 +599,8 @@ export class NotesStore {
 		this.deletedNoteIds = next;
 		reminderHistoryStore.forgetNotes(this.pid, next);
 		this.notes = this.notes.filter((n) => n.id !== id);
-		this.mirrorToLS();
+		// The tombstone is on disk, so a mirror that still lists the note cannot bring it back.
+		this.scheduleMirror();
 		await deleteNote(this.pid, id).catch((err) =>
 			this.recordPersistenceError(`Could not delete note ${id}`, err)
 		);
@@ -616,7 +631,7 @@ export class NotesStore {
 			writer: editContext.writer
 		};
 		this.labels = [...this.labels, label].sort((a, b) => a.name.localeCompare(b.name));
-		this.mirrorToLS();
+		this.mirrorLabels();
 		putLabel(this.pid, label, [`label:${label.id}`]).catch((err) =>
 			this.recordPersistenceError('Could not save label', err)
 		);
@@ -638,7 +653,7 @@ export class NotesStore {
 		};
 		this.labels[idx] = renamed;
 		this.labels.sort((a, b) => a.name.localeCompare(b.name));
-		this.mirrorToLS();
+		this.mirrorLabels();
 		putLabel(this.pid, renamed, [`label:${renamed.id}`]).catch((err) =>
 			this.recordPersistenceError('Could not rename label', err)
 		);
@@ -673,8 +688,8 @@ export class NotesStore {
 				);
 			});
 			this.labels = this.labels.filter((item) => item.id !== id);
-			this.mirrorToLS();
-			for (const note of affected) this.persist(note.id);
+			this.mirrorLabels();
+			this.persistNotes(affected.map((note) => note.id));
 			this.markLabelsDeleted([id], deletedAt);
 		} else {
 			this.labels = this.labels.filter((item) => item.id !== id);
@@ -688,8 +703,8 @@ export class NotesStore {
 					editContext
 				);
 			});
-			this.mirrorToLS();
-			for (const noteId of affectedNoteIds) this.persist(noteId);
+			this.mirrorLabels();
+			this.persistNotes(affectedNoteIds);
 			this.markLabelsDeleted([id], deletedAt);
 		}
 		this.rememberRemovedLabel(label, snapshots, options);
@@ -1021,6 +1036,7 @@ export class NotesStore {
 		actionUndo.clear();
 		if (this.syncPushTimer) clearTimeout(this.syncPushTimer);
 		this.syncPushTimer = null;
+		this.cancelScheduledMirror();
 		for (const timer of this.noteRetryTimers.values()) clearTimeout(timer);
 		this.noteRetryTimers.clear();
 		this.noteRetryAttempts.clear();
@@ -1162,7 +1178,7 @@ export class NotesStore {
 		this.deletedNoteIds = next;
 		reminderHistoryStore.forgetNotes(this.pid, next);
 		this.notes = this.notes.filter((n) => !ids.includes(n.id));
-		this.mirrorToLS();
+		this.scheduleMirror();
 		this.dirty = true;
 		this.scheduleSyncPush();
 		await syncStore.queueOutbox(ids.map((id) => `note-tombstone:${id}`));
@@ -1187,12 +1203,18 @@ export class NotesStore {
 		this.scheduleSyncPush();
 	}
 
-	private mirrorToLS() {
+	private mayMirror(): boolean {
 		// A workspace removed in another window keeps no mirror either: writing
 		// one back would leave note text behind for a workspace that is gone.
-		if (isProfileReleased(this.pid)) return;
+		if (isProfileReleased(this.pid)) return false;
 		// Another window has written newer notes than this one holds.
-		if (this.staleWhileHidden === this.pid) return;
+		return this.staleWhileHidden !== this.pid;
+	}
+
+	/** Write the fast-boot mirror now: every note and label this window holds. */
+	private mirrorToLS() {
+		this.cancelScheduledMirror();
+		if (!this.mayMirror()) return;
 		if (!writeNotesMirror(this.notes, this.pid)) {
 			this.recordPersistenceError(
 				'Could not update the local notes mirror',
@@ -1200,6 +1222,44 @@ export class NotesStore {
 			);
 		}
 		writeLabelsMirror(this.labels, this.pid);
+	}
+
+	private mirrorLabels() {
+		if (this.mayMirror()) writeLabelsMirror(this.labels, this.pid);
+	}
+
+	private mirrorTimer: ReturnType<typeof setTimeout> | null = null;
+
+	/**
+	 * Refresh the fast-boot mirror once for any number of edits. Serializing every
+	 * note on each save would cost a large workspace a long task per keystroke.
+	 * Crash safety does not wait for it: each edit is journaled before its write
+	 * starts, and a hidden or closing page writes the mirror at once.
+	 */
+	private scheduleMirror() {
+		if (this.mirrorTimer) return;
+		const pid = this.pid;
+		this.mirrorTimer = setTimeout(() => {
+			this.mirrorTimer = null;
+			// The window moved to another workspace; its own boot writes that mirror.
+			if (pid === this.pid) this.mirrorToLS();
+		}, MIRROR_DELAY_MS);
+	}
+
+	private cancelScheduledMirror() {
+		if (this.mirrorTimer) clearTimeout(this.mirrorTimer);
+		this.mirrorTimer = null;
+	}
+
+	/** Journal notes whose IndexedDB writes are about to start. */
+	private journal(notes: Note[]) {
+		if (isProfileReleased(this.pid)) return;
+		if (!journalPendingNotes(notes, this.pid)) {
+			this.recordPersistenceError(
+				'Could not journal unsaved notes',
+				new Error('localStorage write failed')
+			);
+		}
 	}
 
 	private recordPersistenceError(context: string, err: unknown): void {
@@ -1226,8 +1286,10 @@ export class NotesStore {
 			this.noteRetryTimers.delete(id);
 			const note = this.notes.find((item) => item.id === id);
 			if (!note) return;
-			putNote(this.pid, note, noteSyncKeys(note))
+			const pid = this.pid;
+			putNote(pid, note, noteSyncKeys(note))
 				.then(() => {
+					settlePendingNotes({ [id]: noteForLocalStorage(note) }, pid);
 					this.noteRetryAttempts.delete(id);
 					this.lastPersistError = null;
 					this.dirty = true;
@@ -1261,22 +1323,44 @@ export class NotesStore {
 	}
 
 	private persist(id: string) {
-		const note = this.notes.find((x) => x.id === id);
-		if (!note) return;
+		this.persistNotes([id]);
+	}
+
+	private persistNotes(ids: string[]) {
+		const wanted = new Set(ids);
+		const notes = this.notes.filter((note) => wanted.has(note.id));
+		if (notes.length === 0) return;
+		const pid = this.pid;
 		// Preserve a crash-safe, blob-free copy synchronously before async IDB work.
-		this.mirrorToLS();
+		this.journal(notes);
+		this.scheduleMirror();
+		const landed: PendingNotes = {};
+		void Promise.all(
+			notes.map((note) =>
+				this.writeNote(pid, note).then((ok) => {
+					if (ok) landed[note.id] = noteForLocalStorage(note);
+				})
+			)
+		).then(() => settlePendingNotes(landed, pid));
+		this.dirty = true;
+		this.scheduleSyncPush();
+	}
+
+	/** Write one note to IndexedDB; true once it landed. A failed write retries on its own. */
+	private writeNote(pid: string, note: Note): Promise<boolean> {
+		const id = note.id;
 		// The attachments whose bytes this write carries. Only those may be released
 		// from memory once it lands: a photo added while this write was queued has
 		// its own write, which may still fail and retry from what is in memory.
 		const written = new Set(
 			(note.images ?? []).filter((image) => image.dataUrl).map((image) => image.id)
 		);
-		putNote(this.pid, note, noteSyncKeys(note))
+		return putNote(pid, note, noteSyncKeys(note))
 			.then(async () => {
 				this.lastPersistError = null;
 				// Keep only small thumbs in memory after a durable write of full blobs.
 				const idx = this.notes.findIndex((item) => item.id === id);
-				if (idx < 0) return;
+				if (idx < 0) return true;
 				const current = this.notes[idx];
 				const images = await Promise.all(
 					(current.images ?? []).map((image) =>
@@ -1285,15 +1369,15 @@ export class NotesStore {
 				);
 				if (images.some((image, i) => image !== current.images?.[i])) {
 					this.notes[idx] = { ...current, images };
-					this.mirrorToLS();
+					this.scheduleMirror();
 				}
+				return true;
 			})
 			.catch((err) => {
 				this.recordPersistenceError(`Could not save note ${id}`, err);
 				this.scheduleNoteRetry(id);
+				return false;
 			});
-		this.dirty = true;
-		this.scheduleSyncPush();
 	}
 
 	private scheduleSyncPush(delay = 5000) {
@@ -1402,7 +1486,8 @@ export class NotesStore {
 		this.labels = mergedLabels;
 		this.deletedNoteIds = tombstones;
 		this.deletedLabelIds = labelTombstones;
-		this.mirrorToLS();
+		// Everything above is on disk already; the mirror only has to catch up for the next boot.
+		this.scheduleMirror();
 		this.lastPersistError = null;
 
 		return this.syncSnapshot({ notes: durableNotes, labels: mergedLabels });

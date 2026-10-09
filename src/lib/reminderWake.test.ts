@@ -65,7 +65,7 @@ function fakeServiceWorkers(existing: string[] = []) {
 		}),
 		getRegistrations: vi.fn(async () => [...registrations.values()])
 	};
-	for (const scope of existing) container.register('/sw.js', { scope });
+	for (const scope of existing) container.register('/service-worker.js', { scope });
 	return { container, registrations };
 }
 

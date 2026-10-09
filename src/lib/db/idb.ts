@@ -10,25 +10,33 @@ import type { Label, LinkPreview, Note, NoteImage } from '#lib/types.js';
 import type { KanbanBoard } from '#lib/kanban.js';
 import { blobToDataUrl, dataUrlToBlob } from '#lib/imageBlob.js';
 import { workspaceLinkTag } from '#lib/noteLinks.js';
+import {
+	DEVICE_DB_NAME,
+	DEVICE_DB_VERSION,
+	DEVICE_STATE_STORE,
+	LINK_PREVIEWS_STORE,
+	NOTES_STORE,
+	resolveDbName,
+	SYNC_STATE_STORE,
+	WORKSPACES_STORE
+} from './names.js';
+
+export {
+	DEVICE_DB_NAME,
+	NOTES_STORE,
+	resolveDbName,
+	SYNC_STATE_STORE,
+	WORKSPACES_STORE
+} from './names.js';
 
 /**
  * v7 stores workspace state under plain keys. Earlier versions wrote some of it
  * as `<key>:<workspace id>`; the upgrade renames those in place.
  */
 const WORKSPACE_DB_VERSION = 7;
-export const NOTES_STORE = 'notes';
 export const LABELS_STORE = 'labels';
 export const IMAGES_STORE = 'note-images';
-export const SYNC_STATE_STORE = 'sync-state';
 export const SYNC_OUTBOX_STORE = 'sync-outbox';
-
-/** Lists this device's workspaces for the service worker; never names or sync keys. */
-export const DEVICE_DB_NAME = 'scrapscache-device';
-const DEVICE_DB_VERSION = 2;
-export const WORKSPACES_STORE = 'workspaces';
-const LINK_PREVIEWS_STORE = 'link-previews';
-/** Small device-wide facts that must survive a killed browser, unlike localStorage. */
-const DEVICE_STATE_STORE = 'device-state';
 
 /** One workspace on this device. Private ones have an empty sync key. */
 export interface StoredProfile {
@@ -56,11 +64,6 @@ function enqueueDeviceWrite<T>(operation: () => Promise<T>): Promise<T> {
 		() => undefined
 	);
 	return run;
-}
-
-export function resolveDbName(pid: string): string {
-	if (!pid) throw new Error('A workspace is required');
-	return `scrapscache-profile-${pid}`;
 }
 
 /** A per-workspace localStorage key. */

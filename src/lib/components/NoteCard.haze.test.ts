@@ -23,9 +23,11 @@ function note(partial: Partial<Note> = {}): Note {
 	};
 }
 
+/** The card itself: the article around the open control and the quick actions. */
 function card(): HTMLElement {
-	const found = screen.getByRole('button', { name: 'Open Trip' });
-	return found as HTMLElement;
+	const found = screen.getByRole('button', { name: 'Open Trip' }).closest('article');
+	if (!found) throw new Error('no card');
+	return found;
 }
 
 function haze(): HTMLElement {
@@ -43,6 +45,31 @@ describe('NoteCard right-click haze', () => {
 	afterEach(() => {
 		notesStore.notes = [];
 		vi.restoreAllMocks();
+	});
+
+	it('keeps the open control and the quick actions as siblings, and the preview readable', async () => {
+		const onOpen = vi.fn();
+		render(NoteCard, { props: { note: note(), onOpen } });
+		await fireEvent.contextMenu(card());
+
+		const open = screen.getByRole('button', { name: 'Open Trip' });
+		expect(open.tagName).toBe('BUTTON');
+		expect(open.childElementCount).toBe(0);
+		expect(card().getAttribute('role')).toBeNull();
+		expect(open.contains(screen.getByRole('button', { name: 'Delete note' }))).toBe(false);
+		expect(open.contains(screen.getByText('packing list'))).toBe(false);
+		expect(card().contains(screen.getByText('packing list'))).toBe(true);
+	});
+
+	it('opens the note from its open control (Enter and Space click a button)', async () => {
+		const onOpen = vi.fn();
+		render(NoteCard, { props: { note: note(), onOpen } });
+
+		const open = screen.getByRole('button', { name: 'Open Trip' });
+		await fireEvent.click(open);
+
+		expect(onOpen).toHaveBeenCalledWith('note-1');
+		expect(document.activeElement).toBe(open);
 	});
 
 	it('shows quick actions over a haze when the card is right-clicked', async () => {

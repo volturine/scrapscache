@@ -2009,6 +2009,32 @@ export const noteCardHazeGroup = {
 
 export const noteCardSuccessIcon = css({ color: 'scrapscache.success' });
 
+/**
+ * A card's keyboard and assistive-technology control: a real button laid over the
+ * whole card, beside (never around) its quick actions. Pointer presses pass through
+ * it to the card, which owns swipes, drags and click-anywhere-to-open; the button
+ * only takes focus, carries the name, and draws the focus ring.
+ */
+export const cardOpenControl = cva({
+	base: {
+		position: 'absolute',
+		inset: 0,
+		// Over the meta row (15), under the quick-action haze (20).
+		zIndex: 16,
+		rounded: 'inherit',
+		pointerEvents: 'none',
+		outline: 'none',
+		_focusVisible: { outline: '2px solid', outlineColor: 'scrapscache.focus' }
+	},
+	variants: {
+		ring: {
+			// The note card clips its overflow, so its ring is drawn inside the edge.
+			inside: { _focusVisible: { outlineOffset: '-2px' } },
+			outside: { _focusVisible: { outlineOffset: '2px' } }
+		}
+	}
+});
+
 export const noteEditorStyles = {
 	overlay: css({ position: 'fixed', inset: 0, zIndex: 50 }),
 	sheetWrap: cva({

@@ -1717,6 +1717,10 @@ export const reminderSettingsStyles = {
 	chevron: css({ ...iconSm, flexShrink: 0, ...mutedText })
 };
 
+export const storageSettingsStyles = {
+	hint: css({ px: 'md', pb: 'xs', textStyle: 'caption', ...mutedText })
+};
+
 export const colorPaletteStyles = {
 	swatch: css({
 		...square('2.5rem'),

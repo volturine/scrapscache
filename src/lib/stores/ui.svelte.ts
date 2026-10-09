@@ -24,15 +24,13 @@ function applyDocumentTheme(dark: boolean) {
 	if (typeof document === 'undefined' || !document.body) return;
 	const root = document.documentElement;
 	root.classList.toggle('dark', dark);
-	root.style.colorScheme = dark ? 'dark' : 'light';
-	// Single-source the palette: read the token Panda published instead of
-	// re-declaring the hex here (app.html keeps its own static copy because it
-	// must paint before any stylesheet or script bundle loads).
-	const bg = getComputedStyle(root).getPropertyValue('--colors-scrapscache-bg').trim();
-	if (bg) {
-		root.style.backgroundColor = bg;
-		document.body.style.backgroundColor = bg;
-	}
+	// app.html paints the first frame with inline colours before any stylesheet
+	// loads; from here on app.css draws the background and colour scheme from
+	// the `.dark` class, so the inline copies go. Nothing here reads a computed
+	// style: that would recalculate the whole document inside the click.
+	root.style.removeProperty('background-color');
+	root.style.removeProperty('color-scheme');
+	document.body.style.removeProperty('background-color');
 }
 
 const LS_KEY = 'scrapscache-ui-state';

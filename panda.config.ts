@@ -28,7 +28,10 @@ export default defineConfig({
 	},
 	conditions: {
 		extend: {
-			dark: '&:where(.dark, .dark *)',
+			// The dark tokens are declared once on `<html class="dark">` and inherited.
+			// A `.dark *` form would re-declare every token on every element, which
+			// made a theme switch recompute the whole document.
+			dark: '.dark &',
 			hoverable: {
 				'@media (hover: hover) and (pointer: fine)': {
 					'&:hover': '@slot'

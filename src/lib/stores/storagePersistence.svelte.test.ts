@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { StoragePersistenceStore } from './storagePersistence.svelte.js';
+import { StoragePersistenceStore, storagePersistenceStore } from './storagePersistence.svelte.js';
 
 function stubStorage(persisted: boolean, grant: boolean) {
 	const storage = {
@@ -21,6 +21,14 @@ describe('StoragePersistenceStore', () => {
 		expect(await store.refresh()).toBe('best-effort');
 		expect(await store.request()).toBe('persisted');
 		expect(store.state).toBe('persisted');
+		expect(store.denied).toBe(false);
+	});
+
+	it('records a refusal', async () => {
+		stubStorage(false, false);
+		const store = new StoragePersistenceStore();
+		expect(await store.request()).toBe('best-effort');
+		expect(store.denied).toBe(true);
 	});
 
 	it('asks only once per page load', async () => {
@@ -29,7 +37,7 @@ describe('StoragePersistenceStore', () => {
 		await store.refresh();
 		store.requestOnce();
 		store.requestOnce();
-		await vi.waitFor(() => expect(store.state).toBe('best-effort'));
+		await vi.waitFor(() => expect(store.denied).toBe(true));
 		expect(storage.persist).toHaveBeenCalledOnce();
 	});
 
@@ -43,12 +51,11 @@ describe('StoragePersistenceStore', () => {
 
 	it('asks again once the app is installed', async () => {
 		const storage = stubStorage(false, true);
-		const store = new StoragePersistenceStore();
-		await store.refresh();
+		await storagePersistenceStore.refresh();
 		expect(storage.persist).not.toHaveBeenCalled();
 		window.dispatchEvent(new Event('appinstalled'));
-		await vi.waitFor(() => expect(store.state).toBe('persisted'));
-		expect(storage.persist).toHaveBeenCalled();
+		await vi.waitFor(() => expect(storagePersistenceStore.state).toBe('persisted'));
+		expect(storage.persist).toHaveBeenCalledOnce();
 	});
 
 	it('is unsupported without the Storage API', async () => {

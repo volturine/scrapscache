@@ -17,13 +17,9 @@ function storageManager(): StorageManager | null {
 
 export class StoragePersistenceStore {
 	state = $state<StoragePersistence>('unsupported');
+	/** The browser turned down the last request. */
+	denied = $state(false);
 	#requested = false;
-
-	constructor() {
-		if (typeof window === 'undefined') return;
-		void this.refresh();
-		window.addEventListener('appinstalled', () => void this.request());
-	}
 
 	async refresh(): Promise<StoragePersistence> {
 		const storage = storageManager();
@@ -41,11 +37,14 @@ export class StoragePersistenceStore {
 		const storage = storageManager();
 		if (!storage) return (this.state = 'unsupported');
 		this.#requested = true;
+		let granted = false;
 		try {
-			this.state = (await storage.persist()) ? 'persisted' : 'best-effort';
+			granted = await storage.persist();
 		} catch {
-			this.state = 'best-effort';
+			// Treated as a refusal.
 		}
+		this.state = granted ? 'persisted' : 'best-effort';
+		this.denied = !granted;
 		return this.state;
 	}
 
@@ -57,3 +56,8 @@ export class StoragePersistenceStore {
 }
 
 export const storagePersistenceStore = new StoragePersistenceStore();
+
+if (typeof window !== 'undefined') {
+	void storagePersistenceStore.refresh();
+	window.addEventListener('appinstalled', () => void storagePersistenceStore.request());
+}

@@ -5,7 +5,7 @@ import type { Note } from '#lib/types.js';
 import { notesStore } from '#lib/stores/notes.svelte.js';
 import MasonryGrid from './MasonryGrid.svelte';
 
-function note(id: string): Note {
+function note(id: string, updatedAt = 1): Note {
 	return {
 		id,
 		title: id,
@@ -16,7 +16,7 @@ function note(id: string): Note {
 		trashed: false,
 		trashedAt: null,
 		createdAt: 1,
-		updatedAt: 1,
+		updatedAt,
 		reminder: null,
 		labels: []
 	};
@@ -24,11 +24,18 @@ function note(id: string): Note {
 
 const notes = [note('a'), note('b'), note('c')];
 
-/** The grid's width and the card heights the browser would report at it. */
+/** The grid's width, the font in use, and the card heights the browser would report. */
 let gridWidth = 1200;
+let fontLoaded = false;
 function cardHeight(id: string): number {
-	return (gridWidth > 1000 ? 100 : 180) + id.charCodeAt(0) - 96;
+	return (gridWidth > 1000 ? 100 : 180) + (fontLoaded ? 20 : 0) + id.charCodeAt(0) - 96;
 }
+
+class FontsStub extends EventTarget {
+	status: FontFaceSetLoadStatus = 'loaded';
+	ready = Promise.resolve(this as unknown as FontFaceSet);
+}
+let fonts: FontsStub;
 
 const observers: Array<(entries: ResizeObserverEntry[]) => void> = [];
 
@@ -47,7 +54,10 @@ function resize() {
 
 beforeEach(() => {
 	gridWidth = 1200;
+	fontLoaded = false;
 	observers.length = 0;
+	fonts = new FontsStub();
+	Object.defineProperty(document, 'fonts', { value: fonts, configurable: true });
 	vi.stubGlobal(
 		'ResizeObserver',
 		class {
@@ -72,6 +82,7 @@ beforeEach(() => {
 afterEach(() => {
 	vi.restoreAllMocks();
 	vi.unstubAllGlobals();
+	delete (document as { fonts?: unknown }).fonts;
 	notesStore.notes = [];
 });
 
@@ -107,6 +118,51 @@ describe('MasonryGrid offscreen cards', () => {
 			'auto 182px',
 			'auto 183px'
 		]);
+	});
+
+	it('renders every card again when a web font arrives', async () => {
+		render(MasonryGrid, { props: { notes, onOpen: () => {} } });
+		await nextFrame();
+		expect(wrappers()[0].style.containIntrinsicSize).toBe('auto 101px');
+
+		fontLoaded = true;
+		fonts.dispatchEvent(new Event('loadingdone'));
+		await tick();
+		expect(wrappers().map((el) => el.style.contentVisibility)).toEqual(['', '', '']);
+
+		await nextFrame();
+		expect(wrappers().map((el) => el.style.containIntrinsicSize)).toEqual([
+			'auto 121px',
+			'auto 122px',
+			'auto 123px'
+		]);
+	});
+
+	it('stops listening for fonts once unmounted', async () => {
+		const { unmount } = render(MasonryGrid, { props: { notes, onOpen: () => {} } });
+		await nextFrame();
+		unmount();
+
+		const spy = vi.spyOn(window, 'requestAnimationFrame');
+		fonts.dispatchEvent(new Event('loadingdone'));
+		expect(spy).not.toHaveBeenCalled();
+	});
+
+	it('lays a changed note out again before skipping it', async () => {
+		const { rerender } = render(MasonryGrid, { props: { notes, onOpen: () => {} } });
+		await nextFrame();
+		expect(wrappers().every((el) => el.style.contentVisibility === 'auto')).toBe(true);
+
+		await rerender({ notes: [note('a', 2), note('b'), note('c')], onOpen: () => {} });
+		const byId = (id: string) => wrappers().find((el) => el.dataset.noteHeight === id)!;
+		expect(byId('a').style.contentVisibility).toBe('');
+		expect(byId('b').style.contentVisibility).toBe('auto');
+		expect(byId('c').style.contentVisibility).toBe('auto');
+
+		// The next measurement records the new revision and skips the card again.
+		resize();
+		await tick();
+		expect(byId('a').style.contentVisibility).toBe('auto');
 	});
 
 	it('keeps measuring in place while the width holds', async () => {

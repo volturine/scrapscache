@@ -57,7 +57,7 @@
 	// and previews make estimates diverge wildly). Card heights do not depend on
 	// which column holds them — all columns share one width — so a remeasure
 	// settles instead of oscillating.
-	let measuredHeights = $state(new Map<string, number>());
+	let measuredHeights = $state(new Map<string, { h: number; updatedAt: number }>());
 	let gridEl = $state<HTMLDivElement | null>(null);
 
 	const GAP = 10;
@@ -83,7 +83,7 @@
 				if (heights[i] < heights[minIdx]) minIdx = i;
 			}
 			cols[minIdx].push(note);
-			heights[minIdx] += (measuredHeights.get(note.id) ?? estimateHeight(note)) + 10;
+			heights[minIdx] += (measuredHeights.get(note.id)?.h ?? estimateHeight(note)) + 10;
 		}
 		return cols;
 	});
@@ -92,9 +92,10 @@
 	 *  that measurement is pending. */
 	let settledWidth = $state(0);
 	/** Offscreen cards skip style, layout and paint once their height is known,
-	 *  so a page-wide restyle (the theme switch, a font load) only touches the
-	 *  cards in view. Measured heights stand in for the skipped content, which
-	 *  keeps the columns exactly where they were. */
+	 *  so a page-wide restyle (the theme switch) only touches the cards in view.
+	 *  Measured heights stand in for the skipped content, which keeps the
+	 *  columns exactly where they were. A card is skipped only at the revision
+	 *  it was measured at: a note edited offscreen lays out again first. */
 	const skipOffscreen = $derived(settledWidth > 0);
 
 	onMount(() => {
@@ -102,27 +103,25 @@
 		if (!root || typeof ResizeObserver === 'undefined') return;
 		let frame: number | undefined;
 		const measure = () => {
+			const revisions = new Map(notes.map((note) => [note.id, note.updatedAt]));
 			const cards = root.querySelectorAll<HTMLElement>('[data-note-height]');
 			let changed = measuredHeights.size !== cards.length;
-			const next = new Map<string, number>();
+			const next = new Map<string, { h: number; updatedAt: number }>();
 			for (const el of cards) {
 				const id = el.dataset.noteHeight!;
 				// Exact, not rounded: a skipped card stands at this height, and
 				// rounding would drift the column by a pixel per card.
 				const h = el.getBoundingClientRect().height;
-				next.set(id, h);
-				if (measuredHeights.get(id) !== h) changed = true;
+				const updatedAt = revisions.get(id) ?? 0;
+				next.set(id, { h, updatedAt });
+				const previous = measuredHeights.get(id);
+				if (previous?.h !== h || previous.updatedAt !== updatedAt) changed = true;
 			}
 			if (changed) measuredHeights = next;
 		};
-		const settle = () => {
-			const width = root.clientWidth;
-			if (width === settledWidth) {
-				measure();
-				return;
-			}
-			// A new column width changes every card's height, and a skipped card
-			// still reports the old one: render them all once before measuring.
+		// A skipped card still reports the height it had, so whenever every
+		// card's height may have changed, render them all once before measuring.
+		const relayout = () => {
 			settledWidth = 0;
 			if (frame !== undefined) cancelAnimationFrame(frame);
 			frame = requestAnimationFrame(() => {
@@ -131,11 +130,20 @@
 				settledWidth = root.clientWidth;
 			});
 		};
+		const settle = () => {
+			if (root.clientWidth === settledWidth) measure();
+			else relayout();
+		};
 		settle();
 		const observer = new ResizeObserver(settle);
 		observer.observe(root);
+		// A web font arriving after the first measure rewraps every card.
+		const fonts = document.fonts;
+		fonts?.addEventListener('loadingdone', relayout);
+		if (fonts?.status === 'loading') void fonts.ready.then(relayout);
 		return () => {
 			observer.disconnect();
+			fonts?.removeEventListener('loadingdone', relayout);
 			if (frame !== undefined) cancelAnimationFrame(frame);
 		};
 	});
@@ -176,7 +184,9 @@
 				style:margin-top={i < leadSpan ? `${leadOffset}px` : undefined}
 			>
 				{#each col as note (note.id)}
-					{@const skipHeight = skipOffscreen ? measuredHeights.get(note.id) : undefined}
+					{@const measured = measuredHeights.get(note.id)}
+					{@const skipHeight =
+						skipOffscreen && measured?.updatedAt === note.updatedAt ? measured.h : undefined}
 					<div
 						data-note-height={note.id}
 						style:content-visibility={skipHeight === undefined ? undefined : 'auto'}

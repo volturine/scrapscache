@@ -354,8 +354,8 @@ describe('backup and Keep import stay in the open workspace', () => {
 			const flight = navigator.locks.request(SYNC_LOCK, async () => {
 				order.push('flight');
 			});
-			for (let tick = 0; tick < 10; tick += 1) await Promise.resolve();
-			expect(order).toEqual(['import']);
+			// The import holds the lock while it loads its validation and checks space.
+			await vi.waitFor(() => expect(order).toEqual(['import']));
 
 			releaseEstimate();
 			expect(await running).toEqual({ success: true });

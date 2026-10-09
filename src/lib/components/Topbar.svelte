@@ -14,7 +14,6 @@
 	import { downloadJSON } from '#lib/utils.js';
 	import { syncStore } from '#lib/stores/sync.svelte.js';
 	import { profileCoordinator } from '#lib/stores/profiles.svelte.js';
-	import SyncModal from './SyncModal.svelte';
 	import Tooltip from './Tooltip.svelte';
 	import PwaInstallSettings from './PwaInstallSettings.svelte';
 	import ReminderNotificationSettings from './ReminderNotificationSettings.svelte';
@@ -23,19 +22,14 @@
 	import BackupImportModeDialog from './BackupImportModeDialog.svelte';
 	import ImportGuideDialog from './ImportGuideDialog.svelte';
 	import { BackupImportMode, BackupOperation } from '#lib/backup.js';
-	import { isZipBytes, readKeepTakeout, unzipKeepTakeout } from '#lib/keepImport.js';
 	import { resolveSyncStatus, SyncStatus } from '#lib/syncStatus.js';
 	import { useEditorActions } from '#lib/editorContext.js';
 	import { pairingCodeFromUrl } from '#lib/syncPairing.js';
 	import { onMount, tick } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import {
-		decryptBackup,
-		encryptBackup,
-		isEncryptedScrapsCacheBackup,
-		type EncryptedScrapsCacheBackup
-	} from '#lib/backupCrypto.js';
+	import type { EncryptedScrapsCacheBackup } from '#lib/backupCrypto.js';
+	import { reloadOnceForMissingModule } from '#lib/staleModuleReload.js';
 	import { Menu } from '@ark-ui/svelte/menu';
 	import {
 		Cloud,
@@ -89,6 +83,15 @@
 
 	onMount(openPairingLink);
 
+	// Pairing (with its QR scanner), backup encryption and Keep import load when
+	// first used, keeping them out of the first page load.
+	function loadSyncModal() {
+		return import('./SyncModal.svelte').catch((cause: unknown) => {
+			if (!reloadOnceForMissingModule(cause)) syncOpen = false;
+			throw cause;
+		});
+	}
+
 	function startBackupExport() {
 		settingsOpen = false;
 		backupImportError = '';
@@ -110,6 +113,7 @@
 		backupImportError = '';
 		try {
 			if (backupDialogMode === BackupOperation.Export) {
+				const { encryptBackup } = await import('#lib/backupCrypto.js');
 				const data = await notesStore.exportBackup();
 				const encrypted = await encryptBackup(data, passphrase);
 				downloadJSON(
@@ -120,6 +124,7 @@
 				return;
 			}
 			if (backupDialogMode === BackupOperation.Import && pendingEncryptedBackup) {
+				const { decryptBackup } = await import('#lib/backupCrypto.js');
 				const decrypted = await decryptBackup(pendingEncryptedBackup, passphrase);
 				pendingImportData = decrypted;
 				pendingEncryptedBackup = null;
@@ -169,6 +174,7 @@
 		backupImportError = '';
 		try {
 			const bytes = new Uint8Array(await file.arrayBuffer());
+			const { isZipBytes, readKeepTakeout, unzipKeepTakeout } = await import('#lib/keepImport.js');
 			if (isZipBytes(bytes)) {
 				const files = await unzipKeepTakeout(bytes);
 				if (readKeepTakeout(files).notes.length === 0)
@@ -180,6 +186,7 @@
 				return;
 			}
 			const data = JSON.parse(new TextDecoder().decode(bytes));
+			const { isEncryptedScrapsCacheBackup } = await import('#lib/backupCrypto.js');
 			if (!isEncryptedScrapsCacheBackup(data))
 				throw new Error('This is not a Scraps Cache backup or Google Keep Takeout.');
 			pendingEncryptedBackup = data;
@@ -422,15 +429,19 @@
 <svelte:document onvisibilitychange={openPairingLink} />
 
 {#if syncOpen}
-	{#key pairingCode}
-		<SyncModal
-			initialPairingCode={pairingCode}
-			onClose={() => {
-				syncOpen = false;
-				pairingCode = '';
-			}}
-		/>
-	{/key}
+	{#await loadSyncModal() then { default: SyncModal }}
+		{#key pairingCode}
+			<SyncModal
+				initialPairingCode={pairingCode}
+				onClose={() => {
+					syncOpen = false;
+					pairingCode = '';
+				}}
+			/>
+		{/key}
+	{:catch}
+		<!-- loadSyncModal reloaded the page or closed the modal. -->
+	{/await}
 {/if}
 
 <ImportGuideDialog

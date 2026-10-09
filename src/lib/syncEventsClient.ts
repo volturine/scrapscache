@@ -1,7 +1,6 @@
-import { Effect, Fiber, Random } from 'effect';
 import { openSyncEvents } from '#lib/syncEventsTransport.js';
 import { uid } from '#lib/model/index.js';
-import { reconnectBackoff } from '#lib/syncRetry.js';
+import { backoffDelay, reconnectBackoff, wait } from '#lib/syncRetry.js';
 
 export type SyncNudgeListener = (seq?: number) => void;
 
@@ -25,14 +24,10 @@ export type SyncEventsConnection = {
 	onSeq(seq?: number): void;
 };
 
-/** A connection that ended before it opened; the next attempt backs off further. */
-class NeverOpened {
-	readonly _tag = 'NeverOpened';
-}
-
 export class SyncEventsClient {
 	private active = false;
-	private connection: Fiber.Fiber<void> | null = null;
+	/** Aborts the open connection and any pending reconnect wait. */
+	private connection: AbortController | null = null;
 	private readonly listeners = new Set<SyncNudgeListener>();
 	private cleanupDomListeners: (() => void) | null = null;
 	readonly clientId: string;
@@ -91,15 +86,15 @@ export class SyncEventsClient {
 	start(): void {
 		if (this.active) return;
 		this.active = true;
-		this.connection = Effect.runFork(this.stayConnected());
+		const connection = new AbortController();
+		this.connection = connection;
+		void this.stayConnected(connection.signal);
 	}
 
 	stop(): void {
 		this.active = false;
-		const connection = this.connection;
+		this.connection?.abort();
 		this.connection = null;
-		// Interrupting aborts the open connection and any pending reconnect wait.
-		if (connection) Effect.runFork(Fiber.interrupt(connection));
 	}
 
 	accountChanged(): void {
@@ -121,34 +116,34 @@ export class SyncEventsClient {
 		return this.active && this.syncStore.isLoggedIn && isVisible;
 	}
 
-	/** One connection, for as long as it lasts: SSE on Node, a WebSocket on Workers. */
-	private session(): Effect.Effect<void, NeverOpened> {
-		return Effect.suspend(() => {
-			let opened = false;
-			return Effect.tryPromise((signal) =>
-				openSyncEvents({
-					store: this.syncStore,
-					clientId: this.clientId,
-					signal,
-					onOpen: () => {
-						if (signal.aborted) return false;
-						opened = true;
-						// Nothing signalled changes made while no connection was open
-						// (a dropped socket, an expired session, a hidden tab), so
-						// every connection starts by pulling once.
-						for (const listener of this.listeners) listener();
-						return true;
-					},
-					onSeq: (seq) => {
-						for (const listener of this.listeners) listener(seq);
-					}
-				})
-			).pipe(
-				// Abort or network disruption: either way the connection is over.
-				Effect.ignore,
-				Effect.andThen(() => (opened ? Effect.void : Effect.fail(new NeverOpened())))
-			);
-		});
+	/**
+	 * One connection, for as long as it lasts: SSE on Node, a WebSocket on Workers.
+	 * True when it opened; one that never did makes the next attempt back off further.
+	 */
+	private async session(signal: AbortSignal): Promise<boolean> {
+		let opened = false;
+		try {
+			await openSyncEvents({
+				store: this.syncStore,
+				clientId: this.clientId,
+				signal,
+				onOpen: () => {
+					if (signal.aborted) return false;
+					opened = true;
+					// Nothing signalled changes made while no connection was open
+					// (a dropped socket, an expired session, a hidden tab), so
+					// every connection starts by pulling once.
+					for (const listener of this.listeners) listener();
+					return true;
+				},
+				onSeq: (seq) => {
+					for (const listener of this.listeners) listener(seq);
+				}
+			});
+		} catch {
+			// Abort or network disruption: either way the connection is over.
+		}
+		return opened;
 	}
 
 	/**
@@ -156,13 +151,16 @@ export class SyncEventsClient {
 	 * 2 to 30 seconds; one that opened and later dropped starts that over after a
 	 * single short pause, so a relay restart is not met by every device at once.
 	 */
-	private stayConnected(): Effect.Effect<void> {
-		const pause = Random.nextBetween(1_600, 2_400).pipe(Effect.flatMap(Effect.sleep));
-		return Effect.suspend(() => (this.wanted() ? this.session() : Effect.void)).pipe(
-			Effect.retry({ schedule: reconnectBackoff, while: () => this.wanted() }),
-			Effect.andThen(Effect.suspend(() => (this.wanted() ? pause : Effect.void))),
-			Effect.repeat({ while: () => this.wanted() }),
-			Effect.ignore
-		);
+	private async stayConnected(signal: AbortSignal): Promise<void> {
+		let failures = 0;
+		while (!signal.aborted && this.wanted()) {
+			const opened = await this.session(signal);
+			if (signal.aborted || !this.wanted()) return;
+			failures = opened ? 0 : failures + 1;
+			await wait(
+				opened ? 1_600 + Math.random() * 800 : backoffDelay(reconnectBackoff, failures - 1),
+				signal
+			);
+		}
 	}
 }

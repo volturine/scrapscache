@@ -69,14 +69,12 @@ import {
 	fileToNoteImage,
 	prepareAttachmentForMemory
 } from '#lib/noteImages.js';
-import { materializeKeepTakeout, readKeepTakeout } from '#lib/keepImport.js';
 import { isCanvasAttachment } from '#lib/canvasAttachment.js';
 import { replacementFitsStorage } from '#lib/storageCapacity.js';
 import { formatStorageError } from '#lib/imageBlob.js';
 import {
 	BackupImportMode,
 	importedReminderHistory,
-	normalizeBackup,
 	prepareImportedNotes,
 	type ScrapsCacheBackup
 } from '#lib/backup.js';
@@ -771,15 +769,11 @@ export class NotesStore {
 		mode: BackupImportMode
 	): Promise<{ success: boolean; error?: string }> {
 		if (this.importing) return { success: false, error: 'An import is already running.' };
-		const backup = normalizeBackup(data);
-		if (!backup)
-			return { success: false, error: 'That file is not a valid Scraps Cache full backup.' };
 		// The workspace on screen when the import was chosen: it lands there or nowhere.
 		const pid = this.pid;
 		// Claimed before the lock is requested so a workspace switch is refused
 		// outright rather than queueing behind an import that may run for minutes.
 		this.importing = true;
-		actionUndo.clear();
 		try {
 			// Under the sync lock: a flight that landed partway through an import
 			// would write the notes it pulled over the imported ones and push the
@@ -790,6 +784,13 @@ export class NotesStore {
 				// now would overwrite a workspace nobody chose and push it to its cloud.
 				if (this.pid !== pid || isProfileReleased(pid))
 					return { success: false, error: IMPORT_TARGET_GONE };
+				// Validation loads only when a backup is imported. It runs under the lock,
+				// which is requested synchronously so no flight can slip in ahead of it.
+				const { normalizeBackup } = await import('#lib/backupNormalize.js');
+				const backup = normalizeBackup(data);
+				if (!backup)
+					return { success: false, error: 'That file is not a valid Scraps Cache full backup.' };
+				actionUndo.clear();
 				const now = syncClock.now();
 				const importedNotes = prepareImportedNotes(backup.notes, mode, editContext);
 				const importedIds = new Map(
@@ -914,14 +915,11 @@ export class NotesStore {
 		mode: BackupImportMode
 	): Promise<{ success: boolean; error?: string }> {
 		if (this.importing) return { success: false, error: 'An import is already running.' };
-		if (readKeepTakeout(files).notes.length === 0)
-			return { success: false, error: 'That zip does not contain Google Keep notes.' };
 		// The workspace on screen when the import was chosen: it lands there or nowhere.
 		const pid = this.pid;
 		// Claimed before the lock is requested so a workspace switch is refused
 		// outright rather than queueing behind an import that may run for minutes.
 		this.importing = true;
-		actionUndo.clear();
 		try {
 			// Under the sync lock: a flight that landed partway through an import
 			// would write the notes it pulled over the imported ones and push the
@@ -932,6 +930,12 @@ export class NotesStore {
 				// now would overwrite a workspace nobody chose and push it to its cloud.
 				if (this.pid !== pid || isProfileReleased(pid))
 					return { success: false, error: IMPORT_TARGET_GONE };
+				// The Keep reader loads only when a Takeout is imported. It runs under the
+				// lock, which is requested synchronously so no flight can slip in ahead of it.
+				const { materializeKeepTakeout, readKeepTakeout } = await import('#lib/keepImport.js');
+				if (readKeepTakeout(files).notes.length === 0)
+					return { success: false, error: 'That zip does not contain Google Keep notes.' };
+				actionUndo.clear();
 				const now = Date.now();
 				const materialized = await materializeKeepTakeout(files, (file) =>
 					fileToNoteImage(file, 'compressed')

@@ -56,4 +56,16 @@ describe('PwaInstallSettings', () => {
 		expect(screen.getByRole('menuitem', { name: 'Install app' })).toBeTruthy();
 		expect(screen.queryByRole('button', { name: 'Dismiss install prompt' })).toBeNull();
 	});
+
+	it('shows the iOS steps as a modal dialog that Got it closes', async () => {
+		render(PwaInstallSettings);
+		await fireEvent.click(screen.getByRole('button', { name: 'Open settings menu' }));
+		pwaInstallStore.showIOSHelp = true;
+
+		const dialog = await screen.findByRole('dialog', { name: 'Install Scraps Cache' });
+		expect(dialog.getAttribute('aria-modal')).toBe('true');
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Got it' }));
+		expect(pwaInstallStore.showIOSHelp).toBe(false);
+	});
 });

@@ -366,36 +366,19 @@
 		}
 	});
 
-	const metaDescription = $derived.by(() => {
-		switch (uiStore.view) {
-			case 'kanban':
-				return 'Organize and manage your notes visually in customizable Kanban columns.';
-			case 'reminders':
-				return 'Keep track of scheduled alerts, deadlines, and reminders in Scraps Cache.';
-			case 'archive':
-				return 'Browse archived notes stored securely offline with optional encryption.';
-			case 'trash':
-				return 'Review and restore deleted notes, or permanently empty trash.';
-			case 'label': {
-				const label = notesStore.labels.find((l) => l.id === uiStore.activeLabelId);
-				return label
-					? `Notes tagged with #${label.name} in Scraps Cache.`
-					: 'Labeled notes in Scraps Cache.';
-			}
-			default:
-				return 'Offline-first notes with optional end-to-end encrypted multi-device sync. Private by design, fast, and self-hostable.';
-		}
+	// src/app.html owns the theme-color meta (its boot script sets it before paint);
+	// a second one here would lose to it, so the theme follows by updating that one.
+	$effect(() => {
+		document
+			.querySelector('meta[name="theme-color"]')
+			?.setAttribute('content', uiStore.effectiveDark ? '#1a1a1a' : '#ffffff');
 	});
 </script>
 
+<!-- Description and preview tags are the app's defaults in src/app.html; only the
+     tab title follows the view. -->
 <svelte:head>
 	<title>{metaTitle}</title>
-	<meta name="description" content={metaDescription} />
-	<meta property="og:title" content={metaTitle} />
-	<meta property="og:description" content={metaDescription} />
-	<meta name="twitter:title" content={metaTitle} />
-	<meta name="twitter:description" content={metaDescription} />
-	<meta name="theme-color" content={uiStore.effectiveDark ? '#1a1a1a' : '#ffffff'} />
 </svelte:head>
 
 <svelte:window onpaste={handleGalleryPaste} onkeydown={runUndoChord} />

@@ -28,6 +28,10 @@ Semantic aliases only (`scrapscache.*`); each carries a light and dark value:
 - **Controls:** `interactiveHover`, `interactiveActive`, `controlSubtle`, `controlSubtleHover`
 - **On media (photos, canvases, video):** `media*` tokens — dark glass surfaces and white text that work over any image, in both themes
 - **Focus:** `focus` ring color, 2px, `outlineOffset: 2px` (−2px inside menus)
+- **On coloured notes:** `onNote.*` — the `noteSurface` recipe re-points
+  `textMuted`, `badgeText`, `overdue`, `accent` and `focus` to these inside every
+  coloured note, so components keep using the `scrapscache.*` names and still meet
+  4.5:1 (3:1 for focus) on every note colour; `theme.contrast.test.ts` checks it
 
 Theme switch is a `dark` class on `<html>`; `mode()` in `panda/theme.ts` pairs
 every value. Nothing else branches on theme.

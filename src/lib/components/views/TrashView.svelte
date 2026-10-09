@@ -8,7 +8,7 @@
 	import { Trash2 } from '@lucide/svelte';
 	import { css } from 'styled-system/css';
 	import { button, text } from 'styled-system/recipes';
-	import { viewPage } from '$panda/styles';
+	import { viewHeading, viewPage } from '$panda/styles';
 
 	const { openNote: openEditor } = useEditorActions();
 	const trashed = $derived(notesStore.trashedNotes);
@@ -22,6 +22,7 @@
 </script>
 
 <div class={viewPage}>
+	<h1 class={viewHeading}>Trash</h1>
 	{#if trashed.length === 0}
 		<EmptyState
 			icon={Trash2}

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { createNote, editor, noteCard, openEmptyApp } from './app';
+import { createNote, editor, noteCard, noteCardOpen, openEmptyApp } from './app';
 
 test('a due reminder shows the in-app alert and can be dismissed', async ({ page }) => {
 	await openEmptyApp(page);
@@ -21,7 +21,9 @@ test('a due reminder shows the in-app alert and can be dismissed', async ({ page
 
 	await page.keyboard.press('Escape');
 	await expect(editor(page)).toBeHidden();
-	await expect(noteCard(page, 'Call the vet')).toHaveAccessibleName(/overdue reminder/);
+	// Focus returns to the card that opened the note.
+	await expect(noteCardOpen(page, 'Call the vet')).toBeFocused();
+	await expect(noteCardOpen(page, 'Call the vet')).toHaveAccessibleName(/overdue reminder/);
 
 	await page.reload();
 	await expect(noteCard(page, 'Call the vet')).toBeVisible();

@@ -6,6 +6,7 @@
 	import { ChevronLeft, Download } from '@lucide/svelte';
 	import { DownloadTrigger } from '@ark-ui/svelte/download-trigger';
 	import { portalToAppFloat } from '#lib/appViewport.js';
+	import { modalLayer } from '#lib/modalLayer.js';
 	import { onDestroy, onMount } from 'svelte';
 	import { fullscreen } from '$panda/styles';
 
@@ -95,7 +96,14 @@
 <svelte:window onkeydown={attachment ? onKeydown : undefined} />
 
 {#if attachment}
-	<div {@attach portal}>
+	<div
+		{@attach portal}
+		{@attach modalLayer}
+		role="dialog"
+		tabindex="-1"
+		aria-modal="true"
+		aria-label={attachment.name || 'Attachment'}
+	>
 		<div class={fs.shell}>
 			<header class={fs.header}>
 				<button type="button" class={headerBtn} onclick={close} aria-label="Close file">

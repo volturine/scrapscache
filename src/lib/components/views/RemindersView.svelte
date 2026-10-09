@@ -9,7 +9,7 @@
 	import { dayKey } from '#lib/utils.js';
 	import { MediaQuery } from 'svelte/reactivity';
 	import { css } from 'styled-system/css';
-	import { notesShell, viewPage } from '$panda/styles';
+	import { notesShell, viewHeading, viewPage } from '$panda/styles';
 
 	const { openNote: openEditor } = useEditorActions();
 	const reminders = $derived(notesStore.notesWithReminders);
@@ -41,6 +41,7 @@
 </script>
 
 <div class={viewPage}>
+	<h1 class={viewHeading}>Reminders</h1>
 	{#if embedCalendar}
 		<div class={css({ position: 'relative' })}>
 			<NotesFeed notes={visible} onOpen={openEditor}>

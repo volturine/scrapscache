@@ -5,13 +5,14 @@
 	import { useEditorActions } from '#lib/editorContext.js';
 	import EmptyState from '#lib/components/EmptyState.svelte';
 	import { Archive } from '@lucide/svelte';
-	import { viewPage } from '$panda/styles';
+	import { viewHeading, viewPage } from '$panda/styles';
 
 	const { openNote: openEditor } = useEditorActions();
 	const archived = $derived(notesStore.archivedNotes);
 </script>
 
 <div class={viewPage}>
+	<h1 class={viewHeading}>Archive</h1>
 	{#if archived.length === 0}
 		<EmptyState
 			icon={Archive}

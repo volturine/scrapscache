@@ -12,7 +12,7 @@ describe('Excalidraw host', () => {
 		// A CSS import would make SvelteKit block every notes page on Excalidraw's stylesheet.
 		expect(hostSource).not.toMatch(/import '@excalidraw\/excalidraw\/index\.css'/);
 		expect(hostSource).toMatch(/from '@excalidraw\/excalidraw\/index\.css\?url'/);
-		expect(hostSource).toMatch(/await loadStylesheet\(\);/);
+		expect(hostSource).toMatch(/await linkStylesheet\(stylesheetUrl\);/);
 		expect(viteConfig).toMatch(/development\|production/);
 	});
 });

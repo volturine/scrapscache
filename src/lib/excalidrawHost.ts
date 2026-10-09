@@ -14,6 +14,7 @@ import type {
 } from '@excalidraw/excalidraw/types';
 import type { CanvasElement, CanvasFile, CanvasScene } from './canvasAttachment';
 import { stableStringify } from './model/stableStringify';
+import { linkStylesheet } from './stylesheetLink';
 
 const THUMBNAIL_WIDTH = 480;
 const THUMBNAIL_HEIGHT = 360;
@@ -176,30 +177,11 @@ export async function restoreSceneFromBlob(blob: Blob): Promise<CanvasScene> {
 	};
 }
 
-let stylesheet: Promise<void> | null = null;
-
-/** Add Excalidraw's stylesheet once, resolving when it applies. A failed load is tried again next time. */
-function loadStylesheet(): Promise<void> {
-	stylesheet ??= new Promise<void>((resolve, reject) => {
-		const link = document.createElement('link');
-		link.rel = 'stylesheet';
-		link.href = stylesheetUrl;
-		link.onload = () => resolve();
-		link.onerror = () => {
-			link.remove();
-			stylesheet = null;
-			reject(new Error('Could not load the canvas editor styles.'));
-		};
-		document.head.append(link);
-	});
-	return stylesheet;
-}
-
 export async function mountExcalidraw(
 	node: HTMLElement,
 	options: HostOptions
 ): Promise<ExcalidrawHost> {
-	await loadStylesheet();
+	await linkStylesheet(stylesheetUrl);
 	return new Promise((resolve) => {
 		let root: Root | null = createRoot(node);
 		let elements: readonly ExcalidrawElement[] = sceneElements(

@@ -10,7 +10,7 @@
 		type CanvasScene
 	} from '#lib/canvasAttachment.js';
 	import type { ExcalidrawHost } from '#lib/excalidrawHost.js';
-	import { isMissingModuleError, reloadOnceForMissingModule } from '#lib/staleModuleReload.js';
+	import { loadLazyModule, STALE_MODULE_MESSAGE } from '#lib/staleModuleReload.js';
 	import type { NoteImage } from '#lib/types.js';
 	import { uiStore } from '#lib/stores/ui.svelte.js';
 	import { canvasLibraryStore } from '#lib/stores/canvasLibrary.js';
@@ -48,7 +48,7 @@
 				if (attachment) initialScene = await decodeCanvasAttachment(attachment);
 				if (cancelled || !hostNode) return;
 				(window as Window & { EXCALIDRAW_ASSET_PATH?: string }).EXCALIDRAW_ASSET_PATH = '/';
-				const { mountExcalidraw } = await import('#lib/excalidrawHost.js');
+				const { mountExcalidraw } = await loadLazyModule(() => import('#lib/excalidrawHost.js'));
 				if (cancelled || !hostNode) return;
 				const mounted = await mountExcalidraw(hostNode, {
 					initialScene,
@@ -66,13 +66,8 @@
 				stopLibrary = canvasLibraryStore.subscribe((items) => mounted.showLibrary(items));
 				mounted.showLibrary(canvasLibraryStore.items());
 			} catch (cause) {
-				if (reloadOnceForMissingModule(cause)) return;
-				staleModule = isMissingModuleError(cause);
-				error = staleModule
-					? 'Could not load the canvas editor. Reload the page and try again.'
-					: cause instanceof Error
-						? cause.message
-						: 'Could not open this canvas.';
+				staleModule = cause instanceof Error && cause.message === STALE_MODULE_MESSAGE;
+				error = cause instanceof Error ? cause.message : 'Could not open this canvas.';
 			} finally {
 				if (!cancelled) loading = false;
 			}

@@ -14,6 +14,7 @@
 	import { downloadJSON } from '#lib/utils.js';
 	import { syncStore } from '#lib/stores/sync.svelte.js';
 	import { profileCoordinator } from '#lib/stores/profiles.svelte.js';
+	import SyncModalUnavailable from './SyncModalUnavailable.svelte';
 	import Tooltip from './Tooltip.svelte';
 	import PwaInstallSettings from './PwaInstallSettings.svelte';
 	import ReminderNotificationSettings from './ReminderNotificationSettings.svelte';
@@ -29,7 +30,7 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import type { EncryptedScrapsCacheBackup } from '#lib/backupCrypto.js';
-	import { reloadOnceForMissingModule } from '#lib/staleModuleReload.js';
+	import { loadLazyModule } from '#lib/staleModuleReload.js';
 	import { Menu } from '@ark-ui/svelte/menu';
 	import {
 		Cloud,
@@ -85,12 +86,9 @@
 
 	// Pairing (with its QR scanner), backup encryption and Keep import load when
 	// first used, keeping them out of the first page load.
-	function loadSyncModal() {
-		return import('./SyncModal.svelte').catch((cause: unknown) => {
-			if (!reloadOnceForMissingModule(cause)) syncOpen = false;
-			throw cause;
-		});
-	}
+	const loadSyncModal = () => loadLazyModule(() => import('./SyncModal.svelte'));
+	const loadBackupCrypto = () => loadLazyModule(() => import('#lib/backupCrypto.js'));
+	const loadKeepImport = () => loadLazyModule(() => import('#lib/keepImport.js'));
 
 	function startBackupExport() {
 		settingsOpen = false;
@@ -113,7 +111,7 @@
 		backupImportError = '';
 		try {
 			if (backupDialogMode === BackupOperation.Export) {
-				const { encryptBackup } = await import('#lib/backupCrypto.js');
+				const { encryptBackup } = await loadBackupCrypto();
 				const data = await notesStore.exportBackup();
 				const encrypted = await encryptBackup(data, passphrase);
 				downloadJSON(
@@ -124,7 +122,7 @@
 				return;
 			}
 			if (backupDialogMode === BackupOperation.Import && pendingEncryptedBackup) {
-				const { decryptBackup } = await import('#lib/backupCrypto.js');
+				const { decryptBackup } = await loadBackupCrypto();
 				const decrypted = await decryptBackup(pendingEncryptedBackup, passphrase);
 				pendingImportData = decrypted;
 				pendingEncryptedBackup = null;
@@ -174,7 +172,7 @@
 		backupImportError = '';
 		try {
 			const bytes = new Uint8Array(await file.arrayBuffer());
-			const { isZipBytes, readKeepTakeout, unzipKeepTakeout } = await import('#lib/keepImport.js');
+			const { isZipBytes, readKeepTakeout, unzipKeepTakeout } = await loadKeepImport();
 			if (isZipBytes(bytes)) {
 				const files = await unzipKeepTakeout(bytes);
 				if (readKeepTakeout(files).notes.length === 0)
@@ -186,7 +184,7 @@
 				return;
 			}
 			const data = JSON.parse(new TextDecoder().decode(bytes));
-			const { isEncryptedScrapsCacheBackup } = await import('#lib/backupCrypto.js');
+			const { isEncryptedScrapsCacheBackup } = await loadBackupCrypto();
 			if (!isEncryptedScrapsCacheBackup(data))
 				throw new Error('This is not a Scraps Cache backup or Google Keep Takeout.');
 			pendingEncryptedBackup = data;
@@ -439,8 +437,14 @@
 				}}
 			/>
 		{/key}
-	{:catch}
-		<!-- loadSyncModal reloaded the page or closed the modal. -->
+	{:catch cause}
+		<SyncModalUnavailable
+			message={cause instanceof Error ? cause.message : 'Could not open sync settings.'}
+			onClose={() => {
+				syncOpen = false;
+				pairingCode = '';
+			}}
+		/>
 	{/await}
 {/if}
 

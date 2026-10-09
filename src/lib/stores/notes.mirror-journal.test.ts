@@ -1,13 +1,18 @@
 /**
  * A save journals only the note it changes. The fast-boot mirror of every note
- * is written once for many edits, and an edit whose IndexedDB write never
- * landed still comes back on the next boot.
+ * is written once edits pause, and an edit whose IndexedDB write never landed
+ * still comes back on the next boot.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as idb from '#lib/db/idb.js';
 import { clearAllNotes, getAllNotesMetadata } from '#lib/db/idb.js';
-import { NOTES_MIRROR_KEY, PENDING_NOTES_KEY, readPendingNotes } from '#lib/noteStorage.js';
+import {
+	journalPendingNotes,
+	NOTES_MIRROR_KEY,
+	PENDING_NOTES_KEY,
+	readPendingNotes
+} from '#lib/noteStorage.js';
 import type { Note } from '#lib/types.js';
 import { notesStore } from './notes.svelte';
 import { TEST_WORKSPACE } from '../../tests/workspace';
@@ -76,6 +81,33 @@ describe('saving a note', () => {
 		expect(localStorage.getItem(PENDING)).toBeNull();
 	});
 
+	it('waits for typing to pause before mirroring every note', async () => {
+		vi.useFakeTimers();
+		const setItem = vi.spyOn(Storage.prototype, 'setItem');
+
+		// Steady typing: a save every second for half a minute.
+		for (let index = 0; index < 30; index++) {
+			notesStore.updateNote('n7', { title: `edit ${index}` });
+			await vi.advanceTimersByTimeAsync(1_000);
+		}
+		expect(writesTo(setItem, MIRROR)).toEqual([]);
+
+		await vi.advanceTimersByTimeAsync(2_000);
+		expect(writesTo(setItem, MIRROR)).toHaveLength(1);
+		expect(JSON.parse(localStorage.getItem(MIRROR) ?? '[]')[0]).toBeDefined();
+	});
+
+	it('mirrors at once when the page is hidden', () => {
+		vi.useFakeTimers();
+		notesStore.updateNote('n7', { title: 'typed, then switched away' });
+		const setItem = vi.spyOn(Storage.prototype, 'setItem');
+		vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+
+		window.dispatchEvent(new Event('visibilitychange'));
+
+		expect(writesTo(setItem, MIRROR)).toHaveLength(1);
+	});
+
 	it('journals a label removal across its notes in one write', () => {
 		vi.useFakeTimers();
 		notesStore.labels = [{ id: 'l1', name: 'work', createdAt: 1, updatedAt: 1 }];
@@ -112,6 +144,21 @@ describe('saving a note', () => {
 		]);
 		// Replayed into IndexedDB, so the journal lets it go.
 		expect(readPendingNotes(TEST_WORKSPACE)).toEqual({});
+	});
+
+	it("keeps another window's entry journaled while this one boots", async () => {
+		notesStore.notes = [];
+		notesStore.loaded = false;
+		const read = idb.getAllNotesMetadata;
+		// Another window saves while this boot waits on IndexedDB, after it read the journal.
+		vi.spyOn(idb, 'getAllNotesMetadata').mockImplementationOnce(async (pid) => {
+			journalPendingNotes([{ ...note('elsewhere'), title: 'still being written' }], pid);
+			return read(pid);
+		});
+
+		await notesStore.init();
+
+		expect(Object.keys(readPendingNotes(TEST_WORKSPACE))).toEqual(['elsewhere']);
 	});
 
 	it('keeps a newer journaled edit when an older write lands', async () => {

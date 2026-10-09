@@ -104,10 +104,10 @@ function fromMirror(note: MirroredNote): Note {
 }
 
 /** The mirrored notes, with every pending write laid over them. */
-export function readNotesMirror(pid: string): Note[] {
+export function readNotesMirror(pid: string, journal = readPendingNotes(pid)): Note[] {
 	if (!pid) return [];
 	const mirrored = readJson<MirroredNote>(notesMirrorKey(pid)).map(fromMirror);
-	const pending = Object.values(readPendingNotes(pid)).map(fromMirror);
+	const pending = Object.values(journal).map(fromMirror);
 	return pending.length ? mergeNoteLists(pending, mirrored) : mirrored;
 }
 
@@ -183,14 +183,26 @@ export function settlePendingNotes(landed: PendingNotes, pid: string): void {
 /** Fallback mirror size when the full write exceeds the localStorage quota. */
 export const MIRROR_FALLBACK_LIMIT = 50;
 
+/**
+ * Per workspace, the fewest notes whose full mirror did not fit. A mirror of at
+ * least as many is not serialized again only to fail; deleting notes lifts it.
+ */
+const overQuota = new Map<string, number>();
+
 /** True when any mirror write landed; false means the mirror went stale. */
 export function writeNotesMirror(notes: Note[], pid: string): boolean {
 	if (!pid) return false;
 	const key = notesMirrorKey(pid);
-	if (writeJson(key, notes.map(noteForLocalStorage))) return true;
-	// The full mirror exceeded the quota. Keep crash protection for the most
-	// recent notes — the ones most likely to have unsynced edits — instead of
-	// letting the mirror go entirely stale.
+	const limit = overQuota.get(pid);
+	if (limit === undefined || notes.length < limit) {
+		if (writeJson(key, notes.map(noteForLocalStorage))) {
+			overQuota.delete(pid);
+			return true;
+		}
+		overQuota.set(pid, Math.min(limit ?? notes.length, notes.length));
+	}
+	// The full mirror exceeded the quota. Keep the most recent notes for a fast
+	// boot instead of letting the mirror go entirely stale.
 	const recent = [...notes]
 		.sort((left, right) => right.updatedAt - left.updatedAt)
 		.slice(0, MIRROR_FALLBACK_LIMIT)

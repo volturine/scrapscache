@@ -103,7 +103,7 @@ function durableNoteSignature(note: Note): string {
 	});
 }
 
-/** How long the fast-boot mirror may trail the notes in memory. */
+/** How long edits must pause before the fast-boot mirror catches up. */
 const MIRROR_DELAY_MS = 2_000;
 
 export function noteNeedsDurableWrite(current: Note | undefined, candidate: Note): boolean {
@@ -214,7 +214,10 @@ export class NotesStore {
 		this.staleWhileHidden = null;
 		await syncStore.ensureProfilesLoaded();
 
-		const mirrorNotes = readNotesMirror(this.pid);
+		// One read of the journal: these are the entries this boot replays, so only
+		// these may be settled. Another window may journal more while this awaits.
+		const pending = readPendingNotes(this.pid);
+		const mirrorNotes = readNotesMirror(this.pid, pending);
 		const mirrorLabels = readLabelsMirror(this.pid);
 		let dbNotes: Note[] = [];
 		let dbLabels: Label[] = [];
@@ -281,9 +284,8 @@ export class NotesStore {
 			this.mirrorToLS();
 			if (!deviceReadFailed) {
 				try {
-					const pending = readPendingNotes(this.pid);
 					await this.recoverMirrorIntoIndexedDB(dbNotes, dbLabels);
-					// Every journaled edit is in IndexedDB now.
+					// Every edit journaled before this boot read the journal is in IndexedDB now.
 					settlePendingNotes(pending, this.pid);
 				} catch (err) {
 					this.recordPersistenceError('Could not restore IndexedDB from mirror', err);
@@ -1231,13 +1233,14 @@ export class NotesStore {
 	private mirrorTimer: ReturnType<typeof setTimeout> | null = null;
 
 	/**
-	 * Refresh the fast-boot mirror once for any number of edits. Serializing every
-	 * note on each save would cost a large workspace a long task per keystroke.
-	 * Crash safety does not wait for it: each edit is journaled before its write
-	 * starts, and a hidden or closing page writes the mirror at once.
+	 * Refresh the fast-boot mirror once edits pause. Serializing every note on
+	 * each save would cost a large workspace a long task per keystroke, and so
+	 * would doing it every few seconds of steady typing. Crash safety does not
+	 * wait for it: each edit is journaled before its write starts, and a hidden
+	 * or closing page writes the mirror at once.
 	 */
 	private scheduleMirror() {
-		if (this.mirrorTimer) return;
+		this.cancelScheduledMirror();
 		const pid = this.pid;
 		this.mirrorTimer = setTimeout(() => {
 			this.mirrorTimer = null;

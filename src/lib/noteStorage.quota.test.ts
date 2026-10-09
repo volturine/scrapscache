@@ -96,4 +96,33 @@ describe('notes mirror quota fallback (#83)', () => {
 		expect(Object.keys(readPendingNotes(TEST_WORKSPACE))).toEqual(['edited']);
 		expect(readNotesMirror(TEST_WORKSPACE).map(({ id }) => id)).toEqual(['edited']);
 	});
+
+	it('does not serialize a full mirror again that cannot fit until notes are removed', () => {
+		const pid = 'quota-skip';
+		const notes = Array.from({ length: 200 }, (_, index) => note(`n${index}`, index));
+		const real = Storage.prototype.setItem;
+		const setItem = vi
+			.spyOn(Storage.prototype, 'setItem')
+			.mockImplementation(function (key, value) {
+				if (value.length > 20_000) throw new DOMException('QuotaExceededError');
+				real.call(localStorage, key, value);
+			});
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+		const fullAttempts = () =>
+			setItem.mock.calls.filter(([, value]) => String(value).length > 20_000).length;
+
+		writeNotesMirror(notes, pid);
+		expect(fullAttempts()).toBe(1);
+
+		// The same notes, edited: straight to the recent ones.
+		writeNotesMirror(notes, pid);
+		writeNotesMirror([...notes, note('n200', 200)], pid);
+		expect(fullAttempts()).toBe(1);
+		expect(readNotesMirror(pid)).toHaveLength(MIRROR_FALLBACK_LIMIT);
+
+		// Fewer notes may fit again.
+		writeNotesMirror(notes.slice(0, 10), pid);
+		logged.mockRestore();
+		expect(readNotesMirror(pid)).toHaveLength(10);
+	});
 });

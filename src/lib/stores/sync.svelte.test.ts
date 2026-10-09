@@ -201,7 +201,7 @@ describe('client sync state machine', () => {
 		store.account = createSyncIdentity();
 		const fetchMock = vi
 			.fn()
-			.mockResolvedValueOnce(Response.json({ migrationRequired: true }, { status: 409 }));
+			.mockResolvedValueOnce(Response.json({ error: 'conflict' }, { status: 409 }));
 		vi.stubGlobal('fetch', fetchMock);
 		const privateStore = store as unknown as { accessToken(): Promise<string> };
 

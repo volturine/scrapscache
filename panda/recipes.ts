@@ -330,8 +330,8 @@ const badgeRecipe = defineRecipe({
 	variants: {
 		variant: {
 			subtle: {
-				bg: 'scrapscache.interactiveHover',
-				color: 'scrapscache.textMuted'
+				bg: 'scrapscache.badgeBg',
+				color: 'scrapscache.badgeText'
 			}
 		},
 		size: {

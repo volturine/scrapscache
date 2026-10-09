@@ -69,7 +69,6 @@
 		type="button"
 		class={cardOpenControl({ ring: 'outside' })}
 		aria-label={`Open ${note.title || 'untitled note'}`}
-		data-card-open
 	></button>
 	<NoteQuickActions {note} bind:open={quickActionsOpen} />
 </article>

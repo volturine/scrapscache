@@ -291,7 +291,6 @@
 			type="button"
 			class={cardOpenControl({ ring: 'inside' })}
 			aria-label={openLabel}
-			data-card-open
 		></button>
 
 		{#if note.reminder != null}

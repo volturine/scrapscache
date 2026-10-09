@@ -41,7 +41,7 @@
 		"test:watch": "vitest",
 		"validate": "npm run check && npm run format:check && npm test && npm run build && npm run test:e2e",
 		"prepare": "svelte-kit sync && panda codegen || echo \"\" && simple-git-hooks || true",
-		"check": "svelte-kit sync && panda codegen && svelte-check --tsconfig ./tsconfig.json --tsgo",
+		"check": "svelte-kit sync && panda codegen && svelte-check --tsconfig ./tsconfig.json --tsgo && tsc -p src/service-worker",
 		"check:watch": "svelte-kit sync && panda codegen && svelte-check --tsconfig ./tsconfig.json --watch",
 		"format": "prettier --write .",
 		"format:check": "prettier --check .",

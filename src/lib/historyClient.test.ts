@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createSyncIdentity, encryptSyncPayload } from '#lib/syncPairing.js';
 import { sha256 } from '#lib/syncHash.js';
 import { syncStore } from '#lib/stores/sync.svelte.js';
+import { unboundSyncEnvelope } from '../tests/unboundEnvelope';
 import { hydrateHistoryNote, loadNoteHistory } from './historyClient';
 
 afterEach(() => vi.restoreAllMocks());
@@ -30,6 +31,23 @@ function note(id: string, patch: Record<string, unknown> = {}) {
 }
 
 describe('encrypted note history', () => {
+	it('refuses a version that is not bound to the note’s slot', async () => {
+		const account = createSyncIdentity();
+		const otherSlot = await sha256(`${account.syncKey}\u0000note:other-note`);
+		const payload = { kind: 'note', value: note('old-note') };
+		for (const ciphertext of [
+			unboundSyncEnvelope(account.syncKey, payload),
+			encryptSyncPayload(account.syncKey, payload, otherSlot)
+		]) {
+			vi.spyOn(syncStore, 'authorizedFetch').mockResolvedValueOnce(
+				respond({ versions: [{ historyId: 1, savedAt: 1, id: 'v', ciphertext }] })
+			);
+			await expect(loadNoteHistory(account, 'old-note')).rejects.toThrow(
+				'Could not read an encrypted history version.'
+			);
+		}
+	});
+
 	it('loads a note’s versions in one request and its matching attachment at that time', async () => {
 		const account = createSyncIdentity();
 		const savedAt = Date.now();

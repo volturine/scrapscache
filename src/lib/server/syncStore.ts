@@ -244,19 +244,6 @@ export class SyncStore {
 		);
 	}
 
-	async replaceAuthCredential(
-		accountId: string,
-		expected: string,
-		replacement: string
-	): Promise<boolean> {
-		await this.db.ready;
-		const result = await this.relay.execute({
-			sql: 'UPDATE accounts SET credential_hash = ?, updated_at = ? WHERE account_id = ? AND credential_hash = ?',
-			args: [replacement, Date.now(), accountId, expected]
-		});
-		return result.rowsAffected === 1;
-	}
-
 	async createAccount(
 		accountId: string,
 		authPublicKey: string,

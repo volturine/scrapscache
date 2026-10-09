@@ -9,8 +9,7 @@ vi.mock('#lib/server/syncStore.js', () => ({
 	getSyncStore: () => ({ getAuthCredential: mocks.credential, isAccountRetired: mocks.retired })
 }));
 vi.mock('#lib/server/syncAuth.js', () => ({
-	getSyncAuth: () => ({ createSyncChallenge: async () => ({ challengeId: 'id', challenge: 'c' }) }),
-	isLegacySyncCredential: () => false
+	getSyncAuth: () => ({ createSyncChallenge: async () => ({ challengeId: 'id', challenge: 'c' }) })
 }));
 vi.mock('#lib/server/rateLimit.js', () => ({
 	clientAddress: () => '127.0.0.1',

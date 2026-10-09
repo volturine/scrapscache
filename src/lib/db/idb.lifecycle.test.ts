@@ -279,29 +279,3 @@ describe('releasing a workspace another window removed', () => {
 		expect(await databaseNames()).not.toContain(PROFILE_DB);
 	});
 });
-
-describe('workspace database v7', () => {
-	it('moves state an earlier version kept as <key>:<workspace id> to plain keys', async () => {
-		const pid = 'upgraded';
-		const old = await openDB(resolveDbName(pid), 6, {
-			upgrade(db) {
-				db.createObjectStore('notes', { keyPath: 'id' });
-				db.createObjectStore('labels', { keyPath: 'id' });
-				db.createObjectStore('note-images');
-				db.createObjectStore('sync-state');
-				db.createObjectStore('sync-outbox');
-			}
-		});
-		// The suffixed copy was the one kept current; the plain one could be stale.
-		await old.put('sync-state', { current: 2 }, `scrapscache-idb-label-tombstones:${pid}`);
-		await old.put('sync-state', { stale: 1 }, 'scrapscache-idb-label-tombstones');
-		await old.put('sync-state', [{ id: 'star' }], `scrapscache-canvas-library:${pid}`);
-		await old.put('sync-state', 7, 'scrapscache-sync-cursor:account');
-		old.close();
-
-		expect(await getSyncState(pid, 'scrapscache-idb-label-tombstones')).toEqual({ current: 2 });
-		expect(await getSyncState(pid, 'scrapscache-canvas-library')).toEqual([{ id: 'star' }]);
-		expect(await getSyncState(pid, 'scrapscache-sync-cursor:account')).toBe(7);
-		expect(await getSyncState(pid, `scrapscache-idb-label-tombstones:${pid}`)).toBeUndefined();
-	});
-});

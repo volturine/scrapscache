@@ -1,17 +1,6 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
-import {
-	SyncAuth,
-	validAuthPublicKey,
-	verifySyncMigration,
-	verifySyncRegistration
-} from './syncAuth';
-import {
-	createSyncIdentity,
-	legacyAuthSecret,
-	signSyncChallenge,
-	signSyncMigration,
-	signSyncRegistration
-} from '#lib/syncPairing.js';
+import { SyncAuth, validAuthPublicKey, verifySyncRegistration } from './syncAuth';
+import { createSyncIdentity, signSyncChallenge, signSyncRegistration } from '#lib/syncPairing.js';
 import { testDb, cleanupTestDbs } from './testDb';
 import type { Db } from './db';
 
@@ -101,13 +90,6 @@ describe('sync proof-of-possession sessions', () => {
 				identity.accountId,
 				identity.authPublicKey,
 				signSyncRegistration(identity.syncKey, identity.accountId, identity.authPublicKey)
-			)
-		).toBe(true);
-		expect(
-			verifySyncMigration(
-				identity.accountId,
-				identity.authPublicKey,
-				signSyncMigration(identity.syncKey, identity.accountId, identity.authPublicKey)
 			)
 		).toBe(true);
 	});

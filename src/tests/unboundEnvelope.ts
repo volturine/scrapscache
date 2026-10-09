@@ -2,14 +2,16 @@ import { xchacha20poly1305 } from '@noble/ciphers/chacha.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 
 /**
- * Seals a payload the way envelopes were written before slot binding: nonce and
- * ciphertext, no version byte, no AAD. Tests need to produce this because the
- * app no longer can, and the relay still holds envelopes in this shape.
+ * Seals a payload in the pre-slot-binding shape: nonce and ciphertext, no version
+ * byte, no AAD. A relay could still serve this, so tests use it to prove every
+ * decode path refuses it.
  */
-export function legacySyncEnvelope(syncKey: string, payload: unknown): string {
+export function unboundSyncEnvelope(
+	syncKey: string,
+	payload: unknown,
+	nonce = crypto.getRandomValues(new Uint8Array(24))
+): string {
 	const key = sha256(new TextEncoder().encode(`scraps-cache-sync-payload:v1:${syncKey}`));
-	const nonce = new Uint8Array(24);
-	crypto.getRandomValues(nonce);
 	const ciphertext = xchacha20poly1305(key, nonce).encrypt(
 		new TextEncoder().encode(JSON.stringify(payload))
 	);

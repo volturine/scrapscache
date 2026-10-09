@@ -290,15 +290,6 @@ describe('SQLite sync store', () => {
 		expect(await store.isAccountRetired('swept')).toBe(false);
 	});
 
-	it('replaces an authentication credential only when the legacy value still matches', async () => {
-		const { store } = createStore();
-		await store.createAccount('account', 'legacy');
-		expect(await store.replaceAuthCredential('account', 'wrong', 'public-key')).toBe(false);
-		expect(await store.replaceAuthCredential('account', 'legacy', 'public-key')).toBe(true);
-		expect(await store.replaceAuthCredential('account', 'legacy', 'attacker-key')).toBe(false);
-		expect(await store.getAuthCredential('account')).toBe('public-key');
-	});
-
 	it('defaults each account to 100 MB of estimated relay storage', async () => {
 		const { store } = createStore();
 		await store.createAccount('account', 'credential');

@@ -32,6 +32,7 @@
 	import NoteLinkNotice from '#lib/components/NoteLinkNotice.svelte';
 	import UndoBar from '#lib/components/UndoBar.svelte';
 	import { runUndoChord } from '#lib/stores/actionUndo.svelte.js';
+	import { storagePersistenceStore } from '#lib/stores/storagePersistence.svelte.js';
 	import type { Snippet } from 'svelte';
 
 	let { children }: { children: Snippet } = $props();
@@ -284,6 +285,7 @@
 					? reminderTimeForDay(uiStore.reminderFilter?.from ?? dayKey(Date.now()))
 					: null
 		});
+		storagePersistenceStore.requestOnce();
 		autoFocusBody = true;
 		editingId = n.id;
 		applyEditorOpen(true);

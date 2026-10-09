@@ -18,6 +18,7 @@
 	import Tooltip from './Tooltip.svelte';
 	import PwaInstallSettings from './PwaInstallSettings.svelte';
 	import ReminderNotificationSettings from './ReminderNotificationSettings.svelte';
+	import StorageSettings from './StorageSettings.svelte';
 	import BackupPassphraseDialog from './BackupPassphraseDialog.svelte';
 	import BackupImportModeDialog from './BackupImportModeDialog.svelte';
 	import ImportGuideDialog from './ImportGuideDialog.svelte';
@@ -370,6 +371,7 @@
 				<div class={styles.deviceSettings}>
 					<PwaInstallSettings />
 					<ReminderNotificationSettings />
+					<StorageSettings />
 				</div>
 				<Menu.Separator class={styles.menuSeparator} />
 				<Menu.Item value="issue">

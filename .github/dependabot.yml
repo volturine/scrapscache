@@ -18,6 +18,11 @@ updates:
       weekly-batch:
         patterns:
           - '*'
+    ignore:
+      # Odd Node majors never become LTS; move to the next LTS by hand together
+      # with engines, .nvmrc, CI and the runtime copy in docker/Dockerfile.
+      - dependency-name: 'node'
+        update-types: ['version-update:semver-major']
 
   - package-ecosystem: docker-compose
     directory: /docker

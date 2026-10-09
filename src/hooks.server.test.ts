@@ -214,4 +214,40 @@ describe('link previews', () => {
 			'<meta name="twitter:image" content="https://dev.scrapscache.com/og-preview.png" />'
 		);
 	});
+
+	it('keeps one title and description: the page its own, else the app defaults', async () => {
+		const shell = (head: string) => `<head>
+			<!-- page-meta: defaults -->
+			<title>Scraps Cache</title>
+			<meta name="description" content="Default" />
+			<!-- /page-meta -->
+			${head}
+		</head>`;
+		const render = async (html: string) => {
+			let transformed = '';
+			await handle({
+				event: {
+					request: new Request('https://example.test/privacy'),
+					url: new URL('https://example.test/privacy'),
+					locals: {}
+				} as unknown as RequestEvent,
+				resolve: async (_event: RequestEvent, opts?: ResolveOptions) => {
+					transformed = (await opts?.transformPageChunk?.({ html, done: true })) ?? '';
+					return new Response(transformed, { headers: { 'Content-Type': 'text/html' } });
+				}
+			});
+			return transformed;
+		};
+
+		const page = await render(
+			shell('<title>Privacy</title><meta name="description" content="Own"/>')
+		);
+		expect(page.match(/<title>/g)).toHaveLength(1);
+		expect(page.match(/name="description"/g)).toHaveLength(1);
+		expect(page).toContain('content="Own"');
+
+		const app = await render(shell(''));
+		expect(app).toContain('<title>Scraps Cache</title>');
+		expect(app).toContain('content="Default"');
+	});
 });

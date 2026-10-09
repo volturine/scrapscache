@@ -36,6 +36,20 @@ function frameAncestors(policy: string | null): string | null {
 	return directive ? directive.slice('frame-ancestors '.length).trim() : null;
 }
 
+const DEFAULT_PAGE_META = /[ \t]*<!-- page-meta:[\s\S]*?<!-- \/page-meta -->\n?/;
+
+/**
+ * src/app.html carries the client-only app's title and description. A server-rendered
+ * page (privacy, terms) renders its own through PageMeta.svelte; keep only that copy,
+ * so crawlers and link previews never see two titles or descriptions.
+ */
+function withOnePageMeta(html: string): string {
+	const defaults = DEFAULT_PAGE_META.exec(html);
+	if (!defaults) return html;
+	const page = html.replace(defaults[0], '');
+	return page.includes('<meta name="description"') ? page : html;
+}
+
 /** Let the app frame the challenge origin, and nothing else it did not already allow. */
 function allowChallengeFrame(policy: string, origin: string): string {
 	return policy
@@ -71,7 +85,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 					transformPageChunk: ({ html }) => {
 						const origin = configuredOrigin() ?? event.url.origin;
 						const canonical = `${origin}${event.url.pathname}`;
-						return html
+						return withOnePageMeta(html)
 							.replaceAll('https://scrapscache.com/og-preview.png', `${origin}/og-preview.png`)
 							.replaceAll('https://scrapscache.com/', canonical)
 							.replaceAll('https://scrapscache.com', origin);

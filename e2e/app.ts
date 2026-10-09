@@ -11,9 +11,14 @@ export function editor(page: Page): Locator {
 	return page.getByRole('dialog', { name: 'Note editor' });
 }
 
-/** The card of a note in the feed, matched by its exact title. */
-export function noteCard(page: Page, title: string): Locator {
+/** The open control of a note's card, matched by the card's exact title. */
+export function noteCardOpen(page: Page, title: string): Locator {
 	return page.getByRole('button', { name: new RegExp(`^Open ${escape(title)}(,|$)`) });
+}
+
+/** The card of a note in the feed: the article holding its open control and quick actions. */
+export function noteCard(page: Page, title: string): Locator {
+	return page.getByRole('article').filter({ has: noteCardOpen(page, title) });
 }
 
 /** Create a note through the editor and close it, so the feed shows its card. */

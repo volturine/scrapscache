@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageMeta from '#lib/components/PageMeta.svelte';
 	import { resolve } from '$app/paths';
 	import { publicPageStyles as styles } from '$panda/styles';
 	import { cx } from 'styled-system/css';
@@ -20,13 +21,10 @@
 	}
 </script>
 
-<svelte:head>
-	<title>Thank You · Scraps Cache</title>
-	<meta
-		name="description"
-		content="Thank you for using and supporting Scraps Cache — private, local-first, end-to-end encrypted notes."
-	/>
-</svelte:head>
+<PageMeta
+	title="Thank You · Scraps Cache"
+	description="Thank you for using and supporting Scraps Cache — private, local-first, end-to-end encrypted notes."
+/>
 
 <div class={styles.root}>
 	<header class={styles.header}>

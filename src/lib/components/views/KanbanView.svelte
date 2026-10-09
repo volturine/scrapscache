@@ -35,6 +35,7 @@
 		kanbanViewStyles,
 		labelChecklistStyles as checklist,
 		popover,
+		viewHeading,
 		viewPage
 	} from '$panda/styles';
 	import {
@@ -287,6 +288,7 @@
 </script>
 
 <div class={viewPage}>
+	<h1 class={viewHeading}>Kanban</h1>
 	<div class={k.controls}>
 		{#if renamingBoard}
 			<input

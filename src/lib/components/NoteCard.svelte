@@ -1,14 +1,10 @@
 <script lang="ts">
 	import { css, cx } from 'styled-system/css';
 	import { badge, noteCard, noteSurface } from 'styled-system/recipes';
+	import { cardOpenControl } from '$panda/styles';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
 	import type { Note } from '#lib/types.js';
-	import {
-		activateOnKeyboard,
-		formatReminder,
-		isReminderOverdue,
-		noteActivity
-	} from '#lib/utils.js';
+	import { formatReminder, isReminderOverdue, noteActivity } from '#lib/utils.js';
 	import { appClock } from '#lib/appClock.svelte.js';
 	import { cardSwipeStyle, createCardSwipe } from '#lib/cardSwipe.js';
 	import { overflowingTable } from '#lib/tableScroll.js';
@@ -26,7 +22,8 @@
 		onOpen: (id: string) => void;
 	} = $props();
 
-	let cardEl = $state<HTMLDivElement | null>(null);
+	let cardEl = $state<HTMLElement | null>(null);
+	let openButton = $state<HTMLButtonElement | null>(null);
 	let hazeActive = $state(false);
 
 	function closeHaze() {
@@ -56,6 +53,8 @@
 			e.stopPropagation();
 			return;
 		}
+		// The open control holds focus while the note is open, so closing it returns here.
+		openButton?.focus({ preventScroll: true });
 		onOpen(note.id);
 	}
 
@@ -202,16 +201,13 @@
 		}
 	}
 
+	// Enter and Space reach the open button as a click, which bubbles to the card.
 	function handleKeydown(event: KeyboardEvent) {
-		if (hazeActive) {
-			if (event.key === 'Escape') {
-				event.stopPropagation();
-				event.preventDefault();
-				closeHaze();
-			}
-			return;
+		if (hazeActive && event.key === 'Escape') {
+			event.stopPropagation();
+			event.preventDefault();
+			closeHaze();
 		}
-		activateOnKeyboard(event, () => onOpen(note.id));
 	}
 
 	const labelsForNote = $derived(
@@ -274,11 +270,11 @@
 		</div>
 	{/if}
 
-	<div
+	<!-- A press anywhere on the card opens, swipes or drags it; the open button is the
+	     keyboard and assistive-technology control, a sibling of the quick actions. -->
+	<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
+	<article
 		bind:this={cardEl}
-		role="button"
-		tabindex="0"
-		aria-label={openLabel}
 		class={cx(card.cardBody, 'group', noteSurface({ color: note.color }))}
 		style={cardSwipeStyle(offsetX, dragging)}
 		onpointerdown={onCardPointerDown}
@@ -290,6 +286,13 @@
 		oncontextmenu={handleContextMenu}
 		onkeydown={handleKeydown}
 	>
+		<button
+			bind:this={openButton}
+			type="button"
+			class={cardOpenControl({ ring: 'inside' })}
+			aria-label={openLabel}
+		></button>
+
 		{#if note.reminder != null}
 			<div class={css({ flexShrink: 0 })}>
 				<ReminderLabel reminder={note.reminder} />
@@ -411,5 +414,5 @@
 		{/if}
 
 		<NoteQuickActions {note} bind:open={hazeActive} />
-	</div>
+	</article>
 </div>

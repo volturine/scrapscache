@@ -15,6 +15,7 @@
 	import { uiStore } from '#lib/stores/ui.svelte.js';
 	import { canvasLibraryStore } from '#lib/stores/canvasLibrary.js';
 	import { portalToAppOverlay } from '#lib/appViewport.js';
+	import { modalLayer } from '#lib/modalLayer.js';
 
 	let {
 		attachment = null,
@@ -122,6 +123,7 @@
 
 <div
 	{@attach portalToAppOverlay}
+	{@attach modalLayer}
 	onpointerdown={markCanvasInteraction}
 	onkeydown={markCanvasInteraction}
 	onpaste={markCanvasInteraction}

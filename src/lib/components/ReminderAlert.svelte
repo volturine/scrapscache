@@ -22,6 +22,7 @@
 		style="top: max(0.75rem, calc(env(safe-area-inset-top, 0px) + 0.35rem))"
 		role="region"
 		aria-label="Due reminders"
+		data-over-modals
 	>
 		{#each alerts as alert (alert.wakeId)}
 			{@const workspace = workspaceName(alert.workspaceId)}

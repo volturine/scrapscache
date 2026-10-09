@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { kanbanDrag, type KanbanDropTarget } from '#lib/kanbanDrag.svelte.js';
 	import type { Note } from '#lib/types.js';
-	import { activateOnKeyboard } from '#lib/utils.js';
 	import KanbanCardBody from './KanbanCardBody.svelte';
 	import NoteQuickActions from './NoteQuickActions.svelte';
 	import { css } from 'styled-system/css';
+	import { cardOpenControl } from '$panda/styles';
 
 	let {
 		note,
@@ -22,6 +22,7 @@
 	} = $props();
 
 	let card = $state<HTMLElement | null>(null);
+	let openButton = $state<HTMLButtonElement | null>(null);
 	let quickActionsOpen = $state(false);
 
 	function press(event: PointerEvent) {
@@ -32,6 +33,8 @@
 	function open() {
 		// Releasing a drag still raises a click; that one must not open the note.
 		if (kanbanDrag.suppressedClick) return;
+		// The open control holds focus while the note is open, so closing it returns here.
+		openButton?.focus({ preventScroll: true });
 		onOpen(note.id);
 	}
 
@@ -40,38 +43,32 @@
 		event.stopPropagation();
 		quickActionsOpen = true;
 	}
-
-	function handleKeydown(event: KeyboardEvent) {
-		// The quick actions close themselves on Escape; nothing else may open the note under them.
-		if (quickActionsOpen) return;
-		activateOnKeyboard(event, () => onOpen(note.id));
-	}
 </script>
 
-<div
+<!-- A press anywhere on the card opens or drags it; the open button is the keyboard and
+     assistive-technology control, a sibling of the quick actions. -->
+<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
+<article
 	bind:this={card}
-	role="button"
-	tabindex="0"
 	class={css({
 		position: 'relative',
 		cursor: 'grab',
 		rounded: 'card',
 		transition: 'box-shadow 150ms ease, transform 150ms ease',
 		_hoverable: { boxShadow: 'md', transform: 'translateY(-1px)' },
-		_focusVisible: {
-			outline: '2px solid',
-			outlineColor: 'scrapscache.focus',
-			outlineOffset: '2px'
-		},
 		_active: { cursor: 'grabbing' }
 	})}
 	onpointerdown={press}
 	ondragstart={(event) => event.preventDefault()}
 	onclick={open}
 	oncontextmenu={showQuickActions}
-	onkeydown={handleKeydown}
-	aria-label={`Open ${note.title || 'untitled note'}`}
 >
 	<KanbanCardBody {note} shield />
+	<button
+		bind:this={openButton}
+		type="button"
+		class={cardOpenControl({ ring: 'outside' })}
+		aria-label={`Open ${note.title || 'untitled note'}`}
+	></button>
 	<NoteQuickActions {note} bind:open={quickActionsOpen} />
-</div>
+</article>

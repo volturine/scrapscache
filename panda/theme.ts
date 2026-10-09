@@ -139,6 +139,22 @@ const noteColors = tokenGroup({
 	gray: mode('#f0f0f0', '#3c3c3c')
 });
 
+/**
+ * Foregrounds for coloured note surfaces. The app's muted, badge, overdue, accent and
+ * focus tones are tuned for the page background and fall under WCAG AA on the darker
+ * light-mode note colours and the lighter dark-mode ones. The noteSurface recipe
+ * re-points those tokens to these inside every coloured note, so whatever renders on
+ * a note keeps 4.5:1 for text and 3:1 for focus rings (see theme.contrast.test.ts).
+ */
+const onNoteColors = tokenGroup({
+	muted: mode('#35383b', '#c4c7c5'),
+	// Badges sit on their own translucent tint, which takes contrast from the text.
+	badgeText: mode('#2b2d30', '#dadce0'),
+	overdue: mode('#7a1030', '#fecdd3'),
+	accent: mode('#1c3580', '#bfdbfe'),
+	focus: mode('#1e40af', '{colors.palette.accentHoverDark}')
+});
+
 const shadows = tokenGroup({
 	popover: mode('0 8px 24px rgba(0, 0, 0, 0.14)', '0 8px 24px rgba(0, 0, 0, 0.35)'),
 	dialog: mode('0 20px 48px rgba(0, 0, 0, 0.24)', '0 20px 48px rgba(0, 0, 0, 0.55)'),
@@ -153,6 +169,8 @@ const shadows = tokenGroup({
 	cropHandle: '0 2px 6px rgba(0, 0, 0, 0.7), 0 0 0 1.5px rgba(0, 0, 0, 0.35)',
 	cropKnob: '0 1px 3px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 0, 0, 0.25)'
 });
+
+export { noteColors, onNoteColors, palette, scrapscacheColors };
 
 export const theme = {
 	extend: {
@@ -230,7 +248,7 @@ export const theme = {
 		},
 		textStyles,
 		semanticTokens: {
-			colors: { scrapscache: scrapscacheColors, note: noteColors },
+			colors: { scrapscache: scrapscacheColors, note: noteColors, onNote: onNoteColors },
 			shadows
 		}
 	}

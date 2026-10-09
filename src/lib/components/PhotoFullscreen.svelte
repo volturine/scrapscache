@@ -24,6 +24,7 @@
 	import { SegmentGroup } from '@ark-ui/svelte/segment-group';
 	import Tooltip from './Tooltip.svelte';
 	import { portalToAppOverlay } from '#lib/appViewport.js';
+	import { modalLayer } from '#lib/modalLayer.js';
 	import { cx } from 'styled-system/css';
 	import { button, iconButton } from 'styled-system/recipes';
 	import { center, hstack } from 'styled-system/patterns';
@@ -247,9 +248,11 @@
 {#if current}
 	<div
 		{@attach portal}
+		{@attach modalLayer}
 		{@attach trapKeys}
 		class={fs.shell}
 		role="dialog"
+		tabindex="-1"
 		aria-modal="true"
 		aria-label="Photo"
 	>

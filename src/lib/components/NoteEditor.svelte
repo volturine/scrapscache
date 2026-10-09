@@ -46,6 +46,7 @@
 	import { getClipboardFiles, isImageAttachment } from '#lib/noteImages.js';
 	import { matchTrailingEmoticon } from '#lib/emoticons.js';
 	import { isKeyboardField } from '#lib/appViewport.js';
+	import { modalLayer } from '#lib/modalLayer.js';
 	import { setEditorUndo, undoChord } from '#lib/stores/actionUndo.svelte.js';
 
 	let {
@@ -160,7 +161,12 @@
 		// check lets page clicks steal focus and collapse multi-line iOS selections.
 		if (el?.closest('button, input, textarea, select, a, [contenteditable]')) return;
 		const active = document.activeElement;
-		if (active instanceof HTMLElement && editorDialog?.contains(active)) {
+		// The dialog itself holds focus from the moment it opens; only a field counts here.
+		if (
+			active instanceof HTMLElement &&
+			active !== editorDialog &&
+			editorDialog?.contains(active)
+		) {
 			// Android keeps a contenteditable focused after its software-keyboard
 			// dismiss action. Treat a tap on empty note chrome like the header buttons:
 			// explicitly blur the field so the keyboard can close reliably.
@@ -888,6 +894,7 @@
 			<div class={styles.sheetBox({ expanded })}>
 				<div
 					bind:this={editorDialog}
+					{@attach modalLayer}
 					class={editorDialogClass}
 					role="dialog"
 					tabindex="-1"

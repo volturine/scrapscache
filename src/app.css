@@ -71,8 +71,11 @@ html:not(.editor-open) [contenteditable] * {
 	}
 }
 
-html {
+html,
+body {
 	background-color: var(--colors-scrapscache-bg);
+}
+html {
 	color-scheme: light;
 }
 html.dark {

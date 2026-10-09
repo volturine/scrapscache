@@ -27,3 +27,30 @@ describe('ui store persistence', () => {
 		expect(() => uiStore.restoreState({ layout: 'list' })).toThrow('Access is denied');
 	});
 });
+
+describe('theme switch', () => {
+	afterEach(() => {
+		uiStore.restoreState({ dark: null });
+		document.documentElement.removeAttribute('style');
+		document.body.removeAttribute('style');
+	});
+
+	it('flips the class and leaves the colours to the stylesheet without reading computed styles', () => {
+		// app.html paints the first frame with these before any stylesheet loads.
+		document.documentElement.style.backgroundColor = '#1a1a1a';
+		document.documentElement.style.colorScheme = 'dark';
+		document.body.style.backgroundColor = '#1a1a1a';
+		const computed = vi.spyOn(window, 'getComputedStyle');
+
+		uiStore.dark = true;
+
+		expect(document.documentElement.classList.contains('dark')).toBe(true);
+		expect(document.documentElement.style.backgroundColor).toBe('');
+		expect(document.documentElement.style.colorScheme).toBe('');
+		expect(document.body.style.backgroundColor).toBe('');
+		expect(computed).not.toHaveBeenCalled();
+
+		uiStore.dark = false;
+		expect(document.documentElement.classList.contains('dark')).toBe(false);
+	});
+});

@@ -48,7 +48,7 @@ describe('theme switch', () => {
 		expect(document.documentElement.style.backgroundColor).toBe('rgb(255, 255, 255)');
 		expect(document.documentElement.style.colorScheme).toBe('light');
 		expect(document.body.style.backgroundColor).toBe('rgb(255, 255, 255)');
-		expect(document.querySelector('[data-status-sample]')?.style.backgroundColor).toBe(
+		expect(document.querySelector<HTMLElement>('[data-status-sample]')?.style.backgroundColor).toBe(
 			'rgb(255, 255, 255)'
 		);
 		expect(computed).not.toHaveBeenCalled();
@@ -57,7 +57,7 @@ describe('theme switch', () => {
 		expect(document.documentElement.classList.contains('dark')).toBe(true);
 		expect(document.documentElement.style.backgroundColor).toBe('rgb(26, 26, 26)');
 		expect(document.body.style.backgroundColor).toBe('rgb(26, 26, 26)');
-		expect(document.querySelector('[data-status-sample]')?.style.backgroundColor).toBe(
+		expect(document.querySelector<HTMLElement>('[data-status-sample]')?.style.backgroundColor).toBe(
 			'rgb(26, 26, 26)'
 		);
 	});

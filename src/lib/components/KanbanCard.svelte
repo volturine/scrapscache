@@ -67,7 +67,7 @@
 	<button
 		bind:this={openButton}
 		type="button"
-		class={cardOpenControl({ ring: 'outside' })}
+		class={cardOpenControl}
 		aria-label={`Open ${note.title || 'untitled note'}`}
 	></button>
 	<NoteQuickActions {note} bind:open={quickActionsOpen} />

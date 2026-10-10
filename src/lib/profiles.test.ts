@@ -12,11 +12,10 @@ import {
 	markSyncOutbox,
 	putLabel,
 	putNote,
-	addFiredReminderKeys,
-	writeSyncStateWithOutbox
+	addFiredReminderKeys
 } from '#lib/db/idb.js';
 import {
-	buildProfileNotesExport,
+	buildProfileMarkdownNotes,
 	getLastActiveProfileId,
 	isLocalWorkspace,
 	loadProfiles,
@@ -109,50 +108,28 @@ describe('per-profile size estimation', () => {
 	});
 });
 
-describe('single-profile export', () => {
-	it('builds a standard backup from one namespace without touching others', async () => {
+describe('single-profile Markdown export source', () => {
+	it('reads workspace notes with attachment bytes without activating that workspace', async () => {
 		await putNote('p-exp', note('exported'));
-		await putLabel('p-exp', label('exp-label'));
-		await writeTombstones('p-exp', { 'gone-exp': 9 });
+		const attachment = {
+			id: 'photo',
+			mime: 'image/png',
+			dataUrl: 'data:image/png;base64,AQID',
+			createdAt: 1
+		};
+		await putNote('p-exp', { ...note('photo-note'), images: [attachment] });
+		await putNote('p-exp', { ...note('hidden'), secret: true });
+		await putNote('p-other', note('other'));
 
-		const backup = await buildProfileNotesExport('p-exp');
+		const notes = await buildProfileMarkdownNotes('p-exp');
 
-		expect(backup?.notes.map(({ id }) => id)).toEqual(['exported']);
-		expect(backup?.labels.map(({ id }) => id)).toEqual(['exp-label']);
-		expect(backup?.tombstones).toEqual({ 'gone-exp': 9 });
-		expect(backup?.version).toBe(5);
-		expect(await buildProfileNotesExport('p-other')).toBeNull();
-	});
-
-	it('carries the canvas library and reminder history of a workspace that is not open', async () => {
-		const shape = { id: 'star', status: 'unpublished', created: 1, elements: [] };
-		const entry = { id: 'e'.repeat(43), noteId: 'n', firedAt: 3 };
-		await writeSyncStateWithOutbox(
-			'p-shapes',
-			[
-				['scrapscache-canvas-library', [{ id: 'star', updatedAt: 2, item: shape }]],
-				['scrapscache-reminder-history', [entry]]
-			],
-			[]
+		expect(notes?.map(({ id }) => id).sort()).toEqual(['exported', 'hidden', 'photo-note']);
+		expect(notes?.find(({ id }) => id === 'photo-note')?.images?.[0]?.dataUrl).toBe(
+			attachment.dataUrl
 		);
-
-		const backup = await buildProfileNotesExport('p-shapes');
-
-		expect(backup?.canvasLibrary).toEqual([shape]);
-		expect(backup?.reminderHistory).toEqual([entry]);
-	});
-
-	// Backing up a workspace that is not open reads the device store and nothing
-	// else, so a field the fast-boot mirror alone carried would leave the backup
-	// silently missing it.
-	it('carries a secret note out of a workspace that is not open', async () => {
-		await putNote('p-secret', { ...note('hidden'), secret: true });
-
-		const backup = await buildProfileNotesExport('p-secret');
-
-		expect(backup?.notes.map(({ id, secret }) => ({ id, secret }))).toEqual([
-			{ id: 'hidden', secret: true }
-		]);
+		expect(notes?.find(({ id }) => id === 'hidden')?.secret).toBe(true);
+		expect((await buildProfileMarkdownNotes('p-other'))?.map(({ id }) => id)).toEqual(['other']);
+		expect(await buildProfileMarkdownNotes('p-empty')).toBeNull();
 	});
 });
 

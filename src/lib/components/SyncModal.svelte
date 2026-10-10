@@ -18,9 +18,10 @@
 	import { syncStore, type StartedDeviceLink } from '#lib/stores/sync.svelte.js';
 	import { profileCoordinator } from '#lib/stores/profiles.svelte.js';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
-	import { buildProfileNotesExport, isLocalWorkspace } from '#lib/profiles.js';
+	import { buildProfileMarkdownNotes, isLocalWorkspace } from '#lib/profiles.js';
+	import { buildNotesMarkdownZip } from '#lib/notesMarkdownExport.js';
 	import { estimateProfileBytes } from '#lib/db/idb.js';
-	import { downloadJSON } from '#lib/utils.js';
+	import { downloadFile } from '@zag-js/file-utils';
 	import {
 		Cloud,
 		CloudOff,
@@ -131,17 +132,21 @@
 		error = '';
 		await runOperation('export', 'Could not export that sync key\u2019s notes.', async () => {
 			const name = syncStore.profiles.find((profile) => profile.id === id)?.name ?? 'workspace';
-			const backup = await buildProfileNotesExport(id);
-			if (!backup) {
-				info = 'That sync key has no notes stored on this device yet.';
+			const notes = await buildProfileMarkdownNotes(id);
+			if (!notes) {
+				info = 'That workspace has no notes stored on this device yet.';
 				return;
 			}
-			downloadJSON(
-				backup,
-				`scrapscache-${name.replace(/[^a-z0-9_-]+/gi, '-').toLowerCase()}-${new Date()
+			const archive = await buildNotesMarkdownZip(notes);
+			const archiveBuffer = new ArrayBuffer(archive.byteLength);
+			new Uint8Array(archiveBuffer).set(archive);
+			downloadFile({
+				file: new Blob([archiveBuffer], { type: 'application/zip' }),
+				name: `scrapscache-${name.replace(/[^a-z0-9_-]+/gi, '-').toLowerCase()}-${new Date()
 					.toISOString()
-					.slice(0, 10)}.scrapscache-backup`
-			);
+					.slice(0, 10)}.zip`,
+				type: 'application/zip'
+			});
 		});
 	}
 

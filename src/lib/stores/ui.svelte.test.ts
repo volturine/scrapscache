@@ -53,4 +53,32 @@ describe('theme switch', () => {
 		uiStore.dark = false;
 		expect(document.documentElement.classList.contains('dark')).toBe(false);
 	});
+
+	it('holds transitions off for the frame that paints the new colours', () => {
+		vi.useFakeTimers({ toFake: ['requestAnimationFrame', 'cancelAnimationFrame'] });
+		try {
+			const root = document.documentElement;
+
+			uiStore.dark = true;
+			expect(root.classList.contains('theme-switching')).toBe(true);
+
+			// The first frame computes the new colours with transitions disabled.
+			vi.advanceTimersToNextFrame();
+			expect(root.classList.contains('theme-switching')).toBe(true);
+			// The second frame changes no colour, so restoring them starts nothing.
+			vi.advanceTimersToNextFrame();
+			expect(root.classList.contains('theme-switching')).toBe(false);
+
+			// A second switch inside the window restarts it rather than ending early.
+			uiStore.dark = false;
+			vi.advanceTimersToNextFrame();
+			uiStore.dark = true;
+			vi.advanceTimersToNextFrame();
+			expect(root.classList.contains('theme-switching')).toBe(true);
+			vi.advanceTimersToNextFrame();
+			expect(root.classList.contains('theme-switching')).toBe(false);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
 });

@@ -20,9 +20,18 @@ function prefersDark(): boolean {
 	return matchMedia('(prefers-color-scheme: dark)').matches;
 }
 
+let themeSwitchFrame: number | null = null;
+
 function applyDocumentTheme(dark: boolean) {
 	if (typeof document === 'undefined' || !document.body) return;
 	const root = document.documentElement;
+	// A theme switch is one frame. Without this, every control with a colour
+	// transition (sidebar rows, icon buttons, inputs) would start one now and
+	// settle over the next 150 ms while the page around it had already flipped.
+	// app.css turns transitions off under this class; the first frame computes
+	// the new colours with them off, so none starts, and the second frame
+	// restores them.
+	root.classList.add('theme-switching');
 	root.classList.toggle('dark', dark);
 	// app.html paints the first frame with inline colours before any stylesheet
 	// loads; from here on app.css draws the background and colour scheme from
@@ -31,6 +40,13 @@ function applyDocumentTheme(dark: boolean) {
 	root.style.removeProperty('background-color');
 	root.style.removeProperty('color-scheme');
 	document.body.style.removeProperty('background-color');
+	if (themeSwitchFrame !== null) cancelAnimationFrame(themeSwitchFrame);
+	themeSwitchFrame = requestAnimationFrame(() => {
+		themeSwitchFrame = requestAnimationFrame(() => {
+			themeSwitchFrame = null;
+			root.classList.remove('theme-switching');
+		});
+	});
 }
 
 const LS_KEY = 'scrapscache-ui-state';

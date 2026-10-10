@@ -2076,7 +2076,9 @@ export const noteEditorStyles = {
 		...column,
 		...fullSize,
 		overflow: 'visible',
-		rounded: 'inherit'
+		rounded: 'inherit',
+		// The sheet receives initial focus; its controls carry visible focus rings.
+		outline: 'none'
 	}),
 	header: hstack({
 		flexShrink: 0,

@@ -22,6 +22,28 @@ test('a note survives a reload and an offline reload', async ({ page, context })
 	await context.setOffline(false);
 });
 
+test('the note sheet does not draw a browser focus ring around itself', async ({ page }) => {
+	await openEmptyApp(page);
+	await createNote(page, 'Focus sample');
+	await noteCard(page, 'Focus sample').click();
+
+	const dialog = editor(page);
+	await expect(dialog).toBeVisible();
+	await expect
+		.poll(() => dialog.evaluate((element) => getComputedStyle(element).outlineStyle))
+		.toBe('none');
+
+	await page.keyboard.press('Tab');
+	const closeButton = dialog.getByRole('button', { name: 'Close note' });
+	await expect(closeButton).toBeFocused();
+	const focusRing = await closeButton.evaluate((element) => {
+		const style = getComputedStyle(element);
+		return { visible: element.matches(':focus-visible'), outlineStyle: style.outlineStyle };
+	});
+	expect(focusRing).toMatchObject({ visible: true });
+	expect(focusRing.outlineStyle).not.toBe('none');
+});
+
 test('a checklist line toggles from the body', async ({ page }) => {
 	await openEmptyApp(page);
 	await createNote(page, 'Checklist', '[ ] milk\n[ ] eggs');

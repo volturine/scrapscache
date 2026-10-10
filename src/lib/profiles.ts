@@ -7,17 +7,10 @@ import {
 	readStoredProfiles,
 	putStoredProfile,
 	getAllNotesMetadata,
-	getAllLabels,
-	getSyncState,
 	hydrateNoteAttachments
 } from '#lib/db/idb.js';
-import { BOARDS_IDB, BOARD_IDB, LABEL_IDB, NOTE_IDB } from '#lib/syncTombstones.js';
-import type { KanbanBoard } from '#lib/kanban.js';
 import type { Note } from '#lib/types.js';
-import type { ScrapsCacheBackup } from '#lib/backup.js';
 import { randomWorkspaceName } from '#lib/workspaceNames.js';
-import { libraryItemsFor, readCanvasLibrary } from '#lib/canvasLibrary.js';
-import { readReminderHistory } from '#lib/reminderHistory.js';
 
 export type { StoredProfile } from '#lib/db/idb.js';
 import type { StoredProfile } from '#lib/db/idb.js';
@@ -128,37 +121,11 @@ export function pickBootProfile(profiles: StoredProfile[]): StoredProfile | null
 
 // --- Per-profile exports ----------------------------------------------------
 
-/**
- * Build a standard notes backup file from any profile's namespace without
- * activating it. Never carries sync identity: importing lands as plain notes.
- */
-export async function buildProfileNotesExport(pid: string): Promise<ScrapsCacheBackup | null> {
+/** Read every note and its attachment bytes from one workspace without activating it. */
+export async function buildProfileMarkdownNotes(pid: string): Promise<Note[] | null> {
 	const noteRows = await getAllNotesMetadata(pid);
-	const [labels, boards, tombstones, labelTombstones, boardTombstones, library, reminderHistory] =
-		await Promise.all([
-			getAllLabels(pid),
-			getSyncState<KanbanBoard[]>(pid, BOARDS_IDB),
-			getSyncState<Record<string, number>>(pid, NOTE_IDB),
-			getSyncState<Record<string, number>>(pid, LABEL_IDB),
-			getSyncState<Record<string, number>>(pid, BOARD_IDB),
-			readCanvasLibrary(pid),
-			readReminderHistory(pid)
-		]);
-	if (!noteRows.length && !labels.length && !library.entries.length) return null;
+	if (!noteRows.length) return null;
 	const notes: Note[] = [];
 	for (const row of noteRows) notes.push(await hydrateNoteAttachments(pid, row));
-	return {
-		version: 5,
-		exportedAt: Date.now(),
-		notes,
-		labels,
-		boards: Array.isArray(boards) ? boards : [],
-		activeBoardId: '',
-		tombstones: tombstones ?? {},
-		labelTombstones: labelTombstones ?? {},
-		boardTombstones: boardTombstones ?? {},
-		canvasLibrary: libraryItemsFor(library.entries),
-		reminderHistory,
-		ui: { sidebarOpen: true, dark: null, layout: 'grid', view: 'notes', rawMarkdown: false }
-	};
+	return notes;
 }

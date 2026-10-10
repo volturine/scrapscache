@@ -53,7 +53,9 @@
 		     No apple-mobile-web-app-status-bar-style: the translucent style hands
 		     the status bar to iOS, which hazes whatever the page paints under it.
 		     Without it the status bar is opaque and takes the solid colour this
-		     document's background already carries. -->
+		     document's background already carries. Installed iOS keeps that colour
+		     from launch until the background is set again, so the UI store writes
+		     the same colour here whenever the theme changes. -->
 		<meta name="apple-mobile-web-app-capable" content="yes" />
 		<meta name="apple-mobile-web-app-title" content="Scraps Cache" />
 		<link rel="apple-touch-icon" href="/apple-touch-icon.png" />

@@ -286,11 +286,7 @@
 		oncontextmenu={handleContextMenu}
 		onkeydown={handleKeydown}
 	>
-		<button
-			bind:this={openButton}
-			type="button"
-			class={cardOpenControl({ ring: 'inside' })}
-			aria-label={openLabel}
+		<button bind:this={openButton} type="button" class={cardOpenControl} aria-label={openLabel}
 		></button>
 
 		{#if note.reminder != null}

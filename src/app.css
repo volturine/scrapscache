@@ -44,7 +44,8 @@ html.editor-open .app-float {
 /* Safe areas sit outside .app-viewport; match them to the full-page note.
  * !important beats the inline theme background set by the UI store. */
 html.editor-expanded,
-html.editor-expanded body {
+html.editor-expanded body,
+html.editor-expanded [data-status-sample] {
 	background-color: var(--editor-page-bg) !important;
 }
 
@@ -118,6 +119,19 @@ html.editor-open .app-shell {
  * status bar; the bottom is the screen edge. transform makes this the
  * containing block for position:fixed descendants.
  */
+/* Installed iOS samples a fixed bar at the top edge for the status bar and
+ * ignores theme-color after launch. The bar is only the safe area, which
+ * sits above .app-viewport, so it does not cover the app. */
+[data-status-sample] {
+	position: fixed;
+	top: 0;
+	right: 0;
+	left: 0;
+	height: var(--app-inset-top);
+	z-index: 80;
+	pointer-events: none;
+}
+
 .app-viewport {
 	position: fixed;
 	top: var(--app-inset-top);

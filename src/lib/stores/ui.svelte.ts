@@ -22,6 +22,31 @@ function prefersDark(): boolean {
 
 let themeSwitchFrame: number | null = null;
 
+/** Same colours as the boot script in src/app.html. */
+function themeBackground(dark: boolean) {
+	return dark ? '#1a1a1a' : '#ffffff';
+}
+
+// Installed iOS reads the status bar from a concrete background at the top of
+// the page. theme-color and a custom property do not move it until the next
+// launch, so the colour has to be written onto the document itself.
+function paintDocumentChrome(dark: boolean) {
+	const color = themeBackground(dark);
+	const root = document.documentElement;
+	root.style.backgroundColor = color;
+	root.style.colorScheme = dark ? 'dark' : 'light';
+	document.body.style.backgroundColor = color;
+	document.querySelector('meta[name="theme-color"]')?.setAttribute('content', color);
+	let sample = document.querySelector<HTMLElement>('[data-status-sample]');
+	if (!sample) {
+		sample = document.createElement('div');
+		sample.setAttribute('data-status-sample', '');
+		sample.setAttribute('aria-hidden', 'true');
+		document.body.prepend(sample);
+	}
+	sample.style.backgroundColor = color;
+}
+
 function applyDocumentTheme(dark: boolean) {
 	if (typeof document === 'undefined' || !document.body) return;
 	const root = document.documentElement;
@@ -33,13 +58,9 @@ function applyDocumentTheme(dark: boolean) {
 	// restores them.
 	root.classList.add('theme-switching');
 	root.classList.toggle('dark', dark);
-	// app.html paints the first frame with inline colours before any stylesheet
-	// loads; from here on app.css draws the background and colour scheme from
-	// the `.dark` class, so the inline copies go. Nothing here reads a computed
-	// style: that would recalculate the whole document inside the click.
-	root.style.removeProperty('background-color');
-	root.style.removeProperty('color-scheme');
-	document.body.style.removeProperty('background-color');
+	// Nothing here reads a computed style: that would recalculate the whole
+	// document inside the click.
+	paintDocumentChrome(dark);
 	if (themeSwitchFrame !== null) cancelAnimationFrame(themeSwitchFrame);
 	themeSwitchFrame = requestAnimationFrame(() => {
 		themeSwitchFrame = requestAnimationFrame(() => {

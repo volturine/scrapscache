@@ -35,23 +35,31 @@ describe('theme switch', () => {
 		document.body.removeAttribute('style');
 	});
 
-	it('flips the class and leaves the colours to the stylesheet without reading computed styles', () => {
+	it('flips the class and paints a concrete document background without reading computed styles', () => {
 		// app.html paints the first frame with these before any stylesheet loads.
 		document.documentElement.style.backgroundColor = '#1a1a1a';
 		document.documentElement.style.colorScheme = 'dark';
 		document.body.style.backgroundColor = '#1a1a1a';
 		const computed = vi.spyOn(window, 'getComputedStyle');
 
-		uiStore.dark = true;
+		uiStore.dark = false;
 
-		expect(document.documentElement.classList.contains('dark')).toBe(true);
-		expect(document.documentElement.style.backgroundColor).toBe('');
-		expect(document.documentElement.style.colorScheme).toBe('');
-		expect(document.body.style.backgroundColor).toBe('');
+		expect(document.documentElement.classList.contains('dark')).toBe(false);
+		expect(document.documentElement.style.backgroundColor).toBe('rgb(255, 255, 255)');
+		expect(document.documentElement.style.colorScheme).toBe('light');
+		expect(document.body.style.backgroundColor).toBe('rgb(255, 255, 255)');
+		expect(document.querySelector<HTMLElement>('[data-status-sample]')?.style.backgroundColor).toBe(
+			'rgb(255, 255, 255)'
+		);
 		expect(computed).not.toHaveBeenCalled();
 
-		uiStore.dark = false;
-		expect(document.documentElement.classList.contains('dark')).toBe(false);
+		uiStore.dark = true;
+		expect(document.documentElement.classList.contains('dark')).toBe(true);
+		expect(document.documentElement.style.backgroundColor).toBe('rgb(26, 26, 26)');
+		expect(document.body.style.backgroundColor).toBe('rgb(26, 26, 26)');
+		expect(document.querySelector<HTMLElement>('[data-status-sample]')?.style.backgroundColor).toBe(
+			'rgb(26, 26, 26)'
+		);
 	});
 
 	it('holds transitions off for the frame that paints the new colours', () => {

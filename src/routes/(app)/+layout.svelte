@@ -365,14 +365,6 @@
 				return 'Scraps Cache';
 		}
 	});
-
-	// src/app.html owns the theme-color meta (its boot script sets it before paint);
-	// a second one here would lose to it, so the theme follows by updating that one.
-	$effect(() => {
-		document
-			.querySelector('meta[name="theme-color"]')
-			?.setAttribute('content', uiStore.effectiveDark ? '#1a1a1a' : '#ffffff');
-	});
 </script>
 
 <!-- Description and preview tags are the app's defaults in src/app.html; only the

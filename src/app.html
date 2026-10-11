@@ -53,9 +53,8 @@
 		     No apple-mobile-web-app-status-bar-style: the translucent style hands
 		     the status bar to iOS, which hazes whatever the page paints under it.
 		     Without it the status bar is opaque and takes the solid colour this
-		     document's background already carries. Installed iOS keeps that colour
-		     from launch until the background is set again, so the UI store writes
-		     the same colour here whenever the theme changes. -->
+		     document's background already carries. A permanent fixed strip lets
+		     installed iOS sample that colour again when the theme changes. -->
 		<meta name="apple-mobile-web-app-capable" content="yes" />
 		<meta name="apple-mobile-web-app-title" content="Scraps Cache" />
 		<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
@@ -82,6 +81,9 @@
 				var ua = navigator.userAgent;
 				var ios =
 					/iP(hone|od|ad)/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+				if (ios && (navigator.standalone || matchMedia('(display-mode: standalone)').matches)) {
+					document.documentElement.classList.add('ios-standalone');
+				}
 				var viewport = document.querySelector('meta[name="viewport"]');
 				if (ios && viewport) viewport.content += ', maximum-scale=1';
 			})();
@@ -122,6 +124,13 @@
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="hover" style="background-color: inherit">
+		<!-- Keep the opaque sampler present before the app loads and above modals. -->
+		<div
+			data-status-sample
+			data-over-modals
+			aria-hidden="true"
+			style="background-color: inherit"
+		></div>
 		<div style="display: contents">%sveltekit.body%</div>
 	</body>
 </html>

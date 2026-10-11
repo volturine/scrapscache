@@ -440,7 +440,7 @@ export const adminPageStyles = {
 		textAlign: 'left',
 		rounded: 'row',
 		...clickable,
-		_focusVisible: { outline: '2px solid', outlineColor: 'scrapscache.focus', outlineOffset: '2px' }
+		outline: 'none'
 	}),
 	emptyCell: css({ p: 'md', ...mutedText }),
 	pagination: hstack({ gap: 'sm', fontSize: 'body' }),
@@ -588,12 +588,7 @@ export const mcpAuthorizeStyles = {
 		...clickable,
 		transition: 'background-color 120ms ease, border-color 120ms ease',
 		...subtleHover,
-		'&:has(input:checked)': { borderColor: 'scrapscache.accent', bg: 'scrapscache.accentSubtle' },
-		'&:has(input:focus-visible)': {
-			outline: '2px solid',
-			outlineColor: 'scrapscache.focus',
-			outlineOffset: '2px'
-		}
+		'&:has(input:checked)': { borderColor: 'scrapscache.accent', bg: 'scrapscache.accentSubtle' }
 	}),
 	unavailableOption: css({ ...mcpChoiceRow, opacity: 0.72 }),
 	radio: css({ mt: '3xs', accentColor: 'scrapscache.accent' }),
@@ -1101,7 +1096,6 @@ export const kanbanViewStyles = {
 		WebkitTapHighlightColor: 'transparent',
 		transition: 'background-color 120ms ease',
 		...subtleHover,
-		_focusVisible: { bg: 'scrapscache.interactiveHover' },
 		'&[data-state=open]': { bg: 'scrapscache.interactiveHover' }
 	}),
 	boardName: css(truncateText),
@@ -1146,8 +1140,7 @@ export const kanbanViewStyles = {
 	}),
 	boardMenuDanger: css({
 		color: 'scrapscache.danger',
-		_hoverable: { bg: 'scrapscache.dangerSubtle' },
-		_focusVisible: { bg: 'scrapscache.dangerSubtle' }
+		_hoverable: { bg: 'scrapscache.dangerSubtle' }
 	}),
 	deletePositioner: css({
 		position: 'absolute',
@@ -1228,8 +1221,7 @@ export const kanbanViewStyles = {
 			bg: 'scrapscache.surface',
 			color: 'scrapscache.text',
 			boxShadow: 'sm'
-		},
-		'&[data-focus-visible]': { outline: '2px solid', outlineColor: 'scrapscache.focus' }
+		}
 	}),
 	filterSummary: css({ ...truncateText, px: '2xs', textStyle: 'micro' }),
 	menuItem: css({
@@ -1820,8 +1812,7 @@ const datePickerGridBase = {
 	'&[data-today]:not([data-selected])': {
 		borderWidth: 'hairline',
 		borderColor: 'scrapscache.textMuted'
-	},
-	_focusVisible: { outline: 'none', ringWidth: '2px', ringColor: 'scrapscache.accent' }
+	}
 } as const;
 export const datePickerGridBtn = {
 	day: css({
@@ -2067,7 +2058,7 @@ export const noteEditorStyles = {
 		...fullSize,
 		overflow: 'visible',
 		rounded: 'inherit',
-		// The sheet receives initial focus; its controls carry visible focus rings.
+		// The sheet receives initial focus without outlining the entire surface.
 		outline: 'none'
 	}),
 	header: hstack({
@@ -2091,7 +2082,7 @@ export const noteEditorStyles = {
 	// card draws over the note body instead of expanding or reflowing the note.
 	// Sits over the note, above the footer it opens from.
 	shareMenuPositioner: css({ zIndex: 30 }),
-	// The panel takes focus on open; its items show the highlight, not the panel.
+	// The panel takes focus on open without outlining the entire surface.
 	shareMenu: css({ minW: '11rem', overflow: 'hidden', py: '2xs', outline: 'none' }),
 	previewDock: css({ position: 'relative', flexShrink: 0, h: 0 }),
 	previewDockFill: css({ position: 'relative', ...column, ...flexPane }),
@@ -2125,12 +2116,7 @@ export const noteEditorStyles = {
 		cursor: 'ns-resize',
 		zIndex: 1,
 		touchAction: 'none',
-		userSelect: 'none',
-		_focusVisible: {
-			outline: '2px solid',
-			outlineColor: 'scrapscache.focus',
-			outlineOffset: '-2px'
-		}
+		userSelect: 'none'
 	}),
 	// The tooltip trigger wraps the toggle in an in-flow span; park that span on
 	// the dock's or card's top edge so it moves with the card.
@@ -2160,11 +2146,6 @@ export const noteEditorStyles = {
 		_hoverable: {
 			backgroundImage:
 				'linear-gradient(var(--colors-scrapscache-interactive-hover), var(--colors-scrapscache-interactive-hover))'
-		},
-		_focusVisible: {
-			outline: '2px solid',
-			outlineColor: 'scrapscache.focus',
-			outlineOffset: '1px'
 		},
 		_active: { transform: 'scale(0.95)' }
 	}),
@@ -2400,12 +2381,6 @@ const historyMotion = {
 	transitionTimingFunction: 'cubic-bezier(0.2, 0, 0, 1)',
 	_motionReduce: { transitionDuration: '0ms' }
 } as const;
-// The rail clips its overflow, so focus outlines sit inside each control.
-const historyFocusRing = {
-	outline: '2px solid',
-	outlineColor: 'scrapscache.focus',
-	outlineOffset: '-2px'
-} as const;
 const historySwapState = (enter: string, exit: string) => ({
 	'&[data-state=open]': { animation: `${enter} 200ms cubic-bezier(0.2, 0, 0, 1)` },
 	'&[data-state=closed]': { animation: `${exit} 120ms ease-in` },
@@ -2473,9 +2448,8 @@ export const historyStyles = {
 		// Dragging along the rail scrubs versions instead of scrolling the note.
 		touchAction: 'none',
 		'@media (pointer: coarse)': { gap: '10px' },
-		rounded: 'card',
 		// The growing tick under the pointer is the hover feedback, as in T3 Code.
-		_focusVisible: historyFocusRing
+		rounded: 'card'
 	}),
 	tick: css({
 		display: 'block',
@@ -2569,7 +2543,6 @@ export const historyStyles = {
 		transitionDuration: '120ms',
 		_hoverable: { bg: 'scrapscache.interactiveHover' },
 		_active: { bg: 'scrapscache.interactiveActive' },
-		_focusVisible: historyFocusRing,
 		'&[data-loading]': { opacity: 0.55, animation: 'pulse 1.2s ease-in-out infinite' },
 		'&[aria-current]': { bg: 'scrapscache.accentSubtle' }
 	}),
@@ -2867,8 +2840,7 @@ export const markdownStyles = css({
 		boxShadow: 'sm',
 		transition: 'colors 120ms ease',
 		...clickable,
-		_hoverable: { bg: 'scrapscache.surface', color: 'scrapscache.text', opacity: 1 },
-		_focusVisible: { outline: '2px solid token(colors.scrapscache.focus)', outlineOffset: '1px' }
+		_hoverable: { bg: 'scrapscache.surface', color: 'scrapscache.text', opacity: 1 }
 	},
 	'& .markdown-table': {
 		w: 'max-content',

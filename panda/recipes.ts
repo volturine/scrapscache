@@ -91,12 +91,6 @@ const menuItemRecipe = defineRecipe({
 		transition: 'background-color 120ms ease, color 120ms ease',
 		_hoverable: { bg: 'scrapscache.interactiveHover' },
 		_active: { bg: 'scrapscache.interactiveActive' },
-		_focusVisible: {
-			bg: 'scrapscache.interactiveHover',
-			outline: '2px solid',
-			outlineColor: 'scrapscache.focus',
-			outlineOffset: '-2px'
-		},
 		_disabled: { opacity: 0.55, cursor: 'not-allowed' }
 	},
 	variants: {
@@ -115,8 +109,7 @@ const menuItemRecipe = defineRecipe({
 		feedback: {
 			none: {
 				_hoverable: { bg: 'transparent' },
-				_active: { bg: 'transparent' },
-				_focusVisible: { bg: 'transparent' }
+				_active: { bg: 'transparent' }
 			}
 		}
 	},
@@ -132,13 +125,9 @@ const buttonRecipe = defineRecipe({
 		rounded: 'control',
 		...tapTarget,
 		...touchHit,
+		outline: 'none',
 		transition:
 			'background-color 120ms ease, border-color 120ms ease, color 120ms ease, box-shadow 120ms ease, transform 120ms ease',
-		_focusVisible: {
-			outline: '2px solid',
-			outlineColor: 'scrapscache.focus',
-			outlineOffset: '2px'
-		},
 		_active: {
 			transform: 'scale(0.97)'
 		},
@@ -230,13 +219,9 @@ const iconButtonRecipe = defineRecipe({
 		rounded: 'pill',
 		...tapTarget,
 		...touchHit,
+		outline: 'none',
 		transition:
 			'background-color 150ms ease, color 150ms ease, opacity 150ms ease, transform 150ms ease',
-		_focusVisible: {
-			outline: '2px solid',
-			outlineColor: 'scrapscache.focus',
-			outlineOffset: '2px'
-		},
 		_active: {
 			transform: 'scale(0.95)'
 		},
@@ -299,8 +284,7 @@ const inputRecipe = defineRecipe({
 				rounded: 'control',
 				borderWidth: 'hairline',
 				borderColor: 'scrapscache.border',
-				bg: 'scrapscache.bg',
-				_focus: { ringWidth: '2px', ringColor: 'scrapscache.focus' }
+				bg: 'scrapscache.bg'
 			},
 			unstyled: {
 				px: 0,

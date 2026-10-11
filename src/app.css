@@ -15,6 +15,12 @@
 	/* Room under a note sheet: a place to tap outside the note and close it. */
 	--app-sheet-pad-bottom: 4.5rem;
 	--note-card-width: 18rem;
+	/* Installed iOS reserves a visible strip even when the top safe area is zero. */
+	--app-frame-top: var(--app-inset-top);
+}
+/* WebKit reads an edge element's background directly when it exceeds 10px. */
+html.ios-standalone {
+	--app-frame-top: max(12px, var(--app-inset-top));
 }
 
 /* An open note owns the screen; the new-note button would only crowd it and,
@@ -83,6 +89,15 @@ html.dark {
 	color-scheme: dark;
 }
 
+/* Suppress browser tap highlights and focus outlines throughout the app. */
+html {
+	-webkit-tap-highlight-color: transparent;
+}
+:focus,
+:focus-visible {
+	outline: none !important;
+}
+
 /* Hold transitions off until the new theme has painted. */
 html.theme-switching,
 html.theme-switching *,
@@ -119,22 +134,22 @@ html.editor-open .app-shell {
  * status bar; the bottom is the screen edge. transform makes this the
  * containing block for position:fixed descendants.
  */
-/* Installed iOS samples a fixed bar at the top edge for the status bar and
- * ignores theme-color after launch. The bar is only the safe area, which
- * sits above .app-viewport, so it does not cover the app. */
+/* WebKit samples fixed content near the top centre. A full-viewport container
+ * can retain its previous sampled colour, so this opaque strip owns that edge.
+ * https://github.com/WebKit/WebKit/blob/main/Source/WebCore/page/LocalFrameView.cpp
+ */
 [data-status-sample] {
 	position: fixed;
 	top: 0;
 	right: 0;
 	left: 0;
-	height: var(--app-inset-top);
-	z-index: 80;
-	pointer-events: none;
+	height: var(--app-frame-top);
+	z-index: 300;
 }
 
 .app-viewport {
 	position: fixed;
-	top: var(--app-inset-top);
+	top: var(--app-frame-top);
 	right: var(--app-inset-right);
 	bottom: var(--app-inset-bottom);
 	left: var(--app-inset-left);
@@ -163,7 +178,7 @@ html.editor-open .app-shell {
  * paint input carets inside a transformed, overflow-clipped ancestor. */
 .app-overlay {
 	position: fixed;
-	top: calc(var(--app-inset-top) + var(--app-visual-offset-top));
+	top: calc(var(--app-frame-top) + var(--app-visual-offset-top));
 	right: var(--app-inset-right);
 	bottom: var(--app-inset-bottom);
 	left: var(--app-inset-left);
@@ -330,14 +345,14 @@ html.scrapscache-sync-active [data-scrapscache-sync-spinner],
 	bottom: 47px !important;
 }
 .excalidraw-modal-container {
-	top: calc(var(--app-visual-offset-top) + var(--app-inset-top)) !important;
+	top: calc(var(--app-visual-offset-top) + var(--app-frame-top)) !important;
 	right: var(--app-inset-right) !important;
 	bottom: var(--app-inset-bottom) !important;
 	left: var(--app-inset-left) !important;
 	height: auto !important;
 }
 .excalidraw-modal-container .Modal__background {
-	top: calc(var(--app-visual-offset-top) + var(--app-inset-top)) !important;
+	top: calc(var(--app-visual-offset-top) + var(--app-frame-top)) !important;
 	right: var(--app-inset-right) !important;
 	bottom: var(--app-inset-bottom) !important;
 	left: var(--app-inset-left) !important;

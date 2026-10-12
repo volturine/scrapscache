@@ -40,8 +40,28 @@ test('the note sheet does not draw a browser focus ring around itself', async ({
 		const style = getComputedStyle(element);
 		return { visible: element.matches(':focus-visible'), outlineStyle: style.outlineStyle };
 	});
-	expect(focusRing).toMatchObject({ visible: true });
-	expect(focusRing.outlineStyle).not.toBe('none');
+	expect(focusRing).toMatchObject({ visible: true, outlineStyle: 'none' });
+});
+
+test('controls keep keyboard focus without drawing highlights', async ({ page }) => {
+	await openEmptyApp(page);
+	await page.keyboard.press('Tab');
+	for (const control of [
+		page.getByRole('button', { name: 'Settings', exact: true }),
+		page.getByRole('button', { name: 'Notes', exact: true }),
+		page.getByRole('textbox', { name: 'Search', exact: true })
+	]) {
+		await control.focus();
+		await expect(control).toBeFocused();
+		await expect(control).toHaveCSS('outline-style', 'none');
+		await expect(control).toHaveCSS('-webkit-tap-highlight-color', 'rgba(0, 0, 0, 0)');
+	}
+
+	await page.getByRole('button', { name: 'Settings', exact: true }).click();
+	const theme = page.getByRole('menuitem', { name: /^(Dark|Light) mode$/ });
+	await theme.focus();
+	await expect(theme).toHaveCSS('outline-style', 'none');
+	await expect(theme).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
 });
 
 test('a checklist line toggles from the body', async ({ page }) => {

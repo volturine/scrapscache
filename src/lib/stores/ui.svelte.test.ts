@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { uiStore } from './ui.svelte';
 
 describe('ui store persistence', () => {
@@ -29,10 +29,16 @@ describe('ui store persistence', () => {
 });
 
 describe('theme switch', () => {
+	beforeEach(() => {
+		// This element belongs to app.html and exists before the store boots.
+		document.body.insertAdjacentHTML('afterbegin', '<div data-status-sample></div>');
+	});
+
 	afterEach(() => {
 		uiStore.restoreState({ dark: null });
 		document.documentElement.removeAttribute('style');
 		document.body.removeAttribute('style');
+		document.querySelector('[data-status-sample]')?.remove();
 	});
 
 	it('flips the class and paints a concrete document background without reading computed styles', () => {

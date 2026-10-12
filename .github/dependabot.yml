@@ -42,5 +42,8 @@ updates:
         patterns:
           - '*'
     ignore:
+      # TypeScript 7 ships no JS compiler API, which svelte-check, svelte2tsx and
+      # @sveltejs/kit (peer typescript ^6) still need. TS 7 runs the type check
+      # through svelte-check --tsgo via @typescript/native.
       - dependency-name: 'typescript'
         update-types: ['version-update:semver-major']

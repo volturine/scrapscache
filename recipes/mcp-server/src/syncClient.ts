@@ -1,5 +1,10 @@
 import { identityFromSyncKey, signSyncChallenge, randomOpaqueId } from './crypto.js';
 import type { ReminderWake } from '../../../src/lib/model/index.js';
+import {
+	SYNC_DELTA_PATH,
+	SYNC_PROTOCOL_HEADER,
+	SYNC_PROTOCOL_VERSION
+} from '../../../src/lib/model/protocol.js';
 
 export type SyncEnvelope = {
 	id: string;
@@ -115,7 +120,8 @@ export class ScrapscacheSyncClient {
 					'Content-Type': 'application/json',
 					Accept: 'application/json',
 					Authorization: `Bearer ${authToken}`,
-					'x-sync-client-id': this.clientId
+					'x-sync-client-id': this.clientId,
+					[SYNC_PROTOCOL_HEADER]: SYNC_PROTOCOL_VERSION
 				},
 				body: JSON.stringify(body)
 			});
@@ -132,13 +138,16 @@ export class ScrapscacheSyncClient {
 		deleteSlots: string[] = [],
 		limit = 100
 	): Promise<SyncResult> {
-		const res = await this.authorizedRequest('/api/sync/delta', 'POST', {
+		const res = await this.authorizedRequest(SYNC_DELTA_PATH, 'POST', {
 			cursor,
 			limit,
 			envelopes: uploads,
 			deleteSlots
 		});
 		if (!res.ok) {
+			if (res.status === 404) {
+				throw new Error('The sync server needs an update to support this app version.');
+			}
 			throw new Error(`Sync delta failed with status ${res.status}: ${await res.text()}`);
 		}
 

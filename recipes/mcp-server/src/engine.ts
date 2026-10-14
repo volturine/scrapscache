@@ -3,6 +3,7 @@ import { ScrapscacheSyncClient, type SyncEnvelope, type SyncResult } from './syn
 import {
 	applyNoteEdit,
 	createEditContext,
+	isReadableBodyDoc,
 	mergeTwoLabels,
 	mergeTwoNotes,
 	NOTE_FIELDS,
@@ -423,6 +424,12 @@ export class McpSession {
 				);
 				if (!payload || typeof payload !== 'object') continue;
 				if (payload.kind === 'note') {
+					const note = payload.value as Note & { bodyDoc?: unknown };
+					if (
+						Object.prototype.hasOwnProperty.call(note, 'bodyDoc') &&
+						(typeof note.body !== 'string' || !isReadableBodyDoc(note.bodyDoc, note.body))
+					)
+						continue;
 					this.notes.set(payload.value.id, payload.value);
 					this.syncedSlots.set(`note:${payload.value.id}`, envelope);
 				} else if (payload.kind === 'note-tombstone') {

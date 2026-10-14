@@ -16,7 +16,7 @@ Scraps Cache is end-to-end encrypted and zero-knowledge. This MCP server acts as
 │ (Claude,        │   Authorization: Bearer       │ (Docker or CF Worker)   │
 │  ChatGPT, etc.) │   or OAuth 2.1 (PKCE S256)    └────────────┬────────────┘
 └─────────────────┘                                            │
-                                               E2E Encrypted   │ /api/sync/delta
+                                               E2E Encrypted   │ /api/sync/v2/delta
                                                Sync Protocol   │ (ChaCha20-Poly1305)
                                                                v
                                                   ┌─────────────────────────┐

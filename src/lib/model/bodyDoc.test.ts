@@ -1,7 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import { BodyAuthor, isReadableBodyDoc, mergeBodies } from './bodyDoc';
+import * as Y from 'yjs';
+import { BodyAuthor, isReadableBodyDoc, mergeBodies, replaceBodySnapshot } from './bodyDoc';
 
 describe('note body documents', () => {
+	it('keeps edits on a stored root text document in their existing history', () => {
+		const doc = new Y.Doc();
+		doc.getText('body').insert(0, 'shared');
+		const base = {
+			body: 'shared',
+			bodyDoc: btoa(String.fromCharCode(...Y.encodeStateAsUpdate(doc)))
+		};
+		const phone = new BodyAuthor().edit('n', base, 'shared phone');
+		const laptop = new BodyAuthor().edit('n', base, 'laptop shared');
+		const merged = mergeBodies(phone, laptop);
+		expect(merged.body).toBe('laptop shared phone');
+		expect(mergeBodies(laptop, phone)).toEqual(merged);
+		expect(isReadableBodyDoc(merged.bodyDoc, merged.body)).toBe(true);
+	});
+
 	it('merges edits from three writers into the same bytes in any order', () => {
 		const base = new BodyAuthor().edit('n', { body: '' }, 'alpha\nbeta\ngamma');
 		const one = new BodyAuthor().edit('n', base, 'ALPHA\nbeta\ngamma');
@@ -21,12 +37,36 @@ describe('note body documents', () => {
 		expect(mergeBodies(phone, laptop).body).toBe('laptop: shared, phone');
 	});
 
-	it('keeps a body written by a client that did not update the document', () => {
+	it('keeps a readable document authoritative when its plain projection is stale', () => {
 		const current = new BodyAuthor().edit('n', { body: '' }, 'first');
 		const stale = { body: 'rewritten elsewhere', bodyDoc: current.bodyDoc };
-		const merged = mergeBodies(stale, current);
-		expect(merged.body).toBe('rewritten elsewhere');
-		expect(mergeBodies(current, stale)).toEqual(merged);
+		const forward = mergeBodies(stale, current);
+		const backward = mergeBodies(current, stale);
+		const replayed = mergeBodies(forward, stale);
+
+		expect(forward.body).toBe('first');
+		expect(backward).toEqual(forward);
+		expect(replayed).toEqual(forward);
+	});
+
+	it('applies a full snapshot once and lets a later snapshot replace it', () => {
+		const base = new BodyAuthor().edit('n', { body: '' }, 'base');
+		const write = { time: 30, writer: 'snapshot' };
+		const first = replaceBodySnapshot(base, 'ZZZ', write);
+		const replayed = replaceBodySnapshot(first, 'ZZZ', write);
+
+		expect(first.body).toBe('ZZZ');
+		expect(replayed).toEqual(first);
+
+		const cleared = replaceBodySnapshot(base, '', write);
+		const clearedAgain = replaceBodySnapshot(cleared, '', write);
+		const restored = replaceBodySnapshot(clearedAgain, 'again', { time: 40, writer: 'snapshot' });
+		const oldReplay = replaceBodySnapshot(restored, '', write);
+
+		expect(cleared.body).toBe('');
+		expect(clearedAgain).toEqual(cleared);
+		expect(restored.body).toBe('again');
+		expect(oldReplay).toEqual(restored);
 	});
 
 	it('rebuilds an unreadable document from the text', () => {

@@ -1,6 +1,7 @@
 import { env, waitUntil } from 'cloudflare:workers';
 import type { D1Database } from '@cloudflare/workers-types';
 import type { MetricsSnapshot, ProcessActivity } from '#lib/server/metricsRender.js';
+import { SYNC_DELTA_PATH } from '#lib/model/protocol.js';
 
 /** Per-phase keys for one relay sync round, written into `activity_hours`. */
 export function recordSyncPhases(phases: Record<string, number>): void {
@@ -16,7 +17,7 @@ export type { ProcessActivity, MetricsSnapshot } from '#lib/server/metricsRender
 export const HOUR_MS = 3_600_000;
 
 export function routeLabel(pathname: string): string {
-	if (pathname.startsWith('/api/sync/delta')) return '/api/sync/delta';
+	if (pathname.startsWith(SYNC_DELTA_PATH)) return SYNC_DELTA_PATH;
 	if (pathname.startsWith('/api/sync/push/')) return '/api/sync/push/*';
 	if (pathname.startsWith('/api/sync/pair/')) return '/api/sync/pair/*';
 	if (pathname.startsWith('/api/sync/')) return '/api/sync/*';

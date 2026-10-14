@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import * as Y from 'yjs';
 import {
 	approximatePayloadBytes,
 	buildSyncRecords,
@@ -11,6 +12,7 @@ import {
 } from './syncRecords';
 import type { Note, NoteImage } from './types';
 import { createCanvasAttachment } from './canvasAttachment';
+import { replaceBodySnapshot } from './model/bodyDoc';
 
 function image(id: string, dataUrl: string): NoteImage {
 	return { id, name: `${id}.jpg`, mime: 'image/jpeg', dataUrl, createdAt: 1 };
@@ -32,6 +34,15 @@ function note(id: string, updatedAt: number, body = '', images: NoteImage[] = []
 		labels: [],
 		...(images.length ? { images } : {})
 	};
+}
+
+function rootBodyDocument(body: string): { body: string; bodyDoc: string } {
+	const doc = new Y.Doc();
+	if (body) doc.getText('body').insert(0, body);
+	const update = Y.encodeStateAsUpdate(doc);
+	let binary = '';
+	for (const byte of update) binary += String.fromCharCode(byte);
+	return { body, bodyDoc: btoa(binary) };
 }
 
 describe('opaque per-record sync payloads', () => {
@@ -210,5 +221,43 @@ describe('workspace library records', () => {
 		expect(
 			isSyncRecordPayload({ kind: 'reminder-history', value: { id: wake, noteId: 'n' } })
 		).toBe(false);
+	});
+});
+
+describe('sync note body document validation', () => {
+	it('accepts readable root and replacement documents and plaintext-only notes', () => {
+		const root = rootBodyDocument('root body');
+		const replacement = replaceBodySnapshot(root, 'replacement body', {
+			time: 2,
+			writer: 'test'
+		});
+
+		expect(
+			isSyncRecordPayload({
+				kind: 'note',
+				value: { ...note('n', 1, root.body), bodyDoc: root.bodyDoc }
+			})
+		).toBe(true);
+		expect(
+			isSyncRecordPayload({
+				kind: 'note',
+				value: { ...note('n', 2, replacement.body), bodyDoc: replacement.bodyDoc }
+			})
+		).toBe(true);
+		expect(isSyncRecordPayload({ kind: 'note', value: note('plain', 1, 'plain text') })).toBe(true);
+	});
+
+	it('rejects mismatched, malformed, and non-string body documents', () => {
+		const root = rootBodyDocument('root body');
+		const invalidNotes = [
+			{ ...note('n', 1, 'different body'), bodyDoc: root.bodyDoc },
+			{ ...note('n', 1, root.body), bodyDoc: 'not-a-yjs-update' },
+			{ ...note('n', 1, root.body), bodyDoc: 42 },
+			{ ...note('n', 1, root.body), bodyDoc: null }
+		];
+
+		for (const value of invalidNotes) {
+			expect(isSyncRecordPayload({ kind: 'note', value })).toBe(false);
+		}
 	});
 });

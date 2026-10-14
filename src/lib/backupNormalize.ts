@@ -147,7 +147,9 @@ export function normalizeBackup(data: unknown): ScrapsCacheBackup | null {
 				id: note.id,
 				title: String(note.title ?? ''),
 				body: String(note.body ?? ''),
-				...(isReadableBodyDoc(note.bodyDoc) ? { bodyDoc: note.bodyDoc } : {}),
+				...(isReadableBodyDoc(note.bodyDoc, String(note.body ?? ''))
+					? { bodyDoc: note.bodyDoc }
+					: {}),
 				color,
 				pinned: Boolean(note.pinned),
 				archived: Boolean(note.archived),

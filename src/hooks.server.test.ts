@@ -1,6 +1,7 @@
 import type { RequestEvent } from '@sveltejs/kit';
 import type { ResolveOptions } from '@sveltejs/kit/hooks';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { SYNC_DELTA_PATH } from '#lib/model/protocol.js';
 import { privateEnv, publicEnv } from './tests/env';
 
 vi.mock('#lib/server/metrics.js', () => ({ recordHttpRequest: vi.fn() }));
@@ -10,8 +11,10 @@ import { handle } from './hooks.server';
 function respond(requestHeaders: Record<string, string> = {}): Promise<Response> {
 	return (handle as unknown as (input: unknown) => Promise<Response>)({
 		event: {
-			request: new Request('https://example.test/api/sync/delta', { headers: requestHeaders }),
-			url: new URL('https://example.test/api/sync/delta')
+			request: new Request(new URL(SYNC_DELTA_PATH, 'https://example.test'), {
+				headers: requestHeaders
+			}),
+			url: new URL(SYNC_DELTA_PATH, 'https://example.test')
 		},
 		resolve: async () => new Response('ok', { status: 200 })
 	});
@@ -131,7 +134,7 @@ describe('the Turnstile challenge origin', () => {
 
 		expect(response.status).toBe(404);
 		expect(resolved).not.toHaveBeenCalled();
-		expect((await visit(`${CHALLENGE}/api/sync/delta`, resolved)).status).toBe(404);
+		expect((await visit(`${CHALLENGE}${SYNC_DELTA_PATH}`, resolved)).status).toBe(404);
 	});
 
 	it('lets the challenge page be framed by the app it names', async () => {

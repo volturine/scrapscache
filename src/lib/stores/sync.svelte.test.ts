@@ -13,6 +13,11 @@ import { sha256 } from '#lib/syncHash.js';
 import * as idb from '#lib/db/idb.js';
 import { MAX_CLIENT_SYNC_MUTATIONS_PER_REQUEST } from '#lib/syncLimits.js';
 import { buildSyncRecords } from '#lib/syncRecords.js';
+import {
+	SYNC_DELTA_PATH,
+	SYNC_PROTOCOL_HEADER,
+	SYNC_PROTOCOL_VERSION
+} from '#lib/model/protocol.js';
 import { SyncStore } from './sync.svelte';
 import { syncSnapshot, type SyncSnapshot } from '#lib/syncRecords.js';
 import { unboundSyncEnvelope } from '../../tests/unboundEnvelope';
@@ -39,7 +44,8 @@ type RelayData = {
 	};
 };
 
-type RequestResult = { success: true; data: RelayData } | { success: false; error: string };
+type RequestResult =
+	{ success: true; data: RelayData } | { success: false; error: string; status?: number };
 
 const emptyData = (overrides: Partial<RelayData> = {}): RelayData => ({
 	cursor: 0,
@@ -125,7 +131,7 @@ function createHarness(
 			sendSyncRequest(
 				path: string,
 				payload: string
-			): Promise<{ success: boolean; data?: RelayData; error?: string }>;
+			): Promise<{ success: boolean; data?: RelayData; error?: string; status?: number }>;
 		},
 		'sendSyncRequest'
 	).mockImplementation(async (_path, payload) => {
@@ -351,10 +357,12 @@ describe('client sync state machine', () => {
 			expiresAt: Date.now() + 60_000
 		};
 		const resourceTokens: string[] = [];
+		const resourceHeaders: Headers[] = [];
 		const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
 			const path = String(input);
 			if (path === '/resource') {
 				resourceTokens.push(new Headers(init?.headers).get('authorization') ?? '');
+				resourceHeaders.push(new Headers(init?.headers));
 				return new Response(null, { status: resourceTokens.length === 1 ? 401 : 204 });
 			}
 			if (path.endsWith('/challenge'))
@@ -369,6 +377,10 @@ describe('client sync state machine', () => {
 
 		expect(response.status).toBe(204);
 		expect(resourceTokens).toEqual(['Bearer stale-token', 'Bearer fresh-token']);
+		expect(resourceHeaders.map((headers) => headers.get(SYNC_PROTOCOL_HEADER))).toEqual([
+			SYNC_PROTOCOL_VERSION,
+			SYNC_PROTOCOL_VERSION
+		]);
 	});
 
 	it('marks the active key retired when the relay refuses it for good', async () => {
@@ -439,11 +451,30 @@ describe('client sync state machine', () => {
 				)
 		);
 
-		await expect(privateStore.sendSyncRequest('/api/sync/delta', '{}', 0, false)).resolves.toEqual({
+		await expect(privateStore.sendSyncRequest(SYNC_DELTA_PATH, '{}', 0, false)).resolves.toEqual({
 			success: true,
 			data: emptyData()
 		});
 		expect(request.mock.calls.map((call) => call[4])).toEqual(['stale-token', 'fresh-token']);
+	});
+
+	it('keeps pending work on a protocol upgrade refusal without retrying', async () => {
+		const local = note('note-1', { title: 'pending edit', updatedAt: 2 });
+		const { store, requests } = createHarness(() => ({
+			success: false,
+			status: 409,
+			error: 'Sync protocol version mismatch. Reload the app or update the MCP server.'
+		}));
+		await idb.markSyncOutbox(TEST_WORKSPACE, ['note:note-1']);
+
+		const result = await store.sync(syncSnapshot({ notes: [local] }), false, false, passthrough);
+
+		expect(result).toMatchObject({
+			success: false,
+			error: 'Sync protocol version mismatch. Reload the app or update the MCP server.'
+		});
+		expect(requests).toHaveLength(1);
+		expect(await idb.getSyncOutboxKeys(TEST_WORKSPACE)).toEqual(['note:note-1']);
 	});
 
 	it('reports an outbox failure and allows the next durable marker write to retry', async () => {

@@ -113,7 +113,13 @@ export function applyNoteEdit(note: Note, patch: NotePatch, context: EditContext
 	for (const field of changed) {
 		switch (field) {
 			case 'body':
-				Object.assign(next, context.author.edit(note.id, note, patch.body ?? ''));
+				Object.assign(
+					next,
+					context.author.edit(note.id, note, patch.body ?? '', {
+						time: fieldTime(note, 'body'),
+						writer: note.fieldWriters?.body
+					})
+				);
 				break;
 			case 'images': {
 				const attachments = editAttachments(note, patch.images ?? [], at);

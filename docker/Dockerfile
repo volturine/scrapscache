@@ -26,7 +26,7 @@ FROM alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cab
 COPY --from=node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 /usr/local/bin/node /usr/local/bin/node
 
 # BODY_SIZE_LIMIT: the largest request the app accepts is one sync round, capped at
-# 17,000,000 bytes (a 16 MB envelope plus 1 MB of JSON, src/routes/api/sync/delta).
+# 17,000,000 bytes (a 16 MB envelope plus 1 MB of JSON, src/routes/api/sync/v2/delta).
 # 18M is 18,874,368 bytes: just above that, so the app's own cap decides.
 ENV NODE_ENV=production \
 	HOST=0.0.0.0 \

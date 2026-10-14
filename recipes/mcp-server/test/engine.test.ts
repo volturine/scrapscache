@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach, vi } from 'vitest';
 import { McpSession, parseChecklistItems } from '../src/engine.js';
-import { reminderWakeId } from '../../../src/lib/model/index.js';
+import { BodyAuthor, reminderWakeId } from '../../../src/lib/model/index.js';
 import { ScrapscacheSyncClient, type SyncEnvelope } from '../src/syncClient.js';
 import {
 	bytesToBase64Url,
@@ -282,6 +282,41 @@ plain text line`;
 			upload.slot
 		).value;
 	}
+
+	it('ignores an encrypted note whose readable body document disagrees with its text', async () => {
+		const readable = new BodyAuthor().edit('app-note', { body: '' }, 'trusted body');
+		const valid = envelopeFor('valid-note', appNote({ title: 'Valid note', body: 'good body' }));
+		const invalid = envelopeFor(
+			'invalid-note',
+			appNote({ title: 'Corrupted note', body: 'corrupted body', bodyDoc: readable.bodyDoc })
+		);
+		const results = [[valid, invalid], [], []];
+		let resultIndex = 0;
+		const client = {
+			...mockSyncClient,
+			syncDelta: async (cursor: number, uploads: SyncEnvelope[] = []) => {
+				uploadedEnvelopes.push(...uploads);
+				return {
+					cursor: cursor + 1,
+					envelopes: results[resultIndex++] ?? [],
+					conflicts: [],
+					hasMore: false,
+					reset: false,
+					writesAccepted: true
+				};
+			}
+		} as unknown as ScrapscacheSyncClient;
+		const session = new McpSession(client);
+
+		const downloaded = await session.readNote({ id: 'app-note' });
+		expect(downloaded.title).toBe('Valid note');
+		expect(downloaded.body).toBe('good body');
+
+		await session.updateNote({ id: 'app-note', title: 'Updated note' });
+		expect(uploadedEnvelopes).toHaveLength(1);
+		expect(uploadedEnvelopes[0].expectedId).toBe('valid-note');
+		expect(lastUploadedNote().title).toBe('Updated note');
+	});
 
 	it('merges with a note another writer changed first instead of overwriting it', async () => {
 		const original = appNote();

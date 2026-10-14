@@ -2,6 +2,7 @@ import type { KanbanBoard } from '#lib/kanban.js';
 import type { Label, Note, NoteImage } from '#lib/types.js';
 import { sha256 } from '#lib/syncHash.js';
 import { isCanvasLibraryEntry, type CanvasLibraryEntry } from '#lib/canvasLibrary.js';
+import { isReadableBodyDoc } from './model/bodyDoc.js';
 
 /** Everything of a workspace that syncs. */
 export type SyncSnapshot = {
@@ -343,7 +344,11 @@ function isSyncNote(value: unknown): value is SyncNote {
 		fieldWriters?: unknown;
 	};
 	if (typeof note.title !== 'string' || typeof note.body !== 'string') return false;
-	if (note.bodyDoc != null && typeof note.bodyDoc !== 'string') return false;
+	if (
+		Object.prototype.hasOwnProperty.call(note, 'bodyDoc') &&
+		!isReadableBodyDoc(note.bodyDoc, note.body)
+	)
+		return false;
 	if (
 		note.imageTombstones != null &&
 		!(

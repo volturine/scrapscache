@@ -60,9 +60,12 @@ The same SvelteKit app serves the UI and the sync API when self-hosted.
 - **Notes** — title, body (plain text + checklist lines), color, pins, archive,
   trash, reminder timestamp, label IDs, attachments. Every change goes through
   `applyNoteEdit` in `src/lib/model/`, which stamps only the fields it changes,
-  on the relay-corrected clock. The body is also a Yjs document, so concurrent
-  edits from two devices merge; attachments merge by id with removals
-  remembered; other fields are last-write-wins per field, ties broken by writer.
+  on the relay-corrected clock. The body is also a Yjs document: concurrent edits
+  on the same body base merge. First edits of a text-only copy identify that base
+  by its body write stamp and contents. A newer text-only snapshot creates one full
+  replacement shared by every receiving device. Across replacement bases, the
+  latest body write wins. Attachments merge by id with removals remembered;
+  other fields are last-write-wins per field, ties broken by writer.
 - **Reminder wakes** — optional account-scoped opaque wake IDs and `fireAt`
   timestamps. Each enabled device has independent delivery state, and a device
   does not need the encrypted note before receiving a generic alert. The relay
@@ -163,7 +166,7 @@ The keyring itself — id, display name, and sync key per workspace — is held 
 | Workers store     | `src/lib/server/cloudflare/`, `cf/accountCoordinator.ts`                   | D1/R2 storage + serialized account sync                   |
 | Sync auth         | `src/lib/server/syncAuth.ts`                                               | Ops DB: challenges, sessions, public key auth             |
 | Pairing           | `src/lib/server/pairingSessions.ts`                                        | Ops DB: rendezvous for PAKE shares                        |
-| Delta API         | `src/routes/api/sync/delta/`                                               | Upload/download encrypted records, slot deletes           |
+| Delta API         | `src/routes/api/sync/v2/delta/`                                            | Upload/download encrypted records, slot deletes           |
 | History API       | `src/routes/api/sync/history/`                                             | Owner-only encrypted prior note versions                  |
 | Register          | `src/routes/api/sync/register/`                                            | Create account credentials                                |
 | Reminder wakes    | `src/routes/api/sync/push/*`                                               | Device subscriptions + opaque wake ticks                  |
@@ -179,6 +182,15 @@ The keyring itself — id, display name, and sync key per workspace — is held 
 | Cron endpoint     | `src/routes/api/cron/tick/`                                                | Scheduler entry point for cron triggers                   |
 | Health            | `/health/live`, `/health/ready`                                            | Liveness and readiness probes                             |
 | Hooks             | `src/hooks.server.ts`                                                      | Security headers, request IDs                             |
+
+The delta endpoint uses sync protocol v2 and requires the matching version
+header from the app or MCP client. The previous endpoint is removed: cached
+clients must reload, and older MCP clients or self-hosted relays must update
+before transferring these body documents. Other API routes are unchanged.
+After v2 clients have written records, every deployed app and relay must retain
+the v2 endpoint and body-document format. A rollback to pre-v2 code would let old
+clients misread replacements and discard edits. See
+[release recovery](development.md#releasing-and-rolling-back).
 
 ### Opaque envelopes
 

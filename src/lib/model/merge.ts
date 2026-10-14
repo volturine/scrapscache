@@ -2,7 +2,8 @@
 // same value on every device, or devices would re-upload each other's results
 // forever.
 //
-// - The body is a CRDT text document: both sides' edits survive.
+// - Body edits on the same document base merge as a CRDT. Full replacements
+//   change the base; the latest body write decides between those histories.
 // - Attachments merge by id: adds from both sides survive, removals are
 //   remembered, and two copies of one attachment keep the later content edit.
 //   A later images edit that still contains an attachment puts it back.
@@ -10,7 +11,7 @@
 //   relay-corrected clock (clock.ts); equal times fall back to the writer id.
 import type { Label, Note, NoteField, NoteFieldTimes, NoteImage } from './types.js';
 import { stableStringify } from './stableStringify.js';
-import { mergeBodies } from './bodyDoc.js';
+import { mergeBodies, replaceBodySnapshot } from './bodyDoc.js';
 
 export const NOTE_FIELDS: NoteField[] = [
 	'title',
@@ -172,25 +173,41 @@ export function mergeTwoNotes(left: Note, right: Note): Note {
 
 	let body: Pick<Note, 'body' | 'bodyDoc'> = { body: picked.body as string };
 	if (left.bodyDoc && right.bodyDoc) {
-		// Concurrent document edits both survive; the time only records the latest edit.
+		const leftWrite = side(left, 'body');
+		const rightWrite = side(right, 'body');
+		const identicalWrite =
+			leftWrite.time === rightWrite.time &&
+			(leftWrite.writer ?? '') === (rightWrite.writer ?? '') &&
+			leftWrite.value === rightWrite.value;
+		const preferred = identicalWrite
+			? undefined
+			: pickLatest(leftWrite, rightWrite) === leftWrite
+				? 'left'
+				: 'right';
+		// Concurrent edits to the same body base survive together. A full replacement
+		// changes that base; the body write clock then decides between the histories.
 		body = mergeBodies(
 			{ body: left.body, bodyDoc: left.bodyDoc },
-			{ body: right.body, bodyDoc: right.bodyDoc }
+			{ body: right.body, bodyDoc: right.bodyDoc },
+			preferred
 		);
 	} else {
 		const documented = left.bodyDoc ? left : right;
 		if (documented.bodyDoc) {
 			const plain = left.bodyDoc ? right : left;
+			const documentWrite = side(documented, 'body');
+			const plainWrite = side(plain, 'body');
 			const sameWrite =
-				fieldTime(documented, 'body') === fieldTime(plain, 'body') &&
-				(documented.fieldWriters?.body ?? '') === (plain.fieldWriters?.body ?? '');
-			// A plain-text snapshot has no operations to merge. Apply the winning body
-			// to the existing document instead of inserting a second, independent copy.
+				documentWrite.time === plainWrite.time &&
+				(documentWrite.writer ?? '') === (plainWrite.writer ?? '');
+			// A plain-text snapshot has no operations to merge. A newer full write
+			// starts one canonical replacement that every receiving device shares.
 			// At the same write stamp, the document may also hold other concurrent edits.
-			body = mergeBodies(
-				{ body: documented.body, bodyDoc: documented.bodyDoc },
-				{ body: sameWrite ? documented.body : body.body, bodyDoc: documented.bodyDoc }
-			);
+			const document = { body: documented.body, bodyDoc: documented.bodyDoc };
+			body =
+				sameWrite || pickLatest(documentWrite, plainWrite) === documentWrite
+					? document
+					: replaceBodySnapshot(document, plain.body, plainWrite);
 		}
 	}
 	const { images, imageTombstones } = mergeImages(left, right);

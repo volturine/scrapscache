@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { SYNC_DELTA_PATH } from '#lib/model/protocol.js';
 import { metricsSnapshot, recordHttpRequest, renderMetrics } from './metrics';
 
 describe('renderMetrics', () => {
@@ -47,7 +48,7 @@ describe('renderMetrics', () => {
 
 describe('counters a deployment cannot total', () => {
 	it('emits them when one process has seen every request', () => {
-		recordHttpRequest('/api/sync/delta', 200, 5);
+		recordHttpRequest(SYNC_DELTA_PATH, 200, 5);
 		const body = renderMetrics(
 			{
 				accounts: 4,
@@ -60,7 +61,9 @@ describe('counters a deployment cannot total', () => {
 			undefined,
 			metricsSnapshot()
 		);
-		expect(body).toContain('scrapscache_http_requests_total{route="/api/sync/delta",status="200"}');
+		expect(body).toContain(
+			`scrapscache_http_requests_total{route="${SYNC_DELTA_PATH}",status="200"}`
+		);
 		expect(body).toContain('scrapscache_sync_requests_total');
 	});
 

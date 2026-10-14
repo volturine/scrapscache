@@ -91,8 +91,11 @@ function save(doc: Y.Doc): string {
 	return toBase64(Y.encodeStateAsUpdate(doc));
 }
 
-/** Both edits survive; the encoding is canonical, so every device stores identical bytes. */
-export function mergeBodies(left: BodyState, right: BodyState): Required<BodyState> {
+/** Both documents' edits survive; plain-text snapshots are reconciled by the note's field time. */
+export function mergeBodies(
+	left: Required<BodyState>,
+	right: Required<BodyState>
+): Required<BodyState> {
 	if (left.bodyDoc === right.bodyDoc && left.body === right.body && left.bodyDoc) {
 		return { body: left.body, bodyDoc: left.bodyDoc };
 	}

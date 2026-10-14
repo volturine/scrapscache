@@ -53,6 +53,67 @@ describe('mergeTwoNotes', () => {
 		expect(mergeTwoNotes(edited, legacy).body).toBe('shared text, edited');
 	});
 
+	it('does not insert the body again when a saved copy is missing its document', () => {
+		const current = applyNoteEdit(note(1, []), { body: 'alpha\nbeta\n' }, context('a', 5));
+		const { bodyDoc: _bodyDoc, ...plain } = current;
+
+		const merged = mergeTwoNotes(current, plain);
+		expect(merged.body).toBe(current.body);
+		expect(merged.bodyDoc).toBe(current.bodyDoc);
+		expect(mergeTwoNotes(plain, current)).toEqual(merged);
+		expect(mergeTwoNotes(merged, plain)).toEqual(merged);
+	});
+
+	it('ignores a stale plain body even when another field made that copy newer', () => {
+		const base = applyNoteEdit(note(1, []), { body: 'alpha\nbeta\n' }, context('a', 5));
+		const current = applyNoteEdit(base, { body: 'alpha\nbeta\ngamma\n' }, context('a', 10));
+		const { bodyDoc: _bodyDoc, ...plain } = base;
+		const renamed = applyNoteEdit(plain, { title: 'renamed' }, context('b', 20));
+
+		const merged = mergeTwoNotes(current, renamed);
+		expect(merged.body).toBe(current.body);
+		expect(merged.bodyDoc).toBe(current.bodyDoc);
+		expect(merged.title).toBe('renamed');
+		expect(mergeTwoNotes(renamed, current)).toEqual(merged);
+		expect(mergeTwoNotes(merged, renamed)).toEqual(merged);
+	});
+
+	it('keeps concurrent document edits when a plain snapshot has the same body write stamp', () => {
+		const base = applyNoteEdit(note(1, []), { body: 'middle\n' }, context('a', 5));
+		const phone = applyNoteEdit(base, { body: 'alpha\nmiddle\n' }, context('phone', 10));
+		const laptop = applyNoteEdit(base, { body: 'middle\nbeta\n' }, context('laptop', 20));
+		const current = mergeTwoNotes(phone, laptop);
+		const { bodyDoc: _bodyDoc, ...plain } = laptop;
+
+		const merged = mergeTwoNotes(current, plain);
+		expect(merged.body).toBe('alpha\nmiddle\nbeta\n');
+		expect(merged.bodyDoc).toBe(current.bodyDoc);
+		expect(mergeTwoNotes(plain, current)).toEqual(merged);
+		expect(mergeTwoNotes(merged, plain)).toEqual(merged);
+	});
+
+	it.each(['alpha\nbeta\ngamma\n', '', 'replacement\n', 'alpha\nalpha\n'])(
+		'applies a newer plain body %j to the existing document without duplicating shared text',
+		(body) => {
+			const current = applyNoteEdit(note(1, []), { body: 'alpha\nbeta\n' }, context('a', 5));
+			const { bodyDoc: _bodyDoc, ...plain } = current;
+			const newer = {
+				...plain,
+				body,
+				updatedAt: 10,
+				fieldTimes: { ...plain.fieldTimes, body: 10 },
+				fieldWriters: { ...plain.fieldWriters, body: 'b' }
+			};
+
+			const merged = mergeTwoNotes(current, newer);
+			expect(merged.body).toBe(newer.body);
+			expect(merged.bodyDoc).toBeDefined();
+			expect(mergeTwoNotes(newer, current)).toEqual(merged);
+			expect(mergeTwoNotes(merged, newer)).toEqual(merged);
+			expect(mergeTwoNotes(merged, current)).toEqual(merged);
+		}
+	);
+
 	it('keeps last-write-wins for bodies when neither copy has a document', () => {
 		const older = { ...note(1, []), body: 'older', fieldTimes: { body: 1 } };
 		const newer = { ...note(2, []), body: 'newer', fieldTimes: { body: 2 } };

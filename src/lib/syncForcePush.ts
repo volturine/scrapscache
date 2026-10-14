@@ -1,6 +1,6 @@
 import type { SyncSnapshot } from '#lib/syncRecords.js';
 import {
-	mergeBodies,
+	mergeTwoNotes,
 	NOTE_FIELDS,
 	retargetLocalNotes,
 	touchNoteFields,
@@ -19,7 +19,7 @@ function overCloudCopy(local: Note, cloud: Note | undefined, context: EditContex
 	if (!cloud) return local;
 	const body =
 		local.bodyDoc || cloud.bodyDoc
-			? context.author.edit(local.id, mergeBodies(local, cloud), local.body)
+			? context.author.edit(local.id, mergeTwoNotes(local, cloud), local.body)
 			: { body: local.body };
 	const kept = new Set((local.images ?? []).map((image) => image.id));
 	const at = context.now();

@@ -170,11 +170,29 @@ export function mergeTwoNotes(left: Note, right: Note): Note {
 		delete fieldWriters.secret;
 	}
 
-	// Concurrent body edits both survive; the field time only records the latest edit.
-	const body =
-		left.bodyDoc || right.bodyDoc
-			? mergeBodies(left, right)
-			: { body: picked.body as string, bodyDoc: undefined };
+	let body: Pick<Note, 'body' | 'bodyDoc'> = { body: picked.body as string };
+	if (left.bodyDoc && right.bodyDoc) {
+		// Concurrent document edits both survive; the time only records the latest edit.
+		body = mergeBodies(
+			{ body: left.body, bodyDoc: left.bodyDoc },
+			{ body: right.body, bodyDoc: right.bodyDoc }
+		);
+	} else {
+		const documented = left.bodyDoc ? left : right;
+		if (documented.bodyDoc) {
+			const plain = left.bodyDoc ? right : left;
+			const sameWrite =
+				fieldTime(documented, 'body') === fieldTime(plain, 'body') &&
+				(documented.fieldWriters?.body ?? '') === (plain.fieldWriters?.body ?? '');
+			// A plain-text snapshot has no operations to merge. Apply the winning body
+			// to the existing document instead of inserting a second, independent copy.
+			// At the same write stamp, the document may also hold other concurrent edits.
+			body = mergeBodies(
+				{ body: documented.body, bodyDoc: documented.bodyDoc },
+				{ body: sameWrite ? documented.body : body.body, bodyDoc: documented.bodyDoc }
+			);
+		}
+	}
 	const { images, imageTombstones } = mergeImages(left, right);
 
 	const trashed = picked.trashed as boolean;

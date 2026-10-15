@@ -175,10 +175,15 @@ release rehearsal: a red run there means the change is not ready for `master`.
    self-hosters can pin it.
 4. Watch `https://scrapscache.com/health/ready`, the Workers Logs and Issues
    panels, and `GET /api/admin/status` for the first hours.
-5. To roll back, push a revert of the merge to `master`: the production deploy is
-   driven by the branch, so reverting is one more deploy of a known-good commit.
-   D1 migrations only add tables and columns, so the previous code keeps working
-   on the newer schema; never roll back by editing the database.
+5. To recover, push a targeted revert or correction to `master`: production is
+   driven by the branch. After sync protocol v2 has accepted writes, retain the
+   v2 delta endpoint, its version gate, and the v2 body-document reader/writer in
+   both the app and MCP server. Do not deploy a pre-v2 image or revert the full v2
+   change: that reopens the old endpoint, whose clients can misread replacements
+   and discard edits. Revert unrelated changes independently or fix forward.
+   D1 migrations only add tables and columns; never roll back by editing the
+   database. The relay holds opaque ciphertext and cannot convert body documents
+   for an older client.
 
 ### Migrating an existing SQLite relay to Cloudflare
 

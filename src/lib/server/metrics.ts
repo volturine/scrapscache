@@ -1,4 +1,5 @@
 import type { HttpSample, MetricsSnapshot, ProcessActivity } from '#lib/server/metricsRender.js';
+import { SYNC_DELTA_PATH } from '#lib/model/protocol.js';
 
 /** The self-hosted store does not time its phases; only the Workers relay
  * reports them, and that build swaps in its own metrics module. */
@@ -23,7 +24,7 @@ let reminderWakesGone = 0;
 let reminderWakesFailed = 0;
 
 export function routeLabel(pathname: string): string {
-	if (pathname.startsWith('/api/sync/delta')) return '/api/sync/delta';
+	if (pathname.startsWith(SYNC_DELTA_PATH)) return SYNC_DELTA_PATH;
 	if (pathname.startsWith('/api/sync/push/')) return '/api/sync/push/*';
 	if (pathname.startsWith('/api/sync/pair/')) return '/api/sync/pair/*';
 	if (pathname.startsWith('/api/sync/')) return '/api/sync/*';

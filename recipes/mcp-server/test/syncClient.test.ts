@@ -1,6 +1,11 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { ScrapscacheSyncClient } from '../src/syncClient.js';
 import { bytesToBase64Url, identityFromSyncKey, randomBytes } from '../src/crypto.js';
+import {
+	SYNC_DELTA_PATH,
+	SYNC_PROTOCOL_HEADER,
+	SYNC_PROTOCOL_VERSION
+} from '../../../src/lib/model/protocol.js';
 
 describe('ScrapscacheSyncClient', () => {
 	const syncKey = bytesToBase64Url(randomBytes(32));
@@ -46,10 +51,11 @@ describe('ScrapscacheSyncClient', () => {
 				);
 			}
 
-			if (urlStr.includes('/api/sync/delta')) {
+			if (urlStr.includes(SYNC_DELTA_PATH)) {
 				deltaCalled = true;
 				const authHeader = (init?.headers as Record<string, string>)?.['Authorization'] || '';
 				expect(authHeader).toBe('Bearer test_token_abc');
+				expect(new Headers(init?.headers).get(SYNC_PROTOCOL_HEADER)).toBe(SYNC_PROTOCOL_VERSION);
 				return new Response(
 					JSON.stringify({
 						cursor: 10,
@@ -98,7 +104,7 @@ describe('ScrapscacheSyncClient', () => {
 				);
 			}
 
-			if (urlStr.includes('/api/sync/delta')) {
+			if (urlStr.includes(SYNC_DELTA_PATH)) {
 				deltaAttempts += 1;
 				if (deltaAttempts === 1) {
 					return new Response('Unauthorized', { status: 401 });
@@ -116,6 +122,74 @@ describe('ScrapscacheSyncClient', () => {
 		expect(authCount).toBe(2);
 		expect(deltaAttempts).toBe(2);
 		expect(result.cursor).toBe(5);
+	});
+
+	it('does not retry authentication when delta requires a newer protocol', async () => {
+		const client = new ScrapscacheSyncClient(baseUrl, syncKey);
+		let deltaAttempts = 0;
+		let authCount = 0;
+
+		globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			const urlStr = typeof input === 'string' ? input : input.toString();
+			if (urlStr.includes('/api/sync/auth/challenge')) {
+				return new Response(JSON.stringify({ challengeId: 'chal', challenge: 'nonce' }), {
+					status: 200
+				});
+			}
+			if (urlStr.includes('/api/sync/auth/session')) {
+				authCount += 1;
+				return new Response(
+					JSON.stringify({ accessToken: 'token', expiresAt: Date.now() + 3600_000 }),
+					{ status: 200 }
+				);
+			}
+			if (urlStr.includes(SYNC_DELTA_PATH)) {
+				deltaAttempts += 1;
+				expect(new Headers(init?.headers).get(SYNC_PROTOCOL_HEADER)).toBe(SYNC_PROTOCOL_VERSION);
+				return Response.json(
+					{
+						error: 'Sync protocol version mismatch. Reload the app or update the MCP server.',
+						requiredVersion: SYNC_PROTOCOL_VERSION
+					},
+					{ status: 409 }
+				);
+			}
+			return new Response('Not Found', { status: 404 });
+		}) as typeof fetch;
+
+		await expect(client.syncDelta(0)).rejects.toThrow('status 409');
+		expect(authCount).toBe(1);
+		expect(deltaAttempts).toBe(1);
+	});
+
+	it('explains that an older relay needs an update when the v2 route is missing', async () => {
+		const client = new ScrapscacheSyncClient(baseUrl, syncKey);
+		let authCount = 0;
+		let deltaAttempts = 0;
+
+		globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+			const urlStr = typeof input === 'string' ? input : input.toString();
+			if (urlStr.includes('/api/sync/auth/challenge')) {
+				return new Response(JSON.stringify({ challengeId: 'chal', challenge: 'nonce' }), {
+					status: 200
+				});
+			}
+			if (urlStr.includes('/api/sync/auth/session')) {
+				authCount += 1;
+				return Response.json({ accessToken: 'token', expiresAt: Date.now() + 3600_000 });
+			}
+			if (urlStr.includes(SYNC_DELTA_PATH)) {
+				deltaAttempts += 1;
+				return new Response('Not Found', { status: 404 });
+			}
+			return new Response('Not Found', { status: 404 });
+		}) as typeof fetch;
+
+		await expect(client.syncDelta(0)).rejects.toThrow(
+			'The sync server needs an update to support this app version.'
+		);
+		expect(authCount).toBe(1);
+		expect(deltaAttempts).toBe(1);
 	});
 
 	it('publishes reminder wakes under the sync session and reports a stale snapshot', async () => {

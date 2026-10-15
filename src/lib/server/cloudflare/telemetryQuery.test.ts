@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { SYNC_DELTA_PATH } from '#lib/model/protocol.js';
 import type { Client } from '@libsql/client/node';
 import { applyMigrations, testD1 } from './testBindings';
 
@@ -47,8 +48,8 @@ describe('reading activity back out of D1', () => {
 			['wake_sent', 40],
 			['wake_gone', 3],
 			['wake_failed', 1],
-			['http /api/sync/delta 500', 4],
-			['http_ms /api/sync/delta 500', 80]
+			[`http ${SYNC_DELTA_PATH} 500`, 4],
+			[`http_ms ${SYNC_DELTA_PATH} 500`, 80]
 		] as const) {
 			await count(now, key, value / 2);
 			await count(now - 23, key, value / 2);
@@ -68,7 +69,7 @@ describe('reading activity back out of D1', () => {
 			reminderWakesFailed: 1
 		});
 		expect(report.http).toEqual([
-			{ route: '/api/sync/delta', status: '500', count: 4, durationMs: 80 }
+			{ route: SYNC_DELTA_PATH, status: '500', count: 4, durationMs: 80 }
 		]);
 	});
 

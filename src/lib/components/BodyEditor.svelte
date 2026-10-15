@@ -1181,13 +1181,22 @@
 		return () => observer.disconnect();
 	});
 
+	let caretLockFrame: number | null = null;
 	function lockCaret(line: number, offset: number) {
-		requestAnimationFrame(() => {
+		cancelCaretLock();
+		caretLockFrame = requestAnimationFrame(() => {
+			caretLockFrame = null;
 			if (document.activeElement !== container) return;
 			const now = editorRange();
 			if (now?.collapsed && now.start.line === line && now.start.offset === offset) return;
 			selectAt(line, offset);
 		});
+	}
+
+	function cancelCaretLock() {
+		if (caretLockFrame === null) return;
+		cancelAnimationFrame(caretLockFrame);
+		caretLockFrame = null;
 	}
 
 	function moveIntoMarkdownBlock(range: EditorRange, direction: 1 | -1): boolean {
@@ -1896,6 +1905,7 @@
 	const TAP_MOVE_PX = 8;
 
 	function beginPointerGesture(event: PointerEvent) {
+		cancelCaretLock();
 		clearExtraCursors();
 		if (event.pointerType === 'mouse' && event.button !== 0) return;
 		if (gestureSettleTimer) clearTimeout(gestureSettleTimer);
@@ -1939,6 +1949,7 @@
 	}
 
 	onMount(() => () => {
+		cancelCaretLock();
 		if (gestureSettleTimer) clearTimeout(gestureSettleTimer);
 	});
 
@@ -2154,6 +2165,7 @@
 	}
 
 	function handleInput(rawEvent: Event) {
+		cancelCaretLock();
 		const languageField = rawEvent.target;
 		if (
 			languageField instanceof HTMLInputElement &&
@@ -2185,6 +2197,7 @@
 	}
 
 	function handleCompositionStart() {
+		cancelCaretLock();
 		clearExtraCursors();
 		rememberEdit();
 		lastTyping = null;
@@ -2519,6 +2532,7 @@
 	 * never mutates the Markdown DOM that Svelte owns.
 	 */
 	function handleBeforeInput(rawEvent: Event) {
+		cancelCaretLock();
 		const event = rawEvent as InputEvent;
 		if (
 			event.target instanceof HTMLInputElement &&
@@ -2637,6 +2651,7 @@
 	}
 
 	function handleCut(event: ClipboardEvent) {
+		cancelCaretLock();
 		clearExtraCursors();
 		const range = writeSelectionToClipboard(event);
 		if (!range) return;
@@ -2740,6 +2755,7 @@
 	}
 
 	function handlePaste(event: ClipboardEvent) {
+		cancelCaretLock();
 		if (!event.clipboardData) return;
 		const text = event.clipboardData.getData('text/plain');
 		if (!text) return;
@@ -3057,6 +3073,7 @@
 	}
 
 	function handleKeydown(event: KeyboardEvent) {
+		cancelCaretLock();
 		const primaryModifier = event.ctrlKey || event.metaKey;
 		if (composing || event.isComposing) return;
 		const cursorShortcut = multiCursorShortcut(event, applePlatform);

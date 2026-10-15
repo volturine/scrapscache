@@ -16,6 +16,7 @@ import {
 } from '#lib/server/rateLimit.js';
 import { getRuntimeSettings } from '#lib/server/runtimeSettings.js';
 import { recordSqliteError, recordSyncBatch, recordSyncPhases } from '#lib/server/metrics.js';
+import { SYNC_PROTOCOL_HEADER, SYNC_PROTOCOL_VERSION } from '#lib/model/protocol.js';
 import { Schema } from 'effect';
 
 // Clients re-encode attachments to ~4 MiB before upload (imageOptimize.ts);
@@ -53,6 +54,15 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 		}
 	);
 	if (!addressLimit.allowed) return rateLimitResponse(addressLimit);
+	if (request.headers.get(SYNC_PROTOCOL_HEADER) !== SYNC_PROTOCOL_VERSION) {
+		return Response.json(
+			{
+				error: 'Sync protocol version mismatch. Reload the app or update the MCP server.',
+				requiredVersion: SYNC_PROTOCOL_VERSION
+			},
+			{ status: 409 }
+		);
+	}
 	// Authenticate, charge the account and read the whole body before taking a
 	// sync slot: the slots bound concurrent relay work, and a slow or junk upload
 	// must not hold one while its bytes trickle in.

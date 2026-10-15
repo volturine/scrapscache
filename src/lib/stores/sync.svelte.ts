@@ -4,6 +4,11 @@ import type { Note, NoteImage } from '#lib/types.js';
 import { mergeKanbanBoards } from '#lib/kanban.js';
 import { mergeCanvasLibrary } from '#lib/canvasLibrary.js';
 import { mergeLabelLists, mergeNoteLists, uid, withoutTombstoned } from '#lib/model/index.js';
+import {
+	SYNC_DELTA_PATH,
+	SYNC_PROTOCOL_HEADER,
+	SYNC_PROTOCOL_VERSION
+} from '#lib/model/protocol.js';
 import { observeRelayTime } from '#lib/editContext.js';
 import {
 	currentRecordKeys,
@@ -829,6 +834,7 @@ export class SyncStore {
 			const headers = new Headers(init.headers);
 			headers.set('authorization', `Bearer ${accessToken}`);
 			headers.set('x-sync-client-id', this.syncClientId);
+			headers.set(SYNC_PROTOCOL_HEADER, SYNC_PROTOCOL_VERSION);
 			const response = await fetch(input, { ...init, headers });
 			if (response.status !== 401 || attempt === 1) return response;
 			this.invalidateSession(account.accountId, accessToken);
@@ -884,6 +890,7 @@ export class SyncStore {
 			xhr.setRequestHeader('Content-Type', 'application/json');
 			xhr.setRequestHeader('Authorization', `Bearer ${accessToken}`);
 			xhr.setRequestHeader('x-sync-client-id', this.syncClientId);
+			xhr.setRequestHeader(SYNC_PROTOCOL_HEADER, SYNC_PROTOCOL_VERSION);
 
 			const showTransfer = indicate && uploadBytes >= 32 * 1024;
 			if (showTransfer) {
@@ -927,7 +934,11 @@ export class SyncStore {
 						success: false,
 						status: xhr.status,
 						error:
-							typeof data.error === 'string' ? data.error : `Sync request failed (${xhr.status})`,
+							xhr.status === 404 && path === SYNC_DELTA_PATH
+								? 'The sync server needs an update to support this app version.'
+								: typeof data.error === 'string'
+									? data.error
+									: `Sync request failed (${xhr.status})`,
 						...(throttled ? { retryAfterSeconds: retryAfter } : {}),
 						// A relay that asks for a wait is waited for by the sync loop instead.
 						...(!throttled && xhr.status >= 502 && xhr.status <= 504 ? { transient: true } : {})
@@ -1140,7 +1151,7 @@ export class SyncStore {
 					deleteSlots
 				});
 				const response = await this.sendSyncRequest(
-					'/api/sync/delta',
+					SYNC_DELTA_PATH,
 					payload,
 					new Blob([payload]).size,
 					indicate,

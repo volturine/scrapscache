@@ -2513,6 +2513,48 @@ describe('BodyEditor taps under the last row', () => {
 		expect(lineTexts(container)).toEqual(['Hello', 'world!']);
 	});
 
+	it('cancels a below-row caret lock when typing takes ownership before its frame', async () => {
+		const { container } = render(BodyEditor, { props: { body: 'Hello\nworld' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		stubRows(editor, 48);
+
+		let nextFrame = 0;
+		const pendingFrames = new Map<number, FrameRequestCallback>();
+		const requestFrame = vi
+			.spyOn(window, 'requestAnimationFrame')
+			.mockImplementation((callback) => {
+				const id = ++nextFrame;
+				pendingFrames.set(id, callback);
+				return id;
+			});
+		const cancelFrame = vi.spyOn(window, 'cancelAnimationFrame').mockImplementation((id) => {
+			pendingFrames.delete(id);
+		});
+
+		try {
+			tap(editor, 180);
+			await fireEvent.click(editor, { clientY: 180 });
+			expect(pendingFrames.size).toBe(1);
+			const lockFrame = [...pendingFrames.keys()][0];
+
+			await typeText(editor, '!');
+
+			expect(cancelFrame).toHaveBeenCalledWith(lockFrame);
+			expect(pendingFrames.has(lockFrame)).toBe(false);
+
+			// A browser frame only invokes callbacks that were not canceled.
+			const frame = [...pendingFrames.values()];
+			pendingFrames.clear();
+			for (const callback of frame) callback(16);
+
+			await typeText(editor, '?');
+			expect(lineTexts(container)).toEqual(['Hello', 'world!?']);
+		} finally {
+			cancelFrame.mockRestore();
+			requestFrame.mockRestore();
+		}
+	});
+
 	it('opens a paragraph under a code block that ends the note', async () => {
 		const { container } = render(BodyEditor, { props: { body: '```\ncode\n```' } });
 		const editor = container.querySelector('[data-body-editor]') as HTMLElement;

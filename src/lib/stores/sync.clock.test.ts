@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createSyncIdentity } from '#lib/syncPairing.js';
 import { syncClock } from '#lib/editContext.js';
 import { SyncStore } from './sync.svelte';
+import { SYNC_DELTA_PATH } from '#lib/model/protocol.js';
 
 type Reply = { status: number; body?: Record<string, unknown> };
 
@@ -46,7 +47,7 @@ type Transport = {
 async function send(store: SyncStore) {
 	const internals = store as unknown as Transport;
 	vi.spyOn(internals, 'accessToken').mockResolvedValue('token');
-	const pending = internals.sendSyncRequest('/api/sync/delta', '{}', 2, false);
+	const pending = internals.sendSyncRequest(SYNC_DELTA_PATH, '{}', 2, false);
 	await vi.runAllTimersAsync();
 	return pending;
 }

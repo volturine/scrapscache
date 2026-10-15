@@ -53,6 +53,244 @@ describe('mergeTwoNotes', () => {
 		expect(mergeTwoNotes(edited, legacy).body).toBe('shared text, edited');
 	});
 
+	it('does not concatenate independently edited copies of different plaintext writes', () => {
+		const older = {
+			...note(5, []),
+			body: 'old base',
+			fieldTimes: { body: 5 },
+			fieldWriters: { body: 'plain' }
+		};
+		const newer = { ...older, body: 'new base', updatedAt: 10, fieldTimes: { body: 10 } };
+		const phone = applyNoteEdit(older, { body: 'old base phone' }, context('phone', 15));
+		const laptop = applyNoteEdit(newer, { body: 'new base laptop' }, context('laptop', 20));
+		const merged = mergeTwoNotes(phone, laptop);
+		expect(merged.body).toBe('new base laptop');
+		expect(mergeTwoNotes(laptop, phone)).toEqual(merged);
+		expect(mergeTwoNotes(merged, phone)).toEqual(merged);
+	});
+
+	it('distinguishes plaintext writes even when they have the same body', () => {
+		const older = {
+			...note(5, []),
+			body: 'shared',
+			fieldTimes: { body: 5 },
+			fieldWriters: { body: 'plain' }
+		};
+		const newer = { ...older, updatedAt: 10, fieldTimes: { body: 10 } };
+		const phone = applyNoteEdit(older, { body: 'shared phone' }, context('phone', 15));
+		const laptop = applyNoteEdit(newer, { body: 'shared laptop' }, context('laptop', 20));
+		expect(mergeTwoNotes(phone, laptop).body).toBe('shared laptop');
+		expect(mergeTwoNotes(laptop, phone)).toEqual(mergeTwoNotes(phone, laptop));
+	});
+
+	it('merges first edits to copies of the same plaintext write', () => {
+		const plain = {
+			...note(5, []),
+			body: 'shared',
+			fieldTimes: { body: 5 },
+			fieldWriters: { body: 'plain' }
+		};
+		const phone = applyNoteEdit(plain, { body: 'shared phone' }, context('phone', 15));
+		const laptop = applyNoteEdit({ ...plain }, { body: 'laptop shared' }, context('laptop', 20));
+		const merged = mergeTwoNotes(phone, laptop);
+		expect(merged.body).toBe('laptop shared phone');
+		expect(mergeTwoNotes(laptop, phone)).toEqual(merged);
+		expect(mergeTwoNotes(merged, phone)).toEqual(merged);
+	});
+
+	it('does not insert the body again when a saved copy is missing its document', () => {
+		const current = applyNoteEdit(note(1, []), { body: 'alpha\nbeta\n' }, context('a', 5));
+		const { bodyDoc: _bodyDoc, ...plain } = current;
+
+		const merged = mergeTwoNotes(current, plain);
+		expect(merged.body).toBe(current.body);
+		expect(merged.bodyDoc).toBe(current.bodyDoc);
+		expect(mergeTwoNotes(plain, current)).toEqual(merged);
+		expect(mergeTwoNotes(merged, plain)).toEqual(merged);
+	});
+
+	it('ignores a stale plain body even when another field made that copy newer', () => {
+		const base = applyNoteEdit(note(1, []), { body: 'alpha\nbeta\n' }, context('a', 5));
+		const current = applyNoteEdit(base, { body: 'alpha\nbeta\ngamma\n' }, context('a', 10));
+		const { bodyDoc: _bodyDoc, ...plain } = base;
+		const renamed = applyNoteEdit(plain, { title: 'renamed' }, context('b', 20));
+
+		const merged = mergeTwoNotes(current, renamed);
+		expect(merged.body).toBe(current.body);
+		expect(merged.bodyDoc).toBe(current.bodyDoc);
+		expect(merged.title).toBe('renamed');
+		expect(mergeTwoNotes(renamed, current)).toEqual(merged);
+		expect(mergeTwoNotes(merged, renamed)).toEqual(merged);
+	});
+
+	it('keeps concurrent document edits when a plain snapshot has the same body write stamp', () => {
+		const base = applyNoteEdit(note(1, []), { body: 'middle\n' }, context('a', 5));
+		const phone = applyNoteEdit(base, { body: 'alpha\nmiddle\n' }, context('phone', 10));
+		const laptop = applyNoteEdit(base, { body: 'middle\nbeta\n' }, context('laptop', 20));
+		const current = mergeTwoNotes(phone, laptop);
+		const { bodyDoc: _bodyDoc, ...plain } = laptop;
+
+		const merged = mergeTwoNotes(current, plain);
+		expect(merged.body).toBe('alpha\nmiddle\nbeta\n');
+		expect(merged.bodyDoc).toBe(current.bodyDoc);
+		expect(mergeTwoNotes(plain, current)).toEqual(merged);
+		expect(mergeTwoNotes(merged, plain)).toEqual(merged);
+	});
+
+	it.each(['alpha\nbeta\ngamma\n', '', 'replacement\n', 'alpha\nalpha\n'])(
+		'applies a newer plain body %j to the existing document without duplicating shared text',
+		(body) => {
+			const current = applyNoteEdit(note(1, []), { body: 'alpha\nbeta\n' }, context('a', 5));
+			const { bodyDoc: _bodyDoc, ...plain } = current;
+			const newer = {
+				...plain,
+				body,
+				updatedAt: 10,
+				fieldTimes: { ...plain.fieldTimes, body: 10 },
+				fieldWriters: { ...plain.fieldWriters, body: 'b' }
+			};
+
+			const merged = mergeTwoNotes(current, newer);
+			expect(merged.body).toBe(newer.body);
+			expect(merged.bodyDoc).toBeDefined();
+			expect(mergeTwoNotes(newer, current)).toEqual(merged);
+			expect(mergeTwoNotes(merged, newer)).toEqual(merged);
+			expect(mergeTwoNotes(merged, current)).toEqual(merged);
+		}
+	);
+
+	it('applies the same newer plain snapshot once across divergent documents and ignores replays', () => {
+		const base = applyNoteEdit(note(1, []), { body: 'base' }, context('seed', 5));
+		const phone = applyNoteEdit(base, { body: 'base phone' }, context('phone', 10));
+		const laptop = applyNoteEdit(base, { body: 'laptop base' }, context('laptop', 20));
+		const { bodyDoc: _bodyDoc, ...plainBase } = base;
+		const replacement = {
+			...plainBase,
+			body: 'ZZZ',
+			updatedAt: 30,
+			fieldTimes: { ...plainBase.fieldTimes, body: 30 },
+			fieldWriters: { ...plainBase.fieldWriters, body: 'snapshot' }
+		};
+
+		const phoneWithReplacement = mergeTwoNotes(phone, replacement);
+		const laptopWithReplacement = mergeTwoNotes(laptop, replacement);
+		const onPhone = mergeTwoNotes(phoneWithReplacement, laptopWithReplacement);
+		const onLaptop = mergeTwoNotes(laptopWithReplacement, phoneWithReplacement);
+		const replayed = mergeTwoNotes(mergeTwoNotes(onPhone, phone), laptop);
+
+		expect(phoneWithReplacement.body).toBe('ZZZ');
+		expect(laptopWithReplacement.body).toBe('ZZZ');
+		expect(onPhone.body).toBe('ZZZ');
+		expect(stableStringify(onLaptop)).toBe(stableStringify(onPhone));
+		expect(replayed.body).toBe('ZZZ');
+		expect(stableStringify(replayed)).toBe(stableStringify(onPhone));
+	});
+
+	it('keeps an empty plain replacement empty across divergent documents and old replays', () => {
+		const base = applyNoteEdit(note(1, []), { body: 'base' }, context('seed', 5));
+		const phone = applyNoteEdit(base, { body: 'base phone' }, context('phone', 10));
+		const laptop = applyNoteEdit(base, { body: 'laptop base' }, context('laptop', 20));
+		const { bodyDoc: _bodyDoc, ...plainBase } = base;
+		const replacement = {
+			...plainBase,
+			body: '',
+			updatedAt: 30,
+			fieldTimes: { ...plainBase.fieldTimes, body: 30 },
+			fieldWriters: { ...plainBase.fieldWriters, body: 'snapshot' }
+		};
+
+		const phoneWithReplacement = mergeTwoNotes(phone, replacement);
+		const laptopWithReplacement = mergeTwoNotes(laptop, replacement);
+		const merged = mergeTwoNotes(phoneWithReplacement, laptopWithReplacement);
+		const replayed = mergeTwoNotes(mergeTwoNotes(merged, phone), laptop);
+
+		expect(merged.body).toBe('');
+		expect(replayed.body).toBe('');
+		expect(mergeTwoNotes(laptopWithReplacement, phoneWithReplacement)).toEqual(merged);
+	});
+
+	it('keeps concurrent document edits made after both copies accept the same replacement', () => {
+		const base = applyNoteEdit(note(1, []), { body: 'base' }, context('seed', 5));
+		const phone = applyNoteEdit(base, { body: 'base phone' }, context('phone', 10));
+		const laptop = applyNoteEdit(base, { body: 'laptop base' }, context('laptop', 20));
+		const { bodyDoc: _bodyDoc, ...plainBase } = base;
+		const replacement = {
+			...plainBase,
+			body: 'ZZZ',
+			updatedAt: 30,
+			fieldTimes: { ...plainBase.fieldTimes, body: 30 },
+			fieldWriters: { ...plainBase.fieldWriters, body: 'snapshot' }
+		};
+		const phoneWithReplacement = mergeTwoNotes(phone, replacement);
+		const laptopWithReplacement = mergeTwoNotes(laptop, replacement);
+		const phoneEdited = applyNoteEdit(phoneWithReplacement, { body: 'xZZZ' }, context('phone', 40));
+		const laptopEdited = applyNoteEdit(
+			laptopWithReplacement,
+			{ body: 'ZZZy' },
+			context('laptop', 41)
+		);
+
+		const onPhone = mergeTwoNotes(phoneEdited, laptopEdited);
+		const onLaptop = mergeTwoNotes(laptopEdited, phoneEdited);
+		expect(onPhone.body).toBe('xZZZy');
+		expect(onLaptop.body).toBe('xZZZy');
+		expect(stableStringify(onLaptop)).toBe(stableStringify(onPhone));
+	});
+
+	it('keeps the later of two different plain replacements when an older one is replayed', () => {
+		const base = applyNoteEdit(note(1, []), { body: 'base' }, context('seed', 5));
+		const phone = applyNoteEdit(base, { body: 'base phone' }, context('phone', 10));
+		const laptop = applyNoteEdit(base, { body: 'laptop base' }, context('laptop', 20));
+		const { bodyDoc: _bodyDoc, ...plainBase } = base;
+		const olderReplacement = {
+			...plainBase,
+			body: 'ZZZ',
+			updatedAt: 30,
+			fieldTimes: { ...plainBase.fieldTimes, body: 30 },
+			fieldWriters: { ...plainBase.fieldWriters, body: 'snapshot' }
+		};
+		const newerReplacement = {
+			...plainBase,
+			body: 'YYY',
+			updatedAt: 40,
+			fieldTimes: { ...plainBase.fieldTimes, body: 40 },
+			fieldWriters: { ...plainBase.fieldWriters, body: 'snapshot' }
+		};
+
+		const phoneWithOlderReplacement = mergeTwoNotes(phone, olderReplacement);
+		const laptopWithNewerReplacement = mergeTwoNotes(laptop, newerReplacement);
+		const merged = mergeTwoNotes(phoneWithOlderReplacement, laptopWithNewerReplacement);
+		const replayed = mergeTwoNotes(merged, olderReplacement);
+
+		expect(merged.body).toBe('YYY');
+		expect(replayed.body).toBe('YYY');
+		expect(
+			stableStringify(mergeTwoNotes(laptopWithNewerReplacement, phoneWithOlderReplacement))
+		).toBe(stableStringify(merged));
+	});
+
+	it('keeps a newer edit on the previous base over an earlier replacement snapshot', () => {
+		const base = applyNoteEdit(note(1, []), { body: 'base' }, context('seed', 5));
+		const rootEdit = applyNoteEdit(base, { body: 'newer root edit' }, context('root', 50));
+		const { bodyDoc: _bodyDoc, ...plainBase } = base;
+		const olderReplacement = {
+			...plainBase,
+			body: 'older replacement',
+			updatedAt: 30,
+			fieldTimes: { ...plainBase.fieldTimes, body: 30 },
+			fieldWriters: { ...plainBase.fieldWriters, body: 'snapshot' }
+		};
+		const acceptedReplacement = mergeTwoNotes(base, olderReplacement);
+		const merged = mergeTwoNotes(rootEdit, acceptedReplacement);
+		const reverse = mergeTwoNotes(acceptedReplacement, rootEdit);
+		const replayed = mergeTwoNotes(merged, acceptedReplacement);
+
+		expect(acceptedReplacement.body).toBe('older replacement');
+		expect(merged.body).toBe('newer root edit');
+		expect(reverse).toEqual(merged);
+		expect(replayed).toEqual(merged);
+	});
+
 	it('keeps last-write-wins for bodies when neither copy has a document', () => {
 		const older = { ...note(1, []), body: 'older', fieldTimes: { body: 1 } };
 		const newer = { ...note(2, []), body: 'newer', fieldTimes: { body: 2 } };

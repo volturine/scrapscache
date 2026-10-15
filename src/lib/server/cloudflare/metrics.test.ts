@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { SYNC_DELTA_PATH } from '#lib/model/protocol.js';
 import type { Client } from '@libsql/client/node';
 import { applyMigrations, testD1 } from './testBindings';
 
@@ -100,8 +101,8 @@ describe('Workers telemetry', () => {
 	});
 
 	it('counts server errors by route bucket, and nothing for healthy or refused requests', async () => {
-		recordHttpRequest('/api/sync/delta', 200, 5);
-		recordHttpRequest('/api/sync/delta', 429, 5);
+		recordHttpRequest(SYNC_DELTA_PATH, 200, 5);
+		recordHttpRequest(SYNC_DELTA_PATH, 429, 5);
 		recordRateLimit();
 		recordHttpRequest('/api/sync/push/wakes', 503, 12.5);
 
@@ -125,7 +126,7 @@ describe('Workers telemetry', () => {
 
 		harness.env = db;
 		harness.throwOutsideRequest = true;
-		expect(() => recordHttpRequest('/api/sync/delta', 500, 1)).not.toThrow();
+		expect(() => recordHttpRequest(SYNC_DELTA_PATH, 500, 1)).not.toThrow();
 
 		harness.throwOutsideRequest = false;
 		harness.env = {

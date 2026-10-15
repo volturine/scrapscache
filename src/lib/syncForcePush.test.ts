@@ -78,6 +78,29 @@ describe('force push workspace', () => {
 		expect(received.body).toBe('base + local edit');
 		expect(received.images).toEqual([]);
 	});
+
+	it.each(['local', 'cloud'])(
+		'keeps the existing body document when only the %s copy has one',
+		(side) => {
+			const documented = applyNoteEdit(
+				note('shared', 'Shared', 10),
+				{ body: 'alpha\nbeta\n' },
+				createEditContext(() => 50)
+			);
+			const { bodyDoc: _bodyDoc, ...plain } = documented;
+			const local = side === 'local' ? documented : plain;
+			const cloud = side === 'cloud' ? documented : plain;
+
+			const forced = buildForcePushSnapshot(
+				snapshot([local]),
+				snapshot([cloud]),
+				createEditContext(() => 100)
+			);
+			expect(forced.notes[0].body).toBe('alpha\nbeta\n');
+			expect(forced.notes[0].bodyDoc === documented.bodyDoc).toBe(true);
+			expect(mergeNoteLists([cloud], forced.notes)[0].body).toBe('alpha\nbeta\n');
+		}
+	);
 	it('restores a locally present note that another device permanently deleted', () => {
 		const local = snapshot([note('deleted', 'Restore me', 10)]);
 		const remote = { ...snapshot([]), tombstones: { deleted: 200 } };

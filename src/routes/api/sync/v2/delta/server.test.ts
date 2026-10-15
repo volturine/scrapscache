@@ -1,4 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+	SYNC_DELTA_PATH,
+	SYNC_PROTOCOL_HEADER,
+	SYNC_PROTOCOL_VERSION
+} from '#lib/model/protocol.js';
 
 const mocks = vi.hoisted(() => {
 	class QuotaError extends Error {}
@@ -74,14 +79,24 @@ function handle(request: Request): Promise<Response> {
 	)({ request, getClientAddress: () => '127.0.0.1' });
 }
 
+function deltaRequest(
+	body: string,
+	protocolVersion: string | null = SYNC_PROTOCOL_VERSION
+): Request {
+	const headers = new Headers({
+		'content-type': 'application/json',
+		authorization: 'Bearer token'
+	});
+	if (protocolVersion !== null) headers.set(SYNC_PROTOCOL_HEADER, protocolVersion);
+	return new Request(new URL(SYNC_DELTA_PATH, 'http://localhost'), {
+		method: 'POST',
+		headers,
+		body
+	});
+}
+
 function postRaw(body: string): Promise<Response> {
-	return handle(
-		new Request('http://localhost/api/sync/delta', {
-			method: 'POST',
-			headers: { 'content-type': 'application/json', authorization: 'Bearer token' },
-			body
-		})
-	);
+	return handle(deltaRequest(body));
 }
 
 function post(body: unknown): Promise<Response> {
@@ -103,6 +118,34 @@ describe('sync delta route', () => {
 			usage: { envelopeCount: 2, ciphertextBytes: 12, storageBytes: 1_036, maxBytes: 2_000 }
 		});
 	});
+
+	it.each([
+		['missing', null],
+		['wrong', '1']
+	] as const)(
+		'rejects a %s protocol version before authentication or body processing',
+		async (_kind, version) => {
+			const request = deltaRequest('{not json', version);
+			const response = await handle(request);
+
+			expect(response.status).toBe(409);
+			expect(await response.json()).toEqual({
+				error: 'Sync protocol version mismatch. Reload the app or update the MCP server.',
+				requiredVersion: SYNC_PROTOCOL_VERSION
+			});
+			expect(mocks.limitChecks).toHaveBeenCalledWith('sync-ip:127.0.0.1', {
+				capacity: 120,
+				refillWindowMs: 60_000
+			});
+			expect(mocks.limitChecks).toHaveBeenCalledOnce();
+			expect(mocks.authenticate).not.toHaveBeenCalled();
+			expect(request.bodyUsed).toBe(false);
+			expect(mocks.accountRateLimit).not.toHaveBeenCalled();
+			expect(mocks.enterSyncBody).not.toHaveBeenCalled();
+			expect(mocks.enterSyncRequest).not.toHaveBeenCalled();
+			expect(mocks.sync).not.toHaveBeenCalled();
+		}
+	);
 
 	it('passes validated conditional writes and bounded cursors to the relay', async () => {
 		const replacement = {
@@ -301,11 +344,7 @@ describe('sync delta route', () => {
 
 	it('answers busy before reading a byte when every body slot is taken', async () => {
 		mocks.enterSyncBody.mockReturnValueOnce(null as never);
-		const request = new Request('http://localhost/api/sync/delta', {
-			method: 'POST',
-			headers: { 'content-type': 'application/json', authorization: 'Bearer token' },
-			body: JSON.stringify({ envelopes: [validEnvelope] })
-		});
+		const request = deltaRequest(JSON.stringify({ envelopes: [validEnvelope] }));
 
 		const response = await handle(request);
 
@@ -351,11 +390,7 @@ describe('sync delta route', () => {
 
 	it('reads the body only after the session is authenticated', async () => {
 		mocks.authenticate.mockReturnValueOnce(null);
-		const request = new Request('http://localhost/api/sync/delta', {
-			method: 'POST',
-			headers: { authorization: 'Bearer token' },
-			body: JSON.stringify({ envelopes: [] })
-		});
+		const request = deltaRequest(JSON.stringify({ envelopes: [] }));
 		const response = await handle(request);
 		expect(response.status).toBe(401);
 		expect(request.bodyUsed).toBe(false);

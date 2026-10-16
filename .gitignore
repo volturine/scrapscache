@@ -21,7 +21,6 @@ Thumbs.db
 !docker/.env.dev.example
 !recipes/mcp-server/docker/.env.example
 !recipes/mcp-server/cloudflare/.dev.vars.example
-!.env.test
 
 # Vite
 vite.config.js.timestamp-*

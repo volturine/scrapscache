@@ -16,10 +16,12 @@ Contributor-oriented notes for working on Scraps Cache. Also read
 | `npm run dev`              | Vite dev server (SvelteKit)                                      |
 | `npm run build`            | Production build (`adapter-node` → `build/`)                     |
 | `npm run build:cloudflare` | Workers build (`adapter-cloudflare` → `.svelte-kit/cloudflare/`) |
+| `npm run cf:dev`           | Local Cloudflare stack (reminders Worker + app)                  |
 | `npm run cf:cron:dev`      | Scheduled worker + app service binding with test triggers        |
 | `npm start`                | Run the built server (`node build`)                              |
 | `npm run preview`          | Vite preview of the production build                             |
 | `npm run check`            | `svelte-check` with native TypeScript                            |
+| `npm run check:watch`      | `svelte-check` in watch mode                                     |
 | `npm run format`           | Prettier write                                                   |
 | `npm run format:check`     | Prettier check (also runs in CI / `validate`)                    |
 | `npm test`                 | Run the Vitest suite                                             |
@@ -157,8 +159,8 @@ more than one open pull request has the label. Each development deploy deletes
 those Workers (app, reminders and cron) and wipes D1, then recreates them from the pull request, so
 Durable Object and D1 migrations from another PR cannot block it. R2 object
 bytes are left in place. Deleting the Workers also drops their secrets, so CI
-and `npm run cf:deploy:dev` put `SCRAPSCACHE_TICK_SECRET` and `TURNSTILE_SECRET`
-back after deploy.
+puts `SCRAPSCACHE_TICK_SECRET`, `TURNSTILE_SECRET` and `SCRAPSCACHE_ADMIN_TOKEN`
+back after deploy (`npm run cf:deploy:dev` restores the first two).
 Pushes to `master` deploy the production Workers to `scrapscache.com`. Both use
 Worker routes on the existing proxied DNS records, so the records must remain
 in place during the cutover. The development deploy ends by running the browser
@@ -233,9 +235,11 @@ Prefer tests for:
 GitHub Actions workflow: `.github/workflows/ci-cd.yaml`.
 
 - **validate** job: typecheck + Prettier + Vitest + Node and Cloudflare builds,
-  including dry-run validation of both Workers (required PR check)
+  including dry-run validation of all four Worker configs (app, reminders, cron
+  and the MCP recipe) in both prod and dev variants (required PR check)
 - **image** job: Docker build; PRs publish `dev-<n>` / `dev-sha-*` only, `master`
   publishes `latest` / `master` / `sha-*`
+- **image-mcp** job: MCP recipe image (`ghcr.io/…-mcp`); same tag scheme
 
 Dependabot (`.github/dependabot.yml`) updates npm, Docker, and GitHub Actions
 weekly.

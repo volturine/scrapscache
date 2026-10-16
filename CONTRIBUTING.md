@@ -47,6 +47,7 @@ This runs:
 2. Prettier check
 3. Vitest unit tests
 4. Production build
+5. Playwright browser smoke tests
 
 Useful partial commands:
 

@@ -238,9 +238,9 @@ variables explicitly.
 | `TS_AUTHKEY`                  |                       — | Auth key or OAuth secret; required with the Tailscale overlay |
 | `TS_EXTRA_ARGS`               |                       — | Extra `tailscale up` flags (OAuth tag advertisement)          |
 
-Inside Compose, `HOST`, `PORT`, `SCRAPSCACHE_RELAY_DB_URL`, and
-`SCRAPSCACHE_OPS_DB_URL` are fixed to their respective sqld services. Direct `docker run`
-may override them.
+Inside Compose, `SCRAPSCACHE_RELAY_DB_URL` and `SCRAPSCACHE_OPS_DB_URL` are fixed
+to their respective sqld services; `HOST` and `PORT` come from the image itself.
+Direct `docker run` may override them.
 
 `SCRAPSCACHE_BODY_SIZE_LIMIT` (`M` is MiB) only needs to clear the largest request
 the app accepts: one sync round, capped at 17,000,000 bytes (a 16 MB encrypted

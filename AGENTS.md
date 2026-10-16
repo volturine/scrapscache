@@ -2,7 +2,7 @@
 
 Offline-first notes with end-to-end encrypted multi-device sync: local IndexedDB storage, SQLite relay storage, backups, and a self-hostable SvelteKit app.
 
-**Stack:** Node.js 24 + SvelteKit 5 + TypeScript · Panda CSS · IndexedDB · SQLite · npm
+**Stack:** Node.js 24 + SvelteKit (Svelte 5) + TypeScript · Panda CSS · IndexedDB · SQLite · npm
 
 ## Commands
 

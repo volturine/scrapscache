@@ -44,3 +44,28 @@ updates:
     ignore:
       - dependency-name: 'typescript'
         update-types: ['version-update:semver-major']
+
+  # The MCP recipe ships its own npm project and Docker image; cover them too.
+  - package-ecosystem: npm
+    directory: /recipes/mcp-server
+    schedule:
+      interval: weekly
+    groups:
+      weekly-batch:
+        patterns:
+          - '*'
+    ignore:
+      - dependency-name: 'typescript'
+        update-types: ['version-update:semver-major']
+
+  - package-ecosystem: docker
+    directory: /recipes/mcp-server/docker
+    schedule:
+      interval: weekly
+    groups:
+      weekly-batch:
+        patterns:
+          - '*'
+    ignore:
+      - dependency-name: 'node'
+        update-types: ['version-update:semver-major']

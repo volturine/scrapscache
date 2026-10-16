@@ -18,7 +18,7 @@ Visit [scrapscache.com](https://scrapscache.com).
 | ---------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | **Private by design**  | Note contents never leave your devices in plaintext. No remote link previews, no third-party trackers, restrictive CSP. |
 | **E2E encrypted sync** | Multi-device sync always encrypts on the client. The relay stores opaque ciphertext only.                               |
-| **Self-hosted**        | Run the app and relay yourself. One Node process, one SQLite database.                                                  |
+| **Self-hosted**        | Run the app and relay yourself. One Node process, two isolated libSQL (SQLite) stores.                                  |
 | **Local-first data**   | Notes live in the browser (IndexedDB). Day-to-day use does not require the network.                                     |
 | **Recoverable**        | Encrypted client backups (`.scraps-cache-backup`) can be exported and imported from the UI.                             |
 
@@ -126,7 +126,7 @@ Details, threat model, and limits: **[docs/security.md](docs/security.md)**.
 
 - [SvelteKit](https://svelte.dev/) + Svelte 5 + TypeScript
 - Panda CSS
-- IndexedDB (`idb`) on the client; SQLite (`better-sqlite3`) on the server
+- IndexedDB (`idb`) on the client; libSQL (SQLite) on the server via `@libsql/client`
 - [@noble](https://paulmillr.com/noble/) cryptography + [CPace](https://github.com/cipherman/pake-js) for pairing
 - Node adapter for self-hosting; multi-arch Docker images via GHCR
 

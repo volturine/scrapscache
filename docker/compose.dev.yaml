@@ -1,7 +1,7 @@
 name: scrapscache-dev
 
 # Preview a published PR image beside a production stack.
-# Isolated project name + volumes. Host port 3000 (master here uses 5173).
+# Isolated project name + volumes. Host port 3000.
 #
 #   cp docker/.env.dev.example docker/.env.dev
 #   # set SCRAPSCACHE_IMAGE=ghcr.io/volturine/scrapscache:dev-<pr>

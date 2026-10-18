@@ -3,6 +3,7 @@ import {
 	isMissingModuleError,
 	loadLazyModule,
 	reloadOnceForMissingModule,
+	reloadOnceForStaleBuild,
 	STALE_MODULE_MESSAGE,
 	STALE_MODULE_RELOAD_COOLDOWN_MS,
 	STALE_MODULE_RELOAD_KEY
@@ -63,6 +64,14 @@ describe('staleModuleReload', () => {
 		expect(
 			reloadOnceForMissingModule(missing, 1_000 + STALE_MODULE_RELOAD_COOLDOWN_MS, reload)
 		).toBe(true);
+		expect(reload).toHaveBeenCalledTimes(2);
+	});
+
+	it('shares the cooldown between a missing chunk and a refused protocol version', () => {
+		const reload = vi.fn();
+		expect(reloadOnceForStaleBuild(1_000, reload)).toBe(true);
+		expect(reloadOnceForMissingModule(missing, 1_000 + 1, reload)).toBe(false);
+		expect(reloadOnceForStaleBuild(1_000 + STALE_MODULE_RELOAD_COOLDOWN_MS, reload)).toBe(true);
 		expect(reload).toHaveBeenCalledTimes(2);
 	});
 

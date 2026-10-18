@@ -528,8 +528,6 @@
 
 	function friendlyError(raw: string | null | undefined, fallback: string): string {
 		if (!raw) return fallback;
-		if (raw.includes('404')) return 'Sync code not found or expired. Check it on the other device.';
-		if (raw.includes('410')) return 'Connection expired. Try again.';
 		if (raw.includes('Failed to fetch') || raw.includes('NetworkError'))
 			return 'Could not reach server. Check your connection.';
 		return raw;

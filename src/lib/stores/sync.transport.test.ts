@@ -5,7 +5,13 @@ import {
 	SYNC_PROTOCOL_VERSION
 } from '#lib/model/protocol.js';
 import { createSyncIdentity } from '#lib/syncPairing.js';
+import { reloadOnceForStaleBuild, STALE_BUILD_MESSAGE } from '#lib/staleModuleReload.js';
 import { SyncStore } from './sync.svelte';
+
+vi.mock('#lib/staleModuleReload.js', async (importOriginal) => ({
+	...(await importOriginal<typeof import('#lib/staleModuleReload.js')>()),
+	reloadOnceForStaleBuild: vi.fn()
+}));
 
 type Reply =
 	| { network: true }
@@ -76,6 +82,7 @@ describe('sync transport', () => {
 	beforeEach(() => {
 		vi.useFakeTimers();
 		vi.stubGlobal('XMLHttpRequest', FakeXhr);
+		vi.mocked(reloadOnceForStaleBuild).mockClear();
 		replies = [];
 		sends = 0;
 		sentHeaders = [];
@@ -141,6 +148,25 @@ describe('sync transport', () => {
 		expect(sentHeaders).toHaveLength(1);
 		expect(sentHeaders[0][SYNC_PROTOCOL_HEADER]).toBe(SYNC_PROTOCOL_VERSION);
 		expect(sends).toBe(1);
+		expect(reloadOnceForStaleBuild).not.toHaveBeenCalled();
+	});
+
+	it('reloads a page the relay has outgrown onto the deployed build', async () => {
+		replies = [
+			{
+				status: 409,
+				body: {
+					error: 'Sync protocol version mismatch. Reload the app or update the MCP server.',
+					requiredVersion: `${SYNC_PROTOCOL_VERSION}0`
+				}
+			}
+		];
+
+		const result = await send(store);
+
+		expect(result).toMatchObject({ success: false, status: 409, error: STALE_BUILD_MESSAGE });
+		expect(sends).toBe(1);
+		expect(reloadOnceForStaleBuild).toHaveBeenCalledTimes(1);
 	});
 
 	it('surfaces an update hint when an older relay does not have the v2 route', async () => {

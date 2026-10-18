@@ -534,14 +534,11 @@ export class SyncStore {
 		return reclaimed.length;
 	}
 	async savePushDevice(d: PushDeviceInput): Promise<void> {
+		// Push endpoints are unguessable browser capability URLs; move ownership silently so re-registration neither fails on UNIQUE(endpoint) nor reveals prior registration.
 		await batch(this.db, [
 			{
 				sql: 'DELETE FROM reminder_push_devices WHERE endpoint=? AND (account_id!=? OR device_id!=?)',
 				args: [d.endpoint, d.accountId, d.deviceId]
-			},
-			{
-				sql: 'DELETE FROM reminder_push_devices WHERE device_id=? AND account_id!=?',
-				args: [d.deviceId, d.accountId]
 			},
 			{
 				sql: 'INSERT INTO reminder_push_devices(account_id,device_id,endpoint,p256dh,auth,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(account_id,device_id) DO UPDATE SET endpoint=excluded.endpoint,p256dh=excluded.p256dh,auth=excluded.auth,updated_at=excluded.updated_at',

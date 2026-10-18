@@ -1,4 +1,4 @@
-import { identityFromSyncKey, isValidSyncKey } from './crypto.js';
+import { identityFromSyncKey, isValidSyncKey, sha256 } from './crypto.js';
 import { OAuthManager } from './oauth.js';
 import type { GrantedWorkspace } from './grant.js';
 
@@ -8,8 +8,22 @@ export type ResolvedAccount = {
 	workspaces?: GrantedWorkspace[];
 };
 
+type StaticTokenEntry = {
+	tokenDigest: Uint8Array;
+	account: ResolvedAccount;
+};
+
+function constantTimeEqual(a: Uint8Array, b: Uint8Array): boolean {
+	if (a.byteLength !== b.byteLength) return false;
+	let diff = 0;
+	for (let i = 0; i < a.byteLength; i += 1) {
+		diff |= a[i] ^ b[i];
+	}
+	return diff === 0;
+}
+
 export class TokenStore {
-	private readonly staticTokens = new Map<string, ResolvedAccount>();
+	private readonly staticTokens: StaticTokenEntry[] = [];
 	private readonly oauthManager: OAuthManager;
 
 	constructor(
@@ -28,7 +42,7 @@ export class TokenStore {
 			const syncKey = config.syncKey.trim();
 			if (!isValidSyncKey(syncKey)) throw new Error('Invalid MCP sync key configuration');
 			const accountId = identityFromSyncKey(syncKey).accountId;
-			this.staticTokens.set(config.bearerToken.trim(), {
+			this.setStaticToken(config.bearerToken.trim(), {
 				accountId,
 				syncKey
 			});
@@ -42,7 +56,7 @@ export class TokenStore {
 					const cleanKey = key.trim();
 					if (!tok.trim() || !isValidSyncKey(cleanKey)) throw new Error('Invalid sync key');
 					const accountId = identityFromSyncKey(cleanKey).accountId;
-					this.staticTokens.set(tok.trim(), { accountId, syncKey: cleanKey });
+					this.setStaticToken(tok.trim(), { accountId, syncKey: cleanKey });
 				}
 			} catch {
 				throw new Error('Invalid MCP_FRIENDS_TOKENS configuration');
@@ -57,10 +71,22 @@ export class TokenStore {
 					const cleanKey = key.trim();
 					if (!isValidSyncKey(cleanKey)) throw new Error('Invalid sync key');
 					const accountId = identityFromSyncKey(cleanKey).accountId;
-					this.staticTokens.set(tok.trim(), { accountId, syncKey: cleanKey });
+					this.setStaticToken(tok.trim(), { accountId, syncKey: cleanKey });
 				}
 			}
 		}
+	}
+
+	private setStaticToken(token: string, account: ResolvedAccount): void {
+		const tokenDigest = sha256(token);
+		const existing = this.staticTokens.find((entry) =>
+			constantTimeEqual(entry.tokenDigest, tokenDigest)
+		);
+		if (existing) {
+			existing.account = account;
+			return;
+		}
+		this.staticTokens.push({ tokenDigest, account });
 	}
 
 	getOAuthManager(): OAuthManager {
@@ -69,9 +95,17 @@ export class TokenStore {
 
 	async resolveToken(token: string): Promise<ResolvedAccount | null> {
 		const clean = token.trim();
-		// Check static tokens first
-		const staticAccount = this.staticTokens.get(clean);
-		if (staticAccount) return staticAccount;
+		// Check static tokens first using constant-time digest comparison
+		if (this.staticTokens.length > 0) {
+			const candidateDigest = sha256(clean);
+			let matched: ResolvedAccount | null = null;
+			for (const entry of this.staticTokens) {
+				if (constantTimeEqual(entry.tokenDigest, candidateDigest)) {
+					matched = entry.account;
+				}
+			}
+			if (matched) return matched;
+		}
 
 		// Check OAuth tokens
 		return this.oauthManager.resolveToken(clean);

@@ -5,7 +5,11 @@ import { createSyncIdentity } from '#lib/syncPairing.js';
 import type { StoredProfile } from '#lib/profiles.js';
 import { notesStore } from '#lib/stores/notes.svelte.js';
 import { profileCoordinator } from '#lib/stores/profiles.svelte.js';
-import { syncStore, type StartedDeviceLink } from '#lib/stores/sync.svelte.js';
+import {
+	syncStore,
+	SYNC_VERSION_MISMATCH_MESSAGE,
+	type StartedDeviceLink
+} from '#lib/stores/sync.svelte.js';
 import SyncModal from './SyncModal.svelte';
 import { publicEnv } from '../../tests/env';
 import { TEST_WORKSPACE } from '../../tests/workspace';
@@ -46,6 +50,25 @@ describe('SyncModal profile interactions', () => {
 		syncStore.usage = null;
 		profileCoordinator.switching = false;
 		(notesStore as unknown as { syncFlight: Promise<boolean> | null }).syncFlight = null;
+	});
+
+	it('keeps an incompatibility message visible after a failed manual sync', async () => {
+		const sync = vi.spyOn(notesStore, 'syncWithCloudManual').mockImplementation(async () => {
+			syncStore.lastError = SYNC_VERSION_MISMATCH_MESSAGE;
+			return false;
+		});
+		render(SyncModal, { props: { onClose: vi.fn() } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Sync now' }));
+
+		await waitFor(() =>
+			expect(screen.getAllByText(SYNC_VERSION_MISMATCH_MESSAGE).length).toBeGreaterThan(0)
+		);
+		expect(screen.queryByText(/Reloading to update/)).toBeNull();
+		const retry = screen.getByRole('button', { name: 'Sync now' }) as HTMLButtonElement;
+		expect(retry.disabled).toBe(false);
+		await fireEvent.click(retry);
+		await waitFor(() => expect(sync).toHaveBeenCalledTimes(2));
+		expect(screen.getAllByText(SYNC_VERSION_MISMATCH_MESSAGE).length).toBeGreaterThan(0);
 	});
 
 	it('finishes a switch and dismisses the sync screen', async () => {

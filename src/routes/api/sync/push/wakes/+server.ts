@@ -79,10 +79,13 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 			{ status: 400 }
 		);
 	}
-	const deviceLimit = await getPublicApiLimiter().check(`push-device:${body.deviceId}`, {
-		capacity: 20,
-		refillWindowMs: 60_000
-	});
+	const deviceLimit = await getPublicApiLimiter().check(
+		`push-device:${accountId}:${body.deviceId}`,
+		{
+			capacity: 20,
+			refillWindowMs: 60_000
+		}
+	);
 	if (!deviceLimit.allowed) return rateLimitResponse(deviceLimit);
 	try {
 		await getSyncStore().savePushDevice({

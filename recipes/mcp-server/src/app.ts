@@ -3,7 +3,7 @@ import { ScrapscacheSyncClient } from './syncClient.js';
 import { McpSession } from './engine.js';
 import { handleJsonRpcMessage } from './protocol.js';
 import { isRedirectAllowed, isPkceChallenge, MCP_TOKEN_TTL_MS } from './oauth.js';
-import { decryptHandshakePayload } from './crypto.js';
+import { decryptHandshakePayload, sha256 } from './crypto.js';
 import { parseHandshakeGrant, type GrantedWorkspace } from './grant.js';
 import { VaultSession } from './vaults.js';
 
@@ -89,6 +89,89 @@ function bodyErrorResponse(error: unknown, corsHeaders: Record<string, string>):
 const NO_STORE_HEADERS = {
 	'Cache-Control': 'no-store',
 	Pragma: 'no-cache'
+};
+
+function sha256Base64(value: string): string {
+	let binary = '';
+	for (const byte of sha256(value)) binary += String.fromCharCode(byte);
+	return btoa(binary);
+}
+
+const OAUTH_CALLBACK_STYLE = `
+    :root { --bg: #0f172a; --card: #1e293b; --text: #f8fafc; --muted: #94a3b8; --border: #334155; }
+    @media (prefers-color-scheme: light) { :root { --bg: #f8fafc; --card: #ffffff; --text: #0f172a; --muted: #64748b; --border: #e2e8f0; } }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 1rem; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; max-width: 400px; width: 100%; padding: 2rem; text-align: center; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.2); }
+    h2 { font-size: 1.25rem; margin-bottom: 0.5rem; }
+    .error { color: #ef4444; }
+    p { font-size: 0.9rem; color: var(--muted); line-height: 1.5; }
+    .spinner { display: inline-block; width: 32px; height: 32px; border: 3px solid var(--border); border-top-color: #38bdf8; border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 1rem; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  `;
+
+const OAUTH_CALLBACK_SCRIPT = `
+    (async () => {
+      const card = document.getElementById('status-card');
+      try {
+        const hash = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : '';
+        const params = new URLSearchParams(hash);
+        const sessionId = params.get('session_id') || '';
+        const clientPublicKey = params.get('client_public_key') || '';
+        const ciphertext = params.get('ciphertext') || '';
+        const nonce = params.get('nonce') || '';
+        const error = params.get('error') || '';
+
+        if (error) {
+          card.innerHTML = '<h2 class="error">Authorization Cancelled</h2><p>You cancelled the authorization request.</p>';
+          return;
+        }
+
+        if (!sessionId || !clientPublicKey || !ciphertext || !nonce) {
+          throw new Error('Incomplete handshake parameters received in fragment.');
+        }
+
+        const res = await fetch('/oauth/callback', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId, clientPublicKey, ciphertext, nonce })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.redirectTo) {
+          throw new Error(data.error || 'Handshake failed on MCP server.');
+        }
+        window.location.replace(data.redirectTo);
+      } catch (err) {
+        card.innerHTML = '<h2 class="error">Connection Failed</h2><p></p>';
+        card.querySelector('p').textContent = err instanceof Error ? err.message : 'Unknown error';
+      }
+    })();
+  `;
+
+const OAUTH_CALLBACK_HTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Connecting to AI Assistant · Scraps Cache MCP</title>
+  <style>${OAUTH_CALLBACK_STYLE}</style>
+</head>
+<body>
+  <div class="card" id="status-card">
+    <div class="spinner"></div>
+    <h2>Connecting...</h2>
+    <p>Finalizing encrypted handshake with your AI assistant.</p>
+  </div>
+  <script>${OAUTH_CALLBACK_SCRIPT}</script>
+</body>
+</html>`;
+
+const OAUTH_CALLBACK_HTML_HEADERS = {
+	'Content-Type': 'text/html; charset=utf-8',
+	'Content-Security-Policy': `default-src 'none'; script-src 'sha256-${sha256Base64(OAUTH_CALLBACK_SCRIPT)}'; style-src 'sha256-${sha256Base64(OAUTH_CALLBACK_STYLE)}'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
+	'X-Content-Type-Options': 'nosniff',
+	'Referrer-Policy': 'no-referrer',
+	'X-Frame-Options': 'DENY',
+	...NO_STORE_HEADERS
 };
 
 function noStoreRedirect(location: string): Response {
@@ -340,71 +423,9 @@ export class McpApp {
 			const oauth = tokenStore.getOAuthManager();
 
 			if (req.method === 'GET') {
-				const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Connecting to AI Assistant · Scraps Cache MCP</title>
-  <style>
-    :root { --bg: #0f172a; --card: #1e293b; --text: #f8fafc; --muted: #94a3b8; --border: #334155; }
-    @media (prefers-color-scheme: light) { :root { --bg: #f8fafc; --card: #ffffff; --text: #0f172a; --muted: #64748b; --border: #e2e8f0; } }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 1rem; }
-    .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; max-width: 400px; width: 100%; padding: 2rem; text-align: center; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.2); }
-    h2 { font-size: 1.25rem; margin-bottom: 0.5rem; }
-    p { font-size: 0.9rem; color: var(--muted); line-height: 1.5; }
-    .spinner { display: inline-block; width: 32px; height: 32px; border: 3px solid var(--border); border-top-color: #38bdf8; border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 1rem; }
-    @keyframes spin { to { transform: rotate(360deg); } }
-  </style>
-</head>
-<body>
-  <div class="card" id="status-card">
-    <div class="spinner"></div>
-    <h2>Connecting...</h2>
-    <p>Finalizing encrypted handshake with your AI assistant.</p>
-  </div>
-  <script>
-    (async () => {
-      const card = document.getElementById('status-card');
-      try {
-        const hash = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : '';
-        const params = new URLSearchParams(hash);
-        const sessionId = params.get('session_id') || '';
-        const clientPublicKey = params.get('client_public_key') || '';
-        const ciphertext = params.get('ciphertext') || '';
-        const nonce = params.get('nonce') || '';
-        const error = params.get('error') || '';
-
-        if (error) {
-          card.innerHTML = '<h2 style="color: #ef4444;">Authorization Cancelled</h2><p>You cancelled the authorization request.</p>';
-          return;
-        }
-
-        if (!sessionId || !clientPublicKey || !ciphertext || !nonce) {
-          throw new Error('Incomplete handshake parameters received in fragment.');
-        }
-
-        const res = await fetch('/oauth/callback', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sessionId, clientPublicKey, ciphertext, nonce })
-        });
-        const data = await res.json();
-        if (!res.ok || !data.redirectTo) {
-          throw new Error(data.error || 'Handshake failed on MCP server.');
-        }
-        window.location.replace(data.redirectTo);
-      } catch (err) {
-        card.innerHTML = '<h2 style="color: #ef4444;">Connection Failed</h2><p></p>';
-        card.querySelector('p').textContent = err instanceof Error ? err.message : 'Unknown error';
-      }
-    })();
-  </script>
-</body>
-</html>`;
-				return new Response(html, {
+				return new Response(OAUTH_CALLBACK_HTML, {
 					status: 200,
-					headers: { 'Content-Type': 'text/html; charset=utf-8' }
+					headers: OAUTH_CALLBACK_HTML_HEADERS
 				});
 			}
 

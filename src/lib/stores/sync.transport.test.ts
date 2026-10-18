@@ -5,7 +5,8 @@ import {
 	SYNC_PROTOCOL_VERSION
 } from '#lib/model/protocol.js';
 import { createSyncIdentity } from '#lib/syncPairing.js';
-import { SyncStore } from './sync.svelte';
+import { STALE_MODULE_RELOAD_KEY } from '#lib/staleModuleReload.js';
+import { SYNC_VERSION_MISMATCH_MESSAGE, SyncStore } from './sync.svelte';
 
 type Reply =
 	| { network: true }
@@ -124,12 +125,113 @@ describe('sync transport', () => {
 		expect(sends).toBe(1);
 	});
 
-	it('sends the protocol version and does not retry an upgrade refusal', async () => {
+	it('sends the protocol version and returns the actionable error for a newer relay', async () => {
+		const reload = vi.fn();
+		vi.stubGlobal('location', { reload });
 		replies = [
 			{
 				status: 409,
 				body: {
 					error: 'Sync protocol version mismatch. Reload the app or update the MCP server.',
+					requiredVersion: String(Number(SYNC_PROTOCOL_VERSION) + 1)
+				}
+			}
+		];
+
+		const result = await send(store);
+
+		expect(result).toMatchObject({
+			success: false,
+			status: 409,
+			error: SYNC_VERSION_MISMATCH_MESSAGE
+		});
+		expect(sentHeaders).toHaveLength(1);
+		expect(sentHeaders[0][SYNC_PROTOCOL_HEADER]).toBe(SYNC_PROTOCOL_VERSION);
+		expect(sends).toBe(1);
+		expect(reload).not.toHaveBeenCalled();
+	});
+
+	it('returns the same actionable error when the relay requires an older protocol', async () => {
+		const reload = vi.fn();
+		vi.stubGlobal('location', { reload });
+		replies = [
+			{
+				status: 409,
+				body: {
+					error: 'Sync protocol version mismatch. Reload the app or update the MCP server.',
+					requiredVersion: String(Number(SYNC_PROTOCOL_VERSION) - 1)
+				}
+			}
+		];
+
+		const result = await send(store);
+
+		expect(result).toMatchObject({
+			success: false,
+			status: 409,
+			error: SYNC_VERSION_MISMATCH_MESSAGE
+		});
+		expect(sends).toBe(1);
+		expect(reload).not.toHaveBeenCalled();
+	});
+
+	it('keeps repeated mismatch responses actionable beyond the missing-module cooldown', async () => {
+		const reload = vi.fn();
+		vi.stubGlobal('location', { reload });
+		const previousReload = String(Date.now());
+		sessionStorage.setItem(STALE_MODULE_RELOAD_KEY, previousReload);
+		replies = Array.from({ length: 3 }, () => ({
+			status: 409,
+			body: { requiredVersion: String(Number(SYNC_PROTOCOL_VERSION) + 1) }
+		}));
+
+		for (let attempt = 0; attempt < 3; attempt += 1) {
+			if (attempt > 0) await vi.advanceTimersByTimeAsync(15_001);
+			expect(await send(store)).toMatchObject({
+				success: false,
+				status: 409,
+				error: SYNC_VERSION_MISMATCH_MESSAGE
+			});
+		}
+
+		expect(sends).toBe(3);
+		expect(sessionStorage.getItem(STALE_MODULE_RELOAD_KEY)).toBe(previousReload);
+		expect(reload).not.toHaveBeenCalled();
+	});
+
+	it('does not try to reload a mismatch when session storage is unavailable', async () => {
+		const reload = vi.fn();
+		vi.stubGlobal('location', { reload });
+		const getItem = vi.fn(() => {
+			throw new Error('Storage is unavailable');
+		});
+		const setItem = vi.fn(() => {
+			throw new Error('Storage is unavailable');
+		});
+		vi.stubGlobal('sessionStorage', { getItem, setItem, clear: vi.fn() });
+		replies = [
+			{
+				status: 409,
+				body: { requiredVersion: String(Number(SYNC_PROTOCOL_VERSION) + 1) }
+			}
+		];
+
+		expect(await send(store)).toMatchObject({
+			success: false,
+			status: 409,
+			error: SYNC_VERSION_MISMATCH_MESSAGE
+		});
+		expect(getItem).not.toHaveBeenCalled();
+		expect(setItem).not.toHaveBeenCalled();
+		expect(reload).not.toHaveBeenCalled();
+	});
+
+	it('does not translate a 409 that requires this protocol version', async () => {
+		replies = [
+			{
+				status: 409,
+				body: {
+					error: 'This sync request was rejected.',
 					requiredVersion: SYNC_PROTOCOL_VERSION
 				}
 			}
@@ -137,9 +239,32 @@ describe('sync transport', () => {
 
 		const result = await send(store);
 
-		expect(result).toMatchObject({ success: false, status: 409 });
-		expect(sentHeaders).toHaveLength(1);
-		expect(sentHeaders[0][SYNC_PROTOCOL_HEADER]).toBe(SYNC_PROTOCOL_VERSION);
+		expect(result).toMatchObject({
+			success: false,
+			status: 409,
+			error: 'This sync request was rejected.'
+		});
+		expect(sends).toBe(1);
+	});
+
+	it('does not translate a non-409 response with a different required version', async () => {
+		replies = [
+			{
+				status: 400,
+				body: {
+					error: 'Malformed sync request.',
+					requiredVersion: String(Number(SYNC_PROTOCOL_VERSION) + 1)
+				}
+			}
+		];
+
+		const result = await send(store);
+
+		expect(result).toMatchObject({
+			success: false,
+			status: 400,
+			error: 'Malformed sync request.'
+		});
 		expect(sends).toBe(1);
 	});
 

@@ -64,15 +64,15 @@ describe('MCP App HTTP endpoints and JSON-RPC dispatch', () => {
 
 		const html = await res.text();
 		expect(html).not.toContain('style=');
-		const styleMatch = html.match(/<style>([\s\S]*?)<\/style>/);
-		const scriptMatch = html.match(/<script>([\s\S]*?)<\/script>/);
-		expect(styleMatch).not.toBeNull();
-		expect(scriptMatch).not.toBeNull();
+		const styleBody = html.split('<style>')[1]?.split('</style>')[0];
+		const scriptBody = html.split('<script>')[1]?.split('</script>')[0];
+		expect(styleBody).toBeDefined();
+		expect(scriptBody).toBeDefined();
 
 		const toBase64 = (bytes: Uint8Array) =>
 			btoa(Array.from(bytes, (b) => String.fromCharCode(b)).join(''));
-		const expectedStyleHash = toBase64(sha256(styleMatch![1]));
-		const expectedScriptHash = toBase64(sha256(scriptMatch![1]));
+		const expectedStyleHash = toBase64(sha256(styleBody!));
+		const expectedScriptHash = toBase64(sha256(scriptBody!));
 		expect(expectedStyleHash).toBe('GI1VDycMt9z5PNgIUAFEo0fKPWRi9wnd5FVl8XaHXbg=');
 		expect(expectedScriptHash).toBe('22T1ipzMFcii6JOJGETQMoP80VixHV61O0bOWKVHMMg=');
 

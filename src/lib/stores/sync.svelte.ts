@@ -10,7 +10,6 @@ import {
 	SYNC_PROTOCOL_VERSION
 } from '#lib/model/protocol.js';
 import { observeRelayTime } from '#lib/editContext.js';
-import { reloadOnceForStaleBuild, STALE_BUILD_MESSAGE } from '#lib/staleModuleReload.js';
 import {
 	currentRecordKeys,
 	fingerprintMapFrom,
@@ -76,6 +75,10 @@ import {
 } from '#lib/profiles.js';
 
 const LS_SYNC_STATUS_PREFIX = 'scrapscache-sync-status';
+
+/** A protocol refusal cannot tell whether the app or the relay needs updating. */
+export const SYNC_VERSION_MISMATCH_MESSAGE =
+	'This app and the sync server use different versions. Save and close any open editors, then reload the app. If sync still fails, update the sync server.';
 
 /** Encrypted profile-name record; the name follows its sync key across devices. */
 export const PROFILE_META_KEY = 'profile-meta';
@@ -931,18 +934,18 @@ export class SyncStore {
 						(xhr.status === 429 || xhr.status === 503) &&
 						Number.isFinite(retryAfter) &&
 						retryAfter >= 0;
-					// A relay that moved on to a newer protocol only ever answers this page
-					// that way: the deployed build speaks it, so the page reloads onto it.
-					const staleBuild =
+					// Background sync can finish while text or a canvas is still unsaved.
+					// Keep the document open: reloading also cannot fix an older relay or
+					// guarantee a different build from the service worker's cached shell.
+					const versionMismatch =
 						xhr.status === 409 &&
 						typeof data.requiredVersion === 'string' &&
 						data.requiredVersion !== SYNC_PROTOCOL_VERSION;
-					if (staleBuild) reloadOnceForStaleBuild();
 					resolve({
 						success: false,
 						status: xhr.status,
-						error: staleBuild
-							? STALE_BUILD_MESSAGE
+						error: versionMismatch
+							? SYNC_VERSION_MISMATCH_MESSAGE
 							: xhr.status === 404 && path === SYNC_DELTA_PATH
 								? 'The sync server needs an update to support this app version.'
 								: typeof data.error === 'string'

@@ -5,9 +5,6 @@ export const STALE_MODULE_RELOAD_COOLDOWN_MS = 15_000;
 export const STALE_MODULE_MESSAGE =
 	'Could not load that part of the app. Reload the page and try again.';
 
-/** Shown while a page the relay no longer accepts reloads onto the deployed build. */
-export const STALE_BUILD_MESSAGE = 'This app version is out of date. Reloading to update.';
-
 // Chrome, Firefox and Safari each word a failed dynamic import differently.
 const MISSING_MODULE_MESSAGES = [
 	'Failed to fetch dynamically imported module',
@@ -28,17 +25,6 @@ export function reloadOnceForMissingModule(
 	reload = () => location.reload()
 ): boolean {
 	if (!isMissingModuleError(cause)) return false;
-	return reloadOnceForStaleBuild(now, reload);
-}
-
-/**
- * Reload the page onto the deployed build, at most once per cooldown: a page
- * that is still stale after reloading must not reload again and again.
- */
-export function reloadOnceForStaleBuild(
-	now = Date.now(),
-	reload = () => location.reload()
-): boolean {
 	try {
 		const last = Number(sessionStorage.getItem(STALE_MODULE_RELOAD_KEY) ?? 0);
 		if (last && now - last < STALE_MODULE_RELOAD_COOLDOWN_MS) return false;

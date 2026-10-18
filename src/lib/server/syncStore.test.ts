@@ -1163,6 +1163,18 @@ describe('SQLite sync store', () => {
 		});
 		expect(await store.countPushDevices('old-owner')).toBe(1);
 		expect(await store.countPushDevices('new-owner')).toBe(2);
+
+		// Deleting the shared device id under old-owner leaves new-owner's device and wake delivery intact.
+		await store.deletePushDevice('old-owner', 'device-new00000000');
+		expect(await store.countPushDevices('old-owner')).toBe(0);
+		expect(await store.countPushDevices('new-owner')).toBe(2);
+
+		await store.replaceReminderWakes('new-owner', [wake('w', 1_000)]);
+		const due = await store.claimDueWakes(1_000, 100, 'new-owner');
+		expect(due.map((w) => ({ deviceId: w.deviceId, endpoint: w.endpoint }))).toEqual([
+			{ deviceId: 'device-new00000000', endpoint: 'https://push.example/endpoint-b' },
+			{ deviceId: 'device-replaced000', endpoint: 'https://push.example/endpoint-a' }
+		]);
 	});
 
 	it('fans each account wake out once to every registered device', async () => {

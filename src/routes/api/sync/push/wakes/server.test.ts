@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-	check: vi.fn(() => ({ allowed: true })),
+	check: vi.fn((_key?: string) => ({ allowed: true })),
 	authenticate: vi.fn(async (): Promise<string | null> => 'account-aaaaaaaaaaaa'),
 	arm: vi.fn(async () => undefined),
 	savePushDevice: vi.fn(async () => undefined),
@@ -75,6 +75,44 @@ describe('reminder wake registration', () => {
 		});
 		expect(response.status).toBe(200);
 		expect(mocks.arm).toHaveBeenCalledWith('account-aaaaaaaaaaaa', expect.any(Number));
+	});
+
+	it('scopes the push-device rate-limit bucket by account so shared device ids cannot throttle each other', async () => {
+		const sharedDeviceId = 'device-shared000000';
+		mocks.check.mockImplementation((key?: string) => ({
+			allowed: key !== `push-device:account-aaaaaaaaaaaa:${sharedDeviceId}`
+		}));
+
+		mocks.authenticate.mockResolvedValueOnce('account-aaaaaaaaaaaa');
+		const throttled = await call(POST, 'POST', {
+			deviceId: sharedDeviceId,
+			subscription: {
+				endpoint: 'https://fcm.googleapis.com/fcm/send/device-a',
+				keys: { p256dh: 'p'.repeat(20), auth: 'a'.repeat(16) }
+			}
+		});
+		expect(throttled.status).toBe(429);
+		expect(mocks.savePushDevice).not.toHaveBeenCalled();
+
+		mocks.authenticate.mockResolvedValueOnce('account-bbbbbbbbbbbb');
+		const allowed = await call(POST, 'POST', {
+			deviceId: sharedDeviceId,
+			subscription: {
+				endpoint: 'https://fcm.googleapis.com/fcm/send/device-b',
+				keys: { p256dh: 'p'.repeat(20), auth: 'a'.repeat(16) }
+			}
+		});
+		expect(allowed.status).toBe(200);
+		expect(mocks.check).toHaveBeenCalledWith(`push-device:account-bbbbbbbbbbbb:${sharedDeviceId}`, {
+			capacity: 20,
+			refillWindowMs: 60_000
+		});
+		expect(mocks.savePushDevice).toHaveBeenCalledWith(
+			expect.objectContaining({
+				accountId: 'account-bbbbbbbbbbbb',
+				deviceId: sharedDeviceId
+			})
+		);
 	});
 
 	it('still stores the wakes when the scheduler cannot be reached', async () => {

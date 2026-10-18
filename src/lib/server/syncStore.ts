@@ -1019,6 +1019,7 @@ export class SyncStore {
 				})
 			).rows[0];
 
+			// Push endpoints are unguessable browser capability URLs; move ownership silently so re-registration neither fails on UNIQUE(endpoint) nor reveals prior registration.
 			await tx.execute({
 				sql: 'DELETE FROM reminder_push_devices WHERE endpoint = ? AND (account_id != ? OR device_id != ?)',
 				args: [device.endpoint, device.accountId, device.deviceId]

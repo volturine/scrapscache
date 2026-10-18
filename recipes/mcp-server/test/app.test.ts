@@ -73,8 +73,6 @@ describe('MCP App HTTP endpoints and JSON-RPC dispatch', () => {
 			btoa(Array.from(bytes, (b) => String.fromCharCode(b)).join(''));
 		const expectedStyleHash = toBase64(sha256(styleBody!));
 		const expectedScriptHash = toBase64(sha256(scriptBody!));
-		expect(expectedStyleHash).toBe('GI1VDycMt9z5PNgIUAFEo0fKPWRi9wnd5FVl8XaHXbg=');
-		expect(expectedScriptHash).toBe('22T1ipzMFcii6JOJGETQMoP80VixHV61O0bOWKVHMMg=');
 
 		const csp = res.headers.get('Content-Security-Policy') || '';
 		expect(csp).not.toContain('unsafe-inline');

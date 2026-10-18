@@ -39,6 +39,55 @@ describe('Workers reminder wake schedule', () => {
 		]);
 	});
 
+	it('moves an endpoint registration when another account claims it without evicting matching device ids', async () => {
+		await store.createAccount('old-owner', 'credential-old');
+		await store.createAccount('new-owner', 'credential-new');
+		const keys = { p256dh: 'p'.repeat(20), auth: 'a'.repeat(16) };
+		await store.savePushDevice({
+			accountId: 'old-owner',
+			deviceId: 'device-old00000000',
+			endpoint: 'https://push.example/endpoint-a',
+			...keys
+		});
+		await store.savePushDevice({
+			accountId: 'new-owner',
+			deviceId: 'device-new00000000',
+			endpoint: 'https://push.example/endpoint-b',
+			...keys
+		});
+		// A re-registered endpoint under a different account steals it from the old row.
+		await store.savePushDevice({
+			accountId: 'new-owner',
+			deviceId: 'device-replaced000',
+			endpoint: 'https://push.example/endpoint-a',
+			...keys
+		});
+		expect(await store.countPushDevices('old-owner')).toBe(0);
+		expect(await store.countPushDevices('new-owner')).toBe(2);
+
+		// A matching device id under a different account is scoped by account_id and does not evict the other account's device.
+		await store.savePushDevice({
+			accountId: 'old-owner',
+			deviceId: 'device-new00000000',
+			endpoint: 'https://push.example/endpoint-c',
+			...keys
+		});
+		expect(await store.countPushDevices('old-owner')).toBe(1);
+		expect(await store.countPushDevices('new-owner')).toBe(2);
+
+		// Deleting the shared device id under old-owner leaves new-owner's device and wake delivery intact.
+		await store.deletePushDevice('old-owner', 'device-new00000000');
+		expect(await store.countPushDevices('old-owner')).toBe(0);
+		expect(await store.countPushDevices('new-owner')).toBe(2);
+
+		await store.replaceReminderWakes('new-owner', [{ id: 'w'.repeat(43), fireAt: 1_000 }]);
+		const due = await store.claimDueWakes(1_000, 100, 'new-owner');
+		expect(due.map((w) => ({ deviceId: w.deviceId, endpoint: w.endpoint }))).toEqual([
+			{ deviceId: 'device-new00000000', endpoint: 'https://push.example/endpoint-b' },
+			{ deviceId: 'device-replaced000', endpoint: 'https://push.example/endpoint-a' }
+		]);
+	});
+
 	it("claims at most an account's share of a round, leaving room for other accounts", async () => {
 		for (const account of ['flood', 'other']) {
 			await store.createAccount(account, 'credential');

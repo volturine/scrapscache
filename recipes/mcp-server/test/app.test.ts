@@ -1,8 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { MAX_HTTP_BODY_BYTES, McpApp } from '../src/app.js';
-import { TokenStore } from '../src/tokenStore.js';
+import { TokenStore, type ResolvedAccount } from '../src/tokenStore.js';
 import { OAuthManager } from '../src/oauth.js';
-import { bytesToBase64Url, randomBytes, sha256Base64Url } from '../src/crypto.js';
+import {
+	bytesToBase64Url,
+	identityFromSyncKey,
+	randomBytes,
+	sha256,
+	sha256Base64Url
+} from '../src/crypto.js';
 
 describe('MCP App HTTP endpoints and JSON-RPC dispatch', () => {
 	const syncKey = bytesToBase64Url(randomBytes(32));
@@ -43,6 +49,93 @@ describe('MCP App HTTP endpoints and JSON-RPC dispatch', () => {
 		const data = (await res.json()) as { issuer: string; token_endpoint: string };
 		expect(data.issuer).toBe('http://localhost:3001');
 		expect(data.token_endpoint).toBe('http://localhost:3001/oauth/token');
+	});
+
+	it('serves /oauth/callback with hash-pinned CSP and defensive security headers', async () => {
+		const req = new Request('http://localhost:3001/oauth/callback');
+		const res = await app.handleRequest(req);
+		expect(res.status).toBe(200);
+		expect(res.headers.get('Content-Type')).toBe('text/html; charset=utf-8');
+		expect(res.headers.get('X-Content-Type-Options')).toBe('nosniff');
+		expect(res.headers.get('Referrer-Policy')).toBe('no-referrer');
+		expect(res.headers.get('X-Frame-Options')).toBe('DENY');
+		expect(res.headers.get('Cache-Control')).toBe('no-store');
+		expect(res.headers.get('Pragma')).toBe('no-cache');
+
+		const html = await res.text();
+		expect(html).not.toContain('style=');
+		const styleBody = html.split('<style>')[1]?.split('</style>')[0];
+		const scriptBody = html.split('<script>')[1]?.split('</script>')[0];
+		expect(styleBody).toBeDefined();
+		expect(scriptBody).toBeDefined();
+
+		const toBase64 = (bytes: Uint8Array) =>
+			btoa(Array.from(bytes, (b) => String.fromCharCode(b)).join(''));
+		const expectedStyleHash = toBase64(sha256(styleBody!));
+		const expectedScriptHash = toBase64(sha256(scriptBody!));
+		expect(expectedStyleHash).toBe('GI1VDycMt9z5PNgIUAFEo0fKPWRi9wnd5FVl8XaHXbg=');
+		expect(expectedScriptHash).toBe('22T1ipzMFcii6JOJGETQMoP80VixHV61O0bOWKVHMMg=');
+
+		const csp = res.headers.get('Content-Security-Policy') || '';
+		expect(csp).not.toContain('unsafe-inline');
+		expect(csp).toBe(
+			`default-src 'none'; script-src 'sha256-${expectedScriptHash}'; style-src 'sha256-${expectedStyleHash}'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`
+		);
+	});
+
+	it('stores only 32-byte SHA-256 digests for static tokens and compares in constant time', async () => {
+		const friendSyncKeyA = bytesToBase64Url(randomBytes(32));
+		const friendSyncKeyB = bytesToBase64Url(randomBytes(32));
+		const overrideSyncKey = bytesToBase64Url(randomBytes(32));
+		const store = new TokenStore(oauthManager, {
+			syncKey,
+			bearerToken: 'single-user-secret-token',
+			friendsTokensJson: JSON.stringify({
+				'friend-token-a': friendSyncKeyA,
+				'duplicate-token': friendSyncKeyA
+			}),
+			friendsTokensPairs: `friend-token-b:${friendSyncKeyB},duplicate-token:${overrideSyncKey}`
+		});
+
+		const internalEntries = (
+			store as unknown as {
+				staticTokens: Array<{ tokenDigest: Uint8Array; account: ResolvedAccount }>;
+			}
+		).staticTokens;
+		expect(Array.isArray(internalEntries)).toBe(true);
+		expect(internalEntries).toHaveLength(4);
+		for (const entry of internalEntries) {
+			expect(entry.tokenDigest).toBeInstanceOf(Uint8Array);
+			expect(entry.tokenDigest.byteLength).toBe(32);
+		}
+		expect(internalEntries.map((entry) => entry.tokenDigest)).toEqual([
+			sha256('single-user-secret-token'),
+			sha256('friend-token-a'),
+			sha256('duplicate-token'),
+			sha256('friend-token-b')
+		]);
+
+		expect(await store.resolveToken('single-user-secret-token')).toEqual({
+			accountId: identityFromSyncKey(syncKey).accountId,
+			syncKey
+		});
+		expect(await store.resolveToken('friend-token-a')).toEqual({
+			accountId: identityFromSyncKey(friendSyncKeyA).accountId,
+			syncKey: friendSyncKeyA
+		});
+		expect(await store.resolveToken('friend-token-b')).toEqual({
+			accountId: identityFromSyncKey(friendSyncKeyB).accountId,
+			syncKey: friendSyncKeyB
+		});
+		// Duplicate token across friendsTokensJson and friendsTokensPairs updates in place.
+		expect(await store.resolveToken('duplicate-token')).toEqual({
+			accountId: identityFromSyncKey(overrideSyncKey).accountId,
+			syncKey: overrideSyncKey
+		});
+		// Same-length wrong token, prefix of valid token, and valid token as prefix all fail.
+		expect(await store.resolveToken('single-user-secret-tokeN')).toBeNull();
+		expect(await store.resolveToken('single-user-secret')).toBeNull();
+		expect(await store.resolveToken('single-user-secret-token-extra')).toBeNull();
 	});
 
 	it('rejects unauthenticated MCP requests with 401', async () => {

@@ -146,8 +146,7 @@ const OPS_DDL = `
 		updated_at INTEGER NOT NULL,
 		PRIMARY KEY (account_id, device_id)
 	);
-	CREATE INDEX IF NOT EXISTS reminder_push_devices_device
-		ON reminder_push_devices(device_id);
+	DROP INDEX IF EXISTS reminder_push_devices_device;
 	CREATE INDEX IF NOT EXISTS reminder_push_devices_account
 		ON reminder_push_devices(account_id);
 	CREATE TABLE IF NOT EXISTS reminder_wakes (

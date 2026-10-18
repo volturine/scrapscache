@@ -104,7 +104,6 @@ CREATE TABLE reminder_push_devices (
 	updated_at INTEGER NOT NULL,
 	PRIMARY KEY (account_id, device_id)
 );
-CREATE INDEX reminder_push_devices_device ON reminder_push_devices(device_id);
 CREATE INDEX reminder_push_devices_account ON reminder_push_devices(account_id);
 
 CREATE TABLE reminder_wakes (

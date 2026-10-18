@@ -91,6 +91,16 @@ const NO_STORE_HEADERS = {
 	Pragma: 'no-cache'
 };
 
+const OAUTH_CALLBACK_HTML_HEADERS = {
+	'Content-Type': 'text/html; charset=utf-8',
+	'Content-Security-Policy':
+		"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+	'X-Content-Type-Options': 'nosniff',
+	'Referrer-Policy': 'no-referrer',
+	'X-Frame-Options': 'DENY',
+	...NO_STORE_HEADERS
+};
+
 function noStoreRedirect(location: string): Response {
 	return new Response(null, {
 		status: 302,
@@ -404,7 +414,7 @@ export class McpApp {
 </html>`;
 				return new Response(html, {
 					status: 200,
-					headers: { 'Content-Type': 'text/html; charset=utf-8' }
+					headers: OAUTH_CALLBACK_HTML_HEADERS
 				});
 			}
 

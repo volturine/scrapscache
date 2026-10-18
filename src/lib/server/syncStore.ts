@@ -1023,10 +1023,6 @@ export class SyncStore {
 				sql: 'DELETE FROM reminder_push_devices WHERE endpoint = ? AND (account_id != ? OR device_id != ?)',
 				args: [device.endpoint, device.accountId, device.deviceId]
 			});
-			await tx.execute({
-				sql: 'DELETE FROM reminder_push_devices WHERE device_id = ? AND account_id != ?',
-				args: [device.deviceId, device.accountId]
-			});
 
 			if (!existing) {
 				const extras = (

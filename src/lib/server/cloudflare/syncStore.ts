@@ -540,10 +540,6 @@ export class SyncStore {
 				args: [d.endpoint, d.accountId, d.deviceId]
 			},
 			{
-				sql: 'DELETE FROM reminder_push_devices WHERE device_id=? AND account_id!=?',
-				args: [d.deviceId, d.accountId]
-			},
-			{
 				sql: 'INSERT INTO reminder_push_devices(account_id,device_id,endpoint,p256dh,auth,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(account_id,device_id) DO UPDATE SET endpoint=excluded.endpoint,p256dh=excluded.p256dh,auth=excluded.auth,updated_at=excluded.updated_at',
 				args: [d.accountId, d.deviceId, d.endpoint, d.p256dh, d.auth, Date.now()]
 			},

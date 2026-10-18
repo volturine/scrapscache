@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { MAX_HTTP_BODY_BYTES, McpApp } from '../src/app.js';
 import { TokenStore } from '../src/tokenStore.js';
 import { OAuthManager } from '../src/oauth.js';
-import { bytesToBase64Url, randomBytes, sha256Base64Url } from '../src/crypto.js';
+import {
+	bytesToBase64Url,
+	identityFromSyncKey,
+	randomBytes,
+	sha256Base64Url
+} from '../src/crypto.js';
 
 describe('MCP App HTTP endpoints and JSON-RPC dispatch', () => {
 	const syncKey = bytesToBase64Url(randomBytes(32));
@@ -43,6 +48,50 @@ describe('MCP App HTTP endpoints and JSON-RPC dispatch', () => {
 		const data = (await res.json()) as { issuer: string; token_endpoint: string };
 		expect(data.issuer).toBe('http://localhost:3001');
 		expect(data.token_endpoint).toBe('http://localhost:3001/oauth/token');
+	});
+
+	it('serves /oauth/callback with defensive security headers', async () => {
+		const req = new Request('http://localhost:3001/oauth/callback');
+		const res = await app.handleRequest(req);
+		expect(res.status).toBe(200);
+		expect(res.headers.get('Content-Type')).toBe('text/html; charset=utf-8');
+		expect(res.headers.get('Content-Security-Policy')).toBe(
+			"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+		);
+		expect(res.headers.get('X-Content-Type-Options')).toBe('nosniff');
+		expect(res.headers.get('Referrer-Policy')).toBe('no-referrer');
+		expect(res.headers.get('X-Frame-Options')).toBe('DENY');
+		expect(res.headers.get('Cache-Control')).toBe('no-store');
+		expect(res.headers.get('Pragma')).toBe('no-cache');
+	});
+
+	it('resolves hashed static bearer and friends tokens without retaining raw tokens', async () => {
+		const friendSyncKeyA = bytesToBase64Url(randomBytes(32));
+		const friendSyncKeyB = bytesToBase64Url(randomBytes(32));
+		const store = new TokenStore(oauthManager, {
+			syncKey,
+			bearerToken: 'single-user-secret-token',
+			friendsTokensJson: JSON.stringify({ 'friend-token-a': friendSyncKeyA }),
+			friendsTokensPairs: `friend-token-b:${friendSyncKeyB}`
+		});
+
+		expect(JSON.stringify(store)).not.toContain('single-user-secret-token');
+		expect(JSON.stringify(store)).not.toContain('friend-token-a');
+		expect(JSON.stringify(store)).not.toContain('friend-token-b');
+
+		expect(await store.resolveToken('single-user-secret-token')).toEqual({
+			accountId: identityFromSyncKey(syncKey).accountId,
+			syncKey
+		});
+		expect(await store.resolveToken('friend-token-a')).toEqual({
+			accountId: identityFromSyncKey(friendSyncKeyA).accountId,
+			syncKey: friendSyncKeyA
+		});
+		expect(await store.resolveToken('friend-token-b')).toEqual({
+			accountId: identityFromSyncKey(friendSyncKeyB).accountId,
+			syncKey: friendSyncKeyB
+		});
+		expect(await store.resolveToken('wrong-token')).toBeNull();
 	});
 
 	it('rejects unauthenticated MCP requests with 401', async () => {

@@ -1127,7 +1127,7 @@ describe('SQLite sync store', () => {
 		expect(await store.claimDueWakes(1_000 + WAKE_CLAIM_LEASE_MS)).toEqual([]);
 	});
 
-	it('moves an endpoint or device registration when another account claims it', async () => {
+	it('moves an endpoint registration when another account claims it without evicting matching device ids', async () => {
 		const { store } = createStore();
 		await store.createAccount('old-owner', 'credential-old');
 		await store.createAccount('new-owner', 'credential-new');
@@ -1151,7 +1151,10 @@ describe('SQLite sync store', () => {
 			endpoint: 'https://push.example/endpoint-a',
 			...keys
 		});
-		// A re-registered device id under a different account moves the whole row.
+		expect(await store.countPushDevices('old-owner')).toBe(0);
+		expect(await store.countPushDevices('new-owner')).toBe(2);
+
+		// A matching device id under a different account is scoped by account_id and does not evict the other account's device.
 		await store.savePushDevice({
 			accountId: 'old-owner',
 			deviceId: 'device-new00000000',
@@ -1159,7 +1162,7 @@ describe('SQLite sync store', () => {
 			...keys
 		});
 		expect(await store.countPushDevices('old-owner')).toBe(1);
-		expect(await store.countPushDevices('new-owner')).toBe(1);
+		expect(await store.countPushDevices('new-owner')).toBe(2);
 	});
 
 	it('fans each account wake out once to every registered device', async () => {

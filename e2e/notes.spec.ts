@@ -78,6 +78,11 @@ test('a checklist line toggles from the body', async ({ page }) => {
 	await toggles.first().click();
 	await expect(toggles.first()).toHaveAttribute('aria-pressed', 'true');
 	await expect(toggles.last()).toHaveAttribute('aria-pressed', 'false');
+
+	// A checked row dims its text colour; opacity would also wash out a selection across it.
+	const checked = body.locator('[data-editor-line]').first().locator('[data-line-text]');
+	await expect(checked).toHaveCSS('text-decoration-line', 'line-through');
+	await expect(checked).toHaveCSS('opacity', '1');
 });
 
 test('pin, archive, trash and restore move a note between views', async ({ page }) => {

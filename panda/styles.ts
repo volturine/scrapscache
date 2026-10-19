@@ -149,7 +149,11 @@ export const appLayout = {
 		overflowY: 'auto',
 		overflowX: 'hidden',
 		px: 'lg',
-		pb: { base: '3xl', md: '2xl' }
+		// Scrolled to the end, every view's last card clears the floating new-note
+		// button's top edge; the view's own bottom padding is the gap above it. The
+		// button rides above an overlaid phone keyboard (.app-float ends at
+		// --app-keyboard-bottom), so the clearance grows with it.
+		pb: 'calc(var(--app-keyboard-bottom) + var(--app-fab-bottom) + var(--app-fab-size))'
 	})
 };
 
@@ -1382,6 +1386,40 @@ export const reminderRoot = cva({
 	]
 });
 
+// Trash contracts
+export const trashCountdownRow = cva({
+	base: {
+		display: 'flex',
+		alignItems: 'center',
+		gap: '2xs',
+		px: 'md',
+		pb: 'sm',
+		textStyle: 'caption',
+		...mutedText
+	},
+	variants: {
+		soon: {
+			true: inlineOverdueLabel,
+			false: {}
+		}
+	}
+});
+
+export const trashViewStyles = {
+	banner: css({
+		display: 'flex',
+		alignItems: 'center',
+		gap: 'sm',
+		mb: 'lg',
+		px: 'md',
+		py: 'sm',
+		rounded: 'card',
+		bg: 'scrapscache.surfaceSubtle',
+		textStyle: 'body',
+		color: 'scrapscache.text'
+	})
+};
+
 // PhotoFullscreen contracts are static classes; finite state choices use explicit maps.
 export const photoStyles = {
 	cropRoot: css({
@@ -1708,10 +1746,8 @@ export const reminderSettingsStyles = {
 	icon: css({ ...iconSm, flexShrink: 0 }),
 	label: css({ ...flexFill, textStyle: 'button' }),
 	status: css({ flexShrink: 0, textStyle: 'captionStrong' }),
-	chevron: css({ ...iconSm, flexShrink: 0, ...mutedText })
-};
-
-export const storageSettingsStyles = {
+	chevron: css({ ...iconSm, flexShrink: 0, ...mutedText }),
+	/** What a row's status means for the person, under the row. */
 	hint: css({ px: 'md', pb: 'xs', textStyle: 'caption', ...mutedText })
 };
 

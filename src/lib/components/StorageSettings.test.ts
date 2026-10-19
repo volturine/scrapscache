@@ -30,8 +30,11 @@ describe('StorageSettings', () => {
 		await select(screen.getByRole('menuitem', { name: /Storage\s*May be cleared/ }));
 
 		expect(request).toHaveBeenCalledOnce();
-		await waitFor(() => expect(screen.getByText('Persistent')).toBeTruthy());
-		expect(screen.queryByRole('menuitem', { name: /Storage/ })).toBeNull();
+		// The state stays reachable from the keyboard, as a passive item.
+		await waitFor(() =>
+			expect(screen.getByRole('menuitem', { name: /Storage\s*Persistent/ })).toBeTruthy()
+		);
+		expect(screen.queryByRole('menuitem', { name: /May be cleared/ })).toBeNull();
 	});
 
 	it('says so and points to export or sync when the browser refuses', async () => {
@@ -44,9 +47,15 @@ describe('StorageSettings', () => {
 		await openMenu();
 		await select(screen.getByRole('menuitem', { name: /Storage\s*May be cleared/ }));
 
-		await waitFor(() => expect(screen.getByText('Not granted')).toBeTruthy());
-		expect(screen.getByText(/Export a backup or turn on sync/)).toBeTruthy();
-		expect(screen.queryByRole('menuitem', { name: /Storage/ })).toBeNull();
+		await waitFor(() =>
+			expect(
+				screen.getByRole('menuitem', {
+					name: /Storage\s*Not granted/,
+					description: /Export a backup or turn on sync/
+				})
+			).toBeTruthy()
+		);
+		expect(screen.queryByRole('menuitem', { name: /May be cleared/ })).toBeNull();
 	});
 
 	it('shows nothing when the browser has no Storage API', async () => {

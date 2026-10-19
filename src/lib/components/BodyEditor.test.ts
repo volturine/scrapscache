@@ -3371,3 +3371,53 @@ describe('BodyEditor multiple cursors', () => {
 		expect(lineTexts(container)[0].match(/x/g)).toHaveLength(1);
 	});
 });
+
+describe('BodyEditor placeholder', () => {
+	const hint = 'Take a note';
+	const hints = (container: HTMLElement) =>
+		[...container.querySelectorAll('[data-line-text]')].map((line) =>
+			line.getAttribute('data-placeholder')
+		);
+
+	it('hints on the only line of an empty body and names it for assistive technology', () => {
+		const { container } = render(BodyEditor, { props: { body: '', placeholder: hint } });
+
+		expect(hints(container)).toEqual([hint]);
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		expect(editor.getAttribute('aria-placeholder')).toBe(hint);
+	});
+
+	it('hints on empty task rows, never on a blank line between others', () => {
+		const { container } = render(BodyEditor, {
+			props: { body: 'Groceries\n\n[ ] ', placeholder: hint }
+		});
+
+		expect(hints(container)).toEqual([null, null, 'Task']);
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		expect(editor.hasAttribute('aria-placeholder')).toBe(false);
+	});
+
+	it.each(['- ', '[ ] '])('keeps the body hint off a lone %j row', (body) => {
+		const { container } = render(BodyEditor, { props: { body, placeholder: hint } });
+
+		expect(hints(container)).not.toContain(hint);
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		expect(editor.hasAttribute('aria-placeholder')).toBe(false);
+	});
+
+	it('marks only the row an IME composes in, so other hints stay', async () => {
+		const { container } = render(BodyEditor, {
+			props: { body: '[ ] milk\n[ ] \n[ ] eggs', placeholder: hint }
+		});
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const rows = () => [...container.querySelectorAll('[data-line-text]')];
+		caretAt(container, 0, 4);
+
+		await fireEvent.compositionStart(editor);
+		expect(rows().map((row) => row.hasAttribute('data-composing'))).toEqual([true, false, false]);
+		expect(rows()[1].getAttribute('data-placeholder')).toBe('Task');
+
+		await fireEvent.compositionEnd(editor);
+		expect(rows().some((row) => row.hasAttribute('data-composing'))).toBe(false);
+	});
+});

@@ -25,9 +25,8 @@ import {
 	mergeLabelLists,
 	mergeNoteLists,
 	mergeTwoNotes,
-	NOTE_FIELDS,
 	retargetLocalNotes,
-	touchNoteFields,
+	stampNewNote,
 	uid,
 	withoutTombstoned,
 	type NotePatch
@@ -42,7 +41,7 @@ import { canvasLibraryStore } from '#lib/stores/canvasLibrary.js';
 import { reminderHistoryStore } from '#lib/stores/reminderHistory.js';
 import { syncSnapshot, type SyncSnapshot } from '#lib/syncRecords.js';
 import { uiStore } from '#lib/stores/ui.svelte.js';
-import { daysSinceTrashed, TRASH_PURGE_DAYS, cloneNote } from '#lib/utils.js';
+import { trashPurgeAt, cloneNote } from '#lib/utils.js';
 import { noteAttachments, toggleLineAt } from '#lib/checklistBody.js';
 import {
 	journalPendingNotes,
@@ -494,10 +493,11 @@ export class NotesStore {
 		await this.deleteNoteForever(id);
 	}
 
-	/** Remove notes that have been in trash > 7 days. */
+	/** Delete trashed notes whose purge time has come (trashPurgeAt, which the countdown shows). */
 	purgeOldTrash() {
+		const now = Date.now();
 		const ids = this.notes
-			.filter((n) => n.trashed && daysSinceTrashed(n.trashedAt) >= TRASH_PURGE_DAYS)
+			.filter((n) => n.trashed && trashPurgeAt(n.trashedAt) <= now)
 			.map((n) => n.id);
 		if (ids.length === 0) return;
 		void this.persistDeletedNotes(ids).catch((err) =>
@@ -527,7 +527,7 @@ export class NotesStore {
 				? { linkPreviews: partial.linkPreviews.map((preview) => ({ ...preview })) }
 				: {})
 		};
-		const note = touchNoteFields(created, NOTE_FIELDS, { ...editContext, now: () => now });
+		const note = stampNewNote(created, editContext.writer);
 		this.notes = [note, ...this.notes];
 		this.persist(note.id);
 		return note;
@@ -1900,7 +1900,7 @@ export class NotesStore {
 			{
 				id: uid(),
 				title: 'Welcome to Scraps Cache 👋',
-				body: 'Small note fragments, offline-first. Notes live on this device and sync when you sign in. Try pins, archive, colours, checklists, and reminders.',
+				body: 'Small note fragments, offline-first. Notes live on this device. Tap the cloud icon (Sync settings) to sync them. Try pins, archive, colours, checklists, and reminders.',
 				color: 'yellow',
 				pinned: true,
 				archived: false,

@@ -6,10 +6,9 @@ import {
 	isReadableBodyDoc,
 	mergeTwoLabels,
 	mergeTwoNotes,
-	NOTE_FIELDS,
 	relayReminderWakes,
+	stampNewNote,
 	SyncClock,
-	touchNoteFields,
 	type Label,
 	type Note,
 	type NoteColor,
@@ -713,7 +712,7 @@ export class McpSession {
 
 		const labels = args.labels ? this.resolveLabelIds(args.labels) : { ids: [], created: [] };
 
-		const note = touchNoteFields(
+		const note = stampNewNote(
 			{
 				id: noteId,
 				title: args.title?.trim() || '',
@@ -729,8 +728,7 @@ export class McpSession {
 				updatedAt: now,
 				images: []
 			},
-			NOTE_FIELDS,
-			{ ...this.editContext, now: () => now }
+			this.editContext.writer
 		);
 
 		await this.commitRecords([

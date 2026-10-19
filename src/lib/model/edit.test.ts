@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { Note, NoteImage } from './types';
-import { applyNoteEdit, touchNoteFields, type EditContext } from './edit';
+import { applyNoteEdit, stampNewNote, touchNoteFields, type EditContext } from './edit';
 import { BodyAuthor } from './bodyDoc';
-import { mergeTwoNotes } from './merge';
+import { mergeTwoNotes, NOTE_FIELDS } from './merge';
 
 const context = (at: number, writer = 'me'): EditContext => ({
 	now: () => at,
@@ -101,5 +101,29 @@ describe('applyNoteEdit', () => {
 			context(50)
 		);
 		expect(edited.images?.[0]).toMatchObject({ contentHash: 'new', editedAt: 50 });
+	});
+});
+
+describe('stampNewNote', () => {
+	const fresh = () => note({ createdAt: 40, updatedAt: 40, fieldTimes: undefined });
+
+	it('writes every field at the creation time, so the note was never edited', () => {
+		const created = stampNewNote(fresh(), 'me');
+
+		expect(created.updatedAt).toBe(created.createdAt);
+		expect(created.fieldTimes).toEqual(Object.fromEntries(NOTE_FIELDS.map((field) => [field, 40])));
+		expect(created.fieldWriters).toEqual(
+			Object.fromEntries(NOTE_FIELDS.map((field) => [field, 'me']))
+		);
+	});
+
+	it('lets an edit in the same millisecond stamp past it and win the merge', () => {
+		const created = stampNewNote(fresh(), 'me');
+		const edited = applyNoteEdit(created, { title: 'Renamed' }, context(40));
+
+		expect(edited.fieldTimes?.title).toBe(41);
+		expect(edited.updatedAt).toBeGreaterThan(edited.createdAt);
+		expect(mergeTwoNotes(created, edited).title).toBe('Renamed');
+		expect(mergeTwoNotes(edited, created).title).toBe('Renamed');
 	});
 });

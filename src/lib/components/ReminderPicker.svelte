@@ -8,6 +8,9 @@
 	import { AlarmClock, ChevronLeft, ChevronRight } from '@lucide/svelte';
 	import { requestReminderPermission } from '#lib/reminderNotify.js';
 	import { registerAllReminderDevices } from '#lib/reminderWake.js';
+	import { useEditorActions } from '#lib/editorContext.js';
+	import { syncStore } from '#lib/stores/sync.svelte.js';
+	import { uiStore } from '#lib/stores/ui.svelte.js';
 	import { formatReminderCountdown } from '#lib/utils.js';
 	import { PHONE_MEDIA } from '#lib/appViewport.js';
 	import { css, cx } from 'styled-system/css';
@@ -177,6 +180,15 @@
 		apply(null);
 	}
 
+	const { closeNote } = useEditorActions();
+
+	/** Sync opens as it does from the cloud icon: over the feed, with any open note closed. */
+	function turnOnSync() {
+		onClose();
+		closeNote();
+		uiStore.syncOpen = true;
+	}
+
 	const d = dialog({ size: 'sm' });
 
 	const statusBoxClass = $derived(
@@ -247,9 +259,12 @@
 			<AlarmClock class={css({ w: '1rem', h: '1rem', flexShrink: 0 })} aria-hidden="true" />
 			<span class={styles.ellipsis}>{remainingLabel}</span>
 		</div>
-		<div class={css({ mt: '2xs', textStyle: 'caption' })}>
-			Closed-app alerts need Sync on this device.
-		</div>
+		{#if !syncStore.isLoggedIn}
+			<div class={css({ mt: '2xs', textStyle: 'caption' })}>
+				Closed-app alerts need Sync on this device.
+				<button type="button" class={styles.syncLink} onclick={turnOnSync}>Turn on Sync</button>
+			</div>
+		{/if}
 	</div>
 
 	<div

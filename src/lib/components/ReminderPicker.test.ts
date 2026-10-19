@@ -1,5 +1,8 @@
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createSyncIdentity } from '#lib/syncPairing.js';
+import { syncStore } from '#lib/stores/sync.svelte.js';
+import { uiStore } from '#lib/stores/ui.svelte.js';
 import ReminderPicker from './ReminderPicker.svelte';
 
 const reminder = new Date(2026, 7, 12, 15, 30, 0, 0).getTime();
@@ -193,5 +196,35 @@ describe('ReminderPicker remaining time', () => {
 		expect(screen.getByText('in 1 hour 1 minute')).toBeTruthy();
 		await vi.advanceTimersByTimeAsync(60_000);
 		expect(screen.getByText('in 1 hour')).toBeTruthy();
+	});
+});
+
+describe('ReminderPicker closed-app alerts', () => {
+	afterEach(() => {
+		syncStore.account = null;
+		syncStore.profiles = [];
+		uiStore.syncOpen = false;
+	});
+
+	it('says alerts need Sync and opens the cloud dialog when Sync is off', async () => {
+		const onClose = vi.fn();
+		render(ReminderPicker, { props: { reminder, onClose } });
+
+		expect(screen.getByText(/Closed-app alerts need Sync on this device/)).toBeTruthy();
+		await fireEvent.click(screen.getByRole('button', { name: 'Turn on Sync' }));
+
+		expect(onClose).toHaveBeenCalledOnce();
+		expect(uiStore.syncOpen).toBe(true);
+	});
+
+	it('says nothing about Sync once it is on', () => {
+		const { syncKey } = createSyncIdentity();
+		syncStore.activateProfile({ id: 'synced', name: 'Synced', syncKey, createdAt: 1 });
+		expect(syncStore.isLoggedIn).toBe(true);
+
+		render(ReminderPicker, { props: { reminder, onClose: () => {} } });
+
+		expect(screen.queryByText(/Closed-app alerts need Sync/)).toBeNull();
+		expect(screen.queryByRole('button', { name: 'Turn on Sync' })).toBeNull();
 	});
 });

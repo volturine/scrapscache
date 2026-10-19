@@ -58,7 +58,6 @@
 	const { startNewNote, closeNote } = useEditorActions();
 
 	let settingsOpen = $state(false);
-	let syncOpen = $state(false);
 	let pairingCode = $state('');
 	let importingBackup = $state(false);
 	let backupImportError = $state('');
@@ -78,7 +77,7 @@
 		if (!found) return;
 		pairingCode = found;
 		settingsOpen = false;
-		syncOpen = true;
+		uiStore.syncOpen = true;
 		void goto(resolve(''), { replace: true, reset: false });
 	}
 
@@ -291,7 +290,7 @@
 			onclick={() => {
 				pairingCode = '';
 				settingsOpen = false;
-				syncOpen = true;
+				uiStore.syncOpen = true;
 			}}
 			aria-label={syncControlLabel}
 			data-scrapscache-sync-control
@@ -426,13 +425,13 @@
 />
 <svelte:document onvisibilitychange={openPairingLink} />
 
-{#if syncOpen}
+{#if uiStore.syncOpen}
 	{#await loadSyncModal() then { default: SyncModal }}
 		{#key pairingCode}
 			<SyncModal
 				initialPairingCode={pairingCode}
 				onClose={() => {
-					syncOpen = false;
+					uiStore.syncOpen = false;
 					pairingCode = '';
 				}}
 			/>
@@ -441,7 +440,7 @@
 		<SyncModalUnavailable
 			message={cause instanceof Error ? cause.message : 'Could not open sync settings.'}
 			onClose={() => {
-				syncOpen = false;
+				uiStore.syncOpen = false;
 				pairingCode = '';
 			}}
 		/>

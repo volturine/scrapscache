@@ -109,12 +109,36 @@
 		labelDialogOpen = true;
 	}
 
+	/**
+	 * Swallow the click that ends the current press, wherever it lands. A press that
+	 * never clicks (it turned into a scroll) gives way to the next press or key.
+	 */
+	function swallowNextClick() {
+		function swallow(e: MouseEvent) {
+			e.preventDefault();
+			e.stopImmediatePropagation();
+			stop();
+		}
+		function stop() {
+			window.removeEventListener('click', swallow, true);
+			window.removeEventListener('pointerdown', stop, true);
+			window.removeEventListener('keydown', stop, true);
+		}
+		window.addEventListener('click', swallow, true);
+		window.addEventListener('pointerdown', stop, true);
+		window.addEventListener('keydown', stop, true);
+	}
+
 	// Opening one haze closes every other; an outside press or Escape closes this one.
 	$effect(() => {
 		if (!open) return;
 		window.dispatchEvent(new CustomEvent(HAZE_OPEN_EVENT, { detail: token }));
 		function onWindowPointerDown(e: PointerEvent) {
-			if (!overlay?.parentElement?.contains(e.target as Node)) close();
+			if (overlay?.parentElement?.contains(e.target as Node)) return;
+			close();
+			// The tap that dismisses the haze must not also open the note under the
+			// finger. A mouse click elsewhere goes through, as it does outside a menu.
+			if (e.pointerType !== 'mouse') swallowNextClick();
 		}
 		function onWindowKeyDown(e: KeyboardEvent) {
 			if (e.key === 'Escape') {

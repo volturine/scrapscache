@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { Note } from '#lib/types.js';
 import { notesStore } from '#lib/stores/notes.svelte.js';
 import NoteCard from './NoteCard.svelte';
@@ -28,6 +28,13 @@ function card(): HTMLElement {
 	const found = screen.getByRole('button', { name: 'Open Trip' }).closest('article');
 	if (!found) throw new Error('no card');
 	return found;
+}
+
+/** A press as a finger or mouse makes it; jsdom drops pointerType from the event init. */
+async function press(target: Element, pointerType: 'touch' | 'mouse') {
+	const event = new Event('pointerdown', { bubbles: true, cancelable: true });
+	Object.assign(event, { pointerType, pointerId: 1, button: 0, clientX: 10, clientY: 10 });
+	await fireEvent(target, event);
 }
 
 function haze(): HTMLElement {
@@ -119,6 +126,53 @@ describe('NoteCard right-click haze', () => {
 
 		expect(document.querySelector('[data-card-haze]')).toBeNull();
 		expect(onOpen).not.toHaveBeenCalled();
+	});
+
+	describe('a press on another card while the haze is open', () => {
+		let onOpenOther: Mock<(id: string) => void>;
+		let other: HTMLElement;
+
+		beforeEach(() => {
+			onOpenOther = vi.fn<(id: string) => void>();
+			const second = note({ id: 'note-2', title: 'Other' });
+			notesStore.notes = [note(), second];
+			render(NoteCard, { props: { note: note(), onOpen: vi.fn() } });
+			render(NoteCard, { props: { note: second, onOpen: onOpenOther } });
+			other = screen.getByRole('button', { name: 'Open Other' }).closest('article')!;
+		});
+
+		it('only dismisses the haze when it is a tap', async () => {
+			await fireEvent.contextMenu(card());
+			await press(other, 'touch');
+			await fireEvent.click(other);
+
+			expect(document.querySelector('[data-card-haze]')).toBeNull();
+			expect(onOpenOther).not.toHaveBeenCalled();
+
+			// Only the dismissing tap: the next one opens the card.
+			await press(other, 'touch');
+			await fireEvent.click(other);
+			expect(onOpenOther).toHaveBeenCalledWith('note-2');
+		});
+
+		it('does not hold a later tap when the dismissing one never clicked', async () => {
+			await fireEvent.contextMenu(card());
+			// The dismissing touch turned into a scroll, so no click followed it.
+			await press(other, 'touch');
+
+			await press(other, 'touch');
+			await fireEvent.click(other);
+			expect(onOpenOther).toHaveBeenCalledWith('note-2');
+		});
+
+		it('still clicks through for a mouse', async () => {
+			await fireEvent.contextMenu(card());
+			await press(other, 'mouse');
+			await fireEvent.click(other);
+
+			expect(document.querySelector('[data-card-haze]')).toBeNull();
+			expect(onOpenOther).toHaveBeenCalledWith('note-2');
+		});
 	});
 
 	it('trashes the note from the haze delete button', async () => {

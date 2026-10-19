@@ -8,7 +8,12 @@ test('a first visit renders the starter notes with a clean console', async ({ pa
 	page.on('pageerror', (error) => errors.push(error.message));
 
 	await page.goto('/');
-	await expect(page.getByRole('button', { name: /^Open Welcome to Scraps Cache/ })).toBeVisible();
+	const welcome = page.getByRole('button', { name: /^Open Welcome to Scraps Cache/ });
+	await expect(welcome).toBeVisible();
+	// There is no account to sign in to; sync starts from the cloud icon.
+	await expect(page.getByRole('article').filter({ has: welcome })).toContainText(
+		'Notes live on this device. Tap the cloud icon to sync them.'
+	);
 	await expect(page.getByRole('button', { name: /^Open Groceries/ })).toBeVisible();
 	await expect(page.getByRole('button', { name: /^Open Reading list/ })).toBeVisible();
 	await expect(page.getByRole('heading', { name: 'Pinned' })).toBeVisible();

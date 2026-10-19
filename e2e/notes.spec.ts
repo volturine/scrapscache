@@ -64,6 +64,42 @@ test('controls keep keyboard focus without drawing highlights', async ({ page })
 	await expect(theme).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
 });
 
+test('a new note shows its body placeholder', async ({ page }) => {
+	await openEmptyApp(page);
+	await page.getByRole('button', { name: 'New note' }).click();
+	const body = editor(page).getByRole('textbox', { name: 'Note body' });
+	await expect(body).toBeFocused();
+
+	// The empty line holds a zero-width caret holder, so the hint must not need :empty.
+	const line = body.locator('[data-line-text]');
+	const hint = () => line.evaluate((element) => getComputedStyle(element, '::after').content);
+	await expect(line).toHaveAttribute('data-placeholder', /^Take a note/);
+	expect(await hint()).toContain('Take a note');
+
+	// The caret sits in front of the hint, at the start of the line.
+	const caretX = await page.evaluate(
+		() => window.getSelection()!.getRangeAt(0).getBoundingClientRect().x
+	);
+	const lineX = await line.evaluate((element) => element.getBoundingClientRect().x);
+	expect(Math.abs(caretX - lineX)).toBeLessThanOrEqual(1);
+
+	// Assistive technology gets the hint as a placeholder, not as body text.
+	await expect(body).toHaveAttribute('aria-placeholder', /^Take a note/);
+	expect(await body.ariaSnapshot()).not.toContain('Take a note');
+
+	// While an IME composes, its text is not on the line yet, and the hint steps aside.
+	await body.dispatchEvent('compositionstart');
+	expect(await hint()).toBe('none');
+	await body.dispatchEvent('compositionend');
+	expect(await hint()).toContain('Take a note');
+
+	// The first keystroke replaces the hint.
+	await page.keyboard.type('x');
+	await expect(body).toContainText('x');
+	expect(await hint()).toBe('none');
+	await expect(body).not.toHaveAttribute('aria-placeholder');
+});
+
 test('a checklist line toggles from the body', async ({ page }) => {
 	await openEmptyApp(page);
 	await createNote(page, 'Checklist', '[ ] milk\n[ ] eggs');

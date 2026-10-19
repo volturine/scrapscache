@@ -57,5 +57,10 @@
 						: 'Unsupported'}
 			</span>
 		</div>
+		{#if permission === 'denied'}
+			<p class={reminderSettingsStyles.hint}>
+				Blocked in the browser. Allow notifications for this site in its settings.
+			</p>
+		{/if}
 	{/if}
 </section>

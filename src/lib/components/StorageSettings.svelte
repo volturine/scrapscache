@@ -1,9 +1,5 @@
 <script lang="ts">
-	import {
-		reminderSettingsRow,
-		reminderSettingsStyles,
-		storageSettingsStyles
-	} from '$panda/styles';
+	import { reminderSettingsRow, reminderSettingsStyles } from '$panda/styles';
 	import { Menu } from '@ark-ui/svelte/menu';
 	import { ChevronRight, HardDrive } from '@lucide/svelte';
 	import { storagePersistenceStore } from '#lib/stores/storagePersistence.svelte.js';
@@ -30,7 +26,7 @@
 			<span class={reminderSettingsStyles.label}>Storage</span>
 			<span class={reminderSettingsStyles.status}>Not granted</span>
 		</div>
-		<p class={storageSettingsStyles.hint}>
+		<p class={reminderSettingsStyles.hint}>
 			The browser may clear notes stored here. Export a backup or turn on sync to keep a copy.
 		</p>
 	{:else if storagePersistenceStore.state === 'persisted'}

@@ -29,9 +29,10 @@ describe('ReminderNotificationSettings', () => {
 		});
 		expect(notification.requestPermission).toHaveBeenCalledOnce();
 		expect(screen.queryByRole('menuitem', { name: 'Turn on notifications' })).toBeNull();
+		expect(screen.queryByText(/Blocked in the browser/)).toBeNull();
 	});
 
-	it('shows denied permission as disabled without recovery instructions', async () => {
+	it('shows denied permission as disabled and says how to unblock it', async () => {
 		vi.stubGlobal('Notification', {
 			permission: 'denied',
 			requestPermission: vi.fn()
@@ -42,6 +43,10 @@ describe('ReminderNotificationSettings', () => {
 
 		expect(screen.getByText('Disabled')).toBeTruthy();
 		expect(screen.queryByText('Not set')).toBeNull();
+		// The page cannot ask again once the browser blocks it; only site settings can.
+		expect(
+			screen.getByText('Blocked in the browser. Allow notifications for this site in its settings.')
+		).toBeTruthy();
 	});
 
 	it('refreshes after permission is changed in device settings', async () => {
@@ -57,5 +62,6 @@ describe('ReminderNotificationSettings', () => {
 		window.dispatchEvent(new Event('focus'));
 
 		await waitFor(() => expect(screen.getByText('Enabled')).toBeTruthy());
+		expect(screen.queryByText(/Blocked in the browser/)).toBeNull();
 	});
 });

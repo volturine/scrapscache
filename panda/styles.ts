@@ -1708,10 +1708,8 @@ export const reminderSettingsStyles = {
 	icon: css({ ...iconSm, flexShrink: 0 }),
 	label: css({ ...flexFill, textStyle: 'button' }),
 	status: css({ flexShrink: 0, textStyle: 'captionStrong' }),
-	chevron: css({ ...iconSm, flexShrink: 0, ...mutedText })
-};
-
-export const storageSettingsStyles = {
+	chevron: css({ ...iconSm, flexShrink: 0, ...mutedText }),
+	/** What a row's status means for the person, under the row. */
 	hint: css({ px: 'md', pb: 'xs', textStyle: 'caption', ...mutedText })
 };
 

@@ -157,7 +157,7 @@ test('search narrows the feed to matching notes', async ({ page }) => {
 	await expect(noteCard(page, 'Apples')).toBeHidden();
 
 	await search.fill('nothing like this');
-	await expect(page.getByText('No notes found')).toBeVisible();
+	await expect(page.getByText('No notes match “nothing like this”', { exact: true })).toBeVisible();
 
 	await page.getByRole('button', { name: 'Clear search' }).click();
 	await expect(noteCard(page, 'Apples')).toBeVisible();
@@ -182,6 +182,24 @@ test('search filters the archive', async ({ page }) => {
 	await page.getByRole('button', { name: 'Clear search' }).click();
 	await expect(noteCard(page, 'Apples')).toBeVisible();
 	await expect(noteCard(page, 'Bolts')).toBeVisible();
+});
+
+test('a search that finds nothing in Notes looks in Archive with the same query', async ({
+	page
+}) => {
+	await openEmptyApp(page);
+	await createNote(page, 'Retro board', 'Ideas for the next retro');
+	await quickAction(noteCard(page, 'Retro board'), 'Archive note');
+	await expect(noteCard(page, 'Retro board')).toBeHidden();
+
+	const search = page.getByPlaceholder('Search', { exact: true });
+	await search.fill('retro');
+	await expect(page.getByText('No notes match “retro”', { exact: true })).toBeVisible();
+	await page.getByRole('button', { name: 'Look in Archive' }).click();
+
+	await expect(page).toHaveURL(/\/archive$/);
+	await expect(search).toHaveValue('retro');
+	await expect(noteCard(page, 'Retro board')).toBeVisible();
 });
 
 test('the last card stays clear of the new note button', async ({ page }) => {

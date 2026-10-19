@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/svelte';
+import type { View } from '#lib/stores/ui.svelte.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Note } from '#lib/types.js';
 import { notesStore } from '#lib/stores/notes.svelte.js';
@@ -36,10 +37,23 @@ function note(partial: Partial<Note> = {}): Note {
 afterEach(() => {
 	notesStore.notes = [];
 	notesStore.labels = [];
-	uiStore.search = '';
-	uiStore.searchInput = '';
-	uiStore.activeLabelId = null;
+	uiStore.setView('notes');
 });
+
+/** Show `view` with a committed query, as typing there leaves it. */
+function searchIn(view: View, query: string, labelId: string | null = null) {
+	uiStore.setView(view, labelId);
+	uiStore.search = query;
+}
+
+/** Let NotesFeed's batch stream run its course. */
+function frames(count: number): Promise<void> {
+	return new Promise((resolve) => {
+		const step = (left: number) =>
+			left === 0 ? resolve() : requestAnimationFrame(() => step(left - 1));
+		step(count);
+	});
+}
 
 describe('ArchiveView search', () => {
 	it('shows only archived notes that match the committed search', () => {
@@ -48,7 +62,7 @@ describe('ArchiveView search', () => {
 			note({ id: 'b', title: 'Bolts', body: 'Hardware', archived: true }),
 			note({ id: 'c', title: 'Needle', body: 'needle, but not archived' })
 		];
-		uiStore.search = 'needle';
+		searchIn('archive', 'needle');
 		render(ArchiveView);
 
 		expect(screen.queryByRole('button', { name: /^Open Apples/ })).toBeTruthy();
@@ -58,7 +72,7 @@ describe('ArchiveView search', () => {
 
 	it('shows No notes found when no archived note matches', () => {
 		notesStore.notes = [note({ id: 'b', title: 'Bolts', body: 'Hardware', archived: true })];
-		uiStore.search = 'needle';
+		searchIn('archive', 'needle');
 		render(ArchiveView);
 
 		expect(screen.getByText('No notes found')).toBeTruthy();
@@ -72,7 +86,7 @@ describe('TrashView search', () => {
 			note({ id: 'a', title: 'Apples', body: 'needle', trashed: true, trashedAt: 1 }),
 			note({ id: 'b', title: 'Bolts', body: 'Hardware', trashed: true, trashedAt: 1 })
 		];
-		uiStore.search = 'needle';
+		searchIn('trash', 'needle');
 		render(TrashView);
 
 		expect(screen.queryByRole('button', { name: /^Open Apples/ })).toBeTruthy();
@@ -83,7 +97,7 @@ describe('TrashView search', () => {
 		notesStore.notes = [
 			note({ id: 'b', title: 'Bolts', body: 'Hardware', trashed: true, trashedAt: 1 })
 		];
-		uiStore.search = 'needle';
+		searchIn('trash', 'needle');
 		render(TrashView);
 
 		expect(screen.getByText('No notes found')).toBeTruthy();
@@ -92,6 +106,7 @@ describe('TrashView search', () => {
 
 	it('offers Empty when no search is active', () => {
 		notesStore.notes = [note({ id: 'a', title: 'Apples', trashed: true, trashedAt: 1 })];
+		uiStore.setView('trash');
 		render(TrashView);
 
 		expect(screen.getByRole('button', { name: 'Empty' })).toBeTruthy();
@@ -102,7 +117,7 @@ describe('TrashView search', () => {
 			note({ id: 'a', title: 'Apples', body: 'needle', trashed: true, trashedAt: 1 }),
 			note({ id: 'b', title: 'Bolts', body: 'Hardware', trashed: true, trashedAt: 1 })
 		];
-		uiStore.search = 'needle';
+		searchIn('trash', 'needle');
 		render(TrashView);
 
 		expect(screen.queryByRole('button', { name: 'Empty' })).toBeNull();
@@ -118,8 +133,7 @@ describe('LabelView search', () => {
 			note({ id: 'b', title: 'Bolts', body: 'Hardware', labels: ['label-1'] }),
 			note({ id: 'c', title: 'Nails', body: 'needle', labels: [] })
 		];
-		uiStore.activeLabelId = 'label-1';
-		uiStore.search = 'needle';
+		searchIn('label', 'needle', 'label-1');
 		render(LabelView);
 
 		expect(screen.getByRole('heading', { level: 1, name: 'Shopping' })).toBeTruthy();
@@ -131,12 +145,76 @@ describe('LabelView search', () => {
 	it('shows No notes found under the heading when no label note matches', () => {
 		notesStore.labels = [{ id: 'label-1', name: 'Shopping', createdAt: 1, updatedAt: 1 }];
 		notesStore.notes = [note({ id: 'b', title: 'Bolts', body: 'Hardware', labels: ['label-1'] })];
-		uiStore.activeLabelId = 'label-1';
-		uiStore.search = 'needle';
+		searchIn('label', 'needle', 'label-1');
 		render(LabelView);
 
 		expect(screen.getByRole('heading', { level: 1, name: 'Shopping' })).toBeTruthy();
 		expect(screen.getByText('No notes found')).toBeTruthy();
 		expect(screen.queryByRole('button', { name: /^Open Bolts/ })).toBeNull();
+	});
+});
+
+describe('a search in an empty view', () => {
+	it.each([
+		['archive', ArchiveView, 'Archive notes you want to keep without showing them in Notes.'],
+		['trash', TrashView, 'Deleted notes stay here for 7 days before they are deleted forever.']
+	] as const)('keeps the %s view’s own empty copy', (view, View, copy) => {
+		searchIn(view, 'needle');
+		render(View);
+
+		expect(screen.getByText(copy)).toBeTruthy();
+		expect(screen.queryByText('No notes found')).toBeNull();
+	});
+
+	it('keeps the label view’s own empty copy', () => {
+		notesStore.labels = [{ id: 'label-1', name: 'Shopping', createdAt: 1, updatedAt: 1 }];
+		searchIn('label', 'needle', 'label-1');
+		render(LabelView);
+
+		expect(
+			screen.getByText('Create a note to start collecting ideas under this label.')
+		).toBeTruthy();
+		expect(screen.queryByText('No notes found')).toBeNull();
+	});
+});
+
+describe('a search on another view', () => {
+	it('leaves a hidden view’s list whole', () => {
+		notesStore.notes = [
+			note({ id: 'a', title: 'Apples', body: 'needle', archived: true }),
+			note({ id: 'b', title: 'Bolts', body: 'Hardware', archived: true })
+		];
+		searchIn('notes', 'needle');
+		render(ArchiveView);
+
+		expect(screen.queryByRole('button', { name: /^Open Apples/ })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: /^Open Bolts/ })).toBeTruthy();
+	});
+});
+
+describe('clearing a search', () => {
+	it('brings every note back after no hits, then a few', async () => {
+		notesStore.notes = Array.from({ length: 100 }, (_, index) =>
+			note({
+				id: `n${index}`,
+				title: `Card ${index}`,
+				body: index < 3 ? 'needle' : 'hay',
+				trashed: true,
+				trashedAt: 1
+			})
+		);
+		const cards = () => screen.queryAllByRole('button', { name: /^Open Card / });
+		searchIn('trash', 'zzzz');
+		render(TrashView);
+		expect(screen.getByText('No notes found')).toBeTruthy();
+
+		uiStore.search = 'needle';
+		await vi.waitFor(() => expect(cards()).toHaveLength(3));
+		// The feed came back with three notes; let its stream finish before the list grows.
+		await frames(3);
+
+		uiStore.search = '';
+		await vi.waitFor(() => expect(cards()).toHaveLength(100));
+		expect(screen.getByRole('button', { name: 'Empty' })).toBeTruthy();
 	});
 });

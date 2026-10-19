@@ -13,7 +13,7 @@
 
 	const { openNote: openEditor } = useEditorActions();
 	const trashed = $derived(notesStore.trashedNotes);
-	const search = $derived(uiStore.search);
+	const search = $derived(uiStore.searchFor('trash'));
 	const visible = $derived(search ? notesStore.search(search, trashed) : trashed);
 
 	let confirmEmpty = $state(false);

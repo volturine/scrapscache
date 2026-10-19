@@ -10,7 +10,7 @@
 
 	const { openNote: openEditor } = useEditorActions();
 	const archived = $derived(notesStore.archivedNotes);
-	const search = $derived(uiStore.search);
+	const search = $derived(uiStore.searchFor('archive'));
 	const visible = $derived(search ? notesStore.search(search, archived) : archived);
 </script>
 

@@ -167,6 +167,11 @@ export class UIStore {
 		this.setSearchInput('');
 	}
 
+	/** The committed search for `view`: a hidden view keeps its whole list and skips the work. */
+	searchFor(view: View): string {
+		return this.view === view ? this.search : '';
+	}
+
 	constructor() {
 		if (typeof localStorage !== 'undefined') {
 			try {

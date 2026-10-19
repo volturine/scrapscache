@@ -18,7 +18,7 @@
 	const notes = $derived(
 		label ? notesStore.activeNotes.filter((n) => n.labels.includes(label.id)) : []
 	);
-	const search = $derived(uiStore.search);
+	const search = $derived(uiStore.searchFor('label'));
 	const visible = $derived(search ? notesStore.search(search, notes) : notes);
 	const pinned = $derived(visible.filter((n) => n.pinned));
 	const others = $derived(visible.filter((n) => !n.pinned));

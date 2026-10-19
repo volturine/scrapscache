@@ -1,6 +1,9 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import NotesFeed from '#lib/components/NotesFeed.svelte';
+	import SearchAnnouncer from '#lib/components/SearchAnnouncer.svelte';
+	import SearchNoMatches from '#lib/components/SearchNoMatches.svelte';
+	import { noMatchCopy, placesWithMatches } from '#lib/searchElsewhere.js';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
 	import { uiStore } from '#lib/stores/ui.svelte.js';
 	import { useEditorActions } from '#lib/editorContext.js';
@@ -20,6 +23,8 @@
 	);
 	const search = $derived(uiStore.searchFor('label'));
 	const visible = $derived(search ? notesStore.search(search, notes) : notes);
+	const noMatches = $derived(notes.length > 0 && visible.length === 0);
+	const places = $derived(noMatches ? placesWithMatches('label', search) : []);
 	const pinned = $derived(visible.filter((n) => n.pinned));
 	const others = $derived(visible.filter((n) => !n.pinned));
 	const shell = $derived(notesShell(uiStore.layout));
@@ -44,7 +49,7 @@
 		</div>
 
 		{#if visible.length === 0}
-			<EmptyState icon={Tag} description="No notes found" />
+			<SearchNoMatches here="label" query={search} {places} />
 		{:else}
 			{#if pinned.length > 0}
 				<div class={shell}>
@@ -64,4 +69,5 @@
 			{/if}
 		{/if}
 	{/if}
+	<SearchAnnouncer message={noMatches ? noMatchCopy('label', search, places).announcement : ''} />
 </div>

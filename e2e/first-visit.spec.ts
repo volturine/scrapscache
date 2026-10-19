@@ -10,10 +10,12 @@ test('a first visit renders the starter notes with a clean console', async ({ pa
 	await page.goto('/');
 	const welcome = page.getByRole('button', { name: /^Open Welcome to Scraps Cache/ });
 	await expect(welcome).toBeVisible();
-	// There is no account to sign in to; sync starts from the cloud icon.
+	// There is no account to sign in to; sync starts from the cloud icon. The note names it
+	// as assistive technology announces it, so the instruction does not rest on its shape.
 	await expect(page.getByRole('article').filter({ has: welcome })).toContainText(
-		'Notes live on this device. Tap the cloud icon to sync them.'
+		'Notes live on this device. Tap the cloud icon (Sync settings) to sync them.'
 	);
+	await expect(page.getByRole('button', { name: 'Sync settings', exact: true })).toBeVisible();
 	await expect(page.getByRole('button', { name: /^Open Groceries/ })).toBeVisible();
 	await expect(page.getByRole('button', { name: /^Open Reading list/ })).toBeVisible();
 	await expect(page.getByRole('heading', { name: 'Pinned' })).toBeVisible();

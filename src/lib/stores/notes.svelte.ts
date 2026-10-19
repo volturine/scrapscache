@@ -1900,7 +1900,7 @@ export class NotesStore {
 			{
 				id: uid(),
 				title: 'Welcome to Scraps Cache 👋',
-				body: 'Small note fragments, offline-first. Notes live on this device. Tap the cloud icon to sync them. Try pins, archive, colours, checklists, and reminders.',
+				body: 'Small note fragments, offline-first. Notes live on this device. Tap the cloud icon (Sync settings) to sync them. Try pins, archive, colours, checklists, and reminders.',
 				color: 'yellow',
 				pinned: true,
 				archived: false,

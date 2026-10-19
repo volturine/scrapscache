@@ -84,6 +84,7 @@
 
 	let paletteOpen = $state(false);
 	let reminderOpen = $state(false);
+	let reminderPicker = $state<ReminderPicker | undefined>();
 	let labelOpen = $state(false);
 	let historyPreview = $state.raw<{
 		note: Note;
@@ -1187,12 +1188,14 @@
 			onOpenChange={(details) => {
 				if (!details.open) reminderOpen = false;
 			}}
+			initialFocusEl={() => reminderPicker?.initialFocus() ?? null}
 			preventScroll={false}
 		>
 			<Dialog.Backdrop class={dialogBackdrop} />
 			<Dialog.Positioner class={dialogPositioner} data-editor-popup>
 				<Dialog.Content class={styles.popupContent}>
 					<ReminderPicker
+						bind:this={reminderPicker}
 						reminder={note.reminder}
 						onApply={(r) => {
 							commit({ reminder: r });

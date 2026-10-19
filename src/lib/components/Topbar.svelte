@@ -268,7 +268,7 @@
 		<input
 			value={uiStore.searchInput}
 			oninput={(event) => uiStore.setSearchInput(event.currentTarget.value)}
-			type="text"
+			type="search"
 			placeholder="Search"
 			aria-label="Search notes"
 			class={cx(input({ variant: 'unstyled' }), styles.searchInput)}

@@ -9,11 +9,11 @@ vi.mock('#lib/editorContext.js', () => ({
 import Topbar from './Topbar.svelte';
 
 describe('Topbar search', () => {
-	it('names the field and puts it in a search landmark', () => {
+	it('names the search field and puts it in a search landmark', () => {
 		render(Topbar);
 
 		const landmark = screen.getByRole('search');
-		const field = within(landmark).getByRole('textbox', { name: 'Search notes' });
+		const field = within(landmark).getByRole('searchbox', { name: 'Search notes' });
 		expect(field.getAttribute('placeholder')).toBe('Search');
 	});
 });

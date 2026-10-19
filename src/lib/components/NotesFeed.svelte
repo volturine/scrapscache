@@ -31,20 +31,29 @@
 	const BATCH_STEP = 40;
 	let pageIndex = $state(0);
 	let renderedCount = $state(FIRST_BATCH);
+	/**
+	 * Only while a page paints in batches. Once it has caught up the page shows in
+	 * full, so a list that grows later (a search cleared, a sync) is never capped.
+	 */
+	let streaming = $state(true);
 	const pageCount = $derived(Math.max(1, Math.ceil(notes.length / PAGE_SIZE)));
 	const safePageIndex = $derived(Math.min(pageIndex, pageCount - 1));
 	const visibleNotes = $derived(
 		notes.slice(safePageIndex * PAGE_SIZE, (safePageIndex + 1) * PAGE_SIZE)
 	);
-	const shownNotes = $derived(visibleNotes.slice(0, renderedCount));
+	const shownNotes = $derived(streaming ? visibleNotes.slice(0, renderedCount) : visibleNotes);
 
 	let streamFrame: number | undefined;
 
 	function pumpStream() {
 		if (streamFrame !== undefined) cancelAnimationFrame(streamFrame);
+		streaming = true;
 		const tick = () => {
 			streamFrame = undefined;
-			if (renderedCount >= visibleNotes.length) return;
+			if (renderedCount >= visibleNotes.length) {
+				streaming = false;
+				return;
+			}
 			renderedCount += BATCH_STEP;
 			streamFrame = requestAnimationFrame(tick);
 		};

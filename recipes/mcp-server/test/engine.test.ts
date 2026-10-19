@@ -132,6 +132,21 @@ plain text line`;
 		expect(all.notes[1].preview.toLowerCase()).toContain('needed for v1');
 	});
 
+	it('uploads a new note as created, not edited', async () => {
+		const session = new McpSession(mockSyncClient);
+		await session.createNote({ title: 'Fresh', body: 'From an assistant' });
+
+		const [upload] = uploadedEnvelopes;
+		const { value } = decryptSyncPayload<{ kind: 'note'; value: Record<string, any> }>(
+			syncKey,
+			upload.ciphertext,
+			upload.slot
+		);
+		// The app shows "Edited" once updatedAt passes createdAt.
+		expect(value.updatedAt).toBe(value.createdAt);
+		expect(new Set(Object.values(value.fieldTimes))).toEqual(new Set([value.createdAt]));
+	});
+
 	it('updates note body, appends tasks, and toggles checklist items', async () => {
 		const session = new McpSession(mockSyncClient);
 

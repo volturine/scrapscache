@@ -95,6 +95,8 @@ export class UIStore {
 	/** Committed search value; lags the input by a short debounce. */
 	search = $state('');
 	settingsOpen = $state(false);
+	/** The sync (cloud) dialog. The top bar shows it; anything that points to Sync opens it. */
+	syncOpen = $state(false);
 	/** Ephemeral calendar selection used when creating notes from the reminders view. */
 	reminderFilter = $state<{ from: string; to: string | null } | null>(null);
 	/** Views that have been shown this session and should stay mounted. */

@@ -25,9 +25,8 @@ import {
 	mergeLabelLists,
 	mergeNoteLists,
 	mergeTwoNotes,
-	NOTE_FIELDS,
 	retargetLocalNotes,
-	touchNoteFields,
+	stampNewNote,
 	uid,
 	withoutTombstoned,
 	type NotePatch
@@ -528,7 +527,7 @@ export class NotesStore {
 				? { linkPreviews: partial.linkPreviews.map((preview) => ({ ...preview })) }
 				: {})
 		};
-		const note = touchNoteFields(created, NOTE_FIELDS, { ...editContext, now: () => now });
+		const note = stampNewNote(created, editContext.writer);
 		this.notes = [note, ...this.notes];
 		this.persist(note.id);
 		return note;

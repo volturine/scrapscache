@@ -127,3 +127,23 @@ test('search narrows the feed to matching notes', async ({ page }) => {
 	await expect(noteCard(page, 'Apples')).toBeVisible();
 	await expect(noteCard(page, 'Bolts')).toBeVisible();
 });
+
+test('search filters the archive', async ({ page }) => {
+	await openEmptyApp(page);
+	await createNote(page, 'Apples', 'Fruit for the week');
+	await createNote(page, 'Bolts', 'Hardware for the shelf');
+	await quickAction(noteCard(page, 'Apples'), 'Archive note');
+	await expect(noteCard(page, 'Apples')).toBeHidden();
+	await quickAction(noteCard(page, 'Bolts'), 'Archive note');
+	await expect(noteCard(page, 'Bolts')).toBeHidden();
+
+	await page.goto('/archive');
+	const search = page.getByPlaceholder('Search', { exact: true });
+	await search.fill('shelf');
+	await expect(noteCard(page, 'Bolts')).toBeVisible();
+	await expect(noteCard(page, 'Apples')).toBeHidden();
+
+	await page.getByRole('button', { name: 'Clear search' }).click();
+	await expect(noteCard(page, 'Apples')).toBeVisible();
+	await expect(noteCard(page, 'Bolts')).toBeVisible();
+});

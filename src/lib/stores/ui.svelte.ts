@@ -241,10 +241,14 @@ export class UIStore {
 		this.rawMarkdown = !this.rawMarkdown;
 	}
 
-	setView(view: View, labelId: string | null = null) {
+	/** Show a view with a fresh search, or with `search` carried into it. */
+	setView(view: View, labelId: string | null = null, search = '') {
 		this.view = view;
 		this.activeLabelId = labelId;
 		this.clearSearch();
+		// A carried query filters the new view at once, without the typing debounce.
+		this.searchInput = search;
+		this.search = search;
 		this.viewChangeHandler?.();
 	}
 

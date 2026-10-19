@@ -1666,7 +1666,8 @@ export const emptyStateStyles = {
 		color: 'scrapscache.text',
 		textWrap: 'balance'
 	}),
-	action: css({ mt: 'md' })
+	action: css({ mt: 'md' }),
+	actions: css({ mt: 'md', display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 'sm' })
 };
 
 export const reminderAlertStyles = {

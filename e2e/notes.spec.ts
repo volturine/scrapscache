@@ -139,12 +139,23 @@ test('the last card stays clear of the new note button', async ({ page }) => {
 	// The check means nothing unless the feed has an end to scroll to.
 	expect(await scrolls()).toBe(true);
 
-	await feed.evaluate((element) =>
-		element.scrollTo({ top: element.scrollHeight, behavior: 'instant' })
+	const clearance = async () => {
+		await feed.evaluate((element) =>
+			element.scrollTo({ top: element.scrollHeight, behavior: 'instant' })
+		);
+		const lowestCard = await page
+			.getByRole('article')
+			.evaluateAll((cards) =>
+				Math.max(...cards.map((card) => card.getBoundingClientRect().bottom))
+			);
+		const button = await page.getByRole('button', { name: 'New note' }).boundingBox();
+		return button!.y - lowestCard;
+	};
+	expect(await clearance()).toBeGreaterThanOrEqual(0);
+
+	// An overlaid phone keyboard lifts the button; appViewport publishes its height here.
+	await page.evaluate(() =>
+		document.documentElement.style.setProperty('--app-keyboard-bottom', '336px')
 	);
-	const lowestCard = await page
-		.getByRole('article')
-		.evaluateAll((cards) => Math.max(...cards.map((card) => card.getBoundingClientRect().bottom)));
-	const button = await page.getByRole('button', { name: 'New note' }).boundingBox();
-	expect(lowestCard).toBeLessThanOrEqual(button!.y);
+	expect(await clearance()).toBeGreaterThanOrEqual(0);
 });

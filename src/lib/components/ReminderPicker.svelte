@@ -6,8 +6,16 @@
 	import WheelPicker from './WheelPicker.svelte';
 	import DatePickerViews from './DatePickerViews.svelte';
 	import { AlarmClock, ChevronLeft, ChevronRight } from '@lucide/svelte';
-	import { requestReminderPermission } from '#lib/reminderNotify.js';
-	import { registerAllReminderDevices } from '#lib/reminderWake.js';
+	import {
+		notificationPermission,
+		notificationsBlockedHint,
+		requestReminderPermission
+	} from '#lib/reminderNotify.js';
+	import { registerAllReminderDevices, reminderPushSupported } from '#lib/reminderWake.js';
+	import { useEditorActions } from '#lib/editorContext.js';
+	import { pwaInstallStore } from '#lib/stores/pwaInstall.svelte.js';
+	import { syncStore } from '#lib/stores/sync.svelte.js';
+	import { uiStore } from '#lib/stores/ui.svelte.js';
 	import { formatReminderCountdown } from '#lib/utils.js';
 	import { PHONE_MEDIA } from '#lib/appViewport.js';
 	import { css, cx } from 'styled-system/css';
@@ -166,7 +174,7 @@
 		if (awaitingPermission) return;
 		awaitingPermission = true;
 		try {
-			await requestReminderPermission();
+			permission = await requestReminderPermission();
 		} finally {
 			awaitingPermission = false;
 		}
@@ -175,6 +183,47 @@
 	}
 	function clear() {
 		apply(null);
+	}
+
+	const { closeNote } = useEditorActions();
+	let permission = $state(notificationPermission());
+
+	/**
+	 * What keeps this device from alerting while the app is closed, if anything.
+	 * Push support comes first: Sync cannot help a browser without it. A permission
+	 * not asked for yet needs no line, because Save asks.
+	 */
+	const closedAppAlerts = $derived.by(() => {
+		if (!reminderPushSupported()) {
+			return { text: "This browser can't show alerts while the app is closed.", sync: false };
+		}
+		if (!syncStore.isLoggedIn) {
+			return { text: 'Closed-app alerts need Sync on this device.', sync: true };
+		}
+		if (syncStore.keyRetired) {
+			return {
+				text: 'Closed-app alerts are off until this workspace gets a new sync key.',
+				sync: true
+			};
+		}
+		if (permission === 'denied') {
+			return { text: notificationsBlockedHint(pwaInstallStore.isStandalone), sync: false };
+		}
+		return null;
+	});
+
+	/** Sync settings open as they do from the cloud icon: over the feed, with any open note closed. */
+	function openSyncSettings() {
+		onClose();
+		closeNote();
+		uiStore.syncOpen = true;
+	}
+
+	let schedulePanel = $state<HTMLElement | null>(null);
+
+	/** Where a host dialog puts focus on open: the first date control, not a link above it. */
+	export function initialFocus(): HTMLElement | null {
+		return schedulePanel?.querySelector('button') ?? null;
 	}
 
 	const d = dialog({ size: 'sm' });
@@ -247,9 +296,16 @@
 			<AlarmClock class={css({ w: '1rem', h: '1rem', flexShrink: 0 })} aria-hidden="true" />
 			<span class={styles.ellipsis}>{remainingLabel}</span>
 		</div>
-		<div class={css({ mt: '2xs', textStyle: 'caption' })}>
-			Closed-app alerts need Sync on this device.
-		</div>
+		{#if closedAppAlerts}
+			<div class={css({ mt: '2xs', textStyle: 'caption' })}>
+				{closedAppAlerts.text}
+				{#if closedAppAlerts.sync}
+					<button type="button" class={styles.syncLink} onclick={openSyncSettings}>
+						Open Sync settings
+					</button>
+				{/if}
+			</div>
+		{/if}
 	</div>
 
 	<div
@@ -273,7 +329,7 @@
 			Pick date & time
 		</div>
 
-		<div data-schedule-panel>
+		<div data-schedule-panel bind:this={schedulePanel}>
 			{#if isMobile}
 				<div class={hstack({ mb: 'md' })}>
 					<button

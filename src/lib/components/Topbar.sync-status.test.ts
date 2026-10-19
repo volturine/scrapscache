@@ -12,6 +12,7 @@ vi.mock('#lib/editorContext.js', () => ({
 
 import { syncStore, type StartedDeviceLink } from '#lib/stores/sync.svelte.js';
 import { notesStore } from '#lib/stores/notes.svelte.js';
+import { uiStore } from '#lib/stores/ui.svelte.js';
 import Topbar from './Topbar.svelte';
 
 // Topbar loads the sync dialog when it first opens. Loading it here keeps the
@@ -19,6 +20,7 @@ import Topbar from './Topbar.svelte';
 beforeAll(() => import('./SyncModal.svelte'), 30_000);
 
 afterEach(() => {
+	uiStore.syncOpen = false;
 	history.replaceState({}, '', '/');
 	syncStore.lastError = null;
 	syncStore.usage = null;
@@ -45,6 +47,15 @@ describe('Topbar sync status', () => {
 		await tick();
 
 		await vi.waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
+	});
+
+	it('opens the sync dialog when another part of the app asks for it', async () => {
+		render(Topbar);
+		expect(screen.queryByRole('dialog')).toBeNull();
+
+		uiStore.syncOpen = true;
+
+		expect(await screen.findByRole('dialog')).toBeTruthy();
 	});
 
 	it('does not leave full-screen overlays over the app while dialogs are closed', () => {

@@ -29,3 +29,15 @@ test('a due reminder shows the in-app alert and can be dismissed', async ({ page
 	await expect(noteCard(page, 'Call the vet')).toBeVisible();
 	await expect(page.getByRole('region', { name: 'Due reminders' })).toBeHidden();
 });
+
+test('the reminder dialog opens on its dates, not on the Sync settings link', async ({ page }) => {
+	await openEmptyApp(page);
+	await createNote(page, 'Water the plants');
+
+	await noteCard(page, 'Water the plants').click();
+	await editor(page).getByRole('button', { name: 'Reminder', exact: true }).click();
+	const picker = page.getByRole('dialog').filter({ hasText: 'Will remind you' });
+	// Sync is off here, so its settings link sits above the dates.
+	await expect(picker.getByRole('button', { name: 'Open Sync settings' })).toBeVisible();
+	await expect(picker.getByRole('button', { name: 'Previous day' })).toBeFocused();
+});

@@ -39,6 +39,7 @@
 	let copied = $state(false);
 	let copyTimer: ReturnType<typeof setTimeout> | null = null;
 	let reminderDialogOpen = $state(false);
+	let reminderPicker = $state<ReminderPicker | undefined>();
 	let labelDialogOpen = $state(false);
 	/** This haze, not this note: a note in two label columns shows as two cards. */
 	const token = {};
@@ -408,6 +409,7 @@
 		onOpenChange={(details) => {
 			if (!details.open) reminderDialogOpen = false;
 		}}
+		initialFocusEl={() => reminderPicker?.initialFocus() ?? null}
 		preventScroll={false}
 	>
 		<div
@@ -428,6 +430,7 @@
 			>
 				<Dialog.Content class={css({ outline: 'none' })} onclick={(e) => e.stopPropagation()}>
 					<ReminderPicker
+						bind:this={reminderPicker}
 						reminder={note.reminder}
 						onApply={(r) => {
 							notesStore.setReminder(note.id, r);

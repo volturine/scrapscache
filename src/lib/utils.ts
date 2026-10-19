@@ -112,6 +112,24 @@ export function daysSinceTrashed(trashedAt: number | null): number {
 
 export const TRASH_PURGE_DAYS = 7;
 
+/** When a trashed note will be deleted for good, by calendar day; `soon` on its last two days. */
+export function trashCountdown(
+	trashedAt: number | null,
+	nowMs = Date.now()
+): { label: string; soon: boolean } | null {
+	if (trashedAt == null) return null;
+	const localMidnight = (ms: number) => {
+		const d = new Date(ms);
+		return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+	};
+	const deleteAt = trashedAt + TRASH_PURGE_DAYS * 86_400_000;
+	// Rounding absorbs the 23- and 25-hour calendar days around DST changes.
+	const days = Math.round((localMidnight(deleteAt) - localMidnight(nowMs)) / 86_400_000);
+	if (days <= 0) return { label: 'Deletes today', soon: true };
+	if (days === 1) return { label: 'Deletes tomorrow', soon: true };
+	return { label: `Deletes in ${days} days`, soon: false };
+}
+
 /** Display state for a note's created/updated (or deleted) timestamp. */
 export type NoteActivity = {
 	/** Short relative label, e.g. "Edited 2h ago". */

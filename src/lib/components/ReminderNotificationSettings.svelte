@@ -3,14 +3,21 @@
 	import { onMount } from 'svelte';
 	import { Menu } from '@ark-ui/svelte/menu';
 	import { Bell, ChevronRight } from '@lucide/svelte';
-	import { notificationPermission, requestReminderPermission } from '#lib/reminderNotify.js';
+	import {
+		notificationPermission,
+		notificationsBlockedHint,
+		requestReminderPermission
+	} from '#lib/reminderNotify.js';
 	import { registerAllReminderDevices } from '#lib/reminderWake.js';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
+	import { pwaInstallStore } from '#lib/stores/pwaInstall.svelte.js';
 	import { reminderStore } from '#lib/stores/reminders.svelte.js';
 	import { cx } from 'styled-system/css';
 	import { menuItem } from 'styled-system/recipes';
 
 	let permission = $state(notificationPermission());
+	const hintId = $props.id();
+	const blockedHint = $derived(notificationsBlockedHint(pwaInstallStore.isStandalone));
 
 	onMount(() => {
 		const refresh = () => {
@@ -31,7 +38,7 @@
 	}
 </script>
 
-<section aria-label="Notifications">
+<Menu.ItemGroup aria-label="Notifications">
 	{#if permission === 'default'}
 		<Menu.Item
 			value="notifications-enable"
@@ -46,7 +53,13 @@
 			<ChevronRight class={reminderSettingsStyles.chevron} aria-hidden="true" />
 		</Menu.Item>
 	{:else}
-		<div class={reminderSettingsRow.base}>
+		<!-- A passive item, so moving through the menu still reaches the state and its hint. -->
+		<Menu.Item
+			value="notifications-status"
+			closeOnSelect={false}
+			class={cx(menuItem({ density: 'compact', feedback: 'none' }), reminderSettingsRow.base)}
+			aria-describedby={permission === 'denied' ? hintId : undefined}
+		>
 			<Bell class={reminderSettingsStyles.icon} aria-hidden="true" />
 			<span class={reminderSettingsStyles.label}>Notifications</span>
 			<span class={reminderSettingsStyles.status}>
@@ -56,6 +69,9 @@
 						? 'Disabled'
 						: 'Unsupported'}
 			</span>
-		</div>
+		</Menu.Item>
+		{#if permission === 'denied'}
+			<p id={hintId} class={reminderSettingsStyles.hint}>{blockedHint}</p>
+		{/if}
 	{/if}
-</section>
+</Menu.ItemGroup>

@@ -1,6 +1,17 @@
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { tick } from 'svelte';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createSyncIdentity } from '#lib/syncPairing.js';
+import { syncStore } from '#lib/stores/sync.svelte.js';
+import { uiStore } from '#lib/stores/ui.svelte.js';
 import ReminderPicker from './ReminderPicker.svelte';
+
+const editorActions = vi.hoisted(() => ({
+	openNote: vi.fn(),
+	startNewNote: vi.fn(),
+	closeNote: vi.fn()
+}));
+vi.mock('#lib/editorContext.js', () => ({ useEditorActions: () => editorActions }));
 
 const reminder = new Date(2026, 7, 12, 15, 30, 0, 0).getTime();
 
@@ -135,14 +146,17 @@ describe('ReminderPicker mobile wheel controls', () => {
 });
 
 describe('ReminderPicker remaining time', () => {
-	it('shows time left and only the closed-app sync note', () => {
+	it('shows time left and only the closed-app alerts note', () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date(2026, 7, 12, 14, 30, 0, 0));
 		render(ReminderPicker, { props: { reminder, onClose: () => {} } });
 
 		expect(screen.getByText('in 1 hour')).toBeTruthy();
 		expect(screen.queryByText(/Notifies on this device/)).toBeNull();
-		expect(screen.getByText('Closed-app alerts need Sync on this device.')).toBeTruthy();
+		// jsdom has no push support, which no setting can fix.
+		expect(
+			screen.getByText("This browser can't show alerts while the app is closed.")
+		).toBeTruthy();
 	});
 
 	it('keeps cancel on the left with remove, and save on the right after edit', async () => {
@@ -193,5 +207,102 @@ describe('ReminderPicker remaining time', () => {
 		expect(screen.getByText('in 1 hour 1 minute')).toBeTruthy();
 		await vi.advanceTimersByTimeAsync(60_000);
 		expect(screen.getByText('in 1 hour')).toBeTruthy();
+	});
+});
+
+describe('ReminderPicker closed-app alerts', () => {
+	const localId = 'local-alerts';
+	const syncedWorkspace = () => ({
+		id: 'synced-alerts',
+		name: 'Synced',
+		syncKey: createSyncIdentity().syncKey,
+		createdAt: 2
+	});
+
+	/** A browser that can take closed-app alerts at all. */
+	function supportPush(permission: NotificationPermission = 'default') {
+		vi.stubGlobal('Notification', { permission, requestPermission: vi.fn() });
+		vi.stubGlobal('PushManager', function PushManager() {});
+		Object.defineProperty(navigator, 'serviceWorker', { value: {}, configurable: true });
+	}
+
+	beforeEach(() => {
+		syncStore.activateLocalWorkspace(localId);
+	});
+
+	afterEach(() => {
+		vi.unstubAllGlobals();
+		Reflect.deleteProperty(navigator, 'serviceWorker');
+		syncStore.activateLocalWorkspace(localId);
+		uiStore.syncOpen = false;
+		editorActions.closeNote.mockClear();
+	});
+
+	it('says alerts need Sync and opens Sync settings, closing the note, when Sync is off', async () => {
+		supportPush();
+		const onClose = vi.fn();
+		render(ReminderPicker, { props: { reminder, onClose } });
+
+		expect(screen.getByText(/Closed-app alerts need Sync on this device/)).toBeTruthy();
+		await fireEvent.click(screen.getByRole('button', { name: 'Open Sync settings' }));
+
+		expect(onClose).toHaveBeenCalledOnce();
+		expect(editorActions.closeNote).toHaveBeenCalledOnce();
+		expect(uiStore.syncOpen).toBe(true);
+	});
+
+	it('follows Sync being turned on and off while it is open', async () => {
+		supportPush();
+		render(ReminderPicker, { props: { reminder, onClose: () => {} } });
+
+		syncStore.activateProfile(syncedWorkspace());
+		await tick();
+		expect(screen.queryByText(/Closed-app alerts/)).toBeNull();
+		expect(screen.queryByRole('button', { name: 'Open Sync settings' })).toBeNull();
+
+		syncStore.activateLocalWorkspace(localId);
+		await tick();
+		expect(screen.getByText(/Closed-app alerts need Sync on this device/)).toBeTruthy();
+		expect(screen.getByRole('button', { name: 'Open Sync settings' })).toBeTruthy();
+	});
+
+	it('sends a retired sync key to Sync settings', () => {
+		supportPush();
+		syncStore.activateProfile(syncedWorkspace());
+		syncStore.keyRetired = true;
+		render(ReminderPicker, { props: { reminder, onClose: () => {} } });
+
+		expect(
+			screen.getByText(/Closed-app alerts are off until this workspace gets a new sync key/)
+		).toBeTruthy();
+		expect(screen.getByRole('button', { name: 'Open Sync settings' })).toBeTruthy();
+	});
+
+	it('says how to unblock notifications once Sync is on', () => {
+		supportPush('denied');
+		syncStore.activateProfile(syncedWorkspace());
+		render(ReminderPicker, { props: { reminder, onClose: () => {} } });
+
+		expect(
+			screen.getByText('Blocked in the browser. Allow notifications for this site in its settings.')
+		).toBeTruthy();
+		expect(screen.queryByRole('button', { name: 'Open Sync settings' })).toBeNull();
+	});
+
+	it('says when the browser cannot alert a closed app, where Sync would not help', () => {
+		render(ReminderPicker, { props: { reminder, onClose: () => {} } });
+
+		expect(
+			screen.getByText("This browser can't show alerts while the app is closed.")
+		).toBeTruthy();
+		expect(screen.queryByRole('button', { name: 'Open Sync settings' })).toBeNull();
+	});
+
+	it('says nothing when alerts can reach this device', () => {
+		supportPush('granted');
+		syncStore.activateProfile(syncedWorkspace());
+		render(ReminderPicker, { props: { reminder, onClose: () => {} } });
+
+		expect(screen.queryByText(/alerts/)).toBeNull();
 	});
 });

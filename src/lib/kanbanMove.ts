@@ -1,4 +1,4 @@
-import { moveNoteLabels, type KanbanColumn } from '#lib/kanban.js';
+import { boardColumnLabelIds, moveNoteLabels, type KanbanColumn } from '#lib/kanban.js';
 import { actionUndo } from '#lib/stores/actionUndo.svelte.js';
 import { kanbanStore } from '#lib/stores/kanban.svelte.js';
 import { notesStore } from '#lib/stores/notes.svelte.js';
@@ -69,10 +69,17 @@ export function moveCardToColumn(move: {
 		if (!take.every((id) => current.labels.includes(id))) return;
 		if (give.some((id) => current.labels.includes(id))) return;
 		if (!give.every((id) => notesStore.labelsById.has(id))) return;
-		const column = kanbanStore.boards
-			.find((board) => board.id === boardId)
-			?.columns.find((candidate) => candidate.id === enter);
-		if (!column) return;
+		const board = kanbanStore.boards.find((candidate) => candidate.id === boardId);
+		const from = board?.columns.find((candidate) => candidate.id === leave);
+		const column = board?.columns.find((candidate) => candidate.id === enter);
+		if (!board || !from || !column) return;
+		// ...and still sits in the column it leaves: with that column's label, or in
+		// the Backlog with none of the board's column labels.
+		const inLeave =
+			from.labelId === null
+				? !current.labels.some((id) => boardColumnLabelIds(board).has(id))
+				: current.labels.includes(from.labelId);
+		if (!inLeave) return;
 		notesStore.updateNote(noteId, {
 			labels: [...current.labels.filter((id) => !take.includes(id)), ...give]
 		});

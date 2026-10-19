@@ -54,8 +54,8 @@ describe('moveCardToColumn', () => {
 		return { boardId, todo: todo.id, doing: doing.id, done: done.id, a, b, c };
 	}
 
-	/** Read back from the board each time, since every edit replaces the columns. */
-	function column(labelId: string) {
+	/** Read back from the board each time, since every edit replaces the columns. `null` is the Backlog. */
+	function column(labelId: string | null) {
 		return kanbanStore.boards[0].columns.find((item) => item.labelId === labelId)!;
 	}
 
@@ -69,7 +69,13 @@ describe('moveCardToColumn', () => {
 	}
 
 	/** Drag a card from one column to another, landing at `at` (the end by default). */
-	function move(boardId: string, noteId: string, from: string, to: string, at?: number) {
+	function move(
+		boardId: string,
+		noteId: string,
+		from: string | null,
+		to: string | null,
+		at?: number
+	) {
 		const destination = column(to);
 		const order = destination.order.filter((id) => id !== noteId);
 		order.splice(at ?? order.length, 0, noteId);
@@ -174,6 +180,40 @@ describe('moveCardToColumn', () => {
 		step.undo();
 
 		expect(labelsOf(ids.b)).toEqual(labelsBefore);
+		expect(kanbanStore.boards[0].columns.map((item) => [...item.order])).toEqual(ordersBefore);
+	});
+
+	// A step out of the Backlog takes no label off, so the card's labels alone cannot
+	// say whether it is still there. Each case arranges the move and returns the step.
+	it.each([
+		[
+			'moved to the Backlog, then tagged Doing, then undo',
+			(ids: ReturnType<typeof setUpBoard>) => {
+				move(ids.boardId, ids.b, ids.todo, null);
+				const step = actionUndo.past.at(-1)!;
+				notesStore.updateNote(ids.b, { labels: [ids.doing] });
+				return { noteId: ids.b, step: () => step.undo() };
+			}
+		],
+		[
+			'moved out of the Backlog, undone, then tagged Todo, then redo',
+			(ids: ReturnType<typeof setUpBoard>) => {
+				const d = notesStore.createNote({ title: 'D', labels: [] }).id;
+				move(ids.boardId, d, null, ids.doing);
+				actionUndo.undo();
+				expect(labelsOf(d)).toEqual([]);
+				notesStore.updateNote(d, { labels: [ids.todo] });
+				return { noteId: d, step: () => actionUndo.redo() };
+			}
+		]
+	])('leaves a card alone once it has left the Backlog: %s', (_, arrange) => {
+		const { noteId, step } = arrange(setUpBoard());
+		const labelsBefore = labelsOf(noteId);
+		const ordersBefore = kanbanStore.boards[0].columns.map((item) => [...item.order]);
+
+		step();
+
+		expect(labelsOf(noteId)).toEqual(labelsBefore);
 		expect(kanbanStore.boards[0].columns.map((item) => [...item.order])).toEqual(ordersBefore);
 	});
 

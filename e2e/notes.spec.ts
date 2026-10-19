@@ -121,7 +121,7 @@ test('search narrows the feed to matching notes', async ({ page }) => {
 	await expect(noteCard(page, 'Apples')).toBeHidden();
 
 	await search.fill('nothing like this');
-	await expect(page.getByText('No notes match “nothing like this”')).toBeVisible();
+	await expect(page.getByText('No notes match “nothing like this”', { exact: true })).toBeVisible();
 
 	await page.getByRole('button', { name: 'Clear search' }).click();
 	await expect(noteCard(page, 'Apples')).toBeVisible();
@@ -158,7 +158,7 @@ test('a search that finds nothing in Notes looks in Archive with the same query'
 
 	const search = page.getByPlaceholder('Search', { exact: true });
 	await search.fill('retro');
-	await expect(page.getByText('No notes match “retro”')).toBeVisible();
+	await expect(page.getByText('No notes match “retro”', { exact: true })).toBeVisible();
 	await page.getByRole('button', { name: 'Look in Archive' }).click();
 
 	await expect(page).toHaveURL(/\/archive$/);

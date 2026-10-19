@@ -8,7 +8,7 @@
 
 	type Props = {
 		icon: LucideIcon;
-		/** What the product is, in one line; shown above the description. */
+		/** The headline, above the description: what the product is, or what a search found. */
 		tagline?: string;
 		description: string;
 		actionLabel?: string;

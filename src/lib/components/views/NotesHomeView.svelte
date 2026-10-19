@@ -1,55 +1,34 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
 	import NotesFeed from '#lib/components/NotesFeed.svelte';
+	import SearchAnnouncer from '#lib/components/SearchAnnouncer.svelte';
+	import SearchNoMatches from '#lib/components/SearchNoMatches.svelte';
 	import SectionHeader from '#lib/components/SectionHeader.svelte';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
 	import { uiStore } from '#lib/stores/ui.svelte.js';
 	import { useEditorActions } from '#lib/editorContext.js';
-	import { pathForView } from '#lib/viewRoutes.js';
+	import { noMatchCopy, placesWithMatches } from '#lib/searchElsewhere.js';
 	import EmptyState from '#lib/components/EmptyState.svelte';
-	import { SearchX, StickyNote } from '@lucide/svelte';
+	import { StickyNote } from '@lucide/svelte';
 	import { css } from 'styled-system/css';
-	import { button } from 'styled-system/recipes';
 	import { viewHeading, viewPage } from '$panda/styles';
 
 	const { openNote: openEditor, startNewNote } = useEditorActions();
 
 	const pinned = $derived(notesStore.pinnedNotes);
 	const others = $derived(notesStore.unpinnedNotes);
-	const search = $derived(uiStore.search);
+	const search = $derived(uiStore.searchFor('notes'));
 	const filteredPinned = $derived(search ? notesStore.search(search, pinned) : pinned);
 	const filteredOthers = $derived(search ? notesStore.search(search, others) : others);
-
-	/** Notes searches active notes only; Archive and Trash search their own, with the same query. */
-	function searchIn(view: 'archive' | 'trash') {
-		const path = pathForView(view);
-		if (!path) return;
-		uiStore.setView(view, null, search);
-		void goto(path);
-	}
+	const noMatches = $derived(
+		Boolean(search) && filteredPinned.length === 0 && filteredOthers.length === 0
+	);
+	const places = $derived(noMatches ? placesWithMatches('notes', search) : []);
 </script>
 
 <div class={viewPage}>
 	<h1 class={viewHeading}>Notes</h1>
-	{#if filteredPinned.length === 0 && filteredOthers.length === 0 && search}
-		<EmptyState
-			icon={SearchX}
-			tagline={`No notes match “${search.trim()}”`}
-			description="Archived and deleted notes are not searched here."
-		>
-			{#snippet actions()}
-				<button
-					type="button"
-					class={button({ variant: 'secondary', size: 'sm' })}
-					onclick={() => searchIn('archive')}>Look in Archive</button
-				>
-				<button
-					type="button"
-					class={button({ variant: 'secondary', size: 'sm' })}
-					onclick={() => searchIn('trash')}>Look in Trash</button
-				>
-			{/snippet}
-		</EmptyState>
+	{#if noMatches}
+		<SearchNoMatches here="notes" query={search} {places} />
 	{:else if filteredPinned.length === 0 && filteredOthers.length === 0}
 		<EmptyState
 			icon={StickyNote}
@@ -75,4 +54,5 @@
 			<NotesFeed notes={filteredOthers} onOpen={openEditor} />
 		{/if}
 	{/if}
+	<SearchAnnouncer message={noMatches ? noMatchCopy('notes', search, places).announcement : ''} />
 </div>

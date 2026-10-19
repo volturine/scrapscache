@@ -116,11 +116,15 @@ describe('view switches', () => {
 		uiStore.setSearchInput('draft');
 
 		uiStore.setView('trash', null, 'retro');
-		vi.runAllTimers();
-		vi.useRealTimers();
 
+		// Committed before any timer runs: no debounce stands between the view and its filter.
 		expect(uiStore.view).toBe('trash');
 		expect(uiStore.searchInput).toBe('retro');
+		expect(uiStore.search).toBe('retro');
+
+		// The search typed before the switch never lands on the new view.
+		vi.runAllTimers();
+		vi.useRealTimers();
 		expect(uiStore.search).toBe('retro');
 	});
 });

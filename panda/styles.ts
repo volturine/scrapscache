@@ -1996,7 +1996,16 @@ export const reminderPickerStyles = {
 	ellipsis: flexTruncateClass,
 	wheelDeck: css({ rounded: 'dialog', bg: 'scrapscache.surfaceSubtle', px: 'sm', py: '2xs' }),
 	timeWheel: css({ w: '4rem' }),
-	colon: center({ w: '0.75rem', flexShrink: 0, textStyle: 'display', color: 'scrapscache.text' })
+	colon: center({ w: '0.75rem', flexShrink: 0, textStyle: 'display', color: 'scrapscache.text' }),
+	/** An action inside the status copy, drawn as a link. */
+	syncLink: css({
+		color: 'inherit',
+		fontWeight: 'interactive',
+		textDecoration: 'underline',
+		textUnderlineOffset: '2px',
+		cursor: 'pointer',
+		_hoverable: { color: 'scrapscache.text' }
+	})
 };
 
 export const wheelPickerStyles = {

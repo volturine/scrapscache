@@ -163,3 +163,35 @@ test('search narrows the feed to matching notes', async ({ page }) => {
 	await expect(noteCard(page, 'Apples')).toBeVisible();
 	await expect(noteCard(page, 'Bolts')).toBeVisible();
 });
+
+test('the last card stays clear of the new note button', async ({ page }) => {
+	await page.setViewportSize({ width: 390, height: 640 });
+	await openEmptyApp(page);
+	const feed = page.getByRole('main');
+	const scrolls = () => feed.evaluate((element) => element.scrollHeight > element.clientHeight);
+	for (let count = 1; count <= 12 && !(await scrolls()); count += 1) {
+		await createNote(page, `Card ${count}`, 'One\nTwo\nThree\nFour\nFive');
+	}
+	// The check means nothing unless the feed has an end to scroll to.
+	expect(await scrolls()).toBe(true);
+
+	const clearance = async () => {
+		await feed.evaluate((element) =>
+			element.scrollTo({ top: element.scrollHeight, behavior: 'instant' })
+		);
+		const lowestCard = await page
+			.getByRole('article')
+			.evaluateAll((cards) =>
+				Math.max(...cards.map((card) => card.getBoundingClientRect().bottom))
+			);
+		const button = await page.getByRole('button', { name: 'New note' }).boundingBox();
+		return button!.y - lowestCard;
+	};
+	expect(await clearance()).toBeGreaterThanOrEqual(0);
+
+	// An overlaid phone keyboard lifts the button; appViewport publishes its height here.
+	await page.evaluate(() =>
+		document.documentElement.style.setProperty('--app-keyboard-bottom', '336px')
+	);
+	expect(await clearance()).toBeGreaterThanOrEqual(0);
+});

@@ -149,7 +149,11 @@ export const appLayout = {
 		overflowY: 'auto',
 		overflowX: 'hidden',
 		px: 'lg',
-		pb: { base: '3xl', md: '2xl' }
+		// Scrolled to the end, every view's last card clears the floating new-note
+		// button's top edge; the view's own bottom padding is the gap above it. The
+		// button rides above an overlaid phone keyboard (.app-float ends at
+		// --app-keyboard-bottom), so the clearance grows with it.
+		pb: 'calc(var(--app-keyboard-bottom) + var(--app-fab-bottom) + var(--app-fab-size))'
 	})
 };
 

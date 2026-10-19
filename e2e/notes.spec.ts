@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Locator } from '@playwright/test';
 import { createNote, editor, noteCard, openEmptyApp, quickAction } from './app';
 
 test('a note survives a reload and an offline reload', async ({ page, context }) => {
@@ -78,11 +78,41 @@ test('a checklist line toggles from the body', async ({ page }) => {
 	await toggles.first().click();
 	await expect(toggles.first()).toHaveAttribute('aria-pressed', 'true');
 	await expect(toggles.last()).toHaveAttribute('aria-pressed', 'false');
+});
 
-	// A checked row dims its text colour; opacity would also wash out a selection across it.
-	const checked = body.locator('[data-editor-line]').first().locator('[data-line-text]');
-	await expect(checked).toHaveCSS('text-decoration-line', 'line-through');
+test('a checked row dims its text and tokens, not the whole row', async ({ page }) => {
+	await openEmptyApp(page);
+	await createNote(page, 'Dimmed', '[ ] milk `oat`\n[ ] eggs');
+	await noteCard(page, 'Dimmed').click();
+	const sheet = editor(page);
+	const toggle = sheet.getByRole('button', { name: 'Toggle item' }).first();
+	await toggle.click();
+	await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+
+	const colour = (target: Locator) => target.evaluate((element) => getComputedStyle(element).color);
+	// The muted text colour as this note's surface resolves it.
+	const muted = await sheet.evaluate((element) => {
+		const probe = document.createElement('span');
+		probe.style.color = 'var(--colors-scrapscache-text-muted)';
+		element.append(probe);
+		const value = getComputedStyle(probe).color;
+		probe.remove();
+		return value;
+	});
+	const lines = sheet.locator('[data-line-text]');
+	await expect(lines).toHaveCount(2);
+	const checked = lines.first();
+	expect(await colour(checked)).toBe(muted);
+	expect(await colour(checked.locator('.markdown-token-code'))).toBe(muted);
+	expect(await colour(lines.last())).not.toBe(muted);
+	// Opacity would also wash out a selection dragged across the row.
 	await expect(checked).toHaveCSS('opacity', '1');
+	await expect(checked).toHaveCSS('text-decoration-line', 'line-through');
+
+	await sheet.getByRole('button', { name: 'Close note' }).click();
+	const cardLine = noteCard(page, 'Dimmed').locator('[data-check-line="0"] > span').last();
+	expect(await colour(cardLine)).toBe(muted);
+	expect(await colour(cardLine.locator('.markdown-token-code'))).toBe(muted);
 });
 
 test('pin, archive, trash and restore move a note between views', async ({ page }) => {

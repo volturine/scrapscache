@@ -628,10 +628,9 @@ const noteBodyRecipe = defineSlotRecipe({
 				}
 			}
 		},
-		// The text colour dims, not the line: opacity would also wash out a selection
-		// dragged across checked rows.
+		// The dim lives in markdownStyles ([data-checked]), which outranks this layer.
 		checked: {
-			true: { line: { textDecoration: 'line-through', color: 'scrapscache.textMuted' } }
+			true: { line: { textDecoration: 'line-through' } }
 		},
 		indented: {
 			true: { line: { fontSize: 'compact' }, addSubtask: { pl: 0 } },

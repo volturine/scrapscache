@@ -2698,6 +2698,16 @@ export const markdownStyles = css({
 	overflowWrap: 'break-word',
 	wordBreak: 'break-word',
 	color: 'scrapscache.text',
+	// A checked task line dims its text and every token in it by pointing the colours
+	// they use at the muted one. Opacity would also wash out a selection across it.
+	'&[data-checked], & [data-checked]': {
+		color: 'scrapscache.textMuted',
+		'--colors-scrapscache-text': 'token(colors.scrapscache.textMuted)',
+		'--colors-scrapscache-accent': 'token(colors.scrapscache.textMuted)',
+		'--colors-scrapscache-warning': 'token(colors.scrapscache.textMuted)',
+		'--colors-scrapscache-danger': 'token(colors.scrapscache.textMuted)',
+		'--colors-scrapscache-success': 'token(colors.scrapscache.textMuted)'
+	},
 	'& h1, & h2, & h3, & h4, & h5, & h6': {
 		fontWeight: 'strong',
 		lineHeight: 'tight',

@@ -249,6 +249,7 @@
 	</Tooltip>
 
 	<div
+		role="search"
 		class={hstack({
 			h: '2.5rem',
 			minH: '2.5rem',
@@ -269,6 +270,7 @@
 			oninput={(event) => uiStore.setSearchInput(event.currentTarget.value)}
 			type="text"
 			placeholder="Search"
+			aria-label="Search notes"
 			class={cx(input({ variant: 'unstyled' }), styles.searchInput)}
 		/>
 		{#if uiStore.searchInput}

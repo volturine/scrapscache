@@ -49,7 +49,7 @@ test('controls keep keyboard focus without drawing highlights', async ({ page })
 	for (const control of [
 		page.getByRole('button', { name: 'Settings', exact: true }),
 		page.getByRole('button', { name: 'Notes', exact: true }),
-		page.getByRole('textbox', { name: 'Search', exact: true })
+		page.getByRole('search').getByRole('textbox', { name: 'Search notes' })
 	]) {
 		await control.focus();
 		await expect(control).toBeFocused();

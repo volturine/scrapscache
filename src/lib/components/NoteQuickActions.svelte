@@ -109,24 +109,39 @@
 		labelDialogOpen = true;
 	}
 
+	/** How long after its pointerup a press may still deliver its click. */
+	const CLICK_AFTER_UP_MS = 500;
+
 	/**
-	 * Swallow the click that ends the current press, wherever it lands. A press that
-	 * never clicks (it turned into a scroll) gives way to the next press or key.
+	 * Swallow the click that ends the press `pointerId`, wherever it lands. The swallow
+	 * gives way to the next press or key, to the press being cancelled (it turned into
+	 * a scroll), and shortly after the press ends without a click.
 	 */
-	function swallowNextClick() {
+	function swallowNextClick(pointerId: number) {
+		let timer: ReturnType<typeof setTimeout> | undefined;
 		function swallow(e: MouseEvent) {
 			e.preventDefault();
 			e.stopImmediatePropagation();
 			stop();
 		}
+		function ended(e: PointerEvent) {
+			if (e.pointerId !== pointerId) return;
+			if (e.type === 'pointercancel') stop();
+			else timer = setTimeout(stop, CLICK_AFTER_UP_MS);
+		}
 		function stop() {
+			clearTimeout(timer);
 			window.removeEventListener('click', swallow, true);
 			window.removeEventListener('pointerdown', stop, true);
 			window.removeEventListener('keydown', stop, true);
+			window.removeEventListener('pointerup', ended, true);
+			window.removeEventListener('pointercancel', ended, true);
 		}
 		window.addEventListener('click', swallow, true);
 		window.addEventListener('pointerdown', stop, true);
 		window.addEventListener('keydown', stop, true);
+		window.addEventListener('pointerup', ended, true);
+		window.addEventListener('pointercancel', ended, true);
 	}
 
 	// Opening one haze closes every other; an outside press or Escape closes this one.
@@ -137,8 +152,12 @@
 			if (overlay?.parentElement?.contains(e.target as Node)) return;
 			close();
 			// The tap that dismisses the haze must not also open the note under the
-			// finger. A mouse click elsewhere goes through, as it does outside a menu.
-			if (e.pointerType !== 'mouse') swallowNextClick();
+			// finger, nor start a hold, swipe or drag on it. A mouse click elsewhere
+			// goes through, as it does outside a menu.
+			if (e.pointerType !== 'mouse') {
+				e.stopPropagation();
+				swallowNextClick(e.pointerId);
+			}
 		}
 		function onWindowKeyDown(e: KeyboardEvent) {
 			if (e.key === 'Escape') {

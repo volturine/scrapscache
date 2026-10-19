@@ -38,6 +38,13 @@ async function press(target: Element, pointerType: 'touch' | 'mouse') {
 	await fireEvent(target, event);
 }
 
+/** The end of a press: the finger lifted, or the browser took the press for a scroll. */
+async function release(target: Element, type: 'pointerup' | 'pointercancel', pointerId = 1) {
+	const event = new Event(type, { bubbles: true, cancelable: true });
+	Object.assign(event, { pointerType: 'touch', pointerId });
+	await fireEvent(target, event);
+}
+
 function haze(): HTMLElement {
 	const found = document.querySelector('[data-card-haze]');
 	if (!found) throw new Error('no haze overlay');
@@ -145,6 +152,7 @@ describe('NoteCard right-click haze', () => {
 		it('only dismisses the haze when it is a tap', async () => {
 			await fireEvent.contextMenu(card());
 			await press(other, 'touch');
+			await release(other, 'pointerup');
 			await fireEvent.click(other);
 
 			expect(document.querySelector('[data-card-haze]')).toBeNull();
@@ -152,6 +160,7 @@ describe('NoteCard right-click haze', () => {
 
 			// Only the dismissing tap: the next one opens the card.
 			await press(other, 'touch');
+			await release(other, 'pointerup');
 			await fireEvent.click(other);
 			expect(onOpenOther).toHaveBeenCalledWith('note-2');
 		});
@@ -162,6 +171,39 @@ describe('NoteCard right-click haze', () => {
 			await press(other, 'touch');
 
 			await press(other, 'touch');
+			await fireEvent.click(other);
+			expect(onOpenOther).toHaveBeenCalledWith('note-2');
+		});
+
+		it('lets a click with no press of its own through once the dismissing press is cancelled', async () => {
+			await fireEvent.contextMenu(card());
+			await press(other, 'touch');
+			await release(other, 'pointercancel');
+
+			await fireEvent.click(other);
+			expect(onOpenOther).toHaveBeenCalledWith('note-2');
+		});
+
+		it('lets go of the swallow shortly after a press that ends without a click', async () => {
+			vi.useFakeTimers();
+			try {
+				await fireEvent.contextMenu(card());
+				await press(other, 'touch');
+				await release(other, 'pointerup');
+				await vi.advanceTimersByTimeAsync(500);
+
+				await fireEvent.click(other);
+				expect(onOpenOther).toHaveBeenCalledWith('note-2');
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		it('lets go of the swallow at the next key press', async () => {
+			await fireEvent.contextMenu(card());
+			await press(other, 'touch');
+
+			await fireEvent.keyDown(other, { key: 'Shift' });
 			await fireEvent.click(other);
 			expect(onOpenOther).toHaveBeenCalledWith('note-2');
 		});

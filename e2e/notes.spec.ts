@@ -189,6 +189,26 @@ test.describe('on a touch screen', () => {
 	});
 });
 
+test('search filters the archive', async ({ page }) => {
+	await openEmptyApp(page);
+	await createNote(page, 'Apples', 'Fruit for the week');
+	await createNote(page, 'Bolts', 'Hardware for the shelf');
+	await quickAction(noteCard(page, 'Apples'), 'Archive note');
+	await expect(noteCard(page, 'Apples')).toBeHidden();
+	await quickAction(noteCard(page, 'Bolts'), 'Archive note');
+	await expect(noteCard(page, 'Bolts')).toBeHidden();
+
+	await page.goto('/archive');
+	const search = page.getByPlaceholder('Search', { exact: true });
+	await search.fill('shelf');
+	await expect(noteCard(page, 'Bolts')).toBeVisible();
+	await expect(noteCard(page, 'Apples')).toBeHidden();
+
+	await page.getByRole('button', { name: 'Clear search' }).click();
+	await expect(noteCard(page, 'Apples')).toBeVisible();
+	await expect(noteCard(page, 'Bolts')).toBeVisible();
+});
+
 test('the last card stays clear of the new note button', async ({ page }) => {
 	await page.setViewportSize({ width: 390, height: 640 });
 	await openEmptyApp(page);

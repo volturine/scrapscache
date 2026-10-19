@@ -18,8 +18,10 @@
 	const notes = $derived(
 		label ? notesStore.activeNotes.filter((n) => n.labels.includes(label.id)) : []
 	);
-	const pinned = $derived(notes.filter((n) => n.pinned));
-	const others = $derived(notes.filter((n) => !n.pinned));
+	const search = $derived(uiStore.searchFor('label'));
+	const visible = $derived(search ? notesStore.search(search, notes) : notes);
+	const pinned = $derived(visible.filter((n) => n.pinned));
+	const others = $derived(visible.filter((n) => !n.pinned));
 	const shell = $derived(notesShell(uiStore.layout));
 </script>
 
@@ -41,21 +43,25 @@
 			<h1 class={[hstack({ mb: 'lg', px: 'sm' }), text({ style: 'heading' })]}>{label.name}</h1>
 		</div>
 
-		{#if pinned.length > 0}
-			<div class={shell}>
-				<h2 class={sec.label}>Pinned</h2>
-			</div>
-			<NotesFeed notes={pinned} onOpen={openEditor} class={css({ mb: '2xl' })} />
-		{/if}
+		{#if visible.length === 0}
+			<EmptyState icon={Tag} description="No notes found" />
+		{:else}
+			{#if pinned.length > 0}
+				<div class={shell}>
+					<h2 class={sec.label}>Pinned</h2>
+				</div>
+				<NotesFeed notes={pinned} onOpen={openEditor} class={css({ mb: '2xl' })} />
+			{/if}
 
-		{#if pinned.length > 0 && others.length > 0}
-			<div class={shell}>
-				<h2 class={sec.label}>Others</h2>
-			</div>
-		{/if}
+			{#if pinned.length > 0 && others.length > 0}
+				<div class={shell}>
+					<h2 class={sec.label}>Others</h2>
+				</div>
+			{/if}
 
-		{#if others.length > 0}
-			<NotesFeed notes={others} onOpen={openEditor} />
+			{#if others.length > 0}
+				<NotesFeed notes={others} onOpen={openEditor} />
+			{/if}
 		{/if}
 	{/if}
 </div>

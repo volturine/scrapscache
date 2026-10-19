@@ -14,6 +14,8 @@
 
 	const { openNote: openEditor } = useEditorActions();
 	const trashed = $derived(notesStore.trashedNotes);
+	const search = $derived(uiStore.searchFor('trash'));
+	const visible = $derived(search ? notesStore.search(search, trashed) : trashed);
 
 	let confirmEmpty = $state(false);
 
@@ -32,6 +34,8 @@
 			actionLabel="Back to notes"
 			href={resolve('')}
 		/>
+	{:else if visible.length === 0}
+		<EmptyState icon={Trash2} description="No notes found" />
 	{:else}
 		<div class={notesShell(uiStore.layout)}>
 			<p class={trashViewStyles.banner}>
@@ -39,26 +43,31 @@
 				days.
 			</p>
 		</div>
-		<SectionHeader label="Trash" count={trashed.length}>
-			{#if confirmEmpty}
-				<span class={text({ style: 'caption' })}>Delete all?</span>
-				<button type="button" onclick={emptyTrash} class={button({ variant: 'danger', size: 'xs' })}
-					>Yes</button
-				>
-				<button
-					type="button"
-					onclick={() => (confirmEmpty = false)}
-					class={button({ variant: 'quiet', size: 'xs' })}>No</button
-				>
-			{:else}
-				<button
-					type="button"
-					onclick={() => (confirmEmpty = true)}
-					class={button({ variant: 'quiet', size: 'xs' })}
-					><Trash2 class={iconSizeSm} aria-hidden="true" />Empty trash</button
-				>
+		<SectionHeader label="Trash" count={visible.length}>
+			<!-- Empty deletes every trashed note, including ones the search hides. -->
+			{#if !search}
+				{#if confirmEmpty}
+					<span class={text({ style: 'caption' })}>Delete all?</span>
+					<button
+						type="button"
+						onclick={emptyTrash}
+						class={button({ variant: 'danger', size: 'xs' })}>Yes</button
+					>
+					<button
+						type="button"
+						onclick={() => (confirmEmpty = false)}
+						class={button({ variant: 'quiet', size: 'xs' })}>No</button
+					>
+				{:else}
+					<button
+						type="button"
+						onclick={() => (confirmEmpty = true)}
+						class={button({ variant: 'quiet', size: 'xs' })}
+						><Trash2 class={iconSizeSm} aria-hidden="true" />Empty trash</button
+					>
+				{/if}
 			{/if}
 		</SectionHeader>
-		<NotesFeed notes={trashed} onOpen={openEditor} />
+		<NotesFeed notes={visible} onOpen={openEditor} />
 	{/if}
 </div>

@@ -104,27 +104,28 @@ export function isReminderOverdue(ts: number | null, now = Date.now()): boolean 
 	return ts != null && ts < now;
 }
 
-/** Days a trashed note has been sitting in the trash. */
-export function daysSinceTrashed(trashedAt: number | null): number {
-	if (trashedAt == null) return Infinity;
-	return (Date.now() - trashedAt) / (1000 * 60 * 60 * 24);
-}
-
 export const TRASH_PURGE_DAYS = 7;
+const DAY_MS = 86_400_000;
+
+/**
+ * When a trashed note is deleted for good: the purge and the countdown both read
+ * this. A missing or unusable trash time (old or malformed data) is due now.
+ */
+export function trashPurgeAt(trashedAt: number | null): number {
+	return Number.isFinite(trashedAt) ? (trashedAt as number) + TRASH_PURGE_DAYS * DAY_MS : 0;
+}
 
 /** When a trashed note will be deleted for good, by calendar day; `soon` on its last two days. */
 export function trashCountdown(
 	trashedAt: number | null,
 	nowMs = Date.now()
-): { label: string; soon: boolean } | null {
-	if (trashedAt == null) return null;
+): { label: string; soon: boolean } {
 	const localMidnight = (ms: number) => {
 		const d = new Date(ms);
 		return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 	};
-	const deleteAt = trashedAt + TRASH_PURGE_DAYS * 86_400_000;
 	// Rounding absorbs the 23- and 25-hour calendar days around DST changes.
-	const days = Math.round((localMidnight(deleteAt) - localMidnight(nowMs)) / 86_400_000);
+	const days = Math.round((localMidnight(trashPurgeAt(trashedAt)) - localMidnight(nowMs)) / DAY_MS);
 	if (days <= 0) return { label: 'Deletes today', soon: true };
 	if (days === 1) return { label: 'Deletes tomorrow', soon: true };
 	return { label: `Deletes in ${days} days`, soon: false };

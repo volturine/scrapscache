@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/svelte';
+import { tick } from 'svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Note } from '#lib/types.js';
 import { tickAppClock } from '#lib/appClock.svelte.js';
@@ -112,5 +113,26 @@ describe('NoteCard trash countdown', () => {
 		renderAt(note({ createdAt: at, updatedAt: at }), at);
 
 		expect(document.querySelector('[data-trash-countdown]')).toBeNull();
+	});
+
+	it('rolls over from tomorrow to today at midnight on a mounted card', async () => {
+		const trashedAt = new Date(2026, 9, 10, 10, 0).getTime();
+		const trashed = note({ trashed: true, trashedAt, updatedAt: trashedAt });
+		renderAt(trashed, new Date(2026, 9, 16, 23, 59).getTime());
+		expect(document.querySelector('[data-trash-countdown]')?.textContent).toBe('Deletes tomorrow');
+
+		vi.setSystemTime(new Date(2026, 9, 17, 0, 1).getTime());
+		tickAppClock();
+		await tick();
+
+		expect(document.querySelector('[data-trash-countdown]')?.textContent).toBe('Deletes today');
+	});
+
+	it('says the countdown on the control assistive technology lands on', () => {
+		const trashedAt = new Date(2026, 9, 10, 10, 0).getTime();
+		const trashed = note({ trashed: true, trashedAt, updatedAt: trashedAt });
+		renderAt(trashed, new Date(2026, 9, 12, 10, 0).getTime());
+
+		expect(screen.getByRole('button', { name: 'Open Trip, deletes in 5 days' })).toBeTruthy();
 	});
 });

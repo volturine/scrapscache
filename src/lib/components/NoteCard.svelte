@@ -216,13 +216,19 @@
 			.filter((l): l is NonNullable<typeof l> => !!l)
 	);
 
+	const countdown = $derived(note.trashed ? trashCountdown(note.trashedAt, appClock.now) : null);
+
+	// The open control is what assistive technology lands on, so it says what the card shows.
 	const openLabel = $derived.by(() => {
-		const title = note.title || 'untitled note';
-		if (note.reminder == null) return `Open ${title}`;
-		const when = formatReminder(note.reminder);
-		return isReminderOverdue(note.reminder)
-			? `Open ${title}, overdue reminder ${when}`
-			: `Open ${title}, reminder ${when}`;
+		const parts = [`Open ${note.title || 'untitled note'}`];
+		if (note.reminder != null) {
+			const when = formatReminder(note.reminder);
+			parts.push(
+				isReminderOverdue(note.reminder) ? `overdue reminder ${when}` : `reminder ${when}`
+			);
+		}
+		if (countdown) parts.push(countdown.label.toLowerCase());
+		return parts.join(', ');
 	});
 
 	let offsetX = $state(0);
@@ -250,7 +256,6 @@
 
 	const card = $derived(noteCard({ pinned: note.pinned }));
 	const activity = $derived(noteActivity(note, appClock.now));
-	const countdown = $derived(note.trashed ? trashCountdown(note.trashedAt, appClock.now) : null);
 	const titleOnly = $derived(note.title.trim().length > 0 && !(note.body ?? '').trim());
 </script>
 

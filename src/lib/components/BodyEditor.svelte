@@ -2196,13 +2196,18 @@
 		reconcileDom(range?.start.line ?? null, range?.start.offset ?? 0, true);
 	}
 
+	/** The row an IME composes in, marked so its hint steps aside until the text commits. */
+	let composingText: HTMLElement | null = null;
+
 	/**
 	 * Composed text stays out of the model until the IME commits it, so an empty
-	 * line still carries its hint. The mark on the editor hides that hint meanwhile.
+	 * row still carries its hint. Only that row's hint hides; the others stay.
 	 */
 	function setComposing(value: boolean) {
 		composing = value;
-		container?.toggleAttribute('data-composing', value);
+		composingText?.removeAttribute('data-composing');
+		composingText = value && compositionStart ? textElement(compositionStart.start.line) : null;
+		composingText?.setAttribute('data-composing', '');
 	}
 
 	function handleCompositionStart() {
@@ -3297,7 +3302,15 @@
 	const focusedGroupIds = $derived(new Set(focusedGroupRows.map(({ line }) => line.id)));
 	const focusedGroupLastId = $derived(focusedGroupRows.at(-1)?.line.id ?? null);
 
-	const isSingleLine = $derived(lines.length === 1);
+	/**
+	 * The body's own hint: only while the body is one plain row with nothing in it.
+	 * A lone bullet or task row has text a person already chose to write.
+	 */
+	const bodyHint = $derived(
+		lines.length === 1 && !lines[0].text && !lines[0].isBullet && !lines[0].isCheck && placeholder
+			? placeholder
+			: undefined
+	);
 
 	type EditorItem =
 		| { kind: 'chunk'; key: string; start: number; lines: Line[] }
@@ -3485,9 +3498,7 @@
 							? line.indent > 0
 								? 'Sub-task'
 								: 'Task'
-							: isSingleLine && placeholder
-								? placeholder
-								: undefined
+							: bodyHint
 						: undefined}
 					class={[
 						markdownStyles,
@@ -3574,6 +3585,7 @@
 	aria-readonly={readOnly}
 	aria-multiline="true"
 	aria-label="Note body"
+	aria-placeholder={bodyHint}
 	spellcheck={!readOnly}
 	class={[
 		editor.container,

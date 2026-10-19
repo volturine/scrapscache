@@ -624,13 +624,16 @@ const noteBodyRecipe = defineSlotRecipe({
 					// caret holder, so the line is never :empty. After the holder, the caret
 					// sits in front of the hint; in flow, a hint that wraps on a phone grows
 					// the row instead of overflowing a chunk that clips its paint.
+					// The empty alt text keeps the hint out of the accessibility tree; the
+					// editor names it with aria-placeholder instead.
 					'&[data-placeholder]::after': {
-						content: 'attr(data-placeholder)',
+						content: 'attr(data-placeholder) / ""',
 						color: 'scrapscache.textMuted',
 						pointerEvents: 'none'
 					},
-					// An IME's text is not on the line yet; the hint would trail it.
-					'[data-composing] &[data-placeholder]::after': { content: 'none' }
+					// An IME's text is not on the row yet; the hint would trail it. Both
+					// attributes, so this outranks the rule above in any emitted order.
+					'&[data-placeholder][data-composing]::after': { content: 'none' }
 				}
 			}
 		},

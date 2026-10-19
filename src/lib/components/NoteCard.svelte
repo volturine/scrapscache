@@ -1,17 +1,17 @@
 <script lang="ts">
 	import { css, cx } from 'styled-system/css';
 	import { badge, noteCard, noteSurface } from 'styled-system/recipes';
-	import { cardOpenControl } from '$panda/styles';
+	import { cardOpenControl, iconSizeXs, trashCountdownRow } from '$panda/styles';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
 	import type { Note } from '#lib/types.js';
-	import { formatReminder, isReminderOverdue, noteActivity } from '#lib/utils.js';
+	import { formatReminder, isReminderOverdue, noteActivity, trashCountdown } from '#lib/utils.js';
 	import { appClock } from '#lib/appClock.svelte.js';
 	import { cardSwipeStyle, createCardSwipe } from '#lib/cardSwipe.js';
 	import { overflowingTable } from '#lib/tableScroll.js';
 	import NoteBodyDisplay from './NoteBodyDisplay.svelte';
 	import NoteQuickActions from './NoteQuickActions.svelte';
 	import ReminderLabel from './ReminderLabel.svelte';
-	import { Archive, ArchiveRestore, Lock, RotateCcw, Trash2 } from '@lucide/svelte';
+	import { Archive, ArchiveRestore, Clock, Lock, RotateCcw, Trash2 } from '@lucide/svelte';
 	import { onDestroy } from 'svelte';
 
 	let {
@@ -216,13 +216,19 @@
 			.filter((l): l is NonNullable<typeof l> => !!l)
 	);
 
+	const countdown = $derived(note.trashed ? trashCountdown(note.trashedAt, appClock.now) : null);
+
+	// The open control is what assistive technology lands on, so it says what the card shows.
 	const openLabel = $derived.by(() => {
-		const title = note.title || 'untitled note';
-		if (note.reminder == null) return `Open ${title}`;
-		const when = formatReminder(note.reminder);
-		return isReminderOverdue(note.reminder)
-			? `Open ${title}, overdue reminder ${when}`
-			: `Open ${title}, reminder ${when}`;
+		const parts = [`Open ${note.title || 'untitled note'}`];
+		if (note.reminder != null) {
+			const when = formatReminder(note.reminder);
+			parts.push(
+				isReminderOverdue(note.reminder) ? `overdue reminder ${when}` : `reminder ${when}`
+			);
+		}
+		if (countdown) parts.push(countdown.label.toLowerCase());
+		return parts.join(', ');
 	});
 
 	let offsetX = $state(0);
@@ -407,6 +413,12 @@
 					</span>
 				{/each}
 			</div>
+		{/if}
+
+		{#if countdown}
+			<p class={trashCountdownRow({ soon: countdown.soon })} data-trash-countdown>
+				<Clock class={iconSizeXs} aria-hidden="true" />{countdown.label}
+			</p>
 		{/if}
 
 		<NoteQuickActions {note} bind:open={hazeActive} />

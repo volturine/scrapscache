@@ -103,7 +103,7 @@ describe('TrashView search', () => {
 		render(TrashView);
 
 		expect(screen.getByText('No notes match “needle”')).toBeTruthy();
-		expect(screen.queryByRole('button', { name: 'Empty' })).toBeNull();
+		expect(screen.queryByRole('button', { name: 'Empty trash' })).toBeNull();
 	});
 
 	it('offers Empty when no search is active', () => {
@@ -111,7 +111,7 @@ describe('TrashView search', () => {
 		uiStore.setView('trash');
 		render(TrashView);
 
-		expect(screen.getByRole('button', { name: 'Empty' })).toBeTruthy();
+		expect(screen.getByRole('button', { name: 'Empty trash' })).toBeTruthy();
 	});
 
 	it('hides Empty while a search is active, because it would empty the whole trash', () => {
@@ -122,7 +122,7 @@ describe('TrashView search', () => {
 		searchIn('trash', 'needle');
 		render(TrashView);
 
-		expect(screen.queryByRole('button', { name: 'Empty' })).toBeNull();
+		expect(screen.queryByRole('button', { name: 'Empty trash' })).toBeNull();
 		expect(screen.queryByRole('button', { name: /^Open Apples/ })).toBeTruthy();
 	});
 });
@@ -217,7 +217,7 @@ describe('clearing a search', () => {
 
 		uiStore.search = '';
 		await vi.waitFor(() => expect(cards()).toHaveLength(100));
-		expect(screen.getByRole('button', { name: 'Empty' })).toBeTruthy();
+		expect(screen.getByRole('button', { name: 'Empty trash' })).toBeTruthy();
 	});
 });
 

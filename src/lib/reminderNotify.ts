@@ -130,3 +130,13 @@ export async function closeReminderNotifications(wakeIds: ReadonlySet<string>): 
 		/* Notifications stay up; the user can still dismiss them. */
 	}
 }
+
+/**
+ * What to do about notifications the user blocked. An installed app has no
+ * browser UI or site settings; its block lives in the device's settings for it.
+ */
+export function notificationsBlockedHint(installedApp: boolean): string {
+	return installedApp
+		? "Blocked for this app. Allow notifications for Scraps Cache in the app's settings or your device's notification settings."
+		: 'Blocked in the browser. Allow notifications for this site in its settings.';
+}

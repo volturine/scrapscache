@@ -8,11 +8,12 @@
 	import { notesStore } from '#lib/stores/notes.svelte.js';
 	import { uiStore } from '#lib/stores/ui.svelte.js';
 	import { useEditorActions } from '#lib/editorContext.js';
+	import { TRASH_PURGE_DAYS } from '#lib/utils.js';
 	import EmptyState from '#lib/components/EmptyState.svelte';
-	import { Trash2 } from '@lucide/svelte';
+	import { Info, Trash2 } from '@lucide/svelte';
 	import { css } from 'styled-system/css';
 	import { button, text } from 'styled-system/recipes';
-	import { viewHeading, viewPage } from '$panda/styles';
+	import { iconSizeSm, notesShell, trashViewStyles, viewHeading, viewPage } from '$panda/styles';
 
 	const { openNote: openEditor } = useEditorActions();
 	const trashed = $derived(notesStore.trashedNotes);
@@ -34,13 +35,19 @@
 	{#if trashed.length === 0}
 		<EmptyState
 			icon={Trash2}
-			description="Deleted notes stay here for 7 days before they are deleted forever."
+			description="Deleted notes stay here for {TRASH_PURGE_DAYS} days before they are deleted forever."
 			actionLabel="Back to notes"
 			href={resolve('')}
 		/>
 	{:else if visible.length === 0}
 		<SearchNoMatches here="trash" query={search} {places} />
 	{:else}
+		<div class={notesShell(uiStore.layout)}>
+			<p class={trashViewStyles.banner}>
+				<Info class={iconSizeSm} aria-hidden="true" />Notes are deleted forever after {TRASH_PURGE_DAYS}
+				days.
+			</p>
+		</div>
 		<SectionHeader label="Trash" count={visible.length}>
 			<!-- Empty deletes every trashed note, including ones the search hides. -->
 			{#if !search}
@@ -60,7 +67,8 @@
 					<button
 						type="button"
 						onclick={() => (confirmEmpty = true)}
-						class={button({ variant: 'quiet', size: 'xs' })}>Empty</button
+						class={button({ variant: 'quiet', size: 'xs' })}
+						><Trash2 class={iconSizeSm} aria-hidden="true" />Empty trash</button
 					>
 				{/if}
 			{/if}

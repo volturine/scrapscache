@@ -22,6 +22,21 @@ export function createEditContext(now: () => number): EditContext {
 	return { now, writer: uid(), author: new BodyAuthor() };
 }
 
+/**
+ * Stamp a note that did not exist before: every field written by this writer at
+ * the note's creation time. With nothing earlier to come after, equal times keep
+ * it reading as created, not edited; its first edit stamps past them.
+ */
+export function stampNewNote(note: Note, writer: string): Note {
+	const at = note.createdAt;
+	return {
+		...note,
+		updatedAt: at,
+		fieldTimes: Object.fromEntries(NOTE_FIELDS.map((field) => [field, at])),
+		fieldWriters: Object.fromEntries(NOTE_FIELDS.map((field) => [field, writer]))
+	};
+}
+
 /** Stamp fields as written now by this writer, each strictly after its previous time. */
 export function touchNoteFields(note: Note, fields: NoteField[], context: EditContext): Note {
 	const at = context.now();

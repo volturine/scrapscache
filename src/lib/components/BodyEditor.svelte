@@ -1344,7 +1344,7 @@
 	/** End an open composition and keep its text; the editor is about to close. */
 	export function finishInput() {
 		if (composing) {
-			composing = false;
+			setComposing(false);
 			const start = compositionStart;
 			compositionStart = null;
 			reconcileDom(start?.start.line ?? null, start?.start.offset ?? 0);
@@ -2184,7 +2184,7 @@
 				event.inputType === 'deleteCompositionText';
 			if (stillComposing) return;
 			// iOS can skip compositionend; a plain input means the session is over.
-			composing = false;
+			setComposing(false);
 			const start = compositionStart;
 			compositionStart = null;
 			reconcileDom(start?.start.line ?? null, start?.start.offset ?? 0);
@@ -2196,17 +2196,31 @@
 		reconcileDom(range?.start.line ?? null, range?.start.offset ?? 0, true);
 	}
 
+	/** The row an IME composes in, marked so its hint steps aside until the text commits. */
+	let composingText: HTMLElement | null = null;
+
+	/**
+	 * Composed text stays out of the model until the IME commits it, so an empty
+	 * row still carries its hint. Only that row's hint hides; the others stay.
+	 */
+	function setComposing(value: boolean) {
+		composing = value;
+		composingText?.removeAttribute('data-composing');
+		composingText = value && compositionStart ? textElement(compositionStart.start.line) : null;
+		composingText?.setAttribute('data-composing', '');
+	}
+
 	function handleCompositionStart() {
 		cancelCaretLock();
 		clearExtraCursors();
 		rememberEdit();
 		lastTyping = null;
 		compositionStart = editorRange();
-		composing = true;
+		setComposing(true);
 	}
 
 	function handleCompositionEnd() {
-		composing = false;
+		setComposing(false);
 		const start = compositionStart;
 		compositionStart = null;
 		reconcileDom(start?.start.line ?? null, start?.start.offset ?? 0);
@@ -3288,7 +3302,15 @@
 	const focusedGroupIds = $derived(new Set(focusedGroupRows.map(({ line }) => line.id)));
 	const focusedGroupLastId = $derived(focusedGroupRows.at(-1)?.line.id ?? null);
 
-	const isSingleLine = $derived(lines.length === 1);
+	/**
+	 * The body's own hint: only while the body is one plain row with nothing in it.
+	 * A lone bullet or task row has text a person already chose to write.
+	 */
+	const bodyHint = $derived(
+		lines.length === 1 && !lines[0].text && !lines[0].isBullet && !lines[0].isCheck && placeholder
+			? placeholder
+			: undefined
+	);
 
 	type EditorItem =
 		| { kind: 'chunk'; key: string; start: number; lines: Line[] }
@@ -3476,9 +3498,7 @@
 							? line.indent > 0
 								? 'Sub-task'
 								: 'Task'
-							: isSingleLine
-								? placeholder
-								: ''
+							: bodyHint
 						: undefined}
 					class={[
 						markdownStyles,
@@ -3565,6 +3585,7 @@
 	aria-readonly={readOnly}
 	aria-multiline="true"
 	aria-label="Note body"
+	aria-placeholder={bodyHint}
 	spellcheck={!readOnly}
 	class={[
 		editor.container,

@@ -126,15 +126,17 @@ test('a checked row dims its text and tokens, not the whole row', async ({ page 
 	await expect(toggle).toHaveAttribute('aria-pressed', 'true');
 
 	const colour = (target: Locator) => target.evaluate((element) => getComputedStyle(element).color);
-	// The muted text colour as this note's surface resolves it.
-	const muted = await sheet.evaluate((element) => {
-		const probe = document.createElement('span');
-		probe.style.color = 'var(--colors-scrapscache-text-muted)';
-		element.append(probe);
-		const value = getComputedStyle(probe).color;
-		probe.remove();
-		return value;
-	});
+	// A colour token as this note's surface resolves it.
+	const resolve = (token: string) =>
+		sheet.evaluate((element, token) => {
+			const probe = document.createElement('span');
+			probe.style.color = `var(${token})`;
+			element.append(probe);
+			const value = getComputedStyle(probe).color;
+			probe.remove();
+			return value;
+		}, token);
+	const muted = await resolve('--colors-scrapscache-text-muted');
 	const lines = sheet.locator('[data-line-text]');
 	await expect(lines).toHaveCount(2);
 	const checked = lines.first();
@@ -144,6 +146,15 @@ test('a checked row dims its text and tokens, not the whole row', async ({ page 
 	// Opacity would also wash out a selection dragged across the row.
 	await expect(checked).toHaveCSS('opacity', '1');
 	await expect(checked).toHaveCSS('text-decoration-line', 'line-through');
+
+	// The find bar's current match keeps its own colour on a checked line.
+	await sheet.locator('[data-body-editor]').press('ControlOrMeta+f');
+	await sheet.getByRole('textbox', { name: 'Find', exact: true }).fill('oat');
+	await expect(sheet.locator('[data-editor-find-count]')).toHaveText('1 of 1');
+	const currentMatch = await checked.evaluate(
+		(element) => getComputedStyle(element, '::highlight(note-find-current)').backgroundColor
+	);
+	expect(currentMatch).toBe(await resolve('--colors-scrapscache-warning'));
 
 	await sheet.getByRole('button', { name: 'Close note' }).click();
 	const cardLine = noteCard(page, 'Dimmed').locator('[data-check-line="0"] > span').last();

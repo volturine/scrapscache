@@ -2740,10 +2740,13 @@ export const markdownStyles = css({
 		color: 'scrapscache.textMuted',
 		'--colors-scrapscache-text': 'token(colors.scrapscache.textMuted)',
 		'--colors-scrapscache-accent': 'token(colors.scrapscache.textMuted)',
-		'--colors-scrapscache-warning': 'token(colors.scrapscache.textMuted)',
 		'--colors-scrapscache-danger': 'token(colors.scrapscache.textMuted)',
 		'--colors-scrapscache-success': 'token(colors.scrapscache.textMuted)'
 	},
+	// The warning colour also paints the find bar's current match on that line, so the
+	// tokens drawn with it are dimmed one by one rather than through the token.
+	'& [data-checked] :is(.markdown-token-code, .markdown-token-marker-code, .markdown-token-marker-heading), &.markdown-raw [data-checked] :is(.markdown-token-code, .markdown-token-heading-1, .markdown-token-heading-2, .markdown-token-heading-3, .markdown-token-heading-4, .markdown-token-heading-5, .markdown-token-heading-6)':
+		{ color: 'scrapscache.textMuted' },
 	'& h1, & h2, & h3, & h4, & h5, & h6': {
 		fontWeight: 'strong',
 		lineHeight: 'tight',

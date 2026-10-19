@@ -1344,7 +1344,7 @@
 	/** End an open composition and keep its text; the editor is about to close. */
 	export function finishInput() {
 		if (composing) {
-			composing = false;
+			setComposing(false);
 			const start = compositionStart;
 			compositionStart = null;
 			reconcileDom(start?.start.line ?? null, start?.start.offset ?? 0);
@@ -2184,7 +2184,7 @@
 				event.inputType === 'deleteCompositionText';
 			if (stillComposing) return;
 			// iOS can skip compositionend; a plain input means the session is over.
-			composing = false;
+			setComposing(false);
 			const start = compositionStart;
 			compositionStart = null;
 			reconcileDom(start?.start.line ?? null, start?.start.offset ?? 0);
@@ -2196,17 +2196,26 @@
 		reconcileDom(range?.start.line ?? null, range?.start.offset ?? 0, true);
 	}
 
+	/**
+	 * Composed text stays out of the model until the IME commits it, so an empty
+	 * line still carries its hint. The mark on the editor hides that hint meanwhile.
+	 */
+	function setComposing(value: boolean) {
+		composing = value;
+		container?.toggleAttribute('data-composing', value);
+	}
+
 	function handleCompositionStart() {
 		cancelCaretLock();
 		clearExtraCursors();
 		rememberEdit();
 		lastTyping = null;
 		compositionStart = editorRange();
-		composing = true;
+		setComposing(true);
 	}
 
 	function handleCompositionEnd() {
-		composing = false;
+		setComposing(false);
 		const start = compositionStart;
 		compositionStart = null;
 		reconcileDom(start?.start.line ?? null, start?.start.offset ?? 0);
@@ -3476,9 +3485,9 @@
 							? line.indent > 0
 								? 'Sub-task'
 								: 'Task'
-							: isSingleLine
+							: isSingleLine && placeholder
 								? placeholder
-								: ''
+								: undefined
 						: undefined}
 					class={[
 						markdownStyles,

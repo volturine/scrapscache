@@ -64,6 +64,25 @@ test('controls keep keyboard focus without drawing highlights', async ({ page })
 	await expect(theme).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
 });
 
+test('a new note shows its body placeholder', async ({ page }) => {
+	await openEmptyApp(page);
+	await page.getByRole('button', { name: 'New note' }).click();
+	const body = editor(page).getByRole('textbox', { name: 'Note body' });
+	await expect(body).toBeFocused();
+
+	// The empty line holds a zero-width caret holder, so the hint must not need :empty.
+	const line = body.locator('[data-line-text]');
+	const hint = () => line.evaluate((element) => getComputedStyle(element, '::after').content);
+	await expect(line).toHaveAttribute('data-placeholder', /^Take a note/);
+	expect(await hint()).toContain('Take a note');
+
+	// While an IME composes, its text is not on the line yet, and the hint steps aside.
+	await body.dispatchEvent('compositionstart');
+	expect(await hint()).toBe('none');
+	await body.dispatchEvent('compositionend');
+	expect(await hint()).toContain('Take a note');
+});
+
 test('a checklist line toggles from the body', async ({ page }) => {
 	await openEmptyApp(page);
 	await createNote(page, 'Checklist', '[ ] milk\n[ ] eggs');

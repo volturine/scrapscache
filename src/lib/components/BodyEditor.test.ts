@@ -3371,3 +3371,34 @@ describe('BodyEditor multiple cursors', () => {
 		expect(lineTexts(container)[0].match(/x/g)).toHaveLength(1);
 	});
 });
+
+describe('BodyEditor placeholder', () => {
+	it('hints on the only line of an empty body and on empty task rows', () => {
+		const hint = 'Take a note';
+		const empty = render(BodyEditor, { props: { body: '', placeholder: hint } });
+		expect(
+			empty.container.querySelector('[data-line-text]')?.getAttribute('data-placeholder')
+		).toBe(hint);
+		empty.unmount();
+
+		const { container } = render(BodyEditor, {
+			props: { body: 'Groceries\n\n[ ] ', placeholder: hint }
+		});
+		const hints = [...container.querySelectorAll('[data-line-text]')].map((line) =>
+			line.getAttribute('data-placeholder')
+		);
+		// A blank line between others has nothing to say, so it carries no hint at all.
+		expect(hints).toEqual([null, null, 'Task']);
+	});
+
+	it('marks the editor while an IME composes, so the hint does not trail the composed text', async () => {
+		const { container } = render(BodyEditor, { props: { body: '', placeholder: 'Take a note' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+
+		await fireEvent.compositionStart(editor);
+		expect(editor.hasAttribute('data-composing')).toBe(true);
+
+		await fireEvent.compositionEnd(editor);
+		expect(editor.hasAttribute('data-composing')).toBe(false);
+	});
+});

@@ -217,6 +217,29 @@ describe('moveCardToColumn', () => {
 		expect(kanbanStore.boards[0].columns.map((item) => [...item.order])).toEqual(ordersBefore);
 	});
 
+	it('still undoes a move after the column the card moved to is removed', () => {
+		const { boardId, todo, doing, a, b, c } = setUpBoard();
+		move(boardId, b, todo, doing);
+		kanbanStore.removeTagColumn(boardId, column(doing).id);
+
+		actionUndo.undo();
+
+		expect(labelsOf(b)).toEqual([todo]);
+		expect(column(todo).order).toEqual([a, b, c]);
+	});
+
+	it('still redoes a move after the column the card left is removed', () => {
+		const { boardId, todo, doing, b } = setUpBoard();
+		move(boardId, b, todo, doing);
+		actionUndo.undo();
+		kanbanStore.removeTagColumn(boardId, column(todo).id);
+
+		actionUndo.redo();
+
+		expect(labelsOf(b)).toEqual([doing]);
+		expect(column(doing).order).toEqual([b]);
+	});
+
 	it('undoes two moves in turn back to the original order', () => {
 		const { boardId, todo, doing, a, b, c } = setUpBoard();
 		move(boardId, a, todo, doing);

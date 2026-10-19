@@ -1386,6 +1386,40 @@ export const reminderRoot = cva({
 	]
 });
 
+// Trash contracts
+export const trashCountdownRow = cva({
+	base: {
+		display: 'flex',
+		alignItems: 'center',
+		gap: '2xs',
+		px: 'md',
+		pb: 'sm',
+		textStyle: 'caption',
+		...mutedText
+	},
+	variants: {
+		soon: {
+			true: inlineOverdueLabel,
+			false: {}
+		}
+	}
+});
+
+export const trashViewStyles = {
+	banner: css({
+		display: 'flex',
+		alignItems: 'center',
+		gap: 'sm',
+		mb: 'lg',
+		px: 'md',
+		py: 'sm',
+		rounded: 'card',
+		bg: 'scrapscache.surfaceSubtle',
+		textStyle: 'body',
+		color: 'scrapscache.text'
+	})
+};
+
 // PhotoFullscreen contracts are static classes; finite state choices use explicit maps.
 export const photoStyles = {
 	cropRoot: css({

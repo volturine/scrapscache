@@ -25,7 +25,8 @@ function note(partial: Partial<Note> = {}): Note {
 
 /** The card itself: the article around the open control and the quick actions. */
 function card(): HTMLElement {
-	const found = screen.getByRole('button', { name: 'Open Trip' }).closest('article');
+	// A trashed card's control also names its countdown ("Open Trip, deletes today").
+	const found = screen.getByRole('button', { name: /^Open Trip(,|$)/ }).closest('article');
 	if (!found) throw new Error('no card');
 	return found;
 }

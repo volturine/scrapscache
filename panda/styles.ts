@@ -1422,6 +1422,40 @@ export const trashViewStyles = {
 	})
 };
 
+/** The banner above the feed that speaks up only when sync needs something. */
+export const syncAttentionStyles = {
+	wrap: css({ px: 'lg', pt: 'sm', flexShrink: 0 }),
+	banner: cva({
+		base: {
+			display: 'flex',
+			alignItems: 'center',
+			flexWrap: 'wrap',
+			gap: 'sm',
+			px: 'md',
+			py: 'sm',
+			rounded: 'card',
+			borderWidth: 'hairline',
+			textStyle: 'body',
+			color: 'scrapscache.text'
+		},
+		variants: {
+			tone: {
+				danger: { bg: 'scrapscache.dangerSubtle', borderColor: 'scrapscache.danger' },
+				warning: { bg: 'scrapscache.warningSubtle', borderColor: 'scrapscache.warning' },
+				muted: { bg: 'scrapscache.surfaceSubtle', borderColor: 'scrapscache.border' }
+			}
+		}
+	}),
+	iconTone: {
+		danger: css({ flexShrink: 0, color: 'scrapscache.danger' }),
+		warning: css({ flexShrink: 0, color: 'scrapscache.warning' }),
+		muted: css({ flexShrink: 0, ...mutedText })
+	},
+	text: css({ flex: '1', minW: '12rem' }),
+	title: css({ fontWeight: 'strong', mr: 'xs' }),
+	actions: css({ display: 'flex', gap: 'xs', flexShrink: 0, ml: 'auto' })
+};
+
 // PhotoFullscreen contracts are static classes; finite state choices use explicit maps.
 export const photoStyles = {
 	cropRoot: css({

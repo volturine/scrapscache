@@ -65,3 +65,35 @@ test('two devices pair with a code and converge, deletes included', async ({ bro
 	await contextA.close();
 	await contextB.close();
 });
+
+test('sync speaks up above the feed only when it needs attention', async ({ page, context }) => {
+	await openEmptyApp(page);
+	await createNote(page, 'Quiet note');
+	const banner = page.locator('[data-sync-attention]');
+	// A workspace that only lives on this device has nothing to say.
+	await expect(banner).toHaveCount(0);
+
+	let dialog = await openSync(page);
+	await dialog.getByRole('button', { name: /^Expand / }).click();
+	await dialog.getByRole('button', { name: /^Sync this workspace/ }).click();
+	await dialog.getByRole('button', { name: 'Start sync' }).click();
+	await expect(dialog.getByRole('button', { name: / is active$/ })).toContainText('Synced');
+	await dialog.getByRole('button', { name: 'Close' }).click();
+	// Synced and quiet: still nothing.
+	await expect(banner).toHaveCount(0);
+
+	// A sync that cannot reach the relay is worth a banner, with the next step on it.
+	await context.setOffline(true);
+	dialog = await openSync(page);
+	await dialog.getByRole('button', { name: 'Sync now' }).click();
+	await expect(dialog.getByText('Could not reach server. Check your connection.')).toBeVisible();
+	await dialog.getByRole('button', { name: 'Close' }).click();
+	await expect(banner).toHaveAttribute('data-sync-attention', 'error');
+	await expect(banner).toContainText('Sync stopped: the server could not be reached.');
+	await expect(banner).toContainText('Your notes are safe on this device.');
+
+	// Retry once the connection is back clears it.
+	await context.setOffline(false);
+	await banner.getByRole('button', { name: 'Retry' }).click();
+	await expect(banner).toHaveCount(0);
+});

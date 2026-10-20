@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { friendlySyncError } from '#lib/syncAttention.js';
 	import ChoiceCard from './ChoiceCard.svelte';
 	import { progressMeter, syncStyles as styles } from '$panda/styles';
 	import { css, cx } from 'styled-system/css';
@@ -526,11 +527,12 @@
 		error = '';
 	}
 
+	/** The modal's own sentence for a dead connection; other errors come through as they are. */
 	function friendlyError(raw: string | null | undefined, fallback: string): string {
-		if (!raw) return fallback;
-		if (raw.includes('Failed to fetch') || raw.includes('NetworkError'))
-			return 'Could not reach server. Check your connection.';
-		return raw;
+		const reason = friendlySyncError(raw, fallback);
+		return reason === 'the server could not be reached'
+			? 'Could not reach server. Check your connection.'
+			: reason;
 	}
 
 	function handleCodeInput(event: Event) {

@@ -563,6 +563,7 @@ const noteBodyRecipe = defineSlotRecipe({
 	],
 	base: {
 		row: {
+			position: 'relative',
 			display: 'flex',
 			alignItems: 'flex-start',
 			gap: 'sm',
@@ -573,29 +574,33 @@ const noteBodyRecipe = defineSlotRecipe({
 		bullet: { flexShrink: 0, userSelect: 'none' },
 		paragraph: { whiteSpace: 'pre-wrap', wordBreak: 'break-word', py: '3xs' },
 		spacer: { py: '2xs' },
-		// The button takes its own line under the group, but only its label adds a
-		// sub-task; the rest of the line puts the caret back on the group.
+		// Sits at the end of the focused row without taking space in it, so no row
+		// moves when focus does. The button is the 44 px target; the span is the glyph.
 		addSubtask: {
-			display: 'flex',
-			flexBasis: 'full',
-			textAlign: 'left',
-			textStyle: 'label',
+			position: 'absolute',
+			right: 0,
+			top: '50%',
+			transform: 'translateY(-50%)',
+			...gridCenter,
+			w: '2.75rem',
+			h: '2.75rem',
 			color: 'scrapscache.textMuted',
 			...tapTarget,
-			cursor: 'text',
-			whiteSpace: 'nowrap',
+			cursor: 'pointer',
 			'& > span': {
+				...gridCenter,
+				w: '1.5rem',
+				h: '1.5rem',
 				rounded: 'compact',
-				px: '2xs',
-				py: '2xs',
-				cursor: 'pointer',
+				textStyle: 'label',
+				lineHeight: '1',
 				transitionProperty: 'background-color, color',
 				transitionDuration: '120ms',
 				transitionTimingFunction: 'ease',
 				_hoverable: { bg: 'scrapscache.interactiveHover', color: 'scrapscache.text' }
 			},
-			// Child only. This slot styles the button, so a button ::before paints a second label.
-			'& > span::before': { content: '"+  Add sub-task"' }
+			// Child only: text inside the editing host would become note content.
+			'& > span::before': { content: '"+"' }
 		}
 	},
 	variants: {
@@ -614,8 +619,6 @@ const noteBodyRecipe = defineSlotRecipe({
 				// Skipping offscreen chunks keeps typing cost independent of note length.
 				// The inline padding keeps focused rows' bleed outside the paint clip.
 				chunk: { display: 'block', contentVisibility: 'auto', mx: '-sm', px: 'sm' },
-				// Only Add sub-task wraps; it sits right under its task, not a gap away.
-				row: { flexWrap: 'wrap', rowGap: 0 },
 				line: {
 					display: 'block',
 					whiteSpace: 'pre-wrap',
@@ -642,17 +645,10 @@ const noteBodyRecipe = defineSlotRecipe({
 			true: { line: { textDecoration: 'line-through' } }
 		},
 		indented: {
-			true: { line: { fontSize: 'compact' }, addSubtask: { pl: 0 } },
-			false: { addSubtask: { pl: 'xl' } }
+			true: { line: { fontSize: 'compact' } }
 		},
 		focused: {
-			true: { row: { bg: 'scrapscache.surfaceSubtle' } }
-		},
-		root: {
-			true: { row: { mt: '3xs', borderTopRadius: 'card', pt: '2xs' } }
-		},
-		last: {
-			true: { row: { mb: '3xs', borderBottomRadius: 'card', pb: '2xs' } }
+			true: { row: { bg: 'scrapscache.surfaceSubtle', rounded: 'card' } }
 		}
 	}
 });

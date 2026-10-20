@@ -3240,30 +3240,14 @@
 		} catch {
 			// Best-effort on older Safari versions.
 		}
-		if (onAddSubtaskLabel(event)) addSubtask(rootIndex);
-		else focusGroupEnd();
+		addSubtask(rootIndex);
 	}
 
 	function handleAddSubtaskClick(event: MouseEvent, rootIndex: number) {
 		event.preventDefault();
 		event.stopPropagation();
 		if (subtaskPointerId !== null) return;
-		// A keyboard press has no pointer position and always means the button.
-		if (event.detail === 0 || onAddSubtaskLabel(event)) addSubtask(rootIndex);
-		else focusGroupEnd();
-	}
-
-	/**
-	 * Only the label adds a sub-task. The rest of its line is the task group's own
-	 * space, where a stray tap must not leave an empty sub-task behind.
-	 */
-	function onAddSubtaskLabel(event: MouseEvent): boolean {
-		return event.target instanceof Element && !!event.target.closest('[data-add-subtask] > span');
-	}
-
-	function focusGroupEnd() {
-		const last = focusedGroupRows.at(-1);
-		if (last) focusAt(last.index, null, last.line.id);
+		addSubtask(rootIndex);
 	}
 
 	function discardEmptyDraft() {
@@ -3299,8 +3283,14 @@
 		return rows;
 	});
 
-	const focusedGroupIds = $derived(new Set(focusedGroupRows.map(({ line }) => line.id)));
-	const focusedGroupLastId = $derived(focusedGroupRows.at(-1)?.line.id ?? null);
+	/**
+	 * The task row the caret is on. It alone carries the focus chrome and the +
+	 * that adds a sub-task under its root, so nothing is inserted and no row moves
+	 * until the + is used.
+	 */
+	const focusedRowId = $derived(
+		focusedGroupRows.some(({ line }) => line.id === focusedTaskId) ? focusedTaskId : null
+	);
 
 	/**
 	 * The body's own hint: only while the body is one plain row with nothing in it.
@@ -3353,19 +3343,15 @@
 	const editor = noteBody({ mode: 'editor' });
 
 	function rowClass(line: Line): string | undefined {
-		if (!focusedGroupIds.has(line.id)) return editor.row;
-		const isRoot = line.id === focusedRootId;
-		const isLast = line.id === focusedGroupLastId;
-		return noteBody({ mode: 'editor', focused: true, root: isRoot, last: isLast }).row;
+		return line.id === focusedRowId ? noteBody({ mode: 'editor', focused: true }).row : editor.row;
 	}
 
 	function rowStyle(line: Line): string | undefined {
-		const focused = focusedGroupIds.has(line.id);
+		const focused = line.id === focusedRowId;
 		if (line.indent === 0 && !focused) return undefined;
 		const parts = [`padding-left:calc(${line.indent * 1.25}rem${focused ? ' + 0.5rem' : ''})`];
-		if (focused) {
-			parts.push('margin-left:-0.5rem', 'margin-right:-0.5rem', 'padding-right:0.5rem');
-		}
+		// The bleed keeps the text where it was; the right padding leaves room for the +.
+		if (focused) parts.push('margin-left:-0.5rem', 'margin-right:-0.5rem', 'padding-right:2.75rem');
 		return parts.join(';');
 	}
 </script>
@@ -3540,14 +3526,15 @@
 				{/if}
 			{/if}
 		{/key}
-		{#if line.id === focusedGroupLastId}
+		{#if line.id === focusedRowId}
 			<button
 				type="button"
 				contenteditable="false"
 				data-add-subtask
 				aria-label="Add sub-task"
+				title="Add sub-task"
 				disabled={readOnly}
-				class={noteBody({ mode: 'editor', indented: line.indent > 0 }).addSubtask}
+				class={editor.addSubtask}
 				onpointerdown={(event) => activateAddSubtask(event, focusedGroupRows[0]?.index ?? -1)}
 				onclick={(event) => handleAddSubtaskClick(event, focusedGroupRows[0]?.index ?? -1)}
 			>

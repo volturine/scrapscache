@@ -116,6 +116,37 @@ test('a checklist line toggles from the body', async ({ page }) => {
 	await expect(toggles.last()).toHaveAttribute('aria-pressed', 'false');
 });
 
+test('focusing a checklist row moves no other row and offers + on the row itself', async ({
+	page
+}) => {
+	await openEmptyApp(page);
+	await createNote(page, 'Stable', '[ ] one\n[ ] two\n[ ] three');
+	await noteCard(page, 'Stable').click();
+	const sheet = editor(page);
+	const rows = sheet.locator('[data-task-row]');
+	await expect(rows).toHaveCount(3);
+	const thirdRowTop = async () => (await rows.nth(2).boundingBox())!.y;
+	const before = await thirdRowTop();
+
+	await rows.nth(0).locator('[data-line-text]').click();
+	const add = sheet.getByRole('button', { name: 'Add sub-task' });
+	await expect(add).toBeVisible();
+	// Nothing was inserted, so the rows below stay where they were.
+	expect(await thirdRowTop()).toBeCloseTo(before, 1);
+	// The + sits within the focused row's box, not on a line of its own.
+	const row = (await rows.nth(0).boundingBox())!;
+	const plus = (await add.boundingBox())!;
+	expect(plus.y + plus.height / 2).toBeGreaterThanOrEqual(row.y);
+	expect(plus.y + plus.height / 2).toBeLessThanOrEqual(row.y + row.height);
+
+	await add.click();
+	await expect(rows).toHaveCount(4);
+	await expect(rows.nth(1).locator('[data-line-text]')).toHaveAttribute(
+		'data-placeholder',
+		'Sub-task'
+	);
+});
+
 test('a checked row dims its text and tokens, not the whole row', async ({ page }) => {
 	await openEmptyApp(page);
 	await createNote(page, 'Dimmed', '[ ] milk `oat`\n[ ] eggs');

@@ -233,26 +233,26 @@ test('pin, archive, trash and restore move a note between views', async ({ page 
 	await openEmptyApp(page);
 	await createNote(page, 'Travelling note');
 
-	await quickAction(noteCard(page, 'Travelling note'), 'Pin note');
+	await quickAction(noteCard(page, 'Travelling note'), 'Pin to top');
 	await expect(page.getByRole('heading', { name: 'Pinned' })).toBeVisible();
 
-	await quickAction(noteCard(page, 'Travelling note'), 'Archive note');
+	await quickAction(noteCard(page, 'Travelling note'), 'Archive');
 	await expect(page.getByRole('status')).toContainText('Note archived');
 	await expect(noteCard(page, 'Travelling note')).toBeHidden();
 
 	await page.goto('/archive');
 	await expect(noteCard(page, 'Travelling note')).toBeVisible();
-	await quickAction(noteCard(page, 'Travelling note'), 'Restore note');
+	await quickAction(noteCard(page, 'Travelling note'), 'Restore');
 	await expect(noteCard(page, 'Travelling note')).toBeHidden();
 
 	await page.goto('/');
-	await quickAction(noteCard(page, 'Travelling note'), 'Delete note');
+	await quickAction(noteCard(page, 'Travelling note'), 'Move to trash');
 	await expect(page.getByRole('status')).toContainText('Moved to trash');
 	await expect(noteCard(page, 'Travelling note')).toBeHidden();
 
 	await page.goto('/trash');
 	await expect(noteCard(page, 'Travelling note')).toBeVisible();
-	await quickAction(noteCard(page, 'Travelling note'), 'Restore note');
+	await quickAction(noteCard(page, 'Travelling note'), 'Restore');
 	await expect(noteCard(page, 'Travelling note')).toBeHidden();
 
 	await page.goto('/');
@@ -347,13 +347,13 @@ test.describe('on a touch screen', () => {
 		await createNote(page, 'Under the finger');
 		await createNote(page, 'With quick actions');
 		await noteCard(page, 'With quick actions').click({ button: 'right' });
-		await expect(page.locator('[data-card-haze]')).toHaveCount(1);
+		await expect(page.getByRole('menu', { name: 'Note actions' })).toBeVisible();
 
 		const target = await noteCard(page, 'Under the finger').boundingBox();
 		const tap = () =>
 			page.touchscreen.tap(target!.x + target!.width / 2, target!.y + target!.height / 2);
 		await tap();
-		await expect(page.locator('[data-card-haze]')).toHaveCount(0);
+		await expect(page.getByRole('menu', { name: 'Note actions' })).toHaveCount(0);
 		await expect(editor(page)).toBeHidden();
 
 		// Only the dismissing tap is swallowed: the next one opens the note.
@@ -366,9 +366,9 @@ test('search filters the archive', async ({ page }) => {
 	await openEmptyApp(page);
 	await createNote(page, 'Apples', 'Fruit for the week');
 	await createNote(page, 'Bolts', 'Hardware for the shelf');
-	await quickAction(noteCard(page, 'Apples'), 'Archive note');
+	await quickAction(noteCard(page, 'Apples'), 'Archive');
 	await expect(noteCard(page, 'Apples')).toBeHidden();
-	await quickAction(noteCard(page, 'Bolts'), 'Archive note');
+	await quickAction(noteCard(page, 'Bolts'), 'Archive');
 	await expect(noteCard(page, 'Bolts')).toBeHidden();
 
 	await page.goto('/archive');
@@ -387,7 +387,7 @@ test('a search that finds nothing in Notes looks in Archive with the same query'
 }) => {
 	await openEmptyApp(page);
 	await createNote(page, 'Retro board', 'Ideas for the next retro');
-	await quickAction(noteCard(page, 'Retro board'), 'Archive note');
+	await quickAction(noteCard(page, 'Retro board'), 'Archive');
 	await expect(noteCard(page, 'Retro board')).toBeHidden();
 
 	const search = page.getByPlaceholder('Search', { exact: true });

@@ -2,7 +2,7 @@
 	import { kanbanDrag, type KanbanDropTarget } from '#lib/kanbanDrag.svelte.js';
 	import type { Note } from '#lib/types.js';
 	import KanbanCardBody from './KanbanCardBody.svelte';
-	import NoteQuickActions from './NoteQuickActions.svelte';
+	import NoteActionsMenu from './NoteActionsMenu.svelte';
 	import { css } from 'styled-system/css';
 	import { cardOpenControl } from '$panda/styles';
 
@@ -23,7 +23,8 @@
 
 	let card = $state<HTMLElement | null>(null);
 	let openButton = $state<HTMLButtonElement | null>(null);
-	let quickActionsOpen = $state(false);
+	/** The "…" menu; a right-click or long-press opens the same one. */
+	let actionsOpen = $state(false);
 
 	function press(event: PointerEvent) {
 		if (!card) return;
@@ -38,10 +39,10 @@
 		onOpen(note.id);
 	}
 
-	function showQuickActions(event: MouseEvent) {
+	function showActions(event: MouseEvent) {
 		event.preventDefault();
 		event.stopPropagation();
-		quickActionsOpen = true;
+		actionsOpen = true;
 	}
 </script>
 
@@ -61,7 +62,7 @@
 	onpointerdown={press}
 	ondragstart={(event) => event.preventDefault()}
 	onclick={open}
-	oncontextmenu={showQuickActions}
+	oncontextmenu={showActions}
 >
 	<KanbanCardBody {note} shield />
 	<button
@@ -70,5 +71,5 @@
 		class={cardOpenControl}
 		aria-label={`Open ${note.title || 'untitled note'}`}
 	></button>
-	<NoteQuickActions {note} bind:open={quickActionsOpen} />
+	<NoteActionsMenu {note} bind:open={actionsOpen} />
 </article>

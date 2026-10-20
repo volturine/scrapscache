@@ -2154,12 +2154,46 @@ const hazeGroupBase = {
 	filter: 'drop-shadow(0 4px 3px rgb(0 0 0 / 0.07))'
 };
 export const noteCardHazeGroup = {
-	compact: css({ ...hazeGroupBase, justifyContent: 'center', gap: 'xs' }),
-	column: css({ ...hazeGroupBase, flexDirection: 'column', gap: 'list' }),
-	row: css({ ...hazeGroupBase, justifyContent: 'center', gap: 'list' })
+	compact: css({ ...hazeGroupBase, justifyContent: 'center', gap: 'xs' })
 };
 
-export const noteCardSuccessIcon = css({ color: 'scrapscache.success' });
+/** The "…" on every card and the labelled menu it opens. */
+export const noteActionsStyles = {
+	// Over the open control (16) and the hidden-preview overlay (20), so it is always reachable.
+	trigger: css({
+		position: 'absolute',
+		top: 'xs',
+		right: 'xs',
+		zIndex: 21,
+		bg: 'scrapscache.surface',
+		boxShadow: 'sm',
+		...mutedText,
+		_hoverable: { color: 'scrapscache.text' }
+	}),
+	/** Room for the trigger, so a title never runs under it. */
+	titleRoom: css({ pr: '2.25rem' }),
+	positioner: css({ zIndex: 30 }),
+	menu: css({ minW: '13rem', py: '2xs' }),
+	item: css({ gap: 'sm' }),
+	danger: css({ color: 'scrapscache.danger', _hoverable: { bg: 'scrapscache.dangerSubtle' } }),
+	separator: css({ borderTopWidth: 'hairline', borderColor: 'scrapscache.border', my: '2xs' }),
+	colorGroup: css({ px: 'md', py: 'xs' }),
+	colorLabel: css({ textStyle: 'overline', ...mutedText, mb: '2xs' }),
+	swatches: css({ display: 'flex', flexWrap: 'wrap', gap: 'xs' }),
+	swatch: css({
+		...gridCenter,
+		w: '1.5rem',
+		h: '1.5rem',
+		rounded: 'full',
+		borderWidth: 'strong',
+		borderColor: 'scrapscache.borderSubtle',
+		cursor: 'pointer',
+		outline: 'none',
+		'&[data-state=checked]': { borderColor: 'scrapscache.accent' },
+		'&[data-highlighted]': { boxShadow: '0 0 0 2px token(colors.scrapscache.focus)' }
+	}),
+	swatchCheck: css({ ...gridCenter, color: 'scrapscache.text' })
+};
 
 /**
  * A card's keyboard and assistive-technology control: a real button laid over the

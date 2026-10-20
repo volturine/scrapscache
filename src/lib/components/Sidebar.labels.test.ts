@@ -32,78 +32,114 @@ afterEach(() => {
 });
 
 describe('Sidebar labels section', () => {
-	it('renders search input and filters labels by query', async () => {
-		const { section } = setup([label('Work'), label('Personal'), label('Ideas')]);
+	function manyLabels(count: number) {
+		return Array.from({ length: count }, (_, index) => label(`Label ${index + 1}`));
+	}
 
-		const searchInput = section.querySelector(
-			'input[aria-label="Search or create a label"]'
-		) as HTMLInputElement;
-		expect(searchInput).toBeTruthy();
-		expect(searchInput.placeholder).toBe('Search or create a label…');
+	function field(section: HTMLElement) {
+		return section.querySelector('input[aria-label="Filter labels"]') as HTMLInputElement | null;
+	}
 
-		// All 3 visible initially
+	it('shows the filter field only above a long list, and filters by it', async () => {
+		// Eight labels are scanned by eye.
+		expect(field(setup(manyLabels(8)).section)).toBeNull();
+
+		const { section } = setup([...manyLabels(7), label('Work'), label('Personal')]);
+		const filter = field(section)!;
+		expect(filter.placeholder).toBe('Filter labels…');
 		expect(section.querySelector('button[aria-label="Work"]')).toBeTruthy();
-		expect(section.querySelector('button[aria-label="Personal"]')).toBeTruthy();
-		expect(section.querySelector('button[aria-label="Ideas"]')).toBeTruthy();
 
-		// Filter for "per"
-		await fireEvent.input(searchInput, { target: { value: 'per' } });
+		await fireEvent.input(filter, { target: { value: 'per' } });
 		await tick();
 
 		expect(section.querySelector('button[aria-label="Work"]')).toBeNull();
 		expect(section.querySelector('button[aria-label="Personal"]')).toBeTruthy();
-		expect(section.querySelector('button[aria-label="Ideas"]')).toBeNull();
+		expect(section.querySelector('button[aria-label="Label 1"]')).toBeNull();
 	});
 
-	it('offers a create button when query does not match an existing label and creates on Enter or click', async () => {
+	it('never creates from the filter field, and clears it on Escape', async () => {
+		const createLabel = vi.spyOn(notesStore, 'createLabel');
+		const { section } = setup(manyLabels(9));
+		const filter = field(section)!;
+
+		await fireEvent.input(filter, { target: { value: 'Fitness' } });
+		await tick();
+		await fireEvent.keyDown(filter, { key: 'Enter' });
+		await tick();
+		expect(createLabel).not.toHaveBeenCalled();
+		expect(section.querySelector('[data-label-create]')).toBeNull();
+
+		await fireEvent.keyDown(filter, { key: 'Escape' });
+		await tick();
+		expect(filter.value).toBe('');
+	});
+
+	it('creates a label from the + in the header and opens it', async () => {
 		const createLabel = vi.spyOn(notesStore, 'createLabel').mockReturnValue(label('Projects'));
 		const { section } = setup([label('Work')]);
+		const add = section.querySelector('button[aria-label="New label"]') as HTMLButtonElement;
+		expect(section.querySelector('[data-label-create]')).toBeNull();
 
-		const searchInput = section.querySelector(
-			'input[aria-label="Search or create a label"]'
-		) as HTMLInputElement;
-
-		// When matching existing, no create button
-		await fireEvent.input(searchInput, { target: { value: 'work' } });
+		await fireEvent.click(add);
 		await tick();
-		expect(section.querySelector('button[aria-label=\'Create "work"\']')).toBeNull();
+		const name = section.querySelector('input[aria-label="New label name"]') as HTMLInputElement;
+		expect(name).toBeTruthy();
+		expect(add.getAttribute('aria-expanded')).toBe('true');
 
-		// When not matching existing, create button appears
-		await fireEvent.input(searchInput, { target: { value: 'Projects' } });
-		await tick();
-		const createBtn = section.querySelector(
-			'button[aria-label=\'Create "Projects"\']'
-		) as HTMLButtonElement;
-		expect(createBtn).toBeTruthy();
-		expect(createBtn.textContent).toContain('Create “Projects”');
-
-		// Click to create
-		await fireEvent.click(createBtn);
+		// Enter creates and opens the label.
+		await fireEvent.input(name, { target: { value: 'Projects' } });
+		await fireEvent.keyDown(name, { key: 'Enter' });
 		await tick();
 		expect(createLabel).toHaveBeenCalledWith('Projects');
+		expect(navigationMocks.goto).toHaveBeenCalledWith('/label/projects');
+		expect(section.querySelector('[data-label-create]')).toBeNull();
 
-		// Press Enter in search input to create
+		// So does the tick.
 		createLabel.mockClear();
-		await fireEvent.input(searchInput, { target: { value: 'Fitness' } });
+		await fireEvent.click(add);
 		await tick();
-		await fireEvent.keyDown(searchInput, { key: 'Enter' });
+		const again = section.querySelector('input[aria-label="New label name"]') as HTMLInputElement;
+		await fireEvent.input(again, { target: { value: 'Projects' } });
+		await fireEvent.click(section.querySelector('button[aria-label="Create label"]')!);
 		await tick();
-		expect(createLabel).toHaveBeenCalledWith('Fitness');
+		expect(createLabel).toHaveBeenCalledWith('Projects');
 	});
 
-	it('clears query on Escape key in search input', async () => {
+	it('cancels the new label with Escape or the cross, creating nothing', async () => {
+		const createLabel = vi.spyOn(notesStore, 'createLabel');
 		const { section } = setup([label('Work')]);
-		const searchInput = section.querySelector(
-			'input[aria-label="Search or create a label"]'
-		) as HTMLInputElement;
+		const add = section.querySelector('button[aria-label="New label"]') as HTMLButtonElement;
 
-		await fireEvent.input(searchInput, { target: { value: 'something' } });
+		await fireEvent.click(add);
 		await tick();
-		expect(searchInput.value).toBe('something');
+		const name = section.querySelector('input[aria-label="New label name"]') as HTMLInputElement;
+		await fireEvent.input(name, { target: { value: 'Half typed' } });
+		await fireEvent.keyDown(name, { key: 'Escape' });
+		await tick();
+		expect(section.querySelector('[data-label-create]')).toBeNull();
 
-		await fireEvent.keyDown(searchInput, { key: 'Escape' });
+		await fireEvent.click(add);
 		await tick();
-		expect(searchInput.value).toBe('');
+		await fireEvent.click(section.querySelector('button[aria-label="Cancel"]')!);
+		await tick();
+		expect(section.querySelector('[data-label-create]')).toBeNull();
+		expect(createLabel).not.toHaveBeenCalled();
+		expect(navigationMocks.goto).not.toHaveBeenCalled();
+	});
+
+	it('opens an existing label instead of creating a duplicate', async () => {
+		const createLabel = vi.spyOn(notesStore, 'createLabel');
+		const { section } = setup([label('Work')]);
+
+		await fireEvent.click(section.querySelector('button[aria-label="New label"]')!);
+		await tick();
+		const name = section.querySelector('input[aria-label="New label name"]') as HTMLInputElement;
+		await fireEvent.input(name, { target: { value: 'work' } });
+		await fireEvent.keyDown(name, { key: 'Enter' });
+		await tick();
+
+		expect(createLabel).not.toHaveBeenCalled();
+		expect(navigationMocks.goto).toHaveBeenCalledWith('/label/work');
 	});
 
 	it('slides rename and delete in behind the row on a left swipe, without navigating', async () => {

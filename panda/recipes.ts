@@ -575,30 +575,33 @@ const noteBodyRecipe = defineSlotRecipe({
 		paragraph: { whiteSpace: 'pre-wrap', wordBreak: 'break-word', py: '3xs' },
 		spacer: { py: '2xs' },
 		// Sits at the end of the focused row without taking space in it, so no row
-		// moves when focus does. The button is the 44 px target; the span is the glyph.
+		// moves when focus does. It is the size of its glyph, so it stays inside the
+		// row; on touch the hit area grows to 44 px, out to the side and never over
+		// the text, since touch browsers snap a tap near a line's end onto a button.
 		addSubtask: {
+			...touchHit,
 			position: 'absolute',
 			right: 0,
 			top: '50%',
 			transform: 'translateY(-50%)',
 			...gridCenter,
-			w: '2.75rem',
-			h: '2.75rem',
+			w: '1.5rem',
+			h: '1.5rem',
+			rounded: 'compact',
 			color: 'scrapscache.textMuted',
 			...tapTarget,
 			cursor: 'pointer',
-			'& > span': {
-				...gridCenter,
-				w: '1.5rem',
-				h: '1.5rem',
-				rounded: 'compact',
-				textStyle: 'label',
-				lineHeight: '1',
-				transitionProperty: 'background-color, color',
-				transitionDuration: '120ms',
-				transitionTimingFunction: 'ease',
-				_hoverable: { bg: 'scrapscache.interactiveHover', color: 'scrapscache.text' }
+			transitionProperty: 'background-color, color',
+			transitionDuration: '120ms',
+			transitionTimingFunction: 'ease',
+			_hoverable: { bg: 'scrapscache.interactiveHover', color: 'scrapscache.text' },
+			_touch: {
+				_before: {
+					left: 0,
+					right: 'calc(min(0px, (100% - 44px) / 2) * 2)'
+				}
 			},
+			'& > span': { ...gridCenter, w: 'full', h: 'full', textStyle: 'label', lineHeight: '1' },
 			// Child only: text inside the editing host would become note content.
 			'& > span::before': { content: '"+"' }
 		}

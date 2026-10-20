@@ -3348,11 +3348,19 @@
 
 	function rowStyle(line: Line): string | undefined {
 		const focused = line.id === focusedRowId;
-		if (line.indent === 0 && !focused) return undefined;
-		const parts = [`padding-left:calc(${line.indent * 1.25}rem${focused ? ' + 0.5rem' : ''})`];
-		// The bleed keeps the text where it was; the right padding leaves room for the +.
-		if (focused) parts.push('margin-left:-0.5rem', 'margin-right:-0.5rem', 'padding-right:2.75rem');
-		return parts.join(';');
+		const parts: string[] = [];
+		if (line.indent > 0 || focused)
+			parts.push(`padding-left:calc(${line.indent * 1.25}rem${focused ? ' + 0.5rem' : ''})`);
+		// Every task row keeps the +'s room (its glyph and a gap), so a near-full line does
+		// not wrap when focus arrives. The focused row bleeds 0.5rem out on both sides and
+		// pads the same back in, so its text keeps the width it had.
+		if (line.isCheck)
+			parts.push(
+				focused
+					? 'margin-left:-0.5rem;margin-right:-0.5rem;padding-right:2.5rem'
+					: 'padding-right:2rem'
+			);
+		return parts.length ? parts.join(';') : undefined;
 	}
 </script>
 

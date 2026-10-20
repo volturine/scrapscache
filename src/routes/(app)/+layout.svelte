@@ -31,6 +31,7 @@
 	import type { StoredProfile } from '#lib/profiles.js';
 	import NoteLinkNotice from '#lib/components/NoteLinkNotice.svelte';
 	import UndoBar from '#lib/components/UndoBar.svelte';
+	import SyncAttentionBanner from '#lib/components/SyncAttentionBanner.svelte';
 	import { runUndoChord } from '#lib/stores/actionUndo.svelte.js';
 	import { storagePersistenceStore } from '#lib/stores/storagePersistence.svelte.js';
 	import type { Snippet } from 'svelte';
@@ -415,6 +416,7 @@
 
 		<div class={styles.column}>
 			<Topbar />
+			<SyncAttentionBanner />
 			<div class={cx('app-canvas', styles.canvas)}>
 				<main
 					bind:this={feedEl}

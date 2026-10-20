@@ -3453,8 +3453,9 @@
 				onpointerup={(event) => toggleCheckOnRelease(line.id, event)}
 				ontouchend={(event) => event.cancelable && event.preventDefault()}
 				onclick={(event) => toggleCheck(line.id, event)}
+				role="checkbox"
 				aria-label={line.indent > 0 ? 'Toggle sub-task' : 'Toggle item'}
-				aria-pressed={line.checked}
+				aria-checked={line.checked}
 			></button>
 		{:else if line.isBullet}
 			<span contenteditable="false" class={editor.bullet} aria-hidden="true">•</span>

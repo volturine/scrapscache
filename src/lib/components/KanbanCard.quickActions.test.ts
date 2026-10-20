@@ -70,6 +70,73 @@ describe('KanbanCard quick actions', () => {
 		expect(document.querySelector('[data-card-haze]')).toBeNull();
 	});
 
+	it('swallows the tap that dismisses the haze over another card', async () => {
+		const onOpenOther = vi.fn();
+		notesStore.notes = [note(), note({ id: 'note-2', title: 'Other' })];
+		const shown = card();
+		render(KanbanCard, {
+			props: {
+				note: note({ id: 'note-2', title: 'Other' }),
+				columnId: 'todo',
+				index: 1,
+				onOpen: onOpenOther,
+				onDrop: vi.fn()
+			}
+		});
+		const other = screen.getByRole('button', { name: 'Open Other' }).closest('article')!;
+		const tap = async () => {
+			const down = new Event('pointerdown', { bubbles: true, cancelable: true });
+			Object.assign(down, { pointerType: 'touch', pointerId: 1, button: 0 });
+			await fireEvent(other, down);
+			await fireEvent.click(other);
+		};
+
+		await fireEvent.contextMenu(shown);
+		await tap();
+		expect(document.querySelector('[data-card-haze]')).toBeNull();
+		expect(onOpenOther).not.toHaveBeenCalled();
+
+		await tap();
+		expect(onOpenOther).toHaveBeenCalledWith('note-2');
+	});
+
+	it('does not start a hold on the card under the dismissing tap', async () => {
+		vi.useFakeTimers();
+		try {
+			notesStore.notes = [note(), note({ id: 'note-2', title: 'Other' })];
+			const shown = card();
+			render(KanbanCard, {
+				props: {
+					note: note({ id: 'note-2', title: 'Other' }),
+					columnId: 'todo',
+					index: 1,
+					onOpen: vi.fn(),
+					onDrop: vi.fn()
+				}
+			});
+			const other = screen.getByRole('button', { name: 'Open Other' }).closest('article')!;
+
+			await fireEvent.contextMenu(shown);
+			const down = new Event('pointerdown', { bubbles: true, cancelable: true });
+			Object.assign(down, {
+				pointerType: 'touch',
+				pointerId: 1,
+				isPrimary: true,
+				button: 0,
+				clientX: 10,
+				clientY: 10
+			});
+			await fireEvent(other, down);
+			expect(document.querySelector('[data-card-haze]')).toBeNull();
+
+			// Held past HOLD_MS, a touch press lifts the card for a drag.
+			await vi.advanceTimersByTimeAsync(300);
+			expect(kanbanDrag.noteId).toBeNull();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it('closes on Escape without opening the note', async () => {
 		const onOpen = vi.fn();
 		const shown = card(onOpen);

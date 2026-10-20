@@ -211,6 +211,8 @@ describe('backup and Keep import stay in the open workspace', () => {
 		// Under the old id, the restored body would merge into newer synced text.
 		expect(restored.title).toBe('restored');
 		expect(restored.id).not.toBe('restored');
+		// Brought back, not edited: it keeps the dates the backup had for it.
+		expect(restored).toMatchObject({ createdAt: 1, updatedAt: 1 });
 		expect(notesStore.deletedNoteIds).toMatchObject({
 			restored: expect.any(Number),
 			[existing.id]: expect.any(Number)

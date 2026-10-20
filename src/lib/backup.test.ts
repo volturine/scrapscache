@@ -4,6 +4,7 @@ import { importedReminderHistory, prepareImportedNotes } from './backup';
 import { normalizeBackup } from './backupNormalize';
 import { reminderWakeId } from '#lib/model/index.js';
 import { createEditContext } from './model';
+import { noteActivity } from './utils';
 
 const sourceNote: Note = {
 	id: 'note',
@@ -89,7 +90,7 @@ describe('backup normalization', () => {
 		expect(JSON.stringify(backup)).not.toContain('root-secret');
 	});
 
-	it('restores replacement imports under new note ids, keeping attachment ids', () => {
+	it('restores replacement imports under new note ids, keeping attachment ids and dates', () => {
 		// A restore under the old id would merge into newer synced text instead of replacing it.
 		const [note] = prepareImportedNotes(
 			[sourceNote],
@@ -98,9 +99,10 @@ describe('backup normalization', () => {
 		);
 
 		expect(note.id).not.toBe(sourceNote.id);
-		expect(note).toMatchObject({ createdAt: 100, trashedAt: null });
+		// Brought back, not edited: the note reads as it did when the backup was taken.
+		expect(note).toMatchObject({ createdAt: 1, updatedAt: 2, trashedAt: null });
+		expect(note.fieldTimes).toMatchObject({ title: 2, body: 1, color: 2 });
 		expect(note.images).toEqual([expect.objectContaining({ id: 'image', createdAt: 100 })]);
-		expect(new Set(Object.values(note.fieldTimes ?? {})).size).toBe(1);
 	});
 
 	it('regenerates note and attachment IDs for additive imports', () => {
@@ -112,7 +114,28 @@ describe('backup normalization', () => {
 
 		expect(note.id).not.toBe(sourceNote.id);
 		expect(note.images?.[0].id).not.toBe(sourceNote.images?.[0].id);
-		expect(note).toMatchObject({ createdAt: 100 });
+		expect(note).toMatchObject({ createdAt: 1, updatedAt: 2 });
+	});
+
+	it('reads as created, not edited, when the backup copy was never edited', () => {
+		const [note] = prepareImportedNotes(
+			[{ ...sourceNote, updatedAt: 1, fieldTimes: undefined }],
+			'keep',
+			createEditContext(() => 100)
+		);
+
+		expect(noteActivity(note, 100).label).toMatch(/^Created/);
+		expect(note.fieldTimes).toMatchObject({ title: 1, body: 1 });
+	});
+
+	it('starts the purge window of a trashed note over but keeps its dates', () => {
+		const [note] = prepareImportedNotes(
+			[{ ...sourceNote, trashed: true, trashedAt: 5 }],
+			'replace',
+			createEditContext(() => 100)
+		);
+
+		expect(note).toMatchObject({ trashed: true, trashedAt: 100, createdAt: 1, updatedAt: 2 });
 	});
 });
 

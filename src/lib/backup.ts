@@ -1,5 +1,5 @@
 import type { KanbanBoard } from '#lib/kanban.js';
-import { NOTE_FIELDS, touchNoteFields, uid, type EditContext } from './model';
+import { NOTE_FIELDS, fieldTime, uid, type EditContext } from './model';
 import type { Layout, View } from '#lib/stores/ui.svelte.js';
 import type { Label, Note } from '#lib/types.js';
 import { cloneNote } from '#lib/utils.js';
@@ -48,6 +48,10 @@ export type BackupOperation = (typeof BackupOperation)[keyof typeof BackupOperat
  * `notes`. A note body merges with every other copy of its id, so restoring
  * under the old id would blend the backup into newer synced text instead of
  * replacing it. Additive imports also need fresh attachment ids.
+ *
+ * A fresh id never meets the copy it came from in a merge, so the note keeps
+ * the dates it had: a restore brings it back, it does not edit it. Only the
+ * purge window of a trashed note starts over.
  */
 export function prepareImportedNotes(
 	notes: Note[],
@@ -58,24 +62,19 @@ export function prepareImportedNotes(
 	return notes.map((source) => {
 		const note = cloneNote(source);
 		const { imageTombstones: _removed, fieldWriters: _writers, ...rest } = note;
-		return touchNoteFields(
-			{
-				...rest,
-				id: uid(),
-				createdAt: now,
-				updatedAt: now,
-				trashedAt: note.trashed ? now : null,
-				fieldTimes: {},
-				// Distinct times keep the attachments in their original order.
-				images: (note.images ?? []).map((image, index) => ({
-					...image,
-					id: mode === BackupImportMode.Keep ? uid() : image.id,
-					createdAt: now + index
-				}))
-			},
-			NOTE_FIELDS,
-			context
-		);
+		return {
+			...rest,
+			id: uid(),
+			trashedAt: note.trashed ? now : null,
+			fieldTimes: Object.fromEntries(NOTE_FIELDS.map((field) => [field, fieldTime(note, field)])),
+			fieldWriters: Object.fromEntries(NOTE_FIELDS.map((field) => [field, context.writer])),
+			// Distinct times keep the attachments in their original order.
+			images: (note.images ?? []).map((image, index) => ({
+				...image,
+				id: mode === BackupImportMode.Keep ? uid() : image.id,
+				createdAt: now + index
+			}))
+		};
 	});
 }
 

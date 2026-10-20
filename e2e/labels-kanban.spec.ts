@@ -54,3 +54,45 @@ test('a kanban board gains a label column that holds the tagged note', async ({ 
 	await expect(page.getByRole('button', { name: 'Board: Launch' })).toBeVisible();
 	await expect(page.locator('[data-kanban-column]')).toHaveCount(1);
 });
+
+test('moving a card to another column says where it went and can be undone', async ({ page }) => {
+	await openEmptyApp(page);
+	await createNote(page, 'Moving card');
+	await quickAction(noteCard(page, 'Moving card'), 'Tag note');
+	const labels = page.getByRole('dialog').filter({ hasText: 'Labels' });
+	for (const name of ['Todo', 'Doing']) {
+		await labels.getByPlaceholder('Search or create a label…').fill(name);
+		await labels.getByRole('button', { name: 'Create label' }).click();
+	}
+	// Creating a label here also tags the note, which starts in Todo only.
+	await labels.getByText('Doing', { exact: true }).click();
+	await expect(labels.getByRole('checkbox', { name: 'Doing' })).not.toBeChecked();
+	await labels.getByRole('button', { name: 'Done' }).click();
+
+	await page.goto('/kanban');
+	for (const name of ['Todo', 'Doing']) {
+		await page.getByRole('button', { name: 'Add a label column' }).click();
+		await page
+			.getByRole('menu', { name: 'Add a label column' })
+			.getByRole('menuitem', { name })
+			.click();
+	}
+	const todo = page.getByRole('region', { name: 'Todo label column' });
+	const doing = page.getByRole('region', { name: 'Doing label column' });
+	const card = todo.getByRole('button', { name: 'Open Moving card' });
+	await expect(card).toBeVisible();
+
+	const from = (await card.boundingBox())!;
+	const to = (await doing.boundingBox())!;
+	await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+	await page.mouse.down();
+	await page.mouse.move(to.x + to.width / 2, to.y + Math.min(to.height / 2, 120), { steps: 12 });
+	await page.mouse.up();
+
+	await expect(page.getByRole('status')).toContainText('Moved to Doing');
+	await expect(doing.getByRole('button', { name: 'Open Moving card' })).toBeVisible();
+
+	await page.getByRole('status').getByRole('button', { name: 'Undo' }).click();
+	await expect(todo.getByRole('button', { name: 'Open Moving card' })).toBeVisible();
+	await expect(doing.getByRole('button', { name: 'Open Moving card' })).toBeHidden();
+});

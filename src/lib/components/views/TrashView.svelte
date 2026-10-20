@@ -1,6 +1,9 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import NotesFeed from '#lib/components/NotesFeed.svelte';
+	import SearchAnnouncer from '#lib/components/SearchAnnouncer.svelte';
+	import SearchNoMatches from '#lib/components/SearchNoMatches.svelte';
+	import { noMatchCopy, placesWithMatches } from '#lib/searchElsewhere.js';
 	import SectionHeader from '#lib/components/SectionHeader.svelte';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
 	import { uiStore } from '#lib/stores/ui.svelte.js';
@@ -16,6 +19,8 @@
 	const trashed = $derived(notesStore.trashedNotes);
 	const search = $derived(uiStore.searchFor('trash'));
 	const visible = $derived(search ? notesStore.search(search, trashed) : trashed);
+	const noMatches = $derived(trashed.length > 0 && visible.length === 0);
+	const places = $derived(noMatches ? placesWithMatches('trash', search) : []);
 
 	let confirmEmpty = $state(false);
 
@@ -35,7 +40,7 @@
 			href={resolve('')}
 		/>
 	{:else if visible.length === 0}
-		<EmptyState icon={Trash2} description="No notes found" />
+		<SearchNoMatches here="trash" query={search} {places} />
 	{:else}
 		<div class={notesShell(uiStore.layout)}>
 			<p class={trashViewStyles.banner}>
@@ -70,4 +75,5 @@
 		</SectionHeader>
 		<NotesFeed notes={visible} onOpen={openEditor} />
 	{/if}
+	<SearchAnnouncer message={noMatches ? noMatchCopy('trash', search, places).announcement : ''} />
 </div>

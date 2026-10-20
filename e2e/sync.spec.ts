@@ -55,7 +55,7 @@ test('two devices pair with a code and converge, deletes included', async ({ bro
 	await expect(noteCard(a, 'Second device note')).toBeVisible({ timeout: 30_000 });
 
 	// A delete on A tombstones the note on B.
-	await quickAction(noteCard(a, 'Shared plan'), 'Delete note');
+	await quickAction(noteCard(a, 'Shared plan'), 'Move to trash');
 	await expect(noteCard(a, 'Shared plan')).toBeHidden();
 	dialog = await openSync(b);
 	await dialog.getByRole('button', { name: 'Sync now' }).click();

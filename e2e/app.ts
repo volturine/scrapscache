@@ -42,9 +42,14 @@ export async function createNote(page: Page, title: string, body?: string): Prom
 }
 
 /** Open the quick actions of a card and press one of them. */
+/** Run one of a card's actions from its "…" menu. */
 export async function quickAction(card: Locator, name: string): Promise<void> {
-	await card.click({ button: 'right' });
-	await card.getByRole('button', { name, exact: true }).click();
+	await card.getByRole('button', { name: 'Note actions' }).click();
+	await card
+		.page()
+		.getByRole('menu', { name: 'Note actions' })
+		.getByRole('menuitem', { name, exact: true })
+		.click();
 }
 
 function escape(text: string): string {

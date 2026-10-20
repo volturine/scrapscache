@@ -6,7 +6,7 @@ test('a label tags a note and filters the feed', async ({ page }) => {
 	await createNote(page, 'Tagged note');
 	await createNote(page, 'Plain note');
 
-	await quickAction(noteCard(page, 'Tagged note'), 'Tag note');
+	await quickAction(noteCard(page, 'Tagged note'), 'Add label…');
 	const labels = page.getByRole('dialog').filter({ hasText: 'Labels' });
 	await labels.getByPlaceholder('Search or create a label…').fill('Work');
 	await labels.getByRole('button', { name: 'Create label' }).click();
@@ -28,7 +28,7 @@ test('a label tags a note and filters the feed', async ({ page }) => {
 test('a kanban board gains a label column that holds the tagged note', async ({ page }) => {
 	await openEmptyApp(page);
 	await createNote(page, 'Board card');
-	await quickAction(noteCard(page, 'Board card'), 'Tag note');
+	await quickAction(noteCard(page, 'Board card'), 'Add label…');
 	const labels = page.getByRole('dialog').filter({ hasText: 'Labels' });
 	await labels.getByPlaceholder('Search or create a label…').fill('Doing');
 	await labels.getByRole('button', { name: 'Create label' }).click();
@@ -58,7 +58,7 @@ test('a kanban board gains a label column that holds the tagged note', async ({ 
 test('moving a card to another column says where it went and can be undone', async ({ page }) => {
 	await openEmptyApp(page);
 	await createNote(page, 'Moving card');
-	await quickAction(noteCard(page, 'Moving card'), 'Tag note');
+	await quickAction(noteCard(page, 'Moving card'), 'Add label…');
 	const labels = page.getByRole('dialog').filter({ hasText: 'Labels' });
 	for (const name of ['Todo', 'Doing']) {
 		await labels.getByPlaceholder('Search or create a label…').fill(name);

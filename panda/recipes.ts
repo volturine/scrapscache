@@ -238,9 +238,6 @@ const iconButtonRecipe = defineRecipe({
 	variants: {
 		variant: {
 			haze: mediaHazeButton('scrapscache.mediaTextStrong'),
-			hazeCopied: mediaHazeButton('scrapscache.mediaSuccess'),
-			hazePinned: mediaHazeButton('scrapscache.mediaWarning'),
-			hazeBlue: mediaHazeButton('scrapscache.mediaAccent'),
 			hazeRose: {
 				color: 'scrapscache.mediaTextStrong',
 				_hoverable: {

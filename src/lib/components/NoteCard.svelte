@@ -4,6 +4,7 @@
 	import {
 		cardOpenControl,
 		iconSizeXs,
+		noteActionsStyles,
 		trashCountdownRow,
 		secretPreviewCaption
 	} from '$panda/styles';
@@ -14,7 +15,7 @@
 	import { cardSwipeStyle, createCardSwipe } from '#lib/cardSwipe.js';
 	import { overflowingTable } from '#lib/tableScroll.js';
 	import NoteBodyDisplay from './NoteBodyDisplay.svelte';
-	import NoteQuickActions from './NoteQuickActions.svelte';
+	import NoteActionsMenu from './NoteActionsMenu.svelte';
 	import ReminderLabel from './ReminderLabel.svelte';
 	import { Archive, ArchiveRestore, Clock, EyeOff, RotateCcw, Trash2 } from '@lucide/svelte';
 	import { onDestroy } from 'svelte';
@@ -29,31 +30,17 @@
 
 	let cardEl = $state<HTMLElement | null>(null);
 	let openButton = $state<HTMLButtonElement | null>(null);
-	let hazeActive = $state(false);
-
-	function closeHaze() {
-		hazeActive = false;
-	}
+	/** The "…" menu; a right-click or long-press opens the same one. */
+	let actionsOpen = $state(false);
 
 	function handleContextMenu(e: MouseEvent) {
 		e.preventDefault();
 		e.stopPropagation();
-		hazeActive = true;
-	}
-
-	// A mouse leaving the card dismisses the haze; touch lift also fires
-	// pointerleave, and on touch the haze already closes on the next press.
-	function handleCardPointerLeave(e: PointerEvent) {
-		if (hazeActive && e.pointerType === 'mouse') closeHaze();
+		actionsOpen = true;
 	}
 
 	function openUnlessDrag(e: MouseEvent) {
 		if (e.button !== 0) return;
-		if (hazeActive) {
-			e.stopPropagation();
-			closeHaze();
-			return;
-		}
 		if (swipe.wasDrag() || suppressClick) {
 			e.stopPropagation();
 			return;
@@ -207,14 +194,6 @@
 	}
 
 	// Enter and Space reach the open button as a click, which bubbles to the card.
-	function handleKeydown(event: KeyboardEvent) {
-		if (hazeActive && event.key === 'Escape') {
-			event.stopPropagation();
-			event.preventDefault();
-			closeHaze();
-		}
-	}
-
 	const labelsForNote = $derived(
 		note.labels
 			.map((id) => notesStore.labelsById.get(id))
@@ -292,17 +271,15 @@
 		onpointermove={onCardPointerMove}
 		onpointerup={onCardPointerUp}
 		onpointercancel={onCardPointerCancel}
-		onpointerleave={handleCardPointerLeave}
 		onclick={openUnlessDrag}
 		oncontextmenu={handleContextMenu}
-		onkeydown={handleKeydown}
 	>
 		<button bind:this={openButton} type="button" class={cardOpenControl} aria-label={openLabel}
 		></button>
 
 		{#if note.reminder != null}
 			<div class={css({ flexShrink: 0 })}>
-				<ReminderLabel reminder={note.reminder} />
+				<ReminderLabel reminder={note.reminder} class={noteActionsStyles.topRoom} />
 			</div>
 		{/if}
 
@@ -341,6 +318,7 @@
 							<h3
 								class={cx(
 									card.title,
+									noteActionsStyles.topRoom,
 									css({ flexShrink: 0 }),
 									note.secret && css({ px: 'md', pt: 'md', pb: 'sm' })
 								)}
@@ -427,6 +405,6 @@
 			</p>
 		{/if}
 
-		<NoteQuickActions {note} bind:open={hazeActive} />
+		<NoteActionsMenu {note} bind:open={actionsOpen} />
 	</article>
 </div>

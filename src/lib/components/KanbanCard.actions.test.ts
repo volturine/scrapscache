@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Note } from '#lib/types.js';
 import { kanbanDrag } from '#lib/kanbanDrag.svelte.js';
@@ -28,7 +28,11 @@ function card(onOpen = vi.fn()) {
 	render(KanbanCard, {
 		props: { note: note(), columnId: 'todo', index: 0, onOpen, onDrop: vi.fn() }
 	});
-	return screen.getByRole('button', { name: 'Open Ship it' });
+	return screen.getByRole('button', { name: 'Open Ship it' }).closest('article')!;
+}
+
+function menu(): HTMLElement | null {
+	return document.querySelector('[data-note-actions]');
 }
 
 beforeEach(() => {
@@ -42,16 +46,21 @@ afterEach(() => {
 	vi.restoreAllMocks();
 });
 
-describe('KanbanCard quick actions', () => {
-	it('shows the quick actions when the card is right-clicked', async () => {
+describe('KanbanCard actions menu', () => {
+	it('shows the menu from the … button and from a right-click', async () => {
 		const shown = card();
 
-		const allowed = await fireEvent.contextMenu(shown);
+		await fireEvent.click(within(shown).getByRole('button', { name: 'Note actions' }));
+		await waitFor(() => expect(menu()).not.toBeNull());
+		expect(screen.getByRole('menuitem', { name: 'Archive' })).toBeTruthy();
+		expect(screen.getByRole('menuitem', { name: 'Add label…' })).toBeTruthy();
 
+		await fireEvent.keyDown(menu()!, { key: 'Escape' });
+		await waitFor(() => expect(menu()).toBeNull());
+
+		const allowed = await fireEvent.contextMenu(shown);
 		expect(allowed).toBe(false);
-		expect(document.querySelector('[data-card-haze]')).toBeTruthy();
-		expect(screen.getByRole('button', { name: 'Archive note' })).toBeTruthy();
-		expect(screen.getByRole('button', { name: 'Tag note' })).toBeTruthy();
+		await waitFor(() => expect(menu()).not.toBeNull());
 	});
 
 	it('runs an action without opening the note or starting a drag', async () => {
@@ -60,17 +69,32 @@ describe('KanbanCard quick actions', () => {
 		const shown = card(onOpen);
 
 		await fireEvent.contextMenu(shown);
-		const remove = screen.getByRole('button', { name: 'Delete note' });
+		await waitFor(() => expect(menu()).not.toBeNull());
+		const remove = screen.getByRole('menuitem', { name: 'Move to trash' });
 		await fireEvent.pointerDown(remove, { pointerId: 1, pointerType: 'mouse', button: 0 });
 		await fireEvent.click(remove);
 
 		expect(trash).toHaveBeenCalledWith('note-1');
 		expect(onOpen).not.toHaveBeenCalled();
 		expect(kanbanDrag.noteId).toBeNull();
-		expect(document.querySelector('[data-card-haze]')).toBeNull();
+		await waitFor(() => expect(menu()).toBeNull());
 	});
 
-	it('swallows the tap that dismisses the haze over another card', async () => {
+	it('does not open the note from a press on the … button', async () => {
+		const onOpen = vi.fn();
+		const shown = card(onOpen);
+		const trigger = within(shown).getByRole('button', { name: 'Note actions' });
+
+		const down = new Event('pointerdown', { bubbles: true, cancelable: true });
+		Object.assign(down, { pointerType: 'mouse', pointerId: 1, isPrimary: true, button: 0 });
+		await fireEvent(trigger, down);
+		await fireEvent.click(trigger);
+
+		expect(onOpen).not.toHaveBeenCalled();
+		expect(kanbanDrag.noteId).toBeNull();
+	});
+
+	it('swallows the tap that dismisses the menu over another card', async () => {
 		const onOpenOther = vi.fn();
 		notesStore.notes = [note(), note({ id: 'note-2', title: 'Other' })];
 		const shown = card();
@@ -92,8 +116,9 @@ describe('KanbanCard quick actions', () => {
 		};
 
 		await fireEvent.contextMenu(shown);
+		await waitFor(() => expect(menu()).not.toBeNull());
 		await tap();
-		expect(document.querySelector('[data-card-haze]')).toBeNull();
+		await waitFor(() => expect(menu()).toBeNull());
 		expect(onOpenOther).not.toHaveBeenCalled();
 
 		await tap();
@@ -117,6 +142,8 @@ describe('KanbanCard quick actions', () => {
 			const other = screen.getByRole('button', { name: 'Open Other' }).closest('article')!;
 
 			await fireEvent.contextMenu(shown);
+			await vi.advanceTimersByTimeAsync(0);
+			expect(menu()).not.toBeNull();
 			const down = new Event('pointerdown', { bubbles: true, cancelable: true });
 			Object.assign(down, {
 				pointerType: 'touch',
@@ -127,7 +154,6 @@ describe('KanbanCard quick actions', () => {
 				clientY: 10
 			});
 			await fireEvent(other, down);
-			expect(document.querySelector('[data-card-haze]')).toBeNull();
 
 			// Held past HOLD_MS, a touch press lifts the card for a drag.
 			await vi.advanceTimersByTimeAsync(300);
@@ -135,16 +161,5 @@ describe('KanbanCard quick actions', () => {
 		} finally {
 			vi.useRealTimers();
 		}
-	});
-
-	it('closes on Escape without opening the note', async () => {
-		const onOpen = vi.fn();
-		const shown = card(onOpen);
-
-		await fireEvent.contextMenu(shown);
-		await fireEvent.keyDown(shown, { key: 'Escape' });
-
-		expect(document.querySelector('[data-card-haze]')).toBeNull();
-		expect(onOpen).not.toHaveBeenCalled();
 	});
 });

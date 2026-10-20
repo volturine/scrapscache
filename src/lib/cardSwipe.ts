@@ -43,7 +43,9 @@ export function createCardSwipe(opts: {
 	}
 
 	function onPointerDown(e: PointerEvent) {
-		if (e.pointerType === 'mouse' && e.button !== 0) return;
+		// A swipe is a finger's gesture; a mouse has the "…" menu, and a drag with it
+		// would fight text selection and the card's own click.
+		if (e.pointerType === 'mouse') return;
 		if (tracking) return;
 		justDragged = false;
 		// Keep the pointer until we can identify its direction, but do not promote

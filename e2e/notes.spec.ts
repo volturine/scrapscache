@@ -281,13 +281,26 @@ test.describe('on a touch screen', () => {
 		const box = (await add.boundingBox())!;
 		const target = await add.evaluate((button) => {
 			const style = getComputedStyle(button, '::before');
-			return { width: parseFloat(style.width), height: parseFloat(style.height), left: style.left };
+			return {
+				width: parseFloat(style.width),
+				height: parseFloat(style.height),
+				left: parseFloat(style.left),
+				right: style.right
+			};
 		});
-		// The glyph stays small; the target reaches 44 px, starting at the glyph's left edge.
+		// The glyph stays small; the target reaches 44 px, ending at the glyph's right edge
+		// (the paint clip ends there) and reaching left only into the row's reserved gap.
 		expect(box.width).toBeLessThan(30);
 		expect(target.width).toBeGreaterThanOrEqual(44);
 		expect(target.height).toBeGreaterThanOrEqual(44);
-		expect(target.left).toBe('0px');
+		expect(target.right).toBe('0px');
+		expect(target.left).toBeLessThan(0);
+		const text = (await sheet
+			.locator('[data-task-row]')
+			.first()
+			.locator('[data-line-text]')
+			.boundingBox())!;
+		expect(box.x + target.left).toBeGreaterThanOrEqual(text.x + text.width - 1);
 	});
 
 	test('the tap that closes the quick actions does not open the note under it', async ({

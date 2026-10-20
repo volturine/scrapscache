@@ -3351,14 +3351,15 @@
 		const parts: string[] = [];
 		if (line.indent > 0 || focused)
 			parts.push(`padding-left:calc(${line.indent * 1.25}rem${focused ? ' + 0.5rem' : ''})`);
-		// Every task row keeps the +'s room (its glyph and a gap), so a near-full line does
-		// not wrap when focus arrives. The focused row bleeds 0.5rem out on both sides and
-		// pads the same back in, so its text keeps the width it had.
+		// Every task row keeps the +'s room (its 1.5rem glyph, the 1.25rem its touch target
+		// reaches into, and a hair of slack), so a near-full line does not wrap when focus
+		// arrives. The focused row bleeds 0.5rem out on both sides and pads the same back
+		// in, so its text keeps the width it had.
 		if (line.isCheck)
 			parts.push(
 				focused
-					? 'margin-left:-0.5rem;margin-right:-0.5rem;padding-right:2.5rem'
-					: 'padding-right:2rem'
+					? 'margin-left:-0.5rem;margin-right:-0.5rem;padding-right:3.5rem'
+					: 'padding-right:3rem'
 			);
 		return parts.length ? parts.join(';') : undefined;
 	}

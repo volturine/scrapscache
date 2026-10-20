@@ -6,7 +6,8 @@
 	import type { Note } from '#lib/types.js';
 	import NoteBodyDisplay from './NoteBodyDisplay.svelte';
 	import ReminderLabel from './ReminderLabel.svelte';
-	import { Lock } from '@lucide/svelte';
+	import { EyeOff } from '@lucide/svelte';
+	import { secretPreviewCaption } from '$panda/styles';
 	import { cx, css } from 'styled-system/css';
 	import { badge, noteCard, noteSurface } from 'styled-system/recipes';
 
@@ -102,7 +103,7 @@
 						data-secret-overlay
 						aria-hidden="true"
 					>
-						<Lock
+						<EyeOff
 							class={css({
 								w: '1.5rem',
 								h: '1.5rem',
@@ -110,6 +111,7 @@
 								filter: 'drop-shadow(0 1px 2px rgb(0 0 0 / 0.35))'
 							})}
 						/>
+						<span class={secretPreviewCaption}>Preview hidden</span>
 					</div>
 				{/if}
 			</div>

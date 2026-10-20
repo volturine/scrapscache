@@ -3,6 +3,7 @@ import { tick } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Note } from '#lib/types.js';
 import { notesStore } from '#lib/stores/notes.svelte.js';
+import { actionUndo } from '#lib/stores/actionUndo.svelte.js';
 import { uiStore } from '#lib/stores/ui.svelte.js';
 import { formatReminder } from '#lib/utils.js';
 import NoteEditor from './NoteEditor.svelte';
@@ -96,7 +97,7 @@ describe('NoteEditor header reminder controls', () => {
 			'Close note',
 			'Reminder',
 			'Pin',
-			'Make secret',
+			'Hide preview',
 			'Expand note'
 		]);
 		expect(container.querySelector('header')?.textContent).not.toMatch(/Today|Tomorrow|AM|PM/);
@@ -114,7 +115,7 @@ describe('NoteEditor header reminder controls', () => {
 			`Reminder, ${formatReminder(reminder)}`,
 			'Reminder',
 			'Pin',
-			'Make secret',
+			'Hide preview',
 			'Expand note'
 		]);
 		expect(container.querySelector('header')?.textContent).toContain(formatReminder(reminder));
@@ -161,25 +162,58 @@ describe('NoteEditor header reminder controls', () => {
 		expect(move.defaultPrevented).toBe(false);
 	});
 
-	it('toggles secret status from the header', async () => {
+	it('hides and shows the preview from the header, and says what hiding does', async () => {
 		notesStore.notes = [note({ id: 'note-1', secret: false })];
 		const { container } = render(NoteEditor, {
 			props: { noteId: 'note-1', onClose: () => {} }
 		});
 
-		const secretBtn = container.querySelector('button[title="Make secret"]') as HTMLButtonElement;
-		expect(secretBtn).toBeDefined();
-		await fireEvent.click(secretBtn);
+		const hide = container.querySelector('button[aria-label="Hide preview"]') as HTMLButtonElement;
+		expect(hide.getAttribute('aria-pressed')).toBe('false');
+		await fireEvent.click(hide);
 		await tick();
 		expect(notesStore.notes[0].secret).toBe(true);
+		// The toast names the limit, so no one keeps a password behind a blur.
+		expect(actionUndo.bar).toBe(
+			'Preview hidden in lists. Anyone using this device can still open the note.'
+		);
 
-		const removeSecretBtn = container.querySelector(
-			'button[title="Remove secret"]'
-		) as HTMLButtonElement;
-		expect(removeSecretBtn).toBeDefined();
-		await fireEvent.click(removeSecretBtn);
+		const show = container.querySelector('button[aria-label="Show preview"]') as HTMLButtonElement;
+		expect(show.getAttribute('aria-pressed')).toBe('true');
+		// The limit stays on the control, for a tooltip and for assistive technology.
+		expect(show.title).toContain('Anyone using this device can still open it.');
+		const describedBy = show.getAttribute('aria-describedby')!;
+		expect(document.getElementById(describedBy)?.textContent).toBe(
+			'Blurs this note in lists. Anyone using this device can still open it.'
+		);
+		await fireEvent.click(show);
 		await tick();
 		expect(notesStore.notes[0].secret).toBeUndefined();
+		// Showing it again by hand retires the toast and its undo step.
+		expect(actionUndo.bar).toBeNull();
+		expect(actionUndo.past.some((step) => step.message.startsWith('Preview hidden'))).toBe(false);
+		expect(container.querySelector('button[title="Make secret"]')).toBeNull();
+	});
+
+	it('retires the hide toast from a reopened editor, and after undo and redo', async () => {
+		notesStore.notes = [note({ id: 'note-1', secret: false })];
+		const first = render(NoteEditor, { props: { noteId: 'note-1', onClose: () => {} } });
+		await fireEvent.click(first.container.querySelector('button[aria-label="Hide preview"]')!);
+		await tick();
+		expect(actionUndo.bar).not.toBeNull();
+		// Closing and reopening the note mounts a new editor (`{#key editingId}`).
+		first.unmount();
+		actionUndo.undo();
+		actionUndo.redo();
+		expect(notesStore.notes[0].secret).toBe(true);
+
+		const { container } = render(NoteEditor, { props: { noteId: 'note-1', onClose: () => {} } });
+		await fireEvent.click(container.querySelector('button[aria-label="Show preview"]')!);
+		await tick();
+		expect(notesStore.notes[0].secret).toBeUndefined();
+		expect(actionUndo.bar).toBeNull();
+		expect(actionUndo.past.some((step) => step.message.startsWith('Preview hidden'))).toBe(false);
+		expect(actionUndo.future).toHaveLength(0);
 	});
 
 	it('autofocuses the note body when autofocusBody is true', async () => {
@@ -424,7 +458,7 @@ describe('NoteEditor task focus', () => {
 		expect(getByRole('button', { name: 'Delete forever' })).toBeTruthy();
 		expect(queryByRole('button', { name: 'Pin' })).toBeNull();
 		expect(queryByRole('button', { name: 'Reminder' })).toBeNull();
-		expect(queryByRole('button', { name: 'Make secret' })).toBeNull();
+		expect(queryByRole('button', { name: 'Hide preview' })).toBeNull();
 
 		await fireEvent.click(getByRole('button', { name: 'Restore' }));
 		expect(restore).toHaveBeenCalledWith('note-1');
@@ -447,7 +481,7 @@ describe('NoteEditor task focus', () => {
 		expect(queryByRole('button', { name: 'Archive' })).toBeNull();
 		expect(queryByRole('button', { name: 'Pin' })).toBeNull();
 		expect(queryByRole('button', { name: 'Reminder' })).toBeNull();
-		expect(queryByRole('button', { name: 'Make secret' })).toBeNull();
+		expect(queryByRole('button', { name: 'Hide preview' })).toBeNull();
 
 		await fireEvent.click(getByRole('button', { name: 'Restore' }));
 		expect(toggleArchive).toHaveBeenCalledWith('note-1');

@@ -405,7 +405,7 @@ describe('NoteEditor task focus', () => {
 		expect(document.activeElement).toBe(editor);
 		expect(scroller.scrollTop).toBe(640);
 		expect(container.querySelector('[data-focus-group]')).toBeNull();
-		expect(toggle.getAttribute('aria-pressed')).toBe('true');
+		expect(toggle.getAttribute('aria-checked')).toBe('true');
 	});
 
 	it('shows restore, archive, and permanently delete for a trashed note', async () => {

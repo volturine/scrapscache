@@ -11,7 +11,7 @@ import {
 } from '#lib/db/idb.js';
 import { readNotesMirror, writeNotesMirror } from '#lib/noteStorage.js';
 import { readProfiles, saveProfile, type StoredProfile } from '#lib/profiles.js';
-import { createSyncIdentity } from '#lib/syncPairing.js';
+import { createSyncIdentity, identityFromSyncKey } from '#lib/syncPairing.js';
 import type { Note } from '#lib/types.js';
 import { unregisterReminderDevice } from '#lib/reminderWake.js';
 import { ProfileCoordinator, profileCoordinator } from './profiles.svelte';
@@ -642,4 +642,85 @@ describe('a workspace removed in another window', () => {
 		expect(readProfiles().map((entry) => entry.id)).toEqual([other.id]);
 		expect(await databaseNames()).not.toContain(resolveDbName(target.id));
 	}, 10_000);
+});
+
+/**
+ * The window that turns sync on or off for a workspace, or gives it a new key,
+ * activates it again under that key. Every other window with the workspace open
+ * has to follow, or it keeps the old key, maybe a retired one, and the old
+ * sync state.
+ */
+describe('a workspace whose sync another window changed', () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+		syncStore.activateLocalWorkspace(TEST_WORKSPACE);
+		syncStore.profiles = [];
+		localStorage.clear();
+	});
+
+	it('treats the open workspace as synced once another window turned sync on', async () => {
+		const open = workspace('synced-elsewhere', false);
+		syncStore.profiles = [open];
+		syncStore.activateProfile(open);
+		const reload = stubHandover();
+		const synced = { ...open, syncKey: createSyncIdentity().syncKey };
+		localStorage.setItem('scrapscache-sync-profiles', JSON.stringify([synced]));
+
+		await new ProfileCoordinator().adoptKeyring();
+
+		expect(syncStore.activeId).toBe(open.id);
+		expect(syncStore.isLoggedIn).toBe(true);
+		expect(syncStore.account?.accountId).toBe(identityFromSyncKey(synced.syncKey).accountId);
+		expect(reload).toHaveBeenCalledOnce();
+	});
+
+	it('drops the key once another window unlinked the workspace or deleted its cloud data', async () => {
+		const open = workspace('unlinked-elsewhere', true);
+		syncStore.profiles = [open];
+		syncStore.activateProfile(open);
+		// A delete retires the key; the retired state must not outlive it.
+		syncStore.keyRetired = true;
+		const reload = stubHandover();
+		localStorage.setItem('scrapscache-sync-profiles', JSON.stringify([{ ...open, syncKey: '' }]));
+
+		await new ProfileCoordinator().adoptKeyring();
+
+		expect(syncStore.activeId).toBe(open.id);
+		expect(syncStore.isLoggedIn).toBe(false);
+		expect(syncStore.keyRetired).toBe(false);
+		expect(reload).toHaveBeenCalledOnce();
+	});
+
+	it('moves to the new key another window gave the workspace', async () => {
+		const open = workspace('rekeyed-elsewhere', true);
+		syncStore.profiles = [open];
+		syncStore.activateProfile(open);
+		const reload = stubHandover();
+		const rekeyed = { ...open, syncKey: createSyncIdentity().syncKey };
+		localStorage.setItem('scrapscache-sync-profiles', JSON.stringify([rekeyed]));
+
+		await new ProfileCoordinator().adoptKeyring();
+
+		expect(syncStore.account?.accountId).toBe(identityFromSyncKey(rekeyed.syncKey).accountId);
+		expect(reload).toHaveBeenCalledOnce();
+	});
+
+	it('leaves the window alone when the keyring changed but the open key did not', async () => {
+		const open = workspace('same-key', true);
+		const other = workspace('renamed-elsewhere', false, 2);
+		syncStore.profiles = [open, other];
+		syncStore.activateProfile(open);
+		const reload = stubHandover();
+		const accountId = syncStore.account?.accountId;
+		localStorage.setItem(
+			'scrapscache-sync-profiles',
+			JSON.stringify([open, { ...other, name: 'Renamed' }])
+		);
+
+		await new ProfileCoordinator().adoptKeyring();
+
+		expect(syncStore.account?.accountId).toBe(accountId);
+		expect(syncStore.profiles[1].name).toBe('Renamed');
+		expect(reload).not.toHaveBeenCalled();
+	});
 });

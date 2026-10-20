@@ -72,6 +72,8 @@
 	let syncStatus = $derived(resolveSyncStatus(syncStore.lastError, syncStore.usage));
 	let syncControlLabel = $derived(SYNC_CONTROL_LABEL[syncStatus]);
 
+	let searchField: HTMLInputElement | undefined;
+
 	function openPairingLink() {
 		const found = pairingCodeFromUrl(window.location.href);
 		if (!found) return;
@@ -265,6 +267,7 @@
 	>
 		<Search class={cx(iconSm, styles.searchIcon)} aria-hidden="true" />
 		<input
+			bind:this={searchField}
 			value={uiStore.searchInput}
 			oninput={(event) => uiStore.setSearchInput(event.currentTarget.value)}
 			type="search"
@@ -273,10 +276,14 @@
 			class={cx(input({ variant: 'unstyled' }), styles.searchInput)}
 		/>
 		{#if uiStore.searchInput}
+			<!-- The button goes with the query, so focus moves back to the field rather than the page. -->
 			<button
 				type="button"
 				class={clearButton}
-				onclick={() => uiStore.clearSearch()}
+				onclick={() => {
+					uiStore.clearSearch();
+					searchField?.focus();
+				}}
 				aria-label="Clear search"
 			>
 				<X class={iconSm} aria-hidden="true" />

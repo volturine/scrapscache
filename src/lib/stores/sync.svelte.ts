@@ -1578,7 +1578,7 @@ export class SyncStore {
 				const data = (await response.json().catch(() => ({}))) as { error?: unknown };
 				return {
 					success: false,
-					error: typeof data.error === 'string' ? data.error : 'Could not delete synced data'
+					error: typeof data.error === 'string' ? data.error : 'Could not remove from the cloud'
 				};
 			}
 			await this.unlinkProfile(profile);

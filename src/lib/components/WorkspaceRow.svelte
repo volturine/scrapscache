@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { truncate, workspaceStyles } from '$panda/styles';
 	import { tick, type Snippet } from 'svelte';
-	import { Check, ChevronDown, CloudOff, Download, Pencil, TriangleAlert, X } from '@lucide/svelte';
+	import { Check, ChevronDown, CloudOff, Download, Pencil, X } from '@lucide/svelte';
 	import { css, cx } from 'styled-system/css';
 	import {
 		button,
@@ -155,11 +155,9 @@
 	<div class={`front ${styles.frontBase}`} class:active data-front>
 		{#if mode === 'confirm'}
 			<div class={`panel confirm ${styles.panel}`}>
-				<span class={`${styles.glyph} panel-glyph`} aria-hidden="true"
-					><TriangleAlert size={18} /></span
-				>
+				<span class={`${styles.glyph} panel-glyph`} aria-hidden="true"><CloudOff size={18} /></span>
 				<p class={cx(styles.content, css({ fontSize: 'compact' }))}>
-					Unlink <strong>{name}</strong>?<span class={styles.caption}
+					Stop syncing <strong>{name}</strong> on this device?<span class={styles.caption}
 						>Notes stay here as a private workspace.</span
 					>
 				</p>
@@ -169,16 +167,17 @@
 						class={button({ variant: 'quiet', size: 'sm' })}
 						{@attach takeFocus}
 						disabled={working !== null}
-						aria-label="Keep {name} linked"
+						aria-label="Keep syncing {name}"
 						onclick={cancel}>Cancel</button
 					>
+					<!-- Neutral, not red: nothing is deleted, the notes stay here. -->
 					<button
 						type="button"
-						class={button({ variant: 'destructive', size: 'sm' })}
+						class={button({ variant: 'secondary', size: 'sm' })}
 						disabled={locked}
-						aria-label="Unlink {name} from this device"
+						aria-label="Yes, stop syncing {name} on this device"
 						onclick={() => void confirmUnlink()}
-						>{working === 'unlink' ? 'Unlinking…' : 'Unlink'}</button
+						>{working === 'unlink' ? 'Stopping…' : 'Stop syncing'}</button
 					>
 				</div>
 			</div>
@@ -286,13 +285,13 @@
 		{#if onunlink}
 			<button
 				type="button"
-				class={cx(styles.manageRow, styles.manageRowDanger)}
+				class={styles.manageRow}
 				disabled={locked}
 				onclick={askUnlink}
-				aria-label="Unlink {name}"
+				aria-label="Stop syncing {name} on this device"
 			>
 				<CloudOff size={16} aria-hidden="true" /><span
-					>Unlink<small>Stop syncing on this device. Notes stay here.</small></span
+					>Stop syncing on this device<small>Notes stay here as a private workspace.</small></span
 				>
 			</button>
 		{/if}

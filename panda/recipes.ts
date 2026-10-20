@@ -169,6 +169,12 @@ const buttonRecipe = defineRecipe({
 			},
 			ghost: buttonQuiet('scrapscache.textMuted', 'scrapscache.interactiveHover'),
 			danger: buttonQuiet('scrapscache.danger', 'scrapscache.dangerSubtle', 'scrapscache.danger'),
+			// Amber: an action that overwrites, but destroys nothing on this device.
+			caution: buttonQuiet(
+				'scrapscache.warning',
+				'scrapscache.warningSubtle',
+				'scrapscache.warning'
+			),
 			destructive: buttonFill(
 				'scrapscache.danger',
 				'scrapscache.dangerForeground',

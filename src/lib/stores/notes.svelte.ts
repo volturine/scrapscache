@@ -1704,7 +1704,9 @@ export class NotesStore {
 				await this.waitForPendingProfileWrites();
 				await this.hydrateAllAttachments();
 				if (this.attachmentHydrationFailures.size)
-					throw new Error('Some attachments could not be loaded. Force resync was not started.');
+					throw new Error(
+						'Some attachments could not be loaded. Replacing the cloud copy was not started.'
+					);
 				await syncStore.reauthenticateForRecovery(turnstileToken);
 				await syncStore.clearAccountControlPlane(account.accountId);
 				let remote: SyncSnapshot | undefined;
@@ -1713,7 +1715,9 @@ export class NotesStore {
 					return snapshot;
 				});
 				if (!pulled.success || !remote)
-					throw new Error(pulled.error ?? 'Could not read cloud state before force resync');
+					throw new Error(
+						pulled.error ?? 'Could not read cloud state before replacing the cloud copy'
+					);
 				const snapshot = buildForcePushSnapshot(
 					this.syncSnapshot({ notes: this.notes.map(cloneNote), labels: [...this.labels] }),
 					remote,
@@ -1741,7 +1745,7 @@ export class NotesStore {
 				const synced = await this.doSyncLocked(true);
 				return synced && !syncStore.lastError && !this.lastPersistError;
 			} catch (err) {
-				this.recordPersistenceError('Could not force resync', err);
+				this.recordPersistenceError('Could not replace the cloud copy', err);
 				return false;
 			}
 		});

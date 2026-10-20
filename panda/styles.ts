@@ -1350,11 +1350,11 @@ export const workspaceStyles = {
 	panel: css({
 		...workspaceContent,
 		p: 'md',
+		// Neutral: the one confirm here, stop syncing, deletes nothing.
 		'&.confirm': {
-			bg: 'scrapscache.dangerSubtle',
+			bg: 'scrapscache.surfaceSubtle',
 			rounded: 'row',
 			flexWrap: { base: 'wrap' },
-			'& .panel-glyph': { color: 'scrapscache.danger' },
 			'& .panel-actions': { w: { base: '100%' }, justifyContent: { base: 'flex-end' } }
 		}
 	}),
@@ -2051,6 +2051,8 @@ export const syncStyles = {
 		textAlign: 'left',
 		'& small': { display: 'block', mt: '3xs', textStyle: 'caption' }
 	}),
+	/** Amber: an action that overwrites the cloud copy, but deletes nothing here. */
+	manageRowCaution: css({ color: 'scrapscache.warning' }),
 	dividerLine: css({ h: 'hairline', flex: '1', bg: 'scrapscache.border' }),
 	pairingInput: css({
 		w: 'full',
@@ -2129,6 +2131,8 @@ export const syncStyles = {
 		overflow: 'hidden',
 		textOverflow: 'ellipsis'
 	}),
+	/** A label that may take a second line rather than an ellipsis, so the phrase stays on screen. */
+	buttonLabelWrap: css({ minW: 0, whiteSpace: 'normal', textAlign: 'center' }),
 	pressableButton: css({ _active: { transform: 'scale(0.96)' } }),
 	filledSecondaryButton: css({
 		bg: 'scrapscache.controlSubtle',

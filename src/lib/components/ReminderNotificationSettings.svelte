@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { reminderSettingsRow, reminderSettingsStyles } from '$panda/styles';
+	import { settingsMenuStyles as styles } from '$panda/styles';
 	import { onMount } from 'svelte';
 	import { Menu } from '@ark-ui/svelte/menu';
 	import { Bell, ChevronRight } from '@lucide/svelte';
@@ -16,8 +16,19 @@
 	import { menuItem } from 'styled-system/recipes';
 
 	let permission = $state(notificationPermission());
-	const hintId = $props.id();
-	const blockedHint = $derived(notificationsBlockedHint(pwaInstallStore.isStandalone));
+	const id = $props.id();
+	const labelId = `${id}-label`;
+	const statusId = `${id}-status`;
+	/** The sentence under the row: whether this device shows alerts, and what to do about it. */
+	const status = $derived(
+		permission === 'granted'
+			? 'On. This device shows them.'
+			: permission === 'default'
+				? 'Off. Tap to turn them on.'
+				: permission === 'denied'
+					? notificationsBlockedHint(pwaInstallStore.isStandalone)
+					: 'This browser cannot show them.'
+	);
 
 	onMount(() => {
 		const refresh = () => {
@@ -38,40 +49,37 @@
 	}
 </script>
 
-<Menu.ItemGroup aria-label="Notifications">
-	{#if permission === 'default'}
-		<Menu.Item
-			value="notifications-enable"
-			closeOnSelect={false}
-			onSelect={() => void enable()}
-			class={cx(menuItem({ density: 'compact' }), reminderSettingsRow.base)}
-			aria-label="Turn on notifications"
-		>
-			<Bell class={reminderSettingsStyles.icon} aria-hidden="true" />
-			<span class={reminderSettingsStyles.label}>Notifications</span>
-			<span class={reminderSettingsStyles.status}>Not set</span>
-			<ChevronRight class={reminderSettingsStyles.chevron} aria-hidden="true" />
-		</Menu.Item>
-	{:else}
-		<!-- A passive item, so moving through the menu still reaches the state and its hint. -->
-		<Menu.Item
-			value="notifications-status"
-			closeOnSelect={false}
-			class={cx(menuItem({ density: 'compact', feedback: 'none' }), reminderSettingsRow.base)}
-			aria-describedby={permission === 'denied' ? hintId : undefined}
-		>
-			<Bell class={reminderSettingsStyles.icon} aria-hidden="true" />
-			<span class={reminderSettingsStyles.label}>Notifications</span>
-			<span class={reminderSettingsStyles.status}>
-				{permission === 'granted'
-					? 'Enabled'
-					: permission === 'denied'
-						? 'Disabled'
-						: 'Unsupported'}
-			</span>
-		</Menu.Item>
-		{#if permission === 'denied'}
-			<p id={hintId} class={reminderSettingsStyles.hint}>{blockedHint}</p>
-		{/if}
-	{/if}
-</Menu.ItemGroup>
+{#if permission === 'default'}
+	<Menu.Item
+		value="notifications-enable"
+		closeOnSelect={false}
+		onSelect={() => void enable()}
+		class={cx(menuItem({ density: 'compact' }), styles.deviceRow)}
+		aria-label="Turn on reminder alerts"
+		aria-describedby={statusId}
+	>
+		<Bell class={styles.deviceIcon} aria-hidden="true" />
+		<span class={styles.deviceText}>
+			<span id={labelId} class={styles.deviceLabel}>Reminder alerts</span>
+			<span id={statusId} class={styles.status}>{status}</span>
+		</span>
+		<ChevronRight class={styles.deviceChevron} aria-hidden="true" />
+	</Menu.Item>
+{:else}
+	<!-- A passive item, so moving through the menu still reaches the state and its sentence. -->
+	<Menu.Item
+		value="notifications-status"
+		closeOnSelect={false}
+		class={cx(menuItem({ density: 'compact', feedback: 'none' }), styles.deviceRow)}
+		aria-labelledby={labelId}
+		aria-describedby={statusId}
+	>
+		<Bell class={styles.deviceIcon} aria-hidden="true" />
+		<span class={styles.deviceText}>
+			<span id={labelId} class={styles.deviceLabel}>Reminder alerts</span>
+			<span id={statusId} class={permission === 'denied' ? styles.statusWarning : styles.status}
+				>{status}</span
+			>
+		</span>
+	</Menu.Item>
+{/if}

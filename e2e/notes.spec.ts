@@ -58,7 +58,8 @@ test('controls keep keyboard focus without drawing highlights', async ({ page })
 	}
 
 	await page.getByRole('button', { name: 'Settings', exact: true }).click();
-	const theme = page.getByRole('menuitem', { name: /^(Dark|Light) mode$/ });
+	// An unchosen theme: the chosen one paints its own segment.
+	const theme = page.getByRole('menuitemradio', { name: 'Dark', exact: true });
 	await theme.focus();
 	await expect(theme).toHaveCSS('outline-style', 'none');
 	await expect(theme).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');

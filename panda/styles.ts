@@ -1741,17 +1741,84 @@ export const reminderAlertStyles = {
 	dismissIcon: iconSmClass
 };
 
-export const reminderSettingsRow = {
-	base: hstack({ h: '2rem', gap: 'list', px: 'md' })
-};
-
-export const reminderSettingsStyles = {
-	icon: css({ ...iconSm, flexShrink: 0 }),
-	label: css({ ...flexFill, textStyle: 'button' }),
-	status: css({ flexShrink: 0, textStyle: 'captionStrong' }),
-	chevron: css({ ...iconSm, flexShrink: 0, ...mutedText }),
-	/** What a row's status means for the person, under the row. */
-	hint: css({ px: 'md', pb: 'xs', textStyle: 'caption', ...mutedText })
+/**
+ * The settings popover: three labelled sections, a segmented control per
+ * appearance choice, and a device row that carries its status in a sentence
+ * under its label. Phone sizes get 44 px controls and 48 px rows.
+ */
+export const settingsMenuStyles = {
+	positioner: css({ zIndex: 30 }),
+	popover: css({
+		w: { base: 'calc(100vw - 1rem)', sm: '20.625rem' },
+		maxH: 'calc(100dvh - 4.5rem)',
+		overflowY: 'auto',
+		pt: '2xs',
+		pb: 'xs'
+	}),
+	sectionLabel: css({ px: 'md', pt: 'sm', pb: '2xs', textStyle: 'overline', ...mutedText }),
+	section: css({
+		'& + &': { borderTopWidth: 'hairline', borderColor: 'scrapscache.border', mt: 'xs' }
+	}),
+	controlRow: hstack({ minH: { base: '3rem', sm: '2.5rem' }, gap: 'sm', px: 'md' }),
+	/** A one-line action row: the menu item's height on a desktop, a 48 px row on a phone. */
+	row: css({ minH: { base: '3rem', sm: '2rem' } }),
+	controlLabel: css({ ...flexFill, textStyle: 'body' }),
+	segment: hstack({
+		gap: '3xs',
+		p: '3xs',
+		rounded: 'control',
+		bg: 'scrapscache.surfaceSubtle',
+		flexShrink: 0
+	}),
+	segmentItem: css({
+		...clickable,
+		rounded: 'compact',
+		...gridCenter,
+		px: 'sm',
+		py: '2xs',
+		minW: { base: '4rem', sm: 'auto' },
+		// 44 px targets on a phone; the desktop pointer hits what it sees.
+		minH: { base: '2.75rem', sm: 'auto' },
+		textAlign: 'center',
+		textStyle: 'label',
+		...mutedText,
+		outline: 'none',
+		transitionProperty: 'background-color, color, box-shadow',
+		transitionDuration: '120ms',
+		transitionTimingFunction: 'ease',
+		'&[data-state=checked]': {
+			bg: 'scrapscache.surface',
+			color: 'scrapscache.text',
+			fontWeight: 'strong',
+			boxShadow: 'sm'
+		},
+		'&[data-highlighted]:not([data-state=checked])': { color: 'scrapscache.text' }
+	}),
+	/** A row with a sentence under its label; the menu item recipe's fixed height gives way. */
+	deviceRow: css({
+		h: 'auto',
+		minH: { base: '3rem', sm: '2.5rem' },
+		alignItems: 'flex-start',
+		py: 'xs',
+		gap: 'list'
+	}),
+	deviceIcon: css({ ...iconSm, flexShrink: 0, mt: '2xs' }),
+	deviceText: css({ ...flexFill, display: 'flex', flexDirection: 'column', gap: '3xs' }),
+	deviceLabel: css({ textStyle: 'body' }),
+	deviceChevron: css({ ...iconSm, flexShrink: 0, mt: '2xs', ...mutedText }),
+	/** What the row's state means for the person, as a sentence. */
+	status: css({ textStyle: 'caption', ...mutedText }),
+	statusWarning: css({ textStyle: 'caption', color: 'scrapscache.warning' }),
+	links: hstack({ px: 'md', py: { base: 'md', sm: 'sm' }, gap: 'md', flexWrap: 'wrap' }),
+	link: css({
+		textStyle: 'label',
+		color: 'scrapscache.accent',
+		outline: 'none',
+		rounded: 'compact',
+		_hoverable: { textDecoration: 'underline' },
+		'&[data-highlighted]': { textDecoration: 'underline' }
+	}),
+	alert: css({ px: 'md', pb: 'sm', textStyle: 'label', color: 'scrapscache.danger' })
 };
 
 export const colorPaletteStyles = {
@@ -2726,12 +2793,7 @@ export const topbarStyles = {
 	}),
 	searchInput: css({ h: 'full', flex: '1', appearance: 'none', _placeholder: mutedText }),
 	searchIcon: css(mutedText),
-	syncIcon: css({ display: 'block' }),
-	menuPositioner: css({ zIndex: 30 }),
-	menuPopover: css({ w: '16rem', overflow: 'hidden', pt: '2xs' }),
-	deviceSettings: css({ borderTopWidth: 'hairline', borderColor: 'scrapscache.border' }),
-	menuSeparator: css({ borderTopWidth: 'hairline', borderColor: 'scrapscache.border' }),
-	menuAlert: css({ px: 'md', pb: 'sm', textStyle: 'label', color: 'scrapscache.danger' })
+	syncIcon: css({ display: 'block' })
 };
 
 export const topbarSyncTone = {

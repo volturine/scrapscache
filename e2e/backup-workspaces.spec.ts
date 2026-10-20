@@ -12,7 +12,7 @@ test('an encrypted backup restores the notes into a fresh browser', async ({
 	await createNote(page, 'Backed up', 'Keep this safe.');
 
 	await page.getByRole('button', { name: 'Settings', exact: true }).click();
-	await page.getByRole('menuitem', { name: 'Export backup' }).click();
+	await page.getByRole('menuitem', { name: 'Back up notes…' }).click();
 	const dialog = page.getByRole('dialog').filter({ hasText: 'Protect this backup' });
 	await dialog.getByLabel('Backup passphrase').fill(passphrase);
 	await dialog.getByLabel('Confirm passphrase').fill(passphrase);
@@ -31,7 +31,7 @@ test('an encrypted backup restores the notes into a fresh browser', async ({
 	await expect(noteCard(restored, 'Backed up')).toBeHidden();
 
 	await restored.getByRole('button', { name: 'Settings', exact: true }).click();
-	await restored.getByRole('menuitem', { name: 'Import backup' }).click();
+	await restored.getByRole('menuitem', { name: 'Restore from a backup…' }).click();
 	await restored.locator('input[type="file"]').setInputFiles(file);
 	const unlock = restored.getByRole('dialog').filter({ hasText: 'Unlock this backup' });
 	await unlock.getByLabel('Backup passphrase').fill(passphrase);

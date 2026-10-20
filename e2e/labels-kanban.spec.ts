@@ -121,3 +121,34 @@ test('a label is created from the + in the sidebar, not from the filter field', 
 	await expect(page).toHaveTitle(/^Reading/);
 	await expect(labels.getByRole('button', { name: 'Reading', exact: true })).toBeVisible();
 });
+
+test('a new board explains that columns are labels and starts from a template', async ({
+	page
+}) => {
+	await openEmptyApp(page);
+	await page.goto('/kanban');
+	// Backlog alone: the first run. The panel says what a column is and offers a start.
+	await expect(page.locator('[data-kanban-column]')).toHaveCount(1);
+	const starter = page.getByRole('region', { name: 'Boards group your notes by label' });
+	await expect(starter).toBeVisible();
+	await expect(page.locator('[data-kanban-column]').first()).toContainText('Notes in no column');
+
+	await starter.getByRole('button', { name: 'To-Do · In-Progress · Done' }).click();
+	await expect(page.locator('[data-kanban-column]')).toHaveCount(4);
+	await expect(starter).toHaveCount(0);
+	const doing = page.locator('[data-kanban-column]', { hasText: 'In-Progress' });
+	await expect(doing).toContainText('Notes labelled In-Progress');
+	// The template's labels exist for the rest of the app too.
+	await expect(
+		page.getByRole('region', { name: 'Labels' }).getByRole('button', { name: 'Done', exact: true })
+	).toBeVisible();
+
+	// "New label…" makes a label and its column in one go.
+	await page.getByRole('button', { name: 'Add a label column' }).click();
+	await page.getByRole('menuitem', { name: 'New label…' }).click();
+	await page.getByRole('textbox', { name: 'Label name' }).fill('Blocked');
+	await page.getByRole('button', { name: 'Create label' }).click();
+	await expect(page.locator('[data-kanban-column]', { hasText: 'Blocked' })).toContainText(
+		'Notes labelled Blocked'
+	);
+});

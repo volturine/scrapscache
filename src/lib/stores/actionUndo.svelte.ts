@@ -14,13 +14,18 @@ const BAR_MS = 6_000;
 export type UndoEntry = {
 	/** Shown on the bar. */
 	message: string;
+	/**
+	 * Names the step for `drop`, when the control that made it can also reverse it by
+	 * hand. Kept through undo and redo, unlike the stamp.
+	 */
+	key?: string;
 	/** Permanent delete of any of these drops the whole step. */
 	noteIds: readonly string[];
 	undo: () => void;
 	redo: () => void;
 };
 
-type Step = UndoEntry & { at: number };
+export type Step = UndoEntry & { at: number };
 
 let clock = 0;
 
@@ -57,6 +62,17 @@ class ActionUndo {
 		this.recordEdit();
 		this.past = [...this.past, { ...entry, at: this.editedAt }].slice(-LIMIT);
 		this.show(entry.message);
+	}
+
+	/**
+	 * Take the step named `key` back out, once what it would undo has been undone by
+	 * hand, from either side and whichever instance of its control pushed it.
+	 */
+	drop(key: string): void {
+		const wasLatest = this.past.at(-1)?.key === key;
+		this.past = this.past.filter((entry) => entry.key !== key);
+		this.future = this.future.filter((entry) => entry.key !== key);
+		if (wasLatest) this.show(null);
 	}
 
 	/** A new step anywhere ends what can be redone here. */

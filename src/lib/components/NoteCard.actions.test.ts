@@ -338,7 +338,11 @@ describe('NoteCard actions menu', () => {
 				onOpen: vi.fn()
 			}
 		});
-		expect(document.querySelector('[data-secret-overlay]')).toBeTruthy();
+		const overlay = document.querySelector('[data-secret-overlay]');
+		expect(overlay).toBeTruthy();
+		// The blur says what it is, so it is not taken for a lock.
+		expect(overlay?.querySelector('svg')).toBeTruthy();
+		expect(overlay?.textContent?.trim()).toBe('Preview hidden');
 		const titleEl = screen.getByText('Secret Title');
 		expect(titleEl).toBeTruthy();
 		expect(titleEl.closest('[data-secret-content]')).toBeNull();

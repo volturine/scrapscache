@@ -94,6 +94,8 @@ export const viewPage = css({ pt: 'lg', pb: '3xl' });
 export const viewHeading = css({ srOnly: true });
 /** A live region for assistive technology alone; the page never draws it. */
 export const liveStatus = css({ srOnly: true });
+/** Text for assistive technology only, such as a control's longer description. */
+export const visuallyHidden = css({ srOnly: true });
 
 /** One width for the mobile drawer and the safe-area strip that continues it. */
 const DRAWER_WIDTH = '18rem';
@@ -1172,7 +1174,31 @@ export const kanbanViewStyles = {
 			'inset 0 0 0 2px color-mix(in srgb, token(colors.scrapscache.accent) 35%, transparent)'
 	}),
 	colHeader: css({ mb: 'sm', ...rowGapSm, px: '2xs', pt: '2xs' }),
-	colTitle: css({ minW: 0, flex: '1', ...truncateText, textStyle: 'bodyStrong' }),
+	colTitleGroup: css({ minW: 0, flex: '1', display: 'flex', flexDirection: 'column', gap: '3xs' }),
+	colTitle: css({ minW: 0, ...truncateText, textStyle: 'bodyStrong' }),
+	/** What the column lists: the columns-are-labels model, said where it is used. */
+	colCaption: css({ ...truncateText, textStyle: 'caption', ...mutedText }),
+	// The first run's panel, beside the Backlog where the label columns would be.
+	starter: css({
+		...kanbanColumnSize,
+		rounded: 'sheet',
+		borderWidth: 'hairline',
+		borderStyle: 'dashed',
+		borderColor: 'scrapscache.border',
+		p: 'md',
+		display: 'flex',
+		flexDirection: 'column',
+		gap: 'sm'
+	}),
+	starterTitle: css({ textStyle: 'bodyStrong' }),
+	starterText: css({ textStyle: 'caption', ...mutedText }),
+	starterChoices: css({
+		display: 'flex',
+		flexDirection: 'column',
+		gap: 'xs',
+		alignItems: 'stretch'
+	}),
+	newLabelInput: css({ w: 'full', mt: 'md' }),
 	cardsList: css({ position: 'relative', ...column, gap: 'md' }),
 	dropSlot: css({
 		...cardRadius,
@@ -1421,6 +1447,13 @@ export const trashViewStyles = {
 		color: 'scrapscache.text'
 	})
 };
+
+/** Under the eye on a hidden preview: the blur has a name, so it is not mistaken for a lock. */
+export const secretPreviewCaption = css({
+	textStyle: 'captionStrong',
+	...mutedText,
+	textShadow: '0 1px 2px rgb(0 0 0 / 0.35)'
+});
 
 /** The banner above the feed that speaks up only when sync needs something. */
 export const syncAttentionStyles = {
@@ -3228,7 +3261,8 @@ export const undoBarStyles = {
 		boxShadow: 'popover',
 		textStyle: 'label'
 	}),
-	message: css({ minW: 0, ...truncateText })
+	// A sentence may wrap: the bar is narrow on a phone, and cutting it loses the point.
+	message: css({ minW: 0, overflowWrap: 'anywhere' })
 };
 
 /** VS Code-style find and replace bar pinned to the top of the note body while it scrolls. */

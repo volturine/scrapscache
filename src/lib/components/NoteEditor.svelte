@@ -1,11 +1,16 @@
 <script lang="ts">
-	import { noteEditorReminderTone, noteEditorStyles as styles } from '$panda/styles';
+	import {
+		noteEditorReminderTone,
+		noteEditorStyles as styles,
+		visuallyHidden
+	} from '$panda/styles';
 	import { cx } from 'styled-system/css';
 	import { dialog, iconButton, input, noteSurface } from 'styled-system/recipes';
 	import { flex, hstack, spacer } from 'styled-system/patterns';
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { flushSync, onMount, tick, untrack } from 'svelte';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
+	import { actionUndo } from '#lib/stores/actionUndo.svelte.js';
 	import { noteToPlainText, noteAttachments, splitPastedHeading } from '#lib/checklistBody.js';
 	import { mergeHydratedImages } from '#lib/noteAttachmentHydration.js';
 	import type { Note, NoteImage } from '#lib/types.js';
@@ -34,8 +39,8 @@
 	import {
 		Bell,
 		ChevronLeft,
-		Lock,
-		LockOpen,
+		Eye,
+		EyeOff,
 		Maximize2,
 		Minimize2,
 		Paperclip,
@@ -574,6 +579,30 @@
 		void close();
 	}
 
+	/** What hiding the preview does, and does not do; on the control, so it outlives the toast. */
+	const PREVIEW_HELP = 'Blurs this note in lists. Anyone using this device can still open it.';
+	const previewHelpId = $props.id();
+	/** Names the hide toast's undo step, so showing again by hand drops it after a remount too. */
+	const hideStepKey = (id: string) => `hide-preview:${id}`;
+
+	function togglePreview() {
+		if (!note) return;
+		const id = note.id;
+		const hidden = !note.secret;
+		commit({ secret: hidden });
+		if (!hidden) {
+			actionUndo.drop(hideStepKey(id));
+			return;
+		}
+		actionUndo.push({
+			key: hideStepKey(id),
+			message: 'Preview hidden in lists. Anyone using this device can still open the note.',
+			noteIds: [id],
+			undo: () => notesStore.updateNote(id, { secret: false }),
+			redo: () => notesStore.updateNote(id, { secret: true })
+		});
+	}
+
 	function commit(patch: NotePatch) {
 		if (!note) return;
 		notesStore.updateNote(note.id, patch);
@@ -976,19 +1005,24 @@
 								>
 									<Pin size={20} fill={note.pinned ? 'currentColor' : 'none'} aria-hidden="true" />
 								</button>
+								<!-- Named for what it does: a blur in lists, not a lock. -->
 								<button
 									type="button"
 									class={iconButton({ variant: 'ghost', size: 'sm' })}
-									title={note.secret ? 'Remove secret' : 'Make secret'}
-									onclick={() => commit({ secret: !note.secret })}
-									aria-label={note.secret ? 'Remove secret' : 'Make secret'}
+									title="{note.secret ? 'Show preview' : 'Hide preview'} — {PREVIEW_HELP}"
+									onclick={togglePreview}
+									aria-label={note.secret ? 'Show preview' : 'Hide preview'}
+									aria-pressed={Boolean(note.secret)}
+									aria-describedby={previewHelpId}
 								>
+									<!-- The slashed eye offers to hide; the open eye, to show again. -->
 									{#if note.secret}
-										<Lock size={20} class={noteEditorReminderTone.active} aria-hidden="true" />
+										<Eye size={20} class={noteEditorReminderTone.active} aria-hidden="true" />
 									{:else}
-										<LockOpen size={20} aria-hidden="true" />
+										<EyeOff size={20} aria-hidden="true" />
 									{/if}
 								</button>
+								<span id={previewHelpId} class={visuallyHidden}>{PREVIEW_HELP}</span>
 							{/if}
 							<button
 								type="button"

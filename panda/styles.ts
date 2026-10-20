@@ -1422,6 +1422,13 @@ export const trashViewStyles = {
 	})
 };
 
+/** Under the eye on a hidden preview: the blur has a name, so it is not mistaken for a lock. */
+export const secretPreviewCaption = css({
+	textStyle: 'captionStrong',
+	...mutedText,
+	textShadow: '0 1px 2px rgb(0 0 0 / 0.35)'
+});
+
 /** The banner above the feed that speaks up only when sync needs something. */
 export const syncAttentionStyles = {
 	wrap: css({ px: 'lg', pt: 'sm', flexShrink: 0 }),

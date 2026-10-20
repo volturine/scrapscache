@@ -6,6 +6,7 @@
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { flushSync, onMount, tick, untrack } from 'svelte';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
+	import { actionUndo } from '#lib/stores/actionUndo.svelte.js';
 	import { noteToPlainText, noteAttachments, splitPastedHeading } from '#lib/checklistBody.js';
 	import { mergeHydratedImages } from '#lib/noteAttachmentHydration.js';
 	import type { Note, NoteImage } from '#lib/types.js';
@@ -34,8 +35,8 @@
 	import {
 		Bell,
 		ChevronLeft,
-		Lock,
-		LockOpen,
+		Eye,
+		EyeOff,
 		Maximize2,
 		Minimize2,
 		Paperclip,
@@ -574,6 +575,21 @@
 		void close();
 	}
 
+	/** Hide or show the note's preview in lists, saying plainly what that does and does not do. */
+	function togglePreview() {
+		if (!note) return;
+		const id = note.id;
+		const hidden = !note.secret;
+		commit({ secret: hidden });
+		if (!hidden) return;
+		actionUndo.push({
+			message: 'Preview hidden in lists. Anyone using this device can still open the note.',
+			noteIds: [id],
+			undo: () => notesStore.updateNote(id, { secret: false }),
+			redo: () => notesStore.updateNote(id, { secret: true })
+		});
+	}
+
 	function commit(patch: NotePatch) {
 		if (!note) return;
 		notesStore.updateNote(note.id, patch);
@@ -976,17 +992,19 @@
 								>
 									<Pin size={20} fill={note.pinned ? 'currentColor' : 'none'} aria-hidden="true" />
 								</button>
+								<!-- Named for what it does: a blur in lists, not a lock. -->
 								<button
 									type="button"
 									class={iconButton({ variant: 'ghost', size: 'sm' })}
-									title={note.secret ? 'Remove secret' : 'Make secret'}
-									onclick={() => commit({ secret: !note.secret })}
-									aria-label={note.secret ? 'Remove secret' : 'Make secret'}
+									title={note.secret ? 'Show preview' : 'Hide preview'}
+									onclick={togglePreview}
+									aria-label={note.secret ? 'Show preview' : 'Hide preview'}
+									aria-pressed={Boolean(note.secret)}
 								>
 									{#if note.secret}
-										<Lock size={20} class={noteEditorReminderTone.active} aria-hidden="true" />
+										<EyeOff size={20} class={noteEditorReminderTone.active} aria-hidden="true" />
 									{:else}
-										<LockOpen size={20} aria-hidden="true" />
+										<Eye size={20} aria-hidden="true" />
 									{/if}
 								</button>
 							{/if}

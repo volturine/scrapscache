@@ -371,6 +371,10 @@ describe('NoteCard right-click haze', () => {
 			}
 		});
 		expect(document.querySelector('[data-secret-overlay]')).toBeTruthy();
+		// The blur says what it is, so it is not taken for a lock.
+		expect(document.querySelector('[data-secret-overlay]')?.textContent).toContain(
+			'Preview hidden'
+		);
 		const titleEl = screen.getByText('Secret Title');
 		expect(titleEl).toBeTruthy();
 		expect(titleEl.closest('[data-secret-content]')).toBeNull();
@@ -389,6 +393,6 @@ describe('NoteCard right-click haze', () => {
 		const overlay = document.querySelector('[data-secret-overlay]');
 		expect(overlay).toBeTruthy();
 		expect(overlay?.querySelector('svg')).toBeTruthy();
-		expect(overlay?.textContent).toBe('');
+		expect(overlay?.textContent?.trim()).toBe('Preview hidden');
 	});
 });

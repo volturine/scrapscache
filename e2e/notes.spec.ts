@@ -183,6 +183,27 @@ test('focusing a task row that fills its line does not re-wrap it', async ({ pag
 	expect((await second()).y).toBeCloseTo(topBefore, 1);
 });
 
+test('hiding a preview says what it does, and the card says the preview is hidden', async ({
+	page
+}) => {
+	await openEmptyApp(page);
+	await createNote(page, 'Wi-Fi and door codes', 'Guest network: hunter2');
+	await noteCard(page, 'Wi-Fi and door codes').click();
+	const sheet = editor(page);
+	await sheet.getByRole('button', { name: 'Hide preview' }).click();
+	await expect(page.getByRole('status')).toContainText(
+		'Preview hidden in lists. Anyone using this device can still open the note.'
+	);
+	await expect(sheet.getByRole('button', { name: 'Show preview' })).toBeVisible();
+	await sheet.getByRole('button', { name: 'Close note' }).click();
+
+	const card = noteCard(page, 'Wi-Fi and door codes');
+	await expect(card).toContainText('Preview hidden');
+	// The title still reads; only the body is blurred.
+	await expect(card.getByText('Wi-Fi and door codes')).toBeVisible();
+	await expect(card.locator('[data-secret-content]')).toHaveCSS('filter', /blur/);
+});
+
 test('a checked row dims its text and tokens, not the whole row', async ({ page }) => {
 	await openEmptyApp(page);
 	await createNote(page, 'Dimmed', '[ ] milk `oat`\n[ ] eggs');

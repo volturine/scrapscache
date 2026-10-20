@@ -195,6 +195,27 @@ describe('NoteEditor header reminder controls', () => {
 		expect(container.querySelector('button[title="Make secret"]')).toBeNull();
 	});
 
+	it('retires the hide toast from a reopened editor, and after undo and redo', async () => {
+		notesStore.notes = [note({ id: 'note-1', secret: false })];
+		const first = render(NoteEditor, { props: { noteId: 'note-1', onClose: () => {} } });
+		await fireEvent.click(first.container.querySelector('button[aria-label="Hide preview"]')!);
+		await tick();
+		expect(actionUndo.bar).not.toBeNull();
+		// Closing and reopening the note mounts a new editor (`{#key editingId}`).
+		first.unmount();
+		actionUndo.undo();
+		actionUndo.redo();
+		expect(notesStore.notes[0].secret).toBe(true);
+
+		const { container } = render(NoteEditor, { props: { noteId: 'note-1', onClose: () => {} } });
+		await fireEvent.click(container.querySelector('button[aria-label="Show preview"]')!);
+		await tick();
+		expect(notesStore.notes[0].secret).toBeUndefined();
+		expect(actionUndo.bar).toBeNull();
+		expect(actionUndo.past.some((step) => step.message.startsWith('Preview hidden'))).toBe(false);
+		expect(actionUndo.future).toHaveLength(0);
+	});
+
 	it('autofocuses the note body when autofocusBody is true', async () => {
 		notesStore.notes = [note({ id: 'note-1', body: 'hello' })];
 		const { container } = render(NoteEditor, {

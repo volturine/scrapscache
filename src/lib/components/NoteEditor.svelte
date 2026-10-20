@@ -10,7 +10,7 @@
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { flushSync, onMount, tick, untrack } from 'svelte';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
-	import { actionUndo, type Step } from '#lib/stores/actionUndo.svelte.js';
+	import { actionUndo } from '#lib/stores/actionUndo.svelte.js';
 	import { noteToPlainText, noteAttachments, splitPastedHeading } from '#lib/checklistBody.js';
 	import { mergeHydratedImages } from '#lib/noteAttachmentHydration.js';
 	import type { Note, NoteImage } from '#lib/types.js';
@@ -582,8 +582,8 @@
 	/** What hiding the preview does, and does not do; on the control, so it outlives the toast. */
 	const PREVIEW_HELP = 'Blurs this note in lists. Anyone using this device can still open it.';
 	const previewHelpId = $props.id();
-	/** The toast's undo step for the last hide, dropped if the preview is shown again by hand. */
-	let hideStep: Step | null = null;
+	/** Names the hide toast's undo step, so showing again by hand drops it after a remount too. */
+	const hideStepKey = (id: string) => `hide-preview:${id}`;
 
 	function togglePreview() {
 		if (!note) return;
@@ -591,11 +591,11 @@
 		const hidden = !note.secret;
 		commit({ secret: hidden });
 		if (!hidden) {
-			if (hideStep) actionUndo.drop(hideStep);
-			hideStep = null;
+			actionUndo.drop(hideStepKey(id));
 			return;
 		}
-		hideStep = actionUndo.push({
+		actionUndo.push({
+			key: hideStepKey(id),
 			message: 'Preview hidden in lists. Anyone using this device can still open the note.',
 			noteIds: [id],
 			undo: () => notesStore.updateNote(id, { secret: false }),

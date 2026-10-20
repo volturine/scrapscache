@@ -1172,7 +1172,31 @@ export const kanbanViewStyles = {
 			'inset 0 0 0 2px color-mix(in srgb, token(colors.scrapscache.accent) 35%, transparent)'
 	}),
 	colHeader: css({ mb: 'sm', ...rowGapSm, px: '2xs', pt: '2xs' }),
-	colTitle: css({ minW: 0, flex: '1', ...truncateText, textStyle: 'bodyStrong' }),
+	colTitleGroup: css({ minW: 0, flex: '1', display: 'flex', flexDirection: 'column', gap: '3xs' }),
+	colTitle: css({ minW: 0, ...truncateText, textStyle: 'bodyStrong' }),
+	/** What the column lists: the columns-are-labels model, said where it is used. */
+	colCaption: css({ ...truncateText, textStyle: 'caption', ...mutedText }),
+	// The first run's panel, beside the Backlog where the label columns would be.
+	starter: css({
+		...kanbanColumnSize,
+		rounded: 'sheet',
+		borderWidth: 'hairline',
+		borderStyle: 'dashed',
+		borderColor: 'scrapscache.border',
+		p: 'md',
+		display: 'flex',
+		flexDirection: 'column',
+		gap: 'sm'
+	}),
+	starterTitle: css({ textStyle: 'bodyStrong' }),
+	starterText: css({ textStyle: 'caption', ...mutedText }),
+	starterChoices: css({
+		display: 'flex',
+		flexDirection: 'column',
+		gap: 'xs',
+		alignItems: 'stretch'
+	}),
+	newLabelInput: css({ w: 'full', mt: 'md' }),
 	cardsList: css({ position: 'relative', ...column, gap: 'md' }),
 	dropSlot: css({
 		...cardRadius,

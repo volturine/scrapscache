@@ -1,7 +1,12 @@
 <script lang="ts">
 	import { css, cx } from 'styled-system/css';
 	import { badge, noteCard, noteSurface } from 'styled-system/recipes';
-	import { cardOpenControl, iconSizeXs, trashCountdownRow } from '$panda/styles';
+	import {
+		cardOpenControl,
+		iconSizeXs,
+		trashCountdownRow,
+		secretPreviewCaption
+	} from '$panda/styles';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
 	import type { Note } from '#lib/types.js';
 	import { formatReminder, isReminderOverdue, noteActivity, trashCountdown } from '#lib/utils.js';
@@ -11,7 +16,7 @@
 	import NoteBodyDisplay from './NoteBodyDisplay.svelte';
 	import NoteQuickActions from './NoteQuickActions.svelte';
 	import ReminderLabel from './ReminderLabel.svelte';
-	import { Archive, ArchiveRestore, Clock, Lock, RotateCcw, Trash2 } from '@lucide/svelte';
+	import { Archive, ArchiveRestore, Clock, EyeOff, RotateCcw, Trash2 } from '@lucide/svelte';
 	import { onDestroy } from 'svelte';
 
 	let {
@@ -371,7 +376,7 @@
 									data-secret-overlay
 									aria-hidden="true"
 								>
-									<Lock
+									<EyeOff
 										class={css({
 											w: '1.5rem',
 											h: '1.5rem',
@@ -379,6 +384,7 @@
 											filter: 'drop-shadow(0 1px 2px rgb(0 0 0 / 0.35))'
 										})}
 									/>
+									<span class={secretPreviewCaption}>Preview hidden</span>
 								</div>
 							{/if}
 						</div>

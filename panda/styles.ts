@@ -94,6 +94,8 @@ export const viewPage = css({ pt: 'lg', pb: '3xl' });
 export const viewHeading = css({ srOnly: true });
 /** A live region for assistive technology alone; the page never draws it. */
 export const liveStatus = css({ srOnly: true });
+/** Text for assistive technology only, such as a control's longer description. */
+export const visuallyHidden = css({ srOnly: true });
 
 /** One width for the mobile drawer and the safe-area strip that continues it. */
 const DRAWER_WIDTH = '18rem';
@@ -1445,6 +1447,13 @@ export const trashViewStyles = {
 		color: 'scrapscache.text'
 	})
 };
+
+/** Under the eye on a hidden preview: the blur has a name, so it is not mistaken for a lock. */
+export const secretPreviewCaption = css({
+	textStyle: 'captionStrong',
+	...mutedText,
+	textShadow: '0 1px 2px rgb(0 0 0 / 0.35)'
+});
 
 /** The banner above the feed that speaks up only when sync needs something. */
 export const syncAttentionStyles = {
@@ -3216,7 +3225,8 @@ export const undoBarStyles = {
 		boxShadow: 'popover',
 		textStyle: 'label'
 	}),
-	message: css({ minW: 0, ...truncateText })
+	// A sentence may wrap: the bar is narrow on a phone, and cutting it loses the point.
+	message: css({ minW: 0, overflowWrap: 'anywhere' })
 };
 
 /** VS Code-style find and replace bar pinned to the top of the note body while it scrolls. */

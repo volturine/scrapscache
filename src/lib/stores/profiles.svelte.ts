@@ -241,12 +241,36 @@ export class ProfileCoordinator {
 	 */
 	async adoptKeyring(): Promise<void> {
 		const known = syncStore.profiles.map((entry) => entry.id);
+		const open = syncStore.activeProfile;
 		const named = new Set(syncStore.reloadKeyring().map((entry) => entry.id));
 		// A workspace can come back — the default one is recreated whenever it
 		// still holds notes — so each one the keyring names is served again.
 		for (const id of named) resumeProfile(id);
 		for (const id of [...known, syncStore.activeId]) if (!named.has(id)) releaseProfile(id);
 		await this.leaveReleasedWorkspace();
+		if (open) await this.followKeyChange(open);
+	}
+
+	/**
+	 * The other window turned sync on or off for the open workspace, or gave it
+	 * a new key. Until this window activates the workspace again it keeps reading
+	 * and writing under the old key, which may be retired, and still reports the
+	 * old sync state. The window that made the change activates it the same way.
+	 */
+	private async followKeyChange(open: StoredProfile): Promise<void> {
+		const changed = () => {
+			const current = syncStore.activeProfile;
+			return current?.id === open.id && current.syncKey !== open.syncKey ? current : null;
+		};
+		if (!changed()) return;
+		await this.exclusive(async () => {
+			// Checked again under the lock: a handover that held it may have moved
+			// this window to another workspace meanwhile.
+			const current = changed();
+			if (!current) return;
+			await notesStore.waitForPendingProfileWrites();
+			await this.activate(current);
+		});
 	}
 
 	/**

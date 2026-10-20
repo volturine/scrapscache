@@ -58,7 +58,8 @@ test('controls keep keyboard focus without drawing highlights', async ({ page })
 	}
 
 	await page.getByRole('button', { name: 'Settings', exact: true }).click();
-	const theme = page.getByRole('menuitem', { name: /^(Dark|Light) mode$/ });
+	// An unchosen theme: the chosen one paints its own segment.
+	const theme = page.getByRole('menuitemradio', { name: 'Dark', exact: true });
 	await theme.focus();
 	await expect(theme).toHaveCSS('outline-style', 'none');
 	await expect(theme).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
@@ -108,12 +109,24 @@ test('a checklist line toggles from the body', async ({ page }) => {
 	const body = editor(page).getByRole('textbox', { name: 'Note body' });
 	await expect(body).toContainText('milk');
 	await expect(body).toContainText('eggs');
-	const toggles = editor(page).getByRole('button', { name: 'Toggle item' });
+	const toggles = editor(page).getByRole('checkbox', { name: 'Toggle item' });
 	await expect(toggles).toHaveCount(2);
-	await expect(toggles.first()).toHaveAttribute('aria-pressed', 'false');
+	await expect(toggles.first()).toHaveAttribute('aria-checked', 'false');
 	await toggles.first().click();
-	await expect(toggles.first()).toHaveAttribute('aria-pressed', 'true');
-	await expect(toggles.last()).toHaveAttribute('aria-pressed', 'false');
+	await expect(toggles.first()).toHaveAttribute('aria-checked', 'true');
+	await expect(toggles.last()).toHaveAttribute('aria-checked', 'false');
+
+	// The card tells assistive technology the same: each item, with its state.
+	await editor(page).getByRole('button', { name: 'Close note' }).click();
+	const card = noteCard(page, 'Checklist');
+	await expect(card.getByRole('checkbox', { name: 'milk' })).toHaveAttribute(
+		'aria-checked',
+		'true'
+	);
+	await expect(card.getByRole('checkbox', { name: 'eggs' })).toHaveAttribute(
+		'aria-checked',
+		'false'
+	);
 });
 
 test('focusing a checklist row moves no other row and offers + on the row itself', async ({
@@ -175,9 +188,9 @@ test('a checked row dims its text and tokens, not the whole row', async ({ page 
 	await createNote(page, 'Dimmed', '[ ] milk `oat`\n[ ] eggs');
 	await noteCard(page, 'Dimmed').click();
 	const sheet = editor(page);
-	const toggle = sheet.getByRole('button', { name: 'Toggle item' }).first();
+	const toggle = sheet.getByRole('checkbox', { name: 'Toggle item' }).first();
 	await toggle.click();
-	await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+	await expect(toggle).toHaveAttribute('aria-checked', 'true');
 
 	const colour = (target: Locator) => target.evaluate((element) => getComputedStyle(element).color);
 	// A colour token as this note's surface resolves it.
@@ -262,6 +275,8 @@ test('search narrows the feed to matching notes', async ({ page }) => {
 	await page.getByRole('button', { name: 'Clear search' }).click();
 	await expect(noteCard(page, 'Apples')).toBeVisible();
 	await expect(noteCard(page, 'Bolts')).toBeVisible();
+	// Ready for the next query: the pressed button is gone, so focus goes to the field.
+	await expect(search).toBeFocused();
 });
 
 test.describe('on a touch screen', () => {
@@ -301,6 +316,28 @@ test.describe('on a touch screen', () => {
 			.locator('[data-line-text]')
 			.boundingBox())!;
 		expect(box.x + target.left).toBeGreaterThanOrEqual(text.x + text.width - 1);
+	});
+
+	test('settings rows and segments keep their touch sizes at any width, and the popover scrolls', async ({
+		page
+	}) => {
+		await page.setViewportSize({ width: 1024, height: 700 });
+		await openEmptyApp(page);
+		await page.getByRole('button', { name: 'Settings', exact: true }).click();
+		const row = page.getByRole('menuitem', { name: 'Back up notes…' });
+		const segment = page.getByRole('menuitemradio', { name: 'Dark', exact: true });
+		// A tablet or a phone on its side is a coarse pointer wider than a phone. The
+		// half-pixel allows for rem rounding.
+		expect((await row.boundingBox())!.height).toBeGreaterThanOrEqual(47.5);
+		expect((await segment.boundingBox())!.height).toBeGreaterThanOrEqual(43.5);
+		await page.keyboard.press('Escape');
+
+		// A short viewport: the popover scrolls inside the frame rather than being cut by it.
+		await page.setViewportSize({ width: 1024, height: 380 });
+		await page.getByRole('button', { name: 'Settings', exact: true }).click();
+		const terms = page.getByRole('menuitem', { name: 'Terms' });
+		await terms.scrollIntoViewIfNeeded();
+		await expect(terms).toBeInViewport();
 	});
 
 	test('the tap that closes the quick actions does not open the note under it', async ({

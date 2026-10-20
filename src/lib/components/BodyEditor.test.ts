@@ -191,7 +191,17 @@ describe('BodyEditor native editing', () => {
 
 		expect(pointerDown.defaultPrevented).toBe(true);
 		expect(document.activeElement).toBe(editor);
-		expect(toggle.getAttribute('aria-pressed')).toBe('true');
+		expect(toggle.getAttribute('aria-checked')).toBe('true');
+	});
+
+	it('exposes each toggle as a checkbox with its state', () => {
+		const { container } = render(BodyEditor, { props: { body: '[ ] Open\n[x] Done' } });
+		const [open, done] = Array.from(container.querySelectorAll('[data-checklist-toggle]'));
+
+		expect(open.getAttribute('role')).toBe('checkbox');
+		expect(open.getAttribute('aria-checked')).toBe('false');
+		expect(open.hasAttribute('aria-pressed')).toBe(false);
+		expect(done.getAttribute('aria-checked')).toBe('true');
 	});
 
 	it('toggles a checklist item clicked in the first moments of the page', async () => {
@@ -201,7 +211,7 @@ describe('BodyEditor native editing', () => {
 			const { container } = render(BodyEditor, { props: { body: '[ ] Task' } });
 			const toggle = container.querySelector('[data-checklist-toggle]') as HTMLButtonElement;
 			await fireEvent.click(toggle);
-			expect(toggle.getAttribute('aria-pressed')).toBe('true');
+			expect(toggle.getAttribute('aria-checked')).toBe('true');
 		} finally {
 			now.mockRestore();
 		}
@@ -213,7 +223,7 @@ describe('BodyEditor native editing', () => {
 		const { container } = render(BodyEditor, { props: { body: '[ ] First\n[x] Done' } });
 		const toggles = container.querySelectorAll('[data-checklist-toggle]');
 
-		expect(toggles[1].getAttribute('aria-pressed')).toBe('true');
+		expect(toggles[1].getAttribute('aria-checked')).toBe('true');
 		expect(toggles[1].childNodes).toHaveLength(0);
 	});
 
@@ -298,7 +308,7 @@ describe('BodyEditor native editing', () => {
 
 		expect(touchEnd.defaultPrevented).toBe(true);
 		expect(document.activeElement).not.toBe(editor);
-		expect(toggle.getAttribute('aria-pressed')).toBe('true');
+		expect(toggle.getAttribute('aria-checked')).toBe('true');
 	});
 
 	it('does not focus a task when a checkbox touch ends over its label', () => {

@@ -18,6 +18,7 @@
 	import {
 		AlarmClock,
 		Archive,
+		Check,
 		Kanban,
 		Pencil,
 		Plus,
@@ -25,6 +26,7 @@
 		StickyNote,
 		Tag,
 		Trash2,
+		X,
 		type LucideIcon
 	} from '@lucide/svelte';
 	import { Dialog } from '@ark-ui/svelte/dialog';
@@ -43,7 +45,13 @@
 	let { onNavigate }: { onNavigate?: () => void } = $props();
 
 	let query = $state('');
-	let queryInput = $state<HTMLInputElement | null>(null);
+
+	// Creating a label is its own row, apart from filtering: Enter in the filter
+	// field never creates, so a half-typed name cannot become a label by accident.
+	let creating = $state(false);
+	let newLabelName = $state('');
+	let createInput = $state<HTMLInputElement | null>(null);
+	const createHintId = $props.id();
 
 	let renamingId = $state<string | null>(null);
 	let renamingName = $state('');
@@ -105,16 +113,19 @@
 		return counts;
 	});
 
-	const trimmed = $derived(query.trim());
+	/** A list this short is scanned by eye; the filter field appears above a longer one. */
+	const FILTER_FROM = 8;
+	const filterShown = $derived(notesStore.labels.length > FILTER_FROM);
+	$effect(() => {
+		// A filter typed before the list shrank must not come back once it grows again.
+		if (!filterShown) query = '';
+	});
+	const trimmed = $derived(filterShown ? query.trim() : '');
 	const filteredLabels = $derived.by(() => {
 		if (!trimmed) return notesStore.labels;
 		const q = trimmed.toLowerCase();
 		return notesStore.labels.filter((l) => l.name.toLowerCase().includes(q));
 	});
-	const exactMatch = $derived(
-		trimmed ? notesStore.labels.find((l) => l.name.toLowerCase() === trimmed.toLowerCase()) : null
-	);
-	const canCreate = $derived(trimmed !== '' && !exactMatch);
 
 	function navigate(view: View, labelId: string | null = null) {
 		const target = pathForView(view, labelId);
@@ -138,32 +149,64 @@
 		return uiStore.pendingPath ? uiStore.pendingPath === target : page.url.pathname === target;
 	}
 
-	function createAndNavigate() {
-		const name = (queryInput?.value ?? query).trim();
-		if (!name) return;
-		const newLabel = notesStore.createLabel(name);
-		query = '';
-		if (newLabel) navigate('label', newLabel.id);
-	}
-
-	function submitQuery() {
-		const name = (queryInput?.value ?? query).trim();
-		if (!name) return;
-		const existing = notesStore.labels.find((l) => l.name.toLowerCase() === name.toLowerCase());
-		if (existing) {
-			query = '';
-			navigate('label', existing.id);
+	/** The + is a toggle: it opens the row, and puts an open one away again. */
+	function toggleCreating() {
+		if (creating) {
+			stopCreating();
 			return;
 		}
-		createAndNavigate();
+		pendingDelete = null;
+		swipe.close();
+		closeHaze();
+		renamingId = null;
+		creating = true;
+		newLabelName = '';
+		queueMicrotask(() => createInput?.focus({ preventScroll: true }));
+	}
+
+	function stopCreating() {
+		creating = false;
+		newLabelName = '';
+	}
+
+	/** Create the typed label and open it; a name already in the list opens that label. */
+	function createLabel() {
+		// The field's own value: a fast tap on the tick can land before the binding settles.
+		const name = (createInput?.value ?? newLabelName).trim();
+		if (!name) return;
+		const existing = notesStore.labels.find((l) => l.name.toLowerCase() === name.toLowerCase());
+		const label = existing ?? notesStore.createLabel(name);
+		stopCreating();
+		if (label) navigate('label', label.id);
+	}
+
+	function onCreateKeydown(event: KeyboardEvent) {
+		if (event.key === 'Enter') {
+			event.preventDefault();
+			createLabel();
+		}
+	}
+
+	/**
+	 * Esc in the create row only cancels the row. The phone drawer listens for Esc on
+	 * the document in the capture phase, so the row has to claim it a step earlier.
+	 */
+	function onWindowKeydownCapture(event: KeyboardEvent) {
+		if (event.key !== 'Escape' || !creating) return;
+		if (!(event.target instanceof Element) || !event.target.closest('[data-label-create]')) return;
+		event.preventDefault();
+		event.stopPropagation();
+		stopCreating();
+	}
+
+	/** A tap on a button beside the field must not blur it: the keyboard would start closing. */
+	function keepKeyboardOpen(event: PointerEvent) {
+		if (event.pointerType === 'touch') event.preventDefault();
 	}
 
 	function onQueryKeydown(event: KeyboardEvent) {
-		if (event.key === 'Enter') {
-			event.preventDefault();
-			submitQuery();
-			return;
-		}
+		// Enter does nothing here: the + above the list is what creates.
+		if (event.key === 'Enter') event.preventDefault();
 		if (event.key === 'Escape' && query !== '') {
 			event.preventDefault();
 			event.stopPropagation();
@@ -291,40 +334,71 @@
 	>
 		<div class={hstack({ mb: '2xs', h: '2rem', gap: 'sm', pl: 'lg', pr: 'sm', flexShrink: 0 })}>
 			<span class={css({ minW: 0, flex: '1', textStyle: 'overline' })}>Labels</span>
+			<button
+				type="button"
+				class={iconButton({ size: 'compact', variant: 'ghost' })}
+				title="New label"
+				aria-label="New label"
+				aria-expanded={creating}
+				onclick={toggleCreating}
+				data-sidebar-stay-open
+			>
+				<Plus size={16} strokeWidth={1.75} aria-hidden="true" />
+			</button>
 		</div>
 
-		<!-- Search / create label input -->
-		<div class={sidebarStyles.searchWrap}>
-			<Search class={sidebarStyles.searchIcon} strokeWidth={1.75} aria-hidden="true" />
-			<input
-				bind:this={queryInput}
-				type="text"
-				bind:value={query}
-				placeholder="Search or create a label…"
-				onkeydown={onQueryKeydown}
-				class={cx(input({ variant: 'outline', size: 'md' }), sidebarStyles.searchInput)}
-				aria-label="Search or create a label"
-			/>
-		</div>
+		{#if filterShown}
+			<div class={sidebarStyles.searchWrap}>
+				<Search class={sidebarStyles.searchIcon} strokeWidth={1.75} aria-hidden="true" />
+				<input
+					type="text"
+					bind:value={query}
+					placeholder="Filter labels…"
+					onkeydown={onQueryKeydown}
+					class={cx(input({ variant: 'outline', size: 'md' }), sidebarStyles.searchInput)}
+					aria-label="Filter labels"
+				/>
+			</div>
+		{/if}
 
-		<!-- Create button when query doesn't match an existing label -->
-		{#if canCreate}
-			<div class={css({ flexShrink: 0, mb: '3xs' })}>
-				<button
-					type="button"
-					onclick={createAndNavigate}
-					aria-label={`Create "${trimmed}"`}
-					class={[
-						menuRow,
-						sidebarRow({ navigation: true, active: false }),
-						sidebarStyles.createButton
-					]}
-				>
-					<span class={sidebarIcon()} aria-hidden="true">
-						<Plus size={16} strokeWidth={1.75} />
+		{#if creating}
+			<div class={css({ flexShrink: 0, mb: '3xs' })} data-sidebar-stay-open data-label-create>
+				<div class={[menuRow, sidebarRow({ editing: true })]}>
+					<span class={sidebarIcon({ iconTone: 'muted' })} aria-hidden="true">
+						<Tag size={16} strokeWidth={1.75} />
 					</span>
-					<span class={sidebarStyles.navLabel}>Create “{trimmed}”</span>
-				</button>
+					<input
+						bind:this={createInput}
+						bind:value={newLabelName}
+						type="text"
+						placeholder="Label name"
+						aria-label="New label name"
+						aria-describedby={createHintId}
+						class={labelInputClass}
+						onkeydown={onCreateKeydown}
+					/>
+					<button
+						type="button"
+						class={iconButton({ size: 'compact', variant: 'ghost' })}
+						title="Create"
+						aria-label="Create label"
+						onpointerdown={keepKeyboardOpen}
+						onclick={createLabel}
+					>
+						<Check size={16} strokeWidth={1.75} aria-hidden="true" />
+					</button>
+					<button
+						type="button"
+						class={iconButton({ size: 'compact', variant: 'ghost' })}
+						title="Cancel"
+						aria-label="Cancel"
+						onpointerdown={keepKeyboardOpen}
+						onclick={stopCreating}
+					>
+						<X size={16} strokeWidth={1.75} aria-hidden="true" />
+					</button>
+				</div>
+				<p id={createHintId} class={sidebarStyles.createHint}>Enter to create, Esc to cancel</p>
 			</div>
 		{/if}
 
@@ -467,6 +541,7 @@
 </aside>
 
 <svelte:window
+	onkeydowncapture={onWindowKeydownCapture}
 	onpointerdown={(e) => {
 		const target = e.target as HTMLElement | null;
 		if (hazeLabelId && !target?.closest?.('[data-label-haze]')) closeHaze();

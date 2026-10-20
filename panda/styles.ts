@@ -1422,6 +1422,40 @@ export const trashViewStyles = {
 	})
 };
 
+/** The banner above the feed that speaks up only when sync needs something. */
+export const syncAttentionStyles = {
+	wrap: css({ px: 'lg', pt: 'sm', flexShrink: 0 }),
+	banner: cva({
+		base: {
+			display: 'flex',
+			alignItems: 'center',
+			flexWrap: 'wrap',
+			gap: 'sm',
+			px: 'md',
+			py: 'sm',
+			rounded: 'card',
+			borderWidth: 'hairline',
+			textStyle: 'body',
+			color: 'scrapscache.text'
+		},
+		variants: {
+			tone: {
+				danger: { bg: 'scrapscache.dangerSubtle', borderColor: 'scrapscache.danger' },
+				warning: { bg: 'scrapscache.warningSubtle', borderColor: 'scrapscache.warning' },
+				muted: { bg: 'scrapscache.surfaceSubtle', borderColor: 'scrapscache.border' }
+			}
+		}
+	}),
+	iconTone: {
+		danger: css({ flexShrink: 0, color: 'scrapscache.danger' }),
+		warning: css({ flexShrink: 0, color: 'scrapscache.warning' }),
+		muted: css({ flexShrink: 0, ...mutedText })
+	},
+	text: css({ flex: '1', minW: '12rem' }),
+	title: css({ fontWeight: 'strong', mr: 'xs' }),
+	actions: css({ display: 'flex', gap: 'xs', flexShrink: 0, ml: 'auto' })
+};
+
 // PhotoFullscreen contracts are static classes; finite state choices use explicit maps.
 export const photoStyles = {
 	cropRoot: css({
@@ -1741,17 +1775,94 @@ export const reminderAlertStyles = {
 	dismissIcon: iconSmClass
 };
 
-export const reminderSettingsRow = {
-	base: hstack({ h: '2rem', gap: 'list', px: 'md' })
-};
-
-export const reminderSettingsStyles = {
-	icon: css({ ...iconSm, flexShrink: 0 }),
-	label: css({ ...flexFill, textStyle: 'button' }),
-	status: css({ flexShrink: 0, textStyle: 'captionStrong' }),
-	chevron: css({ ...iconSm, flexShrink: 0, ...mutedText }),
-	/** What a row's status means for the person, under the row. */
-	hint: css({ px: 'md', pb: 'xs', textStyle: 'caption', ...mutedText })
+/**
+ * The settings popover: three labelled sections, a segmented control per
+ * appearance choice, and a device row that carries its status in a sentence
+ * under its label. Phone sizes get 44 px controls and 48 px rows.
+ */
+export const settingsMenuStyles = {
+	positioner: css({ zIndex: 30 }),
+	// Zag puts the room under the trigger in --available-height; the app frame clips
+	// anything taller, so the content scrolls within that rather than past the frame.
+	popover: css({
+		w: { base: 'calc(100vw - 1rem)', sm: '20.625rem' },
+		maxH: 'var(--available-height)',
+		overflowY: 'auto',
+		pt: '2xs',
+		pb: 'xs'
+	}),
+	sectionLabel: css({ px: 'md', pt: 'sm', pb: '2xs', textStyle: 'overline', ...mutedText }),
+	section: css({
+		'& + &': { borderTopWidth: 'hairline', borderColor: 'scrapscache.border', mt: 'xs' }
+	}),
+	// Touch sizes follow the pointer, not the width: a phone in landscape and a tablet
+	// are coarse pointers wider than the sm breakpoint.
+	controlRow: hstack({ minH: { base: '2.5rem', _touch: '3rem' }, gap: 'sm', px: 'md' }),
+	/** A one-line action row: the menu item's height for a mouse, a 48 px row for touch. */
+	row: css({ minH: { base: '2rem', _touch: '3rem' } }),
+	controlLabel: css({ ...flexFill, textStyle: 'body' }),
+	segment: hstack({
+		gap: '3xs',
+		p: '3xs',
+		rounded: 'control',
+		bg: 'scrapscache.surfaceSubtle',
+		flexShrink: 0
+	}),
+	segmentItem: css({
+		...clickable,
+		rounded: 'compact',
+		...gridCenter,
+		px: 'sm',
+		py: '2xs',
+		minW: { base: 'auto', _touch: '4rem' },
+		// 44 px targets for touch; a fine pointer hits what it sees.
+		minH: { base: 'auto', _touch: '2.75rem' },
+		textAlign: 'center',
+		textStyle: 'label',
+		...mutedText,
+		outline: 'none',
+		transitionProperty: 'background-color, color, box-shadow',
+		transitionDuration: '120ms',
+		transitionTimingFunction: 'ease',
+		_hoverable: { color: 'scrapscache.text', bg: 'scrapscache.interactiveHover' },
+		_active: { bg: 'scrapscache.interactiveActive' },
+		'&[data-state=checked]': {
+			bg: 'scrapscache.surface',
+			color: 'scrapscache.text',
+			fontWeight: 'strong',
+			boxShadow: 'sm'
+		},
+		// Keyboard focus is a ring, so it shows on the chosen segment as well.
+		'&[data-highlighted]': {
+			color: 'scrapscache.text',
+			boxShadow: 'inset 0 0 0 2px token(colors.scrapscache.focus)'
+		}
+	}),
+	/** A row with a sentence under its label; the menu item recipe's fixed height gives way. */
+	deviceRow: css({
+		h: 'auto',
+		minH: { base: '2.5rem', _touch: '3rem' },
+		alignItems: 'flex-start',
+		py: 'xs',
+		gap: 'list'
+	}),
+	deviceIcon: css({ ...iconSm, flexShrink: 0, mt: '2xs' }),
+	deviceText: css({ ...flexFill, display: 'flex', flexDirection: 'column', gap: '3xs' }),
+	deviceLabel: css({ textStyle: 'body' }),
+	deviceChevron: css({ ...iconSm, flexShrink: 0, mt: '2xs', ...mutedText }),
+	/** What the row's state means for the person, as a sentence. */
+	status: css({ textStyle: 'caption', ...mutedText }),
+	statusWarning: css({ textStyle: 'caption', color: 'scrapscache.warning' }),
+	links: hstack({ px: 'md', py: { base: 'sm', _touch: 'md' }, gap: 'md', flexWrap: 'wrap' }),
+	link: css({
+		textStyle: 'label',
+		color: 'scrapscache.accent',
+		outline: 'none',
+		rounded: 'compact',
+		_hoverable: { textDecoration: 'underline' },
+		'&[data-highlighted]': { textDecoration: 'underline' }
+	}),
+	alert: css({ px: 'md', pb: 'sm', textStyle: 'label', color: 'scrapscache.danger' })
 };
 
 export const colorPaletteStyles = {
@@ -2348,9 +2459,8 @@ export const sidebarStyles = {
 		fontSize: 'body',
 		_placeholder: mutedText
 	}),
-	createButton: css({
-		color: 'scrapscache.accent'
-	}),
+	// Under the create row, where a sighted eye lands after the field.
+	createHint: css({ px: 'lg', pb: 'xs', textStyle: 'caption', ...mutedText }),
 	labelList: css({
 		overflowY: 'auto',
 		minH: 0,
@@ -2726,12 +2836,7 @@ export const topbarStyles = {
 	}),
 	searchInput: css({ h: 'full', flex: '1', appearance: 'none', _placeholder: mutedText }),
 	searchIcon: css(mutedText),
-	syncIcon: css({ display: 'block' }),
-	menuPositioner: css({ zIndex: 30 }),
-	menuPopover: css({ w: '16rem', overflow: 'hidden', pt: '2xs' }),
-	deviceSettings: css({ borderTopWidth: 'hairline', borderColor: 'scrapscache.border' }),
-	menuSeparator: css({ borderTopWidth: 'hairline', borderColor: 'scrapscache.border' }),
-	menuAlert: css({ px: 'md', pb: 'sm', textStyle: 'label', color: 'scrapscache.danger' })
+	syncIcon: css({ display: 'block' })
 };
 
 export const topbarSyncTone = {

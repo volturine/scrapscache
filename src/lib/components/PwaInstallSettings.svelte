@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { Menu } from '@ark-ui/svelte/menu';
-	import { iconSizeSm, iconSizeXs, pwaStyles as styles } from '$panda/styles';
+	import { iconSizeSm, iconSizeXs, pwaStyles as styles, settingsMenuStyles } from '$panda/styles';
 	import { css, cx } from 'styled-system/css';
 	import { button, menuItem } from 'styled-system/recipes';
 	import { Download, Share, Smartphone, X } from '@lucide/svelte';
@@ -17,7 +17,7 @@
 		value="install-app"
 		closeOnSelect={false}
 		onSelect={install}
-		class={menuItem({ density: 'compact' })}
+		class={cx(menuItem({ density: 'compact' }), settingsMenuStyles.row)}
 		aria-label="Install app"
 	>
 		<Download class={cx(iconSizeSm, css({ color: 'scrapscache.accent' }))} aria-hidden="true" />

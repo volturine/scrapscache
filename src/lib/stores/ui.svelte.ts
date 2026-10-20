@@ -2,6 +2,7 @@
 import { writeMirror } from '#lib/db/idb.js';
 
 export type Layout = 'grid' | 'list';
+export type Theme = 'system' | 'light' | 'dark';
 export type View = 'notes' | 'kanban' | 'reminders' | 'archive' | 'trash' | 'label';
 
 interface UIState {
@@ -231,12 +232,13 @@ export class UIStore {
 		this.sidebarOpen = !this.sidebarOpen;
 	}
 
-	toggleDark() {
-		this.dark = !this.effectiveDark;
+	/** The theme as a person picks it: follow the system, or one of the two. */
+	get theme(): Theme {
+		return this.dark === null ? 'system' : this.dark ? 'dark' : 'light';
 	}
 
-	toggleLayout() {
-		this.layout = this.layout === 'grid' ? 'list' : 'grid';
+	setTheme(theme: Theme) {
+		this.dark = theme === 'system' ? null : theme === 'dark';
 	}
 
 	toggleRawMarkdown() {

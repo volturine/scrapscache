@@ -2,12 +2,11 @@
 	import {
 		iconSizeSm as iconSm,
 		iconSizeMd as iconMd,
-		popover,
 		topbarStyles as styles,
 		topbarSyncTone as syncTone
 	} from '$panda/styles';
 	import { css, cx } from 'styled-system/css';
-	import { iconButton, input, menuItem } from 'styled-system/recipes';
+	import { iconButton, input } from 'styled-system/recipes';
 	import { hstack } from 'styled-system/patterns';
 	import { uiStore } from '#lib/stores/ui.svelte.js';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
@@ -16,9 +15,7 @@
 	import { profileCoordinator } from '#lib/stores/profiles.svelte.js';
 	import SyncModalUnavailable from './SyncModalUnavailable.svelte';
 	import Tooltip from './Tooltip.svelte';
-	import PwaInstallSettings from './PwaInstallSettings.svelte';
-	import ReminderNotificationSettings from './ReminderNotificationSettings.svelte';
-	import StorageSettings from './StorageSettings.svelte';
+	import SettingsMenu from './SettingsMenu.svelte';
 	import BackupPassphraseDialog from './BackupPassphraseDialog.svelte';
 	import BackupImportModeDialog from './BackupImportModeDialog.svelte';
 	import ImportGuideDialog from './ImportGuideDialog.svelte';
@@ -31,23 +28,7 @@
 	import { resolve } from '$app/paths';
 	import type { EncryptedScrapsCacheBackup } from '#lib/backupCrypto.js';
 	import { loadLazyModule } from '#lib/staleModuleReload.js';
-	import { Menu } from '@ark-ui/svelte/menu';
-	import {
-		Cloud,
-		Download,
-		ExternalLink,
-		FileText,
-		LayoutGrid,
-		List,
-		Menu as MenuIcon,
-		Moon,
-		Search,
-		Settings,
-		Shield,
-		Sun,
-		Upload,
-		X
-	} from '@lucide/svelte';
+	import { Cloud, Menu as MenuIcon, Search, X } from '@lucide/svelte';
 
 	const SYNC_CONTROL_LABEL: Record<SyncStatus, string> = {
 		[SyncStatus.Normal]: 'Sync settings',
@@ -71,6 +52,8 @@
 	let keepImportReady = $state(false);
 	let syncStatus = $derived(resolveSyncStatus(syncStore.lastError, syncStore.usage));
 	let syncControlLabel = $derived(SYNC_CONTROL_LABEL[syncStatus]);
+
+	let searchField: HTMLInputElement | undefined;
 
 	function openPairingLink() {
 		const found = pairingCodeFromUrl(window.location.href);
@@ -221,7 +204,6 @@
 			color: 'scrapscache.textMuted'
 		})
 	);
-	const menuItemClass = menuItem({ density: 'compact' });
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -265,6 +247,7 @@
 	>
 		<Search class={cx(iconSm, styles.searchIcon)} aria-hidden="true" />
 		<input
+			bind:this={searchField}
 			value={uiStore.searchInput}
 			oninput={(event) => uiStore.setSearchInput(event.currentTarget.value)}
 			type="search"
@@ -273,10 +256,14 @@
 			class={cx(input({ variant: 'unstyled' }), styles.searchInput)}
 		/>
 		{#if uiStore.searchInput}
+			<!-- The button goes with the query, so focus moves back to the field rather than the page. -->
 			<button
 				type="button"
 				class={clearButton}
-				onclick={() => uiStore.clearSearch()}
+				onclick={() => {
+					uiStore.clearSearch();
+					searchField?.focus();
+				}}
 				aria-label="Clear search"
 			>
 				<X class={iconSm} aria-hidden="true" />
@@ -316,106 +303,13 @@
 		</button>
 	</Tooltip>
 
-	<Tooltip content={uiStore.layout === 'grid' ? 'List view' : 'Grid view'}>
-		<button
-			class={iconButton({ variant: 'ghost', size: { base: 'compact', sm: 'standard' } })}
-			title="Toggle layout"
-			onclick={() => uiStore.toggleLayout()}
-			aria-label="Toggle layout"
-		>
-			{#if uiStore.layout === 'grid'}
-				<List class={iconMd} aria-hidden="true" />
-			{:else}
-				<LayoutGrid class={iconMd} aria-hidden="true" />
-			{/if}
-		</button>
-	</Tooltip>
-
-	<Menu.Root
+	<SettingsMenu
 		bind:open={settingsOpen}
-		positioning={{ placement: 'bottom-end' }}
-		closeOnSelect={false}
-	>
-		<Tooltip content="Settings">
-			<Menu.Trigger
-				class={iconButton({ variant: 'ghost', size: { base: 'compact', sm: 'standard' } })}
-				title="Settings"
-				aria-label="Settings"
-			>
-				<Settings class={iconMd} aria-hidden="true" />
-			</Menu.Trigger>
-		</Tooltip>
-		<Menu.Positioner class={styles.menuPositioner}>
-			<Menu.Content class={cx(popover, styles.menuPopover)}>
-				<Menu.Item
-					value="theme"
-					closeOnSelect={false}
-					onSelect={() => uiStore.toggleDark()}
-					class={menuItemClass}
-				>
-					{#if uiStore.effectiveDark}
-						<Sun class={iconSm} aria-hidden="true" />
-						Light mode
-					{:else}
-						<Moon class={iconSm} aria-hidden="true" />
-						Dark mode
-					{/if}
-				</Menu.Item>
-				<Menu.Item value="export" onSelect={startBackupExport} class={menuItemClass}>
-					<Download class={iconSm} aria-hidden="true" />
-					Export backup
-				</Menu.Item>
-				<Menu.Item
-					value="import"
-					disabled={importingBackup}
-					onSelect={startBackupImport}
-					class={menuItemClass}
-				>
-					<Upload class={iconSm} aria-hidden="true" />
-					Import backup
-				</Menu.Item>
-				<div class={styles.deviceSettings}>
-					<PwaInstallSettings />
-					<ReminderNotificationSettings />
-					<StorageSettings />
-				</div>
-				<Menu.Separator class={styles.menuSeparator} />
-				<Menu.Item value="issue">
-					{#snippet asChild(props)}
-						<a
-							{...props()}
-							href="https://github.com/volturine/scrapscache/issues/new/choose"
-							target="_blank"
-							rel="noreferrer"
-							class={menuItemClass}
-						>
-							<ExternalLink class={iconSm} aria-hidden="true" />
-							Report an issue
-						</a>
-					{/snippet}
-				</Menu.Item>
-				<Menu.Item value="privacy">
-					{#snippet asChild(props)}
-						<a {...props()} href={resolve('privacy')} class={menuItemClass}>
-							<Shield class={iconSm} aria-hidden="true" />
-							Privacy policy
-						</a>
-					{/snippet}
-				</Menu.Item>
-				<Menu.Item value="terms">
-					{#snippet asChild(props)}
-						<a {...props()} href={resolve('terms')} class={menuItemClass}>
-							<FileText class={iconSm} aria-hidden="true" />
-							Terms of service
-						</a>
-					{/snippet}
-				</Menu.Item>
-				{#if backupImportError}<p class={styles.menuAlert} role="alert">
-						{backupImportError}
-					</p>{/if}
-			</Menu.Content>
-		</Menu.Positioner>
-	</Menu.Root>
+		onExport={startBackupExport}
+		onImport={startBackupImport}
+		importing={importingBackup}
+		importError={backupImportError}
+	/>
 </header>
 
 <svelte:window

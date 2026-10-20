@@ -9,6 +9,7 @@
 	import NoteEditor from '#lib/components/NoteEditor.svelte';
 	import ReminderAlert from '#lib/components/ReminderAlert.svelte';
 	import BottomNav from '#lib/components/BottomNav.svelte';
+	import PhoneTabBar from '#lib/components/PhoneTabBar.svelte';
 	import AppViews from '#lib/components/AppViews.svelte';
 	import { reminderStore } from '#lib/stores/reminders.svelte.js';
 	import { reminderHistoryClient } from '#lib/reminderHistoryClient.js';
@@ -440,6 +441,9 @@
 					{/key}
 				</div>
 			</div>
+			{#if mobile.current}
+				<PhoneTabBar />
+			{/if}
 		</div>
 	</div>
 </div>

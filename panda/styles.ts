@@ -2909,7 +2909,63 @@ export const topbarStyles = {
 	}),
 	searchInput: css({ h: 'full', flex: '1', appearance: 'none', _placeholder: mutedText }),
 	searchIcon: css(mutedText),
-	syncIcon: css({ display: 'block' })
+	syncIcon: css({ display: 'block' }),
+	/** The phone top bar names the view; the view's own heading is for assistive technology. */
+	title: css({ textStyle: 'heading', flex: '1', minW: 0, px: 'xs', ...truncateText }),
+	search: css({
+		h: '2.5rem',
+		minH: '2.5rem',
+		maxH: '2.5rem',
+		minW: 0,
+		flex: '1',
+		rounded: 'pill',
+		borderWidth: 'hairline',
+		borderColor: 'scrapscache.border',
+		bg: 'scrapscache.surface',
+		px: { base: 'sm', sm: 'md' },
+		gap: { base: 'xs', sm: 'sm' }
+	})
+};
+
+/** The phone's bottom tab bar: four places, the current one lit. */
+export const phoneTabsStyles = {
+	bar: css({
+		display: 'flex',
+		alignItems: 'stretch',
+		h: 'var(--app-tabbar-height)',
+		flexShrink: 0,
+		borderTopWidth: 'hairline',
+		borderColor: 'scrapscache.border',
+		bg: 'scrapscache.surface'
+	}),
+	tab: css({
+		...column,
+		alignItems: 'center',
+		justifyContent: 'center',
+		gap: '3xs',
+		flex: '1',
+		minW: 0,
+		px: 'xs',
+		textStyle: 'caption',
+		...mutedText,
+		cursor: 'pointer',
+		outline: 'none',
+		transition: 'color 120ms ease',
+		'&[aria-current="page"], &[aria-pressed="true"]': { color: 'scrapscache.text' },
+		'&[aria-current="page"] [data-tab-icon], &[aria-pressed="true"] [data-tab-icon]': {
+			bg: 'scrapscache.navigationActive',
+			color: 'scrapscache.navigationActiveText'
+		},
+		'&:focus-visible [data-tab-icon]': { boxShadow: '0 0 0 2px token(colors.scrapscache.focus)' }
+	}),
+	tabIcon: css({
+		...gridCenter,
+		w: '3.5rem',
+		h: '1.75rem',
+		rounded: 'pill',
+		transition: 'background-color 120ms ease, color 120ms ease'
+	}),
+	tabLabel: css({ whiteSpace: 'nowrap' })
 };
 
 export const topbarSyncTone = {

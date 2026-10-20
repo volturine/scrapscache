@@ -28,7 +28,10 @@
 	import { resolve } from '$app/paths';
 	import type { EncryptedScrapsCacheBackup } from '#lib/backupCrypto.js';
 	import { loadLazyModule } from '#lib/staleModuleReload.js';
-	import { Cloud, Menu as MenuIcon, Search, X } from '@lucide/svelte';
+	import { ArrowLeft, Cloud, Menu as MenuIcon, Search, X } from '@lucide/svelte';
+	import { MediaQuery } from 'svelte/reactivity';
+	import { pathForView } from '#lib/viewRoutes.js';
+	import type { View } from '#lib/stores/ui.svelte.js';
 
 	const SYNC_CONTROL_LABEL: Record<SyncStatus, string> = {
 		[SyncStatus.Normal]: 'Sync settings',
@@ -54,6 +57,35 @@
 	let syncControlLabel = $derived(SYNC_CONTROL_LABEL[syncStatus]);
 
 	let searchField: HTMLInputElement | undefined;
+
+	const mobile = new MediaQuery('max-width: 767px');
+	const VIEW_TITLES: Record<Exclude<View, 'label'>, string> = {
+		notes: 'Notes',
+		kanban: 'Kanban',
+		reminders: 'Reminders',
+		archive: 'Archive',
+		trash: 'Trash'
+	};
+	const viewTitle = $derived(
+		uiStore.view === 'label'
+			? (notesStore.labelsById.get(uiStore.activeLabelId ?? '')?.name ?? 'Label')
+			: VIEW_TITLES[uiStore.view]
+	);
+
+	/** The Search tab turned on: the field appears and takes the keyboard. */
+	$effect(() => {
+		if (!uiStore.searchOpen || !mobile.current) return;
+		void tick().then(() => searchField?.focus());
+	});
+
+	/** A place from the More menu: Archive or Trash, which the tab bar leaves out. */
+	function goToPlace(view: 'archive' | 'trash') {
+		const target = pathForView(view);
+		if (!target) return;
+		closeNote();
+		uiStore.setView(view);
+		void goto(target);
+	}
 
 	function openPairingLink() {
 		const found = pairingCodeFromUrl(window.location.href);
@@ -206,29 +238,7 @@
 	);
 </script>
 
-<!-- svelte-ignore a11y_no_static_element_interactions -->
-<header
-	class={hstack({
-		h: 'var(--app-topbar-height)',
-		flexShrink: 0,
-		px: { base: 'sm', sm: 'md' },
-		gap: { base: '2xs', sm: 'sm' },
-		position: 'relative',
-		zIndex: 20
-	})}
-	onpointerdown={closeNote}
->
-	<Tooltip content="Toggle sidebar">
-		<button
-			class={iconButton({ variant: 'ghost', size: { base: 'compact', sm: 'standard' } })}
-			title="Toggle sidebar"
-			onclick={() => uiStore.toggleSidebar()}
-			aria-label="Toggle sidebar"
-		>
-			<MenuIcon class={iconMd} aria-hidden="true" />
-		</button>
-	</Tooltip>
-
+{#snippet searchBox()}
 	<div
 		role="search"
 		class={hstack({
@@ -270,7 +280,9 @@
 			</button>
 		{/if}
 	</div>
+{/snippet}
 
+{#snippet syncButton()}
 	<Tooltip content={syncControlLabel}>
 		<button
 			type="button"
@@ -302,14 +314,71 @@
 			</span>
 		</button>
 	</Tooltip>
+{/snippet}
 
-	<SettingsMenu
-		bind:open={settingsOpen}
-		onExport={startBackupExport}
-		onImport={startBackupImport}
-		importing={importingBackup}
-		importError={backupImportError}
-	/>
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<header
+	class={hstack({
+		h: 'var(--app-topbar-height)',
+		flexShrink: 0,
+		px: { base: 'sm', sm: 'md' },
+		gap: { base: '2xs', sm: 'sm' },
+		position: 'relative',
+		zIndex: 20
+	})}
+	onpointerdown={closeNote}
+>
+	{#if mobile.current}
+		<!-- A phone has the tab bar for its places: the bar names the view, and the
+		     Search tab turns it into the field. Labels, Archive and Trash sit under More. -->
+		{#if uiStore.searchOpen}
+			<Tooltip content="Close search">
+				<button
+					type="button"
+					class={iconButton({ variant: 'ghost', size: 'compact' })}
+					title="Close search"
+					onclick={() => uiStore.closeSearch()}
+					aria-label="Close search"
+				>
+					<ArrowLeft class={iconMd} aria-hidden="true" />
+				</button>
+			</Tooltip>
+			{@render searchBox()}
+		{:else}
+			<span class={styles.title} aria-hidden="true" data-view-title>{viewTitle}</span>
+			{@render syncButton()}
+			<SettingsMenu
+				phone
+				bind:open={settingsOpen}
+				onExport={startBackupExport}
+				onImport={startBackupImport}
+				importing={importingBackup}
+				importError={backupImportError}
+				onPlace={goToPlace}
+				onLabels={() => (uiStore.sidebarOpen = true)}
+			/>
+		{/if}
+	{:else}
+		<Tooltip content="Toggle sidebar">
+			<button
+				class={iconButton({ variant: 'ghost', size: { base: 'compact', sm: 'standard' } })}
+				title="Toggle sidebar"
+				onclick={() => uiStore.toggleSidebar()}
+				aria-label="Toggle sidebar"
+			>
+				<MenuIcon class={iconMd} aria-hidden="true" />
+			</button>
+		</Tooltip>
+		{@render searchBox()}
+		{@render syncButton()}
+		<SettingsMenu
+			bind:open={settingsOpen}
+			onExport={startBackupExport}
+			onImport={startBackupImport}
+			importing={importingBackup}
+			importError={backupImportError}
+		/>
+	{/if}
 </header>
 
 <svelte:window

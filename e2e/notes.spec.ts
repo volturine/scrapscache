@@ -437,6 +437,65 @@ test('a search that finds nothing in Notes looks in Archive with the same query'
 	await expect(noteCard(page, 'Retro board')).toBeVisible();
 });
 
+test.describe('on a phone', () => {
+	test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
+
+	test('the tab bar carries the places, Search turns into the field, and More holds the rest', async ({
+		page
+	}) => {
+		await openEmptyApp(page);
+		await createNote(page, 'Tram day', 'Tram 28 early');
+		await createNote(page, 'Quiet', 'Nothing here');
+		const tabs = page.getByRole('navigation', { name: 'Main' });
+		await expect(tabs.getByRole('button')).toHaveText(['Notes', 'Reminders', 'Kanban', 'Search']);
+		await expect(tabs.getByRole('button', { name: 'Notes' })).toHaveAttribute(
+			'aria-current',
+			'page'
+		);
+		// The hamburger and the field are gone from the top bar; the view's name is there.
+		await expect(page.getByRole('button', { name: 'Toggle sidebar' })).toHaveCount(0);
+		await expect(page.getByRole('searchbox')).toHaveCount(0);
+		await expect(page.locator('[data-view-title]')).toHaveText('Notes');
+
+		// The new-note button floats above the bar.
+		const fab = await page.getByRole('button', { name: 'New note' }).boundingBox();
+		const bar = await tabs.boundingBox();
+		expect(fab!.y + fab!.height).toBeLessThanOrEqual(bar!.y);
+
+		await tabs.getByRole('button', { name: 'Reminders' }).click();
+		await expect(page).toHaveURL(/\/reminders$/);
+		await expect(tabs.getByRole('button', { name: 'Reminders' })).toHaveAttribute(
+			'aria-current',
+			'page'
+		);
+		await expect(page.locator('[data-view-title]')).toHaveText('Reminders');
+
+		await tabs.getByRole('button', { name: 'Notes' }).click();
+		await tabs.getByRole('button', { name: 'Search' }).click();
+		const search = page.getByRole('searchbox', { name: 'Search notes' });
+		await expect(search).toBeFocused();
+		await search.fill('tram');
+		await expect(noteCard(page, 'Tram day')).toBeVisible();
+		await expect(noteCard(page, 'Quiet')).toBeHidden();
+		await page.getByRole('button', { name: 'Close search' }).click();
+		await expect(page.getByRole('searchbox')).toHaveCount(0);
+		await expect(tabs.getByRole('button', { name: 'Search' })).toHaveAttribute(
+			'aria-pressed',
+			'false'
+		);
+
+		await page.getByRole('button', { name: 'More', exact: true }).click();
+		await expect(page.getByRole('menuitem')).toContainText(['Labels', 'Archive', 'Trash']);
+		await page.getByRole('menuitem', { name: 'Archive' }).click();
+		await expect(page).toHaveURL(/\/archive$/);
+		await expect(page.locator('[data-view-title]')).toHaveText('Archive');
+
+		await page.getByRole('button', { name: 'More', exact: true }).click();
+		await page.getByRole('menuitem', { name: 'Labels' }).click();
+		await expect(page.getByRole('navigation', { name: 'Sidebar' })).toBeVisible();
+	});
+});
+
 test('the last card stays clear of the new note button', async ({ page }) => {
 	await page.setViewportSize({ width: 390, height: 640 });
 	await openEmptyApp(page);

@@ -12,6 +12,7 @@
 	class={`new-note-fab ${css({
 		position: 'fixed',
 		zIndex: 60,
+		// Measured from the floating layer, which ends above the phone tab bar.
 		bottom: 'var(--app-fab-bottom)',
 		right: '2xl'
 	})}`}

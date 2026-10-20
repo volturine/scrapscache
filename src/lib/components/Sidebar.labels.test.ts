@@ -142,6 +142,81 @@ describe('Sidebar labels section', () => {
 		expect(navigationMocks.goto).toHaveBeenCalledWith('/label/work');
 	});
 
+	it('creates from the field as it reads when the tick is tapped before the binding settles', async () => {
+		const createLabel = vi.spyOn(notesStore, 'createLabel').mockReturnValue(label('Fast'));
+		const { section } = setup([label('Work')]);
+		await fireEvent.click(section.querySelector('button[aria-label="New label"]')!);
+		await tick();
+		const name = section.querySelector('input[aria-label="New label name"]') as HTMLInputElement;
+		// Typed, but no input event has reached the binding yet.
+		name.value = 'Fast';
+
+		const tickButton = section.querySelector('button[aria-label="Create label"]') as HTMLElement;
+		const press = new Event('pointerdown', { bubbles: true, cancelable: true });
+		Object.assign(press, { pointerType: 'touch', pointerId: 1 });
+		await fireEvent(tickButton, press);
+		// The press does not blur the field, so the phone keyboard stays.
+		expect(press.defaultPrevented).toBe(true);
+		await fireEvent.click(tickButton);
+
+		expect(createLabel).toHaveBeenCalledWith('Fast');
+	});
+
+	it('cancels the row on Escape before the drawer can hear it', async () => {
+		const { section } = setup([label('Work')]);
+		await fireEvent.click(section.querySelector('button[aria-label="New label"]')!);
+		await tick();
+		const name = section.querySelector('input[aria-label="New label name"]') as HTMLInputElement;
+		// What the phone drawer does: listen on the document in the capture phase.
+		const drawer = vi.fn();
+		document.addEventListener('keydown', drawer, true);
+		try {
+			const escape = new KeyboardEvent('keydown', {
+				key: 'Escape',
+				bubbles: true,
+				cancelable: true
+			});
+			name.dispatchEvent(escape);
+			await tick();
+
+			expect(escape.defaultPrevented).toBe(true);
+			expect(drawer).not.toHaveBeenCalled();
+			expect(section.querySelector('[data-label-create]')).toBeNull();
+		} finally {
+			document.removeEventListener('keydown', drawer, true);
+		}
+	});
+
+	it('puts the row away again when + is pressed a second time, keeping no draft', async () => {
+		const { section } = setup([label('Work')]);
+		const add = section.querySelector('button[aria-label="New label"]') as HTMLButtonElement;
+		await fireEvent.click(add);
+		await tick();
+		expect(add.getAttribute('aria-expanded')).toBe('true');
+
+		await fireEvent.click(add);
+		await tick();
+		expect(add.getAttribute('aria-expanded')).toBe('false');
+		expect(section.querySelector('[data-label-create]')).toBeNull();
+	});
+
+	it('forgets a filter once the list is short enough to drop the field', async () => {
+		const { section } = setup(manyLabels(9));
+		await fireEvent.input(field(section)!, { target: { value: 'Label 9' } });
+		await tick();
+		expect(section.querySelector('button[aria-label="Label 1"]')).toBeNull();
+
+		notesStore.labels = manyLabels(8);
+		await tick();
+		expect(field(section)).toBeNull();
+		notesStore.labels = manyLabels(9);
+		await tick();
+
+		// The field is back, empty, and the list is whole.
+		expect(field(section)!.value).toBe('');
+		expect(section.querySelector('button[aria-label="Label 1"]')).toBeTruthy();
+	});
+
 	it('slides rename and delete in behind the row on a left swipe, without navigating', async () => {
 		const { section } = setup([label('Work')]);
 		const workBtn = section.querySelector('button[aria-label="Work"]') as HTMLButtonElement;

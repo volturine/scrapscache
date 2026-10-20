@@ -116,6 +116,10 @@
 	/** A list this short is scanned by eye; the filter field appears above a longer one. */
 	const FILTER_FROM = 8;
 	const filterShown = $derived(notesStore.labels.length > FILTER_FROM);
+	$effect(() => {
+		// A filter typed before the list shrank must not come back once it grows again.
+		if (!filterShown) query = '';
+	});
 	const trimmed = $derived(filterShown ? query.trim() : '');
 	const filteredLabels = $derived.by(() => {
 		if (!trimmed) return notesStore.labels;
@@ -145,7 +149,12 @@
 		return uiStore.pendingPath ? uiStore.pendingPath === target : page.url.pathname === target;
 	}
 
-	function startCreating() {
+	/** The + is a toggle: it opens the row, and puts an open one away again. */
+	function toggleCreating() {
+		if (creating) {
+			stopCreating();
+			return;
+		}
 		pendingDelete = null;
 		swipe.close();
 		closeHaze();
@@ -162,7 +171,8 @@
 
 	/** Create the typed label and open it; a name already in the list opens that label. */
 	function createLabel() {
-		const name = newLabelName.trim();
+		// The field's own value: a fast tap on the tick can land before the binding settles.
+		const name = (createInput?.value ?? newLabelName).trim();
 		if (!name) return;
 		const existing = notesStore.labels.find((l) => l.name.toLowerCase() === name.toLowerCase());
 		const label = existing ?? notesStore.createLabel(name);
@@ -174,11 +184,24 @@
 		if (event.key === 'Enter') {
 			event.preventDefault();
 			createLabel();
-		} else if (event.key === 'Escape') {
-			event.preventDefault();
-			event.stopPropagation();
-			stopCreating();
 		}
+	}
+
+	/**
+	 * Esc in the create row only cancels the row. The phone drawer listens for Esc on
+	 * the document in the capture phase, so the row has to claim it a step earlier.
+	 */
+	function onWindowKeydownCapture(event: KeyboardEvent) {
+		if (event.key !== 'Escape' || !creating) return;
+		if (!(event.target instanceof Element) || !event.target.closest('[data-label-create]')) return;
+		event.preventDefault();
+		event.stopPropagation();
+		stopCreating();
+	}
+
+	/** A tap on a button beside the field must not blur it: the keyboard would start closing. */
+	function keepKeyboardOpen(event: PointerEvent) {
+		if (event.pointerType === 'touch') event.preventDefault();
 	}
 
 	function onQueryKeydown(event: KeyboardEvent) {
@@ -317,7 +340,7 @@
 				title="New label"
 				aria-label="New label"
 				aria-expanded={creating}
-				onclick={startCreating}
+				onclick={toggleCreating}
 				data-sidebar-stay-open
 			>
 				<Plus size={16} strokeWidth={1.75} aria-hidden="true" />
@@ -359,6 +382,7 @@
 						class={iconButton({ size: 'compact', variant: 'ghost' })}
 						title="Create"
 						aria-label="Create label"
+						onpointerdown={keepKeyboardOpen}
 						onclick={createLabel}
 					>
 						<Check size={16} strokeWidth={1.75} aria-hidden="true" />
@@ -368,6 +392,7 @@
 						class={iconButton({ size: 'compact', variant: 'ghost' })}
 						title="Cancel"
 						aria-label="Cancel"
+						onpointerdown={keepKeyboardOpen}
 						onclick={stopCreating}
 					>
 						<X size={16} strokeWidth={1.75} aria-hidden="true" />
@@ -516,6 +541,7 @@
 </aside>
 
 <svelte:window
+	onkeydowncapture={onWindowKeydownCapture}
 	onpointerdown={(e) => {
 		const target = e.target as HTMLElement | null;
 		if (hazeLabelId && !target?.closest?.('[data-label-haze]')) closeHaze();

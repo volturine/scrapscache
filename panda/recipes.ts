@@ -563,6 +563,7 @@ const noteBodyRecipe = defineSlotRecipe({
 	],
 	base: {
 		row: {
+			position: 'relative',
 			display: 'flex',
 			alignItems: 'flex-start',
 			gap: 'sm',
@@ -573,29 +574,43 @@ const noteBodyRecipe = defineSlotRecipe({
 		bullet: { flexShrink: 0, userSelect: 'none' },
 		paragraph: { whiteSpace: 'pre-wrap', wordBreak: 'break-word', py: '3xs' },
 		spacer: { py: '2xs' },
-		// The button takes its own line under the group, but only its label adds a
-		// sub-task; the rest of the line puts the caret back on the group.
+		// Sits at the end of the focused row without taking space in it, so no row
+		// moves when focus does. It is the size of its glyph, so it stays inside the
+		// row; on touch the hit area grows to 44 px, out to the side and never over
+		// the text, since touch browsers snap a tap near a line's end onto a button.
 		addSubtask: {
-			display: 'flex',
-			flexBasis: 'full',
-			textAlign: 'left',
-			textStyle: 'label',
+			...touchHit,
+			position: 'absolute',
+			right: 0,
+			top: '50%',
+			transform: 'translateY(-50%)',
+			...gridCenter,
+			w: '1.5rem',
+			h: '1.5rem',
+			rounded: 'compact',
 			color: 'scrapscache.textMuted',
 			...tapTarget,
-			cursor: 'text',
-			whiteSpace: 'nowrap',
-			'& > span': {
-				rounded: 'compact',
-				px: '2xs',
-				py: '2xs',
-				cursor: 'pointer',
-				transitionProperty: 'background-color, color',
-				transitionDuration: '120ms',
-				transitionTimingFunction: 'ease',
-				_hoverable: { bg: 'scrapscache.interactiveHover', color: 'scrapscache.text' }
+			cursor: 'pointer',
+			transitionProperty: 'background-color, color',
+			transitionDuration: '120ms',
+			transitionTimingFunction: 'ease',
+			_hoverable: { bg: 'scrapscache.interactiveHover', color: 'scrapscache.text' },
+			// The whole pseudo-element, since this replaces touchHit's: the same growth above
+			// and below, none to the right, where the chunk's paint clip ends at the glyph,
+			// and twice as much to the left, into the gap every task row keeps clear of text.
+			_touch: {
+				_before: {
+					content: '""',
+					position: 'absolute',
+					top: 'min(0px, calc((100% - 44px) / 2))',
+					bottom: 'min(0px, calc((100% - 44px) / 2))',
+					left: 'calc(min(0px, (100% - 44px) / 2) * 2)',
+					right: 0
+				}
 			},
-			// Child only. This slot styles the button, so a button ::before paints a second label.
-			'& > span::before': { content: '"+  Add sub-task"' }
+			'& > span': { ...gridCenter, w: 'full', h: 'full', textStyle: 'label', lineHeight: '1' },
+			// Child only: text inside the editing host would become note content.
+			'& > span::before': { content: '"+"' }
 		}
 	},
 	variants: {
@@ -614,8 +629,6 @@ const noteBodyRecipe = defineSlotRecipe({
 				// Skipping offscreen chunks keeps typing cost independent of note length.
 				// The inline padding keeps focused rows' bleed outside the paint clip.
 				chunk: { display: 'block', contentVisibility: 'auto', mx: '-sm', px: 'sm' },
-				// Only Add sub-task wraps; it sits right under its task, not a gap away.
-				row: { flexWrap: 'wrap', rowGap: 0 },
 				line: {
 					display: 'block',
 					whiteSpace: 'pre-wrap',
@@ -642,17 +655,10 @@ const noteBodyRecipe = defineSlotRecipe({
 			true: { line: { textDecoration: 'line-through' } }
 		},
 		indented: {
-			true: { line: { fontSize: 'compact' }, addSubtask: { pl: 0 } },
-			false: { addSubtask: { pl: 'xl' } }
+			true: { line: { fontSize: 'compact' } }
 		},
 		focused: {
-			true: { row: { bg: 'scrapscache.surfaceSubtle' } }
-		},
-		root: {
-			true: { row: { mt: '3xs', borderTopRadius: 'card', pt: '2xs' } }
-		},
-		last: {
-			true: { row: { mb: '3xs', borderBottomRadius: 'card', pb: '2xs' } }
+			true: { row: { bg: 'scrapscache.surfaceSubtle', rounded: 'card' } }
 		}
 	}
 });

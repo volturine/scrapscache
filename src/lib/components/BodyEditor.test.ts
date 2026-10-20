@@ -1313,37 +1313,35 @@ describe('BodyEditor task focus chrome', () => {
 		expect(focusedRoot(container)).toBe('Second');
 	});
 
-	it('shows Add sub-task on the focused root and drops it when focus leaves', async () => {
+	it('shows the + on the focused row and inserts nothing until it is used', async () => {
 		const { container } = render(BodyEditor, {
 			props: { body: '[ ] Avocados\n  [ ] tes\n[ ] Dark chocolate' }
 		});
+		const rows = () => container.querySelectorAll('[data-editor-line]');
+		expect(rows()).toHaveLength(3);
 		showTask(container, 0);
 		await tick();
 
+		// The focus chrome is the row's own: no box around the group, no line under it.
 		expect(container.querySelector('[data-focus-group]')).not.toBeNull();
-		expect(container.querySelector('[data-add-subtask]')).not.toBeNull();
-		expect(container.querySelector('[data-add-subtask]')?.closest('[data-editor-line]')).toBe(
-			container.querySelector('[data-editor-line="1"]')
-		);
+		expect(rows()).toHaveLength(3);
 		expect(container.querySelector('[data-editor-line="0"]')?.className).toContain(
-			'scrapscache-note-body__row--root_true'
+			'scrapscache-note-body__row--focused_true'
 		);
-		expect(container.querySelector('[data-editor-line="1"]')?.className).toContain(
-			'scrapscache-note-body__row--last_true'
+		expect(container.querySelector('[data-editor-line="1"]')?.className).not.toContain(
+			'scrapscache-note-body__row--focused_true'
+		);
+		expect(container.querySelector('[data-add-subtask]')?.closest('[data-editor-line]')).toBe(
+			container.querySelector('[data-editor-line="0"]')
 		);
 
 		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
-		touchPointer(container.querySelector('[data-add-subtask] > span') as Element, 'pointerdown', 5);
+		touchPointer(container.querySelector('[data-add-subtask]') as Element, 'pointerdown', 5);
 		touchPointer(editor, 'pointerup', 5);
 		await Promise.resolve();
 
+		// The sub-task goes under the root's existing sub-tasks, and the + follows the caret.
 		expect(container.querySelectorAll('[data-task-row]')).toHaveLength(4);
-		expect(container.querySelector('[data-editor-line="0"]')?.className).not.toContain(
-			'scrapscache-note-body__row--last_true'
-		);
-		expect(container.querySelector('[data-editor-line="2"]')?.className).toContain(
-			'scrapscache-note-body__row--last_true'
-		);
 		expect(
 			container
 				.querySelector('[data-editor-line="2"] [data-line-text]')
@@ -1367,31 +1365,29 @@ describe('BodyEditor task focus chrome', () => {
 		expect(container.querySelector('[data-add-subtask]')).toBeNull();
 	});
 
-	it('aligns Add sub-task with subtask indentation and avoids double indenting under existing subtasks', async () => {
-		const { container: c1 } = render(BodyEditor, {
-			props: { body: '[ ] Avocados\n[ ] Dark chocolate' }
-		});
-		showTask(c1, 0);
-		await tick();
-
-		const buttonNoSub = c1.querySelector('[data-add-subtask]') as HTMLButtonElement;
-		expect(buttonNoSub).not.toBeNull();
-		expect(buttonNoSub.className).toContain('scrapscache-note-body__addSubtask--indented_false');
-		expect(buttonNoSub.className).not.toContain('scrapscache-note-body__addSubtask--indented_true');
-		expect(buttonNoSub.querySelector('[class*="addSubtask"]')).toBeNull();
-
-		const { container: c2 } = render(BodyEditor, {
+	it('puts the + on a focused sub-task too, and adds under its root', async () => {
+		const { container } = render(BodyEditor, {
 			props: { body: '[ ] Avocados\n  [ ] Hass\n[ ] Dark chocolate' }
 		});
-		showTask(c2, 0);
+		showTask(container, 1);
 		await tick();
 
-		const buttonWithSub = c2.querySelector('[data-add-subtask]') as HTMLButtonElement;
-		expect(buttonWithSub).not.toBeNull();
-		expect(buttonWithSub.className).toContain('scrapscache-note-body__addSubtask--indented_true');
-		expect(buttonWithSub.className).not.toContain(
-			'scrapscache-note-body__addSubtask--indented_false'
+		expect(container.querySelector('[data-add-subtask]')?.closest('[data-editor-line]')).toBe(
+			container.querySelector('[data-editor-line="1"]')
 		);
+		expect(container.querySelector('[data-editor-line="0"]')?.className).not.toContain(
+			'scrapscache-note-body__row--focused_true'
+		);
+
+		touchPointer(container.querySelector('[data-add-subtask]') as Element, 'pointerdown', 5);
+		await Promise.resolve();
+
+		expect(container.querySelectorAll('[data-task-row]')).toHaveLength(4);
+		expect(
+			container
+				.querySelector('[data-editor-line="2"] [data-line-text]')
+				?.getAttribute('data-placeholder')
+		).toBe('Sub-task');
 	});
 
 	it('preserves the subtask draft across mobile pointerdown and blur cycles', async () => {
@@ -1418,32 +1414,6 @@ describe('BodyEditor task focus chrome', () => {
 		await fireEvent.pointerUp(editor, { pointerId: 42, pointerType: 'touch' });
 	});
 
-	it('adds a sub-task only from its label, and a tap beside it returns to the group', async () => {
-		const { container } = render(BodyEditor, {
-			props: { body: '[ ] Avocados\n  [ ] Hass\n[ ] Dark chocolate' }
-		});
-		showTask(container, 0);
-		await tick();
-		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
-		editor.focus();
-		caretAt(container, 0, 2);
-
-		const beside = touchPointer(
-			container.querySelector('[data-add-subtask]') as Element,
-			'pointerdown'
-		);
-		expect(beside.defaultPrevented).toBe(true);
-		expect(container.querySelectorAll('[data-task-row]')).toHaveLength(3);
-		expect(selectionLine()).toBe(1);
-		expect(window.getSelection()?.focusOffset).toBe('Hass'.length);
-		touchPointer(editor, 'pointerup');
-		await Promise.resolve();
-
-		touchPointer(container.querySelector('[data-add-subtask] > span') as Element, 'pointerdown');
-		expect(container.querySelectorAll('[data-task-row]')).toHaveLength(4);
-		expect(selectionLine()).toBe(2);
-	});
-
 	it('drops an empty sub-task once the caret leaves it', async () => {
 		const { container } = render(BodyEditor, {
 			props: { body: '[ ] Avocados\n[ ] Dark chocolate' }
@@ -1452,7 +1422,7 @@ describe('BodyEditor task focus chrome', () => {
 		await tick();
 		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
 		editor.focus();
-		touchPointer(container.querySelector('[data-add-subtask] > span') as Element, 'pointerdown', 9);
+		touchPointer(container.querySelector('[data-add-subtask]') as Element, 'pointerdown', 9);
 		touchPointer(editor, 'pointerup', 9);
 		await Promise.resolve();
 		expect(lineTexts(container)).toEqual(['Avocados', '', 'Dark chocolate']);

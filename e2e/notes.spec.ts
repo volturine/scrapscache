@@ -129,6 +129,60 @@ test('a checklist line toggles from the body', async ({ page }) => {
 	);
 });
 
+test('focusing a checklist row moves no other row and offers + on the row itself', async ({
+	page
+}) => {
+	await openEmptyApp(page);
+	await createNote(page, 'Stable', '[ ] one\n[ ] two\n[ ] three');
+	await noteCard(page, 'Stable').click();
+	const sheet = editor(page);
+	const rows = sheet.locator('[data-task-row]');
+	await expect(rows).toHaveCount(3);
+	const thirdRowTop = async () => (await rows.nth(2).boundingBox())!.y;
+	const before = await thirdRowTop();
+
+	await rows.nth(0).locator('[data-line-text]').click();
+	const add = sheet.getByRole('button', { name: 'Add sub-task' });
+	await expect(add).toBeVisible();
+	// Nothing was inserted, so the rows below stay where they were.
+	expect(await thirdRowTop()).toBeCloseTo(before, 1);
+	// The + sits inside the focused row's box, so it never covers the rows beside it.
+	const row = (await rows.nth(0).boundingBox())!;
+	const plus = (await add.boundingBox())!;
+	expect(plus.y).toBeGreaterThanOrEqual(row.y);
+	expect(plus.y + plus.height).toBeLessThanOrEqual(row.y + row.height);
+	expect(plus.x + plus.width).toBeLessThanOrEqual(row.x + row.width + 1);
+
+	await add.click();
+	await expect(rows).toHaveCount(4);
+	await expect(rows.nth(1).locator('[data-line-text]')).toHaveAttribute(
+		'data-placeholder',
+		'Sub-task'
+	);
+});
+
+test('focusing a task row that fills its line does not re-wrap it', async ({ page }) => {
+	await openEmptyApp(page);
+	await createNote(page, 'Full lines', `[ ] ${'word '.repeat(40)}\n[ ] after`);
+	await noteCard(page, 'Full lines').click();
+	const sheet = editor(page);
+	const rows = sheet.locator('[data-task-row]');
+	await expect(rows).toHaveCount(2);
+	const first = async () => (await rows.nth(0).boundingBox())!;
+	const second = async () => (await rows.nth(1).boundingBox())!;
+	await rows.nth(1).locator('[data-line-text]').click();
+	await expect(sheet.getByRole('button', { name: 'Add sub-task' })).toBeVisible();
+	const heightBefore = (await first()).height;
+	const topBefore = (await second()).y;
+
+	await rows.nth(0).locator('[data-line-text]').click();
+	await expect(rows.nth(0).getByRole('button', { name: 'Add sub-task' })).toBeVisible();
+
+	// The room for the + was already there, so the wrapped line keeps its height.
+	expect((await first()).height).toBeCloseTo(heightBefore, 1);
+	expect((await second()).y).toBeCloseTo(topBefore, 1);
+});
+
 test('a checked row dims its text and tokens, not the whole row', async ({ page }) => {
 	await openEmptyApp(page);
 	await createNote(page, 'Dimmed', '[ ] milk `oat`\n[ ] eggs');
@@ -227,6 +281,42 @@ test('search narrows the feed to matching notes', async ({ page }) => {
 
 test.describe('on a touch screen', () => {
 	test.use({ hasTouch: true });
+
+	test('the + on a focused task row grows a 44 px touch target that stays off the text', async ({
+		page
+	}) => {
+		await openEmptyApp(page);
+		await createNote(page, 'Touch tasks', '[ ] one\n[ ] two');
+		await noteCard(page, 'Touch tasks').click();
+		const sheet = editor(page);
+		await sheet.locator('[data-task-row]').first().locator('[data-line-text]').click();
+		const add = sheet.getByRole('button', { name: 'Add sub-task' });
+		await expect(add).toBeVisible();
+
+		const box = (await add.boundingBox())!;
+		const target = await add.evaluate((button) => {
+			const style = getComputedStyle(button, '::before');
+			return {
+				width: parseFloat(style.width),
+				height: parseFloat(style.height),
+				left: parseFloat(style.left),
+				right: style.right
+			};
+		});
+		// The glyph stays small; the target reaches 44 px, ending at the glyph's right edge
+		// (the paint clip ends there) and reaching left only into the row's reserved gap.
+		expect(box.width).toBeLessThan(30);
+		expect(target.width).toBeGreaterThanOrEqual(44);
+		expect(target.height).toBeGreaterThanOrEqual(44);
+		expect(target.right).toBe('0px');
+		expect(target.left).toBeLessThan(0);
+		const text = (await sheet
+			.locator('[data-task-row]')
+			.first()
+			.locator('[data-line-text]')
+			.boundingBox())!;
+		expect(box.x + target.left).toBeGreaterThanOrEqual(text.x + text.width - 1);
+	});
 
 	test('settings rows and segments keep their touch sizes at any width, and the popover scrolls', async ({
 		page

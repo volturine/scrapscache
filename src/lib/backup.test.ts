@@ -128,6 +128,26 @@ describe('backup normalization', () => {
 		expect(note.fieldTimes).toMatchObject({ title: 1, body: 1 });
 	});
 
+	it('reads a future or unsafe clock as now, so later edits are not frozen behind it', () => {
+		// A restored time becomes a last-write-wins clock: `time + 1` stops advancing at 2^53.
+		const [note] = prepareImportedNotes(
+			[
+				{
+					...sourceNote,
+					createdAt: -5,
+					updatedAt: 2 ** 53,
+					fieldTimes: { title: Number.MAX_VALUE, body: 150, color: 40 }
+				}
+			],
+			'replace',
+			createEditContext(() => 100)
+		);
+
+		expect(note).toMatchObject({ createdAt: 100, updatedAt: 100 });
+		// Rejected field times fall back to the clamped updatedAt; a sane past one stays.
+		expect(note.fieldTimes).toMatchObject({ title: 100, body: 100, color: 40, pinned: 100 });
+	});
+
 	it('starts the purge window of a trashed note over but keeps its dates', () => {
 		const [note] = prepareImportedNotes(
 			[{ ...sourceNote, trashed: true, trashedAt: 5 }],

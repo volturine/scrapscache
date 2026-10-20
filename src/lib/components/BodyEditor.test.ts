@@ -2,6 +2,7 @@ import { fireEvent, render } from '@testing-library/svelte';
 import { flushSync, tick } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import BodyEditor from './BodyEditor.svelte';
+import { multiCursorStyles } from '$panda/styles';
 import { actionUndo } from '#lib/stores/actionUndo.svelte.js';
 import { uiStore } from '#lib/stores/ui.svelte.js';
 
@@ -3324,6 +3325,27 @@ describe('BodyEditor multiple cursors', () => {
 
 		expect(outside).not.toHaveBeenCalled();
 		expect(lineTexts(container)).toEqual(['two one']);
+	});
+
+	it('redraws the extra carets whenever the cursors move, so their blink restarts', async () => {
+		const { container, editor } = renderBody('cat cat cat');
+		caretAt(container, 0, 0);
+		await press(editor, addNext);
+		await press(editor, addNext);
+		const carets = () => [...container.querySelectorAll('[data-extra-cursors] > span')];
+		const before = carets();
+		expect(before).toHaveLength(1);
+		expect(before[0].className).toBe(multiCursorStyles.caret);
+
+		await typeText(editor, 's');
+
+		const after = carets();
+		expect(after).toHaveLength(1);
+		expect(after[0]).not.toBe(before[0]);
+		// The container carries the shared look: caret colour and the one selection fill.
+		expect(editor.className.split(' ')).toEqual(
+			expect.arrayContaining(multiCursorStyles.look.split(' '))
+		);
 	});
 
 	it('ends the extra cursors on Enter and edits only at the caret', async () => {

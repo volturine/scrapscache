@@ -109,6 +109,11 @@ const scrapscacheColors = tokenGroup({
 		'color-mix(in srgb, {colors.palette.accentDark} 14%, {colors.palette.surfaceDark})'
 	),
 	focus: mode('{colors.palette.accentHover}', '{colors.palette.accentHoverDark}'),
+	// The fill of selected text in the editor, native and extra alike.
+	selection: mode(
+		'color-mix(in srgb, {colors.palette.accent} 30%, {colors.palette.surface})',
+		'color-mix(in srgb, {colors.palette.accentDark} 38%, {colors.palette.surfaceDark})'
+	),
 	success: mode('#15803d', '#4ade80'),
 	successForeground: mode('#ffffff', '#052e16'),
 	successSubtle: mode('#dcfce7', '#14351f'),
@@ -182,6 +187,8 @@ export const theme = {
 			pulse: {
 				'50%': { opacity: 0.5 }
 			},
+			// Chromium's caret: half a second on, half a second off.
+			caretBlink: { '0%': { opacity: 1 }, '50%': { opacity: 0 } },
 			fadeIn: { from: { opacity: 0 } },
 			fadeOut: { to: { opacity: 0 } },
 			swapIn: { from: { opacity: 0, transform: 'scale(0.96)' } },

@@ -3592,7 +3592,7 @@
 		editor.container,
 		markdownStyles,
 		editorFindStyles.highlights,
-		multiCursorStyles.highlights,
+		multiCursorStyles.look,
 		uiStore.rawMarkdown && 'markdown-raw'
 	]}
 	onbeforeinput={readOnly ? undefined : handleBeforeInput}
@@ -3677,7 +3677,9 @@
 		aria-hidden="true"
 		data-extra-cursors
 	>
-		{#each cursorMarks as mark, index (index)}
+		<!-- Keyed by the mark itself: every repaint makes new marks, so each caret is
+		     drawn afresh and its blink restarts with the native caret's. -->
+		{#each cursorMarks as mark (mark)}
 			<span
 				class={multiCursorStyles.caret}
 				style:left="{mark.left}px"

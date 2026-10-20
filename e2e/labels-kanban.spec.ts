@@ -208,6 +208,30 @@ test('a column has a menu to rename its label, move it and remove it, and shows 
 test.describe('on a phone', () => {
 	test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
 
+	test('a card menu with every column listed stays within a short screen and scrolls', async ({
+		page
+	}) => {
+		await page.setViewportSize({ width: 375, height: 667 });
+		await openEmptyApp(page);
+		await createNote(page, 'Task one');
+		await page.goto('/kanban');
+		await page
+			.getByRole('region', { name: 'Boards group your notes by label' })
+			.getByRole('button', { name: 'To-Do · In-Progress · Done' })
+			.click();
+		await noteCard(page, 'Task one').getByRole('button', { name: 'Note actions' }).click();
+		const menu = page.getByRole('menu', { name: 'Note actions' });
+		const box = (await menu.boundingBox())!;
+		expect(box.y + box.height).toBeLessThanOrEqual(667);
+		// The last action is below the fold of the menu, and a scroll inside it brings it up.
+		const trash = menu.getByRole('menuitem', { name: 'Move to trash' });
+		await trash.scrollIntoViewIfNeeded();
+		await expect(trash).toBeInViewport();
+		expect(await menu.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+		await trash.click();
+		await expect(page.getByRole('status')).toContainText('Moved to trash');
+	});
+
 	test('the board shows one column at a time with a tab for each', async ({ page }) => {
 		await openEmptyApp(page);
 		await createNote(page, 'Task one');

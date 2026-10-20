@@ -78,8 +78,14 @@ afterEach(() => {
 	actionUndo.clear();
 });
 
+/** A column's section: a region on a desktop, the tab's panel on a phone. */
 function column(name: string): HTMLElement {
-	return screen.getByRole('region', { name: new RegExp(`^${name} (Kanban|label) column$`) });
+	const pattern = new RegExp(`^${name} (Kanban|label) column$`);
+	const found = [...document.querySelectorAll<HTMLElement>('section[aria-label$=" column"]')].find(
+		(section) => pattern.test(section.getAttribute('aria-label') ?? '')
+	);
+	if (!found) throw new Error(`no column ${name}`);
+	return found;
 }
 
 function cardTitles(region: HTMLElement): string[] {
@@ -190,6 +196,31 @@ describe('the board filter', () => {
 describe('on a phone', () => {
 	beforeEach(phone);
 
+	it('moves between the tabs with the arrows, Home and End, one tab stop, panel linked', async () => {
+		render(KanbanView);
+		const tabs = within(screen.getByRole('tablist', { name: 'Columns' })).getAllByRole('tab');
+		expect(tabs.map((tab) => tab.tabIndex)).toEqual([0, -1, -1]);
+		const panel = screen.getByRole('tabpanel');
+		expect(tabs[0].getAttribute('aria-controls')).toBe(panel.id);
+		expect(panel.getAttribute('aria-labelledby')).toBe(tabs[0].id);
+
+		tabs[0].focus();
+		await fireEvent.keyDown(tabs[0], { key: 'ArrowRight' });
+		expect(tabs[1].getAttribute('aria-selected')).toBe('true');
+		expect(document.activeElement).toBe(tabs[1]);
+		expect(tabs.map((tab) => tab.tabIndex)).toEqual([-1, 0, -1]);
+		expect(cardTitles(column('Todo'))).toEqual(['Task']);
+
+		await fireEvent.keyDown(tabs[1], { key: 'End' });
+		expect(document.activeElement).toBe(tabs[2]);
+		expect(screen.getByRole('tabpanel').getAttribute('aria-labelledby')).toBe(tabs[2].id);
+		await fireEvent.keyDown(tabs[2], { key: 'ArrowRight' });
+		expect(document.activeElement).toBe(tabs[2]);
+		await fireEvent.keyDown(tabs[2], { key: 'Home' });
+		expect(document.activeElement).toBe(tabs[0]);
+		expect(cardTitles(column('Unsorted'))).toEqual(['Plain', 'Worky']);
+	});
+
 	it('shows one column at a time, picked by its tab, with a Move to in the card menu', async () => {
 		render(KanbanView);
 		const tabs = within(screen.getByRole('tablist', { name: 'Columns' })).getAllByRole('tab');
@@ -198,11 +229,11 @@ describe('on a phone', () => {
 			'Todo 1',
 			'Doing 1'
 		]);
-		expect(screen.getAllByRole('region', { name: /column$/ })).toHaveLength(1);
+		expect(screen.getAllByRole('tabpanel')).toHaveLength(1);
 		expect(column('Unsorted')).toBeTruthy();
 
 		await fireEvent.click(tabs[2]);
-		expect(screen.getAllByRole('region', { name: /column$/ })).toHaveLength(1);
+		expect(screen.getAllByRole('tabpanel')).toHaveLength(1);
 		expect(cardTitles(column('Doing'))).toEqual(['Busy']);
 
 		const card = cardNamed(column('Doing'), 'Busy');

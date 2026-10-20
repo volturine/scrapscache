@@ -2255,7 +2255,15 @@ export const noteActionsStyles = {
 	/** The positioner's frame: the app, with hits passing through to it (see the markup). */
 	portal: css({ position: 'absolute', inset: 0, zIndex: 30 }),
 	positioner: css({ zIndex: 30, pointerEvents: 'auto' }),
-	menu: css({ minW: '13rem', py: '2xs' }),
+	// Zag puts the room under the trigger in --available-height; a short phone and a
+	// long board's Move to list must scroll within it rather than run off the screen.
+	menu: css({
+		minW: '13rem',
+		maxH: 'var(--available-height)',
+		overflowY: 'auto',
+		overscrollBehavior: 'contain',
+		py: '2xs'
+	}),
 	item: css({ gap: 'sm' }),
 	danger: css({ color: 'scrapscache.danger', _hoverable: { bg: 'scrapscache.dangerSubtle' } }),
 	separator: css({ borderTopWidth: 'hairline', borderColor: 'scrapscache.border', my: '2xs' }),

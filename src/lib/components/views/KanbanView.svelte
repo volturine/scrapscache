@@ -83,6 +83,32 @@
 		board.columns.find((column) => column.id === activeColumnId) ?? board.columns[0]
 	);
 	const shownColumns = $derived(mobile.current && activeColumn ? [activeColumn] : board.columns);
+	const tabIds = $props.id();
+	const tabId = (column: KanbanColumn) => `${tabIds}-tab-${column.id}`;
+	const panelId = (column: KanbanColumn) => `${tabIds}-panel-${column.id}`;
+
+	/** One tab stop: the arrows, Home and End move between the tabs and select as they go. */
+	function onTabKeydown(event: KeyboardEvent, column: KanbanColumn) {
+		const at = board.columns.indexOf(column);
+		const last = board.columns.length - 1;
+		const to =
+			event.key === 'ArrowRight'
+				? Math.min(at + 1, last)
+				: event.key === 'ArrowLeft'
+					? Math.max(at - 1, 0)
+					: event.key === 'Home'
+						? 0
+						: event.key === 'End'
+							? last
+							: at;
+		if (to === at && !['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) return;
+		event.preventDefault();
+		const next = board.columns[to];
+		activeColumnId = next.id;
+		(event.currentTarget as HTMLElement).parentElement
+			?.querySelector<HTMLElement>(`#${CSS.escape(tabId(next))}`)
+			?.focus();
+	}
 
 	const draggedNote = $derived(
 		kanbanDrag.noteId ? notesStore.notes.find((note) => note.id === kanbanDrag.noteId) : undefined
@@ -490,11 +516,15 @@
 				<button
 					type="button"
 					role="tab"
+					id={tabId(column)}
 					class={k.columnTab}
 					aria-selected={activeColumn?.id === column.id}
+					aria-controls={panelId(column)}
+					tabindex={activeColumn?.id === column.id ? 0 : -1}
 					data-kanban-column={column.id}
 					data-drop-target={kanbanDrag.target?.columnId === column.id ? '' : undefined}
 					onclick={() => (activeColumnId = column.id)}
+					onkeydown={(event) => onTabKeydown(event, column)}
 				>
 					{columnName(column)}
 					<span class={k.colCount}>{columnNotes(board, column, visibleNotes).length}</span>
@@ -515,6 +545,9 @@
 					data-kanban-column={column.id}
 					class={[k.column, kanbanDrag.target?.columnId === column.id && k.columnTarget]}
 					aria-label={`${columnName(column)} ${column.labelId === null ? 'Kanban' : 'label'} column`}
+					role={mobile.current ? 'tabpanel' : undefined}
+					id={mobile.current ? panelId(column) : undefined}
+					aria-labelledby={mobile.current ? tabId(column) : undefined}
 				>
 					<div class={k.colHeader}>
 						<div class={k.colTitleGroup}>

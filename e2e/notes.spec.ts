@@ -220,6 +220,8 @@ test('search narrows the feed to matching notes', async ({ page }) => {
 	await page.getByRole('button', { name: 'Clear search' }).click();
 	await expect(noteCard(page, 'Apples')).toBeVisible();
 	await expect(noteCard(page, 'Bolts')).toBeVisible();
+	// Ready for the next query: the pressed button is gone, so focus goes to the field.
+	await expect(search).toBeFocused();
 });
 
 test.describe('on a touch screen', () => {

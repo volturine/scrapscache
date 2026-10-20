@@ -3,7 +3,9 @@
 	import NotesFeed from '#lib/components/NotesFeed.svelte';
 	import SearchAnnouncer from '#lib/components/SearchAnnouncer.svelte';
 	import SearchNoMatches from '#lib/components/SearchNoMatches.svelte';
-	import { noMatchCopy, placesWithMatches } from '#lib/searchElsewhere.js';
+	import { matchesElsewhere, noMatchCopy } from '#lib/searchElsewhere.js';
+	import { activeFilterCount, noteCount } from '#lib/search.js';
+	import SearchFilterBar from '#lib/components/SearchFilterBar.svelte';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
 	import { uiStore } from '#lib/stores/ui.svelte.js';
 	import { useEditorActions } from '#lib/editorContext.js';
@@ -22,9 +24,17 @@
 		label ? notesStore.activeNotes.filter((n) => n.labels.includes(label.id)) : []
 	);
 	const search = $derived(uiStore.searchFor('label'));
-	const visible = $derived(search ? notesStore.search(search, notes) : notes);
+	const filters = $derived(uiStore.searchFilters);
+	const visible = $derived(search ? notesStore.search(search, notes, filters) : notes);
 	const noMatches = $derived(notes.length > 0 && visible.length === 0);
-	const places = $derived(noMatches ? placesWithMatches('label', search) : []);
+	const elsewhere = $derived(noMatches ? matchesElsewhere('label', search, filters) : []);
+	const announcement = $derived(
+		!search
+			? ''
+			: noMatches
+				? noMatchCopy('label', search, elsewhere, activeFilterCount(filters)).announcement
+				: `${noteCount(visible.length)} match “${search.trim()}”.`
+	);
 	const pinned = $derived(visible.filter((n) => n.pinned));
 	const others = $derived(visible.filter((n) => !n.pinned));
 	const shell = $derived(notesShell(uiStore.layout));
@@ -46,10 +56,13 @@
 	{:else}
 		<div class={shell}>
 			<h1 class={[hstack({ mb: 'lg', px: 'sm' }), text({ style: 'heading' })]}>{label.name}</h1>
+			{#if search}
+				<SearchFilterBar here="label" count={visible.length} />
+			{/if}
 		</div>
 
 		{#if visible.length === 0}
-			<SearchNoMatches here="label" query={search} {places} />
+			<SearchNoMatches here="label" query={search} {elsewhere} />
 		{:else}
 			{#if pinned.length > 0}
 				<div class={shell}>
@@ -69,5 +82,5 @@
 			{/if}
 		{/if}
 	{/if}
-	<SearchAnnouncer message={noMatches ? noMatchCopy('label', search, places).announcement : ''} />
+	<SearchAnnouncer message={announcement} />
 </div>

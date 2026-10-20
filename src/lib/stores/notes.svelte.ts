@@ -1,5 +1,6 @@
 // Rune-based notes & labels store. Persists to IndexedDB from explicit write paths.
 import type { Note, Label, NoteColor, NoteImage } from '#lib/types.js';
+import { activeFilterCount, matchesFilters, NO_FILTERS, type SearchFilters } from '#lib/search.js';
 import {
 	getAllNotesMetadata,
 	hydrateNoteAttachments,
@@ -838,12 +839,14 @@ export class NotesStore {
 	}
 
 	// Search ---------------------------------------------------------------
-	search(query: string, pool?: Note[]): Note[] {
+	search(query: string, pool?: Note[], filters: SearchFilters = NO_FILTERS): Note[] {
 		const q = query.trim().toLowerCase();
 		const base = pool ?? this.activeNotes;
-		if (!q) return base;
+		const narrowed =
+			activeFilterCount(filters) === 0 ? base : base.filter((n) => matchesFilters(n, filters));
+		if (!q) return narrowed;
 		const labelsById = this.labelsById;
-		return base.filter((n) => {
+		return narrowed.filter((n) => {
 			if (n.title.toLowerCase().includes(q)) return true;
 			if ((n.body ?? '').toLowerCase().includes(q)) return true;
 			return n.labels.some((lid) => labelsById.get(lid)?.name.toLowerCase().includes(q));

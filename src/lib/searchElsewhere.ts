@@ -1,4 +1,5 @@
 import { notesStore } from '#lib/stores/notes.svelte.js';
+import { NO_FILTERS, type SearchFilters } from '#lib/search.js';
 
 /** The views that each search a pool of their own: active, archived and deleted notes. */
 export type SearchPlace = 'notes' | 'archive' | 'trash';
@@ -15,10 +16,10 @@ export const PLACE_NAMES: Record<SearchPlace, string> = {
 };
 
 const SCOPE: Record<SearchedView, string> = {
-	notes: 'Archived and deleted notes are not searched here.',
-	label: 'Only notes with this label are searched here.',
-	archive: 'Only archived notes are searched here.',
-	trash: 'Only deleted notes are searched here.'
+	notes: 'Searched Notes.',
+	label: 'Searched only notes with this label.',
+	archive: 'Searched Archive.',
+	trash: 'Searched Trash.'
 };
 
 /** The longest query a message repeats; the field keeps the whole of it. */
@@ -32,19 +33,27 @@ export function shownQuery(query: string): string {
 		: characters.join('');
 }
 
+/** How many notes `query` (and the chips) find in each other place, for a view that found none. */
+export type Elsewhere = { place: SearchPlace; count: number };
+
 /**
- * The other places where `query` finds notes, for a view where it found none.
+ * The other places and how many notes `query` finds in each, with the same chips.
  * A label view searches only some active notes, so Notes counts as elsewhere.
  */
-export function placesWithMatches(here: SearchedView, query: string): SearchPlace[] {
+export function matchesElsewhere(
+	here: SearchedView,
+	query: string,
+	filters: SearchFilters = NO_FILTERS
+): Elsewhere[] {
 	const pools = {
 		notes: notesStore.activeNotes,
 		archive: notesStore.archivedNotes,
 		trash: notesStore.trashedNotes
 	};
-	return SEARCH_PLACES.filter(
-		(place) => place !== here && notesStore.search(query, pools[place]).length > 0
-	);
+	return SEARCH_PLACES.filter((place) => place !== here).map((place) => ({
+		place,
+		count: notesStore.search(query, pools[place], filters).length
+	}));
 }
 
 function list(names: string[], last: 'and' | 'or'): string {
@@ -53,22 +62,47 @@ function list(names: string[], last: 'and' | 'or'): string {
 		: `${names.slice(0, -1).join(', ')} ${last} ${names.at(-1)}`;
 }
 
-/** What a view says when its search finds nothing: the query, the view's scope, where to look. */
+/** "1 match in Archive", then "3 in Trash", then "none in Notes": the found places first. */
+function matchesIn({ place, count }: Elsewhere, first: boolean): string {
+	const where = PLACE_NAMES[place];
+	if (count === 0) return `none in ${where}`;
+	if (!first) return `${count} in ${where}`;
+	return count === 1 ? `1 match in ${where}` : `${count} matches in ${where}`;
+}
+
+/**
+ * What a view says when its search finds nothing: the query, where it looked and what
+ * the other places hold, and (with chips set) that the chips are part of the reason.
+ */
 export function noMatchCopy(
 	here: SearchedView,
 	query: string,
-	places: SearchPlace[]
+	elsewhere: Elsewhere[],
+	filterCount = 0
 ): { title: string; description: string; announcement: string } {
-	const title = `No notes match “${shownQuery(query)}”`;
-	const others = SEARCH_PLACES.filter((place) => place !== here).map((place) => PLACE_NAMES[place]);
-	const description = places.length
-		? SCOPE[here]
-		: `${list(others, 'and')} have no matches either.`;
-	const next = places.length
+	const title = filterCount
+		? `No notes match “${shownQuery(query)}” with these filters`
+		: `No notes match “${shownQuery(query)}”`;
+	const found = elsewhere.filter((entry) => entry.count > 0);
+	const ordered = [...found, ...elsewhere.filter((entry) => entry.count === 0)];
+	const verb = found[0]?.count === 1 ? 'is' : 'are';
+	const counts = found.length
+		? `There ${verb} ${list(
+				ordered.map((entry, index) => matchesIn(entry, index === 0)),
+				'and'
+			)}.`
+		: `${list(
+				elsewhere.map((entry) => PLACE_NAMES[entry.place]),
+				'and'
+			)} have no matches either.`;
+	const description = `${SCOPE[here]} ${counts}`;
+	const next = found.length
 		? `Look in ${list(
-				places.map((place) => PLACE_NAMES[place]),
+				found.map((entry) => PLACE_NAMES[entry.place]),
 				'or'
 			)}.`
-		: description;
+		: filterCount
+			? 'Clear the filters to search everything.'
+			: counts;
 	return { title, description, announcement: `${title}. ${next}` };
 }

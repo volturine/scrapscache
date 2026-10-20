@@ -3,7 +3,9 @@
 	import NotesFeed from '#lib/components/NotesFeed.svelte';
 	import SearchAnnouncer from '#lib/components/SearchAnnouncer.svelte';
 	import SearchNoMatches from '#lib/components/SearchNoMatches.svelte';
-	import { noMatchCopy, placesWithMatches } from '#lib/searchElsewhere.js';
+	import { matchesElsewhere, noMatchCopy } from '#lib/searchElsewhere.js';
+	import { activeFilterCount, noteCount } from '#lib/search.js';
+	import SearchFilterBar from '#lib/components/SearchFilterBar.svelte';
 	import SectionHeader from '#lib/components/SectionHeader.svelte';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
 	import { uiStore } from '#lib/stores/ui.svelte.js';
@@ -18,9 +20,17 @@
 	const { openNote: openEditor } = useEditorActions();
 	const trashed = $derived(notesStore.trashedNotes);
 	const search = $derived(uiStore.searchFor('trash'));
-	const visible = $derived(search ? notesStore.search(search, trashed) : trashed);
+	const filters = $derived(uiStore.searchFilters);
+	const visible = $derived(search ? notesStore.search(search, trashed, filters) : trashed);
 	const noMatches = $derived(trashed.length > 0 && visible.length === 0);
-	const places = $derived(noMatches ? placesWithMatches('trash', search) : []);
+	const elsewhere = $derived(noMatches ? matchesElsewhere('trash', search, filters) : []);
+	const announcement = $derived(
+		!search
+			? ''
+			: noMatches
+				? noMatchCopy('trash', search, elsewhere, activeFilterCount(filters)).announcement
+				: `${noteCount(visible.length)} match “${search.trim()}”.`
+	);
 
 	let confirmEmpty = $state(false);
 
@@ -32,6 +42,9 @@
 
 <div class={viewPage}>
 	<h1 class={viewHeading}>Trash</h1>
+	{#if search && trashed.length > 0}
+		<SearchFilterBar here="trash" count={visible.length} />
+	{/if}
 	{#if trashed.length === 0}
 		<EmptyState
 			icon={Trash2}
@@ -40,7 +53,7 @@
 			href={resolve('')}
 		/>
 	{:else if visible.length === 0}
-		<SearchNoMatches here="trash" query={search} {places} />
+		<SearchNoMatches here="trash" query={search} {elsewhere} />
 	{:else}
 		<div class={notesShell(uiStore.layout)}>
 			<p class={trashViewStyles.banner}>
@@ -75,5 +88,5 @@
 		</SectionHeader>
 		<NotesFeed notes={visible} onOpen={openEditor} />
 	{/if}
-	<SearchAnnouncer message={noMatches ? noMatchCopy('trash', search, places).announcement : ''} />
+	<SearchAnnouncer message={announcement} />
 </div>

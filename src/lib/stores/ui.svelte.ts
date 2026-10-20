@@ -1,6 +1,7 @@
 // Rune-based UI store: sidebar open, dark mode, density, Markdown mode, active view, search.
 import { writeMirror } from '#lib/db/idb.js';
 import { selectionStore } from './selection.svelte.js';
+import { NO_FILTERS, type SearchFilters } from '#lib/search.js';
 
 export type Layout = 'grid' | 'list';
 export type Theme = 'system' | 'light' | 'dark';
@@ -96,6 +97,10 @@ export class UIStore {
 	searchInput = $state('');
 	/** Committed search value; lags the input by a short debounce. */
 	search = $state('');
+	/** The chips under the field: label, colour and type narrow a committed search. */
+	searchFilters = $state<SearchFilters>(NO_FILTERS);
+	/** The In chip in Notes: whether archived matches are listed under the active ones. */
+	searchArchiveToo = $state(false);
 	settingsOpen = $state(false);
 	/** On a phone the search field shows only while the Search tab is on. */
 	searchOpen = $state(false);
@@ -160,7 +165,10 @@ export class UIStore {
 		}
 		this.searchInput = value;
 		if (!value.trim()) {
+			// The chips go with the query: hidden chips would narrow the next one unseen.
 			this.search = '';
+			this.searchFilters = NO_FILTERS;
+			this.searchArchiveToo = false;
 			return;
 		}
 		this.#searchTimer = setTimeout(() => {
@@ -171,6 +179,16 @@ export class UIStore {
 
 	clearSearch() {
 		this.setSearchInput('');
+		this.searchFilters = NO_FILTERS;
+		this.searchArchiveToo = false;
+	}
+
+	setSearchFilter<K extends keyof SearchFilters>(key: K, value: SearchFilters[K]) {
+		this.searchFilters = { ...this.searchFilters, [key]: value };
+	}
+
+	clearSearchFilters() {
+		this.searchFilters = NO_FILTERS;
 	}
 
 	/** The phone's Search tab turned off: the field goes, and its query with it. */
@@ -254,8 +272,8 @@ export class UIStore {
 		this.rawMarkdown = !this.rawMarkdown;
 	}
 
-	/** Show a view with a fresh search, or with `search` carried into it. */
-	setView(view: View, labelId: string | null = null, search = '') {
+	/** Show a view with a fresh search, or with `search` (and its chips) carried into it. */
+	setView(view: View, labelId: string | null = null, search = '', filters = NO_FILTERS) {
 		this.view = view;
 		this.activeLabelId = labelId;
 		this.clearSearch();
@@ -265,6 +283,7 @@ export class UIStore {
 		// A carried query filters the new view at once, without the typing debounce.
 		this.searchInput = search;
 		this.search = search;
+		this.searchFilters = filters;
 		this.viewChangeHandler?.();
 	}
 

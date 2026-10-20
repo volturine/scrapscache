@@ -1,7 +1,8 @@
 /**
- * Undo for actions that take something out of view or destroy it: archiving,
- * trashing, deleting a label or board, removing an attachment. Anything the
- * same control can reverse (pin, color, a card move) is not recorded.
+ * Undo for actions that take something out of view, destroy it, or change it with
+ * no other feedback: archiving, trashing, deleting a label or board, removing an
+ * attachment, moving a Kanban card to another column. Anything the same control
+ * visibly reverses (pin, color) is not recorded.
  * The open note keeps its own text history; every step on either side carries a
  * stamp from `undoStamp`, so a shortcut always takes the newest step first.
  * The stack is this tab only. Each step writes a normal edit, so the result syncs.

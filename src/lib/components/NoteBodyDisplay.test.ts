@@ -94,6 +94,22 @@ describe('NoteBodyDisplay inline Markdown', () => {
 		expect(getByRole('checkbox', { name: 'eggs' }).getAttribute('aria-checked')).toBe('false');
 	});
 
+	it('names a blank task, which has no text to be named by', () => {
+		const { getAllByRole, getByRole } = render(NoteBodyDisplay, {
+			props: { note: note({ body: '- [ ] milk\n- [ ]\n  - [x]' }) }
+		});
+
+		expect(getAllByRole('checkbox')).toHaveLength(3);
+		expect(getByRole('checkbox', { name: 'Empty item' }).getAttribute('aria-checked')).toBe(
+			'false'
+		);
+		expect(getByRole('checkbox', { name: 'Empty sub-task' }).getAttribute('aria-checked')).toBe(
+			'true'
+		);
+		// A named item keeps its text as its name.
+		expect(getByRole('checkbox', { name: 'milk' }).hasAttribute('aria-label')).toBe(false);
+	});
+
 	it('reveals raw delimiters and syntax colors when enabled', () => {
 		uiStore.rawMarkdown = true;
 		const { container } = render(NoteBodyDisplay, {

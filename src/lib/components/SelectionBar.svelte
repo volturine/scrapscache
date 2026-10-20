@@ -30,12 +30,24 @@
 	import ReminderPicker from './ReminderPicker.svelte';
 	import Tooltip from './Tooltip.svelte';
 
-	const ids = $derived(selectionStore.ids);
-	const notes = $derived(notesStore.notes.filter((note) => ids.includes(note.id)));
-	const count = $derived(ids.length);
 	const place = $derived(
 		uiStore.view === 'trash' ? 'trash' : uiStore.view === 'archive' ? 'archive' : 'active'
 	);
+	/** Whether a note is still where it was picked: a card's own action may have moved it on. */
+	function inPlace(note: { trashed: boolean; archived: boolean }): boolean {
+		if (place === 'trash') return note.trashed;
+		if (place === 'archive') return note.archived && !note.trashed;
+		return !note.archived && !note.trashed;
+	}
+	const notes = $derived(
+		notesStore.notes.filter((note) => selectionStore.has(note.id) && inPlace(note))
+	);
+	const ids = $derived(notes.map((note) => note.id));
+	const count = $derived(ids.length);
+	// A note that left the feed leaves the selection, so no action reaches it later.
+	$effect(() => {
+		if (ids.length !== selectionStore.ids.length) selectionStore.ids = ids;
+	});
 	const allPinned = $derived(notes.length > 0 && notes.every((note) => note.pinned));
 	const labels = $derived(
 		[...notesStore.labels].sort((a, b) =>

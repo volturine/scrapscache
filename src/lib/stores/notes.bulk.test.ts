@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Note } from '#lib/types.js';
 import { actionUndo } from './actionUndo.svelte';
 import { notesStore } from './notes.svelte';
@@ -37,9 +37,9 @@ describe('actions on many notes', () => {
 
 		expect(byId('a')).toMatchObject({ archived: true, pinned: false });
 		expect(byId('b').archived).toBe(true);
-		expect(actionUndo.bar).toBe('3 notes archived');
+		// The already-archived note was left alone: the step neither claims nor counts it.
+		expect(actionUndo.bar).toBe('2 notes archived');
 		expect(actionUndo.past).toHaveLength(1);
-		// The already-archived note was left alone, so the step does not claim it.
 		expect(actionUndo.past[0].noteIds).toEqual(['a', 'b']);
 
 		actionUndo.undo();
@@ -70,6 +70,19 @@ describe('actions on many notes', () => {
 		notesStore.archiveNotes(['a', 'missing']);
 		expect(actionUndo.past).toHaveLength(0);
 		expect(actionUndo.bar).toBeNull();
+	});
+
+	it('deletes forever only the notes still in the trash', async () => {
+		notesStore.notes = [
+			note('t', { trashed: true, trashedAt: 1 }),
+			note('back', { trashed: true, trashedAt: 1 })
+		];
+		// Restored by its own card after it was picked.
+		notesStore.restoreNote('back');
+
+		notesStore.deleteNotesForever(['t', 'back']);
+		await vi.waitFor(() => expect(byId('t')).toBeUndefined());
+		expect(byId('back')).toMatchObject({ trashed: false });
 	});
 
 	it('pins, colours, reminds and labels every note, with no undo step', () => {

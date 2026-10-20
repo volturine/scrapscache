@@ -602,10 +602,13 @@ export class NotesStore {
 		return this.notes.filter((note) => wanted.has(note.id));
 	}
 
-	/** Apply `after` to every note and remember each one's `before` under one undo step. */
+	/**
+	 * Apply `after` to every note and remember each one's `before` under one undo
+	 * step, whose message counts the notes that changed.
+	 */
 	private changeMany(
 		ids: readonly string[],
-		message: string,
+		did: string,
 		fields: (note: Note) => { before: NotePatch; after: NotePatch } | null
 	): void {
 		const changes = this.present(ids).flatMap((note) => {
@@ -615,7 +618,7 @@ export class NotesStore {
 		if (changes.length === 0) return;
 		for (const change of changes) this.updateNote(change.id, change.after);
 		actionUndo.push({
-			message,
+			message: NotesStore.many(changes.length, did),
 			noteIds: changes.map((change) => change.id),
 			undo: () => {
 				for (const change of changes) this.updateNote(change.id, change.before);
@@ -627,7 +630,7 @@ export class NotesStore {
 	}
 
 	archiveNotes(ids: readonly string[]): void {
-		this.changeMany(ids, NotesStore.many(ids.length, 'archived'), (note) =>
+		this.changeMany(ids, 'archived', (note) =>
 			note.archived
 				? null
 				: {
@@ -638,7 +641,7 @@ export class NotesStore {
 	}
 
 	trashNotes(ids: readonly string[]): void {
-		this.changeMany(ids, NotesStore.many(ids.length, 'moved to trash'), (note) =>
+		this.changeMany(ids, 'moved to trash', (note) =>
 			note.trashed
 				? null
 				: {
@@ -650,7 +653,7 @@ export class NotesStore {
 
 	/** Back to Notes from the archive or the trash. */
 	restoreNotes(ids: readonly string[]): void {
-		this.changeMany(ids, NotesStore.many(ids.length, 'restored'), (note) =>
+		this.changeMany(ids, 'restored', (note) =>
 			!note.archived && !note.trashed
 				? null
 				: {
@@ -686,8 +689,11 @@ export class NotesStore {
 		}
 	}
 
+	/** Only notes still in the trash: one restored since it was picked is kept. */
 	deleteNotesForever(ids: readonly string[]): void {
-		const present = this.present(ids).map((note) => note.id);
+		const present = this.present(ids)
+			.filter((note) => note.trashed)
+			.map((note) => note.id);
 		if (present.length === 0) return;
 		void this.persistDeletedNotes(present).catch((err) =>
 			this.recordPersistenceError('Could not delete notes', err)

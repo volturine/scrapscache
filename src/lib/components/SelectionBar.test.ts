@@ -118,6 +118,28 @@ describe('the top bar while notes are selected', () => {
 		await waitFor(() => expect(notesStore.notes.find((item) => item.id === 't')).toBeUndefined());
 	});
 
+	it('drops a picked note that its own card restored, so a bulk delete cannot reach it', async () => {
+		notesStore.notes = [
+			note('t', { trashed: true, trashedAt: 1 }),
+			note('back', { trashed: true, trashedAt: 1 })
+		];
+		uiStore.setView('trash');
+		render(Topbar);
+		selectionStore.toggle('t');
+		selectionStore.toggle('back');
+		const bar = await screen.findByRole('toolbar', { name: 'Selected notes' });
+		expect(bar.textContent).toContain('2 selected');
+
+		notesStore.restoreNote('back');
+		await waitFor(() => expect(bar.textContent).toContain('1 selected'));
+		expect(selectionStore.ids).toEqual(['t']);
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Delete forever' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+		await waitFor(() => expect(notesStore.notes.find((item) => item.id === 't')).toBeUndefined());
+		expect(byId('back')).toMatchObject({ trashed: false });
+	});
+
 	it('lets the selection go on Escape and on the close control', async () => {
 		notesStore.notes = [note('a')];
 		render(Topbar);

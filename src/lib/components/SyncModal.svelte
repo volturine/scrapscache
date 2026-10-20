@@ -506,12 +506,12 @@
 		if (confirmation !== 'delete' || !confirmTarget) return;
 		error = '';
 		const target = confirmTarget;
-		const result = await runOperation('delete', 'Could not delete synced data', () =>
+		const result = await runOperation('delete', 'Could not remove from the cloud', () =>
 			profileCoordinator.unlink(target, true)
 		);
 		if (!result) return;
 		if (!result.success) {
-			error = friendlyError(result.error, 'Could not delete synced data');
+			error = friendlyError(result.error, 'Could not remove from the cloud');
 			return;
 		}
 		confirmation = null;

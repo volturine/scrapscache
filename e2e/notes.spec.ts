@@ -214,6 +214,28 @@ test('search narrows the feed to matching notes', async ({ page }) => {
 test.describe('on a touch screen', () => {
 	test.use({ hasTouch: true });
 
+	test('settings rows and segments keep their touch sizes at any width, and the popover scrolls', async ({
+		page
+	}) => {
+		await page.setViewportSize({ width: 1024, height: 700 });
+		await openEmptyApp(page);
+		await page.getByRole('button', { name: 'Settings', exact: true }).click();
+		const row = page.getByRole('menuitem', { name: 'Back up notes…' });
+		const segment = page.getByRole('menuitemradio', { name: 'Dark', exact: true });
+		// A tablet or a phone on its side is a coarse pointer wider than a phone. The
+		// half-pixel allows for rem rounding.
+		expect((await row.boundingBox())!.height).toBeGreaterThanOrEqual(47.5);
+		expect((await segment.boundingBox())!.height).toBeGreaterThanOrEqual(43.5);
+		await page.keyboard.press('Escape');
+
+		// A short viewport: the popover scrolls inside the frame rather than being cut by it.
+		await page.setViewportSize({ width: 1024, height: 380 });
+		await page.getByRole('button', { name: 'Settings', exact: true }).click();
+		const terms = page.getByRole('menuitem', { name: 'Terms' });
+		await terms.scrollIntoViewIfNeeded();
+		await expect(terms).toBeInViewport();
+	});
+
 	test('the tap that closes the quick actions does not open the note under it', async ({
 		page
 	}) => {

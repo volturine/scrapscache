@@ -1748,9 +1748,11 @@ export const reminderAlertStyles = {
  */
 export const settingsMenuStyles = {
 	positioner: css({ zIndex: 30 }),
+	// Zag puts the room under the trigger in --available-height; the app frame clips
+	// anything taller, so the content scrolls within that rather than past the frame.
 	popover: css({
 		w: { base: 'calc(100vw - 1rem)', sm: '20.625rem' },
-		maxH: 'calc(100dvh - 4.5rem)',
+		maxH: 'var(--available-height)',
 		overflowY: 'auto',
 		pt: '2xs',
 		pb: 'xs'
@@ -1759,9 +1761,11 @@ export const settingsMenuStyles = {
 	section: css({
 		'& + &': { borderTopWidth: 'hairline', borderColor: 'scrapscache.border', mt: 'xs' }
 	}),
-	controlRow: hstack({ minH: { base: '3rem', sm: '2.5rem' }, gap: 'sm', px: 'md' }),
-	/** A one-line action row: the menu item's height on a desktop, a 48 px row on a phone. */
-	row: css({ minH: { base: '3rem', sm: '2rem' } }),
+	// Touch sizes follow the pointer, not the width: a phone in landscape and a tablet
+	// are coarse pointers wider than the sm breakpoint.
+	controlRow: hstack({ minH: { base: '2.5rem', _touch: '3rem' }, gap: 'sm', px: 'md' }),
+	/** A one-line action row: the menu item's height for a mouse, a 48 px row for touch. */
+	row: css({ minH: { base: '2rem', _touch: '3rem' } }),
 	controlLabel: css({ ...flexFill, textStyle: 'body' }),
 	segment: hstack({
 		gap: '3xs',
@@ -1776,9 +1780,9 @@ export const settingsMenuStyles = {
 		...gridCenter,
 		px: 'sm',
 		py: '2xs',
-		minW: { base: '4rem', sm: 'auto' },
-		// 44 px targets on a phone; the desktop pointer hits what it sees.
-		minH: { base: '2.75rem', sm: 'auto' },
+		minW: { base: 'auto', _touch: '4rem' },
+		// 44 px targets for touch; a fine pointer hits what it sees.
+		minH: { base: 'auto', _touch: '2.75rem' },
 		textAlign: 'center',
 		textStyle: 'label',
 		...mutedText,
@@ -1786,18 +1790,24 @@ export const settingsMenuStyles = {
 		transitionProperty: 'background-color, color, box-shadow',
 		transitionDuration: '120ms',
 		transitionTimingFunction: 'ease',
+		_hoverable: { color: 'scrapscache.text', bg: 'scrapscache.interactiveHover' },
+		_active: { bg: 'scrapscache.interactiveActive' },
 		'&[data-state=checked]': {
 			bg: 'scrapscache.surface',
 			color: 'scrapscache.text',
 			fontWeight: 'strong',
 			boxShadow: 'sm'
 		},
-		'&[data-highlighted]:not([data-state=checked])': { color: 'scrapscache.text' }
+		// Keyboard focus is a ring, so it shows on the chosen segment as well.
+		'&[data-highlighted]': {
+			color: 'scrapscache.text',
+			boxShadow: 'inset 0 0 0 2px token(colors.scrapscache.focus)'
+		}
 	}),
 	/** A row with a sentence under its label; the menu item recipe's fixed height gives way. */
 	deviceRow: css({
 		h: 'auto',
-		minH: { base: '3rem', sm: '2.5rem' },
+		minH: { base: '2.5rem', _touch: '3rem' },
 		alignItems: 'flex-start',
 		py: 'xs',
 		gap: 'list'
@@ -1809,7 +1819,7 @@ export const settingsMenuStyles = {
 	/** What the row's state means for the person, as a sentence. */
 	status: css({ textStyle: 'caption', ...mutedText }),
 	statusWarning: css({ textStyle: 'caption', color: 'scrapscache.warning' }),
-	links: hstack({ px: 'md', py: { base: 'md', sm: 'sm' }, gap: 'md', flexWrap: 'wrap' }),
+	links: hstack({ px: 'md', py: { base: 'sm', _touch: 'md' }, gap: 'md', flexWrap: 'wrap' }),
 	link: css({
 		textStyle: 'label',
 		color: 'scrapscache.accent',

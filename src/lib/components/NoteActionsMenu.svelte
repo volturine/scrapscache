@@ -190,99 +190,104 @@
 	>
 		<Ellipsis size={18} aria-hidden="true" />
 	</Menu.Trigger>
-	<Menu.Positioner class={styles.positioner}>
-		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<Menu.Content
-			bind:ref={content}
-			class={cx(popover, styles.menu)}
-			aria-label="Note actions"
-			data-note-actions
-			onpointerdown={keepToMenu}
-			onclick={keepToMenu}
-			oncontextmenu={(e) => {
-				e.preventDefault();
-				e.stopPropagation();
-			}}
-		>
-			{#if note.trashed}
-				<Menu.Item value="restore" onSelect={restore} class={itemClass}>
-					<RotateCcw size={16} aria-hidden="true" />Restore
-				</Menu.Item>
-				<Menu.Item value="archive" onSelect={restoreToArchive} class={itemClass}>
-					<Archive size={16} aria-hidden="true" />Archive
-				</Menu.Item>
-				<Menu.Separator class={styles.separator} />
-				<Menu.Item value="delete" onSelect={trash} class={cx(itemClass, styles.danger)}>
-					<Trash2 size={16} aria-hidden="true" />Delete forever
-				</Menu.Item>
-			{:else if note.archived}
-				<Menu.Item value="restore" onSelect={archive} class={itemClass}>
-					<ArchiveRestore size={16} aria-hidden="true" />Restore
-				</Menu.Item>
-				<Menu.Separator class={styles.separator} />
-				<Menu.Item value="delete" onSelect={trash} class={cx(itemClass, styles.danger)}>
-					<Trash2 size={16} aria-hidden="true" />Move to trash
-				</Menu.Item>
-			{:else}
-				<Menu.Item value="pin" onSelect={pin} class={itemClass}>
-					{#if note.pinned}
-						<PinOff size={16} aria-hidden="true" />Unpin
-					{:else}
-						<Pin size={16} aria-hidden="true" />Pin to top
-					{/if}
-				</Menu.Item>
-				<Menu.Item value="remind" onSelect={remind} class={itemClass}>
-					<Bell size={16} aria-hidden="true" />{note.reminder != null
-						? 'Edit reminder…'
-						: 'Remind me…'}
-				</Menu.Item>
-				<Menu.Item value="label" onSelect={label} class={itemClass}>
-					<Tag size={16} aria-hidden="true" />Add label…
-				</Menu.Item>
-				<Menu.ItemGroup class={styles.colorGroup}>
-					<Menu.ItemGroupLabel class={styles.colorLabel}>Colour</Menu.ItemGroupLabel>
-					<Menu.RadioItemGroup
-						value={note.color}
-						onValueChange={(details) => recolor(details.value)}
-						class={styles.swatches}
-					>
-						{#each NOTE_COLOR_ORDER as color (color)}
-							<Menu.RadioItem
-								value={color}
-								closeOnSelect={false}
-								class={cx(styles.swatch, noteSurface({ color }))}
-								aria-label={COLOR_NAMES[color]}
-								title={COLOR_NAMES[color]}
-							>
-								<Menu.ItemIndicator class={styles.swatchCheck}>
-									<Check size={12} aria-hidden="true" />
-								</Menu.ItemIndicator>
-							</Menu.RadioItem>
-						{/each}
-					</Menu.RadioItemGroup>
-				</Menu.ItemGroup>
-				<Menu.Item
-					value="copy"
-					closeOnSelect={false}
-					onSelect={() => void copy()}
-					class={itemClass}
+	<!-- Portalled out of the card, whose frame clips its own overflow. -->
+	{#if open}
+		<div {@attach portalToAppOverlay} class={styles.portal}>
+			<Menu.Positioner class={styles.positioner}>
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<Menu.Content
+					bind:ref={content}
+					class={cx(popover, styles.menu)}
+					aria-label="Note actions"
+					data-note-actions
+					onpointerdown={keepToMenu}
+					onclick={keepToMenu}
+					oncontextmenu={(e) => {
+						e.preventDefault();
+						e.stopPropagation();
+					}}
 				>
-					{#if copied}
-						<Check size={16} aria-hidden="true" />Copied
+					{#if note.trashed}
+						<Menu.Item value="restore" onSelect={restore} class={itemClass}>
+							<RotateCcw size={16} aria-hidden="true" />Restore
+						</Menu.Item>
+						<Menu.Item value="archive" onSelect={restoreToArchive} class={itemClass}>
+							<Archive size={16} aria-hidden="true" />Archive
+						</Menu.Item>
+						<Menu.Separator class={styles.separator} />
+						<Menu.Item value="delete" onSelect={trash} class={cx(itemClass, styles.danger)}>
+							<Trash2 size={16} aria-hidden="true" />Delete forever
+						</Menu.Item>
+					{:else if note.archived}
+						<Menu.Item value="restore" onSelect={archive} class={itemClass}>
+							<ArchiveRestore size={16} aria-hidden="true" />Restore
+						</Menu.Item>
+						<Menu.Separator class={styles.separator} />
+						<Menu.Item value="delete" onSelect={trash} class={cx(itemClass, styles.danger)}>
+							<Trash2 size={16} aria-hidden="true" />Move to trash
+						</Menu.Item>
 					{:else}
-						<Copy size={16} aria-hidden="true" />Copy as text
+						<Menu.Item value="pin" onSelect={pin} class={itemClass}>
+							{#if note.pinned}
+								<PinOff size={16} aria-hidden="true" />Unpin
+							{:else}
+								<Pin size={16} aria-hidden="true" />Pin to top
+							{/if}
+						</Menu.Item>
+						<Menu.Item value="remind" onSelect={remind} class={itemClass}>
+							<Bell size={16} aria-hidden="true" />{note.reminder != null
+								? 'Edit reminder…'
+								: 'Remind me…'}
+						</Menu.Item>
+						<Menu.Item value="label" onSelect={label} class={itemClass}>
+							<Tag size={16} aria-hidden="true" />Add label…
+						</Menu.Item>
+						<Menu.ItemGroup class={styles.colorGroup}>
+							<Menu.ItemGroupLabel class={styles.colorLabel}>Colour</Menu.ItemGroupLabel>
+							<Menu.RadioItemGroup
+								value={note.color}
+								onValueChange={(details) => recolor(details.value)}
+								class={styles.swatches}
+							>
+								{#each NOTE_COLOR_ORDER as color (color)}
+									<Menu.RadioItem
+										value={color}
+										closeOnSelect={false}
+										class={cx(styles.swatch, noteSurface({ color }))}
+										aria-label={COLOR_NAMES[color]}
+										title={COLOR_NAMES[color]}
+									>
+										<Menu.ItemIndicator class={styles.swatchCheck}>
+											<Check size={12} aria-hidden="true" />
+										</Menu.ItemIndicator>
+									</Menu.RadioItem>
+								{/each}
+							</Menu.RadioItemGroup>
+						</Menu.ItemGroup>
+						<Menu.Item
+							value="copy"
+							closeOnSelect={false}
+							onSelect={() => void copy()}
+							class={itemClass}
+						>
+							{#if copied}
+								<Check size={16} aria-hidden="true" />Copied
+							{:else}
+								<Copy size={16} aria-hidden="true" />Copy as text
+							{/if}
+						</Menu.Item>
+						<Menu.Item value="archive" onSelect={archive} class={itemClass}>
+							<Archive size={16} aria-hidden="true" />Archive
+						</Menu.Item>
+						<Menu.Separator class={styles.separator} />
+						<Menu.Item value="delete" onSelect={trash} class={cx(itemClass, styles.danger)}>
+							<Trash2 size={16} aria-hidden="true" />Move to trash
+						</Menu.Item>
 					{/if}
-				</Menu.Item>
-				<Menu.Item value="archive" onSelect={archive} class={itemClass}>
-					<Archive size={16} aria-hidden="true" />Archive
-				</Menu.Item>
-				<Menu.Separator class={styles.separator} />
-				<Menu.Item value="delete" onSelect={trash} class={cx(itemClass, styles.danger)}>
-					<Trash2 size={16} aria-hidden="true" />Move to trash
-				</Menu.Item>
-			{/if}
-		</Menu.Content>
-	</Menu.Positioner>
+				</Menu.Content>
+			</Menu.Positioner>
+		</div>
+	{/if}
 </Menu.Root>
 
 {#if labelDialogOpen}

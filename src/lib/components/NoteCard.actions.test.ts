@@ -133,7 +133,12 @@ describe('NoteCard actions menu', () => {
 
 		await waitFor(() => expect(document.querySelectorAll('[data-note-actions]')).toHaveLength(1));
 		// The one left open belongs to the card that was right-clicked last.
-		expect(menu()?.closest('article')).toBe(other);
+		expect(
+			within(other).getByRole('button', { name: 'Note actions' }).getAttribute('aria-expanded')
+		).toBe('true');
+		expect(
+			within(card()).getByRole('button', { name: 'Note actions' }).getAttribute('aria-expanded')
+		).toBe('false');
 	});
 
 	it('closes on an outside press without opening the note', async () => {

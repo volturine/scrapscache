@@ -2172,7 +2172,8 @@ export const noteActionsStyles = {
 	}),
 	/** Room for the trigger, so a title never runs under it. */
 	titleRoom: css({ pr: '2.25rem' }),
-	positioner: css({ zIndex: 30 }),
+	portal: css({ position: 'absolute', inset: 0, zIndex: 30, pointerEvents: 'none' }),
+	positioner: css({ zIndex: 30, pointerEvents: 'auto' }),
 	menu: css({ minW: '13rem', py: '2xs' }),
 	item: css({ gap: 'sm' }),
 	danger: css({ color: 'scrapscache.danger', _hoverable: { bg: 'scrapscache.dangerSubtle' } }),

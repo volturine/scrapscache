@@ -3327,7 +3327,7 @@ describe('BodyEditor multiple cursors', () => {
 		expect(lineTexts(container)).toEqual(['two one']);
 	});
 
-	it('redraws the extra carets whenever the cursors move, so their blink restarts', async () => {
+	it('redraws the extra carets when the cursors change, and only moves them on a scroll', async () => {
 		const { container, editor } = renderBody('cat cat cat');
 		caretAt(container, 0, 0);
 		await press(editor, addNext);
@@ -3336,6 +3336,11 @@ describe('BodyEditor multiple cursors', () => {
 		const before = carets();
 		expect(before).toHaveLength(1);
 		expect(before[0].className).toBe(multiCursorStyles.caret);
+
+		// A scroll repaints the geometry but keeps the caret, so its blink keeps phase.
+		document.dispatchEvent(new Event('scroll', { bubbles: true }));
+		await tick();
+		expect(carets()[0]).toBe(before[0]);
 
 		await typeText(editor, 's');
 

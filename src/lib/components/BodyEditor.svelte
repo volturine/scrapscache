@@ -1035,7 +1035,13 @@
 	/** The run of edits since the cursors were placed shares one undo step per kind. */
 	let cursorEditKind: CursorEdit['kind'] | null = null;
 	let cursorLayer = $state<HTMLElement>();
-	let cursorMarks = $state<{ left: number; top: number; height: number }[]>([]);
+	/**
+	 * Where each extra caret is drawn. The key changes only when the cursors
+	 * themselves change, so a caret is redrawn (and its blink restarted) on a move
+	 * or an edit, and merely shifted when the note scrolls or resizes under it.
+	 */
+	let cursorMarks = $state<{ key: string; left: number; top: number; height: number }[]>([]);
+	let cursorEpoch = 0;
 
 	function cursorFromRange(range: EditorRange | null): Cursor | null {
 		if (!range || range.start.line !== range.end.line) return null;
@@ -1147,23 +1153,32 @@
 		return true;
 	}
 
-	function paintCursors() {
+	function paintCursors(restartBlink = false) {
 		if (!cursorLayer || extraCursors.length === 0) {
 			cursorMarks = [];
 			return;
 		}
+		if (restartBlink) cursorEpoch += 1;
 		const origin = cursorLayer.getBoundingClientRect();
-		cursorMarks = extraCursors.flatMap((cursor) => {
+		cursorMarks = extraCursors.flatMap((cursor, index) => {
 			const rect = caretRect(cursor.line, cursor.end);
 			if (!rect) return [];
-			return [{ left: rect.left - origin.left, top: rect.top - origin.top, height: rect.height }];
+			return [
+				{
+					key: `${cursorEpoch}:${index}`,
+					left: rect.left - origin.left,
+					top: rect.top - origin.top,
+					height: rect.height
+				}
+			];
 		});
 	}
 
 	$effect(() => {
 		void editorItems;
 		void uiStore.rawMarkdown;
-		paintCursors();
+		// The cursors or the text changed: every caret is drawn afresh.
+		paintCursors(true);
 		if (typeof CSS === 'undefined' || !('highlights' in CSS)) return;
 		const selections = new Highlight();
 		for (const cursor of extraCursors) {
@@ -3556,7 +3571,7 @@
 
 <svelte:document
 	onselectionchange={handleSelectionChange}
-	onscrollcapture={extraCursors.length > 0 ? paintCursors : undefined}
+	onscrollcapture={extraCursors.length > 0 ? () => paintCursors() : undefined}
 />
 <svelte:window onpointerup={releasePointerGesture} onpointercancel={releasePointerGesture} />
 
@@ -3677,9 +3692,9 @@
 		aria-hidden="true"
 		data-extra-cursors
 	>
-		<!-- Keyed by the mark itself: every repaint makes new marks, so each caret is
-		     drawn afresh and its blink restarts with the native caret's. -->
-		{#each cursorMarks as mark (mark)}
+		<!-- Keyed by the cursor change that placed it, so a scroll or resize only moves
+		     a caret while a cursor move or an edit draws it afresh, blink restarted. -->
+		{#each cursorMarks as mark (mark.key)}
 			<span
 				class={multiCursorStyles.caret}
 				style:left="{mark.left}px"

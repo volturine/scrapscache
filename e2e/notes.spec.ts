@@ -267,6 +267,29 @@ test('search narrows the feed to matching notes', async ({ page }) => {
 test.describe('on a touch screen', () => {
 	test.use({ hasTouch: true });
 
+	test('the + on a focused task row grows a 44 px touch target that stays off the text', async ({
+		page
+	}) => {
+		await openEmptyApp(page);
+		await createNote(page, 'Touch tasks', '[ ] one\n[ ] two');
+		await noteCard(page, 'Touch tasks').click();
+		const sheet = editor(page);
+		await sheet.locator('[data-task-row]').first().locator('[data-line-text]').click();
+		const add = sheet.getByRole('button', { name: 'Add sub-task' });
+		await expect(add).toBeVisible();
+
+		const box = (await add.boundingBox())!;
+		const target = await add.evaluate((button) => {
+			const style = getComputedStyle(button, '::before');
+			return { width: parseFloat(style.width), height: parseFloat(style.height), left: style.left };
+		});
+		// The glyph stays small; the target reaches 44 px, starting at the glyph's left edge.
+		expect(box.width).toBeLessThan(30);
+		expect(target.width).toBeGreaterThanOrEqual(44);
+		expect(target.height).toBeGreaterThanOrEqual(44);
+		expect(target.left).toBe('0px');
+	});
+
 	test('the tap that closes the quick actions does not open the note under it', async ({
 		page
 	}) => {

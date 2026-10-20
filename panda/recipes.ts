@@ -595,8 +595,14 @@ const noteBodyRecipe = defineSlotRecipe({
 			transitionDuration: '120ms',
 			transitionTimingFunction: 'ease',
 			_hoverable: { bg: 'scrapscache.interactiveHover', color: 'scrapscache.text' },
+			// The whole pseudo-element, since this replaces touchHit's: the same growth above
+			// and below, none to the left, and twice as much to the right, into the bleed.
 			_touch: {
 				_before: {
+					content: '""',
+					position: 'absolute',
+					top: 'min(0px, calc((100% - 44px) / 2))',
+					bottom: 'min(0px, calc((100% - 44px) / 2))',
 					left: 0,
 					right: 'calc(min(0px, (100% - 44px) / 2) * 2)'
 				}

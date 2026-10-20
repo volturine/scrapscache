@@ -2,6 +2,7 @@
 	// The look of a Kanban card, with no interaction of its own. The board renders
 	// it twice: once in the column, once inside the ghost that follows a drag, so
 	// the card the user carries is the card they see land.
+	import { noteActionsStyles } from '$panda/styles';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
 	import type { Note } from '#lib/types.js';
 	import NoteBodyDisplay from './NoteBodyDisplay.svelte';
@@ -59,13 +60,18 @@
 						note.secret && css({ px: 'md', pt: 'md' })
 					)}
 				>
-					<ReminderLabel reminder={note.reminder} variant="inline" />
+					<ReminderLabel
+						reminder={note.reminder}
+						variant="inline"
+						class={noteActionsStyles.topRoom}
+					/>
 				</div>
 			{/if}
 			{#if note.title}
 				<h3
 					class={cx(
 						card.title,
+						noteActionsStyles.topRoom,
 						css({ flexShrink: 0 }),
 						!note.secret && css({ mb: '2xs' }),
 						note.secret && css({ px: 'md', pt: note.reminder == null ? 'md' : 0, pb: 'sm' })

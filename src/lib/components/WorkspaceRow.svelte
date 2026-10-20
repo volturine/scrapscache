@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { truncate, workspaceStyles } from '$panda/styles';
 	import { tick, type Snippet } from 'svelte';
-	import { Check, ChevronDown, CloudOff, Download, Pencil, TriangleAlert, X } from '@lucide/svelte';
+	import { Check, ChevronDown, CloudOff, Download, Pencil, X } from '@lucide/svelte';
 	import { css, cx } from 'styled-system/css';
 	import {
 		button,
@@ -155,9 +155,7 @@
 	<div class={`front ${styles.frontBase}`} class:active data-front>
 		{#if mode === 'confirm'}
 			<div class={`panel confirm ${styles.panel}`}>
-				<span class={`${styles.glyph} panel-glyph`} aria-hidden="true"
-					><TriangleAlert size={18} /></span
-				>
+				<span class={`${styles.glyph} panel-glyph`} aria-hidden="true"><CloudOff size={18} /></span>
 				<p class={cx(styles.content, css({ fontSize: 'compact' }))}>
 					Stop syncing <strong>{name}</strong> on this device?<span class={styles.caption}
 						>Notes stay here as a private workspace.</span

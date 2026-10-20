@@ -243,13 +243,13 @@
 		error = '';
 		info = '';
 		const token = confirmToken || undefined;
-		const result = await runOperation('force-sync', 'Could not force a full resync', () =>
+		const result = await runOperation('force-sync', 'Could not replace the cloud copy', () =>
 			profileCoordinator.forceResync(token, confirmTarget)
 		);
 		confirmCheck?.reset();
 		if (!result) return;
 		if (!result.success) {
-			error = friendlyError(result.error, 'Could not force a full resync');
+			error = friendlyError(result.error, 'Could not replace the cloud copy');
 			return;
 		}
 		confirmation = null;
@@ -458,15 +458,15 @@
 	async function unlinkProfile(id: string): Promise<boolean> {
 		error = '';
 		info = '';
-		const result = await runOperation('unlink', 'Could not unlink workspace', () =>
+		const result = await runOperation('unlink', 'Could not stop syncing', () =>
 			profileCoordinator.unlink(id)
 		);
 		if (!result) {
-			if (!error) error = 'Could not unlink workspace';
+			if (!error) error = 'Could not stop syncing';
 			return false;
 		}
 		if (!result.success) {
-			error = friendlyError(result.error, 'Could not unlink workspace');
+			error = friendlyError(result.error, 'Could not stop syncing');
 			return false;
 		}
 		info = 'Stopped syncing. Its notes stay on this device as a private workspace.';
@@ -517,7 +517,7 @@
 		confirmation = null;
 		confirmTarget = null;
 		mode = 'menu';
-		info = 'Cloud data deleted. Its notes stay on this device as a private workspace.';
+		info = 'Removed from the cloud. Its notes stay on this device as a private workspace.';
 	}
 
 	function confirm(kind: 'delete' | 'force' | 'remove' | 'new-key', id: string) {
@@ -806,9 +806,8 @@
 												styles.filledSecondaryButton,
 												styles.pressableButton
 											)}
-											aria-label="Connect another device"
 											title="Connect another device"
-											><span class={styles.buttonLabel}>Connect</span></button
+											><span class={styles.buttonLabelWrap}>Connect another device</span></button
 										>
 									{/if}
 								</div>

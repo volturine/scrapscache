@@ -254,6 +254,11 @@ describe('SyncModal profile interactions', () => {
 		await expand('Side');
 		await fireEvent.click(screen.getByRole('button', { name: 'Stop syncing Side on this device' }));
 		expect(unlink).not.toHaveBeenCalled();
+		// Nothing is deleted, so the confirm is a neutral surface, not a red one.
+		const confirmPanel = screen
+			.getByRole('button', { name: 'Keep syncing Side' })
+			.closest('.confirm')!;
+		expect(confirmPanel.className).not.toMatch(/danger/i);
 		// Other workspaces stay reachable while one row asks for confirmation.
 		expect(screen.getByRole('button', { name: 'Main is active' })).toBeTruthy();
 		await fireEvent.click(screen.getByRole('button', { name: 'Keep syncing Side' }));
@@ -708,7 +713,10 @@ describe('SyncModal profile interactions', () => {
 			.mockResolvedValue({ success: true, linked: false, expired: false });
 		render(SyncModal, { props: { onClose: vi.fn() } });
 
-		await fireEvent.click(screen.getByRole('button', { name: 'Connect another device' }));
+		const connect = screen.getByRole('button', { name: 'Connect another device' });
+		// The phrase the pairing steps name is the one on screen.
+		expect(connect.textContent?.trim()).toBe('Connect another device');
+		await fireEvent.click(connect);
 		await waitFor(() => expect(screen.getByAltText('Pair this device')).toBeTruthy());
 		expect(screen.getByRole('button', { name: 'Copy pairing link' })).toBeTruthy();
 		expect(poll).toHaveBeenCalledTimes(1);

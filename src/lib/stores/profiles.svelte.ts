@@ -166,12 +166,14 @@ export class ProfileCoordinator {
 				: {
 						success: false,
 						error:
-							syncStore.lastError ?? notesStore.lastPersistError ?? 'Force resync did not finish'
+							syncStore.lastError ??
+							notesStore.lastPersistError ??
+							'Replacing the cloud copy did not finish'
 					};
 		} catch (err) {
 			return {
 				success: false,
-				error: err instanceof Error ? err.message : 'Could not force resync'
+				error: err instanceof Error ? err.message : 'Could not replace the cloud copy'
 			};
 		} finally {
 			this.switching = false;
@@ -183,7 +185,7 @@ export class ProfileCoordinator {
 	 * workspace. With `deleteCloud`, its cloud copy is deleted for every device.
 	 */
 	async unlink(profileId: string, deleteCloud = false): Promise<Outcome> {
-		return this.handover('Could not unlink workspace', async () => {
+		return this.handover('Could not stop syncing', async () => {
 			const profile = this.find(profileId);
 			if (isLocalWorkspace(profile)) return { success: true };
 			if (deleteCloud) {

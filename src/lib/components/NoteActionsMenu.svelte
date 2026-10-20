@@ -190,9 +190,11 @@
 	>
 		<Ellipsis size={18} aria-hidden="true" />
 	</Menu.Trigger>
-	<!-- Portalled out of the card, whose frame clips its own overflow. -->
+	<!-- Portalled out of the card, whose frame clips its own overflow. The frame spans
+	     the app, so it must not take hits: inline, because `.app-overlay > *` turns
+	     pointer events back on for every overlay child. -->
 	{#if open}
-		<div {@attach portalToAppOverlay} class={styles.portal}>
+		<div {@attach portalToAppOverlay} class={styles.portal} style="pointer-events: none">
 			<Menu.Positioner class={styles.positioner}>
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<Menu.Content

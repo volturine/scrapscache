@@ -2170,9 +2170,10 @@ export const noteActionsStyles = {
 		...mutedText,
 		_hoverable: { color: 'scrapscache.text' }
 	}),
-	/** Room for the trigger, so a title never runs under it. */
-	titleRoom: css({ pr: '2.25rem' }),
-	portal: css({ position: 'absolute', inset: 0, zIndex: 30, pointerEvents: 'none' }),
+	/** The trigger's box and its inset, so a title or reminder in the top row never runs under it. */
+	topRoom: css({ pr: 'calc(2rem + 2 * token(spacing.xs))' }),
+	/** The positioner's frame: the app, with hits passing through to it (see the markup). */
+	portal: css({ position: 'absolute', inset: 0, zIndex: 30 }),
 	positioner: css({ zIndex: 30, pointerEvents: 'auto' }),
 	menu: css({ minW: '13rem', py: '2xs' }),
 	item: css({ gap: 'sm' }),

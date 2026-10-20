@@ -279,6 +279,22 @@ test('search narrows the feed to matching notes', async ({ page }) => {
 	await expect(search).toBeFocused();
 });
 
+test('a click outside the … menu closes it and still opens the note under the pointer', async ({
+	page
+}) => {
+	await openEmptyApp(page);
+	await createNote(page, 'Under the pointer');
+	await createNote(page, 'With a menu');
+	await noteCard(page, 'With a menu').click({ button: 'right' });
+	await expect(page.getByRole('menu', { name: 'Note actions' })).toBeVisible();
+
+	// A real hit test: the menu's app-wide frame must not take the click.
+	await noteCard(page, 'Under the pointer').click();
+	await expect(page.getByRole('menu', { name: 'Note actions' })).toHaveCount(0);
+	await expect(editor(page)).toBeVisible();
+	await expect(editor(page).getByPlaceholder('Title')).toHaveValue('Under the pointer');
+});
+
 test.describe('on a touch screen', () => {
 	test.use({ hasTouch: true });
 

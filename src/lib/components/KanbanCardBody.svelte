@@ -59,14 +59,18 @@
 						note.secret && css({ px: 'md', pt: 'md' })
 					)}
 				>
-					<ReminderLabel reminder={note.reminder} variant="inline" />
+					<ReminderLabel
+						reminder={note.reminder}
+						variant="inline"
+						class={noteActionsStyles.topRoom}
+					/>
 				</div>
 			{/if}
 			{#if note.title}
 				<h3
 					class={cx(
 						card.title,
-						noteActionsStyles.titleRoom,
+						noteActionsStyles.topRoom,
 						css({ flexShrink: 0 }),
 						!note.secret && css({ mb: '2xs' }),
 						note.secret && css({ px: 'md', pt: note.reminder == null ? 'md' : 0, pb: 'sm' })

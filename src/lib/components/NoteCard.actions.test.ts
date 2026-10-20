@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vite
 import type { Note } from '#lib/types.js';
 import { notesStore } from '#lib/stores/notes.svelte.js';
 import NoteCard from './NoteCard.svelte';
+import { noteActionsStyles } from '$panda/styles';
 
 function note(partial: Partial<Note> = {}): Note {
 	return {
@@ -97,6 +98,29 @@ describe('NoteCard actions menu', () => {
 		expect(
 			screen.getByRole('menuitemradio', { name: 'Default' }).getAttribute('aria-checked')
 		).toBe('true');
+	});
+
+	it('hands pointer hits through its app-wide frame, which stays closed to them', async () => {
+		render(NoteCard, { props: { note: note(), onOpen: vi.fn() } });
+		const content = await openMenu();
+		const positioner = content.parentElement!;
+		const frame = positioner.parentElement!;
+		// The frame spans the app overlay, whose `> *` rule turns pointer events back on,
+		// so only an inline style keeps a click elsewhere landing on the card under it.
+		expect(frame.className).toBe(noteActionsStyles.portal);
+		expect(frame.style.pointerEvents).toBe('none');
+		expect(positioner.className).toBe(noteActionsStyles.positioner);
+	});
+
+	it('keeps the title and a reminder out from under the … button', () => {
+		render(NoteCard, {
+			props: { note: note({ reminder: Date.now() + 3_600_000 }), onOpen: vi.fn() }
+		});
+		const strip = card().querySelector('[aria-label^="Reminder, "]')!;
+		expect(strip.classList.contains(noteActionsStyles.topRoom)).toBe(true);
+		expect(within(card()).getByText('Trip').classList.contains(noteActionsStyles.topRoom)).toBe(
+			true
+		);
 	});
 
 	it('opens the note from its open control (Enter and Space click a button)', async () => {

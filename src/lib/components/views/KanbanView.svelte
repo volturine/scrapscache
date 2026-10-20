@@ -87,6 +87,9 @@
 	/** The "New label…" prompt from the add-column menu and the starter panel. */
 	let newLabelOpen = $state(false);
 	let newLabelName = $state('');
+	let newLabelInput = $state<HTMLInputElement | null>(null);
+	/** Anchored to the top, so a phone keyboard never covers the field or Create. */
+	const newLabelDialog = dialog({ size: 'sm', presentation: 'appOverlay' });
 	/** A board with only its Backlog: the first run, where the panel explains and offers a start. */
 	const noLabelColumns = $derived(board.columns.every((column) => column.labelId === null));
 
@@ -103,7 +106,8 @@
 
 	/** Make the typed label and give the board a column for it; an existing name is reused. */
 	function createLabelColumn() {
-		const name = newLabelName.trim();
+		// The field's own value: a fast tap on Create can land before the binding settles.
+		const name = (newLabelInput?.value ?? newLabelName).trim();
 		if (!name) return;
 		const label = labelNamed(name);
 		if (label) kanbanStore.addTagColumn(board.id, label.id);
@@ -631,45 +635,52 @@
 		onOpenChange={(details) => !details.open && (newLabelOpen = false)}
 		preventScroll={false}
 	>
-		<div
-			{@attach portalToAppOverlay}
-			class={css({ position: 'absolute', inset: 0, zIndex: 80 })}
-			role="presentation"
-		>
-			<Dialog.Backdrop class={d.backdrop} />
-			<Dialog.Positioner class={k.deletePositioner}>
-				<Dialog.Content class={d.panel}>
+		<div {@attach portalToAppOverlay} class={newLabelDialog.portal} role="presentation">
+			<Dialog.Backdrop class={newLabelDialog.backdrop} />
+			<Dialog.Positioner class={newLabelDialog.positioner}>
+				<Dialog.Content class={newLabelDialog.panel}>
 					<form
 						onsubmit={(event) => {
 							event.preventDefault();
 							createLabelColumn();
 						}}
 					>
-						<Dialog.Title class={d.title}>New label column</Dialog.Title>
-						<p class={d.description}>The label is created and gets a column on this board.</p>
-						<input
-							{@attach focusAndSelect}
-							bind:value={newLabelName}
-							type="text"
-							aria-label="Label name"
-							placeholder="Label name"
-							class={cx(inputRecipe({ variant: 'outline', size: 'md' }), k.newLabelInput)}
-						/>
-						<div class={vstack({ gap: 'sm', mt: 'lg' })}>
-							<button
-								type="submit"
-								disabled={!newLabelName.trim()}
-								class={button({ variant: 'primary', size: 'md' })}
-							>
-								Create label
-							</button>
-							<button
-								type="button"
-								onclick={() => (newLabelOpen = false)}
-								class={button({ variant: 'ghost', size: 'md' })}
-							>
-								Cancel
-							</button>
+						<div class={newLabelDialog.header}>
+							<Dialog.Title class={newLabelDialog.title}>New label column</Dialog.Title>
+						</div>
+						<div class={newLabelDialog.body}>
+							<p class={newLabelDialog.description}>
+								The label is created and gets a column on this board.
+							</p>
+							<input
+								{@attach focusAndSelect}
+								bind:this={newLabelInput}
+								bind:value={newLabelName}
+								type="text"
+								aria-label="Label name"
+								placeholder="Label name"
+								class={cx(inputRecipe({ variant: 'outline', size: 'md' }), k.newLabelInput)}
+							/>
+							<div class={newLabelDialog.footer}>
+								<button
+									type="button"
+									onclick={() => (newLabelOpen = false)}
+									class={button({ variant: 'quiet', size: 'md' })}
+								>
+									Cancel
+								</button>
+								<!-- A touch press must not blur the field: the keyboard would start closing. -->
+								<button
+									type="submit"
+									disabled={!newLabelName.trim()}
+									onpointerdown={(event) => {
+										if (event.pointerType === 'touch') event.preventDefault();
+									}}
+									class={button({ variant: 'primary', size: 'md' })}
+								>
+									Create label
+								</button>
+							</div>
 						</div>
 					</form>
 				</Dialog.Content>

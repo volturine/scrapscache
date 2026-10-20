@@ -469,7 +469,7 @@
 			error = friendlyError(result.error, 'Could not unlink workspace');
 			return false;
 		}
-		info = 'Unlinked. Its notes stay on this device as a private workspace.';
+		info = 'Stopped syncing. Its notes stay on this device as a private workspace.';
 		return true;
 	}
 
@@ -596,7 +596,7 @@
 					<Dialog.Title class={d.title}>
 						<Cloud size={20} aria-hidden="true" />
 						{mode === 'menu'
-							? 'Workspaces'
+							? 'Sync and workspaces'
 							: mode === 'new'
 								? 'New workspace'
 								: mode === 'link'
@@ -605,13 +605,13 @@
 										? 'Sync workspace'
 										: mode === 'confirm'
 											? confirmation === 'force'
-												? 'Replace cloud notes?'
+												? 'Replace the cloud copy?'
 												: confirmation === 'new-key'
 													? 'Create a new sync key?'
 													: confirmation === 'remove'
-														? 'Delete workspace?'
-														: 'Delete cloud data?'
-											: 'Connect device'}
+														? `Delete “${confirmProfile?.name}” from this device?`
+														: `Remove “${confirmProfile?.name}” from the cloud?`
+											: 'Connect another device'}
 					</Dialog.Title>
 					<button
 						type="button"
@@ -661,9 +661,10 @@
 									{/snippet}
 									{#snippet actions()}
 										{#if synced}
+											<!-- Amber: it overwrites the cloud, but deletes nothing here. -->
 											<button
 												type="button"
-												class={styles.manageRow}
+												class={cx(styles.manageRow, styles.manageRowCaution)}
 												disabled={busy}
 												onclick={() => confirm('force', profile.id)}
 												><RefreshCw
@@ -674,9 +675,9 @@
 													aria-hidden="true"
 												/><span
 													>{operation === 'force-sync' && confirmTarget === profile.id
-														? 'Resyncing…'
-														: 'Force resync'}<small
-														>Replace cloud notes with this device’s version</small
+														? 'Replacing…'
+														: 'Replace the cloud copy'}<small
+														>Upload this device’s notes. Notes only in the cloud are removed.</small
 													></span
 												></button
 											>
@@ -707,8 +708,11 @@
 												<CloudOff size={16} aria-hidden="true" />
 
 												<span>
-													Delete cloud data
-													<small>Stop syncing everywhere. Notes stay here.</small>
+													Remove from the cloud
+													<small
+														>Deletes the cloud copy and stops syncing on all devices. Notes stay
+														here.</small
+													>
 												</span>
 											</button>
 										{/if}
@@ -721,12 +725,12 @@
 											<Trash2 size={16} aria-hidden="true" />
 
 											<span>
-												Delete workspace
+												Delete from this device
 
 												<small>
 													{synced
-														? 'Remove it from this device. Cloud notes stay.'
-														: 'Remove it and its notes from this device'}
+														? 'Deletes the workspace and its notes from this device. The cloud copy is not changed.'
+														: 'Deletes the workspace and its notes from this device.'}
 												</small>
 											</span>
 										</button>
@@ -768,7 +772,11 @@
 										}}
 										disabled={busy}
 										class={cx(
-											button({ variant: 'primary', size: 'md' }),
+											button({
+												variant:
+													authenticationFailed && !syncStore.keyRetired ? 'caution' : 'primary',
+												size: 'md'
+											}),
 											styles.growButton,
 											styles.pressableButton
 										)}
@@ -783,7 +791,7 @@
 												: syncStore.keyRetired
 													? 'Create new sync key'
 													: authenticationFailed
-														? 'Force resync'
+														? 'Replace the cloud copy'
 														: 'Sync now'}</span
 										></button
 									>
@@ -798,8 +806,9 @@
 												styles.filledSecondaryButton,
 												styles.pressableButton
 											)}
-											aria-label="Connect device"
-											title="Connect device"><span class={styles.buttonLabel}>Connect</span></button
+											aria-label="Connect another device"
+											title="Connect another device"
+											><span class={styles.buttonLabel}>Connect</span></button
 										>
 									{/if}
 								</div>
@@ -835,9 +844,8 @@
 					<div class={vstack({ gap: 'lg', alignItems: 'stretch' })}>
 						<p class={syncMutedBody}>
 							{#if confirmation === 'force'}
-								This device’s notes will replace the cloud version using the same sync key. Notes
-								only in the cloud will be removed. Other devices will receive these notes as the
-								latest version.
+								The cloud copy becomes this device’s notes. Notes that exist only in the cloud are
+								removed. Your other devices receive this version as the latest.
 							{:else if confirmation === 'new-key'}
 								This workspace’s sync key was deleted from the cloud, so it can no longer sync. A
 								new key keeps the notes on this device and uploads them to a new cloud account.
@@ -848,8 +856,8 @@
 									Its cloud copy and other devices are not changed.
 								{/if}
 							{:else}
-								Permanently delete “{confirmProfile?.name}” from the cloud and stop syncing it on
-								all devices. This device keeps its notes as a private workspace.
+								The cloud copy is deleted for good and syncing stops on all your devices. This
+								device keeps its notes as a private workspace.
 							{/if}
 						</p>
 						{#if (confirmation === 'force' || confirmation === 'new-key') && turnstileOrigin}
@@ -879,7 +887,13 @@
 								type="button"
 								class={cx(
 									button({
-										variant: confirmation === 'delete' ? 'destructive' : 'primary',
+										// One rule: amber replaces, red deletes, blue creates.
+										variant:
+											confirmation === 'force'
+												? 'caution'
+												: confirmation === 'new-key'
+													? 'primary'
+													: 'destructive',
 										size: 'sm'
 									}),
 									styles.growButton
@@ -899,12 +913,12 @@
 								>{busy
 									? 'Working…'
 									: confirmation === 'force'
-										? 'Replace cloud notes'
+										? 'Replace cloud copy'
 										: confirmation === 'new-key'
 											? 'Create new key'
 											: confirmation === 'remove'
-												? 'Delete workspace'
-												: 'Delete cloud data'}</button
+												? 'Delete from this device'
+												: 'Remove from cloud'}</button
 							>
 						</div>
 					</div>
@@ -993,8 +1007,8 @@
 				{:else if mode === 'link'}
 					<div class={vstack({ gap: 'md', alignItems: 'stretch' })}>
 						<p class={syncMuted}>
-							On your other device open Sync and choose Connect device. Scan the QR code or enter
-							the one-time code shown there.
+							On your other device open Sync and choose Connect another device. Scan the QR code or
+							enter the one-time code shown there.
 						</p>
 						{#if info}<p class={syncMuted} role="status">{info}</p>{/if}
 						{#if scanningQr}
@@ -1085,7 +1099,7 @@
 						{:else}
 							<div>
 								<p class={syncMutedLead}>On the other device</p>
-								<p class={styles.bodySpacing}>Open Sync and choose Connect device</p>
+								<p class={styles.bodySpacing}>Open Sync and choose Connect another device</p>
 							</div>
 						{/if}
 						<div class={vstack({ gap: 'xs', alignItems: 'stretch' })}>

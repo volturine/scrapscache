@@ -192,15 +192,19 @@ describe('SyncModal profile interactions', () => {
 			render(SyncModal, { props: { onClose } });
 
 			await expand('Side');
-			await fireEvent.click(screen.getByRole('button', { name: 'Unlink Side' }));
-			expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Keep Side linked' }));
+			await fireEvent.click(
+				screen.getByRole('button', { name: 'Stop syncing Side on this device' })
+			);
+			expect(document.activeElement).toBe(
+				screen.getByRole('button', { name: 'Keep syncing Side' })
+			);
 
 			await fireEvent.keyDown(document, { key: 'Escape' });
-			expect(screen.queryByRole('button', { name: 'Keep Side linked' })).toBeNull();
+			expect(screen.queryByRole('button', { name: 'Keep syncing Side' })).toBeNull();
 			expect(onClose).not.toHaveBeenCalled();
 
 			await fireEvent.keyDown(document, { key: 'Escape' });
-			expect(screen.queryByRole('button', { name: 'Unlink Side' })).toBeNull();
+			expect(screen.queryByRole('button', { name: 'Stop syncing Side on this device' })).toBeNull();
 			expect(screen.getByRole('button', { name: 'Expand Side' })).toBeTruthy();
 			expect(onClose).not.toHaveBeenCalled();
 
@@ -216,11 +220,13 @@ describe('SyncModal profile interactions', () => {
 		render(SyncModal, { props: { onClose: vi.fn() } });
 
 		await expand('Side');
-		const unlinkTile = screen.getByRole('button', { name: 'Unlink Side' });
+		const unlinkTile = screen.getByRole('button', { name: 'Stop syncing Side on this device' });
 		await fireEvent.click(unlinkTile);
 		await fireEvent.keyDown(document, { key: 'Escape' });
 		await tick();
-		expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Unlink Side' }));
+		expect(document.activeElement).toBe(
+			screen.getByRole('button', { name: 'Stop syncing Side on this device' })
+		);
 
 		const renameTile = screen.getByRole('button', { name: 'Rename Side' });
 		await fireEvent.click(renameTile);
@@ -233,12 +239,12 @@ describe('SyncModal profile interactions', () => {
 		render(SyncModal, { props: { onClose: vi.fn() } });
 
 		await expand('Side');
-		await fireEvent.click(screen.getByRole('button', { name: 'Unlink Side' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Stop syncing Side on this device' }));
 		const elsewhere = screen.getByRole('button', { name: 'Main is active' });
 		elsewhere.focus();
 		await fireEvent.pointerDown(elsewhere);
 
-		expect(screen.queryByRole('button', { name: 'Keep Side linked' })).toBeNull();
+		expect(screen.queryByRole('button', { name: 'Keep syncing Side' })).toBeNull();
 		expect(document.activeElement).toBe(elsewhere);
 	});
 
@@ -246,15 +252,17 @@ describe('SyncModal profile interactions', () => {
 		const unlink = vi.spyOn(profileCoordinator, 'unlink').mockResolvedValue({ success: true });
 		render(SyncModal, { props: { onClose: vi.fn() } });
 		await expand('Side');
-		await fireEvent.click(screen.getByRole('button', { name: 'Unlink Side' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Stop syncing Side on this device' }));
 		expect(unlink).not.toHaveBeenCalled();
 		// Other workspaces stay reachable while one row asks for confirmation.
 		expect(screen.getByRole('button', { name: 'Main is active' })).toBeTruthy();
-		await fireEvent.click(screen.getByRole('button', { name: 'Keep Side linked' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Keep syncing Side' }));
 		expect(unlink).not.toHaveBeenCalled();
 
-		await fireEvent.click(screen.getByRole('button', { name: 'Unlink Side' }));
-		await fireEvent.click(screen.getByRole('button', { name: 'Unlink Side from this device' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Stop syncing Side on this device' }));
+		await fireEvent.click(
+			screen.getByRole('button', { name: 'Yes, stop syncing Side on this device' })
+		);
 		await waitFor(() => expect(unlink).toHaveBeenCalledWith(side.id));
 	});
 
@@ -288,7 +296,7 @@ describe('SyncModal profile interactions', () => {
 		expect(screen.getByRole('button', { name: 'Home is active' })).toBeTruthy();
 		expect(screen.queryByRole('button', { name: 'Switch to Home' })).toBeNull();
 		await expand('Home');
-		expect(screen.getByRole('button', { name: /Force resync/ })).toBeTruthy();
+		expect(screen.getByRole('button', { name: /Replace the cloud copy/ })).toBeTruthy();
 		expect(screen.queryByRole('button', { name: /sync this workspace/i })).toBeNull();
 	});
 
@@ -320,7 +328,7 @@ describe('SyncModal profile interactions', () => {
 		await fireEvent.click(screen.getByRole('button', { name: 'Create new sync key' }));
 
 		expect(await screen.findByRole('button', { name: 'Create new key' })).toBeTruthy();
-		expect(screen.queryByRole('button', { name: 'Replace cloud notes' })).toBeNull();
+		expect(screen.queryByRole('button', { name: 'Replace cloud copy' })).toBeNull();
 	});
 
 	it('shows the same new-workspace action whether a private or synced workspace is active', async () => {
@@ -357,14 +365,16 @@ describe('SyncModal profile interactions', () => {
 		expect(screen.getByRole('button', { name: 'Export Main' })).toBeTruthy();
 		expect(screen.getByRole('button', { name: 'Export Home' })).toBeTruthy();
 		expect(screen.queryByRole('button', { name: 'Rename Main' })).toBeNull();
-		expect(screen.queryByRole('button', { name: 'Unlink Main' })).toBeNull();
-		expect(screen.queryByRole('button', { name: /Force resync/ })).toBeNull();
+		expect(screen.queryByRole('button', { name: 'Stop syncing Main on this device' })).toBeNull();
+		expect(screen.queryByRole('button', { name: /Replace the cloud copy/ })).toBeNull();
 
 		await expand('Main');
-		const resync = screen.getByRole('button', { name: /Force resync/ });
-		const remove = screen.getByRole('button', { name: /Delete cloud data/ });
+		const resync = screen.getByRole('button', { name: /Replace the cloud copy/ });
+		const remove = screen.getByRole('button', { name: /Remove from the cloud/ });
 		expect(screen.getAllByRole('button', { name: 'Rename Main' })).toHaveLength(1);
-		expect(screen.getAllByRole('button', { name: 'Unlink Main' })).toHaveLength(1);
+		expect(
+			screen.getAllByRole('button', { name: 'Stop syncing Main on this device' })
+		).toHaveLength(1);
 		expect(resync).toBeTruthy();
 		expect(remove).toBeTruthy();
 	});
@@ -377,9 +387,9 @@ describe('SyncModal profile interactions', () => {
 		await expand('Home');
 		expect(screen.getByRole('button', { name: 'Rename Home' })).toBeTruthy();
 		expect(screen.getByRole('button', { name: /sync this workspace/i })).toBeTruthy();
-		expect(screen.getByRole('button', { name: /Delete workspace/ })).toBeTruthy();
-		expect(screen.queryByRole('button', { name: 'Unlink Home' })).toBeNull();
-		expect(screen.queryByRole('button', { name: /Delete cloud data/ })).toBeNull();
+		expect(screen.getByRole('button', { name: /Delete from this device/ })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: 'Stop syncing Home on this device' })).toBeNull();
+		expect(screen.queryByRole('button', { name: /Remove from the cloud/ })).toBeNull();
 	});
 
 	it.each([
@@ -390,10 +400,10 @@ describe('SyncModal profile interactions', () => {
 		const remove = vi.spyOn(profileCoordinator, 'remove').mockResolvedValue({ success: true });
 		render(SyncModal, { props: { onClose: vi.fn() } });
 		await expand(name);
-		await fireEvent.click(screen.getByRole('button', { name: /Delete workspace/ }));
+		await fireEvent.click(screen.getByRole('button', { name: /Delete from this device/ }));
 		expect(remove).not.toHaveBeenCalled();
 		expect(screen.getByText(new RegExp(`delete “${name}” and its notes`))).toBeTruthy();
-		await fireEvent.click(screen.getByRole('button', { name: 'Delete workspace' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Delete from this device' }));
 		await waitFor(() => expect(remove).toHaveBeenCalledWith(id));
 		expect(screen.getByText('Workspace deleted from this device.')).toBeTruthy();
 	});
@@ -408,8 +418,8 @@ describe('SyncModal profile interactions', () => {
 		await expand('Studio');
 		expect(screen.getByRole('button', { name: /sync this workspace/i })).toBeTruthy();
 		expect(screen.getByRole('button', { name: 'Rename Studio' })).toBeTruthy();
-		expect(screen.getByRole('button', { name: /Delete workspace/ })).toBeTruthy();
-		expect(screen.queryByRole('button', { name: 'Unlink Studio' })).toBeNull();
+		expect(screen.getByRole('button', { name: /Delete from this device/ })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: 'Stop syncing Studio on this device' })).toBeNull();
 	});
 
 	it('keeps sync screen open and shows error if switch fails', async () => {
@@ -444,10 +454,10 @@ describe('SyncModal profile interactions', () => {
 		render(SyncModal, { props: { onClose: vi.fn() } });
 
 		await expand('Main');
-		await fireEvent.click(screen.getByRole('button', { name: /Force resync/ }));
+		await fireEvent.click(screen.getByRole('button', { name: /Replace the cloud copy/ }));
 
 		expect(force).not.toHaveBeenCalled();
-		await fireEvent.click(screen.getByRole('button', { name: 'Replace cloud notes' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Replace cloud copy' }));
 		await waitFor(() => expect(force).toHaveBeenCalledWith(undefined, main.id));
 		expect(screen.getByText('This device’s notes are now the latest cloud version.')).toBeTruthy();
 	});
@@ -501,7 +511,7 @@ describe('SyncModal profile interactions', () => {
 		syncStore.lastError = 'Could not start sync authentication';
 		render(SyncModal, { props: { onClose: vi.fn() } });
 		expect(screen.queryByRole('button', { name: 'Sync now' })).toBeNull();
-		expect(screen.getByRole('button', { name: 'Force resync' })).toBeTruthy();
+		expect(screen.getByRole('button', { name: 'Replace the cloud copy' })).toBeTruthy();
 		syncStore.activateLocalWorkspace(TEST_WORKSPACE);
 		await tick();
 		await expand('Home');
@@ -509,7 +519,7 @@ describe('SyncModal profile interactions', () => {
 		expect(screen.getByRole('button', { name: 'Start sync' })).toBeTruthy();
 		expect(screen.queryByRole('button', { name: /join/i })).toBeNull();
 		await fireEvent.click(screen.getByRole('button', { name: '← Back to workspaces' }));
-		expect(screen.queryByRole('button', { name: 'Connect device' })).toBeNull();
+		expect(screen.queryByRole('button', { name: 'Connect another device' })).toBeNull();
 		expect(screen.queryByRole('button', { name: 'Join existing' })).toBeNull();
 		await fireEvent.click(screen.getByRole('button', { name: '+ New workspace' }));
 		expect(screen.getByRole('button', { name: /Join a synced workspace/ })).toBeTruthy();
@@ -561,13 +571,15 @@ describe('SyncModal profile interactions', () => {
 		render(SyncModal, { props: { onClose: vi.fn() } });
 
 		await expand('Main');
-		await fireEvent.click(screen.getByRole('button', { name: 'Unlink Main' }));
-		expect(screen.getByRole('button', { name: 'Keep Main linked' })).toBeTruthy();
-		await fireEvent.click(screen.getByRole('button', { name: 'Unlink Main from this device' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Stop syncing Main on this device' }));
+		expect(screen.getByRole('button', { name: 'Keep syncing Main' })).toBeTruthy();
+		await fireEvent.click(
+			screen.getByRole('button', { name: 'Yes, stop syncing Main on this device' })
+		);
 
 		await waitFor(() => expect(unlink).toHaveBeenCalledWith(main.id));
 		expect(
-			screen.getByText('Unlinked. Its notes stay on this device as a private workspace.')
+			screen.getByText('Stopped syncing. Its notes stay on this device as a private workspace.')
 		).toBeTruthy();
 	});
 
@@ -575,9 +587,9 @@ describe('SyncModal profile interactions', () => {
 		const unlink = vi.spyOn(profileCoordinator, 'unlink').mockResolvedValue({ success: true });
 		render(SyncModal, { props: { onClose: vi.fn() } });
 		await expand('Main');
-		await fireEvent.click(screen.getByRole('button', { name: /Delete cloud data/ }));
+		await fireEvent.click(screen.getByRole('button', { name: /Remove from the cloud/ }));
 		expect(unlink).not.toHaveBeenCalled();
-		await fireEvent.click(screen.getByRole('button', { name: 'Delete cloud data' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Remove from cloud' }));
 		await waitFor(() => expect(unlink).toHaveBeenCalledWith(main.id, true));
 	});
 
@@ -585,15 +597,17 @@ describe('SyncModal profile interactions', () => {
 		const force = vi.spyOn(profileCoordinator, 'forceResync').mockResolvedValue({ success: true });
 		render(SyncModal, { props: { onClose: vi.fn() } });
 		await expand('Side');
-		const resync = screen.getByRole('button', { name: /Force resync/ });
-		const remove = screen.getByRole('button', { name: /Delete cloud data/ });
+		const resync = screen.getByRole('button', { name: /Replace the cloud copy/ });
+		const remove = screen.getByRole('button', { name: /Remove from the cloud/ });
 		expect(screen.getAllByRole('button', { name: 'Rename Side' })).toHaveLength(1);
-		expect(screen.getAllByRole('button', { name: 'Unlink Side' })).toHaveLength(1);
+		expect(
+			screen.getAllByRole('button', { name: 'Stop syncing Side on this device' })
+		).toHaveLength(1);
 		expect(resync).toBeTruthy();
 		expect(remove).toBeTruthy();
 
 		await fireEvent.click(resync);
-		await fireEvent.click(screen.getByRole('button', { name: 'Replace cloud notes' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Replace cloud copy' }));
 		await waitFor(() => expect(force).toHaveBeenCalledWith(undefined, side.id));
 	});
 
@@ -694,7 +708,7 @@ describe('SyncModal profile interactions', () => {
 			.mockResolvedValue({ success: true, linked: false, expired: false });
 		render(SyncModal, { props: { onClose: vi.fn() } });
 
-		await fireEvent.click(screen.getByRole('button', { name: 'Connect device' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Connect another device' }));
 		await waitFor(() => expect(screen.getByAltText('Pair this device')).toBeTruthy());
 		expect(screen.getByRole('button', { name: 'Copy pairing link' })).toBeTruthy();
 		expect(poll).toHaveBeenCalledTimes(1);

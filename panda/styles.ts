@@ -1319,6 +1319,7 @@ export const workspaceStyles = {
 		'& small': { display: 'block', mt: '3xs', ...mutedText, textStyle: 'caption' }
 	}),
 	manageRowDanger: css({ color: 'scrapscache.danger' }),
+	manageRowCaution: css({ color: 'scrapscache.warning' }),
 	chevron: css({ display: 'grid', transition: 'transform 160ms ease' }),
 	chevronOpen: css({ transform: 'rotate(180deg)' }),
 	panel: css({
@@ -2018,6 +2019,8 @@ export const syncStyles = {
 		textAlign: 'left',
 		'& small': { display: 'block', mt: '3xs', textStyle: 'caption' }
 	}),
+	/** Amber: an action that overwrites the cloud copy, but deletes nothing here. */
+	manageRowCaution: css({ color: 'scrapscache.warning' }),
 	dividerLine: css({ h: 'hairline', flex: '1', bg: 'scrapscache.border' }),
 	pairingInput: css({
 		w: 'full',

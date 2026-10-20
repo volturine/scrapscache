@@ -26,7 +26,7 @@ test('two devices pair with a code and converge, deletes included', async ({ bro
 	await expect(dialog.getByRole('button', { name: / is active$/ })).toContainText('Synced');
 
 	// Device A shows a one-time pairing code.
-	await dialog.getByRole('button', { name: 'Connect device' }).click();
+	await dialog.getByRole('button', { name: 'Connect another device' }).click();
 	const codeBox = dialog.locator('[aria-label="One-time pairing code"]');
 	await expect(codeBox).toBeVisible();
 	const code = (await codeBox.innerText()).replace(/[^A-Za-z0-9]/g, '');

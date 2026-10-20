@@ -96,3 +96,28 @@ test('moving a card to another column says where it went and can be undone', asy
 	await expect(todo.getByRole('button', { name: 'Open Moving card' })).toBeVisible();
 	await expect(doing.getByRole('button', { name: 'Open Moving card' })).toBeHidden();
 });
+
+test('a label is created from the + in the sidebar, not from the filter field', async ({
+	page
+}) => {
+	await openEmptyApp(page);
+	const labels = page.getByRole('region', { name: 'Labels' });
+	// A short list has no filter field to mistake for a place to create.
+	await expect(labels.getByRole('textbox', { name: 'Filter labels' })).toHaveCount(0);
+
+	await labels.getByRole('button', { name: 'New label' }).click();
+	const name = labels.getByRole('textbox', { name: 'New label name' });
+	await expect(name).toBeFocused();
+	await name.fill('Reading');
+	await name.press('Escape');
+	await expect(name).toHaveCount(0);
+	await expect(labels.getByRole('button', { name: 'Reading', exact: true })).toHaveCount(0);
+
+	await labels.getByRole('button', { name: 'New label' }).click();
+	await labels.getByRole('textbox', { name: 'New label name' }).fill('Reading');
+	await page.keyboard.press('Enter');
+	// The new label opens; empty, it shows its empty state rather than a heading.
+	await expect(page).toHaveURL(/\/label\//);
+	await expect(page).toHaveTitle(/^Reading/);
+	await expect(labels.getByRole('button', { name: 'Reading', exact: true })).toBeVisible();
+});

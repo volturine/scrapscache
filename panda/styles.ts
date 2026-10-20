@@ -2348,9 +2348,8 @@ export const sidebarStyles = {
 		fontSize: 'body',
 		_placeholder: mutedText
 	}),
-	createButton: css({
-		color: 'scrapscache.accent'
-	}),
+	// Under the create row, where a sighted eye lands after the field.
+	createHint: css({ px: 'lg', pb: 'xs', textStyle: 'caption', ...mutedText }),
 	labelList: css({
 		overflowY: 'auto',
 		minH: 0,

@@ -98,10 +98,14 @@
 {#snippet bodyLine(seg: BodySegment)}
 	{#if seg.type === 'check'}
 		{@const check = checklist({ checked: seg.checked, indented: seg.indent > 0 })}
+		<!-- The box is painted, so the row itself says whether the item is done. -->
 		<div
 			class={body.row}
 			data-check-line={seg.lineIndex}
 			style={seg.indent > 0 ? `padding-left: ${seg.indent * 1.25}rem` : undefined}
+			role="checkbox"
+			aria-checked={seg.checked}
+			aria-readonly="true"
 		>
 			<span class={[check.root, body.check]} aria-hidden="true"></span>
 			<span

@@ -85,6 +85,15 @@ describe('NoteBodyDisplay inline Markdown', () => {
 		expect(container.querySelector('input[type="checkbox"]')).toBeNull();
 	});
 
+	it('tells assistive technology which tasks are done', () => {
+		const { getByRole } = render(NoteBodyDisplay, {
+			props: { note: note({ body: '- [x] milk\n- [ ] eggs' }) }
+		});
+
+		expect(getByRole('checkbox', { name: 'milk' }).getAttribute('aria-checked')).toBe('true');
+		expect(getByRole('checkbox', { name: 'eggs' }).getAttribute('aria-checked')).toBe('false');
+	});
+
 	it('reveals raw delimiters and syntax colors when enabled', () => {
 		uiStore.rawMarkdown = true;
 		const { container } = render(NoteBodyDisplay, {

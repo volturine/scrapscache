@@ -108,12 +108,24 @@ test('a checklist line toggles from the body', async ({ page }) => {
 	const body = editor(page).getByRole('textbox', { name: 'Note body' });
 	await expect(body).toContainText('milk');
 	await expect(body).toContainText('eggs');
-	const toggles = editor(page).getByRole('button', { name: 'Toggle item' });
+	const toggles = editor(page).getByRole('checkbox', { name: 'Toggle item' });
 	await expect(toggles).toHaveCount(2);
-	await expect(toggles.first()).toHaveAttribute('aria-pressed', 'false');
+	await expect(toggles.first()).toHaveAttribute('aria-checked', 'false');
 	await toggles.first().click();
-	await expect(toggles.first()).toHaveAttribute('aria-pressed', 'true');
-	await expect(toggles.last()).toHaveAttribute('aria-pressed', 'false');
+	await expect(toggles.first()).toHaveAttribute('aria-checked', 'true');
+	await expect(toggles.last()).toHaveAttribute('aria-checked', 'false');
+
+	// The card tells assistive technology the same: each item, with its state.
+	await editor(page).getByRole('button', { name: 'Close note' }).click();
+	const card = noteCard(page, 'Checklist');
+	await expect(card.getByRole('checkbox', { name: 'milk' })).toHaveAttribute(
+		'aria-checked',
+		'true'
+	);
+	await expect(card.getByRole('checkbox', { name: 'eggs' })).toHaveAttribute(
+		'aria-checked',
+		'false'
+	);
 });
 
 test('a checked row dims its text and tokens, not the whole row', async ({ page }) => {
@@ -121,9 +133,9 @@ test('a checked row dims its text and tokens, not the whole row', async ({ page 
 	await createNote(page, 'Dimmed', '[ ] milk `oat`\n[ ] eggs');
 	await noteCard(page, 'Dimmed').click();
 	const sheet = editor(page);
-	const toggle = sheet.getByRole('button', { name: 'Toggle item' }).first();
+	const toggle = sheet.getByRole('checkbox', { name: 'Toggle item' }).first();
 	await toggle.click();
-	await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+	await expect(toggle).toHaveAttribute('aria-checked', 'true');
 
 	const colour = (target: Locator) => target.evaluate((element) => getComputedStyle(element).color);
 	// A colour token as this note's surface resolves it.

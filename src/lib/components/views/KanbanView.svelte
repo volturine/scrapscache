@@ -8,13 +8,13 @@
 		columnNotes,
 		defaultBacklogFilter,
 		insertIntoOrder,
-		moveNoteLabels,
 		noteFilterLabelIds,
 		slotPosition,
 		type BacklogFilter,
 		type KanbanColumn
 	} from '#lib/kanban.js';
 	import { kanbanDrag, type KanbanDropTarget } from '#lib/kanbanDrag.svelte.js';
+	import { moveCardToColumn } from '#lib/kanbanMove.js';
 	import { portalToAppOverlay, portalToBody } from '#lib/appViewport.js';
 	import { useEditorActions } from '#lib/editorContext.js';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
@@ -216,17 +216,6 @@
 		return parts.length ? parts.join(', ') : 'Nothing selected';
 	}
 
-	function moveNote(noteId: string, sourceColumnId: string, destinationColumnId: string) {
-		if (sourceColumnId === destinationColumnId) return;
-		const source = board.columns.find((column) => column.id === sourceColumnId);
-		const destination = board.columns.find((column) => column.id === destinationColumnId);
-		const note = notesStore.notes.find((candidate) => candidate.id === noteId);
-		if (!source || !destination || !note) return;
-		notesStore.updateNote(note.id, {
-			labels: moveNoteLabels(note.labels, source.labelId, destination.labelId)
-		});
-	}
-
 	/**
 	 * The cards a column shows while a drag is in flight, plus the slot the
 	 * carried one would drop into. The slot is an item of its own so the whole
@@ -282,8 +271,20 @@
 			noteId,
 			target.index
 		);
-		if (target.columnId !== sourceColumnId) moveNote(noteId, sourceColumnId, target.columnId);
-		kanbanStore.placeCard(board.id, noteId, sourceColumnId, target.columnId, order);
+		const source = board.columns.find((column) => column.id === sourceColumnId);
+		// A reorder within one column changes no label, so it is not recorded.
+		if (target.columnId === sourceColumnId || !source) {
+			kanbanStore.placeCard(board.id, noteId, sourceColumnId, target.columnId, order);
+			return;
+		}
+		moveCardToColumn({
+			boardId: board.id,
+			noteId,
+			source,
+			destination,
+			order,
+			message: `Moved to ${columnName(destination)}`
+		});
 	}
 </script>
 

@@ -29,6 +29,7 @@ afterEach(() => {
 	window.matchMedia = desktopMatchMedia;
 	uiStore.setView('notes');
 	uiStore.searchOpen = false;
+	uiStore.clearSearch();
 	uiStore.sidebarOpen = true;
 	notesStore.labels = [];
 	navigation.goto.mockClear();
@@ -66,6 +67,20 @@ describe('the top bar on a phone', () => {
 		expect(uiStore.searchInput).toBe('');
 		await waitFor(() => expect(screen.queryByRole('searchbox')).toBeNull());
 		expect(document.querySelector('[data-view-title]')?.textContent).toBe('Notes');
+	});
+
+	it('keeps a query typed on a wide window in view when the window narrows to a phone', async () => {
+		// Typed before the breakpoint changed: the phone bar would otherwise hide it.
+		window.matchMedia = desktopMatchMedia;
+		uiStore.setSearchInput('Groceries');
+		uiStore.search = 'Groceries';
+		phone();
+		render(Topbar);
+
+		const field = await screen.findByRole('searchbox', { name: 'Search notes' });
+		expect((field as HTMLInputElement).value).toBe('Groceries');
+		expect(uiStore.searchOpen).toBe(true);
+		expect(screen.getByRole('button', { name: 'Close search' })).toBeTruthy();
 	});
 
 	it('puts Labels, Archive and Trash under More, ahead of the settings', async () => {

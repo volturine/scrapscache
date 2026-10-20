@@ -437,6 +437,27 @@ test('a search that finds nothing in Notes looks in Archive with the same query'
 	await expect(noteCard(page, 'Retro board')).toBeVisible();
 });
 
+test('a query typed on a wide window stays in view when the window narrows to a phone', async ({
+	page
+}) => {
+	await page.setViewportSize({ width: 1024, height: 700 });
+	await openEmptyApp(page);
+	await createNote(page, 'Groceries');
+	await createNote(page, 'Reading list');
+	await page.getByPlaceholder('Search', { exact: true }).fill('Groceries');
+	await expect(noteCard(page, 'Reading list')).toBeHidden();
+
+	await page.setViewportSize({ width: 390, height: 844 });
+	// The field, its query and its clear control are still there: the feed is filtered.
+	const search = page.getByRole('searchbox', { name: 'Search notes' });
+	await expect(search).toHaveValue('Groceries');
+	await expect(
+		page.getByRole('navigation', { name: 'Main' }).getByRole('button', { name: 'Search' })
+	).toHaveAttribute('aria-pressed', 'true');
+	await page.getByRole('button', { name: 'Close search' }).click();
+	await expect(noteCard(page, 'Reading list')).toBeVisible();
+});
+
 test.describe('on a phone', () => {
 	test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
 

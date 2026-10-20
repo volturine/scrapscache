@@ -72,6 +72,15 @@
 			: VIEW_TITLES[uiStore.view]
 	);
 
+	/**
+	 * A query typed on a wide window must stay in view when the window narrows to the
+	 * phone layout: the Search tab turns on with it, so the field and its clear control
+	 * show for as long as it filters the notes.
+	 */
+	$effect(() => {
+		if (mobile.current && uiStore.searchInput && !uiStore.searchOpen) uiStore.searchOpen = true;
+	});
+
 	/** The Search tab turned on: the field appears and takes the keyboard. */
 	$effect(() => {
 		if (!uiStore.searchOpen || !mobile.current) return;

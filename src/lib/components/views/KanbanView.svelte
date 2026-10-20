@@ -15,6 +15,7 @@
 	} from '#lib/kanban.js';
 	import { kanbanDrag, type KanbanDropTarget } from '#lib/kanbanDrag.svelte.js';
 	import { moveCardToColumn } from '#lib/kanbanMove.js';
+	import { applyBoardTemplate, BOARD_TEMPLATES, labelNamed } from '#lib/kanbanTemplates.js';
 	import { portalToAppOverlay, portalToBody } from '#lib/appViewport.js';
 	import { useEditorActions } from '#lib/editorContext.js';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
@@ -83,6 +84,36 @@
 	let backlogFilterOpen = $state(false);
 	let noteFilterOpen = $state(false);
 	let tagPickerOpen = $state(false);
+	/** The "New label…" prompt from the add-column menu and the starter panel. */
+	let newLabelOpen = $state(false);
+	let newLabelName = $state('');
+	let newLabelInput = $state<HTMLInputElement | null>(null);
+	/** Anchored to the top, so a phone keyboard never covers the field or Create. */
+	const newLabelDialog = dialog({ size: 'sm', presentation: 'appOverlay' });
+	/** A board with only its Backlog: the first run, where the panel explains and offers a start. */
+	const noLabelColumns = $derived(board.columns.every((column) => column.labelId === null));
+
+	/** What a column lists, in one line under its name: the model is said where it is used. */
+	function columnCaption(column: KanbanColumn): string {
+		return column.labelId === null ? 'Notes in no column' : `Notes labelled ${columnName(column)}`;
+	}
+
+	function openNewLabel() {
+		tagPickerOpen = false;
+		newLabelName = '';
+		newLabelOpen = true;
+	}
+
+	/** Make the typed label and give the board a column for it; an existing name is reused. */
+	function createLabelColumn() {
+		// The field's own value: a fast tap on Create can land before the binding settles.
+		const name = (newLabelInput?.value ?? newLabelName).trim();
+		if (!name) return;
+		const label = labelNamed(name);
+		if (label) kanbanStore.addTagColumn(board.id, label.id);
+		newLabelOpen = false;
+		newLabelName = '';
+	}
 
 	const menuItemClass = menuItem({ density: 'compact' });
 	const noteFilterActions = [
@@ -415,9 +446,12 @@
 					aria-label={`${columnName(column)} ${column.labelId === null ? 'Kanban' : 'label'} column`}
 				>
 					<div class={k.colHeader}>
-						<h2 class={k.colTitle}>
-							{columnName(column)}
-						</h2>
+						<div class={k.colTitleGroup}>
+							<h2 class={k.colTitle}>
+								{columnName(column)}
+							</h2>
+							<p class={k.colCaption}>{columnCaption(column)}</p>
+						</div>
 						{#if column.labelId === null}
 							<button
 								type="button"
@@ -536,35 +570,124 @@
 				</section>
 			{/each}
 
-			{#if unusedTags.length > 0}
-				<div class={k.addColWrap}>
-					<Menu.Root bind:open={tagPickerOpen} positioning={{ placement: 'bottom-start' }}>
-						<Menu.Trigger
-							class={button({ variant: 'dashed', size: 'md' })}
-							aria-label="Add a label column"
+			{#if noLabelColumns}
+				<!-- The first run: say what columns are, and offer a start. -->
+				<section class={k.starter} aria-labelledby="kanban-starter-title">
+					<h2 id="kanban-starter-title" class={k.starterTitle}>Boards group your notes by label</h2>
+					<p class={k.starterText}>
+						Each column is a label. Moving a card to a column puts that label on the note.
+					</p>
+					<div class={k.starterChoices}>
+						{#each BOARD_TEMPLATES as template (template.id)}
+							<button
+								type="button"
+								class={button({ variant: 'secondary', size: 'md' })}
+								onclick={() => applyBoardTemplate(board.id, template.names)}
+							>
+								{template.names.join(' · ')}
+							</button>
+						{/each}
+						<button
+							type="button"
+							class={button({ variant: 'ghost', size: 'md' })}
+							onclick={() => (tagPickerOpen = true)}
 						>
-							<span>+ Add label column</span>
-							<ChevronDown size={14} aria-hidden="true" />
-						</Menu.Trigger>
-						<Menu.Positioner class={k.tagPickerPositioner}>
-							<Menu.Content class={cx(popover, k.tagPickerContent)} aria-label="Labels">
-								{#each unusedTags as label (label.id)}
-									<Menu.Item
-										value={label.id}
-										onSelect={() => addTagColumn(label.id)}
-										class={k.menuItem}
-									>
-										{label.name}
-									</Menu.Item>
-								{/each}
-							</Menu.Content>
-						</Menu.Positioner>
-					</Menu.Root>
-				</div>
+							Choose from my labels…
+						</button>
+					</div>
+				</section>
 			{/if}
+			<div class={k.addColWrap}>
+				<Menu.Root bind:open={tagPickerOpen} positioning={{ placement: 'bottom-start' }}>
+					<Menu.Trigger
+						class={button({ variant: 'dashed', size: 'md' })}
+						aria-label="Add a label column"
+					>
+						<span>+ Add label column</span>
+						<ChevronDown size={14} aria-hidden="true" />
+					</Menu.Trigger>
+					<Menu.Positioner class={k.tagPickerPositioner}>
+						<Menu.Content class={cx(popover, k.tagPickerContent)} aria-label="Add a label column">
+							<Menu.Item value="new-label" onSelect={openNewLabel} class={k.menuItem}>
+								<Plus size={14} aria-hidden="true" />
+								New label…
+							</Menu.Item>
+							{#each unusedTags as label (label.id)}
+								<Menu.Item
+									value={label.id}
+									onSelect={() => addTagColumn(label.id)}
+									class={k.menuItem}
+								>
+									{label.name}
+								</Menu.Item>
+							{/each}
+						</Menu.Content>
+					</Menu.Positioner>
+				</Menu.Root>
+			</div>
 		</div>
 	</div>
 </div>
+
+{#if newLabelOpen}
+	<Dialog.Root
+		open
+		onOpenChange={(details) => !details.open && (newLabelOpen = false)}
+		preventScroll={false}
+	>
+		<div {@attach portalToAppOverlay} class={newLabelDialog.portal} role="presentation">
+			<Dialog.Backdrop class={newLabelDialog.backdrop} />
+			<Dialog.Positioner class={newLabelDialog.positioner}>
+				<Dialog.Content class={newLabelDialog.panel}>
+					<form
+						onsubmit={(event) => {
+							event.preventDefault();
+							createLabelColumn();
+						}}
+					>
+						<div class={newLabelDialog.header}>
+							<Dialog.Title class={newLabelDialog.title}>New label column</Dialog.Title>
+						</div>
+						<div class={newLabelDialog.body}>
+							<p class={newLabelDialog.description}>
+								The label is created and gets a column on this board.
+							</p>
+							<input
+								{@attach focusAndSelect}
+								bind:this={newLabelInput}
+								bind:value={newLabelName}
+								type="text"
+								aria-label="Label name"
+								placeholder="Label name"
+								class={cx(inputRecipe({ variant: 'outline', size: 'md' }), k.newLabelInput)}
+							/>
+							<div class={newLabelDialog.footer}>
+								<button
+									type="button"
+									onclick={() => (newLabelOpen = false)}
+									class={button({ variant: 'quiet', size: 'md' })}
+								>
+									Cancel
+								</button>
+								<!-- A touch press must not blur the field: the keyboard would start closing. -->
+								<button
+									type="submit"
+									disabled={!newLabelName.trim()}
+									onpointerdown={(event) => {
+										if (event.pointerType === 'touch') event.preventDefault();
+									}}
+									class={button({ variant: 'primary', size: 'md' })}
+								>
+									Create label
+								</button>
+							</div>
+						</div>
+					</form>
+				</Dialog.Content>
+			</Dialog.Positioner>
+		</div>
+	</Dialog.Root>
+{/if}
 
 {#if draggedNote}
 	<!-- Portalled to the document: clientX/clientY are viewport coordinates, and

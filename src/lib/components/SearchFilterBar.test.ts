@@ -4,6 +4,7 @@ import type { Note } from '#lib/types.js';
 import { notesStore } from '#lib/stores/notes.svelte.js';
 import { uiStore } from '#lib/stores/ui.svelte.js';
 import NotesHomeView from './views/NotesHomeView.svelte';
+import KanbanCardBody from './KanbanCardBody.svelte';
 
 const navigation = vi.hoisted(() => ({ goto: vi.fn(async () => {}) }));
 vi.mock('$app/navigation', () => navigation);
@@ -170,6 +171,43 @@ describe('why a card matched', () => {
 		const marks = [...card.querySelectorAll('mark')].map((mark) => mark.textContent);
 		expect(marks).toEqual(['Tram', 'Tram', 'tram', 'Tram']);
 		expect(card.querySelector('h3')?.textContent).toBe('Tram day');
+	});
+
+	it('is marked across token boundaries in Markdown and in code', async () => {
+		notesStore.notes = [
+			note('Code', { body: '```bash\necho"Trip"\n```' }),
+			note('Bold', { body: 'see **Tram** 28' })
+		];
+		uiStore.setView('notes', null, 'o"Tr');
+		render(NotesHomeView);
+		const code = screen
+			.getAllByRole('article')
+			.find((card) => card.querySelector('h3')?.textContent === 'Code')!;
+		// The tokenizer splits the line into echo and "Trip"; the match spans both.
+		expect([...code.querySelectorAll('mark')].map((mark) => mark.textContent)).toEqual([
+			'o',
+			'"Tr'
+		]);
+
+		uiStore.search = '**Tram**';
+		await waitFor(() => {
+			const bold = screen
+				.getAllByRole('article')
+				.find((card) => card.querySelector('h3')?.textContent === 'Bold')!;
+			expect([...bold.querySelectorAll('mark')].map((mark) => mark.textContent).join('')).toBe(
+				'**Tram**'
+			);
+		});
+	});
+
+	it('is marked in a Kanban card found by its label alone', async () => {
+		notesStore.labels = [{ id: 'tram', name: 'Trams', createdAt: 1, updatedAt: 1 }];
+		notesStore.notes = [note('Lisbon', { body: 'a day out', labels: ['tram'] })];
+		uiStore.setView('kanban', null, 'tram');
+		const { container } = render(KanbanCardBody, { props: { note: notesStore.notes[0] } });
+		expect([...container.querySelectorAll('mark')].map((mark) => mark.textContent)).toEqual([
+			'Tram'
+		]);
 	});
 
 	it('is not marked once the search is cleared', async () => {

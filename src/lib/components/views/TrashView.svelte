@@ -42,7 +42,7 @@
 
 <div class={viewPage}>
 	<h1 class={viewHeading}>Trash</h1>
-	{#if search && trashed.length > 0}
+	{#if search}
 		<SearchFilterBar here="trash" count={visible.length} />
 	{/if}
 	{#if trashed.length === 0}

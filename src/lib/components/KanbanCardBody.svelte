@@ -178,7 +178,7 @@
 			}}
 		>
 			{#each labelsForNote as label (label.id)}
-				<span class={badge()}>{label.name}</span>
+				<span class={badge()}>{@render marked(label.name)}</span>
 			{/each}
 		</div>
 	{/if}

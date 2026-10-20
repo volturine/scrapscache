@@ -156,6 +156,35 @@ describe('LabelView search', () => {
 	});
 });
 
+describe('the chips on an empty place', () => {
+	it('stay with a query carried into an archive that holds nothing', () => {
+		notesStore.notes = [note({ id: 'n', title: 'Welcome' })];
+		uiStore.setView('archive', null, 'Welcome', { label: null, color: 'blue', type: null });
+		render(ArchiveView);
+
+		// The In chip is the way back to Notes with the query and chips intact.
+		expect(screen.getByRole('button', { name: 'In: Archive' })).toBeTruthy();
+		expect(screen.getByRole('button', { name: 'Colour: Blue' })).toBeTruthy();
+		expect(screen.getByRole('button', { name: 'Clear filters' })).toBeTruthy();
+		expect(document.querySelector('[data-search-count]')?.textContent).toBe('0 notes');
+	});
+
+	it('stay with a query in a trash that holds nothing, and on a label with no notes', () => {
+		uiStore.setView('trash', null, 'retro');
+		const trash = render(TrashView);
+		expect(screen.getByRole('button', { name: 'In: Trash' })).toBeTruthy();
+		trash.unmount();
+
+		notesStore.labels = [{ id: 'label-1', name: 'Shopping', createdAt: 1, updatedAt: 1 }];
+		searchIn('label', 'retro', 'label-1');
+		render(LabelView);
+		expect(screen.getByRole('button', { name: 'Label' })).toBeTruthy();
+		expect(
+			screen.getByText('Create a note to start collecting ideas under this label.')
+		).toBeTruthy();
+	});
+});
+
 describe('a search in an empty view', () => {
 	it.each([
 		['archive', ArchiveView, 'Archive notes you want to keep without showing them in Notes.'],

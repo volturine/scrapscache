@@ -31,7 +31,7 @@
 
 <div class={viewPage}>
 	<h1 class={viewHeading}>Archive</h1>
-	{#if search && archived.length > 0}
+	{#if search}
 		<SearchFilterBar here="archive" count={visible.length} />
 	{/if}
 	{#if archived.length === 0}

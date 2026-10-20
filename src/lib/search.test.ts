@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { Note } from './types.js';
 import {
 	activeFilterCount,
+	markTokens,
+	matchRanges,
 	matchSegments,
 	matchesFilters,
 	NO_FILTERS,
@@ -32,6 +34,13 @@ describe('noteHasType', () => {
 		expect(noteHasType(note({ body: 'plain\n- [x] done' }), 'checklist')).toBe(true);
 		expect(noteHasType(note({ body: '[ ] todo' }), 'checklist')).toBe(true);
 		expect(noteHasType(note({ body: '- a bullet' }), 'checklist')).toBe(false);
+	});
+
+	it('does not take a task-shaped line inside a code fence for a checklist', () => {
+		expect(noteHasType(note({ body: '```\n[ ] example only\n```' }), 'checklist')).toBe(false);
+		expect(noteHasType(note({ body: '```\n[ ] example\n```\n- [ ] real' }), 'checklist')).toBe(
+			true
+		);
 	});
 
 	it('tells photos from drawings', () => {
@@ -91,6 +100,47 @@ describe('matchSegments', () => {
 
 	it('leaves text whole when nothing matches', () => {
 		expect(matchSegments('plain', 'zzz')).toEqual([{ text: 'plain', match: false }]);
+	});
+
+	it('marks the right characters after a letter that grows when lowercased', () => {
+		// İ lowercases to two code units; the x after it is still the x.
+		expect(matchSegments('İx', 'x')).toEqual([
+			{ text: 'İ', match: false },
+			{ text: 'x', match: true }
+		]);
+		expect(matchRanges('aİbİb', 'b')).toEqual([
+			{ start: 2, end: 3 },
+			{ start: 4, end: 5 }
+		]);
+		expect(matchSegments('İstanbul', 'i̇s')).toEqual([
+			{ text: 'İs', match: true },
+			{ text: 'tanbul', match: false }
+		]);
+	});
+});
+
+describe('markTokens', () => {
+	it('marks a match that crosses token boundaries in every token it touches', () => {
+		const tokens = [{ text: 'echo' }, { text: '"Trip"' }];
+		expect(markTokens(tokens, 'o"Tr').map((entry) => entry.segments)).toEqual([
+			[
+				{ text: 'ech', match: false },
+				{ text: 'o', match: true }
+			],
+			[
+				{ text: '"Tr', match: true },
+				{ text: 'ip"', match: false }
+			]
+		]);
+	});
+
+	it('marks a whole marked-up run, markers and all', () => {
+		const tokens = [{ text: '**' }, { text: 'Tram' }, { text: '**' }];
+		expect(markTokens(tokens, '**Tram**').map((entry) => entry.segments)).toEqual([
+			[{ text: '**', match: true }],
+			[{ text: 'Tram', match: true }],
+			[{ text: '**', match: true }]
+		]);
 	});
 });
 

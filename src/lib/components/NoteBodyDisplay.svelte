@@ -22,7 +22,7 @@
 	} from '#lib/markdown.js';
 	import { uiStore } from '#lib/stores/ui.svelte.js';
 	import { tableScroll } from '#lib/tableScroll.js';
-	import { matchSegments } from '#lib/search.js';
+	import { markTokens, type MatchSegment } from '#lib/search.js';
 	import { searchStyles } from '$panda/styles';
 
 	let { note }: { note: Note } = $props();
@@ -80,9 +80,11 @@
 	const p = photoPreview.display;
 </script>
 
-<!-- The committed search, marked in the text so a card shows why it was found. -->
-{#snippet marked(text: string)}
-	{#each matchSegments(text, uiStore.search) as segment, index (index)}
+<!-- The committed search, marked in the text so a card shows why it was found. The
+     match is found over a whole run of tokens, so one crossing a token boundary is
+     marked in every token it touches. -->
+{#snippet marked(segments: MatchSegment[])}
+	{#each segments as segment, index (index)}
 		{#if segment.match}<mark class={searchStyles.mark}>{segment.text}</mark
 			>{:else}{segment.text}{/if}
 	{/each}
@@ -91,12 +93,12 @@
 {#snippet inlineContent(text: string)}
 	<span class:markdown-raw={uiStore.rawMarkdown}>
 		{#if text}
-			{@const inlineTokens = parseInlineMarkdown(text)}
-			{#each inlineTokens as token, tokenIndex (tokenIndex)}
+			{@const inlineTokens = markTokens(parseInlineMarkdown(text), uiStore.search)}
+			{#each inlineTokens as { token, segments }, tokenIndex (tokenIndex)}
 				<span
 					class={markdownTokenClass(token, uiStore.rawMarkdown)}
 					data-markdown-token={token.kind === 'marker' ? token.marker : token.styles.join(' ')}
-					>{@render marked(token.text)}</span
+					>{@render marked(segments)}</span
 				>
 			{/each}
 		{:else}
@@ -187,10 +189,10 @@
 				data-language={block.language || undefined}><code
 					>{#each codeLines as codeLine, codeLineIndex (`${block.lineIndex}-${codeLineIndex}`)}<span
 							class="markdown-code-line"
-							>{#each highlightCodeLine(codeLine, block.language) as token, tokenIndex (tokenIndex)}{#if token.kind === 'plain'}{@render marked(
-										token.text
+							>{#each markTokens(highlightCodeLine(codeLine, block.language), uiStore.search) as { token, segments }, tokenIndex (tokenIndex)}{#if token.kind === 'plain'}{@render marked(
+										segments
 									)}{:else}<span class="markdown-code-token-{token.kind}"
-										>{@render marked(token.text)}</span
+										>{@render marked(segments)}</span
 									>{/if}{/each}</span
 						>{/each}</code
 				></pre>

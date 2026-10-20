@@ -49,6 +49,11 @@
 			href={resolve('')}
 		/>
 	{:else if notes.length === 0}
+		{#if search}
+			<div class={shell}>
+				<SearchFilterBar here="label" count={0} />
+			</div>
+		{/if}
 		<EmptyState
 			icon={Tag}
 			description="Create a note to start collecting ideas under this label."

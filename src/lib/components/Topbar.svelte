@@ -16,6 +16,8 @@
 	import SyncModalUnavailable from './SyncModalUnavailable.svelte';
 	import Tooltip from './Tooltip.svelte';
 	import SettingsMenu from './SettingsMenu.svelte';
+	import SelectionBar from './SelectionBar.svelte';
+	import { selectionStore } from '#lib/stores/selection.svelte.js';
 	import BackupPassphraseDialog from './BackupPassphraseDialog.svelte';
 	import BackupImportModeDialog from './BackupImportModeDialog.svelte';
 	import ImportGuideDialog from './ImportGuideDialog.svelte';
@@ -53,7 +55,7 @@
 	let syncStatus = $derived(resolveSyncStatus(syncStore.lastError, syncStore.usage));
 	let syncControlLabel = $derived(SYNC_CONTROL_LABEL[syncStatus]);
 
-	let searchField: HTMLInputElement | undefined;
+	let searchField = $state<HTMLInputElement | undefined>();
 
 	function openPairingLink() {
 		const found = pairingCodeFromUrl(window.location.href);
@@ -218,98 +220,103 @@
 	})}
 	onpointerdown={closeNote}
 >
-	<Tooltip content="Toggle sidebar">
-		<button
-			class={iconButton({ variant: 'ghost', size: { base: 'compact', sm: 'standard' } })}
-			title="Toggle sidebar"
-			onclick={() => uiStore.toggleSidebar()}
-			aria-label="Toggle sidebar"
-		>
-			<MenuIcon class={iconMd} aria-hidden="true" />
-		</button>
-	</Tooltip>
+	{#if selectionStore.active}
+		<!-- The bar works on the picked notes until the selection is let go. -->
+		<SelectionBar />
+	{:else}
+		<Tooltip content="Toggle sidebar">
+			<button
+				class={iconButton({ variant: 'ghost', size: { base: 'compact', sm: 'standard' } })}
+				title="Toggle sidebar"
+				onclick={() => uiStore.toggleSidebar()}
+				aria-label="Toggle sidebar"
+			>
+				<MenuIcon class={iconMd} aria-hidden="true" />
+			</button>
+		</Tooltip>
 
-	<div
-		role="search"
-		class={hstack({
-			h: '2.5rem',
-			minH: '2.5rem',
-			maxH: '2.5rem',
-			minW: 0,
-			flex: '1',
-			rounded: 'pill',
-			borderWidth: 'hairline',
-			borderColor: 'scrapscache.border',
-			bg: 'scrapscache.surface',
-			px: { base: 'sm', sm: 'md' },
-			gap: { base: 'xs', sm: 'sm' }
-		})}
-	>
-		<Search class={cx(iconSm, styles.searchIcon)} aria-hidden="true" />
-		<input
-			bind:this={searchField}
-			value={uiStore.searchInput}
-			oninput={(event) => uiStore.setSearchInput(event.currentTarget.value)}
-			type="search"
-			placeholder="Search"
-			aria-label="Search notes"
-			class={cx(input({ variant: 'unstyled' }), styles.searchInput)}
-		/>
-		{#if uiStore.searchInput}
-			<!-- The button goes with the query, so focus moves back to the field rather than the page. -->
+		<div
+			role="search"
+			class={hstack({
+				h: '2.5rem',
+				minH: '2.5rem',
+				maxH: '2.5rem',
+				minW: 0,
+				flex: '1',
+				rounded: 'pill',
+				borderWidth: 'hairline',
+				borderColor: 'scrapscache.border',
+				bg: 'scrapscache.surface',
+				px: { base: 'sm', sm: 'md' },
+				gap: { base: 'xs', sm: 'sm' }
+			})}
+		>
+			<Search class={cx(iconSm, styles.searchIcon)} aria-hidden="true" />
+			<input
+				bind:this={searchField}
+				value={uiStore.searchInput}
+				oninput={(event) => uiStore.setSearchInput(event.currentTarget.value)}
+				type="search"
+				placeholder="Search"
+				aria-label="Search notes"
+				class={cx(input({ variant: 'unstyled' }), styles.searchInput)}
+			/>
+			{#if uiStore.searchInput}
+				<!-- The button goes with the query, so focus moves back to the field rather than the page. -->
+				<button
+					type="button"
+					class={clearButton}
+					onclick={() => {
+						uiStore.clearSearch();
+						searchField?.focus();
+					}}
+					aria-label="Clear search"
+				>
+					<X class={iconSm} aria-hidden="true" />
+				</button>
+			{/if}
+		</div>
+
+		<Tooltip content={syncControlLabel}>
 			<button
 				type="button"
-				class={clearButton}
+				class={iconButton({ variant: 'ghost', size: { base: 'compact', sm: 'standard' } })}
+				title={syncControlLabel}
 				onclick={() => {
-					uiStore.clearSearch();
-					searchField?.focus();
+					pairingCode = '';
+					settingsOpen = false;
+					uiStore.syncOpen = true;
 				}}
-				aria-label="Clear search"
+				aria-label={syncControlLabel}
+				data-scrapscache-sync-control
 			>
-				<X class={iconSm} aria-hidden="true" />
-			</button>
-		{/if}
-	</div>
-
-	<Tooltip content={syncControlLabel}>
-		<button
-			type="button"
-			class={iconButton({ variant: 'ghost', size: { base: 'compact', sm: 'standard' } })}
-			title={syncControlLabel}
-			onclick={() => {
-				pairingCode = '';
-				settingsOpen = false;
-				uiStore.syncOpen = true;
-			}}
-			aria-label={syncControlLabel}
-			data-scrapscache-sync-control
-		>
-			<!-- The spin turns this span, not the icon: Safari treats a transform on
+				<!-- The spin turns this span, not the icon: Safari treats a transform on
 			     an svg root as its own user space, so the icon sat still there. -->
-			<span
-				class={[
-					iconMd,
-					styles.syncIcon,
-					(notesStore.syncing || importingBackup) && 'scrapscache-sync-icon-active'
-				]}
-				data-scrapscache-sync-spinner
-			>
-				<Cloud
-					class={[iconMd, syncTone[syncStatus]]}
-					data-scrapscache-sync-icon
-					aria-hidden="true"
-				/>
-			</span>
-		</button>
-	</Tooltip>
+				<span
+					class={[
+						iconMd,
+						styles.syncIcon,
+						(notesStore.syncing || importingBackup) && 'scrapscache-sync-icon-active'
+					]}
+					data-scrapscache-sync-spinner
+				>
+					<Cloud
+						class={[iconMd, syncTone[syncStatus]]}
+						data-scrapscache-sync-icon
+						aria-hidden="true"
+					/>
+				</span>
+			</button>
+		</Tooltip>
 
-	<SettingsMenu
-		bind:open={settingsOpen}
-		onExport={startBackupExport}
-		onImport={startBackupImport}
-		importing={importingBackup}
-		importError={backupImportError}
-	/>
+		<SettingsMenu
+			bind:open={settingsOpen}
+			onExport={startBackupExport}
+			onImport={startBackupImport}
+			importing={importingBackup}
+			importError={backupImportError}
+		/>
+	{/if}
 </header>
 
 <svelte:window

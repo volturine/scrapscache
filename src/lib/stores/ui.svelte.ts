@@ -1,5 +1,6 @@
 // Rune-based UI store: sidebar open, dark mode, density, Markdown mode, active view, search.
 import { writeMirror } from '#lib/db/idb.js';
+import { selectionStore } from './selection.svelte.js';
 
 export type Layout = 'grid' | 'list';
 export type Theme = 'system' | 'light' | 'dark';
@@ -250,6 +251,7 @@ export class UIStore {
 		this.view = view;
 		this.activeLabelId = labelId;
 		this.clearSearch();
+		selectionStore.clear();
 		// A carried query filters the new view at once, without the typing debounce.
 		this.searchInput = search;
 		this.search = search;

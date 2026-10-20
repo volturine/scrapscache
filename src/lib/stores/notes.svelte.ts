@@ -591,6 +591,109 @@ export class NotesStore {
 		this.updateNote(noteId, { labels });
 	}
 
+	// Many at once ---------------------------------------------------------
+	/** "2 notes archived": one step on the undo bar for the whole selection. */
+	private static many(count: number, did: string): string {
+		return `${count} ${count === 1 ? 'note' : 'notes'} ${did}`;
+	}
+
+	private present(ids: readonly string[]): Note[] {
+		const wanted = new Set(ids);
+		return this.notes.filter((note) => wanted.has(note.id));
+	}
+
+	/** Apply `after` to every note and remember each one's `before` under one undo step. */
+	private changeMany(
+		ids: readonly string[],
+		message: string,
+		fields: (note: Note) => { before: NotePatch; after: NotePatch } | null
+	): void {
+		const changes = this.present(ids).flatMap((note) => {
+			const change = fields(note);
+			return change ? [{ id: note.id, ...change }] : [];
+		});
+		if (changes.length === 0) return;
+		for (const change of changes) this.updateNote(change.id, change.after);
+		actionUndo.push({
+			message,
+			noteIds: changes.map((change) => change.id),
+			undo: () => {
+				for (const change of changes) this.updateNote(change.id, change.before);
+			},
+			redo: () => {
+				for (const change of changes) this.updateNote(change.id, change.after);
+			}
+		});
+	}
+
+	archiveNotes(ids: readonly string[]): void {
+		this.changeMany(ids, NotesStore.many(ids.length, 'archived'), (note) =>
+			note.archived
+				? null
+				: {
+						before: { archived: false, pinned: note.pinned },
+						after: { archived: true, pinned: false }
+					}
+		);
+	}
+
+	trashNotes(ids: readonly string[]): void {
+		this.changeMany(ids, NotesStore.many(ids.length, 'moved to trash'), (note) =>
+			note.trashed
+				? null
+				: {
+						before: { trashed: false, trashedAt: note.trashedAt, pinned: note.pinned },
+						after: { trashed: true, trashedAt: Date.now(), pinned: false }
+					}
+		);
+	}
+
+	/** Back to Notes from the archive or the trash. */
+	restoreNotes(ids: readonly string[]): void {
+		this.changeMany(ids, NotesStore.many(ids.length, 'restored'), (note) =>
+			!note.archived && !note.trashed
+				? null
+				: {
+						before: { archived: note.archived, trashed: note.trashed, trashedAt: note.trashedAt },
+						after: { archived: false, trashed: false, trashedAt: null }
+					}
+		);
+	}
+
+	pinNotes(ids: readonly string[], pinned: boolean): void {
+		for (const note of this.present(ids)) {
+			if (note.pinned !== pinned) this.updateNote(note.id, { pinned });
+		}
+	}
+
+	setColorMany(ids: readonly string[], color: NoteColor): void {
+		for (const note of this.present(ids)) {
+			if (note.color !== color) this.updateNote(note.id, { color });
+		}
+	}
+
+	setReminderMany(ids: readonly string[], reminder: number | null): void {
+		for (const note of this.present(ids)) this.updateNote(note.id, { reminder });
+	}
+
+	/** Put the label on every note, or take it off every note. */
+	setLabelMany(ids: readonly string[], labelId: string, on: boolean): void {
+		for (const note of this.present(ids)) {
+			const has = note.labels.includes(labelId);
+			if (on && !has) this.updateNote(note.id, { labels: [...note.labels, labelId] });
+			if (!on && has)
+				this.updateNote(note.id, { labels: note.labels.filter((id) => id !== labelId) });
+		}
+	}
+
+	deleteNotesForever(ids: readonly string[]): void {
+		const present = this.present(ids).map((note) => note.id);
+		if (present.length === 0) return;
+		void this.persistDeletedNotes(present).catch((err) =>
+			this.recordPersistenceError('Could not delete notes', err)
+		);
+	}
+
 	// Trash ----------------------------------------------------------------
 	trashNote(id: string): void {
 		const n = this.notes.find((x) => x.id === id);

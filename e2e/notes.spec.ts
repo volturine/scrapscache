@@ -280,6 +280,35 @@ test('pin, archive, trash and restore move a note between views', async ({ page 
 	await expect(noteCard(page, 'Travelling note')).toBeVisible();
 });
 
+test('picking cards turns the top bar into an action bar that works on all of them', async ({
+	page
+}) => {
+	await openEmptyApp(page);
+	await createNote(page, 'First');
+	await createNote(page, 'Second');
+	await createNote(page, 'Third');
+
+	await noteCard(page, 'First').getByRole('checkbox', { name: 'Select First' }).click();
+	const bar = page.getByRole('toolbar', { name: 'Selected notes' });
+	await expect(bar).toContainText('1 selected');
+	// With a selection open, a click on another card picks it rather than opening it.
+	await noteCard(page, 'Second').click();
+	await expect(bar).toContainText('2 selected');
+	await expect(editor(page)).toBeHidden();
+
+	await bar.getByRole('button', { name: 'Archive' }).click();
+	await expect(page.getByRole('status')).toContainText('2 notes archived');
+	await expect(noteCard(page, 'First')).toBeHidden();
+	await expect(noteCard(page, 'Second')).toBeHidden();
+	await expect(noteCard(page, 'Third')).toBeVisible();
+	await expect(bar).toHaveCount(0);
+
+	// One undo brings both back.
+	await page.getByRole('button', { name: 'Undo' }).click();
+	await expect(noteCard(page, 'First')).toBeVisible();
+	await expect(noteCard(page, 'Second')).toBeVisible();
+});
+
 test('search narrows the feed to matching notes', async ({ page }) => {
 	await openEmptyApp(page);
 	await createNote(page, 'Apples', 'Fruit for the week');

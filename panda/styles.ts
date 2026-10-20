@@ -2235,6 +2235,58 @@ export const noteActionsStyles = {
 };
 
 /**
+ * Picking cards for one action on all of them: the check at a card's top-left,
+ * shown on hover and focus, on touch screens, and whenever a selection is open;
+ * the selected card's outline; and the top bar as the action bar.
+ */
+export const noteSelectStyles = {
+	check: css({
+		position: 'absolute',
+		top: 'xs',
+		left: 'xs',
+		// With the "…" (21): above the open control and the hidden-preview overlay.
+		zIndex: 21,
+		...gridCenter,
+		w: '1.5rem',
+		h: '1.5rem',
+		rounded: 'full',
+		borderWidth: 'strong',
+		borderColor: 'scrapscache.textMuted',
+		bg: 'scrapscache.surface',
+		color: 'scrapscache.accentForeground',
+		cursor: 'pointer',
+		outline: 'none',
+		opacity: 0,
+		transition: 'opacity 120ms ease, background-color 120ms ease, border-color 120ms ease',
+		_groupHover: { opacity: 1 },
+		_focusVisible: { opacity: 1, boxShadow: '0 0 0 2px token(colors.scrapscache.focus)' },
+		_touch: { opacity: 1, w: '1.75rem', h: '1.75rem' },
+		'&[aria-checked="true"], &[data-selecting]': { opacity: 1 },
+		'&[aria-checked="true"]': { bg: 'scrapscache.accent', borderColor: 'scrapscache.accent' }
+	}),
+	/** Room for the check while a selection is open, so a title never runs under it. */
+	titleRoom: css({ pl: '1.75rem' }),
+	selected: css({
+		boxShadow: '0 0 0 2px token(colors.scrapscache.accent)',
+		borderColor: 'scrapscache.accent'
+	}),
+	bar: css({ ...rowCenter, gap: 'xs', minW: 0, flex: '1' }),
+	count: css({ textStyle: 'bodyStrong', minW: 0, ...truncateText, flex: '1' }),
+	actions: css({ ...rowCenter, gap: '2xs', flexShrink: 0 }),
+	menu: css({ minW: '12rem', maxH: 'min(60vh, 24rem)', overflowY: 'auto', py: '2xs' }),
+	item: css({ gap: 'sm' }),
+	swatch: css({
+		w: '1rem',
+		h: '1rem',
+		rounded: 'full',
+		borderWidth: 'hairline',
+		borderColor: 'scrapscache.borderSubtle',
+		flexShrink: 0
+	}),
+	confirm: css({ ...rowCenter, gap: 'xs', textStyle: 'caption', whiteSpace: 'nowrap' })
+};
+
+/**
  * A card's keyboard and assistive-technology control: a real button laid over the
  * whole card, beside (never around) its quick actions. Pointer presses pass through
  * it to the card, which owns swipes, drags and click-anywhere-to-open; the button

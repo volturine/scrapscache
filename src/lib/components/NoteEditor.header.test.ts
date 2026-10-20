@@ -168,7 +168,7 @@ describe('NoteEditor header reminder controls', () => {
 			props: { noteId: 'note-1', onClose: () => {} }
 		});
 
-		const hide = container.querySelector('button[title="Hide preview"]') as HTMLButtonElement;
+		const hide = container.querySelector('button[aria-label="Hide preview"]') as HTMLButtonElement;
 		expect(hide.getAttribute('aria-pressed')).toBe('false');
 		await fireEvent.click(hide);
 		await tick();
@@ -178,11 +178,20 @@ describe('NoteEditor header reminder controls', () => {
 			'Preview hidden in lists. Anyone using this device can still open the note.'
 		);
 
-		const show = container.querySelector('button[title="Show preview"]') as HTMLButtonElement;
+		const show = container.querySelector('button[aria-label="Show preview"]') as HTMLButtonElement;
 		expect(show.getAttribute('aria-pressed')).toBe('true');
+		// The limit stays on the control, for a tooltip and for assistive technology.
+		expect(show.title).toContain('Anyone using this device can still open it.');
+		const describedBy = show.getAttribute('aria-describedby')!;
+		expect(document.getElementById(describedBy)?.textContent).toBe(
+			'Blurs this note in lists. Anyone using this device can still open it.'
+		);
 		await fireEvent.click(show);
 		await tick();
 		expect(notesStore.notes[0].secret).toBeUndefined();
+		// Showing it again by hand retires the toast and its undo step.
+		expect(actionUndo.bar).toBeNull();
+		expect(actionUndo.past.some((step) => step.message.startsWith('Preview hidden'))).toBe(false);
 		expect(container.querySelector('button[title="Make secret"]')).toBeNull();
 	});
 

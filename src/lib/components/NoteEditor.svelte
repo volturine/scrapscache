@@ -1,12 +1,16 @@
 <script lang="ts">
-	import { noteEditorReminderTone, noteEditorStyles as styles } from '$panda/styles';
+	import {
+		noteEditorReminderTone,
+		noteEditorStyles as styles,
+		visuallyHidden
+	} from '$panda/styles';
 	import { cx } from 'styled-system/css';
 	import { dialog, iconButton, input, noteSurface } from 'styled-system/recipes';
 	import { flex, hstack, spacer } from 'styled-system/patterns';
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { flushSync, onMount, tick, untrack } from 'svelte';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
-	import { actionUndo } from '#lib/stores/actionUndo.svelte.js';
+	import { actionUndo, type Step } from '#lib/stores/actionUndo.svelte.js';
 	import { noteToPlainText, noteAttachments, splitPastedHeading } from '#lib/checklistBody.js';
 	import { mergeHydratedImages } from '#lib/noteAttachmentHydration.js';
 	import type { Note, NoteImage } from '#lib/types.js';
@@ -575,14 +579,23 @@
 		void close();
 	}
 
-	/** Hide or show the note's preview in lists, saying plainly what that does and does not do. */
+	/** What hiding the preview does, and does not do; on the control, so it outlives the toast. */
+	const PREVIEW_HELP = 'Blurs this note in lists. Anyone using this device can still open it.';
+	const previewHelpId = $props.id();
+	/** The toast's undo step for the last hide, dropped if the preview is shown again by hand. */
+	let hideStep: Step | null = null;
+
 	function togglePreview() {
 		if (!note) return;
 		const id = note.id;
 		const hidden = !note.secret;
 		commit({ secret: hidden });
-		if (!hidden) return;
-		actionUndo.push({
+		if (!hidden) {
+			if (hideStep) actionUndo.drop(hideStep);
+			hideStep = null;
+			return;
+		}
+		hideStep = actionUndo.push({
 			message: 'Preview hidden in lists. Anyone using this device can still open the note.',
 			noteIds: [id],
 			undo: () => notesStore.updateNote(id, { secret: false }),
@@ -996,17 +1009,20 @@
 								<button
 									type="button"
 									class={iconButton({ variant: 'ghost', size: 'sm' })}
-									title={note.secret ? 'Show preview' : 'Hide preview'}
+									title="{note.secret ? 'Show preview' : 'Hide preview'} — {PREVIEW_HELP}"
 									onclick={togglePreview}
 									aria-label={note.secret ? 'Show preview' : 'Hide preview'}
 									aria-pressed={Boolean(note.secret)}
+									aria-describedby={previewHelpId}
 								>
+									<!-- The slashed eye offers to hide; the open eye, to show again. -->
 									{#if note.secret}
-										<EyeOff size={20} class={noteEditorReminderTone.active} aria-hidden="true" />
+										<Eye size={20} class={noteEditorReminderTone.active} aria-hidden="true" />
 									{:else}
-										<Eye size={20} aria-hidden="true" />
+										<EyeOff size={20} aria-hidden="true" />
 									{/if}
 								</button>
+								<span id={previewHelpId} class={visuallyHidden}>{PREVIEW_HELP}</span>
 							{/if}
 							<button
 								type="button"

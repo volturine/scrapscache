@@ -20,7 +20,7 @@ export type UndoEntry = {
 	redo: () => void;
 };
 
-type Step = UndoEntry & { at: number };
+export type Step = UndoEntry & { at: number };
 
 let clock = 0;
 
@@ -52,11 +52,24 @@ class ActionUndo {
 	private applying = false;
 	private timer: ReturnType<typeof setTimeout> | null = null;
 
-	push(entry: UndoEntry): void {
-		if (this.applying) return;
+	push(entry: UndoEntry): Step | null {
+		if (this.applying) return null;
 		this.recordEdit();
-		this.past = [...this.past, { ...entry, at: this.editedAt }].slice(-LIMIT);
+		const step = { ...entry, at: this.editedAt };
+		this.past = [...this.past, step].slice(-LIMIT);
 		this.show(entry.message);
+		return step;
+	}
+
+	/**
+	 * Take a step back out, once what it would undo has been undone by hand. Steps are
+	 * told apart by their stamp: the state proxies them, so identity would not do.
+	 */
+	drop(step: Step): void {
+		const wasLatest = this.past.at(-1)?.at === step.at;
+		this.past = this.past.filter((entry) => entry.at !== step.at);
+		this.future = this.future.filter((entry) => entry.at !== step.at);
+		if (wasLatest) this.show(null);
 	}
 
 	/** A new step anywhere ends what can be redone here. */

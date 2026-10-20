@@ -80,6 +80,28 @@ describe('actionUndo', () => {
 		expect(actionUndo.bar).toBeNull();
 	});
 
+	it('drops a step whose effect was undone by hand, and clears its bar', () => {
+		const undo = vi.fn();
+		const first = actionUndo.push({
+			message: 'First',
+			noteIds: ['a'],
+			undo: vi.fn(),
+			redo: vi.fn()
+		})!;
+		const hide = actionUndo.push({ message: 'Hidden', noteIds: ['a'], undo, redo: vi.fn() })!;
+		expect(actionUndo.bar).toBe('Hidden');
+
+		actionUndo.drop(hide);
+
+		expect(actionUndo.bar).toBeNull();
+		expect(actionUndo.past.map((step) => step.message)).toEqual(['First']);
+		// The earlier step is still the one Undo takes.
+		actionUndo.undo();
+		expect(undo).not.toHaveBeenCalled();
+		expect(actionUndo.past).toHaveLength(0);
+		expect(first.message).toBe('First');
+	});
+
 	it('undoes from a shortcut outside a text field', () => {
 		const undone = vi.fn();
 		actionUndo.push({ message: 'Moved to trash', noteIds: [], undo: undone, redo() {} });

@@ -46,6 +46,15 @@ export const OFFLINE_ATTENTION_MS = 24 * 60 * 60 * 1000;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * A sync that went through but has something to say: skipped records, a photo
+ * that could not be prepared, uploads the quota held back. Those read as written;
+ * everything else in `lastError` is a sync that stopped.
+ */
+export function isSyncWarning(raw: string): boolean {
+	return /^(Synced\b|Skipped\b|Sync incomplete\b)/.test(raw);
+}
+
 /** Sync errors as people read them: a dead connection is not a stack of fetch jargon. */
 export function friendlySyncError(raw: string | null | undefined, fallback: string): string {
 	if (!raw) return fallback;
@@ -60,10 +69,12 @@ export function offlineFor(ms: number): string {
 	return days === 1 ? 'a day' : `${days} days`;
 }
 
-export function resolveSyncAttention(input: SyncAttentionInput): SyncAttention | null {
-	if (!input.synced) return null;
+/** Every state that needs attention right now, the most pressing first. */
+export function syncAttentions(input: SyncAttentionInput): SyncAttention[] {
+	const all: SyncAttention[] = [];
+	if (!input.synced) return all;
 	if (input.keyRetired) {
-		return {
+		all.push({
 			kind: SyncAttentionKind.KeyRetired,
 			tone: 'danger',
 			title: 'This workspace can no longer sync.',
@@ -72,25 +83,26 @@ export function resolveSyncAttention(input: SyncAttentionInput): SyncAttention |
 			actionLabel: 'Create new key',
 			key: SyncAttentionKind.KeyRetired,
 			dismissible: false
-		};
+		});
 	}
 	if (input.lastError) {
+		const warning = isSyncWarning(input.lastError);
 		const reason = friendlySyncError(input.lastError, 'something went wrong');
-		return {
+		all.push({
 			kind: SyncAttentionKind.Error,
-			tone: 'danger',
-			title: `Sync stopped: ${reason.replace(/\.$/, '')}.`,
-			body: 'Your notes are safe on this device.',
+			tone: warning ? 'warning' : 'danger',
+			title: warning ? input.lastError : `Sync stopped: ${reason.replace(/\.$/, '')}.`,
+			body: warning ? '' : 'Your notes are safe on this device.',
 			action: 'retry',
 			actionLabel: 'Retry',
 			key: `${SyncAttentionKind.Error}:${input.lastError}`,
 			dismissible: true
-		};
+		});
 	}
 	const ratio =
 		input.usage && input.usage.maxBytes > 0 ? input.usage.storageBytes / input.usage.maxBytes : 0;
 	if (ratio >= 1) {
-		return {
+		all.push({
 			kind: SyncAttentionKind.StorageFull,
 			tone: 'danger',
 			title: 'Cloud storage is full.',
@@ -99,10 +111,9 @@ export function resolveSyncAttention(input: SyncAttentionInput): SyncAttention |
 			actionLabel: 'Open workspaces',
 			key: SyncAttentionKind.StorageFull,
 			dismissible: false
-		};
-	}
-	if (ratio >= 0.8) {
-		return {
+		});
+	} else if (ratio >= 0.8) {
+		all.push({
 			kind: SyncAttentionKind.StorageNearlyFull,
 			tone: 'warning',
 			title: `Cloud storage is ${Math.floor(ratio * 100)}% full.`,
@@ -111,10 +122,10 @@ export function resolveSyncAttention(input: SyncAttentionInput): SyncAttention |
 			actionLabel: 'Open workspaces',
 			key: SyncAttentionKind.StorageNearlyFull,
 			dismissible: true
-		};
+		});
 	}
 	if (!input.online && input.lastSync > 0 && input.now - input.lastSync >= OFFLINE_ATTENTION_MS) {
-		return {
+		all.push({
 			kind: SyncAttentionKind.Offline,
 			tone: 'muted',
 			title: `Offline for ${offlineFor(input.now - input.lastSync)}.`,
@@ -123,7 +134,12 @@ export function resolveSyncAttention(input: SyncAttentionInput): SyncAttention |
 			actionLabel: null,
 			key: SyncAttentionKind.Offline,
 			dismissible: true
-		};
+		});
 	}
-	return null;
+	return all;
+}
+
+/** The one state to show when nothing has been dismissed. */
+export function resolveSyncAttention(input: SyncAttentionInput): SyncAttention | null {
+	return syncAttentions(input)[0] ?? null;
 }

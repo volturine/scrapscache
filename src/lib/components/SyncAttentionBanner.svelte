@@ -2,7 +2,7 @@
 	import { iconSizeSm, notesShell, syncAttentionStyles as styles } from '$panda/styles';
 	import { CloudOff, TriangleAlert } from '@lucide/svelte';
 	import { onMount } from 'svelte';
-	import { resolveSyncAttention, type SyncAttentionTone } from '#lib/syncAttention.js';
+	import { syncAttentions, type SyncAttentionTone } from '#lib/syncAttention.js';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
 	import { syncStore } from '#lib/stores/sync.svelte.js';
 	import { uiStore } from '#lib/stores/ui.svelte.js';
@@ -10,12 +10,12 @@
 
 	let online = $state(typeof navigator === 'undefined' || navigator.onLine !== false);
 	let now = $state(Date.now());
-	/** The key of the banner the user put away; a different one shows again. */
-	let dismissedKey = $state<string | null>(null);
+	/** The banners the user put away. One is forgotten once its state has cleared. */
+	let dismissed = $state<ReadonlySet<string>>(new Set());
 	const titleId = $props.id();
 
-	const attention = $derived(
-		resolveSyncAttention({
+	const active = $derived(
+		syncAttentions({
 			synced: syncStore.isLoggedIn,
 			keyRetired: syncStore.keyRetired,
 			lastError: syncStore.lastError,
@@ -25,12 +25,20 @@
 			now
 		})
 	);
-	const shown = $derived(attention && attention.key !== dismissedKey ? attention : null);
+	// The most pressing state that was not put away, so a dismissed warning stays away
+	// while a later error comes and goes above it.
+	const shown = $derived(active.find((candidate) => !dismissed.has(candidate.key)) ?? null);
 
 	$effect(() => {
-		// Once the state clears, a return of it is news again.
-		if (!attention) dismissedKey = null;
+		// Once a state clears, a return of it is news again.
+		const keys = new Set(active.map((candidate) => candidate.key));
+		if ([...dismissed].some((key) => !keys.has(key)))
+			dismissed = new Set([...dismissed].filter((key) => keys.has(key)));
 	});
+
+	function dismiss(key: string) {
+		dismissed = new Set([...dismissed, key]);
+	}
 
 	onMount(() => {
 		const update = () => {
@@ -61,9 +69,17 @@
 	};
 </script>
 
-{#if shown}
-	{@const Icon = icons[shown.tone]}
-	<div class={styles.wrap}>
+<!-- Always mounted: screen readers announce what changes inside a live region that
+     already exists, not one created together with its text. A polite region of its
+     own, not role="status", so it stays apart from the undo bar's. -->
+<div
+	class={shown ? styles.wrap : undefined}
+	aria-live="polite"
+	aria-atomic="true"
+	data-sync-attention-region
+>
+	{#if shown}
+		{@const Icon = icons[shown.tone]}
 		<div class={notesShell(uiStore.layout)}>
 			<section
 				class={styles.banner({ tone: shown.tone })}
@@ -85,7 +101,7 @@
 						<button
 							type="button"
 							class={button({ variant: 'quiet', size: 'xs' })}
-							onclick={() => (dismissedKey = shown.key)}
+							onclick={() => dismiss(shown.key)}
 						>
 							Dismiss
 						</button>
@@ -93,5 +109,5 @@
 				</div>
 			</section>
 		</div>
-	</div>
-{/if}
+	{/if}
+</div>

@@ -3,6 +3,7 @@ import {
 	friendlySyncError,
 	OFFLINE_ATTENTION_MS,
 	resolveSyncAttention,
+	syncAttentions,
 	SyncAttentionKind,
 	type SyncAttentionInput
 } from './syncAttention';
@@ -52,9 +53,29 @@ describe('resolveSyncAttention', () => {
 			action: 'retry',
 			dismissible: true
 		});
+	});
+
+	it('shows what a sync that went through still has to say, as written', () => {
+		// These are set on the success path, so the sync did not stop.
+		for (const message of [
+			'Skipped 2 unreadable sync records',
+			'Sync incomplete: account storage quota prevented some uploads',
+			'Synced, but some photos could not be prepared for upload. They will retry on the next sync.'
+		]) {
+			expect(resolveSyncAttention({ ...quiet, lastError: message })).toMatchObject({
+				kind: SyncAttentionKind.Error,
+				tone: 'warning',
+				title: message,
+				body: '',
+				action: 'retry'
+			});
+		}
 		expect(
-			resolveSyncAttention({ ...quiet, lastError: 'Skipped 2 unreadable sync records' })?.title
-		).toBe('Sync stopped: Skipped 2 unreadable sync records.');
+			resolveSyncAttention({ ...quiet, lastError: 'Encrypted sync failed: bad key' })
+		).toMatchObject({
+			tone: 'danger',
+			title: 'Sync stopped: Encrypted sync failed: bad key.'
+		});
 	});
 
 	it('warns from 80% of cloud storage and insists at 100%', () => {
@@ -108,6 +129,13 @@ describe('resolveSyncAttention', () => {
 		expect(resolveSyncAttention({ ...everything, keyRetired: false, lastError: null })?.kind).toBe(
 			SyncAttentionKind.StorageFull
 		);
+		// Every active state is reported, so a dismissed one can be told from a cleared one.
+		expect(syncAttentions(everything).map((attention) => attention.kind)).toEqual([
+			SyncAttentionKind.KeyRetired,
+			SyncAttentionKind.Error,
+			SyncAttentionKind.StorageFull,
+			SyncAttentionKind.Offline
+		]);
 	});
 
 	it('keeps other error wording as it is', () => {

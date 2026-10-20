@@ -49,6 +49,9 @@ describe('SyncAttentionBanner', () => {
 	it('shows nothing while sync is quiet, or for a workspace that does not sync', async () => {
 		render(SyncAttentionBanner);
 		expect(banner()).toBeNull();
+		// The live region is there before it has anything to say, so it is heard when it does.
+		const region = document.querySelector('[data-sync-attention-region]')!;
+		expect(region.textContent?.trim()).toBe('');
 
 		syncStore.activateLocalWorkspace(TEST_WORKSPACE);
 		syncStore.lastError = 'Failed to fetch';
@@ -72,9 +75,48 @@ describe('SyncAttentionBanner', () => {
 		expect(banner()).toBeNull();
 
 		// The same error stays dismissed; a different one is news.
+		syncStore.lastError = 'Encrypted sync failed: bad record';
+		await tick();
+		expect(screen.getByText('Sync stopped: Encrypted sync failed: bad record.')).toBeTruthy();
+	});
+
+	it('says it inside the region that was already there', async () => {
+		render(SyncAttentionBanner);
+		const region = document.querySelector('[data-sync-attention-region]')!;
+		syncStore.lastError = 'TypeError: Failed to fetch';
+		await tick();
+
+		expect(region.contains(banner())).toBe(true);
+		expect(region.textContent).toContain('Sync stopped: the server could not be reached.');
+	});
+
+	it('keeps a dismissed warning away while a later error comes and goes above it', async () => {
+		render(SyncAttentionBanner);
+		syncStore.usage = { ciphertextBytes: 0, envelopeCount: 0, storageBytes: 85, maxBytes: 100 };
+		await tick();
+		await fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+		expect(banner()).toBeNull();
+
+		syncStore.lastError = 'TypeError: Failed to fetch';
+		await tick();
+		expect(banner()?.getAttribute('data-sync-attention')).toBe('error');
+		await fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+		expect(banner()).toBeNull();
+
+		// The error clears; the storage warning never did, so it stays dismissed.
+		syncStore.lastError = null;
+		await tick();
+		expect(banner()).toBeNull();
+	});
+
+	it('shows a warning from a sync that went through as written, with a retry', async () => {
+		render(SyncAttentionBanner);
 		syncStore.lastError = 'Skipped 1 unreadable sync record';
 		await tick();
-		expect(screen.getByText('Sync stopped: Skipped 1 unreadable sync record.')).toBeTruthy();
+
+		expect(screen.getByText('Skipped 1 unreadable sync record')).toBeTruthy();
+		expect(screen.queryByText(/Sync stopped/)).toBeNull();
+		expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
 	});
 
 	it('shows a dismissed state again once it has cleared and come back', async () => {

@@ -3463,6 +3463,7 @@
 			{#if tableBlock && !tableSeparator}
 				<span
 					data-line-text
+					data-checked={line.checked ? '' : undefined}
 					class={[
 						markdownStyles,
 						'markdown-inline-content',
@@ -3493,6 +3494,7 @@
 			{:else if !line.text || !/[*_~`#]/.test(line.text)}
 				<span
 					data-line-text
+					data-checked={line.checked ? '' : undefined}
 					data-placeholder={line.text.length === 0
 						? line.isCheck
 							? line.indent > 0
@@ -3513,6 +3515,7 @@
 				{#if inlineTokens.length === 1 && inlineTokens[0].kind === 'text' && inlineTokens[0].styles.length === 0}
 					<span
 						data-line-text
+						data-checked={line.checked ? '' : undefined}
 						class={[
 							markdownStyles,
 							'markdown-inline-content',
@@ -3524,6 +3527,7 @@
 				{:else}
 					<span
 						data-line-text
+						data-checked={line.checked ? '' : undefined}
 						class={[
 							markdownStyles,
 							'markdown-inline-content',

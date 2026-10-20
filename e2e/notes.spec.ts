@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Locator } from '@playwright/test';
 import { createNote, editor, noteCard, openEmptyApp, quickAction } from './app';
 
 test('a note survives a reload and an offline reload', async ({ page, context }) => {
@@ -114,6 +114,52 @@ test('a checklist line toggles from the body', async ({ page }) => {
 	await toggles.first().click();
 	await expect(toggles.first()).toHaveAttribute('aria-pressed', 'true');
 	await expect(toggles.last()).toHaveAttribute('aria-pressed', 'false');
+});
+
+test('a checked row dims its text and tokens, not the whole row', async ({ page }) => {
+	await openEmptyApp(page);
+	await createNote(page, 'Dimmed', '[ ] milk `oat`\n[ ] eggs');
+	await noteCard(page, 'Dimmed').click();
+	const sheet = editor(page);
+	const toggle = sheet.getByRole('button', { name: 'Toggle item' }).first();
+	await toggle.click();
+	await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+
+	const colour = (target: Locator) => target.evaluate((element) => getComputedStyle(element).color);
+	// A colour token as this note's surface resolves it.
+	const resolve = (token: string) =>
+		sheet.evaluate((element, token) => {
+			const probe = document.createElement('span');
+			probe.style.color = `var(${token})`;
+			element.append(probe);
+			const value = getComputedStyle(probe).color;
+			probe.remove();
+			return value;
+		}, token);
+	const muted = await resolve('--colors-scrapscache-text-muted');
+	const lines = sheet.locator('[data-line-text]');
+	await expect(lines).toHaveCount(2);
+	const checked = lines.first();
+	expect(await colour(checked)).toBe(muted);
+	expect(await colour(checked.locator('.markdown-token-code'))).toBe(muted);
+	expect(await colour(lines.last())).not.toBe(muted);
+	// Opacity would also wash out a selection dragged across the row.
+	await expect(checked).toHaveCSS('opacity', '1');
+	await expect(checked).toHaveCSS('text-decoration-line', 'line-through');
+
+	// The find bar's current match keeps its own colour on a checked line.
+	await sheet.locator('[data-body-editor]').press('ControlOrMeta+f');
+	await sheet.getByRole('textbox', { name: 'Find', exact: true }).fill('oat');
+	await expect(sheet.locator('[data-editor-find-count]')).toHaveText('1 of 1');
+	const currentMatch = await checked.evaluate(
+		(element) => getComputedStyle(element, '::highlight(note-find-current)').backgroundColor
+	);
+	expect(currentMatch).toBe(await resolve('--colors-scrapscache-warning'));
+
+	await sheet.getByRole('button', { name: 'Close note' }).click();
+	const cardLine = noteCard(page, 'Dimmed').locator('[data-check-line="0"] > span').last();
+	expect(await colour(cardLine)).toBe(muted);
+	expect(await colour(cardLine.locator('.markdown-token-code'))).toBe(muted);
 });
 
 test('pin, archive, trash and restore move a note between views', async ({ page }) => {

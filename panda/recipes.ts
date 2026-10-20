@@ -637,8 +637,9 @@ const noteBodyRecipe = defineSlotRecipe({
 				}
 			}
 		},
+		// The dim lives in markdownStyles ([data-checked]), which outranks this layer.
 		checked: {
-			true: { line: { textDecoration: 'line-through', opacity: 0.68 } }
+			true: { line: { textDecoration: 'line-through' } }
 		},
 		indented: {
 			true: { line: { fontSize: 'compact' }, addSubtask: { pl: 0 } },

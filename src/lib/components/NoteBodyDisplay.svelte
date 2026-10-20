@@ -104,7 +104,10 @@
 			style={seg.indent > 0 ? `padding-left: ${seg.indent * 1.25}rem` : undefined}
 		>
 			<span class={[check.root, body.check]} aria-hidden="true"></span>
-			<span class={noteBody({ checked: seg.checked, indented: seg.indent > 0 }).line}>
+			<span
+				class={noteBody({ checked: seg.checked, indented: seg.indent > 0 }).line}
+				data-checked={seg.checked ? '' : undefined}
+			>
 				{@render inlineContent(seg.text)}
 			</span>
 		</div>

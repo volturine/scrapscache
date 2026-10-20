@@ -20,21 +20,31 @@ async function select(item: HTMLElement) {
 }
 
 describe('StorageSettings', () => {
-	it('asks to keep notes when storage may be cleared', async () => {
+	it('asks to keep notes when storage may be cleared, and says so in a sentence', async () => {
 		storagePersistenceStore.state = 'best-effort';
 		const request = vi
 			.spyOn(storagePersistenceStore, 'request')
 			.mockImplementation(async () => (storagePersistenceStore.state = 'persisted'));
 
 		await openMenu();
-		await select(screen.getByRole('menuitem', { name: /Storage\s*May be cleared/ }));
+		await select(
+			screen.getByRole('menuitem', {
+				name: /Keep notes on this device/,
+				description: 'Not guaranteed: the browser may delete them. Tap to ask it to keep them.'
+			})
+		);
 
 		expect(request).toHaveBeenCalledOnce();
 		// The state stays reachable from the keyboard, as a passive item.
 		await waitFor(() =>
-			expect(screen.getByRole('menuitem', { name: /Storage\s*Persistent/ })).toBeTruthy()
+			expect(
+				screen.getByRole('menuitem', {
+					name: /Keep notes on this device/,
+					description: 'Kept: the browser will not clear them on its own.'
+				})
+			).toBeTruthy()
 		);
-		expect(screen.queryByRole('menuitem', { name: /May be cleared/ })).toBeNull();
+		expect(screen.queryByText(/Tap to ask/)).toBeNull();
 	});
 
 	it('says so and points to export or sync when the browser refuses', async () => {
@@ -45,21 +55,21 @@ describe('StorageSettings', () => {
 		});
 
 		await openMenu();
-		await select(screen.getByRole('menuitem', { name: /Storage\s*May be cleared/ }));
+		await select(screen.getByRole('menuitem', { name: /Keep notes on this device/ }));
 
 		await waitFor(() =>
 			expect(
 				screen.getByRole('menuitem', {
-					name: /Storage\s*Not granted/,
-					description: /Export a backup or turn on sync/
+					name: /Keep notes on this device/,
+					description: /Not granted: .*Export a backup or turn on sync/
 				})
 			).toBeTruthy()
 		);
-		expect(screen.queryByRole('menuitem', { name: /May be cleared/ })).toBeNull();
+		expect(screen.queryByText(/Tap to ask/)).toBeNull();
 	});
 
 	it('shows nothing when the browser has no Storage API', async () => {
 		await openMenu();
-		expect(screen.queryByText('Storage')).toBeNull();
+		expect(screen.queryByText(/Keep notes on this device/)).toBeNull();
 	});
 });

@@ -51,7 +51,7 @@ describe('Topbar when on-demand code fails to load', () => {
 	it('shows the same message in the backup dialog', async () => {
 		chunk.missing = true;
 		render(Topbar);
-		await chooseMenuItem('Export backup');
+		await chooseMenuItem('Back up notes…');
 		await fireEvent.input(await screen.findByLabelText('Backup passphrase'), {
 			target: { value: 'a strong passphrase' }
 		});

@@ -32,7 +32,7 @@ test('theme changes do not animate every control', async ({ page }) => {
 	});
 
 	await page.getByRole('button', { name: 'Settings', exact: true }).click();
-	await page.getByRole('menuitem', { name: /^(Dark|Light) mode$/ }).click();
+	await page.getByRole('menuitemradio', { name: 'Dark' }).click();
 
 	await expect
 		.poll(() => page.evaluate(() => (window as ThemeSwitchProbeWindow).__themeSwitchProbe ?? null))
@@ -109,10 +109,10 @@ test.describe('installed iOS document chrome', () => {
 
 		await page.getByRole('button', { name: 'Settings', exact: true }).click();
 		for (const [name, color] of [
-			['Light mode', 'rgb(255, 255, 255)'],
-			['Dark mode', 'rgb(26, 26, 26)']
+			['Light', 'rgb(255, 255, 255)'],
+			['Dark', 'rgb(26, 26, 26)']
 		]) {
-			await page.getByRole('menuitem', { name, exact: true }).click();
+			await page.getByRole('menuitemradio', { name, exact: true }).click();
 			await expect(sample).toHaveCSS('background-color', color);
 			await expect(page.locator('html')).toHaveCSS('background-color', color);
 		}

@@ -56,7 +56,7 @@ describe('Topbar backup import', () => {
 		render(Topbar);
 
 		await fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
-		const importMenuItem = screen.getByRole('menuitem', { name: 'Import backup' });
+		const importMenuItem = screen.getByRole('menuitem', { name: 'Restore from a backup…' });
 		await fireEvent.pointerDown(importMenuItem, { pointerType: 'mouse' });
 		await fireEvent.click(importMenuItem);
 		await waitFor(() => expect(screen.getByRole('heading', { name: 'Import notes' })).toBeTruthy());

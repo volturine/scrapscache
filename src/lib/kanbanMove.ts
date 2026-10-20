@@ -3,6 +3,13 @@ import { actionUndo } from '#lib/stores/actionUndo.svelte.js';
 import { kanbanStore } from '#lib/stores/kanban.svelte.js';
 import { notesStore } from '#lib/stores/notes.svelte.js';
 
+/** A board's columns, for a card to move between from its "…" menu. */
+export type MoveTargets = {
+	columns: { id: string; name: string }[];
+	current: string;
+	onMove: (columnId: string) => void;
+};
+
 /** Where a card sat in a column's order: its index and the card after it. */
 type Slot = { index: number; before: string | null };
 

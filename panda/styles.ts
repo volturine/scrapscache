@@ -1056,31 +1056,6 @@ export const fullscreen = {
 	}
 };
 
-/** A searchable, height-capped checklist of labels, shared by the Kanban filters. */
-export const labelChecklistStyles = {
-	root: css({ ...column, gap: '2xs' }),
-	// About seven rows: long enough to scan, short enough to keep the board in view.
-	list: css({
-		...column,
-		gap: '3xs',
-		maxH: '14rem',
-		overflowY: 'auto',
-		overscrollBehavior: 'contain'
-	}),
-	row: css({ ...filterOption, alignItems: 'center' }),
-	control: css({
-		...flexCenter,
-		...iconSm,
-		flexShrink: 0,
-		rounded: 'compact',
-		...border,
-		'&[data-state=checked]': { borderColor: 'scrapscache.accent', bg: 'scrapscache.accent' }
-	}),
-	mark: css({ fontSize: 'micro', color: 'scrapscache.accentForeground' }),
-	name: css(truncateText),
-	empty: css({ px: '2xs', py: 'xs', ...mutedText, textStyle: 'caption' })
-};
-
 // Static view contracts stay class maps; CVA below is reserved for live state.
 export const kanbanViewStyles = {
 	controls: css({ mb: 'lg', minH: '2.5rem', ...rowCenter, gap: 'sm' }),
@@ -1256,6 +1231,74 @@ export const kanbanViewStyles = {
 		}
 	}),
 	filterSummary: css({ ...truncateText, px: '2xs', textStyle: 'micro' }),
+	/** The one filter: labels as toggle chips, then Show only / Hide and the count. */
+	filterChips: css({ display: 'flex', flexWrap: 'wrap', gap: 'xs' }),
+	filterChip: css({
+		...rowCenter,
+		gap: '2xs',
+		h: '2rem',
+		px: 'md',
+		rounded: 'pill',
+		borderWidth: 'hairline',
+		borderColor: 'scrapscache.border',
+		bg: 'scrapscache.surface',
+		color: 'scrapscache.text',
+		textStyle: 'label',
+		cursor: 'pointer',
+		outline: 'none',
+		transition: 'background-color 120ms ease, border-color 120ms ease, color 120ms ease',
+		_hoverable: { bg: 'scrapscache.interactiveHover' },
+		_touch: { h: '2.75rem' },
+		'&[aria-pressed="true"]': {
+			bg: 'scrapscache.accentSubtle',
+			borderColor: 'scrapscache.accent',
+			color: 'scrapscache.accent'
+		},
+		'&:focus-visible': { boxShadow: '0 0 0 2px token(colors.scrapscache.focus)' }
+	}),
+	filterFoot: css({ ...rowCenter, justifyContent: 'space-between', gap: 'sm' }),
+	filterCount: css({ textStyle: 'caption', ...mutedText, whiteSpace: 'nowrap' }),
+	/** The count beside a column's name. */
+	colCount: css({ textStyle: 'caption', ...mutedText, fontVariantNumeric: 'tabular-nums' }),
+	colMenuContent: css({ zIndex: 30, minW: '13rem', py: '2xs', outline: 'none' }),
+	colMenuCaption: css({ px: 'md', pt: '3xs', pb: 'xs', textStyle: 'micro', ...mutedText }),
+	/** On a phone one column shows at a time; these pick it, and take a dropped card. */
+	columnTabs: css({
+		display: 'flex',
+		gap: 'xs',
+		overflowX: 'auto',
+		mx: '-1rem',
+		px: 'lg',
+		py: '2xs',
+		mb: 'sm'
+	}),
+	columnTab: css({
+		...rowCenter,
+		gap: '2xs',
+		flexShrink: 0,
+		h: '2.75rem',
+		px: 'md',
+		rounded: 'pill',
+		borderWidth: 'hairline',
+		borderColor: 'scrapscache.border',
+		bg: 'scrapscache.surface',
+		color: 'scrapscache.text',
+		textStyle: 'label',
+		whiteSpace: 'nowrap',
+		cursor: 'pointer',
+		outline: 'none',
+		transition: 'background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease',
+		'&[aria-selected="true"]': {
+			bg: 'scrapscache.accentSubtle',
+			borderColor: 'scrapscache.accent',
+			color: 'scrapscache.accent'
+		},
+		'&[data-drop-target]': {
+			boxShadow: '0 0 0 2px token(colors.scrapscache.accent)'
+		},
+		'&:focus-visible': { boxShadow: '0 0 0 2px token(colors.scrapscache.focus)' }
+	}),
+	columnTabHint: css({ textStyle: 'caption', ...mutedText, mb: 'sm', px: '2xs' }),
 	menuItem: css({
 		display: 'block',
 		w: 'full',

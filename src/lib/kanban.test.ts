@@ -62,45 +62,6 @@ describe('Kanban board tag mapping', () => {
 		expect(columnNotes(board, board.columns[1], notes).map((item) => item.id)).toEqual(['todo']);
 	});
 
-	it('filters backlog to untagged and selected tags in custom mode', () => {
-		const custom: KanbanBoard = {
-			...board,
-			backlogFilter: {
-				mode: 'custom',
-				includeUntagged: true,
-				labelIds: ['personal-label']
-			}
-		};
-		const notes = [
-			note('unlabelled', []),
-			note('personal', ['personal-label']),
-			note('other', ['other-label']),
-			note('todo', ['todo-label'])
-		];
-
-		expect(columnNotes(custom, custom.columns[0], notes).map((item) => item.id)).toEqual([
-			'unlabelled',
-			'personal'
-		]);
-		expect(noteMatchesBacklog(custom, note('other', ['other-label']))).toBe(false);
-		expect(noteMatchesBacklog(custom, note('todo', ['todo-label']))).toBe(false);
-	});
-
-	it('can hide untagged notes from the backlog', () => {
-		const custom: KanbanBoard = {
-			...board,
-			backlogFilter: {
-				mode: 'custom',
-				includeUntagged: false,
-				labelIds: ['personal-label']
-			}
-		};
-		const notes = [note('unlabelled', []), note('personal', ['personal-label'])];
-		expect(columnNotes(custom, custom.columns[0], notes).map((item) => item.id)).toEqual([
-			'personal'
-		]);
-	});
-
 	const mixed = [
 		note('plain', []),
 		note('work', ['work-label']),
@@ -138,15 +99,6 @@ describe('Kanban board tag mapping', () => {
 				expect(ids(filtered, 1)).toEqual(['work-todo', 'personal-todo']);
 			}
 		}
-	});
-
-	it('applies the board filter on top of the backlog filter', () => {
-		const both: KanbanBoard = {
-			...board,
-			backlogFilter: { mode: 'custom', includeUntagged: true, labelIds: ['work-label'] },
-			noteFilter: { action: 'remove', labelIds: ['work-label'] }
-		};
-		expect(ids(both, 0)).toEqual(['plain']);
 	});
 
 	it('reads a board without a note filter as filtering nothing', () => {

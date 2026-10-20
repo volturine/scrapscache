@@ -2,10 +2,8 @@ import {
 	applyBoardEdit,
 	createKanbanBoard,
 	mergeKanbanBoards,
-	normalizeBacklogFilter,
 	normalizeBoard,
 	normalizeBoardNoteFilter,
-	type BacklogFilter,
 	type BoardNoteFilter,
 	type KanbanBoard,
 	type KanbanColumn
@@ -337,6 +335,21 @@ export class KanbanStore {
 		return column;
 	}
 
+	/** Shift a label column one place left or right; the Unsorted column stays first. */
+	moveColumn(boardId: string, columnId: string, direction: -1 | 1): void {
+		const board = this.boards.find((candidate) => candidate.id === boardId);
+		if (!board) return;
+		const from = board.columns.findIndex((column) => column.id === columnId);
+		const to = from + direction;
+		if (from < 0 || board.columns[from].labelId === null) return;
+		if (to < 0 || to >= board.columns.length || board.columns[to].labelId === null) return;
+		this.changeBoard(boardId, (candidate) => {
+			const columns = [...candidate.columns];
+			[columns[from], columns[to]] = [columns[to], columns[from]];
+			return { ...candidate, columns };
+		});
+	}
+
 	removeTagColumn(boardId: string, columnId: string): void {
 		const board = this.boards.find((candidate) => candidate.id === boardId);
 		const column = board?.columns.find((candidate) => candidate.id === columnId);
@@ -368,18 +381,6 @@ export class KanbanStore {
 				return column;
 			})
 		}));
-	}
-
-	/** Replace the backlog membership rules for a board. */
-	setBacklogFilter(boardId: string, filter: BacklogFilter): void {
-		const board = this.boards.find((candidate) => candidate.id === boardId);
-		if (!board) return;
-		const columnLabels = new Set(
-			board.columns.flatMap((column) => (column.labelId === null ? [] : [column.labelId]))
-		);
-		const next = normalizeBacklogFilter(filter);
-		next.labelIds = next.labelIds.filter((labelId) => !columnLabels.has(labelId));
-		this.changeBoard(boardId, (candidate) => ({ ...candidate, backlogFilter: next }));
 	}
 
 	/** Replace which notes a board shows. */

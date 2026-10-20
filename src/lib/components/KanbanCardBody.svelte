@@ -12,10 +12,20 @@
 	import { cx, css } from 'styled-system/css';
 	import { badge, noteCard, noteSurface } from 'styled-system/recipes';
 
-	let { note, shield = false }: { note: Note; shield?: boolean } = $props();
+	let {
+		note,
+		shield = false,
+		hideLabelId = null
+	}: {
+		note: Note;
+		shield?: boolean;
+		/** The column's own label: every card in it has it, so the chip says nothing. */
+		hideLabelId?: string | null;
+	} = $props();
 
 	const labelsForNote = $derived(
 		note.labels
+			.filter((id) => id !== hideLabelId)
 			.map((id) => notesStore.labelsById.get(id))
 			.filter((label): label is NonNullable<typeof label> => !!label)
 	);

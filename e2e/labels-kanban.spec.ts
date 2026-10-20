@@ -1,5 +1,16 @@
 import { expect, test } from '@playwright/test';
 import { createNote, noteCard, openEmptyApp, quickAction } from './app';
+import type { Locator } from '@playwright/test';
+
+/** Move a card to another column from its "…" menu. */
+async function moveTo(card: Locator, column: string): Promise<void> {
+	await card.getByRole('button', { name: 'Note actions' }).click();
+	await card
+		.page()
+		.getByRole('menu', { name: 'Note actions' })
+		.getByRole('menuitemradio', { name: column, exact: true })
+		.click();
+}
 
 test('a label tags a note and filters the feed', async ({ page }) => {
 	await openEmptyApp(page);
@@ -151,4 +162,74 @@ test('a new board explains that columns are labels and starts from a template', 
 	await expect(page.locator('[data-kanban-column]', { hasText: 'Blocked' })).toContainText(
 		'Notes labelled Blocked'
 	);
+});
+
+test('a column has a menu to rename its label, move it and remove it, and shows its count', async ({
+	page
+}) => {
+	await openEmptyApp(page);
+	await createNote(page, 'Task one');
+	await page.goto('/kanban');
+	await page
+		.getByRole('region', { name: 'Boards group your notes by label' })
+		.getByRole('button', { name: 'To-Do · In-Progress · Done' })
+		.click();
+	const unsorted = page.getByRole('region', { name: 'Unsorted Kanban column' });
+	await expect(unsorted.getByRole('heading', { level: 2 })).toHaveText(/Unsorted\s*1/);
+
+	await page.getByRole('button', { name: 'To-Do column actions' }).click();
+	await page.getByRole('menuitem', { name: 'Rename label…' }).click();
+	await page.getByRole('textbox', { name: 'Label name' }).fill('Next');
+	await page.getByRole('button', { name: 'Rename', exact: true }).click();
+	await expect(page.getByRole('region', { name: 'Next label column' })).toBeVisible();
+
+	await page.getByRole('button', { name: 'Next column actions' }).click();
+	await page.getByRole('menuitem', { name: 'Move right' }).click();
+	const names = page.getByRole('region', { name: /column$/ });
+	await expect(names).toHaveText([/Unsorted/, /In-Progress/, /Next/, /Done/]);
+
+	await page.getByRole('button', { name: 'Done column actions' }).click();
+	await expect(page.getByText('The label and its notes stay.')).toBeVisible();
+	await page.getByRole('menuitem', { name: 'Remove column' }).click();
+	await expect(names).toHaveCount(3);
+	// The label still exists for the rest of the app.
+	await expect(
+		page.getByRole('region', { name: 'Labels' }).getByRole('button', { name: 'Done', exact: true })
+	).toBeVisible();
+
+	// A card moves from its menu as well as by a drag, and says so.
+	await moveTo(noteCard(page, 'Task one'), 'In-Progress');
+	await expect(page.getByRole('status')).toContainText('Moved to In-Progress');
+	await expect(
+		page.getByRole('region', { name: 'In-Progress label column' }).getByRole('article')
+	).toHaveCount(1);
+});
+
+test.describe('on a phone', () => {
+	test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
+
+	test('the board shows one column at a time with a tab for each', async ({ page }) => {
+		await openEmptyApp(page);
+		await createNote(page, 'Task one');
+		await page.goto('/kanban');
+		await page
+			.getByRole('region', { name: 'Boards group your notes by label' })
+			.getByRole('button', { name: 'To-Do · In-Progress · Done' })
+			.click();
+		const tabs = page.getByRole('tablist', { name: 'Columns' }).getByRole('tab');
+		await expect(tabs).toHaveText([/Unsorted\s*1/, /To-Do\s*0/, /In-Progress\s*0/, /Done\s*0/]);
+		await expect(page.getByRole('region', { name: /column$/ })).toHaveCount(1);
+		await expect(page.getByRole('region', { name: 'Unsorted Kanban column' })).toBeVisible();
+
+		await tabs.nth(2).click();
+		await expect(tabs.nth(2)).toHaveAttribute('aria-selected', 'true');
+		await expect(page.getByRole('region', { name: 'In-Progress label column' })).toBeVisible();
+		await expect(page.getByRole('region', { name: 'Unsorted Kanban column' })).toHaveCount(0);
+
+		// Move to… from the card: the board follows the card.
+		await tabs.nth(0).click();
+		await moveTo(noteCard(page, 'Task one'), 'Done');
+		await expect(page.getByRole('region', { name: 'Done label column' })).toBeVisible();
+		await expect(tabs.nth(3)).toHaveText(/Done\s*1/);
+	});
 });

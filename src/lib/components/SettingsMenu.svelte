@@ -9,6 +9,7 @@
 	import Tooltip from './Tooltip.svelte';
 	import PwaInstallSettings from './PwaInstallSettings.svelte';
 	import ReminderNotificationSettings from './ReminderNotificationSettings.svelte';
+	import ReminderLanguageSettings from './ReminderLanguageSettings.svelte';
 	import StorageSettings from './StorageSettings.svelte';
 
 	let {
@@ -115,6 +116,7 @@
 				<PwaInstallSettings />
 				<StorageSettings />
 				<ReminderNotificationSettings />
+				<ReminderLanguageSettings />
 			</Menu.ItemGroup>
 
 			<Menu.ItemGroup class={styles.section} aria-labelledby={ids.about}>

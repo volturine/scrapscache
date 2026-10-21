@@ -306,3 +306,129 @@ describe('ReminderPicker closed-app alerts', () => {
 		expect(screen.queryByText(/alerts/)).toBeNull();
 	});
 });
+
+describe('ReminderPicker typed time', () => {
+	const now = new Date(2026, 9, 21, 11, 15);
+	let saved: string[];
+
+	function useLanguages(...codes: Parameters<typeof uiStore.toggleReminderLanguage>[0][]) {
+		// Toggling appends, so re-adding each in turn leaves them in this order.
+		for (const code of codes) {
+			if (uiStore.reminderLanguages.includes(code)) uiStore.toggleReminderLanguage(code);
+			if (!uiStore.reminderLanguages.includes(code)) uiStore.toggleReminderLanguage(code);
+		}
+		for (const code of [...uiStore.reminderLanguages]) {
+			if (!codes.includes(code)) uiStore.toggleReminderLanguage(code);
+		}
+	}
+
+	function selectedOption(name: string) {
+		return screen.getByRole('listbox', { name }).querySelector('[aria-selected="true"]')
+			?.textContent;
+	}
+
+	async function type(text: string) {
+		const field = screen.getByRole('textbox', { name: 'Type a date or time' });
+		await fireEvent.input(field, { target: { value: text } });
+		return field;
+	}
+
+	beforeEach(() => {
+		saved = [...uiStore.reminderLanguages];
+		vi.useFakeTimers({ now, toFake: ['Date'] });
+		useLanguages('en');
+	});
+
+	afterEach(() => {
+		useLanguages(...(saved as Parameters<typeof useLanguages>));
+	});
+
+	it('reads a typed time, moves the wheels to it and saves it with Enter', async () => {
+		vi.stubGlobal('Notification', { permission: 'granted', requestPermission: vi.fn() });
+		const onApply = vi.fn();
+		render(ReminderPicker, { props: { reminder: null, onClose: () => {}, onApply } });
+
+		const field = await type('tomorrow 9am');
+
+		expect(await screen.findByText(/^Thu, Oct 22, 9:00/)).toBeTruthy();
+		expect(selectedOption('Hour')).toBe('09');
+		expect(selectedOption('Minute')).toBe('00');
+		await fireEvent.keyDown(field, { key: 'Enter' });
+		await vi.waitFor(() =>
+			expect(onApply).toHaveBeenCalledWith(new Date(2026, 9, 22, 9, 0).getTime())
+		);
+		vi.unstubAllGlobals();
+	});
+
+	it('keeps the wheels’ time when only a day is typed', async () => {
+		render(ReminderPicker, { props: { reminder, onClose: () => {} } });
+
+		await type('friday');
+
+		expect(await screen.findByText(/^Fri, Oct 23, 3:30/)).toBeTruthy();
+		expect(selectedOption('Hour')).toBe('15');
+		expect(selectedOption('Minute')).toBe('30');
+	});
+
+	it('says which part of a sentence it read', async () => {
+		render(ReminderPicker, { props: { reminder, onClose: () => {} } });
+
+		await type('call mum tomorrow at 3pm');
+
+		expect(await screen.findByText('· from “tomorrow at 3pm”')).toBeTruthy();
+	});
+
+	it('says when it cannot read the text and puts the wheels back', async () => {
+		render(ReminderPicker, { props: { reminder, onClose: () => {} } });
+
+		await type('tomorrow 9am');
+		await screen.findByText(/^Thu, Oct 22, 9:00/);
+		await type('when I get home');
+
+		expect(
+			await screen.findByText('No date or time in that. Try “tomorrow 9am”, or pick one below.')
+		).toBeTruthy();
+		expect(selectedOption('Hour')).toBe('15');
+		expect(screen.getByRole('button', { name: 'Choose date' }).textContent).toContain('12');
+	});
+
+	it('clears the typed time when a date is picked below', async () => {
+		render(ReminderPicker, { props: { reminder, onClose: () => {} } });
+
+		const field = await type('tomorrow 9am');
+		await screen.findByText(/^Thu, Oct 22, 9:00/);
+		await fireEvent.click(screen.getByRole('button', { name: 'Next day' }));
+
+		expect((field as HTMLInputElement).value).toBe('');
+		expect(screen.queryByText(/^Thu, Oct 22, 9:00/)).toBeNull();
+		expect(screen.getByRole('button', { name: 'Choose date' }).textContent).toContain('23');
+	});
+
+	it('reads the languages picked in Settings', async () => {
+		useLanguages('sk', 'en');
+		render(ReminderPicker, { props: { reminder, onClose: () => {} } });
+
+		expect(
+			screen.getByRole('textbox', { name: 'Type a date or time' }).getAttribute('placeholder')
+		).toBe('Type a time, like “zajtra o 9”');
+		await type('v piatok večer');
+
+		expect(await screen.findByText(/^Fri, Oct 23, 6:00/)).toBeTruthy();
+		expect(selectedOption('Hour')).toBe('18');
+	});
+
+	it('takes focus on a desktop but leaves a phone keyboard down', () => {
+		const desktop = render(ReminderPicker, {
+			props: { reminder, onClose: () => {}, forceMode: 'desktop' }
+		});
+		expect(desktop.component.initialFocus()).toBe(
+			screen.getByRole('textbox', { name: 'Type a date or time' })
+		);
+		desktop.unmount();
+
+		const phone = render(ReminderPicker, {
+			props: { reminder, onClose: () => {}, forceMode: 'mobile' }
+		});
+		expect(phone.component.initialFocus()?.tagName).toBe('BUTTON');
+	});
+});

@@ -2,6 +2,11 @@
 import { writeMirror } from '#lib/db/idb.js';
 import { selectionStore } from './selection.svelte.js';
 import { NO_FILTERS, type SearchFilters } from '#lib/search.js';
+import {
+	defaultReminderLanguages,
+	isReminderLanguage,
+	type ReminderLanguage
+} from '#lib/reminderPhrase.js';
 
 export type Layout = 'grid' | 'list';
 export type Theme = 'system' | 'light' | 'dark';
@@ -16,6 +21,7 @@ interface UIState {
 	search: string;
 	settingsOpen: boolean;
 	rawMarkdown: boolean;
+	reminderLanguages: ReminderLanguage[];
 }
 
 function prefersDark(): boolean {
@@ -90,6 +96,9 @@ export class UIStore {
 	#layout = $state<Layout>('grid');
 	#view = $state<View>('notes');
 	#rawMarkdown = $state(false);
+	#reminderLanguages = $state<ReminderLanguage[]>(
+		defaultReminderLanguages(typeof navigator === 'undefined' ? [] : navigator.languages)
+	);
 	activeLabelId = $state<string | null>(null);
 	// Ephemeral route-feedback state; never persisted across a reload.
 	pendingPath = $state<string | null>(null);
@@ -137,6 +146,21 @@ export class UIStore {
 	}
 	set layout(value: Layout) {
 		this.#layout = value;
+		this.#persist();
+	}
+
+	/** The languages a typed reminder time is read in, the first winning a tie. */
+	get reminderLanguages(): readonly ReminderLanguage[] {
+		return this.#reminderLanguages;
+	}
+
+	/** Add or remove a language. The last one stays: a typed time needs at least one. */
+	toggleReminderLanguage(code: ReminderLanguage) {
+		const on = this.#reminderLanguages.includes(code);
+		if (on && this.#reminderLanguages.length === 1) return;
+		this.#reminderLanguages = on
+			? this.#reminderLanguages.filter((language) => language !== code)
+			: [...this.#reminderLanguages, code];
 		this.#persist();
 	}
 
@@ -208,6 +232,10 @@ export class UIStore {
 					if (parsed.layout === 'grid' || parsed.layout === 'list') this.#layout = parsed.layout;
 					if (isView(parsed.view)) this.#view = parsed.view;
 					if (typeof parsed.rawMarkdown === 'boolean') this.#rawMarkdown = parsed.rawMarkdown;
+					if (Array.isArray(parsed.reminderLanguages)) {
+						const languages = [...new Set(parsed.reminderLanguages.filter(isReminderLanguage))];
+						if (languages.length > 0) this.#reminderLanguages = languages;
+					}
 				}
 			} catch {
 				/* ignore */
@@ -239,7 +267,8 @@ export class UIStore {
 			dark: this.#dark,
 			layout: this.#layout,
 			view: this.#view,
-			rawMarkdown: this.#rawMarkdown
+			rawMarkdown: this.#rawMarkdown,
+			reminderLanguages: this.#reminderLanguages
 		};
 		// Preferences only: a full localStorage must not abort the sync or import
 		// that is restoring them.

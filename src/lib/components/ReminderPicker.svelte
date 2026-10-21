@@ -5,7 +5,7 @@
 	import { DatePicker, type DatePickerValueChangeDetails } from '@ark-ui/svelte/date-picker';
 	import WheelPicker from './WheelPicker.svelte';
 	import DatePickerViews from './DatePickerViews.svelte';
-	import { AlarmClock, ChevronLeft, ChevronRight } from '@lucide/svelte';
+	import { AlarmClock, Check, ChevronLeft, ChevronRight, TriangleAlert, X } from '@lucide/svelte';
 	import {
 		notificationPermission,
 		notificationsBlockedHint,
@@ -18,8 +18,15 @@
 	import { uiStore } from '#lib/stores/ui.svelte.js';
 	import { formatReminderCountdown } from '#lib/utils.js';
 	import { PHONE_MEDIA } from '#lib/appViewport.js';
+	import {
+		REMINDER_LANGUAGES,
+		loadPhraseReaders,
+		readReminderPhrase,
+		type PhraseReader,
+		type ReminderPhrase
+	} from '#lib/reminderPhrase.js';
 	import { css, cx } from 'styled-system/css';
-	import { badge, button, dialog, iconButton } from 'styled-system/recipes';
+	import { badge, button, dialog, iconButton, input } from 'styled-system/recipes';
 	import { hstack, flex } from 'styled-system/patterns';
 
 	let {
@@ -73,10 +80,18 @@
 		onClose();
 	}
 
+	/** A date or time picked with the controls below the field: it replaces any typed one. */
+	function pick(d: Date) {
+		selected = d;
+		phrase = '';
+		reading = null;
+		beforeTyping = null;
+	}
+
 	function shiftDay(delta: number) {
 		const d = new Date(selected);
 		d.setDate(d.getDate() + delta);
-		selected = d;
+		pick(d);
 	}
 
 	function setDateParts(parts: { year?: number; month?: number; day?: number }) {
@@ -85,7 +100,7 @@
 		const month = parts.month ?? d.getMonth();
 		const day = parts.day ?? d.getDate();
 		d.setFullYear(year, month, Math.min(day, daysInMonth(year, month)));
-		selected = d;
+		pick(d);
 	}
 
 	const dateLabel = $derived(
@@ -152,21 +167,91 @@
 		if (!next) return;
 		const d = new Date(selected);
 		d.setFullYear(next.year, next.month - 1, next.day);
-		selected = d;
+		pick(d);
 		monthYearOpen = false;
 	}
 
 	function setHour(hour: number) {
 		const d = new Date(selected);
 		d.setHours(hour);
-		selected = d;
+		pick(d);
 	}
 
 	function setMinute(minute: number) {
 		const d = new Date(selected);
 		d.setMinutes(minute);
-		selected = d;
+		pick(d);
 	}
+
+	// Typing a time: "tomorrow 9am", "v piatok večer". The languages are picked in Settings.
+	let phrase = $state('');
+	let reading = $state<ReminderPhrase | null>(null);
+	let readers = $state.raw<PhraseReader[] | null>(null);
+	/** What the controls showed before typing began; an unread or cleared text returns to it. */
+	let beforeTyping: Date | null = null;
+	let phraseInput = $state<HTMLInputElement | null>(null);
+	const pickerId = $props.id();
+	const resultId = `${pickerId}-read`;
+
+	$effect(() => {
+		let current = true;
+		void loadPhraseReaders(uiStore.reminderLanguages).then((loaded) => {
+			if (!current) return;
+			readers = loaded;
+			if (phrase) readPhrase(phrase);
+		});
+		return () => {
+			current = false;
+		};
+	});
+
+	const example = $derived(
+		REMINDER_LANGUAGES.find((language) => language.code === uiStore.reminderLanguages[0])
+			?.example ?? 'tomorrow 9am'
+	);
+
+	function readPhrase(text: string) {
+		phrase = text;
+		if (!text.trim()) {
+			reading = null;
+			if (beforeTyping) selected = beforeTyping;
+			beforeTyping = null;
+			return;
+		}
+		beforeTyping ??= selected;
+		// A day typed without a time keeps the time the wheels showed before typing.
+		const time = { hour: beforeTyping.getHours(), minute: beforeTyping.getMinutes() };
+		reading = readers ? readReminderPhrase(text, readers, new Date(), time) : null;
+		selected = reading ? new Date(reading.at) : beforeTyping;
+	}
+
+	function onPhraseKeydown(event: KeyboardEvent) {
+		if (event.key !== 'Enter' || event.isComposing || !reading) return;
+		event.preventDefault();
+		void save();
+	}
+
+	function clearPhrase() {
+		readPhrase('');
+		phraseInput?.focus();
+	}
+
+	const readingLabel = $derived.by(() => {
+		if (!reading) return '';
+		const at = new Date(reading.at);
+		return at.toLocaleString([], {
+			weekday: 'short',
+			month: 'short',
+			day: 'numeric',
+			...(at.getFullYear() === new Date().getFullYear() ? {} : { year: 'numeric' }),
+			hour: 'numeric',
+			minute: '2-digit'
+		});
+	});
+	/** Part of a sentence was read: say which part, so a missed word is not a surprise. */
+	const readingPart = $derived(
+		reading && reading.text.toLowerCase() !== phrase.trim().toLowerCase() ? reading.text : null
+	);
 
 	async function save() {
 		// A first save triggers the browser's permission prompt, which stays open
@@ -221,8 +306,13 @@
 
 	let schedulePanel = $state<HTMLElement | null>(null);
 
-	/** Where a host dialog puts focus on open: the first date control, not a link above it. */
+	/**
+	 * Where a host dialog puts focus on open: the typed field on a desktop, ready for
+	 * "tomorrow 9am". A phone keeps its keyboard down until the field is tapped, so
+	 * focus goes to the first date control, not a link above it.
+	 */
 	export function initialFocus(): HTMLElement | null {
+		if (!isMobile && phraseInput) return phraseInput;
 		return schedulePanel?.querySelector('button') ?? null;
 	}
 
@@ -251,6 +341,52 @@
 
 <div class={cx(d.panel, css({ w: '20rem', p: 'xl', gap: 0 }))}>
 	<div class={cx(d.title, css({ mb: 'md', textStyle: 'subtitle' }))}>Reminder</div>
+
+	<div class={styles.phrase}>
+		<div class={styles.phraseField}>
+			<input
+				bind:this={phraseInput}
+				type="text"
+				class={cx(input({ variant: 'outline', size: 'md' }), styles.phraseInput)}
+				value={phrase}
+				oninput={(event) => readPhrase(event.currentTarget.value)}
+				onkeydown={onPhraseKeydown}
+				placeholder={`Type a time, like “${example}”`}
+				aria-label="Type a date or time"
+				aria-describedby={resultId}
+				autocomplete="off"
+				autocapitalize="off"
+				spellcheck="false"
+				enterkeyhint="done"
+			/>
+			{#if phrase}
+				<button
+					type="button"
+					class={cx(iconButton({ variant: 'ghost', size: 'compact' }), styles.phraseClear)}
+					onclick={clearPhrase}
+					aria-label="Clear the typed time"
+				>
+					<X size={16} aria-hidden="true" />
+				</button>
+			{/if}
+		</div>
+		<div id={resultId} aria-live="polite">
+			{#if reading}
+				<p class={styles.phraseRead}>
+					<Check class={styles.phraseReadIcon} aria-hidden="true" />
+					<span>{readingLabel}</span>
+					{#if readingPart}
+						<span class={styles.phraseMuted}>· from “{readingPart}”</span>
+					{/if}
+				</p>
+			{:else if phrase.trim() && readers}
+				<p class={styles.phraseUnread}>
+					<TriangleAlert class={styles.phraseUnreadIcon} aria-hidden="true" />
+					<span>No date or time in that. Try “{example}”, or pick one below.</span>
+				</p>
+			{/if}
+		</div>
+	</div>
 
 	<div class={cx(statusBoxClass, css({ mb: 'lg', rounded: 'card', px: 'md', py: 'list' }))}>
 		<div class={hstack({ justify: 'space-between', gap: 'sm' })}>

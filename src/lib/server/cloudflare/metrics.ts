@@ -3,14 +3,6 @@ import type { D1Database } from '@cloudflare/workers-types';
 import type { MetricsSnapshot, ProcessActivity } from '#lib/server/metricsRender.js';
 import { SYNC_DELTA_PATH } from '#lib/model/protocol.js';
 
-/** Per-phase keys for one relay sync round, written into `activity_hours`. */
-export function recordSyncPhases(phases: Record<string, number>): void {
-	const counts: Record<string, number> = {};
-	for (const [key, value] of Object.entries(phases))
-		if (value > 0) counts[key] = Math.round(value) || 0;
-	add(counts);
-}
-
 export { renderMetrics } from '#lib/server/metricsRender.js';
 export type { ProcessActivity, MetricsSnapshot } from '#lib/server/metricsRender.js';
 
@@ -79,8 +71,19 @@ export function recordHttpRequest(pathname: string, status: number, durationMs: 
  * each one. The rate-limit buckets already show who is being held back. */
 export function recordRateLimit(): void {}
 
+/**
+ * Sync rounds are counted one in this many, each standing for the rest. Most rounds
+ * change nothing, and counting every one would make each of them a database write.
+ */
+export const SYNC_ROUND_SAMPLE = 20;
+
+/** Uploads and deletions are counted exactly; a round that has them is writing anyway. */
 export function recordSyncBatch(uploadCount: number, deleteCount: number): void {
-	add({ sync: 1, uploads: uploadCount, deletes: deleteCount });
+	add({
+		sync: Math.random() * SYNC_ROUND_SAMPLE < 1 ? SYNC_ROUND_SAMPLE : 0,
+		uploads: uploadCount,
+		deletes: deleteCount
+	});
 }
 
 export function recordSqliteBusy(): void {

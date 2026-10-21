@@ -11,7 +11,17 @@ const mocks = vi.hoisted(() => {
 		QuotaError,
 		authenticate: vi.fn((): string | null => 'account-123456789'),
 		sync: vi.fn(),
-		recordSyncPhases: vi.fn(),
+		chargeSyncChurn: vi.fn(
+			async (
+				_accountId: string,
+				_mutations: number
+			): Promise<{ allowed: true } | { allowed: false; retryAfterSeconds: number }> => ({
+				allowed: true
+			})
+		),
+		addRequestPhases: vi.fn(),
+		addDatabaseCost: vi.fn(),
+		nameRequestCost: vi.fn(),
 		accountRateLimit: vi.fn(async (): Promise<number | null> => null),
 		enterSyncRequest: vi.fn(() => vi.fn()),
 		enterSyncBody: vi.fn(() => vi.fn()),
@@ -41,6 +51,7 @@ vi.mock('#lib/server/syncAuth.js', () => ({
 	getSyncAuth: () => ({ authenticateSyncRequest: mocks.authenticate })
 }));
 vi.mock('#lib/server/rateLimit.js', () => ({
+	chargeSyncChurn: mocks.chargeSyncChurn,
 	clientAddress: () => '127.0.0.1',
 	enterSyncRequest: mocks.enterSyncRequest,
 	enterSyncBody: mocks.enterSyncBody,
@@ -55,8 +66,12 @@ vi.mock('#lib/server/runtimeSettings.js', () => ({
 }));
 vi.mock('#lib/server/metrics.js', () => ({
 	recordSqliteError: vi.fn(),
-	recordSyncBatch: vi.fn(),
-	recordSyncPhases: mocks.recordSyncPhases
+	recordSyncBatch: vi.fn()
+}));
+vi.mock('#lib/server/requestCost.js', () => ({
+	addRequestPhases: mocks.addRequestPhases,
+	addDatabaseCost: mocks.addDatabaseCost,
+	nameRequestCost: mocks.nameRequestCost
 }));
 
 import { POST } from './+server';
@@ -107,6 +122,7 @@ describe('sync delta route', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		mocks.limitChecks.mockImplementation(() => ({ allowed: true }));
+		mocks.chargeSyncChurn.mockImplementation(async () => ({ allowed: true }));
 		mocks.authenticate.mockReturnValue(accountId);
 		mocks.sync.mockReturnValue({
 			cursor: 2,
@@ -179,8 +195,9 @@ describe('sync delta route', () => {
 		});
 	});
 
-	it('records the relay’s phase timings without sending them to the client', async () => {
+	it('counts the relay’s timings and database cost toward the request without sending them to the client', async () => {
 		const phaseTimings = { 'sync_ms phase:reads': 4, 'sync_calls phase:r2_get': 1 };
+		const databaseCost = { queries: 2, rowsRead: 9, rowsWritten: 0 };
 		mocks.sync.mockReturnValueOnce({
 			cursor: 2,
 			envelopes: [],
@@ -188,14 +205,49 @@ describe('sync delta route', () => {
 			hasMore: false,
 			reset: false,
 			writesAccepted: true,
-			phaseTimings
+			phaseTimings,
+			databaseCost
 		});
 
 		const response = await post({ envelopes: [], deleteSlots: [] });
 
 		expect(response.status).toBe(200);
-		expect(mocks.recordSyncPhases).toHaveBeenCalledWith(phaseTimings);
-		expect(await response.json()).not.toHaveProperty('phaseTimings');
+		expect(mocks.addRequestPhases).toHaveBeenCalledWith(phaseTimings);
+		expect(mocks.addDatabaseCost).toHaveBeenCalledWith(databaseCost);
+		expect(mocks.nameRequestCost).toHaveBeenCalledWith('empty');
+		const body = await response.json();
+		expect(body).not.toHaveProperty('phaseTimings');
+		expect(body).not.toHaveProperty('databaseCost');
+	});
+
+	it('names a round by what it wrote, never by whose it was', async () => {
+		await post({
+			envelopes: [validEnvelope],
+			deleteSlots: [{ id: 'deleted-id', slot: 'b'.repeat(64) }]
+		});
+		expect(mocks.nameRequestCost).toHaveBeenLastCalledWith('upload:1+delete:1');
+	});
+
+	it('charges the account’s daily churn allowance one token per write', async () => {
+		await post({
+			envelopes: [validEnvelope, { ...validEnvelope, id: 'second', slot: 'c'.repeat(64) }],
+			deleteSlots: [{ id: 'deleted-id', slot: 'b'.repeat(64) }]
+		});
+		expect(mocks.chargeSyncChurn).toHaveBeenCalledWith(accountId, 3);
+	});
+
+	it('leaves the churn allowance alone for a round that writes nothing', async () => {
+		const response = await post({ envelopes: [], deleteSlots: [] });
+		expect(response.status).toBe(200);
+		expect(mocks.chargeSyncChurn).not.toHaveBeenCalled();
+	});
+
+	it('refuses writes once the account’s churn allowance is spent, before taking a sync slot', async () => {
+		mocks.chargeSyncChurn.mockResolvedValueOnce({ allowed: false, retryAfterSeconds: 60 });
+		const response = await post({ envelopes: [validEnvelope], deleteSlots: [] });
+		expect(response.status).toBe(429);
+		expect(mocks.enterSyncRequest).not.toHaveBeenCalled();
+		expect(mocks.sync).not.toHaveBeenCalled();
 	});
 
 	it.each([1, 'yes', null])('rejects a continues flag of %s', async (continues) => {
@@ -381,6 +433,7 @@ describe('sync delta route', () => {
 		);
 		expect((await post({ envelopes: [] })).status).toBe(429);
 		mocks.limitChecks.mockImplementation(() => ({ allowed: true }));
+		mocks.chargeSyncChurn.mockImplementation(async () => ({ allowed: true }));
 
 		expect((await post({ envelopes: [{ ...validEnvelope, id: '' }] })).status).toBe(400);
 		expect((await postRaw('{not json')).status).toBe(400);

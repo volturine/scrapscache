@@ -18,7 +18,7 @@ import {
 	SYNC_PROTOCOL_HEADER,
 	SYNC_PROTOCOL_VERSION
 } from '#lib/model/protocol.js';
-import { SyncStore } from './sync.svelte';
+import { SyncStore, syncStore } from './sync.svelte';
 import { syncSnapshot, type SyncSnapshot } from '#lib/syncRecords.js';
 import { unboundSyncEnvelope } from '../../tests/unboundEnvelope';
 import { seedTestKeyring, TEST_WORKSPACE } from '../../tests/workspace';
@@ -30,6 +30,7 @@ type RequestPayload = {
 };
 
 type RelayData = {
+	historyEvicted?: number;
 	cursor: number;
 	envelopes: Array<{ seq: number; id: string; slot: string; ciphertext: string }>;
 	conflicts: Array<{ seq: number; id: string; slot: string; ciphertext: string }>;
@@ -1563,6 +1564,131 @@ describe('client sync state machine', () => {
 		const later = await save('after closing');
 		expect(later).toMatchObject({ expectedId: second.id });
 		expect(later.continues).toBeUndefined();
+	});
+});
+
+describe('a photo kept for note history', () => {
+	beforeEach(() => {
+		localStorage.clear();
+		seedTestKeyring();
+		vi.restoreAllMocks();
+	});
+
+	const photo = attachment('photo');
+	/** The live note no longer shows the photo; its earlier versions may. */
+	const live = (updatedAt = 5) =>
+		note('note-1', { updatedAt, imageTombstones: { photo: 4 } } as Partial<Note>);
+
+	/** Answers history reads with the given versions of note-1, and counts them. */
+	function serveHistory(account: SyncIdentity, versions: () => Note[] | null) {
+		return vi.spyOn(syncStore, 'authorizedFetch').mockImplementation(async (input) => {
+			if (!String(input).startsWith('/api/sync/history')) throw new Error(`unexpected ${input}`);
+			const current = versions();
+			if (!current) return new Response('', { status: 503 });
+			const slot = await sha256(`${account.syncKey}\u0000note:note-1`);
+			const payloads = await Promise.all(
+				current.map(async (version) => {
+					const records = await buildSyncRecords(syncSnapshot({ notes: [version] }));
+					return records.find((record) => record.key === 'note:note-1')!.payload;
+				})
+			);
+			return Response.json({
+				versions: payloads.map((payload, index) => ({
+					historyId: payloads.length - index,
+					savedAt: index,
+					id: `version-${index}`,
+					ciphertext: encryptSyncPayload(account.syncKey, payload, slot)
+				}))
+			});
+		});
+	}
+
+	/** A relay with nothing new; a sync that keeps asking fails rather than hanging. */
+	function quietRelay(historyEvicted: () => number) {
+		return createHarness((_request, index) =>
+			index > 20
+				? { success: false, error: 'sync never settled' }
+				: { success: true, data: emptyData({ cursor: 3, historyEvicted: historyEvicted() }) }
+		);
+	}
+
+	async function seedSyncedPhoto(accountId: string, local: Note) {
+		const records = await buildSyncRecords(syncSnapshot({ notes: [local] }));
+		await seedControl(accountId, {
+			cursor: 3,
+			baseline: Object.fromEntries(records.map((record) => [record.key, record.fingerprint])),
+			recordIds: { 'note:note-1': 'note-id', 'attachment:photo': 'photo-id' }
+		});
+	}
+
+	const recordIds = (accountId: string) =>
+		idb.getSyncState<Record<string, string>>(TEST_WORKSPACE, syncControlKeys(accountId).recordIds);
+
+	it('ends the round and keeps the photo and its relay id while history needs it', async () => {
+		const { store, account, requests } = quietRelay(() => 0);
+		const history = serveHistory(account, () => [note('note-1', { updatedAt: 3 }, [photo])]);
+		await seedSyncedPhoto(account.accountId, live());
+
+		const result = await store.sync(syncSnapshot({ notes: [live()] }), false, false, passthrough);
+
+		expect(result.success, result.error).toBe(true);
+		expect(requests).toHaveLength(1);
+		expect(requests.flatMap((request) => request.deleteSlots)).toEqual([]);
+		expect(await recordIds(account.accountId)).toMatchObject({ 'attachment:photo': 'photo-id' });
+		expect(history).toHaveBeenCalledOnce();
+	});
+
+	it('keeps the photo and still ends the round when history cannot be read', async () => {
+		const { store, account, requests } = quietRelay(() => 0);
+		const history = serveHistory(account, () => null);
+		await seedSyncedPhoto(account.accountId, live());
+
+		const result = await store.sync(syncSnapshot({ notes: [live()] }), false, false, passthrough);
+
+		expect(result.success, result.error).toBe(true);
+		expect(requests).toHaveLength(1);
+		expect(requests.flatMap((request) => request.deleteSlots)).toEqual([]);
+		expect(await recordIds(account.accountId)).toMatchObject({ 'attachment:photo': 'photo-id' });
+		// A failed lookup is not repeated within the sync.
+		expect(history).toHaveBeenCalledOnce();
+	});
+
+	it('deletes the photo once a newer note version has pruned the one that listed it', async () => {
+		const { store, account, requests } = quietRelay(() => 0);
+		let versions = [note('note-1', { updatedAt: 3 }, [photo])];
+		serveHistory(account, () => versions);
+		await seedSyncedPhoto(account.accountId, live());
+		await store.sync(syncSnapshot({ notes: [live()] }), false, false, passthrough);
+
+		versions = [note('note-1', { updatedAt: 6 })];
+		const result = await store.sync(syncSnapshot({ notes: [live(6)] }), false, false, passthrough);
+
+		expect(result.success, result.error).toBe(true);
+		expect(requests.at(-1)!.deleteSlots).toEqual([expect.objectContaining({ id: 'photo-id' })]);
+		expect(await recordIds(account.accountId)).not.toHaveProperty('attachment:photo');
+	});
+
+	it('looks again when the relay evicts history without the note changing', async () => {
+		let evicted = 0;
+		const { store, account, requests } = quietRelay(() => evicted);
+		let versions = [note('note-1', { updatedAt: 3 }, [photo])];
+		const history = serveHistory(account, () => versions);
+		await seedSyncedPhoto(account.accountId, live());
+		await store.sync(syncSnapshot({ notes: [live()] }), false, false, passthrough);
+		// The note and the evictions are unchanged, so the cached answer stands.
+		await store.sync(syncSnapshot({ notes: [live()] }), false, false, passthrough);
+		expect(history).toHaveBeenCalledOnce();
+		expect(requests.flatMap((request) => request.deleteSlots)).toEqual([]);
+
+		// Quota eviction drops the old version; the note's updatedAt stays the same.
+		versions = [];
+		evicted = 1;
+		const result = await store.sync(syncSnapshot({ notes: [live()] }), false, false, passthrough);
+
+		expect(result.success, result.error).toBe(true);
+		expect(history).toHaveBeenCalledTimes(2);
+		expect(requests.at(-1)!.deleteSlots).toEqual([expect.objectContaining({ id: 'photo-id' })]);
+		expect(await recordIds(account.accountId)).not.toHaveProperty('attachment:photo');
 	});
 });
 

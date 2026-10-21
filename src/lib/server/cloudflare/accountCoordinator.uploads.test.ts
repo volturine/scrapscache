@@ -115,6 +115,16 @@ describe('uploads that have to be retried', () => {
 		expect(objects.get(String(history.rows[0].r2Key))).toBe('old-bytes');
 		expect(objects.get(String(history.rows[1].r2Key))).toBe('new-bytes');
 		expect(objects.size).toBe(2);
+		await client.batch([
+			{
+				sql: 'INSERT INTO account_history_evictions(account_id, evicted) VALUES (?, 1)',
+				args: [ACCOUNT]
+			},
+			{
+				sql: 'INSERT INTO reminder_wakes_unscheduled(account_id, revision) VALUES (?, 1)',
+				args: [ACCOUNT]
+			}
+		]);
 		await coordinator.fetch(
 			new Request('https://coordinator/delete', {
 				method: 'POST',
@@ -123,6 +133,8 @@ describe('uploads that have to be retried', () => {
 		);
 		expect(objects.size).toBe(0);
 		expect((await client.execute('SELECT history_id FROM envelope_history')).rows).toHaveLength(0);
+		for (const table of ['account_history_evictions', 'reminder_wakes_unscheduled'])
+			expect((await client.execute(`SELECT 1 FROM ${table}`)).rows, table).toHaveLength(0);
 	});
 
 	it('keeps each record’s newest versions and deletes the objects that roll off', async () => {
@@ -201,9 +213,14 @@ describe('uploads that have to be retried', () => {
 		const result = (await response.json()) as {
 			writesAccepted: boolean;
 			usage: { storageBytes: number };
+			historyEvicted: number;
 		};
 		expect(result.writesAccepted).toBe(true);
 		expect(result.usage.storageBytes).toBe(quota);
+		// The note in SLOT never changed, so this count is how its clients learn it lost a version.
+		expect(result.historyEvicted).toBe(1);
+		const after = (await (await sync([], quota, cursor)).json()) as { historyEvicted: number };
+		expect(after.historyEvicted).toBe(1);
 		const history = await client.execute('SELECT id FROM envelope_history ORDER BY history_id');
 		expect(history.rows.map((row) => row.id)).toEqual(['two', 'three', 'other']);
 		expect([...objects.values()].sort()).toEqual(['bb', 'cc', 'dd']);
@@ -835,5 +852,61 @@ describe('writes that change nothing', () => {
 		);
 		expect(stale).toMatchObject({ writesAccepted: false });
 		expect(stale.conflicts).toHaveLength(1);
+	});
+});
+
+describe('rounds that change nothing', () => {
+	/** Every row written to `accounts` from here on, as SQLite counts them. */
+	async function countAccountWrites(): Promise<() => Promise<number>> {
+		await client.executeMultiple(`
+			CREATE TABLE account_writes (n INTEGER);
+			CREATE TRIGGER account_updated AFTER UPDATE ON accounts BEGIN INSERT INTO account_writes VALUES (1); END;
+		`);
+		return async () =>
+			Number((await client.execute('SELECT COUNT(*) AS n FROM account_writes')).rows[0].n);
+	}
+
+	it('writes nothing for an empty round while the account was seen within the hour', async () => {
+		const seen = Date.now() - 60_000;
+		await client.execute({
+			sql: 'UPDATE accounts SET last_seen_at = ? WHERE account_id = ?',
+			args: [seen, ACCOUNT]
+		});
+		const accountWrites = await countAccountWrites();
+
+		const result = (await (await sync([])).json()) as { writesAccepted: boolean };
+
+		expect(result.writesAccepted).toBe(true);
+		expect(await accountWrites()).toBe(0);
+	});
+
+	it('moves last seen once the hour has passed', async () => {
+		const seen = Date.now() - 61 * 60_000;
+		await client.execute({
+			sql: 'UPDATE accounts SET last_seen_at = ? WHERE account_id = ?',
+			args: [seen, ACCOUNT]
+		});
+
+		await sync([]);
+
+		const row = (
+			await client.execute({
+				sql: 'SELECT last_seen_at AS lastSeenAt FROM accounts WHERE account_id = ?',
+				args: [ACCOUNT]
+			})
+		).rows[0];
+		expect(Number(row.lastSeenAt)).toBeGreaterThan(seen);
+	});
+
+	it('reports what the round cost the database', async () => {
+		const result = (await (await sync([])).json()) as {
+			databaseCost: { queries: number; rowsRead: number; rowsWritten: number };
+		};
+		expect(result.databaseCost.queries).toBeGreaterThan(0);
+		expect(result.databaseCost).toEqual({
+			queries: expect.any(Number),
+			rowsRead: expect.any(Number),
+			rowsWritten: expect.any(Number)
+		});
 	});
 });

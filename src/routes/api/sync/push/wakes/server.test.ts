@@ -5,7 +5,8 @@ const mocks = vi.hoisted(() => ({
 	authenticate: vi.fn(async (): Promise<string | null> => 'account-aaaaaaaaaaaa'),
 	arm: vi.fn(async () => undefined),
 	savePushDevice: vi.fn(async () => undefined),
-	replaceReminderWakes: vi.fn(async () => true),
+	replaceReminderWakes: vi.fn(async () => ({ accepted: true, schedule: true })),
+	markReminderWakesScheduled: vi.fn(async () => undefined),
 	getReminderWakes: vi.fn(async () => ({
 		revision: 1,
 		wakes: [{ id: 'a'.repeat(43), fireAt: 12345 }]
@@ -25,6 +26,7 @@ vi.mock('#lib/server/syncStore.js', async (original) => ({
 	getSyncStore: () => ({
 		savePushDevice: mocks.savePushDevice,
 		replaceReminderWakes: mocks.replaceReminderWakes,
+		markReminderWakesScheduled: mocks.markReminderWakesScheduled,
 		getReminderWakes: mocks.getReminderWakes
 	})
 }));
@@ -115,13 +117,49 @@ describe('reminder wake registration', () => {
 		);
 	});
 
-	it('still stores the wakes when the scheduler cannot be reached', async () => {
+	it('marks the wakes scheduled once delivery is armed for them', async () => {
+		const response = await call(PUT, 'PUT', { revision: 3, wakes: [] });
+		expect(response.status).toBe(200);
+		expect(mocks.markReminderWakesScheduled).toHaveBeenCalledWith('account-aaaaaaaaaaaa', 3);
+	});
+
+	it('neither arms nor marks anything when the wakes did not change', async () => {
+		mocks.replaceReminderWakes.mockResolvedValueOnce({ accepted: true, schedule: false });
+		const response = await call(PUT, 'PUT', { revision: 4, wakes: [] });
+		expect(response.status).toBe(200);
+		expect(mocks.arm).not.toHaveBeenCalled();
+		expect(mocks.markReminderWakesScheduled).not.toHaveBeenCalled();
+	});
+
+	it('keeps the wakes but leaves scheduling owed when the scheduler cannot be reached', async () => {
 		const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 		mocks.arm.mockRejectedValueOnce(new Error('unreachable'));
 		const response = await call(PUT, 'PUT', { revision: 2, wakes: [] });
-		expect(response.status).toBe(200);
+		// Not ok, so the client publishes again; the store still owes the arm then.
+		expect(response.status).toBe(503);
 		expect(mocks.replaceReminderWakes).toHaveBeenCalled();
+		expect(mocks.markReminderWakesScheduled).not.toHaveBeenCalled();
 		error.mockRestore();
+	});
+
+	it('refuses a stale snapshot without arming delivery', async () => {
+		mocks.replaceReminderWakes.mockResolvedValueOnce({ accepted: false, schedule: false });
+		const response = await call(PUT, 'PUT', { revision: 1, wakes: [] });
+		expect(response.status).toBe(409);
+		expect(mocks.arm).not.toHaveBeenCalled();
+	});
+
+	it('limits each account’s publishes, whatever address they come from', async () => {
+		mocks.check.mockImplementation((key?: string) => ({
+			allowed: key !== 'push-wakes:account-aaaaaaaaaaaa'
+		}));
+		const response = await call(PUT, 'PUT', { revision: 5, wakes: [] });
+		expect(response.status).toBe(429);
+		expect(mocks.replaceReminderWakes).not.toHaveBeenCalled();
+		expect(mocks.check).toHaveBeenCalledWith('push-wakes:account-aaaaaaaaaaaa', {
+			capacity: 30,
+			refillWindowMs: 5 * 60_000
+		});
 	});
 
 	it('fetches wakes for the authenticated account', async () => {

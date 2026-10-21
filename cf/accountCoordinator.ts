@@ -7,7 +7,12 @@ import type {
 	WebSocketRequestResponsePair as WorkerAutoResponse
 } from '@cloudflare/workers-types';
 import { batch, execute, type SqlStatement, type SqlResult } from '../src/lib/server/cloudflare/d1';
-import { parseHistoryVersions } from '../src/lib/server/operatorConfig';
+import { ACCOUNT_SEEN_INTERVAL_MS, parseHistoryVersions } from '../src/lib/server/operatorConfig';
+import {
+	measureRequestCost,
+	newRequestCost,
+	type RequestCost
+} from '../src/lib/server/requestCost';
 import { createSyncTimings, type SyncTimings } from '../src/lib/server/syncMetrics';
 import {
 	deleteHistoryRows,
@@ -314,6 +319,7 @@ export class AccountCoordinator {
 			{ sql: 'DELETE FROM reminder_push_devices WHERE account_id = ?', args: [accountId] },
 			{ sql: 'DELETE FROM reminder_wakes WHERE account_id = ?', args: [accountId] },
 			{ sql: 'DELETE FROM reminder_wake_revisions WHERE account_id = ?', args: [accountId] },
+			{ sql: 'DELETE FROM reminder_wakes_unscheduled WHERE account_id = ?', args: [accountId] },
 			{ sql: 'DELETE FROM reminder_wake_deliveries WHERE account_id = ?', args: [accountId] }
 		]);
 		for (const socket of this.state.getWebSockets()) {
@@ -326,9 +332,20 @@ export class AccountCoordinator {
 		return Response.json({ deleted: results[0]?.rowsAffected === 1 });
 	}
 
-	/** Builds the round's response with its per-phase timings attached. */
-	private round(timings: SyncTimings, body: Record<string, unknown>): Response {
-		return Response.json({ ...body, phaseTimings: timings.timings() });
+	/** Builds the round's response with its per-phase timings and database cost attached. */
+	private round(timings: SyncTimings, cost: RequestCost, body: Record<string, unknown>): Response {
+		const { queries, rowsRead, rowsWritten } = cost;
+		return Response.json({
+			...body,
+			phaseTimings: timings.timings(),
+			databaseCost: { queries, rowsRead, rowsWritten }
+		});
+	}
+
+	/** One relay round, with every D1 call it makes counted toward its cost. */
+	private sync(input: SyncInput): Promise<Response> {
+		const cost = newRequestCost();
+		return measureRequestCost(cost, () => this.syncRound(input, cost));
 	}
 
 	/**
@@ -339,7 +356,7 @@ export class AccountCoordinator {
 	 * under the write lock from its account read through the commit and the
 	 * cleanup tail, so counters, history and usage never lose an update.
 	 */
-	private async sync(input: SyncInput): Promise<Response> {
+	private async syncRound(input: SyncInput, cost: RequestCost): Promise<Response> {
 		const db = this.env.SCRAPSCACHE_DB;
 		const timings = createSyncTimings();
 		try {
@@ -352,12 +369,15 @@ export class AccountCoordinator {
 					// pays one D1 trip, not two, before it can decide anything.
 					sql: `SELECT next_seq AS nextSeq, envelope_count AS envelopeCount,
 					ciphertext_bytes AS ciphertextBytes, updated_at AS updatedAt,
+					last_seen_at AS lastSeenAt,
 					COALESCE(quota.max_bytes, ?) AS maxBytes,
 					COALESCE(history.versions, 0) AS historyVersions,
-					COALESCE(history.bytes, 0) AS historyBytes
+					COALESCE(history.bytes, 0) AS historyBytes,
+					COALESCE(evictions.evicted, 0) AS historyEvicted
 					FROM accounts
 					LEFT JOIN account_quotas AS quota USING (account_id)
 					LEFT JOIN account_history_usage AS history USING (account_id)
+					LEFT JOIN account_history_evictions AS evictions USING (account_id)
 					WHERE account_id = ?`,
 					args: [input.maxAccountBytes, input.accountId]
 				},
@@ -402,8 +422,10 @@ export class AccountCoordinator {
 						envelopeCount: number;
 						ciphertextBytes: number;
 						updatedAt: number;
+						lastSeenAt: number;
 						historyVersions: number;
 						historyBytes: number;
+						historyEvicted: number;
 						maxBytes: number;
 				  }
 				| undefined;
@@ -416,6 +438,9 @@ export class AccountCoordinator {
 			// when the two together exceed it, the oldest versions give way.
 			let historyVersions = Number(account.historyVersions);
 			let historyBytes = Number(account.historyBytes);
+			// Clients cache which photos a note's history still needs; a change here tells
+			// them versions went without the note changing.
+			let historyEvicted = Number(account.historyEvicted);
 			const storageBytes = (activeCount = envelopeCount, activeBytes = ciphertextBytes) =>
 				activeBytes + activeCount * STORAGE_OVERHEAD_BYTES;
 			const historyStorageBytes = () => historyBytes + historyVersions * STORAGE_OVERHEAD_BYTES;
@@ -426,21 +451,28 @@ export class AccountCoordinator {
 				maxBytes
 			});
 			const now = Math.max(Date.now(), Number(account.updatedAt) + 1);
-			const touch = {
-				sql: 'UPDATE accounts SET last_seen_at = ? WHERE account_id = ?',
-				args: [now, input.accountId]
+			// Last seen is kept to the hour: activity counts and retention work in days,
+			// and a write per round would make every empty sync cost one.
+			const touchDue = now - Number(account.lastSeenAt) >= ACCOUNT_SEEN_INTERVAL_MS;
+			const touch = async () => {
+				if (!touchDue) return;
+				await execute(db, {
+					sql: 'UPDATE accounts SET last_seen_at = ? WHERE account_id = ?',
+					args: [now, input.accountId]
+				});
 			};
 
 			if (input.cursor > Number(account.nextSeq)) {
-				await execute(db, touch);
-				return this.round(timings, {
+				await touch();
+				return this.round(timings, cost, {
 					cursor: 0,
 					envelopes: [],
 					conflicts: [],
 					hasMore: false,
 					reset: true,
 					writesAccepted: false,
-					usage: usage()
+					usage: usage(),
+					historyEvicted
 				});
 			}
 
@@ -451,15 +483,16 @@ export class AccountCoordinator {
 				(row) => Number(row.ciphertextBytes)
 			);
 			if (page.length > 0) {
-				await execute(db, touch);
-				return this.round(timings, {
+				await touch();
+				return this.round(timings, cost, {
 					cursor: page.at(-1)?.seq ?? input.cursor,
 					envelopes: await hydrated(this.env, page, timings),
 					conflicts: [],
 					hasMore,
 					reset: false,
 					writesAccepted: !mutates,
-					usage: usage()
+					usage: usage(),
+					historyEvicted
 				});
 			}
 
@@ -482,15 +515,16 @@ export class AccountCoordinator {
 				)
 				.map(({ current }) => current);
 			if (conflicts.length > 0) {
-				await execute(db, touch);
-				return this.round(timings, {
+				await touch();
+				return this.round(timings, cost, {
 					cursor: Math.max(input.cursor, Number(account.nextSeq)),
 					envelopes: [],
 					conflicts: await hydrated(this.env, conflicts, timings),
 					hasMore: false,
 					reset: false,
 					writesAccepted: false,
-					usage: usage()
+					usage: usage(),
+					historyEvicted
 				});
 			}
 
@@ -626,18 +660,20 @@ export class AccountCoordinator {
 					ciphertextBytes: upload.ciphertext.length
 				});
 			}
-			committed.push({
-				sql: `UPDATE accounts SET next_seq = ?, envelope_count = ?, ciphertext_bytes = ?,
-				updated_at = ?, last_seen_at = ? WHERE account_id = ?`,
-				args: [
-					sequence,
-					envelopeCount,
-					ciphertextBytes,
-					acceptedUploads.length > 0 || deletedSlots.length > 0 ? now : Number(account.updatedAt),
-					now,
-					input.accountId
-				]
-			});
+			const changesAccount = acceptedUploads.length > 0 || deletedSlots.length > 0;
+			if (changesAccount || touchDue)
+				committed.push({
+					sql: `UPDATE accounts SET next_seq = ?, envelope_count = ?, ciphertext_bytes = ?,
+					updated_at = ?, last_seen_at = ? WHERE account_id = ?`,
+					args: [
+						sequence,
+						envelopeCount,
+						ciphertextBytes,
+						changesAccount ? now : Number(account.updatedAt),
+						now,
+						input.accountId
+					]
+				});
 
 			// The batch fits. Drop what earlier attempts left, reserve the new object
 			// keys, write the bytes, and only then commit: a crash at any point from
@@ -719,6 +755,14 @@ export class AccountCoordinator {
 							historyBytes -= Number(row.bytes);
 						}
 						await deleteHistoryRows(this.env, evicted);
+						if (evicted.length > 0) {
+							historyEvicted += evicted.length;
+							await execute(db, {
+								sql: `INSERT INTO account_history_evictions(account_id, evicted) VALUES (?, ?)
+							ON CONFLICT(account_id) DO UPDATE SET evicted = excluded.evicted`,
+								args: [input.accountId, historyEvicted]
+							});
+						}
 					}
 					if (
 						historyVersions !== Number(account.historyVersions) ||
@@ -735,7 +779,7 @@ export class AccountCoordinator {
 				this.announce(sequence, input.senderClientId);
 			}
 
-			return this.round(timings, {
+			return this.round(timings, cost, {
 				cursor: Math.max(input.cursor, sequence),
 				envelopes: [],
 				conflicts: [],
@@ -748,7 +792,8 @@ export class AccountCoordinator {
 				// pull, so it counts the round as stalled and, with the same deletion
 				// planned every round, never leaves that state.
 				writesAccepted: true,
-				usage: usage()
+				usage: usage(),
+				historyEvicted
 			});
 		} catch (error) {
 			return this.failure('/sync', error);

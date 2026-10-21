@@ -187,8 +187,16 @@ export class SyncStore {
 	private backgroundSessions = new Map<string, { accessToken: string; expiresAt: number }>();
 	private session: { accountId: string; accessToken: string; expiresAt: number } | null = null;
 	private pendingSessions = new Map<string, Promise<string>>();
-	/** Attachment ids a note's retained versions list, as of the note's last change. */
-	private versionAttachments = new Map<string, { updatedAt: number; ids: Set<string> }>();
+	/**
+	 * Attachment ids a note's retained versions list, as of the note's last change and the
+	 * account's history evictions then: quota eviction drops versions without changing a note.
+	 */
+	private versionAttachments = new Map<
+		string,
+		{ updatedAt: number; evicted: number | null; ids: Set<string> }
+	>();
+	/** Older versions each account's relay has evicted for quota, as its last round reported. */
+	private historyEvicted = new Map<string, number>();
 	/** Notes open in the editor, by record key, with the envelope id each session last uploaded. */
 	private editSessions = new Map<string, { uploadedId: string | null }>();
 	private authenticationGeneration = 0;
@@ -811,8 +819,9 @@ export class SyncStore {
 		note: Note
 	): Promise<Set<string> | null> {
 		const key = `${account.accountId}\u0000${note.id}`;
+		const evicted = this.historyEvicted.get(account.accountId) ?? null;
 		const cached = this.versionAttachments.get(key);
-		if (cached?.updatedAt === note.updatedAt) return cached.ids;
+		if (cached?.updatedAt === note.updatedAt && cached.evicted === evicted) return cached.ids;
 		try {
 			// Loaded on demand: the history client itself fetches through this store.
 			const { loadNoteHistory } = await import('#lib/historyClient.js');
@@ -820,7 +829,7 @@ export class SyncStore {
 			const ids = new Set(
 				versions.flatMap((version) => (version.note.images ?? []).map((image) => image.id))
 			);
-			this.versionAttachments.set(key, { updatedAt: note.updatedAt, ids });
+			this.versionAttachments.set(key, { updatedAt: note.updatedAt, evicted, ids });
 			return ids;
 		} catch {
 			return null;
@@ -1045,6 +1054,35 @@ export class SyncStore {
 
 			let hasMore = true;
 			let downloadsDrained = false;
+			// One history lookup per note version for the whole sync: the plan before a round
+			// and the check after it ask the same question, and a lookup that failed is not
+			// worth repeating until the next sync.
+			const historyLookups = new Map<string, Promise<Set<string> | null>>();
+			const historyAttachmentIds = (note: Note) => {
+				const key = `${note.id}\u0000${note.updatedAt}\u0000${this.historyEvicted.get(account.accountId) ?? ''}`;
+				let lookup = historyLookups.get(key);
+				if (!lookup) {
+					lookup = this.versionAttachmentIds(account, note);
+					historyLookups.set(key, lookup);
+				}
+				return lookup;
+			};
+			// Deletes a history version still needs wait for a later sync, so they are neither
+			// sent nor counted as work that keeps this one going.
+			const plannedDeletes = async () =>
+				(
+					await withoutAttachmentsHistoryNeeds(
+						planDeletableKeys({
+							recordIds,
+							snapshot: merged,
+							pullOnly,
+							catchUpComplete: downloadsDrained
+						}),
+						merged.notes,
+						merged.tombstones,
+						historyAttachmentIds
+					)
+				).filter((key) => key !== PROFILE_META_KEY);
 			const acknowledgedOutbox = new Set<string>();
 			const internallyMarkedOutbox = new Map<string, number>();
 			let poisonCount = 0;
@@ -1135,21 +1173,10 @@ export class SyncStore {
 					).then((entries) => new Map(entries));
 					return (await knownSlotMap).get(slot);
 				};
-				const deletableKeys = (
-					await withoutAttachmentsHistoryNeeds(
-						planDeletableKeys({
-							recordIds,
-							snapshot: merged,
-							pullOnly,
-							catchUpComplete: downloadsDrained
-						}),
-						merged.notes,
-						merged.tombstones,
-						(note) => this.versionAttachmentIds(account, note)
-					)
-				)
-					.filter((key) => key !== PROFILE_META_KEY)
-					.slice(0, MAX_CLIENT_SYNC_MUTATIONS_PER_REQUEST - outbound.length);
+				const deletableKeys = (await plannedDeletes()).slice(
+					0,
+					MAX_CLIENT_SYNC_MUTATIONS_PER_REQUEST - outbound.length
+				);
 				const deleteSlots = await Promise.all(
 					deletableKeys.map(async (key) => ({
 						id: recordIds[key],
@@ -1211,6 +1238,11 @@ export class SyncStore {
 						this.usage = candidate as SyncUsage;
 					}
 				}
+				if (
+					typeof response.data.historyEvicted === 'number' &&
+					Number.isSafeInteger(response.data.historyEvicted)
+				)
+					this.historyEvicted.set(account.accountId, response.data.historyEvicted);
 				const writesAccepted = response.data.writesAccepted === true;
 				if (writesAccepted) {
 					stalledWrites = 0;
@@ -1470,14 +1502,7 @@ export class SyncStore {
 					((!startedWithDownloadsDrained && (firstFullUpload || pendingOutboxUpload)) ||
 						(!writesAccepted && (outgoing.length > 0 || deleteSlots.length > 0)) ||
 						changed.filter((record) => !quotaBlockedKeys.has(record.key)).length > outgoing.length);
-				const pendingDeletes =
-					downloadsDrained &&
-					planDeletableKeys({
-						recordIds,
-						snapshot: merged,
-						pullOnly,
-						catchUpComplete: true
-					}).length > 0;
+				const pendingDeletes = downloadsDrained && (await plannedDeletes()).length > 0;
 				hasMore = syncRoundHasMore({
 					remoteHasMore: response.data.hasMore === true,
 					remainingUploads,

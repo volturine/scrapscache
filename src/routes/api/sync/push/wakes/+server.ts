@@ -5,6 +5,7 @@ import { readJsonBody } from '#lib/server/request.js';
 import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '#lib/server/rateLimit.js';
 import { recordSqliteError } from '#lib/server/metrics.js';
 import { armWakeTimer } from '#lib/server/wakeTimer.js';
+import { nameRequestCost } from '#lib/server/requestCost.js';
 import {
 	DEVICE_ID_RE,
 	isPublicEndpoint,
@@ -22,19 +23,29 @@ function checkAddressLimit(getClientAddress: () => string) {
 }
 
 /**
+ * Each account's wake publishes: one follows every sync that moves the account's
+ * revision, so a backlog bursts, but a steady stream above this is not a person.
+ */
+const WAKES_ACCOUNT_POLICY = { capacity: 30, refillWindowMs: 5 * 60_000 };
+
+/**
  * Deliver the account's due wakes now; delivery then sets the timer for its next
  * one. Its wakes or browsers just changed, so any timer it had may be wrong.
  */
-async function scheduleDelivery(accountId: string): Promise<void> {
-	await armWakeTimer(accountId, Date.now()).catch((error: unknown) =>
+async function scheduleDelivery(accountId: string): Promise<boolean> {
+	try {
+		await armWakeTimer(accountId, Date.now());
+		return true;
+	} catch (error) {
 		console.error(
 			JSON.stringify({
 				level: 'error',
 				event: 'wake_timer_arm_failed',
 				message: error instanceof Error ? error.message : 'Could not arm the wake timer'
 			})
-		)
-	);
+		);
+		return false;
+	}
 }
 
 /** Fetch the current reminder wakes and revision for this account. */
@@ -119,19 +130,32 @@ export const PUT: RequestHandler = async ({ request, getClientAddress }) => {
 	}
 	const accountId = await getSyncAuth().authenticateSyncRequest(request);
 	if (!accountId) return Response.json({ error: 'Invalid sync session' }, { status: 401 });
+	const accountLimit = await getPublicApiLimiter().check(
+		`push-wakes:${accountId}`,
+		WAKES_ACCOUNT_POLICY
+	);
+	if (!accountLimit.allowed) return rateLimitResponse(accountLimit);
 	const wakes = parseReminderWakes(body.wakes, Date.now());
 	if (!wakes) return Response.json({ error: 'Invalid reminder wakes' }, { status: 400 });
 	if (!Number.isSafeInteger(body.revision) || Number(body.revision) < 0) {
 		return Response.json({ error: 'A sync revision is required' }, { status: 400 });
 	}
 	try {
-		const accepted = await getSyncStore().replaceReminderWakes(
-			accountId,
-			wakes,
-			Number(body.revision)
-		);
+		const revision = Number(body.revision);
+		const store = getSyncStore();
+		const { accepted, schedule } = await store.replaceReminderWakes(accountId, wakes, revision);
+		nameRequestCost(!accepted ? 'stale' : schedule ? 'scheduled' : 'unchanged');
 		if (!accepted) return Response.json({ error: 'Stale reminder snapshot' }, { status: 409 });
-		await scheduleDelivery(accountId);
+		// Unchanged wakes need no new timer, unless the last change never got one: the
+		// store keeps that owed until an arm succeeds, so this publish retries it.
+		if (schedule) {
+			if (!(await scheduleDelivery(accountId)))
+				return Response.json(
+					{ error: 'Reminder scheduling is temporarily unavailable' },
+					{ status: 503 }
+				);
+			await store.markReminderWakesScheduled(accountId, revision);
+		}
 		return Response.json({ ok: true, wakes: wakes.length });
 	} catch (error) {
 		recordSqliteError(error);

@@ -33,6 +33,9 @@ export const variables = defineEnvVars({
 		'Days before an inactive account is deleted; 0 keeps all'
 	),
 	SCRAPSCACHE_ALLOW_INDEXING: optional('"true" lets search engines index the public pages'),
+	SCRAPSCACHE_REQUEST_COST_SAMPLE: optional(
+		'Share of requests, 0 to 1, whose database rows read and written are logged; default 0.01'
+	),
 	SCRAPSCACHE_VAPID_SUBJECT: optional('Contact for Web Push services, as mailto: or https:'),
 	SCRAPSCACHE_VAPID_PUBLIC_KEY: optional('Web Push public key; generated and stored when unset'),
 	SCRAPSCACHE_VAPID_PRIVATE_KEY: optional('Web Push private key; set together with the public key'),

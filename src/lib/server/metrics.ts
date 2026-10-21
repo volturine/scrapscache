@@ -1,10 +1,6 @@
 import type { HttpSample, MetricsSnapshot, ProcessActivity } from '#lib/server/metricsRender.js';
 import { SYNC_DELTA_PATH } from '#lib/model/protocol.js';
 
-/** The self-hosted store does not time its phases; only the Workers relay
- * reports them, and that build swaps in its own metrics module. */
-export function recordSyncPhases(_phases: Record<string, number>): void {}
-
 export { renderMetrics } from '#lib/server/metricsRender.js';
 export type { ProcessActivity, MetricsSnapshot } from '#lib/server/metricsRender.js';
 

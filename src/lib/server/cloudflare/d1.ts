@@ -1,8 +1,15 @@
 import type { D1Database, D1PreparedStatement, D1Result } from '@cloudflare/workers-types';
+import { addDatabaseCost } from '../requestCost';
 
 export type SqlArgs = readonly (string | number | null | ArrayBuffer)[];
 export type SqlStatement = { sql: string; args?: SqlArgs };
-export type SqlResult = { rows: Record<string, unknown>[]; rowsAffected: number };
+export type SqlResult = {
+	rows: Record<string, unknown>[];
+	rowsAffected: number;
+	/** What D1 bills this statement for. */
+	rowsRead: number;
+	rowsWritten: number;
+};
 
 function prepared(db: D1Database, statement: SqlStatement): D1PreparedStatement {
 	const query = db.prepare(statement.sql);
@@ -10,9 +17,14 @@ function prepared(db: D1Database, statement: SqlStatement): D1PreparedStatement 
 }
 
 function result(value: D1Result): SqlResult {
+	const rowsRead = value.meta.rows_read ?? 0;
+	const rowsWritten = value.meta.rows_written ?? 0;
+	addDatabaseCost({ queries: 1, rowsRead, rowsWritten });
 	return {
 		rows: value.results as Record<string, unknown>[],
-		rowsAffected: value.meta.changes ?? 0
+		rowsAffected: value.meta.changes ?? 0,
+		rowsRead,
+		rowsWritten
 	};
 }
 

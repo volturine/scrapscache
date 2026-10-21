@@ -2,6 +2,9 @@ import { describe, expect, it, afterEach, vi } from 'vitest';
 import {
 	TokenBucketLimiter,
 	REGISTER_GLOBAL_POLICY,
+	SYNC_CHURN_POLICY,
+	chargeSyncChurn,
+	pruneRateBuckets,
 	checkAdminApiLimit,
 	chargeRegisterGlobalLimit,
 	checkRegisterLimit,
@@ -117,6 +120,63 @@ describe('token bucket rate limiter', () => {
 
 		const denied = await limiter.check('client', policy, 15_000);
 		expect(denied).toEqual({ allowed: false, retryAfterSeconds: 15 });
+	});
+});
+
+describe('weighted charges', () => {
+	it('takes several tokens at once and refuses a charge larger than what is left', async () => {
+		const limiter = new TokenBucketLimiter(testDb());
+		const policy = { capacity: 10, refillWindowMs: 10_000 };
+		expect((await limiter.check('writer', policy, 0, 7)).allowed).toBe(true);
+		// Three are left: a charge of four waits for one more, and takes nothing meanwhile.
+		expect(await limiter.check('writer', policy, 0, 4)).toEqual({
+			allowed: false,
+			retryAfterSeconds: 1
+		});
+		expect((await limiter.check('writer', policy, 0, 3)).allowed).toBe(true);
+		expect((await limiter.check('writer', policy, 0, 1)).allowed).toBe(false);
+	});
+
+	it('caps a charge at the capacity so an oversized batch can still go through a full bucket', async () => {
+		const limiter = new TokenBucketLimiter(testDb());
+		const policy = { capacity: 5, refillWindowMs: 5_000 };
+		expect((await limiter.check('writer', policy, 0, 50)).allowed).toBe(true);
+		expect((await limiter.check('writer', policy, 0, 1)).allowed).toBe(false);
+	});
+});
+
+describe('daily sync churn', () => {
+	it('lets an account burst its day’s writes, then holds it to the refill rate', async () => {
+		expect((await chargeSyncChurn('account', SYNC_CHURN_POLICY.capacity, 0)).allowed).toBe(true);
+		const refused = await chargeSyncChurn('account', 16, 0);
+		expect(refused.allowed).toBe(false);
+		// Sixteen writes' worth refills in sixteen fifty-thousandths of a day: about 28 seconds.
+		expect(refused).toEqual({ allowed: false, retryAfterSeconds: 28 });
+		expect((await chargeSyncChurn('other-account', 16, 0)).allowed).toBe(true);
+		expect((await chargeSyncChurn('account', 16, 28_000)).allowed).toBe(true);
+	});
+
+	it('keeps a spent churn bucket through the ten-minute sweep, so a pause does not refill it', async () => {
+		const db = testDb();
+		const limiter = new TokenBucketLimiter(db);
+		const churn = (writes: number, now: number) =>
+			limiter.check('sync-churn:account', SYNC_CHURN_POLICY, now, writes);
+		expect((await churn(SYNC_CHURN_POLICY.capacity, 0)).allowed).toBe(true);
+		expect((await limiter.check('short', { capacity: 1, refillWindowMs: 1_000 }, 0)).allowed).toBe(
+			true
+		);
+
+		await pruneRateBuckets(db, 11 * 60_000);
+		const keys = (await db.ops.execute('SELECT bucket_key AS key FROM rate_buckets')).rows.map(
+			(row) => row.key
+		);
+		expect(keys).toEqual(['sync-churn:account']);
+		// Eleven minutes have refilled a few hundred writes, not the day's allowance.
+		expect((await churn(16, 11 * 60_000)).allowed).toBe(true);
+		expect((await churn(16_000, 11 * 60_000)).allowed).toBe(false);
+
+		await pruneRateBuckets(db, SYNC_CHURN_POLICY.refillWindowMs + 11 * 60_000);
+		expect((await db.ops.execute('SELECT COUNT(*) AS n FROM rate_buckets')).rows[0].n).toBe(0);
 	});
 });
 

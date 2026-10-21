@@ -86,6 +86,13 @@ const RELAY_DDL = `
 		bytes INTEGER NOT NULL DEFAULT 0,
 		FOREIGN KEY (account_id) REFERENCES accounts(account_id) ON DELETE CASCADE
 	);
+	-- Older versions evicted for quota. Clients cache which photos a note's history still
+	-- needs; this count changing tells them versions went without the note changing.
+	CREATE TABLE IF NOT EXISTS account_history_evictions (
+		account_id TEXT PRIMARY KEY,
+		evicted INTEGER NOT NULL DEFAULT 0,
+		FOREIGN KEY (account_id) REFERENCES accounts(account_id) ON DELETE CASCADE
+	);
 CREATE TABLE IF NOT EXISTS reminder_receipts (
  seq INTEGER PRIMARY KEY AUTOINCREMENT,
  account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
@@ -110,7 +117,8 @@ const OPS_DDL = `
 		last_seen_at INTEGER NOT NULL,
 		last_allowed INTEGER NOT NULL
 	);
-	CREATE INDEX IF NOT EXISTS rate_buckets_last_seen ON rate_buckets(last_seen_at);
+	-- Unindexed: each check rewrites last_seen_at, and only the hourly prune reads by it.
+	DROP INDEX IF EXISTS rate_buckets_last_seen;
 	CREATE TABLE IF NOT EXISTS auth_challenges (
 		challenge_id TEXT PRIMARY KEY,
 		account_id TEXT NOT NULL,
@@ -157,6 +165,11 @@ const OPS_DDL = `
 	);
 	CREATE INDEX IF NOT EXISTS reminder_wakes_due ON reminder_wakes(fire_at);
 	CREATE TABLE IF NOT EXISTS reminder_wake_revisions (
+		account_id TEXT PRIMARY KEY,
+		revision INTEGER NOT NULL
+	);
+	-- Wake changes not yet handed to the delivery scheduler, up to this revision.
+	CREATE TABLE IF NOT EXISTS reminder_wakes_unscheduled (
 		account_id TEXT PRIMARY KEY,
 		revision INTEGER NOT NULL
 	);

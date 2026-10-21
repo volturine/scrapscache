@@ -4,9 +4,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SYNC_DELTA_PATH } from '#lib/model/protocol.js';
 import { privateEnv, publicEnv } from './tests/env';
 
-vi.mock('#lib/server/metrics.js', () => ({ recordHttpRequest: vi.fn() }));
+vi.mock('#lib/server/metrics.js', () => ({
+	recordHttpRequest: vi.fn(),
+	routeLabel: (pathname: string) => pathname
+}));
 
 import { handle } from './hooks.server';
+import { addDatabaseCost, nameRequestCost } from '#lib/server/requestCost.js';
 
 function respond(requestHeaders: Record<string, string> = {}): Promise<Response> {
 	return (handle as unknown as (input: unknown) => Promise<Response>)({
@@ -252,5 +256,67 @@ describe('link previews', () => {
 		const app = await render(shell(''));
 		expect(app).toContain('<title>Scraps Cache</title>');
 		expect(app).toContain('content="Default"');
+	});
+});
+
+describe('request logs', () => {
+	afterEach(() => vi.restoreAllMocks());
+
+	const logged = (info: { mock: { calls: unknown[][] } }) =>
+		info.mock.calls.map(([line]) => JSON.parse(String(line)) as Record<string, unknown>);
+
+	it('logs one refusal in a hundred, saying so, and every other client error', async () => {
+		const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+		const random = vi.spyOn(Math, 'random').mockReturnValue(0.5);
+		await visit(
+			`https://example.test${SYNC_DELTA_PATH}`,
+			() => new Response(null, { status: 429 })
+		);
+		await visit(
+			`https://example.test${SYNC_DELTA_PATH}`,
+			() => new Response(null, { status: 401 })
+		);
+		random.mockReturnValue(0.001);
+		await visit(
+			`https://example.test${SYNC_DELTA_PATH}`,
+			() => new Response(null, { status: 429 })
+		);
+
+		expect(logged(info).map(({ status, sampleRate }) => [status, sampleRate])).toEqual([
+			[401, undefined],
+			[429, 0.01]
+		]);
+	});
+
+	it('logs a sampled request’s database cost by route and kind, and nothing that names the account', async () => {
+		const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+		vi.spyOn(Math, 'random').mockReturnValue(0);
+		await visit(`https://example.test${SYNC_DELTA_PATH}`, () => {
+			addDatabaseCost({ queries: 3, rowsRead: 14, rowsWritten: 2 });
+			nameRequestCost('empty');
+			return new Response('ok');
+		});
+
+		expect(logged(info)).toEqual([
+			{
+				level: 'info',
+				event: 'request_cost',
+				route: SYNC_DELTA_PATH,
+				method: 'GET',
+				kind: 'empty',
+				status: 200,
+				queries: 3,
+				rowsRead: 14,
+				rowsWritten: 2,
+				sampleRate: 0.01
+			}
+		]);
+	});
+
+	it('logs no cost for a request that did not touch the database', async () => {
+		const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+		vi.spyOn(Math, 'random').mockReturnValue(0);
+		await visit(`https://example.test${SYNC_DELTA_PATH}`, () => new Response('ok'));
+		expect(info).not.toHaveBeenCalled();
 	});
 });

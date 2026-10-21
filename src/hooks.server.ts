@@ -1,5 +1,7 @@
 import type { Handle, ServerInit } from '@sveltejs/kit/hooks';
-import { recordHttpRequest } from '#lib/server/metrics.js';
+import { SCRAPSCACHE_REQUEST_COST_SAMPLE } from '$app/env/private';
+import { recordHttpRequest, routeLabel } from '#lib/server/metrics.js';
+import { measureRequestCost, newRequestCost } from '#lib/server/requestCost.js';
 import { startWakeTimer } from '#lib/server/wakeTimer.js';
 import { configuredOrigin } from '#lib/server/publicOrigin.js';
 import { turnstileChallenge } from '#lib/server/turnstile.js';
@@ -35,6 +37,24 @@ function frameAncestors(policy: string | null): string | null {
 
 	return directive ? directive.slice('frame-ancestors '.length).trim() : null;
 }
+
+/**
+ * Refusals are expected and come in floods, which should not also buy a log line
+ * each. One in a hundred still shows who is being held back and from where.
+ */
+const THROTTLED_LOG_SAMPLE = 0.01;
+
+/**
+ * Requests whose database cost is logged, by default one in a hundred: enough to
+ * price each kind of request from the logs without a line for every one of them.
+ */
+function requestCostSample(value: string | undefined): number {
+	const parsed = Number(value);
+	return value !== undefined && Number.isFinite(parsed) && parsed >= 0 && parsed <= 1
+		? parsed
+		: 0.01;
+}
+const REQUEST_COST_SAMPLE = requestCostSample(SCRAPSCACHE_REQUEST_COST_SAMPLE);
 
 const DEFAULT_PAGE_META = /[ \t]*<!-- page-meta:[\s\S]*?<!-- \/page-meta -->\n?/;
 
@@ -78,19 +98,22 @@ export const handle: Handle = async ({ event, resolve }) => {
 	// The challenge origin exists to run one third-party page. Serving the app there
 	// too would put a second copy of it, with its own storage, on a host that runs
 	// code this repository does not control.
+	const cost = newRequestCost();
 	const response =
 		onChallengeOrigin && event.url.pathname !== '/turnstile'
 			? new Response('Not found\n', { status: 404 })
-			: await resolve(event, {
-					transformPageChunk: ({ html }) => {
-						const origin = configuredOrigin() ?? event.url.origin;
-						const canonical = `${origin}${event.url.pathname}`;
-						return withOnePageMeta(html)
-							.replaceAll('https://scrapscache.com/og-preview.png', `${origin}/og-preview.png`)
-							.replaceAll('https://scrapscache.com/', canonical)
-							.replaceAll('https://scrapscache.com', origin);
-					}
-				});
+			: await measureRequestCost(cost, () =>
+					resolve(event, {
+						transformPageChunk: ({ html }) => {
+							const origin = configuredOrigin() ?? event.url.origin;
+							const canonical = `${origin}${event.url.pathname}`;
+							return withOnePageMeta(html)
+								.replaceAll('https://scrapscache.com/og-preview.png', `${origin}/og-preview.png`)
+								.replaceAll('https://scrapscache.com/', canonical)
+								.replaceAll('https://scrapscache.com', origin);
+						}
+					})
+				);
 
 	for (const [name, value] of SECURITY_HEADERS) response.headers.set(name, value);
 	if (!OPENER_KEPT.has(event.url.pathname))
@@ -123,7 +146,11 @@ export const handle: Handle = async ({ event, resolve }) => {
 
 	const durationMs = performance.now() - startedAt;
 	recordHttpRequest(event.url.pathname, response.status, durationMs);
-	if (event.url.pathname.startsWith('/api/') && response.status >= 400) {
+	if (
+		event.url.pathname.startsWith('/api/') &&
+		response.status >= 400 &&
+		(response.status !== 429 || Math.random() < THROTTLED_LOG_SAMPLE)
+	) {
 		console.info(
 			JSON.stringify({
 				level: 'info',
@@ -131,7 +158,26 @@ export const handle: Handle = async ({ event, resolve }) => {
 				requestId,
 				path: event.url.pathname,
 				status: response.status,
-				durationMs: Math.round(durationMs)
+				durationMs: Math.round(durationMs),
+				...(response.status === 429 ? { sampleRate: THROTTLED_LOG_SAMPLE } : {})
+			})
+		);
+	}
+	// Only the Workers build meters its database; the self-hosted one never logs this.
+	if (cost.queries > 0 && Math.random() < REQUEST_COST_SAMPLE) {
+		console.info(
+			JSON.stringify({
+				level: 'info',
+				event: 'request_cost',
+				route: routeLabel(event.url.pathname),
+				method: event.request.method,
+				kind: cost.kind,
+				status: response.status,
+				queries: cost.queries,
+				rowsRead: cost.rowsRead,
+				rowsWritten: cost.rowsWritten,
+				...cost.phases,
+				sampleRate: REQUEST_COST_SAMPLE
 			})
 		);
 	}

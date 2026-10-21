@@ -13,6 +13,7 @@ import {
 	enterSyncRequest,
 	getPublicApiLimiter,
 	rateLimitResponse,
+	refundSyncChurn,
 	SYNC_BODY_SLOTS_PER_SYNC_SLOT
 } from '#lib/server/rateLimit.js';
 import { getRuntimeSettings } from '#lib/server/runtimeSettings.js';
@@ -64,7 +65,7 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 			{ status: 409 }
 		);
 	}
-	// Authenticate, charge the account and read the whole body before taking a
+	// Authenticate, rate-limit the account and read the whole body before taking a
 	// sync slot: the slots bound concurrent relay work, and a slow or junk upload
 	// must not hold one while its bytes trickle in.
 	const accountId = await getSyncAuth().authenticateSyncRequest(request);
@@ -131,17 +132,20 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 		typeof body.limit === 'number' && Number.isInteger(body.limit) && body.limit > 0
 			? Math.min(body.limit, 50)
 			: DEFAULT_DOWNLOAD_LIMIT;
-	// Charged per write, so download and empty rounds never touch the day's allowance.
-	const mutations = envelopes.length + deleteSlots.length;
-	if (mutations > 0) {
-		const churnLimit = await chargeSyncChurn(accountId, mutations);
-		if (!churnLimit.allowed) return rateLimitResponse(churnLimit);
-	}
 	const release = enterSyncRequest(settings.maxConcurrentSyncRequests);
 	if (!release) return busy();
+	// Charged per write, once the round can run, so download, empty and busy rounds
+	// never touch the day's allowance; writes the round does not apply are refunded.
+	const mutations = envelopes.length + deleteSlots.length;
+	let charged = false;
 	recordSyncBatch(envelopes.length, deleteSlots.length);
 	const senderClientId = request.headers.get('x-sync-client-id') ?? undefined;
 	try {
+		if (mutations > 0) {
+			const churnLimit = await chargeSyncChurn(accountId, mutations);
+			if (!churnLimit.allowed) return rateLimitResponse(churnLimit);
+			charged = true;
+		}
 		const result = await store.sync(
 			accountId,
 			cursor,
@@ -151,9 +155,11 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 			senderClientId,
 			settings.maxAccountBytes
 		);
+		if (charged && !result.writesAccepted) await refundSyncChurn(accountId, mutations);
 		// Writers stamp edits on this clock, so device clock skew cannot decide conflicts.
 		return Response.json({ ...result, serverTime: Date.now() });
 	} catch (error) {
+		if (charged) await refundSyncChurn(accountId, mutations);
 		recordSqliteError(error);
 		if (error instanceof SyncQuotaExceededError) {
 			return Response.json({ error: 'Sync account storage quota exceeded' }, { status: 507 });

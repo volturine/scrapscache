@@ -119,7 +119,10 @@ the long-term attachment format.
   /64, plus one shared bucket for registrations. The expensive authenticated
   endpoints also have account buckets: sync rounds per minute, sync writes
   (charged one token per upload or delete: a 10,000-write burst for a first
-  upload, then 2,000 a day), and reminder wake publishes (30 per five minutes). Durable and shared
+  upload, then 2,000 a day; charged only once a round can run, and refunded when
+  the round does not apply its writes, so busy, failed and conflicting rounds
+  cost nothing. A first upload of more than 10,000 records continues at 2,000 a
+  day; there is no per-account override), and reminder wake publishes (30 per five minutes). Durable and shared
   across isolates, at the cost of one database write per check, refusals included —
   size the store accordingly and put edge rate limiting in front of it on a
   usage-billed platform (see [Request cost on Workers](#request-cost-on-workers))
@@ -302,8 +305,9 @@ only cursors, never ciphertext.
 
 D1 bills rows read and written, so the relay avoids writes that change nothing:
 
-- An account's `last_seen_at` moves at most once an hour; activity windows and
-  retention count days.
+- A round that only reads moves an account's `last_seen_at` at most once an
+  hour; activity windows and retention count days. A round that writes sets it
+  in the accounts update it makes anyway, so that costs no extra row.
 - A reminder wake publish writes only the wakes that were added, removed or moved,
   plus the revision that orders publishes. Delivery is re-armed only when the wakes
   changed, or when an earlier change was never handed to the scheduler: that stays

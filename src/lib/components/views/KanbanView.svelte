@@ -406,7 +406,10 @@
 
 <!-- A label column from the labels not yet on the board, or a new one. -->
 {#snippet addColumnMenu(compact: boolean)}
-	<Menu.Root bind:open={tagPickerOpen} positioning={{ placement: 'bottom-start' }}>
+	<Menu.Root
+		bind:open={tagPickerOpen}
+		positioning={{ placement: compact ? 'bottom-end' : 'bottom-start' }}
+	>
 		<Menu.Trigger
 			class={compact
 				? cx(button({ variant: 'dashed', size: 'md' }), k.addColCompact)
@@ -420,8 +423,11 @@
 				<ChevronDown size={14} aria-hidden="true" />
 			{/if}
 		</Menu.Trigger>
-		<Menu.Positioner class={k.tagPickerPositioner}>
-			<Menu.Content class={cx(popover, k.tagPickerContent)} aria-label="Add a label column">
+		<Menu.Positioner class={compact ? k.tagPickerPositionerCompact : k.tagPickerPositioner}>
+			<Menu.Content
+				class={cx(popover, k.tagPickerContent, compact && k.tagPickerContentCompact)}
+				aria-label="Add a label column"
+			>
 				<Menu.Item value="new-label" onSelect={openNewLabel} class={k.menuItem}>
 					<Plus size={14} aria-hidden="true" />
 					New label…

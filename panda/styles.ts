@@ -1382,6 +1382,9 @@ export const kanbanViewStyles = {
 	radioSubtitle: css({ mt: '3xs', display: 'block', textStyle: 'caption' }),
 	tagPickerPositioner: css({ zIndex: 20, w: 'var(--reference-width)' }),
 	tagPickerContent: css({ maxH: '16rem', overflowY: 'auto', py: '2xs' }),
+	/** The phone's "+" is a 44 px square, too narrow to size its menu: the menu takes its own width. */
+	tagPickerPositionerCompact: css({ zIndex: 20 }),
+	tagPickerContentCompact: css({ minW: '13rem', maxW: 'calc(100vw - 2rem)' }),
 	dragGhost: css({
 		position: 'fixed',
 		top: 0,

@@ -242,6 +242,13 @@ test.describe('on a phone', () => {
 		await expect(page.getByRole('button', { name: 'Add a label column' })).toBeInViewport({
 			ratio: 1
 		});
+		// Its menu takes its own width, not the 44 px of the "+", and stays on screen.
+		await page.getByRole('button', { name: 'Add a label column' }).click();
+		const addMenu = page.getByRole('menu', { name: 'Add a label column' });
+		await expect(addMenu).toBeInViewport({ ratio: 1 });
+		expect((await addMenu.boundingBox())!.width).toBeGreaterThanOrEqual(200);
+		await page.keyboard.press('Escape');
+		await expect(addMenu).toBeHidden();
 		await starter.getByRole('button', { name: 'To-Do · In-Progress · Done' }).click();
 		const tabs = page.getByRole('tablist', { name: 'Columns' }).getByRole('tab');
 		await expect(tabs).toHaveText([/Unsorted\s*1/, /To-Do\s*0/, /In-Progress\s*0/, /Done\s*0/]);

@@ -329,6 +329,42 @@ test('search narrows the feed to matching notes', async ({ page }) => {
 	await expect(search).toBeFocused();
 });
 
+test('extra cursors look like the native caret and selection', async ({ page }) => {
+	await openEmptyApp(page);
+	await page.getByRole('button', { name: 'New note' }).click();
+	const body = editor(page).getByRole('textbox', { name: 'Note body' });
+	await body.pressSequentially('cat cat cat');
+	await page.keyboard.press('Home');
+	// Mod+D selects the word, then adds the next match as an extra cursor.
+	await page.keyboard.press('ControlOrMeta+d');
+	await page.keyboard.press('ControlOrMeta+d');
+
+	const caret = body.locator('..').locator('[data-extra-cursors] > span');
+	await expect(caret).toHaveCount(1);
+	const look = await caret.evaluate((mark) => {
+		const editor = mark.closest('[data-extra-cursors]')!.previousElementSibling as HTMLElement;
+		const line = editor.querySelector('[data-line-text]')!;
+		const probe = document.createElement('span');
+		probe.style.background = 'var(--colors-scrapscache-selection)';
+		document.body.append(probe);
+		const token = getComputedStyle(probe).backgroundColor;
+		probe.remove();
+		const style = getComputedStyle(mark);
+		return {
+			width: style.width,
+			caret: style.backgroundColor,
+			nativeCaret: getComputedStyle(editor).caretColor,
+			blink: style.animationName,
+			selection: getComputedStyle(line, '::selection').backgroundColor,
+			token
+		};
+	});
+	expect(look.width).toBe('1px');
+	expect(look.caret).toBe(look.nativeCaret);
+	expect(look.blink).toContain('caretBlink');
+	expect(look.selection).toBe(look.token);
+});
+
 test('a click outside the … menu closes it and still opens the note under the pointer', async ({
 	page
 }) => {
@@ -393,9 +429,12 @@ test.describe('on a touch screen', () => {
 		const row = page.getByRole('menuitem', { name: 'Back up notes…' });
 		const segment = page.getByRole('menuitemradio', { name: 'Dark', exact: true });
 		// A tablet or a phone on its side is a coarse pointer wider than a phone. The
-		// half-pixel allows for rem rounding.
-		expect((await row.boundingBox())!.height).toBeGreaterThanOrEqual(47.5);
-		expect((await segment.boundingBox())!.height).toBeGreaterThanOrEqual(43.5);
+		// half-pixel allows for rem rounding. The popover scales in as it opens, so the
+		// boxes are polled until the animation has settled rather than read once.
+		await expect.poll(async () => (await row.boundingBox())!.height).toBeGreaterThanOrEqual(47.5);
+		await expect
+			.poll(async () => (await segment.boundingBox())!.height)
+			.toBeGreaterThanOrEqual(43.5);
 		await page.keyboard.press('Escape');
 
 		// A short viewport: the popover scrolls inside the frame rather than being cut by it.

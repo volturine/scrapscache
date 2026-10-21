@@ -372,6 +372,8 @@
 	}
 
 	const metaTitle = $derived.by(() => {
+		// The phone's Labels screen covers the view without changing it, and is a place of its own.
+		if (uiStore.labelsOpen) return 'Labels · Scraps Cache';
 		switch (uiStore.view) {
 			case 'kanban':
 				return 'Kanban · Scraps Cache';

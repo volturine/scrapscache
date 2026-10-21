@@ -729,6 +729,7 @@ test.describe('on a phone', () => {
 		// and Trash under the labels, and the tab bar stays.
 		await tabs.getByRole('button', { name: 'Labels' }).click();
 		await expect(page.locator('[data-view-title]')).toHaveText('Labels');
+		await expect(page).toHaveTitle('Labels · Scraps Cache');
 		await expect(tabs.getByRole('button', { name: 'Labels' })).toHaveAttribute(
 			'aria-current',
 			'page'

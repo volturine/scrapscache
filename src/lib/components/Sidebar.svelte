@@ -47,7 +47,8 @@
 		labelsOnly = false
 	}: {
 		onNavigate?: () => void;
-		/** The phone's Labels screen: its labels to make, rename and delete, without the places. */
+		/** The phone's Labels screen: its labels to make, rename and delete, then Archive and Trash;
+		 * the places the tab bar holds are left out. */
 		labelsOnly?: boolean;
 	} = $props();
 

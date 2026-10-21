@@ -32,6 +32,7 @@
 	} from '@lucide/svelte';
 	import { PHONE_MEDIA, portalToAppOverlay } from '#lib/appViewport.js';
 	import { useEditorActions } from '#lib/editorContext.js';
+	import { plainLine } from '#lib/noteLine.js';
 	import { readRecentNotes } from '#lib/recentNotes.js';
 	import { matchSegments, type MatchSegment } from '#lib/search.js';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
@@ -80,13 +81,6 @@
 	const needle = $derived(q.toLowerCase());
 	// Read once: the list should not shift under the pointer while the palette is open.
 	const recentIds = readRecentNotes(syncStore.activePid);
-
-	/** A line as the card shows it, without its Markdown list, heading or quote marker. */
-	function plainLine(line: string): string {
-		return line
-			.replace(/^\s*(?:#{1,6}\s+|(?:[-*+]\s+)?\[[ xX]\]\s+|[-*+]\s+|\d+[.)]\s+|>\s*)/, '')
-			.trim();
-	}
 
 	function bodyLines(note: Note): string[] {
 		return (note.body ?? '').split('\n').map(plainLine).filter(Boolean);
@@ -382,7 +376,10 @@
 										tabindex="-1"
 										aria-selected={index === current}
 										class={styles.option}
-										onpointermove={() => (active = index)}
+										onpointermove={(event) => {
+											// A finger scrolling the list must not drag the highlight along; a tap picks its row.
+											if (event.pointerType === 'mouse') active = index;
+										}}
 										onmousedown={(event) => event.preventDefault()}
 										onclick={() => choose(entry)}
 									>

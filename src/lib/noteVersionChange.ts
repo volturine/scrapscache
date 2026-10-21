@@ -1,4 +1,5 @@
 import type { SyncNote } from '#lib/syncRecords.js';
+import { plainLine as plain } from '#lib/noteLine.js';
 
 /** A saved version or the live note; attachments are compared by id only. */
 type VersionedNote = Omit<SyncNote, 'images'> & { images?: { id: string }[] };
@@ -19,7 +20,6 @@ export type NoteVersionChange = {
 export type NoteDiffLine = { kind: 'added' | 'removed'; text: string };
 
 const CHECKBOX = /^\s*(?:[-*+]\s+)?\[([ xX])\]\s+/;
-const MARKER = /^\s*(?:[-*+]\s+|\d+[.)]\s+|#{1,6}\s+|>\s*)?(?:\[[ xX]\]\s+)?/;
 
 function lines(body: string): string[] {
 	return body === '' ? [] : body.split('\n');
@@ -27,10 +27,6 @@ function lines(body: string): string[] {
 
 function blank(line: string): boolean {
 	return line.trim() === '';
-}
-
-function plain(line: string): string {
-	return line.replace(MARKER, '').trim();
 }
 
 function emptyLines(count: number): string {

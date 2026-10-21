@@ -181,6 +181,17 @@ describe('CommandPalette keyboard and choices', () => {
 		await waitFor(() => expect(editor.openNote).toHaveBeenCalledWith('Lisbon trip ideas'));
 	});
 
+	it('moves the highlight with a mouse, not with a finger scrolling the list', async () => {
+		const field = open();
+		await fireEvent.input(field, { target: { value: 'tram' } });
+		const [first, second] = options();
+
+		await fireEvent.pointerMove(second, { pointerType: 'touch' });
+		expect(first.getAttribute('aria-selected')).toBe('true');
+		await fireEvent.pointerMove(second, { pointerType: 'mouse' });
+		expect(second.getAttribute('aria-selected')).toBe('true');
+	});
+
 	it("goes to a label's notes", async () => {
 		const field = open();
 		await fireEvent.input(field, { target: { value: 'work' } });

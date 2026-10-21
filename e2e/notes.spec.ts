@@ -660,11 +660,17 @@ test.describe('on a phone', () => {
 
 		await tabs.getByRole('button', { name: 'Notes' }).click();
 		// With a phone keyboard up (the viewport code marks the page), the new-note
-		// button hides instead of riding up over the notes.
-		await page.evaluate(() => document.documentElement.classList.add('keyboard-open'));
-		await expect(page.getByRole('button', { name: 'New note' })).toBeHidden();
-		await page.evaluate(() => document.documentElement.classList.remove('keyboard-open'));
-		await expect(page.getByRole('button', { name: 'New note' })).toBeVisible();
+		// button hides instead of riding up over the notes. Read in one step: the
+		// viewport code recomputes the mark on any focus or scroll and would clear it.
+		const fabWithKeyboard = await page.evaluate(() => {
+			const root = document.documentElement;
+			const fab = document.querySelector<HTMLElement>('.new-note-fab')!;
+			root.classList.add('keyboard-open');
+			const up = getComputedStyle(fab).visibility;
+			root.classList.remove('keyboard-open');
+			return { up, down: getComputedStyle(fab).visibility };
+		});
+		expect(fabWithKeyboard).toEqual({ up: 'hidden', down: 'visible' });
 
 		// Search opens the palette over the whole screen.
 		await tabs.getByRole('button', { name: 'Search' }).click();

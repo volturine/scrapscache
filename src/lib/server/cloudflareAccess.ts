@@ -19,6 +19,7 @@ const REFUSALS = [
 type AccessApp = { issuer: string; audience: string };
 
 let reportedInvalid = false;
+let reportedNoKeys = false;
 
 function logAccess(event: string, message: string): void {
 	console.error(JSON.stringify({ level: 'error', event, message }));
@@ -65,8 +66,9 @@ export async function passedCloudflareAccess(request: Request): Promise<boolean>
 	if (!app) return false;
 	const assertion = request.headers.get('cf-access-jwt-assertion');
 	if (!assertion) return false;
+	const keys = keysFor(app.issuer);
 	try {
-		await jwtVerify(assertion, keysFor(app.issuer), {
+		await jwtVerify(assertion, keys, {
 			issuer: app.issuer,
 			audience: app.audience,
 			algorithms: ['RS256']
@@ -81,6 +83,11 @@ export async function passedCloudflareAccess(request: Request): Promise<boolean>
 				'access_keys_unavailable',
 				error instanceof Error ? error.message : 'Could not verify Cloudflare Access'
 			);
+		} else if (keys.jwks()?.keys.length === 0 && !reportedNoKeys) {
+			// An unknown key id is what a forgery looks like, so it stays quiet. A team
+			// that publishes no keys at all can verify nothing, and that is worth a line.
+			reportedNoKeys = true;
+			logAccess('access_keys_empty', 'The Cloudflare Access team publishes no signing keys');
 		}
 		return false;
 	}

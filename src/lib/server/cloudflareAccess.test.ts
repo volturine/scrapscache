@@ -33,10 +33,10 @@ function useTeam(team: string) {
 
 function token(
 	issuer: string,
-	options: { audience?: string; key?: CryptoKey; expiresAt?: number } = {}
+	options: { audience?: string; key?: CryptoKey; expiresAt?: number; kid?: string } = {}
 ): Promise<string> {
 	return new SignJWT({ email: 'operator@example.test' })
-		.setProtectedHeader({ alg: 'RS256', kid: 'access-key' })
+		.setProtectedHeader({ alg: 'RS256', kid: options.kid ?? 'access-key' })
 		.setIssuer(issuer)
 		.setAudience(options.audience ?? AUDIENCE)
 		.setIssuedAt()
@@ -125,6 +125,30 @@ describe('Cloudflare Access', () => {
 			false
 		);
 		expect(error).not.toHaveBeenCalled();
+	});
+
+	it('stays quiet for a token naming a key the team does not have', async () => {
+		const { issuer } = useTeam('unknown-kid');
+		const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+		expect(await passedCloudflareAccess(request(await token(issuer, { kid: 'forged' })))).toBe(
+			false
+		);
+		expect(error).not.toHaveBeenCalled();
+	});
+
+	it('logs once when the team publishes no keys at all', async () => {
+		const { issuer } = useTeam('no-keys');
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => Response.json({ keys: [] }))
+		);
+		const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+		expect(await passedCloudflareAccess(request(await token(issuer)))).toBe(false);
+		expect(await passedCloudflareAccess(request(await token(issuer)))).toBe(false);
+		expect(error).toHaveBeenCalledOnce();
+		expect(error.mock.calls[0][0]).toContain('access_keys_empty');
 	});
 
 	it('logs, rather than silently refusing, when the team keys cannot be fetched', async () => {

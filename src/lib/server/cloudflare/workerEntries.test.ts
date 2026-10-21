@@ -60,6 +60,11 @@ describe('Worker entry modules', () => {
 			await (await admin.fetch(new Request('https://admin.example.test/metrics'), env)).text()
 		).toBe('from app');
 
+		for (const path of ['/admin', '/admin/', '/admin/accounts']) {
+			const moved = await admin.fetch(new Request(`https://admin.example.test${path}`), env);
+			expect([moved.status, moved.headers.get('location')], path).toEqual([308, '/']);
+		}
+
 		for (const path of ['/api/sync/v2/delta', '/api/administer', '/', '/privacy'])
 			expect(
 				(await admin.fetch(new Request(`https://admin.example.test${path}`), env)).status

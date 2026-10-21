@@ -103,8 +103,8 @@ Cloudflare runs four Workers, deliberately separate:
 - **Maintenance cron** (`cf/wrangler.cron.jsonc`): calls `/api/cron/tick`
   hourly through the private `APP` service binding. It never touches reminders.
 - **Admin** (`cf/wrangler.admin.jsonc`): `admin.scrapscache.com`. Serves the
-  operator dashboard, a separate static build of `src/admin` (`npm run build:admin`,
-  run by both builds), and hands `/api/admin/*` and `/metrics` to the app through
+  operator dashboard at the host's root (`/admin` redirects there), a separate
+  static build of `src/admin` (`npm run build:admin`, run by both builds), and hands `/api/admin/*` and `/metrics` to the app through
   the private `APP` service binding. The app answers those only for the admin
   origin, which nothing but that binding can reach it with.
 

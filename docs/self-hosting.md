@@ -276,10 +276,10 @@ set by anyone else admits nobody. With neither the token nor Access configured,
 these endpoints return 404 — the admin API is disabled.
 
 `SCRAPSCACHE_ADMIN_ORIGIN` moves the dashboard, its API and `/metrics` to a host
-of their own. That host answers nothing else (its root redirects to `/admin/`),
-and the app's own origin stops answering them, so one Access application can
-cover the whole admin host and no copy of the notes app runs beside the
-dashboard. On Node the split follows the `Host` header your proxy passes on, so
+of their own. No page of the app runs on that host (its root redirects to
+`/admin/`; the app's static files still load there, as on every host the server
+answers), and the app's own origin stops answering the admin routes, so one
+Access application can cover the whole admin host. On Node the split follows the `Host` header your proxy passes on, so
 it routes rather than guards: the token or Access is still what admits an
 operator, and the proxy should apply Access to the admin host.
 

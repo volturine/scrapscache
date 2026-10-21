@@ -16,6 +16,7 @@
 	import SyncModalUnavailable from './SyncModalUnavailable.svelte';
 	import Tooltip from './Tooltip.svelte';
 	import SettingsMenu from './SettingsMenu.svelte';
+	import CommandPalette from './CommandPalette.svelte';
 	import SelectionBar from './SelectionBar.svelte';
 	import { selectionStore } from '#lib/stores/selection.svelte.js';
 	import BackupPassphraseDialog from './BackupPassphraseDialog.svelte';
@@ -25,15 +26,16 @@
 	import { resolveSyncStatus, SyncStatus } from '#lib/syncStatus.js';
 	import { useEditorActions } from '#lib/editorContext.js';
 	import { pairingCodeFromUrl } from '#lib/syncPairing.js';
-	import { onMount, tick } from 'svelte';
+	import { onMount, tick, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import type { EncryptedScrapsCacheBackup } from '#lib/backupCrypto.js';
 	import { loadLazyModule } from '#lib/staleModuleReload.js';
-	import { ArrowLeft, Cloud, Menu as MenuIcon, Search, X } from '@lucide/svelte';
+	import { Cloud, Menu as MenuIcon, Search, X } from '@lucide/svelte';
 	import { MediaQuery } from 'svelte/reactivity';
 	import { pathForView } from '#lib/viewRoutes.js';
 	import type { View } from '#lib/stores/ui.svelte.js';
+	import { isApplePlatform } from '#lib/platform.js';
 
 	const SYNC_CONTROL_LABEL: Record<SyncStatus, string> = {
 		[SyncStatus.Normal]: 'Sync settings',
@@ -75,33 +77,17 @@
 	);
 
 	/**
-	 * A query typed on a wide window must stay in view when the window narrows to the
-	 * phone layout: the Search tab turns on with it, so the field and its clear control
-	 * show for as long as it filters the notes.
+	 * A phone searches in the palette, so its bar has no field. A query typed on a wide
+	 * window goes when the window narrows to the phone layout: nothing would show it or
+	 * clear it there, and it would keep filtering the notes.
 	 */
 	$effect(() => {
-		if (mobile.current && uiStore.searchInput && !uiStore.searchOpen) uiStore.searchOpen = true;
+		if (mobile.current) untrack(() => uiStore.clearSearch());
 	});
 
-	/** The Search tab turned on: the field appears and takes the keyboard. */
-	$effect(() => {
-		if (!uiStore.searchOpen || !mobile.current) return;
-		void tick().then(() => searchField?.focus());
-	});
-
-	/**
-	 * On a phone an empty field that loses focus (the keyboard put away, a tap on the
-	 * page) is dismissed: the Search tab goes off and the bar names the view again. A
-	 * query keeps the field, since it still filters the notes.
-	 */
-	function leaveEmptySearch(event: FocusEvent) {
-		if (!mobile.current || !uiStore.searchOpen || uiStore.searchInput) return;
-		const next = event.relatedTarget;
-		if (next instanceof Node && event.currentTarget instanceof Element) {
-			if (event.currentTarget.closest('[role="search"]')?.contains(next)) return;
-		}
-		uiStore.closeSearch();
-	}
+	/** The palette's shortcut: Cmd+K on Apple devices, Ctrl+K elsewhere. */
+	const apple = isApplePlatform();
+	const paletteShortcut = apple ? '⌘K' : 'Ctrl K';
 
 	/** A place from the More menu: Archive or Trash, which the tab bar leaves out. */
 	function goToPlace(view: 'archive' | 'trash') {
@@ -240,6 +226,16 @@
 	}
 
 	function handleKeydown(e: KeyboardEvent) {
+		if (
+			(apple ? e.metaKey : e.ctrlKey) &&
+			!e.altKey &&
+			!e.shiftKey &&
+			e.key.toLowerCase() === 'k'
+		) {
+			e.preventDefault();
+			uiStore.paletteOpen = !uiStore.paletteOpen;
+			return;
+		}
 		// Ctrl+/ focuses composer.
 		if ((e.ctrlKey || e.metaKey) && e.key === '/') {
 			e.preventDefault();
@@ -285,7 +281,6 @@
 			bind:this={searchField}
 			value={uiStore.searchInput}
 			oninput={(event) => uiStore.setSearchInput(event.currentTarget.value)}
-			onblur={leaveEmptySearch}
 			type="search"
 			placeholder="Search"
 			aria-label="Search notes"
@@ -304,6 +299,18 @@
 			>
 				<X class={iconSm} aria-hidden="true" />
 			</button>
+		{:else}
+			<Tooltip content="Search notes, labels and actions">
+				<button
+					type="button"
+					class={styles.paletteHint}
+					onclick={() => (uiStore.paletteOpen = true)}
+					aria-label="Search notes, labels and actions"
+					aria-keyshortcuts={apple ? 'Meta+K' : 'Control+K'}
+				>
+					<kbd class={styles.paletteKbd}>{paletteShortcut}</kbd>
+				</button>
+			</Tooltip>
 		{/if}
 	</div>
 {/snippet}
@@ -359,34 +366,19 @@
 		<SelectionBar />
 	{:else if mobile.current}
 		<!-- A phone has the tab bar for its places: the bar names the view, and the
-		     Search tab turns it into the field. Labels, Archive and Trash sit under More. -->
-		{#if uiStore.searchOpen}
-			<Tooltip content="Close search">
-				<button
-					type="button"
-					class={iconButton({ variant: 'ghost', size: 'compact' })}
-					title="Close search"
-					onclick={() => uiStore.closeSearch()}
-					aria-label="Close search"
-				>
-					<ArrowLeft class={iconMd} aria-hidden="true" />
-				</button>
-			</Tooltip>
-			{@render searchBox()}
-		{:else}
-			<span class={styles.title} aria-hidden="true" data-view-title>{viewTitle}</span>
-			{@render syncButton()}
-			<SettingsMenu
-				phone
-				bind:open={settingsOpen}
-				onExport={startBackupExport}
-				onImport={startBackupImport}
-				importing={importingBackup}
-				importError={backupImportError}
-				onPlace={goToPlace}
-				onLabels={() => (uiStore.sidebarOpen = true)}
-			/>
-		{/if}
+		     Search tab opens the palette. Labels, Archive and Trash sit under More. -->
+		<span class={styles.title} aria-hidden="true" data-view-title>{viewTitle}</span>
+		{@render syncButton()}
+		<SettingsMenu
+			phone
+			bind:open={settingsOpen}
+			onExport={startBackupExport}
+			onImport={startBackupImport}
+			importing={importingBackup}
+			importError={backupImportError}
+			onPlace={goToPlace}
+			onLabels={() => (uiStore.sidebarOpen = true)}
+		/>
 	{:else}
 		<Tooltip content="Toggle sidebar">
 			<button
@@ -418,6 +410,10 @@
 	onpopstate={openPairingLink}
 />
 <svelte:document onvisibilitychange={openPairingLink} />
+
+{#if uiStore.paletteOpen}
+	<CommandPalette onClose={() => (uiStore.paletteOpen = false)} onBackup={startBackupExport} />
+{/if}
 
 {#if uiStore.syncOpen}
 	{#await loadSyncModal() then { default: SyncModal }}

@@ -1,6 +1,7 @@
 // Local reminder display. The relay receives only opaque wake ids and timestamps.
 import { reminderWakeId } from '#lib/model/index.js';
 import { formatReminder } from './utils';
+import { plainLine } from './noteLine.js';
 
 export type ReminderNote = {
 	id: string;
@@ -20,14 +21,11 @@ export type ReminderAlert = {
 	title: string;
 };
 
-const CHECKLIST_PREFIX = /^(?:\s*(?:[-*•]\s+)?)?\[[ xX]?\]\s*/;
-const BULLET_PREFIX = /^\s*[-*+•]\s+/;
-
 export function reminderPreview(note: Pick<ReminderNote, 'title' | 'body'>): string {
 	const title = note.title.trim();
 	if (title) return title;
 	for (const raw of (note.body ?? '').split('\n')) {
-		const line = raw.replace(BULLET_PREFIX, '').replace(CHECKLIST_PREFIX, '').trim();
+		const line = plainLine(raw);
 		if (line) return line.slice(0, 80);
 	}
 	return 'Untitled note';

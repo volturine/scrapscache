@@ -1,6 +1,6 @@
 <script lang="ts">
 	// The phone's bottom tab bar: Notes, Reminders and Kanban one tap away, and
-	// Search, which turns the top bar into the search field.
+	// Search, which opens the palette over the whole screen.
 	import { goto } from '$app/navigation';
 	import { AlarmClock, Kanban, Search, StickyNote, type LucideIcon } from '@lucide/svelte';
 	import { iconSizeMd as iconMd, phoneTabsStyles as styles } from '$panda/styles';
@@ -23,11 +23,6 @@
 		uiStore.setView(view);
 		void goto(target);
 	}
-
-	function toggleSearch() {
-		if (uiStore.searchOpen) uiStore.closeSearch();
-		else uiStore.searchOpen = true;
-	}
 </script>
 
 <nav class={styles.bar} aria-label="Main" data-phone-tabs>
@@ -44,7 +39,13 @@
 			<span class={styles.tabLabel}>{tab.label}</span>
 		</button>
 	{/each}
-	<button type="button" class={styles.tab} aria-pressed={uiStore.searchOpen} onclick={toggleSearch}>
+	<button
+		type="button"
+		class={styles.tab}
+		aria-haspopup="dialog"
+		aria-expanded={uiStore.paletteOpen}
+		onclick={() => (uiStore.paletteOpen = true)}
+	>
 		<span class={styles.tabIcon} data-tab-icon>
 			<Search class={iconMd} aria-hidden="true" />
 		</span>

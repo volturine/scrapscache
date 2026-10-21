@@ -1,5 +1,4 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
-import { tick } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { notesStore } from '#lib/stores/notes.svelte.js';
 import { uiStore } from '#lib/stores/ui.svelte.js';
@@ -28,7 +27,7 @@ beforeEach(phone);
 afterEach(() => {
 	window.matchMedia = desktopMatchMedia;
 	uiStore.setView('notes');
-	uiStore.searchOpen = false;
+	uiStore.paletteOpen = false;
 	uiStore.clearSearch();
 	uiStore.sidebarOpen = true;
 	notesStore.labels = [];
@@ -53,60 +52,25 @@ describe('the top bar on a phone', () => {
 		expect(document.querySelector('[data-view-title]')?.textContent).toBe('Travel');
 	});
 
-	it('shows the search field, focused, while the Search tab is on, and closes it', async () => {
-		render(Topbar);
-		uiStore.searchOpen = true;
-		const field = await screen.findByRole('searchbox', { name: 'Search notes' });
-		await tick();
-		await waitFor(() => expect(document.activeElement).toBe(field));
-		expect(document.querySelector('[data-view-title]')).toBeNull();
-
-		await fireEvent.input(field, { target: { value: 'retro' } });
-		await fireEvent.click(screen.getByRole('button', { name: 'Close search' }));
-		expect(uiStore.searchOpen).toBe(false);
-		expect(uiStore.searchInput).toBe('');
-		await waitFor(() => expect(screen.queryByRole('searchbox')).toBeNull());
-		expect(document.querySelector('[data-view-title]')?.textContent).toBe('Notes');
-	});
-
-	it('keeps a query typed on a wide window in view when the window narrows to a phone', async () => {
-		// Typed before the breakpoint changed: the phone bar would otherwise hide it.
+	it('drops a query typed on a wide window when the window narrows to a phone', async () => {
+		// The phone bar has no field to show it or clear it, so it must not keep filtering.
 		window.matchMedia = desktopMatchMedia;
 		uiStore.setSearchInput('Groceries');
 		uiStore.search = 'Groceries';
 		phone();
 		render(Topbar);
 
-		const field = await screen.findByRole('searchbox', { name: 'Search notes' });
-		expect((field as HTMLInputElement).value).toBe('Groceries');
-		expect(uiStore.searchOpen).toBe(true);
-		expect(screen.getByRole('button', { name: 'Close search' })).toBeTruthy();
+		await waitFor(() => expect(uiStore.searchInput).toBe(''));
+		expect(uiStore.search).toBe('');
+		expect(screen.queryByRole('searchbox')).toBeNull();
 	});
 
-	it('dismisses an empty field when it loses focus, and keeps one with a query', async () => {
+	it('opens the palette over the whole screen, with a way back', async () => {
 		render(Topbar);
-		uiStore.searchOpen = true;
-		const field = await screen.findByRole('searchbox', { name: 'Search notes' });
-		await fireEvent.input(field, { target: { value: 'retro' } });
-		await fireEvent.blur(field);
-		expect(uiStore.searchOpen).toBe(true);
-
-		await fireEvent.input(field, { target: { value: '' } });
-		await fireEvent.blur(field);
-		expect(uiStore.searchOpen).toBe(false);
-		await waitFor(() => expect(screen.queryByRole('searchbox')).toBeNull());
-	});
-
-	it('closes with the view it was searching when another tab is picked', async () => {
-		render(Topbar);
-		uiStore.searchOpen = true;
-		await screen.findByRole('searchbox', { name: 'Search notes' });
-		uiStore.setView('reminders');
-		expect(uiStore.searchOpen).toBe(false);
-		await waitFor(() => expect(screen.queryByRole('searchbox')).toBeNull());
-		// A query carried into a view keeps the field, as Show in Archive does.
-		uiStore.setView('archive', null, 'retro');
-		expect(uiStore.searchOpen).toBe(true);
+		uiStore.paletteOpen = true;
+		await screen.findByRole('combobox', { name: 'Search notes, labels and actions' });
+		await fireEvent.click(screen.getByRole('button', { name: 'Close search' }));
+		expect(uiStore.paletteOpen).toBe(false);
 	});
 
 	it('puts Labels, Archive and Trash under More, ahead of the settings', async () => {

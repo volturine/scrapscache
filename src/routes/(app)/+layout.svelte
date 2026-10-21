@@ -17,6 +17,7 @@
 	import { preloadVapidPublicKey } from '#lib/reminderWake.js';
 	import { registerServiceWorker } from '#lib/serviceWorker.js';
 	import { provideEditorActions } from '#lib/editorContext.js';
+	import { rememberRecentNote } from '#lib/recentNotes.js';
 	import { splitPastedHeading } from '#lib/checklistBody.js';
 	import { Drawer } from '@ark-ui/svelte/drawer';
 	import { onMount, untrack } from 'svelte';
@@ -49,6 +50,7 @@
 	}
 
 	function openEditor(id: string) {
+		rememberRecentNote(syncStore.activePid, id);
 		autoFocusBody = false;
 		editingId = id;
 		applyEditorOpen(true);

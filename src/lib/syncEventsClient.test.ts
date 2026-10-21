@@ -159,6 +159,9 @@ describe('SyncEventsClient', () => {
 		fetch.mockImplementation(
 			async () => new Response(new ReadableStream({ start: (c) => c.close() }))
 		);
+		// The pause is 1.6–2.4s at random; pinned to its middle, 2s, so three short
+		// draws in a row cannot fit a fourth attempt before the last check.
+		const random = vi.spyOn(Math, 'random').mockReturnValue(0.5);
 		const client = new SyncEventsClient(mockSyncStore);
 		client.subscribe(() => undefined);
 		await vi.advanceTimersByTimeAsync(0);
@@ -171,5 +174,6 @@ describe('SyncEventsClient', () => {
 		await vi.advanceTimersByTimeAsync(2_500);
 		expect(fetch).toHaveBeenCalledTimes(3);
 		client.destroy();
+		random.mockRestore();
 	});
 });

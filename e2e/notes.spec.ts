@@ -628,7 +628,7 @@ test('the palette finds notes in every place, labels and actions from the keyboa
 test.describe('on a phone', () => {
 	test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
 
-	test('the tab bar carries the places, Search opens the palette, and More holds the rest', async ({
+	test('the tab bar carries the places, Search opens the palette, and the title picks the rest', async ({
 		page
 	}) => {
 		await openEmptyApp(page);
@@ -693,14 +693,24 @@ test.describe('on a phone', () => {
 		// The bar is a compact 3.5 rem.
 		expect((await tabs.boundingBox())!.height).toBeLessThanOrEqual(57);
 
-		await page.getByRole('button', { name: 'More', exact: true }).click();
-		await expect(page.getByRole('menuitem')).toContainText(['Labels', 'Archive', 'Trash']);
-		await page.getByRole('menuitem', { name: 'Archive' }).click();
+		// The title is a picker for every place and label; More keeps the settings.
+		await page.getByRole('button', { name: 'Notes, go to another place or label' }).click();
+		await expect(page.getByRole('menuitemradio')).toHaveText([
+			'Notes',
+			'Reminders',
+			'Kanban',
+			'Archive',
+			'Trash'
+		]);
+		await page.getByRole('menuitemradio', { name: 'Archive' }).click();
 		await expect(page).toHaveURL(/\/archive$/);
 		await expect(page.locator('[data-view-title]')).toHaveText('Archive');
-
 		await page.getByRole('button', { name: 'More', exact: true }).click();
-		await page.getByRole('menuitem', { name: 'Labels' }).click();
+		await expect(page.getByRole('menuitem').first()).toHaveText('Back up notes…');
+		await page.keyboard.press('Escape');
+
+		await page.getByRole('button', { name: 'Archive, go to another place or label' }).click();
+		await page.getByRole('menuitem', { name: 'Edit labels…' }).click();
 		await expect(page.getByRole('navigation', { name: 'Sidebar' })).toBeVisible();
 	});
 });

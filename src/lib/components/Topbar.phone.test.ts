@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { notesStore } from '#lib/stores/notes.svelte.js';
 import { uiStore } from '#lib/stores/ui.svelte.js';
@@ -73,26 +73,58 @@ describe('the top bar on a phone', () => {
 		expect(uiStore.paletteOpen).toBe(false);
 	});
 
-	it('puts Labels, Archive and Trash under More, ahead of the settings', async () => {
+	it('goes to any place or label from the title, and keeps More for the settings', async () => {
 		uiStore.sidebarOpen = false;
+		notesStore.labels = [
+			{ id: 'travel', name: 'Travel', createdAt: 1, updatedAt: 1 },
+			{ id: 'work', name: 'Work', createdAt: 1, updatedAt: 1 }
+		];
 		render(Topbar);
-		await fireEvent.click(screen.getByRole('button', { name: 'More' }));
-		const items = (await screen.findAllByRole('menuitem')).map((item) => item.textContent?.trim());
-		expect(items.slice(0, 3)).toEqual(['Labels', 'Archive', 'Trash']);
-		expect(items).toContain('Back up notes…');
+		await fireEvent.click(
+			screen.getByRole('button', { name: 'Notes, go to another place or label' })
+		);
+		const options = (await screen.findAllByRole('menuitemradio')).map((item) =>
+			item.textContent?.trim()
+		);
+		expect(options).toEqual(['Notes', 'Reminders', 'Kanban', 'Archive', 'Trash', 'Travel', 'Work']);
+		expect(screen.getByRole('menuitemradio', { name: 'Notes' }).getAttribute('aria-checked')).toBe(
+			'true'
+		);
 
-		const archive = screen.getByRole('menuitem', { name: 'Archive' });
+		const archive = screen.getByRole('menuitemradio', { name: 'Archive' });
 		await fireEvent.pointerDown(archive, { pointerType: 'mouse' });
 		await fireEvent.click(archive);
 		expect(uiStore.view).toBe('archive');
 		expect(navigation.goto).toHaveBeenCalledWith('/archive');
 		expect(closeNote).toHaveBeenCalled();
 
-		await fireEvent.click(screen.getByRole('button', { name: 'More' }));
-		const labels = await screen.findByRole('menuitem', { name: 'Labels' });
-		await fireEvent.pointerDown(labels, { pointerType: 'mouse' });
-		await fireEvent.click(labels);
-		// The drawer is the labels screen on a phone.
+		await fireEvent.click(
+			screen.getByRole('button', { name: 'Archive, go to another place or label' })
+		);
+		const work = await screen.findByRole('menuitemradio', { name: 'Work' });
+		await fireEvent.pointerDown(work, { pointerType: 'mouse' });
+		await fireEvent.click(work);
+		expect(uiStore.view).toBe('label');
+		expect(uiStore.activeLabelId).toBe('work');
+		expect(navigation.goto).toHaveBeenCalledWith('/label/work');
+
+		// Making, renaming and deleting labels stays in the labels panel.
+		await fireEvent.click(
+			screen.getByRole('button', { name: 'Work, go to another place or label' })
+		);
+		const edit = await screen.findByRole('menuitem', { name: 'Edit labels…' });
+		await fireEvent.pointerDown(edit, { pointerType: 'mouse' });
+		await fireEvent.click(edit);
 		expect(uiStore.sidebarOpen).toBe(true);
+
+		// More holds the settings alone now.
+		const more = screen.getByRole('button', { name: 'More' });
+		await fireEvent.click(more);
+		const moreMenu = document.getElementById(more.getAttribute('aria-controls')!)!;
+		const items = within(moreMenu)
+			.getAllByRole('menuitem')
+			.map((item) => item.textContent?.trim());
+		expect(items[0]).toBe('Back up notes…');
+		expect(items).not.toContain('Archive');
 	});
 });

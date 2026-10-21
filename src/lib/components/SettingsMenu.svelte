@@ -3,15 +3,7 @@
 	import { cx } from 'styled-system/css';
 	import { iconButton, menuItem } from 'styled-system/recipes';
 	import { Menu } from '@ark-ui/svelte/menu';
-	import {
-		Archive,
-		Download,
-		EllipsisVertical,
-		Settings,
-		Tag,
-		Trash2,
-		Upload
-	} from '@lucide/svelte';
+	import { Download, EllipsisVertical, Settings, Upload } from '@lucide/svelte';
 	import { resolve } from '$app/paths';
 	import { uiStore, type Layout, type Theme } from '#lib/stores/ui.svelte.js';
 	import Tooltip from './Tooltip.svelte';
@@ -25,19 +17,15 @@
 		onImport,
 		importing = false,
 		importError = '',
-		phone = false,
-		onPlace,
-		onLabels
+		phone = false
 	}: {
 		open?: boolean;
 		onExport: () => void;
 		onImport: () => void;
 		importing?: boolean;
 		importError?: string;
-		/** On a phone this is the "More" menu: the places the tab bar leaves out come first. */
+		/** On a phone this is the "More" menu; its places are in the title's picker. */
 		phone?: boolean;
-		onPlace?: (view: 'archive' | 'trash') => void;
-		onLabels?: () => void;
 	} = $props();
 
 	const menuItemClass = cx(menuItem({ density: 'compact' }), styles.row);
@@ -52,7 +40,6 @@
 	];
 	const id = $props.id();
 	const ids = {
-		places: `${id}-places`,
 		appearance: `${id}-appearance`,
 		theme: `${id}-theme`,
 		layout: `${id}-layout`,
@@ -77,40 +64,6 @@
 	</Tooltip>
 	<Menu.Positioner class={styles.positioner}>
 		<Menu.Content class={cx(popover, styles.popover)}>
-			{#if phone}
-				<Menu.ItemGroup class={styles.section} aria-labelledby={ids.places}>
-					<Menu.ItemGroupLabel id={ids.places} class={styles.sectionLabel}
-						>Go to</Menu.ItemGroupLabel
-					>
-					<Menu.Item
-						value="labels"
-						closeOnSelect
-						onSelect={() => onLabels?.()}
-						class={menuItemClass}
-					>
-						<Tag class={styles.deviceIcon} aria-hidden="true" />
-						Labels
-					</Menu.Item>
-					<Menu.Item
-						value="archive"
-						closeOnSelect
-						onSelect={() => onPlace?.('archive')}
-						class={menuItemClass}
-					>
-						<Archive class={styles.deviceIcon} aria-hidden="true" />
-						Archive
-					</Menu.Item>
-					<Menu.Item
-						value="trash"
-						closeOnSelect
-						onSelect={() => onPlace?.('trash')}
-						class={menuItemClass}
-					>
-						<Trash2 class={styles.deviceIcon} aria-hidden="true" />
-						Trash
-					</Menu.Item>
-				</Menu.ItemGroup>
-			{/if}
 			<Menu.ItemGroup class={styles.section} aria-labelledby={ids.appearance}>
 				<Menu.ItemGroupLabel id={ids.appearance} class={styles.sectionLabel}
 					>Appearance</Menu.ItemGroupLabel

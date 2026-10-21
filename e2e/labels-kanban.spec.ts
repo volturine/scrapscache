@@ -236,10 +236,13 @@ test.describe('on a phone', () => {
 		await openEmptyApp(page);
 		await createNote(page, 'Task one');
 		await page.goto('/kanban');
-		await page
-			.getByRole('region', { name: 'Boards group your notes by label' })
-			.getByRole('button', { name: 'To-Do · In-Progress · Done' })
-			.click();
+		// A new board's panel and the add-column control are on screen, not cut off at the side.
+		const starter = page.getByRole('region', { name: 'Boards group your notes by label' });
+		await expect(starter).toBeInViewport({ ratio: 1 });
+		await expect(page.getByRole('button', { name: 'Add a label column' })).toBeInViewport({
+			ratio: 1
+		});
+		await starter.getByRole('button', { name: 'To-Do · In-Progress · Done' }).click();
 		const tabs = page.getByRole('tablist', { name: 'Columns' }).getByRole('tab');
 		await expect(tabs).toHaveText([/Unsorted\s*1/, /To-Do\s*0/, /In-Progress\s*0/, /Done\s*0/]);
 		// On a phone the shown column is the selected tab's panel.

@@ -1327,15 +1327,19 @@ export const kanbanViewStyles = {
 	colMenuContent: css({ zIndex: 30, minW: '13rem', py: '2xs', outline: 'none' }),
 	colMenuCaption: css({ px: 'md', pt: '3xs', pb: 'xs', textStyle: 'micro', ...mutedText }),
 	/** On a phone one column shows at a time; these pick it, and take a dropped card. */
-	columnTabs: css({
+	/** The phone's tab row: the column tabs scroll, the add-column control stays at the end. */
+	phoneTabsRow: css({
 		display: 'flex',
+		alignItems: 'center',
 		gap: 'xs',
-		overflowX: 'auto',
 		mx: '-1rem',
 		px: 'lg',
-		py: '2xs',
 		mb: 'sm'
 	}),
+	columnTabs: css({ display: 'flex', gap: 'xs', flex: '1', minW: 0, overflowX: 'auto', py: '2xs' }),
+	addColCompact: css({ flexShrink: 0, h: '2.75rem', minW: '2.75rem', px: 'sm', rounded: 'pill' }),
+	/** On a phone the first-run panel sits above the one column on screen, not beside it. */
+	starterPhone: css({ mb: 'md' }),
 	columnTab: css({
 		...rowCenter,
 		gap: '2xs',
@@ -2392,6 +2396,8 @@ export const noteSelectStyles = {
 	}),
 	/** Room for the check while a selection is open, so a title never runs under it. */
 	titleRoom: css({ pl: '1.75rem' }),
+	/** The same room on a reminder strip, which then holds the check instead of the title. */
+	stripRoom: css({ pl: '2.25rem' }),
 	selected: css({
 		boxShadow: '0 0 0 2px token(colors.scrapscache.accent)',
 		borderColor: 'scrapscache.accent'

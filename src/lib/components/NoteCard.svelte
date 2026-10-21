@@ -327,7 +327,10 @@
 
 		{#if note.reminder != null}
 			<div class={css({ flexShrink: 0 })}>
-				<ReminderLabel reminder={note.reminder} class={noteActionsStyles.topRoom} />
+				<ReminderLabel
+					reminder={note.reminder}
+					class={cx(noteActionsStyles.topRoom, selectionStore.active && noteSelectStyles.stripRoom)}
+				/>
 			</div>
 		{/if}
 
@@ -367,7 +370,7 @@
 								class={cx(
 									card.title,
 									noteActionsStyles.topRoom,
-									selectionStore.active && noteSelectStyles.titleRoom,
+									selectionStore.active && note.reminder == null && noteSelectStyles.titleRoom,
 									css({ flexShrink: 0 }),
 									note.secret && css({ px: 'md', pt: 'md', pb: 'sm' })
 								)}

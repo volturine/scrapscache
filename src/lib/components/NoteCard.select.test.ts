@@ -1,9 +1,11 @@
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
+import { tick } from 'svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Note } from '#lib/types.js';
 import { notesStore } from '#lib/stores/notes.svelte.js';
 import { selectionStore } from '#lib/stores/selection.svelte.js';
 import NoteCard from './NoteCard.svelte';
+import { noteSelectStyles } from '$panda/styles';
 
 function note(partial: Partial<Note> = {}): Note {
 	return {
@@ -57,6 +59,32 @@ describe('picking a card', () => {
 
 		await fireEvent.click(card());
 		expect(selectionStore.ids).toEqual(['other']);
+	});
+
+	it('puts the check on the reminder strip while a selection is open, not over the title', async () => {
+		render(NoteCard, {
+			props: { note: note({ reminder: Date.now() + 3_600_000 }), onOpen: vi.fn() }
+		});
+		selectionStore.toggle('other');
+		await tick();
+		const strip = card().querySelector('[aria-label^="Reminder, "]')!;
+		expect(strip.classList.contains(noteSelectStyles.stripRoom)).toBe(true);
+		// The strip holds the check, so the title keeps its place.
+		expect(within(card()).getByText('Trip').classList.contains(noteSelectStyles.titleRoom)).toBe(
+			false
+		);
+	});
+
+	it('makes room on the title when the card has no reminder strip', async () => {
+		render(NoteCard, { props: { note: note(), onOpen: vi.fn() } });
+		expect(within(card()).getByText('Trip').classList.contains(noteSelectStyles.titleRoom)).toBe(
+			false
+		);
+		selectionStore.toggle('other');
+		await tick();
+		expect(within(card()).getByText('Trip').classList.contains(noteSelectStyles.titleRoom)).toBe(
+			true
+		);
 	});
 
 	it('opens the note as before when nothing is selected', async () => {

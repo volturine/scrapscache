@@ -1,10 +1,10 @@
 /**
  * The dashboard's view of the admin API.
  *
- * The token lives in sessionStorage rather than localStorage so it dies with the
- * tab, and is never put in a URL. It is still readable by anything running on
- * this origin, which is why the deployment should keep Cloudflare Access in
- * front of /admin as well.
+ * Behind Cloudflare Access no token is needed: Access signs every request it
+ * lets through, and the server checks that. The token is the other way in, and
+ * lives in sessionStorage rather than localStorage so it dies with the tab, and
+ * is never put in a URL.
  */
 
 const TOKEN_KEY = 'scrapscache-admin-token';
@@ -93,7 +93,7 @@ export class AdminClient {
 			...init,
 			headers: {
 				...(init.headers ?? {}),
-				authorization: `Bearer ${this.token}`,
+				...(this.token ? { authorization: `Bearer ${this.token}` } : {}),
 				...(init.body ? { 'content-type': 'application/json' } : {})
 			}
 		});

@@ -272,3 +272,23 @@ describe('request logs', () => {
 		expect(info.mock.calls.map(([line]) => JSON.parse(String(line)).status)).toEqual([401]);
 	});
 });
+
+describe('the admin origin', () => {
+	it('serves the dashboard there and nothing else, and the app no dashboard', async () => {
+		privateEnv.SCRAPSCACHE_ADMIN_ORIGIN = 'https://admin.example.test';
+		const served = () => new Response('ok');
+
+		expect((await visit('https://admin.example.test/admin', served)).status).toBe(200);
+		expect((await visit('https://admin.example.test/api/admin/status', served)).status).toBe(200);
+		expect((await visit(`https://admin.example.test${SYNC_DELTA_PATH}`, served)).status).toBe(404);
+		expect((await visit('https://example.test/admin', served)).status).toBe(404);
+		expect((await visit('https://example.test/metrics', served)).status).toBe(404);
+		expect((await visit(`https://example.test${SYNC_DELTA_PATH}`, served)).status).toBe(200);
+
+		const root = await visit('https://admin.example.test/', served);
+		expect(root.status).toBe(303);
+		expect(root.headers.get('location')).toBe('/admin');
+		// Refusals still carry the security headers.
+		expect(root.headers.get('x-content-type-options')).toBe('nosniff');
+	});
+});

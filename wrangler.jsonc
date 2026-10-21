@@ -29,6 +29,12 @@
 		{
 			"pattern": "verify.scrapscache.com",
 			"custom_domain": true
+		},
+		// The operator dashboard and API, alone on their own host so one Cloudflare
+		// Access application covers all of them.
+		{
+			"pattern": "admin.scrapscache.com",
+			"custom_domain": true
 		}
 	],
 	"vars": {
@@ -40,6 +46,11 @@
 		"TURNSTILE_SITEKEY": "0x4AAAAAAEx1iggiE7ZSHoeB",
 		// Siteverify reports the host the widget ran on, which is the challenge host.
 		"TURNSTILE_HOSTNAMES": "verify.scrapscache.com",
+		"SCRAPSCACHE_ADMIN_ORIGIN": "https://admin.scrapscache.com",
+		// The Access application in front of admin.scrapscache.com. Its signed header
+		// admits an operator without the admin token; neither value is a secret.
+		"SCRAPSCACHE_ACCESS_TEAM_DOMAIN": "kripso-world.cloudflareaccess.com",
+		"SCRAPSCACHE_ACCESS_AUD": "1333d509c930544bbdd5cfb8a03376ccd1c4339555197ef45e089a20b2baba9f",
 		"SCRAPSCACHE_RETENTION_INACTIVE_DAYS": "365",
 		// Only the canonical production origin is crawlable; dev serves Disallow.
 		"SCRAPSCACHE_ALLOW_INDEXING": "true"
@@ -148,6 +159,10 @@
 				{
 					"pattern": "verify-dev.scrapscache.com",
 					"custom_domain": true
+				},
+				{
+					"pattern": "admin-dev.scrapscache.com",
+					"custom_domain": true
 				}
 			],
 			"vars": {
@@ -158,6 +173,8 @@
 				"PUBLIC_TURNSTILE_ORIGIN": "https://verify-dev.scrapscache.com",
 				"TURNSTILE_SITEKEY": "0x4AAAAAAEx1iggiE7ZSHoeB",
 				"TURNSTILE_HOSTNAMES": "verify-dev.scrapscache.com",
+				// No Access application covers dev, so its dashboard takes the admin token.
+				"SCRAPSCACHE_ADMIN_ORIGIN": "https://admin-dev.scrapscache.com",
 				"SCRAPSCACHE_RETENTION_INACTIVE_DAYS": "365",
 				// Pre-merge code on a public hostname. Never invite crawlers here.
 				"SCRAPSCACHE_ALLOW_INDEXING": "false"

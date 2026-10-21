@@ -23,8 +23,11 @@
 
 	let tokenInput = $state('');
 	let error = $state('');
-	let loading = $state(false);
+	// The page asks the server on arrival, so it starts out loading.
+	let loading = $state(true);
 	let signingIn = $state(false);
+	/** Set once the server has refused the request without a usable credential. */
+	let needsToken = $state(false);
 	let limitsError = $state('');
 	let settingsError = $state('');
 	let limitsSaved = $state(false);
@@ -54,8 +57,12 @@
 			await run();
 		} catch (err) {
 			if (err instanceof AdminUnauthorized) {
+				// Asking with no token is how the page finds out whether Access let it
+				// in; a refusal then is the sign-in form, not an error.
+				error = adminClient.signedIn ? err.message : '';
 				adminClient.forget();
-				error = err.message;
+				snapshot = null;
+				needsToken = true;
 			} else {
 				error = err instanceof Error ? err.message : 'Something went wrong';
 			}
@@ -74,6 +81,7 @@
 			const page = await adminClient.accounts(search, offset, PAGE_SIZE);
 			accounts = page.accounts;
 			accountTotal = page.total;
+			needsToken = false;
 		});
 	}
 
@@ -189,7 +197,7 @@
 	);
 
 	onMount(() => {
-		if (adminClient.signedIn) void loadAll();
+		void loadAll();
 	});
 </script>
 
@@ -199,27 +207,30 @@
 	<div class={styles.content}>
 		<header class={styles.header}>
 			<h1 class={styles.title}>Operations</h1>
-			{#if adminClient.signedIn}
+			{#if !needsToken}
 				<div class={styles.headerActions}>
 					{#if loading}<span class={styles.loading}>Loading…</span>{/if}
 					<button class={secondaryButton} onclick={() => void loadAll()}>Refresh</button>
-					<button
-						class={secondaryButton}
-						onclick={() => {
-							adminClient.forget();
-							snapshot = null;
-							settings = null;
-						}}>Sign out</button
-					>
+					{#if adminClient.signedIn}
+						<button
+							class={secondaryButton}
+							onclick={() => {
+								adminClient.forget();
+								snapshot = null;
+								settings = null;
+								void loadAll();
+							}}>Sign out</button
+						>
+					{/if}
 				</div>
 			{/if}
 		</header>
 
-		{#if error && adminClient.signedIn}
+		{#if error && !needsToken}
 			<p class={styles.error} role="alert">{error}</p>
 		{/if}
 
-		{#if !adminClient.signedIn}
+		{#if needsToken}
 			<form class={styles.signIn} onsubmit={signIn}>
 				<label class={styles.field}>
 					<span class={styles.fieldLabel}>Admin token</span>

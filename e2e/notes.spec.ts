@@ -404,6 +404,19 @@ test('search chips narrow the feed, matches are marked, and a miss offers a new 
 	await expect(search).toHaveValue('');
 });
 
+test('a card shows its … on hover and no edited time', async ({ page }) => {
+	await openEmptyApp(page);
+	await createNote(page, 'Quiet card', 'Nothing else');
+	const card = noteCard(page, 'Quiet card');
+	const actions = card.getByRole('button', { name: 'Note actions' });
+	await page.mouse.move(1, 1);
+	await expect(actions).toHaveCSS('opacity', '0');
+	await card.hover();
+	await expect(actions).toHaveCSS('opacity', '1');
+	// The created or edited time is the open note's, not the card's.
+	await expect(card).not.toContainText(/Edited|Created/);
+});
+
 test('a click outside the … menu closes it and still opens the note under the pointer', async ({
 	page
 }) => {
@@ -422,6 +435,14 @@ test('a click outside the … menu closes it and still opens the note under the 
 
 test.describe('on a touch screen', () => {
 	test.use({ hasTouch: true });
+
+	test('a card always shows its … , since a touch screen has no hover', async ({ page }) => {
+		await openEmptyApp(page);
+		await createNote(page, 'Touch card');
+		await expect(
+			noteCard(page, 'Touch card').getByRole('button', { name: 'Note actions' })
+		).toHaveCSS('opacity', '1');
+	});
 
 	test('the + on a focused task row grows a 44 px touch target that stays off the text', async ({
 		page

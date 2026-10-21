@@ -87,7 +87,7 @@ let mf: InstanceType<typeof Miniflare>;
 let token = '';
 const report: Record<string, Cost> = {};
 
-/** Runs one request the way the server hook does, telemetry written after it included. */
+/** Runs one request the way the server hook does, work deferred past the response included. */
 async function measure(name: string, handler: unknown, request: Request): Promise<Response> {
 	spent = { rowsRead: 0, rowsWritten: 0, queries: 0 };
 	const response = await (handler as Handler)({ request, getClientAddress: () => '203.0.113.9' });
@@ -146,7 +146,7 @@ describe.runIf(measuring)('D1 cost per relay request', () => {
 			if (current.trim()) statements.push(current.trim());
 			await db.batch(statements.map((statement) => db.prepare(statement)));
 		}
-		// The app, its telemetry and the relay round all count against the same binding.
+		// The app and the relay round both count against the same binding.
 		const counted = metered(db);
 		const r2 = testR2().bucket;
 		const state = {
@@ -184,7 +184,6 @@ describe.runIf(measuring)('D1 cost per relay request', () => {
 	});
 
 	it('measures each kind of request', async () => {
-		const random = vi.spyOn(Math, 'random').mockReturnValue(0.5);
 		await measure(
 			'delta: upload 1 new record',
 			delta.POST,
@@ -210,13 +209,6 @@ describe.runIf(measuring)('D1 cost per relay request', () => {
 			})
 		);
 		await measure('delta: empty round', delta.POST, post('/api/sync/v2/delta', { cursor: 18 }));
-		random.mockReturnValue(0);
-		await measure(
-			'delta: empty round, sampled for telemetry',
-			delta.POST,
-			post('/api/sync/v2/delta', { cursor: 18 })
-		);
-		random.mockReturnValue(0.5);
 		await measure(
 			'delta: download page of 12',
 			delta.POST,
@@ -291,7 +283,6 @@ describe.runIf(measuring)('D1 cost per relay request', () => {
 				sessionId: started.id
 			})
 		);
-		random.mockRestore();
 
 		expect(report['delta: empty round'].rowsWritten).toBe(2);
 		expect(report['wakes: newer revision, same wakes'].rowsWritten).toBeLessThan(

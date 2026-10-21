@@ -131,14 +131,13 @@ the long-term attachment format.
   production Compose. Every one of them charges the per-address admin bucket
   before it compares the token, so the token cannot be guessed at request speed
 - **Metrics** — process counters on Node, where one process sees every request.
-  On Workers, where no isolate does, the build swaps in a module that adds to
-  hourly counters in D1, and the endpoints report `activity: null` rather than
-  one isolate's partial count. Counter keys name an event or a bucketed route,
-  never an account. Sync rounds are counted one in twenty, weighted for the rest,
-  so the sync request total is an estimate; uploads and deletions are exact.
-  Refused requests are neither counted nor logged, so a flood of them costs no
-  extra writes or log volume; the dashboard reads throttled callers from the
-  rate-limit buckets, and Cloudflare's request analytics show the `429`s
+  Counter keys name an event or a bucketed route, never an account. On Workers,
+  where no isolate does, the app counts nothing and the endpoints report
+  `activity: null`: Cloudflare's Worker analytics count requests, status codes
+  and durations, Workers Logs keep failures, and D1 query insights report
+  statement costs, none of which costs the Worker a write. Refused requests are
+  not logged either, so a flood of them buys no log volume; the dashboard reads
+  throttled callers from the rate-limit buckets
 - **Operator status** — `/metrics` and `GET /api/admin/status` are anonymous
   aggregates. The account administration endpoints are not: they list account IDs
   alongside storage, activity and per-account limits, because an operator cannot

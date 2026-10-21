@@ -53,7 +53,6 @@ describe('operator snapshot', () => {
 		});
 		expect(JSON.stringify(snapshot)).not.toMatch(/account-[a-z0-9]+|credential/i);
 		expect(snapshot.activity?.syncRequests).toBe(4);
-		expect(snapshot.telemetry).toEqual({ source: 'process' });
 	});
 
 	it('omits stale retention counts when the policy is disabled', () => {
@@ -87,7 +86,7 @@ describe('operator snapshot', () => {
 });
 
 describe('deployments where no process sees every request', () => {
-	it('reports no counters and says where they live instead of guessing a total', () => {
+	it('reports no counters instead of guessing a total', () => {
 		const snapshot = buildOperatorSnapshot(
 			{
 				accounts: 3,
@@ -115,7 +114,6 @@ describe('deployments where no process sees every request', () => {
 		);
 
 		expect(snapshot.activity).toBeNull();
-		expect(snapshot.telemetry).toEqual({ source: 'database' });
 		// Storage and account figures come from the database, so they stay real.
 		expect(snapshot.accounts.total).toBe(3);
 		expect(snapshot.storage.envelopes).toBe(10);

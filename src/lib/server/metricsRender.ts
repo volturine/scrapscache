@@ -19,9 +19,9 @@ export type HttpSample = { route: string; status: string; count: number; duratio
  *
  * `null` where no one process sees them all. On Workers each isolate is
  * short-lived and holds its own copy, so a scrape would report whichever isolate
- * happened to answer — a number that looks like a total and is not one. Those
- * deployments keep hourly counters in the database instead, and omit them here
- * rather than publish a figure nobody should act on.
+ * happened to answer — a number that looks like a total and is not one, so they
+ * are omitted rather than published; Cloudflare's own analytics count requests
+ * there.
  */
 export type MetricsSnapshot = { http: HttpSample[]; activity: ProcessActivity } | null;
 

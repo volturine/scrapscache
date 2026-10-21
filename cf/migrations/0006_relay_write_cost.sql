@@ -9,3 +9,7 @@ CREATE TABLE reminder_wakes_unscheduled (
 -- the rows each check writes, refusals included. Only the hourly prune and the
 -- throttled-caller count read by it, and both scan a table of recent callers.
 DROP INDEX IF EXISTS rate_buckets_last_seen;
+
+-- Request counters live in Cloudflare's own analytics, which count every request
+-- without the Worker paying a database write for each.
+DROP TABLE IF EXISTS activity_hours;

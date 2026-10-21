@@ -28,7 +28,6 @@ export type OperatorSnapshot = {
 	storage: { ciphertextBytes: number; storageBytes: number; gigabytes: number; envelopes: number };
 	accounts: { total: number; active: Record<string, number>; staleForRetention: number | null };
 	activity: Record<string, number> | null;
-	telemetry: { source: 'process' | 'database' };
 	retention: {
 		enabled: boolean;
 		inactiveDays: number;
@@ -42,7 +41,6 @@ export type OperatorSnapshot = {
 
 export type TelemetryReport = {
 	available: boolean;
-	source: 'process' | 'database';
 	windowHours: number | null;
 	activity: Record<string, number> | null;
 	throttledNow: number | null;

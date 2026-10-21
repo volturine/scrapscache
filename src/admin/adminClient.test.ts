@@ -53,6 +53,13 @@ describe('holding the admin token', () => {
 		expect(new Headers(requests[0].init.headers).get('authorization')).toBe('Bearer secret');
 		expect(requests[0].url).not.toContain('secret');
 	});
+
+	it('sends no authorization at all without one, so Cloudflare Access can admit the page', async () => {
+		respond(200, { total: 0, accounts: [] });
+		await new AdminClient().accounts('');
+
+		expect(new Headers(requests[0].init.headers).has('authorization')).toBe(false);
+	});
 });
 
 describe('telling a rejected token from an ordinary not-found', () => {

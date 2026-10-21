@@ -1,5 +1,6 @@
 import { timingSafeEqual } from 'node:crypto';
 import { SCRAPSCACHE_ADMIN_TOKEN } from '$app/env/private';
+import { passedCloudflareAccess } from '#lib/server/cloudflareAccess.js';
 import { checkAdminApiLimit, rateLimitResponse } from '#lib/server/rateLimit.js';
 
 export function timingSafeStringEqual(left: string, right: string): boolean {
@@ -23,7 +24,9 @@ export function unauthorizedAdminResponse(): Response {
 }
 
 /**
- * Throttle, then authenticate, then hand control back. Returns the response to
+ * Throttle, then authenticate, then hand control back. Either credential admits
+ * an operator: the admin token, or a request Cloudflare Access signed for the
+ * dashboard's application. With neither configured the admin API is off. Returns the response to
  * send when the caller should not proceed, and null when it should.
  *
  * Throttling first is deliberate: it is what makes guessing the token expensive,
@@ -36,6 +39,6 @@ export async function requireAdmin(
 ): Promise<Response | null> {
 	const limit = await checkAdminApiLimit(getClientAddress);
 	if (!limit.allowed) return rateLimitResponse(limit);
-	if (!isAdminAuthorized(request)) return unauthorizedAdminResponse();
-	return null;
+	if (isAdminAuthorized(request) || (await passedCloudflareAccess(request))) return null;
+	return unauthorizedAdminResponse();
 }

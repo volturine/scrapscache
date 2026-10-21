@@ -196,6 +196,21 @@ describe('the board filter', () => {
 describe('on a phone', () => {
 	beforeEach(phone);
 
+	it("keeps a new board's starter panel and the add-column control on screen, above the column", async () => {
+		kanbanStore.selectBoard(kanbanStore.createBoard('Fresh').id);
+		render(KanbanView);
+		const starter = screen.getByRole('region', { name: 'Boards group your notes by label' });
+		const panel = screen.getByRole('tabpanel');
+		// Above the one column on screen, not beside it where the track cuts it off.
+		expect(starter.compareDocumentPosition(panel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		expect(panel.closest('.kanban-columns')?.contains(starter)).toBe(false);
+		// The add-column control shares the tab row.
+		const add = screen.getByRole('button', { name: 'Add a label column' });
+		expect(add.parentElement?.contains(screen.getByRole('tablist', { name: 'Columns' }))).toBe(
+			true
+		);
+	});
+
 	it('moves between the tabs with the arrows, Home and End, one tab stop, panel linked', async () => {
 		render(KanbanView);
 		const tabs = within(screen.getByRole('tablist', { name: 'Columns' })).getAllByRole('tab');

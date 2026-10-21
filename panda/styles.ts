@@ -1327,15 +1327,19 @@ export const kanbanViewStyles = {
 	colMenuContent: css({ zIndex: 30, minW: '13rem', py: '2xs', outline: 'none' }),
 	colMenuCaption: css({ px: 'md', pt: '3xs', pb: 'xs', textStyle: 'micro', ...mutedText }),
 	/** On a phone one column shows at a time; these pick it, and take a dropped card. */
-	columnTabs: css({
+	/** The phone's tab row: the column tabs scroll, the add-column control stays at the end. */
+	phoneTabsRow: css({
 		display: 'flex',
+		alignItems: 'center',
 		gap: 'xs',
-		overflowX: 'auto',
 		mx: '-1rem',
 		px: 'lg',
-		py: '2xs',
 		mb: 'sm'
 	}),
+	columnTabs: css({ display: 'flex', gap: 'xs', flex: '1', minW: 0, overflowX: 'auto', py: '2xs' }),
+	addColCompact: css({ flexShrink: 0, h: '2.75rem', minW: '2.75rem', px: 'sm', rounded: 'pill' }),
+	/** On a phone the first-run panel sits above the one column on screen, not beside it. */
+	starterPhone: css({ mb: 'md' }),
 	columnTab: css({
 		...rowCenter,
 		gap: '2xs',
@@ -1378,6 +1382,9 @@ export const kanbanViewStyles = {
 	radioSubtitle: css({ mt: '3xs', display: 'block', textStyle: 'caption' }),
 	tagPickerPositioner: css({ zIndex: 20, w: 'var(--reference-width)' }),
 	tagPickerContent: css({ maxH: '16rem', overflowY: 'auto', py: '2xs' }),
+	/** The phone's "+" is a 44 px square, too narrow to size its menu: the menu takes its own width. */
+	tagPickerPositionerCompact: css({ zIndex: 20 }),
+	tagPickerContentCompact: css({ minW: '13rem', maxW: 'calc(100vw - 2rem)' }),
 	dragGhost: css({
 		position: 'fixed',
 		top: 0,
@@ -2360,17 +2367,35 @@ export const noteActionsStyles = {
 };
 
 /**
+ * A masonry card's slot. The top-left room lets a card's select check hang over its
+ * corner: a slot skipped offscreen (content-visibility) clips paint to its own box,
+ * so the room is padding inside it, taken back by an equal negative margin. Only
+ * the card takes pointer events, never the room.
+ */
+export const masonryItem = css({
+	mt: '-0.75rem',
+	ml: '-0.75rem',
+	pt: '0.75rem',
+	pl: '0.75rem',
+	pointerEvents: 'none',
+	'& > *': { pointerEvents: 'auto' }
+});
+
+/**
  * Picking cards for one action on all of them: the check at a card's top-left,
  * shown while a selection is open (and when it has keyboard focus); the selected
- * card's outline; and the top bar as the action bar.
+ * card's outline; and the top bar as the action bar. The check is an overlay, like
+ * the "…" at the other corner: it never moves the card's content.
  */
 export const noteSelectStyles = {
+	/** The card and its check: the check hangs over the corner, outside the card's clipping. */
+	cardWrap: css({ position: 'relative' }),
 	check: css({
 		position: 'absolute',
-		top: 'xs',
-		left: 'xs',
-		// With the "…" (21): above the open control and the hidden-preview overlay.
-		zIndex: 21,
+		// Centred near the card's corner, so it covers neither the title nor a reminder strip.
+		top: '-0.625rem',
+		left: '-0.625rem',
+		zIndex: 22,
 		...gridCenter,
 		w: '1.5rem',
 		h: '1.5rem',
@@ -2378,6 +2403,7 @@ export const noteSelectStyles = {
 		borderWidth: 'strong',
 		borderColor: 'scrapscache.textMuted',
 		bg: 'scrapscache.surface',
+		boxShadow: 'sm',
 		color: 'scrapscache.accentForeground',
 		cursor: 'pointer',
 		outline: 'none',
@@ -2386,12 +2412,10 @@ export const noteSelectStyles = {
 		// Hidden at rest, hover included: a selection starts from the card's "…" menu,
 		// and the check then shows on every card until the selection is let go.
 		_focusVisible: { opacity: 1, boxShadow: '0 0 0 2px token(colors.scrapscache.focus)' },
-		_touch: { w: '1.75rem', h: '1.75rem' },
+		_touch: { w: '1.75rem', h: '1.75rem', top: '-0.75rem', left: '-0.75rem' },
 		'&[aria-checked="true"], &[data-selecting]': { opacity: 1 },
 		'&[aria-checked="true"]': { bg: 'scrapscache.accent', borderColor: 'scrapscache.accent' }
 	}),
-	/** Room for the check while a selection is open, so a title never runs under it. */
-	titleRoom: css({ pl: '1.75rem' }),
 	selected: css({
 		boxShadow: '0 0 0 2px token(colors.scrapscache.accent)',
 		borderColor: 'scrapscache.accent'

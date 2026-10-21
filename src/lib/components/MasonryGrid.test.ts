@@ -101,6 +101,26 @@ describe('MasonryGrid offscreen cards', () => {
 		}
 	});
 
+	it("leaves the slot's room for the select check out of the height a skipped card stands at", async () => {
+		// In the browser each slot has top padding for the check that hangs over a card's corner.
+		const computed = window.getComputedStyle;
+		vi.spyOn(window, 'getComputedStyle').mockImplementation((element, pseudo) => {
+			const style = computed(element, pseudo);
+			if (!(element instanceof HTMLElement) || !element.dataset.noteHeight) return style;
+			return new Proxy(style, {
+				get: (target, key) => (key === 'paddingTop' ? '12px' : Reflect.get(target, key))
+			});
+		});
+		render(MasonryGrid, { props: { notes, onOpen: () => {} } });
+		await nextFrame();
+
+		for (const el of wrappers()) {
+			expect(el.style.containIntrinsicSize).toBe(
+				`auto ${cardHeight(el.dataset.noteHeight!) - 12}px`
+			);
+		}
+	});
+
 	it('renders every card again when the grid width changes, then skips them at the new heights', async () => {
 		render(MasonryGrid, { props: { notes, onOpen: () => {} } });
 		await nextFrame();

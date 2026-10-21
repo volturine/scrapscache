@@ -376,6 +376,72 @@
 	}
 </script>
 
+<!-- The first run: say what columns are, and offer a start. -->
+{#snippet starterPanel()}
+	<section class={k.starter} aria-labelledby="kanban-starter-title">
+		<h2 id="kanban-starter-title" class={k.starterTitle}>Boards group your notes by label</h2>
+		<p class={k.starterText}>
+			Each column is a label. Moving a card to a column puts that label on the note.
+		</p>
+		<div class={k.starterChoices}>
+			{#each BOARD_TEMPLATES as template (template.id)}
+				<button
+					type="button"
+					class={button({ variant: 'secondary', size: 'md' })}
+					onclick={() => applyBoardTemplate(board.id, template.names)}
+				>
+					{template.names.join(' · ')}
+				</button>
+			{/each}
+			<button
+				type="button"
+				class={button({ variant: 'ghost', size: 'md' })}
+				onclick={() => (tagPickerOpen = true)}
+			>
+				Choose from my labels…
+			</button>
+		</div>
+	</section>
+{/snippet}
+
+<!-- A label column from the labels not yet on the board, or a new one. -->
+{#snippet addColumnMenu(compact: boolean)}
+	<Menu.Root
+		bind:open={tagPickerOpen}
+		positioning={{ placement: compact ? 'bottom-end' : 'bottom-start' }}
+	>
+		<Menu.Trigger
+			class={compact
+				? cx(button({ variant: 'dashed', size: 'md' }), k.addColCompact)
+				: button({ variant: 'dashed', size: 'md' })}
+			aria-label="Add a label column"
+		>
+			{#if compact}
+				<Plus size={16} aria-hidden="true" />
+			{:else}
+				<span>+ Add label column</span>
+				<ChevronDown size={14} aria-hidden="true" />
+			{/if}
+		</Menu.Trigger>
+		<Menu.Positioner class={compact ? k.tagPickerPositionerCompact : k.tagPickerPositioner}>
+			<Menu.Content
+				class={cx(popover, k.tagPickerContent, compact && k.tagPickerContentCompact)}
+				aria-label="Add a label column"
+			>
+				<Menu.Item value="new-label" onSelect={openNewLabel} class={k.menuItem}>
+					<Plus size={14} aria-hidden="true" />
+					New label…
+				</Menu.Item>
+				{#each unusedTags as label (label.id)}
+					<Menu.Item value={label.id} onSelect={() => addTagColumn(label.id)} class={k.menuItem}>
+						{label.name}
+					</Menu.Item>
+				{/each}
+			</Menu.Content>
+		</Menu.Positioner>
+	</Menu.Root>
+{/snippet}
+
 <div class={viewPage}>
 	<h1 class={viewHeading}>Kanban</h1>
 	<div class={k.controls}>
@@ -511,27 +577,33 @@
 	{#if mobile.current}
 		<!-- One column at a time: the tabs pick it, and a carried card can be dropped on
 		     one. Each tab is a drop target like a column, with an empty list to land in. -->
-		<div class={k.columnTabs} role="tablist" aria-label="Columns">
-			{#each board.columns as column (column.id)}
-				<button
-					type="button"
-					role="tab"
-					id={tabId(column)}
-					class={k.columnTab}
-					aria-selected={activeColumn?.id === column.id}
-					aria-controls={panelId(column)}
-					tabindex={activeColumn?.id === column.id ? 0 : -1}
-					data-kanban-column={column.id}
-					data-drop-target={kanbanDrag.target?.columnId === column.id ? '' : undefined}
-					onclick={() => (activeColumnId = column.id)}
-					onkeydown={(event) => onTabKeydown(event, column)}
-				>
-					{columnName(column)}
-					<span class={k.colCount}>{columnNotes(board, column, visibleNotes).length}</span>
-					<span data-kanban-list hidden></span>
-				</button>
-			{/each}
+		<div class={k.phoneTabsRow}>
+			<div class={k.columnTabs} role="tablist" aria-label="Columns">
+				{#each board.columns as column (column.id)}
+					<button
+						type="button"
+						role="tab"
+						id={tabId(column)}
+						class={k.columnTab}
+						aria-selected={activeColumn?.id === column.id}
+						aria-controls={panelId(column)}
+						tabindex={activeColumn?.id === column.id ? 0 : -1}
+						data-kanban-column={column.id}
+						data-drop-target={kanbanDrag.target?.columnId === column.id ? '' : undefined}
+						onclick={() => (activeColumnId = column.id)}
+						onkeydown={(event) => onTabKeydown(event, column)}
+					>
+						{columnName(column)}
+						<span class={k.colCount}>{columnNotes(board, column, visibleNotes).length}</span>
+						<span data-kanban-list hidden></span>
+					</button>
+				{/each}
+			</div>
+			{@render addColumnMenu(true)}
 		</div>
+		{#if noLabelColumns}
+			<div class={k.starterPhone}>{@render starterPanel()}</div>
+		{/if}
 		{#if kanbanDrag.active}
 			<p class={k.columnTabHint}>Drop on a column to move the note</p>
 		{/if}
@@ -649,61 +721,15 @@
 				</section>
 			{/each}
 
-			{#if noLabelColumns}
-				<!-- The first run: say what columns are, and offer a start. -->
-				<section class={k.starter} aria-labelledby="kanban-starter-title">
-					<h2 id="kanban-starter-title" class={k.starterTitle}>Boards group your notes by label</h2>
-					<p class={k.starterText}>
-						Each column is a label. Moving a card to a column puts that label on the note.
-					</p>
-					<div class={k.starterChoices}>
-						{#each BOARD_TEMPLATES as template (template.id)}
-							<button
-								type="button"
-								class={button({ variant: 'secondary', size: 'md' })}
-								onclick={() => applyBoardTemplate(board.id, template.names)}
-							>
-								{template.names.join(' · ')}
-							</button>
-						{/each}
-						<button
-							type="button"
-							class={button({ variant: 'ghost', size: 'md' })}
-							onclick={() => (tagPickerOpen = true)}
-						>
-							Choose from my labels…
-						</button>
-					</div>
-				</section>
+			<!-- On a phone these sit above the one column on screen instead (see the tabs). -->
+			{#if noLabelColumns && !mobile.current}
+				{@render starterPanel()}
 			{/if}
-			<div class={k.addColWrap}>
-				<Menu.Root bind:open={tagPickerOpen} positioning={{ placement: 'bottom-start' }}>
-					<Menu.Trigger
-						class={button({ variant: 'dashed', size: 'md' })}
-						aria-label="Add a label column"
-					>
-						<span>+ Add label column</span>
-						<ChevronDown size={14} aria-hidden="true" />
-					</Menu.Trigger>
-					<Menu.Positioner class={k.tagPickerPositioner}>
-						<Menu.Content class={cx(popover, k.tagPickerContent)} aria-label="Add a label column">
-							<Menu.Item value="new-label" onSelect={openNewLabel} class={k.menuItem}>
-								<Plus size={14} aria-hidden="true" />
-								New label…
-							</Menu.Item>
-							{#each unusedTags as label (label.id)}
-								<Menu.Item
-									value={label.id}
-									onSelect={() => addTagColumn(label.id)}
-									class={k.menuItem}
-								>
-									{label.name}
-								</Menu.Item>
-							{/each}
-						</Menu.Content>
-					</Menu.Positioner>
-				</Menu.Root>
-			</div>
+			{#if !mobile.current}
+				<div class={k.addColWrap}>
+					{@render addColumnMenu(false)}
+				</div>
+			{/if}
 		</div>
 	</div>
 </div>

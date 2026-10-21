@@ -14,6 +14,7 @@ Contributor-oriented notes for working on Scraps Cache. Also read
 | Script                     | Description                                                      |
 | -------------------------- | ---------------------------------------------------------------- |
 | `npm run dev`              | Vite dev server (SvelteKit)                                      |
+| `npm run dev:admin`        | Operator dashboard, admin API proxied to `npm run dev`           |
 | `npm run build`            | Production build (`adapter-node` → `build/`)                     |
 | `npm run build:cloudflare` | Workers build (`adapter-cloudflare` → `.svelte-kit/cloudflare/`) |
 | `npm run cf:dev`           | Local Cloudflare stack (reminders Worker + app)                  |
@@ -89,7 +90,7 @@ self-host defaults (`DEFAULT_MAX_ACCOUNT_BYTES`, `DEFAULT_REMINDER_MAX_ACCOUNT_B
 and `DEFAULT_HISTORY_VERSIONS` in `src/lib/server/operatorConfig.ts` and the Docker
 Compose fallbacks).
 
-Cloudflare runs three Workers, deliberately separate:
+Cloudflare runs four Workers, deliberately separate:
 
 - **App** (`wrangler.jsonc`): the site, API and push sending.
 - **Reminders** (`cf/wrangler.reminders.jsonc`): wake scheduling only. One
@@ -101,6 +102,11 @@ Cloudflare runs three Workers, deliberately separate:
   deployed first.
 - **Maintenance cron** (`cf/wrangler.cron.jsonc`): calls `/api/cron/tick`
   hourly through the private `APP` service binding. It never touches reminders.
+- **Admin** (`cf/wrangler.admin.jsonc`): `admin.scrapscache.com`. Serves the
+  operator dashboard, a separate static build of `src/admin` (`npm run build:admin`,
+  run by both builds), and hands `/api/admin/*` and `/metrics` to the app through
+  the private `APP` service binding. The app answers those only for the admin
+  origin, which nothing but that binding can reach it with.
 
 Each of those Workers sets `observability.issues.enabled` for production and
 `dev`. After the next deploy, Workers Issues groups new exceptions, HTTP 5xx
@@ -115,7 +121,7 @@ testing, put the app variables in `.dev.vars` and the cron Worker's matching
 `SCRAPSCACHE_TICK_SECRET` in `cf/.dev.vars`; both files are ignored by Git.
 Configure the secret for the app and cron Workers before deployment.
 `npm run cf:deploy` creates the queue if it is missing, then deploys the
-reminders Worker, the app and the cron Worker, in that order. The Cloudflare API
+reminders Worker, the app, the admin Worker and the cron Worker, in that order. The Cloudflare API
 token CI uses needs Queues edit permission.
 
 ```sh

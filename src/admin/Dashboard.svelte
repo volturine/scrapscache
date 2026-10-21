@@ -13,7 +13,7 @@
 		type OperatorSnapshot,
 		type RuntimeSettingsState,
 		type TelemetryReport
-	} from '#lib/admin/adminClient.svelte.js';
+	} from './adminClient.svelte.js';
 
 	const PAGE_SIZE = 25;
 	const primaryButton = button({ variant: 'primary', size: 'sm' });
@@ -200,8 +200,6 @@
 		void loadAll();
 	});
 </script>
-
-<svelte:head><title>Scraps Cache operations</title></svelte:head>
 
 <div class={styles.root}>
 	<div class={styles.content}>

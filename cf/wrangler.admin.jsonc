@@ -1,0 +1,57 @@
+{
+	"$schema": "../node_modules/wrangler/config-schema.json",
+	"name": "scrapscache-admin",
+	"main": "admin.ts",
+	"compatibility_date": "2026-08-28",
+	"workers_dev": false,
+	"preview_urls": false,
+	// Workers Logs keeps console output and exceptions so failures can be read afterwards.
+	// Issues groups those failures. Invocation logs stay off: they record request details,
+	// including the admin token's bearer header, and nothing here may log secrets.
+	// Environments do not inherit this.
+	"observability": {
+		"enabled": true,
+		"logs": { "invocation_logs": false },
+		"issues": { "enabled": true }
+	},
+	"routes": [
+		{
+			"pattern": "admin.scrapscache.com",
+			"custom_domain": true
+		}
+	],
+	// The dashboard's static build (npm run build:admin), headers from its _headers file.
+	// The admin API always runs the Worker, so it reaches the app even if a built file
+	// shared its path.
+	"assets": {
+		"directory": "../build/admin",
+		"run_worker_first": ["/api/admin/*", "/metrics"]
+	},
+	"services": [
+		{
+			"binding": "APP",
+			"service": "scrapscache"
+		}
+	],
+	"env": {
+		"dev": {
+			"observability": {
+				"enabled": true,
+				"logs": { "invocation_logs": false },
+				"issues": { "enabled": true }
+			},
+			"routes": [
+				{
+					"pattern": "admin-dev.scrapscache.com",
+					"custom_domain": true
+				}
+			],
+			"services": [
+				{
+					"binding": "APP",
+					"service": "scrapscache-dev"
+				}
+			]
+		}
+	}
+}

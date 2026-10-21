@@ -185,7 +185,7 @@ client-address settings above so rate limits see real client IPs.
 | `SCRAPSCACHE_HISTORY_VERSIONS`             |                           `14` | Encrypted versions kept per synced record for note history (1–40); older ones roll off                                  |
 | `SCRAPSCACHE_SYNC_MAX_CONCURRENT_REQUESTS` |                            `8` | Max sync requests in flight. Counted per process, so it is a real ceiling on Node and only a per-isolate one on Workers |
 | `SCRAPSCACHE_ADMIN_TOKEN`                  |                          unset | Enables and protects metrics, JSON status, and retention; unset disables them                                           |
-| `SCRAPSCACHE_ADMIN_ORIGIN`                 |                          unset | Separate origin, e.g. `https://admin.notes.example`, that alone serves `/admin`, `/api/admin/*` and `/metrics`          |
+| `SCRAPSCACHE_ADMIN_ORIGIN`                 |                          unset | Separate origin, e.g. `https://admin.notes.example`, that alone serves `/admin/`, `/api/admin/*` and `/metrics`         |
 | `SCRAPSCACHE_ACCESS_TEAM_DOMAIN`           |                          unset | Cloudflare Access team domain (`<team>.cloudflareaccess.com`) in front of the admin routes                              |
 | `SCRAPSCACHE_ACCESS_AUD`                   |                          unset | Audience tag of that Access application; with the team domain, a request Access signed needs no admin token             |
 | `SCRAPSCACHE_RETENTION_INACTIVE_DAYS`      |                            `0` | Delete accounts with no authenticated activity for this many days; `0` disables                                         |
@@ -276,7 +276,7 @@ set by anyone else admits nobody. With neither the token nor Access configured,
 these endpoints return 404 — the admin API is disabled.
 
 `SCRAPSCACHE_ADMIN_ORIGIN` moves the dashboard, its API and `/metrics` to a host
-of their own. That host answers nothing else (its root redirects to `/admin`),
+of their own. That host answers nothing else (its root redirects to `/admin/`),
 and the app's own origin stops answering them, so one Access application can
 cover the whole admin host and no copy of the notes app runs beside the
 dashboard. On Node the split follows the `Host` header your proxy passes on, so
@@ -313,8 +313,10 @@ that reads like a total. Storage and account gauges are database
 aggregates and are correct on both.
 
 The same data, plus per-account limits and runtime settings, is available in the
-browser at `/admin`, which asks for `SCRAPSCACHE_ADMIN_TOKEN` only when Access
-has not already admitted it. Runtime settings
+browser at `/admin/`, which asks for `SCRAPSCACHE_ADMIN_TOKEN` only when Access
+has not already admitted it. The dashboard is a separate static build
+(`src/admin`, built into `build/admin` by `npm run build`) that talks only to the
+admin API; the Node server serves it with that build's own security headers. Runtime settings
 are stored in the operational database and take effect without a redeploy. The
 environment remains the deployment default; leaving a field blank in the admin
 form removes its override.

@@ -37,6 +37,10 @@ let reportedInvalid = false;
  * stops answering them, so the dashboard has one address an Access policy can
  * cover whole. Unset keeps both on the app's origin.
  *
+ * On Cloudflare that origin belongs to the admin Worker, which serves the
+ * dashboard itself and hands the app only the admin API, over a service
+ * binding: the binding is the one way a request for that origin reaches the app.
+ *
  * A value that is not a bare origin is a mistake, and fails closed: the admin
  * routes then answer nowhere rather than on the app's origin.
  */

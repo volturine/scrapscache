@@ -4,6 +4,7 @@ import { startWakeTimer } from '#lib/server/wakeTimer.js';
 import { configuredOrigin } from '#lib/server/publicOrigin.js';
 import { turnstileChallenge } from '#lib/server/turnstile.js';
 import { adminRouting } from '#lib/server/adminOrigin.js';
+import { adminDashboard } from '#lib/server/adminDashboard.js';
 
 const SECURITY_HEADERS: ReadonlyArray<readonly [string, string]> = [
 	['referrer-policy', 'no-referrer'],
@@ -81,11 +82,16 @@ export const handle: Handle = async ({ event, resolve }) => {
 	// code this repository does not control. The admin origin likewise serves the
 	// dashboard alone, and the app's origin leaves the dashboard to it.
 	const routing = adminRouting(event.url);
+	// The dashboard is a separate static build; it carries its own headers.
+	if (!onChallengeOrigin && routing === 'serve') {
+		const dashboard = await adminDashboard(event.url.pathname);
+		if (dashboard) return dashboard;
+	}
 	const response =
 		(onChallengeOrigin && event.url.pathname !== '/turnstile') || routing === 'not-found'
 			? new Response('Not found\n', { status: 404 })
 			: routing === 'dashboard'
-				? new Response(null, { status: 303, headers: { location: '/admin' } })
+				? new Response(null, { status: 303, headers: { location: '/admin/' } })
 				: await resolve(event, {
 						transformPageChunk: ({ html }) => {
 							const origin = configuredOrigin() ?? event.url.origin;

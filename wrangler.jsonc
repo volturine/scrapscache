@@ -29,12 +29,6 @@
 		{
 			"pattern": "verify.scrapscache.com",
 			"custom_domain": true
-		},
-		// The operator dashboard and API, alone on their own host so one Cloudflare
-		// Access application covers all of them.
-		{
-			"pattern": "admin.scrapscache.com",
-			"custom_domain": true
 		}
 	],
 	"vars": {
@@ -46,6 +40,8 @@
 		"TURNSTILE_SITEKEY": "0x4AAAAAAEx1iggiE7ZSHoeB",
 		// Siteverify reports the host the widget ran on, which is the challenge host.
 		"TURNSTILE_HOSTNAMES": "verify.scrapscache.com",
+		// The admin Worker's host (cf/wrangler.admin.jsonc). It hands the admin API to
+		// this Worker over a service binding, the only way that origin reaches it.
 		"SCRAPSCACHE_ADMIN_ORIGIN": "https://admin.scrapscache.com",
 		// The Access application in front of admin.scrapscache.com. Its signed header
 		// admits an operator without the admin token; neither value is a secret.
@@ -158,10 +154,6 @@
 				},
 				{
 					"pattern": "verify-dev.scrapscache.com",
-					"custom_domain": true
-				},
-				{
-					"pattern": "admin-dev.scrapscache.com",
 					"custom_domain": true
 				}
 			],

@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from 'vitest';
  * starting. Deploys accept it; the failure appears only at runtime.
  */
 describe('Worker entry modules', () => {
-	it.each(['../../../../cf/reminders', '../../../../cf/cron'])(
+	it.each(['../../../../cf/reminders', '../../../../cf/cron', '../../../../cf/admin'])(
 		'%s exports only classes and its default handler',
 		async (path) => {
 			const entry = (await import(path)) as Record<string, unknown>;
@@ -42,5 +42,28 @@ describe('Worker entry modules', () => {
 		expect(request.method).toBe('POST');
 		expect(request.headers.get('content-type')).toBe('application/json');
 		expect(request.headers.get('authorization')).toBe('Bearer secret');
+	});
+
+	it('hands the app the admin API as it arrived, and nothing else', async () => {
+		const { default: admin } = (await import('../../../../cf/admin')) as {
+			default: { fetch(request: Request, env: unknown): Promise<Response> | Response };
+		};
+		const fetch = vi.fn(async (_request: Request) => new Response('from app'));
+		const env = { APP: { fetch } };
+
+		const request = new Request('https://admin.example.test/api/admin/status', {
+			headers: { 'cf-access-jwt-assertion': 'signed' }
+		});
+		expect(await (await admin.fetch(request, env)).text()).toBe('from app');
+		expect(fetch.mock.calls[0][0]).toBe(request);
+		expect(
+			await (await admin.fetch(new Request('https://admin.example.test/metrics'), env)).text()
+		).toBe('from app');
+
+		for (const path of ['/api/sync/v2/delta', '/api/administer', '/', '/privacy'])
+			expect(
+				(await admin.fetch(new Request(`https://admin.example.test${path}`), env)).status
+			).toBe(404);
+		expect(fetch).toHaveBeenCalledTimes(2);
 	});
 });

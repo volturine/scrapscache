@@ -132,9 +132,11 @@ the long-term attachment format.
   configured application; the Access JWT's signature, issuer and audience are
   checked against the team's keys, never the header's presence. Every endpoint
   charges the per-address admin bucket before either check, so the token cannot
-  be guessed at request speed. On Workers they are served only on
-  `admin.scrapscache.com`, which answers nothing else, and the app's origin
-  answers none of them
+  be guessed at request speed. On Workers the dashboard is its own Worker on
+  `admin.scrapscache.com`, a static build with no access to the notes app's
+  origin or code, and it reaches the admin API only through a service binding to
+  the app; the app answers that API only for the admin origin, so its public
+  origin answers none of it
 - **Metrics** — process counters on Node, where one process sees every request.
   Counter keys name an event or a bucketed route, never an account. On Workers,
   where no isolate does, the app counts nothing and the endpoints report

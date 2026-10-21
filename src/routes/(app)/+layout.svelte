@@ -454,6 +454,9 @@
 		</div>
 	</div>
 </div>
+{#if mobile.current}
+	<div class={styles.tabBarSafeArea} aria-hidden="true"></div>
+{/if}
 {#if mobile.current && uiStore.sidebarOpen}
 	<div class={styles.drawerSafeArea} aria-hidden="true"></div>
 {/if}

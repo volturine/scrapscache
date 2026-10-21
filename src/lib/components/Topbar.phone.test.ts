@@ -83,6 +83,32 @@ describe('the top bar on a phone', () => {
 		expect(screen.getByRole('button', { name: 'Close search' })).toBeTruthy();
 	});
 
+	it('dismisses an empty field when it loses focus, and keeps one with a query', async () => {
+		render(Topbar);
+		uiStore.searchOpen = true;
+		const field = await screen.findByRole('searchbox', { name: 'Search notes' });
+		await fireEvent.input(field, { target: { value: 'retro' } });
+		await fireEvent.blur(field);
+		expect(uiStore.searchOpen).toBe(true);
+
+		await fireEvent.input(field, { target: { value: '' } });
+		await fireEvent.blur(field);
+		expect(uiStore.searchOpen).toBe(false);
+		await waitFor(() => expect(screen.queryByRole('searchbox')).toBeNull());
+	});
+
+	it('closes with the view it was searching when another tab is picked', async () => {
+		render(Topbar);
+		uiStore.searchOpen = true;
+		await screen.findByRole('searchbox', { name: 'Search notes' });
+		uiStore.setView('reminders');
+		expect(uiStore.searchOpen).toBe(false);
+		await waitFor(() => expect(screen.queryByRole('searchbox')).toBeNull());
+		// A query carried into a view keeps the field, as Show in Archive does.
+		uiStore.setView('archive', null, 'retro');
+		expect(uiStore.searchOpen).toBe(true);
+	});
+
 	it('puts Labels, Archive and Trash under More, ahead of the settings', async () => {
 		uiStore.sidebarOpen = false;
 		render(Topbar);

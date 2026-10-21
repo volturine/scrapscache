@@ -259,6 +259,8 @@ export class UIStore {
 		this.view = view;
 		this.activeLabelId = labelId;
 		this.clearSearch();
+		// The phone's field goes with the view it was searching, unless a query comes along.
+		this.searchOpen = search !== '';
 		selectionStore.clear();
 		// A carried query filters the new view at once, without the typing debounce.
 		this.searchInput = search;

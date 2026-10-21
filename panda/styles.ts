@@ -139,6 +139,18 @@ export const appLayout = {
 		zIndex: 56,
 		pointerEvents: 'none'
 	}),
+	// The phone tab bar ends where the app frame does, above the home indicator; this
+	// carries its surface the rest of the way down so there is no dark gap under it.
+	tabBarSafeArea: css({
+		position: 'fixed',
+		left: 0,
+		right: 0,
+		bottom: 0,
+		h: 'var(--app-inset-bottom)',
+		bg: 'scrapscache.surface',
+		zIndex: 1,
+		pointerEvents: 'none'
+	}),
 	// Same panel as the drawer on a phone: its surface is what sets it apart.
 	sidebar: css({
 		w: '16rem',
@@ -3063,8 +3075,8 @@ export const phoneTabsStyles = {
 	}),
 	tabIcon: css({
 		...gridCenter,
-		w: '3.5rem',
-		h: '1.75rem',
+		w: '3rem',
+		h: '1.5rem',
 		rounded: 'pill',
 		transition: 'background-color 120ms ease, color 120ms ease'
 	}),

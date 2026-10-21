@@ -572,6 +572,18 @@ test.describe('on a phone', () => {
 			'aria-pressed',
 			'false'
 		);
+		// Leaving for another place closes an open field too.
+		await tabs.getByRole('button', { name: 'Search' }).click();
+		await expect(page.getByRole('searchbox')).toBeVisible();
+		await tabs.getByRole('button', { name: 'Reminders' }).click();
+		await expect(page.getByRole('searchbox')).toHaveCount(0);
+		await expect(tabs.getByRole('button', { name: 'Search' })).toHaveAttribute(
+			'aria-pressed',
+			'false'
+		);
+		await tabs.getByRole('button', { name: 'Notes' }).click();
+		// The bar is a compact 3.5 rem.
+		expect((await tabs.boundingBox())!.height).toBeLessThanOrEqual(57);
 
 		await page.getByRole('button', { name: 'More', exact: true }).click();
 		await expect(page.getByRole('menuitem')).toContainText(['Labels', 'Archive', 'Trash']);

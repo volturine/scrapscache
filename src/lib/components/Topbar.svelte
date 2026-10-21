@@ -89,6 +89,20 @@
 		void tick().then(() => searchField?.focus());
 	});
 
+	/**
+	 * On a phone an empty field that loses focus (the keyboard put away, a tap on the
+	 * page) is dismissed: the Search tab goes off and the bar names the view again. A
+	 * query keeps the field, since it still filters the notes.
+	 */
+	function leaveEmptySearch(event: FocusEvent) {
+		if (!mobile.current || !uiStore.searchOpen || uiStore.searchInput) return;
+		const next = event.relatedTarget;
+		if (next instanceof Node && event.currentTarget instanceof Element) {
+			if (event.currentTarget.closest('[role="search"]')?.contains(next)) return;
+		}
+		uiStore.closeSearch();
+	}
+
 	/** A place from the More menu: Archive or Trash, which the tab bar leaves out. */
 	function goToPlace(view: 'archive' | 'trash') {
 		const target = pathForView(view);
@@ -271,6 +285,7 @@
 			bind:this={searchField}
 			value={uiStore.searchInput}
 			oninput={(event) => uiStore.setSearchInput(event.currentTarget.value)}
+			onblur={leaveEmptySearch}
 			type="search"
 			placeholder="Search"
 			aria-label="Search notes"

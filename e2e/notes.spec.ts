@@ -400,9 +400,12 @@ test.describe('on a touch screen', () => {
 		const row = page.getByRole('menuitem', { name: 'Back up notes…' });
 		const segment = page.getByRole('menuitemradio', { name: 'Dark', exact: true });
 		// A tablet or a phone on its side is a coarse pointer wider than a phone. The
-		// half-pixel allows for rem rounding.
-		expect((await row.boundingBox())!.height).toBeGreaterThanOrEqual(47.5);
-		expect((await segment.boundingBox())!.height).toBeGreaterThanOrEqual(43.5);
+		// half-pixel allows for rem rounding. The popover scales in as it opens, so the
+		// boxes are polled until the animation has settled rather than read once.
+		await expect.poll(async () => (await row.boundingBox())!.height).toBeGreaterThanOrEqual(47.5);
+		await expect
+			.poll(async () => (await segment.boundingBox())!.height)
+			.toBeGreaterThanOrEqual(43.5);
 		await page.keyboard.press('Escape');
 
 		// A short viewport: the popover scrolls inside the frame rather than being cut by it.

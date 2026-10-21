@@ -2287,8 +2287,8 @@ export const noteActionsStyles = {
 
 /**
  * Picking cards for one action on all of them: the check at a card's top-left,
- * shown on hover and focus, on touch screens, and whenever a selection is open;
- * the selected card's outline; and the top bar as the action bar.
+ * shown while a selection is open (and when it has keyboard focus); the selected
+ * card's outline; and the top bar as the action bar.
  */
 export const noteSelectStyles = {
 	check: css({
@@ -2309,9 +2309,10 @@ export const noteSelectStyles = {
 		outline: 'none',
 		opacity: 0,
 		transition: 'opacity 120ms ease, background-color 120ms ease, border-color 120ms ease',
-		_groupHover: { opacity: 1 },
+		// Hidden at rest, hover included: a selection starts from the card's "…" menu,
+		// and the check then shows on every card until the selection is let go.
 		_focusVisible: { opacity: 1, boxShadow: '0 0 0 2px token(colors.scrapscache.focus)' },
-		_touch: { opacity: 1, w: '1.75rem', h: '1.75rem' },
+		_touch: { w: '1.75rem', h: '1.75rem' },
 		'&[aria-checked="true"], &[data-selecting]': { opacity: 1 },
 		'&[aria-checked="true"]': { bg: 'scrapscache.accent', borderColor: 'scrapscache.accent' }
 	}),

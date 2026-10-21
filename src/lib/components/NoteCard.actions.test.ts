@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vite
 import type { Note } from '#lib/types.js';
 import { notesStore } from '#lib/stores/notes.svelte.js';
 import NoteCard from './NoteCard.svelte';
+import { selectionStore } from '#lib/stores/selection.svelte.js';
 import { noteActionsStyles } from '$panda/styles';
 
 function note(partial: Partial<Note> = {}): Note {
@@ -85,6 +86,7 @@ describe('NoteCard actions menu', () => {
 
 		const names = screen.getAllByRole('menuitem').map((item) => item.textContent?.trim());
 		expect(names).toEqual([
+			'Select',
 			'Pin to top',
 			'Remind me…',
 			'Add label…',
@@ -232,6 +234,15 @@ describe('NoteCard actions menu', () => {
 		});
 	});
 
+	it('starts a selection from Select', async () => {
+		render(NoteCard, { props: { note: note(), onOpen: vi.fn() } });
+		await openMenu();
+		await choose('Select');
+		expect(selectionStore.ids).toEqual(['note-1']);
+		await waitFor(() => expect(menu()).toBeNull());
+		selectionStore.clear();
+	});
+
 	it('moves the note to the trash', async () => {
 		const trash = vi.spyOn(notesStore, 'trashNote').mockImplementation(() => {});
 		render(NoteCard, { props: { note: note(), onOpen: vi.fn() } });
@@ -312,6 +323,7 @@ describe('NoteCard actions menu', () => {
 		await openMenu();
 
 		expect(screen.getAllByRole('menuitem').map((item) => item.textContent?.trim())).toEqual([
+			'Select',
 			'Restore',
 			'Archive',
 			'Delete forever'
@@ -326,6 +338,7 @@ describe('NoteCard actions menu', () => {
 		await openMenu();
 
 		expect(screen.getAllByRole('menuitem').map((item) => item.textContent?.trim())).toEqual([
+			'Select',
 			'Restore',
 			'Move to trash'
 		]);

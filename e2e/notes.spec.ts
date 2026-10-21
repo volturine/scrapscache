@@ -288,9 +288,18 @@ test('picking cards turns the top bar into an action bar that works on all of th
 	await createNote(page, 'Second');
 	await createNote(page, 'Third');
 
-	await noteCard(page, 'First').getByRole('checkbox', { name: 'Select First' }).click();
+	// The checks stay hidden until a selection starts from a card's "…" menu.
+	await expect(noteCard(page, 'First').getByRole('checkbox', { name: 'Select First' })).toHaveCSS(
+		'opacity',
+		'0'
+	);
+	await quickAction(noteCard(page, 'First'), 'Select');
 	const bar = page.getByRole('toolbar', { name: 'Selected notes' });
 	await expect(bar).toContainText('1 selected');
+	await expect(noteCard(page, 'Third').getByRole('checkbox', { name: 'Select Third' })).toHaveCSS(
+		'opacity',
+		'1'
+	);
 	// With a selection open, a click on another card picks it rather than opening it.
 	await noteCard(page, 'Second').click();
 	await expect(bar).toContainText('2 selected');

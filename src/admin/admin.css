@@ -1,0 +1,12 @@
+@layer reset, base, tokens, recipes, utilities;
+
+html,
+body {
+	background-color: var(--colors-scrapscache-bg);
+}
+html {
+	color-scheme: light;
+}
+html.dark {
+	color-scheme: dark;
+}

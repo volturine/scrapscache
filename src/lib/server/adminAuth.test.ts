@@ -50,3 +50,52 @@ describe('admin auth', () => {
 		expect(isAdminAuthorized(request)).toBe(true);
 	});
 });
+
+describe('requireAdmin', () => {
+	afterEach(() => {
+		vi.resetModules();
+		vi.doUnmock('#lib/server/cloudflareAccess.js');
+		vi.doUnmock('#lib/server/rateLimit.js');
+	});
+
+	async function guard(options: { access: boolean; allowed?: boolean }) {
+		vi.resetModules();
+		const passedCloudflareAccess = vi.fn(async () => options.access);
+		vi.doMock('#lib/server/cloudflareAccess.js', () => ({ passedCloudflareAccess }));
+		vi.doMock('#lib/server/rateLimit.js', () => ({
+			checkAdminApiLimit: async () => ({ allowed: options.allowed ?? true }),
+			rateLimitResponse: () => new Response(null, { status: 429 })
+		}));
+		const { requireAdmin } = await import('./adminAuth');
+		return { requireAdmin, passedCloudflareAccess };
+	}
+
+	const call = (requireAdmin: typeof import('./adminAuth').requireAdmin, token?: string) =>
+		requireAdmin(
+			new Request('https://admin.example.test/api/admin/status', {
+				headers: token ? { authorization: `Bearer ${token}` } : {}
+			}),
+			() => '203.0.113.4'
+		);
+
+	it('admits a request Cloudflare Access let through, with no token set at all', async () => {
+		const { requireAdmin } = await guard({ access: true });
+		expect(await call(requireAdmin)).toBeNull();
+	});
+
+	it('still admits the token, and refuses with neither', async () => {
+		privateEnv.SCRAPSCACHE_ADMIN_TOKEN = 'secret-token';
+		const { requireAdmin, passedCloudflareAccess } = await guard({ access: false });
+
+		expect(await call(requireAdmin, 'secret-token')).toBeNull();
+		expect(passedCloudflareAccess).not.toHaveBeenCalled();
+		expect((await call(requireAdmin, 'wrong'))?.status).toBe(404);
+		expect((await call(requireAdmin))?.status).toBe(404);
+	});
+
+	it('throttles before either check', async () => {
+		const { requireAdmin, passedCloudflareAccess } = await guard({ access: true, allowed: false });
+		expect((await call(requireAdmin))?.status).toBe(429);
+		expect(passedCloudflareAccess).not.toHaveBeenCalled();
+	});
+});

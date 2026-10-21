@@ -20,6 +20,7 @@ const cloudflareModules = new Map([
 	['#lib/server/pairingSessions.js', './src/lib/server/cloudflare/pairingSessions.ts'],
 	['#lib/server/wakeTimer.js', './src/lib/server/cloudflare/wakeTimer.ts'],
 	['#lib/server/metrics.js', './src/lib/server/cloudflare/metrics.ts'],
+	['#lib/server/adminDashboard.js', './src/lib/server/cloudflare/adminDashboard.ts'],
 	['#lib/syncEventsTransport.js', './src/lib/cloudflare/syncEventsTransport.ts']
 ]);
 

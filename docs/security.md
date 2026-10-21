@@ -130,9 +130,16 @@ the long-term attachment format.
   services (Mozilla, FCM, Apple, WNS), checked again at send time; sends never
   follow redirects, and one dispatch round wakes at most an account's device
   allowance, so the relay cannot be pointed at other hosts or used to flood one
-- **Admin token** — required for `/metrics` and every `/api/admin/*` endpoint in
-  production Compose. Every one of them charges the per-address admin bucket
-  before it compares the token, so the token cannot be guessed at request speed
+- **Admin token or Cloudflare Access** — `/metrics` and every `/api/admin/*`
+  endpoint need the admin token or a request Cloudflare Access signed for the
+  configured application; the Access JWT's signature, issuer and audience are
+  checked against the team's keys, never the header's presence. Every endpoint
+  charges the per-address admin bucket before either check, so the token cannot
+  be guessed at request speed. On Workers the dashboard is its own Worker on
+  `admin.scrapscache.com`, a static build with no access to the notes app's
+  origin or code, and it reaches the admin API only through a service binding to
+  the app; the app answers that API only for the admin origin, so its public
+  origin answers none of it
 - **Metrics** — process counters on Node, where one process sees every request.
   Counter keys name an event or a bucketed route, never an account. On Workers,
   where no isolate does, the app counts nothing and the endpoints report
@@ -239,18 +246,18 @@ app is in use; browser storage isolation is the boundary.
 
 ## Related source
 
-| Topic                    | Files                                          |
-| ------------------------ | ---------------------------------------------- |
-| Pairing + payload crypto | `src/lib/syncPairing.ts`                       |
-| Backup crypto            | `src/lib/backupCrypto.ts`                      |
-| Relay storage            | `src/lib/server/syncStore.ts`                  |
-| Reminder wakes           | `src/lib/server/wakeDispatch.ts`, `webPush.ts` |
-| Rate limits              | `src/lib/server/rateLimit.ts`                  |
-| Admin auth               | `src/lib/server/adminAuth.ts`                  |
-| Operator status          | `src/lib/server/operatorMonitor.ts`            |
-| Account retention        | `src/lib/server/retentionSweep.ts`             |
-| CSP                      | `vite.config.ts`                               |
-| Security headers         | `src/hooks.server.ts`                          |
+| Topic                    | Files                                                                  |
+| ------------------------ | ---------------------------------------------------------------------- |
+| Pairing + payload crypto | `src/lib/syncPairing.ts`                                               |
+| Backup crypto            | `src/lib/backupCrypto.ts`                                              |
+| Relay storage            | `src/lib/server/syncStore.ts`                                          |
+| Reminder wakes           | `src/lib/server/wakeDispatch.ts`, `webPush.ts`                         |
+| Rate limits              | `src/lib/server/rateLimit.ts`                                          |
+| Admin auth               | `src/lib/server/adminAuth.ts`, `cloudflareAccess.ts`, `adminOrigin.ts` |
+| Operator status          | `src/lib/server/operatorMonitor.ts`                                    |
+| Account retention        | `src/lib/server/retentionSweep.ts`                                     |
+| CSP                      | `vite.config.ts`                                                       |
+| Security headers         | `src/hooks.server.ts`                                                  |
 
 ### Independent reminder receipts
 

@@ -18,6 +18,13 @@ export const variables = defineEnvVars({
 		'Exact public origin of this deployment, e.g. https://notes.example'
 	),
 	SCRAPSCACHE_ADMIN_TOKEN: optional('Bearer token for the operator API and dashboard'),
+	SCRAPSCACHE_ADMIN_ORIGIN: optional(
+		'Separate origin that alone serves the operator dashboard and API, e.g. https://admin.notes.example'
+	),
+	SCRAPSCACHE_ACCESS_TEAM_DOMAIN: optional(
+		'Cloudflare Access team domain in front of the admin routes, e.g. team.cloudflareaccess.com'
+	),
+	SCRAPSCACHE_ACCESS_AUD: optional('Audience tag of that Cloudflare Access application'),
 	SCRAPSCACHE_TICK_SECRET: optional('Bearer token for the scheduled cron endpoints'),
 	SCRAPSCACHE_RELAY_DB_URL: optional('libSQL URL of the relay database'),
 	SCRAPSCACHE_RELAY_DB_AUTH_TOKEN: optional('Auth token for the relay database'),

@@ -2100,8 +2100,14 @@ export const settingsMenuStyles = {
 		'& + &': { borderTopWidth: 'hairline', borderColor: 'scrapscache.border', mt: 'xs' }
 	}),
 	// Touch sizes follow the pointer, not the width: a phone in landscape and a tablet
-	// are coarse pointers wider than the sm breakpoint.
-	controlRow: hstack({ minH: { base: '2.5rem', _touch: '3rem' }, gap: 'sm', px: 'md' }),
+	// are coarse pointers wider than the sm breakpoint. A touch segment fills a 48 px
+	// row by itself, so the rows keep a gap or stacked segments butt into each other.
+	controlRow: hstack({
+		minH: { base: '2.5rem', _touch: '3rem' },
+		gap: 'sm',
+		px: 'md',
+		py: '2xs'
+	}),
 	/** A one-line action row: the menu item's height for a mouse, a 48 px row for touch. */
 	row: css({ minH: { base: '2rem', _touch: '3rem' } }),
 	controlLabel: css({ ...flexFill, textStyle: 'body' }),

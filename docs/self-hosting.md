@@ -290,11 +290,10 @@ aggregates only — no account IDs, ciphertext, or credentials.
 The process-lifetime counters in `/metrics` and `/api/admin/status` come from
 memory, which is the whole picture on a single Node process (Docker, `npm start`)
 and none of it on Cloudflare Workers, where every ephemeral isolate keeps its own
-copy. The Workers build therefore keeps hourly counters in D1 instead, read by
-`/api/admin/telemetry` and the dashboard with no extra credentials: `/metrics`
-omits the counter families and `/api/admin/status`
-reports `activity: null` alongside `telemetry.source`, rather than serving a
-partial count that reads like a total. Storage and account gauges are database
+copy. The Workers build counts nothing and leaves request counts to Cloudflare's
+analytics for the Worker: `/metrics` omits the counter families and
+`/api/admin/status` reports `activity: null`, rather than serving a partial count
+that reads like a total. Storage and account gauges are database
 aggregates and are correct on both.
 
 The same data, plus per-account limits and runtime settings, is available in the

@@ -19,7 +19,6 @@ const cloudflareModules = new Map([
 	['#lib/server/syncStore.js', './src/lib/server/cloudflare/syncStore.ts'],
 	['#lib/server/pairingSessions.js', './src/lib/server/cloudflare/pairingSessions.ts'],
 	['#lib/server/wakeTimer.js', './src/lib/server/cloudflare/wakeTimer.ts'],
-	['#lib/server/telemetryQuery.js', './src/lib/server/cloudflare/telemetryQuery.ts'],
 	['#lib/server/metrics.js', './src/lib/server/cloudflare/metrics.ts'],
 	['#lib/syncEventsTransport.js', './src/lib/cloudflare/syncEventsTransport.ts']
 ]);

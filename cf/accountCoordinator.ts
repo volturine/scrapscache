@@ -7,8 +7,7 @@ import type {
 	WebSocketRequestResponsePair as WorkerAutoResponse
 } from '@cloudflare/workers-types';
 import { batch, execute, type SqlStatement, type SqlResult } from '../src/lib/server/cloudflare/d1';
-import { parseHistoryVersions } from '../src/lib/server/operatorConfig';
-import { createSyncTimings, type SyncTimings } from '../src/lib/server/syncMetrics';
+import { ACCOUNT_SEEN_INTERVAL_MS, parseHistoryVersions } from '../src/lib/server/operatorConfig';
 import {
 	deleteHistoryRows,
 	deleteObjects,
@@ -88,21 +87,15 @@ async function ciphertext(env: Env, row: EnvelopeRow): Promise<string> {
 	return object.text();
 }
 
-async function hydrated(env: Env, rows: EnvelopeRow[], timings?: SyncTimings) {
-	timings?.start('r2_get');
-	timings?.count('r2_get', rows.length);
-	try {
-		return await Promise.all(
-			rows.map(async (row) => ({
-				seq: row.seq,
-				id: row.id,
-				slot: row.slot,
-				ciphertext: await ciphertext(env, row)
-			}))
-		);
-	} finally {
-		timings?.stop('r2_get');
-	}
+async function hydrated(env: Env, rows: EnvelopeRow[]) {
+	return await Promise.all(
+		rows.map(async (row) => ({
+			seq: row.seq,
+			id: row.id,
+			slot: row.slot,
+			ciphertext: await ciphertext(env, row)
+		}))
+	);
 }
 
 /**
@@ -314,6 +307,7 @@ export class AccountCoordinator {
 			{ sql: 'DELETE FROM reminder_push_devices WHERE account_id = ?', args: [accountId] },
 			{ sql: 'DELETE FROM reminder_wakes WHERE account_id = ?', args: [accountId] },
 			{ sql: 'DELETE FROM reminder_wake_revisions WHERE account_id = ?', args: [accountId] },
+			{ sql: 'DELETE FROM reminder_wakes_unscheduled WHERE account_id = ?', args: [accountId] },
 			{ sql: 'DELETE FROM reminder_wake_deliveries WHERE account_id = ?', args: [accountId] }
 		]);
 		for (const socket of this.state.getWebSockets()) {
@@ -326,11 +320,6 @@ export class AccountCoordinator {
 		return Response.json({ deleted: results[0]?.rowsAffected === 1 });
 	}
 
-	/** Builds the round's response with its per-phase timings attached. */
-	private round(timings: SyncTimings, body: Record<string, unknown>): Response {
-		return Response.json({ ...body, phaseTimings: timings.timings() });
-	}
-
 	/**
 	 * One relay round. Everything the round decides with comes back in one D1
 	 * batch — account, quota, download page, the live rows behind this call's
@@ -341,7 +330,6 @@ export class AccountCoordinator {
 	 */
 	private async sync(input: SyncInput): Promise<Response> {
 		const db = this.env.SCRAPSCACHE_DB;
-		const timings = createSyncTimings();
 		try {
 			const mutates = input.uploads.length > 0 || input.deletions.length > 0;
 			const slots = [...new Set([...input.uploads, ...input.deletions].map(({ slot }) => slot))];
@@ -352,6 +340,7 @@ export class AccountCoordinator {
 					// pays one D1 trip, not two, before it can decide anything.
 					sql: `SELECT next_seq AS nextSeq, envelope_count AS envelopeCount,
 					ciphertext_bytes AS ciphertextBytes, updated_at AS updatedAt,
+					last_seen_at AS lastSeenAt,
 					COALESCE(quota.max_bytes, ?) AS maxBytes,
 					COALESCE(history.versions, 0) AS historyVersions,
 					COALESCE(history.bytes, 0) AS historyBytes
@@ -388,9 +377,7 @@ export class AccountCoordinator {
 					args: [input.accountId, ...slots]
 				});
 			}
-			timings.start('reads');
 			const readResults = await batch(db, readQueries);
-			timings.stop('reads');
 			const accountRead = readResults[0];
 			const pageRead = readResults[1];
 			const currentRead = readResults[2];
@@ -402,6 +389,7 @@ export class AccountCoordinator {
 						envelopeCount: number;
 						ciphertextBytes: number;
 						updatedAt: number;
+						lastSeenAt: number;
 						historyVersions: number;
 						historyBytes: number;
 						maxBytes: number;
@@ -426,14 +414,20 @@ export class AccountCoordinator {
 				maxBytes
 			});
 			const now = Math.max(Date.now(), Number(account.updatedAt) + 1);
-			const touch = {
-				sql: 'UPDATE accounts SET last_seen_at = ? WHERE account_id = ?',
-				args: [now, input.accountId]
+			// Last seen is kept to the hour: activity counts and retention work in days,
+			// and a write per round would make every empty sync cost one.
+			const touchDue = now - Number(account.lastSeenAt) >= ACCOUNT_SEEN_INTERVAL_MS;
+			const touch = async () => {
+				if (!touchDue) return;
+				await execute(db, {
+					sql: 'UPDATE accounts SET last_seen_at = ? WHERE account_id = ?',
+					args: [now, input.accountId]
+				});
 			};
 
 			if (input.cursor > Number(account.nextSeq)) {
-				await execute(db, touch);
-				return this.round(timings, {
+				await touch();
+				return Response.json({
 					cursor: 0,
 					envelopes: [],
 					conflicts: [],
@@ -451,10 +445,10 @@ export class AccountCoordinator {
 				(row) => Number(row.ciphertextBytes)
 			);
 			if (page.length > 0) {
-				await execute(db, touch);
-				return this.round(timings, {
+				await touch();
+				return Response.json({
 					cursor: page.at(-1)?.seq ?? input.cursor,
-					envelopes: await hydrated(this.env, page, timings),
+					envelopes: await hydrated(this.env, page),
 					conflicts: [],
 					hasMore,
 					reset: false,
@@ -482,11 +476,11 @@ export class AccountCoordinator {
 				)
 				.map(({ current }) => current);
 			if (conflicts.length > 0) {
-				await execute(db, touch);
-				return this.round(timings, {
+				await touch();
+				return Response.json({
 					cursor: Math.max(input.cursor, Number(account.nextSeq)),
 					envelopes: [],
-					conflicts: await hydrated(this.env, conflicts, timings),
+					conflicts: await hydrated(this.env, conflicts),
 					hasMore: false,
 					reset: false,
 					writesAccepted: false,
@@ -626,116 +620,100 @@ export class AccountCoordinator {
 					ciphertextBytes: upload.ciphertext.length
 				});
 			}
-			committed.push({
-				sql: `UPDATE accounts SET next_seq = ?, envelope_count = ?, ciphertext_bytes = ?,
-				updated_at = ?, last_seen_at = ? WHERE account_id = ?`,
-				args: [
-					sequence,
-					envelopeCount,
-					ciphertextBytes,
-					acceptedUploads.length > 0 || deletedSlots.length > 0 ? now : Number(account.updatedAt),
-					now,
-					input.accountId
-				]
-			});
+			const changesAccount = acceptedUploads.length > 0 || deletedSlots.length > 0;
+			if (changesAccount || touchDue)
+				committed.push({
+					sql: `UPDATE accounts SET next_seq = ?, envelope_count = ?, ciphertext_bytes = ?,
+					updated_at = ?, last_seen_at = ? WHERE account_id = ?`,
+					args: [
+						sequence,
+						envelopeCount,
+						ciphertextBytes,
+						changesAccount ? now : Number(account.updatedAt),
+						now,
+						input.accountId
+					]
+				});
 
 			// The batch fits. Drop what earlier attempts left, reserve the new object
 			// keys, write the bytes, and only then commit: a crash at any point from
 			// here leaves a pending row the sweep can find, never an object nothing names.
 			if (acceptedUploads.length > 0) {
-				timings.start('r2_put');
-				timings.count('r2_put', acceptedUploads.length);
-				try {
-					await Promise.all(
-						supersededKeys.map((key) => this.env.SCRAPSCACHE_ENVELOPES.delete(key))
-					);
-					await batch(
-						db,
-						acceptedUploads.map(({ id }) => ({
-							sql: `INSERT OR REPLACE INTO pending_envelopes(account_id, id, r2_key, created_at)
-						VALUES (?, ?, ?, ?)`,
-							args: [input.accountId, id, objectKeys.get(id)!, now]
-						}))
-					);
-					await Promise.all(
-						acceptedUploads.map((upload) =>
-							this.env.SCRAPSCACHE_ENVELOPES.put(objectKeys.get(upload.id)!, upload.ciphertext)
-						)
-					);
-				} finally {
-					timings.stop('r2_put');
-				}
+				await Promise.all(supersededKeys.map((key) => this.env.SCRAPSCACHE_ENVELOPES.delete(key)));
+				await batch(
+					db,
+					acceptedUploads.map(({ id }) => ({
+						sql: `INSERT OR REPLACE INTO pending_envelopes(account_id, id, r2_key, created_at)
+					VALUES (?, ?, ?, ?)`,
+						args: [input.accountId, id, objectKeys.get(id)!, now]
+					}))
+				);
+				await Promise.all(
+					acceptedUploads.map((upload) =>
+						this.env.SCRAPSCACHE_ENVELOPES.put(objectKeys.get(upload.id)!, upload.ciphertext)
+					)
+				);
 			}
 
-			timings.start('commit');
-			try {
-				await batch(db, committed);
-			} finally {
-				timings.stop('commit');
-			}
+			await batch(db, committed);
 
 			const mutated = acceptedUploads.length > 0 || deletedSlots.length > 0;
 			if (mutated) {
-				timings.start('tail');
-				try {
-					if (deletedSlots.length > 0)
-						await purgeDeletedRecords(this.env, {
-							accountId: input.accountId,
-							slots: deletedSlots
-						});
-					await this.pruneHistory(
-						input.accountId,
-						touchedSlots(acceptedUploads, input.deletions),
-						continuedIds
-					);
-					const olderBefore = olderBeforeRead?.rows[0] as
-						{ versions: number; bytes: number } | undefined;
-					const olderAfter = await olderVersions(
-						db,
-						input.accountId,
-						touchedSlots(acceptedUploads, input.deletions)
-					);
-					const beforeVersions = Number(olderBefore?.versions ?? 0);
-					const beforeBytes = Number(olderBefore?.bytes ?? 0);
-					historyVersions += olderAfter.versions - beforeVersions;
-					historyBytes += olderAfter.bytes - beforeBytes;
-					if (storageBytes() + historyStorageBytes() > maxBytes && historyVersions > 0) {
-						// Live records come first; the oldest counter-weight goes when there
-						// is nothing else the account can spare.
-						const oldest = (
-							await execute(db, {
-								sql: `SELECT history_id AS historyId, r2_key AS r2Key, ciphertext_bytes AS bytes
-							FROM envelope_history AS history
-							WHERE account_id = ? AND ${OLDER_VERSION}
-							ORDER BY history_id ASC`,
-								args: [input.accountId]
-							})
-						).rows as Array<{ historyId: number; r2Key: string; bytes: number }>;
-						const evicted: typeof oldest = [];
-						for (const row of oldest) {
-							if (storageBytes() + historyStorageBytes() <= maxBytes) break;
-							evicted.push(row);
-							historyVersions -= 1;
-							historyBytes -= Number(row.bytes);
-						}
-						await deleteHistoryRows(this.env, evicted);
-					}
-					if (
-						historyVersions !== Number(account.historyVersions) ||
-						historyBytes !== Number(account.historyBytes)
-					)
+				if (deletedSlots.length > 0)
+					await purgeDeletedRecords(this.env, {
+						accountId: input.accountId,
+						slots: deletedSlots
+					});
+				await this.pruneHistory(
+					input.accountId,
+					touchedSlots(acceptedUploads, input.deletions),
+					continuedIds
+				);
+				const olderBefore = olderBeforeRead?.rows[0] as
+					{ versions: number; bytes: number } | undefined;
+				const olderAfter = await olderVersions(
+					db,
+					input.accountId,
+					touchedSlots(acceptedUploads, input.deletions)
+				);
+				const beforeVersions = Number(olderBefore?.versions ?? 0);
+				const beforeBytes = Number(olderBefore?.bytes ?? 0);
+				historyVersions += olderAfter.versions - beforeVersions;
+				historyBytes += olderAfter.bytes - beforeBytes;
+				if (storageBytes() + historyStorageBytes() > maxBytes && historyVersions > 0) {
+					// Live records come first; the oldest counter-weight goes when there
+					// is nothing else the account can spare.
+					const oldest = (
 						await execute(db, {
-							sql: `INSERT INTO account_history_usage(account_id, versions, bytes) VALUES (?, ?, ?)
-						ON CONFLICT(account_id) DO UPDATE SET versions = excluded.versions, bytes = excluded.bytes`,
-							args: [input.accountId, historyVersions, historyBytes]
-						});
-				} finally {
-					timings.stop('tail');
+							sql: `SELECT history_id AS historyId, r2_key AS r2Key, ciphertext_bytes AS bytes
+						FROM envelope_history AS history
+						WHERE account_id = ? AND ${OLDER_VERSION}
+						ORDER BY history_id ASC`,
+							args: [input.accountId]
+						})
+					).rows as Array<{ historyId: number; r2Key: string; bytes: number }>;
+					const evicted: typeof oldest = [];
+					for (const row of oldest) {
+						if (storageBytes() + historyStorageBytes() <= maxBytes) break;
+						evicted.push(row);
+						historyVersions -= 1;
+						historyBytes -= Number(row.bytes);
+					}
+					await deleteHistoryRows(this.env, evicted);
 				}
+				if (
+					historyVersions !== Number(account.historyVersions) ||
+					historyBytes !== Number(account.historyBytes)
+				)
+					await execute(db, {
+						sql: `INSERT INTO account_history_usage(account_id, versions, bytes) VALUES (?, ?, ?)
+					ON CONFLICT(account_id) DO UPDATE SET versions = excluded.versions, bytes = excluded.bytes`,
+						args: [input.accountId, historyVersions, historyBytes]
+					});
 				this.announce(sequence, input.senderClientId);
 			}
 
-			return this.round(timings, {
+			return Response.json({
 				cursor: Math.max(input.cursor, sequence),
 				envelopes: [],
 				conflicts: [],

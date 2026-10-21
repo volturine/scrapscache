@@ -1,6 +1,9 @@
 import { SCRAPSCACHE_REMINDER_MAX_ACCOUNT_BYTES } from '$app/env/private';
 import { getDb, type Db } from '#lib/server/db.js';
-import { parseReminderMaxAccountBytes } from '#lib/server/operatorConfig.js';
+import {
+	ACCOUNT_SEEN_INTERVAL_MS,
+	parseReminderMaxAccountBytes
+} from '#lib/server/operatorConfig.js';
 import {
 	REMINDER_BATCH_SIZE,
 	type ReminderPacket,
@@ -102,9 +105,11 @@ export async function exchangeReminderHistory(
 		if (!kept.rows.length) throw new ReminderHistoryQuotaError('Reminder history storage is full');
 	}
 
+	// Kept to the hour, like every other touch, so a touch inside it writes nothing.
+	const now = Date.now();
 	await db.relay.execute({
-		sql: 'UPDATE accounts SET last_seen_at = MAX(last_seen_at, ?) WHERE account_id = ?',
-		args: [Date.now(), accountId]
+		sql: 'UPDATE accounts SET last_seen_at = ? WHERE account_id = ? AND last_seen_at <= ?',
+		args: [now, accountId, now - ACCOUNT_SEEN_INTERVAL_MS]
 	});
 	const rows = (
 		await db.relay.execute({

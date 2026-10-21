@@ -116,9 +116,16 @@ the long-term attachment format.
   before the hook, so they carry none of these and stay embeddable
 - **Rate limiting** — atomic SQL token buckets for register, auth, pairing, sync,
   push, and admin, keyed by client address with IPv6 clients bucketed by their
-  /64, plus one shared bucket for registrations. Durable and shared across
-  isolates, at the cost of one database write per request — size the store
-  accordingly and put edge rate limiting in front of it on a usage-billed platform
+  /64, plus one shared bucket for registrations. The expensive authenticated
+  endpoints also have account buckets: sync rounds per minute, sync writes
+  (charged one token per upload or delete: a 10,000-write burst for a first
+  upload, then 2,000 a day; charged only once a round can run, and refunded when
+  the round does not apply its writes, so busy, failed and conflicting rounds
+  cost nothing. A first upload of more than 10,000 records continues at 2,000 a
+  day; there is no per-account override), and reminder wake publishes (30 per five minutes). Durable and shared
+  across isolates, at the cost of one database write per check, refusals included —
+  size the store accordingly and put edge rate limiting in front of it on a
+  usage-billed platform (see [Request cost on Workers](#request-cost-on-workers))
 - **Web Push** — a push endpoint is accepted only on the browsers' own push
   services (Mozilla, FCM, Apple, WNS), checked again at send time; sends never
   follow redirects, and one dispatch round wakes at most an account's device
@@ -127,12 +134,13 @@ the long-term attachment format.
   production Compose. Every one of them charges the per-address admin bucket
   before it compares the token, so the token cannot be guessed at request speed
 - **Metrics** — process counters on Node, where one process sees every request.
-  On Workers, where no isolate does, the build swaps in a module that adds to
-  hourly counters in D1, and the endpoints report `activity: null` rather than
-  one isolate's partial count. Counter keys name an event or a bucketed route,
-  never an account. Refused requests are not recorded, so a flood of them costs
-  no extra writes; the dashboard reads throttled callers from the rate-limit
-  buckets instead
+  Counter keys name an event or a bucketed route, never an account. On Workers,
+  where no isolate does, the app counts nothing and the endpoints report
+  `activity: null`: Cloudflare's Worker analytics count requests, status codes
+  and durations, Workers Logs keep failures, and D1 query insights report
+  statement costs, none of which costs the Worker a write. Refused requests are
+  not logged either, so a flood of them buys no log volume; the dashboard reads
+  throttled callers from the rate-limit buckets
 - **Operator status** — `/metrics` and `GET /api/admin/status` are anonymous
   aggregates. The account administration endpoints are not: they list account IDs
   alongside storage, activity and per-account limits, because an operator cannot
@@ -285,6 +293,42 @@ open streams per account (`MAX_SYNC_EVENT_CONNECTIONS`), each ended when its
 session expires so the client signs in again, and every stream of an account
 ended at once when its sessions are revoked (account deletion). Streams carry
 only cursors, never ciphertext.
+
+### Request cost on Workers
+
+D1 bills rows read and written, so the relay avoids writes that change nothing:
+
+- A round that only reads moves an account's `last_seen_at` at most once an
+  hour; activity windows and retention count days. A round that writes sets it
+  in the accounts update it makes anyway, so that costs no extra row.
+- A reminder wake publish writes only the wakes that were added, removed or moved,
+  plus the revision that orders publishes. Delivery is re-armed only when the wakes
+  changed, or when an earlier change was never handed to the scheduler: that stays
+  owed in the database until an arm succeeds.
+- A photo kept because an older version of its note still lists it is checked
+  again at most hourly, so one that quota eviction has freed is reclaimed then.
+
+Measure what each kind of request costs from Cloudflare's own D1 query insights,
+which report rows read and written per statement with no app code:
+`npx wrangler d1 insights scrapscache --env '' --time-period 7d --sort-by writes`.
+To measure each request type locally against Miniflare's D1:
+`MEASURE_D1=1 npx vitest run src/lib/server/cloudflare/d1Cost.measure.test.ts --disable-console-intercept`.
+
+The app's own buckets are defence in depth, and each check is a D1 write. Zone
+rate-limiting rules, counted per IP, should refuse floods before they reach the
+Worker. Set each at or above the app's own allowance for that path, so ordinary
+use never meets the edge rule:
+
+| Path                 | App allowance per address |
+| -------------------- | ------------------------- |
+| `/api/sync/v2/delta` | 120 a minute              |
+| `/api/sync/history`  | 120 a minute              |
+| `/api/sync/pair/*`   | 60 a minute               |
+| `/api/sync/push/*`   | 40 a minute               |
+| `/api/sync/auth/*`   | 30 a minute               |
+| `/api/sync/register` | 5 an hour                 |
+
+Preview URLs bypass zone rules; `wrangler.jsonc` keeps them off.
 
 ### Relay memory bounds (Node)
 

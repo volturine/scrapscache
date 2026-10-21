@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type * as NodeMetrics from './metrics';
 import type * as CloudflareMetrics from './cloudflare/metrics';
-import type * as NodeTelemetry from './telemetryQuery';
-import type * as CloudflareTelemetry from './cloudflare/telemetryQuery';
 
 /**
  * `vite.config.ts` swaps `#lib/server/metrics.js` for the Cloudflare module when
@@ -34,36 +32,16 @@ type DriftedMembers = {
 	[K in SharedKeys]: SameSignature<NodeApi[K], CloudflareApi[K]> extends true ? never : K;
 }[SharedKeys];
 
-type TelemetryShared = keyof typeof NodeTelemetry & keyof typeof CloudflareTelemetry;
-type DriftedTelemetry = {
-	[K in TelemetryShared]: SameSignature<
-		(typeof NodeTelemetry)[K],
-		(typeof CloudflareTelemetry)[K]
-	> extends true
-		? never
-		: K;
-}[TelemetryShared];
-type TelemetryMissingFromCloudflare = Exclude<
-	keyof typeof NodeTelemetry,
-	keyof typeof CloudflareTelemetry
->;
-
-/** The Cloudflare module may add exports the Node one has no use for, such as the
- * hour length; it may not drop one a call site depends on. */
+/** The Cloudflare module may add exports the Node one has no use for; it may not
+ * drop one a call site depends on. */
 type MissingFromCloudflare = Exclude<keyof NodeApi, keyof CloudflareApi>;
 
 const _drifted: never = undefined as unknown as DriftedMembers;
 const _missingFromCloudflare: never = undefined as unknown as MissingFromCloudflare;
-const _driftedTelemetry: never = undefined as unknown as DriftedTelemetry;
-const _telemetryMissing: never = undefined as unknown as TelemetryMissingFromCloudflare;
 
 describe('metrics implementations', () => {
 	it('keeps the recording surface identical across deployments', () => {
 		// The compile-time checks above are the real assertions.
 		expect([_drifted, _missingFromCloudflare]).toEqual([undefined, undefined]);
-	});
-
-	it('keeps the telemetry read surface identical across deployments', () => {
-		expect([_driftedTelemetry, _telemetryMissing]).toEqual([undefined, undefined]);
 	});
 });

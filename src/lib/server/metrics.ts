@@ -1,16 +1,12 @@
 import type { HttpSample, MetricsSnapshot, ProcessActivity } from '#lib/server/metricsRender.js';
 import { SYNC_DELTA_PATH } from '#lib/model/protocol.js';
 
-/** The self-hosted store does not time its phases; only the Workers relay
- * reports them, and that build swaps in its own metrics module. */
-export function recordSyncPhases(_phases: Record<string, number>): void {}
-
 export { renderMetrics } from '#lib/server/metricsRender.js';
 export type { ProcessActivity, MetricsSnapshot } from '#lib/server/metricsRender.js';
 
 /** One Node process serves every request, so in-memory counters are the whole
- * story here. The Workers build swaps this module for one that keeps hourly
- * counters in D1, because there no single isolate sees them all. */
+ * story here. The Workers build swaps this module for one that counts nothing,
+ * because there no single isolate sees them all and Cloudflare counts requests. */
 type HttpMetric = { count: number; durationMs: number };
 
 const http = new Map<string, HttpMetric>();
@@ -23,7 +19,7 @@ let reminderWakesSent = 0;
 let reminderWakesGone = 0;
 let reminderWakesFailed = 0;
 
-export function routeLabel(pathname: string): string {
+function routeLabel(pathname: string): string {
 	if (pathname.startsWith(SYNC_DELTA_PATH)) return SYNC_DELTA_PATH;
 	if (pathname.startsWith('/api/sync/push/')) return '/api/sync/push/*';
 	if (pathname.startsWith('/api/sync/pair/')) return '/api/sync/pair/*';

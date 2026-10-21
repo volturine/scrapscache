@@ -254,3 +254,21 @@ describe('link previews', () => {
 		expect(app).toContain('content="Default"');
 	});
 });
+
+describe('request logs', () => {
+	afterEach(() => vi.restoreAllMocks());
+
+	it('logs client errors but leaves refusals to Cloudflare’s request analytics', async () => {
+		const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+		await visit(
+			`https://example.test${SYNC_DELTA_PATH}`,
+			() => new Response(null, { status: 429 })
+		);
+		await visit(
+			`https://example.test${SYNC_DELTA_PATH}`,
+			() => new Response(null, { status: 401 })
+		);
+
+		expect(info.mock.calls.map(([line]) => JSON.parse(String(line)).status)).toEqual([401]);
+	});
+});

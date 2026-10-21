@@ -123,7 +123,9 @@ export const handle: Handle = async ({ event, resolve }) => {
 
 	const durationMs = performance.now() - startedAt;
 	recordHttpRequest(event.url.pathname, response.status, durationMs);
-	if (event.url.pathname.startsWith('/api/') && response.status >= 400) {
+	// Refusals are left to Cloudflare's own request analytics: they come in floods, and a
+	// log line each would let a flood buy log volume as well as requests.
+	if (event.url.pathname.startsWith('/api/') && response.status >= 400 && response.status !== 429) {
 		console.info(
 			JSON.stringify({
 				level: 'info',

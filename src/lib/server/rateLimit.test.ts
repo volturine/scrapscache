@@ -2,6 +2,9 @@ import { describe, expect, it, afterEach, vi } from 'vitest';
 import {
 	TokenBucketLimiter,
 	REGISTER_GLOBAL_POLICY,
+	SYNC_CHURN_POLICY,
+	chargeSyncChurn,
+	pruneRateBuckets,
 	checkAdminApiLimit,
 	chargeRegisterGlobalLimit,
 	checkRegisterLimit,
@@ -117,6 +120,81 @@ describe('token bucket rate limiter', () => {
 
 		const denied = await limiter.check('client', policy, 15_000);
 		expect(denied).toEqual({ allowed: false, retryAfterSeconds: 15 });
+	});
+});
+
+describe('weighted charges', () => {
+	it('takes several tokens at once and refuses a charge larger than what is left', async () => {
+		const limiter = new TokenBucketLimiter(testDb());
+		const policy = { capacity: 10, refillWindowMs: 10_000 };
+		expect((await limiter.check('writer', policy, 0, 7)).allowed).toBe(true);
+		// Three are left: a charge of four waits for one more, and takes nothing meanwhile.
+		expect(await limiter.check('writer', policy, 0, 4)).toEqual({
+			allowed: false,
+			retryAfterSeconds: 1
+		});
+		expect((await limiter.check('writer', policy, 0, 3)).allowed).toBe(true);
+		expect((await limiter.check('writer', policy, 0, 1)).allowed).toBe(false);
+	});
+
+	it('caps a charge at the capacity so an oversized batch can still go through a full bucket', async () => {
+		const limiter = new TokenBucketLimiter(testDb());
+		const policy = { capacity: 5, refillWindowMs: 5_000 };
+		expect((await limiter.check('writer', policy, 0, 50)).allowed).toBe(true);
+		expect((await limiter.check('writer', policy, 0, 1)).allowed).toBe(false);
+	});
+});
+
+describe('daily sync churn', () => {
+	it('lets an account burst a large first upload, then holds it to 2,000 writes a day', async () => {
+		expect(SYNC_CHURN_POLICY.capacity / (SYNC_CHURN_POLICY.refillWindowMs / 86_400_000)).toBe(
+			2_000
+		);
+		expect((await chargeSyncChurn('account', SYNC_CHURN_POLICY.capacity, 0)).allowed).toBe(true);
+		const refused = await chargeSyncChurn('account', 16, 0);
+		// Sixteen writes at 2,000 a day refill in 16/2000 of a day: 691.2 seconds.
+		expect(refused).toEqual({ allowed: false, retryAfterSeconds: 692 });
+		expect((await chargeSyncChurn('other-account', 16, 0)).allowed).toBe(true);
+		expect((await chargeSyncChurn('account', 16, 692_000)).allowed).toBe(true);
+	});
+
+	it('keeps a spent churn bucket through the ten-minute sweep, so a pause does not refill it', async () => {
+		const db = testDb();
+		const limiter = new TokenBucketLimiter(db);
+		const churn = (writes: number, now: number) =>
+			limiter.check('sync-churn:account', SYNC_CHURN_POLICY, now, writes);
+		expect((await churn(SYNC_CHURN_POLICY.capacity, 0)).allowed).toBe(true);
+		expect((await limiter.check('short', { capacity: 1, refillWindowMs: 1_000 }, 0)).allowed).toBe(
+			true
+		);
+
+		await pruneRateBuckets(db, 11 * 60_000);
+		const keys = (await db.ops.execute('SELECT bucket_key AS key FROM rate_buckets')).rows.map(
+			(row) => row.key
+		);
+		expect(keys).toEqual(['sync-churn:account']);
+		// Eleven minutes have refilled about fifteen writes, not the burst.
+		expect((await churn(10, 11 * 60_000)).allowed).toBe(true);
+		expect((await churn(1_000, 11 * 60_000)).allowed).toBe(false);
+
+		await pruneRateBuckets(db, SYNC_CHURN_POLICY.refillWindowMs + 11 * 60_000);
+		expect((await db.ops.execute('SELECT COUNT(*) AS n FROM rate_buckets')).rows[0].n).toBe(0);
+	});
+});
+
+describe('refunds', () => {
+	it('gives back what a round took, and never more than the bucket holds', async () => {
+		const limiter = new TokenBucketLimiter(testDb());
+		const policy = { capacity: 10, refillWindowMs: 86_400_000 };
+		expect((await limiter.check('sync-churn:a', policy, 0, 8)).allowed).toBe(true);
+		expect((await limiter.check('sync-churn:a', policy, 0, 8)).allowed).toBe(false);
+
+		await limiter.refund('sync-churn:a', policy, 8);
+		expect((await limiter.check('sync-churn:a', policy, 0, 8)).allowed).toBe(true);
+
+		await limiter.refund('sync-churn:a', policy, 50);
+		expect((await limiter.check('sync-churn:a', policy, 0, 10)).allowed).toBe(true);
+		expect((await limiter.check('sync-churn:a', policy, 0, 1)).allowed).toBe(false);
 	});
 });
 

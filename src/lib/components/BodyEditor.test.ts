@@ -166,6 +166,23 @@ describe('BodyEditor native editing', () => {
 		}
 	});
 
+	it('leaves the caret where the writer put it when asked to focus again', async () => {
+		const { component, container } = render(BodyEditor, { props: { body: 'cat cat' } });
+		const editor = container.querySelector<HTMLElement>('[data-body-editor]')!;
+		component.focusDefault();
+		await vi.waitFor(() => expect(document.activeElement).toBe(editor));
+		// The writer has moved the caret since; a note opening asks for focus a second time.
+		const text = editor.querySelector('[data-line-text]')!.firstChild!;
+		window.getSelection()!.collapse(text, 2);
+
+		component.focusDefault();
+		await tick();
+		await tick();
+
+		expect(window.getSelection()!.anchorNode).toBe(text);
+		expect(window.getSelection()!.anchorOffset).toBe(2);
+	});
+
 	it('renders exactly one block row for each saved newline', () => {
 		const { container } = render(BodyEditor, {
 			props: { body: 'Plain line\n[ ] Task line\nLast line' }

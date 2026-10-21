@@ -7,9 +7,11 @@ vi.mock('./env', () => ({ cloudflareBindings: () => bindings.value }));
 import { SyncStore, WAKE_CLAIM_ACCOUNT_LIMIT } from './syncStore';
 
 let store: SyncStore;
+let client: ReturnType<typeof testD1>['client'];
 
 beforeEach(async () => {
 	const d1 = testD1();
+	client = d1.client;
 	await applyMigrations(d1.client);
 	bindings.value = { SCRAPSCACHE_DB: d1.db, SCRAPSCACHE_ENVELOPES: testR2().bucket };
 	store = new SyncStore();
@@ -124,5 +126,101 @@ describe('Workers reminder wake schedule', () => {
 		const result = await store.getReminderWakes('account-wakes');
 		expect(result.revision).toBe(42);
 		expect(result.wakes).toEqual([wake('a', 1_000), wake('b', 5_000)]);
+	});
+});
+
+describe('Workers reminder wake publishing', () => {
+	const wake = (letter: string, fireAt: number) => ({ id: letter.repeat(43), fireAt });
+	const list = [wake('a', 1_000), wake('b', 5_000), wake('c', 9_000)];
+
+	/** Every row written to `reminder_wakes` from here on, as SQLite counts them. */
+	async function countWakeWrites(): Promise<() => Promise<number>> {
+		await client.executeMultiple(`
+			CREATE TABLE wake_writes (n INTEGER);
+			CREATE TRIGGER wake_inserted AFTER INSERT ON reminder_wakes BEGIN INSERT INTO wake_writes VALUES (1); END;
+			CREATE TRIGGER wake_updated AFTER UPDATE ON reminder_wakes BEGIN INSERT INTO wake_writes VALUES (1); END;
+			CREATE TRIGGER wake_deleted AFTER DELETE ON reminder_wakes BEGIN INSERT INTO wake_writes VALUES (1); END;
+		`);
+		return async () =>
+			Number((await client.execute('SELECT COUNT(*) AS n FROM wake_writes')).rows[0].n);
+	}
+
+	beforeEach(async () => {
+		await store.createAccount('account', 'credential');
+	});
+
+	it('writes no wake rows for a newer revision with the same wakes, only the revision', async () => {
+		await store.replaceReminderWakes('account', list, 1);
+		await store.markReminderWakesScheduled('account', 1);
+		const writes = await countWakeWrites();
+
+		expect(await store.replaceReminderWakes('account', [...list].reverse(), 2)).toEqual({
+			accepted: true,
+			schedule: false
+		});
+
+		expect(await writes()).toBe(0);
+		expect(await store.getReminderWakes('account')).toEqual({ revision: 2, wakes: list });
+	});
+
+	it('writes only the rows of the wake that changed', async () => {
+		await store.replaceReminderWakes('account', list, 1);
+		const writes = await countWakeWrites();
+
+		const moved = [wake('a', 1_000), wake('b', 6_000), wake('c', 9_000)];
+		expect((await store.replaceReminderWakes('account', moved, 2)).schedule).toBe(true);
+		expect(await writes()).toBe(1);
+
+		const added = [...moved, wake('d', 12_000)];
+		await store.replaceReminderWakes('account', added, 3);
+		expect(await writes()).toBe(2);
+
+		await store.replaceReminderWakes('account', added.slice(1), 4);
+		expect(await writes()).toBe(3);
+		expect((await store.getReminderWakes('account')).wakes).toEqual(added.slice(1));
+	});
+
+	it('refuses a lower revision and changes nothing at an equal one', async () => {
+		await store.replaceReminderWakes('account', list, 5);
+		await store.markReminderWakesScheduled('account', 5);
+		const writes = await countWakeWrites();
+
+		expect(await store.replaceReminderWakes('account', [wake('z', 1)], 4)).toEqual({
+			accepted: false,
+			schedule: false
+		});
+		expect(await store.replaceReminderWakes('account', [wake('z', 1)], 5)).toEqual({
+			accepted: true,
+			schedule: false
+		});
+
+		expect(await writes()).toBe(0);
+		expect(await store.getReminderWakes('account')).toEqual({ revision: 5, wakes: list });
+	});
+
+	it('keeps scheduling owed after a failed arm, even when the next publish is identical', async () => {
+		expect((await store.replaceReminderWakes('account', list, 1)).schedule).toBe(true);
+		// The arm failed, so nothing marked the change scheduled.
+		expect((await store.replaceReminderWakes('account', list, 1)).schedule).toBe(true);
+		expect((await store.replaceReminderWakes('account', list, 2)).schedule).toBe(true);
+
+		await store.markReminderWakesScheduled('account', 2);
+		expect((await store.replaceReminderWakes('account', list, 3)).schedule).toBe(false);
+	});
+
+	it('does not clear a newer change when an older arm finishes', async () => {
+		await store.replaceReminderWakes('account', list, 1);
+		await store.replaceReminderWakes('account', list.slice(1), 2);
+
+		await store.markReminderWakesScheduled('account', 1);
+
+		expect((await store.replaceReminderWakes('account', list.slice(1), 3)).schedule).toBe(true);
+	});
+
+	it('refuses wakes for an account that does not exist', async () => {
+		expect(await store.replaceReminderWakes('missing', list, 1)).toEqual({
+			accepted: false,
+			schedule: false
+		});
 	});
 });

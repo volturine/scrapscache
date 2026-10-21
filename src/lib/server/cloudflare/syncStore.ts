@@ -1,5 +1,6 @@
 import { SYNC_EVENTS_PROTOCOL } from '#lib/syncEventsProtocol.js';
 import {
+	ACCOUNT_SEEN_INTERVAL_MS,
 	ACTIVITY_WINDOWS_DAYS,
 	DEFAULT_SYNC_PER_MINUTE,
 	parseHistoryVersions,
@@ -48,6 +49,8 @@ export type PushDeviceInput = {
 	accountId: string;
 };
 export type ReminderWakeInput = { id: string; fireAt: number };
+/** Refused as stale, or accepted; and whether delivery must be (re-)armed for it. */
+export type ReminderWakeReplacement = { accepted: boolean; schedule: boolean };
 export type DueWake = PushDeviceInput & { wakeId: string; fireAt: number };
 
 export type AccountSummary = {
@@ -414,10 +417,11 @@ export class SyncStore {
 		if (!response.ok) throw new Error(`Account coordinator failed (${response.status})`);
 		return Boolean(((await response.json()) as { deleted?: unknown }).deleted);
 	}
+	/** Kept to the hour: a touch inside it matches no row, so it writes nothing. */
 	async touchAccount(accountId: string, now = Date.now()): Promise<void> {
 		await execute(this.db, {
-			sql: 'UPDATE accounts SET last_seen_at=? WHERE account_id=?',
-			args: [now, accountId]
+			sql: 'UPDATE accounts SET last_seen_at=? WHERE account_id=? AND last_seen_at<=?',
+			args: [now, accountId, now - ACCOUNT_SEEN_INTERVAL_MS]
 		});
 	}
 	getQuotas(maxAccountBytes = this.maxAccountBytes): SyncQuotas {
@@ -551,37 +555,92 @@ export class SyncStore {
 		]);
 		await this.touchAccount(d.accountId);
 	}
+	/**
+	 * Make the account's wakes match `wakes`, writing only the rows that differ. A lower
+	 * revision is refused and an equal one changes nothing, so a stale device cannot
+	 * replace newer wakes; a higher one with the same wakes only records the revision.
+	 * `schedule` says whether delivery has to be re-armed: the wakes changed, or an earlier
+	 * change was never handed to the scheduler.
+	 */
 	async replaceReminderWakes(
 		accountId: string,
 		wakes: ReminderWakeInput[],
 		revision?: number
-	): Promise<boolean> {
-		if (!(await this.getAuthCredential(accountId))) return false;
-		if (revision !== undefined) {
-			const current = (
-				await execute(this.db, {
-					sql: 'SELECT revision FROM reminder_wake_revisions WHERE account_id=?',
-					args: [accountId]
-				})
-			).rows[0];
-			if (current && revision < Number(current.revision)) return false;
-			if (current && revision === Number(current.revision)) return true;
+	): Promise<ReminderWakeReplacement> {
+		if (!(await this.getAuthCredential(accountId))) return { accepted: false, schedule: false };
+		const next = wakes.slice(0, MAX_WAKES_PER_ACCOUNT);
+		const [state, current] = await batch(this.db, [
+			{
+				sql: `SELECT
+					(SELECT revision FROM reminder_wake_revisions WHERE account_id = ?1) AS revision,
+					(SELECT revision FROM reminder_wakes_unscheduled WHERE account_id = ?1) AS unscheduled`,
+				args: [accountId]
+			},
+			{
+				sql: 'SELECT wake_id AS id, fire_at AS fireAt FROM reminder_wakes WHERE account_id=?',
+				args: [accountId]
+			}
+		]);
+		const stored = state.rows[0] as { revision: number | null; unscheduled: number | null };
+		const unscheduled = stored.unscheduled !== null;
+		if (revision !== undefined && stored.revision !== null) {
+			if (revision < Number(stored.revision)) return { accepted: false, schedule: false };
+			if (revision === Number(stored.revision)) return { accepted: true, schedule: unscheduled };
 		}
-		const statements: SqlStatement[] = [
-			{ sql: 'DELETE FROM reminder_wakes WHERE account_id=?', args: [accountId] },
-			...wakes.slice(0, MAX_WAKES_PER_ACCOUNT).map((w) => ({
-				sql: 'INSERT INTO reminder_wakes(account_id,wake_id,fire_at) VALUES(?,?,?)',
-				args: [accountId, w.id, w.fireAt]
-			}))
-		];
+		const before = new Map(current.rows.map((row) => [String(row.id), Number(row.fireAt)]));
+		const changed =
+			before.size !== next.length || next.some((wake) => before.get(wake.id) !== wake.fireAt);
+		const list = JSON.stringify(next.map((wake) => [wake.id, wake.fireAt]));
+		// Every write below holds only while this request's revision is the stored one, so
+		// a newer snapshot that lands first is never overwritten. Rows are matched against
+		// the list itself, not the read above, so a snapshot written in between is
+		// corrected rather than added to.
+		const owned =
+			revision === undefined
+				? '1'
+				: '(SELECT revision FROM reminder_wake_revisions WHERE account_id = ?1) = ?3';
+		const statements: SqlStatement[] = [];
 		if (revision !== undefined)
 			statements.push({
-				sql: 'INSERT INTO reminder_wake_revisions(account_id,revision) VALUES(?,?) ON CONFLICT(account_id) DO UPDATE SET revision=excluded.revision',
+				sql: `INSERT INTO reminder_wake_revisions(account_id, revision) VALUES (?, ?)
+				ON CONFLICT(account_id) DO UPDATE SET revision = excluded.revision
+				WHERE excluded.revision > reminder_wake_revisions.revision`,
 				args: [accountId, revision]
 			});
-		await batch(this.db, statements);
+		const args = revision === undefined ? [accountId, list] : [accountId, list, revision];
+		statements.push(
+			{
+				sql: `DELETE FROM reminder_wakes WHERE account_id = ?1 AND ${owned}
+				AND wake_id NOT IN (SELECT value ->> 0 FROM json_each(?2))`,
+				args
+			},
+			{
+				sql: `INSERT INTO reminder_wakes(account_id, wake_id, fire_at)
+				SELECT ?1, value ->> 0, value ->> 1 FROM json_each(?2) WHERE ${owned}
+				ON CONFLICT(account_id, wake_id) DO UPDATE SET fire_at = excluded.fire_at
+				WHERE reminder_wakes.fire_at != excluded.fire_at`,
+				args
+			}
+		);
+		if (changed)
+			statements.push({
+				sql: `INSERT INTO reminder_wakes_unscheduled(account_id, revision)
+				SELECT ?1, ?3 WHERE ${owned}
+				ON CONFLICT(account_id) DO UPDATE SET revision = excluded.revision`,
+				args: [accountId, list, revision ?? 0]
+			});
+		const results = await batch(this.db, statements);
+		const offset = revision === undefined ? 0 : 1;
+		const written = results[offset].rowsAffected + results[offset + 1].rowsAffected;
 		await this.touchAccount(accountId);
-		return true;
+		return { accepted: true, schedule: changed || written > 0 || unscheduled };
+	}
+	/** Delivery was armed for every wake change up to `revision`. */
+	async markReminderWakesScheduled(accountId: string, revision: number): Promise<void> {
+		await execute(this.db, {
+			sql: 'DELETE FROM reminder_wakes_unscheduled WHERE account_id=? AND revision<=?',
+			args: [accountId, revision]
+		});
 	}
 	async getReminderWakes(
 		accountId: string

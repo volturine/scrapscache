@@ -1228,8 +1228,10 @@ describe('SQLite sync store', () => {
 			{ id: `B${'x'.repeat(42)}`, fireAt: 1_000 },
 			{ id: `a${'x'.repeat(42)}`, fireAt: 2_000 }
 		];
-		expect(await store.replaceReminderWakes('account', wakes, 5)).toBe(true);
-		expect(await store.replaceReminderWakes('account', [...wakes].reverse(), 5)).toBe(true);
+		expect((await store.replaceReminderWakes('account', wakes, 5)).accepted).toBe(true);
+		expect((await store.replaceReminderWakes('account', [...wakes].reverse(), 5)).accepted).toBe(
+			true
+		);
 	});
 
 	it('rejects stale reminder snapshots and retains delivery receipts across omission', async () => {
@@ -1243,14 +1245,18 @@ describe('SQLite sync store', () => {
 			accountId: 'account'
 		});
 		const reminder = wake('a', 1_000);
-		expect(await store.replaceReminderWakes('account', [reminder], 5)).toBe(true);
-		expect(await store.replaceReminderWakes('account', [], 5)).toBe(false);
+		const accepted = async (wakes: (typeof reminder)[], revision: number) =>
+			(await store.replaceReminderWakes('account', wakes, revision)).accepted;
+		expect(await accepted([reminder], 5)).toBe(true);
+		// An equal revision is the state already stored; it changes nothing.
+		expect(await accepted([], 5)).toBe(true);
 		const [claimed] = await store.claimDueWakes(1_000);
+		expect(claimed?.wakeId).toBe(reminder.id);
 		await store.markWakeDelivered(claimed, 1_000);
 
-		expect(await store.replaceReminderWakes('account', [], 4)).toBe(false);
-		expect(await store.replaceReminderWakes('account', [], 6)).toBe(true);
-		expect(await store.replaceReminderWakes('account', [reminder], 7)).toBe(true);
+		expect(await accepted([], 4)).toBe(false);
+		expect(await accepted([], 6)).toBe(true);
+		expect(await accepted([reminder], 7)).toBe(true);
 		expect(await store.claimDueWakes(1_000)).toEqual([]);
 	});
 
@@ -1260,9 +1266,9 @@ describe('SQLite sync store', () => {
 		const older = wake('a', 1_000);
 		const newer = wake('b', 2_000);
 
-		expect(await store.replaceReminderWakes('account', [older], 5)).toBe(true);
-		expect(await store.replaceReminderWakes('account', [newer], 6)).toBe(true);
-		expect(await store.replaceReminderWakes('account', [older], 5)).toBe(false);
+		expect((await store.replaceReminderWakes('account', [older], 5)).accepted).toBe(true);
+		expect((await store.replaceReminderWakes('account', [newer], 6)).accepted).toBe(true);
+		expect((await store.replaceReminderWakes('account', [older], 5)).accepted).toBe(false);
 
 		const revision = await db.ops.execute({
 			sql: 'SELECT revision FROM reminder_wake_revisions WHERE account_id = ?',

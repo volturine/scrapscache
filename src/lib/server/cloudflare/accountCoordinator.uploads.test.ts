@@ -115,6 +115,12 @@ describe('uploads that have to be retried', () => {
 		expect(objects.get(String(history.rows[0].r2Key))).toBe('old-bytes');
 		expect(objects.get(String(history.rows[1].r2Key))).toBe('new-bytes');
 		expect(objects.size).toBe(2);
+		await client.batch([
+			{
+				sql: 'INSERT INTO reminder_wakes_unscheduled(account_id, revision) VALUES (?, 1)',
+				args: [ACCOUNT]
+			}
+		]);
 		await coordinator.fetch(
 			new Request('https://coordinator/delete', {
 				method: 'POST',
@@ -123,6 +129,8 @@ describe('uploads that have to be retried', () => {
 		);
 		expect(objects.size).toBe(0);
 		expect((await client.execute('SELECT history_id FROM envelope_history')).rows).toHaveLength(0);
+		for (const table of ['reminder_wakes_unscheduled'])
+			expect((await client.execute(`SELECT 1 FROM ${table}`)).rows, table).toHaveLength(0);
 	});
 
 	it('keeps each record’s newest versions and deletes the objects that roll off', async () => {
@@ -326,7 +334,7 @@ describe('uploads that do not fit', () => {
 });
 
 describe('download pages', () => {
-	it('stops a page at the byte budget and reports each round’s object reads', async () => {
+	it('stops a page at the byte budget', async () => {
 		await sync([
 			{ id: 'photo-1', slot: 'a'.repeat(64), ciphertext: 'p1' },
 			{ id: 'photo-2', slot: 'b'.repeat(64), ciphertext: 'p2' },
@@ -356,45 +364,17 @@ describe('download pages', () => {
 				cursor: number;
 				envelopes: { id: string; ciphertext: string }[];
 				hasMore: boolean;
-				phaseTimings: Record<string, number>;
 			};
 
 		const first = await pull(0);
 		expect(first.envelopes.map(({ id }) => id)).toEqual(['photo-1', 'photo-2']);
 		expect(first.hasMore).toBe(true);
-		expect(first.phaseTimings['sync_calls phase:r2_get']).toBe(2);
 		const second = await pull(first.cursor);
 		expect(second.envelopes).toMatchObject([
 			{ id: 'photo-3', ciphertext: 'p3' },
 			{ id: 'note', ciphertext: 'n' }
 		]);
 		expect(second.hasMore).toBe(false);
-	});
-});
-
-describe('round timings', () => {
-	it('reports every phase an upload round goes through', async () => {
-		// Each clock read moves 10 ms on, so every phase that starts takes time.
-		let clock = 1_000_000;
-		vi.spyOn(Date, 'now').mockImplementation(() => (clock += 10));
-
-		const response = await sync([{ id: 'one', slot: SLOT, ciphertext: 'aaaa' }]);
-		const { phaseTimings: timings } = (await response.json()) as {
-			phaseTimings: Record<string, number>;
-		};
-
-		expect(
-			Object.keys(timings)
-				.filter((key) => key.startsWith('sync_ms'))
-				.sort()
-		).toEqual([
-			'sync_ms phase:commit',
-			'sync_ms phase:r2_put',
-			'sync_ms phase:reads',
-			'sync_ms phase:tail'
-		]);
-		expect(timings['sync_calls phase:r2_put']).toBe(1);
-		vi.restoreAllMocks();
 	});
 });
 
@@ -835,5 +815,49 @@ describe('writes that change nothing', () => {
 		);
 		expect(stale).toMatchObject({ writesAccepted: false });
 		expect(stale.conflicts).toHaveLength(1);
+	});
+});
+
+describe('rounds that change nothing', () => {
+	/** Every row written to `accounts` from here on, as SQLite counts them. */
+	async function countAccountWrites(): Promise<() => Promise<number>> {
+		await client.executeMultiple(`
+			CREATE TABLE account_writes (n INTEGER);
+			CREATE TRIGGER account_updated AFTER UPDATE ON accounts BEGIN INSERT INTO account_writes VALUES (1); END;
+		`);
+		return async () =>
+			Number((await client.execute('SELECT COUNT(*) AS n FROM account_writes')).rows[0].n);
+	}
+
+	it('writes nothing for an empty round while the account was seen within the hour', async () => {
+		const seen = Date.now() - 60_000;
+		await client.execute({
+			sql: 'UPDATE accounts SET last_seen_at = ? WHERE account_id = ?',
+			args: [seen, ACCOUNT]
+		});
+		const accountWrites = await countAccountWrites();
+
+		const result = (await (await sync([])).json()) as { writesAccepted: boolean };
+
+		expect(result.writesAccepted).toBe(true);
+		expect(await accountWrites()).toBe(0);
+	});
+
+	it('moves last seen once the hour has passed', async () => {
+		const seen = Date.now() - 61 * 60_000;
+		await client.execute({
+			sql: 'UPDATE accounts SET last_seen_at = ? WHERE account_id = ?',
+			args: [seen, ACCOUNT]
+		});
+
+		await sync([]);
+
+		const row = (
+			await client.execute({
+				sql: 'SELECT last_seen_at AS lastSeenAt FROM accounts WHERE account_id = ?',
+				args: [ACCOUNT]
+			})
+		).rows[0];
+		expect(Number(row.lastSeenAt)).toBeGreaterThan(seen);
 	});
 });

@@ -8,19 +8,35 @@ export type RateLimitPolicy = {
 
 export type RateLimitResult = { allowed: true } | { allowed: false; retryAfterSeconds: number };
 
+/** A bucket unused this long has refilled, so dropping it loses nothing. */
 export const RATE_BUCKET_STALE_MS = 10 * 60_000;
+
+/**
+ * Each account's sync writes, charged one token per upload or delete. Sync runs
+ * after five quiet seconds, so writing 1–10 notes an hour is roughly 10–60 writes
+ * and a heavy day stays under a thousand. The burst holds a first upload of up to
+ * 10,000 records; a larger one continues at the refill rate, 2,000 a day, which
+ * ordinary editing never meets and which caps round-the-clock churn. There is no
+ * per-account override.
+ */
+export const SYNC_CHURN_POLICY: RateLimitPolicy = {
+	capacity: 10_000,
+	refillWindowMs: 5 * 24 * 60 * 60_000
+};
+/** Churn buckets refill over days, so the sweep keeps them that long, not ten minutes. */
+const SYNC_CHURN_PREFIX = 'sync-churn:';
 
 const CHECK_SQL = `
 	INSERT INTO rate_buckets (bucket_key, tokens, updated_at, last_seen_at, last_allowed)
-	VALUES (?1, ?2 - 1, ?3, ?3, 1)
+	VALUES (?1, ?2 - ?5, ?3, ?3, 1)
 	ON CONFLICT(bucket_key) DO UPDATE SET
 		tokens = CASE
-			WHEN min(?2, rate_buckets.tokens + (?3 - rate_buckets.updated_at) * ?4) >= 1
-			THEN min(?2, rate_buckets.tokens + (?3 - rate_buckets.updated_at) * ?4) - 1
+			WHEN min(?2, rate_buckets.tokens + (?3 - rate_buckets.updated_at) * ?4) >= ?5
+			THEN min(?2, rate_buckets.tokens + (?3 - rate_buckets.updated_at) * ?4) - ?5
 			ELSE min(?2, rate_buckets.tokens + (?3 - rate_buckets.updated_at) * ?4)
 		END,
 		last_allowed = CASE
-			WHEN min(?2, rate_buckets.tokens + (?3 - rate_buckets.updated_at) * ?4) >= 1 THEN 1
+			WHEN min(?2, rate_buckets.tokens + (?3 - rate_buckets.updated_at) * ?4) >= ?5 THEN 1
 			ELSE 0
 		END,
 		updated_at = ?3,
@@ -33,21 +49,40 @@ const CHECK_SQL = `
 export class TokenBucketLimiter {
 	constructor(private readonly db: Db) {}
 
-	async check(key: string, policy: RateLimitPolicy, now = Date.now()): Promise<RateLimitResult> {
+	/** Takes `cost` tokens (at most the capacity), or none when fewer are left. */
+	async check(
+		key: string,
+		policy: RateLimitPolicy,
+		now = Date.now(),
+		cost = 1
+	): Promise<RateLimitResult> {
 		const refillPerMs = policy.capacity / policy.refillWindowMs;
+		const charge = Math.min(Math.max(cost, 1), policy.capacity);
 		try {
 			await this.db.ready;
 			const result = await this.db.ops.execute({
 				sql: CHECK_SQL,
-				args: [key, policy.capacity, now, refillPerMs]
+				args: [key, policy.capacity, now, refillPerMs, charge]
 			});
 			const bucket = result.rows[0] as unknown as { tokens: number; allowed: number };
 			if (bucket.allowed === 1) return { allowed: true };
-			const retryAfterSeconds = Math.max(1, Math.ceil((1 - bucket.tokens) / refillPerMs / 1000));
+			const retryAfterSeconds = Math.max(
+				1,
+				Math.ceil((charge - bucket.tokens) / refillPerMs / 1000)
+			);
 			return { allowed: false, retryAfterSeconds };
 		} catch {
 			return { allowed: false, retryAfterSeconds: 1 };
 		}
+	}
+
+	/** Gives back `amount` tokens taken for work that did not happen, up to the capacity. */
+	async refund(key: string, policy: RateLimitPolicy, amount: number): Promise<void> {
+		await this.db.ready;
+		await this.db.ops.execute({
+			sql: 'UPDATE rate_buckets SET tokens = min(?, tokens + ?) WHERE bucket_key = ?',
+			args: [policy.capacity, amount, key]
+		});
 	}
 }
 
@@ -76,9 +111,53 @@ export async function checkAdminApiLimit(
 export async function pruneRateBuckets(db: Db, now = Date.now()): Promise<void> {
 	await db.ready;
 	await db.ops.execute({
-		sql: 'DELETE FROM rate_buckets WHERE last_seen_at <= ?',
-		args: [now - RATE_BUCKET_STALE_MS]
+		sql: `DELETE FROM rate_buckets WHERE last_seen_at <= CASE
+			WHEN substr(bucket_key, 1, ?) = ? THEN ? ELSE ? END`,
+		args: [
+			SYNC_CHURN_PREFIX.length,
+			SYNC_CHURN_PREFIX,
+			now - SYNC_CHURN_POLICY.refillWindowMs,
+			now - RATE_BUCKET_STALE_MS
+		]
 	});
+}
+
+/** The account's sync-write allowance for the day, charged per upload and delete. */
+export function chargeSyncChurn(
+	accountId: string,
+	mutations: number,
+	now = Date.now()
+): Promise<RateLimitResult> {
+	return getPublicApiLimiter().check(
+		`${SYNC_CHURN_PREFIX}${accountId}`,
+		SYNC_CHURN_POLICY,
+		now,
+		mutations
+	);
+}
+
+/**
+ * Returns a round's charge when its writes were not applied: refused for a
+ * conflict, deferred behind downloads, or lost to a store failure. The client
+ * sends them again, and they should be charged once. A failed refund only
+ * over-charges, so it is logged rather than failing the round.
+ */
+export async function refundSyncChurn(accountId: string, mutations: number): Promise<void> {
+	try {
+		await getPublicApiLimiter().refund(
+			`${SYNC_CHURN_PREFIX}${accountId}`,
+			SYNC_CHURN_POLICY,
+			mutations
+		);
+	} catch (error) {
+		console.error(
+			JSON.stringify({
+				level: 'error',
+				event: 'sync_churn_refund_failed',
+				message: error instanceof Error ? error.message : 'Refund failed'
+			})
+		);
+	}
 }
 
 /**

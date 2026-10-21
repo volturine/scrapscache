@@ -117,6 +117,22 @@ describe('matchSegments', () => {
 			{ text: 'tanbul', match: false }
 		]);
 	});
+
+	it('marks the whole letter when the query ends inside its expansion', () => {
+		// The store finds İstanbul for "i"; the mark covers the İ it matched within.
+		expect(matchSegments('İstanbul', 'i')).toEqual([
+			{ text: 'İ', match: true },
+			{ text: 'stanbul', match: false }
+		]);
+		expect(matchSegments('xİ', 'xi')).toEqual([{ text: 'xİ', match: true }]);
+	});
+
+	it('folds the whole text as the store does, so a final sigma matches by its context', () => {
+		expect(matchSegments('ΟΣ', 'ος')).toEqual([{ text: 'ΟΣ', match: true }]);
+		expect(matchSegments('ΟΣ', 'ΟΣ')).toEqual([{ text: 'ΟΣ', match: true }]);
+		// The store does not find it for a medial sigma, so nothing is marked.
+		expect(matchSegments('ΟΣ', 'οσ')).toEqual([{ text: 'ΟΣ', match: false }]);
+	});
 });
 
 describe('markTokens', () => {

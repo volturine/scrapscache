@@ -60,31 +60,42 @@ export type MatchRange = { start: number; end: number };
 
 /**
  * Where `query` occurs in `text`, as ranges of the original string. The search
- * compares lowercased text, and some letters grow when lowercased (İ becomes two
- * code units), so every folded offset is mapped back to the character it came from.
+ * compares the whole text lowercased, as the notes store does (so Greek final sigma
+ * folds by its context), and some letters grow when lowercased (İ becomes two code
+ * units), so every folded code unit keeps the bounds of the character it came from:
+ * a match starts where its first unit's character starts and ends where its last
+ * unit's character ends.
  */
 export function matchRanges(text: string, query: string): MatchRange[] {
 	const needle = query.trim().toLowerCase();
 	if (!needle || !text) return [];
-	let folded = '';
-	const origin: number[] = [];
+	const folded = text.toLowerCase();
+	// Per folded unit, the original character's bounds. Each character folds to as
+	// many units on its own as in the whole, so the per-character lengths lay out the
+	// whole-string fold; should they ever disagree, units map one to one.
+	const starts: number[] = [];
+	const ends: number[] = [];
 	let at = 0;
 	for (const character of text) {
-		const low = character.toLowerCase();
-		folded += low;
-		for (let unit = 0; unit < low.length; unit += 1) origin.push(at);
+		const units = character.toLowerCase().length;
+		for (let unit = 0; unit < units; unit += 1) {
+			starts.push(at);
+			ends.push(at + character.length);
+		}
 		at += character.length;
 	}
-	origin.push(text.length);
+	const aligned = starts.length === folded.length;
 	const ranges: MatchRange[] = [];
 	let from = 0;
 	for (;;) {
 		const hit = folded.indexOf(needle, from);
 		if (hit < 0) break;
-		const start = origin[hit];
-		const end = origin[hit + needle.length];
-		if (end > start && (ranges.length === 0 || start >= ranges[ranges.length - 1].end))
-			ranges.push({ start, end });
+		const last = hit + needle.length - 1;
+		const start = aligned ? starts[hit] : hit;
+		const end = aligned ? ends[last] : last + 1;
+		const previous = ranges[ranges.length - 1];
+		if (previous && start < previous.end) previous.end = Math.max(previous.end, end);
+		else ranges.push({ start, end });
 		from = hit + needle.length;
 	}
 	return ranges;

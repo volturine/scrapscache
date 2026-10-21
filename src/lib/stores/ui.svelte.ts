@@ -97,6 +97,8 @@ export class UIStore {
 	/** Committed search value; lags the input by a short debounce. */
 	search = $state('');
 	settingsOpen = $state(false);
+	/** On a phone the search field shows only while the Search tab is on. */
+	searchOpen = $state(false);
 	/** The sync (cloud) dialog. The top bar shows it; anything that points to Sync opens it. */
 	syncOpen = $state(false);
 	/** Ephemeral calendar selection used when creating notes from the reminders view. */
@@ -169,6 +171,12 @@ export class UIStore {
 
 	clearSearch() {
 		this.setSearchInput('');
+	}
+
+	/** The phone's Search tab turned off: the field goes, and its query with it. */
+	closeSearch() {
+		this.searchOpen = false;
+		this.clearSearch();
 	}
 
 	/** The committed search for `view`: a hidden view keeps its whole list and skips the work. */

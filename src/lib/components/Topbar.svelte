@@ -30,7 +30,10 @@
 	import { resolve } from '$app/paths';
 	import type { EncryptedScrapsCacheBackup } from '#lib/backupCrypto.js';
 	import { loadLazyModule } from '#lib/staleModuleReload.js';
-	import { Cloud, Menu as MenuIcon, Search, X } from '@lucide/svelte';
+	import { ArrowLeft, Cloud, Menu as MenuIcon, Search, X } from '@lucide/svelte';
+	import { MediaQuery } from 'svelte/reactivity';
+	import { pathForView } from '#lib/viewRoutes.js';
+	import type { View } from '#lib/stores/ui.svelte.js';
 
 	const SYNC_CONTROL_LABEL: Record<SyncStatus, string> = {
 		[SyncStatus.Normal]: 'Sync settings',
@@ -55,7 +58,45 @@
 	let syncStatus = $derived(resolveSyncStatus(syncStore.lastError, syncStore.usage));
 	let syncControlLabel = $derived(SYNC_CONTROL_LABEL[syncStatus]);
 
-	let searchField = $state<HTMLInputElement | undefined>();
+	let searchField: HTMLInputElement | undefined;
+
+	const mobile = new MediaQuery('max-width: 767px');
+	const VIEW_TITLES: Record<Exclude<View, 'label'>, string> = {
+		notes: 'Notes',
+		kanban: 'Kanban',
+		reminders: 'Reminders',
+		archive: 'Archive',
+		trash: 'Trash'
+	};
+	const viewTitle = $derived(
+		uiStore.view === 'label'
+			? (notesStore.labelsById.get(uiStore.activeLabelId ?? '')?.name ?? 'Label')
+			: VIEW_TITLES[uiStore.view]
+	);
+
+	/**
+	 * A query typed on a wide window must stay in view when the window narrows to the
+	 * phone layout: the Search tab turns on with it, so the field and its clear control
+	 * show for as long as it filters the notes.
+	 */
+	$effect(() => {
+		if (mobile.current && uiStore.searchInput && !uiStore.searchOpen) uiStore.searchOpen = true;
+	});
+
+	/** The Search tab turned on: the field appears and takes the keyboard. */
+	$effect(() => {
+		if (!uiStore.searchOpen || !mobile.current) return;
+		void tick().then(() => searchField?.focus());
+	});
+
+	/** A place from the More menu: Archive or Trash, which the tab bar leaves out. */
+	function goToPlace(view: 'archive' | 'trash') {
+		const target = pathForView(view);
+		if (!target) return;
+		closeNote();
+		uiStore.setView(view);
+		void goto(target);
+	}
 
 	function openPairingLink() {
 		const found = pairingCodeFromUrl(window.location.href);
@@ -208,6 +249,84 @@
 	);
 </script>
 
+{#snippet searchBox()}
+	<div
+		role="search"
+		class={hstack({
+			h: '2.5rem',
+			minH: '2.5rem',
+			maxH: '2.5rem',
+			minW: 0,
+			flex: '1',
+			rounded: 'pill',
+			borderWidth: 'hairline',
+			borderColor: 'scrapscache.border',
+			bg: 'scrapscache.surface',
+			px: { base: 'sm', sm: 'md' },
+			gap: { base: 'xs', sm: 'sm' }
+		})}
+	>
+		<Search class={cx(iconSm, styles.searchIcon)} aria-hidden="true" />
+		<input
+			bind:this={searchField}
+			value={uiStore.searchInput}
+			oninput={(event) => uiStore.setSearchInput(event.currentTarget.value)}
+			type="search"
+			placeholder="Search"
+			aria-label="Search notes"
+			class={cx(input({ variant: 'unstyled' }), styles.searchInput)}
+		/>
+		{#if uiStore.searchInput}
+			<!-- The button goes with the query, so focus moves back to the field rather than the page. -->
+			<button
+				type="button"
+				class={clearButton}
+				onclick={() => {
+					uiStore.clearSearch();
+					searchField?.focus();
+				}}
+				aria-label="Clear search"
+			>
+				<X class={iconSm} aria-hidden="true" />
+			</button>
+		{/if}
+	</div>
+{/snippet}
+
+{#snippet syncButton()}
+	<Tooltip content={syncControlLabel}>
+		<button
+			type="button"
+			class={iconButton({ variant: 'ghost', size: { base: 'compact', sm: 'standard' } })}
+			title={syncControlLabel}
+			onclick={() => {
+				pairingCode = '';
+				settingsOpen = false;
+				uiStore.syncOpen = true;
+			}}
+			aria-label={syncControlLabel}
+			data-scrapscache-sync-control
+		>
+			<!-- The spin turns this span, not the icon: Safari treats a transform on
+			     an svg root as its own user space, so the icon sat still there. -->
+			<span
+				class={[
+					iconMd,
+					styles.syncIcon,
+					(notesStore.syncing || importingBackup) && 'scrapscache-sync-icon-active'
+				]}
+				data-scrapscache-sync-spinner
+			>
+				<Cloud
+					class={[iconMd, syncTone[syncStatus]]}
+					data-scrapscache-sync-icon
+					aria-hidden="true"
+				/>
+			</span>
+		</button>
+	</Tooltip>
+{/snippet}
+
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <header
 	class={hstack({
@@ -223,6 +342,36 @@
 	{#if selectionStore.active}
 		<!-- The bar works on the picked notes until the selection is let go. -->
 		<SelectionBar />
+	{:else if mobile.current}
+		<!-- A phone has the tab bar for its places: the bar names the view, and the
+		     Search tab turns it into the field. Labels, Archive and Trash sit under More. -->
+		{#if uiStore.searchOpen}
+			<Tooltip content="Close search">
+				<button
+					type="button"
+					class={iconButton({ variant: 'ghost', size: 'compact' })}
+					title="Close search"
+					onclick={() => uiStore.closeSearch()}
+					aria-label="Close search"
+				>
+					<ArrowLeft class={iconMd} aria-hidden="true" />
+				</button>
+			</Tooltip>
+			{@render searchBox()}
+		{:else}
+			<span class={styles.title} aria-hidden="true" data-view-title>{viewTitle}</span>
+			{@render syncButton()}
+			<SettingsMenu
+				phone
+				bind:open={settingsOpen}
+				onExport={startBackupExport}
+				onImport={startBackupImport}
+				importing={importingBackup}
+				importError={backupImportError}
+				onPlace={goToPlace}
+				onLabels={() => (uiStore.sidebarOpen = true)}
+			/>
+		{/if}
 	{:else}
 		<Tooltip content="Toggle sidebar">
 			<button
@@ -234,81 +383,8 @@
 				<MenuIcon class={iconMd} aria-hidden="true" />
 			</button>
 		</Tooltip>
-
-		<div
-			role="search"
-			class={hstack({
-				h: '2.5rem',
-				minH: '2.5rem',
-				maxH: '2.5rem',
-				minW: 0,
-				flex: '1',
-				rounded: 'pill',
-				borderWidth: 'hairline',
-				borderColor: 'scrapscache.border',
-				bg: 'scrapscache.surface',
-				px: { base: 'sm', sm: 'md' },
-				gap: { base: 'xs', sm: 'sm' }
-			})}
-		>
-			<Search class={cx(iconSm, styles.searchIcon)} aria-hidden="true" />
-			<input
-				bind:this={searchField}
-				value={uiStore.searchInput}
-				oninput={(event) => uiStore.setSearchInput(event.currentTarget.value)}
-				type="search"
-				placeholder="Search"
-				aria-label="Search notes"
-				class={cx(input({ variant: 'unstyled' }), styles.searchInput)}
-			/>
-			{#if uiStore.searchInput}
-				<!-- The button goes with the query, so focus moves back to the field rather than the page. -->
-				<button
-					type="button"
-					class={clearButton}
-					onclick={() => {
-						uiStore.clearSearch();
-						searchField?.focus();
-					}}
-					aria-label="Clear search"
-				>
-					<X class={iconSm} aria-hidden="true" />
-				</button>
-			{/if}
-		</div>
-
-		<Tooltip content={syncControlLabel}>
-			<button
-				type="button"
-				class={iconButton({ variant: 'ghost', size: { base: 'compact', sm: 'standard' } })}
-				title={syncControlLabel}
-				onclick={() => {
-					pairingCode = '';
-					settingsOpen = false;
-					uiStore.syncOpen = true;
-				}}
-				aria-label={syncControlLabel}
-				data-scrapscache-sync-control
-			>
-				<!-- The spin turns this span, not the icon: Safari treats a transform on
-			     an svg root as its own user space, so the icon sat still there. -->
-				<span
-					class={[
-						iconMd,
-						styles.syncIcon,
-						(notesStore.syncing || importingBackup) && 'scrapscache-sync-icon-active'
-					]}
-					data-scrapscache-sync-spinner
-				>
-					<Cloud
-						class={[iconMd, syncTone[syncStatus]]}
-						data-scrapscache-sync-icon
-						aria-hidden="true"
-					/>
-				</span>
-			</button>
-		</Tooltip>
-
+		{@render searchBox()}
+		{@render syncButton()}
 		<SettingsMenu
 			bind:open={settingsOpen}
 			onExport={startBackupExport}

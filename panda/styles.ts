@@ -2028,6 +2028,43 @@ export const commandPaletteStyles = {
  * appearance choice, and a device row that carries its status in a sentence
  * under its label. Phone sizes get 44 px controls and 48 px rows.
  */
+/** The phone top bar's title, and its menu of places and labels. */
+export const placePickerStyles = {
+	// As wide as the name, so its highlight hugs it; the margin keeps the bar's buttons right.
+	trigger: hstack({
+		flex: '0 1 auto',
+		minW: 0,
+		mr: 'auto',
+		gap: '2xs',
+		h: '2.5rem',
+		px: 'xs',
+		rounded: 'control',
+		cursor: 'pointer',
+		outline: 'none',
+		color: 'scrapscache.text',
+		_hoverable: { bg: 'scrapscache.interactiveHover' },
+		_focusVisible: { boxShadow: '0 0 0 2px token(colors.scrapscache.focus)' }
+	}),
+	title: css({ minW: 0, textStyle: 'heading', ...truncateText }),
+	chevron: css({ ...iconSm, flexShrink: 0, ...mutedText, transition: 'transform 150ms ease' }),
+	chevronOpen: css({ transform: 'rotate(180deg)' }),
+	positioner: css({ zIndex: 30 }),
+	content: css({
+		minW: '15rem',
+		maxW: 'calc(100vw - 1rem)',
+		maxH: 'var(--available-height)',
+		overflowY: 'auto',
+		overscrollBehavior: 'contain',
+		py: '2xs'
+	}),
+	item: css({ gap: 'sm' }),
+	icon: css({ ...iconSm, flexShrink: 0, ...mutedText }),
+	name: css({ ...flexFill, ...truncateText }),
+	check: css({ ...iconSm, color: 'scrapscache.accent' }),
+	count: css({ flexShrink: 0, textStyle: 'caption', ...mutedText }),
+	edit: css({ borderTopWidth: 'hairline', borderColor: 'scrapscache.border', mt: 'xs', pt: '2xs' })
+};
+
 export const settingsMenuStyles = {
 	positioner: css({ zIndex: 30 }),
 	// Zag puts the room under the trigger in --available-height; the app frame clips

@@ -17,6 +17,7 @@
 	import Tooltip from './Tooltip.svelte';
 	import SettingsMenu from './SettingsMenu.svelte';
 	import CommandPalette from './CommandPalette.svelte';
+	import PlacePicker from './PlacePicker.svelte';
 	import SelectionBar from './SelectionBar.svelte';
 	import { selectionStore } from '#lib/stores/selection.svelte.js';
 	import BackupPassphraseDialog from './BackupPassphraseDialog.svelte';
@@ -33,7 +34,6 @@
 	import { loadLazyModule } from '#lib/staleModuleReload.js';
 	import { Cloud, Menu as MenuIcon, Search, X } from '@lucide/svelte';
 	import { MediaQuery } from 'svelte/reactivity';
-	import { pathForView } from '#lib/viewRoutes.js';
 	import type { View } from '#lib/stores/ui.svelte.js';
 	import { isApplePlatform } from '#lib/platform.js';
 
@@ -88,15 +88,6 @@
 	/** The palette's shortcut: Cmd+K on Apple devices, Ctrl+K elsewhere. */
 	const apple = isApplePlatform();
 	const paletteShortcut = apple ? '⌘K' : 'Ctrl K';
-
-	/** A place from the More menu: Archive or Trash, which the tab bar leaves out. */
-	function goToPlace(view: 'archive' | 'trash') {
-		const target = pathForView(view);
-		if (!target) return;
-		closeNote();
-		uiStore.setView(view);
-		void goto(target);
-	}
 
 	function openPairingLink() {
 		const found = pairingCodeFromUrl(window.location.href);
@@ -365,9 +356,9 @@
 		<!-- The bar works on the picked notes until the selection is let go. -->
 		<SelectionBar />
 	{:else if mobile.current}
-		<!-- A phone has the tab bar for its places: the bar names the view, and the
-		     Search tab opens the palette. Labels, Archive and Trash sit under More. -->
-		<span class={styles.title} aria-hidden="true" data-view-title>{viewTitle}</span>
+		<!-- A phone has the tab bar for its places: the bar names the view, the
+		     Search tab opens the palette, and the title picks any other place or label. -->
+		<PlacePicker title={viewTitle} />
 		{@render syncButton()}
 		<SettingsMenu
 			phone
@@ -376,8 +367,6 @@
 			onImport={startBackupImport}
 			importing={importingBackup}
 			importError={backupImportError}
-			onPlace={goToPlace}
-			onLabels={() => (uiStore.sidebarOpen = true)}
 		/>
 	{:else}
 		<Tooltip content="Toggle sidebar">

@@ -102,8 +102,8 @@ export class UIStore {
 	/** The In chip in Notes: whether archived matches are listed under the active ones. */
 	searchArchiveToo = $state(false);
 	settingsOpen = $state(false);
-	/** On a phone the search field shows only while the Search tab is on. */
-	searchOpen = $state(false);
+	/** The command palette: Mod+K, the search field's shortcut, or the phone's Search tab. */
+	paletteOpen = $state(false);
 	/** The sync (cloud) dialog. The top bar shows it; anything that points to Sync opens it. */
 	syncOpen = $state(false);
 	/** Ephemeral calendar selection used when creating notes from the reminders view. */
@@ -192,11 +192,6 @@ export class UIStore {
 	}
 
 	/** The phone's Search tab turned off: the field goes, and its query with it. */
-	closeSearch() {
-		this.searchOpen = false;
-		this.clearSearch();
-	}
-
 	/** The committed search for `view`: a hidden view keeps its whole list and skips the work. */
 	searchFor(view: View): string {
 		return this.view === view ? this.search : '';
@@ -277,8 +272,6 @@ export class UIStore {
 		this.view = view;
 		this.activeLabelId = labelId;
 		this.clearSearch();
-		// The phone's field goes with the view it was searching, unless a query comes along.
-		this.searchOpen = search !== '';
 		selectionStore.clear();
 		// A carried query filters the new view at once, without the typing debounce.
 		this.searchInput = search;

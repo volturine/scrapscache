@@ -563,9 +563,7 @@ test('a search that finds nothing in Notes looks in Archive with the same query'
 	await expect(noteCard(page, 'Retro board')).toBeVisible();
 });
 
-test('a query typed on a wide window stays in view when the window narrows to a phone', async ({
-	page
-}) => {
+test('a query typed on a wide window goes when the window narrows to a phone', async ({ page }) => {
 	await page.setViewportSize({ width: 1024, height: 700 });
 	await openEmptyApp(page);
 	await createNote(page, 'Groceries');
@@ -573,21 +571,64 @@ test('a query typed on a wide window stays in view when the window narrows to a 
 	await page.getByPlaceholder('Search', { exact: true }).fill('Groceries');
 	await expect(noteCard(page, 'Reading list')).toBeHidden();
 
+	// A phone searches in the palette: its bar has no field to show the query or clear it.
 	await page.setViewportSize({ width: 390, height: 844 });
-	// The field, its query and its clear control are still there: the feed is filtered.
-	const search = page.getByRole('searchbox', { name: 'Search notes' });
-	await expect(search).toHaveValue('Groceries');
-	await expect(
-		page.getByRole('navigation', { name: 'Main' }).getByRole('button', { name: 'Search' })
-	).toHaveAttribute('aria-pressed', 'true');
-	await page.getByRole('button', { name: 'Close search' }).click();
+	await expect(page.getByRole('searchbox')).toHaveCount(0);
 	await expect(noteCard(page, 'Reading list')).toBeVisible();
+});
+
+test('the palette finds notes in every place, labels and actions from the keyboard', async ({
+	page
+}) => {
+	await openEmptyApp(page);
+	await createNote(page, 'Tram day', 'Tram 28 early');
+	await createNote(page, 'Old tram tickets', 'Lisbon');
+	await quickAction(noteCard(page, 'Old tram tickets'), 'Archive');
+	await expect(noteCard(page, 'Old tram tickets')).toBeHidden();
+
+	await page.keyboard.press('ControlOrMeta+k');
+	const palette = page.getByRole('dialog', { name: 'Search notes, labels and actions' });
+	const field = palette.getByRole('combobox', { name: 'Search notes, labels and actions' });
+	await expect(field).toBeFocused();
+	await field.fill('tram');
+	const notes = palette.getByRole('group', { name: 'Notes' }).getByRole('option');
+	await expect(notes).toHaveCount(2);
+	await expect(notes.nth(0)).toContainText('Tram day');
+	await expect(notes.nth(1)).toContainText('Old tram tickets');
+	await expect(notes.nth(1)).toContainText('Archived');
+
+	// The archived note opens from here, though Notes does not list it.
+	await page.keyboard.press('ArrowDown');
+	await expect(notes.nth(1)).toHaveAttribute('aria-selected', 'true');
+	await page.keyboard.press('Enter');
+	await expect(palette).toBeHidden();
+	await expect(editor(page).getByRole('textbox', { name: 'Title' })).toHaveValue(
+		'Old tram tickets'
+	);
+	await page.keyboard.press('Escape');
+	await expect(editor(page)).toBeHidden();
+
+	// The note opened last leads the list when nothing is typed; an action goes places.
+	await page
+		.getByRole('search')
+		.getByRole('button', { name: 'Search notes, labels and actions' })
+		.click();
+	await expect(
+		palette.getByRole('group', { name: 'Recent' }).getByRole('option').first()
+	).toContainText('Old tram tickets');
+	await field.fill('trash');
+	await palette.getByRole('option', { name: /Go to Trash/ }).click();
+	await expect(page).toHaveURL(/\/trash$/);
+	await page.keyboard.press('ControlOrMeta+k');
+	await expect(palette).toBeVisible();
+	await page.keyboard.press('Escape');
+	await expect(palette).toBeHidden();
 });
 
 test.describe('on a phone', () => {
 	test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
 
-	test('the tab bar carries the places, Search turns into the field, and More holds the rest', async ({
+	test('the tab bar carries the places, Search opens the palette, and More holds the rest', async ({
 		page
 	}) => {
 		await openEmptyApp(page);
@@ -618,33 +659,30 @@ test.describe('on a phone', () => {
 		await expect(page.locator('[data-view-title]')).toHaveText('Reminders');
 
 		await tabs.getByRole('button', { name: 'Notes' }).click();
-		await tabs.getByRole('button', { name: 'Search' }).click();
-		const search = page.getByRole('searchbox', { name: 'Search notes' });
-		await expect(search).toBeFocused();
 		// With a phone keyboard up (the viewport code marks the page), the new-note
 		// button hides instead of riding up over the notes.
 		await page.evaluate(() => document.documentElement.classList.add('keyboard-open'));
 		await expect(page.getByRole('button', { name: 'New note' })).toBeHidden();
 		await page.evaluate(() => document.documentElement.classList.remove('keyboard-open'));
 		await expect(page.getByRole('button', { name: 'New note' })).toBeVisible();
-		await search.fill('tram');
-		await expect(noteCard(page, 'Tram day')).toBeVisible();
-		await expect(noteCard(page, 'Quiet')).toBeHidden();
-		await page.getByRole('button', { name: 'Close search' }).click();
-		await expect(page.getByRole('searchbox')).toHaveCount(0);
-		await expect(tabs.getByRole('button', { name: 'Search' })).toHaveAttribute(
-			'aria-pressed',
-			'false'
-		);
-		// Leaving for another place closes an open field too.
+
+		// Search opens the palette over the whole screen.
 		await tabs.getByRole('button', { name: 'Search' }).click();
-		await expect(page.getByRole('searchbox')).toBeVisible();
-		await tabs.getByRole('button', { name: 'Reminders' }).click();
-		await expect(page.getByRole('searchbox')).toHaveCount(0);
-		await expect(tabs.getByRole('button', { name: 'Search' })).toHaveAttribute(
-			'aria-pressed',
-			'false'
-		);
+		const palette = page.getByRole('dialog', { name: 'Search notes, labels and actions' });
+		const field = palette.getByRole('combobox', { name: 'Search notes, labels and actions' });
+		await expect(field).toBeFocused();
+		// Measured once its opening animation settles.
+		await expect.poll(async () => (await palette.boundingBox())?.width).toBe(390);
+		expect((await palette.boundingBox())!.y).toBe(0);
+		await field.fill('tram');
+		await expect(palette.getByRole('option')).toHaveCount(1);
+		await palette.getByRole('option', { name: /Tram day/ }).click();
+		await expect(palette).toBeHidden();
+		await expect(editor(page).getByRole('textbox', { name: 'Title' })).toHaveValue('Tram day');
+		await editor(page).getByRole('button', { name: 'Close note' }).click();
+		await tabs.getByRole('button', { name: 'Search' }).click();
+		await palette.getByRole('button', { name: 'Close search' }).click();
+		await expect(palette).toBeHidden();
 		await tabs.getByRole('button', { name: 'Notes' }).click();
 		// The bar is a compact 3.5 rem.
 		expect((await tabs.boundingBox())!.height).toBeLessThanOrEqual(57);

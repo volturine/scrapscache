@@ -7,6 +7,7 @@ import { syncStore, PROFILE_META_KEY } from './sync.svelte';
 import { notesStore, SYNC_LOCK } from './notes.svelte';
 import { clearNotesMirror } from '#lib/noteStorage.js';
 import { clearBoardsMirror } from './kanban.svelte';
+import { clearRecentNotes } from '#lib/recentNotes.js';
 import { clearFiredReminderMirror } from './reminders.svelte';
 import {
 	isLocalWorkspace,
@@ -226,6 +227,7 @@ export class ProfileCoordinator {
 			clearNotesMirror(profileId);
 			clearBoardsMirror(profileId);
 			clearFiredReminderMirror(profileId);
+			clearRecentNotes(profileId);
 			if (profile.syncKey) void unregisterReminderDevice(profile).catch(() => undefined);
 			if (removal === 'pending')
 				return {

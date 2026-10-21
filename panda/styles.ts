@@ -1927,6 +1927,107 @@ export const reminderAlertStyles = {
  * appearance choice, and a device row that carries its status in a sentence
  * under its label. Phone sizes get 44 px controls and 48 px rows.
  */
+/** The command palette: a box over the app on a desktop, the whole screen on a phone. */
+export const commandPaletteStyles = {
+	panel: css({
+		maxW: '34rem',
+		maxH: 'min(34rem, calc(100% - var(--app-topbar-height) - 2rem))',
+		overflow: 'hidden'
+	}),
+	phonePositioner: css({ p: 0, alignItems: 'stretch' }),
+	phonePanel: css({
+		maxW: 'none',
+		maxH: 'none',
+		h: 'full',
+		rounded: 0,
+		borderWidth: 0,
+		boxShadow: 'none',
+		bg: 'scrapscache.bg',
+		pt: 'env(safe-area-inset-top)'
+	}),
+	inputRow: hstack({
+		flexShrink: 0,
+		h: '3.25rem',
+		gap: 'sm',
+		px: 'md',
+		borderBottomWidth: 'hairline',
+		borderColor: 'scrapscache.border'
+	}),
+	searchIcon: css({ ...iconMd, flexShrink: 0, ...mutedText }),
+	input: css({ ...flexFill, h: 'full', textStyle: 'subtitle', fontWeight: 'body' }),
+	results: css({ ...flexFill, overflowY: 'auto', overscrollBehavior: 'contain', py: '2xs' }),
+	group: css({
+		py: '2xs',
+		'& + &': { borderTopWidth: 'hairline', borderColor: 'scrapscache.borderSubtle' }
+	}),
+	groupLabel: css({ px: 'md', pt: 'xs', pb: '2xs', textStyle: 'overline', ...mutedText }),
+	option: hstack({
+		gap: 'sm',
+		px: 'md',
+		py: 'xs',
+		minH: { base: '2.75rem', _touch: '3.25rem' },
+		cursor: 'pointer',
+		outline: 'none',
+		'&[aria-selected=true]': { bg: 'scrapscache.interactiveHover' }
+	}),
+	dot: css({
+		...iconSm,
+		flexShrink: 0,
+		rounded: 'full',
+		borderWidth: 'hairline',
+		borderColor: 'scrapscache.border'
+	}),
+	iconBox: css({
+		...gridCenter,
+		...square('1.75rem'),
+		flexShrink: 0,
+		rounded: 'control',
+		bg: 'scrapscache.surfaceSubtle',
+		...mutedText
+	}),
+	icon: css({ ...iconSm }),
+	text: css({ ...flexFill, display: 'flex', flexDirection: 'column' }),
+	title: css({ textStyle: 'body', fontWeight: 'interactive', truncate: true }),
+	detail: css({ textStyle: 'caption', ...mutedText, truncate: true }),
+	badge: css({
+		flexShrink: 0,
+		px: 'xs',
+		py: '3xs',
+		rounded: 'compact',
+		bg: 'scrapscache.surfaceSubtle',
+		textStyle: 'micro',
+		...mutedText
+	}),
+	enter: css({ ...iconXs, flexShrink: 0, ...mutedText }),
+	empty: css({ px: 'md', py: 'lg', textStyle: 'body', ...mutedText }),
+	footer: hstack({
+		flexShrink: 0,
+		gap: 'md',
+		px: 'md',
+		py: 'xs',
+		borderTopWidth: 'hairline',
+		borderColor: 'scrapscache.border',
+		textStyle: 'caption',
+		...mutedText,
+		'& > span': { display: 'inline-flex', alignItems: 'center', gap: '3xs' }
+	}),
+	footerNote: css({ ml: 'auto' }),
+	kbd: css({
+		display: 'inline-grid',
+		placeItems: 'center',
+		minW: '1.25rem',
+		h: '1.25rem',
+		px: '2xs',
+		rounded: 'compact',
+		borderWidth: 'hairline',
+		borderColor: 'scrapscache.border',
+		bg: 'scrapscache.surfaceSubtle',
+		fontFamily: 'inherit',
+		textStyle: 'micro',
+		...mutedText
+	})
+};
+
 export const settingsMenuStyles = {
 	positioner: css({ zIndex: 30 }),
 	// Zag puts the room under the trigger in --available-height; the app frame clips
@@ -3126,6 +3227,28 @@ export const topbarStyles = {
 		bg: 'scrapscache.surface',
 		px: { base: 'sm', sm: 'md' },
 		gap: { base: 'xs', sm: 'sm' }
+	}),
+	/** The palette's shortcut at the end of the empty search field. */
+	paletteHint: css({
+		flexShrink: 0,
+		display: 'inline-flex',
+		alignItems: 'center',
+		rounded: 'compact',
+		cursor: 'pointer',
+		outline: 'none',
+		_focusVisible: { boxShadow: '0 0 0 2px token(colors.scrapscache.focus)' }
+	}),
+	paletteKbd: css({
+		px: 'xs',
+		py: '3xs',
+		rounded: 'compact',
+		borderWidth: 'hairline',
+		borderColor: 'scrapscache.border',
+		bg: 'scrapscache.surfaceSubtle',
+		fontFamily: 'inherit',
+		textStyle: 'micro',
+		color: 'scrapscache.textMuted',
+		whiteSpace: 'nowrap'
 	})
 };
 

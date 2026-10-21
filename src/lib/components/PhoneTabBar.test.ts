@@ -13,7 +13,7 @@ vi.mock('#lib/editorContext.js', () => ({
 
 afterEach(() => {
 	uiStore.setView('notes');
-	uiStore.searchOpen = false;
+	uiStore.paletteOpen = false;
 	navigation.goto.mockClear();
 	closeNote.mockClear();
 });
@@ -39,19 +39,14 @@ describe('PhoneTabBar', () => {
 		expect(navigation.goto).toHaveBeenCalledWith('/kanban');
 	});
 
-	it('turns the search field on and off, dropping the query with it', async () => {
+	it('opens the palette from Search', async () => {
 		render(PhoneTabBar);
 		const search = screen.getByRole('button', { name: 'Search' });
-		expect(search.getAttribute('aria-pressed')).toBe('false');
+		expect(search.getAttribute('aria-haspopup')).toBe('dialog');
+		expect(search.getAttribute('aria-expanded')).toBe('false');
 
 		await fireEvent.click(search);
-		expect(uiStore.searchOpen).toBe(true);
-		expect(search.getAttribute('aria-pressed')).toBe('true');
-
-		uiStore.setSearchInput('retro');
-		await fireEvent.click(search);
-		expect(uiStore.searchOpen).toBe(false);
-		expect(uiStore.searchInput).toBe('');
-		expect(uiStore.search).toBe('');
+		expect(uiStore.paletteOpen).toBe(true);
+		expect(search.getAttribute('aria-expanded')).toBe('true');
 	});
 });

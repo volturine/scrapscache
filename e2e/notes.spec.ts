@@ -602,6 +602,12 @@ test.describe('on a phone', () => {
 		await tabs.getByRole('button', { name: 'Search' }).click();
 		const search = page.getByRole('searchbox', { name: 'Search notes' });
 		await expect(search).toBeFocused();
+		// With a phone keyboard up (the viewport code marks the page), the new-note
+		// button hides instead of riding up over the notes.
+		await page.evaluate(() => document.documentElement.classList.add('keyboard-open'));
+		await expect(page.getByRole('button', { name: 'New note' })).toBeHidden();
+		await page.evaluate(() => document.documentElement.classList.remove('keyboard-open'));
+		await expect(page.getByRole('button', { name: 'New note' })).toBeVisible();
 		await search.fill('tram');
 		await expect(noteCard(page, 'Tram day')).toBeVisible();
 		await expect(noteCard(page, 'Quiet')).toBeHidden();

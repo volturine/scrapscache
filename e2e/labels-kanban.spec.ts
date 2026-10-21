@@ -242,18 +242,25 @@ test.describe('on a phone', () => {
 			.click();
 		const tabs = page.getByRole('tablist', { name: 'Columns' }).getByRole('tab');
 		await expect(tabs).toHaveText([/Unsorted\s*1/, /To-Do\s*0/, /In-Progress\s*0/, /Done\s*0/]);
-		await expect(page.getByRole('region', { name: /column$/ })).toHaveCount(1);
-		await expect(page.getByRole('region', { name: 'Unsorted Kanban column' })).toBeVisible();
+		// On a phone the shown column is the selected tab's panel.
+		const panel = page.getByRole('tabpanel');
+		await expect(panel).toHaveCount(1);
+		await expect(panel).toHaveAttribute('aria-label', 'Unsorted Kanban column');
+		await expect(panel).toHaveAttribute('aria-labelledby', await tabs.nth(0).getAttribute('id'));
 
 		await tabs.nth(2).click();
 		await expect(tabs.nth(2)).toHaveAttribute('aria-selected', 'true');
-		await expect(page.getByRole('region', { name: 'In-Progress label column' })).toBeVisible();
-		await expect(page.getByRole('region', { name: 'Unsorted Kanban column' })).toHaveCount(0);
+		await expect(panel).toHaveAttribute('aria-label', 'In-Progress label column');
+
+		// The arrows move between the tabs and select as they go.
+		await tabs.nth(2).press('ArrowLeft');
+		await expect(tabs.nth(1)).toHaveAttribute('aria-selected', 'true');
+		await expect(tabs.nth(1)).toBeFocused();
 
 		// Move to… from the card: the board follows the card.
 		await tabs.nth(0).click();
 		await moveTo(noteCard(page, 'Task one'), 'Done');
-		await expect(page.getByRole('region', { name: 'Done label column' })).toBeVisible();
+		await expect(panel).toHaveAttribute('aria-label', 'Done label column');
 		await expect(tabs.nth(3)).toHaveText(/Done\s*1/);
 	});
 });

@@ -113,6 +113,9 @@ describe('Slovak', async () => {
 		expect(read('keď prídem domov')).toBeNull();
 		expect(read('9')).toBeNull();
 		expect(read('31. 2.')).toBeNull();
+		// A number word it does not know is no number: never "one minute" by default.
+		expect(read('za dvadsať minút')).toBeNull();
+		expect(read('za tridsať hodín')).toBeNull();
 	});
 });
 
@@ -149,6 +152,43 @@ describe('several languages', async () => {
 	] as const)('loads %s on demand', async (language, text) => {
 		const other = await reader(language);
 		expect(other(text)?.at).toEqual(at(10, 22, 9));
+	});
+});
+
+describe('time-of-day words in every language', () => {
+	it.each([
+		['en', 'tomorrow evening', at(10, 22, 18)],
+		['de', 'morgen abend', at(10, 22, 18)],
+		['fr', 'demain soir', at(10, 22, 18)],
+		['it', 'domani sera', at(10, 22, 18)],
+		['pt', 'amanhã à noite', at(10, 22, 18)],
+		['fi', 'huomenna illalla', at(10, 22, 18)],
+		['id', 'besok malam', at(10, 22, 18)],
+		['ru', 'завтра вечером', at(10, 22, 18)],
+		['uk', 'завтра ввечері', at(10, 22, 18)],
+		['ar', 'غدا مساء', at(10, 22, 18)],
+		['es', 'mañana por la tarde', at(10, 22, 15)],
+		['es', 'mañana por la mañana', at(10, 22, 8)],
+		['es', 'mañana', at(10, 22, 12)],
+		['nl', 'morgenavond', at(10, 22, 18)],
+		['nl', "morgen 's ochtends", at(10, 22, 8)],
+		['ja', '明日の夜', at(10, 22, 18)],
+		['ja', '明日の朝', at(10, 22, 8)],
+		['ja', '今夜', at(10, 21, 18)],
+		['zh', '明天晚上', at(10, 22, 18)],
+		['zh', '明天下午', at(10, 22, 15)],
+		['zh', '今晚', at(10, 21, 18)]
+	] as const)('%s reads "%s"', async (language, text, expected) => {
+		const read = await reader(language);
+		const phrase = read(text);
+		expect(phrase?.at).toEqual(expected);
+		// What was used is what the line under the field shows.
+		expect(phrase?.text).toBe(text);
+	});
+
+	it('keeps a clock time over the part of the day', async () => {
+		expect((await reader('zh'))('明天上午9点')?.at).toEqual(at(10, 22, 9));
+		expect((await reader('es'))('mañana a las 9 de la noche')?.at).toEqual(at(10, 22, 21));
 	});
 });
 

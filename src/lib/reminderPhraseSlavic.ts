@@ -253,9 +253,10 @@ function weekdayIndex(date: Date): number {
 	return (date.getDay() + 6) % 7;
 }
 
-function count(words: Words, value: string | undefined): number {
+/** "za hodinu" is one; a number word this grammar does not know is no number at all. */
+function count(words: Words, value: string | undefined): number | null {
 	if (value === undefined) return 1;
-	return /^\d+$/.test(value) ? Number(value) : (words.numbers[value] ?? 1);
+	return /^\d+$/.test(value) ? Number(value) : (words.numbers[value] ?? null);
 }
 
 /** A calendar date, or null when the day does not exist (31. 2.). */
@@ -295,6 +296,8 @@ function readPart(
 		const groups = match.groups;
 		const unit = (Object.keys(UNIT_MS) as Unit[]).find((name) => groups[name] !== undefined)!;
 		const amount = groups.half ? 0.5 : count(g.words, groups.count);
+		// Unreadable beats a wrong time: "za dvacet minut" must not become one minute.
+		if (amount === null) return null;
 		if (unit === 'minute' || unit === 'hour') {
 			return [
 				{ kind: 'moment', at: new Date(now.getTime() + amount * UNIT_MS[unit]) },

@@ -28,10 +28,8 @@ export const REMINDER_LANGUAGES = [
 	{ code: 'it', name: 'Italiano', example: 'domani alle 9' },
 	{ code: 'nl', name: 'Nederlands', example: 'morgen om 9 uur' },
 	{ code: 'pt', name: 'Português', example: 'amanhã às 9' },
-	{ code: 'sv', name: 'Svenska', example: 'imorgon' },
 	{ code: 'fi', name: 'Suomi', example: 'huomenna klo 9' },
 	{ code: 'id', name: 'Bahasa Indonesia', example: 'besok jam 9' },
-	{ code: 'vi', name: 'Tiếng Việt', example: 'ngày mai 9 giờ' },
 	{ code: 'ru', name: 'Русский', example: 'завтра в 9' },
 	{ code: 'uk', name: 'Українська', example: 'завтра о 9' },
 	{ code: 'ar', name: 'العربية', example: 'غدا الساعة 9' },
@@ -59,6 +57,63 @@ const CHRONO_VAGUE: Record<string, number> = {
 	'casualReference/tonight': VAGUE_HOURS.evening
 };
 
+type Vague = keyof typeof VAGUE_HOURS;
+/** Time-of-day words a chrono locale leaves without an hour, as patterns per part of the day. */
+type VagueWords = Partial<Record<Vague, RegExp>>;
+
+// A word must not run on from another letter.
+const WORD = '(?<![\\p{L}])';
+
+/**
+ * Where chrono reads the day but not the part of it ("mañana por la tarde",
+ * "明天晚上", "明日の夜"), or nothing at all ("今晚"). Compounds are matched inside a
+ * word only where the language builds them (Dutch "morgenavond"). Swedish and
+ * Vietnamese are left out: chrono reads neither their clock times nor their
+ * two-word days ("i morgon", "tối mai"), so a reading would be wrong, not partial.
+ */
+const VAGUE_WORDS: Partial<Record<ReminderLanguage, VagueWords>> = {
+	es: {
+		morning: new RegExp(`${WORD}(?:por|de) la mañana`, 'iu'),
+		noon: new RegExp(`${WORD}(?:al )?mediod[ií]a`, 'iu'),
+		afternoon: new RegExp(`${WORD}(?:(?:por|de) la )?tarde`, 'iu'),
+		evening: new RegExp(`${WORD}(?:(?:por|de) la |esta )?noche`, 'iu')
+	},
+	nl: {
+		morning: /ochtend|'s morgens/iu,
+		noon: /middaguur/iu,
+		afternoon: /middag/iu,
+		evening: /avond/iu
+	},
+	ja: { morning: /朝|午前/u, noon: /昼|正午/u, afternoon: /午後/u, evening: /夜|晩/u },
+	zh: {
+		morning: /早上|上午|早晨/u,
+		noon: /中午/u,
+		afternoon: /下午|午后/u,
+		evening: /晚上|今晚|傍晚/u
+	}
+};
+
+/** The time-of-day word earliest in `text`, the longer one winning at the same place. */
+function findVague(
+	text: string,
+	words: VagueWords
+): { part: Vague; index: number; end: number } | null {
+	let found: { part: Vague; index: number; end: number } | null = null;
+	for (const [part, pattern] of Object.entries(words) as [Vague, RegExp][]) {
+		const match = pattern.exec(text);
+		if (!match) continue;
+		const candidate = { part, index: match.index, end: match.index + match[0].length };
+		if (
+			!found ||
+			candidate.index < found.index ||
+			(candidate.index === found.index && candidate.end > found.end)
+		) {
+			found = candidate;
+		}
+	}
+	return found;
+}
+
 function longest(results: ParsedResult[]): ParsedResult | null {
 	return results.reduce<ParsedResult | null>(
 		(best, result) => (!best || result.text.length > best.text.length ? result : best),
@@ -66,14 +121,30 @@ function longest(results: ParsedResult[]): ParsedResult | null {
 	);
 }
 
-export function chronoReader(chrono: Chrono): PhraseReader {
+export function chronoReader(chrono: Chrono, vague: VagueWords = {}): PhraseReader {
 	return (text, now) => {
 		const result = longest(chrono.parse(text, now, { forwardDate: true }));
+		const word = result?.start.isCertain('hour') ? null : findVague(text, vague);
+		if (word) {
+			// The day chrono read (or today), at the hour the word means; the reading
+			// covers both, so the line under the field shows what was used.
+			const date = result ? result.start.date() : new Date(now);
+			date.setHours(VAGUE_HOURS[word.part], 0, 0, 0);
+			if (!result && date < now) date.setDate(date.getDate() + 1);
+			const start = Math.min(result?.index ?? word.index, word.index);
+			const end = Math.max(result ? result.index + result.text.length : word.end, word.end);
+			return { text: text.slice(start, end), date, timeGiven: true };
+		}
 		if (!result) return null;
 		const date = result.start.date();
 		if (result.start.isCertain('hour')) {
 			if (!result.start.isCertain('minute')) date.setMinutes(0);
 			date.setSeconds(0, 0);
+			// "a las 9 de la noche" is 21:00: a part of the day makes a morning hour an evening one.
+			const part = result.start.isCertain('meridiem') ? null : findVague(text, vague)?.part;
+			if ((part === 'afternoon' || part === 'evening') && date.getHours() < 12) {
+				date.setHours(date.getHours() + 12);
+			}
 			return { text: result.text, date, timeGiven: true };
 		}
 		for (const tag of result.tags()) {
@@ -91,20 +162,18 @@ const LOADERS: Record<ReminderLanguage, () => Promise<PhraseReader>> = {
 	sk: () => import('./reminderPhraseSlavic.js').then((m) => m.slovak),
 	cs: () => import('./reminderPhraseSlavic.js').then((m) => m.czech),
 	de: () => import('chrono-node/de').then((m) => chronoReader(m.casual)),
-	es: () => import('chrono-node/es').then((m) => chronoReader(m.casual)),
+	es: () => import('chrono-node/es').then((m) => chronoReader(m.casual, VAGUE_WORDS.es)),
 	fr: () => import('chrono-node/fr').then((m) => chronoReader(m.casual)),
 	it: () => import('chrono-node/it').then((m) => chronoReader(m.casual)),
-	nl: () => import('chrono-node/nl').then((m) => chronoReader(m.casual)),
+	nl: () => import('chrono-node/nl').then((m) => chronoReader(m.casual, VAGUE_WORDS.nl)),
 	pt: () => import('chrono-node/pt').then((m) => chronoReader(m.casual)),
-	sv: () => import('chrono-node/sv').then((m) => chronoReader(m.casual)),
 	fi: () => import('chrono-node/fi').then((m) => chronoReader(m.casual)),
 	id: () => import('chrono-node/id').then((m) => chronoReader(m.casual)),
-	vi: () => import('chrono-node/vi').then((m) => chronoReader(m.casual)),
 	ru: () => import('chrono-node/ru').then((m) => chronoReader(m.casual)),
 	uk: () => import('chrono-node/uk').then((m) => chronoReader(m.casual)),
 	ar: () => import('chrono-node/ar').then((m) => chronoReader(m.casual)),
-	ja: () => import('chrono-node/ja').then((m) => chronoReader(m.casual)),
-	zh: () => import('chrono-node/zh').then((m) => chronoReader(m.casual))
+	ja: () => import('chrono-node/ja').then((m) => chronoReader(m.casual, VAGUE_WORDS.ja)),
+	zh: () => import('chrono-node/zh').then((m) => chronoReader(m.casual, VAGUE_WORDS.zh))
 };
 
 const loaded = new Map<ReminderLanguage, Promise<PhraseReader>>();

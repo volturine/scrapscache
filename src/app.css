@@ -12,6 +12,8 @@
 	--app-topbar-height: 3.5rem;
 	--app-fab-bottom: 2rem;
 	--app-fab-size: 3.5rem;
+	/* The phone tab bar's height; zero where the sidebar carries the navigation. */
+	--app-tabbar-height: 0px;
 	/* Room under a note sheet: a place to tap outside the note and close it. */
 	--app-sheet-pad-bottom: 4.5rem;
 	--note-card-width: 18rem;
@@ -32,6 +34,9 @@ html.editor-open .new-note-fab {
 
 /* With the keyboard up a phone has no room to spare under the note. */
 @media (max-width: 767px) {
+	:root {
+		--app-tabbar-height: 4.25rem;
+	}
 	html.keyboard-open {
 		--app-sheet-pad-bottom: 0.5rem;
 	}

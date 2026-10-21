@@ -107,7 +107,8 @@ test.describe('installed iOS document chrome', () => {
 		expect(samplingGeometry.sampled).toBe(true);
 		expect(samplingGeometry.backdropFilter).toBe('none');
 
-		await page.getByRole('button', { name: 'Settings', exact: true }).click();
+		// A phone has the More menu, which holds the settings.
+		await page.getByRole('button', { name: 'More', exact: true }).click();
 		for (const [name, color] of [
 			['Light', 'rgb(255, 255, 255)'],
 			['Dark', 'rgb(26, 26, 26)']

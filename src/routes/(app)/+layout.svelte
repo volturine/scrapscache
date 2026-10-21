@@ -9,6 +9,7 @@
 	import NoteEditor from '#lib/components/NoteEditor.svelte';
 	import ReminderAlert from '#lib/components/ReminderAlert.svelte';
 	import BottomNav from '#lib/components/BottomNav.svelte';
+	import PhoneTabBar from '#lib/components/PhoneTabBar.svelte';
 	import AppViews from '#lib/components/AppViews.svelte';
 	import { reminderStore } from '#lib/stores/reminders.svelte.js';
 	import { reminderHistoryClient } from '#lib/reminderHistoryClient.js';
@@ -182,6 +183,14 @@
 		openEditor(link.noteId);
 	}
 
+	// A window that narrows into the phone layout must not pop the desktop sidebar
+	// open as a drawer over the page; the drawer opens from More when it is wanted.
+	// Untracked: the setter persists the UI state, and those reads must not make the
+	// drawer's own open state a dependency, or Labels could never open it on a phone.
+	$effect(() => {
+		if (mobile.current) untrack(() => (uiStore.sidebarOpen = false));
+	});
+
 	onMount(() => {
 		applyEditorOpen(editingId !== null);
 		const stopViewport = attachAppViewport(document.documentElement);
@@ -189,7 +198,6 @@
 		attachSyncCloudIndicator(syncStore);
 		notesStore.onAfterSync = () => reminderStore.publish(notesStore.notes);
 		notesStore.onProfileReload = (pid, notes) => reminderStore.activateProfile(pid, notes);
-		if (mobile.current) uiStore.sidebarOpen = false;
 		void notesStore.init().then(async () => {
 			await notesStore.refreshProfileEffects();
 			if (syncStore.isLoggedIn) await notesStore.syncWithCloud();
@@ -440,6 +448,9 @@
 					{/key}
 				</div>
 			</div>
+			{#if mobile.current}
+				<PhoneTabBar />
+			{/if}
 		</div>
 	</div>
 </div>

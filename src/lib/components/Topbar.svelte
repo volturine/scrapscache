@@ -16,6 +16,8 @@
 	import SyncModalUnavailable from './SyncModalUnavailable.svelte';
 	import Tooltip from './Tooltip.svelte';
 	import SettingsMenu from './SettingsMenu.svelte';
+	import SelectionBar from './SelectionBar.svelte';
+	import { selectionStore } from '#lib/stores/selection.svelte.js';
 	import BackupPassphraseDialog from './BackupPassphraseDialog.svelte';
 	import BackupImportModeDialog from './BackupImportModeDialog.svelte';
 	import ImportGuideDialog from './ImportGuideDialog.svelte';
@@ -337,7 +339,10 @@
 	})}
 	onpointerdown={closeNote}
 >
-	{#if mobile.current}
+	{#if selectionStore.active}
+		<!-- The bar works on the picked notes until the selection is let go. -->
+		<SelectionBar />
+	{:else if mobile.current}
 		<!-- A phone has the tab bar for its places: the bar names the view, and the
 		     Search tab turns it into the field. Labels, Archive and Trash sit under More. -->
 		{#if uiStore.searchOpen}

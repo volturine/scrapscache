@@ -27,3 +27,19 @@ export const NOTE_COLOR_ORDER: NoteColor[] = [
 	'brown',
 	'gray'
 ];
+
+/** Colour names, for menus, chips and assistive technology. */
+export const NOTE_COLOR_NAMES: Record<NoteColor, string> = {
+	default: 'Default',
+	red: 'Red',
+	orange: 'Orange',
+	yellow: 'Yellow',
+	green: 'Green',
+	teal: 'Teal',
+	blue: 'Blue',
+	darkblue: 'Dark blue',
+	purple: 'Purple',
+	pink: 'Pink',
+	brown: 'Brown',
+	gray: 'Grey'
+};

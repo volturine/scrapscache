@@ -6,9 +6,11 @@
 		iconSizeXs,
 		noteActionsStyles,
 		trashCountdownRow,
-		secretPreviewCaption
+		secretPreviewCaption,
+		noteSelectStyles
 	} from '$panda/styles';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
+	import { selectionStore } from '#lib/stores/selection.svelte.js';
 	import type { Note } from '#lib/types.js';
 	import { formatReminder, isReminderOverdue, noteActivity, trashCountdown } from '#lib/utils.js';
 	import { appClock } from '#lib/appClock.svelte.js';
@@ -17,7 +19,7 @@
 	import NoteBodyDisplay from './NoteBodyDisplay.svelte';
 	import NoteActionsMenu from './NoteActionsMenu.svelte';
 	import ReminderLabel from './ReminderLabel.svelte';
-	import { Archive, ArchiveRestore, Clock, EyeOff, RotateCcw, Trash2 } from '@lucide/svelte';
+	import { Archive, ArchiveRestore, Check, Clock, EyeOff, RotateCcw, Trash2 } from '@lucide/svelte';
 	import { onDestroy } from 'svelte';
 
 	let {
@@ -39,10 +41,27 @@
 		actionsOpen = true;
 	}
 
+	const selected = $derived(selectionStore.has(note.id));
+
+	/** The check at the corner: a press on it is the selection's, not the card's. */
+	function keepToCheck(event: Event) {
+		event.stopPropagation();
+	}
+
+	function toggleSelected(event: MouseEvent) {
+		event.stopPropagation();
+		selectionStore.toggle(note.id);
+	}
+
 	function openUnlessDrag(e: MouseEvent) {
 		if (e.button !== 0) return;
 		if (swipe.wasDrag() || suppressClick) {
 			e.stopPropagation();
+			return;
+		}
+		// While a selection is open, a card is picked or let go rather than opened.
+		if (selectionStore.active) {
+			selectionStore.toggle(note.id);
 			return;
 		}
 		// The open control holds focus while the note is open, so closing it returns here.
@@ -265,7 +284,13 @@
 	<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
 	<article
 		bind:this={cardEl}
-		class={cx(card.cardBody, 'group', noteSurface({ color: note.color }))}
+		class={cx(
+			card.cardBody,
+			'group',
+			noteSurface({ color: note.color }),
+			selected && noteSelectStyles.selected
+		)}
+		data-selected={selected ? '' : undefined}
 		style={cardSwipeStyle(offsetX, dragging)}
 		onpointerdown={onCardPointerDown}
 		onpointermove={onCardPointerMove}
@@ -276,6 +301,19 @@
 	>
 		<button bind:this={openButton} type="button" class={cardOpenControl} aria-label={openLabel}
 		></button>
+		<button
+			type="button"
+			role="checkbox"
+			aria-checked={selected}
+			aria-label={`Select ${note.title || 'untitled note'}`}
+			class={noteSelectStyles.check}
+			data-selecting={selectionStore.active ? '' : undefined}
+			data-note-select
+			onpointerdown={keepToCheck}
+			onclick={toggleSelected}
+		>
+			{#if selected}<Check size={14} strokeWidth={3} aria-hidden="true" />{/if}
+		</button>
 
 		{#if note.reminder != null}
 			<div class={css({ flexShrink: 0 })}>
@@ -319,6 +357,7 @@
 								class={cx(
 									card.title,
 									noteActionsStyles.topRoom,
+									selectionStore.active && noteSelectStyles.titleRoom,
 									css({ flexShrink: 0 }),
 									note.secret && css({ px: 'md', pt: 'md', pb: 'sm' })
 								)}

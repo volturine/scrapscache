@@ -335,6 +335,25 @@ use never meets the edge rule:
 | `/api/sync/auth/*`   | 30 a minute               |
 | `/api/sync/register` | 5 an hour                 |
 
+The production zone runs one such rule, the Free plan's only one, set in the
+dashboard (Security → WAF → Rate limiting rules) since the Wrangler login cannot
+read WAF rules:
+
+| Setting  | Value                           |
+| -------- | ------------------------------- |
+| Match    | URI path wildcard `/api/sync/*` |
+| Count by | IP                              |
+| Limit    | 100 requests per 10 seconds     |
+| Action   | Block for 10 seconds            |
+
+It covers every sync path at once, and devices sharing an address share it. A
+first sync's back-to-back rounds stay under it, while a flood is cut to about 10
+requests a second per address. A refused request gets a `429` from the edge
+(error 1015) with `Retry-After`, which the app treats as throttling and waits
+out. To check it still holds, request a path under `/api/sync/` that does not
+exist 150 times at once: about 100 answer `404` from the app and the rest `429`
+from the edge, without touching D1.
+
 Preview URLs bypass zone rules; `wrangler.jsonc` keeps them off.
 
 ### Relay memory bounds (Node)

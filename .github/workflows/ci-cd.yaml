@@ -87,9 +87,11 @@ jobs:
           npx wrangler deploy --dry-run --config cf/wrangler.reminders.jsonc --env=""
           npx wrangler deploy --dry-run --env=""
           npx wrangler deploy --dry-run --config cf/wrangler.cron.jsonc --env=""
+          npx wrangler deploy --dry-run --config cf/wrangler.admin.jsonc --env=""
           npx wrangler deploy --dry-run --config cf/wrangler.reminders.jsonc --env dev
           npx wrangler deploy --dry-run --env dev
           npx wrangler deploy --dry-run --config cf/wrangler.cron.jsonc --env dev
+          npx wrangler deploy --dry-run --config cf/wrangler.admin.jsonc --env dev
           npx wrangler deploy --dry-run --config recipes/mcp-server/cloudflare/wrangler.jsonc --env=""
           npx wrangler deploy --dry-run --config recipes/mcp-server/cloudflare/wrangler.jsonc --env dev
 
@@ -146,6 +148,7 @@ jobs:
           # The app binds the reminders Worker's schedulers, so that Worker goes first.
           npx wrangler deploy --config cf/wrangler.reminders.jsonc --env dev
           npx wrangler deploy --env dev
+          npx wrangler deploy --config cf/wrangler.admin.jsonc --env dev
           printf '%s' "$SCRAPSCACHE_ADMIN_TOKEN" | npx wrangler secret put SCRAPSCACHE_ADMIN_TOKEN --env dev
           printf '%s' "$SCRAPSCACHE_TICK_SECRET" | npx wrangler secret put SCRAPSCACHE_TICK_SECRET --env dev
           printf '%s' "$TURNSTILE_SECRET" | npx wrangler secret put TURNSTILE_SECRET --env dev
@@ -218,6 +221,8 @@ jobs:
           npx wrangler queues info scrapscache-reminder-wakes >/dev/null 2>&1 || npx wrangler queues create scrapscache-reminder-wakes
           npx wrangler deploy --config cf/wrangler.reminders.jsonc --env=""
           npx wrangler deploy --env=""
+          # The admin Worker binds the app, so it follows it.
+          npx wrangler deploy --config cf/wrangler.admin.jsonc --env=""
           printf '%s' "$SCRAPSCACHE_ADMIN_TOKEN" | npx wrangler secret put SCRAPSCACHE_ADMIN_TOKEN --env=""
           printf '%s' "$SCRAPSCACHE_TICK_SECRET" | npx wrangler secret put SCRAPSCACHE_TICK_SECRET --env=""
           printf '%s' "$TURNSTILE_SECRET" | npx wrangler secret put TURNSTILE_SECRET --env=""

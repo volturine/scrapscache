@@ -3,6 +3,8 @@ import { recordHttpRequest } from '#lib/server/metrics.js';
 import { startWakeTimer } from '#lib/server/wakeTimer.js';
 import { configuredOrigin } from '#lib/server/publicOrigin.js';
 import { turnstileChallenge } from '#lib/server/turnstile.js';
+import { adminRouting } from '#lib/server/adminOrigin.js';
+import { adminDashboard } from '#lib/server/adminDashboard.js';
 
 const SECURITY_HEADERS: ReadonlyArray<readonly [string, string]> = [
 	['referrer-policy', 'no-referrer'],
@@ -77,20 +79,29 @@ export const handle: Handle = async ({ event, resolve }) => {
 		challenge !== null && event.url.origin.toLowerCase() === challenge.origin.toLowerCase();
 	// The challenge origin exists to run one third-party page. Serving the app there
 	// too would put a second copy of it, with its own storage, on a host that runs
-	// code this repository does not control.
+	// code this repository does not control. The admin origin likewise serves the
+	// dashboard alone, and the app's origin leaves the dashboard to it.
+	const routing = adminRouting(event.url);
+	// The dashboard is a separate static build; it carries its own headers.
+	if (!onChallengeOrigin && routing === 'serve') {
+		const dashboard = await adminDashboard(event.url.pathname);
+		if (dashboard) return dashboard;
+	}
 	const response =
-		onChallengeOrigin && event.url.pathname !== '/turnstile'
+		(onChallengeOrigin && event.url.pathname !== '/turnstile') || routing === 'not-found'
 			? new Response('Not found\n', { status: 404 })
-			: await resolve(event, {
-					transformPageChunk: ({ html }) => {
-						const origin = configuredOrigin() ?? event.url.origin;
-						const canonical = `${origin}${event.url.pathname}`;
-						return withOnePageMeta(html)
-							.replaceAll('https://scrapscache.com/og-preview.png', `${origin}/og-preview.png`)
-							.replaceAll('https://scrapscache.com/', canonical)
-							.replaceAll('https://scrapscache.com', origin);
-					}
-				});
+			: routing === 'dashboard'
+				? new Response(null, { status: 303, headers: { location: '/admin/' } })
+				: await resolve(event, {
+						transformPageChunk: ({ html }) => {
+							const origin = configuredOrigin() ?? event.url.origin;
+							const canonical = `${origin}${event.url.pathname}`;
+							return withOnePageMeta(html)
+								.replaceAll('https://scrapscache.com/og-preview.png', `${origin}/og-preview.png`)
+								.replaceAll('https://scrapscache.com/', canonical)
+								.replaceAll('https://scrapscache.com', origin);
+						}
+					});
 
 	for (const [name, value] of SECURITY_HEADERS) response.headers.set(name, value);
 	if (!OPENER_KEPT.has(event.url.pathname))

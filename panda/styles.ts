@@ -2026,11 +2026,6 @@ export const commandPaletteStyles = {
 	})
 };
 
-/**
- * The settings popover: three labelled sections, a segmented control per
- * appearance choice, and a device row that carries its status in a sentence
- * under its label. Phone sizes get 44 px controls and 48 px rows.
- */
 /** The phone's Labels screen, over the whole screen like the palette. */
 export const labelsScreenStyles = {
 	panel: css({ overflow: 'hidden' }),
@@ -2084,6 +2079,11 @@ export const placePickerStyles = {
 	edit: css({ borderTopWidth: 'hairline', borderColor: 'scrapscache.border', mt: 'xs', pt: '2xs' })
 };
 
+/**
+ * The settings popover: three labelled sections, a segmented control per
+ * appearance choice, and a device row that carries its status in a sentence
+ * under its label. Phone sizes get 44 px controls and 48 px rows.
+ */
 export const settingsMenuStyles = {
 	positioner: css({ zIndex: 30 }),
 	// Zag puts the room under the trigger in --available-height; the app frame clips

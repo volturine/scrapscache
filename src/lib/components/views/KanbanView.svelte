@@ -39,13 +39,7 @@
 	import type { Note } from '#lib/types.js';
 	import { css, cx } from 'styled-system/css';
 	import { vstack } from 'styled-system/patterns';
-	import {
-		iconSizeSm as iconSm,
-		kanbanViewStyles,
-		popover,
-		viewHeading,
-		viewPage
-	} from '$panda/styles';
+	import { iconSizeSm as iconSm, kanbanViewStyles, popover, viewHeading } from '$panda/styles';
 	import {
 		button,
 		dialog,
@@ -442,7 +436,7 @@
 	</Menu.Root>
 {/snippet}
 
-<div class={viewPage}>
+<div class={k.page}>
 	<h1 class={viewHeading}>Kanban</h1>
 	<div class={k.controls}>
 		{#if renamingBoard}

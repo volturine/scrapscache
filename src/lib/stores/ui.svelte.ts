@@ -113,6 +113,8 @@ export class UIStore {
 	settingsOpen = $state(false);
 	/** The command palette: Mod+K, the search field's shortcut, or the phone's Search tab. */
 	paletteOpen = $state(false);
+	/** The phone's Labels screen, opened from the title's picker. */
+	labelsOpen = $state(false);
 	/** The sync (cloud) dialog. The top bar shows it; anything that points to Sync opens it. */
 	syncOpen = $state(false);
 	/** Ephemeral calendar selection used when creating notes from the reminders view. */

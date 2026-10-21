@@ -42,7 +42,14 @@
 
 	const { closeNote } = useEditorActions();
 
-	let { onNavigate }: { onNavigate?: () => void } = $props();
+	let {
+		onNavigate,
+		labelsOnly = false
+	}: {
+		onNavigate?: () => void;
+		/** The phone's Labels screen: its labels to make, rename and delete, without the places. */
+		labelsOnly?: boolean;
+	} = $props();
 
 	let query = $state('');
 
@@ -304,25 +311,30 @@
 	})}
 	transition:fly={{ x: -20, duration: 120 }}
 >
-	<nav class={vstack({ gap: '3xs', flexShrink: 0, w: 'full' })} aria-label="Main navigation">
-		{#each navItems as item (item.view)}
-			{@const NavIcon = item.icon}
-			<button
-				type="button"
-				onclick={() => navigate(item.view)}
-				class={[menuRow, sidebarRow({ navigation: true, active: isActive(item.view), wide: true })]}
-			>
-				<span class={sidebarIcon({ iconTone: 'nav' })} aria-hidden="true">
-					<NavIcon size={18} strokeWidth={1.75} />
-				</span>
-				<span class={sidebarStyles.navLabel}>{item.label}</span>
-			</button>
-		{/each}
-	</nav>
+	{#if !labelsOnly}
+		<nav class={vstack({ gap: '3xs', flexShrink: 0, w: 'full' })} aria-label="Main navigation">
+			{#each navItems as item (item.view)}
+				{@const NavIcon = item.icon}
+				<button
+					type="button"
+					onclick={() => navigate(item.view)}
+					class={[
+						menuRow,
+						sidebarRow({ navigation: true, active: isActive(item.view), wide: true })
+					]}
+				>
+					<span class={sidebarIcon({ iconTone: 'nav' })} aria-hidden="true">
+						<NavIcon size={18} strokeWidth={1.75} />
+					</span>
+					<span class={sidebarStyles.navLabel}>{item.label}</span>
+				</button>
+			{/each}
+		</nav>
+	{/if}
 
 	<section
 		class={css({
-			mt: 'lg',
+			mt: labelsOnly ? 0 : 'lg',
 			w: 'full',
 			minH: 0,
 			flex: '1',
@@ -332,20 +344,37 @@
 		data-labels-edit
 		aria-label="Labels"
 	>
-		<div class={hstack({ mb: '2xs', h: '2rem', gap: 'sm', pl: 'lg', pr: 'sm', flexShrink: 0 })}>
-			<span class={css({ minW: 0, flex: '1', textStyle: 'overline' })}>Labels</span>
+		{#if labelsOnly}
+			<!-- The Labels screen names itself in its own bar; making a label leads its list. -->
 			<button
 				type="button"
-				class={iconButton({ size: 'compact', variant: 'ghost' })}
-				title="New label"
+				class={[menuRow, sidebarRow({ wide: true }), css({ flexShrink: 0, mb: '3xs' })]}
 				aria-label="New label"
 				aria-expanded={creating}
 				onclick={toggleCreating}
 				data-sidebar-stay-open
 			>
-				<Plus size={16} strokeWidth={1.75} aria-hidden="true" />
+				<span class={sidebarIcon({ iconTone: 'nav' })} aria-hidden="true">
+					<Plus size={18} strokeWidth={1.75} />
+				</span>
+				<span class={sidebarStyles.navLabel}>New label</span>
 			</button>
-		</div>
+		{:else}
+			<div class={hstack({ mb: '2xs', h: '2rem', gap: 'sm', pl: 'lg', pr: 'sm', flexShrink: 0 })}>
+				<span class={css({ minW: 0, flex: '1', textStyle: 'overline' })}>Labels</span>
+				<button
+					type="button"
+					class={iconButton({ size: 'compact', variant: 'ghost' })}
+					title="New label"
+					aria-label="New label"
+					aria-expanded={creating}
+					onclick={toggleCreating}
+					data-sidebar-stay-open
+				>
+					<Plus size={16} strokeWidth={1.75} aria-hidden="true" />
+				</button>
+			</div>
+		{/if}
 
 		{#if filterShown}
 			<div class={sidebarStyles.searchWrap}>

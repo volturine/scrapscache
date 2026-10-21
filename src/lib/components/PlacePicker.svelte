@@ -103,12 +103,12 @@
 					</div>
 				{/if}
 			</Menu.RadioItemGroup>
-			<!-- Making, renaming and deleting labels stays in the labels panel. -->
+			<!-- Making, renaming and deleting labels has its own screen. -->
 			<div class={styles.edit}>
 				<Menu.Item
 					value="edit-labels"
 					class={itemClass}
-					onSelect={() => (uiStore.sidebarOpen = true)}
+					onSelect={() => (uiStore.labelsOpen = true)}
 				>
 					<Pencil class={styles.icon} aria-hidden="true" />
 					<span class={styles.name}>Edit labels…</span>

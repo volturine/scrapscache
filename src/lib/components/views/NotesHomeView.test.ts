@@ -60,17 +60,23 @@ describe('NotesHomeView', () => {
 		render(NotesHomeView);
 
 		expect(screen.getByText('No notes match “retro”')).toBeTruthy();
-		expect(screen.getByText('Archived and deleted notes are not searched here.')).toBeTruthy();
-		expect(screen.getByRole('button', { name: 'Look in Archive' })).toBeTruthy();
-		expect(screen.queryByRole('button', { name: 'Look in Trash' })).toBeNull();
+		expect(
+			screen.getByText('Searched Notes. There is 1 match in Archive and none in Trash.')
+		).toBeTruthy();
+		expect(screen.getByRole('button', { name: 'Show 1 in Archive' })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: /in Trash$/ })).toBeNull();
+		// The query that found nothing is offered as the title of the note that should exist.
+		expect(screen.getByRole('button', { name: 'Create a note titled “retro”' })).toBeTruthy();
 	});
 
 	it('says so, with nothing to follow, when no place matches', () => {
 		uiStore.setView('notes', null, 'retro');
 		render(NotesHomeView);
 
-		expect(screen.getByText('Archive and Trash have no matches either.')).toBeTruthy();
-		expect(screen.queryByRole('button', { name: /^Look in/ })).toBeNull();
+		expect(
+			screen.getByText('Searched Notes. Archive and Trash have no matches either.')
+		).toBeTruthy();
+		expect(screen.queryByRole('button', { name: /^Show / })).toBeNull();
 	});
 
 	it('carries the query into Trash at once', async () => {
@@ -78,7 +84,7 @@ describe('NotesHomeView', () => {
 		uiStore.setView('notes', null, 'retro');
 		render(NotesHomeView);
 
-		await fireEvent.click(screen.getByRole('button', { name: 'Look in Trash' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Show 1 in Trash' }));
 
 		expect(navigation.goto).toHaveBeenCalledWith('/trash');
 		expect(uiStore.view).toBe('trash');

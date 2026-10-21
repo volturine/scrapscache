@@ -374,6 +374,36 @@ test('extra cursors look like the native caret and selection', async ({ page }) 
 	expect(look.selection).toBe(look.token);
 });
 
+test('search chips narrow the feed, matches are marked, and a miss offers a new note', async ({
+	page
+}) => {
+	await openEmptyApp(page);
+	await createNote(page, 'Lisbon trip', 'Tram 28 early, before the crowds');
+	await createNote(page, 'Porto', 'Port wine by the river');
+
+	const search = page.getByPlaceholder('Search', { exact: true });
+	await search.fill('tram');
+	await expect(noteCard(page, 'Lisbon trip')).toBeVisible();
+	await expect(page.locator('[data-search-count]')).toHaveText('1 note');
+	// Why it matched: the query's text is marked in the card.
+	await expect(noteCard(page, 'Lisbon trip').locator('mark')).toHaveText('Tram');
+
+	// A chip that leaves nothing says so; clearing the chips brings the match back.
+	await page.getByRole('button', { name: 'Colour' }).click();
+	await page.getByRole('menuitemradio', { name: 'Blue', exact: true }).click();
+	await expect(page.getByRole('button', { name: 'Colour: Blue' })).toBeVisible();
+	await expect(page.getByText('No notes match “tram” with these filters')).toBeVisible();
+	await page.getByRole('button', { name: 'Clear filters' }).first().click();
+	await expect(noteCard(page, 'Lisbon trip')).toBeVisible();
+
+	// A miss offers the query as a new note's title.
+	await search.fill('retro');
+	await page.getByRole('button', { name: 'Create a note titled “retro”' }).click();
+	await expect(editor(page)).toBeVisible();
+	await expect(editor(page).getByPlaceholder('Title')).toHaveValue('retro');
+	await expect(search).toHaveValue('');
+});
+
 test('a click outside the … menu closes it and still opens the note under the pointer', async ({
 	page
 }) => {
@@ -507,7 +537,7 @@ test('a search that finds nothing in Notes looks in Archive with the same query'
 	const search = page.getByPlaceholder('Search', { exact: true });
 	await search.fill('retro');
 	await expect(page.getByText('No notes match “retro”', { exact: true })).toBeVisible();
-	await page.getByRole('button', { name: 'Look in Archive' }).click();
+	await page.getByRole('button', { name: /^Show [0-9]+ in Archive$/ }).click();
 
 	await expect(page).toHaveURL(/\/archive$/);
 	await expect(search).toHaveValue('retro');

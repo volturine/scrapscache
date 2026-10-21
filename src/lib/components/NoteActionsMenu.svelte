@@ -13,7 +13,7 @@
 	import { notesStore } from '#lib/stores/notes.svelte.js';
 	import { selectionStore } from '#lib/stores/selection.svelte.js';
 	import { reminderStore } from '#lib/stores/reminders.svelte.js';
-	import { NOTE_COLOR_ORDER, type Note, type NoteColor } from '#lib/types.js';
+	import { NOTE_COLOR_ORDER, type Note, type NoteColor, NOTE_COLOR_NAMES } from '#lib/types.js';
 	import { writeClipboardText } from '#lib/utils.js';
 	import { noteToPlainText } from '#lib/checklistBody.js';
 	import ReminderPicker from './ReminderPicker.svelte';
@@ -53,20 +53,6 @@
 	let reminderPicker = $state<ReminderPicker | undefined>();
 	let labelDialogOpen = $state(false);
 	const itemClass = cx(menuItem({ density: 'compact' }), styles.item);
-	const COLOR_NAMES: Record<NoteColor, string> = {
-		default: 'Default',
-		red: 'Red',
-		orange: 'Orange',
-		yellow: 'Yellow',
-		green: 'Green',
-		teal: 'Teal',
-		blue: 'Blue',
-		darkblue: 'Dark blue',
-		purple: 'Purple',
-		pink: 'Pink',
-		brown: 'Brown',
-		gray: 'Grey'
-	};
 
 	function close() {
 		open = false;
@@ -283,8 +269,8 @@
 										value={color}
 										closeOnSelect={false}
 										class={cx(styles.swatch, noteSurface({ color }))}
-										aria-label={COLOR_NAMES[color]}
-										title={COLOR_NAMES[color]}
+										aria-label={NOTE_COLOR_NAMES[color]}
+										title={NOTE_COLOR_NAMES[color]}
 									>
 										<Menu.ItemIndicator class={styles.swatchCheck}>
 											<Check size={12} aria-hidden="true" />

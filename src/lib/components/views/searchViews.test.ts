@@ -156,6 +156,35 @@ describe('LabelView search', () => {
 	});
 });
 
+describe('the chips on an empty place', () => {
+	it('stay with a query carried into an archive that holds nothing', () => {
+		notesStore.notes = [note({ id: 'n', title: 'Welcome' })];
+		uiStore.setView('archive', null, 'Welcome', { label: null, color: 'blue', type: null });
+		render(ArchiveView);
+
+		// The In chip is the way back to Notes with the query and chips intact.
+		expect(screen.getByRole('button', { name: 'In: Archive' })).toBeTruthy();
+		expect(screen.getByRole('button', { name: 'Colour: Blue' })).toBeTruthy();
+		expect(screen.getByRole('button', { name: 'Clear filters' })).toBeTruthy();
+		expect(document.querySelector('[data-search-count]')?.textContent).toBe('0 notes');
+	});
+
+	it('stay with a query in a trash that holds nothing, and on a label with no notes', () => {
+		uiStore.setView('trash', null, 'retro');
+		const trash = render(TrashView);
+		expect(screen.getByRole('button', { name: 'In: Trash' })).toBeTruthy();
+		trash.unmount();
+
+		notesStore.labels = [{ id: 'label-1', name: 'Shopping', createdAt: 1, updatedAt: 1 }];
+		searchIn('label', 'retro', 'label-1');
+		render(LabelView);
+		expect(screen.getByRole('button', { name: 'Label' })).toBeTruthy();
+		expect(
+			screen.getByText('Create a note to start collecting ideas under this label.')
+		).toBeTruthy();
+	});
+});
+
 describe('a search in an empty view', () => {
 	it.each([
 		['archive', ArchiveView, 'Archive notes you want to keep without showing them in Notes.'],
@@ -231,9 +260,13 @@ describe('a search with no match here', () => {
 		searchIn('archive', 'needle');
 		render(ArchiveView);
 
-		expect(screen.getByRole('button', { name: 'Look in Notes' })).toBeTruthy();
-		expect(screen.getByRole('button', { name: 'Look in Trash' })).toBeTruthy();
-		expect(screen.getByText('Only archived notes are searched here.')).toBeTruthy();
+		expect(screen.getByRole('button', { name: 'Show 1 in Notes' })).toBeTruthy();
+		expect(screen.getByRole('button', { name: 'Show 1 in Trash' })).toBeTruthy();
+		expect(
+			screen.getByText('Searched Archive. There is 1 match in Notes and 1 in Trash.')
+		).toBeTruthy();
+		// Only Notes and a label offer to create the note; the archive and trash do not.
+		expect(screen.queryByRole('button', { name: /^Create a note/ })).toBeNull();
 	});
 
 	it('offers the rest of Notes from a label', () => {
@@ -245,7 +278,7 @@ describe('a search with no match here', () => {
 		searchIn('label', 'needle', 'label-1');
 		render(LabelView);
 
-		expect(screen.getByRole('button', { name: 'Look in Notes' })).toBeTruthy();
-		expect(screen.queryByRole('button', { name: 'Look in Archive' })).toBeNull();
+		expect(screen.getByRole('button', { name: 'Show 1 in Notes' })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: /in Archive$/ })).toBeNull();
 	});
 });

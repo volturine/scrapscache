@@ -8,7 +8,9 @@
 	import NoteBodyDisplay from './NoteBodyDisplay.svelte';
 	import ReminderLabel from './ReminderLabel.svelte';
 	import { EyeOff } from '@lucide/svelte';
-	import { secretPreviewCaption } from '$panda/styles';
+	import { searchStyles, secretPreviewCaption } from '$panda/styles';
+	import { matchSegments } from '#lib/search.js';
+	import { uiStore } from '#lib/stores/ui.svelte.js';
 	import { cx, css } from 'styled-system/css';
 	import { badge, noteCard, noteSurface } from 'styled-system/recipes';
 
@@ -34,6 +36,14 @@
 	const titleOnly = $derived(note.title.trim().length > 0 && !(note.body ?? '').trim());
 	let labelsOwnsPointer: number | null = null;
 </script>
+
+<!-- The committed search, marked where the card matched it. -->
+{#snippet marked(text: string)}
+	{#each matchSegments(text, uiStore.search) as segment, index (index)}
+		{#if segment.match}<mark class={searchStyles.mark}>{segment.text}</mark
+			>{:else}{segment.text}{/if}
+	{/each}
+{/snippet}
 
 <div
 	class={cx(
@@ -87,7 +97,7 @@
 						note.secret && css({ px: 'md', pt: note.reminder == null ? 'md' : 0, pb: 'sm' })
 					)}
 				>
-					{note.title}
+					{@render marked(note.title)}
 				</h3>
 			{/if}
 			<div
@@ -168,7 +178,7 @@
 			}}
 		>
 			{#each labelsForNote as label (label.id)}
-				<span class={badge()}>{label.name}</span>
+				<span class={badge()}>{@render marked(label.name)}</span>
 			{/each}
 		</div>
 	{/if}

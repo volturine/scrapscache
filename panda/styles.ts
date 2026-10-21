@@ -713,6 +713,58 @@ export const tooltip = css({
 	transition: 'opacity 150ms ease'
 });
 
+/** The chips under the search field, the count beside them, and the mark on matched text. */
+export const searchStyles = {
+	bar: css({ display: 'flex', alignItems: 'center', gap: 'md', mb: 'lg', px: 'sm', minW: 0 }),
+	// On a phone the chips scroll sideways rather than wrap under the count.
+	chips: css({
+		display: 'flex',
+		alignItems: 'center',
+		gap: 'xs',
+		flex: '1',
+		minW: 0,
+		overflowX: 'auto',
+		py: '2xs'
+	}),
+	chip: css({
+		...rowCenter,
+		gap: '2xs',
+		flexShrink: 0,
+		h: '2rem',
+		px: 'md',
+		rounded: 'pill',
+		borderWidth: 'hairline',
+		borderColor: 'scrapscache.border',
+		bg: 'scrapscache.surface',
+		color: 'scrapscache.text',
+		textStyle: 'label',
+		whiteSpace: 'nowrap',
+		cursor: 'pointer',
+		transition: 'background-color 120ms ease, border-color 120ms ease, color 120ms ease',
+		_hoverable: { bg: 'scrapscache.interactiveHover' },
+		_touch: { h: '2.75rem' },
+		'&[data-set]': {
+			bg: 'scrapscache.accentSubtle',
+			borderColor: 'scrapscache.accent',
+			color: 'scrapscache.accent'
+		}
+	}),
+	chipGlyph: css({ ...iconXs, color: 'inherit' }),
+	count: css({ textStyle: 'caption', ...mutedText, whiteSpace: 'nowrap', flexShrink: 0 }),
+	menu: css({ minW: '12rem', maxH: 'min(60vh, 24rem)', overflowY: 'auto', py: '2xs' }),
+	item: css({ gap: 'sm' }),
+	swatch: css({
+		w: '1rem',
+		h: '1rem',
+		rounded: 'full',
+		borderWidth: 'hairline',
+		borderColor: 'scrapscache.borderSubtle',
+		flexShrink: 0
+	}),
+	/** Why a card matched: the query's text, in the find bar's match colour. */
+	mark: css({ bg: 'scrapscache.warningSubtle', color: 'inherit', rounded: 'compact' })
+};
+
 export const sectionHeaderStyles = {
 	row: hstack({ mb: 'md', gap: 'md', px: 'sm' }),
 	label: css({ textStyle: 'overline' }),

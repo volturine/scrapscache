@@ -7,10 +7,13 @@
 		noteActionsStyles,
 		trashCountdownRow,
 		secretPreviewCaption,
-		noteSelectStyles
+		noteSelectStyles,
+		searchStyles
 	} from '$panda/styles';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
 	import { selectionStore } from '#lib/stores/selection.svelte.js';
+	import { matchSegments } from '#lib/search.js';
+	import { uiStore } from '#lib/stores/ui.svelte.js';
 	import type { Note } from '#lib/types.js';
 	import { formatReminder, isReminderOverdue, noteActivity, trashCountdown } from '#lib/utils.js';
 	import { appClock } from '#lib/appClock.svelte.js';
@@ -262,6 +265,14 @@
 	const titleOnly = $derived(note.title.trim().length > 0 && !(note.body ?? '').trim());
 </script>
 
+<!-- The committed search, marked where the card matched it. -->
+{#snippet marked(text: string)}
+	{#each matchSegments(text, uiStore.search) as segment, index (index)}
+		{#if segment.match}<mark class={searchStyles.mark}>{segment.text}</mark
+			>{:else}{segment.text}{/if}
+	{/each}
+{/snippet}
+
 <div class={cx(card.cardOuter, css({ _motionSafe: { animation: 'cardIn' } }))}>
 	{#if offsetX < 0}
 		<div class={card.swipeRestore}>
@@ -362,7 +373,7 @@
 									note.secret && css({ px: 'md', pt: 'md', pb: 'sm' })
 								)}
 							>
-								{note.title}
+								{@render marked(note.title)}
 							</h3>
 						{/if}
 						<div
@@ -432,7 +443,7 @@
 			>
 				{#each labelsForNote as label (label.id)}
 					<span class={badge()}>
-						{label.name}
+						{@render marked(label.name)}
 					</span>
 				{/each}
 			</div>

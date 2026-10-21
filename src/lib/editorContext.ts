@@ -3,7 +3,7 @@ import { getContext, setContext } from 'svelte';
 
 export type EditorActions = {
 	openNote: (id: string) => void;
-	startNewNote: () => void;
+	startNewNote: (seed?: { title?: string; body?: string }) => void;
 	closeNote: () => void;
 };
 

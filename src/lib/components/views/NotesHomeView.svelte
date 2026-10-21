@@ -6,7 +6,9 @@
 	import { notesStore } from '#lib/stores/notes.svelte.js';
 	import { uiStore } from '#lib/stores/ui.svelte.js';
 	import { useEditorActions } from '#lib/editorContext.js';
-	import { noMatchCopy, placesWithMatches } from '#lib/searchElsewhere.js';
+	import { matchesElsewhere, noMatchCopy } from '#lib/searchElsewhere.js';
+	import { activeFilterCount, noteCount } from '#lib/search.js';
+	import SearchFilterBar from '#lib/components/SearchFilterBar.svelte';
 	import EmptyState from '#lib/components/EmptyState.svelte';
 	import { StickyNote } from '@lucide/svelte';
 	import { css } from 'styled-system/css';
@@ -17,19 +19,35 @@
 	const pinned = $derived(notesStore.pinnedNotes);
 	const others = $derived(notesStore.unpinnedNotes);
 	const search = $derived(uiStore.searchFor('notes'));
-	const filteredPinned = $derived(search ? notesStore.search(search, pinned) : pinned);
-	const filteredOthers = $derived(search ? notesStore.search(search, others) : others);
-	const noMatches = $derived(
-		Boolean(search) && filteredPinned.length === 0 && filteredOthers.length === 0
+	const filters = $derived(uiStore.searchFilters);
+	const filteredPinned = $derived(search ? notesStore.search(search, pinned, filters) : pinned);
+	const filteredOthers = $derived(search ? notesStore.search(search, others, filters) : others);
+	/** Archived matches, listed under the active ones when the In chip says "Notes and Archive". */
+	const archivedMatches = $derived(
+		search && uiStore.searchArchiveToo
+			? notesStore.search(search, notesStore.archivedNotes, filters)
+			: []
 	);
-	const places = $derived(noMatches ? placesWithMatches('notes', search) : []);
+	const found = $derived(filteredPinned.length + filteredOthers.length + archivedMatches.length);
+	const noMatches = $derived(Boolean(search) && found === 0);
+	const elsewhere = $derived(noMatches ? matchesElsewhere('notes', search, filters) : []);
+	const announcement = $derived(
+		!search
+			? ''
+			: noMatches
+				? noMatchCopy('notes', search, elsewhere, activeFilterCount(filters)).announcement
+				: `${noteCount(found)} match “${search.trim()}”.`
+	);
 </script>
 
 <div class={viewPage}>
 	<h1 class={viewHeading}>Notes</h1>
+	{#if search}
+		<SearchFilterBar here="notes" count={found} />
+	{/if}
 	{#if noMatches}
-		<SearchNoMatches here="notes" query={search} {places} />
-	{:else if filteredPinned.length === 0 && filteredOthers.length === 0}
+		<SearchNoMatches here="notes" query={search} {elsewhere} />
+	{:else if found === 0}
 		<EmptyState
 			icon={StickyNote}
 			tagline="Private, offline-first notes with optional end-to-end encrypted sync."
@@ -53,6 +71,15 @@
 			{/if}
 			<NotesFeed notes={filteredOthers} onOpen={openEditor} />
 		{/if}
+
+		{#if archivedMatches.length > 0}
+			<SectionHeader
+				label="In Archive"
+				count={archivedMatches.length}
+				class={filteredPinned.length + filteredOthers.length > 0 ? css({ mt: '2xl' }) : ''}
+			/>
+			<NotesFeed notes={archivedMatches} onOpen={openEditor} />
+		{/if}
 	{/if}
-	<SearchAnnouncer message={noMatches ? noMatchCopy('notes', search, places).announcement : ''} />
+	<SearchAnnouncer message={announcement} />
 </div>

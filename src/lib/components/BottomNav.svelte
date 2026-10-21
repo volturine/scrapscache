@@ -19,7 +19,7 @@
 >
 	<button
 		type="button"
-		onclick={startNewNote}
+		onclick={() => startNewNote()}
 		class={cx(
 			iconButton({ variant: 'ghost', size: 'lg' }),
 			css({

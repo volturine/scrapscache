@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => {
 				allowed: true
 			})
 		),
+		refundSyncChurn: vi.fn(async (_accountId: string, _mutations: number) => undefined),
 		accountRateLimit: vi.fn(async (): Promise<number | null> => null),
 		enterSyncRequest: vi.fn(() => vi.fn()),
 		enterSyncBody: vi.fn(() => vi.fn()),
@@ -49,6 +50,7 @@ vi.mock('#lib/server/syncAuth.js', () => ({
 }));
 vi.mock('#lib/server/rateLimit.js', () => ({
 	chargeSyncChurn: mocks.chargeSyncChurn,
+	refundSyncChurn: mocks.refundSyncChurn,
 	clientAddress: () => '127.0.0.1',
 	enterSyncRequest: mocks.enterSyncRequest,
 	enterSyncBody: mocks.enterSyncBody,
@@ -201,12 +203,52 @@ describe('sync delta route', () => {
 		expect(mocks.chargeSyncChurn).not.toHaveBeenCalled();
 	});
 
-	it('refuses writes once the account’s churn allowance is spent, before taking a sync slot', async () => {
+	it('refuses writes once the account’s churn allowance is spent, and frees the slot', async () => {
+		const release = vi.fn();
+		mocks.enterSyncRequest.mockReturnValueOnce(release);
 		mocks.chargeSyncChurn.mockResolvedValueOnce({ allowed: false, retryAfterSeconds: 60 });
 		const response = await post({ envelopes: [validEnvelope], deleteSlots: [] });
 		expect(response.status).toBe(429);
-		expect(mocks.enterSyncRequest).not.toHaveBeenCalled();
 		expect(mocks.sync).not.toHaveBeenCalled();
+		expect(release).toHaveBeenCalledOnce();
+	});
+
+	it('charges nothing for a round turned away busy', async () => {
+		mocks.enterSyncRequest.mockReturnValueOnce(null as never);
+		expect((await post({ envelopes: [validEnvelope] })).status).toBe(503);
+		expect(mocks.chargeSyncChurn).not.toHaveBeenCalled();
+	});
+
+	it('refunds the writes of a round that did not apply them', async () => {
+		mocks.sync.mockReturnValueOnce({
+			cursor: 4,
+			envelopes: [],
+			conflicts: [validEnvelope],
+			hasMore: false,
+			reset: false,
+			writesAccepted: false
+		});
+		const response = await post({
+			envelopes: [validEnvelope],
+			deleteSlots: [{ id: 'deleted-id', slot: 'b'.repeat(64) }]
+		});
+		expect(response.status).toBe(200);
+		expect(mocks.refundSyncChurn).toHaveBeenCalledWith(accountId, 2);
+	});
+
+	it('refunds the writes of a round the store failed', async () => {
+		mocks.sync.mockImplementationOnce(() => {
+			throw new Error('store down');
+		});
+		vi.spyOn(console, 'error').mockImplementation(() => undefined);
+		expect((await post({ envelopes: [validEnvelope] })).status).toBe(503);
+		expect(mocks.refundSyncChurn).toHaveBeenCalledWith(accountId, 1);
+	});
+
+	it('keeps the charge for a round that applied its writes', async () => {
+		await post({ envelopes: [validEnvelope] });
+		expect(mocks.chargeSyncChurn).toHaveBeenCalledWith(accountId, 1);
+		expect(mocks.refundSyncChurn).not.toHaveBeenCalled();
 	});
 
 	it.each([1, 'yes', null])('rejects a continues flag of %s', async (continues) => {

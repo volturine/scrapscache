@@ -14,9 +14,10 @@ export const RATE_BUCKET_STALE_MS = 10 * 60_000;
 /**
  * Each account's sync writes, charged one token per upload or delete. Sync runs
  * after five quiet seconds, so writing 1–10 notes an hour is roughly 10–60 writes
- * and a heavy day stays under a thousand. The burst holds a first upload of a
- * large library; after it, writes refill at 2,000 a day, which ordinary editing
- * never meets and which caps round-the-clock churn.
+ * and a heavy day stays under a thousand. The burst holds a first upload of up to
+ * 10,000 records; a larger one continues at the refill rate, 2,000 a day, which
+ * ordinary editing never meets and which caps round-the-clock churn. There is no
+ * per-account override.
  */
 export const SYNC_CHURN_POLICY: RateLimitPolicy = {
 	capacity: 10_000,
@@ -74,6 +75,15 @@ export class TokenBucketLimiter {
 			return { allowed: false, retryAfterSeconds: 1 };
 		}
 	}
+
+	/** Gives back `amount` tokens taken for work that did not happen, up to the capacity. */
+	async refund(key: string, policy: RateLimitPolicy, amount: number): Promise<void> {
+		await this.db.ready;
+		await this.db.ops.execute({
+			sql: 'UPDATE rate_buckets SET tokens = min(?, tokens + ?) WHERE bucket_key = ?',
+			args: [policy.capacity, amount, key]
+		});
+	}
 }
 
 let publicLimiter: TokenBucketLimiter | undefined;
@@ -124,6 +134,30 @@ export function chargeSyncChurn(
 		now,
 		mutations
 	);
+}
+
+/**
+ * Returns a round's charge when its writes were not applied: refused for a
+ * conflict, deferred behind downloads, or lost to a store failure. The client
+ * sends them again, and they should be charged once. A failed refund only
+ * over-charges, so it is logged rather than failing the round.
+ */
+export async function refundSyncChurn(accountId: string, mutations: number): Promise<void> {
+	try {
+		await getPublicApiLimiter().refund(
+			`${SYNC_CHURN_PREFIX}${accountId}`,
+			SYNC_CHURN_POLICY,
+			mutations
+		);
+	} catch (error) {
+		console.error(
+			JSON.stringify({
+				level: 'error',
+				event: 'sync_churn_refund_failed',
+				message: error instanceof Error ? error.message : 'Refund failed'
+			})
+		);
+	}
 }
 
 /**

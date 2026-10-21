@@ -182,6 +182,22 @@ describe('daily sync churn', () => {
 	});
 });
 
+describe('refunds', () => {
+	it('gives back what a round took, and never more than the bucket holds', async () => {
+		const limiter = new TokenBucketLimiter(testDb());
+		const policy = { capacity: 10, refillWindowMs: 86_400_000 };
+		expect((await limiter.check('sync-churn:a', policy, 0, 8)).allowed).toBe(true);
+		expect((await limiter.check('sync-churn:a', policy, 0, 8)).allowed).toBe(false);
+
+		await limiter.refund('sync-churn:a', policy, 8);
+		expect((await limiter.check('sync-churn:a', policy, 0, 8)).allowed).toBe(true);
+
+		await limiter.refund('sync-churn:a', policy, 50);
+		expect((await limiter.check('sync-churn:a', policy, 0, 10)).allowed).toBe(true);
+		expect((await limiter.check('sync-churn:a', policy, 0, 1)).allowed).toBe(false);
+	});
+});
+
 describe('admin api limiter', () => {
 	it('throttles each address to a conservative budget, independently per address', async () => {
 		const now = 0;

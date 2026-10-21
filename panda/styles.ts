@@ -2028,55 +2028,10 @@ export const commandPaletteStyles = {
 
 /** The phone's Labels screen, over the whole screen like the palette. */
 export const labelsScreenStyles = {
-	panel: css({ overflow: 'hidden' }),
-	bar: hstack({
-		flexShrink: 0,
-		h: 'var(--app-topbar-height)',
-		gap: 'xs',
-		px: 'sm',
-		borderBottomWidth: 'hairline',
-		borderColor: 'scrapscache.border'
-	}),
-	title: css({ textStyle: 'heading', ...flexFill, ...truncateText }),
-	hint: css({ flexShrink: 0, px: 'lg', pt: 'sm', textStyle: 'caption', ...mutedText }),
-	body: css({ ...flexFill, display: 'flex', flexDirection: 'column', overflow: 'hidden' })
-};
-
-/** The phone top bar's title, and its menu of places and labels. */
-export const placePickerStyles = {
-	// As wide as the name, so its highlight hugs it; the margin keeps the bar's buttons right.
-	trigger: hstack({
-		flex: '0 1 auto',
-		minW: 0,
-		mr: 'auto',
-		gap: '2xs',
-		h: '2.5rem',
-		px: 'xs',
-		rounded: 'control',
-		cursor: 'pointer',
-		outline: 'none',
-		color: 'scrapscache.text',
-		_hoverable: { bg: 'scrapscache.interactiveHover' },
-		_focusVisible: { boxShadow: '0 0 0 2px token(colors.scrapscache.focus)' }
-	}),
-	title: css({ minW: 0, textStyle: 'heading', ...truncateText }),
-	chevron: css({ ...iconSm, flexShrink: 0, ...mutedText, transition: 'transform 150ms ease' }),
-	chevronOpen: css({ transform: 'rotate(180deg)' }),
-	positioner: css({ zIndex: 30 }),
-	content: css({
-		minW: '15rem',
-		maxW: 'calc(100vw - 1rem)',
-		maxH: 'var(--available-height)',
-		overflowY: 'auto',
-		overscrollBehavior: 'contain',
-		py: '2xs'
-	}),
-	item: css({ gap: 'sm' }),
-	icon: css({ ...iconSm, flexShrink: 0, ...mutedText }),
-	name: css({ ...flexFill, ...truncateText }),
-	check: css({ ...iconSm, color: 'scrapscache.accent' }),
-	count: css({ flexShrink: 0, textStyle: 'caption', ...mutedText }),
-	edit: css({ borderTopWidth: 'hairline', borderColor: 'scrapscache.border', mt: 'xs', pt: '2xs' })
+	// The feed's full height, so the label list scrolls inside it and Archive and
+	// Trash stay in reach at the foot of the screen.
+	screen: css({ h: 'full', display: 'flex', flexDirection: 'column', overflow: 'hidden' }),
+	hint: css({ flexShrink: 0, px: 'lg', pt: 'sm', textStyle: 'caption', ...mutedText })
 };
 
 /**
@@ -2886,6 +2841,16 @@ export const sidebarIcon = cva({
 
 export const sidebarStyles = {
 	navLabel: css({ ...flexFill, ...truncateText, textAlign: 'left' }),
+	/** Archive and Trash under the phone's label list, set off from it by a rule. */
+	labelsPlaces: vstack({
+		gap: '3xs',
+		flexShrink: 0,
+		w: 'full',
+		mt: 'sm',
+		pt: 'sm',
+		borderTopWidth: 'hairline',
+		borderColor: 'scrapscache.border'
+	}),
 	labelInput: css({
 		flex: '1',
 		textStyle: 'button',
@@ -3278,6 +3243,8 @@ export const historyStyles = {
 };
 
 export const topbarStyles = {
+	/** The phone bar's view name; the buttons after it keep to the right. */
+	phoneTitle: css({ ...flexFill, px: 'xs', textStyle: 'heading', ...truncateText }),
 	markdownLabel: css({ minW: 0, flex: '1' }),
 	markdownCheck: css({
 		...gridCenter,

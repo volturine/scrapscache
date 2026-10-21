@@ -17,8 +17,6 @@
 	import Tooltip from './Tooltip.svelte';
 	import SettingsMenu from './SettingsMenu.svelte';
 	import CommandPalette from './CommandPalette.svelte';
-	import PlacePicker from './PlacePicker.svelte';
-	import LabelsScreen from './LabelsScreen.svelte';
 	import SelectionBar from './SelectionBar.svelte';
 	import { selectionStore } from '#lib/stores/selection.svelte.js';
 	import BackupPassphraseDialog from './BackupPassphraseDialog.svelte';
@@ -72,9 +70,11 @@
 		trash: 'Trash'
 	};
 	const viewTitle = $derived(
-		uiStore.view === 'label'
-			? (notesStore.labelsById.get(uiStore.activeLabelId ?? '')?.name ?? 'Label')
-			: VIEW_TITLES[uiStore.view]
+		uiStore.labelsOpen
+			? 'Labels'
+			: uiStore.view === 'label'
+				? (notesStore.labelsById.get(uiStore.activeLabelId ?? '')?.name ?? 'Label')
+				: VIEW_TITLES[uiStore.view]
 	);
 
 	/**
@@ -362,9 +362,8 @@
 		<!-- The bar works on the picked notes until the selection is let go. -->
 		<SelectionBar />
 	{:else if mobile.current}
-		<!-- A phone has the tab bar for its places: the bar names the view, the
-		     Search tab opens the palette, and the title picks any other place or label. -->
-		<PlacePicker title={viewTitle} />
+		<!-- A phone has the tab bar for its places, so the bar only names the view. -->
+		<span class={styles.phoneTitle} data-view-title>{viewTitle}</span>
 		{@render syncButton()}
 		<SettingsMenu
 			phone
@@ -405,10 +404,6 @@
 	onpopstate={openPairingLink}
 />
 <svelte:document onvisibilitychange={openPairingLink} />
-
-{#if uiStore.labelsOpen && mobile.current}
-	<LabelsScreen onClose={() => (uiStore.labelsOpen = false)} />
-{/if}
 
 {#if uiStore.paletteOpen}
 	<CommandPalette onClose={() => (uiStore.paletteOpen = false)} onBackup={startBackupExport} />

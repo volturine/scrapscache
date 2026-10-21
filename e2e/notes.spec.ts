@@ -628,14 +628,40 @@ test('the palette finds notes in every place, labels and actions from the keyboa
 test.describe('on a phone', () => {
 	test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
 
-	test('the tab bar carries the places, Search opens the palette, and the title picks the rest', async ({
+	test('the notes keep their scroll place across a visit to Labels', async ({ page }) => {
+		await openEmptyApp(page);
+		const feed = page.getByRole('main');
+		const scrolls = () =>
+			feed.evaluate((element) => element.scrollHeight > element.clientHeight + 200);
+		for (let count = 1; count <= 16 && !(await scrolls()); count += 1) {
+			await createNote(page, `Card ${count}`, 'One\nTwo\nThree\nFour\nFive');
+		}
+		expect(await scrolls()).toBe(true);
+		await feed.evaluate((element) => element.scrollTo({ top: 200, behavior: 'instant' }));
+		await expect.poll(() => feed.evaluate((element) => element.scrollTop)).toBe(200);
+
+		const tabs = page.getByRole('navigation', { name: 'Main' });
+		await tabs.getByRole('button', { name: 'Labels' }).click();
+		await expect(page.locator('[data-view-title]')).toHaveText('Labels');
+		await tabs.getByRole('button', { name: 'Notes' }).click();
+		await expect(page.locator('[data-view-title]')).toHaveText('Notes');
+		await expect.poll(() => feed.evaluate((element) => element.scrollTop)).toBe(200);
+	});
+
+	test('the tab bar carries the places, Labels holds the labels with Archive and Trash, and Search opens the palette', async ({
 		page
 	}) => {
 		await openEmptyApp(page);
 		await createNote(page, 'Tram day', 'Tram 28 early');
 		await createNote(page, 'Quiet', 'Nothing here');
 		const tabs = page.getByRole('navigation', { name: 'Main' });
-		await expect(tabs.getByRole('button')).toHaveText(['Notes', 'Reminders', 'Kanban', 'Search']);
+		await expect(tabs.getByRole('button')).toHaveText([
+			'Notes',
+			'Reminders',
+			'Kanban',
+			'Labels',
+			'Search'
+		]);
 		await expect(tabs.getByRole('button', { name: 'Notes' })).toHaveAttribute(
 			'aria-current',
 			'page'
@@ -693,35 +719,49 @@ test.describe('on a phone', () => {
 		// The bar is a compact 3.5 rem.
 		expect((await tabs.boundingBox())!.height).toBeLessThanOrEqual(57);
 
-		// The title is a picker for every place and label; More keeps the settings.
-		await page.getByRole('button', { name: 'Notes, go to another place or label' }).click();
-		await expect(page.getByRole('menuitemradio')).toHaveText([
-			'Notes',
-			'Reminders',
-			'Kanban',
-			'Archive',
-			'Trash'
-		]);
-		await page.getByRole('menuitemradio', { name: 'Archive' }).click();
-		await expect(page).toHaveURL(/\/archive$/);
-		await expect(page.locator('[data-view-title]')).toHaveText('Archive');
+		// The title only names the view; More keeps the settings.
+		await expect(page.locator('[data-view-title]')).not.toHaveAttribute('aria-haspopup');
 		await page.getByRole('button', { name: 'More', exact: true }).click();
 		await expect(page.getByRole('menuitem').first()).toHaveText('Back up notes…');
 		await page.keyboard.press('Escape');
 
-		await page.getByRole('button', { name: 'Archive, go to another place or label' }).click();
-		await page.getByRole('menuitem', { name: 'Edit labels…' }).click();
-		// Labels have their own screen on a phone: no drawer, no places, just the labels.
-		const labelsScreen = page.getByRole('dialog', { name: 'Labels' });
-		await expect(labelsScreen).toBeVisible();
+		// Labels is a place like the others: it sits between the bars, with Archive
+		// and Trash under the labels, and the tab bar stays.
+		await tabs.getByRole('button', { name: 'Labels' }).click();
+		await expect(page.locator('[data-view-title]')).toHaveText('Labels');
+		await expect(tabs.getByRole('button', { name: 'Labels' })).toHaveAttribute(
+			'aria-current',
+			'page'
+		);
+		await expect(tabs).toBeInViewport({ ratio: 1 });
+		const places = page.getByRole('navigation', { name: 'Archive and Trash' });
+		await expect(places.getByRole('button')).toHaveText(['Archive', 'Trash']);
+		await expect(places).toBeInViewport({ ratio: 1 });
+		await places.getByRole('button', { name: 'Archive' }).click();
+		await expect(page).toHaveURL(/\/archive$/);
+		await expect(page.locator('[data-view-title]')).toHaveText('Archive');
+		// Archive is reached from Labels, so Labels stays lit.
+		await expect(tabs.getByRole('button', { name: 'Labels' })).toHaveAttribute(
+			'aria-current',
+			'page'
+		);
+
+		await tabs.getByRole('button', { name: 'Labels' }).click();
 		await expect(page.getByRole('navigation', { name: 'Sidebar' })).toBeHidden();
-		await expect(labelsScreen.getByRole('navigation', { name: 'Main navigation' })).toHaveCount(0);
-		await labelsScreen.getByRole('button', { name: 'New label' }).click();
+		const labelsList = page.getByRole('region', { name: 'Labels' });
+		await labelsList.getByRole('button', { name: 'New label' }).click();
 		await page.keyboard.type('Errands');
 		await page.keyboard.press('Enter');
 		// A new label opens its notes and puts the screen away.
-		await expect(labelsScreen).toBeHidden();
+		await expect(labelsList).toBeHidden();
 		await expect(page.locator('[data-view-title]')).toHaveText('Errands');
+
+		// Another tab leaves the Labels screen for its own place.
+		await tabs.getByRole('button', { name: 'Labels' }).click();
+		await tabs.getByRole('button', { name: 'Kanban' }).click();
+		await expect(page).toHaveURL(/\/kanban$/);
+		await expect(page.locator('[data-view-title]')).toHaveText('Kanban');
+		await expect(page.getByRole('region', { name: 'Labels' })).toBeHidden();
 	});
 });
 

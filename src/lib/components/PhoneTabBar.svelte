@@ -1,8 +1,9 @@
 <script lang="ts">
-	// The phone's bottom tab bar: Notes, Reminders and Kanban one tap away, and
-	// Search, which opens the palette over the whole screen.
+	// The phone's bottom tab bar: Notes, Reminders and Kanban one tap away; Labels,
+	// which lists every label with Archive and Trash; and Search, which opens the
+	// palette over the whole screen.
 	import { goto } from '$app/navigation';
-	import { AlarmClock, Kanban, Search, StickyNote, type LucideIcon } from '@lucide/svelte';
+	import { AlarmClock, Kanban, Search, StickyNote, Tag, type LucideIcon } from '@lucide/svelte';
 	import { iconSizeMd as iconMd, phoneTabsStyles as styles } from '$panda/styles';
 	import { useEditorActions } from '#lib/editorContext.js';
 	import { uiStore, type View } from '#lib/stores/ui.svelte.js';
@@ -16,12 +17,23 @@
 		{ view: 'kanban', label: 'Kanban', icon: Kanban }
 	];
 
+	/** A label, Archive and Trash are reached from the Labels tab, so they belong to it. */
+	const current = $derived(
+		uiStore.labelsOpen || !tabs.some((tab) => tab.view === uiStore.view) ? 'labels' : uiStore.view
+	);
+
 	function go(view: View) {
 		const target = pathForView(view);
 		if (!target) return;
 		closeNote();
+		uiStore.labelsOpen = false;
 		uiStore.setView(view);
 		void goto(target);
+	}
+
+	function openLabels() {
+		closeNote();
+		uiStore.labelsOpen = true;
 	}
 </script>
 
@@ -30,7 +42,7 @@
 		<button
 			type="button"
 			class={styles.tab}
-			aria-current={uiStore.view === tab.view ? 'page' : undefined}
+			aria-current={current === tab.view ? 'page' : undefined}
 			onclick={() => go(tab.view)}
 		>
 			<span class={styles.tabIcon} data-tab-icon>
@@ -39,6 +51,17 @@
 			<span class={styles.tabLabel}>{tab.label}</span>
 		</button>
 	{/each}
+	<button
+		type="button"
+		class={styles.tab}
+		aria-current={current === 'labels' ? 'page' : undefined}
+		onclick={openLabels}
+	>
+		<span class={styles.tabIcon} data-tab-icon>
+			<Tag class={iconMd} aria-hidden="true" />
+		</span>
+		<span class={styles.tabLabel}>Labels</span>
+	</button>
 	<button
 		type="button"
 		class={styles.tab}

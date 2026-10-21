@@ -2364,17 +2364,35 @@ export const noteActionsStyles = {
 };
 
 /**
+ * A masonry card's slot. The top-left room lets a card's select check hang over its
+ * corner: a slot skipped offscreen (content-visibility) clips paint to its own box,
+ * so the room is padding inside it, taken back by an equal negative margin. Only
+ * the card takes pointer events, never the room.
+ */
+export const masonryItem = css({
+	mt: '-0.75rem',
+	ml: '-0.75rem',
+	pt: '0.75rem',
+	pl: '0.75rem',
+	pointerEvents: 'none',
+	'& > *': { pointerEvents: 'auto' }
+});
+
+/**
  * Picking cards for one action on all of them: the check at a card's top-left,
  * shown while a selection is open (and when it has keyboard focus); the selected
- * card's outline; and the top bar as the action bar.
+ * card's outline; and the top bar as the action bar. The check is an overlay, like
+ * the "…" at the other corner: it never moves the card's content.
  */
 export const noteSelectStyles = {
+	/** The card and its check: the check hangs over the corner, outside the card's clipping. */
+	cardWrap: css({ position: 'relative' }),
 	check: css({
 		position: 'absolute',
-		top: 'xs',
-		left: 'xs',
-		// With the "…" (21): above the open control and the hidden-preview overlay.
-		zIndex: 21,
+		// Centred near the card's corner, so it covers neither the title nor a reminder strip.
+		top: '-0.625rem',
+		left: '-0.625rem',
+		zIndex: 22,
 		...gridCenter,
 		w: '1.5rem',
 		h: '1.5rem',
@@ -2382,6 +2400,7 @@ export const noteSelectStyles = {
 		borderWidth: 'strong',
 		borderColor: 'scrapscache.textMuted',
 		bg: 'scrapscache.surface',
+		boxShadow: 'sm',
 		color: 'scrapscache.accentForeground',
 		cursor: 'pointer',
 		outline: 'none',
@@ -2390,14 +2409,10 @@ export const noteSelectStyles = {
 		// Hidden at rest, hover included: a selection starts from the card's "…" menu,
 		// and the check then shows on every card until the selection is let go.
 		_focusVisible: { opacity: 1, boxShadow: '0 0 0 2px token(colors.scrapscache.focus)' },
-		_touch: { w: '1.75rem', h: '1.75rem' },
+		_touch: { w: '1.75rem', h: '1.75rem', top: '-0.75rem', left: '-0.75rem' },
 		'&[aria-checked="true"], &[data-selecting]': { opacity: 1 },
 		'&[aria-checked="true"]': { bg: 'scrapscache.accent', borderColor: 'scrapscache.accent' }
 	}),
-	/** Room for the check while a selection is open, so a title never runs under it. */
-	titleRoom: css({ pl: '1.75rem' }),
-	/** The same room on a reminder strip, which then holds the check instead of the title. */
-	stripRoom: css({ pl: '2.25rem' }),
 	selected: css({
 		boxShadow: '0 0 0 2px token(colors.scrapscache.accent)',
 		borderColor: 'scrapscache.accent'

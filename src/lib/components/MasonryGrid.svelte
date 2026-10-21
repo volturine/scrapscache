@@ -4,6 +4,7 @@
 	import { onMount } from 'svelte';
 	import NoteCard from './NoteCard.svelte';
 	import { css } from 'styled-system/css';
+	import { masonryItem } from '$panda/styles';
 
 	let {
 		notes,
@@ -105,13 +106,16 @@
 		const measure = () => {
 			const revisions = new Map(notes.map((note) => [note.id, note.updatedAt]));
 			const cards = root.querySelectorAll<HTMLElement>('[data-note-height]');
+			// A slot's top padding is room for a card's select check, not card: the
+			// heights below are the cards', for packing and for a skipped slot to stand at.
+			const room = cards.length ? Number.parseFloat(getComputedStyle(cards[0]).paddingTop) || 0 : 0;
 			let changed = measuredHeights.size !== cards.length;
 			const next = new Map<string, { h: number; updatedAt: number }>();
 			for (const el of cards) {
 				const id = el.dataset.noteHeight!;
 				// Exact, not rounded: a skipped card stands at this height, and
 				// rounding would drift the column by a pixel per card.
-				const h = el.getBoundingClientRect().height;
+				const h = el.getBoundingClientRect().height - room;
 				const updatedAt = revisions.get(id) ?? 0;
 				next.set(id, { h, updatedAt });
 				const previous = measuredHeights.get(id);
@@ -189,6 +193,7 @@
 						skipOffscreen && measured?.updatedAt === note.updatedAt ? measured.h : undefined}
 					<div
 						data-note-height={note.id}
+						class={masonryItem}
 						style:content-visibility={skipHeight === undefined ? undefined : 'auto'}
 						style:contain-intrinsic-size={skipHeight === undefined
 							? undefined

@@ -272,185 +272,185 @@
 	{/each}
 {/snippet}
 
-<div class={cx(card.cardOuter, css({ _motionSafe: { animation: 'cardIn' } }))}>
-	{#if offsetX < 0}
-		<div class={card.swipeRestore}>
-			{#if note.trashed}
-				<RotateCcw size={24} aria-hidden="true" />
-			{:else if note.archived}
-				<ArchiveRestore size={24} aria-hidden="true" />
-			{:else}
-				<Archive size={24} aria-hidden="true" />
-			{/if}
-		</div>
-	{:else if offsetX > 0}
-		<div class={card.swipeTrash}>
-			<Trash2 size={24} aria-hidden="true" />
-		</div>
-	{/if}
-
-	<!-- A press anywhere on the card opens, swipes or drags it; the open button is the
-	     keyboard and assistive-technology control, a sibling of the quick actions. -->
-	<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
-	<article
-		bind:this={cardEl}
-		class={cx(
-			card.cardBody,
-			'group',
-			noteSurface({ color: note.color }),
-			selected && noteSelectStyles.selected
-		)}
-		data-selected={selected ? '' : undefined}
-		style={cardSwipeStyle(offsetX, dragging)}
-		onpointerdown={onCardPointerDown}
-		onpointermove={onCardPointerMove}
-		onpointerup={onCardPointerUp}
-		onpointercancel={onCardPointerCancel}
-		onclick={openUnlessDrag}
-		oncontextmenu={handleContextMenu}
-	>
-		<button bind:this={openButton} type="button" class={cardOpenControl} aria-label={openLabel}
-		></button>
-		<button
-			type="button"
-			role="checkbox"
-			aria-checked={selected}
-			aria-label={`Select ${note.title || 'untitled note'}`}
-			class={noteSelectStyles.check}
-			data-selecting={selectionStore.active ? '' : undefined}
-			data-note-select
-			onpointerdown={keepToCheck}
-			onclick={toggleSelected}
-		>
-			{#if selected}<Check size={14} strokeWidth={3} aria-hidden="true" />{/if}
-		</button>
-
-		{#if note.reminder != null}
-			<div class={css({ flexShrink: 0 })}>
-				<ReminderLabel
-					reminder={note.reminder}
-					class={cx(noteActionsStyles.topRoom, selectionStore.active && noteSelectStyles.stripRoom)}
-				/>
+<!-- The select check sits astride the card's corner, outside the frame that clips the
+     card, so it overlays nothing on the card and moves nothing in it. -->
+<div class={noteSelectStyles.cardWrap}>
+	<div class={cx(card.cardOuter, css({ _motionSafe: { animation: 'cardIn' } }))}>
+		{#if offsetX < 0}
+			<div class={card.swipeRestore}>
+				{#if note.trashed}
+					<RotateCcw size={24} aria-hidden="true" />
+				{:else if note.archived}
+					<ArchiveRestore size={24} aria-hidden="true" />
+				{:else}
+					<Archive size={24} aria-hidden="true" />
+				{/if}
+			</div>
+		{:else if offsetX > 0}
+			<div class={card.swipeTrash}>
+				<Trash2 size={24} aria-hidden="true" />
 			</div>
 		{/if}
 
-		<div class={card.bodyFrame}>
-			<!-- A long preview scrolls inside its card, then hands the swipe to the
+		<!-- A press anywhere on the card opens, swipes or drags it; the open button is the
+	     keyboard and assistive-technology control, a sibling of the quick actions. -->
+		<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
+		<article
+			bind:this={cardEl}
+			class={cx(
+				card.cardBody,
+				'group',
+				noteSurface({ color: note.color }),
+				selected && noteSelectStyles.selected
+			)}
+			data-selected={selected ? '' : undefined}
+			style={cardSwipeStyle(offsetX, dragging)}
+			onpointerdown={onCardPointerDown}
+			onpointermove={onCardPointerMove}
+			onpointerup={onCardPointerUp}
+			onpointercancel={onCardPointerCancel}
+			onclick={openUnlessDrag}
+			oncontextmenu={handleContextMenu}
+		>
+			<button bind:this={openButton} type="button" class={cardOpenControl} aria-label={openLabel}
+			></button>
+
+			{#if note.reminder != null}
+				<div class={css({ flexShrink: 0 })}>
+					<ReminderLabel reminder={note.reminder} class={noteActionsStyles.topRoom} />
+				</div>
+			{/if}
+
+			<div class={card.bodyFrame}>
+				<!-- A long preview scrolls inside its card, then hands the swipe to the
 			     gallery. Overscroll containment here stopped Android from ever scrolling
 			     the gallery from a card. -->
-			<div
-				class={cx(
-					'note-scrollbar-hidden',
-					css({
-						minH: 0,
-						flex: '1',
-						overflowX: 'hidden',
-						overflowY: note.secret ? 'hidden' : 'auto',
-						touchAction: 'pan-y'
-					}),
-					note.secret && css({ display: 'flex', flexDirection: 'column' })
-				)}
-				data-secret-body={note.secret ? '' : undefined}
-			>
 				<div
 					class={cx(
-						css({ position: 'relative' }),
-						note.secret && css({ flex: '1', minH: 0, display: 'flex', flexDirection: 'column' })
+						'note-scrollbar-hidden',
+						css({
+							minH: 0,
+							flex: '1',
+							overflowX: 'hidden',
+							overflowY: note.secret ? 'hidden' : 'auto',
+							touchAction: 'pan-y'
+						}),
+						note.secret && css({ display: 'flex', flexDirection: 'column' })
 					)}
+					data-secret-body={note.secret ? '' : undefined}
 				>
 					<div
 						class={cx(
-							note.secret
-								? css({ flex: '1', minH: 0, display: 'flex', flexDirection: 'column' })
-								: card.contentPad
+							css({ position: 'relative' }),
+							note.secret && css({ flex: '1', minH: 0, display: 'flex', flexDirection: 'column' })
 						)}
 					>
-						{#if note.title}
-							<h3
-								class={cx(
-									card.title,
-									noteActionsStyles.topRoom,
-									selectionStore.active && note.reminder == null && noteSelectStyles.titleRoom,
-									css({ flexShrink: 0 }),
-									note.secret && css({ px: 'md', pt: 'md', pb: 'sm' })
-								)}
-							>
-								{@render marked(note.title)}
-							</h3>
-						{/if}
 						<div
 							class={cx(
-								css({ position: 'relative', minH: titleOnly ? 'calc(3rem + 2px)' : '3rem' }),
-								note.secret && css({ flex: '1', minH: 0, overflow: 'hidden' })
+								note.secret
+									? css({ flex: '1', minH: 0, display: 'flex', flexDirection: 'column' })
+									: card.contentPad
 							)}
 						>
-							<div
-								class={note.secret
-									? css({
-											filter: 'blur(4px)',
-											userSelect: 'none',
-											h: 'full',
-											overflow: 'hidden',
-											px: 'md',
-											pb: 'md',
-											pt: !note.title ? 'sm' : 0
-										})
-									: undefined}
-								data-secret-content={note.secret ? '' : undefined}
-							>
-								<NoteBodyDisplay {note} />
-							</div>
-							{#if note.secret}
-								<div
-									class={cx(card.hazeOverlay, css({ pointerEvents: 'none', zIndex: 10 }))}
-									data-secret-overlay
-									aria-hidden="true"
+							{#if note.title}
+								<h3
+									class={cx(
+										card.title,
+										noteActionsStyles.topRoom,
+										css({ flexShrink: 0 }),
+										note.secret && css({ px: 'md', pt: 'md', pb: 'sm' })
+									)}
 								>
-									<EyeOff
-										class={css({
-											w: '1.5rem',
-											h: '1.5rem',
-											color: 'scrapscache.textMuted',
-											filter: 'drop-shadow(0 1px 2px rgb(0 0 0 / 0.35))'
-										})}
-									/>
-									<span class={secretPreviewCaption}>Preview hidden</span>
-								</div>
+									{@render marked(note.title)}
+								</h3>
 							{/if}
+							<div
+								class={cx(
+									css({ position: 'relative', minH: titleOnly ? 'calc(3rem + 2px)' : '3rem' }),
+									note.secret && css({ flex: '1', minH: 0, overflow: 'hidden' })
+								)}
+							>
+								<div
+									class={note.secret
+										? css({
+												filter: 'blur(4px)',
+												userSelect: 'none',
+												h: 'full',
+												overflow: 'hidden',
+												px: 'md',
+												pb: 'md',
+												pt: !note.title ? 'sm' : 0
+											})
+										: undefined}
+									data-secret-content={note.secret ? '' : undefined}
+								>
+									<NoteBodyDisplay {note} />
+								</div>
+								{#if note.secret}
+									<div
+										class={cx(card.hazeOverlay, css({ pointerEvents: 'none', zIndex: 10 }))}
+										data-secret-overlay
+										aria-hidden="true"
+									>
+										<EyeOff
+											class={css({
+												w: '1.5rem',
+												h: '1.5rem',
+												color: 'scrapscache.textMuted',
+												filter: 'drop-shadow(0 1px 2px rgb(0 0 0 / 0.35))'
+											})}
+										/>
+										<span class={secretPreviewCaption}>Preview hidden</span>
+									</div>
+								{/if}
+							</div>
 						</div>
-					</div>
-					<!-- Every press lands here, so links, photos, canvases and files can
+						<!-- Every press lands here, so links, photos, canvases and files can
 					     never swallow a swipe or start a drag of their own. -->
-					<div class={card.shield} data-card-shield aria-hidden="true"></div>
+						<div class={card.shield} data-card-shield aria-hidden="true"></div>
+					</div>
 				</div>
 			</div>
-		</div>
 
-		{#if labelsForNote.length}
-			<!-- Gesture strip: when tags overflow, a sideways pan scrolls them instead of swiping the card. -->
-			<!-- svelte-ignore a11y_no_static_element_interactions -->
-			<div
-				class={cx(card.labelsRow, 'note-scrollbar-hidden')}
-				data-card-hscroll
-				onpointerdown={onLabelsPointerDown}
-				onpointermove={onLabelsPointerMove}
-				onpointerup={onLabelsPointerUp}
-				onpointercancel={onLabelsPointerUp}
-			>
-				{#each labelsForNote as label (label.id)}
-					<span class={badge()}>
-						{@render marked(label.name)}
-					</span>
-				{/each}
-			</div>
-		{/if}
+			{#if labelsForNote.length}
+				<!-- Gesture strip: when tags overflow, a sideways pan scrolls them instead of swiping the card. -->
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div
+					class={cx(card.labelsRow, 'note-scrollbar-hidden')}
+					data-card-hscroll
+					onpointerdown={onLabelsPointerDown}
+					onpointermove={onLabelsPointerMove}
+					onpointerup={onLabelsPointerUp}
+					onpointercancel={onLabelsPointerUp}
+				>
+					{#each labelsForNote as label (label.id)}
+						<span class={badge()}>
+							{@render marked(label.name)}
+						</span>
+					{/each}
+				</div>
+			{/if}
 
-		{#if countdown}
-			<p class={trashCountdownRow({ soon: countdown.soon })} data-trash-countdown>
-				<Clock class={iconSizeXs} aria-hidden="true" />{countdown.label}
-			</p>
-		{/if}
+			{#if countdown}
+				<p class={trashCountdownRow({ soon: countdown.soon })} data-trash-countdown>
+					<Clock class={iconSizeXs} aria-hidden="true" />{countdown.label}
+				</p>
+			{/if}
 
-		<NoteActionsMenu {note} bind:open={actionsOpen} />
-	</article>
+			<NoteActionsMenu {note} bind:open={actionsOpen} />
+		</article>
+	</div>
+	<button
+		type="button"
+		role="checkbox"
+		aria-checked={selected}
+		aria-label={`Select ${note.title || 'untitled note'}`}
+		class={noteSelectStyles.check}
+		data-selecting={selectionStore.active ? '' : undefined}
+		data-note-select
+		onpointerdown={keepToCheck}
+		onclick={toggleSelected}
+	>
+		{#if selected}<Check size={14} strokeWidth={3} aria-hidden="true" />{/if}
+	</button>
 </div>

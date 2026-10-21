@@ -571,8 +571,8 @@
 	{#if mobile.current}
 		<!-- One column at a time: the tabs pick it, and a carried card can be dropped on
 		     one. Each tab is a drop target like a column, with an empty list to land in. -->
-		<div class={k.phoneTabsRow}>
-			<div class={k.columnTabs} role="tablist" aria-label="Columns">
+		<div class={k.phoneTabsRow} data-kanban-keep-clear>
+			<div class={k.columnTabs} role="tablist" aria-label="Columns" data-kanban-tabs>
 				{#each board.columns as column (column.id)}
 					<button
 						type="button"
@@ -583,6 +583,7 @@
 						aria-controls={panelId(column)}
 						tabindex={activeColumn?.id === column.id ? 0 : -1}
 						data-kanban-column={column.id}
+						data-kanban-tab
 						data-drop-target={kanbanDrag.target?.columnId === column.id ? '' : undefined}
 						onclick={() => (activeColumnId = column.id)}
 						onkeydown={(event) => onTabKeydown(event, column)}
@@ -599,7 +600,7 @@
 			<div class={k.starterPhone}>{@render starterPanel()}</div>
 		{/if}
 		{#if kanbanDrag.active}
-			<p class={k.columnTabHint}>Drop on a column to move the note</p>
+			<p class={k.columnTabHint} data-kanban-keep-clear>Drop on a column to move the note</p>
 		{/if}
 	{/if}
 

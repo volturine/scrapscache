@@ -26,6 +26,8 @@ const PAGE_TRIGGER_PX = 16;
 const PAGE_COOLDOWN_MS = 500;
 /** A finger lifts the card clear of itself so the drop preview stays visible. */
 const TOUCH_LIFT_PX = 12;
+/** Room left between the phone's column tabs and a card carried up beneath them. */
+const KEEP_CLEAR_GAP_PX = 12;
 /** The click that follows a drag release must not open the note. */
 const CLICK_SUPPRESS_MS = 350;
 
@@ -74,6 +76,28 @@ export function dropIndexAt(
 function columnAt(x: number, y: number): HTMLElement | null {
 	const hit = document.elementFromPoint(x, y);
 	return hit instanceof Element ? hit.closest<HTMLElement>('[data-kanban-column]') : null;
+}
+
+/**
+ * The phone's column tab under the finger, if any. A tab is aimed with the
+ * finger, not the card: the card is kept below the tab row so the tabs stay in
+ * sight, and a card that covered them would hide which one it was going to.
+ */
+function tabAt(x: number, y: number): HTMLElement | null {
+	const hit = document.elementFromPoint(x, y);
+	return hit instanceof Element ? hit.closest<HTMLElement>('[data-kanban-tab]') : null;
+}
+
+/** The lowest edge of what a carried card must never cover, or -Infinity. */
+function keepClearBottom(): number {
+	let bottom = -Infinity;
+	for (const el of document.querySelectorAll<HTMLElement>('[data-kanban-keep-clear]'))
+		bottom = Math.max(bottom, el.getBoundingClientRect().bottom);
+	return bottom;
+}
+
+function tabScroller(): HTMLElement | null {
+	return document.querySelector<HTMLElement>('[data-kanban-tabs]');
 }
 
 function scrollerFor(start: HTMLElement | null, axis: 'x' | 'y'): HTMLElement | null {
@@ -199,6 +223,7 @@ class KanbanDragController {
 	#pagedAt = 0;
 	#scrolledX = 0;
 	#scrolledY = 0;
+	#scrolledTabs = 0;
 
 	get active(): boolean {
 		return this.noteId !== null;
@@ -264,6 +289,7 @@ class KanbanDragController {
 		this.#pagedAt = performance.now();
 		this.#scrolledX = press.scrollX?.scrollLeft ?? 0;
 		this.#scrolledY = press.scrollY?.scrollTop ?? 0;
+		this.#scrolledTabs = tabScroller()?.scrollLeft ?? 0;
 		this.noteId = press.noteId;
 		this.sourceColumnId = press.columnId;
 		this.target = { columnId: press.columnId, index: press.index };
@@ -296,15 +322,22 @@ class KanbanDragController {
 		this.#pointerX = x;
 		this.#pointerY = y;
 		this.x = x - press.grabX;
-		this.y = y - press.grabY - (press.pointerType === 'mouse' ? 0 : TOUCH_LIFT_PX);
+		// Carried up to the phone's column tabs, the card stops short of them: the
+		// finger goes on into the row, and the tab it is on lights up in plain sight.
+		this.y = Math.max(
+			y - press.grabY - (press.pointerType === 'mouse' ? 0 : TOUCH_LIFT_PX),
+			keepClearBottom() + KEEP_CLEAR_GAP_PX
+		);
 	}
 
 	#retarget(): void {
 		const press = this.#press;
 		if (!press?.dragging) return;
 		// The card decides where it lands, so aim from its middle and its top edge
-		// rather than from the finger holding it.
-		const column = columnAt(this.x + this.width / 2, this.y + this.height / 2);
+		// rather than from the finger holding it — except over a column tab.
+		const column =
+			tabAt(this.#pointerX, this.#pointerY) ??
+			columnAt(this.x + this.width / 2, this.y + this.height / 2);
 		// Off the board entirely: keep the last preview so the drop is never a
 		// surprise — what the user last saw is where the card goes.
 		if (!column?.dataset.kanbanColumn) return;
@@ -357,6 +390,15 @@ class KanbanDragController {
 		if (speed !== 0) el.scrollTop += speed;
 	}
 
+	/** Run the phone's tab row along when the finger nears either end of it. */
+	#followTabs(el: HTMLElement | null): void {
+		if (!el) return;
+		const rect = el.getBoundingClientRect();
+		if (this.#pointerY < rect.top || this.#pointerY > rect.bottom) return;
+		const speed = edgeSpeed(this.#pointerX, rect.left, rect.right);
+		if (speed !== 0) el.scrollLeft += speed;
+	}
+
 	/** Turn one board page when the carried card hangs past a side. */
 	#pageBoard(el: HTMLElement | null): void {
 		if (!el) return;
@@ -382,16 +424,27 @@ class KanbanDragController {
 		const press = this.#press;
 		if (!press?.dragging) return;
 		this.#frame = requestAnimationFrame(this.#tick);
+		const tabs = tabScroller();
 		this.#pageBoard(press.scrollX);
 		this.#followFinger(press.scrollY);
+		this.#followTabs(tabs);
 
 		// Any board movement — this frame's or the tail of a page still gliding —
-		// puts different cards under a still finger, so re-aim whenever it moved.
+		// puts different cards or tabs under a still finger, so re-aim whenever it
+		// moved. The tab row follows the feed too, so the card is re-placed under it.
 		const scrollX = press.scrollX?.scrollLeft ?? 0;
 		const scrollY = press.scrollY?.scrollTop ?? 0;
-		if (scrollX === this.#scrolledX && scrollY === this.#scrolledY) return;
+		const scrollTabs = tabs?.scrollLeft ?? 0;
+		if (
+			scrollX === this.#scrolledX &&
+			scrollY === this.#scrolledY &&
+			scrollTabs === this.#scrolledTabs
+		)
+			return;
 		this.#scrolledX = scrollX;
 		this.#scrolledY = scrollY;
+		this.#scrolledTabs = scrollTabs;
+		this.#move(this.#pointerX, this.#pointerY);
 		this.#retarget();
 	};
 

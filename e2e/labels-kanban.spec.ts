@@ -280,4 +280,49 @@ test.describe('on a phone', () => {
 		await expect(panel).toHaveAttribute('aria-label', 'Done label column');
 		await expect(tabs.nth(3)).toHaveText(/Done\s*1/);
 	});
+
+	test('a card carried up to the tabs stays under them and drops on the tab under the finger', async ({
+		page
+	}) => {
+		await openEmptyApp(page);
+		await createNote(page, 'Task one');
+		await page.goto('/kanban');
+		await page
+			.getByRole('region', { name: 'Boards group your notes by label' })
+			.getByRole('button', { name: 'To-Do · In-Progress · Done' })
+			.click();
+		const tabs = page.getByRole('tablist', { name: 'Columns' }).getByRole('tab');
+		const card = noteCard(page, 'Task one');
+		const from = (await card.boundingBox())!;
+		const target = (await tabs.nth(1).boundingBox())!;
+
+		// A real touch: hold the card still until it lifts, then carry it to To-Do.
+		const touch = await page.context().newCDPSession(page);
+		const at = (x: number, y: number) => [{ x, y, id: 1 }];
+		const start = { x: from.x + from.width / 2, y: from.y + 20 };
+		const end = { x: target.x + target.width / 2, y: target.y + target.height / 2 };
+		await touch.send('Input.dispatchTouchEvent', {
+			type: 'touchStart',
+			touchPoints: at(start.x, start.y)
+		});
+		await page.waitForTimeout(400);
+		for (let step = 1; step <= 10; step += 1) {
+			await touch.send('Input.dispatchTouchEvent', {
+				type: 'touchMove',
+				touchPoints: at(
+					start.x + ((end.x - start.x) * step) / 10,
+					start.y + ((end.y - start.y) * step) / 10
+				)
+			});
+		}
+
+		// The tab lights up, and the carried card hangs below the row instead of over it.
+		await expect(tabs.nth(1)).toHaveAttribute('data-drop-target', '');
+		const row = (await page.getByRole('tablist', { name: 'Columns' }).boundingBox())!;
+		const ghost = (await page.locator('[aria-hidden="true"] > [data-lifted]').boundingBox())!;
+		expect(ghost.y).toBeGreaterThanOrEqual(row.y + row.height);
+
+		await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+		await expect(tabs.nth(1)).toHaveText(/To-Do\s*1/);
+	});
 });

@@ -29,14 +29,14 @@ function column(): { column: HTMLElement; carried: HTMLElement } {
 	return { column: root, carried };
 }
 
-function pointerEvent(type: string, y: number): PointerEvent {
+function pointerEvent(type: string, y: number, x = 50): PointerEvent {
 	const event = new Event(type, { bubbles: true, cancelable: true });
 	return Object.assign(event, {
 		pointerType: 'touch',
 		pointerId: 1,
 		isPrimary: true,
 		button: 0,
-		clientX: 50,
+		clientX: x,
 		clientY: y
 	}) as unknown as PointerEvent;
 }
@@ -259,5 +259,97 @@ describe('drop target geometry', () => {
 		carry(carried, 200);
 
 		expect(document.contains(carried)).toBe(true);
+	});
+});
+
+describe('carrying a card to the phone column tabs', () => {
+	/** The phone's tab row above a column, holding one tab for Done. */
+	function tabRow(): { row: HTMLElement; tabs: HTMLElement; done: HTMLElement } {
+		const row = document.createElement('div');
+		row.dataset.kanbanKeepClear = '';
+		row.getBoundingClientRect = () => new DOMRect(0, 60, 390, 60);
+		const tabs = document.createElement('div');
+		tabs.dataset.kanbanTabs = '';
+		tabs.getBoundingClientRect = () => new DOMRect(16, 68, 300, 44);
+		let left = 0;
+		Object.defineProperty(tabs, 'scrollLeft', {
+			get: () => left,
+			set: (value: number) => (left = value)
+		});
+		const done = document.createElement('button');
+		done.dataset.kanbanColumn = 'done';
+		done.dataset.kanbanTab = '';
+		done.append(Object.assign(document.createElement('span'), { hidden: true }));
+		done.querySelector('span')!.dataset.kanbanList = '';
+		tabs.append(done);
+		row.append(tabs);
+		document.body.prepend(row);
+		return { row, tabs, done };
+	}
+
+	function held(): HTMLElement {
+		const { carried } = column();
+		carried.getBoundingClientRect = () => new DOMRect(16, 300, 288, 150);
+		return carried;
+	}
+
+	function lift(card: HTMLElement) {
+		kanbanDrag.press(pointerEvent('pointerdown', 310), {
+			noteId: 'carried',
+			columnId: 'todo',
+			card,
+			index: 0,
+			onDrop: vi.fn()
+		});
+		vi.advanceTimersByTime(300);
+	}
+
+	it('stops the card below the tab row while the finger goes on into it', () => {
+		tabRow();
+		const card = held();
+		document.elementFromPoint = () => null;
+		lift(card);
+
+		window.dispatchEvent(pointerEvent('pointermove', 90));
+
+		// The row ends at 120; the card hangs 12 px under it, not over the tabs.
+		expect(kanbanDrag.y).toBe(132);
+	});
+
+	it('aims at the tab under the finger, not the column under the card', () => {
+		const { done } = tabRow();
+		const card = held();
+		const todo = card.closest<HTMLElement>('[data-kanban-column]')!;
+		// The finger is on the Done tab; the card's middle is over the To-Do column.
+		document.elementFromPoint = (_x, y) => (y < 120 ? done : todo);
+		lift(card);
+
+		window.dispatchEvent(pointerEvent('pointermove', 90));
+
+		expect(kanbanDrag.target).toEqual({ columnId: 'done', index: 0 });
+	});
+
+	it('runs the tab row along when the finger nears its end', () => {
+		const { tabs } = tabRow();
+		const card = held();
+		document.elementFromPoint = () => null;
+		lift(card);
+
+		window.dispatchEvent(pointerEvent('pointermove', 90, 310));
+		vi.advanceTimersByTime(100);
+
+		expect(tabs.scrollLeft).toBeGreaterThan(0);
+	});
+
+	it('leaves the tab row still for a finger in its middle', () => {
+		const { tabs } = tabRow();
+		const card = held();
+		document.elementFromPoint = () => null;
+		lift(card);
+
+		window.dispatchEvent(pointerEvent('pointermove', 90, 166));
+		vi.advanceTimersByTime(100);
+
+		expect(tabs.scrollLeft).toBe(0);
 	});
 });

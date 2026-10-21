@@ -11,6 +11,7 @@
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { portalToAppOverlay } from '#lib/appViewport.js';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
+	import { selectionStore } from '#lib/stores/selection.svelte.js';
 	import { reminderStore } from '#lib/stores/reminders.svelte.js';
 	import { NOTE_COLOR_ORDER, type Note, type NoteColor } from '#lib/types.js';
 	import { writeClipboardText } from '#lib/utils.js';
@@ -27,6 +28,7 @@
 		Pin,
 		PinOff,
 		RotateCcw,
+		SquareCheck,
 		Tag,
 		Trash2
 	} from '@lucide/svelte';
@@ -73,6 +75,12 @@
 	/** A press on the "…" is the menu's, not the card's: no swipe, drag or open. */
 	function keepToMenu(event: Event) {
 		event.stopPropagation();
+	}
+
+	/** Start, or add to, a selection: the top bar then acts on every picked note. */
+	function select() {
+		close();
+		if (!selectionStore.has(note.id)) selectionStore.toggle(note.id);
 	}
 
 	function trash() {
@@ -220,6 +228,9 @@
 					}}
 				>
 					{#if note.trashed}
+						<Menu.Item value="select" onSelect={select} class={itemClass}>
+							<SquareCheck size={16} aria-hidden="true" />Select
+						</Menu.Item>
 						<Menu.Item value="restore" onSelect={restore} class={itemClass}>
 							<RotateCcw size={16} aria-hidden="true" />Restore
 						</Menu.Item>
@@ -231,6 +242,9 @@
 							<Trash2 size={16} aria-hidden="true" />Delete forever
 						</Menu.Item>
 					{:else if note.archived}
+						<Menu.Item value="select" onSelect={select} class={itemClass}>
+							<SquareCheck size={16} aria-hidden="true" />Select
+						</Menu.Item>
 						<Menu.Item value="restore" onSelect={archive} class={itemClass}>
 							<ArchiveRestore size={16} aria-hidden="true" />Restore
 						</Menu.Item>
@@ -239,6 +253,9 @@
 							<Trash2 size={16} aria-hidden="true" />Move to trash
 						</Menu.Item>
 					{:else}
+						<Menu.Item value="select" onSelect={select} class={itemClass}>
+							<SquareCheck size={16} aria-hidden="true" />Select
+						</Menu.Item>
 						<Menu.Item value="pin" onSelect={pin} class={itemClass}>
 							{#if note.pinned}
 								<PinOff size={16} aria-hidden="true" />Unpin

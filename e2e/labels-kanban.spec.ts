@@ -236,6 +236,10 @@ test.describe('on a phone', () => {
 		await openEmptyApp(page);
 		await createNote(page, 'Task one');
 		await page.goto('/kanban');
+		// The board row sits right under the bar, not a whole gap below its title.
+		const bar = (await page.locator('header').first().boundingBox())!;
+		const boardRow = (await page.getByRole('button', { name: /Untitled board/ }).boundingBox())!;
+		expect(boardRow.y - (bar.y + bar.height)).toBeLessThanOrEqual(4);
 		// A new board's panel and the add-column control are on screen, not cut off at the side.
 		const starter = page.getByRole('region', { name: 'Boards group your notes by label' });
 		await expect(starter).toBeInViewport({ ratio: 1 });
@@ -246,7 +250,10 @@ test.describe('on a phone', () => {
 		await page.getByRole('button', { name: 'Add a label column' }).click();
 		const addMenu = page.getByRole('menu', { name: 'Add a label column' });
 		await expect(addMenu).toBeInViewport({ ratio: 1 });
-		expect((await addMenu.boundingBox())!.width).toBeGreaterThanOrEqual(200);
+		// Measured once its opening animation settles.
+		await expect
+			.poll(async () => (await addMenu.boundingBox())?.width ?? 0)
+			.toBeGreaterThanOrEqual(200);
 		await page.keyboard.press('Escape');
 		await expect(addMenu).toBeHidden();
 		await starter.getByRole('button', { name: 'To-Do · In-Progress · Done' }).click();

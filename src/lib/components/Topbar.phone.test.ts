@@ -28,6 +28,7 @@ afterEach(() => {
 	window.matchMedia = desktopMatchMedia;
 	uiStore.setView('notes');
 	uiStore.paletteOpen = false;
+	uiStore.labelsOpen = false;
 	uiStore.clearSearch();
 	uiStore.sidebarOpen = true;
 	notesStore.labels = [];
@@ -108,14 +109,20 @@ describe('the top bar on a phone', () => {
 		expect(uiStore.activeLabelId).toBe('work');
 		expect(navigation.goto).toHaveBeenCalledWith('/label/work');
 
-		// Making, renaming and deleting labels stays in the labels panel.
+		// Making, renaming and deleting labels has its own screen, without the places.
 		await fireEvent.click(
 			screen.getByRole('button', { name: 'Work, go to another place or label' })
 		);
 		const edit = await screen.findByRole('menuitem', { name: 'Edit labels…' });
 		await fireEvent.pointerDown(edit, { pointerType: 'mouse' });
 		await fireEvent.click(edit);
-		expect(uiStore.sidebarOpen).toBe(true);
+		expect(uiStore.labelsOpen).toBe(true);
+		expect(uiStore.sidebarOpen).toBe(false);
+		const labelsScreen = await screen.findByRole('dialog', { name: 'Labels' });
+		expect(within(labelsScreen).getByRole('button', { name: 'New label' })).toBeTruthy();
+		expect(within(labelsScreen).queryByRole('navigation')).toBeNull();
+		await fireEvent.click(within(labelsScreen).getByRole('button', { name: 'Close labels' }));
+		expect(uiStore.labelsOpen).toBe(false);
 
 		// More holds the settings alone now.
 		const more = screen.getByRole('button', { name: 'More' });

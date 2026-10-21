@@ -1122,7 +1122,10 @@ export const fullscreen = {
 
 // Static view contracts stay class maps; CVA below is reserved for live state.
 export const kanbanViewStyles = {
-	controls: css({ mb: 'lg', minH: '2.5rem', ...rowCenter, gap: 'sm' }),
+	// Under the phone bar's own title the board name would sit a whole gap lower;
+	// the board row moves up to the bar there.
+	page: css({ pt: { base: 0, md: 'lg' }, pb: '3xl' }),
+	controls: css({ mb: { base: 'sm', md: 'lg' }, minH: '2.5rem', ...rowCenter, gap: 'sm' }),
 	boardFilterTrigger: css({ flexShrink: 0 }),
 	filterActive: css({ bg: 'scrapscache.accentSubtle', color: 'scrapscache.accentHover' }),
 	boardFilterGroup: flex({ ...filterPanel, mb: 'lg', w: 'min(24rem, 100%)' }),
@@ -2028,6 +2031,22 @@ export const commandPaletteStyles = {
  * appearance choice, and a device row that carries its status in a sentence
  * under its label. Phone sizes get 44 px controls and 48 px rows.
  */
+/** The phone's Labels screen, over the whole screen like the palette. */
+export const labelsScreenStyles = {
+	panel: css({ overflow: 'hidden' }),
+	bar: hstack({
+		flexShrink: 0,
+		h: 'var(--app-topbar-height)',
+		gap: 'xs',
+		px: 'sm',
+		borderBottomWidth: 'hairline',
+		borderColor: 'scrapscache.border'
+	}),
+	title: css({ textStyle: 'heading', ...flexFill, ...truncateText }),
+	hint: css({ flexShrink: 0, px: 'lg', pt: 'sm', textStyle: 'caption', ...mutedText }),
+	body: css({ ...flexFill, display: 'flex', flexDirection: 'column', overflow: 'hidden' })
+};
+
 /** The phone top bar's title, and its menu of places and labels. */
 export const placePickerStyles = {
 	// As wide as the name, so its highlight hugs it; the margin keeps the bar's buttons right.

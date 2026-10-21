@@ -18,6 +18,7 @@
 	import SettingsMenu from './SettingsMenu.svelte';
 	import CommandPalette from './CommandPalette.svelte';
 	import PlacePicker from './PlacePicker.svelte';
+	import LabelsScreen from './LabelsScreen.svelte';
 	import SelectionBar from './SelectionBar.svelte';
 	import { selectionStore } from '#lib/stores/selection.svelte.js';
 	import BackupPassphraseDialog from './BackupPassphraseDialog.svelte';
@@ -83,6 +84,11 @@
 	 */
 	$effect(() => {
 		if (mobile.current) untrack(() => uiStore.clearSearch());
+	});
+
+	/** The Labels screen is a phone's: a window widened past it has the sidebar instead. */
+	$effect(() => {
+		if (!mobile.current) untrack(() => (uiStore.labelsOpen = false));
 	});
 
 	/** The palette's shortcut: Cmd+K on Apple devices, Ctrl+K elsewhere. */
@@ -399,6 +405,10 @@
 	onpopstate={openPairingLink}
 />
 <svelte:document onvisibilitychange={openPairingLink} />
+
+{#if uiStore.labelsOpen && mobile.current}
+	<LabelsScreen onClose={() => (uiStore.labelsOpen = false)} />
+{/if}
 
 {#if uiStore.paletteOpen}
 	<CommandPalette onClose={() => (uiStore.paletteOpen = false)} onBackup={startBackupExport} />

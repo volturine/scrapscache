@@ -711,7 +711,17 @@ test.describe('on a phone', () => {
 
 		await page.getByRole('button', { name: 'Archive, go to another place or label' }).click();
 		await page.getByRole('menuitem', { name: 'Edit labels…' }).click();
-		await expect(page.getByRole('navigation', { name: 'Sidebar' })).toBeVisible();
+		// Labels have their own screen on a phone: no drawer, no places, just the labels.
+		const labelsScreen = page.getByRole('dialog', { name: 'Labels' });
+		await expect(labelsScreen).toBeVisible();
+		await expect(page.getByRole('navigation', { name: 'Sidebar' })).toBeHidden();
+		await expect(labelsScreen.getByRole('navigation', { name: 'Main navigation' })).toHaveCount(0);
+		await labelsScreen.getByRole('button', { name: 'New label' }).click();
+		await page.keyboard.type('Errands');
+		await page.keyboard.press('Enter');
+		// A new label opens its notes and puts the screen away.
+		await expect(labelsScreen).toBeHidden();
+		await expect(page.locator('[data-view-title]')).toHaveText('Errands');
 	});
 });
 

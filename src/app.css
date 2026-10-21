@@ -35,7 +35,7 @@ html.editor-open .new-note-fab {
 /* With the keyboard up a phone has no room to spare under the note. */
 @media (max-width: 767px) {
 	:root {
-		--app-tabbar-height: 4.25rem;
+		--app-tabbar-height: 3.5rem;
 	}
 	html.keyboard-open {
 		--app-sheet-pad-bottom: 0.5rem;

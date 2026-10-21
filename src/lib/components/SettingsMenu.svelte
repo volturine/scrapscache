@@ -25,7 +25,7 @@
 		onImport: () => void;
 		importing?: boolean;
 		importError?: string;
-		/** On a phone this is the "More" menu; its places are in the title's picker. */
+		/** On a phone this is the "More" menu; its places are in the tab bar and the Labels tab. */
 		phone?: boolean;
 	} = $props();
 

@@ -74,57 +74,14 @@ describe('the top bar on a phone', () => {
 		expect(uiStore.paletteOpen).toBe(false);
 	});
 
-	it('goes to any place or label from the title, and keeps More for the settings', async () => {
-		uiStore.sidebarOpen = false;
-		notesStore.labels = [
-			{ id: 'travel', name: 'Travel', createdAt: 1, updatedAt: 1 },
-			{ id: 'work', name: 'Work', createdAt: 1, updatedAt: 1 }
-		];
+	it('names the view in plain text, Labels while its screen is open, and keeps More for the settings', async () => {
 		render(Topbar);
-		await fireEvent.click(
-			screen.getByRole('button', { name: 'Notes, go to another place or label' })
-		);
-		const options = (await screen.findAllByRole('menuitemradio')).map((item) =>
-			item.textContent?.trim()
-		);
-		expect(options).toEqual(['Notes', 'Reminders', 'Kanban', 'Archive', 'Trash', 'Travel', 'Work']);
-		expect(screen.getByRole('menuitemradio', { name: 'Notes' }).getAttribute('aria-checked')).toBe(
-			'true'
-		);
+		const title = document.querySelector('[data-view-title]')!;
+		// The tab bar goes places; the title is not a control.
+		expect(title.closest('button')).toBeNull();
+		uiStore.labelsOpen = true;
+		await waitFor(() => expect(title.textContent).toBe('Labels'));
 
-		const archive = screen.getByRole('menuitemradio', { name: 'Archive' });
-		await fireEvent.pointerDown(archive, { pointerType: 'mouse' });
-		await fireEvent.click(archive);
-		expect(uiStore.view).toBe('archive');
-		expect(navigation.goto).toHaveBeenCalledWith('/archive');
-		expect(closeNote).toHaveBeenCalled();
-
-		await fireEvent.click(
-			screen.getByRole('button', { name: 'Archive, go to another place or label' })
-		);
-		const work = await screen.findByRole('menuitemradio', { name: 'Work' });
-		await fireEvent.pointerDown(work, { pointerType: 'mouse' });
-		await fireEvent.click(work);
-		expect(uiStore.view).toBe('label');
-		expect(uiStore.activeLabelId).toBe('work');
-		expect(navigation.goto).toHaveBeenCalledWith('/label/work');
-
-		// Making, renaming and deleting labels has its own screen, without the places.
-		await fireEvent.click(
-			screen.getByRole('button', { name: 'Work, go to another place or label' })
-		);
-		const edit = await screen.findByRole('menuitem', { name: 'Edit labels…' });
-		await fireEvent.pointerDown(edit, { pointerType: 'mouse' });
-		await fireEvent.click(edit);
-		expect(uiStore.labelsOpen).toBe(true);
-		expect(uiStore.sidebarOpen).toBe(false);
-		const labelsScreen = await screen.findByRole('dialog', { name: 'Labels' });
-		expect(within(labelsScreen).getByRole('button', { name: 'New label' })).toBeTruthy();
-		expect(within(labelsScreen).queryByRole('navigation')).toBeNull();
-		await fireEvent.click(within(labelsScreen).getByRole('button', { name: 'Close labels' }));
-		expect(uiStore.labelsOpen).toBe(false);
-
-		// More holds the settings alone now.
 		const more = screen.getByRole('button', { name: 'More' });
 		await fireEvent.click(more);
 		const moreMenu = document.getElementById(more.getAttribute('aria-controls')!)!;

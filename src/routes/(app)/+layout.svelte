@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { appLayout as styles } from '$panda/styles';
 	import { cx } from 'styled-system/css';
-	import { uiStore, type View } from '#lib/stores/ui.svelte.js';
+	import { uiStore } from '#lib/stores/ui.svelte.js';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
 	import { syncStore, syncEventsClient } from '#lib/stores/sync.svelte.js';
 	import Sidebar from '#lib/components/Sidebar.svelte';
@@ -328,25 +328,38 @@
 	// read scrollTop after the outgoing pane is already hidden.
 	const scrollTops = new Map<string, number>();
 
-	function viewKey(view: View, labelId: string | null): string {
+	/**
+	 * The phone's Labels screen takes the feed's place without changing the view, so
+	 * it has a key of its own: the scroll reset it causes must not overwrite the
+	 * offset of the view it covers.
+	 */
+	function viewKey(): string {
+		if (uiStore.labelsOpen) return 'labels-screen';
+		const { view, activeLabelId: labelId } = uiStore;
 		return labelId ? `${view}:${labelId}` : view;
 	}
 
 	function rememberFeedScroll() {
 		if (!feedEl) return;
-		scrollTops.set(viewKey(uiStore.view, uiStore.activeLabelId), feedEl.scrollTop);
+		scrollTops.set(viewKey(), feedEl.scrollTop);
 	}
 
 	function restoreFeedScroll() {
 		if (!feedEl) return;
-		const key = viewKey(uiStore.view, uiStore.activeLabelId);
+		const key = viewKey();
 		const target = scrollTops.get(key) ?? 0;
 		queueMicrotask(() => {
-			if (feedEl && viewKey(uiStore.view, uiStore.activeLabelId) === key) {
+			if (feedEl && viewKey() === key) {
 				feedEl.scrollTop = target;
 			}
 		});
 	}
+
+	// Opening or leaving the Labels screen swaps what the feed shows, like a view change.
+	$effect(() => {
+		void uiStore.labelsOpen;
+		untrack(restoreFeedScroll);
+	});
 
 	function closeEditor() {
 		editingId = null;
@@ -359,6 +372,8 @@
 	}
 
 	const metaTitle = $derived.by(() => {
+		// The phone's Labels screen covers the view without changing it, and is a place of its own.
+		if (uiStore.labelsOpen) return 'Labels · Scraps Cache';
 		switch (uiStore.view) {
 			case 'kanban':
 				return 'Kanban · Scraps Cache';

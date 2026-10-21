@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { afterNavigate } from '$app/navigation';
 	import { page } from '$app/state';
-	import { uiStore } from '#lib/stores/ui.svelte.js';
+	import { uiStore, type View } from '#lib/stores/ui.svelte.js';
 	import { viewForPath } from '#lib/viewRoutes.js';
 	import NotesHomeView from '#lib/components/views/NotesHomeView.svelte';
 	import LabelView from '#lib/components/views/LabelView.svelte';
@@ -9,6 +9,10 @@
 	import TrashView from '#lib/components/views/TrashView.svelte';
 	import RemindersView from '#lib/components/views/RemindersView.svelte';
 	import KanbanView from '#lib/components/views/KanbanView.svelte';
+	import LabelsScreen from '#lib/components/LabelsScreen.svelte';
+
+	/** The phone's Labels screen covers the view under it, which stays mounted. */
+	const shown = (view: View) => !uiStore.labelsOpen && uiStore.view === view;
 
 	function applyPath(pathname: string) {
 		const target = viewForPath(pathname);
@@ -25,33 +29,36 @@
 	});
 </script>
 
+{#if uiStore.labelsOpen}
+	<LabelsScreen />
+{/if}
 {#if uiStore.opened.notes}
-	<div hidden={uiStore.view !== 'notes'}>
+	<div hidden={!shown('notes')}>
 		<NotesHomeView />
 	</div>
 {/if}
 {#if uiStore.opened.label}
-	<div hidden={uiStore.view !== 'label'}>
+	<div hidden={!shown('label')}>
 		<LabelView />
 	</div>
 {/if}
 {#if uiStore.opened.archive}
-	<div hidden={uiStore.view !== 'archive'}>
+	<div hidden={!shown('archive')}>
 		<ArchiveView />
 	</div>
 {/if}
 {#if uiStore.opened.trash}
-	<div hidden={uiStore.view !== 'trash'}>
+	<div hidden={!shown('trash')}>
 		<TrashView />
 	</div>
 {/if}
 {#if uiStore.opened.reminders}
-	<div hidden={uiStore.view !== 'reminders'}>
+	<div hidden={!shown('reminders')}>
 		<RemindersView />
 	</div>
 {/if}
 {#if uiStore.opened.kanban}
-	<div hidden={uiStore.view !== 'kanban'}>
+	<div hidden={!shown('kanban')}>
 		<KanbanView />
 	</div>
 {/if}

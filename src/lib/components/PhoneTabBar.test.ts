@@ -14,16 +14,17 @@ vi.mock('#lib/editorContext.js', () => ({
 afterEach(() => {
 	uiStore.setView('notes');
 	uiStore.paletteOpen = false;
+	uiStore.labelsOpen = false;
 	navigation.goto.mockClear();
 	closeNote.mockClear();
 });
 
 describe('PhoneTabBar', () => {
-	it('offers Notes, Reminders, Kanban and Search, with the current place marked', () => {
+	it('offers Notes, Reminders, Kanban, Labels and Search, with the current place marked', () => {
 		uiStore.setView('reminders');
 		render(PhoneTabBar);
 		const tabs = screen.getAllByRole('button').map((tab) => tab.textContent?.trim());
-		expect(tabs).toEqual(['Notes', 'Reminders', 'Kanban', 'Search']);
+		expect(tabs).toEqual(['Notes', 'Reminders', 'Kanban', 'Labels', 'Search']);
 		expect(screen.getByRole('button', { name: 'Reminders' }).getAttribute('aria-current')).toBe(
 			'page'
 		);
@@ -37,6 +38,29 @@ describe('PhoneTabBar', () => {
 		expect(closeNote).toHaveBeenCalled();
 		expect(uiStore.view).toBe('kanban');
 		expect(navigation.goto).toHaveBeenCalledWith('/kanban');
+	});
+
+	it('opens the Labels screen, and leaves it for another tab', async () => {
+		render(PhoneTabBar);
+		const labels = screen.getByRole('button', { name: 'Labels' });
+		await fireEvent.click(labels);
+		expect(closeNote).toHaveBeenCalled();
+		expect(uiStore.labelsOpen).toBe(true);
+		expect(labels.getAttribute('aria-current')).toBe('page');
+		expect(screen.getByRole('button', { name: 'Notes' }).getAttribute('aria-current')).toBeNull();
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Notes' }));
+		expect(uiStore.labelsOpen).toBe(false);
+		expect(navigation.goto).toHaveBeenCalledWith('/');
+	});
+
+	it('keeps Labels lit on a label, Archive and Trash, which are reached from it', () => {
+		uiStore.setView('archive');
+		render(PhoneTabBar);
+		expect(screen.getByRole('button', { name: 'Labels' }).getAttribute('aria-current')).toBe(
+			'page'
+		);
+		expect(screen.getByRole('button', { name: 'Notes' }).getAttribute('aria-current')).toBeNull();
 	});
 
 	it('opens the palette from Search', async () => {

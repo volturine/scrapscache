@@ -47,7 +47,8 @@
 		labelsOnly = false
 	}: {
 		onNavigate?: () => void;
-		/** The phone's Labels screen: its labels to make, rename and delete, without the places. */
+		/** The phone's Labels screen: its labels to make, rename and delete, then Archive and Trash;
+		 * the places the tab bar holds are left out. */
 		labelsOnly?: boolean;
 	} = $props();
 
@@ -311,23 +312,23 @@
 	})}
 	transition:fly={{ x: -20, duration: 120 }}
 >
+	{#snippet placeRow(item: (typeof navItems)[number])}
+		<button
+			type="button"
+			onclick={() => navigate(item.view)}
+			class={[menuRow, sidebarRow({ navigation: true, active: isActive(item.view), wide: true })]}
+		>
+			<span class={sidebarIcon({ iconTone: 'nav' })} aria-hidden="true">
+				<item.icon size={18} strokeWidth={1.75} />
+			</span>
+			<span class={sidebarStyles.navLabel}>{item.label}</span>
+		</button>
+	{/snippet}
+
 	{#if !labelsOnly}
 		<nav class={vstack({ gap: '3xs', flexShrink: 0, w: 'full' })} aria-label="Main navigation">
 			{#each navItems as item (item.view)}
-				{@const NavIcon = item.icon}
-				<button
-					type="button"
-					onclick={() => navigate(item.view)}
-					class={[
-						menuRow,
-						sidebarRow({ navigation: true, active: isActive(item.view), wide: true })
-					]}
-				>
-					<span class={sidebarIcon({ iconTone: 'nav' })} aria-hidden="true">
-						<NavIcon size={18} strokeWidth={1.75} />
-					</span>
-					<span class={sidebarStyles.navLabel}>{item.label}</span>
-				</button>
+				{@render placeRow(item)}
 			{/each}
 		</nav>
 	{/if}
@@ -567,6 +568,15 @@
 			{/each}
 		</div>
 	</section>
+
+	{#if labelsOnly}
+		<!-- The phone's tab bar has no room for these, so the Labels tab carries them. -->
+		<nav class={sidebarStyles.labelsPlaces} aria-label="Archive and Trash">
+			{#each navItems.filter((item) => item.view === 'archive' || item.view === 'trash') as item (item.view)}
+				{@render placeRow(item)}
+			{/each}
+		</nav>
+	{/if}
 </aside>
 
 <svelte:window

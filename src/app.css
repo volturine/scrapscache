@@ -26,8 +26,10 @@ html.ios-standalone {
 }
 
 /* An open note owns the screen; the new-note button would only crowd it and,
- * on a phone, sit between the note and the keyboard. */
-html.editor-open .new-note-fab {
+ * on a phone, sit between the note and the keyboard. With the keyboard up for
+ * anything else (search, a label name) it would ride up over the page with it. */
+html.editor-open .new-note-fab,
+html.keyboard-open .new-note-fab {
 	visibility: hidden;
 	pointer-events: none;
 }

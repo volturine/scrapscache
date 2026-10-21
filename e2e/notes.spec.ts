@@ -300,6 +300,42 @@ test('search narrows the feed to matching notes', async ({ page }) => {
 	await expect(search).toBeFocused();
 });
 
+test('extra cursors look like the native caret and selection', async ({ page }) => {
+	await openEmptyApp(page);
+	await page.getByRole('button', { name: 'New note' }).click();
+	const body = editor(page).getByRole('textbox', { name: 'Note body' });
+	await body.pressSequentially('cat cat cat');
+	await page.keyboard.press('Home');
+	// Mod+D selects the word, then adds the next match as an extra cursor.
+	await page.keyboard.press('ControlOrMeta+d');
+	await page.keyboard.press('ControlOrMeta+d');
+
+	const caret = body.locator('..').locator('[data-extra-cursors] > span');
+	await expect(caret).toHaveCount(1);
+	const look = await caret.evaluate((mark) => {
+		const editor = mark.closest('[data-extra-cursors]')!.previousElementSibling as HTMLElement;
+		const line = editor.querySelector('[data-line-text]')!;
+		const probe = document.createElement('span');
+		probe.style.background = 'var(--colors-scrapscache-selection)';
+		document.body.append(probe);
+		const token = getComputedStyle(probe).backgroundColor;
+		probe.remove();
+		const style = getComputedStyle(mark);
+		return {
+			width: style.width,
+			caret: style.backgroundColor,
+			nativeCaret: getComputedStyle(editor).caretColor,
+			blink: style.animationName,
+			selection: getComputedStyle(line, '::selection').backgroundColor,
+			token
+		};
+	});
+	expect(look.width).toBe('1px');
+	expect(look.caret).toBe(look.nativeCaret);
+	expect(look.blink).toContain('caretBlink');
+	expect(look.selection).toBe(look.token);
+});
+
 test('a click outside the … menu closes it and still opens the note under the pointer', async ({
 	page
 }) => {

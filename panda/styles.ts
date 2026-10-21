@@ -3201,7 +3201,6 @@ export const markdownStyles = css({
 	'& .markdown-token-marker-heading': { color: 'scrapscache.warning' },
 	'&.markdown-raw': {
 		fontFamily: 'sans',
-		caretColor: 'scrapscache.focus',
 		'& [data-line-text]:empty': { flex: '1 1 0%' },
 		'& .markdown-token-marker': { display: 'inline' },
 		'& .markdown-token-code': { color: 'scrapscache.warning' },
@@ -3307,11 +3306,26 @@ export const editorFindStyles = {
 	})
 };
 
-/** Extra cursors from Mod+D, drawn beside the editable text so its DOM stays the editor's own. */
+/**
+ * Extra cursors from Mod+D, drawn beside the editable text so its DOM stays the
+ * editor's own, and looking like the browser's: one fill for the native and the extra
+ * selections, and every caret in the focus colour, one pixel wide, blinking at the
+ * native rate. An extra caret is redrawn whenever the cursors move, so its blink
+ * restarts with the native caret's.
+ */
 export const multiCursorStyles = {
+	look: css({
+		caretColor: 'scrapscache.focus',
+		'&::selection, & *::selection': { bg: 'scrapscache.selection' },
+		'& ::highlight(note-extra-selection)': { bg: 'scrapscache.selection' }
+	}),
 	layer: css({ position: 'absolute', w: 0, h: 0, pointerEvents: 'none' }),
-	caret: css({ position: 'absolute', w: '2px', ml: '-1px', bg: 'scrapscache.text' }),
-	highlights: css({
-		'& ::highlight(note-extra-selection)': { bg: 'scrapscache.accentSubtle' }
+	caret: css({
+		position: 'absolute',
+		w: '1px',
+		bg: 'scrapscache.focus',
+		animation: 'caretBlink 1s steps(1, end) infinite',
+		// Hidden with the native caret while the colour picker is up on a phone.
+		'.editor-caret-hidden &': { visibility: 'hidden' }
 	})
 };

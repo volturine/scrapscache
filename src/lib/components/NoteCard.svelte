@@ -15,7 +15,7 @@
 	import { matchSegments } from '#lib/search.js';
 	import { uiStore } from '#lib/stores/ui.svelte.js';
 	import type { Note } from '#lib/types.js';
-	import { formatReminder, isReminderOverdue, noteActivity, trashCountdown } from '#lib/utils.js';
+	import { formatReminder, isReminderOverdue, trashCountdown } from '#lib/utils.js';
 	import { appClock } from '#lib/appClock.svelte.js';
 	import { cardSwipeStyle, createCardSwipe } from '#lib/cardSwipe.js';
 	import { overflowingTable } from '#lib/tableScroll.js';
@@ -261,7 +261,6 @@
 	});
 
 	const card = $derived(noteCard({ pinned: note.pinned }));
-	const activity = $derived(noteActivity(note, appClock.now));
 	const titleOnly = $derived(note.title.trim().length > 0 && !(note.body ?? '').trim());
 </script>
 
@@ -421,12 +420,6 @@
 					     never swallow a swipe or start a drag of their own. -->
 					<div class={card.shield} data-card-shield aria-hidden="true"></div>
 				</div>
-			</div>
-
-			<div class={cx(card.metaRow, noteSurface({ color: note.color }))} data-note-meta>
-				<time datetime={new Date(activity.at).toISOString()} title={activity.detail}
-					>{activity.label}</time
-				>
 			</div>
 		</div>
 

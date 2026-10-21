@@ -2304,6 +2304,8 @@ export const noteCardHazeGroup = {
 /** The "…" on every card and the labelled menu it opens. */
 export const noteActionsStyles = {
 	// Over the open control (16) and the hidden-preview overlay (20), so it is always reachable.
+	// Out of the way until the card is hovered or focused, or its menu is open. A touch
+	// screen has no hover to reveal it, so there it always shows.
 	trigger: css({
 		position: 'absolute',
 		top: 'xs',
@@ -2312,7 +2314,15 @@ export const noteActionsStyles = {
 		bg: 'scrapscache.surface',
 		boxShadow: 'sm',
 		...mutedText,
-		_hoverable: { color: 'scrapscache.text' }
+		opacity: 0,
+		transition: 'opacity 120ms ease, color 120ms ease',
+		_hoverable: { color: 'scrapscache.text' },
+		_groupHover: { opacity: 1 },
+		// Keyboard focus anywhere on the card, not the focus a click leaves behind.
+		'.group:has(:focus-visible) &': { opacity: 1 },
+		_focusVisible: { opacity: 1 },
+		'&[data-state=open]': { opacity: 1 },
+		_touch: { opacity: 1 }
 	}),
 	/** The trigger's box and its inset, so a title or reminder in the top row never runs under it. */
 	topRoom: css({ pr: 'calc(2rem + 2 * token(spacing.xs))' }),

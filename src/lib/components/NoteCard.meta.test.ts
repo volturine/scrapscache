@@ -25,52 +25,18 @@ function note(partial: Partial<Note> = {}): Note {
 	};
 }
 
-function metaTime(): HTMLElement | null {
-	return document.querySelector('[data-note-meta] time');
-}
-
 afterEach(() => {
 	notesStore.notes = [];
 	notesStore.labels = [];
 });
 
 describe('NoteCard created/updated meta', () => {
-	it('shows Created for a never-edited note', () => {
-		const at = new Date(2026, 8, 15, 14, 30).getTime();
-		render(NoteCard, { props: { note: note({ createdAt: at, updatedAt: at }), onOpen: () => {} } });
-
-		const time = metaTime();
-		expect(time?.textContent).toMatch(/^Created /);
-		expect(time?.getAttribute('datetime')).toBe(new Date(at).toISOString());
-		expect(time?.getAttribute('title')).toMatch(/^Created /);
-	});
-
-	it('shows Edited once the note has been modified', () => {
-		const created = new Date(2026, 8, 15, 10, 0).getTime();
-		const updated = new Date(2026, 8, 15, 14, 28).getTime();
+	it('leaves the created or edited time to the open note', () => {
 		render(NoteCard, {
-			props: { note: note({ createdAt: created, updatedAt: updated }), onOpen: () => {} }
+			props: { note: note({ createdAt: 1, updatedAt: 2 }), onOpen: vi.fn() }
 		});
-
-		const time = metaTime();
-		expect(time?.textContent).toMatch(/^Edited /);
-		expect(time?.getAttribute('title')).toMatch(/ · Edited /);
-	});
-
-	it('shows Deleted from trashedAt for a trashed note', () => {
-		const trashedAt = new Date(2026, 8, 15, 12, 30).getTime();
-		notesStore.notes = [note({ trashed: true, trashedAt, updatedAt: Math.max(trashedAt, 1) })];
-		render(NoteCard, {
-			props: {
-				note: note({ trashed: true, trashedAt, updatedAt: Math.max(trashedAt, 1) }),
-				onOpen: () => {}
-			}
-		});
-
-		const time = metaTime();
-		expect(time?.textContent).toMatch(/^Deleted /);
-		expect(time?.getAttribute('datetime')).toBe(new Date(trashedAt).toISOString());
-		expect(screen.getByRole('button', { name: /Open Trip/ })).toBeTruthy();
+		expect(document.querySelector('[data-note-meta]')).toBeNull();
+		expect(document.body.textContent).not.toMatch(/Edited|Created/);
 	});
 });
 

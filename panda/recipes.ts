@@ -374,7 +374,6 @@ const noteCardRecipe = defineSlotRecipe({
 		'contentPad',
 		'title',
 		'labelsRow',
-		'metaRow',
 		'hazeOverlay',
 		'shield'
 	],
@@ -448,29 +447,6 @@ const noteCardRecipe = defineSlotRecipe({
 			touchAction: 'pan-x pan-y',
 			overscrollBehaviorX: 'contain',
 			'& > *': { flexShrink: 0 }
-		},
-		metaRow: {
-			// Phone gallery has no useful hover; only desktop shows the stamp.
-			display: { base: 'none', md: 'block' },
-			// Drawn over the bottom of the body so hovering never resizes the card.
-			position: 'absolute',
-			insetX: 0,
-			bottom: 0,
-			// Above the secret-note lock (10), below the action haze (20).
-			zIndex: 15,
-			px: 'md',
-			pt: 'xs',
-			pb: 'sm',
-			textStyle: 'caption',
-			color: 'scrapscache.textMuted',
-			overflow: 'hidden',
-			textOverflow: 'ellipsis',
-			whiteSpace: 'nowrap',
-			opacity: 0,
-			transition: 'opacity 150ms ease',
-			_groupHover: {
-				opacity: 1
-			}
 		},
 		hazeOverlay: {
 			position: 'absolute',

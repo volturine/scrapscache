@@ -4,7 +4,7 @@
 	import KanbanCardBody from './KanbanCardBody.svelte';
 	import NoteActionsMenu from './NoteActionsMenu.svelte';
 	import type { MoveTargets } from '#lib/kanbanMove.js';
-	import { css } from 'styled-system/css';
+	import { css, cx } from 'styled-system/css';
 	import { cardOpenControl } from '$panda/styles';
 
 	let {
@@ -58,14 +58,17 @@
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
 <article
 	bind:this={card}
-	class={css({
-		position: 'relative',
-		cursor: 'grab',
-		rounded: 'card',
-		transition: 'box-shadow 150ms ease, transform 150ms ease',
-		_hoverable: { boxShadow: 'md', transform: 'translateY(-1px)' },
-		_active: { cursor: 'grabbing' }
-	})}
+	class={cx(
+		'group',
+		css({
+			position: 'relative',
+			cursor: 'grab',
+			rounded: 'card',
+			transition: 'box-shadow 150ms ease, transform 150ms ease',
+			_hoverable: { boxShadow: 'md', transform: 'translateY(-1px)' },
+			_active: { cursor: 'grabbing' }
+		})
+	)}
 	onpointerdown={press}
 	ondragstart={(event) => event.preventDefault()}
 	onclick={open}

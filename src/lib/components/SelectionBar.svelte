@@ -1,8 +1,10 @@
 <script lang="ts">
 	// The top bar while cards are picked: how many, and one action for all of them.
-	// What it offers follows the view: active notes can be pinned, reminded, labelled,
-	// coloured, archived and trashed; the archive and the trash restore, and the trash
-	// deletes for good.
+	// It offers the actions every picked note has in its own menu: active notes can be
+	// pinned, reminded, labelled, coloured, archived and trashed; archived ones restored
+	// or trashed; trashed ones restored or deleted for good. A mix of active and
+	// archived notes (a search in Notes that reaches into the archive) shares only
+	// Move to trash.
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { Menu } from '@ark-ui/svelte/menu';
 	import {
@@ -30,18 +32,28 @@
 	import ReminderPicker from './ReminderPicker.svelte';
 	import Tooltip from './Tooltip.svelte';
 
-	const place = $derived(
-		uiStore.view === 'trash' ? 'trash' : uiStore.view === 'archive' ? 'archive' : 'active'
+	const view = $derived(uiStore.view);
+	/** Notes lists archived matches too while its search reaches into the archive (the In chip). */
+	const archiveInNotes = $derived(
+		view === 'notes' && uiStore.searchArchiveToo && uiStore.search.trim() !== ''
 	);
 	/** Whether a note is still where it was picked: a card's own action may have moved it on. */
 	function inPlace(note: { trashed: boolean; archived: boolean }): boolean {
-		if (place === 'trash') return note.trashed;
-		if (place === 'archive') return note.archived && !note.trashed;
-		return !note.archived && !note.trashed;
+		if (view === 'trash') return note.trashed;
+		if (note.trashed) return false;
+		if (view === 'archive') return note.archived;
+		return !note.archived || archiveInNotes;
 	}
 	const notes = $derived(
 		notesStore.notes.filter((note) => selectionStore.has(note.id) && inPlace(note))
 	);
+	/** Which actions every picked note shares; see the note at the top. */
+	const place = $derived.by((): 'active' | 'archive' | 'trash' | 'mixed' => {
+		if (view === 'trash') return 'trash';
+		const archived = notes.filter((note) => note.archived).length;
+		if (archived === 0) return view === 'archive' ? 'archive' : 'active';
+		return archived === notes.length ? 'archive' : 'mixed';
+	});
 	const ids = $derived(notes.map((note) => note.id));
 	const count = $derived(ids.length);
 	// A note that left the feed leaves the selection, so no action reaches it later.
@@ -218,6 +230,18 @@
 					<Archive class={iconMd} aria-hidden="true" />
 				</button>
 			</Tooltip>
+			<Tooltip content="Move to trash">
+				<button
+					type="button"
+					class={action}
+					title="Move to trash"
+					aria-label="Move to trash"
+					onclick={trash}
+				>
+					<Trash2 class={iconMd} aria-hidden="true" />
+				</button>
+			</Tooltip>
+		{:else if place === 'mixed'}
 			<Tooltip content="Move to trash">
 				<button
 					type="button"

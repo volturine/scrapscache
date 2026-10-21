@@ -2135,6 +2135,11 @@ export const settingsMenuStyles = {
 	deviceText: css({ ...flexFill, display: 'flex', flexDirection: 'column', gap: '3xs' }),
 	deviceLabel: css({ textStyle: 'body' }),
 	deviceChevron: css({ ...iconSm, flexShrink: 0, mt: '2xs', ...mutedText }),
+	chevronOpen: css({ transform: 'rotate(180deg)' }),
+	/** A language under the Reminder languages row, indented to the row's text. */
+	languageItem: css({ pl: 'calc(token(spacing.md) + 1.5rem)', gap: 'sm' }),
+	/** Room for the tick whether or not it shows, so the names line up. */
+	languageCheck: css({ ...iconSm, flexShrink: 0, display: 'grid', placeItems: 'center' }),
 	/** What the row's state means for the person, as a sentence. */
 	status: css({ textStyle: 'caption', ...mutedText }),
 	statusWarning: css({ textStyle: 'caption', color: 'scrapscache.warning' }),
@@ -2397,6 +2402,22 @@ export const syncStyles = {
 
 export const reminderPickerStyles = {
 	ellipsis: flexTruncateClass,
+	/** The typed time and what it was read as, above the status. */
+	phrase: css({ mb: 'lg' }),
+	phraseField: css({ position: 'relative' }),
+	phraseInput: css({ w: 'full', pr: '2.5rem' }),
+	phraseClear: css({ ...absoluteCenterY, right: '2xs', ...mutedText }),
+	phraseRead: hstack({ mt: 'xs', gap: 'xs', alignItems: 'flex-start', textStyle: 'caption' }),
+	phraseUnread: hstack({
+		mt: 'xs',
+		gap: 'xs',
+		alignItems: 'flex-start',
+		textStyle: 'caption',
+		color: 'scrapscache.warning'
+	}),
+	phraseReadIcon: css({ ...iconXs, flexShrink: 0, mt: '3xs', color: 'scrapscache.success' }),
+	phraseUnreadIcon: css({ ...iconXs, flexShrink: 0, mt: '3xs' }),
+	phraseMuted: css({ ...mutedText }),
 	wheelDeck: css({ rounded: 'dialog', bg: 'scrapscache.surfaceSubtle', px: 'sm', py: '2xs' }),
 	timeWheel: css({ w: '4rem' }),
 	colon: center({ w: '0.75rem', flexShrink: 0, textStyle: 'display', color: 'scrapscache.text' }),

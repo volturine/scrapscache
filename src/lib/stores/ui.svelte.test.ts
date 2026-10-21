@@ -128,3 +128,28 @@ describe('view switches', () => {
 		expect(uiStore.search).toBe('retro');
 	});
 });
+
+describe('reminder languages', () => {
+	it('adds and removes languages but keeps the last one, and remembers them', async () => {
+		const start = [...uiStore.reminderLanguages];
+		for (const code of start.slice(1)) uiStore.toggleReminderLanguage(code);
+		const [only] = uiStore.reminderLanguages;
+
+		uiStore.toggleReminderLanguage(only);
+		expect(uiStore.reminderLanguages).toEqual([only]);
+
+		uiStore.toggleReminderLanguage(only === 'sk' ? 'en' : 'sk');
+		expect(uiStore.reminderLanguages).toHaveLength(2);
+		const saved = JSON.parse(localStorage.getItem('scrapscache-ui-state') ?? '{}');
+		expect(saved.reminderLanguages).toEqual(uiStore.reminderLanguages);
+
+		// A fresh store reads them back, dropping anything it cannot read.
+		localStorage.setItem(
+			'scrapscache-ui-state',
+			JSON.stringify({ reminderLanguages: ['cs', 'xx', 'cs', 'de'] })
+		);
+		vi.resetModules();
+		const { uiStore: fresh } = await import('./ui.svelte');
+		expect(fresh.reminderLanguages).toEqual(['cs', 'de']);
+	});
+});

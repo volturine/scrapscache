@@ -117,10 +117,6 @@ describe('uploads that have to be retried', () => {
 		expect(objects.size).toBe(2);
 		await client.batch([
 			{
-				sql: 'INSERT INTO account_history_evictions(account_id, evicted) VALUES (?, 1)',
-				args: [ACCOUNT]
-			},
-			{
 				sql: 'INSERT INTO reminder_wakes_unscheduled(account_id, revision) VALUES (?, 1)',
 				args: [ACCOUNT]
 			}
@@ -133,7 +129,7 @@ describe('uploads that have to be retried', () => {
 		);
 		expect(objects.size).toBe(0);
 		expect((await client.execute('SELECT history_id FROM envelope_history')).rows).toHaveLength(0);
-		for (const table of ['account_history_evictions', 'reminder_wakes_unscheduled'])
+		for (const table of ['reminder_wakes_unscheduled'])
 			expect((await client.execute(`SELECT 1 FROM ${table}`)).rows, table).toHaveLength(0);
 	});
 
@@ -213,14 +209,9 @@ describe('uploads that have to be retried', () => {
 		const result = (await response.json()) as {
 			writesAccepted: boolean;
 			usage: { storageBytes: number };
-			historyEvicted: number;
 		};
 		expect(result.writesAccepted).toBe(true);
 		expect(result.usage.storageBytes).toBe(quota);
-		// The note in SLOT never changed, so this count is how its clients learn it lost a version.
-		expect(result.historyEvicted).toBe(1);
-		const after = (await (await sync([], quota, cursor)).json()) as { historyEvicted: number };
-		expect(after.historyEvicted).toBe(1);
 		const history = await client.execute('SELECT id FROM envelope_history ORDER BY history_id');
 		expect(history.rows.map((row) => row.id)).toEqual(['two', 'three', 'other']);
 		expect([...objects.values()].sort()).toEqual(['bb', 'cc', 'dd']);
@@ -343,7 +334,7 @@ describe('uploads that do not fit', () => {
 });
 
 describe('download pages', () => {
-	it('stops a page at the byte budget and reports each round’s object reads', async () => {
+	it('stops a page at the byte budget', async () => {
 		await sync([
 			{ id: 'photo-1', slot: 'a'.repeat(64), ciphertext: 'p1' },
 			{ id: 'photo-2', slot: 'b'.repeat(64), ciphertext: 'p2' },
@@ -373,45 +364,17 @@ describe('download pages', () => {
 				cursor: number;
 				envelopes: { id: string; ciphertext: string }[];
 				hasMore: boolean;
-				phaseTimings: Record<string, number>;
 			};
 
 		const first = await pull(0);
 		expect(first.envelopes.map(({ id }) => id)).toEqual(['photo-1', 'photo-2']);
 		expect(first.hasMore).toBe(true);
-		expect(first.phaseTimings['sync_calls phase:r2_get']).toBe(2);
 		const second = await pull(first.cursor);
 		expect(second.envelopes).toMatchObject([
 			{ id: 'photo-3', ciphertext: 'p3' },
 			{ id: 'note', ciphertext: 'n' }
 		]);
 		expect(second.hasMore).toBe(false);
-	});
-});
-
-describe('round timings', () => {
-	it('reports every phase an upload round goes through', async () => {
-		// Each clock read moves 10 ms on, so every phase that starts takes time.
-		let clock = 1_000_000;
-		vi.spyOn(Date, 'now').mockImplementation(() => (clock += 10));
-
-		const response = await sync([{ id: 'one', slot: SLOT, ciphertext: 'aaaa' }]);
-		const { phaseTimings: timings } = (await response.json()) as {
-			phaseTimings: Record<string, number>;
-		};
-
-		expect(
-			Object.keys(timings)
-				.filter((key) => key.startsWith('sync_ms'))
-				.sort()
-		).toEqual([
-			'sync_ms phase:commit',
-			'sync_ms phase:r2_put',
-			'sync_ms phase:reads',
-			'sync_ms phase:tail'
-		]);
-		expect(timings['sync_calls phase:r2_put']).toBe(1);
-		vi.restoreAllMocks();
 	});
 });
 
@@ -896,17 +859,5 @@ describe('rounds that change nothing', () => {
 			})
 		).rows[0];
 		expect(Number(row.lastSeenAt)).toBeGreaterThan(seen);
-	});
-
-	it('reports what the round cost the database', async () => {
-		const result = (await (await sync([])).json()) as {
-			databaseCost: { queries: number; rowsRead: number; rowsWritten: number };
-		};
-		expect(result.databaseCost.queries).toBeGreaterThan(0);
-		expect(result.databaseCost).toEqual({
-			queries: expect.any(Number),
-			rowsRead: expect.any(Number),
-			rowsWritten: expect.any(Number)
-		});
 	});
 });

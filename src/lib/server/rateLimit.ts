@@ -12,16 +12,17 @@ export type RateLimitResult = { allowed: true } | { allowed: false; retryAfterSe
 export const RATE_BUCKET_STALE_MS = 10 * 60_000;
 
 /**
- * Each account's sync writes over a day, charged one token per upload or delete.
- * The per-minute allowance alone lets one account replace the same records around
- * the clock; this caps that churn. A first upload or a restore fits in the burst,
- * and ordinary editing never comes near the refill.
+ * Each account's sync writes, charged one token per upload or delete. Sync runs
+ * after five quiet seconds, so writing 1–10 notes an hour is roughly 10–60 writes
+ * and a heavy day stays under a thousand. The burst holds a first upload of a
+ * large library; after it, writes refill at 2,000 a day, which ordinary editing
+ * never meets and which caps round-the-clock churn.
  */
 export const SYNC_CHURN_POLICY: RateLimitPolicy = {
-	capacity: 50_000,
-	refillWindowMs: 24 * 60 * 60_000
+	capacity: 10_000,
+	refillWindowMs: 5 * 24 * 60 * 60_000
 };
-/** Churn buckets refill over a day, so they are kept that long, not just ten minutes. */
+/** Churn buckets refill over days, so the sweep keeps them that long, not ten minutes. */
 const SYNC_CHURN_PREFIX = 'sync-churn:';
 
 const CHECK_SQL = `

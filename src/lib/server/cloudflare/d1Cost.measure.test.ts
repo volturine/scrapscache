@@ -3,13 +3,13 @@
  * What each kind of relay request costs in D1's billed units, measured against
  * Miniflare's D1, which reports `rows_read` and `rows_written` the way production
  * does. Opt-in, as it starts workerd: `MEASURE_D1=1 npx vitest run d1Cost`.
- * Production figures come from the sampled `request_cost` log lines instead.
+ * Production figures come from Cloudflare's own D1 query insights
+ * (`wrangler d1 insights scrapscache`).
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { D1Database, DurableObjectState } from '@cloudflare/workers-types';
 import { testR2 } from './testBindings';
-import { addDatabaseCost, measureRequestCost, newRequestCost } from '../requestCost';
 import { SYNC_PROTOCOL_HEADER, SYNC_PROTOCOL_VERSION } from '#lib/model/protocol.js';
 
 const harness = vi.hoisted(() => ({
@@ -39,6 +39,48 @@ const pairPoll = await import('../../../routes/api/sync/pair/poll/+server');
 
 type Handler = (event: { request: Request; getClientAddress(): string }) => Promise<Response>;
 type Cost = { rowsRead: number; rowsWritten: number; queries: number };
+type Meta = { rows_read?: number; rows_written?: number };
+
+/** Every statement's billed rows since the last request began. */
+let spent: Cost = { rowsRead: 0, rowsWritten: 0, queries: 0 };
+function count(meta: Meta) {
+	spent.queries += 1;
+	spent.rowsRead += meta.rows_read ?? 0;
+	spent.rowsWritten += meta.rows_written ?? 0;
+}
+
+/** The D1 binding, with every statement it runs counted toward `spent`. */
+function metered(db: D1Database): D1Database {
+	type Statement = {
+		sql: string;
+		args: unknown[];
+		bind(...args: unknown[]): Statement;
+		run(): Promise<unknown>;
+	};
+	const statement = (sql: string, args: unknown[]): Statement => ({
+		sql,
+		args,
+		bind: (...bound) => statement(sql, bound),
+		async run() {
+			const result = (await db
+				.prepare(sql)
+				.bind(...args)
+				.run()) as { meta: Meta };
+			count(result.meta);
+			return result;
+		}
+	});
+	return {
+		prepare: (sql: string) => statement(sql, []),
+		async batch(statements: Statement[]) {
+			const results = await db.batch(
+				statements.map(({ sql, args }) => db.prepare(sql).bind(...args))
+			);
+			for (const result of results) count(result.meta);
+			return results;
+		}
+	} as unknown as D1Database;
+}
 
 const measuring = process.env.MEASURE_D1 === '1';
 let mf: InstanceType<typeof Miniflare>;
@@ -47,13 +89,11 @@ const report: Record<string, Cost> = {};
 
 /** Runs one request the way the server hook does, telemetry written after it included. */
 async function measure(name: string, handler: unknown, request: Request): Promise<Response> {
-	const cost = newRequestCost();
-	const response = await measureRequestCost(cost, () =>
-		(handler as Handler)({ request, getClientAddress: () => '203.0.113.9' })
-	);
+	spent = { rowsRead: 0, rowsWritten: 0, queries: 0 };
+	const response = await (handler as Handler)({ request, getClientAddress: () => '203.0.113.9' });
 	await Promise.all(harness.pending.splice(0));
 	expect(response.status, name).toBeLessThan(400);
-	report[name] = { rowsRead: cost.rowsRead, rowsWritten: cost.rowsWritten, queries: cost.queries };
+	report[name] = spent;
 	return response;
 }
 
@@ -106,20 +146,8 @@ describe.runIf(measuring)('D1 cost per relay request', () => {
 			if (current.trim()) statements.push(current.trim());
 			await db.batch(statements.map((statement) => db.prepare(statement)));
 		}
-		// Telemetry writes straight to the binding after the response; count those too.
-		const metered = {
-			prepare: db.prepare.bind(db),
-			batch: async (statements: never[]) => {
-				const results = await db.batch(statements);
-				for (const result of results)
-					addDatabaseCost({
-						queries: 1,
-						rowsRead: result.meta.rows_read ?? 0,
-						rowsWritten: result.meta.rows_written ?? 0
-					});
-				return results;
-			}
-		};
+		// The app, its telemetry and the relay round all count against the same binding.
+		const counted = metered(db);
 		const r2 = testR2().bucket;
 		const state = {
 			abort: () => undefined,
@@ -128,11 +156,11 @@ describe.runIf(measuring)('D1 cost per relay request', () => {
 			setWebSocketAutoResponse: () => undefined
 		} as unknown as DurableObjectState;
 		const coordinator = new AccountCoordinator(state, {
-			SCRAPSCACHE_DB: db,
+			SCRAPSCACHE_DB: counted,
 			SCRAPSCACHE_ENVELOPES: r2
 		});
 		harness.env = {
-			SCRAPSCACHE_DB: metered,
+			SCRAPSCACHE_DB: counted,
 			SCRAPSCACHE_ENVELOPES: r2,
 			ACCOUNT_COORDINATOR: {
 				idFromName: (name: string) => name,

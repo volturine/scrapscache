@@ -75,6 +75,12 @@ import {
 } from '#lib/profiles.js';
 
 const LS_SYNC_STATUS_PREFIX = 'scrapscache-sync-status';
+/**
+ * How long an answer about which photos a note's history needs is trusted. The relay can
+ * drop old versions for quota without the note changing; a photo they named waits at
+ * most this long, plus a sync, to be reclaimed.
+ */
+export const HISTORY_RECHECK_MS = 60 * 60_000;
 
 /** A protocol refusal cannot tell whether the app or the relay needs updating. */
 export const SYNC_VERSION_MISMATCH_MESSAGE =
@@ -188,15 +194,14 @@ export class SyncStore {
 	private session: { accountId: string; accessToken: string; expiresAt: number } | null = null;
 	private pendingSessions = new Map<string, Promise<string>>();
 	/**
-	 * Attachment ids a note's retained versions list, as of the note's last change and the
-	 * account's history evictions then: quota eviction drops versions without changing a note.
+	 * Attachment ids a note's retained versions list, as of the note's last change. Quota
+	 * eviction can drop a version without changing the note, so an answer is also only
+	 * trusted for HISTORY_RECHECK_MS; until then a photo it still names is just kept longer.
 	 */
 	private versionAttachments = new Map<
 		string,
-		{ updatedAt: number; evicted: number | null; ids: Set<string> }
+		{ updatedAt: number; checkedAt: number; ids: Set<string> }
 	>();
-	/** Older versions each account's relay has evicted for quota, as its last round reported. */
-	private historyEvicted = new Map<string, number>();
 	/** Notes open in the editor, by record key, with the envelope id each session last uploaded. */
 	private editSessions = new Map<string, { uploadedId: string | null }>();
 	private authenticationGeneration = 0;
@@ -819,9 +824,9 @@ export class SyncStore {
 		note: Note
 	): Promise<Set<string> | null> {
 		const key = `${account.accountId}\u0000${note.id}`;
-		const evicted = this.historyEvicted.get(account.accountId) ?? null;
 		const cached = this.versionAttachments.get(key);
-		if (cached?.updatedAt === note.updatedAt && cached.evicted === evicted) return cached.ids;
+		if (cached?.updatedAt === note.updatedAt && Date.now() - cached.checkedAt < HISTORY_RECHECK_MS)
+			return cached.ids;
 		try {
 			// Loaded on demand: the history client itself fetches through this store.
 			const { loadNoteHistory } = await import('#lib/historyClient.js');
@@ -829,7 +834,7 @@ export class SyncStore {
 			const ids = new Set(
 				versions.flatMap((version) => (version.note.images ?? []).map((image) => image.id))
 			);
-			this.versionAttachments.set(key, { updatedAt: note.updatedAt, evicted, ids });
+			this.versionAttachments.set(key, { updatedAt: note.updatedAt, checkedAt: Date.now(), ids });
 			return ids;
 		} catch {
 			return null;
@@ -1059,7 +1064,7 @@ export class SyncStore {
 			// worth repeating until the next sync.
 			const historyLookups = new Map<string, Promise<Set<string> | null>>();
 			const historyAttachmentIds = (note: Note) => {
-				const key = `${note.id}\u0000${note.updatedAt}\u0000${this.historyEvicted.get(account.accountId) ?? ''}`;
+				const key = `${note.id}\u0000${note.updatedAt}`;
 				let lookup = historyLookups.get(key);
 				if (!lookup) {
 					lookup = this.versionAttachmentIds(account, note);
@@ -1238,11 +1243,6 @@ export class SyncStore {
 						this.usage = candidate as SyncUsage;
 					}
 				}
-				if (
-					typeof response.data.historyEvicted === 'number' &&
-					Number.isSafeInteger(response.data.historyEvicted)
-				)
-					this.historyEvicted.set(account.accountId, response.data.historyEvicted);
 				const writesAccepted = response.data.writesAccepted === true;
 				if (writesAccepted) {
 					stalledWrites = 0;

@@ -117,9 +117,9 @@ the long-term attachment format.
 - **Rate limiting** — atomic SQL token buckets for register, auth, pairing, sync,
   push, and admin, keyed by client address with IPv6 clients bucketed by their
   /64, plus one shared bucket for registrations. The expensive authenticated
-  endpoints also have account buckets: sync rounds per minute, sync writes per day
-  (charged one token per upload or delete, so a backlog fits in the burst and
-  round-the-clock churn does not), and reminder wake publishes. Durable and shared
+  endpoints also have account buckets: sync rounds per minute, sync writes
+  (charged one token per upload or delete: a 10,000-write burst for a first
+  upload, then 2,000 a day), and reminder wake publishes (30 per five minutes). Durable and shared
   across isolates, at the cost of one database write per check, refusals included —
   size the store accordingly and put edge rate limiting in front of it on a
   usage-billed platform (see [Request cost on Workers](#request-cost-on-workers))
@@ -136,9 +136,9 @@ the long-term attachment format.
   one isolate's partial count. Counter keys name an event or a bucketed route,
   never an account. Sync rounds are counted one in twenty, weighted for the rest,
   so the sync request total is an estimate; uploads and deletions are exact.
-  Refused requests are not recorded, so a flood of them costs no extra writes; the
-  dashboard reads throttled callers from the rate-limit buckets instead, and the
-  `429` log line is kept for one refusal in a hundred
+  Refused requests are neither counted nor logged, so a flood of them costs no
+  extra writes or log volume; the dashboard reads throttled callers from the
+  rate-limit buckets, and Cloudflare's request analytics show the `429`s
 - **Operator status** — `/metrics` and `GET /api/admin/status` are anonymous
   aggregates. The account administration endpoints are not: they list account IDs
   alongside storage, activity and per-account limits, because an operator cannot
@@ -302,18 +302,13 @@ D1 bills rows read and written, so the relay avoids writes that change nothing:
   plus the revision that orders publishes. Delivery is re-armed only when the wakes
   changed, or when an earlier change was never handed to the scheduler: that stays
   owed in the database until an arm succeeds.
-- Clients learn from each sync round how many older versions quota eviction has
-  dropped from the account's history, so a photo kept for an old version is
-  reclaimed once that version is gone, with no extra request.
+- A photo kept because an older version of its note still lists it is checked
+  again at most hourly, so one that quota eviction has freed is reclaimed then.
 
-A sampled `request_cost` log line (1% by default; set
-`SCRAPSCACHE_REQUEST_COST_SAMPLE` between 0 and 1 to change it) gives each request's
-D1 `queries`, `rowsRead` and `rowsWritten`, its bucketed route, method, status and,
-for sync and wake publishes, what kind of round it was (`empty`, `download`,
-`upload:3`, `scheduled`, …), with a sync round's phase timings. It names no account,
-record or payload. Group the Workers Logs by `route` and `kind` to price each kind
-of request, and compare the totals with the D1 dashboard. To measure the same
-figures locally against Miniflare's D1:
+Measure what each kind of request costs from Cloudflare's own D1 query insights,
+which report rows read and written per statement with no app code:
+`npx wrangler d1 insights scrapscache --env '' --time-period 7d --sort-by writes`.
+To measure each request type locally against Miniflare's D1:
 `MEASURE_D1=1 npx vitest run src/lib/server/cloudflare/d1Cost.measure.test.ts --disable-console-intercept`.
 
 The app's own buckets are defence in depth, and each check is a D1 write. Zone

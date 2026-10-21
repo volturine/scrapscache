@@ -17,7 +17,6 @@ import {
 } from '#lib/server/rateLimit.js';
 import { getRuntimeSettings } from '#lib/server/runtimeSettings.js';
 import { recordSqliteError, recordSyncBatch } from '#lib/server/metrics.js';
-import { addDatabaseCost, addRequestPhases, nameRequestCost } from '#lib/server/requestCost.js';
 import { SYNC_PROTOCOL_HEADER, SYNC_PROTOCOL_VERSION } from '#lib/model/protocol.js';
 import { Schema } from 'effect';
 
@@ -42,14 +41,6 @@ const isOpaqueEnvelope = Schema.is(
 );
 
 const isOpaqueDelete = Schema.is(Schema.Struct({ id: RecordId, slot: Slot }));
-
-/** What a round did, for its cost: a download, an empty poll, or writes of N records. */
-function syncRoundKind(uploads: number, deletes: number, downloaded: number): string {
-	if (uploads === 0 && deletes === 0) return downloaded > 0 ? 'download' : 'empty';
-	return [uploads > 0 && `upload:${uploads}`, deletes > 0 && `delete:${deletes}`]
-		.filter(Boolean)
-		.join('+');
-}
 
 const busy = () =>
 	Response.json({ error: 'Sync server is busy' }, { status: 503, headers: { 'retry-after': '2' } });
@@ -151,7 +142,7 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	recordSyncBatch(envelopes.length, deleteSlots.length);
 	const senderClientId = request.headers.get('x-sync-client-id') ?? undefined;
 	try {
-		const { phaseTimings, databaseCost, ...result } = await store.sync(
+		const result = await store.sync(
 			accountId,
 			cursor,
 			envelopes,
@@ -160,9 +151,6 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 			senderClientId,
 			settings.maxAccountBytes
 		);
-		if (phaseTimings) addRequestPhases(phaseTimings);
-		if (databaseCost) addDatabaseCost(databaseCost);
-		nameRequestCost(syncRoundKind(envelopes.length, deleteSlots.length, result.envelopes.length));
 		// Writers stamp edits on this clock, so device clock skew cannot decide conflicts.
 		return Response.json({ ...result, serverTime: Date.now() });
 	} catch (error) {

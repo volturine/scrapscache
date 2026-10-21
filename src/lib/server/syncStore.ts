@@ -14,7 +14,6 @@ import {
 	parseMaxAccountBytes
 } from '#lib/server/operatorConfig.js';
 import { getDb, withTxn, type Db } from '#lib/server/db.js';
-import type { DatabaseCost } from '#lib/server/requestCost.js';
 import { syncEventEmitter } from '#lib/server/syncEvents.js';
 import type { HistoryEnvelope, HistoryList } from '#lib/syncHistory.js';
 import {
@@ -40,12 +39,6 @@ export type SyncResult = {
 	hasMore: boolean;
 	reset: boolean;
 	writesAccepted: boolean;
-	/** Older versions the account's history has lost to quota eviction, ever. */
-	historyEvicted: number;
-	/** Where the relay round's time went and what it cost the database, for server
-	 * metrics only; the route records them and never sends them to the client. */
-	phaseTimings?: Record<string, number>;
-	databaseCost?: DatabaseCost;
 };
 
 export type SyncStoreOptions = {
@@ -497,11 +490,9 @@ export class SyncStore {
 					sql: `
 				SELECT credential_hash AS credentialHash, next_seq AS nextSeq, envelope_count AS envelopeCount,
 					ciphertext_bytes AS ciphertextBytes, updated_at AS updatedAt,
-					COALESCE(history.versions, 0) AS historyVersions, COALESCE(history.bytes, 0) AS historyBytes,
-					COALESCE(evictions.evicted, 0) AS historyEvicted
+					COALESCE(history.versions, 0) AS historyVersions, COALESCE(history.bytes, 0) AS historyBytes
 				FROM accounts
 				LEFT JOIN account_history_usage AS history USING (account_id)
-				LEFT JOIN account_history_evictions AS evictions USING (account_id)
 				WHERE account_id = ?
 			`,
 					args: [accountId]
@@ -511,7 +502,6 @@ export class SyncStore {
 						updatedAt: number;
 						historyVersions: number;
 						historyBytes: number;
-						historyEvicted: number;
 				  })
 				| undefined;
 
@@ -525,7 +515,6 @@ export class SyncStore {
 			// together exceed it, the oldest versions give way.
 			let historyVersions = Number(account.historyVersions);
 			let historyBytes = Number(account.historyBytes);
-			let historyEvicted = Number(account.historyEvicted);
 			const storageBytes = (activeCount = envelopeCount, activeBytes = ciphertextBytes): number =>
 				activeBytes + activeCount * ENVELOPE_STORAGE_OVERHEAD_BYTES;
 			const historyStorageBytes = () =>
@@ -546,8 +535,7 @@ export class SyncStore {
 					hasMore: false,
 					reset: true,
 					writesAccepted: false,
-					usage: usage(),
-					historyEvicted
+					usage: usage()
 				};
 			}
 			// Sizes first: a page stops at the byte budget so one account's photo
@@ -586,8 +574,7 @@ export class SyncStore {
 					hasMore,
 					reset: false,
 					writesAccepted: !attemptedWrites,
-					usage: usage(),
-					historyEvicted
+					usage: usage()
 				};
 			}
 
@@ -623,8 +610,7 @@ export class SyncStore {
 					hasMore: false,
 					reset: false,
 					writesAccepted: false,
-					usage: usage(),
-					historyEvicted
+					usage: usage()
 				};
 			}
 
@@ -771,14 +757,6 @@ export class SyncStore {
 						args: ids
 					}))
 				);
-				if (evicted.length > 0) {
-					historyEvicted += evicted.length;
-					await tx.execute({
-						sql: `INSERT INTO account_history_evictions(account_id, evicted) VALUES (?, ?)
-						ON CONFLICT(account_id) DO UPDATE SET evicted = excluded.evicted`,
-						args: [accountId, historyEvicted]
-					});
-				}
 			}
 			if (
 				historyVersions !== Number(account.historyVersions) ||
@@ -811,8 +789,7 @@ export class SyncStore {
 				hasMore: false,
 				reset: false,
 				writesAccepted: true,
-				usage: usage(),
-				historyEvicted
+				usage: usage()
 			};
 		});
 		if (resetRevisionCeiling !== null) {

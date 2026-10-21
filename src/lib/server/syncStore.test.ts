@@ -229,9 +229,6 @@ describe('SQLite sync store', () => {
 			'a3',
 			'a2'
 		]);
-		// Record a never changed, so this count is how its clients learn it lost a version.
-		expect(result.historyEvicted).toBe(1);
-		expect((await store.sync('owner', result.cursor, [], [])).historyEvicted).toBe(1);
 	});
 
 	it('recounts history usage from the rows in the daily sweep', async () => {

@@ -30,8 +30,6 @@ export type SyncResult = {
 	hasMore: boolean;
 	reset: boolean;
 	writesAccepted: boolean;
-	/** Older versions the account's history has lost to quota eviction, ever. */
-	historyEvicted: number;
 };
 export type SyncQuotas = { maxAccountBytes: number };
 export type AccountByteQuota = { maxBytes: number; overridden: boolean };

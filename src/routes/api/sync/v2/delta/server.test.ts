@@ -19,9 +19,6 @@ const mocks = vi.hoisted(() => {
 				allowed: true
 			})
 		),
-		addRequestPhases: vi.fn(),
-		addDatabaseCost: vi.fn(),
-		nameRequestCost: vi.fn(),
 		accountRateLimit: vi.fn(async (): Promise<number | null> => null),
 		enterSyncRequest: vi.fn(() => vi.fn()),
 		enterSyncBody: vi.fn(() => vi.fn()),
@@ -67,11 +64,6 @@ vi.mock('#lib/server/runtimeSettings.js', () => ({
 vi.mock('#lib/server/metrics.js', () => ({
 	recordSqliteError: vi.fn(),
 	recordSyncBatch: vi.fn()
-}));
-vi.mock('#lib/server/requestCost.js', () => ({
-	addRequestPhases: mocks.addRequestPhases,
-	addDatabaseCost: mocks.addDatabaseCost,
-	nameRequestCost: mocks.nameRequestCost
 }));
 
 import { POST } from './+server';
@@ -193,39 +185,6 @@ describe('sync delta route', () => {
 			conflicts: [],
 			serverTime: expect.any(Number)
 		});
-	});
-
-	it('counts the relay’s timings and database cost toward the request without sending them to the client', async () => {
-		const phaseTimings = { 'sync_ms phase:reads': 4, 'sync_calls phase:r2_get': 1 };
-		const databaseCost = { queries: 2, rowsRead: 9, rowsWritten: 0 };
-		mocks.sync.mockReturnValueOnce({
-			cursor: 2,
-			envelopes: [],
-			conflicts: [],
-			hasMore: false,
-			reset: false,
-			writesAccepted: true,
-			phaseTimings,
-			databaseCost
-		});
-
-		const response = await post({ envelopes: [], deleteSlots: [] });
-
-		expect(response.status).toBe(200);
-		expect(mocks.addRequestPhases).toHaveBeenCalledWith(phaseTimings);
-		expect(mocks.addDatabaseCost).toHaveBeenCalledWith(databaseCost);
-		expect(mocks.nameRequestCost).toHaveBeenCalledWith('empty');
-		const body = await response.json();
-		expect(body).not.toHaveProperty('phaseTimings');
-		expect(body).not.toHaveProperty('databaseCost');
-	});
-
-	it('names a round by what it wrote, never by whose it was', async () => {
-		await post({
-			envelopes: [validEnvelope],
-			deleteSlots: [{ id: 'deleted-id', slot: 'b'.repeat(64) }]
-		});
-		expect(mocks.nameRequestCost).toHaveBeenLastCalledWith('upload:1+delete:1');
 	});
 
 	it('charges the account’s daily churn allowance one token per write', async () => {

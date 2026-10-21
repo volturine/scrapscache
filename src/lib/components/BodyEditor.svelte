@@ -1875,7 +1875,12 @@
 			void firstPaint.then(focusDefault);
 			return;
 		}
-		void focusAfterRender(0, lines[0]?.text.length ?? 0, lines[0]?.id ?? null);
+		void tick().then(() => {
+			// A note opening asks twice. Once the body has focus the writer may already be
+			// typing, and moving the caret then would put their next keys mid-word.
+			if (container?.contains(document.activeElement)) return;
+			focusAt(0, lines[0]?.text.length ?? 0, lines[0]?.id ?? null);
+		});
 	}
 
 	/** Replace the whole body from outside (e.g. a title paste seeding the body). */

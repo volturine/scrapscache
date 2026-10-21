@@ -18,7 +18,7 @@ import {
 	SYNC_PROTOCOL_HEADER,
 	SYNC_PROTOCOL_VERSION
 } from '#lib/model/protocol.js';
-import { SyncStore, syncStore } from './sync.svelte';
+import { HISTORY_RECHECK_MS, SyncStore, syncStore } from './sync.svelte';
 import { syncSnapshot, type SyncSnapshot } from '#lib/syncRecords.js';
 import { unboundSyncEnvelope } from '../../tests/unboundEnvelope';
 import { seedTestKeyring, TEST_WORKSPACE } from '../../tests/workspace';
@@ -30,7 +30,6 @@ type RequestPayload = {
 };
 
 type RelayData = {
-	historyEvicted?: number;
 	cursor: number;
 	envelopes: Array<{ seq: number; id: string; slot: string; ciphertext: string }>;
 	conflicts: Array<{ seq: number; id: string; slot: string; ciphertext: string }>;
@@ -1604,11 +1603,11 @@ describe('a photo kept for note history', () => {
 	}
 
 	/** A relay with nothing new; a sync that keeps asking fails rather than hanging. */
-	function quietRelay(historyEvicted: () => number) {
+	function quietRelay() {
 		return createHarness((_request, index) =>
 			index > 20
 				? { success: false, error: 'sync never settled' }
-				: { success: true, data: emptyData({ cursor: 3, historyEvicted: historyEvicted() }) }
+				: { success: true, data: emptyData({ cursor: 3 }) }
 		);
 	}
 
@@ -1625,7 +1624,7 @@ describe('a photo kept for note history', () => {
 		idb.getSyncState<Record<string, string>>(TEST_WORKSPACE, syncControlKeys(accountId).recordIds);
 
 	it('ends the round and keeps the photo and its relay id while history needs it', async () => {
-		const { store, account, requests } = quietRelay(() => 0);
+		const { store, account, requests } = quietRelay();
 		const history = serveHistory(account, () => [note('note-1', { updatedAt: 3 }, [photo])]);
 		await seedSyncedPhoto(account.accountId, live());
 
@@ -1639,7 +1638,7 @@ describe('a photo kept for note history', () => {
 	});
 
 	it('keeps the photo and still ends the round when history cannot be read', async () => {
-		const { store, account, requests } = quietRelay(() => 0);
+		const { store, account, requests } = quietRelay();
 		const history = serveHistory(account, () => null);
 		await seedSyncedPhoto(account.accountId, live());
 
@@ -1654,7 +1653,7 @@ describe('a photo kept for note history', () => {
 	});
 
 	it('deletes the photo once a newer note version has pruned the one that listed it', async () => {
-		const { store, account, requests } = quietRelay(() => 0);
+		const { store, account, requests } = quietRelay();
 		let versions = [note('note-1', { updatedAt: 3 }, [photo])];
 		serveHistory(account, () => versions);
 		await seedSyncedPhoto(account.accountId, live());
@@ -1668,21 +1667,20 @@ describe('a photo kept for note history', () => {
 		expect(await recordIds(account.accountId)).not.toHaveProperty('attachment:photo');
 	});
 
-	it('looks again when the relay evicts history without the note changing', async () => {
-		let evicted = 0;
-		const { store, account, requests } = quietRelay(() => evicted);
+	it('looks again after an hour, as the relay may have evicted history without the note changing', async () => {
+		const { store, account, requests } = quietRelay();
 		let versions = [note('note-1', { updatedAt: 3 }, [photo])];
 		const history = serveHistory(account, () => versions);
 		await seedSyncedPhoto(account.accountId, live());
 		await store.sync(syncSnapshot({ notes: [live()] }), false, false, passthrough);
-		// The note and the evictions are unchanged, so the cached answer stands.
+		// Within the hour the cached answer stands, even though the relay has moved on.
+		versions = [];
 		await store.sync(syncSnapshot({ notes: [live()] }), false, false, passthrough);
 		expect(history).toHaveBeenCalledOnce();
 		expect(requests.flatMap((request) => request.deleteSlots)).toEqual([]);
 
-		// Quota eviction drops the old version; the note's updatedAt stays the same.
-		versions = [];
-		evicted = 1;
+		const now = Date.now();
+		vi.spyOn(Date, 'now').mockReturnValue(now + HISTORY_RECHECK_MS);
 		const result = await store.sync(syncSnapshot({ notes: [live()] }), false, false, passthrough);
 
 		expect(result.success, result.error).toBe(true);

@@ -86,13 +86,6 @@ const RELAY_DDL = `
 		bytes INTEGER NOT NULL DEFAULT 0,
 		FOREIGN KEY (account_id) REFERENCES accounts(account_id) ON DELETE CASCADE
 	);
-	-- Older versions evicted for quota. Clients cache which photos a note's history still
-	-- needs; this count changing tells them versions went without the note changing.
-	CREATE TABLE IF NOT EXISTS account_history_evictions (
-		account_id TEXT PRIMARY KEY,
-		evicted INTEGER NOT NULL DEFAULT 0,
-		FOREIGN KEY (account_id) REFERENCES accounts(account_id) ON DELETE CASCADE
-	);
 CREATE TABLE IF NOT EXISTS reminder_receipts (
  seq INTEGER PRIMARY KEY AUTOINCREMENT,
  account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,

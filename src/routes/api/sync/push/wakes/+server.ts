@@ -5,7 +5,6 @@ import { readJsonBody } from '#lib/server/request.js';
 import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '#lib/server/rateLimit.js';
 import { recordSqliteError } from '#lib/server/metrics.js';
 import { armWakeTimer } from '#lib/server/wakeTimer.js';
-import { nameRequestCost } from '#lib/server/requestCost.js';
 import {
 	DEVICE_ID_RE,
 	isPublicEndpoint,
@@ -144,7 +143,6 @@ export const PUT: RequestHandler = async ({ request, getClientAddress }) => {
 		const revision = Number(body.revision);
 		const store = getSyncStore();
 		const { accepted, schedule } = await store.replaceReminderWakes(accountId, wakes, revision);
-		nameRequestCost(!accepted ? 'stale' : schedule ? 'scheduled' : 'unchanged');
 		if (!accepted) return Response.json({ error: 'Stale reminder snapshot' }, { status: 409 });
 		// Unchanged wakes need no new timer, unless the last change never got one: the
 		// store keeps that owed until an arm succeeds, so this publish retries it.

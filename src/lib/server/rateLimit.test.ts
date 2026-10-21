@@ -146,14 +146,16 @@ describe('weighted charges', () => {
 });
 
 describe('daily sync churn', () => {
-	it('lets an account burst its day’s writes, then holds it to the refill rate', async () => {
+	it('lets an account burst a large first upload, then holds it to 2,000 writes a day', async () => {
+		expect(SYNC_CHURN_POLICY.capacity / (SYNC_CHURN_POLICY.refillWindowMs / 86_400_000)).toBe(
+			2_000
+		);
 		expect((await chargeSyncChurn('account', SYNC_CHURN_POLICY.capacity, 0)).allowed).toBe(true);
 		const refused = await chargeSyncChurn('account', 16, 0);
-		expect(refused.allowed).toBe(false);
-		// Sixteen writes' worth refills in sixteen fifty-thousandths of a day: about 28 seconds.
-		expect(refused).toEqual({ allowed: false, retryAfterSeconds: 28 });
+		// Sixteen writes at 2,000 a day refill in 16/2000 of a day: 691.2 seconds.
+		expect(refused).toEqual({ allowed: false, retryAfterSeconds: 692 });
 		expect((await chargeSyncChurn('other-account', 16, 0)).allowed).toBe(true);
-		expect((await chargeSyncChurn('account', 16, 28_000)).allowed).toBe(true);
+		expect((await chargeSyncChurn('account', 16, 692_000)).allowed).toBe(true);
 	});
 
 	it('keeps a spent churn bucket through the ten-minute sweep, so a pause does not refill it', async () => {
@@ -171,9 +173,9 @@ describe('daily sync churn', () => {
 			(row) => row.key
 		);
 		expect(keys).toEqual(['sync-churn:account']);
-		// Eleven minutes have refilled a few hundred writes, not the day's allowance.
-		expect((await churn(16, 11 * 60_000)).allowed).toBe(true);
-		expect((await churn(16_000, 11 * 60_000)).allowed).toBe(false);
+		// Eleven minutes have refilled about fifteen writes, not the burst.
+		expect((await churn(10, 11 * 60_000)).allowed).toBe(true);
+		expect((await churn(1_000, 11 * 60_000)).allowed).toBe(false);
 
 		await pruneRateBuckets(db, SYNC_CHURN_POLICY.refillWindowMs + 11 * 60_000);
 		expect((await db.ops.execute('SELECT COUNT(*) AS n FROM rate_buckets')).rows[0].n).toBe(0);

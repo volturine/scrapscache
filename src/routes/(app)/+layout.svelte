@@ -183,6 +183,12 @@
 		openEditor(link.noteId);
 	}
 
+	// A window that narrows into the phone layout must not pop the desktop sidebar
+	// open as a drawer over the page; the drawer opens from More when it is wanted.
+	$effect(() => {
+		if (mobile.current) uiStore.sidebarOpen = false;
+	});
+
 	onMount(() => {
 		applyEditorOpen(editingId !== null);
 		const stopViewport = attachAppViewport(document.documentElement);
@@ -190,7 +196,6 @@
 		attachSyncCloudIndicator(syncStore);
 		notesStore.onAfterSync = () => reminderStore.publish(notesStore.notes);
 		notesStore.onProfileReload = (pid, notes) => reminderStore.activateProfile(pid, notes);
-		if (mobile.current) uiStore.sidebarOpen = false;
 		void notesStore.init().then(async () => {
 			await notesStore.refreshProfileEffects();
 			if (syncStore.isLoggedIn) await notesStore.syncWithCloud();

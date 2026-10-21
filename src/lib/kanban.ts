@@ -23,11 +23,10 @@ export const BacklogFilterMode = {
 export type BacklogFilterMode = (typeof BacklogFilterMode)[keyof typeof BacklogFilterMode];
 
 /**
- * Controls which notes appear in the backlog column.
- * Notes that already match a tag column never appear here.
- *
- * - `all-non-column` (default): any note without a board tag-column label
- * - `custom`: only untagged and/or notes that carry one of `labelIds`
+ * A board setting older copies may still carry: it once chose which notes the
+ * backlog listed. The Unsorted column now lists every note outside the label
+ * columns, and the board's note filter is the one filter. It is kept in the
+ * board's shape so copies merge, and never read.
  */
 export interface BacklogFilter {
 	mode: BacklogFilterMode;
@@ -246,22 +245,12 @@ export function boardNotes(board: KanbanBoard, notes: Note[]): Note[] {
 }
 
 /**
- * A note belongs in the backlog when it does not carry any board tag-column
- * label, and it matches the board's backlog filter.
+ * A note belongs in the Unsorted column when it carries none of the board's
+ * column labels. The board's note filter is the one way to narrow it.
  */
 export function noteMatchesBacklog(board: KanbanBoard, note: Note): boolean {
 	const columnLabels = boardColumnLabelIds(board);
-	if (note.labels.some((labelId) => columnLabels.has(labelId))) return false;
-
-	const filter = board.backlogFilter;
-	if (filter.mode !== BacklogFilterMode.Custom) {
-		return true;
-	}
-
-	if (filter.includeUntagged && note.labels.length === 0) return true;
-	if (filter.labelIds.length === 0) return false;
-	const allowed = new Set(filter.labelIds);
-	return note.labels.some((labelId) => allowed.has(labelId));
+	return !note.labels.some((labelId) => columnLabels.has(labelId));
 }
 
 /** Apply a column's manual order; unlisted notes keep their feed order on top. */

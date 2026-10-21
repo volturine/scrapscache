@@ -1,31 +1,39 @@
 <script lang="ts">
 	import KanbanCard from '#lib/components/KanbanCard.svelte';
 	import KanbanCardBody from '#lib/components/KanbanCardBody.svelte';
-	import LabelChecklist from '#lib/components/LabelChecklist.svelte';
 	import {
-		BacklogFilterMode,
+		boardNotes,
 		BoardNoteFilterAction,
 		columnNotes,
-		defaultBacklogFilter,
 		insertIntoOrder,
 		noteFilterLabelIds,
 		slotPosition,
-		type BacklogFilter,
 		type KanbanColumn
 	} from '#lib/kanban.js';
 	import { kanbanDrag, type KanbanDropTarget } from '#lib/kanbanDrag.svelte.js';
-	import { moveCardToColumn } from '#lib/kanbanMove.js';
+	import { moveCardToColumn, type MoveTargets } from '#lib/kanbanMove.js';
 	import { applyBoardTemplate, BOARD_TEMPLATES, labelNamed } from '#lib/kanbanTemplates.js';
 	import { portalToAppOverlay, portalToBody } from '#lib/appViewport.js';
 	import { useEditorActions } from '#lib/editorContext.js';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
 	import { kanbanStore } from '#lib/stores/kanban.svelte.js';
 	import { uiStore } from '#lib/stores/ui.svelte.js';
-	import { Checkbox } from '@ark-ui/svelte/checkbox';
 	import { Menu } from '@ark-ui/svelte/menu';
+	import { MediaQuery } from 'svelte/reactivity';
 	import { SegmentGroup } from '@ark-ui/svelte/segment-group';
 	import { Dialog } from '@ark-ui/svelte/dialog';
-	import { Check, ChevronDown, ListFilter, Pencil, Plus, Trash2, X } from '@lucide/svelte';
+	import {
+		ArrowLeft,
+		ArrowRight,
+		Check,
+		ChevronDown,
+		EllipsisVertical,
+		ListFilter,
+		Pencil,
+		Plus,
+		Trash2,
+		X
+	} from '@lucide/svelte';
 	import { flip, type FlipParams } from 'svelte/animate';
 	import { onDestroy } from 'svelte';
 	import type { Note } from '#lib/types.js';
@@ -34,7 +42,6 @@
 	import {
 		iconSizeSm as iconSm,
 		kanbanViewStyles,
-		labelChecklistStyles as checklist,
 		popover,
 		viewHeading,
 		viewPage
@@ -66,10 +73,42 @@
 		noteFilterLabelIds(board).flatMap((id) => notesStore.labelsById.get(id)?.name ?? [])
 	);
 	const noteFilterActive = $derived(noteFilterNames.length > 0);
-	/** Labels that can be used in the backlog filter (not already a column). */
-	const backlogFilterTags = $derived(unusedTags);
-	const backlogFilter = $derived(board.backlogFilter ?? defaultBacklogFilter());
-	const backlogFilterActive = $derived(backlogFilter.mode === BacklogFilterMode.Custom);
+	/** How many of the notes on show the filter lets onto the board. */
+	const filteredCount = $derived(boardNotes(board, visibleNotes).length);
+
+	/** On a phone one column shows at a time, picked by its tab. */
+	const mobile = new MediaQuery('max-width: 767px');
+	let activeColumnId = $state<string | null>(null);
+	const activeColumn = $derived(
+		board.columns.find((column) => column.id === activeColumnId) ?? board.columns[0]
+	);
+	const shownColumns = $derived(mobile.current && activeColumn ? [activeColumn] : board.columns);
+	const tabIds = $props.id();
+	const tabId = (column: KanbanColumn) => `${tabIds}-tab-${column.id}`;
+	const panelId = (column: KanbanColumn) => `${tabIds}-panel-${column.id}`;
+
+	/** One tab stop: the arrows, Home and End move between the tabs and select as they go. */
+	function onTabKeydown(event: KeyboardEvent, column: KanbanColumn) {
+		const at = board.columns.indexOf(column);
+		const last = board.columns.length - 1;
+		const to =
+			event.key === 'ArrowRight'
+				? Math.min(at + 1, last)
+				: event.key === 'ArrowLeft'
+					? Math.max(at - 1, 0)
+					: event.key === 'Home'
+						? 0
+						: event.key === 'End'
+							? last
+							: at;
+		if (to === at && !['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) return;
+		event.preventDefault();
+		const next = board.columns[to];
+		activeColumnId = next.id;
+		(event.currentTarget as HTMLElement).parentElement
+			?.querySelector<HTMLElement>(`#${CSS.escape(tabId(next))}`)
+			?.focus();
+	}
 
 	const draggedNote = $derived(
 		kanbanDrag.noteId ? notesStore.notes.find((note) => note.id === kanbanDrag.noteId) : undefined
@@ -81,7 +120,6 @@
 	let boardName = $state('');
 	let boardMenuOpen = $state(false);
 	let pendingDelete = $state(false);
-	let backlogFilterOpen = $state(false);
 	let noteFilterOpen = $state(false);
 	let tagPickerOpen = $state(false);
 	/** The "New label…" prompt from the add-column menu and the starter panel. */
@@ -90,6 +128,65 @@
 	let newLabelInput = $state<HTMLInputElement | null>(null);
 	/** Anchored to the top, so a phone keyboard never covers the field or Create. */
 	const newLabelDialog = dialog({ size: 'sm', presentation: 'appOverlay' });
+	/** The column whose label is being renamed from its menu. */
+	let renamingColumn = $state<KanbanColumn | null>(null);
+	let renameName = $state('');
+	let renameInput = $state<HTMLInputElement | null>(null);
+
+	function startRenameLabel(column: KanbanColumn) {
+		renameName = columnName(column);
+		renamingColumn = column;
+	}
+
+	function commitRenameLabel() {
+		const column = renamingColumn;
+		const name = (renameInput?.value ?? renameName).trim();
+		renamingColumn = null;
+		if (!column || column.labelId === null || !name) return;
+		notesStore.renameLabel(column.labelId, name);
+	}
+
+	/** Whether a label column can shift that way: Unsorted stays first, the ends stay ends. */
+	function canMoveColumn(column: KanbanColumn, direction: -1 | 1): boolean {
+		const at = board.columns.indexOf(column);
+		const to = at + direction;
+		return (
+			column.labelId !== null &&
+			to > 0 &&
+			to < board.columns.length &&
+			board.columns[to].labelId !== null
+		);
+	}
+
+	/** The card's menu lists the board's columns; picking one moves it there, at the end. */
+	function moveTargets(column: KanbanColumn, noteId: string): MoveTargets {
+		return {
+			columns: board.columns.map((candidate) => ({
+				id: candidate.id,
+				name: columnName(candidate)
+			})),
+			current: column.id,
+			onMove: (columnId) => {
+				const destination = board.columns.find((candidate) => candidate.id === columnId);
+				if (!destination || destination.id === column.id) return;
+				const order = [
+					...columnNotes(board, destination, notesStore.activeNotes)
+						.map((note) => note.id)
+						.filter((id) => id !== noteId),
+					noteId
+				];
+				moveCardToColumn({
+					boardId: board.id,
+					noteId,
+					source: column,
+					destination,
+					order,
+					message: `Moved to ${columnName(destination)}`
+				});
+				if (mobile.current) activeColumnId = destination.id;
+			}
+		};
+	}
 	/** A board with only its Backlog: the first run, where the panel explains and offers a start. */
 	const noLabelColumns = $derived(board.columns.every((column) => column.labelId === null));
 
@@ -124,9 +221,9 @@
 
 	function resetBoardUi() {
 		renamingBoard = false;
-		backlogFilterOpen = false;
 		noteFilterOpen = false;
 		tagPickerOpen = false;
+		activeColumnId = null;
 	}
 
 	function selectBoard(id: string) {
@@ -172,7 +269,7 @@
 	}
 
 	function columnName(column: KanbanColumn): string {
-		if (column.labelId === null) return 'Backlog';
+		if (column.labelId === null) return 'Unsorted';
 		return notesStore.labels.find((label) => label.id === column.labelId)?.name ?? 'Deleted label';
 	}
 
@@ -180,38 +277,6 @@
 		if (!labelId) return;
 		kanbanStore.addTagColumn(board.id, labelId);
 		tagPickerOpen = false;
-	}
-
-	function setBacklogMode(mode: BacklogFilterMode) {
-		if (mode === BacklogFilterMode.AllNonColumn) {
-			kanbanStore.setBacklogFilter(board.id, defaultBacklogFilter());
-			return;
-		}
-		kanbanStore.setBacklogFilter(board.id, {
-			mode: BacklogFilterMode.Custom,
-			includeUntagged: backlogFilter.includeUntagged,
-			labelIds: [...backlogFilter.labelIds]
-		});
-	}
-
-	function toggleBacklogUntagged() {
-		kanbanStore.setBacklogFilter(board.id, {
-			mode: BacklogFilterMode.Custom,
-			includeUntagged: !backlogFilter.includeUntagged,
-			labelIds: [...backlogFilter.labelIds]
-		});
-	}
-
-	function toggleBacklogLabel(labelId: string) {
-		const has = backlogFilter.labelIds.includes(labelId);
-		const labelIds = has
-			? backlogFilter.labelIds.filter((id) => id !== labelId)
-			: [...backlogFilter.labelIds, labelId];
-		kanbanStore.setBacklogFilter(board.id, {
-			mode: BacklogFilterMode.Custom,
-			includeUntagged: backlogFilter.includeUntagged,
-			labelIds
-		});
 	}
 
 	function setNoteFilterAction(action: BoardNoteFilterAction) {
@@ -230,21 +295,11 @@
 	}
 
 	function noteFilterSummary(): string {
-		if (!noteFilterActive) return 'All notes. Tick labels to filter.';
+		if (!noteFilterActive) return 'All notes. Pick labels to filter.';
 		const names = noteFilterNames.join(', ');
 		return noteFilter.action === BoardNoteFilterAction.Keep
 			? `Only notes with ${names}`
 			: `All notes except ${names}`;
-	}
-
-	function backlogFilterSummary(): string {
-		if (backlogFilter.mode !== BacklogFilterMode.Custom) return 'All non-column notes';
-		const parts: string[] = [];
-		if (backlogFilter.includeUntagged) parts.push('No labels');
-		for (const id of backlogFilter.labelIds) {
-			parts.push(notesStore.labels.find((label) => label.id === id)?.name ?? 'Deleted label');
-		}
-		return parts.length ? parts.join(', ') : 'Nothing selected';
 	}
 
 	/**
@@ -316,6 +371,8 @@
 			order,
 			message: `Moved to ${columnName(destination)}`
 		});
+		// Dropped on a tab: show the column the card went to.
+		if (mobile.current) activeColumnId = destination.id;
 	}
 </script>
 
@@ -424,119 +481,139 @@
 					</button>
 				{/if}
 			</div>
-			<LabelChecklist
-				labels={unusedTags}
-				selected={noteFilter.labelIds}
-				onToggle={toggleNoteFilterLabel}
-				label="Board filter labels"
-			/>
-			<p class={k.filterSummary} title={noteFilterSummary()}>
-				{noteFilterSummary()}
-			</p>
+			{#if unusedTags.length > 0}
+				<div class={k.filterChips} role="group" aria-label="Board filter labels">
+					{#each unusedTags as label (label.id)}
+						<button
+							type="button"
+							class={k.filterChip}
+							aria-pressed={noteFilter.labelIds.includes(label.id)}
+							onclick={() => toggleNoteFilterLabel(label.id)}
+						>
+							{label.name}
+						</button>
+					{/each}
+				</div>
+			{:else}
+				<p class={k.explain}>Every label is a column; there is nothing else to filter by.</p>
+			{/if}
+			<div class={k.filterFoot}>
+				<p class={k.filterSummary} title={noteFilterSummary()}>
+					{noteFilterSummary()}
+				</p>
+				<span class={k.filterCount} data-board-filter-count
+					>{filteredCount} of {visibleNotes.length} notes</span
+				>
+			</div>
 		</div>
+	{/if}
+
+	{#if mobile.current}
+		<!-- One column at a time: the tabs pick it, and a carried card can be dropped on
+		     one. Each tab is a drop target like a column, with an empty list to land in. -->
+		<div class={k.columnTabs} role="tablist" aria-label="Columns">
+			{#each board.columns as column (column.id)}
+				<button
+					type="button"
+					role="tab"
+					id={tabId(column)}
+					class={k.columnTab}
+					aria-selected={activeColumn?.id === column.id}
+					aria-controls={panelId(column)}
+					tabindex={activeColumn?.id === column.id ? 0 : -1}
+					data-kanban-column={column.id}
+					data-drop-target={kanbanDrag.target?.columnId === column.id ? '' : undefined}
+					onclick={() => (activeColumnId = column.id)}
+					onkeydown={(event) => onTabKeydown(event, column)}
+				>
+					{columnName(column)}
+					<span class={k.colCount}>{columnNotes(board, column, visibleNotes).length}</span>
+					<span data-kanban-list hidden></span>
+				</button>
+			{/each}
+		</div>
+		{#if kanbanDrag.active}
+			<p class={k.columnTabHint}>Drop on a column to move the note</p>
+		{/if}
 	{/if}
 
 	<div class={['kanban-columns', k.columnsContainer]}>
 		<div class={k.columnsTrack}>
-			{#each board.columns as column (column.id)}
+			{#each shownColumns as column (column.id)}
 				{@const items = columnItems(column)}
 				<section
 					data-kanban-column={column.id}
 					class={[k.column, kanbanDrag.target?.columnId === column.id && k.columnTarget]}
 					aria-label={`${columnName(column)} ${column.labelId === null ? 'Kanban' : 'label'} column`}
+					role={mobile.current ? 'tabpanel' : undefined}
+					id={mobile.current ? panelId(column) : undefined}
+					aria-labelledby={mobile.current ? tabId(column) : undefined}
 				>
 					<div class={k.colHeader}>
 						<div class={k.colTitleGroup}>
 							<h2 class={k.colTitle}>
 								{columnName(column)}
+								<span class={k.colCount} data-column-count
+									>{items.filter((item) => item.note && !item.carried).length}</span
+								>
 							</h2>
 							<p class={k.colCaption}>{columnCaption(column)}</p>
 						</div>
-						{#if column.labelId === null}
-							<button
-								type="button"
-								class={cx(
-									button({ variant: 'ghost', size: 'sm' }),
-									css({ rounded: 'card' }),
-									backlogFilterActive && k.filterActive
-								)}
-								onclick={() => (backlogFilterOpen = !backlogFilterOpen)}
-								aria-expanded={backlogFilterOpen}
-								aria-label="Backlog filter"
-								title="Backlog filter"
-							>
-								Filter
-							</button>
-						{:else}
-							<button
-								type="button"
-								onclick={() => kanbanStore.removeTagColumn(board.id, column.id)}
-								class={iconButton({ variant: 'danger', size: 'compact' })}
-								aria-label={`Remove ${columnName(column)} label column`}
-								title="Remove label column"
-							>
-								<X size={14} aria-hidden="true" />
-							</button>
+						{#if column.labelId !== null}
+							<Menu.Root positioning={{ placement: 'bottom-end' }} lazyMount unmountOnExit>
+								<Menu.Trigger
+									class={iconButton({ variant: 'ghost', size: 'compact' })}
+									aria-label={`${columnName(column)} column actions`}
+									title="Column actions"
+								>
+									<EllipsisVertical class={iconSm} aria-hidden="true" />
+								</Menu.Trigger>
+								<Menu.Positioner>
+									<Menu.Content
+										class={cx(popover, k.colMenuContent)}
+										aria-label={`${columnName(column)} column actions`}
+									>
+										<Menu.Item
+											value="rename"
+											onSelect={() => startRenameLabel(column)}
+											class={menuItemClass}
+										>
+											<Pencil class={iconSm} aria-hidden="true" />
+											Rename label…
+										</Menu.Item>
+										<Menu.Item
+											value="left"
+											disabled={!canMoveColumn(column, -1)}
+											onSelect={() => kanbanStore.moveColumn(board.id, column.id, -1)}
+											class={menuItemClass}
+										>
+											<ArrowLeft class={iconSm} aria-hidden="true" />
+											Move left
+										</Menu.Item>
+										<Menu.Item
+											value="right"
+											disabled={!canMoveColumn(column, 1)}
+											onSelect={() => kanbanStore.moveColumn(board.id, column.id, 1)}
+											class={menuItemClass}
+										>
+											<ArrowRight class={iconSm} aria-hidden="true" />
+											Move right
+										</Menu.Item>
+										<Menu.Separator class={k.boardMenuSeparator} />
+										<Menu.Item
+											value="remove"
+											onSelect={() => kanbanStore.removeTagColumn(board.id, column.id)}
+											class={menuItemClass}
+										>
+											<X class={iconSm} aria-hidden="true" />
+											Remove column
+										</Menu.Item>
+										<p class={k.colMenuCaption}>The label and its notes stay.</p>
+									</Menu.Content>
+								</Menu.Positioner>
+							</Menu.Root>
 						{/if}
 					</div>
-
-					{#if column.labelId === null && backlogFilterOpen}
-						<div class={k.backlogGroup} role="group" aria-label="Backlog filter options">
-							<p class={k.explain}>
-								Choose which notes show in Backlog. Notes already in a label column are never listed
-								here.
-							</p>
-							<label class={k.radioOption}>
-								<input
-									type="radio"
-									name="backlog-mode-{board.id}"
-									checked={backlogFilter.mode === BacklogFilterMode.AllNonColumn}
-									onchange={() => setBacklogMode(BacklogFilterMode.AllNonColumn)}
-									class={k.radioInput}
-								/>
-								<span>
-									<span class={k.radioTitle}>All non-column notes</span>
-									<span class={k.radioSubtitle}> Default: everything not in a label column </span>
-								</span>
-							</label>
-							<label class={k.radioOption}>
-								<input
-									type="radio"
-									name="backlog-mode-{board.id}"
-									checked={backlogFilter.mode === BacklogFilterMode.Custom}
-									onchange={() => setBacklogMode(BacklogFilterMode.Custom)}
-									class={k.radioInput}
-								/>
-								<span class={k.radioTitle}>Only selected…</span>
-							</label>
-
-							{#if backlogFilter.mode === BacklogFilterMode.Custom}
-								<div class={k.filterIndent}>
-									<Checkbox.Root
-										checked={backlogFilter.includeUntagged}
-										onCheckedChange={toggleBacklogUntagged}
-										class={checklist.row}
-									>
-										<Checkbox.Control class={checklist.control}>
-											<Checkbox.Indicator class={checklist.mark}>✓</Checkbox.Indicator>
-										</Checkbox.Control>
-										<Checkbox.Label>No labels</Checkbox.Label>
-										<Checkbox.HiddenInput />
-									</Checkbox.Root>
-									<LabelChecklist
-										labels={backlogFilterTags}
-										selected={backlogFilter.labelIds}
-										onToggle={toggleBacklogLabel}
-										label="Backlog filter labels"
-									/>
-								</div>
-							{/if}
-
-							<p class={k.filterSummary} title={backlogFilterSummary()}>
-								Showing: {backlogFilterSummary()}
-							</p>
-						</div>
-					{/if}
 
 					<!-- Positioned: card offsets are measured against this list while dragging. -->
 					<div class={k.cardsList} data-kanban-list aria-live="polite">
@@ -556,9 +633,11 @@
 									<KanbanCard
 										note={item.note}
 										columnId={column.id}
+										columnLabelId={column.labelId}
 										index={item.index}
 										onOpen={openNote}
 										onDrop={dropCard}
+										moveTo={moveTargets(column, item.note.id)}
 									/>
 								{/if}
 							</div>
@@ -679,6 +758,65 @@
 									class={button({ variant: 'primary', size: 'md' })}
 								>
 									Create label
+								</button>
+							</div>
+						</div>
+					</form>
+				</Dialog.Content>
+			</Dialog.Positioner>
+		</div>
+	</Dialog.Root>
+{/if}
+
+{#if renamingColumn}
+	<Dialog.Root
+		open
+		onOpenChange={(details) => !details.open && (renamingColumn = null)}
+		preventScroll={false}
+	>
+		<div {@attach portalToAppOverlay} class={newLabelDialog.portal} role="presentation">
+			<Dialog.Backdrop class={newLabelDialog.backdrop} />
+			<Dialog.Positioner class={newLabelDialog.positioner}>
+				<Dialog.Content class={newLabelDialog.panel}>
+					<form
+						onsubmit={(event) => {
+							event.preventDefault();
+							commitRenameLabel();
+						}}
+					>
+						<div class={newLabelDialog.header}>
+							<Dialog.Title class={newLabelDialog.title}>Rename label</Dialog.Title>
+						</div>
+						<div class={newLabelDialog.body}>
+							<p class={newLabelDialog.description}>
+								The column and every note with this label take the new name.
+							</p>
+							<input
+								{@attach focusAndSelect}
+								bind:this={renameInput}
+								bind:value={renameName}
+								type="text"
+								aria-label="Label name"
+								placeholder="Label name"
+								class={cx(inputRecipe({ variant: 'outline', size: 'md' }), k.newLabelInput)}
+							/>
+							<div class={newLabelDialog.footer}>
+								<button
+									type="button"
+									onclick={() => (renamingColumn = null)}
+									class={button({ variant: 'quiet', size: 'md' })}
+								>
+									Cancel
+								</button>
+								<button
+									type="submit"
+									disabled={!renameName.trim()}
+									onpointerdown={(event) => {
+										if (event.pointerType === 'touch') event.preventDefault();
+									}}
+									class={button({ variant: 'primary', size: 'md' })}
+								>
+									Rename
 								</button>
 							</div>
 						</div>

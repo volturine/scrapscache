@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { MoveTargets } from '#lib/kanbanMove.js';
 	// Every action a card offers, behind one visible "…" on the card. A right-click
 	// or long-press opens the same menu. The card owns when it opens; this owns
 	// what the actions do and when they close.
@@ -31,7 +32,16 @@
 	} from '@lucide/svelte';
 	import { onMount } from 'svelte';
 
-	let { note, open = $bindable(false) }: { note: Note; open?: boolean } = $props();
+	let {
+		note,
+		open = $bindable(false),
+		moveTo
+	}: {
+		note: Note;
+		open?: boolean;
+		/** On a board: the columns the card can move to without a drag. */
+		moveTo?: MoveTargets;
+	} = $props();
 
 	let trigger = $state<HTMLElement | null>(null);
 	let content = $state<HTMLElement | null>(null);
@@ -266,6 +276,25 @@
 								{/each}
 							</Menu.RadioItemGroup>
 						</Menu.ItemGroup>
+						{#if moveTo}
+							<Menu.ItemGroup class={styles.colorGroup}>
+								<Menu.ItemGroupLabel class={styles.colorLabel}>Move to</Menu.ItemGroupLabel>
+								<Menu.RadioItemGroup
+									value={moveTo.current}
+									onValueChange={(details) => {
+										if (details.value !== moveTo.current) moveTo.onMove(details.value);
+									}}
+								>
+									{#each moveTo.columns as column (column.id)}
+										<Menu.RadioItem value={column.id} class={itemClass}>
+											<Menu.ItemIndicator><Check size={14} aria-hidden="true" /></Menu.ItemIndicator
+											>
+											<Menu.ItemText>{column.name}</Menu.ItemText>
+										</Menu.RadioItem>
+									{/each}
+								</Menu.RadioItemGroup>
+							</Menu.ItemGroup>
+						{/if}
 						<Menu.Item
 							value="copy"
 							closeOnSelect={false}

@@ -3,22 +3,29 @@
 	import type { Note } from '#lib/types.js';
 	import KanbanCardBody from './KanbanCardBody.svelte';
 	import NoteActionsMenu from './NoteActionsMenu.svelte';
+	import type { MoveTargets } from '#lib/kanbanMove.js';
 	import { css } from 'styled-system/css';
 	import { cardOpenControl } from '$panda/styles';
 
 	let {
 		note,
 		columnId,
+		columnLabelId = null,
 		index,
 		onOpen,
-		onDrop
+		onDrop,
+		moveTo
 	}: {
 		note: Note;
 		columnId: string;
+		/** The column's label, left off the card's chips. */
+		columnLabelId?: string | null;
 		/** Slot this card occupies now, so a pick-up opens the gap where it stood. */
 		index: number;
 		onOpen: (id: string) => void;
 		onDrop: (noteId: string, columnId: string, target: KanbanDropTarget | null) => void;
+		/** The other columns, for the "…" menu's Move to; a drag is not the only way. */
+		moveTo?: MoveTargets;
 	} = $props();
 
 	let card = $state<HTMLElement | null>(null);
@@ -64,12 +71,12 @@
 	onclick={open}
 	oncontextmenu={showActions}
 >
-	<KanbanCardBody {note} shield />
+	<KanbanCardBody {note} shield hideLabelId={columnLabelId} />
 	<button
 		bind:this={openButton}
 		type="button"
 		class={cardOpenControl}
 		aria-label={`Open ${note.title || 'untitled note'}`}
 	></button>
-	<NoteActionsMenu {note} bind:open={actionsOpen} />
+	<NoteActionsMenu {note} bind:open={actionsOpen} {moveTo} />
 </article>

@@ -42,6 +42,12 @@ html.keyboard-open .new-note-fab {
 	html.keyboard-open {
 		--app-sheet-pad-bottom: 0.5rem;
 	}
+	/* The tab bar has no place over a keyboard: behind it on iOS it would still
+	 * hold its height and leave a gap between an open note and the keys; on
+	 * Android it would ride up on top of them. */
+	html.keyboard-open [data-phone-tabs] {
+		display: none;
+	}
 }
 
 /* An expanded note is a full page: its overlay host escapes the canvas and

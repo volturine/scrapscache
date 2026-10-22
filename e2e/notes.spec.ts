@@ -688,15 +688,30 @@ test.describe('on a phone', () => {
 		// With a phone keyboard up (the viewport code marks the page), the new-note
 		// button hides instead of riding up over the notes. Read in one step: the
 		// viewport code recomputes the mark on any focus or scroll and would clear it.
-		const fabWithKeyboard = await page.evaluate(() => {
+		// The tab bar goes too, so an open note's layer reaches the keyboard instead of
+		// stopping a tab bar's height above it.
+		const withKeyboard = await page.evaluate(() => {
 			const root = document.documentElement;
 			const fab = document.querySelector<HTMLElement>('.new-note-fab')!;
+			const tabs = document.querySelector<HTMLElement>('[data-phone-tabs]')!;
+			const float = document.querySelector<HTMLElement>('[data-app-float]')!;
+			const read = () => ({
+				fab: getComputedStyle(fab).visibility,
+				tabs: getComputedStyle(tabs).display,
+				floatGap: Math.round(
+					document.querySelector('.app-viewport')!.getBoundingClientRect().bottom -
+						float.getBoundingClientRect().bottom
+				)
+			});
 			root.classList.add('keyboard-open');
-			const up = getComputedStyle(fab).visibility;
+			const up = read();
 			root.classList.remove('keyboard-open');
-			return { up, down: getComputedStyle(fab).visibility };
+			return { up, down: read() };
 		});
-		expect(fabWithKeyboard).toEqual({ up: 'hidden', down: 'visible' });
+		expect(withKeyboard.up).toEqual({ fab: 'hidden', tabs: 'none', floatGap: 0 });
+		expect(withKeyboard.down.fab).toBe('visible');
+		expect(withKeyboard.down.tabs).toBe('flex');
+		expect(withKeyboard.down.floatGap).toBeGreaterThan(40);
 
 		// Search opens the palette over the whole screen.
 		await tabs.getByRole('button', { name: 'Search' }).click();

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { dropIndexAt, edgeSpeed, pageDirection, pagedScrollLeft } from './kanbanDrag.svelte';
+import {
+	dropIndexAt,
+	edgeSpeed,
+	pageDirection,
+	pagedScrollLeft,
+	settledScrollLeft
+} from './kanbanDrag.svelte';
 
 // Three 100px cards, 12px apart, with no drop slot opened yet.
 const tops = [0, 112, 224];
@@ -120,5 +126,30 @@ describe('pagedScrollLeft', () => {
 
 	it('never scrolls outside the board', () => {
 		expect(pagedScrollLeft(200, 300, [0, 324, 648], 1)).toBe(300);
+	});
+});
+
+describe('settledScrollLeft', () => {
+	// A phone board: three columns, the last of which rests at the board's end.
+	const starts = [0, 338, 676];
+	const max = 628;
+
+	it('goes on to the next column after a long enough swipe', () => {
+		expect(settledScrollLeft(60, max, starts, 60)).toBe(338);
+		expect(settledScrollLeft(400, max, starts, 62)).toBe(628);
+	});
+
+	it('goes back to the previous column after a long enough swipe the other way', () => {
+		expect(settledScrollLeft(280, max, starts, -58)).toBe(0);
+	});
+
+	it('returns to the nearest column after a short swipe', () => {
+		expect(settledScrollLeft(370, max, starts, 32)).toBe(338);
+		expect(settledScrollLeft(310, max, starts, -28)).toBe(338);
+	});
+
+	it('stays at the ends of the board', () => {
+		expect(settledScrollLeft(628, max, starts, 80)).toBe(628);
+		expect(settledScrollLeft(0, max, starts, -80)).toBe(0);
 	});
 });

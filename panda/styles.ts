@@ -1207,10 +1207,22 @@ export const kanbanViewStyles = {
 		overscrollBehaviorX: 'contain',
 		WebkitOverflowScrolling: 'touch',
 		px: 'lg',
-		pb: 'lg'
+		pb: 'lg',
+		// A phone board rests on a column; a swipe from a card turns it off while it runs.
+		scrollSnapType: { base: 'x mandatory', md: 'none' },
+		scrollPaddingInline: 'lg',
+		'&[data-kanban-panning]': { scrollSnapType: 'none' }
 	}),
 	columnsTrack: flex({ minW: 'max-content', align: 'flex-start', gap: 'md' }),
-	column: css({ ...kanbanColumnSize, rounded: 'sheet', bg: 'scrapscache.surfaceSubtle', p: 'md' }),
+	column: css({
+		...kanbanColumnSize,
+		// On a phone the next column shows at the edge, so the rest of the board is in sight.
+		w: { base: 'calc(100vw - 4rem)', md: kanbanColumnSize.w },
+		scrollSnapAlign: { base: 'start', md: 'none' },
+		rounded: 'sheet',
+		bg: 'scrapscache.surfaceSubtle',
+		p: 'md'
+	}),
 	columnTarget: css({
 		boxShadow:
 			'inset 0 0 0 2px color-mix(in srgb, token(colors.scrapscache.accent) 35%, transparent)'
@@ -1329,7 +1341,6 @@ export const kanbanViewStyles = {
 	colCount: css({ textStyle: 'caption', ...mutedText, fontVariantNumeric: 'tabular-nums' }),
 	colMenuContent: css({ zIndex: 30, minW: '13rem', py: '2xs', outline: 'none' }),
 	colMenuCaption: css({ px: 'md', pt: '3xs', pb: 'xs', textStyle: 'micro', ...mutedText }),
-	/** On a phone one column shows at a time; these pick it, and take a dropped card. */
 	/** The phone's tab row: the column tabs scroll, the add-column control stays at the end. */
 	phoneTabsRow: css({
 		display: 'flex',
@@ -1341,8 +1352,9 @@ export const kanbanViewStyles = {
 	}),
 	columnTabs: css({ display: 'flex', gap: 'xs', flex: '1', minW: 0, overflowX: 'auto', py: '2xs' }),
 	addColCompact: css({ flexShrink: 0, h: '2.75rem', minW: '2.75rem', px: 'sm', rounded: 'pill' }),
-	/** On a phone the first-run panel sits above the one column on screen, not beside it. */
+	/** On a phone the first-run panel sits above the board, not beside its first column. */
 	starterPhone: css({ mb: 'md' }),
+	/** A phone column's tab: lit for the column in view, it brings its column up and takes a dropped card. */
 	columnTab: css({
 		...rowCenter,
 		gap: '2xs',
@@ -1359,7 +1371,7 @@ export const kanbanViewStyles = {
 		cursor: 'pointer',
 		outline: 'none',
 		transition: 'background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease',
-		'&[aria-selected="true"]': {
+		'&[aria-current="true"]': {
 			bg: 'scrapscache.accentSubtle',
 			borderColor: 'scrapscache.accent',
 			color: 'scrapscache.accent'

@@ -232,7 +232,7 @@ test.describe('on a phone', () => {
 		await expect(page.getByRole('status')).toContainText('Moved to trash');
 	});
 
-	test('the board shows one column at a time with a tab for each', async ({ page }) => {
+	test('the board shows every column with a tab for each that brings it up', async ({ page }) => {
 		await openEmptyApp(page);
 		await createNote(page, 'Task one');
 		await page.goto('/kanban');
@@ -257,28 +257,42 @@ test.describe('on a phone', () => {
 		await page.keyboard.press('Escape');
 		await expect(addMenu).toBeHidden();
 		await starter.getByRole('button', { name: 'To-Do · In-Progress · Done' }).click();
-		const tabs = page.getByRole('tablist', { name: 'Columns' }).getByRole('tab');
+		const tabs = page.getByRole('toolbar', { name: 'Columns' }).getByRole('button');
 		await expect(tabs).toHaveText([/Unsorted\s*1/, /To-Do\s*0/, /In-Progress\s*0/, /Done\s*0/]);
-		// On a phone the shown column is the selected tab's panel.
-		const panel = page.getByRole('tabpanel');
-		await expect(panel).toHaveCount(1);
-		await expect(panel).toHaveAttribute('aria-label', 'Unsorted Kanban column');
-		await expect(panel).toHaveAttribute('aria-labelledby', await tabs.nth(0).getAttribute('id'));
+		const section = (name: string) => page.getByRole('region', { name });
+		const unsorted = section('Unsorted Kanban column');
+		const inProgress = section('In-Progress label column');
+		await expect(tabs.nth(0)).toHaveAttribute('aria-current', 'true');
+		await expect(tabs.nth(0)).toHaveAttribute(
+			'aria-controls',
+			(await unsorted.getAttribute('id'))!
+		);
+		// Every column is on the board; the next one shows at the edge of the screen.
+		await expect(page.locator('section[data-kanban-column]')).toHaveCount(4);
+		const first = (await unsorted.boundingBox())!;
+		const second = (await section('To-Do label column').boundingBox())!;
+		expect(first.width).toBeLessThan(390 * 0.9);
+		expect(second.x).toBeLessThan(390);
 
+		// A tab slides its column up to the start of the board.
 		await tabs.nth(2).click();
-		await expect(tabs.nth(2)).toHaveAttribute('aria-selected', 'true');
-		await expect(panel).toHaveAttribute('aria-label', 'In-Progress label column');
+		await expect(tabs.nth(2)).toHaveAttribute('aria-current', 'true');
+		await expect.poll(async () => Math.round((await inProgress.boundingBox())!.x)).toBe(first.x);
 
-		// The arrows move between the tabs and select as they go.
+		// The arrows move between the tabs and bring each column up as they go.
 		await tabs.nth(2).press('ArrowLeft');
-		await expect(tabs.nth(1)).toHaveAttribute('aria-selected', 'true');
+		await expect(tabs.nth(1)).toHaveAttribute('aria-current', 'true');
 		await expect(tabs.nth(1)).toBeFocused();
 
+		// A swipe across the board lights the tab of the column it rests on.
+		await page.locator('.kanban-columns').evaluate((board) => board.scrollTo({ left: 0 }));
+		await expect(tabs.nth(0)).toHaveAttribute('aria-current', 'true');
+
 		// Move to… from the card: the board follows the card.
-		await tabs.nth(0).click();
 		await moveTo(noteCard(page, 'Task one'), 'Done');
-		await expect(panel).toHaveAttribute('aria-label', 'Done label column');
+		await expect(tabs.nth(3)).toHaveAttribute('aria-current', 'true');
 		await expect(tabs.nth(3)).toHaveText(/Done\s*1/);
+		await expect(section('Done label column')).toBeInViewport({ ratio: 0.8 });
 	});
 
 	test('a card carried up to the tabs stays under them and drops on the tab under the finger', async ({
@@ -291,7 +305,7 @@ test.describe('on a phone', () => {
 			.getByRole('region', { name: 'Boards group your notes by label' })
 			.getByRole('button', { name: 'To-Do · In-Progress · Done' })
 			.click();
-		const tabs = page.getByRole('tablist', { name: 'Columns' }).getByRole('tab');
+		const tabs = page.getByRole('toolbar', { name: 'Columns' }).getByRole('button');
 		const card = noteCard(page, 'Task one');
 		const from = (await card.boundingBox())!;
 		const target = (await tabs.nth(1).boundingBox())!;
@@ -318,11 +332,76 @@ test.describe('on a phone', () => {
 
 		// The tab lights up, and the carried card hangs below the row instead of over it.
 		await expect(tabs.nth(1)).toHaveAttribute('data-drop-target', '');
-		const row = (await page.getByRole('tablist', { name: 'Columns' }).boundingBox())!;
+		const row = (await page.getByRole('toolbar', { name: 'Columns' }).boundingBox())!;
 		const ghost = (await page.locator('[aria-hidden="true"] > [data-lifted]').boundingBox())!;
 		expect(ghost.y).toBeGreaterThanOrEqual(row.y + row.height);
 
 		await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
 		await expect(tabs.nth(1)).toHaveText(/To-Do\s*1/);
+	});
+
+	test('a card carried past the side of the board turns it a column and drops where it rests', async ({
+		page
+	}) => {
+		await openEmptyApp(page);
+		await createNote(page, 'Task one');
+		await page.goto('/kanban');
+		await page
+			.getByRole('region', { name: 'Boards group your notes by label' })
+			.getByRole('button', { name: 'To-Do · In-Progress · Done' })
+			.click();
+		const tabs = page.getByRole('toolbar', { name: 'Columns' }).getByRole('button');
+		const boardStart = Math.round(
+			(await page.getByRole('region', { name: 'Unsorted Kanban column' }).boundingBox())!.x
+		);
+		const from = (await noteCard(page, 'Task one').boundingBox())!;
+
+		// A real touch: hold the card still until it lifts, then hang it past the right edge.
+		const touch = await page.context().newCDPSession(page);
+		const at = (x: number, y: number) => [{ x, y, id: 1 }];
+		const start = { x: from.x + from.width / 2, y: from.y + 20 };
+		const edge = { x: 385, y: start.y + 40 };
+		await touch.send('Input.dispatchTouchEvent', {
+			type: 'touchStart',
+			touchPoints: at(start.x, start.y)
+		});
+		await page.waitForTimeout(400);
+		for (let step = 1; step <= 10; step += 1) {
+			await touch.send('Input.dispatchTouchEvent', {
+				type: 'touchMove',
+				touchPoints: at(
+					start.x + ((edge.x - start.x) * step) / 10,
+					start.y + ((edge.y - start.y) * step) / 10
+				)
+			});
+		}
+		// The board turns: Unsorted leaves the start, and the finger comes back to the middle.
+		const unsorted = page.getByRole('region', { name: 'Unsorted Kanban column' });
+		await expect.poll(async () => Math.round((await unsorted.boundingBox())!.x)).toBeLessThan(0);
+		for (let step = 1; step <= 5; step += 1) {
+			await touch.send('Input.dispatchTouchEvent', {
+				type: 'touchMove',
+				touchPoints: at(edge.x + ((195 - edge.x) * step) / 5, edge.y)
+			});
+		}
+		// It rests with a label column at its start, lit in the tabs: the card drops there.
+		const columns = page.locator('section[data-kanban-column]');
+		await expect
+			.poll(async () => {
+				const starts = await columns.evaluateAll((all) =>
+					all.map((column) => Math.round(column.getBoundingClientRect().x))
+				);
+				return starts.indexOf(boardStart);
+			})
+			.toBeGreaterThan(0);
+		const shown = await columns.evaluateAll(
+			(all, x) => all.findIndex((column) => Math.round(column.getBoundingClientRect().x) === x),
+			boardStart
+		);
+		await expect(tabs.nth(shown)).toHaveAttribute('aria-current', 'true');
+		await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+		await expect(tabs.nth(shown)).toHaveText(/\s1\s*$/);
+		await expect(columns.nth(shown).getByRole('article')).toHaveCount(1);
+		await expect(tabs.nth(0)).toHaveText(/Unsorted\s*0/);
 	});
 });

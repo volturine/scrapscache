@@ -10,7 +10,12 @@
 		slotPosition,
 		type KanbanColumn
 	} from '#lib/kanban.js';
-	import { kanbanDrag, type KanbanDropTarget } from '#lib/kanbanDrag.svelte.js';
+	import {
+		boardColumnStarts,
+		kanbanDrag,
+		prefersReducedMotion,
+		type KanbanDropTarget
+	} from '#lib/kanbanDrag.svelte.js';
 	import { moveCardToColumn, type MoveTargets } from '#lib/kanbanMove.js';
 	import { applyBoardTemplate, BOARD_TEMPLATES, labelNamed } from '#lib/kanbanTemplates.js';
 	import { portalToAppOverlay, portalToBody } from '#lib/appViewport.js';
@@ -70,18 +75,63 @@
 	/** How many of the notes on show the filter lets onto the board. */
 	const filteredCount = $derived(boardNotes(board, visibleNotes).length);
 
-	/** On a phone one column shows at a time, picked by its tab. */
+	/**
+	 * On a phone the board rests on one column at a time, with a tab per column
+	 * above it: the lit tab is the column in view, and a tab brings its column up.
+	 */
 	const mobile = new MediaQuery('max-width: 767px');
 	let activeColumnId = $state<string | null>(null);
 	const activeColumn = $derived(
 		board.columns.find((column) => column.id === activeColumnId) ?? board.columns[0]
 	);
-	const shownColumns = $derived(mobile.current && activeColumn ? [activeColumn] : board.columns);
 	const tabIds = $props.id();
 	const tabId = (column: KanbanColumn) => `${tabIds}-tab-${column.id}`;
-	const panelId = (column: KanbanColumn) => `${tabIds}-panel-${column.id}`;
+	const sectionId = (column: KanbanColumn) => `${tabIds}-column-${column.id}`;
+	let boardScroller = $state<HTMLElement>();
+	let tabRow = $state<HTMLElement>();
 
-	/** One tab stop: the arrows, Home and End move between the tabs and select as they go. */
+	/** Slide the phone board to a column; the tabs then follow the board. */
+	function showColumn(column: KanbanColumn) {
+		activeColumnId = column.id;
+		const at = board.columns.findIndex((each) => each.id === column.id);
+		const left = boardScroller && boardColumnStarts(boardScroller)[at];
+		if (left === undefined) return;
+		boardScroller?.scrollTo({ left, behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+	}
+
+	let followFrame = 0;
+	/** Light the tab of the column nearest the board's start, wherever a swipe or a drag left it. */
+	function followBoard() {
+		if (followFrame || !mobile.current) return;
+		followFrame = requestAnimationFrame(() => {
+			followFrame = 0;
+			if (!boardScroller) return;
+			const left = boardScroller.scrollLeft;
+			const max = boardScroller.scrollWidth - boardScroller.clientWidth;
+			// The last columns cannot reach the start; at the end of the board they count as there.
+			const distances = boardColumnStarts(boardScroller).map((start) =>
+				Math.abs(Math.min(start, max) - left)
+			);
+			const nearest = board.columns[distances.indexOf(Math.min(...distances))];
+			if (nearest) activeColumnId = nearest.id;
+		});
+	}
+	onDestroy(() => cancelAnimationFrame(followFrame));
+
+	// Keep the lit tab in sight in its own row, without moving the page around it.
+	// A carried card leaves the row to the drag, which runs it along itself.
+	$effect(() => {
+		const id = activeColumn?.id;
+		if (!mobile.current || !tabRow || !id || kanbanDrag.active) return;
+		const tab = tabRow.querySelector<HTMLElement>(`[data-kanban-column="${CSS.escape(id)}"]`);
+		if (!tab) return;
+		const row = tabRow.getBoundingClientRect();
+		const box = tab.getBoundingClientRect();
+		if (box.left < row.left) tabRow.scrollLeft -= row.left - box.left;
+		else if (box.right > row.right) tabRow.scrollLeft += box.right - row.right;
+	});
+
+	/** One tab stop: the arrows, Home and End move between the tabs and bring each column up. */
 	function onTabKeydown(event: KeyboardEvent, column: KanbanColumn) {
 		const at = board.columns.indexOf(column);
 		const last = board.columns.length - 1;
@@ -98,7 +148,7 @@
 		if (to === at && !['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) return;
 		event.preventDefault();
 		const next = board.columns[to];
-		activeColumnId = next.id;
+		showColumn(next);
 		(event.currentTarget as HTMLElement).parentElement
 			?.querySelector<HTMLElement>(`#${CSS.escape(tabId(next))}`)
 			?.focus();
@@ -177,7 +227,7 @@
 					order,
 					message: `Moved to ${columnName(destination)}`
 				});
-				if (mobile.current) activeColumnId = destination.id;
+				if (mobile.current) showColumn(destination);
 			}
 		};
 	}
@@ -218,6 +268,7 @@
 		noteFilterOpen = false;
 		tagPickerOpen = false;
 		activeColumnId = null;
+		boardScroller?.scrollTo({ left: 0 });
 	}
 
 	function selectBoard(id: string) {
@@ -365,8 +416,8 @@
 			order,
 			message: `Moved to ${columnName(destination)}`
 		});
-		// Dropped on a tab: show the column the card went to.
-		if (mobile.current) activeColumnId = destination.id;
+		// Dropped on a tab or the column peeking at the edge: bring that column up.
+		if (mobile.current) showColumn(destination);
 	}
 </script>
 
@@ -569,23 +620,28 @@
 	{/if}
 
 	{#if mobile.current}
-		<!-- One column at a time: the tabs pick it, and a carried card can be dropped on
-		     one. Each tab is a drop target like a column, with an empty list to land in. -->
+		<!-- A tab per column: it lights for the column in view, brings its column up, and
+		     takes a carried card like a column does, with an empty list to land in. -->
 		<div class={k.phoneTabsRow} data-kanban-keep-clear>
-			<div class={k.columnTabs} role="tablist" aria-label="Columns" data-kanban-tabs>
+			<div
+				class={k.columnTabs}
+				role="toolbar"
+				aria-label="Columns"
+				data-kanban-tabs
+				bind:this={tabRow}
+			>
 				{#each board.columns as column (column.id)}
 					<button
 						type="button"
-						role="tab"
 						id={tabId(column)}
 						class={k.columnTab}
-						aria-selected={activeColumn?.id === column.id}
-						aria-controls={panelId(column)}
+						aria-current={activeColumn?.id === column.id ? 'true' : undefined}
+						aria-controls={sectionId(column)}
 						tabindex={activeColumn?.id === column.id ? 0 : -1}
 						data-kanban-column={column.id}
 						data-kanban-tab
 						data-drop-target={kanbanDrag.target?.columnId === column.id ? '' : undefined}
-						onclick={() => (activeColumnId = column.id)}
+						onclick={() => showColumn(column)}
 						onkeydown={(event) => onTabKeydown(event, column)}
 					>
 						{columnName(column)}
@@ -604,17 +660,19 @@
 		{/if}
 	{/if}
 
-	<div class={['kanban-columns', k.columnsContainer]}>
+	<div
+		class={['kanban-columns', k.columnsContainer]}
+		bind:this={boardScroller}
+		onscroll={followBoard}
+	>
 		<div class={k.columnsTrack}>
-			{#each shownColumns as column (column.id)}
+			{#each board.columns as column (column.id)}
 				{@const items = columnItems(column)}
 				<section
 					data-kanban-column={column.id}
 					class={[k.column, kanbanDrag.target?.columnId === column.id && k.columnTarget]}
 					aria-label={`${columnName(column)} ${column.labelId === null ? 'Kanban' : 'label'} column`}
-					role={mobile.current ? 'tabpanel' : undefined}
-					id={mobile.current ? panelId(column) : undefined}
-					aria-labelledby={mobile.current ? tabId(column) : undefined}
+					id={sectionId(column)}
 				>
 					<div class={k.colHeader}>
 						<div class={k.colTitleGroup}>
@@ -716,7 +774,7 @@
 				</section>
 			{/each}
 
-			<!-- On a phone these sit above the one column on screen instead (see the tabs). -->
+			<!-- On a phone these sit above the board instead (see the tabs). -->
 			{#if noLabelColumns && !mobile.current}
 				{@render starterPanel()}
 			{/if}

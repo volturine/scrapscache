@@ -28,6 +28,10 @@ const PAGE_COOLDOWN_MS = 500;
 const TOUCH_LIFT_PX = 12;
 /** Room left between the phone's column tabs and a card carried up beneath them. */
 const KEEP_CLEAR_GAP_PX = 12;
+/** How far a swipe on a card carries the board before it settles on the next column. */
+const SWIPE_PAGE_PX = 48;
+/** Longest wait for a settling board before its snapping comes back regardless. */
+const SETTLE_MS = 800;
 /** The click that follows a drag release must not open the note. */
 const CLICK_SUPPRESS_MS = 350;
 
@@ -185,6 +189,47 @@ export function pagedScrollLeft(
 	return Math.abs(clamped - scrollLeft) <= settled ? null : clamped;
 }
 
+/**
+ * Where a phone board comes to rest after a swipe that started on a card.
+ *
+ * The board snaps to its columns, but that swipe is carried by script with the
+ * snapping off, so it settles here instead: on the next column the way it went
+ * once it went far enough, otherwise back on the nearest. `swiped` is how far
+ * the board moved, positive towards its end.
+ */
+export function settledScrollLeft(
+	scrollLeft: number,
+	maxScrollLeft: number,
+	columnStarts: number[],
+	swiped: number
+): number {
+	// The last columns cannot reach the start of the board; they rest at its end.
+	const stops = [
+		...new Set(columnStarts.map((start) => Math.min(Math.max(start, 0), maxScrollLeft)))
+	].sort((a, b) => a - b);
+	if (stops.length === 0) return scrollLeft;
+	if (swiped >= SWIPE_PAGE_PX) return stops.find((stop) => stop >= scrollLeft) ?? stops.at(-1)!;
+	if (swiped <= -SWIPE_PAGE_PX) return stops.findLast((stop) => stop <= scrollLeft) ?? stops[0];
+	return stops.reduce((best, stop) =>
+		Math.abs(stop - scrollLeft) < Math.abs(best - scrollLeft) ? stop : best
+	);
+}
+
+/** The scrollLeft that brings each of a board's columns to its padding edge, in board order. */
+export function boardColumnStarts(board: HTMLElement): number[] {
+	const rect = board.getBoundingClientRect();
+	const padding = Number.parseFloat(getComputedStyle(board).paddingLeft) || 0;
+	return [...board.querySelectorAll<HTMLElement>('[data-kanban-column]')].map(
+		(column) => board.scrollLeft + column.getBoundingClientRect().left - rect.left - padding
+	);
+}
+
+/** Whether a board snaps to its columns, as the phone board does. */
+function snaps(board: HTMLElement): boolean {
+	const type = getComputedStyle(board).scrollSnapType;
+	return type !== '' && type !== 'none';
+}
+
 type Press = KanbanCardPress & {
 	pointerId: number;
 	pointerType: string;
@@ -200,6 +245,8 @@ type Press = KanbanCardPress & {
 	dragging: boolean;
 	/** Swiping the board sideways from this card instead of carrying it. */
 	panning: boolean;
+	/** The board snaps to its columns, so a swipe has to settle on one. */
+	snapping: boolean;
 };
 
 class KanbanDragController {
@@ -224,6 +271,7 @@ class KanbanDragController {
 	#scrolledX = 0;
 	#scrolledY = 0;
 	#scrolledTabs = 0;
+	#settleFrame = 0;
 
 	get active(): boolean {
 		return this.noteId !== null;
@@ -256,7 +304,8 @@ class KanbanDragController {
 			scrollY: scrollerFor(column, 'y'),
 			hold: null,
 			dragging: false,
-			panning: false
+			panning: false,
+			snapping: false
 		};
 		this.width = rect.width;
 		this.height = rect.height;
@@ -334,10 +383,17 @@ class KanbanDragController {
 		const press = this.#press;
 		if (!press?.dragging) return;
 		// The card decides where it lands, so aim from its middle and its top edge
-		// rather than from the finger holding it — except over a column tab.
+		// rather than from the finger holding it — except over a column tab. A card
+		// hung past a side to turn the board has its middle off the screen; it aims
+		// at the column showing at that edge, the one the board is turning to.
+		const board = press.scrollX?.getBoundingClientRect();
+		const middle = this.x + this.width / 2;
 		const column =
 			tabAt(this.#pointerX, this.#pointerY) ??
-			columnAt(this.x + this.width / 2, this.y + this.height / 2);
+			columnAt(
+				board ? Math.min(Math.max(middle, board.left + 1), board.right - 1) : middle,
+				this.y + this.height / 2
+			);
 		// Off the board entirely: keep the last preview so the drop is never a
 		// surprise — what the user last saw is where the card goes.
 		if (!column?.dataset.kanbanColumn) return;
@@ -409,11 +465,12 @@ class KanbanDragController {
 		const now = performance.now();
 		if (now - this.#pagedAt < PAGE_COOLDOWN_MS) return;
 
-		const padding = Number.parseFloat(getComputedStyle(el).paddingLeft) || 0;
-		const starts = [...el.querySelectorAll<HTMLElement>('[data-kanban-column]')].map(
-			(column) => el.scrollLeft + column.getBoundingClientRect().left - rect.left - padding
+		const goal = pagedScrollLeft(
+			el.scrollLeft,
+			el.scrollWidth - el.clientWidth,
+			boardColumnStarts(el),
+			direction
 		);
-		const goal = pagedScrollLeft(el.scrollLeft, el.scrollWidth - el.clientWidth, starts, direction);
 		if (goal === null) return;
 
 		this.#pagedAt = now;
@@ -493,6 +550,13 @@ class KanbanDragController {
 				return;
 			}
 			press.panning = true;
+			// The board's snapping would pull every step of the swipe back onto a
+			// column, so it is off until the swipe has settled on one.
+			if (press.scrollX && snaps(press.scrollX)) {
+				cancelAnimationFrame(this.#settleFrame);
+				press.snapping = true;
+				press.scrollX.dataset.kanbanPanning = '';
+			}
 		}
 
 		if (press.scrollX) press.scrollX.scrollLeft -= event.clientX - press.lastX;
@@ -514,11 +578,34 @@ class KanbanDragController {
 		this.#finish(false);
 	};
 
+	/** Bring a swiped board to rest on a column, then hand it back to its snapping. */
+	#settle(el: HTMLElement, swiped: number): void {
+		const goal = settledScrollLeft(
+			el.scrollLeft,
+			el.scrollWidth - el.clientWidth,
+			boardColumnStarts(el),
+			swiped
+		);
+		el.scrollTo({ left: goal, behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+		// Switched back on mid-glide, the snapping would jump the board to a column.
+		const until = performance.now() + SETTLE_MS;
+		const arrive = (): void => {
+			if (Math.abs(el.scrollLeft - goal) > 1 && performance.now() < until) {
+				this.#settleFrame = requestAnimationFrame(arrive);
+				return;
+			}
+			this.#settleFrame = 0;
+			delete el.dataset.kanbanPanning;
+		};
+		this.#settleFrame = requestAnimationFrame(arrive);
+	}
+
 	/** Tear the gesture down. `swallowClick` covers a drop and a board pan alike. */
 	#finish(swallowClick: boolean): void {
 		const press = this.#press;
 		this.#press = null;
 		if (press?.hold) clearTimeout(press.hold);
+		if (press?.snapping && press.scrollX) this.#settle(press.scrollX, press.startX - press.lastX);
 		window.removeEventListener('pointermove', this.#onPointerMove);
 		window.removeEventListener('pointerup', this.#onPointerUp);
 		window.removeEventListener('pointercancel', this.#onPointerCancel);
@@ -540,7 +627,7 @@ function preventDefault(event: Event): void {
 	event.preventDefault();
 }
 
-function prefersReducedMotion(): boolean {
+export function prefersReducedMotion(): boolean {
 	return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 

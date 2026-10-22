@@ -191,6 +191,39 @@ describe('what the drop aims by', () => {
 	});
 });
 
+describe('a card hung past the side of the board', () => {
+	it('aims at the column at that edge, not at nothing off the screen', () => {
+		const board = document.createElement('div');
+		board.style.overflowX = 'scroll';
+		Object.defineProperties(board, { scrollWidth: { value: 1300 }, clientWidth: { value: 390 } });
+		board.getBoundingClientRect = () => new DOMRect(0, 0, 390, 800);
+		const { column: todo, carried } = column();
+		const done = document.createElement('section');
+		done.dataset.kanbanColumn = 'done';
+		const list = document.createElement('div');
+		list.dataset.kanbanList = '';
+		done.append(list);
+		board.append(todo, done);
+		document.body.append(board);
+		carried.getBoundingClientRect = () => new DOMRect(16, 0, 288, 150);
+		// Done peeks in at the right edge; past the screen there is nothing.
+		document.elementFromPoint = (x: number) => (x >= 390 ? null : x > 350 ? done : todo);
+
+		kanbanDrag.press(pointerEvent('pointerdown', 10, 60), {
+			noteId: 'carried',
+			columnId: 'todo',
+			card: carried,
+			index: 0,
+			onDrop: vi.fn()
+		});
+		vi.advanceTimersByTime(300);
+		// The finger at the edge, the card's middle 100 px past it.
+		window.dispatchEvent(pointerEvent('pointermove', 200, 385));
+
+		expect(kanbanDrag.target).toEqual({ columnId: 'done', index: 0 });
+	});
+});
+
 describe('drop target geometry with the preview open below the carried card', () => {
 	/**
 	 * Dragging downwards leaves the hidden card above the preview slot. The

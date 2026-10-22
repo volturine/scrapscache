@@ -78,7 +78,7 @@ afterEach(() => {
 	actionUndo.clear();
 });
 
-/** A column's section: a region on a desktop, the tab's panel on a phone. */
+/** A column's section, by its name. */
 function column(name: string): HTMLElement {
 	const pattern = new RegExp(`^${name} (Kanban|label) column$`);
 	const found = [...document.querySelectorAll<HTMLElement>('section[aria-label$=" column"]')].find(
@@ -196,64 +196,103 @@ describe('the board filter', () => {
 describe('on a phone', () => {
 	beforeEach(phone);
 
-	it("keeps a new board's starter panel and the add-column control on screen, above the column", async () => {
+	/**
+	 * jsdom has no layout: put the board's columns 300 px apart on a 390 px wide
+	 * scroller, each moving with its scrollLeft, as a phone lays them out.
+	 */
+	function layOutBoard(): HTMLElement {
+		const scroller = document.querySelector<HTMLElement>('.kanban-columns')!;
+		Object.defineProperties(scroller, {
+			scrollWidth: { configurable: true, value: 1000 },
+			clientWidth: { configurable: true, value: 390 }
+		});
+		scroller.querySelectorAll<HTMLElement>('section[data-kanban-column]').forEach((section, at) => {
+			section.getBoundingClientRect = () =>
+				DOMRect.fromRect({ x: at * 300 - scroller.scrollLeft, width: 290, height: 400 });
+		});
+		return scroller;
+	}
+
+	/** The phone's column tabs, in board order. */
+	function tabs(): HTMLElement[] {
+		return within(screen.getByRole('toolbar', { name: 'Columns' })).getAllByRole('button');
+	}
+
+	const lit = () => tabs().findIndex((tab) => tab.getAttribute('aria-current') === 'true');
+
+	it("keeps a new board's starter panel and the add-column control on screen, above the board", async () => {
 		kanbanStore.selectBoard(kanbanStore.createBoard('Fresh').id);
 		render(KanbanView);
 		const starter = screen.getByRole('region', { name: 'Boards group your notes by label' });
-		const panel = screen.getByRole('tabpanel');
-		// Above the one column on screen, not beside it where the track cuts it off.
-		expect(starter.compareDocumentPosition(panel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-		expect(panel.closest('.kanban-columns')?.contains(starter)).toBe(false);
+		const first = column('Unsorted');
+		// Above the board, not beside its first column where the track cuts it off.
+		expect(starter.compareDocumentPosition(first) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		expect(first.closest('.kanban-columns')?.contains(starter)).toBe(false);
 		// The add-column control shares the tab row.
 		const add = screen.getByRole('button', { name: 'Add a label column' });
-		expect(add.parentElement?.contains(screen.getByRole('tablist', { name: 'Columns' }))).toBe(
+		expect(add.parentElement?.contains(screen.getByRole('toolbar', { name: 'Columns' }))).toBe(
 			true
 		);
 	});
 
-	it('moves between the tabs with the arrows, Home and End, one tab stop, panel linked', async () => {
+	it('moves between the tabs with the arrows, Home and End, one tab stop, bringing each column up', async () => {
 		render(KanbanView);
-		const tabs = within(screen.getByRole('tablist', { name: 'Columns' })).getAllByRole('tab');
-		expect(tabs.map((tab) => tab.tabIndex)).toEqual([0, -1, -1]);
-		const panel = screen.getByRole('tabpanel');
-		expect(tabs[0].getAttribute('aria-controls')).toBe(panel.id);
-		expect(panel.getAttribute('aria-labelledby')).toBe(tabs[0].id);
+		const board = layOutBoard();
+		expect(tabs().map((tab) => tab.tabIndex)).toEqual([0, -1, -1]);
+		expect(tabs()[0].getAttribute('aria-controls')).toBe(column('Unsorted').id);
+		expect(lit()).toBe(0);
 
-		tabs[0].focus();
-		await fireEvent.keyDown(tabs[0], { key: 'ArrowRight' });
-		expect(tabs[1].getAttribute('aria-selected')).toBe('true');
-		expect(document.activeElement).toBe(tabs[1]);
-		expect(tabs.map((tab) => tab.tabIndex)).toEqual([-1, 0, -1]);
-		expect(cardTitles(column('Todo'))).toEqual(['Task']);
+		tabs()[0].focus();
+		await fireEvent.keyDown(tabs()[0], { key: 'ArrowRight' });
+		expect(lit()).toBe(1);
+		expect(document.activeElement).toBe(tabs()[1]);
+		expect(tabs().map((tab) => tab.tabIndex)).toEqual([-1, 0, -1]);
+		expect(board.scrollLeft).toBe(300);
 
-		await fireEvent.keyDown(tabs[1], { key: 'End' });
-		expect(document.activeElement).toBe(tabs[2]);
-		expect(screen.getByRole('tabpanel').getAttribute('aria-labelledby')).toBe(tabs[2].id);
-		await fireEvent.keyDown(tabs[2], { key: 'ArrowRight' });
-		expect(document.activeElement).toBe(tabs[2]);
-		await fireEvent.keyDown(tabs[2], { key: 'Home' });
-		expect(document.activeElement).toBe(tabs[0]);
-		expect(cardTitles(column('Unsorted'))).toEqual(['Plain', 'Worky']);
+		await fireEvent.keyDown(tabs()[1], { key: 'End' });
+		expect(document.activeElement).toBe(tabs()[2]);
+		expect(board.scrollLeft).toBe(600);
+		await fireEvent.keyDown(tabs()[2], { key: 'ArrowRight' });
+		expect(document.activeElement).toBe(tabs()[2]);
+		await fireEvent.keyDown(tabs()[2], { key: 'Home' });
+		expect(document.activeElement).toBe(tabs()[0]);
+		expect(board.scrollLeft).toBe(0);
 	});
 
-	it('shows one column at a time, picked by its tab, with a Move to in the card menu', async () => {
+	it('shows every column, a tab brings its column up, and the lit tab follows the board', async () => {
 		render(KanbanView);
-		const tabs = within(screen.getByRole('tablist', { name: 'Columns' })).getAllByRole('tab');
-		expect(tabs.map((tab) => tab.textContent?.replace(/\s+/g, ' ').trim())).toEqual([
+		const board = layOutBoard();
+		expect(tabs().map((tab) => tab.textContent?.replace(/\s+/g, ' ').trim())).toEqual([
 			'Unsorted 2',
 			'Todo 1',
 			'Doing 1'
 		]);
-		expect(screen.getAllByRole('tabpanel')).toHaveLength(1);
-		expect(column('Unsorted')).toBeTruthy();
-
-		await fireEvent.click(tabs[2]);
-		expect(screen.getAllByRole('tabpanel')).toHaveLength(1);
+		// The whole board is there to drag across, not only the column in view.
+		expect(cardTitles(column('Unsorted'))).toEqual(['Plain', 'Worky']);
+		expect(cardTitles(column('Todo'))).toEqual(['Task']);
 		expect(cardTitles(column('Doing'))).toEqual(['Busy']);
 
+		await fireEvent.click(tabs()[2]);
+		expect(board.scrollLeft).toBe(600);
+		expect(lit()).toBe(2);
+
+		// A swipe back to Todo lights its tab.
+		board.scrollLeft = 310;
+		await fireEvent.scroll(board);
+		await waitFor(() => expect(lit()).toBe(1));
+		// At the end of the board the last column counts as in view, though it cannot reach the start.
+		board.scrollLeft = 610;
+		await fireEvent.scroll(board);
+		await waitFor(() => expect(lit()).toBe(2));
+	});
+
+	it('follows a card moved with Move to over to its column', async () => {
+		render(KanbanView);
+		const board = layOutBoard();
 		const card = cardNamed(column('Doing'), 'Busy');
 		await pick(within(card).getByRole('button', { name: 'Note actions' }), 'Todo', 'menuitemradio');
-		// The board follows the card to the column it went to.
 		await waitFor(() => expect(cardTitles(column('Todo'))).toEqual(['Task', 'Busy']));
+		expect(lit()).toBe(1);
+		expect(board.scrollLeft).toBe(300);
 	});
 });

@@ -90,12 +90,21 @@
 	let boardScroller = $state<HTMLElement>();
 	let tabRow = $state<HTMLElement>();
 
+	/** Longest a slide to a column holds the tabs still, should it never arrive. */
+	const SLIDE_HOLD_MS = 1000;
+	/**
+	 * Where a tab sent the board. Until it gets there the lit tab stays on that
+	 * column: following the board would light each column it glides past.
+	 */
+	let slidingTo: { left: number; until: number } | null = null;
+
 	/** Slide the phone board to a column; the tabs then follow the board. */
 	function showColumn(column: KanbanColumn) {
 		activeColumnId = column.id;
 		const at = board.columns.findIndex((each) => each.id === column.id);
 		const left = boardScroller && boardColumnStarts(boardScroller)[at];
 		if (left === undefined) return;
+		slidingTo = { left, until: performance.now() + SLIDE_HOLD_MS };
 		boardScroller?.scrollTo({ left, behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
 	}
 
@@ -108,6 +117,11 @@
 			if (!boardScroller) return;
 			const left = boardScroller.scrollLeft;
 			const max = boardScroller.scrollWidth - boardScroller.clientWidth;
+			if (slidingTo) {
+				const arrived = Math.abs(Math.min(slidingTo.left, max) - left) <= 1;
+				if (!arrived && performance.now() < slidingTo.until) return;
+				slidingTo = null;
+			}
 			// The last columns cannot reach the start; at the end of the board they count as there.
 			const distances = boardColumnStarts(boardScroller).map((start) =>
 				Math.abs(Math.min(start, max) - left)
@@ -664,6 +678,11 @@
 		class={['kanban-columns', k.columnsContainer]}
 		bind:this={boardScroller}
 		onscroll={followBoard}
+		onscrollend={() => {
+			// However a slide ended — arrived, or taken over by a swipe — the tabs follow again.
+			slidingTo = null;
+			followBoard();
+		}}
 	>
 		<div class={k.columnsTrack}>
 			{#each board.columns as column (column.id)}

@@ -274,10 +274,24 @@ test.describe('on a phone', () => {
 		expect(first.width).toBeLessThan(390 * 0.9);
 		expect(second.x).toBeLessThan(390);
 
-		// A tab slides its column up to the start of the board.
+		// A tab slides its column up to the start of the board, and stays lit the
+		// whole way: the columns the board glides past do not light up on the way.
+		const toolbar = page.getByRole('toolbar', { name: 'Columns' });
+		await toolbar.evaluate((row) => {
+			const lit: number[] = [];
+			(window as unknown as { litTabs: number[] }).litTabs = lit;
+			new MutationObserver(() =>
+				lit.push([...row.children].findIndex((tab) => tab.getAttribute('aria-current') === 'true'))
+			).observe(row, { subtree: true, attributeFilter: ['aria-current'] });
+		});
 		await tabs.nth(2).click();
 		await expect(tabs.nth(2)).toHaveAttribute('aria-current', 'true');
 		await expect.poll(async () => Math.round((await inProgress.boundingBox())!.x)).toBe(first.x);
+		await page.waitForTimeout(200);
+		const litOnTheWay = await page.evaluate(
+			() => (window as unknown as { litTabs: number[] }).litTabs
+		);
+		expect(litOnTheWay.filter((tab) => tab !== -1 && tab !== 2)).toEqual([]);
 
 		// The arrows move between the tabs and bring each column up as they go.
 		await tabs.nth(2).press('ArrowLeft');

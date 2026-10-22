@@ -275,6 +275,9 @@ describe('on a phone', () => {
 		await fireEvent.click(tabs()[2]);
 		expect(board.scrollLeft).toBe(600);
 		expect(lit()).toBe(2);
+		// The board reports getting there, as a browser does once a slide lands.
+		await fireEvent.scroll(board);
+		await new Promise((done) => requestAnimationFrame(done));
 
 		// A swipe back to Todo lights its tab.
 		board.scrollLeft = 310;
@@ -284,6 +287,38 @@ describe('on a phone', () => {
 		board.scrollLeft = 610;
 		await fireEvent.scroll(board);
 		await waitFor(() => expect(lit()).toBe(2));
+	});
+
+	it('keeps a tapped tab lit while the board slides past the columns on the way', async () => {
+		render(KanbanView);
+		const board = layOutBoard();
+		const frame = () => new Promise((done) => requestAnimationFrame(done));
+
+		await fireEvent.click(tabs()[2]);
+		// Mid-glide, over Todo: Doing stays lit.
+		board.scrollLeft = 300;
+		await fireEvent.scroll(board);
+		await frame();
+		await frame();
+		expect(lit()).toBe(2);
+		// Arrived: from here a swipe moves the lit tab again.
+		board.scrollLeft = 600;
+		await fireEvent.scroll(board);
+		await frame();
+		board.scrollLeft = 310;
+		await fireEvent.scroll(board);
+		await waitFor(() => expect(lit()).toBe(1));
+	});
+
+	it('lets the tabs follow again when a slide ends without arriving', async () => {
+		render(KanbanView);
+		const board = layOutBoard();
+
+		await fireEvent.click(tabs()[2]);
+		// A swipe took the board over half way, and it came to rest on Todo.
+		board.scrollLeft = 300;
+		await fireEvent(board, new Event('scrollend'));
+		await waitFor(() => expect(lit()).toBe(1));
 	});
 
 	it('follows a card moved with Move to over to its column', async () => {

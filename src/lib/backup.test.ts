@@ -222,4 +222,22 @@ describe('backup library and reminder history', () => {
 			{ id: reminderWakeId('fresh', reminder), noteId: 'fresh', firedAt: 10, dismissedAt: 20 }
 		]);
 	});
+
+	it('moves the receipts of a repeating reminder, each under its own time', () => {
+		const DAY = 86_400_000;
+		const reminder = Date.UTC(2026, 9, 1, 9);
+		const source = { ...sourceNote, reminder, repeat: { unit: 'day', every: 1, zone: 'UTC' } };
+		const imported = { ...source, id: 'fresh' };
+		const third = reminder + 2 * DAY;
+		const shown = { id: reminderWakeId(source.id, third), noteId: source.id, firedAt: third };
+		const offSchedule = {
+			id: reminderWakeId(source.id, third + 1),
+			noteId: source.id,
+			firedAt: third + 1
+		};
+
+		expect(
+			importedReminderHistory([source as Note], [imported as Note], [shown, offSchedule])
+		).toEqual([{ id: reminderWakeId('fresh', third), noteId: 'fresh', firedAt: third }]);
+	});
 });

@@ -15,7 +15,7 @@
 	import { matchSegments } from '#lib/search.js';
 	import { uiStore } from '#lib/stores/ui.svelte.js';
 	import type { Note } from '#lib/types.js';
-	import { formatReminder, isReminderOverdue, trashCountdown } from '#lib/utils.js';
+	import { reminderWords, trashCountdown } from '#lib/utils.js';
 	import { appClock } from '#lib/appClock.svelte.js';
 	import { cardSwipeStyle, createCardSwipe } from '#lib/cardSwipe.js';
 	import { overflowingTable } from '#lib/tableScroll.js';
@@ -227,12 +227,8 @@
 	// The open control is what assistive technology lands on, so it says what the card shows.
 	const openLabel = $derived.by(() => {
 		const parts = [`Open ${note.title || 'untitled note'}`];
-		if (note.reminder != null) {
-			const when = formatReminder(note.reminder);
-			parts.push(
-				isReminderOverdue(note.reminder) ? `overdue reminder ${when}` : `reminder ${when}`
-			);
-		}
+		const reminder = reminderWords(note, appClock.now);
+		if (reminder) parts.push(reminder.aria[0].toLowerCase() + reminder.aria.slice(1));
 		if (countdown) parts.push(countdown.label.toLowerCase());
 		return parts.join(', ');
 	});
@@ -317,7 +313,11 @@
 
 			{#if note.reminder != null}
 				<div class={css({ flexShrink: 0 })}>
-					<ReminderLabel reminder={note.reminder} class={noteActionsStyles.topRoom} />
+					<ReminderLabel
+						reminder={note.reminder}
+						repeat={note.repeat}
+						class={noteActionsStyles.topRoom}
+					/>
 				</div>
 			{/if}
 

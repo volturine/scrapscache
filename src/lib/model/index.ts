@@ -7,3 +7,4 @@ export * from './edit.js';
 export * from './copy.js';
 export * from './uid.js';
 export * from './reminderWakes.js';
+export * from './reminderRepeat.js';

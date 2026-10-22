@@ -508,6 +508,50 @@ plain text line`;
 			expect(put).toHaveBeenCalledTimes(2);
 		});
 
+		it('makes a reminder repeat, says how, and wakes devices for its next times', async () => {
+			const { client, put } = wakeClient();
+			const session = new McpSession(client);
+			const { note } = await session.createNote({
+				title: 'Bins out',
+				reminder: '2030-01-07T19:00:00Z',
+				repeat: { unit: 'week', weekdays: [1], timeZone: 'UTC' }
+			});
+			expect(note.repeat).toBe('every week on Monday');
+			expect((await session.readNote({ id: note.id })).repeat).toBe('every week on Monday');
+			const wakes = put.mock.calls.at(-1)![1] as { fireAt: number }[];
+			expect(wakes.slice(0, 2).map((wake) => new Date(wake.fireAt).toISOString())).toEqual([
+				'2030-01-07T19:00:00.000Z',
+				'2030-01-14T19:00:00.000Z'
+			]);
+
+			const stopped = await session.updateNote({ id: note.id, repeat: null });
+			expect(stopped.note.repeat).toBeNull();
+			expect(put).toHaveBeenLastCalledWith(expect.any(Number), [
+				{
+					id: reminderWakeId(note.id, Date.parse('2030-01-07T19:00:00Z')),
+					fireAt: Date.parse('2030-01-07T19:00:00Z')
+				}
+			]);
+		});
+
+		it('turns down a repeat it cannot keep', async () => {
+			const session = new McpSession(wakeClient().client);
+			await expect(
+				session.createNote({
+					title: 'Bins out',
+					reminder: '2030-01-07T19:00:00Z',
+					repeat: { unit: 'fortnight' }
+				})
+			).rejects.toThrow('Repeat must name a unit');
+			await expect(
+				session.createNote({ title: 'No time', repeat: { unit: 'day' } })
+			).rejects.toThrow('A repeat needs a reminder');
+			const { note } = await session.createNote({ title: 'No time' });
+			await expect(session.updateNote({ id: note.id, repeat: { unit: 'day' } })).rejects.toThrow(
+				'A repeat needs a reminder'
+			);
+		});
+
 		it('retries after the relay held a newer snapshot', async () => {
 			const put = vi.fn(async () => true);
 			put.mockResolvedValueOnce(false);

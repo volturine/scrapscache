@@ -1,6 +1,11 @@
 import type { Note } from '#lib/types.js';
 import { downloadFile } from '@zag-js/file-utils';
-import { copyNote } from '#lib/model/index.js';
+import {
+	copyNote,
+	reminderShownAt,
+	repeatShortLabel,
+	type ReminderSchedule
+} from '#lib/model/index.js';
 // Small utility helpers shared across components and stores.
 
 /** Format epoch ms as a human-friendly relative-ish string. */
@@ -84,6 +89,16 @@ export function dayKey(ts: number): string {
 	return `${d.getFullYear()}-${month}-${day}`;
 }
 
+/** The first and last instant of the local days `from` to `to` ("YYYY-MM-DD"). */
+export function dayKeySpan(from: string, to = from): { start: number; end: number } {
+	const [fromYear, fromMonth, fromDay] = from.split('-').map(Number);
+	const [toYear, toMonth, toDay] = to.split('-').map(Number);
+	return {
+		start: new Date(fromYear, fromMonth - 1, fromDay).getTime(),
+		end: new Date(toYear, toMonth - 1, toDay + 1).getTime() - 1
+	};
+}
+
 /** Use the reminder picker's next-hour default time on a specific local calendar day. */
 export function reminderTimeForDay(key: string, nowMs = Date.now()): number {
 	const [year, month, day] = key.split('-').map(Number);
@@ -102,6 +117,34 @@ export function reminderTimeForDay(key: string, nowMs = Date.now()): number {
 /** True when a reminder timestamp is in the past. */
 export function isReminderOverdue(ts: number | null, now = Date.now()): boolean {
 	return ts != null && ts < now;
+}
+
+/**
+ * What a note's reminder says: "Tomorrow, 9:00 AM", or for a repeating one its
+ * next time and how often, "Tomorrow, 9:00 AM · Daily". Only a single reminder
+ * turns overdue; a repeating one moves on to its next time.
+ */
+export function reminderWords(
+	note: ReminderSchedule,
+	now = Date.now()
+): { text: string; aria: string; overdue: boolean } | null {
+	const shown = reminderShownAt(note, now);
+	if (shown == null) return null;
+	const when = formatReminder(shown, now);
+	if (note.repeat) {
+		const often = repeatShortLabel(shown, note.repeat);
+		return {
+			text: `${when} · ${often}`,
+			aria: `Repeating reminder, ${when}, ${often.toLowerCase()}`,
+			overdue: false
+		};
+	}
+	const overdue = isReminderOverdue(shown, now);
+	return {
+		text: when,
+		aria: overdue ? `Overdue reminder, ${when}` : `Reminder, ${when}`,
+		overdue
+	};
 }
 
 export const TRASH_PURGE_DAYS = 7;

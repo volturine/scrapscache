@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-	dueReminderNotes,
+	dueReminders,
 	nextReminderAt,
 	reminderPreview,
 	requestReminderPermission,
 	showReminderNotification,
 	unfiredDueReminders
 } from './reminderNotify';
-import { reminderWakeId } from '#lib/model/index.js';
+import { reminderWakeId, type ReminderRepeat } from '#lib/model/index.js';
 
 function note(
 	partial: Partial<{
@@ -15,6 +15,7 @@ function note(
 		title: string;
 		body: string;
 		reminder: number | null;
+		repeat: ReminderRepeat;
 		archived: boolean;
 		trashed: boolean;
 	}> = {}
@@ -52,9 +53,24 @@ describe('reminder scheduling', () => {
 
 	it('detects due reminders and skips a fired wake id', () => {
 		const due = note({ reminder: now });
-		expect(dueReminderNotes([due], now)).toEqual([due]);
-		expect(unfiredDueReminders([due], [reminderWakeId(due.id, now)], now)).toEqual([]);
-		expect(unfiredDueReminders([due], [], now)).toEqual([due]);
+		const wakeId = reminderWakeId(due.id, now);
+		expect(dueReminders([due], now)).toEqual([{ note: due, at: now, wakeId }]);
+		expect(unfiredDueReminders([due], [wakeId], now)).toEqual([]);
+		expect(unfiredDueReminders([due], [], now)).toEqual([{ note: due, at: now, wakeId }]);
+	});
+
+	it('takes a repeat as due once, at its latest time, and fires each time once', () => {
+		const DAY = 86_400_000;
+		const first = Date.UTC(2026, 9, 20, 9);
+		const daily = note({ reminder: first, repeat: { unit: 'day', every: 1, zone: 'UTC' } });
+		const later = first + 2 * DAY + 60_000;
+		const latest = first + 2 * DAY;
+		const wakeId = reminderWakeId(daily.id, latest);
+		expect(dueReminders([daily], later)).toEqual([{ note: daily, at: latest, wakeId }]);
+		expect(unfiredDueReminders([daily], [wakeId], later)).toEqual([]);
+		// The next day it is due again, under a new wake id.
+		expect(unfiredDueReminders([daily], [wakeId], later + DAY)).toHaveLength(1);
+		expect(nextReminderAt([daily], later)).toBe(latest + DAY);
 	});
 
 	it('finds the soonest future reminder', () => {

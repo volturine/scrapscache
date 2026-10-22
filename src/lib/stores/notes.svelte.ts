@@ -26,11 +26,13 @@ import {
 	mergeLabelLists,
 	mergeNoteLists,
 	mergeTwoNotes,
+	reminderShownAt,
 	retargetLocalNotes,
 	stampNewNote,
 	uid,
 	withoutTombstoned,
-	type NotePatch
+	type NotePatch,
+	type ReminderRepeat
 } from '#lib/model/index.js';
 import { editContext, syncClock } from '#lib/editContext.js';
 import { mergeHydratedImages } from '#lib/noteAttachmentHydration.js';
@@ -43,6 +45,7 @@ import { reminderHistoryStore } from '#lib/stores/reminderHistory.js';
 import { syncSnapshot, type SyncSnapshot } from '#lib/syncRecords.js';
 import { uiStore } from '#lib/stores/ui.svelte.js';
 import { trashPurgeAt, cloneNote } from '#lib/utils.js';
+import { appClock } from '#lib/appClock.svelte.js';
 import { noteAttachments, toggleLineAt } from '#lib/checklistBody.js';
 import {
 	journalPendingNotes,
@@ -219,11 +222,15 @@ export class NotesStore {
 	unpinnedNotes = $derived(this.activeNotes.filter((n) => !n.pinned));
 	archivedNotes = $derived(this.notes.filter((n) => n.archived && !n.trashed));
 	trashedNotes = $derived(this.notes.filter((n) => n.trashed));
-	notesWithReminders = $derived(
-		this.activeNotes
+	/** Soonest first; a repeating reminder by its next time, so the order moves on as times come. */
+	notesWithReminders = $derived.by(() => {
+		const now = appClock.now;
+		return this.activeNotes
 			.filter((n) => n.reminder != null)
-			.sort((a, b) => (a.reminder ?? 0) - (b.reminder ?? 0))
-	);
+			.map((n) => ({ note: n, at: reminderShownAt(n, now) ?? 0 }))
+			.sort((a, b) => a.at - b.at)
+			.map(({ note }) => note);
+	});
 
 	// --- Lifecycle -------------------------------------------------------
 	async init() {
@@ -571,8 +578,8 @@ export class NotesStore {
 		this.updateNote(id, { color });
 	}
 
-	setReminder(id: string, reminder: number | null): void {
-		this.updateNote(id, { reminder });
+	setReminder(id: string, reminder: number | null, repeat: ReminderRepeat | null = null): void {
+		this.updateNote(id, { reminder, repeat: repeat ?? undefined });
 	}
 
 	/** Toggle `[ ]` / `[x]` line in unified body text. */
@@ -676,8 +683,14 @@ export class NotesStore {
 		}
 	}
 
-	setReminderMany(ids: readonly string[], reminder: number | null): void {
-		for (const note of this.present(ids)) this.updateNote(note.id, { reminder });
+	setReminderMany(
+		ids: readonly string[],
+		reminder: number | null,
+		repeat: ReminderRepeat | null = null
+	): void {
+		for (const note of this.present(ids)) {
+			this.updateNote(note.id, { reminder, repeat: repeat ?? undefined });
+		}
 	}
 
 	/** Put the label on every note, or take it off every note. */

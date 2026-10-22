@@ -7,8 +7,10 @@ import { stableStringify } from './stableStringify.js';
 import { BodyAuthor } from './bodyDoc.js';
 import { NOTE_FIELDS, fieldTime, sortAttachments } from './merge.js';
 import { uid } from './uid.js';
+import { sameRepeat } from './reminderRepeat.js';
 
-export type NotePatch = Partial<Pick<Note, NoteField | 'trashedAt'>>;
+/** A patch's `repeat` is written with the reminder; a reminder taken away takes its repeat. */
+export type NotePatch = Partial<Pick<Note, NoteField | 'trashedAt' | 'repeat'>>;
 
 /** Who writes, and on which clock. */
 export type EditContext = {
@@ -85,11 +87,21 @@ function sameValue(field: NoteField, note: Note, patch: NotePatch): boolean {
 			return stableStringify(note.linkPreviews ?? []) === stableStringify(patch.linkPreviews ?? []);
 		case 'secret':
 			return Boolean(note.secret) === Boolean(patch.secret);
-		case 'reminder':
-			return (note.reminder ?? null) === (patch.reminder ?? null);
+		case 'reminder': {
+			const next = patchedReminder(note, patch);
+			return (note.reminder ?? null) === next.reminder && sameRepeat(note.repeat, next.repeat);
+		}
 		default:
 			return stableStringify(note[field]) === stableStringify(patch[field]);
 	}
+}
+
+/** The reminder and repeat a patch leaves: a patch may change either one, or both. */
+function patchedReminder(note: Note, patch: NotePatch): Pick<Note, 'reminder' | 'repeat'> {
+	const reminder = 'reminder' in patch ? (patch.reminder ?? null) : (note.reminder ?? null);
+	if (reminder == null) return { reminder };
+	const repeat = 'repeat' in patch ? patch.repeat : note.repeat;
+	return repeat ? { reminder, repeat } : { reminder };
 }
 
 /** Removed attachments are remembered; a changed attachment records when its content changed. */
@@ -119,7 +131,11 @@ function editAttachments(note: Note, next: NoteImage[], at: number): Partial<Not
  * Returns the same note object when nothing changed.
  */
 export function applyNoteEdit(note: Note, patch: NotePatch, context: EditContext): Note {
-	const changed = NOTE_FIELDS.filter((field) => field in patch && !sameValue(field, note, patch));
+	const changed = NOTE_FIELDS.filter(
+		(field) =>
+			(field in patch || (field === 'reminder' && 'repeat' in patch)) &&
+			!sameValue(field, note, patch)
+	);
 	const trashedAt = 'trashedAt' in patch ? (patch.trashedAt ?? null) : note.trashedAt;
 	if (changed.length === 0 && trashedAt === note.trashedAt) return note;
 
@@ -150,6 +166,17 @@ export function applyNoteEdit(note: Note, patch: NotePatch, context: EditContext
 			case 'labels':
 				next.labels = [...(patch.labels ?? [])];
 				break;
+			case 'reminder': {
+				const { reminder, repeat } = patchedReminder(note, patch);
+				next.reminder = reminder;
+				if (repeat)
+					next.repeat = {
+						...repeat,
+						...(repeat.weekdays ? { weekdays: [...repeat.weekdays] } : {})
+					};
+				else delete next.repeat;
+				break;
+			}
 			case 'linkPreviews':
 				if (patch.linkPreviews?.length) {
 					next.linkPreviews = patch.linkPreviews.map((preview) => ({ ...preview }));

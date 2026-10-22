@@ -188,3 +188,37 @@ describe('ReminderCalendar daily and range filtering', () => {
 		expect(getFilterState(container)).toBeNull();
 	});
 });
+
+describe('ReminderCalendar with a repeating reminder', () => {
+	it('marks every day in view the reminder comes on', () => {
+		const now = new Date();
+		const first = new Date(now.getFullYear(), now.getMonth(), 1, 9).getTime();
+		const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+		const { container } = render(ReminderCalendarTestWrapper, {
+			props: {
+				notes: [
+					{
+						id: 'weekly',
+						title: 'Bins',
+						body: '',
+						color: 'default',
+						pinned: false,
+						archived: false,
+						trashed: false,
+						trashedAt: null,
+						createdAt: 1,
+						updatedAt: 1,
+						reminder: first,
+						repeat: { unit: 'week', every: 1, weekdays: [1, 4], zone },
+						labels: []
+					}
+				]
+			}
+		});
+		const marked = [...container.querySelectorAll('button[data-view="day"]')]
+			.filter((day) => day.querySelector('.reminder-dot'))
+			.map((day) => new Date(`${day.getAttribute('data-value')}T12:00`).getDay());
+		expect(marked.length).toBeGreaterThanOrEqual(8);
+		expect(new Set(marked)).toEqual(new Set([1, 4]));
+	});
+});

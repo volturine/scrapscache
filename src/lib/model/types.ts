@@ -1,5 +1,6 @@
 // Note records as stored and synced. Shared by the app and the MCP server, so
 // every writer produces the same shape.
+import type { ReminderRepeat } from './reminderRepeat.js';
 
 export type NoteColor =
 	| 'default'
@@ -91,6 +92,8 @@ export interface Note {
 	createdAt: number;
 	updatedAt: number;
 	reminder: number | null; // epoch ms
+	/** How the reminder comes again; absent when it comes once. Written with `reminder`. */
+	repeat?: ReminderRepeat;
 	labels: string[]; // label ids
 	fieldTimes?: NoteFieldTimes;
 	/** Writer of each field's current value; breaks ties between equal field times. */

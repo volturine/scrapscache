@@ -2,6 +2,7 @@
 // through here, so a field added to Note cannot be dropped by one of them.
 import type { Label, LinkPreview, Note, NoteField, NoteImage } from './types.js';
 import { NOTE_FIELDS } from './merge.js';
+import { normalizeRepeat } from './reminderRepeat.js';
 
 function finite(value: unknown): number | undefined {
 	const number = Number(value);
@@ -78,6 +79,8 @@ export function copyNote(note: Note): Note {
 	);
 	const imageTombstones = timeMap(note.imageTombstones);
 	const linkPreviews = (note.linkPreviews ?? []).map(copyLinkPreview);
+	const reminder = note.reminder == null ? null : Number(note.reminder);
+	const repeat = reminder == null ? undefined : normalizeRepeat(note.repeat);
 	return {
 		id: String(note.id),
 		title: String(note.title ?? ''),
@@ -91,7 +94,8 @@ export function copyNote(note: Note): Note {
 		...(note.secret ? { secret: true } : {}),
 		createdAt: finite(note.createdAt) ?? 0,
 		updatedAt: finite(note.updatedAt) ?? 0,
-		reminder: note.reminder == null ? null : Number(note.reminder),
+		reminder,
+		...(repeat ? { repeat } : {}),
 		labels: Array.from(note.labels ?? [], (id) => String(id)),
 		...(note.images ? { images: note.images.map(copyImage) } : {}),
 		...(Object.keys(imageTombstones).length ? { imageTombstones } : {}),

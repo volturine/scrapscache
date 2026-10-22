@@ -355,7 +355,30 @@ describe('ReminderPicker typed time', () => {
 		expect(selectedOption('Minute')).toBe('00');
 		await fireEvent.keyDown(field, { key: 'Enter' });
 		await vi.waitFor(() =>
-			expect(onApply).toHaveBeenCalledWith(new Date(2026, 9, 22, 9, 0).getTime())
+			expect(onApply).toHaveBeenCalledWith(new Date(2026, 9, 22, 9, 0).getTime(), null)
+		);
+		vi.unstubAllGlobals();
+	});
+
+	it('reads a typed repeat and saves its first time with it', async () => {
+		vi.stubGlobal('Notification', { permission: 'granted', requestPermission: vi.fn() });
+		const onApply = vi.fn();
+		render(ReminderPicker, { props: { reminder: null, onClose: () => {}, onApply } });
+
+		const field = await type('every monday at 9');
+
+		expect(
+			await screen.findByText(/^Mon, Oct 26, 9:00.*, then every week on Monday$/)
+		).toBeTruthy();
+		expect(screen.getByRole('button', { name: /Every week on Monday/ })).toBeTruthy();
+		await fireEvent.keyDown(field, { key: 'Enter' });
+		await vi.waitFor(() =>
+			expect(onApply).toHaveBeenCalledWith(new Date(2026, 9, 26, 9, 0).getTime(), {
+				unit: 'week',
+				every: 1,
+				weekdays: [1],
+				zone: Intl.DateTimeFormat().resolvedOptions().timeZone
+			})
 		);
 		vi.unstubAllGlobals();
 	});
@@ -430,5 +453,109 @@ describe('ReminderPicker typed time', () => {
 			props: { reminder, onClose: () => {}, forceMode: 'mobile' }
 		});
 		expect(phone.component.initialFocus()?.tagName).toBe('BUTTON');
+	});
+});
+
+describe('ReminderPicker repeat', () => {
+	const now = new Date(2026, 9, 21, 11, 15);
+	const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+	beforeEach(() => {
+		vi.useFakeTimers({ now, toFake: ['Date'] });
+		vi.stubGlobal('Notification', { permission: 'granted', requestPermission: vi.fn() });
+	});
+
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	async function chooseRepeat(name: string) {
+		await fireEvent.click(screen.getByRole('button', { name: /Does not repeat|Every|Custom/ }));
+		await fireEvent.click(await screen.findByRole('menuitemradio', { name }));
+	}
+
+	it('offers repeats named for the picked day and says what will happen', async () => {
+		const onApply = vi.fn();
+		render(ReminderPicker, { props: { reminder: null, onClose: () => {}, onApply } });
+
+		await fireEvent.click(screen.getByRole('button', { name: /Does not repeat/ }));
+		const names = (await screen.findAllByRole('menuitemradio')).map((item) =>
+			item.textContent?.trim()
+		);
+		expect(names).toEqual([
+			'Does not repeat',
+			'Every day',
+			'Every weekday',
+			'Every week on Wednesday',
+			'Every month on the 21st',
+			'Every year on October 21',
+			'Custom…'
+		]);
+		await fireEvent.click(screen.getByRole('menuitemradio', { name: 'Every day' }));
+
+		expect(screen.getByText(/, then every day$/)).toBeTruthy();
+		await fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+		await vi.waitFor(() =>
+			expect(onApply).toHaveBeenCalledWith(new Date(2026, 9, 21, 12, 0).getTime(), {
+				unit: 'day',
+				every: 1,
+				zone
+			})
+		);
+	});
+
+	it('builds a custom repeat: every few weeks on the days picked', async () => {
+		const onApply = vi.fn();
+		render(ReminderPicker, { props: { reminder: null, onClose: () => {}, onApply } });
+
+		await chooseRepeat('Custom…');
+		const custom = screen.getByRole('group', { name: 'Custom repeat' });
+		await fireEvent.input(within(custom).getByRole('spinbutton'), {
+			target: { value: '2', valueAsNumber: 2 }
+		});
+		expect(within(custom).getByRole('button', { name: 'Weeks' }).getAttribute('aria-pressed')).toBe(
+			'true'
+		);
+		await fireEvent.click(within(custom).getByRole('button', { name: 'Monday' }));
+		// The last day left cannot be taken away.
+		await fireEvent.click(within(custom).getByRole('button', { name: 'Wednesday' }));
+		await fireEvent.click(within(custom).getByRole('button', { name: 'Monday' }));
+		expect(
+			within(custom).getByRole('button', { name: 'Monday' }).getAttribute('aria-pressed')
+		).toBe('true');
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+		// Picked on a Wednesday: the first Monday of the repeat is the coming one.
+		await vi.waitFor(() =>
+			expect(onApply).toHaveBeenCalledWith(new Date(2026, 9, 26, 12, 0).getTime(), {
+				unit: 'week',
+				every: 2,
+				weekdays: [1],
+				zone
+			})
+		);
+	});
+
+	it('opens a repeating reminder at its next time, and can stop it repeating', async () => {
+		const onApply = vi.fn();
+		const first = new Date(2026, 9, 1, 9, 0).getTime();
+		render(ReminderPicker, {
+			props: {
+				reminder: first,
+				repeat: { unit: 'day', every: 1, zone },
+				onClose: () => {},
+				onApply
+			}
+		});
+
+		expect(screen.getByRole('button', { name: 'Choose date' }).textContent).toContain('22');
+		expect(screen.getByText('Active')).toBeTruthy();
+		expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
+
+		await chooseRepeat('Does not repeat');
+		await fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+		await vi.waitFor(() =>
+			expect(onApply).toHaveBeenCalledWith(new Date(2026, 9, 22, 9, 0).getTime(), null)
+		);
 	});
 });

@@ -82,6 +82,7 @@
 				>
 					<ReminderLabel
 						reminder={note.reminder}
+						repeat={note.repeat}
 						variant="inline"
 						class={noteActionsStyles.topRoom}
 					/>

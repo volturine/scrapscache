@@ -5,7 +5,7 @@ import type { Label, Note } from '#lib/types.js';
 import { cloneNote } from '#lib/utils.js';
 import type { CanvasLibraryItem } from '#lib/canvasLibrary.js';
 import type { ReminderHistoryEntry } from '#lib/reminderHistory.js';
-import { reminderWakeId } from '#lib/model/index.js';
+import { isReminderTime, reminderWakeId } from '#lib/model/index.js';
 
 /** Current-workspace snapshot, including full-resolution attachments. Never carries sync identity. */
 export type ScrapsCacheBackup = {
@@ -89,20 +89,29 @@ export function prepareImportedNotes(
 
 /**
  * Carry reminder history over to the ids a restore gives its notes. Only the
- * history of each note's current reminder matters; the rest described
- * reminders the note no longer has.
+ * history of each note's current reminder (any of its times, when it repeats)
+ * matters; the rest described reminders the note no longer has.
  */
 export function importedReminderHistory(
 	backupNotes: Note[],
 	importedNotes: Note[],
 	history: ReminderHistoryEntry[]
 ): ReminderHistoryEntry[] {
-	const byId = new Map(history.map((entry) => [entry.id, entry]));
+	const byNote = new Map<string, ReminderHistoryEntry[]>();
+	for (const entry of history)
+		byNote.set(entry.noteId, [...(byNote.get(entry.noteId) ?? []), entry]);
 	return backupNotes.flatMap((source, index): ReminderHistoryEntry[] => {
 		const imported = importedNotes[index];
-		if (source.reminder == null || !imported || imported.reminder !== source.reminder) return [];
-		const entry = byId.get(reminderWakeId(source.id, source.reminder));
-		if (!entry) return [];
-		return [{ ...entry, id: reminderWakeId(imported.id, imported.reminder), noteId: imported.id }];
+		if (!imported) return [];
+		return (byNote.get(source.id) ?? []).flatMap((entry) => {
+			// A receipt names the time it was due; the reminder's own time is checked first.
+			const at =
+				source.reminder != null && entry.id === reminderWakeId(source.id, source.reminder)
+					? source.reminder
+					: entry.firedAt;
+			if (entry.id !== reminderWakeId(source.id, at)) return [];
+			if (!isReminderTime(source, at) || !isReminderTime(imported, at)) return [];
+			return [{ ...entry, id: reminderWakeId(imported.id, at), noteId: imported.id }];
+		});
 	});
 }

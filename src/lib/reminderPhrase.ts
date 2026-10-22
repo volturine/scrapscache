@@ -1,8 +1,9 @@
-// Typed reminder times: "tomorrow 9am", "v piatok večer", "in 2 hours".
-// chrono-node reads English and its other languages; Slovak and Czech have our own
-// grammar. Each language loads on first use, so only the ones picked in Settings
-// reach the device's memory.
+// Typed reminder times: "tomorrow 9am", "v piatok večer", "in 2 hours", and
+// repeats: "every monday at 9", "každý deň o 8". chrono-node reads English and its
+// other languages; Slovak and Czech have our own grammar. Each language loads on
+// first use, so only the ones picked in Settings reach the device's memory.
 import type { Chrono, ParsedResult } from 'chrono-node';
+import type { TypedRepeat } from './reminderRepeatWords.js';
 
 /** What one language made of the text. */
 export interface PhraseReading {
@@ -11,6 +12,8 @@ export interface PhraseReading {
 	date: Date;
 	/** False when only a day was given; the picker's time then stays. */
 	timeGiven: boolean;
+	/** How it repeats, when the text said. */
+	repeat?: TypedRepeat;
 }
 
 export type PhraseReader = (text: string, now: Date) => PhraseReading | null;
@@ -157,23 +160,57 @@ export function chronoReader(chrono: Chrono, vague: VagueWords = {}): PhraseRead
 	};
 }
 
+/**
+ * A reader that also takes a repeat. The repeat's words are blanked out (the
+ * places in the text stay put) and the rest is read for the first time; a repeat
+ * with no time typed keeps the picker's.
+ */
+function withRepeats(read: PhraseReader, language: ReminderLanguage): Promise<PhraseReader> {
+	return import('./reminderRepeatWords.js').then(({ findRepeat }) => (text, now) => {
+		const found = findRepeat(text, language);
+		if (!found) return read(text, now);
+		const rest = `${text.slice(0, found.index)}${' '.repeat(found.end - found.index)}${text.slice(found.end)}`;
+		const reading = read(rest, now);
+		if (!reading) {
+			return {
+				text: text.slice(found.index, found.end),
+				date: new Date(now),
+				timeGiven: false,
+				repeat: found.repeat
+			};
+		}
+		const at = rest.indexOf(reading.text);
+		const start = at < 0 ? found.index : Math.min(found.index, at);
+		const end = at < 0 ? found.end : Math.max(found.end, at + reading.text.length);
+		return { ...reading, text: text.slice(start, end), repeat: found.repeat };
+	});
+}
+
+function chronoLoader(
+	load: () => Promise<{ casual: Chrono }>,
+	language: ReminderLanguage,
+	vague?: VagueWords
+): () => Promise<PhraseReader> {
+	return () => load().then((m) => withRepeats(chronoReader(m.casual, vague), language));
+}
+
 const LOADERS: Record<ReminderLanguage, () => Promise<PhraseReader>> = {
-	en: () => import('chrono-node/en').then((m) => chronoReader(m.casual)),
-	sk: () => import('./reminderPhraseSlavic.js').then((m) => m.slovak),
-	cs: () => import('./reminderPhraseSlavic.js').then((m) => m.czech),
-	de: () => import('chrono-node/de').then((m) => chronoReader(m.casual)),
-	es: () => import('chrono-node/es').then((m) => chronoReader(m.casual, VAGUE_WORDS.es)),
-	fr: () => import('chrono-node/fr').then((m) => chronoReader(m.casual)),
-	it: () => import('chrono-node/it').then((m) => chronoReader(m.casual)),
-	nl: () => import('chrono-node/nl').then((m) => chronoReader(m.casual, VAGUE_WORDS.nl)),
-	pt: () => import('chrono-node/pt').then((m) => chronoReader(m.casual)),
-	fi: () => import('chrono-node/fi').then((m) => chronoReader(m.casual)),
-	id: () => import('chrono-node/id').then((m) => chronoReader(m.casual)),
-	ru: () => import('chrono-node/ru').then((m) => chronoReader(m.casual)),
-	uk: () => import('chrono-node/uk').then((m) => chronoReader(m.casual)),
-	ar: () => import('chrono-node/ar').then((m) => chronoReader(m.casual)),
-	ja: () => import('chrono-node/ja').then((m) => chronoReader(m.casual, VAGUE_WORDS.ja)),
-	zh: () => import('chrono-node/zh').then((m) => chronoReader(m.casual, VAGUE_WORDS.zh))
+	en: chronoLoader(() => import('chrono-node/en'), 'en'),
+	sk: () => import('./reminderPhraseSlavic.js').then((m) => withRepeats(m.slovak, 'sk')),
+	cs: () => import('./reminderPhraseSlavic.js').then((m) => withRepeats(m.czech, 'cs')),
+	de: chronoLoader(() => import('chrono-node/de'), 'de'),
+	es: chronoLoader(() => import('chrono-node/es'), 'es', VAGUE_WORDS.es),
+	fr: chronoLoader(() => import('chrono-node/fr'), 'fr'),
+	it: chronoLoader(() => import('chrono-node/it'), 'it'),
+	nl: chronoLoader(() => import('chrono-node/nl'), 'nl', VAGUE_WORDS.nl),
+	pt: chronoLoader(() => import('chrono-node/pt'), 'pt'),
+	fi: chronoLoader(() => import('chrono-node/fi'), 'fi'),
+	id: chronoLoader(() => import('chrono-node/id'), 'id'),
+	ru: chronoLoader(() => import('chrono-node/ru'), 'ru'),
+	uk: chronoLoader(() => import('chrono-node/uk'), 'uk'),
+	ar: chronoLoader(() => import('chrono-node/ar'), 'ar'),
+	ja: chronoLoader(() => import('chrono-node/ja'), 'ja', VAGUE_WORDS.ja),
+	zh: chronoLoader(() => import('chrono-node/zh'), 'zh', VAGUE_WORDS.zh)
 };
 
 const loaded = new Map<ReminderLanguage, Promise<PhraseReader>>();
@@ -201,6 +238,8 @@ export interface ReminderPhrase {
 	/** The part of the input that was understood. */
 	text: string;
 	at: number;
+	/** How it repeats, when the text said; its first time is `at` or the next one after it. */
+	repeat?: TypedRepeat;
 }
 
 /**
@@ -222,5 +261,9 @@ export function readReminderPhrase(
 	if (!best) return null;
 	const date = new Date(best.date);
 	if (!best.timeGiven) date.setHours(time.hour, time.minute, 0, 0);
-	return { text: best.text.trim(), at: date.getTime() };
+	return {
+		text: best.text.trim(),
+		at: date.getTime(),
+		...(best.repeat ? { repeat: best.repeat } : {})
+	};
 }

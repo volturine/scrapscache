@@ -5,7 +5,13 @@ import {
 	getFiredReminderKeys,
 	workspaceKey
 } from '#lib/db/idb.js';
-import { relayReminderWakes, reminderWakeId, type ReminderWake } from '#lib/model/index.js';
+import {
+	isReminderTime,
+	reminderDueAt,
+	relayReminderWakes,
+	reminderWakeId,
+	type ReminderWake
+} from '#lib/model/index.js';
 import {
 	closeReminderNotifications,
 	nextReminderAt,
@@ -102,8 +108,9 @@ function writeFiredReminderMirror(pid: string, keys: Iterable<string>): void {
 /** The note a relay wake was derived from, in whatever state it is. */
 function noteForWake(notes: ReminderNote[], wakeId: string, fireAt: number): ReminderNote | null {
 	return (
-		notes.find((note) => note.reminder === fireAt && reminderWakeId(note.id, fireAt) === wakeId) ??
-		null
+		notes.find(
+			(note) => isReminderTime(note, fireAt) && reminderWakeId(note.id, fireAt) === wakeId
+		) ?? null
 	);
 }
 
@@ -325,7 +332,8 @@ export class ReminderStore {
 				}
 			} else {
 				const note = notes.find((item) => item.id === alert.noteId);
-				if (note?.reminder === alert.reminder && !note.archived && !note.trashed) kept.push(alert);
+				if (note && isReminderTime(note, alert.reminder) && !note.archived && !note.trashed)
+					kept.push(alert);
 			}
 		}
 		if (kept.length !== this.alerts.length || kept.some((alert, i) => alert !== this.alerts[i])) {
@@ -452,10 +460,11 @@ export class ReminderStore {
 		const now = Date.now();
 		const fired: ReminderHistoryEntry[] = [];
 		for (const note of workspace.notes) {
-			if (note.reminder == null) continue;
-			const id = reminderWakeId(note.id, note.reminder);
+			const at = reminderDueAt(note, now);
+			if (at == null) continue;
+			const id = reminderWakeId(note.id, at);
 			if (!workspace.fired.has(id) || workspace.recorded.has(id)) continue;
-			fired.push({ id, noteId: note.id, firedAt: note.reminder });
+			fired.push({ id, noteId: note.id, firedAt: at });
 		}
 		if (fired.length) this.history.recordFired(workspace.pid, fired);
 	}
@@ -485,13 +494,11 @@ export class ReminderStore {
 	private scanWorkspace(workspace: WorkspaceReminders, now: number): void {
 		const due = unfiredDueReminders(workspace.notes, [...workspace.fired, ...workspace.seen], now);
 		let waiting = false;
-		for (const note of due) {
-			const reminder = note.reminder as number;
+		for (const { note, at: reminder, wakeId } of due) {
 			if (this.awaitsCloud(workspace, reminder, now)) {
 				waiting = true;
 				continue;
 			}
-			const wakeId = reminderWakeId(note.id, reminder);
 			workspace.seen.add(wakeId);
 			if (workspace.armed.has(wakeId)) continue;
 			const alert: ReminderAlert = {
@@ -570,7 +577,7 @@ export class ReminderStore {
 			notes.filter((note) => note.id === alert.noteId),
 			[],
 			Date.now()
-		).some((note) => reminderWakeId(note.id, note.reminder as number) === alert.wakeId);
+		).some((due) => due.wakeId === alert.wakeId);
 	}
 
 	private openFromNotification(

@@ -15,6 +15,7 @@ import {
 	SYNC_STATE_STORE,
 	WORKSPACES_STORE
 } from '#lib/db/names.js';
+import { isReminderTime, normalizeRepeat } from '#lib/model/reminderRepeat.js';
 
 /** What one build of the app needs offline. */
 export interface Build {
@@ -46,6 +47,7 @@ type StoredNote = {
 	title?: unknown;
 	body?: unknown;
 	reminder?: unknown;
+	repeat?: unknown;
 	archived?: unknown;
 	trashed?: unknown;
 };
@@ -361,8 +363,12 @@ export function startServiceWorker(sw: ServiceWorkerGlobalScope, build: Build): 
 			let note: StoredNote | null = null;
 			for (const candidate of Array.isArray(notes) ? (notes as StoredNote[]) : []) {
 				if (!candidate || candidate.archived || candidate.trashed) continue;
-				if (Number(candidate.reminder) !== wake.fireAt) continue;
-				if ((await reminderWakeId(String(candidate.id), Number(candidate.reminder))) === wake.id) {
+				const schedule = {
+					reminder: Number(candidate.reminder) || null,
+					repeat: normalizeRepeat(candidate.repeat)
+				};
+				if (!isReminderTime(schedule, wake.fireAt)) continue;
+				if ((await reminderWakeId(String(candidate.id), wake.fireAt)) === wake.id) {
 					note = candidate;
 					break;
 				}
@@ -517,14 +523,14 @@ export function startServiceWorker(sw: ServiceWorkerGlobalScope, build: Build): 
 				wakeId: wake.id,
 				workspaceId: found.workspace.id,
 				workspaceTag: typeof found.workspace.tag === 'string' ? found.workspace.tag : null,
-				reminder: found.note.reminder
+				reminder: wake.fireAt
 			}
 		});
 		await recordReminderReceipt({
 			workspaceId: found.workspace.id,
 			noteId: found.note.id,
 			wakeId: wake.id,
-			reminder: found.note.reminder
+			reminder: wake.fireAt
 		});
 	}
 

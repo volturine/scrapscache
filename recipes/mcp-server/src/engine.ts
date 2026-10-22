@@ -3,6 +3,10 @@ import { ScrapscacheSyncClient, type SyncEnvelope, type SyncResult } from './syn
 import {
 	applyNoteEdit,
 	createEditContext,
+	describeRepeat,
+	firstRepeatTime,
+	localTimeZone,
+	normalizeRepeat,
 	isReadableBodyDoc,
 	mergeTwoLabels,
 	mergeTwoNotes,
@@ -12,7 +16,8 @@ import {
 	type Label,
 	type Note,
 	type NoteColor,
-	type NotePatch
+	type NotePatch,
+	type ReminderRepeat
 } from '../../../src/lib/model/index.js';
 
 export type { Label, Note };
@@ -68,6 +73,61 @@ function reminderTimestamp(value: unknown): number | null | undefined {
 	return timestamp;
 }
 
+function reminderRepeat(value: unknown): ReminderRepeat | null | undefined {
+	if (value === undefined) return undefined;
+	if (value === null) return null;
+	const raw = (value && typeof value === 'object' ? value : {}) as Record<string, unknown>;
+	const repeat = normalizeRepeat({
+		unit: raw.unit,
+		every: raw.every ?? 1,
+		weekdays: raw.weekdays,
+		zone: raw.timeZone ?? localTimeZone()
+	});
+	if (!repeat) {
+		throw new Error(
+			'Repeat must name a unit (day, week, month or year), every 1 to 999 of them, and a valid IANA time zone.'
+		);
+	}
+	return repeat;
+}
+
+/** "every day", or null for a reminder that comes once. */
+function repeatWords(note: Note): string | null {
+	return note.reminder != null && note.repeat ? describeRepeat(note.reminder, note.repeat) : null;
+}
+
+const REPEAT_OUTPUT = {
+	type: ['string', 'null'],
+	description: 'How the reminder repeats, e.g. "every week on Monday", or null if it comes once.'
+} as const;
+
+const REPEAT_INPUT = {
+	type: ['object', 'null'],
+	description:
+		'Make the reminder repeat; the reminder is its first time. Null makes it come once. The next times are worked out from the first, at the same wall-clock time.',
+	properties: {
+		unit: { type: 'string', enum: ['day', 'week', 'month', 'year'] },
+		every: {
+			type: 'integer',
+			minimum: 1,
+			maximum: 999,
+			description: 'Every this many units. Defaults to 1.'
+		},
+		weekdays: {
+			type: 'array',
+			items: { type: 'integer', minimum: 0, maximum: 6 },
+			description:
+				"Weekly only: the days it comes on, 0 = Sunday. Defaults to the first time's day."
+		},
+		timeZone: {
+			type: 'string',
+			description:
+				"IANA time zone that keeps the wall-clock time, e.g. Europe/Bratislava. Defaults to the server's."
+		}
+	},
+	required: ['unit']
+} as const;
+
 const READ_ONLY_ANNOTATIONS = {
 	readOnlyHint: true,
 	destructiveHint: false,
@@ -112,7 +172,8 @@ const NOTE_MUTATION_OUTPUT_SCHEMA = {
 					type: ['string', 'null'],
 					format: 'date-time',
 					description: 'ISO 8601 reminder date and time, or null if no reminder is set.'
-				}
+				},
+				repeat: REPEAT_OUTPUT
 			},
 			required: ['id', 'title', 'labels', 'pinned', 'reminder']
 		}
@@ -209,6 +270,7 @@ export const MCP_TOOLS = [
 					description:
 						'Reminder date and time as an ISO 8601 timestamp, or null if no reminder is set.'
 				},
+				repeat: REPEAT_OUTPUT,
 				workspace: { type: 'string' }
 			},
 			required: ['id', 'title', 'body', 'checklist', 'labels', 'reminder']
@@ -217,7 +279,7 @@ export const MCP_TOOLS = [
 	{
 		name: 'create_note',
 		description:
-			'Create a new note in Scraps Cache. Supports title, text body, checklist items, labels, a reminder, and pinned status.',
+			'Create a new note in Scraps Cache. Supports title, text body, checklist items, labels, a reminder that may repeat, and pinned status.',
 		annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
 		inputSchema: {
 			type: 'object',
@@ -241,6 +303,7 @@ export const MCP_TOOLS = [
 					description:
 						'Optional reminder date and time as an ISO 8601 timestamp with a timezone, e.g. 2026-09-24T14:00:00+02:00.'
 				},
+				repeat: REPEAT_INPUT,
 				color: {
 					type: 'string',
 					description: 'Color palette name (e.g. "default", "sand", "sage", "clay", "lavender")'
@@ -252,7 +315,7 @@ export const MCP_TOOLS = [
 	{
 		name: 'update_note',
 		description:
-			'Update an existing note by ID. Can replace full body text, update title, append text or checklist items, toggle checklist tasks, update labels, reminder, or color, or change pinned/archived state.',
+			'Update an existing note by ID. Can replace full body text, update title, append text or checklist items, toggle checklist tasks, update labels, reminder and its repeat, or color, or change pinned/archived state.',
 		annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
 		inputSchema: {
 			type: 'object',
@@ -288,7 +351,8 @@ export const MCP_TOOLS = [
 					format: 'date-time',
 					description:
 						'Reminder date and time as an ISO 8601 timestamp with a timezone, e.g. 2026-09-24T14:00:00+02:00. Set null to remove the reminder.'
-				}
+				},
+				repeat: REPEAT_INPUT
 			},
 			required: ['id']
 		},
@@ -539,6 +603,7 @@ export class McpSession {
 			[...this.notes.values()].map((note) => ({
 				id: note.id,
 				reminder: note.reminder ?? null,
+				repeat: note.repeat,
 				archived: !!note.archived,
 				trashed: this.isTrashed(note)
 			})),
@@ -685,6 +750,7 @@ export class McpSession {
 			archived: !!note.archived,
 			color: note.color || 'default',
 			reminder: note.reminder == null ? null : new Date(note.reminder).toISOString(),
+			repeat: repeatWords(note),
 			createdAt: new Date(note.createdAt).toISOString(),
 			updatedAt: new Date(note.updatedAt).toISOString()
 		};
@@ -698,11 +764,15 @@ export class McpSession {
 		pinned?: boolean;
 		color?: string;
 		reminder?: string | null;
+		repeat?: unknown;
 	}) {
 		await this.ensureHydrated();
 		const now = this.clock.now();
 		const noteId = randomOpaqueId();
-		const reminder = reminderTimestamp(args.reminder) ?? null;
+		const picked = reminderTimestamp(args.reminder) ?? null;
+		const repeat = reminderRepeat(args.repeat);
+		if (repeat && picked == null) throw new Error('A repeat needs a reminder to start from.');
+		const reminder = picked != null && repeat ? firstRepeatTime(picked, repeat, now) : picked;
 
 		let noteBody = args.body || '';
 		if (args.checklist && args.checklist.length > 0) {
@@ -724,6 +794,7 @@ export class McpSession {
 				trashed: false,
 				trashedAt: null,
 				reminder,
+				...(repeat ? { repeat } : {}),
 				createdAt: now,
 				updatedAt: now,
 				images: []
@@ -743,7 +814,8 @@ export class McpSession {
 				title: note.title,
 				labels: this.getLabelNames(note.labels),
 				pinned: note.pinned,
-				reminder: note.reminder == null ? null : new Date(note.reminder).toISOString()
+				reminder: note.reminder == null ? null : new Date(note.reminder).toISOString(),
+				repeat: repeatWords(note)
 			}
 		};
 	}
@@ -760,6 +832,7 @@ export class McpSession {
 		pinned?: boolean;
 		archived?: boolean;
 		reminder?: string | null;
+		repeat?: unknown;
 	}) {
 		await this.ensureHydrated();
 		const existing = this.notes.get(args.id);
@@ -795,7 +868,15 @@ export class McpSession {
 			updatedBody = newLines.join('\n');
 		}
 
-		const reminder = reminderTimestamp(args.reminder);
+		const picked = reminderTimestamp(args.reminder);
+		const repeat = reminderRepeat(args.repeat);
+		const first = picked === undefined ? (existing.reminder ?? null) : picked;
+		if (repeat && first == null) throw new Error('A repeat needs a reminder to start from.');
+		// A newly set repeat starts at its next time when the first one has gone.
+		const reminder =
+			repeat && first != null && (picked !== undefined || !existing.repeat)
+				? firstRepeatTime(first, repeat, this.clock.now())
+				: picked;
 		const labels = args.labels !== undefined ? this.resolveLabelIds(args.labels) : null;
 
 		const before: Note = {
@@ -810,7 +891,8 @@ export class McpSession {
 			...(args.color !== undefined ? { color: args.color as NoteColor } : {}),
 			...(args.pinned !== undefined ? { pinned: args.pinned } : {}),
 			...(args.archived !== undefined ? { archived: args.archived } : {}),
-			...(reminder !== undefined ? { reminder } : {})
+			...(reminder !== undefined ? { reminder } : {}),
+			...(repeat !== undefined ? { repeat: repeat ?? undefined } : {})
 		};
 		const updatedNote = applyNoteEdit(before, patch, this.editContext);
 		const createdLabels = labels?.created ?? [];
@@ -829,7 +911,9 @@ export class McpSession {
 				labels: this.getLabelNames(updatedNote.labels),
 				pinned: updatedNote.pinned,
 				archived: updatedNote.archived,
-				reminder: updatedNote.reminder == null ? null : new Date(updatedNote.reminder).toISOString()
+				reminder:
+					updatedNote.reminder == null ? null : new Date(updatedNote.reminder).toISOString(),
+				repeat: repeatWords(updatedNote)
 			}
 		};
 	}

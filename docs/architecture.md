@@ -58,7 +58,7 @@ The same SvelteKit app serves the UI and the sync API when self-hosted.
 ### Local data model (conceptual)
 
 - **Notes** — title, body (plain text + checklist lines), color, pins, archive,
-  trash, reminder timestamp, label IDs, attachments. Every change goes through
+  trash, reminder timestamp and how it repeats, label IDs, attachments. Every change goes through
   `applyNoteEdit` in `src/lib/model/`, which stamps only the fields it changes,
   on the relay-corrected clock. The body is also a Yjs document: concurrent edits
   on the same body base merge. First edits of a text-only copy identify that base
@@ -67,7 +67,9 @@ The same SvelteKit app serves the UI and the sync API when self-hosted.
   latest body write wins. Attachments merge by id with removals remembered;
   other fields are last-write-wins per field, ties broken by writer.
 - **Reminder wakes** — optional account-scoped opaque wake IDs and `fireAt`
-  timestamps. Each enabled device has independent delivery state, and a device
+  timestamps. A repeating reminder's times are worked out on each device from its
+  first time and repeat (in the time zone it was set in, so every device agrees);
+  a device that syncs sends the next 60 days of them, one wake per time. Each enabled device has independent delivery state, and a device
   does not need the encrypted note before receiving a generic alert. The relay
   never receives note IDs or text.
 - **Reminder history** — encrypted receipts on a separate channel,

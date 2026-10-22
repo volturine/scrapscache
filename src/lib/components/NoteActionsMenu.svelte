@@ -390,8 +390,9 @@
 					<ReminderPicker
 						bind:this={reminderPicker}
 						reminder={note.reminder}
-						onApply={(r) => {
-							notesStore.setReminder(note.id, r);
+						repeat={note.repeat}
+						onApply={(r, repeat) => {
+							notesStore.setReminder(note.id, r, repeat);
 							reminderStore.sync(notesStore.notes);
 							void notesStore.flushSync();
 							reminderDialogOpen = false;

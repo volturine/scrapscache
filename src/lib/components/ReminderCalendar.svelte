@@ -4,11 +4,12 @@
 </script>
 
 <script lang="ts">
-	import { DatePicker } from '@ark-ui/svelte/date-picker';
-	import { parseDate, type DateValue } from '@internationalized/date';
+	import { DatePicker, type DatePickerVisibleRangeChangeDetails } from '@ark-ui/svelte/date-picker';
+	import { getLocalTimeZone, parseDate, type DateValue } from '@internationalized/date';
 	import DatePickerViews from './DatePickerViews.svelte';
 	import type { Note } from '#lib/types.js';
-	import { dayKey } from '#lib/utils.js';
+	import { dayKey, dayKeySpan } from '#lib/utils.js';
+	import { reminderTimesBetween } from '#lib/model/index.js';
 	import { truncate } from '$panda/styles';
 	import { css, cx } from 'styled-system/css';
 	import { flex, hstack } from 'styled-system/patterns';
@@ -27,15 +28,35 @@
 	let longPressed = false;
 
 	const pickingEnd = $derived(selected !== null && selected.to === null);
+	const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+	/** The days the calendar shows, with the week either side a fixed grid can reach into. */
+	let shown = $state.raw<{ start: number; end: number } | null>(null);
+	const range = $derived.by(() => {
+		if (shown) return shown;
+		const month = (selected?.from ?? dayKey(Date.now())).slice(0, 8);
+		const { start } = dayKeySpan(`${month}01`);
+		return { start: start - WEEK_MS, end: start + 31 * 24 * 60 * 60 * 1000 + WEEK_MS };
+	});
 	const reminderDays = $derived.by(() => {
 		const counts = new Map<string, number>();
 		for (const note of notes) {
 			if (note.reminder == null) continue;
-			const key = dayKey(note.reminder);
-			counts.set(key, (counts.get(key) ?? 0) + 1);
+			// A repeating reminder marks each day it comes on in view.
+			const times = note.repeat
+				? reminderTimesBetween(note, range.start, range.end, 62)
+				: [note.reminder];
+			for (const key of new Set(times.map(dayKey))) counts.set(key, (counts.get(key) ?? 0) + 1);
 		}
 		return counts;
 	});
+
+	function onVisibleRangeChange({ visibleRange }: DatePickerVisibleRangeChangeDetails) {
+		const zone = getLocalTimeZone();
+		shown = {
+			start: visibleRange.start.toDate(zone).getTime() - WEEK_MS,
+			end: visibleRange.end.toDate(zone).getTime() + 2 * WEEK_MS
+		};
+	}
 	const pickerValue = $derived.by((): DateValue[] => {
 		if (!selected) return [];
 		const from = parseDate(selected.from);
@@ -133,6 +154,7 @@
 		selectionMode="range"
 		value={pickerValue}
 		closeOnSelect={false}
+		{onVisibleRangeChange}
 	>
 		<DatePickerViews
 			onDayClick={handleDayClick}

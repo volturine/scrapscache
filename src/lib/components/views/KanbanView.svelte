@@ -90,12 +90,33 @@
 	let boardScroller = $state<HTMLElement>();
 	let tabRow = $state<HTMLElement>();
 
+	/** Longest a slide to a column holds the tabs still, should it never arrive. */
+	const SLIDE_HOLD_MS = 1000;
+	/**
+	 * Where a tab sent the board. Until it gets there the lit tab stays on that
+	 * column: following the board would light each column it glides past.
+	 */
+	let slidingTo: number | null = null;
+	let slideHold: ReturnType<typeof setTimeout> | undefined;
+
+	/** End a slide however it ended — arrived, stopped, or out of time: the tabs follow the board again. */
+	function endSlide() {
+		clearTimeout(slideHold);
+		slidingTo = null;
+		followBoard();
+	}
+
 	/** Slide the phone board to a column; the tabs then follow the board. */
 	function showColumn(column: KanbanColumn) {
 		activeColumnId = column.id;
 		const at = board.columns.findIndex((each) => each.id === column.id);
 		const left = boardScroller && boardColumnStarts(boardScroller)[at];
 		if (left === undefined) return;
+		clearTimeout(slideHold);
+		slidingTo = left;
+		// A slide a swipe interrupts may never arrive, and without a scroll end to
+		// say so nothing else would hand the tabs back.
+		slideHold = setTimeout(endSlide, SLIDE_HOLD_MS);
 		boardScroller?.scrollTo({ left, behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
 	}
 
@@ -108,6 +129,11 @@
 			if (!boardScroller) return;
 			const left = boardScroller.scrollLeft;
 			const max = boardScroller.scrollWidth - boardScroller.clientWidth;
+			if (slidingTo !== null) {
+				if (Math.abs(Math.min(slidingTo, max) - left) > 1) return;
+				clearTimeout(slideHold);
+				slidingTo = null;
+			}
 			// The last columns cannot reach the start; at the end of the board they count as there.
 			const distances = boardColumnStarts(boardScroller).map((start) =>
 				Math.abs(Math.min(start, max) - left)
@@ -116,7 +142,10 @@
 			if (nearest) activeColumnId = nearest.id;
 		});
 	}
-	onDestroy(() => cancelAnimationFrame(followFrame));
+	onDestroy(() => {
+		cancelAnimationFrame(followFrame);
+		clearTimeout(slideHold);
+	});
 
 	// Keep the lit tab in sight in its own row, without moving the page around it.
 	// A carried card leaves the row to the drag, which runs it along itself.
@@ -664,6 +693,7 @@
 		class={['kanban-columns', k.columnsContainer]}
 		bind:this={boardScroller}
 		onscroll={followBoard}
+		onscrollend={endSlide}
 	>
 		<div class={k.columnsTrack}>
 			{#each board.columns as column (column.id)}

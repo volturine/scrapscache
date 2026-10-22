@@ -321,6 +321,19 @@ describe('on a phone', () => {
 		await waitFor(() => expect(lit()).toBe(1));
 	});
 
+	it('lets the tabs follow again a second after a slide stopped short, with nothing more to say so', async () => {
+		render(KanbanView);
+		const board = layOutBoard();
+
+		await fireEvent.click(tabs()[2]);
+		// A swipe stopped the slide over Todo; this browser reports no scroll end.
+		board.scrollLeft = 300;
+		await fireEvent.scroll(board);
+		await new Promise((done) => requestAnimationFrame(done));
+		expect(lit()).toBe(2);
+		await waitFor(() => expect(lit()).toBe(1), { timeout: 2000 });
+	});
+
 	it('follows a card moved with Move to over to its column', async () => {
 		render(KanbanView);
 		const board = layOutBoard();

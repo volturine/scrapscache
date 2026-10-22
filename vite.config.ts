@@ -133,7 +133,22 @@ export default defineConfig({
 	],
 	build: {
 		// Keep imported fonts as same-origin files to match font-src 'self'.
-		assetsInlineLimit: (filePath) => (/\.(?:woff2?|ttf|otf)$/i.test(filePath) ? false : undefined)
+		assetsInlineLimit: (filePath) => (/\.(?:woff2?|ttf|otf)$/i.test(filePath) ? false : undefined),
+		rolldownOptions: {
+			onLog(level, log, handler) {
+				// Excalidraw's React dependencies (Radix, Jotai) open with "use client",
+				// a React Server Components boundary. Bundled for the browser it has
+				// nothing to preserve, so the warning is noise; other directives and
+				// our own code still warn.
+				if (
+					log.code === 'MODULE_LEVEL_DIRECTIVE' &&
+					log.message.includes('"use client"') &&
+					log.message.includes('node_modules/')
+				)
+					return;
+				handler(level, log);
+			}
+		}
 	},
 	server: {
 		watch: {

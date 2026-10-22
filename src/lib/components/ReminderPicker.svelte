@@ -3,9 +3,31 @@
 	import { createSubscriber, MediaQuery } from 'svelte/reactivity';
 	import { CalendarDate } from '@internationalized/date';
 	import { DatePicker, type DatePickerValueChangeDetails } from '@ark-ui/svelte/date-picker';
+	import { Menu } from '@ark-ui/svelte/menu';
 	import WheelPicker from './WheelPicker.svelte';
 	import DatePickerViews from './DatePickerViews.svelte';
-	import { AlarmClock, Check, ChevronLeft, ChevronRight, TriangleAlert, X } from '@lucide/svelte';
+	import {
+		AlarmClock,
+		Check,
+		ChevronDown,
+		ChevronLeft,
+		ChevronRight,
+		Repeat,
+		TriangleAlert,
+		X
+	} from '@lucide/svelte';
+	import {
+		describeRepeat,
+		firstRepeatTime,
+		localTimeZone,
+		reminderShownAt,
+		repeatChoiceId,
+		repeatChoices,
+		sameRepeat,
+		MAX_REPEAT_EVERY,
+		type ReminderRepeat,
+		type RepeatUnit
+	} from '#lib/model/index.js';
 	import {
 		notificationPermission,
 		notificationsBlockedHint,
@@ -26,18 +48,23 @@
 		type ReminderPhrase
 	} from '#lib/reminderPhrase.js';
 	import { css, cx } from 'styled-system/css';
-	import { badge, button, dialog, iconButton, input } from 'styled-system/recipes';
+	import { badge, button, dialog, iconButton, input, menuItem } from 'styled-system/recipes';
+	import { popover } from '$panda/styles';
 	import { hstack, flex } from 'styled-system/patterns';
 
 	let {
 		reminder,
+		repeat = null,
 		onClose,
 		onApply,
 		forceMode
 	}: {
+		/** The reminder's first time. */
 		reminder: number | null;
+		repeat?: ReminderRepeat | null;
 		onClose: () => void;
-		onApply?: (value: number | null) => void;
+		/** The first time and how it repeats, or null to remove the reminder. */
+		onApply?: (value: number | null, repeat: ReminderRepeat | null) => void;
 		forceMode?: 'mobile' | 'desktop';
 	} = $props();
 
@@ -68,15 +95,24 @@
 		return new Date(ts);
 	}
 
-	// Plain state so sync-driven prop changes cannot discard unsaved picker edits.
+	/** What the picker opens on: a repeating reminder's next time, not its first. */
 	// svelte-ignore state_referenced_locally -- snapshot the reminder at open time on purpose
-	let selected = $state(initDate(reminder));
+	const opened = reminderShownAt({ reminder, repeat }, Date.now());
+	// Plain state so sync-driven prop changes cannot discard unsaved picker edits.
+	let selected = $state(initDate(opened));
+	/** How the draft repeats; its zone is set on save, from where it is picked. */
+	// svelte-ignore state_referenced_locally -- snapshot the repeat at open time on purpose
+	let repeatDraft = $state<Omit<ReminderRepeat, 'zone'> | null>(repeat && withoutZone(repeat));
 	let monthYearOpen = $state(false);
 	const phone = new MediaQuery(PHONE_MEDIA, false);
 	const isMobile = $derived(forceMode ? forceMode === 'mobile' : phone.current);
 
-	function apply(ts: number | null) {
-		onApply?.(ts);
+	function withoutZone({ zone: _zone, ...rest }: ReminderRepeat): Omit<ReminderRepeat, 'zone'> {
+		return rest;
+	}
+
+	function apply(ts: number | null, next: ReminderRepeat | null = null) {
+		onApply?.(ts, next);
 		onClose();
 	}
 
@@ -86,6 +122,7 @@
 		phrase = '';
 		reading = null;
 		beforeTyping = null;
+		repeatBeforeTyping = undefined;
 	}
 
 	function shiftDay(delta: number) {
@@ -117,17 +154,91 @@
 		return () => clearInterval(id);
 	});
 	const draftMs = $derived(selected.getTime());
+	/** An unchanged repeat keeps the zone it was set in; a new or changed one takes this device's. */
+	const repeatUnchanged = $derived(
+		!!repeat && !!repeatDraft && sameRepeat({ ...repeatDraft, zone: repeat.zone }, repeat)
+	);
+	const draftRepeat = $derived<ReminderRepeat | null>(
+		repeatDraft && { ...repeatDraft, zone: repeatUnchanged ? repeat!.zone : localTimeZone() }
+	);
+	/** When the draft first comes: a repeat picked for a time gone comes at its next time. */
+	const draftFirst = $derived.by(() => {
+		if (!draftRepeat) return draftMs;
+		subscribeNow();
+		return firstRepeatTime(draftMs, draftRepeat, Date.now());
+	});
 	const remainingLabel = $derived.by(() => {
 		subscribeNow();
-		return formatReminderCountdown(draftMs);
+		const left = formatReminderCountdown(draftFirst);
+		return draftRepeat ? `${left}, then ${describeRepeat(draftFirst, draftRepeat)}` : left;
 	});
 
 	/** off = no reminder on note; active = saved & unchanged; unsaved = edits or new before Save */
 	const uiStatus = $derived.by(() => {
 		if (reminder == null) return 'new' as const;
-		if (draftMs === reminder) return 'active' as const;
+		if (draftMs === opened && (repeat ? repeatUnchanged : !repeatDraft)) return 'active' as const;
 		return 'unsaved' as const;
 	});
+
+	// Repeat. A ready-made choice is named for the picked day; anything else is custom.
+	const choices = $derived(repeatChoices(draftMs, localTimeZone()));
+	let customOpen = $state(false);
+	const choiceId = $derived(customOpen ? 'custom' : repeatChoiceId(draftMs, draftRepeat));
+	const repeatLabel = $derived.by(() => {
+		if (!draftRepeat) return 'Does not repeat';
+		const words = describeRepeat(draftFirst, draftRepeat);
+		return words[0].toUpperCase() + words.slice(1);
+	});
+	const UNITS: { value: RepeatUnit; one: string; many: string }[] = [
+		{ value: 'day', one: 'Day', many: 'Days' },
+		{ value: 'week', one: 'Week', many: 'Weeks' },
+		{ value: 'month', one: 'Month', many: 'Months' },
+		{ value: 'year', one: 'Year', many: 'Years' }
+	];
+	/** Monday first, as the calendar has it. */
+	const WEEKDAYS = [1, 2, 3, 4, 5, 6, 0].map((day) => ({
+		value: day,
+		short: new Date(2026, 0, 4 + day).toLocaleDateString('en-US', { weekday: 'narrow' }),
+		name: new Date(2026, 0, 4 + day).toLocaleDateString('en-US', { weekday: 'long' })
+	}));
+
+	function chooseRepeat(id: string) {
+		if (id === 'custom') {
+			// Custom starts from what is picked: a weekly repeat names its day.
+			const base = repeatDraft ?? { unit: 'week' as const, every: 1 };
+			repeatDraft =
+				base.unit === 'week' && !base.weekdays?.length
+					? { ...base, weekdays: [selected.getDay()] }
+					: base;
+			customOpen = true;
+			return;
+		}
+		customOpen = false;
+		const choice = choices.find((item) => item.id === id);
+		repeatDraft = choice?.repeat ? withoutZone(choice.repeat) : null;
+	}
+
+	function setEvery(value: number) {
+		if (!repeatDraft || !Number.isInteger(value)) return;
+		repeatDraft = { ...repeatDraft, every: Math.min(MAX_REPEAT_EVERY, Math.max(1, value)) };
+	}
+
+	function setUnit(unit: RepeatUnit) {
+		if (!repeatDraft) return;
+		repeatDraft =
+			unit === 'week'
+				? { unit, every: repeatDraft.every, weekdays: [selected.getDay()] }
+				: { unit, every: repeatDraft.every };
+	}
+
+	function toggleWeekday(day: number) {
+		if (!repeatDraft) return;
+		const days = repeatDraft.weekdays ?? [selected.getDay()];
+		const next = days.includes(day) ? days.filter((item) => item !== day) : [...days, day];
+		// A weekly repeat comes on one day at least.
+		if (!next.length) return;
+		repeatDraft = { ...repeatDraft, weekdays: next.sort((left, right) => left - right) };
+	}
 
 	const showRemove = $derived(reminder != null);
 	const primaryIsSave = $derived(uiStatus !== 'active');
@@ -189,6 +300,7 @@
 	let readers = $state.raw<PhraseReader[] | null>(null);
 	/** What the controls showed before typing began; an unread or cleared text returns to it. */
 	let beforeTyping: Date | null = null;
+	let repeatBeforeTyping: Omit<ReminderRepeat, 'zone'> | null | undefined;
 	let phraseInput = $state<HTMLInputElement | null>(null);
 	const pickerId = $props.id();
 	const resultId = `${pickerId}-read`;
@@ -215,14 +327,20 @@
 		if (!text.trim()) {
 			reading = null;
 			if (beforeTyping) selected = beforeTyping;
+			if (repeatBeforeTyping !== undefined) repeatDraft = repeatBeforeTyping;
 			beforeTyping = null;
+			repeatBeforeTyping = undefined;
 			return;
 		}
 		beforeTyping ??= selected;
+		if (repeatBeforeTyping === undefined) repeatBeforeTyping = repeatDraft;
 		// A day typed without a time keeps the time the wheels showed before typing.
 		const time = { hour: beforeTyping.getHours(), minute: beforeTyping.getMinutes() };
 		reading = readers ? readReminderPhrase(text, readers, new Date(), time) : null;
 		selected = reading ? new Date(reading.at) : beforeTyping;
+		// "every monday at 9" sets the repeat; a plain time keeps the one picked before.
+		repeatDraft = reading?.repeat ?? repeatBeforeTyping;
+		customOpen = false;
 	}
 
 	function onPhraseKeydown(event: KeyboardEvent) {
@@ -238,8 +356,9 @@
 
 	const readingLabel = $derived.by(() => {
 		if (!reading) return '';
-		const at = new Date(reading.at);
-		return at.toLocaleString([], {
+		// A typed repeat starts at its first time, which may come after the one typed.
+		const at = new Date(reading.repeat ? draftFirst : reading.at);
+		const when = at.toLocaleString([], {
 			weekday: 'short',
 			month: 'short',
 			day: 'numeric',
@@ -247,6 +366,9 @@
 			hour: 'numeric',
 			minute: '2-digit'
 		});
+		return reading.repeat && draftRepeat
+			? `${when}, then ${describeRepeat(draftFirst, draftRepeat)}`
+			: when;
 	});
 	/** Part of a sentence was read: say which part, so a missed word is not a surprise. */
 	const readingPart = $derived(
@@ -264,7 +386,7 @@
 			awaitingPermission = false;
 		}
 		void registerAllReminderDevices();
-		apply(selected.getTime());
+		apply(draftFirst, draftRepeat);
 	}
 	function clear() {
 		apply(null);
@@ -332,6 +454,8 @@
 	const badgeLabel = $derived(
 		uiStatus === 'active' ? 'Active' : uiStatus === 'unsaved' ? 'Edit' : 'New'
 	);
+
+	const repeatItemClass = cx(menuItem({ density: 'compact' }), styles.repeatItem);
 
 	const calNavBtn = cx(
 		iconButton({ variant: 'ghost', size: 'compact' }),
@@ -429,8 +553,12 @@
 				textStyle: 'bodyStrong'
 			})}
 		>
-			<AlarmClock class={css({ w: '1rem', h: '1rem', flexShrink: 0 })} aria-hidden="true" />
-			<span class={styles.ellipsis}>{remainingLabel}</span>
+			{#if draftRepeat}
+				<Repeat class={styles.statusGlyph} aria-hidden="true" />
+			{:else}
+				<AlarmClock class={styles.statusGlyph} aria-hidden="true" />
+			{/if}
+			<span class={styles.statusText}>{remainingLabel}</span>
 		</div>
 		{#if closedAppAlerts}
 			<div class={css({ mt: '2xs', textStyle: 'caption' })}>
@@ -444,26 +572,8 @@
 		{/if}
 	</div>
 
-	<div
-		class={css({
-			mb: 'lg',
-			borderTopWidth: 'hairline',
-			borderColor: 'scrapscache.border',
-			pt: 'lg'
-		})}
-	>
-		<div
-			class={css({
-				mb: 'md',
-				fontSize: 'label',
-				fontWeight: 'interactive',
-				textTransform: 'uppercase',
-				letterSpacing: 'status',
-				color: 'scrapscache.textMuted'
-			})}
-		>
-			Pick date & time
-		</div>
+	<div class={styles.section}>
+		<div class={styles.sectionHeading}>Pick date & time</div>
 
 		<div data-schedule-panel bind:this={schedulePanel}>
 			{#if isMobile}
@@ -630,6 +740,86 @@
 				</div>
 			{/if}
 		</div>
+	</div>
+
+	<div class={styles.section}>
+		<div class={styles.sectionHeading} id={`${pickerId}-repeat`}>Repeat</div>
+		<Menu.Root
+			positioning={{ placement: 'bottom-start', sameWidth: true, strategy: 'fixed' }}
+			lazyMount
+			unmountOnExit
+		>
+			<Menu.Trigger
+				class={cx(button({ variant: 'secondary', size: 'md' }), styles.repeatTrigger)}
+				aria-describedby={`${pickerId}-repeat`}
+			>
+				<Repeat class={styles.repeatGlyph} aria-hidden="true" />
+				<span class={styles.ellipsis}>{repeatLabel}</span>
+				<ChevronDown class={styles.repeatGlyph} aria-hidden="true" />
+			</Menu.Trigger>
+			<Menu.Positioner class={styles.repeatPositioner}>
+				<Menu.Content class={cx(popover, styles.repeatMenu)} aria-label="Repeat">
+					<Menu.RadioItemGroup
+						value={choiceId}
+						onValueChange={(details) => chooseRepeat(details.value)}
+					>
+						{#each choices as choice (choice.id)}
+							<Menu.RadioItem value={choice.id} class={repeatItemClass}>
+								<Menu.ItemIndicator><Check size={14} aria-hidden="true" /></Menu.ItemIndicator>
+								<Menu.ItemText>{choice.label}</Menu.ItemText>
+							</Menu.RadioItem>
+						{/each}
+						<Menu.RadioItem value="custom" class={repeatItemClass}>
+							<Menu.ItemIndicator><Check size={14} aria-hidden="true" /></Menu.ItemIndicator>
+							<Menu.ItemText>Custom…</Menu.ItemText>
+						</Menu.RadioItem>
+					</Menu.RadioItemGroup>
+				</Menu.Content>
+			</Menu.Positioner>
+		</Menu.Root>
+		{#if choiceId === 'custom' && repeatDraft}
+			<div class={styles.custom} role="group" aria-label="Custom repeat">
+				<label class={styles.every}>
+					<span>Every</span>
+					<input
+						type="number"
+						inputmode="numeric"
+						min="1"
+						max={MAX_REPEAT_EVERY}
+						value={repeatDraft.every}
+						oninput={(event) => setEvery(event.currentTarget.valueAsNumber)}
+						class={cx(input({ variant: 'outline', size: 'sm' }), styles.everyInput)}
+					/>
+				</label>
+				<div class={styles.units} role="group" aria-label="Repeat unit">
+					{#each UNITS as unit (unit.value)}
+						<button
+							type="button"
+							aria-pressed={repeatDraft.unit === unit.value}
+							class={styles.option}
+							onclick={() => setUnit(unit.value)}
+						>
+							{repeatDraft.every === 1 ? unit.one : unit.many}
+						</button>
+					{/each}
+				</div>
+				{#if repeatDraft.unit === 'week'}
+					<div class={styles.weekdays} role="group" aria-label="On these days">
+						{#each WEEKDAYS as day (day.value)}
+							<button
+								type="button"
+								aria-pressed={(repeatDraft.weekdays ?? [selected.getDay()]).includes(day.value)}
+								aria-label={day.name}
+								class={styles.option}
+								onclick={() => toggleWeekday(day.value)}
+							>
+								{day.short}
+							</button>
+						{/each}
+					</div>
+				{/if}
+			</div>
+		{/if}
 	</div>
 
 	<div

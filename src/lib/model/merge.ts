@@ -12,6 +12,7 @@
 import type { Label, Note, NoteField, NoteFieldTimes, NoteImage } from './types.js';
 import { stableStringify } from './stableStringify.js';
 import { mergeBodies, replaceBodySnapshot } from './bodyDoc.js';
+import type { ReminderRepeat } from './reminderRepeat.js';
 
 export const NOTE_FIELDS: NoteField[] = [
 	'title',
@@ -149,6 +150,15 @@ function mergeImages(
 	return { images: sortAttachments([...byId.values()]), imageTombstones };
 }
 
+/**
+ * A reminder and its repeat as one value. At a tie between the same write, a
+ * copy that kept the repeat orders after one that lost it (an app from before
+ * repeats drops the field), so the repeat is not lost.
+ */
+function reminderOf(note: Note): [number | null, ReminderRepeat | null] {
+	return [note.reminder ?? null, note.repeat ?? null];
+}
+
 export function mergeTwoNotes(left: Note, right: Note): Note {
 	if (left === right) return left;
 	const fieldTimes: NoteFieldTimes = {};
@@ -161,7 +171,10 @@ export function mergeTwoNotes(left: Note, right: Note): Note {
 						side(left, field, Boolean(left.secret)),
 						side(right, field, Boolean(right.secret))
 					)
-				: pickLatest(side(left, field), side(right, field));
+				: field === 'reminder'
+					? // A repeat is written with its reminder, so the two travel together.
+						pickLatest(side(left, field, reminderOf(left)), side(right, field, reminderOf(right)))
+					: pickLatest(side(left, field), side(right, field));
 		picked[field] = winner.value;
 		fieldTimes[field] = winner.time;
 		if (winner.writer) fieldWriters[field] = winner.writer;
@@ -218,6 +231,7 @@ export function mergeTwoNotes(left: Note, right: Note): Note {
 			(fieldTimes.trashed ?? 0)
 		: null;
 	const linkPreviews = picked.linkPreviews as Note['linkPreviews'];
+	const [reminder, repeat] = picked.reminder as ReturnType<typeof reminderOf>;
 	return {
 		id: left.id,
 		title: picked.title as string,
@@ -231,7 +245,8 @@ export function mergeTwoNotes(left: Note, right: Note): Note {
 		...(picked.secret ? { secret: true } : {}),
 		createdAt: Math.min(left.createdAt || right.createdAt, right.createdAt || left.createdAt),
 		updatedAt: Math.max(left.updatedAt, right.updatedAt, ...Object.values(fieldTimes)),
-		reminder: picked.reminder as number | null,
+		reminder,
+		...(reminder != null && repeat ? { repeat } : {}),
 		labels: [...(picked.labels as string[])],
 		images,
 		...(Object.keys(imageTombstones).length ? { imageTombstones } : {}),

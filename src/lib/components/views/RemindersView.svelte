@@ -6,7 +6,8 @@
 	import { useEditorActions } from '#lib/editorContext.js';
 	import EmptyState from '#lib/components/EmptyState.svelte';
 	import { AlarmClock } from '@lucide/svelte';
-	import { dayKey } from '#lib/utils.js';
+	import { dayKeySpan } from '#lib/utils.js';
+	import { reminderTimesBetween } from '#lib/model/index.js';
 	import { MediaQuery } from 'svelte/reactivity';
 	import { css } from 'styled-system/css';
 	import { notesShell, viewHeading, viewPage } from '$panda/styles';
@@ -23,12 +24,9 @@
 	const visible = $derived.by(() => {
 		const sel = uiStore.reminderFilter;
 		if (!sel) return searched;
-		const to = sel.to ?? sel.from;
-		return searched.filter((n) => {
-			if (n.reminder == null) return false;
-			const key = dayKey(n.reminder);
-			return key >= sel.from && key <= to;
-		});
+		// A repeating reminder is found on every day it comes.
+		const { start, end } = dayKeySpan(sel.from, sel.to ?? sel.from);
+		return searched.filter((n) => reminderTimesBetween(n, start, end, 1).length > 0);
 	});
 	const embedCalendar = $derived(uiStore.layout === 'grid' && !compact.current);
 	const emptyDescription = $derived(

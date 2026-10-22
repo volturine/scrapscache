@@ -127,3 +127,55 @@ describe('stampNewNote', () => {
 		expect(mergeTwoNotes(edited, created).title).toBe('Renamed');
 	});
 });
+
+describe('a repeating reminder', () => {
+	const daily = { unit: 'day', every: 1, zone: 'UTC' } as const;
+	const weekly = { unit: 'week', every: 1, zone: 'UTC' } as const;
+
+	it('is written with its reminder, under the reminder field', () => {
+		const base = note({ reminder: 500 });
+		const repeated = applyNoteEdit(base, { repeat: daily }, context(1_000));
+		expect(repeated.repeat).toEqual(daily);
+		expect(repeated.fieldTimes?.reminder).toBe(1_000);
+		expect(applyNoteEdit(repeated, { repeat: { ...daily } }, context(2_000))).toBe(repeated);
+		// A new time keeps the repeat.
+		expect(applyNoteEdit(repeated, { reminder: 600 }, context(2_000)).repeat).toEqual(daily);
+	});
+
+	it('goes with the reminder taken away, and never stands alone', () => {
+		const repeated = note({ reminder: 500, repeat: daily });
+		const removed = applyNoteEdit(repeated, { reminder: null }, context(1_000));
+		expect(removed.reminder).toBeNull();
+		expect(removed).not.toHaveProperty('repeat');
+		expect(applyNoteEdit(note(), { repeat: daily }, context(1_000))).toEqual(note());
+	});
+
+	it('merges with its reminder as one value, the later write winning both', () => {
+		const base = note({ reminder: 500 });
+		const timeOnly = applyNoteEdit(base, { reminder: 700 }, context(1_000, 'a'));
+		const repeatOnly = applyNoteEdit(base, { repeat: weekly }, context(2_000, 'b'));
+		for (const merged of [
+			mergeTwoNotes(timeOnly, repeatOnly),
+			mergeTwoNotes(repeatOnly, timeOnly)
+		]) {
+			expect(merged.reminder).toBe(500);
+			expect(merged.repeat).toEqual(weekly);
+		}
+		const cleared = applyNoteEdit(repeatOnly, { reminder: null }, context(3_000, 'a'));
+		expect(mergeTwoNotes(cleared, repeatOnly)).not.toHaveProperty('repeat');
+	});
+});
+
+describe('a repeat at a tie', () => {
+	it('survives a copy from an app that dropped it under the same write', () => {
+		const repeated = note({
+			reminder: 500,
+			repeat: { unit: 'day', every: 1, zone: 'UTC' },
+			fieldTimes: { reminder: 9 },
+			fieldWriters: { reminder: 'w' }
+		});
+		const { repeat: _dropped, ...stripped } = repeated;
+		expect(mergeTwoNotes(stripped, repeated).repeat).toEqual(repeated.repeat);
+		expect(mergeTwoNotes(repeated, stripped).repeat).toEqual(repeated.repeat);
+	});
+});

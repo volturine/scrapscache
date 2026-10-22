@@ -34,3 +34,21 @@ describe('ReminderLabel', () => {
 		).toContain('c_scrapscache.overdue');
 	});
 });
+
+describe('ReminderLabel for a repeating reminder', () => {
+	const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+	it('shows its next time and how often, and never turns overdue', () => {
+		const first = Date.now() - 3 * 24 * 60 * 60 * 1000;
+		const { container } = render(ReminderLabel, {
+			props: { reminder: first, repeat: { unit: 'day', every: 1, zone } }
+		});
+		const label = container.querySelector('[aria-label^="Repeating reminder,"]');
+		expect(label?.getAttribute('aria-label')).toMatch(
+			/^Repeating reminder, (Today|Tomorrow), .+, daily$/
+		);
+		expect(label?.textContent).toMatch(/(Today|Tomorrow), .+ · Daily/);
+		expect(label?.className).not.toContain('bg_scrapscache.overdueStrong');
+		expect(label?.querySelector('.lucide-repeat')).toBeTruthy();
+	});
+});

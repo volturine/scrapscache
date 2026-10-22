@@ -159,6 +159,7 @@ export function normalizeBackup(data: unknown): ScrapsCacheBackup | null {
 				createdAt: Number(note.createdAt) || 0,
 				updatedAt: Number(note.updatedAt) || 0,
 				reminder: note.reminder == null ? null : Number(note.reminder),
+				repeat: note.repeat,
 				labels: Array.isArray(note.labels) ? note.labels.map(String) : [],
 				images,
 				...(note.fieldTimes && typeof note.fieldTimes === 'object'

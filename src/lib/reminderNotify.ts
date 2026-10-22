@@ -1,5 +1,10 @@
 // Local reminder display. The relay receives only opaque wake ids and timestamps.
-import { reminderWakeId } from '#lib/model/index.js';
+import {
+	reminderDueAt,
+	reminderNextAt,
+	reminderWakeId,
+	type ReminderRepeat
+} from '#lib/model/index.js';
 import { formatReminder } from './utils';
 import { plainLine } from './noteLine.js';
 
@@ -8,6 +13,7 @@ export type ReminderNote = {
 	title: string;
 	body: string;
 	reminder: number | null;
+	repeat?: ReminderRepeat | null;
 	archived: boolean;
 	trashed: boolean;
 };
@@ -31,17 +37,27 @@ export function reminderPreview(note: Pick<ReminderNote, 'title' | 'body'>): str
 	return 'Untitled note';
 }
 
-export function dueReminderNotes(notes: ReminderNote[], now: number): ReminderNote[] {
-	return notes.filter(
-		(note) => !note.archived && !note.trashed && note.reminder != null && note.reminder <= now
-	);
+/** A note whose reminder is due, at the time it was due. */
+export type DueReminder = { note: ReminderNote; at: number; wakeId: string };
+
+/**
+ * Each note's latest due time. A repeat missed several times is due once, for
+ * the latest; the ones before it are not shown.
+ */
+export function dueReminders(notes: ReminderNote[], now: number): DueReminder[] {
+	return notes.flatMap((note) => {
+		if (note.archived || note.trashed) return [];
+		const at = reminderDueAt(note, now);
+		return at == null ? [] : [{ note, at, wakeId: reminderWakeId(note.id, at) }];
+	});
 }
 
 export function nextReminderAt(notes: ReminderNote[], now: number): number | null {
 	let next: number | null = null;
 	for (const note of notes) {
-		if (note.archived || note.trashed || note.reminder == null || note.reminder <= now) continue;
-		if (next == null || note.reminder < next) next = note.reminder;
+		if (note.archived || note.trashed) continue;
+		const at = reminderNextAt(note, now);
+		if (at != null && (next == null || at < next)) next = at;
 	}
 	return next;
 }
@@ -50,11 +66,9 @@ export function unfiredDueReminders(
 	notes: ReminderNote[],
 	fired: Iterable<string>,
 	now: number
-): ReminderNote[] {
+): DueReminder[] {
 	const seen = fired instanceof Set ? fired : new Set(fired);
-	return dueReminderNotes(notes, now).filter(
-		(note) => !seen.has(reminderWakeId(note.id, note.reminder as number))
-	);
+	return dueReminders(notes, now).filter((due) => !seen.has(due.wakeId));
 }
 
 export function notificationPermission(): NotificationPermission | 'unsupported' {

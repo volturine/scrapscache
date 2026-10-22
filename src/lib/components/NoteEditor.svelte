@@ -28,12 +28,7 @@
 	import { BackupImportMode, prepareImportedNotes } from '#lib/backup.js';
 	import { editContext } from '#lib/editContext.js';
 	import { appClock } from '#lib/appClock.svelte.js';
-	import {
-		formatReminder,
-		isReminderOverdue,
-		noteActivity,
-		writeClipboardText
-	} from '#lib/utils.js';
+	import { noteActivity, reminderWords, writeClipboardText } from '#lib/utils.js';
 	import { noteShareLink } from '#lib/noteLinks.js';
 	import ReminderLabel from './ReminderLabel.svelte';
 	import {
@@ -69,10 +64,8 @@
 
 	const note = $derived(noteId ? notesStore.notes.find((n) => n.id === noteId) : null);
 	const isOpen = $derived(noteId !== null && note !== null);
-	const reminderOverdue = $derived(
-		note?.reminder != null && isReminderOverdue(note.reminder, appClock.now)
-	);
-	const reminderLabel = $derived(formatReminder(note?.reminder ?? null, appClock.now));
+	const reminder = $derived(note ? reminderWords(note, appClock.now) : null);
+	const reminderOverdue = $derived(reminder?.overdue ?? false);
 	const activity = $derived(note ? noteActivity(note, appClock.now) : null);
 	const activityLabel = $derived(
 		activity && note && !note.trashed && note.updatedAt > note.createdAt
@@ -735,6 +728,7 @@
 			// treats as expired. A secret note also stays secret.
 			secret: note.secret || restored.secret,
 			reminder: restored.reminder,
+			repeat: restored.repeat,
 			labels: restored.labels.filter((labelId) => availableLabels.has(labelId)),
 			images: restored.images,
 			linkPreviews: restored.linkPreviews ?? []
@@ -973,13 +967,11 @@
 									<button
 										type="button"
 										class={styles.reminderButton}
-										title={reminderOverdue ? `Overdue · ${reminderLabel}` : reminderLabel}
+										title={reminderOverdue ? `Overdue · ${reminder?.text}` : reminder?.text}
 										onclick={openReminder}
-										aria-label={reminderOverdue
-											? `Overdue reminder, ${reminderLabel}`
-											: `Reminder, ${reminderLabel}`}
+										aria-label={reminder?.aria}
 									>
-										<ReminderLabel reminder={note.reminder} variant="chip" />
+										<ReminderLabel reminder={note.reminder} repeat={note.repeat} variant="chip" />
 									</button>
 								{/if}
 								<button
@@ -1231,8 +1223,9 @@
 					<ReminderPicker
 						bind:this={reminderPicker}
 						reminder={note.reminder}
-						onApply={(r) => {
-							commit({ reminder: r });
+						repeat={note.repeat}
+						onApply={(r, repeat) => {
+							commit({ reminder: r, repeat: repeat ?? undefined });
 							reminderStore.sync(notesStore.notes);
 							void notesStore.flushSync();
 						}}

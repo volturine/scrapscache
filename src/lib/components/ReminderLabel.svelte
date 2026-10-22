@@ -2,27 +2,36 @@
 	import { iconSizeXs as icon, reminderRoot, truncate as text } from '$panda/styles';
 	import { cx } from 'styled-system/css';
 	import { appClock } from '#lib/appClock.svelte.js';
-	import { formatReminder, isReminderOverdue } from '#lib/utils.js';
-	import { AlarmClock } from '@lucide/svelte';
+	import type { ReminderRepeat } from '#lib/model/index.js';
+	import { reminderWords } from '#lib/utils.js';
+	import { AlarmClock, Repeat } from '@lucide/svelte';
 
 	let {
 		reminder,
+		repeat = null,
 		variant = 'strip',
 		class: className
 	}: {
+		/** The reminder's first time. */
 		reminder: number;
+		repeat?: ReminderRepeat | null;
 		variant?: 'strip' | 'chip' | 'inline';
 		class?: string;
 	} = $props();
 
-	const overdue = $derived(isReminderOverdue(reminder, appClock.now));
-	const label = $derived(formatReminder(reminder, appClock.now));
-	const aria = $derived(overdue ? `Overdue reminder, ${label}` : `Reminder, ${label}`);
+	const words = $derived(reminderWords({ reminder, repeat }, appClock.now));
 </script>
 
-<span class={cx(reminderRoot({ variant, overdue }), className)} aria-label={aria}>
-	<AlarmClock class={icon} aria-hidden="true" />
+<span
+	class={cx(reminderRoot({ variant, overdue: words?.overdue ?? false }), className)}
+	aria-label={words?.aria}
+>
+	{#if repeat}
+		<Repeat class={icon} aria-hidden="true" />
+	{:else}
+		<AlarmClock class={icon} aria-hidden="true" />
+	{/if}
 	<span class={text}>
-		{label}
+		{words?.text}
 	</span>
 </span>

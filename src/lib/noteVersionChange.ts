@@ -1,5 +1,6 @@
 import type { SyncNote } from '#lib/syncRecords.js';
 import { plainLine as plain } from '#lib/noteLine.js';
+import { sameRepeat } from '#lib/model/index.js';
 
 /** A saved version or the live note; attachments are compared by id only. */
 type VersionedNote = Omit<SyncNote, 'images'> & { images?: { id: string }[] };
@@ -47,7 +48,8 @@ function metadataChange(version: VersionedNote, previous: VersionedNote): string
 	const attachments = (note: VersionedNote) => (note.images ?? []).map((image) => image.id).join();
 	if (attachments(version) !== attachments(previous)) return 'Changed attachments';
 	if (version.labels.join() !== previous.labels.join()) return 'Changed labels';
-	if (version.reminder !== previous.reminder) return 'Changed reminder';
+	if (version.reminder !== previous.reminder || !sameRepeat(version.repeat, previous.repeat))
+		return 'Changed reminder';
 	return null;
 }
 

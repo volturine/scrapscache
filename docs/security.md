@@ -199,7 +199,10 @@ Structured logs use request IDs; prefer redacted identifiers.
 - Traffic analysis (when you sync, envelope sizes, approximate activity)
 - Reminder **wake times** if Web Push is used. The relay stores `fireAt` plus a
   domain-separated hash of the random note ID and timestamp so it can dedupe
-  delivery independently per device; it never receives note IDs or text.
+  delivery independently per device; it never receives note IDs or text. A
+  repeating reminder sends each of its times for the next 60 days (at least its
+  next two) as separate, unlinked wakes, so the relay can see a regular pattern
+  of times, though not that they belong to one note.
 - **Delivery of the client bundle.** Scraps Cache is a web app, so the end-to-end
   guarantee is re-established from whatever JavaScript the host serves on each
   load. Whoever can deploy — the hosting platform, the Cloudflare or GitHub

@@ -2398,6 +2398,60 @@ export const reminderPickerStyles = {
 	phraseReadIcon: css({ ...iconXs, flexShrink: 0, mt: '3xs', color: 'scrapscache.success' }),
 	phraseUnreadIcon: css({ ...iconXs, flexShrink: 0, mt: '3xs' }),
 	phraseMuted: css({ ...mutedText }),
+	/** The small capitals over each group of controls. */
+	sectionHeading: css({
+		mb: 'md',
+		fontSize: 'label',
+		fontWeight: 'interactive',
+		textTransform: 'uppercase',
+		letterSpacing: 'status',
+		color: 'scrapscache.textMuted'
+	}),
+	section: css({
+		mb: 'lg',
+		borderTopWidth: 'hairline',
+		borderColor: 'scrapscache.border',
+		pt: 'lg'
+	}),
+	statusGlyph: css({ w: '1rem', h: '1rem', flexShrink: 0, alignSelf: 'flex-start', mt: '3xs' }),
+	/** What will happen; a repeat's words run to a second line rather than being cut. */
+	statusText: css({ minW: 0, flex: '1' }),
+	repeatTrigger: css({ w: 'full', justifyContent: 'flex-start', gap: 'sm', textAlign: 'left' }),
+	/** Over the wheels, which sit above the panel. */
+	repeatPositioner: css({ zIndex: 30 }),
+	repeatGlyph: css({ w: '1rem', h: '1rem', flexShrink: 0 }),
+	repeatMenu: css({ maxH: 'min(60vh, 24rem)', overflowY: 'auto', py: '2xs' }),
+	repeatItem: css({ gap: 'sm' }),
+	/** Custom repeat: how many of which unit, and on which days of the week. */
+	custom: css({ display: 'flex', flexDirection: 'column', gap: 'sm', mt: 'md' }),
+	every: hstack({ gap: 'sm', textStyle: 'body' }),
+	everyInput: css({ w: '4.5rem' }),
+	units: css({ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '2xs' }),
+	weekdays: css({ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: '2xs' }),
+	option: css({
+		...rowCenter,
+		justifyContent: 'center',
+		minW: 0,
+		h: '2rem',
+		px: 'xs',
+		rounded: 'pill',
+		borderWidth: 'hairline',
+		borderColor: 'scrapscache.border',
+		bg: 'scrapscache.surface',
+		color: 'scrapscache.text',
+		textStyle: 'label',
+		whiteSpace: 'nowrap',
+		cursor: 'pointer',
+		transition: 'background-color 120ms ease, border-color 120ms ease, color 120ms ease',
+		_hoverable: { bg: 'scrapscache.interactiveHover' },
+		_focusVisible: { boxShadow: '0 0 0 2px token(colors.scrapscache.focus)' },
+		_touch: { h: '2.75rem' },
+		'&[aria-pressed=true]': {
+			bg: 'scrapscache.accentSubtle',
+			borderColor: 'scrapscache.accent',
+			color: 'scrapscache.accent'
+		}
+	}),
 	wheelDeck: css({ rounded: 'dialog', bg: 'scrapscache.surfaceSubtle', px: 'sm', py: '2xs' }),
 	timeWheel: css({ w: '4rem' }),
 	colon: center({ w: '0.75rem', flexShrink: 0, textStyle: 'display', color: 'scrapscache.text' }),

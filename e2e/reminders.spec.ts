@@ -67,3 +67,32 @@ test('a typed time is read, shown and saved with Enter', async ({ page }) => {
 			.first()
 	).toHaveAccessibleName(/Tomorrow.*9:30/);
 });
+
+test('a repeating reminder shows its next time and opens on it again', async ({ page }) => {
+	await openEmptyApp(page);
+	await createNote(page, 'Take out the bins');
+
+	await noteCard(page, 'Take out the bins').click();
+	await editor(page).getByRole('button', { name: 'Reminder', exact: true }).click();
+	const picker = page.getByRole('dialog').filter({ hasText: 'Will remind you' });
+	// Yesterday, every day: it starts at its next time instead of going off at once.
+	await picker.getByRole('button', { name: 'Previous day' }).click();
+	await picker.getByRole('button', { name: 'Does not repeat' }).click();
+	await page.getByRole('menuitemradio', { name: 'Every day' }).click();
+	await expect(picker.getByText(/, then every day$/)).toBeVisible();
+	await picker.getByRole('button', { name: 'Save', exact: true }).click();
+
+	const chip = editor(page).getByRole('button', { name: /^Repeating reminder,/ });
+	await expect(chip).toHaveAccessibleName(/, daily$/);
+	await expect(page.getByRole('region', { name: 'Due reminders' })).toBeHidden();
+
+	await chip.click();
+	await expect(picker.getByText('Active')).toBeVisible();
+	await expect(picker.getByRole('button', { name: 'Every day' })).toBeVisible();
+	await picker.getByRole('button', { name: 'Cancel' }).click();
+
+	await page.keyboard.press('Escape');
+	await expect(noteCardOpen(page, 'Take out the bins')).toHaveAccessibleName(
+		/repeating reminder, .+, daily$/
+	);
+});

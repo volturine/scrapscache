@@ -116,6 +116,58 @@ describe('KanbanCard content shield', () => {
 		expect(onOpen).not.toHaveBeenCalled();
 	});
 
+	describe('on a phone board that snaps to its columns', () => {
+		/** Three columns 300 px apart, the card in the middle one, the board resting on it. */
+		function snappingBoard(container: HTMLElement): HTMLElement {
+			const board = document.createElement('div');
+			board.style.overflowX = 'scroll';
+			board.style.scrollSnapType = 'x mandatory';
+			Object.defineProperties(board, {
+				scrollWidth: { value: 1300 },
+				clientWidth: { value: 390 }
+			});
+			for (const [at, id] of ['unsorted', 'todo', 'done'].entries()) {
+				const column = document.createElement('section');
+				column.dataset.kanbanColumn = id;
+				column.getBoundingClientRect = () =>
+					DOMRect.fromRect({ x: at * 300 - board.scrollLeft, width: 290, height: 400 });
+				if (id === 'todo') column.appendChild(container);
+				board.appendChild(column);
+			}
+			document.body.appendChild(board);
+			board.scrollLeft = 300;
+			return board;
+		}
+
+		it('lets a swipe from a card run free, then settles on the next column', async () => {
+			const board = snappingBoard(card().container);
+
+			await pointer(shield(), 'pointerdown', 200, 100);
+			await pointer(window, 'pointermove', 160, 104);
+			await pointer(window, 'pointermove', 120, 104);
+			// Snapping would pull every step back onto Todo, so it is off while the finger runs.
+			expect(board.scrollLeft).toBe(380);
+			expect(board.dataset.kanbanPanning).toBe('');
+
+			await pointer(window, 'pointerup', 120, 104);
+			expect(board.scrollLeft).toBe(600);
+			vi.advanceTimersByTime(50);
+			expect(board.dataset.kanbanPanning).toBeUndefined();
+		});
+
+		it('settles back on the column a short swipe started from', async () => {
+			const board = snappingBoard(card().container);
+
+			await pointer(shield(), 'pointerdown', 200, 100);
+			await pointer(window, 'pointermove', 170, 102);
+			await pointer(window, 'pointerup', 170, 102);
+
+			expect(board.scrollLeft).toBe(300);
+			vi.advanceTimersByTime(50);
+			expect(board.dataset.kanbanPanning).toBeUndefined();
+		});
+	});
+
 	it('drops the card where the pointer released it', async () => {
 		const onDrop = vi.fn();
 		card({ onDrop });

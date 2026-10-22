@@ -18,6 +18,15 @@ vi.mock('$app/env/public', async () => (await import('./env')).envModule(true));
 // jsdom does not implement viewport scrolling; component navigation still calls it.
 if (typeof window !== 'undefined') window.scrollTo = vi.fn();
 
+// Nor element scrolling: an instant jump, so a test can read where a scroller was sent.
+if (typeof Element !== 'undefined' && !Element.prototype.scrollTo) {
+	Element.prototype.scrollTo = function (this: Element, options?: ScrollToOptions | number) {
+		if (typeof options !== 'object') return;
+		if (options.left !== undefined) this.scrollLeft = options.left;
+		if (options.top !== undefined) this.scrollTop = options.top;
+	} as Element['scrollTo'];
+}
+
 // Same Shift+wheel path the app installs in hooks.client; a Node-environment file has no window.
 if (typeof window !== 'undefined') installHorizontalWheel();
 

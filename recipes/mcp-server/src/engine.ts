@@ -770,7 +770,8 @@ export class McpSession {
 		const now = this.clock.now();
 		const noteId = randomOpaqueId();
 		const picked = reminderTimestamp(args.reminder) ?? null;
-		const repeat = picked == null ? null : reminderRepeat(args.repeat);
+		const repeat = reminderRepeat(args.repeat);
+		if (repeat && picked == null) throw new Error('A repeat needs a reminder to start from.');
 		const reminder = picked != null && repeat ? firstRepeatTime(picked, repeat, now) : picked;
 
 		let noteBody = args.body || '';

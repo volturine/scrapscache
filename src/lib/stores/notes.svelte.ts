@@ -45,6 +45,7 @@ import { reminderHistoryStore } from '#lib/stores/reminderHistory.js';
 import { syncSnapshot, type SyncSnapshot } from '#lib/syncRecords.js';
 import { uiStore } from '#lib/stores/ui.svelte.js';
 import { trashPurgeAt, cloneNote } from '#lib/utils.js';
+import { appClock } from '#lib/appClock.svelte.js';
 import { noteAttachments, toggleLineAt } from '#lib/checklistBody.js';
 import {
 	journalPendingNotes,
@@ -221,9 +222,9 @@ export class NotesStore {
 	unpinnedNotes = $derived(this.activeNotes.filter((n) => !n.pinned));
 	archivedNotes = $derived(this.notes.filter((n) => n.archived && !n.trashed));
 	trashedNotes = $derived(this.notes.filter((n) => n.trashed));
-	/** Soonest first; a repeating reminder by its next time. */
+	/** Soonest first; a repeating reminder by its next time, so the order moves on as times come. */
 	notesWithReminders = $derived.by(() => {
-		const now = Date.now();
+		const now = appClock.now;
 		return this.activeNotes
 			.filter((n) => n.reminder != null)
 			.map((n) => ({ note: n, at: reminderShownAt(n, now) ?? 0 }))

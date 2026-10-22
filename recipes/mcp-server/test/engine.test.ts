@@ -543,6 +543,9 @@ plain text line`;
 					repeat: { unit: 'fortnight' }
 				})
 			).rejects.toThrow('Repeat must name a unit');
+			await expect(
+				session.createNote({ title: 'No time', repeat: { unit: 'day' } })
+			).rejects.toThrow('A repeat needs a reminder');
 			const { note } = await session.createNote({ title: 'No time' });
 			await expect(session.updateNote({ id: note.id, repeat: { unit: 'day' } })).rejects.toThrow(
 				'A repeat needs a reminder'

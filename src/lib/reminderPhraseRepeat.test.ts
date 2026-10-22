@@ -99,6 +99,15 @@ describe('Slovak and Czech repeats', async () => {
 		expect(phrase?.first).toEqual(first);
 	});
 
+	it('reads accents typed as separate marks, and gives back the whole of them', () => {
+		const decomposed = 'pripomeň každý piatok o 17'.normalize('NFD');
+		expect(slovak(decomposed)).toMatchObject({
+			text: 'každý piatok o 17'.normalize('NFD'),
+			repeat: weekly(5),
+			first: at(10, 23, 17)
+		});
+	});
+
 	it('says which part it read', () => {
 		expect(slovak('pripomeň mi každý piatok o 17 zavolať mame')).toMatchObject({
 			text: 'každý piatok o 17',

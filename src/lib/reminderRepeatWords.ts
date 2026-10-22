@@ -610,15 +610,33 @@ const WORDS: Record<ReminderLanguage, RepeatWords> = {
 	}
 };
 
-/** Lowercase without diacritics, one character for one, so places in the text stay put. */
-function fold(text: string): string {
+const MARK = /^\p{M}$/u;
+
+/**
+ * Lowercase without diacritics, and where in the text each folded character came from.
+ * A mark typed after its letter (decomposed text) is dropped and its place goes with the letter.
+ */
+function folding(text: string): { folded: string; from: number[] } {
 	let folded = '';
+	const from: number[] = [];
+	let at = 0;
 	for (const char of text) {
-		const plain = char.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
-		const lower = char.toLowerCase();
-		folded += plain.length === char.length ? plain : lower.length === char.length ? lower : char;
+		if (!MARK.test(char)) {
+			const plain = char.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+			const lower = char.toLowerCase();
+			const kept =
+				plain.length === char.length ? plain : lower.length === char.length ? lower : char;
+			folded += kept;
+			for (let i = 0; i < kept.length; i++) from.push(at + i);
+		}
+		at += char.length;
 	}
-	return folded;
+	from.push(at);
+	return { folded, from };
+}
+
+function fold(text: string): string {
+	return folding(text).folded;
 }
 
 function escape(word: string): string {
@@ -752,14 +770,14 @@ export function findRepeat(text: string, language: ReminderLanguage): FoundRepea
 		patterns = compile(WORDS[language]);
 		compiled.set(language, patterns);
 	}
-	const folded = fold(text);
+	const { folded, from } = folding(text);
 	let best: FoundRepeat | null = null;
 	for (const pattern of patterns) {
 		const match = pattern.regex.exec(folded);
 		if (!match) continue;
 		const repeat = pattern.read(match);
 		if (!repeat || repeat.every < 1 || repeat.every > 999) continue;
-		const found = { repeat, index: match.index, end: match.index + match[0].length };
+		const found = { repeat, index: from[match.index], end: from[match.index + match[0].length] };
 		const length = found.end - found.index;
 		if (
 			!best ||

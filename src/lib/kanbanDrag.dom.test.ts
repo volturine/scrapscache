@@ -192,35 +192,47 @@ describe('what the drop aims by', () => {
 });
 
 describe('a card hung past the side of the board', () => {
-	it('aims at the column at that edge, not at nothing off the screen', () => {
-		const board = document.createElement('div');
-		board.style.overflowX = 'scroll';
-		Object.defineProperties(board, { scrollWidth: { value: 1300 }, clientWidth: { value: 390 } });
-		board.getBoundingClientRect = () => new DOMRect(0, 0, 390, 800);
+	/** A phone-width board with Todo on screen and Done peeking in at the right edge. */
+	function board(): HTMLElement {
+		const el = document.createElement('div');
+		el.style.overflowX = 'scroll';
+		Object.defineProperties(el, { scrollWidth: { value: 1300 }, clientWidth: { value: 390 } });
+		el.getBoundingClientRect = () => new DOMRect(0, 0, 390, 800);
 		const { column: todo, carried } = column();
 		const done = document.createElement('section');
 		done.dataset.kanbanColumn = 'done';
 		const list = document.createElement('div');
 		list.dataset.kanbanList = '';
 		done.append(list);
-		board.append(todo, done);
-		document.body.append(board);
+		el.append(todo, done);
+		document.body.append(el);
 		carried.getBoundingClientRect = () => new DOMRect(16, 0, 288, 150);
-		// Done peeks in at the right edge; past the screen there is nothing.
+		// Past the screen there is nothing.
 		document.elementFromPoint = (x: number) => (x >= 390 ? null : x > 350 ? done : todo);
+		return carried;
+	}
 
-		kanbanDrag.press(pointerEvent('pointerdown', 10, 60), {
+	/** Carry the card so the pointer is at the right edge and its middle 100 px past it. */
+	function hang(pointerType: 'touch' | 'mouse') {
+		const as = (event: PointerEvent) => Object.assign(event, { pointerType });
+		kanbanDrag.press(as(pointerEvent('pointerdown', 10, 60)), {
 			noteId: 'carried',
 			columnId: 'todo',
-			card: carried,
+			card: board(),
 			index: 0,
 			onDrop: vi.fn()
 		});
 		vi.advanceTimersByTime(300);
-		// The finger at the edge, the card's middle 100 px past it.
-		window.dispatchEvent(pointerEvent('pointermove', 200, 385));
+		window.dispatchEvent(as(pointerEvent('pointermove', 200, 385)));
+		return kanbanDrag.target;
+	}
 
-		expect(kanbanDrag.target).toEqual({ columnId: 'done', index: 0 });
+	it('aims a finger at the column at that edge, not at nothing off the screen', () => {
+		expect(hang('touch')).toEqual({ columnId: 'done', index: 0 });
+	});
+
+	it('keeps the last preview for a mouse, as off the board anywhere else', () => {
+		expect(hang('mouse')).toEqual({ columnId: 'todo', index: 0 });
 	});
 });
 

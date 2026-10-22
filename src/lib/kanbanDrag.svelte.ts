@@ -384,9 +384,11 @@ class KanbanDragController {
 		if (!press?.dragging) return;
 		// The card decides where it lands, so aim from its middle and its top edge
 		// rather than from the finger holding it — except over a column tab. A card
-		// hung past a side to turn the board has its middle off the screen; it aims
-		// at the column showing at that edge, the one the board is turning to.
-		const board = press.scrollX?.getBoundingClientRect();
+		// a finger hangs past a side to turn the phone board has its middle off the
+		// screen; it aims at the column showing at that edge, the one the board is
+		// turning to. A mouse keeps the last preview there, as off the board below.
+		const board =
+			press.pointerType === 'mouse' ? undefined : press.scrollX?.getBoundingClientRect();
 		const middle = this.x + this.width / 2;
 		const column =
 			tabAt(this.#pointerX, this.#pointerY) ??

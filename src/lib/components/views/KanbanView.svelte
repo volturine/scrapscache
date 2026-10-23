@@ -263,11 +263,6 @@
 	/** A board with only its Backlog: the first run, where the panel explains and offers a start. */
 	const noLabelColumns = $derived(board.columns.every((column) => column.labelId === null));
 
-	/** What a column lists, in one line under its name: the model is said where it is used. */
-	function columnCaption(column: KanbanColumn): string {
-		return column.labelId === null ? 'Notes in no column' : `Notes labelled ${columnName(column)}`;
-	}
-
 	function openNewLabel() {
 		tagPickerOpen = false;
 		newLabelName = '';
@@ -712,7 +707,6 @@
 									>{items.filter((item) => item.note && !item.carried).length}</span
 								>
 							</h2>
-							<p class={k.colCaption}>{columnCaption(column)}</p>
 						</div>
 						{#if column.labelId !== null}
 							<Menu.Root positioning={{ placement: 'bottom-end' }} lazyMount unmountOnExit>

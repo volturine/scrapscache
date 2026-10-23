@@ -1230,8 +1230,6 @@ export const kanbanViewStyles = {
 	colHeader: css({ mb: 'sm', ...rowGapSm, px: '2xs', pt: '2xs' }),
 	colTitleGroup: css({ minW: 0, flex: '1', display: 'flex', flexDirection: 'column', gap: '3xs' }),
 	colTitle: css({ minW: 0, ...truncateText, textStyle: 'bodyStrong' }),
-	/** What the column lists: the columns-are-labels model, said where it is used. */
-	colCaption: css({ ...truncateText, textStyle: 'caption', ...mutedText }),
 	// The first run's panel, beside the Backlog where the label columns would be.
 	starter: css({
 		...kanbanColumnSize,

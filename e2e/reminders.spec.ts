@@ -96,3 +96,30 @@ test('a repeating reminder shows its next time and opens on it again', async ({ 
 		/repeating reminder, .+, daily$/
 	);
 });
+
+test('the Reminders view groups what is due and opens a note from its row', async ({ page }) => {
+	await openEmptyApp(page);
+	await createNote(page, 'Call the vet');
+	await noteCard(page, 'Call the vet').click();
+	await editor(page).getByRole('button', { name: 'Reminder', exact: true }).click();
+	const picker = page.getByRole('dialog').filter({ hasText: 'Will remind you' });
+	await picker.getByRole('button', { name: 'Previous day' }).click();
+	await picker.getByRole('button', { name: 'Save', exact: true }).click();
+	const due = page.getByRole('region', { name: 'Due reminders' });
+	await due.getByRole('button', { name: 'Dismiss reminder' }).click();
+	await page.keyboard.press('Escape');
+	await expect(editor(page)).toBeHidden();
+
+	await page.goto('/reminders');
+	const overdue = page.getByRole('region', { name: 'Overdue' });
+	await expect(overdue.getByRole('heading', { name: 'Overdue' })).toBeVisible();
+	await expect(
+		overdue.getByRole('button', { name: /^Open Call the vet, overdue reminder .*, yesterday$/ })
+	).toHaveCount(1);
+	// The day it was due is marked red on the calendar.
+	await expect(page.locator('.reminder-dot[data-overdue]')).toHaveCount(1);
+
+	await overdue.getByRole('listitem').click();
+	await expect(editor(page)).toBeVisible();
+	await expect(editor(page).getByPlaceholder('Title', { exact: true })).toHaveValue('Call the vet');
+});

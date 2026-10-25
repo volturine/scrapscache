@@ -3824,3 +3824,112 @@ export const multiCursorStyles = {
 		'.editor-caret-hidden &': { visibility: 'hidden' }
 	})
 };
+
+// Reminders agenda: the month beside grouped rows on a wide window, above them
+// otherwise. A row is a note at one of its times; the open control under it is
+// the keyboard's, the actions at its end sit over it.
+export const reminderAgendaStyles = {
+	split: css({
+		display: 'flex',
+		flexDirection: 'column',
+		gap: 'lg',
+		lg: { flexDirection: 'row', alignItems: 'flex-start', gap: '2xl' }
+	}),
+	calendar: css({
+		w: 'full',
+		maxW: '26rem',
+		mx: 'auto',
+		lg: { w: '18rem', flexShrink: 0, mx: 0, position: 'sticky', top: 0 }
+	}),
+	agenda: css({
+		flex: '1',
+		minW: 0,
+		w: 'full',
+		maxW: '48rem',
+		mx: 'auto',
+		lg: { maxW: 'none', mx: 0 }
+	}),
+	group: css({ '& + &': { mt: 'xl' } }),
+	heading: hstack({ gap: 'sm', px: 'sm', mb: 'sm', alignItems: 'baseline' }),
+	headingLabel: css({ textStyle: 'overline' }),
+	headingCount: css({ textStyle: 'caption', ...mutedText }),
+	headingOverdue: css({ color: 'scrapscache.overdue' }),
+	headingDate: css({ ml: 'auto', textStyle: 'caption', ...mutedText }),
+	list: css({ listStyle: 'none', m: 0, p: 0, display: 'flex', flexDirection: 'column', gap: 'xs' }),
+	row: css({
+		position: 'relative',
+		display: 'grid',
+		gridTemplateColumns: 'auto minmax(0, 1fr) auto',
+		columnGap: 'md',
+		alignItems: 'center',
+		px: 'md',
+		py: 'sm',
+		minH: '3rem',
+		rounded: 'row',
+		borderWidth: 'hairline',
+		borderColor: 'scrapscache.borderFaint',
+		bg: 'scrapscache.bg',
+		boxShadow: 'sm',
+		cursor: 'pointer',
+		transition: 'box-shadow 150ms ease',
+		_hoverable: { boxShadow: 'md' },
+		_focusWithin: { boxShadow: '0 0 0 2px token(colors.scrapscache.focus)' },
+		lg: { gridTemplateColumns: 'auto 7rem minmax(0, 1fr) auto' }
+	}),
+	dot: css({
+		w: '0.625rem',
+		h: '0.625rem',
+		rounded: 'pill',
+		borderWidth: 'hairline',
+		borderColor: 'scrapscache.borderSubtle',
+		flexShrink: 0
+	}),
+	/** The time column, on a wide window. */
+	time: css({
+		display: 'none',
+		lg: { display: 'block', textStyle: 'label', lineHeight: 'compact' }
+	}),
+	/** The same time under the title, on a narrow one. */
+	timeLine: css({ textStyle: 'caption', ...mutedText, lg: { display: 'none' } }),
+	detail: css({
+		display: 'inline-flex',
+		alignItems: 'center',
+		gap: '2xs',
+		textStyle: 'caption',
+		...mutedText
+	}),
+	overdue: css({ color: 'scrapscache.overdue' }),
+	main: css({ minW: 0, display: 'flex', flexDirection: 'column', gap: '3xs', py: '3xs' }),
+	title: css({ textStyle: 'bodyStrong', ...truncateText }),
+	preview: css({
+		display: 'none',
+		lg: { display: 'block', textStyle: 'caption', ...mutedText, ...truncateText }
+	}),
+	labels: css({ display: 'flex', gap: '2xs', flexWrap: 'wrap', mt: '3xs' }),
+	actions: css({
+		position: 'relative',
+		zIndex: 17,
+		display: 'flex',
+		gap: '3xs',
+		alignItems: 'center'
+	}),
+	empty: css({ px: 'sm', py: 'sm', textStyle: 'bodyMuted' })
+};
+
+/** A day's mark on the reminder calendar: red while something on it is overdue. */
+export const reminderCalendarDot = cva({
+	base: { h: '0.25rem', w: '0.25rem', rounded: 'pill', bg: 'scrapscache.accent' },
+	variants: {
+		overdue: { true: { bg: 'scrapscache.overdueStrong' } },
+		legend: {
+			true: { display: 'inline-block', mr: '2xs', verticalAlign: 'middle' },
+			false: { position: 'absolute', bottom: '2xs' }
+		}
+	},
+	defaultVariants: { legend: false }
+});
+
+export const reminderCalendarLegend = {
+	row: hstack({ gap: 'md', mt: 'xs', px: 'sm', textStyle: 'caption', ...mutedText }),
+	item: css({ display: 'inline-flex', alignItems: 'center' })
+};

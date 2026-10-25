@@ -1,83 +1,77 @@
 <script lang="ts">
-	import NotesFeed from '#lib/components/NotesFeed.svelte';
 	import ReminderCalendar from '#lib/components/ReminderCalendar.svelte';
+	import ReminderRow from '#lib/components/ReminderRow.svelte';
+	import EmptyState from '#lib/components/EmptyState.svelte';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
 	import { uiStore } from '#lib/stores/ui.svelte.js';
 	import { useEditorActions } from '#lib/editorContext.js';
-	import EmptyState from '#lib/components/EmptyState.svelte';
+	import { appClock } from '#lib/appClock.svelte.js';
+	import { agendaGroups, pickedDayGroups } from '#lib/reminderAgenda.js';
 	import { AlarmClock } from '@lucide/svelte';
-	import { dayKeySpan } from '#lib/utils.js';
-	import { reminderTimesBetween } from '#lib/model/index.js';
-	import { MediaQuery } from 'svelte/reactivity';
-	import { css } from 'styled-system/css';
-	import { notesShell, viewHeading, viewPage } from '$panda/styles';
+	import { cx } from 'styled-system/css';
+	import { reminderAgendaStyles as styles, viewHeading, viewPage } from '$panda/styles';
 
-	const { openNote: openEditor } = useEditorActions();
+	const { openNote } = useEditorActions();
 	const reminders = $derived(notesStore.notesWithReminders);
-
-	/** Phone widths keep the calendar full-width; wider grids pack it alongside note cards. */
-	const compact = new MediaQuery('max-width: 767px', true);
 
 	const searched = $derived(
 		uiStore.search ? notesStore.search(uiStore.search, reminders) : reminders
 	);
-	const visible = $derived.by(() => {
-		const sel = uiStore.reminderFilter;
-		if (!sel) return searched;
-		// A repeating reminder is found on every day it comes.
-		const { start, end } = dayKeySpan(sel.from, sel.to ?? sel.from);
-		return searched.filter((n) => reminderTimesBetween(n, start, end, 1).length > 0);
-	});
-	const embedCalendar = $derived(uiStore.layout === 'grid' && !compact.current);
+	const picked = $derived(uiStore.reminderFilter);
+	const multiDay = $derived(picked != null && picked.to != null && picked.to !== picked.from);
+	/** Picked days are their own agenda; otherwise what is due, soonest first. */
+	const groups = $derived(
+		picked ? pickedDayGroups(searched, picked, appClock.now) : agendaGroups(searched, appClock.now)
+	);
+	const nothingFound = $derived(groups.every((group) => group.entries.length === 0));
 	const emptyDescription = $derived(
 		reminders.length === 0
 			? 'Create a note, then add a reminder when you need to return to it.'
-			: uiStore.reminderFilter || uiStore.search
-				? 'No reminders match the current filters.'
-				: 'Create a note, then add a reminder when you need to return to it.'
+			: 'No reminders match the current filters.'
 	);
 </script>
 
 <div class={viewPage}>
 	<h1 class={viewHeading}>Reminders</h1>
-	{#if embedCalendar}
-		<div class={css({ position: 'relative' })}>
-			<NotesFeed notes={visible} onOpen={openEditor}>
-				{#snippet leading()}
-					<ReminderCalendar notes={reminders} bind:selected={uiStore.reminderFilter} />
-				{/snippet}
-			</NotesFeed>
-			{#if visible.length === 0}
-				<div
-					class={css({
-						display: 'flex',
-						justifyContent: 'center',
-						px: 'lg',
-						py: '3xl',
-						md: {
-							position: 'absolute',
-							insetY: 0,
-							right: 0,
-							left: 'min(32rem, 58%)',
-							alignItems: 'center',
-							py: 0
-						}
-					})}
-				>
-					<EmptyState icon={AlarmClock} description={emptyDescription} />
-				</div>
-			{/if}
-		</div>
-	{:else}
-		<div class={uiStore.layout === 'list' ? notesShell('list') : css({ w: 'full' })}>
+	<div class={styles.split}>
+		<div class={styles.calendar}>
 			<ReminderCalendar notes={reminders} bind:selected={uiStore.reminderFilter} />
 		</div>
-		<div class={css({ mt: 'lg' })}>
-			{#if visible.length === 0}
+		<div class={styles.agenda}>
+			{#if reminders.length === 0 || (nothingFound && !picked)}
 				<EmptyState icon={AlarmClock} description={emptyDescription} />
 			{:else}
-				<NotesFeed notes={visible} onOpen={openEditor} />
+				{#each groups as group (group.id)}
+					{@const overdue = group.id === 'overdue'}
+					<section class={styles.group} aria-labelledby={`agenda-${group.id}`}>
+						<div class={styles.heading}>
+							<h2
+								id={`agenda-${group.id}`}
+								class={cx(styles.headingLabel, overdue && styles.headingOverdue)}
+							>
+								{group.label}
+							</h2>
+							<span class={cx(styles.headingCount, overdue && styles.headingOverdue)}>
+								{group.entries.length}
+							</span>
+							{#if group.date}
+								<span class={styles.headingDate}>{group.date}</span>
+							{/if}
+						</div>
+						{#if group.entries.length === 0}
+							<p class={styles.empty}>
+								{multiDay ? 'Nothing on these days.' : 'Nothing on this day.'}
+							</p>
+						{:else}
+							<ul class={styles.list}>
+								{#each group.entries as entry (`${entry.note.id}:${entry.at}`)}
+									<ReminderRow {entry} group={group.id} {multiDay} onOpen={openNote} />
+								{/each}
+							</ul>
+						{/if}
+					</section>
+				{/each}
 			{/if}
 		</div>
-	{/if}
+	</div>
 </div>

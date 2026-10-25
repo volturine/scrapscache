@@ -10,15 +10,12 @@
 		notes,
 		onOpen,
 		class: className = '',
-		children,
-		leading
+		children
 	}: {
 		notes: Note[];
 		onOpen: (id: string) => void;
 		class?: string;
 		children?: Snippet<[Note]>;
-		/** Extra content packed as the first item of the first column (e.g. the reminders calendar). */
-		leading?: Snippet;
 	} = $props();
 
 	/** Column count tracks the grid's own width, so cards keep a consistent size
@@ -62,22 +59,10 @@
 	let gridEl = $state<HTMLDivElement | null>(null);
 
 	const GAP = 10;
-	const LEAD_WIDTH = 352;
-	const LEAD_HEIGHT = 340;
-
-	/** How many columns the lead item spans to reach its natural width. */
-	const leadSpan = $derived.by(() => {
-		if (!leading || !containerWidth) return 0;
-		const colWidth = (containerWidth - GAP * (colCount - 1)) / colCount;
-		return Math.min(colCount, Math.max(1, Math.ceil((LEAD_WIDTH + GAP) / (colWidth + GAP))));
-	});
-	const leadOffset = $derived(leading ? LEAD_HEIGHT + GAP : 0);
 
 	const columns = $derived.by(() => {
 		const cols: Note[][] = Array.from({ length: colCount }, () => []);
-		const heights: number[] = Array.from({ length: colCount }, (_, i) =>
-			i < leadSpan ? leadOffset : 0
-		);
+		const heights: number[] = Array.from({ length: colCount }, () => 0);
 		for (const note of notes) {
 			let minIdx = 0;
 			for (let i = 1; i < colCount; i++) {
@@ -158,14 +143,6 @@
 	class={[css({ position: 'relative' }), className]}
 	bind:clientWidth={containerWidth}
 >
-	{#if leading && leadSpan > 0}
-		<div
-			class={css({ position: 'absolute', top: 0, left: 0, zIndex: 10 })}
-			style:width={`calc((${leadSpan} * (100% - ${GAP * (colCount - 1)}px)) / ${colCount} + ${GAP * (leadSpan - 1)}px)`}
-		>
-			{@render leading()}
-		</div>
-	{/if}
 	<div
 		class={css({
 			display: 'flex',
@@ -185,7 +162,6 @@
 					flexDirection: 'column',
 					gap: 'list'
 				})}
-				style:margin-top={i < leadSpan ? `${leadOffset}px` : undefined}
 			>
 				{#each col as note (note.id)}
 					{@const measured = measuredHeights.get(note.id)}

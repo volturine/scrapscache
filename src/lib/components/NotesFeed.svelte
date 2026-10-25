@@ -14,15 +14,12 @@
 		notes,
 		onOpen,
 		class: className = '',
-		children,
-		leading
+		children
 	}: {
 		notes: Note[];
 		onOpen: (id: string) => void;
 		class?: string;
 		children?: Snippet<[Note]>;
-		/** Extra content packed into the grid before the notes (grid layout only). */
-		leading?: Snippet;
 	} = $props();
 
 	const PAGE_SIZE = 200;
@@ -72,7 +69,7 @@
 
 <div class={[notesShell(), className]}>
 	{#if uiStore.layout === 'grid'}
-		<MasonryGrid notes={shownNotes} {onOpen} {children} {leading} />
+		<MasonryGrid notes={shownNotes} {onOpen} {children} />
 	{:else}
 		<div class={[notesShell('list'), vstack({ gap: 'list', '& > *': { w: 'full' } })]}>
 			{#each shownNotes as note (note.id)}

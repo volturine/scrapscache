@@ -221,4 +221,31 @@ describe('ReminderCalendar with a repeating reminder', () => {
 		expect(marked.length).toBeGreaterThanOrEqual(8);
 		expect(new Set(marked)).toEqual(new Set([1, 4]));
 	});
+
+	it('marks a day red while a reminder on it is overdue', () => {
+		const now = Date.now();
+		const base = {
+			title: '',
+			body: '',
+			color: 'default' as const,
+			pinned: false,
+			archived: false,
+			trashed: false,
+			trashedAt: null,
+			createdAt: 1,
+			updatedAt: 1,
+			labels: []
+		};
+		const { container } = render(ReminderCalendarTestWrapper, {
+			props: {
+				notes: [
+					{ ...base, id: 'late', reminder: now - 3_600_000 },
+					{ ...base, id: 'soon', reminder: now + 8 * 86_400_000 }
+				]
+			}
+		});
+		const dots = [...container.querySelectorAll('.reminder-dot')];
+		expect(dots).toHaveLength(2);
+		expect(dots.filter((dot) => dot.hasAttribute('data-overdue'))).toHaveLength(1);
+	});
 });

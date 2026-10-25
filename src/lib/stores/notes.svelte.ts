@@ -81,7 +81,7 @@ import {
 	prepareImportedNotes,
 	type ScrapsCacheBackup
 } from '#lib/backup.js';
-import { stableStringify } from '#lib/model/index.js';
+import { moveRepeatTime, skipRepeatTime, stableStringify } from '#lib/model/index.js';
 import { loadLazyModule } from '#lib/staleModuleReload.js';
 import { buildForcePushSnapshot } from '#lib/syncForcePush.js';
 import { currentRecordKeys } from '#lib/syncEngine.js';
@@ -580,6 +580,43 @@ export class NotesStore {
 
 	setReminder(id: string, reminder: number | null, repeat: ReminderRepeat | null = null): void {
 		this.updateNote(id, { reminder, repeat: repeat ?? undefined });
+	}
+
+	/** Done with a reminder that comes once: it goes, the note stays, and Undo brings it back. */
+	finishReminder(id: string): void {
+		const note = this.notes.find((n) => n.id === id);
+		if (!note || note.reminder == null || note.repeat) return;
+		const reminder = note.reminder;
+		this.updateNote(id, { reminder: null });
+		actionUndo.push({
+			message: 'Reminder done',
+			noteIds: [id],
+			undo: () => this.updateNote(id, { reminder }),
+			redo: () => this.updateNote(id, { reminder: null })
+		});
+	}
+
+	/** A repeating reminder skips its time `at`; the next one shows and the series goes on. */
+	skipReminderTime(id: string, at: number): void {
+		const note = this.notes.find((n) => n.id === id);
+		if (!note || note.reminder == null || !note.repeat) return;
+		const before = note.repeat;
+		const after = skipRepeatTime(before, at);
+		this.updateNote(id, { repeat: after });
+		actionUndo.push({
+			message: 'Skipped this time',
+			noteIds: [id],
+			undo: () => this.updateNote(id, { repeat: before }),
+			redo: () => this.updateNote(id, { repeat: after })
+		});
+	}
+
+	/** The reminder's time `at` moves to `to`: the reminder itself when it comes once, that time only when it repeats. */
+	snoozeReminder(id: string, at: number, to: number): void {
+		const note = this.notes.find((n) => n.id === id);
+		if (!note || note.reminder == null) return;
+		if (note.repeat) this.updateNote(id, { repeat: moveRepeatTime(note.repeat, at, to) });
+		else this.updateNote(id, { reminder: to });
 	}
 
 	/** Toggle `[ ]` / `[x]` line in unified body text. */

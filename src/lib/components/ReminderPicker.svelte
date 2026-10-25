@@ -23,7 +23,7 @@
 		reminderShownAt,
 		repeatChoiceId,
 		repeatChoices,
-		sameRepeat,
+		sameRepeatPattern,
 		MAX_REPEAT_EVERY,
 		type ReminderRepeat,
 		type RepeatUnit
@@ -156,7 +156,7 @@
 	const draftMs = $derived(selected.getTime());
 	/** An unchanged repeat keeps the zone it was set in; a new or changed one takes this device's. */
 	const repeatUnchanged = $derived(
-		!!repeat && !!repeatDraft && sameRepeat({ ...repeatDraft, zone: repeat.zone }, repeat)
+		!!repeat && !!repeatDraft && sameRepeatPattern({ ...repeatDraft, zone: repeat.zone }, repeat)
 	);
 	const draftRepeat = $derived<ReminderRepeat | null>(
 		repeatDraft && { ...repeatDraft, zone: repeatUnchanged ? repeat!.zone : localTimeZone() }

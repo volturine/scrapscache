@@ -3,6 +3,7 @@ import {
 	describeRepeat,
 	firstRepeatTime,
 	isReminderTime,
+	moveRepeatTime,
 	normalizeRepeat,
 	reminderDueAt,
 	reminderNextAt,
@@ -12,6 +13,9 @@ import {
 	repeatChoices,
 	repeatShortLabel,
 	repeatTimes,
+	sameRepeat,
+	sameRepeatPattern,
+	skipRepeatTime,
 	type ReminderRepeat
 } from './reminderRepeat.js';
 
@@ -273,5 +277,87 @@ describe('normalizeRepeat', () => {
 			every: 1,
 			zone: ZONE
 		});
+	});
+});
+
+describe('a time skipped or moved by hand', () => {
+	const daily = repeat({ unit: 'day', every: 1 });
+	const first = bratislava('2026-10-22T09:00');
+	const after = bratislava('2026-10-22T10:00');
+
+	it('skips the time, so the next one is what comes', () => {
+		const skipped = skipRepeatTime(daily, bratislava('2026-10-23T09:00'));
+		expect(take(first, skipped, 2, after)).toEqual([
+			'Sat 2026-10-24 09:00',
+			'Sun 2026-10-25 09:00'
+		]);
+		const note = { reminder: first, repeat: skipped };
+		expect(isReminderTime(note, bratislava('2026-10-23T09:00'))).toBe(false);
+		expect(reminderNextAt(note, bratislava('2026-10-23T08:00'))).toBe(
+			bratislava('2026-10-24T09:00')
+		);
+		// Nothing is due for the skipped time once it has passed.
+		expect(reminderDueAt(note, bratislava('2026-10-23T12:00'))).toBeNull();
+	});
+
+	it('keeps a monthly 31st on the 31st after a skip, where moving the first time would not', () => {
+		const jan = bratislava('2027-01-31T10:00');
+		const skipped = skipRepeatTime(
+			repeat({ unit: 'month', every: 1 }),
+			bratislava('2027-02-28T10:00')
+		);
+		expect(take(jan, skipped, 2, bratislava('2027-02-01T00:00'))).toEqual([
+			'Wed 2027-03-31 10:00',
+			'Fri 2027-04-30 10:00'
+		]);
+	});
+
+	it('puts a moved time in order, once', () => {
+		const moved = moveRepeatTime(
+			daily,
+			bratislava('2026-10-23T09:00'),
+			bratislava('2026-10-23T14:00')
+		);
+		expect(take(first, moved, 3, after)).toEqual([
+			'Fri 2026-10-23 14:00',
+			'Sat 2026-10-24 09:00',
+			'Sun 2026-10-25 09:00'
+		]);
+		const note = { reminder: first, repeat: moved };
+		expect(isReminderTime(note, bratislava('2026-10-23T14:00'))).toBe(true);
+		expect(reminderNextAt(note, bratislava('2026-10-23T09:30'))).toBe(
+			bratislava('2026-10-23T14:00')
+		);
+		// Moved past the next regular time, it comes after that one.
+		const later = moveRepeatTime(
+			daily,
+			bratislava('2026-10-23T09:00'),
+			bratislava('2026-10-24T12:00')
+		);
+		expect(take(first, later, 3, after)).toEqual([
+			'Sat 2026-10-24 09:00',
+			'Sat 2026-10-24 12:00',
+			'Sun 2026-10-25 09:00'
+		]);
+	});
+
+	it('skips a moved time on its own and leaves the series alone', () => {
+		const moved = moveRepeatTime(
+			daily,
+			bratislava('2026-10-23T09:00'),
+			bratislava('2026-10-23T14:00')
+		);
+		const skipped = skipRepeatTime(moved, bratislava('2026-10-23T14:00'));
+		expect(skipped.moved).toBeUndefined();
+		expect(skipped.skipUntil).toBe(bratislava('2026-10-23T09:00'));
+		expect(take(first, skipped, 1, after)).toEqual(['Sat 2026-10-24 09:00']);
+	});
+
+	it('survives normalising, and a skip is not a change of pattern', () => {
+		const skipped = { ...daily, skipUntil: 5, moved: 9 };
+		expect(normalizeRepeat(skipped)).toEqual(skipped);
+		expect(normalizeRepeat({ ...daily, skipUntil: 'soon', moved: 1.5 })).toEqual(daily);
+		expect(sameRepeat(daily, skipped)).toBe(false);
+		expect(sameRepeatPattern(daily, skipped)).toBe(true);
 	});
 });

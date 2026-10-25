@@ -124,4 +124,14 @@ test('the Reminders view groups what is due and opens a note from its row', asyn
 	await overdue.getByRole('listitem').click();
 	await expect(editor(page)).toBeVisible();
 	await expect(editor(page).getByPlaceholder('Title', { exact: true })).toHaveValue('Call the vet');
+	await page.keyboard.press('Escape');
+	await expect(editor(page)).toBeHidden();
+
+	// Done takes the reminder off the note and the row with it; Undo brings both back.
+	await overdue.getByRole('button', { name: 'Done with Call the vet' }).click();
+	await expect(overdue).toBeHidden();
+	const status = page.locator('[data-undo-bar]');
+	await expect(status).toContainText('Reminder done');
+	await status.getByRole('button', { name: 'Undo' }).click();
+	await expect(page.getByRole('region', { name: 'Overdue' }).getByRole('listitem')).toHaveCount(1);
 });

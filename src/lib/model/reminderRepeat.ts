@@ -19,6 +19,13 @@ export type ReminderRepeat = {
 	weekdays?: number[];
 	/** The IANA time zone its wall-clock time is kept in. */
 	zone: string;
+	/**
+	 * Times up to and including this one do not come: the last one was skipped or
+	 * moved by hand. The pattern itself is untouched, so a monthly 31st stays the 31st.
+	 */
+	skipUntil?: number;
+	/** One time moved by hand, in place of the skipped one; comes once, in order. */
+	moved?: number;
 };
 
 /** What a note's reminder is made of. */
@@ -147,24 +154,59 @@ function* repeatDays(repeat: ReminderRepeat, firstDay: number, fromDay: number) 
 	}
 }
 
-/** The times a repeat comes, from `from` on (and never before `first`), in order. */
-export function* repeatTimes(
+/** The pattern's times from `start` on, before any skip or move. */
+function* patternTimes(
 	first: number,
 	repeat: ReminderRepeat,
-	from = first
+	start: number
 ): Generator<number, void> {
 	const zone = repeat.zone;
 	if (!formatter(zone)) return;
 	const firstWall = wallClock(first, zone);
 	const firstDay = Math.floor(firstWall / DAY);
 	const timeOfDay = firstWall - firstDay * DAY;
-	const start = Math.max(first, from);
 	// A day of slack: the wall clock and UTC days need not line up.
 	const fromDay = Math.floor(wallClock(start, zone) / DAY) - 1;
 	for (const day of repeatDays(repeat, firstDay, fromDay)) {
 		const at = instantOf(day * DAY + timeOfDay, zone);
 		if (at >= start) yield at;
 	}
+}
+
+/**
+ * The times a repeat comes, from `from` on (and never before `first`), in order:
+ * the pattern's times after any skipped one, with a moved time in its place.
+ */
+export function* repeatTimes(
+	first: number,
+	repeat: ReminderRepeat,
+	from = first
+): Generator<number, void> {
+	const start = Math.max(first, from);
+	const skipUntil = repeat.skipUntil ?? -Infinity;
+	let moved = repeat.moved != null && repeat.moved >= start ? repeat.moved : null;
+	for (const at of patternTimes(first, repeat, start)) {
+		if (at <= skipUntil) continue;
+		if (moved != null && moved <= at) {
+			if (moved < at) yield moved;
+			moved = null;
+		}
+		yield at;
+	}
+}
+
+/** The repeat without the time `at`: the next one shows, and nothing fires for this one. */
+export function skipRepeatTime(repeat: ReminderRepeat, at: number): ReminderRepeat {
+	if (repeat.moved === at) {
+		const { moved: _moved, ...rest } = repeat;
+		return rest;
+	}
+	return { ...repeat, skipUntil: Math.max(at, repeat.skipUntil ?? -Infinity) };
+}
+
+/** The repeat with its time `at` moved to `to`, this once; the pattern goes on as it was. */
+export function moveRepeatTime(repeat: ReminderRepeat, at: number, to: number): ReminderRepeat {
+	return { ...skipRepeatTime(repeat, at), moved: to };
 }
 
 function firstOf(times: Iterable<number>): number | null {
@@ -262,10 +304,13 @@ export function normalizeRepeat(value: unknown): ReminderRepeat | undefined {
 			.sort((left, right) => left - right);
 		if (days.length) repeat.weekdays = days;
 	}
+	if (Number.isInteger(raw.skipUntil)) repeat.skipUntil = raw.skipUntil as number;
+	if (Number.isInteger(raw.moved)) repeat.moved = raw.moved as number;
 	return repeat;
 }
 
-export function sameRepeat(
+/** Whether two repeats follow the same pattern, whatever was skipped or moved by hand. */
+export function sameRepeatPattern(
 	left: ReminderRepeat | null | undefined,
 	right: ReminderRepeat | null | undefined
 ): boolean {
@@ -275,6 +320,18 @@ export function sameRepeat(
 		left.every === right.every &&
 		left.zone === right.zone &&
 		(left.weekdays ?? []).join() === (right.weekdays ?? []).join()
+	);
+}
+
+export function sameRepeat(
+	left: ReminderRepeat | null | undefined,
+	right: ReminderRepeat | null | undefined
+): boolean {
+	if (!left || !right) return !left === !right;
+	return (
+		sameRepeatPattern(left, right) &&
+		left.skipUntil === right.skipUntil &&
+		left.moved === right.moved
 	);
 }
 

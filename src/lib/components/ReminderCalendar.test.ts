@@ -247,5 +247,12 @@ describe('ReminderCalendar with a repeating reminder', () => {
 		const dots = [...container.querySelectorAll('.reminder-dot')];
 		expect(dots).toHaveLength(2);
 		expect(dots.filter((dot) => dot.hasAttribute('data-overdue'))).toHaveLength(1);
+		// A screen reader hears what the dot means, as part of the day's name.
+		const labels = [...container.querySelectorAll('button[data-view="day"]')]
+			.map((day) => day.getAttribute('aria-label') ?? '')
+			.filter((label) => label.includes('reminder'));
+		expect(labels).toHaveLength(2);
+		expect(labels.some((label) => /, 1 reminder overdue$/.test(label))).toBe(true);
+		expect(labels.some((label) => /, 1 reminder coming$/.test(label))).toBe(true);
 	});
 });

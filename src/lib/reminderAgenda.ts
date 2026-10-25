@@ -184,8 +184,10 @@ export function agendaTime(
 ): AgendaTime {
 	const date = new Date(entry.at);
 	const clock = date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-	const overdue = group === 'overdue';
 	const repeat = entry.note.repeat;
+	// A picked day in the past lists what was due then; it is as overdue as the
+	// calendar says it is. A repeat's past times came and went, so they are not.
+	const overdue = !repeat && entry.at < now;
 	let time: string;
 	if (group === 'today' || group === 'tomorrow' || (group === 'picked' && !multiDay)) {
 		time = clock;

@@ -159,6 +159,19 @@ describe('agendaTime', () => {
 		expect(agendaTime(entry(at(10, 29, 8, 42)), 'picked', NOW).time).toBe('8:42 AM');
 		expect(agendaTime(entry(at(10, 29, 8, 42)), 'picked', NOW, true).time).toBe('Thu 8:42 AM');
 	});
+
+	it('keeps a picked past day as overdue as the calendar shows it', () => {
+		expect(agendaTime(entry(at(10, 24, 9, 42)), 'picked', NOW)).toMatchObject({
+			time: '9:42 AM',
+			detail: 'Yesterday',
+			overdue: true
+		});
+		// A repeat's past time came and went; it is not overdue.
+		expect(agendaTime(entry(at(10, 18, 18), { repeat: weekly }), 'picked', NOW)).toMatchObject({
+			detail: 'Weekly',
+			overdue: false
+		});
+	});
 });
 
 describe('agendaPreview', () => {

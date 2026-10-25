@@ -64,6 +64,17 @@
 		return days;
 	});
 
+	/** What a day's mark means, for its accessible name: "1 reminder overdue, 2 coming". */
+	function dayNote(day: DateValue): string | undefined {
+		const marks = reminderDays.get(day.toString());
+		if (!marks) return undefined;
+		const count = (n: number) => `${n} reminder${n === 1 ? '' : 's'}`;
+		const parts: string[] = [];
+		if (marks.overdue > 0) parts.push(`${count(marks.overdue)} overdue`);
+		if (marks.coming > 0) parts.push(`${parts.length ? marks.coming : count(marks.coming)} coming`);
+		return parts.join(', ');
+	}
+
 	function onVisibleRangeChange({ visibleRange }: DatePickerVisibleRangeChangeDetails) {
 		const zone = getLocalTimeZone();
 		shown = {
@@ -172,6 +183,7 @@
 		{onVisibleRangeChange}
 	>
 		<DatePickerViews
+			{dayNote}
 			onDayClick={handleDayClick}
 			onDayPointerDown={startPress}
 			onDayPointerUp={cancelPress}

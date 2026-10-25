@@ -8,6 +8,7 @@
 
 	let {
 		dayExtra,
+		dayNote,
 		onDayClick,
 		onDayPointerDown,
 		onDayPointerUp,
@@ -16,6 +17,8 @@
 		onDayContextMenu
 	}: {
 		dayExtra?: Snippet<[DateValue]>;
+		/** Words joined to a day's accessible name, for what a visual mark on it means. */
+		dayNote?: (day: DateValue) => string | undefined;
 		onDayClick?: (day: DateValue, e: MouseEvent) => void;
 		onDayPointerDown?: (day: DateValue, e: PointerEvent) => void;
 		onDayPointerUp?: (day: DateValue, e: PointerEvent) => void;
@@ -62,9 +65,13 @@
 														string,
 														any
 													>}
+													{@const note = dayNote?.(day)}
 													<button
 														type="button"
 														{...safeProps}
+														aria-label={note
+															? `${safeProps['aria-label']}, ${note}`
+															: safeProps['aria-label']}
 														class={gridBtn.day}
 														onpointerdown={(e) => onDayPointerDown?.(day, e)}
 														onpointerup={(e) => onDayPointerUp?.(day, e)}

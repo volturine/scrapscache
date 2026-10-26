@@ -10,7 +10,12 @@
 	import type { Note } from '#lib/types.js';
 	import { dayKey, dayKeySpan } from '#lib/utils.js';
 	import { reminderTimesBetween } from '#lib/model/index.js';
-	import { truncate } from '$panda/styles';
+	import {
+		reminderCalendarDot as dot,
+		reminderCalendarLegend as legend,
+		truncate
+	} from '$panda/styles';
+	import { appClock } from '#lib/appClock.svelte.js';
 	import { css, cx } from 'styled-system/css';
 	import { flex, hstack } from 'styled-system/patterns';
 	import { button } from 'styled-system/recipes';
@@ -37,18 +42,38 @@
 		const { start } = dayKeySpan(`${month}01`);
 		return { start: start - WEEK_MS, end: start + 31 * 24 * 60 * 60 * 1000 + WEEK_MS };
 	});
+	/** Each day in view with a reminder: how many are still to come, how many are overdue. */
 	const reminderDays = $derived.by(() => {
-		const counts = new Map<string, number>();
+		const days = new Map<string, { coming: number; overdue: number }>();
+		const mark = (key: string, overdue: boolean) => {
+			const day = days.get(key) ?? { coming: 0, overdue: 0 };
+			if (overdue) day.overdue += 1;
+			else day.coming += 1;
+			days.set(key, day);
+		};
 		for (const note of notes) {
 			if (note.reminder == null) continue;
-			// A repeating reminder marks each day it comes on in view.
-			const times = note.repeat
-				? reminderTimesBetween(note, range.start, range.end, 62)
-				: [note.reminder];
-			for (const key of new Set(times.map(dayKey))) counts.set(key, (counts.get(key) ?? 0) + 1);
+			// A repeating reminder marks each day it comes on in view, and is never overdue.
+			if (note.repeat) {
+				const times = reminderTimesBetween(note, range.start, range.end, 62);
+				for (const key of new Set(times.map(dayKey))) mark(key, false);
+			} else {
+				mark(dayKey(note.reminder), note.reminder < appClock.now);
+			}
 		}
-		return counts;
+		return days;
 	});
+
+	/** What a day's mark means, for its accessible name: "1 reminder overdue, 2 coming". */
+	function dayNote(day: DateValue): string | undefined {
+		const marks = reminderDays.get(day.toString());
+		if (!marks) return undefined;
+		const count = (n: number) => `${n} reminder${n === 1 ? '' : 's'}`;
+		const parts: string[] = [];
+		if (marks.overdue > 0) parts.push(`${count(marks.overdue)} overdue`);
+		if (marks.coming > 0) parts.push(`${parts.length ? marks.coming : count(marks.coming)} coming`);
+		return parts.join(', ');
+	}
 
 	function onVisibleRangeChange({ visibleRange }: DatePickerVisibleRangeChangeDetails) {
 		const zone = getLocalTimeZone();
@@ -149,6 +174,7 @@
 	<DatePicker.Root
 		class={css({ w: 'full' })}
 		inline
+		timeZone={getLocalTimeZone()}
 		startOfWeek={1}
 		fixedWeeks
 		selectionMode="range"
@@ -157,6 +183,7 @@
 		{onVisibleRangeChange}
 	>
 		<DatePickerViews
+			{dayNote}
 			onDayClick={handleDayClick}
 			onDayPointerDown={startPress}
 			onDayPointerUp={cancelPress}
@@ -164,22 +191,25 @@
 			onDayPointerCancel={cancelPress}
 		>
 			{#snippet dayExtra(day)}
-				{@const count = reminderDays.get(day.toString()) ?? 0}
-				{#if count > 0}
+				{@const marks = reminderDays.get(day.toString())}
+				{#if marks}
 					<span
-						class={`reminder-dot ${css({
-							position: 'absolute',
-							bottom: '2xs',
-							h: '0.25rem',
-							w: '0.25rem',
-							rounded: 'pill',
-							bg: 'scrapscache.accent'
-						})}`}
+						class={cx('reminder-dot', dot({ overdue: marks.overdue > 0 }))}
+						data-overdue={marks.overdue > 0 ? '' : undefined}
 					></span>
 				{/if}
 			{/snippet}
 		</DatePickerViews>
 	</DatePicker.Root>
+
+	<div class={legend.row} aria-hidden="true">
+		<span class={legend.item}
+			><span class={dot({ overdue: true, legend: true })}></span>Overdue</span
+		>
+		<span class={legend.item}
+			><span class={dot({ overdue: false, legend: true })}></span>Coming</span
+		>
+	</div>
 
 	<div
 		class={hstack({
@@ -199,7 +229,7 @@
 			class={cx(
 				truncate,
 				css({
-					flexShrink: 0,
+					minW: 0,
 					px: 'sm',
 					lineHeight: 'compact',
 					color: 'scrapscache.textMuted'
@@ -212,6 +242,8 @@
 				Range filter active
 			{:else if selected}
 				Day filter active
+			{:else}
+				Hold a day for a range
 			{/if}
 		</span>
 		<div class={flex({ flex: '1', align: 'center', justify: 'flex-end' })}>

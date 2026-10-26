@@ -139,16 +139,22 @@ export const appLayout = {
 		zIndex: 56,
 		pointerEvents: 'none'
 	}),
-	// The phone tab bar ends where the app frame does, above the home indicator; this
-	// carries its surface the rest of the way down so there is no dark gap under it.
+	// The phone tab bar ends where the app frame does: above the home indicator, and
+	// short of a status bar down the side (iPhone Duo folded). This carries its surface
+	// and top rule across the whole bottom band so the bar reads as edge to edge, with
+	// the system's indicators drawn over it. It sits before the frame in the document
+	// and at the same level, so the frame paints over it; a negative z-index would put
+	// it under the body's own background instead.
 	tabBarSafeArea: css({
 		position: 'fixed',
 		left: 0,
 		right: 0,
 		bottom: 0,
-		h: 'var(--app-inset-bottom)',
+		h: 'calc(var(--app-inset-bottom) + var(--app-tabbar-height))',
+		borderTopWidth: 'hairline',
+		borderColor: 'scrapscache.border',
 		bg: 'scrapscache.surface',
-		zIndex: 1,
+		zIndex: 0,
 		pointerEvents: 'none'
 	}),
 	// Same panel as the drawer on a phone: its surface is what sets it apart.

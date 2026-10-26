@@ -34,7 +34,8 @@ html.ios-standalone {
 	/* The tab bar has no place over a keyboard: behind it on iOS it would still
 	 * hold its height and leave a gap between an open note and the keys; on
 	 * Android it would ride up on top of them. */
-	html.keyboard-open [data-phone-tabs] {
+	html.keyboard-open [data-phone-tabs],
+	html.keyboard-open [data-tab-bar-bleed] {
 		display: none;
 	}
 }

@@ -100,15 +100,17 @@
 	const opened = reminderShownAt({ reminder, repeat }, Date.now());
 	// Plain state so sync-driven prop changes cannot discard unsaved picker edits.
 	let selected = $state(initDate(opened));
+	type RepeatPattern = Pick<ReminderRepeat, 'unit' | 'every' | 'weekdays'>;
 	/** How the draft repeats; its zone is set on save, from where it is picked. */
 	// svelte-ignore state_referenced_locally -- snapshot the repeat at open time on purpose
-	let repeatDraft = $state<Omit<ReminderRepeat, 'zone'> | null>(repeat && withoutZone(repeat));
+	let repeatDraft = $state<RepeatPattern | null>(repeat && patternOf(repeat));
 	let monthYearOpen = $state(false);
 	const phone = new MediaQuery(PHONE_MEDIA, false);
 	const isMobile = $derived(forceMode ? forceMode === 'mobile' : phone.current);
 
-	function withoutZone({ zone: _zone, ...rest }: ReminderRepeat): Omit<ReminderRepeat, 'zone'> {
-		return rest;
+	/** The pattern alone: no zone, and none of the times skipped or moved by hand. */
+	function patternOf({ unit, every, weekdays }: ReminderRepeat): RepeatPattern {
+		return weekdays ? { unit, every, weekdays } : { unit, every };
 	}
 
 	function apply(ts: number | null, next: ReminderRepeat | null = null) {
@@ -215,7 +217,7 @@
 		}
 		customOpen = false;
 		const choice = choices.find((item) => item.id === id);
-		repeatDraft = choice?.repeat ? withoutZone(choice.repeat) : null;
+		repeatDraft = choice?.repeat ? patternOf(choice.repeat) : null;
 	}
 
 	function setEvery(value: number) {
@@ -300,7 +302,7 @@
 	let readers = $state.raw<PhraseReader[] | null>(null);
 	/** What the controls showed before typing began; an unread or cleared text returns to it. */
 	let beforeTyping: Date | null = null;
-	let repeatBeforeTyping: Omit<ReminderRepeat, 'zone'> | null | undefined;
+	let repeatBeforeTyping: RepeatPattern | null | undefined;
 	let phraseInput = $state<HTMLInputElement | null>(null);
 	const pickerId = $props.id();
 	const resultId = `${pickerId}-read`;

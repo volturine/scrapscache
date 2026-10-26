@@ -138,6 +138,36 @@ describe('RemindersView', () => {
 		expect(snooze).toHaveBeenCalledWith('Call dentist', at(10, 24, 9, 42), NOW + 3_600_000);
 	});
 
+	it('moves one time of a repeat from the picker, and the reminder itself when it comes once', async () => {
+		// The menu and dialog need timers that run; the picker reads the pinned clock.
+		vi.useFakeTimers({ shouldAdvanceTime: true });
+		vi.setSystemTime(NOW);
+		const snooze = vi.spyOn(notesStore, 'snoozeReminder').mockImplementation(() => {});
+		const set = vi.spyOn(notesStore, 'setReminder').mockImplementation(() => {});
+		vi.spyOn(reminderStore, 'sync').mockImplementation(() => {});
+		render(RemindersView);
+
+		const pick = async (row: string) => {
+			await fireEvent.click(screen.getByRole('button', { name: `Snooze ${row}` }));
+			const menu = await screen.findByRole('menu', { name: `Snooze ${row}` });
+			const item = within(menu).getByRole('menuitem', { name: 'Pick a time…' });
+			await fireEvent.pointerDown(item, { pointerType: 'mouse' });
+			await fireEvent.click(item);
+			const dialog = await screen.findByRole('dialog');
+			await fireEvent.click(within(dialog).getByRole('button', { name: 'Next day' }));
+			await fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+		};
+
+		// The weekly one keeps its Sundays; only this time moves to Monday.
+		await pick('Water plants');
+		expect(snooze).toHaveBeenCalledWith('Water plants', at(10, 25, 18), at(10, 26, 18));
+		expect(set).not.toHaveBeenCalled();
+
+		await pick('Call dentist');
+		expect(set).toHaveBeenCalledWith('Call dentist', at(10, 25, 9, 42), null);
+		expect(snooze).toHaveBeenCalledTimes(1);
+	});
+
 	it('explains an empty view', () => {
 		notesStore.notes = [note('No reminder', null)];
 		render(RemindersView);

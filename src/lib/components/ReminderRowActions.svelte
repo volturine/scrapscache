@@ -14,6 +14,7 @@
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { portalToAppOverlay } from '#lib/appViewport.js';
 	import { appClock } from '#lib/appClock.svelte.js';
+	import { sameRepeatPattern } from '#lib/model/index.js';
 	import { snoozeChoices, type AgendaEntry } from '#lib/reminderAgenda.js';
 	import { reminderPreview } from '#lib/reminderNotify.js';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
@@ -121,8 +122,14 @@
 						bind:this={reminderPicker}
 						reminder={note.reminder}
 						repeat={note.repeat}
-						onApply={(r, repeat) => {
-							notesStore.setReminder(note.id, r, repeat);
+						onApply={(at, next) => {
+							// The same pattern picked for another time moves this time only; a
+							// changed pattern, or a reminder made or unmade repeating, is a new schedule.
+							if (at != null && note.repeat && next && sameRepeatPattern(next, note.repeat)) {
+								notesStore.snoozeReminder(note.id, entry.at, at);
+							} else {
+								notesStore.setReminder(note.id, at, next);
+							}
 							settled();
 							pickerOpen = false;
 						}}

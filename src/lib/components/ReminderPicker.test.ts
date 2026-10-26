@@ -469,6 +469,24 @@ describe('ReminderPicker repeat', () => {
 		vi.unstubAllGlobals();
 	});
 
+	it('saves a repeat without the times skipped or moved by hand', async () => {
+		const onApply = vi.fn();
+		const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+		const first = Date.now() + 3_600_000;
+		render(ReminderPicker, {
+			props: {
+				reminder: first,
+				repeat: { unit: 'day', every: 1, zone, skipUntil: first, moved: first + 60_000 },
+				onClose: () => {},
+				onApply
+			}
+		});
+		await fireEvent.click(screen.getByRole('button', { name: 'Next day' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+		expect(onApply).toHaveBeenCalledTimes(1);
+		expect(onApply.mock.calls[0][1]).toEqual({ unit: 'day', every: 1, zone });
+	});
+
 	async function chooseRepeat(name: string) {
 		await fireEvent.click(screen.getByRole('button', { name: /Does not repeat|Every|Custom/ }));
 		await fireEvent.click(await screen.findByRole('menuitemradio', { name }));

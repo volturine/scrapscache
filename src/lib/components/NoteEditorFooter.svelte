@@ -316,7 +316,8 @@
 	function openTags(e: MouseEvent) {
 		e.stopPropagation();
 		closeMenus();
-		if (!noteId) {
+		// A host that can make the note first (the composer) handles the unsaved case.
+		if (!noteId && !onOpenTags) {
 			attachError = 'Save the note first to add labels';
 			return;
 		}

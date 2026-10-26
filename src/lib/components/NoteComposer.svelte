@@ -145,6 +145,25 @@
 			reminder = reminderDay ? reminderTimeForDay(reminderDay) : null;
 			repeat = null;
 			open = true;
+		} else if (seed.title || seed.body) {
+			// Already open: what is handed over joins what is there rather than being lost.
+			bodyEditor?.syncBodyNow?.();
+			let incoming = seed.body ?? '';
+			if (seed.title) {
+				if (title.trim() === '') {
+					title = seed.title;
+					titleEdited = true;
+				} else {
+					incoming = incoming ? `${seed.title}\n${incoming}` : seed.title;
+				}
+			}
+			if (incoming) {
+				const next = body.trim() === '' ? incoming : `${body}\n${incoming}`;
+				body = next;
+				bodyEdited = true;
+				void bodyEditor?.replaceBodyWithText(next);
+			}
+			commitDraft();
 		}
 		// Pasted text is a note already; a blank bar waits for the first key.
 		if (seed.title || seed.body) ensureNote();

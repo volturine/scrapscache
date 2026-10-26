@@ -113,4 +113,26 @@ describe('NoteComposer', () => {
 		expect(new Date(notesStore.notes[0].reminder as number).getFullYear()).toBe(2030);
 		expect(screen.getByRole('button', { name: 'Edit reminder' })).toBeTruthy();
 	});
+
+	it('opens labels on a blank bar by writing the note first', async () => {
+		notesStore.labels = [{ id: 'work', name: 'Work', createdAt: 1, updatedAt: 1 }];
+		render(NoteComposer);
+		await fireEvent.click(prompt());
+		await fireEvent.click(screen.getByRole('button', { name: 'Labels' }));
+		expect(screen.queryByText('Save the note first to add labels')).toBeNull();
+		expect(notesStore.notes).toHaveLength(1);
+		expect(composerStore.draftId).toBe(notesStore.notes[0].id);
+		expect(await screen.findByRole('dialog')).toBeTruthy();
+	});
+
+	it('adds a paste to an open bar instead of dropping it', async () => {
+		render(NoteComposer);
+		await fireEvent.click(prompt());
+		await typeTitle('Shopping');
+		expect(composerStore.open({ body: 'eggs' })).toBe(true);
+		expect(composerStore.open({ title: 'retro' })).toBe(true);
+		await tick();
+		expect(notesStore.notes).toHaveLength(1);
+		expect(notesStore.notes[0]).toMatchObject({ title: 'Shopping', body: 'eggs\nretro' });
+	});
 });

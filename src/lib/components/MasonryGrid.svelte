@@ -2,6 +2,8 @@
 	import type { Note } from '#lib/types.js';
 	import type { Snippet } from 'svelte';
 	import { onMount } from 'svelte';
+	import { MediaQuery } from 'svelte/reactivity';
+	import { viewportSpan } from '#lib/viewportSpan.svelte.js';
 	import NoteCard from './NoteCard.svelte';
 	import { css } from 'styled-system/css';
 	import { masonryItem } from '$panda/styles';
@@ -34,8 +36,12 @@
 							: 2;
 	}
 	let containerWidth = $state(0);
+	const wideSpanQuery = new MediaQuery('(horizontal-viewport-segments: 2)');
+	/** Two columns on each screen, with the hinge as the empty track between them. */
 	const colCount = $derived(
-		colsFor(containerWidth || (typeof window !== 'undefined' ? window.innerWidth : 1024))
+		wideSpanQuery.current || viewportSpan.kind === 'horizontal'
+			? 4
+			: colsFor(containerWidth || (typeof window !== 'undefined' ? window.innerWidth : 1024))
 	);
 
 	/** Rough height for shortest-column packing (cards scroll at max-h 320px). */
@@ -144,6 +150,7 @@
 	bind:clientWidth={containerWidth}
 >
 	<div
+		data-note-masonry
 		class={css({
 			display: 'flex',
 			alignItems: 'flex-start',

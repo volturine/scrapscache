@@ -22,7 +22,7 @@
 	let { icon: Icon, tagline, description, actionLabel, onAction, href, actions }: Props = $props();
 </script>
 
-<div class={cx(notesShell(), emptyStateStyles.root)}>
+<div class={cx(notesShell(), emptyStateStyles.root)} data-span-screen>
 	<Icon size={24} strokeWidth={1.5} aria-hidden="true" />
 	{#if tagline}
 		<p class={emptyStateStyles.tagline}>{tagline}</p>

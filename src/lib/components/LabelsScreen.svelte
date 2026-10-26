@@ -7,7 +7,7 @@
 	import Sidebar from './Sidebar.svelte';
 </script>
 
-<div class={styles.screen}>
+<div class={styles.screen} data-span-screen>
 	<p class={styles.hint}>Swipe a label to the left to rename or delete it.</p>
 	<!-- Opening a label, Archive or Trash goes there and puts this screen away. -->
 	<Sidebar labelsOnly onNavigate={() => (uiStore.labelsOpen = false)} />

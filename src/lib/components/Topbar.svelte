@@ -33,6 +33,7 @@
 	import { loadLazyModule } from '#lib/staleModuleReload.js';
 	import { Cloud, Menu as MenuIcon, Search, X } from '@lucide/svelte';
 	import { MediaQuery } from 'svelte/reactivity';
+	import { viewportSpan } from '#lib/viewportSpan.svelte.js';
 	import type { View } from '#lib/stores/ui.svelte.js';
 	import { isApplePlatform } from '#lib/platform.js';
 
@@ -61,7 +62,12 @@
 
 	let searchField: HTMLInputElement | undefined;
 
-	const mobile = new MediaQuery('max-width: 767px');
+	const mobile = new MediaQuery('(max-width: 767px)');
+	const wideSpanQuery = new MediaQuery('(horizontal-viewport-segments: 2)');
+	/** Phone chrome on a real phone and across a vertical hinge, so search never sits on it. */
+	const phoneChrome = $derived(
+		mobile.current || wideSpanQuery.current || viewportSpan.kind === 'horizontal'
+	);
 	const VIEW_TITLES: Record<Exclude<View, 'label'>, string> = {
 		notes: 'Notes',
 		kanban: 'Kanban',
@@ -83,12 +89,12 @@
 	 * clear it there, and it would keep filtering the notes.
 	 */
 	$effect(() => {
-		if (mobile.current) untrack(() => uiStore.clearSearch());
+		if (phoneChrome) untrack(() => uiStore.clearSearch());
 	});
 
 	/** The Labels screen is a phone's: a window widened past it has the sidebar instead. */
 	$effect(() => {
-		if (!mobile.current) untrack(() => (uiStore.labelsOpen = false));
+		if (!phoneChrome) untrack(() => (uiStore.labelsOpen = false));
 	});
 
 	/** The palette's shortcut: Cmd+K on Apple devices, Ctrl+K elsewhere. */
@@ -348,6 +354,7 @@
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <header
+	data-app-topbar
 	class={hstack({
 		h: 'var(--app-topbar-height)',
 		flexShrink: 0,
@@ -361,18 +368,20 @@
 	{#if selectionStore.active}
 		<!-- The bar works on the picked notes until the selection is let go. -->
 		<SelectionBar />
-	{:else if mobile.current}
+	{:else if phoneChrome}
 		<!-- A phone has the tab bar for its places, so the bar only names the view. -->
 		<span class={styles.phoneTitle} data-view-title>{viewTitle}</span>
-		{@render syncButton()}
-		<SettingsMenu
-			phone
-			bind:open={settingsOpen}
-			onExport={startBackupExport}
-			onImport={startBackupImport}
-			importing={importingBackup}
-			importError={backupImportError}
-		/>
+		<div class={styles.phoneActions} data-phone-actions>
+			{@render syncButton()}
+			<SettingsMenu
+				phone
+				bind:open={settingsOpen}
+				onExport={startBackupExport}
+				onImport={startBackupImport}
+				importing={importingBackup}
+				importError={backupImportError}
+			/>
+		</div>
 	{:else}
 		<Tooltip content="Toggle sidebar">
 			<button

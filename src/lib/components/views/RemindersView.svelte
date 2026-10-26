@@ -33,7 +33,7 @@
 
 <div class={viewPage}>
 	<h1 class={viewHeading}>Reminders</h1>
-	<div class={styles.split}>
+	<div class={styles.split} data-reminder-split>
 		<div class={styles.calendar}>
 			<ReminderCalendar notes={reminders} bind:selected={uiStore.reminderFilter} />
 		</div>

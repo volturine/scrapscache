@@ -1220,11 +1220,16 @@ export const kanbanViewStyles = {
 		scrollPaddingInline: 'lg',
 		'&[data-kanban-panning]': { scrollSnapType: 'none' }
 	}),
-	columnsTrack: flex({ minW: 'max-content', align: 'flex-start', gap: 'md' }),
+	columnsTrack: css({
+		display: 'flex',
+		minW: 'max-content',
+		alignItems: 'flex-start',
+		gap: 'var(--app-column-gap)'
+	}),
 	column: css({
 		...kanbanColumnSize,
-		// On a phone the next column shows at the edge, so the rest of the board is in sight.
-		w: { base: 'calc(var(--app-frame-width) - 4rem)', md: kanbanColumnSize.w },
+		// Capped at a note card on one screen, and one segment wide across a vertical hinge.
+		w: 'var(--app-column-width)',
 		scrollSnapAlign: { base: 'start', md: 'none' },
 		rounded: 'sheet',
 		bg: 'scrapscache.surfaceSubtle',
@@ -3322,6 +3327,8 @@ export const historyStyles = {
 export const topbarStyles = {
 	/** The phone bar's view name; the buttons after it keep to the right. */
 	phoneTitle: css({ ...flexFill, px: 'xs', textStyle: 'heading', ...truncateText }),
+	/** Display contents until a horizontal span places the actions on the other screen. */
+	phoneActions: css({ display: 'contents' }),
 	markdownLabel: css({ minW: 0, flex: '1' }),
 	markdownCheck: css({
 		...gridCenter,
@@ -3384,6 +3391,8 @@ export const phoneTabsStyles = {
 		borderColor: 'scrapscache.border',
 		bg: 'scrapscache.surface'
 	}),
+	/** Display contents until a horizontal span gives each screen its own cluster. */
+	cluster: css({ display: 'contents' }),
 	tab: css({
 		...column,
 		alignItems: 'center',

@@ -71,7 +71,10 @@
 	{#if uiStore.layout === 'grid'}
 		<MasonryGrid notes={shownNotes} {onOpen} {children} />
 	{:else}
-		<div class={[notesShell('list'), vstack({ gap: 'list', '& > *': { w: 'full' } })]}>
+		<div
+			class={[notesShell('list'), vstack({ gap: 'list', '& > *': { w: 'full' } })]}
+			data-span-screen
+		>
 			{#each shownNotes as note (note.id)}
 				<div>
 					{#if children}

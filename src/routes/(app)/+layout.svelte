@@ -26,6 +26,7 @@
 	import { MediaQuery } from 'svelte/reactivity';
 	import { attachSyncCloudIndicator } from '#lib/syncCloudIndicator.js';
 	import { attachAppViewport } from '#lib/appViewport.js';
+	import { viewportSpan } from '#lib/viewportSpan.svelte.js';
 	import { dayKey, dayKeySpan, reminderTimeForDay } from '#lib/utils.js';
 	import { appClock } from '#lib/appClock.svelte.js';
 	import { noteAddressHistory } from '#lib/noteAddressHistory.js';
@@ -44,6 +45,10 @@
 	let { children }: { children: Snippet } = $props();
 
 	const mobile = new MediaQuery('max-width: 767px');
+	const wideSpanQuery = new MediaQuery('(horizontal-viewport-segments: 2)');
+	/** A vertical hinge is wider than the phone breakpoint but still one screen per side. */
+	const wideSpan = $derived(wideSpanQuery.current || viewportSpan.kind === 'horizontal');
+	const phoneShell = $derived(mobile.current || wideSpan);
 	let editingId = $state<string | null>(null);
 	let autoFocusBody = $state(false);
 	let closeOpenNote: (() => Promise<void>) | null = null;
@@ -188,12 +193,12 @@
 		openEditor(link.noteId);
 	}
 
-	// A window that narrows into the phone layout must not pop the desktop sidebar
-	// open as a drawer over the page; the drawer opens from More when it is wanted.
-	// Untracked: the setter persists the UI state, and those reads must not make the
-	// drawer's own open state a dependency, or Labels could never open it on a phone.
+	// A window that narrows into the phone layout, or opens across a vertical hinge,
+	// must not pop the desktop sidebar open as a drawer over the page. The tab bar
+	// carries navigation there. Untracked: the setter persists the UI state, and
+	// those reads must not make the drawer's own open state a dependency.
 	$effect(() => {
-		if (mobile.current) untrack(() => (uiStore.sidebarOpen = false));
+		if (phoneShell) untrack(() => (uiStore.sidebarOpen = false));
 	});
 
 	onMount(() => {
@@ -437,12 +442,12 @@
 <svelte:window onpaste={handleGalleryPaste} onkeydown={runUndoChord} />
 
 <!-- Before the frame in the document, so the frame paints over it. -->
-{#if mobile.current}
+{#if phoneShell}
 	<div class={styles.tabBarSafeArea} data-tab-bar-bleed aria-hidden="true"></div>
 {/if}
 <div class="app-viewport">
 	<div class={cx('app-shell', styles.shell)}>
-		{#if mobile.current}
+		{#if phoneShell}
 			<Drawer.Root
 				open={uiStore.sidebarOpen}
 				onOpenChange={(details) => {
@@ -488,7 +493,7 @@
 					onscroll={rememberFeedScroll}
 				>
 					{#if composer}
-						<div class={noteComposerStyles.dock}>
+						<div class={noteComposerStyles.dock} data-note-composer>
 							<NoteComposer
 								labels={composer.labels}
 								reminderDay={composer.reminderDay}
@@ -512,13 +517,13 @@
 					{/key}
 				</div>
 			</div>
-			{#if mobile.current}
+			{#if phoneShell}
 				<PhoneTabBar />
 			{/if}
 		</div>
 	</div>
 </div>
-{#if mobile.current && uiStore.sidebarOpen}
+{#if phoneShell && uiStore.sidebarOpen}
 	<div class={styles.drawerSafeArea} aria-hidden="true"></div>
 {/if}
 <div class="app-overlay" data-app-overlay>

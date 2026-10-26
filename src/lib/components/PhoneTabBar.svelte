@@ -38,40 +38,44 @@
 </script>
 
 <nav class={styles.bar} aria-label="Main" data-phone-tabs>
-	{#each tabs as tab (tab.view)}
+	<div class={styles.cluster} data-phone-tab-cluster>
+		{#each tabs as tab (tab.view)}
+			<button
+				type="button"
+				class={styles.tab}
+				aria-current={current === tab.view ? 'page' : undefined}
+				onclick={() => go(tab.view)}
+			>
+				<span class={styles.tabIcon} data-tab-icon>
+					<tab.icon class={iconMd} aria-hidden="true" />
+				</span>
+				<span class={styles.tabLabel}>{tab.label}</span>
+			</button>
+		{/each}
+	</div>
+	<div class={styles.cluster} data-phone-tab-cluster>
 		<button
 			type="button"
 			class={styles.tab}
-			aria-current={current === tab.view ? 'page' : undefined}
-			onclick={() => go(tab.view)}
+			aria-current={current === 'labels' ? 'page' : undefined}
+			onclick={openLabels}
 		>
 			<span class={styles.tabIcon} data-tab-icon>
-				<tab.icon class={iconMd} aria-hidden="true" />
+				<Tag class={iconMd} aria-hidden="true" />
 			</span>
-			<span class={styles.tabLabel}>{tab.label}</span>
+			<span class={styles.tabLabel}>Labels</span>
 		</button>
-	{/each}
-	<button
-		type="button"
-		class={styles.tab}
-		aria-current={current === 'labels' ? 'page' : undefined}
-		onclick={openLabels}
-	>
-		<span class={styles.tabIcon} data-tab-icon>
-			<Tag class={iconMd} aria-hidden="true" />
-		</span>
-		<span class={styles.tabLabel}>Labels</span>
-	</button>
-	<button
-		type="button"
-		class={styles.tab}
-		aria-haspopup="dialog"
-		aria-expanded={uiStore.paletteOpen}
-		onclick={() => (uiStore.paletteOpen = true)}
-	>
-		<span class={styles.tabIcon} data-tab-icon>
-			<Search class={iconMd} aria-hidden="true" />
-		</span>
-		<span class={styles.tabLabel}>Search</span>
-	</button>
+		<button
+			type="button"
+			class={styles.tab}
+			aria-haspopup="dialog"
+			aria-expanded={uiStore.paletteOpen}
+			onclick={() => (uiStore.paletteOpen = true)}
+		>
+			<span class={styles.tabIcon} data-tab-icon>
+				<Search class={iconMd} aria-hidden="true" />
+			</span>
+			<span class={styles.tabLabel}>Search</span>
+		</button>
+	</div>
 </nav>

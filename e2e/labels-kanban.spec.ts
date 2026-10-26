@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { createNote, noteCard, openEmptyApp, quickAction } from './app';
-import type { Locator } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 
 /** Move a card to another column from its "…" menu. */
 async function moveTo(card: Locator, column: string): Promise<void> {
@@ -442,5 +442,159 @@ test.describe('on a phone', () => {
 		await expect(tabs.nth(shown)).toHaveText(/\s1\s*$/);
 		await expect(columns.nth(shown).getByRole('article')).toHaveCount(1);
 		await expect(tabs.nth(0)).toHaveText(/Unsorted\s*0/);
+	});
+});
+
+test.describe('on a landscape phone', () => {
+	test.use({ viewport: { width: 732, height: 540 }, hasTouch: true });
+
+	test('two kanban columns fit on the screen', async ({ page }) => {
+		await openEmptyApp(page);
+		await createNote(page, 'Task one');
+		await page.goto('/kanban');
+		await page
+			.getByRole('region', { name: 'Boards group your notes by label' })
+			.getByRole('button', { name: 'To-Do · In-Progress · Done' })
+			.click();
+		const first = (await page
+			.getByRole('region', { name: 'Unsorted Kanban column' })
+			.boundingBox())!;
+		const second = (await page.getByRole('region', { name: 'To-Do label column' }).boundingBox())!;
+		expect(first.width).toBeLessThanOrEqual(340);
+		expect(second.x).toBeGreaterThan(first.x + first.width);
+		expect(second.x + second.width).toBeLessThanOrEqual(732);
+	});
+});
+
+test.describe('a folded Surface Duo', () => {
+	test.use({
+		viewport: { width: 540, height: 720 },
+		hasTouch: true,
+		userAgent:
+			'Mozilla/5.0 (Linux; Android 12; Surface Duo 2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36'
+	});
+
+	test('keeps the board clear of the side status column', async ({ page }) => {
+		await openEmptyApp(page);
+		await createNote(page, 'Task one');
+		await page.goto('/kanban');
+		const right = await page.evaluate(() =>
+			Number.parseFloat(
+				getComputedStyle(document.documentElement).getPropertyValue('--app-inset-right')
+			)
+		);
+		expect(right).toBeGreaterThanOrEqual(84);
+		await page
+			.getByRole('region', { name: 'Boards group your notes by label' })
+			.getByRole('button', { name: 'To-Do · In-Progress · Done' })
+			.click();
+		const frameRight = 540 - right;
+		const unsorted = (await page
+			.getByRole('region', { name: 'Unsorted Kanban column' })
+			.boundingBox())!;
+		expect(unsorted.x + unsorted.width).toBeLessThanOrEqual(frameRight + 1);
+		const add = (await page.getByRole('button', { name: 'Add a label column' }).boundingBox())!;
+		expect(add.x + add.width).toBeLessThanOrEqual(frameRight + 1);
+		const actions = (await noteCard(page, 'Task one')
+			.getByRole('button', { name: 'Note actions' })
+			.boundingBox())!;
+		expect(actions.x + actions.width).toBeLessThanOrEqual(frameRight + 1);
+	});
+});
+
+function installSegments(
+	page: Page,
+	segments: { x: number; y: number; width: number; height: number }[]
+) {
+	return page.addInitScript((rects) => {
+		Object.defineProperty(window, 'viewport', {
+			configurable: true,
+			value: { segments: rects }
+		});
+	}, segments);
+}
+
+test.describe('a spanned Surface Duo', () => {
+	test('a vertical hinge puts one column on each screen and keeps the note on the right', async ({
+		page
+	}) => {
+		await page.setViewportSize({ width: 1114, height: 720 });
+		await installSegments(page, [
+			{ x: 0, y: 0, width: 540, height: 720 },
+			{ x: 574, y: 0, width: 540, height: 720 }
+		]);
+		await openEmptyApp(page);
+		await expect(page.locator('html')).toHaveAttribute('data-viewport-span', 'horizontal');
+		await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible();
+		await expect(page.getByRole('navigation', { name: 'Main navigation' })).toHaveCount(0);
+		await expect(page.getByRole('textbox', { name: 'Search notes' })).toBeHidden();
+		await expect(page.locator('[data-phone-tab-cluster]')).toHaveCount(2);
+
+		await createNote(page, 'Span note');
+		const masonry = page.locator('[data-note-masonry]');
+		await expect
+			.poll(() =>
+				masonry.evaluate((grid) => getComputedStyle(grid).gridTemplateColumns.split(' ').length)
+			)
+			.toBe(7);
+		const card = (await noteCard(page, 'Span note').boundingBox())!;
+		expect(card.x).toBeLessThan(540);
+
+		await noteCard(page, 'Span note')
+			.getByRole('button', { name: /^Open Span note/ })
+			.click();
+		const editor = page.getByRole('dialog', { name: 'Note editor' });
+		await expect(editor).toBeVisible();
+		expect((await editor.boundingBox())!.x).toBeGreaterThan(500);
+		await page.keyboard.press('Escape');
+		await expect(editor).toBeHidden();
+
+		await page.goto('/reminders');
+		const split = page.locator('[data-reminder-split]');
+		await expect.poll(() => split.evaluate((node) => getComputedStyle(node).display)).toBe('grid');
+		expect((await split.locator(':scope > *').first().boundingBox())!.width).toBeGreaterThan(400);
+
+		await page.goto('/kanban');
+		await page
+			.getByRole('region', { name: 'Boards group your notes by label' })
+			.getByRole('button', { name: 'To-Do · In-Progress · Done' })
+			.click();
+		const first = (await page
+			.getByRole('region', { name: 'Unsorted Kanban column' })
+			.boundingBox())!;
+		const second = (await page.getByRole('region', { name: 'To-Do label column' }).boundingBox())!;
+		expect(first.width).toBeGreaterThan(500);
+		expect(first.width).toBeLessThan(560);
+		expect(second.x).toBeGreaterThan(550);
+		expect(second.x).toBeLessThan(600);
+		const fold = await page.evaluate(() =>
+			Number.parseFloat(getComputedStyle(document.documentElement, '::before').width)
+		);
+		expect(fold).toBeGreaterThan(20);
+	});
+
+	test('a horizontal hinge stretches the columns down both screens', async ({ page }) => {
+		await page.setViewportSize({ width: 720, height: 1114 });
+		await installSegments(page, [
+			{ x: 0, y: 0, width: 720, height: 540 },
+			{ x: 0, y: 574, width: 720, height: 540 }
+		]);
+		await openEmptyApp(page);
+		await createNote(page, 'Task one');
+		await page.goto('/kanban');
+		await expect(page.locator('html')).toHaveAttribute('data-viewport-span', 'vertical');
+		await page
+			.getByRole('region', { name: 'Boards group your notes by label' })
+			.getByRole('button', { name: 'To-Do · In-Progress · Done' })
+			.click();
+		const column = (await page
+			.getByRole('region', { name: 'Unsorted Kanban column' })
+			.boundingBox())!;
+		expect(column.width).toBeLessThanOrEqual(340);
+		expect(column.height).toBeGreaterThan(500);
+		const fold = await page.evaluate(() =>
+			Number.parseFloat(getComputedStyle(document.documentElement, '::before').height)
+		);
+		expect(fold).toBeGreaterThan(20);
 	});
 });

@@ -6,9 +6,23 @@
 	--app-inset-right: env(safe-area-inset-right, 0px);
 	--app-inset-bottom: env(safe-area-inset-bottom, 0px);
 	--app-inset-left: env(safe-area-inset-left, 0px);
-	/* The width the app frame actually has: 100vw less the side insets. iPhone Duo folded
-	 * keeps its status bar down one side, so anything sized from 100vw runs under it. */
+	/* The width the app frame actually has: 100vw less the side insets. A folded
+	 * Surface Duo that reports no safe area gets a gutter from attachAppViewport. */
 	--app-frame-width: calc(100vw - var(--app-inset-left) - var(--app-inset-right));
+	/* One screen inside the frame. A horizontal span replaces this with the segment. */
+	--app-screen-width: var(--app-frame-width);
+	--app-column-gap: 0.75rem;
+	/* Phone columns cap at a note card so a landscape Duo fits two. Wide windows
+	 * already sit on that cap. A horizontal span overrides it with one screen. */
+	--app-column-width: min(
+		calc(var(--note-card-width) + 1.5rem),
+		calc(var(--app-screen-width) - 4rem)
+	);
+	--app-fold-x: 0px;
+	--app-fold-y: 0px;
+	--app-fold-w: 0px;
+	--app-fold-h: 0px;
+	--app-column-stretch: 0;
 	--app-visual-offset-top: 0px;
 	--app-keyboard-top: 0px;
 	--app-keyboard-bottom: 0px;
@@ -41,6 +55,391 @@ html.ios-standalone {
 	html.keyboard-open [data-tab-bar-bleed] {
 		display: none;
 	}
+}
+
+/* Two-segment windows. env() is the pre-JS default; attachAppViewport writes the
+ * same variables, and the attribute, once it can read the segments. */
+@media (horizontal-viewport-segments: 2) {
+	:root {
+		--app-screen-width: calc(env(viewport-segment-width 0 0) - var(--app-inset-left));
+		--app-column-width: var(--app-screen-width);
+		--app-column-gap: max(
+			0px,
+			calc(env(viewport-segment-left 1 0) - env(viewport-segment-right 0 0))
+		);
+		--app-fold-x: env(viewport-segment-right 0 0);
+		--app-fold-y: 0px;
+		--app-fold-w: var(--app-column-gap);
+		--app-fold-h: 100%;
+		--app-column-stretch: 0;
+		--app-tabbar-height: 3.5rem;
+	}
+}
+
+@media (vertical-viewport-segments: 2) {
+	:root {
+		--app-fold-x: 0px;
+		--app-fold-y: env(viewport-segment-bottom 0 0);
+		--app-fold-w: 100%;
+		--app-fold-h: max(0px, calc(env(viewport-segment-top 0 1) - env(viewport-segment-bottom 0 0)));
+		--app-column-stretch: 1;
+	}
+}
+
+/* The hinge is hardware. This mask sits on the layout viewport, outside the
+ * transformed frame, and only has a size while a span publishes a fold. */
+html::before {
+	content: '';
+	position: fixed;
+	z-index: 70;
+	left: var(--app-fold-x);
+	top: var(--app-fold-y);
+	width: var(--app-fold-w);
+	height: var(--app-fold-h);
+	background-color: var(--colors-scrapscache-bg);
+	pointer-events: none;
+}
+
+html[data-viewport-span='horizontal'] .kanban-columns:not([data-kanban-panning]),
+html[data-viewport-span='vertical'] .kanban-columns:not([data-kanban-panning]) {
+	scroll-snap-type: x mandatory;
+}
+
+html[data-viewport-span='horizontal'] .kanban-columns {
+	padding-inline: 0;
+	scroll-padding-inline: 0;
+}
+
+html[data-viewport-span='horizontal'] section[data-kanban-column] {
+	scroll-snap-align: start;
+}
+
+html[data-viewport-span='vertical'] [data-kanban-page] {
+	display: flex;
+	flex-direction: column;
+	box-sizing: border-box;
+	min-height: calc(
+		100dvh - var(--app-frame-top) - var(--app-inset-bottom) - var(--app-topbar-height) -
+			var(--app-tabbar-height)
+	);
+	padding-bottom: 0;
+}
+
+html[data-viewport-span='vertical'] .kanban-columns {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	padding-bottom: 0;
+	min-height: calc(
+		100dvh - var(--app-frame-top) - var(--app-inset-bottom) - var(--app-topbar-height) -
+			var(--app-tabbar-height) - 4.5rem
+	);
+}
+
+html[data-viewport-span='vertical'] [data-kanban-track] {
+	flex: 1 1 auto;
+	align-items: stretch;
+}
+
+html[data-viewport-span='vertical'] section[data-kanban-column] {
+	align-self: stretch;
+	min-height: 100%;
+}
+
+html[data-viewport-span='horizontal'] [data-phone-tabs],
+html[data-viewport-span='horizontal'] [data-app-topbar]:has([data-view-title]) {
+	display: grid;
+	grid-template-columns: minmax(0, var(--app-screen-width)) var(--app-fold-w) minmax(0, 1fr);
+	column-gap: 0;
+	align-items: center;
+}
+
+html[data-viewport-span='horizontal'] [data-phone-tab-cluster] {
+	display: flex;
+	min-width: 0;
+}
+
+html[data-viewport-span='horizontal'] [data-phone-tab-cluster]:nth-child(1),
+html[data-viewport-span='horizontal'] [data-view-title] {
+	grid-column: 1;
+}
+
+html[data-viewport-span='horizontal'] [data-phone-tab-cluster]:nth-child(2),
+html[data-viewport-span='horizontal'] [data-phone-actions] {
+	grid-column: 3;
+}
+
+html[data-viewport-span='horizontal'] [data-phone-actions] {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	min-width: 0;
+	gap: 0.25rem;
+}
+
+html[data-viewport-span='horizontal'] [data-note-masonry] {
+	display: grid;
+	width: calc(100% + 2rem);
+	margin-inline: -1rem;
+	gap: 0;
+	grid-template-columns:
+		minmax(0, 1fr) 0.625rem minmax(0, 1fr) var(--app-fold-w) minmax(0, 1fr)
+		0.625rem minmax(0, 1fr);
+}
+
+html[data-viewport-span='horizontal'] [data-note-masonry] > :nth-child(1) {
+	grid-column: 1;
+}
+html[data-viewport-span='horizontal'] [data-note-masonry] > :nth-child(2) {
+	grid-column: 3;
+}
+html[data-viewport-span='horizontal'] [data-note-masonry] > :nth-child(3) {
+	grid-column: 5;
+}
+html[data-viewport-span='horizontal'] [data-note-masonry] > :nth-child(4) {
+	grid-column: 7;
+}
+
+html[data-viewport-span='horizontal'] [data-reminder-split] {
+	display: grid;
+	grid-template-columns: var(--app-screen-width) var(--app-fold-w) minmax(0, 1fr);
+	gap: 0;
+	width: calc(100% + 2rem);
+	margin-inline: -1rem;
+	align-items: start;
+}
+
+html[data-viewport-span='horizontal'] [data-reminder-split] > :first-child {
+	grid-column: 1;
+	width: 100%;
+	max-width: none;
+	margin: 0;
+	padding-inline: 1rem;
+	box-sizing: border-box;
+}
+
+html[data-viewport-span='horizontal'] [data-reminder-split] > :last-child {
+	grid-column: 3;
+	max-width: none;
+	margin: 0;
+	padding-inline: 1rem;
+	box-sizing: border-box;
+}
+
+html[data-viewport-span='horizontal'] [data-note-composer] {
+	width: var(--app-screen-width);
+	max-width: none;
+	margin-left: -1rem;
+	margin-right: 0;
+	box-sizing: border-box;
+	padding-inline: 1rem;
+}
+
+/* A centered message or a full-width list would be cut by the vertical hinge.
+   These stay on the left screen. Masonry, the board, and reminders opt out. */
+html[data-viewport-span='horizontal'] [data-span-screen] {
+	width: min(100%, calc(var(--app-screen-width) - 2rem));
+	max-width: calc(var(--app-screen-width) - 2rem);
+	margin-left: 0;
+	margin-right: auto;
+}
+
+html[data-viewport-span='horizontal'] .app-float {
+	left: calc(var(--app-screen-width) + var(--app-fold-w));
+}
+
+html[data-viewport-span='vertical'] .app-float {
+	top: calc(
+		var(--app-fold-y) + var(--app-fold-h) - var(--app-frame-top) - var(--app-topbar-height)
+	);
+}
+
+html[data-viewport-span='vertical'].editor-expanded .app-float {
+	top: calc(var(--app-fold-y) + var(--app-fold-h) - var(--app-frame-top));
+}
+
+html[data-viewport-span='horizontal'] .app-overlay [data-part='positioner'] {
+	left: calc(var(--app-screen-width) + var(--app-fold-w));
+	right: 0;
+}
+
+html[data-viewport-span='vertical'] .app-overlay [data-part='positioner'] {
+	top: calc(var(--app-fold-y) + var(--app-fold-h) - var(--app-frame-top));
+	bottom: 0;
+}
+
+html[data-viewport-span='horizontal'] [data-undo-bar] {
+	bottom: calc(var(--app-tabbar-height) + 1rem);
+	max-width: calc(var(--app-screen-width) - 2rem);
+}
+
+@media (horizontal-viewport-segments: 2) {
+	.kanban-columns:not([data-kanban-panning]) {
+		scroll-snap-type: x mandatory;
+	}
+	.kanban-columns {
+		padding-inline: 0;
+		scroll-padding-inline: 0;
+	}
+	section[data-kanban-column] {
+		scroll-snap-align: start;
+	}
+	[data-phone-tabs],
+	[data-app-topbar]:has([data-view-title]) {
+		display: grid;
+		grid-template-columns: minmax(0, var(--app-screen-width)) var(--app-fold-w) minmax(0, 1fr);
+		column-gap: 0;
+		align-items: center;
+	}
+	[data-phone-tab-cluster] {
+		display: flex;
+		min-width: 0;
+	}
+	[data-phone-tab-cluster]:nth-child(1),
+	[data-view-title] {
+		grid-column: 1;
+	}
+	[data-phone-tab-cluster]:nth-child(2),
+	[data-phone-actions] {
+		grid-column: 3;
+	}
+	[data-phone-actions] {
+		display: flex;
+		align-items: center;
+		justify-content: flex-end;
+		min-width: 0;
+		gap: 0.25rem;
+	}
+	[data-note-masonry] {
+		display: grid;
+		width: calc(100% + 2rem);
+		margin-inline: -1rem;
+		gap: 0;
+		grid-template-columns:
+			minmax(0, 1fr) 0.625rem minmax(0, 1fr) var(--app-fold-w) minmax(0, 1fr) 0.625rem
+			minmax(0, 1fr);
+	}
+	[data-note-masonry] > :nth-child(1) {
+		grid-column: 1;
+	}
+	[data-note-masonry] > :nth-child(2) {
+		grid-column: 3;
+	}
+	[data-note-masonry] > :nth-child(3) {
+		grid-column: 5;
+	}
+	[data-note-masonry] > :nth-child(4) {
+		grid-column: 7;
+	}
+	[data-reminder-split] {
+		display: grid;
+		grid-template-columns: var(--app-screen-width) var(--app-fold-w) minmax(0, 1fr);
+		gap: 0;
+		width: calc(100% + 2rem);
+		margin-inline: -1rem;
+		align-items: start;
+	}
+	[data-reminder-split] > :first-child {
+		grid-column: 1;
+		width: 100%;
+		max-width: none;
+		margin: 0;
+		padding-inline: 1rem;
+		box-sizing: border-box;
+	}
+	[data-reminder-split] > :last-child {
+		grid-column: 3;
+		max-width: none;
+		margin: 0;
+		padding-inline: 1rem;
+		box-sizing: border-box;
+	}
+	[data-note-composer] {
+		width: var(--app-screen-width);
+		max-width: none;
+		margin-left: -1rem;
+		margin-right: 0;
+		box-sizing: border-box;
+		padding-inline: 1rem;
+	}
+	[data-span-screen] {
+		width: min(100%, calc(var(--app-screen-width) - 2rem));
+		max-width: calc(var(--app-screen-width) - 2rem);
+		margin-left: 0;
+		margin-right: auto;
+	}
+	.app-float {
+		left: calc(var(--app-screen-width) + var(--app-fold-w));
+	}
+	.app-overlay [data-part='positioner'] {
+		left: calc(var(--app-screen-width) + var(--app-fold-w));
+		right: 0;
+	}
+	[data-undo-bar] {
+		bottom: calc(var(--app-tabbar-height) + 1rem);
+		max-width: calc(var(--app-screen-width) - 2rem);
+	}
+}
+
+@media (vertical-viewport-segments: 2) {
+	[data-kanban-page] {
+		display: flex;
+		flex-direction: column;
+		box-sizing: border-box;
+		min-height: calc(
+			100dvh - var(--app-frame-top) - var(--app-inset-bottom) - var(--app-topbar-height) -
+				var(--app-tabbar-height)
+		);
+		padding-bottom: 0;
+	}
+	.kanban-columns {
+		display: flex;
+		flex: 1 1 auto;
+		flex-direction: column;
+		padding-bottom: 0;
+		min-height: calc(
+			100dvh - var(--app-frame-top) - var(--app-inset-bottom) - var(--app-topbar-height) -
+				var(--app-tabbar-height) - 4.5rem
+		);
+	}
+	[data-kanban-track] {
+		flex: 1 1 auto;
+		align-items: stretch;
+	}
+	section[data-kanban-column] {
+		align-self: stretch;
+		min-height: 100%;
+	}
+	.app-float {
+		top: calc(
+			var(--app-fold-y) + var(--app-fold-h) - var(--app-frame-top) - var(--app-topbar-height)
+		);
+	}
+	html.editor-expanded .app-float {
+		top: calc(var(--app-fold-y) + var(--app-fold-h) - var(--app-frame-top));
+	}
+	.app-overlay [data-part='positioner'] {
+		top: calc(var(--app-fold-y) + var(--app-fold-h) - var(--app-frame-top));
+		bottom: 0;
+	}
+}
+
+@media (horizontal-viewport-segments: 2), (vertical-viewport-segments: 2) {
+	html.editor-open .app-canvas > main,
+	html.editor-open .app-canvas > main .scrollable {
+		pointer-events: auto;
+		overflow: auto;
+		touch-action: auto;
+	}
+}
+
+html[data-viewport-span='horizontal'].editor-open .app-canvas > main,
+html[data-viewport-span='horizontal'].editor-open .app-canvas > main .scrollable,
+html[data-viewport-span='vertical'].editor-open .app-canvas > main,
+html[data-viewport-span='vertical'].editor-open .app-canvas > main .scrollable {
+	pointer-events: auto;
+	overflow: auto;
+	touch-action: auto;
 }
 
 /* An expanded note is a full page: its overlay host escapes the canvas and

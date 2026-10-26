@@ -511,7 +511,7 @@
 	</Menu.Root>
 {/snippet}
 
-<div class={k.page}>
+<div class={k.page} data-kanban-page>
 	<h1 class={viewHeading}>Kanban</h1>
 	<div class={k.controls}>
 		{#if renamingBoard}
@@ -690,7 +690,7 @@
 		onscroll={followBoard}
 		onscrollend={endSlide}
 	>
-		<div class={k.columnsTrack}>
+		<div class={k.columnsTrack} data-kanban-track>
 			{#each board.columns as column (column.id)}
 				{@const items = columnItems(column)}
 				<section

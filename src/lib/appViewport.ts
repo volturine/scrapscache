@@ -1,3 +1,13 @@
+import { viewportSpan } from './viewportSpan.svelte.js';
+import {
+	duoFoldedSideInset,
+	isSurfaceDuo,
+	layoutFromSegments,
+	readViewportSegments,
+	spanStyle,
+	SPAN_STYLE_VARS
+} from './windowSegments.js';
+
 /** Visual viewport must shrink by more than this before the keyboard is treated as open. */
 export const KEYBOARD_HEIGHT_THRESHOLD_PX = 120;
 
@@ -164,6 +174,20 @@ function setInsetVar(name: string, value: number) {
 	document.documentElement.style.setProperty(name, `${value}px`);
 }
 
+function publishSpan(layout: ReturnType<typeof layoutFromSegments>, leftInset: number) {
+	const root = document.documentElement;
+	const next = spanStyle(layout, leftInset);
+	if (next.kind === 'single') root.removeAttribute('data-viewport-span');
+	else root.dataset.viewportSpan = next.kind;
+	const style = root.style;
+	for (const name of SPAN_STYLE_VARS) {
+		const value = next.vars[name];
+		if (value === undefined) style.removeProperty(name);
+		else style.setProperty(name, value);
+	}
+	if (viewportSpan.kind !== next.kind) viewportSpan.kind = next.kind;
+}
+
 /**
  * Root attachment: measure the device safe area and keyboard, then publish
  * them as CSS variables. The `.app-viewport` / `.app-float` layers consume
@@ -175,6 +199,8 @@ export function attachAppViewport(_node: HTMLElement) {
 	let restingLayoutHeight = window.innerHeight;
 	let editorOpen = document.documentElement.classList.contains('editor-open');
 	let keyboardVisible = false;
+	let duoModel = '';
+	let stopped = false;
 	const phone = window.matchMedia(PHONE_MEDIA);
 
 	const apply = () => {
@@ -213,6 +239,16 @@ export function attachAppViewport(_node: HTMLElement) {
 				layoutHeight
 			});
 		cachedSafe = rememberSafeArea(cachedSafe, readSafeAreaInsets(), occluding);
+		const span = layoutFromSegments(readViewportSegments(), window.innerWidth, window.innerHeight);
+		const side = duoFoldedSideInset({
+			duo: isSurfaceDuo(navigator.userAgent, duoModel),
+			width: window.innerWidth,
+			height: window.innerHeight,
+			angle: screen.orientation?.angle ?? 0,
+			safeLeft: cachedSafe.left,
+			safeRight: cachedSafe.right,
+			spanned: span.kind !== 'single'
+		});
 		const occlusion = onPhone
 			? keyboardOcclusion({
 					fieldFocused,
@@ -233,14 +269,15 @@ export function attachAppViewport(_node: HTMLElement) {
 
 		document.documentElement.classList.toggle('keyboard-open', keyboardVisible);
 		setInsetVar('--app-inset-top', cachedSafe.top);
-		setInsetVar('--app-inset-right', cachedSafe.right);
+		setInsetVar('--app-inset-right', side.right);
 		// Keep installed iPhone and iPad controls above the home indicator. When
 		// the phone keyboard is active, its own occlusion replaces this inset.
 		setInsetVar('--app-inset-bottom', appBottomInset(cachedSafe.bottom, onPhone, keyboardVisible));
-		setInsetVar('--app-inset-left', cachedSafe.left);
+		setInsetVar('--app-inset-left', side.left);
 		setInsetVar('--app-visual-offset-top', keyboardFrame.viewportOffsetTop);
 		setInsetVar('--app-keyboard-top', keyboardFrame.keyboardTop);
 		setInsetVar('--app-keyboard-bottom', keyboardFrame.keyboardBottom);
+		publishSpan(span, side.left);
 	};
 
 	const onFocusIn = (event: FocusEvent) => {
@@ -262,9 +299,11 @@ export function attachAppViewport(_node: HTMLElement) {
 
 	apply();
 	const viewport = window.visualViewport;
+	const orientation = screen.orientation;
 	viewport?.addEventListener('resize', apply);
 	viewport?.addEventListener('scroll', apply);
 	window.addEventListener('resize', apply);
+	orientation?.addEventListener('change', apply);
 	phone.addEventListener('change', apply);
 	document.addEventListener('focusin', onFocusIn);
 	document.addEventListener('focusout', onFocusOut);
@@ -272,15 +311,38 @@ export function attachAppViewport(_node: HTMLElement) {
 		attributes: true,
 		attributeFilter: ['class']
 	});
+	// Chrome reduces the Surface Duo model out of the user agent. The high-entropy
+	// hint arrives later; fold the gutter in once it does.
+	const uaData = (
+		navigator as Navigator & {
+			userAgentData?: {
+				getHighEntropyValues?: (hints: string[]) => Promise<{ model?: string }>;
+			};
+		}
+	).userAgentData;
+	void uaData
+		?.getHighEntropyValues?.(['model'])
+		.then((hints) => {
+			if (stopped) return;
+			const model = hints.model ?? '';
+			if (model === duoModel) return;
+			duoModel = model;
+			apply();
+		})
+		.catch(() => undefined);
 	return () => {
+		stopped = true;
 		viewport?.removeEventListener('resize', apply);
 		viewport?.removeEventListener('scroll', apply);
 		window.removeEventListener('resize', apply);
+		orientation?.removeEventListener('change', apply);
 		phone.removeEventListener('change', apply);
 		document.removeEventListener('focusin', onFocusIn);
 		document.removeEventListener('focusout', onFocusOut);
 		editorClassObserver.disconnect();
 		document.documentElement.classList.remove('keyboard-open');
+		viewportSpan.kind = 'single';
+		document.documentElement.removeAttribute('data-viewport-span');
 		const style = document.documentElement.style;
 		for (const name of [
 			'--app-inset-top',
@@ -289,7 +351,8 @@ export function attachAppViewport(_node: HTMLElement) {
 			'--app-inset-left',
 			'--app-visual-offset-top',
 			'--app-keyboard-top',
-			'--app-keyboard-bottom'
+			'--app-keyboard-bottom',
+			...SPAN_STYLE_VARS
 		])
 			style.removeProperty(name);
 	};

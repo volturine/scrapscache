@@ -25,10 +25,12 @@
 	--app-visual-offset-top: 0px;
 	--app-keyboard-top: 0px;
 	--app-keyboard-bottom: 0px;
-	/* The folded status pill hangs down the right edge, beside where the header
-	   actions would be. Once that inset is real, they move under the pill. */
+	/* The folded status pill hangs in the right gutter, beside the title.
+	   Once that inset is real, the actions move to the line just under the
+	   pill. 2rem clears it on iPhone Duo. A taller drop lands them beside
+	   the battery and leaves an empty header. */
 	--app-topbar-base: 3.5rem;
-	--app-island-drop: clamp(0px, calc((max(var(--app-inset-right), 0px) - 40px) * 999), 10rem);
+	--app-island-drop: clamp(0px, calc((max(var(--app-inset-right), 0px) - 40px) * 999), 2rem);
 	--app-topbar-height: calc(var(--app-topbar-base) + var(--app-island-drop));
 	/* The phone tab bar's height; zero where the sidebar carries the navigation. */
 	--app-tabbar-height: 0px;

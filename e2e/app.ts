@@ -4,7 +4,17 @@ import { expect, type Locator, type Page } from '@playwright/test';
 export async function openEmptyApp(page: Page, path = '/'): Promise<void> {
 	await page.addInitScript(() => localStorage.setItem('scrapscache-seeded', '1'));
 	await page.goto(path);
-	await expect(page.getByRole('button', { name: 'New note' })).toBeVisible();
+	await expect(composerPrompt(page)).toBeVisible();
+}
+
+/** The "Take a note…" bar at the head of the feed, closed or open. */
+export function composer(page: Page): Locator {
+	return page.getByRole('region', { name: 'New note' });
+}
+
+/** The closed bar's prompt; the empty state has a "Take a note" button of its own. */
+export function composerPrompt(page: Page): Locator {
+	return composer(page).getByRole('button', { name: /^Take a note/ });
 }
 
 export function editor(page: Page): Locator {
@@ -21,24 +31,26 @@ export function noteCard(page: Page, title: string): Locator {
 	return page.getByRole('article').filter({ has: noteCardOpen(page, title) });
 }
 
-/** Create a note through the editor and close it, so the feed shows its card. */
+/** Create a note in the composer and put it away, so the feed shows its card. */
 export async function createNote(page: Page, title: string, body?: string): Promise<void> {
-	await page.getByRole('button', { name: 'New note' }).click();
-	const dialog = editor(page);
-	await expect(dialog).toBeVisible();
-	const bodyBox = dialog.getByRole('textbox', { name: 'Note body' });
-	// A new note focuses its body on open and again 50 ms later; a title typed in
-	// between lands in the body, so let the second focus pass first.
+	await composerPrompt(page).click();
+	const bar = composer(page);
+	const bodyBox = bar.getByRole('textbox', { name: 'Note body' });
 	await expect(bodyBox).toBeFocused();
-	await page.waitForTimeout(100);
-	await dialog.getByPlaceholder('Title', { exact: true }).fill(title);
+	await bar.getByPlaceholder('Title', { exact: true }).fill(title);
 	if (body) {
 		await bodyBox.click();
 		await bodyBox.pressSequentially(body);
 	}
-	await dialog.getByRole('button', { name: 'Close note' }).click();
-	await expect(dialog).toBeHidden();
+	await bar.getByRole('button', { name: 'Done' }).click();
+	await expect(bodyBox).toBeHidden();
 	await expect(noteCard(page, title)).toBeVisible();
+	// The new card slides in, and cards around it may re-enter their columns; a
+	// position read before that settles is not where anything will stay. An animation
+	// cut short (its card replaced by a sync) rejects, which settles it just as well.
+	await page.evaluate(() =>
+		Promise.allSettled(document.getAnimations().map((animation) => animation.finished))
+	);
 }
 
 /** Open the quick actions of a card and press one of them. */

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { createNote, openEmptyApp } from './app';
+import { composerPrompt, createNote, openEmptyApp } from './app';
 
 type ThemeSwitchProbeWindow = Window & {
 	__themeSwitchProbe?: {
@@ -120,7 +120,8 @@ test.describe('installed iOS document chrome', () => {
 		await page.keyboard.press('Escape');
 		await expect(page.getByRole('menu', { includeHidden: true })).toBeHidden();
 
-		await page.getByRole('button', { name: 'New note' }).click();
+		await composerPrompt(page).click();
+		await page.getByRole('button', { name: 'Open in the editor' }).click();
 		await expect(page.getByRole('dialog', { name: 'Note editor' })).toBeVisible();
 		expect(
 			await page.evaluate(() =>

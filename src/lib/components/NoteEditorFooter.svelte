@@ -20,6 +20,7 @@
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { Menu } from '@ark-ui/svelte/menu';
 	import { Format } from '@ark-ui/svelte/format';
+	import type { Snippet } from 'svelte';
 	import { slide } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 	import { prefersReducedMotion } from 'svelte/motion';
@@ -87,7 +88,8 @@
 		onRestore,
 		onArchive,
 		onDelete,
-		onImagesChange
+		onImagesChange,
+		trailing
 	}: {
 		images?: NoteImage[];
 		body?: string;
@@ -112,6 +114,8 @@
 		onArchive?: () => void;
 		onDelete?: () => void;
 		onImagesChange?: (images: NoteImage[]) => void;
+		/** Controls after Color, at the end of the footer: the composer's own. */
+		trailing?: Snippet;
 	} = $props();
 
 	// Phones and most desktop browsers have a system share sheet; others copy the link.
@@ -163,7 +167,7 @@
 	 * Normal button: each press creates a one-shot file input in this gesture,
 	 * opens the system picker, then discards the input so cancel cannot stick.
 	 */
-	function openAttach() {
+	export function openAttach() {
 		attachError = '';
 		const active = document.activeElement;
 		if (active instanceof HTMLElement && isKeyboardField(active)) active.blur();
@@ -312,7 +316,8 @@
 	function openTags(e: MouseEvent) {
 		e.stopPropagation();
 		closeMenus();
-		if (!noteId) {
+		// A host that can make the note first (the composer) handles the unsaved case.
+		if (!noteId && !onOpenTags) {
 			attachError = 'Save the note first to add labels';
 			return;
 		}
@@ -350,7 +355,7 @@
 		else void openAttachment(source);
 	}
 
-	async function openCanvas(attachment?: NoteImage) {
+	export async function openCanvas(attachment?: NoteImage) {
 		attachError = '';
 		if (!attachment) {
 			focusedCanvas = null;
@@ -910,6 +915,9 @@
 			})}
 		>
 			{@render footerButton('Color', 'Color', Palette, 'ghost', () => onOpenColor?.())}
+			{#if trailing}
+				{@render trailing()}
+			{/if}
 			{#if showShare}
 				<Menu.Root bind:open={shareOpen} positioning={{ placement: 'top-end' }}>
 					<Tooltip content="Share">

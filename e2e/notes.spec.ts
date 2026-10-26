@@ -1,5 +1,13 @@
 import { expect, test, type Locator } from '@playwright/test';
-import { createNote, editor, noteCard, openEmptyApp, quickAction } from './app';
+import {
+	composer,
+	composerPrompt,
+	createNote,
+	editor,
+	noteCard,
+	openEmptyApp,
+	quickAction
+} from './app';
 
 test('a note survives a reload and an offline reload', async ({ page, context }) => {
 	await openEmptyApp(page);
@@ -67,8 +75,8 @@ test('controls keep keyboard focus without drawing highlights', async ({ page })
 
 test('a new note shows its body placeholder', async ({ page }) => {
 	await openEmptyApp(page);
-	await page.getByRole('button', { name: 'New note' }).click();
-	const body = editor(page).getByRole('textbox', { name: 'Note body' });
+	await composerPrompt(page).click();
+	const body = composer(page).getByRole('textbox', { name: 'Note body' });
 	await expect(body).toBeFocused();
 
 	// The empty line holds a zero-width caret holder, so the hint must not need :empty.
@@ -338,8 +346,8 @@ test('search narrows the feed to matching notes', async ({ page }) => {
 
 test('extra cursors look like the native caret and selection', async ({ page }) => {
 	await openEmptyApp(page);
-	await page.getByRole('button', { name: 'New note' }).click();
-	const body = editor(page).getByRole('textbox', { name: 'Note body' });
+	await composerPrompt(page).click();
+	const body = composer(page).getByRole('textbox', { name: 'Note body' });
 	await body.pressSequentially('cat cat cat');
 	await page.keyboard.press('Home');
 	// Mod+D selects the word, then adds the next match as an extra cursor.
@@ -394,11 +402,11 @@ test('search chips narrow the feed, matches are marked, and a miss offers a new 
 	await page.getByRole('button', { name: 'Clear filters' }).first().click();
 	await expect(noteCard(page, 'Lisbon trip')).toBeVisible();
 
-	// A miss offers the query as a new note's title.
+	// A miss offers the query as a new note's title, written in the composer.
 	await search.fill('retro');
 	await page.getByRole('button', { name: 'Create a note titled “retro”' }).click();
-	await expect(editor(page)).toBeVisible();
-	await expect(editor(page).getByPlaceholder('Title')).toHaveValue('retro');
+	await expect(composer(page).getByPlaceholder('Title', { exact: true })).toHaveValue('retro');
+	await expect(composer(page).getByRole('textbox', { name: 'Note body' })).toBeFocused();
 	await expect(search).toHaveValue('');
 });
 
@@ -671,10 +679,9 @@ test.describe('on a phone', () => {
 		await expect(page.getByRole('searchbox')).toHaveCount(0);
 		await expect(page.locator('[data-view-title]')).toHaveText('Notes');
 
-		// The new-note button floats above the bar.
-		const fab = await page.getByRole('button', { name: 'New note' }).boundingBox();
-		const bar = await tabs.boundingBox();
-		expect(fab!.y + fab!.height).toBeLessThanOrEqual(bar!.y);
+		// The composer sits under the top bar; there is no floating new-note button.
+		await expect(composerPrompt(page)).toBeVisible();
+		await expect(page.getByRole('button', { name: 'New note' })).toHaveCount(0);
 
 		await tabs.getByRole('button', { name: 'Reminders' }).click();
 		await expect(page).toHaveURL(/\/reminders$/);
@@ -685,18 +692,15 @@ test.describe('on a phone', () => {
 		await expect(page.locator('[data-view-title]')).toHaveText('Reminders');
 
 		await tabs.getByRole('button', { name: 'Notes' }).click();
-		// With a phone keyboard up (the viewport code marks the page), the new-note
-		// button hides instead of riding up over the notes. Read in one step: the
-		// viewport code recomputes the mark on any focus or scroll and would clear it.
-		// The tab bar goes too, so an open note's layer reaches the keyboard instead of
-		// stopping a tab bar's height above it.
+		// With a phone keyboard up (the viewport code marks the page), the tab bar goes,
+		// so an open note's layer reaches the keyboard instead of stopping a tab bar's
+		// height above it. Read in one step: the viewport code recomputes the mark on
+		// any focus or scroll and would clear it.
 		const withKeyboard = await page.evaluate(() => {
 			const root = document.documentElement;
-			const fab = document.querySelector<HTMLElement>('.new-note-fab')!;
 			const tabs = document.querySelector<HTMLElement>('[data-phone-tabs]')!;
 			const float = document.querySelector<HTMLElement>('[data-app-float]')!;
 			const read = () => ({
-				fab: getComputedStyle(fab).visibility,
 				tabs: getComputedStyle(tabs).display,
 				floatGap: Math.round(
 					document.querySelector('.app-viewport')!.getBoundingClientRect().bottom -
@@ -708,8 +712,7 @@ test.describe('on a phone', () => {
 			root.classList.remove('keyboard-open');
 			return { up, down: read() };
 		});
-		expect(withKeyboard.up).toEqual({ fab: 'hidden', tabs: 'none', floatGap: 0 });
-		expect(withKeyboard.down.fab).toBe('visible');
+		expect(withKeyboard.up).toEqual({ tabs: 'none', floatGap: 0 });
 		expect(withKeyboard.down.tabs).toBe('flex');
 		expect(withKeyboard.down.floatGap).toBeGreaterThan(40);
 
@@ -781,7 +784,7 @@ test.describe('on a phone', () => {
 	});
 });
 
-test('the last card stays clear of the new note button', async ({ page }) => {
+test('on a phone the composer stays under the top bar while the feed scrolls', async ({ page }) => {
 	await page.setViewportSize({ width: 390, height: 640 });
 	await openEmptyApp(page);
 	const feed = page.getByRole('main');
@@ -792,23 +795,12 @@ test('the last card stays clear of the new note button', async ({ page }) => {
 	// The check means nothing unless the feed has an end to scroll to.
 	expect(await scrolls()).toBe(true);
 
-	const clearance = async () => {
-		await feed.evaluate((element) =>
-			element.scrollTo({ top: element.scrollHeight, behavior: 'instant' })
-		);
-		const lowestCard = await page
-			.getByRole('article')
-			.evaluateAll((cards) =>
-				Math.max(...cards.map((card) => card.getBoundingClientRect().bottom))
-			);
-		const button = await page.getByRole('button', { name: 'New note' }).boundingBox();
-		return button!.y - lowestCard;
-	};
-	expect(await clearance()).toBeGreaterThanOrEqual(0);
-
-	// An overlaid phone keyboard lifts the button; appViewport publishes its height here.
-	await page.evaluate(() =>
-		document.documentElement.style.setProperty('--app-keyboard-bottom', '336px')
+	const prompt = composerPrompt(page);
+	const restingTop = (await prompt.boundingBox())!.y;
+	await feed.evaluate((element) =>
+		element.scrollTo({ top: element.scrollHeight, behavior: 'instant' })
 	);
-	expect(await clearance()).toBeGreaterThanOrEqual(0);
+	expect(await feed.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+	expect((await prompt.boundingBox())!.y).toBe(restingTop);
+	await expect(prompt).toBeInViewport();
 });

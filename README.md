@@ -24,7 +24,7 @@ Visit [scrapscache.com](https://scrapscache.com).
 
 ## Features
 
-- **Notes** — title, body, colors, pins, archive, trash
+- **Notes** — title, body, colors, pins, archive, trash; a "Take a note…" bar at the top of the feed writes one in place, with a checklist, drawing or photo one tap away
 - **Checklists** — `[ ]` / `[x]` lines in the note body
 - **Labels** — organize and filter notes
 - **Reminders** — one-off or repeating (every day, weekday, week, month, year or a custom pattern), picked or typed ("every monday at 9"); one alert per reminder across your devices: one dismissed on a device is not shown again on the others; sync can wake every enabled device without sending note content

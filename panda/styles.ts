@@ -164,12 +164,13 @@ export const appLayout = {
 		minH: 0,
 		overflowY: 'auto',
 		overflowX: 'hidden',
+		// The feed's own layers (the pinned composer over the cards) stay inside it, so
+		// nothing in it can paint over the bar's menus or the note editor above.
+		isolation: 'isolate',
 		px: 'lg',
-		// Scrolled to the end, every view's last card clears the floating new-note
-		// button's top edge; the view's own bottom padding is the gap above it. The
-		// button rides above an overlaid phone keyboard (.app-float ends at
-		// --app-keyboard-bottom), so the clearance grows with it.
-		pb: 'calc(var(--app-keyboard-bottom) + var(--app-fab-bottom) + var(--app-fab-size))'
+		// An overlaid phone keyboard (.app-float ends at --app-keyboard-bottom) must not
+		// cover the last card, so the room under the feed grows with it.
+		pb: 'calc(var(--app-keyboard-bottom) + token(spacing.3xl))'
 	})
 };
 
@@ -3745,11 +3746,10 @@ export const undoBarStyles = {
 		position: 'fixed',
 		zIndex: 70,
 		left: 'lg',
-		bottom: 'var(--app-fab-bottom)',
+		bottom: '2xl',
 		...rowCenter,
 		gap: 'sm',
-		// Clear of the floating new-note button on the right.
-		maxW: 'calc(100vw - var(--app-fab-size) - 3rem)',
+		maxW: 'calc(100vw - 2rem)',
 		px: 'md',
 		py: 'xs',
 		...border,
@@ -3932,4 +3932,69 @@ export const reminderCalendarDot = cva({
 export const reminderCalendarLegend = {
 	row: hstack({ gap: 'md', mt: 'xs', px: 'sm', textStyle: 'caption', ...mutedText }),
 	item: css({ display: 'inline-flex', alignItems: 'center' })
+};
+
+// The composer: a bar at the top of the feed that opens in place. On a phone it
+// stays under the top bar while the feed scrolls; a wide window keeps it at the
+// head of the feed, no wider than a comfortable line.
+export const noteComposerStyles = {
+	dock: css({
+		position: { base: 'sticky', md: 'static' },
+		top: 0,
+		zIndex: 20,
+		bg: 'scrapscache.bg',
+		w: 'full',
+		maxW: { md: '40rem' },
+		mx: 'auto',
+		pt: { base: 'sm', md: 'lg' },
+		pb: 'sm'
+	}),
+	root: css({ w: 'full' }),
+	bar: hstack({
+		gap: '3xs',
+		h: '3rem',
+		pl: 'lg',
+		pr: 'xs',
+		rounded: 'card',
+		borderWidth: 'hairline',
+		borderColor: 'scrapscache.borderFaint',
+		bg: 'scrapscache.bg',
+		boxShadow: 'sm'
+	}),
+	prompt: css({
+		flex: '1',
+		minW: 0,
+		h: 'full',
+		textAlign: 'left',
+		textStyle: 'subtitle',
+		...mutedText,
+		...truncateText,
+		cursor: 'text',
+		outline: 'none',
+		_focusVisible: { color: 'scrapscache.text' }
+	}),
+	sheet: css({
+		display: 'flex',
+		flexDirection: 'column',
+		rounded: 'card',
+		borderWidth: 'hairline',
+		borderColor: 'scrapscache.borderFaint',
+		boxShadow: 'md',
+		overflow: 'hidden'
+	}),
+	title: css({
+		w: 'full',
+		px: 'lg',
+		pt: 'md',
+		bg: 'transparent',
+		resize: 'none',
+		outline: 'none',
+		textStyle: 'subtitleStrong',
+		color: 'scrapscache.text',
+		_placeholder: mutedText
+	}),
+	body: css({ px: 'lg', pb: 'sm', maxH: '50vh', overflowY: 'auto' }),
+	chip: css({ alignSelf: 'flex-start', mx: 'lg', mb: 'xs', rounded: 'pill', outline: 'none' }),
+	done: css({ ml: 'xs' }),
+	popupLayer: css({ position: 'fixed', inset: 0, zIndex: 70 })
 };

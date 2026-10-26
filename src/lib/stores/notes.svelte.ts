@@ -40,6 +40,7 @@ import { AttachmentHydrationQueue } from '#lib/attachmentHydrationQueue.js';
 import { syncStore } from '#lib/stores/sync.svelte.js';
 import { kanbanStore } from '#lib/stores/kanban.svelte.js';
 import { actionUndo } from '#lib/stores/actionUndo.svelte.js';
+import { composerStore } from '#lib/stores/composer.svelte.js';
 import { canvasLibraryStore } from '#lib/stores/canvasLibrary.js';
 import { reminderHistoryStore } from '#lib/stores/reminderHistory.js';
 import { syncSnapshot, type SyncSnapshot } from '#lib/syncRecords.js';
@@ -217,7 +218,10 @@ export class NotesStore {
 
 	// Derived collections -------------------------------------------------
 	labelsById = $derived(new Map(this.labels.map((label) => [label.id, label])));
-	activeNotes = $derived(this.notes.filter((n) => !n.archived && !n.trashed));
+	/** Out of the archive and trash, and not the note the composer is still writing. */
+	activeNotes = $derived(
+		this.notes.filter((n) => !n.archived && !n.trashed && n.id !== composerStore.draftId)
+	);
 	pinnedNotes = $derived(this.activeNotes.filter((n) => n.pinned));
 	unpinnedNotes = $derived(this.activeNotes.filter((n) => !n.pinned));
 	archivedNotes = $derived(this.notes.filter((n) => n.archived && !n.trashed));

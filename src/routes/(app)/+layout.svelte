@@ -8,7 +8,9 @@
 	import Topbar from '#lib/components/Topbar.svelte';
 	import NoteEditor from '#lib/components/NoteEditor.svelte';
 	import ReminderAlert from '#lib/components/ReminderAlert.svelte';
-	import BottomNav from '#lib/components/BottomNav.svelte';
+	import NoteComposer from '#lib/components/NoteComposer.svelte';
+	import { composerStore } from '#lib/stores/composer.svelte.js';
+	import { noteComposerStyles } from '$panda/styles';
 	import PhoneTabBar from '#lib/components/PhoneTabBar.svelte';
 	import AppViews from '#lib/components/AppViews.svelte';
 	import { reminderStore } from '#lib/stores/reminders.svelte.js';
@@ -24,7 +26,8 @@
 	import { MediaQuery } from 'svelte/reactivity';
 	import { attachSyncCloudIndicator } from '#lib/syncCloudIndicator.js';
 	import { attachAppViewport } from '#lib/appViewport.js';
-	import { dayKey, reminderTimeForDay } from '#lib/utils.js';
+	import { dayKey, dayKeySpan, reminderTimeForDay } from '#lib/utils.js';
+	import { appClock } from '#lib/appClock.svelte.js';
 	import { noteAddressHistory } from '#lib/noteAddressHistory.js';
 	import { profileForWorkspaceTag, readNoteLink, withNoteLink } from '#lib/noteLinks.js';
 	import { goto } from '$app/navigation';
@@ -281,6 +284,8 @@
 	});
 
 	function startNewNote(seed?: { title?: string; body?: string }) {
+		// A view with the composer writes the note there; the others open the editor.
+		if (composerStore.open(seed)) return;
 		const labels =
 			uiStore.view === 'label' &&
 			uiStore.activeLabelId &&
@@ -301,6 +306,36 @@
 		editingId = n.id;
 		applyEditorOpen(true);
 	}
+
+	/** Where the composer is and what a note from it starts with: Notes, a label's view, Reminders. */
+	const composer = $derived.by(() => {
+		if (uiStore.labelsOpen) return null;
+		switch (uiStore.view) {
+			case 'notes':
+				return { labels: [], reminderDay: null, placeholder: 'Take a note…' };
+			case 'label': {
+				const id = uiStore.activeLabelId;
+				if (!id || !notesStore.labels.some((label) => label.id === id)) return null;
+				return { labels: [id], reminderDay: null, placeholder: 'Take a note…' };
+			}
+			case 'reminders': {
+				const today = dayKey(appClock.now);
+				const day = uiStore.reminderFilter?.from ?? today;
+				const { start } = dayKeySpan(day);
+				const words =
+					day === today
+						? 'today'
+						: new Date(start).toLocaleDateString([], {
+								weekday: 'short',
+								month: 'short',
+								day: 'numeric'
+							});
+				return { labels: [], reminderDay: day, placeholder: `Take a note for ${words}…` };
+			}
+			default:
+				return null;
+		}
+	});
 
 	// Paste on the note gallery (no editor open, no editable field focused)
 	// starts a new note seeded with the pasted text and opens it for editing.
@@ -448,10 +483,18 @@
 					class={cx('app-feed scrollable', styles.feed)}
 					onscroll={rememberFeedScroll}
 				>
+					{#if composer}
+						<div class={noteComposerStyles.dock}>
+							<NoteComposer
+								labels={composer.labels}
+								reminderDay={composer.reminderDay}
+								placeholder={composer.placeholder}
+							/>
+						</div>
+					{/if}
 					<AppViews />
 				</main>
 				<div class="app-float" data-app-float>
-					<BottomNav />
 					<ReminderAlert />
 					{#key editingId}
 						<NoteEditor

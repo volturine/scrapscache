@@ -10,8 +10,6 @@
 	--app-keyboard-top: 0px;
 	--app-keyboard-bottom: 0px;
 	--app-topbar-height: 3.5rem;
-	--app-fab-bottom: 2rem;
-	--app-fab-size: 3.5rem;
 	/* The phone tab bar's height; zero where the sidebar carries the navigation. */
 	--app-tabbar-height: 0px;
 	/* Room under a note sheet: a place to tap outside the note and close it. */
@@ -23,15 +21,6 @@
 /* WebKit reads an edge element's background directly when it exceeds 10px. */
 html.ios-standalone {
 	--app-frame-top: max(12px, var(--app-inset-top));
-}
-
-/* An open note owns the screen; the new-note button would only crowd it and,
- * on a phone, sit between the note and the keyboard. With the keyboard up for
- * anything else (search, a label name) it would ride up over the page with it. */
-html.editor-open .new-note-fab,
-html.keyboard-open .new-note-fab {
-	visibility: hidden;
-	pointer-events: none;
 }
 
 /* With the keyboard up a phone has no room to spare under the note. */

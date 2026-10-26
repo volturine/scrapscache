@@ -33,7 +33,6 @@ export const SPAN_STYLE_VARS = [
 	'--app-fold-y',
 	'--app-fold-w',
 	'--app-fold-h',
-	'--app-column-stretch',
 	'--app-tabbar-height'
 ] as const;
 
@@ -181,10 +180,7 @@ export function spanStyle(
 		vars['--app-screen-width'] = px(screen);
 		vars['--app-column-width'] = px(screen);
 		vars['--app-column-gap'] = px(layout.foldW);
-		vars['--app-column-stretch'] = '0';
 		vars['--app-tabbar-height'] = '3.5rem';
-	} else {
-		vars['--app-column-stretch'] = '1';
 	}
 	return { kind: layout.kind, vars };
 }

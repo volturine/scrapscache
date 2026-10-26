@@ -143,13 +143,11 @@ describe('spanStyle', () => {
 		expect(style.vars['--app-fold-x']).toBe('540px');
 		expect(style.vars['--app-fold-h']).toBe('720px');
 		expect(style.vars['--app-tabbar-height']).toBe('3.5rem');
-		expect(style.vars['--app-column-stretch']).toBe('0');
 	});
 
-	it('stretches columns across a horizontal hinge without resizing them', () => {
+	it('publishes a horizontal hinge without resizing the columns', () => {
 		const style = spanStyle(layoutFromSegments(stacked, 720, 1114), 0);
 		expect(style.kind).toBe('vertical');
-		expect(style.vars['--app-column-stretch']).toBe('1');
 		expect(style.vars['--app-fold-y']).toBe('540px');
 		expect(style.vars['--app-fold-h']).toBe('34px');
 		expect(style.vars['--app-column-width']).toBeUndefined();

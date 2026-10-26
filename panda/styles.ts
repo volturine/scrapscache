@@ -1245,6 +1245,8 @@ export const kanbanViewStyles = {
 	// The first run's panel, beside the Backlog where the label columns would be.
 	starter: css({
 		...kanbanColumnSize,
+		// Same width as a column, including one full screen across a vertical hinge.
+		w: 'var(--app-column-width)',
 		rounded: 'sheet',
 		borderWidth: 'hairline',
 		borderStyle: 'dashed',
@@ -1290,7 +1292,12 @@ export const kanbanViewStyles = {
 		borderColor: 'scrapscache.borderSubtle',
 		pl: 'sm'
 	}),
-	addColWrap: css({ position: 'relative', ...kanbanColumnSize, pt: '2xs' }),
+	addColWrap: css({
+		position: 'relative',
+		...kanbanColumnSize,
+		w: 'var(--app-column-width)',
+		pt: '2xs'
+	}),
 	radioOption: css({ ...filterOption, alignItems: 'flex-start' }),
 	filterHeader: css({ ...rowCenter, justifyContent: 'space-between', gap: 'sm' }),
 	// Show only / Hide: a two-way switch on the panel surface, not a list of options.

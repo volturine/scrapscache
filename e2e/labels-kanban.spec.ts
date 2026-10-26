@@ -475,15 +475,25 @@ test.describe('a folded Surface Duo', () => {
 	});
 
 	test('keeps the board clear of the side status column', async ({ page }) => {
+		await reportSurfaceDuo(page);
 		await openEmptyApp(page);
 		await createNote(page, 'Task one');
 		await page.goto('/kanban');
+		// The model hint resolves after the first layout pass.
+		await expect
+			.poll(() =>
+				page.evaluate(() =>
+					Number.parseFloat(
+						getComputedStyle(document.documentElement).getPropertyValue('--app-inset-right')
+					)
+				)
+			)
+			.toBeGreaterThanOrEqual(84);
 		const right = await page.evaluate(() =>
 			Number.parseFloat(
 				getComputedStyle(document.documentElement).getPropertyValue('--app-inset-right')
 			)
 		);
-		expect(right).toBeGreaterThanOrEqual(84);
 		await page
 			.getByRole('region', { name: 'Boards group your notes by label' })
 			.getByRole('button', { name: 'To-Do · In-Progress · Done' })
@@ -501,6 +511,30 @@ test.describe('a folded Surface Duo', () => {
 		expect(actions.x + actions.width).toBeLessThanOrEqual(frameRight + 1);
 	});
 });
+
+/** Headless Chromium drops the device model from the user-agent string. The app reads that model from the high-entropy hint, so the test has to offer both. */
+async function reportSurfaceDuo(page: Page) {
+	await page.addInitScript(() => {
+		const ua =
+			'Mozilla/5.0 (Linux; Android 12; Surface Duo 2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36';
+		const data = {
+			mobile: true,
+			platform: 'Android',
+			getHighEntropyValues: async () => ({ model: 'Surface Duo 2', mobile: true })
+		};
+		const define = (target: object, key: string, get: () => unknown) => {
+			try {
+				Object.defineProperty(target, key, { configurable: true, get });
+			} catch {
+				// Chromium may already own this hint.
+			}
+		};
+		define(Navigator.prototype, 'userAgent', () => ua);
+		define(navigator, 'userAgent', () => ua);
+		define(Navigator.prototype, 'userAgentData', () => data);
+		define(navigator, 'userAgentData', () => data);
+	});
+}
 
 function installSegments(
 	page: Page,
@@ -540,9 +574,8 @@ test.describe('a spanned Surface Duo', () => {
 		const card = (await noteCard(page, 'Span note').boundingBox())!;
 		expect(card.x).toBeLessThan(540);
 
-		await noteCard(page, 'Span note')
-			.getByRole('button', { name: /^Open Span note/ })
-			.click();
+		// The open control does not take the pointer; the card under it does.
+		await noteCard(page, 'Span note').click();
 		const editor = page.getByRole('dialog', { name: 'Note editor' });
 		await expect(editor).toBeVisible();
 		expect((await editor.boundingBox())!.x).toBeGreaterThan(500);

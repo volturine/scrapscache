@@ -22,7 +22,6 @@
 	--app-fold-y: 0px;
 	--app-fold-w: 0px;
 	--app-fold-h: 0px;
-	--app-column-stretch: 0;
 	--app-visual-offset-top: 0px;
 	--app-keyboard-top: 0px;
 	--app-keyboard-bottom: 0px;
@@ -71,7 +70,6 @@ html.ios-standalone {
 		--app-fold-y: 0px;
 		--app-fold-w: var(--app-column-gap);
 		--app-fold-h: 100%;
-		--app-column-stretch: 0;
 		--app-tabbar-height: 3.5rem;
 	}
 }
@@ -82,7 +80,6 @@ html.ios-standalone {
 		--app-fold-y: env(viewport-segment-bottom 0 0);
 		--app-fold-w: 100%;
 		--app-fold-h: max(0px, calc(env(viewport-segment-top 0 1) - env(viewport-segment-bottom 0 0)));
-		--app-column-stretch: 1;
 	}
 }
 

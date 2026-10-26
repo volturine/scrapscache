@@ -450,6 +450,10 @@
 
 <svelte:window onpaste={handleGalleryPaste} onkeydown={runUndoChord} />
 
+<!-- Before the frame in the document, so the frame paints over it. -->
+{#if mobile.current}
+	<div class={styles.tabBarSafeArea} data-tab-bar-bleed aria-hidden="true"></div>
+{/if}
 <div class="app-viewport">
 	<div class={cx('app-shell', styles.shell)}>
 		{#if mobile.current}
@@ -528,9 +532,6 @@
 		</div>
 	</div>
 </div>
-{#if mobile.current}
-	<div class={styles.tabBarSafeArea} aria-hidden="true"></div>
-{/if}
 {#if mobile.current && uiStore.sidebarOpen}
 	<div class={styles.drawerSafeArea} aria-hidden="true"></div>
 {/if}

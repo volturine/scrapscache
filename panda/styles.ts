@@ -3334,8 +3334,13 @@ export const historyStyles = {
 export const topbarStyles = {
 	/** The phone bar's view name; the buttons after it keep to the right. */
 	phoneTitle: css({ ...flexFill, px: 'xs', textStyle: 'heading', ...truncateText }),
-	/** Display contents until a horizontal span places the actions on the other screen. */
-	phoneActions: css({ display: 'contents' }),
+	/** A row, so a side status pill can drop the whole group under itself. */
+	phoneActions: css({
+		display: 'flex',
+		alignItems: 'center',
+		gap: { base: '2xs', sm: 'sm' },
+		flexShrink: 0
+	}),
 	markdownLabel: css({ minW: 0, flex: '1' }),
 	markdownCheck: css({
 		...gridCenter,

@@ -3913,7 +3913,28 @@ export const reminderAgendaStyles = {
 		gap: '3xs',
 		alignItems: 'center'
 	}),
-	empty: css({ px: 'sm', py: 'sm', textStyle: 'bodyMuted' })
+	empty: css({ px: 'sm', py: 'sm', textStyle: 'bodyMuted' }),
+	/** Done, Skip and Snooze: words beside the icon on a wide window, the icon alone on a narrow one. */
+	action: css({
+		display: 'inline-flex',
+		alignItems: 'center',
+		justifyContent: 'center',
+		gap: '2xs',
+		h: '2.25rem',
+		minW: '2.25rem',
+		px: { base: 0, lg: 'sm' },
+		rounded: 'control',
+		borderWidth: 'hairline',
+		borderColor: { base: 'scrapscache.border', lg: 'transparent' },
+		textStyle: 'label',
+		...mutedText,
+		cursor: 'pointer',
+		touchAction: 'manipulation',
+		transition: 'background-color 120ms ease, color 120ms ease',
+		_hoverable: { bg: 'scrapscache.interactiveHover', color: 'scrapscache.text' },
+		_focusVisible: { outline: 'none', boxShadow: '0 0 0 2px token(colors.scrapscache.focus)' }
+	}),
+	actionText: css({ display: 'none', lg: { display: 'inline' } })
 };
 
 /** A day's mark on the reminder calendar: red while something on it is overdue. */

@@ -68,7 +68,8 @@ The same SvelteKit app serves the UI and the sync API when self-hosted.
   other fields are last-write-wins per field, ties broken by writer.
 - **Reminder wakes** — optional account-scoped opaque wake IDs and `fireAt`
   timestamps. A repeating reminder's times are worked out on each device from its
-  first time and repeat (in the time zone it was set in, so every device agrees);
+  first time and repeat (in the time zone it was set in, so every device agrees;
+  a time skipped or moved by hand is kept on the repeat, so they agree on that too);
   a device that syncs sends the next 60 days of them, one wake per time. Each enabled device has independent delivery state, and a device
   does not need the encrypted note before receiving a generic alert. The relay
   never receives note IDs or text.

@@ -220,3 +220,17 @@ export function agendaPreview(note: Note): string {
 	}
 	return '';
 }
+
+export type SnoozeChoice = { id: string; label: string; at: number };
+
+/** Where Snooze can put a reminder: a little later, or tomorrow morning. */
+export function snoozeChoices(now: number): SnoozeChoice[] {
+	const tomorrow = new Date(now);
+	tomorrow.setDate(tomorrow.getDate() + 1);
+	tomorrow.setHours(8, 0, 0, 0);
+	return [
+		{ id: '10m', label: 'In 10 minutes', at: now + 10 * 60_000 },
+		{ id: '1h', label: 'In 1 hour', at: now + 3_600_000 },
+		{ id: 'tomorrow', label: 'Tomorrow, 8:00 AM', at: tomorrow.getTime() }
+	];
+}

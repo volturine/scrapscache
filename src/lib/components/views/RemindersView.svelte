@@ -1,6 +1,7 @@
 <script lang="ts">
 	import ReminderCalendar from '#lib/components/ReminderCalendar.svelte';
 	import ReminderRow from '#lib/components/ReminderRow.svelte';
+	import ReminderRowActions from '#lib/components/ReminderRowActions.svelte';
 	import EmptyState from '#lib/components/EmptyState.svelte';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
 	import { uiStore } from '#lib/stores/ui.svelte.js';
@@ -65,7 +66,11 @@
 						{:else}
 							<ul class={styles.list}>
 								{#each group.entries as entry (`${entry.note.id}:${entry.at}`)}
-									<ReminderRow {entry} group={group.id} {multiDay} onOpen={openNote} />
+									<ReminderRow {entry} group={group.id} {multiDay} onOpen={openNote}>
+										{#snippet actions()}
+											<ReminderRowActions {entry} />
+										{/snippet}
+									</ReminderRow>
 								{/each}
 							</ul>
 						{/if}

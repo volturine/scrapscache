@@ -629,5 +629,14 @@ test.describe('a spanned Surface Duo', () => {
 			Number.parseFloat(getComputedStyle(document.documentElement, '::before').height)
 		);
 		expect(fold).toBeGreaterThan(20);
+
+		await page.goto('/reminders');
+		const calendar = page.locator('.reminder-calendar');
+		const composer = page.getByRole('region', { name: 'New note' });
+		await expect(calendar).toBeVisible();
+		const calendarBox = (await calendar.boundingBox())!;
+		const composerBox = (await composer.boundingBox())!;
+		expect(Math.abs(calendarBox.x - composerBox.x)).toBeLessThan(2);
+		expect(Math.abs(calendarBox.width - composerBox.width)).toBeLessThan(2);
 	});
 });

@@ -143,6 +143,22 @@ html[data-viewport-span='vertical'] section[data-kanban-column] {
 	min-height: 100%;
 }
 
+/* A stacked Duo is one landscape screen wide and still under the side-by-side
+   breakpoint, so the month was a 26rem card centered between full-width rows. */
+html[data-viewport-span='vertical'] [data-reminder-split] > :first-child {
+	width: 100%;
+	max-width: none;
+	margin-inline: 0;
+}
+
+/* The month is the top screen, not a card floating in from the rows around it. */
+html[data-viewport-span='vertical'] .reminder-calendar {
+	border: none;
+	border-radius: 0;
+	background: transparent;
+	padding-inline: 0;
+}
+
 html[data-viewport-span='horizontal'] [data-phone-tabs],
 html[data-viewport-span='horizontal'] [data-app-topbar]:has([data-view-title]) {
 	display: grid;
@@ -406,6 +422,17 @@ html[data-viewport-span='horizontal'] [data-undo-bar] {
 	section[data-kanban-column] {
 		align-self: stretch;
 		min-height: 100%;
+	}
+	[data-reminder-split] > :first-child {
+		width: 100%;
+		max-width: none;
+		margin-inline: 0;
+	}
+	.reminder-calendar {
+		border: none;
+		border-radius: 0;
+		background: transparent;
+		padding-inline: 0;
 	}
 	.app-float {
 		top: calc(

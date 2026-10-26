@@ -3334,7 +3334,7 @@ export const historyStyles = {
 export const topbarStyles = {
 	/** The phone bar's view name; the buttons after it keep to the right. */
 	phoneTitle: css({ ...flexFill, px: 'xs', textStyle: 'heading', ...truncateText }),
-	/** A row, so a side status pill can drop the whole group under itself. */
+	/** Sync and settings, kept on the title row. */
 	phoneActions: css({
 		display: 'flex',
 		alignItems: 'center',

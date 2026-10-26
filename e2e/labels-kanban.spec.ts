@@ -227,6 +227,36 @@ test.describe('on a phone', () => {
 		await expect(page.getByRole('status')).toContainText('Moved to trash');
 	});
 
+	test('a status bar down the side of the screen (iPhone Duo folded) leaves the board inside the frame', async ({
+		page
+	}) => {
+		await openEmptyApp(page);
+		await createNote(page, 'Task one');
+		await page.goto('/kanban');
+		// The folded Duo reports its side status bar as a safe-area inset; the frame is 83 px
+		// narrower than the viewport, and so must be anything sized from the viewport. A
+		// stylesheet, not an inline value: the viewport code rewrites the inline insets.
+		await page.addStyleTag({
+			content: ':root{--app-inset-right:83px!important;--app-inset-bottom:34px!important}'
+		});
+		const frameRight = 390 - 83;
+		await page
+			.getByRole('region', { name: 'Boards group your notes by label' })
+			.getByRole('button', { name: 'To-Do · In-Progress · Done' })
+			.click();
+		const unsorted = (await page
+			.getByRole('region', { name: 'Unsorted Kanban column' })
+			.boundingBox())!;
+		expect(unsorted.x + unsorted.width).toBeLessThanOrEqual(frameRight);
+		const actions = (await noteCard(page, 'Task one')
+			.getByRole('button', { name: 'Note actions' })
+			.boundingBox())!;
+		expect(actions.x + actions.width).toBeLessThanOrEqual(frameRight);
+		// The tab bar's surface still runs the full width under the status bar.
+		const bleed = (await page.locator('[data-tab-bar-bleed]').boundingBox())!;
+		expect(bleed.x + bleed.width).toBe(390);
+	});
+
 	test('the board shows every column with a tab for each that brings it up', async ({ page }) => {
 		await openEmptyApp(page);
 		await createNote(page, 'Task one');

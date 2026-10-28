@@ -11,24 +11,26 @@ Contributor-oriented notes for working on Scraps Cache. Also read
 
 ## Scripts
 
-| Script                     | Description                                                      |
-| -------------------------- | ---------------------------------------------------------------- |
-| `npm run dev`              | Vite dev server (SvelteKit)                                      |
-| `npm run dev:admin`        | Operator dashboard, admin API proxied to `npm run dev`           |
-| `npm run build`            | Production build (`adapter-node` → `build/`)                     |
-| `npm run build:cloudflare` | Workers build (`adapter-cloudflare` → `.svelte-kit/cloudflare/`) |
-| `npm run cf:dev`           | Local Cloudflare stack (reminders Worker + app)                  |
-| `npm run cf:cron:dev`      | Scheduled worker + app service binding with test triggers        |
-| `npm start`                | Run the built server (`node build`)                              |
-| `npm run preview`          | Vite preview of the production build                             |
-| `npm run check`            | `svelte-check` with native TypeScript                            |
-| `npm run check:watch`      | `svelte-check` in watch mode                                     |
-| `npm run format`           | Prettier write                                                   |
-| `npm run format:check`     | Prettier check (also runs in CI / `validate`)                    |
-| `npm test`                 | Run the Vitest suite                                             |
-| `npm run test:watch`       | Vitest watch mode                                                |
-| `npm run test:e2e`         | Playwright smoke tests against the production build              |
-| `npm run validate`         | check + format + test + build + e2e                              |
+| Script                     | Description                                                             |
+| -------------------------- | ----------------------------------------------------------------------- |
+| `npm run dev`              | Vite dev server (SvelteKit)                                             |
+| `npm run dev:admin`        | Operator dashboard, admin API proxied to `npm run dev`                  |
+| `npm run build`            | Production build (`adapter-node` → `build/`)                            |
+| `npm run build:cloudflare` | Workers build (`adapter-cloudflare` → `.svelte-kit/cloudflare/`)        |
+| `npm run build:ios`        | iPhone app bundle (`adapter-static` → `build/ios/`, synced into `ios/`) |
+| `npm run ios`              | Open the iPhone app's Xcode project                                     |
+| `npm run cf:dev`           | Local Cloudflare stack (reminders Worker + app)                         |
+| `npm run cf:cron:dev`      | Scheduled worker + app service binding with test triggers               |
+| `npm start`                | Run the built server (`node build`)                                     |
+| `npm run preview`          | Vite preview of the production build                                    |
+| `npm run check`            | `svelte-check` with native TypeScript                                   |
+| `npm run check:watch`      | `svelte-check` in watch mode                                            |
+| `npm run format`           | Prettier write                                                          |
+| `npm run format:check`     | Prettier check (also runs in CI / `validate`)                           |
+| `npm test`                 | Run the Vitest suite                                                    |
+| `npm run test:watch`       | Vitest watch mode                                                       |
+| `npm run test:e2e`         | Playwright smoke tests against the production build                     |
+| `npm run validate`         | check + format + test + build + e2e                                     |
 
 ## Local development
 
@@ -45,6 +47,38 @@ The dev server reads `http://127.0.0.1:8080` and
 `SCRAPSCACHE_RELAY_DB_URL` and `SCRAPSCACHE_OPS_DB_URL`).
 
 Tests use `@libsql/client/node` with `file:` URLs (no sqld required).
+
+## iPhone app
+
+The iPhone app is the same client inside a [Capacitor](https://capacitorjs.com/)
+shell (`ios/`, Swift Package Manager, no CocoaPods). It bundles the static build
+and talks to whichever server the **Server** row under Settings names
+(`https://scrapscache.com` unless changed), so one build serves self-hosters too.
+What differs from the web app lives under `src/lib/native/` and is loaded only
+there: the status bar follows the theme (it stays where iOS puts it: on the
+folded iPhone Duo the side column is hardware safe area, hidden bar or not), and
+reminders are scheduled with the system as local
+notifications (the web view has no service worker or web push).
+
+```sh
+npm run build:ios   # static build → build/ios, then `cap sync ios`
+npm run ios         # open ios/App/App.xcodeproj in Xcode; run on a simulator
+```
+
+From the terminal, with a booted simulator:
+
+```sh
+xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug \
+  -destination 'platform=iOS Simulator,name=iPhone Duo' -derivedDataPath /tmp/scraps-ios build
+xcrun simctl install booted /tmp/scraps-ios/Build/Products/Debug-iphonesimulator/App.app
+xcrun simctl launch booted com.scrapscache.app
+```
+
+The first build fetches Capacitor's binary frameworks; if `xcodebuild` sits silent,
+it is waiting on a macOS keychain prompt for that download. Running
+`swift package --disable-keychain resolve` in `ios/App/CapApp-SPM` first fills the
+package cache without the prompt. `ios/App/App/public` and
+`ios/App/App/capacitor.config.json` are generated by `cap sync` and not committed.
 
 ## Browser smoke tests
 

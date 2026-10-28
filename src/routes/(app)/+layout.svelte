@@ -26,6 +26,7 @@
 	import { MediaQuery } from 'svelte/reactivity';
 	import { attachSyncCloudIndicator } from '#lib/syncCloudIndicator.js';
 	import { attachAppViewport } from '#lib/appViewport.js';
+	import { isNativeApp } from '#lib/native.js';
 	import { dayKey, dayKeySpan, reminderTimeForDay } from '#lib/utils.js';
 	import { appClock } from '#lib/appClock.svelte.js';
 	import { noteAddressHistory } from '#lib/noteAddressHistory.js';
@@ -199,6 +200,17 @@
 	onMount(() => {
 		applyEditorOpen(editingId !== null);
 		const stopViewport = attachAppViewport(document.documentElement);
+		// The iPhone app's pieces load only there; the web bundle leaves them out.
+		let stopNative: (() => void) | null = null;
+		let nativeStopped = false;
+		if (isNativeApp()) {
+			void import('#lib/native/app.js')
+				.then((native) => {
+					if (nativeStopped) return;
+					stopNative = native.attachNativeApp();
+				})
+				.catch(() => undefined);
+		}
 		uiStore.viewChangeHandler = restoreFeedScroll;
 		attachSyncCloudIndicator(syncStore);
 		notesStore.onAfterSync = () => reminderStore.publish(notesStore.notes);
@@ -276,6 +288,8 @@
 			notesStore.onProfileReload = null;
 			uiStore.viewChangeHandler = null;
 			stopViewport();
+			nativeStopped = true;
+			stopNative?.();
 			applyEditorOpen(false);
 			document.removeEventListener('visibilitychange', onForeground);
 			stopReminders();
@@ -436,6 +450,10 @@
 
 <svelte:window onpaste={handleGalleryPaste} onkeydown={runUndoChord} />
 
+<!-- Before the frame in the document, so the frame paints over it. -->
+{#if mobile.current}
+	<div class={styles.tabBarSafeArea} data-tab-bar-bleed aria-hidden="true"></div>
+{/if}
 <div class="app-viewport">
 	<div class={cx('app-shell', styles.shell)}>
 		{#if mobile.current}
@@ -514,9 +532,6 @@
 		</div>
 	</div>
 </div>
-{#if mobile.current}
-	<div class={styles.tabBarSafeArea} aria-hidden="true"></div>
-{/if}
 {#if mobile.current && uiStore.sidebarOpen}
 	<div class={styles.drawerSafeArea} aria-hidden="true"></div>
 {/if}

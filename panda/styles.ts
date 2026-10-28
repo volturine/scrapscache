@@ -51,7 +51,7 @@ const fullscreenShell = { inset: 0, zIndex: 80, ...column } as const;
 const flexTruncate = { ...flexFill, ...truncateText } as const;
 const flexTruncateClass = css(flexTruncate);
 const kanbanColumnSize = {
-	w: 'min(calc(var(--note-card-width) + 1.5rem), calc(100vw - 2rem))',
+	w: 'min(calc(var(--note-card-width) + 1.5rem), calc(var(--app-frame-width) - 2rem))',
 	flexShrink: 0
 } as const;
 const filterPanel = {
@@ -116,14 +116,14 @@ export const appLayout = {
 		left: 0,
 		zIndex: 55,
 		h: 'full',
-		maxW: 'calc(100vw - 3.5rem)'
+		maxW: 'calc(var(--app-frame-width) - 3.5rem)'
 	}),
 	// No edge of its own: the surface is what sets the panel apart from the body,
 	// and a border would stop where the frame does while the surface carries on.
 	drawer: css({
 		h: 'full',
 		w: DRAWER_WIDTH,
-		maxW: 'calc(100vw - 3.5rem)',
+		maxW: 'calc(var(--app-frame-width) - 3.5rem)',
 		bg: 'scrapscache.surface'
 	}),
 	// The app frame stops at the safe rect, so an open drawer stops short of the
@@ -133,22 +133,28 @@ export const appLayout = {
 		position: 'fixed',
 		left: 0,
 		bottom: 0,
-		w: `min(calc(${DRAWER_WIDTH} + var(--app-inset-left)), calc(100vw - 3.5rem + var(--app-inset-left)))`,
+		w: `min(calc(${DRAWER_WIDTH} + var(--app-inset-left)), calc(var(--app-frame-width) - 3.5rem + var(--app-inset-left)))`,
 		h: 'var(--app-inset-bottom)',
 		bg: 'scrapscache.surface',
 		zIndex: 56,
 		pointerEvents: 'none'
 	}),
-	// The phone tab bar ends where the app frame does, above the home indicator; this
-	// carries its surface the rest of the way down so there is no dark gap under it.
+	// The phone tab bar ends where the app frame does: above the home indicator, and
+	// short of a status bar down the side (iPhone Duo folded). This carries its surface
+	// and top rule across the whole bottom band so the bar reads as edge to edge, with
+	// the system's indicators drawn over it. It sits before the frame in the document
+	// and at the same level, so the frame paints over it; a negative z-index would put
+	// it under the body's own background instead.
 	tabBarSafeArea: css({
 		position: 'fixed',
 		left: 0,
 		right: 0,
 		bottom: 0,
-		h: 'var(--app-inset-bottom)',
+		h: 'calc(var(--app-inset-bottom) + var(--app-tabbar-height))',
+		borderTopWidth: 'hairline',
+		borderColor: 'scrapscache.border',
 		bg: 'scrapscache.surface',
-		zIndex: 1,
+		zIndex: 0,
 		pointerEvents: 'none'
 	}),
 	// Same panel as the drawer on a phone: its surface is what sets it apart.
@@ -1218,7 +1224,7 @@ export const kanbanViewStyles = {
 	column: css({
 		...kanbanColumnSize,
 		// On a phone the next column shows at the edge, so the rest of the board is in sight.
-		w: { base: 'calc(100vw - 4rem)', md: kanbanColumnSize.w },
+		w: { base: 'calc(var(--app-frame-width) - 4rem)', md: kanbanColumnSize.w },
 		scrollSnapAlign: { base: 'start', md: 'none' },
 		rounded: 'sheet',
 		bg: 'scrapscache.surfaceSubtle',
@@ -1398,7 +1404,7 @@ export const kanbanViewStyles = {
 	tagPickerContent: css({ maxH: '16rem', overflowY: 'auto', py: '2xs' }),
 	/** The phone's "+" is a 44 px square, too narrow to size its menu: the menu takes its own width. */
 	tagPickerPositionerCompact: css({ zIndex: 20 }),
-	tagPickerContentCompact: css({ minW: '13rem', maxW: 'calc(100vw - 2rem)' }),
+	tagPickerContentCompact: css({ minW: '13rem', maxW: 'calc(var(--app-frame-width) - 2rem)' }),
 	dragGhost: css({
 		position: 'fixed',
 		top: 0,
@@ -2055,7 +2061,7 @@ export const settingsMenuStyles = {
 	// Zag puts the room under the trigger in --available-height; the app frame clips
 	// anything taller, so the content scrolls within that rather than past the frame.
 	popover: css({
-		w: { base: 'calc(100vw - 1rem)', sm: '20.625rem' },
+		w: { base: 'calc(var(--app-frame-width) - 1rem)', sm: '20.625rem' },
 		maxH: 'var(--available-height)',
 		overflowY: 'auto',
 		pt: '2xs',
@@ -2143,7 +2149,27 @@ export const settingsMenuStyles = {
 		_hoverable: { textDecoration: 'underline' },
 		'&[data-highlighted]': { textDecoration: 'underline' }
 	}),
-	alert: css({ px: 'md', pb: 'sm', textStyle: 'label', color: 'scrapscache.danger' })
+	alert: css({ px: 'md', pb: 'sm', textStyle: 'label', color: 'scrapscache.danger' }),
+	/** The iPhone app's server field under its row, indented to the row's text. */
+	serverForm: hstack({ pl: 'calc(token(spacing.md) + 1.5rem)', pr: 'md', pb: 'sm', gap: 'sm' }),
+	serverField: css({ ...flexFill, minW: 0 }),
+	serverSave: css({
+		flexShrink: 0,
+		px: 'sm',
+		textStyle: 'label',
+		color: 'scrapscache.accent',
+		rounded: 'compact',
+		outline: 'none',
+		_hoverable: { textDecoration: 'underline' },
+		_focusVisible: { textDecoration: 'underline' }
+	}),
+	serverAlert: css({
+		pl: 'calc(token(spacing.md) + 1.5rem)',
+		pr: 'md',
+		pb: 'sm',
+		textStyle: 'caption',
+		color: 'scrapscache.warning'
+	})
 };
 
 export const colorPaletteStyles = {
@@ -3066,7 +3092,7 @@ export const historyStyles = {
 		transitionProperty: 'width, height, background-color, border-color, box-shadow, border-radius',
 		...historyMotion,
 		'&[data-expanded]': {
-			w: 'min(17rem, calc(100vw - 2rem))',
+			w: 'min(17rem, calc(var(--app-frame-width) - 2rem))',
 			h: 'calc(var(--history-rows) * 2.75rem + 2.75rem)',
 			bg: 'scrapscache.surface',
 			borderColor: 'scrapscache.border',
@@ -3114,7 +3140,7 @@ export const historyStyles = {
 		position: 'absolute',
 		right: 'calc(100% + 0.5rem)',
 		w: '17rem',
-		maxW: 'calc(100vw - 4rem)',
+		maxW: 'calc(var(--app-frame-width) - 4rem)',
 		px: 'md',
 		py: 'sm',
 		transform: 'translateY(-50%)',
@@ -3154,7 +3180,7 @@ export const historyStyles = {
 		...historySwapState('swapIn', 'fadeOut'),
 		justifySelf: 'end',
 		w: '17rem',
-		maxW: 'calc(100vw - 1rem)',
+		maxW: 'calc(var(--app-frame-width) - 1rem)',
 		h: 'full',
 		minH: 0,
 		transformOrigin: 'right center'
@@ -3749,7 +3775,7 @@ export const undoBarStyles = {
 		bottom: '2xl',
 		...rowCenter,
 		gap: 'sm',
-		maxW: 'calc(100vw - 2rem)',
+		maxW: 'calc(var(--app-frame-width) - 2rem)',
 		px: 'md',
 		py: 'xs',
 		...border,
@@ -3783,7 +3809,7 @@ export const editorFindStyles = {
 		boxShadow: 'popover'
 	}),
 	row: css({ ...rowCenter, gap: '2xs' }),
-	field: css({ w: '13rem', maxW: '40vw' }),
+	field: css({ w: '13rem', maxW: 'calc(var(--app-frame-width) * 0.4)' }),
 	count: css({
 		minW: '4.5rem',
 		textAlign: 'center',

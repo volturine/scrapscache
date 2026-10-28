@@ -35,5 +35,8 @@ export function preflightResponse(request: Request, pathname: string): Response 
 export function allowAppOrigin(headers: Headers, origin: string): void {
 	headers.set('access-control-allow-origin', origin);
 	headers.set('access-control-expose-headers', EXPOSED_HEADERS);
-	headers.append('vary', 'Origin');
+	const vary = headers.get('vary');
+	if (!vary?.split(',').some((name) => name.trim().toLowerCase() === 'origin')) {
+		headers.append('vary', 'Origin');
+	}
 }

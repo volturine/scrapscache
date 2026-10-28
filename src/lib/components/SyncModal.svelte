@@ -16,7 +16,6 @@
 	import { Format } from '@ark-ui/svelte/format';
 	import { Progress } from '@ark-ui/svelte/progress';
 	import { createPairingUrl, formatPairingCode, normalizePairingCode } from '#lib/syncPairing.js';
-	import { appLinkBase } from '#lib/serverOrigin.svelte.js';
 	import { syncStore, type StartedDeviceLink } from '#lib/stores/sync.svelte.js';
 	import { profileCoordinator } from '#lib/stores/profiles.svelte.js';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
@@ -382,7 +381,7 @@
 
 	async function generatePairingQr(active: StartedDeviceLink) {
 		try {
-			const svg = await QRCode.toString(createPairingUrl(appLinkBase(), active.syncCode), {
+			const svg = await QRCode.toString(createPairingUrl(window.location.href, active.syncCode), {
 				type: 'svg',
 				width: 220,
 				margin: 1,
@@ -396,7 +395,7 @@
 	}
 
 	function pairingShareUrl(): string {
-		return waiting ? createPairingUrl(appLinkBase(), waiting.syncCode) : '';
+		return waiting ? createPairingUrl(window.location.href, waiting.syncCode) : '';
 	}
 
 	async function renameProfile(id: string, next: string): Promise<boolean> {

@@ -1,6 +1,5 @@
 import type { SyncEventsConnection } from '#lib/syncEventsClient.js';
 import { SYNC_EVENTS_PROTOCOL } from '#lib/syncEventsProtocol.js';
-import { serverUrl } from '#lib/serverOrigin.svelte.js';
 
 /** Keeps the socket open through proxies; the Worker runtime answers it without waking anything. */
 export const SOCKET_PING_MS = 30_000;
@@ -18,7 +17,7 @@ export async function openSyncEvents(connection: SyncEventsConnection): Promise<
 	if (!store.connectionToken) throw new Error('Live changes need a connection token');
 	const session = await store.connectionToken();
 	if (signal.aborted) return;
-	const url = new URL(serverUrl('/api/sync/events'), location.href);
+	const url = new URL('/api/sync/events', location.href);
 	url.protocol = url.protocol === 'http:' ? 'ws:' : 'wss:';
 	url.searchParams.set('clientId', clientId);
 	const socket = new WebSocket(url, [SYNC_EVENTS_PROTOCOL, session.token]);

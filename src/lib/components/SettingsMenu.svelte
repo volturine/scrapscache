@@ -11,8 +11,6 @@
 	import ReminderNotificationSettings from './ReminderNotificationSettings.svelte';
 	import ReminderLanguageSettings from './ReminderLanguageSettings.svelte';
 	import StorageSettings from './StorageSettings.svelte';
-	import ServerSettings from './ServerSettings.svelte';
-	import { isNativeApp } from '#lib/native.js';
 
 	let {
 		open = $bindable(false),
@@ -117,9 +115,6 @@
 				</Menu.Item>
 				<PwaInstallSettings />
 				<StorageSettings />
-				{#if isNativeApp()}
-					<ServerSettings />
-				{/if}
 				<ReminderNotificationSettings />
 				<ReminderLanguageSettings />
 			</Menu.ItemGroup>

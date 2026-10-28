@@ -71,30 +71,12 @@ export function unfiredDueReminders(
 	return dueReminders(notes, now).filter((due) => !seen.has(due.wakeId));
 }
 
-/** How the iPhone app asks the system, which has no Notification API in its web view. */
-export type NotificationBackend = {
-	permission(): NotificationPermission;
-	request(): Promise<NotificationPermission>;
-};
-
-let backend: NotificationBackend | null = null;
-
-/** Fired on `window` when the backend changes, so a settings row rendered earlier asks again. */
-export const NOTIFICATION_BACKEND_EVENT = 'scrapscache:notification-backend';
-
-export function useNotificationBackend(next: NotificationBackend | null): void {
-	backend = next;
-	if (typeof window !== 'undefined') window.dispatchEvent(new Event(NOTIFICATION_BACKEND_EVENT));
-}
-
 export function notificationPermission(): NotificationPermission | 'unsupported' {
-	if (backend) return backend.permission();
 	if (typeof Notification === 'undefined') return 'unsupported';
 	return Notification.permission;
 }
 
 export async function requestReminderPermission(): Promise<NotificationPermission | 'unsupported'> {
-	if (backend) return backend.request();
 	if (typeof Notification === 'undefined') return 'unsupported';
 	if (Notification.permission !== 'default') return Notification.permission;
 	try {

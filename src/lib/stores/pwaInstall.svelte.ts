@@ -1,5 +1,3 @@
-import { isNativeApp } from '#lib/native.js';
-
 export interface BeforeInstallPromptEvent extends Event {
 	prompt: () => Promise<void>;
 	userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
@@ -30,9 +28,7 @@ export class PwaInstallStore {
 
 	checkStandalone() {
 		if (typeof window === 'undefined') return;
-		// The iPhone app is installed by definition; nothing to add to a home screen.
 		const isStandaloneMode =
-			isNativeApp() ||
 			window.matchMedia?.('(display-mode: standalone)')?.matches ||
 			Boolean((navigator as unknown as { standalone?: boolean }).standalone);
 		this.isStandalone = Boolean(isStandaloneMode);

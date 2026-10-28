@@ -1,6 +1,5 @@
 import adapterCloudflare from '@sveltejs/adapter-cloudflare';
 import adapterNode from '@sveltejs/adapter-node';
-import adapterStatic from '@sveltejs/adapter-static';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 import { execSync } from 'node:child_process';
@@ -82,32 +81,20 @@ export default defineConfig({
 			adapter:
 				process.env.DEPLOY_TARGET === 'cloudflare'
 					? adapterCloudflare({ config: 'cf/wrangler.svelte.jsonc' })
-					: process.env.DEPLOY_TARGET === 'capacitor'
-						? // The iPhone app: the client-only pages as files, one HTML entry for
-							// every route, and no server routes (the app names its server itself).
-							adapterStatic({
-								pages: 'build/ios',
-								assets: 'build/ios',
-								fallback: 'index.html',
-								strict: false
-							})
-						: adapterNode(),
+					: adapterNode(),
 			version: { name: buildVersion() },
 			// The app registers src/service-worker itself: once for the shell, and once
 			// per synced workspace for its push subscription (see #lib/serviceWorker).
 			serviceWorker: { register: false },
 			csp: {
-				// A prerendered entry cannot carry a nonce; the iPhone app's gets hashes.
-				mode: process.env.DEPLOY_TARGET === 'capacitor' ? 'auto' : 'nonce',
+				mode: 'nonce',
 				directives: {
 					'default-src': ['self'],
 					// No third-party script, ever: anything that runs here can read the sync
 					// keys. Turnstile runs on its own origin, framed; see src/routes/turnstile.
 					'script-src': ['self'],
 					'style-src': ['self', 'unsafe-inline'],
-					// The iPhone app reaches whichever server its setting names.
-					'connect-src':
-						process.env.DEPLOY_TARGET === 'capacitor' ? ['self', 'https:', 'wss:'] : ['self'],
+					'connect-src': ['self'],
 					'img-src': ['self', 'data:', 'blob:'],
 					'media-src': ['self', 'data:', 'blob:'],
 					// Excalidraw lists its esm.sh copy after ours as a fallback for every font

@@ -48,9 +48,11 @@ export function notificationsFor(upcoming: UpcomingReminder[]): LocalNotificatio
 	});
 }
 
-/** Names a schedule, so one the system already holds is left alone. */
+/** Names a schedule, so one the system already holds is left alone; a renamed note is a new one. */
 export function scheduleSignature(planned: LocalNotificationSchema[]): string {
-	return planned.map((item) => `${item.id}@${item.schedule?.at?.getTime() ?? 0}`).join(',');
+	return planned
+		.map((item) => `${item.id}@${item.schedule?.at?.getTime() ?? 0}:${item.title}`)
+		.join('\n');
 }
 
 let scheduled = '';

@@ -52,6 +52,9 @@ describe('scheduleSignature', () => {
 		expect(scheduleSignature(notificationsFor([reminder(1), reminder(2)]))).toBe(same);
 		const moved = { ...reminder(2), at: at + 5 * 60_000 };
 		expect(scheduleSignature(notificationsFor([reminder(1), moved]))).not.toBe(same);
+		// A renamed note must reach the system too, or it fires with the old title.
+		const renamed = { ...reminder(2), title: 'Note 2, renamed' };
+		expect(scheduleSignature(notificationsFor([reminder(1), renamed]))).not.toBe(same);
 	});
 });
 

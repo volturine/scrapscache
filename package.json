@@ -46,9 +46,12 @@
 		"format:check": "prettier --check .",
 		"test:e2e": "playwright test",
 		"build:admin": "vite build --config vite.admin.config.ts",
-		"dev:admin": "vite --config vite.admin.config.ts"
+		"dev:admin": "vite --config vite.admin.config.ts",
+		"build:ios": "svelte-kit sync && panda codegen && DEPLOY_TARGET=capacitor vite build && cap sync ios",
+		"ios": "cap open ios"
 	},
 	"devDependencies": {
+		"@capacitor/cli": "^8.5.3",
 		"@cloudflare/workers-types": "^5.20261022.1",
 		"@lucide/svelte": "^1.61.0",
 		"@pandacss/dev": "^2.4.0",
@@ -57,6 +60,7 @@
 		"@playwright/test": "^1.64.0",
 		"@sveltejs/adapter-cloudflare": "^8.0.0",
 		"@sveltejs/adapter-node": "^6.0.0",
+		"@sveltejs/adapter-static": "^4.0.0",
 		"@sveltejs/kit": "^3.0.1",
 		"@sveltejs/vite-plugin-svelte": "^7.3.1",
 		"@testing-library/svelte": "^5.4.2",
@@ -82,6 +86,11 @@
 	},
 	"dependencies": {
 		"@ark-ui/svelte": "^5.24.3",
+		"@capacitor/app": "^8.1.2",
+		"@capacitor/core": "^8.5.3",
+		"@capacitor/ios": "^8.5.3",
+		"@capacitor/local-notifications": "^8.3.1",
+		"@capacitor/status-bar": "^8.0.4",
 		"@cipherman/pake-js": "^0.1.1",
 		"@excalidraw/excalidraw": "0.18.1",
 		"@fontsource-variable/google-sans": "^5.3.1",

@@ -72,11 +72,15 @@ describe('preflightResponse', () => {
 });
 
 describe('allowAppOrigin', () => {
-	it('names the origin, exposes the request id and varies on Origin', () => {
+	it('names the origin, exposes the request id and varies on Origin, once', () => {
 		const headers = new Headers({ vary: 'Accept' });
 		allowAppOrigin(headers, APP);
 		expect(headers.get('access-control-allow-origin')).toBe(APP);
 		expect(headers.get('access-control-expose-headers')).toBe('x-request-id');
 		expect(headers.get('vary')).toBe('Accept, Origin');
+		// The platform may already vary on Origin.
+		const varied = new Headers({ vary: 'origin' });
+		allowAppOrigin(varied, APP);
+		expect(varied.get('vary')).toBe('origin');
 	});
 });

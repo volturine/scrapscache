@@ -4,6 +4,8 @@ export type SideColumn = 'left' | 'right' | null;
 
 /** A side inset this deep is a status column, not a rounded corner. */
 const COLUMN_MIN_PX = 60;
+/** A top inset this deep is the status bar in its usual place. */
+const TOP_BAR_MIN_PX = 20;
 
 /**
  * The folded iPhone Duo's outer screen keeps its status bar down one side: a
@@ -17,7 +19,7 @@ export function sideColumnOf(
 	height: number,
 	onPhone: boolean
 ): SideColumn {
-	if (!onPhone || width >= height || insets.top >= 20) return null;
+	if (!onPhone || width >= height || insets.top >= TOP_BAR_MIN_PX) return null;
 	if (insets.right >= COLUMN_MIN_PX) return 'right';
 	if (insets.left >= COLUMN_MIN_PX) return 'left';
 	return null;

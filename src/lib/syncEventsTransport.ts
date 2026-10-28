@@ -1,9 +1,10 @@
 import type { SyncEventsConnection } from '#lib/syncEventsClient.js';
+import { serverUrl } from '#lib/serverOrigin.svelte.js';
 
 /** Server-sent events, as the Node relay serves them. Resolves when the stream ends. */
 export async function openSyncEvents(connection: SyncEventsConnection): Promise<void> {
 	const { store, clientId, signal } = connection;
-	const url = `/api/sync/events?clientId=${encodeURIComponent(clientId)}`;
+	const url = serverUrl(`/api/sync/events?clientId=${encodeURIComponent(clientId)}`);
 	const response = await store.authorizedFetch(url, { signal });
 	if (!response.ok || !response.body) {
 		throw new Error(`SSE error: ${response.status}`);

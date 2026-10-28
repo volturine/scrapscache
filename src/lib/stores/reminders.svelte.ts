@@ -316,7 +316,6 @@ export class ReminderStore {
 		if (alert) this.openTarget(alert.workspaceId, alert.noteId);
 	}
 
-	/** An alert opens its note, or just its workspace while the note has yet to sync. */
 	/**
 	 * Every workspace's reminders still to come, soonest first: each time a
 	 * repeat comes within the horizon, and relay wakes for notes not synced here.
@@ -373,6 +372,7 @@ export class ReminderStore {
 		else this.host?.openWorkspace(alert.workspaceId);
 	}
 
+	/** An alert opens its note, or just its workspace while the note has yet to sync. */
 	private openTarget(workspaceId: string, noteId: string): void {
 		if (noteId) this.host?.openNote(workspaceId, noteId);
 		else this.host?.openWorkspace(workspaceId);

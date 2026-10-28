@@ -1,3 +1,5 @@
+import { publishSideColumn, sideColumnOf } from './sideColumn.svelte.js';
+
 /** Visual viewport must shrink by more than this before the keyboard is treated as open. */
 export const KEYBOARD_HEIGHT_THRESHOLD_PX = 120;
 
@@ -238,6 +240,7 @@ export function attachAppViewport(_node: HTMLElement) {
 		// the phone keyboard is active, its own occlusion replaces this inset.
 		setInsetVar('--app-inset-bottom', appBottomInset(cachedSafe.bottom, onPhone, keyboardVisible));
 		setInsetVar('--app-inset-left', cachedSafe.left);
+		publishSideColumn(sideColumnOf(cachedSafe, window.innerWidth, layoutHeight, onPhone));
 		setInsetVar('--app-visual-offset-top', keyboardFrame.viewportOffsetTop);
 		setInsetVar('--app-keyboard-top', keyboardFrame.keyboardTop);
 		setInsetVar('--app-keyboard-bottom', keyboardFrame.keyboardBottom);

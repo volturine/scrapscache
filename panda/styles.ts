@@ -3417,11 +3417,14 @@ export const phoneTabsStyles = {
 		cursor: 'pointer',
 		outline: 'none',
 		transition: 'color 120ms ease',
-		'&[aria-current="page"], &[aria-pressed="true"]': { color: 'scrapscache.text' },
-		'&[aria-current="page"] [data-tab-icon], &[aria-pressed="true"] [data-tab-icon]': {
-			bg: 'scrapscache.navigationActive',
-			color: 'scrapscache.navigationActiveText'
+		'&[aria-current="page"], &[aria-pressed="true"], &[aria-expanded="true"]': {
+			color: 'scrapscache.text'
 		},
+		'&[aria-current="page"] [data-tab-icon], &[aria-pressed="true"] [data-tab-icon], &[aria-expanded="true"] [data-tab-icon]':
+			{
+				bg: 'scrapscache.navigationActive',
+				color: 'scrapscache.navigationActiveText'
+			},
 		'&:focus-visible [data-tab-icon]': { boxShadow: '0 0 0 2px token(colors.scrapscache.focus)' }
 	}),
 	tabIcon: css({
@@ -3431,7 +3434,52 @@ export const phoneTabsStyles = {
 		rounded: 'pill',
 		transition: 'background-color 120ms ease, color 120ms ease'
 	}),
-	tabLabel: css({ whiteSpace: 'nowrap' })
+	tabLabel: css({ whiteSpace: 'nowrap' }),
+	// The folded iPhone Duo's status column: the same tabs stand in it as a rail,
+	// outside the app frame, under the clock and signal iOS draws at its top.
+	rail: css({
+		position: 'fixed',
+		top: 'var(--app-rail-top)',
+		bottom: 'var(--app-inset-bottom)',
+		display: 'flex',
+		flexDirection: 'column',
+		alignItems: 'stretch',
+		gap: 'xs',
+		zIndex: 20,
+		overflow: 'hidden'
+	}),
+	railRight: css({ right: 0, w: 'var(--app-inset-right)' }),
+	railLeft: css({ left: 0, w: 'var(--app-inset-left)' }),
+	railTab: css({
+		...column,
+		alignItems: 'center',
+		justifyContent: 'center',
+		gap: '3xs',
+		w: 'full',
+		minW: 0,
+		py: 'xs',
+		px: '2xs',
+		textStyle: 'caption',
+		...mutedText,
+		cursor: 'pointer',
+		outline: 'none',
+		transition: 'color 120ms ease',
+		'&[aria-current="page"], &[aria-pressed="true"], &[aria-expanded="true"]': {
+			color: 'scrapscache.text'
+		},
+		'&[aria-current="page"] [data-tab-icon], &[aria-pressed="true"] [data-tab-icon], &[aria-expanded="true"] [data-tab-icon]':
+			{
+				bg: 'scrapscache.navigationActive',
+				color: 'scrapscache.navigationActiveText'
+			},
+		'&:focus-visible [data-tab-icon]': { boxShadow: '0 0 0 2px token(colors.scrapscache.focus)' }
+	}),
+	railLabel: css({
+		whiteSpace: 'nowrap',
+		maxW: 'full',
+		overflow: 'hidden',
+		textOverflow: 'ellipsis'
+	})
 };
 
 export const topbarSyncTone = {

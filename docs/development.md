@@ -58,7 +58,10 @@ What differs from the web app lives under `src/lib/native/` and is loaded only
 there: the status bar follows the theme (it stays where iOS puts it: on the
 folded iPhone Duo the side column is hardware safe area, hidden bar or not), and
 reminders are scheduled with the system as local
-notifications (the web view has no service worker or web push).
+notifications (the web view has no service worker or web push). On the folded
+iPhone Duo the status bar runs down a side column that iOS reserves; the phone
+tab bar stands in that column as a rail (`PhoneTabBar` with `rail`, from
+`sideColumn.svelte.ts`), so the notes get the cover screen's full height.
 
 ```sh
 npm run build:ios   # static build → build/ios, then `cap sync ios`

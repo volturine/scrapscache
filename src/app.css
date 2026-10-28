@@ -20,6 +20,8 @@
 	--note-card-width: 18rem;
 	/* Installed iOS reserves a visible strip even when the top safe area is zero. */
 	--app-frame-top: var(--app-inset-top);
+	/* Where the folded iPhone Duo's rail starts: under the clock and signal iOS draws at the top of its column. */
+	--app-rail-top: 10.5rem;
 }
 /* WebKit reads an edge element's background directly when it exceeds 10px. */
 html.ios-standalone {
@@ -39,6 +41,16 @@ html.ios-standalone {
 	 * Android it would ride up on top of them. */
 	html.keyboard-open [data-phone-tabs],
 	html.keyboard-open [data-tab-bar-bleed] {
+		display: none;
+	}
+	/* The folded iPhone Duo keeps a column down one side for the status bar; the tabs
+	 * stand in it as a rail (see PhoneTabBar), so the bottom bar and its strip go. */
+	html[data-side-column] {
+		--app-tabbar-height: 0px;
+		/* The status bar is in the column, not on top: no strip to sample there. */
+		--app-frame-top: var(--app-inset-top);
+	}
+	html[data-side-column] [data-tab-bar-bleed] {
 		display: none;
 	}
 }

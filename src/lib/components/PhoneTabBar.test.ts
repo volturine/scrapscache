@@ -74,3 +74,23 @@ describe('PhoneTabBar', () => {
 		expect(search.getAttribute('aria-expanded')).toBe('true');
 	});
 });
+
+describe('PhoneTabBar as the folded Duo’s rail', () => {
+	it('keeps the same places in the status column, and is not the bar the keyboard hides', () => {
+		uiStore.setView('kanban');
+		render(PhoneTabBar, { props: { rail: 'right' } });
+		const nav = screen.getByRole('navigation', { name: 'Main' });
+		expect(nav.hasAttribute('data-phone-tabs')).toBe(false);
+		expect(nav.className).not.toBe('');
+		expect(screen.getAllByRole('button').map((tab) => tab.textContent?.trim())).toEqual([
+			'Notes',
+			'Reminders',
+			'Kanban',
+			'Labels',
+			'Search'
+		]);
+		expect(screen.getByRole('button', { name: 'Kanban' }).getAttribute('aria-current')).toBe(
+			'page'
+		);
+	});
+});

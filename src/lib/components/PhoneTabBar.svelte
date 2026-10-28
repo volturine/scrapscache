@@ -8,8 +8,17 @@
 	import { useEditorActions } from '#lib/editorContext.js';
 	import { uiStore, type View } from '#lib/stores/ui.svelte.js';
 	import { pathForView } from '#lib/viewRoutes.js';
+	import { cx } from 'styled-system/css';
+
+	/** In the folded iPhone Duo's status column the bar stands as a rail down that side. */
+	let { rail = null }: { rail?: 'left' | 'right' | null } = $props();
 
 	const { closeNote } = useEditorActions();
+	const barClass = $derived(
+		rail ? cx(styles.rail, rail === 'left' ? styles.railLeft : styles.railRight) : styles.bar
+	);
+	const tabClass = $derived(rail ? styles.railTab : styles.tab);
+	const labelClass = $derived(rail ? styles.railLabel : styles.tabLabel);
 
 	const tabs: { view: View; label: string; icon: LucideIcon }[] = [
 		{ view: 'notes', label: 'Notes', icon: StickyNote },
@@ -37,34 +46,34 @@
 	}
 </script>
 
-<nav class={styles.bar} aria-label="Main" data-phone-tabs>
+<nav class={barClass} aria-label="Main" data-phone-tabs={rail ? undefined : true}>
 	{#each tabs as tab (tab.view)}
 		<button
 			type="button"
-			class={styles.tab}
+			class={tabClass}
 			aria-current={current === tab.view ? 'page' : undefined}
 			onclick={() => go(tab.view)}
 		>
 			<span class={styles.tabIcon} data-tab-icon>
 				<tab.icon class={iconMd} aria-hidden="true" />
 			</span>
-			<span class={styles.tabLabel}>{tab.label}</span>
+			<span class={labelClass}>{tab.label}</span>
 		</button>
 	{/each}
 	<button
 		type="button"
-		class={styles.tab}
+		class={tabClass}
 		aria-current={current === 'labels' ? 'page' : undefined}
 		onclick={openLabels}
 	>
 		<span class={styles.tabIcon} data-tab-icon>
 			<Tag class={iconMd} aria-hidden="true" />
 		</span>
-		<span class={styles.tabLabel}>Labels</span>
+		<span class={labelClass}>Labels</span>
 	</button>
 	<button
 		type="button"
-		class={styles.tab}
+		class={tabClass}
 		aria-haspopup="dialog"
 		aria-expanded={uiStore.paletteOpen}
 		onclick={() => (uiStore.paletteOpen = true)}
@@ -72,6 +81,6 @@
 		<span class={styles.tabIcon} data-tab-icon>
 			<Search class={iconMd} aria-hidden="true" />
 		</span>
-		<span class={styles.tabLabel}>Search</span>
+		<span class={labelClass}>Search</span>
 	</button>
 </nav>

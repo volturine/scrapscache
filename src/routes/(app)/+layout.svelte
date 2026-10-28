@@ -27,6 +27,7 @@
 	import { attachSyncCloudIndicator } from '#lib/syncCloudIndicator.js';
 	import { attachAppViewport } from '#lib/appViewport.js';
 	import { isNativeApp } from '#lib/native.js';
+	import { sideColumn } from '#lib/sideColumn.svelte.js';
 	import { dayKey, dayKeySpan, reminderTimeForDay } from '#lib/utils.js';
 	import { appClock } from '#lib/appClock.svelte.js';
 	import { noteAddressHistory } from '#lib/noteAddressHistory.js';
@@ -526,12 +527,16 @@
 					{/key}
 				</div>
 			</div>
-			{#if mobile.current}
+			{#if mobile.current && !sideColumn.side}
 				<PhoneTabBar />
 			{/if}
 		</div>
 	</div>
 </div>
+<!-- The folded iPhone Duo's status column lies outside the frame; the tabs stand in it. -->
+{#if mobile.current && sideColumn.side}
+	<PhoneTabBar rail={sideColumn.side} />
+{/if}
 {#if mobile.current && uiStore.sidebarOpen}
 	<div class={styles.drawerSafeArea} aria-hidden="true"></div>
 {/if}

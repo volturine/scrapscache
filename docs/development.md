@@ -284,6 +284,13 @@ GitHub Actions workflow: `.github/workflows/ci-cd.yaml`.
   publishes `latest` / `master` / `sha-*`
 - **image-mcp** job: MCP recipe image (`ghcr.io/…-mcp`); same tag scheme
 
+Code scanning: `.github/workflows/codeql.yaml` runs CodeQL for Actions,
+JavaScript/TypeScript and Python on pull requests, on `master` and weekly. It
+replaces GitHub's default setup, which analysed every language it detected on
+`master`, including the Swift of the iPhone shell in `ios/`, whose package
+points at `node_modules` that setup never installs; keep default setup off so
+the two do not collide.
+
 Dependabot (`.github/dependabot.yml`) updates npm, Docker, and GitHub Actions
 weekly.
 

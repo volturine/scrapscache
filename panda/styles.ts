@@ -3436,17 +3436,22 @@ export const phoneTabsStyles = {
 	}),
 	tabLabel: css({ whiteSpace: 'nowrap' }),
 	// The folded iPhone Duo's status column: the same tabs stand in it as a rail,
-	// outside the app frame, under the clock and signal iOS draws at its top.
+	// outside the app frame, under the clock and signal iOS draws at its top. The
+	// keyboard's height is published while it is up, so the rail stops above it.
 	rail: css({
 		position: 'fixed',
 		top: 'var(--app-rail-top)',
-		bottom: 'var(--app-inset-bottom)',
+		bottom: 'max(var(--app-inset-bottom), var(--app-keyboard-bottom))',
 		display: 'flex',
 		flexDirection: 'column',
 		alignItems: 'stretch',
 		gap: 'xs',
 		zIndex: 20,
-		overflow: 'hidden'
+		overflow: 'hidden',
+		// Tabs the keyboard leaves no room for fade out at its edge, not cut.
+		'html.keyboard-open &': {
+			maskImage: 'linear-gradient(to bottom, black calc(100% - 2rem), transparent)'
+		}
 	}),
 	railRight: css({ right: 0, w: 'var(--app-inset-right)' }),
 	railLeft: css({ left: 0, w: 'var(--app-inset-left)' }),

@@ -5,6 +5,7 @@ import { configuredOrigin } from '#lib/server/publicOrigin.js';
 import { turnstileChallenge } from '#lib/server/turnstile.js';
 import { adminRouting } from '#lib/server/adminOrigin.js';
 import { adminDashboard } from '#lib/server/adminDashboard.js';
+import { allowAppOrigin, appOrigin, preflightResponse } from '#lib/server/appCors.js';
 
 const SECURITY_HEADERS: ReadonlyArray<readonly [string, string]> = [
 	['referrer-policy', 'no-referrer'],
@@ -87,12 +88,15 @@ export const handle: Handle = async ({ event, resolve }) => {
 		const dashboard = await adminDashboard(event.url.pathname);
 		if (dashboard) return dashboard;
 	}
+	// The iPhone app calls the sync API from its own origin; see #lib/server/appCors.
+	const appCaller = onChallengeOrigin ? null : appOrigin(event.request, event.url.pathname);
 	const response =
 		(onChallengeOrigin && event.url.pathname !== '/turnstile') || routing === 'not-found'
 			? new Response('Not found\n', { status: 404 })
 			: routing === 'dashboard'
 				? new Response(null, { status: 303, headers: { location: '/admin/' } })
-				: await resolve(event, {
+				: ((appCaller ? preflightResponse(event.request, event.url.pathname) : null) ??
+					(await resolve(event, {
 						transformPageChunk: ({ html }) => {
 							const origin = configuredOrigin() ?? event.url.origin;
 							const canonical = `${origin}${event.url.pathname}`;
@@ -101,9 +105,10 @@ export const handle: Handle = async ({ event, resolve }) => {
 								.replaceAll('https://scrapscache.com/', canonical)
 								.replaceAll('https://scrapscache.com', origin);
 						}
-					});
+					})));
 
 	for (const [name, value] of SECURITY_HEADERS) response.headers.set(name, value);
+	if (appCaller) allowAppOrigin(response.headers, appCaller);
 	if (!OPENER_KEPT.has(event.url.pathname))
 		response.headers.set('cross-origin-opener-policy', 'same-origin');
 	if (response.headers.get('content-type')?.toLowerCase().startsWith('text/html')) {

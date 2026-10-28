@@ -2143,7 +2143,27 @@ export const settingsMenuStyles = {
 		_hoverable: { textDecoration: 'underline' },
 		'&[data-highlighted]': { textDecoration: 'underline' }
 	}),
-	alert: css({ px: 'md', pb: 'sm', textStyle: 'label', color: 'scrapscache.danger' })
+	alert: css({ px: 'md', pb: 'sm', textStyle: 'label', color: 'scrapscache.danger' }),
+	/** The iPhone app's server field under its row, indented to the row's text. */
+	serverForm: hstack({ pl: 'calc(token(spacing.md) + 1.5rem)', pr: 'md', pb: 'sm', gap: 'sm' }),
+	serverField: css({ ...flexFill, minW: 0 }),
+	serverSave: css({
+		flexShrink: 0,
+		px: 'sm',
+		textStyle: 'label',
+		color: 'scrapscache.accent',
+		rounded: 'compact',
+		outline: 'none',
+		_hoverable: { textDecoration: 'underline' },
+		_focusVisible: { textDecoration: 'underline' }
+	}),
+	serverAlert: css({
+		pl: 'calc(token(spacing.md) + 1.5rem)',
+		pr: 'md',
+		pb: 'sm',
+		textStyle: 'caption',
+		color: 'scrapscache.warning'
+	})
 };
 
 export const colorPaletteStyles = {

@@ -55,6 +55,7 @@
 	let titleEdited = false;
 	let bodyEdited = false;
 	let timer: ReturnType<typeof setTimeout> | null = null;
+	let titleInput = $state<HTMLTextAreaElement | null>(null);
 	let bodyEditor = $state<BodyEditor | undefined>();
 	let footer = $state<NoteEditorFooter | undefined>();
 	let reminderPicker = $state<ReminderPicker | undefined>();
@@ -137,7 +138,8 @@
 	}
 
 	function openWith(seed: ComposerSeed = {}) {
-		if (!open) {
+		const opening = !open;
+		if (opening) {
 			title = seed.title ?? '';
 			body = seed.checklist ? '- [ ] ' : (seed.body ?? '');
 			images = [];
@@ -168,7 +170,10 @@
 		// Pasted text is a note already; a blank bar waits for the first key.
 		if (seed.title || seed.body) ensureNote();
 		void tick().then(() => {
-			bodyEditor?.focusDefault();
+			// A blank bar starts at the title and handed-over text at the body; asked again
+			// with nothing new, an open bar leaves the writer wherever they are.
+			if (seed.title || seed.body || seed.checklist) bodyEditor?.focusDefault();
+			else if (opening) titleInput?.focus();
 			if (seed.attach === 'drawing') void footer?.openCanvas();
 			else if (seed.attach === 'photo') footer?.openAttach();
 		});
@@ -298,6 +303,7 @@
 	{:else}
 		<div class={cx(styles.sheet, noteSurface({ color }))}>
 			<textarea
+				bind:this={titleInput}
 				class={styles.title}
 				placeholder="Title"
 				rows="1"

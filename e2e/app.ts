@@ -35,9 +35,10 @@ export function noteCard(page: Page, title: string): Locator {
 export async function createNote(page: Page, title: string, body?: string): Promise<void> {
 	await composerPrompt(page).click();
 	const bar = composer(page);
+	const titleBox = bar.getByPlaceholder('Title', { exact: true });
 	const bodyBox = bar.getByRole('textbox', { name: 'Note body' });
-	await expect(bodyBox).toBeFocused();
-	await bar.getByPlaceholder('Title', { exact: true }).fill(title);
+	await expect(titleBox).toBeFocused();
+	await titleBox.fill(title);
 	if (body) {
 		await bodyBox.click();
 		await bodyBox.pressSequentially(body);

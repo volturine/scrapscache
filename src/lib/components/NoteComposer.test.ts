@@ -49,9 +49,11 @@ describe('NoteComposer', () => {
 		openNote.mockClear();
 	});
 
-	it('opens from the bar and writes the note once something is typed', async () => {
+	it('opens from the bar with the cursor in the title and writes the note once something is typed', async () => {
 		render(NoteComposer);
 		await fireEvent.click(prompt());
+		await tick();
+		expect(document.activeElement).toBe(titleBox());
 		expect(screen.getByRole('textbox', { name: 'Note body' })).toBeTruthy();
 		// A blank bar is not a note yet.
 		expect(notesStore.notes).toHaveLength(0);

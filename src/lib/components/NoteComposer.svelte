@@ -55,6 +55,7 @@
 	let titleEdited = false;
 	let bodyEdited = false;
 	let timer: ReturnType<typeof setTimeout> | null = null;
+	let titleInput = $state<HTMLTextAreaElement | null>(null);
 	let bodyEditor = $state<BodyEditor | undefined>();
 	let footer = $state<NoteEditorFooter | undefined>();
 	let reminderPicker = $state<ReminderPicker | undefined>();
@@ -168,7 +169,8 @@
 		// Pasted text is a note already; a blank bar waits for the first key.
 		if (seed.title || seed.body) ensureNote();
 		void tick().then(() => {
-			bodyEditor?.focusDefault();
+			if (seed.title || seed.body || seed.checklist) bodyEditor?.focusDefault();
+			else titleInput?.focus();
 			if (seed.attach === 'drawing') void footer?.openCanvas();
 			else if (seed.attach === 'photo') footer?.openAttach();
 		});
@@ -298,6 +300,7 @@
 	{:else}
 		<div class={cx(styles.sheet, noteSurface({ color }))}>
 			<textarea
+				bind:this={titleInput}
 				class={styles.title}
 				placeholder="Title"
 				rows="1"

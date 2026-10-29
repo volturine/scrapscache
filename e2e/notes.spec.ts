@@ -76,6 +76,8 @@ test('controls keep keyboard focus without drawing highlights', async ({ page })
 test('a new note shows its body placeholder', async ({ page }) => {
 	await openEmptyApp(page);
 	await composerPrompt(page).click();
+	await expect(composer(page).getByPlaceholder('Title', { exact: true })).toBeFocused();
+	await page.keyboard.press('Enter');
 	const body = composer(page).getByRole('textbox', { name: 'Note body' });
 	await expect(body).toBeFocused();
 

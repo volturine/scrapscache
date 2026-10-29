@@ -219,6 +219,43 @@ test('focusing a task row that fills its line does not re-wrap it', async ({ pag
 	expect((await second()).y).toBeCloseTo(topBefore, 1);
 });
 
+test('a focused sub-task fills from its own indent, as a task does from its edge', async ({
+	page
+}) => {
+	await openEmptyApp(page);
+	await createNote(page, 'Nested', '[ ] parent\n[ ] child');
+	await noteCard(page, 'Nested').click();
+	const sheet = editor(page);
+	const rows = sheet.locator('[data-task-row]');
+	await expect(rows).toHaveCount(2);
+	await rows.nth(1).locator('[data-line-text]').click();
+	await page.keyboard.press('Tab');
+	await expect(rows.nth(1).getByRole('checkbox', { name: 'Toggle sub-task' })).toBeVisible();
+
+	// How far the fill starts before the row's checkbox, and where the row's text sits.
+	const geometry = (row: Locator) =>
+		row.evaluate((element) => {
+			const fill = getComputedStyle(element, '::before');
+			const check = element.querySelector('[data-checklist-toggle]')!.getBoundingClientRect();
+			return {
+				lead: check.left - (element.getBoundingClientRect().left + parseFloat(fill.left)),
+				text: element.querySelector('[data-line-text]')!.getBoundingClientRect().left,
+				filled: fill.content !== 'none'
+			};
+		});
+	await rows.nth(0).locator('[data-line-text]').click();
+	const idle = await geometry(rows.nth(1));
+	const task = await geometry(rows.nth(0));
+	await rows.nth(1).locator('[data-line-text]').click();
+	await expect(rows.nth(1).getByRole('button', { name: 'Add sub-task' })).toBeVisible();
+	const subtask = await geometry(rows.nth(1));
+
+	expect(task.filled && subtask.filled).toBe(true);
+	expect(task.lead).toBeGreaterThan(0);
+	expect(subtask.lead).toBeCloseTo(task.lead, 1);
+	expect(subtask.text).toBeCloseTo(idle.text, 1);
+});
+
 test('hiding a preview says what it does, and the card says the preview is hidden', async ({
 	page
 }) => {

@@ -76,6 +76,8 @@ test('controls keep keyboard focus without drawing highlights', async ({ page })
 test('a new note shows its body placeholder', async ({ page }) => {
 	await openEmptyApp(page);
 	await composerPrompt(page).click();
+	await expect(composer(page).getByPlaceholder('Title', { exact: true })).toBeFocused();
+	await page.keyboard.press('Enter');
 	const body = composer(page).getByRole('textbox', { name: 'Note body' });
 	await expect(body).toBeFocused();
 
@@ -107,6 +109,41 @@ test('a new note shows its body placeholder', async ({ page }) => {
 	await expect(body).toContainText('x');
 	expect(await hint()).toBe('none');
 	await expect(body).not.toHaveAttribute('aria-placeholder');
+});
+
+test('the composer starts a blank note at the title and leaves the caret alone once open', async ({
+	page
+}) => {
+	await openEmptyApp(page);
+	await composerPrompt(page).click();
+	const title = composer(page).getByPlaceholder('Title', { exact: true });
+	const body = composer(page).getByRole('textbox', { name: 'Note body' });
+	await expect(title).toBeFocused();
+	await page.keyboard.type('Groceries');
+	await page.keyboard.press('Enter');
+	await expect(body).toBeFocused();
+	await page.keyboard.type('eggs');
+
+	// The new-note shortcut finds the bar open and keeps the writer mid-sentence.
+	await page.keyboard.press('ControlOrMeta+/');
+	await expect(body).toBeFocused();
+	await page.keyboard.type(' milk');
+	await expect(body).toContainText('eggs milk');
+	await expect(title).toHaveValue('Groceries');
+
+	// So does a writer mid-word in the title.
+	await title.click();
+	await title.evaluate((box: HTMLTextAreaElement) => box.setSelectionRange(3, 3));
+	await page.keyboard.press('ControlOrMeta+/');
+	await expect(title).toBeFocused();
+	await page.keyboard.type('X');
+	await expect(title).toHaveValue('GroXceries');
+	await expect(body).toContainText('eggs milk');
+
+	// A checklist starts at its first row rather than the title.
+	await page.keyboard.press('Escape');
+	await page.getByRole('button', { name: 'New checklist' }).click();
+	await expect(body).toBeFocused();
 });
 
 test('a checklist line toggles from the body', async ({ page }) => {

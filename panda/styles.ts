@@ -168,7 +168,7 @@ export const appLayout = {
 		// nothing in it can paint over the bar's menus or the note editor above.
 		isolation: 'isolate',
 		px: 'lg',
-		// An overlaid phone keyboard (.app-float ends at --app-keyboard-bottom) must not
+		// An overlaid software keyboard (.app-float ends at --app-keyboard-bottom) must not
 		// cover the last card, so the room under the feed grows with it.
 		pb: 'calc(var(--app-keyboard-bottom) + token(spacing.3xl))'
 	})

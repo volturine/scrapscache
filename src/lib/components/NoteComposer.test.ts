@@ -80,8 +80,11 @@ describe('NoteComposer', () => {
 		expect(notesStore.notes).toHaveLength(1);
 		await typeTitle('');
 		await fireEvent.keyDown(screen.getByRole('region', { name: 'New note' }), { key: 'Escape' });
-		await waitFor(() => expect(notesStore.notes).toHaveLength(0));
-		expect(composerStore.draftId).toBeNull();
+		// The note goes before discardIfEmpty settles, and the draft is let go after it.
+		await waitFor(() => {
+			expect(notesStore.notes).toHaveLength(0);
+			expect(composerStore.draftId).toBeNull();
+		});
 	});
 
 	it('starts a checklist from its button, and leaves nothing behind when it stays empty', async () => {

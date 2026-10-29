@@ -138,7 +138,8 @@
 	}
 
 	function openWith(seed: ComposerSeed = {}) {
-		if (!open) {
+		const opening = !open;
+		if (opening) {
 			title = seed.title ?? '';
 			body = seed.checklist ? '- [ ] ' : (seed.body ?? '');
 			images = [];
@@ -169,8 +170,9 @@
 		// Pasted text is a note already; a blank bar waits for the first key.
 		if (seed.title || seed.body) ensureNote();
 		void tick().then(() => {
-			if (seed.title || seed.body || seed.checklist) bodyEditor?.focusDefault();
-			else titleInput?.focus();
+			// A blank bar starts at the title; one already open keeps the writer where they are.
+			if (opening && !seed.title && !seed.body && !seed.checklist) titleInput?.focus();
+			else bodyEditor?.focusDefault();
 			if (seed.attach === 'drawing') void footer?.openCanvas();
 			else if (seed.attach === 'photo') footer?.openAttach();
 		});

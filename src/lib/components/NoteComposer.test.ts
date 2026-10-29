@@ -89,10 +89,25 @@ describe('NoteComposer', () => {
 		await fireEvent.click(screen.getByRole('button', { name: 'New checklist' }));
 		await tick();
 		expect(container.querySelector('[data-checklist-toggle]')).toBeTruthy();
+		const body = screen.getByRole('textbox', { name: 'Note body' });
+		await waitFor(() => expect(body.contains(document.activeElement)).toBe(true));
 		expect(notesStore.notes).toHaveLength(0);
 		await fireEvent.keyDown(screen.getByRole('region', { name: 'New note' }), { key: 'Escape' });
 		await waitFor(() => expect(prompt()).toBeTruthy());
 		expect(notesStore.notes).toHaveLength(0);
+	});
+
+	it('keeps the cursor in the body when asked to open while already open', async () => {
+		render(NoteComposer);
+		await fireEvent.click(prompt());
+		await tick();
+		const body = screen.getByRole('textbox', { name: 'Note body' });
+		await fireEvent.keyDown(titleBox(), { key: 'Enter' });
+		await waitFor(() => expect(body.contains(document.activeElement)).toBe(true));
+		expect(composerStore.open()).toBe(true);
+		await tick();
+		await tick();
+		expect(body.contains(document.activeElement)).toBe(true);
 	});
 
 	it('hands the note to the editor with what was typed', async () => {

@@ -96,12 +96,8 @@ export function rememberSafeArea(
 	};
 }
 
-export function appBottomInset(
-	safeBottom: number,
-	onPhone: boolean,
-	keyboardVisible: boolean
-): number {
-	return onPhone && keyboardVisible ? 0 : safeBottom;
+export function appBottomInset(safeBottom: number, keyboardVisible: boolean): number {
+	return keyboardVisible ? 0 : safeBottom;
 }
 
 export type AppKeyboardFrame = {
@@ -175,20 +171,22 @@ export function attachAppViewport(_node: HTMLElement) {
 	let restingLayoutHeight = window.innerHeight;
 	let editorOpen = document.documentElement.classList.contains('editor-open');
 	let keyboardVisible = false;
-	const phone = window.matchMedia(PHONE_MEDIA);
+	// Any touch screen can raise a software keyboard: a phone, and an iPad or
+	// Android tablet at any width. Without touch a short visual viewport is a
+	// pinch zoom, not a keyboard.
+	const touchScreen = navigator.maxTouchPoints > 0;
 
 	const apply = () => {
 		const viewport = window.visualViewport;
 		const visualHeight = viewport?.height ?? window.innerHeight;
 		const visualTop = viewport?.offsetTop ?? 0;
 		const layoutHeight = window.innerHeight;
-		const onPhone = phone.matches;
 		if (!fieldFocused) {
 			restingLayoutHeight = Math.max(layoutHeight, visualHeight);
 		}
 
 		const nextKeyboardVisible =
-			onPhone &&
+			touchScreen &&
 			isSoftwareKeyboardVisible({
 				fieldFocused,
 				visualHeight,
@@ -206,14 +204,14 @@ export function attachAppViewport(_node: HTMLElement) {
 		keyboardVisible = nextKeyboardVisible;
 
 		const occluding =
-			onPhone &&
+			touchScreen &&
 			isKeyboardOccluding({
 				fieldFocused,
 				visualHeight,
 				layoutHeight
 			});
 		cachedSafe = rememberSafeArea(cachedSafe, readSafeAreaInsets(), occluding);
-		const occlusion = onPhone
+		const occlusion = touchScreen
 			? keyboardOcclusion({
 					fieldFocused,
 					visualTop,
@@ -224,7 +222,7 @@ export function attachAppViewport(_node: HTMLElement) {
 				})
 			: { top: 0, bottom: 0 };
 		const keyboardFrame = appKeyboardFrame({
-			editorOpen: onPhone && editorOpen,
+			editorOpen: touchScreen && editorOpen,
 			visualTop,
 			visualHeight,
 			layoutHeight,
@@ -235,8 +233,8 @@ export function attachAppViewport(_node: HTMLElement) {
 		setInsetVar('--app-inset-top', cachedSafe.top);
 		setInsetVar('--app-inset-right', cachedSafe.right);
 		// Keep installed iPhone and iPad controls above the home indicator. When
-		// the phone keyboard is active, its own occlusion replaces this inset.
-		setInsetVar('--app-inset-bottom', appBottomInset(cachedSafe.bottom, onPhone, keyboardVisible));
+		// the software keyboard is active, its own occlusion replaces this inset.
+		setInsetVar('--app-inset-bottom', appBottomInset(cachedSafe.bottom, keyboardVisible));
 		setInsetVar('--app-inset-left', cachedSafe.left);
 		setInsetVar('--app-visual-offset-top', keyboardFrame.viewportOffsetTop);
 		setInsetVar('--app-keyboard-top', keyboardFrame.keyboardTop);
@@ -265,7 +263,6 @@ export function attachAppViewport(_node: HTMLElement) {
 	viewport?.addEventListener('resize', apply);
 	viewport?.addEventListener('scroll', apply);
 	window.addEventListener('resize', apply);
-	phone.addEventListener('change', apply);
 	document.addEventListener('focusin', onFocusIn);
 	document.addEventListener('focusout', onFocusOut);
 	editorClassObserver.observe(document.documentElement, {
@@ -276,7 +273,6 @@ export function attachAppViewport(_node: HTMLElement) {
 		viewport?.removeEventListener('resize', apply);
 		viewport?.removeEventListener('scroll', apply);
 		window.removeEventListener('resize', apply);
-		phone.removeEventListener('change', apply);
 		document.removeEventListener('focusin', onFocusIn);
 		document.removeEventListener('focusout', onFocusOut);
 		editorClassObserver.disconnect();

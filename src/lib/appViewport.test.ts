@@ -1,9 +1,10 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
 	APP_FLOAT_SELECTOR,
 	APP_OVERLAY_SELECTOR,
 	appBottomInset,
 	appKeyboardFrame,
+	attachAppViewport,
 	isKeyboardField,
 	isKeyboardOccluding,
 	isSoftwareKeyboardVisible,
@@ -17,14 +18,12 @@ import {
 const safe = { top: 59, right: 0, bottom: 34, left: 0 };
 
 describe('appBottomInset', () => {
-	it('keeps the home-indicator safe area on iPad-sized layouts', () => {
-		expect(appBottomInset(20, false, false)).toBe(20);
-		expect(appBottomInset(20, false, true)).toBe(20);
+	it('keeps the home-indicator safe area while the keyboard is down', () => {
+		expect(appBottomInset(20, false)).toBe(20);
 	});
 
-	it('lets the phone keyboard replace the home-indicator inset', () => {
-		expect(appBottomInset(34, true, true)).toBe(0);
-		expect(appBottomInset(34, true, false)).toBe(34);
+	it('lets the software keyboard replace the home-indicator inset', () => {
+		expect(appBottomInset(34, true)).toBe(0);
 	});
 });
 
@@ -206,6 +205,49 @@ describe('isKeyboardField', () => {
 		input.remove();
 		file.remove();
 		button.remove();
+	});
+});
+
+describe('attachAppViewport', () => {
+	afterEach(() => {
+		vi.unstubAllGlobals();
+		document.documentElement.classList.remove('editor-open');
+		document.body.replaceChildren();
+	});
+
+	/** An open note with its body focused while a 368px keyboard overlays a 1024x768 screen. */
+	function typeInOpenNote(maxTouchPoints: number) {
+		vi.stubGlobal('innerWidth', 1024);
+		vi.stubGlobal('innerHeight', 768);
+		vi.stubGlobal('navigator', { ...navigator, maxTouchPoints });
+		vi.stubGlobal('visualViewport', {
+			height: 768,
+			offsetTop: 0,
+			addEventListener: () => {},
+			removeEventListener: () => {}
+		});
+		document.documentElement.classList.add('editor-open');
+		const body = document.createElement('textarea');
+		document.body.append(body);
+		const detach = attachAppViewport(document.body);
+		body.focus();
+		Object.assign(window.visualViewport!, { height: 400 });
+		window.dispatchEvent(new Event('resize'));
+		const root = document.documentElement;
+		const frame = {
+			keyboardOpen: root.classList.contains('keyboard-open'),
+			keyboardBottom: root.style.getPropertyValue('--app-keyboard-bottom')
+		};
+		detach();
+		return frame;
+	}
+
+	it('lifts an open note above the keyboard on a tablet-width touch screen', () => {
+		expect(typeInOpenNote(5)).toEqual({ keyboardOpen: true, keyboardBottom: '368px' });
+	});
+
+	it('reads a short visual viewport without touch as a zoom, not a keyboard', () => {
+		expect(typeInOpenNote(0)).toEqual({ keyboardOpen: false, keyboardBottom: '0px' });
 	});
 });
 

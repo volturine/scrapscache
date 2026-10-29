@@ -1396,6 +1396,12 @@ describe('BodyEditor task focus chrome', () => {
 		expect(container.querySelector('[data-editor-line="0"]')?.className).not.toContain(
 			'scrapscache-note-body__row--focused_true'
 		);
+		// The fill starts at the sub-task's indent, not under its parent's checkbox.
+		expect(
+			(container.querySelector('[data-editor-line="1"]') as HTMLElement).style.getPropertyValue(
+				'--row-indent'
+			)
+		).toBe('1.25rem');
 
 		touchPointer(container.querySelector('[data-add-subtask]') as Element, 'pointerdown', 5);
 		await Promise.resolve();

@@ -637,7 +637,25 @@ const noteBodyRecipe = defineSlotRecipe({
 			true: { line: { fontSize: 'compact' } }
 		},
 		focused: {
-			true: { row: { bg: 'scrapscache.surfaceSubtle', rounded: 'card' } }
+			// The fill starts where the row's indent ends, so a focused sub-task is not
+			// painted under its parent's checkbox. The indent stays the row's padding, so
+			// a press beside a sub-task still lands on its row.
+			true: {
+				row: {
+					isolation: 'isolate',
+					_before: {
+						content: '""',
+						position: 'absolute',
+						insetBlock: 0,
+						right: 0,
+						left: 'var(--row-indent, 0px)',
+						zIndex: -1,
+						bg: 'scrapscache.surfaceSubtle',
+						rounded: 'card',
+						pointerEvents: 'none'
+					}
+				}
+			}
 		}
 	}
 });

@@ -110,6 +110,21 @@ describe('NoteComposer', () => {
 		expect(body.contains(document.activeElement)).toBe(true);
 	});
 
+	it('keeps the caret mid-word in the title when asked to open while already open', async () => {
+		render(NoteComposer);
+		await fireEvent.click(prompt());
+		await tick();
+		await typeTitle('Shoping');
+		const box = titleBox();
+		box.focus();
+		box.setSelectionRange(4, 4);
+		expect(composerStore.open()).toBe(true);
+		// Long enough for the body's own focus, which waits for its first paint.
+		await new Promise((done) => setTimeout(done, 100));
+		expect(document.activeElement).toBe(box);
+		expect(box.selectionStart).toBe(4);
+	});
+
 	it('hands the note to the editor with what was typed', async () => {
 		render(NoteComposer);
 		await fireEvent.click(prompt());

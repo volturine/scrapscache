@@ -131,6 +131,15 @@ test('the composer starts a blank note at the title and leaves the caret alone o
 	await expect(body).toContainText('eggs milk');
 	await expect(title).toHaveValue('Groceries');
 
+	// So does a writer mid-word in the title.
+	await title.click();
+	await title.evaluate((box: HTMLTextAreaElement) => box.setSelectionRange(3, 3));
+	await page.keyboard.press('ControlOrMeta+/');
+	await expect(title).toBeFocused();
+	await page.keyboard.type('X');
+	await expect(title).toHaveValue('GroXceries');
+	await expect(body).toContainText('eggs milk');
+
 	// A checklist starts at its first row rather than the title.
 	await page.keyboard.press('Escape');
 	await page.getByRole('button', { name: 'New checklist' }).click();

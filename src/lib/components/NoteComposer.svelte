@@ -170,9 +170,10 @@
 		// Pasted text is a note already; a blank bar waits for the first key.
 		if (seed.title || seed.body) ensureNote();
 		void tick().then(() => {
-			// A blank bar starts at the title; one already open keeps the writer where they are.
-			if (opening && !seed.title && !seed.body && !seed.checklist) titleInput?.focus();
-			else bodyEditor?.focusDefault();
+			// A blank bar starts at the title and handed-over text at the body; asked again
+			// with nothing new, an open bar leaves the writer wherever they are.
+			if (seed.title || seed.body || seed.checklist) bodyEditor?.focusDefault();
+			else if (opening) titleInput?.focus();
 			if (seed.attach === 'drawing') void footer?.openCanvas();
 			else if (seed.attach === 'photo') footer?.openAttach();
 		});

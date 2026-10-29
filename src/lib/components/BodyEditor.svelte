@@ -3371,6 +3371,7 @@
 		const parts: string[] = [];
 		if (line.indent > 0 || focused)
 			parts.push(`padding-left:calc(${line.indent * 1.25}rem${focused ? ' + 0.5rem' : ''})`);
+		if (focused && line.indent > 0) parts.push(`--row-indent:${line.indent * 1.25}rem`);
 		// Every task row keeps the +'s room (its 1.5rem glyph, the 1.25rem its touch target
 		// reaches into, and a hair of slack), so a near-full line does not wrap when focus
 		// arrives. The focused row bleeds 0.5rem out on both sides and pads the same back

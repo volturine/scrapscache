@@ -21,6 +21,9 @@
 
 	const phone = new MediaQuery(PHONE_MEDIA, false);
 	const d = dialog({ presentation: 'appOverlay' });
+	// The settings menu hands focus on by script, which Chrome counts as keyboard focus
+	// all the way to a slider's thumb; the thumb's ring follows the last input instead.
+	let pointer = $state(false);
 	const codeSample = [
 		'git commit -m "Bump the version"',
 		'curl -fsSL https://example.com/install.sh | sh # a long line that keeps going past the edge'
@@ -61,7 +64,7 @@
 						</Slider.MarkerGroup>
 					{/if}
 				</Slider.Track>
-				<Slider.Thumb index={0} class={styles.thumb}>
+				<Slider.Thumb index={0} class={styles.thumb} data-pointer={pointer || undefined}>
 					<Slider.HiddenInput />
 				</Slider.Thumb>
 			</Slider.Control>
@@ -89,6 +92,11 @@
 		<Switch.HiddenInput />
 	</Switch.Root>
 {/snippet}
+
+<svelte:window
+	onpointerdowncapture={() => (pointer = true)}
+	onkeydowncapture={() => (pointer = false)}
+/>
 
 <Dialog.Root
 	open

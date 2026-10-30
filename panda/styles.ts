@@ -2244,7 +2244,10 @@ export const textSettingsStyles = {
 		boxShadow: 'md',
 		outline: 'none',
 		...clickable,
-		'&[data-focus-visible]': { boxShadow: '0 0 0 3px token(colors.scrapscache.focus)' }
+		// The ring is for the keyboard: Zag's data-focus is set by a drag too.
+		'&:focus-visible:not([data-pointer])': {
+			boxShadow: '0 0 0 3px token(colors.scrapscache.focus)'
+		}
 	}),
 	switchRoot: css({ w: 'full', ...clickable }),
 	switchControl: css({
@@ -3747,6 +3750,8 @@ export const markdownStyles = css({
 	'& .markdown-block-copy svg': square('0.875rem'),
 	// max-content on an empty line is 0 wide, so the caret has no box to land in.
 	// Grow to the row, which is already at least as wide as the code block.
+	// In the editor, `&.markdown-raw [data-line-text]` below outranks this white-space,
+	// so code lines being edited wrap; Settings > Text and code says so.
 	'& .markdown-editor-code-line': {
 		display: 'block',
 		position: 'relative',

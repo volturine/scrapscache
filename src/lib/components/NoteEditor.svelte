@@ -21,6 +21,7 @@
 	import { uiStore } from '#lib/stores/ui.svelte.js';
 	import LabelMenu from './LabelMenu.svelte';
 	import NoteEditorFooter from './NoteEditorFooter.svelte';
+	import FileDropHint from './FileDropHint.svelte';
 	import BodyEditor from './BodyEditor.svelte';
 	import TimeTravel from './TimeTravel.svelte';
 	import { syncStore } from '#lib/stores/sync.svelte.js';
@@ -31,19 +32,15 @@
 	import { noteActivity, reminderWords, writeClipboardText } from '#lib/utils.js';
 	import { noteShareLink } from '#lib/noteLinks.js';
 	import ReminderLabel from './ReminderLabel.svelte';
-	import {
-		Bell,
-		ChevronLeft,
-		Eye,
-		EyeOff,
-		Maximize2,
-		Minimize2,
-		Paperclip,
-		Pin
-	} from '@lucide/svelte';
+	import { Bell, ChevronLeft, Eye, EyeOff, Maximize2, Minimize2, Pin } from '@lucide/svelte';
 
 	import { revealEditorField, revealEditorPoint } from '#lib/editorVisibility.js';
-	import { getClipboardFiles, isImageAttachment } from '#lib/noteImages.js';
+	import {
+		dataTransferHasFiles,
+		dragLeftElement,
+		getClipboardFiles,
+		isImageAttachment
+	} from '#lib/noteImages.js';
 	import { matchTrailingEmoticon } from '#lib/emoticons.js';
 	import { isKeyboardField } from '#lib/appViewport.js';
 	import { modalLayer } from '#lib/modalLayer.js';
@@ -485,21 +482,6 @@
 		return editorDialog != null && target instanceof Node && editorDialog.contains(target);
 	}
 
-	function dataTransferHasFiles(dataTransfer: DataTransfer | null): boolean {
-		return !!dataTransfer && Array.from(dataTransfer.types).includes('Files');
-	}
-
-	function pointerLeftElement(event: DragEvent, el: EventTarget | null): boolean {
-		if (!(el instanceof Element)) return true;
-		const rect = el.getBoundingClientRect();
-		return (
-			event.clientX <= rect.left ||
-			event.clientX >= rect.right ||
-			event.clientY <= rect.top ||
-			event.clientY >= rect.bottom
-		);
-	}
-
 	function handleFileDragEnter(event: DragEvent) {
 		if (!dataTransferHasFiles(event.dataTransfer)) return;
 		event.preventDefault();
@@ -514,7 +496,7 @@
 	}
 
 	function handleFileDragLeave(event: DragEvent) {
-		if (!fileDropActive || !pointerLeftElement(event, event.currentTarget)) return;
+		if (!fileDropActive || !dragLeftElement(event, event.currentTarget)) return;
 		fileDropActive = false;
 	}
 
@@ -1117,22 +1099,7 @@
 
 					{#if !historyPreview}
 						{#if fileDropActive}
-							<div class={styles.fileDropHint} data-file-drop-hint aria-hidden="true">
-								<div
-									class={hstack({
-										gap: 'sm',
-										rounded: 'pill',
-										bg: 'scrapscache.surface',
-										px: 'lg',
-										py: 'sm',
-										textStyle: 'button',
-										boxShadow: 'sm'
-									})}
-								>
-									<Paperclip size={16} aria-hidden="true" />
-									Drop to attach
-								</div>
-							</div>
+							<FileDropHint />
 						{/if}
 
 						<NoteEditorFooter

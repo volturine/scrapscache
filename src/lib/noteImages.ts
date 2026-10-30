@@ -42,6 +42,23 @@ export function getClipboardFiles(clipboardData: DataTransfer | null): File[] {
 		.filter((file): file is File => file !== null);
 }
 
+/** A drag that carries files (not text or a link). */
+export function dataTransferHasFiles(dataTransfer: DataTransfer | null): boolean {
+	return !!dataTransfer && Array.from(dataTransfer.types).includes('Files');
+}
+
+/** A dragleave that really left the element, not one into one of its children. */
+export function dragLeftElement(event: DragEvent, el: EventTarget | null): boolean {
+	if (!(el instanceof Element)) return true;
+	const rect = el.getBoundingClientRect();
+	return (
+		event.clientX <= rect.left ||
+		event.clientX >= rect.right ||
+		event.clientY <= rect.top ||
+		event.clientY >= rect.bottom
+	);
+}
+
 /** Approximate byte size from a data URL (for UI only). */
 export function dataUrlByteLength(dataUrl: string): number {
 	const i = dataUrl.indexOf(',');

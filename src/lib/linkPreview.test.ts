@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { extractHttpUrls, localLinkCard, normalizePreviewUrl } from './linkPreview';
+import {
+	extractHttpUrls,
+	joinWrappedHttpUrls,
+	localLinkCard,
+	normalizePreviewUrl
+} from './linkPreview';
 
 describe('extractHttpUrls', () => {
 	it('returns distinct HTTP(S) links in their note order', () => {
@@ -19,6 +24,73 @@ describe('extractHttpUrls', () => {
 	it('does not cap the number of distinct links', () => {
 		const body = [1, 2, 3, 4, 5].map((n) => `https://example.com/${n}`).join('\n');
 		expect(extractHttpUrls(body)).toHaveLength(5);
+	});
+});
+
+describe('joinWrappedHttpUrls', () => {
+	it('joins a query a paste wrapped onto the next line', () => {
+		const wrapped =
+			'what ever https://naysbaits.com/en-eu?\n_su_rec=Sn1GDAHB&__su_rec_id=9c3ebfa2-b7a6-43ba-b09b';
+		expect(joinWrappedHttpUrls(wrapped)).toBe(
+			'what ever https://naysbaits.com/en-eu?_su_rec=Sn1GDAHB&__su_rec_id=9c3ebfa2-b7a6-43ba-b09b'
+		);
+		expect(extractHttpUrls(wrapped)).toEqual([
+			'https://naysbaits.com/en-eu?_su_rec=Sn1GDAHB&__su_rec_id=9c3ebfa2-b7a6-43ba-b09b'
+		]);
+	});
+
+	it('joins a wrapped URL that is itself a checklist item', () => {
+		expect(joinWrappedHttpUrls('[ ] https://shop.example/item?\n_id=abc')).toBe(
+			'[ ] https://shop.example/item?_id=abc'
+		);
+	});
+
+	it('does not join a URL wrapped on purpose inside a code fence', () => {
+		const fenced = [
+			'```bash',
+			'curl https://api.example.com/x?',
+			'_token=abcdefghijklmnopqrstuvwxyz0123456789',
+			'```',
+			'~~~',
+			'curl https://api.example.com/y?',
+			'_token=abc',
+			'~~~',
+			'https://shop.example/item?',
+			'_id=abc'
+		].join('\n');
+		expect(joinWrappedHttpUrls(fenced)).toBe(
+			[
+				'```bash',
+				'curl https://api.example.com/x?',
+				'_token=abcdefghijklmnopqrstuvwxyz0123456789',
+				'```',
+				'~~~',
+				'curl https://api.example.com/y?',
+				'_token=abc',
+				'~~~',
+				'https://shop.example/item?_id=abc'
+			].join('\n')
+		);
+	});
+
+	it('does not join a long token line that merely contains an equals sign', () => {
+		const body = [
+			'https://example.com/done',
+			'token=abcdefghijklmnopqrstuvwxyz0123456789abcdef'
+		].join('\n');
+		expect(joinWrappedHttpUrls(body)).toBe(body);
+	});
+
+	it('leaves a following word, a new link, and a checklist row alone', () => {
+		const body = [
+			'https://hevisleep.sk/products/hevi-blanket?variant=48393585066197',
+			'sublera',
+			'https://example.com/a',
+			'https://example.com/b',
+			'[ ] https://example.com/done?',
+			'[ ] next item'
+		].join('\n');
+		expect(joinWrappedHttpUrls(body)).toBe(body);
 	});
 });
 

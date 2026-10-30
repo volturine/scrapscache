@@ -2690,12 +2690,19 @@ export const noteEditorStyles = {
 			inset: 0,
 			display: 'flex',
 			alignItems: { base: 'flex-start', md: 'center' },
+			// Wider than a phone, shorter than a desktop: a foldable or tablet in
+			// landscape. Centering the card there leaves a band above the note.
+			'@media (min-width: 768px) and (max-height: 45rem)': { alignItems: 'flex-start' },
 			justifyContent: 'center'
 		},
 		variants: {
 			expanded: {
 				true: {},
-				false: { px: { base: 'sm', sm: 'md', md: 'lg' }, pb: 'var(--app-sheet-pad-bottom)' }
+				false: {
+					px: { base: 'sm', sm: 'md', md: 'lg' },
+					pb: 'var(--app-sheet-pad-bottom)',
+					'@media (min-width: 768px) and (max-height: 45rem)': { pb: 'sm' }
+				}
 			}
 		},
 		defaultVariants: { expanded: false }
@@ -2705,9 +2712,11 @@ export const noteEditorStyles = {
 		variants: {
 			expanded: {
 				true: { h: 'full', maxW: 'none' },
-				// Short viewports (landscape phones, foldables) take the full height.
+				// Short viewports take the full height: landscape phones, and a foldable
+				// or tablet that is wider than md but shorter than the 32rem card floor.
 				false: {
 					h: { base: 'full', md: 'max(72%, 32rem)' },
+					'@media (min-width: 768px) and (max-height: 45rem)': { h: 'full' },
 					maxW: '2xl',
 					rounded: 'sheet',
 					boxShadow: 'noteSheet'

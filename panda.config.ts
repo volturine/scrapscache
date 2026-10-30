@@ -32,6 +32,8 @@ export default defineConfig({
 			// A `.dark *` form would re-declare every token on every element, which
 			// made a theme switch recompute the whole document.
 			dark: '.dark &',
+			// Settings > Text and code: long lines in code blocks wrap instead of scrolling.
+			codeWrap: '[data-code-wrap] &',
 			hoverable: {
 				'@media (hover: hover) and (pointer: fine)': {
 					'&:hover': '@slot'

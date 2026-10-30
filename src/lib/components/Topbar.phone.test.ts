@@ -88,7 +88,8 @@ describe('the top bar on a phone', () => {
 		const items = within(moreMenu)
 			.getAllByRole('menuitem')
 			.map((item) => item.textContent?.trim());
-		expect(items[0]).toBe('Back up notes…');
+		expect(items[0]).toMatch(/^Text and code/);
+		expect(items).toContain('Back up notes…');
 		expect(items).not.toContain('Archive');
 	});
 });

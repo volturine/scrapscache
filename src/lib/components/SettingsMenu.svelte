@@ -3,7 +3,7 @@
 	import { cx } from 'styled-system/css';
 	import { iconButton, menuItem } from 'styled-system/recipes';
 	import { Menu } from '@ark-ui/svelte/menu';
-	import { Download, EllipsisVertical, Settings, Upload } from '@lucide/svelte';
+	import { ChevronRight, Download, EllipsisVertical, Settings, Type, Upload } from '@lucide/svelte';
 	import { resolve } from '$app/paths';
 	import { uiStore, type Layout, type Theme } from '#lib/stores/ui.svelte.js';
 	import Tooltip from './Tooltip.svelte';
@@ -16,6 +16,7 @@
 		open = $bindable(false),
 		onExport,
 		onImport,
+		onTextSettings,
 		importing = false,
 		importError = '',
 		phone = false
@@ -23,6 +24,8 @@
 		open?: boolean;
 		onExport: () => void;
 		onImport: () => void;
+		/** Opens Text and code; the dialog lives outside the menu, which closes. */
+		onTextSettings: () => void;
 		importing?: boolean;
 		importError?: string;
 		/** On a phone this is the "More" menu; its places are in the tab bar and the Labels tab. */
@@ -39,10 +42,15 @@
 		{ value: 'grid', label: 'Grid' },
 		{ value: 'list', label: 'List' }
 	];
+	const textStatus = $derived(
+		`${uiStore.textSize} px text · code ${uiStore.codeWrap ? 'wraps' : 'scrolls'}`
+	);
 	const id = $props.id();
 	const ids = {
 		appearance: `${id}-appearance`,
 		theme: `${id}-theme`,
+		text: `${id}-text`,
+		textStatus: `${id}-text-status`,
 		layout: `${id}-layout`,
 		data: `${id}-data`,
 		about: `${id}-about`
@@ -99,6 +107,20 @@
 						{/each}
 					</Menu.RadioItemGroup>
 				</div>
+				<Menu.Item
+					value="text-settings"
+					onSelect={onTextSettings}
+					class={cx(menuItem({ density: 'compact' }), styles.deviceRow)}
+					aria-labelledby={ids.text}
+					aria-describedby={ids.textStatus}
+				>
+					<Type class={styles.deviceIcon} aria-hidden="true" />
+					<span class={styles.deviceText}>
+						<span id={ids.text} class={styles.deviceLabel}>Text and code</span>
+						<span id={ids.textStatus} class={styles.status}>{textStatus}</span>
+					</span>
+					<ChevronRight class={styles.deviceChevron} aria-hidden="true" />
+				</Menu.Item>
 			</Menu.ItemGroup>
 
 			<Menu.ItemGroup class={styles.section} aria-labelledby={ids.data}>

@@ -6,9 +6,10 @@ import SettingsMenu from './SettingsMenu.svelte';
 async function openMenu(props: Partial<{ importing: boolean; importError: string }> = {}) {
 	const onExport = vi.fn();
 	const onImport = vi.fn();
-	render(SettingsMenu, { props: { onExport, onImport, ...props } });
+	const onTextSettings = vi.fn();
+	render(SettingsMenu, { props: { onExport, onImport, onTextSettings, ...props } });
 	await fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
-	return { onExport, onImport };
+	return { onExport, onImport, onTextSettings };
 }
 
 async function choose(item: HTMLElement) {
@@ -19,6 +20,8 @@ async function choose(item: HTMLElement) {
 afterEach(() => {
 	uiStore.dark = null;
 	uiStore.layout = 'grid';
+	uiStore.textSize = 14;
+	uiStore.codeWrap = false;
 });
 
 describe('SettingsMenu', () => {
@@ -64,6 +67,19 @@ describe('SettingsMenu', () => {
 		expect(uiStore.layout).toBe('list');
 		await choose(within(layout).getByRole('menuitemradio', { name: 'Grid' }));
 		expect(uiStore.layout).toBe('grid');
+	});
+
+	it('opens Text and code from Appearance, naming the size and the wrap', async () => {
+		uiStore.textSize = 16;
+		uiStore.codeWrap = true;
+		const { onTextSettings } = await openMenu();
+		const appearance = screen.getByRole('group', { name: 'Appearance' });
+		const item = within(appearance).getByRole('menuitem', { name: 'Text and code' });
+
+		expect(item.getAttribute('aria-describedby')).toBeTruthy();
+		expect(item.textContent).toContain('16 px text · code wraps');
+		await choose(item);
+		expect(onTextSettings).toHaveBeenCalledOnce();
 	});
 
 	it('runs the backup actions it is given, and disables restore while one runs', async () => {

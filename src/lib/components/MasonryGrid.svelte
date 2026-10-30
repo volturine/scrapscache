@@ -5,6 +5,7 @@
 	import NoteCard from './NoteCard.svelte';
 	import { css } from 'styled-system/css';
 	import { masonryItem } from '$panda/styles';
+	import { TEXT_SIZE, uiStore } from '#lib/stores/ui.svelte.js';
 
 	let {
 		notes,
@@ -19,7 +20,9 @@
 	} = $props();
 
 	/** Column count tracks the grid's own width, so cards keep a consistent size
-	 *  even when a lead item (calendar) shrinks the columns area. */
+	 *  even when a lead item (calendar) shrinks the columns area. The width is
+	 *  counted at the default text size: larger text makes fewer, wider columns,
+	 *  down to one when two would be narrower than a 320 px phone's. */
 	function colsFor(width: number): number {
 		return width >= 1700
 			? 7
@@ -31,11 +34,16 @@
 						? 4
 						: width >= 600
 							? 3
-							: 2;
+							: width >= 280
+								? 2
+								: 1;
 	}
 	let containerWidth = $state(0);
 	const colCount = $derived(
-		colsFor(containerWidth || (typeof window !== 'undefined' ? window.innerWidth : 1024))
+		colsFor(
+			(containerWidth || (typeof window !== 'undefined' ? window.innerWidth : 1024)) /
+				(uiStore.textSize / TEXT_SIZE.default)
+		)
 	);
 
 	/** Rough height for shortest-column packing (cards scroll at max-h 320px). */
@@ -83,6 +91,19 @@
 	 *  columns exactly where they were. A card is skipped only at the revision
 	 *  it was measured at: a note edited offscreen lays out again first. */
 	const skipOffscreen = $derived(settledWidth > 0);
+	/** Measure every card again, offscreen ones included; set once mounted. */
+	let relayoutAll: (() => void) | undefined;
+	// The text settings rewrap every card without changing the grid's width.
+	const textLayout = $derived(
+		`${uiStore.textSize}:${uiStore.effectiveCodeSize}:${uiStore.codeWrap}`
+	);
+	/** The text settings the cards were last measured at; mounting measures them first. */
+	let laidOutText: string | undefined;
+	$effect(() => {
+		const previous = laidOutText;
+		laidOutText = textLayout;
+		if (previous !== undefined && previous !== textLayout) relayoutAll?.();
+	});
 
 	onMount(() => {
 		const root = gridEl;
@@ -119,6 +140,7 @@
 				settledWidth = root.clientWidth;
 			});
 		};
+		relayoutAll = relayout;
 		const settle = () => {
 			if (root.clientWidth === settledWidth) measure();
 			else relayout();
@@ -131,6 +153,7 @@
 		fonts?.addEventListener('loadingdone', relayout);
 		if (fonts?.status === 'loading') void fonts.ready.then(relayout);
 		return () => {
+			relayoutAll = undefined;
 			observer.disconnect();
 			fonts?.removeEventListener('loadingdone', relayout);
 			if (frame !== undefined) cancelAnimationFrame(frame);

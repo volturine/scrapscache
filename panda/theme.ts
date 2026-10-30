@@ -76,6 +76,8 @@ const scrapscacheColors = tokenGroup({
 	mediaSurfaceMuted: 'rgba(0, 0, 0, 0.6)',
 	mediaSurfaceSoft: 'rgba(0, 0, 0, 0.4)',
 	mediaText: '#ffffff',
+	/** A slider's thumb and a switch's knob: white on the track in both themes. */
+	knob: '#ffffff',
 	mediaTextStrong: 'rgba(255, 255, 255, 0.9)',
 	mediaOutline: 'rgba(255, 255, 255, 0.95)',
 	mediaTextMuted: 'rgba(255, 255, 255, 0.7)',

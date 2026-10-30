@@ -686,7 +686,7 @@ const notesShellBase = css({
 	w: 'full',
 	mx: 'auto'
 });
-const notesListShell = css({ maxW: '720px' });
+const notesListShell = css({ maxW: '45rem' });
 
 export function notesShell(layout: 'grid' | 'list' = 'grid'): string {
 	return layout === 'list' ? `${notesShellBase} ${notesListShell}` : notesShellBase;
@@ -2146,6 +2146,133 @@ export const settingsMenuStyles = {
 	alert: css({ px: 'md', pb: 'sm', textStyle: 'label', color: 'scrapscache.danger' })
 };
 
+/**
+ * Settings > Text and code: a box over the app on a desktop, the whole screen on a
+ * phone. Each section is a card with a live preview over its controls.
+ */
+export const textSettingsStyles = {
+	panel: css({
+		maxW: '28rem',
+		maxH: 'calc(100% - var(--app-topbar-height) - 2rem)',
+		overflow: 'hidden',
+		bg: 'scrapscache.bg'
+	}),
+	phonePositioner: css({ p: 0, alignItems: 'stretch' }),
+	phonePanel: css({
+		maxW: 'none',
+		maxH: 'none',
+		h: 'full',
+		rounded: 0,
+		borderWidth: 0,
+		boxShadow: 'none',
+		pt: 'env(safe-area-inset-top)'
+	}),
+	header: hstack({
+		flexShrink: 0,
+		h: '3.25rem',
+		gap: 'xs',
+		pl: 'lg',
+		pr: 'xs',
+		borderBottomWidth: 'hairline',
+		borderColor: 'scrapscache.border'
+	}),
+	phoneHeader: css({ pl: 'xs' }),
+	title: css({ ...flexFill, textStyle: 'heading' }),
+	body: css({
+		...flexFill,
+		// A flex column item keeps its content height unless allowed to shrink.
+		minH: 0,
+		// The switches' and sliders' hidden inputs are absolutely placed. Held in here,
+		// focusing one scrolls this body, not the panel with its header.
+		position: 'relative',
+		overflowY: 'auto',
+		overscrollBehavior: 'contain',
+		px: { base: 'md', sm: 'lg' },
+		pb: 'lg'
+	}),
+	sectionLabel: css({ px: '2xs', pt: 'lg', pb: 'xs', textStyle: 'overline' }),
+	card: css({ ...border, rounded: 'dialog', bg: 'scrapscache.surface', overflow: 'hidden' }),
+	preview: css({ p: 'md', borderBottomWidth: 'hairline', borderColor: 'scrapscache.border' }),
+	sampleNote: css({
+		...column,
+		gap: '3xs',
+		maxW: '15rem',
+		px: 'md',
+		py: 'sm',
+		...cardRadius,
+		borderWidth: 'hairline',
+		borderColor: 'scrapscache.borderFaint'
+	}),
+	sampleTitle: css({ textStyle: 'title' }),
+	caption: css({ mt: 'sm', textStyle: 'caption' }),
+	/** The code sample's block keeps the markdown styles' own margins out of the card. */
+	sampleCode: css({ '& .markdown-code-block': { m: 0 } }),
+	row: hstack({ gap: 'sm', minH: { base: '2.75rem', _touch: '3rem' }, px: 'md' }),
+	rowRule: css({ borderTopWidth: 'hairline', borderColor: 'scrapscache.border' }),
+	rowIcon: css({ ...iconSm, flexShrink: 0 }),
+	rowLabel: css({ ...flexFill, textStyle: 'body' }),
+	/** A size's row has no icon of its own; its label lines up with the switch's above. */
+	indentedLabel: css({ pl: 'calc(1rem + token(spacing.sm))' }),
+	value: css({ flexShrink: 0, textStyle: 'caption', fontVariantNumeric: 'tabular-nums' }),
+	slider: hstack({ gap: 'sm', px: 'md', pb: 'md' }),
+	smallA: css({ w: '1rem', flexShrink: 0, textAlign: 'center', textStyle: 'label', ...mutedText }),
+	largeA: css({
+		w: '1rem',
+		flexShrink: 0,
+		textAlign: 'center',
+		fontSize: 'pageSection',
+		lineHeight: '1',
+		...mutedText
+	}),
+	// The control is the press area; the track inside it is the thin line.
+	sliderControl: css({ ...flexFill, position: 'relative', ...rowCenter, h: '2rem', ...clickable }),
+	track: css({ flex: '1', h: '0.25rem', rounded: 'pill', bg: 'scrapscache.border' }),
+	range: css({ h: 'full', rounded: 'pill', bg: 'scrapscache.accent' }),
+	/** A tick under the track at the default size. */
+	marker: css({
+		top: '0.5rem',
+		// Zag centres the mark on its value.
+		w: '0.125rem',
+		h: '0.3125rem',
+		rounded: 'knob',
+		bg: 'scrapscache.textMuted'
+	}),
+	thumb: css({
+		...square('1.375rem'),
+		rounded: 'pill',
+		bg: 'scrapscache.knob',
+		boxShadow: 'md',
+		outline: 'none',
+		...clickable,
+		'&[data-focus-visible]': { boxShadow: '0 0 0 3px token(colors.scrapscache.focus)' }
+	}),
+	switchRoot: css({ w: 'full', ...clickable }),
+	switchControl: css({
+		display: 'inline-flex',
+		alignItems: 'center',
+		w: '2.5rem',
+		h: '1.5rem',
+		p: '3xs',
+		rounded: 'pill',
+		bg: 'scrapscache.checklistBorder',
+		transitionProperty: 'background-color',
+		transitionDuration: '150ms',
+		'&[data-state=checked]': { bg: 'scrapscache.accent' },
+		// app.css takes outlines away, so keyboard focus is a ring drawn as a shadow.
+		'&[data-focus-visible]': { boxShadow: '0 0 0 3px token(colors.scrapscache.focus)' }
+	}),
+	switchThumb: css({
+		...square('1.25rem'),
+		rounded: 'pill',
+		bg: 'scrapscache.knob',
+		boxShadow: 'sm',
+		transitionProperty: 'transform',
+		transitionDuration: '150ms',
+		'&[data-state=checked]': { transform: 'translateX(1rem)' },
+		_motionReduce: { transition: 'none' }
+	})
+};
+
 export const colorPaletteStyles = {
 	swatch: css({
 		...square('2.5rem'),
@@ -3584,11 +3711,17 @@ export const markdownStyles = css({
 	'& .markdown-code-block, & .markdown-code-block code, & .markdown-editor-code-block': {
 		color: 'scrapscache.text',
 		fontFamily: 'sans',
-		fontSize: 'compact',
+		// Settings > Text and code may give code its own size; otherwise it follows the text.
+		fontSize: 'var(--code-font-size, token(fontSizes.compact))',
 		lineHeight: 'body'
 	},
 	'& .markdown-block-scroll.markdown-editor-code-block': { py: 'sm' },
-	'& .markdown-code-block code': { display: 'block', minW: 'max-content', py: 'md' },
+	'& .markdown-code-block code': {
+		display: 'block',
+		minW: 'max-content',
+		py: 'md',
+		_codeWrap: { minW: 0 }
+	},
 	'& .markdown-code-language-row': { px: '0.75rem', pt: 'xs' },
 	'& .markdown-code-language': {
 		display: 'block',
@@ -3628,7 +3761,13 @@ export const markdownStyles = css({
 		wordBreak: 'normal'
 	},
 	'& .markdown-raw-code-block [data-editor-line]': { padding: '0 2.75rem 0 0.75rem' },
-	'& .markdown-code-line': { display: 'block', minW: 'max-content', px: 'md', whiteSpace: 'pre' },
+	'& .markdown-code-line': {
+		display: 'block',
+		minW: 'max-content',
+		px: 'md',
+		whiteSpace: 'pre',
+		_codeWrap: { minW: 0, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }
+	},
 	'& .markdown-code-token-comment': { color: 'scrapscache.success', fontStyle: 'italic' },
 	'& .markdown-code-token-string': { color: 'scrapscache.danger' },
 	'& .markdown-code-token-flag': { color: 'scrapscache.accent' },

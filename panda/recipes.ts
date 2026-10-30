@@ -402,7 +402,7 @@ const noteCardRecipe = defineSlotRecipe({
 			zIndex: 1,
 			...column,
 			w: 'full',
-			maxH: '320px',
+			maxH: '20rem',
 			cursor: 'pointer',
 			overflow: 'hidden',
 			...cardRadius,

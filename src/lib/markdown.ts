@@ -77,6 +77,17 @@ function isWord(value: string | undefined): boolean {
 	return !!value && /[\p{L}\p{N}_]/u.test(value);
 }
 
+/** Underscores in an address are not emphasis. `_su_rec` would otherwise eat the URL. */
+function insideHttpUrl(source: string, index: number): boolean {
+	const from = Math.max(0, index - 8192);
+	for (let cursor = index; cursor > from; cursor--) {
+		if (/\s/.test(source[cursor - 1] ?? '')) {
+			return /^https?:\/\//i.test(source.slice(cursor, index));
+		}
+	}
+	return /^https?:\/\//i.test(source.slice(from, index));
+}
+
 function canOpen(source: string, index: number, length: number, marker: MarkdownMarker): boolean {
 	if (isEscaped(source, index)) return false;
 	if (marker === 'code') return true;
@@ -207,6 +218,7 @@ function parseInline(
 		if (
 			(triple === '***' || triple === '___') &&
 			!deadDelimiters.has(triple) &&
+			!(triple === '___' && insideHttpUrl(source, index)) &&
 			canOpen(source, index, 3, 'emphasis')
 		) {
 			const close = findClosing(source, index + 3, triple, 'emphasis', budget);
@@ -239,6 +251,8 @@ function parseInline(
 		for (const delimiter of candidates) {
 			if (deadDelimiters.has(delimiter.text)) continue;
 			if (!source.startsWith(delimiter.text, index)) continue;
+			if ((delimiter.text === '_' || delimiter.text === '__') && insideHttpUrl(source, index))
+				continue;
 			if (!canOpen(source, index, delimiter.text.length, delimiter.marker)) continue;
 			const close = findClosing(
 				source,

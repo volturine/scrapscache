@@ -1,6 +1,43 @@
-const HTTP_URL_RE = /https?:\/\/[^\s<>"'`]+/gi;
-
 import type { LinkPreview } from './model/types';
+
+const HTTP_URL_RE = /https?:\/\/[^\s<>"'`]+/gi;
+/** Characters that can continue a URL a paste wrapped onto the next line. */
+const URL_CONTINUATION = /^[A-Za-z0-9\-._~:/?#@!$&'()*+,;=%]+$/;
+/** A following line that is its own block, not the rest of a wrapped URL. */
+const NEW_BLOCK = /^(?:#{1,6}\s|```|~~~|\s*(?:[-*+•]\s+)?\[[ xX]?\]\s|\s*[-*+•]\s+)/;
+
+function continuesWrappedUrl(line: string, next: string): boolean {
+	if (!next || /\s/.test(next) || NEW_BLOCK.test(next) || /^https?:\/\//i.test(next)) return false;
+	if (!URL_CONTINUATION.test(next)) return false;
+	const url = line.match(/https?:\/\/\S*$/i)?.[0];
+	if (!url) return false;
+	// A wrap breaks after `?`, `&` or `-`, or the next line is the query itself.
+	// A following word (`sublera`) is a new line.
+	return (
+		/[?&=/_-]$/.test(url) || /^[?&=/_-]/.test(next) || (next.length >= 40 && /[=&%]/.test(next))
+	);
+}
+
+/**
+ * Join a URL a paste wrapped across lines. The break is not a new paragraph:
+ * `https://shop.example/item?` then `_id=…` is one address.
+ */
+export function joinWrappedHttpUrls(text: string): string {
+	if (!/[\r\n]/.test(text) || !/https?:\/\//i.test(text)) return text;
+	const normalized = text.replace(/\r\n?/g, '\n');
+	const lines = normalized.split('\n');
+	const joined: string[] = [];
+	for (let index = 0; index < lines.length; index++) {
+		let line = lines[index] ?? '';
+		while (index + 1 < lines.length && continuesWrappedUrl(line, lines[index + 1] ?? '')) {
+			line += lines[++index] ?? '';
+		}
+		joined.push(line);
+	}
+	const result = joined.join('\n');
+	// A note that only used CRLF, and had nothing to join, keeps its own breaks.
+	return result === normalized ? text : result;
+}
 
 export type { LinkPreview };
 
@@ -34,7 +71,7 @@ export function extractHttpUrls(text: string): string[] {
 	const urls: string[] = [];
 	const seen = new Set<string>();
 
-	for (const match of text.matchAll(HTTP_URL_RE)) {
+	for (const match of joinWrappedHttpUrls(text).matchAll(HTTP_URL_RE)) {
 		const value = cleanUrl(match[0]);
 		const href = normalizePreviewUrl(value);
 		if (!href || seen.has(href)) continue;

@@ -533,7 +533,7 @@
 		</div>
 	</div>
 </div>
-<!-- The folded iPhone Duo's status column lies outside the frame; the tabs stand in it. -->
+<!-- The Duo's status column lies outside the frame; the phone tabs stand in it. -->
 {#if mobile.current && sideColumn.side}
 	<PhoneTabBar rail={sideColumn.side} />
 {/if}

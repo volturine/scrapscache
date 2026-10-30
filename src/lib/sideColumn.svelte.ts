@@ -2,26 +2,27 @@ import type { Insets } from './appViewport.js';
 
 export type SideColumn = 'left' | 'right' | null;
 
-/** A side inset this deep is a status column, not a rounded corner. */
+/** A side inset this deep is a status column, not a rounded corner or a notch. */
 const COLUMN_MIN_PX = 60;
-/** A top inset this deep is the status bar in its usual place. */
-const TOP_BAR_MIN_PX = 20;
 
 /**
- * The folded iPhone Duo's outer screen keeps its status bar down one side: a
- * portrait phone window with a deep inset at a side and none on top. The app
- * lays its navigation into that column. A landscape phone's side insets are a
- * notch, and a top inset means the bar is on top as usual.
+ * iPhone Duo keeps its status bar in a column down one side: folded or open,
+ * portrait or landscape. The other side stays shallow. A landscape notch is
+ * deep on both sides, so it is not a column. A top inset is not the bar — the
+ * bar is in the column, and treating the top inset as a status bar leaves an
+ * empty band above the note.
+ *
+ * `width`, `height` and `onPhone` stay in the signature so callers can pass the
+ * frame they measured; the column is read from the insets alone.
  */
 export function sideColumnOf(
 	insets: Insets,
-	width: number,
-	height: number,
-	onPhone: boolean
+	_width: number,
+	_height: number,
+	_onPhone: boolean
 ): SideColumn {
-	if (!onPhone || width >= height || insets.top >= TOP_BAR_MIN_PX) return null;
-	if (insets.right >= COLUMN_MIN_PX) return 'right';
-	if (insets.left >= COLUMN_MIN_PX) return 'left';
+	if (insets.right >= COLUMN_MIN_PX && insets.left < COLUMN_MIN_PX) return 'right';
+	if (insets.left >= COLUMN_MIN_PX && insets.right < COLUMN_MIN_PX) return 'left';
 	return null;
 }
 

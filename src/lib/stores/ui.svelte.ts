@@ -22,6 +22,35 @@ interface UIState {
 	settingsOpen: boolean;
 	rawMarkdown: boolean;
 	reminderLanguages: ReminderLanguage[];
+	textSize: number;
+	codeSize: number | null;
+	codeWrap: boolean;
+}
+
+/** Body text in px; the rest of the app is in rem and scales with it. */
+export const TEXT_SIZE = { min: 12, max: 20, default: 14 } as const;
+/** An own size for code blocks, in px. */
+export const CODE_SIZE = { min: 10, max: 20 } as const;
+/** Code blocks follow the text at this share of it (the compact size beside body). */
+const CODE_SHARE = 13 / 14;
+
+function sizeIn(value: unknown, range: { min: number; max: number }): number | null {
+	if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+	return Math.min(range.max, Math.max(range.min, Math.round(value)));
+}
+
+/**
+ * Put the text settings on the document. Every size in the app is in rem, so the
+ * root size scales all of it; code blocks read their own size and wrap from here.
+ */
+function applyDocumentText(textSize: number, codeSize: number | null, codeWrap: boolean) {
+	if (typeof document === 'undefined') return;
+	const root = document.documentElement;
+	root.style.fontSize =
+		textSize === TEXT_SIZE.default ? '' : `${(textSize / TEXT_SIZE.default) * 100}%`;
+	if (codeSize === null) root.style.removeProperty('--code-font-size');
+	else root.style.setProperty('--code-font-size', `${codeSize}px`);
+	root.toggleAttribute('data-code-wrap', codeWrap);
 }
 
 function prefersDark(): boolean {
@@ -96,6 +125,10 @@ export class UIStore {
 	#layout = $state<Layout>('grid');
 	#view = $state<View>('notes');
 	#rawMarkdown = $state(false);
+	#textSize = $state<number>(TEXT_SIZE.default);
+	/** `null` follows the text size. */
+	#codeSize = $state<number | null>(null);
+	#codeWrap = $state(false);
 	#reminderLanguages = $state<ReminderLanguage[]>(
 		defaultReminderLanguages(typeof navigator === 'undefined' ? [] : navigator.languages)
 	);
@@ -164,6 +197,41 @@ export class UIStore {
 			? this.#reminderLanguages.filter((language) => language !== code)
 			: [...this.#reminderLanguages, code];
 		this.#persist();
+	}
+
+	get textSize(): number {
+		return this.#textSize;
+	}
+	set textSize(value: number) {
+		this.#textSize = sizeIn(value, TEXT_SIZE) ?? TEXT_SIZE.default;
+		this.#applyText();
+	}
+
+	/** The code blocks' own size, or `null` while they follow the text. */
+	get codeSize(): number | null {
+		return this.#codeSize;
+	}
+	set codeSize(value: number | null) {
+		this.#codeSize = value === null ? null : sizeIn(value, CODE_SIZE);
+		this.#applyText();
+	}
+
+	/** The size code blocks are drawn at, own or following the text. */
+	get effectiveCodeSize(): number {
+		return this.#codeSize ?? Math.round(this.#textSize * CODE_SHARE);
+	}
+
+	get codeWrap(): boolean {
+		return this.#codeWrap;
+	}
+	set codeWrap(value: boolean) {
+		this.#codeWrap = value;
+		this.#applyText();
+	}
+
+	#applyText() {
+		this.#persist();
+		applyDocumentText(this.#textSize, this.#codeSize, this.#codeWrap);
 	}
 
 	get rawMarkdown() {
@@ -238,6 +306,9 @@ export class UIStore {
 						const languages = [...new Set(parsed.reminderLanguages.filter(isReminderLanguage))];
 						if (languages.length > 0) this.#reminderLanguages = languages;
 					}
+					this.#textSize = sizeIn(parsed.textSize, TEXT_SIZE) ?? TEXT_SIZE.default;
+					this.#codeSize = sizeIn(parsed.codeSize, CODE_SIZE);
+					if (typeof parsed.codeWrap === 'boolean') this.#codeWrap = parsed.codeWrap;
 				}
 			} catch {
 				/* ignore */
@@ -246,6 +317,7 @@ export class UIStore {
 		this.#open(this.#view);
 		this.#persistable = true;
 		applyDocumentTheme(this.effectiveDark);
+		applyDocumentText(this.#textSize, this.#codeSize, this.#codeWrap);
 
 		// Watch system theme changes when following system.
 		if (typeof matchMedia !== 'undefined') {
@@ -270,7 +342,10 @@ export class UIStore {
 			layout: this.#layout,
 			view: this.#view,
 			rawMarkdown: this.#rawMarkdown,
-			reminderLanguages: this.#reminderLanguages
+			reminderLanguages: this.#reminderLanguages,
+			textSize: this.#textSize,
+			codeSize: this.#codeSize,
+			codeWrap: this.#codeWrap
 		};
 		// Preferences only: a full localStorage must not abort the sync or import
 		// that is restoring them.

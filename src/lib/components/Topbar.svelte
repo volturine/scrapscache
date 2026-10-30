@@ -22,6 +22,7 @@
 	import BackupPassphraseDialog from './BackupPassphraseDialog.svelte';
 	import BackupImportModeDialog from './BackupImportModeDialog.svelte';
 	import ImportGuideDialog from './ImportGuideDialog.svelte';
+	import TextSettingsDialog from './TextSettingsDialog.svelte';
 	import { BackupImportMode, BackupOperation } from '#lib/backup.js';
 	import { resolveSyncStatus, SyncStatus } from '#lib/syncStatus.js';
 	import { useEditorActions } from '#lib/editorContext.js';
@@ -45,6 +46,7 @@
 	const { startNewNote, closeNote } = useEditorActions();
 
 	let settingsOpen = $state(false);
+	let textSettingsOpen = $state(false);
 	let pairingCode = $state('');
 	let importingBackup = $state(false);
 	let backupImportError = $state('');
@@ -111,6 +113,11 @@
 	const loadSyncModal = () => loadLazyModule(() => import('./SyncModal.svelte'));
 	const loadBackupCrypto = () => loadLazyModule(() => import('#lib/backupCrypto.js'));
 	const loadKeepImport = () => loadLazyModule(() => import('#lib/keepImport.js'));
+
+	function openTextSettings() {
+		settingsOpen = false;
+		textSettingsOpen = true;
+	}
 
 	function startBackupExport() {
 		settingsOpen = false;
@@ -370,6 +377,7 @@
 			bind:open={settingsOpen}
 			onExport={startBackupExport}
 			onImport={startBackupImport}
+			onTextSettings={openTextSettings}
 			importing={importingBackup}
 			importError={backupImportError}
 		/>
@@ -390,6 +398,7 @@
 			bind:open={settingsOpen}
 			onExport={startBackupExport}
 			onImport={startBackupImport}
+			onTextSettings={openTextSettings}
 			importing={importingBackup}
 			importError={backupImportError}
 		/>
@@ -429,6 +438,10 @@
 			}}
 		/>
 	{/await}
+{/if}
+
+{#if textSettingsOpen}
+	<TextSettingsDialog onClose={() => (textSettingsOpen = false)} />
 {/if}
 
 <ImportGuideDialog

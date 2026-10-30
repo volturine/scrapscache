@@ -153,3 +153,70 @@ describe('reminder languages', () => {
 		expect(fresh.reminderLanguages).toEqual(['cs', 'de']);
 	});
 });
+
+describe('text settings', () => {
+	afterEach(() => {
+		uiStore.textSize = 14;
+		uiStore.codeSize = null;
+		uiStore.codeWrap = false;
+		localStorage.removeItem('scrapscache-ui-state');
+	});
+
+	it('scales the root by the text size and leaves it alone at the default', () => {
+		const root = document.documentElement;
+
+		uiStore.textSize = 21;
+		expect(uiStore.textSize).toBe(20);
+		expect(root.style.fontSize).toMatch(/^142\.857\d*%$/);
+
+		uiStore.textSize = 11.6;
+		expect(uiStore.textSize).toBe(12);
+
+		uiStore.textSize = 14;
+		expect(root.style.fontSize).toBe('');
+	});
+
+	it('gives code its own size only when one is set, and follows the text otherwise', () => {
+		const root = document.documentElement;
+		uiStore.textSize = 18;
+		expect(uiStore.effectiveCodeSize).toBe(17);
+		expect(root.style.getPropertyValue('--code-font-size')).toBe('');
+
+		uiStore.codeSize = 9;
+		expect(uiStore.codeSize).toBe(10);
+		expect(uiStore.effectiveCodeSize).toBe(10);
+		expect(root.style.getPropertyValue('--code-font-size')).toBe('10px');
+
+		uiStore.codeSize = null;
+		expect(root.style.getPropertyValue('--code-font-size')).toBe('');
+	});
+
+	it('marks the document while code wraps', () => {
+		uiStore.codeWrap = true;
+		expect(document.documentElement.hasAttribute('data-code-wrap')).toBe(true);
+		uiStore.codeWrap = false;
+		expect(document.documentElement.hasAttribute('data-code-wrap')).toBe(false);
+	});
+
+	it('keeps the settings on this device', () => {
+		uiStore.textSize = 17;
+		uiStore.codeSize = 12;
+		uiStore.codeWrap = true;
+
+		const saved = JSON.parse(localStorage.getItem('scrapscache-ui-state') ?? '{}');
+		expect(saved).toMatchObject({ textSize: 17, codeSize: 12, codeWrap: true });
+	});
+
+	it('reads saved settings back, dropping sizes out of range or of the wrong kind', async () => {
+		localStorage.setItem(
+			'scrapscache-ui-state',
+			JSON.stringify({ textSize: 40, codeSize: 'big', codeWrap: true })
+		);
+		const { UIStore } = await import('./ui.svelte');
+		const store = new UIStore();
+
+		expect(store.textSize).toBe(20);
+		expect(store.codeSize).toBeNull();
+		expect(store.codeWrap).toBe(true);
+	});
+});

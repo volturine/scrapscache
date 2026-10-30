@@ -708,7 +708,8 @@ test.describe('on a phone', () => {
 		// The title only names the view; More keeps the settings.
 		await expect(page.locator('[data-view-title]')).not.toHaveAttribute('aria-haspopup');
 		await page.getByRole('button', { name: 'More', exact: true }).click();
-		await expect(page.getByRole('menuitem').first()).toHaveText('Back up notes…');
+		await expect(page.getByRole('menuitem').first()).toContainText('Text and code');
+		await expect(page.getByRole('menuitem', { name: 'Back up notes…' })).toBeVisible();
 		await page.keyboard.press('Escape');
 
 		// Labels is a place like the others: it sits between the bars, with Archive

@@ -45,6 +45,42 @@ describe('joinWrappedHttpUrls', () => {
 		);
 	});
 
+	it('does not join a URL wrapped on purpose inside a code fence', () => {
+		const fenced = [
+			'```bash',
+			'curl https://api.example.com/x?',
+			'_token=abcdefghijklmnopqrstuvwxyz0123456789',
+			'```',
+			'~~~',
+			'curl https://api.example.com/y?',
+			'_token=abc',
+			'~~~',
+			'https://shop.example/item?',
+			'_id=abc'
+		].join('\n');
+		expect(joinWrappedHttpUrls(fenced)).toBe(
+			[
+				'```bash',
+				'curl https://api.example.com/x?',
+				'_token=abcdefghijklmnopqrstuvwxyz0123456789',
+				'```',
+				'~~~',
+				'curl https://api.example.com/y?',
+				'_token=abc',
+				'~~~',
+				'https://shop.example/item?_id=abc'
+			].join('\n')
+		);
+	});
+
+	it('does not join a long token line that merely contains an equals sign', () => {
+		const body = [
+			'https://example.com/done',
+			'token=abcdefghijklmnopqrstuvwxyz0123456789abcdef'
+		].join('\n');
+		expect(joinWrappedHttpUrls(body)).toBe(body);
+	});
+
 	it('leaves a following word, a new link, and a checklist row alone', () => {
 		const body = [
 			'https://hevisleep.sk/products/hevi-blanket?variant=48393585066197',

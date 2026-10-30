@@ -12,10 +12,26 @@ function continuesWrappedUrl(line: string, next: string): boolean {
 	const url = line.match(/https?:\/\/\S*$/i)?.[0];
 	if (!url) return false;
 	// A wrap breaks after `?`, `&` or `-`, or the next line is the query itself.
-	// A following word (`sublera`) is a new line.
-	return (
-		/[?&=/_-]$/.test(url) || /^[?&=/_-]/.test(next) || (next.length >= 40 && /[=&%]/.test(next))
-	);
+	// A following word, or a long token that merely contains `=`, is a new line.
+	return /[?&=/_-]$/.test(url) || /^[?&=/_-]/.test(next);
+}
+
+type Fence = { char: string; length: number };
+
+/** An opening fence, including an info string. A line of only backticks inside the info is not one. */
+function openingFence(line: string): Fence | null {
+	const match = /^( {0,3})(`{3,}|~{3,})(.*)$/.exec(line);
+	if (!match) return null;
+	const marker = match[2] ?? '';
+	if (marker.startsWith('`') && (match[3] ?? '').includes('`')) return null;
+	return { char: marker[0] ?? '', length: marker.length };
+}
+
+function closesFence(line: string, fence: Fence): boolean {
+	const match = /^ {0,3}(`{3,}|~{3,})[ \t]*$/.exec(line);
+	if (!match) return false;
+	const marker = match[1] ?? '';
+	return marker[0] === fence.char && marker.length >= fence.length;
 }
 
 /**
@@ -27,8 +43,21 @@ export function joinWrappedHttpUrls(text: string): string {
 	const normalized = text.replace(/\r\n?/g, '\n');
 	const lines = normalized.split('\n');
 	const joined: string[] = [];
+	let fence: Fence | null = null;
 	for (let index = 0; index < lines.length; index++) {
 		let line = lines[index] ?? '';
+		// A fenced snippet may wrap a command on purpose. Joining it would rewrite code.
+		if (fence) {
+			joined.push(line);
+			if (closesFence(line, fence)) fence = null;
+			continue;
+		}
+		const opened = openingFence(line);
+		if (opened) {
+			fence = opened;
+			joined.push(line);
+			continue;
+		}
 		while (index + 1 < lines.length && continuesWrappedUrl(line, lines[index + 1] ?? '')) {
 			line += lines[++index] ?? '';
 		}

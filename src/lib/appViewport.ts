@@ -240,7 +240,7 @@ export function attachAppViewport(_node: HTMLElement) {
 		// the phone keyboard is active, its own occlusion replaces this inset.
 		setInsetVar('--app-inset-bottom', appBottomInset(cachedSafe.bottom, onPhone, keyboardVisible));
 		setInsetVar('--app-inset-left', cachedSafe.left);
-		publishSideColumn(sideColumnOf(cachedSafe, window.innerWidth, layoutHeight, onPhone));
+		publishSideColumn(sideColumnOf(cachedSafe));
 		setInsetVar('--app-visual-offset-top', keyboardFrame.viewportOffsetTop);
 		setInsetVar('--app-keyboard-top', keyboardFrame.keyboardTop);
 		setInsetVar('--app-keyboard-bottom', keyboardFrame.keyboardBottom);

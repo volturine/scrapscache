@@ -11,16 +11,8 @@ const COLUMN_MIN_PX = 60;
  * deep on both sides, so it is not a column. A top inset is not the bar — the
  * bar is in the column, and treating the top inset as a status bar leaves an
  * empty band above the note.
- *
- * `width`, `height` and `onPhone` stay in the signature so callers can pass the
- * frame they measured; the column is read from the insets alone.
  */
-export function sideColumnOf(
-	insets: Insets,
-	_width: number,
-	_height: number,
-	_onPhone: boolean
-): SideColumn {
+export function sideColumnOf(insets: Insets): SideColumn {
 	if (insets.right >= COLUMN_MIN_PX && insets.left < COLUMN_MIN_PX) return 'right';
 	if (insets.left >= COLUMN_MIN_PX && insets.right < COLUMN_MIN_PX) return 'left';
 	return null;

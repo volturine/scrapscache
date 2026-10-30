@@ -571,7 +571,10 @@ const noteBodyRecipe = defineSlotRecipe({
 				transitionProperty: 'background-color, color',
 				transitionDuration: '120ms',
 				transitionTimingFunction: 'ease',
-				_hoverable: { bg: 'scrapscache.interactiveHover', color: 'scrapscache.text' }
+				_hoverable: { bg: 'scrapscache.interactiveHover', color: 'scrapscache.text' },
+				// Only the label adds a sub-task, so on touch it is 44 px tall itself. A grown
+				// hit area would reach over the task text above it or the row below.
+				_touch: { display: 'inline-flex', alignItems: 'center', minH: '44px' }
 			},
 			// Child only. This slot styles the button, so a button ::before paints a second label.
 			'& > span::before': { content: '"+  Add sub-task"' }

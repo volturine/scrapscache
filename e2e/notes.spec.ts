@@ -433,6 +433,27 @@ test.describe('on a touch screen', () => {
 		).toHaveCSS('opacity', '1');
 	});
 
+	test('the Add sub-task label is a 44 px touch target that adds the sub-task', async ({
+		page
+	}) => {
+		await openEmptyApp(page);
+		await createNote(page, 'Touch tasks', '[ ] one\n[ ] two');
+		await noteCard(page, 'Touch tasks').click();
+		const sheet = editor(page);
+		const rows = sheet.locator('[data-task-row]');
+		await rows.first().locator('[data-line-text]').click();
+		const label = sheet.locator('[data-add-subtask] > span');
+		await expect(label).toBeVisible();
+		expect((await label.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+
+		await label.tap();
+		await expect(rows).toHaveCount(3);
+		await expect(rows.nth(1).locator('[data-line-text]')).toHaveAttribute(
+			'data-placeholder',
+			'Sub-task'
+		);
+	});
+
 	test('settings rows and segments keep their touch sizes at any width, and the popover scrolls', async ({
 		page
 	}) => {

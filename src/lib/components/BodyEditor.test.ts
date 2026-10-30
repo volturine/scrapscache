@@ -1385,6 +1385,77 @@ describe('BodyEditor task focus chrome', () => {
 		expect(container.querySelector('[data-add-subtask]')).toBeNull();
 	});
 
+	describe('when a press elsewhere takes focus', () => {
+		/** Press an outside control the way a pointer does: pointerdown, then the blur it causes. */
+		async function pressOutside(container: HTMLElement) {
+			const outside = document.body.appendChild(document.createElement('button'));
+			touchPointer(outside, 'pointerdown', 7);
+			outside.focus();
+			await tick();
+			return outside;
+		}
+
+		const chromeShown = (container: HTMLElement) =>
+			container.querySelector('[data-add-subtask]') !== null;
+
+		it('keeps the chrome until the press is released and its click lands', async () => {
+			const { container } = render(BodyEditor, { props: { body: '[ ] one\n[ ] two' } });
+			showTask(container, 0);
+			await tick();
+
+			const outside = await pressOutside(container);
+			// Dropping it now would move what the pointer is still pressing.
+			expect(chromeShown(container)).toBe(true);
+			touchPointer(outside, 'pointerup', 7);
+			await tick();
+			expect(chromeShown(container)).toBe(true);
+
+			outside.click();
+			await tick();
+			expect(chromeShown(container)).toBe(false);
+			outside.remove();
+		});
+
+		it('drops the chrome after a release that sends no click', async () => {
+			const { container } = render(BodyEditor, { props: { body: '[ ] one\n[ ] two' } });
+			showTask(container, 0);
+			await tick();
+
+			const outside = await pressOutside(container);
+			touchPointer(outside, 'pointerup', 7);
+			await new Promise((resolve) => setTimeout(resolve, 300));
+			await tick();
+			expect(chromeShown(container)).toBe(false);
+			outside.remove();
+		});
+
+		it('drops the chrome at once when the press is cancelled', async () => {
+			const { container } = render(BodyEditor, { props: { body: '[ ] one\n[ ] two' } });
+			showTask(container, 0);
+			await tick();
+
+			const outside = await pressOutside(container);
+			touchPointer(outside, 'pointercancel', 7);
+			await tick();
+			expect(chromeShown(container)).toBe(false);
+			outside.remove();
+		});
+
+		it('keeps the chrome when the press hands focus back to the editor', async () => {
+			const { container } = render(BodyEditor, { props: { body: '[ ] one\n[ ] two' } });
+			showTask(container, 0);
+			await tick();
+
+			const outside = await pressOutside(container);
+			showTask(container, 0);
+			touchPointer(outside, 'pointerup', 7);
+			outside.click();
+			await tick();
+			expect(chromeShown(container)).toBe(true);
+			outside.remove();
+		});
+	});
+
 	it('aligns Add sub-task with subtask indentation and avoids double indenting under existing subtasks', async () => {
 		const { container: c1 } = render(BodyEditor, {
 			props: { body: '[ ] Avocados\n[ ] Dark chocolate' }

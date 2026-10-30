@@ -10,6 +10,7 @@
 	import ReminderAlert from '#lib/components/ReminderAlert.svelte';
 	import NoteComposer from '#lib/components/NoteComposer.svelte';
 	import { composerStore } from '#lib/stores/composer.svelte.js';
+	import { getClipboardFiles } from '#lib/noteImages.js';
 	import { noteComposerStyles } from '$panda/styles';
 	import PhoneTabBar from '#lib/components/PhoneTabBar.svelte';
 	import AppViews from '#lib/components/AppViews.svelte';
@@ -343,6 +344,12 @@
 		if (editingId !== null) return;
 		if (!(event.target instanceof Element)) return;
 		if (event.target.closest('input, textarea, [contenteditable], .canvas-editor-shell')) return;
+		// Files go to the composer's note; a view without one has nothing to take them.
+		const files = getClipboardFiles(event.clipboardData);
+		if (files.length > 0) {
+			if (composerStore.open({ files })) event.preventDefault();
+			return;
+		}
 		const text = event.clipboardData?.getData('text/plain');
 		if (!text?.trim()) return;
 		event.preventDefault();

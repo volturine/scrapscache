@@ -15,6 +15,29 @@ vi.mock('#lib/editorContext.js', () => ({
 const prompt = () => screen.getByRole('button', { name: /^Take a note/ });
 const titleBox = () => screen.getByPlaceholderText('Title', { exact: true }) as HTMLTextAreaElement;
 
+function clipboardEvent(files: File[], text = ''): ClipboardEvent {
+	const event = new Event('paste', { bubbles: true, cancelable: true }) as ClipboardEvent;
+	Object.defineProperty(event, 'clipboardData', {
+		value: {
+			files,
+			items: files.map((file) => ({ kind: 'file', type: file.type, getAsFile: () => file })),
+			types: files.length > 0 ? ['Files'] : ['text/plain'],
+			getData: (format: string) => (format === 'text/plain' ? text : '')
+		}
+	});
+	return event;
+}
+
+function fileDragEvent(type: string, files: File[]): DragEvent {
+	const event = new Event(type, { bubbles: true, cancelable: true }) as DragEvent;
+	Object.defineProperty(event, 'dataTransfer', {
+		value: { files, types: ['Files'], dropEffect: 'none' }
+	});
+	return event;
+}
+
+const bar = () => document.querySelector('[data-note-composer]') as HTMLElement;
+
 async function typeTitle(text: string) {
 	const box = titleBox();
 	box.value = text;
@@ -169,5 +192,65 @@ describe('NoteComposer', () => {
 		await tick();
 		expect(notesStore.notes).toHaveLength(1);
 		expect(notesStore.notes[0]).toMatchObject({ title: 'Shopping', body: 'eggs\nretro' });
+	});
+
+	it('asks for photo quality when an image is pasted into the title or the body', async () => {
+		render(NoteComposer);
+		await fireEvent.click(prompt());
+		const shot = new File(['png'], 'screenshot.png', { type: 'image/png' });
+		for (const target of [titleBox(), document.querySelector('[data-body-editor]')!]) {
+			const paste = clipboardEvent([shot]);
+			target.dispatchEvent(paste);
+			expect(paste.defaultPrevented).toBe(true);
+			expect(await screen.findByText('Photo quality')).toBeTruthy();
+			await fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+		}
+	});
+
+	it('writes the note when a pasted file attaches to a blank bar', async () => {
+		render(NoteComposer);
+		await fireEvent.click(prompt());
+		titleBox().dispatchEvent(
+			clipboardEvent([new File(['todo'], 'tasks.txt', { type: 'text/plain' })])
+		);
+		await waitFor(() => expect(notesStore.notes).toHaveLength(1));
+		expect(notesStore.notes[0].images?.map((file) => file.name)).toEqual(['tasks.txt']);
+		expect(composerStore.draftId).toBe(notesStore.notes[0].id);
+	});
+
+	it('opens with a file handed over from a paste on the feed', async () => {
+		render(NoteComposer);
+		expect(
+			composerStore.open({ files: [new File(['todo'], 'tasks.txt', { type: 'text/plain' })] })
+		).toBe(true);
+		await waitFor(() => expect(notesStore.notes).toHaveLength(1));
+		expect(notesStore.notes[0].images?.map((file) => file.name)).toEqual(['tasks.txt']);
+	});
+
+	it('attaches files dropped on the closed bar, with the drop hint while dragging', async () => {
+		render(NoteComposer);
+		const file = new File(['todo'], 'tasks.txt', { type: 'text/plain' });
+		bar().dispatchEvent(fileDragEvent('dragenter', [file]));
+		await tick();
+		expect(document.querySelector('[data-file-drop-hint]')?.textContent).toContain(
+			'Drop to attach'
+		);
+		const drop = fileDragEvent('drop', [file]);
+		bar().dispatchEvent(drop);
+		expect(drop.defaultPrevented).toBe(true);
+		await waitFor(() => expect(notesStore.notes).toHaveLength(1));
+		expect(document.querySelector('[data-file-drop-hint]')).toBeNull();
+		expect(titleBox()).toBeTruthy();
+	});
+
+	it('lifts a markdown heading pasted on a blank bar into the title', async () => {
+		render(NoteComposer);
+		await fireEvent.click(prompt());
+		titleBox().dispatchEvent(clipboardEvent([], '# Trip\npacking list'));
+		await waitFor(() => expect(titleBox().value).toBe('Trip'));
+		await waitFor(() => {
+			const lines = Array.from(document.querySelectorAll('[data-line-text]'));
+			expect(lines.map((line) => line.textContent)).toEqual(['packing list']);
+		});
 	});
 });

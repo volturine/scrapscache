@@ -9,6 +9,8 @@ export type ComposerSeed = {
 	checklist?: boolean;
 	/** Open straight into attaching a photo or drawing. */
 	attach?: 'photo' | 'drawing';
+	/** Files to attach, from a paste or a drop. */
+	files?: File[];
 };
 
 class ComposerStore {

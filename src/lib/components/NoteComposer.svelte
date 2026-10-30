@@ -3,7 +3,8 @@
 	// a body and the editor's own footer, and writes a real note as soon as there
 	// is something to keep, so nothing typed is lost; the feed leaves that note out
 	// until the bar is put away. Done, Esc or a click outside keep a note with
-	// content and drop an empty one.
+	// content and drop an empty one. A paste or a drop takes files and markdown
+	// headings the way the editor does.
 	import { onMount, tick } from 'svelte';
 	import { css, cx } from 'styled-system/css';
 	import { button, iconButton, noteSurface } from 'styled-system/recipes';
@@ -12,6 +13,7 @@
 	import { iconSizeMd as iconMd, noteComposerStyles as styles } from '$panda/styles';
 	import BodyEditor from './BodyEditor.svelte';
 	import ColorPalette from './ColorPalette.svelte';
+	import FileDropHint from './FileDropHint.svelte';
 	import LabelMenu from './LabelMenu.svelte';
 	import NoteEditorFooter from './NoteEditorFooter.svelte';
 	import ReminderLabel from './ReminderLabel.svelte';
@@ -20,6 +22,8 @@
 	import { portalToAppOverlay } from '#lib/appViewport.js';
 	import { useEditorActions } from '#lib/editorContext.js';
 	import type { NotePatch, ReminderRepeat } from '#lib/model/index.js';
+	import { splitPastedHeading } from '#lib/checklistBody.js';
+	import { dataTransferHasFiles, dragLeftElement, getClipboardFiles } from '#lib/noteImages.js';
 	import { composerStore, type ComposerSeed } from '#lib/stores/composer.svelte.js';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
 	import { reminderStore } from '#lib/stores/reminders.svelte.js';
@@ -62,6 +66,7 @@
 	let paletteOpen = $state(false);
 	let labelOpen = $state(false);
 	let reminderOpen = $state(false);
+	let fileDropActive = $state(false);
 
 	/** The written note, for what other controls changed on it (labels, a reminder). */
 	const draft = $derived(draftId ? notesStore.notes.find((n) => n.id === draftId) : undefined);
@@ -176,11 +181,13 @@
 			else if (opening) titleInput?.focus();
 			if (seed.attach === 'drawing') void footer?.openCanvas();
 			else if (seed.attach === 'photo') footer?.openAttach();
+			if (seed.files?.length) footer?.handlePickedFiles(seed.files);
 		});
 	}
 
 	function reset() {
 		open = false;
+		fileDropActive = false;
 		paletteOpen = false;
 		labelOpen = false;
 		reminderOpen = false;
@@ -227,6 +234,64 @@
 		}
 	}
 
+	/** On an empty note a pasted markdown heading becomes the title, as in the editor. */
+	function transformPaste(text: string): string | null {
+		if (title || body) return null;
+		const split = splitPastedHeading(text);
+		if (!split) return null;
+		title = split.title;
+		titleEdited = true;
+		return split.body;
+	}
+
+	// Same empty-note rule when the paste lands on the title field itself.
+	function onTitlePaste(event: ClipboardEvent) {
+		if (title || body) return;
+		const text = event.clipboardData?.getData('text/plain');
+		if (!text) return;
+		const split = splitPastedHeading(text);
+		if (!split) return;
+		event.preventDefault();
+		title = split.title;
+		titleEdited = true;
+		scheduleCommit();
+		if (split.body) void bodyEditor?.replaceBodyWithText(split.body);
+	}
+
+	/** Pasted files attach, wherever the caret is in the open bar. */
+	function onPaste(event: ClipboardEvent) {
+		if (!open) return;
+		if (event.target instanceof Element && event.target.closest('.canvas-editor-shell')) return;
+		const files = getClipboardFiles(event.clipboardData);
+		if (files.length === 0) return;
+		event.preventDefault();
+		event.stopImmediatePropagation();
+		footer?.handlePickedFiles(files);
+	}
+
+	function onDragOver(event: DragEvent) {
+		if (!dataTransferHasFiles(event.dataTransfer)) return;
+		event.preventDefault();
+		if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+		fileDropActive = true;
+	}
+
+	function onDragLeave(event: DragEvent) {
+		if (!fileDropActive || !dragLeftElement(event, event.currentTarget)) return;
+		fileDropActive = false;
+	}
+
+	/** Files dropped on the bar attach to its note, opening the bar first if it is closed. */
+	function onDrop(event: DragEvent) {
+		if (!dataTransferHasFiles(event.dataTransfer)) return;
+		event.preventDefault();
+		fileDropActive = false;
+		const files = Array.from(event.dataTransfer?.files ?? []);
+		if (files.length === 0) return;
+		if (open) footer?.handlePickedFiles(files);
+		else openWith({ files });
+	}
+
 	function onKeydown(event: KeyboardEvent) {
 		if (event.key === 'Escape' && open && !popupOpen) {
 			event.preventDefault();
@@ -263,7 +328,15 @@
 	data-note-composer
 	data-open={open ? '' : undefined}
 	onkeydown={onKeydown}
+	onpastecapture={onPaste}
+	ondragenter={onDragOver}
+	ondragovercapture={onDragOver}
+	ondragleave={onDragLeave}
+	ondropcapture={onDrop}
 >
+	{#if fileDropActive}
+		<FileDropHint />
+	{/if}
 	{#if !open}
 		<div class={styles.bar}>
 			<button type="button" class={styles.prompt} onclick={() => openWith()}>
@@ -312,7 +385,8 @@
 					titleEdited = true;
 					scheduleCommit();
 				}}
-				onkeydown={onTitleKeydown}></textarea>
+				onkeydown={onTitleKeydown}
+				onpaste={onTitlePaste}></textarea>
 			<div class={styles.body}>
 				<BodyEditor
 					bind:this={bodyEditor}
@@ -322,6 +396,7 @@
 						bodyEdited = true;
 						scheduleCommit();
 					}}
+					{transformPaste}
 					placeholder="Take a note… type [ ] for a checklist, - for a bullet"
 				/>
 			</div>

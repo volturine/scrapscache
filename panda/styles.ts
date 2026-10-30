@@ -2841,18 +2841,6 @@ export const noteEditorStyles = {
 		fieldSizing: 'content',
 		transition: 'none'
 	}),
-	fileDropHint: css({
-		pointerEvents: 'none',
-		position: 'absolute',
-		inset: 0,
-		zIndex: 20,
-		...gridCenter,
-		rounded: 'inherit',
-		borderWidth: 'strong',
-		borderStyle: 'dashed',
-		borderColor: 'scrapscache.accent',
-		bg: 'scrapscache.accentSubtle'
-	}),
 	subDialogBackdrop: css({ bg: 'scrapscache.backdropSoft', backdropFilter: 'none', zIndex: 60 }),
 	popupContent: css({ outline: 'none' }),
 	rawScroller: css({ touchAction: 'pan-x pan-y' }),
@@ -3937,6 +3925,31 @@ export const reminderCalendarLegend = {
 // The composer: a bar at the top of the feed that opens in place. On a phone it
 // stays under the top bar while the feed scrolls; a wide window keeps it at the
 // head of the feed, no wider than a comfortable line.
+/** "Drop to attach" over a note that files are dragged onto: the editor's and the composer's. */
+export const fileDropHintStyles = {
+	root: css({
+		pointerEvents: 'none',
+		position: 'absolute',
+		inset: 0,
+		zIndex: 20,
+		...gridCenter,
+		rounded: 'inherit',
+		borderWidth: 'strong',
+		borderStyle: 'dashed',
+		borderColor: 'scrapscache.accent',
+		bg: 'scrapscache.accentSubtle'
+	}),
+	pill: hstack({
+		gap: 'sm',
+		rounded: 'pill',
+		bg: 'scrapscache.surface',
+		px: 'lg',
+		py: 'sm',
+		textStyle: 'button',
+		boxShadow: 'sm'
+	})
+};
+
 export const noteComposerStyles = {
 	dock: css({
 		position: { base: 'sticky', md: 'static' },
@@ -3949,7 +3962,7 @@ export const noteComposerStyles = {
 		pt: { base: 'sm', md: 'lg' },
 		pb: 'sm'
 	}),
-	root: css({ w: 'full' }),
+	root: css({ position: 'relative', w: 'full', rounded: 'card' }),
 	bar: hstack({
 		gap: '3xs',
 		h: '3rem',

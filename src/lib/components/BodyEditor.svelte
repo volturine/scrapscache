@@ -3260,14 +3260,30 @@
 		} catch {
 			// Best-effort on older Safari versions.
 		}
-		addSubtask(rootIndex);
+		if (onAddSubtaskLabel(event)) addSubtask(rootIndex);
+		else focusGroupEnd();
 	}
 
 	function handleAddSubtaskClick(event: MouseEvent, rootIndex: number) {
 		event.preventDefault();
 		event.stopPropagation();
 		if (subtaskPointerId !== null) return;
-		addSubtask(rootIndex);
+		// A keyboard press has no pointer position and always means the button.
+		if (event.detail === 0 || onAddSubtaskLabel(event)) addSubtask(rootIndex);
+		else focusGroupEnd();
+	}
+
+	/**
+	 * Only the label adds a sub-task. The rest of its line is the task group's own
+	 * space, where a stray tap must not leave an empty sub-task behind.
+	 */
+	function onAddSubtaskLabel(event: MouseEvent): boolean {
+		return event.target instanceof Element && !!event.target.closest('[data-add-subtask] > span');
+	}
+
+	function focusGroupEnd() {
+		const last = focusedGroupRows.at(-1);
+		if (last) focusAt(last.index, null, last.line.id);
 	}
 
 	function discardEmptyDraft() {
@@ -3288,8 +3304,38 @@
 		syncBody(true);
 		if (event.relatedTarget instanceof Node && container?.contains(event.relatedTarget)) return;
 		formatSettledTables(false);
-		focusedTaskId = null;
+		if (pressing) leaveOnRelease = true;
+		else focusedTaskId = null;
 	}
+
+	/**
+	 * Dropping the focus chrome takes the Add sub-task line out, and everything under
+	 * the note moves up. A press elsewhere blurs the editor before it is released, so
+	 * the chrome stays until then and what it pressed is still under it.
+	 */
+	let pressing = false;
+	let leaveOnRelease = false;
+	let leaveTimer: ReturnType<typeof setTimeout> | null = null;
+
+	function releasePress(event: PointerEvent) {
+		pressing = false;
+		if (!leaveOnRelease) return;
+		if (event.type === 'pointercancel') leaveTaskFocus();
+		// A touch sends its click after release; that click or this timer ends the press.
+		else leaveTimer ??= setTimeout(leaveTaskFocus, GESTURE_SETTLE_MS);
+	}
+
+	function leaveTaskFocus() {
+		if (leaveTimer) clearTimeout(leaveTimer);
+		leaveTimer = null;
+		if (!leaveOnRelease) return;
+		leaveOnRelease = false;
+		if (!container?.contains(document.activeElement)) focusedTaskId = null;
+	}
+
+	onMount(() => () => {
+		if (leaveTimer) clearTimeout(leaveTimer);
+	});
 
 	const focusedGroupRows = $derived.by(() => {
 		if (focusedRootId === null) return [] as { line: Line; index: number }[];
@@ -3303,14 +3349,8 @@
 		return rows;
 	});
 
-	/**
-	 * The task row the caret is on. It alone carries the focus chrome and the +
-	 * that adds a sub-task under its root, so nothing is inserted and no row moves
-	 * until the + is used.
-	 */
-	const focusedRowId = $derived(
-		focusedGroupRows.some(({ line }) => line.id === focusedTaskId) ? focusedTaskId : null
-	);
+	const focusedGroupIds = $derived(new Set(focusedGroupRows.map(({ line }) => line.id)));
+	const focusedGroupLastId = $derived(focusedGroupRows.at(-1)?.line.id ?? null);
 
 	/**
 	 * The body's own hint: only while the body is one plain row with nothing in it.
@@ -3363,26 +3403,20 @@
 	const editor = noteBody({ mode: 'editor' });
 
 	function rowClass(line: Line): string | undefined {
-		return line.id === focusedRowId ? noteBody({ mode: 'editor', focused: true }).row : editor.row;
+		if (!focusedGroupIds.has(line.id)) return editor.row;
+		const isRoot = line.id === focusedRootId;
+		const isLast = line.id === focusedGroupLastId;
+		return noteBody({ mode: 'editor', focused: true, root: isRoot, last: isLast }).row;
 	}
 
 	function rowStyle(line: Line): string | undefined {
-		const focused = line.id === focusedRowId;
-		const parts: string[] = [];
-		if (line.indent > 0 || focused)
-			parts.push(`padding-left:calc(${line.indent * 1.25}rem${focused ? ' + 0.5rem' : ''})`);
-		if (focused && line.indent > 0) parts.push(`--row-indent:${line.indent * 1.25}rem`);
-		// Every task row keeps the +'s room (its 1.5rem glyph, the 1.25rem its touch target
-		// reaches into, and a hair of slack), so a near-full line does not wrap when focus
-		// arrives. The focused row bleeds 0.5rem out on both sides and pads the same back
-		// in, so its text keeps the width it had.
-		if (line.isCheck)
-			parts.push(
-				focused
-					? 'margin-left:-0.5rem;margin-right:-0.5rem;padding-right:3.5rem'
-					: 'padding-right:3rem'
-			);
-		return parts.length ? parts.join(';') : undefined;
+		const focused = focusedGroupIds.has(line.id);
+		if (line.indent === 0 && !focused) return undefined;
+		const parts = [`padding-left:calc(${line.indent * 1.25}rem${focused ? ' + 0.5rem' : ''})`];
+		if (focused) {
+			parts.push('margin-left:-0.5rem', 'margin-right:-0.5rem', 'padding-right:0.5rem');
+		}
+		return parts.join(';');
 	}
 </script>
 
@@ -3557,15 +3591,14 @@
 				{/if}
 			{/if}
 		{/key}
-		{#if line.id === focusedRowId}
+		{#if line.id === focusedGroupLastId}
 			<button
 				type="button"
 				contenteditable="false"
 				data-add-subtask
 				aria-label="Add sub-task"
-				title="Add sub-task"
 				disabled={readOnly}
-				class={editor.addSubtask}
+				class={noteBody({ mode: 'editor', indented: line.indent > 0 }).addSubtask}
 				onpointerdown={(event) => activateAddSubtask(event, focusedGroupRows[0]?.index ?? -1)}
 				onclick={(event) => handleAddSubtaskClick(event, focusedGroupRows[0]?.index ?? -1)}
 			>
@@ -3579,7 +3612,18 @@
 	onselectionchange={handleSelectionChange}
 	onscrollcapture={extraCursors.length > 0 ? () => paintCursors() : undefined}
 />
-<svelte:window onpointerup={releasePointerGesture} onpointercancel={releasePointerGesture} />
+<svelte:window
+	onpointerdowncapture={() => (pressing = true)}
+	onpointerup={(event) => {
+		releasePointerGesture(event);
+		releasePress(event);
+	}}
+	onpointercancel={(event) => {
+		releasePointerGesture(event);
+		releasePress(event);
+	}}
+	onclickcapture={leaveTaskFocus}
+/>
 
 {#if findOpen}
 	<EditorFindBar

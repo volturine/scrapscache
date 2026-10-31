@@ -433,7 +433,7 @@ test.describe('on a touch screen', () => {
 		).toHaveCSS('opacity', '1');
 	});
 
-	test('the Add sub-task label is a 44 px touch target that adds the sub-task', async ({
+	test('Add sub-task sits tight under its task at any text size, and a tap adds one', async ({
 		page
 	}) => {
 		await openEmptyApp(page);
@@ -444,7 +444,19 @@ test.describe('on a touch screen', () => {
 		await rows.first().locator('[data-line-text]').click();
 		const label = sheet.locator('[data-add-subtask] > span');
 		await expect(label).toBeVisible();
-		expect((await label.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+
+		// The label is no taller than a task row, and it follows the text size.
+		const heights = async () => ({
+			label: (await label.boundingBox())!.height,
+			row: (await rows.first().boundingBox())!.height
+		});
+		const normal = await heights();
+		expect(normal.label).toBeLessThanOrEqual(normal.row);
+		await page.evaluate(() => (document.documentElement.style.fontSize = '12px'));
+		const small = await heights();
+		expect(small.label).toBeLessThan(normal.label);
+		expect(small.label).toBeLessThanOrEqual(small.row);
+		await page.evaluate(() => (document.documentElement.style.fontSize = ''));
 
 		await label.tap();
 		await expect(rows).toHaveCount(3);

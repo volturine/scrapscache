@@ -23,16 +23,17 @@ interface UIState {
 	rawMarkdown: boolean;
 	reminderLanguages: ReminderLanguage[];
 	textSize: number;
-	codeSize: number | null;
+	titleSize: number;
+	codeSize: number;
 	codeWrap: boolean;
 }
 
 /** Body text in px; the rest of the app is in rem and scales with it. */
-export const TEXT_SIZE = { min: 12, max: 20, default: 14 } as const;
-/** An own size for code blocks, in px. */
-export const CODE_SIZE = { min: 10, max: 20 } as const;
-/** Code blocks follow the text at this share of it (the compact size beside body). */
-const CODE_SHARE = 13 / 14;
+export const TEXT_SIZE = { min: 10, max: 20, default: 14 } as const;
+/** Note titles in px, on cards; an open note's title keeps its larger share of this. */
+export const TITLE_SIZE = { min: 10, max: 24, default: 15 } as const;
+/** Code blocks in px. */
+export const CODE_SIZE = { min: 8, max: 20, default: 13 } as const;
 
 function sizeIn(value: unknown, range: { min: number; max: number }): number | null {
 	if (typeof value !== 'number' || !Number.isFinite(value)) return null;
@@ -41,15 +42,21 @@ function sizeIn(value: unknown, range: { min: number; max: number }): number | n
 
 /**
  * Put the text settings on the document. Every size in the app is in rem, so the
- * root size scales all of it; code blocks read their own size and wrap from here.
+ * root size scales all of it; note titles and code blocks read their own sizes, in px
+ * so they stay put when the text size moves, and code's wrap from here.
  */
-function applyDocumentText(textSize: number, codeSize: number | null, codeWrap: boolean) {
+function applyDocumentText(
+	textSize: number,
+	titleSize: number,
+	codeSize: number,
+	codeWrap: boolean
+) {
 	if (typeof document === 'undefined') return;
 	const root = document.documentElement;
 	root.style.fontSize =
 		textSize === TEXT_SIZE.default ? '' : `${(textSize / TEXT_SIZE.default) * 100}%`;
-	if (codeSize === null) root.style.removeProperty('--code-font-size');
-	else root.style.setProperty('--code-font-size', `${codeSize}px`);
+	root.style.setProperty('--title-font-size', `${titleSize}px`);
+	root.style.setProperty('--code-font-size', `${codeSize}px`);
 	root.toggleAttribute('data-code-wrap', codeWrap);
 }
 
@@ -126,8 +133,8 @@ export class UIStore {
 	#view = $state<View>('notes');
 	#rawMarkdown = $state(false);
 	#textSize = $state<number>(TEXT_SIZE.default);
-	/** `null` follows the text size. */
-	#codeSize = $state<number | null>(null);
+	#titleSize = $state<number>(TITLE_SIZE.default);
+	#codeSize = $state<number>(CODE_SIZE.default);
 	#codeWrap = $state(false);
 	#reminderLanguages = $state<ReminderLanguage[]>(
 		defaultReminderLanguages(typeof navigator === 'undefined' ? [] : navigator.languages)
@@ -207,18 +214,20 @@ export class UIStore {
 		this.#applyText();
 	}
 
-	/** The code blocks' own size, or `null` while they follow the text. */
-	get codeSize(): number | null {
-		return this.#codeSize;
+	get titleSize(): number {
+		return this.#titleSize;
 	}
-	set codeSize(value: number | null) {
-		this.#codeSize = value === null ? null : sizeIn(value, CODE_SIZE);
+	set titleSize(value: number) {
+		this.#titleSize = sizeIn(value, TITLE_SIZE) ?? TITLE_SIZE.default;
 		this.#applyText();
 	}
 
-	/** The size code blocks are drawn at, own or following the text. */
-	get effectiveCodeSize(): number {
-		return this.#codeSize ?? Math.round(this.#textSize * CODE_SHARE);
+	get codeSize(): number {
+		return this.#codeSize;
+	}
+	set codeSize(value: number) {
+		this.#codeSize = sizeIn(value, CODE_SIZE) ?? CODE_SIZE.default;
+		this.#applyText();
 	}
 
 	get codeWrap(): boolean {
@@ -231,7 +240,7 @@ export class UIStore {
 
 	#applyText() {
 		this.#persist();
-		applyDocumentText(this.#textSize, this.#codeSize, this.#codeWrap);
+		applyDocumentText(this.#textSize, this.#titleSize, this.#codeSize, this.#codeWrap);
 	}
 
 	get rawMarkdown() {
@@ -307,7 +316,8 @@ export class UIStore {
 						if (languages.length > 0) this.#reminderLanguages = languages;
 					}
 					this.#textSize = sizeIn(parsed.textSize, TEXT_SIZE) ?? TEXT_SIZE.default;
-					this.#codeSize = sizeIn(parsed.codeSize, CODE_SIZE);
+					this.#titleSize = sizeIn(parsed.titleSize, TITLE_SIZE) ?? TITLE_SIZE.default;
+					this.#codeSize = sizeIn(parsed.codeSize, CODE_SIZE) ?? CODE_SIZE.default;
 					if (typeof parsed.codeWrap === 'boolean') this.#codeWrap = parsed.codeWrap;
 				}
 			} catch {
@@ -317,7 +327,7 @@ export class UIStore {
 		this.#open(this.#view);
 		this.#persistable = true;
 		applyDocumentTheme(this.effectiveDark);
-		applyDocumentText(this.#textSize, this.#codeSize, this.#codeWrap);
+		applyDocumentText(this.#textSize, this.#titleSize, this.#codeSize, this.#codeWrap);
 
 		// Watch system theme changes when following system.
 		if (typeof matchMedia !== 'undefined') {
@@ -344,6 +354,7 @@ export class UIStore {
 			rawMarkdown: this.#rawMarkdown,
 			reminderLanguages: this.#reminderLanguages,
 			textSize: this.#textSize,
+			titleSize: this.#titleSize,
 			codeSize: this.#codeSize,
 			codeWrap: this.#codeWrap
 		};

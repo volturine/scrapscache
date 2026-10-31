@@ -157,7 +157,8 @@ describe('reminder languages', () => {
 describe('text settings', () => {
 	afterEach(() => {
 		uiStore.textSize = 14;
-		uiStore.codeSize = null;
+		uiStore.titleSize = 15;
+		uiStore.codeSize = 13;
 		uiStore.codeWrap = false;
 		localStorage.removeItem('scrapscache-ui-state');
 	});
@@ -169,26 +170,29 @@ describe('text settings', () => {
 		expect(uiStore.textSize).toBe(20);
 		expect(root.style.fontSize).toMatch(/^142\.857\d*%$/);
 
-		uiStore.textSize = 11.6;
-		expect(uiStore.textSize).toBe(12);
+		uiStore.textSize = 9.6;
+		expect(uiStore.textSize).toBe(10);
 
 		uiStore.textSize = 14;
 		expect(root.style.fontSize).toBe('');
 	});
 
-	it('gives code its own size only when one is set, and follows the text otherwise', () => {
+	it('sizes note titles and code in px of their own, apart from the text size', () => {
 		const root = document.documentElement;
 		uiStore.textSize = 18;
-		expect(uiStore.effectiveCodeSize).toBe(17);
-		expect(root.style.getPropertyValue('--code-font-size')).toBe('');
+		expect(root.style.getPropertyValue('--title-font-size')).toBe('15px');
+		expect(root.style.getPropertyValue('--code-font-size')).toBe('13px');
 
-		uiStore.codeSize = 9;
-		expect(uiStore.codeSize).toBe(10);
-		expect(uiStore.effectiveCodeSize).toBe(10);
-		expect(root.style.getPropertyValue('--code-font-size')).toBe('10px');
+		uiStore.titleSize = 30;
+		expect(uiStore.titleSize).toBe(24);
+		uiStore.titleSize = 9;
+		expect(uiStore.titleSize).toBe(10);
+		expect(root.style.getPropertyValue('--title-font-size')).toBe('10px');
 
-		uiStore.codeSize = null;
-		expect(root.style.getPropertyValue('--code-font-size')).toBe('');
+		uiStore.codeSize = 7;
+		expect(uiStore.codeSize).toBe(8);
+		expect(root.style.getPropertyValue('--code-font-size')).toBe('8px');
+		expect(uiStore.textSize).toBe(18);
 	});
 
 	it('marks the document while code wraps', () => {
@@ -200,23 +204,25 @@ describe('text settings', () => {
 
 	it('keeps the settings on this device', () => {
 		uiStore.textSize = 17;
+		uiStore.titleSize = 20;
 		uiStore.codeSize = 12;
 		uiStore.codeWrap = true;
 
 		const saved = JSON.parse(localStorage.getItem('scrapscache-ui-state') ?? '{}');
-		expect(saved).toMatchObject({ textSize: 17, codeSize: 12, codeWrap: true });
+		expect(saved).toMatchObject({ textSize: 17, titleSize: 20, codeSize: 12, codeWrap: true });
 	});
 
 	it('reads saved settings back, dropping sizes out of range or of the wrong kind', async () => {
 		localStorage.setItem(
 			'scrapscache-ui-state',
-			JSON.stringify({ textSize: 40, codeSize: 'big', codeWrap: true })
+			JSON.stringify({ textSize: 40, titleSize: 4, codeSize: 'big', codeWrap: true })
 		);
 		const { UIStore } = await import('./ui.svelte');
 		const store = new UIStore();
 
 		expect(store.textSize).toBe(20);
-		expect(store.codeSize).toBeNull();
+		expect(store.titleSize).toBe(10);
+		expect(store.codeSize).toBe(13);
 		expect(store.codeWrap).toBe(true);
 	});
 });

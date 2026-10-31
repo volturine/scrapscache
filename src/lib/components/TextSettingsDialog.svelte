@@ -1,7 +1,7 @@
 <script lang="ts">
-	// Settings > Text and code: the text size for the whole app, and how code blocks
-	// are sized and whether their long lines wrap. Each section previews its change,
-	// and the app behind the dialog follows as the controls move.
+	// Settings > Text and code: the text size for the whole app, its own size for note
+	// titles, and how code blocks are sized and whether their long lines wrap. Each
+	// section previews its change, and the app behind the dialog follows as the controls move.
 	import {
 		iconSizeMd as iconMd,
 		markdownStyles,
@@ -12,10 +12,10 @@
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { Slider } from '@ark-ui/svelte/slider';
 	import { Switch } from '@ark-ui/svelte/switch';
-	import { ArrowLeft, Code, Type, TextWrap, X } from '@lucide/svelte';
+	import { ArrowLeft, TextWrap, X } from '@lucide/svelte';
 	import { MediaQuery } from 'svelte/reactivity';
 	import { PHONE_MEDIA, portalToAppOverlay } from '#lib/appViewport.js';
-	import { CODE_SIZE, TEXT_SIZE, uiStore } from '#lib/stores/ui.svelte.js';
+	import { CODE_SIZE, TEXT_SIZE, TITLE_SIZE, uiStore } from '#lib/stores/ui.svelte.js';
 
 	let { onClose }: { onClose: () => void } = $props();
 
@@ -33,8 +33,7 @@
 {#snippet sizeSlider(
 	label: string,
 	value: number,
-	range: { min: number; max: number },
-	mark: number | null,
+	range: { min: number; max: number; default: number },
 	onChange: (size: number) => void
 )}
 	<Slider.Root
@@ -45,11 +44,9 @@
 		onValueChange={(details) => onChange(details.value[0])}
 	>
 		<div class={styles.row}>
-			<Slider.Label class={cx(styles.rowLabel, mark === null && styles.indentedLabel)}
-				>{label}</Slider.Label
-			>
+			<Slider.Label class={styles.rowLabel}>{label}</Slider.Label>
 			<Slider.ValueText class={styles.value}
-				>{value} px{value === mark ? ' · Default' : ''}</Slider.ValueText
+				>{value} px{value === range.default ? ' · Default' : ''}</Slider.ValueText
 			>
 		</div>
 		<div class={styles.slider}>
@@ -57,12 +54,10 @@
 			<Slider.Control class={styles.sliderControl}>
 				<Slider.Track class={styles.track}>
 					<Slider.Range class={styles.range} />
-					{#if mark !== null}
-						<!-- In the track, so a mark's offset is a share of the track's width. -->
-						<Slider.MarkerGroup>
-							<Slider.Marker value={mark} class={styles.marker} />
-						</Slider.MarkerGroup>
-					{/if}
+					<!-- In the track, so the mark's offset is a share of the track's width. -->
+					<Slider.MarkerGroup>
+						<Slider.Marker value={range.default} class={styles.marker} />
+					</Slider.MarkerGroup>
 				</Slider.Track>
 				<Slider.Thumb index={0} class={styles.thumb} data-pointer={pointer || undefined}>
 					<Slider.HiddenInput />
@@ -75,7 +70,7 @@
 
 {#snippet toggle(
 	label: string,
-	Icon: typeof Code,
+	Icon: typeof TextWrap,
 	checked: boolean,
 	onChange: (on: boolean) => void
 )}
@@ -139,15 +134,24 @@
 								<span class={styles.sampleTitle}>Groceries</span>
 								<span>Sourdough bread, oat milk and two avocados.</span>
 							</div>
-							<p class={styles.caption}>Notes, labels, menus and headings scale with this size.</p>
+							<p class={styles.caption}>
+								App text covers menus, labels, headings and what you write in a note.
+							</p>
 						</div>
 						{@render sizeSlider(
-							'Text size',
+							'App text',
 							uiStore.textSize,
 							TEXT_SIZE,
-							TEXT_SIZE.default,
 							(size) => (uiStore.textSize = size)
 						)}
+						<div class={styles.rowRule}>
+							{@render sizeSlider(
+								'Note titles',
+								uiStore.titleSize,
+								TITLE_SIZE,
+								(size) => (uiStore.titleSize = size)
+							)}
+						</div>
 					</section>
 
 					<h3 class={styles.sectionLabel}>Code blocks</h3>
@@ -161,18 +165,12 @@
 								Wrapping is for cards; while you edit a note, long lines always wrap.
 							</p>
 						</div>
-						{@render toggle('Own size for code', Code, uiStore.codeSize !== null, (on) => {
-							uiStore.codeSize = on ? uiStore.effectiveCodeSize : null;
-						})}
-						{#if uiStore.codeSize !== null}
-							{@render sizeSlider(
-								'Code size',
-								uiStore.codeSize,
-								CODE_SIZE,
-								null,
-								(size) => (uiStore.codeSize = size)
-							)}
-						{/if}
+						{@render sizeSlider(
+							'Code size',
+							uiStore.codeSize,
+							CODE_SIZE,
+							(size) => (uiStore.codeSize = size)
+						)}
 						<div class={styles.rowRule}>
 							{@render toggle(
 								'Wrap long lines',

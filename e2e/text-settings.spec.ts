@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { openEmptyApp } from './app';
+import { createNote, editor, noteCard, openEmptyApp } from './app';
 
 test('the text size scales the app, and it and code wrapping stay after a reload', async ({
 	page
@@ -12,7 +12,7 @@ test('the text size scales the app, and it and code wrapping stay after a reload
 	await page.getByRole('button', { name: 'Settings', exact: true }).click();
 	await page.getByRole('menuitem', { name: 'Text and code' }).click();
 	const dialog = page.getByRole('dialog', { name: 'Text and code' });
-	const slider = dialog.getByRole('slider', { name: 'Text size' });
+	const slider = dialog.getByRole('slider', { name: 'App text' });
 	await slider.focus();
 	for (let step = 0; step < 4; step++) await page.keyboard.press('ArrowRight');
 	await expect(slider).toHaveAttribute('aria-valuenow', '18');
@@ -32,7 +32,7 @@ test('a size slider rings its thumb for the keyboard, not after a press', async 
 	await page.getByRole('button', { name: 'Settings', exact: true }).click();
 	await page.getByRole('menuitem', { name: 'Text and code' }).click();
 	const dialog = page.getByRole('dialog', { name: 'Text and code' });
-	const thumb = dialog.getByRole('slider', { name: 'Text size' });
+	const thumb = dialog.getByRole('slider', { name: 'App text' });
 	const ring = () => thumb.evaluate((element) => getComputedStyle(element).boxShadow);
 
 	await expect(dialog.getByRole('button', { name: 'Close' })).toBeFocused();
@@ -47,4 +47,37 @@ test('a size slider rings its thumb for the keyboard, not after a press', async 
 	await page.mouse.click(track!.x + track!.width * 0.8, track!.y + track!.height / 2);
 	await expect(thumb).toBeFocused();
 	await expect.poll(ring).not.toContain('0px 0px 0px 3px');
+});
+
+test('note titles keep their own size while the app text moves', async ({ page }) => {
+	await openEmptyApp(page);
+	await createNote(page, 'Groceries list');
+	const fontSize = (locator: ReturnType<typeof page.locator>) =>
+		locator.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize));
+	// Not by role: the open dialog hides the page behind it from the accessibility tree.
+	const cardTitle = page.locator('article h3', { hasText: /^Groceries list$/ });
+	await expect.poll(() => fontSize(cardTitle)).toBe(15);
+
+	await page.getByRole('button', { name: 'Settings', exact: true }).click();
+	await page.getByRole('menuitem', { name: 'Text and code' }).click();
+	const dialog = page.getByRole('dialog', { name: 'Text and code' });
+	const text = dialog.getByRole('slider', { name: 'App text' });
+	await text.focus();
+	for (let step = 0; step < 4; step++) await page.keyboard.press('ArrowLeft');
+	await expect(text).toHaveAttribute('aria-valuenow', '10');
+	await expect.poll(() => fontSize(cardTitle)).toBe(15);
+
+	const titles = dialog.getByRole('slider', { name: 'Note titles' });
+	await titles.focus();
+	for (let step = 0; step < 3; step++) await page.keyboard.press('ArrowRight');
+	await expect(titles).toHaveAttribute('aria-valuenow', '18');
+	await expect.poll(() => fontSize(cardTitle)).toBe(18);
+	await dialog.getByRole('button', { name: 'Close' }).click();
+	await expect(dialog).toBeHidden();
+
+	// An open note's title keeps its 20:15 share over the card's.
+	await noteCard(page, 'Groceries list').click();
+	await expect
+		.poll(() => fontSize(editor(page).getByPlaceholder('Title', { exact: true })))
+		.toBe(24);
 });

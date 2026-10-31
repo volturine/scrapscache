@@ -50,6 +50,10 @@ const absoluteCenterY = {
 const fullscreenShell = { inset: 0, zIndex: 80, ...column } as const;
 const flexTruncate = { ...flexFill, ...truncateText } as const;
 const flexTruncateClass = css(flexTruncate);
+/** Settings > Text and code sizes note titles on their own; the card recipe reads it too. */
+const noteTitleSize = 'var(--title-font-size, token(fontSizes.title))';
+/** An open note's title keeps its share over a card's (display over title, 20:15). */
+const openNoteTitleSize = 'calc(var(--title-font-size, token(fontSizes.title)) * 4 / 3)';
 const kanbanColumnSize = {
 	w: 'min(calc(var(--note-card-width) + 1.5rem), calc(100vw - 2rem))',
 	flexShrink: 0
@@ -2203,7 +2207,7 @@ export const textSettingsStyles = {
 		borderWidth: 'hairline',
 		borderColor: 'scrapscache.borderFaint'
 	}),
-	sampleTitle: css({ textStyle: 'title' }),
+	sampleTitle: css({ textStyle: 'title', fontSize: noteTitleSize }),
 	caption: css({ mt: 'sm', textStyle: 'caption' }),
 	/** The code sample's block keeps the markdown styles' own margins out of the card. */
 	sampleCode: css({ '& .markdown-code-block': { m: 0 } }),
@@ -2211,8 +2215,6 @@ export const textSettingsStyles = {
 	rowRule: css({ borderTopWidth: 'hairline', borderColor: 'scrapscache.border' }),
 	rowIcon: css({ ...iconSm, flexShrink: 0 }),
 	rowLabel: css({ ...flexFill, textStyle: 'body' }),
-	/** A size's row has no icon of its own; its label lines up with the switch's above. */
-	indentedLabel: css({ pl: 'calc(1rem + token(spacing.sm))' }),
 	value: css({ flexShrink: 0, textStyle: 'caption', fontVariantNumeric: 'tabular-nums' }),
 	slider: hstack({ gap: 'sm', px: 'md', pb: 'md' }),
 	smallA: css({ w: '1rem', flexShrink: 0, textAlign: 'center', textStyle: 'label', ...mutedText }),
@@ -2947,6 +2949,7 @@ export const noteEditorStyles = {
 		mb: 'md',
 		w: 'full',
 		textStyle: 'editorTitle',
+		fontSize: openNoteTitleSize,
 		overflowWrap: 'anywhere'
 	}),
 	historyPreviewContent: css({
@@ -2967,6 +2970,7 @@ export const noteEditorStyles = {
 		overflow: 'hidden',
 		wordBreak: 'break-word',
 		textStyle: 'editorTitle',
+		fontSize: openNoteTitleSize,
 		_placeholder: mutedText,
 		fieldSizing: 'content',
 		transition: 'none'

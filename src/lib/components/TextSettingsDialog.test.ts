@@ -5,7 +5,8 @@ import TextSettingsDialog from './TextSettingsDialog.svelte';
 
 afterEach(() => {
 	uiStore.textSize = 14;
-	uiStore.codeSize = null;
+	uiStore.titleSize = 15;
+	uiStore.codeSize = 13;
 	uiStore.codeWrap = false;
 });
 
@@ -16,9 +17,9 @@ function open() {
 }
 
 describe('TextSettingsDialog', () => {
-	it('moves the text size a step at a time from the keyboard, marking the default', async () => {
+	it('moves the app text a step at a time from the keyboard, marking the default', async () => {
 		open();
-		const slider = screen.getByRole('slider', { name: 'Text size' });
+		const slider = screen.getByRole('slider', { name: 'App text' });
 		expect(slider.getAttribute('aria-valuenow')).toBe('14');
 		expect(screen.getByText('14 px · Default')).toBeTruthy();
 
@@ -30,21 +31,20 @@ describe('TextSettingsDialog', () => {
 		expect(screen.getByText('16 px')).toBeTruthy();
 	});
 
-	it('gives code its own size from the size it was following, and follows again when off', async () => {
-		uiStore.textSize = 18;
+	it('sizes note titles and code on sliders of their own, leaving the app text', async () => {
 		open();
-		expect(screen.queryByRole('slider', { name: 'Code size' })).toBeNull();
+		const titles = screen.getByRole('slider', { name: 'Note titles' });
+		expect(titles.getAttribute('aria-valuenow')).toBe('15');
+		titles.focus();
+		await fireEvent.keyDown(titles, { key: 'ArrowRight' });
+		expect(uiStore.titleSize).toBe(16);
 
-		await fireEvent.click(screen.getByRole('checkbox', { name: 'Own size for code' }));
-		expect(uiStore.codeSize).toBe(17);
 		const code = screen.getByRole('slider', { name: 'Code size' });
+		expect(code.getAttribute('aria-valuenow')).toBe('13');
 		code.focus();
 		await fireEvent.keyDown(code, { key: 'ArrowLeft' });
-		expect(uiStore.codeSize).toBe(16);
-
-		await fireEvent.click(screen.getByRole('checkbox', { name: 'Own size for code' }));
-		expect(uiStore.codeSize).toBeNull();
-		expect(screen.queryByRole('slider', { name: 'Code size' })).toBeNull();
+		expect(uiStore.codeSize).toBe(12);
+		expect(uiStore.textSize).toBe(14);
 	});
 
 	it('wraps long code lines when asked', async () => {

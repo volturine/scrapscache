@@ -95,7 +95,7 @@
 	let relayoutAll: (() => void) | undefined;
 	// The text settings rewrap every card without changing the grid's width.
 	const textLayout = $derived(
-		`${uiStore.textSize}:${uiStore.effectiveCodeSize}:${uiStore.codeWrap}`
+		`${uiStore.textSize}:${uiStore.titleSize}:${uiStore.codeSize}:${uiStore.codeWrap}`
 	);
 	/** The text settings the cards were last measured at; mounting measures them first. */
 	let laidOutText: string | undefined;

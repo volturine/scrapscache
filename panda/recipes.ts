@@ -431,6 +431,8 @@ const noteCardRecipe = defineSlotRecipe({
 			mb: '2xs',
 			wordBreak: 'break-word',
 			textStyle: 'title',
+			// Settings > Text and code sizes note titles on their own.
+			fontSize: 'var(--title-font-size, token(fontSizes.title))',
 			letterSpacing: 'tight'
 		},
 		labelsRow: {

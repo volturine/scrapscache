@@ -8,6 +8,7 @@ import {
 import {
 	isReminderTime,
 	reminderDueAt,
+	reminderTimesBetween,
 	relayReminderWakes,
 	reminderWakeId,
 	type ReminderWake
@@ -55,6 +56,20 @@ export type ReminderHost = {
 	/** Pull notes from the relay when `pid` is the open workspace; other workspaces sync once opened. */
 	triggerSync(pid: string): void;
 };
+
+/** A reminder still to come, as the iPhone app hands it to the system to fire. */
+export type UpcomingReminder = {
+	workspaceId: string;
+	/** Empty for a relay wake whose note has not synced here yet. */
+	noteId: string;
+	wakeId: string;
+	at: number;
+	title: string;
+};
+
+/** How far ahead `upcoming` looks; the system holds only so many, and the schedule is redone on every change. */
+export const UPCOMING_HORIZON_MS = 30 * 86_400_000;
+export const UPCOMING_LIMIT = 60;
 
 /** One workspace's reminders, as this window tracks them. */
 type WorkspaceReminders = {
@@ -145,6 +160,7 @@ export class ReminderStore {
 	private attached = false;
 	private readonly history: ReminderHistoryStore;
 	private readonly wakeFlights = new Map<string, Promise<void>>();
+	private upcomingListener: ((upcoming: UpcomingReminder[]) => void) | null = null;
 
 	constructor(history: ReminderHistoryStore = reminderHistoryStore) {
 		this.history = history;
@@ -298,6 +314,62 @@ export class ReminderStore {
 		const alert = this.alerts.find((item) => item.wakeId === wakeId);
 		this.dismiss(wakeId);
 		if (alert) this.openTarget(alert.workspaceId, alert.noteId);
+	}
+
+	/**
+	 * Every workspace's reminders still to come, soonest first: each time a
+	 * repeat comes within the horizon, and relay wakes for notes not synced here.
+	 * What was shown or handled already is left out.
+	 */
+	upcoming(now = Date.now(), until = now + UPCOMING_HORIZON_MS): UpcomingReminder[] {
+		const list: UpcomingReminder[] = [];
+		for (const workspace of this.workspaces.values()) {
+			const done = (wakeId: string) => workspace.fired.has(wakeId) || workspace.seen.has(wakeId);
+			for (const note of workspace.notes) {
+				if (note.archived || note.trashed) continue;
+				for (const at of reminderTimesBetween(note, now, until, UPCOMING_LIMIT)) {
+					const wakeId = reminderWakeId(note.id, at);
+					if (done(wakeId)) continue;
+					list.push({
+						workspaceId: workspace.pid,
+						noteId: note.id,
+						wakeId,
+						at,
+						title: reminderPreview(note)
+					});
+				}
+			}
+			for (const wake of workspace.remoteWakes.values()) {
+				if (wake.fireAt < now || wake.fireAt > until || done(wake.id)) continue;
+				if (noteForWake(workspace.notes, wake.id, wake.fireAt)) continue;
+				const name = this.host?.workspaces().find((item) => item.id === workspace.pid)?.name;
+				list.push({
+					workspaceId: workspace.pid,
+					noteId: '',
+					wakeId: wake.id,
+					at: wake.fireAt,
+					title: name ? `Reminder (${name})` : 'Reminder'
+				});
+			}
+		}
+		return list.sort((a, b) => a.at - b.at).slice(0, UPCOMING_LIMIT);
+	}
+
+	/** Hear the upcoming list now and whenever the timer is set again. */
+	watchUpcoming(listener: (upcoming: UpcomingReminder[]) => void): () => void {
+		this.upcomingListener = listener;
+		listener(this.upcoming());
+		return () => {
+			if (this.upcomingListener === listener) this.upcomingListener = null;
+		};
+	}
+
+	/** The system showed a reminder and it was tapped. */
+	openFromSystem(
+		alert: Pick<ReminderAlert, 'workspaceId' | 'wakeId' | 'noteId' | 'reminder'>
+	): void {
+		if (alert.noteId) this.openFromNotification(alert);
+		else this.host?.openWorkspace(alert.workspaceId);
 	}
 
 	/** An alert opens its note, or just its workspace while the note has yet to sync. */
@@ -594,6 +666,7 @@ export class ReminderStore {
 			this.timer = null;
 		}
 		const now = Date.now();
+		this.upcomingListener?.(this.upcoming(now));
 		let next: number | null = null;
 		for (const workspace of this.workspaces.values()) {
 			const at = nextReminderAt(workspace.notes, now);

@@ -71,7 +71,8 @@ test.describe('installed iOS document chrome', () => {
 	});
 
 	test('paints the status sampler before the application loads', async ({ page }) => {
-		await page.route('**/*.js', (route) => route.abort());
+		// The app's own bundles never arrive; the template's boot script (static/boot.js) still runs.
+		await page.route('**/_app/**/*.js', (route) => route.abort());
 		await page.goto('/');
 
 		await expect(page.locator('[data-status-sample]')).toHaveCount(1);

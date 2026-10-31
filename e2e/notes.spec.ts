@@ -663,6 +663,14 @@ test.describe('on a phone', () => {
 		await expect(composerPrompt(page)).toBeVisible();
 		await expect(page.getByRole('button', { name: 'New note' })).toHaveCount(0);
 
+		// The bar's surface runs the full width of the screen behind the app frame, so
+		// on a phone with a side status bar (iPhone Duo folded) it reads edge to edge.
+		const bleed = await page.locator('[data-tab-bar-bleed]').boundingBox();
+		const barBox = await tabs.boundingBox();
+		expect(bleed!.x).toBe(0);
+		expect(bleed!.width).toBe(390);
+		expect(Math.round(bleed!.y)).toBe(Math.round(barBox!.y));
+
 		await tabs.getByRole('button', { name: 'Reminders' }).click();
 		await expect(page).toHaveURL(/\/reminders$/);
 		await expect(tabs.getByRole('button', { name: 'Reminders' })).toHaveAttribute(

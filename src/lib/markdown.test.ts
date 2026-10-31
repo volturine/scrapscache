@@ -22,6 +22,16 @@ describe('inline Markdown tokenizer', () => {
 		}
 	);
 
+	it('does not treat underscores inside a URL as emphasis', () => {
+		const url = 'https://naysbaits.com/en-eu?_su_rec=abc&__su_rec_id=9c3ebfa2';
+		const tokens = parseInlineMarkdown(`what ever ${url}`);
+		expect(tokens.some((token) => token.kind === 'marker')).toBe(false);
+		expect(tokens.map((token) => token.text).join('')).toBe(`what ever ${url}`);
+		expect(parseInlineMarkdown('_still italic_').some((token) => token.kind === 'marker')).toBe(
+			true
+		);
+	});
+
 	it('requires an exact closing backtick run', () => {
 		const tokens = parseInlineMarkdown('`one `` two`');
 		expect(tokens.filter((token) => token.kind === 'text')).toEqual([

@@ -31,6 +31,7 @@
 	import { appClock } from '#lib/appClock.svelte.js';
 	import { noteActivity, reminderWords, writeClipboardText } from '#lib/utils.js';
 	import { noteShareLink } from '#lib/noteLinks.js';
+	import { appLinkOrigin } from '#lib/serverOrigin.svelte.js';
 	import ReminderLabel from './ReminderLabel.svelte';
 	import { Bell, ChevronLeft, Eye, EyeOff, Maximize2, Minimize2, Pin } from '@lucide/svelte';
 
@@ -732,7 +733,7 @@
 	async function shareNote() {
 		const workspace = syncStore.activeProfile;
 		if (!note || !workspace) return;
-		const url = noteShareLink(window.location.origin, { profile: workspace, noteId: note.id });
+		const url = noteShareLink(appLinkOrigin(), { profile: workspace, noteId: note.id });
 		if (typeof navigator.share === 'function') {
 			// Only the link: a title would make iOS build the preview itself, without
 			// the app's icon, and would hand the note's title to the target app.

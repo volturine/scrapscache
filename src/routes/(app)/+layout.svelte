@@ -522,7 +522,7 @@
 	</div>
 </div>
 {#if mobile.current}
-	<div class={styles.tabBarSafeArea} aria-hidden="true"></div>
+	<div class={styles.tabBarSafeArea} aria-hidden="true" data-tabbar-safe-area></div>
 {/if}
 {#if mobile.current && uiStore.sidebarOpen}
 	<div class={styles.drawerSafeArea} aria-hidden="true"></div>

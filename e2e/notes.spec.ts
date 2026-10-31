@@ -636,6 +636,21 @@ test.describe('on a phone', () => {
 		await expect.poll(() => feed.evaluate((element) => element.scrollTop)).toBe(200);
 	});
 
+	test('a full-page note leaves no tab bar strip under it', async ({ page }) => {
+		await openEmptyApp(page);
+		await createNote(page, 'Tram day', 'Tram 28 early');
+		const strip = page.locator('[data-tabbar-safe-area]');
+		await expect(strip).toHaveCSS('display', 'block');
+
+		await noteCard(page, 'Tram day').click();
+		await editor(page).getByRole('button', { name: 'Expand note' }).click();
+		await expect(page.locator('html')).toHaveClass(/editor-expanded/);
+		await expect(strip).toHaveCSS('display', 'none');
+
+		await editor(page).getByRole('button', { name: 'Close note' }).click();
+		await expect(strip).toHaveCSS('display', 'block');
+	});
+
 	test('the tab bar carries the places, Labels holds the labels with Archive and Trash, and Search opens the palette', async ({
 		page
 	}) => {

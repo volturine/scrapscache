@@ -58,6 +58,12 @@ html.editor-expanded body,
 html.editor-expanded [data-status-sample] {
 	background-color: var(--editor-page-bg) !important;
 }
+/* The note covers the tab bar, so the strip that carries the bar's surface
+ * under the home indicator would sit below the note as a band of another
+ * colour. */
+html.editor-expanded [data-tabbar-safe-area] {
+	display: none;
+}
 
 /* Outside the note editor a drag must act on gestures (swipes, context
  * menus), not start a text selection — on every device, including iPad

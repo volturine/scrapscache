@@ -96,8 +96,15 @@ export function rememberSafeArea(
 	};
 }
 
+/** Room kept under the bars for the home indicator; their own padding covers the rest. */
+const HOME_INDICATOR_CLEARANCE_PX = 8;
+
+/**
+ * The full safe area left an empty band under the bars of an installed app, so
+ * only a sliver of it is kept.
+ */
 export function appBottomInset(safeBottom: number, keyboardVisible: boolean): number {
-	return keyboardVisible ? 0 : safeBottom;
+	return keyboardVisible ? 0 : Math.min(safeBottom, HOME_INDICATOR_CLEARANCE_PX);
 }
 
 export type AppKeyboardFrame = {
@@ -232,7 +239,7 @@ export function attachAppViewport(_node: HTMLElement) {
 		document.documentElement.classList.toggle('keyboard-open', keyboardVisible);
 		setInsetVar('--app-inset-top', cachedSafe.top);
 		setInsetVar('--app-inset-right', cachedSafe.right);
-		// Keep installed iPhone and iPad controls above the home indicator. When
+		// Keep installed iPhone and iPad controls clear of the home indicator. When
 		// the software keyboard is active, its own occlusion replaces this inset.
 		setInsetVar('--app-inset-bottom', appBottomInset(cachedSafe.bottom, keyboardVisible));
 		setInsetVar('--app-inset-left', cachedSafe.left);

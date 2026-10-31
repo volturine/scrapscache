@@ -18,8 +18,10 @@ import {
 const safe = { top: 59, right: 0, bottom: 34, left: 0 };
 
 describe('appBottomInset', () => {
-	it('keeps the home-indicator safe area while the keyboard is down', () => {
-		expect(appBottomInset(20, false)).toBe(20);
+	it('keeps only a sliver of the home-indicator safe area while the keyboard is down', () => {
+		expect(appBottomInset(34, false)).toBe(8);
+		expect(appBottomInset(4, false)).toBe(4);
+		expect(appBottomInset(0, false)).toBe(0);
 	});
 
 	it('lets the software keyboard replace the home-indicator inset', () => {

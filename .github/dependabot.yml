@@ -1,23 +1,24 @@
 version: 2
+
+# One weekly pull request for every ecosystem and directory. Each entry below
+# joins the group; the schedule lives on the group, and `patterns` is required
+# on every member.
+multi-ecosystem-groups:
+  weekly-batch:
+    schedule:
+      interval: weekly
+
 updates:
   - package-ecosystem: github-actions
     directory: /
-    schedule:
-      interval: weekly
-    groups:
-      weekly-batch:
-        patterns:
-          - '*'
+    patterns: ['*']
+    multi-ecosystem-group: weekly-batch
 
   # Base images and Compose services are pinned by digest; these keep them moving.
   - package-ecosystem: docker
     directory: /docker
-    schedule:
-      interval: weekly
-    groups:
-      weekly-batch:
-        patterns:
-          - '*'
+    patterns: ['*']
+    multi-ecosystem-group: weekly-batch
     ignore:
       # Odd Node majors never become LTS; move to the next LTS by hand together
       # with engines, .nvmrc, CI and the runtime copy in docker/Dockerfile.
@@ -26,21 +27,13 @@ updates:
 
   - package-ecosystem: docker-compose
     directory: /docker
-    schedule:
-      interval: weekly
-    groups:
-      weekly-batch:
-        patterns:
-          - '*'
+    patterns: ['*']
+    multi-ecosystem-group: weekly-batch
 
   - package-ecosystem: npm
     directory: /
-    schedule:
-      interval: weekly
-    groups:
-      weekly-batch:
-        patterns:
-          - '*'
+    patterns: ['*']
+    multi-ecosystem-group: weekly-batch
     ignore:
       - dependency-name: 'typescript'
         update-types: ['version-update:semver-major']
@@ -48,24 +41,16 @@ updates:
   # The MCP recipe ships its own npm project and Docker image; cover them too.
   - package-ecosystem: npm
     directory: /recipes/mcp-server
-    schedule:
-      interval: weekly
-    groups:
-      weekly-batch:
-        patterns:
-          - '*'
+    patterns: ['*']
+    multi-ecosystem-group: weekly-batch
     ignore:
       - dependency-name: 'typescript'
         update-types: ['version-update:semver-major']
 
   - package-ecosystem: docker
     directory: /recipes/mcp-server/docker
-    schedule:
-      interval: weekly
-    groups:
-      weekly-batch:
-        patterns:
-          - '*'
+    patterns: ['*']
+    multi-ecosystem-group: weekly-batch
     ignore:
       - dependency-name: 'node'
         update-types: ['version-update:semver-major']

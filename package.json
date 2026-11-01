@@ -81,7 +81,7 @@
 		"wrangler": "^4.156.0"
 	},
 	"dependencies": {
-		"@ark-ui/svelte": "^5.25.0",
+		"@ark-ui/svelte": "~5.24.3",
 		"@cipherman/pake-js": "^0.1.1",
 		"@excalidraw/excalidraw": "0.18.1",
 		"@fontsource-variable/google-sans": "^5.3.1",

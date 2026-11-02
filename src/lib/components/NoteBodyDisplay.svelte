@@ -33,6 +33,7 @@
 		blocks.length > CARD_PREVIEW_LIMIT ? blocks.slice(0, CARD_PREVIEW_LIMIT) : blocks
 	);
 	const attachments = $derived(noteAttachments(note));
+	const photoIds = $derived(new Set(attachments.map((attachment) => attachment.id)));
 	const imageAttachments = $derived(attachments.filter(isImageAttachment));
 	const canvases = $derived(attachments.filter(isCanvasAttachment));
 	const photos = $derived(imageAttachments.filter((attachment) => !!displayImageSrc(attachment)));
@@ -96,7 +97,13 @@
 			{@const inlineTokens = markTokens(parseInlineMarkdown(text), uiStore.search)}
 			{#each inlineTokens as { token, segments }, tokenIndex (tokenIndex)}
 				<span
-					class={markdownTokenClass(token, uiStore.rawMarkdown)}
+					class={[
+						markdownTokenClass(token, uiStore.rawMarkdown),
+						token.kind === 'text' &&
+							token.photo !== undefined &&
+							!photoIds.has(token.photo) &&
+							'markdown-token-photo-missing'
+					]}
 					data-markdown-token={token.kind === 'marker' ? token.marker : token.styles.join(' ')}
 					>{@render marked(segments)}</span
 				>

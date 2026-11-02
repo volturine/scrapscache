@@ -68,9 +68,15 @@ phone tab bar stands in that column as a rail (`PhoneTabBar` with `rail`, from
 `sideColumn.svelte.ts`) at every width, so the notes get the cover screen's full
 height and the open phone on its side keeps the same navigation in place of the
 sidebar, which it does not show. Beside the column the top bar keeps sync and
-settings on the left, then the view name, then a search field. The tabs gather at the
-column's bottom: iOS draws the Dynamic Island, clock and signal at its top, and
-a Live Activity grows the island, so no fixed offset from the top is safe.
+settings on the left, then the view name, then a search field. The rail keeps
+clear of what iOS draws in the column: the app's shell
+(`ios/App/App/ScrapsBridgeViewController.swift`, the root controller the scene
+delegate creates) reads the web view's occlusion regions, which iOS 27.1 reports
+for the camera island and the status cluster, and publishes them to the page as
+the `ReservedRegions` plugin; `src/lib/native/reservedRegions.ts` turns them into
+`--app-rail-top` and `--app-rail-bottom`, since the folded phone turned one way
+puts the island at the column's bottom. The stylesheet's own values are the
+fallback for an iOS before 27.1.
 
 ```sh
 npm run build:ios   # static build → build/ios, then `cap sync ios`

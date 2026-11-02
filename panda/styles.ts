@@ -3626,7 +3626,7 @@ export const phoneTabsStyles = {
 	rail: css({
 		position: 'fixed',
 		top: 'var(--app-rail-top)',
-		bottom: 'max(var(--app-inset-bottom), var(--app-keyboard-bottom))',
+		bottom: 'max(var(--app-inset-bottom), var(--app-keyboard-bottom), var(--app-rail-bottom))',
 		display: 'flex',
 		flexDirection: 'column',
 		justifyContent: 'flex-end',

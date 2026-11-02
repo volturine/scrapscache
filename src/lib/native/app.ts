@@ -8,14 +8,17 @@ import {
 	scheduleReminderNotifications
 } from './localNotifications.js';
 import { attachNativeStatusBar } from './statusBar.js';
+import { attachReservedRegions } from './reservedRegions.js';
 
 /**
  * What the iPhone app adds to the shell once it is on screen: the status bar
- * follows the theme and leaves the folded Duo's side, and the system fires
- * reminders from the store's schedule.
+ * follows the theme and leaves the folded Duo's side, the rail keeps under what
+ * iOS draws in that side's column, and the system fires reminders from the
+ * store's schedule.
  */
 export function attachNativeApp(): () => void {
 	const stopStatusBar = attachNativeStatusBar();
+	const stopReservedRegions = attachReservedRegions();
 	const schedule = () => {
 		if (currentPermission() !== 'granted') return;
 		void scheduleReminderNotifications(reminderStore.upcoming()).catch(() => undefined);
@@ -33,6 +36,7 @@ export function attachNativeApp(): () => void {
 	const tap = onNotificationTap((extra) => reminderStore.openFromSystem(extra));
 	return () => {
 		stopStatusBar();
+		stopReservedRegions();
 		stopUpcoming();
 		useNotificationBackend(null);
 		void tap.then((handle) => handle.remove()).catch(() => undefined);

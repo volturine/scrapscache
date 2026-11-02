@@ -26,6 +26,9 @@
 	 * column (the folded phone on its side) draws no clock, only the island, so the floor
 	 * gives way down to the island's height to keep all five tabs on screen. */
 	--app-rail-top: clamp(140px, calc(100vh - 16rem), 232px);
+	/* What iOS draws at the column's bottom instead, when the folded phone is turned that way; the
+	 * app shell reports both bands (see src/lib/native/reservedRegions.ts) and this is their default. */
+	--app-rail-bottom: 0px;
 }
 /* WebKit reads an edge element's background directly when it exceeds 10px. */
 html.ios-standalone {

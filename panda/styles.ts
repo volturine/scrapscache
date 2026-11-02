@@ -630,6 +630,39 @@ export const mcpAuthorizeStyles = {
 	action: css({ flex: '1' })
 };
 
+// The iPhone app's first question: which server it syncs with (ServerPrompt).
+export const serverPromptStyles = {
+	choices: css({ ...column, gap: 'sm' }),
+	option: css({
+		...mcpChoiceRow,
+		bg: 'scrapscache.bg',
+		...clickable,
+		transition: 'background-color 120ms ease, border-color 120ms ease',
+		...subtleHover,
+		'&:has(input:checked)': { borderColor: 'scrapscache.accent', bg: 'scrapscache.accentSubtle' }
+	}),
+	radio: css({ mt: '3xs', accentColor: 'scrapscache.accent' }),
+	optionText: css({ ...column, gap: '3xs', minW: 0, flex: '1' }),
+	optionName: css({ textStyle: 'bodyStrong' }),
+	optionCaption: css({ textStyle: 'caption', color: 'scrapscache.textMuted' }),
+	field: css({ mt: 'sm', w: 'full' }),
+	status: css({ textStyle: 'caption', mt: 'xs', color: 'scrapscache.textMuted' }),
+	statusOk: css({ color: 'scrapscache.success' }),
+	statusWarn: css({ color: 'scrapscache.warning' }),
+	statusBad: css({ color: 'scrapscache.danger' }),
+	actions: css({ display: 'flex', alignItems: 'center', gap: 'sm', mt: 'lg' }),
+	later: css({
+		mr: 'auto',
+		textStyle: 'body',
+		color: 'scrapscache.textMuted',
+		...clickable,
+		px: 'xs',
+		py: '2xs',
+		rounded: 'pill',
+		'&:focus-visible': { boxShadow: '0 0 0 2px token(colors.scrapscache.focus)', outline: 'none' }
+	})
+};
+
 export const pwaStyles = {
 	iosPortal: css({
 		position: 'fixed',

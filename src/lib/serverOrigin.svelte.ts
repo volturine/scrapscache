@@ -3,6 +3,8 @@ import { isNativeApp } from './native.js';
 /** Where the iPhone app syncs unless the user names another server. */
 export const DEFAULT_SERVER_ORIGIN = 'https://scrapscache.com';
 const LS_KEY = 'scrapscache-server';
+/** Set once the question of which server to use has been answered. */
+const CHOSEN_KEY = 'scrapscache-server-chosen';
 
 /**
  * An https origin and nothing more: no path, query, fragment or credentials. A
@@ -32,7 +34,16 @@ function readStored(): string {
 	}
 }
 
+function readChosen(): boolean {
+	try {
+		return localStorage.getItem(CHOSEN_KEY) === '1';
+	} catch {
+		return false;
+	}
+}
+
 let origin = $state(readStored());
+let chosen = $state(readChosen());
 
 /** The server setting, as Settings shows and changes it. */
 export const serverSetting = {
@@ -41,6 +52,22 @@ export const serverSetting = {
 	},
 	get isDefault(): boolean {
 		return origin === DEFAULT_SERVER_ORIGIN;
+	},
+	/**
+	 * Whether the app has asked which server to use and been answered, with the
+	 * hosted service or another. Until then the app asks at launch; Settings
+	 * answers it too.
+	 */
+	get chosen(): boolean {
+		return chosen;
+	},
+	markChosen(): void {
+		chosen = true;
+		try {
+			localStorage.setItem(CHOSEN_KEY, '1');
+		} catch {
+			// Asked again next launch.
+		}
 	},
 	/** Keeps the value if it is a usable origin; says whether it was. */
 	set(value: string): boolean {
@@ -53,6 +80,7 @@ export const serverSetting = {
 		} catch {
 			// Kept for this session only.
 		}
+		this.markChosen();
 		return true;
 	}
 };

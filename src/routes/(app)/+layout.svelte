@@ -38,6 +38,8 @@
 	import { profileCoordinator } from '#lib/stores/profiles.svelte.js';
 	import type { StoredProfile } from '#lib/profiles.js';
 	import NoteLinkNotice from '#lib/components/NoteLinkNotice.svelte';
+	import ServerPrompt from '#lib/components/ServerPrompt.svelte';
+	import { serverSetting } from '#lib/serverOrigin.svelte.js';
 	import UndoBar from '#lib/components/UndoBar.svelte';
 	import SyncAttentionBanner from '#lib/components/SyncAttentionBanner.svelte';
 	import { runUndoChord } from '#lib/stores/actionUndo.svelte.js';
@@ -47,6 +49,9 @@
 	let { children }: { children: Snippet } = $props();
 
 	const mobile = new MediaQuery('max-width: 767px');
+	const nativeApp = isNativeApp();
+	/** The server question was put away for this launch. */
+	let serverAsked = $state(false);
 	let editingId = $state<string | null>(null);
 	let autoFocusBody = $state(false);
 	let closeOpenNote: (() => Promise<void>) | null = null;
@@ -554,5 +559,9 @@
 </div>
 {#if noteLinkProblem}
 	<NoteLinkNotice message={noteLinkProblem} onClose={() => (noteLinkProblem = null)} />
+{/if}
+<!-- The iPhone app asks which server it syncs with until that is answered. -->
+{#if nativeApp && !serverSetting.chosen && !serverAsked}
+	<ServerPrompt onClose={() => (serverAsked = true)} />
 {/if}
 {@render children()}

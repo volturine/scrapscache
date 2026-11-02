@@ -75,3 +75,16 @@ describe('the server setting', () => {
 		expect(serverSetting.origin).toBe('https://self.example');
 	});
 });
+
+describe('whether the server was chosen', () => {
+	it('is answered by setting a server, or by marking the question answered, and kept', () => {
+		localStorage.clear();
+		expect(localStorage.getItem('scrapscache-server-chosen')).toBeNull();
+		serverSetting.markChosen();
+		expect(serverSetting.chosen).toBe(true);
+		expect(localStorage.getItem('scrapscache-server-chosen')).toBe('1');
+		localStorage.clear();
+		serverSetting.set(DEFAULT_SERVER_ORIGIN);
+		expect(localStorage.getItem('scrapscache-server-chosen')).toBe('1');
+	});
+});

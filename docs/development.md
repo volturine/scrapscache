@@ -54,8 +54,12 @@ The iPhone app is the same client inside a [Capacitor](https://capacitorjs.com/)
 shell (`ios/`, Swift Package Manager, no CocoaPods). It bundles the static build
 and talks to whichever server the **Server** row under Settings names
 (`https://scrapscache.com` unless changed), so one build serves self-hosters too.
-What differs from the web app lives under `src/lib/native/` and is loaded only
-there: the status bar follows the theme (it stays where iOS puts it: on the
+At its first launch the app asks which server it syncs with: the hosted
+service, or a self-hosted relay by https address, which it checks by reading
+that server's `/health/ready`; "Decide later" asks again next launch, and the
+Server row under Settings answers the question too (`ServerPrompt`,
+`serverSetting.chosen`). What differs from the web app lives under
+`src/lib/native/` and is loaded only there: the status bar follows the theme (it stays where iOS puts it: on the
 folded iPhone Duo the side column is hardware safe area, hidden bar or not), and
 reminders are scheduled with the system as local
 notifications (the web view has no service worker or web push). On iPhone Duo

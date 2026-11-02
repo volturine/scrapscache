@@ -12,6 +12,10 @@ function request(init: RequestInit & { origin?: string } = {}): Request {
 describe('appOrigin', () => {
 	it('is the app’s origin on the sync API, and nothing else', () => {
 		expect(appOrigin(request({ origin: APP }), '/api/sync/pair/start')).toBe(APP);
+		// The readiness check too: the app reads it to see whether a typed-in server is one.
+		expect(appOrigin(request({ origin: APP }), '/health/ready')).toBe(APP);
+		expect(appOrigin(request({ origin: APP }), '/health/ready/')).toBeNull();
+		expect(appOrigin(request({ origin: APP }), '/health/live')).toBeNull();
 		expect(appOrigin(request({ origin: APP }), '/api/admin/status')).toBeNull();
 		expect(appOrigin(request({ origin: APP }), '/')).toBeNull();
 		expect(appOrigin(request({ origin: 'https://evil.test' }), '/api/sync/pair/start')).toBeNull();

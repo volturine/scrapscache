@@ -1,19 +1,22 @@
 /**
  * The iPhone app's page runs at its own origin and reaches the sync API across
  * it, so the API answers that origin's preflights and names it in each reply.
- * Nothing else is opened up: no credentials, only the sync routes, only the
- * origins the apps are built with.
+ * Nothing else is opened up: no credentials, only the sync routes and the
+ * readiness check the app reads before it uses a server, only the origins the
+ * apps are built with.
  */
 export const APP_ORIGINS: ReadonlySet<string> = new Set(['capacitor://localhost']);
 
 const CORS_PATH_PREFIX = '/api/sync/';
+/** The app checks a server it is pointed at by reading this before it syncs with it. */
+const CORS_PROBE_PATH = '/health/ready';
 const ALLOWED_METHODS = 'GET, POST, PUT, DELETE';
 const ALLOWED_HEADERS = 'authorization, content-type, x-sync-client-id, x-scrapscache-sync-version';
 const EXPOSED_HEADERS = 'x-request-id, retry-after';
 
 /** The app origin a request comes from, when it is one the API answers. */
 export function appOrigin(request: Request, pathname: string): string | null {
-	if (!pathname.startsWith(CORS_PATH_PREFIX)) return null;
+	if (!pathname.startsWith(CORS_PATH_PREFIX) && pathname !== CORS_PROBE_PATH) return null;
 	const origin = request.headers.get('origin');
 	return origin && APP_ORIGINS.has(origin) ? origin : null;
 }

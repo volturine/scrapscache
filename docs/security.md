@@ -289,7 +289,9 @@ as with `Authorization`, and never in the URL or access logs; the relay answers
 with `scrapscache-sync` alone, never echoing the token. The token is checked
 against the same session table as every sync request. Upgrades whose `Origin`
 is neither the web app's own nor the iPhone app's (`capacitor://localhost`, the
-one origin the sync API's CORS also names) are refused before authentication,
+one origin the sync API's CORS also names; `/health/ready` names it too, so the
+app can tell a Scraps Cache server from any other address it is pointed at)
+are refused before authentication,
 and a malformed client
 id is refused outright. The coordinator records the session's expiry with each
 socket and closes it (code 4401) once passed, so the client signs in again;

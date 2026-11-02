@@ -221,7 +221,9 @@ jobs:
             echo "ready=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          xcode="$(ls -d /Applications/Xcode_27*.app 2>/dev/null | sort -V | tail -1)"
+          shopt -s nullglob
+          xcodes=(/Applications/Xcode_27*.app)
+          xcode="$(printf '%s\n' "${xcodes[@]}" | sort -V | tail -1)"
           if [ -z "$xcode" ]; then
             echo "::notice title=TestFlight skipped::No Xcode 27 on this runner; the app's shell needs the iOS 27.1 SDK."
             echo "ready=false" >> "$GITHUB_OUTPUT"

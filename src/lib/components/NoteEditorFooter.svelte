@@ -47,7 +47,6 @@
 	import { notesStore } from '#lib/stores/notes.svelte.js';
 	import { sha256 } from '#lib/syncHash.js';
 	import { formatStorageError } from '#lib/imageBlob.js';
-	import { isKeyboardField } from '#lib/appViewport.js';
 	import { isCanvasAttachment, mergeCanvasEdit } from '#lib/canvasAttachment.js';
 	import { mergeHydratedImages } from '#lib/noteAttachmentHydration.js';
 	import {
@@ -172,22 +171,24 @@
 	/**
 	 * Normal button: each press creates a one-shot file input in this gesture,
 	 * opens the system picker, then discards the input so cancel cannot stick.
+	 * The note body keeps its focus, so the keyboard is back once the picker
+	 * closes. An iPad opens the picker as a popover on the input, so the input
+	 * lies under the pressed button when there is one.
 	 */
-	export function openAttach() {
+	export function openAttach(anchor?: Element) {
 		attachError = '';
-		const active = document.activeElement;
-		if (active instanceof HTMLElement && isKeyboardField(active)) active.blur();
 		const input = document.createElement('input');
 		input.type = 'file';
 		input.multiple = true;
-		// Off-screen but not display:none (iOS blocks programmatic open on those).
+		// Invisible but not display:none (iOS blocks programmatic open on those).
 		input.setAttribute('aria-hidden', 'true');
+		const box = anchor?.getBoundingClientRect();
 		Object.assign(input.style, {
 			position: 'fixed',
-			left: '0',
-			top: '0',
-			width: '1px',
-			height: '1px',
+			left: `${box?.left ?? 0}px`,
+			top: `${box?.top ?? 0}px`,
+			width: `${box?.width || 1}px`,
+			height: `${box?.height || 1}px`,
 			opacity: '0',
 			pointerEvents: 'none',
 			zIndex: '-1'
@@ -858,7 +859,7 @@
 	label: string,
 	icon: typeof RotateCcw,
 	variant: 'ghost' | 'danger' = 'ghost',
-	action: () => void
+	action: (button: HTMLElement) => void
 )}
 	{@const Icon = icon}
 	<Tooltip {content}>
@@ -867,9 +868,9 @@
 			class={iconButton({ variant, size: { base: 'compact', sm: 'standard' } })}
 			title={label}
 			aria-label={label}
-			onclick={() => {
+			onclick={(event) => {
 				closeMenus();
-				action();
+				action(event.currentTarget);
 			}}
 		>
 			<Icon class={iconMd} aria-hidden="true" />

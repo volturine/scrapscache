@@ -11,9 +11,11 @@ function continuesWrappedUrl(line: string, next: string): boolean {
 	if (!URL_CONTINUATION.test(next)) return false;
 	const url = line.match(/https?:\/\/\S*$/i)?.[0];
 	if (!url) return false;
-	// A wrap breaks after `?`, `&` or `-`, or the next line is the query itself.
-	// A following word, or a long token that merely contains `=`, is a new line.
-	return /[?&=/_-]$/.test(url) || /^[?&=/_-]/.test(next);
+	// A wrap breaks inside a query or a slug. A word after a finished URL, a path
+	// after a slash, or a line of dashes or `_emphasis_` is a new line.
+	return (
+		/[=_-]$/.test(url) || (/[?&]$/.test(url) && next.includes('=')) || /^[?&][^=]*=/.test(next)
+	);
 }
 
 type Fence = { char: string; length: number };

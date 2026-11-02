@@ -134,7 +134,10 @@
 	}
 
 	function parseBodyToLines(raw: string): Line[] {
-		const text = joinWrappedHttpUrls(raw);
+		return rowsFromText(joinWrappedHttpUrls(raw));
+	}
+
+	function rowsFromText(text: string): Line[] {
 		if (!text) return [newLine()];
 		return text.split('\n').map((line) => {
 			const check = parseCheckLine(line);
@@ -1314,14 +1317,11 @@
 	/**
 	 * The body as it was loaded, and as these rows spell it. The editor writes some
 	 * Markdown its own way (`- [ ]` as `[ ]`, `*` bullets as `-`), so rows that still
-	 * spell the loaded body are no edit and keep its text. A URL a paste wrapped
-	 * across lines is already joined, so that spelling is what gets kept.
+	 * spell the loaded body are no edit and keep its text. That holds for a URL a
+	 * paste wrapped across lines: it shows joined, and is saved so with the next edit.
 	 */
 	// svelte-ignore state_referenced_locally
-	let loaded = { body: joinWrappedHttpUrls(body), rows: serializeLines(lines) };
-	onMount(() => {
-		if (!readOnly && loaded.body !== body) syncBody(true);
-	});
+	let loaded = { body, rows: serializeLines(lines) };
 	/** Every row but an empty draft task. */
 	function savedLines(): Line[] {
 		return lines.filter((line) => line.id !== draftTaskId || line.text.trim() !== '');
@@ -1642,7 +1642,9 @@
 			}
 			const bodyNow = historyEntry().body;
 			if (entry.body !== bodyNow) {
-				lines = parseBodyToLines(entry.body);
+				// Only the body as loaded was shown joined. Other steps were typed as they are.
+				lines =
+					entry.body === loaded.body ? parseBodyToLines(entry.body) : rowsFromText(entry.body);
 				draftTaskId = null;
 				syncBody();
 			}

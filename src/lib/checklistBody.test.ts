@@ -32,6 +32,12 @@ function plainNote(partial: Partial<Note> = {}): Note {
 }
 
 describe('noteToPlainText export', () => {
+	it('copies a wrapped URL as the one link the note shows', () => {
+		expect(noteToPlainText(plainNote({ body: 'https://shop.example/item?\n_id=abc' }))).toBe(
+			'# Trip\nhttps://shop.example/item?_id=abc'
+		);
+	});
+
 	it('exports the title as a top-level markdown heading', () => {
 		expect(noteToPlainText(plainNote())).toBe('# Trip\npacking list');
 	});

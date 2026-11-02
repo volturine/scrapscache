@@ -73,6 +73,28 @@ describe('joinWrappedHttpUrls', () => {
 		);
 	});
 
+	it('leaves a line after a finished URL alone, even one starting with a separator', () => {
+		for (const body of [
+			'https://router.local/\nadmin\nhunter2',
+			'https://example.com\n---',
+			'https://example.com\n_important_',
+			'https://example.com/search?\nthen look here',
+			'https://example.com/search?\nnext'
+		]) {
+			expect(joinWrappedHttpUrls(body)).toBe(body);
+		}
+	});
+
+	it('joins a break inside a slug, and a query that starts the next line', () => {
+		expect(joinWrappedHttpUrls('https://example.com/long-\nslug')).toBe(
+			'https://example.com/long-slug'
+		);
+		expect(joinWrappedHttpUrls('https://example.com/a\n?b=1')).toBe('https://example.com/a?b=1');
+		expect(joinWrappedHttpUrls('https://example.com/a?b=1\n&c=2')).toBe(
+			'https://example.com/a?b=1&c=2'
+		);
+	});
+
 	it('does not join a long token line that merely contains an equals sign', () => {
 		const body = [
 			'https://example.com/done',

@@ -48,6 +48,7 @@ import { uiStore } from '#lib/stores/ui.svelte.js';
 import { trashPurgeAt, cloneNote } from '#lib/utils.js';
 import { appClock } from '#lib/appClock.svelte.js';
 import { noteAttachments, toggleLineAt } from '#lib/checklistBody.js';
+import { joinWrappedHttpUrls } from '#lib/linkPreview.js';
 import {
 	journalPendingNotes,
 	noteForLocalStorage,
@@ -865,7 +866,12 @@ export class NotesStore {
 		const labelsById = this.labelsById;
 		return narrowed.filter((n) => {
 			if (n.title.toLowerCase().includes(q)) return true;
-			if ((n.body ?? '').toLowerCase().includes(q)) return true;
+			if (
+				joinWrappedHttpUrls(n.body ?? '')
+					.toLowerCase()
+					.includes(q)
+			)
+				return true;
 			return n.labels.some((lid) => labelsById.get(lid)?.name.toLowerCase().includes(q));
 		});
 	}

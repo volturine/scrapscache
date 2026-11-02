@@ -29,31 +29,28 @@ const upright = { width: 466, height: 678 };
 const onSide = { width: 678, height: 466 };
 
 describe('columnOccupancy', () => {
-	it('is the band iOS draws at the top of the column, camera and cluster together', () => {
-		expect(columnOccupancy([camera, cluster], 'right', upright, 84)).toEqual({
-			top: 174,
-			bottom: null
-		});
-		expect(columnOccupancy([cluster, camera], 'right', upright, 84)).toEqual({
-			top: 174,
-			bottom: null
-		});
+	it('is the band iOS draws at the top of the column, camera and cluster together, centred on the camera', () => {
+		const result = columnOccupancy([camera, cluster], 'right', upright, 84);
+		expect(result).toMatchObject({ top: 174, bottom: null });
+		// The camera's centre, 418.17, against the column's middle, 424.
+		expect(result.shift).toBeCloseTo(-5.83, 2);
+		expect(columnOccupancy([cluster, camera], 'right', upright, 84).shift).toBeCloseTo(-5.83, 2);
 	});
 
 	it('follows the column to the left, and to the bottom when the phone is turned the other way', () => {
 		const leftCamera = { ...camera, x: 29.33 };
 		const leftCluster = { ...cluster, x: 0, height: 82 };
-		expect(columnOccupancy([leftCamera, leftCluster], 'left', onSide, 84)).toEqual({
-			top: 82,
-			bottom: null
-		});
+		const left = columnOccupancy([leftCamera, leftCluster], 'left', onSide, 84);
+		expect(left).toMatchObject({ top: 82, bottom: null });
+		expect(left.shift).toBeCloseTo(5.83, 2);
 		expect(columnOccupancy([leftCamera, leftCluster], 'right', onSide, 84)).toEqual({
 			top: null,
-			bottom: null
+			bottom: null,
+			shift: null
 		});
 		const lowCamera = { x: 611.67, y: 399.67, width: 37, height: 37, active: true };
 		const lowCluster = { x: 594, y: 384, width: 84, height: 82, active: true };
-		expect(columnOccupancy([lowCamera, lowCluster], 'right', onSide, 84)).toEqual({
+		expect(columnOccupancy([lowCamera, lowCluster], 'right', onSide, 84)).toMatchObject({
 			top: null,
 			bottom: 82
 		});
@@ -61,13 +58,15 @@ describe('columnOccupancy', () => {
 
 	it('ignores inactive regions and those outside the column, and knows nothing without a column', () => {
 		const fold: ReservedRegion = { x: 230, y: 0, width: 6, height: 678, active: false };
-		expect(columnOccupancy([fold], 'right', upright, 84)).toEqual({ top: null, bottom: null });
-		expect(columnOccupancy([{ ...cluster, x: 100, width: 100 }], 'right', upright, 84)).toEqual({
-			top: null,
-			bottom: null
-		});
-		expect(columnOccupancy([cluster], null, upright, 84)).toEqual({ top: null, bottom: null });
-		expect(columnOccupancy([], 'right', upright, 84)).toEqual({ top: null, bottom: null });
+		const nothing = { top: null, bottom: null, shift: null };
+		expect(columnOccupancy([fold], 'right', upright, 84)).toEqual(nothing);
+		expect(columnOccupancy([{ ...cluster, x: 100, width: 100 }], 'right', upright, 84)).toEqual(
+			nothing
+		);
+		expect(columnOccupancy([cluster], null, upright, 84)).toEqual(nothing);
+		expect(columnOccupancy([], 'right', upright, 84)).toEqual(nothing);
+		// A band as wide as the column says nothing about where iOS centres its drawings.
+		expect(columnOccupancy([cluster], 'right', upright, 84).shift).toBeNull();
 	});
 });
 
@@ -93,6 +92,7 @@ describe('attachReservedRegions', () => {
 		await Promise.resolve();
 		expect(root.style.getPropertyValue('--app-rail-top')).toBe('182px');
 		expect(root.style.getPropertyValue('--app-rail-bottom')).toBe('8px');
+		expect(root.style.getPropertyValue('--app-rail-shift')).toBe('-6px');
 
 		// The phone turned: the island is now at the column's bottom.
 		vi.stubGlobal('innerWidth', 678);

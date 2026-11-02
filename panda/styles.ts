@@ -3650,6 +3650,9 @@ export const phoneTabsStyles = {
 		// A breath above the home indicator, the keys, or the island when it is at the bottom.
 		bottom:
 			'calc(max(var(--app-inset-bottom), var(--app-keyboard-bottom), var(--app-rail-bottom)) + 1.25rem)',
+		// Centred where iOS centres the island and the clock: on the camera, which the
+		// shell reports; the column's own middle otherwise.
+		transform: 'translateX(var(--app-rail-shift))',
 		display: 'flex',
 		flexDirection: 'column',
 		justifyContent: 'flex-end',

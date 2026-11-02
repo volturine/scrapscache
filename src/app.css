@@ -29,6 +29,9 @@
 	/* What iOS draws at the column's bottom instead, when the folded phone is turned that way; the
 	 * app shell reports both bands (see src/lib/native/reservedRegions.ts) and this is their default. */
 	--app-rail-bottom: 0px;
+	/* How far the column's stack moves across to centre on the camera, as iOS centres its own
+	 * drawings; the app shell reports it with the bands above. */
+	--app-rail-shift: 0px;
 }
 /* WebKit reads an edge element's background directly when it exceeds 10px. */
 html.ios-standalone {

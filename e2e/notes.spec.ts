@@ -616,6 +616,31 @@ test('the palette finds notes in every place, labels and actions from the keyboa
 test.describe('on a phone', () => {
 	test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
 
+	test('the Labels screen keeps Archive and Trash where they are when the keyboard comes', async ({
+		page
+	}) => {
+		await openEmptyApp(page);
+		await page
+			.getByRole('navigation', { name: 'Main', exact: true })
+			.getByRole('button', { name: 'Labels' })
+			.click();
+		const archive = page
+			.getByRole('navigation', { name: 'Archive and Trash' })
+			.getByText('Archive');
+		await expect(archive).toBeVisible();
+		const before = (await archive.boundingBox())!.y;
+		// The keyboard, as the viewport code reports it: the room the feed keeps clear
+		// for an overlaid keyboard must not lift the screen's foot.
+		await page.evaluate(() =>
+			document.documentElement.style.setProperty('--app-keyboard-bottom', '300px')
+		);
+		await page.waitForTimeout(100);
+		expect((await archive.boundingBox())!.y).toBe(before);
+		await page.evaluate(() =>
+			document.documentElement.style.removeProperty('--app-keyboard-bottom')
+		);
+	});
+
 	test('the notes keep their scroll place across a visit to Labels', async ({ page }) => {
 		await openEmptyApp(page);
 		const feed = page.getByRole('main');
@@ -1021,6 +1046,16 @@ test.describe('in iPhone Duo’s side column', () => {
 			await expect(header.getByRole('button', { name: /^Sync settings/ })).toBeVisible();
 			await expect(header.getByRole('button', { name: 'More' })).toBeVisible();
 			await expect(page.locator('[data-phone-tabs]')).toBeVisible();
+
+			// The board on this wide phone: lanes at a lane's width, not one huge column,
+			// and the add button ahead of the chips rather than over them.
+			await page.locator('[data-phone-tabs]').getByRole('button', { name: 'Kanban' }).click();
+			const lane = page.locator('section[data-kanban-column]').first();
+			await expect(lane).toBeVisible();
+			expect((await lane.boundingBox())!.width).toBeLessThanOrEqual(26 * 16);
+			const add = (await page.getByRole('button', { name: 'Add a label column' }).boundingBox())!;
+			const chip = (await page.locator('[data-kanban-tab]').first().boundingBox())!;
+			expect(add.x + add.width).toBeLessThanOrEqual(chip.x);
 		});
 	});
 

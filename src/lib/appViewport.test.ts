@@ -11,6 +11,7 @@ import {
 	keyboardOcclusion,
 	portalToAppFloat,
 	portalToAppOverlay,
+	portalToColumnActions,
 	readSafeAreaInsets,
 	rememberSafeArea
 } from './appViewport';
@@ -327,5 +328,33 @@ describe('portalToAppFloat', () => {
 		expect(document.querySelector(APP_OVERLAY_SELECTOR)).toBe(host);
 		cleanup();
 		expect(host.contains(node)).toBe(false);
+	});
+
+	it('sends a holder’s children into the Duo column’s stack, leaving the holder in place', () => {
+		const host = document.createElement('div');
+		host.setAttribute('data-column-actions', '');
+		document.body.append(host);
+		const bar = document.createElement('header');
+		const holder = document.createElement('div');
+		const button = document.createElement('button');
+		holder.append(button);
+		bar.append(holder);
+		document.body.append(bar);
+		const cleanup = portalToColumnActions(holder);
+		expect(host.contains(button)).toBe(true);
+		expect(bar.contains(holder)).toBe(true);
+		expect(holder.childNodes.length).toBe(0);
+		cleanup?.();
+		expect(host.childNodes.length).toBe(0);
+		expect(bar.contains(holder)).toBe(true);
+		host.remove();
+		bar.remove();
+	});
+
+	it('leaves a holder’s children alone without a column', () => {
+		const holder = document.createElement('div');
+		holder.append(document.createElement('button'));
+		expect(portalToColumnActions(holder)).toBeUndefined();
+		expect(holder.childNodes.length).toBe(1);
 	});
 });

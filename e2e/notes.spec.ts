@@ -908,6 +908,43 @@ test.describe('in iPhone Duo’s side column', () => {
 			const rail = page.getByRole('navigation', { name: 'Main', exact: true });
 			await rail.getByRole('button', { name: 'Labels' }).click();
 			await expect(page.locator('[data-view-title]')).toHaveText('Labels');
+
+			// With the palette up from the pill, Search is the one place lit; closed, the
+			// place lights again. "Go to…" from the Labels screen leaves it for the new view.
+			// By selector: the open palette hides the rest of the page from role queries.
+			const tab = (name: string) =>
+				page.locator('[data-column-stack] nav button', { hasText: name });
+			const notes = tab('Notes');
+			const labels = tab('Labels');
+			const searchTab = tab('Search');
+			const bg = (locator: Locator) =>
+				locator.evaluate((element) => getComputedStyle(element).backgroundColor);
+			// A faded-out colour reads as rgba or oklch with a zero alpha; polled, since the
+			// colours take a short transition.
+			const clear = async (locator: Locator) => /(?:, | \/ )0\)$/.test(await bg(locator));
+			const settled = async (locator: Locator) => {
+				let last = await bg(locator);
+				for (;;) {
+					await page.waitForTimeout(150);
+					const next = await bg(locator);
+					if (next === last) return next;
+					last = next;
+				}
+			};
+			const lit = await settled(labels);
+			expect(await clear(labels)).toBe(false);
+			await searchTab.click();
+			await expect(
+				page.getByRole('dialog', { name: 'Search notes, labels and actions' })
+			).toBeVisible();
+			await expect.poll(() => bg(searchTab)).toBe(lit);
+			await expect.poll(() => clear(labels)).toBe(true);
+			await page.getByRole('option', { name: 'Go to Kanban' }).click();
+			await expect(page.locator('[data-view-title]')).toHaveText('Kanban');
+			await expect.poll(() => bg(tab('Kanban'))).toBe(lit);
+			await expect.poll(() => clear(labels)).toBe(true);
+			await expect.poll(() => clear(searchTab)).toBe(true);
+			await expect.poll(() => clear(notes)).toBe(true);
 		});
 
 		test('on its side, the short column still shows all five tabs, as icons', async ({ page }) => {
@@ -938,6 +975,27 @@ test.describe('in iPhone Duo’s side column', () => {
 			expect(pill.x + pill.width).toBeLessThanOrEqual(column.right);
 			const frame = (await page.getByRole('main').boundingBox())!;
 			expect(frame.x).toBeGreaterThanOrEqual(column.right);
+		});
+	});
+
+	test.describe('folded, then opened upright', () => {
+		test.use({ viewport: { width: 466, height: 678 }, hasTouch: true });
+
+		test('the bar keeps its title, sync and More when the column goes', async ({ page }) => {
+			await openWithColumn(page);
+			await expect(page.locator('[data-column-stack]')).toBeVisible();
+			const session = await page.context().newCDPSession(page);
+			await session.send('Emulation.setSafeAreaInsetsOverride', {
+				insets: { top: 59, right: 0, bottom: 34, left: 0 }
+			});
+			await page.setViewportSize({ width: 669, height: 951 });
+			await expect(page.locator('html')).not.toHaveAttribute('data-side-column', /./);
+			await expect(page.locator('[data-column-stack]')).toHaveCount(0);
+			const header = page.locator('header').first();
+			await expect(header.locator('[data-view-title]')).toHaveText('Notes');
+			await expect(header.getByRole('button', { name: /^Sync settings/ })).toBeVisible();
+			await expect(header.getByRole('button', { name: 'More' })).toBeVisible();
+			await expect(page.locator('[data-phone-tabs]')).toBeVisible();
 		});
 	});
 

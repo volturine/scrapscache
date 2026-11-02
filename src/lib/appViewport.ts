@@ -344,14 +344,22 @@ export function portalToBody(node: HTMLElement) {
 }
 
 /**
- * Render into iPhone Duo's column stack, above the places (see the app layout).
- * Without a column the node stays where it was rendered.
+ * Render a node's children into iPhone Duo's column stack, above the places (see
+ * the app layout). Without a column they stay where they were rendered.
+ *
+ * The node itself stays put: Svelte takes a block down by walking from its first
+ * node to its last through their siblings, and a moved last node took the bar's
+ * anchor with it, leaving the bar empty after an unfold. The children are the
+ * block's own, so they come back out when it goes.
  */
 export function portalToColumnActions(node: HTMLElement) {
 	const host = document.querySelector<HTMLElement>('[data-column-actions]');
 	if (!host) return;
-	host.appendChild(node);
-	return () => node.remove();
+	const moved = [...node.childNodes];
+	host.append(...moved);
+	return () => {
+		for (const child of moved) child.remove();
+	};
 }
 
 /** Render a global dialog above navigation and remove it with its owner. */

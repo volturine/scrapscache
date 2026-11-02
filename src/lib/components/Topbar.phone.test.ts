@@ -139,6 +139,7 @@ describe('the top bar beside iPhone Duo’s column', () => {
 		expect(screen.queryByRole('button', { name: 'Toggle sidebar' })).toBeNull();
 		expect(host.contains(screen.getByRole('button', { name: /^Sync settings/ }))).toBe(true);
 		expect(host.contains(screen.getByRole('button', { name: 'Settings' }))).toBe(true);
-		expect(header.querySelector('[data-column-controls]')).toBeNull();
+		// The holder stays in the bar, empty: its controls have gone to the column.
+		expect(header.querySelector('[data-column-controls]')?.childNodes.length).toBe(0);
 	});
 });

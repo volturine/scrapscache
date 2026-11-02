@@ -3515,25 +3515,11 @@ export const topbarStyles = {
 	/** iPhone Duo's phone bar: the view name sits between the controls and the search field. */
 	columnTitle: css({ flexShrink: 0, maxW: '40%', px: 'xs', textStyle: 'heading', ...truncateText }),
 	/** Sync and settings beside iPhone Duo's column: each a glass circle in the column's stack. */
-	columnActions: css({
-		...column,
-		alignItems: 'center',
-		gap: 'sm',
-		'& button': {
-			w: '3rem',
-			h: '3rem',
-			rounded: 'full',
-			...glassSurface,
-			color: 'scrapscache.text',
-			transition: 'background-color 120ms ease, color 120ms ease',
-			// A finger darkens the circle at once; an open menu or sync dialog keeps it lit.
-			_active: { bg: 'scrapscache.columnGlassPressed' },
-			'&[aria-expanded="true"]': {
-				bg: 'scrapscache.navigationActive',
-				color: 'scrapscache.navigationActiveText'
-			}
-		}
-	}),
+	/**
+	 * The bar's own holder for the column's controls. Its children go to the column's
+	 * stack (portalToColumnActions) and the holder stays, empty, where it was rendered.
+	 */
+	columnActions: css({ display: 'contents' }),
 	/** The search field on iPhone Duo's phone bar: it opens the palette, where a phone searches. */
 	columnSearch: css({
 		display: 'flex',
@@ -3636,6 +3622,11 @@ export const phoneTabsStyles = {
 				bg: 'scrapscache.navigationActive',
 				color: 'scrapscache.navigationActiveText'
 			},
+		// While the palette is up it covers the place, so Search is the one thing lit.
+		_paletteUp: {
+			'&[aria-current="page"]': mutedText,
+			'&[aria-current="page"] [data-tab-icon]': { bg: 'transparent', color: 'inherit' }
+		},
 		'&:focus-visible [data-tab-icon]': { boxShadow: '0 0 0 2px token(colors.scrapscache.focus)' }
 	}),
 	tabIcon: css({
@@ -3673,7 +3664,27 @@ export const phoneTabsStyles = {
 	stackRight: css({ right: 0, w: 'var(--app-inset-right)' }),
 	stackLeft: css({ left: 0, w: 'var(--app-inset-left)' }),
 	/** Where the top bar's sync and settings land, each its own circle (Topbar portals them here). */
-	actions: css({ ...column, alignItems: 'center', gap: 'sm', flexShrink: 0 }),
+	// Sync and settings, sent here from the bar, each in its own glass circle.
+	actions: css({
+		...column,
+		alignItems: 'center',
+		gap: 'sm',
+		flexShrink: 0,
+		'& button': {
+			w: '3rem',
+			h: '3rem',
+			rounded: 'full',
+			...glassSurface,
+			color: 'scrapscache.text',
+			transition: 'background-color 120ms ease, color 120ms ease',
+			// A finger darkens the circle at once; an open menu or sync dialog keeps it lit.
+			_active: { bg: 'scrapscache.columnGlassPressed' },
+			'&[aria-expanded="true"]': {
+				bg: 'scrapscache.navigationActive',
+				color: 'scrapscache.navigationActiveText'
+			}
+		}
+	}),
 	/** The five places in one pill, icons alone; the name stays for assistive technology. */
 	pill: css({
 		...column,
@@ -3700,6 +3711,8 @@ export const phoneTabsStyles = {
 			bg: 'scrapscache.navigationActive',
 			color: 'scrapscache.navigationActiveText'
 		},
+		// While the palette is up it covers the place, so Search is the one thing lit.
+		_paletteUp: { '&[aria-current="page"]': { bg: 'transparent', ...mutedText } },
 		'&:focus-visible': { boxShadow: '0 0 0 2px token(colors.scrapscache.focus)' }
 	}),
 	pillIcon: css(gridCenter),

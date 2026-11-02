@@ -388,6 +388,9 @@ export class UIStore {
 	setView(view: View, labelId: string | null = null, search = '', filters = NO_FILTERS) {
 		this.view = view;
 		this.activeLabelId = labelId;
+		// Showing a view closes the phone's Labels screen, wherever the move came from
+		// (the palette's "Go to…" used to leave it standing over the new view).
+		this.labelsOpen = false;
 		this.clearSearch();
 		selectionStore.clear();
 		// A carried query filters the new view at once, without the typing debounce.

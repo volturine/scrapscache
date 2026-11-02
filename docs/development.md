@@ -88,15 +88,16 @@ package cache without the prompt. `ios/App/App/public` and
 `npm run ios:testflight` archives the app in Release and uploads it to App Store
 Connect (`scripts/ios-testflight.sh`; export settings in
 `ios/App/ExportOptions.plist`). It needs an Apple Developer Program membership,
-an App Store Connect record for **Scraps Cache** / `com.scrapscache.app`, and:
+the App ID `com.scrapscache.app` registered in the developer portal
+(Certificates, Identifiers & Profiles), then an App Store Connect record for
+**Scraps Cache** using it (the New App form only offers registered IDs), and:
 
 - `IOS_TEAM_ID`: the team ID (Xcode › Settings › Accounts, or the developer
   portal's membership page);
 - either Xcode signed in to the Apple ID of that team, or an App Store Connect
   API key in `ASC_KEY_ID`, `ASC_ISSUER_ID` and `ASC_KEY_PATH` (the `.p8` file).
 
-Automatic signing registers the App ID and provisioning profile on the first
-run. Each upload takes the UTC minute as its build number unless
+Automatic signing creates the provisioning profile on the first run. Each upload takes the UTC minute as its build number unless
 `IOS_BUILD_NUMBER` says otherwise; the version is `MARKETING_VERSION` in the
 Xcode project. The build appears under TestFlight once Apple has processed it;
 internal testers (the team) need no review, external groups do.

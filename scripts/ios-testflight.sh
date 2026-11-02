@@ -12,8 +12,8 @@
 #   IOS_OUT_DIR       where the archive and export land (default
 #                     /tmp/scraps-ios-release)
 #
-# The App Store Connect record (Scraps Cache, com.scrapscache.app) must exist;
-# Xcode's automatic signing registers the App ID and provisioning profile.
+# The App ID (com.scrapscache.app, in the developer portal) and the App Store
+# Connect record using it must exist; automatic signing creates the profile.
 # No -u: `auth` may stay empty, which bash 3.2 cannot expand safely under it.
 set -eo pipefail
 cd "$(dirname "$0")/.."

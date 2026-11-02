@@ -27,7 +27,11 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>Scraps Cache uses the camera to scan a pairing code.</string>
+	<string>Scraps Cache uses the camera to scan a pairing code and to take photos or videos you attach to notes.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Scraps Cache records sound when you take a video to attach to a note.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Scraps Cache saves a photo from a note to your library when you choose to.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
@@ -53,7 +57,7 @@
 	<string>Main</string>
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
-		<string>armv7</string>
+		<string>arm64</string>
 	</array>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>

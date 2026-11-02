@@ -333,7 +333,7 @@
 			onclick={() => {
 				pairingCode = '';
 				settingsOpen = false;
-				uiStore.syncOpen = true;
+				uiStore.syncOpen = !uiStore.syncOpen;
 			}}
 			aria-label={syncControlLabel}
 			aria-haspopup="dialog"

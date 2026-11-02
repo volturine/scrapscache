@@ -80,7 +80,11 @@ the `ReservedRegions` plugin; `src/lib/native/reservedRegions.ts` turns them int
 `--app-rail-top` and `--app-rail-bottom`, since the folded phone turned one way
 puts the island at the column's bottom. An iOS before 27.1 says it cannot read
 them, and the stylesheet's own values stay. With the keyboard up the stack hides, as the
-phone's bar does; there is no room for it under the clock.
+phone's bar does; there is no room for it under the clock. The palette stays inside
+the app frame, so the column keeps its places while it is up: the stack keeps its
+own pointer events under the modal's body lock, a place leaves the palette for its
+view, and Search toggles it. A dialog that covers the whole screen, as sync does,
+covers the column too.
 
 ```sh
 npm run build:ios   # static build → build/ios, then `cap sync ios`

@@ -3659,6 +3659,9 @@ export const phoneTabsStyles = {
 		gap: 'sm',
 		zIndex: 20,
 		overflow: 'hidden',
+		// A modal dialog (the palette, sync) turns the body's pointer events off; the
+		// column keeps its own, so a place still answers a finger and the dialog goes.
+		pointerEvents: 'auto',
 		'html.keyboard-open &': { display: 'none' }
 	}),
 	stackRight: css({ right: 0, w: 'var(--app-inset-right)' }),

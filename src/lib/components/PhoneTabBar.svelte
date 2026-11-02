@@ -33,10 +33,20 @@
 		uiStore.labelsOpen || !tabs.some((tab) => tab.view === uiStore.view) ? 'labels' : uiStore.view
 	);
 
+	/**
+	 * A place taken from under the palette closes it. The palette stays inside the
+	 * app frame, so iPhone Duo's column keeps its places while it is up; a dialog
+	 * that covers the whole screen, as sync does, covers the column too.
+	 */
+	function leavePalette() {
+		uiStore.paletteOpen = false;
+	}
+
 	function go(view: View) {
 		const target = pathForView(view);
 		if (!target) return;
 		closeNote();
+		leavePalette();
 		uiStore.labelsOpen = false;
 		uiStore.setView(view);
 		void goto(target);
@@ -44,6 +54,7 @@
 
 	function openLabels() {
 		closeNote();
+		leavePalette();
 		uiStore.labelsOpen = true;
 	}
 </script>
@@ -78,7 +89,7 @@
 		class={tabClass}
 		aria-haspopup="dialog"
 		aria-expanded={uiStore.paletteOpen}
-		onclick={() => (uiStore.paletteOpen = true)}
+		onclick={() => (uiStore.paletteOpen = !uiStore.paletteOpen)}
 	>
 		<span class={iconClass} data-tab-icon>
 			<Search class={iconMd} aria-hidden="true" />

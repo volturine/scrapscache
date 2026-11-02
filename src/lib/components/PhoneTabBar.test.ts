@@ -91,6 +91,23 @@ describe('PhoneTabBar', () => {
 		await fireEvent.click(search);
 		expect(uiStore.paletteOpen).toBe(true);
 		expect(search.getAttribute('aria-expanded')).toBe('true');
+
+		// Again: the palette goes, as a tab bar's search does.
+		await fireEvent.click(search);
+		expect(uiStore.paletteOpen).toBe(false);
+	});
+
+	it('leaves the palette for a place taken from under it', async () => {
+		render(PhoneTabBar);
+		uiStore.paletteOpen = true;
+		await fireEvent.click(screen.getByRole('button', { name: 'Reminders' }));
+		expect(uiStore.paletteOpen).toBe(false);
+		expect(navigation.goto).toHaveBeenCalledWith('/reminders');
+
+		uiStore.paletteOpen = true;
+		await fireEvent.click(screen.getByRole('button', { name: 'Labels' }));
+		expect(uiStore.paletteOpen).toBe(false);
+		expect(uiStore.labelsOpen).toBe(true);
 	});
 });
 

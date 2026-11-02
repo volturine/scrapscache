@@ -125,7 +125,8 @@ describe('the top bar beside iPhone Duo’s column', () => {
 		expect(sync.getAttribute('aria-expanded')).toBe('false');
 		await fireEvent.click(sync);
 		expect(sync.getAttribute('aria-expanded')).toBe('true');
-		uiStore.syncOpen = false;
+		await fireEvent.click(sync);
+		expect(uiStore.syncOpen).toBe(false);
 
 		await fireEvent.click(screen.getByRole('button', { name: 'Search notes, labels and actions' }));
 		expect(uiStore.paletteOpen).toBe(true);

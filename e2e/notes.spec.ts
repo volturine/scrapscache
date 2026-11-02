@@ -947,6 +947,31 @@ test.describe('in iPhone Duo’s side column', () => {
 			await expect.poll(() => clear(notes)).toBe(true);
 		});
 
+		test('a place answers a finger from under the palette, and Search toggles it', async ({
+			page
+		}) => {
+			await openWithColumn(page);
+			const tab = (name: string) =>
+				page.locator('[data-column-stack] nav button', { hasText: name });
+			const palette = page.getByRole('dialog', { name: 'Search notes, labels and actions' });
+			// Touch: the dialog turns the body's pointer events off; the column keeps its own.
+			await tab('Search').tap();
+			await expect(palette).toBeVisible();
+			await tab('Reminders').tap();
+			await expect(palette).toHaveCount(0);
+			await expect(page.locator('[data-view-title]')).toHaveText('Reminders');
+			await tab('Search').tap();
+			await expect(palette).toBeVisible();
+			await tab('Search').tap();
+			await expect(palette).toHaveCount(0);
+			// A mouse, the same.
+			await tab('Search').click();
+			await expect(palette).toBeVisible();
+			await tab('Kanban').click();
+			await expect(palette).toHaveCount(0);
+			await expect(page.locator('[data-view-title]')).toHaveText('Kanban');
+		});
+
 		test('on its side, the short column still shows all five tabs, as icons', async ({ page }) => {
 			await page.setViewportSize({ width: 678, height: 466 });
 			await openWithColumn(page, 'left');

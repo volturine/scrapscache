@@ -157,6 +157,7 @@
 <div
 	bind:this={contentElement}
 	class={[body.container, markdownStyles, 'markdown-content', 'markdown-raw']}
+	data-note-body-display
 >
 	{#each displayBlocks as block (block.type === 'line' ? block.segment.lineIndex : block.lineIndex)}
 		{#if block.type === 'line'}

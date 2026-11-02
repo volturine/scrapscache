@@ -75,7 +75,9 @@
 		oninput,
 		placeholder = '',
 		readOnly = false,
-		transformPaste
+		transformPaste,
+		onOpenPhoto,
+		hasPhoto
 	}: {
 		body?: string;
 		title?: string;
@@ -85,6 +87,10 @@
 		placeholder?: string;
 		readOnly?: boolean;
 		transformPaste?: (text: string) => string | null;
+		/** A photo chip in the text was pressed. */
+		onOpenPhoto?: (id: string) => void;
+		/** Whether a chip's photo is still attached; a missing one is drawn inert. */
+		hasPhoto?: (id: string) => boolean;
 	} = $props();
 
 	type Line = {
@@ -1891,6 +1897,54 @@
 		});
 	}
 
+	/** Where the caret is, while the body has it. */
+	export function caretPoint(): EditorPoint | null {
+		if (!container || document.activeElement !== container) return null;
+		return editorRange()?.start ?? null;
+	}
+
+	/** An empty row that is nothing but text, so a marker can take its place. */
+	function blankRow(line: Line | undefined): boolean {
+		return !!line && line.text === '' && !line.isCheck && !line.isBullet;
+	}
+
+	/**
+	 * Add whole rows (photo markers) at a point, or after the last row without one.
+	 * The caret lands on a blank row below them, so typing never runs into a marker.
+	 */
+	export async function insertLines(texts: string[], at: EditorPoint | null) {
+		if (readOnly || texts.length === 0) return;
+		rememberEdit(at ? { start: at, end: at, collapsed: true } : null);
+		applyingEdit = true;
+		try {
+			let index = lines.length;
+			let replace = 0;
+			if (at && lines[at.line]) {
+				const block = markdownBlockAt(at.line);
+				if (block) {
+					index = block.end;
+				} else if (blankRow(lines[at.line])) {
+					index = at.line;
+					replace = 1;
+				} else {
+					index = at.offset === 0 ? at.line : at.line + 1;
+				}
+			} else if (blankRow(lines.at(-1))) {
+				index = lines.length - 1;
+				replace = 1;
+			}
+			const rows = texts.map((text) => newLine(text));
+			const after = lines[index + replace];
+			if (!blankRow(after)) rows.push(newLine());
+			lines.splice(index, replace, ...rows);
+			const caretIndex = index + texts.length;
+			syncBody(true);
+			await focusAfterRender(caretIndex, 0, lines[caretIndex]?.id ?? null);
+		} finally {
+			applyingEdit = false;
+		}
+	}
+
 	/** Replace the whole body from outside (e.g. a title paste seeding the body). */
 	export async function replaceBodyWithText(text: string) {
 		applyingEdit = true;
@@ -2115,6 +2169,13 @@
 	}
 
 	function handleEditorClick(event: MouseEvent) {
+		const chip = event.target instanceof Element ? event.target.closest('[data-photo]') : null;
+		if (chip instanceof HTMLElement && chip.dataset.photo) {
+			event.preventDefault();
+			settlePointerGesture();
+			if (hasPhoto?.(chip.dataset.photo) ?? true) onOpenPhoto?.(chip.dataset.photo);
+			return;
+		}
 		// The release already placed the caret when the browser sent one. If it did not,
 		// or the click's default action moved it, put it back and keep that action from winning.
 		if (belowPressHandled || eventBelowLastRow(event)) {
@@ -3435,9 +3496,15 @@
 			{token.text}
 		{:else}
 			<span
-				class={markdownTokenClass(token, uiStore.rawMarkdown)}
+				class={[
+					markdownTokenClass(token, uiStore.rawMarkdown),
+					token.kind === 'text' &&
+						token.photo !== undefined &&
+						!(hasPhoto?.(token.photo) ?? true) &&
+						'markdown-token-photo-missing'
+				]}
 				data-markdown-token={token.kind === 'marker' ? token.marker : token.styles.join(' ')}
-				>{token.text}</span
+				data-photo={token.kind === 'text' ? token.photo : undefined}>{token.text}</span
 			>
 		{/if}
 	{/each}
@@ -3550,7 +3617,7 @@
 						{@render codeEditorContent(codeTokens)}
 					{/if}
 				</span>
-			{:else if !line.text || !/[*_~`#]/.test(line.text)}
+			{:else if !line.text || (!/[*_~`#]/.test(line.text) && !line.text.startsWith('!['))}
 				<span
 					data-line-text
 					data-checked={line.checked ? '' : undefined}

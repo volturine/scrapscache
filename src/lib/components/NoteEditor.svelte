@@ -11,7 +11,9 @@
 	import { flushSync, onMount, tick, untrack } from 'svelte';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
 	import { actionUndo } from '#lib/stores/actionUndo.svelte.js';
-	import { noteToPlainText, noteAttachments, splitPastedHeading } from '#lib/checklistBody.js';
+	import { noteAttachments, splitPastedHeading } from '#lib/checklistBody.js';
+	import { writeNoteToClipboard } from '#lib/noteClipboard.js';
+	import { bodyIsOnlyPhotoMarkers, photoMarker } from '#lib/photoMarker.js';
 	import { mergeHydratedImages } from '#lib/noteAttachmentHydration.js';
 	import type { Note, NoteImage } from '#lib/types.js';
 	import type { NotePatch } from '#lib/model/index.js';
@@ -120,8 +122,14 @@
 			selection: { start: number; end: number },
 			inputType: string
 		): void;
+		caretPoint(): { line: number; offset: number } | null;
+		insertLines(texts: string[], at: { line: number; offset: number } | null): Promise<void>;
 	} | null>(null);
-	let footer = $state<{ handlePickedFiles(files: File[]): void; closeMenus(): void } | null>(null);
+	let footer = $state<{
+		handlePickedFiles(files: File[]): void;
+		closeMenus(): void;
+		openPhoto(id: string): Promise<void>;
+	} | null>(null);
 	let editorDialog = $state<HTMLDivElement | null>(null);
 	let fileDropActive = $state(false);
 	let editorScroller = $state<HTMLDivElement | null>(null);
@@ -145,7 +153,14 @@
 	let autoExpandFrame = 0;
 	/** Window width the auto-expand decision was last measured at. */
 	let autoExpandWidth = 0;
-	const photosFillEditor = $derived(body.trim() === '' && images.some(isImageAttachment));
+	const photosFillEditor = $derived(bodyIsOnlyPhotoMarkers(body) && images.some(isImageAttachment));
+	/** Where pasted or dropped photos go in the text: the caret at that moment, or the end. */
+	let photoPlacement: { line: number; offset: number } | null = null;
+	function placePhotos(photos: NoteImage[]) {
+		const at = photoPlacement;
+		photoPlacement = null;
+		void bodyEditor?.insertLines(photos.map(photoMarker), at);
+	}
 	function focusBodyFromPage(event: MouseEvent) {
 		if (historyPreview) return;
 		const target = event.target;
@@ -507,7 +522,9 @@
 		fileDropActive = false;
 		backdropPressOutside = false;
 		const files = Array.from(event.dataTransfer?.files ?? []);
-		if (files.length > 0) footer?.handlePickedFiles(files);
+		if (files.length === 0) return;
+		photoPlacement = bodyEditor?.caretPoint() ?? null;
+		footer?.handlePickedFiles(files);
 	}
 
 	function transformPaste(text: string): string | null {
@@ -540,6 +557,7 @@
 		if (files.length === 0) return;
 		event.preventDefault();
 		event.stopImmediatePropagation();
+		photoPlacement = bodyEditor?.caretPoint() ?? null;
 		footer?.handlePickedFiles(files);
 	}
 
@@ -721,12 +739,24 @@
 		void notesStore.syncPendingChanges();
 	}
 
-	async function copyText() {
+	async function copyNote() {
 		if (!note) return;
 		bodyEditor?.syncBodyNow?.();
+		const id = note.id;
 		// Only confirm when the write actually landed; the button must not claim a
 		// copy that failed (e.g. insecure origins where the async API is missing).
-		if (await writeClipboardText(noteToPlainText({ ...note, title, body }))) flashCopied();
+		const copied = await writeNoteToClipboard(
+			{ ...note, title, body, images },
+			{
+				// Photo bytes may still be on their way from device storage.
+				loadPhotos: async () => {
+					await notesStore.ensureNoteAttachments(id);
+					const stored = notesStore.notes.find((item) => item.id === id);
+					return stored ? mergeHydratedImages(images, noteAttachments(stored)) : images;
+				}
+			}
+		);
+		if (copied) flashCopied();
 	}
 
 	/** Share a link that opens this note in its workspace on any device that holds it. */
@@ -1093,6 +1123,8 @@
 								onRestoreTitle={restoreTitle}
 								oninput={markBodyEdited}
 								{transformPaste}
+								onOpenPhoto={(id) => void footer?.openPhoto(id)}
+								hasPhoto={(id) => images.some((image) => image.id === id)}
 								placeholder="Take a note… type [ ] for a checklist, - for a bullet, Tab for sub-task"
 							/>
 						{/if}
@@ -1116,6 +1148,7 @@
 							trashed={note.trashed}
 							{copyFlash}
 							fillPhotos={photosFillEditor}
+							onPhotosAdded={placePhotos}
 							color={note.color}
 							onOpenColor={() => {
 								closePopups();
@@ -1125,7 +1158,7 @@
 								closePopups();
 								labelOpen = true;
 							}}
-							onCopy={() => void copyText()}
+							onCopy={() => void copyNote()}
 							onShare={() => void shareNote()}
 							onRestore={() => {
 								notesStore.restoreNote(note.id);

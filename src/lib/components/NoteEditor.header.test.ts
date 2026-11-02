@@ -768,6 +768,41 @@ describe('NoteEditor share menu', () => {
 		expect(writeText.mock.calls[1][0]).toContain('Oat milk');
 	});
 
+	it('copies a note with a photo as text, HTML and a PNG in one clipboard item', async () => {
+		const png = 'data:image/png;base64,iVBORw0KGgo=';
+		const items: { data: Record<string, Blob | PromiseLike<Blob | string> | string> }[] = [];
+		const write = vi.fn(async (written: typeof items) => {
+			items.push(...written);
+		});
+		Object.defineProperty(navigator, 'clipboard', {
+			configurable: true,
+			value: { write, writeText: vi.fn() }
+		});
+		vi.stubGlobal(
+			'ClipboardItem',
+			class {
+				constructor(public data: Record<string, Blob | PromiseLike<Blob | string> | string>) {}
+			}
+		);
+		vi.spyOn(syncStore, 'activeProfile', 'get').mockReturnValue(workspace);
+		notesStore.notes = [
+			note({
+				images: [{ id: 'img-1', mime: 'image/png', dataUrl: png, name: 'milk.png', createdAt: 1 }]
+			})
+		];
+		const view = render(NoteEditor, { props: { noteId: 'note-1', onClose: () => {} } });
+		await fireEvent.click(view.getByRole('button', { name: 'Share' }));
+		await tick();
+
+		await choose(await view.findByRole('menuitem', { name: 'Copy note' }));
+
+		await vi.waitFor(() => expect(write).toHaveBeenCalledOnce());
+		expect(Object.keys(items[0].data)).toEqual(['text/plain', 'text/html', 'image/png']);
+		const html = await items[0].data['text/html'];
+		expect(await (html as Blob).text()).toContain(`<img src="${png}" alt="milk.png">`);
+		vi.unstubAllGlobals();
+	});
+
 	it('closes when another footer action opens its own panel', async () => {
 		const { getByRole, findByRole, queryByRole } = await openShareMenu();
 		await findByRole('menuitem', { name: 'Copy note' });

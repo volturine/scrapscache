@@ -89,6 +89,7 @@
 		onArchive,
 		onDelete,
 		onImagesChange,
+		onPhotosAdded,
 		trailing
 	}: {
 		images?: NoteImage[];
@@ -114,6 +115,8 @@
 		onArchive?: () => void;
 		onDelete?: () => void;
 		onImagesChange?: (images: NoteImage[]) => void;
+		/** Photos just attached by the writer, so the body can mark their place. */
+		onPhotosAdded?: (photos: NoteImage[]) => void;
 		/** Controls after Color, at the end of the footer: the composer's own. */
 		trailing?: Snippet;
 	} = $props();
@@ -272,6 +275,8 @@
 			const next = [...images, ...unique];
 			images = next;
 			onImagesChange?.(next);
+			const photos = unique.filter(isImageAttachment);
+			if (photos.length > 0) onPhotosAdded?.(photos);
 			if (noteId) {
 				try {
 					await notesStore.flushNote(noteId, { images: next });
@@ -324,7 +329,7 @@
 		onOpenTags?.();
 	}
 
-	async function openPhoto(id: string) {
+	export async function openPhoto(id: string) {
 		if (noteId) {
 			await notesStore.ensureNoteAttachments(noteId);
 			const hydratedNote = notesStore.notes.find((note) => note.id === noteId);

@@ -37,11 +37,14 @@ final class ReservedRegionsPlugin: CAPPlugin, CAPBridgedPlugin {
     private var lastPublished: String?
 
     @objc func get(_ call: CAPPluginCall) {
-        call.resolve(["regions": current()])
+        // An iOS before 27.1 cannot read the regions; it says so, and the page
+        // keeps its stylesheet's values rather than taking an empty report.
+        guard let regions = current() else { return call.resolve(["supported": false]) }
+        call.resolve(["supported": true, "regions": regions])
     }
 
     func publish() {
-        let regions = current()
+        guard let regions = current() else { return }
         let encoded = (try? JSONSerialization.data(withJSONObject: regions))
             .map { String(decoding: $0, as: UTF8.self) } ?? "[]"
         guard encoded != lastPublished else { return }
@@ -50,8 +53,8 @@ final class ReservedRegionsPlugin: CAPPlugin, CAPBridgedPlugin {
         notifyListeners("reservedRegions", data: ["regions": regions])
     }
 
-    private func current() -> [[String: Any]] {
-        guard #available(iOS 27.1, *), let view = bridge?.webView else { return [] }
+    private func current() -> [[String: Any]]? {
+        guard #available(iOS 27.1, *), let view = bridge?.webView else { return nil }
         return view.reservedRegions(kind: .occlusion).map { region in
             [
                 "x": region.frame.minX,

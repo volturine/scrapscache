@@ -11,7 +11,8 @@ export type ReservedRegion = {
 };
 
 type ReservedRegionsPlugin = {
-	get(): Promise<{ regions: ReservedRegion[] }>;
+	/** No `regions` when the shell cannot read them (an iOS before 27.1). */
+	get(): Promise<{ supported: boolean; regions?: ReservedRegion[] }>;
 	addListener(
 		event: 'reservedRegions',
 		listener: (data: { regions: ReservedRegion[] }) => void
@@ -73,8 +74,8 @@ export function columnOccupancy(
  * reports: the stack then keeps clear of the island and the status cluster as
  * they are now, a Live Activity included, centres on the camera as they do, and
  * follows a fold or a turn. A band iOS leaves free is free down to a margin.
- * Until the shell has answered, as on the web or an iOS before 27.1, the
- * stylesheet's own values stay.
+ * Until the shell has answered with regions, as on the web or an iOS before 27.1
+ * (which says it cannot read them), the stylesheet's own values stay.
  */
 export function attachReservedRegions(): () => void {
 	const root = document.documentElement;
@@ -107,6 +108,7 @@ export function attachReservedRegions(): () => void {
 	};
 	void ReservedRegions.get()
 		.then((result) => {
+			if (!Array.isArray(result.regions)) return;
 			regions = result.regions;
 			reported = true;
 			apply();

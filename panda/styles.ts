@@ -3524,7 +3524,14 @@ export const topbarStyles = {
 			h: '3rem',
 			rounded: 'full',
 			...glassSurface,
-			color: 'scrapscache.text'
+			color: 'scrapscache.text',
+			transition: 'background-color 120ms ease, color 120ms ease',
+			// A finger darkens the circle at once; an open menu or sync dialog keeps it lit.
+			_active: { bg: 'scrapscache.columnGlassPressed' },
+			'&[aria-expanded="true"]': {
+				bg: 'scrapscache.navigationActive',
+				color: 'scrapscache.navigationActiveText'
+			}
 		}
 	}),
 	/** The search field on iPhone Duo's phone bar: it opens the palette, where a phone searches. */
@@ -3643,7 +3650,8 @@ export const phoneTabsStyles = {
 	// outside the app frame, in the glass iOS gives its own. The stack keeps between
 	// the bands iOS reports at the column's top and bottom (the island, the status
 	// cluster; see src/lib/native/reservedRegions.ts) and gathers at the bottom.
-	// With the keyboard up it ends at the keys and packs down from the top instead.
+	// With the keyboard up there is no room for it under the clock, so it goes, as
+	// the phone's bar does; the keys have their own way out.
 	stack: css({
 		position: 'fixed',
 		top: 'var(--app-rail-top)',
@@ -3660,10 +3668,7 @@ export const phoneTabsStyles = {
 		gap: 'sm',
 		zIndex: 20,
 		overflow: 'hidden',
-		'html.keyboard-open &': {
-			justifyContent: 'flex-start',
-			maskImage: 'linear-gradient(to bottom, black calc(100% - 2rem), transparent)'
-		}
+		'html.keyboard-open &': { display: 'none' }
 	}),
 	stackRight: css({ right: 0, w: 'var(--app-inset-right)' }),
 	stackLeft: css({ left: 0, w: 'var(--app-inset-left)' }),
@@ -3689,6 +3694,8 @@ export const phoneTabsStyles = {
 		cursor: 'pointer',
 		outline: 'none',
 		transition: 'background-color 120ms ease, color 120ms ease',
+		// A finger on a place darkens it at once; the current place and an open palette stay lit.
+		_active: { bg: 'scrapscache.columnGlassPressed' },
 		'&[aria-current="page"], &[aria-pressed="true"], &[aria-expanded="true"]': {
 			bg: 'scrapscache.navigationActive',
 			color: 'scrapscache.navigationActiveText'

@@ -336,6 +336,8 @@
 				uiStore.syncOpen = true;
 			}}
 			aria-label={syncControlLabel}
+			aria-haspopup="dialog"
+			aria-expanded={uiStore.syncOpen}
 			data-scrapscache-sync-control
 		>
 			<!-- The spin turns this span, not the icon: Safari treats a transform on

@@ -4,14 +4,17 @@ import { publishSideColumn } from '#lib/sideColumn.svelte.js';
 const shell = vi.hoisted(() => ({
 	regions: [] as unknown[],
 	answer: true,
+	supported: true,
 	listener: null as null | ((data: { regions: unknown[] }) => void)
 }));
 vi.mock('@capacitor/core', () => ({
 	registerPlugin: () => ({
 		get: () =>
-			shell.answer
-				? Promise.resolve({ regions: shell.regions })
-				: Promise.reject(new Error('not implemented')),
+			!shell.answer
+				? Promise.reject(new Error('not implemented'))
+				: shell.supported
+					? Promise.resolve({ supported: true, regions: shell.regions })
+					: Promise.resolve({ supported: false }),
 		addListener: (_event: string, listener: (data: { regions: unknown[] }) => void) => {
 			shell.listener = listener;
 			return Promise.resolve({ remove: async () => {} });
@@ -78,6 +81,7 @@ describe('attachReservedRegions', () => {
 		root.style.removeProperty('--app-inset-right');
 		shell.regions = [];
 		shell.answer = true;
+		shell.supported = true;
 		shell.listener = null;
 	});
 
@@ -112,6 +116,18 @@ describe('attachReservedRegions', () => {
 	it('leaves the stylesheet alone until the shell has answered, as on the web', async () => {
 		publishSideColumn('right');
 		shell.answer = false;
+		const detach = attachReservedRegions();
+		await Promise.resolve();
+		await Promise.resolve();
+		window.dispatchEvent(new Event('resize'));
+		expect(root.style.getPropertyValue('--app-rail-top')).toBe('');
+		expect(root.style.getPropertyValue('--app-rail-bottom')).toBe('');
+		detach();
+	});
+
+	it('keeps the stylesheet when the shell cannot read regions, as on an iOS before 27.1', async () => {
+		publishSideColumn('right');
+		shell.supported = false;
 		const detach = attachReservedRegions();
 		await Promise.resolve();
 		await Promise.resolve();

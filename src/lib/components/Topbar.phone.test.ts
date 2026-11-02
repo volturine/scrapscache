@@ -121,6 +121,11 @@ describe('the top bar beside iPhone Duo’s column', () => {
 		expect(host.contains(sync)).toBe(true);
 		expect(host.contains(more)).toBe(true);
 		expect(sync.compareDocumentPosition(more) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		// The cloud says when its dialog is up, so the circle can stay lit meanwhile.
+		expect(sync.getAttribute('aria-expanded')).toBe('false');
+		await fireEvent.click(sync);
+		expect(sync.getAttribute('aria-expanded')).toBe('true');
+		uiStore.syncOpen = false;
 
 		await fireEvent.click(screen.getByRole('button', { name: 'Search notes, labels and actions' }));
 		expect(uiStore.paletteOpen).toBe(true);

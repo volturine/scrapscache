@@ -78,8 +78,9 @@ delegate creates) reads the web view's occlusion regions, which iOS 27.1 reports
 for the camera island and the status cluster, and publishes them to the page as
 the `ReservedRegions` plugin; `src/lib/native/reservedRegions.ts` turns them into
 `--app-rail-top` and `--app-rail-bottom`, since the folded phone turned one way
-puts the island at the column's bottom. The stylesheet's own values are the
-fallback for an iOS before 27.1.
+puts the island at the column's bottom. An iOS before 27.1 says it cannot read
+them, and the stylesheet's own values stay. With the keyboard up the stack hides, as the
+phone's bar does; there is no room for it under the clock.
 
 ```sh
 npm run build:ios   # static build → build/ios, then `cap sync ios`

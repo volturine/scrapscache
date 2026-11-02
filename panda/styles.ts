@@ -3647,7 +3647,9 @@ export const phoneTabsStyles = {
 	stack: css({
 		position: 'fixed',
 		top: 'var(--app-rail-top)',
-		bottom: 'max(var(--app-inset-bottom), var(--app-keyboard-bottom), var(--app-rail-bottom))',
+		// A breath above the home indicator, the keys, or the island when it is at the bottom.
+		bottom:
+			'calc(max(var(--app-inset-bottom), var(--app-keyboard-bottom), var(--app-rail-bottom)) + 1.25rem)',
 		display: 'flex',
 		flexDirection: 'column',
 		justifyContent: 'flex-end',

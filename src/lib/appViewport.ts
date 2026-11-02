@@ -167,6 +167,26 @@ function setInsetVar(name: string, value: number) {
 	document.documentElement.style.setProperty(name, `${value}px`);
 }
 
+let keyboardFrameHolds = 0;
+let applyViewport: (() => void) | null = null;
+
+/**
+ * Keep the keyboard frame as it stands until the returned release is called.
+ * A system picker drops the keyboard without blurring the field, and an iPad
+ * anchors its popover to the touch that opened it: holding the frame keeps the
+ * pressed control under that popover instead of sliding it down the screen.
+ */
+export function holdKeyboardFrame(): () => void {
+	keyboardFrameHolds += 1;
+	let released = false;
+	return () => {
+		if (released) return;
+		released = true;
+		keyboardFrameHolds -= 1;
+		if (keyboardFrameHolds === 0) applyViewport?.();
+	};
+}
+
 /**
  * Root attachment: measure the device safe area and keyboard, then publish
  * them as CSS variables. The `.app-viewport` / `.app-float` layers consume
@@ -184,6 +204,7 @@ export function attachAppViewport(_node: HTMLElement) {
 	const touchScreen = navigator.maxTouchPoints > 0;
 
 	const apply = () => {
+		if (keyboardFrameHolds > 0) return;
 		const viewport = window.visualViewport;
 		const visualHeight = viewport?.height ?? window.innerHeight;
 		const visualTop = viewport?.offsetTop ?? 0;
@@ -265,6 +286,7 @@ export function attachAppViewport(_node: HTMLElement) {
 		apply();
 	});
 
+	applyViewport = apply;
 	apply();
 	const viewport = window.visualViewport;
 	viewport?.addEventListener('resize', apply);
@@ -277,6 +299,7 @@ export function attachAppViewport(_node: HTMLElement) {
 		attributeFilter: ['class']
 	});
 	return () => {
+		if (applyViewport === apply) applyViewport = null;
 		viewport?.removeEventListener('resize', apply);
 		viewport?.removeEventListener('scroll', apply);
 		window.removeEventListener('resize', apply);

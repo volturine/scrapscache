@@ -1,4 +1,4 @@
-import { expect, test, type Locator } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import {
 	composer,
 	composerPrompt,
@@ -828,4 +828,98 @@ test('on a phone the composer stays under the top bar while the feed scrolls', a
 	expect(await feed.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
 	expect((await prompt.boundingBox())!.y).toBe(restingTop);
 	await expect(prompt).toBeInViewport();
+});
+
+// iPhone Duo keeps its status bar in a column down one side, folded or open. Chromium
+// emulates that column through the DevTools safe-area override, which the viewport code
+// reads as the real device's inset.
+test.describe('in iPhone Duo’s side column', () => {
+	const column = { top: 0, right: 84, bottom: 34, left: 0 };
+
+	async function openWithColumn(page: Page, side: 'left' | 'right' = 'right') {
+		const session = await page.context().newCDPSession(page);
+		const insets =
+			side === 'right' ? column : { ...column, right: column.left, left: column.right };
+		await session.send('Emulation.setSafeAreaInsetsOverride', { insets });
+		await openEmptyApp(page);
+		await expect(page.locator('html')).toHaveAttribute('data-side-column', side);
+	}
+
+	/** The tabs stand in the column, gathered at its bottom, clear of what iOS draws at its top. */
+	async function expectRailInColumn(page: Page, viewport: { width: number; height: number }) {
+		const rail = page.getByRole('navigation', { name: 'Main', exact: true });
+		await expect(rail).not.toHaveAttribute('data-phone-tabs');
+		const box = (await rail.boundingBox())!;
+		expect(box.x).toBe(viewport.width - column.right);
+		expect(box.width).toBe(column.right);
+		const tabs = rail.getByRole('button');
+		await expect(tabs).toHaveText(['Notes', 'Reminders', 'Kanban', 'Labels', 'Search']);
+		const first = (await tabs.first().boundingBox())!;
+		const last = (await tabs.last().boundingBox())!;
+		// The floor keeps the rail under an expanded Dynamic Island and the clock; the tabs
+		// sit at the bottom, not against that floor.
+		expect(first.y).toBeGreaterThan(232);
+		expect(last.y + last.height).toBeLessThanOrEqual(viewport.height);
+		expect(last.y + last.height).toBeGreaterThan(viewport.height - 48);
+	}
+
+	test.describe('folded', () => {
+		const viewport = { width: 417, height: 606 };
+		test.use({ viewport, hasTouch: true });
+
+		test('the tabs stand at the bottom of the column, and the bottom bar and its strip go', async ({
+			page
+		}) => {
+			await openWithColumn(page);
+			await expectRailInColumn(page, viewport);
+			await expect(page.locator('[data-tabbar-safe-area]')).toHaveCSS('display', 'none');
+			const rail = page.getByRole('navigation', { name: 'Main', exact: true });
+			await rail.getByRole('button', { name: 'Labels' }).click();
+			await expect(page.locator('[data-view-title]')).toHaveText('Labels');
+		});
+
+		test('a column down the left puts the rail there', async ({ page }) => {
+			await openWithColumn(page, 'left');
+			const rail = page.getByRole('navigation', { name: 'Main', exact: true });
+			const box = (await rail.boundingBox())!;
+			expect(box.x).toBe(0);
+			expect(box.width).toBe(column.right);
+			const frame = (await page.getByRole('main').boundingBox())!;
+			expect(frame.x).toBeGreaterThanOrEqual(column.right);
+		});
+	});
+
+	test.describe('open', () => {
+		const viewport = { width: 1050, height: 739 };
+		test.use({ viewport, hasTouch: true });
+
+		test('the same rail stands in the column, and its Labels tab opens and closes the sidebar', async ({
+			page
+		}) => {
+			await openWithColumn(page);
+			await expectRailInColumn(page, viewport);
+			const rail = page.getByRole('navigation', { name: 'Main', exact: true });
+			const sidebar = page.getByRole('navigation', { name: 'Main navigation' });
+			const labels = rail.getByRole('button', { name: 'Labels' });
+			await expect(sidebar).toBeVisible();
+			await expect(labels).toHaveAttribute('aria-expanded', 'true');
+			// An open sidebar is not a place: Notes alone is lit, not Labels with it.
+			const lit = (tab: Locator) =>
+				tab.locator('[data-tab-icon]').evaluate((icon) => getComputedStyle(icon).backgroundColor);
+			expect(await lit(labels)).toBe('rgba(0, 0, 0, 0)');
+			expect(await lit(rail.getByRole('button', { name: 'Notes' }))).not.toBe('rgba(0, 0, 0, 0)');
+			await labels.click();
+			await expect(sidebar).toBeHidden();
+			await expect(labels).toHaveAttribute('aria-expanded', 'false');
+			await labels.click();
+			await expect(sidebar).toBeVisible();
+			// The frame and its top bar end where the column begins, so the rail covers nothing.
+			const frame = (await page.locator('.app-viewport').boundingBox())!;
+			expect(frame.x + frame.width).toBeLessThanOrEqual(viewport.width - column.right);
+			const settings = (await page
+				.getByRole('button', { name: 'Settings', exact: true })
+				.boundingBox())!;
+			expect(settings.x + settings.width).toBeLessThanOrEqual(viewport.width - column.right);
+		});
+	});
 });

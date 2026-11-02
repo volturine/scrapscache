@@ -3,6 +3,7 @@
 	// which lists every label with Archive and Trash; and Search, which opens the
 	// palette over the whole screen.
 	import { goto } from '$app/navigation';
+	import { MediaQuery } from 'svelte/reactivity';
 	import { AlarmClock, Kanban, Search, StickyNote, Tag, type LucideIcon } from '@lucide/svelte';
 	import { iconSizeMd as iconMd, phoneTabsStyles as styles } from '$panda/styles';
 	import { useEditorActions } from '#lib/editorContext.js';
@@ -10,8 +11,14 @@
 	import { pathForView } from '#lib/viewRoutes.js';
 	import { cx } from 'styled-system/css';
 
-	/** In the folded iPhone Duo's status column the bar stands as a rail down that side. */
+	/** In iPhone Duo's status column the bar stands as a rail down that side, at any width. */
 	let { rail = null }: { rail?: 'left' | 'right' | null } = $props();
+
+	/**
+	 * The Labels screen is a phone's; a wide window (the open Duo) has the sidebar for
+	 * the labels, Archive and Trash, so there the Labels tab opens and closes that.
+	 */
+	const phone = new MediaQuery('max-width: 767px');
 
 	const { closeNote } = useEditorActions();
 	const barClass = $derived(
@@ -42,7 +49,8 @@
 
 	function openLabels() {
 		closeNote();
-		uiStore.labelsOpen = true;
+		if (phone.current) uiStore.labelsOpen = true;
+		else uiStore.toggleSidebar();
 	}
 </script>
 
@@ -64,6 +72,8 @@
 		type="button"
 		class={tabClass}
 		aria-current={current === 'labels' ? 'page' : undefined}
+		aria-expanded={phone.current ? undefined : uiStore.sidebarOpen}
+		data-sidebar-toggle={phone.current ? undefined : true}
 		onclick={openLabels}
 	>
 		<span class={styles.tabIcon} data-tab-icon>

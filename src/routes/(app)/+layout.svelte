@@ -540,8 +540,9 @@
 		</div>
 	</div>
 </div>
-<!-- The Duo's status column lies outside the frame; the phone tabs stand in it. -->
-{#if mobile.current && sideColumn.side}
+<!-- iPhone Duo's status column lies outside the frame; the phone tabs stand in it as a
+     rail at every width, so the open phone keeps the same navigation as the folded one. -->
+{#if sideColumn.side}
 	<PhoneTabBar rail={sideColumn.side} />
 {/if}
 {#if mobile.current && uiStore.sidebarOpen}

@@ -20,8 +20,10 @@
 	--note-card-width: 18rem;
 	/* Installed iOS reserves a visible strip even when the top safe area is zero. */
 	--app-frame-top: var(--app-inset-top);
-	/* Where the folded iPhone Duo's rail starts: under the clock and signal iOS draws at the top of its column. */
-	--app-rail-top: 168px;
+	/* The least an iPhone Duo's rail keeps clear at the top of its status column: the Dynamic
+	 * Island with a Live Activity open, the clock and the signal. The tabs gather at the
+	 * column's bottom; this floor only cuts them when the keyboard leaves too little height. */
+	--app-rail-top: 232px;
 }
 /* WebKit reads an edge element's background directly when it exceeds 10px. */
 html.ios-standalone {

@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/svelte';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { uiStore } from '#lib/stores/ui.svelte.js';
 import PhoneTabBar from './PhoneTabBar.svelte';
 
@@ -11,10 +11,30 @@ vi.mock('#lib/editorContext.js', () => ({
 	useEditorActions: () => ({ startNewNote: vi.fn(), openNote: vi.fn(), closeNote })
 }));
 
+const desktopMatchMedia = window.matchMedia;
+/** The bar is a phone's: let the phone media query match unless a test says otherwise. */
+function layout(width: 'phone' | 'wide') {
+	window.matchMedia = (query: string) =>
+		({
+			matches: width === 'phone' && query.includes('max-width'),
+			media: query,
+			onchange: null,
+			addEventListener: () => {},
+			removeEventListener: () => {},
+			addListener: () => {},
+			removeListener: () => {},
+			dispatchEvent: () => false
+		}) as MediaQueryList;
+}
+
+beforeEach(() => layout('phone'));
+
 afterEach(() => {
+	window.matchMedia = desktopMatchMedia;
 	uiStore.setView('notes');
 	uiStore.paletteOpen = false;
 	uiStore.labelsOpen = false;
+	uiStore.sidebarOpen = true;
 	navigation.goto.mockClear();
 	closeNote.mockClear();
 });
@@ -75,7 +95,7 @@ describe('PhoneTabBar', () => {
 	});
 });
 
-describe('PhoneTabBar as the folded Duo’s rail', () => {
+describe('PhoneTabBar as iPhone Duo’s rail', () => {
 	it('keeps the same places in the status column, and is not the bar the keyboard hides', () => {
 		uiStore.setView('kanban');
 		render(PhoneTabBar, { props: { rail: 'right' } });
@@ -92,5 +112,30 @@ describe('PhoneTabBar as the folded Duo’s rail', () => {
 		expect(screen.getByRole('button', { name: 'Kanban' }).getAttribute('aria-current')).toBe(
 			'page'
 		);
+	});
+
+	it('on a wide window, where the sidebar lists the labels, Labels opens and closes that', async () => {
+		layout('wide');
+		uiStore.sidebarOpen = false;
+		render(PhoneTabBar, { props: { rail: 'right' } });
+		const labels = screen.getByRole('button', { name: 'Labels' });
+		expect(labels.getAttribute('aria-expanded')).toBe('false');
+		expect(labels.hasAttribute('data-sidebar-toggle')).toBe(true);
+
+		await fireEvent.click(labels);
+		expect(closeNote).toHaveBeenCalled();
+		expect(uiStore.sidebarOpen).toBe(true);
+		expect(uiStore.labelsOpen).toBe(false);
+		expect(labels.getAttribute('aria-expanded')).toBe('true');
+
+		await fireEvent.click(labels);
+		expect(uiStore.sidebarOpen).toBe(false);
+	});
+
+	it('on a phone the Labels tab has no sidebar to expand', () => {
+		render(PhoneTabBar, { props: { rail: 'right' } });
+		const labels = screen.getByRole('button', { name: 'Labels' });
+		expect(labels.hasAttribute('aria-expanded')).toBe(false);
+		expect(labels.hasAttribute('data-sidebar-toggle')).toBe(false);
 	});
 });

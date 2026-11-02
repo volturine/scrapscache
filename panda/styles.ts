@@ -3564,8 +3564,10 @@ export const phoneTabsStyles = {
 		transition: 'background-color 120ms ease, color 120ms ease'
 	}),
 	tabLabel: css({ whiteSpace: 'nowrap' }),
-	// The folded iPhone Duo's status column: the same tabs stand in it as a rail,
-	// outside the app frame, under the clock and signal iOS draws at its top. The
+	// iPhone Duo's status column, folded or open: the same tabs stand in it as a rail,
+	// outside the app frame. iOS draws the Dynamic Island, the clock and the signal at
+	// the column's top, and a Live Activity grows the island, so the tabs gather at the
+	// bottom, where nothing of iOS's reaches; the top is a floor for short columns. The
 	// keyboard's height is published while it is up, so the rail stops above it.
 	rail: css({
 		position: 'fixed',
@@ -3573,13 +3575,14 @@ export const phoneTabsStyles = {
 		bottom: 'max(var(--app-inset-bottom), var(--app-keyboard-bottom))',
 		display: 'flex',
 		flexDirection: 'column',
+		justifyContent: 'flex-end',
 		alignItems: 'stretch',
 		gap: 'xs',
 		zIndex: 20,
 		overflow: 'hidden',
-		// Tabs the keyboard leaves no room for fade out at its edge, not cut.
+		// Tabs the keyboard leaves no room for fade out at the top edge, not cut.
 		'html.keyboard-open &': {
-			maskImage: 'linear-gradient(to bottom, black calc(100% - 2rem), transparent)'
+			maskImage: 'linear-gradient(to top, black calc(100% - 2rem), transparent)'
 		}
 	}),
 	railRight: css({ right: 0, w: 'var(--app-inset-right)' }),
@@ -3598,10 +3601,13 @@ export const phoneTabsStyles = {
 		cursor: 'pointer',
 		outline: 'none',
 		transition: 'color 120ms ease',
-		'&[aria-current="page"], &[aria-pressed="true"], &[aria-expanded="true"]': {
-			color: 'scrapscache.text'
-		},
-		'&[aria-current="page"] [data-tab-icon], &[aria-pressed="true"] [data-tab-icon], &[aria-expanded="true"] [data-tab-icon]':
+		// Lit for the current place and an open palette; the open Duo's Labels tab also
+		// expands the sidebar, which is not a place, so it stays unlit for that.
+		'&[aria-current="page"], &[aria-pressed="true"], &[aria-expanded="true"]:not([data-sidebar-toggle])':
+			{
+				color: 'scrapscache.text'
+			},
+		'&[aria-current="page"] [data-tab-icon], &[aria-pressed="true"] [data-tab-icon], &[aria-expanded="true"]:not([data-sidebar-toggle]) [data-tab-icon]':
 			{
 				bg: 'scrapscache.navigationActive',
 				color: 'scrapscache.navigationActiveText'

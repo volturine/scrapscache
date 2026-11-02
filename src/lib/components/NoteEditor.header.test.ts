@@ -562,6 +562,42 @@ describe('NoteEditor task focus', () => {
 		expect(document.activeElement).toBe(editor);
 	});
 
+	it('opens the attach picker under its button and keeps the keyboard', async () => {
+		notesStore.notes = [note({ body: 'Plain note' })];
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const attach = container.querySelector(
+			'footer button[aria-label="Attach"]'
+		) as HTMLButtonElement;
+		vi.spyOn(attach, 'getBoundingClientRect').mockReturnValue({
+			left: 24,
+			top: 600,
+			width: 40,
+			height: 36,
+			right: 64,
+			bottom: 636,
+			x: 24,
+			y: 600,
+			toJSON: () => ({})
+		});
+		editor.focus();
+
+		releaseTouch(attach, { clientX: 30, clientY: 610 });
+
+		const input = document.body.querySelector('input[type="file"]') as HTMLInputElement;
+		expect(input).not.toBeNull();
+		expect([input.style.left, input.style.top, input.style.width, input.style.height]).toEqual([
+			'24px',
+			'600px',
+			'40px',
+			'36px'
+		]);
+		expect(document.activeElement).toBe(editor);
+		input.remove();
+	});
+
 	it('applies a touched color without dismissing the keyboard', async () => {
 		notesStore.notes = [note({ body: 'Plain note' })];
 		const { container } = render(NoteEditor, {
@@ -709,28 +745,6 @@ describe('NoteEditor task focus', () => {
 		]);
 		expect(notesStore.notes[0].labels).toContain('label-1');
 		expect(document.activeElement).toBe(input);
-	});
-
-	it('dismisses the keyboard before opening the attachment picker', async () => {
-		notesStore.notes = [note({ body: 'Plain note' })];
-		const inputClick = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => {});
-		const { container } = render(NoteEditor, {
-			props: { noteId: 'note-1', onClose: () => {} }
-		});
-		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
-		const attach = container.querySelector(
-			'footer button[aria-label="Attach"]'
-		) as HTMLButtonElement;
-		editor.focus();
-
-		const pointerDown = dispatchTouchPointer(attach, 'pointerdown');
-		expect(pointerDown.defaultPrevented).toBe(true);
-		await fireEvent.click(attach);
-
-		expect(inputClick).toHaveBeenCalledOnce();
-		expect(document.activeElement).not.toBe(editor);
-		const picker = document.body.querySelector('input[type="file"]') as HTMLInputElement;
-		picker.dispatchEvent(new Event('change'));
 	});
 
 	it('renders all footer action buttons in a single row without wrapping', () => {

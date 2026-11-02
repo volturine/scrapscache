@@ -43,6 +43,38 @@ afterEach(() => {
 	uiStore.rawMarkdown = false;
 });
 
+describe('NoteBodyDisplay photo chips', () => {
+	it('draws a marker as a live chip only when its id is a photo', () => {
+		notesStore.notes = [
+			note({
+				body: '![who-wins.png](photo:photo-1)\n![plan.pdf](photo:file-1)',
+				images: [
+					{
+						id: 'photo-1',
+						mime: 'image/png',
+						dataUrl: PNG,
+						name: 'who-wins.png',
+						createdAt: 1
+					},
+					{
+						id: 'file-1',
+						mime: 'application/pdf',
+						dataUrl: 'data:application/pdf;base64,JVBERi0=',
+						name: 'plan.pdf',
+						createdAt: 1
+					}
+				]
+			})
+		];
+		const { container } = render(NoteBodyDisplay, { props: { note: notesStore.notes[0] } });
+
+		const chips = [...container.querySelectorAll('.markdown-token-photo')];
+		expect(chips.map((chip) => chip.textContent)).toEqual(['who-wins.png', 'plan.pdf']);
+		expect(chips[0].className).not.toContain('markdown-token-photo-missing');
+		expect(chips[1].className).toContain('markdown-token-photo-missing');
+	});
+});
+
 describe('NoteBodyDisplay attachment order', () => {
 	it('lists links with the file rows after the note body, photos last', () => {
 		const { container } = render(NoteBodyDisplay, { props: { note: note() } });

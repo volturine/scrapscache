@@ -13,7 +13,7 @@
 	import { actionUndo } from '#lib/stores/actionUndo.svelte.js';
 	import { noteAttachments, splitPastedHeading } from '#lib/checklistBody.js';
 	import { writeNoteToClipboard } from '#lib/noteClipboard.js';
-	import { bodyIsOnlyPhotoMarkers, photoMarker } from '#lib/photoMarker.js';
+	import { bodyIsOnlyPhotoMarkers, photoMarker, type PhotoPlacement } from '#lib/photoMarker.js';
 	import { mergeHydratedImages } from '#lib/noteAttachmentHydration.js';
 	import type { Note, NoteImage } from '#lib/types.js';
 	import type { NotePatch } from '#lib/model/index.js';
@@ -126,7 +126,7 @@
 		insertLines(texts: string[], at: { line: number; offset: number } | null): Promise<void>;
 	} | null>(null);
 	let footer = $state<{
-		handlePickedFiles(files: File[]): void;
+		handlePickedFiles(files: File[], at?: PhotoPlacement | null): void;
 		closeMenus(): void;
 		openPhoto(id: string): Promise<void>;
 	} | null>(null);
@@ -154,11 +154,8 @@
 	/** Window width the auto-expand decision was last measured at. */
 	let autoExpandWidth = 0;
 	const photosFillEditor = $derived(bodyIsOnlyPhotoMarkers(body) && images.some(isImageAttachment));
-	/** Where pasted or dropped photos go in the text: the caret at that moment, or the end. */
-	let photoPlacement: { line: number; offset: number } | null = null;
-	function placePhotos(photos: NoteImage[]) {
-		const at = photoPlacement;
-		photoPlacement = null;
+	/** Pasted or dropped photos go where the caret was at that moment; attached ones at the end. */
+	function placePhotos(photos: NoteImage[], at: PhotoPlacement | null) {
 		void bodyEditor?.insertLines(photos.map(photoMarker), at);
 	}
 	function focusBodyFromPage(event: MouseEvent) {
@@ -523,8 +520,7 @@
 		backdropPressOutside = false;
 		const files = Array.from(event.dataTransfer?.files ?? []);
 		if (files.length === 0) return;
-		photoPlacement = bodyEditor?.caretPoint() ?? null;
-		footer?.handlePickedFiles(files);
+		footer?.handlePickedFiles(files, bodyEditor?.caretPoint() ?? null);
 	}
 
 	function transformPaste(text: string): string | null {
@@ -557,8 +553,7 @@
 		if (files.length === 0) return;
 		event.preventDefault();
 		event.stopImmediatePropagation();
-		photoPlacement = bodyEditor?.caretPoint() ?? null;
-		footer?.handlePickedFiles(files);
+		footer?.handlePickedFiles(files, bodyEditor?.caretPoint() ?? null);
 	}
 
 	let backdropPressOutside = false;
@@ -1124,7 +1119,8 @@
 								oninput={markBodyEdited}
 								{transformPaste}
 								onOpenPhoto={(id) => void footer?.openPhoto(id)}
-								hasPhoto={(id) => images.some((image) => image.id === id)}
+								hasPhoto={(id) =>
+									images.some((image) => image.id === id && isImageAttachment(image))}
 								placeholder="Take a note… type [ ] for a checklist, - for a bullet, Tab for sub-task"
 							/>
 						{/if}

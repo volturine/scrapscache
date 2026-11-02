@@ -9,6 +9,7 @@
 	import { iconButton, input } from 'styled-system/recipes';
 	import { hstack } from 'styled-system/patterns';
 	import { uiStore } from '#lib/stores/ui.svelte.js';
+	import { portalToColumnActions } from '#lib/appViewport.js';
 	import { sideColumn } from '#lib/sideColumn.svelte.js';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
 	import { downloadJSON } from '#lib/utils.js';
@@ -372,31 +373,39 @@
 	{#if selectionStore.active}
 		<!-- The bar works on the picked notes until the selection is let go. -->
 		<SelectionBar />
-	{:else if mobile.current && sideColumn.side}
-		<!-- The folded iPhone Duo: its column stands at the right, so the controls keep
-		     left of the view name, and a search field takes the rest. The field opens
-		     the palette, where a phone searches. -->
-		{@render syncButton()}
-		<SettingsMenu
-			phone
-			bind:open={settingsOpen}
-			onExport={startBackupExport}
-			onImport={startBackupImport}
-			onTextSettings={openTextSettings}
-			importing={importingBackup}
-			importError={backupImportError}
-		/>
-		<span class={styles.columnTitle} data-view-title>{viewTitle}</span>
-		<button
-			type="button"
-			class={styles.columnSearch}
-			onclick={() => (uiStore.paletteOpen = true)}
-			aria-label="Search notes, labels and actions"
-			aria-keyshortcuts={apple ? 'Meta+K' : 'Control+K'}
-		>
-			<Search class={[iconMd, styles.searchIcon]} aria-hidden="true" />
-			<span>Search</span>
-		</button>
+	{:else if sideColumn.side}
+		<!-- Beside iPhone Duo's column: sync and settings stand in the column's stack
+		     (portalToColumnActions), and the bar keeps the view name, on the folded
+		     phone, and a search field. The folded phone's field opens the palette,
+		     where a phone searches; the open phone's filters the feed. -->
+		{#if mobile.current}
+			<span class={styles.columnTitle} data-view-title>{viewTitle}</span>
+			<button
+				type="button"
+				class={styles.columnSearch}
+				onclick={() => (uiStore.paletteOpen = true)}
+				aria-label="Search notes, labels and actions"
+				aria-keyshortcuts={apple ? 'Meta+K' : 'Control+K'}
+			>
+				<Search class={[iconMd, styles.searchIcon]} aria-hidden="true" />
+				<span>Search</span>
+			</button>
+		{:else}
+			{@render searchBox()}
+		{/if}
+		<div {@attach portalToColumnActions} class={styles.columnActions} data-column-controls>
+			{@render syncButton()}
+			<SettingsMenu
+				phone={mobile.current}
+				placement="left-start"
+				bind:open={settingsOpen}
+				onExport={startBackupExport}
+				onImport={startBackupImport}
+				onTextSettings={openTextSettings}
+				importing={importingBackup}
+				importError={backupImportError}
+			/>
+		</div>
 	{:else if mobile.current}
 		<!-- A phone has the tab bar for its places, so the bar only names the view. -->
 		<span class={styles.phoneTitle} data-view-title>{viewTitle}</span>
@@ -410,19 +419,6 @@
 			importing={importingBackup}
 			importError={backupImportError}
 		/>
-	{:else if sideColumn.side}
-		<!-- The open iPhone Duo on its side: the rail in its column replaces the sidebar,
-		     and the controls keep left of the search field as on the folded phone. -->
-		{@render syncButton()}
-		<SettingsMenu
-			bind:open={settingsOpen}
-			onExport={startBackupExport}
-			onImport={startBackupImport}
-			onTextSettings={openTextSettings}
-			importing={importingBackup}
-			importError={backupImportError}
-		/>
-		{@render searchBox()}
 	{:else}
 		<Tooltip content="Toggle sidebar">
 			<button

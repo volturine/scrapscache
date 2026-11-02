@@ -343,6 +343,17 @@ export function portalToBody(node: HTMLElement) {
 	return () => node.remove();
 }
 
+/**
+ * Render into iPhone Duo's column stack, above the places (see the app layout).
+ * Without a column the node stays where it was rendered.
+ */
+export function portalToColumnActions(node: HTMLElement) {
+	const host = document.querySelector<HTMLElement>('[data-column-actions]');
+	if (!host) return;
+	host.appendChild(node);
+	return () => node.remove();
+}
+
 /** Render a global dialog above navigation and remove it with its owner. */
 export function portalToAppOverlay(node: HTMLElement) {
 	const host = getAppOverlayHost();

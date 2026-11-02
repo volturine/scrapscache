@@ -96,38 +96,44 @@ describe('the top bar on a phone', () => {
 });
 
 describe('the top bar beside iPhone Duo’s column', () => {
-	beforeEach(() => publishSideColumn('right'));
-	afterEach(() => publishSideColumn(null));
+	let host: HTMLElement;
+	beforeEach(() => {
+		publishSideColumn('right');
+		host = document.createElement('div');
+		host.setAttribute('data-column-actions', '');
+		document.body.append(host);
+	});
+	afterEach(() => {
+		publishSideColumn(null);
+		host.remove();
+	});
 
-	it('folded, keeps sync and More left of the view name and ends in a search field that opens the palette', async () => {
+	it('folded, keeps the view name and a search field that opens the palette, and sends sync and More into the column', async () => {
 		render(Topbar);
 		const header = document.querySelector('header')!;
-		const order = [...header.querySelectorAll('button, [data-view-title]')].map(
+		const inBar = [...header.querySelectorAll('button, [data-view-title]')].map(
 			(element) => element.getAttribute('aria-label') ?? element.textContent?.trim()
 		);
-		expect(order[0]).toMatch(/^Sync settings/);
-		expect(order[1]).toBe('More');
-		expect(order[2]).toBe('Notes');
-		expect(order[3]).toBe('Search notes, labels and actions');
+		expect(inBar).toEqual(['Notes', 'Search notes, labels and actions']);
 		expect(screen.queryByRole('searchbox')).toBeNull();
+		const sync = screen.getByRole('button', { name: /^Sync settings/ });
+		const more = screen.getByRole('button', { name: 'More' });
+		expect(host.contains(sync)).toBe(true);
+		expect(host.contains(more)).toBe(true);
+		expect(sync.compareDocumentPosition(more) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
 		await fireEvent.click(screen.getByRole('button', { name: 'Search notes, labels and actions' }));
 		expect(uiStore.paletteOpen).toBe(true);
 	});
 
-	it('open on its side, keeps sync and Settings left of the search field, with no sidebar toggle', () => {
+	it('open on its side, keeps the search field and sends sync and Settings into the column, with no sidebar toggle', () => {
 		window.matchMedia = desktopMatchMedia;
 		render(Topbar);
 		const header = document.querySelector('header')!;
-		const buttons = [...header.querySelectorAll('button')].map((b) => b.getAttribute('aria-label'));
-		expect(buttons[0]).toMatch(/^Sync settings/);
-		expect(buttons[1]).toBe('Settings');
+		expect(header.contains(screen.getByRole('searchbox'))).toBe(true);
 		expect(screen.queryByRole('button', { name: 'Toggle sidebar' })).toBeNull();
-		const field = screen.getByRole('searchbox');
-		expect(
-			header.compareDocumentPosition(field) & Node.DOCUMENT_POSITION_CONTAINED_BY
-		).toBeTruthy();
-		const sync = screen.getByRole('button', { name: /^Sync settings/ });
-		expect(sync.compareDocumentPosition(field) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		expect(host.contains(screen.getByRole('button', { name: /^Sync settings/ }))).toBe(true);
+		expect(host.contains(screen.getByRole('button', { name: 'Settings' }))).toBe(true);
+		expect(header.querySelector('[data-column-controls]')).toBeNull();
 	});
 });

@@ -845,22 +845,35 @@ test.describe('in iPhone Duo’s side column', () => {
 		await expect(page.locator('html')).toHaveAttribute('data-side-column', side);
 	}
 
-	/** The tabs stand in the column, gathered at its bottom, clear of what iOS draws at its top. */
+	/**
+	 * The column's stack: sync and settings as circles, then the places in one pill,
+	 * icons alone, gathered at the column's bottom, clear of what iOS draws at its top.
+	 */
 	async function expectRailInColumn(page: Page, viewport: { width: number; height: number }) {
-		const rail = page.getByRole('navigation', { name: 'Main', exact: true });
-		await expect(rail).not.toHaveAttribute('data-phone-tabs');
-		const box = (await rail.boundingBox())!;
+		const stack = page.locator('[data-column-stack]');
+		const box = (await stack.boundingBox())!;
 		expect(box.x).toBe(viewport.width - column.right);
 		expect(box.width).toBe(column.right);
+		const rail = page.getByRole('navigation', { name: 'Main', exact: true });
+		await expect(rail).not.toHaveAttribute('data-phone-tabs');
+		const pill = (await rail.boundingBox())!;
+		expect(pill.x).toBeGreaterThanOrEqual(box.x);
+		expect(pill.x + pill.width).toBeLessThanOrEqual(box.x + box.width);
 		const tabs = rail.getByRole('button');
 		await expect(tabs).toHaveText(['Notes', 'Reminders', 'Kanban', 'Labels', 'Search']);
+		for (const tab of await tabs.all())
+			await expect(tab.locator('span').last()).not.toBeInViewport();
 		const first = (await tabs.first().boundingBox())!;
 		const last = (await tabs.last().boundingBox())!;
-		// The floor keeps the rail under an expanded Dynamic Island and the clock; the tabs
-		// sit at the bottom, not against that floor.
+		// Without the app shell's report the stylesheet's floor keeps the stack under an
+		// expanded Dynamic Island and the clock; the pill sits at the bottom, not against it.
 		expect(first.y).toBeGreaterThan(232);
 		expect(last.y + last.height).toBeLessThanOrEqual(viewport.height);
-		expect(last.y + last.height).toBeGreaterThan(viewport.height - 48);
+		expect(last.y + last.height).toBeGreaterThan(viewport.height - 56);
+		// Sync and settings stand above the pill, inside the column.
+		const sync = (await stack.getByRole('button', { name: /^Sync settings/ }).boundingBox())!;
+		expect(sync.x).toBeGreaterThanOrEqual(box.x);
+		expect(sync.y + sync.height).toBeLessThanOrEqual(pill.y);
 	}
 
 	test.describe('folded', () => {
@@ -873,16 +886,17 @@ test.describe('in iPhone Duo’s side column', () => {
 			await openWithColumn(page);
 			await expectRailInColumn(page, viewport);
 			await expect(page.locator('[data-tabbar-safe-area]')).toHaveCSS('display', 'none');
-			// The bar: sync and More on the left, the view name, then a search field that
-			// opens the palette, since the column takes the right-hand side.
+			// The bar: the view name, then a search field that opens the palette; sync and
+			// More have gone into the column, More under sync.
 			const header = page.locator('header').first();
-			const sync = header.getByRole('button', { name: /^Sync settings/ });
-			const more = header.getByRole('button', { name: 'More' });
+			await expect(header.getByRole('button', { name: /^Sync settings/ })).toHaveCount(0);
+			const stack = page.locator('[data-column-stack]');
+			const more = (await stack.getByRole('button', { name: 'More' }).boundingBox())!;
+			const sync = (await stack.getByRole('button', { name: /^Sync settings/ }).boundingBox())!;
+			expect(sync.y).toBeLessThan(more.y);
 			const title = header.locator('[data-view-title]');
 			const search = header.getByRole('button', { name: 'Search notes, labels and actions' });
 			const left = async (locator: Locator) => (await locator.boundingBox())!.x;
-			expect(await left(sync)).toBeLessThan(await left(more));
-			expect(await left(more)).toBeLessThan(await left(title));
 			expect(await left(title)).toBeLessThan(await left(search));
 			const searchBox = (await search.boundingBox())!;
 			expect(searchBox.x + searchBox.width).toBeLessThanOrEqual(viewport.width - column.right);
@@ -907,8 +921,6 @@ test.describe('in iPhone Duo’s side column', () => {
 				const t = (await tab.boundingBox())!;
 				expect(t.y).toBeGreaterThanOrEqual(box.y);
 				expect(t.y + t.height).toBeLessThanOrEqual(box.y + box.height + 1);
-				// Icons only: the label is hidden, so the five fit under the island's height.
-				await expect(tab.locator('span').last()).toBeHidden();
 			}
 			// The island sits at the top of the column; the first tab stays under it.
 			expect((await tabs.first().boundingBox())!.y).toBeGreaterThanOrEqual(140);
@@ -916,10 +928,14 @@ test.describe('in iPhone Duo’s side column', () => {
 
 		test('a column down the left puts the rail there', async ({ page }) => {
 			await openWithColumn(page, 'left');
-			const rail = page.getByRole('navigation', { name: 'Main', exact: true });
-			const box = (await rail.boundingBox())!;
-			expect(box.x).toBe(0);
-			expect(box.width).toBe(column.right);
+			const stack = (await page.locator('[data-column-stack]').boundingBox())!;
+			expect(stack.x).toBe(0);
+			expect(stack.width).toBe(column.right);
+			const pill = (await page
+				.getByRole('navigation', { name: 'Main', exact: true })
+				.boundingBox())!;
+			expect(pill.x).toBeGreaterThanOrEqual(0);
+			expect(pill.x + pill.width).toBeLessThanOrEqual(column.right);
 			const frame = (await page.getByRole('main').boundingBox())!;
 			expect(frame.x).toBeGreaterThanOrEqual(column.right);
 		});
@@ -935,24 +951,17 @@ test.describe('in iPhone Duo’s side column', () => {
 			await openWithColumn(page);
 			await expectRailInColumn(page, viewport);
 			// The rail is the navigation: no sidebar, and nothing to toggle one with. Sync
-			// and Settings keep left of the search field, as on the folded phone.
+			// and Settings stand in the column; the bar keeps the search field.
 			await expect(page.getByRole('navigation', { name: 'Main navigation' })).toHaveCount(0);
 			await expect(page.getByRole('button', { name: 'Toggle sidebar' })).toHaveCount(0);
 			const header = page.locator('header').first();
-			const syncX = (await header.getByRole('button', { name: /^Sync settings/ }).boundingBox())!.x;
-			const settingsX = (await header
-				.getByRole('button', { name: 'Settings', exact: true })
-				.boundingBox())!.x;
-			const fieldX = (await header.getByRole('searchbox').boundingBox())!.x;
-			expect(syncX).toBeLessThan(settingsX);
-			expect(settingsX).toBeLessThan(fieldX);
-			// The frame and its top bar end where the column begins, so the rail covers nothing.
+			await expect(header.getByRole('searchbox')).toBeVisible();
+			await expect(header.getByRole('button', { name: 'Settings', exact: true })).toHaveCount(0);
+			const stack = page.locator('[data-column-stack]');
+			await expect(stack.getByRole('button', { name: 'Settings', exact: true })).toBeVisible();
+			// The frame and its top bar end where the column begins, so the stack covers nothing.
 			const frame = (await page.locator('.app-viewport').boundingBox())!;
 			expect(frame.x + frame.width).toBeLessThanOrEqual(viewport.width - column.right);
-			const settings = (await page
-				.getByRole('button', { name: 'Settings', exact: true })
-				.boundingBox())!;
-			expect(settings.x + settings.width).toBeLessThanOrEqual(viewport.width - column.right);
 
 			const rail = page.getByRole('navigation', { name: 'Main', exact: true });
 			const labels = rail.getByRole('button', { name: 'Labels' });

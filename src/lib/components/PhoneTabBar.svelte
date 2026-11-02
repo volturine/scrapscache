@@ -11,17 +11,16 @@
 	import { cx } from 'styled-system/css';
 
 	/**
-	 * In iPhone Duo's status column the bar stands as a rail down that side, at any
-	 * width: the open phone on its side has the rail and no sidebar.
+	 * In iPhone Duo's status column the places stand in one pill of the column's
+	 * stack, at any width: the open phone on its side has the stack and no sidebar.
 	 */
 	let { rail = null }: { rail?: 'left' | 'right' | null } = $props();
 
 	const { closeNote } = useEditorActions();
-	const barClass = $derived(
-		rail ? cx(styles.rail, rail === 'left' ? styles.railLeft : styles.railRight) : styles.bar
-	);
-	const tabClass = $derived(rail ? styles.railTab : styles.tab);
-	const labelClass = $derived(rail ? styles.railLabel : styles.tabLabel);
+	const barClass = $derived(rail ? styles.pill : styles.bar);
+	const tabClass = $derived(rail ? styles.pillTab : styles.tab);
+	const iconClass = $derived(rail ? styles.pillIcon : styles.tabIcon);
+	const labelClass = $derived(rail ? styles.pillLabel : styles.tabLabel);
 
 	const tabs: { view: View; label: string; icon: LucideIcon }[] = [
 		{ view: 'notes', label: 'Notes', icon: StickyNote },
@@ -49,7 +48,7 @@
 	}
 </script>
 
-<nav class={barClass} aria-label="Main" data-phone-tabs={rail ? undefined : true}>
+<nav class={cx(barClass)} aria-label="Main" data-phone-tabs={rail ? undefined : true}>
 	{#each tabs as tab (tab.view)}
 		<button
 			type="button"
@@ -57,7 +56,7 @@
 			aria-current={current === tab.view ? 'page' : undefined}
 			onclick={() => go(tab.view)}
 		>
-			<span class={styles.tabIcon} data-tab-icon>
+			<span class={iconClass} data-tab-icon>
 				<tab.icon class={iconMd} aria-hidden="true" />
 			</span>
 			<span class={labelClass}>{tab.label}</span>
@@ -69,7 +68,7 @@
 		aria-current={current === 'labels' ? 'page' : undefined}
 		onclick={openLabels}
 	>
-		<span class={styles.tabIcon} data-tab-icon>
+		<span class={iconClass} data-tab-icon>
 			<Tag class={iconMd} aria-hidden="true" />
 		</span>
 		<span class={labelClass}>Labels</span>
@@ -81,7 +80,7 @@
 		aria-expanded={uiStore.paletteOpen}
 		onclick={() => (uiStore.paletteOpen = true)}
 	>
-		<span class={styles.tabIcon} data-tab-icon>
+		<span class={iconClass} data-tab-icon>
 			<Search class={iconMd} aria-hidden="true" />
 		</span>
 		<span class={labelClass}>Search</span>

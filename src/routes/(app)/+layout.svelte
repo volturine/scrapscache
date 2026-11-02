@@ -11,7 +11,7 @@
 	import NoteComposer from '#lib/components/NoteComposer.svelte';
 	import { composerStore } from '#lib/stores/composer.svelte.js';
 	import { getClipboardFiles } from '#lib/noteImages.js';
-	import { noteComposerStyles } from '$panda/styles';
+	import { noteComposerStyles, phoneTabsStyles } from '$panda/styles';
 	import PhoneTabBar from '#lib/components/PhoneTabBar.svelte';
 	import AppViews from '#lib/components/AppViews.svelte';
 	import { reminderStore } from '#lib/stores/reminders.svelte.js';
@@ -546,10 +546,19 @@
 		</div>
 	</div>
 </div>
-<!-- iPhone Duo's status column lies outside the frame; the phone tabs stand in it as a
-     rail at every width, so the open phone keeps the same navigation as the folded one. -->
+<!-- iPhone Duo's status column lies outside the frame; the column's controls stand in it
+     at every width: sync and settings (the top bar portals them in), then the places. -->
 {#if sideColumn.side}
-	<PhoneTabBar rail={sideColumn.side} />
+	<div
+		class={cx(
+			phoneTabsStyles.stack,
+			sideColumn.side === 'left' ? phoneTabsStyles.stackLeft : phoneTabsStyles.stackRight
+		)}
+		data-column-stack
+	>
+		<div class={phoneTabsStyles.actions} data-column-actions></div>
+		<PhoneTabBar rail={sideColumn.side} />
+	</div>
 {/if}
 {#if mobile.current && uiStore.sidebarOpen}
 	<div class={styles.drawerSafeArea} aria-hidden="true"></div>

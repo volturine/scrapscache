@@ -32,6 +32,14 @@ const mutedText = { color: 'scrapscache.textMuted' } as const;
 const cardRadius = { rounded: 'card' } as const;
 const controlRadius = { rounded: 'control' } as const;
 const subtleHover = { _hoverable: { bg: 'scrapscache.interactiveHover' } } as const;
+/** iPhone Duo's column controls: a blurred, faintly lit surface over the page. */
+const glassSurface = {
+	bg: 'scrapscache.columnGlass',
+	borderWidth: 'hairline',
+	borderColor: 'scrapscache.columnGlassBorder',
+	backdropFilter: 'blur(14px)',
+	boxShadow: '0 4px 16px rgba(0, 0, 0, 0.18)'
+} as const;
 const mediaHover = {
 	_hoverable: { bg: 'scrapscache.mediaControlHover', color: 'scrapscache.mediaText' }
 } as const;
@@ -3506,6 +3514,19 @@ export const topbarStyles = {
 	phoneTitle: css({ ...flexFill, px: 'xs', textStyle: 'heading', ...truncateText }),
 	/** iPhone Duo's phone bar: the view name sits between the controls and the search field. */
 	columnTitle: css({ flexShrink: 0, maxW: '40%', px: 'xs', textStyle: 'heading', ...truncateText }),
+	/** Sync and settings beside iPhone Duo's column: each a glass circle in the column's stack. */
+	columnActions: css({
+		...column,
+		alignItems: 'center',
+		gap: 'sm',
+		'& button': {
+			w: '3rem',
+			h: '3rem',
+			rounded: 'full',
+			...glassSurface,
+			color: 'scrapscache.text'
+		}
+	}),
 	/** The search field on iPhone Duo's phone bar: it opens the palette, where a phone searches. */
 	columnSearch: css({
 		display: 'flex',
@@ -3618,64 +3639,59 @@ export const phoneTabsStyles = {
 		transition: 'background-color 120ms ease, color 120ms ease'
 	}),
 	tabLabel: css({ whiteSpace: 'nowrap' }),
-	// iPhone Duo's status column, folded or open: the same tabs stand in it as a rail,
-	// outside the app frame. iOS draws the Dynamic Island, the clock and the signal at
-	// the column's top, and a Live Activity grows the island, so the tabs gather at the
-	// bottom, where nothing of iOS's reaches; the top is a floor for short columns. The
-	// keyboard's height is published while it is up, so the rail stops above it.
-	rail: css({
+	// iPhone Duo's status column, folded or open: the column's controls stand in it,
+	// outside the app frame, in the glass iOS gives its own. The stack keeps between
+	// the bands iOS reports at the column's top and bottom (the island, the status
+	// cluster; see src/lib/native/reservedRegions.ts) and gathers at the bottom.
+	// With the keyboard up it ends at the keys and packs down from the top instead.
+	stack: css({
 		position: 'fixed',
 		top: 'var(--app-rail-top)',
 		bottom: 'max(var(--app-inset-bottom), var(--app-keyboard-bottom), var(--app-rail-bottom))',
 		display: 'flex',
 		flexDirection: 'column',
 		justifyContent: 'flex-end',
-		alignItems: 'stretch',
-		gap: 'xs',
+		alignItems: 'center',
+		gap: 'sm',
 		zIndex: 20,
 		overflow: 'hidden',
-		// With the keyboard up the rail ends at the keys: the tabs then pack down from
-		// the floor, first places first, and those the keyboard leaves no room for
-		// fade out at its edge, not cut.
 		'html.keyboard-open &': {
 			justifyContent: 'flex-start',
 			maskImage: 'linear-gradient(to bottom, black calc(100% - 2rem), transparent)'
 		}
 	}),
-	railRight: css({ right: 0, w: 'var(--app-inset-right)' }),
-	railLeft: css({ left: 0, w: 'var(--app-inset-left)' }),
-	railTab: css({
+	stackRight: css({ right: 0, w: 'var(--app-inset-right)' }),
+	stackLeft: css({ left: 0, w: 'var(--app-inset-left)' }),
+	/** Where the top bar's sync and settings land, each its own circle (Topbar portals them here). */
+	actions: css({ ...column, alignItems: 'center', gap: 'sm', flexShrink: 0 }),
+	/** The five places in one pill, icons alone; the name stays for assistive technology. */
+	pill: css({
 		...column,
 		alignItems: 'center',
-		justifyContent: 'center',
 		gap: '3xs',
-		w: 'full',
-		minW: 0,
-		py: 'xs',
+		py: '2xs',
 		px: '2xs',
-		textStyle: 'caption',
+		rounded: 'pill',
+		...glassSurface,
+		flexShrink: 0
+	}),
+	pillTab: css({
+		...gridCenter,
+		w: '2.5rem',
+		h: '2.5rem',
+		rounded: 'full',
 		...mutedText,
 		cursor: 'pointer',
 		outline: 'none',
-		transition: 'color 120ms ease',
+		transition: 'background-color 120ms ease, color 120ms ease',
 		'&[aria-current="page"], &[aria-pressed="true"], &[aria-expanded="true"]': {
-			color: 'scrapscache.text'
+			bg: 'scrapscache.navigationActive',
+			color: 'scrapscache.navigationActiveText'
 		},
-		'&[aria-current="page"] [data-tab-icon], &[aria-pressed="true"] [data-tab-icon], &[aria-expanded="true"] [data-tab-icon]':
-			{
-				bg: 'scrapscache.navigationActive',
-				color: 'scrapscache.navigationActiveText'
-			},
-		'&:focus-visible [data-tab-icon]': { boxShadow: '0 0 0 2px token(colors.scrapscache.focus)' }
+		'&:focus-visible': { boxShadow: '0 0 0 2px token(colors.scrapscache.focus)' }
 	}),
-	railLabel: css({
-		whiteSpace: 'nowrap',
-		maxW: 'full',
-		overflow: 'hidden',
-		textOverflow: 'ellipsis',
-		// A short column (the folded phone on its side) has room for the icons alone.
-		'@media (max-height: 520px)': { display: 'none' }
-	})
+	pillIcon: css(gridCenter),
+	pillLabel: css({ srOnly: true })
 };
 
 export const topbarSyncTone = {

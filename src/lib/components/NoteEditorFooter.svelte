@@ -409,11 +409,42 @@
 		event.preventDefault();
 	}
 
+	const TOUCH_TAP_SLOP = 8;
+
+	/**
+	 * A touch presses the button on release, not on the click. With the note body
+	 * focused, iOS answers the tap with synthetic mouse events that blur the body
+	 * and drop the keyboard; the footer then moves down with the sheet before the
+	 * click arrives, so it lands on nothing. Cancelling the touchend stops those
+	 * events, and the click with them, so the button is pressed here instead.
+	 */
+	function pressFooterButtonOnRelease(event: TouchEvent) {
+		// A touch that scrolled is already spoken for.
+		if (!event.cancelable || event.changedTouches.length !== 1) return;
+		const target = event.target instanceof Element ? event.target : null;
+		const button = target?.closest('button');
+		if (!button) return;
+		const touch = event.changedTouches[0];
+		const box = button.getBoundingClientRect();
+		if (
+			touch.clientX < box.left - TOUCH_TAP_SLOP ||
+			touch.clientX > box.right + TOUCH_TAP_SLOP ||
+			touch.clientY < box.top - TOUCH_TAP_SLOP ||
+			touch.clientY > box.bottom + TOUCH_TAP_SLOP
+		) {
+			return;
+		}
+		event.preventDefault();
+		button.click();
+	}
+
 	function footerInteractions(node: HTMLElement) {
 		node.addEventListener('pointerdown', keepFooterStationary);
+		node.addEventListener('touchend', pressFooterButtonOnRelease);
 		return {
 			destroy() {
 				node.removeEventListener('pointerdown', keepFooterStationary);
+				node.removeEventListener('touchend', pressFooterButtonOnRelease);
 			}
 		};
 	}

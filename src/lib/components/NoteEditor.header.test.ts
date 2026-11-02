@@ -53,6 +53,17 @@ function dispatchTouchPointer(
 	return event;
 }
 
+function releaseTouch(
+	target: Element,
+	point: { clientX: number; clientY: number },
+	cancelable = true
+): Event {
+	const event = new Event('touchend', { bubbles: true, cancelable });
+	Object.defineProperty(event, 'changedTouches', { value: [point] });
+	target.dispatchEvent(event);
+	return event;
+}
+
 function setCaret(element: Element, offset: number) {
 	const range = document.createRange();
 	range.setStart(element.firstChild ?? element, offset);
@@ -527,6 +538,30 @@ describe('NoteEditor task focus', () => {
 		expect(document.activeElement).toBe(editor);
 	});
 
+	it('presses a touched footer button on release, before the keyboard can move it', async () => {
+		notesStore.notes = [note({ body: 'Plain note' })];
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const color = container.querySelector('footer button[aria-label="Color"]') as HTMLButtonElement;
+		editor.focus();
+
+		// A finger that slid off the button, or a touch that scrolled, is not a press.
+		const slipped = releaseTouch(color, { clientX: 100, clientY: 0 });
+		const scrolled = releaseTouch(color, { clientX: 0, clientY: 0 }, false);
+		await tick();
+		expect(slipped.defaultPrevented).toBe(false);
+		expect(scrolled.defaultPrevented).toBe(false);
+		expect(container.querySelector('[data-editor-popup]')).toBeNull();
+
+		const released = releaseTouch(color, { clientX: 0, clientY: 0 });
+		await tick();
+		expect(released.defaultPrevented).toBe(true);
+		expect(container.querySelector('[data-editor-popup]')).not.toBeNull();
+		expect(document.activeElement).toBe(editor);
+	});
+
 	it('applies a touched color without dismissing the keyboard', async () => {
 		notesStore.notes = [note({ body: 'Plain note' })];
 		const { container } = render(NoteEditor, {
@@ -736,6 +771,18 @@ describe('NoteEditor share menu', () => {
 		await tick();
 		return view;
 	}
+
+	it('opens the share menu from a touch release', async () => {
+		vi.spyOn(syncStore, 'activeProfile', 'get').mockReturnValue(workspace);
+		notesStore.notes = [note()];
+		const { findByRole, getByRole } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+
+		releaseTouch(getByRole('button', { name: 'Share' }), { clientX: 0, clientY: 0 });
+
+		expect(await findByRole('menu', { name: 'Share' })).toBeTruthy();
+	});
 
 	it('shares only a link to the note through the system share sheet', async () => {
 		const share = vi.fn().mockResolvedValue(undefined);

@@ -114,6 +114,64 @@ describe('NoteEditor photo markers', () => {
 		expect(chip?.className).not.toContain('markdown-token-photo-missing');
 	});
 
+	it('appends a photo from the Attach button after a paste that added no photo', async () => {
+		notesStore.notes = [note()];
+		const { container, getByRole } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+		const editor = caretAt(container, 1, 'The cove:'.length);
+
+		editor.dispatchEvent(pasteEvent([new File(['x'], 'notes.txt', { type: 'text/plain' })]));
+		await vi.waitFor(() => {
+			expect(container.querySelectorAll('[data-body-editor] [data-line-text]')).toHaveLength(3);
+			expect(notesStore.flushNote).toHaveBeenCalled();
+		});
+
+		getByRole('button', { name: 'Attach' }).click();
+		const input = document.body.querySelector('input[type="file"]') as HTMLInputElement;
+		Object.defineProperty(input, 'files', {
+			value: [new File(['y'], 'late.png', { type: 'image/png' })]
+		});
+		input.dispatchEvent(new Event('change'));
+		await vi.waitFor(() => {
+			expect(container.querySelector('#photo-quality-title')).not.toBeNull();
+		});
+		(document.querySelector('button[class*="primary"]') as HTMLButtonElement).click();
+
+		await vi.waitFor(() => {
+			expect(lineTexts(container)).toEqual([
+				'Sunscreen',
+				'The cove:',
+				'Parking',
+				'![late.png](photo:img-late.png)',
+				''
+			]);
+		});
+	});
+
+	it('draws a marker whose id names a file attachment as inert', () => {
+		notesStore.notes = [
+			note({
+				body: '![plan.pdf](photo:file-1)',
+				images: [
+					{
+						id: 'file-1',
+						mime: 'application/pdf',
+						dataUrl: 'data:application/pdf;base64,JVBERi0=',
+						name: 'plan.pdf',
+						createdAt: 1
+					}
+				]
+			})
+		];
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+
+		const chip = container.querySelector('[data-photo="file-1"]');
+		expect(chip?.className).toContain('markdown-token-photo-missing');
+	});
+
 	it('draws a marker whose photo is gone as inert', () => {
 		notesStore.notes = [note({ body: '![old.png](photo:missing)', images: [] })];
 		const { container } = render(NoteEditor, {

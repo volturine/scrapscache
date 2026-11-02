@@ -7,6 +7,9 @@ const MARKER_RE = /^!\[([^\]\n]*)\]\(photo:([^\s()]+)\)$/;
 
 export type PhotoMarker = { name: string; id: string };
 
+/** The caret a photo was pasted or dropped at; null places it at the end of the body. */
+export type PhotoPlacement = { line: number; offset: number };
+
 /** The marker line for a photo. Characters the syntax uses are kept out of the name. */
 export function photoMarker(photo: Pick<NoteImage, 'id' | 'name'>): string {
 	const name = (photo.name ?? '').replace(/[\]\n\r]/g, ' ').trim() || 'photo';

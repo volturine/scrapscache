@@ -42,6 +42,7 @@
 	} from '#lib/noteImages.js';
 	import { displayImageSrc } from '#lib/imageThumb.js';
 	import type { ImageQuality } from '#lib/imageOptimize.js';
+	import type { PhotoPlacement } from '#lib/photoMarker.js';
 	import { extractHttpUrls, localLinkCard } from '#lib/linkPreview.js';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
 	import { sha256 } from '#lib/syncHash.js';
@@ -116,7 +117,8 @@
 		onDelete?: () => void;
 		onImagesChange?: (images: NoteImage[]) => void;
 		/** Photos just attached by the writer, so the body can mark their place. */
-		onPhotosAdded?: (photos: NoteImage[]) => void;
+		/** New photos and the caret they were pasted or dropped at, if any. */
+		onPhotosAdded?: (photos: NoteImage[], at: PhotoPlacement | null) => void;
 		/** Controls after Color, at the end of the footer: the composer's own. */
 		trailing?: Snippet;
 	} = $props();
@@ -130,6 +132,7 @@
 	let focusedCanvas = $state<NoteImage | null>(null);
 	let attachError = $state('');
 	let filesAwaitingQuality = $state<File[] | null>(null);
+	let placementAwaitingQuality: PhotoPlacement | null = null;
 	let previewsExpanded = $state(false);
 
 	const imageAttachments = $derived(images.filter(isImageAttachment));
@@ -241,22 +244,24 @@
 		shareOpen = false;
 	}
 
-	export function handlePickedFiles(picked: File[]) {
+	/** The placement travels with the files, so a pick that adds nothing leaves no stale caret. */
+	export function handlePickedFiles(picked: File[], at: PhotoPlacement | null = null) {
 		if (picked.length === 0) return;
 		if (picked.some(looksLikePhoto)) {
 			filesAwaitingQuality = picked;
+			placementAwaitingQuality = at;
 			return;
 		}
-		void addFiles(picked, 'compressed');
+		void addFiles(picked, 'compressed', at);
 	}
 
 	function chooseImageQuality(quality: ImageQuality) {
 		const picked = filesAwaitingQuality;
 		filesAwaitingQuality = null;
-		if (picked) void addFiles(picked, quality);
+		if (picked) void addFiles(picked, quality, placementAwaitingQuality);
 	}
 
-	async function addFiles(picked: File[], imageQuality: ImageQuality) {
+	async function addFiles(picked: File[], imageQuality: ImageQuality, at: PhotoPlacement | null) {
 		attachError = '';
 		try {
 			const added = await Promise.all(picked.map((file) => fileToNoteImage(file, imageQuality)));
@@ -276,7 +281,7 @@
 			images = next;
 			onImagesChange?.(next);
 			const photos = unique.filter(isImageAttachment);
-			if (photos.length > 0) onPhotosAdded?.(photos);
+			if (photos.length > 0) onPhotosAdded?.(photos, at);
 			if (noteId) {
 				try {
 					await notesStore.flushNote(noteId, { images: next });

@@ -1961,8 +1961,7 @@ export const commandPaletteStyles = {
 		rounded: 0,
 		borderWidth: 0,
 		boxShadow: 'none',
-		bg: 'scrapscache.bg',
-		pt: 'env(safe-area-inset-top)'
+		bg: 'scrapscache.bg'
 	}),
 	inputRow: hstack({
 		flexShrink: 0,
@@ -2194,8 +2193,7 @@ export const textSettingsStyles = {
 		h: 'full',
 		rounded: 0,
 		borderWidth: 0,
-		boxShadow: 'none',
-		pt: 'env(safe-area-inset-top)'
+		boxShadow: 'none'
 	}),
 	header: hstack({
 		flexShrink: 0,
@@ -2821,10 +2819,10 @@ export const noteEditorStyles = {
 			position: 'absolute',
 			inset: 0,
 			display: 'flex',
-			alignItems: { base: 'flex-start', md: 'center' },
-			// Wider than a phone, shorter than a desktop: a foldable or tablet in
-			// landscape. Centering the card there leaves a band above the note.
-			'@media (min-width: 768px) and (max-height: 45rem)': { alignItems: 'flex-start' },
+			alignItems: 'flex-start',
+			// Centered only when tall as well as wide. A foldable or tablet in landscape
+			// is wide but short, and centering the card there leaves a band above the note.
+			'@media (min-width: 768px) and (min-height: 45.0625rem)': { alignItems: 'center' },
 			justifyContent: 'center'
 		},
 		variants: {
@@ -2847,8 +2845,8 @@ export const noteEditorStyles = {
 				// Short viewports take the full height: landscape phones, and a foldable
 				// or tablet that is wider than md but shorter than the 32rem card floor.
 				false: {
-					h: { base: 'full', md: 'max(72%, 32rem)' },
-					'@media (min-width: 768px) and (max-height: 45rem)': { h: 'full' },
+					h: 'full',
+					'@media (min-width: 768px) and (min-height: 45.0625rem)': { h: 'max(72%, 32rem)' },
 					maxW: '2xl',
 					rounded: 'sheet',
 					boxShadow: 'noteSheet'

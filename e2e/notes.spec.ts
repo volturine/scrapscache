@@ -680,7 +680,7 @@ test.describe('on a phone', () => {
 
 		// The bar's surface runs the full width of the screen behind the app frame, so
 		// on a phone with a side status bar (iPhone Duo folded) it reads edge to edge.
-		const bleed = await page.locator('[data-tab-bar-bleed]').boundingBox();
+		const bleed = await page.locator('[data-tabbar-safe-area]').boundingBox();
 		const barBox = await tabs.boundingBox();
 		expect(bleed!.x).toBe(0);
 		expect(bleed!.width).toBe(390);
@@ -786,6 +786,27 @@ test.describe('on a phone', () => {
 		await expect(page.locator('[data-view-title]')).toHaveText('Kanban');
 		await expect(page.getByRole('region', { name: 'Labels' })).toBeHidden();
 	});
+});
+
+test('a note is centered on a tall wide window, and fills a short one with no band above it', async ({
+	page
+}) => {
+	await page.setViewportSize({ width: 1180, height: 900 });
+	await openEmptyApp(page);
+	await createNote(page, 'Fold', 'Landscape');
+	await noteCard(page, 'Fold').click();
+	const sheet = editor(page);
+	const tall = (await sheet.boundingBox())!;
+	// Centered at its 72% height, with room above and below.
+	expect(tall.y).toBeGreaterThan(80);
+	expect(900 - (tall.y + tall.height)).toBeGreaterThan(80);
+
+	await page.setViewportSize({ width: 1180, height: 680 });
+	await expect
+		.poll(async () => (await sheet.boundingBox())!.y, { message: 'the card sits at the top' })
+		.toBeLessThan(80);
+	const short = (await sheet.boundingBox())!;
+	expect(short.y + short.height).toBeGreaterThan(680 - 40);
 });
 
 test('on a phone the composer stays under the top bar while the feed scrolls', async ({ page }) => {

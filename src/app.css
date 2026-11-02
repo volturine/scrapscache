@@ -21,7 +21,7 @@
 	/* Installed iOS reserves a visible strip even when the top safe area is zero. */
 	--app-frame-top: var(--app-inset-top);
 	/* Where the folded iPhone Duo's rail starts: under the clock and signal iOS draws at the top of its column. */
-	--app-rail-top: 10.5rem;
+	--app-rail-top: 168px;
 }
 /* WebKit reads an edge element's background directly when it exceeds 10px. */
 html.ios-standalone {
@@ -47,7 +47,7 @@ html.keyboard-open {
 	 * hold its height and leave a gap between an open note and the keys; on
 	 * Android it would ride up on top of them. */
 	html.keyboard-open [data-phone-tabs],
-	html.keyboard-open [data-tab-bar-bleed] {
+	html.keyboard-open [data-tabbar-safe-area] {
 		display: none;
 	}
 	/* iPhone Duo keeps a column down one side for the status bar; the tabs stand
@@ -55,7 +55,7 @@ html.keyboard-open {
 	html[data-side-column] {
 		--app-tabbar-height: 0px;
 	}
-	html[data-side-column] [data-tab-bar-bleed] {
+	html[data-side-column] [data-tabbar-safe-area] {
 		display: none;
 	}
 }

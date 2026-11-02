@@ -253,7 +253,7 @@ test.describe('on a phone', () => {
 			.boundingBox())!;
 		expect(actions.x + actions.width).toBeLessThanOrEqual(frameRight);
 		// The tab bar's surface still runs the full width under the status bar.
-		const bleed = (await page.locator('[data-tab-bar-bleed]').boundingBox())!;
+		const bleed = (await page.locator('[data-tabbar-safe-area]').boundingBox())!;
 		expect(bleed.x + bleed.width).toBe(390);
 	});
 

@@ -2,7 +2,12 @@
 import 'vitest';
 import 'fake-indexeddb/auto';
 import { afterEach, vi } from 'vitest';
-import { closeDeviceDatabase, DEVICE_DB_NAME, dropDatabase } from '#lib/db/idb.js';
+import {
+	closeDeviceDatabase,
+	DEVICE_DB_NAME,
+	dropDatabase,
+	forgetReleasedProfiles
+} from '#lib/db/idb.js';
 import { resetTombstoneCaches } from '#lib/syncTombstones.js';
 import { installHorizontalWheel } from '#lib/horizontalWheel.js';
 import { resetEnv } from './env';
@@ -117,4 +122,7 @@ afterEach(async () => {
 		for (const db of await indexedDB.databases()) if (db.name) names.add(db.name);
 	}
 	for (const name of names) await dropDatabase(name);
+	// The drops above read to the open connections as another window deleting the
+	// workspace, which marks it refused; the next case opens it afresh.
+	forgetReleasedProfiles();
 });

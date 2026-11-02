@@ -323,6 +323,7 @@ export class NotesStore {
 				this.recordPersistenceError('Could not reclaim unused photo storage', err)
 			);
 		}
+		await this.dropAbandonedDraft();
 		this.purgeOldTrash();
 		this.loaded = true;
 	}
@@ -503,7 +504,25 @@ export class NotesStore {
 	async discardIfEmpty(id: string): Promise<void> {
 		const n = this.notes.find((x) => x.id === id);
 		if (!n || !noteIsBlank(n)) return;
-		await this.deleteNoteForever(id);
+		// Called as a bar or sheet closes, with nothing waiting on it: a workspace
+		// that went away meanwhile is recorded, not thrown past every handler.
+		try {
+			await this.deleteNoteForever(id);
+		} catch (err) {
+			this.recordPersistenceError('Could not drop an empty note', err);
+		}
+	}
+
+	/**
+	 * The bar's draft from a window that went away mid-write (see
+	 * `composerStore.abandonedDraft`): dropped if nothing was written into it,
+	 * kept otherwise. A draft of another workspace is left for that one's load.
+	 */
+	private async dropAbandonedDraft(): Promise<void> {
+		const id = composerStore.abandonedDraft();
+		if (!id || !this.notes.some((n) => n.id === id)) return;
+		composerStore.forgetAbandonedDraft(id);
+		await this.discardIfEmpty(id);
 	}
 
 	/** Delete trashed notes whose purge time has come (trashPurgeAt, which the countdown shows). */
@@ -1252,6 +1271,7 @@ export class NotesStore {
 		} catch (err) {
 			this.recordPersistenceError('Could not refresh from IndexedDB', err);
 		}
+		await this.dropAbandonedDraft();
 		this.purgeOldTrash();
 	}
 

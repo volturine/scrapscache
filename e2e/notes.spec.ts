@@ -873,6 +873,24 @@ test.describe('in iPhone Duo’s side column', () => {
 			await openWithColumn(page);
 			await expectRailInColumn(page, viewport);
 			await expect(page.locator('[data-tabbar-safe-area]')).toHaveCSS('display', 'none');
+			// The bar: sync and More on the left, the view name, then a search field that
+			// opens the palette, since the column takes the right-hand side.
+			const header = page.locator('header').first();
+			const sync = header.getByRole('button', { name: /^Sync settings/ });
+			const more = header.getByRole('button', { name: 'More' });
+			const title = header.locator('[data-view-title]');
+			const search = header.getByRole('button', { name: 'Search notes, labels and actions' });
+			const left = async (locator: Locator) => (await locator.boundingBox())!.x;
+			expect(await left(sync)).toBeLessThan(await left(more));
+			expect(await left(more)).toBeLessThan(await left(title));
+			expect(await left(title)).toBeLessThan(await left(search));
+			const searchBox = (await search.boundingBox())!;
+			expect(searchBox.x + searchBox.width).toBeLessThanOrEqual(viewport.width - column.right);
+			await search.click();
+			await expect(
+				page.getByRole('dialog', { name: 'Search notes, labels and actions' })
+			).toBeVisible();
+			await page.keyboard.press('Escape');
 			const rail = page.getByRole('navigation', { name: 'Main', exact: true });
 			await rail.getByRole('button', { name: 'Labels' }).click();
 			await expect(page.locator('[data-view-title]')).toHaveText('Labels');
@@ -916,9 +934,18 @@ test.describe('in iPhone Duo’s side column', () => {
 		}) => {
 			await openWithColumn(page);
 			await expectRailInColumn(page, viewport);
-			// The rail is the navigation: no sidebar, and nothing to toggle one with.
+			// The rail is the navigation: no sidebar, and nothing to toggle one with. Sync
+			// and Settings keep left of the search field, as on the folded phone.
 			await expect(page.getByRole('navigation', { name: 'Main navigation' })).toHaveCount(0);
 			await expect(page.getByRole('button', { name: 'Toggle sidebar' })).toHaveCount(0);
+			const header = page.locator('header').first();
+			const syncX = (await header.getByRole('button', { name: /^Sync settings/ }).boundingBox())!.x;
+			const settingsX = (await header
+				.getByRole('button', { name: 'Settings', exact: true })
+				.boundingBox())!.x;
+			const fieldX = (await header.getByRole('searchbox').boundingBox())!.x;
+			expect(syncX).toBeLessThan(settingsX);
+			expect(settingsX).toBeLessThan(fieldX);
 			// The frame and its top bar end where the column begins, so the rail covers nothing.
 			const frame = (await page.locator('.app-viewport').boundingBox())!;
 			expect(frame.x + frame.width).toBeLessThanOrEqual(viewport.width - column.right);

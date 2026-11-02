@@ -67,7 +67,8 @@ the status bar runs down a side column that iOS reserves, folded or open; the
 phone tab bar stands in that column as a rail (`PhoneTabBar` with `rail`, from
 `sideColumn.svelte.ts`) at every width, so the notes get the cover screen's full
 height and the open phone on its side keeps the same navigation in place of the
-sidebar, which it does not show. The tabs gather at the
+sidebar, which it does not show. Beside the column the top bar keeps sync and
+settings on the left, then the view name, then a search field. The tabs gather at the
 column's bottom: iOS draws the Dynamic Island, clock and signal at its top, and
 a Live Activity grows the island, so no fixed offset from the top is safe.
 

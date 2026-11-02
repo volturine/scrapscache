@@ -3504,6 +3504,27 @@ export const historyStyles = {
 export const topbarStyles = {
 	/** The phone bar's view name; the buttons after it keep to the right. */
 	phoneTitle: css({ ...flexFill, px: 'xs', textStyle: 'heading', ...truncateText }),
+	/** iPhone Duo's phone bar: the view name sits between the controls and the search field. */
+	columnTitle: css({ flexShrink: 0, maxW: '40%', px: 'xs', textStyle: 'heading', ...truncateText }),
+	/** The search field on iPhone Duo's phone bar: it opens the palette, where a phone searches. */
+	columnSearch: css({
+		display: 'flex',
+		alignItems: 'center',
+		gap: 'xs',
+		h: '2.5rem',
+		minW: 0,
+		flex: '1',
+		rounded: 'pill',
+		borderWidth: 'hairline',
+		borderColor: 'scrapscache.border',
+		bg: 'scrapscache.surface',
+		px: 'sm',
+		textStyle: 'body',
+		...mutedText,
+		...clickable,
+		textAlign: 'left',
+		'&:focus-visible': { boxShadow: '0 0 0 2px token(colors.scrapscache.focus)', outline: 'none' }
+	}),
 	markdownLabel: css({ minW: 0, flex: '1' }),
 	markdownCheck: css({
 		...gridCenter,

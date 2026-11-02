@@ -372,6 +372,31 @@
 	{#if selectionStore.active}
 		<!-- The bar works on the picked notes until the selection is let go. -->
 		<SelectionBar />
+	{:else if mobile.current && sideColumn.side}
+		<!-- The folded iPhone Duo: its column stands at the right, so the controls keep
+		     left of the view name, and a search field takes the rest. The field opens
+		     the palette, where a phone searches. -->
+		{@render syncButton()}
+		<SettingsMenu
+			phone
+			bind:open={settingsOpen}
+			onExport={startBackupExport}
+			onImport={startBackupImport}
+			onTextSettings={openTextSettings}
+			importing={importingBackup}
+			importError={backupImportError}
+		/>
+		<span class={styles.columnTitle} data-view-title>{viewTitle}</span>
+		<button
+			type="button"
+			class={styles.columnSearch}
+			onclick={() => (uiStore.paletteOpen = true)}
+			aria-label="Search notes, labels and actions"
+			aria-keyshortcuts={apple ? 'Meta+K' : 'Control+K'}
+		>
+			<Search class={[iconMd, styles.searchIcon]} aria-hidden="true" />
+			<span>Search</span>
+		</button>
 	{:else if mobile.current}
 		<!-- A phone has the tab bar for its places, so the bar only names the view. -->
 		<span class={styles.phoneTitle} data-view-title>{viewTitle}</span>
@@ -385,20 +410,30 @@
 			importing={importingBackup}
 			importError={backupImportError}
 		/>
+	{:else if sideColumn.side}
+		<!-- The open iPhone Duo on its side: the rail in its column replaces the sidebar,
+		     and the controls keep left of the search field as on the folded phone. -->
+		{@render syncButton()}
+		<SettingsMenu
+			bind:open={settingsOpen}
+			onExport={startBackupExport}
+			onImport={startBackupImport}
+			onTextSettings={openTextSettings}
+			importing={importingBackup}
+			importError={backupImportError}
+		/>
+		{@render searchBox()}
 	{:else}
-		<!-- With the rail in iPhone Duo's column there is no sidebar to toggle. -->
-		{#if !sideColumn.side}
-			<Tooltip content="Toggle sidebar">
-				<button
-					class={iconButton({ variant: 'ghost', size: { base: 'compact', sm: 'standard' } })}
-					title="Toggle sidebar"
-					onclick={() => uiStore.toggleSidebar()}
-					aria-label="Toggle sidebar"
-				>
-					<MenuIcon class={iconMd} aria-hidden="true" />
-				</button>
-			</Tooltip>
-		{/if}
+		<Tooltip content="Toggle sidebar">
+			<button
+				class={iconButton({ variant: 'ghost', size: { base: 'compact', sm: 'standard' } })}
+				title="Toggle sidebar"
+				onclick={() => uiStore.toggleSidebar()}
+				aria-label="Toggle sidebar"
+			>
+				<MenuIcon class={iconMd} aria-hidden="true" />
+			</button>
+		</Tooltip>
 		{@render searchBox()}
 		{@render syncButton()}
 		<SettingsMenu

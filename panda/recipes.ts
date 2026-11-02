@@ -727,6 +727,14 @@ const choiceCardRecipe = defineSlotRecipe({
 			}
 		},
 		compact: { true: { root: { minH: '0', px: 'lg', py: 'md' } } },
+		// Title over description, in the colour of the button that carries the card.
+		stacked: {
+			true: {
+				root: { display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '3xs' },
+				title: { color: 'inherit' },
+				description: { color: 'inherit' }
+			}
+		},
 		kind: { compressed: { description: { opacity: 0.85 } } }
 	}
 });

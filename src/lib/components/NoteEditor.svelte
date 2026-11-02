@@ -47,6 +47,7 @@
 	import { matchTrailingEmoticon } from '#lib/emoticons.js';
 	import { isKeyboardField } from '#lib/appViewport.js';
 	import { modalLayer } from '#lib/modalLayer.js';
+	import { pressOnTouchRelease } from '#lib/touchPress.js';
 	import { setEditorUndo, undoChord } from '#lib/stores/actionUndo.svelte.js';
 
 	let {
@@ -422,6 +423,30 @@
 		reminderOpen = false;
 		labelOpen = false;
 		footer?.closeMenus();
+	}
+
+	/**
+	 * The colour palette and the label menu open over a note being typed. With the
+	 * software keyboard up they leave focus in the field, so the keyboard stays and
+	 * the sheet does not jump; otherwise the dialog takes focus as usual.
+	 */
+	let popupFocus = $state<{
+		trapFocus?: boolean;
+		restoreFocus?: boolean;
+		initialFocusEl?: () => HTMLElement | null;
+	}>({});
+	function openFooterPopup(open: () => void) {
+		closePopups();
+		const active = document.activeElement;
+		const typing =
+			document.documentElement.classList.contains('keyboard-open') &&
+			active instanceof HTMLElement &&
+			isKeyboardField(active) &&
+			editorDialog?.contains(active) === true;
+		popupFocus = typing
+			? { trapFocus: false, restoreFocus: false, initialFocusEl: () => active }
+			: {};
+		open();
 	}
 
 	function previewHistoryVersion(
@@ -1146,14 +1171,8 @@
 							fillPhotos={photosFillEditor}
 							onPhotosAdded={placePhotos}
 							color={note.color}
-							onOpenColor={() => {
-								closePopups();
-								paletteOpen = true;
-							}}
-							onOpenTags={() => {
-								closePopups();
-								labelOpen = true;
-							}}
+							onOpenColor={() => openFooterPopup(() => (paletteOpen = true))}
+							onOpenTags={() => openFooterPopup(() => (labelOpen = true))}
 							onCopy={() => void copyNote()}
 							onShare={() => void shareNote()}
 							onRestore={() => {
@@ -1185,12 +1204,14 @@
 				if (!details.open) paletteOpen = false;
 			}}
 			preventScroll={false}
+			{...popupFocus}
 		>
 			<Dialog.Backdrop class={dialogBackdrop} />
 			<Dialog.Positioner
 				class={dialogPositioner}
 				data-editor-popup
 				onpointerdown={keepEditorFocused}
+				{@attach pressOnTouchRelease}
 			>
 				<Dialog.Content class={styles.popupContent}>
 					<ColorPalette
@@ -1242,12 +1263,14 @@
 				if (!details.open) labelOpen = false;
 			}}
 			preventScroll={false}
+			{...popupFocus}
 		>
 			<Dialog.Backdrop class={dialogBackdrop} />
 			<Dialog.Positioner
 				class={dialogPositioner}
 				data-editor-popup
 				onpointerdown={keepEditorFocused}
+				{@attach pressOnTouchRelease}
 			>
 				<Dialog.Content class={styles.popupContent}>
 					<LabelMenu

@@ -10,6 +10,20 @@ import NoteEditor from './NoteEditor.svelte';
 import { syncStore } from '#lib/stores/sync.svelte.js';
 import { readNoteLink, workspaceLinkTag } from '#lib/noteLinks.js';
 
+const keyboardFrame = vi.hoisted(() => ({ holds: 0, releases: 0 }));
+vi.mock('#lib/appViewport.js', async (importOriginal) => {
+	const original = await importOriginal<typeof import('#lib/appViewport.js')>();
+	return {
+		...original,
+		holdKeyboardFrame: () => {
+			keyboardFrame.holds += 1;
+			return () => {
+				keyboardFrame.releases += 1;
+			};
+		}
+	};
+});
+
 function note(partial: Partial<Note> = {}): Note {
 	return {
 		id: 'note-1',
@@ -562,6 +576,25 @@ describe('NoteEditor task focus', () => {
 		expect(document.activeElement).toBe(editor);
 	});
 
+	it('holds the keyboard frame from the attach press until the picker closes', () => {
+		notesStore.notes = [note({ body: 'Plain note' })];
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+		const attach = container.querySelector(
+			'footer button[aria-label="Attach"]'
+		) as HTMLButtonElement;
+		keyboardFrame.holds = 0;
+		keyboardFrame.releases = 0;
+
+		releaseTouch(attach, { clientX: 0, clientY: 0 });
+		expect(keyboardFrame).toEqual({ holds: 1, releases: 0 });
+
+		const input = document.body.querySelector('input[type="file"]') as HTMLInputElement;
+		input.dispatchEvent(new Event('cancel'));
+		expect(keyboardFrame).toEqual({ holds: 1, releases: 1 });
+	});
+
 	it('opens the attach picker under its button and keeps the keyboard', async () => {
 		notesStore.notes = [note({ body: 'Plain note' })];
 		const { container } = render(NoteEditor, {
@@ -596,6 +629,37 @@ describe('NoteEditor task focus', () => {
 		]);
 		expect(document.activeElement).toBe(editor);
 		input.remove();
+	});
+
+	it('leaves focus in the body while the palette is open over the software keyboard', async () => {
+		notesStore.notes = [note({ body: 'Plain note' })];
+		document.documentElement.classList.add('keyboard-open');
+		try {
+			const { container } = render(NoteEditor, {
+				props: { noteId: 'note-1', onClose: () => {} }
+			});
+			const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+			const color = container.querySelector(
+				'footer button[aria-label="Color"]'
+			) as HTMLButtonElement;
+			editor.focus();
+
+			releaseTouch(color, { clientX: 0, clientY: 0 });
+			await tick();
+			await new Promise((resolve) => requestAnimationFrame(resolve));
+			await new Promise((resolve) => setTimeout(resolve, 20));
+			const popup = container.querySelector('[data-editor-popup]');
+			expect(popup).not.toBeNull();
+			expect(document.activeElement).toBe(editor);
+
+			await fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+			await tick();
+			await new Promise((resolve) => setTimeout(resolve, 20));
+			expect(container.querySelector('[data-editor-popup]')).toBeNull();
+			expect(document.activeElement).toBe(editor);
+		} finally {
+			document.documentElement.classList.remove('keyboard-open');
+		}
 	});
 
 	it('applies a touched color without dismissing the keyboard', async () => {

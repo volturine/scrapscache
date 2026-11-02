@@ -5,6 +5,7 @@ import {
 	appBottomInset,
 	appKeyboardFrame,
 	attachAppViewport,
+	holdKeyboardFrame,
 	isKeyboardField,
 	isKeyboardOccluding,
 	isSoftwareKeyboardVisible,
@@ -286,6 +287,39 @@ describe('attachAppViewport', () => {
 		expect(root.dataset.sideColumn).toBe('right');
 		detach();
 		publishSideColumn(null);
+	});
+
+	it('keeps the keyboard frame on hold while a picker drops the keyboard', () => {
+		vi.stubGlobal('innerWidth', 1024);
+		vi.stubGlobal('innerHeight', 768);
+		vi.stubGlobal('navigator', { ...navigator, maxTouchPoints: 5 });
+		vi.stubGlobal('visualViewport', {
+			height: 768,
+			offsetTop: 0,
+			addEventListener: () => {},
+			removeEventListener: () => {}
+		});
+		document.documentElement.classList.add('editor-open');
+		const body = document.createElement('textarea');
+		document.body.append(body);
+		const detach = attachAppViewport(document.body);
+		const root = document.documentElement;
+		body.focus();
+		Object.assign(window.visualViewport!, { height: 400 });
+		window.dispatchEvent(new Event('resize'));
+		expect(root.style.getPropertyValue('--app-keyboard-bottom')).toBe('368px');
+
+		const release = holdKeyboardFrame();
+		Object.assign(window.visualViewport!, { height: 768 });
+		window.dispatchEvent(new Event('resize'));
+		expect(root.classList.contains('keyboard-open')).toBe(true);
+		expect(root.style.getPropertyValue('--app-keyboard-bottom')).toBe('368px');
+
+		release();
+		expect(root.classList.contains('keyboard-open')).toBe(false);
+		expect(root.style.getPropertyValue('--app-keyboard-bottom')).toBe('0px');
+		release();
+		detach();
 	});
 });
 

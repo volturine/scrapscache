@@ -125,6 +125,17 @@ Automatic signing creates the provisioning profile on the first run. Each upload
 Xcode project. The build appears under TestFlight once Apple has processed it;
 internal testers (the team) need no review, external groups do.
 
+CI uploads a build after every development deployment (the `testflight` job in
+`.github/workflows/ci-cd.yaml`, on GitHub's `xcode-27` runner, from the same
+commit the dev Workers run) once four repository secrets exist: `APPLE_TEAM_ID`,
+`ASC_KEY_ID`, `ASC_ISSUER_ID` and `ASC_PRIVATE_KEY` (the whole `.p8` file). Make
+the key under App Store Connect › Users and Access › Integrations › App Store
+Connect API with the **Admin** role: `xcodebuild` signs in the cloud with it and
+creates the distribution certificate itself, which Apple only lets an Admin key
+do (an App Manager key fails with a cloud signing permission error). Without the
+secrets, or on a runner whose Xcode 27 lacks the iOS 27.1 SDK the shell needs,
+the job writes a notice and steps aside rather than failing the run.
+
 The App Store icon is `AppIcon-1024.png` in the asset catalog, flattened from
 the web icon (Apple masks the corners itself and rejects an alpha channel); the
 launch screen shows that icon on the system background.

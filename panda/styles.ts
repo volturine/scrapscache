@@ -3580,9 +3580,12 @@ export const phoneTabsStyles = {
 		gap: 'xs',
 		zIndex: 20,
 		overflow: 'hidden',
-		// Tabs the keyboard leaves no room for fade out at the top edge, not cut.
+		// With the keyboard up the rail ends at the keys: the tabs then pack down from
+		// the floor, first places first, and those the keyboard leaves no room for
+		// fade out at its edge, not cut.
 		'html.keyboard-open &': {
-			maskImage: 'linear-gradient(to top, black calc(100% - 2rem), transparent)'
+			justifyContent: 'flex-start',
+			maskImage: 'linear-gradient(to bottom, black calc(100% - 2rem), transparent)'
 		}
 	}),
 	railRight: css({ right: 0, w: 'var(--app-inset-right)' }),
@@ -3618,7 +3621,9 @@ export const phoneTabsStyles = {
 		whiteSpace: 'nowrap',
 		maxW: 'full',
 		overflow: 'hidden',
-		textOverflow: 'ellipsis'
+		textOverflow: 'ellipsis',
+		// A short column (the folded phone on its side) has room for the icons alone.
+		'@media (max-height: 520px)': { display: 'none' }
 	})
 };
 

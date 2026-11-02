@@ -878,6 +878,24 @@ test.describe('in iPhone Duo’s side column', () => {
 			await expect(page.locator('[data-view-title]')).toHaveText('Labels');
 		});
 
+		test('on its side, the short column still shows all five tabs, as icons', async ({ page }) => {
+			await page.setViewportSize({ width: 678, height: 466 });
+			await openWithColumn(page, 'left');
+			const rail = page.getByRole('navigation', { name: 'Main', exact: true });
+			const box = (await rail.boundingBox())!;
+			const tabs = rail.getByRole('button');
+			await expect(tabs).toHaveCount(5);
+			for (const tab of await tabs.all()) {
+				const t = (await tab.boundingBox())!;
+				expect(t.y).toBeGreaterThanOrEqual(box.y);
+				expect(t.y + t.height).toBeLessThanOrEqual(box.y + box.height + 1);
+				// Icons only: the label is hidden, so the five fit under the island's height.
+				await expect(tab.locator('span').last()).toBeHidden();
+			}
+			// The island sits at the top of the column; the first tab stays under it.
+			expect((await tabs.first().boundingBox())!.y).toBeGreaterThanOrEqual(140);
+		});
+
 		test('a column down the left puts the rail there', async ({ page }) => {
 			await openWithColumn(page, 'left');
 			const rail = page.getByRole('navigation', { name: 'Main', exact: true });

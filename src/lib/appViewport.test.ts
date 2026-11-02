@@ -14,6 +14,7 @@ import {
 	readSafeAreaInsets,
 	rememberSafeArea
 } from './appViewport';
+import { publishSideColumn } from './sideColumn.svelte.js';
 
 const safe = { top: 59, right: 0, bottom: 34, left: 0 };
 
@@ -250,6 +251,40 @@ describe('attachAppViewport', () => {
 
 	it('reads a short visual viewport without touch as a zoom, not a keyboard', () => {
 		expect(typeInOpenNote(0)).toEqual({ keyboardOpen: false, keyboardBottom: '0px' });
+	});
+
+	it('follows a safe area that iOS applies after the first layout, with no resize event', () => {
+		// The probe's observer is the only thing that sees env() change without a resize.
+		let onProbeResize: (() => void) | null = null;
+		vi.stubGlobal(
+			'ResizeObserver',
+			class {
+				constructor(callback: () => void) {
+					onProbeResize = callback;
+				}
+				observe() {}
+				disconnect() {}
+			}
+		);
+		let right = '0px';
+		const realComputedStyle = window.getComputedStyle;
+		vi.stubGlobal('getComputedStyle', (element: Element) => {
+			const style = realComputedStyle(element);
+			return new Proxy(style, {
+				get: (target, key) => (key === 'paddingRight' ? right : Reflect.get(target, key))
+			});
+		});
+		const detach = attachAppViewport(document.body);
+		const root = document.documentElement;
+		expect(root.style.getPropertyValue('--app-inset-right')).toBe('0px');
+		expect(root.dataset.sideColumn).toBeUndefined();
+
+		right = '84px';
+		onProbeResize!();
+		expect(root.style.getPropertyValue('--app-inset-right')).toBe('84px');
+		expect(root.dataset.sideColumn).toBe('right');
+		detach();
+		publishSideColumn(null);
 	});
 });
 

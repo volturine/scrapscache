@@ -268,6 +268,20 @@ export function attachAppViewport(_node: HTMLElement) {
 		apply();
 	});
 
+	// iOS can apply the safe area after the page's first layout, and change it
+	// without resizing the window: iPhone Duo's status column arrived late on a
+	// first launch and the app kept measuring zero. A probe sized by env() changes
+	// size with every inset, and a resize observer on it reports what no event does.
+	const insetProbe = document.createElement('div');
+	insetProbe.setAttribute('aria-hidden', 'true');
+	insetProbe.style.cssText =
+		'position:fixed;top:0;left:0;visibility:hidden;pointer-events:none;' +
+		'width:calc(env(safe-area-inset-left,0px) + env(safe-area-inset-right,0px) * 2 + 1px);' +
+		'height:calc(env(safe-area-inset-top,0px) + env(safe-area-inset-bottom,0px) * 2 + 1px)';
+	document.body.append(insetProbe);
+	const insetObserver =
+		typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => apply());
+
 	apply();
 	const viewport = window.visualViewport;
 	viewport?.addEventListener('resize', apply);
@@ -279,6 +293,7 @@ export function attachAppViewport(_node: HTMLElement) {
 		attributes: true,
 		attributeFilter: ['class']
 	});
+	insetObserver?.observe(insetProbe);
 	return () => {
 		viewport?.removeEventListener('resize', apply);
 		viewport?.removeEventListener('scroll', apply);
@@ -286,6 +301,8 @@ export function attachAppViewport(_node: HTMLElement) {
 		document.removeEventListener('focusin', onFocusIn);
 		document.removeEventListener('focusout', onFocusOut);
 		editorClassObserver.disconnect();
+		insetObserver?.disconnect();
+		insetProbe.remove();
 		document.documentElement.classList.remove('keyboard-open');
 		const style = document.documentElement.style;
 		for (const name of [

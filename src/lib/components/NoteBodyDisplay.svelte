@@ -33,8 +33,8 @@
 		blocks.length > CARD_PREVIEW_LIMIT ? blocks.slice(0, CARD_PREVIEW_LIMIT) : blocks
 	);
 	const attachments = $derived(noteAttachments(note));
-	const photoIds = $derived(new Set(attachments.map((attachment) => attachment.id)));
 	const imageAttachments = $derived(attachments.filter(isImageAttachment));
+	const photoIds = $derived(new Set(imageAttachments.map((attachment) => attachment.id)));
 	const canvases = $derived(attachments.filter(isCanvasAttachment));
 	const photos = $derived(imageAttachments.filter((attachment) => !!displayImageSrc(attachment)));
 	const pendingPhotos = $derived(

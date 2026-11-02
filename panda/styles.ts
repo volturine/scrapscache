@@ -4045,6 +4045,12 @@ export const markdownStyles = css({
 		},
 		_hoverable: { borderColor: 'scrapscache.accent' }
 	},
+	// Shown read-only, on a card, the chip is text: only the editor opens a photo from
+	// it, so a pointer there would promise what the card's own tap delivers instead.
+	'&[data-note-body-display] .markdown-token-photo': {
+		cursor: 'inherit',
+		_hoverable: { borderColor: 'scrapscache.border' }
+	},
 	// The photo is gone (removed on another device): the chip stays readable but does nothing.
 	'& .markdown-token-photo-missing': {
 		color: 'scrapscache.textMuted',

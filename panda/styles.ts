@@ -187,8 +187,11 @@ export const appLayout = {
 		isolation: 'isolate',
 		px: 'lg',
 		// An overlaid software keyboard (.app-float ends at --app-keyboard-bottom) must not
-		// cover the last card, so the room under the feed grows with it.
-		pb: 'calc(var(--app-keyboard-bottom) + token(spacing.3xl))'
+		// cover the last card, so the room under the feed grows with it. The Labels
+		// screen fills the feed with Archive and Trash at its foot; that room would push
+		// them up over the keys, so it keeps the resting padding and sits still.
+		pb: 'calc(var(--app-keyboard-bottom) + token(spacing.3xl))',
+		'&:has([data-labels-screen])': { pb: '3xl' }
 	})
 };
 
@@ -1268,8 +1271,10 @@ export const kanbanViewStyles = {
 	columnsTrack: flex({ minW: 'max-content', align: 'flex-start', gap: 'md' }),
 	column: css({
 		...kanbanColumnSize,
-		// On a phone the next column shows at the edge, so the rest of the board is in sight.
-		w: { base: 'calc(var(--app-frame-width) - 4rem)', md: kanbanColumnSize.w },
+		// On a phone the next column shows at the edge, so the rest of the board is in
+		// sight; a wide phone (the open iPhone Duo) keeps the lanes at a lane's width
+		// rather than one huge column.
+		w: { base: 'min(calc(var(--app-frame-width) - 4rem), 26rem)', md: kanbanColumnSize.w },
 		scrollSnapAlign: { base: 'start', md: 'none' },
 		rounded: 'sheet',
 		bg: 'scrapscache.surfaceSubtle',

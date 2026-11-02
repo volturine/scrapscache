@@ -24,6 +24,7 @@
 	import type { NotePatch, ReminderRepeat } from '#lib/model/index.js';
 	import { splitPastedHeading } from '#lib/checklistBody.js';
 	import { dataTransferHasFiles, dragLeftElement, getClipboardFiles } from '#lib/noteImages.js';
+	import { photoMarker } from '#lib/photoMarker.js';
 	import { composerStore, type ComposerSeed } from '#lib/stores/composer.svelte.js';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
 	import { reminderStore } from '#lib/stores/reminders.svelte.js';
@@ -397,6 +398,8 @@
 						scheduleCommit();
 					}}
 					{transformPaste}
+					onOpenPhoto={(id) => void footer?.openPhoto(id)}
+					hasPhoto={(id) => images.some((image) => image.id === id)}
 					placeholder="Take a note… type [ ] for a checklist, - for a bullet"
 				/>
 			</div>
@@ -423,6 +426,7 @@
 					labelOpen = true;
 				}}
 				onImagesChange={(next) => commitDraft({ images: next })}
+				onPhotosAdded={(photos) => void bodyEditor?.insertLines(photos.map(photoMarker), null)}
 			>
 				{#snippet trailing()}
 					<Tooltip content="Reminder">

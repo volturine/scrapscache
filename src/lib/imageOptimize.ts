@@ -95,7 +95,7 @@ async function loadWithImageElement(source: Blob): Promise<Drawable> {
 	}
 }
 
-async function loadDrawable(source: Blob): Promise<Drawable> {
+export async function loadDrawable(source: Blob): Promise<Drawable> {
 	if (typeof createImageBitmap === 'function') {
 		return (await createImageBitmap(source, { imageOrientation: 'from-image' })) as Drawable;
 	}
@@ -161,6 +161,23 @@ export async function optimizeImageBlob(
 			byteSize: encoded.size,
 			encodingVersion: recipe.encodingVersion
 		};
+	} finally {
+		drawable.close?.();
+	}
+}
+
+/** Re-encode a stored photo as PNG, the one image type every clipboard accepts. */
+export async function pngBlobFromImage(source: Blob): Promise<Blob> {
+	if (source.type === 'image/png') return source;
+	const drawable = await loadDrawable(source);
+	try {
+		const canvas = document.createElement('canvas');
+		canvas.width = drawable.width;
+		canvas.height = drawable.height;
+		const context = canvas.getContext('2d', { alpha: true });
+		if (!context) throw new Error('Browser image processing is unavailable');
+		context.drawImage(drawable, 0, 0);
+		return await canvasBlob(canvas, 'image/png', 1);
 	} finally {
 		drawable.close?.();
 	}

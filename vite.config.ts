@@ -25,6 +25,14 @@ const cloudflareModules = new Map([
 	['#lib/syncEventsTransport.js', './src/lib/cloudflare/syncEventsTransport.ts']
 ]);
 
+/**
+ * The iPhone app reaches whichever server its setting names, so its transport
+ * asks that server rather than being chosen here.
+ */
+const capacitorModules = new Map([
+	['#lib/syncEventsTransport.js', './src/lib/native/syncEventsTransport.ts']
+]);
+
 const cloudflareResolvedModules = new Map(
 	Array.from(cloudflareModules.entries()).map(([source, target]) => [
 		fileURLToPath(
@@ -38,8 +46,13 @@ const cloudflarePlatform: Plugin = {
 	name: 'cloudflare-platform',
 	enforce: 'pre',
 	resolveId(source: string) {
-		if (process.env.DEPLOY_TARGET !== 'cloudflare') return null;
-		const target = cloudflareModules.get(source);
+		const modules =
+			process.env.DEPLOY_TARGET === 'cloudflare'
+				? cloudflareModules
+				: process.env.DEPLOY_TARGET === 'capacitor'
+					? capacitorModules
+					: null;
+		const target = modules?.get(source);
 		if (target) return fileURLToPath(new URL(target, import.meta.url));
 		return null;
 	},

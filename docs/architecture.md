@@ -256,5 +256,7 @@ the runtime answers the client's 30-second heartbeat without waking it, and the
 object wakes only for uploads, which it serves anyway. This keeps live sync
 inside the Workers free plan's daily Durable Object allowance, which an
 always-awake stream per open window would use up. The browser picks the
-transport at build time (`#lib/syncEventsTransport.js`). A window whose tab is
-hidden disconnects and catches up when shown again.
+transport at build time (`#lib/syncEventsTransport.js`). The iPhone app reaches
+whichever server its setting names, so it asks: it opens the stream, and a 426
+sends it to the socket (`src/lib/native/syncEventsTransport.ts`). A window whose
+tab is hidden disconnects and catches up when shown again.

@@ -473,6 +473,15 @@ export class SyncStore {
 		this.onAccountChange?.();
 	}
 
+	/** The app's server setting moved: its sessions and live connection were the old server's. */
+	serverChanged(): void {
+		this.authenticationGeneration += 1;
+		this.pendingSessions.clear();
+		this.backgroundSessions.clear();
+		this.session = null;
+		this.onAccountChange?.();
+	}
+
 	async reauthenticateForRecovery(turnstileToken?: string): Promise<void> {
 		const account = this.account;
 		if (!account) throw new Error('No synced workspace is active');
@@ -906,7 +915,7 @@ export class SyncStore {
 	): Promise<SyncResult> {
 		return new Promise((resolve) => {
 			const xhr = new XMLHttpRequest();
-			xhr.open('POST', path);
+			xhr.open('POST', serverUrl(path));
 			// Pairing expires in 60 seconds; photo/data sync must be allowed to finish.
 			xhr.timeout = 300_000;
 			xhr.setRequestHeader('Content-Type', 'application/json');

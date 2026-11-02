@@ -4,6 +4,7 @@
 	import { Menu } from '@ark-ui/svelte/menu';
 	import { ChevronDown, Server } from '@lucide/svelte';
 	import { DEFAULT_SERVER_ORIGIN, serverSetting } from '#lib/serverOrigin.svelte.js';
+	import { syncStore } from '#lib/stores/sync.svelte.js';
 	import { cx } from 'styled-system/css';
 	import { input, menuItem } from 'styled-system/recipes';
 
@@ -25,8 +26,11 @@
 	}
 
 	function save() {
+		const previous = serverSetting.origin;
 		rejected = !serverSetting.set(draft || DEFAULT_SERVER_ORIGIN);
-		if (!rejected) expanded = false;
+		if (rejected) return;
+		expanded = false;
+		if (serverSetting.origin !== previous) syncStore.serverChanged();
 	}
 </script>
 

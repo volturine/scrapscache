@@ -9,7 +9,7 @@ export const APP_ORIGINS: ReadonlySet<string> = new Set(['capacitor://localhost'
 const CORS_PATH_PREFIX = '/api/sync/';
 const ALLOWED_METHODS = 'GET, POST, PUT, DELETE';
 const ALLOWED_HEADERS = 'authorization, content-type, x-sync-client-id, x-scrapscache-sync-version';
-const EXPOSED_HEADERS = 'x-request-id';
+const EXPOSED_HEADERS = 'x-request-id, retry-after';
 
 /** The app origin a request comes from, when it is one the API answers. */
 export function appOrigin(request: Request, pathname: string): string | null {

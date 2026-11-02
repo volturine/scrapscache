@@ -41,6 +41,8 @@
 		looksLikePhoto
 	} from '#lib/noteImages.js';
 	import { displayImageSrc } from '#lib/imageThumb.js';
+	import { holdKeyboardFrame } from '#lib/appViewport.js';
+	import { pressOnTouchRelease } from '#lib/touchPress.js';
 	import type { ImageQuality } from '#lib/imageOptimize.js';
 	import type { PhotoPlacement } from '#lib/photoMarker.js';
 	import { extractHttpUrls, localLinkCard } from '#lib/linkPreview.js';
@@ -171,9 +173,9 @@
 	/**
 	 * Normal button: each press creates a one-shot file input in this gesture,
 	 * opens the system picker, then discards the input so cancel cannot stick.
-	 * The note body keeps its focus, so the keyboard is back once the picker
-	 * closes. An iPad opens the picker as a popover on the input, so the input
-	 * lies under the pressed button when there is one.
+	 * The picker drops the keyboard on its own; the keyboard frame is held
+	 * until it closes, so the footer and the picker an iPad anchors to the
+	 * pressed button stay where the press was.
 	 */
 	export function openAttach(anchor?: Element) {
 		attachError = '';
@@ -197,9 +199,11 @@
 
 		let done = false;
 		const openedAt = Date.now();
+		const releaseKeyboardFrame = holdKeyboardFrame();
 		const cleanup = () => {
 			if (done) return;
 			done = true;
+			releaseKeyboardFrame();
 			window.removeEventListener('focus', onFocus);
 			document.removeEventListener('visibilitychange', onVis);
 			queueMicrotask(() => {
@@ -231,6 +235,7 @@
 			},
 			{ once: true }
 		);
+		input.addEventListener('cancel', cleanup, { once: true });
 
 		window.addEventListener('focus', onFocus);
 		document.addEventListener('visibilitychange', onVis);
@@ -241,6 +246,11 @@
 	// A menu stays open when the same tap opens a dialog (the dialog blocks the
 	// outside press that would dismiss it), so every footer action closes it.
 	let shareOpen = $state(false);
+	// The menu takes focus, which drops the keyboard; the frame stays until it closes.
+	$effect(() => {
+		if (!shareOpen) return;
+		return holdKeyboardFrame();
+	});
 	export function closeMenus() {
 		shareOpen = false;
 	}
@@ -401,62 +411,13 @@
 		if (noteId) await notesStore.flushNote(noteId, { images: next });
 	}
 
-	function keepFooterStationary(event: PointerEvent) {
-		if (event.pointerType !== 'touch') return;
-		const target = event.target instanceof Element ? event.target : null;
-		if (!target?.closest('button')) return;
-		// Moving focus on pointerdown starts Android's keyboard-close resize. The
-		// footer then moves before pointerup and Chrome cancels the button click.
-		event.preventDefault();
-	}
-
-	const TOUCH_TAP_SLOP = 8;
-
-	/**
-	 * A touch presses the button on release, not on the click. With the note body
-	 * focused, iOS answers the tap with synthetic mouse events that blur the body
-	 * and drop the keyboard; the footer then moves down with the sheet before the
-	 * click arrives, so it lands on nothing. Cancelling the touchend stops those
-	 * events, and the click with them, so the button is pressed here instead.
-	 */
-	function pressFooterButtonOnRelease(event: TouchEvent) {
-		// A touch that scrolled is already spoken for.
-		if (!event.cancelable || event.changedTouches.length !== 1) return;
-		const target = event.target instanceof Element ? event.target : null;
-		const button = target?.closest('button');
-		if (!button) return;
-		const touch = event.changedTouches[0];
-		const box = button.getBoundingClientRect();
-		if (
-			touch.clientX < box.left - TOUCH_TAP_SLOP ||
-			touch.clientX > box.right + TOUCH_TAP_SLOP ||
-			touch.clientY < box.top - TOUCH_TAP_SLOP ||
-			touch.clientY > box.bottom + TOUCH_TAP_SLOP
-		) {
-			return;
-		}
-		event.preventDefault();
-		button.click();
-	}
-
-	function footerInteractions(node: HTMLElement) {
-		node.addEventListener('pointerdown', keepFooterStationary);
-		node.addEventListener('touchend', pressFooterButtonOnRelease);
-		return {
-			destroy() {
-				node.removeEventListener('pointerdown', keepFooterStationary);
-				node.removeEventListener('touchend', pressFooterButtonOnRelease);
-			}
-		};
-	}
-
 	const c = canvasPreview.editor;
 	const f = filePreview.editor;
 	const p = $derived(fillPhotos ? photoPreview.editorFill : photoPreview.editor);
 	const d = dialog({ size: 'sm' });
 
-	const qualityCompressedCard = choiceCard({ kind: 'compressed' });
-	const qualityHdCard = choiceCard();
+	const qualityCompressedCard = choiceCard({ kind: 'compressed', stacked: true });
+	const qualityHdCard = choiceCard({ stacked: true });
 	const MIN_PANEL_HEIGHT = 100;
 	let panelHeight = $state<number | null>(null);
 	let dragging = $state(false);
@@ -907,7 +868,7 @@
 
 {#if trashed}
 	<footer
-		use:footerInteractions
+		{@attach pressOnTouchRelease}
 		class={cx(hstack({ justify: 'flex-end', gap: '2xs' }), noteEditorStyles.footer)}
 	>
 		{@render footerButton('Restore', 'Restore', RotateCcw, 'ghost', () => onRestore?.())}
@@ -916,7 +877,7 @@
 	</footer>
 {:else if archived}
 	<footer
-		use:footerInteractions
+		{@attach pressOnTouchRelease}
 		class={cx(hstack({ justify: 'flex-end', gap: '2xs' }), noteEditorStyles.footer)}
 	>
 		{@render footerButton('Restore', 'Restore', ArchiveRestore, 'ghost', () => onArchive?.())}
@@ -924,7 +885,7 @@
 	</footer>
 {:else}
 	<footer
-		use:footerInteractions
+		{@attach pressOnTouchRelease}
 		class={cx(
 			hstack({
 				justify: 'space-between',

@@ -9,6 +9,7 @@
 	import { iconButton, input } from 'styled-system/recipes';
 	import { hstack } from 'styled-system/patterns';
 	import { uiStore } from '#lib/stores/ui.svelte.js';
+	import { sideColumn } from '#lib/sideColumn.svelte.js';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
 	import { downloadJSON } from '#lib/utils.js';
 	import { syncStore } from '#lib/stores/sync.svelte.js';
@@ -88,9 +89,12 @@
 		if (mobile.current) untrack(() => uiStore.clearSearch());
 	});
 
-	/** The Labels screen is a phone's: a window widened past it has the sidebar instead. */
+	/**
+	 * The Labels screen belongs to the tab navigation: a phone's bar, or iPhone Duo's
+	 * rail at any width. A window widened past it with no rail has the sidebar instead.
+	 */
 	$effect(() => {
-		if (!mobile.current) untrack(() => (uiStore.labelsOpen = false));
+		if (!mobile.current && !sideColumn.side) untrack(() => (uiStore.labelsOpen = false));
 	});
 
 	/** The palette's shortcut: Cmd+K on Apple devices, Ctrl+K elsewhere. */
@@ -382,16 +386,19 @@
 			importError={backupImportError}
 		/>
 	{:else}
-		<Tooltip content="Toggle sidebar">
-			<button
-				class={iconButton({ variant: 'ghost', size: { base: 'compact', sm: 'standard' } })}
-				title="Toggle sidebar"
-				onclick={() => uiStore.toggleSidebar()}
-				aria-label="Toggle sidebar"
-			>
-				<MenuIcon class={iconMd} aria-hidden="true" />
-			</button>
-		</Tooltip>
+		<!-- With the rail in iPhone Duo's column there is no sidebar to toggle. -->
+		{#if !sideColumn.side}
+			<Tooltip content="Toggle sidebar">
+				<button
+					class={iconButton({ variant: 'ghost', size: { base: 'compact', sm: 'standard' } })}
+					title="Toggle sidebar"
+					onclick={() => uiStore.toggleSidebar()}
+					aria-label="Toggle sidebar"
+				>
+					<MenuIcon class={iconMd} aria-hidden="true" />
+				</button>
+			</Tooltip>
+		{/if}
 		{@render searchBox()}
 		{@render syncButton()}
 		<SettingsMenu

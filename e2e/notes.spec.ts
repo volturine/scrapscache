@@ -911,26 +911,14 @@ test.describe('in iPhone Duo’s side column', () => {
 		const viewport = { width: 1050, height: 739 };
 		test.use({ viewport, hasTouch: true });
 
-		test('the same rail stands in the column, and its Labels tab opens and closes the sidebar', async ({
+		test('the same rail stands in the column, with no sidebar beside it, and Labels opens the Labels screen', async ({
 			page
 		}) => {
 			await openWithColumn(page);
 			await expectRailInColumn(page, viewport);
-			const rail = page.getByRole('navigation', { name: 'Main', exact: true });
-			const sidebar = page.getByRole('navigation', { name: 'Main navigation' });
-			const labels = rail.getByRole('button', { name: 'Labels' });
-			await expect(sidebar).toBeVisible();
-			await expect(labels).toHaveAttribute('aria-expanded', 'true');
-			// An open sidebar is not a place: Notes alone is lit, not Labels with it.
-			const lit = (tab: Locator) =>
-				tab.locator('[data-tab-icon]').evaluate((icon) => getComputedStyle(icon).backgroundColor);
-			expect(await lit(labels)).toBe('rgba(0, 0, 0, 0)');
-			expect(await lit(rail.getByRole('button', { name: 'Notes' }))).not.toBe('rgba(0, 0, 0, 0)');
-			await labels.click();
-			await expect(sidebar).toBeHidden();
-			await expect(labels).toHaveAttribute('aria-expanded', 'false');
-			await labels.click();
-			await expect(sidebar).toBeVisible();
+			// The rail is the navigation: no sidebar, and nothing to toggle one with.
+			await expect(page.getByRole('navigation', { name: 'Main navigation' })).toHaveCount(0);
+			await expect(page.getByRole('button', { name: 'Toggle sidebar' })).toHaveCount(0);
 			// The frame and its top bar end where the column begins, so the rail covers nothing.
 			const frame = (await page.locator('.app-viewport').boundingBox())!;
 			expect(frame.x + frame.width).toBeLessThanOrEqual(viewport.width - column.right);
@@ -938,6 +926,18 @@ test.describe('in iPhone Duo’s side column', () => {
 				.getByRole('button', { name: 'Settings', exact: true })
 				.boundingBox())!;
 			expect(settings.x + settings.width).toBeLessThanOrEqual(viewport.width - column.right);
+
+			const rail = page.getByRole('navigation', { name: 'Main', exact: true });
+			const labels = rail.getByRole('button', { name: 'Labels' });
+			await labels.click();
+			await expect(
+				page.getByText('Swipe a label to the left to rename or delete it.')
+			).toBeVisible();
+			await expect(labels).toHaveAttribute('aria-current', 'page');
+			await rail.getByRole('button', { name: 'Notes' }).click();
+			await expect(page.getByText('Swipe a label to the left to rename or delete it.')).toHaveCount(
+				0
+			);
 		});
 	});
 });

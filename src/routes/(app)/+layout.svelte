@@ -493,7 +493,8 @@
 				</Drawer.Positioner>
 			</Drawer.Root>
 		{:else}
-			{#if uiStore.sidebarOpen}
+			<!-- iPhone Duo's rail carries the navigation; the open phone on its side has no sidebar. -->
+			{#if uiStore.sidebarOpen && !sideColumn.side}
 				<div class={styles.sidebar}>
 					<Sidebar />
 				</div>

@@ -34,7 +34,6 @@ afterEach(() => {
 	uiStore.setView('notes');
 	uiStore.paletteOpen = false;
 	uiStore.labelsOpen = false;
-	uiStore.sidebarOpen = true;
 	navigation.goto.mockClear();
 	closeNote.mockClear();
 });
@@ -114,28 +113,13 @@ describe('PhoneTabBar as iPhone Duo’s rail', () => {
 		);
 	});
 
-	it('on a wide window, where the sidebar lists the labels, Labels opens and closes that', async () => {
+	it('opens the Labels screen on a wide window too, where the open Duo has no sidebar', async () => {
 		layout('wide');
-		uiStore.sidebarOpen = false;
-		render(PhoneTabBar, { props: { rail: 'right' } });
-		const labels = screen.getByRole('button', { name: 'Labels' });
-		expect(labels.getAttribute('aria-expanded')).toBe('false');
-		expect(labels.hasAttribute('data-sidebar-toggle')).toBe(true);
-
-		await fireEvent.click(labels);
-		expect(closeNote).toHaveBeenCalled();
-		expect(uiStore.sidebarOpen).toBe(true);
-		expect(uiStore.labelsOpen).toBe(false);
-		expect(labels.getAttribute('aria-expanded')).toBe('true');
-
-		await fireEvent.click(labels);
-		expect(uiStore.sidebarOpen).toBe(false);
-	});
-
-	it('on a phone the Labels tab has no sidebar to expand', () => {
 		render(PhoneTabBar, { props: { rail: 'right' } });
 		const labels = screen.getByRole('button', { name: 'Labels' });
 		expect(labels.hasAttribute('aria-expanded')).toBe(false);
-		expect(labels.hasAttribute('data-sidebar-toggle')).toBe(false);
+		await fireEvent.click(labels);
+		expect(uiStore.labelsOpen).toBe(true);
+		expect(labels.getAttribute('aria-current')).toBe('page');
 	});
 });

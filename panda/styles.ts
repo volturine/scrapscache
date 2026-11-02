@@ -3604,13 +3604,10 @@ export const phoneTabsStyles = {
 		cursor: 'pointer',
 		outline: 'none',
 		transition: 'color 120ms ease',
-		// Lit for the current place and an open palette; the open Duo's Labels tab also
-		// expands the sidebar, which is not a place, so it stays unlit for that.
-		'&[aria-current="page"], &[aria-pressed="true"], &[aria-expanded="true"]:not([data-sidebar-toggle])':
-			{
-				color: 'scrapscache.text'
-			},
-		'&[aria-current="page"] [data-tab-icon], &[aria-pressed="true"] [data-tab-icon], &[aria-expanded="true"]:not([data-sidebar-toggle]) [data-tab-icon]':
+		'&[aria-current="page"], &[aria-pressed="true"], &[aria-expanded="true"]': {
+			color: 'scrapscache.text'
+		},
+		'&[aria-current="page"] [data-tab-icon], &[aria-pressed="true"] [data-tab-icon], &[aria-expanded="true"] [data-tab-icon]':
 			{
 				bg: 'scrapscache.navigationActive',
 				color: 'scrapscache.navigationActiveText'

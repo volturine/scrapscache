@@ -128,7 +128,11 @@ const scrapscacheColors = tokenGroup({
 	interactiveHover: mode('rgba(0, 0, 0, 0.05)', 'rgba(255, 255, 255, 0.08)'),
 	interactiveActive: mode('rgba(0, 0, 0, 0.1)', 'rgba(255, 255, 255, 0.12)'),
 	navigationActive: mode('#fef9c3', 'rgba(202, 138, 4, 0.15)'),
-	navigationActiveText: mode('#1a1a1a', '#fde68a')
+	navigationActiveText: mode('#1a1a1a', '#fde68a'),
+	// iPhone Duo's column controls: glass over the page, as iOS draws its own there.
+	columnGlass: mode('rgba(0, 0, 0, 0.06)', 'rgba(255, 255, 255, 0.1)'),
+	columnGlassPressed: mode('rgba(0, 0, 0, 0.14)', 'rgba(255, 255, 255, 0.22)'),
+	columnGlassBorder: mode('rgba(0, 0, 0, 0.08)', 'rgba(255, 255, 255, 0.12)')
 });
 
 const noteColors = tokenGroup({

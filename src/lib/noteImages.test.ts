@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('./native', () => ({ isNativeApp: vi.fn(() => false) }));
 import {
 	CANVAS_MIME,
 	createCanvasAttachment,
@@ -8,11 +10,13 @@ import {
 } from './canvasAttachment';
 import {
 	fileToNoteImage,
+	saveAttachment,
 	getClipboardFiles,
 	isInlinePreviewable,
 	looksLikePhoto,
 	noteImageFromCroppedDataUrl,
-	prepareAttachmentForMemory
+	prepareAttachmentForMemory,
+	stripFullPreviewBytes
 } from './noteImages';
 
 describe('attachment preview routing', () => {
@@ -117,6 +121,16 @@ describe('getClipboardFiles', () => {
 });
 
 describe('resident attachment previews', () => {
+	it('keeps a displayable original when thumbnail generation left no preview', () => {
+		const image = {
+			id: 'photo',
+			mime: 'image/png',
+			dataUrl: 'data:image/png;base64,AA==',
+			createdAt: 1
+		};
+		expect(stripFullPreviewBytes(image).dataUrl).toBe(image.dataUrl);
+		expect(stripFullPreviewBytes({ ...image, thumbUrl: image.dataUrl }).dataUrl).toBe('');
+	});
 	it('extracts an encrypted canvas payload preview before releasing full bytes', async () => {
 		const scene: CanvasScene = {
 			elements: [{ id: 'text-1', type: 'text', x: 0, y: 0, width: 20, height: 10 }],
@@ -176,46 +190,53 @@ describe('photos on a browser without a WebP encoder', () => {
 		vi.unstubAllGlobals();
 	});
 
-	it('stores the type and extension the browser actually produced', async () => {
-		vi.stubGlobal(
-			'createImageBitmap',
-			vi.fn(async () => ({ width: 800, height: 600, close: () => {} }))
-		);
-		// Thumbnails decode through an <img>, which jsdom never loads.
-		vi.stubGlobal(
-			'Image',
-			class {
-				width = 800;
-				height = 600;
-				onload: (() => void) | null = null;
-				set src(_value: string) {
-					queueMicrotask(() => this.onload?.());
+	it.each([
+		['HEIC', 'image/heic'],
+		['HEIF', ''],
+		['AVIF', '']
+	])(
+		'stores the produced type and extension for %s, even without a MIME type',
+		async (extension, mime) => {
+			vi.stubGlobal(
+				'createImageBitmap',
+				vi.fn(async () => ({ width: 800, height: 600, close: () => {} }))
+			);
+			// Thumbnails decode through an <img>, which jsdom never loads.
+			vi.stubGlobal(
+				'Image',
+				class {
+					width = 800;
+					height = 600;
+					onload: (() => void) | null = null;
+					set src(_value: string) {
+						queueMicrotask(() => this.onload?.());
+					}
 				}
-			}
-		);
-		vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
-			drawImage: () => {}
-		} as unknown as CanvasRenderingContext2D);
-		vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue(
-			'data:image/jpeg;base64,AA=='
-		);
-		vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(function (
-			callback: BlobCallback,
-			type?: string
-		) {
-			const produced = type === 'image/jpeg' ? 'image/jpeg' : 'image/png';
-			callback(new Blob([new Uint8Array(16)], { type: produced }));
-		});
+			);
+			vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+				drawImage: () => {}
+			} as unknown as CanvasRenderingContext2D);
+			vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue(
+				'data:image/jpeg;base64,AA=='
+			);
+			vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(function (
+				callback: BlobCallback,
+				type?: string
+			) {
+				const produced = type === 'image/jpeg' ? 'image/jpeg' : 'image/png';
+				callback(new Blob([new Uint8Array(16)], { type: produced }));
+			});
 
-		const image = await fileToNoteImage(
-			new File(['photo'], 'IMG_0001.HEIC', { type: 'image/heic' }),
-			'compressed'
-		);
+			const image = await fileToNoteImage(
+				new File(['photo'], `IMG_0001.${extension}`, { type: mime }),
+				'compressed'
+			);
 
-		expect(image.mime).toBe('image/jpeg');
-		expect(image.name).toBe('IMG_0001.jpg');
-		expect(image.dataUrl.startsWith('data:image/jpeg;')).toBe(true);
-	});
+			expect(image.mime).toBe('image/jpeg');
+			expect(image.name).toBe('IMG_0001.jpg');
+			expect(image.dataUrl.startsWith('data:image/jpeg;')).toBe(true);
+		}
+	);
 });
 
 describe('cropping a photo', () => {
@@ -225,6 +246,7 @@ describe('cropping a photo', () => {
 	});
 
 	it('names the result after the type the browser produced', async () => {
+		vi.stubGlobal('URL', { createObjectURL: () => 'blob:crop', revokeObjectURL: vi.fn() });
 		// Thumbnails decode through an <img>, which jsdom never loads.
 		vi.stubGlobal(
 			'Image',
@@ -248,11 +270,89 @@ describe('cropping a photo', () => {
 			mime: 'image/webp',
 			name: 'IMG_0001.webp',
 			dataUrl: 'data:image/webp;base64,AA==',
+			width: 16,
+			height: 8,
 			createdAt: 1
 		};
 		// Safari has no WebP encoder, so the cropper hands back a PNG data URL.
 		const cropped = await noteImageFromCroppedDataUrl(source, 'data:image/png;base64,AA==');
 		expect(cropped.mime).toBe('image/png');
 		expect(cropped.name).toBe('IMG_0001.png');
+		expect([cropped.width, cropped.height]).toEqual([8, 8]);
+	});
+});
+
+describe('saveAttachment', () => {
+	const PNG =
+		'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+	afterEach(() => {
+		vi.restoreAllMocks();
+		vi.unstubAllGlobals();
+	});
+
+	it('downloads the photo bytes on the web, named after the photo', async () => {
+		const { isNativeApp } = await import('./native');
+		vi.mocked(isNativeApp).mockReturnValue(false);
+		const createObjectURL = vi.fn((_blob: Blob) => 'blob:photo');
+		vi.stubGlobal('URL', { ...URL, createObjectURL, revokeObjectURL: vi.fn() });
+		const clicks: string[] = [];
+		vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+			this: HTMLAnchorElement
+		) {
+			clicks.push(`${this.download}:${this.href}`);
+		});
+		await saveAttachment({
+			id: 'a',
+			mime: 'image/png',
+			dataUrl: PNG,
+			name: 'one.png',
+			createdAt: 1
+		});
+		expect(createObjectURL).toHaveBeenCalledTimes(1);
+		const [blob] = createObjectURL.mock.calls[0];
+		expect(blob.type).toBe('image/png');
+		expect(blob.size).toBeGreaterThan(10);
+		expect(clicks).toEqual(['one.png:blob:photo']);
+	});
+
+	it('hands the photo to the share sheet in the app', async () => {
+		const { isNativeApp } = await import('./native');
+		vi.mocked(isNativeApp).mockReturnValue(true);
+		const share = vi.fn(async () => {});
+		vi.stubGlobal('navigator', { ...navigator, canShare: () => true, share });
+		await saveAttachment({
+			id: 'a',
+			mime: 'image/png',
+			dataUrl: PNG,
+			name: 'one.png',
+			createdAt: 1
+		});
+		expect(share).toHaveBeenCalledTimes(1);
+		const [{ files, title }] = share.mock.calls[0] as unknown as [{ files: File[]; title: string }];
+		expect(title).toBe('one.png');
+		expect(files[0].name).toBe('one.png');
+		expect(files[0].type).toBe('image/png');
+	});
+
+	it('reports unavailable native sharing instead of silently using an unsupported download', async () => {
+		const { isNativeApp } = await import('./native');
+		vi.mocked(isNativeApp).mockReturnValue(true);
+		vi.stubGlobal('navigator', { ...navigator, canShare: () => false });
+		await expect(
+			saveAttachment({ id: 'a', mime: 'image/png', dataUrl: PNG, name: 'one.png', createdAt: 1 })
+		).rejects.toThrow(/sharing is unavailable/);
+	});
+
+	it('refuses while only the thumbnail is here', async () => {
+		await expect(
+			saveAttachment({
+				id: 'a',
+				mime: 'image/png',
+				dataUrl: '',
+				thumbUrl: PNG,
+				name: 'one.png',
+				createdAt: 1
+			})
+		).rejects.toThrow(/still loading/);
 	});
 });

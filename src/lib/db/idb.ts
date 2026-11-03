@@ -141,6 +141,16 @@ export function isProfileReleased(pid: string): boolean {
 	return departedProfiles.has(pid) || deletedProfiles.has(pid);
 }
 
+/**
+ * Forget every released and deleted workspace. For tests, which drop every
+ * database between cases: the open connection hears that delete as another
+ * window removing the workspace and would refuse it for the rest of the file.
+ */
+export function forgetReleasedProfiles(): void {
+	departedProfiles.clear();
+	deletedProfiles.clear();
+}
+
 /** Hear about a workspace another window started deleting, so this one can leave it. */
 export function onProfileDeleted(listener: ((pid: string) => void) | null): void {
 	deletedListener = listener;

@@ -1,6 +1,7 @@
 import { markdownTable } from 'markdown-table';
 import stringWidth from 'string-width';
 import { parseBody, type BodySegment } from './checklistBody';
+import { parsePhotoMarker } from './photoMarker';
 
 export type MarkdownStyle =
 	| 'strong'
@@ -12,12 +13,13 @@ export type MarkdownStyle =
 	| 'heading-3'
 	| 'heading-4'
 	| 'heading-5'
-	| 'heading-6';
+	| 'heading-6'
+	| 'photo';
 
-export type MarkdownMarker = 'strong' | 'emphasis' | 'code' | 'strikethrough' | 'heading';
+export type MarkdownMarker = 'strong' | 'emphasis' | 'code' | 'strikethrough' | 'heading' | 'photo';
 
 export type MarkdownToken =
-	| { kind: 'text'; text: string; styles: MarkdownStyle[] }
+	| { kind: 'text'; text: string; styles: MarkdownStyle[]; photo?: string }
 	| { kind: 'marker'; text: string; marker: MarkdownMarker };
 
 export type TableAlignment = 'left' | 'center' | 'right';
@@ -75,6 +77,17 @@ function isWhitespace(value: string | undefined): boolean {
 
 function isWord(value: string | undefined): boolean {
 	return !!value && /[\p{L}\p{N}_]/u.test(value);
+}
+
+/** Underscores in an address are not emphasis. `_su_rec` would otherwise eat the URL. */
+function insideHttpUrl(source: string, index: number): boolean {
+	const from = Math.max(0, index - 8192);
+	for (let cursor = index; cursor > from; cursor--) {
+		if (/\s/.test(source[cursor - 1] ?? '')) {
+			return /^https?:\/\//i.test(source.slice(cursor, index));
+		}
+	}
+	return /^https?:\/\//i.test(source.slice(from, index));
 }
 
 function canOpen(source: string, index: number, length: number, marker: MarkdownMarker): boolean {
@@ -207,6 +220,7 @@ function parseInline(
 		if (
 			(triple === '***' || triple === '___') &&
 			!deadDelimiters.has(triple) &&
+			!(triple === '___' && insideHttpUrl(source, index)) &&
 			canOpen(source, index, 3, 'emphasis')
 		) {
 			const close = findClosing(source, index + 3, triple, 'emphasis', budget);
@@ -239,6 +253,8 @@ function parseInline(
 		for (const delimiter of candidates) {
 			if (deadDelimiters.has(delimiter.text)) continue;
 			if (!source.startsWith(delimiter.text, index)) continue;
+			if ((delimiter.text === '_' || delimiter.text === '__') && insideHttpUrl(source, index))
+				continue;
 			if (!canOpen(source, index, delimiter.text.length, delimiter.marker)) continue;
 			const close = findClosing(
 				source,
@@ -274,8 +290,16 @@ export function parseInlineMarkdown(source: string): MarkdownToken[] {
 	const cached = inlineCache.get(source);
 	if (cached) return cached;
 	const heading = source.match(/^(#{1,6})[ \t]+/);
+	const photo = parsePhotoMarker(source);
 	let tokens: MarkdownToken[];
-	if (!heading) {
+	if (photo) {
+		// A photo's place: the name shows as a chip, the syntax around it hides like any marker.
+		tokens = [
+			{ kind: 'marker', text: '![', marker: 'photo' },
+			{ kind: 'text', text: photo.name, styles: ['photo'], photo: photo.id },
+			{ kind: 'marker', text: source.slice(2 + photo.name.length), marker: 'photo' }
+		];
+	} else if (!heading) {
 		tokens = parseInline(source);
 	} else {
 		const level = heading[1].length as 1 | 2 | 3 | 4 | 5 | 6;
@@ -295,7 +319,9 @@ export function parseInlineMarkdown(source: string): MarkdownToken[] {
 
 export function markdownTokenClass(token: MarkdownToken, rawMarkdown: boolean): string {
 	if (token.kind === 'marker') {
-		return `markdown-token markdown-token-marker markdown-token-marker-${token.marker}${rawMarkdown ? '' : ' markdown-token-marker-hidden'}`;
+		// A photo marker's syntax never shows: the chip is the whole of it.
+		const hidden = token.marker === 'photo' || !rawMarkdown;
+		return `markdown-token markdown-token-marker markdown-token-marker-${token.marker}${hidden ? ' markdown-token-marker-hidden' : ''}`;
 	}
 	return [
 		'markdown-token',

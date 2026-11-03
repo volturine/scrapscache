@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { pressOnTouchRelease } from '#lib/touchPress.js';
 	import { labelMenuStyles as styles, popover } from '$panda/styles';
 	import { Checkbox } from '@ark-ui/svelte/checkbox';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
@@ -82,26 +83,12 @@
 		}
 	}
 
-	function keepKeyboardOpen(event: PointerEvent) {
-		if (event.pointerType !== 'touch') return;
-		const target = event.target instanceof Element ? event.target : null;
-		if (target?.closest('button, [data-scope="checkbox"]')) event.preventDefault();
-	}
-
-	function labelMenuInteractions(node: HTMLElement) {
-		node.addEventListener('pointerdown', keepKeyboardOpen);
-		return {
-			destroy() {
-				node.removeEventListener('pointerdown', keepKeyboardOpen);
-			}
-		};
-	}
 	const menuRow = menuItem({ density: 'comfortable' });
 </script>
 
 <div
-	use:labelMenuInteractions
-	class={`${popover} ${vstack({ p: 'sm', w: 'min(20rem, calc(100vw - 2rem))', gap: '0', alignItems: 'stretch' })}`}
+	{@attach pressOnTouchRelease}
+	class={`${popover} ${vstack({ p: 'sm', w: 'min(20rem, calc(var(--app-frame-width) - 2rem))', gap: '0', alignItems: 'stretch' })}`}
 >
 	<div
 		class={hstack({

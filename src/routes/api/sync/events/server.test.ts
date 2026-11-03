@@ -150,6 +150,20 @@ describe('GET /api/sync/events as a WebSocket', () => {
 		expect(mocks.createEventSocket).not.toHaveBeenCalled();
 	});
 
+	it('takes a socket from the iPhone app, and still wants its token', async () => {
+		mocks.createEventSocket.mockClear();
+		const origin = 'capacitor://localhost';
+		const refused = await upgrade({ origin });
+		expect(refused.status).toBe(401);
+		expect(mocks.createEventSocket).not.toHaveBeenCalled();
+		const res = await upgrade({
+			origin,
+			'sec-websocket-protocol': `scrapscache-sync, ${VALID_TOKEN}`
+		});
+		expect(res.status).toBe(200);
+		expect(mocks.createEventSocket).toHaveBeenCalledWith('account-123456789', 9_000, 'device-abc');
+	});
+
 	it('refuses a socket opened from another origin', async () => {
 		mocks.createEventSocket.mockClear();
 		mocks.authenticateToken.mockClear();

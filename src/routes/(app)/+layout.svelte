@@ -11,7 +11,7 @@
 	import NoteComposer from '#lib/components/NoteComposer.svelte';
 	import { composerStore } from '#lib/stores/composer.svelte.js';
 	import { getClipboardFiles } from '#lib/noteImages.js';
-	import { noteComposerStyles } from '$panda/styles';
+	import { noteComposerStyles, phoneTabsStyles } from '$panda/styles';
 	import PhoneTabBar from '#lib/components/PhoneTabBar.svelte';
 	import AppViews from '#lib/components/AppViews.svelte';
 	import { reminderStore } from '#lib/stores/reminders.svelte.js';
@@ -27,6 +27,8 @@
 	import { MediaQuery } from 'svelte/reactivity';
 	import { attachSyncCloudIndicator } from '#lib/syncCloudIndicator.js';
 	import { attachAppViewport } from '#lib/appViewport.js';
+	import { isNativeApp } from '#lib/native.js';
+	import { sideColumn } from '#lib/sideColumn.svelte.js';
 	import { dayKey, dayKeySpan, reminderTimeForDay } from '#lib/utils.js';
 	import { appClock } from '#lib/appClock.svelte.js';
 	import { noteAddressHistory } from '#lib/noteAddressHistory.js';
@@ -36,6 +38,8 @@
 	import { profileCoordinator } from '#lib/stores/profiles.svelte.js';
 	import type { StoredProfile } from '#lib/profiles.js';
 	import NoteLinkNotice from '#lib/components/NoteLinkNotice.svelte';
+	import ServerPrompt from '#lib/components/ServerPrompt.svelte';
+	import { serverSetting } from '#lib/serverOrigin.svelte.js';
 	import UndoBar from '#lib/components/UndoBar.svelte';
 	import SyncAttentionBanner from '#lib/components/SyncAttentionBanner.svelte';
 	import { runUndoChord } from '#lib/stores/actionUndo.svelte.js';
@@ -45,6 +49,9 @@
 	let { children }: { children: Snippet } = $props();
 
 	const mobile = new MediaQuery('max-width: 767px');
+	const nativeApp = isNativeApp();
+	/** The server question was put away for this launch. */
+	let serverAsked = $state(false);
 	let editingId = $state<string | null>(null);
 	let autoFocusBody = $state(false);
 	let closeOpenNote: (() => Promise<void>) | null = null;
@@ -200,6 +207,17 @@
 	onMount(() => {
 		applyEditorOpen(editingId !== null);
 		const stopViewport = attachAppViewport(document.documentElement);
+		// The iPhone app's pieces load only there; the web bundle leaves them out.
+		let stopNative: (() => void) | null = null;
+		let nativeStopped = false;
+		if (isNativeApp()) {
+			void import('#lib/native/app.js')
+				.then((native) => {
+					if (nativeStopped) return;
+					stopNative = native.attachNativeApp();
+				})
+				.catch(() => undefined);
+		}
 		uiStore.viewChangeHandler = restoreFeedScroll;
 		attachSyncCloudIndicator(syncStore);
 		notesStore.onAfterSync = () => reminderStore.publish(notesStore.notes);
@@ -277,6 +295,8 @@
 			notesStore.onProfileReload = null;
 			uiStore.viewChangeHandler = null;
 			stopViewport();
+			nativeStopped = true;
+			stopNative?.();
 			applyEditorOpen(false);
 			document.removeEventListener('visibilitychange', onForeground);
 			stopReminders();
@@ -443,6 +463,10 @@
 
 <svelte:window onpaste={handleGalleryPaste} onkeydown={runUndoChord} />
 
+<!-- Before the frame in the document, so the frame paints over it. -->
+{#if mobile.current}
+	<div class={styles.tabBarSafeArea} data-tabbar-safe-area aria-hidden="true"></div>
+{/if}
 <div class="app-viewport">
 	<div class={cx('app-shell', styles.shell)}>
 		{#if mobile.current}
@@ -474,7 +498,8 @@
 				</Drawer.Positioner>
 			</Drawer.Root>
 		{:else}
-			{#if uiStore.sidebarOpen}
+			<!-- iPhone Duo's rail carries the navigation; the open phone on its side has no sidebar. -->
+			{#if uiStore.sidebarOpen && !sideColumn.side}
 				<div class={styles.sidebar}>
 					<Sidebar />
 				</div>
@@ -515,14 +540,25 @@
 					{/key}
 				</div>
 			</div>
-			{#if mobile.current}
+			{#if mobile.current && !sideColumn.side}
 				<PhoneTabBar />
 			{/if}
 		</div>
 	</div>
 </div>
-{#if mobile.current}
-	<div class={styles.tabBarSafeArea} aria-hidden="true" data-tabbar-safe-area></div>
+<!-- iPhone Duo's status column lies outside the frame; the column's controls stand in it
+     at every width: sync and settings (the top bar portals them in), then the places. -->
+{#if sideColumn.side}
+	<div
+		class={cx(
+			phoneTabsStyles.stack,
+			sideColumn.side === 'left' ? phoneTabsStyles.stackLeft : phoneTabsStyles.stackRight
+		)}
+		data-column-stack
+	>
+		<div class={phoneTabsStyles.actions} data-column-actions></div>
+		<PhoneTabBar rail={sideColumn.side} />
+	</div>
 {/if}
 {#if mobile.current && uiStore.sidebarOpen}
 	<div class={styles.drawerSafeArea} aria-hidden="true"></div>
@@ -532,5 +568,9 @@
 </div>
 {#if noteLinkProblem}
 	<NoteLinkNotice message={noteLinkProblem} onClose={() => (noteLinkProblem = null)} />
+{/if}
+<!-- The iPhone app asks which server it syncs with until that is answered. -->
+{#if nativeApp && !serverSetting.chosen && !serverAsked}
+	<ServerPrompt onClose={() => (serverAsked = true)} />
 {/if}
 {@render children()}

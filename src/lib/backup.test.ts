@@ -117,6 +117,25 @@ describe('backup normalization', () => {
 		expect(note).toMatchObject({ createdAt: 1, updatedAt: 2 });
 	});
 
+	it('points the body’s photo markers at the attachment ids an additive import makes', () => {
+		const [source] = [sourceNote];
+		const photoId = source.images![0].id;
+		const [note] = prepareImportedNotes(
+			[{ ...source, body: `Keep\n![shot.webp](photo:${photoId})`, bodyDoc: 'stale-doc' }],
+			'keep',
+			createEditContext(() => 100)
+		);
+		expect(note.body).toBe(`Keep\n![shot.webp](photo:${note.images![0].id})`);
+		expect(note.bodyDoc).toBeUndefined();
+		const [replaced] = prepareImportedNotes(
+			[{ ...source, body: `Keep\n![shot.webp](photo:${photoId})`, bodyDoc: 'doc' }],
+			'replace',
+			createEditContext(() => 100)
+		);
+		expect(replaced.body).toBe(`Keep\n![shot.webp](photo:${photoId})`);
+		expect(replaced.bodyDoc).toBe('doc');
+	});
+
 	it('reads as created, not edited, when the backup copy was never edited', () => {
 		const [note] = prepareImportedNotes(
 			[{ ...sourceNote, updatedAt: 1, fieldTimes: undefined }],

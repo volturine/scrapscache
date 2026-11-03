@@ -101,7 +101,12 @@ The same SvelteKit app serves the UI and the sync API when self-hosted.
 - **Sync outbox** — changed record keys scheduled for upload (not a full
   mirror of every field into `localStorage`).
 - **Attachments** — full bytes loaded when needed; grid/list may keep thumbnails
-  only in memory.
+  only in memory. A picked photo is re-encoded on the way in; a picked file that
+  is not (a video, a document) is refused over 8 MB, since the relay takes 16 MB of
+  ciphertext per envelope and the bytes travel base64-encoded twice. A photo's
+  place in the body is a marker line (`src/lib/photoMarker.ts`) that leaves with
+  the photo and comes back with an undo. "Download" hands the bytes to the share
+  sheet in the app (iOS offers Save Image there) and to a download on the web.
 
 ### Sync identity
 
@@ -256,5 +261,7 @@ the runtime answers the client's 30-second heartbeat without waking it, and the
 object wakes only for uploads, which it serves anyway. This keeps live sync
 inside the Workers free plan's daily Durable Object allowance, which an
 always-awake stream per open window would use up. The browser picks the
-transport at build time (`#lib/syncEventsTransport.js`). A window whose tab is
-hidden disconnects and catches up when shown again.
+transport at build time (`#lib/syncEventsTransport.js`). The iPhone app reaches
+whichever server its setting names, so it asks: it opens the stream, and a 426
+sends it to the socket (`src/lib/native/syncEventsTransport.ts`). A window whose
+tab is hidden disconnects and catches up when shown again.

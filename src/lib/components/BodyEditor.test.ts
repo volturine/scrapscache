@@ -904,6 +904,18 @@ describe('BodyEditor native editing', () => {
 		expect(window.getSelection()?.toString()).toBe('world');
 	});
 
+	it('inserts text through the public paste path at the current caret', async () => {
+		const { component, container } = render(BodyEditor, { props: { body: 'Hello world' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		editor.focus();
+		caretAt(container, 0, 5);
+
+		expect(component.insertTextAtCaret(' brave')).toBe(true);
+		await tick();
+
+		expect(lineTexts(container)).toEqual(['Hello brave world']);
+	});
+
 	it('nests a checklist line under the previous task with Tab', async () => {
 		const { container } = render(BodyEditor, { props: { body: '[ ] parent\n[ ] child' } });
 		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
@@ -959,6 +971,25 @@ describe('BodyEditor native editing', () => {
 		await tick();
 
 		expect(lifted).toEqual(['# Heading']);
+		expect(lineTexts(container)).toEqual(['body-from-owner']);
+	});
+
+	it('lets the public paste path lift a copied heading without a caret', async () => {
+		const lifted: string[] = [];
+		const { component, container } = render(BodyEditor, {
+			props: {
+				body: '',
+				transformPaste: (raw: string) => {
+					lifted.push(raw);
+					return 'body-from-owner';
+				}
+			}
+		});
+
+		expect(component.insertTextAtCaret('# Heading\nbody')).toBe(true);
+		await tick();
+
+		expect(lifted).toEqual(['# Heading\nbody']);
 		expect(lineTexts(container)).toEqual(['body-from-owner']);
 	});
 
@@ -1238,6 +1269,17 @@ describe('BodyEditor markdown bullets', () => {
 		expect(table?.querySelector('.markdown-editor-table')).toBeTruthy();
 		expect(table?.querySelectorAll('[data-markdown-table-cell]')).toHaveLength(10);
 		expect(table?.contains(editor?.querySelector('[data-editor-line="4"]') ?? null)).toBe(false);
+	});
+
+	it('writes nothing for a wrapped URL until the note is edited', async () => {
+		const stored = 'https://shop.example/item?\n_id=1234567890&ref=mail';
+		const oninput = vi.fn();
+		const { container, component } = render(BodyEditor, { props: { body: stored, oninput } });
+		await tick();
+		expect(lineTexts(container)).toEqual(['https://shop.example/item?_id=1234567890&ref=mail']);
+
+		component.syncBodyNow();
+		expect(oninput).not.toHaveBeenCalled();
 	});
 
 	it('wraps wide editor and raw Markdown blocks in horizontal scroll containers', () => {
@@ -3109,6 +3151,34 @@ describe('BodyEditor task lists', () => {
 });
 
 describe('BodyEditor shared undo', () => {
+	it('redoes a break typed after a URL as it was typed, without joining across it', async () => {
+		const { container } = render(BodyEditor, {
+			props: { body: 'https://example.com/long-slug\nmore' }
+		});
+		const typed = ['https://example.com/long-', 'slug', 'more'];
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		editor.focus();
+
+		caretAt(container, 0, 'https://example.com/long-'.length);
+		editor.dispatchEvent(
+			new InputEvent('beforeinput', {
+				bubbles: true,
+				cancelable: true,
+				inputType: 'insertParagraph'
+			})
+		);
+		await tick();
+		expect(lineTexts(container)).toEqual(typed);
+
+		await fireEvent.keyDown(editor, { key: 'z', ctrlKey: true });
+		await tick();
+		expect(lineTexts(container)).toEqual(['https://example.com/long-slug', 'more']);
+
+		await fireEvent.keyDown(editor, { key: 'Z', ctrlKey: true, shiftKey: true });
+		await tick();
+		expect(lineTexts(container)).toEqual(typed);
+	});
+
 	it('restores the title from the same stack as the body', async () => {
 		const restored: string[] = [];
 		const { component, rerender } = render(BodyEditor, {
@@ -3544,5 +3614,84 @@ describe('BodyEditor placeholder', () => {
 
 		await fireEvent.compositionEnd(editor);
 		expect(rows().some((row) => row.hasAttribute('data-composing'))).toBe(false);
+	});
+});
+
+describe('BodyEditor photo markers', () => {
+	function mount(body: string, extra: Record<string, unknown> = {}) {
+		const view = render(BodyEditor, { props: { body, ...extra } });
+		(view.container.querySelector('[data-body-editor]') as HTMLElement).focus();
+		return view;
+	}
+
+	it('inserts markers after the caret row and leaves the caret on a blank row below', async () => {
+		const { container, component } = mount('Sunscreen\nThe cove:\nParking');
+		caretAt(container, 1, 4);
+
+		await component.insertLines(['![a](photo:1)', '![b](photo:2)'], component.caretPoint());
+
+		expect(lineTexts(container)).toEqual([
+			'Sunscreen',
+			'The cove:',
+			'![a](photo:1)',
+			'![b](photo:2)',
+			'',
+			'Parking'
+		]);
+		expect(selectionLine()).toBe(4);
+	});
+
+	it('takes over a blank caret row and reuses a blank row that follows', async () => {
+		const { container, component } = mount('Sunscreen\n\nParking');
+		caretAt(container, 1, 0);
+
+		await component.insertLines(['![a](photo:1)'], component.caretPoint());
+
+		expect(lineTexts(container)).toEqual(['Sunscreen', '![a](photo:1)', '', 'Parking']);
+		expect(selectionLine()).toBe(2);
+	});
+
+	it('inserts before a row when the caret is at its start', async () => {
+		const { container, component } = mount('Sunscreen\nParking');
+		caretAt(container, 1, 0);
+
+		await component.insertLines(['![a](photo:1)'], component.caretPoint());
+
+		expect(lineTexts(container)).toEqual(['Sunscreen', '![a](photo:1)', '', 'Parking']);
+	});
+
+	it('appends after the last row without a point, and undo takes it back', async () => {
+		const { container, component } = mount('Sunscreen');
+
+		await component.insertLines(['![a](photo:1)'], null);
+		expect(lineTexts(container)).toEqual(['Sunscreen', '![a](photo:1)', '']);
+
+		expect(component.undo()).toBe(true);
+		await vi.waitFor(() => expect(lineTexts(container)).toEqual(['Sunscreen']));
+	});
+
+	it('keeps a marker out of a code block the caret is in', async () => {
+		const { container, component } = mount('```\ncode\n```\nAfter');
+		caretAt(container, 1, 2);
+
+		await component.insertLines(['![a](photo:1)'], component.caretPoint());
+
+		expect(lineTexts(container)).toEqual(['```', 'code', '```', '![a](photo:1)', '', 'After']);
+	});
+
+	it('opens the photo from its chip, unless the photo is gone', async () => {
+		const opened: string[] = [];
+		const { container } = mount('![a](photo:1)\n![b](photo:2)', {
+			onOpenPhoto: (id: string) => opened.push(id),
+			hasPhoto: (id: string) => id === '1'
+		});
+
+		const chips = container.querySelectorAll<HTMLElement>('[data-photo]');
+		expect([...chips].map((chip) => chip.textContent)).toEqual(['a', 'b']);
+		expect(chips[1].className).toContain('markdown-token-photo-missing');
+		await fireEvent.click(chips[0]);
+		await fireEvent.click(chips[1]);
+
+		expect(opened).toEqual(['1']);
 	});
 });

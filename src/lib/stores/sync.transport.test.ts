@@ -4,6 +4,7 @@ import {
 	SYNC_PROTOCOL_HEADER,
 	SYNC_PROTOCOL_VERSION
 } from '#lib/model/protocol.js';
+import { DEFAULT_SERVER_ORIGIN } from '#lib/serverOrigin.svelte.js';
 import { createSyncIdentity } from '#lib/syncPairing.js';
 import { STALE_MODULE_RELOAD_KEY } from '#lib/staleModuleReload.js';
 import { SYNC_VERSION_MISMATCH_MESSAGE, SyncStore } from './sync.svelte';
@@ -12,7 +13,11 @@ type Reply =
 	| { network: true }
 	| { status: number; body?: Record<string, unknown>; headers?: Record<string, string> };
 
+const native = vi.hoisted(() => ({ on: false }));
+vi.mock('#lib/native.js', () => ({ isNativeApp: () => native.on }));
+
 let replies: Reply[] = [];
+let opened: string[] = [];
 let sends = 0;
 let sentHeaders: Record<string, string>[] = [];
 
@@ -28,7 +33,9 @@ class FakeXhr {
 	onabort: (() => void) | null = null;
 	onprogress: (() => void) | null = null;
 	private headers: Record<string, string> = {};
-	open(): void {}
+	open(_method: string, url: string): void {
+		opened.push(url);
+	}
 	setRequestHeader(name: string, value: string): void {
 		this.headers[name.toLowerCase()] = value;
 	}
@@ -77,7 +84,9 @@ describe('sync transport', () => {
 	beforeEach(() => {
 		vi.useFakeTimers();
 		vi.stubGlobal('XMLHttpRequest', FakeXhr);
+		native.on = false;
 		replies = [];
+		opened = [];
 		sends = 0;
 		sentHeaders = [];
 		store = new SyncStore();
@@ -86,6 +95,41 @@ describe('sync transport', () => {
 
 	afterEach(() => {
 		vi.unstubAllGlobals();
+	});
+
+	it('sends a round to the page origin on the web, and to the named server in the app', async () => {
+		await send(store);
+		expect(opened).toEqual([SYNC_DELTA_PATH]);
+
+		native.on = true;
+		opened = [];
+		await send(store);
+		expect(opened).toEqual([`${DEFAULT_SERVER_ORIGIN}${SYNC_DELTA_PATH}`]);
+	});
+
+	it('forgets its sessions and reconnects when the server setting moves', async () => {
+		const sessions = store as unknown as {
+			session: unknown;
+			backgroundSessions: Map<string, unknown>;
+			pendingSessions: Map<string, unknown>;
+		};
+		sessions.session = {
+			accountId: 'a',
+			accessToken: 'old-server',
+			expiresAt: Date.now() + 60_000
+		};
+		sessions.backgroundSessions.set('a', {});
+		sessions.pendingSessions.set('a', Promise.resolve('old-server'));
+		store.onAccountChange = vi.fn();
+
+		store.serverChanged();
+
+		expect(sessions.session).toBeNull();
+		expect(sessions.backgroundSessions.size).toBe(0);
+		expect(sessions.pendingSessions.size).toBe(0);
+		expect(store.onAccountChange).toHaveBeenCalledOnce();
+		// The store's own device reads run on the faked clock.
+		await vi.runAllTimersAsync();
 	});
 
 	it('sends a round again after the relay was not reached', async () => {

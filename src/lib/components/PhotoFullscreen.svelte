@@ -8,6 +8,7 @@
 		fullscreen
 	} from '$panda/styles';
 	import type { NoteImage } from '#lib/types.js';
+	import { onDestroy } from 'svelte';
 	import {
 		Check,
 		ChevronLeft,
@@ -20,7 +21,6 @@
 		X
 	} from '@lucide/svelte';
 	import { ImageCropper, type UseImageCropperContext } from '@ark-ui/svelte/image-cropper';
-	import { DownloadTrigger } from '@ark-ui/svelte/download-trigger';
 	import { SegmentGroup } from '@ark-ui/svelte/segment-group';
 	import Tooltip from './Tooltip.svelte';
 	import { portalToAppOverlay } from '#lib/appViewport.js';
@@ -29,7 +29,7 @@
 	import { button, iconButton } from 'styled-system/recipes';
 	import { center, hstack } from 'styled-system/patterns';
 	import { displayImageSrc } from '#lib/imageThumb.js';
-	import { noteImageFromCroppedDataUrl } from '#lib/noteImages.js';
+	import { noteImageFromCroppedDataUrl, saveAttachment } from '#lib/noteImages.js';
 
 	let {
 		images,
@@ -40,13 +40,33 @@
 		images: NoteImage[];
 		activeIndex?: number | null;
 		onCrop?: (image: NoteImage) => void | Promise<void>;
-		onDelete?: (id: string) => void | Promise<void>;
+		onDelete?: (id: string) => void | boolean | Promise<void | boolean>;
 	} = $props();
 
 	let touchStartX = 0;
 	let cropping = $state(false);
 	let cropBusy = $state(false);
 	let cropError = $state('');
+	let saveError = $state('');
+	let deleteError = $state('');
+	let deleteBusy = $state(false);
+	let cropOperation = 0;
+	let cropCommitStarted = false;
+
+	onDestroy(() => {
+		cropOperation += 1;
+	});
+
+	/** The full photo goes to the device; the thumbnail that stands in while it loads does not. */
+	async function savePhoto() {
+		if (!current?.dataUrl) return;
+		saveError = '';
+		try {
+			await saveAttachment(current);
+		} catch (err) {
+			saveError = err instanceof Error ? err.message : 'Could not save the photo.';
+		}
+	}
 	let selectedRatio = $state<'free' | '1:1' | '4:3' | '16:9'>('free');
 	let imgNaturalWidth = $state(0);
 	let imgNaturalHeight = $state(0);
@@ -100,6 +120,8 @@
 	);
 
 	function close() {
+		cropOperation += 1;
+		cropCommitStarted = false;
 		cropping = false;
 		cropBusy = false;
 		cropError = '';
@@ -108,6 +130,8 @@
 	}
 
 	function cancelCrop() {
+		cropOperation += 1;
+		cropCommitStarted = false;
 		cropping = false;
 		cropBusy = false;
 		cropError = '';
@@ -118,6 +142,7 @@
 
 	function startCrop() {
 		if (!canCrop) return;
+		cropCommitStarted = false;
 		historyStack = [];
 		currentRotation = 0;
 		cropError = '';
@@ -166,14 +191,22 @@
 	}
 
 	async function deleteCurrent() {
-		if (!current || !onDelete) return;
+		if (!current || !onDelete || deleteBusy) return;
 		const id = current.id;
-		if (images.length <= 1) {
-			close();
-		} else if (activeIndex !== null && activeIndex >= images.length - 1) {
-			activeIndex = images.length - 2;
+		const selectedIndex = activeIndex ?? 0;
+		deleteBusy = true;
+		deleteError = '';
+		try {
+			const result = await onDelete(id);
+			if (result === false) throw new Error('Could not delete this photo.');
+			const remainingCount = images.filter((image) => image.id !== id).length;
+			if (remainingCount === 0) close();
+			else activeIndex = Math.min(selectedIndex, remainingCount - 1);
+		} catch (err) {
+			deleteError = err instanceof Error ? err.message : 'Could not delete this photo.';
+		} finally {
+			deleteBusy = false;
 		}
-		await onDelete(id);
 	}
 
 	function handleKey(event: KeyboardEvent) {
@@ -181,8 +214,9 @@
 		if (event.key === 'Escape') {
 			event.preventDefault();
 			event.stopImmediatePropagation();
-			if (cropping) cancelCrop();
-			else close();
+			if (cropping) {
+				if (!cropCommitStarted) cancelCrop();
+			} else close();
 			return;
 		}
 		if (cropping) return;
@@ -218,8 +252,11 @@
 	}
 
 	async function applyCrop(cropper: UseImageCropperContext) {
-		if (!current || !onCrop) return;
+		const source = current;
+		if (!source || !onCrop || cropBusy) return;
+		const operation = ++cropOperation;
 		cropBusy = true;
+		cropCommitStarted = false;
 		cropError = '';
 		try {
 			const result = await cropper().getCroppedImage({
@@ -229,11 +266,26 @@
 				maxSize: { width: 2560, height: 2560 }
 			});
 			if (typeof result !== 'string') throw new Error('Could not crop this photo');
-			await onCrop(await noteImageFromCroppedDataUrl(current, result));
-			cancelCrop();
+			if (operation !== cropOperation || !cropping) return;
+			const cropped = await noteImageFromCroppedDataUrl(source, result);
+			if (operation !== cropOperation || !cropping) return;
+			cropCommitStarted = true;
+			await onCrop(cropped);
+			if (operation === cropOperation) {
+				// Saving can reorder a tied attachment list. Keep showing the photo
+				// the writer cropped, rather than whichever now occupies its index.
+				const index = images.findIndex((image) => image.id === source.id);
+				if (index < 0) close();
+				else {
+					activeIndex = index;
+					cancelCrop();
+				}
+			}
 		} catch (err) {
+			if (operation !== cropOperation) return;
 			cropError = err instanceof Error ? err.message : 'Could not crop this photo';
 			cropBusy = false;
+			cropCommitStarted = false;
 		}
 	}
 
@@ -430,17 +482,17 @@
 				</div>
 
 				<div class={hstack({ gap: '2xs' })}>
-					<Tooltip content="Download photo">
-						<DownloadTrigger
-							fileName={current.name || 'photo.webp'}
-							data={currentSrc}
-							mimeType={current.mime || 'image/webp'}
+					<Tooltip content={current.dataUrl ? 'Download photo' : 'The photo is still loading'}>
+						<button
+							type="button"
 							class={topBarBtn}
+							onclick={() => void savePhoto()}
+							disabled={!current.dataUrl}
 							aria-label="Download photo"
-							title="Download photo"
+							title={current.dataUrl ? 'Download photo' : 'The photo is still loading'}
 						>
 							<Download size={20} aria-hidden="true" />
-						</DownloadTrigger>
+						</button>
 					</Tooltip>
 
 					{#if canCrop}
@@ -463,6 +515,7 @@
 								type="button"
 								class={topBarTrashBtn}
 								onclick={() => void deleteCurrent()}
+								disabled={deleteBusy}
 								aria-label="Delete photo"
 								title="Delete photo"
 							>
@@ -472,6 +525,12 @@
 					{/if}
 				</div>
 			</header>
+			{#if saveError}
+				<p class={fs.notice}>{saveError}</p>
+			{/if}
+			{#if deleteError}
+				<p class={fs.notice} role="alert">{deleteError}</p>
+			{/if}
 
 			<div class={styles.viewerStage}>
 				<button type="button" class={styles.viewerBackdrop} onclick={close} aria-label="Close photo"

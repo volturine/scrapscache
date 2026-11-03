@@ -1,3 +1,5 @@
+import { publishSideColumn, sideColumnOf } from './sideColumn.svelte.js';
+
 /** Visual viewport must shrink by more than this before the keyboard is treated as open. */
 export const KEYBOARD_HEIGHT_THRESHOLD_PX = 120;
 
@@ -167,6 +169,26 @@ function setInsetVar(name: string, value: number) {
 	document.documentElement.style.setProperty(name, `${value}px`);
 }
 
+let keyboardFrameHolds = 0;
+let applyViewport: (() => void) | null = null;
+
+/**
+ * Keep the keyboard frame as it stands until the returned release is called.
+ * A system picker drops the keyboard without blurring the field, and an iPad
+ * anchors its popover to the touch that opened it: holding the frame keeps the
+ * pressed control under that popover instead of sliding it down the screen.
+ */
+export function holdKeyboardFrame(): () => void {
+	keyboardFrameHolds += 1;
+	let released = false;
+	return () => {
+		if (released) return;
+		released = true;
+		keyboardFrameHolds -= 1;
+		if (keyboardFrameHolds === 0) applyViewport?.();
+	};
+}
+
 /**
  * Root attachment: measure the device safe area and keyboard, then publish
  * them as CSS variables. The `.app-viewport` / `.app-float` layers consume
@@ -184,6 +206,7 @@ export function attachAppViewport(_node: HTMLElement) {
 	const touchScreen = navigator.maxTouchPoints > 0;
 
 	const apply = () => {
+		if (keyboardFrameHolds > 0) return;
 		const viewport = window.visualViewport;
 		const visualHeight = viewport?.height ?? window.innerHeight;
 		const visualTop = viewport?.offsetTop ?? 0;
@@ -243,6 +266,7 @@ export function attachAppViewport(_node: HTMLElement) {
 		// the software keyboard is active, its own occlusion replaces this inset.
 		setInsetVar('--app-inset-bottom', appBottomInset(cachedSafe.bottom, keyboardVisible));
 		setInsetVar('--app-inset-left', cachedSafe.left);
+		publishSideColumn(sideColumnOf(cachedSafe));
 		setInsetVar('--app-visual-offset-top', keyboardFrame.viewportOffsetTop);
 		setInsetVar('--app-keyboard-top', keyboardFrame.keyboardTop);
 		setInsetVar('--app-keyboard-bottom', keyboardFrame.keyboardBottom);
@@ -265,6 +289,21 @@ export function attachAppViewport(_node: HTMLElement) {
 		apply();
 	});
 
+	// iOS can apply the safe area after the page's first layout, and change it
+	// without resizing the window: iPhone Duo's status column arrived late on a
+	// first launch and the app kept measuring zero. A probe sized by env() changes
+	// size with every inset, and a resize observer on it reports what no event does.
+	const insetProbe = document.createElement('div');
+	insetProbe.setAttribute('aria-hidden', 'true');
+	insetProbe.style.cssText =
+		'position:fixed;top:0;left:0;visibility:hidden;pointer-events:none;' +
+		'width:calc(env(safe-area-inset-left,0px) + env(safe-area-inset-right,0px) * 2 + 1px);' +
+		'height:calc(env(safe-area-inset-top,0px) + env(safe-area-inset-bottom,0px) * 2 + 1px)';
+	document.body.append(insetProbe);
+	const insetObserver =
+		typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => apply());
+
+	applyViewport = apply;
 	apply();
 	const viewport = window.visualViewport;
 	viewport?.addEventListener('resize', apply);
@@ -276,13 +315,17 @@ export function attachAppViewport(_node: HTMLElement) {
 		attributes: true,
 		attributeFilter: ['class']
 	});
+	insetObserver?.observe(insetProbe);
 	return () => {
+		if (applyViewport === apply) applyViewport = null;
 		viewport?.removeEventListener('resize', apply);
 		viewport?.removeEventListener('scroll', apply);
 		window.removeEventListener('resize', apply);
 		document.removeEventListener('focusin', onFocusIn);
 		document.removeEventListener('focusout', onFocusOut);
 		editorClassObserver.disconnect();
+		insetObserver?.disconnect();
+		insetProbe.remove();
 		document.documentElement.classList.remove('keyboard-open');
 		const style = document.documentElement.style;
 		for (const name of [
@@ -321,6 +364,25 @@ export function portalToAppFloat(node: HTMLElement) {
 export function portalToBody(node: HTMLElement) {
 	document.body.appendChild(node);
 	return () => node.remove();
+}
+
+/**
+ * Render a node's children into iPhone Duo's column stack, above the places (see
+ * the app layout). Without a column they stay where they were rendered.
+ *
+ * The node itself stays put: Svelte takes a block down by walking from its first
+ * node to its last through their siblings, and a moved last node took the bar's
+ * anchor with it, leaving the bar empty after an unfold. The children are the
+ * block's own, so they come back out when it goes.
+ */
+export function portalToColumnActions(node: HTMLElement) {
+	const host = document.querySelector<HTMLElement>('[data-column-actions]');
+	if (!host) return;
+	const moved = [...node.childNodes];
+	host.append(...moved);
+	return () => {
+		for (const child of moved) child.remove();
+	};
 }
 
 /** Render a global dialog above navigation and remove it with its owner. */

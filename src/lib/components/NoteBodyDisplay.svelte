@@ -34,6 +34,7 @@
 	);
 	const attachments = $derived(noteAttachments(note));
 	const imageAttachments = $derived(attachments.filter(isImageAttachment));
+	const photoIds = $derived(new Set(imageAttachments.map((attachment) => attachment.id)));
 	const canvases = $derived(attachments.filter(isCanvasAttachment));
 	const photos = $derived(imageAttachments.filter((attachment) => !!displayImageSrc(attachment)));
 	const pendingPhotos = $derived(
@@ -96,7 +97,13 @@
 			{@const inlineTokens = markTokens(parseInlineMarkdown(text), uiStore.search)}
 			{#each inlineTokens as { token, segments }, tokenIndex (tokenIndex)}
 				<span
-					class={markdownTokenClass(token, uiStore.rawMarkdown)}
+					class={[
+						markdownTokenClass(token, uiStore.rawMarkdown),
+						token.kind === 'text' &&
+							token.photo !== undefined &&
+							!photoIds.has(token.photo) &&
+							'markdown-token-photo-missing'
+					]}
 					data-markdown-token={token.kind === 'marker' ? token.marker : token.styles.join(' ')}
 					>{@render marked(segments)}</span
 				>
@@ -150,6 +157,7 @@
 <div
 	bind:this={contentElement}
 	class={[body.container, markdownStyles, 'markdown-content', 'markdown-raw']}
+	data-note-body-display
 >
 	{#each displayBlocks as block (block.type === 'line' ? block.segment.lineIndex : block.lineIndex)}
 		{#if block.type === 'line'}

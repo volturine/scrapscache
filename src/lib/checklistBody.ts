@@ -1,5 +1,6 @@
 import type { Note } from './types';
 import { isCanvasAttachment } from './canvasAttachment';
+import { joinWrappedHttpUrls } from './linkPreview';
 
 /** Lines like `[ ] task`, `[] task`, `[x] done`, indented sub-tasks, `- [ ] item` */
 export const CHECK_RE = /^(\s*)(?:[-*•]\s+)?\[([xX ]?)\]\s*(.*)$/;
@@ -209,7 +210,7 @@ export function noteToPlainText(note: Note): string {
 	].filter(Boolean);
 	const suffix = parts.length ? `\n[${parts.join(', ')}]` : '';
 	const heading = note.title ? `# ${note.title}\n` : '';
-	return `${heading}${note.body}${suffix}`.trim();
+	return `${heading}${joinWrappedHttpUrls(note.body)}${suffix}`.trim();
 }
 
 const PASTE_HEADING_RE = /^#\s+(.+)$/;

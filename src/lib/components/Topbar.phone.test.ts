@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/sve
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { notesStore } from '#lib/stores/notes.svelte.js';
 import { uiStore } from '#lib/stores/ui.svelte.js';
+import { publishSideColumn } from '#lib/sideColumn.svelte.js';
 import Topbar from './Topbar.svelte';
 
 const navigation = vi.hoisted(() => ({ goto: vi.fn(async () => {}) }));
@@ -91,5 +92,55 @@ describe('the top bar on a phone', () => {
 		expect(items[0]).toMatch(/^Text and code/);
 		expect(items).toContain('Back up notes…');
 		expect(items).not.toContain('Archive');
+	});
+});
+
+describe('the top bar beside iPhone Duo’s column', () => {
+	let host: HTMLElement;
+	beforeEach(() => {
+		publishSideColumn('right');
+		host = document.createElement('div');
+		host.setAttribute('data-column-actions', '');
+		document.body.append(host);
+	});
+	afterEach(() => {
+		publishSideColumn(null);
+		host.remove();
+	});
+
+	it('folded, keeps the view name and a search field that opens the palette, and sends sync and More into the column', async () => {
+		render(Topbar);
+		const header = document.querySelector('header')!;
+		const inBar = [...header.querySelectorAll('button, [data-view-title]')].map(
+			(element) => element.getAttribute('aria-label') ?? element.textContent?.trim()
+		);
+		expect(inBar).toEqual(['Notes', 'Search notes, labels and actions']);
+		expect(screen.queryByRole('searchbox')).toBeNull();
+		const sync = screen.getByRole('button', { name: /^Sync settings/ });
+		const more = screen.getByRole('button', { name: 'More' });
+		expect(host.contains(sync)).toBe(true);
+		expect(host.contains(more)).toBe(true);
+		expect(sync.compareDocumentPosition(more) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		// The cloud says when its dialog is up, so the circle can stay lit meanwhile.
+		expect(sync.getAttribute('aria-expanded')).toBe('false');
+		await fireEvent.click(sync);
+		expect(sync.getAttribute('aria-expanded')).toBe('true');
+		await fireEvent.click(sync);
+		expect(uiStore.syncOpen).toBe(false);
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Search notes, labels and actions' }));
+		expect(uiStore.paletteOpen).toBe(true);
+	});
+
+	it('open on its side, keeps the search field and sends sync and Settings into the column, with no sidebar toggle', () => {
+		window.matchMedia = desktopMatchMedia;
+		render(Topbar);
+		const header = document.querySelector('header')!;
+		expect(header.contains(screen.getByRole('searchbox'))).toBe(true);
+		expect(screen.queryByRole('button', { name: 'Toggle sidebar' })).toBeNull();
+		expect(host.contains(screen.getByRole('button', { name: /^Sync settings/ }))).toBe(true);
+		expect(host.contains(screen.getByRole('button', { name: 'Settings' }))).toBe(true);
+		// The holder stays in the bar, empty: its controls have gone to the column.
+		expect(header.querySelector('[data-column-controls]')?.childNodes.length).toBe(0);
 	});
 });

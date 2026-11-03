@@ -1,4 +1,4 @@
-import { expect, test, type Locator } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import {
 	composer,
 	composerPrompt,
@@ -616,6 +616,31 @@ test('the palette finds notes in every place, labels and actions from the keyboa
 test.describe('on a phone', () => {
 	test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
 
+	test('the Labels screen keeps Archive and Trash where they are when the keyboard comes', async ({
+		page
+	}) => {
+		await openEmptyApp(page);
+		await page
+			.getByRole('navigation', { name: 'Main', exact: true })
+			.getByRole('button', { name: 'Labels' })
+			.click();
+		const archive = page
+			.getByRole('navigation', { name: 'Archive and Trash' })
+			.getByText('Archive');
+		await expect(archive).toBeVisible();
+		const before = (await archive.boundingBox())!.y;
+		// The keyboard, as the viewport code reports it: the room the feed keeps clear
+		// for an overlaid keyboard must not lift the screen's foot.
+		await page.evaluate(() =>
+			document.documentElement.style.setProperty('--app-keyboard-bottom', '300px')
+		);
+		await page.waitForTimeout(100);
+		expect((await archive.boundingBox())!.y).toBe(before);
+		await page.evaluate(() =>
+			document.documentElement.style.removeProperty('--app-keyboard-bottom')
+		);
+	});
+
 	test('the notes keep their scroll place across a visit to Labels', async ({ page }) => {
 		await openEmptyApp(page);
 		const feed = page.getByRole('main');
@@ -677,6 +702,14 @@ test.describe('on a phone', () => {
 		// The composer sits under the top bar; there is no floating new-note button.
 		await expect(composerPrompt(page)).toBeVisible();
 		await expect(page.getByRole('button', { name: 'New note' })).toHaveCount(0);
+
+		// The bar's surface runs the full width of the screen behind the app frame, so
+		// on a phone with a side status bar (iPhone Duo folded) it reads edge to edge.
+		const bleed = await page.locator('[data-tabbar-safe-area]').boundingBox();
+		const barBox = await tabs.boundingBox();
+		expect(bleed!.x).toBe(0);
+		expect(bleed!.width).toBe(390);
+		expect(Math.round(bleed!.y)).toBe(Math.round(barBox!.y));
 
 		await tabs.getByRole('button', { name: 'Reminders' }).click();
 		await expect(page).toHaveURL(/\/reminders$/);
@@ -780,6 +813,27 @@ test.describe('on a phone', () => {
 	});
 });
 
+test('a note is centered on a tall wide window, and fills a short one with no band above it', async ({
+	page
+}) => {
+	await page.setViewportSize({ width: 1180, height: 900 });
+	await openEmptyApp(page);
+	await createNote(page, 'Fold', 'Landscape');
+	await noteCard(page, 'Fold').click();
+	const sheet = editor(page);
+	const tall = (await sheet.boundingBox())!;
+	// Centered at its 72% height, with room above and below.
+	expect(tall.y).toBeGreaterThan(80);
+	expect(900 - (tall.y + tall.height)).toBeGreaterThan(80);
+
+	await page.setViewportSize({ width: 1180, height: 680 });
+	await expect
+		.poll(async () => (await sheet.boundingBox())!.y, { message: 'the card sits at the top' })
+		.toBeLessThan(80);
+	const short = (await sheet.boundingBox())!;
+	expect(short.y + short.height).toBeGreaterThan(680 - 40);
+});
+
 test('on a phone the composer stays under the top bar while the feed scrolls', async ({ page }) => {
 	await page.setViewportSize({ width: 390, height: 640 });
 	await openEmptyApp(page);
@@ -799,4 +853,245 @@ test('on a phone the composer stays under the top bar while the feed scrolls', a
 	expect(await feed.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
 	expect((await prompt.boundingBox())!.y).toBe(restingTop);
 	await expect(prompt).toBeInViewport();
+});
+
+// iPhone Duo keeps its status bar in a column down one side, folded or open. Chromium
+// emulates that column through the DevTools safe-area override, which the viewport code
+// reads as the real device's inset.
+test.describe('in iPhone Duo’s side column', () => {
+	const column = { top: 0, right: 84, bottom: 34, left: 0 };
+
+	async function openWithColumn(page: Page, side: 'left' | 'right' = 'right') {
+		const session = await page.context().newCDPSession(page);
+		const insets =
+			side === 'right' ? column : { ...column, right: column.left, left: column.right };
+		await session.send('Emulation.setSafeAreaInsetsOverride', { insets });
+		await openEmptyApp(page);
+		await expect(page.locator('html')).toHaveAttribute('data-side-column', side);
+	}
+
+	/**
+	 * The column's stack: sync and settings as circles, then the places in one pill,
+	 * icons alone, gathered at the column's bottom, clear of what iOS draws at its top.
+	 */
+	async function expectRailInColumn(page: Page, viewport: { width: number; height: number }) {
+		const stack = page.locator('[data-column-stack]');
+		const box = (await stack.boundingBox())!;
+		expect(box.x).toBe(viewport.width - column.right);
+		expect(box.width).toBe(column.right);
+		const rail = page.getByRole('navigation', { name: 'Main', exact: true });
+		await expect(rail).not.toHaveAttribute('data-phone-tabs');
+		const pill = (await rail.boundingBox())!;
+		expect(pill.x).toBeGreaterThanOrEqual(box.x);
+		expect(pill.x + pill.width).toBeLessThanOrEqual(box.x + box.width);
+		const tabs = rail.getByRole('button');
+		await expect(tabs).toHaveText(['Notes', 'Reminders', 'Kanban', 'Labels', 'Search']);
+		for (const tab of await tabs.all())
+			await expect(tab.locator('span').last()).not.toBeInViewport();
+		const first = (await tabs.first().boundingBox())!;
+		const last = (await tabs.last().boundingBox())!;
+		// Without the app shell's report the stylesheet's floor keeps the stack under an
+		// expanded Dynamic Island and the clock; the pill sits at the bottom, not against it.
+		expect(first.y).toBeGreaterThan(232);
+		expect(last.y + last.height).toBeLessThanOrEqual(viewport.height);
+		expect(last.y + last.height).toBeGreaterThan(viewport.height - 56);
+		// Sync and settings stand above the pill, inside the column.
+		const sync = (await stack.getByRole('button', { name: /^Sync settings/ }).boundingBox())!;
+		expect(sync.x).toBeGreaterThanOrEqual(box.x);
+		expect(sync.y + sync.height).toBeLessThanOrEqual(pill.y);
+	}
+
+	test.describe('folded', () => {
+		const viewport = { width: 417, height: 606 };
+		test.use({ viewport, hasTouch: true });
+
+		test('the tabs stand at the bottom of the column, and the bottom bar and its strip go', async ({
+			page
+		}) => {
+			await openWithColumn(page);
+			await expectRailInColumn(page, viewport);
+			await expect(page.locator('[data-tabbar-safe-area]')).toHaveCSS('display', 'none');
+			// The bar: the view name, then a search field that opens the palette; sync and
+			// More have gone into the column, More under sync.
+			const header = page.locator('header').first();
+			await expect(header.getByRole('button', { name: /^Sync settings/ })).toHaveCount(0);
+			const stack = page.locator('[data-column-stack]');
+			const more = (await stack.getByRole('button', { name: 'More' }).boundingBox())!;
+			const sync = (await stack.getByRole('button', { name: /^Sync settings/ }).boundingBox())!;
+			expect(sync.y).toBeLessThan(more.y);
+			const title = header.locator('[data-view-title]');
+			const search = header.getByRole('button', { name: 'Search notes, labels and actions' });
+			const left = async (locator: Locator) => (await locator.boundingBox())!.x;
+			expect(await left(title)).toBeLessThan(await left(search));
+			const searchBox = (await search.boundingBox())!;
+			expect(searchBox.x + searchBox.width).toBeLessThanOrEqual(viewport.width - column.right);
+			await search.click();
+			await expect(
+				page.getByRole('dialog', { name: 'Search notes, labels and actions' })
+			).toBeVisible();
+			await page.keyboard.press('Escape');
+			const rail = page.getByRole('navigation', { name: 'Main', exact: true });
+			await rail.getByRole('button', { name: 'Labels' }).click();
+			await expect(page.locator('[data-view-title]')).toHaveText('Labels');
+
+			// With the palette up from the pill, Search is the one place lit; closed, the
+			// place lights again. "Go to…" from the Labels screen leaves it for the new view.
+			// By selector: the open palette hides the rest of the page from role queries.
+			const tab = (name: string) =>
+				page.locator('[data-column-stack] nav button', { hasText: name });
+			const notes = tab('Notes');
+			const labels = tab('Labels');
+			const searchTab = tab('Search');
+			const bg = (locator: Locator) =>
+				locator.evaluate((element) => getComputedStyle(element).backgroundColor);
+			// A faded-out colour reads as rgba or oklch with a zero alpha; polled, since the
+			// colours take a short transition.
+			const clear = async (locator: Locator) => /(?:, | \/ )0\)$/.test(await bg(locator));
+			const settled = async (locator: Locator) => {
+				let last = await bg(locator);
+				for (;;) {
+					await page.waitForTimeout(150);
+					const next = await bg(locator);
+					if (next === last) return next;
+					last = next;
+				}
+			};
+			const lit = await settled(labels);
+			expect(await clear(labels)).toBe(false);
+			await searchTab.click();
+			await expect(
+				page.getByRole('dialog', { name: 'Search notes, labels and actions' })
+			).toBeVisible();
+			await expect.poll(() => bg(searchTab)).toBe(lit);
+			await expect.poll(() => clear(labels)).toBe(true);
+			await page.getByRole('option', { name: 'Go to Kanban' }).click();
+			await expect(page.locator('[data-view-title]')).toHaveText('Kanban');
+			await expect.poll(() => bg(tab('Kanban'))).toBe(lit);
+			await expect.poll(() => clear(labels)).toBe(true);
+			await expect.poll(() => clear(searchTab)).toBe(true);
+			await expect.poll(() => clear(notes)).toBe(true);
+		});
+
+		test('a place answers a finger from under the palette, and Search toggles it', async ({
+			page
+		}) => {
+			await openWithColumn(page);
+			const tab = (name: string) =>
+				page.locator('[data-column-stack] nav button', { hasText: name });
+			const palette = page.getByRole('dialog', { name: 'Search notes, labels and actions' });
+			// Touch: the dialog turns the body's pointer events off; the column keeps its own.
+			await tab('Search').tap();
+			await expect(palette).toBeVisible();
+			await tab('Reminders').tap();
+			await expect(palette).toHaveCount(0);
+			await expect(page.locator('[data-view-title]')).toHaveText('Reminders');
+			await tab('Search').tap();
+			await expect(palette).toBeVisible();
+			await tab('Search').tap();
+			await expect(palette).toHaveCount(0);
+			// A mouse, the same.
+			await tab('Search').click();
+			await expect(palette).toBeVisible();
+			await tab('Kanban').click();
+			await expect(palette).toHaveCount(0);
+			await expect(page.locator('[data-view-title]')).toHaveText('Kanban');
+		});
+
+		test('on its side, the short column still shows all five tabs, as icons', async ({ page }) => {
+			await page.setViewportSize({ width: 678, height: 466 });
+			await openWithColumn(page, 'left');
+			const rail = page.getByRole('navigation', { name: 'Main', exact: true });
+			const box = (await rail.boundingBox())!;
+			const tabs = rail.getByRole('button');
+			await expect(tabs).toHaveCount(5);
+			for (const tab of await tabs.all()) {
+				const t = (await tab.boundingBox())!;
+				expect(t.y).toBeGreaterThanOrEqual(box.y);
+				expect(t.y + t.height).toBeLessThanOrEqual(box.y + box.height + 1);
+			}
+			// The island sits at the top of the column; the first tab stays under it.
+			expect((await tabs.first().boundingBox())!.y).toBeGreaterThanOrEqual(140);
+		});
+
+		test('a column down the left puts the rail there', async ({ page }) => {
+			await openWithColumn(page, 'left');
+			const stack = (await page.locator('[data-column-stack]').boundingBox())!;
+			expect(stack.x).toBe(0);
+			expect(stack.width).toBe(column.right);
+			const pill = (await page
+				.getByRole('navigation', { name: 'Main', exact: true })
+				.boundingBox())!;
+			expect(pill.x).toBeGreaterThanOrEqual(0);
+			expect(pill.x + pill.width).toBeLessThanOrEqual(column.right);
+			const frame = (await page.getByRole('main').boundingBox())!;
+			expect(frame.x).toBeGreaterThanOrEqual(column.right);
+		});
+	});
+
+	test.describe('folded, then opened upright', () => {
+		test.use({ viewport: { width: 466, height: 678 }, hasTouch: true });
+
+		test('the bar keeps its title, sync and More when the column goes', async ({ page }) => {
+			await openWithColumn(page);
+			await expect(page.locator('[data-column-stack]')).toBeVisible();
+			const session = await page.context().newCDPSession(page);
+			await session.send('Emulation.setSafeAreaInsetsOverride', {
+				insets: { top: 59, right: 0, bottom: 34, left: 0 }
+			});
+			await page.setViewportSize({ width: 669, height: 951 });
+			await expect(page.locator('html')).not.toHaveAttribute('data-side-column', /./);
+			await expect(page.locator('[data-column-stack]')).toHaveCount(0);
+			const header = page.locator('header').first();
+			await expect(header.locator('[data-view-title]')).toHaveText('Notes');
+			await expect(header.getByRole('button', { name: /^Sync settings/ })).toBeVisible();
+			await expect(header.getByRole('button', { name: 'More' })).toBeVisible();
+			await expect(page.locator('[data-phone-tabs]')).toBeVisible();
+
+			// The board on this wide phone: lanes at a lane's width, not one huge column,
+			// and the add button ahead of the chips rather than over them.
+			await page.locator('[data-phone-tabs]').getByRole('button', { name: 'Kanban' }).click();
+			const lane = page.locator('section[data-kanban-column]').first();
+			await expect(lane).toBeVisible();
+			expect((await lane.boundingBox())!.width).toBeLessThanOrEqual(26 * 16);
+			const add = (await page.getByRole('button', { name: 'Add a label column' }).boundingBox())!;
+			const chip = (await page.locator('[data-kanban-tab]').first().boundingBox())!;
+			expect(add.x + add.width).toBeLessThanOrEqual(chip.x);
+		});
+	});
+
+	test.describe('open', () => {
+		const viewport = { width: 1050, height: 739 };
+		test.use({ viewport, hasTouch: true });
+
+		test('the same rail stands in the column, with no sidebar beside it, and Labels opens the Labels screen', async ({
+			page
+		}) => {
+			await openWithColumn(page);
+			await expectRailInColumn(page, viewport);
+			// The rail is the navigation: no sidebar, and nothing to toggle one with. Sync
+			// and Settings stand in the column; the bar keeps the search field.
+			await expect(page.getByRole('navigation', { name: 'Main navigation' })).toHaveCount(0);
+			await expect(page.getByRole('button', { name: 'Toggle sidebar' })).toHaveCount(0);
+			const header = page.locator('header').first();
+			await expect(header.getByRole('searchbox')).toBeVisible();
+			await expect(header.getByRole('button', { name: 'Settings', exact: true })).toHaveCount(0);
+			const stack = page.locator('[data-column-stack]');
+			await expect(stack.getByRole('button', { name: 'Settings', exact: true })).toBeVisible();
+			// The frame and its top bar end where the column begins, so the stack covers nothing.
+			const frame = (await page.locator('.app-viewport').boundingBox())!;
+			expect(frame.x + frame.width).toBeLessThanOrEqual(viewport.width - column.right);
+
+			const rail = page.getByRole('navigation', { name: 'Main', exact: true });
+			const labels = rail.getByRole('button', { name: 'Labels' });
+			await labels.click();
+			await expect(
+				page.getByText('Swipe a label to the left to rename or delete it.')
+			).toBeVisible();
+			await expect(labels).toHaveAttribute('aria-current', 'page');
+			await rail.getByRole('button', { name: 'Notes' }).click();
+			await expect(page.getByText('Swipe a label to the left to rename or delete it.')).toHaveCount(
+				0
+			);
+		});
+	});
 });

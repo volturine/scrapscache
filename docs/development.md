@@ -11,24 +11,26 @@ Contributor-oriented notes for working on Scraps Cache. Also read
 
 ## Scripts
 
-| Script                     | Description                                                      |
-| -------------------------- | ---------------------------------------------------------------- |
-| `npm run dev`              | Vite dev server (SvelteKit)                                      |
-| `npm run dev:admin`        | Operator dashboard, admin API proxied to `npm run dev`           |
-| `npm run build`            | Production build (`adapter-node` → `build/`)                     |
-| `npm run build:cloudflare` | Workers build (`adapter-cloudflare` → `.svelte-kit/cloudflare/`) |
-| `npm run cf:dev`           | Local Cloudflare stack (reminders Worker + app)                  |
-| `npm run cf:cron:dev`      | Scheduled worker + app service binding with test triggers        |
-| `npm start`                | Run the built server (`node build`)                              |
-| `npm run preview`          | Vite preview of the production build                             |
-| `npm run check`            | `svelte-check` with native TypeScript                            |
-| `npm run check:watch`      | `svelte-check` in watch mode                                     |
-| `npm run format`           | Prettier write                                                   |
-| `npm run format:check`     | Prettier check (also runs in CI / `validate`)                    |
-| `npm test`                 | Run the Vitest suite                                             |
-| `npm run test:watch`       | Vitest watch mode                                                |
-| `npm run test:e2e`         | Playwright smoke tests against the production build              |
-| `npm run validate`         | check + format + test + build + e2e                              |
+| Script                     | Description                                                             |
+| -------------------------- | ----------------------------------------------------------------------- |
+| `npm run dev`              | Vite dev server (SvelteKit)                                             |
+| `npm run dev:admin`        | Operator dashboard, admin API proxied to `npm run dev`                  |
+| `npm run build`            | Production build (`adapter-node` → `build/`)                            |
+| `npm run build:cloudflare` | Workers build (`adapter-cloudflare` → `.svelte-kit/cloudflare/`)        |
+| `npm run build:ios`        | iPhone app bundle (`adapter-static` → `build/ios/`, synced into `ios/`) |
+| `npm run ios`              | Open the iPhone app's Xcode project                                     |
+| `npm run cf:dev`           | Local Cloudflare stack (reminders Worker + app)                         |
+| `npm run cf:cron:dev`      | Scheduled worker + app service binding with test triggers               |
+| `npm start`                | Run the built server (`node build`)                                     |
+| `npm run preview`          | Vite preview of the production build                                    |
+| `npm run check`            | `svelte-check` with native TypeScript                                   |
+| `npm run check:watch`      | `svelte-check` in watch mode                                            |
+| `npm run format`           | Prettier write                                                          |
+| `npm run format:check`     | Prettier check (also runs in CI / `validate`)                           |
+| `npm test`                 | Run the Vitest suite                                                    |
+| `npm run test:watch`       | Vitest watch mode                                                       |
+| `npm run test:e2e`         | Playwright smoke tests against the production build                     |
+| `npm run validate`         | check + format + test + build + e2e                                     |
 
 ## Local development
 
@@ -45,6 +47,98 @@ The dev server reads `http://127.0.0.1:8080` and
 `SCRAPSCACHE_RELAY_DB_URL` and `SCRAPSCACHE_OPS_DB_URL`).
 
 Tests use `@libsql/client/node` with `file:` URLs (no sqld required).
+
+## iPhone app
+
+The iPhone app is the same client inside a [Capacitor](https://capacitorjs.com/)
+shell (`ios/`, Swift Package Manager, no CocoaPods). It bundles the static build
+and talks to whichever server the **Server** row under Settings names
+(`https://scrapscache.com` unless changed), so one build serves self-hosters too.
+At its first launch the app asks which server it syncs with: the hosted
+service, or a self-hosted relay by https address, which it checks by reading
+that server's `/health/ready`; "Decide later" asks again next launch, and the
+Server row under Settings answers the question too (`ServerPrompt`,
+`serverSetting.chosen`). What differs from the web app lives under
+`src/lib/native/` and is loaded only there: the status bar follows the theme (it stays where iOS puts it: on the
+folded iPhone Duo the side column is hardware safe area, hidden bar or not), and
+reminders are scheduled with the system as local
+notifications (the web view has no service worker or web push). On iPhone Duo
+the status bar runs down a side column that iOS reserves, folded or open; the
+phone tab bar stands in that column as a rail (`PhoneTabBar` with `rail`, from
+`sideColumn.svelte.ts`) at every width, so the notes get the cover screen's full
+height and the open phone on its side keeps the same navigation in place of the
+sidebar, which it does not show. Beside the column the top bar keeps the view
+name (folded) and a search field; sync and settings stand in the column as glass
+circles above the pill of places, which shows icons alone, in the look iOS gives
+its own vertical bars there (`Topbar` portals them with `portalToColumnActions`
+into the stack the app layout renders). The stack keeps
+clear of what iOS draws in the column: the app's shell
+(`ios/App/App/ScrapsBridgeViewController.swift`, the root controller the scene
+delegate creates) reads the web view's occlusion regions, which iOS 27.1 reports
+for the camera island and the status cluster, and publishes them to the page as
+the `ReservedRegions` plugin; `src/lib/native/reservedRegions.ts` turns them into
+`--app-rail-top` and `--app-rail-bottom`, since the folded phone turned one way
+puts the island at the column's bottom. An iOS before 27.1 says it cannot read
+them, and the stylesheet's own values stay. With the keyboard up the stack hides, as the
+phone's bar does; there is no room for it under the clock. The palette stays inside
+the app frame, so the column keeps its places while it is up: the stack keeps its
+own pointer events under the modal's body lock, a place leaves the palette for its
+view, and Search toggles it. A dialog that covers the whole screen, as sync does,
+covers the column too.
+
+```sh
+npm run build:ios   # static build → build/ios, then `cap sync ios`
+npm run ios         # open ios/App/App.xcodeproj in Xcode; run on a simulator
+```
+
+From the terminal, with a booted simulator:
+
+```sh
+xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug \
+  -destination 'platform=iOS Simulator,name=iPhone Duo' -derivedDataPath /tmp/scraps-ios build
+xcrun simctl install booted /tmp/scraps-ios/Build/Products/Debug-iphonesimulator/App.app
+xcrun simctl launch booted com.scrapscache.app
+```
+
+The first build fetches Capacitor's binary frameworks; if `xcodebuild` sits silent,
+it is waiting on a macOS keychain prompt for that download. Running
+`swift package --disable-keychain resolve` in `ios/App/CapApp-SPM` first fills the
+package cache without the prompt. `ios/App/App/public` and
+`ios/App/App/capacitor.config.json` are generated by `cap sync` and not committed.
+
+### TestFlight
+
+`npm run ios:testflight` archives the app in Release and uploads it to App Store
+Connect (`scripts/ios-testflight.sh`; export settings in
+`ios/App/ExportOptions.plist`). It needs an Apple Developer Program membership,
+the App ID `com.scrapscache.app` registered in the developer portal
+(Certificates, Identifiers & Profiles), then an App Store Connect record for
+**Scraps Cache** using it (the New App form only offers registered IDs), and:
+
+- `IOS_TEAM_ID`: the team ID (Xcode › Settings › Accounts, or the developer
+  portal's membership page);
+- either Xcode signed in to the Apple ID of that team, or an App Store Connect
+  API key in `ASC_KEY_ID`, `ASC_ISSUER_ID` and `ASC_KEY_PATH` (the `.p8` file).
+
+Automatic signing creates the provisioning profile on the first run. Each upload takes the UTC minute as its build number unless
+`IOS_BUILD_NUMBER` says otherwise; the version is `MARKETING_VERSION` in the
+Xcode project. The build appears under TestFlight once Apple has processed it;
+internal testers (the team) need no review, external groups do.
+
+CI uploads a build after every development deployment (the `testflight` job in
+`.github/workflows/ci-cd.yaml`, on GitHub's `xcode-27` runner, from the same
+commit the dev Workers run) once four repository secrets exist: `APPLE_TEAM_ID`,
+`ASC_KEY_ID`, `ASC_ISSUER_ID` and `ASC_PRIVATE_KEY` (the whole `.p8` file). Make
+the key under App Store Connect › Users and Access › Integrations › App Store
+Connect API with the **Admin** role: `xcodebuild` signs in the cloud with it and
+creates the distribution certificate itself, which Apple only lets an Admin key
+do (an App Manager key fails with a cloud signing permission error). Without the
+secrets, or on a runner whose Xcode 27 lacks the iOS 27.1 SDK the shell needs,
+the job writes a notice and steps aside rather than failing the run.
+
+The App Store icon is `AppIcon-1024.png` in the asset catalog, flattened from
+the web icon (Apple masks the corners itself and rejects an alpha channel); the
+launch screen shows that icon on the system background.
 
 ## Browser smoke tests
 
@@ -246,6 +340,13 @@ GitHub Actions workflow: `.github/workflows/ci-cd.yaml`.
 - **image** job: Docker build; PRs publish `dev-<n>` / `dev-sha-*` only, `master`
   publishes `latest` / `master` / `sha-*`
 - **image-mcp** job: MCP recipe image (`ghcr.io/…-mcp`); same tag scheme
+
+Code scanning: `.github/workflows/codeql.yaml` runs CodeQL for Actions,
+JavaScript/TypeScript and Python on pull requests, on `master` and weekly. It
+replaces GitHub's default setup, which analysed every language it detected on
+`master`, including the Swift of the iPhone shell in `ios/`, whose package
+points at `node_modules` that setup never installs; keep default setup off so
+the two do not collide.
 
 Dependabot (`.github/dependabot.yml`) updates npm, Docker, and GitHub Actions
 weekly.

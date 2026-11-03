@@ -22,6 +22,31 @@ describe('inline Markdown tokenizer', () => {
 		}
 	);
 
+	it('does not treat underscores inside a URL as emphasis', () => {
+		const url = 'https://naysbaits.com/en-eu?_su_rec=abc&__su_rec_id=9c3ebfa2';
+		const tokens = parseInlineMarkdown(`what ever ${url}`);
+		expect(tokens.some((token) => token.kind === 'marker')).toBe(false);
+		expect(tokens.map((token) => token.text).join('')).toBe(`what ever ${url}`);
+		expect(parseInlineMarkdown('_still italic_').some((token) => token.kind === 'marker')).toBe(
+			true
+		);
+	});
+
+	it('turns a photo marker line into a chip with its syntax hidden', () => {
+		expect(parseInlineMarkdown('![beach.webp](photo:k3f9x2)')).toEqual([
+			{ kind: 'marker', text: '![', marker: 'photo' },
+			{ kind: 'text', text: 'beach.webp', styles: ['photo'], photo: 'k3f9x2' },
+			{ kind: 'marker', text: '](photo:k3f9x2)', marker: 'photo' }
+		]);
+		const [open] = parseInlineMarkdown('![beach.webp](photo:k3f9x2)');
+		expect(markdownTokenClass(open, true)).toContain('markdown-token-marker-hidden');
+		expect(
+			parseInlineMarkdown('see ![beach.webp](photo:k3f9x2)').some(
+				(token) => token.kind === 'text' && token.styles.includes('photo')
+			)
+		).toBe(false);
+	});
+
 	it('requires an exact closing backtick run', () => {
 		const tokens = parseInlineMarkdown('`one `` two`');
 		expect(tokens.filter((token) => token.kind === 'text')).toEqual([

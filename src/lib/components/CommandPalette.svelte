@@ -317,6 +317,12 @@
 	onOpenChange={(details) => {
 		if (!details.open) onClose();
 	}}
+	onInteractOutside={(event) => {
+		// iPhone Duo's column stands outside the dialog: its places decide for
+		// themselves (a place leaves, Search toggles), so the tap is not a dismissal.
+		const target = event.detail.originalEvent.target;
+		if (target instanceof Element && target.closest('[data-column-stack]')) event.preventDefault();
+	}}
 	initialFocusEl={() => field}
 	preventScroll={false}
 	lazyMount

@@ -904,6 +904,18 @@ describe('BodyEditor native editing', () => {
 		expect(window.getSelection()?.toString()).toBe('world');
 	});
 
+	it('inserts text through the public paste path at the current caret', async () => {
+		const { component, container } = render(BodyEditor, { props: { body: 'Hello world' } });
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		editor.focus();
+		caretAt(container, 0, 5);
+
+		expect(component.insertTextAtCaret(' brave')).toBe(true);
+		await tick();
+
+		expect(lineTexts(container)).toEqual(['Hello brave world']);
+	});
+
 	it('nests a checklist line under the previous task with Tab', async () => {
 		const { container } = render(BodyEditor, { props: { body: '[ ] parent\n[ ] child' } });
 		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
@@ -959,6 +971,25 @@ describe('BodyEditor native editing', () => {
 		await tick();
 
 		expect(lifted).toEqual(['# Heading']);
+		expect(lineTexts(container)).toEqual(['body-from-owner']);
+	});
+
+	it('lets the public paste path lift a copied heading without a caret', async () => {
+		const lifted: string[] = [];
+		const { component, container } = render(BodyEditor, {
+			props: {
+				body: '',
+				transformPaste: (raw: string) => {
+					lifted.push(raw);
+					return 'body-from-owner';
+				}
+			}
+		});
+
+		expect(component.insertTextAtCaret('# Heading\nbody')).toBe(true);
+		await tick();
+
+		expect(lifted).toEqual(['# Heading\nbody']);
 		expect(lineTexts(container)).toEqual(['body-from-owner']);
 	});
 

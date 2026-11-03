@@ -1,7 +1,9 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { NoteImage } from '#lib/types.js';
 import { createSyncIdentity } from '#lib/syncPairing.js';
+import { actionUndo } from '#lib/stores/actionUndo.svelte.js';
 import { composerStore } from '#lib/stores/composer.svelte.js';
 import { notesStore } from '#lib/stores/notes.svelte.js';
 import { syncStore } from '#lib/stores/sync.svelte.js';
@@ -38,6 +40,18 @@ function fileDragEvent(type: string, files: File[]): DragEvent {
 
 const bar = () => document.querySelector('[data-note-composer]') as HTMLElement;
 
+function photo(): NoteImage {
+	const dataUrl = 'data:image/png;base64,iVBORw0KGgo=';
+	return {
+		id: 'shot',
+		mime: 'image/png',
+		dataUrl,
+		thumbUrl: dataUrl,
+		name: 'shot.png',
+		createdAt: 1
+	};
+}
+
 async function typeTitle(text: string) {
 	const box = titleBox();
 	box.value = text;
@@ -49,6 +63,7 @@ async function typeTitle(text: string) {
 describe('NoteComposer', () => {
 	beforeEach(() => {
 		localStorage.clear();
+		actionUndo.clear();
 		const account = createSyncIdentity();
 		const profile = { id: 'composer', name: 'Composer', syncKey: account.syncKey, createdAt: 1 };
 		syncStore.profiles = [profile];
@@ -69,6 +84,7 @@ describe('NoteComposer', () => {
 		syncStore.profiles = [];
 		notesStore.notes = [];
 		composerStore.draftId = null;
+		actionUndo.clear();
 		openNote.mockClear();
 	});
 
@@ -108,6 +124,17 @@ describe('NoteComposer', () => {
 			expect(notesStore.notes).toHaveLength(0);
 			expect(composerStore.draftId).toBeNull();
 		});
+	});
+
+	it('asks the picker for photos alone from the photo note button, and leaves the keyboard down', async () => {
+		render(NoteComposer);
+		await fireEvent.click(screen.getByRole('button', { name: 'New photo note' }));
+		await tick();
+		await tick();
+		const input = document.querySelector<HTMLInputElement>('input[type="file"]');
+		expect(input?.accept).toBe('image/*');
+		expect(input?.multiple).toBe(true);
+		expect(document.activeElement).not.toBe(titleBox());
 	});
 
 	it('starts a checklist from its button, and leaves nothing behind when it stays empty', async () => {
@@ -192,6 +219,43 @@ describe('NoteComposer', () => {
 		await tick();
 		expect(notesStore.notes).toHaveLength(1);
 		expect(notesStore.notes[0]).toMatchObject({ title: 'Shopping', body: 'eggs\nretro' });
+	});
+
+	it('keeps a photo marker and body text in sync with store undo and redo while open', async () => {
+		actionUndo.clear();
+		const { container } = render(NoteComposer);
+		const bodyBefore = 'Before\n![shot.png](photo:shot)\nAfter';
+		expect(composerStore.open({ body: bodyBefore })).toBe(true);
+		await tick();
+		const noteId = composerStore.draftId!;
+		notesStore.updateNote(noteId, { images: [photo()] });
+		const lines = () =>
+			[...container.querySelectorAll('[data-body-editor] [data-line-text]')].map((line) =>
+				(line.textContent ?? '').replaceAll('\u200b', '')
+			);
+
+		await waitFor(() => expect(lines()).toEqual(['Before', '![shot.png](photo:shot)', 'After']));
+		await waitFor(() => expect(screen.getByRole('button', { name: 'Show previews' })).toBeTruthy());
+		await fireEvent.click(screen.getByRole('button', { name: 'Show previews' }));
+		await waitFor(() => expect(screen.getByRole('button', { name: 'Open shot.png' })).toBeTruthy());
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Remove photo' }));
+		await waitFor(() => {
+			expect(notesStore.notes.find((note) => note.id === noteId)?.body).toBe('Before\nAfter');
+			expect(lines()).toEqual(['Before', 'After']);
+		});
+		actionUndo.undo();
+		await waitFor(() => {
+			expect(notesStore.notes.find((note) => note.id === noteId)?.body).toBe(bodyBefore);
+			expect(lines()).toEqual(['Before', '![shot.png](photo:shot)', 'After']);
+			expect(screen.getByRole('button', { name: 'Open shot.png' })).toBeTruthy();
+		});
+		actionUndo.redo();
+		await waitFor(() => {
+			expect(notesStore.notes.find((note) => note.id === noteId)?.body).toBe('Before\nAfter');
+			expect(lines()).toEqual(['Before', 'After']);
+			expect(screen.queryByRole('button', { name: 'Open shot.png' })).toBeNull();
+		});
 	});
 
 	it('asks for photo quality when an image is pasted into the title or the body', async () => {

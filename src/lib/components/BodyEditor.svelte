@@ -1912,7 +1912,11 @@
 	 * Add whole rows (photo markers) at a point, or after the last row without one.
 	 * The caret lands on a blank row below them, so typing never runs into a marker.
 	 */
-	export async function insertLines(texts: string[], at: EditorPoint | null) {
+	export async function insertLines(
+		texts: string[],
+		at: EditorPoint | null,
+		options: { focus?: boolean } = {}
+	) {
 		if (readOnly || texts.length === 0) return;
 		rememberEdit(at ? { start: at, end: at, collapsed: true } : null);
 		applyingEdit = true;
@@ -1939,7 +1943,11 @@
 			lines.splice(index, replace, ...rows);
 			const caretIndex = index + texts.length;
 			syncBody(true);
-			await focusAfterRender(caretIndex, 0, lines[caretIndex]?.id ?? null);
+			// The composer adds a photo without taking the writer to the keyboard: a
+			// focus here would raise the keyboard while the writer is still picking photos.
+			if (options.focus !== false) {
+				await focusAfterRender(caretIndex, 0, lines[caretIndex]?.id ?? null);
+			}
 		} finally {
 			applyingEdit = false;
 		}
@@ -2857,39 +2865,33 @@
 		};
 	}
 
-	function handlePaste(event: ClipboardEvent) {
-		cancelCaretLock();
-		if (!event.clipboardData) return;
-		const text = event.clipboardData.getData('text/plain');
-		if (!text) return;
+	function insertPastedText(text: string, cancelLock = true): boolean {
+		if (cancelLock) cancelCaretLock();
+		if (readOnly || !text) return false;
 		const range = editorRange();
 		if (extraCursors.length > 0) {
 			const primary = cursorFromRange(range);
 			if (primary && !/[\r\n]/.test(text)) {
-				event.preventDefault();
 				editAllCursors(primary, { kind: 'insert', text });
-				return;
+				return true;
 			}
 			clearExtraCursors();
 		}
 
 		if (!range) {
 			// The caret could not be resolved inside the editor. Normal editing
-			// keeps native browser insertion, but on an empty note the paste must
-			// still honor the owner's transform instead of letting a markdown
-			// heading land untouched in the body.
-			if (body) return;
-			event.preventDefault();
+			// keeps native browser insertion; an empty note still honors the owner's
+			// transform so a markdown heading can become its title.
+			if (body) return false;
 			const transformed = transformPaste ? transformPaste(text) : null;
 			lines = parseBodyToLines(transformed === null ? text : transformed);
 			draftTaskId = null;
 			syncBody();
 			const last = lines.length - 1;
 			focusAt(last, lines[last]?.text.length ?? 0, lines[last]?.id ?? null);
-			return;
+			return true;
 		}
 
-		event.preventDefault();
 		// The owner may lift part of the paste (e.g. a markdown heading into the
 		// note title); it returns the body text that should actually be inserted.
 		const transformed = transformPaste ? transformPaste(text) : null;
@@ -2897,6 +2899,20 @@
 		rememberEdit(range);
 		const caret = replaceRangeWithText(range, bodyText);
 		focusAt(caret.line, caret.offset, lines[caret.line]?.id ?? null);
+		return true;
+	}
+
+	/** Insert paste text through the same selection, checklist, and title rules as clipboard paste. */
+	export function insertTextAtCaret(text: string): boolean {
+		return insertPastedText(text);
+	}
+
+	function handlePaste(event: ClipboardEvent) {
+		cancelCaretLock();
+		if (!event.clipboardData) return;
+		const text = event.clipboardData.getData('text/plain');
+		if (!text) return;
+		if (insertPastedText(text, false)) event.preventDefault();
 	}
 
 	// When a touch toggled a checkbox, the time of that toggle, so a click the

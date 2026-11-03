@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Note, NoteImage } from './types';
-import { clipboardPhotos, noteToClipboardHtml, writeNoteToClipboard } from './noteClipboard';
+import {
+	clipboardPhotos,
+	noteToClipboardHtml,
+	readCopiedNotePaste,
+	writeNoteToClipboard
+} from './noteClipboard';
 
 const PNG = 'data:image/png;base64,iVBORw0KGgo=';
 const WEBP = 'data:image/webp;base64,UklGRg==';
@@ -64,10 +69,12 @@ describe('noteToClipboardHtml', () => {
 		]);
 		expect(html).toBe(
 			[
+				'<div data-scrapscache-note="{&quot;title&quot;:&quot;Trip &lt;2026&gt;&quot;,&quot;body&quot;:&quot;[ ] a\\n[x] b\\n\\nnotes&quot;}">',
 				'<h1>Trip &lt;2026&gt;</h1>',
 				'<p style="white-space:pre-wrap">[ ] a<br>[x] b</p>',
 				'<p style="white-space:pre-wrap">notes</p>',
-				`<p><img src="${PNG}" alt="beach.png" width="40" height="30"></p>`
+				`<p><img src="${PNG}" alt="beach.png" data-scrapscache-photo-id="p1" data-scrapscache-photo-name="beach.png" data-scrapscache-photo-index="0" width="40" height="30"></p>`,
+				'</div>'
 			].join('\n')
 		);
 	});
@@ -81,16 +88,63 @@ describe('noteToClipboardHtml', () => {
 		);
 		expect(html).toBe(
 			[
+				'<div data-scrapscache-note="{&quot;title&quot;:&quot;&quot;,&quot;body&quot;:&quot;The cove:\\n![cove.png](photo:p1)\\nParking\\n![gone](photo:p9)&quot;}">',
 				'<p style="white-space:pre-wrap">The cove:</p>',
-				`<p><img src="${PNG}" alt="cove.png" width="40" height="30"></p>`,
+				`<p><img src="${PNG}" alt="cove.png" data-scrapscache-photo-id="p1" data-scrapscache-photo-name="cove.png" data-scrapscache-photo-index="0" width="40" height="30"></p>`,
 				'<p style="white-space:pre-wrap">Parking<br>![gone](photo:p9)</p>',
-				`<p><img src="${WEBP}" alt="kiosk.webp" width="40" height="30"></p>`
+				`<p><img src="${WEBP}" alt="kiosk.webp" data-scrapscache-photo-id="p2" data-scrapscache-photo-name="kiosk.webp" data-scrapscache-photo-index="1" width="40" height="30"></p>`,
+				'</div>'
 			].join('\n')
 		);
 	});
 
 	it('leaves out an empty title and body', () => {
-		expect(noteToClipboardHtml({ title: '', body: '' }, [])).toBe('');
+		expect(noteToClipboardHtml({ title: '', body: '' }, [])).toBe(
+			'<div data-scrapscache-note="{&quot;title&quot;:&quot;&quot;,&quot;body&quot;:&quot;&quot;}"></div>'
+		);
+	});
+});
+
+describe('readCopiedNotePaste', () => {
+	function clipboardHtml(html: string): DataTransfer {
+		return { getData: (type: string) => (type === 'text/html' ? html : '') } as DataTransfer;
+	}
+
+	it('round-trips the title, mixed body text, and multiple photos with fresh ids', () => {
+		const html = noteToClipboardHtml(
+			{
+				title: 'Road trip',
+				body: 'Before\n![camp.webp](photo:source-two)\nBetween\n![shore.png](photo:source-one)\nAfter'
+			},
+			[
+				photo({ id: 'source-one', name: 'shore.png', mime: 'image/png', dataUrl: PNG }),
+				photo({ id: 'source-two', name: 'camp.webp', dataUrl: WEBP })
+			]
+		);
+
+		const pasted = readCopiedNotePaste(clipboardHtml(html));
+
+		expect(pasted).not.toBeNull();
+		expect(pasted?.title).toBe('Road trip');
+		expect(pasted?.images.map(({ name, mime }) => ({ name, mime }))).toEqual([
+			{ name: 'shore.png', mime: 'image/png' },
+			{ name: 'camp.webp', mime: 'image/webp' }
+		]);
+		expect(pasted?.images.every(({ id }) => !['source-one', 'source-two'].includes(id))).toBe(true);
+		expect(new Set(pasted?.images.map(({ id }) => id)).size).toBe(2);
+		expect(pasted?.images.every(({ contentHash }) => !!contentHash)).toBe(true);
+		expect(pasted!.images[0].createdAt).toBeLessThan(pasted!.images[1].createdAt);
+		expect(pasted?.body).toBe(
+			`Before\n![camp.webp](photo:${pasted?.images[1].id})\nBetween\n![shore.png](photo:${pasted?.images[0].id})\nAfter`
+		);
+	});
+
+	it('rejects an own-note wrapper whose photo uses a remote URL', () => {
+		const html = noteToClipboardHtml({ title: 'Trip', body: '![beach.webp](photo:p1)' }, [
+			photo({ dataUrl: WEBP })
+		]).replace(`src="${WEBP}"`, 'src="https://example.test/photo.webp"');
+
+		expect(readCopiedNotePaste(clipboardHtml(html))).toBeNull();
 	});
 });
 

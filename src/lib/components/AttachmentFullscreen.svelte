@@ -4,7 +4,7 @@
 	import type { NoteImage } from '#lib/types.js';
 	import { dataUrlToBlob } from '#lib/imageBlob.js';
 	import { ChevronLeft, Download } from '@lucide/svelte';
-	import { DownloadTrigger } from '@ark-ui/svelte/download-trigger';
+	import { saveAttachment } from '#lib/noteImages.js';
 	import { portalToAppFloat } from '#lib/appViewport.js';
 	import { modalLayer } from '#lib/modalLayer.js';
 	import { onDestroy, onMount } from 'svelte';
@@ -113,16 +113,15 @@
 					{attachment.name || 'Attachment'}
 				</div>
 				{#if attachment.dataUrl}
-					<DownloadTrigger
-						fileName={attachment.name || 'attachment'}
-						data={attachment.dataUrl}
-						mimeType={attachment.mime || 'application/octet-stream'}
+					<button
+						type="button"
 						class={headerBtn}
+						onclick={() => void saveAttachment(attachment).catch(() => {})}
 						aria-label="Download file"
 						title="Download file"
 					>
 						<Download class={css({ h: '1.25rem', w: '1.25rem' })} aria-hidden="true" />
-					</DownloadTrigger>
+					</button>
 				{/if}
 			</header>
 

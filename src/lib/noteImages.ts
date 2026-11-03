@@ -1,3 +1,4 @@
+import { isNativeApp } from './native';
 import { uid } from './model';
 import type { NoteImage } from './types';
 import { extractDngJpeg, isDngFile, jpegName } from './dngCanonical';
@@ -88,9 +89,16 @@ export function fileIconLabel(mime: string, name?: string): string {
 }
 
 /**
+ * The most a file that is not re-encoded may weigh. The relay takes 16 MB of
+ * ciphertext per envelope, and the bytes travel base64-encoded twice; photos are
+ * re-encoded to far less, but a video or a document goes in as it is.
+ */
+export const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024;
+
+/**
  * Store any file as a note attachment (data URL).
  * DNG → embedded JPEG for preview; photos keep full bytes plus a small thumb; non-images as-is.
- * No size cap (same as photos).
+ * The size cap is the caller's (MAX_ATTACHMENT_BYTES), since a photo shrinks here.
  */
 export async function fileToNoteImage(file: File, imageQuality: ImageQuality): Promise<NoteImage> {
 	if (await isExcalidrawFile(file)) {
@@ -241,6 +249,24 @@ export async function openAttachment(att: NoteImage): Promise<void> {
 		}
 	}
 
+	if (isNativeApp())
+		throw new Error('File sharing is unavailable on this device. Please try again.');
+	downloadBlob(blob, name);
+}
+
+/**
+ * Keep a photo or file on the device. In the app the share sheet does it (iOS
+ * offers Save Image there; a download link does nothing in the web view, and a
+ * data URL handed to one saved as text); on the web it is a download.
+ */
+export async function saveAttachment(att: NoteImage): Promise<void> {
+	if (!att.dataUrl) throw new Error('The photo is still loading.');
+	if (isNativeApp()) return openAttachment(att);
+	const blob = await dataUrlToBlob(att.dataUrl);
+	downloadBlob(blob, att.name?.trim() || 'attachment');
+}
+
+function downloadBlob(blob: Blob, name: string): void {
 	const url = URL.createObjectURL(blob);
 	const revoke = () => {
 		try {

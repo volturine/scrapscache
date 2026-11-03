@@ -924,7 +924,13 @@ describe('NoteEditor share menu', () => {
 		await vi.waitFor(() => expect(write).toHaveBeenCalledOnce());
 		expect(Object.keys(items[0].data)).toEqual(['text/plain', 'text/html', 'image/png']);
 		const html = await items[0].data['text/html'];
-		expect(await (html as Blob).text()).toContain(`<img src="${png}" alt="milk.png">`);
+		const fragment = document.createElement('template');
+		fragment.innerHTML = await (html as Blob).text();
+		const image = fragment.content.querySelector('img');
+		expect(image?.getAttribute('src')).toBe(png);
+		expect(image?.getAttribute('alt')).toBe('milk.png');
+		expect(image?.getAttribute('data-scrapscache-photo-id')).toBe('img-1');
+		expect(fragment.content.querySelector('[data-scrapscache-note]')).not.toBeNull();
 		vi.unstubAllGlobals();
 	});
 

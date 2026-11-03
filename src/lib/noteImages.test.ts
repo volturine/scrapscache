@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('./native', () => ({ isNativeApp: vi.fn(() => false) }));
 import {
 	CANVAS_MIME,
 	createCanvasAttachment,
@@ -8,6 +10,7 @@ import {
 } from './canvasAttachment';
 import {
 	fileToNoteImage,
+	saveAttachment,
 	getClipboardFiles,
 	isInlinePreviewable,
 	looksLikePhoto,
@@ -254,5 +257,80 @@ describe('cropping a photo', () => {
 		const cropped = await noteImageFromCroppedDataUrl(source, 'data:image/png;base64,AA==');
 		expect(cropped.mime).toBe('image/png');
 		expect(cropped.name).toBe('IMG_0001.png');
+	});
+});
+
+describe('saveAttachment', () => {
+	const PNG =
+		'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+	afterEach(() => {
+		vi.restoreAllMocks();
+		vi.unstubAllGlobals();
+	});
+
+	it('downloads the photo bytes on the web, named after the photo', async () => {
+		const { isNativeApp } = await import('./native');
+		vi.mocked(isNativeApp).mockReturnValue(false);
+		const createObjectURL = vi.fn((_blob: Blob) => 'blob:photo');
+		vi.stubGlobal('URL', { ...URL, createObjectURL, revokeObjectURL: vi.fn() });
+		const clicks: string[] = [];
+		vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+			this: HTMLAnchorElement
+		) {
+			clicks.push(`${this.download}:${this.href}`);
+		});
+		await saveAttachment({
+			id: 'a',
+			mime: 'image/png',
+			dataUrl: PNG,
+			name: 'one.png',
+			createdAt: 1
+		});
+		expect(createObjectURL).toHaveBeenCalledTimes(1);
+		const [blob] = createObjectURL.mock.calls[0];
+		expect(blob.type).toBe('image/png');
+		expect(blob.size).toBeGreaterThan(10);
+		expect(clicks).toEqual(['one.png:blob:photo']);
+	});
+
+	it('hands the photo to the share sheet in the app', async () => {
+		const { isNativeApp } = await import('./native');
+		vi.mocked(isNativeApp).mockReturnValue(true);
+		const share = vi.fn(async () => {});
+		vi.stubGlobal('navigator', { ...navigator, canShare: () => true, share });
+		await saveAttachment({
+			id: 'a',
+			mime: 'image/png',
+			dataUrl: PNG,
+			name: 'one.png',
+			createdAt: 1
+		});
+		expect(share).toHaveBeenCalledTimes(1);
+		const [{ files, title }] = share.mock.calls[0] as unknown as [{ files: File[]; title: string }];
+		expect(title).toBe('one.png');
+		expect(files[0].name).toBe('one.png');
+		expect(files[0].type).toBe('image/png');
+	});
+
+	it('reports unavailable native sharing instead of silently using an unsupported download', async () => {
+		const { isNativeApp } = await import('./native');
+		vi.mocked(isNativeApp).mockReturnValue(true);
+		vi.stubGlobal('navigator', { ...navigator, canShare: () => false });
+		await expect(
+			saveAttachment({ id: 'a', mime: 'image/png', dataUrl: PNG, name: 'one.png', createdAt: 1 })
+		).rejects.toThrow(/sharing is unavailable/);
+	});
+
+	it('refuses while only the thumbnail is here', async () => {
+		await expect(
+			saveAttachment({
+				id: 'a',
+				mime: 'image/png',
+				dataUrl: '',
+				thumbUrl: PNG,
+				name: 'one.png',
+				createdAt: 1
+			})
+		).rejects.toThrow(/still loading/);
 	});
 });

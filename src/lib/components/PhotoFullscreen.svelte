@@ -20,7 +20,6 @@
 		X
 	} from '@lucide/svelte';
 	import { ImageCropper, type UseImageCropperContext } from '@ark-ui/svelte/image-cropper';
-	import { DownloadTrigger } from '@ark-ui/svelte/download-trigger';
 	import { SegmentGroup } from '@ark-ui/svelte/segment-group';
 	import Tooltip from './Tooltip.svelte';
 	import { portalToAppOverlay } from '#lib/appViewport.js';
@@ -29,7 +28,7 @@
 	import { button, iconButton } from 'styled-system/recipes';
 	import { center, hstack } from 'styled-system/patterns';
 	import { displayImageSrc } from '#lib/imageThumb.js';
-	import { noteImageFromCroppedDataUrl } from '#lib/noteImages.js';
+	import { noteImageFromCroppedDataUrl, saveAttachment } from '#lib/noteImages.js';
 
 	let {
 		images,
@@ -47,6 +46,18 @@
 	let cropping = $state(false);
 	let cropBusy = $state(false);
 	let cropError = $state('');
+	let saveError = $state('');
+
+	/** The full photo goes to the device; the thumbnail that stands in while it loads does not. */
+	async function savePhoto() {
+		if (!current?.dataUrl) return;
+		saveError = '';
+		try {
+			await saveAttachment(current);
+		} catch (err) {
+			saveError = err instanceof Error ? err.message : 'Could not save the photo.';
+		}
+	}
 	let selectedRatio = $state<'free' | '1:1' | '4:3' | '16:9'>('free');
 	let imgNaturalWidth = $state(0);
 	let imgNaturalHeight = $state(0);
@@ -430,17 +441,17 @@
 				</div>
 
 				<div class={hstack({ gap: '2xs' })}>
-					<Tooltip content="Download photo">
-						<DownloadTrigger
-							fileName={current.name || 'photo.webp'}
-							data={currentSrc}
-							mimeType={current.mime || 'image/webp'}
+					<Tooltip content={current.dataUrl ? 'Download photo' : 'The photo is still loading'}>
+						<button
+							type="button"
 							class={topBarBtn}
+							onclick={() => void savePhoto()}
+							disabled={!current.dataUrl}
 							aria-label="Download photo"
-							title="Download photo"
+							title={current.dataUrl ? 'Download photo' : 'The photo is still loading'}
 						>
 							<Download size={20} aria-hidden="true" />
-						</DownloadTrigger>
+						</button>
 					</Tooltip>
 
 					{#if canCrop}
@@ -472,6 +483,9 @@
 					{/if}
 				</div>
 			</header>
+			{#if saveError}
+				<p class={fs.notice}>{saveError}</p>
+			{/if}
 
 			<div class={styles.viewerStage}>
 				<button type="button" class={styles.viewerBackdrop} onclick={close} aria-label="Close photo"

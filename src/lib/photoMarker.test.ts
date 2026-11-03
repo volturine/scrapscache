@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+	bodyHasPhotoMarker,
 	bodyIsOnlyPhotoMarkers,
 	isPhotoMarkerLine,
 	parsePhotoMarker,
-	photoMarker
+	photoMarker,
+	renamePhotoMarkers,
+	stripPhotoMarkers
 } from './photoMarker';
 
 describe('photoMarker', () => {
@@ -29,5 +32,20 @@ describe('photoMarker', () => {
 		expect(bodyIsOnlyPhotoMarkers('')).toBe(true);
 		expect(bodyIsOnlyPhotoMarkers('![a](photo:1)\n\n![b](photo:2)')).toBe(true);
 		expect(bodyIsOnlyPhotoMarkers('![a](photo:1)\nnotes')).toBe(false);
+	});
+
+	it('takes a removed photo’s line out and leaves every other line', () => {
+		const body = 'Sunscreen\n![a.webp](photo:a)\n![b.webp](photo:b)\nParking';
+		expect(stripPhotoMarkers(body, ['a'])).toBe('Sunscreen\n![b.webp](photo:b)\nParking');
+		expect(stripPhotoMarkers(body, [])).toBe(body);
+		expect(bodyHasPhotoMarker(body, 'b')).toBe(true);
+		expect(bodyHasPhotoMarker(body, 'c')).toBe(false);
+	});
+
+	it('points markers at the ids a restore gives the photos', () => {
+		const body = '![a.webp](photo:a)\nnot a marker (photo:a)\n![b.webp](photo:b)';
+		const renamed = renamePhotoMarkers(body, new Map([['a', 'x']]));
+		expect(renamed).toBe('![a.webp](photo:x)\nnot a marker (photo:a)\n![b.webp](photo:b)');
+		expect(renamePhotoMarkers(body, new Map())).toBe(body);
 	});
 });

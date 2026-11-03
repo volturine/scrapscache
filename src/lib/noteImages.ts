@@ -3,7 +3,12 @@ import type { NoteImage } from './types';
 import { extractDngJpeg, isDngFile, jpegName } from './dngCanonical';
 import { dataUrlToBlob } from './imageBlob';
 import { makeImageThumbDataUrl } from './imageThumb';
-import { optimizeImageBlob, optimizedImageName, type ImageQuality } from './imageOptimize';
+import {
+	loadDrawable,
+	optimizeImageBlob,
+	optimizedImageName,
+	type ImageQuality
+} from './imageOptimize';
 import { sha256 } from './syncHash';
 import { canvasThumbnailDataUrl, isCanvasAttachment } from './canvasAttachment';
 import {
@@ -128,6 +133,8 @@ export async function fileToNoteImage(file: File, imageQuality: ImageQuality): P
 			webp: 'image/webp',
 			gif: 'image/gif',
 			heic: 'image/heic',
+			heif: 'image/heif',
+			avif: 'image/avif',
 			mp3: 'audio/mpeg',
 			mp4: 'video/mp4'
 		};
@@ -175,6 +182,9 @@ export async function noteImageFromCroppedDataUrl(
 	dataUrl: string
 ): Promise<NoteImage> {
 	const blob = await dataUrlToBlob(dataUrl);
+	const drawable = await loadDrawable(blob);
+	const { width, height } = drawable;
+	drawable.close?.();
 	// The cropper asks for WebP; a browser without that encoder hands back PNG.
 	const mime = blob.type || 'image/webp';
 	const contentHash = await sha256(dataUrl);
@@ -188,6 +198,8 @@ export async function noteImageFromCroppedDataUrl(
 		dataUrl,
 		contentHash,
 		byteSize: blob.size,
+		width,
+		height,
 		...(thumbUrl ? { thumbUrl } : { thumbUrl: undefined })
 	};
 }
@@ -195,7 +207,7 @@ export async function noteImageFromCroppedDataUrl(
 /** Drop large previewable bytes from memory after IDB has the durable attachment blob. */
 export function stripFullPreviewBytes(image: NoteImage): NoteImage {
 	if (!isImageMime(image.mime) && !isCanvasAttachment(image)) return image;
-	if (!image.dataUrl) return image;
+	if (!image.dataUrl || !image.thumbUrl) return image;
 	return { ...image, dataUrl: '' };
 }
 

@@ -20,7 +20,7 @@
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { Menu } from '@ark-ui/svelte/menu';
 	import { Format } from '@ark-ui/svelte/format';
-	import type { Snippet } from 'svelte';
+	import { onDestroy, type Snippet } from 'svelte';
 	import { slide } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 	import { prefersReducedMotion } from 'svelte/motion';
@@ -48,6 +48,7 @@
 	import type { PhotoPlacement } from '#lib/photoMarker.js';
 	import { extractHttpUrls, localLinkCard } from '#lib/linkPreview.js';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
+	import { syncStore } from '#lib/stores/sync.svelte.js';
 	import { sha256 } from '#lib/syncHash.js';
 	import { formatStorageError } from '#lib/imageBlob.js';
 	import { isCanvasAttachment, mergeCanvasEdit } from '#lib/canvasAttachment.js';
@@ -141,7 +142,23 @@
 	let attachError = $state('');
 	let filesAwaitingQuality = $state<File[] | null>(null);
 	let placementAwaitingQuality: PhotoPlacement | null = null;
+	let qualityProfileId: string | null = null;
 	let previewsExpanded = $state(false);
+	let disposed = false;
+	let acceptingAttachments = true;
+	const pickerCleanups = new Set<() => void>();
+	let attachmentQueue: Promise<void> = Promise.resolve();
+	let pendingAttachmentCount = $state(0);
+
+	function ownsProfile(profileId: string): boolean {
+		return !disposed && syncStore.activePid === profileId;
+	}
+
+	onDestroy(() => {
+		disposed = true;
+		acceptingAttachments = false;
+		for (const cleanup of [...pickerCleanups]) cleanup();
+	});
 
 	const imageAttachments = $derived(images.filter(isImageAttachment));
 	const canvases = $derived(images.filter(isCanvasAttachment));
@@ -185,7 +202,9 @@
 	 * pressed button stay where the press was.
 	 */
 	export function openAttach(anchor?: Element, options: { accept?: string } = {}) {
+		if (!acceptingAttachments || disposed) return;
 		attachError = '';
+		const pickerProfileId = syncStore.activePid;
 		const input = document.createElement('input');
 		input.type = 'file';
 		input.multiple = true;
@@ -212,6 +231,7 @@
 		const cleanup = () => {
 			if (done) return;
 			done = true;
+			pickerCleanups.delete(cleanup);
 			releaseKeyboardFrame();
 			window.removeEventListener('focus', onFocus);
 			document.removeEventListener('visibilitychange', onVis);
@@ -223,6 +243,7 @@
 				}
 			});
 		};
+		pickerCleanups.add(cleanup);
 
 		// Ignore focus blips while the sheet is still opening.
 		const onFocus = () => {
@@ -240,7 +261,7 @@
 			() => {
 				const picked = Array.from(input.files ?? []);
 				cleanup();
-				if (picked.length > 0) handlePickedFiles(picked);
+				if (picked.length > 0) handlePickedFiles(picked, null, pickerProfileId);
 			},
 			{ once: true }
 		);
@@ -265,23 +286,70 @@
 	}
 
 	/** The placement travels with the files, so a pick that adds nothing leaves no stale caret. */
-	export function handlePickedFiles(picked: File[], at: PhotoPlacement | null = null) {
-		if (picked.length === 0) return;
+	export function handlePickedFiles(
+		picked: File[],
+		at: PhotoPlacement | null = null,
+		profileId: string = syncStore.activePid
+	) {
+		if (!acceptingAttachments || disposed || picked.length === 0 || !ownsProfile(profileId)) return;
 		if (picked.some(looksLikePhoto)) {
 			filesAwaitingQuality = picked;
 			placementAwaitingQuality = at;
+			qualityProfileId = profileId;
 			return;
 		}
-		void addFiles(picked, 'compressed', at);
+		queueAddFiles(picked, 'compressed', at, profileId);
 	}
 
 	function chooseImageQuality(quality: ImageQuality) {
 		const picked = filesAwaitingQuality;
+		const profileId = qualityProfileId;
 		filesAwaitingQuality = null;
-		if (picked) void addFiles(picked, quality, placementAwaitingQuality);
+		qualityProfileId = null;
+		if (picked && profileId && acceptingAttachments && ownsProfile(profileId)) {
+			queueAddFiles(picked, quality, placementAwaitingQuality, profileId);
+		}
 	}
 
-	async function addFiles(picked: File[], imageQuality: ImageQuality, at: PhotoPlacement | null) {
+	function queueAddFiles(
+		picked: File[],
+		imageQuality: ImageQuality,
+		at: PhotoPlacement | null,
+		profileId: string
+	) {
+		pendingAttachmentCount += 1;
+		const work = attachmentQueue
+			.then(() => addFiles(picked, imageQuality, at, profileId))
+			.finally(() => {
+				pendingAttachmentCount -= 1;
+			});
+		attachmentQueue = work.then(
+			() => undefined,
+			() => undefined
+		);
+		notesStore.trackAttachmentWork(work);
+	}
+
+	/** Stop new picks and let every quality-approved import finish before its owner closes. */
+	export async function waitForPendingAttachments(): Promise<void> {
+		acceptingAttachments = false;
+		filesAwaitingQuality = null;
+		qualityProfileId = null;
+		for (const cleanup of [...pickerCleanups]) cleanup();
+		let waitingFor: Promise<void>;
+		do {
+			waitingFor = attachmentQueue;
+			await waitingFor;
+		} while (waitingFor !== attachmentQueue);
+	}
+
+	async function addFiles(
+		picked: File[],
+		imageQuality: ImageQuality,
+		at: PhotoPlacement | null,
+		profileId: string
+	) {
+		if (!ownsProfile(profileId)) return;
 		attachError = '';
 		const notices: string[] = [];
 		// A photo shrinks on the way in; anything else goes in as it is, and past the
@@ -299,12 +367,25 @@
 			return;
 		}
 		try {
-			const converted = await Promise.all(
+			const converted = await Promise.allSettled(
 				within.map((file) => fileToNoteImage(file, imageQuality))
 			);
+			if (!ownsProfile(profileId)) return;
 			const added: NoteImage[] = [];
-			converted.forEach((att, index) => {
+			converted.forEach((result, index) => {
 				const file = within[index];
+				if (result.status === 'rejected') {
+					notices.push(`${file.name} could not be processed: ${formatStorageError(result.reason)}`);
+					return;
+				}
+				const att = result.value;
+				const convertedBytes = att.byteSize ?? dataUrlByteLength(att.dataUrl);
+				if (tooBig({ name: file.name, size: convertedBytes })) {
+					notices.push(
+						`${file.name} is ${formatBytes(convertedBytes)} after processing; a file over ${formatBytes(MAX_ATTACHMENT_BYTES)} cannot sync, so it was not added.`
+					);
+					return;
+				}
 				if (looksLikePhoto(file) && !isImageAttachment(att)) {
 					// This browser could not read it as a photo (HEIC off Safari, an SVG).
 					if (tooBig({ name: file.name, size: att.byteSize ?? file.size })) {
@@ -318,19 +399,25 @@
 				added.push(att);
 			});
 			if (notices.length) attachError = notices.join(' ');
+			if (added.length === 0) return;
 			const knownHashes = new Set(
 				await Promise.all(images.map((image) => image.contentHash || sha256(image.dataUrl)))
 			);
+			if (!ownsProfile(profileId)) return;
 			const unique: NoteImage[] = [];
+			// Store merges sort by creation time, then id. Distinct times preserve
+			// picker order when parallel conversions finish in the same millisecond.
+			let addedAt = images.reduce((time, image) => Math.max(time, image.createdAt + 1), Date.now());
 			for (const att of added) {
 				const hash = att.contentHash || (await sha256(att.dataUrl));
 				if (knownHashes.has(hash)) continue;
 				knownHashes.add(hash);
-				unique.push(att);
+				unique.push({ ...att, createdAt: addedAt++ });
 			}
 			if (unique.length === 0) return;
 			previewsExpanded = true;
 			const next = [...images, ...unique];
+			if (!ownsProfile(profileId)) return;
 			images = next;
 			onImagesChange?.(next);
 			const photos = unique.filter(isImageAttachment);
@@ -344,6 +431,7 @@
 				}
 			}
 		} catch (err) {
+			if (!ownsProfile(profileId)) return;
 			attachError = err instanceof Error ? err.message : 'Could not add file';
 		}
 	}
@@ -363,7 +451,7 @@
 		}
 	}
 
-	async function removeAttachment(id: string) {
+	async function removeAttachment(id: string): Promise<boolean> {
 		onBeforeRemove?.();
 		const removed = images.find((image) => image.id === id);
 		try {
@@ -371,8 +459,10 @@
 			const next = images.filter((image) => image.id !== id);
 			images = next;
 			onImagesChange?.(next);
+			return true;
 		} catch (err) {
 			attachError = `Could not remove attachment: ${formatStorageError(err)}`;
+			return false;
 		}
 	}
 
@@ -581,6 +671,15 @@
 		previewsExpanded = !previewsExpanded;
 	}
 </script>
+
+{#if pendingAttachmentCount > 0}
+	<p
+		role="status"
+		class={css({ px: 'md', pb: '2xs', textStyle: 'label', color: 'scrapscache.textMuted' })}
+	>
+		Adding attachments…
+	</p>
+{/if}
 
 {#if attachError}
 	<p class={css({ px: 'md', pb: '2xs', textStyle: 'label', color: 'scrapscache.danger' })}>

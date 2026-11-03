@@ -166,17 +166,38 @@ export function attachmentToImage(attachment: SyncAttachment): NoteImage {
 	};
 }
 
+/** A stable lookup key for one version of a global attachment slot. */
+export function attachmentRefKey(id: string, hash: string): string {
+	return JSON.stringify([id, hash]);
+}
+
 /** Reattach local/remote bytes onto a note that may only carry image refs. */
 export function hydrateNoteImages(
 	note: Note | SyncNote,
 	attachments: Map<string, NoteImage>
 ): Note {
 	const images = (note.images ?? []).map((image) => {
-		const fallback = attachments.get(image.id);
-		const dataUrl =
+		const expectedHash = 'hash' in image ? image.hash : image.contentHash;
+		const byId = attachments.get(image.id);
+		const byHash = expectedHash
+			? attachments.get(attachmentRefKey(image.id, expectedHash))
+			: undefined;
+		const fallback = expectedHash
+			? byHash?.contentHash === expectedHash
+				? byHash
+				: byId?.contentHash === expectedHash
+					? byId
+					: undefined
+			: byId;
+		const imageDataUrl =
 			'dataUrl' in image && typeof image.dataUrl === 'string' && image.dataUrl.length
 				? image.dataUrl
-				: (fallback?.dataUrl ?? '');
+				: '';
+		// A matching version in the attachment map can repair bytes from an earlier
+		// id-only hydration. Otherwise keep the note's own bytes and never borrow a
+		// different crop just because it has the same attachment id.
+		const dataUrl = fallback?.dataUrl || imageDataUrl;
+		const thumbUrl = ('thumbUrl' in image ? image.thumbUrl : undefined) || fallback?.thumbUrl;
 		return {
 			id: image.id,
 			mime: image.mime || fallback?.mime || 'application/octet-stream',
@@ -184,6 +205,7 @@ export function hydrateNoteImages(
 			createdAt: Number(image.createdAt) || fallback?.createdAt || 0,
 			...(image.editedAt != null ? { editedAt: image.editedAt } : {}),
 			...(image.name || fallback?.name ? { name: image.name || fallback?.name } : {}),
+			...(thumbUrl ? { thumbUrl } : {}),
 			...((image.width ?? fallback?.width) != null
 				? { width: image.width ?? fallback?.width }
 				: {}),

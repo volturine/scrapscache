@@ -130,6 +130,7 @@
 		handlePickedFiles(files: File[], at?: PhotoPlacement | null): void;
 		closeMenus(): void;
 		openPhoto(id: string): Promise<void>;
+		waitForPendingAttachments(): Promise<void>;
 	} | null>(null);
 	let editorDialog = $state<HTMLDivElement | null>(null);
 	let fileDropActive = $state(false);
@@ -735,6 +736,7 @@
 	}
 
 	async function flushDraft() {
+		await footer?.waitForPendingAttachments();
 		commitEdits();
 		if (note && draftDirty) {
 			try {
@@ -747,6 +749,7 @@
 	}
 
 	async function close(preserveEmpty = false) {
+		if (closing) return;
 		closing = true;
 		await flushDraft();
 		if (note && !preserveEmpty) await notesStore.discardIfEmpty(note.id);

@@ -97,7 +97,11 @@ async function loadWithImageElement(source: Blob): Promise<Drawable> {
 
 export async function loadDrawable(source: Blob): Promise<Drawable> {
 	if (typeof createImageBitmap === 'function') {
-		return (await createImageBitmap(source, { imageOrientation: 'from-image' })) as Drawable;
+		try {
+			return (await createImageBitmap(source, { imageOrientation: 'from-image' })) as Drawable;
+		} catch {
+			// The image element and bitmap decoder can support different camera codecs.
+		}
 	}
 	return loadWithImageElement(source);
 }
@@ -140,6 +144,8 @@ export async function optimizeImageBlob(
 			// An encoder that substituted its own format ignores quality too;
 			// another pass would only shrink the image without reducing its bytes.
 			if (encoded.type !== requestedMime) break;
+			// Keep the dimensions of the last encoded canvas when no attempt remains.
+			if (attempt === 7) break;
 
 			if (encodeQuality > recipe.minQuality) {
 				encodeQuality = Math.max(recipe.minQuality, encodeQuality - 0.05);

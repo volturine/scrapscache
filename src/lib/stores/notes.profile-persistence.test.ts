@@ -46,4 +46,26 @@ describe('profile-scoped note persistence', () => {
 		expect(await getSyncOutboxKeys('profile-notes')).toEqual([`note:${created.id}`]);
 		expect(await getSyncOutboxKeys(TEST_WORKSPACE)).toEqual([]);
 	});
+
+	it('finishes accepted attachment work and its writes before releasing the outgoing profile', async () => {
+		let release!: () => void;
+		let noteId = '';
+		const conversion = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const work = conversion.then(() => {
+			noteId = notesStore.createNote({ title: 'Photo imported before switching' }).id;
+		});
+		notesStore.trackAttachmentWork(work);
+		let drained = false;
+		const handover = notesStore.waitForPendingProfileWrites().then(() => {
+			drained = true;
+		});
+		await Promise.resolve();
+		expect(drained).toBe(false);
+		release();
+		await handover;
+		expect((await getAllNotesMetadata('profile-notes')).map((note) => note.id)).toContain(noteId);
+		expect(await getAllNotesMetadata(TEST_WORKSPACE)).toEqual([]);
+	});
 });

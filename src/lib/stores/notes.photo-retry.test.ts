@@ -77,8 +77,11 @@ describe('photo bytes across a failed save', () => {
 		expect(inMemory?.images?.[0]?.dataUrl).toBe(photo('shot').dataUrl);
 	});
 
-	it('still releases the bytes once the photo itself is durable', async () => {
-		const created = notesStore.createNote({ title: 'Photo', images: [photo('shot')] });
+	it('releases durable photo bytes when a resident thumbnail can display them', async () => {
+		const created = notesStore.createNote({
+			title: 'Photo',
+			images: [{ ...photo('shot'), thumbUrl: photo('shot').dataUrl }]
+		});
 		await idb.waitForDeviceWrites();
 		await new Promise((resolve) => setTimeout(resolve, 0));
 

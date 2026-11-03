@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 
 // A deployment serves the dashboard from its own Worker and host, not the app's.
 test.skip(
-	Boolean(process.env.PLAYWRIGHT_BASE_URL),
+	Boolean(process.env.PLAYWRIGHT_BASE_URL && process.env.PLAYWRIGHT_LOCAL_RELAY !== '1'),
 	'the dashboard has its own host on a deployment'
 );
 

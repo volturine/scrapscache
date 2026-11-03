@@ -2788,6 +2788,19 @@ export const cardOpenControl = css({
 	outline: 'none'
 });
 
+const attachmentPreviewPanel = {
+	zIndex: 10,
+	...column,
+	minH: '6rem',
+	maxH: '20rem',
+	pt: 'lg',
+	roundedTop: 'card',
+	borderWidth: 'hairline',
+	borderBottomWidth: 0,
+	borderColor: 'scrapscache.borderSubtle',
+	boxShadow: 'previewCard'
+} as const;
+
 export const noteEditorStyles = {
 	overlay: css({ position: 'fixed', inset: 0, zIndex: 50 }),
 	sheetWrap: cva({
@@ -2861,21 +2874,15 @@ export const noteEditorStyles = {
 	// Absolutely positioned to draw over the note body without expanding or
 	// reflowing the note editor.
 	previewPanel: css({
+		...attachmentPreviewPanel,
 		position: 'absolute',
 		bottom: 0,
 		left: 'sm',
-		right: 'sm',
-		zIndex: 10,
-		...column,
-		minH: '6rem',
-		maxH: '20rem',
-		pt: 'lg',
-		roundedTop: 'card',
-		borderWidth: 'hairline',
-		borderBottomWidth: 0,
-		borderColor: 'scrapscache.borderSubtle',
-		boxShadow: 'previewCard'
+		right: 'sm'
 	}),
+	// The composer grows around previews; an overlay would cover its title and body.
+	previewDockInline: css({ position: 'relative', flexShrink: 0, mt: 'sm' }),
+	previewPanelInline: css({ ...attachmentPreviewPanel, position: 'relative', mx: 'sm' }),
 	previewPanelFill: css({ ...column, ...flexPane }),
 	previewResizeHandle: css({
 		position: 'absolute',

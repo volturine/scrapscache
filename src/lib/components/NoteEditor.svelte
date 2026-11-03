@@ -12,7 +12,7 @@
 	import { notesStore } from '#lib/stores/notes.svelte.js';
 	import { actionUndo } from '#lib/stores/actionUndo.svelte.js';
 	import { noteAttachments, splitPastedHeading } from '#lib/checklistBody.js';
-	import { writeNoteToClipboard } from '#lib/noteClipboard.js';
+	import { readCopiedNotePaste, writeNoteToClipboard } from '#lib/noteClipboard.js';
 	import { bodyIsOnlyPhotoMarkers, photoMarker, type PhotoPlacement } from '#lib/photoMarker.js';
 	import { mergeHydratedImages } from '#lib/noteAttachmentHydration.js';
 	import type { Note, NoteImage } from '#lib/types.js';
@@ -112,6 +112,7 @@
 	let bodyEditor = $state<{
 		focusDefault(): void;
 		replaceBodyWithText(text: string): Promise<void>;
+		insertTextAtCaret(text: string): boolean;
 		syncBodyNow?(): void;
 		finishInput?(): void;
 		adoptBody?(text: string): boolean;
@@ -570,9 +571,38 @@
 		if (split.body) void bodyEditor?.replaceBodyWithText(split.body);
 	}
 
+	function insertCopiedTextIntoTitle(target: HTMLTextAreaElement, text: string) {
+		if (!text) return;
+		const start = target.selectionStart ?? title.length;
+		const end = target.selectionEnd ?? start;
+		title = `${title.slice(0, start)}${text}${title.slice(end)}`;
+		markTitleEdited();
+		const caret = start + text.length;
+		void tick().then(() => target.setSelectionRange(caret, caret));
+	}
+
 	function handlePaste(event: ClipboardEvent) {
 		if (!isOpen || !note) return;
 		if (event.target instanceof Element && event.target.closest('.canvas-editor-shell')) return;
+		const copied = historyPreview ? null : readCopiedNotePaste(event.clipboardData);
+		if (copied) {
+			event.preventDefault();
+			event.stopImmediatePropagation();
+			bodyEditor?.syncBodyNow?.();
+			const text = [copied.title ? `# ${copied.title}` : '', copied.body]
+				.filter(Boolean)
+				.join('\n');
+			const nextImages = [...images, ...copied.images];
+			images = nextImages;
+			commitDraft({ images: nextImages });
+			const titleTarget = event.target instanceof HTMLTextAreaElement ? event.target : null;
+			if (titleTarget?.hasAttribute('data-note-title') && (title || body)) {
+				insertCopiedTextIntoTitle(titleTarget, text);
+			} else {
+				bodyEditor?.insertTextAtCaret(text);
+			}
+			return;
+		}
 		const files = getClipboardFiles(event.clipboardData);
 		if (files.length === 0) return;
 		event.preventDefault();
@@ -1189,6 +1219,10 @@
 								close();
 							}}
 							onImagesChange={(imgs) => commitNow(imgs)}
+							onBeforeRemove={() => {
+								bodyEditor?.finishInput?.();
+								commitDraft();
+							}}
 						/>
 					{/if}
 				</div>

@@ -5,7 +5,7 @@
 	// until the bar is put away. Done, Esc or a click outside keep a note with
 	// content and drop an empty one. A paste or a drop takes files and markdown
 	// headings the way the editor does.
-	import { onMount, tick } from 'svelte';
+	import { onMount, tick, untrack } from 'svelte';
 	import { css, cx } from 'styled-system/css';
 	import { button, iconButton, noteSurface } from 'styled-system/recipes';
 	import { flex } from 'styled-system/patterns';
@@ -23,6 +23,8 @@
 	import { useEditorActions } from '#lib/editorContext.js';
 	import type { NotePatch, ReminderRepeat } from '#lib/model/index.js';
 	import { splitPastedHeading } from '#lib/checklistBody.js';
+	import { mergeHydratedImages } from '#lib/noteAttachmentHydration.js';
+	import { readCopiedNotePaste } from '#lib/noteClipboard.js';
 	import { dataTransferHasFiles, dragLeftElement, getClipboardFiles } from '#lib/noteImages.js';
 	import { photoMarker } from '#lib/photoMarker.js';
 	import { composerStore, type ComposerSeed } from '#lib/stores/composer.svelte.js';
@@ -179,9 +181,12 @@
 			// A blank bar starts at the title and handed-over text at the body; asked again
 			// with nothing new, an open bar leaves the writer wherever they are.
 			if (seed.title || seed.body || seed.checklist) bodyEditor?.focusDefault();
-			else if (opening) titleInput?.focus();
+			// A photo or drawing note hands the writer to the picker or the canvas; a
+			// focused title would raise the keyboard under them, and iOS brings it back
+			// after the pick instead of leaving the photo note ready to inspect.
+			else if (opening && !seed.attach) titleInput?.focus();
 			if (seed.attach === 'drawing') void footer?.openCanvas();
-			else if (seed.attach === 'photo') footer?.openAttach();
+			else if (seed.attach === 'photo') footer?.openAttach(undefined, { accept: 'image/*' });
 			if (seed.files?.length) footer?.handlePickedFiles(seed.files);
 		});
 	}
@@ -259,15 +264,44 @@
 		if (split.body) void bodyEditor?.replaceBodyWithText(split.body);
 	}
 
+	function insertCopiedTextIntoTitle(text: string) {
+		if (!titleInput || !text) return;
+		const start = titleInput.selectionStart ?? title.length;
+		const end = titleInput.selectionEnd ?? start;
+		title = `${title.slice(0, start)}${text}${title.slice(end)}`;
+		titleEdited = true;
+		scheduleCommit();
+		const caret = start + text.length;
+		void tick().then(() => titleInput?.setSelectionRange(caret, caret));
+	}
+
 	/** Pasted files attach, wherever the caret is in the open bar. */
 	function onPaste(event: ClipboardEvent) {
 		if (!open) return;
 		if (event.target instanceof Element && event.target.closest('.canvas-editor-shell')) return;
+		const copied = readCopiedNotePaste(event.clipboardData);
+		if (copied) {
+			event.preventDefault();
+			event.stopImmediatePropagation();
+			bodyEditor?.syncBodyNow?.();
+			const text = [copied.title ? `# ${copied.title}` : '', copied.body]
+				.filter(Boolean)
+				.join('\n');
+			const nextImages = [...images, ...copied.images];
+			images = nextImages;
+			commitDraft({ images: nextImages });
+			if (event.target === titleInput && (title || body)) {
+				insertCopiedTextIntoTitle(text);
+			} else {
+				bodyEditor?.insertTextAtCaret(text);
+			}
+			return;
+		}
 		const files = getClipboardFiles(event.clipboardData);
 		if (files.length === 0) return;
 		event.preventDefault();
 		event.stopImmediatePropagation();
-		footer?.handlePickedFiles(files);
+		footer?.handlePickedFiles(files, bodyEditor?.caretPoint() ?? null);
 	}
 
 	function onDragOver(event: DragEvent) {
@@ -299,6 +333,18 @@
 			void finish();
 		}
 	}
+
+	// Store-owned attachment undo/redo also updates an open composer.
+	$effect(() => {
+		const current = draft;
+		if (!current) return;
+		untrack(() => {
+			images = mergeHydratedImages(current.images ?? [], images);
+			if (!bodyEdited && current.body !== body && bodyEditor?.adoptBody(current.body)) {
+				body = current.body;
+			}
+		});
+	});
 
 	onMount(() => composerStore.attach((seed) => openWith(seed)));
 
@@ -415,6 +461,7 @@
 			{/if}
 			<NoteEditorFooter
 				bind:this={footer}
+				inlinePreviews
 				bind:images
 				bind:body
 				noteId={draftId}
@@ -426,7 +473,13 @@
 					labelOpen = true;
 				}}
 				onImagesChange={(next) => commitDraft({ images: next })}
-				onPhotosAdded={(photos) => void bodyEditor?.insertLines(photos.map(photoMarker), null)}
+				onPhotosAdded={(photos, at) => {
+					void bodyEditor?.insertLines(photos.map(photoMarker), at, { focus: false });
+				}}
+				onBeforeRemove={() => {
+					bodyEditor?.finishInput();
+					commitDraft();
+				}}
 			>
 				{#snippet trailing()}
 					<Tooltip content="Reminder">

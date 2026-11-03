@@ -1,6 +1,12 @@
 import { fireEvent, render } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
 import PhotoFullscreen from './PhotoFullscreen.svelte';
+
+const saved = vi.hoisted(() => ({ saveAttachment: vi.fn(async () => {}) }));
+vi.mock('#lib/noteImages.js', async (importOriginal) => {
+	const original = await importOriginal<typeof import('#lib/noteImages.js')>();
+	return { ...original, saveAttachment: saved.saveAttachment };
+});
 import type { NoteImage } from '#lib/types.js';
 
 const PNG =
@@ -124,5 +130,25 @@ describe('PhotoFullscreen', () => {
 		await fireEvent.keyDown(window, { key: 'Escape' });
 		expect(document.body.querySelector('[data-scope="image-cropper"]')).toBeNull();
 		expect(document.body.querySelector('[aria-label="Photo"]')).toBeTruthy();
+	});
+
+	it('saves the full photo through the device’s save path, and waits while it loads', async () => {
+		const loaded = photo('a', 'one.png');
+		render(PhotoFullscreen, { props: { images: [loaded], activeIndex: 0 } });
+		const download = document.body.querySelector<HTMLButtonElement>(
+			'[aria-label="Download photo"]'
+		)!;
+		expect(download.disabled).toBe(false);
+		await fireEvent.click(download);
+		expect(saved.saveAttachment).toHaveBeenCalledWith(expect.objectContaining({ id: 'a' }));
+	});
+
+	it('cannot save a photo whose bytes are not here yet', () => {
+		const thumbOnly = { ...photo('b', 'two.png'), dataUrl: '', thumbUrl: PNG };
+		render(PhotoFullscreen, { props: { images: [thumbOnly], activeIndex: 0 } });
+		const download = document.body.querySelector<HTMLButtonElement>(
+			'[aria-label="Download photo"]'
+		)!;
+		expect(download.disabled).toBe(true);
 	});
 });

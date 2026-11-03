@@ -26,6 +26,37 @@ export function isPhotoMarkerLine(line: string): boolean {
 	return MARKER_RE.test(line);
 }
 
+/** Whether the body has a marker line for this photo. */
+export function bodyHasPhotoMarker(body: string, id: string): boolean {
+	return body.split('\n').some((line) => parsePhotoMarker(line)?.id === id);
+}
+
+/** The body without the marker lines of these photos: a photo that goes takes its place with it. */
+export function stripPhotoMarkers(body: string, ids: Iterable<string>): string {
+	const gone = new Set(ids);
+	if (gone.size === 0) return body;
+	return body
+		.split('\n')
+		.filter((line) => {
+			const marker = parsePhotoMarker(line);
+			return !marker || !gone.has(marker.id);
+		})
+		.join('\n');
+}
+
+/** Marker lines pointed at new photo ids, as a restore that gives photos new ids needs. */
+export function renamePhotoMarkers(body: string, ids: ReadonlyMap<string, string>): string {
+	if (ids.size === 0) return body;
+	return body
+		.split('\n')
+		.map((line) => {
+			const marker = parsePhotoMarker(line);
+			const next = marker && ids.get(marker.id);
+			return next ? photoMarker({ id: next, name: marker.name }) : line;
+		})
+		.join('\n');
+}
+
 /** A body with nothing but photo markers and blank lines reads as empty text. */
 export function bodyIsOnlyPhotoMarkers(body: string): boolean {
 	return body.split('\n').every((line) => line.trim() === '' || isPhotoMarkerLine(line));

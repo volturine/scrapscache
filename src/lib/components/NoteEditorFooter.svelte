@@ -38,7 +38,8 @@
 		formatBytes,
 		dataUrlByteLength,
 		openAttachment,
-		looksLikePhoto
+		looksLikePhoto,
+		MAX_ATTACHMENT_BYTES
 	} from '#lib/noteImages.js';
 	import { displayImageSrc } from '#lib/imageThumb.js';
 	import { holdKeyboardFrame } from '#lib/appViewport.js';
@@ -82,6 +83,7 @@
 		trashed = false,
 		copyFlash = false,
 		fillPhotos = false,
+		inlinePreviews = false,
 		color = 'default' as NoteColor,
 		onOpenColor,
 		onOpenTags,
@@ -91,6 +93,7 @@
 		onArchive,
 		onDelete,
 		onImagesChange,
+		onBeforeRemove,
 		onPhotosAdded,
 		trailing
 	}: {
@@ -106,6 +109,8 @@
 		copyFlash?: boolean;
 		/** Grow the photo strip to the editor's free height (for notes with no body text). */
 		fillPhotos?: boolean;
+		/** The short composer reserves space for previews instead of covering its text. */
+		inlinePreviews?: boolean;
 		/** Note surface colour, so the preview toggle matches the sheet it sits on. */
 		color?: NoteColor;
 		onOpenColor?: () => void;
@@ -117,6 +122,8 @@
 		onArchive?: () => void;
 		onDelete?: () => void;
 		onImagesChange?: (images: NoteImage[]) => void;
+		/** Commit pending editor text before the store removes its photo marker. */
+		onBeforeRemove?: () => void;
 		/** Photos just attached by the writer, so the body can mark their place. */
 		/** New photos and the caret they were pasted or dropped at, if any. */
 		onPhotosAdded?: (photos: NoteImage[], at: PhotoPlacement | null) => void;
@@ -177,11 +184,13 @@
 	 * until it closes, so the footer and the picker an iPad anchors to the
 	 * pressed button stay where the press was.
 	 */
-	export function openAttach(anchor?: Element) {
+	export function openAttach(anchor?: Element, options: { accept?: string } = {}) {
 		attachError = '';
 		const input = document.createElement('input');
 		input.type = 'file';
 		input.multiple = true;
+		// A photo note asks for photos: iOS then offers the camera without video.
+		if (options.accept) input.accept = options.accept;
 		// Invisible but not display:none (iOS blocks programmatic open on those).
 		input.setAttribute('aria-hidden', 'true');
 		const box = anchor?.getBoundingClientRect();
@@ -274,8 +283,41 @@
 
 	async function addFiles(picked: File[], imageQuality: ImageQuality, at: PhotoPlacement | null) {
 		attachError = '';
+		const notices: string[] = [];
+		// A photo shrinks on the way in; anything else goes in as it is, and past the
+		// cap it could never sync (a video from the camera sheet, most of all).
+		const tooBig = (file: { name: string; size: number }) => file.size > MAX_ATTACHMENT_BYTES;
+		const within = picked.filter((file) => looksLikePhoto(file) || !tooBig(file));
+		for (const file of picked) {
+			if (!within.includes(file))
+				notices.push(
+					`${file.name} is ${formatBytes(file.size)}; a file over ${formatBytes(MAX_ATTACHMENT_BYTES)} cannot sync, so it was not added.`
+				);
+		}
+		if (within.length === 0) {
+			attachError = notices.join(' ');
+			return;
+		}
 		try {
-			const added = await Promise.all(picked.map((file) => fileToNoteImage(file, imageQuality)));
+			const converted = await Promise.all(
+				within.map((file) => fileToNoteImage(file, imageQuality))
+			);
+			const added: NoteImage[] = [];
+			converted.forEach((att, index) => {
+				const file = within[index];
+				if (looksLikePhoto(file) && !isImageAttachment(att)) {
+					// This browser could not read it as a photo (HEIC off Safari, an SVG).
+					if (tooBig({ name: file.name, size: att.byteSize ?? file.size })) {
+						notices.push(
+							`${file.name} could not be read as a photo, and at ${formatBytes(file.size)} it cannot sync as a file, so it was not added.`
+						);
+						return;
+					}
+					notices.push(`${file.name} could not be read as a photo, so it was kept as a file.`);
+				}
+				added.push(att);
+			});
+			if (notices.length) attachError = notices.join(' ');
 			const knownHashes = new Set(
 				await Promise.all(images.map((image) => image.contentHash || sha256(image.dataUrl)))
 			);
@@ -321,17 +363,17 @@
 		}
 	}
 
-	function removeAttachment(id: string) {
-		const removed = images.find((i) => i.id === id);
-		// The store records the undo step, so it writes before the draft catches up.
-		if (noteId && removed) {
-			notesStore.removeAttachment(noteId, removed).catch((err) => {
-				console.error('[footer] remove attachment flush:', err);
-			});
+	async function removeAttachment(id: string) {
+		onBeforeRemove?.();
+		const removed = images.find((image) => image.id === id);
+		try {
+			if (noteId && removed) await notesStore.removeAttachment(noteId, removed);
+			const next = images.filter((image) => image.id !== id);
+			images = next;
+			onImagesChange?.(next);
+		} catch (err) {
+			attachError = `Could not remove attachment: ${formatStorageError(err)}`;
 		}
-		const next = images.filter((i) => i.id !== id);
-		images = next;
-		onImagesChange?.(next);
 	}
 
 	function openTags(e: MouseEvent) {
@@ -549,7 +591,11 @@
 {#if hasPreviews}
 	<div
 		data-preview-dock
-		class={fillPhotos ? noteEditorStyles.previewDockFill : noteEditorStyles.previewDock}
+		class={fillPhotos
+			? noteEditorStyles.previewDockFill
+			: inlinePreviews
+				? noteEditorStyles.previewDockInline
+				: noteEditorStyles.previewDock}
 	>
 		{#if !showPreviews}
 			{@render previewToggle()}
@@ -561,7 +607,10 @@
 				data-preview-panel
 				class={fillPhotos
 					? noteEditorStyles.previewPanelFill
-					: cx(noteEditorStyles.previewPanel, noteSurface({ color }))}
+					: cx(
+							inlinePreviews ? noteEditorStyles.previewPanelInline : noteEditorStyles.previewPanel,
+							noteSurface({ color })
+						)}
 				style={!fillPhotos && panelHeight != null
 					? `height: ${panelHeight}px; max-height: none;${dragging ? ' transition: none; user-select: none;' : ''}`
 					: undefined}

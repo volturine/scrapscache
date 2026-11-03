@@ -70,6 +70,7 @@
 	let labelOpen = $state(false);
 	let reminderOpen = $state(false);
 	let fileDropActive = $state(false);
+	let transitioning = false;
 
 	/** The written note, for what other controls changed on it (labels, a reminder). */
 	const draft = $derived(draftId ? notesStore.notes.find((n) => n.id === draftId) : undefined);
@@ -146,6 +147,7 @@
 	}
 
 	function openWith(seed: ComposerSeed = {}) {
+		if (transitioning) return;
 		const opening = !open;
 		if (opening) {
 			title = seed.title ?? '';
@@ -210,27 +212,42 @@
 
 	/** Put the bar away: a note with content stays, an empty one goes. */
 	async function finish() {
-		if (!open) return;
-		bodyEditor?.syncBodyNow?.();
-		if (timer) clearTimeout(timer);
-		timer = null;
-		// A checklist started and left empty is no body at all.
-		if (!bodyHasText()) body = '';
-		const id = draftId ?? (hasContent() ? ensureNote() : null);
-		if (id) notesStore.updateNote(id, { title, body });
-		reset();
-		if (id) await notesStore.discardIfEmpty(id);
-		composerStore.draftId = null;
-		if (id) void notesStore.syncPendingChanges();
+		if (!open || transitioning) return;
+		transitioning = true;
+		try {
+			await footer?.waitForPendingAttachments();
+			if (!open) return;
+			bodyEditor?.syncBodyNow?.();
+			if (timer) clearTimeout(timer);
+			timer = null;
+			// A checklist started and left empty is no body at all.
+			if (!bodyHasText()) body = '';
+			const id = draftId ?? (hasContent() ? ensureNote() : null);
+			if (id) notesStore.updateNote(id, { title, body });
+			reset();
+			if (id) await notesStore.discardIfEmpty(id);
+			composerStore.draftId = null;
+			if (id) void notesStore.syncPendingChanges();
+		} finally {
+			transitioning = false;
+		}
 	}
 
 	/** Carry what was typed into the full editor. */
-	function openInEditor() {
-		commitDraft();
-		const id = ensureNote();
-		reset();
-		composerStore.draftId = null;
-		openNote(id);
+	async function openInEditor() {
+		if (!open || transitioning) return;
+		transitioning = true;
+		try {
+			await footer?.waitForPendingAttachments();
+			if (!open) return;
+			commitDraft();
+			const id = ensureNote();
+			reset();
+			composerStore.draftId = null;
+			openNote(id);
+		} finally {
+			transitioning = false;
+		}
 	}
 
 	function onTitleKeydown(event: KeyboardEvent) {

@@ -175,6 +175,7 @@ export class NotesStore {
 	deletedNoteIds = $state<Record<string, number>>(readTombstones());
 	deletedLabelIds = $state<Record<string, number>>(readLabelTombstones());
 	private attachmentLoads = new Map<string, Promise<void>>();
+	private attachmentWork = new Set<Promise<void>>();
 	private attachmentPass: Promise<void> | null = null;
 	private lastAutoSyncAt = 0;
 	/** Notes whose photos failed to load for upload; retried on the next sync. */
@@ -1243,8 +1244,20 @@ export class NotesStore {
 		await this.onProfileReload?.(this.pid, this.notes);
 	}
 
+	/** An accepted photo import must finish before its workspace is handed over. */
+	trackAttachmentWork(work: Promise<void>): void {
+		this.attachmentWork.add(work);
+		void work.then(
+			() => this.attachmentWork.delete(work),
+			() => this.attachmentWork.delete(work)
+		);
+	}
+
 	/** Drain side effects that must remain owned by the outgoing profile. */
 	async waitForPendingProfileWrites(): Promise<void> {
+		while (this.attachmentWork.size > 0) {
+			await Promise.allSettled([...this.attachmentWork]);
+		}
 		if (this.attachmentPass) await this.attachmentPass;
 		while (this.attachmentLoads.size > 0) {
 			await Promise.allSettled([...this.attachmentLoads.values()]);

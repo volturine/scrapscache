@@ -14,6 +14,12 @@ vi.mock('#lib/editorContext.js', () => ({
 	useEditorActions: () => ({ startNewNote: vi.fn(), openNote, closeNote: vi.fn() })
 }));
 
+const imageConversion = vi.hoisted(() => ({ fileToNoteImage: vi.fn() }));
+vi.mock('#lib/noteImages.js', async (importOriginal) => ({
+	...(await importOriginal<typeof import('#lib/noteImages.js')>()),
+	fileToNoteImage: imageConversion.fileToNoteImage
+}));
+
 const prompt = () => screen.getByRole('button', { name: /^Take a note/ });
 const titleBox = () => screen.getByPlaceholderText('Title', { exact: true }) as HTMLTextAreaElement;
 
@@ -40,6 +46,33 @@ function fileDragEvent(type: string, files: File[]): DragEvent {
 
 const bar = () => document.querySelector('[data-note-composer]') as HTMLElement;
 
+let conversionSequence = 0;
+
+function convertedFile(file: File): NoteImage {
+	const isPhoto = file.type.startsWith('image/');
+	const mime = isPhoto ? 'image/webp' : file.type || 'application/octet-stream';
+	const dataUrl = isPhoto ? 'data:image/webp;base64,YWJj' : 'data:text/plain;base64,dG9kbw==';
+	conversionSequence += 1;
+	return {
+		id: `converted-${conversionSequence}`,
+		mime,
+		dataUrl,
+		...(isPhoto ? { thumbUrl: dataUrl } : {}),
+		name: file.name,
+		createdAt: 1,
+		contentHash: `${file.type}:${file.name}`,
+		byteSize: file.size
+	};
+}
+
+function deferred<T>() {
+	let resolve!: (value: T) => void;
+	const promise = new Promise<T>((resolvePromise) => {
+		resolve = resolvePromise;
+	});
+	return { promise, resolve };
+}
+
 function photo(): NoteImage {
 	const dataUrl = 'data:image/png;base64,iVBORw0KGgo=';
 	return {
@@ -62,6 +95,9 @@ async function typeTitle(text: string) {
 
 describe('NoteComposer', () => {
 	beforeEach(() => {
+		conversionSequence = 0;
+		imageConversion.fileToNoteImage.mockReset();
+		imageConversion.fileToNoteImage.mockImplementation(async (file: File) => convertedFile(file));
 		localStorage.clear();
 		actionUndo.clear();
 		const account = createSyncIdentity();
@@ -280,6 +316,35 @@ describe('NoteComposer', () => {
 		await waitFor(() => expect(notesStore.notes).toHaveLength(1));
 		expect(notesStore.notes[0].images?.map((file) => file.name)).toEqual(['tasks.txt']);
 		expect(composerStore.draftId).toBe(notesStore.notes[0].id);
+	});
+
+	it('finishes an accepted photo import before Done closes the composer', async () => {
+		const pending = deferred<NoteImage>();
+		imageConversion.fileToNoteImage.mockReturnValueOnce(pending.promise);
+		render(NoteComposer);
+		await fireEvent.click(prompt());
+		const shot = new File(['png'], 'slow.png', { type: 'image/png' });
+		titleBox().dispatchEvent(clipboardEvent([shot]));
+		await fireEvent.click(await screen.findByRole('button', { name: /^Compressed/ }));
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+		expect(screen.getByRole('button', { name: 'Done' })).toBeTruthy();
+		expect(notesStore.notes).toHaveLength(0);
+
+		pending.resolve({
+			id: 'slow-photo',
+			mime: 'image/webp',
+			dataUrl: 'data:image/webp;base64,YWJj',
+			thumbUrl: 'data:image/webp;base64,YWJj',
+			name: 'slow.webp',
+			createdAt: 1,
+			contentHash: 'slow-photo-hash',
+			byteSize: 3
+		});
+		await waitFor(() => expect(prompt()).toBeTruthy());
+		expect(notesStore.notes).toHaveLength(1);
+		expect(notesStore.notes[0].images?.map((attachment) => attachment.id)).toEqual(['slow-photo']);
+		expect(composerStore.draftId).toBeNull();
 	});
 
 	it('opens with a file handed over from a paste on the feed', async () => {

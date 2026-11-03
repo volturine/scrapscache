@@ -447,6 +447,41 @@ test('multiple photos deduplicate by image content and copy back as mixed note c
 	}
 });
 
+test('Copy note keeps text and both photos through the browser clipboard', async ({
+	page,
+	context
+}) => {
+	await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+	await openEmptyApp(page);
+	await createNote(page, 'Clipboard original', 'Text with two photos');
+	await openCard(page, 'Clipboard original');
+	await pickIntoEditor(page, [
+		{ name: 'lake.png', mimeType: 'image/png', buffer: PNG },
+		{ name: 'sunset.png', mimeType: 'image/png', buffer: SECOND_PNG }
+	]);
+	await expect(editor(page).locator('.markdown-token-photo')).toHaveCount(2);
+	await editor(page).getByRole('button', { name: 'Share' }).click();
+	await page.getByRole('menuitem', { name: 'Copy note', exact: true }).click();
+	await expect
+		.poll(() =>
+			page.evaluate(async () => {
+				const copied = await navigator.clipboard.read();
+				return copied.some((item) => item.types.includes('text/html'));
+			})
+		)
+		.toBe(true);
+	await closeEditor(page);
+	await createNote(page, 'Clipboard target', 'Keep this text');
+	await openCard(page, 'Clipboard target');
+	await typeInTextRow(page, '');
+	await page.keyboard.press('ControlOrMeta+V');
+	const body = editor(page).locator('[data-body-editor]');
+	await expect(body).toContainText('Keep this text');
+	await expect(body).toContainText('Text with two photos');
+	await expect(body.locator('.markdown-token-photo')).toHaveCount(2);
+	await expect(body.locator('.markdown-token-photo-missing')).toHaveCount(0);
+});
+
 test('canceling photo quality leaves the note and its body unchanged', async ({ page }) => {
 	await openEmptyApp(page);
 	await pickFromComposer(page, [{ name: 'beach.png', mimeType: 'image/png', buffer: PNG }]);

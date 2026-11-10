@@ -125,4 +125,30 @@ describe('SettingsMenu', () => {
 		await new Promise((resolve) => requestAnimationFrame(resolve));
 		expect(document.activeElement?.tagName).not.toBe('INPUT');
 	});
+
+	it('scrolls the focused address above the keys when they come up', async () => {
+		native.app = true;
+		const viewport = Object.assign(new EventTarget(), { offsetTop: 0, height: 800 });
+		Object.defineProperty(window, 'visualViewport', { configurable: true, value: viewport });
+		try {
+			await openMenu();
+			await choose(screen.getByRole('menuitem', { name: 'Server' }));
+			const field = screen.getByRole('textbox', { name: 'Server address' });
+			const menu = field.closest<HTMLElement>('[role="menu"]')!;
+			const rect = (top: number, bottom: number) => ({ top, bottom }) as DOMRect;
+			// The field sits inside the menu, under where the keys will reach.
+			vi.spyOn(menu, 'getBoundingClientRect').mockReturnValue(rect(0, 700));
+			vi.spyOn(field, 'getBoundingClientRect').mockReturnValue(rect(600, 650));
+			field.focus();
+			expect(menu.scrollTop).toBe(0);
+
+			viewport.height = 400;
+			viewport.dispatchEvent(new Event('resize'));
+			await new Promise((resolve) => requestAnimationFrame(resolve));
+
+			expect(menu.scrollTop).toBe(250);
+		} finally {
+			Reflect.deleteProperty(window, 'visualViewport');
+		}
+	});
 });

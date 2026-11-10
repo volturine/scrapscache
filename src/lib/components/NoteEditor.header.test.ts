@@ -762,6 +762,40 @@ describe('NoteEditor task focus', () => {
 		expect(document.activeElement).toBe(input);
 	});
 
+	it('presses a label once from a touch release in the label popup', async () => {
+		notesStore.notes = [note({ body: 'Plain note' })];
+		notesStore.labels = [{ id: 'label-1', name: 'Work', createdAt: 1, updatedAt: 1 }];
+		vi.spyOn(notesStore, 'toggleLabel').mockImplementation((noteId, labelId) => {
+			notesStore.notes = notesStore.notes.map((item) =>
+				item.id === noteId
+					? {
+							...item,
+							labels: item.labels.includes(labelId)
+								? item.labels.filter((id) => id !== labelId)
+								: [...item.labels, labelId]
+						}
+					: item
+			);
+		});
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+		await fireEvent.click(
+			container.querySelector('footer button[aria-label="Labels"]') as HTMLButtonElement
+		);
+		await tick();
+		const popup = container.querySelector('[data-editor-popup]') as HTMLElement;
+		const work = popup.querySelector('[data-part="label"]') as HTMLElement;
+
+		// The popup's positioner and the menu inside it both press on a release.
+		let clicks = 0;
+		work.addEventListener('click', () => (clicks += 1));
+		releaseTouch(work, { clientX: 0, clientY: 0 });
+		await tick();
+		expect(clicks).toBe(1);
+		expect(notesStore.notes[0].labels).toEqual(['label-1']);
+	});
+
 	it('creates and assigns the first label on the first touch', async () => {
 		notesStore.notes = [note({ body: 'Plain note' })];
 		notesStore.labels = [];

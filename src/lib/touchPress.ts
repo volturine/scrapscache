@@ -30,6 +30,8 @@ export function pressOnTouchRelease(node: HTMLElement): () => void {
 		event.preventDefault();
 	};
 	const press = (event: TouchEvent) => {
+		// A container inside this one has pressed it already.
+		if (event.defaultPrevented) return;
 		if (!event.cancelable || event.changedTouches.length !== 1) return;
 		const control = pressableFrom(event.target);
 		if (!control) return;

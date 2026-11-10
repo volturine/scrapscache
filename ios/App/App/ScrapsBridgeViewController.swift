@@ -11,6 +11,12 @@ final class ScrapsBridgeViewController: CAPBridgeViewController {
 
     override func capacitorDidLoad() {
         bridge?.registerPluginInstance(reservedRegions)
+        // Until the page paints, the web view shows through; it keeps the launch
+        // screen's colour, which is the page's own in light and in dark.
+        if let launch = UIColor(named: "LaunchBackground") {
+            webView?.backgroundColor = launch
+            webView?.scrollView.backgroundColor = launch
+        }
     }
 
     override func viewDidLayoutSubviews() {

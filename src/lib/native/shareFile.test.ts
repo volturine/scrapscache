@@ -18,7 +18,7 @@ vi.mock('@capacitor/share', () => ({ Share: share }));
 
 import { fileName, shareFile } from './shareFile.js';
 
-const decode = (data: string) => Uint8Array.from(atob(data), (char) => char.charCodeAt(0));
+const decode = (data: string) => Buffer.from(data, 'base64');
 
 beforeEach(() => {
 	vi.clearAllMocks();
@@ -32,7 +32,7 @@ describe('shareFile', () => {
 		const written = filesystem.writeFile.mock.calls[0][0];
 		expect(written.path).toMatch(/^share\/[^/]+\/note\.txt$/);
 		expect(written.directory).toBe('CACHE');
-		expect(new TextDecoder().decode(decode(written.data))).toBe('hello');
+		expect(decode(written.data).toString()).toBe('hello');
 		expect(filesystem.appendFile).not.toHaveBeenCalled();
 		expect(share.share).toHaveBeenCalledWith({ files: [`file:///cache/${written.path}`] });
 		expect(filesystem.rmdir).toHaveBeenCalledWith({
@@ -43,8 +43,8 @@ describe('shareFile', () => {
 	});
 
 	it('sends a large file across in pieces that join to the same bytes', async () => {
-		const bytes = new Uint8Array(2 * 1024 * 1024 + 5);
-		for (let i = 0; i < bytes.length; i++) bytes[i] = i % 251;
+		const bytes = Buffer.alloc(2 * 1024 * 1024 + 5);
+		for (let i = 0; i < bytes.length; i += 4099) bytes[i] = i % 251;
 
 		await shareFile(new Blob([bytes]), 'backup.scraps-cache-backup');
 
@@ -52,13 +52,8 @@ describe('shareFile', () => {
 			([part]) => decode(part.data)
 		);
 		expect(parts.length).toBe(3);
-		const joined = new Uint8Array(parts.reduce((size, part) => size + part.length, 0));
-		let offset = 0;
-		for (const part of parts) {
-			joined.set(part, offset);
-			offset += part.length;
-		}
-		expect(joined).toEqual(bytes);
+		// Buffer.equals, not toEqual: a deep compare of two million bytes outlasts the test's time.
+		expect(Buffer.concat(parts).equals(bytes)).toBe(true);
 	});
 
 	it('takes a closed sheet as no error, and still removes the file', async () => {

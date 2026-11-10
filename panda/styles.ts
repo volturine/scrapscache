@@ -3654,13 +3654,14 @@ export const phoneTabsStyles = {
 	// the bands iOS reports at the column's top and bottom (the island, the status
 	// cluster; see src/lib/native/reservedRegions.ts) and gathers at the bottom.
 	// With the keyboard up there is no room for it under the clock, so it goes, as
-	// the phone's bar does; the keys have their own way out.
+	// the phone's bar does; the keys have their own way out. It goes from sight only:
+	// settings opened from it stay anchored to its circle while their field takes the
+	// keys, where a collapsed stack would leave the menu at the screen's corner.
 	stack: css({
 		position: 'fixed',
 		top: 'var(--app-rail-top)',
-		// A breath above the home indicator, the keys, or the island when it is at the bottom.
-		bottom:
-			'calc(max(var(--app-inset-bottom), var(--app-keyboard-bottom), var(--app-rail-bottom)) + 1.25rem)',
+		// A breath above the home indicator, or the island when it is at the bottom.
+		bottom: 'calc(max(var(--app-inset-bottom), var(--app-rail-bottom)) + 1.25rem)',
 		// Centred where iOS centres the island and the clock: on the camera, which the
 		// shell reports; the column's own middle otherwise.
 		transform: 'translateX(var(--app-rail-shift))',
@@ -3674,7 +3675,7 @@ export const phoneTabsStyles = {
 		// A modal dialog (the palette, sync) turns the body's pointer events off; the
 		// column keeps its own, so a place still answers a finger and the dialog goes.
 		pointerEvents: 'auto',
-		'html.keyboard-open &': { display: 'none' }
+		'html.keyboard-open &': { visibility: 'hidden' }
 	}),
 	stackRight: css({ right: 0, w: 'var(--app-inset-right)' }),
 	stackLeft: css({ left: 0, w: 'var(--app-inset-left)' }),

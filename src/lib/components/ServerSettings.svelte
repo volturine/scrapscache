@@ -25,6 +25,30 @@
 		}
 	}
 
+	/**
+	 * Keeps the focused field in sight in the menu, which scrolls. The keys come up
+	 * after the focus and the menu shrinks to the room left above them; the page's
+	 * own scroll-to-field does not reach into it.
+	 */
+	function keepInSight(field: HTMLInputElement) {
+		const menu = field.closest<HTMLElement>('[role="menu"]');
+		if (!menu) return;
+		const reveal = () => {
+			if (document.activeElement !== field) return;
+			const box = field.getBoundingClientRect();
+			const room = menu.getBoundingClientRect();
+			if (box.bottom > room.bottom) menu.scrollTop += box.bottom - room.bottom;
+			else if (box.top < room.top) menu.scrollTop -= room.top - box.top;
+		};
+		const resize = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(reveal);
+		resize?.observe(menu);
+		field.addEventListener('focus', reveal);
+		return () => {
+			resize?.disconnect();
+			field.removeEventListener('focus', reveal);
+		};
+	}
+
 	function save() {
 		const previous = serverSetting.origin;
 		rejected = !serverSetting.set(draft || DEFAULT_SERVER_ORIGIN);
@@ -48,7 +72,7 @@
 	<span class={styles.deviceText}>
 		<span id={labelId} class={styles.deviceLabel}>Server</span>
 		<span id={statusId} class={styles.status}
-			>Syncs with {host}{serverSetting.isDefault ? '' : ' (self-hosted)'}.</span
+			>Syncs with {host}{serverSetting.isDefault ? '' : ' (self-hosted)'}</span
 		>
 	</span>
 	<ChevronDown
@@ -78,6 +102,7 @@
 			aria-label="Server address"
 			aria-invalid={rejected || undefined}
 			bind:value={draft}
+			{@attach keepInSight}
 		/>
 		<button type="submit" class={styles.serverSave}>Use</button>
 	</form>

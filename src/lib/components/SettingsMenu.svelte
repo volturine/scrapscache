@@ -154,7 +154,12 @@
 					<PwaInstallSettings />
 					<StorageSettings />
 					{#if isNativeApp()}
-						<ServerSettings />
+						<!-- The menu keeps its content mounted while closed, and on opening it
+						     focuses the first field in it: an address field left expanded would
+						     bring the keyboard up. The row starts collapsed at every open. -->
+						{#key open}
+							<ServerSettings />
+						{/key}
 					{/if}
 					<ReminderNotificationSettings />
 					<ReminderLanguageSettings />

@@ -1,7 +1,11 @@
 import { isNativeApp } from './native.js';
 
-/** Where the iPhone app syncs unless the user names another server. */
-export const DEFAULT_SERVER_ORIGIN = 'https://scrapscache.com';
+/**
+ * Where the iPhone app syncs unless the user names another server: the
+ * production service, or the development Workers in the dev app (IOS_VARIANT,
+ * see vite.config.ts).
+ */
+export const DEFAULT_SERVER_ORIGIN: string = __DEFAULT_SERVER_ORIGIN__;
 const LS_KEY = 'scrapscache-server';
 /** Set once the question of which server to use has been answered. */
 const CHOSEN_KEY = 'scrapscache-server-chosen';

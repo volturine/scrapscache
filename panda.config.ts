@@ -34,6 +34,8 @@ export default defineConfig({
 			dark: '.dark &',
 			// Settings > Text and code: long lines in code blocks wrap instead of scrolling.
 			codeWrap: '[data-code-wrap] &',
+			// A tab bar whose Search has the palette up: it covers the place, so Search is the one thing lit.
+			paletteUp: 'nav:has([aria-expanded="true"]) &',
 			hoverable: {
 				'@media (hover: hover) and (pointer: fine)': {
 					'&:hover': '@slot'

@@ -16,13 +16,14 @@
 	import { Format } from '@ark-ui/svelte/format';
 	import { Progress } from '@ark-ui/svelte/progress';
 	import { createPairingUrl, formatPairingCode, normalizePairingCode } from '#lib/syncPairing.js';
+	import { appLinkBase } from '#lib/serverOrigin.svelte.js';
 	import { syncStore, type StartedDeviceLink } from '#lib/stores/sync.svelte.js';
 	import { profileCoordinator } from '#lib/stores/profiles.svelte.js';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
 	import { buildProfileMarkdownNotes, isLocalWorkspace } from '#lib/profiles.js';
 	import { buildNotesMarkdownZip } from '#lib/notesMarkdownExport.js';
 	import { estimateProfileBytes } from '#lib/db/idb.js';
-	import { downloadFile } from '@zag-js/file-utils';
+	import { saveFile } from '#lib/saveFile.js';
 	import {
 		Cloud,
 		CloudOff,
@@ -141,13 +142,12 @@
 			const archive = await buildNotesMarkdownZip(notes);
 			const archiveBuffer = new ArrayBuffer(archive.byteLength);
 			new Uint8Array(archiveBuffer).set(archive);
-			downloadFile({
-				file: new Blob([archiveBuffer], { type: 'application/zip' }),
-				name: `scrapscache-${name.replace(/[^a-z0-9_-]+/gi, '-').toLowerCase()}-${new Date()
+			await saveFile(
+				new Blob([archiveBuffer], { type: 'application/zip' }),
+				`scrapscache-${name.replace(/[^a-z0-9_-]+/gi, '-').toLowerCase()}-${new Date()
 					.toISOString()
-					.slice(0, 10)}.zip`,
-				type: 'application/zip'
-			});
+					.slice(0, 10)}.zip`
+			);
 		});
 	}
 
@@ -381,7 +381,7 @@
 
 	async function generatePairingQr(active: StartedDeviceLink) {
 		try {
-			const svg = await QRCode.toString(createPairingUrl(window.location.href, active.syncCode), {
+			const svg = await QRCode.toString(createPairingUrl(appLinkBase(), active.syncCode), {
 				type: 'svg',
 				width: 220,
 				margin: 1,
@@ -395,7 +395,7 @@
 	}
 
 	function pairingShareUrl(): string {
-		return waiting ? createPairingUrl(window.location.href, waiting.syncCode) : '';
+		return waiting ? createPairingUrl(appLinkBase(), waiting.syncCode) : '';
 	}
 
 	async function renameProfile(id: string, next: string): Promise<boolean> {

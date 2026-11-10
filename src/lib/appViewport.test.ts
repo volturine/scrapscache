@@ -12,9 +12,11 @@ import {
 	keyboardOcclusion,
 	portalToAppFloat,
 	portalToAppOverlay,
+	portalToColumnActions,
 	readSafeAreaInsets,
 	rememberSafeArea
 } from './appViewport';
+import { publishSideColumn } from './sideColumn.svelte.js';
 
 const safe = { top: 59, right: 0, bottom: 34, left: 0 };
 
@@ -253,6 +255,40 @@ describe('attachAppViewport', () => {
 		expect(typeInOpenNote(0)).toEqual({ keyboardOpen: false, keyboardBottom: '0px' });
 	});
 
+	it('follows a safe area that iOS applies after the first layout, with no resize event', () => {
+		// The probe's observer is the only thing that sees env() change without a resize.
+		let onProbeResize: (() => void) | null = null;
+		vi.stubGlobal(
+			'ResizeObserver',
+			class {
+				constructor(callback: () => void) {
+					onProbeResize = callback;
+				}
+				observe() {}
+				disconnect() {}
+			}
+		);
+		let right = '0px';
+		const realComputedStyle = window.getComputedStyle;
+		vi.stubGlobal('getComputedStyle', (element: Element) => {
+			const style = realComputedStyle(element);
+			return new Proxy(style, {
+				get: (target, key) => (key === 'paddingRight' ? right : Reflect.get(target, key))
+			});
+		});
+		const detach = attachAppViewport(document.body);
+		const root = document.documentElement;
+		expect(root.style.getPropertyValue('--app-inset-right')).toBe('0px');
+		expect(root.dataset.sideColumn).toBeUndefined();
+
+		right = '84px';
+		onProbeResize!();
+		expect(root.style.getPropertyValue('--app-inset-right')).toBe('84px');
+		expect(root.dataset.sideColumn).toBe('right');
+		detach();
+		publishSideColumn(null);
+	});
+
 	it('keeps the keyboard frame on hold while a picker drops the keyboard', () => {
 		vi.stubGlobal('innerWidth', 1024);
 		vi.stubGlobal('innerHeight', 768);
@@ -326,5 +362,33 @@ describe('portalToAppFloat', () => {
 		expect(document.querySelector(APP_OVERLAY_SELECTOR)).toBe(host);
 		cleanup();
 		expect(host.contains(node)).toBe(false);
+	});
+
+	it('sends a holder’s children into the Duo column’s stack, leaving the holder in place', () => {
+		const host = document.createElement('div');
+		host.setAttribute('data-column-actions', '');
+		document.body.append(host);
+		const bar = document.createElement('header');
+		const holder = document.createElement('div');
+		const button = document.createElement('button');
+		holder.append(button);
+		bar.append(holder);
+		document.body.append(bar);
+		const cleanup = portalToColumnActions(holder);
+		expect(host.contains(button)).toBe(true);
+		expect(bar.contains(holder)).toBe(true);
+		expect(holder.childNodes.length).toBe(0);
+		cleanup?.();
+		expect(host.childNodes.length).toBe(0);
+		expect(bar.contains(holder)).toBe(true);
+		host.remove();
+		bar.remove();
+	});
+
+	it('leaves a holder’s children alone without a column', () => {
+		const holder = document.createElement('div');
+		holder.append(document.createElement('button'));
+		expect(portalToColumnActions(holder)).toBeUndefined();
+		expect(holder.childNodes.length).toBe(1);
 	});
 });

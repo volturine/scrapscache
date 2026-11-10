@@ -1,10 +1,15 @@
 import type { SyncEventsConnection } from '#lib/syncEventsClient.js';
 
+/** The server carries live changes on a WebSocket instead; it answered 426. */
+export class SyncEventsUpgradeRequired extends Error {}
+
 /** Server-sent events, as the Node relay serves them. Resolves when the stream ends. */
 export async function openSyncEvents(connection: SyncEventsConnection): Promise<void> {
 	const { store, clientId, signal } = connection;
-	const url = `/api/sync/events?clientId=${encodeURIComponent(clientId)}`;
-	const response = await store.authorizedFetch(url, { signal });
+	// A path: authorizedFetch resolves it against the server itself.
+	const path = `/api/sync/events?clientId=${encodeURIComponent(clientId)}`;
+	const response = await store.authorizedFetch(path, { signal });
+	if (response.status === 426) throw new SyncEventsUpgradeRequired();
 	if (!response.ok || !response.body) {
 		throw new Error(`SSE error: ${response.status}`);
 	}

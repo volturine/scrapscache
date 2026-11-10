@@ -43,4 +43,19 @@ describe('the composer’s draft', () => {
 		detach();
 		expect(composerStore.open()).toBe(false);
 	});
+
+	it('outlives the window, and is told apart from the draft being written now', () => {
+		composerStore.draftId = 'writing';
+		expect(localStorage.getItem('scrapscache-composer-draft')).toBe('writing');
+		// The one this window is writing is not abandoned.
+		expect(composerStore.abandonedDraft()).toBeNull();
+		composerStore.draftId = null;
+		expect(localStorage.getItem('scrapscache-composer-draft')).toBeNull();
+
+		// A fresh window finds what a killed one left.
+		localStorage.setItem('scrapscache-composer-draft', 'left-behind');
+		expect(composerStore.abandonedDraft()).toBe('left-behind');
+		composerStore.forgetAbandonedDraft('left-behind');
+		expect(composerStore.abandonedDraft()).toBeNull();
+	});
 });

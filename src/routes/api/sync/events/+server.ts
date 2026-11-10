@@ -2,6 +2,7 @@ import type { RequestHandler } from './$types';
 import { getSyncStore } from '#lib/server/syncStore.js';
 import { getSyncAuth } from '#lib/server/syncAuth.js';
 import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '#lib/server/rateLimit.js';
+import { appOrigin } from '#lib/server/appCors.js';
 import { syncEventsToken, validSyncClientId } from '#lib/syncEventsProtocol.js';
 
 /**
@@ -25,7 +26,7 @@ export const GET: RequestHandler = async ({ request, url, getClientAddress }) =>
 
 	if (request.headers.get('upgrade')?.toLowerCase() === 'websocket') {
 		// Browsers send Origin on every WebSocket; another site's page must not open one here.
-		if (request.headers.get('origin') !== url.origin)
+		if (request.headers.get('origin') !== url.origin && !appOrigin(request, url.pathname))
 			return Response.json({ error: 'Cross-origin socket refused' }, { status: 403 });
 		const token = syncEventsToken(request.headers.get('sec-websocket-protocol'));
 		const session = token ? await getSyncAuth().authenticateSyncToken(token) : null;

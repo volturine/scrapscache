@@ -55,6 +55,7 @@
 		type EditorMarkdownBlockInfo,
 		type MarkdownBlock
 	} from '#lib/markdown.js';
+	import { joinWrappedHttpUrls } from '#lib/linkPreview.js';
 	import { uiStore } from '#lib/stores/ui.svelte.js';
 	import { actionUndo, undoStamp } from '#lib/stores/actionUndo.svelte.js';
 	import { tableScroll } from '#lib/tableScroll.js';
@@ -139,13 +140,17 @@
 	}
 
 	function parseBodyToLines(raw: string): Line[] {
-		if (!raw) return [newLine()];
-		return raw.split('\n').map((text) => {
-			const check = parseCheckLine(text);
+		return rowsFromText(joinWrappedHttpUrls(raw));
+	}
+
+	function rowsFromText(text: string): Line[] {
+		if (!text) return [newLine()];
+		return text.split('\n').map((line) => {
+			const check = parseCheckLine(line);
 			if (check) return newLine(check.text, true, check.checked, check.indent);
-			const bullet = parseBulletLine(text);
+			const bullet = parseBulletLine(line);
 			if (bullet) return newLine(bullet.text, false, false, bullet.indent, true);
-			return newLine(text, false);
+			return newLine(line, false);
 		});
 	}
 
@@ -1318,7 +1323,8 @@
 	/**
 	 * The body as it was loaded, and as these rows spell it. The editor writes some
 	 * Markdown its own way (`- [ ]` as `[ ]`, `*` bullets as `-`), so rows that still
-	 * spell the loaded body are no edit and keep its text.
+	 * spell the loaded body are no edit and keep its text. That holds for a URL a
+	 * paste wrapped across lines: it shows joined, and is saved so with the next edit.
 	 */
 	// svelte-ignore state_referenced_locally
 	let loaded = { body, rows: serializeLines(lines) };
@@ -1642,7 +1648,9 @@
 			}
 			const bodyNow = historyEntry().body;
 			if (entry.body !== bodyNow) {
-				lines = parseBodyToLines(entry.body);
+				// Only the body as loaded was shown joined. Other steps were typed as they are.
+				lines =
+					entry.body === loaded.body ? parseBodyToLines(entry.body) : rowsFromText(entry.body);
 				draftTaskId = null;
 				syncBody();
 			}
@@ -2887,7 +2895,7 @@
 		// The owner may lift part of the paste (e.g. a markdown heading into the
 		// note title); it returns the body text that should actually be inserted.
 		const transformed = transformPaste ? transformPaste(text) : null;
-		const bodyText = transformed === null ? text : transformed;
+		const bodyText = joinWrappedHttpUrls(transformed === null ? text : transformed);
 		rememberEdit(range);
 		const caret = replaceRangeWithText(range, bodyText);
 		focusAt(caret.line, caret.offset, lines[caret.line]?.id ?? null);

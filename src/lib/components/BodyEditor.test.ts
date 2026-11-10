@@ -1271,6 +1271,17 @@ describe('BodyEditor markdown bullets', () => {
 		expect(table?.contains(editor?.querySelector('[data-editor-line="4"]') ?? null)).toBe(false);
 	});
 
+	it('writes nothing for a wrapped URL until the note is edited', async () => {
+		const stored = 'https://shop.example/item?\n_id=1234567890&ref=mail';
+		const oninput = vi.fn();
+		const { container, component } = render(BodyEditor, { props: { body: stored, oninput } });
+		await tick();
+		expect(lineTexts(container)).toEqual(['https://shop.example/item?_id=1234567890&ref=mail']);
+
+		component.syncBodyNow();
+		expect(oninput).not.toHaveBeenCalled();
+	});
+
 	it('wraps wide editor and raw Markdown blocks in horizontal scroll containers', () => {
 		const source = [
 			'| Column | Content |',
@@ -3140,6 +3151,34 @@ describe('BodyEditor task lists', () => {
 });
 
 describe('BodyEditor shared undo', () => {
+	it('redoes a break typed after a URL as it was typed, without joining across it', async () => {
+		const { container } = render(BodyEditor, {
+			props: { body: 'https://example.com/long-slug\nmore' }
+		});
+		const typed = ['https://example.com/long-', 'slug', 'more'];
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		editor.focus();
+
+		caretAt(container, 0, 'https://example.com/long-'.length);
+		editor.dispatchEvent(
+			new InputEvent('beforeinput', {
+				bubbles: true,
+				cancelable: true,
+				inputType: 'insertParagraph'
+			})
+		);
+		await tick();
+		expect(lineTexts(container)).toEqual(typed);
+
+		await fireEvent.keyDown(editor, { key: 'z', ctrlKey: true });
+		await tick();
+		expect(lineTexts(container)).toEqual(['https://example.com/long-slug', 'more']);
+
+		await fireEvent.keyDown(editor, { key: 'Z', ctrlKey: true, shiftKey: true });
+		await tick();
+		expect(lineTexts(container)).toEqual(typed);
+	});
+
 	it('restores the title from the same stack as the body', async () => {
 		const restored: string[] = [];
 		const { component, rerender } = render(BodyEditor, {

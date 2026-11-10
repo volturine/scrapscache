@@ -8,8 +8,19 @@
 	import { useEditorActions } from '#lib/editorContext.js';
 	import { uiStore, type View } from '#lib/stores/ui.svelte.js';
 	import { pathForView } from '#lib/viewRoutes.js';
+	import { cx } from 'styled-system/css';
+
+	/**
+	 * In iPhone Duo's status column the places stand in one pill of the column's
+	 * stack, at any width: the open phone on its side has the stack and no sidebar.
+	 */
+	let { rail = null }: { rail?: 'left' | 'right' | null } = $props();
 
 	const { closeNote } = useEditorActions();
+	const barClass = $derived(rail ? styles.pill : styles.bar);
+	const tabClass = $derived(rail ? styles.pillTab : styles.tab);
+	const iconClass = $derived(rail ? styles.pillIcon : styles.tabIcon);
+	const labelClass = $derived(rail ? styles.pillLabel : styles.tabLabel);
 
 	const tabs: { view: View; label: string; icon: LucideIcon }[] = [
 		{ view: 'notes', label: 'Notes', icon: StickyNote },
@@ -22,10 +33,20 @@
 		uiStore.labelsOpen || !tabs.some((tab) => tab.view === uiStore.view) ? 'labels' : uiStore.view
 	);
 
+	/**
+	 * A place taken from under the palette closes it. The palette stays inside the
+	 * app frame, so iPhone Duo's column keeps its places while it is up; a dialog
+	 * that covers the whole screen, as sync does, covers the column too.
+	 */
+	function leavePalette() {
+		uiStore.paletteOpen = false;
+	}
+
 	function go(view: View) {
 		const target = pathForView(view);
 		if (!target) return;
 		closeNote();
+		leavePalette();
 		uiStore.labelsOpen = false;
 		uiStore.setView(view);
 		void goto(target);
@@ -33,45 +54,46 @@
 
 	function openLabels() {
 		closeNote();
+		leavePalette();
 		uiStore.labelsOpen = true;
 	}
 </script>
 
-<nav class={styles.bar} aria-label="Main" data-phone-tabs>
+<nav class={cx(barClass)} aria-label="Main" data-phone-tabs={rail ? undefined : true}>
 	{#each tabs as tab (tab.view)}
 		<button
 			type="button"
-			class={styles.tab}
+			class={tabClass}
 			aria-current={current === tab.view ? 'page' : undefined}
 			onclick={() => go(tab.view)}
 		>
-			<span class={styles.tabIcon} data-tab-icon>
+			<span class={iconClass} data-tab-icon>
 				<tab.icon class={iconMd} aria-hidden="true" />
 			</span>
-			<span class={styles.tabLabel}>{tab.label}</span>
+			<span class={labelClass}>{tab.label}</span>
 		</button>
 	{/each}
 	<button
 		type="button"
-		class={styles.tab}
+		class={tabClass}
 		aria-current={current === 'labels' ? 'page' : undefined}
 		onclick={openLabels}
 	>
-		<span class={styles.tabIcon} data-tab-icon>
+		<span class={iconClass} data-tab-icon>
 			<Tag class={iconMd} aria-hidden="true" />
 		</span>
-		<span class={styles.tabLabel}>Labels</span>
+		<span class={labelClass}>Labels</span>
 	</button>
 	<button
 		type="button"
-		class={styles.tab}
+		class={tabClass}
 		aria-haspopup="dialog"
 		aria-expanded={uiStore.paletteOpen}
-		onclick={() => (uiStore.paletteOpen = true)}
+		onclick={() => (uiStore.paletteOpen = !uiStore.paletteOpen)}
 	>
-		<span class={styles.tabIcon} data-tab-icon>
+		<span class={iconClass} data-tab-icon>
 			<Search class={iconMd} aria-hidden="true" />
 		</span>
-		<span class={styles.tabLabel}>Search</span>
+		<span class={labelClass}>Search</span>
 	</button>
 </nav>

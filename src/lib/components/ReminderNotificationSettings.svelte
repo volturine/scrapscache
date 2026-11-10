@@ -4,10 +4,12 @@
 	import { Menu } from '@ark-ui/svelte/menu';
 	import { Bell, ChevronRight } from '@lucide/svelte';
 	import {
+		NOTIFICATION_BACKEND_EVENT,
 		notificationPermission,
 		notificationsBlockedHint,
 		requestReminderPermission
 	} from '#lib/reminderNotify.js';
+	import { isNativeApp } from '#lib/native.js';
 	import { registerAllReminderDevices } from '#lib/reminderWake.js';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
 	import { pwaInstallStore } from '#lib/stores/pwaInstall.svelte.js';
@@ -26,7 +28,9 @@
 			: permission === 'default'
 				? 'Off. Tap to turn them on.'
 				: permission === 'denied'
-					? notificationsBlockedHint(pwaInstallStore.isStandalone)
+					? isNativeApp()
+						? 'Off. Allow notifications for Scraps Cache in the iPhone’s Settings.'
+						: notificationsBlockedHint(pwaInstallStore.isStandalone)
 					: 'This browser cannot show them.'
 	);
 
@@ -35,9 +39,11 @@
 			permission = notificationPermission();
 		};
 		window.addEventListener('focus', refresh);
+		window.addEventListener(NOTIFICATION_BACKEND_EVENT, refresh);
 		document.addEventListener('visibilitychange', refresh);
 		return () => {
 			window.removeEventListener('focus', refresh);
+			window.removeEventListener(NOTIFICATION_BACKEND_EVENT, refresh);
 			document.removeEventListener('visibilitychange', refresh);
 		};
 	});

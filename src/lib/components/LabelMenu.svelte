@@ -88,7 +88,7 @@
 
 <div
 	{@attach pressOnTouchRelease}
-	class={`${popover} ${vstack({ p: 'sm', w: 'min(20rem, calc(100vw - 2rem))', gap: '0', alignItems: 'stretch' })}`}
+	class={`${popover} ${vstack({ p: 'sm', w: 'min(20rem, calc(var(--app-frame-width) - 2rem))', gap: '0', alignItems: 'stretch' })}`}
 >
 	<div
 		class={hstack({

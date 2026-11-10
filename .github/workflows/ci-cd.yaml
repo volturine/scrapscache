@@ -185,6 +185,87 @@ jobs:
           path: playwright-report/
           retention-days: 7
 
+  # The iPhone app follows the development deployment to TestFlight: the same
+  # commit the dev Workers run, archived in Release and uploaded with an App Store
+  # Connect API key (scripts/ios-testflight.sh). The shell reads iOS 27.1's
+  # reserved regions, so it needs that SDK: the job takes the newest Xcode 27 on
+  # the runner and steps aside, with a notice, while the image has an older one.
+  # Without the Apple secrets it steps aside the same way, so a fork or a fresh
+  # clone of this workflow does not fail on them.
+  testflight:
+    name: Upload to TestFlight
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      contains(github.event.pull_request.labels.*.name, 'deploy-dev') &&
+      (github.event.action != 'labeled' || github.event.label.name == 'deploy-dev')
+    needs: deploy-cloudflare-dev
+    runs-on: xcode-27
+    concurrency:
+      group: testflight
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    env:
+      IOS_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+    steps:
+      - name: Check the Apple secrets and the Xcode on this runner
+        id: gate
+        env:
+          ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+        run: |
+          if [ -z "$IOS_TEAM_ID" ] || [ -z "$ASC_KEY_ID" ] || [ -z "$ASC_ISSUER_ID" ] || [ -z "$ASC_PRIVATE_KEY" ]; then
+            echo "::notice title=TestFlight skipped::Set APPLE_TEAM_ID, ASC_KEY_ID, ASC_ISSUER_ID and ASC_PRIVATE_KEY (repository secrets) to upload each development deployment to TestFlight."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          shopt -s nullglob
+          xcodes=(/Applications/Xcode_27*.app)
+          xcode="$(printf '%s\n' "${xcodes[@]}" | sort -V | tail -1)"
+          if [ -z "$xcode" ]; then
+            echo "::notice title=TestFlight skipped::No Xcode 27 on this runner; the app's shell needs the iOS 27.1 SDK."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          sudo xcode-select -s "$xcode"
+          sdk="$(xcodebuild -showsdks 2>/dev/null | sed -n 's/.*-sdk iphoneos\([0-9.]*\).*/\1/p' | sort -V | tail -1)"
+          if [ "$(printf '%s\n' 27.1 "$sdk" | sort -V | head -1)" != "27.1" ]; then
+            echo "::notice title=TestFlight skipped::$xcode has the iOS $sdk SDK; the app's shell needs 27.1 or newer. Try again once the xcode-27 image updates."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "Using $xcode with the iOS $sdk SDK"
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Check out repository
+        if: steps.gate.outputs.ready == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node.js
+        if: steps.gate.outputs.ready == 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        if: steps.gate.outputs.ready == 'true'
+        run: npm ci
+
+      - name: Archive and upload
+        if: steps.gate.outputs.ready == 'true'
+        env:
+          ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+          ASC_KEY_PATH: ${{ runner.temp }}/AuthKey.p8
+          IOS_OUT_DIR: ${{ runner.temp }}/ios-release
+        run: |
+          umask 077
+          printf '%s\n' "$ASC_PRIVATE_KEY" > "$ASC_KEY_PATH"
+          npm run ios:testflight
+          rm -f "$ASC_KEY_PATH"
+
   deploy-cloudflare-production:
     name: Deploy Cloudflare production
     if: >-

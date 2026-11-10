@@ -2,6 +2,7 @@
 	import { settingsMenuStyles as styles } from '$panda/styles';
 	import { Menu } from '@ark-ui/svelte/menu';
 	import { ChevronRight, HardDrive } from '@lucide/svelte';
+	import { isNativeApp } from '#lib/native.js';
 	import { storagePersistenceStore } from '#lib/stores/storagePersistence.svelte.js';
 	import { cx } from 'styled-system/css';
 	import { menuItem } from 'styled-system/recipes';
@@ -22,7 +23,8 @@
 	);
 </script>
 
-{#if storagePersistenceStore.state === 'best-effort' || storagePersistenceStore.state === 'persisted'}
+<!-- The iPhone app's notes are in its own sandbox, which no browser clears. -->
+{#if !isNativeApp() && (storagePersistenceStore.state === 'best-effort' || storagePersistenceStore.state === 'persisted')}
 	{#if askable}
 		<Menu.Item
 			value="storage-persist"

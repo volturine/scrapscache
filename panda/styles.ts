@@ -32,6 +32,14 @@ const mutedText = { color: 'scrapscache.textMuted' } as const;
 const cardRadius = { rounded: 'card' } as const;
 const controlRadius = { rounded: 'control' } as const;
 const subtleHover = { _hoverable: { bg: 'scrapscache.interactiveHover' } } as const;
+/** iPhone Duo's column controls: a blurred, faintly lit surface over the page. */
+const glassSurface = {
+	bg: 'scrapscache.columnGlass',
+	borderWidth: 'hairline',
+	borderColor: 'scrapscache.columnGlassBorder',
+	backdropFilter: 'blur(14px)',
+	boxShadow: '0 4px 16px rgba(0, 0, 0, 0.18)'
+} as const;
 const mediaHover = {
 	_hoverable: { bg: 'scrapscache.mediaControlHover', color: 'scrapscache.mediaText' }
 } as const;
@@ -55,7 +63,7 @@ const noteTitleSize = 'var(--title-font-size, token(fontSizes.title))';
 /** An open note's title keeps its share over a card's (display over title, 20:15). */
 const openNoteTitleSize = 'calc(var(--title-font-size, token(fontSizes.title)) * 4 / 3)';
 const kanbanColumnSize = {
-	w: 'min(calc(var(--note-card-width) + 1.5rem), calc(100vw - 2rem))',
+	w: 'min(calc(var(--note-card-width) + 1.5rem), calc(var(--app-frame-width) - 2rem))',
 	flexShrink: 0
 } as const;
 const filterPanel = {
@@ -120,14 +128,14 @@ export const appLayout = {
 		left: 0,
 		zIndex: 55,
 		h: 'full',
-		maxW: 'calc(100vw - 3.5rem)'
+		maxW: 'calc(var(--app-frame-width) - 3.5rem)'
 	}),
 	// No edge of its own: the surface is what sets the panel apart from the body,
 	// and a border would stop where the frame does while the surface carries on.
 	drawer: css({
 		h: 'full',
 		w: DRAWER_WIDTH,
-		maxW: 'calc(100vw - 3.5rem)',
+		maxW: 'calc(var(--app-frame-width) - 3.5rem)',
 		bg: 'scrapscache.surface'
 	}),
 	// The app frame stops at the safe rect, so an open drawer stops short of the
@@ -137,22 +145,28 @@ export const appLayout = {
 		position: 'fixed',
 		left: 0,
 		bottom: 0,
-		w: `min(calc(${DRAWER_WIDTH} + var(--app-inset-left)), calc(100vw - 3.5rem + var(--app-inset-left)))`,
+		w: `min(calc(${DRAWER_WIDTH} + var(--app-inset-left)), calc(var(--app-frame-width) - 3.5rem + var(--app-inset-left)))`,
 		h: 'var(--app-inset-bottom)',
 		bg: 'scrapscache.surface',
 		zIndex: 56,
 		pointerEvents: 'none'
 	}),
-	// The phone tab bar ends where the app frame does, above the home indicator; this
-	// carries its surface the rest of the way down so there is no dark gap under it.
+	// The phone tab bar ends where the app frame does: above the home indicator, and
+	// short of a status bar down the side (iPhone Duo folded). This carries its surface
+	// and top rule across the whole bottom band so the bar reads as edge to edge, with
+	// the system's indicators drawn over it. It sits before the frame in the document
+	// and at the same level, so the frame paints over it; a negative z-index would put
+	// it under the body's own background instead.
 	tabBarSafeArea: css({
 		position: 'fixed',
 		left: 0,
 		right: 0,
 		bottom: 0,
-		h: 'var(--app-inset-bottom)',
+		h: 'calc(var(--app-inset-bottom) + var(--app-tabbar-height))',
+		borderTopWidth: 'hairline',
+		borderColor: 'scrapscache.border',
 		bg: 'scrapscache.surface',
-		zIndex: 1,
+		zIndex: 0,
 		pointerEvents: 'none'
 	}),
 	// Same panel as the drawer on a phone: its surface is what sets it apart.
@@ -173,8 +187,11 @@ export const appLayout = {
 		isolation: 'isolate',
 		px: 'lg',
 		// An overlaid software keyboard (.app-float ends at --app-keyboard-bottom) must not
-		// cover the last card, so the room under the feed grows with it.
-		pb: 'calc(var(--app-keyboard-bottom) + token(spacing.3xl))'
+		// cover the last card, so the room under the feed grows with it. The Labels
+		// screen fills the feed with Archive and Trash at its foot; that room would push
+		// them up over the keys, so it keeps the resting padding and sits still.
+		pb: 'calc(var(--app-keyboard-bottom) + token(spacing.3xl))',
+		'&:has([data-labels-screen])': { pb: '3xl' }
 	})
 };
 
@@ -622,6 +639,39 @@ export const mcpAuthorizeStyles = {
 	optionCaption: css({ textStyle: 'caption' }),
 	actions: css({ display: 'flex', gap: 'md' }),
 	action: css({ flex: '1' })
+};
+
+// The iPhone app's first question: which server it syncs with (ServerPrompt).
+export const serverPromptStyles = {
+	choices: css({ ...column, gap: 'sm' }),
+	option: css({
+		...mcpChoiceRow,
+		bg: 'scrapscache.bg',
+		...clickable,
+		transition: 'background-color 120ms ease, border-color 120ms ease',
+		...subtleHover,
+		'&:has(input:checked)': { borderColor: 'scrapscache.accent', bg: 'scrapscache.accentSubtle' }
+	}),
+	radio: css({ mt: '3xs', accentColor: 'scrapscache.accent' }),
+	optionText: css({ ...column, gap: '3xs', minW: 0, flex: '1' }),
+	optionName: css({ textStyle: 'bodyStrong' }),
+	optionCaption: css({ textStyle: 'caption', color: 'scrapscache.textMuted' }),
+	field: css({ mt: 'sm', w: 'full' }),
+	status: css({ textStyle: 'caption', mt: 'xs', color: 'scrapscache.textMuted' }),
+	statusOk: css({ color: 'scrapscache.success' }),
+	statusWarn: css({ color: 'scrapscache.warning' }),
+	statusBad: css({ color: 'scrapscache.danger' }),
+	actions: css({ display: 'flex', alignItems: 'center', gap: 'sm', mt: 'lg' }),
+	later: css({
+		mr: 'auto',
+		textStyle: 'body',
+		color: 'scrapscache.textMuted',
+		...clickable,
+		px: 'xs',
+		py: '2xs',
+		rounded: 'pill',
+		'&:focus-visible': { boxShadow: '0 0 0 2px token(colors.scrapscache.focus)', outline: 'none' }
+	})
 };
 
 export const pwaStyles = {
@@ -1221,8 +1271,10 @@ export const kanbanViewStyles = {
 	columnsTrack: flex({ minW: 'max-content', align: 'flex-start', gap: 'md' }),
 	column: css({
 		...kanbanColumnSize,
-		// On a phone the next column shows at the edge, so the rest of the board is in sight.
-		w: { base: 'calc(100vw - 4rem)', md: kanbanColumnSize.w },
+		// On a phone the next column shows at the edge, so the rest of the board is in
+		// sight; a wide phone (the open iPhone Duo) keeps the lanes at a lane's width
+		// rather than one huge column.
+		w: { base: 'min(calc(var(--app-frame-width) - 4rem), 26rem)', md: kanbanColumnSize.w },
 		scrollSnapAlign: { base: 'start', md: 'none' },
 		rounded: 'sheet',
 		bg: 'scrapscache.surfaceSubtle',
@@ -1402,7 +1454,7 @@ export const kanbanViewStyles = {
 	tagPickerContent: css({ maxH: '16rem', overflowY: 'auto', py: '2xs' }),
 	/** The phone's "+" is a 44 px square, too narrow to size its menu: the menu takes its own width. */
 	tagPickerPositionerCompact: css({ zIndex: 20 }),
-	tagPickerContentCompact: css({ minW: '13rem', maxW: 'calc(100vw - 2rem)' }),
+	tagPickerContentCompact: css({ minW: '13rem', maxW: 'calc(var(--app-frame-width) - 2rem)' }),
 	dragGhost: css({
 		position: 'fixed',
 		top: 0,
@@ -1955,8 +2007,7 @@ export const commandPaletteStyles = {
 		rounded: 0,
 		borderWidth: 0,
 		boxShadow: 'none',
-		bg: 'scrapscache.bg',
-		pt: 'env(safe-area-inset-top)'
+		bg: 'scrapscache.bg'
 	}),
 	inputRow: hstack({
 		flexShrink: 0,
@@ -2059,7 +2110,7 @@ export const settingsMenuStyles = {
 	// Zag puts the room under the trigger in --available-height; the app frame clips
 	// anything taller, so the content scrolls within that rather than past the frame.
 	popover: css({
-		w: { base: 'calc(100vw - 1rem)', sm: '20.625rem' },
+		w: { base: 'calc(var(--app-frame-width) - 1rem)', sm: '20.625rem' },
 		maxH: 'var(--available-height)',
 		overflowY: 'auto',
 		pt: '2xs',
@@ -2147,7 +2198,27 @@ export const settingsMenuStyles = {
 		_hoverable: { textDecoration: 'underline' },
 		'&[data-highlighted]': { textDecoration: 'underline' }
 	}),
-	alert: css({ px: 'md', pb: 'sm', textStyle: 'label', color: 'scrapscache.danger' })
+	alert: css({ px: 'md', pb: 'sm', textStyle: 'label', color: 'scrapscache.danger' }),
+	/** The iPhone app's server field under its row, indented to the row's text. */
+	serverForm: hstack({ pl: 'calc(token(spacing.md) + 1.5rem)', pr: 'md', pb: 'sm', gap: 'sm' }),
+	serverField: css({ ...flexFill, minW: 0 }),
+	serverSave: css({
+		flexShrink: 0,
+		px: 'sm',
+		textStyle: 'label',
+		color: 'scrapscache.accent',
+		rounded: 'compact',
+		outline: 'none',
+		_hoverable: { textDecoration: 'underline' },
+		_focusVisible: { textDecoration: 'underline' }
+	}),
+	serverAlert: css({
+		pl: 'calc(token(spacing.md) + 1.5rem)',
+		pr: 'md',
+		pb: 'sm',
+		textStyle: 'caption',
+		color: 'scrapscache.warning'
+	})
 };
 
 /**
@@ -2168,8 +2239,7 @@ export const textSettingsStyles = {
 		h: 'full',
 		rounded: 0,
 		borderWidth: 0,
-		boxShadow: 'none',
-		pt: 'env(safe-area-inset-top)'
+		boxShadow: 'none'
 	}),
 	header: hstack({
 		flexShrink: 0,
@@ -2808,13 +2878,20 @@ export const noteEditorStyles = {
 			position: 'absolute',
 			inset: 0,
 			display: 'flex',
-			alignItems: { base: 'flex-start', md: 'center' },
+			alignItems: 'flex-start',
+			// Centered only when tall as well as wide. A foldable or tablet in landscape
+			// is wide but short, and centering the card there leaves a band above the note.
+			'@media (min-width: 768px) and (min-height: 45.0625rem)': { alignItems: 'center' },
 			justifyContent: 'center'
 		},
 		variants: {
 			expanded: {
 				true: {},
-				false: { px: { base: 'sm', sm: 'md', md: 'lg' }, pb: 'var(--app-sheet-pad-bottom)' }
+				false: {
+					px: { base: 'sm', sm: 'md', md: 'lg' },
+					pb: 'var(--app-sheet-pad-bottom)',
+					'@media (min-width: 768px) and (max-height: 45rem)': { pb: 'sm' }
+				}
 			}
 		},
 		defaultVariants: { expanded: false }
@@ -2824,9 +2901,11 @@ export const noteEditorStyles = {
 		variants: {
 			expanded: {
 				true: { h: 'full', maxW: 'none' },
-				// Short viewports (landscape phones, foldables) take the full height.
+				// Short viewports take the full height: landscape phones, and a foldable
+				// or tablet that is wider than md but shorter than the 32rem card floor.
 				false: {
-					h: { base: 'full', md: 'max(72%, 32rem)' },
+					h: 'full',
+					'@media (min-width: 768px) and (min-height: 45.0625rem)': { h: 'max(72%, 32rem)' },
 					maxW: '2xl',
 					rounded: 'sheet',
 					boxShadow: 'noteSheet'
@@ -3195,7 +3274,7 @@ export const historyStyles = {
 		transitionProperty: 'width, height, background-color, border-color, box-shadow, border-radius',
 		...historyMotion,
 		'&[data-expanded]': {
-			w: 'min(17rem, calc(100vw - 2rem))',
+			w: 'min(17rem, calc(var(--app-frame-width) - 2rem))',
 			h: 'calc(var(--history-rows) * 2.75rem + 2.75rem)',
 			bg: 'scrapscache.surface',
 			borderColor: 'scrapscache.border',
@@ -3243,7 +3322,7 @@ export const historyStyles = {
 		position: 'absolute',
 		right: 'calc(100% + 0.5rem)',
 		w: '17rem',
-		maxW: 'calc(100vw - 4rem)',
+		maxW: 'calc(var(--app-frame-width) - 4rem)',
 		px: 'md',
 		py: 'sm',
 		transform: 'translateY(-50%)',
@@ -3283,7 +3362,7 @@ export const historyStyles = {
 		...historySwapState('swapIn', 'fadeOut'),
 		justifySelf: 'end',
 		w: '17rem',
-		maxW: 'calc(100vw - 1rem)',
+		maxW: 'calc(var(--app-frame-width) - 1rem)',
 		h: 'full',
 		minH: 0,
 		transformOrigin: 'right center'
@@ -3445,6 +3524,33 @@ export const historyStyles = {
 export const topbarStyles = {
 	/** The phone bar's view name; the buttons after it keep to the right. */
 	phoneTitle: css({ ...flexFill, px: 'xs', textStyle: 'heading', ...truncateText }),
+	/** iPhone Duo's phone bar: the view name sits between the controls and the search field. */
+	columnTitle: css({ flexShrink: 0, maxW: '40%', px: 'xs', textStyle: 'heading', ...truncateText }),
+	/** Sync and settings beside iPhone Duo's column: each a glass circle in the column's stack. */
+	/**
+	 * The bar's own holder for the column's controls. Its children go to the column's
+	 * stack (portalToColumnActions) and the holder stays, empty, where it was rendered.
+	 */
+	columnActions: css({ display: 'contents' }),
+	/** The search field on iPhone Duo's phone bar: it opens the palette, where a phone searches. */
+	columnSearch: css({
+		display: 'flex',
+		alignItems: 'center',
+		gap: 'xs',
+		h: '2.5rem',
+		minW: 0,
+		flex: '1',
+		rounded: 'pill',
+		borderWidth: 'hairline',
+		borderColor: 'scrapscache.border',
+		bg: 'scrapscache.surface',
+		px: 'sm',
+		textStyle: 'body',
+		...mutedText,
+		...clickable,
+		textAlign: 'left',
+		'&:focus-visible': { boxShadow: '0 0 0 2px token(colors.scrapscache.focus)', outline: 'none' }
+	}),
 	markdownLabel: css({ minW: 0, flex: '1' }),
 	markdownCheck: css({
 		...gridCenter,
@@ -3520,10 +3626,18 @@ export const phoneTabsStyles = {
 		cursor: 'pointer',
 		outline: 'none',
 		transition: 'color 120ms ease',
-		'&[aria-current="page"], &[aria-pressed="true"]': { color: 'scrapscache.text' },
-		'&[aria-current="page"] [data-tab-icon], &[aria-pressed="true"] [data-tab-icon]': {
-			bg: 'scrapscache.navigationActive',
-			color: 'scrapscache.navigationActiveText'
+		'&[aria-current="page"], &[aria-pressed="true"], &[aria-expanded="true"]': {
+			color: 'scrapscache.text'
+		},
+		'&[aria-current="page"] [data-tab-icon], &[aria-pressed="true"] [data-tab-icon], &[aria-expanded="true"] [data-tab-icon]':
+			{
+				bg: 'scrapscache.navigationActive',
+				color: 'scrapscache.navigationActiveText'
+			},
+		// While the palette is up it covers the place, so Search is the one thing lit.
+		_paletteUp: {
+			'&[aria-current="page"]': mutedText,
+			'&[aria-current="page"] [data-tab-icon]': { bg: 'transparent', color: 'inherit' }
 		},
 		'&:focus-visible [data-tab-icon]': { boxShadow: '0 0 0 2px token(colors.scrapscache.focus)' }
 	}),
@@ -3534,7 +3648,90 @@ export const phoneTabsStyles = {
 		rounded: 'pill',
 		transition: 'background-color 120ms ease, color 120ms ease'
 	}),
-	tabLabel: css({ whiteSpace: 'nowrap' })
+	tabLabel: css({ whiteSpace: 'nowrap' }),
+	// iPhone Duo's status column, folded or open: the column's controls stand in it,
+	// outside the app frame, in the glass iOS gives its own. The stack keeps between
+	// the bands iOS reports at the column's top and bottom (the island, the status
+	// cluster; see src/lib/native/reservedRegions.ts) and gathers at the bottom.
+	// With the keyboard up there is no room for it under the clock, so it goes, as
+	// the phone's bar does; the keys have their own way out.
+	stack: css({
+		position: 'fixed',
+		top: 'var(--app-rail-top)',
+		// A breath above the home indicator, the keys, or the island when it is at the bottom.
+		bottom:
+			'calc(max(var(--app-inset-bottom), var(--app-keyboard-bottom), var(--app-rail-bottom)) + 1.25rem)',
+		// Centred where iOS centres the island and the clock: on the camera, which the
+		// shell reports; the column's own middle otherwise.
+		transform: 'translateX(var(--app-rail-shift))',
+		display: 'flex',
+		flexDirection: 'column',
+		justifyContent: 'flex-end',
+		alignItems: 'center',
+		gap: 'sm',
+		zIndex: 20,
+		overflow: 'hidden',
+		// A modal dialog (the palette, sync) turns the body's pointer events off; the
+		// column keeps its own, so a place still answers a finger and the dialog goes.
+		pointerEvents: 'auto',
+		'html.keyboard-open &': { display: 'none' }
+	}),
+	stackRight: css({ right: 0, w: 'var(--app-inset-right)' }),
+	stackLeft: css({ left: 0, w: 'var(--app-inset-left)' }),
+	/** Where the top bar's sync and settings land, each its own circle (Topbar portals them here). */
+	// Sync and settings, sent here from the bar, each in its own glass circle.
+	actions: css({
+		...column,
+		alignItems: 'center',
+		gap: 'sm',
+		flexShrink: 0,
+		'& button': {
+			w: '3rem',
+			h: '3rem',
+			rounded: 'full',
+			...glassSurface,
+			color: 'scrapscache.text',
+			transition: 'background-color 120ms ease, color 120ms ease',
+			// A finger darkens the circle at once; an open menu or sync dialog keeps it lit.
+			_active: { bg: 'scrapscache.columnGlassPressed' },
+			'&[aria-expanded="true"]': {
+				bg: 'scrapscache.navigationActive',
+				color: 'scrapscache.navigationActiveText'
+			}
+		}
+	}),
+	/** The five places in one pill, icons alone; the name stays for assistive technology. */
+	pill: css({
+		...column,
+		alignItems: 'center',
+		gap: '3xs',
+		py: '2xs',
+		px: '2xs',
+		rounded: 'pill',
+		...glassSurface,
+		flexShrink: 0
+	}),
+	pillTab: css({
+		...gridCenter,
+		w: '2.5rem',
+		h: '2.5rem',
+		rounded: 'full',
+		...mutedText,
+		cursor: 'pointer',
+		outline: 'none',
+		transition: 'background-color 120ms ease, color 120ms ease',
+		// A finger on a place darkens it at once; the current place and an open palette stay lit.
+		_active: { bg: 'scrapscache.columnGlassPressed' },
+		'&[aria-current="page"], &[aria-pressed="true"], &[aria-expanded="true"]': {
+			bg: 'scrapscache.navigationActive',
+			color: 'scrapscache.navigationActiveText'
+		},
+		// While the palette is up it covers the place, so Search is the one thing lit.
+		_paletteUp: { '&[aria-current="page"]': { bg: 'transparent', ...mutedText } },
+		'&:focus-visible': { boxShadow: '0 0 0 2px token(colors.scrapscache.focus)' }
+	}),
+	pillIcon: css(gridCenter),
+	pillLabel: css({ srOnly: true })
 };
 
 export const topbarSyncTone = {
@@ -3938,7 +4135,7 @@ export const undoBarStyles = {
 		bottom: '2xl',
 		...rowCenter,
 		gap: 'sm',
-		maxW: 'calc(100vw - 2rem)',
+		maxW: 'calc(var(--app-frame-width) - 2rem)',
 		px: 'md',
 		py: 'xs',
 		...border,
@@ -3972,7 +4169,7 @@ export const editorFindStyles = {
 		boxShadow: 'popover'
 	}),
 	row: css({ ...rowCenter, gap: '2xs' }),
-	field: css({ w: '13rem', maxW: '40vw' }),
+	field: css({ w: '13rem', maxW: 'calc(var(--app-frame-width) * 0.4)' }),
 	count: css({
 		minW: '4.5rem',
 		textAlign: 'center',

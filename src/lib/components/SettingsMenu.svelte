@@ -3,6 +3,7 @@
 	import { cx } from 'styled-system/css';
 	import { iconButton, menuItem } from 'styled-system/recipes';
 	import { Menu } from '@ark-ui/svelte/menu';
+	import { Portal } from '@ark-ui/svelte/portal';
 	import { ChevronRight, Download, EllipsisVertical, Settings, Type, Upload } from '@lucide/svelte';
 	import { resolve } from '$app/paths';
 	import { uiStore, type Layout, type Theme } from '#lib/stores/ui.svelte.js';
@@ -11,6 +12,8 @@
 	import ReminderNotificationSettings from './ReminderNotificationSettings.svelte';
 	import ReminderLanguageSettings from './ReminderLanguageSettings.svelte';
 	import StorageSettings from './StorageSettings.svelte';
+	import ServerSettings from './ServerSettings.svelte';
+	import { isNativeApp } from '#lib/native.js';
 
 	let {
 		open = $bindable(false),
@@ -19,7 +22,8 @@
 		onTextSettings,
 		importing = false,
 		importError = '',
-		phone = false
+		phone = false,
+		placement = 'bottom-end'
 	}: {
 		open?: boolean;
 		onExport: () => void;
@@ -30,6 +34,8 @@
 		importError?: string;
 		/** On a phone this is the "More" menu; its places are in the tab bar and the Labels tab. */
 		phone?: boolean;
+		/** Where the menu opens from its trigger; in iPhone Duo's column it opens to the left. */
+		placement?: 'bottom-end' | 'left-start';
 	} = $props();
 
 	const menuItemClass = cx(menuItem({ density: 'compact' }), styles.row);
@@ -57,7 +63,7 @@
 	};
 </script>
 
-<Menu.Root bind:open positioning={{ placement: 'bottom-end' }} closeOnSelect={false}>
+<Menu.Root bind:open positioning={{ placement }} closeOnSelect={false}>
 	<Tooltip content={phone ? 'More' : 'Settings'}>
 		<Menu.Trigger
 			class={iconButton({ variant: 'ghost', size: { base: 'compact', sm: 'standard' } })}
@@ -71,105 +77,120 @@
 			{/if}
 		</Menu.Trigger>
 	</Tooltip>
-	<Menu.Positioner class={styles.positioner}>
-		<Menu.Content class={cx(popover, styles.popover)}>
-			<Menu.ItemGroup class={styles.section} aria-labelledby={ids.appearance}>
-				<Menu.ItemGroupLabel id={ids.appearance} class={styles.sectionLabel}
-					>Appearance</Menu.ItemGroupLabel
-				>
-				<div class={styles.controlRow}>
-					<span id={ids.theme} class={styles.controlLabel}>Theme</span>
-					<Menu.RadioItemGroup
-						value={uiStore.theme}
-						onValueChange={(details) => uiStore.setTheme(details.value as Theme)}
-						class={styles.segment}
-						aria-labelledby={ids.theme}
+	<!-- In iPhone Duo's column the trigger sits in a clipped stack; the menu escapes it. -->
+	<Portal disabled={placement !== 'left-start'}>
+		<Menu.Positioner class={styles.positioner}>
+			<Menu.Content class={cx(popover, styles.popover)}>
+				<Menu.ItemGroup class={styles.section} aria-labelledby={ids.appearance}>
+					<Menu.ItemGroupLabel id={ids.appearance} class={styles.sectionLabel}
+						>Appearance</Menu.ItemGroupLabel
 					>
-						{#each themes as theme (theme.value)}
-							<Menu.RadioItem value={theme.value} closeOnSelect={false} class={styles.segmentItem}>
-								<Menu.ItemText>{theme.label}</Menu.ItemText>
-							</Menu.RadioItem>
-						{/each}
-					</Menu.RadioItemGroup>
-				</div>
-				<div class={styles.controlRow}>
-					<span id={ids.layout} class={styles.controlLabel}>Layout</span>
-					<Menu.RadioItemGroup
-						value={uiStore.layout}
-						onValueChange={(details) => (uiStore.layout = details.value as Layout)}
-						class={styles.segment}
-						aria-labelledby={ids.layout}
+					<div class={styles.controlRow}>
+						<span id={ids.theme} class={styles.controlLabel}>Theme</span>
+						<Menu.RadioItemGroup
+							value={uiStore.theme}
+							onValueChange={(details) => uiStore.setTheme(details.value as Theme)}
+							class={styles.segment}
+							aria-labelledby={ids.theme}
+						>
+							{#each themes as theme (theme.value)}
+								<Menu.RadioItem
+									value={theme.value}
+									closeOnSelect={false}
+									class={styles.segmentItem}
+								>
+									<Menu.ItemText>{theme.label}</Menu.ItemText>
+								</Menu.RadioItem>
+							{/each}
+						</Menu.RadioItemGroup>
+					</div>
+					<div class={styles.controlRow}>
+						<span id={ids.layout} class={styles.controlLabel}>Layout</span>
+						<Menu.RadioItemGroup
+							value={uiStore.layout}
+							onValueChange={(details) => (uiStore.layout = details.value as Layout)}
+							class={styles.segment}
+							aria-labelledby={ids.layout}
+						>
+							{#each layouts as layout (layout.value)}
+								<Menu.RadioItem
+									value={layout.value}
+									closeOnSelect={false}
+									class={styles.segmentItem}
+								>
+									<Menu.ItemText>{layout.label}</Menu.ItemText>
+								</Menu.RadioItem>
+							{/each}
+						</Menu.RadioItemGroup>
+					</div>
+					<Menu.Item
+						value="text-settings"
+						onSelect={onTextSettings}
+						class={cx(menuItem({ density: 'compact' }), styles.deviceRow)}
+						aria-labelledby={ids.text}
+						aria-describedby={ids.textStatus}
 					>
-						{#each layouts as layout (layout.value)}
-							<Menu.RadioItem value={layout.value} closeOnSelect={false} class={styles.segmentItem}>
-								<Menu.ItemText>{layout.label}</Menu.ItemText>
-							</Menu.RadioItem>
-						{/each}
-					</Menu.RadioItemGroup>
-				</div>
-				<Menu.Item
-					value="text-settings"
-					onSelect={onTextSettings}
-					class={cx(menuItem({ density: 'compact' }), styles.deviceRow)}
-					aria-labelledby={ids.text}
-					aria-describedby={ids.textStatus}
-				>
-					<Type class={styles.deviceIcon} aria-hidden="true" />
-					<span class={styles.deviceText}>
-						<span id={ids.text} class={styles.deviceLabel}>Text and code</span>
-						<span id={ids.textStatus} class={styles.status}>{textStatus}</span>
-					</span>
-					<ChevronRight class={styles.deviceChevron} aria-hidden="true" />
-				</Menu.Item>
-			</Menu.ItemGroup>
+						<Type class={styles.deviceIcon} aria-hidden="true" />
+						<span class={styles.deviceText}>
+							<span id={ids.text} class={styles.deviceLabel}>Text and code</span>
+							<span id={ids.textStatus} class={styles.status}>{textStatus}</span>
+						</span>
+						<ChevronRight class={styles.deviceChevron} aria-hidden="true" />
+					</Menu.Item>
+				</Menu.ItemGroup>
 
-			<Menu.ItemGroup class={styles.section} aria-labelledby={ids.data}>
-				<Menu.ItemGroupLabel id={ids.data} class={styles.sectionLabel}
-					>Data on this device</Menu.ItemGroupLabel
-				>
-				<Menu.Item value="export" onSelect={onExport} class={menuItemClass}>
-					<Download class={styles.deviceIcon} aria-hidden="true" />
-					Back up notes…
-				</Menu.Item>
-				<Menu.Item value="import" disabled={importing} onSelect={onImport} class={menuItemClass}>
-					<Upload class={styles.deviceIcon} aria-hidden="true" />
-					Restore from a backup…
-				</Menu.Item>
-				<PwaInstallSettings />
-				<StorageSettings />
-				<ReminderNotificationSettings />
-				<ReminderLanguageSettings />
-			</Menu.ItemGroup>
+				<Menu.ItemGroup class={styles.section} aria-labelledby={ids.data}>
+					<Menu.ItemGroupLabel id={ids.data} class={styles.sectionLabel}
+						>Data on this device</Menu.ItemGroupLabel
+					>
+					<Menu.Item value="export" onSelect={onExport} class={menuItemClass}>
+						<Download class={styles.deviceIcon} aria-hidden="true" />
+						Back up notes…
+					</Menu.Item>
+					<Menu.Item value="import" disabled={importing} onSelect={onImport} class={menuItemClass}>
+						<Upload class={styles.deviceIcon} aria-hidden="true" />
+						Restore from a backup…
+					</Menu.Item>
+					<PwaInstallSettings />
+					<StorageSettings />
+					{#if isNativeApp()}
+						<ServerSettings />
+					{/if}
+					<ReminderNotificationSettings />
+					<ReminderLanguageSettings />
+				</Menu.ItemGroup>
 
-			<Menu.ItemGroup class={styles.section} aria-labelledby={ids.about}>
-				<Menu.ItemGroupLabel id={ids.about} class={styles.sectionLabel}>About</Menu.ItemGroupLabel>
-				<div class={styles.links}>
-					<Menu.Item value="issue">
-						{#snippet asChild(props)}
-							<a
-								{...props()}
-								href="https://github.com/volturine/scrapscache/issues/new/choose"
-								target="_blank"
-								rel="noreferrer"
-								class={styles.link}
-							>
-								Report an issue
-							</a>
-						{/snippet}
-					</Menu.Item>
-					<Menu.Item value="privacy">
-						{#snippet asChild(props)}
-							<a {...props()} href={resolve('privacy')} class={styles.link}>Privacy</a>
-						{/snippet}
-					</Menu.Item>
-					<Menu.Item value="terms">
-						{#snippet asChild(props)}
-							<a {...props()} href={resolve('terms')} class={styles.link}>Terms</a>
-						{/snippet}
-					</Menu.Item>
-				</div>
-			</Menu.ItemGroup>
-			{#if importError}<p class={styles.alert} role="alert">{importError}</p>{/if}
-		</Menu.Content>
-	</Menu.Positioner>
+				<Menu.ItemGroup class={styles.section} aria-labelledby={ids.about}>
+					<Menu.ItemGroupLabel id={ids.about} class={styles.sectionLabel}>About</Menu.ItemGroupLabel
+					>
+					<div class={styles.links}>
+						<Menu.Item value="issue">
+							{#snippet asChild(props)}
+								<a
+									{...props()}
+									href="https://github.com/volturine/scrapscache/issues/new/choose"
+									target="_blank"
+									rel="noreferrer"
+									class={styles.link}
+								>
+									Report an issue
+								</a>
+							{/snippet}
+						</Menu.Item>
+						<Menu.Item value="privacy">
+							{#snippet asChild(props)}
+								<a {...props()} href={resolve('privacy')} class={styles.link}>Privacy</a>
+							{/snippet}
+						</Menu.Item>
+						<Menu.Item value="terms">
+							{#snippet asChild(props)}
+								<a {...props()} href={resolve('terms')} class={styles.link}>Terms</a>
+							{/snippet}
+						</Menu.Item>
+					</div>
+				</Menu.ItemGroup>
+				{#if importError}<p class={styles.alert} role="alert">{importError}</p>{/if}
+			</Menu.Content>
+		</Menu.Positioner>
+	</Portal>
 </Menu.Root>

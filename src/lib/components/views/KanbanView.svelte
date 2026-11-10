@@ -475,10 +475,7 @@
 
 <!-- A label column from the labels not yet on the board, or a new one. -->
 {#snippet addColumnMenu(compact: boolean)}
-	<Menu.Root
-		bind:open={tagPickerOpen}
-		positioning={{ placement: compact ? 'bottom-end' : 'bottom-start' }}
-	>
+	<Menu.Root bind:open={tagPickerOpen} positioning={{ placement: 'bottom-start' }}>
 		<Menu.Trigger
 			class={compact
 				? cx(button({ variant: 'dashed', size: 'md' }), k.addColCompact)
@@ -647,6 +644,8 @@
 		<!-- A tab per column: it lights for the column in view, brings its column up, and
 		     takes a carried card like a column does, with an empty list to land in. -->
 		<div class={k.phoneTabsRow} data-kanban-keep-clear>
+			<!-- The add button leads the row: at its end it sat over the chips scrolling under it. -->
+			{@render addColumnMenu(true)}
 			<div
 				class={k.columnTabs}
 				role="toolbar"
@@ -674,7 +673,6 @@
 					</button>
 				{/each}
 			</div>
-			{@render addColumnMenu(true)}
 		</div>
 		{#if noLabelColumns}
 			<div class={k.starterPhone}>{@render starterPanel()}</div>

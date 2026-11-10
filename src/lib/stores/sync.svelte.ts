@@ -36,6 +36,7 @@ import {
 import { MAX_CLIENT_SYNC_MUTATIONS_PER_REQUEST } from '#lib/syncLimits.js';
 import { retryTransient } from '#lib/syncRetry.js';
 import { sha256 } from '#lib/syncHash.js';
+import { serverUrl } from '#lib/serverOrigin.svelte.js';
 import {
 	createOneTimePairingCode,
 	createPairingRequestKey,
@@ -473,6 +474,15 @@ export class SyncStore {
 		this.onAccountChange?.();
 	}
 
+	/** The app's server setting moved: its sessions and live connection were the old server's. */
+	serverChanged(): void {
+		this.authenticationGeneration += 1;
+		this.pendingSessions.clear();
+		this.backgroundSessions.clear();
+		this.session = null;
+		this.onAccountChange?.();
+	}
+
 	async reauthenticateForRecovery(turnstileToken?: string): Promise<void> {
 		const account = this.account;
 		if (!account) throw new Error('No synced workspace is active');
@@ -487,7 +497,7 @@ export class SyncStore {
 			// A missing relay account can only be recreated during explicit recovery.
 		}
 		// Explicit recovery may recreate a missing relay account with the same signed identity.
-		const response = await fetch('/api/sync/register', {
+		const response = await fetch(serverUrl('/api/sync/register'), {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({
@@ -548,7 +558,7 @@ export class SyncStore {
 	): Promise<{ success: boolean; profile?: StoredProfile; error?: string }> {
 		const account = createSyncIdentity();
 		try {
-			const res = await fetch('/api/sync/register', {
+			const res = await fetch(serverUrl('/api/sync/register'), {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
@@ -610,7 +620,7 @@ export class SyncStore {
 	): Promise<{ success: boolean; link?: StartedDeviceLink; error?: string }> {
 		try {
 			const requestKey = createPairingRequestKey(input);
-			const res = await fetch('/api/sync/pair/start', {
+			const res = await fetch(serverUrl('/api/sync/pair/start'), {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ codeTag: pairingCodeTag(input), role, publicKey: requestKey.share })
@@ -642,7 +652,7 @@ export class SyncStore {
 		error?: string;
 	}> {
 		try {
-			const res = await fetch('/api/sync/pair/poll', {
+			const res = await fetch(serverUrl('/api/sync/pair/poll'), {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ sessionId: link.id })
@@ -661,7 +671,7 @@ export class SyncStore {
 					link.pake,
 					data.peerPublicKey
 				);
-				const sent = await fetch('/api/sync/pair/approve', {
+				const sent = await fetch(serverUrl('/api/sync/pair/approve'), {
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },
 					body: JSON.stringify({ sessionId: link.id, grant })
@@ -707,7 +717,7 @@ export class SyncStore {
 		if (pendingSession) return pendingSession;
 		const generation = this.authenticationGeneration;
 		const sessionRequest = (async () => {
-			const challengeResponse = await fetch('/api/sync/auth/challenge', {
+			const challengeResponse = await fetch(serverUrl('/api/sync/auth/challenge'), {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify({ accountId: account.accountId })
@@ -727,7 +737,7 @@ export class SyncStore {
 			) {
 				throw new Error('Could not start sync authentication');
 			}
-			const sessionResponse = await fetch('/api/sync/auth/session', {
+			const sessionResponse = await fetch(serverUrl('/api/sync/auth/session'), {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify({
@@ -854,7 +864,10 @@ export class SyncStore {
 			headers.set('authorization', `Bearer ${accessToken}`);
 			headers.set('x-sync-client-id', this.syncClientId);
 			headers.set(SYNC_PROTOCOL_HEADER, SYNC_PROTOCOL_VERSION);
-			const response = await fetch(input, { ...init, headers });
+			const response = await fetch(typeof input === 'string' ? serverUrl(input) : input, {
+				...init,
+				headers
+			});
 			if (response.status !== 401 || attempt === 1) return response;
 			this.invalidateSession(account.accountId, accessToken);
 		}
@@ -903,7 +916,7 @@ export class SyncStore {
 	): Promise<SyncResult> {
 		return new Promise((resolve) => {
 			const xhr = new XMLHttpRequest();
-			xhr.open('POST', path);
+			xhr.open('POST', serverUrl(path));
 			// Pairing expires in 60 seconds; photo/data sync must be allowed to finish.
 			xhr.timeout = 300_000;
 			xhr.setRequestHeader('Content-Type', 'application/json');

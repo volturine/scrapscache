@@ -1,5 +1,6 @@
 import adapterCloudflare from '@sveltejs/adapter-cloudflare';
 import adapterNode from '@sveltejs/adapter-node';
+import adapterStatic from '@sveltejs/adapter-static';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 import { execSync } from 'node:child_process';
@@ -24,6 +25,14 @@ const cloudflareModules = new Map([
 	['#lib/syncEventsTransport.js', './src/lib/cloudflare/syncEventsTransport.ts']
 ]);
 
+/**
+ * The iPhone app reaches whichever server its setting names, so its transport
+ * asks that server rather than being chosen here.
+ */
+const capacitorModules = new Map([
+	['#lib/syncEventsTransport.js', './src/lib/native/syncEventsTransport.ts']
+]);
+
 const cloudflareResolvedModules = new Map(
 	Array.from(cloudflareModules.entries()).map(([source, target]) => [
 		fileURLToPath(
@@ -37,8 +46,13 @@ const cloudflarePlatform: Plugin = {
 	name: 'cloudflare-platform',
 	enforce: 'pre',
 	resolveId(source: string) {
-		if (process.env.DEPLOY_TARGET !== 'cloudflare') return null;
-		const target = cloudflareModules.get(source);
+		const modules =
+			process.env.DEPLOY_TARGET === 'cloudflare'
+				? cloudflareModules
+				: process.env.DEPLOY_TARGET === 'capacitor'
+					? capacitorModules
+					: null;
+		const target = modules?.get(source);
 		if (target) return fileURLToPath(new URL(target, import.meta.url));
 		return null;
 	},
@@ -81,20 +95,32 @@ export default defineConfig({
 			adapter:
 				process.env.DEPLOY_TARGET === 'cloudflare'
 					? adapterCloudflare({ config: 'cf/wrangler.svelte.jsonc' })
-					: adapterNode(),
+					: process.env.DEPLOY_TARGET === 'capacitor'
+						? // The iPhone app: the client-only pages as files, one HTML entry for
+							// every route, and no server routes (the app names its server itself).
+							adapterStatic({
+								pages: 'build/ios',
+								assets: 'build/ios',
+								fallback: 'index.html',
+								strict: false
+							})
+						: adapterNode(),
 			version: { name: buildVersion() },
 			// The app registers src/service-worker itself: once for the shell, and once
 			// per synced workspace for its push subscription (see #lib/serviceWorker).
 			serviceWorker: { register: false },
 			csp: {
-				mode: 'nonce',
+				// A prerendered entry cannot carry a nonce; the iPhone app's gets hashes.
+				mode: process.env.DEPLOY_TARGET === 'capacitor' ? 'auto' : 'nonce',
 				directives: {
 					'default-src': ['self'],
 					// No third-party script, ever: anything that runs here can read the sync
 					// keys. Turnstile runs on its own origin, framed; see src/routes/turnstile.
 					'script-src': ['self'],
 					'style-src': ['self', 'unsafe-inline'],
-					'connect-src': ['self'],
+					// The iPhone app reaches whichever server its setting names.
+					'connect-src':
+						process.env.DEPLOY_TARGET === 'capacitor' ? ['self', 'https:', 'wss:'] : ['self'],
 					'img-src': ['self', 'data:', 'blob:'],
 					'media-src': ['self', 'data:', 'blob:'],
 					// Excalidraw lists its esm.sh copy after ours as a fallback for every font

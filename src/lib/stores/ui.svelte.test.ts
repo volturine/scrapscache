@@ -111,6 +111,14 @@ describe('view switches', () => {
 		expect(uiStore.search).toBe('');
 	});
 
+	it('close the Labels screen, so the palette’s "Go to…" does not leave it over the new view', () => {
+		uiStore.labelsOpen = true;
+
+		uiStore.setView('kanban');
+
+		expect(uiStore.labelsOpen).toBe(false);
+	});
+
 	it('carry a query into the new view and filter by it at once', () => {
 		vi.useFakeTimers();
 		uiStore.setSearchInput('draft');

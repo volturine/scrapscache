@@ -6,6 +6,7 @@ import {
 	parsePhotoMarker,
 	photoMarker,
 	renamePhotoMarkers,
+	retitlePhotoMarkers,
 	stripPhotoMarkers
 } from './photoMarker';
 
@@ -47,5 +48,15 @@ describe('photoMarker', () => {
 		const renamed = renamePhotoMarkers(body, new Map([['a', 'x']]));
 		expect(renamed).toBe('![a.webp](photo:x)\nnot a marker (photo:a)\n![b.webp](photo:b)');
 		expect(renamePhotoMarkers(body, new Map())).toBe(body);
+	});
+
+	it('gives a renamed photo’s markers the new name, and leaves a name the writer changed', () => {
+		const before = { id: 'a', name: 'beach.png' };
+		const after = { id: 'a', name: 'beach.webp' };
+		const body = 'Trip\n![beach.png](photo:a)\n![Our beach](photo:a)\n![beach.png](photo:b)';
+		expect(retitlePhotoMarkers(body, before, after)).toBe(
+			'Trip\n![beach.webp](photo:a)\n![Our beach](photo:a)\n![beach.png](photo:b)'
+		);
+		expect(retitlePhotoMarkers(body, before, before)).toBe(body);
 	});
 });

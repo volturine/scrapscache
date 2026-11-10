@@ -45,7 +45,7 @@
 	import { holdKeyboardFrame } from '#lib/appViewport.js';
 	import { pressOnTouchRelease } from '#lib/touchPress.js';
 	import type { ImageQuality } from '#lib/imageOptimize.js';
-	import type { PhotoPlacement } from '#lib/photoMarker.js';
+	import { retitlePhotoMarkers, type PhotoPlacement } from '#lib/photoMarker.js';
 	import { extractHttpUrls, localLinkCard } from '#lib/linkPreview.js';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
 	import { syncStore } from '#lib/stores/sync.svelte.js';
@@ -438,12 +438,19 @@
 
 	async function saveCroppedPhoto(cropped: NoteImage) {
 		attachError = '';
+		const source = images.find((image) => image.id === cropped.id);
 		const next = images.map((image) => (image.id === cropped.id ? cropped : image));
 		images = next;
 		onImagesChange?.(next);
 		if (noteId) {
+			// A crop can change the file type and with it the photo's name; its chip follows.
+			const stored = notesStore.notes.find((note) => note.id === noteId)?.body ?? '';
+			const retitled = source ? retitlePhotoMarkers(stored, source, cropped) : stored;
 			try {
-				await notesStore.flushNote(noteId, { images: next });
+				await notesStore.flushNote(noteId, {
+					images: next,
+					...(retitled !== stored ? { body: retitled } : {})
+				});
 			} catch (err) {
 				console.error('[footer] crop flush:', err);
 				attachError = `Could not save crop: ${formatStorageError(err)}`;

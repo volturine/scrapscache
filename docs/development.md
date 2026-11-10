@@ -62,7 +62,15 @@ Server row under Settings answers the question too (`ServerPrompt`,
 `src/lib/native/` and is loaded only there: the status bar follows the theme (it stays where iOS puts it: on the
 folded iPhone Duo the side column is hardware safe area, hidden bar or not), and
 reminders are scheduled with the system as local
-notifications (the web view has no service worker or web push). On iPhone Duo
+notifications (the web view has no service worker or web push), and a file that
+leaves the app (a backup, a workspace's Markdown archive) goes to the share
+sheet, since the web view drops a download link (`saveFile`,
+`src/lib/native/shareFile.ts`; the drawing editor's own save-to-disk is not
+offered there). The shell declares the backup's file type (`Info.plist`,
+`com.scrapscache.backup`), without which iOS greys a `.scraps-cache-backup` out
+in the picker that Restore opens, and the reason the file plugin reads file
+timestamps (`PrivacyInfo.xcprivacy`), which App Store Connect asks of every
+upload. On iPhone Duo
 the status bar runs down a side column that iOS reserves, folded or open; the
 phone tab bar stands in that column as a rail (`PhoneTabBar` with `rail`, from
 `sideColumn.svelte.ts`) at every width, so the notes get the cover screen's full

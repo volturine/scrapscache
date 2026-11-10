@@ -12,7 +12,7 @@
 	import { portalToColumnActions } from '#lib/appViewport.js';
 	import { sideColumn } from '#lib/sideColumn.svelte.js';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
-	import { downloadJSON } from '#lib/utils.js';
+	import { saveFile } from '#lib/saveFile.js';
 	import { syncStore } from '#lib/stores/sync.svelte.js';
 	import { profileCoordinator } from '#lib/stores/profiles.svelte.js';
 	import SyncModalUnavailable from './SyncModalUnavailable.svelte';
@@ -148,8 +148,8 @@
 				const { encryptBackup } = await loadBackupCrypto();
 				const data = await notesStore.exportBackup();
 				const encrypted = await encryptBackup(data, passphrase);
-				downloadJSON(
-					encrypted,
+				await saveFile(
+					new Blob([JSON.stringify(encrypted, null, 2)], { type: 'application/json' }),
 					`scrapscache-backup-${new Date().toISOString().slice(0, 10)}.scraps-cache-backup`
 				);
 				backupDialogMode = null;

@@ -1,5 +1,4 @@
 import type { Note } from '#lib/types.js';
-import { downloadFile } from '@zag-js/file-utils';
 import {
 	copyNote,
 	reminderShownAt,
@@ -294,13 +293,4 @@ export function cloneNoteForBackup(note: Note): Note {
 			dataUrl: ''
 		}))
 	};
-}
-
-/** Download a JSON backup file in the browser. */
-export function downloadJSON(data: unknown, filename: string): void {
-	downloadFile({
-		file: JSON.stringify(data, null, 2),
-		name: filename,
-		type: 'application/json'
-	});
 }

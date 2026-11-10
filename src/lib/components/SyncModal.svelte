@@ -23,7 +23,7 @@
 	import { buildProfileMarkdownNotes, isLocalWorkspace } from '#lib/profiles.js';
 	import { buildNotesMarkdownZip } from '#lib/notesMarkdownExport.js';
 	import { estimateProfileBytes } from '#lib/db/idb.js';
-	import { downloadFile } from '@zag-js/file-utils';
+	import { saveFile } from '#lib/saveFile.js';
 	import {
 		Cloud,
 		CloudOff,
@@ -142,13 +142,12 @@
 			const archive = await buildNotesMarkdownZip(notes);
 			const archiveBuffer = new ArrayBuffer(archive.byteLength);
 			new Uint8Array(archiveBuffer).set(archive);
-			downloadFile({
-				file: new Blob([archiveBuffer], { type: 'application/zip' }),
-				name: `scrapscache-${name.replace(/[^a-z0-9_-]+/gi, '-').toLowerCase()}-${new Date()
+			await saveFile(
+				new Blob([archiveBuffer], { type: 'application/zip' }),
+				`scrapscache-${name.replace(/[^a-z0-9_-]+/gi, '-').toLowerCase()}-${new Date()
 					.toISOString()
-					.slice(0, 10)}.zip`,
-				type: 'application/zip'
-			});
+					.slice(0, 10)}.zip`
+			);
 		});
 	}
 

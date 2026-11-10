@@ -74,5 +74,25 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.scrapscache.backup</string>
+			<key>UTTypeDescription</key>
+			<string>Scraps Cache Backup</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.json</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>scraps-cache-backup</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
 </dict>
 </plist>

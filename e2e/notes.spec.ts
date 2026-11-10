@@ -997,6 +997,35 @@ test.describe('in iPhone Duo’s side column', () => {
 			await expect(page.locator('[data-view-title]')).toHaveText('Kanban');
 		});
 
+		test('settings opened from the column keep their place when the keyboard comes up', async ({
+			page
+		}) => {
+			await openWithColumn(page);
+			const stack = page.locator('[data-column-stack]');
+			const more = stack.getByRole('button', { name: 'More' });
+			await more.click();
+			const menu = page.getByRole('menu');
+			await expect(menu).toBeVisible();
+			// Measured once the menu's opening animation, which scales it, has run.
+			const settled = async () => {
+				await menu.evaluate((element) =>
+					Promise.all(element.getAnimations({ subtree: true }).map((run) => run.finished))
+				);
+				return (await menu.boundingBox())!;
+			};
+			const before = await settled();
+			expect(before.x + before.width).toBeLessThanOrEqual((await more.boundingBox())!.x);
+
+			// What the app does when the keys come up (see attachAppViewport): the column
+			// goes from sight, and the menu stays by it rather than at the screen's corner.
+			await page.evaluate(() => document.documentElement.classList.add('keyboard-open'));
+			await expect(stack).toBeHidden();
+			await page.waitForTimeout(150);
+			const after = await settled();
+			expect(Math.abs(after.x - before.x)).toBeLessThanOrEqual(1);
+			expect(Math.abs(after.y - before.y)).toBeLessThanOrEqual(1);
+		});
+
 		test('on its side, the short column still shows all five tabs, as icons', async ({ page }) => {
 			await page.setViewportSize({ width: 678, height: 466 });
 			await openWithColumn(page, 'left');

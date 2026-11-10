@@ -2512,12 +2512,6 @@ export const syncStyles = {
 		fontWeight: 'strong',
 		letterSpacing: 'status'
 	}),
-	digits: css({
-		fontFamily: 'mono',
-		fontSize: { base: 'subtitle', sm: 'pairing' },
-		fontWeight: 'heading',
-		letterSpacing: 'status'
-	}),
 	qrCode: css({
 		w: { base: '10rem', sm: '220px' },
 		aspectRatio: '1',
@@ -2533,22 +2527,59 @@ export const syncStyles = {
 		...border,
 		bg: 'scrapscache.bg'
 	}),
+	/** The one-time code, a button that copies it. */
 	pairingCode: css({
+		display: 'flex',
+		flexDirection: 'column',
+		alignItems: 'center',
+		gap: '2xs',
+		w: 'full',
 		rounded: 'dialog',
 		...border,
 		bg: 'scrapscache.bg',
+		color: 'scrapscache.text',
 		px: 'sm',
 		minW: 0,
-		py: { base: 'md', sm: 'xl' }
+		py: { base: 'md', sm: 'xl' },
+		...interactive,
+		outline: 'none',
+		transitionProperty: 'background-color, border-color, box-shadow',
+		transitionDuration: '120ms',
+		transitionTimingFunction: 'ease',
+		_hoverable: { bg: 'scrapscache.interactiveHover' },
+		_active: { bg: 'scrapscache.interactiveActive' },
+		_focusVisible: { boxShadow: '0 0 0 2px token(colors.scrapscache.focus)' },
+		'&[data-copied]': { borderColor: 'scrapscache.success' }
 	}),
+	// One gap on both sides of every dot: between a group and its dot, and between
+	// the dot and the next group. The size is set here so the dot scales with it.
 	pairingGroups: hstack({
 		justify: 'center',
-		gap: { base: '3xs', sm: '2xs' },
+		gap: { base: 'xs', sm: 'sm' },
 		flexWrap: 'wrap',
-		minW: 0
+		minW: 0,
+		fontFamily: 'mono',
+		fontSize: { base: 'subtitle', sm: 'pairing' },
+		fontWeight: 'heading',
+		letterSpacing: 'status'
 	}),
-	pairingGroup: hstack({ alignItems: 'center', whiteSpace: 'nowrap', flexShrink: 0 }),
-	pairingSeparator: css({ pl: '3xs', color: 'scrapscache.textMuted' }),
+	pairingGroup: hstack({
+		gap: { base: 'xs', sm: 'sm' },
+		whiteSpace: 'nowrap',
+		flexShrink: 0
+	}),
+	// Drawn at the middle of the letters, where a "·" would sit on their baseline.
+	pairingSeparator: css({
+		w: '0.25em',
+		h: '0.25em',
+		rounded: 'full',
+		bg: 'scrapscache.textMuted',
+		flexShrink: 0
+	}),
+	pairingCopyHint: css({
+		textStyle: 'caption',
+		'[data-copied] &': { color: 'scrapscache.success' }
+	}),
 	copySuccess: css({
 		borderColor: 'scrapscache.success',
 		bg: 'scrapscache.success',
@@ -3654,13 +3685,14 @@ export const phoneTabsStyles = {
 	// the bands iOS reports at the column's top and bottom (the island, the status
 	// cluster; see src/lib/native/reservedRegions.ts) and gathers at the bottom.
 	// With the keyboard up there is no room for it under the clock, so it goes, as
-	// the phone's bar does; the keys have their own way out.
+	// the phone's bar does; the keys have their own way out. It goes from sight only:
+	// settings opened from it stay anchored to its circle while their field takes the
+	// keys, where a collapsed stack would leave the menu at the screen's corner.
 	stack: css({
 		position: 'fixed',
 		top: 'var(--app-rail-top)',
-		// A breath above the home indicator, the keys, or the island when it is at the bottom.
-		bottom:
-			'calc(max(var(--app-inset-bottom), var(--app-keyboard-bottom), var(--app-rail-bottom)) + 1.25rem)',
+		// A breath above the home indicator, or the island when it is at the bottom.
+		bottom: 'calc(max(var(--app-inset-bottom), var(--app-rail-bottom)) + 1.25rem)',
 		// Centred where iOS centres the island and the clock: on the camera, which the
 		// shell reports; the column's own middle otherwise.
 		transform: 'translateX(var(--app-rail-shift))',
@@ -3674,7 +3706,7 @@ export const phoneTabsStyles = {
 		// A modal dialog (the palette, sync) turns the body's pointer events off; the
 		// column keeps its own, so a place still answers a finger and the dialog goes.
 		pointerEvents: 'auto',
-		'html.keyboard-open &': { display: 'none' }
+		'html.keyboard-open &': { visibility: 'hidden' }
 	}),
 	stackRight: css({ right: 0, w: 'var(--app-inset-right)' }),
 	stackLeft: css({ left: 0, w: 'var(--app-inset-left)' }),

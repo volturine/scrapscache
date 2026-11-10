@@ -3,6 +3,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { uiStore } from '#lib/stores/ui.svelte.js';
 import SettingsMenu from './SettingsMenu.svelte';
 
+const native = vi.hoisted(() => ({ app: false }));
+vi.mock('#lib/native.js', () => ({ isNativeApp: () => native.app }));
+
 async function openMenu(props: Partial<{ importing: boolean; importError: string }> = {}) {
 	const onExport = vi.fn();
 	const onImport = vi.fn();
@@ -18,6 +21,7 @@ async function choose(item: HTMLElement) {
 }
 
 afterEach(() => {
+	native.app = false;
 	uiStore.dark = null;
 	uiStore.layout = 'grid';
 	uiStore.textSize = 14;
@@ -98,5 +102,53 @@ describe('SettingsMenu', () => {
 		expect(
 			screen.getByRole('menuitem', { name: 'Restore from a backup…' }).getAttribute('aria-disabled')
 		).toBe('true');
+	});
+
+	it('opens again with the server row collapsed, so no field takes the keyboard', async () => {
+		native.app = true;
+		await openMenu();
+		const server = screen.getByRole('menuitem', { name: 'Server' });
+		// The host alone ends the line; a full stop after it reads as part of the address.
+		expect(server.textContent).toContain('Syncs with scrapscache.com');
+		expect(server.textContent?.trimEnd().endsWith('.')).toBe(false);
+		await choose(server);
+		expect(screen.getByRole('textbox', { name: 'Server address' })).toBeTruthy();
+
+		const trigger = screen.getByRole('button', { name: 'Settings' });
+		await fireEvent.click(trigger);
+		await fireEvent.click(trigger);
+
+		expect(screen.getByRole('menuitem', { name: 'Server' }).getAttribute('aria-expanded')).toBe(
+			'false'
+		);
+		expect(screen.queryByRole('textbox', { name: 'Server address' })).toBeNull();
+		await new Promise((resolve) => requestAnimationFrame(resolve));
+		expect(document.activeElement?.tagName).not.toBe('INPUT');
+	});
+
+	it('scrolls the focused address above the keys when they come up', async () => {
+		native.app = true;
+		const viewport = Object.assign(new EventTarget(), { offsetTop: 0, height: 800 });
+		Object.defineProperty(window, 'visualViewport', { configurable: true, value: viewport });
+		try {
+			await openMenu();
+			await choose(screen.getByRole('menuitem', { name: 'Server' }));
+			const field = screen.getByRole('textbox', { name: 'Server address' });
+			const menu = field.closest<HTMLElement>('[role="menu"]')!;
+			const rect = (top: number, bottom: number) => ({ top, bottom }) as DOMRect;
+			// The field sits inside the menu, under where the keys will reach.
+			vi.spyOn(menu, 'getBoundingClientRect').mockReturnValue(rect(0, 700));
+			vi.spyOn(field, 'getBoundingClientRect').mockReturnValue(rect(600, 650));
+			field.focus();
+			expect(menu.scrollTop).toBe(0);
+
+			viewport.height = 400;
+			viewport.dispatchEvent(new Event('resize'));
+			await new Promise((resolve) => requestAnimationFrame(resolve));
+
+			expect(menu.scrollTop).toBe(250);
+		} finally {
+			Reflect.deleteProperty(window, 'visualViewport');
+		}
 	});
 });

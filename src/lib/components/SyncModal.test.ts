@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createSyncIdentity } from '#lib/syncPairing.js';
+import { createSyncIdentity, formatPairingCode } from '#lib/syncPairing.js';
 import type { StoredProfile } from '#lib/profiles.js';
 import { notesStore } from '#lib/stores/notes.svelte.js';
 import { profileCoordinator } from '#lib/stores/profiles.svelte.js';
@@ -727,5 +727,42 @@ describe('SyncModal profile interactions', () => {
 		await Promise.resolve();
 		await vi.advanceTimersByTimeAsync(1_500);
 		expect(poll).toHaveBeenCalledTimes(2);
+	});
+
+	it('copies the one-time code when it is pressed, and keeps the link button as it is', async () => {
+		const link: StartedDeviceLink = {
+			id: 'link-1',
+			expiresAt: Date.now() + 60_000,
+			role: 'existing',
+			syncCode: 'HKB4RW7CY75S4VCY',
+			pake: { ephemeralSecret: 'secret', share: 'share' }
+		};
+		vi.spyOn(syncStore, 'startExistingDeviceLink').mockResolvedValue({ success: true, link });
+		vi.spyOn(syncStore, 'pollDeviceLink').mockResolvedValue({
+			success: true,
+			linked: false,
+			expired: false
+		});
+		const writeText = vi.fn(async (_text: string) => undefined);
+		vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+		try {
+			render(SyncModal, { props: { onClose: vi.fn() } });
+			await fireEvent.click(screen.getByRole('button', { name: 'Connect another device' }));
+			const formatted = formatPairingCode(link.syncCode);
+			const code = await screen.findByRole('button', {
+				name: `Copy one-time pairing code ${formatted.replaceAll('-', ' ')}`
+			});
+
+			await fireEvent.click(code);
+
+			await waitFor(() => expect(writeText).toHaveBeenCalledWith(formatted));
+			await waitFor(() => expect(code.textContent).toContain('Copied'));
+			expect(code.hasAttribute('data-copied')).toBe(true);
+			expect(screen.getByRole('button', { name: 'Copy pairing link' }).textContent?.trim()).toBe(
+				'Copy pairing link'
+			);
+		} finally {
+			vi.unstubAllGlobals();
+		}
 	});
 });

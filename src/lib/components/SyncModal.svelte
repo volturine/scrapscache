@@ -58,7 +58,8 @@
 		| 'force-sync'
 		| 'replace-key';
 	let operation = $state<Operation | null>(null);
-	let copyFlash = $state(false);
+	/** What was just copied, for its "Copied" moment. */
+	let copied = $state<'code' | 'link' | null>(null);
 	let qrDataUrl = $state('');
 	let copyFlashTimer: ReturnType<typeof setTimeout> | null = null;
 	let waiting = $state<StartedDeviceLink | null>(null);
@@ -473,12 +474,12 @@
 		return true;
 	}
 
-	function onCopyStatus(details: { copied: boolean }) {
+	function onCopyStatus(what: 'code' | 'link', details: { copied: boolean }) {
 		if (!details.copied) return;
-		copyFlash = true;
+		copied = what;
 		if (copyFlashTimer !== null) clearTimeout(copyFlashTimer);
 		copyFlashTimer = setTimeout(() => {
-			copyFlash = false;
+			copied = null;
 			copyFlashTimer = null;
 		}, 2000);
 	}
@@ -1070,29 +1071,46 @@
 									<img src={qrDataUrl} alt="Pair this device" class={styles.qrCode} />
 								</div>
 							{/if}
-							<div class={styles.pairingCode} aria-label="One-time pairing code">
-								<div class={styles.pairingGroups}>
-									{#each pairingGroups(waiting.syncCode) as group, index (index)}
-										<span class={styles.pairingGroup}>
-											<span class={styles.digits}>{group}</span>
-											{#if index < 3}
-												<span class={styles.pairingSeparator} aria-hidden="true">·</span>
-											{/if}
-										</span>
-									{/each}
-								</div>
-							</div>
-							<Clipboard.Root value={pairingShareUrl()} onStatusChange={onCopyStatus}>
+							{@const groups = pairingGroups(waiting.syncCode)}
+							<Clipboard.Root
+								value={groups.join('-')}
+								onStatusChange={(details) => onCopyStatus('code', details)}
+							>
+								<Clipboard.Trigger
+									type="button"
+									class={styles.pairingCode}
+									aria-label={`Copy one-time pairing code ${groups.join(' ')}`}
+									data-copied={copied === 'code' ? '' : undefined}
+								>
+									<span class={styles.pairingGroups} data-pairing-code aria-hidden="true">
+										{#each groups as group, index (index)}
+											<span class={styles.pairingGroup}>
+												<span>{group}</span>
+												{#if index < groups.length - 1}
+													<span class={styles.pairingSeparator}></span>
+												{/if}
+											</span>
+										{/each}
+									</span>
+									<span class={styles.pairingCopyHint} aria-live="polite"
+										>{copied === 'code' ? 'Copied' : 'Copy code'}</span
+									>
+								</Clipboard.Trigger>
+							</Clipboard.Root>
+							<Clipboard.Root
+								value={pairingShareUrl()}
+								onStatusChange={(details) => onCopyStatus('link', details)}
+							>
 								<Clipboard.Trigger
 									type="button"
 									aria-label="Copy pairing link"
 									class={cx(
 										button({ variant: 'secondary', size: 'md' }),
 										styles.fullButton,
-										copyFlash ? styles.copySuccess : ''
+										copied === 'link' ? styles.copySuccess : ''
 									)}
 								>
-									{copyFlash ? 'Copied' : 'Copy pairing link'}
+									{copied === 'link' ? 'Copied' : 'Copy pairing link'}
 								</Clipboard.Trigger>
 							</Clipboard.Root>
 						{:else}

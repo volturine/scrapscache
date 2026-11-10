@@ -2512,12 +2512,6 @@ export const syncStyles = {
 		fontWeight: 'strong',
 		letterSpacing: 'status'
 	}),
-	digits: css({
-		fontFamily: 'mono',
-		fontSize: { base: 'subtitle', sm: 'pairing' },
-		fontWeight: 'heading',
-		letterSpacing: 'status'
-	}),
 	qrCode: css({
 		w: { base: '10rem', sm: '220px' },
 		aspectRatio: '1',
@@ -2533,22 +2527,59 @@ export const syncStyles = {
 		...border,
 		bg: 'scrapscache.bg'
 	}),
+	/** The one-time code, a button that copies it. */
 	pairingCode: css({
+		display: 'flex',
+		flexDirection: 'column',
+		alignItems: 'center',
+		gap: '2xs',
+		w: 'full',
 		rounded: 'dialog',
 		...border,
 		bg: 'scrapscache.bg',
+		color: 'scrapscache.text',
 		px: 'sm',
 		minW: 0,
-		py: { base: 'md', sm: 'xl' }
+		py: { base: 'md', sm: 'xl' },
+		...interactive,
+		outline: 'none',
+		transitionProperty: 'background-color, border-color, box-shadow',
+		transitionDuration: '120ms',
+		transitionTimingFunction: 'ease',
+		_hoverable: { bg: 'scrapscache.interactiveHover' },
+		_active: { bg: 'scrapscache.interactiveActive' },
+		_focusVisible: { boxShadow: '0 0 0 2px token(colors.scrapscache.focus)' },
+		'&[data-copied]': { borderColor: 'scrapscache.success' }
 	}),
+	// One gap on both sides of every dot: between a group and its dot, and between
+	// the dot and the next group. The size is set here so the dot scales with it.
 	pairingGroups: hstack({
 		justify: 'center',
-		gap: { base: '3xs', sm: '2xs' },
+		gap: { base: 'xs', sm: 'sm' },
 		flexWrap: 'wrap',
-		minW: 0
+		minW: 0,
+		fontFamily: 'mono',
+		fontSize: { base: 'subtitle', sm: 'pairing' },
+		fontWeight: 'heading',
+		letterSpacing: 'status'
 	}),
-	pairingGroup: hstack({ alignItems: 'center', whiteSpace: 'nowrap', flexShrink: 0 }),
-	pairingSeparator: css({ pl: '3xs', color: 'scrapscache.textMuted' }),
+	pairingGroup: hstack({
+		gap: { base: 'xs', sm: 'sm' },
+		whiteSpace: 'nowrap',
+		flexShrink: 0
+	}),
+	// Drawn at the middle of the letters, where a "·" would sit on their baseline.
+	pairingSeparator: css({
+		w: '0.25em',
+		h: '0.25em',
+		rounded: 'full',
+		bg: 'scrapscache.textMuted',
+		flexShrink: 0
+	}),
+	pairingCopyHint: css({
+		textStyle: 'caption',
+		'[data-copied] &': { color: 'scrapscache.success' }
+	}),
 	copySuccess: css({
 		borderColor: 'scrapscache.success',
 		bg: 'scrapscache.success',

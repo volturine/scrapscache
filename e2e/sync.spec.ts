@@ -105,6 +105,17 @@ test('two devices pair with a code and converge, deletes included', async ({ bro
 	const contextB = await browser.newContext();
 	const a = await contextA.newPage();
 	const b = await contextB.newPage();
+	// The test server is plain http, where a page has no clipboard; keep what is written.
+	await a.addInitScript(() => {
+		Object.defineProperty(navigator, 'clipboard', {
+			configurable: true,
+			value: {
+				async writeText(text: string) {
+					(window as Window & { __copied?: string }).__copied = text;
+				}
+			}
+		});
+	});
 
 	await openEmptyApp(a);
 	await createNote(a, 'Shared plan', 'Written on the first device.');
@@ -120,10 +131,35 @@ test('two devices pair with a code and converge, deletes included', async ({ bro
 	const connect = dialog.getByRole('button', { name: 'Connect another device' });
 	await expect(connect).toHaveText('Connect another device');
 	await connect.click();
-	const codeBox = dialog.locator('[aria-label="One-time pairing code"]');
+	const codeBox = dialog.locator('[data-pairing-code]');
 	await expect(codeBox).toBeVisible();
 	const code = (await codeBox.innerText()).replace(/[^A-Za-z0-9]/g, '');
 	expect(code).toHaveLength(16);
+
+	// Its dots sit at the letters' middle, one gap on each side of every dot.
+	const parts = await codeBox.evaluate((box) =>
+		[...box.querySelectorAll(':scope > span > span')].map((part) => {
+			const rect = part.getBoundingClientRect();
+			return { left: rect.left, right: rect.right, middle: rect.top + rect.height / 2 };
+		})
+	);
+	expect(parts).toHaveLength(7);
+	for (let i = 1; i < parts.length; i += 2) {
+		const [before, dot, after] = [parts[i - 1], parts[i], parts[i + 1]];
+		expect(Math.abs(dot.middle - before.middle)).toBeLessThanOrEqual(1);
+		expect(Math.abs(dot.left - before.right - (after.left - dot.right))).toBeLessThanOrEqual(1);
+	}
+
+	// Pressing the code copies it, and the link button below stays as it was.
+	const copyCode = dialog.getByRole('button', { name: /^Copy one-time pairing code / });
+	await copyCode.click();
+	await expect(copyCode).toContainText('Copied');
+	expect(await a.evaluate(() => (window as Window & { __copied?: string }).__copied)).toBe(
+		code.match(/.{4}/g)!.join('-')
+	);
+	await expect(dialog.getByRole('button', { name: 'Copy pairing link' })).toHaveText(
+		'Copy pairing link'
+	);
 
 	// Device B joins with the code and receives the key and the notes.
 	await openEmptyApp(b);
@@ -193,7 +229,7 @@ test('photo bytes, crops, deletion, and undo sync between two devices', async ({
 	await expect(dialog.getByRole('button', { name: / is active$/ })).toContainText('Synced');
 	const connect = dialog.getByRole('button', { name: 'Connect another device' });
 	await connect.click();
-	const codeBox = dialog.locator('[aria-label="One-time pairing code"]');
+	const codeBox = dialog.locator('[data-pairing-code]');
 	await expect(codeBox).toBeVisible();
 	const code = (await codeBox.innerText()).replace(/[^A-Za-z0-9]/g, '');
 	expect(code).toHaveLength(16);

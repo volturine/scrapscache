@@ -1,4 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+
+const saveFile = vi.hoisted(() => vi.fn(async (_file: Blob, _name: string) => undefined));
+vi.mock('./saveFile', () => ({ saveFile }));
+
 import {
 	CANVAS_MIME,
 	createCanvasAttachment,
@@ -288,15 +292,7 @@ describe('saveAttachment', () => {
 		vi.unstubAllGlobals();
 	});
 
-	it('downloads the photo bytes on the web, named after the photo', async () => {
-		const createObjectURL = vi.fn((_blob: Blob) => 'blob:photo');
-		vi.stubGlobal('URL', { ...URL, createObjectURL, revokeObjectURL: vi.fn() });
-		const clicks: string[] = [];
-		vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
-			this: HTMLAnchorElement
-		) {
-			clicks.push(`${this.download}:${this.href}`);
-		});
+	it('saves the photo bytes, named after the photo', async () => {
 		await saveAttachment({
 			id: 'a',
 			mime: 'image/png',
@@ -304,11 +300,18 @@ describe('saveAttachment', () => {
 			name: 'one.png',
 			createdAt: 1
 		});
-		expect(createObjectURL).toHaveBeenCalledTimes(1);
-		const [blob] = createObjectURL.mock.calls[0];
+		expect(saveFile).toHaveBeenCalledTimes(1);
+		const [blob, name] = saveFile.mock.calls[0];
 		expect(blob.type).toBe('image/png');
 		expect(blob.size).toBeGreaterThan(10);
-		expect(clicks).toEqual(['one.png:blob:photo']);
+		expect(name).toBe('one.png');
+	});
+
+	it('reports a save that failed', async () => {
+		saveFile.mockRejectedValueOnce(new Error('No room left'));
+		await expect(
+			saveAttachment({ id: 'a', mime: 'image/png', dataUrl: PNG, name: 'one.png', createdAt: 1 })
+		).rejects.toThrow('No room left');
 	});
 
 	it('refuses while only the thumbnail is here', async () => {

@@ -105,8 +105,8 @@ The same SvelteKit app serves the UI and the sync API when self-hosted.
   is not (a video, a document) is refused over 8 MB, since the relay takes 16 MB of
   ciphertext per envelope and the bytes travel base64-encoded twice. A photo's
   place in the body is a marker line (`src/lib/photoMarker.ts`) that leaves with
-  the photo and comes back with an undo. "Download" hands the bytes to a
-  download.
+  the photo and comes back with an undo. "Download" hands the bytes to the share
+  sheet in the app (iOS offers Save Image there) and to a download on the web.
 
 ### Sync identity
 

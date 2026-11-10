@@ -24,7 +24,8 @@ describe('saveFile', () => {
 		expect(downloadFile).toHaveBeenCalledWith({
 			file,
 			name: 'backup.json',
-			type: 'application/json'
+			type: 'application/json',
+			revokeTimeout: 60_000
 		});
 		expect(shareFile).not.toHaveBeenCalled();
 	});

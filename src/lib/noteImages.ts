@@ -2,6 +2,7 @@ import { uid } from './model';
 import type { NoteImage } from './types';
 import { extractDngJpeg, isDngFile, jpegName } from './dngCanonical';
 import { dataUrlToBlob } from './imageBlob';
+import { saveFile } from './saveFile';
 import { makeImageThumbDataUrl } from './imageThumb';
 import {
 	loadDrawable,
@@ -260,34 +261,16 @@ export async function openAttachment(att: NoteImage): Promise<void> {
 		}
 	}
 
-	downloadBlob(blob, name);
+	await saveFile(blob, name);
 }
 
-/** Keep a photo or file on the device, as a download. */
+/**
+ * Keep a photo or file on the device: a download on the web, the share sheet
+ * in the app, where iOS offers Save Image.
+ */
 export async function saveAttachment(att: NoteImage): Promise<void> {
 	if (!att.dataUrl) throw new Error('The photo is still loading.');
-	const blob = await dataUrlToBlob(att.dataUrl);
-	downloadBlob(blob, att.name?.trim() || 'attachment');
-}
-
-function downloadBlob(blob: Blob, name: string): void {
-	const url = URL.createObjectURL(blob);
-	const revoke = () => {
-		try {
-			URL.revokeObjectURL(url);
-		} catch {
-			/* ignore */
-		}
-	};
-
-	const a = document.createElement('a');
-	a.href = url;
-	a.download = name;
-	a.rel = 'noopener';
-	document.body.appendChild(a);
-	a.click();
-	document.body.removeChild(a);
-	setTimeout(revoke, 60_000);
+	await saveFile(await dataUrlToBlob(att.dataUrl), att.name?.trim() || 'attachment');
 }
 
 function readBlobAsDataUrl(file: Blob): Promise<string> {

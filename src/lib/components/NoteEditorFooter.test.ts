@@ -2,14 +2,24 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NoteImage } from '#lib/types.js';
 import { sortAttachments } from '#lib/model/merge.js';
+import { notesStore } from '#lib/stores/notes.svelte.js';
 import { syncStore } from '#lib/stores/sync.svelte.js';
 import NoteEditorFooter from './NoteEditorFooter.svelte';
 
-const conversion = vi.hoisted(() => ({ fileToNoteImage: vi.fn() }));
+const conversion = vi.hoisted(() => ({
+	fileToNoteImage: vi.fn(),
+	noteImageFromCroppedDataUrl: vi.fn()
+}));
 vi.mock('#lib/noteImages.js', async (importOriginal) => ({
 	...(await importOriginal<typeof import('#lib/noteImages.js')>()),
-	fileToNoteImage: conversion.fileToNoteImage
+	fileToNoteImage: conversion.fileToNoteImage,
+	noteImageFromCroppedDataUrl: conversion.noteImageFromCroppedDataUrl
 }));
+vi.mock('@ark-ui/svelte/image-cropper', async (importOriginal) => {
+	const original = await importOriginal<typeof import('@ark-ui/svelte/image-cropper')>();
+	const { default: Context } = await import('./PhotoFullscreen.cropper-context.svelte');
+	return { ...original, ImageCropper: { ...original.ImageCropper, Context } };
+});
 
 const DATA_URL = 'data:image/webp;base64,YWJj';
 
@@ -156,6 +166,38 @@ describe('NoteEditorFooter attachment work', () => {
 		syncStore.activeId = originalProfileId;
 
 		expect(onImagesChange).not.toHaveBeenCalled();
+	});
+
+	it('gives the photo’s chip the name a crop gave the photo', async () => {
+		const before = { ...image('photo-1', 'before-hash'), mime: 'image/png', name: 'beach.png' };
+		const after = { ...before, mime: 'image/webp', name: 'beach.webp', contentHash: 'after-hash' };
+		conversion.noteImageFromCroppedDataUrl.mockResolvedValue(after);
+		const stored = {
+			id: 'note-1',
+			body: 'Trip\n![beach.png](photo:photo-1)',
+			images: [before]
+		} as (typeof notesStore.notes)[number];
+		const originalNotes = notesStore.notes;
+		notesStore.notes = [stored];
+		const flushNote = vi.spyOn(notesStore, 'flushNote').mockResolvedValue();
+		const hydrate = vi.spyOn(notesStore, 'ensureNoteAttachments').mockResolvedValue();
+		const { component } = render(NoteEditorFooter, {
+			props: { noteId: 'note-1', images: [before] }
+		});
+
+		await component.openPhoto('photo-1');
+		await fireEvent.click(await screen.findByRole('button', { name: 'Crop photo' }));
+		await fireEvent.click(await screen.findByRole('button', { name: 'Apply crop' }));
+
+		await waitFor(() =>
+			expect(flushNote).toHaveBeenCalledWith('note-1', {
+				images: [after],
+				body: 'Trip\n![beach.webp](photo:photo-1)'
+			})
+		);
+		flushNote.mockRestore();
+		hydrate.mockRestore();
+		notesStore.notes = originalNotes;
 	});
 
 	it('removes the one-shot picker on destroy', async () => {

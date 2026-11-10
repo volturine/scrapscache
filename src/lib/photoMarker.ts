@@ -57,6 +57,21 @@ export function renamePhotoMarkers(body: string, ids: ReadonlyMap<string, string
 		.join('\n');
 }
 
+/** Marker lines that carry a photo's old name, given its new one: a crop can change the file type. */
+export function retitlePhotoMarkers(
+	body: string,
+	before: Pick<NoteImage, 'id' | 'name'>,
+	after: Pick<NoteImage, 'id' | 'name'>
+): string {
+	const from = photoMarker(before);
+	const to = photoMarker(after);
+	if (from === to) return body;
+	return body
+		.split('\n')
+		.map((line) => (line === from ? to : line))
+		.join('\n');
+}
+
 /** A body with nothing but photo markers and blank lines reads as empty text. */
 export function bodyIsOnlyPhotoMarkers(body: string): boolean {
 	return body.split('\n').every((line) => line.trim() === '' || isPhotoMarkerLine(line));

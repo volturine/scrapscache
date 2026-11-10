@@ -187,27 +187,28 @@ writes a notice and steps aside rather than failing the run.
 
 Each bundle ID needs, once:
 
-1. **The App ID**, in Certificates, Identifiers & Profiles › Identifiers ›
-   (+) › App IDs › App, as an explicit App ID with the bundle ID
-   (`com.scrapscache.app.dev` for the dev app; requires the Account Holder or
-   Admin role). `xcodebuild -allowProvisioningUpdates` with the Admin API key
-   would register it on its own ("For automatically signed targets, xcodebuild
-   will create and update profiles, app IDs, and certificates", `man
-xcodebuild`), but only during an archive, and the record in step 2 needs the
-   ID first; registering it by hand keeps the order simple.
+1. **The App ID**: an explicit App ID for the bundle ID, platform universal,
+   in Certificates, Identifiers & Profiles › Identifiers › (+) › App IDs, or
+   with the Admin API key (`POST /v1/bundleIds`). Automatic signing does not
+   do this for us: the app has no entitlements, so `-allowProvisioningUpdates`
+   signs with the team's wildcard profile and never
+   registers an explicit ID, and the New App form only lists explicit ones.
 2. **The App Store Connect record**, in App Store Connect › Apps › (+) › New
-   App: platform iOS, name **Scraps Cache Dev**, a primary language, the bundle
-   ID from step 1, and any unique SKU (for example `scrapscache-dev`); requires
-   the Account Holder, Admin or App Manager role. The App Store Connect API can
-   read and modify apps but has no endpoint to create one, so this step is
-   manual.
+   App: platform iOS, the app's name, a primary language, the bundle ID from
+   step 1, and a unique SKU; requires the Account Holder, Admin or App Manager
+   role. The App Store Connect API cannot do this step: `POST /v1/apps` answers
+   that apps do not allow `CREATE`.
 3. Optionally, a TestFlight internal group for the new app, so the team gets
    its builds.
 
 Until the record exists, the dev app's upload **fails** (the archive succeeds,
 the upload is refused) and the script names the bundle ID and points here; it
 does not skip, because a missing record is a setup step to finish, not a state
-to wait out. The production app's record and App ID already exist.
+to wait out.
+
+Both App IDs are registered: `com.scrapscache.app` and `com.scrapscache.app.dev`
+(the latter on 2026-11-10). The production record is **Scraps Cache** (SKU
+`scrapscache-ios`).
 
 The App Store icon is `AppIcon-1024.png` in the asset catalog, flattened from
 the web icon (Apple masks the corners itself and rejects an alpha channel); the

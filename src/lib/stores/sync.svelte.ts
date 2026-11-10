@@ -23,6 +23,7 @@ import { SyncEventsClient } from '#lib/syncEventsClient.js';
 import { withoutAttachmentsHistoryNeeds } from '#lib/attachmentRetention.js';
 import {
 	attachmentToImage,
+	attachmentRefKey,
 	buildSyncRecords,
 	changedRecords,
 	hydrateNoteImages,
@@ -1053,7 +1054,11 @@ export class SyncStore {
 			const attachments = new Map<string, NoteImage>();
 			for (const note of local.notes) {
 				for (const image of note.images ?? []) {
-					if (image.dataUrl?.length) attachments.set(image.id, image);
+					if (!image.dataUrl?.length) continue;
+					const hash = await sha256(image.dataUrl);
+					const withHash = { ...image, contentHash: hash };
+					attachments.set(attachmentRefKey(image.id, hash), withHash);
+					attachments.set(image.id, withHash);
 				}
 			}
 
@@ -1244,8 +1249,12 @@ export class SyncStore {
 					}
 				}
 				const writesAccepted = response.data.writesAccepted === true;
+				const conflicts = Array.isArray(response.data.conflicts) ? response.data.conflicts : [];
+				// A conflict response returns only conflicting slots, but its cursor may
+				// include unrelated writes. Catch those up before retrying the upload.
+				const conflictNeedsCatchUp = !writesAccepted && conflicts.length > 0;
 				if (writesAccepted) {
-					stalledWrites = 0;
+					if (outgoing.length > 0 || deleteSlots.length > 0) stalledWrites = 0;
 					for (const key of deletableKeys) delete recordIds[key];
 					for (const [key, id] of sentRecordIds) {
 						recordIds[key] = id;
@@ -1273,9 +1282,12 @@ export class SyncStore {
 				let adoptedConflictId = false;
 				const applyPayload = (record: SyncRecordPayload) => {
 					switch (record.kind) {
-						case 'attachment':
-							attachments.set(record.value.id, attachmentToImage(record.value));
+						case 'attachment': {
+							const image = attachmentToImage(record.value);
+							attachments.set(attachmentRefKey(record.value.id, record.value.hash), image);
+							attachments.set(record.value.id, image);
 							break;
+						}
 						case 'note':
 							pendingNotes.push(hydrateNoteImages(record.value, attachments));
 							break;
@@ -1326,10 +1338,7 @@ export class SyncStore {
 					}
 				};
 				const downloaded = Array.isArray(response.data.envelopes) ? response.data.envelopes : [];
-				const envelopes = [
-					...downloaded,
-					...(Array.isArray(response.data.conflicts) ? response.data.conflicts : [])
-				];
+				const envelopes = [...downloaded, ...conflicts];
 				for (const envelope of envelopes) {
 					if (!envelope || typeof envelope !== 'object') {
 						poisonCount += 1;
@@ -1400,10 +1409,10 @@ export class SyncStore {
 				}
 				merged.notes = merged.notes.map((note) => hydrateNoteImages(note, attachments));
 
-				if (typeof response.data.cursor === 'number') {
+				if (typeof response.data.cursor === 'number' && !conflictNeedsCatchUp) {
 					cursor = response.data.cursor;
 				}
-				downloadsDrained = response.data.hasMore !== true;
+				downloadsDrained = !conflictNeedsCatchUp && response.data.hasMore !== true;
 
 				merged.notes = withoutTombstoned(merged.notes, merged.tombstones);
 				merged.labels = withoutTombstoned(merged.labels, merged.labelTombstones);
@@ -1418,7 +1427,11 @@ export class SyncStore {
 					merged = await applyPulled(merged, pid, { readEnvelopes });
 					for (const note of merged.notes) {
 						for (const image of note.images ?? []) {
-							if (image.dataUrl?.length) attachments.set(image.id, image);
+							if (!image.dataUrl?.length) continue;
+							const hash = await sha256(image.dataUrl);
+							const withHash = { ...image, contentHash: hash };
+							attachments.set(attachmentRefKey(image.id, hash), withHash);
+							attachments.set(image.id, withHash);
 						}
 					}
 				}

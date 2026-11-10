@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
 	fitImageDimensions,
 	imageOptimizationRecipe,
+	loadDrawable,
 	optimizeImageBlob,
 	optimizedImageName
 } from './imageOptimize';
@@ -73,6 +74,48 @@ describe('image optimization without a WebP encoder', () => {
 	afterEach(() => {
 		vi.restoreAllMocks();
 		vi.unstubAllGlobals();
+	});
+
+	it('uses the browser image decoder when bitmap decoding rejects a supported photo', async () => {
+		vi.stubGlobal(
+			'createImageBitmap',
+			vi.fn(async () => {
+				throw new Error('Unsupported bitmap codec');
+			})
+		);
+		vi.stubGlobal(
+			'Image',
+			class {
+				width = 4032;
+				height = 3024;
+				onload: (() => void) | null = null;
+				set src(_value: string) {
+					queueMicrotask(() => this.onload?.());
+				}
+			}
+		);
+		vi.stubGlobal('URL', { createObjectURL: vi.fn(() => 'blob:photo'), revokeObjectURL: vi.fn() });
+		const drawable = await loadDrawable(new Blob(['photo'], { type: 'image/heic' }));
+		expect([drawable.width, drawable.height]).toEqual([4032, 3024]);
+		expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:photo');
+	});
+
+	it('reports the dimensions actually encoded when all compression attempts exceed the target', async () => {
+		installFakeCanvas(({ type }) => blobOfSize(1024 * 1024, type));
+		const dimensions: number[][] = [];
+		vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(function (
+			this: HTMLCanvasElement,
+			callback,
+			type
+		) {
+			dimensions.push([this.width, this.height]);
+			callback(blobOfSize(1024 * 1024, type ?? 'image/png'));
+		});
+		const image = await optimizeImageBlob(
+			new Blob(['photo'], { type: 'image/jpeg' }),
+			'compressed'
+		);
+		expect([image.width, image.height]).toEqual(dimensions.at(-1));
 	});
 
 	it('re-encodes as JPEG and labels the result with the produced type', async () => {

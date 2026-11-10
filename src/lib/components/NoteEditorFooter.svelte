@@ -20,7 +20,7 @@
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { Menu } from '@ark-ui/svelte/menu';
 	import { Format } from '@ark-ui/svelte/format';
-	import type { Snippet } from 'svelte';
+	import { onDestroy, type Snippet } from 'svelte';
 	import { slide } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 	import { prefersReducedMotion } from 'svelte/motion';
@@ -38,15 +38,19 @@
 		formatBytes,
 		dataUrlByteLength,
 		openAttachment,
-		looksLikePhoto
+		looksLikePhoto,
+		MAX_ATTACHMENT_BYTES
 	} from '#lib/noteImages.js';
 	import { displayImageSrc } from '#lib/imageThumb.js';
+	import { holdKeyboardFrame } from '#lib/appViewport.js';
+	import { pressOnTouchRelease } from '#lib/touchPress.js';
 	import type { ImageQuality } from '#lib/imageOptimize.js';
+	import { retitlePhotoMarkers, type PhotoPlacement } from '#lib/photoMarker.js';
 	import { extractHttpUrls, localLinkCard } from '#lib/linkPreview.js';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
+	import { syncStore } from '#lib/stores/sync.svelte.js';
 	import { sha256 } from '#lib/syncHash.js';
 	import { formatStorageError } from '#lib/imageBlob.js';
-	import { isKeyboardField } from '#lib/appViewport.js';
 	import { isCanvasAttachment, mergeCanvasEdit } from '#lib/canvasAttachment.js';
 	import { mergeHydratedImages } from '#lib/noteAttachmentHydration.js';
 	import {
@@ -80,6 +84,7 @@
 		trashed = false,
 		copyFlash = false,
 		fillPhotos = false,
+		inlinePreviews = false,
 		color = 'default' as NoteColor,
 		onOpenColor,
 		onOpenTags,
@@ -89,6 +94,8 @@
 		onArchive,
 		onDelete,
 		onImagesChange,
+		onBeforeRemove,
+		onPhotosAdded,
 		trailing
 	}: {
 		images?: NoteImage[];
@@ -103,6 +110,8 @@
 		copyFlash?: boolean;
 		/** Grow the photo strip to the editor's free height (for notes with no body text). */
 		fillPhotos?: boolean;
+		/** The short composer reserves space for previews instead of covering its text. */
+		inlinePreviews?: boolean;
 		/** Note surface colour, so the preview toggle matches the sheet it sits on. */
 		color?: NoteColor;
 		onOpenColor?: () => void;
@@ -114,6 +123,11 @@
 		onArchive?: () => void;
 		onDelete?: () => void;
 		onImagesChange?: (images: NoteImage[]) => void;
+		/** Commit pending editor text before the store removes its photo marker. */
+		onBeforeRemove?: () => void;
+		/** Photos just attached by the writer, so the body can mark their place. */
+		/** New photos and the caret they were pasted or dropped at, if any. */
+		onPhotosAdded?: (photos: NoteImage[], at: PhotoPlacement | null) => void;
 		/** Controls after Color, at the end of the footer: the composer's own. */
 		trailing?: Snippet;
 	} = $props();
@@ -127,7 +141,24 @@
 	let focusedCanvas = $state<NoteImage | null>(null);
 	let attachError = $state('');
 	let filesAwaitingQuality = $state<File[] | null>(null);
+	let placementAwaitingQuality: PhotoPlacement | null = null;
+	let qualityProfileId: string | null = null;
 	let previewsExpanded = $state(false);
+	let disposed = false;
+	let acceptingAttachments = true;
+	const pickerCleanups = new Set<() => void>();
+	let attachmentQueue: Promise<void> = Promise.resolve();
+	let pendingAttachmentCount = $state(0);
+
+	function ownsProfile(profileId: string): boolean {
+		return !disposed && syncStore.activePid === profileId;
+	}
+
+	onDestroy(() => {
+		disposed = true;
+		acceptingAttachments = false;
+		for (const cleanup of [...pickerCleanups]) cleanup();
+	});
 
 	const imageAttachments = $derived(images.filter(isImageAttachment));
 	const canvases = $derived(images.filter(isCanvasAttachment));
@@ -166,22 +197,28 @@
 	/**
 	 * Normal button: each press creates a one-shot file input in this gesture,
 	 * opens the system picker, then discards the input so cancel cannot stick.
+	 * The picker drops the keyboard on its own; the keyboard frame is held
+	 * until it closes, so the footer and the picker an iPad anchors to the
+	 * pressed button stay where the press was.
 	 */
-	export function openAttach() {
+	export function openAttach(anchor?: Element, options: { accept?: string } = {}) {
+		if (!acceptingAttachments || disposed) return;
 		attachError = '';
-		const active = document.activeElement;
-		if (active instanceof HTMLElement && isKeyboardField(active)) active.blur();
+		const pickerProfileId = syncStore.activePid;
 		const input = document.createElement('input');
 		input.type = 'file';
 		input.multiple = true;
-		// Off-screen but not display:none (iOS blocks programmatic open on those).
+		// A photo note asks for photos: iOS then offers the camera without video.
+		if (options.accept) input.accept = options.accept;
+		// Invisible but not display:none (iOS blocks programmatic open on those).
 		input.setAttribute('aria-hidden', 'true');
+		const box = anchor?.getBoundingClientRect();
 		Object.assign(input.style, {
 			position: 'fixed',
-			left: '0',
-			top: '0',
-			width: '1px',
-			height: '1px',
+			left: `${box?.left ?? 0}px`,
+			top: `${box?.top ?? 0}px`,
+			width: `${box?.width || 1}px`,
+			height: `${box?.height || 1}px`,
 			opacity: '0',
 			pointerEvents: 'none',
 			zIndex: '-1'
@@ -190,9 +227,12 @@
 
 		let done = false;
 		const openedAt = Date.now();
+		const releaseKeyboardFrame = holdKeyboardFrame();
 		const cleanup = () => {
 			if (done) return;
 			done = true;
+			pickerCleanups.delete(cleanup);
+			releaseKeyboardFrame();
 			window.removeEventListener('focus', onFocus);
 			document.removeEventListener('visibilitychange', onVis);
 			queueMicrotask(() => {
@@ -203,6 +243,7 @@
 				}
 			});
 		};
+		pickerCleanups.add(cleanup);
 
 		// Ignore focus blips while the sheet is still opening.
 		const onFocus = () => {
@@ -220,10 +261,11 @@
 			() => {
 				const picked = Array.from(input.files ?? []);
 				cleanup();
-				if (picked.length > 0) handlePickedFiles(picked);
+				if (picked.length > 0) handlePickedFiles(picked, null, pickerProfileId);
 			},
 			{ once: true }
 		);
+		input.addEventListener('cancel', cleanup, { once: true });
 
 		window.addEventListener('focus', onFocus);
 		document.addEventListener('visibilitychange', onVis);
@@ -234,44 +276,152 @@
 	// A menu stays open when the same tap opens a dialog (the dialog blocks the
 	// outside press that would dismiss it), so every footer action closes it.
 	let shareOpen = $state(false);
+	// The menu takes focus, which drops the keyboard; the frame stays until it closes.
+	$effect(() => {
+		if (!shareOpen) return;
+		return holdKeyboardFrame();
+	});
 	export function closeMenus() {
 		shareOpen = false;
 	}
 
-	export function handlePickedFiles(picked: File[]) {
-		if (picked.length === 0) return;
+	/** The placement travels with the files, so a pick that adds nothing leaves no stale caret. */
+	export function handlePickedFiles(
+		picked: File[],
+		at: PhotoPlacement | null = null,
+		profileId: string = syncStore.activePid
+	) {
+		if (!acceptingAttachments || disposed || picked.length === 0 || !ownsProfile(profileId)) return;
 		if (picked.some(looksLikePhoto)) {
 			filesAwaitingQuality = picked;
+			placementAwaitingQuality = at;
+			qualityProfileId = profileId;
 			return;
 		}
-		void addFiles(picked, 'compressed');
+		queueAddFiles(picked, 'compressed', at, profileId);
 	}
 
 	function chooseImageQuality(quality: ImageQuality) {
 		const picked = filesAwaitingQuality;
+		const profileId = qualityProfileId;
 		filesAwaitingQuality = null;
-		if (picked) void addFiles(picked, quality);
+		qualityProfileId = null;
+		if (picked && profileId && acceptingAttachments && ownsProfile(profileId)) {
+			queueAddFiles(picked, quality, placementAwaitingQuality, profileId);
+		}
 	}
 
-	async function addFiles(picked: File[], imageQuality: ImageQuality) {
+	function queueAddFiles(
+		picked: File[],
+		imageQuality: ImageQuality,
+		at: PhotoPlacement | null,
+		profileId: string
+	) {
+		pendingAttachmentCount += 1;
+		const work = attachmentQueue
+			.then(() => addFiles(picked, imageQuality, at, profileId))
+			.finally(() => {
+				pendingAttachmentCount -= 1;
+			});
+		attachmentQueue = work.then(
+			() => undefined,
+			() => undefined
+		);
+		notesStore.trackAttachmentWork(work);
+	}
+
+	/** Stop new picks and let every quality-approved import finish before its owner closes. */
+	export async function waitForPendingAttachments(): Promise<void> {
+		acceptingAttachments = false;
+		filesAwaitingQuality = null;
+		qualityProfileId = null;
+		for (const cleanup of [...pickerCleanups]) cleanup();
+		let waitingFor: Promise<void>;
+		do {
+			waitingFor = attachmentQueue;
+			await waitingFor;
+		} while (waitingFor !== attachmentQueue);
+	}
+
+	async function addFiles(
+		picked: File[],
+		imageQuality: ImageQuality,
+		at: PhotoPlacement | null,
+		profileId: string
+	) {
+		if (!ownsProfile(profileId)) return;
 		attachError = '';
+		const notices: string[] = [];
+		// A photo shrinks on the way in; anything else goes in as it is, and past the
+		// cap it could never sync (a video from the camera sheet, most of all).
+		const tooBig = (file: { name: string; size: number }) => file.size > MAX_ATTACHMENT_BYTES;
+		const within = picked.filter((file) => looksLikePhoto(file) || !tooBig(file));
+		for (const file of picked) {
+			if (!within.includes(file))
+				notices.push(
+					`${file.name} is ${formatBytes(file.size)}; a file over ${formatBytes(MAX_ATTACHMENT_BYTES)} cannot sync, so it was not added.`
+				);
+		}
+		if (within.length === 0) {
+			attachError = notices.join(' ');
+			return;
+		}
 		try {
-			const added = await Promise.all(picked.map((file) => fileToNoteImage(file, imageQuality)));
+			const converted = await Promise.allSettled(
+				within.map((file) => fileToNoteImage(file, imageQuality))
+			);
+			if (!ownsProfile(profileId)) return;
+			const added: NoteImage[] = [];
+			converted.forEach((result, index) => {
+				const file = within[index];
+				if (result.status === 'rejected') {
+					notices.push(`${file.name} could not be processed: ${formatStorageError(result.reason)}`);
+					return;
+				}
+				const att = result.value;
+				const convertedBytes = att.byteSize ?? dataUrlByteLength(att.dataUrl);
+				if (tooBig({ name: file.name, size: convertedBytes })) {
+					notices.push(
+						`${file.name} is ${formatBytes(convertedBytes)} after processing; a file over ${formatBytes(MAX_ATTACHMENT_BYTES)} cannot sync, so it was not added.`
+					);
+					return;
+				}
+				if (looksLikePhoto(file) && !isImageAttachment(att)) {
+					// This browser could not read it as a photo (HEIC off Safari, an SVG).
+					if (tooBig({ name: file.name, size: att.byteSize ?? file.size })) {
+						notices.push(
+							`${file.name} could not be read as a photo, and at ${formatBytes(file.size)} it cannot sync as a file, so it was not added.`
+						);
+						return;
+					}
+					notices.push(`${file.name} could not be read as a photo, so it was kept as a file.`);
+				}
+				added.push(att);
+			});
+			if (notices.length) attachError = notices.join(' ');
+			if (added.length === 0) return;
 			const knownHashes = new Set(
 				await Promise.all(images.map((image) => image.contentHash || sha256(image.dataUrl)))
 			);
+			if (!ownsProfile(profileId)) return;
 			const unique: NoteImage[] = [];
+			// Store merges sort by creation time, then id. Distinct times preserve
+			// picker order when parallel conversions finish in the same millisecond.
+			let addedAt = images.reduce((time, image) => Math.max(time, image.createdAt + 1), Date.now());
 			for (const att of added) {
 				const hash = att.contentHash || (await sha256(att.dataUrl));
 				if (knownHashes.has(hash)) continue;
 				knownHashes.add(hash);
-				unique.push(att);
+				unique.push({ ...att, createdAt: addedAt++ });
 			}
 			if (unique.length === 0) return;
 			previewsExpanded = true;
 			const next = [...images, ...unique];
+			if (!ownsProfile(profileId)) return;
 			images = next;
 			onImagesChange?.(next);
+			const photos = unique.filter(isImageAttachment);
+			if (photos.length > 0) onPhotosAdded?.(photos, at);
 			if (noteId) {
 				try {
 					await notesStore.flushNote(noteId, { images: next });
@@ -281,18 +431,26 @@
 				}
 			}
 		} catch (err) {
+			if (!ownsProfile(profileId)) return;
 			attachError = err instanceof Error ? err.message : 'Could not add file';
 		}
 	}
 
 	async function saveCroppedPhoto(cropped: NoteImage) {
 		attachError = '';
+		const source = images.find((image) => image.id === cropped.id);
 		const next = images.map((image) => (image.id === cropped.id ? cropped : image));
 		images = next;
 		onImagesChange?.(next);
 		if (noteId) {
+			// A crop can change the file type and with it the photo's name; its chip follows.
+			const stored = notesStore.notes.find((note) => note.id === noteId)?.body ?? '';
+			const retitled = source ? retitlePhotoMarkers(stored, source, cropped) : stored;
 			try {
-				await notesStore.flushNote(noteId, { images: next });
+				await notesStore.flushNote(noteId, {
+					images: next,
+					...(retitled !== stored ? { body: retitled } : {})
+				});
 			} catch (err) {
 				console.error('[footer] crop flush:', err);
 				attachError = `Could not save crop: ${formatStorageError(err)}`;
@@ -300,17 +458,19 @@
 		}
 	}
 
-	function removeAttachment(id: string) {
-		const removed = images.find((i) => i.id === id);
-		// The store records the undo step, so it writes before the draft catches up.
-		if (noteId && removed) {
-			notesStore.removeAttachment(noteId, removed).catch((err) => {
-				console.error('[footer] remove attachment flush:', err);
-			});
+	async function removeAttachment(id: string): Promise<boolean> {
+		onBeforeRemove?.();
+		const removed = images.find((image) => image.id === id);
+		try {
+			if (noteId && removed) await notesStore.removeAttachment(noteId, removed);
+			const next = images.filter((image) => image.id !== id);
+			images = next;
+			onImagesChange?.(next);
+			return true;
+		} catch (err) {
+			attachError = `Could not remove attachment: ${formatStorageError(err)}`;
+			return false;
 		}
-		const next = images.filter((i) => i.id !== id);
-		images = next;
-		onImagesChange?.(next);
 	}
 
 	function openTags(e: MouseEvent) {
@@ -324,7 +484,7 @@
 		onOpenTags?.();
 	}
 
-	async function openPhoto(id: string) {
+	export async function openPhoto(id: string) {
 		if (noteId) {
 			await notesStore.ensureNoteAttachments(noteId);
 			const hydratedNote = notesStore.notes.find((note) => note.id === noteId);
@@ -390,31 +550,13 @@
 		if (noteId) await notesStore.flushNote(noteId, { images: next });
 	}
 
-	function keepFooterStationary(event: PointerEvent) {
-		if (event.pointerType !== 'touch') return;
-		const target = event.target instanceof Element ? event.target : null;
-		if (!target?.closest('button')) return;
-		// Moving focus on pointerdown starts Android's keyboard-close resize. The
-		// footer then moves before pointerup and Chrome cancels the button click.
-		event.preventDefault();
-	}
-
-	function footerInteractions(node: HTMLElement) {
-		node.addEventListener('pointerdown', keepFooterStationary);
-		return {
-			destroy() {
-				node.removeEventListener('pointerdown', keepFooterStationary);
-			}
-		};
-	}
-
 	const c = canvasPreview.editor;
 	const f = filePreview.editor;
 	const p = $derived(fillPhotos ? photoPreview.editorFill : photoPreview.editor);
 	const d = dialog({ size: 'sm' });
 
-	const qualityCompressedCard = choiceCard({ kind: 'compressed' });
-	const qualityHdCard = choiceCard();
+	const qualityCompressedCard = choiceCard({ kind: 'compressed', stacked: true });
+	const qualityHdCard = choiceCard({ stacked: true });
 	const MIN_PANEL_HEIGHT = 100;
 	let panelHeight = $state<number | null>(null);
 	let dragging = $state(false);
@@ -537,6 +679,15 @@
 	}
 </script>
 
+{#if pendingAttachmentCount > 0}
+	<p
+		role="status"
+		class={css({ px: 'md', pb: '2xs', textStyle: 'label', color: 'scrapscache.textMuted' })}
+	>
+		Adding attachments…
+	</p>
+{/if}
+
 {#if attachError}
 	<p class={css({ px: 'md', pb: '2xs', textStyle: 'label', color: 'scrapscache.danger' })}>
 		{attachError}
@@ -546,7 +697,11 @@
 {#if hasPreviews}
 	<div
 		data-preview-dock
-		class={fillPhotos ? noteEditorStyles.previewDockFill : noteEditorStyles.previewDock}
+		class={fillPhotos
+			? noteEditorStyles.previewDockFill
+			: inlinePreviews
+				? noteEditorStyles.previewDockInline
+				: noteEditorStyles.previewDock}
 	>
 		{#if !showPreviews}
 			{@render previewToggle()}
@@ -558,7 +713,10 @@
 				data-preview-panel
 				class={fillPhotos
 					? noteEditorStyles.previewPanelFill
-					: cx(noteEditorStyles.previewPanel, noteSurface({ color }))}
+					: cx(
+							inlinePreviews ? noteEditorStyles.previewPanelInline : noteEditorStyles.previewPanel,
+							noteSurface({ color })
+						)}
 				style={!fillPhotos && panelHeight != null
 					? `height: ${panelHeight}px; max-height: none;${dragging ? ' transition: none; user-select: none;' : ''}`
 					: undefined}
@@ -817,7 +975,7 @@
 	label: string,
 	icon: typeof RotateCcw,
 	variant: 'ghost' | 'danger' = 'ghost',
-	action: () => void
+	action: (button: HTMLElement) => void
 )}
 	{@const Icon = icon}
 	<Tooltip {content}>
@@ -826,9 +984,9 @@
 			class={iconButton({ variant, size: { base: 'compact', sm: 'standard' } })}
 			title={label}
 			aria-label={label}
-			onclick={() => {
+			onclick={(event) => {
 				closeMenus();
-				action();
+				action(event.currentTarget);
 			}}
 		>
 			<Icon class={iconMd} aria-hidden="true" />
@@ -865,7 +1023,7 @@
 
 {#if trashed}
 	<footer
-		use:footerInteractions
+		{@attach pressOnTouchRelease}
 		class={cx(hstack({ justify: 'flex-end', gap: '2xs' }), noteEditorStyles.footer)}
 	>
 		{@render footerButton('Restore', 'Restore', RotateCcw, 'ghost', () => onRestore?.())}
@@ -874,7 +1032,7 @@
 	</footer>
 {:else if archived}
 	<footer
-		use:footerInteractions
+		{@attach pressOnTouchRelease}
 		class={cx(hstack({ justify: 'flex-end', gap: '2xs' }), noteEditorStyles.footer)}
 	>
 		{@render footerButton('Restore', 'Restore', ArchiveRestore, 'ghost', () => onArchive?.())}
@@ -882,7 +1040,7 @@
 	</footer>
 {:else}
 	<footer
-		use:footerInteractions
+		{@attach pressOnTouchRelease}
 		class={cx(
 			hstack({
 				justify: 'space-between',

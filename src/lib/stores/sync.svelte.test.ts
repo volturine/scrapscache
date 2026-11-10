@@ -689,10 +689,110 @@ describe('client sync state machine', () => {
 		const result = await store.sync(syncSnapshot({ notes: [local] }), false, false, passthrough);
 
 		expect(result.success, result.error).toBe(true);
-		expect(requests).toHaveLength(3);
+		expect(requests).toHaveLength(4);
 		expect(requests[1].envelopes[0].expectedId).toBe('old-id');
-		expect(requests[2].envelopes[0].expectedId).toBe('current-id');
-		expect(requests[2].envelopes[0].id).not.toBe(requests[1].envelopes[0].id);
+		expect(requests[2].envelopes).toEqual([]);
+		expect(requests[3].envelopes[0].expectedId).toBe('current-id');
+		expect(requests[3].envelopes[0].id).not.toBe(requests[1].envelopes[0].id);
+		expect(await idb.getSyncOutboxKeys(TEST_WORKSPACE)).toEqual([]);
+	});
+
+	it('downloads matching attachment bytes after a note conflict advances the relay cursor', async () => {
+		const localImage = {
+			...attachment('photo', 'data:image/png;base64,QQ=='),
+			editedAt: 1
+		};
+		const remoteImage = {
+			...attachment('photo', 'data:image/png;base64,Qg=='),
+			editedAt: 2
+		};
+		const local = note(
+			'note-1',
+			{
+				title: 'Local title',
+				updatedAt: 20,
+				fieldTimes: { title: 20, body: 1, images: 20 }
+			},
+			[localImage]
+		);
+		const remote = note(
+			'note-1',
+			{
+				title: 'Remote title',
+				updatedAt: 15,
+				fieldTimes: { title: 15, body: 1, images: 15 }
+			},
+			[remoteImage]
+		);
+		const remoteRecords = await buildSyncRecords(syncSnapshot({ notes: [remote] }));
+		const remoteNote = remoteRecords.find((record) => record.payload.kind === 'note')!;
+		const remoteAttachment = remoteRecords.find((record) => record.payload.kind === 'attachment')!;
+		const { store, account, requests } = createHarness(async (request, index) => {
+			if (index === 0) return { success: true, data: emptyData({ cursor: 1 }) };
+			if (index === 1) {
+				return {
+					success: true,
+					data: emptyData({
+						cursor: 3,
+						writesAccepted: false,
+						conflicts: [
+							envelope(
+								account,
+								'remote-note',
+								2,
+								remoteNote.payload,
+								await sha256(`${account.syncKey}\u0000note:note-1`)
+							)
+						]
+					})
+				};
+			}
+			if (request.envelopes.length === 0 && index === 2) {
+				return {
+					success: true,
+					data: emptyData({
+						cursor: 3,
+						envelopes: [
+							envelope(
+								account,
+								'remote-note',
+								2,
+								remoteNote.payload,
+								await sha256(`${account.syncKey}\u0000note:note-1`)
+							),
+							envelope(
+								account,
+								'remote-attachment',
+								3,
+								remoteAttachment.payload,
+								await sha256(`${account.syncKey}\u0000attachment:photo`)
+							)
+						]
+					})
+				};
+			}
+			return { success: true, data: emptyData({ cursor: 3, writesAccepted: true }) };
+		});
+		await seedControl(account.accountId, {
+			cursor: 1,
+			baseline: {
+				'note:note-1': 'old-note-fingerprint',
+				'attachment:photo': 'old-attachment-fingerprint'
+			},
+			recordIds: { 'note:note-1': 'old-note-id', 'attachment:photo': 'old-photo-id' },
+			outbox: ['note:note-1', 'attachment:photo']
+		});
+
+		const result = await store.sync(syncSnapshot({ notes: [local] }), false, false, passthrough);
+
+		expect(result.success, result.error).toBe(true);
+		expect(requests).toHaveLength(4);
+		expect(requests[2].cursor).toBe(1);
+		expect(requests[2].envelopes).toEqual([]);
+		expect(result.snapshot?.notes[0]?.images?.[0]?.dataUrl).toBe(remoteImage.dataUrl);
+		expect(await idb.getSyncState(TEST_WORKSPACE, syncControlKeys(account.accountId).cursor)).toBe(
+			3
+		);
 		expect(await idb.getSyncOutboxKeys(TEST_WORKSPACE)).toEqual([]);
 	});
 
@@ -1025,6 +1125,7 @@ describe('client sync state machine', () => {
 		const local = note();
 		const { store, account, requests } = createHarness((request, index) => {
 			if (index === 0) return { success: true, data: emptyData({ cursor: 1 }) };
+			if (request.envelopes.length === 0) return { success: true, data: emptyData({ cursor: 1 }) };
 			if (request.envelopes[0]?.expectedId === 'current-id') {
 				return { success: true, data: emptyData({ cursor: 2, writesAccepted: true }) };
 			}
@@ -1057,12 +1158,13 @@ describe('client sync state machine', () => {
 		expect(requests.map((request) => request.envelopes[0]?.expectedId)).toEqual([
 			undefined,
 			'old-id',
+			undefined,
 			'current-id'
 		]);
 		expect(
 			await idb.getSyncState(TEST_WORKSPACE, syncControlKeys(account.accountId).recordIds)
 		).toEqual({
-			'note:note-1': requests[2].envelopes[0].id
+			'note:note-1': requests[3].envelopes[0].id
 		});
 	});
 
@@ -1105,6 +1207,7 @@ describe('client sync state machine', () => {
 		const local = note();
 		const { store, account, requests } = createHarness((_request, index) => {
 			if (index === 0) return { success: true, data: emptyData({ cursor: 1 }) };
+			if (_request.envelopes.length === 0) return { success: true, data: emptyData({ cursor: 1 }) };
 			return {
 				success: true,
 				data: emptyData({

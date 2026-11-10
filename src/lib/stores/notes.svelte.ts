@@ -48,6 +48,7 @@ import { uiStore } from '#lib/stores/ui.svelte.js';
 import { trashPurgeAt, cloneNote } from '#lib/utils.js';
 import { appClock } from '#lib/appClock.svelte.js';
 import { noteAttachments, toggleLineAt } from '#lib/checklistBody.js';
+import { bodyHasPhotoMarker, parsePhotoMarker, stripPhotoMarkers } from '#lib/photoMarker.js';
 import {
 	journalPendingNotes,
 	noteForLocalStorage,
@@ -173,6 +174,7 @@ export class NotesStore {
 	deletedNoteIds = $state<Record<string, number>>(readTombstones());
 	deletedLabelIds = $state<Record<string, number>>(readLabelTombstones());
 	private attachmentLoads = new Map<string, Promise<void>>();
+	private attachmentWork = new Set<Promise<void>>();
 	private attachmentPass: Promise<void> | null = null;
 	private lastAutoSyncAt = 0;
 	/** Notes whose photos failed to load for upload; retried on the next sync. */
@@ -1217,8 +1219,20 @@ export class NotesStore {
 		await this.onProfileReload?.(this.pid, this.notes);
 	}
 
+	/** An accepted photo import must finish before its workspace is handed over. */
+	trackAttachmentWork(work: Promise<void>): void {
+		this.attachmentWork.add(work);
+		void work.then(
+			() => this.attachmentWork.delete(work),
+			() => this.attachmentWork.delete(work)
+		);
+	}
+
 	/** Drain side effects that must remain owned by the outgoing profile. */
 	async waitForPendingProfileWrites(): Promise<void> {
+		while (this.attachmentWork.size > 0) {
+			await Promise.allSettled([...this.attachmentWork]);
+		}
 		if (this.attachmentPass) await this.attachmentPass;
 		while (this.attachmentLoads.size > 0) {
 			await Promise.allSettled([...this.attachmentLoads.values()]);
@@ -1264,28 +1278,69 @@ export class NotesStore {
 	 * Remove one attachment. Its bytes are dropped from the device with it, so the
 	 * undo step keeps the copy the caller has on screen.
 	 */
-	removeAttachment(id: string, attachment: NoteImage): Promise<void> {
-		const note = this.notes.find((item) => item.id === id);
-		if (!note?.images?.some((image) => image.id === attachment.id)) return Promise.resolve();
+	async removeAttachment(id: string, attachment: NoteImage): Promise<void> {
+		let note = this.notes.find((item) => item.id === id);
+		let currentAttachment = note?.images?.find((image) => image.id === attachment.id);
+		if (!note || !currentAttachment) return;
+
+		// The undo step must keep full bytes; an editor can still show a thumbnail
+		// while the attachment itself is being loaded from IndexedDB.
+		if (!attachment.dataUrl && !currentAttachment.dataUrl) {
+			await this.ensureNoteAttachments(id);
+			note = this.notes.find((item) => item.id === id);
+			currentAttachment = note?.images?.find((image) => image.id === attachment.id);
+			if (!note || !currentAttachment) return;
+		}
+		const kept = {
+			...currentAttachment,
+			...(attachment.dataUrl && !currentAttachment.dataUrl ? { dataUrl: attachment.dataUrl } : {})
+		};
+		if (!kept.dataUrl) throw new Error('Could not load the attachment bytes; it was not removed.');
+
 		const without = (images: NoteImage[] = []) =>
 			images.filter((image) => image.id !== attachment.id);
-		const saved = this.flushNote(id, { images: without(note.images) });
-		if (attachment.dataUrl) {
-			const kept = { ...attachment };
-			actionUndo.push({
-				message: 'Attachment removed',
-				noteIds: [id],
-				undo: () => {
-					const current = this.notes.find((item) => item.id === id);
-					if (current) this.updateNote(id, { images: [...without(current.images), kept] });
-				},
-				redo: () => {
-					const current = this.notes.find((item) => item.id === id);
-					if (current) this.updateNote(id, { images: without(current.images) });
+		const bodyBefore = note.body ?? '';
+		const bodyAfterRemoval = stripPhotoMarkers(bodyBefore, [attachment.id]);
+		const removedMarkers = bodyBefore
+			.split('\n')
+			.filter((line) => parsePhotoMarker(line)?.id === attachment.id);
+		const saved = this.flushNote(id, {
+			images: without(note.images),
+			...(bodyAfterRemoval !== bodyBefore ? { body: bodyAfterRemoval } : {})
+		});
+		actionUndo.push({
+			message: 'Attachment removed',
+			noteIds: [id],
+			undo: () => {
+				const current = this.notes.find((item) => item.id === id);
+				if (!current) return;
+				const bodyNow = current.body ?? '';
+				let restoredBody = bodyNow;
+				if (removedMarkers.length > 0 && !bodyHasPhotoMarker(bodyNow, attachment.id)) {
+					if (bodyNow === bodyAfterRemoval) {
+						restoredBody = bodyBefore;
+					} else {
+						const separator = bodyNow === '' || bodyNow.endsWith('\n') ? '' : '\n';
+						restoredBody = `${bodyNow}${separator}${removedMarkers.join('\n')}`;
+					}
 				}
-			});
-		}
-		return saved;
+				this.updateNote(id, {
+					images: [...without(current.images), kept],
+					...(restoredBody !== bodyNow ? { body: restoredBody } : {})
+				});
+			},
+			redo: () => {
+				const current = this.notes.find((item) => item.id === id);
+				if (!current) return;
+				const bodyNow = current.body ?? '';
+				const bodyAfterRedo = stripPhotoMarkers(bodyNow, [attachment.id]);
+				this.updateNote(id, {
+					images: without(current.images),
+					...(bodyAfterRedo !== bodyNow ? { body: bodyAfterRedo } : {})
+				});
+			}
+		});
+		await saved;
 	}
 
 	private ensureLabel(name: string): Label | null {

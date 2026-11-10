@@ -1,3 +1,4 @@
+import { renamePhotoMarkers } from './photoMarker';
 import type { KanbanBoard } from '#lib/kanban.js';
 import { NOTE_FIELDS, uid, type EditContext } from './model';
 import type { Layout, View } from '#lib/stores/ui.svelte.js';
@@ -67,8 +68,21 @@ export function prepareImportedNotes(
 		const note = cloneNote(source);
 		const { imageTombstones: _removed, fieldWriters: _writers, ...rest } = note;
 		const updatedAt = sane(note.updatedAt) ?? now;
+		// An additive restore gives the attachments new ids; the body's photo markers
+		// follow them, or every chip would read as a missing photo. The body document
+		// goes with the old text, and is made again from the new one.
+		const imageIds = new Map(
+			(note.images ?? []).map((image) => [
+				image.id,
+				mode === BackupImportMode.Keep ? uid() : image.id
+			])
+		);
+		const body = renamePhotoMarkers(note.body ?? '', imageIds);
+		const bodyChanged = body !== (note.body ?? '');
+		if (bodyChanged) delete rest.bodyDoc;
 		return {
 			...rest,
+			...(bodyChanged ? { body } : {}),
 			id: uid(),
 			createdAt: sane(note.createdAt) ?? now,
 			updatedAt,
@@ -80,7 +94,7 @@ export function prepareImportedNotes(
 			// Distinct times keep the attachments in their original order.
 			images: (note.images ?? []).map((image, index) => ({
 				...image,
-				id: mode === BackupImportMode.Keep ? uid() : image.id,
+				id: imageIds.get(image.id) ?? image.id,
 				createdAt: now + index
 			}))
 		};

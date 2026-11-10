@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NoteImage } from '#lib/types.js';
 import { createSyncIdentity } from '#lib/syncPairing.js';
 import { actionUndo } from './actionUndo.svelte';
@@ -164,6 +164,71 @@ describe('note undo', () => {
 
 		actionUndo.redo();
 		expect(note(created.id)?.images?.map((image) => image.id)).toEqual(['keep']);
+	});
+
+	it('removes and restores a photo marker at its original place through redo', async () => {
+		const body = 'Before\n![shot.jpg](photo:shot)\nAfter';
+		const created = notesStore.createNote({ title: 'Photo', body });
+		notesStore.updateNote(created.id, { images: [photo('shot')] });
+
+		await notesStore.removeAttachment(created.id, photo('shot'));
+
+		expect(note(created.id)?.body).toBe('Before\nAfter');
+		actionUndo.undo();
+		expect(note(created.id)?.body).toBe(body);
+		actionUndo.redo();
+		expect(note(created.id)?.body).toBe('Before\nAfter');
+	});
+
+	it('preserves body edits made after removal and appends the marker on undo', async () => {
+		const created = notesStore.createNote({
+			title: 'Photo',
+			body: 'Before\n![shot.jpg](photo:shot)\nAfter'
+		});
+		notesStore.updateNote(created.id, { images: [photo('shot')] });
+
+		await notesStore.removeAttachment(created.id, photo('shot'));
+		notesStore.updateNote(created.id, { body: 'Updated first line\nUpdated last line' });
+
+		actionUndo.undo();
+		expect(note(created.id)?.body).toBe(
+			'Updated first line\nUpdated last line\n![shot.jpg](photo:shot)'
+		);
+		actionUndo.redo();
+		expect(note(created.id)?.body).toBe('Updated first line\nUpdated last line');
+	});
+
+	it('hydrates attachment bytes before removal so Undo remains available', async () => {
+		const placeholder = { ...photo('shot'), dataUrl: '' };
+		const created = notesStore.createNote({ title: 'Photo' });
+		notesStore.updateNote(created.id, { images: [placeholder] });
+		const hydrate = vi.spyOn(notesStore, 'ensureNoteAttachments').mockImplementation(async (id) => {
+			const index = notesStore.notes.findIndex((item) => item.id === id);
+			const current = notesStore.notes[index];
+			if (current) notesStore.notes[index] = { ...current, images: [photo('shot')] };
+		});
+
+		await notesStore.removeAttachment(created.id, placeholder);
+
+		expect(hydrate).toHaveBeenCalledWith(created.id);
+		actionUndo.undo();
+		expect(note(created.id)?.images?.[0]).toMatchObject({
+			id: 'shot',
+			dataUrl: photo('shot').dataUrl
+		});
+	});
+
+	it('keeps the attachment when hydration cannot recover its bytes', async () => {
+		const placeholder = { ...photo('shot'), dataUrl: '' };
+		const created = notesStore.createNote({ title: 'Photo' });
+		notesStore.updateNote(created.id, { images: [placeholder] });
+		vi.spyOn(notesStore, 'ensureNoteAttachments').mockResolvedValue();
+
+		await expect(notesStore.removeAttachment(created.id, placeholder)).rejects.toThrow(
+			/it was not removed/i
+		);
+		expect(note(created.id)?.images?.map((image) => image.id)).toEqual(['shot']);
+		expect(actionUndo.past).toHaveLength(0);
 	});
 
 	it('keeps tags added after a label was deleted', () => {

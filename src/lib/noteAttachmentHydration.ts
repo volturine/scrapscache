@@ -11,9 +11,12 @@ export function mergeHydratedImages(
 ): NoteImage[] {
 	const hydratedById = new Map(hydrated.map((image) => [image.id, image]));
 	return current.map((image) => {
-		if (image.dataUrl) return image;
 		const loaded = hydratedById.get(image.id);
 		if (!loaded?.dataUrl) return image;
+		if (image.contentHash && image.contentHash !== loaded.contentHash) {
+			return image;
+		}
+		if (image.dataUrl) return image;
 		return {
 			...image,
 			dataUrl: loaded.dataUrl,

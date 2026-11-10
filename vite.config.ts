@@ -83,7 +83,29 @@ function buildVersion() {
 	}
 }
 
+/**
+ * The iPhone app ships as two apps (ios/App/Dev.xcconfig): production, and a
+ * development app that follows the dev Workers. IOS_VARIANT picks which one a
+ * build is for, production when unset; here it names the server the app syncs
+ * with until the user picks another. Other builds carry the production value
+ * and never read it, since the web app talks to the origin it was loaded from.
+ */
+const IOS_DEFAULT_SERVERS: Record<string, string> = {
+	prod: 'https://scrapscache.com',
+	dev: 'https://dev.scrapscache.com'
+};
+
+function iosDefaultServer() {
+	const variant = process.env.IOS_VARIANT || 'prod';
+	const server = IOS_DEFAULT_SERVERS[variant];
+	if (!server) throw new Error(`IOS_VARIANT must be dev or prod, not ${variant}`);
+	return server;
+}
+
 export default defineConfig({
+	define: {
+		__DEFAULT_SERVER_ORIGIN__: JSON.stringify(iosDefaultServer())
+	},
 	plugins: [
 		cloudflarePlatform,
 		sveltekit({

@@ -52,8 +52,9 @@ Tests use `@libsql/client/node` with `file:` URLs (no sqld required).
 
 The iPhone app is the same client inside a [Capacitor](https://capacitorjs.com/)
 shell (`ios/`, Swift Package Manager, no CocoaPods). It bundles the static build
-and talks to whichever server the **Server** row under Settings names
-(`https://scrapscache.com` unless changed), so one build serves self-hosters too.
+and talks to whichever server the **Server** row under Settings names (the
+app's default server unless changed, see [Two apps](#two-apps)), so one build
+serves self-hosters too.
 At its first launch the app asks which server it syncs with: the hosted
 service, or a self-hosted relay by https address, which it checks by reading
 that server's `/health/ready`; "Decide later" asks again next launch, and the
@@ -94,19 +95,50 @@ own pointer events under the modal's body lock, a place leaves the palette for i
 view, and Search toggles it. A dialog that covers the whole screen, as sync does,
 covers the column too.
 
+### Two apps
+
+The project builds two apps that install side by side, each with its own
+storage:
+
+|                | Production                                | Development                                                 |
+| -------------- | ----------------------------------------- | ----------------------------------------------------------- |
+| Name           | Scraps Cache                              | Scraps Cache Dev                                            |
+| Bundle ID      | `com.scrapscache.app`                     | `com.scrapscache.app.dev`                                   |
+| Default server | `https://scrapscache.com`                 | `https://dev.scrapscache.com`                               |
+| Icon           | `AppIcon`                                 | `AppIcon-Dev` (the same icon with a teal DEV band)          |
+| Built from     | `master`, after the production deployment | PRs labelled `deploy-dev`, after the development deployment |
+
+`IOS_VARIANT=dev|prod` picks one; unset means production, so plain Xcode builds
+and `npm run ios` are the production app. It acts in two places: `vite.config.ts`
+sets the web bundle's default server from it (`DEFAULT_SERVER_ORIGIN`, which the
+first-launch prompt, the Server row and its reset use), and the dev app's native
+settings live in `ios/App/Dev.xcconfig`, passed to `xcodebuild` with `-xcconfig`.
+That file sets `APP_BUNDLE_ID`, `APP_DISPLAY_NAME` and `APP_ICON_NAME`, which only
+the App target reads (into `PRODUCT_BUNDLE_IDENTIFIER`, `CFBundleDisplayName` in
+`Info.plist`, and `ASSETCATALOG_COMPILER_APPICON_NAME`), so the Swift packages'
+identifiers stay their own. Both apps share the page origin
+`capacitor://localhost`, which is the one the API admits
+(`src/lib/server/appCors.ts`).
+
 ```sh
-npm run build:ios   # static build → build/ios, then `cap sync ios`
-npm run ios         # open ios/App/App.xcodeproj in Xcode; run on a simulator
+npm run build:ios                  # production web bundle → build/ios, then `cap sync ios`
+IOS_VARIANT=dev npm run build:ios  # the dev app's web bundle
+npm run ios                        # open ios/App/App.xcodeproj in Xcode; run on a simulator
 ```
 
-From the terminal, with a booted simulator:
+From the terminal, with a booted simulator (build the web bundle for the same
+variant first; drop the `-xcconfig` line for the production app):
 
 ```sh
 xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug \
-  -destination 'platform=iOS Simulator,name=iPhone Duo' -derivedDataPath /tmp/scraps-ios build
-xcrun simctl install booted /tmp/scraps-ios/Build/Products/Debug-iphonesimulator/App.app
-xcrun simctl launch booted com.scrapscache.app
+  -destination 'platform=iOS Simulator,name=iPhone Duo' -derivedDataPath /tmp/scraps-ios-dev \
+  -xcconfig ios/App/Dev.xcconfig build
+xcrun simctl install booted /tmp/scraps-ios-dev/Build/Products/Debug-iphonesimulator/App.app
+xcrun simctl launch booted com.scrapscache.app.dev
 ```
+
+Use a separate `-derivedDataPath` per variant, or the second build reuses the
+first one's products.
 
 The first build fetches Capacitor's binary frameworks; if `xcodebuild` sits silent,
 it is waiting on a macOS keychain prompt for that download. Running
@@ -116,12 +148,11 @@ package cache without the prompt. `ios/App/App/public` and
 
 ### TestFlight
 
-`npm run ios:testflight` archives the app in Release and uploads it to App Store
+`npm run ios:testflight` archives one app in Release and uploads it to App Store
 Connect (`scripts/ios-testflight.sh`; export settings in
-`ios/App/ExportOptions.plist`). It needs an Apple Developer Program membership,
-the App ID `com.scrapscache.app` registered in the developer portal
-(Certificates, Identifiers & Profiles), then an App Store Connect record for
-**Scraps Cache** using it (the New App form only offers registered IDs), and:
+`ios/App/ExportOptions.plist`); `IOS_VARIANT=dev npm run ios:testflight` does the
+dev app. It needs an Apple Developer Program membership, an App Store Connect
+record for the app's bundle ID (below), and:
 
 - `IOS_TEAM_ID`: the team ID (Xcode › Settings › Accounts, or the developer
   portal's membership page);
@@ -133,20 +164,57 @@ Automatic signing creates the provisioning profile on the first run. Each upload
 Xcode project. The build appears under TestFlight once Apple has processed it;
 internal testers (the team) need no review, external groups do.
 
-CI uploads a build after every development deployment (the `testflight` job in
-`.github/workflows/ci-cd.yaml`, on GitHub's `xcode-27` runner, from the same
-commit the dev Workers run) once four repository secrets exist: `APPLE_TEAM_ID`,
-`ASC_KEY_ID`, `ASC_ISSUER_ID` and `ASC_PRIVATE_KEY` (the whole `.p8` file). Make
-the key under App Store Connect › Users and Access › Integrations › App Store
-Connect API with the **Admin** role: `xcodebuild` signs in the cloud with it and
-creates the distribution certificate itself, which Apple only lets an Admin key
-do (an App Manager key fails with a cloud signing permission error). Without the
-secrets, or on a runner whose Xcode 27 lacks the iOS 27.1 SDK the shell needs,
-the job writes a notice and steps aside rather than failing the run.
+CI uploads both apps through the reusable `.github/workflows/testflight.yaml`,
+on GitHub's `xcode-27` runner, each in its own concurrency group:
+
+- `testflight-dev` uploads **Scraps Cache Dev** after every development
+  deployment (`deploy-cloudflare-dev`, PRs labelled `deploy-dev`), from the same
+  commit the dev Workers run;
+- `testflight-prod` uploads **Scraps Cache** after every production deployment
+  (`deploy-cloudflare-production`, pushes to `master`), so it waits on that
+  deployment's approval in the `production` environment.
+
+Both need four repository secrets: `APPLE_TEAM_ID`, `ASC_KEY_ID`,
+`ASC_ISSUER_ID` and `ASC_PRIVATE_KEY` (the whole `.p8` file). Make the key under
+App Store Connect › Users and Access › Integrations › App Store Connect API with
+the **Admin** role: `xcodebuild` signs in the cloud with it and creates the
+distribution certificate itself, which Apple only lets an Admin key do (an App
+Manager key fails with a cloud signing permission error). Without the secrets,
+or on a runner whose Xcode 27 lacks the iOS 27.1 SDK the shell needs, the job
+writes a notice and steps aside rather than failing the run.
+
+#### Setting up an app at Apple
+
+Each bundle ID needs, once:
+
+1. **The App ID**: an explicit App ID for the bundle ID, platform universal,
+   in Certificates, Identifiers & Profiles › Identifiers › (+) › App IDs, or
+   with the Admin API key (`POST /v1/bundleIds`). Automatic signing does not
+   do this for us: the app has no entitlements, so `-allowProvisioningUpdates`
+   signs with the team's wildcard profile and never
+   registers an explicit ID, and the New App form only lists explicit ones.
+2. **The App Store Connect record**, in App Store Connect › Apps › (+) › New
+   App: platform iOS, the app's name, a primary language, the bundle ID from
+   step 1, and a unique SKU; requires the Account Holder, Admin or App Manager
+   role. The App Store Connect API cannot do this step: `POST /v1/apps` answers
+   that apps do not allow `CREATE`.
+3. Optionally, a TestFlight internal group for the new app, so the team gets
+   its builds.
+
+Until the record exists, the dev app's upload **fails** (the archive succeeds,
+the upload is refused) and the script names the bundle ID and points here; it
+does not skip, because a missing record is a setup step to finish, not a state
+to wait out.
+
+Both App IDs are registered: `com.scrapscache.app` and `com.scrapscache.app.dev`
+(the latter on 2026-11-10). The production record is **Scraps Cache** (SKU
+`scrapscache-ios`).
 
 The App Store icon is `AppIcon-1024.png` in the asset catalog, flattened from
 the web icon (Apple masks the corners itself and rejects an alpha channel); the
-launch screen shows that icon on the system background.
+launch screen shows that icon on the system background. The dev app's
+`AppIcon-Dev.appiconset` is the same image with a teal DEV band across its lower
+third; redraw it when the main icon changes.
 
 ## Browser smoke tests
 
@@ -345,6 +413,10 @@ GitHub Actions workflow: `.github/workflows/ci-cd.yaml`.
 - **validate** job: typecheck + Prettier + Vitest + Node and Cloudflare builds,
   including dry-run validation of all four Worker configs (app, reminders, cron
   and the MCP recipe) in both prod and dev variants (required PR check)
+- **deploy-cloudflare-dev** / **deploy-cloudflare-production** jobs: the
+  development Workers for the PR labelled `deploy-dev`, production for `master`
+- **testflight-dev** / **testflight-prod** jobs: the dev and production iPhone
+  apps to TestFlight after those deployments (see [TestFlight](#testflight))
 - **image** job: Docker build; PRs publish `dev-<n>` / `dev-sha-*` only, `master`
   publishes `latest` / `master` / `sha-*`
 - **image-mcp** job: MCP recipe image (`ghcr.io/…-mcp`); same tag scheme

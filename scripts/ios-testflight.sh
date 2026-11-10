@@ -17,8 +17,10 @@
 #   IOS_OUT_DIR       where the archive and export land (default
 #                     /tmp/scraps-ios-release)
 #
-# The variant's App Store Connect record must exist (docs/development.md ›
-# TestFlight); automatic signing registers its App ID and creates the profile.
+# The variant's explicit App ID and its App Store Connect record must exist
+# (docs/development.md › TestFlight). Automatic signing creates the profile but
+# does not register the App ID: the app has no entitlements, so it signs with
+# the team's wildcard profile.
 # No -u: `auth` may stay empty, which bash 3.2 cannot expand safely under it.
 set -eo pipefail
 cd "$(dirname "$0")/.."

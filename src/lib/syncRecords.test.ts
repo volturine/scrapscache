@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 import {
 	approximatePayloadBytes,
+	attachmentRefKey,
+	attachmentToImage,
 	buildSyncRecords,
 	changedRecords,
 	fingerprintMap,
@@ -13,6 +15,7 @@ import {
 import type { Note, NoteImage } from './types';
 import { createCanvasAttachment } from './canvasAttachment';
 import { replaceBodySnapshot } from './model/bodyDoc';
+import { mergeTwoNotes } from './model/merge';
 
 function image(id: string, dataUrl: string): NoteImage {
 	return { id, name: `${id}.jpg`, mime: 'image/jpeg', dataUrl, createdAt: 1 };
@@ -147,8 +150,78 @@ describe('opaque per-record sync payloads', () => {
 	it('hydrates a ref-only note from the global attachment map', async () => {
 		const photo = image('pic', 'data:image/jpeg;base64,abc');
 		const split = await splitNoteForSync(note('n1', 1, 'x', [photo]));
-		const attachments = new Map([[photo.id, photo]]);
+		const keyedPhoto = { ...photo, contentHash: split.note.images?.[0].hash };
+		const attachments = new Map<string, NoteImage>([
+			[attachmentRefKey(photo.id, split.note.images?.[0].hash ?? ''), keyedPhoto]
+		]);
 		expect(hydrateNoteImages(split.note, attachments).images?.[0]?.dataUrl).toBe(photo.dataUrl);
+	});
+
+	it('keeps id-only hydration for a cold ref that has no expected hash', () => {
+		const photo = image('pic', 'data:image/jpeg;base64,abc');
+		const cold = note('n1', 1, 'x', [{ ...photo, dataUrl: '' }]);
+
+		expect(hydrateNoteImages(cold, new Map([[photo.id, photo]])).images?.[0]?.dataUrl).toBe(
+			photo.dataUrl
+		);
+	});
+
+	it('preserves a resident thumb while rejecting bytes for another crop', () => {
+		const expected = image('pic', '');
+		expected.contentHash = 'expected-hash';
+		expected.thumbUrl = 'thumb:expected';
+		const wrong = { ...image('pic', 'data:image/jpeg;base64,wrong'), contentHash: 'wrong-hash' };
+		const cold = note('n1', 1, 'x', [expected]);
+		const attachments = new Map<string, NoteImage>([
+			[attachmentRefKey('pic', 'wrong-hash'), wrong],
+			['pic', wrong]
+		]);
+
+		expect(hydrateNoteImages(cold, attachments).images?.[0]).toMatchObject({
+			dataUrl: '',
+			contentHash: 'expected-hash',
+			thumbUrl: 'thumb:expected'
+		});
+	});
+
+	it('waits for the matching crop bytes and keeps the newer crop through merge and serialization', async () => {
+		const older = { ...image('pic', 'data:image/jpeg;base64,old'), editedAt: 1 };
+		const newer = { ...image('pic', 'data:image/jpeg;base64,new'), editedAt: 2 };
+		const local = note('n1', 2, 'local text', [older]);
+		const remote = note('n1', 3, 'remote text', [newer]);
+		const [localRef, remoteRef] = await Promise.all([
+			splitNoteForSync(local),
+			splitNoteForSync(remote)
+		]);
+		const hashA = localRef.note.images?.[0].hash ?? '';
+		const hashB = remoteRef.note.images?.[0].hash ?? '';
+		const localBytes = { ...older, contentHash: hashA };
+		const attachments = new Map<string, NoteImage>([
+			[attachmentRefKey('pic', hashA), localBytes],
+			['pic', localBytes]
+		]);
+
+		const beforeAttachmentArrives = hydrateNoteImages(remoteRef.note, attachments);
+		expect(beforeAttachmentArrives.images?.[0]).toMatchObject({
+			contentHash: hashB,
+			dataUrl: ''
+		});
+
+		const remoteBytes = attachmentToImage(remoteRef.attachments[0]);
+		attachments.set(attachmentRefKey('pic', hashB), remoteBytes);
+		attachments.set('pic', remoteBytes);
+		const hydrated = hydrateNoteImages(beforeAttachmentArrives, attachments);
+		expect(hydrated.images?.[0]?.dataUrl).toBe(newer.dataUrl);
+
+		const merged = mergeTwoNotes(local, hydrated);
+		expect(merged.images?.[0]).toMatchObject({
+			editedAt: 2,
+			contentHash: hashB,
+			dataUrl: newer.dataUrl
+		});
+		const serialized = await splitNoteForSync(merged);
+		expect(serialized.attachments[0]?.dataUrl).toBe(newer.dataUrl);
+		expect(serialized.note.images?.[0]?.hash).toBe(hashB);
 	});
 
 	it('keeps attachment references while full bytes are evicted from memory', async () => {

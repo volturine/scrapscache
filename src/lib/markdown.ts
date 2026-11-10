@@ -1,6 +1,7 @@
 import { markdownTable } from 'markdown-table';
 import stringWidth from 'string-width';
 import { parseBody, type BodySegment } from './checklistBody';
+import { parsePhotoMarker } from './photoMarker';
 
 export type MarkdownStyle =
 	| 'strong'
@@ -12,12 +13,13 @@ export type MarkdownStyle =
 	| 'heading-3'
 	| 'heading-4'
 	| 'heading-5'
-	| 'heading-6';
+	| 'heading-6'
+	| 'photo';
 
-export type MarkdownMarker = 'strong' | 'emphasis' | 'code' | 'strikethrough' | 'heading';
+export type MarkdownMarker = 'strong' | 'emphasis' | 'code' | 'strikethrough' | 'heading' | 'photo';
 
 export type MarkdownToken =
-	| { kind: 'text'; text: string; styles: MarkdownStyle[] }
+	| { kind: 'text'; text: string; styles: MarkdownStyle[]; photo?: string }
 	| { kind: 'marker'; text: string; marker: MarkdownMarker };
 
 export type TableAlignment = 'left' | 'center' | 'right';
@@ -288,8 +290,16 @@ export function parseInlineMarkdown(source: string): MarkdownToken[] {
 	const cached = inlineCache.get(source);
 	if (cached) return cached;
 	const heading = source.match(/^(#{1,6})[ \t]+/);
+	const photo = parsePhotoMarker(source);
 	let tokens: MarkdownToken[];
-	if (!heading) {
+	if (photo) {
+		// A photo's place: the name shows as a chip, the syntax around it hides like any marker.
+		tokens = [
+			{ kind: 'marker', text: '![', marker: 'photo' },
+			{ kind: 'text', text: photo.name, styles: ['photo'], photo: photo.id },
+			{ kind: 'marker', text: source.slice(2 + photo.name.length), marker: 'photo' }
+		];
+	} else if (!heading) {
 		tokens = parseInline(source);
 	} else {
 		const level = heading[1].length as 1 | 2 | 3 | 4 | 5 | 6;
@@ -309,7 +319,9 @@ export function parseInlineMarkdown(source: string): MarkdownToken[] {
 
 export function markdownTokenClass(token: MarkdownToken, rawMarkdown: boolean): string {
 	if (token.kind === 'marker') {
-		return `markdown-token markdown-token-marker markdown-token-marker-${token.marker}${rawMarkdown ? '' : ' markdown-token-marker-hidden'}`;
+		// A photo marker's syntax never shows: the chip is the whole of it.
+		const hidden = token.marker === 'photo' || !rawMarkdown;
+		return `markdown-token markdown-token-marker markdown-token-marker-${token.marker}${hidden ? ' markdown-token-marker-hidden' : ''}`;
 	}
 	return [
 		'markdown-token',

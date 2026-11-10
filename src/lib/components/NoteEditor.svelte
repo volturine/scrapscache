@@ -11,7 +11,9 @@
 	import { flushSync, onMount, tick, untrack } from 'svelte';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
 	import { actionUndo } from '#lib/stores/actionUndo.svelte.js';
-	import { noteToPlainText, noteAttachments, splitPastedHeading } from '#lib/checklistBody.js';
+	import { noteAttachments, splitPastedHeading } from '#lib/checklistBody.js';
+	import { readCopiedNotePaste, writeNoteToClipboard } from '#lib/noteClipboard.js';
+	import { bodyIsOnlyPhotoMarkers, photoMarker, type PhotoPlacement } from '#lib/photoMarker.js';
 	import { mergeHydratedImages } from '#lib/noteAttachmentHydration.js';
 	import type { Note, NoteImage } from '#lib/types.js';
 	import type { NotePatch } from '#lib/model/index.js';
@@ -45,6 +47,7 @@
 	import { matchTrailingEmoticon } from '#lib/emoticons.js';
 	import { isKeyboardField } from '#lib/appViewport.js';
 	import { modalLayer } from '#lib/modalLayer.js';
+	import { pressOnTouchRelease } from '#lib/touchPress.js';
 	import { setEditorUndo, undoChord } from '#lib/stores/actionUndo.svelte.js';
 
 	let {
@@ -110,6 +113,7 @@
 	let bodyEditor = $state<{
 		focusDefault(): void;
 		replaceBodyWithText(text: string): Promise<void>;
+		insertTextAtCaret(text: string): boolean;
 		syncBodyNow?(): void;
 		finishInput?(): void;
 		adoptBody?(text: string): boolean;
@@ -120,8 +124,15 @@
 			selection: { start: number; end: number },
 			inputType: string
 		): void;
+		caretPoint(): { line: number; offset: number } | null;
+		insertLines(texts: string[], at: { line: number; offset: number } | null): Promise<void>;
 	} | null>(null);
-	let footer = $state<{ handlePickedFiles(files: File[]): void; closeMenus(): void } | null>(null);
+	let footer = $state<{
+		handlePickedFiles(files: File[], at?: PhotoPlacement | null): void;
+		closeMenus(): void;
+		openPhoto(id: string): Promise<void>;
+		waitForPendingAttachments(): Promise<void>;
+	} | null>(null);
 	let editorDialog = $state<HTMLDivElement | null>(null);
 	let fileDropActive = $state(false);
 	let editorScroller = $state<HTMLDivElement | null>(null);
@@ -145,7 +156,11 @@
 	let autoExpandFrame = 0;
 	/** Window width the auto-expand decision was last measured at. */
 	let autoExpandWidth = 0;
-	const photosFillEditor = $derived(body.trim() === '' && images.some(isImageAttachment));
+	const photosFillEditor = $derived(bodyIsOnlyPhotoMarkers(body) && images.some(isImageAttachment));
+	/** Pasted or dropped photos go where the caret was at that moment; attached ones at the end. */
+	function placePhotos(photos: NoteImage[], at: PhotoPlacement | null) {
+		void bodyEditor?.insertLines(photos.map(photoMarker), at);
+	}
 	function focusBodyFromPage(event: MouseEvent) {
 		if (historyPreview) return;
 		const target = event.target;
@@ -412,6 +427,30 @@
 		footer?.closeMenus();
 	}
 
+	/**
+	 * The colour palette and the label menu open over a note being typed. With the
+	 * software keyboard up they leave focus in the field, so the keyboard stays and
+	 * the sheet does not jump; otherwise the dialog takes focus as usual.
+	 */
+	let popupFocus = $state<{
+		trapFocus?: boolean;
+		restoreFocus?: boolean;
+		initialFocusEl?: () => HTMLElement | null;
+	}>({});
+	function openFooterPopup(open: () => void) {
+		closePopups();
+		const active = document.activeElement;
+		const typing =
+			document.documentElement.classList.contains('keyboard-open') &&
+			active instanceof HTMLElement &&
+			isKeyboardField(active) &&
+			editorDialog?.contains(active) === true;
+		popupFocus = typing
+			? { trapFocus: false, restoreFocus: false, initialFocusEl: () => active }
+			: {};
+		open();
+	}
+
 	function previewHistoryVersion(
 		version: Note,
 		entry: NoteHistoryEntry,
@@ -507,7 +546,8 @@
 		fileDropActive = false;
 		backdropPressOutside = false;
 		const files = Array.from(event.dataTransfer?.files ?? []);
-		if (files.length > 0) footer?.handlePickedFiles(files);
+		if (files.length === 0) return;
+		footer?.handlePickedFiles(files, bodyEditor?.caretPoint() ?? null);
 	}
 
 	function transformPaste(text: string): string | null {
@@ -533,14 +573,43 @@
 		if (split.body) void bodyEditor?.replaceBodyWithText(split.body);
 	}
 
+	function insertCopiedTextIntoTitle(target: HTMLTextAreaElement, text: string) {
+		if (!text) return;
+		const start = target.selectionStart ?? title.length;
+		const end = target.selectionEnd ?? start;
+		title = `${title.slice(0, start)}${text}${title.slice(end)}`;
+		markTitleEdited();
+		const caret = start + text.length;
+		void tick().then(() => target.setSelectionRange(caret, caret));
+	}
+
 	function handlePaste(event: ClipboardEvent) {
 		if (!isOpen || !note) return;
 		if (event.target instanceof Element && event.target.closest('.canvas-editor-shell')) return;
+		const copied = historyPreview ? null : readCopiedNotePaste(event.clipboardData);
+		if (copied) {
+			event.preventDefault();
+			event.stopImmediatePropagation();
+			bodyEditor?.syncBodyNow?.();
+			const text = [copied.title ? `# ${copied.title}` : '', copied.body]
+				.filter(Boolean)
+				.join('\n');
+			const nextImages = [...images, ...copied.images];
+			images = nextImages;
+			commitDraft({ images: nextImages });
+			const titleTarget = event.target instanceof HTMLTextAreaElement ? event.target : null;
+			if (titleTarget?.hasAttribute('data-note-title') && (title || body)) {
+				insertCopiedTextIntoTitle(titleTarget, text);
+			} else {
+				bodyEditor?.insertTextAtCaret(text);
+			}
+			return;
+		}
 		const files = getClipboardFiles(event.clipboardData);
 		if (files.length === 0) return;
 		event.preventDefault();
 		event.stopImmediatePropagation();
-		footer?.handlePickedFiles(files);
+		footer?.handlePickedFiles(files, bodyEditor?.caretPoint() ?? null);
 	}
 
 	let backdropPressOutside = false;
@@ -668,6 +737,7 @@
 	}
 
 	async function flushDraft() {
+		await footer?.waitForPendingAttachments();
 		commitEdits();
 		if (note && draftDirty) {
 			try {
@@ -680,6 +750,7 @@
 	}
 
 	async function close(preserveEmpty = false) {
+		if (closing) return;
 		closing = true;
 		await flushDraft();
 		if (note && !preserveEmpty) await notesStore.discardIfEmpty(note.id);
@@ -721,12 +792,24 @@
 		void notesStore.syncPendingChanges();
 	}
 
-	async function copyText() {
+	async function copyNote() {
 		if (!note) return;
 		bodyEditor?.syncBodyNow?.();
+		const id = note.id;
 		// Only confirm when the write actually landed; the button must not claim a
 		// copy that failed (e.g. insecure origins where the async API is missing).
-		if (await writeClipboardText(noteToPlainText({ ...note, title, body }))) flashCopied();
+		const copied = await writeNoteToClipboard(
+			{ ...note, title, body, images },
+			{
+				// Photo bytes may still be on their way from device storage.
+				loadPhotos: async () => {
+					await notesStore.ensureNoteAttachments(id);
+					const stored = notesStore.notes.find((item) => item.id === id);
+					return stored ? mergeHydratedImages(images, noteAttachments(stored)) : images;
+				}
+			}
+		);
+		if (copied) flashCopied();
 	}
 
 	/** Share a link that opens this note in its workspace on any device that holds it. */
@@ -1093,6 +1176,9 @@
 								onRestoreTitle={restoreTitle}
 								oninput={markBodyEdited}
 								{transformPaste}
+								onOpenPhoto={(id) => void footer?.openPhoto(id)}
+								hasPhoto={(id) =>
+									images.some((image) => image.id === id && isImageAttachment(image))}
 								placeholder="Take a note… type [ ] for a checklist, - for a bullet, Tab for sub-task"
 							/>
 						{/if}
@@ -1116,16 +1202,11 @@
 							trashed={note.trashed}
 							{copyFlash}
 							fillPhotos={photosFillEditor}
+							onPhotosAdded={placePhotos}
 							color={note.color}
-							onOpenColor={() => {
-								closePopups();
-								paletteOpen = true;
-							}}
-							onOpenTags={() => {
-								closePopups();
-								labelOpen = true;
-							}}
-							onCopy={() => void copyText()}
+							onOpenColor={() => openFooterPopup(() => (paletteOpen = true))}
+							onOpenTags={() => openFooterPopup(() => (labelOpen = true))}
+							onCopy={() => void copyNote()}
 							onShare={() => void shareNote()}
 							onRestore={() => {
 								notesStore.restoreNote(note.id);
@@ -1142,6 +1223,10 @@
 								close();
 							}}
 							onImagesChange={(imgs) => commitNow(imgs)}
+							onBeforeRemove={() => {
+								bodyEditor?.finishInput?.();
+								commitDraft();
+							}}
 						/>
 					{/if}
 				</div>
@@ -1156,12 +1241,14 @@
 				if (!details.open) paletteOpen = false;
 			}}
 			preventScroll={false}
+			{...popupFocus}
 		>
 			<Dialog.Backdrop class={dialogBackdrop} />
 			<Dialog.Positioner
 				class={dialogPositioner}
 				data-editor-popup
 				onpointerdown={keepEditorFocused}
+				{@attach pressOnTouchRelease}
 			>
 				<Dialog.Content class={styles.popupContent}>
 					<ColorPalette
@@ -1213,12 +1300,14 @@
 				if (!details.open) labelOpen = false;
 			}}
 			preventScroll={false}
+			{...popupFocus}
 		>
 			<Dialog.Backdrop class={dialogBackdrop} />
 			<Dialog.Positioner
 				class={dialogPositioner}
 				data-editor-popup
 				onpointerdown={keepEditorFocused}
+				{@attach pressOnTouchRelease}
 			>
 				<Dialog.Content class={styles.popupContent}>
 					<LabelMenu

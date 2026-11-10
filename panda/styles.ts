@@ -2858,6 +2858,19 @@ export const cardOpenControl = css({
 	outline: 'none'
 });
 
+const attachmentPreviewPanel = {
+	zIndex: 10,
+	...column,
+	minH: '6rem',
+	maxH: '20rem',
+	pt: 'lg',
+	roundedTop: 'card',
+	borderWidth: 'hairline',
+	borderBottomWidth: 0,
+	borderColor: 'scrapscache.borderSubtle',
+	boxShadow: 'previewCard'
+} as const;
+
 export const noteEditorStyles = {
 	overlay: css({ position: 'fixed', inset: 0, zIndex: 50 }),
 	sheetWrap: cva({
@@ -2940,21 +2953,15 @@ export const noteEditorStyles = {
 	// Absolutely positioned to draw over the note body without expanding or
 	// reflowing the note editor.
 	previewPanel: css({
+		...attachmentPreviewPanel,
 		position: 'absolute',
 		bottom: 0,
 		left: 'sm',
-		right: 'sm',
-		zIndex: 10,
-		...column,
-		minH: '6rem',
-		maxH: '20rem',
-		pt: 'lg',
-		roundedTop: 'card',
-		borderWidth: 'hairline',
-		borderBottomWidth: 0,
-		borderColor: 'scrapscache.borderSubtle',
-		boxShadow: 'previewCard'
+		right: 'sm'
 	}),
+	// The composer grows around previews; an overlay would cover its title and body.
+	previewDockInline: css({ position: 'relative', flexShrink: 0, mt: 'sm' }),
+	previewPanelInline: css({ ...attachmentPreviewPanel, position: 'relative', mx: 'sm' }),
 	previewPanelFill: css({ ...column, ...flexPane }),
 	previewResizeHandle: css({
 		position: 'absolute',
@@ -4013,6 +4020,52 @@ export const markdownStyles = css({
 	'& [data-markdown-editor-table] .markdown-editor-table [data-markdown-table-row]:first-child .markdown-editor-table-cell.markdown-table-last-cell':
 		{ paddingRight: '2.75rem' },
 	'& .markdown-token-marker-hidden': { display: 'none' },
+	// A photo's place in the text: a chip with the photo's name that opens it.
+	'& .markdown-token-photo': {
+		display: 'inline-flex',
+		alignItems: 'center',
+		gap: '2xs',
+		maxW: 'full',
+		paddingInline: 'sm',
+		paddingBlock: '1px',
+		rounded: 'full',
+		borderWidth: 'hairline',
+		borderColor: 'scrapscache.border',
+		bg: 'scrapscache.accentSubtle',
+		color: 'scrapscache.accent',
+		fontSize: '0.92em',
+		whiteSpace: 'nowrap',
+		overflow: 'hidden',
+		verticalAlign: 'baseline',
+		cursor: 'pointer',
+		transitionProperty: 'border-color',
+		transitionDuration: 'fast',
+		_before: {
+			content: '""',
+			flex: 'none',
+			w: '0.9em',
+			h: '0.9em',
+			bg: 'currentColor',
+			maskImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='18' height='18' x='3' y='3' rx='2'/%3E%3Ccircle cx='9' cy='9' r='2'/%3E%3Cpath d='m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21'/%3E%3C/svg%3E")`,
+			maskRepeat: 'no-repeat',
+			maskSize: 'contain'
+		},
+		_hoverable: { borderColor: 'scrapscache.accent' }
+	},
+	// Shown read-only, on a card, the chip is text: only the editor opens a photo from
+	// it, so a pointer there would promise what the card's own tap delivers instead.
+	'&[data-note-body-display] .markdown-token-photo': {
+		cursor: 'inherit',
+		_hoverable: { borderColor: 'scrapscache.border' }
+	},
+	// The photo is gone (removed on another device): the chip stays readable but does nothing.
+	'& .markdown-token-photo-missing': {
+		color: 'scrapscache.textMuted',
+		bg: 'transparent',
+		textDecoration: 'line-through',
+		cursor: 'default',
+		_hoverable: { borderColor: 'scrapscache.border' }
+	},
 	'& .markdown-token-strong': { fontWeight: 'strong' },
 	'& .markdown-token-emphasis': { fontStyle: 'italic' },
 	'& .markdown-token-strikethrough': {
@@ -4031,7 +4084,7 @@ export const markdownStyles = css({
 	'&.markdown-raw': {
 		fontFamily: 'sans',
 		'& [data-line-text]:empty': { flex: '1 1 0%' },
-		'& .markdown-token-marker': { display: 'inline' },
+		'& .markdown-token-marker:not(.markdown-token-marker-hidden)': { display: 'inline' },
 		'& .markdown-token-code': { color: 'scrapscache.warning' },
 		'& :is(.markdown-token-heading-1, .markdown-token-heading-2, .markdown-token-heading-3, .markdown-token-heading-4, .markdown-token-heading-5, .markdown-token-heading-6)':
 			{

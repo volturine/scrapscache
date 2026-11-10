@@ -75,7 +75,9 @@
 		oninput,
 		placeholder = '',
 		readOnly = false,
-		transformPaste
+		transformPaste,
+		onOpenPhoto,
+		hasPhoto
 	}: {
 		body?: string;
 		title?: string;
@@ -85,6 +87,10 @@
 		placeholder?: string;
 		readOnly?: boolean;
 		transformPaste?: (text: string) => string | null;
+		/** A photo chip in the text was pressed. */
+		onOpenPhoto?: (id: string) => void;
+		/** Whether a chip's photo is still attached; a missing one is drawn inert. */
+		hasPhoto?: (id: string) => boolean;
 	} = $props();
 
 	type Line = {
@@ -1891,6 +1897,62 @@
 		});
 	}
 
+	/** Where the caret is, while the body has it. */
+	export function caretPoint(): EditorPoint | null {
+		if (!container || document.activeElement !== container) return null;
+		return editorRange()?.start ?? null;
+	}
+
+	/** An empty row that is nothing but text, so a marker can take its place. */
+	function blankRow(line: Line | undefined): boolean {
+		return !!line && line.text === '' && !line.isCheck && !line.isBullet;
+	}
+
+	/**
+	 * Add whole rows (photo markers) at a point, or after the last row without one.
+	 * The caret lands on a blank row below them, so typing never runs into a marker.
+	 */
+	export async function insertLines(
+		texts: string[],
+		at: EditorPoint | null,
+		options: { focus?: boolean } = {}
+	) {
+		if (readOnly || texts.length === 0) return;
+		rememberEdit(at ? { start: at, end: at, collapsed: true } : null);
+		applyingEdit = true;
+		try {
+			let index = lines.length;
+			let replace = 0;
+			if (at && lines[at.line]) {
+				const block = markdownBlockAt(at.line);
+				if (block) {
+					index = block.end;
+				} else if (blankRow(lines[at.line])) {
+					index = at.line;
+					replace = 1;
+				} else {
+					index = at.offset === 0 ? at.line : at.line + 1;
+				}
+			} else if (blankRow(lines.at(-1))) {
+				index = lines.length - 1;
+				replace = 1;
+			}
+			const rows = texts.map((text) => newLine(text));
+			const after = lines[index + replace];
+			if (!blankRow(after)) rows.push(newLine());
+			lines.splice(index, replace, ...rows);
+			const caretIndex = index + texts.length;
+			syncBody(true);
+			// The composer adds a photo without taking the writer to the keyboard: a
+			// focus here would raise the keyboard while the writer is still picking photos.
+			if (options.focus !== false) {
+				await focusAfterRender(caretIndex, 0, lines[caretIndex]?.id ?? null);
+			}
+		} finally {
+			applyingEdit = false;
+		}
+	}
+
 	/** Replace the whole body from outside (e.g. a title paste seeding the body). */
 	export async function replaceBodyWithText(text: string) {
 		applyingEdit = true;
@@ -2115,6 +2177,13 @@
 	}
 
 	function handleEditorClick(event: MouseEvent) {
+		const chip = event.target instanceof Element ? event.target.closest('[data-photo]') : null;
+		if (chip instanceof HTMLElement && chip.dataset.photo) {
+			event.preventDefault();
+			settlePointerGesture();
+			if (hasPhoto?.(chip.dataset.photo) ?? true) onOpenPhoto?.(chip.dataset.photo);
+			return;
+		}
 		// The release already placed the caret when the browser sent one. If it did not,
 		// or the click's default action moved it, put it back and keep that action from winning.
 		if (belowPressHandled || eventBelowLastRow(event)) {
@@ -2796,39 +2865,33 @@
 		};
 	}
 
-	function handlePaste(event: ClipboardEvent) {
-		cancelCaretLock();
-		if (!event.clipboardData) return;
-		const text = event.clipboardData.getData('text/plain');
-		if (!text) return;
+	function insertPastedText(text: string, cancelLock = true): boolean {
+		if (cancelLock) cancelCaretLock();
+		if (readOnly || !text) return false;
 		const range = editorRange();
 		if (extraCursors.length > 0) {
 			const primary = cursorFromRange(range);
 			if (primary && !/[\r\n]/.test(text)) {
-				event.preventDefault();
 				editAllCursors(primary, { kind: 'insert', text });
-				return;
+				return true;
 			}
 			clearExtraCursors();
 		}
 
 		if (!range) {
 			// The caret could not be resolved inside the editor. Normal editing
-			// keeps native browser insertion, but on an empty note the paste must
-			// still honor the owner's transform instead of letting a markdown
-			// heading land untouched in the body.
-			if (body) return;
-			event.preventDefault();
+			// keeps native browser insertion; an empty note still honors the owner's
+			// transform so a markdown heading can become its title.
+			if (body) return false;
 			const transformed = transformPaste ? transformPaste(text) : null;
 			lines = parseBodyToLines(transformed === null ? text : transformed);
 			draftTaskId = null;
 			syncBody();
 			const last = lines.length - 1;
 			focusAt(last, lines[last]?.text.length ?? 0, lines[last]?.id ?? null);
-			return;
+			return true;
 		}
 
-		event.preventDefault();
 		// The owner may lift part of the paste (e.g. a markdown heading into the
 		// note title); it returns the body text that should actually be inserted.
 		const transformed = transformPaste ? transformPaste(text) : null;
@@ -2836,6 +2899,20 @@
 		rememberEdit(range);
 		const caret = replaceRangeWithText(range, bodyText);
 		focusAt(caret.line, caret.offset, lines[caret.line]?.id ?? null);
+		return true;
+	}
+
+	/** Insert paste text through the same selection, checklist, and title rules as clipboard paste. */
+	export function insertTextAtCaret(text: string): boolean {
+		return insertPastedText(text);
+	}
+
+	function handlePaste(event: ClipboardEvent) {
+		cancelCaretLock();
+		if (!event.clipboardData) return;
+		const text = event.clipboardData.getData('text/plain');
+		if (!text) return;
+		if (insertPastedText(text, false)) event.preventDefault();
 	}
 
 	// When a touch toggled a checkbox, the time of that toggle, so a click the
@@ -3435,9 +3512,15 @@
 			{token.text}
 		{:else}
 			<span
-				class={markdownTokenClass(token, uiStore.rawMarkdown)}
+				class={[
+					markdownTokenClass(token, uiStore.rawMarkdown),
+					token.kind === 'text' &&
+						token.photo !== undefined &&
+						!(hasPhoto?.(token.photo) ?? true) &&
+						'markdown-token-photo-missing'
+				]}
 				data-markdown-token={token.kind === 'marker' ? token.marker : token.styles.join(' ')}
-				>{token.text}</span
+				data-photo={token.kind === 'text' ? token.photo : undefined}>{token.text}</span
 			>
 		{/if}
 	{/each}
@@ -3550,7 +3633,7 @@
 						{@render codeEditorContent(codeTokens)}
 					{/if}
 				</span>
-			{:else if !line.text || !/[*_~`#]/.test(line.text)}
+			{:else if !line.text || (!/[*_~`#]/.test(line.text) && !line.text.startsWith('!['))}
 				<span
 					data-line-text
 					data-checked={line.checked ? '' : undefined}

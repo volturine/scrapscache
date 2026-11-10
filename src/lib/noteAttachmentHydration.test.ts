@@ -25,4 +25,24 @@ describe('mergeHydratedImages', () => {
 			)
 		).toEqual([image('kept', 'data:kept')]);
 	});
+
+	it('does not fill a photo ref from bytes for a different crop with the same id', () => {
+		const current = [{ ...image('photo'), contentHash: 'new-hash', thumbUrl: 'thumb:new' }];
+		const hydrated = [{ ...image('photo', 'data:old'), contentHash: 'old-hash' }];
+
+		expect(mergeHydratedImages(current, hydrated)).toEqual(current);
+	});
+
+	it('fills a cold ref when its expected hash matches the loaded bytes', () => {
+		const current = [{ ...image('photo'), contentHash: 'same-hash', thumbUrl: 'thumb:same' }];
+		const hydrated = [{ ...image('photo', 'data:photo'), contentHash: 'same-hash' }];
+
+		expect(mergeHydratedImages(current, hydrated)).toEqual([
+			{
+				...image('photo', 'data:photo'),
+				contentHash: 'same-hash',
+				thumbUrl: 'thumb:same'
+			}
+		]);
+	});
 });

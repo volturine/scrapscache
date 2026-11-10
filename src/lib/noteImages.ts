@@ -3,7 +3,12 @@ import type { NoteImage } from './types';
 import { extractDngJpeg, isDngFile, jpegName } from './dngCanonical';
 import { dataUrlToBlob } from './imageBlob';
 import { makeImageThumbDataUrl } from './imageThumb';
-import { optimizeImageBlob, optimizedImageName, type ImageQuality } from './imageOptimize';
+import {
+	loadDrawable,
+	optimizeImageBlob,
+	optimizedImageName,
+	type ImageQuality
+} from './imageOptimize';
 import { sha256 } from './syncHash';
 import { canvasThumbnailDataUrl, isCanvasAttachment } from './canvasAttachment';
 import {
@@ -88,9 +93,16 @@ export function fileIconLabel(mime: string, name?: string): string {
 }
 
 /**
+ * The most a file that is not re-encoded may weigh. The relay takes 16 MB of
+ * ciphertext per envelope, and the bytes travel base64-encoded twice; photos are
+ * re-encoded to far less, but a video or a document goes in as it is.
+ */
+export const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024;
+
+/**
  * Store any file as a note attachment (data URL).
  * DNG → embedded JPEG for preview; photos keep full bytes plus a small thumb; non-images as-is.
- * No size cap (same as photos).
+ * The size cap is the caller's (MAX_ATTACHMENT_BYTES), since a photo shrinks here.
  */
 export async function fileToNoteImage(file: File, imageQuality: ImageQuality): Promise<NoteImage> {
 	if (await isExcalidrawFile(file)) {
@@ -121,6 +133,8 @@ export async function fileToNoteImage(file: File, imageQuality: ImageQuality): P
 			webp: 'image/webp',
 			gif: 'image/gif',
 			heic: 'image/heic',
+			heif: 'image/heif',
+			avif: 'image/avif',
 			mp3: 'audio/mpeg',
 			mp4: 'video/mp4'
 		};
@@ -168,6 +182,9 @@ export async function noteImageFromCroppedDataUrl(
 	dataUrl: string
 ): Promise<NoteImage> {
 	const blob = await dataUrlToBlob(dataUrl);
+	const drawable = await loadDrawable(blob);
+	const { width, height } = drawable;
+	drawable.close?.();
 	// The cropper asks for WebP; a browser without that encoder hands back PNG.
 	const mime = blob.type || 'image/webp';
 	const contentHash = await sha256(dataUrl);
@@ -181,6 +198,8 @@ export async function noteImageFromCroppedDataUrl(
 		dataUrl,
 		contentHash,
 		byteSize: blob.size,
+		width,
+		height,
 		...(thumbUrl ? { thumbUrl } : { thumbUrl: undefined })
 	};
 }
@@ -188,7 +207,7 @@ export async function noteImageFromCroppedDataUrl(
 /** Drop large previewable bytes from memory after IDB has the durable attachment blob. */
 export function stripFullPreviewBytes(image: NoteImage): NoteImage {
 	if (!isImageMime(image.mime) && !isCanvasAttachment(image)) return image;
-	if (!image.dataUrl) return image;
+	if (!image.dataUrl || !image.thumbUrl) return image;
 	return { ...image, dataUrl: '' };
 }
 
@@ -241,6 +260,17 @@ export async function openAttachment(att: NoteImage): Promise<void> {
 		}
 	}
 
+	downloadBlob(blob, name);
+}
+
+/** Keep a photo or file on the device, as a download. */
+export async function saveAttachment(att: NoteImage): Promise<void> {
+	if (!att.dataUrl) throw new Error('The photo is still loading.');
+	const blob = await dataUrlToBlob(att.dataUrl);
+	downloadBlob(blob, att.name?.trim() || 'attachment');
+}
+
+function downloadBlob(blob: Blob, name: string): void {
 	const url = URL.createObjectURL(blob);
 	const revoke = () => {
 		try {

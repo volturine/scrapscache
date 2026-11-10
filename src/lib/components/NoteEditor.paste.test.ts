@@ -1,9 +1,42 @@
-import { render } from '@testing-library/svelte';
+import { fireEvent, render, screen } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Note } from '#lib/types.js';
+import type { Note, NoteImage } from '#lib/types.js';
 import { notesStore } from '#lib/stores/notes.svelte.js';
 import NoteEditor from './NoteEditor.svelte';
+
+const imageConversion = vi.hoisted(() => ({ fileToNoteImage: vi.fn() }));
+vi.mock('#lib/noteImages.js', async (importOriginal) => ({
+	...(await importOriginal<typeof import('#lib/noteImages.js')>()),
+	fileToNoteImage: imageConversion.fileToNoteImage
+}));
+
+let conversionSequence = 0;
+
+function convertedFile(file: File): NoteImage {
+	const isPhoto = file.type.startsWith('image/');
+	const mime = isPhoto ? 'image/webp' : file.type || 'application/octet-stream';
+	const dataUrl = isPhoto ? 'data:image/webp;base64,YWJj' : 'data:text/plain;base64,dG9kbw==';
+	conversionSequence += 1;
+	return {
+		id: `converted-${conversionSequence}`,
+		mime,
+		dataUrl,
+		...(isPhoto ? { thumbUrl: dataUrl } : {}),
+		name: file.name,
+		createdAt: 1,
+		contentHash: `${file.type}:${file.name}`,
+		byteSize: file.size
+	};
+}
+
+function deferred<T>() {
+	let resolve!: (value: T) => void;
+	const promise = new Promise<T>((resolvePromise) => {
+		resolve = resolvePromise;
+	});
+	return { promise, resolve };
+}
 
 function note(partial: Partial<Note> = {}): Note {
 	return {
@@ -53,6 +86,9 @@ function createClipboardEvent(
 
 beforeEach(() => {
 	vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+	conversionSequence = 0;
+	imageConversion.fileToNoteImage.mockReset();
+	imageConversion.fileToNoteImage.mockImplementation(async (file: File) => convertedFile(file));
 });
 
 afterEach(() => {
@@ -115,6 +151,44 @@ describe('NoteEditor paste photo', () => {
 		await vi.waitFor(() => {
 			expect(container.querySelector('[aria-label="Open tasks.txt"]')).not.toBeNull();
 		});
+	});
+
+	it('waits for an accepted photo import before closing the editor', async () => {
+		const pending = deferred<NoteImage>();
+		imageConversion.fileToNoteImage.mockReturnValueOnce(pending.promise);
+		const onClose = vi.fn();
+		let registeredClose: (() => Promise<void>) | undefined;
+		notesStore.notes = [note()];
+		const { container } = render(NoteEditor, {
+			props: {
+				noteId: 'note-1',
+				onClose,
+				registerClose: (close) => (registeredClose = close)
+			}
+		});
+		const photo = new File(['slow'], 'slow.png', { type: 'image/png' });
+		editorOverlay(container).dispatchEvent(createClipboardEvent([photo]));
+		await fireEvent.click(await screen.findByRole('button', { name: /^Compressed/ }));
+		await vi.waitFor(() => expect(imageConversion.fileToNoteImage).toHaveBeenCalledTimes(1));
+
+		if (!registeredClose) throw new Error('Editor close was not registered');
+		const closing = registeredClose();
+		await Promise.resolve();
+		expect(onClose).not.toHaveBeenCalled();
+		pending.resolve({
+			id: 'slow-photo',
+			mime: 'image/webp',
+			dataUrl: 'data:image/webp;base64,YWJj',
+			thumbUrl: 'data:image/webp;base64,YWJj',
+			name: 'slow.webp',
+			createdAt: 1,
+			contentHash: 'slow-photo-hash',
+			byteSize: 3
+		});
+		await closing;
+
+		expect(onClose).toHaveBeenCalledOnce();
+		expect(notesStore.notes[0].images?.map((attachment) => attachment.id)).toEqual(['slow-photo']);
 	});
 
 	it('intercepts paste and attaches photo when focused inside BodyEditor', async () => {

@@ -10,6 +10,20 @@ import NoteEditor from './NoteEditor.svelte';
 import { syncStore } from '#lib/stores/sync.svelte.js';
 import { readNoteLink, workspaceLinkTag } from '#lib/noteLinks.js';
 
+const keyboardFrame = vi.hoisted(() => ({ holds: 0, releases: 0 }));
+vi.mock('#lib/appViewport.js', async (importOriginal) => {
+	const original = await importOriginal<typeof import('#lib/appViewport.js')>();
+	return {
+		...original,
+		holdKeyboardFrame: () => {
+			keyboardFrame.holds += 1;
+			return () => {
+				keyboardFrame.releases += 1;
+			};
+		}
+	};
+});
+
 function note(partial: Partial<Note> = {}): Note {
 	return {
 		id: 'note-1',
@@ -49,6 +63,17 @@ function dispatchTouchPointer(
 		pointerType: { value: 'touch' },
 		pointerId: { value: options.pointerId ?? 1 }
 	});
+	target.dispatchEvent(event);
+	return event;
+}
+
+function releaseTouch(
+	target: Element,
+	point: { clientX: number; clientY: number },
+	cancelable = true
+): Event {
+	const event = new Event('touchend', { bubbles: true, cancelable });
+	Object.defineProperty(event, 'changedTouches', { value: [point] });
 	target.dispatchEvent(event);
 	return event;
 }
@@ -527,6 +552,116 @@ describe('NoteEditor task focus', () => {
 		expect(document.activeElement).toBe(editor);
 	});
 
+	it('presses a touched footer button on release, before the keyboard can move it', async () => {
+		notesStore.notes = [note({ body: 'Plain note' })];
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const color = container.querySelector('footer button[aria-label="Color"]') as HTMLButtonElement;
+		editor.focus();
+
+		// A finger that slid off the button, or a touch that scrolled, is not a press.
+		const slipped = releaseTouch(color, { clientX: 100, clientY: 0 });
+		const scrolled = releaseTouch(color, { clientX: 0, clientY: 0 }, false);
+		await tick();
+		expect(slipped.defaultPrevented).toBe(false);
+		expect(scrolled.defaultPrevented).toBe(false);
+		expect(container.querySelector('[data-editor-popup]')).toBeNull();
+
+		const released = releaseTouch(color, { clientX: 0, clientY: 0 });
+		await tick();
+		expect(released.defaultPrevented).toBe(true);
+		expect(container.querySelector('[data-editor-popup]')).not.toBeNull();
+		expect(document.activeElement).toBe(editor);
+	});
+
+	it('holds the keyboard frame from the attach press until the picker closes', () => {
+		notesStore.notes = [note({ body: 'Plain note' })];
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+		const attach = container.querySelector(
+			'footer button[aria-label="Attach"]'
+		) as HTMLButtonElement;
+		keyboardFrame.holds = 0;
+		keyboardFrame.releases = 0;
+
+		releaseTouch(attach, { clientX: 0, clientY: 0 });
+		expect(keyboardFrame).toEqual({ holds: 1, releases: 0 });
+
+		const input = document.body.querySelector('input[type="file"]') as HTMLInputElement;
+		input.dispatchEvent(new Event('cancel'));
+		expect(keyboardFrame).toEqual({ holds: 1, releases: 1 });
+	});
+
+	it('opens the attach picker under its button and keeps the keyboard', async () => {
+		notesStore.notes = [note({ body: 'Plain note' })];
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+		const attach = container.querySelector(
+			'footer button[aria-label="Attach"]'
+		) as HTMLButtonElement;
+		vi.spyOn(attach, 'getBoundingClientRect').mockReturnValue({
+			left: 24,
+			top: 600,
+			width: 40,
+			height: 36,
+			right: 64,
+			bottom: 636,
+			x: 24,
+			y: 600,
+			toJSON: () => ({})
+		});
+		editor.focus();
+
+		releaseTouch(attach, { clientX: 30, clientY: 610 });
+
+		const input = document.body.querySelector('input[type="file"]') as HTMLInputElement;
+		expect(input).not.toBeNull();
+		expect([input.style.left, input.style.top, input.style.width, input.style.height]).toEqual([
+			'24px',
+			'600px',
+			'40px',
+			'36px'
+		]);
+		expect(document.activeElement).toBe(editor);
+		input.remove();
+	});
+
+	it('leaves focus in the body while the palette is open over the software keyboard', async () => {
+		notesStore.notes = [note({ body: 'Plain note' })];
+		document.documentElement.classList.add('keyboard-open');
+		try {
+			const { container } = render(NoteEditor, {
+				props: { noteId: 'note-1', onClose: () => {} }
+			});
+			const editor = container.querySelector('[data-body-editor]') as HTMLElement;
+			const color = container.querySelector(
+				'footer button[aria-label="Color"]'
+			) as HTMLButtonElement;
+			editor.focus();
+
+			releaseTouch(color, { clientX: 0, clientY: 0 });
+			await tick();
+			await new Promise((resolve) => requestAnimationFrame(resolve));
+			await new Promise((resolve) => setTimeout(resolve, 20));
+			const popup = container.querySelector('[data-editor-popup]');
+			expect(popup).not.toBeNull();
+			expect(document.activeElement).toBe(editor);
+
+			await fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+			await tick();
+			await new Promise((resolve) => setTimeout(resolve, 20));
+			expect(container.querySelector('[data-editor-popup]')).toBeNull();
+			expect(document.activeElement).toBe(editor);
+		} finally {
+			document.documentElement.classList.remove('keyboard-open');
+		}
+	});
+
 	it('applies a touched color without dismissing the keyboard', async () => {
 		notesStore.notes = [note({ body: 'Plain note' })];
 		const { container } = render(NoteEditor, {
@@ -627,6 +762,40 @@ describe('NoteEditor task focus', () => {
 		expect(document.activeElement).toBe(input);
 	});
 
+	it('presses a label once from a touch release in the label popup', async () => {
+		notesStore.notes = [note({ body: 'Plain note' })];
+		notesStore.labels = [{ id: 'label-1', name: 'Work', createdAt: 1, updatedAt: 1 }];
+		vi.spyOn(notesStore, 'toggleLabel').mockImplementation((noteId, labelId) => {
+			notesStore.notes = notesStore.notes.map((item) =>
+				item.id === noteId
+					? {
+							...item,
+							labels: item.labels.includes(labelId)
+								? item.labels.filter((id) => id !== labelId)
+								: [...item.labels, labelId]
+						}
+					: item
+			);
+		});
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+		await fireEvent.click(
+			container.querySelector('footer button[aria-label="Labels"]') as HTMLButtonElement
+		);
+		await tick();
+		const popup = container.querySelector('[data-editor-popup]') as HTMLElement;
+		const work = popup.querySelector('[data-part="label"]') as HTMLElement;
+
+		// The popup's positioner and the menu inside it both press on a release.
+		let clicks = 0;
+		work.addEventListener('click', () => (clicks += 1));
+		releaseTouch(work, { clientX: 0, clientY: 0 });
+		await tick();
+		expect(clicks).toBe(1);
+		expect(notesStore.notes[0].labels).toEqual(['label-1']);
+	});
+
 	it('creates and assigns the first label on the first touch', async () => {
 		notesStore.notes = [note({ body: 'Plain note' })];
 		notesStore.labels = [];
@@ -676,28 +845,6 @@ describe('NoteEditor task focus', () => {
 		expect(document.activeElement).toBe(input);
 	});
 
-	it('dismisses the keyboard before opening the attachment picker', async () => {
-		notesStore.notes = [note({ body: 'Plain note' })];
-		const inputClick = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => {});
-		const { container } = render(NoteEditor, {
-			props: { noteId: 'note-1', onClose: () => {} }
-		});
-		const editor = container.querySelector('[data-body-editor]') as HTMLElement;
-		const attach = container.querySelector(
-			'footer button[aria-label="Attach"]'
-		) as HTMLButtonElement;
-		editor.focus();
-
-		const pointerDown = dispatchTouchPointer(attach, 'pointerdown');
-		expect(pointerDown.defaultPrevented).toBe(true);
-		await fireEvent.click(attach);
-
-		expect(inputClick).toHaveBeenCalledOnce();
-		expect(document.activeElement).not.toBe(editor);
-		const picker = document.body.querySelector('input[type="file"]') as HTMLInputElement;
-		picker.dispatchEvent(new Event('change'));
-	});
-
 	it('renders all footer action buttons in a single row without wrapping', () => {
 		notesStore.notes = [note({ body: 'Plain note' })];
 		const { getByRole, container } = render(NoteEditor, {
@@ -737,6 +884,18 @@ describe('NoteEditor share menu', () => {
 		return view;
 	}
 
+	it('opens the share menu from a touch release', async () => {
+		vi.spyOn(syncStore, 'activeProfile', 'get').mockReturnValue(workspace);
+		notesStore.notes = [note()];
+		const { findByRole, getByRole } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+
+		releaseTouch(getByRole('button', { name: 'Share' }), { clientX: 0, clientY: 0 });
+
+		expect(await findByRole('menu', { name: 'Share' })).toBeTruthy();
+	});
+
 	it('shares only a link to the note through the system share sheet', async () => {
 		const share = vi.fn().mockResolvedValue(undefined);
 		Object.defineProperty(navigator, 'share', { configurable: true, value: share });
@@ -766,6 +925,47 @@ describe('NoteEditor share menu', () => {
 		await choose(await findByRole('menuitem', { name: 'Copy note' }));
 		await vi.waitFor(() => expect(writeText).toHaveBeenCalledTimes(2));
 		expect(writeText.mock.calls[1][0]).toContain('Oat milk');
+	});
+
+	it('copies a note with a photo as text, HTML and a PNG in one clipboard item', async () => {
+		const png = 'data:image/png;base64,iVBORw0KGgo=';
+		const items: { data: Record<string, Blob | PromiseLike<Blob | string> | string> }[] = [];
+		const write = vi.fn(async (written: typeof items) => {
+			items.push(...written);
+		});
+		Object.defineProperty(navigator, 'clipboard', {
+			configurable: true,
+			value: { write, writeText: vi.fn() }
+		});
+		vi.stubGlobal(
+			'ClipboardItem',
+			class {
+				constructor(public data: Record<string, Blob | PromiseLike<Blob | string> | string>) {}
+			}
+		);
+		vi.spyOn(syncStore, 'activeProfile', 'get').mockReturnValue(workspace);
+		notesStore.notes = [
+			note({
+				images: [{ id: 'img-1', mime: 'image/png', dataUrl: png, name: 'milk.png', createdAt: 1 }]
+			})
+		];
+		const view = render(NoteEditor, { props: { noteId: 'note-1', onClose: () => {} } });
+		await fireEvent.click(view.getByRole('button', { name: 'Share' }));
+		await tick();
+
+		await choose(await view.findByRole('menuitem', { name: 'Copy note' }));
+
+		await vi.waitFor(() => expect(write).toHaveBeenCalledOnce());
+		expect(Object.keys(items[0].data)).toEqual(['text/plain', 'text/html', 'image/png']);
+		const html = await items[0].data['text/html'];
+		const fragment = document.createElement('template');
+		fragment.innerHTML = await (html as Blob).text();
+		const image = fragment.content.querySelector('img');
+		expect(image?.getAttribute('src')).toBe(png);
+		expect(image?.getAttribute('alt')).toBe('milk.png');
+		expect(image?.getAttribute('data-scrapscache-photo-id')).toBe('img-1');
+		expect(fragment.content.querySelector('[data-scrapscache-note]')).not.toBeNull();
+		vi.unstubAllGlobals();
 	});
 
 	it('closes when another footer action opens its own panel', async () => {

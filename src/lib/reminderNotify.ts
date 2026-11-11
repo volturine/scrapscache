@@ -75,6 +75,8 @@ export function unfiredDueReminders(
 export type NotificationBackend = {
 	permission(): NotificationPermission;
 	request(): Promise<NotificationPermission>;
+	/** Take down what the system still shows for these reminders. */
+	close(wakeIds: ReadonlySet<string>): Promise<void>;
 };
 
 let backend: NotificationBackend | null = null;
@@ -143,7 +145,9 @@ export async function showReminderNotification(
 
 /** Take down system notifications for reminders that were dismissed elsewhere. */
 export async function closeReminderNotifications(wakeIds: ReadonlySet<string>): Promise<void> {
-	if (!wakeIds.size || typeof navigator === 'undefined' || !navigator.serviceWorker) return;
+	if (!wakeIds.size) return;
+	if (backend) return backend.close(wakeIds).catch(() => undefined);
+	if (typeof navigator === 'undefined' || !navigator.serviceWorker) return;
 	try {
 		const registrations = await navigator.serviceWorker.getRegistrations();
 		const shown = (

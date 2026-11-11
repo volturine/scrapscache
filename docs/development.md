@@ -156,13 +156,24 @@ record for the app's bundle ID (below), and:
 
 - `IOS_TEAM_ID`: the team ID (Xcode › Settings › Accounts, or the developer
   portal's membership page);
+- the signing material from `npm run ios:signing` (below):
+  `IOS_DIST_CERT_P12` (the `.p12`, base64), `IOS_DIST_CERT_PASSWORD`, and
+  `IOS_PROFILE`, the app's App Store profile (base64);
 - either Xcode signed in to the Apple ID of that team, or an App Store Connect
-  API key in `ASC_KEY_ID`, `ASC_ISSUER_ID` and `ASC_KEY_PATH` (the `.p8` file).
+  API key in `ASC_KEY_ID`, `ASC_ISSUER_ID` and `ASC_KEY_PATH` (the `.p8` file),
+  for the upload.
 
-The archive is built unsigned and the export signs it, so no development
-certificate is made: a CI runner has none in its keychain, and signing the
-archive made a new one on every upload until Apple refused more. Automatic
-signing creates the provisioning profile on the first run. Each upload takes the UTC minute as its build number unless
+Signing is manual. The archive is signed with the team's CI Apple Distribution
+certificate and the app's App Store profile, so its entitlements (push
+notifications) are in the build, and the export signs the same way. For the run
+the certificate sits in a keychain of its own and the profile is installed only
+until the run ends. Nothing at Apple is created or changed by an upload, and the
+API key only uploads, so it needs no more than the App Manager role. Automatic
+signing made a development certificate on every CI runner until Apple refused
+more, and the cloud signing tried after it needed an Admin key and an unsigned
+archive, which leaves the entitlements out.
+
+Each upload takes the UTC minute as its build number unless
 `IOS_BUILD_NUMBER` says otherwise; the version is `MARKETING_VERSION` in the
 Xcode project. The build appears under TestFlight once Apple has processed it;
 internal testers (the team) need no review, external groups do.
@@ -177,14 +188,34 @@ on GitHub's `xcode-27` runner, each in its own concurrency group:
   (`deploy-cloudflare-production`, pushes to `master`), so it waits on that
   deployment's approval in the `production` environment.
 
-Both need four repository secrets: `APPLE_TEAM_ID`, `ASC_KEY_ID`,
-`ASC_ISSUER_ID` and `ASC_PRIVATE_KEY` (the whole `.p8` file). Make the key under
-App Store Connect › Users and Access › Integrations › App Store Connect API with
-the **Admin** role: `xcodebuild` signs in the cloud with it and creates the
-distribution certificate itself, which Apple only lets an Admin key do (an App
-Manager key fails with a cloud signing permission error). Without the secrets,
-or on a runner whose Xcode 27 lacks the iOS 27.1 SDK the shell needs, the job
-writes a notice and steps aside rather than failing the run.
+Both need seven repository secrets: `APPLE_TEAM_ID`, `ASC_KEY_ID`,
+`ASC_ISSUER_ID` and `ASC_PRIVATE_KEY` (the whole `.p8` file), made under App
+Store Connect › Users and Access › Integrations › App Store Connect API; and
+`IOS_DIST_CERT_P12`, `IOS_DIST_CERT_PASSWORD`, `IOS_PROFILE_PROD` and
+`IOS_PROFILE_DEV`, which `npm run ios:signing` sets. Without them, or on a
+runner whose Xcode 27 lacks the iOS 27.1 SDK the shell needs, the job writes a
+notice and steps aside rather than failing the run.
+
+#### Signing material
+
+`npm run ios:signing` (`scripts/ios-signing.mjs`) makes it all, with an API key
+that has the Admin role (or access to Certificates, Identifiers & Profiles) in
+`ASC_KEY_ID`, `ASC_ISSUER_ID` and `ASC_KEY_PATH`, from a checkout where `gh` can
+set the repository's secrets:
+
+1. it enables the capabilities the entitlements ask for (push notifications) on
+   both App IDs;
+2. it makes an Apple Distribution certificate from a key made on the spot, and
+   an App Store profile per app on it, **Scraps Cache App Store** and **Scraps
+   Cache Dev App Store**;
+3. it sets the four signing secrets, then removes the profiles it made before
+   and revokes the certificate they were on. It touches no other certificate
+   or profile.
+
+Run it again before the certificate expires, a year after it was made, and
+after adding a capability to `ios/App/App/App.entitlements` and to the script,
+since a new capability invalidates the profiles. `--keep <dir>` also writes the
+`.p12`, its password and the profiles there, for uploads from a Mac.
 
 #### Setting up an app at Apple
 
@@ -192,10 +223,8 @@ Each bundle ID needs, once:
 
 1. **The App ID**: an explicit App ID for the bundle ID, platform universal,
    in Certificates, Identifiers & Profiles › Identifiers › (+) › App IDs, or
-   with the Admin API key (`POST /v1/bundleIds`). Automatic signing does not
-   do this for us: the app has no entitlements, so `-allowProvisioningUpdates`
-   signs with the team's wildcard profile and never
-   registers an explicit ID, and the New App form only lists explicit ones.
+   with the Admin API key (`POST /v1/bundleIds`). The New App form only lists
+   explicit IDs, and `npm run ios:signing` needs one to make the profile.
 2. **The App Store Connect record**, in App Store Connect › Apps › (+) › New
    App: platform iOS, the app's name, a primary language, the bundle ID from
    step 1, and a unique SKU; requires the Account Holder, Admin or App Manager

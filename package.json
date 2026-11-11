@@ -49,7 +49,8 @@
 		"dev:admin": "vite --config vite.admin.config.ts",
 		"build:ios": "svelte-kit sync && panda codegen && DEPLOY_TARGET=capacitor vite build && cap sync ios",
 		"ios": "cap open ios",
-		"ios:testflight": "scripts/ios-testflight.sh"
+		"ios:testflight": "scripts/ios-testflight.sh",
+		"ios:signing": "node scripts/ios-signing.mjs"
 	},
 	"devDependencies": {
 		"@capacitor/cli": "^8.6.0",

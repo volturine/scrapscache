@@ -2904,6 +2904,9 @@ const attachmentPreviewPanel = {
 
 export const noteEditorStyles = {
 	overlay: css({ position: 'fixed', inset: 0, zIndex: 50 }),
+	// The header's last place: the done check while the keyboard is up, the expand toggle otherwise.
+	whileTyping: css({ display: 'none', 'html.keyboard-open &': { display: 'inline-flex' } }),
+	unlessTyping: css({ 'html.keyboard-open &': { display: 'none' } }),
 	sheetWrap: cva({
 		base: {
 			position: 'absolute',

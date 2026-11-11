@@ -123,6 +123,7 @@ describe('NoteEditor header reminder controls', () => {
 			'Reminder',
 			'Pin',
 			'Hide preview',
+			'Hide keyboard',
 			'Expand note'
 		]);
 		expect(container.querySelector('header')?.textContent).not.toMatch(/Today|Tomorrow|AM|PM/);
@@ -141,9 +142,63 @@ describe('NoteEditor header reminder controls', () => {
 			'Reminder',
 			'Pin',
 			'Hide preview',
+			'Hide keyboard',
 			'Expand note'
 		]);
 		expect(container.querySelector('header')?.textContent).toContain(formatReminder(reminder));
+	});
+
+	it('lets go of the field being typed in from the header', async () => {
+		notesStore.notes = [note()];
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+		const title = container.querySelector<HTMLTextAreaElement>('textarea[placeholder="Title"]')!;
+		title.focus();
+		expect(document.activeElement).toBe(title);
+
+		await fireEvent.click(container.querySelector('header button[aria-label="Hide keyboard"]')!);
+
+		expect(document.activeElement).not.toBe(title);
+	});
+
+	it('keeps the field through a touch and lets go of it on a cancelled release', async () => {
+		notesStore.notes = [note()];
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+		const title = container.querySelector<HTMLTextAreaElement>('textarea[placeholder="Title"]')!;
+		const check = container.querySelector('header button[aria-label="Hide keyboard"]')!;
+		const expand = container.querySelector('header button[aria-label="Expand note"]')!;
+		title.focus();
+
+		// Focus stays put while the finger is down, so the check stays in its place.
+		expect(dispatchTouchPointer(check, 'pointerdown').defaultPrevented).toBe(true);
+		expect(document.activeElement).toBe(title);
+
+		// The cancelled release is what keeps iOS from sending its click on.
+		expect(releaseTouch(check, { clientX: 0, clientY: 0 }).defaultPrevented).toBe(true);
+		expect(document.activeElement).not.toBe(title);
+
+		// A click that got through anyway changes nothing more.
+		await fireEvent.click(check);
+		expect(expand.getAttribute('aria-pressed')).toBe('false');
+		expect(document.activeElement).not.toBe(title);
+	});
+
+	it('keeps the field when the finger slides off the check before release', () => {
+		notesStore.notes = [note()];
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+		const title = container.querySelector<HTMLTextAreaElement>('textarea[placeholder="Title"]')!;
+		const check = container.querySelector('header button[aria-label="Hide keyboard"]')!;
+		title.focus();
+
+		dispatchTouchPointer(check, 'pointerdown');
+		releaseTouch(check, { clientX: 200, clientY: 200 });
+
+		expect(document.activeElement).toBe(title);
 	});
 
 	it('marks the reminder button overdue when the time is in the past', () => {

@@ -35,7 +35,7 @@
 	import { noteShareLink } from '#lib/noteLinks.js';
 	import { appLinkOrigin } from '#lib/serverOrigin.svelte.js';
 	import ReminderLabel from './ReminderLabel.svelte';
-	import { Bell, ChevronLeft, Eye, EyeOff, Maximize2, Minimize2, Pin } from '@lucide/svelte';
+	import { Bell, Check, ChevronLeft, Eye, EyeOff, Maximize2, Minimize2, Pin } from '@lucide/svelte';
 
 	import { revealEditorField, revealEditorPoint } from '#lib/editorVisibility.js';
 	import {
@@ -295,6 +295,40 @@
 
 	function toggleExpanded() {
 		manualExpanded = !expanded;
+	}
+
+	/** Lower the keyboard by letting go of the field being typed in. */
+	function finishTyping() {
+		const active = document.activeElement;
+		if (active instanceof HTMLElement && editorDialog?.contains(active)) active.blur();
+	}
+
+	/**
+	 * A touch lowers the keyboard on release, not on the click. Left to itself, iOS
+	 * moves focus to the button as the finger lands: the keyboard state drops, the
+	 * expand toggle takes this place, and the click lands there instead. So the field
+	 * keeps focus through the touch, and the release, cancelled, lets go of it; only
+	 * a cancelled touchend stops iOS's synthetic mouse events and click.
+	 */
+	function holdFieldThroughTouch(event: PointerEvent) {
+		if (event.pointerType === 'touch') event.preventDefault();
+	}
+	function finishTypingOnRelease(event: TouchEvent) {
+		if (!event.cancelable || event.changedTouches.length !== 1) return;
+		event.preventDefault();
+		const touch = event.changedTouches[0];
+		const box = (event.currentTarget as HTMLElement).getBoundingClientRect();
+		const slop = 8;
+		// A finger that slid off the check presses nothing.
+		if (
+			touch.clientX < box.left - slop ||
+			touch.clientX > box.right + slop ||
+			touch.clientY < box.top - slop ||
+			touch.clientY > box.bottom + slop
+		) {
+			return;
+		}
+		finishTyping();
 	}
 
 	/** Body lines the note area fits, or Infinity before layout. */
@@ -1082,9 +1116,21 @@
 								</button>
 								<span id={previewHelpId} class={visuallyHidden}>{PREVIEW_HELP}</span>
 							{/if}
+							<!-- iOS's bar above the keys is removed in the app; this lowers the keyboard instead. -->
 							<button
 								type="button"
-								class={iconButton({ variant: 'ghost', size: 'sm' })}
+								class={cx(iconButton({ variant: 'ghost', size: 'sm' }), styles.whileTyping)}
+								title="Hide keyboard"
+								onpointerdown={holdFieldThroughTouch}
+								ontouchend={finishTypingOnRelease}
+								onclick={finishTyping}
+								aria-label="Hide keyboard"
+							>
+								<Check size={20} aria-hidden="true" />
+							</button>
+							<button
+								type="button"
+								class={cx(iconButton({ variant: 'ghost', size: 'sm' }), styles.unlessTyping)}
 								title={expanded ? 'Shrink note' : 'Expand note'}
 								onclick={toggleExpanded}
 								aria-label={expanded ? 'Shrink note' : 'Expand note'}

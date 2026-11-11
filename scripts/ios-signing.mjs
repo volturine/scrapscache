@@ -119,6 +119,7 @@ const folder = keepAt ?? mkdtempSync(join(tmpdir(), 'scraps-signing-'));
 mkdirSync(folder, { recursive: true, mode: 0o700 });
 const file = (name) => join(folder, name);
 let made = null;
+let recorded = false;
 
 try {
 	// 2. The App IDs, with the capabilities the app's entitlements ask for.
@@ -240,6 +241,7 @@ try {
 	for (const [name, value] of Object.entries(secrets))
 		run('gh', ['secret', 'set', name, '--repo', repo], value);
 	run('gh', ['variable', 'set', CERTIFICATE_VARIABLE, '--repo', repo, '--body', certificate.id]);
+	recorded = true;
 	console.log(`Set ${Object.keys(secrets).join(', ')} and ${CERTIFICATE_VARIABLE}`);
 
 	// 5. The certificate made last time, once nothing here needs it.
@@ -255,11 +257,18 @@ try {
 		}
 	}
 } catch (error) {
-	console.error(`Stopped; nothing was revoked. What was made so far is in ${folder}`);
-	if (made) {
+	if (recorded) {
+		// Only revoking the old certificate failed: CI already runs on the new one.
 		console.error(
-			`Certificate ${made} was made and ${CERTIFICATE_VARIABLE} does not name it: revoke it by hand if this run is abandoned`
+			`Stopped after the secrets were set: CI now uses certificate ${made}. Certificate ${previous} was not revoked; revoke it by hand if no profile uses it.`
 		);
+	} else {
+		console.error(`Stopped; nothing was revoked. What was made so far is in ${folder}`);
+		if (made) {
+			console.error(
+				`Certificate ${made} was made and ${CERTIFICATE_VARIABLE} does not name it: revoke it by hand if this run is abandoned`
+			);
+		}
 	}
 	throw error;
 }

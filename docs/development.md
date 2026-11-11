@@ -188,7 +188,7 @@ on GitHub's `xcode-27` runner, each in its own concurrency group:
   (`deploy-cloudflare-production`, pushes to `master`), so it waits on that
   deployment's approval in the `production` environment.
 
-Both need seven repository secrets: `APPLE_TEAM_ID`, `ASC_KEY_ID`,
+Both need eight repository secrets: `APPLE_TEAM_ID`, `ASC_KEY_ID`,
 `ASC_ISSUER_ID` and `ASC_PRIVATE_KEY` (the whole `.p8` file), made under App
 Store Connect › Users and Access › Integrations › App Store Connect API; and
 `IOS_DIST_CERT_P12`, `IOS_DIST_CERT_PASSWORD`, `IOS_PROFILE_PROD` and
@@ -203,19 +203,27 @@ that has the Admin role (or access to Certificates, Identifiers & Profiles) in
 `ASC_KEY_ID`, `ASC_ISSUER_ID` and `ASC_KEY_PATH`, from a checkout where `gh` can
 set the repository's secrets:
 
-1. it enables the capabilities the entitlements ask for (push notifications) on
+1. it checks that `gh` can reach the repository's secrets, and reads the
+   repository variable `IOS_DIST_CERT_ID`, the certificate it made last time;
+2. it enables the capabilities the entitlements ask for (push notifications) on
    both App IDs;
-2. it makes an Apple Distribution certificate from a key made on the spot, and
-   an App Store profile per app on it, **Scraps Cache App Store** and **Scraps
-   Cache Dev App Store**;
-3. it sets the four signing secrets, then removes the profiles it made before
-   and revokes the certificate they were on. It touches no other certificate
-   or profile.
+3. it makes an Apple Distribution certificate from a key made on the spot and
+   writes the `.p12` and its password to a folder of its own; then, app by app,
+   it replaces the profile it made before, **Scraps Cache App Store** and
+   **Scraps Cache Dev App Store**, and writes the new one there too;
+4. it sets the four signing secrets and `IOS_DIST_CERT_ID` from that folder;
+5. only then it revokes the certificate named by the old `IOS_DIST_CERT_ID`,
+   unless a profile still uses it. It revokes no other certificate and replaces
+   no other profile.
+
+If a step fails, it stops with the folder left in place, holding what it made,
+and revokes nothing.
 
 Run it again before the certificate expires, a year after it was made, and
 after adding a capability to `ios/App/App/App.entitlements` and to the script,
-since a new capability invalidates the profiles. `--keep <dir>` also writes the
-`.p12`, its password and the profiles there, for uploads from a Mac.
+since a new capability invalidates the profiles. `--keep <dir>` makes that
+folder `<dir>` and keeps it after a successful run as well, for uploads from a
+Mac; otherwise it is temporary and removed once the run succeeds.
 
 #### Setting up an app at Apple
 

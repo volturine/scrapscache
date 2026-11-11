@@ -159,7 +159,10 @@ record for the app's bundle ID (below), and:
 - either Xcode signed in to the Apple ID of that team, or an App Store Connect
   API key in `ASC_KEY_ID`, `ASC_ISSUER_ID` and `ASC_KEY_PATH` (the `.p8` file).
 
-Automatic signing creates the provisioning profile on the first run. Each upload takes the UTC minute as its build number unless
+The archive is built unsigned and the export signs it, so no development
+certificate is made: a CI runner has none in its keychain, and signing the
+archive made a new one on every upload until Apple refused more. Automatic
+signing creates the provisioning profile on the first run. Each upload takes the UTC minute as its build number unless
 `IOS_BUILD_NUMBER` says otherwise; the version is `MARKETING_VERSION` in the
 Xcode project. The build appears under TestFlight once Apple has processed it;
 internal testers (the team) need no review, external groups do.

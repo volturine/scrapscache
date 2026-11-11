@@ -21,6 +21,11 @@
 # (docs/development.md › TestFlight). Automatic signing creates the profile but
 # does not register the App ID: the app has no entitlements, so it signs with
 # the team's wildcard profile.
+#
+# The archive is left unsigned and only the export signs, with the distribution
+# certificate Apple keeps in the cloud. Signing the archive needs a development
+# certificate whose key is in the keychain; a CI runner starts without one, so
+# each upload made a new certificate until Apple refused more.
 # No -u: `auth` may stay empty, which bash 3.2 cannot expand safely under it.
 set -eo pipefail
 cd "$(dirname "$0")/.."
@@ -61,11 +66,10 @@ xcodebuild \
 	-configuration Release \
 	-destination 'generic/platform=iOS' \
 	-archivePath "$out/App.xcarchive" \
-	-allowProvisioningUpdates \
 	"${variant[@]}" \
-	"${auth[@]}" \
 	DEVELOPMENT_TEAM="$IOS_TEAM_ID" \
 	CURRENT_PROJECT_VERSION="$build_number" \
+	CODE_SIGNING_ALLOWED=NO \
 	archive
 
 bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :ApplicationProperties:CFBundleIdentifier' "$out/App.xcarchive/Info.plist")"

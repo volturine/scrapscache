@@ -123,6 +123,7 @@ describe('NoteEditor header reminder controls', () => {
 			'Reminder',
 			'Pin',
 			'Hide preview',
+			'Hide keyboard',
 			'Expand note'
 		]);
 		expect(container.querySelector('header')?.textContent).not.toMatch(/Today|Tomorrow|AM|PM/);
@@ -141,9 +142,41 @@ describe('NoteEditor header reminder controls', () => {
 			'Reminder',
 			'Pin',
 			'Hide preview',
+			'Hide keyboard',
 			'Expand note'
 		]);
 		expect(container.querySelector('header')?.textContent).toContain(formatReminder(reminder));
+	});
+
+	it('lets go of the field being typed in from the header', async () => {
+		notesStore.notes = [note()];
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+		const title = container.querySelector<HTMLTextAreaElement>('textarea[placeholder="Title"]')!;
+		title.focus();
+		expect(document.activeElement).toBe(title);
+
+		await fireEvent.click(container.querySelector('header button[aria-label="Hide keyboard"]')!);
+
+		expect(document.activeElement).not.toBe(title);
+	});
+
+	it('lets go of the field as a finger lands, before focus can move to the button', () => {
+		notesStore.notes = [note()];
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', onClose: () => {} }
+		});
+		const title = container.querySelector<HTMLTextAreaElement>('textarea[placeholder="Title"]')!;
+		title.focus();
+
+		const down = dispatchTouchPointer(
+			container.querySelector('header button[aria-label="Hide keyboard"]')!,
+			'pointerdown'
+		);
+
+		expect(down.defaultPrevented).toBe(true);
+		expect(document.activeElement).not.toBe(title);
 	});
 
 	it('marks the reminder button overdue when the time is in the past', () => {

@@ -35,7 +35,7 @@
 	import { noteShareLink } from '#lib/noteLinks.js';
 	import { appLinkOrigin } from '#lib/serverOrigin.svelte.js';
 	import ReminderLabel from './ReminderLabel.svelte';
-	import { Bell, ChevronLeft, Eye, EyeOff, Maximize2, Minimize2, Pin } from '@lucide/svelte';
+	import { Bell, Check, ChevronLeft, Eye, EyeOff, Maximize2, Minimize2, Pin } from '@lucide/svelte';
 
 	import { revealEditorField, revealEditorPoint } from '#lib/editorVisibility.js';
 	import {
@@ -295,6 +295,22 @@
 
 	function toggleExpanded() {
 		manualExpanded = !expanded;
+	}
+
+	/** Lower the keyboard by letting go of the field being typed in. */
+	function finishTyping() {
+		const active = document.activeElement;
+		if (active instanceof HTMLElement && editorDialog?.contains(active)) active.blur();
+	}
+
+	/**
+	 * A tap would move focus to the button first; the keyboard state drops with it,
+	 * the button gives way to the expand toggle, and its click never arrives.
+	 */
+	function finishTypingOnTouch(event: PointerEvent) {
+		if (event.pointerType !== 'touch') return;
+		event.preventDefault();
+		finishTyping();
 	}
 
 	/** Body lines the note area fits, or Infinity before layout. */
@@ -1082,9 +1098,20 @@
 								</button>
 								<span id={previewHelpId} class={visuallyHidden}>{PREVIEW_HELP}</span>
 							{/if}
+							<!-- iOS's bar above the keys is removed in the app; this lowers the keyboard instead. -->
 							<button
 								type="button"
-								class={iconButton({ variant: 'ghost', size: 'sm' })}
+								class={cx(iconButton({ variant: 'ghost', size: 'sm' }), styles.whileTyping)}
+								title="Hide keyboard"
+								onpointerdown={finishTypingOnTouch}
+								onclick={finishTyping}
+								aria-label="Hide keyboard"
+							>
+								<Check size={20} aria-hidden="true" />
+							</button>
+							<button
+								type="button"
+								class={cx(iconButton({ variant: 'ghost', size: 'sm' }), styles.unlessTyping)}
 								title={expanded ? 'Shrink note' : 'Expand note'}
 								onclick={toggleExpanded}
 								aria-label={expanded ? 'Shrink note' : 'Expand note'}

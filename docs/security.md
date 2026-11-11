@@ -130,6 +130,11 @@ the long-term attachment format.
   services (Mozilla, FCM, Apple, WNS), checked again at send time; sends never
   follow redirects, and one dispatch round wakes at most an account's device
   allowance, so the relay cannot be pointed at other hosts or used to flood one
+- **Push to the iPhone app** — sent only to Apple's push service, for a bundle
+  id the operator listed, and carrying fixed words: no note, title or account.
+  iOS gives an app one push token for all its workspaces, so the relay stores
+  the same token under each account that syncs on a phone and can tell they
+  share it; a browser's workspaces each have a push address of their own
 - **Admin token or Cloudflare Access** — `/metrics` and every `/api/admin/*`
   endpoint need the admin token or a request Cloudflare Access signed for the
   configured application; the Access JWT's signature, issuer and audience are
@@ -254,7 +259,7 @@ app is in use; browser storage isolation is the boundary.
 | Pairing + payload crypto | `src/lib/syncPairing.ts`                                               |
 | Backup crypto            | `src/lib/backupCrypto.ts`                                              |
 | Relay storage            | `src/lib/server/syncStore.ts`                                          |
-| Reminder wakes           | `src/lib/server/wakeDispatch.ts`, `webPush.ts`                         |
+| Reminder wakes           | `src/lib/server/wakeDispatch.ts`, `webPush.ts`, `apns.ts`              |
 | Rate limits              | `src/lib/server/rateLimit.ts`                                          |
 | Admin auth               | `src/lib/server/adminAuth.ts`, `cloudflareAccess.ts`, `adminOrigin.ts` |
 | Operator status          | `src/lib/server/operatorMonitor.ts`                                    |

@@ -4,6 +4,7 @@ import {
 	RELAY_REPEAT_AHEAD_MS,
 	RELAY_WAKE_RETAIN_MS,
 	reminderWakeId,
+	wakeNotificationId,
 	type WakeSource
 } from './index';
 
@@ -20,6 +21,14 @@ describe('reminder wake identity and scheduling', () => {
 		expect(reminderWakeId('note-a', 10)).toBe(first);
 		expect(reminderWakeId('note-a', 11)).not.toBe(first);
 		expect(reminderWakeId('note-b', 10)).not.toBe(first);
+	});
+
+	it("gives a wake one positive number for the iPhone's Notification Center", () => {
+		const id = wakeNotificationId('KF2Uqldw0Rk-G-3Q53tTgfPtymnms48Rkks3tUian18');
+		// The app and the relay both derive it; a change here strands shown notifications.
+		expect(id).toBe(2_104_116_872);
+		expect(wakeNotificationId('wake-1')).not.toBe(wakeNotificationId('wake-2'));
+		expect(Number.isInteger(id) && id > 0 && id <= 0x7fffffff).toBe(true);
 	});
 
 	it('keeps the wire format every writer and the service worker derive', () => {

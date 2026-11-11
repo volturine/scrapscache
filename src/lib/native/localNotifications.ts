@@ -6,21 +6,12 @@ import {
 	type LocalNotificationSchema,
 	type PermissionStatus
 } from '@capacitor/local-notifications';
+import { wakeNotificationId } from '#lib/model/index.js';
 import type { UpcomingReminder } from '#lib/stores/reminders.svelte.js';
 import { formatReminder } from '#lib/utils.js';
 
 /** iOS keeps 64 pending notifications per app; later reminders wait for the next sync. */
 export const PENDING_LIMIT = 60;
-
-/** A stable positive 31-bit id for a wake, since the system wants numbers. */
-export function notificationId(wakeId: string): number {
-	let hash = 0x811c9dc5;
-	for (let index = 0; index < wakeId.length; index += 1) {
-		hash ^= wakeId.charCodeAt(index);
-		hash = Math.imul(hash, 0x01000193);
-	}
-	return (hash >>> 0) & 0x7fffffff;
-}
 
 /** What tapping a notification hands back to the app. */
 export type NotificationExtra = {
@@ -39,7 +30,7 @@ export function notificationsFor(upcoming: UpcomingReminder[]): LocalNotificatio
 			reminder: item.at
 		};
 		return {
-			id: notificationId(item.wakeId),
+			id: wakeNotificationId(item.wakeId),
 			title: item.title,
 			body: formatReminder(item.at),
 			schedule: { at: new Date(item.at) },
@@ -76,7 +67,7 @@ export async function scheduleReminderNotifications(upcoming: UpcomingReminder[]
 export async function removeDeliveredReminders(wakeIds: ReadonlySet<string>): Promise<void> {
 	if (!wakeIds.size) return;
 	await LocalNotifications.removeDeliveredNotificationsById({
-		ids: [...wakeIds].map(notificationId)
+		ids: [...wakeIds].map(wakeNotificationId)
 	});
 }
 

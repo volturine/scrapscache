@@ -28,7 +28,7 @@
 				Privacy by Design
 			</div>
 			<h1 class={styles.pageTitle}>Privacy Policy</h1>
-			<p class={styles.updated}>Last updated: September 2026</p>
+			<p class={styles.updated}>Last updated: November 2026</p>
 		</div>
 
 		<div class={styles.sections}>
@@ -101,6 +101,13 @@
 					<li>
 						<strong>Push Notifications:</strong> Web Push notification endpoints and encrypted wake payloads
 						are stored only to deliver background sync wake signals to your devices.
+					</li>
+					<li>
+						<strong>iPhone App Push:</strong> With notifications allowed, the iPhone app registers the
+						push token iOS gives it with the relay, under each workspace it syncs. iOS issues one token
+						per app, so the relay can tell that those workspaces are on the same phone. A reminder push
+						travels through Apple's push service and says only that a reminder is due; it never carries
+						a note or its title.
 					</li>
 				</ul>
 			</section>

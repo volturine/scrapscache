@@ -843,6 +843,10 @@ export class SyncStore {
 					{
 						sql: `DELETE FROM reminder_wake_deliveries WHERE account_id IN (${placeholders})`,
 						args: ids
+					},
+					{
+						sql: `DELETE FROM reminder_wake_holds WHERE account_id IN (${placeholders})`,
+						args: ids
 					}
 				],
 				'write'
@@ -1013,8 +1017,17 @@ export class SyncStore {
 		});
 	}
 
-	/** Register one account-scoped browser endpoint without changing account wakes. */
-	async savePushDevice(device: PushDeviceInput): Promise<void> {
+	/**
+	 * Register one account-scoped push address without changing account wakes: a
+	 * browser's endpoint, or an iPhone app's with `shows`, the wakes it shows by
+	 * itself. Those replace the ones it named before, in the same step that makes it
+	 * a device, so the relay never sends it one of them; nor anything already due,
+	 * which its open app shows.
+	 */
+	async savePushDevice(
+		device: PushDeviceInput,
+		shows?: { held: string[]; now: number }
+	): Promise<void> {
 		await this.db.ready;
 		await withTxn(this.ops, async (tx) => {
 			const existing = (
@@ -1068,6 +1081,32 @@ export class SyncStore {
 					device.auth,
 					Date.now()
 				]
+			});
+			if (!shows) return;
+			// This device's earlier holds, and those of devices the account no longer has.
+			await tx.execute({
+				sql: `DELETE FROM reminder_wake_holds
+				 WHERE account_id = ?1 AND (
+					device_id = ?2 OR device_id NOT IN (
+						SELECT device_id FROM reminder_push_devices WHERE account_id = ?1
+					)
+				 )`,
+				args: [device.accountId, device.deviceId]
+			});
+			await tx.execute({
+				sql: `INSERT OR IGNORE INTO reminder_wake_holds(account_id, device_id, wake_id)
+				 SELECT ?1, ?2, value FROM json_each(?3)`,
+				args: [device.accountId, device.deviceId, JSON.stringify(shows.held)]
+			});
+			await tx.execute({
+				sql: `INSERT INTO reminder_wake_deliveries(
+					account_id, device_id, wake_id, claimed_at, delivered_at
+				 )
+				 SELECT ?1, ?2, wake_id, ?3, ?3 FROM reminder_wakes
+				 WHERE account_id = ?1 AND fire_at <= ?3
+				 ON CONFLICT(account_id, device_id, wake_id) DO UPDATE SET
+					delivered_at = COALESCE(reminder_wake_deliveries.delivered_at, excluded.delivered_at)`,
+				args: [device.accountId, device.deviceId, shows.now]
 			});
 		});
 		await this.touchAccount(device.accountId);
@@ -1218,7 +1257,12 @@ export class SyncStore {
 						ON x.account_id = d.account_id
 						AND x.device_id = d.device_id
 						AND x.wake_id = w.wake_id
+					LEFT JOIN reminder_wake_holds h
+						ON h.account_id = d.account_id
+						AND h.device_id = d.device_id
+						AND h.wake_id = w.wake_id
 					WHERE w.fire_at <= ?
+						AND h.wake_id IS NULL
 						AND x.delivered_at IS NULL
 						AND (x.claimed_at IS NULL OR x.claimed_at <= ?)
 						AND (? IS NULL OR w.account_id = ?)
@@ -1242,13 +1286,37 @@ export class SyncStore {
 					account_id, device_id, wake_id, claimed_at, delivered_at
 				 ) VALUES (?, ?, ?, ?, NULL)
 				 ON CONFLICT(account_id, device_id, wake_id) DO UPDATE SET
-					claimed_at = excluded.claimed_at,
-					delivered_at = NULL`,
+					claimed_at = excluded.claimed_at
+				 WHERE reminder_wake_deliveries.delivered_at IS NULL`,
 					args: [row.accountId, row.deviceId, row.wakeId, now]
 				});
 			}
 			return rows;
 		});
+	}
+
+	/**
+	 * Whether a claimed wake is still this device's to be sent. Since the claim the
+	 * device may have gone or changed its address, or a phone may have taken the
+	 * wake as one it shows itself.
+	 */
+	async isWakeOwed(wake: DueWake): Promise<boolean> {
+		await this.db.ready;
+		const result = await this.ops.execute({
+			sql: `SELECT 1 AS owed FROM reminder_push_devices d
+			 WHERE d.account_id = ?1 AND d.device_id = ?2 AND d.endpoint = ?4
+				AND NOT EXISTS (
+					SELECT 1 FROM reminder_wake_holds h
+					WHERE h.account_id = ?1 AND h.device_id = ?2 AND h.wake_id = ?3
+				)
+				AND NOT EXISTS (
+					SELECT 1 FROM reminder_wake_deliveries x
+					WHERE x.account_id = ?1 AND x.device_id = ?2 AND x.wake_id = ?3
+						AND x.delivered_at IS NOT NULL
+				)`,
+			args: [wake.accountId, wake.deviceId, wake.wakeId, wake.endpoint]
+		});
+		return result.rows.length > 0;
 	}
 
 	/** Next undelivered wake, including overdue wakes and claims awaiting their lease. */
@@ -1261,7 +1329,9 @@ export class SyncStore {
 			 JOIN reminder_push_devices d ON d.account_id = w.account_id
 			 LEFT JOIN reminder_wake_deliveries x ON x.account_id = d.account_id
 			 AND x.device_id = d.device_id AND x.wake_id = w.wake_id
-			 WHERE x.delivered_at IS NULL AND (? IS NULL OR w.account_id = ?)`,
+			 LEFT JOIN reminder_wake_holds h ON h.account_id = d.account_id
+			 AND h.device_id = d.device_id AND h.wake_id = w.wake_id
+			 WHERE h.wake_id IS NULL AND x.delivered_at IS NULL AND (? IS NULL OR w.account_id = ?)`,
 				args: [WAKE_CLAIM_LEASE_MS, now, accountId ?? null, accountId ?? null]
 			})
 		).rows[0] as { fireAt?: number | null } | undefined;
@@ -1312,10 +1382,19 @@ export class SyncStore {
 
 	async deletePushDevice(accountId: string, deviceId: string): Promise<void> {
 		await this.db.ready;
-		await this.ops.execute({
-			sql: 'DELETE FROM reminder_push_devices WHERE account_id = ? AND device_id = ?',
-			args: [accountId, deviceId]
-		});
+		await this.ops.batch(
+			[
+				{
+					sql: 'DELETE FROM reminder_push_devices WHERE account_id = ? AND device_id = ?',
+					args: [accountId, deviceId]
+				},
+				{
+					sql: 'DELETE FROM reminder_wake_holds WHERE account_id = ? AND device_id = ?',
+					args: [accountId, deviceId]
+				}
+			],
+			'write'
+		);
 		await this.touchAccount(accountId);
 	}
 

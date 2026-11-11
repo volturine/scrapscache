@@ -6,8 +6,17 @@ import {
 	WAKE_CLAIM_LEASE_MS,
 	type DueWake
 } from '#lib/server/syncStore.js';
-import { dispatchDueWakes } from './wakeDispatch';
+import { dispatchDueWakes, sendWake } from './wakeDispatch';
 
+const senders = vi.hoisted(() => ({
+	apns: vi.fn(async () => 'sent' as const),
+	web: vi.fn(async () => 'sent' as const)
+}));
+vi.mock('#lib/server/apns.js', async (original) => ({
+	...(await original<typeof import('#lib/server/apns.js')>()),
+	sendApnsWake: senders.apns
+}));
+vi.mock('#lib/server/webPush.js', () => ({ sendReminderTick: senders.web }));
 vi.mock('#lib/server/metrics.js', async (original) => ({
 	...(await original<typeof import('#lib/server/metrics.js')>()),
 	recordReminderWake: vi.fn()
@@ -122,6 +131,39 @@ describe('delivering reminder wakes', () => {
 		expect(result).toMatchObject({ sent: 1, failed: 1, gone: 0 });
 	});
 
+	it('sends nothing to a device that took the wake as its own, or left, after the claim', async () => {
+		const store = new SyncStore(testDb());
+		await account(store, 'account-aaaaaaaaaaaa', [wake(1, 1_000)]);
+		await account(store, 'account-bbbbbbbbbbbb', [wake(2, 1_000)]);
+		await account(store, 'account-cccccccccccc', [wake(3, 1_000)]);
+		const claim = store.claimDueWakes.bind(store);
+		// Between the claim and the send: one phone registers holding its wake, one device signs out.
+		vi.spyOn(store, 'claimDueWakes').mockImplementationOnce(async (...args) => {
+			const due = await claim(...args);
+			const phone = due.find((item) => item.accountId === 'account-aaaaaaaaaaaa');
+			if (!phone) throw new Error('nothing claimed for the phone');
+			await store.savePushDevice(
+				{ ...phone, p256dh: 'p'.repeat(20), auth: 'a'.repeat(16) },
+				{ held: [wake(1, 1_000).id], now: 900 }
+			);
+			await store.deletePushDevice('account-bbbbbbbbbbbb', 'device-account-bbbbbbbbbbbb');
+			return due;
+		});
+		const sent: string[] = [];
+
+		const result = await dispatchDueWakes({
+			store,
+			now: () => 2_000,
+			send: async (device) => {
+				sent.push(device.accountId);
+				return 'sent';
+			}
+		});
+
+		expect(sent).toEqual(['account-cccccccccccc']);
+		expect(result).toMatchObject({ sent: 1, failed: 0, gone: 0, next: null });
+	});
+
 	it("fails with the store's own error when a delivery cannot be recorded", async () => {
 		const store = new SyncStore(testDb());
 		await account(store, 'account-aaaaaaaaaaaa', [wake(1, 1_000)]);
@@ -196,5 +238,28 @@ describe('delivering reminder wakes', () => {
 		await store.claimDueWakes(1000);
 		const result = await dispatchDueWakes({ store, now: () => 2000, send: async () => 'sent' });
 		expect(result).toMatchObject({ sent: 0, next: 1000 + WAKE_CLAIM_LEASE_MS });
+	});
+});
+
+describe('choosing how to wake a device', () => {
+	const device = (endpoint: string): DueWake => ({
+		accountId: 'account',
+		deviceId: 'device-aaaaaaaaaaaa',
+		wakeId: 'a'.repeat(43),
+		fireAt: 1_000,
+		endpoint,
+		p256dh: '',
+		auth: ''
+	});
+
+	it("wakes the iPhone app through Apple's push service and a browser through its own", async () => {
+		const phone = device(`apns://com.scrapscache.app/${'ab'.repeat(32)}/account-aaaaaaaaaaaa`);
+		const browser = device('https://fcm.googleapis.com/fcm/send/device');
+		await sendWake(phone);
+		expect(senders.apns).toHaveBeenCalledWith(phone);
+		expect(senders.web).not.toHaveBeenCalled();
+		await sendWake(browser);
+		expect(senders.web).toHaveBeenCalledWith(browser);
+		expect(senders.apns).toHaveBeenCalledOnce();
 	});
 });

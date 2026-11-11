@@ -4,14 +4,16 @@ import { applyMigrations, testD1, testR2 } from './testBindings';
 const bindings = vi.hoisted(() => ({ value: undefined as unknown }));
 vi.mock('./env', () => ({ cloudflareBindings: () => bindings.value }));
 
-import { SyncStore, WAKE_CLAIM_ACCOUNT_LIMIT } from './syncStore';
+import { SyncStore, WAKE_CLAIM_ACCOUNT_LIMIT, WAKE_CLAIM_LEASE_MS } from './syncStore';
 
 let store: SyncStore;
 let client: ReturnType<typeof testD1>['client'];
+let database: ReturnType<typeof testD1>['db'];
 
 beforeEach(async () => {
 	const d1 = testD1();
 	client = d1.client;
+	database = d1.db;
 	await applyMigrations(d1.client);
 	bindings.value = { SCRAPSCACHE_DB: d1.db, SCRAPSCACHE_ENVELOPES: testR2().bucket };
 	store = new SyncStore();
@@ -126,6 +128,153 @@ describe('Workers reminder wake schedule', () => {
 		const result = await store.getReminderWakes('account-wakes');
 		expect(result.revision).toBe(42);
 		expect(result.wakes).toEqual([wake('a', 1_000), wake('b', 5_000)]);
+	});
+});
+
+describe('Workers reminder wakes for a phone that shows reminders itself', () => {
+	const DAY = 24 * 60 * 60 * 1000;
+	const wake = (letter: string, fireAt: number) => ({ id: letter.repeat(43), fireAt });
+	const phone = (accountId: string, deviceId = 'device-phone000000') => ({
+		accountId,
+		deviceId,
+		endpoint: `apns://com.scrapscache.app/${'ab'.repeat(32)}/${accountId}`,
+		p256dh: '',
+		auth: ''
+	});
+	const ids = (...letters: string[]) => letters.map((letter) => letter.repeat(43));
+	const due = async (now: number) =>
+		(await store.claimDueWakes(now)).map((claimed) => claimed.wakeId);
+	const holds = async () =>
+		Number((await client.execute('SELECT COUNT(*) AS held FROM reminder_wake_holds')).rows[0].held);
+
+	it('is not sent a wake it holds, nor one already due when it registers', async () => {
+		await store.createAccount('account', 'credential');
+		await store.replaceReminderWakes(
+			'account',
+			[wake('a', 1_000), wake('b', 5_000), wake('c', 9_000)],
+			1
+		);
+		await store.savePushDevice(phone('account'), { held: ids('b'), now: 2_000 });
+		expect(await store.nextWakeAt(2_000)).toBe(9_000);
+		expect(await due(9_000)).toEqual(ids('c'));
+	});
+
+	it('is sent a wake it held once it no longer holds it, but never one already pushed', async () => {
+		await store.createAccount('account', 'credential');
+		await store.replaceReminderWakes(
+			'account',
+			[wake('a', 1_000), wake('b', 5_000), wake('c', 9_000)],
+			1
+		);
+		await store.savePushDevice(phone('account'), { held: [], now: 0 });
+		const [sent] = await store.claimDueWakes(1_000);
+		await store.markWakeDelivered(sent, 1_000);
+		await store.savePushDevice(phone('account'), { held: ids('b', 'c'), now: 1_500 });
+		await store.savePushDevice(phone('account'), { held: ids('c'), now: 1_600 });
+		expect(await due(9_000)).toEqual(ids('b'));
+	});
+
+	it('follows what the phone holds for wakes the relay has not heard of yet', async () => {
+		await store.createAccount('account', 'credential');
+		await store.savePushDevice(phone('account'), { held: ids('b', 'c'), now: 100 });
+		// It lets go of `c` before any device publishes either wake.
+		await store.savePushDevice(phone('account'), { held: ids('b'), now: 200 });
+		await store.replaceReminderWakes('account', [wake('b', 5_000), wake('c', 5_000)], 1);
+		expect(await due(5_000)).toEqual(ids('c'));
+	});
+
+	it('still holds a reminder days away after the delivery history is pruned', async () => {
+		await store.createAccount('account', 'credential');
+		await store.replaceReminderWakes('account', [wake('b', 2 * DAY)], 1);
+		await store.savePushDevice(phone('account'), { held: ids('b'), now: 0 });
+		await store.pruneStaleWakes(DAY + 60_000);
+		expect(await due(2 * DAY)).toEqual([]);
+		expect(await store.nextWakeAt(2 * DAY)).toBeNull();
+	});
+
+	it('keeps only the holds a phone last named, and none for a device that is gone or replaced', async () => {
+		await store.createAccount('account', 'credential');
+		await store.createAccount('other', 'credential');
+		await store.savePushDevice(phone('other', 'device-other000000'), { held: ids('z'), now: 100 });
+		await store.savePushDevice(phone('account', 'device-before00000'), {
+			held: ids('x', 'y'),
+			now: 100
+		});
+		for (const letters of [
+			['a', 'b', 'c'],
+			['d', 'e']
+		]) {
+			await store.savePushDevice(phone('account'), { held: ids(...letters), now: 200 });
+		}
+		// The replaced device's two are gone; the phone's last two and the other account's one stay.
+		expect(await holds()).toBe(3);
+		await store.deletePushDevice('account', 'device-phone000000');
+		expect(await holds()).toBe(1);
+	});
+
+	it('says a claimed wake is no longer owed once the phone holds it, was sent it, or is gone', async () => {
+		await store.createAccount('account', 'credential');
+		await store.replaceReminderWakes(
+			'account',
+			[wake('a', 1_000), wake('b', 1_000), wake('c', 1_000)],
+			1
+		);
+		await store.savePushDevice(phone('account'), { held: [], now: 0 });
+		const [first, second, third] = await store.claimDueWakes(1_000);
+		expect(await store.isWakeOwed(first)).toBe(true);
+		await store.markWakeDelivered(first, 1_000);
+		expect(await store.isWakeOwed(first)).toBe(false);
+		// The app opens before the second is sent, and takes it as its own.
+		await store.savePushDevice(phone('account'), { held: ids('b'), now: 500 });
+		expect(await store.isWakeOwed(second)).toBe(false);
+		expect(await store.isWakeOwed(third)).toBe(true);
+		await store.deletePushDevice('account', 'device-phone000000');
+		expect(await store.isWakeOwed(third)).toBe(false);
+	});
+
+	it('does not send what a phone took as delivered between a claim being read and written', async () => {
+		await store.createAccount('account', 'credential');
+		await store.replaceReminderWakes('account', [wake('a', 1_000)], 1);
+		await store.savePushDevice(phone('account'), { held: [], now: 0 });
+		// On Workers the claim reads the due wakes, then writes its claims in a second
+		// step. Here the phone's app opens in between and registers again.
+		let between: (() => Promise<void>) | null = () =>
+			store.savePushDevice(phone('account'), { held: [], now: 1_000 });
+		const racing = {
+			batch: database.batch,
+			prepare: (sql: string) => {
+				const statement = database.prepare(sql);
+				if (!sql.includes('accountRank')) return statement;
+				return {
+					bind: (...args: unknown[]) => ({
+						run: async () => {
+							const result = await statement.bind(...args).run();
+							const registration = between;
+							between = null;
+							await registration?.();
+							return result;
+						}
+					})
+				};
+			}
+		};
+		bindings.value = { SCRAPSCACHE_DB: racing, SCRAPSCACHE_ENVELOPES: testR2().bucket };
+		const [claimed] = await new SyncStore().claimDueWakes(1_000);
+		expect(claimed.wakeId).toBe('a'.repeat(43));
+		expect(await store.isWakeOwed(claimed)).toBe(false);
+		expect(await due(1_000 + WAKE_CLAIM_LEASE_MS)).toEqual([]);
+	});
+
+	it('keeps one push token under two accounts as two devices', async () => {
+		await store.createAccount('account', 'credential');
+		await store.createAccount('other', 'credential');
+		await store.replaceReminderWakes('account', [wake('b', 5_000)], 1);
+		await store.replaceReminderWakes('other', [wake('b', 5_000)], 1);
+		await store.savePushDevice(phone('account'), { held: ids('b'), now: 100 });
+		await store.savePushDevice(phone('other', 'device-other000000'), { held: [], now: 100 });
+		expect((await store.claimDueWakes(5_000)).map((claimed) => claimed.deviceId)).toEqual([
+			'device-other000000'
+		]);
 	});
 });
 

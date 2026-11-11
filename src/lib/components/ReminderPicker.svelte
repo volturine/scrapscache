@@ -34,6 +34,7 @@
 		requestReminderPermission
 	} from '#lib/reminderNotify.js';
 	import { registerAllReminderDevices, reminderPushSupported } from '#lib/reminderWake.js';
+	import { isNativeApp } from '#lib/native.js';
 	import { useEditorActions } from '#lib/editorContext.js';
 	import { pwaInstallStore } from '#lib/stores/pwaInstall.svelte.js';
 	import { syncStore } from '#lib/stores/sync.svelte.js';
@@ -242,7 +243,7 @@
 
 	const showRemove = $derived(reminder != null);
 	const primaryIsSave = $derived(uiStatus !== 'active');
-	/** Waiting on the browser's notification permission prompt. */
+	/** Waiting on the notification permission prompt: the browser's, or iOS's in the iPhone app. */
 	let awaitingPermission = $state(false);
 
 	const hours24 = $derived(selected.getHours());
@@ -401,6 +402,11 @@
 	 * not asked for yet needs no line, because Save asks.
 	 */
 	const closedAppAlerts = $derived.by(() => {
+		// The iPhone app hands a reminder set here to the system, which shows it with
+		// the app closed and without Sync. Only a block in the phone's settings stops it.
+		if (isNativeApp()) {
+			return permission === 'denied' ? { text: notificationsBlockedHint(true), sync: false } : null;
+		}
 		if (!reminderPushSupported()) {
 			return { text: "This browser can't show alerts while the app is closed.", sync: false };
 		}
@@ -859,7 +865,11 @@
 				disabled={awaitingPermission}
 				class={cx(button({ variant: 'primary', size: 'md' }), css({ minW: '5.5rem', ml: 'auto' }))}
 			>
-				{awaitingPermission ? 'Allow in the browser prompt…' : 'Save'}
+				{awaitingPermission
+					? isNativeApp()
+						? 'Allow in the prompt…'
+						: 'Allow in the browser prompt…'
+					: 'Save'}
 			</button>
 		{/if}
 	</div>

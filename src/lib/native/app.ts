@@ -4,6 +4,7 @@ import {
 	currentPermission,
 	onNotificationTap,
 	refreshPermission,
+	removeDeliveredReminders,
 	requestPermission,
 	scheduleReminderNotifications
 } from './localNotifications.js';
@@ -14,7 +15,7 @@ import { attachReservedRegions } from './reservedRegions.js';
  * What the iPhone app adds to the shell once it is on screen: the status bar
  * follows the theme and leaves the folded Duo's side, the rail keeps under what
  * iOS draws in that side's column, and the system fires reminders from the
- * store's schedule.
+ * store's schedule and drops the ones answered since.
  */
 export function attachNativeApp(): () => void {
 	const stopStatusBar = attachNativeStatusBar();
@@ -29,7 +30,8 @@ export function attachNativeApp(): () => void {
 			const granted = await requestPermission();
 			schedule();
 			return granted;
-		}
+		},
+		close: removeDeliveredReminders
 	});
 	void refreshPermission().then(schedule);
 	const stopUpcoming = reminderStore.watchUpcoming(schedule);

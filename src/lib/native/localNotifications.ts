@@ -72,6 +72,14 @@ export async function scheduleReminderNotifications(upcoming: UpcomingReminder[]
 	scheduled = signature;
 }
 
+/** Take reminders that were answered, here or on another device, out of Notification Center. */
+export async function removeDeliveredReminders(wakeIds: ReadonlySet<string>): Promise<void> {
+	if (!wakeIds.size) return;
+	await LocalNotifications.removeDeliveredNotificationsById({
+		ids: [...wakeIds].map(notificationId)
+	});
+}
+
 function permissionOf(status: PermissionStatus): NotificationPermission {
 	if (status.display === 'granted') return 'granted';
 	if (status.display === 'denied') return 'denied';

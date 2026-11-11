@@ -1,12 +1,18 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { LocalNotifications } from '@capacitor/local-notifications';
 import type { UpcomingReminder } from '#lib/stores/reminders.svelte.js';
 import {
 	notificationId,
 	notificationsFor,
 	PENDING_LIMIT,
 	readExtra,
+	removeDeliveredReminders,
 	scheduleSignature
 } from './localNotifications.js';
+
+vi.mock('@capacitor/local-notifications', () => ({
+	LocalNotifications: { removeDeliveredNotificationsById: vi.fn(async () => undefined) }
+}));
 
 const at = Date.UTC(2030, 0, 7, 9, 0);
 const reminder = (n: number): UpcomingReminder => ({
@@ -65,5 +71,24 @@ describe('readExtra', () => {
 		expect(readExtra({ ...extra, reminder: 'soon' })).toBeNull();
 		expect(readExtra(null)).toBeNull();
 		expect(readExtra('x')).toBeNull();
+	});
+});
+
+describe('removeDeliveredReminders', () => {
+	it('removes the notifications of the answered reminders, by the ids they were scheduled under', async () => {
+		const remove = vi.mocked(LocalNotifications.removeDeliveredNotificationsById);
+		remove.mockClear();
+		await removeDeliveredReminders(new Set(['wake-1', 'wake-2']));
+		expect(remove).toHaveBeenCalledExactlyOnceWith({
+			ids: [notificationId('wake-1'), notificationId('wake-2')]
+		});
+		expect(notificationsFor([reminder(1)])[0].id).toBe(notificationId('wake-1'));
+	});
+
+	it('asks the system nothing when no reminder was answered', async () => {
+		const remove = vi.mocked(LocalNotifications.removeDeliveredNotificationsById);
+		remove.mockClear();
+		await removeDeliveredReminders(new Set());
+		expect(remove).not.toHaveBeenCalled();
 	});
 });

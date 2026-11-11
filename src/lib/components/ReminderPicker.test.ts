@@ -2,6 +2,7 @@ import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createSyncIdentity } from '#lib/syncPairing.js';
+import { useNotificationBackend } from '#lib/reminderNotify.js';
 import { syncStore } from '#lib/stores/sync.svelte.js';
 import { uiStore } from '#lib/stores/ui.svelte.js';
 import ReminderPicker from './ReminderPicker.svelte';
@@ -12,6 +13,8 @@ const editorActions = vi.hoisted(() => ({
 	closeNote: vi.fn()
 }));
 vi.mock('#lib/editorContext.js', () => ({ useEditorActions: () => editorActions }));
+const shell = vi.hoisted(() => ({ native: false }));
+vi.mock('#lib/native.js', () => ({ isNativeApp: () => shell.native }));
 
 const reminder = new Date(2026, 7, 12, 15, 30, 0, 0).getTime();
 
@@ -287,6 +290,54 @@ describe('ReminderPicker closed-app alerts', () => {
 			screen.getByText('Blocked in the browser. Allow notifications for this site in its settings.')
 		).toBeTruthy();
 		expect(screen.queryByRole('button', { name: 'Open Sync settings' })).toBeNull();
+	});
+
+	describe('in the iPhone app', () => {
+		/** The app's own notifications: no service worker, no push, no Sync needed. */
+		function nativeApp(permission: NotificationPermission) {
+			shell.native = true;
+			useNotificationBackend({
+				permission: () => permission,
+				request: async () => permission,
+				close: async () => undefined
+			});
+		}
+
+		afterEach(() => {
+			shell.native = false;
+			useNotificationBackend(null);
+		});
+
+		it('says nothing: the system shows a reminder set here with the app closed', () => {
+			nativeApp('granted');
+			render(ReminderPicker, { props: { reminder, onClose: () => {} } });
+
+			expect(screen.queryByText(/while the app is closed/)).toBeNull();
+			expect(screen.queryByText(/Closed-app alerts/)).toBeNull();
+			expect(screen.queryByRole('button', { name: 'Open Sync settings' })).toBeNull();
+		});
+
+		it('calls the permission prompt the phone’s own while Save waits on it', async () => {
+			shell.native = true;
+			useNotificationBackend({
+				permission: () => 'default',
+				request: () => new Promise(() => {}),
+				close: async () => undefined
+			});
+			render(ReminderPicker, { props: { reminder: null, onClose: () => {} } });
+
+			await fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+			expect(screen.getByRole('button', { name: 'Allow in the prompt…' })).toBeTruthy();
+		});
+
+		it('says how to unblock notifications the phone blocks', () => {
+			nativeApp('denied');
+			render(ReminderPicker, { props: { reminder, onClose: () => {} } });
+
+			expect(screen.getByText(/Blocked for this app/)).toBeTruthy();
+			expect(screen.queryByRole('button', { name: 'Open Sync settings' })).toBeNull();
+		});
 	});
 
 	it('says when the browser cannot alert a closed app, where Sync would not help', () => {

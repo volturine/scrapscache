@@ -63,7 +63,9 @@ Server row under Settings answers the question too (`ServerPrompt`,
 `src/lib/native/` and is loaded only there: the status bar follows the theme (it stays where iOS puts it: on the
 folded iPhone Duo the side column is hardware safe area, hidden bar or not), and
 reminders are scheduled with the system as local
-notifications (the web view has no service worker or web push), and a file that
+notifications (the web view has no service worker or web push), which leave
+Notification Center once the reminder is answered, here or on another device
+(the app hears of the other device's answer when it next syncs), and a file that
 leaves the app (a backup, a workspace's Markdown archive) goes to the share
 sheet, since the web view drops a download link (`saveFile`,
 `src/lib/native/shareFile.ts`; the drawing editor's own save-to-disk is not

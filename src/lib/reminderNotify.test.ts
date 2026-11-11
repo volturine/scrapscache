@@ -216,4 +216,26 @@ describe('closing reminders across workspace subscriptions', () => {
 			vi.unstubAllGlobals();
 		}
 	});
+
+	it('leaves it to the iPhone app, which shows reminders without a service worker', async () => {
+		const { closeReminderNotifications, useNotificationBackend } = await import('./reminderNotify');
+		const close = vi.fn(async () => undefined);
+		useNotificationBackend({
+			permission: () => 'granted',
+			request: async () => 'granted',
+			close
+		});
+		try {
+			await closeReminderNotifications(new Set());
+			expect(close).not.toHaveBeenCalled();
+			const handled = new Set(['handled']);
+			await closeReminderNotifications(handled);
+			expect(close).toHaveBeenCalledExactlyOnceWith(handled);
+			// The system refusing must not fail the sync that learned of the answer.
+			close.mockRejectedValueOnce(new Error('no notification center'));
+			await expect(closeReminderNotifications(handled)).resolves.toBeUndefined();
+		} finally {
+			useNotificationBackend(null);
+		}
+	});
 });

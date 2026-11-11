@@ -344,7 +344,7 @@ test('photo bytes, crops, deletion, and undo sync between two devices', async ({
 	await contextB.close();
 });
 
-test('sync speaks up above the feed only when it needs attention', async ({ page, context }) => {
+test('sync speaks up above the feed only when it needs attention', async ({ page }) => {
 	await openEmptyApp(page);
 	await createNote(page, 'Quiet note');
 	const banner = page.locator('[data-sync-attention]');
@@ -361,7 +361,10 @@ test('sync speaks up above the feed only when it needs attention', async ({ page
 	await expect(banner).toHaveCount(0);
 
 	// A sync that cannot reach the relay is worth a banner, with the next step on it.
-	await context.setOffline(true);
+	// The relay goes, not the network: coming back online syncs by itself and would
+	// take the banner, and its Retry, away before the press below.
+	const relay = /\/api\/sync\/(?!events)/;
+	await page.route(relay, (route) => route.abort());
 	dialog = await openSync(page);
 	await dialog.getByRole('button', { name: 'Sync now' }).click();
 	await expect(dialog.getByText('Could not reach server. Check your connection.')).toBeVisible();
@@ -370,8 +373,8 @@ test('sync speaks up above the feed only when it needs attention', async ({ page
 	await expect(banner).toContainText('Sync stopped: the server could not be reached.');
 	await expect(banner).toContainText('Your notes are safe on this device.');
 
-	// Retry once the connection is back clears it.
-	await context.setOffline(false);
+	// Retry once the relay is back clears it.
+	await page.unroute(relay);
 	await banner.getByRole('button', { name: 'Retry' }).click();
 	await expect(banner).toHaveCount(0);
 });

@@ -304,12 +304,30 @@
 	}
 
 	/**
-	 * A tap would move focus to the button first; the keyboard state drops with it,
-	 * the button gives way to the expand toggle, and its click never arrives.
+	 * A touch lowers the keyboard on release, not on the click. Left to itself, iOS
+	 * moves focus to the button as the finger lands: the keyboard state drops, the
+	 * expand toggle takes this place, and the click lands there instead. So the field
+	 * keeps focus through the touch, and the release, cancelled, lets go of it; only
+	 * a cancelled touchend stops iOS's synthetic mouse events and click.
 	 */
-	function finishTypingOnTouch(event: PointerEvent) {
-		if (event.pointerType !== 'touch') return;
+	function holdFieldThroughTouch(event: PointerEvent) {
+		if (event.pointerType === 'touch') event.preventDefault();
+	}
+	function finishTypingOnRelease(event: TouchEvent) {
+		if (!event.cancelable || event.changedTouches.length !== 1) return;
 		event.preventDefault();
+		const touch = event.changedTouches[0];
+		const box = (event.currentTarget as HTMLElement).getBoundingClientRect();
+		const slop = 8;
+		// A finger that slid off the check presses nothing.
+		if (
+			touch.clientX < box.left - slop ||
+			touch.clientX > box.right + slop ||
+			touch.clientY < box.top - slop ||
+			touch.clientY > box.bottom + slop
+		) {
+			return;
+		}
 		finishTyping();
 	}
 
@@ -1103,7 +1121,8 @@
 								type="button"
 								class={cx(iconButton({ variant: 'ghost', size: 'sm' }), styles.whileTyping)}
 								title="Hide keyboard"
-								onpointerdown={finishTypingOnTouch}
+								onpointerdown={holdFieldThroughTouch}
+								ontouchend={finishTypingOnRelease}
 								onclick={finishTyping}
 								aria-label="Hide keyboard"
 							>

@@ -119,7 +119,8 @@ const folder = keepAt ?? mkdtempSync(join(tmpdir(), 'scraps-signing-'));
 mkdirSync(folder, { recursive: true, mode: 0o700 });
 const file = (name) => join(folder, name);
 let made = null;
-let recorded = false;
+// How far the run got: from 'published' on, CI uses the new certificate.
+let stage = 'making';
 
 try {
 	// 2. The App IDs, with the capabilities the app's entitlements ask for.
@@ -238,10 +239,12 @@ try {
 			])
 		)
 	};
+	stage = 'publishing';
 	for (const [name, value] of Object.entries(secrets))
 		run('gh', ['secret', 'set', name, '--repo', repo], value);
+	stage = 'published';
 	run('gh', ['variable', 'set', CERTIFICATE_VARIABLE, '--repo', repo, '--body', certificate.id]);
-	recorded = true;
+	stage = 'recorded';
 	console.log(`Set ${Object.keys(secrets).join(', ')} and ${CERTIFICATE_VARIABLE}`);
 
 	// 5. The certificate made last time, once nothing here needs it.
@@ -257,16 +260,28 @@ try {
 		}
 	}
 } catch (error) {
-	if (recorded) {
-		// Only revoking the old certificate failed: CI already runs on the new one.
-		console.error(
-			`Stopped after the secrets were set: CI now uses certificate ${made}. Certificate ${previous} was not revoked; revoke it by hand if no profile uses it.`
-		);
-	} else {
+	if (stage === 'making') {
 		console.error(`Stopped; nothing was revoked. What was made so far is in ${folder}`);
 		if (made) {
 			console.error(
-				`Certificate ${made} was made and ${CERTIFICATE_VARIABLE} does not name it: revoke it by hand if this run is abandoned`
+				`Certificate ${made} was made but CI does not use it yet: revoke it by hand if this run is abandoned`
+			);
+		}
+	} else if (stage === 'publishing') {
+		console.error(
+			`Stopped while setting the secrets: some may hold certificate ${made} and some the one before. What was made is in ${folder}. Run this again to finish, then revoke ${made} by hand.`
+		);
+	} else {
+		// The secrets hold the new certificate: CI signs with it from here on.
+		console.error(`Stopped after the secrets were set: CI now uses certificate ${made}.`);
+		if (stage === 'published') {
+			console.error(
+				`Set ${CERTIFICATE_VARIABLE} to ${made} (gh variable set ${CERTIFICATE_VARIABLE} --body ${made}), so the next run replaces it.`
+			);
+		}
+		if (previous && previous !== made) {
+			console.error(
+				`Certificate ${previous} was not revoked; revoke it by hand if no profile uses it.`
 			);
 		}
 	}

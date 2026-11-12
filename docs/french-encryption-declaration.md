@@ -74,10 +74,10 @@ the ANSSI.
 Written for the technical part of the file. Sources: [security.md](security.md)
 and the code it names.
 
-|                            |                                                                                                                                                                                                                            |
+| Item                       | Description                                                                                                                                                                                                                |
 | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Name                       | Scraps Cache (iPhone and iPad app, bundle `com.scrapscache.app`; the same client runs as a web app)                                                                                                                        |
-| Kind                       | Software, distributed free of charge to the general public through the App Store                                                                                                                                           |
+| Kind                       | Software, distributed to the general public through the App Store                                                                                                                                                          |
 | Purpose                    | A notes app. Notes stay on the device; optional sync between a person's own devices is end-to-end encrypted                                                                                                                |
 | Services                   | Confidentiality and integrity of synced notes and of backup files; authentication of a device to the sync relay                                                                                                            |
 | Access to the cryptography | None: the user cannot choose algorithms or keys, or use the encryption on other data                                                                                                                                       |

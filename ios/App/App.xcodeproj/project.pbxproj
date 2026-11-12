@@ -310,6 +310,7 @@
 				APP_DISPLAY_NAME = "Scraps Cache";
 				APP_ICON_NAME = AppIcon;
 				APP_LINK_HOST = scrapscache.com;
+				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "AppIcon-dark-stacked-amber AppIcon-dark-stacked-mint AppIcon-dark-stacked-peach AppIcon-dark-stacked-pink AppIcon-dark-stacked-sky AppIcon-dark-tilted-amber AppIcon-dark-tilted-mint AppIcon-dark-tilted-peach AppIcon-dark-tilted-pink AppIcon-dark-tilted-sky AppIcon-light-stacked-mint AppIcon-light-stacked-peach AppIcon-light-stacked-pink AppIcon-light-stacked-sky AppIcon-light-tilted-mint AppIcon-light-tilted-peach AppIcon-light-tilted-pink AppIcon-light-tilted-sky";
 				ASSETCATALOG_COMPILER_APPICON_NAME = "$(APP_ICON_NAME)";
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
@@ -338,6 +339,7 @@
 				APP_DISPLAY_NAME = "Scraps Cache";
 				APP_ICON_NAME = AppIcon;
 				APP_LINK_HOST = scrapscache.com;
+				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "AppIcon-dark-stacked-amber AppIcon-dark-stacked-mint AppIcon-dark-stacked-peach AppIcon-dark-stacked-pink AppIcon-dark-stacked-sky AppIcon-dark-tilted-amber AppIcon-dark-tilted-mint AppIcon-dark-tilted-peach AppIcon-dark-tilted-pink AppIcon-dark-tilted-sky AppIcon-light-stacked-mint AppIcon-light-stacked-peach AppIcon-light-stacked-pink AppIcon-light-stacked-sky AppIcon-light-tilted-mint AppIcon-light-tilted-peach AppIcon-light-tilted-pink AppIcon-light-tilted-sky";
 				ASSETCATALOG_COMPILER_APPICON_NAME = "$(APP_ICON_NAME)";
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <rect id="tile" width="1024" height="1024" fill="#1a1a1a"/>
+  <rect id="back-note" x="332" y="332" width="456" height="456" rx="48" fill="#f5c95b"/>
+  <g id="front-note">
+    <path id="keyline" d="M236 284 Q236 236 284 236 L644 236 Q692 236 692 284 L692 532 L532 692 L284 692 Q236 692 236 644 Z" fill="none" stroke="#1a1a1a" stroke-width="48" stroke-linejoin="round"/>
+    <path id="paper" d="M236 284 Q236 236 284 236 L644 236 Q692 236 692 284 L692 532 L532 692 L284 692 Q236 692 236 644 Z" fill="#f4efe6" stroke="#f4efe6" stroke-width="8" stroke-linejoin="round"/>
+    <g id="lines" fill="none" stroke="#1a1a1a" stroke-width="48" stroke-linecap="round">
+      <line x1="328" y1="376" x2="600" y2="376"/>
+      <line x1="328" y1="480" x2="488" y2="480"/>
+    </g>
+  </g>
+</svg>

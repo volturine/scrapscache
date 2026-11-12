@@ -197,6 +197,7 @@ client-address settings above so rate limits see real client IPs.
 | `SCRAPSCACHE_APNS_KEY_ID`                  |                          unset | Key ID of that Apple push key                                                                                           |
 | `SCRAPSCACHE_APNS_TEAM_ID`                 |                          unset | Apple Developer team the key belongs to                                                                                 |
 | `SCRAPSCACHE_APNS_TOPICS`                  |                          unset | Comma-separated bundle ids of the apps the key may send to                                                              |
+| `SCRAPSCACHE_IOS_APP_IDS`                  |                          unset | App IDs (`TEAMID.bundle.id`, comma-separated) of your own iPhone app builds whose links to this server open in the app  |
 | `PUBLIC_TURNSTILE_ORIGIN`                  |                          unset | Separate origin that serves the Turnstile widget, e.g. `https://verify.example.com`; never the app's own                |
 | `TURNSTILE_SITEKEY`                        |                          unset | Cloudflare Turnstile sitekey, used only by the challenge page                                                           |
 | `TURNSTILE_SECRET`                         |                          unset | Turnstile secret used for server-side siteverify                                                                        |

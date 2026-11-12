@@ -1,5 +1,6 @@
 import { useNotificationBackend } from '#lib/reminderNotify.js';
 import { reminderStore } from '#lib/stores/reminders.svelte.js';
+import { onAppLink } from './appLinks.js';
 import {
 	currentPermission,
 	onNotificationTap,
@@ -15,9 +16,10 @@ import { attachReservedRegions } from './reservedRegions.js';
 /**
  * What the iPhone app adds to the shell once it is on screen: the status bar
  * follows the theme and leaves the folded Duo's side, the rail keeps under what
- * iOS draws in that side's column, and the system fires reminders from the
- * store's schedule and drops the ones answered since. The relay pushes the
- * reminders the schedule does not hold yet, once it knows which it does.
+ * iOS draws in that side's column, the system fires reminders from the store's
+ * schedule and drops the ones answered since, and a link to a note or a pairing
+ * that iOS opens here is followed. The relay pushes the reminders the schedule
+ * does not hold yet, once it knows which it does.
  */
 export function attachNativeApp(): () => void {
 	const stopStatusBar = attachNativeStatusBar();
@@ -46,6 +48,7 @@ export function attachNativeApp(): () => void {
 	void refreshPermission().then(schedule);
 	const stopUpcoming = reminderStore.watchUpcoming(schedule);
 	const tap = onNotificationTap((extra) => reminderStore.openFromSystem(extra));
+	const link = onAppLink();
 	const push = onRemotePush(() => void reminderStore.syncAllRemoteWakes());
 	return () => {
 		stopStatusBar();
@@ -53,6 +56,7 @@ export function attachNativeApp(): () => void {
 		stopUpcoming();
 		useNotificationBackend(null);
 		void tap.then((handle) => handle.remove()).catch(() => undefined);
+		void link.then((handle) => handle.remove()).catch(() => undefined);
 		void push.then((handle) => handle.remove()).catch(() => undefined);
 	};
 }

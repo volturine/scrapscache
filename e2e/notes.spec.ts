@@ -30,6 +30,44 @@ test('a note survives a reload and an offline reload', async ({ page, context })
 	await context.setOffline(false);
 });
 
+test('a link to another note, followed while a note is being edited, saves that note and opens the other', async ({
+	page
+}) => {
+	await openEmptyApp(page);
+	await createNote(page, 'First note', 'one');
+	await createNote(page, 'Second note', 'two');
+
+	// An open note's address is the link to it.
+	await noteCard(page, 'Second note').click();
+	await expect(page).toHaveURL(/note=/);
+	const link = new URL(page.url()).hash;
+	await editor(page).getByRole('button', { name: 'Close note' }).click();
+	await expect(editor(page)).toBeHidden();
+	await expect(page).not.toHaveURL(/note=/);
+
+	await noteCard(page, 'First note').click();
+	await editor(page).getByRole('textbox', { name: 'Note body' }).click();
+	await page.keyboard.press('End');
+	await page.keyboard.type(' and more');
+	// What a link pasted into the tab does, and what the iPhone app does with a
+	// link iOS hands it: only the fragment changes, while the edit is unsaved.
+	await page.evaluate((hash) => {
+		location.hash = hash;
+	}, link);
+
+	const title = editor(page).getByPlaceholder('Title', { exact: true });
+	await expect(title).toHaveValue('Second note');
+	await expect(noteCard(page, 'First note')).toContainText('one and more');
+	// The first note's close, still saving when the link arrived, must not take
+	// the second one down with it.
+	await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 500)));
+	await expect(title).toHaveValue('Second note');
+
+	await editor(page).getByRole('button', { name: 'Close note' }).click();
+	await expect(editor(page)).toBeHidden();
+	await expect(page).not.toHaveURL(/note=/);
+});
+
 test('the note sheet does not draw a browser focus ring around itself', async ({ page }) => {
 	await openEmptyApp(page);
 	await createNote(page, 'Focus sample');

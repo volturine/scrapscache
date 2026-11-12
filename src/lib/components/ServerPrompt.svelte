@@ -92,7 +92,7 @@
 				</div>
 				<div class={d.body}>
 					<Dialog.Description class={d.description}>
-						Notes live on this phone either way. Pick the server this app talks to when you turn
+						Notes live on this device either way. Pick the server this app talks to when you turn
 						sync on. You can change it any time under Settings › Server.
 					</Dialog.Description>
 					<div class={styles.choices} role="radiogroup" aria-label="Server">

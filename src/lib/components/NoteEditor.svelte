@@ -783,13 +783,22 @@
 		draftDirty = false;
 	}
 
-	async function close(preserveEmpty = false) {
-		if (closing) return;
-		closing = true;
-		await flushDraft();
-		if (note && !preserveEmpty) await notesStore.discardIfEmpty(note.id);
-		onClose();
-		void notesStore.syncPendingChanges().finally(endEditSession);
+	let closeFlight: Promise<void> | null = null;
+
+	/**
+	 * Save and close. A close asked for while one is under way is that same one:
+	 * whoever waits for it (a link to another note, a workspace switch) goes on
+	 * only once this note is saved and gone.
+	 */
+	function close(preserveEmpty = false): Promise<void> {
+		closeFlight ??= (async () => {
+			closing = true;
+			await flushDraft();
+			if (note && !preserveEmpty) await notesStore.discardIfEmpty(note.id);
+			onClose();
+			void notesStore.syncPendingChanges().finally(endEditSession);
+		})();
+		return closeFlight;
 	}
 
 	async function restoreNoteVersion(version: Note) {

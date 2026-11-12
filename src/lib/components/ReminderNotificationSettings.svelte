@@ -29,7 +29,7 @@
 				? 'Off. Tap to turn them on.'
 				: permission === 'denied'
 					? isNativeApp()
-						? 'Off. Allow notifications for Scraps Cache in the iPhone’s Settings.'
+						? 'Off. Allow notifications for Scraps Cache in the Settings app.'
 						: notificationsBlockedHint(pwaInstallStore.isStandalone)
 					: 'This browser cannot show them.'
 	);

@@ -51,6 +51,9 @@ export const variables = defineEnvVars({
 	SCRAPSCACHE_APNS_TOPICS: optional(
 		'Comma-separated bundle ids of the apps the push key may send to'
 	),
+	SCRAPSCACHE_IOS_APP_IDS: optional(
+		'Comma-separated App IDs (TEAMID.bundle.id) of the iPhone apps that open links to this server'
+	),
 	TURNSTILE_SITEKEY: optional('Cloudflare Turnstile site key'),
 	TURNSTILE_SECRET: optional('Cloudflare Turnstile secret key'),
 	TURNSTILE_HOSTNAMES: optional('Comma-separated hostnames Turnstile tokens may be issued for'),

@@ -70,6 +70,15 @@ For how to report vulnerabilities, see [SECURITY.md](../SECURITY.md).
 - The sync key is sealed to the peer with XChaCha20-Poly1305 under the PAKE
   output; the server only relays opaque PAKE shares and ciphertext. The rendezvous
   tag is a hash of the high-entropy one-time code, not a crackable 14-digit secret.
+- A pairing link, like a link to a note, carries its secret in the URL fragment.
+  When iOS opens such a link in the iPhone app (the server's
+  `/.well-known/apple-app-site-association` names the app and only those two
+  kinds of link), the system hands the address to the app on the device; no
+  request for it is made, so the fragment still reaches no server. The app
+  follows it only when it is a link to the server it syncs with, fills the code
+  in and waits for the person to start the connection, as the web app does. The
+  shell's own event log, which would print the link, is off in every build
+  (`loggingBehavior` in `capacitor.config.ts`).
 
 ### Client backups (`.scraps-cache-backup`)
 

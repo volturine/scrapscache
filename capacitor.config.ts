@@ -11,6 +11,9 @@ const config: CapacitorConfig = {
 	appId: 'com.scrapscache.app',
 	appName: 'Scraps Cache',
 	webDir: 'build/ios',
+	// Capacitor's log prints what the shell hands the page: a link's pairing code,
+	// a reminder's title. No build writes those to the device log.
+	loggingBehavior: 'none',
 	ios: {
 		// The page lays itself out around the safe area (see #lib/appViewport);
 		// the web view must not pad it again.

@@ -111,15 +111,28 @@ covers the column too.
 ### iPad
 
 The app is universal (`TARGETED_DEVICE_FAMILY = "1,2"`): on an iPad the same
-bundle runs in the wide layout a desktop browser gets, in every orientation,
-with nothing iPad-specific in the code. Check a change to the shell or to
-`src/lib/native/` on an iPad simulator as well; the share sheet is a popover
-there, and the keyboard takes half the screen in landscape. Checked so far
-(iPad Pro 11-inch, iOS 27.2): full screen in portrait and landscape, with the
-note editor, the keyboard, the drawing editor, the share sheet and Files. Not
-yet checked: the app in a window narrower than the screen (Split View, Slide
-Over, a resized window), where the layout should fall back to the phone's as
-it does in a narrow browser window.
+bundle runs in the wide layout a desktop browser gets, in every orientation.
+Check a change to the shell or to `src/lib/native/` on an iPad simulator as
+well; the share sheet is a popover there, and the keyboard takes half the
+screen in landscape.
+
+An iPad also runs the app in a window narrower than the screen, where the page
+falls back to the phone's layout as it does in a narrow browser window. Two
+things in the shell (`ScrapsBridgeViewController`) are for that window alone:
+
+- it keeps the web view the size of its window. The status bar plugin moves the
+  web view down by how much taller the status bar is than the view's top inset,
+  which in a window left a black strip above the page;
+- it adds the height of the window's controls (the close, minimise and arrange
+  buttons iOS draws over the top leading corner) to the safe area, which is all
+  the page lays itself out by, so the page starts below them. A window that
+  fills the screen hides those controls and gets nothing added.
+
+Checked (iPad Pro 11-inch, iOS 27.2): full screen in portrait and landscape,
+with the note editor, the keyboard, the drawing editor, the share sheet and
+Files; a window about phone width in portrait and in landscape, with the note
+editor. Not yet checked: the half and third arrangements, Slide Over, and a
+window wide enough for the sidebar.
 
 ### Links that open the app
 

@@ -36,12 +36,40 @@ final class ScrapsBridgeViewController: CAPBridgeViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        fillWindow()
+        clearWindowControls()
         reservedRegions.publish()
+    }
+
+    /// Keeps the web view the size of its window. The status bar plugin moves it
+    /// down by how much taller the status bar is than the view's top inset: meant
+    /// for a doubled bar on an old iPhone, and wrong in an iPad window, where the
+    /// bar is the screen's and the inset the window's, so the window's black showed
+    /// in a strip above the page. The page keeps clear of the safe area itself.
+    private func fillWindow() {
+        guard let window = view.window, view.frame != window.bounds else { return }
+        view.frame = window.bounds
     }
 
     override func viewSafeAreaInsetsDidChange() {
         super.viewSafeAreaInsetsDidChange()
+        clearWindowControls()
         reservedRegions.publish()
+    }
+
+    /// In an iPad window iOS draws the window's controls over its top leading
+    /// corner and leaves them out of the safe area, which is all the page lays
+    /// itself out by. The height they take is added to the safe area here, so the
+    /// page starts below them. A window that fills the screen keeps its controls
+    /// hidden until they are asked for, and gives them no room.
+    private func clearWindowControls() {
+        guard #available(iOS 26.0, *) else { return }
+        let fillsScreen = view.window?.windowScene?.isFullScreen ?? true
+        let own = view.safeAreaInsets.top - additionalSafeAreaInsets.top
+        let clear = view.edgeInsets(for: .safeArea(cornerAdaptation: .vertical)).top
+        let extra = fillsScreen ? 0 : max(0, clear - own)
+        guard abs(additionalSafeAreaInsets.top - extra) > 0.5 else { return }
+        additionalSafeAreaInsets.top = extra
     }
 }
 

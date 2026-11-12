@@ -105,7 +105,12 @@ The app is universal (`TARGETED_DEVICE_FAMILY = "1,2"`): on an iPad the same
 bundle runs in the wide layout a desktop browser gets, in every orientation,
 with nothing iPad-specific in the code. Check a change to the shell or to
 `src/lib/native/` on an iPad simulator as well; the share sheet is a popover
-there, and the keyboard takes half the screen in landscape.
+there, and the keyboard takes half the screen in landscape. Checked so far
+(iPad Pro 11-inch, iOS 27.2): full screen in portrait and landscape, with the
+note editor, the keyboard, the drawing editor, the share sheet and Files. Not
+yet checked: the app in a window narrower than the screen (Split View, Slide
+Over, a resized window), where the layout should fall back to the phone's as
+it does in a narrow browser window.
 
 ### Links that open the app
 
@@ -119,22 +124,27 @@ instead of Safari when two things name each other ("universal links"):
   the dev app);
 - the server names the app in `/.well-known/apple-app-site-association`
   (`src/lib/server/appLinks.ts`), from `SCRAPSCACHE_IOS_APP_IDS`, which the
-  deploy jobs set from the `APPLE_TEAM_ID` secret. The file routes only the
-  app's home address with a `note=` or `pair=` fragment; every other address
-  stays a web page.
+  deploy jobs set from the `APPLE_TEAM_ID` secret. The file routes an address
+  on any view (a pairing link is made on whichever view the web app shows) as
+  long as its fragment has `note=` or `pair=`; every other address stays a web
+  page.
 
 The app then gets the link as Capacitor's `appUrlOpen`
 (`src/lib/native/appLinks.ts`) and takes its fragment as the page's own, so the
 note opens, or the pairing dialog does, exactly as when the link is pasted into
-a browser tab. An app pointed at a self-hosted server gets no such links: its
-entitlement names the hosted service's hosts alone.
+a browser tab. It follows a link only to the server it syncs with
+(`serverSetting.origin`). The entitlement is compiled in, so an app pointed at
+a self-hosted server is still handed the hosted service's links, which name a
+workspace or a pairing its own server knows nothing of: it opens and leaves
+them alone, and that server's own links open in the browser.
 
 To try it on a simulator without deploying, serve a build on a host with a real
 certificate, set `SCRAPSCACHE_IOS_APP_IDS=<team>.com.scrapscache.app.dev` for
 it, and build the app with an xcconfig that includes `Dev.xcconfig` and sets
-`APP_LINK_HOST = <host>?mode=developer` and `DEVELOPMENT_TEAM = <team>`; then
-`xcrun simctl openurl booted 'https://<host>/#pair=…'` opens the app, and
-`https://<host>/privacy` opens Safari.
+`APP_LINK_HOST = <host>?mode=developer` and `DEVELOPMENT_TEAM = <team>`. Name
+that host as the app's server (Settings › Server); then
+`xcrun simctl openurl booted 'https://<host>/#pair=…'` opens the app on the
+pairing dialog, and `https://<host>/privacy` opens Safari.
 
 ### Export compliance
 

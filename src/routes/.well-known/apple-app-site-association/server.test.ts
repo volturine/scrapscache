@@ -28,12 +28,15 @@ describe('the file that tells iOS which links open in the iPhone app', () => {
 		]);
 	});
 
-	it('opens only a note link or a pairing link in the app, never the plain site', async () => {
+	it('opens a note link or a pairing link in the app from any view, never an address without one', async () => {
 		privateEnv.SCRAPSCACHE_IOS_APP_IDS = 'TEAM123456.com.example.notes';
 		const { applinks } = (await read().json()) as Association;
+		// No path is named, which matches every path: a pairing link made on
+		// /archive opens the app as one made on the home view does. Every
+		// component needs its fragment, so no plain address matches.
 		expect(applinks.details[0].components.map(({ comment: _comment, ...match }) => match)).toEqual([
-			{ '/': '/', '#': '*note=*' },
-			{ '/': '/', '#': '*pair=*' }
+			{ '#': '*note=*' },
+			{ '#': '*pair=*' }
 		]);
 	});
 });

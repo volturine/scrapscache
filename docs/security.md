@@ -75,8 +75,10 @@ For how to report vulnerabilities, see [SECURITY.md](../SECURITY.md).
   `/.well-known/apple-app-site-association` names the app and only those two
   kinds of link), the system hands the address to the app on the device; no
   request for it is made, so the fragment still reaches no server. The app
-  fills the code in and waits for the person to start the connection, as the
-  web app does.
+  follows it only when it is a link to the server it syncs with, fills the code
+  in and waits for the person to start the connection, as the web app does. The
+  shell's own event log, which would print the link, is off in every build
+  (`loggingBehavior` in `capacitor.config.ts`).
 
 ### Client backups (`.scraps-cache-backup`)
 

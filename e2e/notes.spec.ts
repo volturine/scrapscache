@@ -909,8 +909,9 @@ test.describe('in iPhone Duo’s side column', () => {
 	}
 
 	/**
-	 * The column's stack: sync and settings as circles, then the places in one pill,
-	 * icons alone, gathered at the column's bottom, clear of what iOS draws at its top.
+	 * The column's stack: sync and settings as circles, the places in one pill, icons
+	 * alone, then New note, gathered at the column's bottom, clear of what iOS draws at
+	 * its top. Search is the bar's field, so the pill has no Search of its own.
 	 */
 	async function expectRailInColumn(page: Page, viewport: { width: number; height: number }) {
 		const stack = page.locator('[data-column-stack]');
@@ -923,16 +924,25 @@ test.describe('in iPhone Duo’s side column', () => {
 		expect(pill.x).toBeGreaterThanOrEqual(box.x);
 		expect(pill.x + pill.width).toBeLessThanOrEqual(box.x + box.width);
 		const tabs = rail.getByRole('button');
-		await expect(tabs).toHaveText(['Notes', 'Reminders', 'Kanban', 'Labels', 'Search']);
+		await expect(tabs).toHaveText(['Notes', 'Reminders', 'Kanban', 'Labels']);
 		for (const tab of await tabs.all())
 			await expect(tab.locator('span').last()).not.toBeInViewport();
 		const first = (await tabs.first().boundingBox())!;
-		const last = (await tabs.last().boundingBox())!;
 		// Without the app shell's report the stylesheet's floor keeps the stack under an
-		// expanded Dynamic Island and the clock; the pill sits at the bottom, not against it.
+		// expanded Dynamic Island and the clock; New note, under the pill, sits at the
+		// bottom, not against it.
 		expect(first.y).toBeGreaterThan(232);
-		expect(last.y + last.height).toBeLessThanOrEqual(viewport.height);
-		expect(last.y + last.height).toBeGreaterThan(viewport.height - 56);
+		const addButton = stack.getByRole('button', { name: 'New note' });
+		const add = (await addButton.boundingBox())!;
+		// The icon sits in the middle of its circle.
+		const icon = (await addButton.locator('svg').boundingBox())!;
+		expect(Math.abs(icon.x + icon.width / 2 - (add.x + add.width / 2))).toBeLessThanOrEqual(1);
+		expect(Math.abs(icon.y + icon.height / 2 - (add.y + add.height / 2))).toBeLessThanOrEqual(1);
+		expect(add.x).toBeGreaterThanOrEqual(box.x);
+		expect(add.x + add.width).toBeLessThanOrEqual(box.x + box.width);
+		expect(add.y).toBeGreaterThanOrEqual(pill.y + pill.height);
+		expect(add.y + add.height).toBeLessThanOrEqual(viewport.height);
+		expect(add.y + add.height).toBeGreaterThan(viewport.height - 56);
 		// Sync and settings stand above the pill, inside the column.
 		const sync = (await stack.getByRole('button', { name: /^Sync settings/ }).boundingBox())!;
 		expect(sync.x).toBeGreaterThanOrEqual(box.x);
@@ -972,14 +982,13 @@ test.describe('in iPhone Duo’s side column', () => {
 			await rail.getByRole('button', { name: 'Labels' }).click();
 			await expect(page.locator('[data-view-title]')).toHaveText('Labels');
 
-			// With the palette up from the pill, Search is the one place lit; closed, the
-			// place lights again. "Go to…" from the Labels screen leaves it for the new view.
+			// The palette, up from the bar's field, has nothing in the pill, so the place
+			// stays lit under it. "Go to…" from the Labels screen leaves it for the new view.
 			// By selector: the open palette hides the rest of the page from role queries.
 			const tab = (name: string) =>
 				page.locator('[data-column-stack] nav button', { hasText: name });
 			const notes = tab('Notes');
 			const labels = tab('Labels');
-			const searchTab = tab('Search');
 			const bg = (locator: Locator) =>
 				locator.evaluate((element) => getComputedStyle(element).backgroundColor);
 			// A faded-out colour reads as rgba or oklch with a zero alpha; polled, since the
@@ -996,43 +1005,73 @@ test.describe('in iPhone Duo’s side column', () => {
 			};
 			const lit = await settled(labels);
 			expect(await clear(labels)).toBe(false);
-			await searchTab.click();
+			await search.click();
 			await expect(
 				page.getByRole('dialog', { name: 'Search notes, labels and actions' })
 			).toBeVisible();
-			await expect.poll(() => bg(searchTab)).toBe(lit);
-			await expect.poll(() => clear(labels)).toBe(true);
+			expect(await settled(labels)).toBe(lit);
 			await page.getByRole('option', { name: 'Go to Kanban' }).click();
 			await expect(page.locator('[data-view-title]')).toHaveText('Kanban');
 			await expect.poll(() => bg(tab('Kanban'))).toBe(lit);
 			await expect.poll(() => clear(labels)).toBe(true);
-			await expect.poll(() => clear(searchTab)).toBe(true);
 			await expect.poll(() => clear(notes)).toBe(true);
 		});
 
-		test('a place answers a finger from under the palette, and Search toggles it', async ({
-			page
-		}) => {
+		test('a place answers a finger from under the palette', async ({ page }) => {
 			await openWithColumn(page);
 			const tab = (name: string) =>
 				page.locator('[data-column-stack] nav button', { hasText: name });
 			const palette = page.getByRole('dialog', { name: 'Search notes, labels and actions' });
+			const openPalette = async () => {
+				await page.keyboard.press('ControlOrMeta+k');
+				await expect(palette).toBeVisible();
+			};
 			// Touch: the dialog turns the body's pointer events off; the column keeps its own.
-			await tab('Search').tap();
-			await expect(palette).toBeVisible();
+			await openPalette();
 			await tab('Reminders').tap();
 			await expect(palette).toHaveCount(0);
 			await expect(page.locator('[data-view-title]')).toHaveText('Reminders');
-			await tab('Search').tap();
-			await expect(palette).toBeVisible();
-			await tab('Search').tap();
-			await expect(palette).toHaveCount(0);
 			// A mouse, the same.
-			await tab('Search').click();
-			await expect(palette).toBeVisible();
+			await openPalette();
 			await tab('Kanban').click();
 			await expect(palette).toHaveCount(0);
 			await expect(page.locator('[data-view-title]')).toHaveText('Kanban');
+		});
+
+		test('New note leaves the palette and the Labels screen, and writes in the composer or the editor', async ({
+			page
+		}) => {
+			await openWithColumn(page);
+			const stack = page.locator('[data-column-stack]');
+			const add = page.locator('[data-column-stack] button[aria-label="New note"]');
+			const rail = page.getByRole('navigation', { name: 'Main', exact: true });
+			const palette = page.getByRole('dialog', { name: 'Search notes, labels and actions' });
+			// From the Labels screen, under the palette: both go, and Notes writes in its bar.
+			await rail.getByRole('button', { name: 'Labels' }).click();
+			await expect(page.locator('[data-view-title]')).toHaveText('Labels');
+			await page.keyboard.press('ControlOrMeta+k');
+			await expect(palette).toBeVisible();
+			await add.tap();
+			await expect(palette).toHaveCount(0);
+			await expect(page.locator('[data-view-title]')).toHaveText('Notes');
+			const bar = composer(page);
+			await expect(bar.getByPlaceholder('Title', { exact: true })).toBeFocused();
+			await bar.getByPlaceholder('Title', { exact: true }).fill('From the column');
+			await bar.getByRole('button', { name: 'Done' }).click();
+			await expect(noteCard(page, 'From the column')).toBeVisible();
+
+			// The board has no bar: the note opens in the editor, which, like any open
+			// note, leaves the column inert until it is put away.
+			await rail.getByRole('button', { name: 'Kanban' }).click();
+			await expect(page.locator('[data-view-title]')).toHaveText('Kanban');
+			await stack.getByRole('button', { name: 'New note' }).click();
+			await expect(editor(page)).toBeVisible();
+			await editor(page).getByPlaceholder('Title', { exact: true }).fill('From the board');
+			await expect(stack).toHaveAttribute('inert');
+			await page.keyboard.press('Escape');
+			await expect(editor(page)).toHaveCount(0);
+			await rail.getByRole('button', { name: 'Notes' }).click();
+			await expect(noteCard(page, 'From the board')).toBeVisible();
 		});
 
 		test('settings opened from the column keep their place when the keyboard comes up', async ({
@@ -1064,13 +1103,21 @@ test.describe('in iPhone Duo’s side column', () => {
 			expect(Math.abs(after.y - before.y)).toBeLessThanOrEqual(1);
 		});
 
-		test('on its side, the short column still shows all five tabs, as icons', async ({ page }) => {
+		test('on its side, the short column still shows all four tabs, as icons, and New note', async ({
+			page
+		}) => {
 			await page.setViewportSize({ width: 678, height: 466 });
 			await openWithColumn(page, 'left');
 			const rail = page.getByRole('navigation', { name: 'Main', exact: true });
 			const box = (await rail.boundingBox())!;
 			const tabs = rail.getByRole('button');
-			await expect(tabs).toHaveCount(5);
+			await expect(tabs).toHaveCount(4);
+			const add = (await page
+				.locator('[data-column-stack]')
+				.getByRole('button', { name: 'New note' })
+				.boundingBox())!;
+			expect(add.y).toBeGreaterThanOrEqual(box.y + box.height);
+			expect(add.y + add.height).toBeLessThanOrEqual(466);
 			for (const tab of await tabs.all()) {
 				const t = (await tab.boundingBox())!;
 				expect(t.y).toBeGreaterThanOrEqual(box.y);

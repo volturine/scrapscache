@@ -112,7 +112,7 @@ describe('PhoneTabBar', () => {
 });
 
 describe('PhoneTabBar as iPhone Duo’s rail', () => {
-	it('keeps the same places in the status column, and is not the bar the keyboard hides', () => {
+	it('keeps the places but not Search, which is the bar’s field there, and is not the bar the keyboard hides', () => {
 		uiStore.setView('kanban');
 		render(PhoneTabBar, { props: { rail: 'right' } });
 		const nav = screen.getByRole('navigation', { name: 'Main' });
@@ -122,8 +122,7 @@ describe('PhoneTabBar as iPhone Duo’s rail', () => {
 			'Notes',
 			'Reminders',
 			'Kanban',
-			'Labels',
-			'Search'
+			'Labels'
 		]);
 		expect(screen.getByRole('button', { name: 'Kanban' }).getAttribute('aria-current')).toBe(
 			'page'

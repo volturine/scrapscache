@@ -1,7 +1,8 @@
 <script lang="ts">
 	// The phone's bottom tab bar: Notes, Reminders and Kanban one tap away; Labels,
 	// which lists every label with Archive and Trash; and Search, which opens the
-	// palette over the whole screen.
+	// palette over the whole screen. In iPhone Duo's column the bar above has a
+	// search field, so the pill leaves Search out.
 	import { goto } from '$app/navigation';
 	import { AlarmClock, Kanban, Search, StickyNote, Tag, type LucideIcon } from '@lucide/svelte';
 	import { iconSizeMd as iconMd, phoneTabsStyles as styles } from '$panda/styles';
@@ -84,16 +85,18 @@
 		</span>
 		<span class={labelClass}>Labels</span>
 	</button>
-	<button
-		type="button"
-		class={tabClass}
-		aria-haspopup="dialog"
-		aria-expanded={uiStore.paletteOpen}
-		onclick={() => (uiStore.paletteOpen = !uiStore.paletteOpen)}
-	>
-		<span class={iconClass} data-tab-icon>
-			<Search class={iconMd} aria-hidden="true" />
-		</span>
-		<span class={labelClass}>Search</span>
-	</button>
+	{#if !rail}
+		<button
+			type="button"
+			class={tabClass}
+			aria-haspopup="dialog"
+			aria-expanded={uiStore.paletteOpen}
+			onclick={() => (uiStore.paletteOpen = !uiStore.paletteOpen)}
+		>
+			<span class={iconClass} data-tab-icon>
+				<Search class={iconMd} aria-hidden="true" />
+			</span>
+			<span class={labelClass}>Search</span>
+		</button>
+	{/if}
 </nav>

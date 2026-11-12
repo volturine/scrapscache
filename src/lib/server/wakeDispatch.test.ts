@@ -131,13 +131,15 @@ describe('delivering reminder wakes', () => {
 		expect(result).toMatchObject({ sent: 1, failed: 1, gone: 0 });
 	});
 
-	it('sends nothing to a device that took the wake as its own, or left, after the claim', async () => {
+	it('sends nothing for a wake that was withdrawn, or to a device that took it as its own or left, after the claim', async () => {
 		const store = new SyncStore(testDb());
 		await account(store, 'account-aaaaaaaaaaaa', [wake(1, 1_000)]);
 		await account(store, 'account-bbbbbbbbbbbb', [wake(2, 1_000)]);
 		await account(store, 'account-cccccccccccc', [wake(3, 1_000)]);
+		await account(store, 'account-dddddddddddd', [wake(4, 1_000)]);
 		const claim = store.claimDueWakes.bind(store);
-		// Between the claim and the send: one phone registers holding its wake, one device signs out.
+		// Between the claim and the send: one phone registers holding its wake, one
+		// device signs out, and one reminder is deleted on another device.
 		vi.spyOn(store, 'claimDueWakes').mockImplementationOnce(async (...args) => {
 			const due = await claim(...args);
 			const phone = due.find((item) => item.accountId === 'account-aaaaaaaaaaaa');
@@ -147,6 +149,7 @@ describe('delivering reminder wakes', () => {
 				{ held: [wake(1, 1_000).id], now: 900 }
 			);
 			await store.deletePushDevice('account-bbbbbbbbbbbb', 'device-account-bbbbbbbbbbbb');
+			await store.replaceReminderWakes('account-dddddddddddd', [], 2);
 			return due;
 		});
 		const sent: string[] = [];

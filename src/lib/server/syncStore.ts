@@ -1297,6 +1297,7 @@ export class SyncStore {
 
 	/**
 	 * Whether a claimed wake is still this device's to be sent. Since the claim the
+	 * reminder may have been withdrawn or moved (a moved one is a new wake), the
 	 * device may have gone or changed its address, or a phone may have taken the
 	 * wake as one it shows itself.
 	 */
@@ -1305,6 +1306,9 @@ export class SyncStore {
 		const result = await this.ops.execute({
 			sql: `SELECT 1 AS owed FROM reminder_push_devices d
 			 WHERE d.account_id = ?1 AND d.device_id = ?2 AND d.endpoint = ?4
+				AND EXISTS (
+					SELECT 1 FROM reminder_wakes w WHERE w.account_id = ?1 AND w.wake_id = ?3
+				)
 				AND NOT EXISTS (
 					SELECT 1 FROM reminder_wake_holds h
 					WHERE h.account_id = ?1 AND h.device_id = ?2 AND h.wake_id = ?3
@@ -1396,6 +1400,30 @@ export class SyncStore {
 			'write'
 		);
 		await this.touchAccount(accountId);
+	}
+
+	/**
+	 * Take a phone off an account by its push address alone. The app asks for this
+	 * for a workspace it has unlinked, whose key it no longer holds: the address,
+	 * which carries the phone's push token, is all it can show.
+	 */
+	async deletePushEndpoint(accountId: string, endpoint: string): Promise<void> {
+		await this.db.ready;
+		await this.ops.batch(
+			[
+				{
+					sql: `DELETE FROM reminder_wake_holds WHERE account_id = ?1 AND device_id IN (
+						SELECT device_id FROM reminder_push_devices WHERE account_id = ?1 AND endpoint = ?2
+					)`,
+					args: [accountId, endpoint]
+				},
+				{
+					sql: 'DELETE FROM reminder_push_devices WHERE account_id = ?1 AND endpoint = ?2',
+					args: [accountId, endpoint]
+				}
+			],
+			'write'
+		);
 	}
 
 	async countPushDevices(accountId?: string): Promise<number> {

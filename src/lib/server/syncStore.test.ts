@@ -1101,6 +1101,57 @@ describe('SQLite sync store', () => {
 			expect(await due(store, 1_500)).toEqual([]);
 		});
 
+		it('is no longer owed a claimed wake once it holds it, was sent it, the reminder is withdrawn, or it is gone', async () => {
+			const { store } = createStore();
+			await store.createAccount('account', 'credential');
+			const three = [wake('a', 1_000), wake('b', 1_000), wake('c', 1_000)];
+			await store.replaceReminderWakes('account', [...three, wake('d', 1_000)], 1);
+			await store.savePushDevice(phone('account'), { held: [], now: 0 });
+			const [first, second, third, fourth] = await store.claimDueWakes(1_000);
+			expect(await store.isWakeOwed(first)).toBe(true);
+			await store.markWakeDelivered(first, 1_000);
+			expect(await store.isWakeOwed(first)).toBe(false);
+			// The app opens before the second is sent, and takes it as its own.
+			await store.savePushDevice(phone('account'), { held: ids('b'), now: 500 });
+			expect(await store.isWakeOwed(second)).toBe(false);
+			// The fourth reminder is deleted on another device before its push is sent.
+			expect(await store.isWakeOwed(fourth)).toBe(true);
+			await store.replaceReminderWakes('account', three, 2);
+			expect(await store.isWakeOwed(fourth)).toBe(false);
+			expect(await store.isWakeOwed(third)).toBe(true);
+			await store.deletePushDevice('account', 'device-phone000000');
+			expect(await store.isWakeOwed(third)).toBe(false);
+		});
+
+		it('is taken off one account by its push address, with its holds, and off no other', async () => {
+			const { store, db } = createStore();
+			for (const accountId of ['account', 'other']) {
+				await store.createAccount(accountId, 'credential');
+				await store.replaceReminderWakes(accountId, [wake('a', 1_000), wake('b', 5_000)]);
+				await store.savePushDevice(phone(accountId), { held: ids('b'), now: 0 });
+			}
+			await store.savePushDevice({
+				accountId: 'account',
+				deviceId: 'device-browser0000',
+				endpoint: 'https://push.example/browser',
+				p256dh: 'p'.repeat(20),
+				auth: 'a'.repeat(16)
+			});
+			// A token that is not this account's phone removes nothing.
+			await store.deletePushEndpoint(
+				'account',
+				`apns://com.scrapscache.app/${'cd'.repeat(32)}/account`
+			);
+			expect(await store.countPushDevices('account')).toBe(2);
+			await store.deletePushEndpoint('account', phone('account').endpoint);
+			expect(await store.countPushDevices('account')).toBe(1);
+			expect(await store.countPushDevices('other')).toBe(1);
+			expect(await holds(db)).toBe(1);
+			// What is left of the account's is the browser, which still gets its wakes.
+			const claimed = await store.claimDueWakes(1_000, 100, 'account');
+			expect(claimed.map((item) => item.deviceId)).toEqual(['device-browser0000']);
+		});
+
 		it('keeps only the holds it last named, however many lists it sends', async () => {
 			const { store, db } = createStore();
 			await store.createAccount('account', 'credential');

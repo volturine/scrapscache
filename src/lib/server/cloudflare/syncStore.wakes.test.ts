@@ -212,21 +212,39 @@ describe('Workers reminder wakes for a phone that shows reminders itself', () =>
 		expect(await holds()).toBe(1);
 	});
 
-	it('says a claimed wake is no longer owed once the phone holds it, was sent it, or is gone', async () => {
-		await store.createAccount('account', 'credential');
-		await store.replaceReminderWakes(
+	it('takes a phone off one account by its push address, with its holds, and off no other', async () => {
+		for (const accountId of ['account', 'other']) {
+			await store.createAccount(accountId, 'credential');
+			await store.savePushDevice(phone(accountId), { held: ids('b'), now: 0 });
+		}
+		// A token that is not this account's phone removes nothing.
+		await store.deletePushEndpoint(
 			'account',
-			[wake('a', 1_000), wake('b', 1_000), wake('c', 1_000)],
-			1
+			`apns://com.scrapscache.app/${'cd'.repeat(32)}/account`
 		);
+		expect(await store.countPushDevices('account')).toBe(1);
+		await store.deletePushEndpoint('account', phone('account').endpoint);
+		expect(await store.countPushDevices('account')).toBe(0);
+		expect(await store.countPushDevices('other')).toBe(1);
+		expect(await holds()).toBe(1);
+	});
+
+	it('says a claimed wake is no longer owed once the phone holds it, was sent it, the reminder is withdrawn, or the phone is gone', async () => {
+		await store.createAccount('account', 'credential');
+		const three = [wake('a', 1_000), wake('b', 1_000), wake('c', 1_000)];
+		await store.replaceReminderWakes('account', [...three, wake('d', 1_000)], 1);
 		await store.savePushDevice(phone('account'), { held: [], now: 0 });
-		const [first, second, third] = await store.claimDueWakes(1_000);
+		const [first, second, third, fourth] = await store.claimDueWakes(1_000);
 		expect(await store.isWakeOwed(first)).toBe(true);
 		await store.markWakeDelivered(first, 1_000);
 		expect(await store.isWakeOwed(first)).toBe(false);
 		// The app opens before the second is sent, and takes it as its own.
 		await store.savePushDevice(phone('account'), { held: ids('b'), now: 500 });
 		expect(await store.isWakeOwed(second)).toBe(false);
+		// The fourth reminder is deleted on another device before its push is sent.
+		expect(await store.isWakeOwed(fourth)).toBe(true);
+		await store.replaceReminderWakes('account', three, 2);
+		expect(await store.isWakeOwed(fourth)).toBe(false);
 		expect(await store.isWakeOwed(third)).toBe(true);
 		await store.deletePushDevice('account', 'device-phone000000');
 		expect(await store.isWakeOwed(third)).toBe(false);

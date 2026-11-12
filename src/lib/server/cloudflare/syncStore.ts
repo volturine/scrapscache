@@ -720,7 +720,7 @@ export class SyncStore {
 	 */
 	async isWakeOwed(w: DueWake): Promise<boolean> {
 		const result = await execute(this.db, {
-			sql: 'SELECT 1 AS owed FROM reminder_push_devices d WHERE d.account_id=?1 AND d.device_id=?2 AND d.endpoint=?4 AND NOT EXISTS (SELECT 1 FROM reminder_wake_holds h WHERE h.account_id=?1 AND h.device_id=?2 AND h.wake_id=?3) AND NOT EXISTS (SELECT 1 FROM reminder_wake_deliveries x WHERE x.account_id=?1 AND x.device_id=?2 AND x.wake_id=?3 AND x.delivered_at IS NOT NULL)',
+			sql: 'SELECT 1 AS owed FROM reminder_push_devices d WHERE d.account_id=?1 AND d.device_id=?2 AND d.endpoint=?4 AND EXISTS (SELECT 1 FROM reminder_wakes w WHERE w.account_id=?1 AND w.wake_id=?3) AND NOT EXISTS (SELECT 1 FROM reminder_wake_holds h WHERE h.account_id=?1 AND h.device_id=?2 AND h.wake_id=?3) AND NOT EXISTS (SELECT 1 FROM reminder_wake_deliveries x WHERE x.account_id=?1 AND x.device_id=?2 AND x.wake_id=?3 AND x.delivered_at IS NOT NULL)',
 			args: [w.accountId, w.deviceId, w.wakeId, w.endpoint]
 		});
 		return result.rows.length > 0;
@@ -783,6 +783,19 @@ export class SyncStore {
 			}
 		]);
 		await this.touchAccount(accountId);
+	}
+	/** Take a phone off an account by its push address alone; see the Node store. */
+	async deletePushEndpoint(accountId: string, endpoint: string): Promise<void> {
+		await batch(this.db, [
+			{
+				sql: 'DELETE FROM reminder_wake_holds WHERE account_id=?1 AND device_id IN (SELECT device_id FROM reminder_push_devices WHERE account_id=?1 AND endpoint=?2)',
+				args: [accountId, endpoint]
+			},
+			{
+				sql: 'DELETE FROM reminder_push_devices WHERE account_id=?1 AND endpoint=?2',
+				args: [accountId, endpoint]
+			}
+		]);
 	}
 	async countPushDevices(accountId?: string): Promise<number> {
 		const r = await execute(

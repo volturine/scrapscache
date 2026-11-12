@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { UpcomingReminder } from '#lib/stores/reminders.svelte.js';
 
 const TOKEN = 'ab'.repeat(32);
@@ -12,7 +12,9 @@ const ios = vi.hoisted(() => ({
 const relay = vi.hoisted(() => ({
 	profiles: [] as Array<{ id: string; syncKey: string | null }>,
 	status: 200,
-	fetch: vi.fn()
+	fetch: vi.fn(),
+	/** Requests made without a workspace's key: the phone taking itself off an account. */
+	open: vi.fn()
 }));
 
 vi.mock('@capacitor/push-notifications', () => ({
@@ -36,6 +38,7 @@ vi.mock('#lib/stores/sync.svelte.js', () => ({
 		authorizedFetch: relay.fetch
 	}
 }));
+vi.mock('#lib/serverOrigin.svelte.js', () => ({ serverOrigin: () => 'https://relay.example' }));
 vi.mock('#lib/syncPairing.js', () => ({
 	identityFromSyncKey: (syncKey: string) => ({ accountId: `account-of-${syncKey}` })
 }));
@@ -63,6 +66,21 @@ function sent(): Map<string, Sent> {
 	);
 }
 
+/** The accounts the phone asked to be taken off, by its token alone, in order. */
+function left(): string[] {
+	return relay.open.mock.calls.map(([url, init]) => {
+		expect(url).toBe('https://relay.example/api/sync/push/wakes');
+		expect((init as RequestInit).method).toBe('DELETE');
+		const body = JSON.parse(String((init as RequestInit).body)) as {
+			accountId: string;
+			apns: { token: string; topic: string };
+		};
+		expect(body.apns).toEqual({ token: TOKEN, topic: 'com.scrapscache.app' });
+		return body.accountId;
+	});
+}
+
+/** The module as a newly launched app has it: nothing in memory, what was stored still there. */
 async function load() {
 	vi.resetModules();
 	return import('./remotePush.js');
@@ -84,7 +102,13 @@ beforeEach(() => {
 	relay.status = 200;
 	relay.fetch.mockReset();
 	relay.fetch.mockImplementation(async () => new Response(null, { status: relay.status }));
+	relay.open.mockReset();
+	relay.open.mockImplementation(async () => new Response(null, { status: 204 }));
+	vi.stubGlobal('fetch', relay.open);
+	localStorage.clear();
 });
+
+afterEach(() => vi.unstubAllGlobals());
 
 describe('registering the iPhone app for reminder push', () => {
 	it('registers the one push token under every synced workspace, with the wakes it holds there', async () => {
@@ -228,21 +252,14 @@ describe('registering the iPhone app for reminder push', () => {
 
 	it('takes the phone off an account again when its workspace was unlinked mid-registration', async () => {
 		const { registerRemotePush } = await load();
-		relay.fetch.mockImplementation(async (_path: string, init: RequestInit, account) => {
+		relay.fetch.mockImplementation(async (_path: string, _init: RequestInit, account) => {
 			// The unlink happens while the work account's registration is on its way.
-			if (init.method === 'POST' && (account as { accountId: string }).accountId.includes('work'))
+			if ((account as { accountId: string }).accountId.includes('work'))
 				relay.profiles = [{ id: 'home', syncKey: 'home-key' }];
 			return new Response(null, { status: 200 });
 		});
 		await registerRemotePush([]);
-		const removals = relay.fetch.mock.calls.filter(
-			([, init]) => (init as RequestInit).method === 'DELETE'
-		);
-		expect(removals).toHaveLength(1);
-		expect((removals[0][2] as { accountId: string }).accountId).toBe('account-of-work-key');
-		expect(JSON.parse(String((removals[0][1] as RequestInit).body))).toEqual({
-			deviceId: 'device-for-account-of-work-key'
-		});
+		expect(left()).toEqual(['account-of-work-key']);
 		// Linked again later, it registers afresh rather than being taken as already told.
 		relay.profiles.push({ id: 'work', syncKey: 'work-key' });
 		relay.fetch.mockClear();
@@ -273,5 +290,77 @@ describe('registering the iPhone app for reminder push', () => {
 			.filter((call) => call.account === 'account-of-home-key')
 			.map((call) => call.held);
 		expect(held).toEqual([['wake-a'], ['wake-c']]);
+	});
+});
+
+describe('a phone that left a workspace', () => {
+	it('takes itself off that account by its push token, once', async () => {
+		const { registerRemotePush } = await load();
+		await registerRemotePush([]);
+		expect(left()).toEqual([]);
+		relay.profiles = [{ id: 'home', syncKey: 'home-key' }];
+		await registerRemotePush([]);
+		expect(left()).toEqual(['account-of-work-key']);
+		await registerRemotePush([reminder('home', 'wake-a')]);
+		expect(left()).toEqual(['account-of-work-key']);
+	});
+
+	it('asks again after every launch until the relay answers', async () => {
+		let app = await load();
+		await app.registerRemotePush([]);
+		// Unlinked with no way to the relay: the workspace's key is gone, the phone still registered.
+		relay.profiles = [{ id: 'home', syncKey: 'home-key' }];
+		relay.open.mockRejectedValue(new TypeError('offline'));
+		await app.registerRemotePush([]);
+		app = await load();
+		relay.open.mockResolvedValue(new Response(null, { status: 503 }));
+		await app.registerRemotePush([]);
+		app = await load();
+		relay.open.mockResolvedValue(new Response(null, { status: 204 }));
+		await app.registerRemotePush([]);
+		expect(left()).toEqual(Array(3).fill('account-of-work-key'));
+		app = await load();
+		await app.registerRemotePush([]);
+		expect(left()).toHaveLength(3);
+	});
+
+	it('takes itself off the last account too, with nothing left to register', async () => {
+		let app = await load();
+		relay.profiles = [{ id: 'home', syncKey: 'home-key' }];
+		await app.registerRemotePush([]);
+		relay.profiles = [];
+		relay.fetch.mockClear();
+		app = await load();
+		await app.registerRemotePush([]);
+		expect(left()).toEqual(['account-of-home-key']);
+		expect(relay.fetch).not.toHaveBeenCalled();
+	});
+
+	it('is taken off even an account whose registration never got through', async () => {
+		let app = await load();
+		relay.status = 503;
+		await app.registerRemotePush([]);
+		relay.profiles = [{ id: 'home', syncKey: 'home-key' }];
+		app = await load();
+		await app.registerRemotePush([]);
+		// The relay may have taken the registration before its answer was lost.
+		expect(left()).toEqual(['account-of-work-key']);
+	});
+
+	it('stays on an account whose workspace was linked again before the relay answered', async () => {
+		const { registerRemotePush } = await load();
+		await registerRemotePush([]);
+		relay.profiles = [{ id: 'home', syncKey: 'home-key' }];
+		relay.open.mockImplementation(async () => {
+			relay.profiles.push({ id: 'work', syncKey: 'work-key' });
+			return new Response(null, { status: 204 });
+		});
+		await registerRemotePush([]);
+		relay.fetch.mockClear();
+		relay.open.mockClear();
+		await registerRemotePush([]);
+		// It registers there again, and is not asked off an account it syncs with.
+		expect([...sent().keys()]).toEqual(['account-of-work-key']);
+		expect(left()).toEqual([]);
 	});
 });

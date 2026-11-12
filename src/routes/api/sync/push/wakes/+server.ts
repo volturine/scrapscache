@@ -6,6 +6,7 @@ import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '#lib/serv
 import { recordSqliteError } from '#lib/server/metrics.js';
 import { armWakeTimer } from '#lib/server/wakeTimer.js';
 import {
+	ACCOUNT_ID_RE,
 	DEVICE_ID_RE,
 	isPublicEndpoint,
 	isPushSubscription,
@@ -195,16 +196,43 @@ export const PUT: RequestHandler = async ({ request, getClientAddress }) => {
 	}
 };
 
-/** Stop deliveries for this browser while retaining other devices and account wakes. */
+/**
+ * The iPhone app taking itself off an account. A browser that leaves a workspace
+ * unsubscribes, and its push service then tells the relay it is gone; a phone's
+ * push token is the whole app's and stays good, so nothing would. The app asks
+ * instead, and may only get to once the workspace's key is gone from it (it was
+ * unlinked while the relay could not be reached). The token is its proof: the
+ * phone, Apple and this relay are all that know it. The answer is the same
+ * whether or not the phone was registered there.
+ */
+async function removePhone(body: { apns?: unknown; accountId?: unknown }): Promise<Response> {
+	const phone = parseApnsRegistration(body.apns);
+	if (!phone || typeof body.accountId !== 'string' || !ACCOUNT_ID_RE.test(body.accountId)) {
+		return Response.json({ error: 'A push token and an account are required' }, { status: 400 });
+	}
+	try {
+		await getSyncStore().deletePushEndpoint(body.accountId, apnsAddress(phone, body.accountId));
+		return new Response(null, { status: 204 });
+	} catch (error) {
+		recordSqliteError(error);
+		return Response.json(
+			{ error: 'Push registration is temporarily unavailable' },
+			{ status: 503 }
+		);
+	}
+}
+
+/** Stop deliveries for this device while retaining other devices and account wakes. */
 export const DELETE: RequestHandler = async ({ request, getClientAddress }) => {
 	const addressLimit = await checkAddressLimit(getClientAddress);
 	if (!addressLimit.allowed) return rateLimitResponse(addressLimit);
-	let body: { deviceId?: unknown };
+	let body: { deviceId?: unknown; apns?: unknown; accountId?: unknown };
 	try {
 		body = (await readJsonBody(request, MAX_REQUEST_BYTES)) as typeof body;
 	} catch {
 		return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
 	}
+	if (body.apns !== undefined) return removePhone(body);
 	if (typeof body.deviceId !== 'string' || !DEVICE_ID_RE.test(body.deviceId)) {
 		return Response.json({ error: 'A device id is required' }, { status: 400 });
 	}

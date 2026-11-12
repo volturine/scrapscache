@@ -134,7 +134,15 @@ the long-term attachment format.
   id the operator listed, and carrying fixed words: no note, title or account.
   iOS gives an app one push token for all its workspaces, so the relay stores
   the same token under each account that syncs on a phone and can tell they
-  share it; a browser's workspaces each have a push address of their own
+  share it; a browser's workspaces each have a push address of their own.
+  That token also stays good after a workspace is unlinked, so the app takes
+  itself off the account: at the unlink with its sync session, and, if the
+  relay could not be reached then, afterwards by the token alone (a `DELETE`
+  on `/api/sync/push/wakes` with the token and the account id, no session). The
+  workspace's key is gone from the phone by then, and the token is known only
+  to the phone, Apple and the relay. That request can remove one phone's
+  registration and nothing else, answers the same whether or not the phone was
+  registered, and is charged to the per-address bucket like the rest
 - **Admin token or Cloudflare Access** — `/metrics` and every `/api/admin/*`
   endpoint need the admin token or a request Cloudflare Access signed for the
   configured application; the Access JWT's signature, issuer and audience are

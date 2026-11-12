@@ -1,8 +1,9 @@
 // Reminder wakes for the iPhone app, sent through Apple's push service (APNs).
 // The app shows its own notification for every reminder it holds, so a push only
 // covers a reminder the phone has not synced yet, with the words a browser shows
-// for a note it does not hold. Apple sees the phone's push token, the time and
-// those fixed words: never a note, a title or an account.
+// for a note it does not hold. Apple sees the phone's push token, the time,
+// those fixed words and the number the notification goes by (a short hash of
+// the wake's opaque id): never a note, a title or an account.
 import {
 	SCRAPSCACHE_APNS_KEY,
 	SCRAPSCACHE_APNS_KEY_ID,
@@ -19,7 +20,11 @@ const PRODUCTION_HOST = 'api.push.apple.com';
 /** Where a build run from Xcode or in a simulator is registered. */
 const SANDBOX_HOST = 'api.sandbox.push.apple.com';
 const SEND_TIMEOUT_MS = 10_000;
-/** How long Apple keeps a push for a phone that is off, as web push does. */
+/**
+ * How long after the reminder Apple may still deliver its push to a phone that
+ * was off. Counted from the reminder, not from the send: a send retried late
+ * must not keep the push alive a second day.
+ */
 const EXPIRY_SECONDS = 24 * 60 * 60;
 /**
  * Apple refuses a provider token older than an hour, and one replaced more often
@@ -145,18 +150,13 @@ const WAKE_BODY = JSON.stringify({
 	}
 });
 
-function wakeHeaders(
-	device: ApnsDevice,
-	wake: DueWake,
-	token: string,
-	now: number
-): Record<string, string> {
+function wakeHeaders(device: ApnsDevice, wake: DueWake, token: string): Record<string, string> {
 	return {
 		authorization: `bearer ${token}`,
 		'apns-topic': device.topic,
 		'apns-push-type': 'alert',
 		'apns-priority': '10',
-		'apns-expiration': String(Math.floor(now / 1000) + EXPIRY_SECONDS),
+		'apns-expiration': String(Math.floor(wake.fireAt / 1000) + EXPIRY_SECONDS),
 		// The number the app's own notification for this wake goes by, so the two
 		// are one notification and the app takes this one down the same way.
 		'apns-collapse-id': String(wakeNotificationId(wake.wakeId)),
@@ -234,7 +234,7 @@ export async function sendApnsWake(wake: DueWake, now = Date.now()): Promise<Wak
 		return 'gone';
 	}
 	try {
-		const headers = wakeHeaders(device, wake, await providerToken(config, now), now);
+		const headers = wakeHeaders(device, wake, await providerToken(config, now));
 		let answer = await post(PRODUCTION_HOST, device, headers);
 		// A token Apple's production service does not know may be a development build's.
 		if (answer.status === 400 && answer.reason === 'BadDeviceToken') {

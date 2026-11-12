@@ -30,6 +30,8 @@ const TOPIC = 'com.scrapscache.app';
 const ACCOUNT = 'account-aaaaaaaaaaaa';
 const WAKE_ID = 'KF2Uqldw0Rk-G-3Q53tTgfPtymnms48Rkks3tUian18';
 const NOW = Date.UTC(2030, 0, 7, 9, 10);
+/** The reminder's own time: the send under test is a retry, hours late. */
+const FIRED = NOW - 5 * 60 * 60_000;
 
 function base64(bytes: Uint8Array): string {
 	let binary = '';
@@ -70,7 +72,7 @@ const wake = (endpoint = apnsAddress({ token: TOKEN, topic: TOPIC }, ACCOUNT)) =
 	accountId: ACCOUNT,
 	deviceId: 'device-aaaaaaaaaaaa',
 	wakeId: WAKE_ID,
-	fireAt: NOW,
+	fireAt: FIRED,
 	endpoint,
 	p256dh: '',
 	auth: ''
@@ -176,7 +178,8 @@ describe('sending a wake to a phone', () => {
 		expect(headers['apns-topic']).toBe(TOPIC);
 		expect(headers['apns-push-type']).toBe('alert');
 		expect(headers['apns-priority']).toBe('10');
-		expect(headers['apns-expiration']).toBe(String(NOW / 1000 + 86_400));
+		// A day from the reminder, however late the send.
+		expect(headers['apns-expiration']).toBe(String(FIRED / 1000 + 86_400));
 		// The app's own notification for the wake goes by the same number.
 		expect(headers['apns-collapse-id']).toBe(String(wakeNotificationId(WAKE_ID)));
 		expect(JSON.parse(body)).toEqual({

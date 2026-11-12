@@ -57,7 +57,7 @@
 				<p class={styles.sectionCopy}>
 					Multi-device sync is completely optional. When you choose to sync across devices, all note
 					titles, bodies, checklists, attachments, and canvases are encrypted on your device using
-					AES-256-GCM / XChaCha20-Poly1305 before transmission.
+					XChaCha20-Poly1305 before transmission.
 				</p>
 				<p class={styles.sectionCopy}>
 					The sync keys are generated on your hardware and never sent to any server in plaintext.
@@ -115,9 +115,9 @@
 			<section class={styles.section}>
 				<h2 class={styles.sectionHeading}>5. Data Ownership & Right to Deletion</h2>
 				<p class={styles.sectionCopy}>
-					You own all of your data. You can export a full password-encrypted or JSON backup at any
-					time from the Settings menu. If you use cloud sync, you can unlink your workspace or
-					execute a permanent deletion, immediately wiping the cloud ciphertext record.
+					You own all of your data. You can export a full password-encrypted backup at any time from
+					the Settings menu. If you use cloud sync, you can unlink your workspace or execute a
+					permanent deletion, immediately wiping the cloud ciphertext record.
 				</p>
 			</section>
 

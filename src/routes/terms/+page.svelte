@@ -29,7 +29,7 @@
 				Legal & Usage
 			</div>
 			<h1 class={styles.pageTitle}>Terms of Service</h1>
-			<p class={styles.updated}>Last updated: September 2026</p>
+			<p class={styles.updated}>Last updated: November 2026</p>
 		</div>
 
 		<div class={styles.sections}>
@@ -105,8 +105,8 @@
 					</li>
 					<li>
 						<strong>Zero Content Exposure:</strong> All content is encrypted on your hardware before transmission
-						using authenticated ciphers (XChaCha20-Poly1305 / AES-256-GCM). The hosted relay only sees
-						opaque ciphertext blobs and anonymous identifiers.
+						using an authenticated cipher (XChaCha20-Poly1305). The hosted relay only sees opaque ciphertext
+						blobs and anonymous identifiers.
 					</li>
 				</ul>
 			</section>

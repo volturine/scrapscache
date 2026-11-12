@@ -175,9 +175,12 @@ pairing dialog, and `https://<host>/privacy` opens Safari.
 
 ### Export compliance
 
-`Info.plist` sets `ITSAppUsesNonExemptEncryption` to false, which Apple's
-documentation allows for an app whose encryption needs no export compliance
-documentation. The app does ship encryption of its own (the `@noble` libraries
+`Info.plist` sets `ITSAppUsesNonExemptEncryption` to false. Apple's wording for
+the key is about documentation, not about whether encryption is used: "Set the
+value to NO if your app […] doesn't use encryption, or if it only uses forms
+of encryption that are exempt from export compliance documentation
+requirements. Otherwise, set it to YES" ("Complying with Encryption Export
+Regulations"). The app does ship encryption of its own (the `@noble` libraries
 and the pairing exchange), all of it standard, published algorithms. Apple
 asks for documentation for that kind only when the app is distributed in
 France: a French encryption declaration. So the value holds **while the app is

@@ -3721,6 +3721,7 @@ export const phoneTabsStyles = {
 		gap: 'sm',
 		flexShrink: 0,
 		'& button': {
+			...gridCenter,
 			w: '3rem',
 			h: '3rem',
 			rounded: 'full',

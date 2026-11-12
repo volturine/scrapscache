@@ -932,7 +932,12 @@ test.describe('in iPhone Duo’s side column', () => {
 		// expanded Dynamic Island and the clock; New note, under the pill, sits at the
 		// bottom, not against it.
 		expect(first.y).toBeGreaterThan(232);
-		const add = (await stack.getByRole('button', { name: 'New note' }).boundingBox())!;
+		const addButton = stack.getByRole('button', { name: 'New note' });
+		const add = (await addButton.boundingBox())!;
+		// The icon sits in the middle of its circle.
+		const icon = (await addButton.locator('svg').boundingBox())!;
+		expect(Math.abs(icon.x + icon.width / 2 - (add.x + add.width / 2))).toBeLessThanOrEqual(1);
+		expect(Math.abs(icon.y + icon.height / 2 - (add.y + add.height / 2))).toBeLessThanOrEqual(1);
 		expect(add.x).toBeGreaterThanOrEqual(box.x);
 		expect(add.x + add.width).toBeLessThanOrEqual(box.x + box.width);
 		expect(add.y).toBeGreaterThanOrEqual(pill.y + pill.height);

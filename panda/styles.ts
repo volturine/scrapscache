@@ -324,6 +324,13 @@ export const publicPageStyles = {
 		textDecoration: 'underline',
 		_hoverable: { color: 'scrapscache.text' }
 	}),
+	inlineLink: css({
+		color: 'scrapscache.accent',
+		textDecoration: 'underline',
+		textUnderlineOffset: '2px',
+		transition: 'color 120ms ease',
+		_hoverable: { color: 'scrapscache.text' }
+	}),
 	errorRoot: flex({
 		minH: '100vh',
 		direction: 'column',

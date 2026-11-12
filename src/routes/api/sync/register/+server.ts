@@ -2,7 +2,7 @@ import type { RequestHandler } from './$types';
 import { getSyncStore } from '#lib/server/syncStore.js';
 import { verifySyncRegistration } from '#lib/server/syncAuth.js';
 import { readJsonBody } from '#lib/server/request.js';
-import { verifyTurnstile } from '#lib/server/turnstile.js';
+import { turnstileChallenge, verifyTurnstile } from '#lib/server/turnstile.js';
 import {
 	chargeRegisterGlobalLimit,
 	checkRegisterLimit,
@@ -10,6 +10,18 @@ import {
 	rateLimitResponse
 } from '#lib/server/rateLimit.js';
 import { retiredKeyResponse } from '#lib/server/retiredKey.js';
+
+/**
+ * What registering needs from the client: the origin of the Turnstile challenge
+ * to frame for a token, or null when this server asks for none. The iPhone app
+ * can sync with any server, so it asks the one it is set to rather than relying
+ * on its build.
+ */
+export const GET: RequestHandler = () =>
+	Response.json(
+		{ turnstileOrigin: turnstileChallenge()?.origin ?? null },
+		{ headers: { 'cache-control': 'no-store' } }
+	);
 
 export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	const limited = await checkRegisterLimit(getClientAddress);

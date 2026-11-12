@@ -5,6 +5,7 @@ import { GET } from './+server';
 
 const CHALLENGE = 'https://verify.scrapscache.com';
 const APP = 'https://scrapscache.com';
+const IPHONE_APP = 'capacitor://localhost';
 const SCRIPT_CLOSE = '<\x2fscript>';
 
 function get(url: string): Response {
@@ -65,11 +66,28 @@ describe('the Turnstile challenge page', () => {
 		expect(get(`${CHALLENGE}/turnstile`).status).toBe(400);
 	});
 
-	it('can be framed only by the app, and sends its token only to the app', async () => {
+	it('can be framed only by the apps, and sends its token only to the app', async () => {
 		const response = get(`${CHALLENGE}/turnstile?action=register`);
 
-		expect(directives(response).get('frame-ancestors')).toBe(APP);
+		expect(directives(response).get('frame-ancestors')).toBe(`${APP} ${IPHONE_APP}`);
 		expect(await response.text()).toContain(`var appOrigin = "${APP}"`);
+	});
+
+	it('sends its token to the iPhone app when that app is its parent', async () => {
+		const parent = encodeURIComponent(IPHONE_APP);
+		const response = get(`${CHALLENGE}/turnstile?action=register&parent=${parent}`);
+
+		expect(response.status).toBe(200);
+		expect(directives(response).get('frame-ancestors')).toBe(`${APP} ${IPHONE_APP}`);
+		expect(await response.text()).toContain(`var appOrigin = "${IPHONE_APP}"`);
+	});
+
+	it('refuses a parent it does not know, so no other page receives a token', () => {
+		for (const parent of ['https://evil.example', 'capacitor://evil', '*', ''])
+			expect(
+				get(`${CHALLENGE}/turnstile?action=register&parent=${encodeURIComponent(parent)}`).status,
+				parent
+			).toBe(400);
 	});
 
 	it('runs only its own nonce and Turnstile, and loads nothing else', async () => {

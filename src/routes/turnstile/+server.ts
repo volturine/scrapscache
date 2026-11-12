@@ -1,5 +1,6 @@
 import type { RequestHandler } from './$types';
 import { turnstileChallenge } from '#lib/server/turnstile.js';
+import { APP_ORIGINS } from '#lib/server/appCors.js';
 import { TURNSTILE_MESSAGE } from '#lib/turnstileMessage.js';
 
 const TURNSTILE = 'https://challenges.cloudflare.com';
@@ -23,12 +24,21 @@ const notFound = () => new Response('Not found\n', { status: 404 });
  * The only page that runs Turnstile's script, served only on the challenge
  * origin. It holds no keys and no notes, can be framed only by the app, and
  * tells the app one thing: the token.
+ *
+ * "The app" is the web app on this deployment's origin, or the iPhone app,
+ * whose page runs at its own origin (#lib/server/appCors). The frame names its
+ * parent in `parent`; the page answers only a parent it knows, may be framed by
+ * those alone, and posts the token to the one it was given, so a page that
+ * lies about its parent is either refused framing or never receives the token.
  */
 export const GET: RequestHandler = ({ url }) => {
 	const challenge = turnstileChallenge();
 	if (!challenge || url.origin.toLowerCase() !== challenge.origin.toLowerCase()) return notFound();
 	const action = url.searchParams.get('action') ?? '';
 	if (!ACTIONS.has(action)) return new Response('Unknown action\n', { status: 400 });
+	const parents = [challenge.appOrigin, ...APP_ORIGINS];
+	const parent = url.searchParams.get('parent') ?? challenge.appOrigin;
+	if (!parents.includes(parent)) return new Response('Unknown parent\n', { status: 400 });
 
 	const scriptNonce = nonce();
 	const html = `<!doctype html>
@@ -41,7 +51,7 @@ export const GET: RequestHandler = ({ url }) => {
 <style>html,body{margin:0;background:transparent;overflow:hidden}</style>
 <script nonce="${scriptNonce}">
 (function () {
-	var appOrigin = ${scriptValue(challenge.appOrigin)};
+	var appOrigin = ${scriptValue(parent)};
 	function send(token) {
 		parent.postMessage({ type: ${scriptValue(TURNSTILE_MESSAGE)}, token: token }, appOrigin);
 	}
@@ -73,7 +83,7 @@ export const GET: RequestHandler = ({ url }) => {
 		"style-src 'unsafe-inline'",
 		"base-uri 'none'",
 		"form-action 'none'",
-		`frame-ancestors ${challenge.appOrigin}`
+		`frame-ancestors ${parents.join(' ')}`
 	].join('; ');
 
 	return new Response(html, {

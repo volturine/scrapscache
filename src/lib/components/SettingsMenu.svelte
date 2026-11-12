@@ -192,6 +192,11 @@
 								<a {...props()} href={resolve('terms')} class={styles.link}>Terms</a>
 							{/snippet}
 						</Menu.Item>
+						<Menu.Item value="support">
+							{#snippet asChild(props)}
+								<a {...props()} href={resolve('support')} class={styles.link}>Support</a>
+							{/snippet}
+						</Menu.Item>
 					</div>
 				</Menu.ItemGroup>
 				{#if importError}<p class={styles.alert} role="alert">{importError}</p>{/if}

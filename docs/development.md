@@ -55,6 +55,11 @@ shell (`ios/`, Swift Package Manager, no CocoaPods). It bundles the static build
 and talks to whichever server the **Server** row under Settings names (the
 app's default server unless changed, see [Two apps](#two-apps)), so one build
 serves self-hosters too.
+It needs iOS 16.4 or later (`IPHONEOS_DEPLOYMENT_TARGET` in the Xcode project).
+That is the oldest iOS that Vite's default build target (`build.target` is
+unset in `vite.config.ts`) compiles the web code for, so an older iPhone could
+install the app and then fail to run it. When a Vite upgrade raises that
+default, raise the deployment target with it.
 At its first launch the app asks which server it syncs with: the hosted
 service, or a self-hosted relay by https address, which it checks by reading
 that server's `/health/ready`; "Decide later" asks again next launch, and the
@@ -456,6 +461,15 @@ origin so its script never shares one with the sync keys. `wrangler.jsonc` sets
 because siteverify reports where the widget ran. The widget secret is the
 `TURNSTILE_SECRET` environment secret in each GitHub environment, which deployment
 installs on the app Worker.
+
+The client learns the challenge origin from its server
+(`GET /api/sync/register`, `#lib/turnstileOrigin`), because the iPhone app syncs
+with whichever server its setting names. The challenge page posts its token to
+the parent the frame names, the web app's origin or the iPhone app's
+`capacitor://localhost`, and only those may frame it. The app's bundled CSP has
+no request time, so its `frame-src` lists the two hosted challenge origins, read
+from `wrangler.jsonc` at build time; a self-hosted server with its own check is
+reported in the app instead of framed.
 
 For local testing, `localhost` and `127.0.0.1` are different origins, so one dev
 server can play both parts. Open the app at `http://localhost:5173` and put these in

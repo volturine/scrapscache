@@ -8,7 +8,7 @@
 	import WorkspaceRow from './WorkspaceRow.svelte';
 	import TurnstileWidget from './TurnstileWidget.svelte';
 	import PairingQrScanner from './PairingQrScanner.svelte';
-	import { PUBLIC_TURNSTILE_ORIGIN } from '$app/env/public';
+	import { loadTurnstileNeed, type TurnstileNeed } from '#lib/turnstileOrigin.js';
 	import { onDestroy, onMount } from 'svelte';
 	import QRCode from 'qrcode';
 	import { Clipboard } from '@ark-ui/svelte/clipboard';
@@ -71,8 +71,14 @@
 	let newName = $state('');
 	let promoteSource = $state<string | null>(null);
 	// Account creation, including recovery that may recreate the account, needs a Turnstile token
-	// when this deployment configures a challenge origin. Each surface owns its own single-use widget.
-	const turnstileOrigin = PUBLIC_TURNSTILE_ORIGIN?.trim() ?? '';
+	// when the sync server names a challenge origin. Until the server has answered (null), or when
+	// it could not be asked or its check cannot open here, those actions stay off. Each surface owns
+	// its own single-use widget.
+	let turnstile = $state<TurnstileNeed | null>(null);
+	const turnstileOrigin = $derived(turnstile?.kind === 'check' ? turnstile.origin : '');
+	const checkBlocked = $derived(
+		turnstile === null || turnstile.kind === 'unknown' || turnstile.kind === 'unsupported'
+	);
 	let registerCheck = $state<TurnstileWidget>();
 	let registerToken = $state('');
 	let confirmCheck = $state<TurnstileWidget>();
@@ -178,6 +184,15 @@
 		if (copyFlashTimer !== null) clearTimeout(copyFlashTimer);
 	});
 
+	async function askTurnstile() {
+		turnstile = null;
+		turnstile = await loadTurnstileNeed();
+	}
+
+	onMount(() => {
+		void askTurnstile();
+	});
+
 	// A pairing link can come from anyone. It fills in the code; joining the
 	// account behind it waits for the person to start the connection.
 	onMount(() => {
@@ -218,7 +233,7 @@
 	}
 
 	async function create() {
-		if (turnstileOrigin && !registerToken) return;
+		if (checkBlocked || (turnstileOrigin && !registerToken)) return;
 		error = '';
 		info = '';
 		const name = newName;
@@ -240,7 +255,7 @@
 	}
 
 	async function forceResync() {
-		if (turnstileOrigin && !confirmToken) return;
+		if (checkBlocked || (turnstileOrigin && !confirmToken)) return;
 		error = '';
 		info = '';
 		const token = confirmToken || undefined;
@@ -260,7 +275,7 @@
 	}
 
 	async function replaceRetiredKey() {
-		if (!confirmTarget || (turnstileOrigin && !confirmToken)) return;
+		if (!confirmTarget || checkBlocked || (turnstileOrigin && !confirmToken)) return;
 		error = '';
 		info = '';
 		const token = confirmToken || undefined;
@@ -577,6 +592,22 @@
 
 <svelte:window onkeydown={onWindowKeyDown} />
 
+{#snippet checkProblem()}
+	{#if turnstile?.kind === 'unknown'}
+		<p class={syncDanger} role="alert">
+			Could not reach the server to see what it needs.
+			<button type="button" class={syncBackLink} onclick={() => void askTurnstile()}
+				>Try again</button
+			>
+		</p>
+	{:else if turnstile?.kind === 'unsupported'}
+		<p class={syncDanger} role="alert">
+			This server asks for a human check that can’t open in the app. Do this in a web browser
+			instead.
+		</p>
+	{/if}
+{/snippet}
+
 <Dialog.Root
 	open
 	onOpenChange={(details) => !details.open && close()}
@@ -868,6 +899,9 @@
 								action="register"
 							/>
 						{/if}
+						{#if confirmation === 'force' || confirmation === 'new-key'}
+							{@render checkProblem()}
+						{/if}
 						{#if error}<p class={syncDanger} role="alert">
 								{error}
 							</p>{/if}
@@ -900,8 +934,7 @@
 								)}
 								disabled={busy ||
 									((confirmation === 'force' || confirmation === 'new-key') &&
-										Boolean(turnstileOrigin) &&
-										!confirmToken)}
+										(checkBlocked || (Boolean(turnstileOrigin) && !confirmToken)))}
 								onclick={() =>
 									confirmation === 'force'
 										? void forceResync()
@@ -947,11 +980,12 @@
 									action="register"
 								/>
 							{/if}
+							{@render checkProblem()}
 							{#if error}<p class={syncDanger} role="alert">{error}</p>{/if}
 							<button
 								type="button"
 								onclick={() => void create()}
-								disabled={busy || (Boolean(turnstileOrigin) && !registerToken)}
+								disabled={busy || checkBlocked || (Boolean(turnstileOrigin) && !registerToken)}
 								class={cx(button({ variant: 'primary', size: 'md' }), styles.fullButton)}
 								>{operation === 'create' ? 'Starting sync…' : 'Start sync'}</button
 							>

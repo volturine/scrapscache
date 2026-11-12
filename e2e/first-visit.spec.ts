@@ -47,7 +47,7 @@ test('security headers and legal pages are served', async ({ request }) => {
 	expect(headers['x-content-type-options']).toBe('nosniff');
 	expect(headers['permissions-policy']).toContain('camera=(self)');
 
-	for (const path of ['/privacy', '/terms']) {
+	for (const path of ['/privacy', '/terms', '/support']) {
 		const response = await request.get(path);
 		expect(response.ok(), path).toBe(true);
 	}

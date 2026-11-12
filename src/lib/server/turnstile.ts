@@ -41,13 +41,27 @@ const siteverify = (body: URLSearchParams) =>
  */
 export type TurnstileChallenge = { origin: string; sitekey: string; appOrigin: string };
 
+/**
+ * An origin as browsers write it (lower-case host, no default port), so the
+ * challenge origin and the app's compare as strings wherever they are named:
+ * here, frame-ancestors, the parent allow-list and the client. Null for a value
+ * that is not one, including those the pattern lets through but URL refuses.
+ */
+function browserOrigin(value: string): string | null {
+	if (!ORIGIN_RE.test(value)) return null;
+	try {
+		return new URL(value).origin;
+	} catch {
+		return null;
+	}
+}
+
 export function turnstileChallenge(): TurnstileChallenge | null {
-	const origin = PUBLIC_TURNSTILE_ORIGIN?.trim().replace(/\/$/, '');
 	const sitekey = TURNSTILE_SITEKEY?.trim();
-	const appOrigin = configuredOrigin() ?? '';
+	const origin = browserOrigin(PUBLIC_TURNSTILE_ORIGIN?.trim().replace(/\/$/, '') ?? '');
+	const appOrigin = browserOrigin(configuredOrigin() ?? '');
 	if (!origin || !sitekey || !appOrigin) return null;
-	if (!ORIGIN_RE.test(origin) || !ORIGIN_RE.test(appOrigin)) return null;
-	if (origin.toLowerCase() === appOrigin.toLowerCase()) return null;
+	if (origin === appOrigin) return null;
 	return { origin, sitekey, appOrigin };
 }
 

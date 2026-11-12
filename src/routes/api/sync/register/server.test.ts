@@ -9,6 +9,9 @@ const mocks = vi.hoisted(() => ({
 	verifyRegistration: vi.fn(() => true),
 	verifyTurnstile: vi.fn(
 		async (_token: unknown, _action: string, _ip: string): Promise<TurnstileResult> => 'verified'
+	),
+	turnstileChallenge: vi.fn(
+		(): { origin: string; sitekey: string; appOrigin: string } | null => null
 	)
 }));
 
@@ -19,7 +22,10 @@ vi.mock('#lib/server/syncStore.js', () => ({
 	})
 }));
 vi.mock('#lib/server/syncAuth.js', () => ({ verifySyncRegistration: mocks.verifyRegistration }));
-vi.mock('#lib/server/turnstile.js', () => ({ verifyTurnstile: mocks.verifyTurnstile }));
+vi.mock('#lib/server/turnstile.js', () => ({
+	verifyTurnstile: mocks.verifyTurnstile,
+	turnstileChallenge: mocks.turnstileChallenge
+}));
 vi.mock('#lib/server/rateLimit.js', () => ({
 	clientAddress: () => '203.0.113.1',
 	checkRegisterLimit: async () => ({ allowed: true }),
@@ -27,7 +33,7 @@ vi.mock('#lib/server/rateLimit.js', () => ({
 	rateLimitResponse: () => new Response(null, { status: 429 })
 }));
 
-import { POST } from './+server';
+import { GET, POST } from './+server';
 
 const validBody = {
 	accountId: 'account-123456789',
@@ -51,6 +57,29 @@ async function post(body: unknown): Promise<Response> {
 		getClientAddress: () => '203.0.113.1'
 	});
 }
+
+describe('GET /api/sync/register', () => {
+	const get = () => (GET as unknown as () => Response)();
+
+	it('names the challenge origin a client frames for its token', async () => {
+		mocks.turnstileChallenge.mockReturnValueOnce({
+			origin: 'https://verify.scrapscache.com',
+			sitekey: 'sitekey-1',
+			appOrigin: 'https://scrapscache.com'
+		});
+		const response = get();
+
+		expect(response.status).toBe(200);
+		expect(response.headers.get('cache-control')).toBe('no-store');
+		// The site key and app origin stay on the challenge page.
+		expect(await response.json()).toEqual({ turnstileOrigin: 'https://verify.scrapscache.com' });
+	});
+
+	it('says no check is needed when Turnstile is off', async () => {
+		mocks.turnstileChallenge.mockReturnValueOnce(null);
+		expect(await get().json()).toEqual({ turnstileOrigin: null });
+	});
+});
 
 describe('POST /api/sync/register', () => {
 	beforeEach(() => {

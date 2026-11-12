@@ -10,9 +10,35 @@ const viteConfig = readFileSync(
 
 describe('attachment CSP', () => {
 	it('allows same-origin blob PDFs in the in-app viewer', () => {
-		expect(viteConfig).toMatch(/'frame-src':\s*\['self',\s*'blob:'\]/);
+		expect(viteConfig).toMatch(/:\s*\['self',\s*'blob:'\],\s*'object-src'/);
 		expect(viteConfig).toMatch(/'object-src':\s*\['self',\s*'blob:'\]/);
 		expect(viteConfig).toMatch(/'default-src':\s*\['self'\]/);
+	});
+});
+
+describe('frame CSP', () => {
+	const frameSrc = /'frame-src':([\s\S]*?)'object-src'/.exec(viteConfig)?.[1] ?? '';
+
+	it('frames this origin and blobs, plus only the hosted challenge origins in the iPhone app', () => {
+		expect(frameSrc).toContain("['self', 'blob:', ...HOSTED_CHALLENGE_ORIGINS]");
+		expect(frameSrc).toContain("['self', 'blob:']");
+		// A whole scheme would also let a drawing's iframe element load any page.
+		expect(frameSrc).not.toMatch(/'https:'|'http:'|'\*'/);
+	});
+
+	it('takes the hosted challenge origins from the hosted servers’ configuration', () => {
+		const wrangler = readFileSync(
+			join(dirname(fileURLToPath(import.meta.url)), '../../wrangler.jsonc'),
+			'utf8'
+		);
+		const origins = [
+			...wrangler.matchAll(/"PUBLIC_TURNSTILE_ORIGIN":\s*"(https:\/\/[^"/]+)"/g)
+		].map((match) => match[1]);
+		expect(origins).toEqual([
+			'https://verify.scrapscache.com',
+			'https://verify-dev.scrapscache.com'
+		]);
+		expect(__APP_CHALLENGE_ORIGINS__).toEqual(origins);
 	});
 });
 

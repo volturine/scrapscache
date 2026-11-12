@@ -121,6 +121,26 @@ describe('turnstileChallenge', () => {
 		});
 	});
 
+	it('names both origins as browsers write them', () => {
+		configure('https://Verify.ScrapsCache.com:443/', 'https://ScrapsCache.com');
+		expect(turnstileChallenge()).toMatchObject({
+			origin: 'https://verify.scrapscache.com',
+			appOrigin: 'https://scrapscache.com'
+		});
+	});
+
+	it('refuses the app origin written another way, such as with its default port', () => {
+		configure('https://scrapscache.com:443', 'https://scrapscache.com');
+		expect(turnstileChallenge()).toBeNull();
+	});
+
+	it('turns a value no URL can hold into no challenge, not an error', () => {
+		configure('https://verify.scrapscache.com:99999');
+		expect(turnstileChallenge()).toBeNull();
+		configure('https://1.2.3.999');
+		expect(turnstileChallenge()).toBeNull();
+	});
+
 	it('refuses to place the challenge on the app origin, whatever the letter case', () => {
 		configure('https://ScrapsCache.com');
 		expect(turnstileChallenge()).toBeNull();

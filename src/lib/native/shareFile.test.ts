@@ -27,7 +27,9 @@ beforeEach(() => {
 
 describe('shareFile', () => {
 	it('writes the file to the cache, shares it by its name, and removes it', async () => {
-		await shareFile(new Blob(['hello'], { type: 'text/plain' }), 'note.txt');
+		await expect(shareFile(new Blob(['hello'], { type: 'text/plain' }), 'note.txt')).resolves.toBe(
+			true
+		);
 
 		const written = filesystem.writeFile.mock.calls[0][0];
 		expect(written.path).toMatch(/^share\/[^/]+\/note\.txt$/);
@@ -56,10 +58,10 @@ describe('shareFile', () => {
 		expect(Buffer.concat(parts).equals(bytes)).toBe(true);
 	});
 
-	it('takes a closed sheet as no error, and still removes the file', async () => {
+	it('takes a closed sheet as no error, says nothing was shared, and still removes the file', async () => {
 		share.share.mockRejectedValue(new Error('Share canceled'));
 
-		await expect(shareFile(new Blob(['x']), 'a.txt')).resolves.toBeUndefined();
+		await expect(shareFile(new Blob(['x']), 'a.txt')).resolves.toBe(false);
 		expect(filesystem.rmdir).toHaveBeenCalledTimes(1);
 	});
 

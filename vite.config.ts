@@ -30,7 +30,10 @@ const cloudflareModules = new Map([
  * asks that server rather than being chosen here.
  */
 const capacitorModules = new Map([
-	['#lib/syncEventsTransport.js', './src/lib/native/syncEventsTransport.ts']
+	['#lib/syncEventsTransport.js', './src/lib/native/syncEventsTransport.ts'],
+	// Excalidraw saves a file through this package's download link, which the
+	// app's web view drops; the app's copy hands the file to the share sheet.
+	['browser-fs-access', './src/lib/native/browserFsAccess.ts']
 ]);
 
 const cloudflareResolvedModules = new Map(
@@ -45,7 +48,7 @@ const cloudflareResolvedModules = new Map(
 const cloudflarePlatform: Plugin = {
 	name: 'cloudflare-platform',
 	enforce: 'pre',
-	resolveId(source: string) {
+	resolveId(source: string, importer: string | undefined) {
 		const modules =
 			process.env.DEPLOY_TARGET === 'cloudflare'
 				? cloudflareModules
@@ -53,8 +56,10 @@ const cloudflarePlatform: Plugin = {
 					? capacitorModules
 					: null;
 		const target = modules?.get(source);
-		if (target) return fileURLToPath(new URL(target, import.meta.url));
-		return null;
+		if (!target) return null;
+		const path = fileURLToPath(new URL(target, import.meta.url));
+		// A replacement may build on the module it replaces.
+		return importer === path ? null : path;
 	},
 	load(id: string) {
 		if (process.env.DEPLOY_TARGET !== 'cloudflare') return null;

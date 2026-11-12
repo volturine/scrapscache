@@ -152,12 +152,17 @@ jobs:
           printf '%s' "$SCRAPSCACHE_ADMIN_TOKEN" | npx wrangler secret put SCRAPSCACHE_ADMIN_TOKEN --env dev
           printf '%s' "$SCRAPSCACHE_TICK_SECRET" | npx wrangler secret put SCRAPSCACHE_TICK_SECRET --env dev
           printf '%s' "$TURNSTILE_SECRET" | npx wrangler secret put TURNSTILE_SECRET --env dev
+          # The dev iPhone app: iOS opens note and pairing links to this server in it.
+          if [ -n "$APPLE_TEAM_ID" ]; then
+            printf '%s' "$APPLE_TEAM_ID.com.scrapscache.app.dev" | npx wrangler secret put SCRAPSCACHE_IOS_APP_IDS --env dev
+          fi
           npx wrangler deploy --config cf/wrangler.cron.jsonc --env dev
           printf '%s' "$SCRAPSCACHE_TICK_SECRET" | npx wrangler secret put SCRAPSCACHE_TICK_SECRET --config cf/wrangler.cron.jsonc --env dev
           npx wrangler deploy --config recipes/mcp-server/cloudflare/wrangler.jsonc --env dev
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           SCRAPSCACHE_ADMIN_TOKEN: ${{ secrets.SCRAPSCACHE_ADMIN_TOKEN }}
           SCRAPSCACHE_TICK_SECRET: ${{ secrets.SCRAPSCACHE_TICK_SECRET }}
           TURNSTILE_SECRET: ${{ secrets.TURNSTILE_SECRET }}
@@ -253,6 +258,10 @@ jobs:
           printf '%s' "$SCRAPSCACHE_ADMIN_TOKEN" | npx wrangler secret put SCRAPSCACHE_ADMIN_TOKEN --env=""
           printf '%s' "$SCRAPSCACHE_TICK_SECRET" | npx wrangler secret put SCRAPSCACHE_TICK_SECRET --env=""
           printf '%s' "$TURNSTILE_SECRET" | npx wrangler secret put TURNSTILE_SECRET --env=""
+          # The iPhone app: iOS opens note and pairing links to this server in it.
+          if [ -n "$APPLE_TEAM_ID" ]; then
+            printf '%s' "$APPLE_TEAM_ID.com.scrapscache.app" | npx wrangler secret put SCRAPSCACHE_IOS_APP_IDS --env=""
+          fi
           # Optional: keeps the Web Push signing key out of the database. Skipped
           # until both halves are configured, because one half alone is an error.
           if [ -n "$SCRAPSCACHE_VAPID_PRIVATE_KEY" ] && [ -n "$SCRAPSCACHE_VAPID_PUBLIC_KEY" ]; then
@@ -265,6 +274,7 @@ jobs:
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           SCRAPSCACHE_ADMIN_TOKEN: ${{ secrets.SCRAPSCACHE_ADMIN_TOKEN }}
           SCRAPSCACHE_TICK_SECRET: ${{ secrets.SCRAPSCACHE_TICK_SECRET }}
           TURNSTILE_SECRET: ${{ secrets.TURNSTILE_SECRET }}

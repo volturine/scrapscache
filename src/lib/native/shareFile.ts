@@ -12,9 +12,10 @@ const CANCELED = 'Share canceled';
  * it on. The page cannot do this itself: the web view drops a download link,
  * and its own share needs a tap younger than a backup takes to encrypt. The
  * file is written to the app's cache in pieces and removed when the sheet
- * closes; closing the sheet without a choice is not an error.
+ * closes. Closing the sheet without a choice is not an error: the answer is
+ * false then, and true once the file was handed on.
  */
-export async function shareFile(file: Blob, name: string): Promise<void> {
+export async function shareFile(file: Blob, name: string): Promise<boolean> {
 	const folder = `share/${crypto.randomUUID()}`;
 	const path = `${folder}/${fileName(name)}`;
 	try {
@@ -33,8 +34,10 @@ export async function shareFile(file: Blob, name: string): Promise<void> {
 		}
 		const { uri } = await Filesystem.getUri({ path, directory: Directory.Cache });
 		await Share.share({ files: [uri] });
+		return true;
 	} catch (err) {
 		if (!(err instanceof Error && err.message === CANCELED)) throw err;
+		return false;
 	} finally {
 		await Filesystem.rmdir({ path: folder, directory: Directory.Cache, recursive: true }).catch(
 			() => undefined

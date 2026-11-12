@@ -15,7 +15,6 @@ import type {
 import type { CanvasElement, CanvasFile, CanvasScene } from './canvasAttachment';
 import { stableStringify } from './model/stableStringify';
 import { linkStylesheet } from './stylesheetLink';
-import { isNativeApp } from './native';
 
 const THUMBNAIL_WIDTH = 480;
 const THUMBNAIL_HEIGHT = 360;
@@ -278,8 +277,8 @@ export async function mountExcalidraw(
 					canvasActions: {
 						changeViewBackgroundColor: true,
 						clearCanvas: !options.readOnly,
-						// Its own save is a download link, which the iPhone app's web view drops.
-						export: isNativeApp() ? false : { saveFileToDisk: true },
+						// In the iPhone app the save goes to the share sheet (#lib/native/browserFsAccess).
+						export: { saveFileToDisk: true },
 						loadScene: !options.readOnly,
 						saveToActiveFile: true,
 						toggleTheme: false,

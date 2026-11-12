@@ -193,6 +193,7 @@ client-address settings above so rate limits see real client IPs.
 | `SCRAPSCACHE_VAPID_PRIVATE_KEY`            |                 auto-generated | Optional stable Web Push VAPID private key                                                                              |
 | `SCRAPSCACHE_VAPID_SUBJECT`                | `mailto:scrapscache@localhost` | Contact URI for VAPID (`mailto:` or `https:`)                                                                           |
 | `SCRAPSCACHE_ALLOW_INDEXING`               |                          unset | `true` serves a crawlable `robots.txt`; anything else disallows all crawling                                            |
+| `SCRAPSCACHE_IOS_APP_IDS`                  |                          unset | App IDs (`TEAMID.bundle.id`, comma-separated) of your own iPhone app builds whose links to this server open in the app  |
 | `PUBLIC_TURNSTILE_ORIGIN`                  |                          unset | Separate origin that serves the Turnstile widget, e.g. `https://verify.example.com`; never the app's own                |
 | `TURNSTILE_SITEKEY`                        |                          unset | Cloudflare Turnstile sitekey, used only by the challenge page                                                           |
 | `TURNSTILE_SECRET`                         |                          unset | Turnstile secret used for server-side siteverify                                                                        |

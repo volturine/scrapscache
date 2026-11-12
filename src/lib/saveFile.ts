@@ -11,7 +11,8 @@ const DOWNLOAD_ADDRESS_MS = 60_000;
 export async function saveFile(file: Blob, name: string): Promise<void> {
 	if (isNativeApp()) {
 		const { shareFile } = await import('#lib/native/shareFile.js');
-		return shareFile(file, name);
+		await shareFile(file, name);
+		return;
 	}
 	downloadFile({ file, name, type: file.type, revokeTimeout: DOWNLOAD_ADDRESS_MS });
 }

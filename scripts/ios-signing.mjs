@@ -47,7 +47,7 @@ const APPS = [
 		secret: 'IOS_PROFILE_DEV'
 	}
 ];
-const CAPABILITIES = ['PUSH_NOTIFICATIONS'];
+const CAPABILITIES = ['PUSH_NOTIFICATIONS', 'ASSOCIATED_DOMAINS'];
 const CERTIFICATE_VARIABLE = 'IOS_DIST_CERT_ID';
 
 const env = (name) => {

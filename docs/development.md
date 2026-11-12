@@ -68,8 +68,10 @@ Notification Center once the reminder is answered, here or on another device
 (the app hears of the other device's answer when it next syncs), and a file that
 leaves the app (a backup, a workspace's Markdown archive) goes to the share
 sheet, since the web view drops a download link (`saveFile`,
-`src/lib/native/shareFile.ts`; the drawing editor's own save-to-disk is not
-offered there). The shell declares the backup's file type (`Info.plist`,
+`src/lib/native/shareFile.ts`). The drawing editor saves through the
+`browser-fs-access` package, so the app's build swaps that package for
+`src/lib/native/browserFsAccess.ts` (`capacitorModules` in `vite.config.ts`),
+whose save goes to the same share sheet. The shell declares the backup's file type (`Info.plist`,
 `com.scrapscache.backup`), without which iOS greys a `.scraps-cache-backup` out
 in the picker that Restore opens, and the reason the file plugin reads file
 timestamps (`PrivacyInfo.xcprivacy`), which App Store Connect asks of every
@@ -97,6 +99,60 @@ own pointer events under the modal's body lock, a place leaves the palette for i
 view, and Search toggles it. A dialog that covers the whole screen, as sync does,
 covers the column too.
 
+### iPad
+
+The app is universal (`TARGETED_DEVICE_FAMILY = "1,2"`): on an iPad the same
+bundle runs in the wide layout a desktop browser gets, in every orientation,
+with nothing iPad-specific in the code. Check a change to the shell or to
+`src/lib/native/` on an iPad simulator as well; the share sheet is a popover
+there, and the keyboard takes half the screen in landscape.
+
+### Links that open the app
+
+A link to a note and a pairing link are web addresses (`https://<server>/#…`,
+see `src/lib/noteLinks.ts` and `createPairingUrl`). iOS opens them in the app
+instead of Safari when two things name each other ("universal links"):
+
+- the app's entitlement claims the server's host
+  (`com.apple.developer.associated-domains` in `App.entitlements`, from the
+  `APP_LINK_HOST` build setting: `scrapscache.com`, or `dev.scrapscache.com` in
+  the dev app);
+- the server names the app in `/.well-known/apple-app-site-association`
+  (`src/lib/server/appLinks.ts`), from `SCRAPSCACHE_IOS_APP_IDS`, which the
+  deploy jobs set from the `APPLE_TEAM_ID` secret. The file routes only the
+  app's home address with a `note=` or `pair=` fragment; every other address
+  stays a web page.
+
+The app then gets the link as Capacitor's `appUrlOpen`
+(`src/lib/native/appLinks.ts`) and takes its fragment as the page's own, so the
+note opens, or the pairing dialog does, exactly as when the link is pasted into
+a browser tab. An app pointed at a self-hosted server gets no such links: its
+entitlement names the hosted service's hosts alone.
+
+To try it on a simulator without deploying, serve a build on a host with a real
+certificate, set `SCRAPSCACHE_IOS_APP_IDS=<team>.com.scrapscache.app.dev` for
+it, and build the app with an xcconfig that includes `Dev.xcconfig` and sets
+`APP_LINK_HOST = <host>?mode=developer` and `DEVELOPMENT_TEAM = <team>`; then
+`xcrun simctl openurl booted 'https://<host>/#pair=…'` opens the app, and
+`https://<host>/privacy` opens Safari.
+
+### Export compliance
+
+`Info.plist` sets `ITSAppUsesNonExemptEncryption` to false, which Apple's
+documentation allows for an app whose encryption needs no export compliance
+documentation. The app does ship encryption of its own (the `@noble` libraries
+and the pairing exchange), all of it standard, published algorithms. App Store
+Connect's export compliance questions class that as "standard encryption
+algorithms instead of, or in addition to" the system's, and then ask whether
+the app is available in France: only then is documentation required (a French
+encryption declaration). So the value holds **while the app is not available in
+France**. Before adding France under Pricing and Availability, upload that
+declaration in App Store Connect, set the key to true and add the
+`ITSEncryptionExportComplianceCode` Apple returns. Apple also notes that
+encryption exempt from documentation can still call for a year-end
+self-classification report to the US government, which is the publisher's own
+filing. See Apple's "Complying with Encryption Export Regulations".
+
 ### Two apps
 
 The project builds two apps that install side by side, each with its own
@@ -107,6 +163,7 @@ storage:
 | Name           | Scraps Cache                              | Scraps Cache Dev                                            |
 | Bundle ID      | `com.scrapscache.app`                     | `com.scrapscache.app.dev`                                   |
 | Default server | `https://scrapscache.com`                 | `https://dev.scrapscache.com`                               |
+| Opens links to | `scrapscache.com`                         | `dev.scrapscache.com`                                       |
 | Icon           | `AppIcon`                                 | `AppIcon-Dev` (the same icon with a teal DEV band)          |
 | Built from     | `master`, after the production deployment | PRs labelled `deploy-dev`, after the development deployment |
 
@@ -115,10 +172,11 @@ and `npm run ios` are the production app. It acts in two places: `vite.config.ts
 sets the web bundle's default server from it (`DEFAULT_SERVER_ORIGIN`, which the
 first-launch prompt, the Server row and its reset use), and the dev app's native
 settings live in `ios/App/Dev.xcconfig`, passed to `xcodebuild` with `-xcconfig`.
-That file sets `APP_BUNDLE_ID`, `APP_DISPLAY_NAME` and `APP_ICON_NAME`, which only
-the App target reads (into `PRODUCT_BUNDLE_IDENTIFIER`, `CFBundleDisplayName` in
-`Info.plist`, and `ASSETCATALOG_COMPILER_APPICON_NAME`), so the Swift packages'
-identifiers stay their own. Both apps share the page origin
+That file sets `APP_BUNDLE_ID`, `APP_DISPLAY_NAME`, `APP_ICON_NAME` and
+`APP_LINK_HOST`, which only the App target reads (into
+`PRODUCT_BUNDLE_IDENTIFIER`, `CFBundleDisplayName` in `Info.plist`,
+`ASSETCATALOG_COMPILER_APPICON_NAME`, and the associated domain in
+`App.entitlements`), so the Swift packages' identifiers stay their own. Both apps share the page origin
 `capacitor://localhost`, which is the one the API admits
 (`src/lib/server/appCors.ts`).
 
@@ -207,7 +265,8 @@ set the repository's secrets:
 
 1. it checks that `gh` can reach the repository's secrets, and reads the
    repository variable `IOS_DIST_CERT_ID`, the certificate it made last time;
-2. it enables the capabilities the entitlements ask for (push notifications) on
+2. it enables the capabilities the entitlements ask for (push notifications,
+   associated domains) on
    both App IDs;
 3. it makes an Apple Distribution certificate from a key made on the spot and
    writes the `.p12` and its password to a folder of its own; then, app by app,

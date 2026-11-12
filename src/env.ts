@@ -43,6 +43,9 @@ export const variables = defineEnvVars({
 	SCRAPSCACHE_VAPID_SUBJECT: optional('Contact for Web Push services, as mailto: or https:'),
 	SCRAPSCACHE_VAPID_PUBLIC_KEY: optional('Web Push public key; generated and stored when unset'),
 	SCRAPSCACHE_VAPID_PRIVATE_KEY: optional('Web Push private key; set together with the public key'),
+	SCRAPSCACHE_IOS_APP_IDS: optional(
+		'Comma-separated App IDs (TEAMID.bundle.id) of the iPhone apps that open links to this server'
+	),
 	TURNSTILE_SITEKEY: optional('Cloudflare Turnstile site key'),
 	TURNSTILE_SECRET: optional('Cloudflare Turnstile secret key'),
 	TURNSTILE_HOSTNAMES: optional('Comma-separated hostnames Turnstile tokens may be issued for'),

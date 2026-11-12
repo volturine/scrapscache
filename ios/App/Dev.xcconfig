@@ -3,8 +3,10 @@
 // `-xcconfig ios/App/Dev.xcconfig` (scripts/ios-testflight.sh does when
 // IOS_VARIANT=dev); without it, every build is the production app.
 //
-// The App target reads these three settings; nothing else does, so overriding
+// The App target reads these four settings; nothing else does, so overriding
 // them for the whole build leaves the Swift packages' own identifiers alone.
+// APP_LINK_HOST is the server whose note and pairing links open in the app.
 APP_BUNDLE_ID = com.scrapscache.app.dev
 APP_DISPLAY_NAME = Scraps Cache Dev
 APP_ICON_NAME = AppIcon-Dev
+APP_LINK_HOST = dev.scrapscache.com

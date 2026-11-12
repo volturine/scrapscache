@@ -3713,8 +3713,8 @@ export const phoneTabsStyles = {
 	}),
 	stackRight: css({ right: 0, w: 'var(--app-inset-right)' }),
 	stackLeft: css({ left: 0, w: 'var(--app-inset-left)' }),
-	// The column's circles: sync and settings, sent here from the bar (Topbar portals
-	// them in), and New note under the places, each in its own glass circle.
+	// The column's circles: New note at the top, then sync and settings, sent here from
+	// the bar (Topbar portals them in), each in its own glass circle.
 	actions: css({
 		...column,
 		alignItems: 'center',

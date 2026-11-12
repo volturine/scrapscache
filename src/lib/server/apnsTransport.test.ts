@@ -51,7 +51,7 @@ async function apple(answer: (stream: ServerHttp2Stream, asked: Asked) => void =
 			'{"aps":{}}',
 			timeoutMs
 		);
-	return { connections, requests, send };
+	return { connections, requests, send, port };
 }
 
 function accept(stream: ServerHttp2Stream) {
@@ -143,13 +143,29 @@ describe("the relay's requests to Apple's push service", () => {
 		expect(connections).toHaveLength(2);
 	});
 
-	it('fails a push when Apple cannot be reached, and tries afresh the next time', async () => {
-		const { connections, send } = await apple();
+	it('leaves the other pushes on a connection alone when one of them gets no answer in time', async () => {
+		const { connections, send } = await apple((stream, asked) => {
+			if (asked.path !== '/3/device/silent') accept(stream);
+		});
 		stopOnTeardown(connections);
-		const unreachable = http2Poster(() => `http://${HOST}:1`);
-		await expect(
-			unreachable('api.push.apple.com', '/3/device/abcd', {}, '{}', 5_000)
-		).rejects.toThrow();
+		const [silent, answered] = await Promise.allSettled([
+			send('/3/device/silent', 200),
+			send('/3/device/abcd')
+		]);
+		expect(silent.status).toBe('rejected');
+		expect(answered).toMatchObject({ status: 'fulfilled', value: { status: 200 } });
+		await expect(send()).resolves.toMatchObject({ status: 200 });
+		expect(connections).toHaveLength(2);
+	});
+
+	it('fails a push when Apple cannot be reached, and reaches it again the next time', async () => {
+		const { connections, port } = await apple();
+		stopOnTeardown(connections);
+		let reachable = false;
+		const post = http2Poster(() => `http://${HOST}:${reachable ? port : 1}`);
+		const send = () => post('api.push.apple.com', '/3/device/abcd', {}, '{}', 5_000);
+		await expect(send()).rejects.toThrow();
+		reachable = true;
 		await expect(send()).resolves.toMatchObject({ status: 200 });
 	});
 });

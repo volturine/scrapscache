@@ -23,7 +23,12 @@ export function attachNativeApp(): () => void {
 	const stopStatusBar = attachNativeStatusBar();
 	const stopReservedRegions = attachReservedRegions();
 	const schedule = () => {
-		if (currentPermission() !== 'granted') return;
+		if (currentPermission() !== 'granted') {
+			// Nothing to schedule, and nowhere to register; a workspace unlinked
+			// since the phone registered is still one to take it off.
+			void registerRemotePush(null);
+			return;
+		}
 		const upcoming = reminderStore.upcoming();
 		void scheduleReminderNotifications(upcoming)
 			.then(() => registerRemotePush(upcoming))

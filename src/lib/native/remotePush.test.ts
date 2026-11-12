@@ -11,6 +11,8 @@ const ios = vi.hoisted(() => ({
 }));
 const relay = vi.hoisted(() => ({
 	profiles: [] as Array<{ id: string; syncKey: string | null }>,
+	/** The server the app is set to sync with. */
+	server: 'https://relay.example',
 	status: 200,
 	fetch: vi.fn(),
 	/** Requests made without a workspace's key: the phone taking itself off an account. */
@@ -38,7 +40,7 @@ vi.mock('#lib/stores/sync.svelte.js', () => ({
 		authorizedFetch: relay.fetch
 	}
 }));
-vi.mock('#lib/serverOrigin.svelte.js', () => ({ serverOrigin: () => 'https://relay.example' }));
+vi.mock('#lib/serverOrigin.svelte.js', () => ({ serverOrigin: () => relay.server }));
 vi.mock('#lib/syncPairing.js', () => ({
 	identityFromSyncKey: (syncKey: string) => ({ accountId: `account-of-${syncKey}` })
 }));
@@ -66,17 +68,26 @@ function sent(): Map<string, Sent> {
 	);
 }
 
-/** The accounts the phone asked to be taken off, by its token alone, in order. */
-function left(): string[] {
+/** Where the phone asked to be taken off, by its token alone, in order: the server and the account. */
+function leftAt(): Array<[server: string, accountId: string]> {
 	return relay.open.mock.calls.map(([url, init]) => {
-		expect(url).toBe('https://relay.example/api/sync/push/wakes');
 		expect((init as RequestInit).method).toBe('DELETE');
 		const body = JSON.parse(String((init as RequestInit).body)) as {
 			accountId: string;
 			apns: { token: string; topic: string };
 		};
 		expect(body.apns).toEqual({ token: TOKEN, topic: 'com.scrapscache.app' });
-		return body.accountId;
+		const { origin, pathname } = new URL(String(url));
+		expect(pathname).toBe('/api/sync/push/wakes');
+		return [origin, body.accountId];
+	});
+}
+
+/** The accounts the phone asked to be taken off on the server it syncs with. */
+function left(): string[] {
+	return leftAt().map(([server, accountId]) => {
+		expect(server).toBe('https://relay.example');
+		return accountId;
 	});
 }
 
@@ -100,6 +111,7 @@ beforeEach(() => {
 		{ id: 'local', syncKey: null }
 	];
 	relay.status = 200;
+	relay.server = 'https://relay.example';
 	relay.fetch.mockReset();
 	relay.fetch.mockImplementation(async () => new Response(null, { status: relay.status }));
 	relay.open.mockReset();
@@ -108,7 +120,10 @@ beforeEach(() => {
 	localStorage.clear();
 });
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+	vi.unstubAllGlobals();
+	vi.restoreAllMocks();
+});
 
 describe('registering the iPhone app for reminder push', () => {
 	it('registers the one push token under every synced workspace, with the wakes it holds there', async () => {
@@ -362,5 +377,86 @@ describe('a phone that left a workspace', () => {
 		// It registers there again, and is not asked off an account it syncs with.
 		expect([...sent().keys()]).toEqual(['account-of-work-key']);
 		expect(left()).toEqual([]);
+	});
+
+	it('is told afresh when it was unlinked and linked again within one round', async () => {
+		const { registerRemotePush } = await load();
+		await registerRemotePush([]);
+		// Home's schedule changed, so only home registers again. While that is on
+		// its way, work is unlinked: the round takes the phone off it.
+		relay.fetch.mockImplementation(async () => {
+			relay.profiles = [{ id: 'home', syncKey: 'home-key' }];
+			return new Response(null, { status: 200 });
+		});
+		await registerRemotePush([reminder('home', 'wake-a')]);
+		expect(left()).toEqual(['account-of-work-key']);
+		// Linked again before the next round, which never saw it gone.
+		relay.profiles.push({ id: 'work', syncKey: 'work-key' });
+		relay.fetch.mockReset();
+		relay.fetch.mockImplementation(async () => new Response(null, { status: 200 }));
+		await registerRemotePush([reminder('home', 'wake-a')]);
+		expect([...sent().keys()]).toEqual(['account-of-work-key']);
+	});
+
+	it('takes itself off the relay it was pointed away from, and registers with the new one', async () => {
+		const { registerRemotePush } = await load();
+		await registerRemotePush([]);
+		relay.server = 'https://other.example';
+		relay.fetch.mockClear();
+		await registerRemotePush([]);
+		// The same schedule is news to the new relay.
+		expect([...sent().keys()].sort()).toEqual(['account-of-home-key', 'account-of-work-key']);
+		expect(leftAt().sort()).toEqual([
+			['https://relay.example', 'account-of-home-key'],
+			['https://relay.example', 'account-of-work-key']
+		]);
+		// Unlinked later, the workspace is left on the relay the phone is on now.
+		relay.open.mockClear();
+		relay.profiles = [{ id: 'home', syncKey: 'home-key' }];
+		await registerRemotePush([]);
+		expect(leftAt()).toEqual([['https://other.example', 'account-of-work-key']]);
+	});
+
+	it('keeps asking the old relay after a move, while registering with the new one fails', async () => {
+		let app = await load();
+		await app.registerRemotePush([]);
+		relay.server = 'https://other.example';
+		relay.status = 503;
+		relay.open.mockRejectedValue(new TypeError('offline'));
+		await app.registerRemotePush([]);
+		app = await load();
+		relay.open.mockReset();
+		relay.open.mockResolvedValue(new Response(null, { status: 204 }));
+		await app.registerRemotePush([]);
+		expect(leftAt().sort()).toEqual([
+			['https://relay.example', 'account-of-home-key'],
+			['https://relay.example', 'account-of-work-key']
+		]);
+	});
+
+	it('still takes itself off while notifications are not allowed, and registers nowhere', async () => {
+		let app = await load();
+		await app.registerRemotePush([]);
+		relay.profiles = [{ id: 'home', syncKey: 'home-key' }];
+		relay.fetch.mockClear();
+		app = await load();
+		// Notifications were turned off since: the app has no schedule to hand over.
+		await app.registerRemotePush(null);
+		expect(left()).toEqual(['account-of-work-key']);
+		expect(relay.fetch).not.toHaveBeenCalled();
+		// With nothing left to leave, iOS is not even asked for a token.
+		ios.register.mockClear();
+		await app.registerRemotePush(null);
+		expect(ios.register).not.toHaveBeenCalled();
+	});
+
+	it('registers nowhere when it cannot keep track of where it registered', async () => {
+		const { registerRemotePush } = await load();
+		vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+			throw new DOMException('full', 'QuotaExceededError');
+		});
+		await registerRemotePush([]);
+		expect(relay.fetch).not.toHaveBeenCalled();
+		expect(relay.open).not.toHaveBeenCalled();
 	});
 });

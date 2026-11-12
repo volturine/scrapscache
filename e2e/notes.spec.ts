@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from '@playwright/test';
+import { expect, test, type CDPSession, type Locator, type Page } from '@playwright/test';
 import {
 	composer,
 	composerPrompt,
@@ -1229,13 +1229,19 @@ test.describe('in iPhone Duo’s side column', () => {
 	test.describe('opened upright, then folded', () => {
 		test.use({ viewport: { width: 669, height: 951 }, hasTouch: true });
 
-		test('a note being written in the bar is kept and shown when the fold takes the bar away', async ({
+		const upright = { top: 59, right: 0, bottom: 34, left: 0 };
+
+		async function fold(page: Page, session: CDPSession) {
+			await session.send('Emulation.setSafeAreaInsetsOverride', { insets: column });
+			await page.setViewportSize({ width: 466, height: 678 });
+			await expect(page.locator('html')).toHaveAttribute('data-side-column', 'right');
+		}
+
+		test('a bar open when the phone folds stays, with its note, until it is put away', async ({
 			page
 		}) => {
 			const session = await page.context().newCDPSession(page);
-			await session.send('Emulation.setSafeAreaInsetsOverride', {
-				insets: { top: 59, right: 0, bottom: 34, left: 0 }
-			});
+			await session.send('Emulation.setSafeAreaInsetsOverride', { insets: upright });
 			await openEmptyApp(page);
 			await composerPrompt(page).click();
 			const bar = composer(page);
@@ -1243,21 +1249,51 @@ test.describe('in iPhone Duo’s side column', () => {
 			await bar.getByRole('textbox', { name: 'Note body' }).click();
 			await bar.getByRole('textbox', { name: 'Note body' }).pressSequentially('and its body');
 
-			await session.send('Emulation.setSafeAreaInsetsOverride', { insets: column });
-			await page.setViewportSize({ width: 466, height: 678 });
-			await expect(page.locator('html')).toHaveAttribute('data-side-column', 'right');
+			await fold(page, session);
+			await expect(bar.getByPlaceholder('Title', { exact: true })).toHaveValue(
+				'Written before the fold'
+			);
+			// Put away by a press elsewhere, the bar goes, as the column has none, and the
+			// note is a card.
+			await page.locator('[data-view-title]').click();
 			await expect(composer(page)).toHaveCount(0);
 			const card = noteCard(page, 'Written before the fold');
 			await expect(card).toBeVisible();
 			await expect(card).toContainText('and its body');
 
 			// Opened again, the bar is back, closed and empty, and the note stays a card.
-			await session.send('Emulation.setSafeAreaInsetsOverride', {
-				insets: { top: 59, right: 0, bottom: 34, left: 0 }
-			});
+			await session.send('Emulation.setSafeAreaInsetsOverride', { insets: upright });
 			await page.setViewportSize({ width: 669, height: 951 });
 			await expect(composerPrompt(page)).toBeVisible();
 			await expect(noteCard(page, 'Written before the fold')).toBeVisible();
+		});
+
+		test('a file still coming into the bar when the phone folds is kept with its note', async ({
+			page
+		}) => {
+			// A slow read, so the fold lands while the file is still on its way in.
+			await page.addInitScript(() => {
+				const read = FileReader.prototype.readAsDataURL;
+				FileReader.prototype.readAsDataURL = function (this: FileReader, blob: Blob) {
+					setTimeout(() => read.call(this, blob), 1500);
+				};
+			});
+			const session = await page.context().newCDPSession(page);
+			await session.send('Emulation.setSafeAreaInsetsOverride', { insets: upright });
+			await openEmptyApp(page);
+			await composerPrompt(page).click();
+			const bar = composer(page);
+			await bar.getByPlaceholder('Title', { exact: true }).fill('With a file');
+			const chooser = page.waitForEvent('filechooser');
+			await bar.getByRole('button', { name: 'Attach', exact: true }).click();
+			await (
+				await chooser
+			).setFiles([{ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('hello') }]);
+			await fold(page, session);
+			await expect(bar.getByRole('button', { name: 'Open notes.txt' })).toBeVisible();
+			await page.locator('[data-view-title]').click();
+			await expect(composer(page)).toHaveCount(0);
+			await expect(noteCard(page, 'With a file')).toContainText('notes.txt');
 		});
 	});
 

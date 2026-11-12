@@ -20,6 +20,13 @@ class ComposerStore {
 	#draftId = $state<string | null>(null);
 	private host: ((seed?: ComposerSeed) => void) | null = null;
 
+	/**
+	 * The bar is open. Where a feed shows no bar while it is closed (beside iPhone
+	 * Duo's column), an open one stays until it is put away: taking it down would
+	 * drop the files it is still bringing in.
+	 */
+	writing = $state(false);
+
 	/** The note the bar is writing, while it is open. */
 	get draftId(): string | null {
 		return this.#draftId;

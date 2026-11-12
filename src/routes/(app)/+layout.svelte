@@ -308,6 +308,10 @@
 	function startNewNote(seed?: { title?: string; body?: string }) {
 		// A view with the composer writes the note there; the others open the editor.
 		if (composerStore.open(seed)) return;
+		startNoteInEditor(seed);
+	}
+
+	function startNoteInEditor(seed?: { title?: string; body?: string }) {
 		const labels =
 			uiStore.view === 'label' &&
 			uiStore.activeLabelId &&
@@ -332,10 +336,12 @@
 	/**
 	 * Where the composer is and what a note from it starts with: Notes, a label's view,
 	 * Reminders. Beside iPhone Duo's column there is none: the column's New note
-	 * starts notes there, in the editor.
+	 * starts notes there, in the editor. A bar already open when the phone folds stays
+	 * until it is put away, with the note and any file it is still bringing in.
 	 */
 	const composer = $derived.by(() => {
-		if (uiStore.labelsOpen || sideColumn.side) return null;
+		if (uiStore.labelsOpen) return null;
+		if (sideColumn.side && !composerStore.writing) return null;
 		switch (uiStore.view) {
 			case 'notes':
 				return { labels: [], reminderDay: null, placeholder: 'Take a note…' };
@@ -385,12 +391,13 @@
 	/**
 	 * The column's New note. An open note makes the column inert, so none is open
 	 * here; it leaves the palette and the Labels screen, so the note it opens in the
-	 * editor is put away into the view it was written for.
+	 * editor is put away into the view it was written for. Always the editor: a bar
+	 * still open from before the fold is being put away by this very press.
 	 */
 	function newNoteFromColumn() {
 		uiStore.paletteOpen = false;
 		uiStore.labelsOpen = false;
-		startNewNote();
+		startNoteInEditor();
 	}
 
 	function requestCloseEditor() {

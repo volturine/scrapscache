@@ -3701,11 +3701,17 @@ export const phoneTabsStyles = {
 		transform: 'translateX(var(--app-rail-shift))',
 		display: 'flex',
 		flexDirection: 'column',
-		justifyContent: 'flex-end',
 		alignItems: 'center',
 		gap: 'sm',
 		zIndex: 20,
-		overflow: 'hidden',
+		// Gathered at the bottom while it fits. When it does not (the folded phone on its
+		// side, before the shell reports where the island is), it starts at its head, New
+		// note, and the rest scrolls into reach rather than being cut off.
+		'& > :first-child': { mt: 'auto' },
+		overflowX: 'hidden',
+		overflowY: 'auto',
+		overscrollBehavior: 'contain',
+		scrollbarWidth: 'none',
 		// A modal dialog (the palette, sync) turns the body's pointer events off; the
 		// column keeps its own, so a place still answers a finger and the dialog goes.
 		pointerEvents: 'auto',

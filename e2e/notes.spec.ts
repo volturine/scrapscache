@@ -1151,6 +1151,33 @@ test.describe('in iPhone Duo’s side column', () => {
 			}
 		});
 
+		test('on its side with no report from the shell, New note still shows and answers, and the rest scrolls into reach', async ({
+			page
+		}) => {
+			await page.setViewportSize({ width: 678, height: 466 });
+			await openWithColumn(page, 'left');
+			const stack = page.locator('[data-column-stack]');
+			const frame = (await stack.boundingBox())!;
+			const add = stack.getByRole('button', { name: 'New note' });
+			const box = (await add.boundingBox())!;
+			expect(box.y).toBeGreaterThanOrEqual(frame.y);
+			expect(box.y + box.height).toBeLessThanOrEqual(frame.y + frame.height);
+			// What a finger at its middle reaches is the button itself.
+			const hit = await add.evaluate((button) => {
+				const r = button.getBoundingClientRect();
+				const at = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+				return !!at && button.contains(at);
+			});
+			expect(hit).toBe(true);
+			// The places below the fold of the column are scrolled to, not cut off.
+			const rail = page.getByRole('navigation', { name: 'Main', exact: true });
+			await rail.getByRole('button', { name: 'Labels' }).click();
+			await expect(page.locator('[data-view-title]')).toHaveText('Labels');
+			await stack.evaluate((element) => element.scrollTo({ top: 0 }));
+			await add.click();
+			await expect(editor(page)).toBeVisible();
+		});
+
 		test('a column down the left puts the rail there', async ({ page }) => {
 			await openWithColumn(page, 'left');
 			const stack = (await page.locator('[data-column-stack]').boundingBox())!;
@@ -1196,6 +1223,41 @@ test.describe('in iPhone Duo’s side column', () => {
 			const add = (await page.getByRole('button', { name: 'Add a label column' }).boundingBox())!;
 			const chip = (await page.locator('[data-kanban-tab]').first().boundingBox())!;
 			expect(add.x + add.width).toBeLessThanOrEqual(chip.x);
+		});
+	});
+
+	test.describe('opened upright, then folded', () => {
+		test.use({ viewport: { width: 669, height: 951 }, hasTouch: true });
+
+		test('a note being written in the bar is kept and shown when the fold takes the bar away', async ({
+			page
+		}) => {
+			const session = await page.context().newCDPSession(page);
+			await session.send('Emulation.setSafeAreaInsetsOverride', {
+				insets: { top: 59, right: 0, bottom: 34, left: 0 }
+			});
+			await openEmptyApp(page);
+			await composerPrompt(page).click();
+			const bar = composer(page);
+			await bar.getByPlaceholder('Title', { exact: true }).fill('Written before the fold');
+			await bar.getByRole('textbox', { name: 'Note body' }).click();
+			await bar.getByRole('textbox', { name: 'Note body' }).pressSequentially('and its body');
+
+			await session.send('Emulation.setSafeAreaInsetsOverride', { insets: column });
+			await page.setViewportSize({ width: 466, height: 678 });
+			await expect(page.locator('html')).toHaveAttribute('data-side-column', 'right');
+			await expect(composer(page)).toHaveCount(0);
+			const card = noteCard(page, 'Written before the fold');
+			await expect(card).toBeVisible();
+			await expect(card).toContainText('and its body');
+
+			// Opened again, the bar is back, closed and empty, and the note stays a card.
+			await session.send('Emulation.setSafeAreaInsetsOverride', {
+				insets: { top: 59, right: 0, bottom: 34, left: 0 }
+			});
+			await page.setViewportSize({ width: 669, height: 951 });
+			await expect(composerPrompt(page)).toBeVisible();
+			await expect(noteCard(page, 'Written before the fold')).toBeVisible();
 		});
 	});
 

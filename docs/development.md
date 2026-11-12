@@ -188,7 +188,7 @@ not available in France**.
 
 France is meant to be supported.
 [french-encryption-declaration.md](french-encryption-declaration.md) has the
-steps (a declaration to the ANSSI, its attestation uploaded to Apple, Apple's
+steps (a declaration to the ANSSI, the ANSSI's document uploaded to Apple, Apple's
 code in `Info.plist`) and the technical description the filing needs. Until
 they are done, France stays out of the app's availability.
 

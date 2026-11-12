@@ -39,7 +39,7 @@ treat each step as a thing to confirm with the ANSSI, not as its instructions.
 1. **File the declaration with the ANSSI**, at least one month before the app
    is offered in France (art. 4). The online procedure is
    [Déclaration relative à un moyen de cryptologie](https://demarche.numerique.gouv.fr/commencer/declaration-relative-a-un-moyen-de-cryptologie);
-   the same page offers the form as a PDF and gives the contact
+   the same page offers a guide to the procedure as a PDF and gives the contact
    `controle@ssi.gouv.fr`.
    - Who: the procedure's page puts the declaration on the supplier or first
      importer, taken here to be the publisher named on the App Store. It
@@ -65,8 +65,7 @@ treat each step as a thing to confirm with the ANSSI, not as its instructions.
 3. **Upload the ANSSI's document to Apple**: App Store Connect › the app › App
    Information › App Encryption Documentation, answering that the app uses
    standard algorithms that are not the system's and is available in France.
-   Apple's page asks for the "French encryption declaration"; a 2016 account by
-   the Cryptomator developers says App Store Connect asked them for the
+   Apple's page asks for the "French encryption declaration"; a [2016 account by the Cryptomator developers](https://cryptomator.org/blog/2016/06/16/indepth-french-app-store/) says App Store Connect asked them for the
    ANSSI's approval of it. So ask the ANSSI for the attestation, and if only
    the receipt comes, upload the receipt with the filed form and see what
    Apple's review says. Apple reviews the document and, per its documentation,

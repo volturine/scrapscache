@@ -41,6 +41,21 @@ export function reminderWakeId(noteId: string, reminder: number): string {
 	return bytesToBase64Url(sha256(new TextEncoder().encode(`${WAKE_DOMAIN}${noteId}\0${reminder}`)));
 }
 
+/**
+ * The number a wake goes by in the iPhone's Notification Center, which names
+ * notifications by number: a stable positive 31-bit one. The app's own
+ * notification and the relay's push for a wake share it, so the system keeps one
+ * of the two and the app takes either down by it.
+ */
+export function wakeNotificationId(wakeId: string): number {
+	let hash = 0x811c9dc5;
+	for (let index = 0; index < wakeId.length; index += 1) {
+		hash ^= wakeId.charCodeAt(index);
+		hash = Math.imul(hash, 0x01000193);
+	}
+	return (hash >>> 0) & 0x7fffffff;
+}
+
 /** A single reminder's time; for a repeating one, the latest gone and the next stretch. */
 function wakeTimes(note: WakeSource, now: number): number[] {
 	if (!note.repeat) return note.reminder == null ? [] : [note.reminder];

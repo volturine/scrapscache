@@ -65,7 +65,16 @@ folded iPhone Duo the side column is hardware safe area, hidden bar or not), and
 reminders are scheduled with the system as local
 notifications (the web view has no service worker or web push), which leave
 Notification Center once the reminder is answered, here or on another device
-(the app hears of the other device's answer when it next syncs), and a file that
+(the app hears of the other device's answer when it next syncs). A reminder set
+or moved on another device while the app is closed reaches the phone as a push
+from the relay through Apple's push service, with the words a browser shows for
+a note it does not hold yet (`src/lib/native/remotePush.ts`,
+`src/lib/server/apns.ts`): the app registers its push token under each synced
+workspace's account and names the wakes it has scheduled itself, and the relay
+sends the others. A relay without the app's Apple key answers the registration
+with 501 and the app keeps to its own notifications; see
+[Self-hosting](self-hosting.md#environment-reference) for the four `SCRAPSCACHE_APNS_*`
+settings. A file that
 leaves the app (a backup, a workspace's Markdown archive) goes to the share
 sheet, since the web view drops a download link (`saveFile`,
 `src/lib/native/shareFile.ts`; the drawing editor's own save-to-disk is not

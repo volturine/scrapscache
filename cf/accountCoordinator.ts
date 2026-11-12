@@ -308,7 +308,8 @@ export class AccountCoordinator {
 			{ sql: 'DELETE FROM reminder_wakes WHERE account_id = ?', args: [accountId] },
 			{ sql: 'DELETE FROM reminder_wake_revisions WHERE account_id = ?', args: [accountId] },
 			{ sql: 'DELETE FROM reminder_wakes_unscheduled WHERE account_id = ?', args: [accountId] },
-			{ sql: 'DELETE FROM reminder_wake_deliveries WHERE account_id = ?', args: [accountId] }
+			{ sql: 'DELETE FROM reminder_wake_deliveries WHERE account_id = ?', args: [accountId] },
+			{ sql: 'DELETE FROM reminder_wake_holds WHERE account_id = ?', args: [accountId] }
 		]);
 		for (const socket of this.state.getWebSockets()) {
 			try {

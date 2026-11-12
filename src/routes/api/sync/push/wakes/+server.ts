@@ -6,11 +6,15 @@ import { clientAddress, getPublicApiLimiter, rateLimitResponse } from '#lib/serv
 import { recordSqliteError } from '#lib/server/metrics.js';
 import { armWakeTimer } from '#lib/server/wakeTimer.js';
 import {
+	ACCOUNT_ID_RE,
 	DEVICE_ID_RE,
 	isPublicEndpoint,
 	isPushSubscription,
+	parseApnsRegistration,
+	parseHeldWakes,
 	parseReminderWakes
 } from '#lib/server/pushWakes.js';
+import { apnsAddress, apnsConfig } from '#lib/server/apns.js';
 
 const MAX_REQUEST_BYTES = 128_000;
 
@@ -65,11 +69,15 @@ export const GET: RequestHandler = async ({ request, getClientAddress }) => {
 	}
 };
 
-/** Register or refresh this device without changing the account wake snapshot. */
+/**
+ * Register or refresh this device without changing the account wake snapshot: a
+ * browser by its push subscription, the iPhone app by its push token and the
+ * wakes it shows by itself.
+ */
 export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	const addressLimit = await checkAddressLimit(getClientAddress);
 	if (!addressLimit.allowed) return rateLimitResponse(addressLimit);
-	let body: { deviceId?: unknown; subscription?: unknown };
+	let body: { deviceId?: unknown; subscription?: unknown; apns?: unknown; held?: unknown };
 	try {
 		body = (await readJsonBody(request, MAX_REQUEST_BYTES)) as typeof body;
 	} catch {
@@ -78,12 +86,22 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	if (typeof body.deviceId !== 'string' || !DEVICE_ID_RE.test(body.deviceId)) {
 		return Response.json({ error: 'A device id is required' }, { status: 400 });
 	}
-	if (!isPushSubscription(body.subscription)) {
+	const phone = body.apns === undefined ? null : parseApnsRegistration(body.apns);
+	const held = phone ? parseHeldWakes(body.held) : [];
+	if (body.apns !== undefined && (!phone || !held)) {
+		return Response.json({ error: 'A push token and held wakes are required' }, { status: 400 });
+	}
+	const subscription = !phone && isPushSubscription(body.subscription) ? body.subscription : null;
+	if (!phone && !subscription) {
 		return Response.json({ error: 'A push subscription is required' }, { status: 400 });
 	}
 	const accountId = await getSyncAuth().authenticateSyncRequest(request);
 	if (!accountId) return Response.json({ error: 'Invalid sync session' }, { status: 401 });
-	if (!(await isPublicEndpoint(body.subscription.endpoint))) {
+	if (phone && !apnsConfig()?.topics.includes(phone.topic)) {
+		// A relay without the app's Apple key: the app keeps to its own notifications.
+		return Response.json({ error: 'This relay does not send to the iPhone app' }, { status: 501 });
+	}
+	if (subscription && !(await isPublicEndpoint(subscription.endpoint))) {
 		return Response.json(
 			{ error: 'The push endpoint must be on a known push service' },
 			{ status: 400 }
@@ -98,13 +116,27 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	);
 	if (!deviceLimit.allowed) return rateLimitResponse(deviceLimit);
 	try {
-		await getSyncStore().savePushDevice({
-			accountId,
-			deviceId: body.deviceId,
-			endpoint: body.subscription.endpoint,
-			p256dh: body.subscription.keys.p256dh,
-			auth: body.subscription.keys.auth
-		});
+		const store = getSyncStore();
+		if (phone) {
+			await store.savePushDevice(
+				{
+					accountId,
+					deviceId: body.deviceId,
+					endpoint: apnsAddress(phone, accountId),
+					p256dh: '',
+					auth: ''
+				},
+				{ held: held ?? [], now: Date.now() }
+			);
+		} else if (subscription) {
+			await store.savePushDevice({
+				accountId,
+				deviceId: body.deviceId,
+				endpoint: subscription.endpoint,
+				p256dh: subscription.keys.p256dh,
+				auth: subscription.keys.auth
+			});
+		}
 		// A browser that registers after a wake came due still gets it.
 		await scheduleDelivery(accountId);
 		return Response.json({ ok: true });
@@ -164,16 +196,43 @@ export const PUT: RequestHandler = async ({ request, getClientAddress }) => {
 	}
 };
 
-/** Stop deliveries for this browser while retaining other devices and account wakes. */
+/**
+ * The iPhone app taking itself off an account. A browser that leaves a workspace
+ * unsubscribes, and its push service then tells the relay it is gone; a phone's
+ * push token is the whole app's and stays good, so nothing would. The app asks
+ * instead, and may only get to once the workspace's key is gone from it (it was
+ * unlinked while the relay could not be reached). The token is its proof: the
+ * phone, Apple and this relay are all that know it. The answer is the same
+ * whether or not the phone was registered there.
+ */
+async function removePhone(body: { apns?: unknown; accountId?: unknown }): Promise<Response> {
+	const phone = parseApnsRegistration(body.apns);
+	if (!phone || typeof body.accountId !== 'string' || !ACCOUNT_ID_RE.test(body.accountId)) {
+		return Response.json({ error: 'A push token and an account are required' }, { status: 400 });
+	}
+	try {
+		await getSyncStore().deletePushEndpoint(body.accountId, apnsAddress(phone, body.accountId));
+		return new Response(null, { status: 204 });
+	} catch (error) {
+		recordSqliteError(error);
+		return Response.json(
+			{ error: 'Push registration is temporarily unavailable' },
+			{ status: 503 }
+		);
+	}
+}
+
+/** Stop deliveries for this device while retaining other devices and account wakes. */
 export const DELETE: RequestHandler = async ({ request, getClientAddress }) => {
 	const addressLimit = await checkAddressLimit(getClientAddress);
 	if (!addressLimit.allowed) return rateLimitResponse(addressLimit);
-	let body: { deviceId?: unknown };
+	let body: { deviceId?: unknown; apns?: unknown; accountId?: unknown };
 	try {
 		body = (await readJsonBody(request, MAX_REQUEST_BYTES)) as typeof body;
 	} catch {
 		return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
 	}
+	if (body.apns !== undefined) return removePhone(body);
 	if (typeof body.deviceId !== 'string' || !DEVICE_ID_RE.test(body.deviceId)) {
 		return Response.json({ error: 'A device id is required' }, { status: 400 });
 	}

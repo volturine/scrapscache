@@ -130,6 +130,19 @@ the long-term attachment format.
   services (Mozilla, FCM, Apple, WNS), checked again at send time; sends never
   follow redirects, and one dispatch round wakes at most an account's device
   allowance, so the relay cannot be pointed at other hosts or used to flood one
+- **Push to the iPhone app** — sent only to Apple's push service, for a bundle
+  id the operator listed, and carrying fixed words: no note, title or account.
+  iOS gives an app one push token for all its workspaces, so the relay stores
+  the same token under each account that syncs on a phone and can tell they
+  share it; a browser's workspaces each have a push address of their own.
+  That token also stays good after a workspace is unlinked, so the app takes
+  itself off the account: at the unlink with its sync session, and, if the
+  relay could not be reached then, afterwards by the token alone (a `DELETE`
+  on `/api/sync/push/wakes` with the token and the account id, no session). The
+  workspace's key is gone from the phone by then, and the token is known only
+  to the phone, Apple and the relay. That request can remove one phone's
+  registration and nothing else, answers the same whether or not the phone was
+  registered, and is charged to the per-address bucket like the rest
 - **Admin token or Cloudflare Access** — `/metrics` and every `/api/admin/*`
   endpoint need the admin token or a request Cloudflare Access signed for the
   configured application; the Access JWT's signature, issuer and audience are
@@ -254,7 +267,7 @@ app is in use; browser storage isolation is the boundary.
 | Pairing + payload crypto | `src/lib/syncPairing.ts`                                               |
 | Backup crypto            | `src/lib/backupCrypto.ts`                                              |
 | Relay storage            | `src/lib/server/syncStore.ts`                                          |
-| Reminder wakes           | `src/lib/server/wakeDispatch.ts`, `webPush.ts`                         |
+| Reminder wakes           | `src/lib/server/wakeDispatch.ts`, `webPush.ts`, `apns.ts`              |
 | Rate limits              | `src/lib/server/rateLimit.ts`                                          |
 | Admin auth               | `src/lib/server/adminAuth.ts`, `cloudflareAccess.ts`, `adminOrigin.ts` |
 | Operator status          | `src/lib/server/operatorMonitor.ts`                                    |

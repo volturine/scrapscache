@@ -176,6 +176,13 @@ const OPS_DDL = `
 	);
 	CREATE INDEX IF NOT EXISTS reminder_wake_deliveries_account
 		ON reminder_wake_deliveries(account_id);
+	-- The wakes an iPhone app shows by itself, as it last named them.
+	CREATE TABLE IF NOT EXISTS reminder_wake_holds (
+		account_id TEXT NOT NULL,
+		device_id TEXT NOT NULL,
+		wake_id TEXT NOT NULL,
+		PRIMARY KEY (account_id, device_id, wake_id)
+	);
 `;
 
 /** Wrap pre-built clients (any libsql transport) with lazy idempotent schema setup. */

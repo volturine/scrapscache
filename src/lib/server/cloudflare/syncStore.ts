@@ -537,7 +537,30 @@ export class SyncStore {
 		);
 		return reclaimed.length;
 	}
-	async savePushDevice(d: PushDeviceInput): Promise<void> {
+	/**
+	 * Register one account-scoped push address: a browser's endpoint, or an iPhone
+	 * app's with `shows`, the wakes it shows by itself. Those replace the ones it named
+	 * before, in the same batch that makes it a device, so the relay never sends it one
+	 * of them; nor anything already due, which its open app shows.
+	 */
+	async savePushDevice(d: PushDeviceInput, shows?: { held: string[]; now: number }): Promise<void> {
+		const holds: SqlStatement[] = shows
+			? [
+					// This device's earlier holds, and those of devices the account no longer has.
+					{
+						sql: 'DELETE FROM reminder_wake_holds WHERE account_id=?1 AND (device_id=?2 OR device_id NOT IN (SELECT device_id FROM reminder_push_devices WHERE account_id=?1))',
+						args: [d.accountId, d.deviceId]
+					},
+					{
+						sql: 'INSERT OR IGNORE INTO reminder_wake_holds(account_id,device_id,wake_id) SELECT ?1,?2,value FROM json_each(?3)',
+						args: [d.accountId, d.deviceId, JSON.stringify(shows.held)]
+					},
+					{
+						sql: 'INSERT INTO reminder_wake_deliveries(account_id,device_id,wake_id,claimed_at,delivered_at) SELECT ?1,?2,wake_id,?3,?3 FROM reminder_wakes WHERE account_id=?1 AND fire_at<=?3 ON CONFLICT(account_id,device_id,wake_id) DO UPDATE SET delivered_at=COALESCE(reminder_wake_deliveries.delivered_at,excluded.delivered_at)',
+						args: [d.accountId, d.deviceId, shows.now]
+					}
+				]
+			: [];
 		// Push endpoints are unguessable browser capability URLs; move ownership silently so re-registration neither fails on UNIQUE(endpoint) nor reveals prior registration.
 		await batch(this.db, [
 			{
@@ -551,7 +574,8 @@ export class SyncStore {
 			{
 				sql: 'DELETE FROM reminder_push_devices WHERE account_id=? AND device_id IN (SELECT device_id FROM reminder_push_devices WHERE account_id=? ORDER BY updated_at DESC LIMIT -1 OFFSET ?)',
 				args: [d.accountId, d.accountId, MAX_PUSH_DEVICES]
-			}
+			},
+			...holds
 		]);
 		await this.touchAccount(d.accountId);
 	}
@@ -667,7 +691,7 @@ export class SyncStore {
 	async claimDueWakes(now: number, limit = 100, accountId?: string): Promise<DueWake[]> {
 		const rows = (
 			await execute(this.db, {
-				sql: 'SELECT accountId,deviceId,wakeId,fireAt,endpoint,p256dh,auth FROM (SELECT d.account_id accountId,d.device_id deviceId,w.wake_id wakeId,w.fire_at fireAt,d.endpoint,d.p256dh,d.auth,ROW_NUMBER() OVER (PARTITION BY w.account_id ORDER BY w.fire_at,w.wake_id,d.device_id) accountRank FROM reminder_wakes w JOIN reminder_push_devices d ON d.account_id=w.account_id LEFT JOIN reminder_wake_deliveries x ON x.account_id=d.account_id AND x.device_id=d.device_id AND x.wake_id=w.wake_id WHERE w.fire_at<=? AND x.delivered_at IS NULL AND (x.claimed_at IS NULL OR x.claimed_at<=?) AND (? IS NULL OR w.account_id=?)) WHERE accountRank<=? ORDER BY fireAt,wakeId,deviceId LIMIT ?',
+				sql: 'SELECT accountId,deviceId,wakeId,fireAt,endpoint,p256dh,auth FROM (SELECT d.account_id accountId,d.device_id deviceId,w.wake_id wakeId,w.fire_at fireAt,d.endpoint,d.p256dh,d.auth,ROW_NUMBER() OVER (PARTITION BY w.account_id ORDER BY w.fire_at,w.wake_id,d.device_id) accountRank FROM reminder_wakes w JOIN reminder_push_devices d ON d.account_id=w.account_id LEFT JOIN reminder_wake_deliveries x ON x.account_id=d.account_id AND x.device_id=d.device_id AND x.wake_id=w.wake_id LEFT JOIN reminder_wake_holds h ON h.account_id=d.account_id AND h.device_id=d.device_id AND h.wake_id=w.wake_id WHERE w.fire_at<=? AND h.wake_id IS NULL AND x.delivered_at IS NULL AND (x.claimed_at IS NULL OR x.claimed_at<=?) AND (? IS NULL OR w.account_id=?)) WHERE accountRank<=? ORDER BY fireAt,wakeId,deviceId LIMIT ?',
 				args: [
 					now,
 					now - WAKE_CLAIM_LEASE_MS,
@@ -678,14 +702,28 @@ export class SyncStore {
 				]
 			})
 		).rows as unknown as DueWake[];
+		// The rows were read a moment ago, outside this batch: a wake a phone took as
+		// delivered since (it registered with its app open) stays delivered.
 		await batch(
 			this.db,
 			rows.map((r) => ({
-				sql: 'INSERT INTO reminder_wake_deliveries(account_id,device_id,wake_id,claimed_at,delivered_at) VALUES(?,?,?,?,NULL) ON CONFLICT(account_id,device_id,wake_id) DO UPDATE SET claimed_at=excluded.claimed_at,delivered_at=NULL',
+				sql: 'INSERT INTO reminder_wake_deliveries(account_id,device_id,wake_id,claimed_at,delivered_at) VALUES(?,?,?,?,NULL) ON CONFLICT(account_id,device_id,wake_id) DO UPDATE SET claimed_at=excluded.claimed_at WHERE reminder_wake_deliveries.delivered_at IS NULL',
 				args: [r.accountId, r.deviceId, r.wakeId, now]
 			}))
 		);
 		return rows;
+	}
+	/**
+	 * Whether a claimed wake is still this device's to be sent. Since the claim the
+	 * device may have gone or changed its address, or a phone may have taken the
+	 * wake as one it shows itself.
+	 */
+	async isWakeOwed(w: DueWake): Promise<boolean> {
+		const result = await execute(this.db, {
+			sql: 'SELECT 1 AS owed FROM reminder_push_devices d WHERE d.account_id=?1 AND d.device_id=?2 AND d.endpoint=?4 AND EXISTS (SELECT 1 FROM reminder_wakes w WHERE w.account_id=?1 AND w.wake_id=?3) AND NOT EXISTS (SELECT 1 FROM reminder_wake_holds h WHERE h.account_id=?1 AND h.device_id=?2 AND h.wake_id=?3) AND NOT EXISTS (SELECT 1 FROM reminder_wake_deliveries x WHERE x.account_id=?1 AND x.device_id=?2 AND x.wake_id=?3 AND x.delivered_at IS NOT NULL)',
+			args: [w.accountId, w.deviceId, w.wakeId, w.endpoint]
+		});
+		return result.rows.length > 0;
 	}
 	/** Next undelivered wake, including overdue wakes and claims awaiting their lease. */
 	async nextWakeAt(now: number, accountId?: string): Promise<number | null> {
@@ -696,7 +734,9 @@ export class SyncStore {
 			 JOIN reminder_push_devices d ON d.account_id = w.account_id
 			 LEFT JOIN reminder_wake_deliveries x ON x.account_id = d.account_id
 			 AND x.device_id = d.device_id AND x.wake_id = w.wake_id
-			 WHERE x.delivered_at IS NULL AND (? IS NULL OR w.account_id = ?)`,
+			 LEFT JOIN reminder_wake_holds h ON h.account_id = d.account_id
+			 AND h.device_id = d.device_id AND h.wake_id = w.wake_id
+			 WHERE h.wake_id IS NULL AND x.delivered_at IS NULL AND (? IS NULL OR w.account_id = ?)`,
 				args: [WAKE_CLAIM_LEASE_MS, now, accountId ?? null, accountId ?? null]
 			})
 		).rows[0] as { fireAt?: number | null } | undefined;
@@ -732,11 +772,30 @@ export class SyncStore {
 		]);
 	}
 	async deletePushDevice(accountId: string, deviceId: string): Promise<void> {
-		await execute(this.db, {
-			sql: 'DELETE FROM reminder_push_devices WHERE account_id=? AND device_id=?',
-			args: [accountId, deviceId]
-		});
+		await batch(this.db, [
+			{
+				sql: 'DELETE FROM reminder_push_devices WHERE account_id=? AND device_id=?',
+				args: [accountId, deviceId]
+			},
+			{
+				sql: 'DELETE FROM reminder_wake_holds WHERE account_id=? AND device_id=?',
+				args: [accountId, deviceId]
+			}
+		]);
 		await this.touchAccount(accountId);
+	}
+	/** Take a phone off an account by its push address alone; see the Node store. */
+	async deletePushEndpoint(accountId: string, endpoint: string): Promise<void> {
+		await batch(this.db, [
+			{
+				sql: 'DELETE FROM reminder_wake_holds WHERE account_id=?1 AND device_id IN (SELECT device_id FROM reminder_push_devices WHERE account_id=?1 AND endpoint=?2)',
+				args: [accountId, endpoint]
+			},
+			{
+				sql: 'DELETE FROM reminder_push_devices WHERE account_id=?1 AND endpoint=?2',
+				args: [accountId, endpoint]
+			}
+		]);
 	}
 	async countPushDevices(accountId?: string): Promise<number> {
 		const r = await execute(

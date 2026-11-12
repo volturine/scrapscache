@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { isHttpsEndpoint, isPushSubscription, parseReminderWakes } from './pushWakes';
+import {
+	isHttpsEndpoint,
+	isPushSubscription,
+	MAX_HELD_WAKES,
+	parseApnsRegistration,
+	parseHeldWakes,
+	parseReminderWakes
+} from './pushWakes';
 import { MAX_WAKES_PER_ACCOUNT, WAKE_RETAIN_MS } from './syncStore';
 
 const wakeId = (character: string) => character.repeat(43);
@@ -105,5 +112,49 @@ describe('blind wake request validation', () => {
 				100
 			)
 		).toBeNull();
+	});
+});
+
+describe('an iPhone app registration', () => {
+	const token = 'AB'.repeat(32);
+
+	it('takes a hex push token and a bundle id, and stores the token in one case', () => {
+		expect(parseApnsRegistration({ token, topic: 'com.scrapscache.app' })).toEqual({
+			token: token.toLowerCase(),
+			topic: 'com.scrapscache.app'
+		});
+	});
+
+	it('refuses anything that could not be a token or a bundle id', () => {
+		for (const value of [
+			null,
+			'token',
+			{ token },
+			{ token: 'zz'.repeat(32), topic: 'com.scrapscache.app' },
+			{ token: 'ab'.repeat(8), topic: 'com.scrapscache.app' },
+			{ token, topic: 'com.scrapscache.app/../x' },
+			{ token, topic: '' }
+		]) {
+			expect(parseApnsRegistration(value)).toBeNull();
+		}
+	});
+
+	it('takes the wakes the phone shows itself, once each', () => {
+		expect(parseHeldWakes(undefined)).toEqual([]);
+		expect(parseHeldWakes([wakeId('a'), wakeId('b'), wakeId('a')])).toEqual([
+			wakeId('a'),
+			wakeId('b')
+		]);
+	});
+
+	it('refuses held wakes that are not wake ids, or more than a phone can hold', () => {
+		expect(parseHeldWakes('all')).toBeNull();
+		expect(parseHeldWakes([wakeId('a'), 'short'])).toBeNull();
+		expect(parseHeldWakes([wakeId('a'), 7])).toBeNull();
+		const many = Array.from({ length: MAX_HELD_WAKES + 1 }, (_, index) =>
+			String(index).padStart(43, 'w')
+		);
+		expect(parseHeldWakes(many)).toBeNull();
+		expect(parseHeldWakes(many.slice(1))).toHaveLength(MAX_HELD_WAKES);
 	});
 });

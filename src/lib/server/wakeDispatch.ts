@@ -6,6 +6,7 @@ import {
 	type DueWake,
 	type SyncStore
 } from '#lib/server/syncStore.js';
+import { isApnsAddress, sendApnsWake } from '#lib/server/apns.js';
 import { sendReminderTick, type WakeSendResult } from '#lib/server/webPush.js';
 import { recordReminderWake } from '#lib/server/metrics.js';
 
@@ -29,6 +30,11 @@ function wakeRetryAt(fireAt: number, now: number): number {
 }
 
 export type WakeSender = (device: DueWake) => Promise<WakeSendResult>;
+
+/** A browser is woken through its push service, the iPhone app through Apple's. */
+export const sendWake: WakeSender = (device) =>
+	isApnsAddress(device.endpoint) ? sendApnsWake(device) : sendReminderTick(device);
+
 export type WakeDispatchResult = {
 	sent: number;
 	failed: number;
@@ -65,7 +71,7 @@ export async function dispatchDueWakes(
 	options: { store?: SyncStore; send?: WakeSender; now?: () => number; accountId?: string } = {}
 ): Promise<WakeDispatchResult> {
 	const store = options.store ?? getSyncStore();
-	const send = options.send ?? sendReminderTick;
+	const send = options.send ?? sendWake;
 	const now = options.now ?? Date.now;
 	const result: WakeDispatchResult = { sent: 0, failed: 0, gone: 0, next: null };
 	let moreDue = false;
@@ -75,6 +81,9 @@ export async function dispatchDueWakes(
 	const write = <A>(run: () => Promise<A>) => Effect.tryPromise({ try: run, catch: (e) => e });
 	const deliver = (device: DueWake) =>
 		Effect.gen(function* () {
+			// Claimed a moment ago, sent only now: a device gone since, or a phone that
+			// has since taken the wake as its own, is not sent it.
+			if (!(yield* write(() => store.isWakeOwed(device)))) return;
 			const outcome = yield* Effect.tryPromise(() => send(device)).pipe(
 				Effect.orElseSucceed((): WakeSendResult => 'failed')
 			);

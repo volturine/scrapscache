@@ -178,17 +178,21 @@ pairing dialog, and `https://<host>/privacy` opens Safari.
 `Info.plist` sets `ITSAppUsesNonExemptEncryption` to false, which Apple's
 documentation allows for an app whose encryption needs no export compliance
 documentation. The app does ship encryption of its own (the `@noble` libraries
-and the pairing exchange), all of it standard, published algorithms. App Store
-Connect's export compliance questions class that as "standard encryption
-algorithms instead of, or in addition to" the system's, and then ask whether
-the app is available in France: only then is documentation required (a French
-encryption declaration). So the value holds **while the app is not available in
-France**. Before adding France under Pricing and Availability, upload that
-declaration in App Store Connect, set the key to true and add the
-`ITSEncryptionExportComplianceCode` Apple returns. Apple also notes that
-encryption exempt from documentation can still call for a year-end
-self-classification report to the US government, which is the publisher's own
-filing. See Apple's "Complying with Encryption Export Regulations".
+and the pairing exchange), all of it standard, published algorithms. Apple
+asks for documentation for that kind only when the app is distributed in
+France: a French encryption declaration. So the value holds **while the app is
+not available in France**.
+
+France is meant to be supported.
+[french-encryption-declaration.md](french-encryption-declaration.md) has the
+steps (a declaration to the ANSSI, its attestation uploaded to Apple, Apple's
+code in `Info.plist`) and the technical description the filing needs. Until
+they are done, France stays out of the app's availability.
+
+Apple also notes that encryption exempt from documentation can still call for a
+year-end self-classification report to the US government, which is the
+publisher's own filing. See Apple's "Complying with Encryption Export
+Regulations".
 
 ### Two apps
 
@@ -580,8 +584,9 @@ weekly.
 
 ## Documentation
 
-| Doc                                | Use when                             |
-| ---------------------------------- | ------------------------------------ |
-| [architecture.md](architecture.md) | Understanding modules and data flow  |
-| [security.md](security.md)         | Touching crypto, headers, or logging |
-| [self-hosting.md](self-hosting.md) | Changing env vars or Compose         |
+| Doc                                                                  | Use when                                                  |
+| -------------------------------------------------------------------- | --------------------------------------------------------- |
+| [architecture.md](architecture.md)                                   | Understanding modules and data flow                       |
+| [security.md](security.md)                                           | Touching crypto, headers, or logging                      |
+| [self-hosting.md](self-hosting.md)                                   | Changing env vars or Compose                              |
+| [french-encryption-declaration.md](french-encryption-declaration.md) | Releasing the app in France, or changing its cryptography |

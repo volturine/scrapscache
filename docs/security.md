@@ -105,7 +105,9 @@ the long-term attachment format.
 - **CSP** (nonce mode) in `vite.config.ts`: default `self`, no third-party
   scripts; `data:`/`blob:` only where attachments need them
   (`img-src`, `media-src`, and PDF `frame-src`/`object-src`). The only third-party
-  frame allowed is the configured Turnstile challenge origin
+  frame allowed is the configured Turnstile challenge origin; the iPhone app,
+  whose CSP is fixed at build time, allows the hosted servers' two challenge
+  origins and no other
 - **Turnstile isolation** — Turnstile's script runs only on a separate challenge
   origin, which the app frames and which can pass back nothing but a token.
   Nothing third-party ever runs on the origin that holds the sync keys, so the

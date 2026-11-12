@@ -37,6 +37,16 @@ describe('Turnstile widget isolation', () => {
 		expect(token()).toBe('real');
 	});
 
+	it('names this page as the parent the challenge may post its token to', () => {
+		const { frame } = mount();
+		const src = new URL(frame.getAttribute('src') ?? '');
+
+		expect(src.origin).toBe(ORIGIN);
+		expect(src.pathname).toBe('/turnstile');
+		expect(src.searchParams.get('action')).toBe('register');
+		expect(src.searchParams.get('parent')).toBe(location.origin);
+	});
+
 	it('ignores the right origin speaking through a different window', async () => {
 		const { token } = mount();
 		const other = document.createElement('iframe');

@@ -211,7 +211,11 @@ and `SCRAPSCACHE_PROTOCOL_HEADER` → `PROTOCOL_HEADER`.
 
 Turnstile is off when all four `TURNSTILE` variables are unset. Setting any of
 them turns it on for account registration, and registration then fails closed
-until all four are set. Use your own Turnstile widget.
+until all four are set. Use your own Turnstile widget. The iPhone app asks its
+server for the challenge origin (`GET /api/sync/register`), but it can frame
+only the hosted service's challenge pages, so it cannot start sync with a
+self-hosted server that turns Turnstile on: leave Turnstile off on a server the
+app should use, or start sync from a browser and pair the phone.
 
 The widget never runs on the app's own origin. Turnstile's script is third-party
 code, and anything running on the app's origin can read the sync keys and

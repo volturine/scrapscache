@@ -11,7 +11,25 @@ import {
 	type StartedDeviceLink
 } from '#lib/stores/sync.svelte.js';
 import SyncModal from './SyncModal.svelte';
-import { publicEnv } from '../../tests/env';
+import { loadTurnstileNeed, type TurnstileNeed } from '#lib/turnstileOrigin.js';
+
+// The sync server says whether it wants a Turnstile token; most tests use one that does not.
+vi.mock('#lib/turnstileOrigin.js', () => ({
+	loadTurnstileNeed: vi.fn(async (): Promise<TurnstileNeed> => ({ kind: 'none' }))
+}));
+const CHECK: TurnstileNeed = { kind: 'check', origin: 'https://verify.scrapscache.com' };
+const tokenFrom = (
+	frame: HTMLIFrameElement,
+	token: string,
+	origin = CHECK.kind === 'check' ? CHECK.origin : ''
+) =>
+	window.dispatchEvent(
+		new MessageEvent('message', {
+			origin,
+			source: frame.contentWindow,
+			data: { type: 'scrapscache-turnstile', token }
+		})
+	);
 import { TEST_WORKSPACE } from '../../tests/workspace';
 
 function profile(id: string, name: string, createdAt: number): StoredProfile {
@@ -468,7 +486,7 @@ describe('SyncModal profile interactions', () => {
 	});
 
 	it('starts sync only with a token from the isolated challenge frame, then resets it', async () => {
-		publicEnv.PUBLIC_TURNSTILE_ORIGIN = 'https://verify.scrapscache.com';
+		vi.mocked(loadTurnstileNeed).mockResolvedValueOnce(CHECK);
 		const create = vi.spyOn(profileCoordinator, 'startSync').mockResolvedValue({ success: false });
 		const post = (
 			frame: HTMLIFrameElement,
@@ -487,11 +505,11 @@ describe('SyncModal profile interactions', () => {
 		await expand('Home');
 		await fireEvent.click(screen.getByRole('button', { name: /sync this workspace/i }));
 		const submit = screen.getByRole('button', { name: 'Start sync' }) as HTMLButtonElement;
-		const frame = screen.getByTitle('Human verification') as HTMLIFrameElement;
+		const frame = (await screen.findByTitle('Human verification')) as HTMLIFrameElement;
 
 		// The widget is a frame on the challenge origin, never a script in this page.
 		expect(frame.getAttribute('src')).toBe(
-			'https://verify.scrapscache.com/turnstile?action=register'
+			`https://verify.scrapscache.com/turnstile?action=register&parent=${encodeURIComponent(location.origin)}`
 		);
 		expect(document.querySelector('script[src*="challenges.cloudflare.com"]')).toBeNull();
 		expect(submit.disabled).toBe(true);
@@ -510,6 +528,80 @@ describe('SyncModal profile interactions', () => {
 		// Single-use: the frame is replaced for a fresh challenge.
 		await waitFor(() => expect(screen.getByTitle('Human verification')).not.toBe(frame));
 		expect(submit.disabled).toBe(true);
+	});
+
+	it('keeps Start sync off until the server has said whether it wants a check', async () => {
+		let answer: (need: TurnstileNeed) => void = () => {};
+		vi.mocked(loadTurnstileNeed).mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+		const create = vi.spyOn(profileCoordinator, 'startSync').mockResolvedValue({ success: false });
+		syncStore.activateLocalWorkspace(TEST_WORKSPACE);
+		render(SyncModal, { props: { onClose: vi.fn() } });
+		await expand('Home');
+		await fireEvent.click(screen.getByRole('button', { name: /sync this workspace/i }));
+		const submit = screen.getByRole('button', { name: 'Start sync' }) as HTMLButtonElement;
+
+		expect(submit.disabled).toBe(true);
+		await fireEvent.click(submit);
+		expect(create).not.toHaveBeenCalled();
+
+		answer({ kind: 'none' });
+		await waitFor(() => expect(submit.disabled).toBe(false));
+		expect(screen.queryByTitle('Human verification')).toBeNull();
+	});
+
+	it('keeps Start sync off when the server could not be asked, and asks again on Try again', async () => {
+		vi.mocked(loadTurnstileNeed)
+			.mockResolvedValueOnce({ kind: 'unknown' })
+			.mockResolvedValueOnce({ kind: 'none' });
+		syncStore.activateLocalWorkspace(TEST_WORKSPACE);
+		render(SyncModal, { props: { onClose: vi.fn() } });
+		await expand('Home');
+		await fireEvent.click(screen.getByRole('button', { name: /sync this workspace/i }));
+		const submit = screen.getByRole('button', { name: 'Start sync' }) as HTMLButtonElement;
+
+		await screen.findByText(/Could not reach the server/);
+		expect(submit.disabled).toBe(true);
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+		await waitFor(() => expect(submit.disabled).toBe(false));
+		expect(screen.queryByText(/Could not reach the server/)).toBeNull();
+	});
+
+	it('says when the server’s check cannot open in the app, and keeps Start sync off', async () => {
+		vi.mocked(loadTurnstileNeed).mockResolvedValueOnce({
+			kind: 'unsupported',
+			origin: 'https://verify.self-hosted.example'
+		});
+		syncStore.activateLocalWorkspace(TEST_WORKSPACE);
+		render(SyncModal, { props: { onClose: vi.fn() } });
+		await expand('Home');
+		await fireEvent.click(screen.getByRole('button', { name: /sync this workspace/i }));
+
+		await screen.findByText(/can’t open in the app/);
+		expect((screen.getByRole('button', { name: 'Start sync' }) as HTMLButtonElement).disabled).toBe(
+			true
+		);
+		expect(screen.queryByTitle('Human verification')).toBeNull();
+	});
+
+	it('replaces the cloud copy only with a token, after the server has answered', async () => {
+		let answer: (need: TurnstileNeed) => void = () => {};
+		vi.mocked(loadTurnstileNeed).mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+		const force = vi.spyOn(profileCoordinator, 'forceResync').mockResolvedValue({ success: true });
+		render(SyncModal, { props: { onClose: vi.fn() } });
+		await expand('Main');
+		await fireEvent.click(screen.getByRole('button', { name: /Replace the cloud copy/ }));
+		const confirm = screen.getByRole('button', { name: 'Replace cloud copy' }) as HTMLButtonElement;
+
+		expect(confirm.disabled).toBe(true);
+		answer(CHECK);
+		const frame = (await screen.findByTitle('Human verification')) as HTMLIFrameElement;
+		expect(confirm.disabled).toBe(true);
+
+		tokenFrom(frame, 'token-2');
+		await waitFor(() => expect(confirm.disabled).toBe(false));
+		await fireEvent.click(confirm);
+		await waitFor(() => expect(force).toHaveBeenCalledWith('token-2', main.id));
 	});
 
 	it('offers recovery for authentication failure and places joining under new workspace only', async () => {

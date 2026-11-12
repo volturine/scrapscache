@@ -39,7 +39,12 @@
 	// Framing the challenge from this same origin would run Turnstile's script with
 	// full access to this origin, which is the whole thing this avoids.
 	const isolated = $derived(challengeOrigin !== null && challengeOrigin !== location.origin);
-	const src = $derived(`${challengeOrigin}/turnstile?action=${encodeURIComponent(action)}`);
+	// The challenge page posts the token only to the parent it is told, and lets
+	// only parents it knows frame it: this page's origin is the web app's, or the
+	// iPhone app's own.
+	const src = $derived(
+		`${challengeOrigin}/turnstile?action=${encodeURIComponent(action)}&parent=${encodeURIComponent(location.origin)}`
+	);
 
 	function receive(event: MessageEvent) {
 		// Both checks matter: the origin says who sent it, the source says it was this

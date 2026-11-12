@@ -42,6 +42,9 @@ describe('SettingsMenu', () => {
 		expect(within(about).getByRole('menuitem', { name: 'Report an issue' })).toBeTruthy();
 		expect(within(about).getByRole('menuitem', { name: 'Privacy' })).toBeTruthy();
 		expect(within(about).getByRole('menuitem', { name: 'Terms' })).toBeTruthy();
+		expect(within(about).getByRole('menuitem', { name: 'Support' }).getAttribute('href')).toMatch(
+			/\/support$/
+		);
 	});
 
 	it('offers the theme as System, Light and Dark, with System following the device', async () => {

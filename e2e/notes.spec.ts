@@ -524,9 +524,9 @@ test.describe('on a touch screen', () => {
 		// A short viewport: the popover scrolls inside the frame rather than being cut by it.
 		await page.setViewportSize({ width: 1024, height: 380 });
 		await page.getByRole('button', { name: 'Settings', exact: true }).click();
-		const terms = page.getByRole('menuitem', { name: 'Terms' });
-		await terms.scrollIntoViewIfNeeded();
-		await expect(terms).toBeInViewport();
+		const last = page.getByRole('menuitem', { name: 'Support' });
+		await last.scrollIntoViewIfNeeded();
+		await expect(last).toBeInViewport();
 	});
 
 	test('the tap that closes the quick actions does not open the note under it', async ({

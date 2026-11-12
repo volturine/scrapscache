@@ -4,6 +4,7 @@ import adapterStatic from '@sveltejs/adapter-static';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 import { execSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { Plugin } from 'vite';
 import { defineConfig } from 'vitest/config';
@@ -108,9 +109,26 @@ function iosDefaultServer() {
 	return server;
 }
 
+/**
+ * The Turnstile challenge origins of the hosted servers, production and
+ * development, read from their configuration in wrangler.jsonc. The iPhone app
+ * has no request time to add its server's challenge origin to frame-src, so it
+ * may frame these and no other page: a self-hosted server that asks for its own
+ * check is told apart in the app (#lib/turnstileOrigin) rather than allowed a
+ * frame from anywhere, which a drawing's iframe element could also use.
+ */
+const HOSTED_CHALLENGE_ORIGINS = [
+	...readFileSync(fileURLToPath(new URL('./wrangler.jsonc', import.meta.url)), 'utf8').matchAll(
+		/"PUBLIC_TURNSTILE_ORIGIN":\s*"(https:\/\/[^"/]+)"/g
+	)
+].map((match) => match[1] as `https://${string}.${string}`);
+if (HOSTED_CHALLENGE_ORIGINS.length === 0)
+	throw new Error('wrangler.jsonc names no PUBLIC_TURNSTILE_ORIGIN for the hosted servers');
+
 export default defineConfig({
 	define: {
-		__DEFAULT_SERVER_ORIGIN__: JSON.stringify(iosDefaultServer())
+		__DEFAULT_SERVER_ORIGIN__: JSON.stringify(iosDefaultServer()),
+		__APP_CHALLENGE_ORIGINS__: JSON.stringify(HOSTED_CHALLENGE_ORIGINS)
 	},
 	plugins: [
 		cloudflarePlatform,
@@ -159,8 +177,13 @@ export default defineConfig({
 					// Chrome's PDF viewer treats an iframe PDF as a plugin, so blob
 					// frames need both frame-src and object-src. Third-party frames
 					// stay blocked; the Turnstile challenge origin is added at request time
-					// from configuration, because it differs per deployment.
-					'frame-src': ['self', 'blob:'],
+					// from configuration, because it differs per deployment. The iPhone
+					// app has no request time: it lists the hosted servers' challenge
+					// origins instead (HOSTED_CHALLENGE_ORIGINS), never a whole scheme.
+					'frame-src':
+						process.env.DEPLOY_TARGET === 'capacitor'
+							? ['self', 'blob:', ...HOSTED_CHALLENGE_ORIGINS]
+							: ['self', 'blob:'],
 					'object-src': ['self', 'blob:'],
 					'base-uri': ['none'],
 					'form-action': ['self'],

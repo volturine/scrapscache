@@ -64,7 +64,7 @@
 				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
 			</array>
 		</dict>
-		<!-- abuse counters keyed by IP address or workspace: removed within about an hour of going idle, a workspace's upload count after 5 days -->
+		<!-- abuse counters keyed by IP address or workspace: removed within about an hour of going idle, a workspace's count of sync writes (uploads and deletions) after 5 days -->
 		<dict>
 			<key>NSPrivacyCollectedDataType</key>
 			<string>NSPrivacyCollectedDataTypeOtherDataTypes</string>

@@ -124,8 +124,8 @@
 					<li>
 						<strong>Abuse Limits:</strong> To slow down abuse, the relay counts requests per IP address
 						(per /64 network for IPv6) and per workspace. A counter is deleted within about an hour once
-						it has been idle for 10 minutes, except a workspace's count of uploads, which is kept for
-						5 days after its last use.
+						it has been idle for 10 minutes, except a workspace's count of sync writes (uploads and deletions),
+						which is kept for 5 days after its last use.
 					</li>
 				</ul>
 			</section>
@@ -141,7 +141,7 @@
 					A synced workspace that has not been used for 365 days is deleted from the hosted relay.
 					When you remove a workspace from the cloud, the relay deletes its data at once and keeps
 					its random ID and the date, so that a lost device that still holds the workspace's key
-					cannot create it again. Its upload count goes after 5 days, as above.
+					cannot create it again. Its count of sync writes goes after 5 days, as above.
 				</p>
 			</section>
 

@@ -360,11 +360,26 @@ Both App IDs are registered: `com.scrapscache.app` and `com.scrapscache.app.dev`
 (the latter on 2026-11-10). The production record is **Scraps Cache** (SKU
 `scrapscache-ios`).
 
-The App Store icon is `AppIcon-1024.png` in the asset catalog, flattened from
-the web icon (Apple masks the corners itself and rejects an alpha channel); the
-launch screen shows that icon on the system background. The dev app's
-`AppIcon-Dev.appiconset` is the same image with a teal DEV band across its lower
-third; redraw it when the main icon changes.
+### Icons
+
+Every icon is drawn from the SVG masters in `design/app-icon`, named
+`<mode>-<shape>-<palette>.svg`, which open in Affinity with named layers. After
+editing one, run `npm run icons` (it renders in Playwright's Chromium), which
+writes:
+
+- the web icons in `static/` (favicons, the PWA icons, the maskable icon, the
+  home-screen icon for Safari) and `og-preview.png`, all from
+  `dark-tilted-amber`;
+- `AppIcon`: `light-tilted-peach` as the "any" appearance, which iOS before 18
+  also shows, `dark-tilted-amber` for dark mode, and `tinted-tilted` for the
+  tinted home screen; flattened, since Apple masks the corners itself and
+  rejects an alpha channel;
+- `AppIcon-Dev`: the light and dark icons under `dev-band.svg`, a teal DEV band;
+- one `AppIcon-<master>` set per master, the alternate icons iOS can switch
+  to. The App target lists them in `ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES`,
+  and the script stops if that list and the masters disagree;
+- the launch image, the light or dark icon in the middle of a clear square on
+  the launch background.
 
 ## Browser smoke tests
 

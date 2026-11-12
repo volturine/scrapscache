@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <rect id="tile" width="1024" height="1024" fill="#f4efe6"/>
+  <rect id="back-note" x="262" y="268" width="400" height="400" rx="14" fill="#de867b" transform="rotate(-9 462 468)"/>
+  <g id="front-note" transform="rotate(5 570 566)">
+    <path id="keyline" d="M370 366 H770 V654 L658 766 H370 Z" fill="none" stroke="#f4efe6" stroke-width="56" stroke-linejoin="round"/>
+    <path id="paper" d="M370 366 H770 V654 L658 766 H370 Z" fill="#f1c4a0" stroke="#f1c4a0" stroke-width="14" stroke-linejoin="round"/>
+    <g id="lines" fill="none" stroke="#1a1a1a" stroke-width="46" stroke-linecap="round">
+      <line x1="454" y1="494" x2="670" y2="494"/>
+      <line x1="454" y1="594" x2="590" y2="594"/>
+    </g>
+  </g>
+</svg>

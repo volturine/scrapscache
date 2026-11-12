@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <rect id="band" y="704" width="1024" height="184" fill="#0e8a9a"/>
+  <g id="dev" fill="none" stroke="#ffffff" stroke-width="34" stroke-linecap="round" stroke-linejoin="round">
+    <path id="d" d="M372 750 V842 H398 A46 46 0 0 0 398 750 Z"/>
+    <path id="e" d="M546 750 H492 V842 H546 M492 796 H536"/>
+    <path id="v" d="M588 750 L626 842 L664 750"/>
+  </g>
+</svg>

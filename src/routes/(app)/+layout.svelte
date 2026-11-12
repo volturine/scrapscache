@@ -24,7 +24,7 @@
 	import { rememberRecentNote } from '#lib/recentNotes.js';
 	import { splitPastedHeading } from '#lib/checklistBody.js';
 	import { Drawer } from '@ark-ui/svelte/drawer';
-	import { flushSync, onMount, untrack } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { MediaQuery } from 'svelte/reactivity';
 	import { attachSyncCloudIndicator } from '#lib/syncCloudIndicator.js';
 	import { attachAppViewport } from '#lib/appViewport.js';
@@ -308,6 +308,10 @@
 	function startNewNote(seed?: { title?: string; body?: string }) {
 		// A view with the composer writes the note there; the others open the editor.
 		if (composerStore.open(seed)) return;
+		startNoteInEditor(seed);
+	}
+
+	function startNoteInEditor(seed?: { title?: string; body?: string }) {
 		const labels =
 			uiStore.view === 'label' &&
 			uiStore.activeLabelId &&
@@ -329,9 +333,15 @@
 		applyEditorOpen(true);
 	}
 
-	/** Where the composer is and what a note from it starts with: Notes, a label's view, Reminders. */
+	/**
+	 * Where the composer is and what a note from it starts with: Notes, a label's view,
+	 * Reminders. Beside iPhone Duo's column there is none: the column's New note
+	 * starts notes there, in the editor. A bar already open when the phone folds stays
+	 * until it is put away, with the note and any file it is still bringing in.
+	 */
 	const composer = $derived.by(() => {
 		if (uiStore.labelsOpen) return null;
+		if (sideColumn.side && !composerStore.writing) return null;
 		switch (uiStore.view) {
 			case 'notes':
 				return { labels: [], reminderDay: null, placeholder: 'Take a note…' };
@@ -380,17 +390,14 @@
 
 	/**
 	 * The column's New note. An open note makes the column inert, so none is open
-	 * here; it leaves the palette and the Labels screen, which would cover the note.
-	 * The feed the Labels screen covered is drawn at once, so its composer can take
-	 * the note within the tap, and iOS brings up the keyboard for it.
+	 * here; it leaves the palette and the Labels screen, so the note it opens in the
+	 * editor is put away into the view it was written for. Always the editor: a bar
+	 * still open from before the fold is being put away by this very press.
 	 */
 	function newNoteFromColumn() {
 		uiStore.paletteOpen = false;
-		if (uiStore.labelsOpen) {
-			uiStore.labelsOpen = false;
-			flushSync();
-		}
-		startNewNote();
+		uiStore.labelsOpen = false;
+		startNoteInEditor();
 	}
 
 	function requestCloseEditor() {
@@ -563,8 +570,9 @@
 	</div>
 </div>
 <!-- iPhone Duo's status column lies outside the frame; the column's controls stand in it
-     at every width: sync and settings (the top bar portals them in), the places, then
-     New note. Search is the bar's field, so the places leave it out. -->
+     at every width: New note, which stands in for the composer there, sync and settings
+     (the top bar portals them in), then the places. Search is the bar's field, so the
+     places leave it out. -->
 {#if sideColumn.side}
 	<div
 		class={cx(
@@ -573,13 +581,13 @@
 		)}
 		data-column-stack
 	>
-		<div class={phoneTabsStyles.actions} data-column-actions></div>
-		<PhoneTabBar rail={sideColumn.side} />
 		<div class={phoneTabsStyles.actions}>
 			<button type="button" aria-label="New note" onclick={newNoteFromColumn}>
 				<Plus class={iconSizeMd} aria-hidden="true" />
 			</button>
 		</div>
+		<div class={phoneTabsStyles.actions} data-column-actions></div>
+		<PhoneTabBar rail={sideColumn.side} />
 	</div>
 {/if}
 {#if mobile.current && uiStore.sidebarOpen}

@@ -120,12 +120,13 @@ describe('NoteEditor photo removal and undo', () => {
 			}
 		});
 		container.querySelector('[data-body-editor]')!.dispatchEvent(event);
-		await new Promise((resolve) => setTimeout(resolve, 50));
-		await tick();
-		expect(container.textContent).toMatch(
-			/clip\.mp4 is 9(\.0)? MB; a file over 8(\.0)? MB cannot sync, so it was not added\./
-		);
+		// Waited for, not slept on: the small file's read takes longer on a busy machine.
+		await vi.waitFor(() => {
+			expect(container.textContent).toMatch(
+				/clip\.mp4 is 9(\.0)? MB; a file over 8(\.0)? MB cannot sync, so it was not added\./
+			);
+			expect(queryByRole('button', { name: 'Open notes.txt' })).toBeTruthy();
+		});
 		expect(queryByRole('button', { name: 'Open clip.mp4' })).toBeNull();
-		expect(queryByRole('button', { name: 'Open notes.txt' })).toBeTruthy();
 	});
 });

@@ -363,7 +363,44 @@
 		});
 	});
 
-	onMount(() => composerStore.attach((seed) => openWith(seed)));
+	/**
+	 * The bar went with what it was writing, the view changed under it from the
+	 * palette, say. The draft is saved as it stands and let go, so the feed shows it
+	 * again. A file still coming in goes with the bar's footer.
+	 */
+	function putAwayOnUnmount() {
+		// A press elsewhere (a place's tab) has already begun putting it away.
+		if (!open || transitioning) return;
+		if (timer) clearTimeout(timer);
+		timer = null;
+		// The body's own editor goes after this teardown, so its last keys still count;
+		// taken from what it hands back, as state written while the bar goes is dropped.
+		const synced = bodyEditor?.syncBodyNow?.() ?? body;
+		const text = synced.split('\n').some((line) => plainLine(line) !== '') ? synced : '';
+		if (!draftId && title.trim() === '' && text === '' && images.length === 0) {
+			composerStore.draftId = null;
+			return;
+		}
+		const id = ensureNote();
+		notesStore.updateNote(id, { title, body: text });
+		composerStore.draftId = null;
+		void notesStore.discardIfEmpty(id).then(() => notesStore.syncPendingChanges());
+	}
+
+	$effect(() => {
+		composerStore.writing = open;
+		return () => {
+			composerStore.writing = false;
+		};
+	});
+
+	onMount(() => {
+		const detach = composerStore.attach((seed) => openWith(seed));
+		return () => {
+			detach();
+			putAwayOnUnmount();
+		};
+	});
 
 	// A press anywhere else puts the bar away; its own popups and the app's overlays
 	// (dialogs, menus, the canvas editor) are part of it.

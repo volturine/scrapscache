@@ -1364,8 +1364,10 @@
 		}, 300);
 	}
 
-	export function syncBodyNow() {
+	/** Write the body out now, and give it back for an owner whose binding is going. */
+	export function syncBodyNow(): string {
 		syncBody(true);
+		return lastSerializedBody;
 	}
 
 	/** End an open composition and keep its text; the editor is about to close. */

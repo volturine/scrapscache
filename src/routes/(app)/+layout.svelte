@@ -11,7 +11,8 @@
 	import NoteComposer from '#lib/components/NoteComposer.svelte';
 	import { composerStore } from '#lib/stores/composer.svelte.js';
 	import { getClipboardFiles } from '#lib/noteImages.js';
-	import { noteComposerStyles, phoneTabsStyles } from '$panda/styles';
+	import { iconSizeMd, noteComposerStyles, phoneTabsStyles } from '$panda/styles';
+	import { Plus } from '@lucide/svelte';
 	import PhoneTabBar from '#lib/components/PhoneTabBar.svelte';
 	import AppViews from '#lib/components/AppViews.svelte';
 	import { reminderStore } from '#lib/stores/reminders.svelte.js';
@@ -23,7 +24,7 @@
 	import { rememberRecentNote } from '#lib/recentNotes.js';
 	import { splitPastedHeading } from '#lib/checklistBody.js';
 	import { Drawer } from '@ark-ui/svelte/drawer';
-	import { onMount, untrack } from 'svelte';
+	import { flushSync, onMount, untrack } from 'svelte';
 	import { MediaQuery } from 'svelte/reactivity';
 	import { attachSyncCloudIndicator } from '#lib/syncCloudIndicator.js';
 	import { attachAppViewport } from '#lib/appViewport.js';
@@ -377,6 +378,21 @@
 		startNewNote(split ? { title: split.title, body: split.body } : { body: text });
 	}
 
+	/**
+	 * The column's New note. An open note makes the column inert, so none is open
+	 * here; it leaves the palette and the Labels screen, which would cover the note.
+	 * The feed the Labels screen covered is drawn at once, so its composer can take
+	 * the note within the tap, and iOS brings up the keyboard for it.
+	 */
+	function newNoteFromColumn() {
+		uiStore.paletteOpen = false;
+		if (uiStore.labelsOpen) {
+			uiStore.labelsOpen = false;
+			flushSync();
+		}
+		startNewNote();
+	}
+
 	function requestCloseEditor() {
 		void closeOpenNote?.();
 	}
@@ -547,7 +563,8 @@
 	</div>
 </div>
 <!-- iPhone Duo's status column lies outside the frame; the column's controls stand in it
-     at every width: sync and settings (the top bar portals them in), then the places. -->
+     at every width: sync and settings (the top bar portals them in), the places, then
+     New note. Search is the bar's field, so the places leave it out. -->
 {#if sideColumn.side}
 	<div
 		class={cx(
@@ -558,6 +575,11 @@
 	>
 		<div class={phoneTabsStyles.actions} data-column-actions></div>
 		<PhoneTabBar rail={sideColumn.side} />
+		<div class={phoneTabsStyles.actions}>
+			<button type="button" aria-label="New note" onclick={newNoteFromColumn}>
+				<Plus class={iconSizeMd} aria-hidden="true" />
+			</button>
+		</div>
 	</div>
 {/if}
 {#if mobile.current && uiStore.sidebarOpen}

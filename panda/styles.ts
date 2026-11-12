@@ -3713,8 +3713,8 @@ export const phoneTabsStyles = {
 	}),
 	stackRight: css({ right: 0, w: 'var(--app-inset-right)' }),
 	stackLeft: css({ left: 0, w: 'var(--app-inset-left)' }),
-	/** Where the top bar's sync and settings land, each its own circle (Topbar portals them here). */
-	// Sync and settings, sent here from the bar, each in its own glass circle.
+	// The column's circles: sync and settings, sent here from the bar (Topbar portals
+	// them in), and New note under the places, each in its own glass circle.
 	actions: css({
 		...column,
 		alignItems: 'center',
@@ -3735,7 +3735,7 @@ export const phoneTabsStyles = {
 			}
 		}
 	}),
-	/** The five places in one pill, icons alone; the name stays for assistive technology. */
+	/** The places in one pill, icons alone; the name stays for assistive technology. */
 	pill: css({
 		...column,
 		alignItems: 'center',

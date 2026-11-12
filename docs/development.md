@@ -125,14 +125,19 @@ things in the shell (`ScrapsBridgeViewController`) are for that window alone:
   which in a window left a black strip above the page;
 - it adds the height of the window's controls (the close, minimise and arrange
   buttons iOS draws over the top leading corner) to the safe area, which is all
-  the page lays itself out by, so the page starts below them. A window that
-  fills the screen hides those controls and gets nothing added.
+  the page lays itself out by, so the page starts below them. The height is
+  read from the window (its corner-adapted safe area, less its plain one), so
+  it is nothing once the window fills the screen, and it is asked for on an
+  iPad alone: on an iPhone the same measure is the screen's rounded corners.
 
-Checked (iPad Pro 11-inch, iOS 27.2): full screen in portrait and landscape,
-with the note editor, the keyboard, the drawing editor, the share sheet and
-Files; a window about phone width in portrait and in landscape, with the note
-editor. Not yet checked: the half and third arrangements, Slide Over, and a
-window wide enough for the sidebar.
+Checked (iPad Pro 11-inch and iPhone 18 Pro simulators, iOS 27.2): full screen
+in portrait and landscape, with the note editor, the keyboard, the drawing
+editor, the share sheet and Files; a window about phone width at the screen's
+top edge, in light and dark; window to full screen and back, where the page's
+top returns to the same place each time; and an iPhone turned to landscape and
+back. Not yet checked: a window moved away from the screen's top edge, the
+half and third arrangements, Slide Over, and a window wide enough for the
+sidebar.
 
 ### Links that open the app
 

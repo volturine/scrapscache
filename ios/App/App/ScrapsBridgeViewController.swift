@@ -60,14 +60,15 @@ final class ScrapsBridgeViewController: CAPBridgeViewController {
     /// In an iPad window iOS draws the window's controls over its top leading
     /// corner and leaves them out of the safe area, which is all the page lays
     /// itself out by. The height they take is added to the safe area here, so the
-    /// page starts below them. A window that fills the screen keeps its controls
-    /// hidden until they are asked for, and gives them no room.
+    /// page starts below them. It is measured on the window, which this addition
+    /// does not reach, so it goes again when the window fills the screen and its
+    /// controls hide. An iPhone has no such controls; there the same measure is
+    /// the screen's rounded corners, which the page already allows for.
     private func clearWindowControls() {
-        guard #available(iOS 26.0, *) else { return }
-        let fillsScreen = view.window?.windowScene?.isFullScreen ?? true
-        let own = view.safeAreaInsets.top - additionalSafeAreaInsets.top
-        let clear = view.edgeInsets(for: .safeArea(cornerAdaptation: .vertical)).top
-        let extra = fillsScreen ? 0 : max(0, clear - own)
+        guard #available(iOS 26.0, *), traitCollection.userInterfaceIdiom == .pad,
+              let window = view.window else { return }
+        let clear = window.edgeInsets(for: .safeArea(cornerAdaptation: .vertical)).top
+        let extra = max(0, clear - window.safeAreaInsets.top)
         guard abs(additionalSafeAreaInsets.top - extra) > 0.5 else { return }
         additionalSafeAreaInsets.top = extra
     }

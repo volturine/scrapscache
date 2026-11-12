@@ -1,4 +1,5 @@
 /// <reference types="@capacitor/local-notifications" />
+/// <reference types="@capacitor/push-notifications" />
 /// <reference types="@capacitor/status-bar" />
 import type { CapacitorConfig } from '@capacitor/cli';
 
@@ -22,6 +23,11 @@ const config: CapacitorConfig = {
 		LocalNotifications: {
 			// While the app is open the reminder store shows the alert itself; a
 			// banner on top of it would say the same thing twice.
+			presentationOptions: []
+		},
+		PushNotifications: {
+			// A reminder pushed while the app is open: the app looks it up and shows
+			// it itself, as it does its own.
 			presentationOptions: []
 		},
 		StatusBar: {

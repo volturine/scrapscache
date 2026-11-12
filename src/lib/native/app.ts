@@ -9,6 +9,7 @@ import {
 	requestPermission,
 	scheduleReminderNotifications
 } from './localNotifications.js';
+import { onRemotePush, registerRemotePush } from './remotePush.js';
 import { attachNativeStatusBar } from './statusBar.js';
 import { attachReservedRegions } from './reservedRegions.js';
 
@@ -17,14 +18,23 @@ import { attachReservedRegions } from './reservedRegions.js';
  * follows the theme and leaves the folded Duo's side, the rail keeps under what
  * iOS draws in that side's column, the system fires reminders from the store's
  * schedule and drops the ones answered since, and a link to a note or a pairing
- * that iOS opens here is followed.
+ * that iOS opens here is followed. The relay pushes the reminders the schedule
+ * does not hold yet, once it knows which it does.
  */
 export function attachNativeApp(): () => void {
 	const stopStatusBar = attachNativeStatusBar();
 	const stopReservedRegions = attachReservedRegions();
 	const schedule = () => {
-		if (currentPermission() !== 'granted') return;
-		void scheduleReminderNotifications(reminderStore.upcoming()).catch(() => undefined);
+		if (currentPermission() !== 'granted') {
+			// Nothing to schedule, and nowhere to register; a workspace unlinked
+			// since the phone registered is still one to take it off.
+			void registerRemotePush(null);
+			return;
+		}
+		const upcoming = reminderStore.upcoming();
+		void scheduleReminderNotifications(upcoming)
+			.then(() => registerRemotePush(upcoming))
+			.catch(() => undefined);
 	};
 	useNotificationBackend({
 		permission: currentPermission,
@@ -39,6 +49,7 @@ export function attachNativeApp(): () => void {
 	const stopUpcoming = reminderStore.watchUpcoming(schedule);
 	const tap = onNotificationTap((extra) => reminderStore.openFromSystem(extra));
 	const link = onAppLink();
+	const push = onRemotePush(() => void reminderStore.syncAllRemoteWakes());
 	return () => {
 		stopStatusBar();
 		stopReservedRegions();
@@ -46,5 +57,6 @@ export function attachNativeApp(): () => void {
 		useNotificationBackend(null);
 		void tap.then((handle) => handle.remove()).catch(() => undefined);
 		void link.then((handle) => handle.remove()).catch(() => undefined);
+		void push.then((handle) => handle.remove()).catch(() => undefined);
 	};
 }

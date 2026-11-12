@@ -152,6 +152,13 @@ jobs:
           printf '%s' "$SCRAPSCACHE_ADMIN_TOKEN" | npx wrangler secret put SCRAPSCACHE_ADMIN_TOKEN --env dev
           printf '%s' "$SCRAPSCACHE_TICK_SECRET" | npx wrangler secret put SCRAPSCACHE_TICK_SECRET --env dev
           printf '%s' "$TURNSTILE_SECRET" | npx wrangler secret put TURNSTILE_SECRET --env dev
+          # Optional: reminder pushes to the iPhone app, as in production below.
+          if [ -n "$SCRAPSCACHE_APNS_KEY" ] && [ -n "$SCRAPSCACHE_APNS_KEY_ID" ] && [ -n "$SCRAPSCACHE_APNS_TEAM_ID" ] && [ -n "$SCRAPSCACHE_APNS_TOPICS" ]; then
+            printf '%s' "$SCRAPSCACHE_APNS_KEY" | npx wrangler secret put SCRAPSCACHE_APNS_KEY --env dev
+            printf '%s' "$SCRAPSCACHE_APNS_KEY_ID" | npx wrangler secret put SCRAPSCACHE_APNS_KEY_ID --env dev
+            printf '%s' "$SCRAPSCACHE_APNS_TEAM_ID" | npx wrangler secret put SCRAPSCACHE_APNS_TEAM_ID --env dev
+            printf '%s' "$SCRAPSCACHE_APNS_TOPICS" | npx wrangler secret put SCRAPSCACHE_APNS_TOPICS --env dev
+          fi
           # The dev iPhone app: iOS opens note and pairing links to this server in it.
           if [ -n "$APPLE_TEAM_ID" ]; then
             printf '%s' "$APPLE_TEAM_ID.com.scrapscache.app.dev" | npx wrangler secret put SCRAPSCACHE_IOS_APP_IDS --env dev
@@ -166,6 +173,10 @@ jobs:
           SCRAPSCACHE_ADMIN_TOKEN: ${{ secrets.SCRAPSCACHE_ADMIN_TOKEN }}
           SCRAPSCACHE_TICK_SECRET: ${{ secrets.SCRAPSCACHE_TICK_SECRET }}
           TURNSTILE_SECRET: ${{ secrets.TURNSTILE_SECRET }}
+          SCRAPSCACHE_APNS_KEY: ${{ secrets.SCRAPSCACHE_APNS_KEY }}
+          SCRAPSCACHE_APNS_KEY_ID: ${{ secrets.SCRAPSCACHE_APNS_KEY_ID }}
+          SCRAPSCACHE_APNS_TEAM_ID: ${{ secrets.SCRAPSCACHE_APNS_TEAM_ID }}
+          SCRAPSCACHE_APNS_TOPICS: ${{ secrets.SCRAPSCACHE_APNS_TOPICS }}
 
       - name: Verify development deployment
         run: >-
@@ -268,6 +279,14 @@ jobs:
             printf '%s' "$SCRAPSCACHE_VAPID_PRIVATE_KEY" | npx wrangler secret put SCRAPSCACHE_VAPID_PRIVATE_KEY --env=""
             printf '%s' "$SCRAPSCACHE_VAPID_PUBLIC_KEY" | npx wrangler secret put SCRAPSCACHE_VAPID_PUBLIC_KEY --env=""
           fi
+          # Optional: reminder pushes to the iPhone app. Skipped until all four are
+          # configured; the relay sends to no phone with fewer.
+          if [ -n "$SCRAPSCACHE_APNS_KEY" ] && [ -n "$SCRAPSCACHE_APNS_KEY_ID" ] && [ -n "$SCRAPSCACHE_APNS_TEAM_ID" ] && [ -n "$SCRAPSCACHE_APNS_TOPICS" ]; then
+            printf '%s' "$SCRAPSCACHE_APNS_KEY" | npx wrangler secret put SCRAPSCACHE_APNS_KEY --env=""
+            printf '%s' "$SCRAPSCACHE_APNS_KEY_ID" | npx wrangler secret put SCRAPSCACHE_APNS_KEY_ID --env=""
+            printf '%s' "$SCRAPSCACHE_APNS_TEAM_ID" | npx wrangler secret put SCRAPSCACHE_APNS_TEAM_ID --env=""
+            printf '%s' "$SCRAPSCACHE_APNS_TOPICS" | npx wrangler secret put SCRAPSCACHE_APNS_TOPICS --env=""
+          fi
           npx wrangler deploy --config cf/wrangler.cron.jsonc --env=""
           printf '%s' "$SCRAPSCACHE_TICK_SECRET" | npx wrangler secret put SCRAPSCACHE_TICK_SECRET --config cf/wrangler.cron.jsonc --env=""
           npx wrangler deploy --config recipes/mcp-server/cloudflare/wrangler.jsonc --env=""
@@ -280,6 +299,10 @@ jobs:
           TURNSTILE_SECRET: ${{ secrets.TURNSTILE_SECRET }}
           SCRAPSCACHE_VAPID_PUBLIC_KEY: ${{ secrets.SCRAPSCACHE_VAPID_PUBLIC_KEY }}
           SCRAPSCACHE_VAPID_PRIVATE_KEY: ${{ secrets.SCRAPSCACHE_VAPID_PRIVATE_KEY }}
+          SCRAPSCACHE_APNS_KEY: ${{ secrets.SCRAPSCACHE_APNS_KEY }}
+          SCRAPSCACHE_APNS_KEY_ID: ${{ secrets.SCRAPSCACHE_APNS_KEY_ID }}
+          SCRAPSCACHE_APNS_TEAM_ID: ${{ secrets.SCRAPSCACHE_APNS_TEAM_ID }}
+          SCRAPSCACHE_APNS_TOPICS: ${{ secrets.SCRAPSCACHE_APNS_TOPICS }}
 
       - name: Verify production deployment
         run: >-

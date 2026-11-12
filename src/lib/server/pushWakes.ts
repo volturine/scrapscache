@@ -161,6 +161,32 @@ export function isPushSubscription(value: unknown): value is PushSubscriptionBod
 	return isPushSubscriptionBody(value);
 }
 
+const APNS_TOKEN_RE = /^[0-9a-fA-F]{64,200}$/;
+const APNS_TOPIC_RE = /^[A-Za-z0-9.-]{1,155}$/;
+/** iOS keeps 64 pending notifications per app, so a phone holds no more wakes than that. */
+export const MAX_HELD_WAKES = 64;
+
+/** The iPhone app's push token and bundle id, as it registers them. */
+export function parseApnsRegistration(value: unknown): { token: string; topic: string } | null {
+	if (!value || typeof value !== 'object') return null;
+	const { token, topic } = value as { token?: unknown; topic?: unknown };
+	if (typeof token !== 'string' || !APNS_TOKEN_RE.test(token)) return null;
+	if (typeof topic !== 'string' || !APNS_TOPIC_RE.test(topic)) return null;
+	return { token: token.toLowerCase(), topic };
+}
+
+/** The wakes a phone shows by itself, which the relay then leaves to it. */
+export function parseHeldWakes(value: unknown): string[] | null {
+	if (value === undefined) return [];
+	if (!Array.isArray(value) || value.length > MAX_HELD_WAKES) return null;
+	const held = new Set<string>();
+	for (const id of value) {
+		if (typeof id !== 'string' || !WAKE_ID_RE.test(id)) return null;
+		held.add(id);
+	}
+	return [...held];
+}
+
 const decodeWakes = Schema.decodeUnknownOption(
 	Schema.Array(
 		Schema.Struct({

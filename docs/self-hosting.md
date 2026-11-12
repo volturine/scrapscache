@@ -193,6 +193,10 @@ client-address settings above so rate limits see real client IPs.
 | `SCRAPSCACHE_VAPID_PRIVATE_KEY`            |                 auto-generated | Optional stable Web Push VAPID private key                                                                              |
 | `SCRAPSCACHE_VAPID_SUBJECT`                | `mailto:scrapscache@localhost` | Contact URI for VAPID (`mailto:` or `https:`)                                                                           |
 | `SCRAPSCACHE_ALLOW_INDEXING`               |                          unset | `true` serves a crawlable `robots.txt`; anything else disallows all crawling                                            |
+| `SCRAPSCACHE_APNS_KEY`                     |                          unset | Apple push key (`.p8` contents) for an iPhone app of your own; set with the three below                                 |
+| `SCRAPSCACHE_APNS_KEY_ID`                  |                          unset | Key ID of that Apple push key                                                                                           |
+| `SCRAPSCACHE_APNS_TEAM_ID`                 |                          unset | Apple Developer team the key belongs to                                                                                 |
+| `SCRAPSCACHE_APNS_TOPICS`                  |                          unset | Comma-separated bundle ids of the apps the key may send to                                                              |
 | `SCRAPSCACHE_IOS_APP_IDS`                  |                          unset | App IDs (`TEAMID.bundle.id`, comma-separated) of your own iPhone app builds whose links to this server open in the app  |
 | `PUBLIC_TURNSTILE_ORIGIN`                  |                          unset | Separate origin that serves the Turnstile widget, e.g. `https://verify.example.com`; never the app's own                |
 | `TURNSTILE_SITEKEY`                        |                          unset | Cloudflare Turnstile sitekey, used only by the challenge page                                                           |
@@ -226,6 +230,13 @@ a new key is generated and existing push subscriptions are rejected by the Web
 Push spec — devices must re-register (the server logs a warning when this
 happens). To keep subscriptions working across restores, set both VAPID env
 variables explicitly.
+
+The four `SCRAPSCACHE_APNS_*` variables send reminder pushes to an iPhone app
+through Apple's push service, and only the team that signs an app can make the
+key for it. The App Store app is signed by the hosted service, so a self-hosted
+relay leaves them unset: the app then shows the reminders it has synced by
+itself, and one set on another device appears when the app is next opened. Set
+them only if you build and sign the app yourself.
 
 ### Docker Compose helpers
 

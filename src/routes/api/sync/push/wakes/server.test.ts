@@ -5,6 +5,9 @@ const mocks = vi.hoisted(() => ({
 	authenticate: vi.fn(async (): Promise<string | null> => 'account-aaaaaaaaaaaa'),
 	arm: vi.fn(async () => undefined),
 	savePushDevice: vi.fn(async () => undefined),
+	deletePushDevice: vi.fn(async () => undefined),
+	deletePushEndpoint: vi.fn(async () => undefined),
+	apnsTopics: null as string[] | null,
 	replaceReminderWakes: vi.fn(async () => ({ accepted: true, schedule: true })),
 	markReminderWakesScheduled: vi.fn(async () => undefined),
 	getReminderWakes: vi.fn(async () => ({
@@ -25,6 +28,8 @@ vi.mock('#lib/server/syncStore.js', async (original) => ({
 	...(await original<typeof import('#lib/server/syncStore.js')>()),
 	getSyncStore: () => ({
 		savePushDevice: mocks.savePushDevice,
+		deletePushDevice: mocks.deletePushDevice,
+		deletePushEndpoint: mocks.deletePushEndpoint,
 		replaceReminderWakes: mocks.replaceReminderWakes,
 		markReminderWakesScheduled: mocks.markReminderWakesScheduled,
 		getReminderWakes: mocks.getReminderWakes
@@ -35,8 +40,12 @@ vi.mock('#lib/server/pushWakes.js', async (original) => ({
 	isPublicEndpoint: async () => true
 }));
 vi.mock('#lib/server/wakeTimer.js', () => ({ armWakeTimer: mocks.arm }));
+vi.mock('#lib/server/apns.js', async (original) => ({
+	...(await original<typeof import('#lib/server/apns.js')>()),
+	apnsConfig: () => (mocks.apnsTopics ? { topics: mocks.apnsTopics } : null)
+}));
 
-import { GET, POST, PUT } from './+server';
+import { DELETE, GET, POST, PUT } from './+server';
 
 type Handler = (event: { request: Request; getClientAddress(): string }) => Promise<Response>;
 
@@ -56,6 +65,7 @@ describe('reminder wake registration', () => {
 		vi.clearAllMocks();
 		mocks.check.mockReturnValue({ allowed: true });
 		mocks.authenticate.mockResolvedValue('account-aaaaaaaaaaaa');
+		mocks.apnsTopics = null;
 	});
 
 	it('schedules delivery when an account stores its wakes', async () => {
@@ -77,6 +87,110 @@ describe('reminder wake registration', () => {
 		});
 		expect(response.status).toBe(200);
 		expect(mocks.arm).toHaveBeenCalledWith('account-aaaaaaaaaaaa', expect.any(Number));
+	});
+
+	describe('the iPhone app', () => {
+		const phone = {
+			deviceId: 'device-aaaaaaaaaaaa',
+			apns: { token: 'AB'.repeat(32), topic: 'com.scrapscache.app' },
+			held: ['h'.repeat(43)]
+		};
+
+		it('is registered by its push token together with the wakes it shows itself', async () => {
+			mocks.apnsTopics = ['com.scrapscache.app'];
+			const response = await call(POST, 'POST', phone);
+			expect(response.status).toBe(200);
+			// One store call: the phone is never a device without its holds.
+			expect(mocks.savePushDevice).toHaveBeenCalledExactlyOnceWith(
+				{
+					accountId: 'account-aaaaaaaaaaaa',
+					deviceId: 'device-aaaaaaaaaaaa',
+					endpoint: `apns://com.scrapscache.app/${'ab'.repeat(32)}/account-aaaaaaaaaaaa`,
+					p256dh: '',
+					auth: ''
+				},
+				{ held: ['h'.repeat(43)], now: expect.any(Number) }
+			);
+			expect(mocks.arm).toHaveBeenCalledWith('account-aaaaaaaaaaaa', expect.any(Number));
+		});
+
+		it('is told when the relay has no Apple key, or none for this app', async () => {
+			expect((await call(POST, 'POST', phone)).status).toBe(501);
+			mocks.apnsTopics = ['com.example.other'];
+			expect((await call(POST, 'POST', phone)).status).toBe(501);
+			expect(mocks.savePushDevice).not.toHaveBeenCalled();
+		});
+
+		it('is refused before sign-in is even checked when its token or held wakes are malformed', async () => {
+			mocks.apnsTopics = ['com.scrapscache.app'];
+			for (const body of [
+				{ ...phone, apns: { token: 'nope', topic: 'com.scrapscache.app' } },
+				{ ...phone, held: ['short'] },
+				{ ...phone, apns: null }
+			]) {
+				expect((await call(POST, 'POST', body)).status).toBe(400);
+			}
+			expect(mocks.authenticate).not.toHaveBeenCalled();
+			expect(mocks.savePushDevice).not.toHaveBeenCalled();
+		});
+
+		it('cannot register without a sync session', async () => {
+			mocks.apnsTopics = ['com.scrapscache.app'];
+			mocks.authenticate.mockResolvedValueOnce(null);
+			expect((await call(POST, 'POST', phone)).status).toBe(401);
+			expect(mocks.savePushDevice).not.toHaveBeenCalled();
+		});
+
+		it('takes itself off an account by its push token, with no sync session', async () => {
+			mocks.authenticate.mockResolvedValue(null);
+			const response = await call(DELETE, 'DELETE', {
+				accountId: 'account-bbbbbbbbbbbb',
+				apns: phone.apns
+			});
+			expect(response.status).toBe(204);
+			// Only the row that is this token under this account: nothing else of the account's.
+			expect(mocks.deletePushEndpoint).toHaveBeenCalledExactlyOnceWith(
+				'account-bbbbbbbbbbbb',
+				`apns://com.scrapscache.app/${'ab'.repeat(32)}/account-bbbbbbbbbbbb`
+			);
+			expect(mocks.deletePushDevice).not.toHaveBeenCalled();
+			expect(mocks.authenticate).not.toHaveBeenCalled();
+		});
+
+		it('is refused a removal that names no whole token or account, and one over the address limit', async () => {
+			for (const body of [
+				{ accountId: 'account-bbbbbbbbbbbb', apns: { token: 'nope', topic: phone.apns.topic } },
+				{ accountId: 'short', apns: phone.apns },
+				{ apns: phone.apns },
+				{ accountId: 'account-bbbbbbbbbbbb', apns: null }
+			]) {
+				expect((await call(DELETE, 'DELETE', body)).status).toBe(400);
+			}
+			mocks.check.mockReturnValueOnce({ allowed: false });
+			expect(
+				(await call(DELETE, 'DELETE', { accountId: 'account-bbbbbbbbbbbb', apns: phone.apns }))
+					.status
+			).toBe(429);
+			expect(mocks.deletePushEndpoint).not.toHaveBeenCalled();
+		});
+	});
+
+	describe('a device signing out', () => {
+		it('is removed from its own account', async () => {
+			const response = await call(DELETE, 'DELETE', { deviceId: 'device-aaaaaaaaaaaa' });
+			expect(response.status).toBe(204);
+			expect(mocks.deletePushDevice).toHaveBeenCalledExactlyOnceWith(
+				'account-aaaaaaaaaaaa',
+				'device-aaaaaaaaaaaa'
+			);
+			expect(mocks.deletePushEndpoint).not.toHaveBeenCalled();
+		});
+
+		it('needs a sync session when it shows no push token', async () => {
+			mocks.authenticate.mockResolvedValueOnce(null);
+			expect((await call(DELETE, 'DELETE', { deviceId: 'device-aaaaaaaaaaaa' })).status).toBe(401);
+			expect(mocks.deletePushDevice).not.toHaveBeenCalled();
+		});
 	});
 
 	it('scopes the push-device rate-limit bucket by account so shared device ids cannot throttle each other', async () => {

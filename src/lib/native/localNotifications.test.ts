@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { LocalNotifications } from '@capacitor/local-notifications';
+import { wakeNotificationId } from '#lib/model/index.js';
 import type { UpcomingReminder } from '#lib/stores/reminders.svelte.js';
 import {
-	notificationId,
 	notificationsFor,
 	PENDING_LIMIT,
 	readExtra,
@@ -23,19 +23,10 @@ const reminder = (n: number): UpcomingReminder => ({
 	title: `Note ${n}`
 });
 
-describe('notificationId', () => {
-	it('is the same positive number for the same wake, and another for another', () => {
-		expect(notificationId('wake-1')).toBe(notificationId('wake-1'));
-		expect(notificationId('wake-1')).not.toBe(notificationId('wake-2'));
-		expect(notificationId('wake-1')).toBeGreaterThan(0);
-		expect(Number.isInteger(notificationId('wake-1'))).toBe(true);
-	});
-});
-
 describe('notificationsFor', () => {
 	it('names the note, says when, and keeps what a tap needs', () => {
 		const [planned] = notificationsFor([reminder(1)]);
-		expect(planned.id).toBe(notificationId('wake-1'));
+		expect(planned.id).toBe(wakeNotificationId('wake-1'));
 		expect(planned.title).toBe('Note 1');
 		expect(planned.schedule?.at?.getTime()).toBe(at + 60_000);
 		expect(planned.extra).toEqual({
@@ -80,9 +71,9 @@ describe('removeDeliveredReminders', () => {
 		remove.mockClear();
 		await removeDeliveredReminders(new Set(['wake-1', 'wake-2']));
 		expect(remove).toHaveBeenCalledExactlyOnceWith({
-			ids: [notificationId('wake-1'), notificationId('wake-2')]
+			ids: [wakeNotificationId('wake-1'), wakeNotificationId('wake-2')]
 		});
-		expect(notificationsFor([reminder(1)])[0].id).toBe(notificationId('wake-1'));
+		expect(notificationsFor([reminder(1)])[0].id).toBe(wakeNotificationId('wake-1'));
 	});
 
 	it('asks the system nothing when no reminder was answered', async () => {

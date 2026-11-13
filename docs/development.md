@@ -389,9 +389,11 @@ the app's primary icon, `AppIcon` (`AppIcon-Dev` in the dev app); the rest set
 an alternate through the shell's `AppIcon` plugin
 (`ScrapsBridgeViewController.swift`), which takes a master's name and adds the
 app's own prefix, so the dev app keeps its DEV band whichever icon is picked.
-iOS confirms each change with an alert of its own. The page draws the masters themselves, and
-`src/lib/native/appIcon.test.ts` fails if its choices, the masters and the
-alternate icon list fall out of step, so a new master needs a choice there too.
+The choices change the page's preview, and Apply sets the icon, since iOS
+confirms each change with an alert of its own. The page draws the masters
+themselves, and `src/lib/native/appIcon.test.ts` fails if its choices, the
+masters and the alternate icon list fall out of step, so a new master needs a
+choice there too.
 
 ## Browser smoke tests
 

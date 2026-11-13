@@ -15,16 +15,6 @@ async function store() {
 	return (await import('./appIcon.svelte.js')).appIconStore;
 }
 
-function deferred() {
-	let resolve!: () => void;
-	let reject!: (cause: Error) => void;
-	const promise = new Promise<void>((done, fail) => {
-		resolve = done;
-		reject = fail;
-	});
-	return { promise, resolve, reject };
-}
-
 const mint = { tile: 'dark', notes: 'stacked', colour: 'mint' } as const;
 const sky = { tile: 'light', notes: 'tilted', colour: 'sky' } as const;
 
@@ -49,6 +39,7 @@ describe('appIconStore', () => {
 		await Promise.all([icon.load(), icon.load()]);
 		expect(icon.supported).toBe(true);
 		expect(icon.choice).toEqual(mint);
+		expect(icon.isShowing(mint)).toBe(true);
 		expect(plugin.get).toHaveBeenCalledOnce();
 	});
 
@@ -61,65 +52,49 @@ describe('appIconStore', () => {
 		expect(icon.supported).toBe(true);
 	});
 
-	it('sets the master a choice names, and the app’s own icon for Automatic', async () => {
+	it('applies the master a choice names, and the app’s own icon for Automatic', async () => {
 		const icon = await store();
 		await icon.load();
-		await icon.choose(mint);
+		await icon.apply(mint);
 		expect(plugin.set).toHaveBeenLastCalledWith({ master: 'dark-stacked-mint' });
-		await icon.choose(AUTOMATIC);
+		expect(icon.choice).toEqual(mint);
+		await icon.apply(AUTOMATIC);
 		expect(plugin.set).toHaveBeenLastCalledWith({ master: null });
 		expect(icon.choice).toEqual(AUTOMATIC);
-	});
-
-	it('collapses taps made while iOS is busy into the last', async () => {
-		const first = deferred();
-		plugin.set.mockReturnValueOnce(first.promise);
-		const icon = await store();
-		await icon.load();
-		const running = icon.choose(mint);
-		void icon.choose(sky);
-		void icon.choose({ ...sky, colour: 'pink' });
-		expect(icon.choice).toEqual({ ...sky, colour: 'pink' });
-		first.resolve();
-		await running;
-		expect(plugin.set.mock.calls).toEqual([
-			[{ master: 'dark-stacked-mint' }],
-			[{ master: 'light-tilted-pink' }]
-		]);
 	});
 
 	it('does not set the icon iOS already shows', async () => {
 		plugin.get.mockResolvedValue({ supported: true, master: 'dark-stacked-mint' });
 		const icon = await store();
 		await icon.load();
-		await icon.choose(mint);
+		await icon.apply(mint);
 		expect(plugin.set).not.toHaveBeenCalled();
 	});
 
-	it('goes back to the icon iOS shows when it refuses, and says so', async () => {
+	it('applies one change at a time', async () => {
+		let finish!: () => void;
+		plugin.set.mockReturnValueOnce(new Promise<void>((done) => (finish = done)));
+		const icon = await store();
+		await icon.load();
+		const running = icon.apply(mint);
+		expect(icon.applying).toBe(true);
+		await icon.apply(sky);
+		finish();
+		await running;
+		expect(plugin.set.mock.calls).toEqual([[{ master: 'dark-stacked-mint' }]]);
+		expect(icon.applying).toBe(false);
+	});
+
+	it('keeps the icon iOS shows when it refuses, and says so until the next try', async () => {
 		plugin.get.mockResolvedValue({ supported: true, master: 'dark-stacked-mint' });
 		plugin.set.mockRejectedValueOnce(new Error('refused'));
 		const icon = await store();
 		await icon.load();
-		await icon.choose(sky);
+		await icon.apply(sky);
 		expect(icon.choice).toEqual(mint);
 		expect(icon.error).toBe('The icon did not change. Try again.');
 
-		await icon.choose(sky);
-		expect(icon.choice).toEqual(sky);
-		expect(icon.error).toBe('');
-	});
-
-	it('moves on to a newer choice when an older one is refused', async () => {
-		const first = deferred();
-		plugin.set.mockReturnValueOnce(first.promise);
-		const icon = await store();
-		await icon.load();
-		const running = icon.choose(mint);
-		void icon.choose(sky);
-		first.reject(new Error('busy'));
-		await running;
-		expect(plugin.set).toHaveBeenLastCalledWith({ master: 'light-tilted-sky' });
+		await icon.apply(sky);
 		expect(icon.choice).toEqual(sky);
 		expect(icon.error).toBe('');
 	});

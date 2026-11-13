@@ -1,5 +1,10 @@
 <script lang="ts">
-	import { iconSizeMd as iconMd, popover, settingsMenuStyles as styles } from '$panda/styles';
+	import {
+		appIconStyles,
+		iconSizeMd as iconMd,
+		popover,
+		settingsMenuStyles as styles
+	} from '$panda/styles';
 	import { cx } from 'styled-system/css';
 	import { iconButton, menuItem } from 'styled-system/recipes';
 	import { Menu } from '@ark-ui/svelte/menu';
@@ -14,12 +19,16 @@
 	import StorageSettings from './StorageSettings.svelte';
 	import ServerSettings from './ServerSettings.svelte';
 	import { isNativeApp } from '#lib/native.js';
+	import { iconArt } from '#lib/appIconArt.js';
+	import { describeChoice, masterName } from '#lib/native/appIcon.js';
+	import { appIconStore } from '#lib/stores/appIcon.svelte.js';
 
 	let {
 		open = $bindable(false),
 		onExport,
 		onImport,
 		onTextSettings,
+		onAppIcon,
 		importing = false,
 		importError = '',
 		phone = false,
@@ -30,6 +39,8 @@
 		onImport: () => void;
 		/** Opens Text and code; the dialog lives outside the menu, which closes. */
 		onTextSettings: () => void;
+		/** Opens App icon, in the iPhone app; like Text and code, it lives outside the menu. */
+		onAppIcon: () => void;
 		importing?: boolean;
 		importError?: string;
 		/** On a phone this is the "More" menu; its places are in the tab bar and the Labels tab. */
@@ -51,12 +62,19 @@
 	const textStatus = $derived(
 		`${uiStore.textSize} px text · code ${uiStore.codeWrap ? 'wraps' : 'scrolls'}`
 	);
+	const iconMaster = $derived(masterName(appIconStore.choice));
+	// The row shows once iOS has said the device can change the icon.
+	$effect(() => {
+		void appIconStore.load();
+	});
 	const id = $props.id();
 	const ids = {
 		appearance: `${id}-appearance`,
 		theme: `${id}-theme`,
 		text: `${id}-text`,
 		textStatus: `${id}-text-status`,
+		icon: `${id}-icon`,
+		iconStatus: `${id}-icon-status`,
 		layout: `${id}-layout`,
 		data: `${id}-data`,
 		about: `${id}-about`
@@ -123,6 +141,38 @@
 							{/each}
 						</Menu.RadioItemGroup>
 					</div>
+					{#if appIconStore.supported}
+						<Menu.Item
+							value="app-icon"
+							onSelect={onAppIcon}
+							class={cx(menuItem({ density: 'compact' }), styles.deviceRow)}
+							aria-labelledby={ids.icon}
+							aria-describedby={ids.iconStatus}
+						>
+							<span class={cx(styles.deviceIcon, appIconStyles.menuIcon)} aria-hidden="true">
+								{#if iconMaster}
+									<img src={iconArt(iconMaster)} alt="" class={appIconStyles.menuArt} />
+								{:else}
+									<!-- Automatic follows iOS's appearance, as the home screen does,
+									     not the app's own theme. -->
+									<picture>
+										<source
+											srcset={iconArt('dark-tilted-amber')}
+											media="(prefers-color-scheme: dark)"
+										/>
+										<img src={iconArt('light-tilted-peach')} alt="" class={appIconStyles.menuArt} />
+									</picture>
+								{/if}
+							</span>
+							<span class={styles.deviceText}>
+								<span id={ids.icon} class={styles.deviceLabel}>App icon</span>
+								<span id={ids.iconStatus} class={styles.status}
+									>{describeChoice(appIconStore.choice)}</span
+								>
+							</span>
+							<ChevronRight class={styles.deviceChevron} aria-hidden="true" />
+						</Menu.Item>
+					{/if}
 					<Menu.Item
 						value="text-settings"
 						onSelect={onTextSettings}

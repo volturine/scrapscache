@@ -8,9 +8,10 @@
 // defaults: the dark tilted notes in cream and amber, used everywhere on the
 // web and for iOS dark mode, and the light tilted notes in peach and coral,
 // used for iOS light mode. Every master is also an iOS alternate icon, named
-// AppIcon-<master>, which the App target lists in
-// ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES; this script stops if that list
-// and the masters disagree.
+// AppIcon-<master>, and AppIcon-Dev-<master> under the DEV band for the dev
+// app. The App target lists them in ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES
+// as $(APP_ICON_NAME)-<master>, so each app gets its own; this script stops if
+// that list and the masters disagree.
 
 import { chromium } from '@playwright/test';
 import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
@@ -33,7 +34,7 @@ const masters = (await readdir(SOURCE))
 	.map((file) => file.replace(/\.svg$/, ''))
 	.sort();
 
-await checkAlternateNames(masters.map((name) => `AppIcon-${name}`));
+await checkAlternateNames(masters.map((name) => `$(APP_ICON_NAME)-${name}`));
 
 const browser = await chromium.launch();
 const page = await browser.newPage();
@@ -155,7 +156,8 @@ await write('static/icon-maskable-512.png', [dark], 512);
 await write('static/apple-touch-icon.png', [dark], 180);
 
 // iOS: light and dark defaults plus the greyscale tinted variant, the dev
-// app's pair with its DEV band, and every master as an alternate icon.
+// app's pair with its DEV band, and every master as an alternate icon, with
+// the band again for the dev app.
 await iconSet('AppIcon', [
 	{ filename: 'AppIcon-1024.png', layers: [light] },
 	{ filename: 'AppIcon-Dark-1024.png', layers: [dark], appearance: 'dark' },
@@ -166,12 +168,14 @@ await iconSet('AppIcon-Dev', [
 	{ filename: 'AppIcon-Dev-Dark-1024.png', layers: [dark, band], appearance: 'dark' }
 ]);
 for (const entry of await readdir(CATALOG)) {
-	if (/^AppIcon-(dark|light)-.*\.appiconset$/.test(entry))
+	if (/^AppIcon-(Dev-)?(dark|light)-.*\.appiconset$/.test(entry))
 		await rm(`${CATALOG}/${entry}`, { recursive: true });
 }
 for (const name of masters) {
-	await iconSet(`AppIcon-${name}`, [
-		{ filename: `AppIcon-${name}-1024.png`, layers: [await svg(name)] }
+	const master = await svg(name);
+	await iconSet(`AppIcon-${name}`, [{ filename: `AppIcon-${name}-1024.png`, layers: [master] }]);
+	await iconSet(`AppIcon-Dev-${name}`, [
+		{ filename: `AppIcon-Dev-${name}-1024.png`, layers: [master, band] }
 	]);
 }
 
@@ -221,5 +225,5 @@ await page.screenshot({ path: 'static/og-preview.png' });
 
 await browser.close();
 console.log(
-	`Drew ${masters.length} alternate icons, the defaults, the dev icons, the launch image and the link preview.`
+	`Drew ${masters.length} alternate icons and their dev pairs, the defaults, the dev icons, the launch image and the link preview.`
 );

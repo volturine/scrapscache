@@ -1,8 +1,9 @@
 <script lang="ts">
 	// Settings > App icon, in the iPhone app: the icon large, built from three
 	// choices. The tile is Automatic (the app's own pair, which follows light and
-	// dark mode), dark or light; then the notes and their colour. Each choice
-	// changes the home screen's icon at once, and iOS confirms it with an alert.
+	// dark mode), dark or light; then the notes and their colour. The choices
+	// change the preview; Apply changes the home screen's icon, which iOS
+	// confirms with an alert, so that alert comes once and not at every tap.
 	import {
 		appIconStyles as styles,
 		iconSizeMd as iconMd,
@@ -11,7 +12,7 @@
 		visuallyHidden
 	} from '$panda/styles';
 	import { cx } from 'styled-system/css';
-	import { dialog, iconButton } from 'styled-system/recipes';
+	import { button, dialog, iconButton } from 'styled-system/recipes';
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { RadioGroup } from '@ark-ui/svelte/radio-group';
 	import { ArrowLeft, X } from '@lucide/svelte';
@@ -38,8 +39,10 @@
 	const id = $props.id();
 	const ids = { tile: `${id}-tile`, notes: `${id}-notes`, colour: `${id}-colour` };
 
-	const choice = $derived(appIconStore.choice);
+	/** The icon being built; the store keeps the one iOS shows. */
+	let choice = $state(appIconStore.choice);
 	const automatic = $derived(choice.tile === 'automatic');
+	const showing = $derived(appIconStore.isShowing(choice));
 	const master = $derived(masterName(choice));
 </script>
 
@@ -130,12 +133,22 @@
 					</div>
 
 					<section class={page.card} aria-label="Icon">
-						{@render segments(ids.tile, 'Tile', TILES, choice.tile, false, (tile) =>
-							appIconStore.choose(withTile(choice, tile as IconTile))
+						{@render segments(
+							ids.tile,
+							'Tile',
+							TILES,
+							choice.tile,
+							false,
+							(tile) => (choice = withTile(choice, tile as IconTile))
 						)}
 						<div class={page.rowRule}>
-							{@render segments(ids.notes, 'Notes', NOTES, choice.notes, automatic, (notes) =>
-								appIconStore.choose({ ...choice, notes: notes as IconNotes })
+							{@render segments(
+								ids.notes,
+								'Notes',
+								NOTES,
+								choice.notes,
+								automatic,
+								(notes) => (choice = { ...choice, notes: notes as IconNotes })
 							)}
 						</div>
 						<RadioGroup.Root
@@ -143,8 +156,7 @@
 							disabled={automatic}
 							orientation="horizontal"
 							onValueChange={(details) => {
-								if (details.value)
-									appIconStore.choose({ ...choice, colour: details.value as IconColour });
+								if (details.value) choice = { ...choice, colour: details.value as IconColour };
 							}}
 							class={cx(styles.controlRow, page.rowRule)}
 							aria-labelledby={ids.colour}
@@ -170,6 +182,14 @@
 						</RadioGroup.Root>
 					</section>
 
+					<button
+						type="button"
+						class={cx(button({ variant: 'primary', size: 'md' }), styles.apply)}
+						disabled={showing || appIconStore.applying}
+						onclick={() => appIconStore.apply(choice)}
+					>
+						{showing ? 'Current icon' : appIconStore.applying ? 'Applying…' : 'Apply'}
+					</button>
 					{#if appIconStore.error}
 						<p class={styles.alert} role="alert">{appIconStore.error}</p>
 					{/if}

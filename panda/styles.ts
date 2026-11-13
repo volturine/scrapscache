@@ -2406,6 +2406,8 @@ export const appIconStyles = {
 				'0 0 0 2px token(colors.scrapscache.surface), 0 0 0 4px token(colors.scrapscache.accent)'
 		}
 	}),
+	/** Apply, the width of the card above it. */
+	apply: css({ w: 'full', mt: 'md' }),
 	note: css({ px: '2xs', pt: 'sm', textStyle: 'caption' }),
 	alert: css({ px: '2xs', pt: 'sm', textStyle: 'caption', color: 'scrapscache.warning' }),
 	/** The settings menu's row shows the icon in place of a symbol. */

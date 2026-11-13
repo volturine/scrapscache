@@ -1,13 +1,15 @@
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { AUTOMATIC, type AppIconChoice } from '#lib/native/appIcon.js';
+import { AUTOMATIC, masterName, type AppIconChoice } from '#lib/native/appIcon.js';
 
-// The store with no iOS behind it: a choice shows at once, as it does in the app.
+// The store with no iOS behind it: it shows `choice`, and records what is applied.
 const store = vi.hoisted(() => ({
 	supported: true,
 	choice: null as unknown as AppIconChoice,
+	applying: false,
 	error: '',
-	choose: vi.fn()
+	isShowing: (choice: AppIconChoice) => masterName(choice) === masterName(store.choice),
+	apply: vi.fn()
 }));
 vi.mock('#lib/stores/appIcon.svelte.js', () => ({ appIconStore: store }));
 
@@ -23,10 +25,13 @@ function open(choice: AppIconChoice = AUTOMATIC) {
 const group = (name: string) => screen.getByRole('radiogroup', { name });
 const radio = (groupName: string, name: string) =>
 	within(group(groupName)).getByRole('radio', { name }) as HTMLInputElement;
+const applyButton = () =>
+	screen.getByRole('button', { name: /^(Apply|Current icon|Applying…)$/ }) as HTMLButtonElement;
 
 afterEach(() => {
+	store.applying = false;
 	store.error = '';
-	store.choose.mockReset();
+	store.apply.mockReset();
 });
 
 describe('AppIconDialog', () => {
@@ -44,29 +49,40 @@ describe('AppIconDialog', () => {
 		expect(screen.getByText('Peach in light mode, amber in dark mode')).toBeTruthy();
 	});
 
-	it('starts a dark tile from the dark default, amber tilted notes', async () => {
-		open();
-		await fireEvent.click(radio('Tile', 'Dark'));
-		expect(store.choose).toHaveBeenCalledWith({ tile: 'dark', notes: 'tilted', colour: 'amber' });
+	it('names the icon iOS shows on a button that does nothing', () => {
+		open({ tile: 'dark', notes: 'tilted', colour: 'sky' });
+		expect(applyButton().textContent?.trim()).toBe('Current icon');
+		expect(applyButton().disabled).toBe(true);
 	});
 
-	it('changes the notes and the colour of the icon it shows', async () => {
-		open({ tile: 'dark', notes: 'tilted', colour: 'sky' });
-		expect(screen.getByText('Sky · Tilted · Dark')).toBeTruthy();
-		expect(radio('Colour', 'Sky').checked).toBe(true);
-
+	it('builds the icon in the preview, changing nothing until Apply', async () => {
+		open();
+		await fireEvent.click(radio('Tile', 'Dark'));
+		expect(screen.getByText('Amber · Tilted · Dark')).toBeTruthy();
 		await fireEvent.click(radio('Notes', 'Stacked'));
-		expect(store.choose).toHaveBeenLastCalledWith({
-			tile: 'dark',
-			notes: 'stacked',
-			colour: 'sky'
-		});
 		await fireEvent.click(radio('Colour', 'Mint'));
-		expect(store.choose).toHaveBeenLastCalledWith({
-			tile: 'dark',
-			notes: 'tilted',
-			colour: 'mint'
-		});
+		expect(screen.getByText('Mint · Stacked · Dark')).toBeTruthy();
+		expect(store.apply).not.toHaveBeenCalled();
+
+		expect(applyButton().textContent?.trim()).toBe('Apply');
+		await fireEvent.click(applyButton());
+		expect(store.apply).toHaveBeenCalledOnce();
+		expect(store.apply).toHaveBeenCalledWith({ tile: 'dark', notes: 'stacked', colour: 'mint' });
+	});
+
+	it('goes back to Automatic with Apply, from an alternate', async () => {
+		open({ tile: 'light', notes: 'stacked', colour: 'pink' });
+		await fireEvent.click(radio('Tile', 'Automatic'));
+		await fireEvent.click(applyButton());
+		expect(store.apply).toHaveBeenCalledWith(AUTOMATIC);
+	});
+
+	it('waits on iOS while it applies', async () => {
+		store.applying = true;
+		open();
+		await fireEvent.click(radio('Tile', 'Dark'));
+		expect(applyButton().textContent?.trim()).toBe('Applying…');
+		expect(applyButton().disabled).toBe(true);
 	});
 
 	it('offers amber on dark tiles only', () => {

@@ -183,6 +183,39 @@ describe('BodyEditor native editing', () => {
 		expect(window.getSelection()!.anchorOffset).toBe(2);
 	});
 
+	it('focuses the body without scrolling after it places the caret', async () => {
+		// WebKit on iOS refocuses the body, without options, when the caret is placed,
+		// and its keyboard then pans the page unless the last focus kept preventScroll.
+		const calls: string[] = [];
+		const focus = HTMLElement.prototype.focus;
+		const place = Selection.prototype.setBaseAndExtent;
+		const focusSpy = vi.spyOn(HTMLElement.prototype, 'focus').mockImplementation(function (
+			this: HTMLElement,
+			options?: FocusOptions
+		) {
+			if (this.matches('[data-body-editor]')) calls.push(`focus ${JSON.stringify(options)}`);
+			focus.call(this, options);
+		});
+		const placeSpy = vi.spyOn(Selection.prototype, 'setBaseAndExtent').mockImplementation(function (
+			this: Selection,
+			...args
+		) {
+			calls.push('caret');
+			place.apply(this, args);
+		});
+		try {
+			const { component, container } = render(BodyEditor, { props: { body: 'Hello' } });
+			const editor = container.querySelector('[data-body-editor]');
+			component.focusDefault();
+			await vi.waitFor(() => expect(document.activeElement).toBe(editor));
+
+			expect(calls.slice(-2)).toEqual(['caret', 'focus {"preventScroll":true}']);
+		} finally {
+			focusSpy.mockRestore();
+			placeSpy.mockRestore();
+		}
+	});
+
 	it('renders exactly one block row for each saved newline', () => {
 		const { container } = render(BodyEditor, {
 			props: { body: 'Plain line\n[ ] Task line\nLast line' }

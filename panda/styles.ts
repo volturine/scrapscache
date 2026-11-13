@@ -2170,11 +2170,16 @@ export const settingsMenuStyles = {
 			fontWeight: 'strong',
 			boxShadow: 'sm'
 		},
-		// Keyboard focus is a ring, so it shows on the chosen segment as well.
-		'&[data-highlighted]': {
+		// Keyboard focus is a ring drawn as an outline, so it shows on the chosen
+		// segment as well, whose shadow is its own. A radio's focus is always on the
+		// chosen one.
+		'&[data-highlighted], &[data-focus-visible]': {
 			color: 'scrapscache.text',
-			boxShadow: 'inset 0 0 0 2px token(colors.scrapscache.focus)'
-		}
+			outline: '2px solid token(colors.scrapscache.focus)',
+			outlineOffset: '-2px'
+		},
+		// Settings > App icon greys out the notes while the icon is Automatic.
+		'&[data-disabled]': { opacity: 0.45, cursor: 'default', pointerEvents: 'none' }
 	}),
 	/** A row with a sentence under its label; the menu item recipe's fixed height gives way. */
 	deviceRow: css({
@@ -2229,10 +2234,10 @@ export const settingsMenuStyles = {
 };
 
 /**
- * Settings > Text and code: a box over the app on a desktop, the whole screen on a
- * phone. Each section is a card with a live preview over its controls.
+ * A page of Settings (Text and code, App icon): a box over the app on a desktop,
+ * the whole screen on a phone. Each section is a card of rows.
  */
-export const textSettingsStyles = {
+export const settingsPageStyles = {
 	panel: css({
 		maxW: '28rem',
 		maxH: 'calc(100% - var(--app-topbar-height) - 2rem)',
@@ -2273,6 +2278,14 @@ export const textSettingsStyles = {
 	}),
 	sectionLabel: css({ px: '2xs', pt: 'lg', pb: 'xs', textStyle: 'overline' }),
 	card: css({ ...border, rounded: 'dialog', bg: 'scrapscache.surface', overflow: 'hidden' }),
+	row: hstack({ gap: 'sm', minH: { base: '2.75rem', _touch: '3rem' }, px: 'md' }),
+	rowRule: css({ borderTopWidth: 'hairline', borderColor: 'scrapscache.border' }),
+	rowLabel: css({ ...flexFill, textStyle: 'body' })
+};
+
+/** Settings > Text and code: each section's card has a live preview over its controls. */
+export const textSettingsStyles = {
+	...settingsPageStyles,
 	preview: css({ p: 'md', borderBottomWidth: 'hairline', borderColor: 'scrapscache.border' }),
 	sampleNote: css({
 		...column,
@@ -2288,10 +2301,7 @@ export const textSettingsStyles = {
 	caption: css({ mt: 'sm', textStyle: 'caption' }),
 	/** The code sample's block keeps the markdown styles' own margins out of the card. */
 	sampleCode: css({ '& .markdown-code-block': { m: 0 } }),
-	row: hstack({ gap: 'sm', minH: { base: '2.75rem', _touch: '3rem' }, px: 'md' }),
-	rowRule: css({ borderTopWidth: 'hairline', borderColor: 'scrapscache.border' }),
 	rowIcon: css({ ...iconSm, flexShrink: 0 }),
-	rowLabel: css({ ...flexFill, textStyle: 'body' }),
 	value: css({ flexShrink: 0, textStyle: 'caption', fontVariantNumeric: 'tabular-nums' }),
 	slider: hstack({ gap: 'sm', px: 'md', pb: 'md' }),
 	smallA: css({ w: '1rem', flexShrink: 0, textAlign: 'center', textStyle: 'label', ...mutedText }),
@@ -2353,6 +2363,54 @@ export const textSettingsStyles = {
 		'&[data-state=checked]': { transform: 'translateX(1rem)' },
 		_motionReduce: { transition: 'none' }
 	})
+};
+
+/**
+ * Settings > App icon in the iPhone app: the icon large over its three choices.
+ * The segments are the settings menu's; the colours are swatches of the two notes.
+ */
+export const appIconStyles = {
+	hero: css({ ...column, alignItems: 'center', gap: 'sm', pt: 'xl', pb: 'lg' }),
+	/** Apple's home-screen corner, as the icons are drawn with. */
+	art: css({ display: 'block', rounded: '22.37%' }),
+	large: css({ ...square('8rem') }),
+	/** Automatic's pair: light and dark side by side, the dark one overlapping. */
+	pair: css({ ...rowCenter }),
+	pairIcon: css({
+		...square('6rem'),
+		'& + &': { ml: '-1.5rem', boxShadow: '0 0 0 3px token(colors.scrapscache.bg)' }
+	}),
+	heroCaption: css({ textStyle: 'caption', textAlign: 'center' }),
+	controlRow: hstack({ gap: 'sm', minH: { base: '3.25rem', _touch: '3.5rem' }, px: 'md' }),
+	swatches: hstack({ gap: '3xs', flexShrink: 0 }),
+	/** A 44 px target around the swatch it shows. */
+	swatchItem: css({
+		...square('2.75rem'),
+		...gridCenter,
+		...clickable,
+		rounded: 'pill',
+		outline: 'none',
+		'&[data-focus-visible]': { boxShadow: 'inset 0 0 0 2px token(colors.scrapscache.focus)' },
+		'&[data-disabled]': { opacity: 0.45, cursor: 'default', pointerEvents: 'none' }
+	}),
+	/** The back note's colour and the front's, split across the circle; set by the page. */
+	swatch: css({
+		...square('1.875rem'),
+		rounded: 'pill',
+		bg: 'linear-gradient(135deg, var(--icon-back) 50%, var(--icon-front) 50%)',
+		boxShadow: '0 0 0 1px token(colors.scrapscache.border)',
+		transitionProperty: 'box-shadow',
+		transitionDuration: '120ms',
+		'[data-state=checked] > &': {
+			boxShadow:
+				'0 0 0 2px token(colors.scrapscache.surface), 0 0 0 4px token(colors.scrapscache.accent)'
+		}
+	}),
+	note: css({ px: '2xs', pt: 'sm', textStyle: 'caption' }),
+	alert: css({ px: '2xs', pt: 'sm', textStyle: 'caption', color: 'scrapscache.warning' }),
+	/** The settings menu's row shows the icon in place of a symbol. */
+	menuIcon: css({ display: 'grid' }),
+	menuArt: css({ ...iconSm, display: 'block', rounded: '22.37%' })
 };
 
 export const colorPaletteStyles = {

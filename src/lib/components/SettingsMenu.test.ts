@@ -1,18 +1,26 @@
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { uiStore } from '#lib/stores/ui.svelte.js';
+import type { AppIconChoice } from '#lib/native/appIcon.js';
 import SettingsMenu from './SettingsMenu.svelte';
 
 const native = vi.hoisted(() => ({ app: false }));
 vi.mock('#lib/native.js', () => ({ isNativeApp: () => native.app }));
+const appIcon = vi.hoisted(() => ({
+	supported: false,
+	choice: { tile: 'automatic', notes: 'tilted', colour: 'amber' } as AppIconChoice,
+	load: vi.fn(async () => {})
+}));
+vi.mock('#lib/stores/appIcon.svelte.js', () => ({ appIconStore: appIcon }));
 
 async function openMenu(props: Partial<{ importing: boolean; importError: string }> = {}) {
 	const onExport = vi.fn();
 	const onImport = vi.fn();
 	const onTextSettings = vi.fn();
-	render(SettingsMenu, { props: { onExport, onImport, onTextSettings, ...props } });
+	const onAppIcon = vi.fn();
+	render(SettingsMenu, { props: { onExport, onImport, onTextSettings, onAppIcon, ...props } });
 	await fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
-	return { onExport, onImport, onTextSettings };
+	return { onExport, onImport, onTextSettings, onAppIcon };
 }
 
 async function choose(item: HTMLElement) {
@@ -22,6 +30,8 @@ async function choose(item: HTMLElement) {
 
 afterEach(() => {
 	native.app = false;
+	appIcon.supported = false;
+	appIcon.choice = { tile: 'automatic', notes: 'tilted', colour: 'amber' };
 	uiStore.dark = null;
 	uiStore.layout = 'grid';
 	uiStore.textSize = 14;
@@ -87,6 +97,24 @@ describe('SettingsMenu', () => {
 		expect(item.textContent).toContain('16 px text · code wraps');
 		await choose(item);
 		expect(onTextSettings).toHaveBeenCalledOnce();
+	});
+
+	it('opens App icon from Appearance where iOS lets the app change it, naming the icon', async () => {
+		appIcon.supported = true;
+		appIcon.choice = { tile: 'dark', notes: 'stacked', colour: 'mint' };
+		const { onAppIcon } = await openMenu();
+		expect(appIcon.load).toHaveBeenCalled();
+		const appearance = screen.getByRole('group', { name: 'Appearance' });
+		const item = within(appearance).getByRole('menuitem', { name: 'App icon' });
+
+		expect(item.textContent).toContain('Mint · Stacked · Dark');
+		await choose(item);
+		expect(onAppIcon).toHaveBeenCalledOnce();
+	});
+
+	it('has no App icon row where the icon cannot change, as on the web', async () => {
+		await openMenu();
+		expect(screen.queryByRole('menuitem', { name: 'App icon' })).toBeNull();
 	});
 
 	it('runs the backup actions it is given, and disables restore while one runs', async () => {

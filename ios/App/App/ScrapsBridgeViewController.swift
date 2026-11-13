@@ -12,6 +12,7 @@ final class ScrapsBridgeViewController: CAPBridgeViewController {
 
     override func capacitorDidLoad() {
         bridge?.registerPluginInstance(reservedRegions)
+        bridge?.registerPluginInstance(AppIconPlugin())
         Self.removeFormBar()
         // Until the page paints, the web view shows through; it keeps the launch
         // screen's colour, which is the page's own in light and in dark.
@@ -113,6 +114,54 @@ final class ReservedRegionsPlugin: CAPPlugin, CAPBridgedPlugin {
                 "height": region.frame.height,
                 "active": region.isActive
             ]
+        }
+    }
+}
+
+/// Settings > App icon. `AppIcon.get()` answers whether iOS offers alternate
+/// icons and which master shows (no `master` for the app's own icon);
+/// `AppIcon.set({ master })` changes it, and a null master puts the app's own
+/// back. Each master's alternate is named after the app's own icon set,
+/// `AppIcon-<master>`, or `AppIcon-Dev-<master>` under the DEV band in the dev
+/// app: the sets the App target lists in ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES.
+/// iOS confirms a change with an alert of its own.
+final class AppIconPlugin: CAPPlugin, CAPBridgedPlugin {
+    let identifier = "AppIconPlugin"
+    let jsName = "AppIcon"
+    let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "get", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "set", returnType: CAPPluginReturnPromise)
+    ]
+
+    /// "AppIcon-" or "AppIcon-Dev-": the app's own icon set, from the Info.plist
+    /// the asset catalog compiler writes it into.
+    private static let prefix: String = {
+        let icons = Bundle.main.object(forInfoDictionaryKey: "CFBundleIcons") as? [String: Any]
+        let primary = icons?["CFBundlePrimaryIcon"] as? [String: Any]
+        return "\(primary?["CFBundleIconName"] as? String ?? "AppIcon")-"
+    }()
+
+    @objc func get(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            let app = UIApplication.shared
+            var result: [String: Any] = ["supported": app.supportsAlternateIcons]
+            if let name = app.alternateIconName, name.hasPrefix(Self.prefix) {
+                result["master"] = String(name.dropFirst(Self.prefix.count))
+            }
+            call.resolve(result)
+        }
+    }
+
+    @objc func set(_ call: CAPPluginCall) {
+        let name = call.getString("master").map { Self.prefix + $0 }
+        DispatchQueue.main.async {
+            let app = UIApplication.shared
+            guard app.supportsAlternateIcons else {
+                return call.reject("This device keeps the app's own icon")
+            }
+            app.setAlternateIconName(name) { error in
+                if let error { call.reject(error.localizedDescription) } else { call.resolve() }
+            }
         }
     }
 }

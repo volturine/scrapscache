@@ -49,6 +49,7 @@
 
 	let settingsOpen = $state(false);
 	let textSettingsOpen = $state(false);
+	let appIconOpen = $state(false);
 	let pairingCode = $state('');
 	let importingBackup = $state(false);
 	let backupImportError = $state('');
@@ -118,10 +119,16 @@
 	const loadSyncModal = () => loadLazyModule(() => import('./SyncModal.svelte'));
 	const loadBackupCrypto = () => loadLazyModule(() => import('#lib/backupCrypto.js'));
 	const loadKeepImport = () => loadLazyModule(() => import('#lib/keepImport.js'));
+	const loadAppIconDialog = () => loadLazyModule(() => import('./AppIconDialog.svelte'));
 
 	function openTextSettings() {
 		settingsOpen = false;
 		textSettingsOpen = true;
+	}
+
+	function openAppIcon() {
+		settingsOpen = false;
+		appIconOpen = true;
 	}
 
 	function startBackupExport() {
@@ -404,6 +411,7 @@
 				onExport={startBackupExport}
 				onImport={startBackupImport}
 				onTextSettings={openTextSettings}
+				onAppIcon={openAppIcon}
 				importing={importingBackup}
 				importError={backupImportError}
 			/>
@@ -418,6 +426,7 @@
 			onExport={startBackupExport}
 			onImport={startBackupImport}
 			onTextSettings={openTextSettings}
+			onAppIcon={openAppIcon}
 			importing={importingBackup}
 			importError={backupImportError}
 		/>
@@ -439,6 +448,7 @@
 			onExport={startBackupExport}
 			onImport={startBackupImport}
 			onTextSettings={openTextSettings}
+			onAppIcon={openAppIcon}
 			importing={importingBackup}
 			importError={backupImportError}
 		/>
@@ -482,6 +492,13 @@
 
 {#if textSettingsOpen}
 	<TextSettingsDialog onClose={() => (textSettingsOpen = false)} />
+{/if}
+
+<!-- The iPhone app's alone, so it loads when first opened. -->
+{#if appIconOpen}
+	{#await loadAppIconDialog() then { default: AppIconDialog }}
+		<AppIconDialog onClose={() => (appIconOpen = false)} />
+	{/await}
 {/if}
 
 <ImportGuideDialog

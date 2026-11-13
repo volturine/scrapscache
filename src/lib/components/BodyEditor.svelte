@@ -1787,6 +1787,10 @@
 		const selection = window.getSelection();
 		if (reversed) selection?.setBaseAndExtent(end.node, end.offset, start.node, start.offset);
 		else selection?.setBaseAndExtent(start.node, start.offset, end.node, end.offset);
+		// WebKit on iOS: placing the caret focuses the body again without the options
+		// above, and its keyboard then pans the page to "reveal" the field. Focusing
+		// once more keeps preventScroll on what the keyboard reads; elsewhere it is a no-op.
+		container.focus({ preventScroll: true });
 		const caretLine = Math.max(0, Math.min(reversed ? startLine : endLine, lines.length - 1));
 		const row = lineElement(caretLine);
 		followLine(caretLine);

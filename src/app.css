@@ -214,12 +214,19 @@ html.editor-open .app-shell {
 }
 
 /* Global dialogs sit outside the transformed app viewport. WebKit can fail to
- * paint input carets inside a transformed, overflow-clipped ancestor. */
+ * paint input carets inside a transformed, overflow-clipped ancestor.
+ * The layer ends where an overlaid keyboard begins, or a full-height sheet such
+ * as Search would run its last rows under the keys. --app-keyboard-bottom is
+ * measured for the translated .app-float; this layer is not translated, so the
+ * offset comes back off. */
 .app-overlay {
 	position: fixed;
 	top: calc(var(--app-frame-top) + var(--app-visual-offset-top));
 	right: var(--app-inset-right);
-	bottom: var(--app-inset-bottom);
+	bottom: max(
+		var(--app-inset-bottom),
+		calc(var(--app-keyboard-bottom) - var(--app-visual-offset-top))
+	);
 	left: var(--app-inset-left);
 	z-index: 100;
 	pointer-events: none;

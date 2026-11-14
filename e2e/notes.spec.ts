@@ -790,6 +790,17 @@ test.describe('on a phone', () => {
 		// Measured once its opening animation settles.
 		await expect.poll(async () => (await palette.boundingBox())?.width).toBe(390);
 		expect((await palette.boundingBox())!.y).toBe(0);
+		// An overlaid keyboard, as the viewport code reports it: the sheet ends above
+		// the keys, so its last rows can scroll into sight. Read in one step, as above.
+		const paletteBottom = await page.evaluate(() => {
+			const root = document.documentElement;
+			const sheet = document.querySelector('[role="dialog"][aria-label^="Search"]')!;
+			root.style.setProperty('--app-keyboard-bottom', '300px');
+			const up = sheet.getBoundingClientRect().bottom;
+			root.style.setProperty('--app-keyboard-bottom', '0px');
+			return { up, down: sheet.getBoundingClientRect().bottom };
+		});
+		expect(paletteBottom).toEqual({ up: 844 - 300, down: 844 });
 		await field.fill('tram');
 		await expect(palette.getByRole('option')).toHaveCount(1);
 		await palette.getByRole('option', { name: /Tram day/ }).click();
@@ -1015,6 +1026,8 @@ test.describe('in iPhone Duo’s side column', () => {
 				page.getByRole('dialog', { name: 'Search notes, labels and actions' })
 			).toBeVisible();
 			expect(await settled(labels)).toBe(lit);
+			// A phone lists the actions once something is typed.
+			await page.getByRole('combobox', { name: 'Search notes, labels and actions' }).fill('kanban');
 			await page.getByRole('option', { name: 'Go to Kanban' }).click();
 			await expect(page.locator('[data-view-title]')).toHaveText('Kanban');
 			await expect.poll(() => bg(tab('Kanban'))).toBe(lit);

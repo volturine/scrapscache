@@ -1,7 +1,10 @@
 <script lang="ts">
 	// One box for notes, labels and actions (Mod+K; the Search tab on a phone). Notes
 	// come from every place, archived and trashed ones marked; with nothing typed it
-	// lists the notes opened last on this device and the actions.
+	// lists the notes opened last on this device and the actions. A phone leaves the
+	// actions out until something is typed: each is a tap away already (the tabs, the
+	// Labels screen, More, the sync and New note buttons), and under the recent notes
+	// they only ran the list past the keyboard.
 	import {
 		commandPaletteStyles as styles,
 		iconSizeMd as iconMd,
@@ -228,7 +231,7 @@
 				.filter((note): note is Note => !!note)
 				.slice(0, 5)
 				.map((note) => noteEntry(note, 'Recent', noteActivity(note).label));
-			return [...recent, ...actions.map(actionEntry)];
+			return phone.current ? recent : [...recent, ...actions.map(actionEntry)];
 		}
 		const notes = notesStore
 			.search(q, notesStore.notes)
@@ -416,6 +419,8 @@
 					</div>
 					{#if needle && entries.length === 0}
 						<p class={styles.empty} role="status">Nothing matches “{q}”.</p>
+					{:else if entries.length === 0}
+						<p class={styles.empty}>The notes you open show up here.</p>
 					{/if}
 				</div>
 				{#if !phone.current}

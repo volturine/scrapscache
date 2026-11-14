@@ -232,6 +232,12 @@ describe('client address keying', () => {
 			})
 		).toBe('unknown');
 	});
+
+	it('gives a caller with no address the shared bucket', () => {
+		// The Cloudflare adapter returns null for a service binding's request.
+		expect(clientAddress(() => null as unknown as string)).toBe('unknown');
+		expect(clientAddress(() => '')).toBe('unknown');
+	});
 });
 
 describe('registration limiter', () => {

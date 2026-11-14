@@ -184,12 +184,15 @@ export async function countThrottledCallers(db: Db, now = Date.now()): Promise<n
  * as IPv4-mapped IPv6, stay as they are.
  */
 export function clientAddress(getClientAddress: () => string): string {
-	let address: string;
+	let address: string | null;
 	try {
 		address = getClientAddress();
 	} catch {
 		return 'unknown';
 	}
+	// On Workers the address is the cf-connecting-ip header, which a service
+	// binding's request does not carry: the adapter then returns null, not a string.
+	if (!address) return 'unknown';
 	return ipv6Network(address) ?? address;
 }
 

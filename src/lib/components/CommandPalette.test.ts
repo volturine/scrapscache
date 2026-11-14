@@ -109,6 +109,40 @@ describe('CommandPalette with nothing typed', () => {
 	});
 });
 
+describe('CommandPalette on a phone', () => {
+	const desktopMatchMedia = window.matchMedia;
+	beforeEach(() => {
+		window.matchMedia = (query: string) => ({
+			...desktopMatchMedia(query),
+			matches: query === '(max-width: 767px)'
+		});
+	});
+	afterEach(() => {
+		window.matchMedia = desktopMatchMedia;
+	});
+
+	it('opens on the recent notes alone; the actions come with typing', async () => {
+		rememberRecentNote(WORKSPACE, 'Weekly plan');
+		const field = open();
+
+		expect(optionText()).toEqual([expect.stringMatching(/^Weekly plan/)]);
+		expect(screen.queryByRole('group', { name: 'Actions' })).toBeNull();
+
+		await fireEvent.input(field, { target: { value: 'trash' } });
+		expect(
+			within(group('Actions'))
+				.getAllByRole('option')
+				.map((option) => text(option))
+		).toEqual(['Go to Trash']);
+	});
+
+	it('says where recent notes will show before any are opened', () => {
+		open();
+		expect(screen.queryAllByRole('option')).toHaveLength(0);
+		expect(screen.getByText('The notes you open show up here.')).toBeTruthy();
+	});
+});
+
 describe('CommandPalette search', () => {
 	it('finds notes in every place, active first, and marks archived and trashed ones', async () => {
 		const field = open();

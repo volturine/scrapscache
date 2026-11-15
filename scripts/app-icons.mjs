@@ -122,7 +122,6 @@ const iconImage = (filename, appearance) => ({
 
 async function iconSet(name, images) {
 	const dir = `${CATALOG}/${name}.appiconset`;
-	await rm(dir, { recursive: true, force: true });
 	await mkdir(dir, { recursive: true });
 	for (const { filename, layers } of images) await write(`${dir}/${filename}`, layers, 1024);
 	const contents = {

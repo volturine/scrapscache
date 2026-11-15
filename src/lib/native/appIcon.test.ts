@@ -88,7 +88,9 @@ describe('app icon choices', () => {
 			expect(bytes(`${app}-automatic`, 'dark').equals(bytes(app)), app).toBe(true);
 			expect(bytes(`${app}-automatic`).equals(bytes(app)), app).toBe(false);
 		}
-		expect(bytes('AppIcon-automatic').equals(bytes('AppIcon-light-tilted-peach'))).toBe(true);
+		for (const app of ['AppIcon', 'AppIcon-Dev']) {
+			expect(bytes(`${app}-automatic`).equals(bytes(`${app}-light-tilted-peach`)), app).toBe(true);
+		}
 	});
 
 	it('read back from the alternate iOS reports', () => {
@@ -102,6 +104,8 @@ describe('app icon choices', () => {
 		// One this version does not draw is the app's own icon, as iOS shows it.
 		expect(choiceFromAlternate('light-tilted-amber')).toEqual(OWN_ICON);
 		expect(choiceFromAlternate('dark-folded-sky')).toEqual(OWN_ICON);
+		// An earlier build's alternate for the icon that is now the app's own.
+		expect(choiceFromAlternate('dark-tilted-amber')).toEqual(OWN_ICON);
 	});
 
 	it('show swatches in the colours of the masters', () => {

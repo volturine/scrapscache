@@ -1,7 +1,7 @@
 <script lang="ts">
 	// Settings > App icon, in the iPhone app: the icon large, built from three
-	// choices. The tile is Automatic (the app's own pair, which follows light and
-	// dark mode), dark or light; then the notes and their colour. The choices
+	// choices. The tile is Automatic (a pair that follows light and dark mode),
+	// dark or light; then the notes and their colour. The choices
 	// change the preview; Apply changes the home screen's icon, which iOS
 	// confirms with an alert, so that alert comes once and not at every tap.
 	import {

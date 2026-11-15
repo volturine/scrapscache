@@ -1,10 +1,5 @@
 import type { Note } from '#lib/types.js';
-import {
-	reminderNextAt,
-	reminderShownAt,
-	reminderTimesBetween,
-	repeatShortLabel
-} from '#lib/model/index.js';
+import { reminderShownAt, reminderTimesBetween, repeatShortLabel } from '#lib/model/index.js';
 import { plainLine } from '#lib/noteLine.js';
 import { dayKey, dayKeySpan } from '#lib/utils.js';
 
@@ -14,7 +9,7 @@ const DAY_MS = 86_400_000;
 export type AgendaEntry = { note: Note; at: number };
 
 export type AgendaGroupId =
-	'overdue' | 'today' | 'tomorrow' | 'week' | 'nextWeek' | 'later' | 'picked' | 'nextUp';
+	'overdue' | 'today' | 'tomorrow' | 'week' | 'nextWeek' | 'later' | 'picked';
 
 export type AgendaGroup = {
 	id: AgendaGroupId;
@@ -74,7 +69,7 @@ export function agendaGroups(notes: Note[], now: number): AgendaGroup[] {
 	const dayAfter = daysFrom(today, 2);
 	const nextWeek = daysFrom(startOfWeek(now), 7);
 	const weekAfter = daysFrom(nextWeek, 7);
-	const buckets: Record<Exclude<AgendaGroupId, 'picked' | 'nextUp'>, AgendaEntry[]> = {
+	const buckets: Record<Exclude<AgendaGroupId, 'picked'>, AgendaEntry[]> = {
 		overdue: [],
 		today: [],
 		tomorrow: [],
@@ -109,50 +104,23 @@ export function agendaGroups(notes: Note[], now: number): AgendaGroup[] {
 	return groups.filter((group) => group.entries.length > 0);
 }
 
-/** How many of the picked days' reminders are listed after them. */
-export const NEXT_UP_LIMIT = 5;
-
 /**
- * The agenda for picked days: what is overdue, then the days themselves (named by
- * date, kept even when empty so the view can say so), then the next few after
- * them. A repeating reminder is in the picked days on each day it comes.
+ * The agenda for picked days: those days and nothing else, named by date. The
+ * group is kept even when empty so the view can say so. A repeating reminder is
+ * listed on each of the days it comes.
  */
-export function pickedDayGroups(
+export function pickedDayGroup(
 	notes: Note[],
-	picked: { from: string; to: string | null },
-	now: number
-): AgendaGroup[] {
+	picked: { from: string; to: string | null }
+): AgendaGroup {
 	const to = picked.to ?? picked.from;
 	const { start, end } = dayKeySpan(picked.from, to);
-	const pickedEntries: AgendaEntry[] = [];
-	const overdue: AgendaEntry[] = [];
-	const after: AgendaEntry[] = [];
+	const entries: AgendaEntry[] = [];
 	for (const note of notes) {
-		const times = reminderTimesBetween(note, start, end);
-		if (times.length > 0) {
-			for (const at of times) pickedEntries.push({ note, at });
-			continue;
-		}
-		if (note.reminder == null) continue;
-		if (note.repeat) {
-			// A repeat is next up at its first time after the picked days.
-			const next = reminderNextAt(note, end);
-			if (next != null) after.push({ note, at: next });
-		} else if (note.reminder < now) {
-			overdue.push({ note, at: note.reminder });
-		} else if (note.reminder > end) {
-			after.push({ note, at: note.reminder });
-		}
+		for (const at of reminderTimesBetween(note, start, end)) entries.push({ note, at });
 	}
 	const label = picked.from === to ? dayHeading(start) : rangeHeading(picked.from, to);
-	const groups: AgendaGroup[] = [];
-	if (overdue.length > 0)
-		groups.push({ id: 'overdue', label: 'Overdue', entries: byTime(overdue) });
-	groups.push({ id: 'picked', label, entries: byTime(pickedEntries) });
-	if (after.length > 0) {
-		groups.push({ id: 'nextUp', label: 'Next up', entries: byTime(after).slice(0, NEXT_UP_LIMIT) });
-	}
-	return groups;
+	return { id: 'picked', label, entries: byTime(entries) };
 }
 
 export type AgendaTime = {

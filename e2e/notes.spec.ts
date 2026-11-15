@@ -1065,8 +1065,7 @@ test.describe('in iPhone Duo’s side column', () => {
 			const rail = page.getByRole('navigation', { name: 'Main', exact: true });
 			const palette = page.getByRole('dialog', { name: 'Search notes, labels and actions' });
 			// From the Labels screen, under the palette: both go, and the note opens in the
-			// editor over Notes, which, like any open note, leaves the column inert until it
-			// is put away.
+			// editor over Notes.
 			await rail.getByRole('button', { name: 'Labels' }).click();
 			await expect(page.locator('[data-view-title]')).toHaveText('Labels');
 			await page.keyboard.press('ControlOrMeta+k');
@@ -1078,7 +1077,6 @@ test.describe('in iPhone Duo’s side column', () => {
 			// Typed once the new note's editor has settled, with the caret in its body.
 			await expect(editor(page).getByRole('textbox', { name: 'Note body' })).toBeFocused();
 			await editor(page).getByPlaceholder('Title', { exact: true }).fill('From the column');
-			await expect(stack).toHaveAttribute('inert');
 			await page.keyboard.press('Escape');
 			await expect(editor(page)).toHaveCount(0);
 			await expect(noteCard(page, 'From the column')).toBeVisible();
@@ -1095,6 +1093,79 @@ test.describe('in iPhone Duo’s side column', () => {
 			await expect(editor(page)).toHaveCount(0);
 			await rail.getByRole('button', { name: 'Notes' }).click();
 			await expect(noteCard(page, 'From the board')).toBeVisible();
+		});
+
+		test('the column stays in use beside an open note, and puts the note away', async ({
+			page
+		}) => {
+			await openWithColumn(page);
+			const stack = page.locator('[data-column-stack]');
+			const rail = page.getByRole('navigation', { name: 'Main', exact: true });
+			const add = stack.getByRole('button', { name: 'New note' });
+			const title = () => editor(page).getByPlaceholder('Title', { exact: true });
+			const viewTitle = page.locator('[data-view-title]');
+			const write = async (name: string) => {
+				await expect(editor(page).getByRole('textbox', { name: 'Note body' })).toBeFocused();
+				await title().fill(name);
+			};
+			await add.click();
+			await write('First');
+			// The feed under the note is out of reach; the column beside it is not.
+			await expect(page.locator('main')).toHaveAttribute('inert');
+			await expect(stack).not.toHaveAttribute('inert');
+
+			// New note saves the open one and starts another.
+			await add.click();
+			await expect(title()).toHaveValue('');
+			await write('Second');
+
+			// A place saves the note and is gone to; Back does not bring the note up again.
+			await rail.getByRole('button', { name: 'Reminders' }).click();
+			await expect(editor(page)).toHaveCount(0);
+			await expect(viewTitle).toHaveText('Reminders');
+			await expect(page).toHaveURL(/\/reminders$/);
+			await expect(rail.getByRole('button', { name: 'Reminders' })).toHaveAttribute(
+				'aria-current',
+				'page'
+			);
+			await page.goBack();
+			await expect(viewTitle).toHaveText('Notes');
+			await expect(editor(page)).toHaveCount(0);
+			await expect(noteCard(page, 'First')).toBeVisible();
+			await expect(noteCard(page, 'Second')).toBeVisible();
+
+			// Labels, the same, from a note opened off its card.
+			await noteCard(page, 'First').click();
+			await expect(editor(page)).toBeVisible();
+			await rail.getByRole('button', { name: 'Labels' }).click();
+			await expect(editor(page)).toHaveCount(0);
+			await expect(viewTitle).toHaveText('Labels');
+			await rail.getByRole('button', { name: 'Notes' }).click();
+
+			// Sync opens over the feed, the note put away under it.
+			await noteCard(page, 'Second').click();
+			await expect(editor(page)).toBeVisible();
+			await stack.getByRole('button', { name: /^Sync settings/ }).tap();
+			await expect(page.getByRole('dialog', { name: /sync/i })).toBeVisible();
+			await expect(editor(page)).toHaveCount(0);
+			await page.keyboard.press('Escape');
+
+			// Settings, the same.
+			await noteCard(page, 'First').click();
+			await expect(editor(page)).toBeVisible();
+			await stack.getByRole('button', { name: 'More' }).tap();
+			await expect(page.getByRole('menu')).toBeVisible();
+			await expect(editor(page)).toHaveCount(0);
+			await page.keyboard.press('Escape');
+			await expect(page.getByRole('menu')).toHaveCount(0);
+
+			// Opened by a key, which the menu takes without a click, the same.
+			await noteCard(page, 'First').click();
+			await expect(editor(page)).toBeVisible();
+			await stack.getByRole('button', { name: 'More' }).focus();
+			await page.keyboard.press('Enter');
+			await expect(page.getByRole('menu')).toBeVisible();
+			await expect(editor(page)).toHaveCount(0);
 		});
 
 		test('settings opened from the column keep their place when the keyboard comes up', async ({

@@ -25,8 +25,11 @@ const STAYS_LIVE = '[aria-live], [role="status"], [role="alert"], [data-over-mod
  * the portal hosts. A trap would pull focus out of those; anything added after the
  * modal opens stays live here. Nested modals stack: each one only releases what it
  * made inert.
+ *
+ * `beside` names what the dialog leaves in view and in use next to it: a note
+ * keeps iPhone Duo's column, which stands outside the app frame the note is in.
  */
-export function modalLayer(dialog: HTMLElement): () => void {
+export function modalLayer(dialog: HTMLElement, beside?: string): () => void {
 	const doc = dialog.ownerDocument;
 	const active = doc.activeElement;
 	const opener = active instanceof HTMLElement && active !== doc.body ? active : null;
@@ -44,6 +47,7 @@ export function modalLayer(dialog: HTMLElement): () => void {
 				continue;
 			}
 			if (child.hasAttribute('inert') || child.matches(STAYS_LIVE)) continue;
+			if (beside && child.matches(beside)) continue;
 			child.setAttribute('inert', '');
 			inerted.push(child);
 		}

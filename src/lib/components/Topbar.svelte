@@ -99,6 +99,15 @@
 		if (!mobile.current && !sideColumn.side) untrack(() => (uiStore.labelsOpen = false));
 	});
 
+	/**
+	 * Settings open over the feed. Beside iPhone Duo's column a note can be open when
+	 * they do, and it is saved and put away; the menu opens on a key as well as a tap,
+	 * so this follows the menu, not a press on its button.
+	 */
+	$effect(() => {
+		if (settingsOpen) untrack(() => void closeNote());
+	});
+
 	/** The palette's shortcut: Cmd+K on Apple devices, Ctrl+K elsewhere. */
 	const apple = isApplePlatform();
 	const paletteShortcut = apple ? '⌘K' : 'Ctrl K';
@@ -340,6 +349,8 @@
 			onclick={() => {
 				pairingCode = '';
 				settingsOpen = false;
+				// Sync opens over the feed: a note open beside iPhone Duo's column is put away.
+				void closeNote();
 				uiStore.syncOpen = !uiStore.syncOpen;
 			}}
 			aria-label={syncControlLabel}

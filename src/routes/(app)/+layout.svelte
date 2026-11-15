@@ -24,7 +24,7 @@
 	import { rememberRecentNote } from '#lib/recentNotes.js';
 	import { splitPastedHeading } from '#lib/checklistBody.js';
 	import { Drawer } from '@ark-ui/svelte/drawer';
-	import { onMount, untrack } from 'svelte';
+	import { onMount, tick, untrack } from 'svelte';
 	import { MediaQuery } from 'svelte/reactivity';
 	import { attachSyncCloudIndicator } from '#lib/syncCloudIndicator.js';
 	import { attachAppViewport } from '#lib/appViewport.js';
@@ -68,9 +68,18 @@
 		applyEditorOpen(true);
 	}
 
-	/** Save and close the open note, so what it holds is not lost with it. */
+	/**
+	 * Save and close the open note, so what it holds is not lost with it. Done once
+	 * the note's history entry has gone too: a view or note opened before then would
+	 * be the one that Back takes away.
+	 */
 	async function closeEditingNote() {
-		if (editingId !== null) await closeOpenNote?.();
+		if (editingId !== null) {
+			await closeOpenNote?.();
+			// The address follows the closed note in an effect.
+			await tick();
+		}
+		await noteEntryLeaving;
 	}
 
 	/** Make `pid` the open workspace, closing an open note first. */
@@ -107,6 +116,8 @@
 	let addressFollowsNote = $state(false);
 	/** History entry pushed so Back closes the note instead of leaving the page. */
 	let noteEntry: string | null = null;
+	/** Settles when the Back that takes a closed note's entry away has landed. */
+	let noteEntryLeaving: Promise<void> | null = null;
 	/** Back already popped the note entry; don't push it again while the editor saves and closes. */
 	let notePopped = false;
 	/** Forward or back landed on a note entry that is already in history. */
@@ -153,7 +164,12 @@
 		// Only the hash changes, so SvelteKit treats Back to the page underneath as
 		// shallow routing: it restores the address and state without navigating.
 		if (update.push) void goto(update.push, { shallow: true, state: page.state });
-		if (update.back) history.back();
+		if (update.back) {
+			noteEntryLeaving = new Promise((resolve) =>
+				window.addEventListener('popstate', () => resolve(), { once: true })
+			);
+			history.back();
+		}
 	}
 
 	/**
@@ -389,22 +405,20 @@
 	}
 
 	/**
-	 * The column's New note. An open note makes the column inert, so none is open
-	 * here; it leaves the palette and the Labels screen, so the note it opens in the
-	 * editor is put away into the view it was written for. Always the editor: a bar
-	 * still open from before the fold is being put away by this very press.
+	 * The column's New note. It leaves the palette and the Labels screen, so the note
+	 * it opens in the editor is put away into the view it was written for, and a note
+	 * already open is saved and put away first: its close would otherwise take the new
+	 * one with it. Always the editor: a bar still open from before the fold is being
+	 * put away by this very press.
 	 */
-	function newNoteFromColumn() {
+	async function newNoteFromColumn() {
 		uiStore.paletteOpen = false;
 		uiStore.labelsOpen = false;
+		await closeEditingNote();
 		startNoteInEditor();
 	}
 
-	function requestCloseEditor() {
-		void closeOpenNote?.();
-	}
-
-	provideEditorActions({ openNote: openEditor, startNewNote, closeNote: requestCloseEditor });
+	provideEditorActions({ openNote: openEditor, startNewNote, closeNote: closeEditingNote });
 
 	let feedEl: HTMLElement | null = $state(null);
 
@@ -572,7 +586,8 @@
 <!-- iPhone Duo's status column lies outside the frame; the column's controls stand in it
      at every width: New note, which stands in for the composer there, sync and settings
      (the top bar portals them in), then the places. Search is the bar's field, so the
-     places leave it out. -->
+     places leave it out. The column stays in use beside an open note (see NoteEditor),
+     and each of its controls puts the note away. -->
 {#if sideColumn.side}
 	<div
 		class={cx(

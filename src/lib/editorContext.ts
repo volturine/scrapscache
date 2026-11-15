@@ -4,7 +4,8 @@ import { getContext, setContext } from 'svelte';
 export type EditorActions = {
 	openNote: (id: string) => void;
 	startNewNote: (seed?: { title?: string; body?: string }) => void;
-	closeNote: () => void;
+	/** Saves and puts away the open note; done once it and its history entry are gone. */
+	closeNote: () => Promise<void>;
 };
 
 const KEY = Symbol('editorActions');
@@ -16,7 +17,7 @@ export function provideEditorActions(actions: EditorActions): void {
 export function useEditorActions(): EditorActions {
 	const fn = getContext<EditorActions>(KEY);
 	if (!fn) {
-		return { openNote: () => {}, startNewNote: () => {}, closeNote: () => {} };
+		return { openNote: () => {}, startNewNote: () => {}, closeNote: async () => {} };
 	}
 	return fn;
 }

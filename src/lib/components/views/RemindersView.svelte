@@ -6,7 +6,7 @@
 	import { uiStore } from '#lib/stores/ui.svelte.js';
 	import { useEditorActions } from '#lib/editorContext.js';
 	import { appClock } from '#lib/appClock.svelte.js';
-	import { agendaGroups, pickedDayGroups } from '#lib/reminderAgenda.js';
+	import { agendaGroups, pickedDayGroup } from '#lib/reminderAgenda.js';
 	import { AlarmClock } from '@lucide/svelte';
 	import { cx } from 'styled-system/css';
 	import { reminderAgendaStyles as styles, viewHeading, viewPage } from '$panda/styles';
@@ -19,9 +19,9 @@
 	);
 	const picked = $derived(uiStore.reminderFilter);
 	const multiDay = $derived(picked != null && picked.to != null && picked.to !== picked.from);
-	/** Picked days are their own agenda; otherwise what is due, soonest first. */
+	/** Picked days list those days alone; otherwise what is overdue and due, soonest first. */
 	const groups = $derived(
-		picked ? pickedDayGroups(searched, picked, appClock.now) : agendaGroups(searched, appClock.now)
+		picked ? [pickedDayGroup(searched, picked)] : agendaGroups(searched, appClock.now)
 	);
 	const nothingFound = $derived(groups.every((group) => group.entries.length === 0));
 	const emptyDescription = $derived(

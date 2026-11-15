@@ -43,18 +43,23 @@
 		uiStore.paletteOpen = false;
 	}
 
-	function go(view: View) {
+	/**
+	 * iPhone Duo's column stays in use beside an open note. The note is saved and put
+	 * away before the place is gone to: its own history entry leaves with it, and a
+	 * place gone to any sooner was the one that Back took away.
+	 */
+	async function go(view: View) {
 		const target = pathForView(view);
 		if (!target) return;
-		closeNote();
 		leavePalette();
+		await closeNote();
 		uiStore.labelsOpen = false;
 		uiStore.setView(view);
 		void goto(target);
 	}
 
 	function openLabels() {
-		closeNote();
+		void closeNote();
 		leavePalette();
 		uiStore.labelsOpen = true;
 	}

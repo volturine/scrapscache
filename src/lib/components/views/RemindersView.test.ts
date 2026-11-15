@@ -91,17 +91,21 @@ describe('RemindersView', () => {
 		expect(openNote).toHaveBeenCalledWith('Send invoice');
 	});
 
-	it('shows a picked day by its date, says when it is empty, and what comes next', async () => {
+	it('shows a picked day alone, by its date, and says when it is empty', async () => {
 		uiStore.reminderFilter = { from: '2026-10-29', to: '2026-10-29' };
 		render(RemindersView);
-		expect(headings()).toEqual(['Overdue', 'Thu, Oct 29', 'Next up']);
+		expect(headings()).toEqual(['Thu, Oct 29']);
 		expect(screen.getByText('Nothing on this day.')).toBeTruthy();
-		const nextUp = screen.getByRole('region', { name: 'Next up' });
+		expect(screen.queryAllByRole('listitem')).toHaveLength(0);
+	});
+
+	it('lists only the reminders of the picked days', async () => {
+		uiStore.reminderFilter = { from: '2026-10-25', to: '2026-10-25' };
+		render(RemindersView);
+		expect(headings()).toEqual(['Sun, Oct 25']);
 		expect(
-			within(nextUp)
-				.getAllByRole('listitem')
-				.map((row) => row.textContent)
-		).toEqual([expect.stringContaining('Water plants'), expect.stringContaining('Renew domain')]);
+			screen.getAllByRole('listitem').map((row) => row.textContent?.replace(/\s+/g, ' ').trim())
+		).toEqual([expect.stringContaining('Send invoice'), expect.stringContaining('Water plants')]);
 	});
 
 	it('explains an empty view', () => {

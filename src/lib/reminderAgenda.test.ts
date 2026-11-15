@@ -1,13 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Note } from '#lib/types.js';
 import { localTimeZone } from '#lib/model/index.js';
-import {
-	agendaGroups,
-	agendaPreview,
-	agendaTime,
-	NEXT_UP_LIMIT,
-	pickedDayGroups
-} from './reminderAgenda.js';
+import { agendaGroups, agendaPreview, agendaTime, pickedDayGroup } from './reminderAgenda.js';
 
 // Sunday 25 October 2026, 10:30 local time: the last day of its week.
 const NOW = new Date(2026, 9, 25, 10, 30).getTime();
@@ -85,13 +79,13 @@ describe('agendaGroups', () => {
 	});
 });
 
-describe('pickedDayGroups', () => {
-	it('shows the picked day between what is overdue and what comes next', () => {
-		const groups = pickedDayGroups(notes, { from: '2026-10-29', to: '2026-10-29' }, NOW);
-		expect(groups.map((group) => [group.id, group.label, ids(group.entries)])).toEqual([
-			['overdue', 'Overdue', ['library', 'dentist']],
-			['picked', 'Thu, Oct 29', ['passport']],
-			['nextUp', 'Next up', ['gifts', 'plants', 'domain']]
+describe('pickedDayGroup', () => {
+	it('lists the picked day alone, without what is overdue or comes after', () => {
+		const group = pickedDayGroup(notes, { from: '2026-10-29', to: '2026-10-29' });
+		expect([group.id, group.label, ids(group.entries)]).toEqual([
+			'picked',
+			'Thu, Oct 29',
+			['passport']
 		]);
 	});
 
@@ -99,22 +93,24 @@ describe('pickedDayGroups', () => {
 		const daily = note('water', at(10, 20, 8), {
 			repeat: { unit: 'day', every: 1, zone: localTimeZone() }
 		});
-		const groups = pickedDayGroups([daily], { from: '2026-10-29', to: '2026-10-31' }, NOW);
-		const picked = groups.find((group) => group.id === 'picked');
-		expect(picked?.label).toBe('Oct 29 – Oct 31');
-		expect(picked?.entries.map((entry) => entry.at)).toEqual([
+		const picked = pickedDayGroup([daily], { from: '2026-10-29', to: '2026-10-31' });
+		expect(picked.label).toBe('Oct 29 – Oct 31');
+		expect(picked.entries.map((entry) => entry.at)).toEqual([
 			at(10, 29, 8),
 			at(10, 30, 8),
 			at(10, 31, 8)
 		]);
 	});
 
-	it('keeps an empty picked day so the view can say so, and caps what follows', () => {
+	it('lists a picked day in the past, which the agenda files under Overdue', () => {
+		const group = pickedDayGroup(notes, { from: '2026-10-24', to: null });
+		expect(ids(group.entries)).toEqual(['dentist']);
+	});
+
+	it('keeps an empty picked day so the view can say so', () => {
 		const many = Array.from({ length: 8 }, (_, i) => note(`n${i}`, at(12, 1 + i, 9)));
-		const groups = pickedDayGroups(many, { from: '2026-11-03', to: null }, NOW);
-		expect(groups.map((group) => group.id)).toEqual(['picked', 'nextUp']);
-		expect(groups[0].entries).toEqual([]);
-		expect(groups[1].entries).toHaveLength(NEXT_UP_LIMIT);
+		const group = pickedDayGroup(many, { from: '2026-11-03', to: null });
+		expect(group.entries).toEqual([]);
 	});
 });
 

@@ -1,11 +1,13 @@
 import { registerPlugin } from '@capacitor/core';
 
 /**
- * The iPhone app's icon, chosen in Settings > App icon. Automatic is the app's
- * own pair, which iOS switches with light and dark mode; any other choice is one
- * of the alternate icons drawn from the masters in design/app-icon, named
- * `<tile>-<notes>-<colour>` (scripts/app-icons.mjs). The shell turns a master
- * into the alternate of its own app, with the DEV band in the dev app.
+ * The iPhone app's icon, chosen in Settings > App icon. The app's own icon is
+ * the dark tile with tilted amber notes, which the App Store shows too. Every
+ * other choice is an alternate icon: Automatic, a pair iOS switches with light
+ * and dark mode, or one drawn from a master in design/app-icon, named
+ * `<tile>-<notes>-<colour>` (scripts/app-icons.mjs). The shell turns an
+ * alternate's name into the icon set of its own app, with the DEV band in the
+ * dev app.
  */
 export type IconTile = 'automatic' | 'dark' | 'light';
 export type IconNotes = 'tilted' | 'stacked';
@@ -14,6 +16,12 @@ export type IconColour = 'amber' | 'sky' | 'mint' | 'pink' | 'peach';
 export type AppIconChoice = { tile: IconTile; notes: IconNotes; colour: IconColour };
 
 export const AUTOMATIC: AppIconChoice = { tile: 'automatic', notes: 'tilted', colour: 'amber' };
+
+/** The app's own icon: the one a new install shows. */
+export const OWN_ICON: AppIconChoice = { tile: 'dark', notes: 'tilted', colour: 'amber' };
+
+/** The alternate icon that is Automatic's light and dark pair. */
+const AUTOMATIC_ALTERNATE = 'automatic';
 
 export const TILES: { value: IconTile; label: string }[] = [
 	{ value: 'automatic', label: 'Automatic' },
@@ -62,22 +70,30 @@ export function withTile(choice: AppIconChoice, tile: IconTile): AppIconChoice {
 	return { ...choice, tile, colour: available ? choice.colour : DEFAULT_COLOUR[tile] };
 }
 
-/** The master a choice is drawn from, or null for Automatic. */
+/** The master a choice is drawn from, or null for Automatic, which shows two. */
 export function masterName(choice: AppIconChoice): string | null {
 	return choice.tile === 'automatic' ? null : `${choice.tile}-${choice.notes}-${choice.colour}`;
 }
 
+/** The alternate icon a choice is set with, or null for the app's own icon. */
+export function alternateName(choice: AppIconChoice): string | null {
+	const master = masterName(choice);
+	if (!master) return AUTOMATIC_ALTERNATE;
+	return master === masterName(OWN_ICON) ? null : master;
+}
+
 /**
- * The choice a master stands for. No master is the app's own icon, and so is
- * one this version does not draw, which iOS falls back to.
+ * The choice an alternate icon stands for. No alternate is the app's own icon,
+ * and so is one this version does not draw, which iOS falls back to.
  */
-export function choiceFromMaster(master: string | null | undefined): AppIconChoice {
-	const match = /^(dark|light)-(tilted|stacked)-(\w+)$/.exec(master ?? '');
-	if (!match) return AUTOMATIC;
+export function choiceFromAlternate(alternate: string | null | undefined): AppIconChoice {
+	if (alternate === AUTOMATIC_ALTERNATE) return AUTOMATIC;
+	const match = /^(dark|light)-(tilted|stacked)-(\w+)$/.exec(alternate ?? '');
+	if (!match) return OWN_ICON;
 	const tile = match[1] as 'dark' | 'light';
 	const notes = match[2] as IconNotes;
 	const colour = coloursFor(tile).find((entry) => entry.value === match[3]);
-	return colour ? { tile, notes, colour: colour.value } : AUTOMATIC;
+	return colour ? { tile, notes, colour: colour.value } : OWN_ICON;
 }
 
 /** "Automatic", or the colour, notes and tile: "Mint · Stacked · Dark". */
@@ -93,10 +109,10 @@ export function describeChoice(choice: AppIconChoice): string {
 }
 
 type AppIconPlugin = {
-	/** `master` is the alternate icon showing; none for the app's own. */
-	get(): Promise<{ supported: boolean; master?: string }>;
+	/** `alternate` is the alternate icon showing; none for the app's own. */
+	get(): Promise<{ supported: boolean; alternate?: string }>;
 	/** Null puts the app's own icon back. iOS confirms the change with an alert of its own. */
-	set(options: { master: string | null }): Promise<void>;
+	set(options: { alternate: string | null }): Promise<void>;
 };
 
 /** The app shell's plugin (ScrapsBridgeViewController.swift); absent on a web build. */

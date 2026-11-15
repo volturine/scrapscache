@@ -1,9 +1,9 @@
 import { isNativeApp } from '#lib/native.js';
 import {
 	AppIcon,
-	AUTOMATIC,
-	choiceFromMaster,
-	masterName,
+	OWN_ICON,
+	alternateName,
+	choiceFromAlternate,
 	type AppIconChoice
 } from '#lib/native/appIcon.js';
 
@@ -15,7 +15,7 @@ class AppIconStore {
 	/** Whether the row shows: the iPhone app, on a device iOS lets change its icon. */
 	supported = $state(false);
 	/** The icon iOS shows. */
-	choice = $state<AppIconChoice>(AUTOMATIC);
+	choice = $state<AppIconChoice>(OWN_ICON);
 	/** While iOS is changing the icon. */
 	applying = $state(false);
 	/** A sentence when iOS refused the last change. */
@@ -26,9 +26,9 @@ class AppIconStore {
 	load(): Promise<void> {
 		if (!isNativeApp()) return Promise.resolve();
 		this.#loading ??= AppIcon.get().then(
-			({ supported, master }) => {
+			({ supported, alternate }) => {
 				this.supported = supported;
-				this.choice = choiceFromMaster(master);
+				this.choice = choiceFromAlternate(alternate);
 			},
 			() => {
 				this.#loading = null;
@@ -39,7 +39,7 @@ class AppIconStore {
 
 	/** Whether a choice is the icon iOS shows already. */
 	isShowing(choice: AppIconChoice): boolean {
-		return masterName(choice) === masterName(this.choice);
+		return alternateName(choice) === alternateName(this.choice);
 	}
 
 	/**
@@ -51,7 +51,7 @@ class AppIconStore {
 		this.applying = true;
 		this.error = '';
 		try {
-			await AppIcon.set({ master: masterName(choice) });
+			await AppIcon.set({ alternate: alternateName(choice) });
 			this.choice = choice;
 		} catch {
 			this.error = 'The icon did not change. Try again.';

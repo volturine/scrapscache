@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { AUTOMATIC, masterName, type AppIconChoice } from '#lib/native/appIcon.js';
+import { AUTOMATIC, OWN_ICON, alternateName, type AppIconChoice } from '#lib/native/appIcon.js';
 
 // The store with no iOS behind it: it shows `choice`, and records what is applied.
 const store = vi.hoisted(() => ({
@@ -8,7 +8,7 @@ const store = vi.hoisted(() => ({
 	choice: null as unknown as AppIconChoice,
 	applying: false,
 	error: '',
-	isShowing: (choice: AppIconChoice) => masterName(choice) === masterName(store.choice),
+	isShowing: (choice: AppIconChoice) => alternateName(choice) === alternateName(store.choice),
 	apply: vi.fn()
 }));
 vi.mock('#lib/stores/appIcon.svelte.js', () => ({ appIconStore: store }));
@@ -49,6 +49,13 @@ describe('AppIconDialog', () => {
 		expect(screen.getByText('Peach in light mode, amber in dark mode')).toBeTruthy();
 	});
 
+	it('opens on the app’s own dark amber icon in a new install', () => {
+		open(OWN_ICON);
+		expect(radio('Tile', 'Dark').checked).toBe(true);
+		expect(screen.getByText('Amber · Tilted · Dark')).toBeTruthy();
+		expect(applyButton().textContent?.trim()).toBe('Current icon');
+	});
+
 	it('names the icon iOS shows on a button that does nothing', () => {
 		open({ tile: 'dark', notes: 'tilted', colour: 'sky' });
 		expect(applyButton().textContent?.trim()).toBe('Current icon');
@@ -56,8 +63,7 @@ describe('AppIconDialog', () => {
 	});
 
 	it('builds the icon in the preview, changing nothing until Apply', async () => {
-		open();
-		await fireEvent.click(radio('Tile', 'Dark'));
+		open(OWN_ICON);
 		expect(screen.getByText('Amber · Tilted · Dark')).toBeTruthy();
 		await fireEvent.click(radio('Notes', 'Stacked'));
 		await fireEvent.click(radio('Colour', 'Mint'));

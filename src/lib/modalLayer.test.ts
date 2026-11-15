@@ -40,6 +40,28 @@ describe('modalLayer', () => {
 		expect(document.querySelectorAll('[inert]')).toHaveLength(0);
 	});
 
+	it('leaves what stands beside the dialog in use, and inert under a nested modal', () => {
+		const byId = page();
+		const column = document.createElement('div');
+		column.dataset.columnStack = '';
+		document.body.append(column);
+
+		const releaseEditor = modalLayer(byId('dialog'), '[data-column-stack]');
+		expect(column.hasAttribute('inert')).toBe(false);
+		expect(byId('nav').hasAttribute('inert')).toBe(true);
+
+		const photo = document.createElement('div');
+		photo.tabIndex = -1;
+		document.querySelector('[data-app-overlay]')!.append(photo);
+		const releasePhoto = modalLayer(photo);
+		expect(column.hasAttribute('inert')).toBe(true);
+
+		releasePhoto();
+		expect(column.hasAttribute('inert')).toBe(false);
+		releaseEditor();
+		expect(document.querySelectorAll('[inert]')).toHaveLength(0);
+	});
+
 	it('moves focus into the dialog and returns it to the opener', () => {
 		const byId = page();
 		byId('opener').focus();

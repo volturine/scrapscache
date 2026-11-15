@@ -36,6 +36,7 @@
 	import { PHONE_MEDIA, portalToAppOverlay } from '#lib/appViewport.js';
 	import { useEditorActions } from '#lib/editorContext.js';
 	import { plainLine } from '#lib/noteLine.js';
+	import { pagePanLock } from '#lib/pagePanLock.js';
 	import { readRecentNotes } from '#lib/recentNotes.js';
 	import { matchSegments, type MatchSegment } from '#lib/search.js';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
@@ -372,7 +373,8 @@
 					/>
 					{#if !phone.current}<kbd class={styles.kbd}>esc</kbd>{/if}
 				</div>
-				<div class={styles.results}>
+				<!-- The phone's sheet has the keys up: a drag scrolls this list, never the page under it. -->
+				<div class={styles.results} {@attach phone.current && pagePanLock}>
 					<div id={listId} role="listbox" aria-label="Results">
 						{#each groups as group (group.name)}
 							<div role="group" aria-labelledby={`${id}-${group.name}`} class={styles.group}>

@@ -24,7 +24,7 @@
 	import { rememberRecentNote } from '#lib/recentNotes.js';
 	import { splitPastedHeading } from '#lib/checklistBody.js';
 	import { Drawer } from '@ark-ui/svelte/drawer';
-	import { onMount, untrack } from 'svelte';
+	import { onMount, tick, untrack } from 'svelte';
 	import { MediaQuery } from 'svelte/reactivity';
 	import { attachSyncCloudIndicator } from '#lib/syncCloudIndicator.js';
 	import { attachAppViewport } from '#lib/appViewport.js';
@@ -68,9 +68,18 @@
 		applyEditorOpen(true);
 	}
 
-	/** Save and close the open note, so what it holds is not lost with it. */
+	/**
+	 * Save and close the open note, so what it holds is not lost with it. Done once
+	 * the note's history entry has gone too: a view or note opened before then would
+	 * be the one that Back takes away.
+	 */
 	async function closeEditingNote() {
-		if (editingId !== null) await closeOpenNote?.();
+		if (editingId !== null) {
+			await closeOpenNote?.();
+			// The address follows the closed note in an effect.
+			await tick();
+		}
+		await noteEntryLeaving;
 	}
 
 	/** Make `pid` the open workspace, closing an open note first. */
@@ -107,6 +116,8 @@
 	let addressFollowsNote = $state(false);
 	/** History entry pushed so Back closes the note instead of leaving the page. */
 	let noteEntry: string | null = null;
+	/** Settles when the Back that takes a closed note's entry away has landed. */
+	let noteEntryLeaving: Promise<void> | null = null;
 	/** Back already popped the note entry; don't push it again while the editor saves and closes. */
 	let notePopped = false;
 	/** Forward or back landed on a note entry that is already in history. */
@@ -153,7 +164,12 @@
 		// Only the hash changes, so SvelteKit treats Back to the page underneath as
 		// shallow routing: it restores the address and state without navigating.
 		if (update.push) void goto(update.push, { shallow: true, state: page.state });
-		if (update.back) history.back();
+		if (update.back) {
+			noteEntryLeaving = new Promise((resolve) =>
+				window.addEventListener('popstate', () => resolve(), { once: true })
+			);
+			history.back();
+		}
 	}
 
 	/**
@@ -389,22 +405,31 @@
 	}
 
 	/**
-	 * The column's New note. An open note makes the column inert, so none is open
-	 * here; it leaves the palette and the Labels screen, so the note it opens in the
-	 * editor is put away into the view it was written for. Always the editor: a bar
-	 * still open from before the fold is being put away by this very press.
+	 * The column's New note. It leaves the palette and the Labels screen, so the note
+	 * it opens in the editor is put away into the view it was written for, and a note
+	 * already open is saved and put away first: its close would otherwise take the new
+	 * one with it. Always the editor: a bar still open from before the fold is being
+	 * put away by this very press.
 	 */
-	function newNoteFromColumn() {
+	async function newNoteFromColumn() {
 		uiStore.paletteOpen = false;
 		uiStore.labelsOpen = false;
+		await closeEditingNote();
 		startNoteInEditor();
 	}
 
-	function requestCloseEditor() {
-		void closeOpenNote?.();
+	/**
+	 * The column stays in use beside an open note (see NoteEditor): whichever of its
+	 * buttons is pressed, the note is saved and put away. Sync and settings open at
+	 * once and are left over the feed; a place and New note wait for the note to go.
+	 * Heard on the way down, before the button acts, so this close cannot catch the
+	 * note that New note starts.
+	 */
+	function leaveNoteFromColumn(event: MouseEvent) {
+		if (event.target instanceof Element && event.target.closest('button')) void closeEditingNote();
 	}
 
-	provideEditorActions({ openNote: openEditor, startNewNote, closeNote: requestCloseEditor });
+	provideEditorActions({ openNote: openEditor, startNewNote, closeNote: closeEditingNote });
 
 	let feedEl: HTMLElement | null = $state(null);
 
@@ -574,12 +599,15 @@
      (the top bar portals them in), then the places. Search is the bar's field, so the
      places leave it out. -->
 {#if sideColumn.side}
+	<!-- The buttons carry the keys; this only hears their clicks on the way down. -->
+	<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 	<div
 		class={cx(
 			phoneTabsStyles.stack,
 			sideColumn.side === 'left' ? phoneTabsStyles.stackLeft : phoneTabsStyles.stackRight
 		)}
 		data-column-stack
+		onclickcapture={leaveNoteFromColumn}
 	>
 		<div class={phoneTabsStyles.actions}>
 			<button type="button" aria-label="New note" onclick={newNoteFromColumn}>

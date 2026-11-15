@@ -59,6 +59,20 @@ describe('PhoneTabBar', () => {
 		expect(navigation.goto).toHaveBeenCalledWith('/kanban');
 	});
 
+	it('goes to a place only once the open note has been put away', async () => {
+		let putAway!: () => void;
+		closeNote.mockReturnValueOnce(new Promise<void>((resolve) => (putAway = resolve)));
+		render(PhoneTabBar);
+		await fireEvent.click(screen.getByRole('button', { name: 'Reminders' }));
+		// The note's history entry is still leaving: going now would be undone by its Back.
+		expect(uiStore.view).toBe('notes');
+		expect(navigation.goto).not.toHaveBeenCalled();
+
+		putAway();
+		await vi.waitFor(() => expect(navigation.goto).toHaveBeenCalledWith('/reminders'));
+		expect(uiStore.view).toBe('reminders');
+	});
+
 	it('opens the Labels screen, and leaves it for another tab', async () => {
 		render(PhoneTabBar);
 		const labels = screen.getByRole('button', { name: 'Labels' });

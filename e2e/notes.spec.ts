@@ -1156,6 +1156,16 @@ test.describe('in iPhone Duo’s side column', () => {
 			await stack.getByRole('button', { name: 'More' }).tap();
 			await expect(page.getByRole('menu')).toBeVisible();
 			await expect(editor(page)).toHaveCount(0);
+			await page.keyboard.press('Escape');
+			await expect(page.getByRole('menu')).toHaveCount(0);
+
+			// Opened by a key, which the menu takes without a click, the same.
+			await noteCard(page, 'First').click();
+			await expect(editor(page)).toBeVisible();
+			await stack.getByRole('button', { name: 'More' }).focus();
+			await page.keyboard.press('Enter');
+			await expect(page.getByRole('menu')).toBeVisible();
+			await expect(editor(page)).toHaveCount(0);
 		});
 
 		test('settings opened from the column keep their place when the keyboard comes up', async ({

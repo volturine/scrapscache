@@ -418,17 +418,6 @@
 		startNoteInEditor();
 	}
 
-	/**
-	 * The column stays in use beside an open note (see NoteEditor): whichever of its
-	 * buttons is pressed, the note is saved and put away. Sync and settings open at
-	 * once and are left over the feed; a place and New note wait for the note to go.
-	 * Heard on the way down, before the button acts, so this close cannot catch the
-	 * note that New note starts.
-	 */
-	function leaveNoteFromColumn(event: MouseEvent) {
-		if (event.target instanceof Element && event.target.closest('button')) void closeEditingNote();
-	}
-
 	provideEditorActions({ openNote: openEditor, startNewNote, closeNote: closeEditingNote });
 
 	let feedEl: HTMLElement | null = $state(null);
@@ -597,17 +586,15 @@
 <!-- iPhone Duo's status column lies outside the frame; the column's controls stand in it
      at every width: New note, which stands in for the composer there, sync and settings
      (the top bar portals them in), then the places. Search is the bar's field, so the
-     places leave it out. -->
+     places leave it out. The column stays in use beside an open note (see NoteEditor),
+     and each of its controls puts the note away. -->
 {#if sideColumn.side}
-	<!-- The buttons carry the keys; this only hears their clicks on the way down. -->
-	<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 	<div
 		class={cx(
 			phoneTabsStyles.stack,
 			sideColumn.side === 'left' ? phoneTabsStyles.stackLeft : phoneTabsStyles.stackRight
 		)}
 		data-column-stack
-		onclickcapture={leaveNoteFromColumn}
 	>
 		<div class={phoneTabsStyles.actions}>
 			<button type="button" aria-label="New note" onclick={newNoteFromColumn}>

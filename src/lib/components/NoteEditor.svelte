@@ -649,7 +649,7 @@
 	/**
 	 * iPhone Duo's column stands outside the frame the note is in, in full view beside
 	 * it: its places, sync, settings and New note stay in use, and each puts the note
-	 * away (see the app layout).
+	 * away (see PhoneTabBar, Topbar and the app layout).
 	 */
 	const noteLayer = (dialog: HTMLElement) => modalLayer(dialog, '[data-column-stack]');
 

@@ -370,25 +370,30 @@ writes:
 - the web icons in `static/` (favicons, the PWA icons, the maskable icon, the
   home-screen icon for Safari) and `og-preview.png`, all from
   `dark-tilted-amber`;
-- `AppIcon`: `light-tilted-peach` as the "any" appearance, which iOS before 18
-  also shows, `dark-tilted-amber` for dark mode, and `tinted-tilted` for the
-  tinted home screen; flattened, since Apple masks the corners itself and
-  rejects an alpha channel;
-- `AppIcon-Dev`: the light and dark icons under `dev-band.svg`, a teal DEV band;
-- one `AppIcon-<master>` set per master, the alternate icons iOS can switch
-  to, and an `AppIcon-Dev-<master>` set under the DEV band for the dev app. The
-  App target lists them in `ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES` as
-  `$(APP_ICON_NAME)-<master>`, so each app compiles in its own, and the script
-  stops if that list and the masters disagree;
+- `AppIcon`, the app's own icon: `dark-tilted-amber` as the "any" appearance,
+  which is the one the App Store shows, and again for dark mode, so iOS does
+  not darken it itself, with `tinted-tilted` for the tinted home screen;
+  flattened, since Apple masks the corners itself and rejects an alpha channel;
+- `AppIcon-Dev`: the same icon under `dev-band.svg`, a teal DEV band;
+- `AppIcon-automatic`, an alternate icon: `light-tilted-peach` for light mode
+  and `dark-tilted-amber` for dark mode;
+- one `AppIcon-<master>` set for every other master, the rest of the alternate
+  icons iOS can switch to;
+- an `AppIcon-Dev-<alternate>` set under the DEV band for each alternate, for
+  the dev app. The App target lists the alternates in
+  `ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES` as
+  `$(APP_ICON_NAME)-<alternate>`, so each app compiles in its own, and the
+  script stops if that list and the masters disagree;
 - the launch image, the light or dark icon in the middle of a clear square on
   the launch background.
 
 In the iPhone app, Settings > App icon switches between them: a tile
-(Automatic, dark or light), tilted or stacked notes, and a colour. Automatic is
-the app's primary icon, `AppIcon` (`AppIcon-Dev` in the dev app); the rest set
-an alternate through the shell's `AppIcon` plugin
-(`ScrapsBridgeViewController.swift`), which takes a master's name and adds the
-app's own prefix, so the dev app keeps its DEV band whichever icon is picked.
+(Automatic, dark or light), tilted or stacked notes, and a colour. The dark
+tile with tilted amber notes is the app's primary icon, `AppIcon` (`AppIcon-Dev`
+in the dev app); the rest, Automatic among them, set an alternate through the
+shell's `AppIcon` plugin (`ScrapsBridgeViewController.swift`), which takes an
+alternate's name and adds the app's own prefix, so the dev app keeps its DEV
+band whichever icon is picked.
 The choices change the page's preview, and Apply sets the icon, since iOS
 confirms each change with an alert of its own. The page draws the masters
 themselves, and `src/lib/native/appIcon.test.ts` fails if its choices, the

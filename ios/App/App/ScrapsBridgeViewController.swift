@@ -119,11 +119,11 @@ final class ReservedRegionsPlugin: CAPPlugin, CAPBridgedPlugin {
 }
 
 /// Settings > App icon. `AppIcon.get()` answers whether iOS offers alternate
-/// icons and which master shows (no `master` for the app's own icon);
-/// `AppIcon.set({ master })` changes it, and a null master puts the app's own
-/// back. Each master's alternate is named after the app's own icon set,
-/// `AppIcon-<master>`, or `AppIcon-Dev-<master>` under the DEV band in the dev
-/// app: the sets the App target lists in ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES.
+/// icons and which one shows (no `alternate` for the app's own icon);
+/// `AppIcon.set({ alternate })` changes it, and a null alternate puts the app's
+/// own back. Each alternate is named after the app's own icon set,
+/// `AppIcon-<alternate>`, or `AppIcon-Dev-<alternate>` under the DEV band in the
+/// dev app: the sets the App target lists in ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES.
 /// iOS confirms a change with an alert of its own.
 final class AppIconPlugin: CAPPlugin, CAPBridgedPlugin {
     let identifier = "AppIconPlugin"
@@ -146,14 +146,14 @@ final class AppIconPlugin: CAPPlugin, CAPBridgedPlugin {
             let app = UIApplication.shared
             var result: [String: Any] = ["supported": app.supportsAlternateIcons]
             if let name = app.alternateIconName, name.hasPrefix(Self.prefix) {
-                result["master"] = String(name.dropFirst(Self.prefix.count))
+                result["alternate"] = String(name.dropFirst(Self.prefix.count))
             }
             call.resolve(result)
         }
     }
 
     @objc func set(_ call: CAPPluginCall) {
-        let name = call.getString("master").map { Self.prefix + $0 }
+        let name = call.getString("alternate").map { Self.prefix + $0 }
         DispatchQueue.main.async {
             let app = UIApplication.shared
             guard app.supportsAlternateIcons else {

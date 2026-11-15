@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { AUTOMATIC } from '#lib/native/appIcon.js';
+import { AUTOMATIC, OWN_ICON } from '#lib/native/appIcon.js';
 
 const native = vi.hoisted(() => ({ app: true }));
 const plugin = vi.hoisted(() => ({ get: vi.fn(), set: vi.fn() }));
@@ -34,7 +34,7 @@ describe('appIconStore', () => {
 	});
 
 	it('reads the icon iOS shows, once', async () => {
-		plugin.get.mockResolvedValue({ supported: true, master: 'dark-stacked-mint' });
+		plugin.get.mockResolvedValue({ supported: true, alternate: 'dark-stacked-mint' });
 		const icon = await store();
 		await Promise.all([icon.load(), icon.load()]);
 		expect(icon.supported).toBe(true);
@@ -52,19 +52,30 @@ describe('appIconStore', () => {
 		expect(icon.supported).toBe(true);
 	});
 
-	it('applies the master a choice names, and the app’s own icon for Automatic', async () => {
+	it('shows the app’s own dark amber icon when iOS names no alternate', async () => {
+		const icon = await store();
+		await icon.load();
+		expect(icon.choice).toEqual(OWN_ICON);
+		await icon.apply(OWN_ICON);
+		expect(plugin.set).not.toHaveBeenCalled();
+	});
+
+	it('applies the alternate a choice names, Automatic’s pair, and no alternate for the app’s own icon', async () => {
 		const icon = await store();
 		await icon.load();
 		await icon.apply(mint);
-		expect(plugin.set).toHaveBeenLastCalledWith({ master: 'dark-stacked-mint' });
+		expect(plugin.set).toHaveBeenLastCalledWith({ alternate: 'dark-stacked-mint' });
 		expect(icon.choice).toEqual(mint);
 		await icon.apply(AUTOMATIC);
-		expect(plugin.set).toHaveBeenLastCalledWith({ master: null });
+		expect(plugin.set).toHaveBeenLastCalledWith({ alternate: 'automatic' });
 		expect(icon.choice).toEqual(AUTOMATIC);
+		await icon.apply(OWN_ICON);
+		expect(plugin.set).toHaveBeenLastCalledWith({ alternate: null });
+		expect(icon.choice).toEqual(OWN_ICON);
 	});
 
 	it('does not set the icon iOS already shows', async () => {
-		plugin.get.mockResolvedValue({ supported: true, master: 'dark-stacked-mint' });
+		plugin.get.mockResolvedValue({ supported: true, alternate: 'dark-stacked-mint' });
 		const icon = await store();
 		await icon.load();
 		await icon.apply(mint);
@@ -81,12 +92,12 @@ describe('appIconStore', () => {
 		await icon.apply(sky);
 		finish();
 		await running;
-		expect(plugin.set.mock.calls).toEqual([[{ master: 'dark-stacked-mint' }]]);
+		expect(plugin.set.mock.calls).toEqual([[{ alternate: 'dark-stacked-mint' }]]);
 		expect(icon.applying).toBe(false);
 	});
 
 	it('keeps the icon iOS shows when it refuses, and says so until the next try', async () => {
-		plugin.get.mockResolvedValue({ supported: true, master: 'dark-stacked-mint' });
+		plugin.get.mockResolvedValue({ supported: true, alternate: 'dark-stacked-mint' });
 		plugin.set.mockRejectedValueOnce(new Error('refused'));
 		const icon = await store();
 		await icon.load();

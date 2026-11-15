@@ -4,14 +4,15 @@
 // hand): `npm run icons`. It renders in Playwright's Chromium, so install that
 // once with `npx playwright install chromium`.
 //
-// The masters are named <mode>-<shape>-<palette>.svg. Two of them are the
-// defaults: the dark tilted notes in cream and amber, used everywhere on the
-// web and for iOS dark mode, and the light tilted notes in peach and coral,
-// used for iOS light mode. Every master is also an iOS alternate icon, named
-// AppIcon-<master>, and AppIcon-Dev-<master> under the DEV band for the dev
-// app. The App target lists them in ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES
-// as $(APP_ICON_NAME)-<master>, so each app gets its own; this script stops if
-// that list and the masters disagree.
+// The masters are named <mode>-<shape>-<palette>.svg. The dark tilted notes in
+// cream and amber are the default: the icon on the web, in the App Store and of
+// the iPhone app, in light and dark mode. Every other master is an iOS alternate
+// icon, named AppIcon-<master>, and so is AppIcon-automatic: the light tilted
+// notes in peach and coral for light mode and the default for dark mode. The dev
+// app has the same sets under the DEV band, named AppIcon-Dev-<...>. The App
+// target lists the alternates in ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES
+// as $(APP_ICON_NAME)-<alternate>, so each app gets its own; this script stops
+// if that list and the masters disagree.
 
 import { chromium } from '@playwright/test';
 import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
@@ -23,6 +24,7 @@ const PROJECT = 'ios/App/App.xcodeproj/project.pbxproj';
 const DARK = 'dark-tilted-amber';
 const LIGHT = 'light-tilted-peach';
 const TINTED = 'tinted-tilted';
+const AUTOMATIC = 'automatic';
 const DEV_BAND = 'dev-band';
 // The web icons get the corner Apple's home screen uses, so a tab, a bookmark
 // and an installed web app show the same rounded tile.
@@ -34,7 +36,9 @@ const masters = (await readdir(SOURCE))
 	.map((file) => file.replace(/\.svg$/, ''))
 	.sort();
 
-await checkAlternateNames(masters.map((name) => `$(APP_ICON_NAME)-${name}`));
+const alternates = masters.filter((name) => name !== DARK);
+
+await checkAlternateNames([AUTOMATIC, ...alternates].map((name) => `$(APP_ICON_NAME)-${name}`));
 
 const browser = await chromium.launch();
 const page = await browser.newPage();
@@ -118,7 +122,6 @@ const iconImage = (filename, appearance) => ({
 
 async function iconSet(name, images) {
 	const dir = `${CATALOG}/${name}.appiconset`;
-	await rm(dir, { recursive: true, force: true });
 	await mkdir(dir, { recursive: true });
 	for (const { filename, layers } of images) await write(`${dir}/${filename}`, layers, 1024);
 	const contents = {
@@ -155,23 +158,34 @@ await write('static/icon-512.png', [dark], 512, { alpha: true, corner: CORNER })
 await write('static/icon-maskable-512.png', [dark], 512);
 await write('static/apple-touch-icon.png', [dark], 180);
 
-// iOS: light and dark defaults plus the greyscale tinted variant, the dev
-// app's pair with its DEV band, and every master as an alternate icon, with
-// the band again for the dev app.
-await iconSet('AppIcon', [
-	{ filename: 'AppIcon-1024.png', layers: [light] },
-	{ filename: 'AppIcon-Dark-1024.png', layers: [dark], appearance: 'dark' },
-	{ filename: 'AppIcon-Tinted-1024.png', layers: [await svg(TINTED)], appearance: 'tinted' }
-]);
-await iconSet('AppIcon-Dev', [
-	{ filename: 'AppIcon-Dev-1024.png', layers: [light, band] },
-	{ filename: 'AppIcon-Dev-Dark-1024.png', layers: [dark, band], appearance: 'dark' }
-]);
+// iOS: the default in light and dark mode, so iOS does not darken it itself,
+// plus the greyscale tinted variant; Automatic's light and dark pair; every
+// other master as an alternate icon; and each of them again under the DEV band
+// for the dev app.
+const tinted = await svg(TINTED);
 for (const entry of await readdir(CATALOG)) {
-	if (/^AppIcon-(Dev-)?(dark|light)-.*\.appiconset$/.test(entry))
+	if (/^AppIcon(-.*)?\.appiconset$/.test(entry))
 		await rm(`${CATALOG}/${entry}`, { recursive: true });
 }
-for (const name of masters) {
+await iconSet('AppIcon', [
+	{ filename: 'AppIcon-1024.png', layers: [dark] },
+	{ filename: 'AppIcon-Dark-1024.png', layers: [dark], appearance: 'dark' },
+	{ filename: 'AppIcon-Tinted-1024.png', layers: [tinted], appearance: 'tinted' }
+]);
+await iconSet('AppIcon-Dev', [
+	{ filename: 'AppIcon-Dev-1024.png', layers: [dark, band] },
+	{ filename: 'AppIcon-Dev-Dark-1024.png', layers: [dark, band], appearance: 'dark' }
+]);
+await iconSet(`AppIcon-${AUTOMATIC}`, [
+	{ filename: `AppIcon-${AUTOMATIC}-1024.png`, layers: [light] },
+	{ filename: `AppIcon-${AUTOMATIC}-Dark-1024.png`, layers: [dark], appearance: 'dark' },
+	{ filename: `AppIcon-${AUTOMATIC}-Tinted-1024.png`, layers: [tinted], appearance: 'tinted' }
+]);
+await iconSet(`AppIcon-Dev-${AUTOMATIC}`, [
+	{ filename: `AppIcon-Dev-${AUTOMATIC}-1024.png`, layers: [light, band] },
+	{ filename: `AppIcon-Dev-${AUTOMATIC}-Dark-1024.png`, layers: [dark, band], appearance: 'dark' }
+]);
+for (const name of alternates) {
 	const master = await svg(name);
 	await iconSet(`AppIcon-${name}`, [{ filename: `AppIcon-${name}-1024.png`, layers: [master] }]);
 	await iconSet(`AppIcon-Dev-${name}`, [
@@ -225,5 +239,5 @@ await page.screenshot({ path: 'static/og-preview.png' });
 
 await browser.close();
 console.log(
-	`Drew ${masters.length} alternate icons and their dev pairs, the defaults, the dev icons, the launch image and the link preview.`
+	`Drew ${alternates.length + 1} alternate icons and their dev pairs, the default, the dev icon, the launch image and the link preview.`
 );

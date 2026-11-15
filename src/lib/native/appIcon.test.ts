@@ -4,7 +4,9 @@ import {
 	AUTOMATIC,
 	COLOURS,
 	NOTES,
-	choiceFromMaster,
+	OWN_ICON,
+	alternateName,
+	choiceFromAlternate,
 	coloursFor,
 	describeChoice,
 	masterName,
@@ -25,6 +27,12 @@ const choices: AppIconChoice[] = (['dark', 'light'] as const).flatMap((tile) =>
 	)
 );
 
+/** The alternate icons: every choice but the app's own, and Automatic. */
+const alternates = [AUTOMATIC, ...choices]
+	.map((choice) => alternateName(choice))
+	.filter((name) => name !== null)
+	.sort();
+
 describe('app icon choices', () => {
 	it('are the masters drawn in design/app-icon, one for one', () => {
 		expect(choices.map((choice) => masterName(choice)).sort()).toEqual(masters);
@@ -37,31 +45,67 @@ describe('app icon choices', () => {
 			...project.matchAll(/ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "([^"]*)";/g)
 		];
 		expect(lists).toHaveLength(2);
-		const names = choices.map((choice) => `$(APP_ICON_NAME)-${masterName(choice)}`).sort();
+		expect(alternates).toHaveLength(choices.length);
+		const names = alternates.map((name) => `$(APP_ICON_NAME)-${name}`);
 		for (const [, list] of lists) expect(list.split(' ')).toEqual(names);
 	});
 
-	it('have an icon set for the app and a banded one for the dev app', () => {
+	it('have an icon set for the app and a banded one for the dev app, and no others', () => {
 		const dev = readFileSync('ios/App/Dev.xcconfig', 'utf8');
 		expect(dev).toMatch(/^APP_ICON_NAME = AppIcon-Dev$/m);
-		for (const choice of choices) {
-			for (const app of ['AppIcon', 'AppIcon-Dev']) {
-				const set = `ios/App/App/Assets.xcassets/${app}-${masterName(choice)}.appiconset`;
-				expect(existsSync(`${set}/Contents.json`), set).toBe(true);
-			}
+		const sets = readdirSync('ios/App/App/Assets.xcassets')
+			.filter((entry) => entry.endsWith('.appiconset'))
+			.map((entry) => entry.replace(/\.appiconset$/, ''))
+			.sort();
+		const expected = ['AppIcon', 'AppIcon-Dev'].flatMap((app) => [
+			app,
+			...alternates.map((name) => `${app}-${name}`)
+		]);
+		expect(sets).toEqual(expected.sort());
+		for (const set of sets) {
+			expect(existsSync(`ios/App/App/Assets.xcassets/${set}.appiconset/Contents.json`), set).toBe(
+				true
+			);
 		}
 	});
 
-	it('read back from the master iOS reports', () => {
-		for (const choice of choices) {
-			expect(choiceFromMaster(masterName(choice))).toEqual(choice);
+	it('make the dark amber icon the app’s own, in light and dark mode, as the App Store shows it', () => {
+		const images = (set: string) =>
+			(
+				JSON.parse(
+					readFileSync(`ios/App/App/Assets.xcassets/${set}.appiconset/Contents.json`, 'utf8')
+				) as { images: { filename: string; appearances?: { value: string }[] }[] }
+			).images;
+		const bytes = (set: string, appearance?: string) => {
+			const image = images(set).find((entry) => entry.appearances?.[0]?.value === appearance);
+			return readFileSync(`ios/App/App/Assets.xcassets/${set}.appiconset/${image?.filename}`);
+		};
+		expect(alternateName(OWN_ICON)).toBeNull();
+		expect(masterName(OWN_ICON)).toBe('dark-tilted-amber');
+		for (const app of ['AppIcon', 'AppIcon-Dev']) {
+			expect(bytes(app).equals(bytes(app, 'dark')), app).toBe(true);
+			// Automatic is the pair: its own light icon, and the default in dark mode.
+			expect(bytes(`${app}-automatic`, 'dark').equals(bytes(app)), app).toBe(true);
+			expect(bytes(`${app}-automatic`).equals(bytes(app)), app).toBe(false);
+		}
+		for (const app of ['AppIcon', 'AppIcon-Dev']) {
+			expect(bytes(`${app}-automatic`).equals(bytes(`${app}-light-tilted-peach`)), app).toBe(true);
+		}
+	});
+
+	it('read back from the alternate iOS reports', () => {
+		for (const choice of [AUTOMATIC, ...choices]) {
+			expect(choiceFromAlternate(alternateName(choice))).toEqual(choice);
 		}
 		expect(masterName(AUTOMATIC)).toBeNull();
-		expect(choiceFromMaster(null)).toEqual(AUTOMATIC);
-		expect(choiceFromMaster(undefined)).toEqual(AUTOMATIC);
+		expect(alternateName(AUTOMATIC)).toBe('automatic');
+		expect(choiceFromAlternate(null)).toEqual(OWN_ICON);
+		expect(choiceFromAlternate(undefined)).toEqual(OWN_ICON);
 		// One this version does not draw is the app's own icon, as iOS shows it.
-		expect(choiceFromMaster('light-tilted-amber')).toEqual(AUTOMATIC);
-		expect(choiceFromMaster('dark-folded-sky')).toEqual(AUTOMATIC);
+		expect(choiceFromAlternate('light-tilted-amber')).toEqual(OWN_ICON);
+		expect(choiceFromAlternate('dark-folded-sky')).toEqual(OWN_ICON);
+		// An earlier build's alternate for the icon that is now the app's own.
+		expect(choiceFromAlternate('dark-tilted-amber')).toEqual(OWN_ICON);
 	});
 
 	it('show swatches in the colours of the masters', () => {

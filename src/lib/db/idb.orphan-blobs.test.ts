@@ -91,4 +91,31 @@ describe('orphaned image blob reclamation', () => {
 
 		expect(await storedImageKeys()).toEqual(['lost::pic']);
 	});
+
+	it('drops only the bytes a byte-less write names as superseded', async () => {
+		const original = note('n1', [
+			image('kept', 'data:image/png;base64,QQ=='),
+			image('edited', 'data:image/png;base64,Qg==')
+		]);
+		await putNote(TEST_WORKSPACE, original);
+
+		// Another device replaced 'edited'; its new bytes have not arrived yet.
+		await putNote(
+			TEST_WORKSPACE,
+			{
+				...original,
+				images: [image('kept', ''), { ...image('edited', ''), contentHash: 'hash-recropped' }]
+			},
+			[],
+			['edited']
+		);
+
+		expect(await storedImageKeys()).toEqual(['n1::kept']);
+		const stored = (await getAllNotesMetadata(TEST_WORKSPACE)).find((item) => item.id === 'n1');
+		const hydrated = await hydrateNoteAttachments(TEST_WORKSPACE, stored!);
+		expect(hydrated.images?.map(({ id, dataUrl }) => [id, dataUrl])).toEqual([
+			['kept', 'data:image/png;base64,QQ=='],
+			['edited', '']
+		]);
+	});
 });

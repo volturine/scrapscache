@@ -1,5 +1,10 @@
 import { decryptSyncPayload } from '#lib/syncPairing.js';
-import { attachmentToImage, isSyncRecordPayload, type SyncNote } from '#lib/syncRecords.js';
+import {
+	attachmentToImage,
+	isSyncRecordPayload,
+	type SyncAttachment,
+	type SyncNote
+} from '#lib/syncRecords.js';
 import { sha256 } from '#lib/syncHash.js';
 import type { Note, NoteImage } from '#lib/types.js';
 import type { HistoryEnvelope, HistoryList } from '#lib/syncHistory.js';
@@ -13,8 +18,12 @@ async function read<T>(path: string, account: SyncAccount): Promise<T> {
 	return response.json() as Promise<T>;
 }
 
-async function readOptional<T>(path: string, account: SyncAccount): Promise<T | null> {
-	const response = await syncStore.authorizedFetch(path, { cache: 'no-store' }, account);
+async function readOptional<T>(
+	path: string,
+	account: SyncAccount,
+	signal?: AbortSignal
+): Promise<T | null> {
+	const response = await syncStore.authorizedFetch(path, { cache: 'no-store', signal }, account);
 	if (response.status === 404) return null;
 	if (!response.ok) throw new Error('Could not load sync history.');
 	return response.json() as Promise<T>;
@@ -52,6 +61,40 @@ export async function loadNoteHistory(
 		const payload = decode(account, ciphertext, slot);
 		return payload.kind === 'note' ? [{ historyId, savedAt, note: payload.value }] : [];
 	});
+}
+
+/** How long one attachment may take to arrive when asked for by name. */
+const CURRENT_ATTACHMENT_TIMEOUT_MS = 60_000;
+
+/**
+ * The attachment the relay holds now, when it is the version asked for. A sync only
+ * downloads what changed since the last one, so this is how a device gets bytes it
+ * should already hold. Null when the relay holds another version, or none it can read.
+ */
+export async function loadCurrentAttachment(
+	account: SyncAccount,
+	wanted: { id: string; hash: string }
+): Promise<SyncAttachment | null> {
+	const slot = await sha256(`${account.syncKey}\u0000attachment:${wanted.id}`);
+	// No version is saved that far ahead, so the relay answers with the live record.
+	// A sync waits on this, so a request that stalls gives up and is asked again later.
+	const envelope = await readOptional<HistoryEnvelope>(
+		`/api/sync/history?slot=${slot}&at=${Number.MAX_SAFE_INTEGER}`,
+		account,
+		AbortSignal.timeout(CURRENT_ATTACHMENT_TIMEOUT_MS)
+	);
+	if (!envelope) return null;
+	let payload: ReturnType<typeof decode>;
+	try {
+		payload = decode(account, envelope.ciphertext, slot);
+	} catch {
+		return null;
+	}
+	return payload.kind === 'attachment' &&
+		payload.value.id === wanted.id &&
+		payload.value.hash === wanted.hash
+		? payload.value
+		: null;
 }
 
 /**

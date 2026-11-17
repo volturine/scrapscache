@@ -520,7 +520,8 @@ async function putImageBlobs(pid: string, note: Note): Promise<void> {
 async function putNoteSnapshot(
 	pid: string,
 	note: Note,
-	syncOutboxKeys: string[] = []
+	syncOutboxKeys: string[] = [],
+	supersededImageIds: readonly string[] = []
 ): Promise<void> {
 	const db = await getDB(pid);
 	await putImageBlobs(pid, note);
@@ -543,6 +544,8 @@ async function putNoteSnapshot(
 				if (!desiredKeys.has(key)) await tx.objectStore(IMAGES_STORE).delete(key);
 			}
 		}
+		for (const id of supersededImageIds)
+			await tx.objectStore(IMAGES_STORE).delete(`${note.id}::${id}`);
 		await tx.objectStore(NOTES_STORE).put(lean);
 		if (syncOutboxKeys.length) {
 			const generation = await nextOutboxGeneration(tx, dbName);
@@ -603,19 +606,35 @@ export async function pruneOrphanImageBlobs(pid: string): Promise<void> {
 	});
 }
 
+/** Every attachment this device holds bytes for, as `${noteId}::${attachmentId}`. */
+export async function getStoredAttachmentKeys(pid: string): Promise<Set<string>> {
+	const db = await getDB(pid);
+	return new Set((await db.getAllKeys(IMAGES_STORE)) as string[]);
+}
+
 export async function hydrateNoteAttachments(pid: string, note: Note): Promise<Note> {
 	const db = await getDB(pid);
 	return hydrateNoteImages(db, note);
 }
 
-export async function putNote(pid: string, note: Note, keys: Iterable<string> = []): Promise<void> {
+/**
+ * A write without bytes keeps the bytes already stored for each attachment.
+ * `supersededImageIds` names the exceptions: attachments whose content this
+ * write replaces without bringing the new bytes, so the stored ones go with it.
+ */
+export async function putNote(
+	pid: string,
+	note: Note,
+	keys: Iterable<string> = [],
+	supersededImageIds: readonly string[] = []
+): Promise<void> {
 	const snapshot = plainNote(note);
 	const outboxKeys = uniqueOutboxKeys(keys);
 	const generation = writeGeneration;
 	return enqueueNote(pid, snapshot.id, () =>
 		enqueueDeviceWrite(async () => {
 			if (generation !== writeGeneration) return;
-			await putNoteSnapshot(pid, snapshot, outboxKeys);
+			await putNoteSnapshot(pid, snapshot, outboxKeys, supersededImageIds);
 		})
 	);
 }

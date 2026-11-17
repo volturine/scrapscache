@@ -1,11 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('#lib/imageThumb.js', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('#lib/imageThumb.js')>();
+	return { ...actual, makeImageThumbDataUrl: vi.fn(async () => null) };
+});
+
 import {
 	clearAllNotes,
 	clearSyncOutbox,
 	getSyncOutboxKeys,
 	markSyncOutbox,
-	putNote
+	putNote,
+	setSyncState
 } from '#lib/db/idb.js';
+import * as idb from '#lib/db/idb.js';
 import { syncStore } from './sync.svelte';
 import { syncSnapshot } from '#lib/syncRecords.js';
 import { notesStore } from './notes.svelte';
@@ -125,17 +133,71 @@ describe('syncing when a note closes', () => {
 		).toBeNull();
 	});
 
-	it('treats attachment metadata without its IndexedDB blob as a hydration failure', async () => {
+	it('does not count a photo this device has not received as a failed upload', async () => {
+		// Another device listed the photo and is still uploading its bytes.
 		const note = noteWithPhoto('');
 		await putNote(TEST_WORKSPACE, note);
 		notesStore.notes = [note];
+		notesStore.lastPersistError = null;
+		vi.spyOn(syncStore, 'sync').mockResolvedValue({ success: true, snapshot: syncSnapshot() });
+
+		// Its card scrolls into view, then the next sync runs.
+		await notesStore.ensureNoteAttachments(note.id);
+		const synced = await (
+			notesStore as unknown as { doSyncLocked(indicate: boolean): Promise<boolean> }
+		).doSyncLocked(false);
+
+		expect(synced).toBe(true);
+		expect(syncStore.lastError).toBeNull();
+		expect(notesStore.lastPersistError).toBeNull();
+	});
+
+	it('warns after a sync while a photo on this device cannot be read', async () => {
+		vi.spyOn(console, 'error').mockImplementation(() => undefined);
+		const note = noteWithPhoto('');
+		await putNote(TEST_WORKSPACE, note);
+		notesStore.notes = [note];
+		// The stored bytes were checked on an earlier sync; this is about the upload.
+		await setSyncState(TEST_WORKSPACE, 'scrapscache-attachments-verified', true);
+		vi.spyOn(idb, 'hydrateNoteAttachments').mockRejectedValue(new Error('read failed'));
+		vi.spyOn(syncStore, 'sync').mockResolvedValue({ success: true, snapshot: syncSnapshot() });
 
 		await notesStore.ensureNoteAttachments(note.id);
+		const synced = await (
+			notesStore as unknown as { doSyncLocked(indicate: boolean): Promise<boolean> }
+		).doSyncLocked(false);
 
-		const failures = (notesStore as unknown as { attachmentHydrationFailures: Set<string> })
-			.attachmentHydrationFailures;
-		expect(failures.has(note.id)).toBe(true);
-		expect(notesStore.lastPersistError).toMatch(/missing from device storage/i);
+		expect(synced).toBe(true);
+		expect(syncStore.lastError).toBe(
+			'Synced, but some photos could not be prepared for upload. They will retry on the next sync.'
+		);
+	});
+
+	it('does not replace the cloud copy while a listed photo is not on this device', async () => {
+		vi.spyOn(console, 'error').mockImplementation(() => undefined);
+		const note = noteWithPhoto('');
+		await putNote(TEST_WORKSPACE, note);
+		notesStore.notes = [note];
+		const reauthenticate = vi.spyOn(syncStore, 'reauthenticateForRecovery').mockResolvedValue();
+		const sync = vi.spyOn(syncStore, 'sync');
+
+		expect(await notesStore.forcePushWorkspace()).toBe(false);
+		expect(reauthenticate).not.toHaveBeenCalled();
+		expect(sync).not.toHaveBeenCalled();
+		expect(notesStore.lastPersistError).toMatch(/Replacing the cloud copy was not started/);
+	});
+
+	it('goes on to replace the cloud copy once every listed photo is read from this device', async () => {
+		vi.spyOn(console, 'error').mockImplementation(() => undefined);
+		await putNote(TEST_WORKSPACE, noteWithPhoto('data:image/png;base64,iVBORw0KGgo='));
+		// Memory holds the note without its bytes, as after any durable write.
+		notesStore.notes = [noteWithPhoto('')];
+		const reauthenticate = vi
+			.spyOn(syncStore, 'reauthenticateForRecovery')
+			.mockRejectedValue(new Error('stop here'));
+
+		expect(await notesStore.forcePushWorkspace()).toBe(false);
+		expect(reauthenticate).toHaveBeenCalledOnce();
 	});
 
 	it('prunes attachment hydration failures after the damaged note is removed', async () => {

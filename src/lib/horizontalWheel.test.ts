@@ -85,6 +85,8 @@ describe('installHorizontalWheel', () => {
 		// Disconnected from document so the suite's window-level installer stays out of the way.
 		const host = document.createElement('div');
 		const strip = scroller();
+		// A detached element has no computed style, so the strip carries the attribute marker.
+		strip.setAttribute('data-card-hscroll', '');
 		host.append(strip);
 
 		const uninstall = installHorizontalWheel(host);

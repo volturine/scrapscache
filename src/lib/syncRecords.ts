@@ -247,12 +247,14 @@ export async function buildSyncRecords(
 
 	for (const note of notes.filter((item) => !(Number(tombstones[item.id]) || 0))) {
 		const noteKey = `note:${note.id}`;
-		const wantsNote = !onlyKeys || onlyKeys.has(noteKey);
-		const wantsAttachment =
-			!onlyKeys || (note.images ?? []).some((image) => onlyKeys.has(`attachment:${image.id}`));
-		if (!wantsNote && !wantsAttachment) continue;
+		// An attachment travels with a note that lists it, so wanting one wants the other.
+		const wanted =
+			!onlyKeys ||
+			onlyKeys.has(noteKey) ||
+			(note.images ?? []).some((image) => onlyKeys.has(`attachment:${image.id}`));
+		if (!wanted) continue;
 		const split = await splitNoteForSync(note);
-		if (wantsNote) values.push({ key: noteKey, payload: { kind: 'note', value: split.note } });
+		values.push({ key: noteKey, payload: { kind: 'note', value: split.note } });
 		for (const attachment of split.attachments) {
 			if (onlyKeys && !onlyKeys.has(`attachment:${attachment.id}`)) continue;
 			if (seenAttachments.has(attachment.id)) continue;

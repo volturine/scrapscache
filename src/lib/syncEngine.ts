@@ -2,7 +2,60 @@
 // attachments from a page that has not yet applied their parent notes.
 import type { Note } from '#lib/types.js';
 import { isTombstoned } from '#lib/model/index.js';
-import type { SyncRecord, SyncSnapshot } from '#lib/syncRecords.js';
+import type { SyncNote, SyncRecord, SyncSnapshot } from '#lib/syncRecords.js';
+import { sha256 } from '#lib/syncHash.js';
+
+/**
+ * What the relay holds of attachments, as this device has seen it: every attachment
+ * record it downloaded or uploaded, and the attachments each note record lists.
+ */
+export type RelayAttachments = {
+	/** The version (content hash) of each attachment record, by attachment id. */
+	versions: Record<string, string>;
+	/** The attachment ids the relay's copy of each note lists, by note id. */
+	listed: Record<string, string[]>;
+};
+
+export function emptyRelayAttachments(): RelayAttachments {
+	return { versions: {}, listed: {} };
+}
+
+/**
+ * The attachment versions the relay is known to hold, by attachment id. A record no
+ * note on the relay lists does not count: any device may delete it, and a delete
+ * leaves nothing behind for this device to download.
+ */
+export function relayHeldVersions(relay: RelayAttachments): Map<string, string> {
+	const held = new Map<string, string>();
+	for (const ids of Object.values(relay.listed)) {
+		for (const id of ids) {
+			const version = relay.versions[id];
+			if (version !== undefined) held.set(id, version);
+		}
+	}
+	return held;
+}
+
+/**
+ * A note record as the relay may hold it: it lists only the attachment versions the
+ * relay holds once the request commits, so the relay never lists bytes it lacks.
+ * The others join in the request that carries their bytes.
+ */
+export async function noteRecordForRelay(
+	record: SyncRecord,
+	held: ReadonlyMap<string, string>
+): Promise<SyncRecord> {
+	if (record.payload.kind !== 'note') return record;
+	const note: SyncNote = record.payload.value;
+	const images = (note.images ?? []).filter((image) => held.get(image.id) === image.hash);
+	if (images.length === (note.images ?? []).length) return record;
+	const { images: _all, ...rest } = note;
+	const payload = {
+		kind: 'note' as const,
+		value: { ...rest, ...(images.length ? { images } : {}) }
+	};
+	return { key: record.key, payload, fingerprint: await sha256(payload) };
+}
 
 export function currentRecordKeys(snapshot: SyncSnapshot): Set<string> {
 	const keys = new Set<string>();
@@ -167,10 +220,12 @@ export function syncControlKeys(accountId: string): {
 	cursor: string;
 	baseline: string;
 	recordIds: string;
+	relayAttachments: string;
 } {
 	return {
 		cursor: `scrapscache-sync-cursor:${accountId}`,
 		baseline: `scrapscache-sync-record-fingerprints:${accountId}`,
-		recordIds: `scrapscache-sync-record-ids:${accountId}`
+		recordIds: `scrapscache-sync-record-ids:${accountId}`,
+		relayAttachments: `scrapscache-sync-relay-attachments:${accountId}`
 	};
 }

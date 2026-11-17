@@ -26,7 +26,7 @@ import { openDB } from 'idb';
 import { loadBoardsFromDevice } from '#lib/syncTombstones.js';
 import * as syncTombstones from '#lib/syncTombstones.js';
 import { writeNotesMirror } from '#lib/noteStorage.js';
-import { notesStore } from './notes.svelte';
+import { notesStore, SYNC_LOCK } from './notes.svelte';
 import { syncStore } from './sync.svelte';
 import { syncSnapshot } from '#lib/syncRecords.js';
 import type { Note } from '#lib/types.js';
@@ -85,7 +85,12 @@ describe('notes store sync apply', () => {
 			.spyOn(syncStore, 'sync')
 			.mockImplementation(async (local, _indicate, pullOnly, apply) => {
 				if (pullOnly) {
-					await apply!(remote, TEST_WORKSPACE, { readEnvelopes: remote.notes.length });
+					await apply!(remote, TEST_WORKSPACE, {
+						readEnvelopes: remote.notes.length,
+						relayHolds: () => true,
+						relayHas: () => undefined,
+						owes: async () => undefined
+					});
 					return { success: true, snapshot: remote };
 				}
 				const { notes, tombstones } = local;
@@ -235,7 +240,10 @@ describe('notes store sync apply', () => {
 		let depth = 0;
 		let maxDepth = 0;
 		const locks = {
-			request: async (_name: string, callback: () => Promise<boolean>) => {
+			request: async (name: string, ...rest: unknown[]) => {
+				const callback = rest.at(-1) as () => Promise<boolean>;
+				// Only the sync lock is under test; the others are theirs to take.
+				if (name !== SYNC_LOCK) return callback();
 				depth += 1;
 				maxDepth = Math.max(maxDepth, depth);
 				try {
@@ -332,7 +340,11 @@ describe('notes store sync apply', () => {
 		await getAllNotesMetadata(TEST_WORKSPACE);
 		await closeDeviceDatabase();
 		const db = await openDB(resolveDbName(TEST_WORKSPACE));
-		await db.put('note-images', { mime: 'image/png', bytes: Uint8Array.from([65]) }, 'lost::pic');
+		await db.put(
+			'note-images',
+			{ mime: 'image/png', bytes: Uint8Array.from([65]), hash: 'hash-pic' },
+			'lost::pic'
+		);
 		db.close();
 		await closeDeviceDatabase();
 
@@ -652,7 +664,10 @@ describe('notes store sync apply', () => {
 		let lockRequests = 0;
 		let tail: Promise<unknown> = Promise.resolve();
 		const locks = {
-			request: async (_name: string, callback: () => Promise<boolean>) => {
+			request: async (name: string, ...rest: unknown[]) => {
+				const callback = rest.at(-1) as () => Promise<boolean>;
+				// Only the sync lock is under test; the others are theirs to take.
+				if (name !== SYNC_LOCK) return callback();
 				lockRequests += 1;
 				const run = tail.then(callback);
 				tail = run.catch(() => undefined);
@@ -783,7 +798,10 @@ describe('notes store sync apply', () => {
 		const events: string[] = [];
 		let tail: Promise<unknown> = Promise.resolve();
 		const locks = {
-			request: async (_name: string, callback: () => Promise<boolean>) => {
+			request: async (name: string, ...rest: unknown[]) => {
+				const callback = rest.at(-1) as () => Promise<boolean>;
+				// Only the sync lock is under test; the others are theirs to take.
+				if (name !== SYNC_LOCK) return callback();
 				const run = tail.then(async () => {
 					depth += 1;
 					active += 1;

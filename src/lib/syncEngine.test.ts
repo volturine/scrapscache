@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { Note } from '#lib/types.js';
-import { planDeletableKeys, reconcileBaseline, syncRoundHasMore } from './syncEngine';
-import { syncSnapshot } from './syncRecords';
+import {
+	noteRecordForRelay,
+	planDeletableKeys,
+	reconcileBaseline,
+	relayHeldVersions,
+	syncRoundHasMore
+} from './syncEngine';
+import { syncSnapshot, type SyncRecord } from './syncRecords';
 
 function note(id: string, imageIds: string[] = []): Note {
 	return {
@@ -185,5 +191,59 @@ describe('incremental sync engine', () => {
 			catchUpComplete: true
 		});
 		expect(planned.sort()).toEqual(['library-item:star']);
+	});
+});
+
+describe('what the relay holds of attachments', () => {
+	it('counts an attachment record only while a note on the relay lists it', () => {
+		const held = relayHeldVersions({
+			versions: { listed: 'hash-a', unlisted: 'hash-b' },
+			listed: { 'note-1': ['listed', 'never-uploaded'] }
+		});
+
+		// An unlisted record may be deleted by any device without a trace; a listed
+		// id with no record was never uploaded.
+		expect([...held]).toEqual([['listed', 'hash-a']]);
+	});
+
+	function noteRecord(images: Array<{ id: string; hash: string }>): SyncRecord {
+		return {
+			key: 'note:n1',
+			fingerprint: 'all-listed',
+			payload: {
+				kind: 'note',
+				value: {
+					...note('n1'),
+					images: images.map((image) => ({ ...image, mime: 'image/jpeg', createdAt: 1 }))
+				}
+			}
+		};
+	}
+
+	it('sends a note listing only the attachment versions the relay holds', async () => {
+		const record = noteRecord([
+			{ id: 'held', hash: 'hash-a' },
+			{ id: 'edited', hash: 'hash-new' },
+			{ id: 'new', hash: 'hash-c' }
+		]);
+
+		const sent = await noteRecordForRelay(
+			record,
+			new Map([
+				['held', 'hash-a'],
+				['edited', 'hash-old']
+			])
+		);
+
+		expect(sent.payload.kind === 'note' && sent.payload.value.images).toEqual([
+			{ id: 'held', hash: 'hash-a', mime: 'image/jpeg', createdAt: 1 }
+		]);
+		expect(sent.fingerprint).not.toBe(record.fingerprint);
+	});
+
+	it('sends a note as it is once the relay holds everything it lists', async () => {
+		const record = noteRecord([{ id: 'held', hash: 'hash-a' }]);
+
+		expect(await noteRecordForRelay(record, new Map([['held', 'hash-a']]))).toBe(record);
 	});
 });

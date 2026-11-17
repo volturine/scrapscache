@@ -3,11 +3,10 @@ import type { Note, Label, NoteColor, NoteImage } from '#lib/types.js';
 import { activeFilterCount, matchesFilters, NO_FILTERS, type SearchFilters } from '#lib/search.js';
 import {
 	getAllNotesMetadata,
-	getStoredAttachmentKeys,
-	getSyncState,
+	getStoredAttachmentVersions,
+	holdAttachmentWrites,
 	hydrateNoteAttachments,
 	putNote,
-	setSyncState,
 	deleteNote,
 	getAllLabels,
 	putLabel,
@@ -40,18 +39,13 @@ import {
 import { editContext, syncClock } from '#lib/editContext.js';
 import { mergeHydratedImages } from '#lib/noteAttachmentHydration.js';
 import { AttachmentHydrationQueue } from '#lib/attachmentHydrationQueue.js';
-import { syncStore } from '#lib/stores/sync.svelte.js';
+import { syncStore, type PulledRelayState } from '#lib/stores/sync.svelte.js';
 import { kanbanStore } from '#lib/stores/kanban.svelte.js';
 import { actionUndo } from '#lib/stores/actionUndo.svelte.js';
 import { composerStore } from '#lib/stores/composer.svelte.js';
 import { canvasLibraryStore } from '#lib/stores/canvasLibrary.js';
 import { reminderHistoryStore } from '#lib/stores/reminderHistory.js';
-import {
-	attachmentRefKey,
-	attachmentToImage,
-	syncSnapshot,
-	type SyncSnapshot
-} from '#lib/syncRecords.js';
+import { attachmentToImage, syncSnapshot, type SyncSnapshot } from '#lib/syncRecords.js';
 import { sha256 } from '#lib/syncHash.js';
 import { uiStore } from '#lib/stores/ui.svelte.js';
 import { trashPurgeAt, cloneNote } from '#lib/utils.js';
@@ -82,8 +76,7 @@ import {
 import {
 	ensureAttachmentPreview,
 	fileToNoteImage,
-	prepareAttachmentForMemory,
-	stripFullPreviewBytes
+	prepareAttachmentForMemory
 } from '#lib/noteImages.js';
 import { isCanvasAttachment } from '#lib/canvasAttachment.js';
 import { replacementFitsStorage } from '#lib/storageCapacity.js';
@@ -150,27 +143,15 @@ export function noteNeedsDurableWrite(current: Note | undefined, candidate: Note
 }
 
 /**
- * Attachments another device replaced (a crop, a redrawn canvas) whose new bytes
- * have not arrived with the note. The bytes this device holds under the same id
- * are the version before: kept, they would be shown and later uploaded as the new one.
+ * What settling decided for attachment versions a note listed, keyed by note id,
+ * attachment id and version: the attachment as the note lists it from now on, or
+ * null when the note stops listing it.
  */
-export function supersededAttachmentIds(held: Note | undefined, incoming: Note): string[] {
-	const heldHashes = new Map((held?.images ?? []).map((image) => [image.id, image.contentHash]));
-	return (incoming.images ?? [])
-		.filter((image) => {
-			const heldHash = heldHashes.get(image.id);
-			return !image.dataUrl && !!image.contentHash && !!heldHash && heldHash !== image.contentHash;
-		})
-		.map((image) => image.id);
+type AttachmentDecisions = Map<string, NoteImage | null>;
+
+function attachmentDecisionKey(noteId: string, image: NoteImage): string {
+	return JSON.stringify([noteId, image.id, image.contentHash ?? '']);
 }
-
-/** How many attachments one sync asks the relay for by name; the rest wait for the next. */
-const ATTACHMENT_RECOVERY_BUDGET = 20;
-
-/** Set once a workspace's stored attachments have been checked against their notes. */
-const ATTACHMENTS_VERIFIED_KEY = 'scrapscache-attachments-verified';
-
-type ListedAttachment = { noteId: string; id: string; hash: string };
 
 /** True when closing the editor should throw the note away. */
 export function noteIsBlank(note: Note): boolean {
@@ -213,10 +194,6 @@ export class NotesStore {
 	private lastAutoSyncAt = 0;
 	/** Notes whose photos are on this device but could not be read; retried on the next sync. */
 	private attachmentHydrationFailures = new Set<string>();
-	/** Attachment versions the relay did not hold when asked; not asked again this session. */
-	private attachmentsRelayLacks = new Set<string>();
-	/** Checks of stored attachments this session that found bytes they could not read. */
-	private unreadableAttachmentChecks = 0;
 	private visibleAttachmentQueue = new AttachmentHydrationQueue((noteId) =>
 		this.ensureNoteAttachments(noteId)
 	);
@@ -358,6 +335,12 @@ export class NotesStore {
 					this.recordPersistenceError('Could not restore IndexedDB from mirror', err);
 				}
 			}
+			// A synced workspace settles its attachments against the relay, at each sync.
+			if (!deviceReadFailed && !syncStore.isLoggedIn) {
+				await this.settleAttachmentsWithoutRelay().catch((err) =>
+					this.recordPersistenceError('Could not settle attachments', err)
+				);
+			}
 			pruneOrphanImageBlobs(this.pid).catch((err) =>
 				this.recordPersistenceError('Could not reclaim unused photo storage', err)
 			);
@@ -493,121 +476,152 @@ export class NotesStore {
 	}
 
 	/**
-	 * A sync downloads only what changed since the last one, so bytes this device
-	 * should hold but does not never come back with it. After a sync, each listed
-	 * attachment without bytes here is asked of the relay by name: a few a sync, and
-	 * once a session each, since one another device is still uploading arrives by sync.
+	 * After a download has drained, every attachment a note lists is settled from two
+	 * recorded facts: the version of it this device holds, and the version the relay
+	 * holds. Nothing is assumed about an attachment that is absent.
+	 *
+	 * - Held here and on the relay: nothing to do.
+	 * - Held here only: this device owes the upload. Its bytes are loaded so they
+	 *   travel in the request that makes the note list it.
+	 * - Not held here: the relay is asked for the attachment by name. Its bytes are
+	 *   stored if it holds the version listed. If it holds another version, the one
+	 *   listed was never uploaded and the note lists the relay's instead. If it
+	 *   holds none, the note lists the version this device does hold, which it then
+	 *   owes; holding none either, the attachment was never there and the note
+	 *   stops listing it.
+	 *
+	 * A request that fails stops the sync: the next one asks again.
 	 */
-	private async recoverMissingAttachments(): Promise<void> {
+	private async settleAttachments(
+		notes: Note[],
+		pid: string,
+		relay: PulledRelayState
+	): Promise<{ notes: Note[]; decisions: AttachmentDecisions; persist: Set<string> }> {
+		const decisions: AttachmentDecisions = new Map();
+		const persist = new Set<string>();
 		const account = syncStore.account;
-		const pid = this.pid;
-		if (!account) return;
-		try {
-			const stored = await getStoredAttachmentKeys(pid);
-			const missing: ListedAttachment[] = [];
-			for (const note of this.notes) {
-				for (const image of note.images ?? []) {
-					if (image.dataUrl || !image.contentHash || stored.has(`${note.id}::${image.id}`))
-						continue;
-					if (this.attachmentsRelayLacks.has(attachmentRefKey(image.id, image.contentHash)))
-						continue;
-					missing.push({ noteId: note.id, id: image.id, hash: image.contentHash });
+		if (!account) return { notes, decisions, persist };
+		const stored = await getStoredAttachmentVersions(pid);
+		const owed: string[] = [];
+		/** An attachment with the bytes stored for it, to travel with its note. */
+		const withStoredBytes = async (note: Note, image: NoteImage): Promise<NoteImage> => {
+			const dataUrl = await hydrateNoteAttachments(pid, {
+				...cloneNote(note),
+				images: [image]
+			}).then(
+				(read) => read.images?.[0]?.dataUrl ?? '',
+				() => ''
+			);
+			if (dataUrl) return { ...image, dataUrl };
+			this.attachmentHydrationFailures.add(note.id);
+			return image;
+		};
+		for (const note of notes) {
+			for (const listed of note.images ?? []) {
+				const key = attachmentDecisionKey(note.id, listed);
+				const held = stored.get(`${note.id}::${listed.id}`);
+				const hash = listed.contentHash ?? (listed.dataUrl ? await sha256(listed.dataUrl) : held);
+				if (!hash) {
+					decisions.set(key, null);
+					continue;
+				}
+				if (listed.dataUrl || held === hash) {
+					let image = listed.contentHash ? listed : { ...listed, contentHash: hash };
+					if (image.dataUrl && held !== hash) {
+						// These bytes are not stored yet; a preview of the bytes before goes.
+						if (held !== undefined) image = { ...image, thumbUrl: undefined };
+						persist.add(note.id);
+					}
+					if (!relay.relayHolds(image.id, hash)) {
+						owed.push(`note:${note.id}`, `attachment:${image.id}`);
+						if (!image.dataUrl) image = await withStoredBytes(note, image);
+					}
+					if (image !== listed) decisions.set(key, image);
+					continue;
+				}
+				// Loaded on demand: the history client itself fetches through the sync store.
+				const { loadCurrentAttachment } = await import('#lib/historyClient.js');
+				const onRelay = await loadCurrentAttachment(account, listed.id);
+				relay.relayHas(listed.id, onRelay?.hash ?? null);
+				persist.add(note.id);
+				if (onRelay?.hash === hash) {
+					decisions.set(key, {
+						...listed,
+						contentHash: hash,
+						dataUrl: onRelay.dataUrl,
+						thumbUrl: undefined
+					});
+					continue;
+				}
+				// The note changes, so the relay's copy of it has to follow.
+				owed.push(`note:${note.id}`);
+				const { editedAt: _edit, thumbUrl: _preview, ...kept } = listed;
+				if (onRelay) decisions.set(key, { ...kept, ...attachmentToImage(onRelay) });
+				else if (held === undefined) decisions.set(key, null);
+				else {
+					owed.push(`attachment:${listed.id}`);
+					decisions.set(key, await withStoredBytes(note, { ...kept, contentHash: held }));
 				}
 			}
-			for (const wanted of missing.slice(0, ATTACHMENT_RECOVERY_BUDGET)) {
-				if (pid !== this.pid || syncStore.account !== account) return;
-				if (!(await this.recoverAttachment(account, pid, wanted)))
-					this.attachmentsRelayLacks.add(attachmentRefKey(wanted.id, wanted.hash));
-			}
-		} catch (err) {
-			console.error('[notes] Could not recover attachments from the relay', err);
 		}
+		if (owed.length) await relay.owes([...new Set(owed)]);
+		return {
+			notes: notes.map((note) => this.withAttachmentDecisions(note, decisions)),
+			decisions,
+			persist
+		};
 	}
 
 	/**
-	 * Once per workspace: bytes stored under an attachment that are not the version
-	 * its note names (an edit from another device once arrived before its bytes) are
-	 * replaced with the relay's copy of that version. Where the relay holds no such
-	 * version, the bytes stay: they are all there is of the attachment.
-	 *
-	 * False when bytes are left unchecked: the relay could not be asked, or they
-	 * could not be read. The sync that called must not go on, since it would upload
-	 * them as the version named, over the copy that repairs them. Bytes that stay
-	 * unreadable hold back one sync a session, not every sync.
+	 * A workspace that does not sync has no relay to ask: the bytes this device holds
+	 * are all there is of an attachment. A note listing another version lists the
+	 * one held, and a note listing bytes that were never saved stops listing them.
 	 */
-	private async verifyStoredAttachments(): Promise<boolean> {
-		const account = syncStore.account;
+	private async settleAttachmentsWithoutRelay(): Promise<void> {
 		const pid = this.pid;
-		if (!account || this.unreadableAttachmentChecks > 1) return true;
-		try {
-			if (await getSyncState<boolean>(pid, ATTACHMENTS_VERIFIED_KEY)) return true;
-			const listed = this.notes.flatMap((note) =>
-				(note.images ?? []).flatMap((image) =>
-					image.contentHash ? [{ note: cloneNote(note), image, hash: image.contentHash }] : []
-				)
-			);
-			let unreadable = false;
-			for (const { note, image, hash } of listed) {
-				if (pid !== this.pid || syncStore.account !== account) return false;
-				const stored = await hydrateNoteAttachments(pid, {
-					...note,
-					images: [{ ...image, dataUrl: '' }]
-				}).catch(() => null);
-				if (!stored) {
-					unreadable = true;
-					continue;
-				}
-				const dataUrl = stored.images?.[0]?.dataUrl;
-				if (!dataUrl || (await sha256(dataUrl)) === hash) continue;
-				await this.recoverAttachment(account, pid, { noteId: note.id, id: image.id, hash });
+		const stored = await getStoredAttachmentVersions(pid);
+		const decisions: AttachmentDecisions = new Map();
+		for (const note of this.notes) {
+			for (const listed of note.images ?? []) {
+				if (listed.dataUrl) continue;
+				const held = stored.get(`${note.id}::${listed.id}`);
+				if (held !== undefined && held === listed.contentHash) continue;
+				const { editedAt: _edit, ...kept } = listed;
+				decisions.set(
+					attachmentDecisionKey(note.id, listed),
+					held === undefined ? null : { ...kept, contentHash: held }
+				);
 			}
-			if (!unreadable) {
-				await setSyncState(pid, ATTACHMENTS_VERIFIED_KEY, true);
-				return true;
-			}
-			this.unreadableAttachmentChecks += 1;
-			if (this.unreadableAttachmentChecks > 1) return true;
-			throw new Error('Some stored attachments could not be read');
-		} catch (err) {
-			this.recordPersistenceError('Could not check stored attachments before syncing', err);
-			return false;
 		}
+		if (decisions.size === 0 || pid !== this.pid) return;
+		for (const [index, note] of this.notes.entries()) {
+			const settled = this.withAttachmentDecisions(note, decisions);
+			if (settled === note) continue;
+			this.notes[index] = settled;
+			await putNote(pid, settled, noteSyncKeys(settled));
+		}
+		this.scheduleMirror();
 	}
 
-	/** Store the relay's copy of one attachment version. False when the relay does not hold it. */
-	private async recoverAttachment(
-		account: NonNullable<typeof syncStore.account>,
-		pid: string,
-		wanted: ListedAttachment
-	): Promise<boolean> {
-		// Loaded on demand: the history client itself fetches through the sync store.
-		const { loadCurrentAttachment } = await import('#lib/historyClient.js');
-		const attachment = await loadCurrentAttachment(account, wanted);
-		if (!attachment) return false;
-		const recovered = await ensureAttachmentPreview(attachmentToImage(attachment));
-		const wantedHere = (image: NoteImage) =>
-			image.id === wanted.id && image.contentHash === wanted.hash;
-		// A preview made from the bytes before goes with them.
-		const withBytes = (image: NoteImage): NoteImage =>
-			wantedHere(image)
-				? { ...image, dataUrl: recovered.dataUrl, thumbUrl: recovered.thumbUrl }
-				: image;
-		if (pid !== this.pid) return true;
-		// Read and queued without a pause between, so the write keeps its place among edits.
-		const current = this.notes.find((note) => note.id === wanted.noteId);
-		if (!current?.images?.some(wantedHere)) return true;
-		await putNote(pid, { ...current, images: current.images.map(withBytes) });
-		if (pid !== this.pid) return true;
-		const index = this.notes.findIndex((note) => note.id === wanted.noteId);
-		if (index === -1) return true;
-		const live = this.notes[index];
-		this.notes[index] = {
-			...live,
-			images: (live.images ?? []).map((image) =>
-				wantedHere(image) ? stripFullPreviewBytes(withBytes(image)) : image
-			)
-		};
-		return true;
+	/** A note with what settling decided for its attachments; the same note when nothing was. */
+	private withAttachmentDecisions(note: Note, decisions: AttachmentDecisions): Note {
+		if (decisions.size === 0 || !note.images?.length) return note;
+		const dropped: string[] = [];
+		let changed = false;
+		const images = note.images.flatMap((image) => {
+			const key = attachmentDecisionKey(note.id, image);
+			if (!decisions.has(key)) return [image];
+			changed = true;
+			const decided = decisions.get(key);
+			if (decided) return [decided];
+			dropped.push(image.id);
+			return [];
+		});
+		if (!changed) return note;
+		const settled = { ...note, images };
+		// A marker for an attachment that was never there would read as a missing photo.
+		const body = stripPhotoMarkers(note.body ?? '', dropped);
+		return body === (note.body ?? '') ? settled : applyNoteEdit(settled, { body }, editContext);
 	}
 
 	/** Queue attachment bytes only when a note card enters the viewport. */
@@ -637,6 +651,7 @@ export class NotesStore {
 		this.notes[idx] = applyNoteEdit(this.notes[idx], patch, editContext);
 		const note = this.notes[idx];
 		const pid = this.pid;
+		const bytesLanded = this.holdWhileBytesLand(pid, note);
 		this.journal([note]);
 		this.scheduleMirror();
 		try {
@@ -645,9 +660,10 @@ export class NotesStore {
 			this.lastPersistError = null;
 			this.dirty = true;
 			this.scheduleSyncPush();
+			bytesLanded();
 		} catch (err) {
 			this.recordPersistenceError(`Could not save note ${id}`, err);
-			this.scheduleNoteRetry(id);
+			this.scheduleNoteRetry(id, bytesLanded);
 			throw err;
 		}
 	}
@@ -1371,11 +1387,11 @@ export class NotesStore {
 		this.cancelScheduledMirror();
 		for (const timer of this.noteRetryTimers.values()) clearTimeout(timer);
 		this.noteRetryTimers.clear();
+		for (const held of this.noteRetryHolds.values()) held.forEach((landed) => landed());
+		this.noteRetryHolds.clear();
 		this.noteRetryAttempts.clear();
 		this.attachmentLoads.clear();
 		this.attachmentHydrationFailures.clear();
-		this.attachmentsRelayLacks.clear();
-		this.unreadableAttachmentChecks = 0;
 		this.visibleAttachmentQueue.clear();
 		this.syncFollowupRequested = false;
 		this.dirty = false;
@@ -1659,6 +1675,8 @@ export class NotesStore {
 
 	private syncPushTimer: ReturnType<typeof setTimeout> | null = null;
 	private noteRetryTimers = new Map<string, ReturnType<typeof setTimeout>>();
+	/** The holds on the attachment-writes lock that each waiting retry carries. */
+	private noteRetryHolds = new Map<string, Array<() => void>>();
 	private noteRetryAttempts = new Map<string, number>();
 	private dirty = false;
 	private syncFlight = $state<Promise<boolean> | null>(null);
@@ -1667,14 +1685,35 @@ export class NotesStore {
 	/** The workspace another window synced while this one was hidden and skipped re-reading. */
 	private staleWhileHidden: string | null = null;
 
-	private scheduleNoteRetry(id: string): void {
+	/**
+	 * Hold the attachment-writes lock for a write of this note that carries bytes,
+	 * until the function returned is called. Asked for before the note is journaled:
+	 * once another window can read that it lists new bytes, it can tell they have
+	 * not landed.
+	 */
+	private holdWhileBytesLand(pid: string, note: Note): () => void {
+		return (note.images ?? []).some((image) => image.dataUrl)
+			? holdAttachmentWrites(pid)
+			: () => undefined;
+	}
+
+	/**
+	 * Write the note again in a while. `bytesLanded` is the failed write's hold on
+	 * the attachment-writes lock: the retry keeps that same hold, so a window already
+	 * waiting to read what is stored goes on waiting until the bytes are in.
+	 */
+	private scheduleNoteRetry(id: string, bytesLanded: () => void = () => undefined): void {
+		this.noteRetryHolds.set(id, [...(this.noteRetryHolds.get(id) ?? []), bytesLanded]);
 		if (this.noteRetryTimers.has(id)) return;
 		const attempt = this.noteRetryAttempts.get(id) ?? 0;
 		const delay = Math.min(30_000, 1_000 * 2 ** attempt);
 		const timer = setTimeout(() => {
 			this.noteRetryTimers.delete(id);
+			const held = this.noteRetryHolds.get(id) ?? [];
+			this.noteRetryHolds.delete(id);
+			const allLanded = () => held.forEach((landed) => landed());
 			const note = this.notes.find((item) => item.id === id);
-			if (!note) return;
+			if (!note) return allLanded();
 			const pid = this.pid;
 			putNote(pid, note, noteSyncKeys(note))
 				.then(() => {
@@ -1683,11 +1722,12 @@ export class NotesStore {
 					this.lastPersistError = null;
 					this.dirty = true;
 					this.scheduleSyncPush();
+					allLanded();
 				})
 				.catch((err) => {
 					this.noteRetryAttempts.set(id, attempt + 1);
 					this.recordPersistenceError(`Could not retry note ${id}`, err);
-					this.scheduleNoteRetry(id);
+					this.scheduleNoteRetry(id, allLanded);
 				});
 		}, delay);
 		this.noteRetryTimers.set(id, timer);
@@ -1720,13 +1760,14 @@ export class NotesStore {
 		const notes = this.notes.filter((note) => wanted.has(note.id));
 		if (notes.length === 0) return;
 		const pid = this.pid;
+		const bytesLanded = notes.map((note) => this.holdWhileBytesLand(pid, note));
 		// Preserve a crash-safe, blob-free copy synchronously before async IDB work.
 		this.journal(notes);
 		this.scheduleMirror();
 		const landed: PendingNotes = {};
 		void Promise.all(
-			notes.map((note) =>
-				this.writeNote(pid, note).then((ok) => {
+			notes.map((note, index) =>
+				this.writeNote(pid, note, bytesLanded[index]).then((ok) => {
 					if (ok) landed[note.id] = noteForLocalStorage(note);
 				})
 			)
@@ -1735,8 +1776,11 @@ export class NotesStore {
 		this.scheduleSyncPush();
 	}
 
-	/** Write one note to IndexedDB; true once it landed. A failed write retries on its own. */
-	private writeNote(pid: string, note: Note): Promise<boolean> {
+	/**
+	 * Write one note to IndexedDB; true once it landed. A failed write retries on its
+	 * own, and takes `bytesLanded` with it: the lock is let go when the bytes are in.
+	 */
+	private writeNote(pid: string, note: Note, bytesLanded: () => void): Promise<boolean> {
 		const id = note.id;
 		// The attachments whose bytes this write carries. Only those may be released
 		// from memory once it lands: a photo added while this write was queued has
@@ -1760,11 +1804,12 @@ export class NotesStore {
 					this.notes[idx] = { ...current, images };
 					this.scheduleMirror();
 				}
+				bytesLanded();
 				return true;
 			})
 			.catch((err) => {
 				this.recordPersistenceError(`Could not save note ${id}`, err);
-				this.scheduleNoteRetry(id);
+				this.scheduleNoteRetry(id, bytesLanded);
 				return false;
 			});
 	}
@@ -1809,7 +1854,11 @@ export class NotesStore {
 		);
 	}
 
-	private async applyPulledSnapshot(snapshot: SyncSnapshot, pid: string): Promise<SyncSnapshot> {
+	private async applyPulledSnapshot(
+		snapshot: SyncSnapshot,
+		pid: string,
+		pulled?: PulledRelayState
+	): Promise<SyncSnapshot> {
 		// A flight belongs to the workspace it started in. If the window has moved
 		// to another one, none of this may land: it would merge one workspace's
 		// notes into another's and save them there. The cursor is not committed
@@ -1833,8 +1882,15 @@ export class NotesStore {
 			labelTombstones
 		).sort((a, b) => a.name.localeCompare(b.name));
 		const currentById = new Map(this.notes.map((note) => [note.id, note]));
-		const notesToPersist = durableNotes.filter((note) =>
-			noteNeedsDurableWrite(currentById.get(note.id), note)
+		// A sync knows what the relay holds, so it settles every listed attachment.
+		const settled = pulled
+			? await this.settleAttachments(durableNotes, pid, pulled)
+			: { notes: durableNotes, decisions: new Map() as AttachmentDecisions, persist: new Set() };
+		if (pid !== this.pid) return snapshot;
+		durableNotes = settled.notes;
+		const notesToPersist = durableNotes.filter(
+			(note) =>
+				settled.persist.has(note.id) || noteNeedsDurableWrite(currentById.get(note.id), note)
 		);
 		const labelsChanged = stableStringify(this.labels) !== stableStringify(mergedLabels);
 		const tombstonedNoteIds = this.notes
@@ -1854,8 +1910,10 @@ export class NotesStore {
 			// saving the flight's older merge after it would roll the device copy back.
 			const live = this.notes.find((item) => item.id === note.id);
 			const edited = live && live !== currentById.get(note.id);
-			const incoming = edited ? mergeTwoNotes(live, note) : note;
-			await putNote(this.pid, incoming, [], supersededAttachmentIds(live, incoming));
+			await putNote(
+				this.pid,
+				edited ? this.withAttachmentDecisions(mergeTwoNotes(live, note), settled.decisions) : note
+			);
 		}
 		for (const id of tombstonedNoteIds) await deleteNote(this.pid, id);
 		for (const id of tombstonedLabelIds) await deleteLabel(this.pid, id);
@@ -1864,10 +1922,11 @@ export class NotesStore {
 		await canvasLibraryStore.persistSyncState(this.pid);
 		await reminderHistoryStore.waitForPendingWrites();
 
-		// Preserve edits made while the device writes were in flight.
-		durableNotes = withoutTombstoned(mergeNoteLists(this.notes, durableNotes), tombstones).sort(
-			(a, b) => b.updatedAt - a.updatedAt
-		);
+		// Preserve edits made while the device writes were in flight. Merging keeps
+		// every attachment either side lists, so what was settled is settled again.
+		durableNotes = withoutTombstoned(mergeNoteLists(this.notes, durableNotes), tombstones)
+			.map((note) => this.withAttachmentDecisions(note, settled.decisions))
+			.sort((a, b) => b.updatedAt - a.updatedAt);
 		mergedLabels = withoutTombstoned(
 			mergeLabelLists(this.labels, mergedLabels),
 			labelTombstones
@@ -2213,9 +2272,6 @@ export class NotesStore {
 		if (!syncStore.isLoggedIn) return false;
 		// A flight snapshots these notes, so they must not lag what another window saved.
 		if (this.staleWhileHidden === this.pid) await this.rehydrateFromIDB();
-		// Before anything is read for upload: bytes that are not the version their
-		// note names would be sent as it, over the relay's own copy of that version.
-		if (!(await this.verifyStoredAttachments())) return false;
 		// A newly reset relay needs one current-state bootstrap from this source device.
 		// Bytes are returned to thumb-only memory immediately after reconciliation below.
 		if (await syncStore.needsCurrentStateBootstrap()) await this.hydrateAllAttachments();
@@ -2230,7 +2286,7 @@ export class NotesStore {
 				this.syncSnapshot({ notes: localNotes, labels: localLabels }),
 				indicate,
 				false,
-				(snapshot, pid) => this.applyPulledSnapshot(snapshot, pid)
+				(snapshot, pid, pulled) => this.applyPulledSnapshot(snapshot, pid, pulled)
 			);
 			if (!result.success || !result.snapshot) {
 				this.recordPersistenceError(result.error || 'Cloud sync returned no notes', result.error);
@@ -2256,7 +2312,6 @@ export class NotesStore {
 			} else if (!syncStore.lastError) {
 				this.lastPersistError = null;
 			}
-			await this.recoverMissingAttachments();
 			this.onAfterSync?.();
 			return true;
 		} catch (err) {

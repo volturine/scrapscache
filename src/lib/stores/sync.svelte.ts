@@ -12,12 +12,16 @@ import {
 import { observeRelayTime } from '#lib/editContext.js';
 import {
 	currentRecordKeys,
+	emptyRelayAttachments,
 	fingerprintMapFrom,
+	noteRecordForRelay,
 	planDeletableKeys,
 	reconcileBaseline,
 	referencedAttachmentIds,
+	relayHeldVersions,
 	syncRoundHasMore,
-	syncControlKeys
+	syncControlKeys,
+	type RelayAttachments
 } from '#lib/syncEngine.js';
 import { SyncEventsClient } from '#lib/syncEventsClient.js';
 import { withoutAttachmentsHistoryNeeds } from '#lib/attachmentRetention.js';
@@ -25,7 +29,6 @@ import {
 	attachmentToImage,
 	attachmentRefKey,
 	buildSyncRecords,
-	changedRecords,
 	hydrateNoteImages,
 	isSyncRecordPayload,
 	syncRecordKey,
@@ -157,8 +160,19 @@ type SyncResult = {
 type ApplyPulled = (
 	snapshot: SyncSnapshot,
 	pid: string,
-	pulled: { readEnvelopes: number }
+	pulled: PulledRelayState
 ) => Promise<SyncSnapshot>;
+
+/** What a drained download tells the notes store about the relay. */
+export type PulledRelayState = {
+	readEnvelopes: number;
+	/** True when the relay holds this attachment version and a note there lists it. */
+	relayHolds: (id: string, hash: string) => boolean;
+	/** Record the version found when the relay was asked for an attachment by name. */
+	relayHas: (id: string, hash: string | null) => void;
+	/** Queue records this device now has to send. */
+	owes: (keys: string[]) => Promise<void>;
+};
 
 function mergeTombstoneMaps(
 	local: Record<string, number>,
@@ -1045,7 +1059,15 @@ export class SyncStore {
 			} catch {
 				/* first sync */
 			}
+			// What the relay holds of attachments is learned from what this device downloads
+			// and uploads. A device without that record starts over and downloads everything.
+			const knownRelay = await getSyncState<RelayAttachments>(pid, keys.relayAttachments).catch(
+				() => undefined
+			);
+			if (!knownRelay?.versions || !knownRelay.listed) baseline = {};
 			const firstFullUpload = Object.keys(baseline).length === 0;
+			let relay: RelayAttachments =
+				firstFullUpload || !knownRelay ? emptyRelayAttachments() : knownRelay;
 			let recordIds =
 				(await getSyncState<Record<string, string>>(pid, keys.recordIds).catch(() => undefined)) ??
 				{};
@@ -1107,6 +1129,19 @@ export class SyncStore {
 					)
 				).filter((key) => key !== PROFILE_META_KEY);
 			const acknowledgedOutbox = new Set<string>();
+			const uploadedThisSync = new Map<string, string>();
+			/** Keep the record of the relay's attachments in step with a record it holds. */
+			const sawOnRelay = (payload: SyncRecordPayload): void => {
+				if (payload.kind === 'attachment') relay.versions[payload.value.id] = payload.value.hash;
+				else if (payload.kind === 'note-tombstone') delete relay.listed[payload.id];
+				else if (payload.kind === 'note') {
+					// A deleted note's record protects nothing: its attachments may be cleaned up.
+					if (Number(merged.tombstones[payload.value.id]) > 0)
+						delete relay.listed[payload.value.id];
+					else
+						relay.listed[payload.value.id] = (payload.value.images ?? []).map((image) => image.id);
+				}
+			};
 			const internallyMarkedOutbox = new Map<string, number>();
 			let poisonCount = 0;
 			let readEnvelopes = 0;
@@ -1138,20 +1173,83 @@ export class SyncStore {
 						payload: metaPayload
 					});
 				}
-				const changed =
-					pullOnly || !downloadsDrained ? [] : changedRecords(currentRecords, baseline);
-				const nonAttachments = changed.filter(
-					(record) => record.payload.kind !== 'attachment' && !quotaBlockedKeys.has(record.key)
+				// The relay never lists an attachment version it does not hold: a request
+				// commits whole, so bytes travel in the same one as the notes that list them,
+				// and every note is sent listing only what the relay holds once it commits.
+				const uploading = pullOnly || !downloadsDrained ? [] : currentRecords;
+				const relayHeld = relayHeldVersions(relay);
+				const noteRecords = uploading.filter((record) => record.payload.kind === 'note');
+				const listsAttachment = (record: SyncRecord, id: string, hash: string): boolean =>
+					record.payload.kind === 'note' &&
+					(record.payload.value.images ?? []).some(
+						(image) => image.id === id && image.hash === hash
+					);
+				const sendingAttachments: SyncRecord[] = [];
+				const carriers: SyncRecord[] = [];
+				for (const record of uploading) {
+					if (sendingAttachments.length >= (quotaSingleUpload ? 1 : ATTACHMENT_UPLOAD_BUDGET))
+						break;
+					if (record.payload.kind !== 'attachment' || quotaBlockedKeys.has(record.key)) continue;
+					const { id, hash } = record.payload.value;
+					if (relayHeld.get(id) === hash) continue;
+					// Every note the relay has listing this attachment is rewritten with it, and
+					// at least one note lists the new version: none may be left naming bytes
+					// the relay has replaced.
+					const listing = noteRecords.filter((note) => listsAttachment(note, id, hash));
+					const listedOnRelay = Object.entries(relay.listed)
+						.filter(([, ids]) => ids.includes(id))
+						.map(([noteId]) => `note:${noteId}`);
+					const rewritten = noteRecords.filter((note) => listedOnRelay.includes(note.key));
+					const needed = [...new Set([...listing.slice(0, 1), ...rewritten])];
+					const together = new Set([...carriers, ...needed]).size + sendingAttachments.length + 1;
+					if (
+						listing.length === 0 ||
+						rewritten.length < listedOnRelay.length ||
+						needed.some((note) => quotaBlockedKeys.has(note.key)) ||
+						together > MAX_CLIENT_SYNC_MUTATIONS_PER_REQUEST
+					)
+						continue;
+					sendingAttachments.push(record);
+					for (const note of needed) if (!carriers.includes(note)) carriers.push(note);
+				}
+				const heldAfter = new Map(relayHeld);
+				for (const record of sendingAttachments) {
+					if (record.payload.kind === 'attachment')
+						heldAfter.set(record.payload.value.id, record.payload.value.hash);
+				}
+				const forRelay = (record: SyncRecord) => noteRecordForRelay(record, heldAfter);
+				const changed = (
+					await Promise.all(
+						uploading
+							.filter((record) => record.payload.kind !== 'attachment')
+							.map(async (record) => ({ local: record, sent: await forRelay(record) }))
+					)
+				).filter(
+					// A note the relay already holds as it would be sent needs no sending.
+					({ sent }) => !quotaBlockedKeys.has(sent.key) && baseline[sent.key] !== sent.fingerprint
 				);
-				const changedAttachments = changed.filter(
-					(record) => record.payload.kind === 'attachment' && !quotaBlockedKeys.has(record.key)
-				);
-				// Notes/labels/boards go before photos so one over-quota image cannot strand text.
-				const recordBudget = quotaSingleUpload ? 1 : MAX_CLIENT_SYNC_MUTATIONS_PER_REQUEST;
-				const attachBudget = quotaSingleUpload ? 1 : ATTACHMENT_UPLOAD_BUDGET;
-				const outgoing = nonAttachments.length
-					? nonAttachments.slice(0, recordBudget)
-					: changedAttachments.slice(0, attachBudget);
+				// The notes an attachment travels with go first, so the request holds them.
+				const first = changed.filter(({ local }) => carriers.includes(local));
+				const rest = changed.filter(({ local }) => !carriers.includes(local));
+				// Under quota pressure a round sends the least that commits alone: one
+				// attachment with its notes, or one other record.
+				const outgoing: SyncRecord[] = quotaSingleUpload
+					? sendingAttachments.length
+						? [...sendingAttachments, ...first.map(({ sent }) => sent)]
+						: rest.slice(0, 1).map(({ sent }) => sent)
+					: [...sendingAttachments, ...[...first, ...rest].map(({ sent }) => sent)].slice(
+							0,
+							MAX_CLIENT_SYNC_MUTATIONS_PER_REQUEST
+						);
+				// Attachments past this round's budget go in the next one, once this one is in.
+				const dueAttachments = uploading.filter(
+					(record) =>
+						record.payload.kind === 'attachment' &&
+						!quotaBlockedKeys.has(record.key) &&
+						relayHeld.get(record.payload.value.id) !== record.payload.value.hash
+				).length;
+				const uploadsLeft =
+					outgoing.length > 0 ? dueAttachments + changed.length - outgoing.length : 0;
 				const sentRecordKeys = new Set(outgoing.map((record) => record.key));
 				const sentIds = new Set<string>();
 				const sentRecordIds = new Map<string, string>();
@@ -1168,7 +1266,10 @@ export class SyncStore {
 						const expectedId = recordIds[record.key] ?? null;
 						// Only a version this editing session uploaded is continued; one another
 						// device or an earlier session wrote stays in the history.
-						const uploadedId = this.editSessions.get(record.key)?.uploadedId;
+						// So is a note this sync sent a moment ago with fewer attachments listed:
+						// the two are one version, arriving in steps.
+						const uploadedId =
+							this.editSessions.get(record.key)?.uploadedId ?? uploadedThisSync.get(record.key);
 						return {
 							id,
 							slot,
@@ -1221,7 +1322,7 @@ export class SyncStore {
 				);
 				if (syncCancelled()) return { success: false, error: 'Sync was cancelled' };
 				if (!response.success && response.status === 507 && outgoing.length > 0) {
-					if (outgoing.length > 1) quotaSingleUpload = true;
+					if (!quotaSingleUpload && outgoing.length > 1) quotaSingleUpload = true;
 					else {
 						const blockedKey = outgoing[0].key;
 						quotaBlockedKeys.add(blockedKey);
@@ -1268,9 +1369,15 @@ export class SyncStore {
 				const conflictNeedsCatchUp = !writesAccepted && conflicts.length > 0;
 				if (writesAccepted) {
 					if (outgoing.length > 0 || deleteSlots.length > 0) stalledWrites = 0;
-					for (const key of deletableKeys) delete recordIds[key];
+					for (const key of deletableKeys) {
+						delete recordIds[key];
+						if (key.startsWith('attachment:')) delete relay.versions[key.slice(11)];
+						if (key.startsWith('note:')) delete relay.listed[key.slice(5)];
+					}
+					for (const record of outgoing) sawOnRelay(record.payload);
 					for (const [key, id] of sentRecordIds) {
 						recordIds[key] = id;
+						uploadedThisSync.set(key, id);
 						const session = this.editSessions.get(key);
 						if (session) session.uploadedId = id;
 					}
@@ -1285,6 +1392,7 @@ export class SyncStore {
 					this.bootstrapRequested = true;
 					baseline = {};
 					recordIds = {};
+					relay = emptyRelayAttachments();
 					cursor = 0;
 					continue;
 				}
@@ -1294,6 +1402,7 @@ export class SyncStore {
 				let decodedAny = false;
 				let adoptedConflictId = false;
 				const applyPayload = (record: SyncRecordPayload) => {
+					sawOnRelay(record);
 					switch (record.kind) {
 						case 'attachment': {
 							const image = attachmentToImage(record.value);
@@ -1437,7 +1546,21 @@ export class SyncStore {
 					applyPulled
 				) {
 					if (syncCancelled()) return { success: false, error: 'Sync was cancelled' };
-					merged = await applyPulled(merged, pid, { readEnvelopes });
+					merged = await applyPulled(merged, pid, {
+						readEnvelopes,
+						relayHolds: (id, hash) => relayHeldVersions(relay).get(id) === hash,
+						relayHas: (id, hash) => {
+							if (hash === null) delete relay.versions[id];
+							else relay.versions[id] = hash;
+						},
+						owes: async (owed) => {
+							const generation = await markSyncOutbox(pid, owed);
+							for (const key of owed) {
+								outboxKeys.add(key);
+								internallyMarkedOutbox.set(key, generation);
+							}
+						}
+					});
 					for (const note of merged.notes) {
 						for (const image of note.images ?? []) {
 							if (!image.dataUrl?.length) continue;
@@ -1477,8 +1600,25 @@ export class SyncStore {
 				}
 
 				if (downloadsDrained) {
+					const heldNow = relayHeldVersions(relay);
+					const listedHere = new Map<string, string[]>();
+					for (const record of mergedRecords) {
+						if (record.payload.kind !== 'note') continue;
+						for (const image of record.payload.value.images ?? []) {
+							listedHere.set(image.id, [...(listedHere.get(image.id) ?? []), image.hash]);
+						}
+					}
 					for (const key of outboxKeys) {
 						if (!currentKeys.has(key)) {
+							acknowledgedOutbox.add(key);
+						} else if (
+							// An attachment the relay holds in every version listed here has
+							// nothing left to send, whether or not its bytes were loaded.
+							key.startsWith('attachment:') &&
+							(listedHere.get(key.slice(11)) ?? []).every(
+								(hash) => heldNow.get(key.slice(11)) === hash
+							)
+						) {
 							acknowledgedOutbox.add(key);
 						} else if (
 							// Queued, but the relay already holds it as it is (pinned and unpinned
@@ -1504,7 +1644,8 @@ export class SyncStore {
 						[
 							[keys.cursor, cursor],
 							[keys.baseline, baseline],
-							[keys.recordIds, recordIds]
+							[keys.recordIds, recordIds],
+							[keys.relayAttachments, relay]
 						],
 						[
 							{ keys: acknowledgedOutbox, through: outboxSnapshotAt },
@@ -1527,7 +1668,7 @@ export class SyncStore {
 					!pullOnly &&
 					((!startedWithDownloadsDrained && (firstFullUpload || pendingOutboxUpload)) ||
 						(!writesAccepted && (outgoing.length > 0 || deleteSlots.length > 0)) ||
-						changed.filter((record) => !quotaBlockedKeys.has(record.key)).length > outgoing.length);
+						uploadsLeft > 0);
 				const pendingDeletes = downloadsDrained && (await plannedDeletes()).length > 0;
 				hasMore = syncRoundHasMore({
 					remoteHasMore: response.data.hasMore === true,
@@ -1595,7 +1736,8 @@ export class SyncStore {
 		await Promise.all([
 			deleteSyncState(pid, keys.cursor),
 			deleteSyncState(pid, keys.baseline),
-			deleteSyncState(pid, keys.recordIds)
+			deleteSyncState(pid, keys.recordIds),
+			deleteSyncState(pid, keys.relayAttachments)
 		]);
 	}
 

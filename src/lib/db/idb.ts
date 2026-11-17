@@ -10,6 +10,7 @@ import type { Label, LinkPreview, Note, NoteImage } from '#lib/types.js';
 import type { KanbanBoard } from '#lib/kanban.js';
 import { blobToDataUrl, dataUrlToBlob } from '#lib/imageBlob.js';
 import { workspaceLinkTag } from '#lib/noteLinks.js';
+import { sha256 } from '#lib/syncHash.js';
 import {
 	DEVICE_DB_NAME,
 	DEVICE_DB_VERSION,
@@ -33,9 +34,11 @@ export {
  * v7 stores workspace state under plain keys. Earlier versions wrote some of it
  * as `<key>:<workspace id>`; the upgrade renames those in place.
  */
-const WORKSPACE_DB_VERSION = 7;
+const WORKSPACE_DB_VERSION = 8;
 export const LABELS_STORE = 'labels';
 export const IMAGES_STORE = 'note-images';
+/** Attachment rows by the version of the bytes they hold; a row without one is not listed. */
+const IMAGE_VERSION_INDEX = 'hash';
 export const SYNC_OUTBOX_STORE = 'sync-outbox';
 
 /** One workspace on this device. Private ones have an empty sync key. */
@@ -157,13 +160,19 @@ export function onProfileDeleted(listener: ((pid: string) => void) | null): void
 }
 
 /** Create the workspace stores. */
-function upgradeWorkspace(db: IDBPDatabase): void {
+function upgradeWorkspace(
+	db: IDBPDatabase,
+	transaction: IDBPTransaction<unknown, string[], 'versionchange'>
+): void {
 	for (const name of [NOTES_STORE, LABELS_STORE]) {
 		if (!db.objectStoreNames.contains(name)) db.createObjectStore(name, { keyPath: 'id' });
 	}
 	for (const name of [IMAGES_STORE, SYNC_STATE_STORE, SYNC_OUTBOX_STORE]) {
 		if (!db.objectStoreNames.contains(name)) db.createObjectStore(name);
 	}
+	const images = transaction.objectStore(IMAGES_STORE);
+	if (!images.indexNames.contains(IMAGE_VERSION_INDEX))
+		images.createIndex(IMAGE_VERSION_INDEX, 'hash');
 }
 
 /** How long an open may wait on a window that holds an older version before it gives up. */
@@ -244,8 +253,8 @@ function openWorkspaceDB(pid: string, dbName: string): Promise<IDBPDatabase> {
 			terminated() {
 				if (cached()) dbPromises.delete(dbName);
 			},
-			upgrade(db) {
-				upgradeWorkspace(db);
+			upgrade(db, _oldVersion, _newVersion, transaction) {
+				upgradeWorkspace(db, transaction);
 			}
 		});
 		opening.then(
@@ -465,8 +474,12 @@ function detachNote(note: Note): Note {
 	};
 }
 
-/** Image rows are written by `putImageBlobs` and `replaceAllNotes` as `{ mime, bytes }`. */
-type StoredImage = { mime: string; bytes: Uint8Array };
+/**
+ * Attachment rows are written by `putImageBlobs` and `replaceAllNotes`. `hash` is the
+ * version the bytes are: the content hash a note names its attachment by. A row from
+ * before rows carried one is given it the first time it is read or listed.
+ */
+type StoredImage = { mime: string; bytes: Uint8Array; hash?: string };
 
 /** The bytes of a stored image row, or null when the row is missing or malformed.
  * `isView` rather than `instanceof`: a structured clone may come from another realm. */
@@ -477,22 +490,46 @@ function storedImageBytes(value: unknown): Uint8Array | null {
 	return new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 }
 
+/** A stored row's bytes as the data URL a note carries, with the version they are. */
+async function readStoredImage(
+	db: IDBPDatabase,
+	key: string
+): Promise<{ dataUrl: string; mime: string; hash: string } | null> {
+	const stored: unknown = await db.get(IMAGES_STORE, key);
+	const bytes = storedImageBytes(stored);
+	if (!bytes) return null;
+	const { mime, hash } = stored as StoredImage;
+	const dataUrl = await blobToDataUrl(new Blob([bytes.slice()], { type: mime }));
+	if (typeof hash === 'string') return { dataUrl, mime, hash };
+	const version = await sha256(dataUrl);
+	// Every write since rows carry a version brings one, so a row still without
+	// one is the row that was just read.
+	const tx = db.transaction(IMAGES_STORE, 'readwrite');
+	const current = (await tx.store.get(key)) as StoredImage | undefined;
+	if (current && current.hash === undefined) await tx.store.put({ ...current, hash: version }, key);
+	await tx.done;
+	return { dataUrl, mime, hash: version };
+}
+
+/**
+ * An attachment with the bytes this device holds for it. Bytes of another version
+ * than the one the note names are not this attachment: it comes back without any.
+ */
 async function imageFromStoredValue(
 	db: IDBPDatabase,
 	noteId: string,
 	meta: NoteImage
 ): Promise<NoteImage | null> {
 	if (meta.dataUrl?.length > 20) return copyImage(meta);
-	const stored: unknown = await db.get(IMAGES_STORE, `${noteId}::${meta.id}`);
-	const bytes = storedImageBytes(stored);
-	if (!bytes) {
+	const stored = await readStoredImage(db, `${noteId}::${meta.id}`);
+	if (!stored || (meta.contentHash && meta.contentHash !== stored.hash)) {
 		return copyImage({ ...meta, dataUrl: '' });
 	}
-	const blob = new Blob([bytes.slice()], { type: (stored as StoredImage).mime });
 	return copyImage({
 		...meta,
-		mime: meta.mime || blob.type,
-		dataUrl: await blobToDataUrl(blob)
+		mime: meta.mime || stored.mime,
+		dataUrl: stored.dataUrl,
+		contentHash: stored.hash
 	});
 }
 
@@ -513,15 +550,15 @@ async function putImageBlobs(pid: string, note: Note): Promise<void> {
 		if (!image.dataUrl) continue;
 		const blob = await dataUrlToBlob(image.dataUrl);
 		const bytes = new Uint8Array(await blob.arrayBuffer());
-		await db.put(IMAGES_STORE, { mime: blob.type, bytes }, `${note.id}::${image.id}`);
+		const hash = image.contentHash ?? (await sha256(image.dataUrl));
+		await db.put(IMAGES_STORE, { mime: blob.type, bytes, hash }, `${note.id}::${image.id}`);
 	}
 }
 
 async function putNoteSnapshot(
 	pid: string,
 	note: Note,
-	syncOutboxKeys: string[] = [],
-	supersededImageIds: readonly string[] = []
+	syncOutboxKeys: string[] = []
 ): Promise<void> {
 	const db = await getDB(pid);
 	await putImageBlobs(pid, note);
@@ -544,8 +581,6 @@ async function putNoteSnapshot(
 				if (!desiredKeys.has(key)) await tx.objectStore(IMAGES_STORE).delete(key);
 			}
 		}
-		for (const id of supersededImageIds)
-			await tx.objectStore(IMAGES_STORE).delete(`${note.id}::${id}`);
 		await tx.objectStore(NOTES_STORE).put(lean);
 		if (syncOutboxKeys.length) {
 			const generation = await nextOutboxGeneration(tx, dbName);
@@ -606,10 +641,67 @@ export async function pruneOrphanImageBlobs(pid: string): Promise<void> {
 	});
 }
 
-/** Every attachment this device holds bytes for, as `${noteId}::${attachmentId}`. */
-export async function getStoredAttachmentKeys(pid: string): Promise<Set<string>> {
+/** Held by every window, together, while a write of attachment bytes is on its way. */
+export function attachmentWritesLock(pid: string): string {
+	return `scrapscache-attachment-writes:${resolveDbName(pid)}`;
+}
+
+/**
+ * Hold that lock from now until the function returned is called. A window asks for
+ * it before it makes a note list new bytes anywhere another window can read, and
+ * lets go once the bytes are stored: no window then takes them for absent.
+ */
+export function holdAttachmentWrites(pid: string): () => void {
+	let release!: () => void;
+	const held = new Promise<void>((resolve) => (release = resolve));
+	void withAttachmentWritesLock(pid, 'shared', () => held).catch(() => undefined);
+	return release;
+}
+
+function withAttachmentWritesLock<T>(
+	pid: string,
+	mode: 'shared' | 'exclusive',
+	run: () => Promise<T>
+): Promise<T> {
+	const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined;
+	if (!locks?.request) return run();
+	return locks.request(attachmentWritesLock(pid), { mode }, run) as Promise<T>;
+}
+
+/**
+ * Which version of each attachment this device holds bytes for, keyed
+ * `${noteId}::${attachmentId}`. Read from the version index, so no bytes are loaded;
+ * rows that carry no version yet are read once to give them one.
+ *
+ * What is absent here is decided on, so the answer waits for every write of bytes
+ * that has begun, in this window or another, to land. A window that went away
+ * mid-write no longer holds the lock, and its bytes are not coming.
+ */
+export function getStoredAttachmentVersions(pid: string): Promise<Map<string, string>> {
+	return withAttachmentWritesLock(pid, 'exclusive', () => readStoredAttachmentVersions(pid));
+}
+
+async function readStoredAttachmentVersions(pid: string): Promise<Map<string, string>> {
 	const db = await getDB(pid);
-	return new Set((await db.getAllKeys(IMAGES_STORE)) as string[]);
+	const listVersions = async () => {
+		const versions = new Map<string, string>();
+		let cursor = await db
+			.transaction(IMAGES_STORE)
+			.store.index(IMAGE_VERSION_INDEX)
+			.openKeyCursor();
+		while (cursor) {
+			versions.set(String(cursor.primaryKey), String(cursor.key));
+			cursor = await cursor.continue();
+		}
+		return versions;
+	};
+	const versions = await listVersions();
+	const unversioned = ((await db.getAllKeys(IMAGES_STORE)) as string[]).filter(
+		(key) => !versions.has(key)
+	);
+	if (unversioned.length === 0) return versions;
+	for (const key of unversioned) await readStoredImage(db, key);
+	return listVersions();
 }
 
 export async function hydrateNoteAttachments(pid: string, note: Note): Promise<Note> {
@@ -617,24 +709,14 @@ export async function hydrateNoteAttachments(pid: string, note: Note): Promise<N
 	return hydrateNoteImages(db, note);
 }
 
-/**
- * A write without bytes keeps the bytes already stored for each attachment.
- * `supersededImageIds` names the exceptions: attachments whose content this
- * write replaces without bringing the new bytes, so the stored ones go with it.
- */
-export async function putNote(
-	pid: string,
-	note: Note,
-	keys: Iterable<string> = [],
-	supersededImageIds: readonly string[] = []
-): Promise<void> {
+export async function putNote(pid: string, note: Note, keys: Iterable<string> = []): Promise<void> {
 	const snapshot = plainNote(note);
 	const outboxKeys = uniqueOutboxKeys(keys);
 	const generation = writeGeneration;
 	return enqueueNote(pid, snapshot.id, () =>
 		enqueueDeviceWrite(async () => {
 			if (generation !== writeGeneration) return;
-			await putNoteSnapshot(pid, snapshot, outboxKeys, supersededImageIds);
+			await putNoteSnapshot(pid, snapshot, outboxKeys);
 		})
 	);
 }
@@ -883,7 +965,8 @@ export function replaceAllDeviceData(
 				if (!image.dataUrl) continue;
 				const blob = await dataUrlToBlob(image.dataUrl);
 				const bytes = new Uint8Array(await blob.arrayBuffer());
-				blobs.push({ key: `${plain.id}::${image.id}`, value: { mime: blob.type, bytes } });
+				const hash = image.contentHash ?? (await sha256(image.dataUrl));
+				blobs.push({ key: `${plain.id}::${image.id}`, value: { mime: blob.type, bytes, hash } });
 			}
 			rows.push({ lean: detachNote(plain), blobs });
 		}

@@ -60,14 +60,15 @@ Compose commands as above. Prefer a pinned GHCR image for real deployments.
 
 ### Updating sync clients and recovering a release
 
-The app, relay, and MCP server use sync protocol v2. Update the relay and MCP
-server together, and reload browser clients; older clients cannot sync through
-the v2 endpoint. A newer client pointed at an older relay keeps its pending
+The app, relay, and MCP server use sync protocol v3. Update the relay and MCP
+server together, and reload browser clients; older clients are refused by the
+delta endpoint until they update. A newer client pointed at an older relay keeps its pending
 changes locally until the relay is updated.
 
-Once v2 clients have written records, do not deploy a pre-v2 app, relay, or MCP
-image against those records. Recovery builds must retain the v2 delta endpoint,
-its version gate, and the v2 body-document reader/writer. Fix forward or revert
+Once v3 clients have written records, do not deploy an earlier app, relay, or MCP
+image against those records. Recovery builds must retain the delta endpoint,
+its version gate, the body-document reader/writer, and the rule that an
+attachment is uploaded with the note that lists it. Fix forward or revert
 unrelated changes selectively. The old endpoint would allow older clients to
 misread replacement bodies and discard edits; the ciphertext-only relay cannot
 convert their contents. Keep the stored ciphertext and volumes intact.

@@ -172,20 +172,25 @@
 		// Match any contenteditable host (including plaintext-only). A strict ="true"
 		// check lets page clicks steal focus and collapse multi-line iOS selections.
 		if (el?.closest('button, input, textarea, select, a, [contenteditable]')) return;
-		const active = document.activeElement;
-		// The dialog itself holds focus from the moment it opens; only a field counts here.
-		if (
-			active instanceof HTMLElement &&
-			active !== editorDialog &&
-			editorDialog?.contains(active)
-		) {
+		const field = focusedField();
+		if (field) {
 			// Android keeps a contenteditable focused after its software-keyboard
 			// dismiss action. Treat a tap on empty note chrome like the header buttons:
 			// explicitly blur the field so the keyboard can close reliably.
-			active.blur();
+			field.blur();
 			return;
 		}
 		bodyEditor?.focusDefault();
+	}
+
+	/** The field of the note that has focus. The dialog itself holds focus from the moment it opens, and is not one. */
+	function focusedField(): HTMLElement | null {
+		const active = document.activeElement;
+		return active instanceof HTMLElement &&
+			active !== editorDialog &&
+			editorDialog?.contains(active)
+			? active
+			: null;
 	}
 
 	function revealFocusedEditorField() {
@@ -253,7 +258,11 @@
 		if (autofocusBody) {
 			void tick().then(() => {
 				bodyEditor?.focusDefault();
-				setTimeout(() => bodyEditor?.focusDefault(), 50);
+				// Asked again in case the first ask did not take. A field the writer has
+				// gone to since, the title for one, keeps the caret.
+				setTimeout(() => {
+					if (!focusedField()) bodyEditor?.focusDefault();
+				}, 50);
 			});
 		}
 		return () => {

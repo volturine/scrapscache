@@ -37,6 +37,9 @@ updates:
     ignore:
       - dependency-name: 'typescript'
         update-types: ['version-update:semver-major']
+      # The iPhone app hands Excalidraw this copy in place of the one it pins
+      # (src/lib/native/browserFsAccess.ts); move it only to Excalidraw's version.
+      - dependency-name: 'browser-fs-access'
 
   # The MCP recipe ships its own npm project and Docker image; cover them too.
   - package-ecosystem: npm

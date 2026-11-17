@@ -304,6 +304,20 @@ describe('NoteEditor header reminder controls', () => {
 		const body = container.querySelector('[data-body-editor]');
 		await vi.waitFor(() => expect(document.activeElement).toBe(body));
 	});
+
+	it('leaves the caret in the title when the writer goes there as the note opens', async () => {
+		notesStore.notes = [note({ id: 'note-1', body: 'hello' })];
+		const { container } = render(NoteEditor, {
+			props: { noteId: 'note-1', autofocusBody: true, onClose: () => {} }
+		});
+		const body = container.querySelector('[data-body-editor]');
+		const title = container.querySelector<HTMLTextAreaElement>('[data-note-title]')!;
+		await vi.waitFor(() => expect(document.activeElement).toBe(body));
+		title.focus();
+		// The note asks for its body once more, 50 ms after it opens.
+		await new Promise((resolve) => setTimeout(resolve, 120));
+		expect(document.activeElement).toBe(title);
+	});
 });
 
 describe('NoteEditor task focus', () => {

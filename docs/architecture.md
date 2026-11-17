@@ -190,14 +190,57 @@ The keyring itself — id, display name, and sync key per workspace — is held 
 | Health            | `/health/live`, `/health/ready`                                            | Liveness and readiness probes                             |
 | Hooks             | `src/hooks.server.ts`                                                      | Security headers, request IDs                             |
 
-The delta endpoint uses sync protocol v2 and requires the matching version
-header from the app or MCP client. The previous endpoint is removed: cached
-clients must reload, and older MCP clients or self-hosted relays must update
-before transferring these body documents. Other API routes are unchanged.
-After v2 clients have written records, every deployed app and relay must retain
-the v2 endpoint and body-document format. A rollback to pre-v2 code would let old
-clients misread replacements and discard edits. See
+The delta endpoint uses sync protocol v3 and requires the matching version
+header from the app or MCP client; a client on another version is refused and
+asks to be updated. Cached clients must reload, and older MCP clients or
+self-hosted relays must update. Other API routes are unchanged.
+After v3 clients have written records, every deployed app and relay must retain
+the endpoint, its version gate, the body-document format and the attachment rule
+below. A rollback to earlier code would let old clients misread replacements and
+discard edits, and upload notes ahead of the attachments they list. See
 [release recovery](development.md#releasing-and-rolling-back).
+
+### Attachments
+
+The relay never lists an attachment version it does not hold. A request commits
+whole, so a device uploads an attachment's bytes in the same request as the notes
+that list it, and sends every note listing only the versions the relay holds once
+that request commits. A note with more new attachments than one request carries
+reaches the relay in steps, each one consistent, and the steps count as one
+version of the note.
+
+Each device records two facts and decides from them, never from bytes being
+absent. Stored bytes carry the version they are (the content hash a note names
+its attachment by), and are not read as any other version. From every record it
+downloads and uploads, the device records which attachment versions the relay
+holds and which attachments the relay's copy of each note lists; an attachment
+record no note lists does not count, since any device may delete it. A device
+without that record downloads the account once to make it. Every write of
+attachment bytes holds a shared Web Lock until it lands, and the device reads
+what it holds under that lock alone, so bytes another window is still saving
+are never taken for absent.
+
+After a download has drained, each attachment a note lists is settled:
+
+| Held here | On the relay | What happens                                                 |
+| --------- | ------------ | ------------------------------------------------------------ |
+| yes       | yes          | Nothing.                                                     |
+| yes       | no           | This device uploads it with the note.                        |
+| no        | —            | The relay is asked for the attachment by name (History API). |
+
+Asked by name, the relay answers with one of three:
+
+- **The version the note lists.** Its bytes are stored.
+- **Another version.** The one listed was never uploaded, so the note lists the
+  relay's.
+- **None.** If the device holds another version of the attachment, the note lists
+  that one and the device uploads it. If it holds nothing, the attachment was
+  never there and the note stops listing it, with no deletion marker: a device
+  that does hold it uploads it and it returns everywhere.
+
+A request that fails stops the sync. A workspace that does not sync has no relay
+to ask, so it settles at startup from what the device holds alone: a note lists
+the version held, or stops listing an attachment whose bytes were never saved.
 
 ### Opaque envelopes
 

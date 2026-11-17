@@ -2,11 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { openDB } from 'idb';
 import {
 	getAllNotesMetadata,
+	getStoredAttachmentVersions,
 	resolveDbName,
 	hydrateNoteAttachments,
 	pruneOrphanImageBlobs,
 	putNote
 } from '#lib/db/idb.js';
+import { sha256 } from '#lib/syncHash.js';
 import type { Note, NoteImage } from '#lib/types.js';
 import { TEST_WORKSPACE } from '../../tests/workspace';
 
@@ -91,31 +93,39 @@ describe('orphaned image blob reclamation', () => {
 
 		expect(await storedImageKeys()).toEqual(['lost::pic']);
 	});
+});
 
-	it('drops only the bytes a byte-less write names as superseded', async () => {
-		const original = note('n1', [
-			image('kept', 'data:image/png;base64,QQ=='),
-			image('edited', 'data:image/png;base64,Qg==')
+describe('the version of stored attachment bytes', () => {
+	it('lists which version is held without the note saying so', async () => {
+		await putNote(TEST_WORKSPACE, note('n1', [image('pic', 'data:image/png;base64,QQ==')]));
+
+		expect([...(await getStoredAttachmentVersions(TEST_WORKSPACE))]).toEqual([
+			['n1::pic', 'hash-pic']
 		]);
-		await putNote(TEST_WORKSPACE, original);
+	});
 
-		// Another device replaced 'edited'; its new bytes have not arrived yet.
-		await putNote(
-			TEST_WORKSPACE,
-			{
-				...original,
-				images: [image('kept', ''), { ...image('edited', ''), contentHash: 'hash-recropped' }]
-			},
-			[],
-			['edited']
-		);
+	it('gives bytes stored before versions were kept the hash of what they are', async () => {
+		await getAllNotesMetadata(TEST_WORKSPACE);
+		const db = await openDB(resolveDbName(TEST_WORKSPACE));
+		await db.put('note-images', { mime: 'image/png', bytes: Uint8Array.from([65]) }, 'n1::pic');
+		db.close();
 
-		expect(await storedImageKeys()).toEqual(['n1::kept']);
-		const stored = (await getAllNotesMetadata(TEST_WORKSPACE)).find((item) => item.id === 'n1');
-		const hydrated = await hydrateNoteAttachments(TEST_WORKSPACE, stored!);
-		expect(hydrated.images?.map(({ id, dataUrl }) => [id, dataUrl])).toEqual([
-			['kept', 'data:image/png;base64,QQ=='],
-			['edited', '']
+		expect([...(await getStoredAttachmentVersions(TEST_WORKSPACE))]).toEqual([
+			['n1::pic', await sha256('data:image/png;base64,QQ==')]
 		]);
+	});
+
+	it('does not read bytes as a version they are not', async () => {
+		const first = image('pic', 'data:image/png;base64,QQ==');
+		await putNote(TEST_WORKSPACE, note('n1', [first]));
+		// The note moves on to another version whose bytes have not been stored.
+		const listing = note('n1', [{ ...first, dataUrl: '', contentHash: 'hash-recropped' }]);
+		await putNote(TEST_WORKSPACE, listing);
+
+		const hydrated = await hydrateNoteAttachments(TEST_WORKSPACE, listing);
+
+		expect(hydrated.images?.[0]?.dataUrl).toBe('');
+		// The bytes are still there, under the version they are.
+		expect((await getStoredAttachmentVersions(TEST_WORKSPACE)).get('n1::pic')).toBe('hash-pic');
 	});
 });

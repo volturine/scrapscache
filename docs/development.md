@@ -547,11 +547,12 @@ release rehearsal: a red run there means the change is not ready for `master`.
 4. Watch `https://scrapscache.com/health/ready`, the Workers Logs and Issues
    panels, and `GET /api/admin/status` for the first hours.
 5. To recover, push a targeted revert or correction to `master`: production is
-   driven by the branch. After sync protocol v2 has accepted writes, retain the
-   v2 delta endpoint, its version gate, and the v2 body-document reader/writer in
-   both the app and MCP server. Do not deploy a pre-v2 image or revert the full v2
-   change: that reopens the old endpoint, whose clients can misread replacements
-   and discard edits. Revert unrelated changes independently or fix forward.
+   driven by the branch. After sync protocol v3 has accepted writes, retain the
+   delta endpoint, its version gate, the body-document reader/writer and the
+   attachment rule in both the app and MCP server. Do not deploy an earlier image
+   or revert those changes: older clients can misread replacements and discard
+   edits, and upload a note ahead of the attachments it lists. Revert unrelated
+   changes independently or fix forward.
    D1 migrations only add tables and columns; never roll back by editing the
    database. The relay holds opaque ciphertext and cannot convert body documents
    for an older client.

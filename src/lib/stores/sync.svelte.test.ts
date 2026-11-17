@@ -8,7 +8,7 @@ import {
 	signSyncChallenge,
 	type SyncIdentity
 } from '#lib/syncPairing.js';
-import { syncControlKeys } from '#lib/syncEngine.js';
+import { emptyRelayAttachments, syncControlKeys, type RelayAttachments } from '#lib/syncEngine.js';
 import { sha256 } from '#lib/syncHash.js';
 import * as idb from '#lib/db/idb.js';
 import { MAX_CLIENT_SYNC_MUTATIONS_PER_REQUEST } from '#lib/syncLimits.js';
@@ -153,11 +153,19 @@ async function seedControl(
 		baseline?: Record<string, string>;
 		recordIds?: Record<string, string>;
 		outbox?: string[];
+		/** What the device has seen the relay hold of attachments; nothing unless given. */
+		relay?: RelayAttachments;
 	}
 ): Promise<void> {
 	const keys = syncControlKeys(accountId);
 	if (state.cursor != null) await idb.setSyncState(TEST_WORKSPACE, keys.cursor, state.cursor);
 	if (state.baseline) await idb.setSyncState(TEST_WORKSPACE, keys.baseline, state.baseline);
+	if (state.baseline || state.relay)
+		await idb.setSyncState(
+			TEST_WORKSPACE,
+			keys.relayAttachments,
+			state.relay ?? emptyRelayAttachments()
+		);
 	if (state.recordIds) await idb.setSyncState(TEST_WORKSPACE, keys.recordIds, state.recordIds);
 	if (state.outbox?.length) await idb.markSyncOutbox(TEST_WORKSPACE, state.outbox);
 }
@@ -965,7 +973,11 @@ describe('client sync state machine', () => {
 			);
 
 		expect(result.success, result.error).toBe(true);
-		expect(kinds).toEqual([['note'], ['attachment', 'attachment'], ['attachment']]);
+		// Bytes travel with the note that lists them, two attachments a round.
+		expect(kinds).toEqual([
+			['attachment', 'attachment', 'note'],
+			['attachment', 'note']
+		]);
 	});
 
 	it('does not delete the old photo until the replacement upload is accepted', async () => {
@@ -1236,23 +1248,15 @@ describe('client sync state machine', () => {
 	it('uploads notes and other photos when one attachment exceeds quota', async () => {
 		const local = note('note-1', {}, [attachment('ok'), attachment('huge')]);
 		const { store, account, requests } = createHarness((request) => {
-			if (request.envelopes.length > 1) {
-				return { success: false, status: 507, error: 'Sync account storage quota exceeded' };
-			}
-			if (request.envelopes.length === 1) {
-				const payload = decryptSyncPayload(
-					account.syncKey,
-					request.envelopes[0].ciphertext,
-					request.envelopes[0].slot
-				) as {
+			const carriesHuge = request.envelopes.some((item) => {
+				const payload = decryptSyncPayload(account.syncKey, item.ciphertext, item.slot) as {
 					kind: string;
 					value?: { id?: string };
 				};
-				if (payload.kind === 'attachment' && payload.value?.id === 'huge') {
-					return { success: false, status: 507, error: 'Sync account storage quota exceeded' };
-				}
-				return { success: true, data: emptyData({ cursor: 1, writesAccepted: true }) };
-			}
+				return payload.kind === 'attachment' && payload.value?.id === 'huge';
+			});
+			if (carriesHuge)
+				return { success: false, status: 507, error: 'Sync account storage quota exceeded' };
 			return { success: true, data: emptyData({ cursor: 1, writesAccepted: true }) };
 		});
 
@@ -1272,7 +1276,8 @@ describe('client sync state machine', () => {
 		expect(uploaded).toContain('note');
 		expect(uploaded).toContain('attachment:ok');
 		expect(store.lastError).toMatch(/quota/);
-		expect(await idb.getSyncOutboxKeys(TEST_WORKSPACE)).toEqual(['attachment:huge']);
+		// The note stays queued with its photo: the relay's copy lists only what it holds.
+		expect(await idb.getSyncOutboxKeys(TEST_WORKSPACE)).toEqual(['attachment:huge', 'note:note-1']);
 	});
 
 	it('returns to batched uploads after an oversized record is isolated', async () => {
@@ -1295,20 +1300,18 @@ describe('client sync state machine', () => {
 		expect(result.success).toBe(false);
 		expect(result.error).toMatch(/quota/);
 
-		const hugeSingle = requests.findIndex((request) => {
-			if (request.envelopes.length !== 1) return false;
-			const payload = decryptSyncPayload(
-				account.syncKey,
-				request.envelopes[0].ciphertext,
-				request.envelopes[0].slot
-			) as {
-				kind?: string;
-				value?: { id?: string };
-			};
-			return payload.kind === 'attachment' && payload.value?.id === 'huge';
-		});
-		expect(hugeSingle).toBeGreaterThan(0);
-		expect(requests.slice(hugeSingle + 1).some((request) => request.envelopes.length > 1)).toBe(
+		const attachmentsIn = (request: RequestPayload) =>
+			request.envelopes.flatMap((item) => {
+				const payload = decryptSyncPayload(account.syncKey, item.ciphertext, item.slot) as {
+					kind?: string;
+					value?: { id?: string };
+				};
+				return payload.kind === 'attachment' ? [payload.value?.id] : [];
+			});
+		// The oversized photo is tried on its own, with only the note that lists it.
+		const hugeAlone = requests.findIndex((request) => attachmentsIn(request).join() === 'huge');
+		expect(hugeAlone).toBeGreaterThan(0);
+		expect(requests.slice(hugeAlone + 1).some((request) => attachmentsIn(request).length > 1)).toBe(
 			true
 		);
 	});

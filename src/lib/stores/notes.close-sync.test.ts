@@ -10,8 +10,7 @@ import {
 	clearSyncOutbox,
 	getSyncOutboxKeys,
 	markSyncOutbox,
-	putNote,
-	setSyncState
+	putNote
 } from '#lib/db/idb.js';
 import * as idb from '#lib/db/idb.js';
 import { syncStore } from './sync.svelte';
@@ -133,8 +132,8 @@ describe('syncing when a note closes', () => {
 		).toBeNull();
 	});
 
-	it('does not count a photo this device has not received as a failed upload', async () => {
-		// Another device listed the photo and is still uploading its bytes.
+	it('does not count a photo this device holds no bytes for as a failed upload', async () => {
+		// Nothing of it is here to read, so nothing here failed; a sync settles it.
 		const note = noteWithPhoto('');
 		await putNote(TEST_WORKSPACE, note);
 		notesStore.notes = [note];
@@ -157,8 +156,6 @@ describe('syncing when a note closes', () => {
 		const note = noteWithPhoto('');
 		await putNote(TEST_WORKSPACE, note);
 		notesStore.notes = [note];
-		// The stored bytes were checked on an earlier sync; this is about the upload.
-		await setSyncState(TEST_WORKSPACE, 'scrapscache-attachments-verified', true);
 		vi.spyOn(idb, 'hydrateNoteAttachments').mockRejectedValue(new Error('read failed'));
 		vi.spyOn(syncStore, 'sync').mockResolvedValue({ success: true, snapshot: syncSnapshot() });
 

@@ -13,7 +13,7 @@ import type { Note } from '#lib/types.js';
 
 const PROFILE = 'workspace-open';
 const PROFILE_DB = resolveDbName(PROFILE);
-const CURRENT_VERSION = 7;
+const CURRENT_VERSION = 8;
 
 function note(id: string): Note {
 	return {

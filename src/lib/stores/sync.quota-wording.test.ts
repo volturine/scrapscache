@@ -101,6 +101,7 @@ describe('quota isolation independent of server error wording', () => {
 		expect(result.success).toBe(false);
 		expect(result.error).toMatch(/quota/);
 		expect(store.lastError).toMatch(/limit|quota/);
-		expect(await idb.getSyncOutboxKeys(TEST_WORKSPACE)).toEqual(['attachment:huge']);
+		// The note stays queued with its photo: the relay's copy lists only what it holds.
+		expect(await idb.getSyncOutboxKeys(TEST_WORKSPACE)).toEqual(['attachment:huge', 'note:note-1']);
 	});
 });

@@ -67,34 +67,27 @@ export async function loadNoteHistory(
 const CURRENT_ATTACHMENT_TIMEOUT_MS = 60_000;
 
 /**
- * The attachment the relay holds now, when it is the version asked for. A sync only
- * downloads what changed since the last one, so this is how a device gets bytes it
- * should already hold. Null when the relay holds another version, or none it can read.
+ * The attachment record the relay holds now under this id, whatever its version;
+ * null when it holds none. A sync only downloads what changed since the last one,
+ * so this is how a device gets bytes it should already hold.
  */
 export async function loadCurrentAttachment(
 	account: SyncAccount,
-	wanted: { id: string; hash: string }
+	id: string
 ): Promise<SyncAttachment | null> {
-	const slot = await sha256(`${account.syncKey}\u0000attachment:${wanted.id}`);
+	const slot = await sha256(`${account.syncKey}\u0000attachment:${id}`);
 	// No version is saved that far ahead, so the relay answers with the live record.
-	// A sync waits on this, so a request that stalls gives up and is asked again later.
+	// A sync waits on this, so a request that stalls gives up and the sync fails.
 	const envelope = await readOptional<HistoryEnvelope>(
 		`/api/sync/history?slot=${slot}&at=${Number.MAX_SAFE_INTEGER}`,
 		account,
 		AbortSignal.timeout(CURRENT_ATTACHMENT_TIMEOUT_MS)
 	);
 	if (!envelope) return null;
-	let payload: ReturnType<typeof decode>;
-	try {
-		payload = decode(account, envelope.ciphertext, slot);
-	} catch {
-		return null;
-	}
-	return payload.kind === 'attachment' &&
-		payload.value.id === wanted.id &&
-		payload.value.hash === wanted.hash
-		? payload.value
-		: null;
+	const payload = decode(account, envelope.ciphertext, slot);
+	if (payload.kind !== 'attachment' || payload.value.id !== id)
+		throw new Error('Could not read an encrypted attachment.');
+	return payload.value;
 }
 
 /**

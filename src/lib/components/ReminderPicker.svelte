@@ -469,7 +469,13 @@
 	);
 </script>
 
-<div class={cx(d.panel, css({ w: '20rem', p: 'xl', gap: 0 }))}>
+<!-- No wider than the app frame leaves it: iPhone Duo folded, beside its column, has less than 20rem. -->
+<div
+	class={cx(
+		d.panel,
+		css({ w: 'min(20rem, calc(var(--app-frame-width) - 2rem))', p: 'xl', gap: 0 })
+	)}
+>
 	<div class={cx(d.title, css({ mb: 'md', textStyle: 'subtitle' }))}>Reminder</div>
 
 	<div class={styles.phrase}>

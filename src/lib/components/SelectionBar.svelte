@@ -20,10 +20,14 @@
 		X
 	} from '@lucide/svelte';
 	import { css, cx } from 'styled-system/css';
-	import { flex } from 'styled-system/patterns';
 	import { button, iconButton, menuItem, noteSurface } from 'styled-system/recipes';
-	import { iconSizeMd as iconMd, noteSelectStyles as styles, popover } from '$panda/styles';
-	import { portalToAppOverlay } from '#lib/appViewport.js';
+	import {
+		iconSizeMd as iconMd,
+		noteSelectStyles as styles,
+		pickerDialogStyles as picker,
+		popover
+	} from '$panda/styles';
+	import { getAppOverlayHost, portalToAppOverlay } from '#lib/appViewport.js';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
 	import { reminderStore } from '#lib/stores/reminders.svelte.js';
 	import { selectionStore } from '#lib/stores/selection.svelte.js';
@@ -161,7 +165,7 @@
 				</button>
 			</Tooltip>
 			<Menu.Root
-				positioning={{ placement: 'bottom-end' }}
+				positioning={{ placement: 'bottom-end', boundary: getAppOverlayHost }}
 				lazyMount
 				unmountOnExit
 				closeOnSelect={false}
@@ -193,7 +197,7 @@
 				</div>
 			</Menu.Root>
 			<Menu.Root
-				positioning={{ placement: 'bottom-end' }}
+				positioning={{ placement: 'bottom-end', boundary: getAppOverlayHost }}
 				lazyMount
 				unmountOnExit
 				closeOnSelect={false}
@@ -311,22 +315,9 @@
 		initialFocusEl={() => reminderPicker?.initialFocus() ?? null}
 		preventScroll={false}
 	>
-		<div
-			{@attach portalToAppOverlay}
-			class={css({ position: 'fixed', inset: 0, zIndex: 70 })}
-			role="presentation"
-		>
-			<Dialog.Backdrop
-				class={css({
-					position: 'fixed',
-					inset: 0,
-					bg: 'scrapscache.backdropSoft',
-					backdropFilter: 'blur(2px)'
-				})}
-			/>
-			<Dialog.Positioner
-				class={flex({ position: 'fixed', inset: 0, align: 'center', justify: 'center', p: 'lg' })}
-			>
+		<div {@attach portalToAppOverlay} class={picker.layer} role="presentation">
+			<Dialog.Backdrop class={picker.backdrop} />
+			<Dialog.Positioner class={picker.positioner}>
 				<Dialog.Content class={css({ outline: 'none' })} onclick={(e) => e.stopPropagation()}>
 					<ReminderPicker
 						bind:this={reminderPicker}

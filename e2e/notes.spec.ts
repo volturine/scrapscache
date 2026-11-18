@@ -1275,6 +1275,82 @@ test.describe('in iPhone Duo’s side column', () => {
 			const frame = (await page.getByRole('main').boundingBox())!;
 			expect(frame.x).toBeGreaterThanOrEqual(column.right);
 		});
+
+		// Dialogs, menus and the undo bar are rendered into the overlay host, whose box is
+		// the frame. Laid out from the screen instead, they ran under the column: the Sync
+		// dialog and a card's menu and pickers on the right, the undo bar on the left.
+		for (const side of ['right', 'left'] as const) {
+			test(`with the column down the ${side}, the Sync dialog, a card’s menu and pickers and the undo bar keep to the frame`, async ({
+				page
+			}) => {
+				await openWithColumn(page, side);
+				const stack = page.locator('[data-column-stack]');
+				const frame = {
+					left: side === 'left' ? column.right : 0,
+					right: side === 'left' ? viewport.width : viewport.width - column.right
+				};
+				const expectInFrame = async (locator: Locator) => {
+					await expect(locator).toBeVisible();
+					const box = (await locator.boundingBox())!;
+					expect(box.x).toBeGreaterThanOrEqual(frame.left);
+					expect(box.x + box.width).toBeLessThanOrEqual(frame.right);
+				};
+				for (const title of ['First', 'Second']) {
+					await stack.getByRole('button', { name: 'New note' }).click();
+					await expect(editor(page).getByRole('textbox', { name: 'Note body' })).toBeFocused();
+					await editor(page).getByPlaceholder('Title', { exact: true }).fill(title);
+					await page.keyboard.press('Escape');
+					await expect(editor(page)).toHaveCount(0);
+				}
+
+				await stack.getByRole('button', { name: /^Sync settings/ }).click();
+				const sync = page.getByRole('dialog', { name: /sync/i });
+				await expectInFrame(sync);
+				// Its backdrop dims the column too, and a press there closes it.
+				const rail = (await stack.boundingBox())!;
+				await page.mouse.click(rail.x + rail.width / 2, 40);
+				await expect(sync).toHaveCount(0);
+
+				// The card nearest each edge: the menu opens toward the other one.
+				for (const title of ['First', 'Second']) {
+					await noteCard(page, title).getByRole('button', { name: 'Note actions' }).click();
+					await expectInFrame(page.getByRole('menu', { name: 'Note actions' }));
+					await page.keyboard.press('Escape');
+				}
+				const picker = page.getByRole('dialog').locator(':scope > *');
+				await quickAction(noteCard(page, 'First'), 'Add label…');
+				await expectInFrame(picker);
+				// A label whose name is wider than the frame, for the selection bar's menu below.
+				const longLabel = 'Waiting for suppliers to confirm the delivery date';
+				await picker.getByPlaceholder('Search or create a label…').fill(longLabel);
+				await picker.getByRole('button', { name: 'Create label' }).click();
+				await picker.getByRole('button', { name: 'Done' }).click();
+				await expect(picker).toHaveCount(0);
+				// The reminder picker is taller than the folded phone: it shows from its head,
+				// where its field is, and the rest scrolls into reach.
+				await quickAction(noteCard(page, 'First'), 'Remind me…');
+				await expectInFrame(picker);
+				expect((await picker.boundingBox())!.y).toBeGreaterThanOrEqual(0);
+				const cancel = picker.getByRole('button', { name: 'Cancel' });
+				await expect(cancel).not.toBeInViewport({ ratio: 1 });
+				await cancel.scrollIntoViewIfNeeded();
+				await expect(cancel).toBeInViewport({ ratio: 1 });
+				await page.keyboard.press('Escape');
+				await expect(picker).toHaveCount(0);
+
+				await quickAction(noteCard(page, 'First'), 'Select');
+				const selection = page.getByRole('toolbar', { name: 'Selected notes' });
+				await selection.getByRole('button', { name: 'Labels' }).click();
+				const labels = page.getByRole('menu', { name: 'Labels' });
+				await expect(labels.getByRole('menuitemcheckbox', { name: longLabel })).toBeVisible();
+				await expectInFrame(labels);
+				await page.keyboard.press('Escape');
+				await selection.getByRole('button', { name: 'Clear selection' }).click();
+
+				await quickAction(noteCard(page, 'Second'), 'Archive');
+				await expectInFrame(page.locator('[data-undo-bar]'));
+			});
+		}
 	});
 
 	test.describe('folded, then opened upright', () => {

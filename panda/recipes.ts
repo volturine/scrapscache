@@ -839,14 +839,17 @@ const dialogRecipe = defineSlotRecipe({
 				},
 				body: { px: 'xl', py: 'xl' }
 			},
+			// The portal is the overlay host's box, the app frame, so the panel is centred in
+			// it and stays clear of the status bar, the keyboard and iPhone Duo's column. The
+			// backdrop alone is fixed: it dims the whole screen, the column with it, and a
+			// press there closes the dialog.
 			centeredOverlay: {
 				portal: {
-					position: 'fixed',
+					position: 'absolute',
 					inset: 0,
 					zIndex: 100
 				},
 				backdrop: {
-					position: 'absolute',
 					bg: 'scrapscache.backdropMuted',
 					backdropFilter: 'none'
 				},
@@ -858,7 +861,7 @@ const dialogRecipe = defineSlotRecipe({
 					p: { base: 'sm', sm: 'lg' }
 				},
 				panel: {
-					maxH: 'calc(100dvh - 2rem)',
+					maxH: 'full',
 					overflowX: 'hidden',
 					overflowY: 'auto',
 					p: { base: 'md', sm: 'xl' }

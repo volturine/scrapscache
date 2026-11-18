@@ -8,7 +8,7 @@
 	import { cx } from 'styled-system/css';
 	import { menuItem, noteSurface } from 'styled-system/recipes';
 	import { popover, searchStyles as styles } from '$panda/styles';
-	import { portalToAppOverlay } from '#lib/appViewport.js';
+	import { getAppOverlayHost, portalToAppOverlay } from '#lib/appViewport.js';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
 	import { uiStore } from '#lib/stores/ui.svelte.js';
 	import { NOTE_COLOR_NAMES, NOTE_COLOR_ORDER, type NoteColor } from '#lib/types.js';
@@ -83,7 +83,11 @@
 <div class={styles.bar} data-search-filters>
 	<div class={styles.chips}>
 		{#if here !== 'label'}
-			<Menu.Root positioning={{ placement: 'bottom-start' }} lazyMount unmountOnExit>
+			<Menu.Root
+				positioning={{ placement: 'bottom-start', boundary: getAppOverlayHost }}
+				lazyMount
+				unmountOnExit
+			>
 				{@render chip('In', SCOPE_NAMES[scope])}
 				<div {@attach portalToAppOverlay}>
 					<Menu.Positioner>
@@ -105,7 +109,11 @@
 			</Menu.Root>
 		{/if}
 
-		<Menu.Root positioning={{ placement: 'bottom-start' }} lazyMount unmountOnExit>
+		<Menu.Root
+			positioning={{ placement: 'bottom-start', boundary: getAppOverlayHost }}
+			lazyMount
+			unmountOnExit
+		>
 			{@render chip('Label', labelName)}
 			<div {@attach portalToAppOverlay}>
 				<Menu.Positioner>
@@ -131,7 +139,11 @@
 			</div>
 		</Menu.Root>
 
-		<Menu.Root positioning={{ placement: 'bottom-start' }} lazyMount unmountOnExit>
+		<Menu.Root
+			positioning={{ placement: 'bottom-start', boundary: getAppOverlayHost }}
+			lazyMount
+			unmountOnExit
+		>
 			{@render chip('Colour', filters.color === null ? null : NOTE_COLOR_NAMES[filters.color])}
 			<div {@attach portalToAppOverlay}>
 				<Menu.Positioner>
@@ -161,7 +173,11 @@
 			</div>
 		</Menu.Root>
 
-		<Menu.Root positioning={{ placement: 'bottom-start' }} lazyMount unmountOnExit>
+		<Menu.Root
+			positioning={{ placement: 'bottom-start', boundary: getAppOverlayHost }}
+			lazyMount
+			unmountOnExit
+		>
 			{@render chip('Type', filters.type === null ? null : TYPE_NAMES[filters.type])}
 			<div {@attach portalToAppOverlay}>
 				<Menu.Positioner>

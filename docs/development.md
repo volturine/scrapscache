@@ -110,8 +110,13 @@ them, and the stylesheet's own values stay. With the keyboard up the stack hides
 phone's bar does; there is no room for it under the clock. The palette stays inside
 the app frame, so the column keeps its places while it is up: the stack keeps its
 own pointer events under the modal's body lock, a place leaves the palette for its
-view, and Search toggles it. A dialog that covers the whole screen, as sync does,
-covers the column too.
+view, and Search toggles it. Whatever is rendered into the overlay host (`.app-overlay`,
+`portalToAppOverlay`) is laid out from that host's box, which is the frame: a dialog's
+layer and positioner are `position: absolute` in it, never `fixed`, which would size
+them from the screen and run the panel under the column, and a menu names the host
+as its Floating UI `boundary` (`getAppOverlayHost`), since nothing clips it there.
+Only a backdrop may be fixed: sync's and the pickers' dim the whole screen, the column
+with it, and a press on the column then closes the dialog.
 
 ### iPad
 

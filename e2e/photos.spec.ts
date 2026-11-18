@@ -382,7 +382,10 @@ test('multiple photos deduplicate by image content and copy back as mixed note c
 	const html = copied['text/html'] ?? '';
 	expect(copied['text/plain']).toContain('Before the photos');
 	expect(copied['text/plain']).toContain('After the photos');
-	expect(copied['image/png']).toMatch(/^image\/png:[1-9]\d*$/);
+	// The photos travel inside the HTML; in plain text the count stands for them.
+	expect(copied['text/plain']).toContain('[2 image(s)]');
+	expect(copied['text/plain']).not.toContain('(photo:');
+	expect(Object.keys(copied)).toEqual(['text/html', 'text/plain']);
 	expect(html.match(/<img\b/g) ?? []).toHaveLength(2);
 	const htmlOrder = await page.evaluate((clipboardHtml) => {
 		const parsed = new DOMParser().parseFromString(clipboardHtml, 'text/html');
@@ -470,6 +473,34 @@ test('Copy note keeps text and both photos through the browser clipboard', async
 			})
 		)
 		.toBe(true);
+	// What another app is handed. A target that takes files (a chat box, an upload
+	// field) pastes a copied image and drops the rest, so the copy carries no image
+	// of its own: a rich target gets everything, a text field the title and text.
+	const outside = await context.newPage();
+	await outside.goto('/health/ready');
+	await outside.setContent('<div id="target" contenteditable="true"></div>');
+	await outside.evaluate(() => {
+		document.addEventListener('paste', (event) => {
+			const data = event.clipboardData;
+			(window as Window & { __pasted?: { files: number; text: string } }).__pasted = {
+				files: data?.files.length ?? -1,
+				text: data?.getData('text/plain') ?? ''
+			};
+		});
+	});
+	await outside.locator('#target').click();
+	await outside.keyboard.press('ControlOrMeta+V');
+	await expect(outside.locator('#target img')).toHaveCount(2);
+	await expect(outside.locator('#target')).toContainText('Clipboard original');
+	await expect(outside.locator('#target')).toContainText('Text with two photos');
+	const pasted = await outside.evaluate(
+		() => (window as Window & { __pasted?: { files: number; text: string } }).__pasted
+	);
+	expect(pasted?.files).toBe(0);
+	expect(pasted?.text).toContain('# Clipboard original\nText with two photos');
+	expect(pasted?.text).not.toContain('(photo:');
+	await outside.close();
+
 	await closeEditor(page);
 	await createNote(page, 'Clipboard target', 'Keep this text');
 	await openCard(page, 'Clipboard target');

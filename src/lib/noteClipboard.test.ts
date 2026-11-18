@@ -158,23 +158,76 @@ describe('clipboardPhotos', () => {
 });
 
 describe('writeNoteToClipboard', () => {
-	it('writes text, HTML with the photos, and the first photo as PNG in one item', async () => {
+	it('writes the note as HTML with the photos and as plain text, without a lone image', async () => {
 		const items: FakeClipboardItem[] = [];
 		const { writeText } = installClipboard(async (written) => {
 			items.push(...written);
 		});
 		const encodePng = vi.fn(async () => new Blob(['png'], { type: 'image/png' }));
+		const second = photo({ id: 'p2', name: 'dunes.webp', dataUrl: PNG, mime: 'image/png' });
 
-		const copied = await writeNoteToClipboard(note({ images: [photo()] }), { encodePng });
+		const copied = await writeNoteToClipboard(
+			note({
+				body: 'packing list\n![beach.webp](photo:p1)\n![dunes.webp](photo:p2)',
+				images: [photo(), second]
+			}),
+			{ encodePng }
+		);
 
 		expect(copied).toBe(true);
 		expect(items).toHaveLength(1);
-		expect(Object.keys(items[0].data)).toEqual(['text/plain', 'text/html', 'image/png']);
-		expect(await itemText(items[0], 'text/plain')).toBe('# Trip\npacking list\n[1 image(s)]');
+		// An image of its own would be all a file-taking target pastes.
+		expect(Object.keys(items[0].data)).toEqual(['text/html', 'text/plain']);
+		expect(await itemText(items[0], 'text/plain')).toBe('# Trip\npacking list\n[2 image(s)]');
+		const html = await itemText(items[0], 'text/html');
+		expect(html).toContain('<h1>Trip</h1>');
+		expect(html).toContain('packing list');
+		expect(html).toContain(`<img src="${WEBP}"`);
+		expect(html).toContain(`<img src="${PNG}"`);
+		expect(encodePng).not.toHaveBeenCalled();
+		expect(writeText).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		['a title', { title: 'Trip', body: '![beach.webp](photo:p1)', images: [photo()] }],
+		['text', { title: '', body: 'packing list\n![beach.webp](photo:p1)', images: [photo()] }],
+		[
+			'another photo',
+			{
+				title: '',
+				body: '![beach.webp](photo:p1)\n![dunes.webp](photo:p2)',
+				images: [photo(), photo({ id: 'p2', name: 'dunes.webp' })]
+			}
+		]
+	])('keeps a photo beside %s inside the HTML only', async (_label, content) => {
+		const items: FakeClipboardItem[] = [];
+		installClipboard(async (written) => {
+			items.push(...written);
+		});
+
+		await writeNoteToClipboard(note(content), { encodePng: async () => new Blob(['png']) });
+
+		expect(Object.keys(items[0].data)).toEqual(['text/html', 'text/plain']);
+	});
+
+	it('adds the photo as a PNG when the note is that one photo', async () => {
+		const items: FakeClipboardItem[] = [];
+		installClipboard(async (written) => {
+			items.push(...written);
+		});
+		const encodePng = vi.fn(async () => new Blob(['png'], { type: 'image/png' }));
+
+		const copied = await writeNoteToClipboard(
+			note({ title: '', body: '![beach.webp](photo:p1)\n', images: [photo()] }),
+			{ encodePng }
+		);
+
+		expect(copied).toBe(true);
+		expect(Object.keys(items[0].data)).toEqual(['text/html', 'text/plain', 'image/png']);
+		expect(await itemText(items[0], 'text/plain')).toBe('[1 image(s)]');
 		expect(await itemText(items[0], 'text/html')).toContain(`<img src="${WEBP}"`);
 		expect(await itemText(items[0], 'image/png')).toBe('png');
 		expect(encodePng).toHaveBeenCalledWith(photo());
-		expect(writeText).not.toHaveBeenCalled();
 	});
 
 	it('loads photo bytes that only live in device storage', async () => {
@@ -185,10 +238,7 @@ describe('writeNoteToClipboard', () => {
 		const thumbOnly = photo({ dataUrl: '', thumbUrl: PNG });
 		const loadPhotos = vi.fn(async () => [photo()]);
 
-		await writeNoteToClipboard(note({ images: [thumbOnly] }), {
-			loadPhotos,
-			encodePng: async () => new Blob(['png'])
-		});
+		await writeNoteToClipboard(note({ images: [thumbOnly] }), { loadPhotos });
 
 		expect(loadPhotos).toHaveBeenCalled();
 		expect(await itemText(items[0], 'text/html')).toContain(`<img src="${WEBP}"`);
@@ -206,20 +256,20 @@ describe('writeNoteToClipboard', () => {
 		expect(writeText).toHaveBeenCalledWith('# Trip\npacking list\n[1 file(s)]');
 	});
 
-	it('drops the PNG when the browser rejects it, keeping the HTML photos', async () => {
+	it('drops the PNG when the browser rejects it, keeping the HTML photo', async () => {
 		const items: FakeClipboardItem[] = [];
 		const { write } = installClipboard(async (written) => {
 			if ('image/png' in written[0].data) throw new DOMException('Type not supported');
 			items.push(...written);
 		});
 
-		const copied = await writeNoteToClipboard(note({ images: [photo()] }), {
+		const copied = await writeNoteToClipboard(note({ title: '', body: '', images: [photo()] }), {
 			encodePng: async () => new Blob(['png'])
 		});
 
 		expect(copied).toBe(true);
 		expect(write).toHaveBeenCalledTimes(2);
-		expect(Object.keys(items[0].data)).toEqual(['text/plain', 'text/html']);
+		expect(Object.keys(items[0].data)).toEqual(['text/html', 'text/plain']);
 	});
 
 	it('falls back to plain text when every rich write fails', async () => {
@@ -227,9 +277,7 @@ describe('writeNoteToClipboard', () => {
 			throw new DOMException('Not allowed');
 		});
 
-		const copied = await writeNoteToClipboard(note({ images: [photo()] }), {
-			encodePng: async () => new Blob(['png'])
-		});
+		const copied = await writeNoteToClipboard(note({ images: [photo()] }));
 
 		expect(copied).toBe(true);
 		expect(writeText).toHaveBeenCalledWith('# Trip\npacking list\n[1 image(s)]');

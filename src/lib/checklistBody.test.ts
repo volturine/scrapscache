@@ -49,6 +49,31 @@ describe('noteToPlainText export', () => {
 	it('exports a body-only note without a heading', () => {
 		expect(noteToPlainText(plainNote({ title: '' }))).toBe('packing list');
 	});
+
+	it('counts the photos instead of printing their marker lines', () => {
+		const image = { id: 'p1', mime: 'image/webp', dataUrl: '', name: 'beach.webp', createdAt: 1 };
+		expect(
+			noteToPlainText(
+				plainNote({
+					body: 'packing list\n![beach.webp](photo:p1)\nsunscreen',
+					images: [image]
+				})
+			)
+		).toBe('# Trip\npacking list\nsunscreen\n[1 image(s)]');
+	});
+
+	it('keeps a link apart from the line after a photo', () => {
+		const image = { id: 'p1', mime: 'image/webp', dataUrl: '', name: 'beach.webp', createdAt: 1 };
+		expect(
+			noteToPlainText(
+				plainNote({
+					title: '',
+					body: 'https://shop.example/summer-\n![beach.webp](photo:p1)\nParking',
+					images: [image]
+				})
+			)
+		).toBe('https://shop.example/summer-\nParking\n[1 image(s)]');
+	});
 });
 
 describe('splitPastedHeading', () => {

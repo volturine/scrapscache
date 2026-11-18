@@ -8,9 +8,12 @@
 	import { onMount, tick, untrack } from 'svelte';
 	import { css, cx } from 'styled-system/css';
 	import { button, iconButton, noteSurface } from 'styled-system/recipes';
-	import { flex } from 'styled-system/patterns';
 	import { Dialog } from '@ark-ui/svelte/dialog';
-	import { iconSizeMd as iconMd, noteComposerStyles as styles } from '$panda/styles';
+	import {
+		iconSizeMd as iconMd,
+		noteComposerStyles as styles,
+		pickerDialogStyles as picker
+	} from '$panda/styles';
 	import BodyEditor from './BodyEditor.svelte';
 	import ColorPalette from './ColorPalette.svelte';
 	import FileDropHint from './FileDropHint.svelte';
@@ -78,20 +81,6 @@
 	const shownReminder = $derived(draft ? draft.reminder : reminder);
 	const shownRepeat = $derived(draft ? (draft.repeat ?? null) : repeat);
 	const popupOpen = $derived(paletteOpen || labelOpen || reminderOpen);
-
-	const popupBackdrop = css({
-		position: 'fixed',
-		inset: 0,
-		bg: 'scrapscache.backdropSoft',
-		backdropFilter: 'blur(2px)'
-	});
-	const popupPositioner = flex({
-		position: 'fixed',
-		inset: 0,
-		align: 'center',
-		justify: 'center',
-		p: 'lg'
-	});
 
 	/** Words in the body, not counting an empty checklist or bullet row. */
 	function bodyHasText(): boolean {
@@ -583,9 +572,9 @@
 		}}
 		preventScroll={false}
 	>
-		<div {@attach portalToAppOverlay} class={styles.popupLayer} role="presentation">
-			<Dialog.Backdrop class={popupBackdrop} />
-			<Dialog.Positioner class={popupPositioner}>
+		<div {@attach portalToAppOverlay} class={picker.layer} role="presentation">
+			<Dialog.Backdrop class={picker.backdrop} />
+			<Dialog.Positioner class={picker.positioner}>
 				<Dialog.Content class={css({ outline: 'none' })}>
 					<ColorPalette
 						{color}
@@ -609,9 +598,9 @@
 		}}
 		preventScroll={false}
 	>
-		<div {@attach portalToAppOverlay} class={styles.popupLayer} role="presentation">
-			<Dialog.Backdrop class={popupBackdrop} />
-			<Dialog.Positioner class={popupPositioner}>
+		<div {@attach portalToAppOverlay} class={picker.layer} role="presentation">
+			<Dialog.Backdrop class={picker.backdrop} />
+			<Dialog.Positioner class={picker.positioner}>
 				<Dialog.Content class={css({ outline: 'none' })}>
 					<LabelMenu noteId={draftId} onClose={() => (labelOpen = false)} />
 				</Dialog.Content>
@@ -629,9 +618,9 @@
 		initialFocusEl={() => reminderPicker?.initialFocus() ?? null}
 		preventScroll={false}
 	>
-		<div {@attach portalToAppOverlay} class={styles.popupLayer} role="presentation">
-			<Dialog.Backdrop class={popupBackdrop} />
-			<Dialog.Positioner class={popupPositioner}>
+		<div {@attach portalToAppOverlay} class={picker.layer} role="presentation">
+			<Dialog.Backdrop class={picker.backdrop} />
+			<Dialog.Positioner class={picker.positioner}>
 				<Dialog.Content class={css({ outline: 'none' })}>
 					<ReminderPicker
 						bind:this={reminderPicker}

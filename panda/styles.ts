@@ -58,6 +58,19 @@ const absoluteCenterY = {
 const fullscreenShell = { inset: 0, zIndex: 80, ...column } as const;
 const flexTruncate = { ...flexFill, ...truncateText } as const;
 const flexTruncateClass = css(flexTruncate);
+/**
+ * A menu of choices rendered into the overlay host: the search chips' and the selection
+ * bar's. A label's name can be longer than a narrow frame is wide, so the menu stops at
+ * the frame and the name is cut short.
+ */
+const choiceMenu = css({
+	minW: '12rem',
+	maxW: 'calc(var(--app-frame-width) - 1rem)',
+	maxH: 'min(60vh, 24rem)',
+	overflowY: 'auto',
+	py: '2xs',
+	'& [data-part="item-text"]': { minW: 0, ...truncateText }
+});
 /** Settings > Text and code sizes note titles on their own; the card recipe reads it too. */
 const noteTitleSize = 'var(--title-font-size, token(fontSizes.title))';
 /** An open note's title keeps its share over a card's (display over title, 20:15). */
@@ -761,6 +774,38 @@ export const popover = css({
 	animation: 'swapIn 140ms cubic-bezier(0.16, 1, 0.3, 1)'
 });
 
+/**
+ * A picker opened over the app from a card, the selection bar or the composer: labels,
+ * a reminder, a colour. It is rendered into the overlay host, whose box is the app
+ * frame; the layer and the positioner take that box, so the picker is centred in the
+ * frame and stays clear of the status bar, the keyboard and iPhone Duo's column. The
+ * backdrop alone is fixed: it dims the whole screen, the column with it.
+ *
+ * The reminder picker is taller than a short phone, and than any phone's frame once
+ * the keyboard is up. The positioner then scrolls from the picker's top, where its
+ * field is: auto margins centre the picker only while it fits, where `align-items:
+ * center` would cut it at both ends.
+ */
+export const pickerDialogStyles = {
+	layer: css({ position: 'absolute', inset: 0, zIndex: 70 }),
+	backdrop: css({
+		position: 'fixed',
+		inset: 0,
+		bg: 'scrapscache.backdropSoft',
+		backdropFilter: 'blur(2px)'
+	}),
+	positioner: css({
+		position: 'absolute',
+		inset: 0,
+		display: 'flex',
+		justifyContent: 'center',
+		overflowY: 'auto',
+		overscrollBehavior: 'contain',
+		p: 'lg',
+		'& > *': { my: 'auto' }
+	})
+};
+
 export const tooltip = css({
 	pointerEvents: 'none',
 	zIndex: 120,
@@ -813,7 +858,7 @@ export const searchStyles = {
 	}),
 	chipGlyph: css({ ...iconXs, color: 'inherit' }),
 	count: css({ textStyle: 'caption', ...mutedText, whiteSpace: 'nowrap', flexShrink: 0 }),
-	menu: css({ minW: '12rem', maxH: 'min(60vh, 24rem)', overflowY: 'auto', py: '2xs' }),
+	menu: choiceMenu,
 	item: css({ gap: 'sm' }),
 	swatch: css({
 		w: '1rem',
@@ -2842,8 +2887,11 @@ export const noteActionsStyles = {
 	positioner: css({ zIndex: 30, pointerEvents: 'auto' }),
 	// Zag puts the room under the trigger in --available-height; a short phone and a
 	// long board's Move to list must scroll within it rather than run off the screen.
+	// Its row of swatches is wider than a narrow frame (a small phone, iPhone Duo
+	// folded beside its column): the menu stops at the frame and the row wraps.
 	menu: css({
 		minW: '13rem',
+		maxW: 'calc(var(--app-frame-width) - 1rem)',
 		maxH: 'var(--available-height)',
 		overflowY: 'auto',
 		overscrollBehavior: 'contain',
@@ -2927,7 +2975,7 @@ export const noteSelectStyles = {
 	bar: css({ ...rowCenter, gap: 'xs', minW: 0, flex: '1' }),
 	count: css({ textStyle: 'bodyStrong', minW: 0, ...truncateText, flex: '1' }),
 	actions: css({ ...rowCenter, gap: '2xs', flexShrink: 0 }),
-	menu: css({ minW: '12rem', maxH: 'min(60vh, 24rem)', overflowY: 'auto', py: '2xs' }),
+	menu: choiceMenu,
 	item: css({ gap: 'sm' }),
 	swatch: css({
 		w: '1rem',
@@ -4237,8 +4285,10 @@ export const markdownStyles = css({
 });
 
 export const undoBarStyles = {
+	// In the overlay host, whose box is the app frame: the bar keeps to the frame's
+	// corner, beside iPhone Duo's column rather than over its places.
 	bar: css({
-		position: 'fixed',
+		position: 'absolute',
 		zIndex: 70,
 		left: 'lg',
 		bottom: '2xl',
@@ -4515,6 +4565,5 @@ export const noteComposerStyles = {
 	}),
 	body: css({ px: 'lg', pb: 'sm', maxH: '50vh', overflowY: 'auto' }),
 	chip: css({ alignSelf: 'flex-start', mx: 'lg', mb: 'xs', rounded: 'pill', outline: 'none' }),
-	done: css({ ml: 'xs' }),
-	popupLayer: css({ position: 'fixed', inset: 0, zIndex: 70 })
+	done: css({ ml: 'xs' })
 };

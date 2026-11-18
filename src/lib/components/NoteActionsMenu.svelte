@@ -3,13 +3,16 @@
 	// Every action a card offers, behind one visible "…" on the card. A right-click
 	// or long-press opens the same menu. The card owns when it opens; this owns
 	// what the actions do and when they close.
-	import { noteActionsStyles as styles, popover } from '$panda/styles';
+	import {
+		noteActionsStyles as styles,
+		pickerDialogStyles as picker,
+		popover
+	} from '$panda/styles';
 	import { css, cx } from 'styled-system/css';
 	import { iconButton, menuItem, noteSurface } from 'styled-system/recipes';
-	import { flex } from 'styled-system/patterns';
 	import { Menu } from '@ark-ui/svelte/menu';
 	import { Dialog } from '@ark-ui/svelte/dialog';
-	import { portalToAppOverlay } from '#lib/appViewport.js';
+	import { getAppOverlayHost, portalToAppOverlay } from '#lib/appViewport.js';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
 	import { selectionStore } from '#lib/stores/selection.svelte.js';
 	import { reminderStore } from '#lib/stores/reminders.svelte.js';
@@ -182,7 +185,12 @@
 	});
 </script>
 
-<Menu.Root bind:open positioning={{ placement: 'bottom-end' }} lazyMount unmountOnExit>
+<Menu.Root
+	bind:open
+	positioning={{ placement: 'bottom-end', boundary: getAppOverlayHost }}
+	lazyMount
+	unmountOnExit
+>
 	<Menu.Trigger
 		bind:ref={trigger}
 		class={cx(iconButton({ variant: 'ghost', size: 'compact' }), styles.trigger)}
@@ -332,22 +340,9 @@
 		}}
 		preventScroll={false}
 	>
-		<div
-			{@attach portalToAppOverlay}
-			class={css({ position: 'fixed', inset: 0, zIndex: 70 })}
-			role="presentation"
-		>
-			<Dialog.Backdrop
-				class={css({
-					position: 'fixed',
-					inset: 0,
-					bg: 'scrapscache.backdropSoft',
-					backdropFilter: 'blur(2px)'
-				})}
-			/>
-			<Dialog.Positioner
-				class={flex({ position: 'fixed', inset: 0, align: 'center', justify: 'center', p: 'lg' })}
-			>
+		<div {@attach portalToAppOverlay} class={picker.layer} role="presentation">
+			<Dialog.Backdrop class={picker.backdrop} />
+			<Dialog.Positioner class={picker.positioner}>
 				<Dialog.Content class={css({ outline: 'none' })} onclick={(e) => e.stopPropagation()}>
 					<LabelMenu
 						noteId={note.id}
@@ -370,22 +365,9 @@
 		initialFocusEl={() => reminderPicker?.initialFocus() ?? null}
 		preventScroll={false}
 	>
-		<div
-			{@attach portalToAppOverlay}
-			class={css({ position: 'fixed', inset: 0, zIndex: 70 })}
-			role="presentation"
-		>
-			<Dialog.Backdrop
-				class={css({
-					position: 'fixed',
-					inset: 0,
-					bg: 'scrapscache.backdropSoft',
-					backdropFilter: 'blur(2px)'
-				})}
-			/>
-			<Dialog.Positioner
-				class={flex({ position: 'fixed', inset: 0, align: 'center', justify: 'center', p: 'lg' })}
-			>
+		<div {@attach portalToAppOverlay} class={picker.layer} role="presentation">
+			<Dialog.Backdrop class={picker.backdrop} />
+			<Dialog.Positioner class={picker.positioner}>
 				<Dialog.Content class={css({ outline: 'none' })} onclick={(e) => e.stopPropagation()}>
 					<ReminderPicker
 						bind:this={reminderPicker}

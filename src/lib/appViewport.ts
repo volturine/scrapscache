@@ -345,6 +345,11 @@ export function getAppFloatHost(): HTMLElement {
 	return document.querySelector<HTMLElement>(APP_FLOAT_SELECTOR) ?? document.body;
 }
 
+/**
+ * The host of global overlays; its box is the app frame. Nothing clips a menu
+ * rendered into it, so Floating UI would bound the menu by the whole screen and run
+ * it under iPhone Duo's column: such a menu names this host as its `boundary`.
+ */
 export function getAppOverlayHost(): HTMLElement {
 	return document.querySelector<HTMLElement>(APP_OVERLAY_SELECTOR) ?? document.body;
 }

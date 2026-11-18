@@ -996,7 +996,7 @@ describe('NoteEditor share menu', () => {
 		expect(writeText.mock.calls[1][0]).toContain('Oat milk');
 	});
 
-	it('copies a note with a photo as text, HTML and a PNG in one clipboard item', async () => {
+	it('copies a note with a photo as HTML and text in one clipboard item', async () => {
 		const png = 'data:image/png;base64,iVBORw0KGgo=';
 		const items: { data: Record<string, Blob | PromiseLike<Blob | string> | string> }[] = [];
 		const write = vi.fn(async (written: typeof items) => {
@@ -1025,7 +1025,7 @@ describe('NoteEditor share menu', () => {
 		await choose(await view.findByRole('menuitem', { name: 'Copy note' }));
 
 		await vi.waitFor(() => expect(write).toHaveBeenCalledOnce());
-		expect(Object.keys(items[0].data)).toEqual(['text/plain', 'text/html', 'image/png']);
+		expect(Object.keys(items[0].data)).toEqual(['text/html', 'text/plain']);
 		const html = await items[0].data['text/html'];
 		const fragment = document.createElement('template');
 		fragment.innerHTML = await (html as Blob).text();

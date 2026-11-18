@@ -1,6 +1,7 @@
 import type { Note } from './types';
 import { isCanvasAttachment } from './canvasAttachment';
 import { joinWrappedHttpUrls } from './linkPreview';
+import { isPhotoMarkerLine } from './photoMarker';
 
 /** Lines like `[ ] task`, `[] task`, `[x] done`, indented sub-tasks, `- [ ] item` */
 export const CHECK_RE = /^(\s*)(?:[-*•]\s+)?\[([xX ]?)\]\s*(.*)$/;
@@ -210,7 +211,14 @@ export function noteToPlainText(note: Note): string {
 	].filter(Boolean);
 	const suffix = parts.length ? `\n[${parts.join(', ')}]` : '';
 	const heading = note.title ? `# ${note.title}\n` : '';
-	return `${heading}${joinWrappedHttpUrls(note.body)}${suffix}`.trim();
+	// A photo's place in the body is a marker line that only this app can read;
+	// in plain text the count above stands for the photos. The lines go after the
+	// links are joined, so a photo between two lines still keeps them apart.
+	const body = joinWrappedHttpUrls(note.body)
+		.split('\n')
+		.filter((line) => !isPhotoMarkerLine(line))
+		.join('\n');
+	return `${heading}${body}${suffix}`.trim();
 }
 
 const PASTE_HEADING_RE = /^#\s+(.+)$/;

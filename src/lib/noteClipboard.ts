@@ -1,13 +1,19 @@
 // "Copy note" puts the whole note on the clipboard, photos included. One
-// clipboard item carries every representation a paste target may ask for:
-// plain text for text fields, HTML with the photos embedded for rich editors,
-// and the first photo as a PNG for anything that only takes an image.
+// clipboard item carries the note twice: as HTML with the photos embedded, for
+// anything that pastes rich content, and as plain text for text fields. A note
+// that is nothing but one photo also goes as a PNG, for targets that only take
+// an image.
 import type { Note, NoteImage } from './types';
 import { noteAttachments, noteToPlainText } from './checklistBody';
 import { dataUrlToBlob } from './imageBlob';
 import { pngBlobFromImage } from './imageOptimize';
 import { dataUrlByteLength, isImageAttachment, MAX_ATTACHMENT_BYTES } from './noteImages';
-import { parsePhotoMarker, renamePhotoMarkers, stripPhotoMarkers } from './photoMarker';
+import {
+	bodyIsOnlyPhotoMarkers,
+	parsePhotoMarker,
+	renamePhotoMarkers,
+	stripPhotoMarkers
+} from './photoMarker';
 import { uid } from './model/uid';
 import { stableStringify } from './model/stableStringify';
 import { writeClipboardText } from './utils';
@@ -207,6 +213,22 @@ async function photoAsPng(photo: NoteImage): Promise<Blob> {
 }
 
 /**
+ * Whether the note is one photo and nothing else. Only then may the photo go
+ * on the clipboard as an image of its own: a target that takes files (a chat
+ * box, an upload field) pastes that image and drops everything else, so beside
+ * a title, text or more photos it would stand in for the whole note.
+ */
+function isSinglePhotoNote(note: Note): boolean {
+	const attachments = noteAttachments(note);
+	return (
+		!note.title.trim() &&
+		bodyIsOnlyPhotoMarkers(note.body) &&
+		attachments.length === 1 &&
+		isImageAttachment(attachments[0])
+	);
+}
+
+/**
  * Copy the note with its photos. True only when something landed on the
  * clipboard; the plain text alone is the last resort.
  *
@@ -232,19 +254,22 @@ export async function writeNoteToClipboard(
 	const html = photos.then(
 		(ready) => new Blob([noteToClipboardHtml(note, ready)], { type: 'text/html' })
 	);
-	const png = photos.then((ready) => {
-		if (!ready.length) throw new Error('No photo bytes to copy');
-		return encodePng(ready[0]);
-	});
-	// The item owns the rejection; a write that moves on must not leave it unhandled.
-	png.catch(() => {});
 	const plain = new Blob([text], { type: 'text/plain' });
-	// A browser that rejects one representation (no PNG support, an undecodable
-	// photo) still gets the text and the HTML with the photos inside.
-	const attempts: Record<string, Blob | Promise<Blob>>[] = [
-		{ 'text/plain': plain, 'text/html': html, 'image/png': png },
-		{ 'text/plain': plain, 'text/html': html }
-	];
+	// The richest form goes first: a target that takes a copy's first form gets
+	// the title, the text and the photos together.
+	const rich: Record<string, Blob | Promise<Blob>> = { 'text/html': html, 'text/plain': plain };
+	const attempts = [rich];
+	if (isSinglePhotoNote(note)) {
+		const png = photos.then((ready) => {
+			if (!ready.length) throw new Error('No photo bytes to copy');
+			return encodePng(ready[0]);
+		});
+		// The item owns the rejection; a write that moves on must not leave it unhandled.
+		png.catch(() => {});
+		// A browser that rejects the PNG (no support, an undecodable photo) still
+		// gets the HTML with the photo inside.
+		attempts.unshift({ ...rich, 'image/png': png });
+	}
 	for (const data of attempts) {
 		try {
 			await navigator.clipboard.write([new ClipboardItem(data)]);

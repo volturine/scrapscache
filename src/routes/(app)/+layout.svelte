@@ -553,7 +553,7 @@
 					onscroll={rememberFeedScroll}
 				>
 					{#if composer}
-						<div class={noteComposerStyles.dock}>
+						<div class={noteComposerStyles.dock} data-composer-dock>
 							<NoteComposer
 								labels={composer.labels}
 								reminderDay={composer.reminderDay}

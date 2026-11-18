@@ -1,10 +1,11 @@
 <script lang="ts">
-	// The "Take a note…" bar at the top of a feed. It opens in place into a title,
-	// a body and the editor's own footer, and writes a real note as soon as there
-	// is something to keep, so nothing typed is lost; the feed leaves that note out
-	// until the bar is put away. Done, Esc or a click outside keep a note with
-	// content and drop an empty one. A paste or a drop takes files and markdown
-	// headings the way the editor does.
+	// The "Take a note…" bar at the top of a feed. It opens into a title, a body and
+	// the editor's own footer, laid over the feed from the bar's place so the cards
+	// under it do not move, and writes a real note as soon as there is something to
+	// keep, so nothing typed is lost; the feed leaves that note out until the bar is
+	// put away. Done, Esc or a click outside keep a note with content and drop an
+	// empty one. A paste or a drop takes files and markdown headings the way the
+	// editor does.
 	import { onMount, tick, untrack } from 'svelte';
 	import { css, cx } from 'styled-system/css';
 	import { button, iconButton, noteSurface } from 'styled-system/recipes';

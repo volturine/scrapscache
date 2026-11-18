@@ -184,6 +184,47 @@ test('the composer starts a blank note at the title and leaves the caret alone o
 	await expect(body).toBeFocused();
 });
 
+// The list at phone width puts a card's select check, which hangs off its corner, under
+// the sheet's edge: the sheet must lie over that too.
+for (const { layout, ...viewport } of [
+	{ width: 1280, height: 720, layout: 'grid' },
+	{ width: 390, height: 640, layout: 'list' }
+]) {
+	test(`the open composer lies over the feed and moves no card at ${viewport.width}px`, async ({
+		page
+	}) => {
+		await page.setViewportSize(viewport);
+		await page.addInitScript(
+			(state) => localStorage.setItem('scrapscache-ui-state', state),
+			JSON.stringify({ layout })
+		);
+		await openEmptyApp(page);
+		await createNote(page, 'Under the bar', 'One\nTwo');
+		const card = noteCard(page, 'Under the bar');
+		const resting = (await card.boundingBox())!;
+
+		await composerPrompt(page).click();
+		const bar = composer(page);
+		const body = bar.getByRole('textbox', { name: 'Note body' });
+		await body.click();
+		await body.pressSequentially('One\nTwo\nThree\nFour\nFive\nSix');
+		// The check means nothing unless the sheet has grown down past the card's top.
+		const sheet = (await bar.boundingBox())!;
+		expect(sheet.y + sheet.height).toBeGreaterThan(resting.y);
+		expect(await card.boundingBox()).toEqual(resting);
+
+		// Where the two overlap, the sheet is what the pointer meets.
+		const x = Math.max(sheet.x, resting.x) + 4;
+		const y = resting.y + 4;
+		expect(x).toBeLessThan(Math.min(sheet.x + sheet.width, resting.x + resting.width));
+		const onSheet = await page.evaluate(
+			([px, py]) => Boolean(document.elementFromPoint(px, py)?.closest('[data-note-composer]')),
+			[x, y]
+		);
+		expect(onSheet).toBe(true);
+	});
+}
+
 test('a checklist line toggles from the body', async ({ page }) => {
 	await openEmptyApp(page);
 	await createNote(page, 'Checklist', '[ ] milk\n[ ] eggs');
@@ -677,6 +718,37 @@ test.describe('on a phone', () => {
 		await page.evaluate(() =>
 			document.documentElement.style.removeProperty('--app-keyboard-bottom')
 		);
+	});
+
+	test('a composer taller than the room above the keyboard scrolls clear of it', async ({
+		page
+	}) => {
+		await openEmptyApp(page);
+		await composerPrompt(page).click();
+		const bar = composer(page);
+		const body = bar.getByRole('textbox', { name: 'Note body' });
+		await body.click();
+		await body.pressSequentially(
+			Array.from({ length: 14 }, (_, line) => `Line ${line + 1}`).join('\n')
+		);
+		// The keyboard, as the viewport code reports it: measured up from the feed's foot.
+		await page.evaluate(() =>
+			document.documentElement.style.setProperty('--app-keyboard-bottom', '420px')
+		);
+		const feed = page.getByRole('main');
+		const feedBox = (await feed.boundingBox())!;
+		const keyboardTop = feedBox.y + feedBox.height - 420;
+		const done = bar.getByRole('button', { name: 'Done', exact: true });
+		const doneBottom = async () => {
+			const box = (await done.boundingBox())!;
+			return box.y + box.height;
+		};
+		// The check means nothing unless the keys cover the sheet's foot to begin with.
+		expect(await doneBottom()).toBeGreaterThan(keyboardTop);
+		await feed.evaluate((element) =>
+			element.scrollTo({ top: element.scrollHeight, behavior: 'instant' })
+		);
+		expect(await doneBottom()).toBeLessThanOrEqual(keyboardTop);
 	});
 
 	test('the notes keep their scroll place across a visit to Labels', async ({ page }) => {

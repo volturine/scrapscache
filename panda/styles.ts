@@ -125,6 +125,9 @@ export const visuallyHidden = css({ srOnly: true });
 /** One width for the mobile drawer and the safe-area strip that continues it. */
 const DRAWER_WIDTH = '18rem';
 
+/** The closed "Take a note…" bar's height, which is all the room it takes in the feed. */
+const COMPOSER_BAR_HEIGHT = '3rem';
+
 export const appLayout = {
 	shell: css({
 		h: 'full',
@@ -204,7 +207,26 @@ export const appLayout = {
 		// screen fills the feed with Archive and Trash at its foot; that room would push
 		// them up over the keys, so it keeps the resting padding and sits still.
 		pb: 'calc(var(--app-keyboard-bottom) + token(spacing.3xl))',
-		'&:has([data-labels-screen])': { pb: '3xl' }
+		'&:has([data-labels-screen])': { pb: '3xl' },
+		// With the composer, the view starts under the closed bar's row and the dock
+		// spans that row and the view's. An open sheet then lies over the view without
+		// moving it, yet still counts toward the feed's height: a sheet that runs past
+		// the last card can be scrolled clear of an overlaid keyboard, and the dock
+		// pinned on a phone is carried above the keyboard at the end of the scroll.
+		'&:has(> [data-composer-dock])': {
+			display: 'grid',
+			gridTemplateColumns: 'minmax(0, 1fr)',
+			gridTemplateRows: {
+				base: `calc(${COMPOSER_BAR_HEIGHT} + token(spacing.sm) * 2) auto`,
+				md: `calc(${COMPOSER_BAR_HEIGHT} + token(spacing.lg) + token(spacing.sm)) auto`
+			},
+			alignContent: 'start',
+			// A sheet that outgrows a short feed brings the scrollbar with it; its room is
+			// kept from the start, so the cards do not narrow and reflow when it appears.
+			scrollbarGutter: 'stable',
+			'& > *': { gridColumn: 1, gridRow: 2 },
+			'& > [data-composer-dock]': { gridRow: '1 / 3' }
+		}
 	})
 };
 
@@ -4479,9 +4501,6 @@ export const reminderCalendarLegend = {
 	item: css({ display: 'inline-flex', alignItems: 'center' })
 };
 
-// The composer: a bar at the top of the feed that opens in place. On a phone it
-// stays under the top bar while the feed scrolls; a wide window keeps it at the
-// head of the feed, no wider than a comfortable line.
 /** "Drop to attach" over a note that files are dragged onto: the editor's and the composer's. */
 export const fileDropHintStyles = {
 	root: css({
@@ -4507,22 +4526,33 @@ export const fileDropHintStyles = {
 	})
 };
 
+// The composer: a bar at the top of the feed that opens over it, so the cards under
+// it stay where they are (the feed gives the bar a row of its own height and lets
+// the dock run on over the view). On a phone it stays under the top bar while the
+// feed scrolls; a wide window keeps it at the head of the feed, no wider than a
+// comfortable line.
 export const noteComposerStyles = {
 	dock: css({
 		position: { base: 'sticky', md: 'static' },
 		top: 0,
-		zIndex: 20,
+		// Its own height, not the height of the rows it spans.
+		alignSelf: 'start',
+		// Over the cards, and over what hangs off their corners (the select check, 22).
+		zIndex: 23,
 		bg: 'scrapscache.bg',
 		w: 'full',
 		maxW: { md: '40rem' },
 		mx: 'auto',
 		pt: { base: 'sm', md: 'lg' },
-		pb: 'sm'
+		// The gap under the closed bar. The open sheet ends at its own edge, with no
+		// band of the page's colour under it.
+		pb: 'sm',
+		'&:has([data-open])': { pb: 0 }
 	}),
 	root: css({ position: 'relative', w: 'full', rounded: 'card' }),
 	bar: hstack({
 		gap: '3xs',
-		h: '3rem',
+		h: COMPOSER_BAR_HEIGHT,
 		pl: 'lg',
 		pr: 'xs',
 		rounded: 'card',
@@ -4549,7 +4579,7 @@ export const noteComposerStyles = {
 		rounded: 'card',
 		borderWidth: 'hairline',
 		borderColor: 'scrapscache.borderFaint',
-		boxShadow: 'md',
+		boxShadow: 'noteSheet',
 		overflow: 'hidden'
 	}),
 	title: css({

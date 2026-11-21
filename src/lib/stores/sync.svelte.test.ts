@@ -18,7 +18,7 @@ import {
 	SYNC_PROTOCOL_HEADER,
 	SYNC_PROTOCOL_VERSION
 } from '#lib/model/protocol.js';
-import { HISTORY_RECHECK_MS, SyncStore, syncStore } from './sync.svelte';
+import { HISTORY_RECHECK_MS, SyncStore, syncOutcome, syncStore } from './sync.svelte';
 import { syncSnapshot, type SyncSnapshot } from '#lib/syncRecords.js';
 import { unboundSyncEnvelope } from '../../tests/unboundEnvelope';
 import { seedTestKeyring, TEST_WORKSPACE } from '../../tests/workspace';
@@ -802,6 +802,28 @@ describe('client sync state machine', () => {
 			3
 		);
 		expect(await idb.getSyncOutboxKeys(TEST_WORKSPACE)).toEqual([]);
+	});
+
+	// Whoever decides when to sync again needs to know which kind of failure it was.
+	it('tells a relay that was not reached from one that refused', async () => {
+		let answer: RequestResult = { success: true, data: emptyData() };
+		const { store } = createHarness(() => answer);
+		const sync = () => store.sync(syncSnapshot(), false, false, passthrough);
+
+		answer = { success: false, error: 'Sync network error' };
+		expect(syncOutcome(await sync())).toBe('failed');
+
+		answer = { success: false, status: 409, error: 'Client is out of date' };
+		const refused = await sync();
+		expect(syncOutcome(refused)).toBe('refused');
+		expect(store.lastError).toBe('Client is out of date');
+
+		answer = { success: false, status: 503, error: 'Sync server is busy' };
+		expect(syncOutcome(await sync())).toBe('failed');
+
+		answer = { success: true, data: emptyData() };
+		expect(syncOutcome(await sync())).toBe('synced');
+		expect(store.lastError).toBeNull();
 	});
 
 	it('recovers from an accepted upload whose response was lost without uploading it twice', async () => {

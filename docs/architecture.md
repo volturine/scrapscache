@@ -183,7 +183,9 @@ finishes.
 A relay that goes silent is not waited for either. On a connection that is up in
 name only a request neither arrives nor fails, so each relay request a sync makes
 is given up after a minute in which no byte moved (`RELAY_SILENCE_MS` in
-`src/lib/syncRetry.ts`); a request that is slow but moving is left to finish.
+`src/lib/syncRetry.ts`); a request that is slow but moving is left to finish. That
+is the only time limit on a sync request: a photo on a weak signal takes as long
+as it takes, since given up at a fixed time it would start again from nothing.
 
 A backup or Google Keep import is read and prepared without holding anything,
 then lands in one IndexedDB transaction (`rewriteWorkspace` in

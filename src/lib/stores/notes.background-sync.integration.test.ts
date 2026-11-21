@@ -9,9 +9,11 @@ import {
 	type SyncIdentity
 } from '#lib/syncPairing.js';
 import {
+	getAllLabels,
 	getAllNotesMetadata,
 	getSyncOutboxKeys,
 	hydrateNoteAttachments,
+	putLabel,
 	putNote,
 	waitForDeviceWrites
 } from '#lib/db/idb.js';
@@ -225,6 +227,42 @@ describe('a workspace that is not open', () => {
 		expect(syncStore.lastError).toBeNull();
 		expect(notesStore.lastPersistError).toBeNull();
 		expect(notesStore.syncing).toBe(false);
+	});
+
+	// Labels are renamed without the sync lock, by a window that has the workspace
+	// open. A sync that read them before waiting on the relay must not write that
+	// older copy back over the rename.
+	it('keeps a label renamed in another window while it waited on the relay', async () => {
+		await putLabel(left.id, { id: 'renamed', name: 'Before', createdAt: 1, updatedAt: 1 });
+		// Listing a photo this device has no bytes for makes the sync ask the relay for it.
+		const photo = { id: 'photo', mime: 'image/png', dataUrl: '', createdAt: 1, contentHash: 'h' };
+		await putNote(left.id, { ...note('with-photo'), images: [photo] }, ['note:with-photo']);
+		await waitForDeviceWrites(left.id);
+		await otherDeviceWrites(
+			{ kind: 'label', value: { id: 'theirs', name: 'Theirs', createdAt: 1, updatedAt: 1 } },
+			'label:theirs'
+		);
+		let relayAsked = false;
+		let answer: () => void = () => undefined;
+		const waiting = new Promise<void>((resolve) => (answer = resolve));
+		vi.spyOn(syncStore, 'authorizedFetch').mockImplementation(async () => {
+			relayAsked = true;
+			await waiting;
+			return Response.json({ error: 'Not found' }, { status: 404 });
+		});
+
+		const synced = syncScheduler.request(left.id);
+		await vi.waitFor(() => expect(relayAsked).toBe(true));
+		await putLabel(left.id, { id: 'renamed', name: 'After', createdAt: 1, updatedAt: 50 });
+		await waitForDeviceWrites(left.id);
+		answer();
+
+		expect(await synced).toBe(true);
+		const stored = (await getAllLabels(left.id)).map((label) => [label.id, label.name]).sort();
+		expect(stored).toEqual([
+			['renamed', 'After'],
+			['theirs', 'Theirs']
+		]);
 	});
 
 	it('sends an attachment with the note that lists it', async () => {

@@ -934,6 +934,45 @@ export async function bulkPutLabels(pid: string, labels: Label[]): Promise<void>
 	});
 }
 
+/**
+ * Merge into a workspace's labels as they are stored at that moment. `merge` is
+ * given the labels and the label deletes read in the transaction that writes its
+ * answer, so a rename or delete another window saved meanwhile is what it sees,
+ * never what it overwrites. A label it leaves out is deleted.
+ */
+export async function mergeStoredLabels(
+	pid: string,
+	tombstonesKey: string,
+	merge: (stored: Label[], tombstones: unknown) => Label[]
+): Promise<Label[]> {
+	return enqueueDeviceWrite(async () => {
+		const db = await getDB(pid);
+		const tx = db.transaction([LABELS_STORE, SYNC_STATE_STORE], 'readwrite');
+		try {
+			const labels = tx.objectStore(LABELS_STORE);
+			const stored = ((await labels.getAll()) as Label[]).map(plainLabel);
+			const merged = merge(stored, await tx.objectStore(SYNC_STATE_STORE).get(tombstonesKey)).map(
+				plainLabel
+			);
+			const before = new Map(stored.map((label) => [label.id, JSON.stringify(label)]));
+			for (const label of merged) {
+				if (before.get(label.id) !== JSON.stringify(label)) await labels.put(label);
+				before.delete(label.id);
+			}
+			for (const id of before.keys()) await labels.delete(id);
+			await tx.done;
+			return merged;
+		} catch (error) {
+			try {
+				tx.abort();
+			} catch {
+				// The transaction may already have aborted after a failed request.
+			}
+			throw error;
+		}
+	});
+}
+
 export async function clearAllNotes(pid: string): Promise<void> {
 	await enqueueDeviceWrite(async () => {
 		const db = await getDB(pid);

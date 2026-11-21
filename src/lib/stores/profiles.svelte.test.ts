@@ -170,6 +170,70 @@ describe('workspace handovers', () => {
 		expect(sync).not.toHaveBeenCalled();
 	});
 
+	// Registering asks the relay, which can take as long as a poor connection does.
+	// A handover, in this window or another, must not wait behind it.
+	it('holds nothing while the relay registers a workspace that starts syncing', async () => {
+		const current = workspace('current-registering', false);
+		const other = workspace('other-registering', false, 2);
+		syncStore.profiles = [current, other];
+		syncStore.activateProfile(current);
+		stubHandover();
+		let registered: (response: Response) => void = () => undefined;
+		const fetched = vi
+			.spyOn(globalThis, 'fetch')
+			.mockReturnValue(new Promise<Response>((resolve) => (registered = resolve)));
+		const coordinator = new ProfileCoordinator();
+
+		const started = coordinator.startSync(other.id);
+		await vi.waitFor(() => expect(fetched).toHaveBeenCalledOnce());
+
+		expect(coordinator.switching).toBe(false);
+		expect(await syncScheduler.handover(async () => 'another handover')).toBe('another handover');
+		expect(syncStore.profiles.find(({ id }) => id === other.id)?.syncKey).toBe('');
+
+		registered(Response.json({ ok: true }));
+		expect(await started).toEqual({ success: true });
+		expect(syncStore.profiles.find(({ id }) => id === other.id)?.syncKey).not.toBe('');
+	});
+
+	it('does not give a workspace a key when it changed while the relay registered it', async () => {
+		const current = workspace('current-changed', false);
+		const other = workspace('other-changed', false, 2);
+		syncStore.profiles = [current, other];
+		syncStore.activateProfile(current);
+		stubHandover();
+		let registered: (response: Response) => void = () => undefined;
+		const fetched = vi
+			.spyOn(globalThis, 'fetch')
+			.mockReturnValue(new Promise<Response>((resolve) => (registered = resolve)));
+
+		const started = new ProfileCoordinator().startSync(other.id);
+		await vi.waitFor(() => expect(fetched).toHaveBeenCalledOnce());
+		// Another window gave it a key meanwhile.
+		const theirs = { ...other, syncKey: createSyncIdentity().syncKey };
+		syncStore.profiles = [current, theirs];
+		registered(Response.json({ ok: true }));
+
+		expect(await started).toEqual({
+			success: false,
+			error: 'This workspace changed meanwhile. Try again.'
+		});
+		expect(syncStore.profiles).toEqual([current, theirs]);
+	});
+
+	it('does not ask the relay to register a workspace that already syncs', async () => {
+		const synced = workspace('already-synced', true);
+		syncStore.profiles = [synced];
+		syncStore.activateProfile(synced);
+		const fetched = vi.spyOn(globalThis, 'fetch');
+
+		expect(await new ProfileCoordinator().startSync(synced.id)).toEqual({
+			success: false,
+			error: 'That workspace is already synced'
+		});
+		expect(fetched).not.toHaveBeenCalled();
+	});
+
 	it('unlinks the active workspace into a private one that keeps its notes', async () => {
 		const active = workspace(TEST_WORKSPACE, true, 0);
 		syncStore.profiles = [active];
@@ -313,7 +377,7 @@ describe('workspace handovers', () => {
 		syncStore.activateProfile(current);
 		await putNote(current.id, note('stay'));
 		const reload = stubHandover();
-		const register = vi.spyOn(syncStore, 'register');
+		const register = vi.spyOn(syncStore, 'registerAccount');
 
 		const result = await new ProfileCoordinator().createLocal();
 

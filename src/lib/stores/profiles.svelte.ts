@@ -96,33 +96,63 @@ export class ProfileCoordinator {
 
 	/** Start syncing a private workspace. Its row, name, and notes stay the same. */
 	startSync(profileId: string, name?: string, turnstileToken?: string): Promise<Outcome> {
-		return this.moveToNewKey('Could not start sync', profileId, (profile) =>
-			syncStore.register(profile, name, turnstileToken)
+		return this.moveToNewKey(
+			'Could not start sync',
+			profileId,
+			turnstileToken,
+			(profile) => (isLocalWorkspace(profile) ? null : 'That workspace is already synced'),
+			name
 		);
 	}
 
 	/** Give a workspace whose key was deleted from the cloud a new key, and upload
 	 * its notes to the new account. Other devices have to pair again. */
 	replaceRetiredKey(profileId: string, turnstileToken?: string): Promise<Outcome> {
-		return this.moveToNewKey('Could not create a new sync key', profileId, (profile) =>
-			syncStore.replaceRetiredKey(profile, turnstileToken)
+		return this.moveToNewKey(
+			'Could not create a new sync key',
+			profileId,
+			turnstileToken,
+			(profile) => (isLocalWorkspace(profile) ? 'That workspace is not synced' : null)
 		);
 	}
 
+	/**
+	 * Register a new account for a workspace, then put the workspace on its key.
+	 * The relay is asked before anything is held: registering can take as long as a
+	 * poor connection does, and a handover in any window must not wait behind it.
+	 * Only the last step, which touches this device alone, is a handover.
+	 */
 	private async moveToNewKey(
 		fallback: string,
 		profileId: string,
-		assign: (
-			profile: StoredProfile
-		) => Promise<{ success: boolean; profile?: StoredProfile; error?: string }>
+		turnstileToken: string | undefined,
+		refusal: (profile: StoredProfile) => string | null,
+		name?: string
 	): Promise<Outcome> {
+		const blocked = this.guard();
+		if (blocked) return { success: false, error: blocked };
+		let asked: StoredProfile;
+		try {
+			asked = this.find(profileId);
+		} catch (err) {
+			return { success: false, error: err instanceof Error ? err.message : fallback };
+		}
+		const refused = refusal(asked);
+		if (refused) return { success: false, error: refused };
+		const registered = await syncStore.registerAccount(turnstileToken);
+		if (!registered.success || !registered.account)
+			return { success: false, error: registered.error ?? 'Registration failed' };
+		const { account } = registered;
 		let synced = false;
 		const result = await this.handover(fallback, async () => {
-			const result = await assign(this.find(profileId));
-			if (!result.success || !result.profile)
-				return { success: false, error: result.error ?? 'Registration failed' };
+			// The workspace may have changed while the relay was asked: removed, or
+			// given a key by another window. The new account is then left unused.
+			const profile = this.find(profileId);
+			if (profile.syncKey !== asked.syncKey)
+				return { success: false, error: 'This workspace changed meanwhile. Try again.' };
+			const assigned = await syncStore.assignKey(profile, account, name);
 			synced = syncStore.activeId === profileId;
-			if (synced) await this.activate(result.profile);
+			if (synced) await this.activate(assigned);
 			else {
 				await markSyncOutbox(profileId, [PROFILE_META_KEY]);
 				syncScheduler.changed(profileId);

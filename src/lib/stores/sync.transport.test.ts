@@ -289,6 +289,28 @@ describe('sync transport', () => {
 			expect(dropped).toBe(1);
 		});
 
+		// A photo on a weak signal takes as long as it takes: given up at a fixed
+		// time it would start again from nothing, every time.
+		it('lets a transfer finish however long it takes while it keeps moving', async () => {
+			const pending = sendSilent();
+			await vi.advanceTimersByTimeAsync(0);
+			for (let second = 0; second < 6 * 60; second += 30) {
+				await vi.advanceTimersByTimeAsync(30_000);
+				lastXhr?.upload.onprogress?.();
+			}
+			expect(dropped).toBe(0);
+
+			const xhr = lastXhr!;
+			xhr.status = 200;
+			xhr.responseText = JSON.stringify({ cursor: 7 });
+			xhr.onload?.();
+
+			expect(await pending).toMatchObject({ success: true, data: { cursor: 7 } });
+			expect(sends).toBe(1);
+			await vi.runAllTimersAsync();
+			expect(dropped).toBe(0);
+		});
+
 		it('gives up a sign-in the relay never answers', async () => {
 			vi.stubGlobal(
 				'fetch',

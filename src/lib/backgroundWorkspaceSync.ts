@@ -5,8 +5,6 @@
 // merges them with the database, where what was saved here is the newer copy.
 import type { Label, Note } from '#lib/types.js';
 import {
-	bulkPutLabels,
-	deleteLabel,
 	deleteNote,
 	getAllLabels,
 	getAllNotesMetadata,
@@ -14,6 +12,7 @@ import {
 	getSyncOutboxKeys,
 	getSyncState,
 	hydrateNoteAttachments,
+	mergeStoredLabels,
 	mergeWorkspaceState,
 	putNote
 } from '#lib/db/idb.js';
@@ -24,7 +23,6 @@ import {
 	mergeLabelLists,
 	mergeNoteLists,
 	mergeTwoNotes,
-	stableStringify,
 	withoutTombstoned
 } from '#lib/model/index.js';
 import { durableNoteSignature, noteNeedsDurableWrite } from '#lib/noteStorage.js';
@@ -134,11 +132,6 @@ async function saveToWorkspace(
 	});
 	// Given up for a handover or for the open workspace's sync: nothing is saved.
 	if (signal.aborted) return snapshot;
-	const labels: Label[] = withoutTombstoned(
-		mergeLabelLists(stored.labels, snapshot.labels),
-		labelTombstones
-	);
-
 	// Deletes are saved first: a note saved before its delete would outlive a crash.
 	const state = await mergeWorkspaceState(
 		pid,
@@ -184,13 +177,15 @@ async function saveToWorkspace(
 	for (const note of stored.notes) {
 		if (tombstones[note.id]) await deleteNote(pid, note.id);
 	}
-	for (const label of stored.labels) {
-		if (labelTombstones[label.id]) await deleteLabel(pid, label.id);
-	}
-	if (
-		stableStringify(withoutTombstoned(stored.labels, labelTombstones)) !== stableStringify(labels)
-	)
-		await bulkPutLabels(pid, labels);
+	// Labels are edited without the sync lock, by a window that has this workspace
+	// open. They are merged with what is stored when they are written, never with
+	// what was read before the relay was waited for.
+	const labels: Label[] = await mergeStoredLabels(pid, LABEL_IDB, (current, deleted) =>
+		withoutTombstoned(
+			mergeLabelLists(current, snapshot.labels),
+			newest(sanitizeTombstones(deleted), labelTombstones)
+		)
+	);
 	const library = await mergeStoredCanvasLibrary(
 		pid,
 		snapshot.libraryItems,

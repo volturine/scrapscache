@@ -566,73 +566,68 @@ export class SyncStore {
 		await this.accessToken(account);
 	}
 
-	/** Give a local workspace a fresh sync key. Its id, notes, and row stay the same. */
-	async register(
-		workspace: StoredProfile,
-		name?: string,
-		turnstileToken?: string
-	): Promise<{ success: boolean; profile?: StoredProfile; error?: string }> {
-		if (!isLocalWorkspace(workspace))
-			return { success: false, error: 'That workspace is already synced' };
-		return this.assignNewKey(
-			{ ...workspace, name: name?.trim() || workspace.name },
-			turnstileToken
-		);
-	}
-
 	/**
-	 * Move a workspace whose key was retired onto a new key and a new, empty
-	 * account. Its id and notes stay; the next sync uploads them. The old key's
-	 * sync state is dropped, since that account no longer exists.
+	 * Register a new, empty account with the relay, for a workspace about to get a
+	 * new key. Only the relay is asked: nothing on this device changes until
+	 * `assignKey`, so this is done without holding anything a handover waits for.
 	 */
-	async replaceRetiredKey(
-		workspace: StoredProfile,
+	async registerAccount(
 		turnstileToken?: string
-	): Promise<{ success: boolean; profile?: StoredProfile; error?: string }> {
-		if (isLocalWorkspace(workspace))
-			return { success: false, error: 'That workspace is not synced' };
-		const result = await this.assignNewKey(workspace, turnstileToken);
-		if (result.success) {
-			await this.clearAccountControlPlane(
-				identityFromSyncKey(workspace.syncKey).accountId,
-				workspace.id
-			);
-		}
-		return result;
-	}
-
-	private async assignNewKey(
-		workspace: StoredProfile,
-		turnstileToken?: string
-	): Promise<{ success: boolean; profile?: StoredProfile; error?: string }> {
+	): Promise<{ success: boolean; account?: SyncAccount; error?: string }> {
 		const account = createSyncIdentity();
 		try {
-			const res = await fetch(serverUrl('/api/sync/register'), {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					accountId: account.accountId,
-					authPublicKey: account.authPublicKey,
-					signature: signSyncRegistration(
-						account.syncKey,
-						account.accountId,
-						account.authPublicKey
-					),
-					turnstileToken
+			const res = await withinTime(RELAY_SILENCE_MS, null, (signal) =>
+				fetch(serverUrl('/api/sync/register'), {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						accountId: account.accountId,
+						authPublicKey: account.authPublicKey,
+						signature: signSyncRegistration(
+							account.syncKey,
+							account.accountId,
+							account.authPublicKey
+						),
+						turnstileToken
+					}),
+					signal
 				})
-			});
+			);
 			const data = await res.json().catch(() => ({}));
 			if (!res.ok)
 				return {
 					success: false,
 					error: typeof data.error === 'string' ? data.error : 'Registration failed'
 				};
-			const profile: StoredProfile = { ...workspace, syncKey: account.syncKey };
-			await this.replaceKeyringEntry(profile);
-			return { success: true, profile };
+			return { success: true, account };
 		} catch (err) {
 			return { success: false, error: err instanceof Error ? err.message : 'Network error' };
 		}
+	}
+
+	/**
+	 * Put a workspace on the key of an account the relay has registered. Its id,
+	 * notes and row stay the same and the next sync uploads them. A key it had
+	 * before was retired: that account no longer exists, so its sync state is dropped.
+	 */
+	async assignKey(
+		workspace: StoredProfile,
+		account: SyncAccount,
+		name?: string
+	): Promise<StoredProfile> {
+		const profile: StoredProfile = {
+			...workspace,
+			name: name?.trim() || workspace.name,
+			syncKey: account.syncKey
+		};
+		await this.replaceKeyringEntry(profile);
+		if (workspace.syncKey) {
+			await this.clearAccountControlPlane(
+				identityFromSyncKey(workspace.syncKey).accountId,
+				workspace.id
+			);
+		}
+		return profile;
 	}
 
 	private async replaceKeyringEntry(profile: StoredProfile): Promise<void> {
@@ -993,8 +988,10 @@ export class SyncStore {
 			signal?.addEventListener('abort', dropped, { once: true });
 			xhr.onloadend = () => signal?.removeEventListener('abort', dropped);
 			// A connection that is up in name only neither answers nor fails. A request
-			// with no byte moving either way for this long is given up; one that is slow
-			// but moving is left to finish. What it carried is still queued.
+			// with no byte moving either way for this long is given up. That is the only
+			// limit: one that is slow but moving is left to finish, however long a photo
+			// takes on a weak signal, since given up it would start again from nothing.
+			// What it carried is still queued.
 			let silence: ReturnType<typeof setTimeout> | undefined;
 			let stalled = false;
 			const moving = () => {
@@ -1010,8 +1007,6 @@ export class SyncStore {
 			};
 			xhr.onreadystatechange = moving;
 			xhr.open('POST', serverUrl(path));
-			// Pairing expires in 60 seconds; photo/data sync must be allowed to finish.
-			xhr.timeout = 300_000;
 			xhr.setRequestHeader('Content-Type', 'application/json');
 			xhr.setRequestHeader('Authorization', `Bearer ${accessToken}`);
 			xhr.setRequestHeader('x-sync-client-id', this.syncClientId);
@@ -1083,7 +1078,6 @@ export class SyncStore {
 				settle({ success: true, data });
 			};
 			xhr.onerror = () => settle({ success: false, error: 'Sync network error', transient: true });
-			xhr.ontimeout = () => settle({ success: false, error: 'Sync timed out' });
 			xhr.onabort = () =>
 				settle({ success: false, error: stalled ? 'Sync timed out' : 'Sync was cancelled' });
 			sentAt = Date.now();

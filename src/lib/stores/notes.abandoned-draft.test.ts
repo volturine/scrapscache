@@ -3,6 +3,7 @@ import { createSyncIdentity } from '#lib/syncPairing.js';
 import { releaseProfile, resumeProfile, waitForDeviceWrites } from '#lib/db/idb.js';
 import { composerStore } from './composer.svelte';
 import { notesStore } from './notes.svelte';
+import { syncScheduler } from './syncScheduler';
 import { syncStore } from './sync.svelte';
 
 const PID = 'abandoned-draft';
@@ -23,13 +24,7 @@ describe('the bar’s draft after its window went away', () => {
 	afterEach(() => {
 		vi.restoreAllMocks();
 		resumeProfile(PID);
-		const internals = notesStore as unknown as {
-			dirty: boolean;
-			syncPushTimer: ReturnType<typeof setTimeout> | null;
-		};
-		if (internals.syncPushTimer) clearTimeout(internals.syncPushTimer);
-		internals.syncPushTimer = null;
-		internals.dirty = false;
+		syncScheduler.reset();
 		composerStore.draftId = null;
 		syncStore.account = null;
 		syncStore.profiles = [];

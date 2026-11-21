@@ -15,6 +15,7 @@
 		caption,
 		active,
 		disabled,
+		selectDisabled = disabled,
 		expanded,
 		icon,
 		onselect,
@@ -30,6 +31,8 @@
 		caption: string;
 		active: boolean;
 		disabled: boolean;
+		/** Selecting the row can stay possible while its other controls are held. */
+		selectDisabled?: boolean;
 		expanded: boolean;
 		icon: Snippet;
 		onselect: () => void;
@@ -237,7 +240,7 @@
 			<button
 				type="button"
 				class={styles.select}
-				disabled={locked}
+				disabled={selectDisabled || working !== null}
 				aria-label={active ? `${name} is active` : `Switch to ${name}`}
 				onclick={onselect}
 			>

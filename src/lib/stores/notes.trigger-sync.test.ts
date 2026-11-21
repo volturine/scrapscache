@@ -2,14 +2,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createSyncIdentity } from '#lib/syncPairing.js';
 import { notesStore } from './notes.svelte';
 import { syncStore } from './sync.svelte';
+import { syncScheduler } from './syncScheduler';
 
 describe('heuristic sync triggers and coalescing', () => {
 	beforeEach(() => {
 		localStorage.clear();
 		vi.restoreAllMocks();
 		notesStore.notes = [];
+		notesStore.loaded = true;
 		notesStore.labels = [];
-		(notesStore as unknown as { lastAutoSyncAt: number }).lastAutoSyncAt = 0;
+		syncScheduler.reset();
 		syncStore.account = createSyncIdentity();
 	});
 
@@ -27,10 +29,10 @@ describe('heuristic sync triggers and coalescing', () => {
 			},
 			'sendSyncRequest'
 		).mockImplementation(async (_path, payload) => {
+			requests.push(JSON.parse(payload) as { cursor: number });
 			if (delayMs > 0) {
 				await new Promise((resolve) => setTimeout(resolve, delayMs));
 			}
-			requests.push(JSON.parse(payload) as { cursor: number });
 			return {
 				success: true,
 				data: {
@@ -53,10 +55,7 @@ describe('heuristic sync triggers and coalescing', () => {
 		await notesStore.triggerSync();
 		const bootstrapCount = requests.length;
 
-		// Set lastAutoSyncAt to now to simulate recent sync
-		(notesStore as unknown as { lastAutoSyncAt: number }).lastAutoSyncAt = Date.now();
-
-		// Normal syncWithCloud() should be throttled
+		// The workspace has just synced, so a normal syncWithCloud() is throttled
 		await notesStore.syncWithCloud();
 		expect(requests.length).toBe(bootstrapCount);
 
@@ -75,6 +74,7 @@ describe('heuristic sync triggers and coalescing', () => {
 
 		// Trigger first sync
 		const p1 = notesStore.triggerSync();
+		await vi.waitFor(() => expect(requests.length).toBe(baseCount + 1), { interval: 1 });
 
 		// While first sync is in-flight, send multiple rapid triggers (e.g. 5 SSE notifications)
 		const p2 = notesStore.triggerSync();
@@ -88,18 +88,43 @@ describe('heuristic sync triggers and coalescing', () => {
 		expect(requests.length - baseCount).toBe(2);
 	});
 
+	// On a connection that does not reach the relay, whoever asks for a sync while
+	// one is running is answered when that one fails, not a whole round later.
+	it('does not send a failed round again for the syncs that joined it', async () => {
+		let requests = 0;
+		vi.spyOn(
+			syncStore as unknown as {
+				sendSyncRequest(): Promise<{ success: boolean; error?: string }>;
+			},
+			'sendSyncRequest'
+		).mockImplementation(async () => {
+			requests += 1;
+			await new Promise((resolve) => setTimeout(resolve, 30));
+			return { success: false, error: 'Sync network error' };
+		});
+
+		const running = notesStore.triggerSync();
+		const joined = notesStore.syncWithCloudManual();
+
+		expect(await Promise.all([running, joined])).toEqual([false, false]);
+		expect(requests).toBe(1);
+	});
+
 	it('posts local-sync-complete message to BroadcastChannel on successful sync', async () => {
 		const requests: unknown[] = [];
 		mockRelay(requests, 0);
 
 		const postMessageSpy = vi.fn();
-		(
-			notesStore as unknown as {
-				syncBroadcastChannel: { postMessage: (msg: unknown) => void } | null;
-			}
-		).syncBroadcastChannel = { postMessage: postMessageSpy };
-
-		await notesStore.triggerSync();
+		const windows = syncScheduler as unknown as {
+			channel: { postMessage: (msg: unknown) => void } | null;
+		};
+		const channel = windows.channel;
+		windows.channel = { postMessage: postMessageSpy };
+		try {
+			await notesStore.triggerSync();
+		} finally {
+			windows.channel = channel;
+		}
 
 		expect(postMessageSpy).toHaveBeenCalledWith(
 			expect.objectContaining({ type: 'local-sync-complete' })

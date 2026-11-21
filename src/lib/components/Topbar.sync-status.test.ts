@@ -12,6 +12,8 @@ vi.mock('#lib/editorContext.js', () => ({
 
 import { syncStore, type StartedDeviceLink } from '#lib/stores/sync.svelte.js';
 import { notesStore } from '#lib/stores/notes.svelte.js';
+import { syncScheduler } from '#lib/stores/syncScheduler.js';
+import { showOpenWorkspaceSyncing } from '../../tests/syncing';
 import { uiStore } from '#lib/stores/ui.svelte.js';
 import Topbar from './Topbar.svelte';
 
@@ -27,8 +29,8 @@ afterEach(() => {
 	syncStore.account = null;
 	syncStore.onSyncStart = null;
 	syncStore.onSyncEnd = null;
-	(notesStore as unknown as { syncFlight: Promise<boolean> | null }).syncFlight = null;
-	(notesStore as unknown as { lastAutoSyncAt: number }).lastAutoSyncAt = 0;
+	showOpenWorkspaceSyncing(false);
+	syncScheduler.reset();
 	vi.restoreAllMocks();
 });
 
@@ -123,13 +125,11 @@ describe('Topbar sync status', () => {
 		const { container } = render(Topbar);
 		const icon = container.querySelector('[data-scrapscache-sync-spinner]');
 
-		(notesStore as unknown as { syncFlight: Promise<boolean> | null }).syncFlight = new Promise(
-			() => undefined
-		);
+		showOpenWorkspaceSyncing(true);
 		await tick();
 		expect(icon?.classList.contains('scrapscache-sync-icon-active')).toBe(true);
 
-		(notesStore as unknown as { syncFlight: Promise<boolean> | null }).syncFlight = null;
+		showOpenWorkspaceSyncing(false);
 		await tick();
 		expect(icon?.classList.contains('scrapscache-sync-icon-active')).toBe(false);
 	});

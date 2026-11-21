@@ -3,6 +3,7 @@ import type { Note } from '#lib/types.js';
 import { createSyncIdentity } from '#lib/syncPairing.js';
 import { trashCountdown } from '#lib/utils.js';
 import { notesStore } from './notes.svelte';
+import { syncScheduler } from './syncScheduler';
 import { syncStore } from './sync.svelte';
 
 const DAY = 86_400_000;
@@ -39,13 +40,7 @@ describe('trash', () => {
 	afterEach(async () => {
 		vi.restoreAllMocks();
 		await notesStore.waitForPendingProfileWrites();
-		const internals = notesStore as unknown as {
-			dirty: boolean;
-			syncPushTimer: ReturnType<typeof setTimeout> | null;
-		};
-		if (internals.syncPushTimer) clearTimeout(internals.syncPushTimer);
-		internals.syncPushTimer = null;
-		internals.dirty = false;
+		syncScheduler.reset();
 		syncStore.account = null;
 		syncStore.profiles = [];
 		notesStore.notes = [];

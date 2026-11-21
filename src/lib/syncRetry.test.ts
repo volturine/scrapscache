@@ -4,7 +4,9 @@ import {
 	reconnectBackoff,
 	retryTransient,
 	transientRetry,
+	untilAborted,
 	wait,
+	withinTime,
 	type Backoff
 } from './syncRetry';
 
@@ -95,5 +97,85 @@ describe('retryTransient', () => {
 			quick
 		);
 		expect(result).toEqual({ attempt: 1, status: 507 });
+	});
+
+	it('ends the wait before a retry as soon as its signal aborts', async () => {
+		vi.useFakeTimers();
+		try {
+			const stop = new AbortController();
+			let attempts = 0;
+			const pending = retryTransient(
+				async () => ({ attempt: ++attempts }),
+				() => !stop.signal.aborted,
+				{ base: 60_000, factor: 1, max: 60_000, times: 3 },
+				stop.signal
+			);
+			await vi.advanceTimersByTimeAsync(0);
+			expect(attempts).toBe(1);
+
+			stop.abort();
+
+			// No time passes: the minute before the retry is not waited out.
+			expect(await pending).toEqual({ attempt: 2 });
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+});
+
+describe('untilAborted', () => {
+	it('settles as the work does while the signal holds', async () => {
+		const signal = new AbortController().signal;
+		expect(await untilAborted(Promise.resolve('done'), signal)).toBe('done');
+		await expect(untilAborted(Promise.reject(new Error('failed')), signal)).rejects.toThrow(
+			'failed'
+		);
+		expect(await untilAborted(Promise.resolve('no signal'))).toBe('no signal');
+	});
+
+	it('stops waiting with the reason given once the signal aborts', async () => {
+		const stop = new AbortController();
+		const waiting = untilAborted(new Promise(() => undefined), stop.signal);
+		stop.abort(new Error('gave up'));
+		await expect(waiting).rejects.toThrow('gave up');
+		await expect(untilAborted(Promise.resolve('late'), stop.signal)).rejects.toThrow('gave up');
+	});
+});
+
+describe('withinTime', () => {
+	/** A request that only ends when its signal gives it up, with the reason given. */
+	const neverAnswered = (signal: AbortSignal) =>
+		new Promise<string>((_resolve, reject) =>
+			signal.addEventListener('abort', () => reject(signal.reason), { once: true })
+		);
+
+	it('gives up a request the relay has not answered in time', async () => {
+		vi.useFakeTimers();
+		try {
+			const waiting = withinTime(1_000, null, neverAnswered);
+			const outcome = waiting.catch((error: Error) => error.message);
+			await vi.advanceTimersByTimeAsync(999);
+			await vi.advanceTimersByTimeAsync(1);
+			expect(await outcome).toBe('Sync timed out');
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('gives it up at once, with the reason given, when whoever waits stops waiting', async () => {
+		const stop = new AbortController();
+		const waiting = withinTime(60_000, stop.signal, neverAnswered);
+		stop.abort(new Error('gave up'));
+		await expect(waiting).rejects.toThrow('gave up');
+	});
+
+	it('leaves no timer behind once the request is answered', async () => {
+		vi.useFakeTimers();
+		try {
+			expect(await withinTime(1_000, null, async () => 'answered')).toBe('answered');
+			expect(vi.getTimerCount()).toBe(0);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });

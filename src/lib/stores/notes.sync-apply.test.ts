@@ -26,7 +26,8 @@ import { openDB } from 'idb';
 import { loadBoardsFromDevice } from '#lib/syncTombstones.js';
 import * as syncTombstones from '#lib/syncTombstones.js';
 import { writeNotesMirror } from '#lib/noteStorage.js';
-import { notesStore, SYNC_LOCK } from './notes.svelte';
+import { notesStore } from './notes.svelte';
+import { SYNC_LOCK, syncScheduler } from './syncScheduler';
 import { syncStore } from './sync.svelte';
 import { syncSnapshot } from '#lib/syncRecords.js';
 import type { Note } from '#lib/types.js';
@@ -131,6 +132,7 @@ describe('notes store sync apply', () => {
 		vi.useRealTimers();
 		localStorage.clear();
 		notesStore.notes = [];
+		notesStore.loaded = true;
 		notesStore.labels = [];
 		notesStore.deletedNoteIds = {};
 		notesStore.deletedLabelIds = {};
@@ -142,6 +144,7 @@ describe('notes store sync apply', () => {
 	afterEach(() => {
 		syncStore.account = null;
 		notesStore.notes = [];
+		notesStore.loaded = true;
 		notesStore.labels = [];
 	});
 
@@ -220,6 +223,7 @@ describe('notes store sync apply', () => {
 		await putNote(TEST_WORKSPACE, kept);
 		writeNotesMirror([kept, lost], TEST_WORKSPACE);
 		notesStore.notes = [];
+		notesStore.loaded = true;
 		notesStore.labels = [];
 		notesStore.loaded = false;
 		notesStore.deletedNoteIds = {};
@@ -360,6 +364,7 @@ describe('notes store sync apply', () => {
 		];
 		writeNotesMirror([lost], TEST_WORKSPACE);
 		notesStore.notes = [];
+		notesStore.loaded = true;
 		notesStore.loaded = false;
 
 		await notesStore.init();
@@ -627,6 +632,7 @@ describe('notes store sync apply', () => {
 		const account = createSyncIdentity();
 		syncStore.account = account;
 		notesStore.notes = [];
+		notesStore.loaded = true;
 		relayWith(account, [
 			{ slot: 'c'.repeat(64), payload: { kind: 'note-tombstone', id: 'gone', deletedAt: 5 } }
 		]);
@@ -851,7 +857,7 @@ describe('notes store sync apply', () => {
 		vi.spyOn(syncStore, 'clearAccountControlPlane').mockImplementation(async () => undefined);
 
 		try {
-			const auto = notesStore.flushSync(true);
+			const auto = notesStore.flushSync();
 			await started;
 
 			const merged = notesStore.mergeWithCloudManual();
@@ -871,6 +877,7 @@ describe('applying a pulled snapshot during local edits', () => {
 	afterEach(() => {
 		vi.restoreAllMocks();
 		notesStore.notes = [];
+		notesStore.loaded = true;
 	});
 
 	it('does not roll the device copy back behind an edit made while the flight awaited', async () => {

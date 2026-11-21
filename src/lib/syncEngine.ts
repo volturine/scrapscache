@@ -57,6 +57,11 @@ export async function noteRecordForRelay(
 	return { key: record.key, payload, fingerprint: await sha256(payload) };
 }
 
+/** The records a note is uploaded as: itself, and each attachment it lists. */
+export function noteRecordKeys(note: Note): string[] {
+	return [`note:${note.id}`, ...(note.images ?? []).map((image) => `attachment:${image.id}`)];
+}
+
 export function currentRecordKeys(snapshot: SyncSnapshot): Set<string> {
 	const keys = new Set<string>();
 	for (const note of snapshot.notes) {

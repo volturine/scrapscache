@@ -152,6 +152,46 @@ service worker finds the note in that workspace, shows its title, and skips a
 reminder any device already handled. Private workspaces get the same alerts
 while the app is open; only closed-app push needs the relay.
 
+When a workspace syncs, and who holds the sync lock, is decided in one place:
+the sync scheduler (`src/lib/stores/syncScheduler.ts`). The stores only say what
+happened ("this workspace changed", "sync now", "this is a handover"); the
+scheduler applies the same rules to every workspace on the device:
+
+1. Each workspace has one lane, whether or not it is open in this window. A lane
+   is asked to sync, runs rounds until it has settled with the relay, and gives
+   everyone who asked meanwhile the same answer.
+2. One round runs at a time, under a lock shared by every window. A handover
+   (switching, creating, unlinking or deleting a workspace, an import landing, a
+   pairing merge or replace) goes first, then the open workspace, then the others.
+3. Whatever comes first interrupts what is running, so nothing a person does
+   waits on the relay. The interrupted round drops its request and its lane goes
+   again afterwards. What it had not committed is still queued.
+4. A sync that could not reach the relay is tried again by itself, from 5 seconds
+   and later each time up to 5 minutes, for as long as the workspace has
+   something to send; coming back online or to the foreground tries at once. A
+   sync the relay refused (a full account, a client it no longer accepts) waits
+   until something changes.
+5. The cloud icon turns while a round runs, whichever workspace it is for.
+
+The open workspace syncs from what is in memory. One that is not open syncs from
+its own database (`src/lib/backgroundWorkspaceSync.ts`), and only when it has
+records queued to upload: a workspace that owes nothing is not contacted until it
+is opened. So a workspace left by a switch, or by the app closing, still sends
+what was written in it, and the sync asked for while it was open is the one that
+finishes.
+
+A relay that goes silent is not waited for either. On a connection that is up in
+name only a request neither arrives nor fails, so each relay request a sync makes
+is given up after a minute in which no byte moved (`RELAY_SILENCE_MS` in
+`src/lib/syncRetry.ts`); a request that is slow but moving is left to finish.
+
+A backup or Google Keep import is read and prepared without holding anything,
+then lands in one IndexedDB transaction (`rewriteWorkspace` in
+`src/lib/db/idb.ts`): notes, attachments, labels, deletes, boards, the canvas
+library and the upload queue are written together or not at all. It lands in the
+workspace it was started for, whichever one is open by then, so a tab closed
+part-way leaves that workspace exactly as it was.
+
 Notifications are one switch for the whole app (the browser's permission), but
 each synced workspace gets a push subscription of its own: a service worker
 registration under `/push/<workspace id>/`, with its own push address and a

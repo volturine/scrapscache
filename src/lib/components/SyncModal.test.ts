@@ -31,6 +31,7 @@ const tokenFrom = (
 		})
 	);
 import { TEST_WORKSPACE } from '../../tests/workspace';
+import { showOpenWorkspaceSyncing } from '../../tests/syncing';
 
 function profile(id: string, name: string, createdAt: number): StoredProfile {
 	return { id, name, createdAt, syncKey: createSyncIdentity().syncKey };
@@ -67,7 +68,7 @@ describe('SyncModal profile interactions', () => {
 		syncStore.progress = null;
 		syncStore.usage = null;
 		profileCoordinator.switching = false;
-		(notesStore as unknown as { syncFlight: Promise<boolean> | null }).syncFlight = null;
+		showOpenWorkspaceSyncing(false);
 	});
 
 	it('keeps an incompatibility message visible after a failed manual sync', async () => {
@@ -635,32 +636,49 @@ describe('SyncModal profile interactions', () => {
 		await waitFor(() => expect(screen.getByRole('button', { name: 'Sync now' })).toBeTruthy());
 	});
 
-	it('reacts when a store-owned sync starts and ends', async () => {
+	// A background sync waits on the relay, which a poor connection can stretch to
+	// minutes, and an import can run as long. Nothing in the dialog waits for either:
+	// a workspace change takes over from the sync, asking for a sync joins it, and
+	// an import lands in its own workspace whatever is open by then.
+	it('holds nothing while a store-owned sync or an import runs', async () => {
 		render(SyncModal, { props: { onClose: vi.fn() } });
 		const syncNow = screen.getByRole('button', { name: 'Sync now' }) as HTMLButtonElement;
-
-		(notesStore as unknown as { syncFlight: Promise<boolean> | null }).syncFlight = new Promise(
-			() => undefined
-		);
-		await tick();
-		expect(syncNow.disabled).toBe(true);
-		expect(syncNow.textContent).toContain('Sync now');
-		expect(screen.queryByText('Syncing…')).toBeNull();
-
-		(notesStore as unknown as { syncFlight: Promise<boolean> | null }).syncFlight = null;
-		await tick();
 		const target = screen.getByRole('button', { name: 'Switch to Side' }) as HTMLButtonElement;
+		const close = screen.getByRole('button', { name: 'Close' }) as HTMLButtonElement;
 
-		(notesStore as unknown as { syncFlight: Promise<boolean> | null }).syncFlight = new Promise(
-			() => undefined
-		);
+		showOpenWorkspaceSyncing(true);
+		notesStore.importing = true;
 		await tick();
-		expect(target.disabled).toBe(true);
-		expect(screen.queryByText('Wait for sync to finish before changing workspaces.')).toBeNull();
+		try {
+			expect(syncNow.disabled).toBe(false);
+			expect(syncNow.textContent).toContain('Sync now');
+			expect(screen.queryByText('Syncing…')).toBeNull();
+			expect(target.disabled).toBe(false);
+			expect(close.disabled).toBe(false);
+		} finally {
+			showOpenWorkspaceSyncing(false);
+			notesStore.importing = false;
+		}
+	});
 
-		(notesStore as unknown as { syncFlight: Promise<boolean> | null }).syncFlight = null;
-		await tick();
+	it('switches workspace while a sync started from the modal still waits', async () => {
+		const onClose = vi.fn();
+		vi.spyOn(notesStore, 'syncWithCloudManual').mockReturnValueOnce(new Promise(() => undefined));
+		const switchTo = vi.spyOn(profileCoordinator, 'switchTo').mockResolvedValue({ success: true });
+		render(SyncModal, { props: { onClose } });
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Sync now' }));
+		expect(screen.getByRole('button', { name: 'Syncing…' })).toBeTruthy();
+		const target = screen.getByRole('button', { name: 'Switch to Side' }) as HTMLButtonElement;
 		expect(target.disabled).toBe(false);
+		// Everything else in the row still waits for the sync the person asked for.
+		expect(
+			(screen.getByRole('button', { name: 'Export Side' }) as HTMLButtonElement).disabled
+		).toBe(true);
+
+		await fireEvent.click(target);
+		await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+		expect(switchTo).toHaveBeenCalledOnce();
 	});
 
 	it('unlinks the active workspace from its own row into a private workspace', async () => {
@@ -739,14 +757,13 @@ describe('SyncModal profile interactions', () => {
 			});
 			await fireEvent.click(screen.getByRole('button', { name: 'Start connection' }));
 			// A background sync may start while the pairing poll is in flight.
-			(notesStore as unknown as { syncFlight: Promise<boolean> | null }).syncFlight =
-				Promise.resolve(true);
+			showOpenWorkspaceSyncing(true);
 			poll.resolve({ success: true, linked: true, expired: false, receivedSyncKey: side.syncKey });
 			await waitFor(() => expect(receive).toHaveBeenCalledWith(side.syncKey));
 			expect(screen.getByText('Connected. Syncing workspace…')).toBeTruthy();
 			expect(screen.queryByText('Expires in')).toBeNull();
 			expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
-			(notesStore as unknown as { syncFlight: Promise<boolean> | null }).syncFlight = null;
+			showOpenWorkspaceSyncing(false);
 			handover.resolve({ outcome: 'linked', error: syncError });
 			await waitFor(() => expect(screen.getByText(syncError ?? 'Paired and synced.')).toBeTruthy());
 			expect(screen.queryByText('Connected. Syncing workspace…')).toBeNull();

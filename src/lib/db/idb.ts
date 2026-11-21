@@ -661,11 +661,16 @@ export function holdAttachmentWrites(pid: string): () => void {
 function withAttachmentWritesLock<T>(
 	pid: string,
 	mode: 'shared' | 'exclusive',
-	run: () => Promise<T>
+	run: () => Promise<T>,
+	signal?: AbortSignal
 ): Promise<T> {
 	const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined;
 	if (!locks?.request) return run();
-	return locks.request(attachmentWritesLock(pid), { mode }, run) as Promise<T>;
+	return locks.request(
+		attachmentWritesLock(pid),
+		{ mode, ...(signal ? { signal } : {}) },
+		run
+	) as Promise<T>;
 }
 
 /**
@@ -677,8 +682,16 @@ function withAttachmentWritesLock<T>(
  * that has begun, in this window or another, to land. A window that went away
  * mid-write no longer holds the lock, and its bytes are not coming.
  */
-export function getStoredAttachmentVersions(pid: string): Promise<Map<string, string>> {
-	return withAttachmentWritesLock(pid, 'exclusive', () => readStoredAttachmentVersions(pid));
+export function getStoredAttachmentVersions(
+	pid: string,
+	signal?: AbortSignal
+): Promise<Map<string, string>> {
+	return withAttachmentWritesLock(
+		pid,
+		'exclusive',
+		() => readStoredAttachmentVersions(pid),
+		signal
+	);
 }
 
 async function readStoredAttachmentVersions(pid: string): Promise<Map<string, string>> {
@@ -992,6 +1005,102 @@ export function replaceAllDeviceData(
 			throw error;
 		}
 		for (const note of notes) await onNoteCommitted?.(note);
+	});
+}
+
+/** A workspace as it is stored when `rewriteWorkspace` begins. */
+export type StoredWorkspace = {
+	noteIds: string[];
+	labels: Label[];
+	/** The workspace state asked for, by key; a key never written is undefined. */
+	state: Record<string, unknown>;
+};
+
+/** Everything one rewrite of a workspace writes. */
+export type WorkspaceRewrite = {
+	/** Drop every note, attachment and label stored before writing. */
+	clear: boolean;
+	notes: Note[];
+	labels: Label[];
+	state?: Record<string, unknown>;
+	dropState?: readonly string[];
+	/** Records to queue for upload, in the same transaction. */
+	outboxKeys?: Iterable<string>;
+};
+
+/**
+ * Rewrite a workspace in one transaction. Notes with their attachments, labels,
+ * workspace state and the upload queue land together or not at all: a tab killed
+ * part-way, or a full disk, leaves the workspace exactly as it was, and what
+ * landed is already queued to upload.
+ *
+ * `plan` decides what to write from what is stored at that moment, so nothing
+ * saved between reading and writing is missed. It must not wait for anything: a
+ * transaction left idle commits. The bytes of `candidates`, the notes the plan may
+ * write, are decoded before the transaction opens for the same reason.
+ */
+export async function rewriteWorkspace(
+	pid: string,
+	candidates: Note[],
+	stateKeys: readonly string[],
+	plan: (stored: StoredWorkspace) => WorkspaceRewrite
+): Promise<void> {
+	const blobs = new Map<string, Array<{ key: string; value: StoredImage }>>();
+	for (const note of candidates) {
+		const rows: Array<{ key: string; value: StoredImage }> = [];
+		for (const image of note.images ?? []) {
+			if (!image.dataUrl) continue;
+			const blob = await dataUrlToBlob(image.dataUrl);
+			const bytes = new Uint8Array(await blob.arrayBuffer());
+			const hash = image.contentHash ?? (await sha256(image.dataUrl));
+			rows.push({ key: `${note.id}::${image.id}`, value: { mime: blob.type, bytes, hash } });
+		}
+		blobs.set(note.id, rows);
+	}
+	const dbName = resolveDbName(pid);
+	await enqueueDeviceWrite(async () => {
+		const db = await getDB(pid);
+		const previousGeneration = outboxGenerations.get(dbName) ?? null;
+		const tx = db.transaction(
+			[NOTES_STORE, IMAGES_STORE, LABELS_STORE, SYNC_STATE_STORE, SYNC_OUTBOX_STORE],
+			'readwrite'
+		);
+		try {
+			const noteStore = tx.objectStore(NOTES_STORE);
+			const imageStore = tx.objectStore(IMAGES_STORE);
+			const labelStore = tx.objectStore(LABELS_STORE);
+			const stateStore = tx.objectStore(SYNC_STATE_STORE);
+			const [noteIds, labels, values] = await Promise.all([
+				noteStore.getAllKeys(),
+				labelStore.getAll(),
+				Promise.all(stateKeys.map((key) => stateStore.get(key)))
+			]);
+			const rewrite = plan({
+				noteIds: noteIds.map(String),
+				labels: (labels as Label[]).map(plainLabel),
+				state: Object.fromEntries(stateKeys.map((key, index) => [key, values[index]]))
+			});
+			if (rewrite.clear)
+				await Promise.all([noteStore.clear(), imageStore.clear(), labelStore.clear()]);
+			for (const note of rewrite.notes) {
+				for (const blob of blobs.get(note.id) ?? []) await imageStore.put(blob.value, blob.key);
+				await noteStore.put(detachNote(note));
+			}
+			for (const label of rewrite.labels) await labelStore.put(plainLabel(label));
+			for (const [key, value] of Object.entries(rewrite.state ?? {}))
+				await stateStore.put(value, key);
+			for (const key of rewrite.dropState ?? []) await stateStore.delete(key);
+			const outboxKeys = uniqueOutboxKeys(rewrite.outboxKeys ?? []);
+			if (outboxKeys.length) {
+				const generation = await nextOutboxGeneration(tx, dbName);
+				const outbox = tx.objectStore(SYNC_OUTBOX_STORE);
+				for (const key of outboxKeys) await outbox.put(generation, key);
+			}
+			await tx.done;
+		} catch (error) {
+			await abortWrite(tx, dbName, previousGeneration);
+			throw error;
+		}
 	});
 }
 

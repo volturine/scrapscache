@@ -37,7 +37,14 @@ import {
 	type SyncSnapshot
 } from '#lib/syncRecords.js';
 import { MAX_CLIENT_SYNC_MUTATIONS_PER_REQUEST } from '#lib/syncLimits.js';
-import { retryTransient } from '#lib/syncRetry.js';
+import {
+	RELAY_SILENCE_MS,
+	retryTransient,
+	transientRetry,
+	untilAborted,
+	wait,
+	withinTime
+} from '#lib/syncRetry.js';
 import { sha256 } from '#lib/syncHash.js';
 import { serverUrl } from '#lib/serverOrigin.svelte.js';
 import {
@@ -63,6 +70,7 @@ import {
 	getOutboxGeneration,
 	getSyncOutboxKeys,
 	getSyncState,
+	isProfileReleased,
 	markSyncOutbox,
 	setRegisteredWorkspaces
 } from '#lib/db/idb.js';
@@ -149,7 +157,29 @@ type SyncResult = {
 	retryAfterSeconds?: number;
 	/** The relay was not reached or could not serve the request; sending it again is safe. */
 	transient?: boolean;
+	/** The relay was reset, so the next sync has to send this device's whole copy. */
+	bootstrap?: boolean;
+	/** The relay answered and will not take this as it is: asking again changes nothing. */
+	refused?: boolean;
 };
+
+/**
+ * How a sync of a workspace ended, for whoever decides when it runs next: settled
+ * with the relay; failed in a way that trying again later may get past; or refused
+ * by the relay, which the same request would be again.
+ */
+export type SyncOutcome = 'synced' | 'failed' | 'refused';
+
+export function syncOutcome(result: { success: boolean; refused?: boolean }): SyncOutcome {
+	if (result.success) return 'synced';
+	return result.refused ? 'refused' : 'failed';
+}
+
+/**
+ * The workspace a sync runs for: the one open in this window, or one this device
+ * holds that is not open here and is synced from what its database holds.
+ */
+type SyncTarget = { account: SyncAccount; pid: string; open: boolean };
 
 /**
  * Applies what a flight pulled. The workspace is handed over with it: a flight
@@ -228,6 +258,8 @@ export class SyncStore {
 	onAccountChange: (() => void) | null = null;
 	/** Registered by the central data store so board edits share its debounced sync. */
 	onLocalDataChange: (() => void) | null = null;
+	/** Called when a workspace that is not open here has something new to send. */
+	onWorkspaceOwes: ((pid: string) => void) | null = null;
 
 	constructor() {
 		if (typeof localStorage === 'undefined') return;
@@ -321,7 +353,10 @@ export class SyncStore {
 		this.profiles = this.profiles.map((entry) => (entry.id === id ? updated : entry));
 		if (updated.syncKey) {
 			if (id === this.activeId) await this.queueOutbox([PROFILE_META_KEY]);
-			else await markSyncOutbox(id, [PROFILE_META_KEY]);
+			else {
+				await markSyncOutbox(id, [PROFILE_META_KEY]);
+				this.onWorkspaceOwes?.(id);
+			}
 		}
 		return updated;
 	}
@@ -425,13 +460,10 @@ export class SyncStore {
 		return statuses;
 	}
 
-	private saveStatus(): void {
+	private saveStatus(pid: string = this.activePid, lastSync: number = this.lastSync): void {
 		if (typeof localStorage === 'undefined') return;
 		try {
-			localStorage.setItem(
-				`${LS_SYNC_STATUS_PREFIX}:${this.activePid}`,
-				JSON.stringify({ lastSync: this.lastSync })
-			);
+			localStorage.setItem(`${LS_SYNC_STATUS_PREFIX}:${pid}`, JSON.stringify({ lastSync }));
 		} catch (err) {
 			console.error('[sync] could not save status:', err);
 		}
@@ -468,6 +500,7 @@ export class SyncStore {
 		this.authenticationGeneration += 1;
 		this.pendingSessions.clear();
 		this.session = null;
+		this.bootstrapRequested = false;
 		this.account = null;
 		this.activeId = id;
 		this.lastError = null;
@@ -484,6 +517,8 @@ export class SyncStore {
 		this.authenticationGeneration += 1;
 		this.pendingSessions.clear();
 		this.session = null;
+		// Asked for by a sync of the workspace being left, which may not have finished.
+		this.bootstrapRequested = false;
 		this.account = account;
 		this.onAccountChange?.();
 	}
@@ -730,11 +765,13 @@ export class SyncStore {
 		const pendingSession = this.pendingSessions.get(account.accountId);
 		if (pendingSession) return pendingSession;
 		const generation = this.authenticationGeneration;
-		const sessionRequest = (async () => {
+		// Every sync starts here, so a sign-in the relay never answers is given up too.
+		const sessionRequest = withinTime(RELAY_SILENCE_MS, null, async (signal) => {
 			const challengeResponse = await fetch(serverUrl('/api/sync/auth/challenge'), {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ accountId: account.accountId })
+				body: JSON.stringify({ accountId: account.accountId }),
+				signal
 			});
 			const challenge = (await challengeResponse.json().catch(() => ({}))) as {
 				challengeId?: unknown;
@@ -758,10 +795,11 @@ export class SyncStore {
 					accountId: account.accountId,
 					challengeId: challenge.challengeId,
 					signature: signSyncChallenge(account.syncKey, account.accountId, challenge.challenge)
-				})
+				}),
+				signal
 			});
 			return this.acceptIssuedSession(account, sessionResponse, generation);
-		})();
+		});
 		this.pendingSessions.set(account.accountId, sessionRequest);
 		try {
 			return await sessionRequest;
@@ -846,7 +884,8 @@ export class SyncStore {
 	/** Attachment ids the note's retained history lists; null when it cannot be read. */
 	private async versionAttachmentIds(
 		account: SyncAccount,
-		note: Note
+		note: Note,
+		signal?: AbortSignal
 	): Promise<Set<string> | null> {
 		const key = `${account.accountId}\u0000${note.id}`;
 		const cached = this.versionAttachments.get(key);
@@ -855,7 +894,9 @@ export class SyncStore {
 		try {
 			// Loaded on demand: the history client itself fetches through this store.
 			const { loadNoteHistory } = await import('#lib/historyClient.js');
-			const versions = await loadNoteHistory(account, note.id);
+			const versions = await withinTime(RELAY_SILENCE_MS, signal, (limited) =>
+				loadNoteHistory(account, note.id, limited)
+			);
 			const ids = new Set(
 				versions.flatMap((version) => (version.note.images ?? []).map((image) => image.id))
 			);
@@ -873,7 +914,8 @@ export class SyncStore {
 	): Promise<Response> {
 		if (!account) throw new Error('Sync is not set up on this device');
 		for (let attempt = 0; attempt < 2; attempt += 1) {
-			const accessToken = await this.accessToken(account);
+			// The caller's signal covers the whole call, the sign-in before the request included.
+			const accessToken = await untilAborted(this.accessToken(account), init.signal);
 			const headers = new Headers(init.headers);
 			headers.set('authorization', `Bearer ${accessToken}`);
 			headers.set('x-sync-client-id', this.syncClientId);
@@ -893,13 +935,19 @@ export class SyncStore {
 		payload: string,
 		uploadBytes: number,
 		indicate: boolean,
-		account: SyncAccount | null = this.account
+		account: SyncAccount | null = this.account,
+		signal?: AbortSignal,
+		// The sync this request is for decides when it is given up.
+		cancelled: () => boolean = () => this.account !== account || signal?.aborted === true
 	): Promise<SyncResult> {
 		if (!account) return { success: false, error: 'Not linked' };
+		const live = () => !cancelled();
 		for (let attempt = 0; attempt < 2; attempt += 1) {
+			// Nothing is asked of the relay, a sign-in included, for a sync already given up.
+			if (!live()) return { success: false, error: 'Sync was cancelled' };
 			let accessToken: string;
 			try {
-				accessToken = await this.accessToken(account);
+				accessToken = await untilAborted(this.accessToken(account), signal);
 			} catch (error) {
 				return {
 					success: false,
@@ -910,10 +958,19 @@ export class SyncStore {
 			// the same envelope id when it is sent again, which is not a conflict.
 			const result = await retryTransient(
 				() =>
-					this.account === account
-						? this.sendSyncRequestWithToken(path, payload, uploadBytes, indicate, accessToken)
+					live()
+						? this.sendSyncRequestWithToken(
+								path,
+								payload,
+								uploadBytes,
+								indicate,
+								accessToken,
+								signal
+							)
 						: Promise.resolve({ success: false, error: 'Sync was cancelled' }),
-				(response) => response.transient === true && this.account === account
+				(response) => response.transient === true && live(),
+				transientRetry,
+				signal
 			);
 			if (result.status !== 401 || attempt === 1) return result;
 			this.invalidateSession(account.accountId, accessToken);
@@ -926,10 +983,32 @@ export class SyncStore {
 		payload: string,
 		uploadBytes: number,
 		indicate: boolean,
-		accessToken: string
+		accessToken: string,
+		signal?: AbortSignal
 	): Promise<SyncResult> {
 		return new Promise((resolve) => {
 			const xhr = new XMLHttpRequest();
+			// A sync that gives up its round drops the request instead of waiting it out.
+			const dropped = () => xhr.abort();
+			signal?.addEventListener('abort', dropped, { once: true });
+			xhr.onloadend = () => signal?.removeEventListener('abort', dropped);
+			// A connection that is up in name only neither answers nor fails. A request
+			// with no byte moving either way for this long is given up; one that is slow
+			// but moving is left to finish. What it carried is still queued.
+			let silence: ReturnType<typeof setTimeout> | undefined;
+			let stalled = false;
+			const moving = () => {
+				clearTimeout(silence);
+				silence = setTimeout(() => {
+					stalled = true;
+					xhr.abort();
+				}, RELAY_SILENCE_MS);
+			};
+			const settle = (result: SyncResult) => {
+				clearTimeout(silence);
+				resolve(result);
+			};
+			xhr.onreadystatechange = moving;
 			xhr.open('POST', serverUrl(path));
 			// Pairing expires in 60 seconds; photo/data sync must be allowed to finish.
 			xhr.timeout = 300_000;
@@ -939,26 +1018,26 @@ export class SyncStore {
 			xhr.setRequestHeader(SYNC_PROTOCOL_HEADER, SYNC_PROTOCOL_VERSION);
 
 			const showTransfer = indicate && uploadBytes >= 32 * 1024;
-			if (showTransfer) {
+			if (showTransfer)
 				this.progress = { phase: 'upload', loadedBytes: 0, totalBytes: uploadBytes };
-				xhr.upload.onprogress = (event) => {
-					this.progress = {
-						phase: 'upload',
-						loadedBytes: event.loaded,
-						totalBytes: event.lengthComputable ? event.total : uploadBytes
-					};
+			xhr.upload.onprogress = (event) => {
+				moving();
+				if (!showTransfer) return;
+				this.progress = {
+					phase: 'upload',
+					loadedBytes: event.loaded,
+					totalBytes: event.lengthComputable ? event.total : uploadBytes
 				};
-			}
-			if (indicate) {
-				xhr.onprogress = (event) => {
-					if (!event.lengthComputable || event.total < 32 * 1024) return;
-					this.progress = {
-						phase: 'download',
-						loadedBytes: event.loaded,
-						totalBytes: event.total
-					};
+			};
+			xhr.onprogress = (event) => {
+				moving();
+				if (!indicate || !event.lengthComputable || event.total < 32 * 1024) return;
+				this.progress = {
+					phase: 'download',
+					loadedBytes: event.loaded,
+					totalBytes: event.total
 				};
-			}
+			};
 
 			let sentAt = 0;
 			xhr.onload = () => {
@@ -983,7 +1062,7 @@ export class SyncStore {
 						xhr.status === 409 &&
 						typeof data.requiredVersion === 'string' &&
 						data.requiredVersion !== SYNC_PROTOCOL_VERSION;
-					resolve({
+					settle({
 						success: false,
 						status: xhr.status,
 						error: versionMismatch
@@ -1001,12 +1080,14 @@ export class SyncStore {
 				}
 				// Only the relay's own answer sets the clock; an error page is anyone's.
 				observeRelayTime(data.serverTime, sentAt, receivedAt);
-				resolve({ success: true, data });
+				settle({ success: true, data });
 			};
-			xhr.onerror = () => resolve({ success: false, error: 'Sync network error', transient: true });
-			xhr.ontimeout = () => resolve({ success: false, error: 'Sync timed out' });
-			xhr.onabort = () => resolve({ success: false, error: 'Sync was cancelled' });
+			xhr.onerror = () => settle({ success: false, error: 'Sync network error', transient: true });
+			xhr.ontimeout = () => settle({ success: false, error: 'Sync timed out' });
+			xhr.onabort = () =>
+				settle({ success: false, error: stalled ? 'Sync timed out' : 'Sync was cancelled' });
 			sentAt = Date.now();
+			moving();
 			xhr.send(payload);
 		});
 	}
@@ -1023,17 +1104,73 @@ export class SyncStore {
 		);
 	}
 
-	/** End-to-end encrypted per-record delta. Uploads only dirty outbox keys. */
-	async sync(
+	/** Sync the open workspace. */
+	sync(
 		local: SyncSnapshot,
 		indicate = false,
 		pullOnly = false,
-		applyPulled?: ApplyPulled
+		applyPulled?: ApplyPulled,
+		signal?: AbortSignal
 	): Promise<SyncResult> {
-		if (!this.account) return { success: false, error: 'Not linked' };
-		const account = this.account;
-		const pid = this.activePid;
-		const syncCancelled = (): boolean => this.account !== account;
+		if (!this.account) return Promise.resolve({ success: false, error: 'Not linked' });
+		return this.syncTarget(
+			{ account: this.account, pid: this.activePid, open: true },
+			local,
+			indicate,
+			pullOnly,
+			applyPulled,
+			signal
+		);
+	}
+
+	/**
+	 * Sync a workspace that is not open in this window, so what it still owes the
+	 * relay is sent without anyone opening it. `local` is what its database holds and
+	 * `applyPulled` saves there. The cloud turns for it as for any sync; progress and
+	 * errors on the sync indicator speak for the open workspace.
+	 */
+	syncInBackground(
+		profile: StoredProfile,
+		local: SyncSnapshot,
+		applyPulled: ApplyPulled,
+		signal: AbortSignal
+	): Promise<SyncResult> {
+		if (!profile.syncKey) return Promise.resolve({ success: false, error: 'Not linked' });
+		return this.syncTarget(
+			{ account: identityFromSyncKey(profile.syncKey), pid: profile.id, open: false },
+			local,
+			false,
+			false,
+			applyPulled,
+			signal
+		);
+	}
+
+	/** True while this device holds `pid` under this key and it is not the workspace open here. */
+	private heldInBackground(pid: string, account: SyncAccount): boolean {
+		return (
+			this.activeId !== pid &&
+			!isProfileReleased(pid) &&
+			this.profiles.some((entry) => entry.id === pid && entry.syncKey === account.syncKey)
+		);
+	}
+
+	/** End-to-end encrypted per-record delta. Uploads only dirty outbox keys. */
+	private async syncTarget(
+		{ account, pid, open }: SyncTarget,
+		local: SyncSnapshot,
+		indicate: boolean,
+		pullOnly: boolean,
+		applyPulled?: ApplyPulled,
+		signal?: AbortSignal
+	): Promise<SyncResult> {
+		// Aborting `signal` ends the sync at its next step without waiting on the relay.
+		// What it had not committed stays queued, and the next sync sends or reads it again.
+		// A workspace this window opens meanwhile is the open workspace's sync to run.
+		const syncCancelled = (): boolean =>
+			signal?.aborted === true ||
+			(open ? this.account !== account : !this.heldInBackground(pid, account));
+		let bootstrap = false;
 		if (indicate) this.onSyncStart?.();
 		try {
 			const ATTACHMENT_UPLOAD_BUDGET = 2;
@@ -1072,6 +1209,10 @@ export class SyncStore {
 				(await getSyncState<Record<string, string>>(pid, keys.recordIds).catch(() => undefined)) ??
 				{};
 			if (!recordIds || typeof recordIds !== 'object' || Array.isArray(recordIds)) recordIds = {};
+			// A first upload sends everything over several rounds, and a handover or a
+			// closed tab may cut it short. Queued before it starts, what was not sent
+			// yet is sent by the sync after; otherwise only later edits would be.
+			if (firstFullUpload && !pullOnly) await markSyncOutbox(pid, currentRecordKeys(local));
 			const outboxSnapshotAt = await getOutboxGeneration(pid);
 			let outboxKeys = new Set(await getSyncOutboxKeys(pid).catch(() => []));
 			let cursor = Number(
@@ -1107,7 +1248,7 @@ export class SyncStore {
 				const key = `${note.id}\u0000${note.updatedAt}`;
 				let lookup = historyLookups.get(key);
 				if (!lookup) {
-					lookup = this.versionAttachmentIds(account, note);
+					lookup = this.versionAttachmentIds(account, note, signal);
 					historyLookups.set(key, lookup);
 				}
 				return lookup;
@@ -1165,7 +1306,7 @@ export class SyncStore {
 				if (metaUploadDue) {
 					const metaPayload = {
 						kind: 'profile-meta' as const,
-						value: { name: this.activeProfile?.name ?? '' }
+						value: { name: this.profiles.find((entry) => entry.id === pid)?.name ?? '' }
 					};
 					currentRecords.push({
 						key: PROFILE_META_KEY,
@@ -1318,7 +1459,9 @@ export class SyncStore {
 					payload,
 					new Blob([payload]).size,
 					indicate,
-					account
+					account,
+					signal,
+					syncCancelled
 				);
 				if (syncCancelled()) return { success: false, error: 'Sync was cancelled' };
 				if (!response.success && response.status === 507 && outgoing.length > 0) {
@@ -1341,12 +1484,10 @@ export class SyncStore {
 					throttledWaits < MAX_THROTTLED_WAITS
 				) {
 					throttledWaits += 1;
-					await new Promise((resolve) =>
-						setTimeout(resolve, Math.min(response.retryAfterSeconds!, 30) * 1000)
-					);
+					await wait(Math.min(response.retryAfterSeconds, 30) * 1000, signal);
 					continue;
 				}
-				if (!response.success || !response.data) return this.fail(response);
+				if (!response.success || !response.data) return this.fail(response, open);
 				throttledWaits = 0;
 				const remoteUsage = response.data.usage;
 				if (remoteUsage && typeof remoteUsage === 'object') {
@@ -1359,7 +1500,7 @@ export class SyncStore {
 							candidate.maxBytes
 						].every((value) => typeof value === 'number' && Number.isFinite(value))
 					) {
-						this.usage = candidate as SyncUsage;
+						if (open) this.usage = candidate as SyncUsage;
 					}
 				}
 				const writesAccepted = response.data.writesAccepted === true;
@@ -1389,7 +1530,8 @@ export class SyncStore {
 					resetRetries += 1;
 					if (resetRetries > MAX_RESET_RETRIES)
 						throw new Error('Relay repeatedly requested a state reset');
-					this.bootstrapRequested = true;
+					if (open) this.bootstrapRequested = true;
+					bootstrap = true;
 					baseline = {};
 					recordIds = {};
 					relay = emptyRelayAttachments();
@@ -1655,7 +1797,7 @@ export class SyncStore {
 							}))
 						]
 					);
-					this.syncedCursor = cursor;
+					if (open) this.syncedCursor = cursor;
 					for (const keysAtGeneration of internalAcknowledgements.values()) {
 						for (const key of keysAtGeneration) internallyMarkedOutbox.delete(key);
 					}
@@ -1678,33 +1820,54 @@ export class SyncStore {
 			}
 
 			if (syncCancelled()) return { success: false, error: 'Sync was cancelled' };
-			if (poisonCount > 0) {
-				this.lastError = `Skipped ${poisonCount} unreadable sync record${poisonCount === 1 ? '' : 's'}`;
-			} else if (quotaBlockedKeys.size > 0) {
-				this.lastError = 'Sync incomplete: account storage quota prevented some uploads';
-				return { success: false, error: this.lastError };
-			} else {
-				this.lastError = null;
+			if (quotaBlockedKeys.size > 0 && poisonCount === 0)
+				return this.fail(
+					{
+						success: false,
+						error: 'Sync incomplete: account storage quota prevented some uploads',
+						refused: true
+					},
+					open
+				);
+			const syncedAt = Date.now();
+			if (open) {
+				this.lastError =
+					poisonCount > 0
+						? `Skipped ${poisonCount} unreadable sync record${poisonCount === 1 ? '' : 's'}`
+						: null;
+				this.lastSync = syncedAt;
 			}
-			this.lastSync = Date.now();
-			this.saveStatus();
-			return { success: true, snapshot: merged };
+			this.saveStatus(pid, syncedAt);
+			return { success: true, snapshot: merged, ...(bootstrap ? { bootstrap } : {}) };
 		} catch (err) {
 			if (syncCancelled()) return { success: false, error: 'Sync was cancelled' };
-			return this.fail({
-				success: false,
-				error:
-					err instanceof Error ? `Encrypted sync failed: ${err.message}` : 'Encrypted sync failed'
-			});
+			return this.fail(
+				{
+					success: false,
+					error:
+						err instanceof Error ? `Encrypted sync failed: ${err.message}` : 'Encrypted sync failed'
+				},
+				open
+			);
 		} finally {
 			if (indicate) this.progress = null;
 			if (indicate) this.onSyncEnd?.();
 		}
 	}
 
-	private fail(result: SyncResult): SyncResult {
-		this.lastError = result.error || 'Sync failed';
-		return { success: false, error: this.lastError };
+	/** A failed sync's answer. Only the open workspace's failure shows on the sync indicator. */
+	private fail(result: SyncResult, open: boolean): SyncResult {
+		const error = result.error || 'Sync failed';
+		if (open) this.lastError = error;
+		// The relay's own "no" stands until something changes. A sign-in that expired,
+		// a request it gave up on and a request to slow down are not that.
+		const refused =
+			result.refused === true ||
+			(result.status !== undefined &&
+				result.status >= 400 &&
+				result.status < 500 &&
+				![401, 408, 429].includes(result.status));
+		return { success: false, error, ...(refused ? { refused } : {}) };
 	}
 
 	consumeCurrentStateBootstrapRequest(): boolean {

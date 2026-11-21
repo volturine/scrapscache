@@ -15,7 +15,8 @@ import { createSyncIdentity, identityFromSyncKey } from '#lib/syncPairing.js';
 import type { Note } from '#lib/types.js';
 import { unregisterReminderDevice } from '#lib/reminderWake.js';
 import { ProfileCoordinator, profileCoordinator } from './profiles.svelte';
-import { notesStore, SYNC_LOCK } from './notes.svelte';
+import { notesStore } from './notes.svelte';
+import { SYNC_LOCK, syncScheduler } from './syncScheduler';
 import { PROFILE_META_KEY, syncStore } from './sync.svelte';
 import { TEST_WORKSPACE } from '../../tests/workspace';
 

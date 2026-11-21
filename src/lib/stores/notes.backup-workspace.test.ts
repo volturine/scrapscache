@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { strToU8 } from 'fflate';
-import { getAllNotesMetadata, waitForDeviceWrites } from '#lib/db/idb.js';
+import { getAllNotesMetadata, getSyncOutboxKeys, waitForDeviceWrites } from '#lib/db/idb.js';
 import { BackupImportMode, type ScrapsCacheBackup } from '#lib/backup.js';
 import { createSyncIdentity } from '#lib/syncPairing.js';
-import { notesStore, SYNC_LOCK } from './notes.svelte';
+import { notesStore } from './notes.svelte';
+import { SYNC_LOCK, syncScheduler } from './syncScheduler';
 import { profileCoordinator } from './profiles.svelte';
 import { syncStore } from './sync.svelte';
 import { kanbanStore } from './kanban.svelte';
@@ -26,6 +27,8 @@ vi.mock('#lib/staleModuleReload.js', async (importOriginal) => {
 				: actual.loadLazyModule(load)
 	};
 });
+
+const realPut = IDBObjectStore.prototype.put;
 
 function profile(id: string) {
 	const account = createSyncIdentity();
@@ -66,11 +69,14 @@ function backupNote(id: string): ScrapsCacheBackup['notes'][number] {
 	};
 }
 
-/** Web Locks as the browser grants them: one holder at a time, in request order. */
+/** The sync lock as the browser grants it: one holder at a time, in request order. */
 function serialLocks() {
 	let chain: Promise<unknown> = Promise.resolve();
 	return {
-		request: <T>(_name: string, run: () => Promise<T>): Promise<T> => {
+		request: <T>(name: string, ...rest: unknown[]): Promise<T> => {
+			const run = rest.at(-1) as () => Promise<T>;
+			// Only the sync lock is under test; the others are theirs to take.
+			if (name !== SYNC_LOCK) return run();
 			const held = chain.then(run);
 			chain = held.catch(() => undefined);
 			return held;
@@ -102,16 +108,7 @@ describe('backup and Keep import stay in the open workspace', () => {
 	});
 
 	afterEach(async () => {
-		const internals = notesStore as unknown as {
-			dirty: boolean;
-			syncPushTimer: ReturnType<typeof setTimeout> | null;
-			syncFlight: Promise<boolean> | null;
-		};
-		// A switch leaves its sync running; let it settle before the next test.
-		await internals.syncFlight?.catch(() => false);
-		if (internals.syncPushTimer) clearTimeout(internals.syncPushTimer);
-		internals.syncPushTimer = null;
-		internals.dirty = false;
+		await syncScheduler.reset();
 		syncStore.account = null;
 		syncStore.profiles = [];
 		notesStore.notes = [];
@@ -289,7 +286,9 @@ describe('backup and Keep import stay in the open workspace', () => {
 		expect(await getAllNotesMetadata(TEST_WORKSPACE)).toEqual([]);
 	});
 
-	it('keeps a running import in its workspace and blocks switching until it finishes', async () => {
+	// An import can run for minutes. Nothing waits for it: the window moves on, and
+	// the import lands in the workspace it was started for.
+	it('lets the window switch while an import runs, and lands it in its own workspace', async () => {
 		await openWorkspace(workspaceB);
 		await openWorkspace(workspaceA);
 		let releaseEstimate!: () => void;
@@ -305,87 +304,95 @@ describe('backup and Keep import stay in the open workspace', () => {
 			}
 		});
 		try {
-			const note = (id: string) => ({
-				id,
-				title: id,
-				body: '',
-				color: 'default' as const,
-				pinned: false,
-				archived: false,
-				trashed: false,
-				trashedAt: null,
-				createdAt: 1,
-				updatedAt: 1,
-				reminder: null,
-				labels: []
-			});
 			const running = notesStore.importBackup(
-				emptyBackup([note('first'), note('second')]),
+				emptyBackup([backupNote('first'), backupNote('second')]),
 				BackupImportMode.Keep
 			);
 
-			const switched = await profileCoordinator.switchTo(workspaceB.id);
-			expect(switched.success).toBe(false);
-			expect(switched.error).toMatch(/import/i);
-			expect(syncStore.activeId).toBe(workspaceA.id);
+			expect(await profileCoordinator.switchTo(workspaceB.id)).toEqual({ success: true });
+			expect(syncStore.activeId).toBe(workspaceB.id);
 
 			releaseEstimate();
 			expect(await running).toEqual({ success: true });
-			await waitForDeviceWrites(workspaceA.id);
+			expect(notesStore.importing).toBe(false);
 			expect((await getAllNotesMetadata(workspaceA.id)).map((n) => n.title).sort()).toEqual([
 				'first',
 				'second'
 			]);
+			// Queued to upload with the notes, though the workspace is not open.
+			expect(
+				(await getSyncOutboxKeys(workspaceA.id)).filter((key) => key.startsWith('note:'))
+			).toHaveLength(2);
 			expect(await getAllNotesMetadata(workspaceB.id)).toEqual([]);
-			expect(await profileCoordinator.switchTo(workspaceB.id)).toMatchObject({ success: true });
+			expect(notesStore.notes).toEqual([]);
+			expect(syncStore.activeId).toBe(workspaceB.id);
 		} finally {
 			vi.unstubAllGlobals();
 		}
 	});
 
-	// A sync flight reads the workspace, merges, and writes it back. Landing that
-	// partway through an import would write the notes it pulled over the imported
-	// ones and push the mixture to the relay as the newest version.
-	it('keeps a sync flight out of the workspace until the import finishes', async () => {
+	// A sync flight reads the workspace, merges, and writes it back. Landing an
+	// import partway through one would have the flight save the notes it pulled
+	// over the imported ones and push the mixture to the relay as the newest version.
+	it('lands only once it holds the sync lock', async () => {
 		await openWorkspace(workspaceA);
-		let releaseEstimate!: () => void;
-		const estimateGate = new Promise<void>((resolve) => (releaseEstimate = resolve));
-		const order: string[] = [];
-		vi.stubGlobal('navigator', {
-			...navigator,
-			locks: serialLocks(),
-			storage: {
-				estimate: async () => {
-					order.push('import');
-					await estimateGate;
-					return { quota: 1e12, usage: 0 };
-				}
-			}
-		});
+		vi.stubGlobal('navigator', { ...navigator, locks: serialLocks() });
 		try {
-			const running = notesStore.importBackup(
-				emptyBackup([backupNote('imported')]),
-				BackupImportMode.Keep
+			let releaseFlight!: () => void;
+			const flight = navigator.locks.request(
+				SYNC_LOCK,
+				() => new Promise<void>((resolve) => (releaseFlight = resolve))
 			);
-			// What a flight does: ask for the same lock the handover uses.
-			const flight = navigator.locks.request(SYNC_LOCK, async () => {
-				order.push('flight');
-			});
-			// The import loads its validation before asking for the lock, so the flight
-			// may land first; what matters is that it never lands during the import.
-			await vi.waitFor(() => expect(order).toContain('import'));
-			const during = order.length;
-			for (let tick = 0; tick < 10; tick += 1) await Promise.resolve();
-			expect(order).toHaveLength(during);
-			expect(order.at(-1)).toBe('import');
+			let landed = false;
+			const running = notesStore
+				.importBackup(emptyBackup([backupNote('imported')]), BackupImportMode.Keep)
+				.finally(() => (landed = true));
 
-			releaseEstimate();
-			expect(await running).toEqual({ success: true });
+			await new Promise((resolve) => setTimeout(resolve, 50));
+			expect(landed).toBe(false);
+			expect(await getAllNotesMetadata(workspaceA.id)).toEqual([]);
+
+			releaseFlight();
 			await flight;
-
-			expect(order.sort()).toEqual(['flight', 'import']);
+			expect(await running).toEqual({ success: true });
+			expect((await getAllNotesMetadata(workspaceA.id)).map((note) => note.title)).toEqual([
+				'imported'
+			]);
 		} finally {
 			vi.unstubAllGlobals();
+		}
+	});
+
+	// Everything an import writes is one transaction: a full disk, or a tab that
+	// goes away part-way, leaves the workspace exactly as it was.
+	it('leaves the workspace as it was when the import cannot be written', async () => {
+		await openWorkspace(workspaceA);
+		notesStore.createNote({ title: 'A note' });
+		await waitForDeviceWrites(workspaceA.id);
+		const queued = (await getSyncOutboxKeys(workspaceA.id)).sort();
+		const put = vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(function (
+			this: IDBObjectStore
+		) {
+			// The notes and their tombstones are already written when the labels fail.
+			if (this.name === 'labels') throw new DOMException('Quota exceeded', 'QuotaExceededError');
+			return Reflect.apply(realPut, this, arguments) as IDBRequest<IDBValidKey>;
+		});
+		try {
+			const backup = emptyBackup([backupNote('imported')]);
+			backup.labels = [{ id: 'label', name: 'Label', createdAt: 1, updatedAt: 1 }];
+			const result = await notesStore.importBackup(backup, BackupImportMode.Replace);
+
+			expect(result.success).toBe(false);
+			expect(result.error).toMatch(/Could not import full backup/);
+			put.mockRestore();
+			expect((await getAllNotesMetadata(workspaceA.id)).map((note) => note.title)).toEqual([
+				'A note'
+			]);
+			expect(notesStore.notes.map((note) => note.title)).toEqual(['A note']);
+			expect(notesStore.deletedNoteIds).toEqual({});
+			expect((await getSyncOutboxKeys(workspaceA.id)).sort()).toEqual(queued);
+		} finally {
+			put.mockRestore();
 		}
 	});
 
@@ -422,12 +429,10 @@ describe('backup and Keep import stay in the open workspace', () => {
 		await openWorkspace(workspaceA);
 		notesStore.createNote({ title: 'A note' });
 		await waitForDeviceWrites(workspaceA.id);
-		const hardResync = vi.spyOn(notesStore, 'hardResync');
 		chunk.missing = true;
 		try {
 			const result = await notesStore.importBackup(emptyBackup(), BackupImportMode.Replace);
 			expect(result).toEqual({ success: false, error: STALE_MODULE_MESSAGE });
-			expect(hardResync).not.toHaveBeenCalled();
 			expect(notesStore.lastPersistError).toBeNull();
 			expect(notesStore.importing).toBe(false);
 			expect((await getAllNotesMetadata(workspaceA.id)).map((note) => note.title)).toEqual([
@@ -439,11 +444,10 @@ describe('backup and Keep import stay in the open workspace', () => {
 		}
 	});
 
-	// The window can be moved while an import waits for the lock: another window
-	// removed its workspace, and the handover that follows queued first. Landing
-	// in whatever is open once the lock comes would replace a workspace nobody
-	// chose and push that to its cloud.
-	it('imports into the workspace it was started in or nowhere', async () => {
+	// The window can be moved while an import waits for the lock. The import still
+	// lands in the workspace it was started for, never in whatever is open by then:
+	// that would replace a workspace nobody chose and push it to its cloud.
+	it('lands in the workspace it was started in after the window has moved', async () => {
 		await openWorkspace(workspaceB);
 		notesStore.createNote({ title: 'B note' });
 		await waitForDeviceWrites(workspaceB.id);
@@ -468,17 +472,47 @@ describe('backup and Keep import stay in the open workspace', () => {
 			releaseFlight();
 			await flight;
 			await moved;
-			const result = await running;
 
-			expect(result.success).toBe(false);
-			expect(result.error).toMatch(/no longer open/);
+			expect(await running).toEqual({ success: true });
 			await waitForDeviceWrites();
+			expect((await getAllNotesMetadata(workspaceA.id)).map((note) => note.title)).toEqual([
+				'imported'
+			]);
 			expect((await getAllNotesMetadata(workspaceB.id)).map((note) => note.title)).toEqual([
 				'B note'
 			]);
-			expect((await getAllNotesMetadata(workspaceA.id)).map((note) => note.title)).toEqual([
-				'A note'
+			expect(notesStore.notes.map((note) => note.title)).toEqual(['B note']);
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
+
+	it('imports nowhere once its workspace is gone from this device', async () => {
+		await openWorkspace(workspaceB);
+		notesStore.createNote({ title: 'B note' });
+		await waitForDeviceWrites(workspaceB.id);
+		await openWorkspace(workspaceA);
+		vi.stubGlobal('navigator', { ...navigator, locks: serialLocks() });
+		try {
+			// Queued ahead of the import: another window removed the workspace, and
+			// this window left it.
+			const removed = navigator.locks.request(SYNC_LOCK, async () => {
+				syncStore.activateProfile(workspaceB);
+				await notesStore.reloadForProfile();
+				syncStore.profiles = syncStore.profiles.filter((entry) => entry.id !== workspaceA.id);
+			});
+			const result = await notesStore.importBackup(
+				emptyBackup([backupNote('imported')]),
+				BackupImportMode.Replace
+			);
+			await removed;
+
+			expect(result.success).toBe(false);
+			expect(result.error).toMatch(/no longer on this device/);
+			expect((await getAllNotesMetadata(workspaceB.id)).map((note) => note.title)).toEqual([
+				'B note'
 			]);
+			expect(await getAllNotesMetadata(workspaceA.id)).toEqual([]);
 		} finally {
 			vi.unstubAllGlobals();
 		}

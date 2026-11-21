@@ -6,14 +6,15 @@ import {
 	type SyncNote
 } from '#lib/syncRecords.js';
 import { sha256 } from '#lib/syncHash.js';
+import { RELAY_SILENCE_MS, withinTime } from '#lib/syncRetry.js';
 import type { Note, NoteImage } from '#lib/types.js';
 import type { HistoryEnvelope, HistoryList } from '#lib/syncHistory.js';
 import { syncStore, type SyncAccount } from '#lib/stores/sync.svelte.js';
 
 export type NoteHistoryEntry = { historyId: number; savedAt: number; note: SyncNote };
 
-async function read<T>(path: string, account: SyncAccount): Promise<T> {
-	const response = await syncStore.authorizedFetch(path, { cache: 'no-store' }, account);
+async function read<T>(path: string, account: SyncAccount, signal?: AbortSignal): Promise<T> {
+	const response = await syncStore.authorizedFetch(path, { cache: 'no-store', signal }, account);
 	if (!response.ok) throw new Error('Could not load sync history.');
 	return response.json() as Promise<T>;
 }
@@ -46,25 +47,27 @@ function decode(account: SyncAccount, ciphertext: string, slot: string) {
 	return payload;
 }
 
-function listVersions(account: SyncAccount, slot: string): Promise<HistoryList> {
-	return read<HistoryList>(`/api/sync/history?slot=${slot}`, account);
+function listVersions(
+	account: SyncAccount,
+	slot: string,
+	signal?: AbortSignal
+): Promise<HistoryList> {
+	return read<HistoryList>(`/api/sync/history?slot=${slot}`, account, signal);
 }
 
 /** A note's retained versions, newest first, in one request. */
 export async function loadNoteHistory(
 	account: SyncAccount,
-	noteId: string
+	noteId: string,
+	signal?: AbortSignal
 ): Promise<NoteHistoryEntry[]> {
 	const slot = await sha256(`${account.syncKey}\u0000note:${noteId}`);
-	const { versions } = await listVersions(account, slot);
+	const { versions } = await listVersions(account, slot, signal);
 	return versions.flatMap(({ historyId, savedAt, ciphertext }) => {
 		const payload = decode(account, ciphertext, slot);
 		return payload.kind === 'note' ? [{ historyId, savedAt, note: payload.value }] : [];
 	});
 }
-
-/** How long one attachment may take to arrive when asked for by name. */
-const CURRENT_ATTACHMENT_TIMEOUT_MS = 60_000;
 
 /**
  * The attachment record the relay holds now under this id, whatever its version;
@@ -73,15 +76,19 @@ const CURRENT_ATTACHMENT_TIMEOUT_MS = 60_000;
  */
 export async function loadCurrentAttachment(
 	account: SyncAccount,
-	id: string
+	id: string,
+	signal?: AbortSignal
 ): Promise<SyncAttachment | null> {
 	const slot = await sha256(`${account.syncKey}\u0000attachment:${id}`);
+	// A sync waits on this, so a request that stalls gives up and the sync fails,
+	// and one the sync no longer waits for (`signal`) is dropped with it.
 	// No version is saved that far ahead, so the relay answers with the live record.
-	// A sync waits on this, so a request that stalls gives up and the sync fails.
-	const envelope = await readOptional<HistoryEnvelope>(
-		`/api/sync/history?slot=${slot}&at=${Number.MAX_SAFE_INTEGER}`,
-		account,
-		AbortSignal.timeout(CURRENT_ATTACHMENT_TIMEOUT_MS)
+	const envelope = await withinTime(RELAY_SILENCE_MS, signal, (limited) =>
+		readOptional<HistoryEnvelope>(
+			`/api/sync/history?slot=${slot}&at=${Number.MAX_SAFE_INTEGER}`,
+			account,
+			limited
+		)
 	);
 	if (!envelope) return null;
 	const payload = decode(account, envelope.ciphertext, slot);

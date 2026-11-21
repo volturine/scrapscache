@@ -6,6 +6,7 @@ import { createSyncIdentity } from '#lib/syncPairing.js';
 import { actionUndo } from '#lib/stores/actionUndo.svelte.js';
 import { composerStore } from '#lib/stores/composer.svelte.js';
 import { notesStore } from '#lib/stores/notes.svelte.js';
+import { syncScheduler } from '#lib/stores/syncScheduler.js';
 import { syncStore } from '#lib/stores/sync.svelte.js';
 import NoteComposer from './NoteComposer.svelte';
 
@@ -109,13 +110,7 @@ describe('NoteComposer', () => {
 	});
 
 	afterEach(() => {
-		const internals = notesStore as unknown as {
-			dirty: boolean;
-			syncPushTimer: ReturnType<typeof setTimeout> | null;
-		};
-		if (internals.syncPushTimer) clearTimeout(internals.syncPushTimer);
-		internals.syncPushTimer = null;
-		internals.dirty = false;
+		syncScheduler.reset();
 		syncStore.account = null;
 		syncStore.profiles = [];
 		notesStore.notes = [];

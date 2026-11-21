@@ -16,6 +16,7 @@ import * as idb from '#lib/db/idb.js';
 import { syncStore } from './sync.svelte';
 import { syncSnapshot } from '#lib/syncRecords.js';
 import { notesStore } from './notes.svelte';
+import { syncScheduler } from './syncScheduler';
 import type { Note } from '#lib/types.js';
 import { TEST_WORKSPACE } from '../../tests/workspace';
 
@@ -51,6 +52,12 @@ async function settleIndexedDb(): Promise<void> {
 	}
 }
 
+/** The relay's answer to each sync of the open workspace. */
+function relayAnswers(answer: () => ReturnType<typeof syncStore.sync>) {
+	vi.spyOn(syncStore, 'needsCurrentStateBootstrap').mockResolvedValue(false);
+	return vi.spyOn(syncStore, 'sync').mockImplementation(answer);
+}
+
 describe('syncing when a note closes', () => {
 	beforeEach(async () => {
 		await clearSyncOutbox(TEST_WORKSPACE, await getSyncOutboxKeys(TEST_WORKSPACE));
@@ -65,17 +72,12 @@ describe('syncing when a note closes', () => {
 	afterEach(async () => {
 		vi.clearAllTimers();
 		vi.useRealTimers();
-		const internals = notesStore as unknown as {
-			dirty: boolean;
-			syncPushTimer: ReturnType<typeof setTimeout> | null;
-		};
-		if (internals.syncPushTimer) clearTimeout(internals.syncPushTimer);
-		internals.syncPushTimer = null;
-		internals.dirty = false;
+		syncScheduler.reset();
 		vi.restoreAllMocks();
 		syncStore.account = null;
 		syncStore.lastError = null;
 		notesStore.notes = [];
+		notesStore.loaded = true;
 		(
 			notesStore as unknown as { attachmentHydrationFailures: Set<string> }
 		).attachmentHydrationFailures.clear();
@@ -96,7 +98,6 @@ describe('syncing when a note closes', () => {
 
 		expect(await notesStore.syncPendingChanges()).toBe(true);
 		expect(flush).toHaveBeenCalledOnce();
-		expect(flush).toHaveBeenCalledWith(true);
 	});
 
 	it('asks the cloud request to spin the icon', async () => {
@@ -111,25 +112,20 @@ describe('syncing when a note closes', () => {
 		expect(sync.mock.calls[0]?.[1]).toBe(true);
 	});
 
-	it('manual sync cancels the pending automatic pass and settles dirty state', async () => {
+	it('manual sync takes the place of the sync waiting for changes to pause', async () => {
 		await markSyncOutbox(TEST_WORKSPACE, ['note:note-1']);
-		(notesStore as unknown as { dirty: boolean }).dirty = true;
-		(notesStore as unknown as { scheduleSyncPush(): void }).scheduleSyncPush();
-		vi.spyOn(
-			notesStore as unknown as { queueSync(indicate: boolean): Promise<boolean> },
-			'queueSync'
-		).mockImplementation(async (indicate) => {
-			expect(indicate).toBe(true);
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+		const sync = relayAnswers(async () => {
 			await clearSyncOutbox(TEST_WORKSPACE, ['note:note-1']);
-			return true;
+			return { success: true, snapshot: syncSnapshot() };
 		});
+		syncScheduler.changed(TEST_WORKSPACE);
 
 		expect(await notesStore.syncWithCloudManual()).toBe(true);
-		expect((notesStore as unknown as { dirty: boolean }).dirty).toBe(false);
-		expect(
-			(notesStore as unknown as { syncPushTimer: ReturnType<typeof setTimeout> | null })
-				.syncPushTimer
-		).toBeNull();
+		await vi.advanceTimersByTimeAsync(10_000);
+
+		expect(sync).toHaveBeenCalledOnce();
+		expect(sync.mock.calls[0]?.[1]).toBe(true);
 	});
 
 	it('does not count a photo this device holds no bytes for as a failed upload', async () => {
@@ -143,10 +139,10 @@ describe('syncing when a note closes', () => {
 		// Its card scrolls into view, then the next sync runs.
 		await notesStore.ensureNoteAttachments(note.id);
 		const synced = await (
-			notesStore as unknown as { doSyncLocked(indicate: boolean): Promise<boolean> }
+			notesStore as unknown as { doSyncLocked(indicate: boolean): Promise<string> }
 		).doSyncLocked(false);
 
-		expect(synced).toBe(true);
+		expect(synced).toBe('synced');
 		expect(syncStore.lastError).toBeNull();
 		expect(notesStore.lastPersistError).toBeNull();
 	});
@@ -161,10 +157,10 @@ describe('syncing when a note closes', () => {
 
 		await notesStore.ensureNoteAttachments(note.id);
 		const synced = await (
-			notesStore as unknown as { doSyncLocked(indicate: boolean): Promise<boolean> }
+			notesStore as unknown as { doSyncLocked(indicate: boolean): Promise<string> }
 		).doSyncLocked(false);
 
-		expect(synced).toBe(true);
+		expect(synced).toBe('synced');
 		expect(syncStore.lastError).toBe(
 			'Synced, but some photos could not be prepared for upload. They will retry on the next sync.'
 		);
@@ -202,6 +198,7 @@ describe('syncing when a note closes', () => {
 			.attachmentHydrationFailures;
 		failures.add('deleted-photo-note');
 		notesStore.notes = [];
+		notesStore.loaded = true;
 
 		await (
 			notesStore as unknown as { hydrateAttachmentsForSync(): Promise<void> }
@@ -225,82 +222,93 @@ describe('syncing when a note closes', () => {
 		expect(hydrate).toHaveBeenCalledWith(note.id);
 	});
 
-	it('keeps dirty flag on partial sync without background timer polling', async () => {
+	it('does not go again by itself for what a sync that settled left queued', async () => {
 		notesStore.notes = [noteWithPhoto('')];
 		(
 			notesStore as unknown as { attachmentHydrationFailures: Set<string> }
 		).attachmentHydrationFailures.add('photo-note');
 		await markSyncOutbox(TEST_WORKSPACE, ['attachment:photo-1']);
 		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-		(notesStore as unknown as { dirty: boolean }).dirty = true;
-		const queue = vi.spyOn(
-			notesStore as unknown as { queueSync(indicate: boolean): Promise<boolean> },
-			'queueSync'
-		);
-		queue.mockResolvedValueOnce(true);
+		const sync = relayAnswers(async () => ({ success: true, snapshot: syncSnapshot() }));
 
 		expect(await notesStore.flushSync()).toBe(true);
-		expect((notesStore as unknown as { dirty: boolean }).dirty).toBe(true);
-		await vi.advanceTimersByTimeAsync(10_000);
-		expect(queue).toHaveBeenCalledTimes(1);
+		await vi.advanceTimersByTimeAsync(10 * 60_000);
+
+		expect(sync).toHaveBeenCalledOnce();
+		expect(await getSyncOutboxKeys(TEST_WORKSPACE)).toEqual(['attachment:photo-1']);
 	});
 
-	it('keeps dirty flag on relay failure without background timer polling', async () => {
+	it('tries again by itself, later each time, while the relay cannot be reached', async () => {
+		vi.spyOn(console, 'error').mockImplementation(() => undefined);
 		await markSyncOutbox(TEST_WORKSPACE, ['note:note-1']);
 		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-		(notesStore as unknown as { dirty: boolean }).dirty = true;
-		const queue = vi.spyOn(
-			notesStore as unknown as { queueSync(indicate: boolean): Promise<boolean> },
-			'queueSync'
-		);
-		queue.mockResolvedValueOnce(false);
+		const sync = relayAnswers(async () => ({ success: false, error: 'Sync network error' }));
 
 		expect(await notesStore.flushSync()).toBe(false);
-		expect((notesStore as unknown as { dirty: boolean }).dirty).toBe(true);
-		await vi.advanceTimersByTimeAsync(10_000);
-		expect(queue).toHaveBeenCalledTimes(1);
+		// Not at once: whoever asked has been told, and the relay will not answer now.
+		await vi.advanceTimersByTimeAsync(3_000);
+		expect(sync).toHaveBeenCalledTimes(1);
+		// From 5 seconds, doubling, each varied by a fifth.
+		await vi.advanceTimersByTimeAsync(3_500);
+		await settleIndexedDb();
+		expect(sync).toHaveBeenCalledTimes(2);
+		await vi.advanceTimersByTimeAsync(7_000);
+		expect(sync).toHaveBeenCalledTimes(2);
+		await vi.advanceTimersByTimeAsync(6_000);
+		await settleIndexedDb();
+		expect(sync).toHaveBeenCalledTimes(3);
 	});
 
-	it('does not automatically retry a quota failure', async () => {
-		await markSyncOutbox(TEST_WORKSPACE, ['note:note-1']);
+	it('does not try again by itself when nothing is left to send', async () => {
+		vi.spyOn(console, 'error').mockImplementation(() => undefined);
 		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-		(notesStore as unknown as { dirty: boolean }).dirty = true;
-		syncStore.lastError = 'Sync account storage quota exceeded';
-		const queue = vi
-			.spyOn(
-				notesStore as unknown as { queueSync(indicate: boolean): Promise<boolean> },
-				'queueSync'
-			)
-			.mockResolvedValue(false);
+		const sync = relayAnswers(async () => ({ success: false, error: 'Sync network error' }));
 
 		expect(await notesStore.flushSync()).toBe(false);
 		await vi.advanceTimersByTimeAsync(10 * 60_000);
-		expect(queue).toHaveBeenCalledOnce();
+
+		expect(sync).toHaveBeenCalledOnce();
 	});
 
-	it('retries dirty sync immediately when the browser comes online', async () => {
+	it('does not try again by itself what the relay refused', async () => {
+		vi.spyOn(console, 'error').mockImplementation(() => undefined);
 		await markSyncOutbox(TEST_WORKSPACE, ['note:note-1']);
 		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-		(notesStore as unknown as { dirty: boolean }).dirty = true;
-		const queue = vi
-			.spyOn(
-				notesStore as unknown as { queueSync(indicate: boolean): Promise<boolean> },
-				'queueSync'
-			)
-			.mockResolvedValueOnce(false)
-			.mockImplementationOnce(async () => {
-				await clearSyncOutbox(TEST_WORKSPACE, ['note:note-1']);
-				return true;
-			});
+		const sync = relayAnswers(async () => ({
+			success: false,
+			error: 'Sync incomplete: account storage quota prevented some uploads',
+			refused: true
+		}));
+
+		expect(await notesStore.flushSync()).toBe(false);
+		await vi.advanceTimersByTimeAsync(10 * 60_000);
+
+		expect(sync).toHaveBeenCalledOnce();
+	});
+
+	it('syncs at once when the browser comes online', async () => {
+		vi.spyOn(console, 'error').mockImplementation(() => undefined);
+		await markSyncOutbox(TEST_WORKSPACE, ['note:note-1']);
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+		let reachable = false;
+		const sync = relayAnswers(async () => {
+			if (!reachable) return { success: false, error: 'Sync network error' };
+			await clearSyncOutbox(TEST_WORKSPACE, ['note:note-1']);
+			return { success: true, snapshot: syncSnapshot() };
+		});
 		await notesStore.flushSync();
+		reachable = true;
 
 		window.dispatchEvent(new Event('online'));
-		await vi.advanceTimersByTimeAsync(0);
-		await settleIndexedDb();
+		await vi.waitFor(() => expect(sync).toHaveBeenCalledTimes(2));
+		await vi.waitFor(() => expect(notesStore.syncing).toBe(false));
 
-		expect(queue).toHaveBeenCalledTimes(2);
-		expect((notesStore as unknown as { dirty: boolean }).dirty).toBe(false);
+		expect(await getSyncOutboxKeys(TEST_WORKSPACE)).toEqual([]);
+		// What was due again after the failure has been sent: nothing more is asked.
+		await vi.advanceTimersByTimeAsync(10 * 60_000);
+		expect(sync).toHaveBeenCalledTimes(2);
 	});
+
 	it('clears attachment hydration warning on successful sync once attachments are healthy', async () => {
 		syncStore.account = {
 			accountId: 'acc-1',
@@ -316,10 +324,10 @@ describe('syncing when a note closes', () => {
 		).attachmentHydrationFailures.clear();
 
 		const synced = await (
-			notesStore as unknown as { doSyncLocked(indicate: boolean): Promise<boolean> }
+			notesStore as unknown as { doSyncLocked(indicate: boolean): Promise<string> }
 		).doSyncLocked(false);
 
-		expect(synced).toBe(true);
+		expect(synced).toBe('synced');
 		expect(syncStore.lastError).toBeNull();
 	});
 });

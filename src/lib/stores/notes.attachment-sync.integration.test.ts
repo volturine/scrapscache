@@ -33,6 +33,7 @@ import * as idb from '#lib/db/idb.js';
 import { hydrateHistoryNote, loadNoteHistory } from '#lib/historyClient.js';
 import { SyncStore, syncStore } from './sync.svelte';
 import { notesStore } from './notes.svelte';
+import { syncScheduler } from './syncScheduler';
 import {
 	splitNoteForSync,
 	syncSnapshot,
@@ -351,26 +352,24 @@ describe('attachments across devices', () => {
 				: Response.json({ error: 'Envelope not found' }, { status: 404 });
 		});
 		notesStore.notes = [];
+		notesStore.loaded = true;
 		notesStore.labels = [];
 		notesStore.deletedNoteIds = {};
 		notesStore.lastPersistError = null;
 	});
 
-	afterEach(() => {
+	afterEach(async () => {
 		const internals = notesStore as unknown as {
-			dirty: boolean;
-			syncPushTimer: ReturnType<typeof setTimeout> | null;
 			attachmentHydrationFailures: Set<string>;
 		};
-		if (internals.syncPushTimer) clearTimeout(internals.syncPushTimer);
-		internals.syncPushTimer = null;
-		internals.dirty = false;
+		await syncScheduler.reset();
 		internals.attachmentHydrationFailures.clear();
 		vi.restoreAllMocks();
 		vi.unstubAllGlobals();
 		syncStore.account = null;
 		syncStore.lastError = null;
 		notesStore.notes = [];
+		notesStore.loaded = true;
 		cleanupTestDbs();
 	});
 
@@ -583,6 +582,48 @@ describe('attachments across devices', () => {
 			expect(photoBytes(await phoneStored('trip'))).toEqual({ shot: shot.dataUrl });
 			expect((await onTheRelay('trip')).pinned).toBe(true);
 		});
+
+		// A workspace handover takes the sync lock from a sync that is still asking,
+		// however long the relay would take to answer.
+		it('gives up the request for a handover, sends nothing, and goes again after it', async () => {
+			const shot = await photo('shot', bytes('the photo'));
+			const other = await otherDevice(relay, identity);
+			await other.save(note('trip', [shot]));
+			await other.sync();
+			await phoneSync();
+			await phoneBytesStore((store) => store.delete('trip::shot'));
+			notesStore.togglePin('trip');
+			await notesStore.flushNote('trip');
+
+			let unanswered: AbortSignal | null | undefined;
+			vi.mocked(syncStore.authorizedFetch).mockImplementationOnce((_input, init) => {
+				unanswered = init?.signal;
+				return new Promise<Response>((_resolve, reject) => {
+					init?.signal?.addEventListener('abort', () => reject(init.signal?.reason));
+				});
+			});
+			const flight = notesStore.syncWithCloudManual();
+			await vi.waitFor(() => expect(unanswered).toBeTruthy());
+
+			let duringHandover: { pinned?: boolean; bytes: Record<string, string> } | undefined;
+			await syncScheduler.handover(async () => {
+				duringHandover = {
+					pinned: (await onTheRelay('trip')).pinned,
+					bytes: photoBytes(await phoneStored('trip'))
+				};
+			});
+
+			// The handover found the workspace as the sync had found it: nothing of the
+			// round was sent to the relay or written to the device.
+			expect(unanswered?.aborted).toBe(true);
+			expect(duringHandover).toEqual({ pinned: false, bytes: { shot: '' } });
+			// The same sync then goes through, and reports nothing of the round it gave up.
+			expect(await flight).toBe(true);
+			expect(photoBytes(await phoneStored('trip'))).toEqual({ shot: shot.dataUrl });
+			expect((await onTheRelay('trip')).pinned).toBe(true);
+			expect(notesStore.lastPersistError).toBeNull();
+			expect(syncStore.lastError).toBeNull();
+		});
 	});
 
 	describe('an attachment that was never uploaded', () => {
@@ -684,6 +725,7 @@ describe('attachments across devices', () => {
 			syncStore.account = null;
 			await putNote(TEST_WORKSPACE, listing);
 			notesStore.notes = [];
+			notesStore.loaded = true;
 			notesStore.loaded = false;
 			await notesStore.init();
 			return phoneStored(listing.id);

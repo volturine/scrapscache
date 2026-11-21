@@ -1,9 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createSyncIdentity } from '#lib/syncPairing.js';
 import { putNote } from '#lib/db/idb.js';
+import { createKanbanBoard } from '#lib/kanban.js';
+import { saveBoardsToDevice } from '#lib/syncTombstones.js';
 import { readNotesMirror } from '#lib/noteStorage.js';
 import type { Note } from '#lib/types.js';
 import { notesStore } from './notes.svelte';
+import { kanbanStore } from './kanban.svelte';
 import { syncStore } from './sync.svelte';
 import { TEST_WORKSPACE } from '../../tests/workspace';
 
@@ -43,8 +46,11 @@ describe('a hidden window while another window syncs', () => {
 		internals.staleWhileHidden = null;
 		const before = note('n1', 'before', 1);
 		notesStore.notes = [before];
+		notesStore.loaded = true;
 		// What another window saved after its sync.
 		await putNote(TEST_WORKSPACE, note('n1', 'saved elsewhere', 2));
+		// Its boards are on the device, as any workspace's are once it has been open.
+		await kanbanStore.persistSyncState(TEST_WORKSPACE);
 	});
 
 	afterEach(() => {
@@ -72,6 +78,22 @@ describe('a hidden window while another window syncs', () => {
 		await vi.waitFor(() =>
 			expect(notesStore.notes.map((item) => item.title)).toEqual(['saved elsewhere'])
 		);
+	});
+
+	// Boards are saved whole from memory. A window that kept showing the boards from
+	// before would write them back over what the other window's sync saved.
+	it('re-reads the boards the other window saved', async () => {
+		const existing = kanbanStore.boardsForSync();
+		await saveBoardsToDevice(TEST_WORKSPACE, [
+			...existing,
+			{ ...createKanbanBoard('Saved elsewhere'), id: 'board-from-elsewhere' }
+		]);
+		vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+		internals.otherWindowSynced(TEST_WORKSPACE);
+		await vi.waitFor(() =>
+			expect(kanbanStore.boards.map((board) => board.name)).toContain('Saved elsewhere')
+		);
+		expect(kanbanStore.boards).toHaveLength(existing.length + 1);
 	});
 
 	it('ignores another workspace', async () => {

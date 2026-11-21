@@ -3,7 +3,7 @@ import { createSyncIdentity, encryptSyncPayload } from '#lib/syncPairing.js';
 import { sha256 } from '#lib/syncHash.js';
 import { syncStore } from '#lib/stores/sync.svelte.js';
 import { unboundSyncEnvelope } from '../tests/unboundEnvelope';
-import { hydrateHistoryNote, loadNoteHistory } from './historyClient';
+import { hydrateHistoryNote, loadCurrentAttachment, loadNoteHistory } from './historyClient';
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -216,5 +216,26 @@ describe('encrypted note history', () => {
 			missingAttachments: 1,
 			note: { title: 'Photos', images: [] }
 		});
+	});
+
+	// A sync asks for an attachment by name while it holds the sync lock.
+	it('drops a request for an attachment when the sync asking for it gives up', async () => {
+		const account = createSyncIdentity();
+		let requested: AbortSignal | null | undefined;
+		vi.spyOn(syncStore, 'authorizedFetch').mockImplementation((_path, init) => {
+			requested = init?.signal;
+			return new Promise<Response>((_resolve, reject) => {
+				init?.signal?.addEventListener('abort', () => reject(init.signal?.reason));
+			});
+		});
+		const sync = new AbortController();
+		const loading = loadCurrentAttachment(account, 'photo', sync.signal);
+		await vi.waitFor(() => expect(requested).toBeTruthy());
+		expect(requested?.aborted).toBe(false);
+
+		sync.abort(new DOMException('The sync gave up its round.', 'AbortError'));
+
+		await expect(loading).rejects.toThrow('The sync gave up its round.');
+		expect(requested?.aborted).toBe(true);
 	});
 });

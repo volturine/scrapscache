@@ -2,7 +2,7 @@
 // item syncs as its own record: the newest version of an item wins, and a
 // delete wins over every version it saw.
 import { stableStringify } from '#lib/model/stableStringify.js';
-import { getSyncState } from '#lib/db/idb.js';
+import { getSyncState, mergeWorkspaceState } from '#lib/db/idb.js';
 
 export const CANVAS_LIBRARY_STATE_KEY = 'scrapscache-canvas-library';
 export const CANVAS_LIBRARY_TOMBSTONES_KEY = 'scrapscache-canvas-library-tombstones';
@@ -81,11 +81,90 @@ export function libraryItemsFor(entries: Iterable<CanvasLibraryEntry>): CanvasLi
 		.sort((left, right) => right.created - left.created || left.id.localeCompare(right.id));
 }
 
-function sanitizeTombstones(value: unknown): Record<string, number> {
+export function sanitizeLibraryTombstones(value: unknown): Record<string, number> {
 	if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
 	return Object.fromEntries(
 		Object.entries(value).flatMap(([id, at]) => (Number(at) > 0 ? [[id, Number(at)]] : []))
 	);
+}
+
+/**
+ * A backup's library brought into a workspace's, as a new save of each item so it
+ * wins over any older version or delete elsewhere. Adding keeps what is there and
+ * brings what is missing; `replace` also deletes what the backup does not have.
+ * `keys` are the records that changed and have to be uploaded.
+ */
+export function restoredCanvasLibrary(
+	stored: { entries: Iterable<CanvasLibraryEntry>; tombstones: Record<string, number> },
+	items: readonly unknown[],
+	replace: boolean,
+	now: number
+): { entries: CanvasLibraryEntry[]; tombstones: Record<string, number>; keys: string[] } {
+	const byId = new Map([...stored.entries].map((entry) => [entry.id, entry]));
+	const tombstones = { ...stored.tombstones };
+	const keys: string[] = [];
+	const restored = new Set<string>();
+	for (const item of items.filter(isCanvasLibraryItem)) {
+		restored.add(item.id);
+		const current = byId.get(item.id);
+		if (current && !replace) continue;
+		const updatedAt = Math.max(now, (current?.updatedAt ?? 0) + 1, (tombstones[item.id] ?? 0) + 1);
+		byId.set(item.id, {
+			id: item.id,
+			updatedAt,
+			item: JSON.parse(JSON.stringify(item)) as CanvasLibraryItem
+		});
+		keys.push(`library-item:${item.id}`);
+	}
+	if (replace) {
+		for (const [id, entry] of byId) {
+			if (restored.has(id)) continue;
+			tombstones[id] = Math.max(now, entry.updatedAt + 1);
+			byId.delete(id);
+			keys.push(`library-item-tombstone:${id}`);
+		}
+	}
+	return { entries: [...byId.values()], tombstones, keys };
+}
+
+/**
+ * Merge entries and deletes into the library a workspace has saved, in one
+ * transaction, and return what is saved after. `replace` starts from nothing
+ * instead of from what is saved.
+ */
+export async function mergeStoredCanvasLibrary(
+	pid: string,
+	entries: CanvasLibraryEntry[],
+	tombstones: Record<string, number>,
+	options: { replace?: boolean; outboxKeys?: Iterable<string> } = {}
+): Promise<{ entries: CanvasLibraryEntry[]; tombstones: Record<string, number> }> {
+	const state = await mergeWorkspaceState(
+		pid,
+		[CANVAS_LIBRARY_STATE_KEY, CANVAS_LIBRARY_TOMBSTONES_KEY],
+		(current) => {
+			const deleted = sanitizeLibraryTombstones(
+				options.replace ? {} : current[CANVAS_LIBRARY_TOMBSTONES_KEY]
+			);
+			for (const [id, at] of Object.entries(sanitizeLibraryTombstones(tombstones)))
+				deleted[id] = Math.max(deleted[id] ?? 0, at);
+			const stored = options.replace ? [] : current[CANVAS_LIBRARY_STATE_KEY];
+			return {
+				value: {
+					[CANVAS_LIBRARY_STATE_KEY]: mergeCanvasLibrary(
+						Array.isArray(stored) ? stored.filter(isCanvasLibraryEntry) : [],
+						entries,
+						deleted
+					),
+					[CANVAS_LIBRARY_TOMBSTONES_KEY]: deleted
+				},
+				outboxKeys: options.outboxKeys ?? []
+			};
+		}
+	);
+	return {
+		entries: state[CANVAS_LIBRARY_STATE_KEY] as CanvasLibraryEntry[],
+		tombstones: state[CANVAS_LIBRARY_TOMBSTONES_KEY] as Record<string, number>
+	};
 }
 
 /** A workspace's library as this device saved it, whether or not it is the open one. */
@@ -96,7 +175,7 @@ export async function readCanvasLibrary(
 		getSyncState<unknown>(pid, CANVAS_LIBRARY_STATE_KEY),
 		getSyncState<unknown>(pid, CANVAS_LIBRARY_TOMBSTONES_KEY)
 	]);
-	const tombstones = sanitizeTombstones(stored);
+	const tombstones = sanitizeLibraryTombstones(stored);
 	return {
 		entries: mergeCanvasLibrary([], Array.isArray(entries) ? entries : [], tombstones),
 		tombstones

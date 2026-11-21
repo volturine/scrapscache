@@ -8,6 +8,7 @@ vi.mock('#lib/imageThumb.js', async (importOriginal) => {
 import * as idb from '#lib/db/idb.js';
 import type { NoteImage } from '#lib/types.js';
 import { notesStore } from './notes.svelte';
+import { syncScheduler } from './syncScheduler';
 import { TEST_WORKSPACE } from '../../tests/workspace';
 
 function photo(id: string): NoteImage {
@@ -34,17 +35,13 @@ describe('photo bytes across a failed save', () => {
 		notesStore.labels = [];
 	});
 
-	afterEach(() => {
+	afterEach(async () => {
 		vi.restoreAllMocks();
 		const internals = notesStore as unknown as {
-			dirty: boolean;
-			syncPushTimer: ReturnType<typeof setTimeout> | null;
 			noteRetryTimers: Map<string, ReturnType<typeof setTimeout>>;
 			noteRetryAttempts: Map<string, number>;
 		};
-		if (internals.syncPushTimer) clearTimeout(internals.syncPushTimer);
-		internals.syncPushTimer = null;
-		internals.dirty = false;
+		await syncScheduler.reset();
 		for (const timer of internals.noteRetryTimers.values()) clearTimeout(timer);
 		internals.noteRetryTimers.clear();
 		internals.noteRetryAttempts.clear();

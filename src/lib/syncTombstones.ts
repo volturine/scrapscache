@@ -13,7 +13,7 @@ export const BOARDS_IDB = 'scrapscache-idb-kanban-boards';
 
 export type Tombstones = Record<string, number>;
 
-function sanitize(value: unknown): Tombstones {
+export function sanitizeTombstones(value: unknown): Tombstones {
 	if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
 	return Object.fromEntries(
 		Object.entries(value as Record<string, unknown>).flatMap(([id, at]) =>
@@ -45,7 +45,7 @@ export function readBoardTombstones(): Tombstones {
 }
 
 export async function writeTombstones(pid: string, tombstones: Tombstones): Promise<void> {
-	noteCache = sanitize(tombstones);
+	noteCache = sanitizeTombstones(tombstones);
 	await setSyncState(pid, NOTE_IDB, noteCache);
 }
 
@@ -54,7 +54,7 @@ export async function writeLabelTombstones(
 	tombstones: Tombstones,
 	syncOutboxKeys: Iterable<string> = []
 ): Promise<void> {
-	labelCache = sanitize(tombstones);
+	labelCache = sanitizeTombstones(tombstones);
 	await writeSyncStateWithOutbox(pid, [[LABEL_IDB, labelCache]], syncOutboxKeys);
 }
 
@@ -64,24 +64,33 @@ export async function deleteLabelWithTombstone(
 	tombstones: Tombstones,
 	syncOutboxKeys: Iterable<string> = []
 ): Promise<void> {
-	const next = sanitize(tombstones);
+	const next = sanitizeTombstones(tombstones);
 	await deleteLabelWithSyncState(pid, id, [[LABEL_IDB, next]], syncOutboxKeys);
 	labelCache = next;
 }
 
-export async function hydrateTombstones(pid: string): Promise<{
-	notes: Tombstones;
-	labels: Tombstones;
-	boards: Tombstones;
-}> {
-	const [idbNotes, idbLabels, idbBoards] = await Promise.all([
+type WorkspaceTombstones = { notes: Tombstones; labels: Tombstones; boards: Tombstones };
+
+/** What a workspace has deleted, as its database holds it. The open workspace's caches stay as they are. */
+export async function readStoredTombstones(pid: string): Promise<WorkspaceTombstones> {
+	const [notes, labels, boards] = await Promise.all([
 		getSyncState<unknown>(pid, NOTE_IDB),
 		getSyncState<unknown>(pid, LABEL_IDB),
 		getSyncState<unknown>(pid, BOARD_IDB)
 	]);
-	noteCache = sanitize(idbNotes);
-	labelCache = sanitize(idbLabels);
-	boardCache = sanitize(idbBoards);
+	return {
+		notes: sanitizeTombstones(notes),
+		labels: sanitizeTombstones(labels),
+		boards: sanitizeTombstones(boards)
+	};
+}
+
+/** Load the open workspace's tombstones. */
+export async function hydrateTombstones(pid: string): Promise<WorkspaceTombstones> {
+	const stored = await readStoredTombstones(pid);
+	noteCache = stored.notes;
+	labelCache = stored.labels;
+	boardCache = stored.boards;
 	return { notes: { ...noteCache }, labels: { ...labelCache }, boards: { ...boardCache } };
 }
 
@@ -111,7 +120,7 @@ export async function writeKanbanState(
 	boardTombstones: Tombstones,
 	syncOutboxKeys: Iterable<string> = []
 ): Promise<void> {
-	boardCache = sanitize(boardTombstones);
+	boardCache = sanitizeTombstones(boardTombstones);
 	await writeSyncStateWithOutbox(
 		pid,
 		[

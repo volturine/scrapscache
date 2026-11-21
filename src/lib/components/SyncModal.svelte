@@ -92,14 +92,13 @@
 		syncStore.profiles.find((profile) => profile.id === confirmTarget) ?? syncStore.activeProfile
 	);
 
-	// A running sync must finish before a dataset handover can start.
-	// Background pulls and outbox retries are intentionally silent. They still
-	// block a dataset handover, but only a sync started from this modal owns its
-	// visible "Syncing" state.
+	// Background pulls and outbox retries are silent and hold nothing up: a workspace
+	// change takes over from a sync instead of waiting on the relay. Only a sync
+	// started from this modal owns its visible "Syncing" state.
 	const syncing = $derived(operation === 'sync' || operation === 'force-sync');
-	const busy = $derived(
-		operation !== null || notesStore.syncing || notesStore.importing || profileCoordinator.switching
-	);
+	const busy = $derived(operation !== null || profileCoordinator.switching);
+	// "Sync now" waits on the relay too, so it does not hold a switch up either.
+	const switchBlocked = $derived(busy && operation !== 'sync');
 	const rowOwnsEscape = $derived(rowHoldingEscape !== null || expandedId !== null);
 
 	// Approximate on-device footprint per saved key. Measured when the modal
@@ -122,7 +121,13 @@
 		fallback: string,
 		run: () => Promise<T>
 	): Promise<T | undefined> {
-		if (kind === 'pair' ? operation !== null || profileCoordinator.switching : busy)
+		if (
+			kind === 'pair'
+				? operation !== null || profileCoordinator.switching
+				: kind === 'switch'
+					? switchBlocked
+					: busy
+		)
 			return undefined;
 		operation = kind;
 		try {
@@ -455,10 +460,14 @@
 	async function syncNow() {
 		error = '';
 		info = '';
+		const account = syncStore.account;
 		const success = await runOperation('sync', 'Sync failed', () =>
 			notesStore.syncWithCloudManual()
 		);
 		if (success === undefined) return;
+		// The window moved to another workspace meanwhile: that sync ended with the
+		// move, and its outcome says nothing about the workspace now open.
+		if (syncStore.account !== account) return;
 		if (!success) {
 			// The handshake found the key retired: go straight to replacing it.
 			if (syncStore.keyRetired) return confirm('new-key', syncStore.activePid);
@@ -670,6 +679,7 @@
 									caption={`${synced ? 'Synced' : 'Only on this device'}${sizeLabel(profile.id) ? ' · ' + sizeLabel(profile.id) : ''}`}
 									{active}
 									disabled={busy}
+									selectDisabled={switchBlocked}
 									expanded={expandedId === profile.id}
 									onselect={() => {
 										if (!active) void switchProfile(profile.id);

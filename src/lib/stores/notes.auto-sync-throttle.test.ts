@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createSyncIdentity } from '#lib/syncPairing.js';
 import { notesStore } from './notes.svelte';
 import { syncStore } from './sync.svelte';
+import { syncScheduler } from './syncScheduler';
 
 /**
  * Issue #86: opportunistic auto syncs (boot, foreground) are throttled by a
@@ -12,8 +13,9 @@ describe('auto sync staleness window', () => {
 		localStorage.clear();
 		vi.restoreAllMocks();
 		notesStore.notes = [];
+		notesStore.loaded = true;
 		notesStore.labels = [];
-		(notesStore as unknown as { lastAutoSyncAt: number }).lastAutoSyncAt = 0;
+		syncScheduler.reset();
 		syncStore.account = createSyncIdentity();
 	});
 

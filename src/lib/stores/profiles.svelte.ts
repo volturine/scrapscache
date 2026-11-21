@@ -2,9 +2,11 @@
 // is either private (no sync key) or synced. Switching, syncing, unlinking and
 // removing are all handovers: drain pending writes, change this window's
 // identity, then reload memory from the target namespace. They run under the
-// sync web lock so no sync flight can interleave with the handover.
+// sync lock so no sync flight can interleave with the handover, and take it from
+// a flight in progress instead of waiting: a handover never depends on the relay.
 import { syncStore, PROFILE_META_KEY } from './sync.svelte';
-import { notesStore, SYNC_LOCK } from './notes.svelte';
+import { notesStore } from './notes.svelte';
+import { syncScheduler } from './syncScheduler';
 import { clearNotesMirror } from '#lib/noteStorage.js';
 import { clearBoardsMirror } from './kanban.svelte';
 import { clearRecentNotes } from '#lib/recentNotes.js';
@@ -32,21 +34,10 @@ export class ProfileCoordinator {
 	/** True while a workspace handover is in progress. */
 	switching = $state(false);
 
-	private async exclusive<T>(run: () => Promise<T>): Promise<T> {
-		const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined;
-		if (!locks?.request) return run();
-		return locks.request(SYNC_LOCK, run);
-	}
-
-	private guard(blockOnSync = true): string | null {
+	private guard(): string | null {
+		// An import is not waited for: it lands in the workspace it was started for,
+		// whichever one this window has open by then.
 		if (this.switching) return 'Another profile change is still running';
-		// An import writes into the workspace it started in; switching mid-import
-		// would hand the rest of it to another workspace.
-		if (notesStore.importing) return 'An import is still running. Try again when it finishes.';
-		// A running sync must finish before its dataset can be handed over; the
-		// web lock below is only a safety net against races, not a waiting room.
-		if (blockOnSync && notesStore.syncing)
-			return 'Sync is still running. Try again when it finishes.';
 		return null;
 	}
 
@@ -58,16 +49,12 @@ export class ProfileCoordinator {
 		if (target.syncKey) await syncStore.queueOutbox([PROFILE_META_KEY]);
 	}
 
-	private async handover(
-		fallback: string,
-		run: () => Promise<Outcome>,
-		blockOnSync = true
-	): Promise<Outcome> {
-		const blocked = this.guard(blockOnSync);
+	private async handover(fallback: string, run: () => Promise<Outcome>): Promise<Outcome> {
+		const blocked = this.guard();
 		if (blocked) return { success: false, error: blocked };
 		this.switching = true;
 		try {
-			return await this.exclusive(async () => {
+			return await syncScheduler.handover(async () => {
 				await notesStore.waitForPendingProfileWrites();
 				return run();
 			});
@@ -136,7 +123,10 @@ export class ProfileCoordinator {
 				return { success: false, error: result.error ?? 'Registration failed' };
 			synced = syncStore.activeId === profileId;
 			if (synced) await this.activate(result.profile);
-			else await markSyncOutbox(profileId, [PROFILE_META_KEY]);
+			else {
+				await markSyncOutbox(profileId, [PROFILE_META_KEY]);
+				syncScheduler.changed(profileId);
+			}
 			return { success: true };
 		});
 		// First sync can take a long time for a large workspace. Leave the
@@ -155,7 +145,7 @@ export class ProfileCoordinator {
 				const target = syncStore.profiles.find((profile) => profile.id === profileId);
 				if (!target || isLocalWorkspace(target))
 					return { success: false, error: 'That workspace is not synced' };
-				await this.exclusive(async () => {
+				await syncScheduler.handover(async () => {
 					await notesStore.waitForPendingProfileWrites();
 					await this.activate(target);
 				});
@@ -267,7 +257,7 @@ export class ProfileCoordinator {
 			return current?.id === open.id && current.syncKey !== open.syncKey ? current : null;
 		};
 		if (!changed()) return;
-		await this.exclusive(async () => {
+		await syncScheduler.handover(async () => {
 			// Checked again under the lock: a handover that held it may have moved
 			// this window to another workspace meanwhile.
 			const current = changed();
@@ -285,7 +275,7 @@ export class ProfileCoordinator {
 	 */
 	async leaveReleasedWorkspace(): Promise<void> {
 		if (!isProfileReleased(syncStore.activeId)) return;
-		await this.exclusive(async () => {
+		await syncScheduler.handover(async () => {
 			// Checked again under the lock: while it waited, this window may have
 			// moved on by itself, or another signal may already have moved it.
 			if (!isProfileReleased(syncStore.activeId)) return;
@@ -295,12 +285,13 @@ export class ProfileCoordinator {
 		});
 	}
 
-	/** Point this window at another workspace. */
 	/**
-	 * Switch, then sync the workspace arrived in without holding up the caller:
-	 * the switch is done once its notes are loaded. A caller that needs the synced
-	 * state joins the flight with `notesStore.reconcileWithCloud()`; a failed sync
-	 * shows on the sync indicator like any background sync.
+	 * Point this window at another workspace. A sync under way is not waited for:
+	 * it gives up its round, and its workspace goes on syncing from its database
+	 * without being opened again (see the sync scheduler). The workspace arrived in
+	 * then syncs without holding up the caller: the switch is done once its notes
+	 * are loaded. A caller that needs the synced state joins that sync with
+	 * `notesStore.reconcileWithCloud()`; a failed sync shows on the sync indicator.
 	 */
 	async switchTo(profileId: string): Promise<Outcome> {
 		if (profileId === syncStore.activeId) return { success: true };
@@ -320,11 +311,11 @@ export class ProfileCoordinator {
 	 * Starting from a blank slate locally, it pulls all records from the cloud.
 	 */
 	async receiveLinkedKey(syncKey: string): Promise<{ outcome: 'linked'; error?: string }> {
-		const blocked = this.guard(false);
+		const blocked = this.guard();
 		if (blocked) return { outcome: 'linked', error: blocked };
 		this.switching = true;
 		try {
-			const activated = await this.exclusive(async () => {
+			const activated = await syncScheduler.handover(async () => {
 				await notesStore.waitForPendingProfileWrites();
 				let profile = profileForSyncKey(syncStore.profiles, syncKey);
 				const existed = profile != null;

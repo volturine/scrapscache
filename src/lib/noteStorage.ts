@@ -1,5 +1,6 @@
 import { mergeNoteLists } from './model/merge';
 import type { Label, Note, NoteImage } from './types';
+import { stableStringify } from './model/stableStringify';
 
 /**
  * Fast-boot mirrors, so notes show before IndexedDB answers. IndexedDB remains
@@ -227,4 +228,24 @@ export function clearNotesMirror(pid: string): void {
 		localStorage.removeItem(pendingNotesKey(pid));
 		localStorage.removeItem(labelsMirrorKey(pid));
 	} catch {}
+}
+
+/** A note as its database row holds it: everything but the bytes and previews of its attachments. */
+export function durableNoteSignature(note: Note): string {
+	return stableStringify({
+		...note,
+		images: (note.images ?? []).map(({ dataUrl: _dataUrl, thumbUrl: _thumbUrl, ...image }) => image)
+	});
+}
+
+/** True when `candidate` differs from the stored `current`, or brings bytes it has none of. */
+export function noteNeedsDurableWrite(current: Note | undefined, candidate: Note): boolean {
+	if (!current || durableNoteSignature(current) !== durableNoteSignature(candidate)) return true;
+	const currentImages = new Map((current.images ?? []).map((image) => [image.id, image]));
+	return (candidate.images ?? []).some((image) => {
+		const previous = currentImages.get(image.id);
+		return (
+			image.dataUrl.length > 0 && (!previous || (!previous.dataUrl.length && !previous.thumbUrl))
+		);
+	});
 }

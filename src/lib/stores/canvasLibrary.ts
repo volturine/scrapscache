@@ -2,18 +2,15 @@ import {
 	CANVAS_LIBRARY_STATE_KEY,
 	CANVAS_LIBRARY_TOMBSTONES_KEY,
 	diffCanvasLibrary,
-	isCanvasLibraryItem,
-	isCanvasLibraryEntry,
 	libraryItemsFor,
 	mergeCanvasLibrary,
+	mergeStoredCanvasLibrary,
 	readCanvasLibrary,
 	type CanvasLibraryEntry,
 	type CanvasLibraryItem
 } from '#lib/canvasLibrary.js';
-import { mergeWorkspaceState } from '#lib/db/idb.js';
 import { syncClock } from '#lib/editContext.js';
 import { syncStore } from '#lib/stores/sync.svelte.js';
-import { BackupImportMode } from '#lib/backup.js';
 
 function sanitizeTombstones(value: unknown): Record<string, number> {
 	if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
@@ -100,43 +97,6 @@ export class CanvasLibraryStore {
 		syncStore.requestAutoSync([]);
 	}
 
-	/**
-	 * Bring a backup's library into this workspace as a new save of each item, so
-	 * it wins over any older version or delete elsewhere. Keep adds what is
-	 * missing; Replace also deletes what the backup does not have.
-	 */
-	restore(pid: string, items: readonly unknown[], mode: BackupImportMode): void {
-		if (pid !== this.pid) return;
-		const now = syncClock.now();
-		const byId = new Map(this.entries.map((entry) => [entry.id, entry]));
-		const tombstones = { ...this.tombstones };
-		const keys: string[] = [];
-		const restored = new Set<string>();
-		for (const item of items.filter(isCanvasLibraryItem)) {
-			restored.add(item.id);
-			const current = byId.get(item.id);
-			if (current && mode === BackupImportMode.Keep) continue;
-			const updatedAt = Math.max(
-				now,
-				(current?.updatedAt ?? 0) + 1,
-				(tombstones[item.id] ?? 0) + 1
-			);
-			byId.set(item.id, { id: item.id, updatedAt, item: plain(item) });
-			keys.push(`library-item:${item.id}`);
-		}
-		if (mode === BackupImportMode.Replace) {
-			for (const [id, entry] of byId) {
-				if (restored.has(id)) continue;
-				tombstones[id] = Math.max(now, entry.updatedAt + 1);
-				byId.delete(id);
-				keys.push(`library-item-tombstone:${id}`);
-			}
-		}
-		if (!keys.length) return;
-		this.set([...byId.values()], tombstones);
-		this.persist(pid, keys);
-	}
-
 	entriesForSync(): CanvasLibraryEntry[] {
 		return this.entries.map((entry) => ({ ...entry }));
 	}
@@ -186,32 +146,12 @@ export class CanvasLibraryStore {
 		const replace = this.replacePending;
 		this.replacePending = false;
 		const write = this.pendingWrites.then(async () => {
-			const state = await mergeWorkspaceState(
-				pid,
-				[CANVAS_LIBRARY_STATE_KEY, CANVAS_LIBRARY_TOMBSTONES_KEY],
-				(current) => {
-					const deleted = sanitizeTombstones(replace ? {} : current[CANVAS_LIBRARY_TOMBSTONES_KEY]);
-					for (const [id, at] of Object.entries(tombstones))
-						deleted[id] = Math.max(deleted[id] ?? 0, at);
-					const stored = replace ? [] : current[CANVAS_LIBRARY_STATE_KEY];
-					return {
-						value: {
-							[CANVAS_LIBRARY_STATE_KEY]: mergeCanvasLibrary(
-								Array.isArray(stored) ? stored.filter(isCanvasLibraryEntry) : [],
-								entries,
-								deleted
-							),
-							[CANVAS_LIBRARY_TOMBSTONES_KEY]: deleted
-						},
-						outboxKeys: keys
-					};
-				}
-			);
+			const stored = await mergeStoredCanvasLibrary(pid, entries, tombstones, {
+				replace,
+				outboxKeys: keys
+			});
 			if (pid === this.pid && generation === this.generation && revision === this.revision)
-				this.applySync(
-					state[CANVAS_LIBRARY_STATE_KEY] as CanvasLibraryEntry[],
-					state[CANVAS_LIBRARY_TOMBSTONES_KEY] as Record<string, number>
-				);
+				this.applySync(stored.entries, stored.tombstones);
 		});
 		this.pendingWrites = write.catch((err) => {
 			console.error('[canvas library] could not save the library:', err);

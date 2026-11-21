@@ -24,6 +24,35 @@ export function backoffDelay(backoff: Backoff, retry: number, random = Math.rand
 	return step * (0.8 + 0.4 * random());
 }
 
+/**
+ * How long the relay may stay silent before a request to it is given up. On a
+ * connection that is up in name only nothing arrives and nothing fails, so without
+ * this a sync would wait for as long as the browser does.
+ */
+export const RELAY_SILENCE_MS = 60_000;
+
+/**
+ * Run `request` with a signal that aborts when `signal` does, or once the relay
+ * has taken `ms`: a request it never answers is given up instead of waited for.
+ */
+export async function withinTime<T>(
+	ms: number,
+	signal: AbortSignal | null | undefined,
+	request: (signal: AbortSignal) => Promise<T>
+): Promise<T> {
+	const limit = new AbortController();
+	const giveUp = () => limit.abort(signal?.reason);
+	if (signal?.aborted) giveUp();
+	signal?.addEventListener('abort', giveUp, { once: true });
+	const timer = setTimeout(() => limit.abort(new Error('Sync timed out')), ms);
+	try {
+		return await request(limit.signal);
+	} finally {
+		clearTimeout(timer);
+		signal?.removeEventListener('abort', giveUp);
+	}
+}
+
 /** Resolve after `ms`, or as soon as `signal` aborts. */
 export function wait(ms: number, signal?: AbortSignal): Promise<void> {
 	return new Promise((resolve) => {
@@ -39,18 +68,35 @@ export function wait(ms: number, signal?: AbortSignal): Promise<void> {
 }
 
 /**
+ * `work`, unless `signal` aborts first: the wait then ends with the signal's
+ * reason, and whatever `work` settles to later is dropped.
+ */
+export function untilAborted<T>(work: Promise<T>, signal?: AbortSignal | null): Promise<T> {
+	if (!signal) return work;
+	return new Promise<T>((resolve, reject) => {
+		const aborted = () => reject(signal.reason);
+		signal.addEventListener('abort', aborted, { once: true });
+		// Always heard out, so work that fails after the wait ended is not left unhandled.
+		void work.then(resolve, reject).finally(() => signal.removeEventListener('abort', aborted));
+		if (signal.aborted) aborted();
+	});
+}
+
+/**
  * Run `attempt` again for as long as `backoff` allows while its result is
  * `transient`. The last result is returned either way, so a caller sees the same
- * shape of answer whether or not a retry happened.
+ * shape of answer whether or not a retry happened. Aborting `signal` ends the
+ * wait before a retry at once; `attempt` and `transient` decide what follows.
  */
 export async function retryTransient<A>(
 	attempt: () => Promise<A>,
 	transient: (result: A) => boolean,
-	backoff: Backoff = transientRetry
+	backoff: Backoff = transientRetry,
+	signal?: AbortSignal
 ): Promise<A> {
 	let result = await attempt();
 	for (let retry = 0; transient(result) && retry < (backoff.times ?? Infinity); retry += 1) {
-		await wait(backoffDelay(backoff, retry));
+		await wait(backoffDelay(backoff, retry), signal);
 		result = await attempt();
 	}
 	return result;

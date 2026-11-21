@@ -199,21 +199,35 @@
 		showingImportGuide = false;
 		keepImportReady = false;
 		choosingImportMode = false;
-		importingBackup = true;
 		backupImportError = '';
+		// The import runs on with every dialog closed and holds nothing up: it lands
+		// in the workspace it was started for, even if another one is open by then.
+		const workspace = syncStore.activeProfile;
+		let problem = '';
 		try {
 			const result = pendingKeepFiles
 				? await notesStore.importKeepTakeout(pendingKeepFiles, mode)
 				: await notesStore.importBackup(pendingImportData, mode);
-			if (!result.success) throw new Error(result.error || 'Could not import that file.');
+			if (!result.success) problem = result.error || 'Could not import that file.';
+		} catch (error) {
+			problem = error instanceof Error ? error.message : 'Backup operation failed.';
+		}
+		if (!problem) {
 			pendingImportData = null;
 			pendingKeepFiles = null;
-		} catch (error) {
-			backupImportError = error instanceof Error ? error.message : 'Backup operation failed.';
-			choosingImportMode = true;
-		} finally {
-			importingBackup = false;
+			return;
 		}
+		if (syncStore.activeId === workspace?.id) {
+			backupImportError = problem;
+			choosingImportMode = true;
+			return;
+		}
+		// Trying again from here would import into the workspace now open, so the
+		// file is let go and the import has to be started again where it belongs.
+		pendingImportData = null;
+		pendingKeepFiles = null;
+		backupImportError = `The import into ${workspace?.name ?? 'the other workspace'} did not finish. ${problem}`;
+		showingImportGuide = true;
 	}
 
 	async function importBackupFile(file: File) {
@@ -364,7 +378,8 @@
 				class={[
 					iconMd,
 					styles.syncIcon,
-					(notesStore.syncing || importingBackup) && 'scrapscache-sync-icon-active'
+					(notesStore.syncing || importingBackup || notesStore.importing) &&
+						'scrapscache-sync-icon-active'
 				]}
 				data-scrapscache-sync-spinner
 			>
@@ -423,7 +438,7 @@
 				onImport={startBackupImport}
 				onTextSettings={openTextSettings}
 				onAppIcon={openAppIcon}
-				importing={importingBackup}
+				importing={importingBackup || notesStore.importing}
 				importError={backupImportError}
 			/>
 		</div>
@@ -438,7 +453,7 @@
 			onImport={startBackupImport}
 			onTextSettings={openTextSettings}
 			onAppIcon={openAppIcon}
-			importing={importingBackup}
+			importing={importingBackup || notesStore.importing}
 			importError={backupImportError}
 		/>
 	{:else}
@@ -460,7 +475,7 @@
 			onImport={startBackupImport}
 			onTextSettings={openTextSettings}
 			onAppIcon={openAppIcon}
-			importing={importingBackup}
+			importing={importingBackup || notesStore.importing}
 			importError={backupImportError}
 		/>
 	{/if}

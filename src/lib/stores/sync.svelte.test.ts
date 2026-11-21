@@ -45,7 +45,8 @@ type RelayData = {
 };
 
 type RequestResult =
-	{ success: true; data: RelayData } | { success: false; error: string; status?: number };
+	| { success: true; data: RelayData }
+	| { success: false; error: string; status?: number; unreachable?: boolean };
 
 const emptyData = (overrides: Partial<RelayData> = {}): RelayData => ({
 	cursor: 0,
@@ -804,19 +805,22 @@ describe('client sync state machine', () => {
 		expect(await idb.getSyncOutboxKeys(TEST_WORKSPACE)).toEqual([]);
 	});
 
-	// Whoever decides when to sync again needs to know which kind of failure it was.
+	// Whoever decides when to sync again, and what to tell the user, needs to know
+	// which kind of failure it was.
 	it('tells a relay that was not reached from one that refused', async () => {
 		let answer: RequestResult = { success: true, data: emptyData() };
 		const { store } = createHarness(() => answer);
 		const sync = () => store.sync(syncSnapshot(), false, false, passthrough);
 
-		answer = { success: false, error: 'Sync network error' };
+		answer = { success: false, error: 'Sync network error', unreachable: true };
 		expect(syncOutcome(await sync())).toBe('failed');
+		expect(store.relayUnreachable).toBe(true);
 
 		answer = { success: false, status: 409, error: 'Client is out of date' };
 		const refused = await sync();
 		expect(syncOutcome(refused)).toBe('refused');
 		expect(store.lastError).toBe('Client is out of date');
+		expect(store.relayUnreachable).toBe(false);
 
 		answer = { success: false, status: 503, error: 'Sync server is busy' };
 		expect(syncOutcome(await sync())).toBe('failed');
@@ -824,6 +828,7 @@ describe('client sync state machine', () => {
 		answer = { success: true, data: emptyData() };
 		expect(syncOutcome(await sync())).toBe('synced');
 		expect(store.lastError).toBeNull();
+		expect(store.relayUnreachable).toBe(false);
 	});
 
 	it('recovers from an accepted upload whose response was lost without uploading it twice', async () => {

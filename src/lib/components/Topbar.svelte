@@ -61,7 +61,10 @@
 	let choosingImportMode = $state(false);
 	let showingImportGuide = $state(false);
 	let keepImportReady = $state(false);
-	let syncStatus = $derived(resolveSyncStatus(syncStore.lastError, syncStore.usage));
+	// A server that could not be reached needs nothing from the user: the cloud stays calm.
+	let syncStatus = $derived(
+		resolveSyncStatus(syncStore.relayUnreachable ? null : syncStore.lastError, syncStore.usage)
+	);
 	let syncControlLabel = $derived(SYNC_CONTROL_LABEL[syncStatus]);
 
 	let searchField: HTMLInputElement | undefined;

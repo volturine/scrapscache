@@ -1,7 +1,8 @@
 /**
  * What, if anything, sync needs from the user right now. The cloud icon stays
  * quiet; a banner above the feed speaks up only for these states, each with the
- * next step as a button.
+ * next step as a button. A server that could not be reached is not one of them:
+ * the notes are saved on this device and the sync is tried again by itself.
  */
 export const SyncAttentionKind = {
 	KeyRetired: 'key-retired',
@@ -34,6 +35,11 @@ export type SyncAttentionInput = {
 	synced: boolean;
 	keyRetired: boolean;
 	lastError: string | null;
+	/**
+	 * The last sync failed only because the server was not reached. The app tries
+	 * again by itself and nothing is asked of the user, so it is not worth a banner.
+	 */
+	unreachable: boolean;
 	usage: { storageBytes: number; maxBytes: number } | null;
 	online: boolean;
 	/** Time of the last sync, 0 when none. */
@@ -85,7 +91,7 @@ export function syncAttentions(input: SyncAttentionInput): SyncAttention[] {
 			dismissible: false
 		});
 	}
-	if (input.lastError) {
+	if (input.lastError && !input.unreachable) {
 		const warning = isSyncWarning(input.lastError);
 		const reason = friendlySyncError(input.lastError, 'something went wrong');
 		all.push({

@@ -369,20 +369,42 @@ test('sync speaks up above the feed only when it needs attention', async ({ page
 	// Synced and quiet: still nothing.
 	await expect(banner).toHaveCount(0);
 
-	// A sync that cannot reach the relay is worth a banner, with the next step on it.
-	// The relay goes, not the network: coming back online syncs by itself and would
-	// take the banner, and its Retry, away before the press below.
+	// Sync stays in the background: a relay that cannot be reached is not worth a
+	// banner. The note is saved on this device and the sync is tried again by itself.
 	const relay = /\/api\/sync\/(?!events)/;
 	await page.route(relay, (route) => route.abort());
+	await createNote(page, 'Written while the server is away');
 	dialog = await openSync(page);
+	// Whoever asks for a sync is told how it went.
 	await dialog.getByRole('button', { name: 'Sync now' }).click();
 	await expect(dialog.getByText('Could not reach server. Check your connection.')).toBeVisible();
 	await dialog.getByRole('button', { name: 'Close' }).click();
+	await expect(banner).toHaveCount(0);
+	dialog = await openSync(page);
+	await expect(dialog.getByText('Saved on this device · Waiting to sync')).toBeVisible();
+
+	// The relay is back: nobody presses anything, and the wait ends.
+	await page.unroute(relay);
+	await expect(dialog.getByText('Saved on this device · Waiting to sync')).toBeHidden({
+		timeout: 45_000
+	});
+	await dialog.getByRole('button', { name: 'Close' }).click();
+	await expect(banner).toHaveCount(0);
+
+	// A sync the server turns down needs the user, so that one speaks up.
+	await page.route(relay, (route) =>
+		route.fulfill({ status: 403, json: { error: 'This device may not sync.' } })
+	);
+	await createNote(page, 'Written while the server refuses');
+	dialog = await openSync(page);
+	await dialog.getByRole('button', { name: 'Sync now' }).click();
+	await expect(dialog.getByRole('alert')).toBeVisible();
+	await dialog.getByRole('button', { name: 'Close' }).click();
 	await expect(banner).toHaveAttribute('data-sync-attention', 'error');
-	await expect(banner).toContainText('Sync stopped: the server could not be reached.');
+	await expect(banner).toContainText('Sync stopped');
 	await expect(banner).toContainText('Your notes are safe on this device.');
 
-	// Retry once the relay is back clears it.
+	// Retry once the relay takes it again clears it.
 	await page.unroute(relay);
 	await banner.getByRole('button', { name: 'Retry' }).click();
 	await expect(banner).toHaveCount(0);

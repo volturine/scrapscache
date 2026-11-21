@@ -31,6 +31,9 @@ export function backoffDelay(backoff: Backoff, retry: number, random = Math.rand
  */
 export const RELAY_SILENCE_MS = 60_000;
 
+/** What a request given up for the relay's silence fails with. */
+export const SYNC_TIMED_OUT = 'Sync timed out';
+
 /**
  * Run `request` with a signal that aborts when `signal` does, or once the relay
  * has taken `ms`: a request it never answers is given up instead of waited for.
@@ -44,7 +47,7 @@ export async function withinTime<T>(
 	const giveUp = () => limit.abort(signal?.reason);
 	if (signal?.aborted) giveUp();
 	signal?.addEventListener('abort', giveUp, { once: true });
-	const timer = setTimeout(() => limit.abort(new Error('Sync timed out')), ms);
+	const timer = setTimeout(() => limit.abort(new Error(SYNC_TIMED_OUT)), ms);
 	try {
 		return await request(limit.signal);
 	} finally {

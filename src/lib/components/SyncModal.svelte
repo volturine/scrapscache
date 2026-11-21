@@ -876,7 +876,10 @@
 								{/if}
 							</div>
 						{/if}
-						{#if error || syncError}<p class={syncDanger} role="alert">
+						{#if !error && syncStore.relayUnreachable}<p class={syncMuted} role="status">
+								Saved on this device · Waiting to sync
+							</p>
+						{:else if error || syncError}<p class={syncDanger} role="alert">
 								{error || syncError}
 							</p>{/if}
 						{#if info}<p class={syncMuted} role="status">

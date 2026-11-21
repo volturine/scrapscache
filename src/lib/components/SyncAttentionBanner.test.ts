@@ -59,6 +59,21 @@ describe('SyncAttentionBanner', () => {
 		expect(banner()).toBeNull();
 	});
 
+	it('stays quiet when the server could only not be reached, since the sync is tried again', async () => {
+		render(SyncAttentionBanner);
+		const store = syncStore as unknown as { unreachableError: string | null };
+
+		store.unreachableError = 'Sync network error';
+		syncStore.lastError = 'Sync network error';
+		await tick();
+		try {
+			expect(syncStore.relayUnreachable).toBe(true);
+			expect(banner()).toBeNull();
+		} finally {
+			store.unreachableError = null;
+		}
+	});
+
 	it('offers a retry for a sync error and goes away when dismissed, until a new error', async () => {
 		const retry = vi.spyOn(notesStore, 'syncWithCloudManual').mockResolvedValue(true);
 		render(SyncAttentionBanner);

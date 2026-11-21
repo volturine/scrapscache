@@ -19,6 +19,7 @@
 			synced: syncStore.isLoggedIn,
 			keyRetired: syncStore.keyRetired,
 			lastError: syncStore.lastError,
+			unreachable: syncStore.relayUnreachable,
 			usage: syncStore.usage,
 			online,
 			lastSync: syncStore.lastSync,

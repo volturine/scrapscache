@@ -187,6 +187,13 @@ is given up after a minute in which no byte moved (`RELAY_SILENCE_MS` in
 is the only time limit on a sync request: a photo on a weak signal takes as long
 as it takes, since given up at a fixed time it would start again from nothing.
 
+Sync stays in the background by design: working in a synced workspace should be
+as free as working in one that only lives on this device. So a server that could
+not be reached is not shown as an error. The notes are saved here and the sync is
+tried again by itself; the cloud icon stays calm and Sync settings reads "Saved on
+this device · Waiting to sync". The banner above the feed is kept for what needs
+the user: a sync the server turned down, a full account, a retired key.
+
 A backup or Google Keep import is read and prepared without holding anything,
 then lands in one IndexedDB transaction (`rewriteWorkspace` in
 `src/lib/db/idb.ts`): notes, attachments, labels, deletes, boards, the canvas

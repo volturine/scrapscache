@@ -13,6 +13,7 @@ const quiet: SyncAttentionInput = {
 	synced: true,
 	keyRetired: false,
 	lastError: null,
+	unreachable: false,
 	usage: { storageBytes: 10, maxBytes: 100 },
 	online: true,
 	lastSync: 1_000_000,
@@ -20,6 +21,22 @@ const quiet: SyncAttentionInput = {
 };
 
 describe('resolveSyncAttention', () => {
+	// The notes are saved here and the sync is tried again by itself: nothing to do.
+	it('says nothing when the server could only not be reached', () => {
+		expect(
+			resolveSyncAttention({ ...quiet, lastError: 'Sync network error', unreachable: true })
+		).toBeNull();
+		// What does need the user still speaks up beside it.
+		expect(
+			syncAttentions({
+				...quiet,
+				lastError: 'Sync network error',
+				unreachable: true,
+				usage: { storageBytes: 100, maxBytes: 100 }
+			}).map((attention) => attention.kind)
+		).toEqual([SyncAttentionKind.StorageFull]);
+	});
+
 	it('says nothing while sync is quiet, and nothing at all for a private workspace', () => {
 		expect(resolveSyncAttention(quiet)).toBeNull();
 		expect(

@@ -39,6 +39,7 @@ import {
 import { MAX_CLIENT_SYNC_MUTATIONS_PER_REQUEST } from '#lib/syncLimits.js';
 import {
 	RELAY_SILENCE_MS,
+	SYNC_TIMED_OUT,
 	retryTransient,
 	transientRetry,
 	untilAborted,
@@ -161,7 +162,14 @@ type SyncResult = {
 	bootstrap?: boolean;
 	/** The relay answered and will not take this as it is: asking again changes nothing. */
 	refused?: boolean;
+	/** The relay was not reached, or did not answer: nothing here is wrong. */
+	unreachable?: boolean;
 };
+
+/** A request that never got an answer, as `fetch` and the time limit report it. */
+function relayNotReached(error: unknown): boolean {
+	return error instanceof TypeError || (error instanceof Error && error.message === SYNC_TIMED_OUT);
+}
 
 /**
  * How a sync of a workspace ended, for whoever decides when it runs next: settled
@@ -224,6 +232,17 @@ export class SyncStore {
 	/** The active key's cloud data was deleted, so the relay will never accept it
 	 * again. The workspace can only keep syncing on a new key. */
 	keyRetired = $state(false);
+	/** The error of the last sync that failed only because the relay was not reached. */
+	private unreachableError = $state<string | null>(null);
+
+	/**
+	 * True while the open workspace's last sync failed only because the relay could
+	 * not be reached. Nothing is wrong on this device and nothing is asked of the
+	 * user: what was saved here waits, and the scheduler tries again.
+	 */
+	get relayUnreachable(): boolean {
+		return this.lastError !== null && this.lastError === this.unreachableError;
+	}
 	progress = $state<SyncProgress | null>(null);
 	usage = $state<SyncUsage | null>(null);
 	readonly syncClientId = uid();
@@ -946,7 +965,8 @@ export class SyncStore {
 			} catch (error) {
 				return {
 					success: false,
-					error: error instanceof Error ? error.message : 'Authentication failed'
+					error: error instanceof Error ? error.message : 'Authentication failed',
+					...(relayNotReached(error) ? { unreachable: true } : {})
 				};
 			}
 			// A delta round is idempotent: an upload the relay already stored carries
@@ -1069,7 +1089,8 @@ export class SyncStore {
 									: `Sync request failed (${xhr.status})`,
 						...(throttled ? { retryAfterSeconds: retryAfter } : {}),
 						// A relay that asks for a wait is waited for by the sync loop instead.
-						...(!throttled && xhr.status >= 502 && xhr.status <= 504 ? { transient: true } : {})
+						...(!throttled && xhr.status >= 502 && xhr.status <= 504 ? { transient: true } : {}),
+						...(xhr.status >= 500 ? { unreachable: true } : {})
 					});
 					return;
 				}
@@ -1077,9 +1098,14 @@ export class SyncStore {
 				observeRelayTime(data.serverTime, sentAt, receivedAt);
 				settle({ success: true, data });
 			};
-			xhr.onerror = () => settle({ success: false, error: 'Sync network error', transient: true });
+			xhr.onerror = () =>
+				settle({ success: false, error: 'Sync network error', transient: true, unreachable: true });
 			xhr.onabort = () =>
-				settle({ success: false, error: stalled ? 'Sync timed out' : 'Sync was cancelled' });
+				settle(
+					stalled
+						? { success: false, error: SYNC_TIMED_OUT, unreachable: true }
+						: { success: false, error: 'Sync was cancelled' }
+				);
 			sentAt = Date.now();
 			moving();
 			xhr.send(payload);
@@ -1839,7 +1865,10 @@ export class SyncStore {
 				{
 					success: false,
 					error:
-						err instanceof Error ? `Encrypted sync failed: ${err.message}` : 'Encrypted sync failed'
+						err instanceof Error
+							? `Encrypted sync failed: ${err.message}`
+							: 'Encrypted sync failed',
+					...(relayNotReached(err) ? { unreachable: true } : {})
 				},
 				open
 			);
@@ -1852,7 +1881,10 @@ export class SyncStore {
 	/** A failed sync's answer. Only the open workspace's failure shows on the sync indicator. */
 	private fail(result: SyncResult, open: boolean): SyncResult {
 		const error = result.error || 'Sync failed';
-		if (open) this.lastError = error;
+		if (open) {
+			this.unreachableError = result.unreachable ? error : null;
+			this.lastError = error;
+		}
 		// The relay's own "no" stands until something changes. A sign-in that expired,
 		// a request it gave up on and a request to slow down are not that.
 		const refused =
